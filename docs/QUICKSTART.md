@@ -17,7 +17,7 @@ docker compose version
 ## 啟動步驟
 
 部署自用與參與開發走**同一條流程**；預設的 `docker-compose.yml` 即正式版
-（nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者只多一步——
+（nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者只多一步：
 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解，之後所有 `docker compose`
 指令自動指向開發版（前端 Vite HMR、後端 Air 熱重載，並帶起各協議的測試靶機），無須每次打 `-f`。
 
@@ -30,7 +30,7 @@ cd custodexa
 
 ### 2. 設定環境變數（必需）
 
-> **快速路徑**：`bash scripts/quickstart.sh` 會自動完成本節——檢查 `.env`（沒有就從
+> **快速路徑**：`bash scripts/quickstart.sh` 會自動完成本節：檢查 `.env`（沒有就從
 > 範本建立）、缺的機密用 CSPRNG 生成；已填的值一律不動，重跑安全。加 `--up` 連啟動
 > 一起做：分階段回報進度、等後端健康，最後輸出連線網址與 admin 登入資訊
 > （輸出為英文）。Windows 請在 WSL 內執行。
@@ -48,13 +48,13 @@ cp .env.example .env
 ```
 
 > **初始管理員密碼（`ADMIN_INITIAL_PASSWORD`）**：沒有出廠預設密碼。全新（空 DB）部署都要自己設一個
-> 合格值——至少 12 字元、前後不帶空白、不能照抄範本的佔位字串，否則服務會拒絕啟動並在日誌說明原因。
+> 合格值：至少 12 字元、前後不帶空白、不能照抄範本的佔位字串，否則服務會拒絕啟動並在日誌說明原因。
 > 建議用 `openssl rand -base64 24` 產生（去掉尾端的換行）。
 > 這個值只會用一次：首次登入會強制改密，之後請把它從 `.env` 移除或輪替。
 > 既有資料庫（非空 DB）不需要此值。
 
 `.env.example` 為**唯一環境變數範本**（dev 與 prod 的 compose 皆以 `env_file` 消費它）。
-後端消費變數的完備性由 `backend/config/env_drift_test.go` 守衛——掃描程式碼實際消費的變數，
+後端消費變數的完備性由 `backend/config/env_drift_test.go` 守衛：掃描程式碼實際消費的變數，
 對照本範本 ＋ compose 提供的拓撲變數，漂移即測試失敗。
 拓撲/模式常數（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`GIN_MODE` 等）由 compose 檔提供，不在範本內。
 
@@ -114,7 +114,7 @@ curl http://localhost:8080/health
 # {"status":"ok","service":"custodexa-backend"}
 ```
 
-**封印狀態（出貨預設 `KEK_PROVIDER=ui`）**：全新安裝啟動後系統處於**封印待初始化**態——
+**封印狀態（出貨預設 `KEK_PROVIDER=ui`）**：全新安裝啟動後系統處於**封印待初始化**態，
 `/health` 正常但業務端點尚未開放，首次造訪前端會進入初始化解封頁。查詢狀態：
 
 ```bash
@@ -153,7 +153,7 @@ docker compose logs -f frontend
 開 `http://localhost/`（開發版為 `http://localhost:3000`）。
 
 **出貨預設（`KEK_PROVIDER=ui`）第一次會先進入初始化解封頁**：主金鑰在你的瀏覽器
-**本地生成、只存在伺服器記憶體**——頁面會要求你確認已妥善保存（之後每一次行程重啟
+**本地生成、只存在伺服器記憶體**，頁面會要求你確認已妥善保存（之後每一次行程重啟
 都停在封印狀態，需要用它解封）；以 `admin`＋`ADMIN_INITIAL_PASSWORD` 授權初始化。
 （env／kms 模式沒有這一步，直接到登入頁。）
 
@@ -173,12 +173,12 @@ docker compose logs -f frontend
 | 描述 | 選填，供列表辨識 |
 
 資產列表的「狀態」欄是連通性撥測資訊（新建資產尚未撥測時顯示「-」）；
-撥測目前只驗密碼認證，僅設私鑰的資產撥測會失敗，但不代表實際連線不可用——
+撥測目前只驗密碼認證，僅設私鑰的資產撥測會失敗，但不代表實際連線不可用；
 能不能連，以下一步的「連線」為準。
 
 ### 3. 發起連線
 
-在資產列表找到該筆資產，點該列的「**連線**」——會開啟工作區分頁，
+在資產列表找到該筆資產，點該列的「**連線**」，會開啟工作區分頁；
 網頁終端出現遠端主機的提示符即代表連上了。試跑幾個指令（`whoami`、`ls`），
 輸入 `exit` 或關閉分頁即結束會話。
 
@@ -240,13 +240,13 @@ docker compose logs backend | tail -30
 
 > 開發機驗證正式版時，上列指令一律加顯式 `-f docker-compose.yml`（覆蓋 `.env` 的 `COMPOSE_FILE`）。
 
-出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封印閘擋下——先於瀏覽器完成
+出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封印閘擋下；先於瀏覽器完成
 初始化（見「首次使用」），或以 `curl http://localhost/api/v1/seal/status` 確認狀態。
 
 (4) 於**全新部署**回傳的是 `{"change_token": "...", "password_change_required": true, "policy_hint": {...}}`
-而非一般 token——這是首登強制改密流程（PCI 8.3.5），拿到它就代表認證鏈路正常。改密後才換發正式會話。
+而非一般 token；這是首登強制改密流程（PCI 8.3.5），拿到它就代表認證鏈路正常。改密後才換發正式會話。
 
-若任一步失敗，先看 (5) 的日誌——release 的拒絕啟動一律有明確訊息（哪個變數、為什麼不合格）。
+若任一步失敗，先看 (5) 的日誌：release 的拒絕啟動一律有明確訊息（哪個變數、為什麼不合格）。
 
 > **對外 TLS 仍是部署方職責**：stock 部署只映射 `80`/HTTP。正式對外前須在前面架 TLS-terminating
 > 反向代理／ingress（含 WebSocket upgrade 轉發），詳見下方「生產環境的部署方責任與行為邊界」。
@@ -258,13 +258,13 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 
 | 變數 | 說明 |
 |---|---|
-| `PUBLIC_BASE_URL` | 對外基準網址，用於組出交給 IdP 的 `redirect_uri`（`${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback`）與 callback 導回位址。**不從請求 Host 推導**——反向代理多層轉發下推導必然出錯，而該值會被寫進 `redirect_uri`，錯誤時使用者會被導向錯誤主機。未設定時已啟用的 provider 會被標記「設定不完整」並自登入頁隱藏（fail-close）。正式環境須為 https。 |
-| `OIDC_DEDICATED_ISSUERS` | 專屬 issuer 宣告（逗號分隔）。系統對「未知 issuer」一律 fail-close 視為**共用身分域**，並要求其准入規則包含組織歸屬條件（租戶識別或 hosted domain）；但 Okta、自架 IdP 等**不發**這類 claim，若無本宣告，它們的自動供應將無法組態。宣告的語義是「此 issuer 只服務本組織」——該判斷只有部署方能做，故置於部署層而非管理端 API（admin 帳號自身不得放寬安全規則）。內建共用清單（Google、Microsoft 多租戶端點等）優先，不可經此宣告推翻。**變更後須滾動重啟全部副本才算生效**（宣告在啟動時載入；只重啟一個副本會使各副本判定分歧，管理端 provider 詳情顯示的是「本副本」的判定來源）。 |
-| `OIDC_ALLOWED_INTERNAL_HOSTS` | 允許出站的內部主機名（逗號分隔）。對 IdP 的出站預設拒絕解析至 loopback／link-local（含雲端 metadata 位址）／私有網段，**內網 IdP 須於此顯式放行**；不提供「關閉位址檢查」的布林開關。非 release 模式下，列於此的主機名同時允許 http（供 dev IdP 靶機使用）。內網 IdP 若用自簽憑證，須把 CA 加進容器的信任存放區——系統**不提供跳過 TLS 驗證的開關**。 |
+| `PUBLIC_BASE_URL` | 對外基準網址，用於組出交給 IdP 的 `redirect_uri`（`${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback`）與 callback 導回位址。**不從請求 Host 推導**：反向代理多層轉發下推導必然出錯，而該值會被寫進 `redirect_uri`，錯誤時使用者會被導向錯誤主機。未設定時已啟用的 provider 會被標記「設定不完整」並自登入頁隱藏（fail-close）。正式環境須為 https。 |
+| `OIDC_DEDICATED_ISSUERS` | 專屬 issuer 宣告（逗號分隔）。系統對「未知 issuer」一律 fail-close 視為**共用身分域**，並要求其准入規則包含組織歸屬條件（租戶識別或 hosted domain）；但 Okta、自架 IdP 等**不發**這類 claim，若無本宣告，它們的自動供應將無法組態。宣告的語義是「此 issuer 只服務本組織」，該判斷只有部署方能做，故置於部署層而非管理端 API（admin 帳號自身不得放寬安全規則）。內建共用清單（Google、Microsoft 多租戶端點等）優先，不可經此宣告推翻。**變更後須滾動重啟全部副本才算生效**（宣告在啟動時載入；只重啟一個副本會使各副本判定分歧，管理端 provider 詳情顯示的是「本副本」的判定來源）。 |
+| `OIDC_ALLOWED_INTERNAL_HOSTS` | 允許出站的內部主機名（逗號分隔）。對 IdP 的出站預設拒絕解析至 loopback／link-local（含雲端 metadata 位址）／私有網段，**內網 IdP 須於此顯式放行**；不提供「關閉位址檢查」的布林開關。非 release 模式下，列於此的主機名同時允許 http（供 dev IdP 靶機使用）。內網 IdP 若用自簽憑證，須把 CA 加進容器的信任存放區；系統**不提供跳過 TLS 驗證的開關**。 |
 
 **必須保留至少一個本地 admin 帳號**（啟用 SSO 前先確認）：
 
-- 系統維持不變式「本地 admin 數量不得自一以上降為零」——把最後一個本地 admin 改為僅外部登入、
+- 系統維持不變式「本地 admin 數量不得自一以上降為零」：把最後一個本地 admin 改為僅外部登入、
   停用、移除 admin 角色或刪除，皆會被拒絕。
 - 理由不只是「IdP 掛了就進不去」：**封印解封（`KEK_PROVIDER=ui`）與初始管理員驗證只認本地憑證**，
   該路徑發生在系統尚未完全啟動的階段，不可能經由外部 IdP 完成。全體 admin 都外部化＝
@@ -274,7 +274,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 **IdP 端停權不會自動終斷進行中的協議連線**：
 
 - 使用者於 IdP 端被停權／刪除，本系統**不會**即時得知（OIDC 無反向通知，除非另接
-  back-channel logout——本版未實作）。既有的 SSH／RDP／VNC 等協議連線建立後不再使用憑證，
+  back-channel logout，本版未實作）。既有的 SSH／RDP／VNC 等協議連線建立後不再使用憑證，
   因此會**繼續存活**，由閒置逾時（`SSH_IDLE_TIMEOUT_MINUTES`）與最大連線時長治理；
   已簽發的 access token 亦會存活至到期（固定 15 分鐘）。IdP 端停權的實際效果是「下次登入被拒」。
 
@@ -282,7 +282,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 
 - 錄影播放存取憑證（recording token）的授權為 **per-process**：token 由哪個後端副本簽發，
   就只有該副本能兌換與撤銷。多副本下若停用帳號／provider 的請求落在其他副本，
-  簽發副本上既有的 token 會存活至 TTL 到期——殘窗 **≤120 秒、唯讀能力**（只能取得
+  簽發副本上既有的 token 會存活至 TTL 到期；殘窗 **≤120 秒、唯讀能力**（只能取得
   已錄製內容，不能建立新連線）。此邊界屬多副本部署的前置缺口（見
   [部署形態限制](ops/deployment-topology-limits.md)），上 HA 前須以跨副本通知機制一併解決。
 - **需要即時切斷者，必須在本系統的管理端操作**：停用該使用者帳號（推進使用者憑證世代）
@@ -290,7 +290,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
   終斷該範圍的協議連線並收線監看／分享訂閱。
 - provider 的 **secret 輪替與刪除比照停用**走同一套完整失效流程；`auth_epoch` 只增不減，
   故「停用後短時間重新啟用」不會復活攻擊者手上的既簽憑證。副作用是該 provider 的全體使用者
-  被強制重新登入——這是刻意取捨（輪替動機通常是舊 secret 可能已洩漏）。
+  被強制重新登入；這是刻意取捨（輪替動機通常是舊 secret 可能已洩漏）。
 
 **可信代理設定的重要性**：SSO 的 callback 與 exchange 端點為公開端點並掛 per-IP 限流；
 未設定 `TRUSTED_PROXIES` 時，限速鍵一律採 socket peer IP 並忽略轉送標頭
@@ -315,13 +315,13 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
 需要以 loopback 位址連線的特殊場景，於 `LDAP_ALLOWED_LOOPBACK_ENDPOINTS` 以 `host:port`
 精確列舉放行，不支援萬用字元，亦不提供關閉檢查的開關。
 
-**`.env` 不會被回寫**：seed 之後於管理端所做的任何變更都不會反映到 `.env`——
+**`.env` 不會被回寫**：seed 之後於管理端所做的任何變更都不會反映到 `.env`；
 產品不修改部署方管理的檔案。故 `.env` 內的 `LDAP_*` 值只是首次啟動當下的快照，
 不可當作現行設定的參考來源；要看現行值請開管理端頁面。
 
 ### 6. 容量與儲存規劃
 
-容量規劃的主軸是**錄影儲存增長**——後端行程本身不會是先飽和的資源（見文末）。
+容量規劃的主軸是**錄影儲存增長**；後端行程本身不會是先飽和的資源（見文末）。
 下列數字是開發環境的參考觀測、非承諾值，對你的硬體沒有預測力；能跨環境轉移的是**換算方法**。
 
 #### 錄影儲存增長率（文字與圖形分開，差約兩個數量級，不可平均）
@@ -332,7 +332,7 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
 | 圖形 RDP／VNC（`.guac`） | 靜態桌面約 10.4 MB/會話小時起算 | 圖形 |
 
 > 兩筆都是**閒置下界**（量自無輸入的終端／無畫面變化的靜態桌面）。真實操作（捲動輸出、
-> 拖曳視窗、切換畫面）會高出數倍到一個數量級——下界只能確認「至少要準備這麼多」，不可當規劃值。
+> 拖曳視窗、切換畫面）會高出數倍到一個數量級；下界只能確認「至少要準備這麼多」，不可當規劃值。
 
 **換算方法（可跨硬體轉移的部分）**
 
@@ -347,39 +347,39 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
 
 **Custodexa 不設並發會話上限，也不會因為會話數而拒絕建線。**實際會先飽和的資源，依應檢查的順序：
 
-1. **guacd 容器（圖形協議）**——每條 RDP/VNC 會話對應一條 guacd 連線，CPU 與記憶體都由它承擔，
+1. **guacd 容器（圖形協議）**：每條 RDP/VNC 會話對應一條 guacd 連線，CPU 與記憶體都由它承擔，
    是圖形場景的真正上限，須依你的圖形會話比例單獨壓測。
-2. **錄影磁碟的寫入頻寬與容量**——以上表圖形增長率 × 同時圖形會話數估算。
+2. **錄影磁碟的寫入頻寬與容量**：以上表圖形增長率 × 同時圖形會話數估算。
 3. **資料庫連線池上限**。
-4. **目標主機自身的限制**——例如 sshd 的 `MaxSessions`／`MaxStartups`，與本系統無關但會先擋住你。
+4. **目標主機自身的限制**：例如 sshd 的 `MaxSessions`／`MaxStartups`，與本系統無關但會先擋住你。
 
 後端 Go 行程本身不是瓶頸：每會話約 +16 goroutine、記憶體增量小到量測雜訊底之下
-（上界約 148 KB/會話），1 GB 可用記憶體約當數千條文字會話。一句話：
-**文字會話的容量幾乎只受磁碟限制；圖形會話的容量由 guacd 決定。**
+（上界約 148 KB/會話），1 GB 可用記憶體約當數千條文字會話。
+**文字會話的容量幾乎只受磁碟限制，圖形會話的容量由 guacd 決定。**
 
 #### 儲存監控
 
 - 錄影佔用量在產品內可見（具稽核檢視權限者的主控頁「錄影佔用」卡）；採集端可讀
   `custodexa_recording_storage_bytes`（`/metrics`，每 30 秒刷新，其值最多落後一個刷新週期）。
-- **系統不設儲存上限**——稽核系統的可用性不應被儲存量挾持，而「照常建線但不錄影」會產生
+- **系統不設儲存上限**：稽核系統的可用性不應被儲存量挾持，而「照常建線但不錄影」會產生
   無錄影的特權會話，兩者都不可接受。故磁碟總容量與耗盡風險由你的基礎設施監控承擔；
   請對 `custodexa_recording_storage_bytes` 設成長率或容量門檻告警。
 - 需要縮減佔用時走**保留期**（系統設定→安全政策），依時間刪除過期錄影。
 
 ## 生產環境的部署方責任與行為邊界
 
-正式對外服務前，下列事項屬於**部署方責任**——本產品刻意不代勞，也不假裝有做；
+正式對外服務前，下列事項屬於**部署方責任**，本產品刻意不代勞，也不假裝有做；
 連同兩項行為說明一併集中在此，部署上線前逐項過一遍。
 
 ### 對外傳輸加密（TLS）
 
-stock 部署**本身不提供 TLS**——frontend 只映射 `80`/HTTP，
+stock 部署**本身不提供 TLS**：frontend 只映射 `80`/HTTP，
 backend 為內網明文、不對外。對外 TLS termination 為**部署方職責**：須於本服務前置一個
 TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP→HTTPS redirect、HSTS 與
 **WebSocket upgrade 轉發（wss）**；若 LB／ingress 到主機的 hop 跨越不可信網段，該 hop 亦須加密
-（re-encrypt）。應用已 TLS-ready——前端依頁面協定自動 `ws`↔`wss`、認證走 Authorization header
+（re-encrypt）。應用已 TLS-ready：前端依頁面協定自動 `ws`↔`wss`、認證走 Authorization header
 （無 Secure cookie 顧慮），故置於 HTTPS edge 後無需改應用。此為部署契約，
-非應用強制控制——請據實驗證你的 edge。
+非應用強制控制，請據實驗證你的 edge。
 
 **最小可用範例（docker 跑 nginx 反代 + 你的憑證）**：
 
@@ -441,9 +441,9 @@ TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP�
 
 ### 審計完整性的能力邊界（PCI 10.3.4）
 
-audit_logs 逐列 HMAC＋匯出 manifest Ed25519 簽章＋syslog 即時離機轉發三者合為補償控制
-——可偵測「既有列被修改」與「基準時間後被竄改並清空 HMAC」（首次啟動記錄啟用基準，
-之後所有**入庫**路徑經 `BeforeCreate` 蓋章，基準後仍空 HMAC 即判不符——檔案降級與
+audit_logs 逐列 HMAC＋匯出 manifest Ed25519 簽章＋syslog 即時離機轉發三者合為補償控制，
+可偵測「既有列被修改」與「基準時間後被竄改並清空 HMAC」（首次啟動記錄啟用基準，
+之後所有**入庫**路徑經 `BeforeCreate` 蓋章，基準後仍空 HMAC 即判不符；檔案降級與
 佇列滿載丟棄的事件不入庫、不經蓋章，故措辭為「入庫路徑」而非「寫入路徑」）；
 「整列連同 HMAC 一併刪除」**由檢查點鏈偵測**（區間聚合＋鏈接＋Ed25519 簽章，
 合法清除以簽章 tombstone 與竊取區分），其證明力邊界 R0-R6 見驗證頁與
@@ -485,7 +485,7 @@ docker compose down && rm -rf ./data/*
 
 ## 開發工作流程
 
-> 本節與以下測試段落皆需**開發版**（`.env` 已啟用 `COMPOSE_FILE=docker-compose.dev.yml`）——
+> 本節與以下測試段落皆需**開發版**（`.env` 已啟用 `COMPOSE_FILE=docker-compose.dev.yml`）：
 > 熱重載、8080/3000 直連埠與測試靶機皆為開發版特性。
 
 ### 後端開發
@@ -556,7 +556,7 @@ htpasswd -bnBC 10 "" '你的新密碼' | tr -d ':\n'
 
 或任一語言的 bcrypt 函式庫（cost 取 10，與產品預設一致）。
 
-**正式版映像內沒有產生雜湊的工具，也沒有 Go 工具鏈**——請在你自己的機器上產生後貼進 SQL。
+**正式版映像內沒有產生雜湊的工具，也沒有 Go 工具鏈**，請在你自己的機器上產生後貼進 SQL。
 （`backend/scripts/generate_hash.go` 帶 `//go:build ignore`，不編入任何二進位，
 只能在有 Go 環境的開發機上以 `go run` 執行。）
 
@@ -644,7 +644,7 @@ curl -s http://dex.localhost:5556/dex/.well-known/openid-configuration
 ```
 
 > **為什麼 hostname 必須是 `dex.localhost`**：go-oidc 對 discovery 回應的 issuer 做**完整字串比對**，
-> 故後端（容器內解析）與瀏覽器（host 端解析）必須用同一個字串。IP 字面值不可行——backend 容器內的
+> 故後端（容器內解析）與瀏覽器（host 端解析）必須用同一個字串。IP 字面值不可行：backend 容器內的
 > `127.0.0.1` 指向 backend 自己，而 `extra_hosts` 只能改 hostname 解析、改不了 IP 字面值的 loopback 語義。
 > `dex.localhost` 則兩端皆可達：compose 的 network alias 使容器內 DNS 解析至 dex 容器，
 > 瀏覽器端依 RFC 6761 解析至 loopback 再經 `127.0.0.1:5556` port mapping 到同一個 dex。
@@ -676,7 +676,7 @@ curl -s http://dex.localhost:5556/dex/.well-known/openid-configuration
 
 | 文件 | 何時需要 |
 |---|---|
-| [備份與還原](ops/backup-and-restore.md) | 部署完成後立即建立備份機制；**KEK 材料的保管前提務必在部署前讀過**——某些模式下材料遺失即資料永久不可解 |
+| [備份與還原](ops/backup-and-restore.md) | 部署完成後立即建立備份機制；**KEK 材料的保管前提務必在部署前讀過**，某些模式下材料遺失即資料永久不可解 |
 | [部署與升級 SOP](ops/upgrade-sop.md) | 每次版本升級前。**本版不提供 migration 回滾**，升級失敗時唯一退路是還原備份，故備份時點須先決定 |
 | [部署形態限制](ops/deployment-topology-limits.md) | 規劃架構時。1.0 為單實例部署，多副本與滾動更新皆不支援 |
 | [平台自身特權憑證輪替](ops/privileged-credential-rotation.md) | 定期輪替，或人員異動時。含 LDAP bind、通知通道 secret、KEK／DEK 與 env 側鑰 |
@@ -689,10 +689,10 @@ curl -s http://dex.localhost:5556/dex/.well-known/openid-configuration
 
 ## API 文檔
 
-API 文檔的唯一事實源是 [API_SPEC.md](API_SPEC.md)——本專案不維護由註解生成的第二份
+API 文檔的唯一事實源是 [API_SPEC.md](API_SPEC.md)；本專案不維護由註解生成的第二份
 API 產物。
 
-其中的**端點索引**由測試自實際路由註冊生成，並由 `TestAPIIndex` 守衛雙向相等——
+其中的**端點索引**由測試自實際路由註冊生成，並由 `TestAPIIndex` 守衛雙向相等：
 索引缺路由或含幽靈條目都會使測試變紅。動到路由後重新生成（在**開發版**下執行；
 `.env` 已啟用 `COMPOSE_FILE=docker-compose.dev.yml` 時不需帶 `-f`）：
 

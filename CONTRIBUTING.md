@@ -13,7 +13,7 @@ contribution in; for environment setup, see [`docs/QUICKSTART.md`](docs/QUICKSTA
   discussion needed. Remember to commit with `-s` (see DCO below).
 - **Change behavior or add a feature**: open an issue first to discuss the
   motivation and approach, then follow the behavioral-change workflow once
-  there is agreement — this saves you from building something that does not fit.
+  there is agreement, so you do not build something that turns out not to fit.
 
 ## Development environment and tests
 
@@ -29,7 +29,7 @@ pitfalls, and guard-test discipline, see [`docs/dev/testing.md`](docs/dev/testin
 ## DCO sign-off (required)
 
 The project is licensed under **AGPL-3.0** and accepts contributions under the
-**DCO** — no agreement to sign, just one line per commit:
+**DCO**. There is no agreement to sign, just one line per commit:
 
 ```bash
 git commit -s -m "fix: describe your change"
@@ -57,7 +57,7 @@ details you are comfortable publishing.
 - Behavioral changes and refactors live in separate commits, each
   independently revertable.
 - User-visible text goes through i18n (machine codes plus three languages;
-  hardcoded single-language strings fail the guard tests — see
+  hardcoded single-language strings fail the guard tests; see
   [`docs/dev/conventions.md`](docs/dev/conventions.md)).
 - No hardcoded secrets; external input is validated.
 - Commit messages and docs may be in English or Traditional Chinese; technical
@@ -79,8 +79,8 @@ folder.
 Key points:
 
 1. **Designs need evidence**: code inventory with file:line references, actual
-   runtime behavior, or screenshots — not recollection. Other open-source
-   bastion projects may be studied but never copied — they are mostly GPL-family
+   runtime behavior, or screenshots, never recollection. Other open-source
+   bastion projects may be studied but never copied: they are mostly GPL-family
    licensed, and copied code would contaminate this project.
 2. **Guard-protected machine artifacts** (route goldens, the API endpoint
    index) are regenerated via the process in
@@ -89,24 +89,24 @@ Key points:
    [`docs/API_SPEC.md`](docs/API_SPEC.md). **Touched models/migrations?**
    Update [`docs/DB_SCHEMA.md`](docs/DB_SCHEMA.md).
 4. **Archived specs may only describe what the system actually does.**
-   Explain unfinished parts in the PR — a maintainer tracks them in an
+   Explain unfinished parts in the PR and a maintainer will track them in an
    issue; do not write them into the spec.
 
 ### Change codes in the source
 
 Markers like `（asset-multi-account D5）` in comments flag branches that encode
-a recorded decision — double-check before changing them. The authoritative
+a recorded decision, so double-check before changing them. The authoritative
 description of the behavior is always `openspec/specs/`; if the reasoning is
 unclear, ask in an issue and a maintainer will add it to the docs.
 
 ## Design principles (read before proposing features)
 
-- **Each role gets its own feature pages** — do not bolt another role's
+- **Each role gets its own feature pages**: do not bolt another role's
   sections onto an existing page; decide which role's navigation a feature
   belongs to before designing it.
 - **Users who get stuck need a product-level way out** (a UI action plus an
-  API endpoint). "Ask an admin to edit the database" is not a solution; it is
-  a missing feature.
+  API endpoint). If the answer is "ask an admin to edit the database", the
+  feature is missing.
 - **The single source of truth for visuals is
   [`docs/DESIGN_SPEC.md`](docs/DESIGN_SPEC.md)**; brand token changes require
   maintainer approval, and audit-relevant technical identifiers never change
@@ -117,7 +117,7 @@ unclear, ask in an issue and a maintainer will add it to the docs.
 A PR that crosses any of these will not be merged:
 
 1. **Connection containment**: the frontend never touches plaintext
-   credentials — credentials live only in the backend; the frontend gets a
+   credentials. They live only in the backend, and the frontend gets a
    one-time connect token.
 2. **Full operation audit**: every connection and management operation leaves
    a trace; when the audit trail is unavailable, fail closed.
