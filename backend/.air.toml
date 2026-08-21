@@ -6,7 +6,10 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/main"
-  cmd = "go build -o ./tmp/main ./cmd/server"
+  # 版本號注入：CUSTODEXA_VERSION 由 docker/backend/Dockerfile.dev 烘進開發 image
+  # （預設 dev）。Air 以 /bin/sh -c 執行本行，故 ${VAR:-預設} 會展開；host 直跑 air
+  # 而未設該變數時同樣落在 dev。正式版的注入不走這裡，見 docker/backend/Dockerfile。
+  cmd = 'go build -ldflags "-X main.Version=${CUSTODEXA_VERSION:-dev}" -o ./tmp/main ./cmd/server'
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "frontend", "docker"]
   exclude_file = []

@@ -59,8 +59,27 @@ RUN go mod download
 # 複製原始碼
 COPY backend/ ./
 
+# 版本號建置時注入。
+#
+# **事實源是專案根 VERSION 檔，不是呼叫端**：故此處 COPY 進來當回退值——任何建置路徑
+# （compose、手打 docker build、CI）都會得到正確版號，不需要誰記得傳參數。ARG 只是覆寫口
+# （建 rc／nightly 映像時指名版號，例：`VERSION=1.0.2-rc1 docker compose build`）。
+# 前身是 Go 碼裡的手寫常數，它曾停在開發初期的握手版字面值而產品已發布 1.0.1，且該值
+# 經 /health 對外揭露——版號只要是手寫的，每次發版都會再漂一次。
+#
+# VERSION 檔缺失時 COPY 直接失敗（fail-close）：寧可建置不出來，也不要出一顆自稱錯版本的映像。
+# 落在 module 根之外（/VERSION）：不讓它變成 Go 工具鏈眼中的一個檔案。
+ARG VERSION=""
+COPY VERSION /VERSION
+
 # 編譯二進位文件
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o /bin/custodexa ./cmd/server
+#
+# ldflags 為**追加**：`-w -s`（剝符號表與除錯資訊）原樣保留，只多帶一個 -X 注入版號。
+# 空白／換行以 tr 去除——VERSION 檔是人工維護的文字檔，尾隨換行是常態。
+RUN VERSION_VALUE="${VERSION:-$(tr -d ' \t\r\n' < /VERSION)}" \
+    && test -n "${VERSION_VALUE}" \
+    && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+       -ldflags "-w -s -X main.Version=${VERSION_VALUE}" -o /bin/custodexa ./cmd/server
 
 # MSSQL CLI（sqlcmd）建置階段（database-protocol「mssql 協議 CLI」）
 #
