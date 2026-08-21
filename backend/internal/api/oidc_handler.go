@@ -36,6 +36,10 @@ type OIDCHandler struct {
 	beginGuard    *sourceAbuseGuard
 	callbackGuard *sourceAbuseGuard
 	exchangeGuard *sourceAbuseGuard
+
+	// refreshCookies refresh 憑證的 httpOnly cookie 下發（refresh-token-httponly-cookie）。
+	// nil 安全：視為非 Secure，功能不斷
+	refreshCookies *RefreshCookieWriter
 }
 
 // 聚合審計的事件鍵。命名對齊審計既有慣例（動作_結果），並保留端點區分——
@@ -79,10 +83,16 @@ func NewOIDCHandler(providers *identity.OIDCProviderService, login *identity.OID
 		login:         login,
 		frontend:      strings.TrimRight(baseURL, "/"),
 		audit:         auditService,
-		beginGuard:    newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
-		callbackGuard: newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
-		exchangeGuard: newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
+		beginGuard:     newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
+		callbackGuard:  newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
+		exchangeGuard:  newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
+		refreshCookies: defaultRefreshCookieWriter(),
 	}
+}
+
+// SetRefreshCookieWriter 注入共用的 refresh cookie writer（cmd/server 接線）
+func (h *OIDCHandler) SetRefreshCookieWriter(w *RefreshCookieWriter) {
+	h.refreshCookies = w
 }
 
 // throttle 限流前置：通過時回傳來源 IP 與釋放函式，未通過時已寫好 429 回應。
@@ -303,6 +313,11 @@ func (h *OIDCHandler) Exchange(c *gin.Context) {
 		return
 	}
 	h.auditOIDCLogin(c, resp)
+	// 發放端點 5／6（refresh-token-httponly-cookie 決策 3）：**巢狀回應是六者中最易漏的一個**。
+	// `LoginResponse.RefreshToken` 已是 `json:"-"`，故 `gin.H{"login": resp}` 這條
+	// 序列化路徑不會帶出明文；憑證改由此處的 cookie 下發。
+	// MFA／強制註冊／強制改密分支尚未發出正式會話，SetFromLogin 對其零動作
+	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, gin.H{"login": resp, "redirect_next": next})
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/api"
 	"github.com/custodexa/backend/internal/branding"
 	"github.com/custodexa/backend/internal/database"
@@ -27,8 +28,20 @@ import (
 	"github.com/custodexa/backend/internal/sshproxy"
 )
 
+// Version 產品版本號，**由建置時注入**：正式版於 docker/backend/Dockerfile 以
+// `-ldflags -X main.Version=...` 帶入，值取自專案根 VERSION 檔（單一事實源，
+// 與 CHANGELOG.md 的一致性由 TestVersionFileMatchesChangelog 釘住）；開發版由
+// Air 於容器內建置時帶入（backend/.air.toml 讀 CUSTODEXA_VERSION）。
+//
+// **預設值刻意不是任何版本字面值**：本變數經 /health 對外揭露，手寫常數必然漂移
+// ——它曾停在一個開發初期的握手版字面值而產品已發布 1.0.1，打健康檢查的人看到的
+// 版本與 CHANGELOG／Release 不符。未注入的建置（go run、go test）自稱 dev，
+// 不冒充任何已發布版本；該預設由 TestServerVersionIsBuildInjected 把關。
+//
+// **只揭露版號、不揭露 commit hash 或建置時間**（docs/security/
+// vulnerability-response-process.md）：BuildTime 僅供啟動日誌，不進 /health。
 var (
-	Version   = "0.2.0-handshake"
+	Version   = "dev"
 	BuildTime = time.Now().Format("2006-01-02 15:04:05")
 )
 
@@ -205,6 +218,14 @@ func main() {
 		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後（見部署指南 CPG-012）；stock 部署本身不提供 TLS")
 	}
 
+	// refresh cookie 的 Secure 旗標歸因（refresh-token-httponly-cookie 決策 2）。
+	//
+	// **兩個方向都印**：瀏覽器丟棄不合格的 Set-Cookie 是靜默行為，錯誤訊息本身
+	// 指不出成因，於是兩種誤設都會表現為「登入成功、十幾分鐘後被登出」這種
+	// 最難歸因的故障。啟動日誌把兩個方向都變成可查的線索。
+	// 這是給部署者的營運日誌，不是 UI 文案，故不進 i18n
+	logRefreshCookieSecurity(s1.cfg.Security.RefreshCookie)
+
 	// 解封端點的獨立監聽（D6.4：SHALL 支援繫結獨立監聽位址）。
 	// **掛 seal-only handler**：只有 seal 端點群與健康檢查，解封後也不會長出
 	// 業務樹——網段隔離的意義就在於此。
@@ -359,6 +380,23 @@ func newEngine(s1 *stage1, stageOne bool) (*gin.Engine, error) {
 		log.Printf("可信代理：%v", proxies)
 	}
 	return r, nil
+}
+
+// logRefreshCookieSecurity 印出 refresh cookie 的 Secure 旗標與其歸因線索。
+//
+// 兩個方向的誤設各有一種難以歸因的故障，故兩邊都要留話：
+//   - 未標 Secure：純 HTTP 部署可用，但放棄降級攻擊防護（誘導一次 http 請求即可竊取）。
+//   - 已標 Secure 而實際走 http：瀏覽器**靜默**丟棄 Set-Cookie，使用者陷入
+//     「登入成功 → access token 到期 → 刷新失敗 → 被登出」的迴圈。
+func logRefreshCookieSecurity(d config.RefreshCookieSecureDerivation) {
+	if d.Secure {
+		log.Printf("refresh cookie：已標記 Secure（依據 %s）；若本站實際非以 HTTPS 對外，"+
+			"瀏覽器會丟棄該 cookie 而無法維持會話", d.Source)
+		return
+	}
+	log.Printf("refresh cookie：未標記 Secure（依據 %s）——此組態僅適用於測試環境。"+
+		"正式部署應以 HTTPS 對外，並將 PUBLIC_BASE_URL 設為 https 位址（或顯式設定 "+
+		"AUTH_REFRESH_COOKIE_SECURE=true）", d.Source)
 }
 
 // buildCORSConfig 依 allowlist 與執行模式決定 CORS 設定（PCI 7.3/D9）。

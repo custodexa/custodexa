@@ -99,9 +99,10 @@ var freeTextKeys = map[string]bool{
 // 會擋下已經不再空白的登記，逼它下架。
 var knownAccountabilityVoids = map[string]string{
 	// ── 本文全為機密 ──────────────────────────────────────────────
-	"api.(*AuthHandler).ChangePassword":   "old_password／new_password 皆為密碼本體",
-	"api.(*AuthHandler).Logout":           "refresh_token 為持有型憑證",
-	"api.(*AuthHandler).Refresh":          "refresh_token 為持有型憑證",
+	"api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
+	// Logout／Refresh 自 refresh-token-httponly-cookie 起不再綁定任何 request body
+	//（憑證改由 httpOnly cookie 攜帶），故已無綁定點可登記——留著即成化石，
+	// 由 TestNoStaleAccountabilityVoidEntries 擋下
 	"api.(*AuthHandler).MFADisable":       "password 為密碼本體",
 	"api.(*AuthHandler).MFAEnable":        "code 為 TOTP 一次性碼",
 	"api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",

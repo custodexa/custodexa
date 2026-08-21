@@ -42,6 +42,9 @@ type AuthHandler struct {
 	// （auth-cost-based-concurrency）。**該端點原本完全沒有併發上限**，
 	// 而其每請求的雜湊成本是登入的 7 倍（預設組態）至 27 倍（政策上界 24）。
 	changePasswordGuard *sourceAbuseGuard
+	// refreshCookies refresh 憑證的 httpOnly cookie 下發／清除
+	// （refresh-token-httponly-cookie）。nil 安全：視為非 Secure，功能不斷
+	refreshCookies *RefreshCookieWriter
 }
 
 // loginEventThrottled 登入限流的聚合審計事件名。
@@ -145,7 +148,14 @@ func NewAuthHandler(authService *identity.AuthService, auditService *audit.Audit
 	}
 	h.loginGuard = newSourceAbuseGuard(defaultLoginGuardParams(), trustProxy, sink)
 	h.changePasswordGuard = newSourceAbuseGuard(defaultChangePasswordGuardParams(), trustProxy, sink)
+	h.refreshCookies = defaultRefreshCookieWriter()
 	return h
+}
+
+// SetRefreshCookieWriter 注入共用的 refresh cookie writer（cmd/server 接線）。
+// 建構函式已備妥同源的 fail-safe 預設，本方法只是讓三個 handler 共用同一實例
+func (h *AuthHandler) SetRefreshCookieWriter(w *RefreshCookieWriter) {
+	h.refreshCookies = w
 }
 
 // loginAbuseSink 登入限流的聚合審計出口。
@@ -288,6 +298,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	h.auditLogin(c, resp.User.ID, resp.User.Username, model.StatusSuccess, http.StatusOK,
 		annotateAuthSource("", resp.AuthSource))
 
+	// 發放端點 1／6：refresh 憑證僅經 httpOnly cookie 下發，回應 body 不再含明文
+	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -344,21 +356,17 @@ func (h *AuthHandler) auditLogin(c *gin.Context, userID uint, username string, s
 	})
 }
 
-// LogoutRequest 登出請求；refresh_token 可選（D10 升級相容：舊前端不帶 body）
-type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-// Logout 登出 API
+// Logout 登出 API。
+//
+// 憑證取值來源為 refresh cookie（refresh-token-httponly-cookie 決策 5），
+// 不再自 request body 讀取——**分叉偵測語義原樣保留**：提交已輪替憑證＝分叉訊號，
+// 家族撤銷＋高價值審計事件，僅換了取值來源。
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// 登出撤銷目前 refresh 憑證（spec 會話撤銷）；access token 無狀態，
 	// 由客戶端刪除、殘餘存活 ≤15 分（D6 撤銷殘窗）。
 	// 登出事件由 AuditLogMiddleware 記錄（action=logout，已驗證）
-	var req LogoutRequest
-	// body 可空（舊前端相容），綁定失敗不阻擋登出
-	_ = c.ShouldBindJSON(&req)
-	if req.RefreshToken != "" {
-		if err := h.authService.RevokeRefreshToken(req.RefreshToken, model.RefreshRevokeLogout); err != nil {
+	if plain := readRefreshCookie(c); plain != "" {
+		if err := h.authService.RevokeRefreshToken(plain, model.RefreshRevokeLogout); err != nil {
 			// 登出提交已 rotated 憑證＝分叉訊號（F1）：已家族撤銷，記高價值審計事件
 			var reuse *identity.RefreshReuseError
 			if errors.As(err, &reuse) {
@@ -373,26 +381,29 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	username, _ := middleware.GetCurrentUsername(c)
 
+	// 撤銷成敗一律清除 cookie（決策 5）：撤銷失敗不阻擋登出的既有原則不變，
+	// 但瀏覽器不該留著一枚使用者以為已失效的憑證
+	h.refreshCookies.Clear(c)
 	c.JSON(http.StatusOK, gin.H{
 		"username": username,
 	})
 }
 
-// RefreshRequest 會話刷新請求
-type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token" binding:"required"`
-}
-
 // Refresh 會話刷新 API（auth-hardening D6）：以 refresh 憑證換發新 access token
-// 並輪替 refresh。失敗一律 401 同文案（不洩漏憑證狀態），前端收 401 導向重新登入
+// 並輪替 refresh。失敗一律 401 同文案（不洩漏憑證狀態），前端收 401 導向重新登入。
+//
+// 憑證**僅**自 httpOnly cookie 讀取（決策 4），無 body fallback。
+// cookie 缺失回 401 而非 400：body 時代的 400 是「格式錯誤」語義，
+// 而 cookie 缺失語義上就是「未提供憑證」，且走統一失敗回應才不會給攻擊者
+// 區分「沒帶／無效／已撤銷」的訊號
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	var req RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+	plain := readRefreshCookie(c)
+	if plain == "" {
+		h.respondRefreshError(c, identity.ErrRefreshInvalid)
 		return
 	}
 
-	resp, err := h.authService.RefreshSession(req.RefreshToken)
+	resp, err := h.authService.RefreshSession(plain)
 	if err != nil {
 		h.respondRefreshError(c, err)
 		return
@@ -403,6 +414,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	// 來源位址逐次落地，稽核比對同一帳號的輪替來源即可辨識異常他處使用。
 	h.auditRefreshEvent(c, resp.UserID, resp.Username, model.StatusSuccess,
 		http.StatusOK, "refresh_rotated")
+
+	// 發放端點 6／6：輪替後的新憑證。效期取**剩餘**壽命——rotation 沿用原
+	// `expires_at`，給滿額會讓 cookie 活得比憑證久
+	h.refreshCookies.Set(c, resp.RefreshToken, resp.RefreshExpiresAt)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -590,6 +605,8 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		apierror.Respond(c, http.StatusInternalServerError, apierror.CodeInternalChangePasswordTokenIssue, nil)
 		return
 	}
+	// 發放端點 4／6：改密換發的正式會話
+	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -686,7 +703,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		// 故為公開路由，僅接受 ScopeMFAEnrollment）
 		auth.POST("/mfa/enroll/setup", h.MFAEnrollSetup)
 		auth.POST("/mfa/enroll/confirm", h.MFAEnrollConfirm)
-		// 會話刷新（D6）：refresh 憑證由 body 自帶，access 可能已過期故為公開路由
+		// 會話刷新（D6）：refresh 憑證由 httpOnly cookie 自帶，access 可能已過期故為公開路由
 		auth.POST("/refresh", h.Refresh)
 
 		// 需要認證的路由

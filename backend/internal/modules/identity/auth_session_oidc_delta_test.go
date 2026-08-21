@@ -128,7 +128,7 @@ func TestOIDCRefreshAtAbsoluteLimitRequiresReauthentication(t *testing.T) {
 
 	// 錨點設在 61 分鐘前 → expires_at 由 production 公式算出即已過期。
 	// last_used_at 同樣是錨點，但閒置窗已關閉，故唯一的失效來源是絕對壽命
-	plain, err := e.auth.issueRefreshToken(user.ID, time.Now().Add(-61*time.Minute), e.oidcCtxFor(user))
+	plain, _, err := e.auth.issueRefreshToken(user.ID, time.Now().Add(-61*time.Minute), e.oidcCtxFor(user))
 	if err != nil {
 		t.Fatalf("issueRefreshToken: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestOIDCReissuedAccessDoesNotOutliveAbsoluteDeadline(t *testing.T) {
 	e, user := newOIDCSessionEnv(t, "1", "0")
 
 	// 距絕對期限僅剩 5 分鐘時刷新
-	plain, err := e.auth.issueRefreshToken(user.ID, time.Now().Add(-55*time.Minute), e.oidcCtxFor(user))
+	plain, _, err := e.auth.issueRefreshToken(user.ID, time.Now().Add(-55*time.Minute), e.oidcCtxFor(user))
 	if err != nil {
 		t.Fatalf("issueRefreshToken: %v", err)
 	}

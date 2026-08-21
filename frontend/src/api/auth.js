@@ -16,15 +16,15 @@ export function login(data) {
 }
 
 /**
- * 使用者登出：後端撤銷 refresh 憑證（D6 會話撤銷），本地清除由呼叫端負責
- * @param {string} [refreshToken] - 目前 refresh 憑證（無則僅記錄登出事件）
+ * 使用者登出：後端自 httpOnly cookie 取得 refresh 憑證並撤銷（D6 會話撤銷），
+ * 同時於回應清除該 cookie；本地 access token／使用者快取的清除由呼叫端負責
  * @returns {Promise}
  */
-export function logout(refreshToken) {
+export function logout() {
   return request({
     url: '/auth/logout',
     method: 'post',
-    data: refreshToken ? { refresh_token: refreshToken } : {},
+    data: {},
   })
 }
 

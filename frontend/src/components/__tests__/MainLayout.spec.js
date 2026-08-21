@@ -274,7 +274,6 @@ describe('MainLayout sidebar', () => {
   it('revokes refresh token, clears credentials and navigates to /login on logout', async () => {
     setUser(['admin'])
     localStorage.setItem('token', 'abc')
-    localStorage.setItem('refresh_token', 'refresh-1')
     logoutMock.mockResolvedValue({})
     const wrapper = mountLayout()
 
@@ -282,10 +281,10 @@ describe('MainLayout sidebar', () => {
     userDropdown(wrapper).vm.$emit('command', 'logout')
     await flushPromises()
 
-    // 輪2b（D6）：登出先請後端撤銷 refresh 憑證
-    expect(logoutMock).toHaveBeenCalledWith('refresh-1')
+    // 登出先請後端撤銷 refresh 憑證（D6）。憑證由瀏覽器以 httpOnly cookie 自動附帶，
+    // 前端不再持有也就不再傳參——傳參版本等於憑證仍存在於 script 可讀的地方
+    expect(logoutMock).toHaveBeenCalledWith()
     expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(localStorage.getItem('user')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/login')
   })
@@ -293,7 +292,6 @@ describe('MainLayout sidebar', () => {
   it('still clears credentials when logout revocation fails', async () => {
     setUser(['admin'])
     localStorage.setItem('token', 'abc')
-    localStorage.setItem('refresh_token', 'refresh-1')
     logoutMock.mockRejectedValue(new Error('network down'))
     const wrapper = mountLayout()
 
@@ -301,7 +299,7 @@ describe('MainLayout sidebar', () => {
     await flushPromises()
 
     expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
+    expect(localStorage.getItem('user')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/login')
   })
 })

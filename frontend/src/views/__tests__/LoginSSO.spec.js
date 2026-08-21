@@ -162,7 +162,6 @@ describe('Login SSO 區塊', () => {
       return {
         login: {
           token: 'sso-jwt',
-          refresh_token: 'sso-refresh',
           user: { username: 'alice', display_name: 'Alice', roles: ['user'] },
         },
         redirect_next: '/assets',
@@ -182,7 +181,8 @@ describe('Login SSO 區塊', () => {
     // 綁定原值一次性：兌換後即清除
     expect(sessionStorage.getItem(SSO_SECRET_KEY)).toBeNull()
     expect(localStorage.getItem('token')).toBe('sso-jwt')
-    expect(localStorage.getItem('refresh_token')).toBe('sso-refresh')
+    // SSO 的巢狀回應同樣不帶憑證明文：refresh 憑證走 httpOnly cookie
+    expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/assets')
   })
 

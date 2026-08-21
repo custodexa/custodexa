@@ -144,21 +144,21 @@ describe('response interceptor - token refresh', () => {
 
   it('refreshes access token and retries original request on 401', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
-      data: { token: 'fresh-jwt', refresh_token: 'refresh-2' },
+      data: { token: 'fresh-jwt' },
     })
 
     const result = await responseHandler.rejected(make401('/users'))
 
-    // 刷新端點被呼叫且憑證輪替寫回
+    // 刷新端點以**空本文**呼叫：refresh 憑證是 httpOnly cookie，由瀏覽器自動附帶，
+    // JS 讀不到也就帶不進本文；回應僅寫回 access token
     expect(postSpy).toHaveBeenCalledWith(
       '/api/v1/auth/refresh',
-      { refresh_token: 'refresh-1' },
+      {},
       expect.anything()
     )
     expect(localStorage.getItem('token')).toBe('fresh-jwt')
-    expect(localStorage.getItem('refresh_token')).toBe('refresh-2')
+    expect(localStorage.getItem('refresh_token')).toBeNull()
 
     // 原請求以新 token 重試且結果透明回傳
     expect(result).toEqual({ ok: true })
@@ -167,8 +167,22 @@ describe('response interceptor - token refresh', () => {
     expect(retriedConfig._retried).toBe(true)
   })
 
+  // refresh-token-httponly-cookie：憑證是 httpOnly cookie，script 讀不到。
+  // 「本地沒有憑證就別打了」這種前置檢查在遷移後只會製造假的失敗——
+  // 有沒有憑證只有伺服器答得出來，前端一律送出、由 401 驅動導向登入
+  it('attempts refresh even with no credential in localStorage (cookie is invisible to script)', async () => {
+    localStorage.setItem('token', 'stale-jwt')
+    const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
+      data: { token: 'fresh-jwt' },
+    })
+
+    const result = await responseHandler.rejected(make401('/users'))
+
+    expect(postSpy).toHaveBeenCalledWith('/api/v1/auth/refresh', {}, expect.anything())
+    expect(result).toEqual({ ok: true })
+  })
+
   it('does not refresh a business 401 (business code, not token-expiry)', async () => {
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post')
 
     // MFA 驗證碼錯是業務 401（RULE_MFA_INVALID_CODE），非 access token 失效 → 不刷新
@@ -185,7 +199,6 @@ describe('response interceptor - token refresh', () => {
 
   it('clears session and redirects when refresh fails', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     localStorage.setItem('user', '{"username":"admin"}')
     vi.spyOn(axios, 'post').mockRejectedValue(make401('/auth/refresh'))
 
@@ -194,13 +207,11 @@ describe('response interceptor - token refresh', () => {
     ).rejects.toBeTruthy()
 
     expect(localStorage.getItem('token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(localStorage.getItem('user')).toBeNull()
     expect(window.location.href).toContain('/login')
   })
 
   it('does not refresh again for an already-retried request', async () => {
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post')
 
     const err = make401('/users')
@@ -213,17 +224,10 @@ describe('response interceptor - token refresh', () => {
 
   it('shares a single refresh call across concurrent 401s (single-flight)', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post').mockImplementation(
       () =>
         new Promise((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                data: { token: 'fresh-jwt', refresh_token: 'refresh-2' },
-              }),
-            10
-          )
+          setTimeout(() => resolve({ data: { token: 'fresh-jwt' } }), 10)
         )
     )
 
@@ -272,9 +276,8 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
 
   it('AUTH_TOKEN_INVALID 走刷新，無視 URL（/auth/me 過期→刷新）', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
-      data: { token: 'fresh-jwt', refresh_token: 'refresh-2' },
+      data: { token: 'fresh-jwt' },
     })
 
     const result = await reject401('AUTH_TOKEN_INVALID', '/auth/me')
@@ -285,9 +288,8 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
 
   it('雙模端點 /auth/change-password 自願改密過期（AUTH_TOKEN_INVALID）仍刷新（codex 案1）', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
-      data: { token: 'fresh-jwt', refresh_token: 'refresh-2' },
+      data: { token: 'fresh-jwt' },
     })
 
     const result = await reject401('AUTH_TOKEN_INVALID', '/auth/change-password')
@@ -298,7 +300,6 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
 
   it('雙模端點 /auth/mfa/disable 密碼錯（AUTH_INVALID_CREDENTIALS）不刷新不導向（codex 案2）', async () => {
     localStorage.setItem('token', 'x')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post')
 
     await expect(
@@ -334,9 +335,8 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
   // 錯版相容（實作審查 P2）：舊後端 401 無 code
   it('無 code 的 401 於非 /auth/* 仍刷新（新前端＋舊後端相容）', async () => {
     localStorage.setItem('token', 'stale-jwt')
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
-      data: { token: 'fresh-jwt', refresh_token: 'refresh-2' },
+      data: { token: 'fresh-jwt' },
     })
 
     const result = await responseHandler.rejected({
@@ -353,7 +353,6 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
   })
 
   it('無 code 的 401 於 /auth/* 不刷新（沿用舊行為）', async () => {
-    localStorage.setItem('refresh_token', 'refresh-1')
     const postSpy = vi.spyOn(axios, 'post')
 
     await expect(

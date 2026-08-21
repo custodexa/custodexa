@@ -53,30 +53,24 @@ const shouldRefresh401 = (data, url) => {
 // 併發輪替誤觸後端 reuse detection（家族撤銷）
 let refreshInFlight = null
 
-// 刷新走裸 axios：不經本攔截器，refresh 自身的 401 不會遞迴觸發刷新
-const postRefresh = (refreshToken) =>
-  axios.post(
-    '/api/v1/auth/refresh',
-    { refresh_token: refreshToken },
-    { timeout: 10000 }
-  )
+// 刷新走裸 axios：不經本攔截器，refresh 自身的 401 不會遞迴觸發刷新。
+// 本文為空：refresh 憑證由瀏覽器以 httpOnly cookie 自動附帶（同源部署，
+// 無需 withCredentials）；憑證不可讀也就無從由 JS 帶入請求本文
+const postRefresh = () => axios.post('/api/v1/auth/refresh', {}, { timeout: 10000 })
 
 const doRefresh = async (staleToken) => {
   // 跨 tab：他分頁可能已刷新並寫回 localStorage（rotation 後舊憑證已作廢），
-  // 先比對 access token 是否已更新，避免拿已輪替的 refresh 憑證重放。
+  // 先比對 access token 是否已更新，避免以已輪替的 refresh 憑證重放。
   // staleToken 取不到（原請求無 Authorization header）時不可短路，否則
   // 會誤判「已更新」而拿同一個失效 token 重試
   const current = localStorage.getItem('token')
   if (staleToken && current && current !== staleToken) {
     return current
   }
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (!refreshToken) {
-    throw new Error('無 refresh 憑證')
-  }
-  const { data } = await postRefresh(refreshToken)
+  // 無「本地有沒有憑證」的前置檢查：cookie 對 script 不可見，有無一律交給
+  // 後端回答——沒帶 cookie 時後端回 401，攔截器據以導向登入
+  const { data } = await postRefresh()
   localStorage.setItem('token', data.token)
-  localStorage.setItem('refresh_token', data.refresh_token)
   return data.token
 }
 
@@ -113,7 +107,8 @@ const redirectToUnsealIfSealed = (data) => {
 
 const clearSessionAndRedirect = () => {
   localStorage.removeItem('token')
-  localStorage.removeItem('refresh_token')
+  // refresh 憑證是 httpOnly cookie，本地清不到；它由登出回應清除，
+  // 而過期／被撤銷的憑證在伺服器端已不具授權——cookie 存在不等於授權
   localStorage.removeItem('user')
   if (window.location.pathname !== '/login') {
     window.location.href = '/login'
@@ -155,7 +150,7 @@ request.interceptors.response.use(
               headers: { ...config.headers, Authorization: `Bearer ${newToken}` },
             })
           } catch (refreshError) {
-            // refresh 請求本文含 refresh_token，同樣不得印本體
+            // 刷新回應帶新的 access token，同樣不得印本體
             console.error('會話刷新失敗:', redactAxiosError(refreshError))
           }
         }

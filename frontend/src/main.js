@@ -18,6 +18,12 @@ import { epGlobalConfig } from './i18n/element-plus'
 const favicon = document.querySelector('link[rel="icon"]')
 if (favicon) favicon.href = BRAND.icon
 
+// refresh 憑證的歷史殘值清理（refresh-token-httponly-cookie）：憑證已遷入
+// httpOnly cookie，localStorage 不再是它的載體。舊版登入過的瀏覽器仍留著一份
+// 明文，對任何在頁面上執行的 script 完全可讀——**無條件移除**，不先判斷有沒有：
+// 判斷式本身就是一次讀取，而這裡要的只是「確保它不在」
+localStorage.removeItem('refresh_token')
+
 const app = createApp(App)
 
 // Pinia state management

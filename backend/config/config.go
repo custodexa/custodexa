@@ -176,6 +176,69 @@ type SecurityConfig struct {
 	// AdminInitialPassword 全新（空 DB）部署建立初始 admin 的密碼（deployment-hardening CPG-001）。
 	// 僅空 DB seed 時使用，首登強制改密後退役；非空 DB 啟動忽略其值（僅告警提醒移除）。
 	AdminInitialPassword string
+	// RefreshCookie refresh 憑證 cookie 的 Secure 旗標推導結果
+	// （refresh-token-httponly-cookie 決策 2）。啟動時定值，不逐請求重算。
+	RefreshCookie RefreshCookieSecureDerivation
+}
+
+// RefreshCookieSecureDerivation refresh cookie 的 `Secure` 旗標推導結果與其來源。
+//
+// **來源一併保留**是為了啟動日誌能歸因：兩個誤設方向都會產生難以歸因的故障，
+// 而瀏覽器丟棄 Set-Cookie 是靜默行為，錯誤訊息本身指不出成因。
+type RefreshCookieSecureDerivation struct {
+	Secure bool
+	// Source 推導依據，取下列三個常數之一
+	Source string
+}
+
+// refresh cookie Secure 推導的三個來源標記（決策 2 的優先序）。
+const (
+	// RefreshCookieSecureFromEnv 由 AUTH_REFRESH_COOKIE_SECURE 顯式覆寫
+	RefreshCookieSecureFromEnv = "AUTH_REFRESH_COOKIE_SECURE"
+	// RefreshCookieSecureFromBaseURL 由 PUBLIC_BASE_URL 的 scheme 推導
+	RefreshCookieSecureFromBaseURL = "PUBLIC_BASE_URL"
+	// RefreshCookieSecureFromDefault 兩者皆未提供有效訊息時的預設（false）
+	RefreshCookieSecureFromDefault = "default"
+)
+
+// DeriveRefreshCookieSecure 依決策 2 的優先序推導 refresh cookie 的 Secure 旗標。
+//
+// 為何不寫死（兩個方向都有真實失敗模式）：
+//   - 寫死 true：純 HTTP 部署下瀏覽器**靜默**丟棄 Set-Cookie，使用者陷入
+//     「登入成功 → access token 到期 → 刷新失敗 → 被登出」的迴圈，且無錯誤訊息可歸因。
+//   - 寫死 false：生產 HTTPS 環境放棄降級攻擊防護（誘導一次 http 請求即可竊取 cookie）。
+//
+// 純函式（不自行讀 env）：推導規則要能逐格測試，而測試不得污染行程 env。
+func DeriveRefreshCookieSecure(explicit, publicBaseURL string) RefreshCookieSecureDerivation {
+	// 1. 顯式覆寫最高優先。無法解析的值視同未設——靜默採信一個拼錯的布林
+	//    等於讓部署者以為自己關掉（或打開）了保護
+	if explicit != "" {
+		if v, err := strconv.ParseBool(strings.TrimSpace(explicit)); err == nil {
+			return RefreshCookieSecureDerivation{Secure: v, Source: RefreshCookieSecureFromEnv}
+		}
+	}
+	// 2. PUBLIC_BASE_URL 的 scheme
+	if u := strings.TrimSpace(publicBaseURL); u != "" {
+		lower := strings.ToLower(u)
+		switch {
+		case strings.HasPrefix(lower, "https://"):
+			return RefreshCookieSecureDerivation{Secure: true, Source: RefreshCookieSecureFromBaseURL}
+		case strings.HasPrefix(lower, "http://"):
+			return RefreshCookieSecureDerivation{Secure: false, Source: RefreshCookieSecureFromBaseURL}
+		}
+	}
+	// 3. 未設（本地／開發形態）
+	return RefreshCookieSecureDerivation{Secure: false, Source: RefreshCookieSecureFromDefault}
+}
+
+// LoadRefreshCookieSecure 自 env 推導 refresh cookie 的 Secure 旗標
+// （部署期常數，沿 LoadSeal 的慣例）。
+//
+// 三值語義故用 lookupRaw：getEnvBool 的「無效值回落預設」會把「顯式設定」
+// 與「未設」壓成同一種結果，而本推導的第一順位正是「有沒有顯式設定」。
+func LoadRefreshCookieSecure() RefreshCookieSecureDerivation {
+	return DeriveRefreshCookieSecure(
+		lookupRaw("AUTH_REFRESH_COOKIE_SECURE"), getEnv("PUBLIC_BASE_URL", ""))
 }
 
 // GuacamoleConfig Guacamole 設定
@@ -254,6 +317,7 @@ func Load() *Config {
 			// **實際使用的 KEK 材料一律取自 KEKDecision**。
 			EncryptionKey:        lookupRaw("ENCRYPTION_KEY"),
 			AdminInitialPassword: getEnv("ADMIN_INITIAL_PASSWORD", ""),
+			RefreshCookie:        LoadRefreshCookieSecure(),
 		},
 		Guacamole: GuacamoleConfig{
 			Host: getEnv("GUACD_HOST", "localhost"),
