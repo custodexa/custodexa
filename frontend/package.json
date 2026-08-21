@@ -26,13 +26,13 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/coverage-v8": "^4.1.8",
     "@vue/test-utils": "^2.4.11",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.32.0",
     "happy-dom": "^20.10.2",
-    "vite": "^6.0.7",
+    "vite": "^8.2.2",
     "vitest": "^4.1.8"
   }
 }
