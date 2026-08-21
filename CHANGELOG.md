@@ -2,6 +2,28 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.0.1 — dependency security updates (2026-08-21)
+
+No product code changes. Rebuild your images to pick these up.
+
+### Security
+
+- Frontend dependencies updated to resolve all open advisories: lodash and
+  lodash-es 4.18.1, axios 1.18.0, flatted 3.4.4, minimatch 3.1.5, ajv 6.15.0,
+  nanoid, postcss, form-data, js-yaml, and the Vite toolchain (Vite 8,
+  plugin-vue 6). `npm audit` and GitHub dependency alerts are clean after
+  this release.
+- Backend: `github.com/Azure/go-ntlmssp` updated to v0.1.1.
+- Verified against the full backend and frontend test suites and the
+  production image build.
+
+### Documentation
+
+- QUICKSTART now walks through a minimal TLS reverse-proxy setup step by step
+  (nginx container, certificate mounts, WebSocket upgrade verification).
+- Public-facing prose reworked to read naturally; commands, procedures, and
+  capability claims unchanged.
+
 ## 1.0.0 — initial public release (2026-08-21)
 
 First public release under AGPL-3.0.
@@ -38,6 +60,6 @@ First public release under AGPL-3.0.
 
 - Single-instance deployment only; high availability is on the roadmap.
 - Text-based command audit has principled limits; session recording replay is the
-  source of truth (see "Design Stance" in the README).
+  source of truth (see "Design boundaries" in the README).
 - Versioned releases (git tags, versioned images, CHANGELOG sections per version)
   start after this initial release.
