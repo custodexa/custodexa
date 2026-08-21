@@ -1,0 +1,4 @@
+# 裸文字錯誤出口 allowlist（backend-i18n-unification D1，機器生成勿手改）
+# 格式：<相對 backend/ 的檔案路徑> <sink 運算式正規化 hash> <同檔同 hash 筆數>
+# 重生：docker compose exec -T backend go test ./internal/apierror/ -run TestNoRawErrorSinks -update
+# 語義：燒盡制。條目只該減不該增；-update 的 diff 須在 commit 中逐條審視。

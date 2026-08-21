@@ -1,0 +1,1590 @@
+[
+  {
+    "name": "simple-ls",
+    "desc": "最單純指令：ls -la",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 605,
+        "data": "bHMgLWxhDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "bHMgLWxhDQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 613,
+        "data": "dG90YWwgNDQNCmRyd3hyLXhyLXggNyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNiAyMDoxOCAuDQpkcnd4ci14ci14IDEgcm9vdCAgICAgcm9vdCAgNDA5NiBBdWcgMTQgMTI6MTkgLi4NCi1ydy0tLS0tLS0gMSB0ZXN0dXNlciB1c2VycyA4NDQ1IEF1ZyAxNiAyMDoxOCAuYmFzaF9oaXN0b3J5DQpkcnd4LS0tLS0tIDMgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTYgMTc6NTkgLmNvbmZpZw0KZHJ3eC0tLS0tLSAyIHRlc3R1c2VyIHVzZXJzIDQwOTYgQXVnIDE0IDE0OjM0IC5zc2gNCmRyd3hyLXhyLXggMyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNCAxMjoxOSBsb2dzDQpkcnd4ci14ci14IDIgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTQgMTI6MTkgc3NoX2hvc3Rfa2V5cw0KZHJ3eHIteC0tLSAyIHJvb3QgICAgIHVzZXJzIDQwOTYgQXVnIDE2IDE5OjA3IHNzaGQNCi1ydy1yLS1yLS0gMSB0ZXN0dXNlciB1c2VycyAgICA0IEF1ZyAxNiAxOTowNyBzc2hkLnBpZA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 613,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1308,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1309,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1310,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "ls -la",
+    "expected_command_note": "第 1 個 in 事件即完整指令 \"ls -la\\r\"；第 2 個 in 事件 \"exit\\r\" 為 session 收尾，不計。"
+  },
+  {
+    "name": "color-ls",
+    "desc": "帶 SGR 顏色的輸出：ls --color=always /etc",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 603,
+        "data": "bHMgLS1jb2xvcj1hbHdheXMgL2V0Yw0="
+      },
+      {
+        "dir": "out",
+        "ms": 605,
+        "data": "bHMgLS1jb2xvcj1hbHdheXMgL2V0Yw0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "YWxwaW5lLXJlbGVhc2UgICAgICAgIGlucHV0cmMgICAgICAgICAbWzBtG1swMTszNm1vcy1yZWxlYXNlG1swbSAgIHNoYWRvdw0KG1swMTszNG1hcGsbWzBtICAgICAgICAgICAgICAgICAgIGlzc3VlICAgICAgICAgICAbWzAxOzM0bXBhbS5kG1swbSAgICAgICAgc2hhZG93LQ0KG1swMTszNG1iYXNoG1swbSAgICAgICAgICAgICAgICAgIGxvZ2luLmRlZnMgICAgICBwYXNzd2QgICAgICAgc2hlbGxzDQobWzAxOzM0bWJ1c3lib3gtcGF0aHMuZBtbMG0gICAgICAgbG9ncm90YXRlLmNvbmYgIHBhc3N3ZC0gICAgICAbWzAxOzM0bXNzaBtbMG0NChtbMDE7MzRtY2EtY2VydGlmaWNhdGVzG1swbSAgICAgICAbWzAxOzM0bWxvZ3JvdGF0ZS5kG1swbSAgICAgG1swMTszNG1wZXJpb2RpYxtbMG0gICAgIBtbMDE7MzRtc3NsG1swbQ0KY2EtY2VydGlmaWNhdGVzLmNvbmYgIBtbMDE7MzRtbW9kcHJvYmUuZBtbMG0gICAgICBwcm9maWxlICAgICAgG1swMTszNG1zc2wxLjEbWzBtDQobWzAxOzM0bWNyb250YWJzG1swbSAgICAgICAgICAgICAgbW9kdWxlcyAgICAgICAgIBtbMDE7MzRtcHJvZmlsZS5kG1swbSAgICBzdWRvLmNvbmYNCmVudmlyb25tZW50ICAgICAgICAgICAbWzAxOzM0bW1vZHVsZXMtbG9hZC5kG1swbSAgcHJvdG9jb2xzICAgIHN1ZG9fbG9nc3J2ZC5jb25mDQpmc3RhYiAgICAgICAgICAgICAgICAgbW90ZCAgICAgICAgICAgIHJlc29sdi5jb25mICBzdWRvZXJzDQpncm91cCAgICAgICAgICAgICAgICAgG1swMTszNm1tdGFiG1swbSAgICAgICAgICAgIBtbMDE7MzRtczYtb3ZlcmxheRtbMG0gICAbWzAxOzM0bXN1ZG9lcnMuZBtbMG0NCmdyb3VwLSAgICAgICAgICAgICAgICBuYW5vcmMgICAgICAgICAgG1swMTszNG1zZWNmaXhlcy5kG1swbSAgIHN5c2N0bC5jb25mDQpob3N0bmFtZSAgICAgICAgICAgICAgG1swMTszNG1uZXR3b3JrG1swbSAgICAgICAgIHNlY3VyZXR0eSAgICAbWzAxOzM0bXN5c2N0bC5kG1swbQ0KaG9zdHMgICAgICAgICAgICAgICAgIG5zc3dpdGNoLmNvbmYgICAbWzAxOzM0bXNlY3VyaXR5G1swbSAgICAgG1swMTszNG10ZXJtaW5mbxtbMG0NCmluaXR0YWIgICAgICAgICAgICAgICAbWzAxOzM0bW9wdBtbMG0gICAgICAgICAgICAgc2VydmljZXMgICAgIBtbMDE7MzRtdWRoY3BjG1swbQ0K"
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "G1s/MjAwNGhzc2gtdGU="
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "c3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1508,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1509,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1510,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "ls --color=always /etc",
+    "expected_command_note": "第 1 個 in 事件即完整指令；\"exit\\r\" 為 session 收尾，不計。"
+  },
+  {
+    "name": "backspace",
+    "desc": "打錯字後退格修正：lss<BS> -la",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 3,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 605,
+        "data": "bHNz"
+      },
+      {
+        "dir": "out",
+        "ms": 605,
+        "data": "bHNz"
+      },
+      {
+        "dir": "in",
+        "ms": 910,
+        "data": "fw=="
+      },
+      {
+        "dir": "out",
+        "ms": 912,
+        "data": "CBtbSw=="
+      },
+      {
+        "dir": "in",
+        "ms": 1214,
+        "data": "IC1sYQ0="
+      },
+      {
+        "dir": "out",
+        "ms": 1217,
+        "data": "IC1sYQ0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1220,
+        "data": "dG90YWwgNDQNCmRyd3hyLXhyLXggNyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNiAyMDozMCAuDQpkcnd4ci14ci14IDEgcm9vdCAgICAgcm9vdCAgNDA5NiBBdWcgMTQgMTI6MTkgLi4NCi1ydy0tLS0tLS0gMSB0ZXN0dXNlciB1c2VycyA4NDI1IEF1ZyAxNiAyMDozMCAuYmFzaF9oaXN0b3J5DQpkcnd4LS0tLS0tIDMgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTYgMTc6NTkgLmNvbmZpZw0KZHJ3eC0tLS0tLSAyIHRlc3R1c2VyIHVzZXJzIDQwOTYgQXVnIDE0IDE0OjM0IC5zc2gNCmRyd3hyLXhyLXggMyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNCAxMjoxOSBsb2dzDQpkcnd4ci14ci14IDIgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTQgMTI6MTkgc3NoX2hvc3Rfa2V5cw0KZHJ3eHIteC0tLSAyIHJvb3QgICAgIHVzZXJzIDQwOTYgQXVnIDE2IDE5OjA3IHNzaGQNCi1ydy1yLS1yLS0gMSB0ZXN0dXNlciB1c2VycyAgICA0IEF1ZyAxNiAxOTowNyBzc2hkLnBpZA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 1221,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1920,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1922,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1922,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "ls -la",
+    "expected_command_note": "in 序列為 \"lss\" 加 DEL(0x7f) 再加 \" -la\\r\"：退格刪掉第二個 s 後送出 ls -la；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "tab-complete",
+    "desc": "Tab 補全路徑：cat /etc/hos<TAB>",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 612,
+        "data": "Y2F0IC9ldGMvaG9z"
+      },
+      {
+        "dir": "out",
+        "ms": 613,
+        "data": "Y2F0IC9ldGMvaG9z"
+      },
+      {
+        "dir": "in",
+        "ms": 913,
+        "data": "CQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 913,
+        "data": "B3Q="
+      },
+      {
+        "dir": "in",
+        "ms": 1516,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1519,
+        "data": "DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1522,
+        "data": "Y2F0OiAvZXRjL2hvc3Q6IE5vIHN1Y2ggZmlsZSBvciBkaXJlY3RvcnkNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 1523,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2223,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2226,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "cat /etc/host",
+    "expected_command_note": "in 序列為 \"cat /etc/hos\" 加 TAB 加 Enter。TAB 的補全結果無法只由輸入方向推得，此處取回顯中緊接 BEL 之後的單一字面位元組 \"t\"（非螢幕解析結果）判定補全為 host；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "history-recall",
+    "desc": "上鍵召回歷史指令（整行重繪）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 609,
+        "data": "ZWNobyBoZWxsbw0="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "ZWNobyBoZWxsbw0KG1s/MjAwNGwNaGVsbG8NChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1213,
+        "data": "G1tB"
+      },
+      {
+        "dir": "out",
+        "ms": 1213,
+        "data": "ZWNobyBoZWxsbw=="
+      },
+      {
+        "dir": "in",
+        "ms": 1719,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1722,
+        "data": "DQobWz8yMDA0bA1oZWxsbw0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2422,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2423,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2424,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo hello",
+    "expected_command_note": "in 序列為 \"echo hello\\r\" 加 上鍵(CSI A) 加 Enter：上鍵召回同一段 capture 內唯一的前一條指令 echo hello 後再送出一次；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "ctrl-c",
+    "desc": "Ctrl-C 中斷執行中的指令",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 610,
+        "data": "c2xlZXAgMTAw"
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "c2xlZXAgMTAw"
+      },
+      {
+        "dir": "in",
+        "ms": 915,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 917,
+        "data": "DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "in",
+        "ms": 1420,
+        "data": "Aw=="
+      },
+      {
+        "dir": "out",
+        "ms": 1421,
+        "data": "XkM="
+      },
+      {
+        "dir": "out",
+        "ms": 1422,
+        "data": "DQo="
+      },
+      {
+        "dir": "out",
+        "ms": 1422,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2126,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2130,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2131,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "sleep 100",
+    "expected_command_note": "in 序列為 \"sleep 100\" 加 Enter 加 Ctrl-C(0x03)：指令已完整送出，Ctrl-C 中斷的是執行中的行程而非輸入行，故仍有指令；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "long-wrap",
+    "desc": "超過終端寬度的長指令（自動折行）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 603,
+        "data": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWo="
+      },
+      {
+        "dir": "out",
+        "ms": 606,
+        "data": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWo="
+      },
+      {
+        "dir": "in",
+        "ms": 1105,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1107,
+        "data": "DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1108,
+        "data": "YWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA="
+      },
+      {
+        "dir": "in",
+        "ms": 2011,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2013,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2014,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+    "expected_command_note": "第 1 個 in 事件為 \"echo \" 加 180 個字元、第 2 個為 Enter；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "utf8-emoji",
+    "desc": "中文與 emoji（雙寬字元）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 610,
+        "data": "ZWNobyDkuK3mlofmuKzoqaYg8J+OiSBvaw0="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "ZWNobyDkuK3mlofmuKzoqaYg8J+OiSBvaw0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "5Lit5paH5ris6KmmIPCfjokgb2sNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1411,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1412,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1412,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo 中文測試 🎉 ok",
+    "expected_command_note": "第 1 個 in 事件即完整指令（含雙寬中文與 emoji）；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "mid-line-edit",
+    "desc": "左鍵移動游標後在行中插入字元",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 605,
+        "data": "ZWNobyB3b3JsZA=="
+      },
+      {
+        "dir": "out",
+        "ms": 605,
+        "data": "ZWNobyB3b3JsZA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1009,
+        "data": "G1tEG1tEG1tEG1tEG1tE"
+      },
+      {
+        "dir": "out",
+        "ms": 1011,
+        "data": "CAgICAg="
+      },
+      {
+        "dir": "in",
+        "ms": 1412,
+        "data": "aGVsbG8g"
+      },
+      {
+        "dir": "out",
+        "ms": 1413,
+        "data": "G1s2QGhlbGxvIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1818,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1821,
+        "data": "DQobWz8yMDA0bA1oZWxsbyB3b3JsZA0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2519,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2524,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo hello world",
+    "expected_command_note": "in 序列為 \"echo world\" 加 5 次左鍵(CSI D) 加 \"hello \" 加 Enter：游標退到 world 之前插入 \"hello \"；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "ctrl-u-kill",
+    "desc": "Ctrl-U 清掉整行後改打別的指令",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 1,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 607,
+        "data": "cm0gLXJmIC90bXAvc2hvdWxkLW5vdC1iZS1hdWRpdGVk"
+      },
+      {
+        "dir": "out",
+        "ms": 609,
+        "data": "cm0gLXJmIC90bXAvc2hvdWxkLW5vdC1iZS1hdWRpdGVk"
+      },
+      {
+        "dir": "in",
+        "ms": 1013,
+        "data": "FQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1015,
+        "data": "DRtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbSw=="
+      },
+      {
+        "dir": "in",
+        "ms": 1417,
+        "data": "ZWNobyBzYWZlDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1418,
+        "data": "ZWNobyBzYWZlDQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1418,
+        "data": "c2FmZQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2123,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2124,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2125,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo safe",
+    "expected_command_note": "in 序列為 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行，rm 那串從未送出；\"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+  },
+  {
+    "name": "clear-screen",
+    "desc": "clear（ED 2J）後再下一條指令",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 601,
+        "data": "Y2xlYXIN"
+      },
+      {
+        "dir": "out",
+        "ms": 603,
+        "data": "Y2xlYXINChtbPzIwMDRsDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 606,
+        "data": "G1tIG1tK"
+      },
+      {
+        "dir": "out",
+        "ms": 606,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1304,
+        "data": "ZWNobyBhZnRlci1jbGVhcg0="
+      },
+      {
+        "dir": "out",
+        "ms": 1306,
+        "data": "ZWNobyBhZnRlci1jbGVhcg0KG1s/MjAwNGwNYWZ0ZXItY2xlYXINChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 2007,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2012,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo after-clear",
+    "expected_command_note": "實質指令依序為 \"clear\" 與 \"echo after-clear\"，本情境取最後一條；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "top-batch",
+    "desc": "top -b -n 1（大量 CSI 與定位序列）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 610,
+        "data": "dG9wIC1iIC1uIDEgfCBoZWFkIC0yMA0="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "dG9wIC1iIC1uIDEgfCBoZWFkIC0yMA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 843,
+        "data": "dG9wIC0gMjA6MzA6MzAgdXAgIDE6MjIsICAwIHVzZXJzLCAgbG9hZCBhdmVyYWdlOiAwLjIwLCAwLjI2LCAwLjM3DQpUYXNrczogMTggdG90YWwsIDEgcnVubmluZywgMTcgc2xlZXAsIDAgZC1zbGVlcCwgMCBzdG9wcGVkLCAwIHpvbWJpZQ0KJUNwdShzKTogIDEuMSB1cywgIDEuMSBzeSwgIDAuMCBuaSwgOTcuOCBpZCwgIDAuMCB3YSwgIDAuMCBoaSwgIDAuMCBzaSwgIDAuMCBzdCANCk1pQiBNZW0gOiAgMTE5NDkuNCB0b3RhbCwgICA5MjU2LjkgZnJlZSwgICAgOTg5LjEgdXNlZCwgICAxOTQxLjkgYnVmZi9jYWNoZSAgICAgDQpNaUIgU3dhcDogICAxMDI0LjAgdG90YWwsICAgMTAyNC4wIGZyZWUsICAgICAgMC4wIHVzZWQuICAxMDk2MC4zIGF2YWlsIE1lbSANCg0KICBQSUQgVVNFUiAgICAgIFBSICBOSSAgICBWSVJUICAgIFJFUyAgICBTSFIgUyAgJUNQVSAgJU1FTSAgICAgVElNRSsgQ09NTUFORA0KICAgIDEgcm9vdCAgICAgIDIwICAgMCAgICAgNDI4ICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDEgczYtc3ZzY2FuDQogICAxNyByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICAyMCByb290ICAgICAgMjAgICAwICAgICAxOTYgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1saW51eC0rDQogICAzNiByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICAzNyByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICAzOCByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICAzOSByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICA0MCByb290ICAgICAgMjAgICAwICAgICAyMTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1zdXBlcnYrDQogICA1MSByb290ICAgICAgMjAgICAwICAgICAyOTIgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1mZGhvbGQrDQogICA1MiByb290ICAgICAgMjAgICAwICAgICAyMDAgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1pcGNzZXIrDQogIDE3NiByb290ICAgICAgMjAgICAwICAgIDE2NzYgICAgOTAwICAgIDkwMCBTICAgMC4wICAgMC4wICAgMDowMC4wNCBidXN5Ym94DQogIDE3OSB0ZXN0dXNlciAgMjAgICAwICAgICAyNzYgICAgICAwICAgICAgMCBTICAgMC4wICAgMC4wICAgMDowMC4wMCBzNi1sb2cNCiAgMTg2IHRlc3R1c2VyICAyMCAgIDAgICAgNjM2MCAgIDQzODQgICAzNDg4IFMgICAwLjAgICAwLjAgICAwOjAwLjA1IHNzaGQucGFtDQo="
+      },
+      {
+        "dir": "out",
+        "ms": 843,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3117,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3122,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "top -b -n 1 | head -20",
+    "expected_command_note": "第 1 個 in 事件即完整指令；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "vi-altscreen",
+    "desc": "vi 進出 alternate screen",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 604,
+        "data": "dmkgL3RtcC92dGNoZWNrLnR4dA0="
+      },
+      {
+        "dir": "out",
+        "ms": 604,
+        "data": "dmkgL3RtcC92dGNoZWNrLnR4dA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "G1s/MTA0OWgbW0gbW0obWzI7MUh+G1szOzFIfhtbNDsxSH4bWzU7MUh+G1s2OzFIfhtbNzsxSH4bWzg7MUh+G1s5OzFIfhtbMTA7MUh+G1sxMTsxSH4bWzEyOzFIfhtbMTM7MUh+G1sxNDsxSH4bWzE1OzFIfhtbMTY7MUh+G1sxNzsxSH4bWzE4OzFIfhtbMTk7MUh+G1syMDsxSH4bWzIxOzFIfhtbMjI7MUh+G1syMzsxSH4bWzE7MUgbWzI0OzFIG1tLLSAvdG1wL3Z0Y2hlY2sudHh0IDEvMSAxMDAlG1sxOzFI"
+      },
+      {
+        "dir": "in",
+        "ms": 2110,
+        "data": "aWhlbGxv"
+      },
+      {
+        "dir": "out",
+        "ms": 2112,
+        "data": "G1syNDsxSBtbS0kgL3RtcC92dGNoZWNrLnR4dCAxLzEgMTAwJRtbMTsxSBtbMTsxSGhlbGxvG1sxOzZI"
+      },
+      {
+        "dir": "in",
+        "ms": 2614,
+        "data": "Gw=="
+      },
+      {
+        "dir": "out",
+        "ms": 2667,
+        "data": "G1sxOzVIG1syNDsxSBtbSy0gL3RtcC92dGNoZWNrLnR4dCBbTW9kaWZpZWRdIDEvMSAxMDAlG1sxOzVI"
+      },
+      {
+        "dir": "in",
+        "ms": 3015,
+        "data": "OnEhDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 3016,
+        "data": "G1syNDsxSBtbSzpxIRtbMTs1SBtbMTs1SBtbMjQ7MUgbW0stIC90bXAvdnRjaGVjay50eHQgW01vZGlmaWVkXSAxLzEgMTAwJRtbMTs1SBtbMjQ7MUgbW0sbWz8xMDQ5bA=="
+      },
+      {
+        "dir": "out",
+        "ms": 3017,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 4218,
+        "data": "ZWNobyBhZnRlci12aQ0="
+      },
+      {
+        "dir": "out",
+        "ms": 4219,
+        "data": "ZWNobyBhZnRlci12aQ0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 4220,
+        "data": "YWZ0ZXItdmkNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 4925,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 4931,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo after-vi",
+    "expected_command_note": "實質 shell 指令依序為 \"vi /tmp/vtcheck.txt\" 與 \"echo after-vi\"，本情境取最後一條；中間的 \"ihello\"、ESC、\":q!\\r\" 是 alternate screen 內的 vi 按鍵、不是 shell 指令；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "shell-continuation",
+    "desc": "PS2 續行（for 迴圈多行輸入）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 606,
+        "data": "Zm9yIGkgaW4gMSAyOyBkbw0="
+      },
+      {
+        "dir": "out",
+        "ms": 608,
+        "data": "Zm9yIGkgaW4gMSAyOyBkbw0KG1s/MjAwNGwNG1s/MjAwNGg+IA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1108,
+        "data": "ZWNobyAkaQ0="
+      },
+      {
+        "dir": "out",
+        "ms": 1110,
+        "data": "ZWNobyAkaQ0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1110,
+        "data": "G1s/MjAwNGg+IA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1614,
+        "data": "ZG9uZQ0="
+      },
+      {
+        "dir": "out",
+        "ms": 1615,
+        "data": "ZG9uZQ0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1616,
+        "data": "MQ0KMg0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 2518,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2519,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2520,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "done",
+    "expected_command_note": "三次 Enter 各送出一行：依序為 \"for i in 1 2; do\"、\"echo $i\"、\"done\"（非 sqlMode，逐行結算），本情境取最後一條；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "reverse-search",
+    "desc": "Ctrl-R 反向搜尋歷史",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 608,
+        "data": "ZWNobyBuZWVkbGUN"
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "ZWNobyBuZWVkbGUNChtbPzIwMDRsDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "bmVlZGxlDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA="
+      },
+      {
+        "dir": "in",
+        "ms": 1212,
+        "data": "Eg=="
+      },
+      {
+        "dir": "out",
+        "ms": 1214,
+        "data": "DShyZXZlcnNlLWktc2VhcmNoKWAnOiA="
+      },
+      {
+        "dir": "in",
+        "ms": 1617,
+        "data": "bmVlZGxl"
+      },
+      {
+        "dir": "out",
+        "ms": 1621,
+        "data": "CAgIbic6IGVjaG8gG1s3bW4bWzI3bWVlZGxlCAgICAgI"
+      },
+      {
+        "dir": "out",
+        "ms": 1621,
+        "data": "CAgICAgICAgbWzFAZSc6IGVjaG8gG1s3bW5lG1syN20ICAgICAgICAgIG1sxQGUnOiBlY2hvIBtbN21uZWUbWzI3bQgICAgICAgICAgIG1sxQGQnOiBlY2hvIBtbN21uZWVkG1syN20ICAgICAgICAgICAgbWzFAbCc6IGVjaG8gG1s3bW5lZWRsG1syN20ICAgICAgICAgICAgIZSc6IGVjaG8gG1s3bW5lZWRsZRtbMjdtCAgICAgI"
+      },
+      {
+        "dir": "in",
+        "ms": 2220,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2221,
+        "data": "DRtbOVBzc2gtdGVzdC1zZXJ2ZXI6fiQgZWNobyBuZWVkbGU="
+      },
+      {
+        "dir": "out",
+        "ms": 2221,
+        "data": "CAgICAgI"
+      },
+      {
+        "dir": "out",
+        "ms": 2221,
+        "data": "DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2222,
+        "data": "bmVlZGxlDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA="
+      },
+      {
+        "dir": "in",
+        "ms": 3022,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3022,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo needle",
+    "expected_command_note": "in 序列為 \"echo needle\\r\" 加 Ctrl-R(0x12) 加 \"needle\" 加 Enter：反向搜尋命中同一段 capture 內唯一含 needle 的歷史指令後再送出一次；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "quoted-tab-char",
+    "desc": "指令中含實際 tab 字元（引號內）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 1,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 602,
+        "data": "cHJpbnRmICdhCWJcbicN"
+      },
+      {
+        "dir": "out",
+        "ms": 604,
+        "data": "cHJpbnRmICdh"
+      },
+      {
+        "dir": "out",
+        "ms": 604,
+        "data": "B2JcbicNChtbPzIwMDRsDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 605,
+        "data": "YWINChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1409,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1411,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1411,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "printf 'ab\\n'",
+    "expected_command_note": "in 事件為 \"printf 'a\" 加 HT(0x09) 加 \"b\\n'\" 加 Enter。該 HT 被 readline 當補全鍵吃掉（回顯為 BEL 0x07、非 0x09），未插入任何 tab 字元，故實際送出的指令不含 tab；\"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "bash-ctrl-u",
+    "desc": "bash readline：Ctrl-U 清行後改打別的指令",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 610,
+        "data": "YmFzaA0="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "YmFzaA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 614,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1517,
+        "data": "cm0gLXJmIC90bXAvc2hvdWxkLW5vdC1iZS1hdWRpdGVk"
+      },
+      {
+        "dir": "out",
+        "ms": 1518,
+        "data": "cm0gLXJmIC90bXAvc2hvdWxkLW5vdC1iZS1hdWRpdGVk"
+      },
+      {
+        "dir": "in",
+        "ms": 1920,
+        "data": "FQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1921,
+        "data": "DRtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbSw=="
+      },
+      {
+        "dir": "in",
+        "ms": 2326,
+        "data": "ZWNobyBzYWZlDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2328,
+        "data": "ZWNobyBzYWZlDQo="
+      },
+      {
+        "dir": "out",
+        "ms": 2328,
+        "data": "G1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2328,
+        "data": "c2FmZQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3030,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3033,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 3033,
+        "data": "ZXhpdA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 3034,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3533,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3534,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo safe",
+    "expected_command_note": "in 序列為 \"bash\\r\"（建立子 shell）加 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行；兩個 \"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+  },
+  {
+    "name": "bash-history",
+    "desc": "bash readline：上鍵召回歷史",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 606,
+        "data": "YmFzaA0="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "YmFzaA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1512,
+        "data": "ZWNobyBoZWxsbw0="
+      },
+      {
+        "dir": "out",
+        "ms": 1514,
+        "data": "ZWNobyBoZWxsbw0KG1s/MjAwNGwNaGVsbG8NChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 2118,
+        "data": "G1tB"
+      },
+      {
+        "dir": "out",
+        "ms": 2120,
+        "data": "ZWNobyBoZWxsbw=="
+      },
+      {
+        "dir": "in",
+        "ms": 2622,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2625,
+        "data": "DQobWz8yMDA0bA1oZWxsbw0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3325,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3329,
+        "data": "ZXhpdA0KG1s/MjAwNGwNZXhpdA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 3330,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3827,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3829,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 3830,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo hello",
+    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"echo hello\\r\" 加 上鍵(CSI A) 加 Enter：上鍵召回 echo hello 後再送出一次；兩個 \"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "bash-mid-edit",
+    "desc": "bash readline：行中插入與 Ctrl-A/Ctrl-E",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 605,
+        "data": "YmFzaA0="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "YmFzaA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 613,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1512,
+        "data": "ZWNobyB3b3JsZA=="
+      },
+      {
+        "dir": "out",
+        "ms": 1513,
+        "data": "ZWNobyB3b3JsZA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1916,
+        "data": "AQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1918,
+        "data": "CAgICAgICAgICA=="
+      },
+      {
+        "dir": "in",
+        "ms": 2218,
+        "data": "BQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2218,
+        "data": "G1tDG1tDG1tDG1tDG1tDG1tDG1tDG1tDG1tDG1tD"
+      },
+      {
+        "dir": "in",
+        "ms": 2523,
+        "data": "G1tEG1tEG1tEG1tEG1tE"
+      },
+      {
+        "dir": "out",
+        "ms": 2525,
+        "data": "CAgICAg="
+      },
+      {
+        "dir": "in",
+        "ms": 2925,
+        "data": "aGVsbG8g"
+      },
+      {
+        "dir": "out",
+        "ms": 2926,
+        "data": "G1s2QGhlbGxvIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 3326,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 3328,
+        "data": "DQobWz8yMDA0bA1oZWxsbyB3b3JsZA0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 4032,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 4034,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 4035,
+        "data": "ZXhpdA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 4036,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 4538,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 4540,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 4540,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo hello world",
+    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"echo world\" 加 Ctrl-A(0x01) 加 Ctrl-E(0x05) 加 5 次左鍵 加 \"hello \" 加 Enter：Ctrl-A 與 Ctrl-E 一來一回後游標仍在行尾，再退 5 格插入 \"hello \"；兩個 \"exit\\r\" 為收尾。"
+  },
+  {
+    "name": "bash-tab-ambiguous",
+    "desc": "bash readline：Tab 多候選（列表重繪 prompt）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 2,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 606,
+        "data": "YmFzaA0="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "YmFzaA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1511,
+        "data": "bHMgL2V0Yy9wYQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1513,
+        "data": "bHMgL2V0Yy9wYQ=="
+      },
+      {
+        "dir": "in",
+        "ms": 1913,
+        "data": "CQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1916,
+        "data": "Bw=="
+      },
+      {
+        "dir": "in",
+        "ms": 2415,
+        "data": "CQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2417,
+        "data": "DQpwYW0uZC8gICBwYXNzd2QgICBwYXNzd2QtICANCnNzaC10ZXN0LXNlcnZlcjp+JCBscyAvZXRjL3Bh"
+      },
+      {
+        "dir": "in",
+        "ms": 3318,
+        "data": "FQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 3320,
+        "data": "CAgICAgICAgICBtbSw=="
+      },
+      {
+        "dir": "in",
+        "ms": 3720,
+        "data": "ZWNobyBkb25lDQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 3721,
+        "data": "ZWNobyBkb25lDQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3722,
+        "data": "ZG9uZQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 4426,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 4428,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 4428,
+        "data": "ZXhpdA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 4430,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 4927,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 4929,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 4929,
+        "data": "bG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo done",
+    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"ls /etc/pa\" 加 TAB 加 TAB 加 Ctrl-U(0x15) 加 \"echo done\\r\"：兩次 TAB 只列出候選、未送出，Ctrl-U 清掉整行；兩個 \"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+  },
+  {
+    "name": "bash-long-wrap",
+    "desc": "bash readline：超寬行折行後退格",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 0,
+        "data": "V2VsY29tZSB0byBPcGVuU1NIIFNlcnZlcg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 3,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 605,
+        "data": "YmFzaA0="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "YmFzaA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 1507,
+        "data": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWo="
+      },
+      {
+        "dir": "out",
+        "ms": 1508,
+        "data": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWo="
+      },
+      {
+        "dir": "in",
+        "ms": 2013,
+        "data": "f39/"
+      },
+      {
+        "dir": "out",
+        "ms": 2015,
+        "data": "CBtbSwgbW0sIG1tL"
+      },
+      {
+        "dir": "in",
+        "ms": 2515,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2517,
+        "data": "DQobWz8yMDA0bA1hYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmcNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 3420,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3422,
+        "data": "ZXhpdA0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 3423,
+        "data": "ZXhpdA0K"
+      },
+      {
+        "dir": "out",
+        "ms": 3425,
+        "data": "G1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg"
+      },
+      {
+        "dir": "in",
+        "ms": 3924,
+        "data": "ZXhpdA0="
+      },
+      {
+        "dir": "out",
+        "ms": 3930,
+        "data": "ZXhpdA0KG1s/MjAwNGwNbG9nb3V0DQo="
+      }
+    ],
+    "expected_command": "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg",
+    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"echo \" 加 180 個字元 加 3 次 DEL(0x7f) 加 Enter：退格刪掉尾端 3 個字元後送出；兩個 \"exit\\r\" 為收尾。"
+  }
+]

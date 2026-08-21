@@ -1,0 +1,16 @@
+// 本檔為 TestRevocationWiringGuardDetectsMissingCall 的 fixture，非產品程式碼。
+//
+// 刻意漏掉 oidcProviderService.SetRecordingTokenRevoker 一條接線，用來證明
+// revocation_wiring_guard_test.go 的掃描器確實抓得到「少一行」的缺口。
+// 副檔名為 .go.txt 且置於 testdata/：不進 build，也不被其他 AST 守衛掃描。
+package fixture
+
+func wireStage2() {
+	userService.SetSessionTerminator(sessionService)
+	userService.SetSubscriptionTerminator(sshHandler.Monitor)
+	s.userService.SetRecordingTokenRevoker(recordingHandler.TokenManager())
+
+	oidcProviderService.SetSessionTerminator(sessionService)
+	oidcProviderService.SetSubscriptionTerminator(sshHandler.Monitor)
+	// 此處刻意缺 s.oidcProviderService.SetRecordingTokenRevoker(...)
+}

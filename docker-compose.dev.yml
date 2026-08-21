@@ -1,0 +1,424 @@
+services:
+  # PostgreSQL 資料庫
+  #
+  # 與正式版 compose 同版（16.15-alpine3.24）：開發期若跑在不同 PG patch 上，
+  # 「開發全綠、部署才炸」的舊型缺陷會在資料庫層重演。釘版理由與 digest 查證
+  # （2026-08-17）見 docker-compose.yml 的同名服務註解。
+  postgres:
+    image: postgres:16.15-alpine3.24
+    container_name: custodexa-postgres-dev
+    environment:
+      # 與 backend 同源：由專案根 .env 的 DB_* 驅動（未設則 dev 預設值）
+      POSTGRES_DB: ${DB_NAME:-custodexa}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      # DATA_PATH 資料夾根（預設 ./data）：DB 資料落於專案內可檢視目錄
+      - ${DATA_PATH:-./data}/postgres:/var/lib/postgresql/data
+    networks:
+      - custodexa-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Guacamole Daemon
+  guacd:
+    image: custodexa/guacd:dev
+    build:
+      context: .
+      dockerfile: docker/guacd/Dockerfile
+    container_name: custodexa-guacd-dev
+    environment:
+      LOG_LEVEL: debug
+    ports:
+      - "4822:4822"
+    volumes:
+      # 掛載錄影目錄，讓 guacd 可以寫入 typescript 錄製檔案（DATA_PATH 資料夾根）
+      - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # Go 後端服務（開發模式，支援熱重載）
+  backend:
+    image: custodexa/backend:dev
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.dev
+    container_name: custodexa-backend-dev
+    ports:
+      - "8080:8080"
+    volumes:
+      # 掛載原始碼，實現熱重載
+      - ./backend:/app
+      # 快取 Go modules
+      - go_modules:/go/pkg/mod
+      # 審計日誌和錄影檔案（DATA_PATH 資料夾根，預設 ./data；直掛 AUDIT_LOG_PATH/RECORDING_PATH）
+      - ${DATA_PATH:-./data}/audit:/var/log/custodexa/audit
+      - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
+      # i18n-backend-error-codes 完備性測試：唯讀掛前端三語 locale 供 apiError bijection 核對
+      # 掛載點統一在 /app（容器內專案根）下；testdata 為 Go 慣例目錄（go 工具鏈忽略）
+      - ./frontend/src/i18n/locales:/app/testdata/locales:ro
+      # kek-encoding-and-unseal-entry：唯讀掛前端的 KEK 生成指令集合，供
+      # kek_generate_command_test.go 比對後端 config.KEKGenerateCommands。
+      # 權威事實源在後端；範本（.env.example）、錯誤訊息與介面三處一致由守衛強制
+      # ——不一致的指引比沒有指引更糟（使用者照著介面做卻被拒，正是本次的缺陷）。
+      # **目錄掛載而非單檔**：單檔 bind mount 綁 inode，編輯器 atomic rename 後容器
+      # 仍讀舊 inode，可能讓 host 檔已壞而容器讀到舊的正確版本＝假綠（同 docs/ 的理由）。
+      - ./frontend/src/constants:/app/testdata/frontend-constants:ro
+      # 唯讀掛入專案根 .env.example 供 env_drift_test.go 對照（守衛在 backend 容器內執行）。
+      #
+      # **掛載點必須在 /app（Go module 根）內**：go test 的結果快取只追蹤 module 內被開啟的
+      # 檔案。原本掛在 /opt/custodexa 下時，只改 .env.example 而不動 Go 碼，`go test` 會回報
+      # (cached) 通過而根本不執行守衛（2026-07-27 實測）。代價是單檔掛載會在 host
+      # backend/config/testdata/ 生一個空檔，已列入 .gitignore——比守衛靜默不執行划算。
+      #
+      # 殘留限制（單檔掛載固有，換位置解決不了）：單檔 bind mount 綁 inode，若編輯器以
+      # atomic rename 更新 host 檔，容器仍讀舊 inode，dev 需 recreate backend 才反映
+      #（CI 全新容器不受影響；或於 host 直跑守衛測試，雙路徑會走 <proj>/.env.example）。
+      - ./.env.example:/app/config/testdata/.env.example:ro
+      # 唯讀掛入 scripts/ 供 quickstart_placeholder_guard_test.go 對照（目錄掛載無檔案級 inode 陳舊問題）
+      - ./scripts:/app/config/testdata/scripts:ro
+      # 唯讀掛入 docs/ 供 api_index_test.go 比對 API_SPEC.md 的端點索引。
+      #
+      # **目錄掛載而非單檔**：單檔 bind mount 綁 inode，編輯器以 atomic rename 更新
+      # host 檔時容器仍讀舊 inode——那不只造成假紅，更可能在 host 檔已壞時讓容器讀到
+      # 舊的正確版本而**假綠**。目錄掛載每次開檔都走現行 dentry，無此問題。
+      #
+      # **掛載點必須在 /app（Go module 根）內**：go test 的結果快取只追蹤 module 內
+      # 被開啟的檔案。掛在 /opt 下時，純手改 API_SPEC.md 不會使快取失效，`go test`
+      # 會回報 (cached) 綠而完全不執行守衛（實測確認）。掛進 testdata/ 後改文件即失效。
+      # 掛在 cmd/server/testdata/ 下（與 route-golden 同層）——該位置的檔案已實測會被
+      # 快取追蹤。與 locales 同慣例：host 端會生出空的掛載點目錄，已列入 .gitignore。
+      #
+      # 唯讀是刻意的信任邊界：守衛不得具備修改其驗證對象的能力（重生索引見 API_SPEC.md）。
+      - ./docs:/app/cmd/server/testdata/docs:ro
+      # 唯讀掛入前端 router 供 oidc_redirect_test.go 的路由枚舉防漂移守衛比對
+      #（登入後重導向目標須匹配前端既有路由；後端枚舉與 router 雙向核對）。
+      # 目錄掛載＋掛在 /app 內，理由同上兩則（inode 假綠、go test 快取追蹤）。
+      - ./frontend/src/router:/app/internal/api/testdata/router:ro
+      # 唯讀掛入 openspec/ 供 modular-architecture 的兩份 manifest 守衛比對
+      #（審計產生點 manifest 與 lifecycle manifest：登記項 ⇄ 現實雙向完備性）。
+      #
+      # **掛載點必須在 /app（Go module 根）內**：理由同上兩則——go test 的結果快取
+      # 只追蹤 module 內被開啟的檔案，掛在 module 外時純改 manifest 不會使快取失效，
+      # 守衛會回報 (cached) 綠而根本不執行。
+      #
+      # **掛整個 openspec/ 而非單一 change 目錄**：change 歸檔後路徑會移入
+      # changes/archive/，掛父目錄使守衛在歸檔後仍讀得到，不需同步改 compose。
+      # 唯讀是刻意的信任邊界：守衛不得具備修改其驗證對象的能力。
+      - ./openspec:/app/testdata/openspec:ro
+      #
+      # **不得把 repo 根整個掛進容器**（brand-residual-cleanup 實測踩過）：曾為讓
+      # 品牌守衛掃全 repo 而加 `.:/app/testdata/repo:ro`，結果 host 的 .env（含
+      # JWT_SECRET／ENCRYPTION_KEY／ADMIN_INITIAL_PASSWORD）與 data*/ 備份目錄
+      # 一併對容器內的 dbcli 降權身分可讀，`TestCLIUserCannotReadLiveCredentials`
+      # 當場轉紅——那正是 DB CLI 逃逸防護的核心性質。掛單一檔案蓋掉 .env 只是補丁，
+      # repo 根日後仍會出現其他敏感檔。**要掃 backend 以外的內容，用 host 端腳本
+      # （scripts/brand_scan.sh），不要擴大容器的檔案視野。**
+    # 使用者可調值一律走專案根 .env（與 prod 一致）：cp .env.example .env 後編輯。
+    # 註：dev 測 LDAP 於 .env 設 LDAP_ENABLED=true；e2e 閒置場景於 .env 設 SSH_IDLE_TIMEOUT_MINUTES=1。
+    env_file:
+      - .env
+    # environment: 只留純拓撲/模式常數（compose 提供，且不在 .env 內故無覆寫衝突）
+    environment:
+      PORT: 8080
+      GIN_MODE: debug
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+      AUDIT_LOG_PATH: /var/log/custodexa/audit
+      RECORDING_PATH: /var/lib/custodexa/recordings
+      # apiError 完備性測試定位三語 locale（dev-only 唯讀掛載點）
+      APIERROR_LOCALE_DIR: /app/testdata/locales
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_started
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # Vue 前端服務（開發模式，支援 HMR）
+  frontend:
+    image: custodexa/frontend:dev
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      target: development
+    container_name: custodexa-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # 掛載原始碼，實現熱重載
+      - ./frontend:/app
+      # 排除 node_modules（使用容器內的）
+      - /app/node_modules
+      # 後端 model 唯讀掛載：前後端枚舉雙向完備性守衛直讀 Go 常數
+      # （audit-enums.spec.js 的 /repo 路徑；無此掛載該案例 skip）
+      - ./backend/internal/model:/repo/backend/internal/model:ro
+    environment:
+      NODE_ENV: development
+    depends_on:
+      - backend
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  # SSH 測試容器（用於開發和測試）
+  ssh-test:
+    image: linuxserver/openssh-server:latest
+    container_name: custodexa-ssh-test-dev
+    hostname: ssh-test-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Taipei
+      - USER_NAME=testuser
+      - USER_PASSWORD=testpass123
+      - PASSWORD_ACCESS=true
+      - SUDO_ACCESS=true
+    ports:
+      - "2222:2222"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # 多帳號 SSH 測試靶機（root+testuser，rootful sshd 可切換使用者；
+  # 供 asset-multi-account 的帳號切換與授權範圍驗證，與 ssh-test 並存）
+  ssh-multi-test:
+    image: custodexa/ssh-multi-test:dev
+    build:
+      context: .
+      dockerfile: docker/ssh-multi-test/Dockerfile
+    container_name: custodexa-ssh-multi-test-dev
+    hostname: ssh-multi-test-server
+    ports:
+      # 綁 localhost：root 可密碼登入的靶機不暴露到 LAN（僅本機除錯用；
+      # backend 走 docker 網路不經此映射）
+      - "127.0.0.1:2223:22"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # RDP 測試容器（用於開發和測試）
+  rdp-test:
+    image: custodexa/rdp-test:dev
+    build:
+      context: .
+      dockerfile: docker/rdp-test/Dockerfile
+    container_name: custodexa-rdp-test-dev
+    hostname: rdp-test-server
+    environment:
+      - RDP_USER=testuser
+      - RDP_PASSWORD=testpass123
+    ports:
+      - "3389:3389"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # LDAP 測試容器（用於開發和測試；bitnami 映像以環境變數直接種測試帳號）
+  # 為什麼用 bitnamilegacy：Bitnami 已將免費映像遷移至 bitnamilegacy 倉庫，
+  # docker.io/bitnami/openldap 不再提供 latest 標籤
+  ldap-test:
+    image: bitnamilegacy/openldap:latest
+    container_name: custodexa-ldap-test-dev
+    hostname: ldap-test-server
+    environment:
+      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ADMIN_PASSWORD=adminpass
+      - LDAP_USERS=testldap
+      - LDAP_PASSWORDS=ldappass123
+      - LDAP_ROOT=dc=example,dc=org
+    ports:
+      - "1389:1389"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # VNC 測試容器（用於開發和測試）
+  vnc-test:
+    image: custodexa/vnc-test:dev
+    build:
+      context: .
+      dockerfile: docker/vnc-test/Dockerfile
+    container_name: custodexa-vnc-test-dev
+    hostname: vnc-test-server
+    environment:
+      - VNC_PASSWORD=vncpass123
+    ports:
+      - "5901:5901"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # K8s 測試叢集（k8s-exec 驗證；k3s 單節點，backend 在 compose 網路內以
+  # https://k3s-test:6443 連，版本對齊 backend kubectl v1.33.1 零偏移）
+  k3s-test:
+    image: rancher/k3s:v1.33.1-k3s1
+    container_name: custodexa-k3s-test-dev
+    hostname: k3s-test
+    command: server --disable=traefik --disable=metrics-server --disable=servicelb --tls-san=k3s-test --write-kubeconfig-mode=666
+    privileged: true
+    environment:
+      - K3S_TOKEN=k3stoken123
+      - K3S_KUBECONFIG_OUTPUT=/output/kubeconfig.yaml
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - k3s_server:/var/lib/rancher/k3s
+      - k3s_output:/output
+    ports:
+      - "6443:6443"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # DB CLI 測試用 MySQL（mysql-protocol）：對標 postgres，供 dbproxy mysql 路徑驗證
+  mysql-test:
+    image: mysql:8
+    container_name: custodexa-mysql-test-dev
+    hostname: mysql-test
+    environment:
+      - MYSQL_ROOT_PASSWORD=testpass123
+      - MYSQL_DATABASE=testdb
+    ports:
+      - "3306:3306"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # DB CLI 測試用 SQL Server（mssql-web-cli D9）：對標 mysql-test，供 dbproxy mssql 路徑驗證。
+  #
+  # **映像選擇（design D9 的原裁決已於 2026-08-14 推翻，改用 amd64 模擬）**：
+  # 本機為 Apple Silicon（arm64），原取 `mcr.microsoft.com/azure-sql-edge:latest`
+  # 因其有原生 arm64 manifest。但該映像**產品連不上**：Edge 啟動時自簽的 TLS 憑證
+  # 序號為負數，而產品用的 go-sqlcmd（Go 1.25 建置）在 x509 解析階段即拒絕，錯誤為
+  # `TLS Handshake failed: tls: failed to parse certificate from server: x509: negative serial number`。
+  # 這是解析失敗，不是信任失敗——**用戶端旗標救不了**：`-C`（信任伺服器憑證）實測
+  # 仍是同一錯誤（信任評估發生在解析之後）。能繞過的只有 `GODEBUG=x509negativeserial=1`
+  # 與 `-N disable`，但那是替產品放寬 TLS 來遮蔽靶機缺陷，不得為之。
+  # 容器重建（`--force-recreate`）不換憑證，設 `network.tlscert` 餵自訂憑證則
+  # 使 Edge 於 arm64 啟動即 fatal（mssql-web-cli tasks 8.6 已登記）。
+  # 故改用 `mcr.microsoft.com/mssql/server`（只發 amd64，經 Docker Desktop 的 Rosetta
+  # 模擬執行），其自簽憑證序號為正，未設任何 GODEBUG 即可完成交握。
+  #
+  # 副作用（正面）：這同時解掉 mssql-web-cli 8.6 的阻塞——`-J` 是憑證釘選或 CA 信任錨
+  # 的決定性實驗需要「CA 簽發的葉憑證」，而完整版 mssql/server 支援 `network.tlscert`，
+  # 於此靶機上可做（`openspec/specs/database-protocol/spec.md` 的保守表述待該實測後複核）。
+  #
+  # tag 釘死不用 `2025-latest`：靶機的憑證行為正是本次踩到的坑，映像靜默前滾即可能
+  # 再次帶回同型問題。`2025-CU8-ubuntu-24.04` 與當下的 `2025-latest` 為同一 manifest。
+  # 與 Edge 的差異（測試時須自覺）：Edge 是引擎的功能子集，本映像則是完整 SQL Server，
+  # 故功能面只增不減；代價是 amd64 模擬（啟動較慢、記憶體較吃）與 ~2.4GB 映像。
+  #
+  # 密碼不沿用專案慣例的 `testpass123`：SQL Server 的 SA 密碼強度檢查要求
+  # 大寫／小寫／數字／符號四類取三，純小寫加數字會讓容器啟動即失敗。
+  mssql-test:
+    image: mcr.microsoft.com/mssql/server:2025-CU8-ubuntu-24.04
+    # arm64 主機上必要：本映像無 arm64 manifest，不指定則 compose 直接拒絕啟動。
+    platform: linux/amd64
+    container_name: custodexa-mssql-test-dev
+    hostname: mssql-test
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=Testpass123!
+    ports:
+      - "1433:1433"
+    networks:
+      - custodexa-network
+    # **必須**：log 目錄限額 tmpfs。sqlservr 崩潰時會往 /var/opt/mssql/log 寫 core dump，
+    # 配上 restart 政策就是無限崩潰-轉存迴圈；實測一次把 docker VM 磁碟從 4.5GB 餘量
+    # 吃到 0（container 可寫層 10.5GB）並拖垮整個 compose 的建置與測試。
+    # 限額後 dump 最多佔 300MB 且不落在 VM 磁碟的可寫層。
+    # mode=1777 不可省：tmpfs 預設 root 擁有且 755，而映像以非 root 的 mssql 使用者
+    # 執行，寫不進 errorlog 就會啟動失敗（Error 17058）並在 restart 政策下無限重啟。
+    tmpfs:
+      - /var/opt/mssql/log:size=300m,mode=1777
+    healthcheck:
+      # 映像不含 sqlcmd（自 mssql-tools 拆出後即未內建），故以 TCP 埠可連為就緒判準
+      #（/dev/tcp 需 bash，映像內有）
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/1433' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # amd64 模擬下引擎起步慢於原生 Edge，start_period 由 30s 放寬至 90s：
+      # 沿用 30s 會在首輪就緒前就開始計 retries，healthy 判定不穩。
+      start_period: 90s
+    restart: unless-stopped
+
+  # OIDC 測試 IdP（idp-oidc-integration D18）：dex 為 CNCF 輕量 OIDC provider，
+  # 供 SSO 登入全鏈路（begin → IdP 授權 → callback → exchange → 建連線）實走驗證。
+  #
+  # **hostname 必須是 dex.localhost**：go-oidc 對 discovery 的 issuer 做完整字串比對，
+  # 後端（容器內）與瀏覽器（host）須以同一字串可達。下方 network alias 使容器內
+  # DNS 解析至本容器；瀏覽器端則依 RFC 6761 走 loopback，經 port mapping 到同一服務。
+  # 改 alias、改埠或改 config.yaml 的 issuer 三者必須同步，否則 discovery 驗證即失敗。
+  #
+  # 埠綁 127.0.0.1：可簽發本系統登入憑證的 IdP 不暴露到 LAN（backend 走 docker
+  # 網路不經此映射，此映射僅供瀏覽器與本機除錯使用）。
+  #
+  # 本服務只服務測試，不進任何產品路徑：正式版 docker-compose.yml 不含 dex。
+  dex:
+    image: dexidp/dex:v2.45.1
+    container_name: custodexa-dex-dev
+    hostname: dex
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      # 目錄掛載而非單檔：單檔 bind mount 綁 inode，編輯器以 atomic rename 更新
+      # host 檔時容器仍讀舊 inode（與 backend 的 docs 掛載同一理由）
+      - ./docker/dex:/etc/dex:ro
+    ports:
+      - "127.0.0.1:5556:5556"
+    networks:
+      custodexa-network:
+        aliases:
+          - dex.localhost
+    restart: unless-stopped
+
+  # KMS 模擬器（kek-provider-modularization D11.1 裁決 4）：C1 雲端 KMS 的整合測試靶機。
+  #
+  # **僅啟用 kms 子集**：localstack 預設會拉起整套 AWS 模擬面，對本專案而言是
+  # 純粹的啟動成本與攻擊面；SERVICES 收斂到唯一真的會用到的服務。
+  #
+  # **本服務只服務測試，不進任何產品路徑**：後端不讀 localstack 端點
+  # （產品刻意不提供端點覆寫的 env 鍵），測試以 TEST_KMS_ENDPOINT gating。
+  # 跑法見 pkg/crypto/kms/localstack_test.go 檔頭。
+  localstack:
+    image: localstack/localstack:3
+    container_name: custodexa-localstack-dev
+    hostname: localstack
+    environment:
+      SERVICES: kms
+      DEBUG: "0"
+      # 資料留在容器內：測試每次自建金鑰，不需跨重啟保存（也避免測試金鑰累積）
+      PERSISTENCE: "0"
+    ports:
+      - "4566:4566"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+volumes:
+  # audit/recordings/postgres 已改 ${DATA_PATH:-./data} bind mount（見各服務 volumes）
+  go_modules:
+    driver: local
+  k3s_server:
+    driver: local
+  k3s_output:
+    driver: local
+
+networks:
+  custodexa-network:
+    driver: bridge

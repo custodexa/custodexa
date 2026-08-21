@@ -1,0 +1,75 @@
+# Custodexa 對外 TLS termination 反向代理範例（nginx）
+# deployment-hardening CPG-012：external-ingress TLS 契約。
+#
+# stock 部署本身不提供 TLS——frontend 只在內部聽 80/HTTP。對外 TLS termination 為部署方職責。
+# 本範例示範一個置於 Custodexa frontend 之前、負責 TLS termination 的反向代理，滿足契約：
+#   - TLS 1.2+、可信憑證
+#   - HTTP(80) → HTTPS(443) redirect
+#   - HSTS
+#   - WebSocket upgrade 轉發（wss；終端/圖形/監控串流依賴）
+#   - 傳遞 X-Forwarded-Proto=https（供後端/前端正確識別外部協定）
+#
+# 使用方式：
+#   1. 換上你的憑證（企業 CA / 公開 CA；本範例不含自簽產生步驟）。
+#   2. 將 upstream 指向 Custodexa frontend（同一 docker network 用服務名 frontend:80；
+#      或指向該主機發布的 127.0.0.1:80——見「不可信 hop」註記）。
+#   3. server_name 換成你的網域。
+#
+# 不可信 hop（re-encrypt）：若此反代與 Custodexa 主機之間跨越不可信網段（如跨主機、公用雲 overlay），
+# 該 hop 亦須加密（例如上游改用 https 並驗證憑證，或走加密隧道）；「有 LB」不等同完整 TLS。
+
+upstream custodexa_frontend {
+    # 同一 docker network：服務名可達；跨主機請改為對應位址並考慮 re-encrypt
+    server frontend:80;
+}
+
+# HTTP → HTTPS redirect（80 僅做導轉，不提供內容）
+server {
+    listen 80;
+    server_name your.domain.example;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS termination
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name your.domain.example;
+
+    # 換上你的憑證鏈與私鑰
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+    # TLS 1.2+（停用過時協定）
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1h;
+
+    # HSTS（先採較短 max-age，穩定後再拉長；includeSubDomains/preload 依你的網域策略再開）
+    add_header Strict-Transport-Security "max-age=86400" always;
+
+    # 上限依你的檔案傳輸需求調整
+    client_max_body_size 0;
+
+    location / {
+        proxy_pass http://custodexa_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+
+        # WebSocket upgrade 轉發（wss 必需）：終端/SFTP/圖形/監控串流走 /ws 與 /api 的 upgrade
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 86400;
+    }
+}
+
+# $connection_upgrade：WebSocket 時為 "upgrade"，否則為 ""（放入 http{} 區塊，或於此 map 定義）
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}

@@ -1,0 +1,130 @@
+# 作業系統
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/backend/tmp/
+/backend/vendor/
+go.work
+
+# Node.js / Vue
+node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 日誌
+*.log
+logs/
+/backend/build-errors.log
+
+# 資料庫
+*.db
+*.sqlite
+*.sqlite3
+
+# 編譯產物
+/backend/bin/
+/backend/build/
+/backend/server
+/tmp/
+# 連線測試工具的本機編譯產物（無副檔名 ELF；曾誤入版控，opensource-release-prep 1.3 移除）
+/backend/test_*_connection
+/backend/scripts/test_*_connection
+
+# 應用資料夾（DATA_PATH 預設；審計 / 錄影 / 資料庫 bind mount 落地）
+/data/
+
+# Docker volumes（歷史 named volume 目錄殘留，保留避免誤加）
+postgres_data/
+audit_logs/
+recordings/
+
+# 測試覆蓋率
+coverage/
+*.cover
+*.coverprofile
+
+# 臨時檔案
+*.tmp
+*.temp
+
+# 文件編輯器備份
+*~
+\#*\#
+.\#*
+
+# Local tool state
+.claude/ralph-loop.local.md
+.screenshots/
+.playwright-mcp/
+# Codex / OpenSpec CLI 生成物（本機工具狀態，非源碼）
+.agents/
+.codex/
+AGENTS.md
+
+# 標準與法規原文 PDF：授權限制再散布，僅供本機條文對照，一律不入版控
+docs/*.pdf
+
+# i18n-backend-error-codes：docker 完備性測試唯讀掛載點（./frontend locale → /app/testdata/locales）
+# 容器建立的 host mount 副產物（空目錄），非源碼
+backend/testdata/locales/
+
+# api-doc-single-source：端點索引守衛的 docs/ 掛載點（唯讀）與 -update 專用可寫掛載點。
+# 同為容器建立的空目錄副產物；置於 cmd/server/testdata 下是為了讓 go test 的結果快取
+# 追蹤 API_SPEC.md 的變動（module 外的路徑不被追蹤，改文件會拿到 (cached) 假綠）。
+backend/cmd/server/testdata/docs/
+backend/cmd/server/testdata/docs-rw/
+
+# routes_guard_test.go:697 的突變自檢暫存目錄（`os.MkdirTemp(base, "guardselfcheck-")`）。
+# 放在 cmd/server/testdata 下有其理由——go 工具鏈忽略 testdata，故暫存的樣本 .go 不會被
+# 編譯，而 `packages.Load` 又需要它落在 module 內。**但該測試未清理**，每跑一次就留一個
+# 帶隨機後綴的目錄，且已有一個（guardselfcheck-4107287797）被誤 commit 進版控。
+# 本規則先擋住繼續累積；測試未清理與既有殘留的清除記於 ROADMAP backlog。
+backend/cmd/server/testdata/guardselfcheck-*/
+
+# modular-architecture：兩份 manifest（審計產生點／lifecycle）守衛的 openspec 唯讀掛載點。
+# 同為容器建立的空目錄副產物；掛在 /app（module 根）內是為了讓 go test 的結果快取
+# 追蹤 manifest 的變動（module 外的路徑不被追蹤，改 manifest 會拿到 (cached) 假綠）。
+backend/testdata/openspec/
+
+# env 漂移守衛的 .env.example 唯讀掛載點（單檔掛載副產物，空檔）。
+# 置於 module 內是為了讓 go test 的結果快取追蹤範本變動——掛在 module 外時
+# 只改範本不會使快取失效，守衛會回報 (cached) 而根本不執行。
+backend/config/testdata/.env.example
+
+# 驗證截圖統一收納處（本機保留供官網素材用，不入版控；README 例外入版控說明用途）
+/screenshots/*
+!/screenshots/README.md
+# README 引用的產品畫面逐檔放行（預設仍忽略，新截圖須顯式列名＋登記發佈白名單）
+!/screenshots/dashboard-overview.png
+!/screenshots/workspace-terminal.png
+!/screenshots/session-playback.png
+!/screenshots/command-audit.png
+
+# 知識圖譜產出（可由 code-review-graph / graphify 重建，不入版控）
+# code-review-graph 的 .code-review-graph/ 由工具自帶 .gitignore 自我忽略，無須在此列
+graphify-out/

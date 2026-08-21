@@ -1,0 +1,82 @@
+{
+  "access_request.created": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "新申請待審（詳見審核中心）"
+    }
+  },
+  "access_request.approved": {
+    "auto": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "已自動核准（填理由段位）（詳見審核中心）"
+    },
+    "manual": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "申請已核准（詳見審核中心）"
+    }
+  },
+  "access_request.approval_progress": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "已核准 {votes}/{required}，待其他審核人員補足（詳見審核中心）"
+    }
+  },
+  "access_request.rejected": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "申請已拒絕（詳見審核中心）"
+    }
+  },
+  "break_glass_used": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "{username} 破窗緊急連線（{duration_minutes} 分鐘），請儘速補審（詳見審核中心）"
+    }
+  },
+  "ticket_revoked": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "限時連線已提前撤銷（詳見審核中心）"
+    }
+  },
+  "break_glass_review_overdue": {
+    "default": {
+      "title": "連線申請 #{request_id}[：{asset_name}]",
+      "text": "破窗連線逾 {timeout_hours} 小時未補審，請儘速處理（詳見審核中心）"
+    }
+  },
+  "audit_failure": {
+    "default": {
+      "title": "審計機制失效",
+      "text": "機制 {mechanism} 於 {started_at} 失效（PCI 10.7.2）：{cause_code}[（失敗檢查點 {failed_points} 個）][（失敗區間 {failed_intervals} 個）]"
+    }
+  },
+  "audit_failure_resolved": {
+    "known": {
+      "title": "審計機制已恢復",
+      "text": "機制 {mechanism} 已恢復，失效區間 {started_at} ~ {ended_at}。"
+    },
+    "unknown": {
+      "title": "審計機制已恢復",
+      "text": "機制 {mechanism} 已恢復，起點不明（失效紀錄未落 DB）。"
+    }
+  },
+  "audit_failure_ongoing": {
+    "default": {
+      "title": "審計機制持續失效",
+      "text": "機制 {mechanism} 仍未恢復：{cause_code}[（積壓 {backlog} 筆）][（失敗檢查點 {failed_points} 個）][（失敗區間 {failed_intervals} 個）]（{reported_at}）"
+    }
+  },
+  "daily_review_overdue": {
+    "default": {
+      "title": "每日審閱逾期",
+      "text": "{date} 的安全事件審閱尚未簽核（PCI 10.4.1 要求每日審閱），請至儀表板完成。"
+    }
+  },
+  "test": {
+    "default": {
+      "title": "{product} 測試通知",
+      "text": "這是一則測試通知，用於驗證通知通道設定是否正確。"
+    }
+  }
+}

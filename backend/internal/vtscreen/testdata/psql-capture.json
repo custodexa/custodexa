@@ -1,0 +1,463 @@
+[
+  {
+    "name": "psql-simple",
+    "desc": "psql 單行查詢",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 23,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 609,
+        "data": "U0VMRUNUIDE7DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "U0VMRUNUIDE7DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "ID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgICAxDQooMSByb3cpDQoNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 1515,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 1516,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT 1;",
+    "expected_command_note": "第 1 個 in 事件即完整語句；\"\\\\q\\r\" 為 session 收尾，不計。"
+  },
+  {
+    "name": "psql-multiline",
+    "desc": "psql 多行語句（續行提示符 -#）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 21,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 607,
+        "data": "U0VMRUNU"
+      },
+      {
+        "dir": "out",
+        "ms": 608,
+        "data": "U0VMRUNU"
+      },
+      {
+        "dir": "in",
+        "ms": 1013,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1015,
+        "data": "DQobWz8yMDA0bA0bWz8yMDA0aGN1c3RvZGV4YS0jIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 1518,
+        "data": "MSBBUyB4"
+      },
+      {
+        "dir": "out",
+        "ms": 1518,
+        "data": "MSBBUyB4"
+      },
+      {
+        "dir": "in",
+        "ms": 1919,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1920,
+        "data": "DQobWz8yMDA0bA0bWz8yMDA0aGN1c3RvZGV4YS0jIA=="
+      },
+      {
+        "dir": "in",
+        "ms": 2424,
+        "data": "Ow0="
+      },
+      {
+        "dir": "out",
+        "ms": 2425,
+        "data": "Ow0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 2427,
+        "data": "IHggDQotLS0NCiAxDQooMSByb3cpDQoNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 2428,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 3326,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 3327,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT\n1 AS x\n;",
+    "expected_command_note": "三次 Enter 各送出一行 \"SELECT\"、\"1 AS x\"、\";\"；postgres 走 sqlMode，續行累積至 ; 才結算為單一指令，故期望值為三行以換行相接；\"\\\\q\\r\" 為收尾。"
+  },
+  {
+    "name": "psql-meta",
+    "desc": "psql 反斜線元命令 \\dt",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 14,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 14,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 606,
+        "data": "XGR0DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "XGR0DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 630,
+        "data": "ICAgICAgICAgICAgICAgICAgIExpc3Qgb2YgcmVsYXRpb25zDQogU2NoZW1hIHwgICAgICAgICAgICBOYW1lICAgICAgICAgICAgfCBUeXBlICB8ICBPd25lciAgIA0KLS0tLS0tLS0rLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLSstLS0tLS0tKy0tLS0tLS0tLS0NCiBwdWJsaWMgfCBhY2Nlc3NfcmVxdWVzdF9hcHByb3ZhbHMgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhY2Nlc3NfcmVxdWVzdHMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhY2Nlc3NfcmV2aWV3cyAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhbGVydF9ydWxlcyAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhcHByb3Zlcl9zY29wZXMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9hY2NvdW50cyAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9hdXRob3JpemF0aW9ucyAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ncm91cHMgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ob3N0X2tleXMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ub2RlcyAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldHMgICAgICAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGFpbl92ZXJpZnlfc3RhdGVzICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGVja3BvaW50X3RyaW1zICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGVja3BvaW50cyAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 630,
+        "data": "IHB1YmxpYyB8IGF1ZGl0X2ZhaWx1cmVfZXZlbnRzICAgICAgIHwgdGFibGUgfCBwb3N0Z3Jlcw0KIHB1YmxpYyB8IGF1ZGl0X2xvZ3MgICAgICAgICAgICAgICAgIHwgdGFibGUgfCBwb3N0Z3Jlcw0KIHB1YmxpYyB8IGF1ZGl0X3JldGVudGlvbl93YXRlcm1hcmtzIHwgdGFibGUgfCBwb3N0Z3Jlcw0KIHB1YmxpYyB8IGNoYW5nZV9zZWNyZXRfY2FuZGlkYXRlcyAgIHwgdGFibGUgfCBwb3N0Z3Jlcw0KIHB1YmxpYyB8IGNoYW5nZV9zZWNyZXRfcGxhbnMgICAgICAgIHwgdGFibGUgfCBwb3N0Z3Jlcw0KIHB1YmxpYyB8IGNoYW5nZV9zZWNyZXRfcmVjb3JkcyAgICAgIHwgdGFibGUgfCBwb3N0Z3Jlcw0KLS1Nb3JlLS0g"
+      },
+      {
+        "dir": "in",
+        "ms": 1813,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 1813,
+        "data": "DSAgICAgICAgIA0oRW50ZXI6bmV4dCBsaW5lIFNwYWNlOm5leHQgcGFnZSBROnF1aXQgUjpzaG93IHRoZSByZXN0KQ0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0="
+      },
+      {
+        "dir": "out",
+        "ms": 1814,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      }
+    ],
+    "expected_command": "\\dt",
+    "expected_command_note": "第 1 個 in 事件即完整元命令；\"\\\\q\\r\" 為收尾。"
+  },
+  {
+    "name": "psql-history",
+    "desc": "psql 上鍵召回歷史（整行重繪）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 21,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 21,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 608,
+        "data": "U0VMRUNUIDQyOw0="
+      },
+      {
+        "dir": "out",
+        "ms": 608,
+        "data": "U0VMRUNUIDQyOw0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 610,
+        "data": "ID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgIDQyDQooMSByb3cpDQoNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 611,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 1512,
+        "data": "G1tB"
+      },
+      {
+        "dir": "out",
+        "ms": 1513,
+        "data": "U0VMRUNUIDQyOw=="
+      },
+      {
+        "dir": "in",
+        "ms": 2014,
+        "data": "DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2014,
+        "data": "DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2016,
+        "data": "ID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgIDQyDQooMSByb3cpDQoNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 2016,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 2919,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 2924,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT 42;",
+    "expected_command_note": "in 序列為 \"SELECT 42;\\r\" 加 上鍵(CSI A) 加 Enter：上鍵召回同一段 capture 內唯一的前一條語句後再送出一次；\"\\\\q\\r\" 為收尾。"
+  },
+  {
+    "name": "psql-backspace",
+    "desc": "psql 退格修正",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 607,
+        "data": "U0VMRUNUIDExMQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 607,
+        "data": "U0VMRUNUIDExMQ=="
+      },
+      {
+        "dir": "in",
+        "ms": 1012,
+        "data": "f38="
+      },
+      {
+        "dir": "out",
+        "ms": 1013,
+        "data": "CBtbSwgbW0s="
+      },
+      {
+        "dir": "in",
+        "ms": 1416,
+        "data": "Ow0="
+      },
+      {
+        "dir": "out",
+        "ms": 1418,
+        "data": "Ow0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 1419,
+        "data": "ID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgICAxDQo="
+      },
+      {
+        "dir": "out",
+        "ms": 1419,
+        "data": "KDEgcm93KQ0KDQobWz8yMDA0aA=="
+      },
+      {
+        "dir": "out",
+        "ms": 1419,
+        "data": "Y3VzdG9kZXhhPSMg"
+      },
+      {
+        "dir": "in",
+        "ms": 2320,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 2321,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT 1;",
+    "expected_command_note": "in 序列為 \"SELECT 111\" 加 2 次 DEL(0x7f) 加 \";\\r\"：退格刪掉尾端兩個 1 後補上分號；\"\\\\q\\r\" 為收尾。"
+  },
+  {
+    "name": "psql-tab",
+    "desc": "psql Tab 補全（SELE<TAB>）",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 21,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 612,
+        "data": "U0VMRUNUICogRlJPTSBzZXNz"
+      },
+      {
+        "dir": "out",
+        "ms": 613,
+        "data": "U0VMRUNUICogRlJPTSBzZXNz"
+      },
+      {
+        "dir": "in",
+        "ms": 1017,
+        "data": "CQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1038,
+        "data": "B2lvbg=="
+      },
+      {
+        "dir": "in",
+        "ms": 1823,
+        "data": "FQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 1823,
+        "data": "DRtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbSw=="
+      },
+      {
+        "dir": "in",
+        "ms": 2224,
+        "data": "U0VMRUNUIDI7DQ=="
+      },
+      {
+        "dir": "out",
+        "ms": 2226,
+        "data": "U0VMRUNUIDI7DQobWz8yMDA0bA0="
+      },
+      {
+        "dir": "out",
+        "ms": 2228,
+        "data": "ID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgICAyDQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg"
+      },
+      {
+        "dir": "in",
+        "ms": 3129,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 3130,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT 2;",
+    "expected_command_note": "in 序列為 \"SELECT * FROM sess\" 加 TAB 加 Ctrl-U(0x15) 加 \"SELECT 2;\\r\"：Ctrl-U 在 Enter 之前清掉整行，SELECT * FROM sess 那串從未送出；\"\\\\q\\r\" 為收尾。（design.md D4.4 已知答案）"
+  },
+  {
+    "name": "psql-long-wrap",
+    "desc": "psql 超過終端寬度的長語句",
+    "events": [
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "cHNxbCAoMTYuMTQpDQpUeXBlICJoZWxwIiBmb3IgaGVscC4NCg0K"
+      },
+      {
+        "dir": "out",
+        "ms": 20,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 610,
+        "data": "U0VMRUNUICd6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enonOw0="
+      },
+      {
+        "dir": "out",
+        "ms": 612,
+        "data": "U0VMRUNUICd6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enonOw0KG1s/MjAwNGwN"
+      },
+      {
+        "dir": "out",
+        "ms": 615,
+        "data": "ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgP2NvbHVtbj8gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tDQogenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6DQooMSByb3cpDQoNCg=="
+      },
+      {
+        "dir": "out",
+        "ms": 615,
+        "data": "G1s/MjAwNGhjdXN0b2RleGE9IyA="
+      },
+      {
+        "dir": "in",
+        "ms": 1815,
+        "data": "XHEN"
+      },
+      {
+        "dir": "out",
+        "ms": 1816,
+        "data": "XHENChtbPzIwMDRsDQ=="
+      }
+    ],
+    "expected_command": "SELECT 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';",
+    "expected_command_note": "第 1 個 in 事件即完整語句；\"\\\\q\\r\" 為收尾。"
+  }
+]

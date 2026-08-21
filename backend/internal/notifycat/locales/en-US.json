@@ -1,0 +1,82 @@
+{
+  "access_request.created": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "New request awaiting review (see the review center)."
+    }
+  },
+  "access_request.approved": {
+    "auto": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "Auto-approved (reason-only tier) (see the review center)."
+    },
+    "manual": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "Request approved (see the review center)."
+    }
+  },
+  "access_request.approval_progress": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "Approved {votes}/{required}; waiting for the remaining approvers (see the review center)."
+    }
+  },
+  "access_request.rejected": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "Request rejected (see the review center)."
+    }
+  },
+  "break_glass_used": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "{username} started a break-glass emergency session ({duration_minutes} minutes); post-review is required as soon as possible (see the review center)."
+    }
+  },
+  "ticket_revoked": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "The time-limited access has been revoked early (see the review center)."
+    }
+  },
+  "break_glass_review_overdue": {
+    "default": {
+      "title": "Access request #{request_id}[: {asset_name}]",
+      "text": "A break-glass session has gone {timeout_hours} hours without post-review; please handle it as soon as possible (see the review center)."
+    }
+  },
+  "audit_failure": {
+    "default": {
+      "title": "Audit mechanism failure",
+      "text": "Mechanism {mechanism} failed at {started_at} (PCI 10.7.2): {cause_code}[ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)]"
+    }
+  },
+  "audit_failure_resolved": {
+    "known": {
+      "title": "Audit mechanism recovered",
+      "text": "Mechanism {mechanism} has recovered; outage window {started_at} ~ {ended_at}."
+    },
+    "unknown": {
+      "title": "Audit mechanism recovered",
+      "text": "Mechanism {mechanism} has recovered; start time unknown (the failure record never reached the database)."
+    }
+  },
+  "audit_failure_ongoing": {
+    "default": {
+      "title": "Audit mechanism still failing",
+      "text": "Mechanism {mechanism} has not recovered: {cause_code}[ ({backlog} pending)][ ({failed_points} failed checkpoints)][ ({failed_intervals} failed intervals)] ({reported_at})"
+    }
+  },
+  "daily_review_overdue": {
+    "default": {
+      "title": "Daily review overdue",
+      "text": "The security event review for {date} has not been signed off (PCI 10.4.1 requires a daily review); please complete it on the dashboard."
+    }
+  },
+  "test": {
+    "default": {
+      "title": "{product} test notification",
+      "text": "This is a test notification used to verify that the channel is configured correctly."
+    }
+  }
+}

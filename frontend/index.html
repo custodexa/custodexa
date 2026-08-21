@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/brand/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 初始 title 語言中立（僅品牌名）：正式 title 由 i18n 依語言更新 -->
+    <title>Custodexa</title>
+    <!-- Apache Guacamole 1.5.5 官方客戶端庫（修復 Blob bug）-->
+    <script src="/guacamole-1.5.5.min.js"></script>
+    <script>
+      // 為 Guacamole.Client 添加狀態常數（1.5.5 版本未導出）
+      if (window.Guacamole && window.Guacamole.Client && !window.Guacamole.Client.State) {
+        window.Guacamole.Client.State = {
+          IDLE: 0,
+          CONNECTING: 1,
+          WAITING: 2,
+          CONNECTED: 3,
+          DISCONNECTING: 4,
+          DISCONNECTED: 5
+        };
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

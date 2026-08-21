@@ -1,0 +1,105 @@
+services:
+  # PostgreSQL 資料庫
+  #
+  # 基底釘版（2026-08-17 查證）：一律釘到具體版本，不用浮動 major tag。理由有三，
+  # 皆非潔癖：(1) AGPL 的「對應源碼」義務要指名交付二進位對應的是哪一版元件；
+  # (2) 離線安裝包要能指名包內是哪一版；(3) 漏洞公告要能說「升到 X 版」——浮動 tag
+  # 使 X 連自己都不知道。不釘版，這三件事都無法履行。
+  # **postgres 是唯一同時「會出貨」且「原本未釘版」的基底**（node 只在建置階段），
+  # 故優先序最高：這顆容器帶著使用者的全部資料跑在他們的機房裡。
+  # 釘 16.15-alpine3.24：查證當日 postgres:16-alpine ＝ 16.15-alpine ＝ 16.15-alpine3.24
+  # （digest 皆 sha256:cf78e766…），故本次釘版不改變任何交付內容，只是把「當時碰巧拉到
+  # 什麼」變成「指名拉什麼」。**同時釘 alpine3.24 而非只釘 PG 版本**：這是執行階段映像，
+  # OS 套件層 CVE 直接落在使用者的執行環境，故基底 minor 也需可指名（與 frontend 的
+  # nginx stage 同理，見 docker/frontend/Dockerfile）。
+  # 續期提醒：PostgreSQL 16 的社群支援至 2028-11；升 major 需要 pg_upgrade，不是換 tag。
+  postgres:
+    image: postgres:16.15-alpine3.24
+    container_name: custodexa-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-custodexa}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ${DATA_PATH:-./data}/postgres:/var/lib/postgresql/data
+    networks:
+      - custodexa-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Guacamole Daemon
+  guacd:
+    image: custodexa/guacd:latest
+    build:
+      context: .
+      dockerfile: docker/guacd/Dockerfile
+    container_name: custodexa-guacd
+    volumes:
+      # 與 backend 共享錄影目錄，讓 guacd 寫出的 RDP/VNC 錄影持久且 backend 可讀
+      - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
+    networks:
+      - custodexa-network
+    restart: always
+
+  # Go 後端服務（生產模式）
+  backend:
+    image: custodexa/backend:latest
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      target: production
+    container_name: custodexa-backend
+    # 使用者可調值（機密/DB 認證/DB_SSLMODE/功能開關/LDAP/運維上限）一律走 .env（與 dev 一致）
+    env_file:
+      - .env
+    # environment: 只留純拓撲/模式常數（compose 提供，且不在 .env 內故無覆寫衝突）
+    environment:
+      PORT: 8080
+      GIN_MODE: release
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+      AUDIT_LOG_PATH: /var/log/custodexa/audit
+      RECORDING_PATH: /var/lib/custodexa/recordings
+    volumes:
+      - ${DATA_PATH:-./data}/audit:/var/log/custodexa/audit
+      - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_started
+    networks:
+      - custodexa-network
+    restart: always
+
+  # Nginx + Vue 前端服務（生產模式）
+  frontend:
+    image: custodexa/frontend:latest
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      target: production
+    container_name: custodexa-frontend
+    # 只映射 80/HTTP（deployment-hardening CPG-012）：本專案採 external-ingress TLS 契約，
+    # 不自帶 TLS termination；移除舊 443 映射（曾宣告不存在的 TLS＝假安全訊號）。
+    # 對外 TLS 由部署方的反向代理/ingress 承載，見部署指南 docs/QUICKSTART.md 與
+    # docker/reverse-proxy/nginx-tls.conf.example。
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - custodexa-network
+    restart: always
+
+# audit/recordings/postgres 皆改 ${DATA_PATH:-./data} bind mount，無 named volume
+networks:
+  custodexa-network:
+    driver: bridge

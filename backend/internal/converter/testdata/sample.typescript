@@ -1,0 +1,9 @@
+[BEGIN TYPESCRIPT]
+Welcome to OpenSSH Server
+ssh-test-server:~$ ls
+file1.txt  file2.txt
+ssh-test-server:~$ echo "Hello World"
+Hello World
+ssh-test-server:~$ exit
+logout
+[END TYPESCRIPT]

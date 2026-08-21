@@ -1,0 +1,82 @@
+{
+  "access_request.created": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "新規申請が審査待ちです（審査センターをご確認ください）。"
+    }
+  },
+  "access_request.approved": {
+    "auto": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "自動承認されました（理由記入ティア）（審査センターをご確認ください）。"
+    },
+    "manual": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "申請が承認されました（審査センターをご確認ください）。"
+    }
+  },
+  "access_request.approval_progress": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "承認 {votes}/{required} 件。残りの承認者の対応待ちです（審査センターをご確認ください）。"
+    }
+  },
+  "access_request.rejected": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "申請が却下されました（審査センターをご確認ください）。"
+    }
+  },
+  "break_glass_used": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "{username} が緊急接続（ブレークグラス）を開始しました（{duration_minutes} 分）。速やかに事後審査を行ってください（審査センターをご確認ください）。"
+    }
+  },
+  "ticket_revoked": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "期限付き接続が繰り上げで取り消されました（審査センターをご確認ください）。"
+    }
+  },
+  "break_glass_review_overdue": {
+    "default": {
+      "title": "接続申請 #{request_id}[：{asset_name}]",
+      "text": "緊急接続から {timeout_hours} 時間が経過しても事後審査が未実施です。速やかに対応してください（審査センターをご確認ください）。"
+    }
+  },
+  "audit_failure": {
+    "default": {
+      "title": "監査メカニズム障害",
+      "text": "メカニズム {mechanism} が {started_at} に障害（PCI 10.7.2）：{cause_code}[（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]"
+    }
+  },
+  "audit_failure_resolved": {
+    "known": {
+      "title": "監査メカニズム復旧",
+      "text": "メカニズム {mechanism} が復旧しました。障害区間 {started_at} ~ {ended_at}。"
+    },
+    "unknown": {
+      "title": "監査メカニズム復旧",
+      "text": "メカニズム {mechanism} が復旧しました。開始時刻は不明です（障害記録がデータベースに残っていません）。"
+    }
+  },
+  "audit_failure_ongoing": {
+    "default": {
+      "title": "監査メカニズム障害継続中",
+      "text": "メカニズム {mechanism} は未復旧です：{cause_code}[（未処理 {backlog} 件）][（異常チェックポイント {failed_points} 件）][（異常区間 {failed_intervals} 件）]（{reported_at}）"
+    }
+  },
+  "daily_review_overdue": {
+    "default": {
+      "title": "日次レビュー期限超過",
+      "text": "{date} のセキュリティイベントレビューが未承認です（PCI 10.4.1 は日次レビューを要求しています）。ダッシュボードで完了してください。"
+    }
+  },
+  "test": {
+    "default": {
+      "title": "{product} テスト通知",
+      "text": "これは通知チャネルの設定が正しいか確認するためのテスト通知です。"
+    }
+  }
+}
