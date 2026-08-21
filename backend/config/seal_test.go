@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -33,6 +34,8 @@ func TestSealConfigValidateAcceptsDefaults(t *testing.T) {
 	}
 }
 
+// 「冷卻門檻為負」不再列於下方案例：門檻已是 uint32，負值於欄位層無法表達。
+// 該案例移到 TestSealConfigLoadRejectsOutOfRangeThreshold 的 env 層——負值只可能從 env 進來。
 func TestSealConfigValidateRejectsDisablingValues(t *testing.T) {
 	cases := map[string]func(*SealConfig){
 		"退避基準為零":    func(c *SealConfig) { c.BackoffBase = 0 },
@@ -42,8 +45,7 @@ func TestSealConfigValidateRejectsDisablingValues(t *testing.T) {
 		"冷卻為零":      func(c *SealConfig) { c.Cooldown = 0 },
 		"冷卻封頂低於基準":  func(c *SealConfig) { c.CooldownMax = time.Second },
 		"冷卻門檻為零":    func(c *SealConfig) { c.CooldownThreshold = 0 },
-		"冷卻門檻為負":    func(c *SealConfig) { c.CooldownThreshold = -1 },
-		"冷卻門檻大到不可能": func(c *SealConfig) { c.CooldownThreshold = 1 << 40 },
+		"冷卻門檻大到不可能": func(c *SealConfig) { c.CooldownThreshold = math.MaxUint32 },
 		"退避基準超過上限":  func(c *SealConfig) { c.BackoffBase = 48 * time.Hour },
 	}
 	for name, mutate := range cases {
@@ -69,6 +71,24 @@ func TestSealConfigLoadRejectsOutOfRangeSeconds(t *testing.T) {
 			c := LoadSeal()
 			if err := c.Validate(); err == nil {
 				t.Fatalf("越界秒數 %q 轉出的 Cooldown=%v 竟通過驗證", v, c.Cooldown)
+			}
+		})
+	}
+}
+
+// TestSealConfigLoadRejectsOutOfRangeThreshold 冷卻門檻的越界 env 一律 fail-close。
+//
+// 門檻欄位已是 uint32，負值與超出 32 位元的寫法在讀取期就無法成為一個值——
+// 但那不表示它們可以被靜默替換成內建預設：一個打錯的門檻若看起來生效，
+// 部署方會以為自己調過全域冷卻，而實際跑的是別的數字。故此類 env 走與
+// 「顯式寫零」相同的 fail-close 路徑。
+func TestSealConfigLoadRejectsOutOfRangeThreshold(t *testing.T) {
+	for _, v := range []string{"0", "-1", "abc", "4294967296", "1048577"} {
+		t.Run("SEAL_UNSEAL_COOLDOWN_THRESHOLD="+v, func(t *testing.T) {
+			t.Setenv("SEAL_UNSEAL_COOLDOWN_THRESHOLD", v)
+			c := LoadSeal()
+			if err := c.Validate(); err == nil {
+				t.Fatalf("越界門檻 %q 轉出的 CooldownThreshold=%d 竟通過驗證", v, c.CooldownThreshold)
 			}
 		})
 	}

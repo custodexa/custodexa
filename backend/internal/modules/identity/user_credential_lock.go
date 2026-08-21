@@ -84,8 +84,10 @@ func withUserCredentialLockTx(tx *gorm.DB, userID uint, fn func(tx *gorm.DB) err
 	switch tx.Dialector.Name() {
 	case "postgres":
 		// xact lock：隨交易結束自動釋放，無持有者崩潰殘留問題
+		// userID 經 ParseUint(bitSize 32) 而來，uint32→int32 在該值域內是雙射，
+		// advisory lock key（pg 的 int4 objid）唯一性不受影響
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?, ?)",
-			userCredentialLockClass, int32(userID)).Error; err != nil {
+			userCredentialLockClass, int32(uint32(userID))).Error; err != nil {
 			return fmt.Errorf("取得使用者憑證互斥鎖失敗: %w", err)
 		}
 		return fn(tx)

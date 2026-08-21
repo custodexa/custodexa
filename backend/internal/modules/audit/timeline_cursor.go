@@ -59,7 +59,9 @@ func DecodeTimelineCursor(s string) (TimelineCursor, error) {
 	if err != nil {
 		return c, ErrInvalidCursor
 	}
-	id, err := strconv.ParseUint(parts[2], 10, 64)
+	// bitSize 32：id 超出 32 位元值域直接落入下方 ErrInvalidCursor，
+	// 使後續 uint(id) 轉換恆安全（無截斷）
+	id, err := strconv.ParseUint(parts[2], 10, 32)
 	if err != nil {
 		return c, ErrInvalidCursor
 	}

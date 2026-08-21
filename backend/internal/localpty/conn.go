@@ -40,12 +40,17 @@ func LookupUser(name string) (uid, gid int, home string, err error) {
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("查無降權執行身分 %q（image 需含該帳號，請重建 backend image）: %w", name, err)
 	}
-	if uid, err = strconv.Atoi(u.Uid); err != nil {
+	// bitSize 32：uid/gid 負值與超界直接落入下方 fail-close 錯誤路徑，
+	// 使後續 uint32(uid)/uint32(gid) 轉換（StartWithOptions）恆安全
+	uid64, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
 		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 uid 非數值: %w", name, err)
 	}
-	if gid, err = strconv.Atoi(u.Gid); err != nil {
+	gid64, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
 		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 gid 非數值: %w", name, err)
 	}
+	uid, gid = int(uid64), int(gid64)
 	if uid == 0 || gid == 0 {
 		return 0, 0, "", fmt.Errorf("降權執行身分 %q 不得為 root（uid=%d gid=%d）", name, uid, gid)
 	}

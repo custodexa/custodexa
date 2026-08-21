@@ -111,7 +111,7 @@ func newSealMachine(s1 *stage1, swap *swappableHandler) (*sealWiring, error) {
 	limiter := seal.NewLimiter(seal.LimiterConfig{
 		BaseBackoff:       sealCfg.BackoffBase,
 		MaxBackoff:        sealCfg.BackoffMax,
-		GlobalThreshold:   uint32(sealCfg.CooldownThreshold),
+		GlobalThreshold:   sealCfg.CooldownThreshold,
 		GlobalCooldown:    sealCfg.Cooldown,
 		MaxGlobalCooldown: sealCfg.CooldownMax,
 	})
