@@ -8,6 +8,13 @@
 An open-source bastion host: funnel every privileged connection to your servers
 and databases through a single gateway — every session recorded, every command logged.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+    <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; every session leaves a recording, a command log, and an Ed25519-sealed audit chain." src="docs/assets/architecture-light.svg" width="920">
+  </picture>
+</p>
+
 ## Why Custodexa
 
 Any team managing a fleet of servers and databases eventually runs into the same
@@ -19,11 +26,6 @@ problems:
   around in note apps and chat windows; one departure forces a company-wide rotation.
 - **Auditors want evidence.** "We have controls" doesn't pass an audit. You need
   complete operation logs and session recordings you can actually produce.
-
-Custodexa's approach: users connect to target hosts through the browser, while plaintext
-credentials live only in the backend — the frontend and the user never touch them. Every
-session is recorded and replayable; command-level audit is searchable, alertable, and can
-block dangerous commands in real time. Target hosts need **no agent installed**.
 
 ## Features
 
