@@ -89,18 +89,6 @@ Full configuration options, development mode, and troubleshooting are covered in
 switch to the development stack (hot reload for both frontend and backend, plus test
 target machines for every protocol). Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Roadmap
-
-These are planned directions, not schedule commitments; discussion in issues is
-welcome:
-
-- Offline installation bundle: image delivery for air-gapped environments.
-- Input-side command recording, to cover audit shapes that cannot be captured today,
-  such as a connection dropping immediately after a command is sent.
-- High availability: multi-instance deployment and HA for the key service.
-- Public CI and additional protocol support.
-- English documentation. Full docs are Traditional Chinese today; translations welcome.
-
 ## Architecture
 
 **Backend** Go · Gin · GORM · PostgreSQL 16　**Frontend** Vue 3 · Element Plus · Vite
@@ -119,8 +107,8 @@ Two decisions that shape the whole system:
 ## Documentation
 
 > Full documentation (quick start, operations guides, API reference) is currently written
-> in **Traditional Chinese**; the product UI itself supports English. English
-> documentation is on the roadmap, and translation contributions are very welcome.
+> in **Traditional Chinese**; the product UI itself supports English. Translation
+> contributions are very welcome.
 
 | What you want to do | Read this |
 |------|------|
