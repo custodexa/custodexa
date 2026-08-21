@@ -14,6 +14,10 @@
 #   2. 將 upstream 指向 Custodexa frontend（同一 docker network 用服務名 frontend:80；
 #      或指向該主機發布的 127.0.0.1:80——見「不可信 hop」註記）。
 #   3. server_name 換成你的網域。
+#   4. 用官方 nginx image 時，建議把本檔掛載成 /etc/nginx/conf.d/default.conf 取代內建檔——
+#      內建 default.conf 會與本設定衝突（同名 server_name），或以 welcome 頁兜底吃掉
+#      不匹配網域的請求。
+#   5. `http2 on` 為 nginx 1.25.1+ 指令；舊版 nginx 改寫成 `listen 443 ssl http2;`。
 #
 # 不可信 hop（re-encrypt）：若此反代與 Custodexa 主機之間跨越不可信網段（如跨主機、公用雲 overlay），
 # 該 hop 亦須加密（例如上游改用 https 並驗證憑證，或走加密隧道）；「有 LB」不等同完整 TLS。
