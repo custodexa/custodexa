@@ -1,0 +1,65 @@
+# 開發專用 Dockerfile，使用 Air 實現熱重載
+#
+# 基底版本須不低於 backend/go.mod 宣告（由 container-build 守衛把關）。
+# 不設 GOTOOLCHAIN=auto：該機制會自動下載工具鏈以掩蓋基底與 go.mod 的版本落差，
+# 使不一致在開發期無症狀，卻於未設定該變數的正式建置階段失敗（已實際發生過一次）。
+
+# MSSQL CLI（sqlcmd）建置階段——與正式版 Dockerfile 的同名階段逐項一致。
+# 開發版亦需該二進位：dbproxy 的 mssql 會話在開發容器內執行，缺 client 即 fail-close。
+# 基底須不低於 go-sqlcmd v1.10.0 的宣告（go 1.25.7）；理由詳見正式版註解。
+# main 套件為 cmd/modern（cmd/sqlcmd 是旗標定義的函式庫套件）；產出檔名 modern，
+# COPY 時更名為 sqlcmd。詳見正式版 Dockerfile 的同名階段註解。
+FROM golang:1.26.6-alpine AS sqlcmd-builder
+ARG SQLCMD_VERSION=v1.10.0
+RUN apk add --no-cache git \
+    && CGO_ENABLED=0 go install -trimpath \
+       -ldflags "-w -s -X main.version=${SQLCMD_VERSION}" \
+       github.com/microsoft/go-sqlcmd/cmd/modern@${SQLCMD_VERSION}
+
+# **與正式版 builder 同版（1.26.6）**：測試在本 image 內跑，版本落差會使
+# 「開發期全綠、正式版建置失敗」的舊缺陷重演（container-build 已記載發生過兩次）。
+# 更直接的理由：**這顆 image 就是驗證用的執行環境**，它若停在舊版，等於用一個工具鏈
+# 驗證、卻出貨另一個工具鏈建出的二進位。選 1.26.6 的理由（1.24 已 EOL、1.27rc 已出
+# 使 1.25 的 EOL 進入倒數）詳見正式版 Dockerfile 檔首。
+FROM golang:1.26.6-alpine
+
+# 安裝 Air 用於熱重載
+RUN go install github.com/air-verse/air@v1.52.3
+
+# 安裝必要工具；資料庫 CLI 供 dbproxy（database-protocol）、kubectl 供 k8sproxy（k8s-exec）
+# mariadb-connector-c 提供 client auth plugin（caching_sha2_password.so）：
+# mysql-client（MariaDB client）預設不含，連 MySQL 8（caching_sha2_password）會 ERROR 1045
+#
+# openssl 為**測試相依**（正式版映像不裝）：config.KEKGenerateCommands 文件化給
+# operator 的生成指令含 `openssl rand -hex 32` 與 `openssl rand -base64 32`，
+# 而 TestDocumentedKEKCommandsAlwaysValidate 以 `sh -c` **實跑**每一條驗證其產出
+# 必然合格。缺二進位就 skip 會得到「綠燈但什麼都沒驗」的守衛——而「文件宣稱與
+# 實作脫節」正是該守衛要防的缺陷本身。
+RUN apk add --no-cache git postgresql16-client mysql-client mariadb-connector-c redis kubectl openssl
+
+# MSSQL CLI：Alpine 無現成套件（ODBC 版 mssql-tools18 受 EULA 約束），自建後複製
+COPY --from=sqlcmd-builder /go/bin/modern /usr/local/bin/sqlcmd
+
+# 資料與日誌目錄 0700（與正式版一致）：錄影是會話全文，可能含使用者鍵入的密碼，
+# 資料庫 CLI 的降權身分連目錄都不得進入。開發版一併建立，環境不變式測試才是在
+# 「與出貨相同的佈局」上跑
+RUN mkdir -p /var/log/custodexa /var/lib/custodexa/recordings \
+    && chmod 0700 /var/log/custodexa /var/lib/custodexa /var/lib/custodexa/recordings
+
+# 資料庫 CLI 子程序的專用非 root 身分（database-protocol「CLI 子程序執行環境降權」）。
+# 與正式版 Dockerfile 的同名區塊逐項一致——環境不變式的測試在本 image 內跑，
+# 兩版身分不同則測的不是要出貨的那個環境。理由詳見正式版 Dockerfile 的註解。
+RUN addgroup -g 65123 -S dbcli \
+    && adduser -u 65123 -G dbcli -S -D -H -h /var/empty/dbcli -s /sbin/nologin dbcli \
+    && mkdir -p /var/empty/dbcli \
+    && chmod 0555 /var/empty/dbcli \
+    && chmod 0755 /tmp /var/tmp \
+    && chmod 0755 /go /go/bin /go/src
+
+WORKDIR /app
+
+# 暴露端口
+EXPOSE 8080
+
+# 使用 Air 啟動，實現熱重載
+CMD ["air", "-c", ".air.toml"]

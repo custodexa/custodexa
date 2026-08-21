@@ -1,0 +1,23 @@
+# Custodexa 對外 TLS termination 反向代理範例（Caddy，選配）
+# deployment-hardening CPG-012：external-ingress TLS 契約。
+#
+# 與 nginx-tls.conf.example 等效的最小契約示範。Caddy 對公開網域可自動取得/續期 ACME 憑證；
+# 內網/私有 CA 場景請改用明確 tls 指令指向你的憑證。
+# 注意：Caddy 的自動 HTTPS 需公開可達的 80/443 與 DNS——若你的部署不符，請沿用 nginx 範例並手動掛憑證。
+#
+# 契約要點（Caddy 預設已滿足大半）：
+#   - TLS 1.2+、可信憑證：Caddy 預設。
+#   - HTTP→HTTPS redirect：Caddy 預設（80 自動導轉 443）。
+#   - WebSocket upgrade 轉發（wss）：reverse_proxy 預設透傳 Upgrade/Connection。
+#   - HSTS：以 header 指令加上（先短 max-age，穩定後再拉長）。
+#   - 不可信 hop 須 re-encrypt：若跨不可信網段到 Custodexa 主機，上游改 https:// 並驗證憑證。
+
+your.domain.example {
+	# 對外自動 HTTPS；反代到 Custodexa frontend（同 network 用服務名；跨主機考慮 re-encrypt）
+	reverse_proxy frontend:80 {
+		header_up X-Forwarded-Proto https
+	}
+
+	# HSTS（先採較短 max-age）
+	header Strict-Transport-Security "max-age=86400"
+}

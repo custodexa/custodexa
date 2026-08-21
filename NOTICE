@@ -1,0 +1,160 @@
+Custodexa
+Copyright 2026 The Custodexa Authors
+
+This product is licensed under the GNU Affero General Public License v3.0.
+See the LICENSE file for the full text.
+
+This product includes third-party software. A complete inventory of the
+third-party components distributed with this product, together with their
+licenses, is provided in THIRD-PARTY-LICENSES.md.
+
+The following notices are reproduced verbatim from the NOTICE files of
+Apache License 2.0 licensed components that are distributed as part of this
+product, as required by section 4(d) of that license.
+
+Scope of this file: of the 44 Apache License 2.0 components compiled into or
+shipped with this product, 12 carry a NOTICE file of their own; those 12 are
+reproduced below. The remaining 32 have no NOTICE file upstream, so section
+4(d) does not apply to them; they are listed with their licenses in
+THIRD-PARTY-LICENSES.md.
+
+Components that run as separate processes inside the container images are
+covered by section 3 of THIRD-PARTY-LICENSES.md, not by the count above. Of
+those, the only one that ships a NOTICE file upstream is Apache Guacamole
+(guacamole-server / guacd); it is reproduced as the last entry below. The
+Alpine Linux packages and the other libraries built into the guacd image
+(FreeRDP, LibVNCServer, libssh2, libtelnet, libwebsockets) carry no NOTICE
+file, so section 4(d) does not apply to them either.
+
+================================================================================
+Apache Guacamole -- guacamole-common-js
+(frontend/public/guacamole-1.5.5.min.js)
+================================================================================
+
+Apache Guacamole
+Copyright 2020 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+================================================================================
+github.com/aws/aws-sdk-go-v2
+================================================================================
+
+AWS SDK for Go
+Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2014-2015 Stripe, Inc.
+
+================================================================================
+github.com/aws/smithy-go
+================================================================================
+
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+================================================================================
+github.com/coreos/go-oidc/v3
+================================================================================
+
+CoreOS Project
+Copyright 2014 CoreOS, Inc
+
+This product includes software developed at CoreOS, Inc.
+(http://www.coreos.com/).
+
+================================================================================
+github.com/pquerna/otp
+================================================================================
+
+otp
+Copyright (c) 2014, Paul Querna
+
+This product includes software developed by
+Paul Querna (http://paul.querna.org/).
+
+================================================================================
+github.com/prometheus/client_golang
+================================================================================
+
+Prometheus instrumentation library for Go applications
+Copyright 2012-2015 The Prometheus Authors
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+
+The following components are included in this product:
+
+perks - a fork of https://github.com/bmizerany/perks
+https://github.com/beorn7/perks
+Copyright 2013-2015 Blake Mizerany, Björn Rabenstein
+See https://github.com/beorn7/perks/blob/master/README.md for license details.
+
+Go support for Protocol Buffers - Google's data interchange format
+http://github.com/golang/protobuf/
+Copyright 2010 The Go Authors
+See source code for license details.
+
+================================================================================
+github.com/prometheus/client_model
+================================================================================
+
+Data model artifacts for Prometheus.
+Copyright 2012-2015 The Prometheus Authors
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+================================================================================
+github.com/prometheus/common
+================================================================================
+
+Common libraries shared by Prometheus Go components.
+Copyright 2015 The Prometheus Authors
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+================================================================================
+github.com/prometheus/procfs
+================================================================================
+
+procfs provides functions to retrieve system, kernel and process
+metrics from the pseudo-filesystem proc.
+
+Copyright 2014-2015 The Prometheus Authors
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+================================================================================
+go.yaml.in/yaml/v2
+gopkg.in/yaml.v2
+gopkg.in/yaml.v3
+================================================================================
+
+(The NOTICE files of these three modules are byte-identical; reproduced once.)
+
+Copyright 2011-2016 Canonical Ltd.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+================================================================================
+Apache Guacamole -- guacamole-server / guacd
+(distributed inside the custodexa/guacd container image)
+================================================================================
+
+Apache Guacamole
+Copyright 2020 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).

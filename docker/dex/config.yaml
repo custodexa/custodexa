@@ -1,0 +1,76 @@
+# dex（CNCF 輕量 OIDC provider）dev 靶機組態 —— idp-oidc-integration D18
+#
+# **本檔只服務開發與測試，不進任何產品路徑**：僅存在於 docker-compose.dev.yml，
+# 正式版 docker-compose.yml 不含 dex 服務。
+#
+# ---- issuer 為何是 dex.localhost（不可隨手改）----
+# go-oidc 對 discovery 回應的 issuer 做**完整字串比對**，故後端（容器內解析）與
+# 瀏覽器（host 端解析）必須用**同一個字串**才可能成立：
+#   - IP 字面值（127.0.0.1）不可行：backend 容器內的 127.0.0.1 指向 backend 自己，
+#     而 extra_hosts 只能改 hostname 解析、改不了 IP 字面值的 loopback 語義。
+#   - `dex.localhost` 可行：compose 的 network alias 覆寫該名稱，Go 的 net.Resolver
+#     於容器內解析至 dex 容器 IP（2026-08-03 實測 172.22.0.x）；瀏覽器端則依
+#     RFC 6761 解析至 loopback，經 host 的 127.0.0.1:5556 port mapping 到同一個 dex。
+#   - 埠內外一致（皆 5556），故兩端字串同為 http://dex.localhost:5556/dex。
+# 改動本值時，compose 的 network alias 與 host port mapping 必須同步改。
+issuer: http://dex.localhost:5556/dex
+
+# 記憶體儲存：每次重啟即回到乾淨狀態（測試靶機不需保存授權碼與 refresh token）
+storage:
+  type: memory
+
+web:
+  # 容器內綁 0.0.0.0；對外暴露面由 compose 的 127.0.0.1:5556:5556 收斂至本機
+  http: 0.0.0.0:5556
+
+oauth2:
+  # 略過同意畫面：e2e 腳本不需再點一次「Grant Access」
+  skipApprovalScreen: true
+
+# 靜態 client：對應管理端要建立的 OIDC provider 設定。
+# client_id / client_secret 即下列兩值（dev 專用，非機密）。
+staticClients:
+  - id: custodexa-dev
+    name: Custodexa Dev
+    secret: custodexa-dev-secret
+    # redirect_uri 必須與後端組出的完全一致（scheme／大小寫／尾斜線皆精確比對）：
+    # ${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback。dev 的 PUBLIC_BASE_URL 為
+    # http://localhost:3000（Vite dev server，/api 反向代理至 backend:8080）。
+    redirectURIs:
+      - http://localhost:3000/api/v1/auth/oidc/callback
+
+# 靜態使用者（密碼以 bcrypt 存放，明文見下方註解——dev 專用）
+enablePasswordDB: true
+staticPasswords:
+  # (1) 一般測試使用者：首登自動供應、准入通過、回訪等情境
+  #     帳號 oidcuser@dex.localhost / 密碼 oidcpass123
+  - email: oidcuser@dex.localhost
+    username: oidcuser
+    userID: 11111111-1111-4111-8111-111111111111
+    hash: "$2y$10$FEXoDICGbHPSL7whhE1OAe7HLv4We6wrVXjVQMf49Nymw6LtuFXw6"
+
+  # (2) 同名衝突測試使用者：映射所得的 username 刻意等於內建本地帳號 admin，
+  #     用於驗證「IdP 自報名稱撞上既有本地帳號時必須拒絕，不得靜默接管」。
+  #     帳號 admin@dex.localhost / 密碼 conflictpass123
+  #
+  #     **衝突必須靠 email 的本地部分製造，不能靠 username 欄位**（2026-08-04 實測）：
+  #     dex 的 local（password DB）連接器把 `username` 放進 `name` claim，**不發
+  #     `preferred_username`**。後端 mapUsername 的順序是
+  #     preferred_username → 已驗證 email 的本地部分 → subject，故 `username: admin`
+  #     不會被採用，會退到 email 本地部分。早期版本以 conflict@dex.localhost ＋
+  #     username: admin 組合，實跑得到的是「供應出一個叫 conflict 的新帳號」而非衝突——
+  #     測試恆綠而無效。改本值時請先以 dex token 端點解一次 id_token 確認 claim 實況。
+  - email: admin@dex.localhost
+    username: admin
+    userID: 22222222-2222-4222-8222-222222222222
+    hash: "$2y$10$FhlCmX6SG2lc3IojoyvOd.iskodw4kFeofLecpYkTU9C/bviCVe0m"
+
+  # (3) 准入拒絕測試使用者：email 網域刻意**不是** dex.localhost，
+  #     用於驗證「不符准入規則者於 callback 即被拒，且不建帳號、不簽 ticket」。
+  #     准入規則由 e2e 腳本建立 provider 時設為 email_domain=[dex.localhost]，
+  #     故本使用者必然落在規則之外——不需為此情境改動 provider 設定。
+  #     帳號 outsider@outside.example / 密碼 deniedpass123
+  - email: outsider@outside.example
+    username: oidcoutsider
+    userID: 33333333-3333-4333-8333-333333333333
+    hash: "$2y$10$9XJvKiIEBt.btT/7pX5/T.1pWH6mmf1MejI8tEYVhLrFufbkq0E/i"

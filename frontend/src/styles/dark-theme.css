@@ -1,0 +1,113 @@
+/**
+ * Maps Element Plus dark-mode CSS variables onto Custodexa tokens,
+ * plus centralized component-level patches. Keep all Element Plus
+ * dark-theme fixes here instead of scattering them across views.
+ */
+html.dark {
+  /* Brand colors (Primary Blue ramp, palette v2).
+     暗色主題的 light-5..9 一律「往暗混」（primary 混向 page bg，同 EP dark 原生
+     語義）——light-5 是 disabled primary 按鈕的白字底色，往亮走會壓垮對比
+     （#93b4f8 白字 1.9:1）。#2d4c89 = primary #4f83f1 × bg #0a1522 50% 混，白字 8.4:1 */
+  --el-color-primary: var(--ot-primary);
+  --el-color-primary-light-3: var(--ot-primary-hover);
+  --el-color-primary-light-5: #2d4c89;
+  --el-color-primary-light-7: #1e3f7d;
+  --el-color-primary-light-8: #16305e;
+  --el-color-primary-light-9: var(--ot-primary-dim);
+  --el-color-primary-dark-2: var(--ot-primary-active);
+  --el-color-success: var(--ot-success);
+  --el-color-warning: var(--ot-warning);
+  --el-color-danger: var(--ot-danger);
+  --el-color-error: var(--ot-danger);
+  --el-color-info: var(--ot-info);
+
+  /* Backgrounds */
+  --el-bg-color-page: var(--ot-bg-page);
+  --el-bg-color: var(--ot-bg-surface);
+  --el-bg-color-overlay: var(--ot-bg-elevated);
+
+  /* Fill */
+  --el-fill-color-blank: var(--ot-bg-surface);
+  --el-fill-color: var(--ot-bg-hover);
+  --el-fill-color-light: var(--ot-bg-hover);
+  --el-fill-color-lighter: var(--ot-bg-elevated);
+  --el-fill-color-extra-light: var(--ot-bg-elevated);
+  --el-fill-color-dark: var(--ot-bg-active);
+  --el-fill-color-darker: var(--ot-bg-active);
+
+  /* Text */
+  --el-text-color-primary: var(--ot-text-primary);
+  --el-text-color-regular: var(--ot-text-primary);
+  --el-text-color-secondary: var(--ot-text-secondary);
+  --el-text-color-placeholder: var(--ot-text-disabled);
+  --el-text-color-disabled: var(--ot-text-disabled);
+
+  /* Borders */
+  --el-border-color: var(--ot-border);
+  --el-border-color-light: var(--ot-border);
+  --el-border-color-lighter: var(--ot-border-subtle);
+  --el-border-color-extra-light: var(--ot-border-subtle);
+  --el-border-color-dark: var(--ot-border);
+  --el-border-color-darker: var(--ot-border);
+
+  --el-border-radius-base: var(--ot-radius-md);
+  --el-border-radius-small: var(--ot-radius-sm);
+
+  --el-box-shadow: var(--ot-shadow-md);
+  --el-box-shadow-light: var(--ot-shadow-sm);
+
+  /* Disabled */
+  --el-disabled-bg-color: var(--ot-bg-elevated);
+  --el-disabled-border-color: var(--ot-border-subtle);
+  --el-disabled-text-color: var(--ot-text-disabled);
+}
+
+/* ---- Component patches (centralized) ---- */
+
+/* Colored buttons in disabled state: EP dark sets the disabled label to
+   rgba(255,255,255,.5) — composited over the (correctly darkened) light-5
+   background that caps contrast at ~3.4:1. Raise alpha so the label passes
+   AA (~5.8:1 on primary light-5 #2d4c89) while still reading as muted */
+.el-button--primary.is-disabled,
+.el-button--primary.is-disabled:hover,
+.el-button--success.is-disabled,
+.el-button--success.is-disabled:hover,
+.el-button--warning.is-disabled,
+.el-button--warning.is-disabled:hover,
+.el-button--danger.is-disabled,
+.el-button--danger.is-disabled:hover {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* Table: keep header distinguishable on dark surfaces */
+html.dark .el-table {
+  --el-table-header-bg-color: var(--ot-bg-elevated);
+  --el-table-header-text-color: var(--ot-text-secondary);
+  --el-table-row-hover-bg-color: var(--ot-bg-hover);
+  --el-table-border-color: var(--ot-border-subtle);
+}
+
+/* Card: align with surface token */
+html.dark .el-card {
+  --el-card-bg-color: var(--ot-bg-surface);
+  border-color: var(--ot-border-subtle);
+}
+
+/* Dialog and message box surfaces */
+html.dark .el-dialog,
+html.dark .el-message-box {
+  background-color: var(--ot-bg-elevated);
+  border: 1px solid var(--ot-border);
+}
+
+/* Pagination buttons inherit surface */
+html.dark .el-pagination {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-disabled-bg-color: transparent;
+}
+
+/* Base page-level defaults */
+html.dark body {
+  background-color: var(--ot-bg-page);
+  color: var(--ot-text-primary);
+}

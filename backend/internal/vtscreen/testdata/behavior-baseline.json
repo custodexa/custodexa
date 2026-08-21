@@ -1,0 +1,2557 @@
+{
+  "note": "terminalparser v0.0.0-20240205084113-fbf78c8480f2 的現行行為基準（2026-08-16 抽取）。legacy_* 為舊實作實測輸出；標記為缺陷者不得照抄，見 terminalparser-removal-inventory.md 第 3 節。",
+  "samples": [
+    {
+      "id": "synth/plain",
+      "source": "synthetic",
+      "desc": "純文字無控制碼",
+      "input_b64": "bHMgLWxh",
+      "input_escaped": "ls -la",
+      "legacy_output_lines": [
+        "ls -la"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls -la"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/crlf-two-lines",
+      "source": "synthetic",
+      "desc": "\\r\\n 兩行",
+      "input_b64": "bGluZSBvbmUNCmxpbmUgdHdv",
+      "input_escaped": "line one\\r\\nline two",
+      "legacy_output_lines": [
+        "line one",
+        "line two"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "line one",
+        "line two"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/lf-only",
+      "source": "synthetic",
+      "desc": "只有 \\n（游標欄位不歸零）",
+      "input_b64": "YWJjCmRlZg==",
+      "input_escaped": "abc\\ndef",
+      "legacy_output_lines": [
+        "abc",
+        "def"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abc",
+        "   def"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B10",
+      "reason": "LF 依 ECMA-48 只下移一列、不歸零欄位，游標仍在第 3 欄；舊實作因「游標越界不補空白」把 def 貼回第 0 欄，補空白後還原成真實終端所見的第 3 欄起始，欄位算術自此與螢幕一致，屬改善。"
+    },
+    {
+      "id": "synth/backspace-erase",
+      "source": "synthetic",
+      "desc": "退格＋清除到行尾（既有測試用例）",
+      "input_b64": "bHNzCBtbSw==",
+      "input_escaped": "lss\\x08\\x1b[K",
+      "legacy_output_lines": [
+        "ls"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/bs-without-erase",
+      "source": "synthetic",
+      "desc": "只有退格、無清除（覆寫語義）",
+      "input_b64": "bHNzCHg=",
+      "input_escaped": "lss\\x08x",
+      "legacy_output_lines": [
+        "lsx"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "lsx"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/cr-overwrite",
+      "source": "synthetic",
+      "desc": "\\r 回行首後覆寫",
+      "input_b64": "aGVsbG8gd29ybGQNYnll",
+      "input_escaped": "hello world\\rbye",
+      "legacy_output_lines": [
+        "byelo world"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "byelo world"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/el-0",
+      "source": "synthetic",
+      "desc": "CSI 0K 清到行尾",
+      "input_b64": "YWJjZGVmG1szRBtbMEs=",
+      "input_escaped": "abcdef\\x1b[3D\\x1b[0K",
+      "legacy_output_lines": [
+        "abc"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abc"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/el-1",
+      "source": "synthetic",
+      "desc": "CSI 1K 清到行首（上游明示不支援）",
+      "input_b64": "YWJjZGVmG1sxSw==",
+      "input_escaped": "abcdef\\x1b[1K",
+      "legacy_output_lines": [
+        "abcdef"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen Unsupported Erase Left cursor(6，1) 总Row数量 1"
+      ],
+      "expected_lines": [],
+      "differs_from_legacy": true,
+      "decision_ref": "B11",
+      "reason": "舊實作明示不支援 EL Ps=1（只印日誌、abcdef 原樣保留）；依 ECMA-48 自行首清至游標欄（含該欄）後整列皆為空白，Lines() 再依 D3.3 去除尾端空白列而得空清單，等於把已被使用者清掉的字不再送進審計，屬改善。"
+    },
+    {
+      "id": "synth/el-2",
+      "source": "synthetic",
+      "desc": "CSI 2K 清整行（上游轉呼叫 eraseAll）",
+      "input_b64": "Zmlyc3QgbGluZQ0KYWJjZGVmG1syS3h5eg==",
+      "input_escaped": "first line\\r\\nabcdef\\x1b[2Kxyz",
+      "legacy_output_lines": [
+        "xyz"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "first line",
+        "      xyz"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B2",
+      "reason": "EL Ps=2 只清當前列且游標不動（仍在第 6 欄），first line 不再被 eraseAll 誤刪，xyz 落在第 6 欄並依 B10 補齊前導空白。註：D5 B2 欄位原寫 [\"first line\",\"xyz\"] 未計入同批修正的 B10 補空白，2026-08-16 經裁決訂正為本值，design.md D5 B2 已載明。"
+    },
+    {
+      "id": "synth/ed-0",
+      "source": "synthetic",
+      "desc": "CSI 0J 清到畫面尾",
+      "input_b64": "bDENCmwyDQpsMxtbMEo=",
+      "input_escaped": "l1\\r\\nl2\\r\\nl3\\x1b[0J",
+      "legacy_output_lines": [
+        "l1",
+        "l2",
+        "l3"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "l1",
+        "l2",
+        "l3"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/ed-1",
+      "source": "synthetic",
+      "desc": "CSI 1J 清畫面上方（上游直接砍 Rows 不調游標）",
+      "input_b64": "bDENCmwyDQpsMxtbMUp0YWls",
+      "input_escaped": "l1\\r\\nl2\\r\\nl3\\x1b[1Jtail",
+      "legacy_output_lines": [
+        "l3tail"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "总行数 1 比当前行 3 小，可能存在解析错误 ",
+        "总行数 1 比当前行 3 小，可能存在解析错误 ",
+        "总行数 1 比当前行 3 小，可能存在解析错误 ",
+        "总行数 1 比当前行 3 小，可能存在解析错误 "
+      ],
+      "expected_lines": [
+        "",
+        "",
+        "  tail"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B7",
+      "reason": "ED Ps=1 應把畫面起點至游標（含該欄）清為空白，列數與游標皆不動，故 tail 仍落在第 3 列第 2 欄；舊實作直接砍 Rows 切片把三列壓成一列（l3tail），是結構性失真，屬改善。"
+    },
+    {
+      "id": "synth/ed-2",
+      "source": "synthetic",
+      "desc": "CSI 2J 清整個畫面（clear）",
+      "input_b64": "Z2FyYmFnZQ0KG1syShtbSHByb21wdCQgbHM=",
+      "input_escaped": "garbage\\r\\n\\x1b[2J\\x1b[Hprompt$ ls",
+      "legacy_output_lines": [
+        "prompt$ ls"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "prompt$ ls"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/cha-1g",
+      "source": "synthetic",
+      "desc": "CSI 1G 移到第一欄（1-based/0-based 混用點）",
+      "input_b64": "NTU+IBtbMUdhYg==",
+      "input_escaped": "55> \\x1b[1Gab",
+      "legacy_output_lines": [
+        "5ab "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ab> "
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B1",
+      "reason": "CHA 參數為 1-based，CSI 1G 應移到第 0 欄；舊實作把 1 當成 0-based 欄號而自第 1 欄起覆寫，使重繪前的第 0 欄字元 5 存活成殘骸。修正後 ab 自第 0 欄覆寫，孤立殘骸形態不再產生，屬改善。"
+    },
+    {
+      "id": "synth/cha-1g-empty-row",
+      "source": "synthetic",
+      "desc": "CSI 1G 於空行",
+      "input_b64": "G1sxRzU1PiBTRUxFQ1QgbmFtZRtbMEsbWzE2Rw==",
+      "input_escaped": "\\x1b[1G55> SELECT name\\x1b[0K\\x1b[16G",
+      "legacy_output_lines": [
+        "55> SELECT name"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "55> SELECT name"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/cup-single-digit",
+      "source": "synthetic",
+      "desc": "CSI 2;5H（單位數，上游支援）",
+      "input_b64": "YWJjZGVmZ2gbWzI7NUhY",
+      "input_escaped": "abcdefgh\\x1b[2;5HX",
+      "legacy_output_lines": [
+        "abcdeXgh"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "总行数 1 比当前行 2 小，可能存在解析错误 "
+      ],
+      "expected_lines": [
+        "abcdefgh",
+        "    X"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B13",
+      "reason": "CUP 為絕對定位，CSI 2;5H 應落在第 2 列第 5 欄（0-based 列 1 欄 4）並依需要建列；舊實作把列號夾到既有列數（日誌印「总行数 1 比当前行 2 小」）而把 X 寫進第 1 列，等於把兩列併成一列，屬改善。本缺陷於 2026-08-16 自 B4 分離另立 B13：B4 指多位數參數被整段忽略，本筆是單位數也會發生的列號夾擠。"
+    },
+    {
+      "id": "synth/cup-multi-digit",
+      "source": "synthetic",
+      "desc": "CSI 10;20H（多位數，上游整段忽略）",
+      "input_b64": "YWJjZGVmZ2gbWzEwOzIwSFg=",
+      "input_escaped": "abcdefgh\\x1b[10;20HX",
+      "legacy_output_lines": [
+        "abcdefghX"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abcdefgh",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "                   X"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B4",
+      "reason": "參數以整數解析後 CSI 10;20H 定位至第 10 列第 20 欄（0-based 列 9 欄 19），X 與 abcdefgh 分屬不同列；舊實作只認單位數形態、整段忽略而讓 X 直接接在原列尾端，屬改善。"
+    },
+    {
+      "id": "synth/cuf-cub",
+      "source": "synthetic",
+      "desc": "CSI C / D 游標左右移",
+      "input_b64": "YWJjZGVmG1szRBtbMUNa",
+      "input_escaped": "abcdef\\x1b[3D\\x1b[1CZ",
+      "legacy_output_lines": [
+        "abcdZf"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abcdZf"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/cuu-cud",
+      "source": "synthetic",
+      "desc": "CSI A / B 游標上下移",
+      "input_b64": "bDENCmwyG1tBeBtbQno=",
+      "input_escaped": "l1\\r\\nl2\\x1b[Ax\\x1b[Bz",
+      "legacy_output_lines": [
+        "l1x",
+        "l2z"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "l1x",
+        "l2 z"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B10",
+      "reason": "CUD 回到第 2 列時游標在第 3 欄、而該列只有兩欄內容，依 B10 補一格空白後 z 落在第 3 欄，即真實終端所見；舊實作直接接在行尾使 z 前移一欄，欄位算術自此偏移，屬改善。"
+    },
+    {
+      "id": "synth/ich",
+      "source": "synthetic",
+      "desc": "CSI 3@ 插入空白",
+      "input_b64": "YWJjZGVmG1szRBtbM0A=",
+      "input_escaped": "abcdef\\x1b[3D\\x1b[3@",
+      "legacy_output_lines": [
+        "abc   def"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abc   def"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/dch",
+      "source": "synthetic",
+      "desc": "CSI 2P 刪除字元",
+      "input_b64": "YWJjZGVmG1s0RBtbMlA=",
+      "input_escaped": "abcdef\\x1b[4D\\x1b[2P",
+      "legacy_output_lines": [
+        "abef"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abef"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/ech",
+      "source": "synthetic",
+      "desc": "CSI 2X 清除字元（上游等同 DCH，非標準）",
+      "input_b64": "YWJjZGVmG1s0RBtbMlg=",
+      "input_escaped": "abcdef\\x1b[4D\\x1b[2X",
+      "legacy_output_lines": [
+        "abef"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ab  ef"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B9",
+      "reason": "ECH 依 ECMA-48 為原地清成空白、不左移，故 cd 兩欄變空白而 ef 留在原欄位；舊實作把 ECH 實作成 DCH 造成整行左移，與 synth/dch 的輸出無從區分，屬改善。"
+    },
+    {
+      "id": "synth/sgr-color",
+      "source": "synthetic",
+      "desc": "SGR 顏色（一般序列）",
+      "input_b64": "G1swOzMybWdyZWVuG1swbSBwbGFpbg==",
+      "input_escaped": "\\x1b[0;32mgreen\\x1b[0m plain",
+      "legacy_output_lines": [
+        "green plain"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "green plain"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/sgr-90-grey",
+      "source": "synthetic",
+      "desc": "SGR 90 灰字（上游啟動 fish tip 錄製 → 尾段被 TrimSuffix 吃掉）",
+      "input_b64": "Y21kIBtbOTBtdGFpbC10ZXh0",
+      "input_escaped": "cmd \\x1b[90mtail-text",
+      "legacy_output_lines": [
+        "cmd "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "cmd tail-text"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B3",
+      "reason": "SGR 一律吃掉不解讀，不再因 SGR 90 啟動舊實作為灰色補全提示（fish 等 shell 的 autosuggestion）所加的錄製，該行其後的 tail-text 不再被 TrimSuffix 靜默剪除；審計少字是靜默漏記，屬改善。"
+    },
+    {
+      "id": "synth/sgr-90-then-0",
+      "source": "synthetic",
+      "desc": "SGR 90 後以 SGR 0 重置（非 30，錄製不停止）",
+      "input_b64": "Y21kIBtbOTBtZ2hvc3QbWzBtIHJlYWw=",
+      "input_escaped": "cmd \\x1b[90mghost\\x1b[0m real",
+      "legacy_output_lines": [
+        "cmd "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "cmd ghost real"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B3",
+      "reason": "舊實作的錄製只認 SGR 30 為終止、不認 SGR 0，使 ghost real 整段被吃掉；SGR 一律不解讀後文字完整保留，屬改善。"
+    },
+    {
+      "id": "synth/sgr-90-then-30",
+      "source": "synthetic",
+      "desc": "SGR 90 後以 SGR 30 停止錄製",
+      "input_b64": "Y21kIBtbOTBtZ2hvc3QbWzMwbSByZWFs",
+      "input_escaped": "cmd \\x1b[90mghost\\x1b[30m real",
+      "legacy_output_lines": [
+        "cmd ghost real"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "cmd ghost real"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/sgr-multi-param",
+      "source": "synthetic",
+      "desc": "多參數 SGR（Atoi 失敗→整段忽略）",
+      "input_b64": "G1sxOzMxbXJlZBtbMG0gZG9uZQ==",
+      "input_escaped": "\\x1b[1;31mred\\x1b[0m done",
+      "legacy_output_lines": [
+        "red done"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "red done"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/osc-title",
+      "source": "synthetic",
+      "desc": "OSC 設定標題（BEL 結尾）",
+      "input_b64": "G10wO3VzZXJAaG9zdDogfgdwcm9tcHQkIGxz",
+      "input_escaped": "\\x1b]0;user@host: ~\\x07prompt$ ls",
+      "legacy_output_lines": [
+        "prompt$ ls"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "prompt$ ls"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/osc-st",
+      "source": "synthetic",
+      "desc": "OSC 以 ST 結尾（\\x1b\\\\ 形態）",
+      "input_b64": "G10wO3RpdGxlG1xwcm9tcHQkIGxz",
+      "input_escaped": "\\x1b]0;title\\x1b\\\\prompt$ ls",
+      "legacy_output_lines": [
+        "0;titleprompt$ ls"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "未处理的 parseOSCSequence",
+        "Screen 未解析 ESC `'\\\\'` 5c Uppercase字符"
+      ],
+      "expected_lines": [
+        "prompt$ ls"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B6",
+      "reason": "OSC 除 BEL 外亦須接受 7-bit ST（ESC 反斜線）為終止；舊實作不認 ST 使標題字串 0;title 洩進審計文字，修正後標題被正確吃掉，同時關掉視窗標題含使用者名與目錄的外洩面，屬改善。"
+    },
+    {
+      "id": "synth/csi-truncated",
+      "source": "synthetic",
+      "desc": "CSI 被 chunk 切斷（無終止字元）",
+      "input_b64": "bHMgLWxhG1s=",
+      "input_escaped": "ls -la\\x1b[",
+      "legacy_output_lines": [
+        "ls -la\u001b["
+      ],
+      "legacy_panicked": true,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls -la"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B5",
+      "reason": "輸入結束處的未完成 CSI 保留在狀態機內、不輸出任何文字，既不 panic 也不把原始 ESC 位元組寫入結果；舊實作負索引切片 panic 後降級為 strings.Split，把 ESC[ 直接寫進審計文字，屬改善。"
+    },
+    {
+      "id": "synth/csi-truncated-params",
+      "source": "synthetic",
+      "desc": "CSI 參數被切斷",
+      "input_b64": "bHMbWzEyOw==",
+      "input_escaped": "ls\\x1b[12;",
+      "legacy_output_lines": [
+        "ls\u001b[12;"
+      ],
+      "legacy_panicked": true,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B5",
+      "reason": "同 synth/csi-truncated：參數被 chunk 切斷的 CSI 保留於狀態、不輸出，取代舊實作 panic 後把 ESC[12; 寫進審計文字的降級結果，屬改善。"
+    },
+    {
+      "id": "synth/esc-truncated",
+      "source": "synthetic",
+      "desc": "單獨的 ESC 收尾",
+      "input_b64": "bHMgLWxhGw==",
+      "input_escaped": "ls -la\\x1b",
+      "legacy_output_lines": [
+        "ls -la"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen 未解析 ESC `'�'` fffd"
+      ],
+      "expected_lines": [
+        "ls -la"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/tab-char",
+      "source": "synthetic",
+      "desc": "指令含實際 tab 字元",
+      "input_b64": "cHJpbnRmIGEJYg==",
+      "input_escaped": "printf a\\tb",
+      "legacy_output_lines": [
+        "printf ab"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "未处理的字符 '\\t' 9"
+      ],
+      "expected_lines": [
+        "printf a        b"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B8",
+      "reason": "HT 推進到下一個 8 欄 tab stop：printf a 佔第 0 至 7 欄、游標已在第 8 欄（正落在一個 tab stop 上）故推進到第 16 欄，b 落在第 16 欄；舊實作整個丟棄 HT 使 b 緊貼 a，與使用者實際輸入不符，屬改善。"
+    },
+    {
+      "id": "synth/bel-only",
+      "source": "synthetic",
+      "desc": "BEL（補全失敗提示音）",
+      "input_b64": "bHMgBw==",
+      "input_escaped": "ls \\x07",
+      "legacy_output_lines": [
+        "ls "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/utf8-cjk",
+      "source": "synthetic",
+      "desc": "中文（雙寬）＋游標覆寫",
+      "input_b64": "5Lit5paH5ris6KmmDVg=",
+      "input_escaped": "中文測試\\rX",
+      "legacy_output_lines": [
+        "X文測試"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "X 文測試"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "D2",
+      "reason": "游標以顯示欄計（D3.3 CursorX），單寬 X 覆寫雙寬「中」的左半格後右半格成為孤兒格、真實終端渲染為空白，故結果為 X 空白 文測試；舊實作以 rune 索引覆寫，使其後所有欄位左移一欄。註：雙寬字元半格覆寫的語義原未列於 D5，2026-08-16 經裁決補入 design.md D2「雙寬字元的半格覆寫」列。"
+    },
+    {
+      "id": "synth/utf8-emoji",
+      "source": "synthetic",
+      "desc": "emoji（雙寬）",
+      "input_b64": "ZWNobyDwn46JIG9r",
+      "input_escaped": "echo 🎉 ok",
+      "legacy_output_lines": [
+        "echo 🎉 ok"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo 🎉 ok"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/invalid-utf8",
+      "source": "synthetic",
+      "desc": "非法 UTF-8 位元組",
+      "input_b64": "bHMg77+977+9IGRvbmU=",
+      "input_escaped": "ls �� done",
+      "legacy_output_lines": [
+        "ls �� done"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls �� done"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/alt-screen-marks",
+      "source": "synthetic",
+      "desc": "alternate screen 進出標記（上游 h/l 皆不支援）",
+      "input_b64": "G1s/MTA0OWh2aW0bWz8xMDQ5bCQg",
+      "input_escaped": "\\x1b[?1049hvim\\x1b[?1049l$ ",
+      "legacy_output_lines": [
+        "vim$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析h",
+        "Screen不支持解析l"
+      ],
+      "expected_lines": [
+        "vim$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/bracketed-paste",
+      "source": "synthetic",
+      "desc": "bracketed paste 標記",
+      "input_b64": "G1syMDB+cGFzdGVkIHRleHQbWzIwMX4=",
+      "input_escaped": "\\x1b[200~pasted text\\x1b[201~",
+      "legacy_output_lines": [
+        "pasted text"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "screen未处理的CSI 200 '~'",
+        "screen未处理的CSI 201 '~'"
+      ],
+      "expected_lines": [
+        "pasted text"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/dec-private-el",
+      "source": "synthetic",
+      "desc": "CSI ?0K（DECSEL，上游明示不支援）",
+      "input_b64": "YWJjG1s/MEs=",
+      "input_escaped": "abc\\x1b[?0K",
+      "legacy_output_lines": [
+        "abc"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析 CSI `?0` K"
+      ],
+      "expected_lines": [
+        "abc"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/scroll-region",
+      "source": "synthetic",
+      "desc": "CSI 1;24r（設定捲動區域，上游無 r 處理）",
+      "input_b64": "G1sxOzI0cnRleHQ=",
+      "input_escaped": "\\x1b[1;24rtext",
+      "legacy_output_lines": [
+        "text"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "screen未处理的CSI 1;24 'r'"
+      ],
+      "expected_lines": [
+        "text"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/csi-s-u",
+      "source": "synthetic",
+      "desc": "CSI s / u 存取游標（上游無處理）",
+      "input_b64": "YWJjG1tzZGVmG1t1WA==",
+      "input_escaped": "abc\\x1b[sdef\\x1b[uX",
+      "legacy_output_lines": [
+        "abcdefX"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "screen未处理的CSI  's'",
+        "screen未处理的CSI  'u'"
+      ],
+      "expected_lines": [
+        "abcdefX"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/ri-esc-M",
+      "source": "synthetic",
+      "desc": "ESC M 反向換行（上游走 Uppercase 分支忽略）",
+      "input_b64": "bDENCmwyG014",
+      "input_escaped": "l1\\r\\nl2\\x1bMx",
+      "legacy_output_lines": [
+        "l1",
+        "l2x"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen 未解析 ESC `'M'` 4d Uppercase字符"
+      ],
+      "expected_lines": [
+        "l1",
+        "l2x"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/charset-g0",
+      "source": "synthetic",
+      "desc": "ESC ( B 設定字集",
+      "input_b64": "GyhCcGxhaW4=",
+      "input_escaped": "\\x1b(Bplain",
+      "legacy_output_lines": [
+        "plain"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "plain"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/prompt-then-cmd",
+      "source": "synthetic",
+      "desc": "完整互動：prompt + 指令 + 換行",
+      "input_b64": "dGVzdHVzZXJAaG9zdDp+JCBscyAtbGENCg==",
+      "input_escaped": "testuser@host:~$ ls -la\\r\\n",
+      "legacy_output_lines": [
+        "testuser@host:~$ ls -la",
+        ""
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "testuser@host:~$ ls -la"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "D3.3",
+      "reason": "Lines() 依 D3.3 去除尾端空白列，故 CRLF 造出的最後一個空列不再出現在結果中；兩個呼叫點都只取 lastNonEmptyLine（本就跳過空白列），此變動對產品行為零影響，僅使基準與介面契約一致。"
+    },
+    {
+      "id": "synth/only-newlines",
+      "source": "synthetic",
+      "desc": "只有換行",
+      "input_b64": "DQoNCg==",
+      "input_escaped": "\\r\\n\\r\\n",
+      "legacy_output_lines": [
+        "",
+        "",
+        ""
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [],
+      "differs_from_legacy": true,
+      "decision_ref": "D3.3",
+      "reason": "三列皆為空列，依 D3.3 去除尾端空白列後結果為空清單；lastNonEmptyLine 對兩者皆回傳空字串，產品行為零影響。"
+    },
+    {
+      "id": "synth/cha-0g",
+      "source": "synthetic",
+      "desc": "CSI 0G（參數 0，標準等同第 1 欄）",
+      "input_b64": "YWJjZGVmG1swR1g=",
+      "input_escaped": "abcdef\\x1b[0GX",
+      "legacy_output_lines": [
+        "Xbcdef"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "Xbcdef"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/cha-large",
+      "source": "synthetic",
+      "desc": "CSI 40G（超出既有行長）",
+      "input_b64": "YWJjG1s0MEdY",
+      "input_escaped": "abc\\x1b[40GX",
+      "legacy_output_lines": [
+        "abcX"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "abc                                    X"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B10",
+      "reason": "CHA 40 換算為第 39 欄（B1 的 1-based 轉 0-based）後寫入 X，依 B10 以空白補齊第 3 至 38 欄共 36 格；舊實作既不換算也不補空白，使 X 緊貼 abc 而丟失 36 欄的位移資訊，屬改善。"
+    },
+    {
+      "id": "synth/repeated-cr",
+      "source": "synthetic",
+      "desc": "多次 \\r 覆寫（進度條形態）",
+      "input_b64": "MTAlDTUwJQ0xMDAl",
+      "input_escaped": "10%\\r50%\\r100%",
+      "legacy_output_lines": [
+        "100%"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "100%"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/psql-continuation",
+      "source": "synthetic",
+      "desc": "psql 續行提示符形態",
+      "input_b64": "Y3VzdG9kZXhhPSMgU0VMRUNUDQpjdXN0b2RleGEtIyAxOw==",
+      "input_escaped": "custodexa=# SELECT\\r\\ncustodexa-# 1;",
+      "legacy_output_lines": [
+        "custodexa=# SELECT",
+        "custodexa-# 1;"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "custodexa=# SELECT",
+        "custodexa-# 1;"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/sqlcmd-redraw",
+      "source": "synthetic",
+      "desc": "sqlcmd 上鍵重繪（既有 mssql 測試常數）",
+      "input_b64": "G1sxRzU1PiBTRUxFQ1QgbmFtZRtbMEsbWzE2Rw==",
+      "input_escaped": "\\x1b[1G55> SELECT name\\x1b[0K\\x1b[16G",
+      "legacy_output_lines": [
+        "55> SELECT name"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "55> SELECT name"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "synth/sqlcmd-redraw-orphan",
+      "source": "synthetic",
+      "desc": "sqlcmd 重繪疊在半截提示符後（孤立 > 形態）",
+      "input_b64": "PiAbWzFHNTU+IFNFTEVDVCBuYW1lG1swSxtbMTZH",
+      "input_escaped": "> \\x1b[1G55> SELECT name\\x1b[0K\\x1b[16G",
+      "legacy_output_lines": [
+        ">55> SELECT name"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "55> SELECT name"
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B1",
+      "reason": "CSI 1G 修正為自第 0 欄起覆寫後，重繪前殘留的半截提示符「大於號加空白」被完整蓋掉，螢幕即為 55> SELECT name；這正是 D6 移除 trimOrphanPromptRemnantPrefix 的前置條件（殘骸在原理上不再產生），屬改善。"
+    },
+    {
+      "id": "ssh-live/simple-ls#0-finalize",
+      "source": "ssh-live",
+      "desc": "最單純指令：ls -la（呼叫點 finalize）",
+      "input_b64": "bHMgLWxhDQ==",
+      "input_escaped": "ls -la\\r",
+      "legacy_output_lines": [
+        "ls -la"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls -la"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/simple-ls#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "最單純指令：ls -la（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNdG90YWwgNDQNCmRyd3hyLXhyLXggNyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNiAxNzo1OSAuDQpkcnd4ci14ci14IDEgcm9vdCAgICAgcm9vdCAgNDA5NiBBdWcgMTQgMTI6MTkgLi4NCi1ydy0tLS0tLS0gMSB0ZXN0dXNlciB1c2VycyA4NDQyIEF1ZyAxNiAxNzo1OSAuYmFzaF9oaXN0b3J5DQpkcnd4LS0tLS0tIDMgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTYgMTc6NTkgLmNvbmZpZw0KZHJ3eC0tLS0tLSAyIHRlc3R1c2VyIHVzZXJzIDQwOTYgQXVnIDE0IDE0OjM0IC5zc2gNCmRyd3hyLXhyLXggMyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNCAxMjoxOSBsb2dzDQpkcnd4ci14ci14IDIgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTQgMTI6MTkgc3NoX2hvc3Rfa2V5cw0KZHJ3eHIteC0tLSAyIHJvb3QgICAgIHVzZXJzIDQwOTYgQXVnIDE0IDEyOjE5IHNzaGQNCi1ydy1yLS1yLS0gMSB0ZXN0dXNlciB1c2VycyAgICA0IEF1ZyAxNCAxMjoxOSBzc2hkLnBpZA0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rtotal 44\\r\\ndrwxr-xr-x 7 testuser users 4096 Aug 16 17:59 .\\r\\ndrwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..\\r\\n-rw------- 1 testuser users 8442 Aug 16 17:59 .bash_history\\r\\ndrwx------ 3 testuser users 4096 Aug 16 17:59 .config\\r\\ndrwx------ 2 testuser users 4096 Aug 14 14:34 .ssh\\r\\ndrwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs\\r\\ndrwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys\\r\\ndrwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd\\r\\n-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "total 44",
+        "drwxr-xr-x 7 testuser users 4096 Aug 16 17:59 .",
+        "drwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..",
+        "-rw------- 1 testuser users 8442 Aug 16 17:59 .bash_history",
+        "drwx------ 3 testuser users 4096 Aug 16 17:59 .config",
+        "drwx------ 2 testuser users 4096 Aug 14 14:34 .ssh",
+        "drwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs",
+        "drwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys",
+        "drwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd",
+        "-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "total 44",
+        "drwxr-xr-x 7 testuser users 4096 Aug 16 17:59 .",
+        "drwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..",
+        "-rw------- 1 testuser users 8442 Aug 16 17:59 .bash_history",
+        "drwx------ 3 testuser users 4096 Aug 16 17:59 .config",
+        "drwx------ 2 testuser users 4096 Aug 14 14:34 .ssh",
+        "drwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs",
+        "drwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys",
+        "drwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd",
+        "-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/simple-ls#2-finalize",
+      "source": "ssh-live",
+      "desc": "最單純指令：ls -la（呼叫點 finalize）",
+      "input_b64": "ZXhpdA0=",
+      "input_escaped": "exit\\r",
+      "legacy_output_lines": [
+        "exit"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "exit"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/color-ls#0-finalize",
+      "source": "ssh-live",
+      "desc": "帶 SGR 顏色的輸出：ls --color=always /etc（呼叫點 finalize）",
+      "input_b64": "bHMgLS1jb2xvcj1hbHdheXMgL2V0Yw0=",
+      "input_escaped": "ls --color=always /etc\\r",
+      "legacy_output_lines": [
+        "ls --color=always /etc"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls --color=always /etc"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/color-ls#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "帶 SGR 顏色的輸出：ls --color=always /etc（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWxwaW5lLXJlbGVhc2UgICAgICAgIGlucHV0cmMgICAgICAgICAbWzBtG1swMTszNm1vcy1yZWxlYXNlG1swbSAgIHNoYWRvdw0KG1swMTszNG1hcGsbWzBtICAgICAgICAgICAgICAgICAgIGlzc3VlICAgICAgICAgICAbWzAxOzM0bXBhbS5kG1swbSAgICAgICAgc2hhZG93LQ0KG1swMTszNG1iYXNoG1swbSAgICAgICAgICAgICAgICAgIGxvZ2luLmRlZnMgICAgICBwYXNzd2QgICAgICAgc2hlbGxzDQobWzAxOzM0bWJ1c3lib3gtcGF0aHMuZBtbMG0gICAgICAgbG9ncm90YXRlLmNvbmYgIHBhc3N3ZC0gICAgICAbWzAxOzM0bXNzaBtbMG0NChtbMDE7MzRtY2EtY2VydGlmaWNhdGVzG1swbSAgICAgICAbWzAxOzM0bWxvZ3JvdGF0ZS5kG1swbSAgICAgG1swMTszNG1wZXJpb2RpYxtbMG0gICAgIBtbMDE7MzRtc3NsG1swbQ0KY2EtY2VydGlmaWNhdGVzLmNvbmYgIBtbMDE7MzRtbW9kcHJvYmUuZBtbMG0gICAgICBwcm9maWxlICAgICAgG1swMTszNG1zc2wxLjEbWzBtDQobWzAxOzM0bWNyb250YWJzG1swbSAgICAgICAgICAgICAgbW9kdWxlcyAgICAgICAgIBtbMDE7MzRtcHJvZmlsZS5kG1swbSAgICBzdWRvLmNvbmYNCmVudmlyb25tZW50ICAgICAgICAgICAbWzAxOzM0bW1vZHVsZXMtbG9hZC5kG1swbSAgcHJvdG9jb2xzICAgIHN1ZG9fbG9nc3J2ZC5jb25mDQpmc3RhYiAgICAgICAgICAgICAgICAgbW90ZCAgICAgICAgICAgIHJlc29sdi5jb25mICBzdWRvZXJzDQpncm91cCAgICAgICAgICAgICAgICAgG1swMTszNm1tdGFiG1swbSAgICAgICAgICAgIBtbMDE7MzRtczYtb3ZlcmxheRtbMG0gICAbWzAxOzM0bXN1ZG9lcnMuZBtbMG0NCmdyb3VwLSAgICAgICAgICAgICAgICBuYW5vcmMgICAgICAgICAgG1swMTszNG1zZWNmaXhlcy5kG1swbSAgIHN5c2N0bC5jb25mDQpob3N0bmFtZSAgICAgICAgICAgICAgG1swMTszNG1uZXR3b3JrG1swbSAgICAgICAgIHNlY3VyZXR0eSAgICAbWzAxOzM0bXN5c2N0bC5kG1swbQ0KaG9zdHMgICAgICAgICAgICAgICAgIG5zc3dpdGNoLmNvbmYgICAbWzAxOzM0bXNlY3VyaXR5G1swbSAgICAgG1swMTszNG10ZXJtaW5mbxtbMG0NCmluaXR0YWIgICAgICAgICAgICAgICAbWzAxOzM0bW9wdBtbMG0gICAgICAgICAgICAgc2VydmljZXMgICAgIBtbMDE7MzRtdWRoY3BjG1swbQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\ralpine-release        inputrc         \\x1b[0m\\x1b[01;36mos-release\\x1b[0m   shadow\\r\\n\\x1b[01;34mapk\\x1b[0m                   issue           \\x1b[01;34mpam.d\\x1b[0m        shadow-\\r\\n\\x1b[01;34mbash\\x1b[0m                  login.defs      passwd       shells\\r\\n\\x1b[01;34mbusybox-paths.d\\x1b[0m       logrotate.conf  passwd-      \\x1b[01;34mssh\\x1b[0m\\r\\n\\x1b[01;34mca-certificates\\x1b[0m       \\x1b[01;34mlogrotate.d\\x1b[0m     \\x1b[01;34mperiodic\\x1b[0m     \\x1b[01;34mssl\\x1b[0m\\r\\nca-certificates.conf  \\x1b[01;34mmodprobe.d\\x1b[0m      profile      \\x1b[01;34mssl1.1\\x1b[0m\\r\\n\\x1b[01;34mcrontabs\\x1b[0m              modules         \\x1b[01;34mprofile.d\\x1b[0m    sudo.conf\\r\\nenvironment           \\x1b[01;34mmodules-load.d\\x1b[0m  protocols    sudo_logsrvd.conf\\r\\nfstab                 motd            resolv.conf  sudoers\\r\\ngroup                 \\x1b[01;36mmtab\\x1b[0m            \\x1b[01;34ms6-overlay\\x1b[0m   \\x1b[01;34msudoers.d\\x1b[0m\\r\\ngroup-                nanorc          \\x1b[01;34msecfixes.d\\x1b[0m   sysctl.conf\\r\\nhostname              \\x1b[01;34mnetwork\\x1b[0m         securetty    \\x1b[01;34msysctl.d\\x1b[0m\\r\\nhosts                 nsswitch.conf   \\x1b[01;34msecurity\\x1b[0m     \\x1b[01;34mterminfo\\x1b[0m\\r\\ninittab               \\x1b[01;34mopt\\x1b[0m             services     \\x1b[01;34mudhcpc\\x1b[0m\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "alpine-release        inputrc         os-release   shadow",
+        "apk                   issue           pam.d        shadow-",
+        "bash                  login.defs      passwd       shells",
+        "busybox-paths.d       logrotate.conf  passwd-      ssh",
+        "ca-certificates       logrotate.d     periodic     ssl",
+        "ca-certificates.conf  modprobe.d      profile      ssl1.1",
+        "crontabs              modules         profile.d    sudo.conf",
+        "environment           modules-load.d  protocols    sudo_logsrvd.conf",
+        "fstab                 motd            resolv.conf  sudoers",
+        "group                 mtab            s6-overlay   sudoers.d",
+        "group-                nanorc          secfixes.d   sysctl.conf",
+        "hostname              network         securetty    sysctl.d",
+        "hosts                 nsswitch.conf   security     terminfo",
+        "inittab               opt             services     udhcpc",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "alpine-release        inputrc         os-release   shadow",
+        "apk                   issue           pam.d        shadow-",
+        "bash                  login.defs      passwd       shells",
+        "busybox-paths.d       logrotate.conf  passwd-      ssh",
+        "ca-certificates       logrotate.d     periodic     ssl",
+        "ca-certificates.conf  modprobe.d      profile      ssl1.1",
+        "crontabs              modules         profile.d    sudo.conf",
+        "environment           modules-load.d  protocols    sudo_logsrvd.conf",
+        "fstab                 motd            resolv.conf  sudoers",
+        "group                 mtab            s6-overlay   sudoers.d",
+        "group-                nanorc          secfixes.d   sysctl.conf",
+        "hostname              network         securetty    sysctl.d",
+        "hosts                 nsswitch.conf   security     terminfo",
+        "inittab               opt             services     udhcpc",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/backspace#0-finalize",
+      "source": "ssh-live",
+      "desc": "打錯字後退格修正：lss<BS> -la（呼叫點 finalize）",
+      "input_b64": "bHNzCBtbSyAtbGEN",
+      "input_escaped": "lss\\x08\\x1b[K -la\\r",
+      "legacy_output_lines": [
+        "ls -la"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls -la"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/backspace#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "打錯字後退格修正：lss<BS> -la（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNdG90YWwgNDQNCmRyd3hyLXhyLXggNyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNiAxODoxMSAuDQpkcnd4ci14ci14IDEgcm9vdCAgICAgcm9vdCAgNDA5NiBBdWcgMTQgMTI6MTkgLi4NCi1ydy0tLS0tLS0gMSB0ZXN0dXNlciB1c2VycyA4NDA0IEF1ZyAxNiAxODoxMSAuYmFzaF9oaXN0b3J5DQpkcnd4LS0tLS0tIDMgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTYgMTc6NTkgLmNvbmZpZw0KZHJ3eC0tLS0tLSAyIHRlc3R1c2VyIHVzZXJzIDQwOTYgQXVnIDE0IDE0OjM0IC5zc2gNCmRyd3hyLXhyLXggMyB0ZXN0dXNlciB1c2VycyA0MDk2IEF1ZyAxNCAxMjoxOSBsb2dzDQpkcnd4ci14ci14IDIgdGVzdHVzZXIgdXNlcnMgNDA5NiBBdWcgMTQgMTI6MTkgc3NoX2hvc3Rfa2V5cw0KZHJ3eHIteC0tLSAyIHJvb3QgICAgIHVzZXJzIDQwOTYgQXVnIDE0IDEyOjE5IHNzaGQNCi1ydy1yLS1yLS0gMSB0ZXN0dXNlciB1c2VycyAgICA0IEF1ZyAxNCAxMjoxOSBzc2hkLnBpZA0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rtotal 44\\r\\ndrwxr-xr-x 7 testuser users 4096 Aug 16 18:11 .\\r\\ndrwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..\\r\\n-rw------- 1 testuser users 8404 Aug 16 18:11 .bash_history\\r\\ndrwx------ 3 testuser users 4096 Aug 16 17:59 .config\\r\\ndrwx------ 2 testuser users 4096 Aug 14 14:34 .ssh\\r\\ndrwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs\\r\\ndrwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys\\r\\ndrwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd\\r\\n-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "total 44",
+        "drwxr-xr-x 7 testuser users 4096 Aug 16 18:11 .",
+        "drwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..",
+        "-rw------- 1 testuser users 8404 Aug 16 18:11 .bash_history",
+        "drwx------ 3 testuser users 4096 Aug 16 17:59 .config",
+        "drwx------ 2 testuser users 4096 Aug 14 14:34 .ssh",
+        "drwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs",
+        "drwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys",
+        "drwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd",
+        "-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "total 44",
+        "drwxr-xr-x 7 testuser users 4096 Aug 16 18:11 .",
+        "drwxr-xr-x 1 root     root  4096 Aug 14 12:19 ..",
+        "-rw------- 1 testuser users 8404 Aug 16 18:11 .bash_history",
+        "drwx------ 3 testuser users 4096 Aug 16 17:59 .config",
+        "drwx------ 2 testuser users 4096 Aug 14 14:34 .ssh",
+        "drwxr-xr-x 3 testuser users 4096 Aug 14 12:19 logs",
+        "drwxr-xr-x 2 testuser users 4096 Aug 14 12:19 ssh_host_keys",
+        "drwxr-x--- 2 root     users 4096 Aug 14 12:19 sshd",
+        "-rw-r--r-- 1 testuser users    4 Aug 14 12:19 sshd.pid",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/tab-complete#0-finalize",
+      "source": "ssh-live",
+      "desc": "Tab 補全路徑：cat /etc/hos<TAB>（呼叫點 finalize）",
+      "input_b64": "Y2F0IC9ldGMvaG9zB3QN",
+      "input_escaped": "cat /etc/hos\\x07t\\r",
+      "legacy_output_lines": [
+        "cat /etc/host"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "cat /etc/host"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/tab-complete#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "Tab 補全路徑：cat /etc/hos<TAB>（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNY2F0OiAvZXRjL2hvc3Q6IE5vIHN1Y2ggZmlsZSBvciBkaXJlY3RvcnkNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rcat: /etc/host: No such file or directory\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "cat: /etc/host: No such file or directory",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "cat: /etc/host: No such file or directory",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/history-recall#0-finalize",
+      "source": "ssh-live",
+      "desc": "上鍵召回歷史指令（整行重繪）（呼叫點 finalize）",
+      "input_b64": "ZWNobyBoZWxsbw0=",
+      "input_escaped": "echo hello\\r",
+      "legacy_output_lines": [
+        "echo hello"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo hello"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/history-recall#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "上鍵召回歷史指令（整行重繪）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNaGVsbG8NChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rhello\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "hello",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "hello",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/ctrl-c#0-finalize",
+      "source": "ssh-live",
+      "desc": "Ctrl-C 中斷執行中的指令（呼叫點 finalize）",
+      "input_b64": "c2xlZXAgMTAwDQ==",
+      "input_escaped": "sleep 100\\r",
+      "legacy_output_lines": [
+        "sleep 100"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "sleep 100"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/ctrl-c#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "Ctrl-C 中斷執行中的指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwN",
+      "input_escaped": "\\x1b[?2004l\\r",
+      "legacy_output_lines": [
+        ""
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l"
+      ],
+      "expected_lines": [],
+      "differs_from_legacy": true,
+      "decision_ref": "D3.3",
+      "reason": "唯一一列為空列，依 D3.3 去除尾端空白列後結果為空清單；beginTyping 取 lastNonEmptyLine 對兩者皆得空字串，產品行為零影響。"
+    },
+    {
+      "id": "ssh-live/ctrl-c#2-finalize",
+      "source": "ssh-live",
+      "desc": "Ctrl-C 中斷執行中的指令（呼叫點 finalize）",
+      "input_b64": "XkMNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIGV4aXQN",
+      "input_escaped": "^C\\r\\n\\x1b[?2004hssh-test-server:~$ exit\\r",
+      "legacy_output_lines": [
+        "^C",
+        "ssh-test-server:~$ exit"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "^C",
+        "ssh-test-server:~$ exit"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/long-wrap#0-finalize",
+      "source": "ssh-live",
+      "desc": "超過終端寬度的長指令（自動折行）（呼叫點 finalize）",
+      "input_b64": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWoN",
+      "input_escaped": "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\\r",
+      "legacy_output_lines": [
+        "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/long-wrap#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "超過終端寬度的長指令（自動折行）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA=",
+      "input_escaped": "\\x1b[?2004l\\rabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/utf8-emoji#0-finalize",
+      "source": "ssh-live",
+      "desc": "中文與 emoji（雙寬字元）（呼叫點 finalize）",
+      "input_b64": "ZWNobyDkuK3mlofmuKzoqaYg8J+OiSBvaw0=",
+      "input_escaped": "echo 中文測試 🎉 ok\\r",
+      "legacy_output_lines": [
+        "echo 中文測試 🎉 ok"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo 中文測試 🎉 ok"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/utf8-emoji#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "中文與 emoji（雙寬字元）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwN5Lit5paH5ris6KmmIPCfjokgb2sNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\r中文測試 🎉 ok\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "中文測試 🎉 ok",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "中文測試 🎉 ok",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/mid-line-edit#0-finalize",
+      "source": "ssh-live",
+      "desc": "左鍵移動游標後在行中插入字元（呼叫點 finalize）",
+      "input_b64": "ZWNobyB3b3JsZAgICAgIG1s2QGhlbGxvIA0=",
+      "input_escaped": "echo world\\x08\\x08\\x08\\x08\\x08\\x1b[6@hello \\r",
+      "legacy_output_lines": [
+        "echo hello world"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo hello world"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/mid-line-edit#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "左鍵移動游標後在行中插入字元（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNaGVsbG8gd29ybGQNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rhello world\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "hello world",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "hello world",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/ctrl-u-kill#0-finalize",
+      "source": "ssh-live",
+      "desc": "Ctrl-U 清掉整行後改打別的指令（呼叫點 finalize）",
+      "input_b64": "cm0gLXJmIC90bXAvc2hvdWxkLW5vdC1iZS1hdWRpdGVkDRtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbQxtbS2VjaG8gc2FmZQ0=",
+      "input_escaped": "rm -rf /tmp/should-not-be-audited\\r\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[Kecho safe\\r",
+      "legacy_output_lines": [
+        "rm -rf /tmp/should-echo safe"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "rm -rf /tmp/should-echo safe"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/ctrl-u-kill#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "Ctrl-U 清掉整行後改打別的指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNc2FmZQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rsafe\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "safe",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "safe",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/clear-screen#0-finalize",
+      "source": "ssh-live",
+      "desc": "clear（ED 2J）後再下一條指令（呼叫點 finalize）",
+      "input_b64": "Y2xlYXIN",
+      "input_escaped": "clear\\r",
+      "legacy_output_lines": [
+        "clear"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "clear"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/clear-screen#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "clear（ED 2J）後再下一條指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNG1tIG1tKG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\r\\x1b[H\\x1b[J\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/clear-screen#2-finalize",
+      "source": "ssh-live",
+      "desc": "clear（ED 2J）後再下一條指令（呼叫點 finalize）",
+      "input_b64": "ZWNobyBhZnRlci1jbGVhcg0=",
+      "input_escaped": "echo after-clear\\r",
+      "legacy_output_lines": [
+        "echo after-clear"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo after-clear"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/clear-screen#3-beginTyping",
+      "source": "ssh-live",
+      "desc": "clear（ED 2J）後再下一條指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWZ0ZXItY2xlYXINChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rafter-clear\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "after-clear",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "after-clear",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/top-batch#0-finalize",
+      "source": "ssh-live",
+      "desc": "top -b -n 1（大量 CSI 與定位序列）（呼叫點 finalize）",
+      "input_b64": "dG9wIC1iIC1uIDEgfCBoZWFkIC0yMA0=",
+      "input_escaped": "top -b -n 1 | head -20\\r",
+      "legacy_output_lines": [
+        "top -b -n 1 | head -20"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "top -b -n 1 | head -20"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/top-batch#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "top -b -n 1（大量 CSI 與定位序列）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNdG9wIC0gMTg6MTI6MTcgdXAgOSBkYXlzLCAxMzo1NiwgIDAgdXNlcnMsICBsb2FkIGF2ZXJhZ2U6IDEuMDMsIDAuODcsIDAuNjgNClRhc2tzOiAxOCB0b3RhbCwgMSBydW5uaW5nLCAxNyBzbGVlcCwgMCBkLXNsZWVwLCAwIHN0b3BwZWQsIDAgem9tYmllDQolQ3B1KHMpOiAgMC45IHVzLCAgMS45IHN5LCAgMC4wIG5pLCA5Ny4yIGlkLCAgMC4wIHdhLCAgMC4wIGhpLCAgMC4wIHNpLCAgMC4wIHN0IA0KTWlCIE1lbSA6ICAxMTk0OS40IHRvdGFsLCAgIDc0MTYuMSBmcmVlLCAgIDE3MjAuMSB1c2VkLCAgIDMxMzYuOCBidWZmL2NhY2hlICAgICANCk1pQiBTd2FwOiAgIDEwMjQuMCB0b3RhbCwgICAgOTE1LjkgZnJlZSwgICAgMTA4LjEgdXNlZC4gIDEwMjI5LjIgYXZhaWwgTWVtIA0KDQogIFBJRCBVU0VSICAgICAgUFIgIE5JICAgIFZJUlQgICAgUkVTICAgIFNIUiBTICAlQ1BVICAlTUVNICAgICBUSU1FKyBDT01NQU5EDQogMzcxMSB0ZXN0dXNlciAgMjAgICAwICAgIDQ1MDAgICAzMDAwICAgMTIwOCBSICAgNy44ICAgMC4wICAgMDowMC4wNSB0b3ANCiAgIDE3IHJvb3QgICAgICAyMCAgIDAgICAgIDIxMiAgICAgIDAgICAgICAwIFMgICAwLjAgICAwLjAgICAwOjAwLjAwIHM2LXN1cGVydisNCiAgICAxIHJvb3QgICAgICAyMCAgIDAgICAgIDQyOCAgICAgIDAgICAgICAwIFMgICAwLjAgICAwLjAgICAwOjAwLjQ0IHM2LXN2c2Nhbg0KICAgMzYgcm9vdCAgICAgIDIwICAgMCAgICAgMjEyICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtc3VwZXJ2Kw0KICAgMjAgcm9vdCAgICAgIDIwICAgMCAgICAgMTk2ICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtbGludXgtKw0KICAgMzggcm9vdCAgICAgIDIwICAgMCAgICAgMjEyICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtc3VwZXJ2Kw0KICAgMzkgcm9vdCAgICAgIDIwICAgMCAgICAgMjEyICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtc3VwZXJ2Kw0KICAgNDAgcm9vdCAgICAgIDIwICAgMCAgICAgMjEyICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtc3VwZXJ2Kw0KICAgMzcgcm9vdCAgICAgIDIwICAgMCAgICAgMjEyICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtc3VwZXJ2Kw0KICAgNTIgcm9vdCAgICAgIDIwICAgMCAgICAgMjAwICAgICAgMCAgICAgIDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuMDAgczYtaXBjc2VyKw0KICAxODkgcm9vdCAgICAgIDIwICAgMCAgICAxNjgwICAgIDc4NCAgICA3ODQgUyAgIDAuMCAgIDAuMCAgIDA6MTguMjMgYnVzeWJveA0KICAxOTAgdGVzdHVzZXIgIDIwICAgMCAgICAgMjc2ICAgIDE0MCAgICAxNDAgUyAgIDAuMCAgIDAuMCAgIDA6MDAuODYgczYtbG9nDQogIDE5NCB0ZXN0dXNlciAgMjAgICAwICAgIDYzNzYgICAzMzQ0ICAgMjk2MCBTICAgMC4wICAgMC4wICAgMDowNi42MSBzc2hkLnBhbQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rtop - 18:12:17 up 9 days, 13:56,  0 users,  load average: 1.03, 0.87, 0.68\\r\\nTasks: 18 total, 1 running, 17 sleep, 0 d-sleep, 0 stopped, 0 zombie\\r\\n%Cpu(s):  0.9 us,  1.9 sy,  0.0 ni, 97.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st \\r\\nMiB Mem :  11949.4 total,   7416.1 free,   1720.1 used,   3136.8 buff/cache     \\r\\nMiB Swap:   1024.0 total,    915.9 free,    108.1 used.  10229.2 avail Mem \\r\\n\\r\\n  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\\r\\n 3711 testuser  20   0    4500   3000   1208 R   7.8   0.0   0:00.05 top\\r\\n   17 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n    1 root      20   0     428      0      0 S   0.0   0.0   0:00.44 s6-svscan\\r\\n   36 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n   20 root      20   0     196      0      0 S   0.0   0.0   0:00.00 s6-linux-+\\r\\n   38 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n   39 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n   40 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n   37 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+\\r\\n   52 root      20   0     200      0      0 S   0.0   0.0   0:00.00 s6-ipcser+\\r\\n  189 root      20   0    1680    784    784 S   0.0   0.0   0:18.23 busybox\\r\\n  190 testuser  20   0     276    140    140 S   0.0   0.0   0:00.86 s6-log\\r\\n  194 testuser  20   0    6376   3344   2960 S   0.0   0.0   0:06.61 sshd.pam\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "top - 18:12:17 up 9 days, 13:56,  0 users,  load average: 1.03, 0.87, 0.68",
+        "Tasks: 18 total, 1 running, 17 sleep, 0 d-sleep, 0 stopped, 0 zombie",
+        "%Cpu(s):  0.9 us,  1.9 sy,  0.0 ni, 97.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st ",
+        "MiB Mem :  11949.4 total,   7416.1 free,   1720.1 used,   3136.8 buff/cache     ",
+        "MiB Swap:   1024.0 total,    915.9 free,    108.1 used.  10229.2 avail Mem ",
+        "",
+        "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND",
+        " 3711 testuser  20   0    4500   3000   1208 R   7.8   0.0   0:00.05 top",
+        "   17 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "    1 root      20   0     428      0      0 S   0.0   0.0   0:00.44 s6-svscan",
+        "   36 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   20 root      20   0     196      0      0 S   0.0   0.0   0:00.00 s6-linux-+",
+        "   38 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   39 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   40 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   37 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   52 root      20   0     200      0      0 S   0.0   0.0   0:00.00 s6-ipcser+",
+        "  189 root      20   0    1680    784    784 S   0.0   0.0   0:18.23 busybox",
+        "  190 testuser  20   0     276    140    140 S   0.0   0.0   0:00.86 s6-log",
+        "  194 testuser  20   0    6376   3344   2960 S   0.0   0.0   0:06.61 sshd.pam",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "top - 18:12:17 up 9 days, 13:56,  0 users,  load average: 1.03, 0.87, 0.68",
+        "Tasks: 18 total, 1 running, 17 sleep, 0 d-sleep, 0 stopped, 0 zombie",
+        "%Cpu(s):  0.9 us,  1.9 sy,  0.0 ni, 97.2 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st ",
+        "MiB Mem :  11949.4 total,   7416.1 free,   1720.1 used,   3136.8 buff/cache     ",
+        "MiB Swap:   1024.0 total,    915.9 free,    108.1 used.  10229.2 avail Mem ",
+        "",
+        "  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND",
+        " 3711 testuser  20   0    4500   3000   1208 R   7.8   0.0   0:00.05 top",
+        "   17 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "    1 root      20   0     428      0      0 S   0.0   0.0   0:00.44 s6-svscan",
+        "   36 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   20 root      20   0     196      0      0 S   0.0   0.0   0:00.00 s6-linux-+",
+        "   38 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   39 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   40 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   37 root      20   0     212      0      0 S   0.0   0.0   0:00.00 s6-superv+",
+        "   52 root      20   0     200      0      0 S   0.0   0.0   0:00.00 s6-ipcser+",
+        "  189 root      20   0    1680    784    784 S   0.0   0.0   0:18.23 busybox",
+        "  190 testuser  20   0     276    140    140 S   0.0   0.0   0:00.86 s6-log",
+        "  194 testuser  20   0    6376   3344   2960 S   0.0   0.0   0:06.61 sshd.pam",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/vi-altscreen#0-finalize",
+      "source": "ssh-live",
+      "desc": "vi 進出 alternate screen（呼叫點 finalize）",
+      "input_b64": "dmkgL3RtcC92dGNoZWNrLnR4dA0=",
+      "input_escaped": "vi /tmp/vtcheck.txt\\r",
+      "legacy_output_lines": [
+        "vi /tmp/vtcheck.txt"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "vi /tmp/vtcheck.txt"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/vi-altscreen#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "vi 進出 alternate screen（呼叫點 beginTyping）",
+      "input_b64": "G1syNDsxSBtbSzpxIRtbMTs1SBtbMTs1SBtbMjQ7MUgbW0stIC90bXAvdnRjaGVjay50eHQgW01vZGlmaWVkXSAxLzEgMTAwJRtbMTs1SBtbMjQ7MUgbW0sbWz8xMDQ5bBtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[24;1H\\x1b[K:q!\\x1b[1;5H\\x1b[1;5H\\x1b[24;1H\\x1b[K- /tmp/vtcheck.txt [Modified] 1/1 100%\\x1b[1;5H\\x1b[24;1H\\x1b[K\\x1b[?1049l\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        ":q!- ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": true,
+      "decision_ref": "B4",
+      "reason": "CSI 24;1H 等多位數 CUP 被舊實作整段忽略，使 vi 離場的三段重繪全部併進同一列而產出 :q!- ssh-test-server:~$ 這種螢幕上不存在的文字；修正後各段落在其原本的列上，第 24 列只剩最後一次寫入的提示符，lastNonEmptyLine 仍得 ssh-test-server:~$，屬改善。"
+    },
+    {
+      "id": "ssh-live/vi-altscreen#2-finalize",
+      "source": "ssh-live",
+      "desc": "vi 進出 alternate screen（呼叫點 finalize）",
+      "input_b64": "ZWNobyBhZnRlci12aQ0=",
+      "input_escaped": "echo after-vi\\r",
+      "legacy_output_lines": [
+        "echo after-vi"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo after-vi"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/vi-altscreen#3-beginTyping",
+      "source": "ssh-live",
+      "desc": "vi 進出 alternate screen（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWZ0ZXItdmkNChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rafter-vi\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "after-vi",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "after-vi",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/shell-continuation#0-finalize",
+      "source": "ssh-live",
+      "desc": "PS2 續行（for 迴圈多行輸入）（呼叫點 finalize）",
+      "input_b64": "Zm9yIGkgaW4gMSAyOyBkbw0=",
+      "input_escaped": "for i in 1 2; do\\r",
+      "legacy_output_lines": [
+        "for i in 1 2; do"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "for i in 1 2; do"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/shell-continuation#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "PS2 續行（for 迴圈多行輸入）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNG1s/MjAwNGg+IA==",
+      "input_escaped": "\\x1b[?2004l\\r\\x1b[?2004h> ",
+      "legacy_output_lines": [
+        "> "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "> "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/shell-continuation#2-finalize",
+      "source": "ssh-live",
+      "desc": "PS2 續行（for 迴圈多行輸入）（呼叫點 finalize）",
+      "input_b64": "ZWNobyAkaQ0=",
+      "input_escaped": "echo $i\\r",
+      "legacy_output_lines": [
+        "echo $i"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo $i"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/shell-continuation#4-finalize",
+      "source": "ssh-live",
+      "desc": "PS2 續行（for 迴圈多行輸入）（呼叫點 finalize）",
+      "input_b64": "ZG9uZQ0=",
+      "input_escaped": "done\\r",
+      "legacy_output_lines": [
+        "done"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "done"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/shell-continuation#5-beginTyping",
+      "source": "ssh-live",
+      "desc": "PS2 續行（for 迴圈多行輸入）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNMQ0KMg0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\r1\\r\\n2\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "1",
+        "2",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "1",
+        "2",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/reverse-search#0-finalize",
+      "source": "ssh-live",
+      "desc": "Ctrl-R 反向搜尋歷史（呼叫點 finalize）",
+      "input_b64": "ZWNobyBuZWVkbGUN",
+      "input_escaped": "echo needle\\r",
+      "legacy_output_lines": [
+        "echo needle"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo needle"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/reverse-search#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "Ctrl-R 反向搜尋歷史（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNbmVlZGxlDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA=",
+      "input_escaped": "\\x1b[?2004l\\rneedle\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "needle",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "needle",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/reverse-search#2-finalize",
+      "source": "ssh-live",
+      "desc": "Ctrl-R 反向搜尋歷史（呼叫點 finalize）",
+      "input_b64": "DShyZXZlcnNlLWktc2VhcmNoKWAnOiAICAhuJzogZWNobyAbWzdtbhtbMjdtZWVkbGUICAgICAgICAgICAgICBtbMUBlJzogZWNobyAbWzdtbmUbWzI3bQgICAgICAgICAgbWzFAZSc6IGVjaG8gG1s3bW5lZRtbMjdtCAgICAgICAgICAgbWzFAZCc6IGVjaG8gG1s3bW5lZWQbWzI3bQgICAgICAgICAgICBtbMUBsJzogZWNobyAbWzdtbmVlZGwbWzI3bQgICAgICAgICAgICAhlJzogZWNobyAbWzdtbmVlZGxlG1syN20ICAgICAgNG1s5UHNzaC10ZXN0LXNlcnZlcjp+JCBlY2hvIG5lZWRsZQgICAgICA0=",
+      "input_escaped": "\\r(reverse-i-search)`': \\x08\\x08\\x08n': echo \\x1b[7mn\\x1b[27meedle\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[1@e': echo \\x1b[7mne\\x1b[27m\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[1@e': echo \\x1b[7mnee\\x1b[27m\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[1@d': echo \\x1b[7mneed\\x1b[27m\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[1@l': echo \\x1b[7mneedl\\x1b[27m\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08e': echo \\x1b[7mneedle\\x1b[27m\\x08\\x08\\x08\\x08\\x08\\x08\\r\\x1b[9Pssh-test-server:~$ echo needle\\x08\\x08\\x08\\x08\\x08\\x08\\r",
+      "legacy_output_lines": [
+        "ssh-test-server:~$ echo needle"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ssh-test-server:~$ echo needle"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/quoted-tab-char#0-finalize",
+      "source": "ssh-live",
+      "desc": "指令中含實際 tab 字元（引號內）（呼叫點 finalize）",
+      "input_b64": "cHJpbnRmICdhB2JcbicN",
+      "input_escaped": "printf 'a\\x07b\\\\n'\\r",
+      "legacy_output_lines": [
+        "printf 'ab\\n'"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "printf 'ab\\n'"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/quoted-tab-char#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "指令中含實際 tab 字元（引號內）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWINChtbPzIwMDRoc3NoLXRlc3Qtc2VydmVyOn4kIA==",
+      "input_escaped": "\\x1b[?2004l\\rab\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "ab",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "ab",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-ctrl-u#0-finalize",
+      "source": "ssh-live",
+      "desc": "bash readline：Ctrl-U 清行後改打別的指令（呼叫點 finalize）",
+      "input_b64": "YmFzaA0=",
+      "input_escaped": "bash\\r",
+      "legacy_output_lines": [
+        "bash"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "bash"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-ctrl-u#1-beginTyping",
+      "source": "ssh-live",
+      "desc": "bash readline：Ctrl-U 清行後改打別的指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\r\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-ctrl-u#5-beginTyping",
+      "source": "ssh-live",
+      "desc": "bash readline：Ctrl-U 清行後改打別的指令（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNZXhpdA0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rexit\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "exit",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "exit",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-mid-edit#2-finalize",
+      "source": "ssh-live",
+      "desc": "bash readline：行中插入與 Ctrl-A/Ctrl-E（呼叫點 finalize）",
+      "input_b64": "ZWNobyB3b3JsZAgICAgICAgICAgbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MICAgICBtbNkBoZWxsbyAN",
+      "input_escaped": "echo world\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x08\\x08\\x08\\x08\\x08\\x1b[6@hello \\r",
+      "legacy_output_lines": [
+        "echo hello world"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo hello world"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-tab-ambiguous#2-finalize",
+      "source": "ssh-live",
+      "desc": "bash readline：Tab 多候選（列表重繪 prompt）（呼叫點 finalize）",
+      "input_b64": "bHMgL2V0Yy9wYQcNCnBhbS5kLyAgIHBhc3N3ZCAgIHBhc3N3ZC0gIA0Kc3NoLXRlc3Qtc2VydmVyOn4kIGxzIC9ldGMvcGEICAgICAgICAgIG1tLZWNobyBkb25lDQ==",
+      "input_escaped": "ls /etc/pa\\x07\\r\\npam.d/   passwd   passwd-  \\r\\nssh-test-server:~$ ls /etc/pa\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x08\\x1b[Kecho done\\r",
+      "legacy_output_lines": [
+        "ls /etc/pa",
+        "pam.d/   passwd   passwd-  ",
+        "ssh-test-server:~$ echo done"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "ls /etc/pa",
+        "pam.d/   passwd   passwd-  ",
+        "ssh-test-server:~$ echo done"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-tab-ambiguous#3-beginTyping",
+      "source": "ssh-live",
+      "desc": "bash readline：Tab 多候選（列表重繪 prompt）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNZG9uZQ0KG1s/MjAwNGhzc2gtdGVzdC1zZXJ2ZXI6fiQg",
+      "input_escaped": "\\x1b[?2004l\\rdone\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "done",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "done",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-long-wrap#2-finalize",
+      "source": "ssh-live",
+      "desc": "bash readline：超寬行折行後退格（呼叫點 finalize）",
+      "input_b64": "ZWNobyBhYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWoIG1tLCBtbSwgbW0sN",
+      "input_escaped": "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij\\x08\\x1b[K\\x08\\x1b[K\\x08\\x1b[K\\r",
+      "legacy_output_lines": [
+        "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "echo abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "ssh-live/bash-long-wrap#3-beginTyping",
+      "source": "ssh-live",
+      "desc": "bash readline：超寬行折行後退格（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnaGlqYWJjZGVmZ2hpamFiY2RlZmdoaWphYmNkZWZnDQobWz8yMDA0aHNzaC10ZXN0LXNlcnZlcjp+JCA=",
+      "input_escaped": "\\x1b[?2004l\\rabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg\\r\\n\\x1b[?2004hssh-test-server:~$ ",
+      "legacy_output_lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg",
+        "ssh-test-server:~$ "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefg",
+        "ssh-test-server:~$ "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-simple#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 單行查詢（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUIDE7DQ==",
+      "input_escaped": "SELECT 1;\\r",
+      "legacy_output_lines": [
+        "SELECT 1;"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT 1;"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-simple#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 單行查詢（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgICAxDQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg",
+      "input_escaped": "\\x1b[?2004l\\r ?column? \\r\\n----------\\r\\n        1\\r\\n(1 row)\\r\\n\\r\\n\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        " ?column? ",
+        "----------",
+        "        1",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        " ?column? ",
+        "----------",
+        "        1",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-simple#2-finalize",
+      "source": "psql-live",
+      "desc": "psql 單行查詢（呼叫點 finalize）",
+      "input_b64": "XHEN",
+      "input_escaped": "\\\\q\\r",
+      "legacy_output_lines": [
+        "\\q"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "\\q"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-multiline#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 多行語句（續行提示符 -#）（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUDQ==",
+      "input_escaped": "SELECT\\r",
+      "legacy_output_lines": [
+        "SELECT"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-multiline#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 多行語句（續行提示符 -#）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNG1s/MjAwNGhjdXN0b2RleGEtIyA=",
+      "input_escaped": "\\x1b[?2004l\\r\\x1b[?2004hcustodexa-# ",
+      "legacy_output_lines": [
+        "custodexa-# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "custodexa-# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-multiline#2-finalize",
+      "source": "psql-live",
+      "desc": "psql 多行語句（續行提示符 -#）（呼叫點 finalize）",
+      "input_b64": "MSBBUyB4DQ==",
+      "input_escaped": "1 AS x\\r",
+      "legacy_output_lines": [
+        "1 AS x"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "1 AS x"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-multiline#4-finalize",
+      "source": "psql-live",
+      "desc": "psql 多行語句（續行提示符 -#）（呼叫點 finalize）",
+      "input_b64": "Ow0=",
+      "input_escaped": ";\\r",
+      "legacy_output_lines": [
+        ";"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        ";"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-multiline#5-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 多行語句（續行提示符 -#）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNIHggDQotLS0NCiAxDQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg",
+      "input_escaped": "\\x1b[?2004l\\r x \\r\\n---\\r\\n 1\\r\\n(1 row)\\r\\n\\r\\n\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        " x ",
+        "---",
+        " 1",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        " x ",
+        "---",
+        " 1",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-meta#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 反斜線元命令 \\dt（呼叫點 finalize）",
+      "input_b64": "XGR0DQ==",
+      "input_escaped": "\\\\dt\\r",
+      "legacy_output_lines": [
+        "\\dt"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "\\dt"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-meta#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 反斜線元命令 \\dt（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNICAgICAgICAgICAgICAgICAgIExpc3Qgb2YgcmVsYXRpb25zDQogU2NoZW1hIHwgICAgICAgICAgICBOYW1lICAgICAgICAgICAgfCBUeXBlICB8ICBPd25lciAgIA0KLS0tLS0tLS0rLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLSstLS0tLS0tKy0tLS0tLS0tLS0NCiBwdWJsaWMgfCBhY2Nlc3NfcmVxdWVzdF9hcHByb3ZhbHMgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhY2Nlc3NfcmVxdWVzdHMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhY2Nlc3NfcmV2aWV3cyAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhbGVydF9ydWxlcyAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhcHByb3Zlcl9zY29wZXMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9hY2NvdW50cyAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9hdXRob3JpemF0aW9ucyAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ncm91cHMgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ob3N0X2tleXMgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldF9ub2RlcyAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhc3NldHMgICAgICAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGFpbl92ZXJpZnlfc3RhdGVzICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGVja3BvaW50X3RyaW1zICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9jaGVja3BvaW50cyAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9mYWlsdXJlX2V2ZW50cyAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9sb2dzICAgICAgICAgICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBhdWRpdF9yZXRlbnRpb25fd2F0ZXJtYXJrcyB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBjaGFuZ2Vfc2VjcmV0X2NhbmRpZGF0ZXMgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBjaGFuZ2Vfc2VjcmV0X3BsYW5zICAgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCiBwdWJsaWMgfCBjaGFuZ2Vfc2VjcmV0X3JlY29yZHMgICAgICB8IHRhYmxlIHwgcG9zdGdyZXMNCi0tTW9yZS0tIA==",
+      "input_escaped": "\\x1b[?2004l\\r                   List of relations\\r\\n Schema |            Name            | Type  |  Owner   \\r\\n--------+----------------------------+-------+----------\\r\\n public | access_request_approvals   | table | postgres\\r\\n public | access_requests            | table | postgres\\r\\n public | access_reviews             | table | postgres\\r\\n public | alert_rules                | table | postgres\\r\\n public | approver_scopes            | table | postgres\\r\\n public | asset_accounts             | table | postgres\\r\\n public | asset_authorizations       | table | postgres\\r\\n public | asset_groups               | table | postgres\\r\\n public | asset_host_keys            | table | postgres\\r\\n public | asset_nodes                | table | postgres\\r\\n public | assets                     | table | postgres\\r\\n public | audit_chain_verify_states  | table | postgres\\r\\n public | audit_checkpoint_trims     | table | postgres\\r\\n public | audit_checkpoints          | table | postgres\\r\\n public | audit_failure_events       | table | postgres\\r\\n public | audit_logs                 | table | postgres\\r\\n public | audit_retention_watermarks | table | postgres\\r\\n public | change_secret_candidates   | table | postgres\\r\\n public | change_secret_plans        | table | postgres\\r\\n public | change_secret_records      | table | postgres\\r\\n--More-- ",
+      "legacy_output_lines": [
+        "                   List of relations",
+        " Schema |            Name            | Type  |  Owner   ",
+        "--------+----------------------------+-------+----------",
+        " public | access_request_approvals   | table | postgres",
+        " public | access_requests            | table | postgres",
+        " public | access_reviews             | table | postgres",
+        " public | alert_rules                | table | postgres",
+        " public | approver_scopes            | table | postgres",
+        " public | asset_accounts             | table | postgres",
+        " public | asset_authorizations       | table | postgres",
+        " public | asset_groups               | table | postgres",
+        " public | asset_host_keys            | table | postgres",
+        " public | asset_nodes                | table | postgres",
+        " public | assets                     | table | postgres",
+        " public | audit_chain_verify_states  | table | postgres",
+        " public | audit_checkpoint_trims     | table | postgres",
+        " public | audit_checkpoints          | table | postgres",
+        " public | audit_failure_events       | table | postgres",
+        " public | audit_logs                 | table | postgres",
+        " public | audit_retention_watermarks | table | postgres",
+        " public | change_secret_candidates   | table | postgres",
+        " public | change_secret_plans        | table | postgres",
+        " public | change_secret_records      | table | postgres",
+        "--More-- "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l"
+      ],
+      "expected_lines": [
+        "                   List of relations",
+        " Schema |            Name            | Type  |  Owner   ",
+        "--------+----------------------------+-------+----------",
+        " public | access_request_approvals   | table | postgres",
+        " public | access_requests            | table | postgres",
+        " public | access_reviews             | table | postgres",
+        " public | alert_rules                | table | postgres",
+        " public | approver_scopes            | table | postgres",
+        " public | asset_accounts             | table | postgres",
+        " public | asset_authorizations       | table | postgres",
+        " public | asset_groups               | table | postgres",
+        " public | asset_host_keys            | table | postgres",
+        " public | asset_nodes                | table | postgres",
+        " public | assets                     | table | postgres",
+        " public | audit_chain_verify_states  | table | postgres",
+        " public | audit_checkpoint_trims     | table | postgres",
+        " public | audit_checkpoints          | table | postgres",
+        " public | audit_failure_events       | table | postgres",
+        " public | audit_logs                 | table | postgres",
+        " public | audit_retention_watermarks | table | postgres",
+        " public | change_secret_candidates   | table | postgres",
+        " public | change_secret_plans        | table | postgres",
+        " public | change_secret_records      | table | postgres",
+        "--More-- "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-meta#2-finalize",
+      "source": "psql-live",
+      "desc": "psql 反斜線元命令 \\dt（呼叫點 finalize）",
+      "input_b64": "DSAgICAgICAgIA0oRW50ZXI6bmV4dCBsaW5lIFNwYWNlOm5leHQgcGFnZSBROnF1aXQgUjpzaG93IHRoZSByZXN0KQ0gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA0bWz8yMDA0aGN1c3RvZGV4YT0jIA==",
+      "input_escaped": "\\r         \\r(Enter:next line Space:next page Q:quit R:show the rest)\\r                                                        \\r\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        "custodexa=#                                             "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "custodexa=#                                             "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-history#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 上鍵召回歷史（整行重繪）（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUIDQyOw0=",
+      "input_escaped": "SELECT 42;\\r",
+      "legacy_output_lines": [
+        "SELECT 42;"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT 42;"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-history#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 上鍵召回歷史（整行重繪）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgIDQyDQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg",
+      "input_escaped": "\\x1b[?2004l\\r ?column? \\r\\n----------\\r\\n       42\\r\\n(1 row)\\r\\n\\r\\n\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        " ?column? ",
+        "----------",
+        "       42",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        " ?column? ",
+        "----------",
+        "       42",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-backspace#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 退格修正（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUIDExMQgbW0sIG1tLOw0=",
+      "input_escaped": "SELECT 111\\x08\\x1b[K\\x08\\x1b[K;\\r",
+      "legacy_output_lines": [
+        "SELECT 1;"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT 1;"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-tab#0-finalize",
+      "source": "psql-live",
+      "desc": "psql Tab 補全（SELE<TAB>）（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUICogRlJPTSBzZXNzB2lvbg0bW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0MbW0tTRUxFQ1QgMjsN",
+      "input_escaped": "SELECT * FROM sess\\x07ion\\r\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[C\\x1b[KSELECT 2;\\r",
+      "legacy_output_lines": [
+        "SELECT * FROSELECT 2;"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT * FROSELECT 2;"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-tab#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql Tab 補全（SELE<TAB>）（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNID9jb2x1bW4/IA0KLS0tLS0tLS0tLQ0KICAgICAgICAyDQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg",
+      "input_escaped": "\\x1b[?2004l\\r ?column? \\r\\n----------\\r\\n        2\\r\\n(1 row)\\r\\n\\r\\n\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        " ?column? ",
+        "----------",
+        "        2",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        " ?column? ",
+        "----------",
+        "        2",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-long-wrap#0-finalize",
+      "source": "psql-live",
+      "desc": "psql 超過終端寬度的長語句（呼叫點 finalize）",
+      "input_b64": "U0VMRUNUICd6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enonOw0=",
+      "input_escaped": "SELECT 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';\\r",
+      "legacy_output_lines": [
+        "SELECT 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';"
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [],
+      "expected_lines": [
+        "SELECT 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';"
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    },
+    {
+      "id": "psql-live/psql-long-wrap#1-beginTyping",
+      "source": "psql-live",
+      "desc": "psql 超過終端寬度的長語句（呼叫點 beginTyping）",
+      "input_b64": "G1s/MjAwNGwNICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgP2NvbHVtbj8gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICANCi0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tDQogenp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6enp6DQooMSByb3cpDQoNChtbPzIwMDRoY3VzdG9kZXhhPSMg",
+      "input_escaped": "\\x1b[?2004l\\r                                                                        ?column?                                                                        \\r\\n--------------------------------------------------------------------------------------------------------------------------------------------------------\\r\\n zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\\r\\n(1 row)\\r\\n\\r\\n\\x1b[?2004hcustodexa=# ",
+      "legacy_output_lines": [
+        "                                                                        ?column?                                                                        ",
+        "--------------------------------------------------------------------------------------------------------------------------------------------------------",
+        " zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "legacy_panicked": false,
+      "legacy_upstream_log": [
+        "Screen不支持解析l",
+        "Screen不支持解析h"
+      ],
+      "expected_lines": [
+        "                                                                        ?column?                                                                        ",
+        "--------------------------------------------------------------------------------------------------------------------------------------------------------",
+        " zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "(1 row)",
+        "",
+        "custodexa=# "
+      ],
+      "differs_from_legacy": false,
+      "decision_ref": "",
+      "reason": ""
+    }
+  ]
+}

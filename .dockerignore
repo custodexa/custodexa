@@ -1,0 +1,54 @@
+# Docker build context 排除清單
+#
+# 全部服務的 build context 皆為專案根（見 openspec/specs/container-build）。
+# 本檔決定哪些內容不傳入 Docker daemon。
+#
+# 不可排除（是 Dockerfile COPY 的來源）：
+#   docker/          rdp-test 與 vnc-test 的 entrypoint/supervisord、frontend 的 nginx.conf
+#   backend/         backend 各 stage 的原始碼來源
+#   frontend/        frontend 各 stage 的原始碼來源
+#
+# 注意：pattern 相對 context 根匹配，不遞歸；要跨層需明寫 **/。
+
+# 版本控制與編輯器
+.git
+.gitignore
+.vscode
+.github
+
+# 應用執行期資料（DATA_PATH 預設落點：審計/錄影/資料庫）
+data
+
+# 建置與執行期產物
+**/node_modules
+**/tmp
+frontend/dist
+backend/docs
+
+# 知識圖譜產物（post-commit hook 增量更新，與建置無關）
+.code-review-graph
+graphify-out
+
+# 行銷與簡報素材（不進任何映像）
+product-deck
+product-page
+
+# 規格與文件（backend 測試以 volume 掛載取得，非 build 期需要）
+openspec
+docs
+README.md
+CLAUDE.md
+AGENTS.md
+
+# 代理與工具設定
+.claude
+.codex
+.agents
+.mcp.json
+
+# 本機環境檔（機密；設定一律經 env_file 於執行期注入，絕不進映像層）
+.env
+.env.local
+
+# 作業系統雜物
+**/.DS_Store

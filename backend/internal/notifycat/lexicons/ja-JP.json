@@ -1,0 +1,43 @@
+{
+  "cause": {
+    "recording_probe_failed": "発行時の録画事前チェックに失敗",
+    "recording_start_failed": "録画の開始に失敗",
+    "recording_flush_failed": "録画データの書き出しに失敗",
+    "recording_write_failed": "録画イベントの書き込みに失敗",
+    "recording_resize_write_failed": "録画リサイズイベントの書き込みに失敗",
+    "recording_stop_failed": "録画の停止に失敗",
+    "recording_file_stat_failed": "録画ファイルの保存確認に失敗",
+    "recording_rename_failed": "録画ファイルのリネームに失敗",
+    "recording_metadata_update_failed": "録画メタデータの更新に失敗",
+    "recording_file_missing": "録画ファイルが存在しない（書き込み失敗または未開始）",
+    "session_record_create_failed": "セッション記録の作成に失敗し、接続を拒否",
+    "audit_write_fallback_file": "監査バッチ書き込みに失敗し、ファイルへ退避",
+    "audit_write_batch_dropped": "監査バッチ書き込みに失敗し、ファイル退避が無効のためバッチを破棄",
+    "syslog_connect_failed": "syslog 転送の接続に失敗",
+    "syslog_buffer_overflow": "syslog 転送バッファのオーバーフロー",
+    "kek_retirement_backlog": "KEK 退役処理が未収束",
+    "aad_residue_impossible_state": "最終形式でない暗号文の残存を検出（あり得ない状態：コード不具合または DB 直書き）",
+    "checkpoint_anchor_dropped": "チェックポイントの外部保管が送出されませんでした（該当チェックポイントの外部の控えなし）",
+    "audit_chain_structure_invalid": "チェックポイントチェーンの構造異常（署名・連結・連番の改変）",
+    "audit_chain_content_mismatch": "封印済み区間の監査記録がチェックポイントと不一致または欠落",
+    "audit_chain_content_extra_rows": "封印済み区間に行単位署名が有効な追加記録あり（人手確認要）",
+    "audit_chain_verify_failed": "チェーン検証自体が完了不能（メカニズム状態は不明であり「異常なし」ではない）"
+  },
+  "severity": {
+    "high": "高",
+    "medium": "中",
+    "low": "低"
+  },
+  "alert_state": {
+    "blocked": "ブロック済み"
+  },
+  "degraded": {
+    "title": "通知の劣化配信",
+    "text": "イベント {event} のパラメータがカタログ契約に適合しないため、内容を機械識別子へ劣化させて配信しました。詳細はバックエンドのログと監査失効イベントを確認してください。"
+  },
+  "entity": {
+    "session": "セッション",
+    "user": "ユーザー",
+    "asset": "資産"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "KEK 材料的文件化生成指令（kek-encoding-and-unseal-entry 決策 8）。權威事實源是後端 config.KEKGenerateCommands；本檔是介面側的副本，由 backend 的 TestFrontendKEKCommandsMatchBackend 逐條比對（dev compose 以唯讀掛入 backend 容器）。指令字串不翻譯——說明文字才走 i18n。改動須兩處同步，否則測試失敗：不一致的指引比沒有指引更糟。",
+  "commands": [
+    { "command": "openssl rand -hex 32", "form": "hex" },
+    { "command": "openssl rand -base64 32", "form": "base64" },
+    { "command": "LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32", "form": "raw" }
+  ]
+}

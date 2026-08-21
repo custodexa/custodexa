@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  專案：Custodexa — 開源堡壘機（Bastion Host）／特權存取管理平台。
+  定位：多協議終端代理，強調憑證收口（前端零接觸明文憑證）、全操作審計與連線錄製回放。
+
+  技術棧：
+  - 後端：Go 1.26+ / Gin / GORM / PostgreSQL 16
+  - 前端：Vue 3 (Composition API) / Element Plus 2.9 / Vite / Pinia / xterm.js
+  - 代理：SSH／資料庫 CLI／K8s exec 走後端原生代理與本地 PTY 子程序；
+    RDP／VNC 經 Apache Guacamole (guacd)
+  - 部署與驗證：docker-compose（所有驗證與測試必須在專案目錄內執行）
+
+  設計方向：
+  - 簡潔設計感、以暗色為主（不傷眼）
+  - 輕量易用與功能完整度並重
+
+  慣例：
+  - 與使用者溝通使用繁體中文；程式碼註解與識別字用英文
+  - Conventional commits（feat:/fix:/docs:/test:/refactor:）
+  - docs/ 根目錄最多 5 份文檔
+  - 禁止使用 /tmp 或專案目錄外路徑
+  - 不在程式碼/註解/文檔中使用 emoji
+
+rules:
+  proposal:
+    - 提案需包含「Non-goals」段落
+    - 所有驗證方式必須可在 docker-compose 環境內執行
+  tasks:
+    - 任務拆分為可獨立驗證的小塊，每塊附驗證指令

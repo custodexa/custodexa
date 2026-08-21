@@ -1,0 +1,75 @@
+/**
+ * Custodexa design tokens (dark-first).
+ * Brand palette v2 anchored: Primary Blue interactive ramp (brand #2563EB as
+ * pressed state; lighter ramp for dark-surface AA contrast), Primary Navy
+ * surfaces, Slate Gray borders, Accent Teal info (docs/assets/brand/palette.png).
+ * Single source of truth for color, spacing, radius, shadow, typography.
+ * All views and components must consume these instead of hard-coded values.
+ */
+:root {
+  /* Background hierarchy (navy dark, non-pure-black to reduce glare) */
+  --ot-bg-page: #0a1522;
+  --ot-bg-surface: #0d1b2a;
+  --ot-bg-elevated: #14283e;
+  --ot-bg-hover: #19314b;
+  --ot-bg-active: #1e3a59;
+
+  /* Borders and dividers (Slate Gray anchor) */
+  --ot-border: #334155;
+  --ot-border-subtle: #263242;
+
+  /* Text hierarchy */
+  --ot-text-primary: #e6edf3;
+  --ot-text-secondary: #9da7b1;
+  --ot-text-disabled: #6e7781;
+  --ot-text-inverse: #0f1419;
+
+  /* Brand and semantic colors (Primary Blue ramp; semantics unchanged) */
+  --ot-primary: #4f83f1;
+  --ot-primary-hover: #6e9bff;
+  --ot-primary-active: #2563eb;
+  --ot-primary-dim: rgba(79, 131, 241, 0.15);
+  --ot-success: #4ec47a;
+  --ot-warning: #d9a93e;
+  --ot-danger: #e5604f;
+  --ot-info: #14b8a6;
+
+  /* Brand mark backing (Light Gray badge so the navy icon stays visible) */
+  --ot-brand-badge-bg: #e2e8f0;
+
+  /* Terminal palette (mirrored in styles/terminal-theme.js) */
+  --ot-terminal-bg: #0d1117;
+  --ot-terminal-fg: #e6edf3;
+
+  /* Spacing scale */
+  --ot-space-xs: 4px;
+  --ot-space-sm: 8px;
+  --ot-space-md: 16px;
+  --ot-space-lg: 24px;
+  --ot-space-xl: 32px;
+
+  /* Radius */
+  --ot-radius-sm: 4px;
+  --ot-radius-md: 6px;
+  --ot-radius-lg: 10px;
+
+  /* Shadow (subtle on dark) */
+  --ot-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ot-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* Typography */
+  --ot-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', 'Noto Sans TC', sans-serif;
+  --ot-font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Courier New',
+    monospace;
+  --ot-font-size-xs: 12px;
+  --ot-font-size-sm: 13px;
+  --ot-font-size-md: 14px;
+  --ot-font-size-lg: 16px;
+  --ot-font-size-xl: 20px;
+
+  /* Layout */
+  --ot-sidebar-width: 220px;
+  --ot-sidebar-width-collapsed: 64px;
+  --ot-header-height: 56px;
+}

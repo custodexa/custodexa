@@ -1,0 +1,43 @@
+{
+  "cause": {
+    "recording_probe_failed": "簽發點錄影前置檢查失敗",
+    "recording_start_failed": "啟動錄製失敗",
+    "recording_flush_failed": "錄製資料落盤失敗",
+    "recording_write_failed": "寫入錄製事件失敗",
+    "recording_resize_write_failed": "寫入錄製尺寸事件失敗",
+    "recording_stop_failed": "停止錄製失敗",
+    "recording_file_stat_failed": "錄影檔落地確認失敗",
+    "recording_rename_failed": "錄影檔落地重命名失敗",
+    "recording_metadata_update_failed": "錄影 metadata 更新失敗",
+    "recording_file_missing": "錄影檔缺失（寫入失敗或錄製未啟動）",
+    "session_record_create_failed": "會話記錄建立失敗，連線已拒",
+    "audit_write_fallback_file": "審計批次寫入失敗，已降級至檔案",
+    "audit_write_batch_dropped": "審計批次寫入失敗，檔案降級已關閉、批次丟棄",
+    "syslog_connect_failed": "syslog 轉發連線失敗",
+    "syslog_buffer_overflow": "syslog 轉發緩衝溢出",
+    "kek_retirement_backlog": "KEK 退役收尾未收斂",
+    "aad_residue_impossible_state": "偵測到非終態格式密文殘值（不可能態：程式缺陷或資料庫直寫）",
+    "checkpoint_anchor_dropped": "檢查點離機備份未送出（該檢查點無離機副本）",
+    "audit_chain_structure_invalid": "檢查點鏈結構異常（簽章、鏈接或序號被動）",
+    "audit_chain_content_mismatch": "已封區間的審計紀錄與檢查點不符或缺失",
+    "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
+    "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）"
+  },
+  "severity": {
+    "high": "高風險",
+    "medium": "中風險",
+    "low": "低風險"
+  },
+  "alert_state": {
+    "blocked": "已阻斷"
+  },
+  "degraded": {
+    "title": "通知降級投遞",
+    "text": "事件 {event} 的參數不合翻譯目錄契約，內容已降級為機器識別字；完整脈絡請查後端日誌與失效事件紀錄。"
+  },
+  "entity": {
+    "session": "會話",
+    "user": "使用者",
+    "asset": "資產"
+  }
+}

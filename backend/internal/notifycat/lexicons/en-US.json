@@ -1,0 +1,43 @@
+{
+  "cause": {
+    "recording_probe_failed": "Recording pre-flight check failed at issuance",
+    "recording_start_failed": "Failed to start recording",
+    "recording_flush_failed": "Failed to flush recording data to disk",
+    "recording_write_failed": "Failed to write recording event",
+    "recording_resize_write_failed": "Failed to write recording resize event",
+    "recording_stop_failed": "Failed to stop recording",
+    "recording_file_stat_failed": "Could not confirm recording file on disk",
+    "recording_rename_failed": "Failed to rename recording file",
+    "recording_metadata_update_failed": "Failed to update recording metadata",
+    "recording_file_missing": "Recording file missing (write failed or recording never started)",
+    "session_record_create_failed": "Session record creation failed; connection refused",
+    "audit_write_fallback_file": "Audit batch write failed; fell back to file",
+    "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
+    "syslog_connect_failed": "Syslog forwarding connection failed",
+    "syslog_buffer_overflow": "Syslog forwarding buffer overflow",
+    "kek_retirement_backlog": "KEK retirement backlog not converged",
+    "aad_residue_impossible_state": "Non-final-format ciphertext residue detected (impossible state: code defect or direct database write)",
+    "checkpoint_anchor_dropped": "Checkpoint off-box copy not sent (no off-box copy of that checkpoint)",
+    "audit_chain_structure_invalid": "Checkpoint chain structure anomaly (signature, linkage or sequence tampered)",
+    "audit_chain_content_mismatch": "Audit records in a sealed interval mismatch the checkpoint or are missing",
+    "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
+    "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")"
+  },
+  "severity": {
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "alert_state": {
+    "blocked": "Blocked"
+  },
+  "degraded": {
+    "title": "Degraded notification",
+    "text": "Event {event} did not satisfy the notification catalog contract; the content was degraded to machine identifiers. Check the backend logs and audit failure records for the full context."
+  },
+  "entity": {
+    "session": "session",
+    "user": "user",
+    "asset": "asset"
+  }
+}
