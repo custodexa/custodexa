@@ -116,6 +116,11 @@ backend/testdata/openspec/
 # 只改範本不會使快取失效，守衛會回報 (cached) 而根本不執行。
 backend/config/testdata/.env.example
 
+# 版本號守衛（VERSION ⇄ CHANGELOG.md）的唯讀掛載點（單檔掛載副產物，空檔）。
+# 逐檔掛的理由與置於 module 內的理由同上：repo 根不得整個掛進容器，而 module 外的
+# 路徑不被 go test 結果快取追蹤，只改 VERSION 會拿到 (cached) 假綠。
+backend/cmd/server/testdata/release/
+
 # 驗證截圖統一收納處（本機保留供官網素材用，不入版控；README 例外入版控說明用途）
 /screenshots/*
 !/screenshots/README.md

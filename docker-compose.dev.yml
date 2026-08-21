@@ -49,6 +49,11 @@ services:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev
+      args:
+        # 版本號注入：開發版二進位由 Air 於容器內建置，此值烘成 CUSTODEXA_VERSION 供
+        # backend/.air.toml 的 build cmd 帶上 -X main.Version。預設 dev——開發環境的
+        # /health 顯示 dev 是正確結果，不冒充已發布版本。正式版才以專案根 VERSION 檔為事實源。
+        VERSION: ${VERSION:-dev}
     container_name: custodexa-backend-dev
     ports:
       - "8080:8080"
@@ -112,6 +117,16 @@ services:
       # changes/archive/，掛父目錄使守衛在歸檔後仍讀得到，不需同步改 compose。
       # 唯讀是刻意的信任邊界：守衛不得具備修改其驗證對象的能力。
       - ./openspec:/app/testdata/openspec:ro
+      # 唯讀掛入專案根 VERSION 與 CHANGELOG.md 供 version_source_guard_test.go 對照
+      #（發版時兩者須同時更新，否則 /health 揭露的版號會與 CHANGELOG 不符）。
+      #
+      # **逐檔掛而非掛父目錄**：兩者都住在 repo 根，而 repo 根不得整個掛進容器（見下方
+      # 那段實測記載）。代價是單檔 bind mount 綁 inode——以 atomic rename 更新 host 檔時
+      # 容器仍讀舊 inode，dev 需 recreate backend 才反映（同 .env.example，理由見上）。
+      # 掛載點在 /app（module 根）內：go test 的結果快取只追蹤 module 內被開啟的檔案，
+      # 掛在外面會讓「只改 VERSION、不動 Go 碼」回報 (cached) 綠而根本不執行守衛。
+      - ./VERSION:/app/cmd/server/testdata/release/VERSION:ro
+      - ./CHANGELOG.md:/app/cmd/server/testdata/release/CHANGELOG.md:ro
       #
       # **不得把 repo 根整個掛進容器**（brand-residual-cleanup 實測踩過）：曾為讓
       # 品牌守衛掃全 repo 而加 `.:/app/testdata/repo:ro`，結果 host 的 .env（含

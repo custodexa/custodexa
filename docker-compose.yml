@@ -52,6 +52,12 @@ services:
       context: .
       dockerfile: docker/backend/Dockerfile
       target: production
+      args:
+        # 版本號建置時注入（/health 揭露的版號）。**空值是刻意的**：Dockerfile 於空值時
+        # 回退讀專案根 VERSION 檔，那才是單一事實源——不設環境變數的一般建置（含
+        # scripts/prod_build_check.sh 與 CI）因此自動拿到正確版號。
+        # 設 VERSION 環境變數只用於覆寫，例：`VERSION=1.0.2-rc1 docker compose -f docker-compose.yml build`
+        VERSION: ${VERSION:-}
     container_name: custodexa-backend
     # 使用者可調值（機密/DB 認證/DB_SSLMODE/功能開關/LDAP/運維上限）一律走 .env（與 dev 一致）
     env_file:
