@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,8 +19,12 @@ type SealConfig struct {
 	// BackoffMax per-source 退避封頂：退避的成長 SHALL 有明確上限，
 	// 使「等待即可再試」在任何攻擊強度下都成立
 	BackoffMax time.Duration
-	// CooldownThreshold 觸發全域冷卻的連續材料失敗次數（SHALL 明顯高於 per-source）
-	CooldownThreshold int
+	// CooldownThreshold 觸發全域冷卻的連續材料失敗次數（SHALL 明顯高於 per-source）。
+	//
+	// **型別與限速器同為 uint32**：非負由型別自證，接線處因此不需要任何縮窄轉換。
+	// 縮窄轉換是這個旋鈕唯一的溢位入口——一個負的或超出 32 位元的值轉過去會成為
+	// 極大門檻，而「門檻大到永遠觸發不到」與「把全域冷卻關掉」在執行期無從分辨。
+	CooldownThreshold uint32
 	// Cooldown 全域冷卻基準時長
 	Cooldown time.Duration
 	// CooldownMax 全域冷卻封頂
@@ -46,8 +51,9 @@ type SealConfig struct {
 const (
 	sealParamMinSeconds = 1
 	sealParamMaxSeconds = 24 * 60 * 60
-	// sealCooldownThresholdMax 冷卻門檻上限。門檻在接線處被轉為 uint32，
-	// 負值轉換後成為極大值＝冷卻實質關閉，故此鍵同樣須受界而非只擋負值。
+	// sealCooldownThresholdMax 冷卻門檻上限。門檻的非負性已由 uint32 型別保證，
+	// 故上限擋的是另一件事：一個大到永遠觸發不到的門檻與寫零同效——都是把全域
+	// 冷卻關掉，且都沒有執行期症狀。故此鍵須受界而非只擋零。
 	sealCooldownThresholdMax = 1 << 20
 )
 
@@ -56,6 +62,13 @@ const (
 // **不靜默夾取**：夾取會讓打錯的參數看起來生效，而這些參數的作用正是限制
 // 攻擊者的嘗試速率——一個看似生效實則被改寫的防護，比沒有防護更危險。
 const sealInvalidDuration = time.Duration(-1)
+
+// sealInvalidThreshold 是「env 值無法解析為合法門檻」的哨兵。
+//
+// 取零是因為零必然落在合法值域之外：於是「打錯的門檻」與「顯式寫零」走同一條
+// fail-close 路徑。理由同 sealInvalidDuration——退回內建預設會讓部署方以為自己
+// 調過這個旋鈕，而它的作用正是限制未認證端點的嘗試速率。
+const sealInvalidThreshold uint32 = 0
 
 // LoadSeal 讀取封印端點組態。
 //
@@ -68,7 +81,7 @@ func LoadSeal() SealConfig {
 	return SealConfig{
 		BackoffBase:        sealDurationFromEnv("SEAL_UNSEAL_BACKOFF_BASE_SECONDS", 2),
 		BackoffMax:         sealDurationFromEnv("SEAL_UNSEAL_BACKOFF_MAX_SECONDS", 300),
-		CooldownThreshold:  getEnvInt("SEAL_UNSEAL_COOLDOWN_THRESHOLD", 20),
+		CooldownThreshold:  sealThresholdFromEnv("SEAL_UNSEAL_COOLDOWN_THRESHOLD", 20),
 		Cooldown:           sealDurationFromEnv("SEAL_UNSEAL_COOLDOWN_SECONDS", 60),
 		CooldownMax:        sealDurationFromEnv("SEAL_UNSEAL_COOLDOWN_MAX_SECONDS", 900),
 		TrustedProxies:     parseCSV(getEnv("TRUSTED_PROXIES", "")),
@@ -84,6 +97,24 @@ func sealDurationFromEnv(key string, def int) time.Duration {
 		return sealInvalidDuration
 	}
 	return time.Duration(secs) * time.Second
+}
+
+// sealThresholdFromEnv 讀冷卻門檻；無法解析為 32 位元非負整數者回哨兵值交由 Validate 處置。
+//
+// **直接以 ParseUint(_, 10, 32) 受界，而非 Atoi 後轉型**：Atoi 產出的是架構相依的
+// int，要落到限速器的 uint32 必經一次縮窄轉換，負值與超出 32 位元的值會在那次
+// 轉換裡回繞成一個看似合理的大門檻。改由解析器把值域寫進型別，越界即是解析失敗，
+// 於是整條鏈（env → 欄位 → 限速器）沒有任何一處需要縮窄。
+func sealThresholdFromEnv(key string, def uint32) uint32 {
+	raw := getEnv(key, "")
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil {
+		return sealInvalidThreshold
+	}
+	return uint32(v)
 }
 
 // Validate 於啟動期驗證退避／冷卻參數，任一項不合法即 fail-close（D6.4）。
@@ -115,7 +146,7 @@ func (s SealConfig) Validate() error {
 			s.CooldownMax, s.Cooldown)
 	}
 	if s.CooldownThreshold < 1 || s.CooldownThreshold > sealCooldownThresholdMax {
-		return fmt.Errorf("SEAL_UNSEAL_COOLDOWN_THRESHOLD(%d) 不合法（須為 1..%d；負值於接線處轉 uint32 後成為極大值＝冷卻實質關閉）",
+		return fmt.Errorf("SEAL_UNSEAL_COOLDOWN_THRESHOLD(%d) 不合法（須為 1..%d；零、負值與超出 32 位元的寫法在讀取期即歸零，一律於此拒絕而不退回預設）",
 			s.CooldownThreshold, sealCooldownThresholdMax)
 	}
 	return nil

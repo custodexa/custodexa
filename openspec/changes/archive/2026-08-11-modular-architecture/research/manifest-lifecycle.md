@@ -89,7 +89,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 | 類別 | 現況筆數 | 守衛下限 |
 |---|---|---|
-| 個別登記的包級全域（`var:`） | 151（kek-encoding-and-unseal-entry 新增 G-138〜G-139） | 110 |
+| 個別登記的包級全域（`var:`） | 152（kek-encoding-and-unseal-entry 新增 G-138〜G-139；audit 排序白名單新增 G-141） | 110 |
 | `init()`（`init:`） | 5 | —（雙向等值） |
 | 組裝根注入／註冊呼叫點（`hook:`） | 63（policy-numeric-lower-bounds 新增 H-53／H-54；audit-chain-scheduled-verification 新增 H-55） | 35 |
 | 組裝根裸欄位注入（`inject:`） | 13（2026-08-12 新納入 J-1〜J-11；access log 憑證遮蔽換掉 `gin.Default()` 後 J-12／J-13 隨判準第 3 條自然納管，見 §4.5） | 8 |
@@ -124,7 +124,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 2. 包級全域（`var:`，151 筆）
+## 2. 包級全域（`var:`，152 筆）
 
 ### 2.1 組裝根（`cmd/server`，5 筆）
 
@@ -375,6 +375,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-138 | var:config/kek.go:KEKGenerateCommands | KEKGenerateCommands | config/kek.go:73 | 包級全域／不可變文件化指令集合 | 不搬（config） | —（kek-encoding-and-unseal-entry 新增） | 無序（字面量於載入期定值後只讀），但**內容即「文件叫人做的事」與「系統會不會接受」之間的唯一事實源**：列 3b 錯誤訊息、`.env.example`（env 漂移守衛比對）、解封頁與換鑰精靈的指令參考、以及實跑守衛全部讀它。取代已刪除的 `const:KEKGenerateCommand`（單一指令改為每形態一條的集合）。**拆包時不得複製成兩份**——兩份會讓範本列一組、介面列另一組而無編譯錯誤，而該不一致正是本次缺陷的形狀（operator 照著看到的指令做卻被拒）。集合被清空則錯誤訊息與介面同時失去自救線索，操作者只能自行發明指令。 |
 | G-139 | var:pkg/crypto/kek_material.go:kekBase64Encodings | kekBase64Encodings | pkg/crypto/kek_material.go:76 | 包級全域／不可變編碼變體表 | 不搬（crypto） | —（kek-encoding-and-unseal-entry 新增） | 無序（載入期定值後只讀），但**成員與順序都具語義**：四個變體（Std／RawStd／URL／RawURL，皆 Strict）逐一嘗試，第一個解出 32 位元組者勝出。四者互斥（padding 長度不同、兩套字母表的非英數字元互斥），故順序不改變任何輸入的結果——但**刪掉任一成員即是把一種正確的金鑰寫法變成不可用**（例如移除 RawStd 會拒絕 43 字元無 padding 的 base64），而移除 `.Strict()` 會讓同一把金鑰有多份非規範編碼都解得開。此表是「輸入編碼」與「金鑰」分層的落點，**不得與 KEKAlphabet（原字元形態的字元集政策）合併**——後者只約束原字元形態。 |
 | G-140 | var:pkg/crypto/password_hasher.go:defaultHasher | defaultHasher | pkg/crypto/password_hasher.go:168 | 包級全域／不可變單例（產線密碼雜湊實作） | 不搬（crypto） | —（password-hasher-interface） | **無序但不可有第二份**。以 `NewBcryptHasher(BcryptDefaultCost)` 在包初始化時建構，常數參數故不依賴任何其他初始化，順序上無前置需求。**若被改成各處自建或允許執行期置換會發生什麼**：「當前演算法／參數」會散成多份，`Verifier.NeedsRehash` 的判定依呼叫端而異——同一個雜湊在登入路徑判定要升級、在改密路徑判定不用，漸進遷移於是變成不確定行為，且可能反覆重雜湊。故 `DefaultPasswordHasher()`／`DefaultPasswordVerifier()` 是唯一取得入口，產品碼不得自行 `NewBcryptHasher`（`internal/guards/passwordhash` 守衛禁止直接 import 演算法庫，但自建 Hasher 不在其射程，此處以單一入口的慣例承擔）。 |
+| G-141 | var:internal/modules/audit/audit_log_service.go:auditSortableColumns | auditSortableColumns | internal/modules/audit/audit_log_service.go:407 | 包級全域／不可變白名單（審計日誌排序欄位收斂表） | audit | —（CodeQL go/sql-injection 修復新增） | 無序（載入期定值後只讀），但**成員即安全邊界**：這是 `List` 對使用者可控 `sort_by` 的唯一收斂依據——ORDER BY 的識別字位置無法參數化，只能列舉，不在表內者一律落回 `created_at`。**增刪的後果不對稱**：漏列一個合法欄位只是該欄排序被靜默降級（使用者點了沒反應、無錯誤）；而把表清空、或改成黑名單／正則放行形態，等於把 SQL 注入原樣打開——`fmt.Sprintf` 拼出的子句會逐字進 SQL（GORM 對 string 型 `.Order()` 以 Raw 寫入，不參數化）。故拆包時此表不得離開 `List` 的可視範圍，亦不得由呼叫端覆寫。守衛見 `internal/modules/audit/audit_log_sort_injection_test.go`。 |
 
 ## 3. `init()` 函式（`init:`，5 筆）
 
@@ -437,6 +438,8 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-30 | hook:cmd/server/stage2.go:oidcProviderService.SetSubscriptionTerminator | `oidcProviderService.SetSubscriptionTerminator(sshHandler.Monitor)` | cmd/server/stage2.go:559 | 反向後綁定 | identity ← 接入層 | W8 | 同 H-28（provider 級）。 |
 | H-31 | hook:cmd/server/stage2.go:accessRequestService.SetSessionService | `accessRequestService.SetSessionService(sessionService)` | cmd/server/stage2.go:620 | setter 後綁定 | authz ← session | W7／W9 | break-glass 撤銷即斷線政策（D5）。漏注入＝撤銷票證後會話續存，破窗遏制失效。 |
 | H-32 | hook:cmd/server/stage2.go:authHandler.SetUserService | `authHandler.SetUserService(s.userService)` | cmd/server/stage2.go:915 | handler ← service 後綁定 | 接入層 ← identity | W8 | 於 `buildRouteDeps` 內（自陳「純建構＋依賴注入，無 I/O 副作用」）。**`routeDeps` 契約明文要求全部成員於 `registerRoutes` 之前完成注入**（`main.go:369`）——漏注入＝該端點 nil deref panic（可見，風險較低）。 |
+| H-32b | hook:cmd/server/stage2.go:authHandler.SetRefreshCookieWriter | `authHandler.SetRefreshCookieWriter(refreshCookies)` | cmd/server/stage2.go:1017 | handler ← 部署期常數 後綁定 | 接入層 ← config | —（refresh-token-httponly-cookie 新增） | 於 `buildRouteDeps` 內，與 H-32 同批。注入的是**三個 handler 共用的同一個 writer**（`Secure` 旗標於啟動時自 `cfg.Security.RefreshCookie` 推導定值，不逐請求重算）。**漏注入不會 panic 也不會有測試轉紅**——建構函式已備妥同源的 fail-safe 預設（`defaultRefreshCookieWriter`，自同一組 env 推導），故漏接的後果只是「三個 handler 各持一份等值實例」而非行為改變。此注入無 I/O 副作用、可重入，順序上只需早於 `registerRoutes`。 |
+| H-32c | hook:cmd/server/stage2.go:oidcHandler.SetRefreshCookieWriter | `oidcHandler.SetRefreshCookieWriter(refreshCookies)` | cmd/server/stage2.go:1021 | handler ← 部署期常數 後綁定 | 接入層 ← config | —（refresh-token-httponly-cookie 新增） | 同 H-32b，對象為 OIDC handler。**必須晚於 `api.NewOIDCHandler`**（本 change 把該建構自 `routeDeps` 字面量內提到前面，正是為了取得可注入的變數）——順序反了是編譯錯誤，不會靜默。 |
 | H-33 | hook:cmd/server/stage2.go:syslogSettingHandler.SetTransmissionPolicy | `syslogSettingHandler.SetTransmissionPolicy(s.transmissionPolicy)` | cmd/server/stage2.go:922 | handler ← service 後綁定 | 接入層 ← policy | W3 | 同 H-32；漏注入＝syslog 設定頁的傳輸政策閘不生效。 |
 | H-34 | hook:cmd/server/stage2.go:commandAlertHandler.SetAuditService | `commandAlertHandler.SetAuditService(s.auditService)` | cmd/server/stage2.go:948 | handler ← service 後綁定 | 接入層 ← audit | W4 | 審閱處置留痕。漏注入＝處置動作零審計。 |
 | H-35 | hook:cmd/server/stage2.go:keyManagementHandler.SetAuditService | `keyManagementHandler.SetAuditService(s.auditService)` | cmd/server/stage2.go:968 | handler ← service 後綁定 | 接入層 ← audit | W4 | 清理退役資料的顯式留痕。漏注入＝金鑰清理零審計（PCI 3.6 金鑰管理留痕缺口）。 |

@@ -123,7 +123,8 @@ func parseUintQuery(s string) uint {
 	if s == "" {
 		return 0
 	}
-	v, err := strconv.ParseUint(s, 10, 32)
+	// bitSize 31：保證解析結果轉 int 恆為正值、不截斷
+	v, err := strconv.ParseUint(s, 10, 31)
 	if err != nil {
 		return 0
 	}

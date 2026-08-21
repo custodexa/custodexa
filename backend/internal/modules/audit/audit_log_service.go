@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,8 +54,10 @@ type AuditLogFilter struct {
 	EndTime   *time.Time
 	Page      int
 	PageSize  int
-	SortBy    string // 默認 "created_at"
-	SortOrder string // "asc" 或 "desc"，默認 "desc"
+	// SortBy 排序欄位，取值限 auditSortableColumns，默認 "created_at"；
+	// SortOrder 限 "asc"／"desc"，默認 "desc"。兩者由 List 收斂（值進 ORDER BY 原始子句）
+	SortBy    string
+	SortOrder string
 }
 
 // AuditLogListResult 審計日誌列表結果
@@ -385,6 +388,56 @@ func (s *AuditLogService) writeToFile(auditLog *model.AuditLog) {
 	}
 }
 
+// 審計日誌列表的排序預設值。SortBy／SortOrder 收斂失敗時一律退回這組。
+const (
+	defaultAuditSortBy    = "created_at"
+	defaultAuditSortOrder = "desc"
+)
+
+// auditSortableColumns 允許排序的欄位白名單，鍵為 audit_logs 的**實際 DB 欄位名**
+//（非 JSON 欄位名，例如 Duration 的 json tag 是 duration_ms 而欄位是 duration）。
+//
+// **為何必須是白名單而非過濾字元**：SortBy 來自 query 參數，最終以 fmt.Sprintf
+// 拼進 ORDER BY 子句，而 GORM 的 string 型 `.Order()` 是逐字寫入、不參數化——
+// 任何未收斂的值都是注入點，已認證的稽核檢視者即可用布林盲注逐字外洩任意表。
+// 黑名單／跳脫字元擋不住這個位置（識別字位置無法參數化），只有列舉可以。
+//
+// 擴充時必須確認新增的名字是 model.AuditLog 的真實欄位；不存在的欄位會讓整個
+// 查詢失敗，而不是靜默退回預設（守衛測試 TestAuditSortableColumnsAreRealColumns 會擋）。
+var auditSortableColumns = map[string]struct{}{
+	"created_at":  {},
+	"id":          {},
+	"action":      {},
+	"resource":    {},
+	"status":      {},
+	"user_id":     {},
+	"username":    {},
+	"client_ip":   {},
+	"status_code": {},
+	"duration":    {},
+}
+
+// normalizeAuditSortBy 把排序欄位收斂進白名單，其餘（含空字串與注入載荷）退回預設。
+//
+// **靜默退回而非回錯**：排序是次要語義，為它讓整筆稽核查詢失敗代價不對稱；
+// 且回錯等於給探測者回饋，讓他能逐欄位試出哪些名字存在。
+func normalizeAuditSortBy(sortBy string) string {
+	if _, ok := auditSortableColumns[sortBy]; ok {
+		return sortBy
+	}
+	return defaultAuditSortBy
+}
+
+// normalizeAuditSortOrder 只接受 asc／desc（不分大小寫，正規化為小寫），其餘退回預設。
+func normalizeAuditSortOrder(sortOrder string) string {
+	switch lowered := strings.ToLower(sortOrder); lowered {
+	case "asc", "desc":
+		return lowered
+	default:
+		return defaultAuditSortOrder
+	}
+}
+
 // List 查詢審計日誌列表（支援過濾、分頁、排序）
 func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, error) {
 	// 設定默認值
@@ -394,12 +447,10 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	if filter.PageSize < 1 || filter.PageSize > 100 {
 		filter.PageSize = 20
 	}
-	if filter.SortBy == "" {
-		filter.SortBy = "created_at"
-	}
-	if filter.SortOrder == "" {
-		filter.SortOrder = "desc"
-	}
+	// 排序參數收斂必須在此處（而非 handler）：AuditExportService 也經本方法查詢，
+	// 收在唯一的 choke point 才不會漏掉任何呼叫端
+	filter.SortBy = normalizeAuditSortBy(filter.SortBy)
+	filter.SortOrder = normalizeAuditSortOrder(filter.SortOrder)
 
 	// 構建查詢
 	query := database.DB.Model(&model.AuditLog{})
