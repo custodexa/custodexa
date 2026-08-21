@@ -626,10 +626,8 @@ const handleChangePassword = async () => {
 // next 已由後端白名單化為同源相對路徑，前端不再自行解析外部 URL）
 const completeLogin = (response, next) => {
   localStorage.setItem('token', response.token)
-  // refresh 憑證（D6）：access 短效 15 分，攔截器以此透明續期
-  if (response.refresh_token) {
-    localStorage.setItem('refresh_token', response.refresh_token)
-  }
+  // refresh 憑證不落 localStorage：後端以 httpOnly cookie 下發，瀏覽器自動收存，
+  // script 讀不到也就帶不走（refresh-token-httponly-cookie）
   localStorage.setItem('user', JSON.stringify(response.user))
   ElMessage.success(
     t('login.welcomeBack', {

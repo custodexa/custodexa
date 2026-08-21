@@ -144,9 +144,19 @@ type LoginResponse struct {
 	Token string    `json:"token,omitempty"`
 	User  *UserInfo `json:"user,omitempty"`
 
-	// RefreshToken 會話刷新憑證（D6）：access 固定短效 15 分，
-	// 前端以此透明換發；舊版前端忽略此欄不受影響（D10 升級相容）
-	RefreshToken string `json:"refresh_token,omitempty"`
+	// RefreshToken 會話刷新憑證（D6）：access 固定短效 15 分，前端以此透明換發。
+	//
+	// **`json:"-"` 是本 change 的結構層保證**（refresh-token-httponly-cookie 決策 3）：
+	// 憑證改由 httpOnly cookie 下發，欄位保留僅供 handler 讀它來寫 cookie。
+	// 任何序列化路徑——含 OIDC 交換的巢狀 `gin.H{"login": resp}`——都不可能再把
+	// 明文帶進回應 body，不依賴每個 handler 記得抹除欄位。
+	//
+	// 副作用即是要的行為：未來新增的發放端點若忘了下 cookie，該路徑的會話
+	// 15 分鐘後必斷（refresh 無憑證可用），是**吵鬧的失敗**而非靜默回退到 localStorage
+	RefreshToken string `json:"-"`
+
+	// RefreshExpiresAt 上述憑證的絕對到期時刻，供 handler 把 cookie 效期對齊憑證
+	RefreshExpiresAt time.Time `json:"-"`
 
 	// MFA 兩階段登入：第一階段僅回 mfa_required + pending_token
 	MFARequired  bool   `json:"mfa_required,omitempty"`
@@ -917,7 +927,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 
 	// refresh 憑證與 access 同時發放（D6）：發放失敗即整體失敗——
 	// 沒有 refresh 的會話 15 分後必斷，fail-open 等於會話治理不存在
-	refreshToken, err := s.issueRefreshToken(user.ID, time.Now(), authCtx)
+	refreshToken, refreshExpiresAt, err := s.issueRefreshToken(user.ID, time.Now(), authCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -948,9 +958,10 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 	}
 
 	return &LoginResponse{
-		Token:        token,
-		User:         userInfo,
-		RefreshToken: refreshToken,
+		Token:            token,
+		User:             userInfo,
+		RefreshToken:     refreshToken,
+		RefreshExpiresAt: refreshExpiresAt,
 	}, nil
 }
 

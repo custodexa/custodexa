@@ -469,11 +469,9 @@ const handleChangePassword = async () => {
         old_password: pwdForm.value.oldPassword,
         new_password: pwdForm.value.newPassword,
       })
-      // 改密撤銷舊 refresh 憑證：以回應的新 token 組續存，不中斷會話
+      // 改密撤銷舊 refresh 憑證：以回應的新 access token 續存，不中斷會話。
+      // 新的 refresh 憑證由後端以 httpOnly cookie 換發，前端不經手
       if (response?.token) localStorage.setItem('token', response.token)
-      if (response?.refresh_token) {
-        localStorage.setItem('refresh_token', response.refresh_token)
-      }
       if (response?.user) {
         localStorage.setItem('user', JSON.stringify(response.user))
       }

@@ -65,7 +65,6 @@ describe('Profile 個人資料頁（navigation-ia D3）', () => {
   it('自助改密成功：呼叫既有端點並以回應新 token 組續存', async () => {
     changePasswordMock.mockResolvedValue({
       token: 'new-token',
-      refresh_token: 'new-refresh',
       user: { username: 'carol', roles: ['user'] },
     })
     const wrapper = mountView()
@@ -83,9 +82,10 @@ describe('Profile 個人資料頁（navigation-ia D3）', () => {
       old_password: 'old-pass-123',
       new_password: 'New-pass-456',
     })
-    // 改密撤銷舊 refresh：以新 token 組續存不中斷會話
+    // 改密撤銷舊 refresh：以新 access token 續存不中斷會話；
+    // 新的 refresh 憑證由後端以 httpOnly cookie 換發，前端不經手
     expect(localStorage.getItem('token')).toBe('new-token')
-    expect(localStorage.getItem('refresh_token')).toBe('new-refresh')
+    expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 
   it('自助改密政策違規：就近顯示錯誤，不寫入 token', async () => {

@@ -227,6 +227,25 @@ func (e *authSrcEnv) post(t *testing.T, path string, handler gin.HandlerFunc,
 	return w
 }
 
+// postWithCookie 同 post，但憑證以 refresh cookie 攜帶（刷新端點的唯一取值來源），
+// 一樣帶上全部六種偽造轉送標頭
+func (e *authSrcEnv) postWithCookie(t *testing.T, path string, handler gin.HandlerFunc,
+	refreshPlain string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := gin.New()
+	r.POST(path, handler)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range authSrcForgedHeaders {
+		req.Header.Set(k, v)
+	}
+	req.AddCookie(&http.Cookie{Name: RefreshCookieName, Value: refreshPlain})
+	req.RemoteAddr = authSrcRemoteAddr
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
 // assertPeerIP 逐列斷言來源位址為連線對端，且不含任何偽造值
 func assertPeerIP(t *testing.T, rows []model.AuditLog) {
 	t.Helper()
@@ -280,10 +299,11 @@ func TestRefreshAuditIgnoresForwardedHeaders(t *testing.T) {
 	}
 	env.clearAudit(t)
 
-	w := env.post(t, "/auth/refresh", env.h.Refresh,
-		map[string]string{"refresh_token": resp.RefreshToken}, true)
+	// 憑證以 httpOnly cookie 攜帶（refresh-token-httponly-cookie）：
+	// 本格驗的是來源位址紀律，與憑證的載體無關
+	w := env.postWithCookie(t, "/auth/refresh", env.h.Refresh, resp.RefreshToken)
 	if w.Code != http.StatusOK {
-		t.Fatalf("刷新應成功，實得 %d", w.Code)
+		t.Fatalf("刷新應成功，實得 %d：%s", w.Code, w.Body.String())
 	}
 	assertPeerIP(t, env.rows(t))
 }

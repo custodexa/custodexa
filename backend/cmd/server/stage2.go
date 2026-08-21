@@ -1011,6 +1011,15 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authHandler := api.NewAuthHandler(s.authService, s.auditService)
 	authHandler.SetUserService(s.userService)
 
+	// refresh 憑證的 httpOnly cookie（refresh-token-httponly-cookie 決策 3）：
+	// 三個 handler 共用同一 writer，Secure 旗標於啟動時由 config 推導定值（決策 2）
+	refreshCookies := api.NewRefreshCookieWriter(cfg.Security.RefreshCookie.Secure)
+	authHandler.SetRefreshCookieWriter(refreshCookies)
+
+	oidcHandler := api.NewOIDCHandler(s.oidcProviderService, s.oidcLoginService,
+		cfg.OIDC.PublicBaseURL, s.auditService)
+	oidcHandler.SetRefreshCookieWriter(refreshCookies)
+
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
 	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService)
 
@@ -1151,7 +1160,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		auditFailure:          auditFailureHandler,
 		transmissionInventory: transmissionInventoryHandler,
 		notificationChannel:   notificationChannelHandler,
-		oidc:                  api.NewOIDCHandler(s.oidcProviderService, s.oidcLoginService, cfg.OIDC.PublicBaseURL, s.auditService),
+		oidc:                  oidcHandler,
 		ldapDirectory:         ldapDirectoryHandler,
 		keyManagement:         keyManagementHandler,
 		snippet:               snippetHandler,

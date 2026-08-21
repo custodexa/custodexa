@@ -142,6 +142,8 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 		return
 	}
 	h.auditMFALoginSuccess(c, resp.User.ID, resp.User.Username, "mfa_enrolled", resp)
+	// 發放端點 3／6：強制註冊完成直接換發正式會話（D12）
+	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -212,6 +214,8 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 	// 認證方式與 provider 於 MFA 完成路徑一併保留（oidc-auth spec「登入 gate chain
 	// 匯流」）：正式會話的成功列由此寫出
 	h.auditMFALoginSuccess(c, resp.User.ID, resp.User.Username, "", resp)
+	// 發放端點 2／6：MFA 第二階段完成，正式會話由此發出
+	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 

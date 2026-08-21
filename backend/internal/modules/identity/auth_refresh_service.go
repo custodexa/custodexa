@@ -77,8 +77,16 @@ var refreshPostRotateHook func()
 
 // RefreshResponse 刷新回應：新 access token 與輪替後的新 refresh 憑證
 type RefreshResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
+	Token string `json:"token"`
+	// RefreshToken 輪替後的新憑證明文。
+	//
+	// **`json:"-"` 是本 change 的結構層保證**（refresh-token-httponly-cookie 決策 3）：
+	// 欄位保留（handler 需讀它來下 httpOnly cookie），但任何序列化路徑都不可能再把
+	// 明文帶進回應 body——不依賴每個 handler 記得抹除欄位
+	RefreshToken string `json:"-"`
+	// RefreshExpiresAt 該憑證的絕對到期時刻，供 handler 把 cookie 效期對齊憑證。
+	// 輪替沿用原 `expires_at`（不重算絕對壽命），故此值即原列的 ExpiresAt
+	RefreshExpiresAt time.Time `json:"-"`
 	// UserID／Username 本次輪替的主體（audit-coverage-closure 批 4）：
 	// handler 需要它們才寫得出「誰在何處輪替了憑證」的審計列，而
 	// `/auth/refresh` 是公開端點，中介層取不到身分。
@@ -117,11 +125,15 @@ func (s *AuthService) webMaxSessionDuration() time.Duration {
 }
 
 // issueRefreshToken 發放 refresh 憑證（登入/換發正式會話時）。
-// sessionStart 為絕對壽命錨點；rotation 路徑沿用原錨點與原 expires_at，不經此函式
-func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, authCtx crypto.AuthContext) (string, error) {
+// sessionStart 為絕對壽命錨點；rotation 路徑沿用原錨點與原 expires_at，不經此函式。
+//
+// 一併回傳 `expires_at`：憑證遷入 httpOnly cookie 後，handler 必須知道絕對到期時刻
+// 才能把 cookie 效期對齊憑證（決策 1）——由此處回傳而非讓 handler 另查 DB，
+// 兩個事實源會在「政策改動當下發放」這類邊界上分岔
+func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, authCtx crypto.AuthContext) (string, time.Time, error) {
 	plain, err := generateRefreshPlain()
 	if err != nil {
-		return "", err
+		return "", time.Time{}, err
 	}
 	row := model.RefreshToken{
 		UserID:           userID,
@@ -135,9 +147,9 @@ func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, aut
 		CredEpoch:        authCtx.CredEpoch,
 	}
 	if err := database.DB.Create(&row).Error; err != nil {
-		return "", fmt.Errorf("寫入 refresh 憑證失敗: %w", err)
+		return "", time.Time{}, fmt.Errorf("寫入 refresh 憑證失敗: %w", err)
 	}
-	return plain, nil
+	return plain, row.ExpiresAt, nil
 }
 
 // RefreshSession 以 refresh 憑證換發新 access token 並輪替 refresh（D6）。
@@ -282,7 +294,8 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 	}
 	return &RefreshResponse{
 		Token: accessToken, RefreshToken: newPlain,
-		UserID: user.ID, Username: user.Username,
+		RefreshExpiresAt: row.ExpiresAt,
+		UserID:           user.ID, Username: user.Username,
 	}, nil
 }
 

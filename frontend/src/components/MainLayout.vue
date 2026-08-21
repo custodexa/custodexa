@@ -443,17 +443,16 @@ const handleCommand = (command) => {
   }
 }
 
-// 登出：先請後端撤銷 refresh 憑證（D6 會話撤銷），再清本地並導向。
+// 登出：先請後端撤銷 refresh 憑證並清除其 cookie（D6 會話撤銷），再清本地並導向。
+// 憑證由瀏覽器以 httpOnly cookie 自動附帶，前端不經手；
 // 撤銷失敗不阻擋登出——本地清除後攻擊面只剩 ≤15 分的殘餘 access
 const handleLogout = async () => {
-  const refreshToken = localStorage.getItem('refresh_token')
   try {
-    await logout(refreshToken)
+    await logout()
   } catch (error) {
     console.error('登出撤銷失敗:', error)
   }
   localStorage.removeItem('token')
-  localStorage.removeItem('refresh_token')
   localStorage.removeItem('user')
   router.push('/login')
   ElMessage.success(t('common.loggedOut'))

@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -111,7 +110,7 @@ func (e *refreshAuditEnv) login(t *testing.T) string {
 		t.Fatalf("login: %v", err)
 	}
 	if resp.RefreshToken == "" {
-		t.Fatal("登入回應應含 refresh_token")
+		t.Fatal("登入應發出 refresh 憑證")
 	}
 	// 登入自身的審計列（AP-07）不屬本檔標的：清空後起算
 	if err := e.db.Exec("DELETE FROM audit_logs").Error; err != nil {
@@ -120,25 +119,28 @@ func (e *refreshAuditEnv) login(t *testing.T) string {
 	return resp.RefreshToken
 }
 
-// postRefresh 以指定來源位址打 /auth/refresh（掛真審計中介層，位置同生產）
+// postRefresh 以指定來源位址打 /auth/refresh（掛真審計中介層，位置同生產）。
+//
+// 憑證以 httpOnly cookie 攜帶、輪替後的新憑證亦自 Set-Cookie 取回
+// （refresh-token-httponly-cookie）：request body 與回應 body 皆已無憑證通道
 func (e *refreshAuditEnv) postRefresh(t *testing.T, token, remoteAddr string) (int, string) {
 	t.Helper()
 	r := gin.New()
 	r.Use(middleware.AuditLogMiddleware(e.h.auditService))
 	r.POST("/api/v1/auth/refresh", e.h.Refresh)
 
-	body, _ := json.Marshal(map[string]string{"refresh_token": token})
-	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", bytes.NewReader([]byte("{}")))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: RefreshCookieName, Value: token})
 	req.RemoteAddr = remoteAddr
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	var resp struct {
-		RefreshToken string `json:"refresh_token"`
+	next := ""
+	if ck := findRefreshCookie(w); ck != nil {
+		next = ck.Value
 	}
-	_ = json.Unmarshal(w.Body.Bytes(), &resp)
-	return w.Code, resp.RefreshToken
+	return w.Code, next
 }
 
 func (e *refreshAuditEnv) rows(t *testing.T) []model.AuditLog {

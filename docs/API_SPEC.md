@@ -294,9 +294,14 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | `change_token`（強制改密） | `POST /api/v1/auth/login`（或 MFA/註冊完成後） | 15 分鐘 | scope `password_change`；僅可用於 `POST /auth/change-password` |
 
 **refresh_token（Web 會話刷新憑證）**：不透明 256-bit 隨機字串（非 JWT），
-DB 僅存 SHA-256；登入/刷新回應以明文回傳一次。刷新時輪替（舊憑證即刻作廢），已輪替憑證再被提交
-視為洩漏訊號 → 撤銷該使用者全部 refresh（家族撤銷，RFC 9700）。壽命受安全政策控制：
-sliding 閒置窗（`web_idle_minutes`）＋絕對壽命（`web_max_session_hours`）。詳見 `POST /auth/refresh`。
+DB 僅存 SHA-256。**瀏覽器端的唯一載體是 `HttpOnly` cookie `custodexa_refresh`**——
+回應 body 一律不含此憑證明文，前端讀不到也就無法寫入 localStorage。cookie 屬性：
+`HttpOnly`、`SameSite=Strict`、`Path=/api/v1/auth/`（同時涵蓋刷新與登出）、
+效期對齊憑證絕對壽命（輪替時取剩餘壽命，不因輪替延長）、`Secure` 依部署對外協定推導
+（`PUBLIC_BASE_URL` 的 scheme，可由 `AUTH_REFRESH_COOKIE_SECURE` 顯式覆寫）。
+刷新時輪替（舊憑證即刻作廢），已輪替憑證再被提交視為洩漏訊號 → 撤銷該使用者全部
+refresh（家族撤銷，RFC 9700）。壽命受安全政策控制：sliding 閒置窗（`web_idle_minutes`）
+＋絕對壽命（`web_max_session_hours`）。詳見 `POST /auth/refresh`。
 
 ### 權限層級（RBAC）
 
@@ -369,13 +374,17 @@ POST 與 GET 同義（供告警通知 E2E 作為無認證、冪等的 webhook �
 {
   "status": "ok",
   "service": "custodexa-backend",
-  "version": "0.2.0-handshake",
+  "version": "1.0.1",
   "database": "connected",
   "oidc_dedicated_issuers_digest": "e3b0c44298fc"
 }
 ```
 
-`version` 直接輸出 `main.go` 的 `Version` 變數（`cmd/server/main.go:31`），無第二份硬編碼值。
+`version` 直接輸出 `main.go` 的 `Version` 變數，該變數**由建置時注入**：正式版映像於
+`docker/backend/Dockerfile` 以 `-ldflags -X main.Version=...` 帶入，值取自專案根 `VERSION` 檔
+（單一事實源，與 `CHANGELOG.md` 的一致性由 `TestVersionFileMatchesChangelog` 釘住）。
+未注入的建置（`go run`、`go test`）顯示 `dev`，開發容器顯示 `dev`。上例的值即當前發布版。
+依安全政策只揭露版號，不揭露 commit hash 或建置時間。
 `oidc_dedicated_issuers_digest` 為 `OIDC_DEDICATED_ISSUERS` 部署宣告的內容指紋
 （正規化後 sha256 前 12 hex）：多副本部署時外部監控比對各副本
 此值即可偵測設定分歧；輸出指紋而非原文，不洩漏宣告內容。未設宣告時為空集合的固定指紋。
@@ -502,7 +511,6 @@ POST /api/v1/auth/login
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "8f3c...（64 字元 hex，Web 會話刷新憑證）",
   "user": {
     "id": 1,
     "username": "admin",
@@ -514,6 +522,8 @@ POST /api/v1/auth/login
   }
 }
 ```
+
+（Web 會話刷新憑證隨此回應以 `Set-Cookie: custodexa_refresh=...` 下發，不在 body 內。）
 
 **回應** (200，MFA 用戶第一階段，需輸入 TOTP):
 ```json
@@ -564,16 +574,15 @@ POST /api/v1/auth/logout
 Authorization: Bearer <token>
 ```
 
-**請求**（body 選填）:
-```json
-{"refresh_token": "8f3c...（撤銷此 Web 會話刷新憑證）"}
-```
+**請求**：無 body 欄位。Web 會話刷新憑證由瀏覽器以 `custodexa_refresh` cookie 自動附帶
+（cookie 的 `Path` 涵蓋本端點）。
 
-**回應** (200): `{"username": "admin"}`（`message` 文案欄已移除）
+**回應** (200): `{"username": "admin"}`（`message` 文案欄已移除）。
+回應一律帶清除性 `Set-Cookie`（即時到期），無論撤銷成敗。
 
-access token 無狀態，登出由客戶端刪除、殘餘存活 ≤15 分；若帶 `refresh_token` 則後端一併撤銷該憑證
+access token 無狀態，登出由客戶端刪除、殘餘存活 ≤15 分；cookie 帶有憑證時後端一併撤銷
 （reason=`logout`）。若提交的是已輪替憑證＝分叉/洩漏訊號，觸發家族撤銷並記高價值審計事件。
-登出事件由審計中間件記錄。
+cookie 缺失不阻擋登出。登出事件由審計中間件記錄。
 
 ### 當前用戶
 
@@ -623,21 +632,20 @@ target 使用者一律取自 token claims，**不接受 path/body 指定他人**
 POST /api/v1/auth/refresh
 ```
 
-以 Web 會話刷新憑證換發新 access token 並輪替 refresh（公開端點：access 可能已過期，
-refresh 憑證由 body 自帶）。
+以 Web 會話刷新憑證換發新 access token 並輪替 refresh（公開端點：access 可能已過期）。
 
-**請求**:
-```json
-{"refresh_token": "8f3c...（64 字元 hex）"}
-```
+**請求**：無 body 欄位。憑證**僅**自 `custodexa_refresh` cookie 讀取，
+不接受 request body 傳遞，亦無 body fallback。
 
-**回應** (200): `{"token": "<新 access token>", "refresh_token": "<輪替後的新憑證>"}`
+**回應** (200): `{"token": "<新 access token>"}`；輪替後的新憑證以 `Set-Cookie` 下發，
+`Max-Age` 取該憑證的剩餘絕對壽命。
 
-- **rotation**：成功即輪替，舊 refresh 立刻作廢；前端須以回應的新憑證取代舊值
+- **rotation**：成功即輪替，舊 refresh 立刻作廢；新憑證由瀏覽器自動取代 cookie 內的舊值
 - **reuse detection**：提交已輪替憑證 → 撤銷該使用者全部 refresh（家族撤銷，RFC 9700），記高價值審計
 - **壽命**：sliding 閒置窗（`web_idle_minutes` 政策）＋絕對壽命（`web_max_session_hours` 政策，
   以登入時刻起算、rotation 不重置）
-- **錯誤**：一律 401 同文案「會話已失效，請重新登入」（不洩漏憑證狀態，讓攻擊者無法區分猜錯與已失效）；
+- **錯誤**：一律 401 同文案「會話已失效，請重新登入」（不洩漏憑證狀態，讓攻擊者無法區分猜錯與已失效）。
+  **cookie 缺失走同一則失敗回應**（不是 400）——「未提供」與「無效／已撤銷」在回應上不可區分；
   失敗事件直記審計
 
 ### 自助改密（change-password）
@@ -657,7 +665,7 @@ Authorization: Bearer <token>
 ```
 
 **回應** (200)：成功後直接換發正式會話（不重走登入），格式同登入成功回應
-（`{token, refresh_token, user}`）。
+（`{token, user}`，新的 Web 會話刷新憑證以 `Set-Cookie` 下發）。
 
 **錯誤**:
 - 400 政策違規（長度/組成/歷史重用，回可讀訊息）或目前密碼不符或 LDAP 用戶（密碼由目錄服務管理）
@@ -676,7 +684,7 @@ scope 限定 `mfa_pending`），再以 TOTP 驗證碼換取正式 JWT。
 
 | 方法 | 路徑 | 說明 | 認證 |
 |---|---|---|---|
-| POST | `/auth/mfa/verify` | body: `{pending_token, code}` → `{token, refresh_token, user}`（若仍須改密則回 `password_change_required`） | 公開 |
+| POST | `/auth/mfa/verify` | body: `{pending_token, code}` → `{token, user}`＋`Set-Cookie` 下發刷新憑證（若仍須改密則回 `password_change_required`） | 公開 |
 | POST | `/auth/mfa/setup` | 產生 secret 與 otpauth URL：`{secret, otpauth_url}`（發行者 "Custodexa"；重做即覆蓋舊 secret）。POST 而非 GET：有寫入副作用（覆蓋 pending secret、重設 enabled） | JWT |
 | POST | `/auth/mfa/enable` | body: `{code}`，驗證通過後啟用 | JWT |
 | POST | `/auth/mfa/disable` | body: `{password}`，驗密後停用 | JWT |
@@ -765,6 +773,10 @@ POST /api/v1/auth/oidc/exchange
 
    `redirect_next` 取自 begin 階段**已驗證**的值，**不於兌換階段重新採信前端提交值**。
    兌換為原子消費並比對 provider 與使用者兩個世代。
+
+   發出正式會話時，Web 會話刷新憑證以 `Set-Cookie: custodexa_refresh=...` 下發，
+   **巢狀的 `login` 物件內不含憑證明文**；尚待多因素驗證／強制註冊／強制改密的分支
+   不下發該 cookie。
 
 **瀏覽器綁定（login CSRF 防護）**：DB 保存 state 只證明「伺服器簽發且未用過」，不證明 callback
 發生在發起的瀏覽器。攻擊者可自行發起流程、以自己的 IdP 帳號完成授權但攔住 callback，

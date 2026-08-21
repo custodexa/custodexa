@@ -80,7 +80,6 @@ describe('Login', () => {
   it('stores credentials and redirects on successful login', async () => {
     loginMock.mockResolvedValue({
       token: 'jwt-token',
-      refresh_token: 'refresh-1',
       user: { username: 'admin', full_name: 'Admin', roles: ['admin'] },
     })
 
@@ -96,8 +95,8 @@ describe('Login', () => {
       password: 'admin123',
     })
     expect(localStorage.getItem('token')).toBe('jwt-token')
-    // 輪2b（D6）：refresh 憑證一併儲存，供攔截器透明續期
-    expect(localStorage.getItem('refresh_token')).toBe('refresh-1')
+    // refresh 憑證不落 localStorage：後端以 httpOnly cookie 下發，script 讀不到
+    expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(JSON.parse(localStorage.getItem('user')).username).toBe('admin')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
   })
