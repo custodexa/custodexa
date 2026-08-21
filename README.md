@@ -10,13 +10,14 @@ and databases through a single gateway — every session recorded, every command
 
 ## Why Custodexa
 
-Any team managing a fleet of servers and databases eventually faces three problems:
+Any team managing a fleet of servers and databases eventually runs into the same
+problems:
 
-- **No answers after an incident** — who connected to which machine, when, and what did
-  they do? All you have is shell history and guesswork.
-- **Credentials everywhere** — root passwords and database credentials passed around in
-  note apps and chat windows; one departure forces a company-wide rotation.
-- **Auditors want evidence** — "we have controls" doesn't pass an audit; you need
+- **No answers after an incident.** Who connected to which machine, when, and what
+  did they do? All you have is shell history and guesswork.
+- **Credentials everywhere.** Root passwords and database credentials get passed
+  around in note apps and chat windows; one departure forces a company-wide rotation.
+- **Auditors want evidence.** "We have controls" doesn't pass an audit. You need
   complete operation logs and session recordings you can actually produce.
 
 Custodexa's approach: users connect to target hosts through the browser, while plaintext
@@ -26,21 +27,21 @@ block dangerous commands in real time. Target hosts need **no agent installed**.
 
 ## Features
 
-- **Truly open source, single edition** — no enterprise tier, no paywalled features.
+- **Truly open source, single edition.** No enterprise tier, no paywalled features.
   What you see is all there is (AGPL-3.0).
-- **Eight protocols, one experience** — SSH, RDP, VNC, MySQL, PostgreSQL, SQL Server,
+- Eight protocols, one experience: SSH, RDP, VNC, MySQL, PostgreSQL, SQL Server,
   Redis, and Kubernetes exec, each just a browser tab away.
-- **Audit first** — full-session recording with replay (seek, speed control) for every
-  protocol; command-level audit that handles full-screen programs like vim correctly;
-  clipboard and file-transfer content capture; dangerous-command alerts with real-time
-  blocking; webhook notifications.
-- **Credentials never leave the backend** — connections are initiated by the backend
-  proxy, with one-time connect tokens, host key verification, and credential rotation plans.
-  By default even the platform's own master key lives only in memory, unsealed from the
-  browser (switchable to env/KMS modes for unattended operation).
-- **Fits your environment** — LDAP login, MFA (TOTP), and role-based access control down
+- **Audit first.** Full-session recording with replay (seek, speed control) for every
+  protocol. Command-level audit handles full-screen programs like vim correctly;
+  clipboard and file-transfer content is captured; dangerous commands can alert or be
+  blocked in real time, with webhook notifications.
+- Credentials never leave the backend: connections are initiated by the backend
+  proxy, with one-time connect tokens, host key verification, and credential rotation
+  plans. By default even the platform's own master key lives only in memory, unsealed
+  from the browser (switchable to env/KMS modes for unattended operation).
+- Fits your environment: LDAP login, MFA (TOTP), and role-based access control down
   to "who may use which account on which machine".
-- **Simple to deploy** — one docker compose command, four containers in production, and
+- **Simple to deploy.** One docker compose command, four containers in production,
   no outbound network needed once running.
 
 ## Screenshots
@@ -66,11 +67,10 @@ missing secrets with a CSPRNG, starts the stack, waits for the backend to become
 healthy, and finishes with the URL and admin login info. Values you have already set
 are never touched.
 
-By default the platform's own master key never touches disk: your first visit opens
-the **master-key initialization page** — the key is generated locally in your browser
-(save it; every restart stays sealed until it is entered again) — then you log in and
-are walked through a mandatory password change. Unattended deployments can switch to
-the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
+By default the platform's own master key never touches disk. Your first visit opens
+the **master-key initialization page**; the key is generated locally in your browser.
+Save it — every restart stays sealed until it is entered again. Unattended deployments
+can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
 `.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
 On Windows, run the script inside WSL.
 
@@ -78,7 +78,7 @@ Then open `http://localhost/` and log in as `admin` with the initial password yo
 The first login walks you through a mandatory password change, after which you can start
 adding assets and opening connections.
 
-There are no factory-default passwords — all four secrets must be set by you. This is
+There are no factory-default passwords; all four secrets must be set by you. This is
 deliberate: a bastion host should never go live with default credentials.
 Full configuration options, development mode, and troubleshooting are covered in
 [docs/QUICKSTART.md](docs/QUICKSTART.md).
@@ -89,15 +89,15 @@ target machines for every protocol). Start with [CONTRIBUTING.md](CONTRIBUTING.m
 
 ## Roadmap
 
-Directions already planned — intentions, not schedule commitments; discussion in issues
-is welcome:
+These are planned directions, not schedule commitments; discussion in issues is
+welcome:
 
-- **Offline installation bundle** — image delivery for air-gapped environments.
-- **Input-side command recording** — covering audit shapes that cannot be captured today,
+- Offline installation bundle: image delivery for air-gapped environments.
+- Input-side command recording, to cover audit shapes that cannot be captured today,
   such as a connection dropping immediately after a command is sent.
-- **High availability** — multi-instance deployment and HA for the key service.
-- **Public CI** and additional protocol support.
-- **English documentation** — full docs are Traditional Chinese today; translations welcome.
+- High availability: multi-instance deployment and HA for the key service.
+- Public CI and additional protocol support.
+- English documentation. Full docs are Traditional Chinese today; translations welcome.
 
 ## Architecture
 
@@ -110,7 +110,7 @@ Two decisions that shape the whole system:
 - **All protocol handshakes happen in the backend**; the browser is just a display and a
   keyboard. This is what makes "the frontend never sees plaintext credentials" true.
   See `backend/internal/proxy/`.
-- **SSH, database CLIs, and Kubernetes exec share a single text-terminal pipeline** —
+- **SSH, database CLIs, and Kubernetes exec share a single text-terminal pipeline**:
   recording, command audit, blocking, and live monitoring are implemented once and apply
   uniformly across all eight protocols.
 
@@ -118,25 +118,25 @@ Two decisions that shape the whole system:
 
 > Full documentation (quick start, operations guides, API reference) is currently written
 > in **Traditional Chinese**; the product UI itself supports English. English
-> documentation is on the roadmap — translation contributions are very welcome.
+> documentation is on the roadmap, and translation contributions are very welcome.
 
 | What you want to do | Read this |
 |------|------|
 | Deploy and operate | [docs/QUICKSTART.md](docs/QUICKSTART.md) (setup, configuration, troubleshooting); [docs/ops/](docs/ops/) (backup & restore, upgrades, deployment topology, platform credential rotation) |
-| Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) (DCO, workflow); [docs/dev/](docs/dev/) (architecture and testing discipline); [openspec/specs/](openspec/specs/) (behavioral specs — the source of truth for details) |
+| Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) (DCO, workflow); [docs/dev/](docs/dev/) (architecture and testing discipline); [openspec/specs/](openspec/specs/) (behavioral specs, the source of truth for details) |
 | Look up the API or schema | [docs/API_SPEC.md](docs/API_SPEC.md), [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) |
 | Report a security issue | [SECURITY.md](SECURITY.md) (private reporting channel and handling policy) |
 
-## Design Stance: What We Openly Don't Do
+## Design boundaries
 
-Known limits, stated up front:
+Worth knowing before you deploy:
 
 - **It governs the connections that pass through it.** Traffic that connects directly to
-  a target host is outside its view — use your network layer (firewalls / security
+  a target host is outside its view. Use your network layer (firewalls / security
   groups) to close off direct access and make the bastion the only entrance.
-- **Text-based command audit has principled limits** (edge behaviors of some full-screen
+- **Text-based command audit has inherent limits** (edge behaviors of some full-screen
   programs, input without echo). When in doubt, the **session recording replay** is the
-  source of truth — it captures the actual screen, with no reconstruction or inference.
+  source of truth: it captures the actual screen, with no reconstruction or inference.
 - **A failed audit write never kills your connection**, but the UI clearly signals the
   degraded state instead of pretending everything is fine.
 
@@ -154,7 +154,7 @@ and offer it as a network service, you must also offer the complete correspondin
 of your modified version to the users of that service.
 
 **Single edition, no tiers.** There is no enterprise version, no paid feature unlocks,
-and no separately licensed modules — what you see is all there is. Contributions are
+and no separately licensed modules. Contributions are
 accepted under the DCO rather than a CLA (see [CONTRIBUTING.md](CONTRIBUTING.md));
 the project does not ask for, and does not hold, the right to re-license external
 contributions under a closed-source license.

@@ -6,9 +6,9 @@ clean test environment (not mockups).
 
 - **Naming · 命名**: `<feature-description-kebab-case>.png`
 - **Contributing · 貢獻**: if your change alters user-visible behavior, a matching
-  screenshot with a new row below is welcome. Capture in a clean environment —
+  screenshot with a new row below is welcome. Capture in a clean environment:
   no real hostnames, internal addresses, or credentials in frame.
-  若您的變更改動了使用者可見的行為，歡迎附上截圖並在下表補一列——
+  若您的變更改動了使用者可見的行為，歡迎附上截圖並在下表補一列；
   請在乾淨環境擷取，畫面不得含真實主機名、內網位址或任何憑證。
 
 ## Index · 截圖索引
