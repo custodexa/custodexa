@@ -103,6 +103,8 @@ stock production compose 的檔名為 `docker-compose.yml`——正式版即專�
 
 專案 SHALL 提供反向代理 TLS termination 的部署指南與可運作範例反向代理 config（nginx 為必交，Caddy 選配）。契約 SHALL 要求外部 edge 提供 TLS 1.2 以上、可信憑證、HTTP→HTTPS redirect、HSTS，以及 WebSocket `Upgrade`/`Connection` 轉發（使 wss 可達）；並 SHALL 明示 LB／ingress 到主機的 hop 若跨不可信網段須 re-encrypt。文件 SHALL 誠實載明 stock 部署本身不提供 TLS、關閉明文暴露為部署方 edge 職責，SHALL NOT 將傳輸層加密表述為由應用強制的控制。
 
+部署指南 SHALL 進一步提供逐步可操作的最小範例（容器形態 nginx 反代為主線）：涵蓋憑證放置、範例 config 的掛載方式、反代與應用的網路連通、stock HTTP 埠映射的處置，以及部署後驗證步驟（redirect 生效、HTTPS 可達、WebSocket upgrade 轉發生效）；範例步驟 SHALL 與實測行為一致（含 docker 網路名的實際形態）。主機安裝 nginx 的形態 SHALL 以變體註記涵蓋（含舊版 nginx 對 `http2` 指令寫法差異）。自簽憑證 SHALL 僅以測試用途註記（含其限制），SHALL NOT 呈現為正式部署路徑。
+
 #### Scenario: 範例反代 config 終結 TLS 並轉發 wss
 - **WHEN** 依範例反代 config 於應用前部署
 - **THEN** 對外提供 HTTPS（TLS 1.2+、可信憑證、HSTS），HTTP 被 redirect 至 HTTPS，WebSocket 以 wss 成功建立
@@ -110,6 +112,10 @@ stock production compose 的檔名為 `docker-compose.yml`——正式版即專�
 #### Scenario: 契約明示不可信 hop 須 re-encrypt 且責任歸屬部署方
 - **WHEN** 部署指南描述外部 TLS 委外
 - **THEN** 指南要求不可信 hop 亦須加密，且明載 stock 部署不自帶 TLS、關閉明文為部署方職責
+
+#### Scenario: 逐步範例照做即通
+- **WHEN** 部署者依指南的最小範例逐步操作（憑證就位、掛載 config、反代接上應用網路、讓出對外埠）
+- **THEN** 每一步的指令與實際環境行為一致（網路名可查證、掛載後無設定衝突），且驗證步驟能確認 redirect、HTTPS 與 WebSocket upgrade 三者生效
 
 ### Requirement: 應用對外 TLS-ready 不變式
 

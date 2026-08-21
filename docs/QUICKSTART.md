@@ -378,8 +378,59 @@ backend 為內網明文、不對外。對外 TLS termination 為**部署方職�
 TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP→HTTPS redirect、HSTS 與
 **WebSocket upgrade 轉發（wss）**；若 LB／ingress 到主機的 hop 跨越不可信網段，該 hop 亦須加密
 （re-encrypt）。應用已 TLS-ready——前端依頁面協定自動 `ws`↔`wss`、認證走 Authorization header
-（無 Secure cookie 顧慮），故置於 HTTPS edge 後無需改應用。可運作範例見
-`docker/reverse-proxy/nginx-tls.conf.example`。此為部署契約，非應用強制控制——請據實驗證你的 edge。
+（無 Secure cookie 顧慮），故置於 HTTPS edge 後無需改應用。此為部署契約，
+非應用強制控制——請據實驗證你的 edge。
+
+**最小可用範例（docker 跑 nginx 反代 + 你的憑證）**：
+
+1. 準備憑證：把憑證鏈與私鑰放到 `./tls/fullchain.pem`、`./tls/privkey.pem`。
+   來源用 Let's Encrypt 或企業 CA 皆可；自簽憑證僅供測試（瀏覽器會警告，且 OIDC 等
+   外部整合可能拒絕）。
+2. 取範例設定，換上你的網域：
+
+   ```bash
+   mkdir -p tls
+   cp docker/reverse-proxy/nginx-tls.conf.example tls/custodexa.conf
+   # 編輯 tls/custodexa.conf：兩處 server_name your.domain.example 換成你的網域
+   ```
+
+   範例已含 TLS 1.2+、HTTP→HTTPS redirect、HSTS 與 WebSocket upgrade 轉發；
+   upstream 指向 compose 服務名 `frontend:80`，反代加入同一 docker 網路即可解析。
+3. 讓出對外埠：把 `docker-compose.yml` 中 frontend 的 `ports:` 兩行註解掉
+   （反代經 docker 網路直達 frontend，stock 的 `80:80` 映射不再需要，
+   留著會與反代搶 80 埠），然後 `docker compose up -d frontend` 套用。
+4. 啟動反代。compose 定義的是具名網路 `custodexa-network`，docker 實際網路名會帶
+   專案目錄前綴（例如目錄叫 `custodexa` 時為 `custodexa_custodexa-network`），
+   先以 `docker network ls` 確認再帶入。conf 掛載路徑刻意蓋掉 image 內建的
+   `default.conf`——內建檔會與你的設定衝突（同名 server_name），或以 welcome 頁
+   兜底吃掉不匹配網域的請求：
+
+   ```bash
+   docker run -d --name custodexa-tls --restart unless-stopped \
+     --network custodexa_custodexa-network \
+     -p 80:80 -p 443:443 \
+     -v "$PWD/tls/custodexa.conf:/etc/nginx/conf.d/default.conf:ro" \
+     -v "$PWD/tls/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
+     -v "$PWD/tls/privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
+     nginx:stable-alpine
+   ```
+
+5. 驗證三件事：
+
+   ```bash
+   curl -sI http://your.domain.example/ | head -1    # 應為 301（導向 https）
+   curl -sI https://your.domain.example/ | head -1   # 應為 200（自簽測試加 -k）
+   # 登入後開一條 SSH 連線，瀏覽器 DevTools 的 Network 應看到 wss:// 串流——
+   # 若終端開不起來而頁面正常，多半是 WebSocket upgrade 轉發沒生效
+   ```
+
+   有設 OIDC 時，`PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`（見上節）。
+
+   改用主機安裝的 nginx（不跑容器）時，設定同一份：upstream 改指
+   `127.0.0.1:<frontend 對外埠>`，並保留 frontend 的 ports 映射但建議綁 loopback
+   （`127.0.0.1:8080:80`）；nginx 低於 1.25.1 不支援 `http2 on;` 指令，
+   改寫成 `listen 443 ssl http2;` 即可。其他反代（Caddy、Traefik、雲端 LB）
+   滿足同一組契約即可。
 
 ### 時間同步（PCI 10.6）
 
