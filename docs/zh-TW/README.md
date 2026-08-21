@@ -71,16 +71,6 @@ Windows 請在 WSL 內執行腳本。
 **想參與開發？** 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解即切到開發版
 （前後端熱重載，並附各協議的測試靶機），入口見 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
-## 路線圖
-
-這些是已在計畫中的方向，是意向不是時程承諾，歡迎開 issue 討論：
-
-- 離線安裝包：面向 air-gap 環境的映像打包交付。
-- 指令審計的輸入方向紀錄，補上「指令送出後連線立即中斷」這類目前補不到的審計形態。
-- 高可用部署：多實例與金鑰服務的 HA。
-- CI 公開化與更多協議支援。
-- 英文文檔：README 已雙語，完整文檔的英文化歡迎協作。
-
 ## 技術架構
 
 **後端** Go · Gin · GORM · PostgreSQL 16　**前端** Vue 3 · Element Plus · Vite

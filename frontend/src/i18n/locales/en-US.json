@@ -1083,7 +1083,7 @@
     "item1": "Clipboard policy is enforceable only for graphical protocols (RDP/VNC). Copy and paste in SSH, database CLI and K8s exec happen inside the browser, where the server cannot tell a paste from keystrokes; hiding buttons in the UI is an interface constraint, not a control.",
     "item2": "Clipboard enforcement happens inside guacd, so this product never sees the blocked attempt and clipboard denials produce no audit event. File transfer denials do produce a denied audit record.",
     "item3": "Session share viewers inherit the connection parameters of the session and are not evaluated against their own grants: a user allowed to paste who shares the session lets the viewer paste too.",
-    "item4": "K8s file endpoints currently check only the asset update permission, bypassing connect authorization and access policy tiers. This section adds the data transfer check only; full alignment is tracked as a follow-up security item.",
+    "item4": "K8s file endpoints currently check only the asset update permission, bypassing connect authorization and access policy tiers. This section adds only the data transfer check.",
     "item5": "Data taken out from inside a terminal via scp, curl or base64 is out of scope here and belongs to command blocking: disabling file download does not mean data cannot leave."
   },
   "policyNote": {
@@ -1878,7 +1878,7 @@
     "cleanupConfirmQuestion": "Proceed with cleanup?",
     "cleanedTag": "Purged",
     "cleanupDisabledRotating": "A key rotation is in progress; clean up after it finishes",
-    "cleanupSkippedUnregistered": "{purpose} v{version}: retained — no cleanup rule is defined for this key type, so the system conservatively keeps it. This is a gap in the program definition and cannot be resolved by an administrator; it can only be cleaned after upgrading to a version that supports this type",
+    "cleanupSkippedUnregistered": "{purpose} v{version}: retained — no cleanup rule is defined for this key type, so the system conservatively keeps it. This is a gap in the program definition and cannot be resolved by an administrator",
     "kekErrorFormat": "Cannot be decoded into a 32-byte key: enter 32 characters, 64 hexadecimal characters, or base64 that decodes to exactly 32 bytes"
   },
   "changeSecretPlans": {
@@ -3150,7 +3150,7 @@
       },
       "R3": {
         "scenario": "With no external log collector configured, this mechanism covers local integrity only and cannot counter replacing the local data together with its checkpoints wholesale, including a rollback of the whole database to an older backup.",
-        "mitigation": "The only thing carrying this today is the prompt inside the product: while it is unconfigured, the top of this page states plainly that the system is in a degraded state and points to the log forwarding settings under System settings → Security policies, so no claim of full protection is made from an unconfigured state. There is, however, no pre-deployment checklist that makes an external log collector a required companion control (one is planned for the 1.0 operations handbook), so until such a checklist exists, whether the collector is configured depends on whether the deploying party read that prompt and followed it."
+        "mitigation": "The only thing carrying this today is the prompt inside the product: while it is unconfigured, the top of this page states plainly that the system is in a degraded state and points to the log forwarding settings under System settings → Security policies, so no claim of full protection is made from an unconfigured state. There is, however, no pre-deployment checklist that makes an external log collector a required companion control, so whether the collector is configured depends on whether the deploying party read that prompt and followed it."
       },
       "R4": {
         "scenario": "Checkpoints are sent to the collector without waiting for a reply, so there is no acknowledgment of receipt, and individual events can be lost during network trouble or traffic peaks.",
