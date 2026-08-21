@@ -377,9 +377,31 @@ stock 部署**本身不提供 TLS**：frontend 只映射 `80`/HTTP，
 backend 為內網明文、不對外。對外 TLS termination 為**部署方職責**：須於本服務前置一個
 TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP→HTTPS redirect、HSTS 與
 **WebSocket upgrade 轉發（wss）**；若 LB／ingress 到主機的 hop 跨越不可信網段，該 hop 亦須加密
-（re-encrypt）。應用已 TLS-ready：前端依頁面協定自動 `ws`↔`wss`、認證走 Authorization header
-（無 Secure cookie 顧慮），故置於 HTTPS edge 後無需改應用。此為部署契約，
+（re-encrypt）。應用已 TLS-ready：前端依頁面協定自動 `ws`↔`wss`、access token 走
+Authorization header，故置於 HTTPS edge 後**幾乎**無需改應用——唯一要對齊的一項是
+`PUBLIC_BASE_URL`（見下方步驟 5 與「會話刷新 cookie 的 Secure 旗標」）。此為部署契約，
 非應用強制控制，請據實驗證你的 edge。
+
+**會話刷新 cookie 的 Secure 旗標**：Web 會話刷新憑證以 `HttpOnly` cookie
+（`custodexa_refresh`）下發，其 `Secure` 旗標由部署對外協定推導，**不寫死**：
+
+| 設定 | 結果 |
+|---|---|
+| `AUTH_REFRESH_COOKIE_SECURE=true` 或 `false` | 直接採用（最高優先） |
+| 未設，`PUBLIC_BASE_URL` 為 `https://…` | 標記 Secure |
+| 未設，`PUBLIC_BASE_URL` 為 `http://…` 或留空 | 不標記 Secure |
+
+**HTTPS 對外部署請把 `PUBLIC_BASE_URL` 設成 https 位址**（即使沒用 OIDC）；
+TLS 在更前面的一層終結而 `PUBLIC_BASE_URL` 無法反映對外位址時，
+以 `AUTH_REFRESH_COOKIE_SECURE=true` 顯式覆寫。
+
+兩個方向的誤設都會表現為同一種難以歸因的故障——「登入成功，十幾分鐘後被登出」
+（瀏覽器丟棄不合格的 `Set-Cookie` 是靜默行為，畫面上沒有任何錯誤可查）。
+故啟動日誌一律印出目前生效值與其依據，**上線後請先看一眼**：
+
+```bash
+docker compose logs backend | grep "refresh cookie"
+```
 
 **最小可用範例（docker 跑 nginx 反代 + 你的憑證）**：
 
@@ -424,7 +446,9 @@ TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP�
    # 若終端開不起來而頁面正常，多半是 WebSocket upgrade 轉發沒生效
    ```
 
-   有設 OIDC 時，`PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`（見上節）。
+   `PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`：它同時決定 OIDC 的
+   `redirect_uri`（見上節）與會話刷新 cookie 的 `Secure` 旗標（見本節開頭）。
+   改完重啟 backend 並確認啟動日誌的 `refresh cookie` 那一行已顯示「已標記 Secure」。
 
    改用主機安裝的 nginx（不跑容器）時，設定同一份：upstream 改指
    `127.0.0.1:<frontend 對外埠>`，並保留 frontend 的 ports 映射但建議綁 loopback
