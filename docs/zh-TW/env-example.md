@@ -310,13 +310,26 @@ METRICS_TOKEN=
 
 ### `AUTH_REFRESH_COOKIE_SECURE`
 
-交給瀏覽器的會話刷新 cookie 是否帶上 `Secure` 屬性。
-帶上之後，瀏覽器只會透過 HTTPS 送出它。
-留空 = 依 `PUBLIC_BASE_URL` 的協定推導：https 位址會帶上，http 位址與未設定都不帶。
+`[seed]` 交給瀏覽器的會話刷新 cookie 是否帶上 `Secure` 屬性。
+帶上之後，瀏覽器只會在 HTTPS 連線下保存與送出它。可接受的值是 `true` 與 `false`。
+這裡填的值會在**首次啟動**時種進同名的安全政策；此後開關就在
+系統設定 → 安全政策 →「連線與帳號」的**「登入狀態僅在 https 連線保存」**，
+在那裡儲存後，下一次發放的 cookie 就採用新值，不需重啟。
+政策一旦有值，再改本檔不會有任何效果。
+
+留空 = 依 `PUBLIC_BASE_URL` 的協定決定種入的初值：https 位址種入開啟，
+http 位址種入關閉，兩者都沒有則政策維持出廠預設的開啟。
 TLS 若是在本系統前面一層終結，而 `PUBLIC_BASE_URL` 沒有寫上對外的 https 位址，
-請把這個值設成 `true`。
-可接受的值是 `true` 與 `false`。
-生效的值與它是依哪一項設定推導出來的，都會寫在啟動日誌裡。
+請把這個值設成 `true`；本系統以明文 http 對外時，請在首次啟動前設成 `false`。
+
+政策開著而站台走明文 http，系統仍然可用，代價是瀏覽器會丟掉這個 cookie，
+每個人隔約 15 分鐘（存取權杖的壽命）就要重新登入一次。這件事使用者看得到：
+登入頁會說明現況，安全政策頁也會給管理員同一則提示，在那裡把政策關掉即刻解除。
+
+本機開發用 `http://localhost` 會不會受影響，看瀏覽器：Chromium 與 Firefox 接受來自這個位址的
+Secure cookie；Safari 一系的 WebKit 會丟棄，拿 Safari 開發時把該政策關掉即可。
+
+生效的值與它的來源，都會寫在啟動日誌裡。
 
 ```env
 AUTH_REFRESH_COOKIE_SECURE=

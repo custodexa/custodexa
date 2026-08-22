@@ -147,9 +147,17 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
   （輪替下發 SHALL 取剩餘壽命，SHALL NOT 因輪替延長）。
 - cookie 的 Path SHALL 同時涵蓋刷新與登出端點——僅涵蓋刷新會使登出撤銷靜默退化為
   no-op，連帶分叉偵測的家族撤銷失效。
-- `Secure` 旗標 SHALL 由部署對外協定推導（`PUBLIC_BASE_URL` 的 scheme，允許 env
-  顯式覆寫），SHALL NOT 寫死；最終值為非安全時啟動日誌 SHALL 發出明確警告，
-  說明該組態僅適用於測試環境。
+- `Secure` 旗標 SHALL 由安全政策鍵承載（見 security-policy「瀏覽器會話
+  refresh cookie 的 Secure 政策鍵」）：發放時現讀、管理端可調、變更即生效不需
+  重啟。其初值 SHALL 於首次啟動自部署組態播種，依序推導：
+  `AUTH_REFRESH_COOKIE_SECURE` 顯式設定 → `PUBLIC_BASE_URL` 的 scheme
+  （https → 安全、http → 非安全）→ **預設安全**；SHALL NOT 因設定缺席而回落為
+  非安全——未設定的部署 SHALL 取得傳輸保護，走明文的部署 SHALL 經顯式關閉
+  （播種組態或管理端政策）取得非安全值。政策不可讀或未接線時 SHALL 回落安全方向
+  （Secure）。啟動日誌 SHALL 載明生效值與其來源（管理端設定／組態播種／出廠
+  預設）；最終值為非安全時 SHALL 說明 refresh 憑證將經明文傳輸與復原方向。
+  啟動日誌 SHALL NOT 被視為此組態唯一的可見性來源
+  （見「非安全傳輸下的續期降級須可理解」）。
 - 回應 body SHALL NOT 含 refresh 憑證明文（含巢狀回應形狀在內的一切序列化路徑）。
 - 刷新端點 SHALL 僅自 cookie 讀取 refresh 憑證，SHALL NOT 接受 request body 傳遞，
   SHALL NOT 保留 body fallback；cookie 缺失 SHALL 回統一的認證失敗回應，
@@ -181,10 +189,27 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
 - **WHEN** 使用者帶 refresh cookie 登出，其後同一憑證被用於刷新
 - **THEN** 登出回應含清除性 `Set-Cookie`（即時到期），後續刷新被拒——撤銷確實發生而非 no-op
 
-#### Scenario: 非 HTTPS 部署可用但留警告
+#### Scenario: 顯式關閉後純 HTTP 全循環可用
 
-- **WHEN** 部署對外為純 HTTP（`PUBLIC_BASE_URL` 非 https 且未顯式覆寫）
-- **THEN** cookie 不帶 `Secure`，登入—刷新—登出全循環可用，啟動日誌含「僅適用測試環境」警告
+- **WHEN** 部署對外為純 HTTP，且該政策為非安全——經首次啟動播種
+  （`AUTH_REFRESH_COOKIE_SECURE=false` 或 `PUBLIC_BASE_URL` 為 http 位址）
+  或管理員於安全政策頁關閉
+- **THEN** cookie 不帶 `Secure`，登入—刷新—登出全循環可用，
+  啟動日誌載明已關閉與其來源
+
+#### Scenario: 未顯式關閉的純 HTTP 部署降級而非不可用
+
+- **WHEN** 部署對外為純 HTTP，未設定 `AUTH_REFRESH_COOKIE_SECURE` 與
+  `PUBLIC_BASE_URL`，且該政策未曾於管理端調整
+- **THEN** cookie 帶 `Secure` 而不被瀏覽器保存：登入本身成功、access token 壽命內
+  操作正常，壽命到期後續期失敗、使用者須重新登入。系統於此形態 SHALL 維持可用
+  （降級），且成因說明 SHALL 依「非安全傳輸下的續期降級須可理解」對使用者呈現
+
+#### Scenario: 政策頁關閉即生效不需重啟
+
+- **WHEN** 處於前一場景降級形態的部署中，管理員於安全政策頁關閉該政策並儲存
+- **THEN** 後端不重啟，下一次發放的 refresh cookie 即不帶 `Secure`，
+  使用者自下次登入起恢復完整續期循環
 
 #### Scenario: 跨站請求不攜帶 refresh cookie
 
@@ -195,4 +220,53 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
 
 - **WHEN** 曾以舊版（localStorage 存放 refresh 憑證）登入的瀏覽器載入新版前端
 - **THEN** 應用啟動即移除 localStorage 中的 refresh_token 殘值，不留明文
+
+### Requirement: 非安全傳輸下的續期降級須可理解
+
+會話續期因傳輸組態而失敗時，系統 SHALL 讓兩類讀者各自看得懂成因與處置方向：
+
+- **被登出的使用者**：前端 SHALL 於「頁面經 http 載入、續期失敗、且該分頁未曾有
+  成功續期」同時成立時，在登入頁以常駐訊息（而非一次性 toast）說明登入狀態未能
+  保存的成因與「轉知管理員」的處置方向；訊息 SHALL 為三語，SHALL NOT 使用內部
+  實作詞彙（cookie 屬性名、環境變數名）。偵測 SHALL 僅依前端可觀察的事實
+  （頁面協定、續期結果、本分頁續期史），SHALL NOT 要求後端在統一認證失敗回應中
+  加入區分訊號。
+- **能處置的管理者**：管理端安全設定頁 SHALL 於「頁面經 http 載入且 refresh cookie
+  生效值為安全」時顯示建議性提示，並列兩條處置路徑（改以 HTTPS 對外提供、或關閉
+  同頁承載的該政策開關）；提示 SHALL 指向該政策鍵所在的同一頁面控制項，措辭
+  SHALL 為建議而非警告或強制。系統 SHALL NOT 自動變更該設定——其寫入 SHALL 僅
+  發生於管理員於管理介面的顯式儲存與首次啟動播種，SHALL NOT 存在任何自動翻轉
+  路徑。
+- 生效值 SHALL 作為一般政策項經既有管理端政策讀取 API 提供已認證管理員（供前端
+  判定提示條件），SHALL NOT 對未認證請求或非管理角色暴露；其變更 SHALL 經既有
+  政策更新流（批次原子、變更入審計），SHALL NOT 另闢寫入通道。
+
+#### Scenario: 登入頁說明在首次續期失敗時出現
+
+- **WHEN** 頁面經 http 載入、該分頁未曾成功續期，access token 到期後續期失敗、
+  使用者被導回登入頁
+- **THEN** 登入頁顯示常駐說明：登入狀態未能保存、每隔約 access token 壽命須重新
+  登入、請轉知系統管理員
+
+#### Scenario: 健康的明文部署不誤報
+
+- **WHEN** 顯式關閉 Secure 的純 HTTP 部署中，使用者經多次成功續期後因閒置逾時
+  續期被拒
+- **THEN** 前端走一般會話過期處理，不顯示本要求的 http 成因說明
+
+#### Scenario: 管理頁建議與決定權
+
+- **WHEN** 管理員經 http 開啟安全設定頁，且後端 refresh cookie 生效值為安全
+- **THEN** 頁面顯示建議性提示與兩條處置路徑，提示指向同頁的該政策開關；
+  系統未自動變更任何設定，變更僅在管理員操作該開關並儲存時發生
+
+#### Scenario: HTTPS 下無提示
+
+- **WHEN** 頁面經 https 載入
+- **THEN** 登入頁與安全設定頁皆不顯示本要求的提示
+
+#### Scenario: 生效值不對未認證者暴露
+
+- **WHEN** 未認證請求或非管理角色嘗試讀取承載該政策項的管理端資源
+- **THEN** 既有認證與角色閘拒絕；該政策項僅隨管理員限定回應提供
 

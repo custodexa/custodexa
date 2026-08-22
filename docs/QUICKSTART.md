@@ -383,25 +383,44 @@ Authorization header，故置於 HTTPS edge 後**幾乎**無需改應用——�
 非應用強制控制，請據實驗證你的 edge。
 
 **會話刷新 cookie 的 Secure 旗標**：Web 會話刷新憑證以 `HttpOnly` cookie
-（`custodexa_refresh`）下發，其 `Secure` 旗標由部署對外協定推導，**不寫死**：
+（`custodexa_refresh`）下發，其 `Secure` 旗標由安全政策
+**「登入狀態僅在 https 連線保存」**決定（系統設定 → 安全政策 →「連線與帳號」）。
+在該頁改值並儲存後，下一次發放的 cookie 就採用新值，不需重啟。
 
-| 設定 | 結果 |
+首次啟動時，這個政策的初值取自 `.env`：
+
+| 首次啟動時的設定 | 播種的初值 |
 |---|---|
 | `AUTH_REFRESH_COOKIE_SECURE=true` 或 `false` | 直接採用（最高優先） |
-| 未設，`PUBLIC_BASE_URL` 為 `https://…` | 標記 Secure |
-| 未設，`PUBLIC_BASE_URL` 為 `http://…` 或留空 | 不標記 Secure |
+| 未設，`PUBLIC_BASE_URL` 為 `https://…` | 開啟 |
+| 未設，`PUBLIC_BASE_URL` 為 `http://…` | 關閉 |
+| 未設，`PUBLIC_BASE_URL` 也留空 | 開啟（出廠預設） |
+
+這兩個環境變數只在政策還沒有值的時候起作用。政策一旦有值（首啟播種過，或有人在
+安全政策頁存過），之後改 `.env` 不會有任何效果，要調整請回到那一頁。
 
 **HTTPS 對外部署請把 `PUBLIC_BASE_URL` 設成 https 位址**（即使沒用 OIDC）；
 TLS 在更前面的一層終結而 `PUBLIC_BASE_URL` 無法反映對外位址時，
-以 `AUTH_REFRESH_COOKIE_SECURE=true` 顯式覆寫。
+以 `AUTH_REFRESH_COOKIE_SECURE=true` 播種。
 
-兩個方向的誤設都會表現為同一種難以歸因的故障——「登入成功，十幾分鐘後被登出」
-（瀏覽器丟棄不合格的 `Set-Cookie` 是靜默行為，畫面上沒有任何錯誤可查）。
-故啟動日誌一律印出目前生效值與其依據，**上線後請先看一眼**：
+**走明文 HTTP 對外的部署**，請在首次啟動前把 `AUTH_REFRESH_COOKIE_SECURE` 設成 `false`，
+或啟動後到安全政策頁把該項關掉。政策開著的話系統仍然可用，代價是瀏覽器不保存這個
+cookie，每個人隔約 15 分鐘（存取權杖的壽命）就要重新登入一次。這件事使用者看得到：
+被登出時登入頁會說明現況並請他找管理員，管理員以同一個 http 位址登入後，安全政策頁
+上方也會出現對應的提示與兩條處理路徑。**系統不會自行改動這個設定。**
+
+本機開發用 `http://localhost` 不受影響：Chromium 145 與 Firefox 146 實測都接受來自
+這個位址的 Secure cookie；Safari 一系的 WebKit 會丟棄，拿 Safari 開發時把該政策關掉即可。
+
+啟動日誌一律印出目前生效值與其來源（安全政策頁設定／env 播種／出廠預設），
+**上線後請先看一眼**：
 
 ```bash
 docker compose logs backend | grep "refresh cookie"
 ```
+
+值為關閉時，日誌會提醒「refresh 憑證將經明文 HTTP 傳輸」——若本站其實走 https，
+那就是設定該收緊了，到安全政策頁把它開啟。
 
 **最小可用範例（docker 跑 nginx 反代 + 你的憑證）**：
 
@@ -446,9 +465,13 @@ docker compose logs backend | grep "refresh cookie"
    # 若終端開不起來而頁面正常，多半是 WebSocket upgrade 轉發沒生效
    ```
 
-   `PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`：它同時決定 OIDC 的
-   `redirect_uri`（見上節）與會話刷新 cookie 的 `Secure` 旗標（見本節開頭）。
-   改完重啟 backend 並確認啟動日誌的 `refresh cookie` 那一行已顯示「已標記 Secure」。
+   `PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`（OIDC 的 `redirect_uri`
+   吃這個值，見上節），改完重啟 backend。
+
+   刷新 cookie 的 `Secure` 旗標則要另外看一眼：這套系統若曾以 http 位址啟動過，
+   政策已經播種為關閉，改 `PUBLIC_BASE_URL` 不會把它翻回來（見本節開頭）。
+   到系統設定 → 安全政策把「登入狀態僅在 https 連線保存」開啟並儲存，
+   下一次發放的 cookie 就會帶上 `Secure`。
 
    改用主機安裝的 nginx（不跑容器）時，設定同一份：upstream 改指
    `127.0.0.1:<frontend 對外埠>`，並保留 frontend 的 ports 映射但建議綁 loopback
