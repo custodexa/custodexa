@@ -2,6 +2,39 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.0.3 — the session cookie's Secure attribute becomes a policy (2026-08-22)
+
+Whether the session refresh cookie carries the `Secure` attribute is now a setting
+on the Security Policies page, and it ships turned on. Saving it takes effect on
+the next sign-in; no restart.
+
+**If you serve Custodexa over plain HTTP**, turn this policy off. Leaving it on
+means the browser will not keep the cookie, so everyone is sent back to the sign-in
+page about every 15 minutes. The system will not change the setting for you: the
+sign-in page tells the user what is happening, and the Security Policies page
+tells an administrator how to handle it.
+
+`AUTH_REFRESH_COOKIE_SECURE` now only seeds the policy the first time the backend
+starts, the same way the `LDAP_*` variables work. Editing it afterwards does
+nothing; change the policy instead.
+
+### Changed
+
+- The `Secure` attribute follows the `refresh_cookie_secure` policy. On a first
+  start the seed value comes from `AUTH_REFRESH_COOKIE_SECURE` if set, otherwise
+  from the scheme of `PUBLIC_BASE_URL`, otherwise it is on. Every fallback path,
+  including an unreachable policy store, resolves to on.
+- Sorting in audit log queries builds the ORDER BY clause out of column names
+  taken from a fixed list rather than out of the request.
+- Local user lookup parses uid and gid with an explicit bit size, so a value too
+  large to represent is rejected at the parse step.
+
+### Notes
+
+- On `http://localhost`, Chromium and Firefox still accept a cookie marked
+  `Secure`; the WebKit build behind Safari does not. Local development in Safari
+  needs the policy off.
+
 ## 1.0.2 — session cookie and audit query hardening (2026-08-22)
 
 Browsers now hold the session refresh credential in an httpOnly cookie rather than
