@@ -50,13 +50,21 @@ Web 會話 SHALL 採固定短效 access token（15 分，撤銷殘窗上限，�
 - **THEN** 既有會話不被終斷（僅阻擋新登入與新連線），避免鎖定成為遠端斷線武器
 
 ### Requirement: JWT 僅經 Authorization header 接受
-認證 middleware SHALL 僅從 `Authorization: Bearer` header 接受 JWT，SHALL NOT 接受 URL query 參數傳遞的 JWT——長效權杖入 query 會被 access log 與 proxy 日誌完整記錄。專用短效機制不受影響：錄影播放 rtoken（不透明、120s TTL）與一次性 connect-token 維持既有 query／訊息傳遞方式。
+
+認證 middleware SHALL 僅從 `Authorization: Bearer` header 接受 JWT，SHALL NOT 接受 URL query 參數傳遞的 JWT——長效權杖入 query 會被 access log 與 proxy 日誌完整記錄。認證 middleware SHALL NOT 自 cookie 接受 JWT——refresh 憑證遷入 cookie 後，系統存在瀏覽器自動附帶的憑證載體，但 access token 的傳輸通道 SHALL 維持唯一（Authorization header）；任何 cookie（含 refresh cookie 本身）對認證 middleware SHALL NOT 構成憑證。專用短效機制不受影響：錄影播放 rtoken（不透明、120s TTL）與一次性 connect-token 維持既有 query／訊息傳遞方式。
 
 #### Scenario: query 傳遞 JWT 被拒
+
 - **WHEN** client 以 `?token=<有效JWT>` 呼叫掛認證 middleware 的端點且無 Authorization header
 - **THEN** 回 401 未提供認證 token
 
+#### Scenario: cookie 傳遞 JWT 被拒
+
+- **WHEN** client 將有效 JWT 置於 cookie（任意名稱）呼叫掛認證 middleware 的端點且無 Authorization header
+- **THEN** 回 401 未提供認證 token（middleware 未讀取 cookie，而非讀取後判無效）
+
 #### Scenario: rtoken 播放不受影響
+
 - **WHEN** 前端以 rtoken 播放文字錄影（`?rtoken=`）
 - **THEN** 播放正常（rtoken 走專用驗證路徑，非 JWT middleware fallback）
 
@@ -128,4 +136,63 @@ refresh 憑證的成功輪替 SHALL 寫入審計列，記錄使用者、來源�
 #### Scenario: 歷史筆數提高時的成本
 - **WHEN** 密碼歷史筆數設定為較大值
 - **THEN** 改密端點的併發上限相應下修，單一請求的總成本不因組態而失控
+
+### Requirement: refresh 憑證僅經 httpOnly cookie 傳輸
+
+refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
+
+- 所有發放 refresh 憑證的回應（含登入、多因素完成、多因素註冊確認、強制改密換發、
+  OIDC 交換與刷新輪替）SHALL 以 `Set-Cookie` 下發該憑證，屬性 SHALL 為 `HttpOnly`、
+  `SameSite=Strict`、Path 收斂於認證端點群前綴，效期 SHALL 對齊該憑證的絕對壽命
+  （輪替下發 SHALL 取剩餘壽命，SHALL NOT 因輪替延長）。
+- cookie 的 Path SHALL 同時涵蓋刷新與登出端點——僅涵蓋刷新會使登出撤銷靜默退化為
+  no-op，連帶分叉偵測的家族撤銷失效。
+- `Secure` 旗標 SHALL 由部署對外協定推導（`PUBLIC_BASE_URL` 的 scheme，允許 env
+  顯式覆寫），SHALL NOT 寫死；最終值為非安全時啟動日誌 SHALL 發出明確警告，
+  說明該組態僅適用於測試環境。
+- 回應 body SHALL NOT 含 refresh 憑證明文（含巢狀回應形狀在內的一切序列化路徑）。
+- 刷新端點 SHALL 僅自 cookie 讀取 refresh 憑證，SHALL NOT 接受 request body 傳遞，
+  SHALL NOT 保留 body fallback；cookie 缺失 SHALL 回統一的認證失敗回應，
+  SHALL NOT 洩漏「未提供／無效／已撤銷」的區分訊號。
+- 登出 SHALL 自 cookie 讀取憑證執行撤銷（含「提交已輪替憑證觸發家族撤銷」語義原樣
+  適用）並於回應清除 cookie；cookie 缺失 SHALL NOT 阻擋登出。
+- 前端 SHALL NOT 將 refresh 憑證寫入任何 script 可讀儲存（localStorage／sessionStorage）；
+  應用啟動 SHALL 無條件清除 localStorage 中的歷史殘值。
+
+#### Scenario: 登入以 cookie 下發、body 無明文
+
+- **WHEN** 使用者成功登入（任一登入流）
+- **THEN** 回應含 `Set-Cookie`（`HttpOnly`、`SameSite=Strict`、Path 為認證端點群前綴），
+  且回應 body 不含 refresh 憑證明文
+
+#### Scenario: OIDC 交換的巢狀回應同樣收口
+
+- **WHEN** OIDC 使用者完成 ticket 交換取得正式會話
+- **THEN** refresh 憑證以 cookie 下發，巢狀 login 回應物件內不含憑證明文；
+  尚待多因素驗證的分支不下發 refresh cookie
+
+#### Scenario: 刷新僅認 cookie
+
+- **WHEN** client 以 request body 攜帶有效 refresh 憑證但不帶 cookie 呼叫刷新端點
+- **THEN** 刷新被拒（統一認證失敗回應），body 傳遞路徑不存在
+
+#### Scenario: 登出經 cookie 撤銷並清除
+
+- **WHEN** 使用者帶 refresh cookie 登出，其後同一憑證被用於刷新
+- **THEN** 登出回應含清除性 `Set-Cookie`（即時到期），後續刷新被拒——撤銷確實發生而非 no-op
+
+#### Scenario: 非 HTTPS 部署可用但留警告
+
+- **WHEN** 部署對外為純 HTTP（`PUBLIC_BASE_URL` 非 https 且未顯式覆寫）
+- **THEN** cookie 不帶 `Secure`，登入—刷新—登出全循環可用，啟動日誌含「僅適用測試環境」警告
+
+#### Scenario: 跨站請求不攜帶 refresh cookie
+
+- **WHEN** 任意第三方站台對刷新或登出端點發起跨站請求
+- **THEN** 瀏覽器因 `SameSite=Strict` 不附帶 refresh cookie，請求以無憑證處理
+
+#### Scenario: 啟動清理歷史殘值
+
+- **WHEN** 曾以舊版（localStorage 存放 refresh 憑證）登入的瀏覽器載入新版前端
+- **THEN** 應用啟動即移除 localStorage 中的 refresh_token 殘值，不留明文
 
