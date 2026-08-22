@@ -394,45 +394,61 @@ const (
 	defaultAuditSortOrder = "desc"
 )
 
-// auditSortableColumns 允許排序的欄位白名單，鍵為 audit_logs 的**實際 DB 欄位名**
-//（非 JSON 欄位名，例如 Duration 的 json tag 是 duration_ms 而欄位是 duration）。
+// auditSortableColumns 允許排序的欄位白名單。**鍵＝合法輸入，值＝實際拼進
+// ORDER BY 的欄名**，兩者恆等（key == value，由守衛測試釘住）；鍵與值都是
+// audit_logs 的**實際 DB 欄位名**（非 JSON 欄位名，例如 Duration 的 json tag 是
+// duration_ms 而欄位是 duration）。
 //
 // **為何必須是白名單而非過濾字元**：SortBy 來自 query 參數，最終以 fmt.Sprintf
 // 拼進 ORDER BY 子句，而 GORM 的 string 型 `.Order()` 是逐字寫入、不參數化——
 // 任何未收斂的值都是注入點，已認證的稽核檢視者即可用布林盲注逐字外洩任意表。
 // 黑名單／跳脫字元擋不住這個位置（識別字位置無法參數化），只有列舉可以。
 //
+// **為何是 map[string]string 而非 map[string]struct{}**：命中時回傳**值**，
+// 使流向 sink 的字串其資料流源頭是本檔的字面量而非請求參數，靜態分析
+// （CodeQL 的 taint 追蹤）得以自行驗證 sink 不可達，不必依賴人記得這裡有
+// 白名單約定。membership 檢查本身不在其 barrier 模型內，回傳輸入變數時
+// taint 會穿過驗證流到 `.Order()`。
+//
 // 擴充時必須確認新增的名字是 model.AuditLog 的真實欄位；不存在的欄位會讓整個
 // 查詢失敗，而不是靜默退回預設（守衛測試 TestAuditSortableColumnsAreRealColumns 會擋）。
-var auditSortableColumns = map[string]struct{}{
-	"created_at":  {},
-	"id":          {},
-	"action":      {},
-	"resource":    {},
-	"status":      {},
-	"user_id":     {},
-	"username":    {},
-	"client_ip":   {},
-	"status_code": {},
-	"duration":    {},
+var auditSortableColumns = map[string]string{
+	"created_at":  "created_at",
+	"id":          "id",
+	"action":      "action",
+	"resource":    "resource",
+	"status":      "status",
+	"user_id":     "user_id",
+	"username":    "username",
+	"client_ip":   "client_ip",
+	"status_code": "status_code",
+	"duration":    "duration",
 }
 
 // normalizeAuditSortBy 把排序欄位收斂進白名單，其餘（含空字串與注入載荷）退回預設。
 //
+// **回傳 map 的值而非輸入參數**：兩者恆等（key == value），故行為零差異，
+// 但回傳值的來源是本檔字面量，資料流上與請求參數無關（見 auditSortableColumns）。
+//
 // **靜默退回而非回錯**：排序是次要語義，為它讓整筆稽核查詢失敗代價不對稱；
 // 且回錯等於給探測者回饋，讓他能逐欄位試出哪些名字存在。
 func normalizeAuditSortBy(sortBy string) string {
-	if _, ok := auditSortableColumns[sortBy]; ok {
-		return sortBy
+	if column, ok := auditSortableColumns[sortBy]; ok {
+		return column
 	}
 	return defaultAuditSortBy
 }
 
 // normalizeAuditSortOrder 只接受 asc／desc（不分大小寫，正規化為小寫），其餘退回預設。
+//
+// 各 case 回傳字面量而非 `strings.ToLower` 的結果：同理於 normalizeAuditSortBy，
+// 讓回傳值的資料流源頭是本檔字面量（值與行為不變——比對已是小寫化後的精確相等）。
 func normalizeAuditSortOrder(sortOrder string) string {
-	switch lowered := strings.ToLower(sortOrder); lowered {
-	case "asc", "desc":
-		return lowered
+	switch strings.ToLower(sortOrder) {
+	case "asc":
+		return "asc"
+	case "desc":
+		return "desc"
 	default:
 		return defaultAuditSortOrder
 	}

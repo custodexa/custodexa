@@ -38,7 +38,7 @@ type OIDCHandler struct {
 	exchangeGuard *sourceAbuseGuard
 
 	// refreshCookies refresh 憑證的 httpOnly cookie 下發（refresh-token-httponly-cookie）。
-	// nil 安全：視為非 Secure，功能不斷
+	// nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
 }
 

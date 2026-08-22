@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/gin-gonic/gin"
 )
 
@@ -28,38 +28,52 @@ const (
 	RefreshCookiePath = "/api/v1/auth/"
 )
 
+// RefreshCookieSecurePolicy refresh cookie 的 Secure 屬性事實源（安全政策服務）。
+//
+// 只要 `GetBool`：writer 需要的就只是「這個鍵現在是不是 true」，
+// 介面收到這個寬度即可，測試也只需一個兩行的假物件。
+type RefreshCookieSecurePolicy interface {
+	GetBool(key string) bool
+}
+
 // RefreshCookieWriter 統一下發／清除 refresh cookie。
 //
 // 屬性收在單一處：底層以 `http.SetCookie` 顯式建構 `http.Cookie`，
 // 不用 gin 的 `c.SetCookie`——後者的 SameSite 依賴 context 全域狀態
 // （`c.SetSameSite`），屬性會散落在呼叫端，守衛測試也就得比對多種序列化形狀。
 type RefreshCookieWriter struct {
-	// secure 部署期常數，由 config 於啟動時推導（決策 2），不逐請求重算
-	secure bool
+	// policy Secure 屬性的事實源（codeql-rescan-settlement 決策 8）：
+	// **發放時現讀**，不持啟動期常數——管理員在政策頁改了即生效、不需重啟，
+	// 而那正是設錯時唯一好走的復原路徑
+	policy RefreshCookieSecurePolicy
 }
 
-// NewRefreshCookieWriter 建立 writer；secure 由呼叫端自 config 取得推導結果。
-func NewRefreshCookieWriter(secure bool) *RefreshCookieWriter {
-	return &RefreshCookieWriter{secure: secure}
+// NewRefreshCookieWriter 建立 writer；policy 為安全政策服務（cmd/server 注入）。
+func NewRefreshCookieWriter(policySource RefreshCookieSecurePolicy) *RefreshCookieWriter {
+	return &RefreshCookieWriter{policy: policySource}
 }
 
-// defaultRefreshCookieWriter handler 建構時的 fail-safe 預設。
+// defaultRefreshCookieWriter handler 建構時的 fail-safe 預設（無政策源）。
 //
-// **不讓「忘了接線」變成靜默的保護降級**：writer 若未注入而回落到零值，
-// Secure 會無聲地變成 false；故各 handler 建構時即自 env 推導一份
-// （沿 `NewAuthHandler` 已有的 `config.LoadSeal()` 先例），
-// cmd/server 再以同一推導結果覆寫為共用實例——兩者同源，不構成第二個事實源。
+// 政策源由 cmd/server 於接線時注入；未接線時 `resolve` 落在安全側（見該函式）。
+// 本函式因此只是讓 handler 欄位非 nil 的佔位，不再自行推導任何值——
+// 執行期事實源只有政策鍵一個，handler 建構期讀 env 會製造第二個。
 func defaultRefreshCookieWriter() *RefreshCookieWriter {
-	return NewRefreshCookieWriter(config.LoadRefreshCookieSecure().Secure)
+	return NewRefreshCookieWriter(nil)
 }
 
-// resolve 取 writer 的實際屬性；nil 接收者（未經建構函式的測試佔位）視為非 Secure，
-// 使 cookie 仍能正常下發——**功能不因未接線而斷**，只是少一層降級攻擊防護。
+// resolve 取 Secure 屬性的現值：每次發放／清除時自政策現讀。
+//
+// **未接線一律回 true（安全方向）**：Secure 改為自政策現讀後，「沒有政策源」
+// 在生產中的唯一意義是接線遺漏，而其失敗方向必須是「多保護」——回 false
+// 等於讓一個接線 bug 靜默地把傳輸保護關掉，且沒有任何症狀。
+// 回 true 的代價是純 HTTP 部署下多出重新登入（畫面上有成因說明），看得見、
+// 改得掉。功能仍不因未接線而斷：cookie 照發，只是帶 Secure。
 func (w *RefreshCookieWriter) resolve() bool {
-	if w == nil {
-		return false
+	if w == nil || w.policy == nil {
+		return true
 	}
-	return w.secure
+	return w.policy.GetBool(policy.PolicyRefreshCookieSecure)
 }
 
 // Set 下發 refresh cookie。

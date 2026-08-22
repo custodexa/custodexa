@@ -177,7 +177,10 @@ type SecurityConfig struct {
 	// 僅空 DB seed 時使用，首登強制改密後退役；非空 DB 啟動忽略其值（僅告警提醒移除）。
 	AdminInitialPassword string
 	// RefreshCookie refresh 憑證 cookie 的 Secure 旗標推導結果
-	// （refresh-token-httponly-cookie 決策 2）。啟動時定值，不逐請求重算。
+	// （refresh-token-httponly-cookie 決策 2）。
+	//
+	// **自 codeql-rescan-settlement 起僅為政策鍵 refresh_cookie_secure 的
+	// 首次啟動播種值**：執行期生效值由該政策鍵承載（發放時現讀、管理端可調）。
 	RefreshCookie RefreshCookieSecureDerivation
 }
 
@@ -197,16 +200,29 @@ const (
 	RefreshCookieSecureFromEnv = "AUTH_REFRESH_COOKIE_SECURE"
 	// RefreshCookieSecureFromBaseURL 由 PUBLIC_BASE_URL 的 scheme 推導
 	RefreshCookieSecureFromBaseURL = "PUBLIC_BASE_URL"
-	// RefreshCookieSecureFromDefault 兩者皆未提供有效訊息時的預設（false）
+	// RefreshCookieSecureFromDefault 兩者皆未提供有效訊息時的**安全預設**（true）。
+	//
+	// 此格不寫政策列（見 DeriveRefreshCookieSecure 的說明）：政策鍵
+	// refresh_cookie_secure 的出廠預設已是 true，承載同一語義
 	RefreshCookieSecureFromDefault = "default"
 )
 
 // DeriveRefreshCookieSecure 依決策 2 的優先序推導 refresh cookie 的 Secure 旗標。
 //
-// 為何不寫死（兩個方向都有真實失敗模式）：
-//   - 寫死 true：純 HTTP 部署下瀏覽器**靜默**丟棄 Set-Cookie，使用者陷入
-//     「登入成功 → access token 到期 → 刷新失敗 → 被登出」的迴圈，且無錯誤訊息可歸因。
-//   - 寫死 false：生產 HTTPS 環境放棄降級攻擊防護（誘導一次 http 請求即可竊取 cookie）。
+// **自 codeql-rescan-settlement（決策 8）起，本推導的結果不再直接注入 writer**：
+// 執行期事實源是安全政策鍵 refresh_cookie_secure（發放時現讀、管理端可調），
+// 本函式只負責算出**首次啟動的播種值**——給新部署一個合理起點。Source 為
+// default 時呼叫端不寫政策列（出廠預設即同值），故三層推導只在前兩層產生種子。
+//
+// 為何最後一層是 true（決策 1 的反轉；原為 false）：
+//   - 預設 false：未設定 PUBLIC_BASE_URL 的 HTTPS 部署**零症狀**地失去降級攻擊
+//     防護（誘導一次 http 請求即可竊取 cookie）——故障落在最不可見的一側。
+//   - 預設 true：純 HTTP 部署下瀏覽器靜默丟棄 Set-Cookie，使用者每個 access
+//     token 壽命就得重登一次。這一側吵鬧、看得見，且復原是管理端政策頁一個
+//     開關的事（不需改部署檔重啟），故取它。
+//
+// 顯式 false 與 `PUBLIC_BASE_URL=http://…` 兩格不變：顯式寫下 http 位址就是
+// 明文部署的顯式訊號，語義等同顯式關閉。
 //
 // 純函式（不自行讀 env）：推導規則要能逐格測試，而測試不得污染行程 env。
 func DeriveRefreshCookieSecure(explicit, publicBaseURL string) RefreshCookieSecureDerivation {
@@ -227,8 +243,8 @@ func DeriveRefreshCookieSecure(explicit, publicBaseURL string) RefreshCookieSecu
 			return RefreshCookieSecureDerivation{Secure: false, Source: RefreshCookieSecureFromBaseURL}
 		}
 	}
-	// 3. 未設（本地／開發形態）
-	return RefreshCookieSecureDerivation{Secure: false, Source: RefreshCookieSecureFromDefault}
+	// 3. 兩者皆缺：取安全側。此格不播種，由政策鍵的出廠預設 true 承載
+	return RefreshCookieSecureDerivation{Secure: true, Source: RefreshCookieSecureFromDefault}
 }
 
 // LoadRefreshCookieSecure 自 env 推導 refresh cookie 的 Secure 旗標

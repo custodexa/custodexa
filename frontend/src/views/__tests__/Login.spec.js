@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Login from '../Login.vue'
+import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
@@ -396,5 +397,90 @@ describe('Login', () => {
 
     expect(wrapper.text()).toContain('帳號已暫時鎖定')
     expect(localStorage.getItem('token')).toBeNull()
+  })
+})
+
+// 明文連線下登入狀態無法保存的說明（codeql-rescan-settlement 決策 3）：
+// 訊息出現在使用者正在問「為什麼又要我登入」的那一刻。
+// 這裡驗的是登入頁這一端——寫入端的三條件矩陣見 api/__tests__/request.spec.js
+describe('Login — 明文連線的登入說明', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    window.sessionStorage.clear()
+    vi.clearAllMocks()
+    window.location.href = 'http://localhost:3000/login'
+    getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
+  })
+
+  it('刷新終敗留下脈絡時，卡片內顯示可理解的說明', async () => {
+    recordInsecureTransportRelogin()
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(true)
+    expect(wrapper.text()).toContain('登入狀態沒有保存下來')
+    expect(wrapper.text()).toContain('請把這件事告訴系統管理員')
+  })
+
+  // 寫給被登出的人看，不是寫給讀組態的人看：cookie／Secure／環境變數／政策鍵名
+  // 都是管理頁的語言。這條守衛擋的是「順手把技術細節補進去」
+  it('說明不出現內部術語（cookie／Secure／env／政策鍵名）', async () => {
+    recordInsecureTransportRelogin()
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    const text = wrapper.find('.insecure-transport-alert').text()
+    for (const term of [
+      'cookie',
+      'Cookie',
+      'Secure',
+      'env',
+      'AUTH_REFRESH_COOKIE_SECURE',
+      'refresh_cookie_secure',
+    ]) {
+      expect(text, `說明不得出現「${term}」`).not.toContain(term)
+    }
+  })
+
+  it('無脈絡（一般進站、手動登出後）不顯示任何說明', async () => {
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
+  })
+
+  it('讀後即清：重新整理登入頁不重播', async () => {
+    recordInsecureTransportRelogin()
+
+    const first = mountLogin()
+    await flushPromises()
+    expect(first.find('.insecure-transport-alert').exists()).toBe(true)
+
+    const second = mountLogin()
+    await flushPromises()
+    expect(second.find('.insecure-transport-alert').exists()).toBe(false)
+  })
+
+  it('可手動關閉', async () => {
+    recordInsecureTransportRelogin()
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    // 關閉鈕存在（可關閉、不自動消失），關閉後不再渲染。
+    // 走元件事件而非點 DOM：el-alert 的關閉帶淡出 transition，
+    // 點擊後的那一幀元素還在，斷言 DOM 會量到過渡態
+    const alert = wrapper
+      .findAllComponents({ name: 'ElAlert' })
+      .find((c) => c.classes().includes('insecure-transport-alert'))
+    expect(alert.props('closable')).toBe(true)
+    expect(wrapper.find('.insecure-transport-alert .el-alert__close-btn').exists()).toBe(true)
+
+    alert.vm.$emit('close')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
   })
 })

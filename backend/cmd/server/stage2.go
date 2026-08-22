@@ -12,6 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -208,6 +209,23 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	policyService.SeedFromEnv(policy.PolicyRetentionMaxPerRun, "RETENTION_MAX_PER_RUN")
 	policyService.SeedFromEnv(policy.PolicyKeyRotationMaxPerRun, "KEY_ROTATION_MAX_PER_RUN")
 	policyService.SeedFromEnv(policy.PolicyK8sListTimeoutSeconds, "K8S_LIST_TIMEOUT_SECONDS")
+	// refresh cookie 的 Secure 屬性自部署組態播種（codeql-rescan-settlement 決策 8）。
+	//
+	// **走 SeedValue 而非 SeedFromEnv**：本鍵的種子是兩層優先序的**推導結果**
+	//（AUTH_REFRESH_COOKIE_SECURE 顯式值 → PUBLIC_BASE_URL 的 scheme），
+	// 不是某個 env 的原值。Source 為 default（兩者皆缺）時**不寫列**——出廠預設
+	// 已是同值 true，寫列只會製造「看似被人設定過」的假訊號，並讓日誌的來源
+	// 歸因把「沒人設定」說成「組態播種」
+	if d := cfg.Security.RefreshCookie; d.Source != config.RefreshCookieSecureFromDefault {
+		policyService.SeedValue(policy.PolicyRefreshCookieSecure,
+			strconv.FormatBool(d.Secure), d.Source)
+	}
+	// refresh cookie 的 Secure 現值與其來源歸因（決策 2）。
+	//
+	// **落在這裡而非 main 的啟動橫幅**：生效值住在政策服務裡，而封印啟動
+	//（KEK_PROVIDER=ui）的段 2 要到解封後才跑——印在 main 只會在封印模式下
+	// 永遠印不出來。接在播種之後，兩種模式都在「政策已就緒」的同一時點留話
+	logRefreshCookieSecurity(policyService)
 	// 換鑰上限與叢集列表逾時改由政策頁供給（env 僅為初值）：兩者皆執行期現讀，
 	// 調整即刻生效不需重啟
 	keyManager.SetPolicySource(policyService)
@@ -1012,8 +1030,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authHandler.SetUserService(s.userService)
 
 	// refresh 憑證的 httpOnly cookie（refresh-token-httponly-cookie 決策 3）：
-	// 三個 handler 共用同一 writer，Secure 旗標於啟動時由 config 推導定值（決策 2）
-	refreshCookies := api.NewRefreshCookieWriter(cfg.Security.RefreshCookie.Secure)
+	// 三個 handler 共用同一 writer，Secure 旗標於**發放時**自安全政策現讀
+	//（codeql-rescan-settlement 決策 8）——管理員在政策頁改了即生效，不需重啟
+	refreshCookies := api.NewRefreshCookieWriter(s.policyService)
 	authHandler.SetRefreshCookieWriter(refreshCookies)
 
 	oidcHandler := api.NewOIDCHandler(s.oidcProviderService, s.oidcLoginService,

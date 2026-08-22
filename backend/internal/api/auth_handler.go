@@ -43,7 +43,7 @@ type AuthHandler struct {
 	// 而其每請求的雜湊成本是登入的 7 倍（預設組態）至 27 倍（政策上界 24）。
 	changePasswordGuard *sourceAbuseGuard
 	// refreshCookies refresh 憑證的 httpOnly cookie 下發／清除
-	// （refresh-token-httponly-cookie）。nil 安全：視為非 Secure，功能不斷
+	// （refresh-token-httponly-cookie）。nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
 }
 

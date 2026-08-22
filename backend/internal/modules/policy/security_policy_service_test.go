@@ -225,6 +225,10 @@ func TestPolicyComplianceComparator(t *testing.T) {
 	noPCIRecommendation := map[string]bool{
 		PolicyWebMaxSessionHours: true,
 		PolicySessionMaxMinutes:  true,
+		// refresh cookie 的 Secure 屬性無合規建議值（codeql-rescan-settlement 決策 8）：
+		// 正確取值由部署對外協定決定（https 開、刻意明文關），不是合規基準線。
+		// 掛建議值會讓「套用本頁建議值」把明文部署的本鍵翻成開啟＝整站續期失敗
+		PolicyRefreshCookieSecure: true,
 		// 同意效期無 PCI 門檻（transmission-security-policy D3）
 		PolicyTransportConsentTTLDays: true,
 		// 最少核准人數＝內控強化非 PCI 要求（approval-routing-quorum D-6：
@@ -383,6 +387,87 @@ func TestSeedFromEnv(t *testing.T) {
 		svc.SeedFromEnv(PolicySessionIdleMinutes, "TEST_SSH_IDLE")
 		if got := svc.GetInt(PolicySessionIdleMinutes); got != 60 {
 			t.Errorf("GetInt = %d, want 60（非法值沿用預設）", got)
+		}
+	})
+}
+
+// --- refresh cookie Secure 政策鍵（codeql-rescan-settlement 決策 8）---
+
+// TestRefreshCookieSecureDefaultsToTrue 出廠預設＝安全側。
+//
+// **這一格是 fallback 方向的最終防線**：政策 DB 讀不到（POL-1）或該鍵無列時，
+// Get 都退回出廠預設，故出廠值一旦翻成 false，所有「讀不到」的情境都會靜默
+// 發出不帶 Secure 的 cookie。
+func TestRefreshCookieSecureDefaultsToTrue(t *testing.T) {
+	svc, _ := setupPolicyDB(t)
+
+	if !svc.GetBool(PolicyRefreshCookieSecure) {
+		t.Error("refresh_cookie_secure 出廠預設 = false：政策不可讀時會靜默失去傳輸保護")
+	}
+	for _, v := range svc.List() {
+		if v.Key != PolicyRefreshCookieSecure {
+			continue
+		}
+		if v.Type != PolicyTypeBool {
+			t.Errorf("Type = %q, want %q", v.Type, PolicyTypeBool)
+		}
+		if v.PCIValue != "" || v.EPaymentValue != "" {
+			t.Errorf("不得帶合規建議值（PCI=%q 電支=%q）：本鍵取值由部署對外協定決定，"+
+				"掛建議值會讓「套用本頁建議值」把明文部署翻成開啟＝整站續期失敗",
+				v.PCIValue, v.EPaymentValue)
+		}
+		if v.Compliant != nil || v.EPaymentCompliant != nil {
+			t.Error("不得計入任何基準的符合性評估")
+		}
+		return
+	}
+	t.Fatal("List 未含 refresh_cookie_secure")
+}
+
+// TestSeedValue 值播種：僅在無列時寫入、非法值忽略、**政策頁設定過的值永不被覆蓋**。
+func TestSeedValue(t *testing.T) {
+	t.Run("無列時寫入並記為播種來源", func(t *testing.T) {
+		svc, _ := setupPolicyDB(t)
+		svc.SeedValue(PolicyRefreshCookieSecure, "false", "PUBLIC_BASE_URL 的 scheme")
+		if svc.GetBool(PolicyRefreshCookieSecure) {
+			t.Error("播種值 false 未生效")
+		}
+		if got := svc.ValueSource(PolicyRefreshCookieSecure); got != PolicySourceSeed {
+			t.Errorf("ValueSource = %q, want %q", got, PolicySourceSeed)
+		}
+	})
+
+	t.Run("政策頁設定過的值不被播種覆蓋", func(t *testing.T) {
+		svc, _ := setupPolicyDB(t)
+		if _, err := svc.Update(PolicyRefreshCookieSecure, "false", "admin"); err != nil {
+			t.Fatalf("admin 設定: %v", err)
+		}
+		// 重啟後以相反的部署組態再播一次：管理員的線上修正不得被悄悄改回
+		svc.SeedValue(PolicyRefreshCookieSecure, "true", "AUTH_REFRESH_COOKIE_SECURE=true")
+		if svc.GetBool(PolicyRefreshCookieSecure) {
+			t.Error("播種覆蓋了管理端設定值：管理員在政策頁的修正會在下次重啟被部署檔推翻")
+		}
+		if got := svc.ValueSource(PolicyRefreshCookieSecure); got != PolicySourceAdmin {
+			t.Errorf("ValueSource = %q, want %q（來源被播種改寫等於歸因說謊）", got, PolicySourceAdmin)
+		}
+	})
+
+	t.Run("非法值忽略且不擋啟動", func(t *testing.T) {
+		svc, _ := setupPolicyDB(t)
+		svc.SeedValue(PolicyRefreshCookieSecure, "yes-please", "AUTH_REFRESH_COOKIE_SECURE=yes-please")
+		if !svc.GetBool(PolicyRefreshCookieSecure) {
+			t.Error("非法播種值改變了現值，應沿用出廠預設 true")
+		}
+		if got := svc.ValueSource(PolicyRefreshCookieSecure); got != PolicySourceDefault {
+			t.Errorf("ValueSource = %q, want %q（非法值不得寫列）", got, PolicySourceDefault)
+		}
+	})
+
+	t.Run("空值不播種", func(t *testing.T) {
+		svc, _ := setupPolicyDB(t)
+		svc.SeedValue(PolicyRefreshCookieSecure, "", "未設定")
+		if got := svc.ValueSource(PolicyRefreshCookieSecure); got != PolicySourceDefault {
+			t.Errorf("ValueSource = %q, want %q", got, PolicySourceDefault)
 		}
 	})
 }

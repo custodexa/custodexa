@@ -170,7 +170,9 @@
       "oidc_provider_unavailable": "此登入方式可能已停用或設定尚未完成，請聯繫管理員。",
       "oidc_provider_error": "您可能取消了授權，或提供者拒絕了這次登入。可重新發起再試一次。",
       "oidc_flow_invalid": "登入連結只能使用一次且有時效，請重新發起登入。"
-    }
+    },
+    "insecureTransportTitle": "登入狀態沒有保存下來",
+    "insecureTransportBody": "這個網站目前用 http 開啟，系統設定卻是只在 https 連線保存登入狀態，所以每隔約 15 分鐘就得重新登入。請把這件事告訴系統管理員，管理員登入後會在「安全政策」頁看到處理方式。"
   },
   "api": {
     "requestFailed": "請求失敗",
@@ -1672,7 +1674,11 @@
     "applyPage": "套用本頁建議值",
     "currentPageCount": "本頁 {n} 項",
     "itemCount": "{n} 項",
-    "sessionCapRiskAlert": "已設定協議連線閒置逾時，但「協議連線最長時長」為 0（不封頂）。監看類長連線（tail -f、top、日誌串流）因伺服器持續輸出不受閒置逾時中斷，建議設定最長時長作絕對上限。"
+    "sessionCapRiskAlert": "已設定協議連線閒置逾時，但「協議連線最長時長」為 0（不封頂）。監看類長連線（tail -f、top、日誌串流）因伺服器持續輸出不受閒置逾時中斷，建議設定最長時長作絕對上限。",
+    "insecureTransportTitle": "目前用 http 連線，使用者每 15 分鐘要重新登入",
+    "insecureTransportBody": "本頁的「登入狀態僅在 https 連線保存」目前是開啟，登入狀態就不會在 http 連線下保存。系統不會自動改這個設定，怎麼處理由你決定：",
+    "insecureTransportOptionHttps": "這套部署原本就要走 https：檢查反向代理的憑證與轉發設定，讓站台以 https 對外。",
+    "insecureTransportOptionHttp": "這套部署就是走 http：把本頁的「登入狀態僅在 https 連線保存」關閉再儲存，立即生效，不需要重啟。"
   },
   "accessControl": {
     "description": "連線前是否要申請、由誰核准：全域預設＋資產覆寫、申請參數與緊急連線；政策段位每項均標示 PCI DSS 建議值"
@@ -2647,6 +2653,7 @@
     "password_min_length": "密碼最小長度",
     "password_require_alnum": "密碼須含字母與數字",
     "recording_failclose_enabled": "錄影失敗擋新連線",
+    "refresh_cookie_secure": "登入狀態僅在 https 連線保存",
     "retention_alert_days": "告警記錄保留天數",
     "retention_audit_log_days": "操作日誌保留天數",
     "retention_checkpoint_days": "檢查點保留天數",

@@ -4,6 +4,10 @@ import { t } from '@/i18n'
 import { resolveApiError } from './error'
 import { redactAxiosError } from './redact'
 import { SEAL_GATE_CODE, UNSEAL_PATH, markSealed } from '@/utils/sealPhase'
+import {
+  markRefreshSucceeded,
+  recordInsecureTransportRelogin,
+} from '@/utils/reloginContext'
 
 // 建立 axios 實例
 const request = axios.create({
@@ -65,12 +69,16 @@ const doRefresh = async (staleToken) => {
   // 會誤判「已更新」而拿同一個失效 token 重試
   const current = localStorage.getItem('token')
   if (staleToken && current && current !== staleToken) {
+    // 他分頁換到了新的 access token＝refresh cookie 確實被瀏覽器保存著，
+    // 本分頁沿用即算一次成功續期（decision 3 的抑制器要的正是這個事實）
+    markRefreshSucceeded()
     return current
   }
   // 無「本地有沒有憑證」的前置檢查：cookie 對 script 不可見，有無一律交給
   // 後端回答——沒帶 cookie 時後端回 401，攔截器據以導向登入
   const { data } = await postRefresh()
   localStorage.setItem('token', data.token)
+  markRefreshSucceeded()
   return data.token
 }
 
@@ -152,6 +160,10 @@ request.interceptors.response.use(
           } catch (refreshError) {
             // 刷新回應帶新的 access token，同樣不得印本體
             console.error('會話刷新失敗:', redactAxiosError(refreshError))
+            // 刷新終敗：若本分頁從未成功續期過且頁面走 http，登入頁要能回答
+            // 「為什麼又要我登入」。條件判定在 reloginContext 內，
+            // 寫入必須發生在 clearSessionAndRedirect 之前（那是整頁載入）
+            recordInsecureTransportRelogin()
           }
         }
         message = t('api.sessionExpired')

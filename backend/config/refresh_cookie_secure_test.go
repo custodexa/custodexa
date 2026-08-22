@@ -2,18 +2,27 @@ package config
 
 import "testing"
 
-// refresh cookie 的 Secure 旗標推導（refresh-token-httponly-cookie 決策 2）。
+// refresh cookie 的 Secure 旗標推導（refresh-token-httponly-cookie 決策 2；
+// codeql-rescan-settlement 決策 1／8 修訂）。
 //
-// # 為什麼不寫死
+// # 這個推導現在算的是什麼
 //
-// 兩個寫死方向各有一種真實且**難以歸因**的失敗：
+// **首次啟動的播種值**，不是執行期生效值：生效值由安全政策鍵
+// refresh_cookie_secure 承載（發放 cookie 時現讀、管理端可調、改了即生效）。
+// 推導只在部署第一次啟動、該鍵尚無政策列時決定初值。
 //
-//   - 寫死 true：純 HTTP 部署（真實存在）下瀏覽器直接丟棄 Set-Cookie，使用者陷入
-//     「登入成功 → 十幾分鐘後被登出」的迴圈。瀏覽器丟 cookie 是靜默行為，
-//     錯誤訊息無從指出成因。
-//   - 寫死 false：生產 HTTPS 環境放棄降級攻擊防護。
+// # 為什麼「兩者皆缺」取 true
 //
-// 故採推導：env 顯式覆寫 > PUBLIC_BASE_URL 的 scheme > 預設 false。
+// 兩個方向各有一種真實失敗，但**可見性不對稱**：
+//
+//   - 預設 false（原設計）：未設 PUBLIC_BASE_URL 的 HTTPS 部署零症狀地失去
+//     降級攻擊防護。沒有人會察覺，也沒有人會去讀一個運作正常的系統的啟動日誌。
+//   - 預設 true（現行）：純 HTTP 部署下瀏覽器丟棄 Set-Cookie，使用者每個
+//     access token 壽命重登一次。吵鬧、當場可見，且登入頁與管理頁都會說明成因；
+//     復原是管理端政策頁一個開關，不需改部署檔重啟。
+//
+// 把故障放在看得見的一側是使用者裁決（proposal 裁決 1/5）。顯式 false 與
+// http 位址兩格不變——那是明文部署的顯式訊號。
 // 本檔逐格釘住這條優先序與其邊界。
 
 func TestDeriveRefreshCookieSecure(t *testing.T) {
@@ -40,9 +49,11 @@ func TestDeriveRefreshCookieSecure(t *testing.T) {
 			false, RefreshCookieSecureFromBaseURL},
 		{"scheme 大小寫不敏感", "", "HTTPS://BASTION.EXAMPLE.COM",
 			true, RefreshCookieSecureFromBaseURL},
-		{"base URL 為空即本地／開發形態", "", "", false, RefreshCookieSecureFromDefault},
-		{"base URL 無 scheme 時不臆測", "", "bastion.example.com",
-			false, RefreshCookieSecureFromDefault},
+		// 「兩者皆缺」的兩格取安全側（決策 1 的反轉）：無任何明文部署的顯式訊號時，
+		// 不得由預設值把保護關掉
+		{"base URL 為空時取安全預設", "", "", true, RefreshCookieSecureFromDefault},
+		{"base URL 無 scheme 時不臆測，取安全預設", "", "bastion.example.com",
+			true, RefreshCookieSecureFromDefault},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,17 +71,19 @@ func TestDeriveRefreshCookieSecure(t *testing.T) {
 	}
 }
 
-// TestLoadRefreshCookieSecureDefaultsToInsecure 未設任何相關 env 時的預設。
+// TestLoadRefreshCookieSecureDefaultsToSecure 未設任何相關 env 時的預設。
 //
-// 預設非安全是刻意的（本地／開發形態必須可用），代價由啟動日誌的警告承擔——
-// 這一格釘住的是「預設不會意外變成 true 而讓本地開發整個登不進去」
-func TestLoadRefreshCookieSecureDefaultsToInsecure(t *testing.T) {
+// **這一格釘住的是「保護不會因為沒人設定而消失」**。舊版此處反向釘住預設 false，
+// 理由是本地 HTTP 開發必須可用；該取捨已被裁決推翻——它把故障放在最不可見的
+// 一側（未設 PUBLIC_BASE_URL 的 HTTPS 部署零症狀失去防護），而本地開發要走
+// 明文只需在 .env 顯式關閉一次（或於政策頁關閉），代價落在有人看得見的地方。
+func TestLoadRefreshCookieSecureDefaultsToSecure(t *testing.T) {
 	t.Setenv("AUTH_REFRESH_COOKIE_SECURE", "")
 	t.Setenv("PUBLIC_BASE_URL", "")
 
 	got := LoadRefreshCookieSecure()
-	if got.Secure {
-		t.Errorf("未設任何相關 env 時 Secure = true，本地 HTTP 開發會因瀏覽器丟棄 cookie 而登不進去")
+	if !got.Secure {
+		t.Errorf("未設任何相關 env 時 Secure = false：未設定的部署會靜默失去傳輸保護")
 	}
 	if got.Source != RefreshCookieSecureFromDefault {
 		t.Errorf("Source = %q, want %q", got.Source, RefreshCookieSecureFromDefault)

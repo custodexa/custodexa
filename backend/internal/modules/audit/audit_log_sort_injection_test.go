@@ -151,9 +151,19 @@ func TestNormalizeAuditSortOrder(t *testing.T) {
 
 // TestAuditSortableColumnsAreRealColumns 白名單的每個名字都必須是 audit_logs 的
 // 真實欄位——不存在的名字不會靜默退回預設，而是讓整筆查詢失敗（稽核列表整頁壞掉）。
+//
+// 併同釘住 key == value：白名單改為 map[string]string 後（命中回傳值，使 taint
+// 分析看得見 barrier），值一旦漂離鍵就成為第二份欄名清單——改鍵忘改值會**靜默**
+// 換掉實際排序欄，而輸入與輸出都仍是合法欄名，沒有任何一條既有斷言會紅。
 func TestAuditSortableColumnsAreRealColumns(t *testing.T) {
 	svc := setupSortTestService(t)
 	seedSortRows(t, time.Date(2026, 8, 21, 10, 0, 0, 0, time.UTC))
+
+	for column, mapped := range auditSortableColumns {
+		if mapped != column {
+			t.Errorf("白名單 %q 的值 = %q，須與鍵相同（值漂離鍵＝靜默改變排序欄）", column, mapped)
+		}
+	}
 
 	for column := range auditSortableColumns {
 		t.Run(column, func(t *testing.T) {

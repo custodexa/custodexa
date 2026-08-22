@@ -342,7 +342,9 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// 單位沿用既有的「筆」與「秒」，故 policyUnit 不變）
 		// 再由 47 增為 50、policyUnit 由 8 增為 9：audit-chain-scheduled-verification
 		// 的鏈自動驗證三鍵（新單位「筆/小時」＝速率，與批次大小的「筆」刻意分開）
-		"policyLabel": 50, "policyUnit": 9, "riskLabel": 8,
+		// 再由 50 增為 51：codeql-rescan-settlement 的 refresh_cookie_secure
+		//（bool 鍵無單位，故 policyUnit 不變）
+		"policyLabel": 51, "policyUnit": 9, "riskLabel": 8,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed（ldap-settings-migration 2.10）
 		"transportNote": 9, "transportPreflight": 4, "transportDetail": 1,

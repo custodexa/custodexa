@@ -170,7 +170,9 @@
       "oidc_provider_unavailable": "It may be disabled or not fully configured. Please contact your administrator.",
       "oidc_provider_error": "You may have cancelled the authorization, or the provider rejected this sign-in. You can start again.",
       "oidc_flow_invalid": "Sign-in links are single-use and time-limited. Please start the sign-in again."
-    }
+    },
+    "insecureTransportTitle": "Your sign-in was not saved",
+    "insecureTransportBody": "This site is open over http, while the system is set to keep sign-in only on https connections, so you have to sign in again about every 15 minutes. Please pass this on to your system administrator; once signed in, they will see how to handle it on the Security Policies page."
   },
   "api": {
     "requestFailed": "Request failed",
@@ -1672,7 +1674,11 @@
     "applyPage": "Apply recommended values for this page",
     "currentPageCount": "This page {n} items",
     "itemCount": "{n} items",
-    "sessionCapRiskAlert": "A protocol idle timeout is set, but \"Protocol max session length\" is 0 (no cap). Monitoring-type long connections (tail -f, top, log streaming) keep receiving server output and are not interrupted by the idle timeout; setting a max session length as an absolute cap is recommended."
+    "sessionCapRiskAlert": "A protocol idle timeout is set, but \"Protocol max session length\" is 0 (no cap). Monitoring-type long connections (tail -f, top, log streaming) keep receiving server output and are not interrupted by the idle timeout; setting a max session length as an absolute cap is recommended.",
+    "insecureTransportTitle": "This site is served over http, so users have to sign in again every 15 minutes",
+    "insecureTransportBody": "\"Keep sign-in only on https connections\" on this page is on, so sign-in is not kept on http connections. The system will not change this setting on its own; how to handle it is your call:",
+    "insecureTransportOptionHttps": "This deployment is meant to run on https: check the reverse proxy certificate and forwarding settings so the site is served over https.",
+    "insecureTransportOptionHttp": "This deployment does run on http: turn off \"Keep sign-in only on https connections\" on this page and save. It takes effect right away, with no restart."
   },
   "accessControl": {
     "description": "Whether approval is required before connecting and who approves it: global default plus per-asset overrides, request parameters, and emergency access; each policy item shows its PCI DSS recommended value"
@@ -2647,6 +2653,7 @@
     "password_min_length": "Minimum password length",
     "password_require_alnum": "Password must contain letters and digits",
     "recording_failclose_enabled": "Block new connections on recording failure",
+    "refresh_cookie_secure": "Keep sign-in only on https connections",
     "retention_alert_days": "Alert record retention days",
     "retention_audit_log_days": "Operation log retention days",
     "retention_checkpoint_days": "Checkpoint retention days",
