@@ -40,21 +40,37 @@ func LookupUser(name string) (uid, gid int, home string, err error) {
 	if err != nil {
 		return 0, 0, "", fmt.Errorf("查無降權執行身分 %q（image 需含該帳號，請重建 backend image）: %w", name, err)
 	}
-	// bitSize 32：uid/gid 負值與超界直接落入下方 fail-close 錯誤路徑，
-	// 使後續 uint32(uid)/uint32(gid) 轉換（StartWithOptions）恆安全
-	uid64, err := strconv.ParseUint(u.Uid, 10, 32)
+	uid, err = parseSystemID(u.Uid)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 uid 非數值: %w", name, err)
+		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 uid 不是可用的系統 ID: %w", name, err)
 	}
-	gid64, err := strconv.ParseUint(u.Gid, 10, 32)
+	gid, err = parseSystemID(u.Gid)
 	if err != nil {
-		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 gid 非數值: %w", name, err)
+		return 0, 0, "", fmt.Errorf("降權執行身分 %q 的 gid 不是可用的系統 ID: %w", name, err)
 	}
-	uid, gid = int(uid64), int(gid64)
 	if uid == 0 || gid == 0 {
 		return 0, 0, "", fmt.Errorf("降權執行身分 %q 不得為 root（uid=%d gid=%d）", name, uid, gid)
 	}
 	return uid, gid, u.HomeDir, nil
+}
+
+// parseSystemID 解析系統 uid/gid 的十進位字串，值域收在 `[0, 2^31)`。
+//
+// **bitSize 取 31 而非 32**：本值有兩個消費端，31 是同時滿足兩者的唯一選擇——
+//   - `int`（本函式的回傳型別、LookupUser 的呼叫端）：32 位元平台的 int 是 31 位
+//     有號，`[2^31, 2^32)` 轉過去會溢位成負數，於是「超大 uid」靜默變成另一個身分；
+//   - `uint32`（StartWithOptions 的 `syscall.Credential`）：`[0, 2^31)` 恆無損。
+//
+// 平台假設因此從註解搬進值域：不再依賴「實務上都是 64 位元」這句話。
+// 負值、非數值與超界（≥ 2^31）一律回錯，由呼叫端的 fail-close 路徑承接
+// ——寧可開不了會話，不可悄悄以錯誤的身分起子程序。
+// 標準庫的超界錯誤本身帶 `value out of range`，故不另行包裝原因。
+func parseSystemID(s string) (int, error) {
+	v, err := strconv.ParseUint(s, 10, 31)
+	if err != nil {
+		return 0, err
+	}
+	return int(v), nil
 }
 
 // Conn 一條已啟動的本地 CLI PTY 連線

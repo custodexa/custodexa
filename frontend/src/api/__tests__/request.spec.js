@@ -12,6 +12,10 @@ import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import request from '../request'
 import { SEAL_PHASE_SEALED, getSealPhase, resetSealPhase } from '@/utils/sealPhase'
+import {
+  RELOGIN_INSECURE_TRANSPORT,
+  consumeReloginContext,
+} from '@/utils/reloginContext'
 
 // 取得 axios instance 上註冊的攔截器 handlers
 const requestHandler = request.interceptors.request.handlers[0]
@@ -458,5 +462,108 @@ describe('封印閘 503 的導向', () => {
     ).rejects.toBeTruthy()
     expect(getSealPhase()).not.toBe(SEAL_PHASE_SEALED)
     expect(window.location.pathname).toBe('/dashboard')
+  })
+})
+
+// 明文連線下登入狀態無法保存的說明（codeql-rescan-settlement 決策 3）。
+// 觸發矩陣照設計逐格釘死：三條件同時成立才留脈絡。放寬一格就是狼來了
+//（健康的明文部署每次正常逾時都被扣上協定問題的帽子），收緊一格就是
+// 使用者永遠看不到解釋
+describe('刷新終敗的登入頁脈絡（決策 3 觸發矩陣）', () => {
+  const originalAdapter = request.defaults.adapter
+
+  const make401 = (url = '/users', bearer = 'stale-jwt') => ({
+    response: { status: 401, data: { error: '未授權', code: 'AUTH_TOKEN_INVALID' } },
+    config: {
+      url,
+      headers: { Authorization: `Bearer ${bearer}` },
+      skipErrorToast: true,
+    },
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+    window.sessionStorage.clear()
+    vi.clearAllMocks()
+    window.location.href = 'http://localhost:3000/dashboard'
+    request.defaults.adapter = vi.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }))
+  })
+
+  afterEach(() => {
+    request.defaults.adapter = originalAdapter
+    vi.restoreAllMocks()
+  })
+
+  it('http + 本分頁首次續期就失敗 → 寫入脈絡供登入頁讀', async () => {
+    localStorage.setItem('token', 'stale-jwt')
+    vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'))
+
+    await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
+
+    expect(window.location.href).toContain('/login')
+    expect(consumeReloginContext()).toBe(RELOGIN_INSECURE_TRANSPORT)
+  })
+
+  it('曾成功續期後才失敗 → 不寫入（誤報抑制器接在真實刷新流程上）', async () => {
+    localStorage.setItem('token', 'stale-jwt')
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({ data: { token: 'fresh-jwt' } })
+      .mockRejectedValueOnce(new Error('refresh failed'))
+
+    // 第一次：刷新成功（旗標寫入）
+    await responseHandler.rejected(make401())
+    expect(postSpy).toHaveBeenCalledTimes(1)
+
+    // 第二次：以剛換到的 token 再撞 401（不走跨分頁短路），刷新失敗——
+    // 但本分頁已有成功續期紀錄，脈絡不寫
+    await expect(
+      responseHandler.rejected(make401('/assets', 'fresh-jwt'))
+    ).rejects.toBeTruthy()
+
+    expect(postSpy).toHaveBeenCalledTimes(2)
+    expect(consumeReloginContext()).toBe('')
+  })
+
+  it('https 頁面刷新終敗 → 不寫入（不是協定問題）', async () => {
+    window.location.href = 'https://console.example.test/dashboard'
+    localStorage.setItem('token', 'stale-jwt')
+    vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'))
+
+    await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
+
+    expect(window.location.href).toContain('/login')
+    expect(consumeReloginContext()).toBe('')
+  })
+
+  // 手動登出（MainLayout.handleLogout）走的是 /auth/logout 的正常回應加
+  // router.push，完全不經過刷新終敗路徑。這裡從反面釘住：非刷新終敗的回應
+  // 一律不留脈絡，登出後的登入頁不該冒出「登入狀態沒有保存下來」
+  it('手動登出（logout 正常回應）不寫入脈絡', async () => {
+    responseHandler.fulfilled({ data: { message: 'ok' } })
+    expect(consumeReloginContext()).toBe('')
+  })
+
+  it('業務 401（帳密錯）不走刷新，也不寫入脈絡', async () => {
+    const postSpy = vi.spyOn(axios, 'post')
+
+    await expect(
+      responseHandler.rejected({
+        response: {
+          status: 401,
+          data: { error: '使用者名稱或密碼錯誤', code: 'AUTH_INVALID_CREDENTIALS' },
+        },
+        config: { url: '/auth/login', skipErrorToast: true },
+      })
+    ).rejects.toBeTruthy()
+
+    expect(postSpy).not.toHaveBeenCalled()
+    expect(consumeReloginContext()).toBe('')
   })
 })

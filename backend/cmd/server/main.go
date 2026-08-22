@@ -6,6 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/custodexa/backend/internal/modules/policy"
 	"log"
 	"net"
 	"net/http"
@@ -17,7 +18,6 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/api"
 	"github.com/custodexa/backend/internal/branding"
 	"github.com/custodexa/backend/internal/database"
@@ -218,13 +218,9 @@ func main() {
 		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後（見部署指南 CPG-012）；stock 部署本身不提供 TLS")
 	}
 
-	// refresh cookie 的 Secure 旗標歸因（refresh-token-httponly-cookie 決策 2）。
-	//
-	// **兩個方向都印**：瀏覽器丟棄不合格的 Set-Cookie 是靜默行為，錯誤訊息本身
-	// 指不出成因，於是兩種誤設都會表現為「登入成功、十幾分鐘後被登出」這種
-	// 最難歸因的故障。啟動日誌把兩個方向都變成可查的線索。
-	// 這是給部署者的營運日誌，不是 UI 文案，故不進 i18n
-	logRefreshCookieSecurity(s1.cfg.Security.RefreshCookie)
+	// refresh cookie 的 Secure 歸因日誌**已移入段 2**（codeql-rescan-settlement
+	// 決策 8）：生效值住在安全政策服務裡，而封印啟動的段 2 要到解封後才跑——
+	// 留在這裡只會在封印模式下永遠印不出來。落點見 stage2.go 的政策播種段。
 
 	// 解封端點的獨立監聽（D6.4：SHALL 支援繫結獨立監聽位址）。
 	// **掛 seal-only handler**：只有 seal 端點群與健康檢查，解封後也不會長出
@@ -382,21 +378,45 @@ func newEngine(s1 *stage1, stageOne bool) (*gin.Engine, error) {
 	return r, nil
 }
 
-// logRefreshCookieSecurity 印出 refresh cookie 的 Secure 旗標與其歸因線索。
+// refreshCookieSourceLabel 把政策來源分類轉成運維日誌看得懂的人話。
 //
-// 兩個方向的誤設各有一種難以歸因的故障，故兩邊都要留話：
-//   - 未標 Secure：純 HTTP 部署可用，但放棄降級攻擊防護（誘導一次 http 請求即可竊取）。
-//   - 已標 Secure 而實際走 http：瀏覽器**靜默**丟棄 Set-Cookie，使用者陷入
-//     「登入成功 → access token 到期 → 刷新失敗 → 被登出」的迴圈。
-func logRefreshCookieSecurity(d config.RefreshCookieSecureDerivation) {
-	if d.Secure {
-		log.Printf("refresh cookie：已標記 Secure（依據 %s）；若本站實際非以 HTTPS 對外，"+
-			"瀏覽器會丟棄該 cookie 而無法維持會話", d.Source)
+// 三類的差別是**該去哪裡改**：管理端設定過的鍵，改 .env 不會生效；
+// 從未設定過的鍵才吃得到組態播種。指錯地方的歸因比不歸因更浪費時間。
+func refreshCookieSourceLabel(source string) string {
+	switch source {
+	case policy.PolicySourceAdmin:
+		return "管理端安全政策頁設定"
+	case policy.PolicySourceSeed:
+		return "首次啟動時自部署組態播種"
+	case policy.PolicySourceDefault:
+		return "出廠預設"
+	default:
+		return "來源不明（政策讀取失敗）"
+	}
+}
+
+// logRefreshCookieSecurity 印出 refresh cookie 的 Secure **政策現值**與其來源歸因
+//（codeql-rescan-settlement 決策 2）。
+//
+// **本函式只做歸因，不承擔可見性**：沒有人會去讀一個運作正常的系統的啟動日誌。
+// 防線在安全預設（決策 1）與登入頁／管理頁的說明（決策 3/4）；這裡是有人去查時
+// 的第一條線索，僅此而已。
+//
+// 預設反轉後兩個狀態的角色互換：現在要留話的是**已關閉**那一側（憑證將經明文
+// 傳輸），開啟側則是資訊性歸因＋為純 HTTP 誤入者指路。兩側的復原方向都指政策頁
+// ——播種之後改 .env 不生效，把讀者指向 env 是指向一條死路。
+func logRefreshCookieSecurity(policies *policy.SecurityPolicyService) {
+	secure := policies.GetBool(policy.PolicyRefreshCookieSecure)
+	source := refreshCookieSourceLabel(policies.ValueSource(policy.PolicyRefreshCookieSecure))
+	if secure {
+		log.Printf("refresh cookie：已標記 Secure（來源：%s）。純 HTTP 部署下瀏覽器不會保存"+
+			"此 cookie，使用者每 15 分鐘須重新登入；確定走 HTTP 的部署請在管理端「安全政策」"+
+			"頁關閉該設定", source)
 		return
 	}
-	log.Printf("refresh cookie：未標記 Secure（依據 %s）——此組態僅適用於測試環境。"+
-		"正式部署應以 HTTPS 對外，並將 PUBLIC_BASE_URL 設為 https 位址（或顯式設定 "+
-		"AUTH_REFRESH_COOKIE_SECURE=true）", d.Source)
+	log.Printf("refresh cookie：未標記 Secure（來源：%s）——refresh 憑證將經明文 HTTP 傳輸。"+
+		"若本站實際以 HTTPS 對外，請在管理端「安全政策」頁開啟「登入狀態僅在 https 連線保存」",
+		source)
 }
 
 // buildCORSConfig 依 allowlist 與執行模式決定 CORS 設定（PCI 7.3/D9）。

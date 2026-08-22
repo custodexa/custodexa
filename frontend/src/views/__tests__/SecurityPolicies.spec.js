@@ -193,3 +193,111 @@ describe('SecurityPolicies', () => {
     expect(updatePoliciesMock).not.toHaveBeenCalled()
   })
 })
+
+// 明文連線的建議提示（codeql-rescan-settlement 決策 4）。
+// 兩個事實缺一則提示要嘛漏報（不知生效值，關閉後的健康部署也彈）、
+// 要嘛誤報（不知協定，https 部署也彈）——四格逐一釘死
+describe('SecurityPolicies — 明文連線建議提示', () => {
+  const withRefreshCookieSecure = (value) => {
+    const fixture = policyFixture()
+    fixture.data.push({
+      key: 'refresh_cookie_secure',
+      type: 'bool',
+      default: 'true',
+      label: '登入狀態僅在 https 連線保存',
+      value,
+      compliant: null,
+      epayment_compliant: null,
+    })
+    return fixture
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.location.href = 'http://localhost:3000/security-policies'
+    getSyslogMock.mockResolvedValue({
+      data: {
+        dropped: 0,
+        setting: { enabled: false, host: '', port: 514, protocol: 'udp', tls_ca: '' },
+      },
+    })
+  })
+
+  it('http + 政策開啟 → 顯示建議，並列出兩條處置路徑', async () => {
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
+    const wrapper = await mountPage()
+
+    const alert = wrapper.find('.insecure-transport-alert')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('使用者每 15 分鐘要重新登入')
+    expect(alert.text()).toContain('系統不會自動改這個設定')
+    expect(alert.text()).toContain('檢查反向代理的憑證與轉發設定')
+    expect(alert.text()).toContain('關閉再儲存')
+  })
+
+  // 裁決 4：語氣是建議不是警告。type 錯一格，管理員讀到的就是「系統壞了」
+  // 而不是「你有兩個選擇」
+  it('語氣是建議：el-alert type=info，不是 warning／error', async () => {
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
+    const wrapper = await mountPage()
+
+    const alert = wrapper
+      .findAllComponents({ name: 'ElAlert' })
+      .find((c) => c.classes().includes('insecure-transport-alert'))
+    expect(alert.props('type')).toBe('info')
+  })
+
+  // 裁決 4：系統不得自動改設定。提示只指向同頁的開關，決定權在管理員——
+  // 載入頁面本身不得產生任何寫入
+  it('顯示提示不觸發任何寫入（系統不自動改設定）', async () => {
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(true)
+    expect(updatePoliciesMock).not.toHaveBeenCalled()
+    // 開關維持後端回來的值，未被前端翻動
+    expect(wrapper.text()).not.toContain('有未儲存變更')
+  })
+
+  it('提示指向本頁的開關，該政策項確實渲染在 Web 會話區塊', async () => {
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
+    const wrapper = await mountPage()
+
+    expect(wrapper.text()).toContain('登入狀態僅在 https 連線保存')
+    const labelled = wrapper
+      .findAllComponents({ name: 'ElSwitch' })
+      .filter((c) => c.props('ariaLabel') === '登入狀態僅在 https 連線保存')
+    expect(labelled.length, '該政策項應以 bool 開關呈現').toBe(1)
+    // 本鍵不掛 PCI／電支建議值：掛了會讓「套用本頁建議值」把明文部署翻成
+    // 整站續期失敗。斷言限於本鍵那一列——同頁其他鍵是有建議值的
+    const row = wrapper
+      .findAll('.policy-row')
+      .find((r) => r.text().includes('登入狀態僅在 https 連線保存'))
+    expect(row.text()).toContain('無 PCI 建議值')
+    expect(row.text()).not.toContain('PCI 建議：')
+    expect(row.text()).not.toContain('電支基準：')
+  })
+
+  it('http + 政策已關閉 → 不顯示（健康的明文部署不該被打擾）', async () => {
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('false'))
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
+  })
+
+  it('https 頁面 → 不顯示（協定沒問題）', async () => {
+    window.location.href = 'https://console.example.test/security-policies'
+    getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
+  })
+
+  it('回應查無該鍵（舊後端）→ 不顯示且不報錯', async () => {
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
+    expect(wrapper.text()).toContain('登入失敗鎖定次數上限')
+  })
+})

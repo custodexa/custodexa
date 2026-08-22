@@ -170,7 +170,9 @@
       "oidc_provider_unavailable": "無効化されているか、設定が未完了の可能性があります。管理者にご連絡ください。",
       "oidc_provider_error": "認可をキャンセルしたか、プロバイダーがこのログインを拒否した可能性があります。やり直せます。",
       "oidc_flow_invalid": "ログインリンクは一度きり、かつ有効期限があります。ログインをやり直してください。"
-    }
+    },
+    "insecureTransportTitle": "ログイン状態が保存されませんでした",
+    "insecureTransportBody": "このサイトは http で開いていますが、システムはログイン状態を https 接続でのみ保持する設定です。そのため約 15 分ごとに再ログインが必要になります。この内容をシステム管理者にお伝えください。管理者がログインすると、「セキュリティポリシー」ページで対処方法を確認できます。"
   },
   "api": {
     "requestFailed": "リクエストに失敗しました",
@@ -1672,7 +1674,11 @@
     "applyPage": "このページの推奨値を適用",
     "currentPageCount": "本ページ {n}件",
     "itemCount": "{n}件",
-    "sessionCapRiskAlert": "プロトコル接続のアイドルタイムアウトは設定されていますが、「プロトコル接続の最大時間」が 0（上限なし）です。監視系の長時間接続（tail -f、top、ログストリーム）はサーバーが出力を送り続けるためアイドルタイムアウトで切断されません。絶対的な上限として最大時間の設定を推奨します。"
+    "sessionCapRiskAlert": "プロトコル接続のアイドルタイムアウトは設定されていますが、「プロトコル接続の最大時間」が 0（上限なし）です。監視系の長時間接続（tail -f、top、ログストリーム）はサーバーが出力を送り続けるためアイドルタイムアウトで切断されません。絶対的な上限として最大時間の設定を推奨します。",
+    "insecureTransportTitle": "現在 http 接続のため、利用者は 15 分ごとに再ログインが必要です",
+    "insecureTransportBody": "本ページの「ログイン状態を https 接続でのみ保持」がオンのため、http 接続ではログイン状態が保存されません。システムがこの設定を自動で変更することはありません。対応方法はご自身でお決めください：",
+    "insecureTransportOptionHttps": "この環境を https で運用する場合：リバースプロキシの証明書と転送設定を確認し、サイトを https で公開してください。",
+    "insecureTransportOptionHttp": "この環境を http のまま運用する場合：本ページの「ログイン状態を https 接続でのみ保持」をオフにして保存してください。保存後すぐに反映され、再起動は不要です。"
   },
   "accessControl": {
     "description": "接続前に申請が必要か、誰が承認するか：グローバル既定値と資産ごとの上書き、申請パラメータ、緊急接続。各ポリシー項目に PCI DSS 推奨値を表示します"
@@ -2647,6 +2653,7 @@
     "password_min_length": "パスワード最小長",
     "password_require_alnum": "パスワードに英字と数字を含める",
     "recording_failclose_enabled": "録画失敗時に新規接続をブロック",
+    "refresh_cookie_secure": "ログイン状態を https 接続でのみ保持",
     "retention_alert_days": "アラート記録の保持日数",
     "retention_audit_log_days": "操作ログの保持日数",
     "retention_checkpoint_days": "チェックポイントの保持日数",

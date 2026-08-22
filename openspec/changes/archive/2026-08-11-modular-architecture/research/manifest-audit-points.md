@@ -164,11 +164,19 @@
 > 重新錨定為 `:947`。**產生點與數量皆未增減**——該 change 於同檔上游刪去
 > `recordingQuotaGB()` 整個函式、其在指標資料源閉包內的呼叫，以及隨之未使用的兩個 import，
 > 合計 24 行，故其下的 `logKEKSwitchAudit` 產生點整體上移 24 行。審計寫入點本身未被觸及。
+>
+> **2026-08-22 錨點位移（codeql-rescan-settlement）**：AP-02 一列的行號由 `stage2.go:947`
+> 重新錨定為 `:965`。**產生點與數量皆未增減**——該 change 於同檔上游的政策播種群補入
+> `refresh_cookie_secure` 的播種與其歸因日誌呼叫（含註解共 17 行）並多一個 import，
+> 合計 18 行，故其下的 `logKEKSwitchAudit` 產生點整體下移 18 行。備註欄的函式起點
+> `:847` 另訂正為 `:945`——該次要參照在 2026-08-16 的位移中未被一併更新，已與現實脫節
+>（守衛只比對 file:line 欄，脫節的次要參照不會轉紅，故此處逐一核對）。
+> 審計寫入點本身未被觸及。
 
 | ID | 產生點 file:line | 種類 | 呼叫方交易內 | fail-close? | 目標變體 | 落地波次 | 對應測試 | 判定證據／備註 |
 |---|---|---|---|---|---|---|---|---|
 | AP-01 | `cmd/server/sealwire.go:390` | AuditLogEntry | 否 | 否 | AsyncSink | W4 | `cmd/server/seal_integration_test.go:182` | `writeSealAudit`（`:365`）走 `auditService.Log`，`Log` 無回傳值 |
-| AP-02 | `cmd/server/stage2.go:947` | AuditLogEntry | 否 | 否 | AsyncSink | W4 | 待補 | `logKEKSwitchAudit`（`:847`），KEK 切換補記 |
+| AP-02 | `cmd/server/stage2.go:965` | AuditLogEntry | 否 | 否 | AsyncSink | W4 | 待補 | `logKEKSwitchAudit`（`:945`），KEK 切換補記 |
 | AP-03 | `internal/api/access_review_handler.go:103` | AuditLogEntry | 否 | 否 | AsyncSink | W4 | 待補 | handler `Create`（`:83`）內事後審計 |
 | AP-04 | `internal/api/asset_handler.go:747` | AuditEvent | 否 | 否 | AsyncSink | W4（4.6 等價檢查項） | 待補 | `auditK8sFile`（`:737`）`repository.DB.Create`，**error 完全未檢查**（H-5）。現況**不受** `AuditLogEnabled` 管制 → 改走 AsyncSink 時須繞過該分支，行為零變更 |
 | AP-05 | `internal/api/audit_export_handler.go:214` | AuditLogEntry | 否 | 否 | AsyncSink | W4 | 待補 | `auditExport`（`:210`） |

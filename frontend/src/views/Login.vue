@@ -34,6 +34,23 @@
         </p>
       </div>
 
+      <!-- 明文連線下登入狀態無法保存（codeql-rescan-settlement 決策 3）：
+           使用者被反覆踢回登入頁時，這裡回答「為什麼又要我登入」。
+           排在其他 alert 之前——它是「你為什麼會在這一頁」的脈絡，
+           鎖定／SSO 錯誤則是這次送出的結果，離表單近一點比較好讀。
+           可關閉、不自動消失；讀後即清，重新整理不重播 -->
+      <el-alert
+        v-if="insecureTransportNotice"
+        class="insecure-transport-alert"
+        type="info"
+        :title="t('login.insecureTransportTitle')"
+        :closable="true"
+        show-icon
+        @close="insecureTransportNotice = false"
+      >
+        {{ t('login.insecureTransportBody') }}
+      </el-alert>
+
       <!-- 帳號鎖定明示訊息（8.3.4）：卡片內 alert，不透露剩餘時間/次數 -->
       <el-alert
         v-if="lockedMessage"
@@ -345,6 +362,10 @@ import {
   isSSOCryptoAvailable,
 } from '@/utils/sso'
 import { resolveApiError } from '@/api/error'
+import {
+  RELOGIN_INSECURE_TRANSPORT,
+  consumeReloginContext,
+} from '@/utils/reloginContext'
 
 const MFA_CODE_LENGTH = 6
 
@@ -373,6 +394,10 @@ const verifying = ref(false)
 
 // 帳號鎖定明示訊息（後端 423 回應）
 const lockedMessage = ref('')
+
+// 明文連線下登入狀態無法保存的說明（決策 3）：由 api/request 的刷新終敗路徑
+// 留下脈絡，本頁 onMounted 讀後即清
+const insecureTransportNotice = ref(false)
 
 // MFA 強制註冊狀態
 const enrollmentToken = ref('')
@@ -810,6 +835,10 @@ onMounted(() => {
   // 任何在它之前的動作都可能讓帶 ticket 的網址被保存或送出
   const handoff = consumeSSOHandoff()
 
+  // 讀後即清；放在 SSO 早退分支之前，否則交棒失敗的那一次會把脈絡吞掉
+  insecureTransportNotice.value =
+    consumeReloginContext() === RELOGIN_INSECURE_TRANSPORT
+
   loadAuthMethods()
 
   if (handoff.error) {
@@ -940,6 +969,10 @@ onMounted(() => {
 
 .mfa-back-btn:hover {
   color: var(--ot-primary);
+}
+
+.insecure-transport-alert {
+  margin-bottom: var(--ot-space-md);
 }
 
 .locked-alert {

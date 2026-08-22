@@ -26,9 +26,16 @@ const (
 	PolicyMFARequired            = "mfa_required"
 	PolicyWebIdleMinutes         = "web_idle_minutes"
 	PolicyWebMaxSessionHours     = "web_max_session_hours"
-	PolicySessionIdleMinutes     = "session_idle_minutes"
-	PolicySessionMaxMinutes      = "session_max_minutes"
-	PolicyInactiveDisableDays    = "inactive_disable_days"
+	// PolicyRefreshCookieSecure refresh cookie 是否標記 Secure
+	//（codeql-rescan-settlement 決策 8）：值即該 cookie 的 `Secure` 屬性本身，
+	// 故用「屬性語句」型命名而非 `_enabled` 尾綴（那是功能開關的慣例）。
+	// **無合規建議值**：正確取值由部署對外協定決定（https 開、刻意明文關），
+	// 不是合規基準線——掛建議值會讓「套用本頁建議值」把明文部署翻成開啟，
+	// 製造整站使用者的續期失敗
+	PolicyRefreshCookieSecure = "refresh_cookie_secure"
+	PolicySessionIdleMinutes  = "session_idle_minutes"
+	PolicySessionMaxMinutes   = "session_max_minutes"
+	PolicyInactiveDisableDays = "inactive_disable_days"
 
 	// 日誌保留與審閱政策鍵（audit-log-compliance，PCI Req 10）
 	PolicyRetentionAuditLogDays       = "retention_audit_log_days"
@@ -142,6 +149,22 @@ const (
 const (
 	DirectionMin = "min"
 	DirectionMax = "max"
+)
+
+// PolicySeededBy 播種寫入時記於 UpdatedBy 的識別（既有值，勿改：存量列以此值
+// 標示「這是啟動時播種的，不是人在頁面上設的」）
+const PolicySeededBy = "env-init"
+
+// 政策現值的來源分類（ValueSource 的值域）：決定運維日誌該把人指向哪裡改。
+const (
+	// PolicySourceAdmin 政策列由管理端寫入——改 env 不會生效，只有政策頁能改
+	PolicySourceAdmin = "admin"
+	// PolicySourceSeed 政策列由首次啟動的組態播種寫入
+	PolicySourceSeed = "seed"
+	// PolicySourceDefault 無政策列，出廠預設生效
+	PolicySourceDefault = "default"
+	// PolicySourceUnknown 政策列讀取失敗，來源無從判定
+	PolicySourceUnknown = "unknown"
 )
 
 // defaultPolicyCacheTTL 政策快取存活時間。登入路徑讀政策頻率低，
@@ -323,6 +346,22 @@ var policyDefs = []PolicyDef{
 		Key: PolicyWebMaxSessionHours, Type: PolicyTypeInt, Default: "12",
 		ZeroDisables: true, Max: 8760, // 上界 1 年
 		Label: "Web 工作階段最長時數", Unit: "小時",
+	},
+	{
+		// refresh cookie 的 Secure 屬性（codeql-rescan-settlement 決策 8）：
+		// 開啟時瀏覽器僅在 https 連線下保存與回送該 cookie，純 HTTP 下直接丟棄
+		//（使用者每個 access token 壽命就得重新登入）。
+		//
+		// 出廠 true＝安全預設：未設定的部署取得傳輸保護，走明文者顯式關閉。
+		// 初值可由部署組態播種（AUTH_REFRESH_COOKIE_SECURE → PUBLIC_BASE_URL
+		// 的 scheme），播種後本頁為準、改 env 不再生效。
+		//
+		// **無 PCIValue／EPaymentValue 是刻意的**：本鍵的正確取值由部署對外協定
+		// 決定，不是合規基準線。掛建議值會讓「套用本頁建議值」把明文部署的本鍵
+		// 翻成開啟、製造整站續期失敗，還會虛構一個文件上不存在的條號對應。
+		// 落在 Web 會話鍵群內（承載頁同區塊）：它決定的正是這個會話能不能續期
+		Key: PolicyRefreshCookieSecure, Type: PolicyTypeBool, Default: "true",
+		Label: "登入狀態僅在 https 連線保存",
 	},
 	{
 		// 協議會話（SSH/k8s/DB/RDP/VNC）閒置逾時（D7）：出廠 60 為易用取向（D0），
@@ -935,28 +974,67 @@ func (s *SecurityPolicyService) SeedFromEnv(key, envVar string) {
 	if raw == "" {
 		return
 	}
+	s.SeedValue(key, raw, "環境變數 "+envVar+"="+raw)
+}
+
+// SeedValue 以呼叫端算出的值播種政策列，規則與 SeedFromEnv 完全相同
+//（僅在該鍵尚無列時寫入、過 validate、updatedBy 記 env-init、不套跨鍵約束、
+// 非法值記警告不擋啟動）。
+//
+// **為何需要它**：SeedFromEnv 只受理「env 原值直接搬」，而部分鍵的種子是
+// **推導結果**而非某個 env 的原值——例如 refresh_cookie_secure 的初值來自
+// `AUTH_REFRESH_COOKIE_SECURE` 與 `PUBLIC_BASE_URL` 的 scheme 兩層優先序。
+// origin 只是給日誌的來源說明（如「環境變數 X=y」），不入庫。
+//
+// **有列即不動是本方法唯一不可退讓的性質**：管理員在政策頁的線上修正，
+// 若被下次重啟的播種悄悄改回，等於部署檔在背後推翻了管理端的決定。
+func (s *SecurityPolicyService) SeedValue(key, value, origin string) {
+	if value == "" {
+		return
+	}
 	def := findDef(key)
 	if def == nil {
 		return
 	}
 	var count int64
 	if err := s.db.Model(&model.SecurityPolicy{}).Where("key = ?", key).Count(&count).Error; err != nil {
-		log.Printf("[SecurityPolicy] SeedFromEnv 查詢失敗 (key=%s): %v", key, err)
+		log.Printf("[SecurityPolicy] 播種查詢失敗 (key=%s): %v", key, err)
 		return
 	}
 	if count > 0 {
 		return
 	}
-	if err := validatePolicyValue(def, raw); err != nil {
-		log.Printf("[SecurityPolicy] 環境變數 %s=%q 非法，忽略（沿用出廠預設 %s）: %v",
-			envVar, raw, def.Default, err)
+	if err := validatePolicyValue(def, value); err != nil {
+		log.Printf("[SecurityPolicy] 政策 %s 的播種值 %q（來源 %s）非法，忽略（沿用出廠預設 %s）: %v",
+			key, value, origin, def.Default, err)
 		return
 	}
-	if _, err := s.updateBatch(map[string]string{key: raw}, "env-init", false); err != nil {
-		log.Printf("[SecurityPolicy] SeedFromEnv 寫入失敗 (key=%s): %v", key, err)
+	if _, err := s.updateBatch(map[string]string{key: value}, PolicySeededBy, false); err != nil {
+		log.Printf("[SecurityPolicy] 播種寫入失敗 (key=%s): %v", key, err)
 		return
 	}
-	log.Printf("[SecurityPolicy] 政策 %s 以環境變數 %s=%s 初始化", key, envVar, raw)
+	log.Printf("[SecurityPolicy] 政策 %s 以 %s 初始化為 %s", key, origin, value)
+}
+
+// ValueSource 回報該鍵現值的來源分類（啟動日誌歸因用，見 PolicySource* 常數）。
+//
+// 分類判準是政策列的存在與其 UpdatedBy：**播種與管理端設定必須分得開**，
+// 否則日誌指的復原路徑會指錯地方（改 env 對已被管理端設定過的鍵無效）。
+func (s *SecurityPolicyService) ValueSource(key string) string {
+	var row model.SecurityPolicy
+	switch err := s.db.Where("key = ?", key).First(&row).Error; {
+	case err == nil:
+		if row.UpdatedBy == PolicySeededBy {
+			return PolicySourceSeed
+		}
+		return PolicySourceAdmin
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return PolicySourceDefault
+	default:
+		// 讀不到就說讀不到：把 DB 故障說成「出廠預設」會讓日誌的歸因變成猜測
+		log.Printf("[SecurityPolicy] 查詢政策 %s 的來源失敗: %v", key, err)
+		return PolicySourceUnknown
+	}
 }
 
 // Update 更新單一政策值（驗證 → upsert → 快取失效），回傳舊值供審計

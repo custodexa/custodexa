@@ -85,6 +85,8 @@ var policyKeyZhLabels = identityLabels(
 	"mfa_required",
 	"web_idle_minutes",
 	"web_max_session_hours",
+	// refresh cookie 的 Secure 屬性（codeql-rescan-settlement 決策 8）
+	"refresh_cookie_secure",
 	"session_idle_minutes",
 	"session_max_minutes",
 	"inactive_disable_days",

@@ -6,6 +6,11 @@
 
 import { t } from '@/i18n'
 
+// refresh cookie 的 Secure 屬性（codeql-rescan-settlement 決策 8）。
+// 常數化的理由：安全政策頁的明文連線建議（決策 4）要以這個鍵名從政策清單
+// 取生效值，鍵名寫兩次就會有漂一次的一天
+export const POLICY_REFRESH_COOKIE_SECURE = 'refresh_cookie_secure'
+
 const section = (id, keys) => ({
   id,
   keys,
@@ -30,6 +35,10 @@ export const SECURITY_SECTIONS = [
   section('session_account', [
     'web_idle_minutes',
     'web_max_session_hours',
+    // 登入狀態僅在 https 連線保存（codeql-rescan-settlement 決策 8）：緊接 Web 會話
+    // 兩鍵之後——它決定的正是這段會話能不能續期。走明文的部署關掉它，
+    // 否則使用者每 15 分鐘重新登入
+    POLICY_REFRESH_COOKIE_SECURE,
     'session_idle_minutes',
     'session_max_minutes',
     'inactive_disable_days',

@@ -90,3 +90,43 @@ func TestWindowChangeAndClose(t *testing.T) {
 	conn.Close()
 	conn.Close()
 }
+
+// TestParseSystemID uid/gid 解析的值域邊界（CodeQL #29/#30 的 32 位元平台假設）。
+//
+// **邊界必須以純函式測**：LookupUser 走真實 `user.Lookup`，超界的 uid 無法從
+// 系統帳號注入，邊界那兩格在整合層根本走不到；把解析抽出來，2^31-1／2^31
+// 就成為可逐格斷言的兩行。
+func TestParseSystemID(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  int
+		ok    bool
+	}{
+		{"一般系統帳號", "65123", 65123, true},
+		{"root", "0", 0, true},
+		{"上界內最大值 2^31-1", "2147483647", 2147483647, true},
+		{"超界 2^31 落入 fail-close", "2147483648", 0, false},
+		{"某些系統的 nobody（4294967294）超界", "4294967294", 0, false},
+		{"負值不受理", "-1", 0, false},
+		{"非數值不受理", "dbcli", 0, false},
+		{"空字串不受理", "", 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseSystemID(tc.input)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("parseSystemID(%q) 回錯 %v, want %d", tc.input, err, tc.want)
+				}
+				if got != tc.want {
+					t.Errorf("parseSystemID(%q) = %d, want %d", tc.input, got, tc.want)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("parseSystemID(%q) = %d, want 錯誤（fail-close）", tc.input, got)
+			}
+		})
+	}
+}
