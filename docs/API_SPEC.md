@@ -297,8 +297,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 DB 僅存 SHA-256。**瀏覽器端的唯一載體是 `HttpOnly` cookie `custodexa_refresh`**——
 回應 body 一律不含此憑證明文，前端讀不到也就無法寫入 localStorage。cookie 屬性：
 `HttpOnly`、`SameSite=Strict`、`Path=/api/v1/auth/`（同時涵蓋刷新與登出）、
-效期對齊憑證絕對壽命（輪替時取剩餘壽命，不因輪替延長）、`Secure` 依部署對外協定推導
-（`PUBLIC_BASE_URL` 的 scheme，可由 `AUTH_REFRESH_COOKIE_SECURE` 顯式覆寫）。
+效期對齊憑證絕對壽命（輪替時取剩餘壽命，不因輪替延長）、`Secure` 由安全政策
+`refresh_cookie_secure` 決定（發放時現讀，管理端調整即生效不需重啟；初值於首次啟動
+自部署組態播種，詳見下方「政策鍵值域」）。
 刷新時輪替（舊憑證即刻作廢），已輪替憑證再被提交視為洩漏訊號 → 撤銷該使用者全部
 refresh（家族撤銷，RFC 9700）。壽命受安全政策控制：sliding 閒置窗（`web_idle_minutes`）
 ＋絕對壽命（`web_max_session_hours`）。詳見 `POST /auth/refresh`。
@@ -1849,7 +1850,13 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
 **政策鍵值域**（型別/出廠預設/PCI 建議值見 [DB_SCHEMA.md](DB_SCHEMA.md) security_policies 一節）:
 `lockout_max_attempts`、`lockout_duration_minutes`、`password_min_length`、`password_require_alnum`、
 `password_history_count`、`force_change_on_reset`、`mfa_required`（enum: off/admin_only/all）、
-`web_idle_minutes`、`web_max_session_hours`、`session_idle_minutes`、`session_max_minutes`、
+`web_idle_minutes`、`web_max_session_hours`、
+`refresh_cookie_secure`（bool，預設 true——refresh cookie 是否標記 `Secure`（僅在 https 連線下由瀏覽器保存與回送）。
+發放 cookie 時現讀，改值即生效不需重啟；初值於首次啟動自部署組態播種
+（`AUTH_REFRESH_COOKIE_SECURE` 顯式值 → `PUBLIC_BASE_URL` 的 scheme；兩者皆缺則不寫政策列、出廠預設生效），
+播種後本鍵以政策為準、改 env 不再介入。**無 PCI／電支建議值**：正確取值由部署對外協定決定
+（https 部署開啟、刻意明文部署關閉），不是合規基準線，故不入「套用建議值」也不計偏離）、
+`session_idle_minutes`、`session_max_minutes`、
 `inactive_disable_days`；日誌保留與審閱（PCI Req 10）:
 `retention_audit_log_days`、`retention_session_command_days`、`retention_alert_days`（預設 0=永久，PCI 365）、
 `retention_recording_days`（預設 90，初始值由 `RECORDING_RETENTION_DAYS` env 播種）、

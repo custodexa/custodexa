@@ -659,3 +659,46 @@ CORS SHALL 由設定驅動 allowlist：未設定時 dev 模式全開、release �
 - **WHEN** 帳號長期未登入而未觸發遷移
 - **THEN** 密碼有效期政策到期時的強制改密即完成遷移；管理者亦得主動標記其須改密
 
+### Requirement: 瀏覽器會話 refresh cookie 的 Secure 政策鍵
+
+安全政策 SHALL 提供 refresh cookie `Secure` 屬性的政策鍵，由安全政策頁的 Web 會話
+區塊承載，沿既有政策機制（讀寫 API、批次原子、變更入審計、機器鍵）：
+
+- `refresh_cookie_secure`（Type bool，出廠預設 true）——refresh cookie 是否僅在
+  https 連線下由瀏覽器保存與回送。
+
+初值 SHALL 於首次啟動自部署組態播種：`AUTH_REFRESH_COOKIE_SECURE` 顯式值優先，
+次之 `PUBLIC_BASE_URL` 的 scheme（https → true、http → false）；兩者皆缺
+SHALL NOT 寫入政策列（出廠預設生效）。播種 SHALL NOT 覆蓋管理端設定過的值；
+非法的環境變數值 SHALL 記警告並忽略，SHALL NOT 阻擋啟動。
+
+本鍵 SHALL 於發放 refresh cookie 時現讀，變更 SHALL NOT 需要重啟後端即生效。
+政策不可讀或未接線時 SHALL 回落安全方向（true）。
+
+本鍵 SHALL NOT 帶合規建議值：其正確取值由部署對外協定決定（https 部署開啟、
+刻意明文部署關閉），不是合規基準線——帶建議值會使「套用本頁建議值」把明文部署
+的本鍵翻成開啟，製造整站使用者的續期失敗。本鍵 SHALL NOT 計入任何基準的合規
+偏離數。
+
+#### Scenario: 首次啟動播種
+
+- **WHEN** 全新部署以 `PUBLIC_BASE_URL=http://…` 首次啟動，該鍵尚無政策列
+- **THEN** 該鍵以 false 播種入政策列（來源記為環境初始化），
+  管理端安全政策頁顯示該鍵為關閉
+
+#### Scenario: 管理端調整即生效
+
+- **WHEN** 管理員於安全政策頁切換本鍵並儲存
+- **THEN** 變更入審計，後端不重啟，下一次發放的 refresh cookie 即採用新值
+
+#### Scenario: 政策頁設定後環境變數不再介入
+
+- **WHEN** 管理員曾於政策頁設定本鍵，其後部署以不同的
+  `AUTH_REFRESH_COOKIE_SECURE` 值重啟
+- **THEN** 政策值維持管理員所設，環境變數不覆蓋
+
+#### Scenario: 本鍵不入建議值套用
+
+- **WHEN** 管理員於安全政策頁執行「套用本頁建議值」（任一基準）
+- **THEN** 本鍵的值不變，且不出現在任何基準的偏離摘要中
+

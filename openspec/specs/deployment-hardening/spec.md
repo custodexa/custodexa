@@ -119,7 +119,17 @@ stock production compose 的檔名為 `docker-compose.yml`——正式版即專�
 
 ### Requirement: 應用對外 TLS-ready 不變式
 
-應用 SHALL 在不修改應用程式碼的前提下即可於外部 TLS edge 後正確運作：於 HTTPS 下 SHALL 無 mixed content（前端依 `window.location.protocol` 自動選用 `ws`／`wss`），且認證材料 SHALL NOT 經明文專用通道傳輸。若日後改以 cookie 承載認證材料，該 cookie SHALL 標記 `Secure`／`HttpOnly`／`SameSite` 且應用 SHALL 依可信 proxy scheme 判定協定；此不變式描述性質，而非禁止使用 cookie。
+應用 SHALL 在不修改應用程式碼的前提下即可於外部 TLS edge 後正確運作：於 HTTPS 下
+SHALL 無 mixed content（前端依 `window.location.protocol` 自動選用 `ws`／`wss`），
+且認證材料 SHALL NOT 經明文專用通道傳輸。
+
+承載認證材料的 cookie（現況：refresh 憑證）SHALL 標記 `HttpOnly`／`SameSite`；
+其 `Secure` SHALL 由安全政策承載（管理端可調、變更即生效），初值 SHALL 於首次
+啟動自部署組態播種（顯式環境變數 → `PUBLIC_BASE_URL` scheme → 預設安全），
+預設方向 SHALL 為安全，走明文的部署 SHALL 經顯式關閉（播種組態或管理端政策）、
+SHALL NOT 由預設值取得非安全狀態。應用 SHALL NOT 依請求標頭（如
+`X-Forwarded-Proto`）猜測外部協定——在缺乏可信代理契約時該類標頭不可信，
+啟動期組態播種與管理端政策設定是外部協定判定僅有的受支援輸入。
 
 #### Scenario: https 頁面自動使用 wss 無 mixed content
 - **WHEN** 前端頁面經外部 TLS edge 以 https 提供
@@ -127,7 +137,9 @@ stock production compose 的檔名為 `docker-compose.yml`——正式版即專�
 
 #### Scenario: 認證材料不經明文通道
 - **WHEN** 檢視認證材料傳遞方式
-- **THEN** 認證材料不以明文專用通道傳輸；若採 cookie 則具 `Secure`/`HttpOnly`/`SameSite` 且依可信 proxy scheme 判定
+- **THEN** 認證材料不以明文專用通道傳輸；承載認證材料的 cookie 具
+  `HttpOnly`／`SameSite`，其 `Secure` 預設開啟、僅能由顯式部署組態（播種初值）
+  或管理端政策設定關閉
 
 ### Requirement: 正式版執行環境不得含 `/bin/sh` 類固定入口
 
