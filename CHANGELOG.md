@@ -2,6 +2,24 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.0.4 — comment and documentation edits (2026-08-24)
+
+No functional changes. Behavior, API surface, configuration keys and database
+schema are identical to 1.0.3, and no migration runs on startup. Upgrading is a
+rebuild and nothing else.
+
+### Documentation
+
+- Source comments across the backend and frontend were edited for readability.
+  Where a comment explained a trade-off, the explanation stayed and only the
+  shorthand around it changed.
+- `CONTRIBUTING.md` folds the note on where behavior is authoritatively
+  described into the existing checklist: `openspec/specs/` governs, and a
+  comment that disagrees with a spec is the comment that is wrong.
+- The column notes in `docs/DB_SCHEMA.md` now read on their own: each one
+  carries its reasoning in the note itself rather than pointing at a section
+  number.
+
 ## 1.0.3 — the session cookie's Secure attribute becomes a policy (2026-08-22)
 
 Whether the session refresh cookie carries the `Secure` attribute is now a setting
