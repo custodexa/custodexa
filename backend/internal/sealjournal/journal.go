@@ -22,7 +22,7 @@ var _ Recorder = (*Journal)(nil)
 
 // Journal 為封印期定長環狀 journal。
 //
-// 單一 writer（D6.5 codex 終驗 high）：檔案的全部寫入——received／outcome／
+// 單一 writer：檔案的全部寫入——received／outcome／
 // published／rejected 合批／回灌 checkpoint 推進——都收斂到 owner goroutine 並由它
 // 序列化。回灌器 SHALL 經該 owner 更新 checkpoint，SHALL NOT 自行寫 header。
 // 因此不需要鎖或 compare-and-retry 合併規則：兩路獨立寫 header 在架構上被禁止。
@@ -147,7 +147,7 @@ func (j *Journal) writeCtx(ctx context.Context) (context.Context, context.Cancel
 
 // WriteReceived 寫入 received 事件並回傳全域序號。
 //
-// 定序（D6.5 崩潰一致性）：寫資料槽 → fdatasync → 推進 header → fdatasync。
+// 定序（崩潰一致性）：寫資料槽 → fdatasync → 推進 header → fdatasync。
 // 本方法回傳即代表已完成到 header fdatasync；呼叫端 SHALL 於本方法成功回傳「之後」
 // 才開始驗證材料，否則崩潰後可能沒有可辨識的 received，
 // 核心不變式「任何被驗證的嘗試必有 durable 個別紀錄」當場破。

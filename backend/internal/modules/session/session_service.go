@@ -212,7 +212,7 @@ func (s *SessionService) GetActiveSessions() ([]model.Session, error) {
 
 // ListClipboardEvents 按時間序回傳會話剪貼簿記錄（clipboard-audit）。
 //
-// SD-2 收斂（modular-architecture W7 7.1）：原本住在
+// 收斂自：原本住在
 // `api/clipboard_event_handler.go:32`——handler 自持 `*gorm.DB` 直查
 // `model.ClipboardEvent`，是 api 層繞過 service 直碰資料層的四處之一。
 // 查詢本體（where／order／find）逐字搬入，行為位元相同。
@@ -224,7 +224,7 @@ func (s *SessionService) ListClipboardEvents(sessionID uint) ([]model.ClipboardE
 	return events, nil
 }
 
-// IsActive 回報 session 是否仍為 active（break-glass-revocation codex 複審 High）：
+// IsActive 回報 session 是否仍為 active：
 // 轉發啟動前的最後一道存活閘——收緊「session 建立為 active、registry 登記前」
 // 窗口內被撤銷/停用收線（TerminateByUserAsset/Terminate 已 CAS 成 disconnected，
 // 但 registry.Close 因尚未登記而撲空）的競態。查無或非 active 皆回 false（fail-safe）
@@ -265,7 +265,7 @@ func (s *SessionService) CloseWithReason(id uint, reason string) error {
 		updates["end_reason"] = reason
 	}
 
-	// CAS status=active（break-glass-revocation codex #2）：自然收線只收未終態的
+	// CAS status=active：自然收線只收未終態的
 	// 會話。已被 Terminate（撤銷/停用強制斷線 end_reason=revoked/admin_terminate）
 	// 或 reconciler 收線者為 disconnected/closed，此處視為冪等成功——不覆寫終態、
 	// end_reason 與時間，避免強制終止語義被 bridge/tunnel 結束後的自然清理蓋掉
@@ -319,7 +319,7 @@ func (s *SessionService) Terminate(id uint, reason string) error {
 		"end_reason": reason,
 	}
 
-	// CAS 守衛 status=active（雙軌驗證 F1）：GetByID 與 UPDATE 之間有 TOCTOU，
+	// CAS 守衛 status=active：GetByID 與 UPDATE 之間有 TOCTOU，
 	// 與被動 WS 關閉、reconciler 收斂或並發終止競態時，無條件 WHERE id 會復活
 	// 終態或覆寫他者已寫入的 end_reason。改為條件更新讓「先到者贏」，RowsAffected=0
 	// 即已被他路徑收線 → 回 ErrSessionAlreadyClosed
@@ -346,8 +346,8 @@ func (s *SessionService) Terminate(id uint, reason string) error {
 	return nil
 }
 
-// TerminateAllByUser 強制終斷某使用者全部進行中會話（auth-hardening D6：
-// 帳號停用的即時撤權收線，沿用 admin_terminate 斷線語義）。
+// TerminateAllByUser 強制終斷某使用者全部進行中會話
+//（帳號停用的即時撤權收線，沿用 admin_terminate 斷線語義）。
 // 個別會話終斷失敗不中斷整批——已停用是主要目標，殘餘會話記日誌人工跟進
 func (s *SessionService) TerminateAllByUser(userID uint) (int, error) {
 	var sessions []model.Session
@@ -369,7 +369,7 @@ func (s *SessionService) TerminateAllByUser(userID uint) (int, error) {
 }
 
 // TerminateByUserAsset 終斷某使用者在某資產上的全部進行中會話
-// （break-glass-revocation D5：撤銷即斷線政策開啟時的收線路徑，沿
+// （撤銷即斷線政策開啟時的收線路徑，沿
 // TerminateAllByUser 模式——個別失敗不中斷整批、Terminate CAS 競態安全）
 func (s *SessionService) TerminateByUserAsset(userID, assetID uint, reason string) (int, error) {
 	var sessions []model.Session
@@ -391,7 +391,7 @@ func (s *SessionService) TerminateByUserAsset(userID, assetID uint, reason strin
 	return terminated, nil
 }
 
-// TerminateByAsset 終斷某資產上的全部進行中會話（security-backlog-settlement）：
+// TerminateByAsset 終斷某資產上的全部進行中會話：
 // 資產停用時的收線路徑，沿 TerminateByUserAsset 模式——個別失敗不中斷整批、
 // Terminate CAS 競態安全
 func (s *SessionService) TerminateByAsset(assetID uint, reason string) (int, error) {
@@ -429,7 +429,7 @@ func (s *SessionService) UpdateRecording(id uint, recordingPath string, recordin
 	return nil
 }
 
-// SetRecordingStartedAt 記錄「錄影的時間原點」（workbench-exits-and-export D2）。
+// SetRecordingStartedAt 記錄「錄影的時間原點」。
 //
 // 於錄製器實際啟動的當下寫入，**不是**會話建檔時刻——回放的 elapsed=0 對應的是
 // 前者。深連結（?t=）要落在正確的畫面上，就必須拿這個原點換算，否則偏移量恆存在。

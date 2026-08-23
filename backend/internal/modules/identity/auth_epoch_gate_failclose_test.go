@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 世代閘的兩個 fail-open 分支（批 14 對抗審查 M6）。
+// 世代閘的兩個 fail-open 分支。
 //
 // 閘門是**整套撤銷機制的執行點**：provider 停用、密鑰輪替、帳號停用、解綁、
 // 改密全都靠它把既簽憑證擋在門外。它若在某些條件下放行，撤銷就只剩下「撤 refresh」

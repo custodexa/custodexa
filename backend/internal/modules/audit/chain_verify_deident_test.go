@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/notifycat"
 )
 
-// 鏈驗證告警的**去識別出站守衛**（audit-chain-scheduled-verification tasks 4.6／design D8）。
+// 鏈驗證告警的**去識別出站守衛**。
 //
 // **為什麼是紅線**：失效通知走的是使用者自行設定的外部通道（webhook／IM／郵件），
 // 那條路徑上的收件端不在本系統的存取控制之內。出站 payload 若帶著「哪幾個檢查點

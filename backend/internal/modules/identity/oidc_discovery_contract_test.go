@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 真實 IdP discovery 文件的契約測試（idp-oidc-integration tasks 0.3a）。
+// 真實 IdP discovery 文件的契約測試。
 //
 // **本檔的存在理由是防止「信任門檻收緊」誤傷真實目標**：設計草案中的「endpoint
 // 必須與 issuer 同源」即屬此類——它讀起來像是合理的縱深防禦，卻會當場阻斷 Google
@@ -261,7 +261,7 @@ func TestDiscoveryContractIssuerComparedLiterally(t *testing.T) {
 }
 
 func TestDiscoveryContractEntraCommonIssuerPlaceholder(t *testing.T) {
-	// tasks 0.3 的實查結論文件化：Entra 多租戶 common 端點的 issuer 字面帶
+	// 實查結論的文件化：Entra 多租戶 common 端點的 issuer 字面帶
 	// placeholder，逐字比對之下恆不可用，管理者必須改用 tenant-specific 端點
 	common := loadDiscoveryFixture(t, "entra-common.json")
 	iss := fixtureString(t, common, "issuer")

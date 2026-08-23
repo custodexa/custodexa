@@ -3,7 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Assets from '../Assets.vue'
 
-// 自 Assets.spec.js 拆出（asset-syslog-debt-cleanup）：該檔已 32 案、掛載成本高，
+// 自 Assets.spec.js 拆出：該檔已 32 案、掛載成本高，
 // 每案 mount 完整頁面時整檔逼近逾時臨界（既有已知體質）。本檔獨立承載
 // 「連線入口成因、延遲呈現、連測中態」三組行為，兩檔各自都能在時限內完成
 
@@ -66,7 +66,7 @@ const mountView = () =>
   })
 
 
-describe('Assets 入口成因與延遲呈現（asset-syslog-debt-cleanup）', () => {
+describe('Assets 入口成因與延遲呈現', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -142,8 +142,8 @@ describe('Assets 入口成因與延遲呈現（asset-syslog-debt-cleanup）', ()
     const wrapper = mountView()
     await flushPromises()
 
-    // 執行期 auditor 無角色自動 connect（CPG-002）——入口不得再裝可連
-    //（auditor-connect-entry-honesty；helper＋template 實接雙軌鎖定）
+    // 執行期 auditor 無角色自動 connect——入口不得再裝可連
+    //（helper＋template 實接雙軌鎖定）
     expect(wrapper.vm.canConnect({ active: true, permission: 'view' })).toBe(false)
     const contents = wrapper.findAllComponents({ name: 'ElTooltip' })
       .map((c) => c.props('content'))
@@ -156,7 +156,7 @@ describe('Assets 入口成因與延遲呈現（asset-syslog-debt-cleanup）', ()
     ).toBe(true)
   }, 15000)
 
-  it('auditor 持顯式 connect grant（CPG-002 D1 例外通道）：連線入口可用', async () => {
+  it('auditor 持顯式 connect grant（例外通道）：連線入口可用', async () => {
     setUserRoles(['auditor'])
     const wrapper = mountView()
     await flushPromises()
@@ -286,15 +286,15 @@ describe('Assets 入口成因與延遲呈現（asset-syslog-debt-cleanup）', ()
   }, 15000)
 })
 
-describe('Assets 連測逐列中態（db-protocol-connection-test 4.3）', () => {
+describe('Assets 連測逐列中態', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
     getAssetTagsMock.mockResolvedValue({ data: [] })
   })
 
-  // 原斷言是「第二列被 single-flight 擋下」（asset-syslog-debt-cleanup 實作審查 M1）。
-  // db-protocol-connection-test 4.3 起中態改為 id 集合：擋的是**同一列**重複觸發，
+  // 原斷言是「第二列被 single-flight 擋下」。
+  // 中態改為 id 集合後，擋的是**同一列**重複觸發，
   // 不同列可並行且各自解除——先完成者只從集合移除自己，不會清掉他列的 spinner。
   it('不同列可並行測試、各自解除；同一列重複觸發被擋下', async () => {
     setUserRoles(['admin'])

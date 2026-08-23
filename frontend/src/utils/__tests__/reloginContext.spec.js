@@ -1,4 +1,4 @@
-// 決策 3 的三條件判定（codeql-rescan-settlement）。
+// 決策 3 的三條件判定。
 // 這裡釘的是「誰有資格被貼上協定問題的標籤」——條件放寬一格就是狼來了，
 // 收緊一格就是使用者永遠看不到解釋。
 import { describe, it, expect, beforeEach } from 'vitest'

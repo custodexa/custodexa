@@ -1,5 +1,5 @@
 /**
- * 資產帳號顯示中繼資料唯一事實源（asset-multi-account D2/D5）。
+ * 資產帳號顯示中繼資料唯一事實源。
  *
  * 值域硬拷後端：`@ALL` 對應 `model.AccountScopeAll`；憑證型別為**前端導出枚舉**
  * （後端只回 has_password／has_private_key 兩布林，不回密文），四值窮盡兩布林積。

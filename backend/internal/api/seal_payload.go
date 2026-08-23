@@ -10,18 +10,18 @@ import (
 	"unicode/utf8"
 )
 
-// 解封請求的線上表述（kek-provider-modularization D6.3／D6.6／D7）。
+// 解封請求的線上表述。
 //
 // **為何整個請求體就是 seal.UnsealRequest.Material**：狀態機的 VerifyFunc 只收
-// `material []byte`，而初始化解封另需 paste-back 二次輸入與初始管理員憑證
-// （D6.3）。若把這些欄位另闢通道傳遞，就會出現「一部分輸入在臨界區內驗證、
+// `material []byte`，而初始化解封另需 paste-back 二次輸入與初始管理員憑證。
+// 若把這些欄位另闢通道傳遞，就會出現「一部分輸入在臨界區內驗證、
 // 另一部分在臨界區外解析」的分裂，且狀態機的「驗證結束即就地歸零材料」只蓋得到
 // 一半。改為整包當材料有三個直接後果，皆為所欲：
 //
 //  1. 密碼與 paste-back 副本一併被歸零；
-//  2. **連 JSON 解析失敗都落在臨界區內**，因而同樣計入 D6.4 的退避——
+//  2. **連 JSON 解析失敗都落在臨界區內**，因而同樣計入解封退避——
 //     否則攻擊者送壞掉的 JSON 即可零成本重試；
-//  3. 解析錯誤與材料錯誤天然共用同一出口碼，滿足 D6.6「回應內容不可區分」。
+//  3. 解析錯誤與材料錯誤天然共用同一出口碼，滿足「回應內容不可區分」。
 //
 // **秘密欄位一律為可覆寫的 []byte，不是 string**：Go 的 string 不可變，
 // `encoding/json` 解出的字串是獨立且不可覆寫的副本——歸零原始 body 與把欄位
@@ -31,27 +31,27 @@ import (
 type SealUnsealPayload struct {
 	// KEK 為使用者輸入的 KEK 材料。一般解封只用此欄。
 	KEK []byte
-	// KEKConfirm 為 paste-back 二次輸入（D7 語義）。**僅初始化解封要求**。
+	// KEKConfirm 為 paste-back 二次輸入。**僅初始化解封要求**。
 	KEKConfirm []byte
 	// ConfirmSaved 為保存確認旗標。**僅初始化解封要求**。
 	//
-	// 誠實界定（沿 D7）：本欄是 UX 意圖聲明、**不具授權力**，SHALL NOT 被
+	// 誠實界定：本欄是 UX 意圖聲明、**不具授權力**，SHALL NOT 被
 	// 描述為安全不變式；伺服端唯一信任的機械不變式是 KEKConfirm 的逐字比對。
 	ConfirmSaved bool
 	// Username 為初始管理員帳號。**非秘密**（會進審計事件），故留 string。
 	Username string
 	// Password 為初始管理員密碼。**僅初始化解封要求**；
-	// 一般解封不要求（要求 JWT 會在 admin 已開 MFA 時死鎖，D6.6）。
+	// 一般解封不要求（要求 JWT 會在 admin 已開 MFA 時死鎖）。
 	Password []byte
 }
 
 // ErrSealPayloadMalformed 解封請求體無法解析。
 //
 // 呼叫端 SHALL NOT 讓本錯誤產生與材料錯誤不同的回應內容——它與材料錯誤同樣
-// 收斂為 SEAL_MATERIAL_INVALID（D6.6 回應內容不可區分）。
+// 收斂為 SEAL_MATERIAL_INVALID（回應內容不可區分）。
 var ErrSealPayloadMalformed = errors.New("解封請求體無法解析")
 
-// MaxSealUnsealBodyBytes 解封請求體大小上限（D6.5 誠實邊界 1 的「輸入大小上限」）。
+// MaxSealUnsealBodyBytes 解封請求體大小上限（誠實邊界的「輸入大小上限」）。
 // 材料本身為 32 bytes，憑證與 paste-back 副本合計遠低於此值；上限存在的理由是
 // 使單次驗證成本有界，而非表達任何欄位長度政策。
 const MaxSealUnsealBodyBytes = 8 << 10

@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 授權帳號維度解析器的語義鎖（asset-multi-account D5 階段 4）。
+// 授權帳號維度解析器的語義鎖。
 //
 // 為何用真 SQLite 而非 sqlmock：本解析器的正確性幾乎全在 SQL 條件本身
 // （四路徑主體聯集、節點含子樹客體、時效窗），sqlmock 只會複誦我寫的 SQL 字串，
@@ -155,7 +155,7 @@ func TestAccountScope_NamedOnly(t *testing.T) {
 	}
 }
 
-// TestAccountScope_UnionTakesWider 聯集取寬（D5 Scenario「聯集語義」）：
+// TestAccountScope_UnionTakesWider 聯集取寬（「聯集語義」）：
 // 個人授權 ["app"] ＋ 群組授權 @ALL ＝ 全部帳號。
 // 授權模型純加法無 deny，帳號維度採交集會憑空造出 deny 語義
 func TestAccountScope_UnionTakesWider(t *testing.T) {
@@ -314,7 +314,7 @@ func TestAccountScope_AdminFullAccess(t *testing.T) {
 }
 
 // TestAccountScope_AuditorNotAutoConnect auditor 不因角色取得連線帳號範圍
-// （CPG-002 職責分離：稽核者只檢視不連線）——但可視範圍仍短路全量，
+// （職責分離：稽核者只檢視不連線）——但可視範圍仍短路全量，
 // 稽核視圖不被本 change 收窄
 func TestAccountScope_AuditorNotAutoConnect(t *testing.T) {
 	svc, db := setupScopeEnv(t)
@@ -353,7 +353,7 @@ func TestAccountScope_NoGrantFailClose(t *testing.T) {
 }
 
 // TestAuthorizeConnectAccount_K8sExempt k8s 走系統預設帳號語義，不經 per-account
-// 判定（D5）——否則 k8s 資產在無帳號授權時會連不上，而它根本沒有選帳號的概念
+// 判定——否則 k8s 資產在無帳號授權時會連不上，而它根本沒有選帳號的概念
 func TestAuthorizeConnectAccount_K8sExempt(t *testing.T) {
 	svc, db := setupScopeEnv(t)
 	assetID := seedScopeFixture(t, db)
@@ -388,7 +388,7 @@ func TestAuthorizeConnectAccount_RevocationTakesEffectImmediately(t *testing.T) 
 }
 
 // TestAuthorizeConnectAccount_ScopeNarrowingTakesEffect 帳號範圍收緊即時生效
-// （D5 Scenario「帳號範圍收緊即時生效」的服務層基礎）
+// （「帳號範圍收緊即時生效」的服務層基礎）
 func TestAuthorizeConnectAccount_ScopeNarrowingTakesEffect(t *testing.T) {
 	svc, db := setupScopeEnv(t)
 	assetID := seedScopeFixture(t, db)
@@ -427,7 +427,7 @@ func TestUpdateAccountScope_TicketImmutable(t *testing.T) {
 // TestNormalizeAccountScope_Semantics 正規化語義鎖：去重、排序、@ALL 塌縮、
 // 欄位省略＝@ALL、顯式空清單拒收、全空白拒收、元素上限。
 //
-// **三種輸入形態的分別是本測試的重點**（opus F1／codex high 共同指認）：
+// **三種輸入形態的分別是本測試的重點**（共同指認）：
 // 舊版簽名收 `[]string`，使「欄位省略」與「顯式 `[]`」在伺服端不可區分，
 // 兩者都被正規化成 `@ALL`——管理員送出「收到零個帳號」反而得到「全部帳號」
 func TestNormalizeAccountScope_Semantics(t *testing.T) {
@@ -483,7 +483,7 @@ func TestNormalizeAccountScope_Semantics(t *testing.T) {
 }
 
 // TestUpdateAccountScope_RequiresExplicitAccounts `PUT .../accounts` 省略欄位
-// 一律拒——本端點的唯一職責就是設定範圍，猜錯的方向是溢授（F1）
+// 一律拒——本端點的唯一職責就是設定範圍，猜錯的方向是溢授
 func TestUpdateAccountScope_RequiresExplicitAccounts(t *testing.T) {
 	svc, db := setupScopeEnv(t)
 	assetID := seedScopeFixture(t, db)
@@ -548,7 +548,7 @@ func TestGrantAccountScope_EmptyArrayRejected(t *testing.T) {
 	}
 }
 
-// TestAccountScope_ApproverScopeDoesNotGrantAccounts 刻意的不同構（F2 裁決）：
+// TestAccountScope_ApproverScopeDoesNotGrantAccounts 刻意的不同構：
 // `CheckPermission(view)` 有「審核範圍隱含 view」第三來源，帳號範圍解析器沒有。
 //
 // 理由：該來源是為了讓 approver 看得見待審申請所指的資產，而帳號清單是**憑證

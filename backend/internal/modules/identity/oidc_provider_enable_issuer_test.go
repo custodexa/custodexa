@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 啟用 provider 時重驗 issuer scheme（批 14 對抗審查 M5 / spec oidc-auth L67-69）。
+// 啟用 provider 時重驗 issuer scheme（spec oidc-auth L67-69）。
 //
 // issuer 建立後不可變，但 `AllowInsecureHosts` 是**部署層狀態**：同一份資料庫
 // 可以先在 dev（http 靶機列於允許清單）建立 provider，隨後升為 release 部署。

@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 並發不變式矩陣的**補缺格**（idp-oidc-integration tasks 4.14a）。
+// 並發不變式矩陣的**補缺格**。
 //
 // 4.14a 要求的格子與其覆蓋位置：
 //
@@ -243,11 +243,11 @@ func matrixLiveRefreshCount(t *testing.T, db *gorm.DB, userID uint) int64 {
 // --- 4.14a：進行中的 callback（簽 ticket 點）的 user 世代競態 ---
 
 // TestPGConcurrentTicketIssueVsUnbind 進行中的 callback 於「鎖內前提通過、
-// 寫入交棒憑證之前」，管理者解綁該使用者的外部身分（tasks 4.14a）。
+// 寫入交棒憑證之前」，管理者解綁該使用者的外部身分。
 //
 // 既有的兩支 PG 並發測試打在 session_create 與 monitor_join 兩個點上，
 // **簽 ticket 是第三個「以既有身分產生新長效能力」的點，且是使用者世代的第一個
-// 攜帶者**（flow state 於 begin 時尚未認證，不帶 cred_epoch，見 D4）。
+// 攜帶者**（flow state 於 begin 時尚未認證，不帶 cred_epoch）。
 // 該點若未序列化，序列
 //
 //	callback 鎖外讀到 cred_epoch=0 → 解綁推進至 1 並完成收線 → callback 才簽 ticket
@@ -319,7 +319,7 @@ func TestPGConcurrentTicketIssueVsUnbind(t *testing.T) {
 }
 
 // TestPGConcurrentTicketExchangeVsUnbind 交棒憑證兌換於「鎖內世代比對通過、
-// 原子消費之前」，管理者解綁該使用者的外部身分（tasks 4.14a）。
+// 原子消費之前」，管理者解綁該使用者的外部身分。
 //
 // 兌換點是「以既有憑證產生新長效能力」的典型：它把一張一次性的 ticket 換成
 // access ＋ refresh 一整組長效憑證。**簽出動作刻意在鎖外**（不讓 JWT 簽章這類
@@ -381,7 +381,7 @@ func TestPGConcurrentTicketExchangeVsUnbind(t *testing.T) {
 // --- 4.14a：user 世代版的「舊 grant」與「舊觀察者」 ---
 
 // TestPGConcurrentSessionCreateVsUnbind connect grant 兌換建 session 於
-// 「鎖內世代重讀通過、插入之前」，管理者解綁該使用者的外部身分（tasks 4.14a）。
+// 「鎖內世代重讀通過、插入之前」，管理者解綁該使用者的外部身分。
 //
 // 這是既有 TestPGConcurrentExchangeVsDisable 的 **user 世代版**。兩者的撤銷側
 // 完全不同：provider 版走 identity.OIDCProviderService 的列鎖＋按-provider 掃描；
@@ -457,7 +457,7 @@ func TestPGConcurrentSessionCreateVsUnbind(t *testing.T) {
 }
 
 // TestPGConcurrentMonitorAndShareJoinVsUnbind 監看與分享觀看兩條唯讀訂閱同時
-// 於「鎖內世代重讀通過、Join 之前」，管理者解綁該使用者的外部身分（tasks 4.14a）。
+// 於「鎖內世代重讀通過、Join 之前」，管理者解綁該使用者的外部身分。
 //
 // **監看與分享同測**是 4.14a 明列的要求，理由是防「只改一處」：兩者在 handler
 // 是兩個入口（HandleMonitor 與分享觀看），各自呼叫 JoinWithGenerationGuard，
@@ -524,9 +524,9 @@ func TestPGConcurrentMonitorAndShareJoinVsUnbind(t *testing.T) {
 // --- 4.14a：取鎖順序 system → provider → user 無死鎖 ---
 
 // TestCapabilityLockOrderingHasNoDeadlock 三個層級的鎖在**全部組合**同時競爭下
-// 不得死鎖（tasks 4.14a 的取鎖順序項）。
+// 不得死鎖（取鎖順序項）。
 //
-// design D13 定的順序是 system（local admin 不變式）→ provider（auth_epoch）→
+// 固定順序是 system（local admin 不變式）→ provider（auth_epoch）→
 // user（credential_epoch）。死鎖的成立條件是「兩條路徑以相反順序各持一把、
 // 各等對方」，故必須讓所有組合真的同時在跑：
 //
@@ -658,7 +658,7 @@ func TestCapabilityLockOrderingHasNoDeadlock(t *testing.T) {
 }
 
 // TestPGConcurrentCapabilityLockOrdering 同上，但跑在 postgres 且以**真實服務操作**
-// 施壓（tasks 4.14a 的取鎖順序項；上一支的互補面）。
+// 施壓（取鎖順序項；上一支的互補面）。
 //
 // 兩支的分工：上一支跑 sqlite、fn 為 no-op，驗的是**取鎖動作的順序**本身
 // （per-key mutex 下順序寫反即確定性互鎖）；本支跑 postgres、fn 為真的會寫入的

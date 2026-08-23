@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 憑證世代閘於認證中介層的行為（idp-oidc-integration tasks 4.11 的第 (4) 個驗證點）。
+// 憑證世代閘於認證中介層的行為。
 //
 // 為什麼要在 middleware 這一層測：既有的 auth_test.go 完全不接 DB，
 // service.VerifyCredentialGenerationByUserID 於 database.DB == nil 時直接放行

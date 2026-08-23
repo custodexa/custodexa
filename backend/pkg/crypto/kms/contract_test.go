@@ -8,15 +8,15 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// A／B／C 三 provider 的**共用契約測試**（D11.1 裁決 2「介面契約須同步」）。
+// A／B／C 三 provider 的**共用契約測試**（介面契約須同步）。
 //
-// **存在理由＝互換性證明**：D1 的核心不變式是「KEK 來源模式的差異完全封裝於
+// **存在理由＝互換性證明**：核心不變式是「KEK 來源模式的差異完全封裝於
 // KEKProvider 之下，KeyManagerService 以上零語義差異」。要證明這件事，就得有一組
 // **同一份**斷言跑過每個 provider——各寫各的測試只能證明各自沒壞，證明不了可互換。
 //
-// **nil／空 AAD 已收斂為共同期望**（release-transitional-cleanup P2 M1）：
-// 原先是 per-provider 差異（本地 nil＝不綁定、委託 nil＝拒絕，round-2 codex
-// medium），但無 AAD 的寫出能力自 AESCrypto 原語層刪除後，本地 provider 亦回
+// **nil／空 AAD 已收斂為共同期望**：
+// 原先是 per-provider 差異（本地 nil＝不綁定、委託 nil＝拒絕，審查 medium），
+// 但無 AAD 的寫出能力自 AESCrypto 原語層刪除後，本地 provider 亦回
 // crypto.ErrAADRequired——兩者不再互斥，故 nilAADRejected 旗標一併移除，
 // 「空 AAD 一律被拒」改為三 provider 共用斷言。
 

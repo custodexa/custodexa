@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// 資產帳號操作審計（asset-multi-account D7a）。
+// 資產帳號操作審計。
 //
 // 為何不掛 GORM hook（Asset 的做法）：帳號變更的可稽核事實是「哪個欄位被動過」，
 // 而 hook 拿不到 diff（AfterUpdate 只看得到新值）——Asset 的 hook 正因此只能記
@@ -22,7 +22,7 @@ const (
 	AccountOpDelete     = "delete"
 	AccountOpSetDefault = "set_default"
 	// AccountOpDiscardCandidate admin 顯式清除未驗證的候選憑證
-	// （change-secret-ssh-deepening D4）：候選是那把可能已在遠端生效的秘密的
+	// 候選是那把可能已在遠端生效的秘密的
 	// 唯一副本，清除後只能以帶外途徑救回該帳號，故必須留痕
 	AccountOpDiscardCandidate = "discard_candidate"
 )
@@ -37,8 +37,8 @@ type AssetAccountAudit struct {
 	Operation string
 	// Fields 被變更的欄位名稱清單（password/private_key 只記名稱，不記值）
 	Fields []string
-	// CopyFromAssetID／CopyFromAccount 建號時「從其他資產帳號複製」的來源出處
-	// （D10）。憑證跨資產複製若零軌跡，事後無從回答「這台的 root 密碼哪來的」；
+	// CopyFromAssetID／CopyFromAccount 建號時「從其他資產帳號複製」的來源出處。
+	// 憑證跨資產複製若零軌跡，事後無從回答「這台的 root 密碼哪來的」；
 	// 記的是 id 不是值，不觸及密文
 	CopyFromAssetID uint
 	CopyFromAccount uint
@@ -57,7 +57,7 @@ type AssetAccountAuditDetails struct {
 	CopyFromAccount uint `json:"copy_from_account_id,omitempty"`
 }
 
-// **W6 6.1／6.2**：`RecordAssetAccountChange` 與其私有的 `auditActionForAccountOp`
+// `RecordAssetAccountChange` 與其私有的 `auditActionForAccountOp`
 // 已隨 T-2 收口遷入 asset 模組（`internal/modules/asset/asset_audit_events.go` 的
 // `writeAssetAccountAudit`），落地改經 `audit/port.WriteInTx`。本檔只留資料型別。
 

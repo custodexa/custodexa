@@ -35,7 +35,7 @@ func ldapTestConfig(url string) config.LDAPConfig {
 	}
 }
 
-// 出站政策的**實作接縫**釘子（ldap-settings-migration tasks 2.5 / D5）。
+// 出站政策的**實作接縫**釘子。
 //
 // 判定邏輯正確但接縫沒接上，等於政策不存在。本檔以真實 listener 證明：
 //

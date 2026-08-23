@@ -24,7 +24,7 @@ type AuditLogEntry struct {
 	Action     model.AuditAction
 	Resource   model.AuditResource
 	ResourceID *uint
-	// AssetID 資產主體鍵（auditor-workbench D4）：作用於資產的動作**必須**填，
+	// AssetID 資產主體鍵：作用於資產的動作**必須**填，
 	// 工作台的資產樞紐只認本欄。非資產類動作留 nil
 	AssetID     *uint
 	Status      model.AuditStatus
@@ -79,7 +79,7 @@ type AuditLogService struct {
 	wg          sync.WaitGroup
 	fallbackDir string
 
-	// dropObserver 佇列滿載致本筆未能直接入庫時的觀測掛勾（observability-lite）。
+	// dropObserver 佇列滿載致本筆未能直接入庫時的觀測掛勾。
 	//
 	// **以函式注入而非直接呼叫指標包**：本模組不因監控需求而新增依賴，
 	// 語義（降級寫檔 vs 直接丟棄）的字串映射留在組裝根。
@@ -162,7 +162,7 @@ func (s *AuditLogService) Log(entry *AuditLogEntry) {
 
 // logAt 是 Log 的實作本體，多收一個「事件時刻」。
 //
-// **抽出的唯一理由是 AsyncSink.Submit**（W4 4.2）：gatewayapi.AuditEvent 帶
+// **抽出的唯一理由是 AsyncSink.Submit**：gatewayapi.AuditEvent 帶
 // OccurredAt 欄，而 Log 的簽名表達不了它。若讓 Submit 直接呼叫 Log，
 // 非零的 OccurredAt 會被靜默丟棄——事件時刻被替換成入列時刻，是無聲的失真。
 // occurredAt 為零值時行為與收口前逐字相同（time.Now()）。
@@ -205,7 +205,7 @@ func (s *AuditLogService) logAt(entry *AuditLogEntry, occurredAt time.Time) {
 			// Channel 滿載：僅在啟用檔案降級時寫檔（與 DB 寫失敗分支一致，尊重開關——
 			// 關閉時 fallback 目錄本就未建，硬寫必失敗），否則丟棄本筆並告警資料遺失
 			//
-			// 兩個分支皆通知觀測掛勾（observability-lite）：此路徑不記
+			// 兩個分支皆通知觀測掛勾：此路徑不記
 			// audit_failure_events（該條文的涵蓋範圍明文限定為「fallback 檔案觸發時」
 			// 的寫庫失敗），原先唯一的痕跡是下面這行 log——不可查詢、不可告警、
 			// 容器重啟即失。指標使「審計曾經掉過資料」成為可查證的持久事實
@@ -275,12 +275,12 @@ func (s *AuditLogService) flushBatch(id int, batch []*model.AuditLog) []*model.A
 	if err == nil {
 		dropped = nil
 	} else {
-		// 失敗隔離（audit-coverage-closure 批 1-R，缺陷 F1 第二層）。
+		// 失敗隔離。
 		//
 		// 批次是**單一 INSERT 語句**（`CreateInBatches` 在筆數不超過批量時走
 		// 一次語句，超過時整組包在交易裡），故任一列違反欄位約束就是整批回滾——
 		// 一列壞列可以把同批其他**合法**審計列一起沖掉。實測 9 發 401 中夾
-		// 1 發超長路徑 → 入庫 3/9。這條路徑在批 1 之後**零憑證即可觸發**，
+		// 1 發超長路徑 → 入庫 3/9。這條路徑**零憑證即可觸發**，
 		// 於是「夾帶一發畸形請求把同批的真實攻擊記錄一併抹掉」成為可行的
 		// 清除證據手段。
 		//
@@ -295,9 +295,9 @@ func (s *AuditLogService) flushBatch(id int, batch []*model.AuditLog) []*model.A
 	}
 
 	if len(dropped) > 0 {
-		// 失效偵測（audit-log-compliance 10.7.2）：每批失敗直接上報，
+		// 失效偵測：每批失敗直接上報，
 		// 進行中節流由 AuditFailureService 的 in-memory 狀態機承擔——
-		// worker 側自帶 CAS 旗標會與服務端轉換交錯出懸掛事件（對抗驗證發現）
+		// worker 側自帶 CAS 旗標會與服務端轉換交錯出懸掛事件
 		if failure := GetAuditFailure(); failure != nil {
 			// 原因碼須反映開關真實行為，避免關閉時誤示「已降級至檔案」而遮蔽資料遺失
 			causeCode := model.CauseAuditWriteFallbackFile
@@ -352,7 +352,7 @@ func (s *AuditLogService) writeToDatabase(logs []*model.AuditLog) error {
 	// 完整性 HMAC（10.3.4）與 syslog tee（10.3.3）掛在 model 的
 	// BeforeCreate/AfterCreate 註冊 hook（main 注入）——audit_logs 有
 	// middleware 批次以外的直寫路徑（asset GORM hook、file_tap、k8s cp），
-	// 集中在 model 層才能覆蓋全部（對抗驗證發現此處顯式蓋章漏掉其他路徑）
+	// 集中在 model 層才能覆蓋全部（此處顯式蓋章會漏掉其他路徑）
 
 	// 使用 CreateInBatches 批次插入（每次最多 100 條）
 	if err := database.DB.CreateInBatches(logs, 100).Error; err != nil {
@@ -627,7 +627,7 @@ func safeAuditFieldSet() map[string]bool {
 // safeAuditIdentityFields 識別角色：這一列動的是**誰／哪一個**。
 //
 // 這些欄位單獨存在時只回答得出「動到了哪個物件」，回答不出「動成什麼」。
-// 批 9 的缺陷正是整批端點只剩這一類欄位可見（`{"name":"prod-idp"}` 之於
+// 先前的缺陷正是整批端點只剩這一類欄位可見（`{"name":"prod-idp"}` 之於
 // 「issuer 被指到攻擊者端點」與「單純改名」完全同形），故守衛把它們與實質
 // 欄位分開計數。
 func safeAuditIdentityFields() map[string]bool {
@@ -640,13 +640,12 @@ func safeAuditIdentityFields() map[string]bool {
 		"username": true,
 		"email":    true,
 		// full_name/local_display_name 非機密，不應被脫敏成 ***MASKED***
-		//（profile-display-name R2：user 更新審計需能看到 full_name 實值）
+		//（user 更新審計需能看到 full_name 實值）
 		"full_name":          true,
 		"local_display_name": true,
 		"asset_id":           true,
 		// account_id 為資產帳號 FK（非憑證本體），與 asset_id 同類：連線 token
 		// 簽發審計要看得出「這次連線選了哪個帳號」，脫掉即失去帳號維度的可稽核性
-		//（asset-multi-account D7／D7a）
 		"account_id": true,
 		"parent_id":  true, // 資產群組搬遷的目的地（群組結構牽動授權繼承範圍）
 
@@ -680,7 +679,7 @@ func safeAuditIdentityFields() map[string]bool {
 // safeAuditSubstanceFields 實質角色：這一列把它動成**什麼**。
 //
 // 判準與識別角色的分界線是一句話：**少了它，兩次語義完全不同的變更會寫出無法
-// 區分的審計列**。批 6 修的是提權（roles／active），批 9 修的是「安全開關」——
+// 區分的審計列**。一類是提權（roles／active），另一類是「安全開關」——
 // 關掉審計外送、關掉偵測規則、降級傳輸安全、把 IdP issuer 指到攻擊者端點，
 // 這些在只剩 `name` 可見的審計列上與改個顯示名稱完全同形。
 //
@@ -689,7 +688,7 @@ func safeAuditIdentityFields() map[string]bool {
 func safeAuditSubstanceFields() map[string]bool {
 	return map[string]bool{
 		// ── 提權與帳號狀態：變更**後**的值 ─────────────────────────────
-		// 這一組是 audit-coverage-closure 批 6 的缺口本體。舊清單有 `role`（單數）
+		// 這一組是稽核涵蓋補洞的缺口本體。舊清單有 `role`（單數）
 		// 卻沒有任何請求綁定它，真正上線的鍵是 `roles`（PUT /users/:id/roles 與
 		// POST /users 皆是），於是「誰把誰升成什麼角色」全庫無處可查。
 		// 角色名稱、啟停旗標、豁免旗標都不是機密——它們正是課責的內容本身。
@@ -710,7 +709,7 @@ func safeAuditSubstanceFields() map[string]bool {
 		"date_start":       true,
 		"disposition":      true,
 
-		// ── 安全機制的總開關（audit-coverage-closure 批 9）─────────────
+		// ── 安全機制的總開關 ────────────────
 		// `enabled` 一鍵橫跨 OIDC provider、LDAP 目錄、syslog 外送、告警規則、
 		// 通知通道、改密計畫：每一個的 false 都是「關掉一道安全機制」，而它今天
 		// 與改名寫出同一列。全部是布林，不可能承載機密材料
@@ -718,7 +717,7 @@ func safeAuditSubstanceFields() map[string]bool {
 
 		// ── 身分提供者（OIDC）的信任錨與准入 ───────────────────────────
 		// issuer 是**信任的根**：指到攻擊者控制的端點即等於接管全站登入，而該次
-		// 變更今天與改名不可區分（批 9 的頭號缺口）。admission_* 決定「誰准進來」，
+		// 變更今天與改名不可區分（頭號缺口）。admission_* 決定「誰准進來」，
 		// scopes 決定據以判定的宣告來源，force_shared 是共用身分域的收緊／放寬意圖。
 		// client_id 依 OAuth 規格為公開識別字（client_secret 仍遮）
 		"issuer":          true,
@@ -738,7 +737,7 @@ func safeAuditSubstanceFields() map[string]bool {
 
 		// ── 風險確認聲明 ───────────────────────────────────────────────
 		// 走 http 明文 webhook、跳過 TLS 驗證等降級動作要求操作者顯式聲明；
-		// 「誰在什麼時候簽了這個風險」本身就是課責內容（transmission-security-policy D6）
+		// 「誰在什麼時候簽了這個風險」本身就是課責內容
 		"risk_acknowledged": true,
 
 		// ── 命令偵測規則 ───────────────────────────────────────────────
@@ -781,7 +780,7 @@ func safeAuditSubstanceFields() map[string]bool {
 // SafeAuditFieldNames 放行清單的鍵（無序副本）。
 //
 // 存在的唯一理由是讓 `internal/guards/auditmask` 的守衛能把清單與**實際的請求
-// 綁定欄位**對照——死鍵（清單裡有、沒有任何 DTO 綁定）正是本波缺陷的指紋。
+// 綁定欄位**對照——死鍵（清單裡有、沒有任何 DTO 綁定）正是這類缺陷的指紋。
 // 回傳副本，呼叫端改不動清單本體。
 func SafeAuditFieldNames() []string {
 	set := safeAuditFieldSet()
@@ -795,7 +794,7 @@ func SafeAuditFieldNames() []string {
 // SafeAuditSubstanceFieldNames 放行清單中**實質角色**的鍵（無序副本）。
 //
 // 存在的唯一理由是讓 `internal/guards/auditmask` 的 G2b 能判定「這個端點的審計列
-// 只剩識別欄位可見」——批 6 的 G2 只在頂層鍵**全部**落在清單外才報，於是一個
+// 只剩識別欄位可見」——G2 只在頂層鍵**全部**落在清單外才報，於是一個
 // `name` 就能讓「issuer 被改到攻擊者端點」永遠不被報。回傳副本，呼叫端改不動本體。
 func SafeAuditSubstanceFieldNames() []string {
 	set := safeAuditSubstanceFields()

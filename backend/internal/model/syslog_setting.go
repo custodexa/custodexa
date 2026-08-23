@@ -9,7 +9,7 @@ const (
 	SyslogProtocolTCPTLS = "tcp+tls"
 )
 
-// SyslogSetting syslog 轉發設定（audit-log-compliance，PCI 10.3.3）。
+// SyslogSetting syslog 轉發設定（PCI 10.3.3）。
 // 單列表（ID 恆為 1）：目的地含 TLS CA PEM 等結構化欄位，
 // 不適合塞進 security_policies 的 key-value（value 上限 128 字元），
 // 故獨立存放；UI 仍呈現於安全政策頁「日誌保留與轉發」區塊

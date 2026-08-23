@@ -6,10 +6,10 @@ import (
 	"fmt"
 )
 
-// KEK 執行期模式（KEK_PROVIDER 的值域，kek-provider-modularization D1）：
-// 描述「材料從哪裡來／由誰保管」，僅供清冊顯示與稽核對照（D10）。
+// KEK 執行期模式（KEK_PROVIDER 的值域）：
+// 描述「材料從哪裡來／由誰保管」，僅供清冊顯示與稽核對照。
 // **不進 KeyRef、不進 kek_id、不進 wrapped 格式標記**——否則同一材料在
-// env 與 ui 下寫出的列不相同，「同鑰互換零語義差異」（D9）當場破功。
+// env 與 ui 下寫出的列不相同，「同鑰互換零語義差異」當場破功。
 const (
 	KEKModeEnv = "env"
 	KEKModeUI  = "ui"
@@ -17,7 +17,7 @@ const (
 	KEKModeHSM = "hsm"
 )
 
-// KeyRef.Provider 值域（三值，非四值；D4）：描述「這串引用要用哪種解包途徑
+// KeyRef.Provider 值域（三值，非四值）：描述「這串引用要用哪種解包途徑
 // 解讀」。env 與 ui 皆映射 local。
 const (
 	KeyRefProviderLocal = "local"
@@ -25,11 +25,11 @@ const (
 	KeyRefProviderHSM   = "hsm"
 )
 
-// ErrKEKFormatMismatch 包裹值格式標記與本 provider 不符（D4）：
+// ErrKEKFormatMismatch 包裹值格式標記與本 provider 不符：
 // 於 Unwrap 之前判定，取代「籠統 GCM 驗證失敗」的無診斷路徑
 var ErrKEKFormatMismatch = errors.New("包裹材料格式標記與現行 KEK provider 不符")
 
-// KeyRef 金鑰引用（kek-provider-modularization D4）：
+// KeyRef 金鑰引用：
 // 本地模式為材料指紋（可由材料重算），委託模式為外部金鑰識別（不可重算）。
 // **相等性 SHALL 僅由 (Provider, KeyID) 決定，不含執行期組態模式**。
 type KeyRef struct {
@@ -41,7 +41,7 @@ type KeyRef struct {
 
 // Equal 金鑰引用相等性：僅比 (Provider, KeyID)。
 // 誠實界定：本地模式的 KeyID 為 64-bit 截斷摘要，相等**不能證明同材料**
-// （D9）——上線判準為「金鑰引用一致且現行代表列全數實際解包成功」。
+// ——上線判準為「金鑰引用一致且現行代表列全數實際解包成功」。
 func (r KeyRef) Equal(o KeyRef) bool {
 	return r.Provider == o.Provider && r.KeyID == o.KeyID
 }
@@ -50,7 +50,7 @@ func (r KeyRef) String() string {
 	return r.Provider + ":" + r.KeyID
 }
 
-// KEKProvider 金鑰加密鑰（KEK）提供者（kek-provider-modularization D4）：
+// KEKProvider 金鑰加密鑰（KEK）提供者：
 // 負責包裹／解包 DEK 等金鑰材料。KEK 明文不落庫、不經 API、不落日誌。
 //
 // 核心不變式：KEK 來源模式的差異 SHALL 完全封裝於本介面之下，
@@ -58,14 +58,13 @@ func (r KeyRef) String() string {
 type KEKProvider interface {
 	// Wrap 包裹明文金鑰材料。
 	//
-	// **nil／空 aad 一律拒絕——三 provider 的共同契約**
-	// （release-transitional-cleanup P2 M1）：
+	// **nil／空 aad 一律拒絕——三 provider 的共同契約**：
 	//   - 本地 provider：底層 AESCrypto.EncryptBytesAAD 回 ErrAADRequired；
 	//   - 委託 provider（kms／hsm）：回 kms.ErrAADRequired——EncodeWrappedKey 對
 	//     委託格式一律要求 AAD，送出空綁定會產出無綁定的委託 blob。
 	//
-	// 原「本地 nil＝不綁定」的 per-provider 差異（kek-provider-modularization
-	// D11.1 裁決 2）已隨無 AAD 寫出能力的原語層刪除而收斂：本地 provider 亦不再
+	// 原「本地 nil＝不綁定」的 per-provider 差異已隨無 AAD
+	// 寫出能力的原語層刪除而收斂：本地 provider 亦不再
 	// 可能寫出無綁定的包裹值，故 A/B/C 共用的契約測試 SHALL 把「空 AAD 被拒」
 	// 列為**共同期望**。
 	Wrap(ctx context.Context, plaintext, aad []byte) ([]byte, error)
@@ -74,7 +73,7 @@ type KEKProvider interface {
 	Unwrap(ctx context.Context, wrapped, aad []byte) ([]byte, error)
 	// KeyRef 金鑰引用（落 kek_id 的值即 KeyRef().KeyID）
 	KeyRef() KeyRef
-	// Mode 執行期組態模式（env／ui／kms／hsm）。D10 雙軌互證：清冊 provider 欄
+	// Mode 執行期組態模式（env／ui／kms／hsm）。清冊與執行期雙軌互證：清冊 provider 欄
 	// SHALL 由此導出，SHALL NOT 重讀 os.Getenv、亦 SHALL NOT 由 KeyRef().Provider
 	// 推導（後者三值，無法區分 env 與 ui）
 	Mode() string
@@ -86,7 +85,7 @@ type KEKProvider interface {
 }
 
 // KeyIDSyntaxValidator 選用介面：委託型 provider 可宣告「何謂本 provider 的正規
-// KeyID 語法」（kek-provider-modularization D11.1 裁決 1「收窄三」）。
+// KeyID 語法」（「收窄三」）。
 //
 // **為何是選用介面而非介面方法**：本地 provider 的 KeyID 是材料指紋，
 // 「正規語法」對它沒有意義；把它塞進 KEKProvider 會逼本地實作寫一個恆真的
@@ -94,14 +93,14 @@ type KEKProvider interface {
 //
 // **判語法、不判歸屬**：實作 SHALL 只回答「這串是不是本 provider 的識別形式」，
 // SHALL NOT 以「等不等於當前金鑰」作答——後者會把退役／過渡期的其他合法識別
-// 一律誤殺（D11.1 明列的失敗判準）。
+// 一律誤殺。
 type KeyIDSyntaxValidator interface {
 	ValidateKeyIDSyntax(keyID string) error
 }
 
-// LocalAESKEKProvider 本地 AES-256-GCM KEK provider（A env 與 B ui **共用同一實作**，
-// D1）：差別僅在材料注入時機（啟動期 env vs 解封期 API）。此共用即
-// 「A↔B 同鑰互換免遷移」（D9）的實作根據——同材料下 KeyRef 相同、格式標記相同、
+// LocalAESKEKProvider 本地 AES-256-GCM KEK provider（A env 與 B ui **共用同一實作**）：
+// 差別僅在材料注入時機（啟動期 env vs 解封期 API）。此共用即
+// 「A↔B 同鑰互換免遷移」的實作根據——同材料下 KeyRef 相同、格式標記相同、
 // 互相可解。
 type LocalAESKEKProvider struct {
 	aes   *AESCrypto
@@ -110,7 +109,7 @@ type LocalAESKEKProvider struct {
 }
 
 // NewLocalAESKEKProvider 建立本地 KEK provider；material 必須為 32 bytes。
-// mode 僅供 D10 稽核對照，**不影響任何落庫值**（KeyRef／格式標記皆與 mode 無關）
+// mode 僅供稽核對照，**不影響任何落庫值**（KeyRef／格式標記皆與 mode 無關）
 func NewLocalAESKEKProvider(material []byte, mode string) (*LocalAESKEKProvider, error) {
 	if mode != KEKModeEnv && mode != KEKModeUI {
 		return nil, fmt.Errorf("本地 KEK provider 的執行期模式僅可為 env／ui，得 %q", mode)

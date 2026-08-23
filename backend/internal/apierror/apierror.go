@@ -1,5 +1,5 @@
 // Package apierror is the neutral home for the machine-readable API error-code
-// system (i18n-backend-error-codes). It depends on neither internal/api nor
+// system . It depends on neither internal/api nor
 // internal/middleware, so both can import it without an import cycle.
 //
 // The envelope is {"error": <zh fallback>, "code": <machine code>, "params": <controlled>}.
@@ -57,7 +57,7 @@ const (
 )
 
 // ParamSpec declares one interpolation parameter of a code. It is the executable
-// contract that keeps params to controlled values (New-C3): the writer rejects
+// contract that keeps params to controlled values: the writer rejects
 // unknown keys, wrong kinds, and enum values outside ZhLabels.
 type ParamSpec struct {
 	Key      string
@@ -75,7 +75,7 @@ type Descriptor struct {
 }
 
 // registry is the single source of truth. Unexported so it cannot be mutated
-// from outside the package (M1); read access is via the accessors below.
+// from outside the package; read access is via the accessors below.
 var registry = map[ErrCode]Descriptor{}
 
 // register adds a code to the registry, enforcing grammar and uniqueness at
@@ -88,7 +88,7 @@ func register(code ErrCode, d Descriptor) ErrCode {
 	if _, dup := registry[code]; dup {
 		panic("apierror: duplicate code: " + s)
 	}
-	// param schema integrity (I2): every ParamEnum MUST carry a ZhLabels allowlist
+	// param schema integrity: every ParamEnum MUST carry a ZhLabels allowlist
 	// so no arbitrary string can ever be interpolated; every param key must be
 	// non-empty; and the template placeholders must exactly match the ParamSpec
 	// keys (no orphan {placeholder}, no unused spec).
@@ -107,7 +107,7 @@ func register(code ErrCode, d Descriptor) ErrCode {
 			panic("apierror: enum param " + p.Key + " for code " + s + " requires a non-empty ZhLabels allowlist")
 		}
 		// an opaque param has no closed value domain, so labels/namespace would be
-		// dead weight that reads as an allowlist it is not (I2 legibility).
+		// dead weight that reads as an allowlist it is not.
 		if p.Kind == ParamOpaque && (len(p.ZhLabels) > 0 || p.EnumNS != "") {
 			panic("apierror: opaque param " + p.Key + " for code " + s + " must not declare ZhLabels/EnumNS")
 		}
@@ -137,7 +137,7 @@ func IsRegistered(code ErrCode) bool {
 	return ok
 }
 
-// DescriptorOf returns the descriptor for code as an immutable copy (M1): the
+// DescriptorOf returns the descriptor for code as an immutable copy: the
 // Params slice is deep-copied so callers cannot mutate the registry's internals.
 func DescriptorOf(code ErrCode) (Descriptor, bool) {
 	d, ok := registry[code]
@@ -161,7 +161,7 @@ func DescriptorOf(code ErrCode) (Descriptor, bool) {
 	return cp, true
 }
 
-// AllCodes returns a sorted copy of every registered code (immutable view, M1).
+// AllCodes returns a sorted copy of every registered code (immutable view).
 func AllCodes() []ErrCode {
 	out := make([]ErrCode, 0, len(registry))
 	for c := range registry {
@@ -195,7 +195,7 @@ func Write(c *gin.Context, status int, r ErrorResponse) {
 	if err := validateParams(d, params); err != nil {
 		// 訊息含被拒的 param 值（請求可控）：淨化＋截斷＋%q 引用後才進日誌，
 		// 否則一個帶換行的值就能在 log 裡偽造整行「另一則事件」，帶 ESC 的值
-		// 還能操縱讀 log 的終端（C4）。
+		// 還能操縱讀 log 的終端。
 		log.Printf("[apierror] param validation failed for %q: %q (path=%s)",
 			logSafe(string(r.Code)), logSafe(err.Error()), c.FullPath())
 		params = nil
@@ -213,7 +213,7 @@ func Write(c *gin.Context, status int, r ErrorResponse) {
 		body["params"] = params
 	}
 	// Meta carries non-text metadata only; it MUST NOT overwrite the reserved
-	// envelope fields (error/code/params) that Write itself owns (I2).
+	// envelope fields (error/code/params) that Write itself owns.
 	for k, v := range r.Meta {
 		if reservedEnvelopeKeys[k] {
 			log.Printf("[apierror] dropped Meta key %q colliding with reserved field (code=%s)", k, r.Code)
@@ -238,7 +238,7 @@ func RespondInternal(c *gin.Context, status int, code ErrCode, cause error) {
 	Write(c, status, ErrorResponse{Code: code})
 }
 
-// validateParams enforces the code's ParamSpec (I2): every declared param MUST
+// validateParams enforces the code's ParamSpec: every declared param MUST
 // be present (so no raw {placeholder} survives), only declared keys are allowed,
 // int params must be numeric, and enum params must be a string within the
 // mandatory ZhLabels allowlist (register guarantees ZhLabels is non-empty).
@@ -315,7 +315,7 @@ func sanitizeParams(d Descriptor, params map[string]any) map[string]any {
 // renderZh substitutes {key} placeholders in the fallback template with param
 // values (enum params use ZhLabels when available, else the raw id). Any
 // placeholder left unfilled (e.g. when params were dropped after a validation
-// failure) is stripped so a raw {key} never reaches the client (I2); such cases
+// failure) is stripped so a raw {key} never reaches the client; such cases
 // are always logged loudly by Write.
 // Substitution is a single pass over the template's placeholders (not a
 // ReplaceAll per param followed by a strip): a substituted value that itself
@@ -333,7 +333,7 @@ func renderZh(d Descriptor, params map[string]any) string {
 		key := m[1 : len(m)-1]
 		v, ok := params[key]
 		if !ok {
-			return "" // unfilled placeholder: stripped, never leaked raw (I2)
+			return "" // unfilled placeholder: stripped, never leaked raw
 		}
 		return stringifyParam(specs[key], v)
 	})
@@ -351,7 +351,7 @@ func stringifyParam(spec ParamSpec, v any) string {
 	return fmt.Sprintf("%v", v)
 }
 
-// logSafe 淨化要寫進伺服端日誌的請求可控字串（C4）。
+// logSafe 淨化要寫進伺服端日誌的請求可控字串。
 //
 // 與出站淨化共用 notifycat.SanitizeOpaque：ESC 序列移除、換行與 U+2028/9
 // 折成空白、控制字元與零寬/bidi 移除，並截斷至 MaxOpaqueRunes（128，

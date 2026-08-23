@@ -24,14 +24,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 本地登入與 MFA 完成路徑的兩條留痕紀律（audit-coverage-closure 批 7＋2.9）。
+// 本地登入與 MFA 完成路徑的兩條留痕紀律。
 //
 // # 缺陷一：來源位址可被偽造（B 類，實測列 id 23057）
 //
 // 修法前 `auth_handler.go`／`auth_mfa_handler.go` 的審計列以 `c.ClientIP()` 取來源
 // 位址。gin 未呼叫 `SetTrustedProxies` 時**信任任意轉送標頭**，故任何人只要對公開的
 // `/auth/login` 送一個 `X-Forwarded-For`，他那筆登入列的 `client_ip` 就是他挑的值。
-// 零權限、零前置條件，偽造的正是稽核事後追人唯一的線索。OIDC 路徑已於批 2 修正
+// 零權限、零前置條件，偽造的正是稽核事後追人唯一的線索。OIDC 路徑已另行修正
 // （`oidc_handler.go` 的 `auditSourceIP`），本地登入是更常用的那條路。
 //
 // # 缺陷二：MFA 完成路徑未標 provider（A 類）
@@ -42,7 +42,7 @@ import (
 // 成功列就是這一筆，多 provider 部署下稽核答不出「他從哪個身分來源進來」。
 // 資料本就在手上（`auth_mfa_service.go` 的 `resp.AuthProviderID`）。
 //
-// # 突變自檢（tasks 7.5／2.9）
+// # 突變自檢
 //
 //	`h.auditSourceIP(c)` 改回 `c.ClientIP()` ⇒ 前三個測試轉紅，provider 測試不受影響。
 //	拿掉 `auditMFALoginSuccess` 的 provider Details ⇒ 只有 provider 測試轉紅。
@@ -299,7 +299,7 @@ func TestRefreshAuditIgnoresForwardedHeaders(t *testing.T) {
 	}
 	env.clearAudit(t)
 
-	// 憑證以 httpOnly cookie 攜帶（refresh-token-httponly-cookie）：
+	// 憑證以 httpOnly cookie 攜帶：
 	// 本格驗的是來源位址紀律，與憑證的載體無關
 	w := env.postWithCookie(t, "/auth/refresh", env.h.Refresh, resp.RefreshToken)
 	if w.Code != http.StatusOK {

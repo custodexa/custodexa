@@ -14,7 +14,7 @@ import (
 	"github.com/custodexa/backend/config"
 )
 
-// release 審計底線的端到端守衛（audit-release-floor）。
+// release 審計底線的端到端守衛。
 //
 // config 層的 `EnforceReleaseSecurityFloor` 單測證明「旗標值被強制回 true」；
 // 本測試接著證明**那個值真的把稽核面帶回來了**——路由與中間件鏈是部署者與稽核
@@ -34,8 +34,8 @@ var auditLogPaths = []string{
 
 // auditMiddlewareStableName 全域審計中間件於鏈指紋中的穩定名（與 golden 同源）。
 //
-// **audit-coverage-closure 批 1 起改為套件限定名**：該波在 `AuditLogMiddleware`
-// 的閉包外加入匿名拒絕留痕器的建構，函式因此不再被編譯器內聯進 `main`，
+// **改為套件限定名**：`AuditLogMiddleware` 的閉包外加入匿名拒絕留痕器
+// 的建構，函式因此不再被編譯器內聯進 `main`，
 // 註冊進鏈的閉包符號自 `main.main.AuditLogMiddleware.funcN`（stableName 收斂為
 // `main.AuditLogMiddleware`）變為套件自身的 `…/internal/middleware.AuditLogMiddleware.func1`。
 // **鏈的內容與順序未變**，變的只是同一個函式物件的符號名；路由 golden 的

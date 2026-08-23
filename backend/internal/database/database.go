@@ -75,7 +75,7 @@ func InitDatabase(cfg *config.Config) error {
 
 // schemaParityModels 全部由 baseline 建表的 model（單一事實源）。
 //
-// **本清單不再被執行，只被驗證**（migration-baseline-compression D3）：
+// **本清單不再被執行，只被驗證**：
 // 開機 AutoMigrate 已移除，schema 的唯一事實源是 baseline 的 DDL。這份清單自
 // 「要建哪些表」轉為「baseline 必須與哪些 model 對得上」的比對來源，兩層守衛消費它：
 //
@@ -97,35 +97,35 @@ var schemaParityModels = []interface{}{
 	&model.ClipboardEvent{},          // clipboard-audit: 剪貼簿內容留存
 	&model.ChangeSecretPlan{},        // change-secret: 改密計劃
 	&model.ChangeSecretRecord{},      // change-secret: 改密記錄
-	&model.ChangeSecretCandidate{},   // change-secret-ssh-deepening: 未驗證候選憑證（一帳號至多一筆）
-	&model.SecurityPolicy{},          // auth-hardening: 安全政策 key-value
-	&model.PasswordHistory{},         // auth-hardening: 密碼歷史（8.3.7）
-	&model.RefreshToken{},            // auth-hardening: Web 會話 refresh 憑證（8.2.8/D6）
-	&model.AccessReview{},            // audit-workflows: 週期性存取複審簽核（7.2.4/D2）
-	&model.DailyReviewLog{},          // audit-log-compliance: 每日審閱簽核（10.4.1）
-	&model.AuditFailureEvent{},       // audit-log-compliance: 審計機制失效事件（10.7.2/10.7.3）
-	&model.SyslogSetting{},           // audit-log-compliance: syslog 轉發設定（10.3.3）
-	&model.ExportSigningKey{},        // audit-log-compliance: 匯出簽章金鑰（10.3.4/F5）
-	&model.IntegrityBaseline{},       // audit-log-compliance: 完整性啟用基準（10.3.4，防清空規避）
+	&model.ChangeSecretCandidate{},   // 未驗證候選憑證（一帳號至多一筆）
+	&model.SecurityPolicy{},          // 安全政策 key-value
+	&model.PasswordHistory{},         // 密碼歷史（8.3.7）
+	&model.RefreshToken{},            // Web 會話 refresh 憑證（8.2.8）
+	&model.AccessReview{},            // audit-workflows: 週期性存取複審簽核（7.2.4）
+	&model.DailyReviewLog{},          // 每日審閱簽核（10.4.1）
+	&model.AuditFailureEvent{},       // 審計機制失效事件（10.7.2/10.7.3）
+	&model.SyslogSetting{},           // syslog 轉發設定（10.3.3）
+	&model.ExportSigningKey{},        // 匯出簽章金鑰（10.3.4）
+	&model.IntegrityBaseline{},       // 完整性啟用基準（10.3.4，防清空規避）
 	&model.AuditCheckpoint{},         // audit-checkpoint-chain: 簽章檢查點鏈（偵測「列被刪」）
 	&model.CheckpointSigningKey{},    // audit-checkpoint-chain: 檢查點鏈 Ed25519 簽章鑰（自始帶版本欄）
 	&model.AuditCheckpointTrim{},     // audit-checkpoint-chain: 鏈修剪記錄（殘鏈的新起點錨定，不隨被修剪點消失）
-	&model.DataKey{},                 // key-management-envelope: 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）
-	&model.TransmissionConsent{},     // transmission-security-policy: 傳輸風險同意記錄（D3）
-	&model.UserGroup{},               // user-group-authorization: 使用者群組（授權主體）
-	&model.AssetNode{},               // asset-node-tree: 資產×節點成員（多歸屬 M2M）
-	&model.AssetAccount{},            // asset-multi-account: 資產帳號（憑證自內嵌欄位遷出）
-	&model.OIDCProvider{},            // idp-oidc-integration: OIDC provider 設定（多實例）
-	&model.UserExternalIdentity{},    // idp-oidc-integration: 外部身分（issuer+client_id+subject）
-	&model.OIDCFlowState{},           // idp-oidc-integration: 登入流程狀態（一次性）
-	&model.OIDCLoginTicket{},         // idp-oidc-integration: callback→SPA 交棒憑證（一次性）
+	&model.DataKey{},                 // 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）
+	&model.TransmissionConsent{},     // 傳輸風險同意記錄
+	&model.UserGroup{},               // 使用者群組（授權主體）
+	&model.AssetNode{},               // 資產×節點成員（多歸屬 M2M）
+	&model.AssetAccount{},            // 資產帳號（憑證自內嵌欄位遷出）
+	&model.OIDCProvider{},            // OIDC provider 設定（多實例）
+	&model.UserExternalIdentity{},    // 外部身分（issuer+client_id+subject）
+	&model.OIDCFlowState{},           // 登入流程狀態（一次性）
+	&model.OIDCLoginTicket{},         // callback→SPA 交棒憑證（一次性）
 	&model.AuditRetentionWatermark{}, // auditor-workbench: 保留期清除水位（永不清除，逐類別一列）
-	// audit-chain-scheduled-verification: 兩層自動驗證的營運狀態（單列）。
+	// 兩層自動驗證的營運狀態（單列）。
 	// **明示為營運狀態而非證據**：本表不在鏈的覆蓋範圍內，可由 DB 直寫改寫成
 	// 「最近驗過且通過」；它承載的是「機制到底有沒有在跑」這個 watchdog 盲點，
 	// 以及未結案失敗區間集合（結案的唯一合法依據）
 	&model.AuditChainVerifyState{},
-	// ldap-settings-migration：壓縮前本 model **刻意排除**於 AutoMigrate 清單之外，
+	// 壓縮前本 model **刻意排除**於 AutoMigrate 清單之外，
 	// 因為 GORM 不產出 inline CHECK，先建出的表會使 migration 的
 	// `CREATE TABLE IF NOT EXISTS` 靜默略過，`CHECK (singleton = 1)` 在生產缺席。
 	// AutoMigrate 消失後該排除理由一併消失：表由 baseline 建立，CHECK 就在建表語句裡。

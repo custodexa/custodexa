@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// begin → callback → exchange 全鏈路（idp-oidc-integration tasks 4.1/4.3，design D4/D5/D7b）。
+// begin → callback → exchange 全鏈路。
 //
 // 前面幾支測試各自打在流程的一段上；本檔把三段串起來跑真實的授權碼交換，
 // 覆蓋 Callback 的固定順序：消費 flow state → 驗證 id_token → 查身分 →

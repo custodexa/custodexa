@@ -29,7 +29,7 @@ func (f *fakeLDAPAuthenticator) Authenticate(username, password string) (*LDAPUs
 	return f.info, nil
 }
 
-// staticLDAPResolver 測試用的登入解析器（ldap-settings-migration 2.8）：
+// staticLDAPResolver 測試用的登入解析器：
 // 固定回「可撥號、無傳輸風險」的解析結果，交出指定的 fake 認證器。
 //
 // **既有格點只換注入形狀、不改行為斷言**——改動前是注入 authenticator 且
@@ -228,7 +228,7 @@ func TestLoginLDAP_MFARequired(t *testing.T) {
 }
 
 // TestLoginLDAP_InactiveShadowUserRejectedAfterDirectoryAuth 已停用的影子用戶被拒絕，
-// 但**判定發生在目錄認證之後**（security-backlog-settlement 塊 4）。
+// 但**判定發生在目錄認證之後**（塊 4）。
 //
 // 原行為是「不打目錄直接拒絕」，省下一次目錄請求；代價是未認證者送任意密碼即可
 // 分辨「此帳號存在但已停用」與「此帳號不存在」——帳號存在性預言機的 LDAP 側。
@@ -255,7 +255,7 @@ func TestLoginLDAP_InactiveShadowUserRejectedAfterDirectoryAuth(t *testing.T) {
 		"停用判定須在目錄認證之後：提前返回會使停用帳號與不存在帳號的回應可辨")
 }
 
-// TestChangePassword_LDAPUserRejected 改密路徑必須拒絕 is_ldap 用戶（design.md D5）
+// TestChangePassword_LDAPUserRejected 改密路徑必須拒絕 is_ldap 用戶
 func TestChangePassword_LDAPUserRejected(t *testing.T) {
 	db, mock, gormDB := setupAuthMockDB(t)
 	_ = db

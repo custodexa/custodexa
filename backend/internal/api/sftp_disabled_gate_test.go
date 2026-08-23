@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// TestSFTPDisabledAssetReturns403 停用資產檔案端點硬擋（asset-list-info-layering
-// D8）：檔案面與 connect-token 同收口——授權檢查後 403+asset_disabled，
+// TestSFTPDisabledAssetReturns403 停用資產檔案端點硬擋：
+// 檔案面與 connect-token 同收口——授權檢查後 403+asset_disabled，
 // 拒絕發生在任何 SFTP 連線建立之前（sftpService 為 nil 仍安全通過即為證）
 func TestSFTPDisabledAssetReturns403(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// === 密碼雜湊介面（password-hasher-interface）===
+// === 密碼雜湊介面===
 //
 // 本 change **不選演算法**：完成後 bcrypt 仍是唯一實作，介面與遷移機制就位。
 // 抽介面的動機是「演算法無法更換」這個事實本身——場域要求 FIPS 140-3 合規
@@ -200,7 +200,7 @@ func TestNeedsRehashOnEmptyHashIsFalse(t *testing.T) {
 
 // TestVerifierRecognisesAllSupportedAlgorithms legacy 掃描必須涵蓋全部支援的演算法。
 //
-// 理由（tasks 4.4）：僅比對當前演算法會讓舊雜湊的帳號逃過 `admin123` 掃描，
+// 理由：僅比對當前演算法會讓舊雜湊的帳號逃過 `admin123` 掃描，
 // 而那正是**最可能中招**的帳號——久未登入故未遷移。
 // 本 change 只有 bcrypt，但 `SupportedAlgorithms` 必須存在且被掃描端使用，
 // 使日後新增實作時掃描自動涵蓋，而不是漏掉。

@@ -63,7 +63,7 @@ describe('policyUnit — unit_key 查譯 + 降級不回空字串（rr-I9）', ()
   })
 })
 
-// policyMin（policy-numeric-lower-bounds）：下界要在輸入當下就擋住，
+// policyMin：下界要在輸入當下就擋住，
 // 不能只靠存檔時的後端驗證
 describe('policyMin — 數值輸入框下界', () => {
   it('非 zero_disables 且有 min → 用 min（三個搬遷鍵的實際形態）', () => {

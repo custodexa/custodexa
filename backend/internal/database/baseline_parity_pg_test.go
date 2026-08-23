@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// model ↔ baseline 的**第 2 層** parity 守衛（migration-baseline-compression D3）。
+// model ↔ baseline 的**第 2 層** parity 守衛。
 //
 // 第 1 層（schema_parity_test.go）只比對欄位名，且不碰資料庫。本層補上型別、長度、
 // 可空與預設，以及一組**具名的結構斷言**——那些是壓縮前散落在各 migration 測試裡、
@@ -180,7 +180,7 @@ func TestBaselineMatchesModelSchemaPostgres(t *testing.T) {
 // **每一條都是壓縮前某個 migration 測試守的東西**，其對象（migration 函式）隨壓縮
 // 退場，但不變式本身沒有：
 //
-//	idx_asset_accounts_default        一資產至多一個預設帳號（asset-multi-account）
+//	idx_asset_accounts_default 一資產至多一個預設帳號
 //	idx_asset_accounts_username       一資產內帳號名唯一（軟刪列不佔名）
 //	idx_data_keys_purpose_version_kek 同 slot 至多一列帶材料（重包狀態機／AAD 完備性）
 //	idx_failure_events_single_open    一機制至多一個未結案失敗區間（PCI 10.7）

@@ -178,7 +178,7 @@ func seedAuditRows(t *testing.T, db *gorm.DB, n int, createdAt time.Time) {
 	}
 }
 
-// ── 4.1 canonical 編碼（O1）────────────────────────────────────────────
+// ── 4.1 canonical 編碼 ────────────────────────────────────────────
 
 // TestCheckpointCanonicalGolden 兩種 canonical 編碼的位元組 golden。
 //
@@ -234,7 +234,7 @@ func TestCheckpointCanonicalGolden(t *testing.T) {
 		t.Errorf("聚合雜湊不符逐位元組重算\n got: %s\nwant: %s", gotAgg, want)
 	}
 
-	// 空區間＝空輸入 SHA-256（D4）
+	// 空區間＝空輸入 SHA-256
 	emptyHash, emptyCount := ComputeAggHash(nil)
 	if emptyCount != 0 {
 		t.Errorf("空區間列數 = %d，want 0", emptyCount)
@@ -317,7 +317,7 @@ func TestCheckpointAggregate(t *testing.T) {
 }
 
 // TestCheckpointAggregateKeyVersionCovered 改 key_version 必使聚合雜湊改變。
-// 列級 HMAC payload **不含** key_version（相容性紀律），鏈於此新增覆蓋（D2）
+// 列級 HMAC payload **不含** key_version（相容性紀律），鏈於此新增覆蓋
 func TestCheckpointAggregateKeyVersionCovered(t *testing.T) {
 	db := setupCheckpointDB(t)
 	svc, _ := newCheckpointService(t, db, nil, nil)
@@ -335,7 +335,7 @@ func TestCheckpointAggregateKeyVersionCovered(t *testing.T) {
 		t.Fatalf("Aggregate 2: %v", err)
 	}
 	if before == after {
-		t.Errorf("改 key_version 未使聚合雜湊改變：D2 的新增覆蓋失效")
+		t.Errorf("改 key_version 未使聚合雜湊改變：新增覆蓋失效")
 	}
 }
 
@@ -756,7 +756,7 @@ func TestCheckpointGraceIsConfigurable(t *testing.T) {
 
 // TestCheckpointGraceCapturesInFlightRows grace 期間落地的列被計入本區間。
 //
-// 這是 D3 的核心行為：觸發瞬間取上界、等 grace、再掃描——若實作把
+// 這是封章的核心行為：觸發瞬間取上界、等 grace、再掃描——若實作把
 // 「取上界」與「掃描」併成同一步，本測試的第 11 列就會落在區間外
 func TestCheckpointGraceCapturesInFlightRows(t *testing.T) {
 	db := setupCheckpointDB(t)
@@ -997,7 +997,7 @@ func TestCheckpointAnchorStatusThreeStates(t *testing.T) {
 			if stored.AnchorStatus != tc.want {
 				t.Errorf("anchor_status = %q，want %q", stored.AnchorStatus, tc.want)
 			}
-			// 丟棄必須有失效留痕，且用**獨立機制碼**（O4）
+			// 丟棄必須有失效留痕，且用**獨立機制碼**
 			if tc.want == model.AnchorStatusDropped {
 				if len(failures) == 0 {
 					t.Fatalf("錨定丟棄未產生失效事件：靜默即違反 spec")
@@ -1025,7 +1025,7 @@ func TestCheckpointAnchorStatusThreeStates(t *testing.T) {
 
 // TestCheckpointAnchorFailureDoesNotBlockSealing 錨定丟棄不影響封章與後續運作（5.4）。
 //
-// 裁決 5 的落點：外部依賴不得成為全系統單點
+// 外部依賴不得成為全系統單點
 func TestCheckpointAnchorFailureDoesNotBlockSealing(t *testing.T) {
 	db := setupCheckpointDB(t)
 	anchor := &fakeAnchor{enabled: true, full: true}

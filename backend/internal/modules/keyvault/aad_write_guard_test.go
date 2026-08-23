@@ -16,13 +16,13 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// cutover 的**結構保證**守衛（kek-provider-modularization D5／tasks 1.7）。
+// cutover 的**結構保證**守衛。
 //
-// tasks 1.7 的失敗判準之一是「cutover 後仍可能產生新的 enc:v，使『現查殘餘為 0』
+// 驗收條件的失敗判準之一是「cutover 後仍可能產生新的 enc:v，使『現查殘餘為 0』
 // 淪為瞬時快照」。本檔原以兩道互補守衛（G1 介面反射／G2 AST 來源掃描）釘住
 // 「服務層不可能寫出無 AAD 密文」。
 //
-// **無 AAD 寫入構件的 AST 守衛已於 release-transitional-cleanup D10 移除**：
+// **無 AAD 寫入構件的 AST 守衛已於過渡格式收尾時移除**：
 // 其守衛對象（`keyvault.KeyManagerService.encryptNoAADForRollback` 與
 // `crypto.EncodeEnvelope`）連同 `EncodeWrappedKey` 的無 AAD 分支已整組刪除，
 // 「寫入端不可能產出無 AAD 密文」自此是**建構事實**而非靠 AST 名稱比對維持的
@@ -30,7 +30,7 @@ import (
 // （`EncodeEnvelope\b|encryptNoAADForRollback` 於非測試碼零命中）與
 // `pkg/crypto` 的終態負向測試（空 scheme 編碼必回錯）。
 //
-// **P2 M1（release-transitional-cleanup 冷驗收 E 批）再往下收一層**：
+// **P2（E 批）再往下收一層**：
 // `crypto.AESCrypto` 的四個無 AAD 入口（Encrypt／Decrypt／EncryptBytes／
 // DecryptBytes）已刪除，且 EncryptBytesAAD／DecryptBytesAAD 於 len(aad)==0 時
 // 回 `crypto.ErrAADRequired`。原先「守衛已刪但入口還在」的缺口就此封住——
@@ -40,7 +40,7 @@ import (
 // 與委託 KMS `Encrypt` 豁免的收窄。
 
 // guardScanRoots 掃描範圍：服務層（internal）、組裝層（cmd）**與 pkg**。
-// pkg 納入是 codex med #6 的直接修正——原先排除 pkg 等於留了一整個目錄的
+// pkg 納入是審查提出的直接修正——原先排除 pkg 等於留了一整個目錄的
 // 免檢區，新 package 可在其中組出無 AAD 寫入而守衛不知情。
 var guardScanRoots = []string{"internal", "cmd", "pkg"}
 
@@ -54,12 +54,12 @@ const serviceGuardModulePath = "github.com/custodexa/backend"
 
 // repoRoot 定位 backend module 根（本套件所有守衛的共用掃描根）。
 //
-// **不用 cwd 相對、也不用固定層數 `..`**（modular-architecture W1 1.19）：
+// **不用 cwd 相對、也不用固定層數 `..`**：
 // 兩者都與「本 package 目前住在樹的第幾層」綁死，package 一下移就指向錯誤位置，
 // 而 WalkDir 對不存在／空目錄多半只回零命中——守衛於是在掃空的情況下照樣綠。
 // 改以「自本測試檔位置向上找 go.mod，並核對 module 行」為身分錨點：檔案搬到
 // module 內任何深度都仍指向同一個根，錨點若失效則 Fatal 而非靜默掃錯樹。
-// 作法比照 cmd/server 的 lifecycle／audit-points／gatewayapi 三個 W1 守衛。
+// 作法比照 cmd/server 的 lifecycle／audit-points／gatewayapi 三個守衛。
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
@@ -172,7 +172,7 @@ func scanEncryptCalls(t *testing.T, root string, names map[string]bool) []encryp
 			if d.IsDir() {
 				// testdata 必須跳過：`cmd/server` 測試會在其 testdata 內建刪臨時
 				// 目錄，與本 WalkDir 並行即 ENOENT（同 aad_strict_guard_test.go
-				// 的冷驗收 B1 根因，此處為同族潛伏面，一併封住）。
+				// 的 B1 根因，此處為同族潛伏面，一併封住）。
 				if d.Name() == "testdata" {
 					return filepath.SkipDir
 				}
@@ -263,7 +263,7 @@ func TestColumnCodecHasNoPlainEncrypt(t *testing.T) {
 	for _, banned := range []string{"Encrypt", "EncryptString", "Seal"} {
 		if _, ok := kmType.MethodByName(banned); ok {
 			t.Fatalf("*keyvault.KeyManagerService 不得暴露無 AAD 寫入方法 %q"+
-				"（tasks 1.7：無 AAD 寫入方法須自 codec 介面與型別移除）", banned)
+				"（無 AAD 寫入方法須自 codec 介面與型別移除）", banned)
 		}
 	}
 
@@ -272,17 +272,16 @@ func TestColumnCodecHasNoPlainEncrypt(t *testing.T) {
 }
 
 // delegatedKMSEncryptExemption 唯一豁免：AWS KMS 委託 provider 對 SDK 的
-// `client.Encrypt(ctx, &kms.EncryptInput{...})` 呼叫
-// （kek-provider-modularization D11／D11.1）。
+// `client.Encrypt(ctx, &kms.EncryptInput{...})` 呼叫。
 //
 // **為何是豁免而非違規**：本守衛攔的是「無 AAD 的欄位加密」，其歷史對象是
 // crypto.AESCrypto 的無 AAD 寫出（產出裸 base64、不帶任何綁定；該方法本身已於
-// P2 M1 刪除，故守衛現在守的是「有人把它加回來」）。KMS 的 Encrypt 是另一個
+// P2 刪除，故守衛現在守的是「有人把它加回來」）。KMS 的 Encrypt 是另一個
 // 東西——它是**委託 KEK 的包裹原語**，而且**不可能無 AAD**：
 // kmsKEKProvider.Wrap 於 len(aad)==0 時直接回 ErrAADRequired，不會走到這行
 // （由 pkg/crypto/kms 的 TestWrapUnwrapRejectEmptyAAD 釘住）。
 //
-// **豁免收得極窄——三個條件同時成立才豁免（冷驗收 CV-L2 收窄）**：
+// **豁免收得極窄——三個條件同時成立才豁免（CV-L2 收窄）**：
 // 精確檔案路徑（不是套件前綴）、精確外層函式名、精確接收運算式。
 //
 // **原本的範圍過寬**：舊版比對的是套件路徑前綴 `pkg/crypto/kms/`＋函式名 `Wrap`，
@@ -321,7 +320,7 @@ func filterDelegatedKMSEncrypt(calls []encryptCall) []encryptCall {
 // TestDelegatedKMSEncryptExemptionIsNarrow 豁免的**負向控制**。
 //
 // **本測試原先只擋得住「刪掉某一個條件」，擋不住「放寬某一個條件的值域」**
-// （冷驗收 CV-L1，守衛假綠第 7 形態）：實測把 funcs 加進 Unwrap／EncryptColumn、
+// （CV-L1，守衛假綠第 7 形態）：實測把 funcs 加進 Unwrap／EncryptColumn、
 // 或把路徑放寬成 "pkg"，三個資料格全部維持綠——因為三格用的樣本都落在放寬後的
 // 範圍之外，測不到範圍本身。故除了資料格，另加**字面釘子**直接斷言範圍的形狀
 // （與本檔既有的 wire contract 釘死手法一致）。

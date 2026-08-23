@@ -36,7 +36,7 @@ func appendUserRole(t *testing.T, db *gorm.DB, userID uint, roleName string) {
 	}
 }
 
-// TestConnectRoleUsesLiveDBRole 驗證 CPG-010-01：connect 簽發與兌換的 admin 特權判定
+// TestConnectRoleUsesLiveDBRole：connect 簽發與兌換的 admin 特權判定
 // SHALL 以 DB 現查有效角色為準，不憑 JWT／token 攜帶的角色快照——降權即時生效、
 // 撤權殘窗歸零。fixture 中 user2 具 admin 角色但對 asset1 無顯式 grant（僅 user1 有），
 // 其連線能力純來自 admin 角色短路，故降權後即失去連線資格，是最乾淨的觀測點。

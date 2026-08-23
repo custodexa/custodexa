@@ -1,5 +1,5 @@
 /**
- * 頁籤批次關閉的純函數集（workspace-tab-context-menu D3）
+ * 頁籤批次關閉的純函數集
  * 一律回傳 { tabs, activeKey } 新值，不變更輸入
  */
 

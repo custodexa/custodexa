@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// change-secret-ssh-deepening 安全修補：遠端可控字串零落庫的**寫入端**守衛。
+// 改密的安全修補：遠端可控字串零落庫的**寫入端**守衛。
 //
 // 攻擊路徑（獨立驗收者實證）：目標機在 chpasswd 階段把收到的 stdin 回吐 stderr，
 // 該 stdin 含本輪產生的新密碼；修補前 record.error 因而變成
@@ -84,7 +84,7 @@ func TestChangeSecretRemoteStderrNeverReachesRecord(t *testing.T) {
 	assert.NotContains(t, rec.Error, "oldpass123", "record.error 含舊密碼明文")
 	assert.Equal(t, model.ChangeSecretReasonRemoteRejected, rec.Error,
 		"遠端非零退出 SHALL 記為固定原因碼")
-	// D3 的可知性語義不得因本修補而破壞
+	// 遠端失敗的可知性語義不得因本修補而破壞
 	assert.Equal(t, model.ChangeSecretFailed, rec.Status,
 		"指令跑完但非零退出＝遠端確定未變更，SHALL 為 failed 而非 unverified")
 	assert.EqualValues(t, 0, f.candidateCount(t), "遠端確定未變更 ⇒ 候選 SHALL 清除")
@@ -191,7 +191,7 @@ func TestChangeSecretAlertPayloadHasNoRemoteText(t *testing.T) {
 
 // TestChangeSecretLocalPreconditionIsCleanFailure 本地前置驗證（username 含 `:`）
 // 在完全未接觸遠端時失敗 ⇒ SHALL 為乾淨 failed 且不留候選。
-// 若誤歸為 unverified，候選會一直卡著並擋住該帳號後續全部改密（D8）
+// 若誤歸為 unverified，候選會一直卡著並擋住該帳號後續全部改密
 func TestChangeSecretLocalPreconditionIsCleanFailure(t *testing.T) {
 	f := setupChangeSecretFixture(t, "ro:ot", "oldpass123")
 	plan := f.plan(t, nil)
@@ -207,7 +207,7 @@ func TestChangeSecretLocalPreconditionIsCleanFailure(t *testing.T) {
 		"本地前置驗證失敗＝遠端未被觸及，SHALL NOT 歸為 unverified")
 	assert.Equal(t, model.ChangeSecretReasonInvalidAccountName, records[0].Error)
 	assert.EqualValues(t, 0, f.candidateCount(t),
-		"乾淨失敗 SHALL 清候選，否則該帳號後續改密會被 D8 永久擋下")
+		"乾淨失敗 SHALL 清候選，否則該帳號後續改密會被永久擋下")
 }
 
 // TestChangeSecretRemoteStderrNeverReachesUnknownStateRecord 補上「指令送達後斷線」

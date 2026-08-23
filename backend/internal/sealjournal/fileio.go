@@ -34,7 +34,7 @@ var syncDirFn = syncDir
 
 // syncDir 同步父目錄項。首次建立 journal 後必須執行：
 // 未同步目錄項時，崩潰後檔案本身可能不存在，下次啟動又走「檔案不存在」分支
-// 而從零起算，單調計數器的意義即被抹除（D6.5 啟動恢復 (0)）。
+// 而從零起算，單調計數器的意義即被抹除。
 func syncDir(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {

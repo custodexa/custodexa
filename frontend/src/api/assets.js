@@ -126,7 +126,7 @@ export function deleteAsset(id) {
 }
 
 /**
- * 測試資產連線（db-protocol-connection-test 4.1）
+ * 測試資產連線
  *
  * skipErrorToast：撥測失敗由 Assets.vue 以撥測語義呈現。走全域攔截器會把
  * 伺服端可正常服務的撥測失敗誤報成「網路錯誤」，叫使用者去查防火牆。
@@ -154,7 +154,7 @@ export function resetAssetHostKey(id) {
   return request({ url: `/assets/${id}/host-key`, method: 'delete' })
 }
 
-/** 節點平面列表（asset-node-tree：含 parent_id/path/直掛 assets） */
+/** 節點平面列表（含 parent_id/path/直掛 assets） */
 export function getAssetGroups() {
   return request({ url: '/asset-groups', method: 'get' })
 }
@@ -187,7 +187,7 @@ export function deleteAssetGroup(id) {
 }
 
 /**
- * 取得既有標籤清單（authz-tag-node-filters D3）：canonical 去重＋使用數，
+ * 取得既有標籤清單：canonical 去重＋使用數，
  * 供篩選下拉、表單自動完成與治理介面共用；僅 admin/auditor
  * @returns {Promise} { data: [{ name, count }] }
  */
@@ -199,7 +199,7 @@ export function getAssetTags() {
 }
 
 /**
- * 標籤全面改名（D8）：from→to 套用至所有含 from 的資產；to 既存即合併。admin only
+ * 標籤全面改名：from→to 套用至所有含 from 的資產；to 既存即合併。admin only
  * @returns {Promise} { affected }
  */
 export function renameAssetTag(from, to) {
@@ -211,7 +211,7 @@ export function renameAssetTag(from, to) {
 }
 
 /**
- * 標籤全面刪除（D8）：自所有資產移除。admin only
+ * 標籤全面刪除：自所有資產移除。admin only
  * @returns {Promise} { affected }
  */
 export function deleteAssetTag(name) {

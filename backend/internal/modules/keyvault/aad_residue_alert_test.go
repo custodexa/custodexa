@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 啟動哨兵的驗收（release-transitional-cleanup D6）。
+// 啟動哨兵的驗收。
 //
 // 語義已自「遷移進度提示」改為「不可能態警報」：AAD 恆強制後，非 `enc:a1` 的
 // 登記欄位值只可能來自程式缺陷或繞過 API 的資料庫直寫。哨兵屬**資料層

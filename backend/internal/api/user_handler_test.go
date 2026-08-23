@@ -97,7 +97,7 @@ func (m *MockUserService) CountLocalAdmins() (int64, error) {
 	return args.Get(0).(int64), args.Error(1)
 }
 
-// 外部身分管理四操作（idp-oidc-integration 2.8）
+// 外部身分管理四操作
 func (m *MockUserService) ListExternalIdentities(userID uint) ([]identity.ExternalIdentityDTO, error) {
 	args := m.Called(userID)
 	if args.Get(0) == nil {
@@ -718,7 +718,7 @@ func TestUserHandler_Delete(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// message 欄已移除（backend-i18n-unification D9：成功回應不攜帶 UI 文案）
+		// message 欄已移除（成功回應不攜帶 UI 文案）
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -840,7 +840,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// message 欄已移除（backend-i18n-unification D9：成功回應不攜帶 UI 文案）
+		// message 欄已移除（成功回應不攜帶 UI 文案）
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -1012,7 +1012,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// message 欄已移除（backend-i18n-unification D9：成功回應不攜帶 UI 文案）
+		// message 欄已移除（成功回應不攜帶 UI 文案）
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -1184,7 +1184,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// message 欄已移除（backend-i18n-unification D9：成功回應不攜帶 UI 文案）
+		// message 欄已移除（成功回應不攜帶 UI 文案）
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -1222,7 +1222,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 	t.Run("密碼政策違規回可讀訊息", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		// 長度等規則已下沉到 service 層政策 validator（auth-hardening D3），
+		// 長度等規則已下沉到 service 層政策 validator，
 		// handler 只負責把 PasswordPolicyViolation 映射為 400
 		mockUserService.On("ChangePassword", uint(1), "12345").
 			Return(&policy.PasswordPolicyViolation{

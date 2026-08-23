@@ -8,7 +8,7 @@
 </template>
 
 <script setup>
-// MFA 綁定 QR（mfa-qr-and-button-contrast D-2）：otpauth URL 本地 canvas 渲染，
+// MFA 綁定 QR：otpauth URL 本地 canvas 渲染，
 // secret 不出瀏覽器。白底磁貼＝掃碼器需要亮底深碼（暗色主題下反白是掃碼標準）；
 // 渲染失敗靜默隱藏——手輸金鑰路徑不受影響（漸進增強）
 import { ref, watch, onMounted } from 'vue'

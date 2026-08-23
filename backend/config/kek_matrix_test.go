@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// KEK_PROVIDER 判定矩陣的**逐格測試**（kek-provider-modularization D2.2；
-// legacy 兩格 3b-legacy／6b 隨 release-transitional-cleanup D3 拆除；
+// KEK_PROVIDER 判定矩陣的**逐格測試**（legacy 兩格 3b-legacy／6b 隨無 AAD
+// 相容窗拆除而消失；
 // 遮蔽格 12 隨 KEK 材料鍵收斂為單一 `ENCRYPTION_KEY` 消滅——單鍵下不存在
 // 可被遮蔽的第二把鑰）。
 //
@@ -118,7 +118,7 @@ func TestKEKMatrixRow3b_EnvWithInvalidMaterial(t *testing.T) {
 			}, false, "3b")
 		})
 	}
-	// 「恰 32 個空白字元」（codex high）：判定順序上先被「trim 後為空＝無值」攔下，
+	// 「恰 32 個空白字元」：判定順序上先被「trim 後為空＝無值」攔下，
 	// 故落**列 4**（宣告 env 卻無材料）而非列 3b。兩者皆 fail-close，此處釘住的是
 	// 「不得因位元組長度符合 32 而放行」——若哪天空白被當成合法材料，本測試先紅。
 	t.Run("恰 32 個空白字元被拒（落列 4：trim 後為空＝無值）", func(t *testing.T) {
@@ -346,7 +346,7 @@ func TestKEKRow1SkipsMaterialFormatValidation(t *testing.T) {
 	}
 }
 
-// DefaultSecretViolations 的**模式感知**（D3）：兩模式各有專測
+// DefaultSecretViolations 的**模式感知**：兩模式各有專測
 func TestDefaultSecretViolationsModeAware(t *testing.T) {
 	cfg := &Config{Security: SecurityConfig{JWTSecret: "a-real-jwt-secret-32-bytes-long!"}}
 

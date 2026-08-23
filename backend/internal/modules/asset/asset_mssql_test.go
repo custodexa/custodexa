@@ -56,7 +56,7 @@ func TestValidateMSSQLHostComma(t *testing.T) {
 	}
 }
 
-// 認證類型值域（D3）。domain 與值域外**分成兩碼**：前者是「值合法但本版做不到」，
+// 認證類型值域。domain 與值域外**分成兩碼**：前者是「值合法但本版做不到」，
 // 靜默降級為 sql 會讓管理員以為域認證已生效；後者只是打錯字。
 func TestNormalizeAccountAuthMethod(t *testing.T) {
 	cases := []struct {

@@ -30,16 +30,16 @@ var (
 	ErrUsernameRequired = errors.New("此協議需要使用者名稱")
 	// ErrSftpUsernameRequired VNC SFTP 啟用時須提供 SSH 帳號（vnc-file-transfer）
 	ErrSftpUsernameRequired = errors.New("啟用 SFTP 檔案傳輸需要目標主機的 SSH 使用者名稱")
-	// ErrInvalidRDPSecurity RDP 安全模式白名單（transmission-security-policy D4）
+	// ErrInvalidRDPSecurity RDP 安全模式白名單
 	ErrInvalidRDPSecurity = errors.New("rdp_security 僅允許空值（沿現狀）、nla 或 tls")
-	// ErrInvalidAccessPolicy 存取政策段位白名單（asset-level-access-policy D1）
+	// ErrInvalidAccessPolicy 存取政策段位白名單
 	ErrInvalidAccessPolicy = errors.New("access_policy 僅允許空值（跟隨全域預設）、open、reason 或 approval")
 	// ErrInvalidDBTLSMode DB TLS 模式白名單：未定義值在 dbproxy 不加任何 TLS 旗標
 	// （postgres 落回可降級的 prefer、redis 落回明文），且會騙過傳輸風險判定，必須擋
 	ErrInvalidDBTLSMode = errors.New("db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full")
 	// ErrInvalidProtocol 無效的協議
 	ErrInvalidProtocol = errors.New("無效的協議，僅支援 ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s")
-	// ErrMSSQLHostComma mssql 主機含逗號（mssql-web-cli D8）：sqlcmd 的 -S host,port
+	// ErrMSSQLHostComma mssql 主機含逗號：sqlcmd 的 -S host,port
 	// 以逗號分隔埠，host 內含逗號會被解讀成埠。只擋 mssql，不動 localpty.SafeArg
 	// 的通用語義（逗號對其餘協議合法）
 	ErrMSSQLHostComma = errors.New("mssql 主機不得含逗號（與連線字串的埠分隔語義衝突）")
@@ -54,7 +54,7 @@ const (
 	ErrorCodeTimeout           = "timeout"
 	ErrorCodeProtocolError     = "protocol_error"
 	ErrorCodeUnknown           = "unknown"
-	// 以下四支為 db-protocol-connection-test D6 新增／既有字面量收編
+	// 以下四支為新增／既有字面量收編
 	ErrorCodeConnectionFailed  = "connection_failed"
 	ErrorCodeProtocolUnsupport = "protocol_unsupported"
 	ErrorCodeExecForbidden     = "exec_forbidden"
@@ -65,33 +65,33 @@ const (
 
 // AssetService 資產管理服務
 type AssetService struct {
-	// crypto 憑證加解密。**ColumnCodec**（kek-provider-modularization D5 cutover）：
+	// crypto 憑證加解密。**ColumnCodec**：
 	// 介面上**沒有** Encrypt(plaintext)，故持有者在**建構上**不可能寫出無 AAD 的
 	// enc:v 密文——「cutover 後只產 enc:a1」是結構保證而非執行期政策判斷。
-	// 建構時注入（D3 職 3 拆解）：不再於建構期由 env 材料自建 codec、
+	// 建構時注入（三職拆解）：不再於建構期由 env 材料自建 codec、
 	// 也不再有 SetCodec 事後覆寫，使無本地 KEK 材料的模式（ui／kms／hsm）可建構
 	crypto    crypto.ColumnCodec
 	guacdHost string
 	guacdPort int
 	// hostKeys SSH 直連測試的 host key 驗證（setter 注入避免改建構簽名）
 	hostKeys *HostKeyService
-	// transmission 傳輸風險徽章判定（transmission-security-policy 5.1）；nil＝列表不附風險
+	// transmission 傳輸風險徽章判定；nil＝列表不附風險
 	transmission *policy.TransmissionPolicyService
-	// auditTx 交易內審計落地面（modular-architecture W6 6.1，T-2 收口）。
+	// auditTx 交易內審計落地面（T-2 收口）。
 	// **nil 即 fail-close**：`port.WriteInTx` 對 nil sink 回 ErrTxSinkMissing，
 	// 使業務交易回滾——「沒接線」與「寫失敗」落在同一格，不會靜默 no-op。
 	auditTx port.TxSink
-	// authzRevoker 資產刪除時的 authz 級聯撤銷（F8／D-10 tx-taking 窄 port）。
+	// authzRevoker 資產刪除時的 authz 級聯撤銷（tx-taking 窄 port）。
 	// **nil 即 fail-close**：Delete 拒絕在不撤銷授權的情況下完成
 	authzRevoker assetAuthorizationRevoker
-	// sessions 資產停用時的收線面（security-backlog-settlement）。
+	// sessions 資產停用時的收線面。
 	// 介面而非直接依賴 SessionService，避免 service 相互耦合（沿 identity.SessionTerminator 形狀）。
 	// **nil 即不收線**：測試建構路徑可略，生產組裝一律注入
 	sessions SessionTerminator
 }
 
-// SessionTerminator 停用資產時強制終斷該資產上全部進行中協議會話
-// （security-backlog-settlement）。介面而非直接依賴 SessionService，
+// SessionTerminator 停用資產時強制終斷該資產上全部進行中協議會話。
+// 介面而非直接依賴 SessionService，
 // 沿 identity.SessionTerminator 的既有形狀
 type SessionTerminator interface {
 	TerminateByAsset(assetID uint, reason string) (int, error)
@@ -99,12 +99,12 @@ type SessionTerminator interface {
 
 // assetAuthorizationRevoker 資產刪除時對 authz 表的級聯撤銷。
 //
-// **消費者側窄介面（F8／D-10）**：asset 不得 import authz（矩陣 asset→authz ✗），
+// **消費者側窄介面**：asset 不得 import authz（矩陣 asset→authz ✗），
 // 故在此宣告意圖、由組裝根注入 authz 的實作。形狀與
 // `assetGroupAuthorizationRevoker` 對稱——節點刪除與資產刪除是同一類問題的兩個粒度。
 //
 // **誠實邊界**：本介面把整個 `*gorm.DB` 交出去，**編譯器管不到對方寫哪張表**
-// （D-10；白名單見 `cmd/server/tx_taking_whitelist_test.go`）。
+// （白名單見 `cmd/server/tx_taking_whitelist_test.go`）。
 type assetAuthorizationRevoker interface {
 	RevokeByAsset(tx *gorm.DB, assetID uint) (revokedAuthorizations, revokedApproverScopes int64, err error)
 }
@@ -129,8 +129,8 @@ func (s *AssetService) SetHostKeyService(h *HostKeyService) {
 	s.hostKeys = h
 }
 
-// NewAssetService 創建資產服務；codec 為必要參數（D3：建構期零 env 依賴）。
-// auditTx 為交易內審計落地面（W6 6.1）——刻意以建構子注入而非 setter，
+// NewAssetService 創建資產服務；codec 為必要參數（建構期零 env 依賴）。
+// auditTx 為交易內審計落地面——刻意以建構子注入而非 setter，
 // 使「忘記接線」在組裝期就看得見，而不是在某條稀有路徑上才回 ErrTxSinkMissing。
 func NewAssetService(codec crypto.ColumnCodec, guacdHost string, guacdPort int, auditTx port.TxSink) (*AssetService, error) {
 	if codec == nil {
@@ -152,13 +152,13 @@ type AssetFilter struct {
 	Page     int                // 頁碼（從 1 開始）
 	PageSize int                // 每頁大小
 
-	// 節點過濾（asset-node-tree D5）：NodeID 非 nil＝僅列掛該節點的資產；
+	// 節點過濾：NodeID 非 nil＝僅列掛該節點的資產；
 	// IncludeSubtree 含子樹（預設開，顯式 toggle 關）；Ungrouped＝僅列零掛載資產
 	NodeID         *uint
 	IncludeSubtree bool
 	Ungrouped      bool
 
-	// 標籤篩選（authz-tag-node-filters D1）：整詞比對、多標籤 AND；
+	// 標籤篩選：整詞比對、多標籤 AND；
 	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
 	Tags []string
 }
@@ -188,16 +188,16 @@ type CreateAssetRequest struct {
 	Tags        string             `json:"tags"`
 	CreatedBy   uint               `json:"-"` // 從 JWT token 取得，不從請求接收
 	// CreatedByName 操作者顯示名（同樣自 JWT context 取，不從請求接收）：
-	// 建資產時連帶建 default 帳號，該筆 D7a 審計的 username 欄不該是空白（opus INFO-7）
+	// 建資產時連帶建 default 帳號，該筆帳號審計的 username 欄不該是空白
 	CreatedByName string `json:"-"`
 
-	// 掛載節點集（asset-node-tree D2 多歸屬）：空＝未分組；節點須存在
+	// 掛載節點集（多歸屬）：空＝未分組；節點須存在
 	NodeIDs []uint `json:"node_ids"`
 
-	// 存取政策段位（asset-level-access-policy）：''＝跟隨全域預設（NULL）
+	// 存取政策段位：''＝跟隨全域預設（NULL）
 	AccessPolicy string `json:"access_policy"`
 
-	// RDP 傳輸安全（transmission-security-policy D4；僅 protocol=rdp）：
+	// RDP 傳輸安全（僅 protocol=rdp）：
 	// ''＝沿現狀 any；驗證白名單擋未定義值
 	RDPSecurity   string `json:"rdp_security" binding:"omitempty,oneof=nla tls"`
 	RDPVerifyCert bool   `json:"rdp_verify_cert"`
@@ -235,14 +235,14 @@ type UpdateAssetRequest struct {
 	Tags        *string             `json:"tags"`
 	Active      *bool               `json:"active"`
 
-	// 掛載節點集（asset-node-tree）：nil＝不動、空陣列＝清空全部掛載（未分組）
+	// 掛載節點集：nil＝不動、空陣列＝清空全部掛載（未分組）
 	NodeIDs *[]uint `json:"node_ids"`
 
-	// 存取政策段位（asset-level-access-policy）：nil＝不動、''＝清回跟隨全域（NULL）。
+	// 存取政策段位：nil＝不動、''＝清回跟隨全域（NULL）。
 	// 白名單在 service 驗（指標欄位 omitempty 不放行顯式空字串）
 	AccessPolicy *string `json:"access_policy"`
 
-	// RDP 傳輸安全（transmission-security-policy D4）：顯式 ''＝重設回沿現狀。
+	// RDP 傳輸安全：顯式 ''＝重設回沿現狀。
 	// 不用 binding oneof——指標欄位的 omitempty 不放行顯式空字串，白名單在 service 驗
 	RDPSecurity   *string `json:"rdp_security"`
 	RDPVerifyCert *bool   `json:"rdp_verify_cert"`
@@ -266,7 +266,7 @@ type UpdateAssetRequest struct {
 	SftpPassword *string `json:"sftp_password"`
 }
 
-// validateRDPSecurity RDP 安全模式白名單（transmission-security-policy D4）：
+// validateRDPSecurity RDP 安全模式白名單：
 // 空值＝沿現狀 any；service 層驗證使繞 HTTP binding 的內部呼叫同受約束
 func validateRDPSecurity(v string) error {
 	switch v {
@@ -277,7 +277,7 @@ func validateRDPSecurity(v string) error {
 	}
 }
 
-// validateAccessPolicy 存取政策段位白名單（asset-level-access-policy D1）：
+// validateAccessPolicy 存取政策段位白名單：
 // 空值＝清為 NULL（跟隨全域預設鍵）；service 層驗證使內部呼叫同受約束
 func validateAccessPolicy(v string) error {
 	switch v {
@@ -299,7 +299,7 @@ func validateDBTLSMode(v string) error {
 	}
 }
 
-// validateMSSQLHost mssql 資產主機欄的協議專屬驗證（D8）。非 mssql 一律放行。
+// validateMSSQLHost mssql 資產主機欄的協議專屬驗證。非 mssql 一律放行。
 func validateMSSQLHost(protocol model.ProtocolType, host string) error {
 	if protocol == model.ProtocolMSSQL && strings.Contains(host, ",") {
 		return ErrMSSQLHostComma
@@ -311,7 +311,7 @@ func validateMSSQLHost(protocol model.ProtocolType, host string) error {
 func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 	// ctx 僅供 codec 的取消／逾時語義（同 GetWithCredentialsForAccount 註解）：
 	// AAD 綁 (table, column) 不綁 pk，故 create 路徑無須「先 insert 取得 pk 再回寫密文」
-	// 的兩階段寫入——這正是 AAD 裁決 A2 相對 A1 的主要收益
+	// 的兩階段寫入——這正是 AAD 綁欄位而非綁主鍵的主要收益
 	ctx := context.Background()
 	// 驗證協議
 	if err := s.validateProtocol(req.Protocol); err != nil {
@@ -349,7 +349,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		return nil, ErrAssetNameExists
 	}
 
-	// 標籤正規化（authz-tag-node-filters D2）：trim/去空/canonical 去重/
+	// 標籤正規化：trim/去空/canonical 去重/
 	// 歸一至既有書寫形＋文法驗證
 	normalizedTags, err := s.NormalizeTagsForWrite(req.Tags)
 	if err != nil {
@@ -380,8 +380,8 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		K8sInsecureSkipTLS: req.K8sInsecureSkipTLS,
 	}
 
-	// 憑證加密（asset-multi-account 階段 2）：密文只落 asset_accounts 的
-	// default 帳號，assets 內嵌憑證欄位自本階段起凍結不再寫入（D1 單向切換）。
+	// 憑證加密：密文只落 asset_accounts 的
+	// default 帳號，assets 內嵌憑證欄位自本階段起凍結不再寫入（單向切換）。
 	// assets 上仍維護 HasPassword/HasPrivateKey 顯示旗標——它們不是憑證本體，
 	// 而是列表與表單的「已設定憑證」標記，不同步會讓既有畫面說謊。
 	var passwordEnc, privateKeyEnc string
@@ -427,7 +427,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 
 	// 儲存到資料庫（節點掛載同交易——建資產與掛節點不可分離；
 	// 新資產必無舊成員，僅 insert 不清除）。節點驗證移入交易＋treeStructMu
-	// 互斥（codex P1：驗證後節點被並發刪除會留下懸掛成員，無 FK 兜底）
+	// 互斥（驗證後節點被並發刪除會留下懸掛成員，無 FK 兜底）
 	treeStructMu.Lock()
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := validateNodeIDsTx(tx, nodeIDs); err != nil {
@@ -436,7 +436,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		if err := tx.Create(asset).Error; err != nil {
 			return fmt.Errorf("創建資產失敗: %w", err)
 		}
-		// 建立表單的單帳號快速欄位透明成為 default 帳號（D9）：與資產同交易——
+		// 建立表單的單帳號快速欄位透明成為 default 帳號：與資產同交易——
 		// 建了資產卻沒建帳號，該資產自階段 2 起即為「無身分可連」的死資產。
 		// 建帳判準與階段 1 migration 一致：username／密碼／私鑰三者全空才算
 		// 零帳號資產（靠 SSH agent 等免密路徑者仍需帳號承載 username）
@@ -466,7 +466,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 				return fmt.Errorf("掛載節點失敗: %w", err)
 			}
 		}
-		// 初始掛載留痕（codex P2：AfterCreate hook 只記建立事件無 node_ids 明細）
+		// 初始掛載留痕（AfterCreate hook 只記建立事件無 node_ids 明細）
 		if len(nodeIDs) > 0 && req.CreatedBy != 0 {
 			if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, nil, nodeIDs, req.CreatedBy, ""); err != nil {
 				log.Printf("記錄初始節點掛載失敗: %v", err)
@@ -503,13 +503,13 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 		query = query.Where("active = ?", *filter.Active)
 	}
 
-	// 標籤篩選（authz-tag-node-filters D1）：補逗號整詞比對＋萬用字元跳脫，
+	// 標籤篩選：補逗號整詞比對＋萬用字元跳脫，
 	// 多標籤疊 AND；與其餘條件同 query，COUNT 與分頁前生效
 	for _, tag := range filter.Tags {
 		query = query.Where(tagWholeWordCondition, tagWholeWordPattern(tag))
 	}
 
-	// 節點過濾（asset-node-tree D5）：含子樹＝節點自身＋全部後代的掛載聯集
+	// 節點過濾：含子樹＝節點自身＋全部後代的掛載聯集
 	if filter.Ungrouped {
 		query = query.Where("NOT EXISTS (SELECT 1 FROM asset_nodes an WHERE an.asset_id = assets.id)")
 	} else if filter.NodeID != nil {
@@ -554,12 +554,12 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 		return nil, fmt.Errorf("查詢資產列表失敗: %w", err)
 	}
 
-	// 節點掛載資訊（asset-node-tree）：批次填 NodeIDs 與全路徑
+	// 節點掛載資訊：批次填 NodeIDs 與全路徑
 	if err := FillNodeInfo(database.DB, assets); err != nil {
 		return nil, err
 	}
 
-	// 傳輸風險徽章（transmission-security-policy 5.1）：不分政策等級恆填——
+	// 傳輸風險徽章：不分政策等級恆填——
 	// 政策管「攔不攔」，徽章管「看不看得見」；未注入（既有測試路徑）不填
 	if s.transmission != nil {
 		for i := range assets {
@@ -577,18 +577,18 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 
 // UpdatePassword 更新**指定帳號**的密碼憑證（change-secret；記憶體內加密，明文不落日誌）。
 //
-// 簽名帶 accountID 是 D9 的硬性要求：改密 runner 必須在執行開頭釘住帳號、
+// 簽名帶 accountID 是硬性要求：改密 runner 必須在執行開頭釘住帳號、
 // 讀憑證與寫回全程作用於同一 AccountID。若此處仍以 assetID 重解析 default，
 // 執行期間管理員切換 default 就會把新密寫進另一個帳號（遠端已改密的那台反而
 // 留著舊密＝鎖死，另一台的憑證則被無聲覆蓋）。
 //
-// **驗證與寫入同一交易，且以 RowsAffected 判成敗**（codex HIGH）：舊寫法在交易外
+// **驗證與寫入同一交易，且以 RowsAffected 判成敗**：舊寫法在交易外
 // 驗完帳號才進交易寫，中間帳號被軟刪時 UPDATE 影響零列卻回 nil——runner 會據此
 // 記 success，但遠端密碼已經改掉、庫內沒有任何地方存著新密＝該機器永久鎖死且
 // 審計說一切正常。零列一律回錯，runner 走既有「憑證提交失敗，需人工介入」路徑。
 //
 // pinnedUsername 為 runner 開頭釘住的 username：帳號在執行期間被改名時，該列
-// 已代表另一個系統身分，把新密寫進去等於改錯對象（codex MED）。以 WHERE 條件
+// 已代表另一個系統身分，把新密寫進去等於改錯對象。以 WHERE 條件
 // 帶入，改名即零列＝失敗，同樣走人工介入路徑。
 //
 // accountID 必須為該資產的有效帳號（fail-close）；零帳號資產無處可寫，回錯。
@@ -638,7 +638,7 @@ func (s *AssetService) UpdatePassword(assetID, accountID uint, pinnedUsername, n
 	})
 }
 
-// UpdatePrivateKey 系統路徑更新帳號私鑰（change-secret-ssh-deepening 金鑰輪替）。
+// UpdatePrivateKey 系統路徑更新帳號私鑰（金鑰輪替）。
 //
 // 不變式與 UpdatePassword 逐條相同：釘住的 accountID ＋ pinnedUsername 為 WHERE
 // 條件（執行期間改名即零列＝失敗，不改錯對象）、驗證與寫入同一交易、RowsAffected
@@ -715,13 +715,13 @@ func (s *AssetService) GetByID(id uint) (*model.Asset, error) {
 //
 // accountID = 0 代表預設帳號（系統路徑與未指定帳號的連線）。找不到帳號、帳號已軟刪、
 // 或帳號屬於別的資產一律回 ErrAssetAccountNotFound——**不靜默退回預設帳號**
-// （fail-close，D3：靜默退回會讓跨資產 account id 注入拿到目標資產的預設憑證）。
+// （fail-close：靜默退回會讓跨資產 account id 注入拿到目標資產的預設憑證）。
 //
-// 階段 2 起 username 與憑證皆自帳號取得（D6：兩者必須同帳號），Asset 內嵌憑證
+// 階段 2 起 username 與憑證皆自帳號取得（兩者必須同帳號），Asset 內嵌憑證
 // 欄位不再被讀取。零帳號資產（原本即無 username 與憑證者）回空憑證束，合法。
 func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*AssetCredentials, error) {
-	// ctx 僅供 codec 的取消／逾時語義：AAD 綁定維度為 (table, column)（AAD 裁決 A2，
-	// 不綁自增主鍵），不需由 ctx 攜帶列身分，故此處不為加密而擾動 13 個呼叫端簽名。
+	// ctx 僅供 codec 的取消／逾時語義：AAD 綁定維度為 (table, column)（不綁自增主鍵），
+	// 不需由 ctx 攜帶列身分，故此處不為加密而擾動 13 個呼叫端簽名。
 	// 日後若要傳遞 request context，逐函式加參數即可，AAD 語義不受影響
 	ctx := context.Background()
 	asset, err := s.GetByID(assetID)
@@ -754,7 +754,7 @@ func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*A
 	return creds, nil
 }
 
-// GetWithCredentialsDefault 取資產的預設帳號憑證（D6 系統路徑：改密 runner、
+// GetWithCredentialsDefault 取資產的預設帳號憑證（系統路徑：改密 runner、
 // k8s、SFTP 側車、連測；連線鏈於階段 3 帶入 account 前亦暫走此路徑）
 func (s *AssetService) GetWithCredentialsDefault(assetID uint) (*AssetCredentials, error) {
 	return s.GetWithCredentialsForAccount(assetID, 0)
@@ -762,7 +762,7 @@ func (s *AssetService) GetWithCredentialsDefault(assetID uint) (*AssetCredential
 
 // ListK8sPods 列 K8s 資產 namespace 內的活 pod（連線時選 pod 用）。
 // 走 in-memory client（免落檔）；錯誤已分類為五類人話（*k8sproxy.K8sError）。
-// K8s 固定單一 default account（D6）：不帶 account 參數，語義維持不變。
+// K8s 固定單一 default account：不帶 account 參數，語義維持不變。
 func (s *AssetService) ListK8sPods(ctx context.Context, id uint) ([]k8sproxy.PodInfo, error) {
 	creds, err := s.GetWithCredentialsDefault(id)
 	if err != nil {
@@ -772,7 +772,7 @@ func (s *AssetService) ListK8sPods(ctx context.Context, id uint) ([]k8sproxy.Pod
 	if asset.Protocol != model.ProtocolK8s {
 		return nil, ErrInvalidProtocol
 	}
-	// 零帳號＝空 token：kubernetes client 會以匿名身分打叢集（codex HIGH）
+	// 零帳號＝空 token：kubernetes client 會以匿名身分打叢集
 	if creds.AccountID == 0 || token == "" {
 		return nil, ErrAssetNoUsableAccount
 	}
@@ -787,7 +787,7 @@ func (s *AssetService) ListK8sPods(ctx context.Context, id uint) ([]k8sproxy.Pod
 }
 
 // k8sTarget 組 K8s 資產的連線目標（含選定 pod/container）。
-// 同 ListK8sPods：k8s 固定 default account（D6）。
+// 同 ListK8sPods：k8s 固定 default account。
 func (s *AssetService) k8sTarget(id uint, pod, container string) (k8sproxy.Target, error) {
 	creds, err := s.GetWithCredentialsDefault(id)
 	if err != nil {
@@ -890,7 +890,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		asset.Username = *req.Username
 	}
 
-	// 憑證欄位透明轉寫 default 帳號（D9）：舊前端／腳本仍打 PUT /assets/:id 帶
+	// 憑證欄位透明轉寫 default 帳號：舊前端／腳本仍打 PUT /assets/:id 帶
 	// password/private_key，語義不變，但密文只落帳號表，assets 內嵌憑證欄位凍結。
 	var passwordEnc, privateKeyEnc string
 	if req.Password != nil && *req.Password != "" {
@@ -927,7 +927,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		asset.Active = *req.Active
 	}
 
-	// 掛載節點集（asset-node-tree）：nil＝不動；驗證/差集同步/成員審計
+	// 掛載節點集：nil＝不動；驗證/差集同步/成員審計
 	// 皆在下方交易內（treeStructMu 互斥消除驗證後節點被刪窗口）
 	var newNodeIDs []uint
 	if req.NodeIDs != nil {
@@ -1021,15 +1021,15 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 			return fmt.Errorf("更新資產失敗: %w", err)
 		}
 
-		// 憑證／username 透明轉寫 default 帳號（D9），與資產更新同交易
+		// 憑證／username 透明轉寫 default 帳號，與資產更新同交易
 		if req.Username != nil || passwordEnc != "" || privateKeyEnc != "" {
 			if err := syncDefaultAccountFromAsset(s.auditTx, tx, asset, passwordEnc, privateKeyEnc, userID, username); err != nil {
 				return err
 			}
 		}
 
-		// 節點掛載同步（asset-node-tree）：M2M 不經 hook diff，
-		// 成員變更在此顯式審計（node_ids 舊→新）；驗證在交易內（codex P1）
+		// 節點掛載同步：M2M 不經 hook diff，
+		// 成員變更在此顯式審計（node_ids 舊→新）；驗證在交易內
 		if req.NodeIDs != nil {
 			if err := validateNodeIDsTx(tx, newNodeIDs); err != nil {
 				return err
@@ -1063,7 +1063,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		return nil, err
 	}
 
-	// 停用即收線（security-backlog-settlement D1）：只在 true→false 的**躍遷**觸發。
+	// 停用即收線：只在 true→false 的**躍遷**觸發。
 	// 對已停用資產的其他編輯不重複收線——否則審計上會出現一連串「因停用而斷線」
 	// 而其實沒有停用動作發生。收線失敗**不回滾停用**（停用的主要目標是阻斷後續
 	// 存取，收線是縱深；沿 access_request_service 撤銷收線的既有裁決）
@@ -1075,7 +1075,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		}
 	}
 
-	// 回應帶最新節點資訊（asset-node-tree：掛載於交易內同步，
+	// 回應帶最新節點資訊（掛載於交易內同步，
 	// 回傳物件須重填避免舊值誤導前端）
 	single := []model.Asset{*asset}
 	if err := FillNodeInfo(database.DB, single); err != nil {
@@ -1086,7 +1086,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	return &single[0], nil
 }
 
-// Delete 刪除資產（軟刪除）；節點成員同交易硬刪（asset-node-tree，codex P1：
+// Delete 刪除資產（軟刪除）；節點成員同交易硬刪（
 // 成員殘留會讓「空節點」永遠數到幽靈成員而不可刪）。treeStructMu 與節點
 // Delete 的空節點判定互斥
 func (s *AssetService) Delete(id uint) error {
@@ -1103,10 +1103,10 @@ func (s *AssetService) Delete(id uint) error {
 		if err := tx.Where("asset_id = ?", id).Delete(&model.AssetNode{}).Error; err != nil {
 			return fmt.Errorf("清除節點成員失敗: %w", err)
 		}
-		// 授權與審核範圍隨資產失效（security-backlog-settlement 塊 2）：權限查詢只查
+		// 授權與審核範圍隨資產失效（塊 2）：權限查詢只查
 		// asset_authorizations 單表、不 join assets，故資產被刪後授權仍會命中。
 		// 兩張表皆屬 authz，**故經 tx-taking 窄 port 交由擁有者寫入**，asset 不直接
-		// 碰他模組的表（F8／D-10，同 AssetGroupService.Delete 的處置）。
+		// 碰他模組的表（tx-taking 窄 port，同 AssetGroupService.Delete 的處置）。
 		// 未注入即 fail-close——靜默略過會留下幽靈授權與懸掛審核範圍
 		if s.authzRevoker == nil {
 			return fmt.Errorf("authz 級聯撤銷面未注入：資產刪除不得在不撤銷授權的情況下完成")
@@ -1129,11 +1129,11 @@ func normalizeAccessPolicy(v string) *string {
 	return &v
 }
 
-// ErrNodeNotFound 掛載節點不存在（asset-node-tree）
+// ErrNodeNotFound 掛載節點不存在
 var ErrNodeNotFound = errors.New("掛載節點不存在")
 
 // validateNodeIDsTx 節點集存在性驗證（軟刪節點視同不存在）。吃 tx——
-// 與掛載寫入同交易＋treeStructMu 互斥，消除「驗證後節點被刪」窗口（codex P1；
+// 與掛載寫入同交易＋treeStructMu 互斥，消除「驗證後節點被刪」窗口（
 // asset_nodes 無 FK 可兜底）
 func validateNodeIDsTx(tx *gorm.DB, nodeIDs []uint) error {
 	if len(nodeIDs) == 0 {
@@ -1159,9 +1159,9 @@ func assetNodeIDs(db *gorm.DB, assetID uint) ([]uint, error) {
 	return ids, nil
 }
 
-// replaceAssetNodes 以真差集同步資產掛載（asset-node-tree D2）：僅刪多餘、
+// replaceAssetNodes 以真差集同步資產掛載：僅刪多餘、
 // 補缺少——保留未變動成員的 created_at（掛載時間是稽核時間線的一部分，
-// 整刪重建會改寫；codex P2）
+// 整刪重建會改寫）
 func replaceAssetNodes(db *gorm.DB, assetID uint, nodeIDs []uint) error {
 	current, err := assetNodeIDs(db, assetID)
 	if err != nil {
@@ -1216,7 +1216,7 @@ func uintSetEqual(a, b []uint) bool {
 	return true
 }
 
-// FillNodeInfo 批次填資產的 NodeIDs 與 NodePaths（asset-node-tree）：
+// FillNodeInfo 批次填資產的 NodeIDs 與 NodePaths：
 // 全節點單查組路徑 map（百級節點規模，無需快取），成員單查分組
 func FillNodeInfo(db *gorm.DB, assets []model.Asset) error {
 	if len(assets) == 0 {
@@ -1256,7 +1256,7 @@ func FillNodeInfo(db *gorm.DB, assets []model.Asset) error {
 	return nil
 }
 
-// AssetIDsForNodeFilter 節點過濾的資產 id 集（asset-node-tree D5）：
+// AssetIDsForNodeFilter 節點過濾的資產 id 集：
 // ungrouped＝零掛載資產集；nodeID＝該節點（含子樹時含全部後代）掛載資產集。
 // 授權分支在記憶體集合過濾用（admin 分支走 List 的 SQL 過濾）
 func (s *AssetService) AssetIDsForNodeFilter(nodeID *uint, includeSubtree, ungrouped bool) (map[uint]bool, error) {
@@ -1320,8 +1320,7 @@ func NodePathMap(db *gorm.DB) (map[uint]string, error) {
 	return paths, nil
 }
 
-// assetProtocols 可建立資產的協議清單——**撥測對照表與協議驗證的單一事實源**
-// （db-protocol-connection-test D1）。
+// assetProtocols 可建立資產的協議清單——**撥測對照表與協議驗證的單一事實源**。
 //
 // 新增協議時只改這裡與 connection_probe.go 的 connectionProbes 兩處；
 // 兩者的雙向完備性由 TestConnectionProbeTableComplete 釘住：
@@ -1351,7 +1350,7 @@ func (s *AssetService) validateProtocol(protocol model.ProtocolType) error {
 
 // ConnectionTestResult 連線測試結果。
 //
-// backend-i18n-unification D9：失敗原因改以 Code（apierror 機器碼）承載，前端查譯；
+// 失敗原因改以 Code（apierror 機器碼）承載，前端查譯；
 // Message 過渡期保留，值一律取同一支碼的 ZhFallback（不再有獨立中文字面量，也不
 // 再回填 guacd 原始訊息——原始訊息只落伺服端日誌）。前端 Assets.vue 直顯 message
 // 的讀點改查譯後，本欄即可移除（F 段）。
@@ -1367,7 +1366,7 @@ type ConnectionTestResult struct {
 	TestedAt  time.Time        `json:"tested_at"`
 }
 
-// setFailure 設定失敗原因：機器碼 + 同碼 ZhFallback 的過渡文案（D9）。
+// setFailure 設定失敗原因：機器碼 + 同碼 ZhFallback 的過渡文案。
 // errorCode 為既有的粗分類機器欄（前端徽章沿用），維持不動。
 func (r *ConnectionTestResult) setFailure(code apierror.ErrCode, errorCode string) {
 	r.Code = code
@@ -1393,7 +1392,7 @@ func testResultCodeFor(errorCode string) apierror.ErrCode {
 	}
 }
 
-// TestConnection 測試資產連線並持久化結果（asset-connectivity-status）
+// TestConnection 測試資產連線並持久化結果
 func (s *AssetService) TestConnection(ctx context.Context, assetID uint, timeout int) (*ConnectionTestResult, error) {
 	result, err := s.testConnection(ctx, assetID, timeout)
 	if result != nil {
@@ -1420,15 +1419,15 @@ func (s *AssetService) persistTestResult(assetID uint, result *ConnectionTestRes
 }
 
 func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout int) (*ConnectionTestResult, error) {
-	// 1. 獲取資產及憑證（連測維持 default 帳號語義，不帶 account 參數；D6）
+	// 1. 獲取資產及憑證（連測維持 default 帳號語義，不帶 account 參數）
 	creds, err := s.GetWithCredentialsDefault(assetID)
 	if err != nil {
 		return nil, err
 	}
 	asset := creds.Asset
 
-	// 零帳號資產：空密碼撥測對允許空密碼的伺服器可能回「成功」，給出假象（codex MED）。
-	// D7：早退維持在分派之前、對所有協議一體適用——DB 的 TCP 探測技術上不需憑證，
+	// 零帳號資產：空密碼撥測對允許空密碼的伺服器可能回「成功」，給出假象。
+	// 早退維持在分派之前、對所有協議一體適用——DB 的 TCP 探測技術上不需憑證，
 	// 但「無可用帳號」時「我連得上嗎」的答案恆為否，下放到各 probe 會讓 DB 資產
 	// 在沒有帳號時回報 reachable。
 	if creds.AccountID == 0 {
@@ -1437,13 +1436,13 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 		return result, nil
 	}
 
-	// 逾時夾制（D5）：1..30 秒，預設 10。夾制在分派之前，故所有 probe 收到的都是已夾制值。
+	// 逾時夾制：1..30 秒，預設 10。夾制在分派之前，故所有 probe 收到的都是已夾制值。
 	timeout = clampTestTimeout(timeout)
 
 	log.Printf("[TestConnection] 開始測試資產連線: ID=%d, Protocol=%s, Host=%s:%d, Timeout=%ds",
 		assetID, asset.Protocol, asset.Host, asset.Port, timeout)
 
-	// 顯式對照表分派（D1）：查表命中即呼叫對應 probe。
+	// 顯式對照表分派：查表命中即呼叫對應 probe。
 	// 未命中一律回 protocol_unsupported，**絕不 fallthrough 到 guacd 或任何中介**
 	// ——比照 identity/local_admin_invariant.go 的 default: return error 慣例。
 	probe, ok := connectionProbes[asset.Protocol]
@@ -1466,7 +1465,7 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 }
 
 // testSSHDirect SSH 資產直連測試（test-connection 修復：guacd 退場後 SSH 撥測走原生路徑）。
-// 吃 AssetCredentials 而非拆散的 asset+password：username 與密碼必須同帳號（D6）。
+// 吃 AssetCredentials 而非拆散的 asset+password：username 與密碼必須同帳號。
 // 由 connectionProbes["ssh"] 呼叫；timeout 已於分派前夾制。
 func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	asset := creds.Asset
@@ -1479,7 +1478,7 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 		timeout = 10
 	}
 
-	// 空密碼不包成 ssh.Password("")（codex MED）：對允許空密碼的伺服器，
+	// 空密碼不包成 ssh.Password("")：對允許空密碼的伺服器，
 	// 空密碼認證可能「成功」而讓 UI 顯示資產可連——那是假象，不是可用憑證。
 	// 撥測只走密碼認證（金鑰撥測未實作），故無密碼即無從測起，直接判失敗
 	if creds.Password == "" {
@@ -1496,7 +1495,7 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	})
 	result.LatencyMs = time.Since(start).Milliseconds()
 	if err != nil {
-		// 碼化（D9）：host key 變更與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）
+		// 碼化：host key 變更與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）
 		switch {
 		case errors.Is(err, ErrHostKeyChanged):
 			result.setFailure(apierror.CodeSSHHostKeyChanged, "host_key_changed")
@@ -1510,6 +1509,6 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	}
 	client.Close()
 	result.Success = true
-	// 成功不帶 UI 文案（D9）：前端以 $t('assets.testSuccess') 自有文案提示
+	// 成功不帶 UI 文案：前端以 $t('assets.testSuccess') 自有文案提示
 	return result
 }

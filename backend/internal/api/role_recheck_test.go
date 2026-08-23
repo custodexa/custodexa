@@ -22,7 +22,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 角色快照即時重判（codex 階段 4 high）。
+// 角色快照即時重判。
 //
 // 缺陷形狀：AuthMiddleware 不查 DB，`c.Get("role")` 拿到的是**簽發 JWT 當下**的
 // 角色。三個連線強制點早已以 CurrentConnectRole 覆蓋，但檔案面（SFTP）與
@@ -166,7 +166,7 @@ func TestUpdateAccountsDemotedAdminRejected(t *testing.T) {
 }
 
 // TestUpdateAccountsRejectsEmptyAndMissing 空陣列／欄位省略一律拒收，
-// 且既有範圍不被改動（F1 的 HTTP 層回歸守衛）
+// 且既有範圍不被改動（HTTP 層回歸守衛）
 func TestUpdateAccountsRejectsEmptyAndMissing(t *testing.T) {
 	db := setupRoleRecheckDB(t)
 	adminRole := model.Role{Name: model.RoleAdmin}

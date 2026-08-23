@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestValidateAdminInitialPassword 覆蓋 bootstrap 初始密碼 byte 契約（deployment-hardening D8）：
+// TestValidateAdminInitialPassword 覆蓋 bootstrap 初始密碼 byte 契約（deployment-hardening）：
 // 未設/placeholder/legacy admin123/過短/前後空白/CR-LF/控制字元皆須判為違規；合格值放行。
 func TestValidateAdminInitialPassword(t *testing.T) {
 	cases := []struct {
@@ -40,7 +40,7 @@ func TestValidateAdminInitialPassword(t *testing.T) {
 
 // TestEnvExampleAdminInitialPasswordIsDenylistedPlaceholder：.env.example 出貨的
 // ADMIN_INITIAL_PASSWORD 值必須（1）直接解析恰為 denylisted placeholder（證明未被行內註解污染），
-// （2）被 ValidateAdminInitialPassword 擋下——否則該值會成為 release 也接受的公開已知憑證，反噬 CPG-001。
+// （2）被 ValidateAdminInitialPassword 擋下——否則該值會成為 release 也接受的公開已知憑證。
 func TestEnvExampleAdminInitialPasswordIsDenylistedPlaceholder(t *testing.T) {
 	path := envExamplePath(t, backendRoot(t)) // 沿用 env_drift_test.go 的定位 helper（同套件）
 	data, err := os.ReadFile(path)

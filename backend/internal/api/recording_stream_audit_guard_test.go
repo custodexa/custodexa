@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 取走錄影本體必須留痕（audit-resource-classification-closure 批 4）。
+// 取走錄影本體必須留痕。
 //
 // # 缺陷
 //
@@ -51,7 +51,7 @@ import (
 // 同時證明了列來自 handler、且中介層確實跳過。若哪天有人把該路由移進認證群組，
 // 列數會變成 2，本檔轉紅並提醒重新設計去重邊界。
 //
-// # 突變自證（2026-08-13 實跑，見 change 的 tasks 4.6）
+// # 突變自證（2026-08-13 實跑）
 //
 // 拿掉 `StreamRecordingByToken` 內的 `h.auditRecordingRetrieval(...)` 一行
 // ⇒ 本檔四格中的三格轉紅（第四格是「不得寫列」的反向格，本就該綠）。

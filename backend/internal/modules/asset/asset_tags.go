@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 標籤文法上限（authz-tag-node-filters D1）：寫入與查詢兩端皆驗證
+// 標籤文法上限：寫入與查詢兩端皆驗證
 const (
 	maxTagRunes      = 64  // 單一標籤字元數上限
 	maxTagsPerAsset  = 20  // 每資產標籤數上限
@@ -30,7 +30,7 @@ var (
 	ErrTagContainsComma = errors.New("標籤不得含逗號")
 )
 
-// canonicalTag 標籤 canonical 相等鍵（D2）：NFC 正規化＋小寫折疊。
+// canonicalTag 標籤 canonical 相等鍵：NFC 正規化＋小寫折疊。
 // 去重、清單 distinct、比對三處共用同一鍵，避免「Web/web」在清單成兩項
 // 而篩選又視為同一項的三角不一致。
 func canonicalTag(s string) string {
@@ -79,9 +79,9 @@ func validateTagList(tags []string) error {
 	return nil
 }
 
-// escapeLikeTag 跳脫 LIKE 萬用字元（D1）：`%`/`_`/`\` 三字元。SQL 端必須
+// escapeLikeTag 跳脫 LIKE 萬用字元：`%`/`_`/`\` 三字元。SQL 端必須
 // 搭配 ESCAPE '\' 使用——SQLite 的 LIKE 預設無跳脫字元，缺 ESCAPE 會造成
-// 「測試綠、生產誤中」分岔（對抗驗證實測 db_prod 誤中 dbxprod）。
+// 「測試綠、生產誤中」分岔（db_prod 誤中 dbxprod）。
 var likeTagReplacer = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 func escapeLikeTag(s string) string {
@@ -102,9 +102,9 @@ type TagCount struct {
 	Count int    `json:"count"`
 }
 
-// ListTags 全表彙整既有標籤（D3）：canonical 去重（保首見書寫形，以資產 id
+// ListTags 全表彙整既有標籤：canonical 去重（保首見書寫形，以資產 id
 // 序為準）、附使用數、升冪排序。不建獨立 tag 表——本規模全表掃為毫秒級
-// （對抗驗證 postgres 實測 500 列 <1ms）。
+// （postgres 實測 500 列 <1ms）。
 func (s *AssetService) ListTags() ([]TagCount, error) {
 	var rawTags []string
 	if err := database.DB.Model(&model.Asset{}).
@@ -134,7 +134,7 @@ func (s *AssetService) ListTags() ([]TagCount, error) {
 	return out, nil
 }
 
-// NormalizeTagsForWrite 寫入路徑正規化（D2）：正規化＋歸一至既有書寫形
+// NormalizeTagsForWrite 寫入路徑正規化：正規化＋歸一至既有書寫形
 // （存「Dba」時全庫已有「DBA」→ 改存「DBA」，源頭杜絕大小寫分裂）＋文法驗證。
 func (s *AssetService) NormalizeTagsForWrite(raw string) (string, error) {
 	tags := normalizeTagList(raw)
@@ -232,7 +232,7 @@ func rewriteAssetTags(ctx context.Context, matchTag string, mapFn func([]string)
 	return affected, nil
 }
 
-// RenameTag 全面改名（D8）：from→to 套用至所有含 from 的資產；to 與既有
+// RenameTag 全面改名：from→to 套用至所有含 from 的資產；to 與既有
 // 標籤 canonical 相等時即為合併（歸一至既有書寫形），逐資產 canonical 去重。
 func (s *AssetService) RenameTag(ctx context.Context, from, to string) (int64, error) {
 	if strings.TrimSpace(from) == "" {
@@ -271,7 +271,7 @@ func (s *AssetService) RenameTag(ctx context.Context, from, to string) (int64, e
 	})
 }
 
-// DeleteTag 刪除標籤（D8）：自所有含該標籤的資產移除，其餘標籤不動。
+// DeleteTag 刪除標籤：自所有含該標籤的資產移除，其餘標籤不動。
 func (s *AssetService) DeleteTag(ctx context.Context, name string) (int64, error) {
 	if strings.TrimSpace(name) == "" {
 		return 0, ErrTagEmpty

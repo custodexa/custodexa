@@ -1,4 +1,4 @@
-// EP locale 橋接測試（i18n-foundation D4/codex r1 F2）：
+// EP locale 橋接測試：
 // 指令式 ElMessageBox 走 app-level global config——驗證與 provider 共用的
 // reactive 來源確實讓預設按鈕文字隨語言切換（含開啟中即時換語）
 import { describe, it, expect, afterEach } from 'vitest'

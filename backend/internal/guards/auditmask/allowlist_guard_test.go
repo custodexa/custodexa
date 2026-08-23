@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 審計遮罩允許清單的機械守衛（audit-coverage-closure 批 6，任務 6.4）。
+// 審計遮罩允許清單的機械守衛（任務 6.4）。
 //
 // # 為什麼可以機械判定
 //
@@ -16,14 +16,14 @@ import (
 // 就是形狀，不是語義：
 //
 //	G1 死鍵：清單裡有一個鍵，全庫卻沒有任何請求 DTO 綁定它 → 那個鍵是錯字或殘留。
-//	        這正是批 6 缺陷的指紋：清單有 `role`（單數），上線的鍵卻是 `roles`。
+//	        這正是既往缺陷的指紋：清單有 `role`（單數），上線的鍵卻是 `roles`。
 //	G2 課責空白：某端點的請求本文所有頂層鍵**全部**落在清單外 → 它的審計列
 //	        `request_body` 會是清一色 `***MASKED***`，等於有列無內容。
 //	G2b 實質空白：可見的頂層鍵**全是識別欄位**，實質欄位一個都不可見 → 審計列
 //	        答得出「動到哪一個」，答不出「動成什麼」。見下方判準說明。
 //	G3 機密誤放行：清單裡出現名字就帶機密語義的鍵 → 反向的外洩風險。
 //
-// # G2b 為什麼存在（批 6 的 G2 有系統性漏報）
+// # G2b 為什麼存在（G2 有系統性漏報）
 //
 // G2 的觸發條件是「頂層鍵**全部**落在清單外」，於是只要有**一個**無關緊要的鍵
 // 可見，它就永遠不報。實測 44 個「有可見欄位」的綁定點中多處只靠一個 `name`
@@ -100,7 +100,7 @@ var freeTextKeys = map[string]bool{
 var knownAccountabilityVoids = map[string]string{
 	// ── 本文全為機密 ──────────────────────────────────────────────
 	"api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
-	// Logout／Refresh 自 refresh-token-httponly-cookie 起不再綁定任何 request body
+	// Logout／Refresh 不再綁定任何 request body
 	//（憑證改由 httpOnly cookie 攜帶），故已無綁定點可登記——留著即成化石，
 	// 由 TestNoStaleAccountabilityVoidEntries 擋下
 	"api.(*AuthHandler).MFADisable":       "password 為密碼本體",
@@ -110,7 +110,7 @@ var knownAccountabilityVoids = map[string]string{
 	"api.(*UserHandler).ChangePassword":   "password 為密碼本體；改密事實由路徑與 resource_id 課責",
 	"api.(*OIDCHandler).Exchange":         "browser_secret／ticket 為一次性兌換憑證",
 	// Login 的隱藏欄位只有 password（判準 1 永不放行），可見的 username 屬識別角色。
-	// 登入的課責不靠 request_body：成功／失敗、來源位址（批 7 已改為不可偽造）、
+	// 登入的課責不靠 request_body：成功／失敗、來源位址（已改為不可偽造）、
 	// MFA 狀態都由登入專屬審計列承擔
 	"api.(*AuthHandler).Login": "password 為密碼本體；登入事實、結果與來源位址由登入審計列本身課責",
 
@@ -160,7 +160,7 @@ func TestAuditAllowlistHasNoDeadKeys(t *testing.T) {
 	sort.Strings(dead)
 	if len(dead) > 0 {
 		t.Errorf("放行清單有 %d 個死鍵（沒有任何請求 DTO 綁定）：%s\n"+
-			"死鍵的意思是「清單與真正上線的欄位名對不上」——本波缺陷即此形態："+
+			"死鍵的意思是「清單與真正上線的欄位名對不上」——既往缺陷即此形態："+
 			"清單有 role（單數），上線的鍵是 roles（複數），於是升權審計列全是遮罩標記。\n"+
 			"修法二擇一：改成真正被綁定的鍵名，或把該鍵刪掉。",
 			len(dead), strings.Join(dead, ", "))

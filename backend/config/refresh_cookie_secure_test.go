@@ -2,8 +2,7 @@ package config
 
 import "testing"
 
-// refresh cookie 的 Secure 旗標推導（refresh-token-httponly-cookie 決策 2；
-// codeql-rescan-settlement 決策 1／8 修訂）。
+// refresh cookie 的 Secure 旗標推導。
 //
 // # 這個推導現在算的是什麼
 //
@@ -21,7 +20,7 @@ import "testing"
 //     access token 壽命重登一次。吵鬧、當場可見，且登入頁與管理頁都會說明成因；
 //     復原是管理端政策頁一個開關，不需改部署檔重啟。
 //
-// 把故障放在看得見的一側是使用者裁決（proposal 裁決 1/5）。顯式 false 與
+// 把故障放在看得見的一側是使用者裁決。顯式 false 與
 // http 位址兩格不變——那是明文部署的顯式訊號。
 // 本檔逐格釘住這條優先序與其邊界。
 

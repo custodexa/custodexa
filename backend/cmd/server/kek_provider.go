@@ -9,17 +9,17 @@ import (
 	kmskek "github.com/custodexa/backend/pkg/crypto/kms"
 )
 
-// buildKEKProvider 依組態段判定結果建構 KEK provider（kek-provider-modularization D4）。
+// buildKEKProvider 依組態段判定結果建構 KEK provider。
 //
 // A（env）與 B（ui）**共用同一本地實作** localAESKEKProvider——差別僅在材料注入
-// 時機（啟動期 env vs 解封期 API）。此共用即「A↔B 同鑰互換免遷移」（D9）的
+// 時機（啟動期 env vs 解封期 API）。此共用即「A↔B 同鑰互換免遷移」的
 // 實作根據：同材料下 KeyRef 相同、格式標記相同、互相可解。
 //
-// P3 範圍：env／kms 模式可建構；ui 模式的解封狀態機屬 P2、hsm 屬 P4，
-// 此處 fail-close 並明示尚未交付，SHALL NOT 靜默回落其他 provider。
+// 本函式的建構射程是 env 與 kms 兩種模式：ui 模式的材料只由解封端點注入，
+// hsm 委託尚未交付；兩者於此 fail-close 並明示原因，SHALL NOT 靜默回落其他 provider。
 //
-// **ctx 參數的存在理由**：委託模式於建構期即向 KMS 探測（DescribeKey，D11.1
-// 裁決 1），該探測 SHALL 尊重呼叫端取消——不吞成逾時是 round-2 明列的守衛。
+// **ctx 參數的存在理由**：委託模式於建構期即向 KMS 探測（DescribeKey），
+// 該探測 SHALL 尊重呼叫端取消——不吞成逾時是審查明列的守衛。
 func buildKEKProvider(ctx context.Context, d *config.KEKDecision) (crypto.KEKProvider, error) {
 	switch d.Mode {
 	case config.KEKModeEnv:
@@ -38,9 +38,9 @@ func buildKEKProvider(ctx context.Context, d *config.KEKDecision) (crypto.KEKPro
 		// 此處仍回錯而非 nil，使「誤把 ui 模式接進啟動期建構」立刻可見。
 		return nil, fmt.Errorf("KEK_PROVIDER=ui（介面填鑰）的材料須由解封端點提供：啟動期不建構，請改走解封路徑")
 	case config.KEKModeKMS:
-		// **KMS 不可達即拒啟動（D11 可用性取捨、tasks 3.2）**：本呼叫內含
+		// **KMS 不可達即拒啟動（可用性取捨）**：本呼叫內含
 		// DescribeKey 探測，探測失敗即回錯，呼叫端（stage1）以 log.Fatalf 收場，
-		// SHALL NOT 降級啟動。運行期不受影響（D1 紅利：KEK 不在熱路徑）。
+		// SHALL NOT 降級啟動。運行期不受影響：KEK 不在熱路徑。
 		//
 		// **顯式攤開回傳值而非 `return kmskek.New(...)`**：後者會把
 		// `(*kms.Provider)(nil)` 裝箱成一個**非 nil 的介面值**，使呼叫端的
@@ -65,7 +65,7 @@ func buildKEKProvider(ctx context.Context, d *config.KEKDecision) (crypto.KEKPro
 // 路徑。測試靶機（localstack）改由 Settings.Endpoint 以**程式注入**取得。
 //
 // **SDK 自身的 AWS_ENDPOINT_URL_KMS 不是「交給 SDK 處理」而是被明確拒絕**
-// （round-4 codex high #2）：先前這裡寫的是「由 AWS SDK 自身的標準機制處理」，
+// （安全審查 high #2）：先前這裡寫的是「由 AWS SDK 自身的標準機制處理」，
 // 但那條機制會把**含明文 DEK 的 Encrypt 請求**導向任意端點甚至 HTTP。
 // 生產路徑於 kms.newAWSClient 對它 fail-close；本函式不設 Endpoint 這件事，
 // 由 TestNoProductionEndpointOverride 以 AST 釘住。
@@ -73,16 +73,16 @@ func kmsSettings(s config.KMSSettings) kmskek.Settings {
 	return kmskek.Settings{Provider: s.Provider, KeyID: s.KeyID, Region: s.Region}
 }
 
-// buildDelegatedRewrapProvider 換鑰精靈的委託目標 provider 建構器（tasks 3.3）。
+// buildDelegatedRewrapProvider 換鑰精靈的委託目標 provider 建構器。
 //
 // **目標的 region／服務商／信任帳號一律沿用本行程的 KEK_KMS_* 組態，
-// 只有 key_ref 由請求帶入**：精靈請求體是 union 的委託分支（`{mode, key_ref}`，
-// D7），不含區域——讓請求體攜帶區域等於允許操作者於單次請求內把材料重包到任意
+// 只有 key_ref 由請求帶入**：精靈請求體是 union 的委託分支（`{mode, key_ref}`），
+// 不含區域——讓請求體攜帶區域等於允許操作者於單次請求內把材料重包到任意
 // 雲端帳號，那是遠比換鑰更大的動作，不該藏在換鑰精靈裡。
 //
-// **只沿用 region 並不足夠（round-4 codex high #1）**：完整 key_ref 仍可指定
+// **只沿用 region 並不足夠（安全審查 high #1）**：完整 key_ref 仍可指定
 // **同 region 的任意 AWS 帳號**，只要對方 key policy／grant 放行，材料就被重包
-// 進外部信任域——裁決 6 想防的事實際上沒被擋住。故本函式另由
+// 進外部信任域——只沿用 region 想防的那件事，實際上沒被擋住。故本函式另由
 // KEK_KMS_KEY_ID 推導信任帳號範圍（見 kms.ResolveAccountScope），並交由
 // kms.New 於 DescribeKey 正規化**之後**比對 partition＋account，不符即 fail-close。
 // 這使「重包目標必須屬於部署已表態信任的那個 KMS 帳號」成為建構期的硬條件。
@@ -92,7 +92,7 @@ func kmsSettings(s config.KMSSettings) kmskek.Settings {
 // 最後才切 KEK_PROVIDER=kms。
 //
 // 建構本身即完成 DescribeKey 正規化、金鑰可用性驗證、信任帳號比對，以及一次真實
-// Wrap→Unwrap 往返驗 Encrypt／Decrypt 權限（D7 的「連通性預檢」，現已內建於
+// Wrap→Unwrap 往返驗 Encrypt／Decrypt 權限（即「連通性預檢」，現已內建於
 // kms.New，故此處不再另呼叫 Preflight——兩者是同一段程式碼）。
 func buildDelegatedRewrapProvider(ctx context.Context, mode, keyRef string) (crypto.KEKProvider, error) {
 	if mode != crypto.KeyRefProviderKMS {
@@ -121,7 +121,7 @@ func buildDelegatedRewrapProvider(ctx context.Context, mode, keyRef string) (cry
 // buildUIKEKProvider 以解封端點提交的材料建構 B（ui）模式的 KEK provider。
 //
 // 與 A（env）模式共用同一本地實作，差別僅在材料注入時機——此共用即
-// 「A↔B 同鑰互換免遷移」（D9）的實作根據：同材料下 KeyRef 相同、格式標記相同、
+// 「A↔B 同鑰互換免遷移」的實作根據：同材料下 KeyRef 相同、格式標記相同、
 // 互相可解。**Mode 只影響清冊顯示與稽核對照，不影響任何落庫值**。
 //
 // material 為解封 payload 持有的可覆寫 buffer。解碼器回傳的是**新配置**的切片，

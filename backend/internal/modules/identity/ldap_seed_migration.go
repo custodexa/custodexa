@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LDAP 設定 env→DB 的一次性 seed（ldap-settings-migration D4）。
+// LDAP 設定 env→DB 的一次性 seed。
 //
 // **為何在 post-unseal 佇列而非段 1 migration**：seed 要把 bind 密碼信封加密，
 // 而 codec 於段 2 `keyvault.InitKeyManager` 才存在；B（ui）封印模式的段 1 連 KEK provider
@@ -44,7 +44,7 @@ const PostUnsealMigrationLDAPSeed = "ldap_seed"
 // 由 RollbackLDAPDirectories 清除，兩端必須同值；repository 不得依賴 service
 // （相依方向為 service → repository），故常數落在下層由兩端共用。
 //
-// **語義是「已完成評估」而非「已建立資料」**（R2-codex HIGH）：實際 seed、
+// **語義是「已完成評估」而非「已建立資料」**：實際 seed、
 // env 未啟用而跳過、表非空而跳過三種**終局**結果皆寫入；只有基礎設施失敗
 // （DB 錯誤、加密失敗）不寫，留待下次啟動重試。
 //
@@ -62,17 +62,17 @@ const ldapSeedDirectoryName = "LDAP"
 
 // RegisterLDAPSeedMigration 把 LDAP seed 登記進解封後遷移佇列。
 //
-// **匯出而非由佇列自行呼叫**（Phase B W1 1.10 / R3.1 §3.1 環 4.9）：原本
+// **匯出而非由佇列自行呼叫**（斷 keyvault→identity 環）：原本
 // `keyvault.RegisterBuiltinPostUnsealMigrations`（keyvault）直接呼叫本函式的未匯出版本，
 // 使 keyvault→identity 成為真出向邊。改為 identity 自行提供登記器、由組裝根
 // （`cmd/server/stage2.go` 的 `service.keyvault.RegisterPostUnsealBuiltin`）注入後，
 // 方向變成 assembly→{keyvault, identity}，環即斷。
 //
-// **W4 4.4 新增 auditTx 參數（AP-51）**：seed 的「插列＋審計＋marker」同事務，
+// **新增 auditTx 參數（AP-51）**：seed 的「插列＋審計＋marker」同事務，
 // 審計改經 audit 模組的 TxSink 後需要一個落地面，而 keyvault 佇列項的執行體簽名
 // （`func(db, codec) error`）表達不了第三個依賴。以登記器的參數承載、由閉包捕獲，
-// 是唯一不動佇列契約也不開套件級全域 sink 的形式——後者正是 R3.1 §2.5 拒絕
-// 在 model 層做的那件事（可漏接成 nil no-op 的全域旗標）。
+// 是唯一不動佇列契約也不開套件級全域 sink 的形式——後者正是刻意不在
+// model 層做的那件事（可漏接成 nil no-op 的全域旗標）。
 func RegisterLDAPSeedMigration(auditTx port.TxSink) {
 	keyvault.RegisterPostUnsealMigration(keyvault.PostUnsealMigration{
 		Name: PostUnsealMigrationLDAPSeed,
@@ -84,7 +84,7 @@ func RegisterLDAPSeedMigration(auditTx port.TxSink) {
 
 // RunLDAPEnvSeed 執行 env→DB 的一次性 seed。
 //
-// **判定順序寫死**（D4／R2-opus N6），順序本身承載語義：
+// **判定順序寫死**，順序本身承載語義：
 //
 //  1. 表不存在 → no-op 直接返回（不記失敗、不寫 marker）。單元測試庫普遍
 //     無此表；此格若回 error 會把既有測試的失敗計數斷言打紅，且生產上
@@ -129,7 +129,7 @@ func RunLDAPEnvSeed(db *gorm.DB, codec crypto.ColumnCodec, auditTx port.TxSink) 
 		return nil
 	}
 
-	// (4)(5) 表非空判定與插列——**同鎖同事務**（設計 D1 並發線性化）
+	// (4)(5) 表非空判定與插列——**同鎖同事務**（並發線性化）
 	//
 	// 判定必須在鎖內重讀：若在事務外讀 count 再進鎖插列，並行的 CRUD「建立＋軟刪」
 	// 會讓 partial unique index 不占位（partial 索引排除軟刪列），而此處的舊讀值
@@ -164,7 +164,7 @@ func RunLDAPEnvSeed(db *gorm.DB, codec crypto.ColumnCodec, auditTx port.TxSink) 
 		SkipTLSVerify:   cfg.SkipTLSVerify,
 		Enabled:         true,
 	}
-	// 插列 → 審計 → 寫 marker 三者同一事務（R4-codex HIGH）。
+	// 插列 → 審計 → 寫 marker 三者同一事務。
 	//
 	// **審計不得排在事務之後**：審計表暫時不可寫時，若 seed 列與 marker 已提交，
 	// 一個外部認證來源就被永久建立而**沒有任何審計紀錄**，且 marker 使後續啟動
@@ -277,7 +277,7 @@ func ldapSeedMarkerWritten(db *gorm.DB) (bool, error) {
 
 // ldapSeedWriteMarker 冪等寫入標記。
 //
-// **為何必須冪等**（R3-codex）：判定順序把「env 未啟用 → 寫 marker」排在
+// **為何必須冪等**：判定順序把「env 未啟用 → 寫 marker」排在
 // 「marker 已寫 → 返回」之前，故 env 關閉的部署每次啟動都會走到這裡；
 // 直接 INSERT 會在第二次啟動撞主鍵而使佇列項每次啟動都記一筆失敗。
 //
@@ -315,7 +315,7 @@ func ldapSeedRisks(cfg ldapSeedEnvValues) []string {
 
 // ldapSeedAudit seed 事件入審計（不記密碼與密文）。
 //
-// **回傳 error 而非只記 log**（R4-codex HIGH）：呼叫端把本函式放進 seed 的同一
+// **回傳 error 而非只記 log**：呼叫端把本函式放進 seed 的同一
 // 事務，審計寫不進去即整批回滾——「認證來源已建立但無審計」不是可接受的終局。
 func ldapSeedAudit(auditTx port.TxSink, db *gorm.DB, row *model.LDAPDirectory, cfg ldapSeedEnvValues) error {
 	details, err := json.Marshal(map[string]any{
@@ -330,7 +330,7 @@ func ldapSeedAudit(auditTx port.TxSink, db *gorm.DB, row *model.LDAPDirectory, c
 	if err != nil {
 		return fmt.Errorf("序列化 LDAP seed 審計內容失敗: %w", err)
 	}
-	// W4 4.4 收口（AP-51）：改經 audit 模組的 TxSink。db 參數即呼叫端傳進來的
+	// 審計收口（AP-51）：改經 audit 模組的 TxSink。db 參數即呼叫端傳進來的
 	// 鎖內 tx——插列、審計、marker 三者同事務的前提就寄在這個句柄上。
 	if err := port.WriteInTx(auditTx, db, port.AuditEvent{
 		Actor:    gatewayapi.Actor{UserID: 0, Username: "system"},
@@ -346,7 +346,7 @@ func ldapSeedAudit(auditTx port.TxSink, db *gorm.DB, row *model.LDAPDirectory, c
 
 // ldapSeedTableExists 判定 ldap_directories 是否存在。
 //
-// **不用 GORM `Migrator().HasTable`**（R4-codex LOW）：它只回 bool，catalog 查詢
+// **不用 GORM `Migrator().HasTable`**：它只回 bool，catalog 查詢
 // 因權限、連線中斷或其他暫時性錯誤而失敗時，與「表確實不存在」無從區分——
 // seed 會誤走 no-op 並向佇列回報成功，基礎設施故障靜默不留痕。
 //

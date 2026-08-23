@@ -153,7 +153,7 @@ describe('MyRequests 我的申請', () => {
     confirmSpy.mockRestore()
   })
 
-  it('空狀態渲染引導文案（ui-quick-fixes：title＋hint 實際顯示）', async () => {
+  it('空狀態渲染引導文案（title＋hint 實際顯示）', async () => {
     getMyAccessRequestsMock.mockResolvedValue({ data: [], total: 0 })
     getMyActiveTicketsMock.mockResolvedValue({ data: [], total: 0 })
     const wrapper = mountView()
@@ -164,7 +164,7 @@ describe('MyRequests 我的申請', () => {
     expect(text).toContain('到「資產管理」找到需要申請的主機')
   })
 
-  it('破窗單標記「緊急」、已撤銷單顯示「已提前撤銷」（break-glass-revocation）', async () => {
+  it('破窗單標記「緊急」、已撤銷單顯示「已提前撤銷」', async () => {
     getMyAccessRequestsMock.mockResolvedValue({
       data: [
         {

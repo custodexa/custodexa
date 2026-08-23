@@ -28,7 +28,7 @@ export function updateSyslogSettings(data, options = {}) {
 /**
  * 以目前表單值發送測試訊息（不落庫；測試即實送，受傳輸政策閘管——
  * warn 檔對非 TLS 端點測試須帶 risk_acknowledged）
- * 成敗由 HTTP 狀態碼表達（asset-syslog-debt-cleanup D1）：送達成功 resolve
+ * 成敗由 HTTP 狀態碼表達：送達成功 resolve
  * 為 { data: { success: true } }；送達失敗 reject，回應為 502 且 body 為
  * { error, code: 'INTERNAL_SYSLOG_TEST_FAILED' }（以 resolveApiError 查譯）；
  * 傳輸政策閘未確認則 reject 於 400＋code='VALIDATION_TRANSMISSION_ACK_REQUIRED'

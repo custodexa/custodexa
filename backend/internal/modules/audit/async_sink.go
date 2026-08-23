@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 非同步審計投遞面的兩個實作（modular-architecture W4 任務 4.2／4.6）。
+// 非同步審計投遞面的兩個實作。
 //
 // 介面契約見 pkg/gatewayapi/audit.go 的 AsyncSink：at-most-once、「不投遞」是合法終態。
 //
@@ -22,14 +22,14 @@ import (
 // 走的是 `database.DB.Create` / `db.Create` 直寫，從未經過 AuditLogService.Log
 // 的開關分支。若把它們接到 AuditLogService 上，開關關閉時這兩類留痕會**新增**
 // 消失行為；那是行為變更，且方向是「少留痕」，踩在「全操作審計」紅線上。
-// 故 W4 4.6 的收口方式是：改走 AsyncSink 介面（拿掉對 model.AuditLog 的直接建構），
+// 故收口方式是：改走 AsyncSink 介面（拿掉對 model.AuditLog 的直接建構），
 // 但落地實作是 DirectSink——繞過開關、逐筆同步寫、錯誤原樣回傳，
 // 行為與收口前逐位相同。
 
 // AuditLogService 是 AsyncSink 的主實作（受 AuditLogEnabled／AsyncAuditEnabled 管制）。
 var _ gatewayapi.AsyncSink = (*AuditLogService)(nil)
 
-// Submit 入列一筆審計事件（W4 4.2）。
+// Submit 入列一筆審計事件。
 //
 // **現況 Log 的包裝，語義不變**：開關關閉即靜默丟棄、佇列滿載即丟棄或落檔，
 // 皆為 AsyncSink 契約明載的合法終態。回傳恆為 nil——Log 沒有回傳值，
@@ -50,7 +50,7 @@ func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
 		Action:      model.AuditAction(ev.Action),
 		Resource:    model.AuditResource(ev.Resource),
 		ResourceID:  ev.ResourceID,
-		// 資產主體鍵（auditor-workbench D4）：漏這一行，走 sink 的產生點
+		// 資產主體鍵：漏這一行，走 sink 的產生點
 		// 就算在上游填了 asset_id 也會在此被靜默丟棄，而資產樞紐只會少事件、
 		// 不會報錯——是最難察覺的一種缺口
 		AssetID:     ev.AssetID,
@@ -67,7 +67,7 @@ func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
 	}
 }
 
-// directSink 不受 AuditLogEnabled 管制的直寫落地面（W4 4.6，C-plain 兩點專用）。
+// directSink 不受 AuditLogEnabled 管制的直寫落地面（C-plain 兩點專用）。
 //
 // # 它存在的理由，以及它 SHALL NOT 被擴散使用
 //
@@ -98,7 +98,7 @@ func entryOf(ev gatewayapi.AuditEvent) *AuditLogEntry {
 // # 錯誤語義
 //
 // 同步寫、error 原樣回傳。呼叫端維持收口前的處置（AP-04 完全不檢查 error＝H-5 既有缺陷，
-// AP-28 只記 log）——**W4 不修這兩處的錯誤處置**，那是行為變更，不在等價搬遷範圍內。
+// AP-28 只記 log）——**收口時不修這兩處的錯誤處置**，那是行為變更，不在等價搬遷範圍內。
 type directSink struct {
 	db *gorm.DB
 }

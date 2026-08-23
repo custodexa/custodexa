@@ -256,8 +256,7 @@ func TestRespondInternalHidesCause(t *testing.T) {
 	}
 }
 
-// TestParamValidationLogIsInjectionSafe 參數違規的 log 不得被請求內容操縱
-// （V2 對抗驗收 C4）。
+// TestParamValidationLogIsInjectionSafe 參數違規的 log 不得被請求內容操縱。
 //
 // validateParams 的錯誤訊息帶被拒的值（"value not in allowlist: <值>"），
 // 而該值來自請求。修正前直接 %v 進 log：一個帶換行的值即可在日誌檔裡偽造

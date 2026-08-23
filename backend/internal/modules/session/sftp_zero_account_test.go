@@ -12,7 +12,7 @@ import (
 
 // TestSFTPConnectRejectsZeroAccountAsset 零帳號資產不得以空憑證連 SFTP。
 //
-// **來源（W6 6.6 搬檔）**：本斷言原本住在 asset 側
+// **來源**：本斷言原本住在 asset 側
 // `asset_account_review_test.go` 的 `TestZeroAccountAssetFailsClosedEverywhere`
 // 末三行。`SFTPService` 屬 session 模組、且斷言要呼叫它的**未匯出** `connect`，
 // asset 搬包後跨包取不到。故等值搬到 session 側——同一個入口、同一個哨兵

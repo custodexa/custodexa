@@ -139,7 +139,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  // 初始定位秒數（workbench-exits-and-export 出口 A）：null＝不定位（行為與改動前
+  // 初始定位秒數：null＝不定位（行為與改動前
   // 完全相同）。宣告式而非 expose 方法——變速走 dispose→重建，一次性方法呼叫
   // 會在重建時遺失，prop 則能在重建後重放定位意圖
   startAt: {
@@ -150,7 +150,7 @@ const props = defineProps({
 
 // start-at-applied：回報**實際**落點與是否被夾到可用末端。父層據此決定顯示
 // 「已定位至該筆紀錄前後」還是「該時刻不在錄影涵蓋範圍內」——不由播放器擅自
-// 靜默夾住裝作成功（design D2 誠實邊界第 2 條）
+// 靜默夾住裝作成功（誠實邊界第 2 條）
 const emit = defineEmits(['start-at-applied'])
 
 const playerRef = ref(null)

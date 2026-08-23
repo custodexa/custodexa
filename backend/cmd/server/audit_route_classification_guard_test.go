@@ -1,6 +1,6 @@
 package main
 
-// 路由審計分類完備性守衛（audit-resource-classification-closure 批 0）。
+// 路由審計分類完備性守衛。
 //
 // # 為什麼需要這個守衛
 //
@@ -92,7 +92,7 @@ const (
 	// **不等於無留痕**：其中數條另有 handler 自寫的產生點（見檔頭邊界）。
 	classNoIdentity routeAuditClass = "鏈中無認證中介層"
 	// classUnclassified 已註冊、有身分、分類器**落兜底**。這是本 change 要消滅的
-	// 缺陷本體，受 `maxUnclassifiedRoutes` 節制、逐批下修。
+	// 缺陷本體，受 `maxUnclassifiedRoutes` 節制、逐步下修。
 	classUnclassified routeAuditClass = "落兜底（未分類）"
 )
 
@@ -110,9 +110,9 @@ type routeAuditEntry struct {
 	//
 	// **本欄僅供閱讀，不作為任何判準。** 守衛只機械核對 `Class` 與 `Resource`
 	// （方向 1-5）；`Why` 的內容無論寫什麼、寫錯什麼，都不會使任何斷言轉紅。
-	// 這不是疏漏而是刻意記載的邊界：`audit-coverage-closure` 查明**自由文字欄
-	// 無機械核對，正是同型缺口得以長期潛伏的成因**（該 change 的
-	// `audit-coverage` spec 亦明訂守衛 SHALL NOT 以自由文字欄位作為判準）。
+	// 這不是疏漏而是刻意記載的邊界：**自由文字欄無機械核對，正是同型
+	// 缺口得以長期潛伏的成因**（`audit-coverage` spec 亦明訂守衛 SHALL NOT
+	// 以自由文字欄位作為判準）。
 	// 故本欄的價值只在「下一個讀這張表的人不必重新盤查一次」，
 	// 讀者不得反過來把它當成「這條路由確實有留痕」的證據——那要回去看
 	// 產生點登記表（`manifest-audit-points.md`）與該產生點的行為測試。
@@ -122,13 +122,13 @@ type routeAuditEntry struct {
 // maxUnclassifiedRoutes 落兜底路由的條數上限。
 //
 // **這不是「把現況寫成期望值」，而是單調下降的驗收儀表。** 起始值 47 是
-// 2026-08-13 的實測數；批 2（既有常數接線）後 33，批 3（新常數＋真哨兵）後 0。
-//   - 批 2（2026-08-14）47 → 33：access-reviews 4／user-groups 6／transmission 3／
+// 2026-08-13 的實測數，分兩步收斂到 0。
+//   - 第一步（2026-08-14）47 → 33：access-reviews 4／user-groups 6／transmission 3／
 //     connect-tokens 1，四族的常數本就存在、只是未接上分類器。
-//   - 批 3（2026-08-14）33 → **0**：alert-rules 4／asset-groups 6／audit-checkpoints 3／
+//   - 第二步（2026-08-14）33 → **0**：alert-rules 4／asset-groups 6／audit-checkpoints 3／
 //     audit-failures 1／audit-integrity 1／ldap-directory 4／notification-channels 5／
 //     oidc-providers 4／roles 1／snippets 4，十族各新增一個常數，
-//     且 `extractResource` 的兜底同批換成 `model.ResourceUnclassified` 哨兵。
+//     且 `extractResource` 的兜底一併換成 `model.ResourceUnclassified` 哨兵。
 //
 // **上限為 0 之後這道守衛才真正閉合**：任何新端點若沒被分類器命中，方向 1（缺登記）
 // 與方向 4（0 > 上限）會同時轉紅——漏分類從「靜默寫出假事件」變成「不改這一行就不能合併」。
@@ -209,23 +209,23 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/access-requests/pending/count"}:                                 {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
 	{"GET", "/api/v1/access-requests/reviews/pending"}:                               {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
 	{"GET", "/api/v1/access-requests/tickets"}:                                       {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
-	{"GET", "/api/v1/access-reviews"}:                                                {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（批 2 接線）"},
-	{"POST", "/api/v1/access-reviews"}:                                               {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（批 2 接線）"},
-	{"GET", "/api/v1/access-reviews/:id"}:                                            {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（批 2 接線）；`:id` 指向複審單，離開 asset 後不再灌進 asset_id"},
-	{"GET", "/api/v1/access-reviews/matrix"}:                                         {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（批 2 接線）"},
-	{"GET", "/api/v1/alert-rules"}:                                                   {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
-	{"POST", "/api/v1/alert-rules"}:                                                  {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
-	{"DELETE", "/api/v1/alert-rules/:id"}:                                            {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
-	{"PUT", "/api/v1/alert-rules/:id"}:                                               {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
+	{"GET", "/api/v1/access-reviews"}:                                                {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（既有常數接線）"},
+	{"POST", "/api/v1/access-reviews"}:                                               {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（既有常數接線）"},
+	{"GET", "/api/v1/access-reviews/:id"}:                                            {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（既有常數接線）；`:id` 指向複審單，離開 asset 後不再灌進 asset_id"},
+	{"GET", "/api/v1/access-reviews/matrix"}:                                         {classResource, model.ResourceAccessReview, "命中分類器段 `access-reviews`（既有常數接線）"},
+	{"GET", "/api/v1/alert-rules"}:                                                   {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
+	{"POST", "/api/v1/alert-rules"}:                                                  {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
+	{"DELETE", "/api/v1/alert-rules/:id"}:                                            {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
+	{"PUT", "/api/v1/alert-rules/:id"}:                                               {classResource, model.ResourceAlertRule, "命中分類器段 `alert-rules`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向規則列"},
 	{"GET", "/api/v1/approver-scopes"}:                                               {classResource, model.ResourceApproverScope, "命中分類器段 `approver-scopes`"},
 	{"POST", "/api/v1/approver-scopes"}:                                              {classResource, model.ResourceApproverScope, "命中分類器段 `approver-scopes`"},
 	{"DELETE", "/api/v1/approver-scopes/:id"}:                                        {classResource, model.ResourceApproverScope, "命中分類器段 `approver-scopes`"},
-	{"GET", "/api/v1/asset-groups"}:                                                  {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
-	{"POST", "/api/v1/asset-groups"}:                                                 {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
-	{"DELETE", "/api/v1/asset-groups/:id"}:                                           {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
-	{"PUT", "/api/v1/asset-groups/:id"}:                                              {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
-	{"PUT", "/api/v1/asset-groups/:id/move"}:                                         {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
-	{"GET", "/api/v1/asset-groups/tree"}:                                             {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"GET", "/api/v1/asset-groups"}:                                                  {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"POST", "/api/v1/asset-groups"}:                                                 {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"DELETE", "/api/v1/asset-groups/:id"}:                                           {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"PUT", "/api/v1/asset-groups/:id"}:                                              {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"PUT", "/api/v1/asset-groups/:id/move"}:                                         {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
+	{"GET", "/api/v1/asset-groups/tree"}:                                             {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
 	{"GET", "/api/v1/assets"}:                                                        {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"POST", "/api/v1/assets"}:                                                       {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"DELETE", "/api/v1/assets/:id"}:                                                 {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
@@ -251,13 +251,13 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/assets/tags"}:                                                   {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"POST", "/api/v1/assets/tags/delete"}:                                           {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"POST", "/api/v1/assets/tags/rename"}:                                           {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
-	{"GET", "/api/v1/audit-checkpoints"}:                                             {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（批 3 新分類）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
-	{"GET", "/api/v1/audit-checkpoints/public-key"}:                                  {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（批 3 新分類）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
-	{"GET", "/api/v1/audit-checkpoints/verify"}:                                      {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（批 3 新分類）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
+	{"GET", "/api/v1/audit-checkpoints"}:                                             {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
+	{"GET", "/api/v1/audit-checkpoints/public-key"}:                                  {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
+	{"GET", "/api/v1/audit-checkpoints/verify"}:                                      {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
 	{"GET", "/api/v1/audit-export"}:                                                  {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`"},
 	{"GET", "/api/v1/audit-export/public-key"}:                                       {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`"},
-	{"GET", "/api/v1/audit-failures"}:                                                {classResource, model.ResourceAuditFailure, "命中分類器段 `audit-failures`（批 3 新分類）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3）"},
-	{"GET", "/api/v1/audit-integrity/verify"}:                                        {classResource, model.ResourceAuditIntegrity, "命中分類器段 `audit-integrity`（批 3 新分類）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；驗證帶時間範圍）"},
+	{"GET", "/api/v1/audit-failures"}:                                                {classResource, model.ResourceAuditFailure, "命中分類器段 `audit-failures`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3）"},
+	{"GET", "/api/v1/audit-integrity/verify"}:                                        {classResource, model.ResourceAuditIntegrity, "命中分類器段 `audit-integrity`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；驗證帶時間範圍）"},
 	{"GET", "/api/v1/audit-logs"}:                                                    {classResource, model.ResourceAuditLog, "命中分類器段 `audit-logs`"},
 	{"GET", "/api/v1/audit-logs/:id"}:                                                {classResource, model.ResourceAuditLog, "命中分類器段 `audit-logs`"},
 	{"GET", "/api/v1/audit-logs/resource/:resource/:id"}:                             {classResource, model.ResourceAuditLog, "命中分類器段 `audit-logs`"},
@@ -288,7 +288,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/command-alerts"}:                                                {classResource, model.ResourceCommandAlert, "命中分類器段 `command-alerts`"},
 	{"POST", "/api/v1/command-alerts/:id/review"}:                                    {classResource, model.ResourceCommandAlert, "命中分類器段 `command-alerts`"},
 	{"GET", "/api/v1/commands"}:                                                      {classResource, model.ResourceCommand, "命中分類器段 `commands`"},
-	{"POST", "/api/v1/connect-tokens"}:                                               {classResource, model.ResourceSession, "命中分類器段 `connect-tokens`（批 2 接線）；票證簽發是「開一場連線」的前置動作，歸 session 而非另立常數"},
+	{"POST", "/api/v1/connect-tokens"}:                                               {classResource, model.ResourceSession, "命中分類器段 `connect-tokens`（既有常數接線）；票證簽發是「開一場連線」的前置動作，歸 session 而非另立常數"},
 	{"GET", "/api/v1/daily-reviews"}:                                                 {classResource, model.ResourceDailyReview, "命中分類器段 `daily-reviews`"},
 	{"POST", "/api/v1/daily-reviews"}:                                                {classResource, model.ResourceDailyReview, "命中分類器段 `daily-reviews`"},
 	{"GET", "/api/v1/daily-reviews/status"}:                                          {classResource, model.ResourceDailyReview, "命中分類器段 `daily-reviews`"},
@@ -297,56 +297,56 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"DELETE", "/api/v1/keys/rewrap"}:                                                {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rewrap"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rotate"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
-	{"DELETE", "/api/v1/ldap-directory"}:                                             {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
-	{"GET", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
-	{"PUT", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
-	{"POST", "/api/v1/ldap-directory/test"}:                                          {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
+	{"DELETE", "/api/v1/ldap-directory"}:                                             {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
+	{"GET", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
+	{"PUT", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
+	{"POST", "/api/v1/ldap-directory/test"}:                                          {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
 	{"GET", "/api/v1/my/connections"}:                                                {classResource, model.ResourceSession, "命中分類器段 `connections`；/my/connections* 操作的是 session"},
 	{"POST", "/api/v1/my/connections/:id/terminate"}:                                 {classResource, model.ResourceSession, "命中分類器段 `connections`；/my/connections* 操作的是 session"},
-	{"GET", "/api/v1/notification-channels"}:                                         {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
-	{"POST", "/api/v1/notification-channels"}:                                        {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
-	{"DELETE", "/api/v1/notification-channels/:id"}:                                  {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
-	{"PUT", "/api/v1/notification-channels/:id"}:                                     {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
-	{"POST", "/api/v1/notification-channels/:id/test"}:                               {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
-	{"GET", "/api/v1/oidc-providers"}:                                                {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
-	{"POST", "/api/v1/oidc-providers"}:                                               {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
-	{"DELETE", "/api/v1/oidc-providers/:id"}:                                         {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
-	{"PUT", "/api/v1/oidc-providers/:id"}:                                            {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
+	{"GET", "/api/v1/notification-channels"}:                                         {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
+	{"POST", "/api/v1/notification-channels"}:                                        {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
+	{"DELETE", "/api/v1/notification-channels/:id"}:                                  {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
+	{"PUT", "/api/v1/notification-channels/:id"}:                                     {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
+	{"POST", "/api/v1/notification-channels/:id/test"}:                               {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
+	{"GET", "/api/v1/oidc-providers"}:                                                {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
+	{"POST", "/api/v1/oidc-providers"}:                                               {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
+	{"DELETE", "/api/v1/oidc-providers/:id"}:                                         {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
+	{"PUT", "/api/v1/oidc-providers/:id"}:                                            {classResource, model.ResourceOIDCProvider, "命中分類器段 `oidc-providers`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向提供者列"},
 	{"GET", "/api/v1/recordings/stats"}:                                              {classResource, model.ResourceRecording, "命中分類器段 `recordings`"},
-	{"GET", "/api/v1/roles"}:                                                         {classResource, model.ResourceRole, "命中分類器段 `roles`（批 3 新分類）；設定面讀取（非審計資料讀取），不入 auditSensitiveResources；無 `:id`"},
+	{"GET", "/api/v1/roles"}:                                                         {classResource, model.ResourceRole, "命中分類器段 `roles`（新增常數接線）；設定面讀取（非審計資料讀取），不入 auditSensitiveResources；無 `:id`"},
 	{"GET", "/api/v1/security-policies"}:                                             {classResource, model.ResourceSecurityPolicy, "命中分類器段 `security-policies`"},
 	{"PUT", "/api/v1/security-policies"}:                                             {classResource, model.ResourceSecurityPolicy, "命中分類器段 `security-policies`"},
 	{"GET", "/api/v1/sessions"}:                                                      {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id"}:                                                  {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id/clipboard-events"}:                                 {classResource, model.ResourceClipboardEvent, "命中分類器段 `clipboard-events`；子資源前置特判先於容器段 sessions"},
-	{"GET", "/api/v1/sessions/:id/commands"}:                                         {classResource, model.ResourceCommand, "命中前置特判段 `commands`；取走指令原文＝取證，與容器段 sessions 分開（批 1 B 類）"},
-	{"DELETE", "/api/v1/sessions/:id/recording"}:                                     {classResource, model.ResourceRecording, "命中前置特判段 `recording`；刪除錄影證物須與一般連線操作分得開（批 1 B 類）"},
-	{"GET", "/api/v1/sessions/:id/recording"}:                                        {classResource, model.ResourceRecording, "命中前置特判段 `recording`；錄影中繼資料讀取與取流同族（批 1 B 類）"},
-	{"GET", "/api/v1/sessions/:id/recording/download"}:                               {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證（批 1 B 類）"},
-	{"GET", "/api/v1/sessions/:id/recording/stream"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證（批 1 B 類）"},
-	{"POST", "/api/v1/sessions/:id/recording/token"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；簽發取流票證是取證動作的起點（批 1 B 類）"},
+	{"GET", "/api/v1/sessions/:id/commands"}:                                         {classResource, model.ResourceCommand, "命中前置特判段 `commands`；取走指令原文＝取證，與容器段 sessions 分開"},
+	{"DELETE", "/api/v1/sessions/:id/recording"}:                                     {classResource, model.ResourceRecording, "命中前置特判段 `recording`；刪除錄影證物須與一般連線操作分得開"},
+	{"GET", "/api/v1/sessions/:id/recording"}:                                        {classResource, model.ResourceRecording, "命中前置特判段 `recording`；錄影中繼資料讀取與取流同族"},
+	{"GET", "/api/v1/sessions/:id/recording/download"}:                               {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證"},
+	{"GET", "/api/v1/sessions/:id/recording/stream"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證"},
+	{"POST", "/api/v1/sessions/:id/recording/token"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；簽發取流票證是取證動作的起點"},
 	{"DELETE", "/api/v1/sessions/:id/share"}:                                         {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"POST", "/api/v1/sessions/:id/share"}:                                           {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"POST", "/api/v1/sessions/:id/terminate"}:                                       {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/active"}:                                               {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/statistics"}:                                           {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
-	{"GET", "/api/v1/snippets"}:                                                      {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
-	{"POST", "/api/v1/snippets"}:                                                     {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
-	{"DELETE", "/api/v1/snippets/:id"}:                                               {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
-	{"PUT", "/api/v1/snippets/:id"}:                                                  {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（批 3 新分類）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
+	{"GET", "/api/v1/snippets"}:                                                      {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
+	{"POST", "/api/v1/snippets"}:                                                     {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
+	{"DELETE", "/api/v1/snippets/:id"}:                                               {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
+	{"PUT", "/api/v1/snippets/:id"}:                                                  {classResource, model.ResourceSnippet, "命中分類器段 `snippets`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向片段列"},
 	{"GET", "/api/v1/ssh/sessions/:id/stats"}:                                        {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/syslog-settings"}:                                               {classResource, model.ResourceSyslogSetting, "命中分類器段 `syslog-settings`"},
 	{"PUT", "/api/v1/syslog-settings"}:                                               {classResource, model.ResourceSyslogSetting, "命中分類器段 `syslog-settings`"},
 	{"POST", "/api/v1/syslog-settings/test"}:                                         {classResource, model.ResourceSyslogSetting, "命中分類器段 `syslog-settings`"},
-	{"POST", "/api/v1/transmission-consents"}:                                        {classResource, model.ResourceTransmission, "命中分類器段 `transmission-consents`（批 2 接線）；與清冊同歸 transmission——同一份政策的兩面"},
-	{"GET", "/api/v1/transmission-inventory"}:                                        {classResource, model.ResourceTransmission, "命中分類器段 `transmission-inventory`（批 2 接線）"},
-	{"POST", "/api/v1/transmission-inventory/export"}:                                {classResource, model.ResourceTransmission, "命中分類器段 `transmission-inventory`（批 2 接線）"},
-	{"GET", "/api/v1/user-groups"}:                                                   {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）"},
-	{"POST", "/api/v1/user-groups"}:                                                  {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）"},
-	{"DELETE", "/api/v1/user-groups/:id"}:                                            {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
-	{"PUT", "/api/v1/user-groups/:id"}:                                               {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
-	{"GET", "/api/v1/user-groups/:id/authorization-count"}:                           {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）；`authorization-count` 非 `authorizations` 段，不被授權分類吃掉"},
-	{"PUT", "/api/v1/user-groups/:id/members"}:                                       {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（批 2 接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
+	{"POST", "/api/v1/transmission-consents"}:                                        {classResource, model.ResourceTransmission, "命中分類器段 `transmission-consents`（既有常數接線）；與清冊同歸 transmission——同一份政策的兩面"},
+	{"GET", "/api/v1/transmission-inventory"}:                                        {classResource, model.ResourceTransmission, "命中分類器段 `transmission-inventory`（既有常數接線）"},
+	{"POST", "/api/v1/transmission-inventory/export"}:                                {classResource, model.ResourceTransmission, "命中分類器段 `transmission-inventory`（既有常數接線）"},
+	{"GET", "/api/v1/user-groups"}:                                                   {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）"},
+	{"POST", "/api/v1/user-groups"}:                                                  {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）"},
+	{"DELETE", "/api/v1/user-groups/:id"}:                                            {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
+	{"PUT", "/api/v1/user-groups/:id"}:                                               {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
+	{"GET", "/api/v1/user-groups/:id/authorization-count"}:                           {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）；`authorization-count` 非 `authorizations` 段，不被授權分類吃掉"},
+	{"PUT", "/api/v1/user-groups/:id/members"}:                                       {classResource, model.ResourceUserGroup, "命中分類器段 `user-groups`（既有常數接線）；`:id` 指向群組，離開 asset 後不再灌進 asset_id"},
 	{"GET", "/api/v1/users"}:                                                         {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users"}:                                                        {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"DELETE", "/api/v1/users/:id"}:                                                  {classResource, model.ResourceUser, "命中分類器段 `users`"},
@@ -368,9 +368,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 
 	// ── classNoIdentity：鏈中無認證中介層 ⇒ 審計中介層必然早退（22 條）──
 	//
-	// **理由欄的「[歸屬：…]」前綴＝留痕歸屬**（audit-coverage-closure 批 5，任務 5.2）。
+	// **理由欄的「[歸屬：…]」前綴＝留痕歸屬**。
 	// 加註的動機：`classNoIdentity` 只說「審計**中介層**不為它寫列」，讀者極易把它
-	// 誤讀成「這條路由無留痕」，而該誤讀正是 audit-coverage-closure 補的那批缺口
+	// 誤讀成「這條路由無留痕」，而該誤讀正是這些留痕缺口
 	// 能長期潛伏的原因之一——沒有人回答過「那誰來留痕」。
 	//
 	// 四種歸屬（散文詞彙，**不是閉集合、不受任何斷言檢查**）：
@@ -389,9 +389,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	// `audit_rejection_coverage_guard_test.go` 的拒絕留痕守衛。
 	{"POST", "/api/v1/auth/change-password"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] password_change scoped token 自解析，被 AuthMiddleware deny-by-default 擋下故不可掛；" +
-			"留痕＝AP-09 `auth_handler.go` `auditPasswordChange`（批 7 起來源位址改取連線對端）"},
+			"留痕＝AP-09 `auth_handler.go` `auditPasswordChange`（來源位址取自連線對端）"},
 	{"POST", "/api/v1/auth/login"}: {classNoIdentity, "",
-		"[歸屬：handler 自寫] 登入時尚無身分；留痕＝AP-07 `auditLogin`（批 7 起來源位址改取連線對端，" +
+		"[歸屬：handler 自寫] 登入時尚無身分；留痕＝AP-07 `auditLogin`（來源位址取自連線對端，" +
 			"修前可由 `X-Forwarded-For` 指定）"},
 	{"GET", "/api/v1/auth/methods"}: {classNoIdentity, "",
 		"[歸屬：無留痕] 登入方式探詢（`oidc_handler.go` `LoginMethods`），登入前可達的唯讀查詢，" +
@@ -399,7 +399,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/auth/mfa/enroll/confirm"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] MFA 強制註冊，enrollment scoped token 自解析；" +
 			"留痕＝AP-10 `auth_mfa_handler.go` `auditAuthEventFull`（成功走 `auditMFALoginSuccess`，" +
-			"批 7／2.9 起帶 provider Details）"},
+			"並帶 provider Details）"},
 	{"POST", "/api/v1/auth/mfa/enroll/setup"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] MFA 強制註冊，enrollment scoped token 自解析；" +
 			"留痕＝AP-10（本端點只有失敗分支寫列——setup 本身不改變任何狀態）"},
@@ -411,27 +411,26 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 			"逾界的洪水面由 AP-53 的 `oidc_abuse_aggregate` 聚合列承擔，流程結果由 callback／exchange 的 AP-72 承擔"},
 	{"GET", "/api/v1/auth/oidc/callback"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] OIDC 回呼，登入前可達；留痕＝AP-72 `oidc_handler.go` `writeOIDCAudit`" +
-			"（批 2 新增：JIT 建帳號列、流程失敗列、准入拒絕列）"},
+			"（涵蓋 JIT 建帳號列、流程失敗列、准入拒絕列）"},
 	{"POST", "/api/v1/auth/oidc/exchange"}: {classNoIdentity, "",
-		"[歸屬：handler 自寫] OIDC 碼交換，登入前可達；留痕＝AP-72（批 2 新增成功登入列與 MFA `mfa_pending` 列）"},
+		"[歸屬：handler 自寫] OIDC 碼交換，登入前可達；留痕＝AP-72（涵蓋成功登入列與 MFA `mfa_pending` 列）"},
 	{"POST", "/api/v1/auth/refresh"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] refresh 憑證自 body 帶入，access 可能已過期故為公開路由；" +
-			"留痕＝AP-08 `auditRefreshEvent`（批 4 起同時承接**成功輪替**，修前只有失敗留痕）"},
+			"留痕＝AP-08 `auditRefreshEvent`（同時承接**成功輪替**，修前只有失敗留痕）"},
 	{"GET", "/api/v1/connect"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫＋他體系] WebSocket 連線閘，token 於 handler 內自解析。" +
-			"兌換**拒絕**＝AP-69 `proxy/connect_gates.go` `AuditConnectDenied`（批 4 新增，" +
-			"批 10 起與 `/ssh` 共用同一個寫入點，本側 `details.via=connect`）；" +
+			"兌換**拒絕**＝AP-69 `proxy/connect_gates.go` `AuditConnectDenied`" +
+			"（與 `/ssh` 共用同一個寫入點，本側 `details.via=connect`）；" +
 			"**成功建線**由 sessions 表承擔（spec「他體系留痕的明載定調」）"},
 	{"GET", "/metrics"}: {classNoIdentity, "",
-		"[歸屬：無留痕] 營運指標曝光端點（observability-lite），不掛認證、無稽核語義" +
+		"[歸屬：無留痕] 營運指標曝光端點，不掛認證、無稽核語義" +
 			"（豁免表 `exemptProbe`）。**前身 `/api/v1/internal/metrics` 已移除**：" +
 			"該路徑落在 edge 整段代理的 `/api` 之下，「內部使用」的前提在正式部署下不成立"},
 	{"GET", "/api/v1/ping"}: {classNoIdentity, "",
 		"[歸屬：無留痕] 連通性探針，不掛認證，無稽核語義（豁免表 `exemptProbe`）"},
 	{"GET", "/api/v1/recordings/stream"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] rtoken 取流（刻意不掛 JWT）；" +
-			"留痕＝AP-68 `recording_handler.go` `auditRecordingRetrieval`" +
-			"（audit-resource-classification-closure 批 4 新增，非本 change）"},
+			"留痕＝AP-68 `recording_handler.go` `auditRecordingRetrieval`"},
 	{"GET", "/api/v1/seal/status"}: {classNoIdentity, "",
 		"[歸屬：他體系] 封印期端點，須早於認證系統可用；留痕由 seal journal 承擔" +
 			"（spec「他體系留痕的明載定調」），`audit_logs` 無列不計為缺口"},
@@ -440,14 +439,14 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 			"（spec「他體系留痕的明載定調」），`audit_logs` 無列不計為缺口"},
 	{"GET", "/api/v1/sessions/:id/monitor"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] 監控 WebSocket，token 於 handler 內自解析；" +
-			"留痕＝AP-70 `sshproxy/handler.go` `auditObserverJoin`（**本 change 批 4 新增**，" +
+			"留痕＝AP-70 `sshproxy/handler.go` `auditObserverJoin`（**本 change 新增**，" +
 			"修前管理員即時監看他人會話零留痕）"},
 	{"GET", "/api/v1/sessions/share/:code/ws"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] 分享連線 WebSocket；handler 只寫 authContext，中介層整筆跳過。" +
-			"留痕＝AP-70（**本 change 批 4 新增**，`via=share`，含無效分享碼的 `status=denied` 拒絕列）"},
+			"留痕＝AP-70（**本 change 新增**，`via=share`，含無效分享碼的 `status=denied` 拒絕列）"},
 	{"GET", "/api/v1/ssh"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫＋他體系] SSH WebSocket 閘，connect token 於 handler 內自解析。" +
-			"兌換**拒絕**＝AP-69 `proxy.AuditConnectDenied`（**批 10 新增**，與 `/connect` 共用" +
+			"兌換**拒絕**＝AP-69 `proxy.AuditConnectDenied`（與 `/connect` 共用" +
 			"同一個寫入點，`details.via=ssh`；缺票／偽票／過期票／閘序拒絕四路皆留痕）；" +
 			"**成功建線**由 sessions 表承擔（`sshproxy/handler.go` 的 `createSession`，涵蓋" +
 			"使用者／資產／來源位址／登入帳號；spec「他體系留痕的明載定調」）"},
@@ -486,7 +485,7 @@ type resourceClassifier struct {
 
 // classify 以與 `extractResource` 逐字相同的順序語義算出分類。
 // 第二個回傳值標示是否**落到兜底分支**——這是方向 4 的判準本體，
-// 不是「值等於 asset」的代理判準，故批 3 把兜底常數換成真哨兵時本守衛零改動。
+// 不是「值等於 asset」的代理判準，故兜底常數換成真哨兵時本守衛零改動。
 func (rc resourceClassifier) classify(path string) (string, bool) {
 	parts := strings.Split(path, "/")
 	for _, lp := range rc.loops {
@@ -903,7 +902,7 @@ func TestAuditRouteRegistryMatchesClassifierOutput(t *testing.T) {
 }
 
 // TestClassifierSimulatorAgreesWithKnownTruth 模擬器自身的健全性：三則已定案、
-// 不因後續批次而改變的對照。模擬器若因文法解析失誤而退化（例如規則全丟失、
+// 不因後續改動而改變的對照。模擬器若因文法解析失誤而退化（例如規則全丟失、
 // 迴圈順序顛倒），方向 3 會整批紅——但也可能整批「剛好」對，故此處另立正向對照。
 func TestClassifierSimulatorAgreesWithKnownTruth(t *testing.T) {
 	rc := loadResourceClassifier(t)
@@ -914,7 +913,7 @@ func TestClassifierSimulatorAgreesWithKnownTruth(t *testing.T) {
 	}{
 		{"/api/v1/assets/:id", string(model.ResourceAsset)},
 		{"/api/v1/users/:id/roles", string(model.ResourceUser)},
-		// 子資源前置特判須勝過容器段 sessions（clipboard-read-provenance 已定案）
+		// 子資源前置特判須勝過容器段 sessions
 		{"/api/v1/sessions/:id/clipboard-events", string(model.ResourceClipboardEvent)},
 		// /my/connections* 操作的是 session（不得落兜底）
 		{"/api/v1/my/connections", string(model.ResourceSession)},
@@ -947,8 +946,8 @@ func TestUnclassifiedRoutesStayUnderCeiling(t *testing.T) {
 	routes, chains := auditRouteUniverse(t)
 	rc := loadResourceClassifier(t)
 
-	// **判準取自實碼，不取自登記表的 Class 欄**（audit-resource-classification-closure
-	// 批 3）。上限降到 0 之後，若仍只數 `Class == classUnclassified` 的登記筆數，
+	// **判準取自實碼，不取自登記表的 Class 欄**。
+	// 上限降到 0 之後，若仍只數 `Class == classUnclassified` 的登記筆數，
 	// 這條斷言會退化成恆真——沒有那種登記存在，迴圈零迭代。改成
 	// 「分類器實算落兜底 **且** 中間件鏈含認證中介層」之後，把新端點登記成
 	// classResource 卻沒改分類器時，本條與方向 3 會**各自獨立**轉紅（不互相掩蓋）。
@@ -975,12 +974,12 @@ func TestUnclassifiedRoutesStayUnderCeiling(t *testing.T) {
 			"那是一個要有人簽字的動作，不是安靜多一列登記",
 			len(unclassified), maxUnclassifiedRoutes, strings.Join(unclassified, "\n  "))
 	}
-	t.Logf("落兜底路由 %d 條 / 上限 %d（驗收儀表：批 2 後 33，批 3 後 0）",
+	t.Logf("落兜底路由 %d 條 / 上限 %d（驗收儀表：起始 47，現為 0）",
 		len(unclassified), maxUnclassifiedRoutes)
 }
 
 // TestClassifierFallbackIsDedicatedSentinel 兜底**必須**是專屬哨兵，
-// 不得是任何有真實查詢面的類別（audit-resource-classification-closure 批 3、design D2）。
+// 不得是任何有真實查詢面的類別。
 //
 // **為什麼另立一條而不併進上面**：上限為 0 時，`maxUnclassifiedRoutes` 只證明
 // 「沒有已註冊路由落兜底」，對**兜底本身回什麼**一無所知。而缺陷本體正是後者——
@@ -1073,7 +1072,7 @@ func TestNoIdentityRoutesMatchMiddlewareChain(t *testing.T) {
 //
 // 方向 5 的推論鏈是：鏈中無 AuthMiddleware ⇒ context 無 `userID` ⇒ 審計中介層早退。
 // 中間那一步靠的是「`userID` 這個語義鍵只有 AuthMiddleware 會寫」。若哪天有 handler
-// 為了留痕而自行 `c.Set("userID", ...)`（design D6.3 明確否決過的做法），推論鏈就斷了：
+// 為了留痕而自行 `c.Set("userID", ...)`（設計上明確否決過的做法），推論鏈就斷了：
 // 那條路由會開始寫列，而方向 5 仍然說它「不入審計」——守衛全綠、事實相反。
 func TestAuditIdentityKeySetOnlyByAuthMiddleware(t *testing.T) {
 	root := guardModuleRoot(t)
@@ -1148,7 +1147,7 @@ func TestAuditIdentityKeySetOnlyByAuthMiddleware(t *testing.T) {
 	if len(offenders) > 0 {
 		t.Errorf("%s 之外有 %d 處寫入 %q 語義鍵：\n  %s\n\n"+
 			"`userID` 是全系統「已通過認證」的語義鍵。為了留痕而在 handler 內寫入它，"+
-			"會讓一條刻意不做 JWT 認證的路徑在下游看起來像認證過（design D6.3 已否決此做法），"+
+			"會讓一條刻意不做 JWT 認證的路徑在下游看起來像認證過（設計上已否決此做法），"+
 			"同時使方向 5 的「鏈中無認證 ⇒ 不寫列」推論失效",
 			authIdentityFileRel, len(offenders), authIdentityKey, strings.Join(offenders, "\n  "))
 	}

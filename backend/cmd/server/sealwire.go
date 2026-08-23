@@ -26,12 +26,12 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// B 模式的封印狀態機接線（kek-provider-modularization D6.1／D6.3／D6.4／D6.6）。
+// B 模式的封印狀態機接線。
 
 // verifiedUnseal 是 VerifyFunc 交給段 2 的載荷。
 type verifiedUnseal struct {
 	kek crypto.KEKProvider
-	// bootstrap 為 true 代表走初始化解封路徑（data_keys 為空，D6.3）。
+	// bootstrap 為 true 代表走初始化解封路徑（data_keys 為空）。
 	// 顯式欄位而非由其他欄位推導：分流結果決定 bootstrap 是否執行，
 	// 用「使用者名稱是否為空」代表它，等於把兩件事綁在一個巧合上。
 	bootstrap bool
@@ -39,7 +39,7 @@ type verifiedUnseal struct {
 	adminUsername string
 }
 
-// sealAuditEvent 是兩條解封路徑各自的審計事件名（D6.3 審計區分）。
+// sealAuditEvent 是兩條解封路徑各自的審計事件名（兩條路徑於審計上可區分）。
 //
 // 稽核上「這個部署的 KEK 是何時、由哪個來源初始化的」必須可回答，
 // 故初始化與一般解封 SHALL 產生**可區分**的事件，而不是同一個 unseal 事件
@@ -52,7 +52,7 @@ const (
 // sealWiring 是 B 模式接線的產物。
 //
 // **兩個 handler 共用同一台狀態機**：main 掛在主監聽、admin 掛在解封端點的
-// 獨立監聽（D6.4）。未設定獨立監聽時 admin 為 nil，main 保留解封能力。
+// 獨立監聽。未設定獨立監聽時 admin 為 nil，main 保留解封能力。
 // 兩者不是同一個實例的理由是「主監聽上的解封須硬拒」——同一實例無法同時
 // 對兩個監聽面表達不同的受理政策。
 type sealWiring struct {
@@ -66,7 +66,7 @@ type sealWiring struct {
 // **為何必須跨重試保留**：初始化解封的段 2 在 InitKeyManager 就會把 bootstrap
 // 金鑰持久化。若段 2 於其後失敗，重試時金鑰表已非空，分流會轉走一般解封路徑，
 // 於是這次部署的**初始化事件被記成一筆普通 unseal**——稽核從此無法回答
-// 「這個部署的 KEK 是何時、由誰初始化的」，而那正是 D6.3 要求兩條路徑可區分
+// 「這個部署的 KEK 是何時、由誰初始化的」，而那正是要求兩條路徑可區分
 // 的全部理由。狀態只存在於行程內、不受請求控制，故不構成新的授權面。
 type bootstrapPendingState struct {
 	mu       sync.Mutex
@@ -198,7 +198,7 @@ func runStage2Graph(ctx context.Context, s1 *stage1, vm seal.VerifiedMaterial,
 		g.bootstrap = vm.Bootstrap
 		g.adminUsername = v.adminUsername
 	}
-	// **不得 log.Fatalf**（D6.1）：回錯即由狀態機轉 sealed-faulted、
+	// **不得 log.Fatalf**：回錯即由狀態機轉 sealed-faulted、
 	// 行程續存，管理員可讀狀態並重試。半建構圖照樣回傳，供狀態機收束。
 	if err != nil {
 		log.Printf("[Seal] 段 2 初始化失敗（行程續存，狀態轉 sealed-faulted，可重試解封）: %v", err)
@@ -233,7 +233,7 @@ func publishStage2(published seal.ServiceGraph, machine *seal.Machine,
 		// 型別契約已被破壞，而此刻狀態已是 unsealed、沒有任何出邊：
 		// 不換手＝服務恆 503 且無法重試，log 一行然後返回是 fail-open 的
 		// 最壞形態（看起來成功、實際鎖死）。故以 fail-close 結束行程——
-		// 重啟後回到 sealed，管理員可重新解封。這與 D6.1「段 2 失敗不殺行程」
+		// 重啟後回到 sealed，管理員可重新解封。這與「段 2 失敗不殺行程」
 		// 不衝突：該條規範的是段 2 的**執行結果**，不是發佈後的結構性違反。
 		log.Fatalf("[Seal] 已發佈的服務圖不具備段 2 router（型別 %T）：段 2 契約已被破壞，拒絕以不可路由的解封狀態續存", published)
 		return
@@ -253,7 +253,7 @@ func publishStage2(published seal.ServiceGraph, machine *seal.Machine,
 //
 //   - count == 0 → 初始化解封：提交的材料即成為本部署的初始 KEK。
 //     認證擋的是「誰有權宣告」，paste-back 擋的是「宣告錯內容」，兩者正交、都要；
-//     D8 完整格式驗證另擋弱材料。
+//     完整格式驗證另擋弱材料。
 //   - count > 0 → 一般解封：**不驗格式、不要求憑證**，只驗能否解包現行代表列
 //     （既有部署的 KEK 可能早於格式規則；而「能解開代表列」本身即最強授權證明）。
 //
@@ -262,7 +262,7 @@ func publishStage2(published seal.ServiceGraph, machine *seal.Machine,
 // 故沿用一般解封的材料判準（能解包＝同一把材料），但事件仍記為初始化。
 //
 // 全部失敗路徑回傳的 error 都只作為 Cause——狀態機對外一律是同一個材料失敗碼，
-// 回應內容因此不可區分（D6.6）。
+// 回應內容因此不可區分。
 func verifyUnsealMaterial(material []byte, pending *bootstrapPendingState) (*verifiedUnseal, error) {
 	payload, err := api.DecodeSealMaterial(material)
 	if err != nil {
@@ -301,14 +301,14 @@ func verifyUnsealMaterial(material []byte, pending *bootstrapPendingState) (*ver
 // 順序刻意是「格式 → paste-back → 憑證」：三者皆為必要條件、失敗結果相同，
 // 順序不影響對外可觀察性；由便宜到昂貴排列則使被拒的請求盡早返回。
 func verifyInitializeUnseal(p *api.SealUnsealPayload) (*verifiedUnseal, error) {
-	// D8 完整伺服端格式驗證：長度、字元集、非出廠預設值。
+	// 完整伺服端格式驗證：長度、字元集、非出廠預設值。
 	// **string 轉換是誠實邊界的一部分**：驗證器以 string 為介面，此處必然產生
 	// 一份不可覆寫的副本（見 api.SealUnsealPayload.Zeroize）。不為此重寫一份
 	// 平行的驗證邏輯——重複的安全驗證比一份不可歸零的副本更危險。
 	if v := config.ValidateKEKMaterial(string(p.KEK)); v != "" {
 		return nil, fmt.Errorf("初始 KEK 材料不合格式: %s", v)
 	}
-	// D7 paste-back 二次輸入＋保存確認：初始化解封輸錯會把打錯的字串固化為
+	// paste-back 二次輸入＋保存確認：初始化解封輸錯會把打錯的字串固化為
 	// 整個部署的 KEK，後果與重包輸錯同級，故防護等級必須同級。
 	// 定時比較：兩者皆為使用者輸入，不比較耗時本身有意義，但一致性成本為零。
 	if subtle.ConstantTimeCompare(p.KEK, p.KEKConfirm) != 1 {
@@ -317,7 +317,7 @@ func verifyInitializeUnseal(p *api.SealUnsealPayload) (*verifiedUnseal, error) {
 	if !p.ConfirmSaved {
 		return nil, errors.New("未確認已保存初始 KEK")
 	}
-	// 初始管理員憑證：缺此項＝未認證的主金鑰領主權競賽（D6.3）。
+	// 初始管理員憑證：缺此項＝未認證的主金鑰領主權競賽。
 	if err := identity.VerifyInitialAdminCredential(database.DB, p.Username, p.Password); err != nil {
 		return nil, err
 	}
@@ -347,7 +347,7 @@ func buildStage2Engine(s1 *stage1, machine *seal.Machine, sealHandler *api.SealH
 		return machine.Snapshot().State == seal.StateUnsealed
 	})
 	deps.seal = sealHandler
-	// 金鑰清冊的封印狀態欄（D10）：由本行程實際運轉的狀態機導出，
+	// 金鑰清冊的封印狀態欄：由本行程實際運轉的狀態機導出，
 	// 不由組態或環境變數推導——清冊要回答的正是「實際跑的是什麼」。
 	deps.keyManagement.SetSealStateProbe(func() (string, time.Time) {
 		return string(machine.Snapshot().State), g.unsealedAt
@@ -356,7 +356,7 @@ func buildStage2Engine(s1 *stage1, machine *seal.Machine, sealHandler *api.SealH
 	return r, nil
 }
 
-// writeSealAudit 記錄可區分的解封審計事件（D6.3）。
+// writeSealAudit 記錄可區分的解封審計事件。
 //
 // 初始化事件另記新 KEK 指紋與 bootstrap 產生的金鑰版本清單——稽核上
 // 「這個部署的 KEK 是何時、由哪個來源初始化的」必須可回答。
@@ -415,7 +415,7 @@ func bootstrapKeyVersions(g *appGraph) []string {
 
 // startSealJournalReplay 把封印期 journal 的事件回灌進審計，且**回灌可被等待**。
 //
-// **走既有審計寫入路徑（同一序列化入口），不另開直寫**（D6.5 第 6 點）：
+// **走既有審計寫入路徑（同一序列化入口），不另開直寫**：
 // 回灌只是「另一個審計事件來源」，其 DB 交易與 HMAC 蓋章與一般審計相同；
 // 兩路各自進入會並行競爭鏈尾。
 //

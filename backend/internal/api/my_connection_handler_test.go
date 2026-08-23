@@ -45,7 +45,7 @@ func setupMyConnectionEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.
 	t.Cleanup(func() { database.DB = oldDB })
 
 	// 建立測試中被簽發 token 的使用者：認證中介層的憑證世代閘會現查使用者
-	// （idp-oidc-integration D2），查無即拒——已軟刪帳號的既簽 token 因此立即失效。
+	// 查無即拒——已軟刪帳號的既簽 token 因此立即失效。
 	// 測試本就宣稱這些使用者存在（session 掛在其名下），此處補齊事實
 	for _, id := range []uint{1, 2, 3} {
 		u := model.User{
@@ -200,7 +200,7 @@ func TestMyConnections_PageSizeClamped(t *testing.T) {
 	}
 }
 
-// TestMyConnections_DurationContract 時長契約（design D3）：
+// TestMyConnections_DurationContract 時長契約：
 // ended 用持久化 Duration、active 用 floor(now-StartTime)、時鐘異常不回負值、
 // connected_at＝StartTime
 func TestMyConnections_DurationContract(t *testing.T) {
@@ -258,7 +258,7 @@ func TestMyConnections_DurationContract(t *testing.T) {
 	}
 }
 
-// TestMyConnections_ExtremePageNoOverflow 極端 page 值不因 int 溢位回錯頁（codex F3）：
+// TestMyConnections_ExtremePageNoOverflow 極端 page 值不因 int 溢位回錯頁：
 // 超出總數的頁回空 data，total 照實
 func TestMyConnections_ExtremePageNoOverflow(t *testing.T) {
 	r, mgr, db, _ := setupMyConnectionEnv(t)
@@ -278,7 +278,7 @@ func TestMyConnections_ExtremePageNoOverflow(t *testing.T) {
 	}
 }
 
-// TestMyConnections_NegativePersistedDurationClamped 已結束列的持久化負 Duration 夾 0（codex F4）
+// TestMyConnections_NegativePersistedDurationClamped 已結束列的持久化負 Duration 夾 0
 func TestMyConnections_NegativePersistedDurationClamped(t *testing.T) {
 	r, mgr, db, _ := setupMyConnectionEnv(t)
 
@@ -408,7 +408,7 @@ func TestMyConnections_TerminateEnded(t *testing.T) {
 // 單獨承擔，與 RBAC 無關：他人的 session 一律 404（不洩漏存在性）。
 //
 // 原以 `FEATURE_PERMISSION_CHECK_ENABLED=false` 為前提，證明「旗標關閉也不放行」；
-// 該旗標已於 security-backlog-settlement 退場，前提不復存在。契約本身不變，
+// 該旗標已退場，前提不復存在。契約本身不變，
 // 故保留斷言、移除已無對象的環境變數設定
 func TestMyConnections_TerminateOwnerCheckIsTheOnlyGate(t *testing.T) {
 	r, mgr, db, _ := setupMyConnectionEnv(t)

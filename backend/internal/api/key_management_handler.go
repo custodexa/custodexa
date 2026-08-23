@@ -23,9 +23,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// KeyManagementHandler 金鑰清冊與換鑰精靈 API（key-management-envelope D5/D6）。
+// KeyManagementHandler 金鑰清冊與換鑰精靈 API。
 // 整組 admin only；讀取經 audit middleware 以 key_management 資源入審計；
-// **任何回應不含金鑰材料與 wrapped 值，無例外**——D7 明文流向反轉後，重包的
+// **任何回應不含金鑰材料與 wrapped 值，無例外**——明文流向反轉後，重包的
 // 新 KEK 由呼叫端提供而非伺服端回傳，原本「重包一次性回傳」的例外已消失
 type KeyManagementHandler struct {
 	db             *gorm.DB
@@ -36,7 +36,7 @@ type KeyManagementHandler struct {
 	// checkpointSigning 檢查點鏈簽章鑰（audit-checkpoint-chain 3.4）：
 	// 清冊只曝露公鑰指紋與版本，私鑰無任何出口
 	checkpointSigning *keyvault.CheckpointSigningService
-	auditService   *audit.AuditLogService         // 清理退役資料的顯式留痕（D9）
+	auditService   *audit.AuditLogService         // 清理退役資料的顯式留痕
 	sealState      SealStateProbe                 // 封印狀態探針（組裝根注入）
 	// delegatedProvider 委託重包目標的 provider 建構器（組裝根注入）。
 	// 未注入時委託分支回「尚未提供」，SHALL NOT 靜默退化為本地目標。
@@ -56,7 +56,7 @@ func (h *KeyManagementHandler) SetAuditService(a *audit.AuditLogService) {
 	h.auditService = a
 }
 
-// SealStateProbe 回報封印狀態機的當前態與解封時點（D10 自證循環防線）。
+// SealStateProbe 回報封印狀態機的當前態與解封時點（自證循環防線）。
 //
 // 以閉包注入而非讓 handler 直接持有狀態機：組裝根是唯一知道「這個行程實際
 // 跑的是哪一台狀態機」的地方，而清冊的用途正是稽核那件事。
@@ -90,18 +90,18 @@ type keyView struct {
 	AgeDays   int        `json:"age_days"`
 	// OverCryptoperiod active 鑰年齡逾提醒政策（政策 0＝恆 false）
 	OverCryptoperiod bool `json:"over_cryptoperiod"`
-	// MaterialPurged 材料已經顯式清理銷毀（D9；佔位列指紋仍列）
+	// MaterialPurged 材料已經顯式清理銷毀（佔位列指紋仍列）
 	MaterialPurged bool `json:"material_purged"`
 }
 
 // envKeyView 清冊項（env 側金鑰：部署方管理，僅存在性/指紋，無輪替入口）。
 // Name/Note 為 zh 顯示字串（wire fallback）；NameCode/NoteCode 為穩定機器碼，
-// 前端 keyEnvName/keyEnvNote getter 查譯（i18n-backend-labels 模式），缺譯降級 zh。
+// 前端 keyEnvName/keyEnvNote getter 查譯，缺譯降級 zh。
 type envKeyView struct {
 	Name string `json:"name"`
 	// NameCode 名稱機器碼（僅描述型名稱需要，如 audit_export；技術識別字如 ENCRYPTION_KEY 留空用 Name）
 	NameCode string `json:"name_code,omitempty"`
-	// Fingerprint 三鑰一致顯示（key-inventory-transparency）：KEK/JWT 為 secret 摘要指紋、
+	// Fingerprint 三鑰一致顯示：KEK/JWT 為 secret 摘要指紋、
 	// Ed25519 為公鑰指紋。單向摘要，不外洩金鑰材料
 	Fingerprint string `json:"fingerprint,omitempty"`
 	// PublicKey Ed25519 匯出簽章鑰之公鑰（base64，非機密）供複製/下載；其他鑰無
@@ -140,7 +140,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		})
 	}
 
-	// env 側鑰：三鑰一致顯示指紋（key-inventory-transparency）
+	// env 側鑰：三鑰一致顯示指紋
 	envKeys := []envKeyView{
 		{Name: "ENCRYPTION_KEY (KEK)", Fingerprint: h.km.KEKKeyID(), ManagedBy: "deployer",
 			Note: "信封主鑰：換鑰走精靈的 KEK 重包流程", NoteCode: "encryption_key"},
@@ -160,7 +160,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		envKeys = append(envKeys, ev)
 	}
 
-	// Ed25519 檢查點簽章鑰（audit-checkpoint-chain D5）：與匯出簽章鑰刻意分立
+	// Ed25519 檢查點簽章鑰（audit-checkpoint-chain）：與匯出簽章鑰刻意分立
 	// （共用會使任一鑰的輪替／洩漏綁死兩個信任面），故在清冊上也是獨立一項。
 	// **自始帶版本**：匯出簽章鑰無版本欄是已知缺陷，本鑰不回頭補課但不重蹈
 	if h.checkpointSigning != nil {
@@ -175,7 +175,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		envKeys = append(envKeys, ev)
 	}
 
-	// KEK 退役史（key-inventory-transparency D6/D7）：from→to 聚合，不含 wrapped_key
+	// KEK 退役史：from→to 聚合，不含 wrapped_key
 	kekHistory, err := h.km.ListRetiredKEKs()
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalKeyKEKHistoryQuery, err)
@@ -183,10 +183,10 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 	}
 
 	rotationPending, _ := h.km.RotationPendingCount()
-	// 切換收尾待收斂狀態（codex 實作審 D7）：收尾 best-effort 失敗時 env pending 未轉正
+	// 切換收尾待收斂狀態：收尾 best-effort 失敗時 env pending 未轉正
 	// 或退役 backlog 殘留——清冊暴露筆數供管理員知悉需重啟收斂（>0 才需關注）
 	env := h.km.KEKKeyID()
-	// 收斂狀態讀取失敗時不得以 0 呈現＝假健康（opus 第一輪審 M4）：
+	// 收斂狀態讀取失敗時不得以 0 呈現＝假健康：
 	// converge_state_error=true 供前端保守處置（顯示未知態、禁用清理按鈕）
 	convergeStateErr := false
 	var finalizePending int64
@@ -195,7 +195,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		log.Printf("[KeyManagement] 讀取待切換筆數失敗（收斂狀態未知）: %v", err)
 		convergeStateErr = true
 	}
-	// retire backlog 走 service 的單一謂詞方法（kek-rewrap-hygiene-hardening D5）：
+	// retire backlog 走 service 的單一謂詞方法：
 	// 清冊標示與 degraded 告警偵測必須是同一個判定，不得各寫一份 SQL
 	retireBacklog, err := h.km.RetireBacklogCount()
 	if err != nil {
@@ -205,7 +205,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 	body := gin.H{
 		"keys":     keys,
 		"env_keys": envKeys,
-		// provider／key_ref：**由執行期 provider 物件導出**（D10 自證循環防線）。
+		// provider／key_ref：**由執行期 provider 物件導出**（自證循環防線）。
 		//
 		// SHALL NOT 重讀 os.Getenv：清冊的用途是稽核「這個行程**實際**跑的是哪一個
 		// KEK provider」。若它自己去讀環境變數，回答的就只是「環境變數寫了什麼」
@@ -225,7 +225,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		"retire_backlog":       retireBacklog,
 		"converge_state_error": convergeStateErr,
 		// migration／migration_pending 欄位已隨 legacy 信封化遷移一同拆除
-		// （release-transitional-cleanup 3.3）：清冊 SHALL NOT 含任何 legacy
+		// 清冊 SHALL NOT 含任何 legacy
 		// 遷移狀態欄位——終態下無存量可遷，該欄位恆為 0/null 只會誤導。
 		// rotation_pending 現行 data DEK 版本尚未覆蓋的值數（partial 續跑提示）
 		"rotation_pending": rotationPending,
@@ -286,14 +286,14 @@ func (h *KeyManagementHandler) Rotate(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// Rewrap KEK 重包（D7 明文流向反轉後）。
+// Rewrap KEK 重包（明文流向反轉後）。
 //
 // **明文只朝一個方向流動**：材料由請求體帶入，僅存活於本次請求處理期間；
 // 回應不含任何 KEK 明文欄，只回金鑰引用（指紋，非機密）與重包列數。
 // 伺服端不生成、不落庫、不落日誌。
 //
 // 請求體為 discriminated union，混合 payload 一律 fail-close（見
-// key_rewrap_payload.go）。`Cache-Control: no-store` 由 D1 保留——現在保護的是
+// key_rewrap_payload.go）。`Cache-Control: no-store` 保留——現在保護的是
 // **請求重放**而非回應洩漏。
 //
 // **請求體不入審計**：捕獲欄位是 audit_logs.request_body，現行
@@ -321,7 +321,7 @@ func (h *KeyManagementHandler) Rewrap(c *gin.Context) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeKeyOpBusy, nil)
 			return
 		}
-		// 目標側衝突（D8「非現行 KEK」／既有守衛 c「指紋未曾出現」）：
+		// 目標側衝突（「非現行 KEK」／既有守衛 c「指紋未曾出現」）：
 		// 皆為可由操作者改用另一把新鑰即恢復的前置狀態衝突
 		switch {
 		case errors.Is(err, keyvault.ErrRewrapTargetSameAsCurrent):
@@ -436,7 +436,7 @@ func (h *KeyManagementHandler) AbandonRewrap(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": abandoned})
 }
 
-// CleanupRetired 清理退役金鑰資料（kek-rewrap-hygiene-hardening D9）：
+// CleanupRetired 清理退役金鑰資料：
 // 唯一材料銷毀點。全收斂閘＋退役 DEK 版本引用掃描閘於 service 層鎖內執行；
 // 指紋與退役軌跡永久保留。清理明細顯式留痕審計。
 func (h *KeyManagementHandler) CleanupRetired(c *gin.Context) {
@@ -450,13 +450,13 @@ func (h *KeyManagementHandler) CleanupRetired(c *gin.Context) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeKeyCleanupNotConverged, nil)
 			return
 		}
-		// 不可歸屬殘值：保守拒清（release-transitional-cleanup 3.3）。
+		// 不可歸屬殘值：保守拒清。
 		// 與「未收斂」同屬可恢復的前置狀態衝突，故 409＋機器碼
 		if errors.Is(err, keyvault.ErrCleanupResidueDetected) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeKeyCleanupResidueDetected, nil)
 			return
 		}
-		// 中止原因必落 log（opus 第二輪審 M1）：清理中止代表差點發生不可逆銷毀
+		// 中止原因必落 log：清理中止代表差點發生不可逆銷毀
 		// 錯誤，診斷訊號不得消失於無資訊 500（RespondInternal 內部落 log）
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalKeyCleanupRetired, err)
 		return

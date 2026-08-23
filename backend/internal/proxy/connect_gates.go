@@ -20,11 +20,10 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 兩階段閘序宣告（modular-architecture W10，圖形側）
+// 兩階段閘序宣告（圖形側）
 //
 // 骨架與文字側（internal/sshproxy/connect_gates.go）逐字相同：`AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount`，差異只由 Stage 與各自宣告的閘序表達。
-// 閘編號（G-G*）的定義即本檔的閘序表——每個 `{Name: "G-…"}` 之後緊接該閘的實作與理由；完整登記表（含刻意不涵蓋者與其逐條理由）見 `w10_characterization_matrix_test.go` 的 `TestW10GuacMatrixCoverageIsDeclared`。
-// 收斂當時逐格比對用的等價基準表歸檔於維護者的私有開發歷程，未隨公開倉庫發佈。
+// 閘編號（G-G*）的定義即本檔的閘序表——每個 `{Name: "G-…"}` 之後緊接該閘的實作與理由；完整登記表（含刻意不涵蓋者與其逐條理由）見 `characterization_matrix_test.go` 的 `TestGuacMatrixCoverageIsDeclared`。
 //
 // **判定邏輯、拒絕碼與副作用次序逐字未改**——每個 Eval 的內容即原 HandleConnect
 // 對應段落的程式碼（含 log 前綴）。
@@ -39,7 +38,7 @@ type graphicsRedeemState struct {
 
 // contractSubject／contractObject 由兌換側狀態造出 `gatewayapi.PolicyGate` 的契約入參。
 //
-// **單一事實源**：HandleConnect 與 W10 守衛測試共用同一份構造。兩處各造一份，
+// **單一事實源**：HandleConnect 與閘序守衛測試共用同一份構造。兩處各造一份，
 // 守衛驗的就會是另一組輸入，閘序等價的證明當場失效。
 //
 // ClaimedRole 留空是實質：grant 刻意不攜帶角色，兌換側角色一律由 G-G4 現查。
@@ -76,7 +75,7 @@ func (h *ConnectionHandler) redeemPreResolveGates(
 	s gatewayapi.ConnectSubject, st *graphicsRedeemState) []connectgate.Gate {
 	return []connectgate.Gate{
 		{Name: "G-G4", Eval: func() *connectgate.Outcome {
-			// AUTH-1＋角色現況（connect-role-revocation-hardening D3）：connect_token 消費時重載
+			// AUTH-1＋角色現況：connect_token 消費時重載
 			// 用戶狀態並取 DB 現查有效角色（停用/鎖定/降權前簽發者於殘窗內須擋）
 			currentRole, connErr := h.AuthService.CurrentConnectRole(s.UserID)
 			if connErr != nil {
@@ -119,9 +118,9 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			return nil
 		}},
 		{Name: "G-G8", Eval: func() *connectgate.Outcome {
-			// 兌換點授權與政策重查（CPG-010，與簽發點對稱）：簽發後、兌換前遭撤銷之
+			// 兌換點授權與政策重查（與簽發點對稱）：簽發後、兌換前遭撤銷之
 			// 連線授權/ticket/存取政策/角色於此即時生效——撤權殘窗（原 60s TTL）歸零。
-			// role 用 DB 現查 currentRole，不憑角色快照授予 admin 特權（CPG-010-01）
+			// role 用 DB 現查 currentRole，不憑角色快照授予 admin 特權
 			hasPerm, aerr := h.AuthorizationService.CheckPermission(
 				st.authzCtx, s.UserID, o.AssetID, model.PermissionConnect)
 			if aerr != nil {
@@ -148,7 +147,7 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 					string(apierror.CodeInternalAccessPolicyCheck), derr)
 			}
 			if !decision.Allowed {
-				// M8：reason/policy 是前端 connect.js 的控制流機器欄，經 Meta 平鋪回
+				// reason/policy 是前端 connect.js 的控制流機器欄，經 Meta 平鋪回
 				// 封套 top-level，欄位名與值不變；散文降為碼的 ZhFallback
 				code := apierror.CodeAccessApprovalRequired
 				if decision.Reason == policy.AccessGateReasonRequired {
@@ -160,7 +159,7 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			return nil
 		}},
 		{Name: "G-G10", Eval: func() *connectgate.Outcome {
-			// SSH 已退出 guacd 圖像串流路徑（ssh-xterm-direct D7）：
+			// SSH 已退出 guacd 圖像串流路徑：
 			// 原生文字流走 GET /api/v1/ssh（xterm.js 直連）
 			if o.Protocol == "ssh" {
 				log.Println("[Handler] 拒絕 guacd SSH 連線請求：請改用 /api/v1/ssh")
@@ -170,7 +169,7 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			return nil
 		}},
 		{Name: "G-G11", Eval: func() *connectgate.Outcome {
-			// 零帳號資產 fail-close（codex HIGH）：空 username＋空密碼交給 guacd 會變成
+			// 零帳號資產 fail-close：空 username＋空密碼交給 guacd 會變成
 			// 對 RDP／VNC 等目標的匿名或免密嘗試——受管連線的前提是有受管憑證。
 			// 置於停用／授權／政策閘之後：那些閘的回應語義是既有契約，順序不動
 			if st.creds.AccountID == 0 {
@@ -181,11 +180,11 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			return nil
 		}},
 		{Name: "G-G12", Eval: func() *connectgate.Outcome {
-			// 帳號授權範圍兌換複查（asset-multi-account D5 強制點 2／3，圖形側）：
+			// 帳號授權範圍兌換複查（強制點 2／3，圖形側）：
 			// 與 SSH 兌換點同語義——判定 creds 實際解析出的帳號（grant.AccountID=0＝預設），
 			// 簽發後帳號被移出授權範圍者在此即時拒絕，不因 token 未過期而放行。
 			//
-			// **必須排在零帳號 fail-close 之後**（opus 階段 4 F3）：零帳號資產的
+			// **必須排在零帳號 fail-close 之後**：零帳號資產的
 			// `creds.Username == ""`，在具名授權範圍下 `Allows("")` 為 false，範圍複查若在前
 			// 會搶先回 403「無連線權限」——同一個「這台沒設帳號」的狀態，SSH 側回
 			// 404 RULE_ACCOUNT_NONE_USABLE、圖形側卻回 403，管理員會照著訊息去查權限而非補帳號。
@@ -211,7 +210,7 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 }
 
 // writeOutcome 把閘序判定結果寫成 HTTP 回應（語義與 sshproxy 側同源），
-// 並為該次拒絕留痕（audit-coverage-closure 批 4）。
+// 並為該次拒絕留痕。
 //
 // **回應與留痕綁在同一個出口**是刻意的：閘序表往後只會增列，若留痕散在各閘的
 // Eval 裡，新增一道閘忘了寫審計不會有任何東西轉紅——那正是本 change 要根除的模式。
@@ -233,7 +232,7 @@ func (h *ConnectionHandler) writeOutcome(c *gin.Context, out *connectgate.Outcom
 // ConnectDenial 兌換拒絕的審計輸入。
 //
 // **匯出是實質**：文字側（`GET /api/v1/ssh`，`internal/sshproxy`）與圖形側
-// （`GET /api/v1/connect`）共用下方唯一的寫入實作（audit-coverage-closure 批 10）。
+// （`GET /api/v1/connect`）共用下方唯一的寫入實作。
 // 兩包各寫一份的話，欄位集會各自演化——「某一側少填來源位址」不會讓任何測試轉紅，
 // 而 spec 的「兌換拒絕留痕」本來就沒有端點限定。
 type ConnectDenial struct {
@@ -271,7 +270,7 @@ const viaUnknown = "unknown"
 // 完全不可見——與「沒有人試過」不可分辨。中介層在此路徑亦幫不上忙：兌換失敗時
 // `userID` 從未寫進 gin context，`AuditLogMiddleware` 整筆跳過。
 //
-// # status 的分流規則（design D3）
+// # status 的分流規則
 //
 // 依 HTTP 狀態機械分流，不逐案判斷：
 //

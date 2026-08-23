@@ -24,7 +24,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 連線票證兌換遭拒必須留痕（audit-coverage-closure 批 4／connection-gating spec）。
+// 連線票證兌換遭拒必須留痕（connection-gating spec）。
 //
 // # 缺陷
 //
@@ -37,11 +37,11 @@ import (
 //  1. 票證不成立（缺／偽造／過期）三種拒絕**各自**留痕，且原因在審計上**可區分**
 //     ——即使對外回應刻意收斂為同一則「token 無效」（不給票證存在性探測面）。
 //  2. 閘序拒絕（協議不符）留痕，且與票證類拒絕的原因可區分。
-//  3. `status` 依 design D3 分流：401＝憑證不成立→`failure`；其餘＝授權拒絕→`denied`。
+//  3. `status` 依下列規則分流：401＝憑證不成立→`failure`；其餘＝授權拒絕→`denied`。
 //     一刀切會讓兩種語義混成一團，破壞既有 403 列的可解釋性。
 //  4. 閘序拒絕填 `asset_id`：「有人試圖連這台機器但被擋下」必須出現在資產樞紐上。
 //
-// # 突變自檢（tasks 4.6）
+// # 突變自檢
 //
 // 拿掉 `HandleConnect` 內票證分支的 `h.auditConnectDenied(...)` ⇒ 票證三格轉紅；
 // 拿掉 `writeOutcome` 內的 `h.auditConnectDenied(...)` ⇒ 協議不符格轉紅。

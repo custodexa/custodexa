@@ -1,12 +1,12 @@
 import request from './request'
 
 /**
- * 存取複審 API（authorization-page-redesign D5：自 authorizations.js 遷出，
+ * 存取複審 API（自 authorizations.js 遷出，
  * 職能歸審計區；讀取 audit:view、簽核 admin，全端點無條件守門）
  */
 
 /**
- * 取得當下完整存取矩陣（audit-workflows D2，audit:view）
+ * 取得當下完整存取矩陣（audit-workflows，audit:view）
  * @returns {Promise} { data: [AccessMatrixEntry], total }
  */
 export function getAccessMatrix() {

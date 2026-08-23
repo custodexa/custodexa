@@ -157,7 +157,7 @@ describe('AuditLogs', () => {
     expect(wrapper.vm.snapshotCounts({ snapshot_json: '{broken' })).toEqual([])
   })
 
-  // backend-i18n-unification D8：cause_code 為權威表述，散文 cause 降為 fallback
+  // cause_code 為權威表述，散文 cause 降為 fallback
   it('renders cause from cause_code lexicon, falling back to prose for unknown/absent codes', async () => {
     setUserRoles(['auditor'])
     getAuditFailuresMock.mockResolvedValue({

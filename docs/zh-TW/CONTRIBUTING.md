@@ -77,12 +77,8 @@ git 設定（`user.name`／`user.email`），會永久留在公開歷史，請�
    **動了 model／migration** 同步 [`docs/DB_SCHEMA.md`](../DB_SCHEMA.md)。
 4. **歸檔時 specs 只能寫系統真的做得到的事**。沒做完的部分在 PR 裡說明，
    維護者會開 issue 追蹤，不要寫進 spec。
-
-### 程式碼裡的 change 代號
-
-註解中形如 `（asset-multi-account D5）` 的標記，代表這個分支承載一個有記錄的決定，
-改動前先確認。行為的權威描述永遠在 `openspec/specs/`；
-理由不清楚時開 issue 問，維護者會補進文件。
+5. **行為的權威描述在 `openspec/specs/`**。註解寫的是那一段程式碼當下的取捨，
+   註解與規格衝突時以規格為準；理由不清楚就開 issue 問，維護者會補進文件。
 
 ## 設計原則（提功能前看一眼）
 

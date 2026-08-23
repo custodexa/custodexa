@@ -91,13 +91,10 @@ Key points:
 4. **Archived specs may only describe what the system actually does.**
    Explain unfinished parts in the PR and a maintainer will track them in an
    issue; do not write them into the spec.
-
-### Change codes in the source
-
-Markers like `（asset-multi-account D5）` in comments flag branches that encode
-a recorded decision, so double-check before changing them. The authoritative
-description of the behavior is always `openspec/specs/`; if the reasoning is
-unclear, ask in an issue and a maintainer will add it to the docs.
+5. **`openspec/specs/` is the authoritative description of behavior.** A code
+   comment explains the trade-off made at that spot; where a comment and the
+   spec disagree, the spec wins. If the reasoning is unclear, ask in an issue
+   and a maintainer will add it to the docs.
 
 ## Design principles (read before proposing features)
 

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// schema 事實源的單一性守衛（migration-baseline-compression D1／D3）。
+// schema 事實源的單一性守衛。
 //
 // # 本檔守的是什麼
 //

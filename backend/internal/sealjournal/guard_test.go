@@ -94,7 +94,7 @@ const sealjournalPkgPath = sealjournalModulePath + "/internal/sealjournal"
 const minSealjournalClosurePkgs = 80
 
 // sealjournalModuleRoot 由本測試檔位置向上找 go.mod，並核對 module 行。
-// 不用 cwd 相對或固定層數 `..`：那與本 package 的樹深綁死（W1 1.20）。
+// 不用 cwd 相對或固定層數 `..`：那與本 package 的樹深綁死。
 func sealjournalModuleRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
@@ -126,7 +126,7 @@ func sealjournalModuleRoot(t *testing.T) string {
 // 回灌 MUST 經既有審計寫入路徑（同一序列化入口），MUST NOT 另開直寫。
 // 本套件因此不得依賴任何 DB 存取套件——落地一律經呼叫端提供的 Sink。
 //
-// **判定自字串比對改為結構性斷言**（modular-architecture W1 1.20，R4 D-5 實證）：
+// **判定自字串比對改為結構性斷言**：
 // 原先掃自家原始碼是否出現 "internal/repository"／"internal/service" 等**具名
 // import 路徑**。那種寫法在包被改名或搬遷的當下就恆綠——`repository` 一旦更名
 // 為 `database`，禁令字串再也匹配不到任何東西，守衛從此永遠通過，而「直寫 DB」

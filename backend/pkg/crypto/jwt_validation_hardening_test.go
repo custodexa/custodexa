@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 解析器約束的收緊（codex 對抗審查 G-A）。
+// 解析器約束的收緊（安全審查 G-A）。
 //
 // 原本 ValidateToken 只檢查 `token.Method.(*jwt.SigningMethodHMAC)`——那是**族**
 // 判定而非**演算法**判定，等於同時接受 HS256/HS384/HS512。同一把 secret 若在他處

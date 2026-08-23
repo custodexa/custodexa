@@ -16,19 +16,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// W10 characterization matrix — StageRedeemGraphical（modular-architecture 任務 11.6）
+// 連線閘序 characterization matrix — StageRedeemGraphical
 //
-// 與 `internal/sshproxy/w10_characterization_matrix_test.go` 同一份職責，格名以閘編號
+// 與 `internal/sshproxy/characterization_matrix_test.go` 同一份職責，格名以閘編號
 // （G-G*）標註。**編號的定義在 `internal/proxy/connect_gates.go`**——每個 `{Name: "G-…"}`
-// 之後緊接該閘的實作與理由；本檔的 `TestW10GuacMatrixCoverageIsDeclared` 則是編號的
-// 完整登記表（含刻意不涵蓋者與其逐條理由）。收斂當時逐格比對用的等價基準表歸檔於
-// 維護者的私有開發歷程，未隨公開倉庫發佈。
+// 之後緊接該閘的實作與理由；本檔的 `TestGuacMatrixCoverageIsDeclared` 則是編號的
+// 完整登記表（含刻意不涵蓋者與其逐條理由）。
 // 圖形側單獨成檔的理由：兩個入口分屬不同 package，共用夾具會逼出跨包測試接縫。
 //
 // 副作用斷言同文字側：閘拒絕 SHALL NOT 留下 session 列，且 token 一經 Resolve 即焚。
 
-// w10RedeemGuac 兌換圖形連線；extra 為附加 query（供連線收口防呆格使用）
-func w10RedeemGuac(h *ConnectionHandler, token, extra string) (int, map[string]any) {
+// gateRedeemGuac 兌換圖形連線；extra 為附加 query（供連線收口防呆格使用）
+func gateRedeemGuac(h *ConnectionHandler, token, extra string) (int, map[string]any) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/connect", h.HandleConnect)
@@ -44,7 +43,7 @@ func w10RedeemGuac(h *ConnectionHandler, token, extra string) (int, map[string]a
 	return w.Code, resp
 }
 
-func w10SeedGuacAccount(t *testing.T, db *gorm.DB, username string, isDefault bool) uint {
+func gateSeedGuacAccount(t *testing.T, db *gorm.DB, username string, isDefault bool) uint {
 	t.Helper()
 	acct := model.AssetAccount{AssetID: 1, Username: username, IsDefault: isDefault}
 	if err := db.Create(&acct).Error; err != nil {
@@ -53,7 +52,7 @@ func w10SeedGuacAccount(t *testing.T, db *gorm.DB, username string, isDefault bo
 	return acct.ID
 }
 
-func w10GuacAssertNoSession(t *testing.T, db *gorm.DB, cell string) {
+func gateGuacAssertNoSession(t *testing.T, db *gorm.DB, cell string) {
 	t.Helper()
 	var n int64
 	if err := db.Model(&model.Session{}).Count(&n).Error; err != nil {
@@ -64,7 +63,7 @@ func w10GuacAssertNoSession(t *testing.T, db *gorm.DB, cell string) {
 	}
 }
 
-type w10GuacCell struct {
+type gateGuacCell struct {
 	name       string
 	gate       string
 	setup      func(t *testing.T, h *ConnectionHandler, db *gorm.DB)
@@ -80,16 +79,16 @@ type w10GuacCell struct {
 	wantBurned bool
 }
 
-// w10GuacCells StageRedeemGraphical 矩陣的全部格。
+// gateGuacCells StageRedeemGraphical 矩陣的全部格。
 //
-// **獨立於測試函式存在，是為了讓涵蓋面自證能真正耦合**：`TestW10GuacMatrixCoverageIsDeclared`
-// 直接從本函式擷取 `gate` 欄（W10 獨立驗收 F3：原版只比對兩個硬編碼常數，恆真）。
-func w10GuacCells() []w10GuacCell {
+// **獨立於測試函式存在，是為了讓涵蓋面自證能真正耦合**：`TestGuacMatrixCoverageIsDeclared`
+// 直接從本函式擷取 `gate` 欄（原版只比對兩個硬編碼常數，恆真）。
+func gateGuacCells() []gateGuacCell {
 	seedDefault := func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
-		w10SeedGuacAccount(t, db, "administrator", true)
+		gateSeedGuacAccount(t, db, "administrator", true)
 	}
 
-	return []w10GuacCell{
+	return []gateGuacCell{
 		{
 			name: "全閘通過（帳號解析＝預設帳號）抵達 guacd 握手", gate: "—",
 			setup: seedDefault,
@@ -158,8 +157,8 @@ func w10GuacCells() []w10GuacCell {
 		{
 			name: "G-G6 帳號於簽發後被刪", gate: "G-G6",
 			setup: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
-				w10SeedGuacAccount(t, db, "administrator", true)
-				w10SeedGuacAccount(t, db, "operator", false)
+				gateSeedGuacAccount(t, db, "administrator", true)
+				gateSeedGuacAccount(t, db, "operator", false)
 			},
 			mutate: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
 				if err := db.Delete(&model.AssetAccount{}, 2).Error; err != nil {
@@ -227,7 +226,7 @@ func w10GuacCells() []w10GuacCell {
 		{
 			name: "G-G10 SSH 協議已退出 guacd 路徑", gate: "G-G10",
 			setup: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
-				w10SeedGuacAccount(t, db, "root", true)
+				gateSeedGuacAccount(t, db, "root", true)
 				if err := db.Model(&model.Asset{}).Where("id = ?", 1).
 					Update("protocol", model.ProtocolSSH).Error; err != nil {
 					t.Fatalf("set ssh: %v", err)
@@ -244,7 +243,7 @@ func w10GuacCells() []w10GuacCell {
 			wantBurned: true,
 		},
 		{
-			name: "G-G12 帳號於簽發後移出授權範圍（D-9 兌換側 403）", gate: "G-G12",
+			name: "G-G12 帳號於簽發後移出授權範圍（兌換側 403）", gate: "G-G12",
 			setup: seedDefault,
 			mutate: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
 				if err := db.Model(&model.AssetAuthorization{}).Where("user_id = ?", 1).
@@ -259,9 +258,9 @@ func w10GuacCells() []w10GuacCell {
 	}
 }
 
-// TestW10CharacterizationMatrixRedeemGraphical StageRedeemGraphical 逐格特徵化
-func TestW10CharacterizationMatrixRedeemGraphical(t *testing.T) {
-	for _, cell := range w10GuacCells() {
+// TestCharacterizationMatrixRedeemGraphical StageRedeemGraphical 逐格特徵化
+func TestCharacterizationMatrixRedeemGraphical(t *testing.T) {
+	for _, cell := range gateGuacCells() {
 		t.Run(cell.name, func(t *testing.T) {
 			h, db := setupGraphicsRedeemTest(t)
 			if cell.setup != nil {
@@ -278,7 +277,7 @@ func TestW10CharacterizationMatrixRedeemGraphical(t *testing.T) {
 			if cell.mutate != nil {
 				cell.mutate(t, h, db)
 			}
-			status, resp := w10RedeemGuac(h, token, cell.extraQuery)
+			status, resp := gateRedeemGuac(h, token, cell.extraQuery)
 
 			if status != cell.wantStatus {
 				t.Fatalf("[%s] HTTP 狀態不符: got=%d want=%d resp=%v", cell.name, status, cell.wantStatus, resp)
@@ -300,9 +299,9 @@ func TestW10CharacterizationMatrixRedeemGraphical(t *testing.T) {
 					t.Fatalf("[%s] 機器欄 %q 不應存在: resp=%v", cell.name, k, resp)
 				}
 			}
-			w10GuacAssertNoSession(t, db, cell.name)
+			gateGuacAssertNoSession(t, db, cell.name)
 			if cell.rawToken == "" && !cell.noToken {
-				replayStatus, replayResp := w10RedeemGuac(h, token, "")
+				replayStatus, replayResp := gateRedeemGuac(h, token, "")
 				burned := replayStatus == http.StatusUnauthorized &&
 					replayResp["code"] == string(apierror.CodeConnectTokenInvalid)
 				if burned != cell.wantBurned {
@@ -314,12 +313,12 @@ func TestW10CharacterizationMatrixRedeemGraphical(t *testing.T) {
 	}
 }
 
-// TestW10GuacMatrixCoverageIsDeclared 涵蓋面自證：**涵蓋集合從實際矩陣格機器擷取**
+// TestGuacMatrixCoverageIsDeclared 涵蓋面自證：**涵蓋集合從實際矩陣格機器擷取**
 //
 // 圖形側宣稱「12／12 全涵蓋」，本測試即該宣稱的機器證據：每一道基準表 §1.3 的閘
 // 都必須有至少一格實跑格宣稱涵蓋它，缺一即紅；格宣稱了基準表外的閘也紅。
 // 原版只比對兩個硬編碼常數（`len(gates)!=12`、`len(uncovered)!=0`），與矩陣零耦合。
-func TestW10GuacMatrixCoverageIsDeclared(t *testing.T) {
+func TestGuacMatrixCoverageIsDeclared(t *testing.T) {
 	gates := []string{"G-G1", "G-G2", "G-G3", "G-G4", "G-G5", "G-G6",
 		"G-G7", "G-G8", "G-G9", "G-G10", "G-G11", "G-G12"}
 	baseline := map[string]bool{}
@@ -334,7 +333,7 @@ func TestW10GuacMatrixCoverageIsDeclared(t *testing.T) {
 
 	covered := map[string]bool{}
 	cellCount := 0
-	for _, c := range w10GuacCells() {
+	for _, c := range gateGuacCells() {
 		cellCount++
 		if c.gate == "—" {
 			continue

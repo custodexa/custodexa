@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// === 漸進遷移的判定契約（password-hasher-interface 3.1）===
+// === 漸進遷移的判定契約===
 //
 // 本檔釘的是**判定**——
 // NeedsRehash 決定「要不要升級」，判錯的兩個方向後果都不小：
@@ -104,7 +104,7 @@ func TestRehashPreservesVerifiability(t *testing.T) {
 
 // TestNoBatchRehashEntryPoint 本套件 SHALL NOT 提供批次重新雜湊的入口。
 //
-// tasks 3.5：批次重雜湊在密碼學上不可實作（需要明文，而系統沒有明文），
+// 批次重雜湊在密碼學上不可實作（需要明文，而系統沒有明文），
 // **留一個空殼入口比沒有更糟**——呼叫端會以為遷移已經處理掉了。
 // 此處以「介面不提供該形態的方法」作為機器可見的表達：
 // Hasher 只能對單一明文產生雜湊，Verifier 只能驗證，兩者都拿不到批次入口。

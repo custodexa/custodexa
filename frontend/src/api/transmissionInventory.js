@@ -1,6 +1,6 @@
 import request from './request'
 
-/** 通道加密清冊（admin；transmission-security-policy 4.1，讀取入審計） */
+/** 通道加密清冊（admin；讀取入審計） */
 export function getTransmissionInventory() {
   return request({
     url: '/transmission-inventory',

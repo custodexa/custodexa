@@ -1,6 +1,6 @@
 package proxy_test
 
-// TokenService 的**消費側**測試（modular-architecture W10.2，DoD-2）
+// TokenService 的**消費側**測試
 //
 // 「消費側」＝以 `gatewayapi.TokenService` 這個**介面型別**為依賴的測試。
 // `redeemOnce` 只認得介面，對 `proxy.ConnectTokenManager` 一無所知；同一組斷言

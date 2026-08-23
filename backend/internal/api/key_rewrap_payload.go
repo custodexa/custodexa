@@ -7,18 +7,18 @@ import (
 	"io"
 )
 
-// 換鑰精靈重包請求體（kek-provider-modularization D7）：**discriminated union**。
+// 換鑰精靈重包請求體：**discriminated union**。
 //
 // 本地目標 `{mode:"local", new_kek, new_kek_confirm, confirm_saved}` 與委託目標
 // `{mode:"kms"|"hsm", key_ref}` 為**互斥**變體，由顯式 mode 判別。
 //
 // **混合 payload 或 mode 與所帶欄位不符一律 fail-close 拒絕**，
-// SHALL NOT 以欄位優先序擇一處理（codex 批 B2 medium）：以優先序處理會留下
+// SHALL NOT 以欄位優先序擇一處理：以優先序處理會留下
 // provider-confusion 空間——繞過本地目標的格式驗證與 paste-back，或把使用者的
 // KEK 明文誤送進本應只收引用的委託路徑。故本檔的解析採「逐變體的精確鍵集」：
 // 缺必要鍵、多出他變體的鍵、或出現未知鍵，一律拒絕。
 //
-// **兩個確認欄位的證明力不同（D7／codex 批 B2 high）**：
+// **兩個確認欄位的證明力不同**：
 //   - new_kek_confirm 的逐字比對是伺服端**唯一**信任的機械不變式——它證明呼叫端
 //     當下持有並能完整重述該材料，可由伺服端獨立驗證。
 //   - confirm_saved **不具任何授權力**：伺服端無法驗證「材料已離線保存」（直打 API

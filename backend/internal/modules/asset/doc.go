@@ -1,8 +1,8 @@
-// Package asset 是資產模組（modular-architecture Phase B / W6）。
+// Package asset 是資產模組。
 //
 // # 職責
 //
-// 資產與資產樹 CRUD、資產帳號（asset-multi-account）、憑證的封裝與解封、
+// 資產與資產樹 CRUD、資產帳號、憑證的封裝與解封、
 // 改密計劃與執行、host key TOFU。**資產憑證明文的唯一產生地**——全庫只有兩個
 // 解封出口（`AssetService.GetWithCredentialsForAccount` 與 `GetSftpPassword`），
 // 由 `cmd/server/asset_credential_exit_guard_test.go` 釘住，新增出口須經安全審查。
@@ -16,5 +16,5 @@
 // # 誠實邊界
 //
 // 「零出向」只在 import 層成立。資料層另有 `cmd/server/module_data_boundary_guard_test.go`
-// 的 ratchet 守衛（現況 asset 對 authz 有兩處 F8 交易級聯寫入，W7 7.4 收口）。
+// 的 ratchet 守衛（現況 asset 對 authz 有兩處交易級聯寫入，經 tx-taking 窄 port 收口）。
 package asset

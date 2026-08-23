@@ -2,12 +2,12 @@ package model
 
 import "time"
 
-// 降級原因機器碼（command-audit-altscreen-bypass C）。
+// 降級原因機器碼。
 //
 // 定位與 audit_failure.go 的 `Cause*` 常數同一慣例：**碼是權威表述**，
 // 三語散文由前端按碼查譯，值即 DB 與前端契約，改值等同 migration。
 //
-// 兩個值域，以 `SessionCommand.Degraded` 區分，**刻意不合併**（design §6.6）：
+// 兩個值域，以 `SessionCommand.Degraded` 區分，**刻意不合併**：
 //   - Degraded=true  → 該輪**沒有可信的指令文字**，Command 必為空（DB CHECK 釘死）。
 //     此時 DegradeReason 取下列 `Degrade*` 之一。
 //   - Degraded=false 且 DegradeReason 非空 → **文字已入庫、但可能不等於實際執行的指令**。
@@ -55,8 +55,8 @@ const (
 )
 
 // SessionCommand SSH 會話指令記錄
-// 由 proxy 端重組 client→guacd 的 key instruction 而來（command-audit design D1/D4）
-// user_id/asset_id 為冗餘欄位：跨會話搜尋不需 JOIN sessions（D4）
+// 由 proxy 端重組 client→guacd 的 key instruction 而來（command-audit）
+// user_id/asset_id 為冗餘欄位：跨會話搜尋不需 JOIN sessions
 // 注意：本表由 migration v7.8 以原生 SQL 建立，不走 AutoMigrate，
 // 欄位定義需與 migration 保持一致
 type SessionCommand struct {
@@ -69,7 +69,7 @@ type SessionCommand struct {
 	Seq        int       `gorm:"not null" json:"seq"` // 會話內執行順序（從 1 開始）
 	ExecutedAt time.Time `gorm:"type:timestamptz;not null" json:"executed_at"`
 
-	// Degraded 該輪的指令文字無法可信重組（command-audit-altscreen-bypass C）。
+	// Degraded 該輪的指令文字無法可信重組。
 	//
 	// 為真時 Command **必為空**，且此不變式由 baseline 的
 	// `CHECK (NOT degraded OR command = '')` 在 DB 層釘死而非靠約定——

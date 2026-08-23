@@ -12,12 +12,12 @@ import (
 )
 
 // ProviderAWS KEK_KMS_PROVIDER 目前唯一支援值。
-// GCP KMS／Azure Key Vault 留介面不實作、誠實記載（D11）。
+// GCP KMS／Azure Key Vault 留介面不實作、誠實記載。
 const ProviderAWS = "aws"
 
 // API 本套件使用到的 KMS 操作面（**只列真的會呼叫的四個**）。
 //
-// **為何抽介面**：D11.1 裁決 4 的雙軌驗收要求「以 fake client 捕獲請求，斷言
+// **為何抽介面**：雙軌驗收要求「以 fake client 捕獲請求，斷言
 // 每次 Decrypt／ReEncrypt 入參恆帶 KeyId 與 EncryptionContext」——該斷言的價值
 // 在於**不依賴模擬器保真度**，故必須能在不連任何服務的情況下取得真實入參。
 type API interface {
@@ -32,7 +32,7 @@ type Settings struct {
 	// Provider 委託服務商，目前僅 aws
 	Provider string
 	// KeyID 組態輸入形式：alias／裸 key-id／完整 ARN 三者皆可，
-	// 建構期一律經 DescribeKey 正規化為 key ARN（D11.1 裁決 1）
+	// 建構期一律經 DescribeKey 正規化為 key ARN
 	KeyID string
 	// Region AWS 區域
 	Region string
@@ -49,7 +49,7 @@ type Settings struct {
 	Scope AccountScope
 }
 
-// ErrEndpointOverride 生產路徑偵測到端點覆寫（round-4 codex high #2）
+// ErrEndpointOverride 生產路徑偵測到端點覆寫（安全審查 high #2）
 var ErrEndpointOverride = errors.New("KMS 端點覆寫遭拒：生產路徑不接受任何端點改導")
 
 // endpointOverrideEnvKeys AWS SDK v2 自身解析的端點覆寫環境變數。
@@ -62,10 +62,10 @@ var endpointOverrideEnvKeys = []string{"AWS_ENDPOINT_URL_KMS", "AWS_ENDPOINT_URL
 
 // newAWSClient 依 Settings 建構官方 SDK v2 的 KMS 客戶端。
 //
-// **憑證來源不自建（D11）**：走 SDK 預設鏈（IRSA／instance profile／AWS_* env／
+// **憑證來源不自建**：走 SDK 預設鏈（IRSA／instance profile／AWS_* env／
 // SSO），產品不代管雲端憑證、也不新增自家 secret 存放。
 //
-// **端點覆寫在生產路徑一律 fail-close（round-4 codex high #2）**：
+// **端點覆寫在生產路徑一律 fail-close（安全審查 high #2）**：
 // 先前的註解宣稱「生產路徑（Endpoint 為空）完全不經此分支」——該說法**只對本檔的
 // 程式分支成立，對 SDK 自身的 env 解析不成立**。實測（aws-sdk-go-v2 config
 // v1.32.34 / kms v1.55.3）：`AWS_ENDPOINT_URL_KMS` 會被 `awskms.NewFromConfig`

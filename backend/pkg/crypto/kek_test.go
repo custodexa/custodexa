@@ -76,8 +76,8 @@ func TestEnvKEKProviderRejectsShortKey(t *testing.T) {
 	}
 }
 
-// TestParseEnvelopeStillReadsPreReleaseFormat 解析能力 SHALL 保留
-// （release-transitional-cleanup D1）：`enc:v<N>` 的**寫出**能力已刪除，但
+// TestParseEnvelopeStillReadsPreReleaseFormat 解析能力 SHALL 保留：
+// `enc:v<N>` 的**寫出**能力已刪除，但
 // **解析**能力是殘值盤點與退役 DEK 引用掃描的判定基礎——收斂解密不等於收斂解析。
 // 本測試以手工字面（非編碼器產出，編碼器已無此能力）餵入。
 func TestParseEnvelopeStillReadsPreReleaseFormat(t *testing.T) {

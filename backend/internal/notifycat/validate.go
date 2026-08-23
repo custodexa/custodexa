@@ -10,7 +10,7 @@ import (
 
 // ErrUnregisteredEvent 事件未註冊的哨兵。
 //
-// 呼叫端據此**降級投遞而非拒發**（design D4）：webhook 分支送
+// 呼叫端據此**降級投遞而非拒發**：webhook 分支送
 // {event, params, degraded:true}、Slack 分支改用 RenderDegraded——
 // 合規告警不因目錄缺鍵而靜默消失。
 var ErrUnregisteredEvent = errors.New("notifycat: unregistered event")
@@ -54,7 +54,7 @@ func (errs ParamErrors) Error() string {
 	return strings.Join(parts, "; ")
 }
 
-// Validate 驗證事件參數並回傳淨化後的 map（design D3/D4）。
+// Validate 驗證事件參數並回傳淨化後的 map。
 //
 // 規則：
 //   - 事件未註冊 → *UnregisteredEventError（errors.Is(err, ErrUnregisteredEvent) 為真）
@@ -74,8 +74,8 @@ func Validate(event Event, params map[string]string) (map[string]string, error) 
 
 	var errs ParamErrors
 	out := make(map[string]string, len(params))
-	// 已因格式/值域違規記錄過的鍵：不得再以 missing_required 重複記一筆
-	// （V2 對抗驗收，codex low）。「votes=abc」的真因是 not_an_integer，
+	// 已因格式/值域違規記錄過的鍵：不得再以 missing_required 重複記一筆。
+	// 「votes=abc」的真因是 not_an_integer，
 	// 同時回報 missing_required 會誤導修錯方向——一個違規只出一個錯。
 	rejected := map[string]bool{}
 
@@ -132,11 +132,11 @@ func Validate(event Event, params map[string]string) (map[string]string, error) 
 	return out, nil
 }
 
-// FilterDeclared 降級路徑的參數收口（codex 批 2 M1）：只留 EventSpec 宣告的鍵，
+// FilterDeclared 降級路徑的參數收口：只留 EventSpec 宣告的鍵，
 // 值過 SanitizeOpaque；回傳被剔除的鍵名（已排序）供呼叫端 log。
 //
 // 為何降級不能「淨化後照發全部 params」：淨化只處理形狀（控制字元、長度），
-// 不處理**內容該不該出站**。宣告的鍵是設計時逐一審過可外送的（D8 去識別紅線
+// 不處理**內容該不該出站**。宣告的鍵是設計時逐一審過可外送的（去識別紅線
 // 就是靠 EventSpec 把 forensic detail 擋在 params 之外）；未宣告的鍵沒經過
 // 任何審查——降級路徑正是呼叫端契約已經出錯的時刻，此時最不該放寬出站面。
 //

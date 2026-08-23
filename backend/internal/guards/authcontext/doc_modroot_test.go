@@ -35,12 +35,12 @@ import (
 // 其原宿主（lifecycle_manifest_guard_test.go／model_audit_write_guard_test.go）
 // 一個因依賴 `stage2ServiceInventory` 而無法搬出、一個屬於別的守衛群，
 // 而把私有符號改成公開只為了共用二十來行工具並不划算。專案內同型副本已有數份
-// （gwModuleRoot／guardModuleRoot／auditPointModuleRoot／w10ModuleRoot），
+// （gwModuleRoot／guardModuleRoot／auditPointModuleRoot／gateModuleRoot），
 // 此處延續同一慣例。
 const lifecycleModulePath = "github.com/custodexa/backend"
 
 // lifecycleModuleRoot 由本測試檔位置向上找 go.mod，並核對 module 行。
-// 不用「Dir(Caller)/../..」的層數推算：那在守衛檔搬家時會靜默指到別處（R4 F-掃描根）。
+// 不用「Dir(Caller)/../..」的層數推算：那在守衛檔搬家時會靜默指到別處。
 func lifecycleModuleRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)

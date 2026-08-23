@@ -6,7 +6,7 @@
     @update:model-value="$emit('update:modelValue', $event)"
     @open="refresh"
   >
-    <!-- 目前檔案操作所用的帳號（asset-multi-account D9）：終端與檔案面用不同
+    <!-- 目前檔案操作所用的帳號：終端與檔案面用不同
          身分是審計語義的斷裂，故明示——自會話進入沿用該會話帳號，
          獨立入口走預設帳號 -->
     <div class="file-account">
@@ -181,7 +181,7 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  // 會話帳號沿用（asset-multi-account D9）：自會話分頁進入時帶該會話 ID，
+  // 會話帳號沿用：自會話分頁進入時帶該會話 ID，
   // 後端依會話帳號快照決定用哪個帳號；獨立入口不帶＝走預設帳號
   sessionId: {
     type: [Number, String],
@@ -207,7 +207,7 @@ const loading = ref(false)
 
 // 資料傳輸有效能力（data-transfer-control 6.2）：**呈現用，非強制點**——
 // 真正的閘在後端四個檔案端點，前端把不可用動作先標成不可用只是為了不讓
-// 使用者做白工。Mkdir 併入 file_upload 判定（D3 註 2），故與上傳共用 canUpload
+// 使用者做白工。Mkdir 併入 file_upload 判定，故與上傳共用 canUpload
 const { load: loadCapabilities, allows, deniedActions } = useTransferCapabilities()
 const canUpload = computed(() => allows('file_upload'))
 const canDownload = computed(() => allows('file_download'))
@@ -233,7 +233,7 @@ function joinPath(dir, name) {
   return dir === '/' ? `/${name}` : `${dir}/${name}`
 }
 
-// 目前清單是以哪個身分載入的（asset-multi-account D9 對抗審查 HIGH-1）。
+// 目前清單是以哪個身分載入的。
 // undefined＝尚未載入；null＝以預設帳號載入；數字＝以該 session 的帳號載入
 const loadedSessionId = ref(undefined)
 
@@ -243,7 +243,7 @@ const identityStale = computed(() => loadedSessionId.value !== sessionKey.value)
 async function refresh() {
   const identity = sessionKey.value
   loading.value = true
-  // 能力與清單同批取得（data-transfer-control 6.2／D4 逐次判定）：政策可在會話
+  // 能力與清單同批取得（data-transfer-control 6.2，逐次判定）：政策可在會話
   // 進行中改動且檔案三鍵即時生效，故不在開啟面板時取一次就當定局——每次重新整理
   // 或切目錄都重取，呈現才跟得上伺服端的實際判定
   loadCapabilities(props.assetId)
@@ -260,7 +260,7 @@ async function refresh() {
   }
 }
 
-// 身分變更即作廢畫面（HIGH-1 的核心修法）。
+// 身分變更即作廢畫面。
 //
 // 為何選「重載」而非「連線就緒前禁止開啟檔案管理」：後者只擋得住開檔時機這一種
 // 情境，擋不住連線中途身分改變，且會多出一個「按鈕沒反應」的失敗模式；重載是
@@ -377,7 +377,7 @@ function formatTime(unixSeconds) {
 }
 
 // 測試掛點：el-drawer 的 open 事件依賴 transition，測試環境不觸發。
-// 下載/建目錄/刪除亦外露，供 D9 的「五端點必帶 session_id」守衛測試逐條驗證
+// 下載/建目錄/刪除亦外露，供「五端點必帶 session_id」守衛測試逐條驗證
 defineExpose({
   refresh,
   navigateTo,
@@ -386,7 +386,7 @@ defineExpose({
   handleMkdir,
   handleDelete,
   joinPath,
-  // 清單與身分狀態外露供 HIGH-1 的回歸測試斷言「重載前不得操作」
+  // 清單與身分狀態外露供回歸測試斷言「重載前不得操作」
   entries,
   identityStale,
   // 傳輸能力呈現狀態外露供 6.2 的守衛測試（禁止時按鈕不可用、允許時可用）

@@ -174,7 +174,7 @@ func TestScreenC0(t *testing.T) {
 	}
 }
 
-// TestScreenCHAIsZeroBasedOrigin 是偽證缺陷（design.md D5 B1）的專項證明：
+// TestScreenCHAIsZeroBasedOrigin 是指令原點偽證缺陷的專項證明：
 // CSI 1G 必須把游標設到第 0 欄。設成第 1 欄會使重繪前的第一個位元組存活，
 // 讓審計得到一條使用者從未輸入過的指令。
 func TestScreenCHAIsZeroBasedOrigin(t *testing.T) {
@@ -216,7 +216,7 @@ func TestScreenRedrawOverwriteMatrix(t *testing.T) {
 	}
 }
 
-// TestScreenWritePadsToCursor 斷言游標右移超出行尾時，寫入前以空白補齊（design.md D5 B10）。
+// TestScreenWritePadsToCursor 斷言游標右移超出行尾時，寫入前以空白補齊。
 func TestScreenWritePadsToCursor(t *testing.T) {
 	got := Lines([]byte("abc\x1b[40GX"))
 	want := []string{"abc" + strings.Repeat(" ", 36) + "X"}
@@ -273,7 +273,7 @@ func TestScreenSeedResetsState(t *testing.T) {
 }
 
 // TestScreenCurrentLineEmptyAfterNewline 斷言尾端為 CRLF 時，游標已在新的一列、原點為空。
-// 這是 beginTyping 取原點時的關鍵形態（design.md D4.2）。
+// 這是 beginTyping 取原點時的關鍵形態。
 func TestScreenCurrentLineEmptyAfterNewline(t *testing.T) {
 	s := New()
 	s.Write([]byte("testuser@host:~$ ls -la\r\n"))
@@ -315,7 +315,7 @@ func TestScreenWideRunes(t *testing.T) {
 	}
 }
 
-// TestScreenNoWrapOnLongLine 斷言超寬指令不被折成多行（design.md D2）。
+// TestScreenNoWrapOnLongLine 斷言超寬指令不被折成多行。
 func TestScreenNoWrapOnLongLine(t *testing.T) {
 	long := "echo " + strings.Repeat("x", 300)
 	got := Lines([]byte(long))

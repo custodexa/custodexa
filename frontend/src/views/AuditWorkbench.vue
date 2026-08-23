@@ -162,7 +162,7 @@
             v-else
             class="panel"
           >
-            <!-- 跨度條與事件軸共用這一條刻度尺（D6）。sticky：會話多時列表很長，
+            <!-- 跨度條與事件軸共用這一條刻度尺。sticky：會話多時列表很長，
                  刻度捲出畫面等於跨度條失去座標軸 -->
             <TimelineScale
               class="sticky-scale"
@@ -240,10 +240,10 @@ import {
   shortcutRange,
 } from '@/components/audit/timelineQuery'
 
-// 稽核調查工作台（auditor-workbench 組 6／7）。
+// 稽核調查工作台（auditor-workbench）。
 //
 // **唯讀且不出具完整性證明**：本頁把六類稽核紀錄併到同一條時間軸上供調查，
-// 完整性主張只由 /checkpoint-verification 出具（D11）。頁內文案 SHALL NOT
+// 完整性主張只由 /checkpoint-verification 出具。頁內文案 SHALL NOT
 // 出現「完整」「未被竄改」這類斷言。
 //
 // **並存不取代既有六頁**：告警審閱、每日簽核、會話終止與監看、檢查點驗證
@@ -289,7 +289,7 @@ const rangeInvalid = computed(
 //
 // counts 不受單次查詢上限影響（`timeline_service.go:263-271` 每頁整窗重算），
 // 是窗內真實總數；events.length 只是已抓回的頁數合計。事件軸底部若拿後者
-// 當總數，稽核會在被截斷的情況下誤信自己看完了全部（H6，與截斷提示 H5 疊加
+// 當總數，稽核會在被截斷的情況下誤信自己看完了全部（與截斷提示疊加
 // 時是本頁最危險的一處）。
 //
 // 以 types 逐項取值而非 Object.values(counts) 加總：關閉的類別不進查詢也不

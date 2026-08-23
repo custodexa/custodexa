@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LDAPDirectory LDAP 目錄設定（ldap-settings-migration D1）。
+// LDAPDirectory LDAP 目錄設定。
 //
 // **設定面自 env 遷入 DB**：本表取代 `config.LDAPConfig` 成為執行期唯一事實源，
 // 由 admin 於身分管理 UI 以 singleton 資源維護（GET／PUT upsert／DELETE）。
@@ -18,7 +18,7 @@ import (
 // 單靠 unique index 只禁止相同值重複，`singleton=1` 與 `singleton=2` 仍可並存。
 // 軟刪列不佔 singleton，刪除後可重建。
 //
-// **建表走 baseline，CHECK 就在建表語句裡**（migration-baseline-compression D3）：
+// **建表走 baseline，CHECK 就在建表語句裡**：
 // 表由 `database.baselineIdentityTables` 的 `CREATE TABLE ldap_directories` 建立，
 // `CONSTRAINT ldap_directories_singleton_check CHECK ((singleton = 1))` 是該語句的
 // 一部分，partial unique index 則在同域的 `baselineIdentityIndexes`
@@ -55,7 +55,7 @@ type LDAPDirectory struct {
 	Name string `gorm:"size:100;not null;default:''" json:"name"`
 
 	// URL 目錄伺服器位址；僅接受 origin 形狀 `ldap[s]://host[:port]`
-	// （拒 userinfo/path/query/fragment，見 D3；服務層驗證於後續批次）
+	// （拒 userinfo/path/query/fragment；服務層驗證另行補上）
 	URL string `gorm:"size:500;not null;default:''" json:"url"`
 	// BindDN service bind 帳號 DN
 	BindDN string `gorm:"size:500;not null;default:''" json:"bind_dn"`

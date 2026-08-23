@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// data_keys 跨實例互斥的 postgres 真路徑整合測試（kek-rewrap-hygiene-hardening 2.5）。
+// data_keys 跨實例互斥的 postgres 真路徑整合測試。
 //
 // sqlite 分流走 package 級 try-mutex，與生產不同碼路；`pg_try_advisory_xact_lock`
 // 的 try 語義（不阻塞、落敗即 ErrKeyOpBusy）只有連真 postgres 才覆蓋得到。
@@ -193,7 +193,7 @@ func TestPGAdvisoryLockMutex(t *testing.T) {
 
 	t.Run("兩實例同時重包恰一成功", func(t *testing.T) {
 		kms := []*KeyManagerService{kmA, kmB}
-		// 目標於開跑前構造：D7 之後材料由呼叫端提供，且 t.Fatalf 不可在 goroutine 內呼叫
+		// 目標於開跑前構造：材料一律由呼叫端提供，且 t.Fatalf 不可在 goroutine 內呼叫
 		targets := []*RewrapTarget{
 			localTargetForTest(t, newTestKEKMaterial(t)),
 			localTargetForTest(t, newTestKEKMaterial(t)),

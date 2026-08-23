@@ -1,6 +1,6 @@
 // Package testgate 提供整合測試的**單一 gating 入口**。
 //
-// 存在理由（kek-provider-modularization D11.1 裁決 4）：以環境變數 gating 的整合
+// 存在理由：以環境變數 gating 的整合
 // 測試在 CI 上若變數未設，`t.Skip` 會讓整包測試「全綠」而該測試從未執行——
 // 這正是本專案既有的假綠（CI 的 backend job 未設 TEST_PG_DSN，pg-lock／
 // session-lock 測試自加入起就是永久 skip）。

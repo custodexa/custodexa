@@ -21,7 +21,7 @@ var (
 	ErrAuthorizationExists = errors.New("授權已存在")
 	// ErrPermissionDenied 權限不足
 	ErrPermissionDenied = errors.New("權限不足")
-	// ErrTicketRevocationRequired 臨時授權裸刪守門（authorization-page-redesign D4）：
+	// ErrTicketRevocationRequired 臨時授權裸刪守門：
 	// 有關聯申請單的 ticket 授權必須走申請單撤銷流（資格判定、票證附註、
 	// 斷線聯動），不得直接 DELETE。handler 以 errors.Is 映射 409
 	ErrTicketRevocationRequired = errors.New("臨時授權須經申請單撤銷流處理，不可直接刪除")
@@ -41,26 +41,26 @@ func NewAssetAuthorizationService(db *gorm.DB) *AssetAuthorizationService {
 	}
 }
 
-// IsEffectiveApprover 審核資格判定（D-7 群組即資格）：具 approver 角色 OR
+// IsEffectiveApprover 審核資格判定（群組即資格）：具 approver 角色 OR
 // 屬於任一審核方群組。即時查——入組/離組、配摘角色即刻生效。
 //
-// **W7 §3.3 匯出面**：資料存取層自 `internal/repository` 內化為 authz 的未匯出
+// **匯出面**：資料存取層自 `internal/repository` 內化為 authz 的未匯出
 // `assetAuthorizationRepository` 後，identity 的登入回應（`is_approver` 顯示欄，
 // `auth_service.go:855,1058`）需要一個模組級入口。本方法是該入口的**唯一**形式，
 // 不另開包級函式——避免同一判定出現第二條可呼叫路徑。
 //
-// **注意（D-12 未收斂前的事實）**：本判定**不含 admin**，而
+// **注意（收斂前的事實）**：本判定**不含 admin**，而
 // `EvaluateApproverRouteEligibility`（守衛入口）含 admin，兩者對「僅具 admin」
 // 者不等價。差異的機器化證據見 `approver_eligibility_parity_test.go`；
-// 收斂是 W7b 的行為變更，不在本波範圍。
+// 收斂屬另一次的行為變更，不在此處射程內。
 func (s *AssetAuthorizationService) IsEffectiveApprover(userID uint) (bool, error) {
 	return s.repo.IsEffectiveApprover(userID)
 }
 
-// AssetActive 查資產啟用態（asset-list-info-layering D8 停用連線硬擋；
+// AssetActive 查資產啟用態（停用連線硬擋；
 // SFTP 檔案面收口用——與 connect-token 簽發點同語義）。
 //
-// 回傳契約（asset-syslog-debt-cleanup D3）：資產不存在（含軟刪）時回
+// 回傳契約：資產不存在（含軟刪）時回
 // gorm.ErrRecordNotFound，呼叫端須以 errors.Is 分流為「不存在」而非「已停用」。
 // 原以 Scan 取值的寫法對空結果集不報錯、active 保持零值 false，使兩者不可分，
 // 讓 admin（權限短路）與持軟刪資產殘留授權的使用者收到誤導的 403 asset_disabled。
@@ -73,7 +73,7 @@ func (s *AssetAuthorizationService) AssetActive(assetID uint) (bool, error) {
 }
 
 // GetPermissionHierarchy 獲取權限層級列表（包含隱含的上級權限）
-// 權限層級: connect > view（access-policy-approval J：manage 已移除，兩階收斂）
+// 權限層級: connect > view（J：manage 已移除，兩階收斂）
 // 例如: 需要 view 權限時，擁有 connect 權限的用戶也可以存取
 func GetPermissionHierarchy(perm model.PermissionType) []model.PermissionType {
 	switch perm {
@@ -89,7 +89,7 @@ func GetPermissionHierarchy(perm model.PermissionType) []model.PermissionType {
 // CheckPermission 檢查用戶是否有資產的指定權限
 // 權限層級: connect > view（J 兩階收斂）
 // Admin 角色自動擁有所有權限；Auditor 為稽核唯讀角色，僅自動擁有非連線（view）
-// 權限，connect 須經正常授權查詢（CPG-002 職責分離：稽核者只檢視不連線）
+// 權限，connect 須經正常授權查詢（職責分離：稽核者只檢視不連線）
 func (s *AssetAuthorizationService) CheckPermission(
 	ctx context.Context,
 	userID uint,
@@ -105,7 +105,7 @@ func (s *AssetAuthorizationService) CheckPermission(
 			return true, nil
 		}
 		// Auditor 稽核唯讀：僅非連線權限（view）自動放行；connect 不短路，
-		// 落正常授權查詢——顯式授予某資產 connect 者仍可連（CPG-002）
+		// 落正常授權查詢——顯式授予某資產 connect 者仍可連
 		if role == model.RoleAuditor && requiredPerm != model.PermissionConnect {
 			log.Printf("[CheckPermission] 用戶 %d 擁有 auditor 角色，自動授予 %s（非連線）權限", userID, requiredPerm)
 			return true, nil
@@ -122,7 +122,7 @@ func (s *AssetAuthorizationService) CheckPermission(
 		return false, err
 	}
 
-	// 5. 可視第三來源（access-policy-approval D5）：審核範圍隱含 view——
+	// 5. 可視第三來源：審核範圍隱含 view——
 	// approver 對範圍內資產可見以便審核。僅 view 路徑；connect 判定不經此來源
 	if !hasPermission && requiredPerm == model.PermissionView {
 		covered, err := s.repo.ApproverScopeCoversAsset(userID, assetID)
@@ -137,7 +137,7 @@ func (s *AssetAuthorizationService) CheckPermission(
 	return hasPermission, nil
 }
 
-// GrantSpec 授權建立規格（user-group-authorization D6）：
+// GrantSpec 授權建立規格：
 // 主體恰一（UserID XOR UserGroupID）×客體恰一（AssetID XOR AssetGroupID）。
 // 不含時效欄位——時效唯一來源是核准流（Change 2），管理 API 不接受手填
 type GrantSpec struct {
@@ -147,7 +147,7 @@ type GrantSpec struct {
 	AssetGroupID *uint
 	Permission   model.PermissionType
 	GrantedBy    uint
-	// Accounts 帳號範圍（asset-multi-account D5）：**nil＝欄位省略＝`@ALL`**
+	// Accounts 帳號範圍：**nil＝欄位省略＝`@ALL`**
 	// （行為與多帳號維度引入前一致）；非 nil 空清單拒收，見 NormalizeGrantAccounts。
 	// 呼叫端傳原始輸入即可，正規化與驗證在此層完成
 	Accounts *[]string
@@ -156,7 +156,7 @@ type GrantSpec struct {
 // ErrInvalidGrantSubject 主體或客體不滿足恰一非空
 var ErrInvalidGrantSubject = errors.New("授權主體與客體必須各恰一（user_id/user_group_id 二擇一、asset_id/asset_group_id 二擇一）")
 
-// 授權引用實體不存在的哨兵（V2 對抗驗收 H2）。
+// 授權引用實體不存在的哨兵。
 //
 // 單筆（validateGrantRefs）與批次（validateBatchRefs）共用同一組四個哨兵，
 // 差異只在包裹的補充訊息。handler 一律以 errors.Is 分流並帶出 entity 參數，
@@ -169,20 +169,20 @@ var (
 	ErrGrantAssetGroupNotFound = errors.New("引用的資產分組不存在")
 )
 
-// ErrAccountScopeInvalid 帳號範圍不合法（asset-multi-account D5）：顯式空清單、
+// ErrAccountScopeInvalid 帳號範圍不合法：顯式空清單、
 // 整份皆為空白項、超過 MaxAccountScopeEntries，或含控制字元／冒號
 // （同 validateAccountUsername 的威脅面——username 會進 chpasswd stdin 與審計快照）。
 //
 // 關鍵分別：「**欄位省略**」（nil）才是合法的「未指定＝@ALL」；「**顯式空清單**」
 // （`[]`）一律拒收。兩者在 `[]string` 下不可區分，故簽名收 `*[]string`——
-// 把它們混為一談會讓「我要限縮」被靜默放大成「全放行」（F1）
+// 把它們混為一談會讓「我要限縮」被靜默放大成「全放行」
 var ErrAccountScopeInvalid = errors.New("帳號範圍不合法（不得為空清單、全空白項或含控制字元、冒號）")
 
 // ErrAccountScopeRequired 端點語義要求顯式帳號範圍，但請求未提供該欄
 // （`PUT /authorizations/:id/accounts` 用）
 var ErrAccountScopeRequired = errors.New("必須顯式提供帳號範圍")
 
-// MaxAccountScopeEntries 帳號範圍單筆授權的元素數上限（opus 階段 4 F7）。
+// MaxAccountScopeEntries 帳號範圍單筆授權的元素數上限。
 //
 // 非美觀限制：本欄是 TEXT，admin-only 端點可寫入任意長 JSON，而**每次連線判定
 // 都要載入並展開解析**——無上限等於在最熱的授權路徑上留一個可放大的成本點。
@@ -191,13 +191,13 @@ const MaxAccountScopeEntries = 200
 
 // NormalizeGrantAccounts 驗證並正規化授權帳號範圍。
 //
-// **指標型別是安全語義的一部分**（opus F1／codex high，兩軌共同指認）：
+// **指標型別是安全語義的一部分**（兩軌共同指認）：
 // `[]string` 使「欄位省略」與「顯式空陣列」在伺服端不可區分，兩者皆為 nil。
 // 舊版把兩者都正規化成 `@ALL`，於是管理員（或階段 5 UI 把 chip 全部清空的操作）
 // 送出「我要收到零個帳號」時，實際落庫的是**全部帳號**——本 change 唯一
 // 「操作失誤即溢授」的路徑，方向與使用者意圖完全相反。
 //
-// 語義（D5）：
+// 語義：
 //   - `nil`（欄位省略）＝未指定＝`@ALL`，維持舊前端與既有腳本的相容行為。
 //   - 非 nil 空清單＝**拒收**。刻意不支援「空範圍授權列」：那會在每個判定點
 //     多出一個「有授權列但零帳號可用」的邊緣狀態要處理。要撤銷就刪授權列，
@@ -276,7 +276,7 @@ func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
 
 // grantExists 活躍同組合是否已存在（軟刪不計，與 partial 唯一索引同語義）。
 // 排除核准流來源：臨時授權不佔用手動授權的去重空間——使用者持有效臨時授權時
-// admin 仍可授予同組合常設授權（D3 補充）
+// admin 仍可授予同組合常設授權
 func (s *AssetAuthorizationService) grantExists(db *gorm.DB, spec GrantSpec) (bool, error) {
 	var count int64
 	q := db.Model(&model.AssetAuthorization{}).
@@ -352,7 +352,7 @@ type BatchGrantResult struct {
 	Skipped int `json:"skipped"`
 }
 
-// GrantBatch 多主體批次授權（user-group-authorization D6）：
+// GrantBatch 多主體批次授權：
 // 主體集（users∪user_groups）×客體集（assets∪asset_groups）於單一交易展開為
 // 多筆 XOR 單主體記錄；已存在的活躍組合跳過不報錯。審計事件由審計中介層
 // 對 POST /authorizations/batch 記錄（與單筆授權同機制）
@@ -416,7 +416,7 @@ func (s *AssetAuthorizationService) GrantBatch(
 	result := &BatchGrantResult{}
 	if len(toCreate) > 0 {
 		// ON CONFLICT DO NOTHING：既有組合（partial 唯一索引命中）原子跳過。
-		// 先查後寫在並發下無法序列化（codex P2：兩交易先讀不存在、之一撞索引整批回滾回 500），
+		// 先查後寫在並發下無法序列化（兩交易先讀不存在、之一撞索引整批回滾回 500），
 		// 交由 DB 唯一索引兜底才是並發安全的去重。created=實插筆數、skipped=展開數−created
 		res := s.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(toCreate, 200)
 		if res.Error != nil {
@@ -432,7 +432,7 @@ func (s *AssetAuthorizationService) GrantBatch(
 
 // validateBatchRefs 批次驗證引用實體存在（各一次 IN 查詢）
 func (s *AssetAuthorizationService) validateBatchRefs(userIDs, userGroupIDs, assetIDs, assetGroupIDs []uint) error {
-	// notFound 為該實體種類的哨兵（H2）：handler 以 errors.Is 判種類，
+	// notFound 為該實體種類的哨兵：handler 以 errors.Is 判種類，
 	// label 只服務伺服端 log 的可讀性
 	checkAll := func(modelPtr interface{}, ids []uint, label string, notFound error) error {
 		if len(ids) == 0 {
@@ -459,7 +459,7 @@ func (s *AssetAuthorizationService) validateBatchRefs(userIDs, userGroupIDs, ass
 	return checkAll(&model.AssetGroup{}, assetGroupIDs, "資產分組", ErrGrantAssetGroupNotFound)
 }
 
-// GrantGroupPermission 授予用戶資產分組權限（asset-group-completion）：
+// GrantGroupPermission 授予用戶資產分組權限：
 // 組授權對組內全資產生效（CheckPermission OR 查詢）。統一走 Grant
 func (s *AssetAuthorizationService) GrantGroupPermission(
 	ctx context.Context,
@@ -488,7 +488,7 @@ func (s *AssetAuthorizationService) GrantPermission(
 	})
 }
 
-// UpdateAccountScope 調整既有授權列的帳號範圍（asset-multi-account D5）。
+// UpdateAccountScope 調整既有授權列的帳號範圍。
 //
 // 為何是「改列」而非「刪了重授」：帳號範圍不入唯一索引（見 model 欄位註解），
 // 同組合恆為單列——收緊範圍若走刪除重建會斷開 created_at／granted_by 的沿革，
@@ -502,7 +502,7 @@ func (s *AssetAuthorizationService) UpdateAccountScope(
 	accounts *[]string,
 ) (*model.AssetAuthorization, error) {
 	// 本端點的唯一職責就是設定帳號範圍，省略該欄不是「維持原狀」也不是「@ALL」，
-	// 而是請求沒說清楚要什麼——擋下要求明確，不替管理員猜（F1 同源：猜錯的方向是溢授）
+	// 而是請求沒說清楚要什麼——擋下要求明確，不替管理員猜（同源：猜錯的方向是溢授）
 	if accounts == nil {
 		return nil, ErrAccountScopeRequired
 	}
@@ -547,7 +547,7 @@ func (s *AssetAuthorizationService) RevokePermission(
 		return ErrAuthorizationNotFound
 	}
 
-	// 2. ticket 裸刪守門（authorization-page-redesign D4）：有關聯申請單者必須
+	// 2. ticket 裸刪守門：有關聯申請單者必須
 	// 走申請單撤銷流；反查無單的孤兒放行（操作審計由 audit middleware 記錄，
 	// 此處補 log 標示孤兒清理）
 	if auth.Source == model.AuthorizationSourceTicket {
@@ -587,7 +587,7 @@ func describeAuthSubject(auth *model.AssetAuthorization) string {
 	return "unknown"
 }
 
-// ListAuthorizations 通用授權列表（authorization-page-redesign D1）：filters 直通
+// ListAuthorizations 通用授權列表：filters 直通
 // repository（user_id/user_group_id/asset_id/source/validity），空 map＝全量分頁。
 // ticket 記錄批次回填 request_id（撤銷入口回鏈，一次 IN 查詢禁 N+1）
 func (s *AssetAuthorizationService) ListAuthorizations(
@@ -708,7 +708,7 @@ type AuthorizedAssetDTO struct {
 	model.Asset
 	Permission model.PermissionType `json:"permission,omitempty"`
 
-	// 連線入口三態（access-policy-approval D7 補充二）：伺服端單一事實源，
+	// 連線入口三態：伺服端單一事實源，
 	// 前端零推導。connectable/reason_required/approval_required/pending；
 	// 空＝沿既有 permission 欄渲染（open 段位 view-only 等）。
 	// 按鈕行為不看此欄——點擊一律走簽發路徑，以政策閘回應為準（過時自癒）
@@ -716,7 +716,7 @@ type AuthorizedAssetDTO struct {
 	PendingRequestID  *uint      `json:"pending_request_id,omitempty"`
 	TicketDateExpired *time.Time `json:"ticket_date_expired,omitempty"`
 
-	// BreakGlassAvailable 破窗可用（break-glass-revocation 六題 6）：開關開啟＋
+	// BreakGlassAvailable 破窗可用（六題 6）：開關開啟＋
 	// 時窗內常設 connect＋非 open 段位＋無有效票證才 true；開關關閉恆 false
 	//（藏入口的伺服端事實源）。同樣僅供顯示，行為以破窗 API 裁決為準
 	BreakGlassAvailable bool `json:"break_glass_available,omitempty"`
@@ -759,7 +759,7 @@ func (s *AssetAuthorizationService) GetAuthorizedAssets(
 		result[i] = &AuthorizedAssetDTO{Asset: *a, Permission: levels[a.ID]}
 	}
 
-	// 3. 可視第三來源（access-policy-approval D5）：審核範圍內資產以 view 等級
+	// 3. 可視第三來源：審核範圍內資產以 view 等級
 	// 併入清單（僅 view 語義查詢；授權來源已含者不重複、等級不被降低）
 	if permission == model.PermissionView {
 		scoped, err := s.repo.ApproverScopedAssets(userID)
@@ -785,8 +785,8 @@ func (s *AssetAuthorizationService) GetAuthorizedAssets(
 
 // ExplicitAuthorizedAssetIDs 回 userID 以顯式授權（個人/群組主體、時效內、
 // 含節點授權傳播與權限階梯聚合）達到 permission 等級的資產 ID 集合。
-// repo 直查、不經角色短路——auditor 列表入口判定需其顯式 grant 集合
-// （auditor-connect-entry-honesty D1），GetAuthorizedAssets 的管理角色短路
+// repo 直查、不經角色短路——auditor 列表入口判定需其顯式 grant 集合，
+// GetAuthorizedAssets 的管理角色短路
 // 回全量無法區分
 func (s *AssetAuthorizationService) ExplicitAuthorizedAssetIDs(
 	userID uint,
@@ -803,9 +803,9 @@ func (s *AssetAuthorizationService) ExplicitAuthorizedAssetIDs(
 	return ids, nil
 }
 
-// VisibleTreeScope 非特權角色的樹收斂範圍（asset-node-tree D6）：可視資產集
+// VisibleTreeScope 非特權角色的樹收斂範圍：可視資產集
 // （授權聯集＋approver 第三來源）＋其掛載節點與全部祖先。樹端點的節點過濾、
-// 資產計數、has_children 皆據此收斂——無關子樹的結構與數量都不洩漏（codex P1）
+// 資產計數、has_children 皆據此收斂——無關子樹的結構與數量都不洩漏
 func (s *AssetAuthorizationService) VisibleTreeScope(ctx context.Context, userID uint) (*asset.TreeVisibility, error) {
 	dtos, err := s.GetAuthorizedAssets(ctx, userID, model.PermissionView)
 	if err != nil {

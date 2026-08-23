@@ -23,8 +23,8 @@ func redeemSSH(h *Handler, token string) (int, map[string]interface{}) {
 	return w.Code, resp
 }
 
-// TestAssetDisabledGate 停用資產連線硬擋（asset-list-info-layering D8／
-// connection-gating delta）：簽發點於授權檢查後拒發 403+asset_disabled；
+// TestAssetDisabledGate 停用資產連線硬擋（connection-gating）：
+// 簽發點於授權檢查後拒發 403+asset_disabled；
 // admin 不豁免（停用是資產態非權限態）；重新啟用即恢復
 func TestAssetDisabledGate(t *testing.T) {
 	t.Run("停用資產：user 持常設 connect 仍 403 asset_disabled", func(t *testing.T) {

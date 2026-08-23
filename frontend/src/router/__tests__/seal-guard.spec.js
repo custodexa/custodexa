@@ -11,7 +11,7 @@ import {
   resetSealPhase,
 } from '@/utils/sealPhase'
 
-// 封印導覽守衛（kek-encoding-and-unseal-entry 第 2／3 項）。
+// 封印導覽守衛。
 //
 // 缺陷實測：`KEK_PROVIDER=ui` 的全新安裝，管理員開站 → 被導到登入頁 → 輸入帳密 →
 // 得到「系統尚未解封」→ 卡死。`/unseal` 存在且封印期可達，但沒有任何東西會把人

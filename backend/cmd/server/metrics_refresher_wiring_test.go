@@ -21,7 +21,7 @@ import (
 	"github.com/custodexa/backend/internal/observability"
 )
 
-// 指標背景刷新的接線回歸（observability-lite，2026-08-16 `cmd/server` 競態 FAIL）。
+// 指標背景刷新的接線回歸（2026-08-16 `cmd/server` 競態 FAIL）。
 //
 // 缺陷形態：資料源在**執行當下**才裸讀全域 `database.DB`，而刷新跑在背景 goroutine，
 // 其執行時刻與組裝根的生命週期無關。全域被關閉／還原後那一刻的刷新讀到 nil，

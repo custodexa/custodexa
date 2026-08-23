@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 自動驗證狀態揭露面的行為釘子（tasks 5.1／design D8）。
+// 自動驗證狀態揭露面的行為釘子。
 //
 // 三件事各自都會讓揭露面失真而畫面上看不出來：
 //   - 讀狀態順手把列建起來 → 驗證端點不再唯讀，且「從未跑過」被抹成「跑過但沒結果」；
@@ -55,7 +55,7 @@ func TestChainVerifyStatusReadOnlyOnMissingState(t *testing.T) {
 }
 
 // TestChainVerifyStatusExposesBothLayersAndOpenFailures 兩層各自的時點與結果、
-// 生效窗口天數、滾動位置、未結案失敗區間數都要出得來（tasks 5.2 的顯示項）
+// 生效窗口天數、滾動位置、未結案失敗區間數都要出得來
 func TestChainVerifyStatusExposesBothLayersAndOpenFailures(t *testing.T) {
 	f := setupChainVerifyFixture(t)
 	seqs := f.sealIntervals(t, 3, 4)
@@ -116,7 +116,7 @@ func TestChainVerifyStatusWindowClampedByRetention(t *testing.T) {
 }
 
 // TestChainVerifyStatusCycleEstimateFollowsRate 繞行一輪的預估隨速率縮放，
-// 且與間隔無關（D10 速率語義：間隔改變不改變繞行週期）
+// 且與間隔無關（速率語義：間隔改變不改變繞行週期）
 func TestChainVerifyStatusCycleEstimateFollowsRate(t *testing.T) {
 	f := setupChainVerifyFixture(t)
 	f.sealIntervals(t, 4, 5000) // 共 2 萬列

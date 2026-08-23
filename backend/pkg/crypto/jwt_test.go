@@ -270,7 +270,7 @@ func TestMultipleTokensWithSameUser(t *testing.T) {
 	assert.Equal(t, userID, claims2.UserID)
 }
 
-// 認證脈絡的零值 round-trip（idp-oidc-integration tasks 1.2b）。
+// 認證脈絡的零值 round-trip。
 //
 // **這組斷言守的是升級期相容**：既有 token 不帶脈絡欄位，解析後四欄皆為零值，
 // 而 DB 的 epoch default 也是 0，故兩者比對相符、既有 token 仍有效。

@@ -1,6 +1,6 @@
 //go:build ignore
 
-// mssql_cred_probe 憑證面實測用的一次性探針（mssql-web-cli 5.3/5.4/5.5）。
+// mssql_cred_probe 憑證面實測用的一次性探針。
 // 開一條 mssql web CLI 會話，依序送入指令並把**原始輸出全部印出**，供人工判讀
 // 「真憑證是否可從子程序側讀到」。與 dbws_smoke 的差別：不做斷言、只做取樣。
 // 用法: go run scripts/mssql_cred_probe.go -token <jwt> -asset <id> -cmds 'a;;b;;c'

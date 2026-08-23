@@ -6,7 +6,7 @@ package main
 // `audit_points_tx_attribution_guard_test.go`；產生點掃描在
 // `audit_points_manifest_guard_test.go`。三檔同包、共用同一份 AST 走訪。
 //
-// ── 為什麼是 def-use 而不是作用域可見性（2026-08-09 codex 外審 C1 修補） ──
+// ── 為什麼是 def-use 而不是作用域可見性（2026-08-09 安全審查修補） ──
 //
 // 修補前的判定是「產生點的任一層包覆函式帶 `*gorm.DB` 參數 ⇒ TxBound」。這只證明
 // 交易句柄在該作用域**可見**，不證明審計寫入**用了它**；反方向更危險——tx 若存於
@@ -33,7 +33,7 @@ package main
 //  2. 一跳（hop ≤ 1）：carrier 若恰好被交給同包的一個函式／方法，追進去對應參數再判一次。
 //     跨包、介面派發、可變參數一律 Indeterminate（`unresolved-callee`）。
 //  3. 把該寫入 call 的 **receiver 鏈**往下走到根運算式，逐步判定：
-//     `.Session(&gorm.Session{NewDB: true})` ⇒ Detached（C2：以寫入 call 自身的鏈為準，
+//     `.Session(&gorm.Session{NewDB: true})` ⇒ Detached（以寫入 call 自身的鏈為準，
 //     不再看「作用域內某處出現過 NewDB 字面量」）；`.Begin()` ⇒ Indeterminate；
 //     根是 `*gorm.DB` 參數 ⇒ TxBound；根是跨包／同包的包級變數 ⇒ NotTxBound；
 //     根是 `x.field` ⇒ NotTxBound（**但受全域 tx 逃逸不變式節制**，見下）；其餘 ⇒ Indeterminate。
@@ -50,7 +50,7 @@ package main
 //
 //   - 介面派發的落地（carrier 交給介面方法）→ `unresolved-callee`，Indeterminate。
 //   - 反射、生成碼、原生 SQL 寫入 `audit_logs` → 本檔（與整個產生點掃描）都看不見；
-//     其正解是 W4 的 runtime fault-injection backstop（tasks.md 4.12c），不是更多 AST。
+//     其正解是 runtime fault-injection backstop，不是更多 AST。
 //   - 一跳以上的間接（A→B→C 才落地）→ Indeterminate，不做跨函式定點迭代。
 //   - 逃逸偵測以**識別字名**近似（不做型別解析），會過度標記而非漏標——方向與格序一致。
 
@@ -87,11 +87,11 @@ const (
 	reasonRootHandle      txReason = "root-handle"
 	reasonStructField     txReason = "struct-field"
 	reasonEntryTypeLevel  txReason = "entry-type-level"
-	// reasonSinkTxArg W4 收口形態：事件字面量交給 TxSink 落地面，交易句柄是該次呼叫的
+	// reasonSinkTxArg 收口形態：事件字面量交給 TxSink 落地面，交易句柄是該次呼叫的
 	// 顯式引數（`port.WriteInTx(sink, tx, ev)` 或 `sink.WriteInTx(tx, ev)`）。
 	// 判定沿用同一套 receiver 根追溯——只是這次要追的不是 receiver 而是那個引數。
 	reasonSinkTxArg txReason = "sink-tx-arg"
-	// reasonSinkAsyncCall W4 收口形態：事件字面量交給 AsyncSink（`sink.Submit(ctx, ev)`）。
+	// reasonSinkAsyncCall 收口形態：事件字面量交給 AsyncSink（`sink.Submit(ctx, ev)`）。
 	// **AsyncSink 的簽名不帶 *gorm.DB**，呼叫方的 tx 沒有語法途徑進入該次寫入——
 	// 與 entry-type-level 同一條論證，只是載體從 AuditLogEntry 換成 AuditEvent。
 	reasonSinkAsyncCall txReason = "sink-async-call"

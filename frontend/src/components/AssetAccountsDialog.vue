@@ -1,5 +1,5 @@
 <!--
-  AssetAccountsDialog：資產帳號管理（asset-multi-account 階段 5 / D9 / D10）。
+  AssetAccountsDialog：資產帳號管理。
   自資產列表或資產編輯對話框進入；一個資產可有多個系統帳號，各自憑證加密存放。
   憑證只進不出——後端僅回 has_password／has_private_key 兩布林，此處絕不回填明文。
 -->
@@ -168,7 +168,7 @@
       :close-on-click-modal="false"
       @update:model-value="(v) => (v ? (formVisible = true) : closeForm())"
     >
-      <!-- 影響面明示（D5 隱性權限擴張緩解）：新增帳號前先講清楚誰會因此多一個可選身分 -->
+      <!-- 影響面明示（隱性權限擴張緩解）：新增帳號前先講清楚誰會因此多一個可選身分 -->
       <el-alert
         v-if="formMode === 'create' && impactLoaded"
         type="warning"
@@ -262,7 +262,7 @@
           </el-form-item>
         </template>
 
-        <!-- 認證類型（mssql-web-cli D3）：憑證屬帳號，故此欄放帳號表單而非資產表單。
+        <!-- 認證類型：憑證屬帳號，故此欄放帳號表單而非資產表單。
              1.0 只接受 sql；domain 保留選項但停用——後端收到 domain 直接 400，
              讓選項可見但不可選，比整個藏起來更能說明「尚未支援」 -->
         <el-form-item
@@ -490,9 +490,9 @@ async function handleSubmit() {
   }
 }
 
-// 關閉表單即清掉明文憑證（對抗審查 MED-3）：只隱藏對話框會讓
+// 關閉表單即清掉明文憑證：只隱藏對話框會讓
 // form.password／form.private_key 續留在 reactive state，Vue DevTools 可讀。
-// 沿 kek-rewrap-hygiene-hardening 對新 KEK 明文的既有做法——**清元件狀態，
+// 沿用對新 KEK 明文的既有做法——**清元件狀態，
 // 不承諾抹除 JS 記憶體**（字串不可變，舊值何時被 GC 回收不在我們控制內）
 function closeForm() {
   formVisible.value = false
@@ -535,12 +535,12 @@ async function handleDelete(row) {
   }
 }
 
-// --- 影響面（D5）：以既有有效權限查詢 API 推導，不新增後端路由 ---
+// --- 影響面：以既有有效權限查詢 API 推導，不新增後端路由 ---
 const impactLoaded = ref(false)
 const impactUsers = ref(0)
 const impactGroups = ref(0)
 // 角色隱含可及本資產者（admin/auditor）不在 users 內逐人列舉，只給摘要句；
-// 漏掉它會讓 N/M 計數低估影響面，正是 D5 要緩解的「隱性權限擴張」盲區
+// 漏掉它會讓 N/M 計數低估影響面，正是本區塊要緩解的「隱性權限擴張」盲區
 const impactNote = ref('')
 
 const impactDescription = computed(() =>
@@ -572,7 +572,7 @@ async function loadImpact() {
   }
 }
 
-// --- 從其他資產帳號複製（D10 建號快捷）---
+// --- 從其他資產帳號複製（建號快捷）---
 const copyAssetId = ref(null)
 const copyAssets = ref([])
 const copySourceAccounts = ref([])
@@ -658,7 +658,7 @@ function onCopySourceChange(id) {
 </style>
 
 <style>
-/* 對話框限高（UI 走查 F3）：新增帳號表單內容約 880px，1366x900 下
+/* 對話框限高（UI 走查）：新增帳號表單內容約 880px，1366x900 下
    取消／確定會被推出視窗外。body 限高捲動即可讓 footer 恆可見；
    對話框 teleport 到 body，scoped 樣式打不到，須全域 */
 .acct-mgr__dialog .el-dialog__body {

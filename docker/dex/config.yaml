@@ -1,4 +1,4 @@
-# dex（CNCF 輕量 OIDC provider）dev 靶機組態 —— idp-oidc-integration D18
+# dex（CNCF 輕量 OIDC provider）dev 靶機組態
 #
 # **本檔只服務開發與測試，不進任何產品路徑**：僅存在於 docker-compose.dev.yml，
 # 正式版 docker-compose.yml 不含 dex 服務。

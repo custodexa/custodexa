@@ -1,5 +1,5 @@
 /**
- * 前端 i18n 唯一入口（i18n-foundation）。
+ * 前端 i18n 唯一入口。
  * zh-TW 為譯文事實源；en-US/ja-JP 與其 key 集合完全對齊（結構單測釘住）。
  * 語言偏好存 localStorage `ot-lang`（裝置級、不分角色——登入前就要生效）。
  */
@@ -69,7 +69,7 @@ export const t = (...args) => i18n.global.t(...args)
 export const te = (...args) => i18n.global.te(...args)
 
 /**
- * document metadata 隨語言切換（codex r1 F4/F8）：title 與 <html lang>
+ * document metadata 隨語言切換：title 與 <html lang>
  * 不可只在模組載入時賦值一次——watch immediate 集中更新
  */
 export function setupDocumentMetadata() {

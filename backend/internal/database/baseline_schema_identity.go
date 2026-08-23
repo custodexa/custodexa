@@ -1,6 +1,6 @@
 package database
 
-// 身分與認證——baseline schema 的「identity」域（migration-baseline-compression D1）。
+// 身分與認證——baseline schema 的「identity」域。
 //
 // 使用者、角色、群組、憑證與外部身分來源。
 //

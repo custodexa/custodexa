@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// AuditChainVerifyState 檢查點鏈自動驗證的營運狀態（audit-chain-scheduled-verification D8）。
+// AuditChainVerifyState 檢查點鏈自動驗證的營運狀態。
 //
 // **單列表**（ID 恆為 1）：成功輪次的歷史沒有證據價值，異常的歷史已由
 // audit_failure_events 永久承載且帶起訖區間；每輪一列只會多一張需要保留政策的表。
@@ -51,7 +51,7 @@ type AuditChainVerifyState struct {
 
 	// OpenFailedSeqs 未結案的失敗區間集合（JSON 陣列，兩層共用同一份）。
 	//
-	// **假恢復修法的核心（D9）**：滾動窗每輪驗的是不同窗口，若以「本輪驗過的
+	// **假恢復修法的核心**：滾動窗每輪驗的是不同窗口，若以「本輪驗過的
 	// 區間全數通過」為結案條件，則於某輪驗出區間 X 異常後，下一輪驗別的窗口且
 	// 全過即會結案並發出恢復通知，**而 X 的列早已被刪除且根本未被重驗**。
 	// 故本集合每輪必被重驗（比照鏈尾必驗、不受列預算限制），

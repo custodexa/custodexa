@@ -1,6 +1,6 @@
 package model
 
-// 改密結果原因碼（change-secret-ssh-deepening 安全修補）。
+// 改密結果原因碼。
 //
 // **安全不變式**：ChangeSecretRecord.Error 與 ChangeSecretCandidate.LastError
 // 只允許存放本檔列舉的原因碼，遠端回傳的任何字串（stderr、SSH 交握訊息、
@@ -37,9 +37,9 @@ const (
 
 	// --- 遠端互動 ---
 	ChangeSecretReasonOldCredentialLoginFailed = "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED"
-	// ChangeSecretReasonRemoteRejected 指令跑完但非零退出＝遠端確定未變更（design D3）
+	// ChangeSecretReasonRemoteRejected 指令跑完但非零退出＝遠端確定未變更
 	ChangeSecretReasonRemoteRejected = "CHANGE_SECRET_REMOTE_REJECTED"
-	// ChangeSecretReasonRemoteStateUnknown 連線中斷／逾時＝遠端狀態不可知（design D3）
+	// ChangeSecretReasonRemoteStateUnknown 連線中斷／逾時＝遠端狀態不可知
 	ChangeSecretReasonRemoteStateUnknown        = "CHANGE_SECRET_REMOTE_STATE_UNKNOWN"
 	ChangeSecretReasonVerifyFailed              = "CHANGE_SECRET_VERIFY_FAILED"
 	ChangeSecretReasonPromoteFailed             = "CHANGE_SECRET_PROMOTE_FAILED"

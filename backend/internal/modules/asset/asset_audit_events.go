@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// asset 模組的交易內審計產生點（modular-architecture W6 6.1／6.2，T-2 的 11 處）。
+// asset 模組的交易內審計產生點（T-2 的 11 處）。
 //
 // **收口前的形態**：11 個呼叫點都呼叫 `model.RecordAssetAccountChange`／
 // `model.RecordAssetChange`／`model.RecordAssetNodeChange`，由 `internal/model`
@@ -71,7 +71,7 @@ func writeAssetAccountAudit(sink port.TxSink, tx *gorm.DB, a model.AssetAccountA
 		Action:     string(auditActionForAccountOp(a.Operation)),
 		Resource:   string(model.ResourceAsset),
 		ResourceID: &assetID,
-		// 帳號事件的主體是它所屬的那台資產（auditor-workbench D4）：帳號無獨立樞紐，
+		// 帳號事件的主體是它所屬的那台資產（auditor-workbench）：帳號無獨立樞紐，
 		// 不釘主體鍵就只能靠 (resource, resource_id) 反推，而那條路會撈到同號的別種實體
 		AssetID: &assetID,
 		Status:  string(model.StatusSuccess),

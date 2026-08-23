@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestGuacRedeemZeroAccountAsset 零帳號資產 fail-close（asset-multi-account 階段 2，
-// codex HIGH）：帳號是憑證與 username 的權威來源，資產一筆帳號都沒有時憑證束為空——
+// TestGuacRedeemZeroAccountAsset 零帳號資產 fail-close：
+// 帳號是憑證與 username 的權威來源，資產一筆帳號都沒有時憑證束為空——
 // 把空 username＋空密碼交給 guacd 等於對 RDP／VNC 目標做匿名或免密嘗試。
 // 兌換點須擋在 guacd 握手之前。
 //

@@ -45,8 +45,8 @@ var (
 	BuildTime = time.Now().Format("2006-01-02 15:04:05")
 )
 
-// oidcIssuerDeclarationDigest 本副本所讀到的 `OIDC_DEDICATED_ISSUERS` 宣告指紋
-// （idp-oidc-integration 3.10a），由段 1 於 config 載入後設定。
+// oidcIssuerDeclarationDigest 本副本所讀到的 `OIDC_DEDICATED_ISSUERS` 宣告指紋，
+// 由段 1 於 config 載入後設定。
 //
 // 為套件層變數而非 routeDeps 成員：healthHandler SHALL 維持具名的
 // func(*gin.Context)（見其註解——route characterization 以函式名比對，改成
@@ -57,7 +57,7 @@ var (
 // 監控端才能無條件比對各副本的同一個欄位。
 var oidcIssuerDeclarationDigest = identity.DedicatedIssuerDeclarationDigest(nil)
 
-// 兩段啟動的組裝根（kek-provider-modularization D6.1）。
+// 兩段啟動的組裝根。
 //
 //	段 1（stage1.go）  config 判定／DB＋migration＋seed／journal／封印閘／
 //	                   健康檢查與 /seal/*／開監聽
@@ -90,7 +90,7 @@ func main() {
 		shutdown        func(context.Context)
 	)
 
-	// 來源網段組態在**任何模式下都要解析**（D6.4）：A／C 模式過去一律傳 nil，
+	// 來源網段組態在**任何模式下都要解析**：A／C 模式過去一律傳 nil，
 	// 於是設了 SEAL_UNSEAL_ALLOWED_CIDRS 的部署以為來源受限、實際完全沒有生效，
 	// 而打錯的網段也不會有人發現。解析失敗即拒絕啟動。
 	allowedSources, err := s1.cfg.Seal.ParseAllowedCIDRs()
@@ -165,7 +165,7 @@ func main() {
 			return machine.Snapshot().State == seal.StateUnsealed
 		})
 		deps.seal = sealHandler
-		// 金鑰清冊的封印狀態欄（D10）：A／C 模式恆 unsealed，解封時點即啟動時點
+		// 金鑰清冊的封印狀態欄：A／C 模式恆 unsealed，解封時點即啟動時點
 		// ——狀態查詢在各模式下形狀一致是 spec 明文要求，不因「本模式沒有封印期」
 		// 而省略欄位（省略會逼前端寫兩套判斷）。
 		startedAt := time.Now()
@@ -177,7 +177,7 @@ func main() {
 		shutdown = func(ctx context.Context) { _ = graph.Release(ctx) }
 	}
 
-	// 封印狀態指標的資料源（observability-lite D4）。
+	// 封印狀態指標的資料源。
 	//
 	// **接在此處而非各分支內**：兩條路徑（B 模式的狀態機、A／C 模式的
 	// NewUnsealed）到這裡都已產生 machine，一處接線即涵蓋全模式——
@@ -210,19 +210,19 @@ func main() {
 	log.Printf("監聽端口: %s", s1.cfg.Server.Port)
 	log.Printf("==================================")
 
-	// 明文傳輸告警（deployment-hardening CPG-012）：後端以明文 HTTP 提供服務（設計為置於反向代理之後）。
+	// 明文傳輸告警（deployment-hardening）：後端以明文 HTTP 提供服務（設計為置於反向代理之後）。
 	// 本專案採 external-ingress TLS 契約——TLS termination 為部署方職責。release 模式提醒務必以具
 	// TLS termination 的 ingress/反代承載對外流量（TLS 1.2+、HTTP→HTTPS redirect、HSTS、WSS）。
 	// 此為告警非 fail-close（不改變預設綁定），詳見部署指南。
 	if s1.cfg.IsReleaseMode() {
-		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後（見部署指南 CPG-012）；stock 部署本身不提供 TLS")
+		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後；stock 部署本身不提供 TLS")
 	}
 
-	// refresh cookie 的 Secure 歸因日誌**已移入段 2**（codeql-rescan-settlement
-	// 決策 8）：生效值住在安全政策服務裡，而封印啟動的段 2 要到解封後才跑——
+	// refresh cookie 的 Secure 歸因日誌**已移入段 2**：生效值住在安全政策服務裡，
+	// 而封印啟動的段 2 要到解封後才跑——
 	// 留在這裡只會在封印模式下永遠印不出來。落點見 stage2.go 的政策播種段。
 
-	// 解封端點的獨立監聽（D6.4：SHALL 支援繫結獨立監聽位址）。
+	// 解封端點的獨立監聽（SHALL 支援繫結獨立監聽位址）。
 	// **掛 seal-only handler**：只有 seal 端點群與健康檢查，解封後也不會長出
 	// 業務樹——網段隔離的意義就在於此。
 	var sealSrv *http.Server
@@ -340,7 +340,7 @@ func runShutdown(ctx context.Context, steps []shutdownStep) int {
 
 // newEngine 建立一個帶專案全域設定的 gin engine。
 //
-// **可信代理只在顯式設定時才套用**（D6.4）：未設定時維持 gin 預設，
+// **可信代理只在顯式設定時才套用**：未設定時維持 gin 預設，
 // 既有部署的 c.ClientIP() 行為零變化；per-source 退避與網段白名單則由解封端點
 // 自行降級（前者退為全域退避，後者只採信 socket peer IP）——寧可影響可用性，
 // 也不提供可被轉送標頭污染而繞過的假防線。
@@ -395,8 +395,8 @@ func refreshCookieSourceLabel(source string) string {
 	}
 }
 
-// logRefreshCookieSecurity 印出 refresh cookie 的 Secure **政策現值**與其來源歸因
-//（codeql-rescan-settlement 決策 2）。
+// logRefreshCookieSecurity 印出 refresh cookie 的 Secure **政策現值**
+// 與其來源歸因。
 //
 // **本函式只做歸因，不承擔可見性**：沒有人會去讀一個運作正常的系統的啟動日誌。
 // 防線在安全預設（決策 1）與登入頁／管理頁的說明（決策 3/4）；這裡是有人去查時
@@ -419,7 +419,7 @@ func logRefreshCookieSecurity(policies *policy.SecurityPolicyService) {
 		source)
 }
 
-// buildCORSConfig 依 allowlist 與執行模式決定 CORS 設定（PCI 7.3/D9）。
+// buildCORSConfig 依 allowlist 與執行模式決定 CORS 設定（PCI 7.3）。
 //
 // 三種結果：
 //   - 有顯式 allowlist：來源受限，故可安全帶憑證
@@ -469,18 +469,18 @@ type routeDeps struct {
 	// cors.New() 內部會 Validate 並在設定非法時 panic，屬「可導致行程終止」的
 	// 呼叫，依 route-registration 契約不得出現在 registerRoutes 內。
 	corsMiddleware gin.HandlerFunc
-	// sealGate 封印閘（kek-provider-modularization D6.6）：註冊為**最外層**
+	// sealGate 封印閘：註冊為**最外層**
 	// 全域中間件。非白名單路由於封印期一律 503＋機器碼。
 	sealGate          gin.HandlerFunc
 	auditLogEnabled   bool
-	// metrics 營運指標集合（observability-lite）。**段 1 與段 2 共用同一個實例**
+	// metrics 營運指標集合。**段 1 與段 2 共用同一個實例**
 	// ——換 router 時若另建一份，封印期累計的計數會在解封當下歸零，
 	// 而 counter 回退在採集端會被讀成「行程重啟」。
 	metrics *observability.Metrics
-	// metricsToken 指標端點的 bearer token；空＝免認證（D3）
+	// metricsToken 指標端點的 bearer token；空＝免認證
 	metricsToken string
 	// sealOnly 為真時，registerRoutes 只註冊健康檢查與 seal 端點群
-	// （D6.4 解封端點的獨立監聽）。業務路由**完全不存在**於該 router，
+	// （解封端點的獨立監聽）。業務路由**完全不存在**於該 router，
 	// 而不是「存在但被閘擋住」——後者在解封後就會全部活過來。
 	sealOnly bool
 
@@ -534,7 +534,7 @@ type routeDeps struct {
 	ssh  *sshproxy.Handler
 }
 
-// registerRoutes 是本服務唯一的路由註冊入口（route-composition-root）。
+// registerRoutes 是本服務唯一的路由註冊入口。
 //
 // 契約：只做 Use／Group／HTTP method 註冊與 handler 的 RegisterRoutes 呼叫。
 // **不得**於此執行初始化、I/O、資料庫存取、scheduler 啟停，或任何可導致行程
@@ -549,7 +549,7 @@ type routeDeps struct {
 // Use 不回溯既有路由——故本函式內不得有先於自訂全域中間件註冊的路由，否則該
 // 路由的鏈會僅含 Logger → Recovery。此不變式由鏈比對迴歸保護。
 //
-// **封印閘必須在最外層**（D6.6）：它要擋的是「服務尚未上線」，若排在 Metrics
+// **封印閘必須在最外層**：它要擋的是「服務尚未上線」，若排在 Metrics
 // 或 audit 之後，封印期的請求就會先經過那些依賴段 2 服務的中間件。
 func registerRoutes(r *gin.Engine, d routeDeps) {
 	// 全域中間件（順序為契約，見上方說明）
@@ -565,13 +565,13 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 	// 無認證、冪等、可 POST 的收端來驗證投遞鏈路，health 無副作用最合適
 	r.GET("/health", healthHandler)
 	r.POST("/health", healthHandler)
-	// /healthz 是 D6.1 指名的存活探針路徑，且在封印閘白名單內。
+	// /healthz 是規格指名的存活探針路徑，且在封印閘白名單內。
 	// **與 /health 並存而非取代**：既有部署的探針指向 /health，改名等於在
 	// 升級當下讓所有探針一起變紅。只收 GET——探針不需要 POST，而白名單每多
 	// 一條，封印期的攻擊面就多一條。
 	r.GET("/healthz", healthHandler)
 
-	// 解封端點的獨立監聽（D6.4）：只註冊 seal 端點群與健康檢查即返回。
+	// 解封端點的獨立監聽：只註冊 seal 端點群與健康檢查即返回。
 	// 早退出而非旗標分支：業務路由在此 router 上「不存在」是可被路由表直接
 	// 觀察的事實，不必倚賴閘的判定是否正確。
 	if d.sealOnly {
@@ -580,7 +580,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		return
 	}
 
-	// 指標曝光（observability-lite D1）。**刻意註冊在根層、不在 `/api` 之下**：
+	// 指標曝光。**刻意註冊在根層、不在 `/api` 之下**：
 	// 正式版 edge 只代理 `/api` 與 `/ws`，故此端點預設自外部不可達——安全性由
 	// 拓撲保證，而非由「認證中介層有沒有被掛上」這種每次改路由都可能失手的人為保證。
 	// 前身 `/api/v1/internal/metrics` 自稱「內部使用、無需認證」而落在被代理的
@@ -596,7 +596,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 	{
 		v1.GET("/ping", pingHandler)
 
-		// 封印狀態與解封（kek-provider-modularization D6.6）：兩條路徑都在封印閘
+		// 封印狀態與解封：兩條路徑都在封印閘
 		// 白名單內，且**不要求 JWT**（要求 JWT 會在 admin 已開 MFA 時死鎖）。
 		// 恆註冊而非僅 B 模式註冊：A／C 模式下狀態查詢同樣是有效的運維面，
 		// 且解封端點在已解封時一律回 409、不重跑任何初始化。
@@ -606,12 +606,12 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.securityPolicy.RegisterRoutes(v1, d.authService)
 		d.syslogSetting.RegisterRoutes(v1, d.authService)
 		d.auditIntegrity.RegisterRoutes(v1, d.authService)
-		// 檢查點鏈（audit-checkpoint-chain D10）：緊鄰列級完整性驗證註冊——
+		// 檢查點鏈（audit-checkpoint-chain）：緊鄰列級完整性驗證註冊——
 		// 兩者是同一件事的兩個層次（列的內容真偽／序列的完整性），
 		// 角色邊界亦相同（admin 或 auditor，唯讀）
 		d.auditCheckpoint.RegisterRoutes(v1, d.authService)
 		d.asset.RegisterRoutes(v1, d.authService)
-		// 資產帳號（asset-multi-account 階段 2）：與 /assets 同前綴不同子路徑，
+		// 資產帳號：與 /assets 同前綴不同子路徑，
 		// 讀取端沿用逐資產可視守門，故需授權服務
 		d.assetAccount.RegisterRoutes(v1, d.authService, d.authorizationService)
 		d.session.RegisterRoutes(v1, d.authService)
@@ -624,7 +624,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.transmissionInventory.RegisterRoutes(v1, d.authService)
 		d.notificationChannel.RegisterRoutes(v1, d.authService)
 		d.oidc.RegisterRoutes(v1, d.authService)
-		// LDAP 目錄設定（ldap-settings-migration D1）：與 OIDC provider 同屬
+		// LDAP 目錄設定：與 OIDC provider 同屬
 		// 身分管理面的 admin-only 設定；singleton 資源（無 :id、無集合式建立）
 		d.ldapDirectory.RegisterRoutes(v1, d.authService)
 		d.keyManagement.RegisterRoutes(v1, d.authService)
@@ -657,9 +657,9 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.auditTimeline.RegisterRoutes(v1, d.authService)
 		d.changeSecret.RegisterRoutes(v1, d.authService)
 
-		// 原生 SSH 終端（ssh-xterm-direct）：只收 token + asset_id，憑證後端注入
+		// 原生 SSH 終端：只收 token + asset_id，憑證後端注入
 		v1.GET("/ssh", d.ssh.HandleSSH)
-		// SSH 會話即時監看（ssh-session-monitor）：限 admin/auditor，唯讀
+		// SSH 會話即時監看：限 admin/auditor，唯讀
 		v1.GET("/sessions/:id/monitor", d.ssh.HandleMonitor)
 		// session-stats: SSH 會話即時指標（JWT middleware 認證）
 		v1.GET("/ssh/sessions/:id/stats", middleware.AuthMiddleware(d.authService), d.ssh.HandleStats)
@@ -672,15 +672,15 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 
 		d.accessRequest.RegisterRoutes(v1, d.authService)
 
-		// transmission-security-policy: 連線同意閘（D2/D3）
+		// 連線同意閘
 		v1.POST("/transmission-consents", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateTransmissionConsent)
 
-		// SSH 資產檔案管理（sftp-file-management）：資產收口 + 全操作審計
+		// SSH 資產檔案管理：資產收口 + 全操作審計
 		d.sftp.RegisterRoutes(v1, d.authService)
 	}
 }
 
-// healthHandler 健康檢查端點（route-composition-root D1）。
+// healthHandler 健康檢查端點。
 // 同時接受 POST：webhook 測試發送（alert-notifications E2E）需要一個
 // 無認證、冪等、可 POST 的收端來驗證投遞鏈路，health 無副作用最合適。
 //

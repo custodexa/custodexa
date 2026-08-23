@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-// KEK 生成指令參考（kek-encoding-and-unseal-entry 決策 8）。
+// KEK 生成指令參考。
 //
 // **指令是參考、不是要求**：介面同時保留「本地生成」按鈕（不是所有人都在有 shell
 // 的機器上操作）。指令字串不翻譯——它們要原樣貼進 shell；說明文字才走 i18n。

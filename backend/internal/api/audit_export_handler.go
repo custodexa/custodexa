@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 )
 
-// AuditExportHandler 稽核證據匯出（audit-workflows D1，PCI 10.5.1）
+// AuditExportHandler 稽核證據匯出（audit-workflows，PCI 10.5.1）
 type AuditExportHandler struct {
 	exportService *audit.AuditExportService
 	auditService  *audit.AuditLogService

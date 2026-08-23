@@ -44,7 +44,7 @@ const mountForm = (props = {}) =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('ApproverScopeForm 共用範圍表單（approval-routing-quorum）', () => {
+describe('ApproverScopeForm 共用範圍表單', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     createApproverScopeMock.mockResolvedValue({ id: 99 })
@@ -108,7 +108,7 @@ describe('ApproverScopeForm 共用範圍表單（approval-routing-quorum）', ()
 
     expect(confirmSpy).toHaveBeenCalled()
     expect(String(confirmSpy.mock.calls[0][0])).toContain('尚未具備審核人員角色')
-    // 冪等追加端點（codex #1）：只送單一角色，不整包覆蓋
+    // 冪等追加端點：只送單一角色，不整包覆蓋
     expect(addUserRoleMock).toHaveBeenCalledWith(7, 'approver')
     expect(createApproverScopeMock).toHaveBeenCalledWith({ approver_id: 7, asset_id: 1 })
     // 代配後選項標註消除（避免重複代配）
@@ -147,7 +147,7 @@ describe('ApproverScopeForm 共用範圍表單（approval-routing-quorum）', ()
     expect(ids).not.toContain(10)
   })
 
-  it('節點選項帶全路徑；表單用「範圍類型」label 與「新增」按鈕（D6 去三連發）', async () => {
+  it('節點選項帶全路徑；表單用「範圍類型」label 與「新增」按鈕（去三連發）', async () => {
     const wrapper = mountForm({ presetActor: { type: 'user', id: 8 } })
     await flushPromises()
     const labels = wrapper.vm.options.asset_group.map((o) => o.label)

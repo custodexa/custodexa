@@ -88,7 +88,7 @@ const error = ref('')
 const prev = ref(null)
 let timer = null
 
-// CPU%/網速由兩次輪詢差分（design D2：後端 stateless）
+// CPU%/網速由兩次輪詢差分（後端 stateless）
 const cpuPercent = computed(() => {
   if (!stats.value || !prev.value) return 0
   const dTotal = stats.value.cpu_total - prev.value.cpu_total

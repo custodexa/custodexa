@@ -10,7 +10,7 @@ import (
 
 // ConnectSourceResolver 連線授權來源解析（**policy 自宣告的窄介面**，authz 側實作）。
 //
-// **存在理由是 §4.8 環拆解**（modular-architecture W3 3.1／R3.1 §3.1）：政策閘原本
+// **存在理由是 §4.8 環拆解**：政策閘原本
 // 直接持有 `*database.AssetAuthorizationRepository` 並自行查 `access_requests`，
 // 使 policy→authz 成為真出向邊；而 authz→policy 又因申請核准流讀政策鍵而必然存在
 // （`access_request_service.go:131,132` 同時持 `*SecurityPolicyService` 與
@@ -35,7 +35,7 @@ const (
 	AccessGateApprovalRequired = "approval_required"
 )
 
-// AccessPolicyDecision 政策閘判定結果（access-policy-approval D4）
+// AccessPolicyDecision 政策閘判定結果
 type AccessPolicyDecision struct {
 	Allowed bool
 	// AdminExemption 本次放行屬 admin 豁免（決議 3）：呼叫端必須寫入審計獨立標記
@@ -50,7 +50,7 @@ type AccessPolicyDecision struct {
 	PendingRequestID *uint
 }
 
-// AccessPolicyService 存取政策解析與政策閘（access-policy-approval D1/D4）
+// AccessPolicyService 存取政策解析與政策閘
 type AccessPolicyService struct {
 	db       *gorm.DB
 	policies *SecurityPolicyService
@@ -75,7 +75,7 @@ func isValidAccessPolicy(v string) bool {
 	return v == model.AccessPolicyOpen || v == model.AccessPolicyReason || v == model.AccessPolicyApproval
 }
 
-// AccessPolicyOf 資產政策段位解析（asset-level-access-policy D1）：
+// AccessPolicyOf 資產政策段位解析：
 // 資產欄位非 NULL 且合法用之，否則全域預設鍵。政策掛資產本身，
 // 組織結構（分組/節點）不影響解析。欄位值非法（手動改庫等）視同未設定。
 // 回傳恆為合法段位（政策鍵層 Get 對非法列值退回出廠預設）
@@ -90,18 +90,18 @@ func (s *AccessPolicyService) AccessPolicyOf(asset *model.Asset) string {
 	return v
 }
 
-// 連線入口三態值（D7 補充二；reason_required/approval_required 沿閘常數）
+// 連線入口三態值（reason_required/approval_required 沿閘常數）
 const (
 	AccessStateConnectable = "connectable"
 	AccessStatePending     = "pending"
 )
 
-// ResolveSegments 批次段位解析（bulk 標註專用；modular-architecture W3 3.1）。
+// ResolveSegments 批次段位解析（bulk 標註專用）。
 //
 // **唯一消費者＝authz 的 `AccessRequestService.AnnotateConnectStates`**。該方法原本
 // 是 `AccessPolicyService` 的方法（`AnnotateConnectStates`），但它做的是「對 authz
 // 自己的 `AuthorizedAssetDTO` 做標註、順帶查 authz 自己的在途單與票證表」——方向
-// 本就該是 authz→policy（R3.1 §4.8(a)）。方法整個搬到 authz 後，policy 這側只需
+// 本就該是 authz→policy。方法整個搬到 authz 後，policy 這側只需
 // 提供段位解析。
 //
 // **回傳切片而非逐列查詢**：全域預設鍵在整批中**只讀一次**，與搬遷前逐位相同——
@@ -123,7 +123,7 @@ func (s *AccessPolicyService) ResolveSegments(assetPolicies []*string) []string 
 	return out
 }
 
-// CheckConnectByAssetID 依 assetID 載入資產後套政策閘（codex 審查 #1）：
+// CheckConnectByAssetID 依 assetID 載入資產後套政策閘：
 // SFTP 檔案資料面與 connect-token 共用此閘，非 open 段位同樣蓋常設 connect——
 // 否則強制審核只保護終端、不保護同資產的檔案傳輸。資產不存在回 gorm.ErrRecordNotFound，
 // 呼叫端據此回 404（不洩漏存在性）
@@ -135,7 +135,7 @@ func (s *AccessPolicyService) CheckConnectByAssetID(userID uint, role string, as
 	return s.CheckConnect(userID, role, &asset)
 }
 
-// CheckConnect 政策閘判定（D4）：connect-token 簽發點第三道閘，
+// CheckConnect 政策閘判定：connect-token 簽發點第三道閘，
 // 於授權檢查之後、傳輸安全閘之前呼叫。語義鐵則（決議 2/B）：
 // 非 open 段位蓋過常設 connect——僅時窗內核准流（source=ticket）授權放行；
 // reason 與 approval 的差別只在申請將被即時自動核准，不是攔不攔。

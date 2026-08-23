@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 使用者群組 API（user-group-authorization，admin only）
+ * 使用者群組 API（admin only）
  * 群組是授權主體的分組維度，與 RBAC 角色正交
  */
 

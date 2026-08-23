@@ -16,13 +16,13 @@ import (
 )
 
 // setupSessionGateEnv 建立經完整 RegisterRoutes（真 AuthMiddleware＋真 JWT）的測試環境，
-// 用於鎖定 session-access-scoping 的無條件守門：敏感讀取端點一律要求 session:view。
-// 原以 FEATURE_PERMISSION_CHECK_ENABLED 為維度，該旗標已於 security-backlog-settlement 退場
+// 用於鎖定無條件守門：敏感讀取端點一律要求 session:view。
+// 原以 FEATURE_PERMISSION_CHECK_ENABLED 為維度，該旗標已退場
 func setupSessionGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	// 世代閘現查 users（M6 起 DB 未注入即 fail-close）：token 宣稱的 1／2 兩個 ID 須存在
+	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 1／2 兩個 ID 須存在
 	installEpochGateDB(t, 1, 2)
 
 	jwtSecret := "gate-test-secret"

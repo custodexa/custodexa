@@ -35,7 +35,7 @@ type AsciicastRecorder struct {
 	flushTicker *time.Ticker
 	stopFlush   chan struct{}
 
-	// 錯誤 latch（recording-failure-handling D5）：autoFlush 的磁碟錯誤不得
+	// 錯誤 latch：autoFlush 的磁碟錯誤不得
 	// 因閒置（無後續輸出）而永久沉默——latch 首個錯誤、通知一次
 	flushErr error
 	onError  func(error)
@@ -219,7 +219,7 @@ func (r *AsciicastRecorder) writeEvent(elapsed time.Duration, eventType string, 
 	return nil
 }
 
-// SetOnError 註冊首次寫入/flush 錯誤的通知回呼（recording-failure-handling D5）。
+// SetOnError 註冊首次寫入/flush 錯誤的通知回呼。
 // 回呼於鎖外執行，可安全做 DB/告警等慢速工作。若註冊前 autoFlush 已 latch
 // 錯誤（Start 與註冊之間的窗口），立即補通知——閒置會話不得因時序沉默；
 // 重複通知由呼叫端 once 語義去重

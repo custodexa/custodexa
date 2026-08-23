@@ -23,7 +23,7 @@ import (
 )
 
 // LDAP 連線測試（階梯、oracle 收斂、密碼沿用三條件、測試閘、資源上限、審計）
-// 的服務層覆蓋（ldap-settings-migration tasks 2.6）。
+// 的服務層覆蓋。
 //
 // 撥號一律走注入的接縫（ldapProbeRuntime.dial），使階梯的每一格分支都能在
 // 無真實目錄的環境下驗證；真實撥號路徑另有一格整合測試（見檔尾）釘住
@@ -937,9 +937,9 @@ func TestLDAPTestRealDialSendsNoStoredPassword(t *testing.T) {
 	}
 }
 
-// ── 安全與健壯性補強（codex 對抗審查 F1／F2／F4／F7）─────────────────────
+// ── 安全與健壯性補強─────────────────────
 
-// TestLDAPProbeBindErrorNeverReachesLog（F1）LDAP 回應的原始錯誤文字不得入日誌。
+// TestLDAPProbeBindErrorNeverReachesLog LDAP 回應的原始錯誤文字不得入日誌。
 //
 // # 為什麼這是 HIGH
 //
@@ -1029,7 +1029,7 @@ func TestLDAPProbeBindErrorNeverReachesLog(t *testing.T) {
 	})
 }
 
-// TestLDAPTestNilGateFailsClosed（F2）閘未接線時測試一律拒絕且不撥號。
+// TestLDAPTestNilGateFailsClosed 閘未接線時測試一律拒絕且不撥號。
 //
 // 測試端點**當下就會把 bind 密碼送上網路**，nil 閘視為放行等於 strict 檔位在
 // 此端點完全不存在。請求刻意用無風險的 ldaps——舊行為下它會照常執行完整階梯，
@@ -1063,7 +1063,7 @@ func TestLDAPTestNilGateFailsClosed(t *testing.T) {
 	}
 }
 
-// TestLDAPTestPasswordClearConflictRejectedBeforeDial（F4）密碼＋clear 併存時
+// TestLDAPTestPasswordClearConflictRejectedBeforeDial 密碼＋clear 併存時
 // 測試路徑須與存檔路徑同樣拒絕，且**不得發生撥號**。
 //
 // 舊行為：測試路徑優先採用密碼並實際送出 bind——admin 勾了「清除密碼」卻看到
@@ -1092,7 +1092,7 @@ func TestLDAPTestPasswordClearConflictRejectedBeforeDial(t *testing.T) {
 	}
 }
 
-// TestLDAPTestCorruptCiphertextDoesNotBlockOtherEndpoint（F7）證明同源前不解密。
+// TestLDAPTestCorruptCiphertextDoesNotBlockOtherEndpoint 證明同源前不解密。
 //
 // 既存密文損壞（金鑰事故）時，測試**另一個**端點本就不會沿用既存密碼，故不應
 // 被 stored_settings_unavailable 阻斷——否則金鑰事故會連帶癱瘓「換一台目錄

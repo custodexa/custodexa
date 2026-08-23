@@ -1,9 +1,9 @@
 package session
 
-// session 包內測試自用的夾具複本（modular-architecture W9）。
+// session 包內測試自用的夾具複本。
 //
 // **為何是複本**：這兩項原本與 session 的 8 個生產檔同住 `internal/service`，
-// 由該包的 keyvault／identity 夾具檔提供。W9 搬包後那些夾具檔留在其擁有者模組
+// 由該包的 keyvault／identity 夾具檔提供。搬包後那些夾具檔留在其擁有者模組
 // （`aesColumnCodec` → keyvault 側、`strPtr` → identity 側），而本包的**包內**
 // 測試取不到別包的 `_test.go` 宣告。
 //
@@ -63,7 +63,7 @@ func (a aadTestCodec) DecryptFor(_ context.Context, ref crypto.CipherRef, cipher
 	return string(plain), nil
 }
 
-// aesColumnCodec 測試用 ColumnCodec（D5 AAD cutover 後 NewAssetService 的必要參數）
+// aesColumnCodec 測試用 ColumnCodec（AAD cutover 後 NewAssetService 的必要參數）
 func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 	t.Helper()
 	c, err := crypto.NewAESCrypto(key)

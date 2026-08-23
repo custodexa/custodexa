@@ -20,7 +20,7 @@ import (
 // installEpochGateDB 裝一個最小的 database.DB 並建出 token 宣稱的使用者列。
 //
 // AuthMiddleware 的憑證世代閘現查 users.credential_epoch，且 **DB 未注入時一律拒**
-// （批 14 對抗審查 M6：原本回 nil 放行，等於整套撤銷機制可被一條漏接的組裝路徑
+// （原本回 nil 放行，等於整套撤銷機制可被一條漏接的組裝路徑
 // 靜默關掉）。本檔的正向案例因此需要一個真的查得到使用者的 DB
 func installEpochGateDB(t *testing.T, userIDs ...uint) {
 	t.Helper()
@@ -104,7 +104,7 @@ func TestAuthMiddleware_RejectsMissingToken(t *testing.T) {
 }
 
 // TestAuthMiddleware_RejectsQueryToken JWT 僅經 Authorization header 接受
-// （transmission-security-policy M8）：有效 JWT 走 ?token= 一律 401，
+// 有效 JWT 走 ?token= 一律 401，
 // 防長效權杖落 access log／proxy 日誌
 func TestAuthMiddleware_RejectsQueryToken(t *testing.T) {
 	jwtSecret := "test-secret"

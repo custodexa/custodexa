@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// RetentionWatermarkService 保留期清除水位的讀寫（auditor-workbench D5）。
+// RetentionWatermarkService 保留期清除水位的讀寫。
 //
 // 這張表存在的唯一理由是「清除留痕自己會過期」：retention 的留痕是一筆
 // audit_logs 列，下一輪 retention 會把它清掉，於是在區間夠舊、最需要標記的
@@ -65,7 +65,7 @@ func (s *RetentionWatermarkService) Advance(class model.RetentionClass, through 
 
 // Load 讀出全部水位，以 class 為鍵。
 //
-// **無列不是 unknown 而是 present**（D5 冷啟動語義）：從未清除過該類別，
+// **無列不是 unknown 而是 present**（冷啟動語義）：從未清除過該類別，
 // 就代表該類別在窗內完整。回 unknown 會讓每個新部署的工作台都掛滿
 // 「無法確認」，而那是假的不確定性——確定的事實是「沒清除過」。
 func (s *RetentionWatermarkService) Load() (map[model.RetentionClass]model.AuditRetentionWatermark, error) {

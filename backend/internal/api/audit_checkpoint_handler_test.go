@@ -25,9 +25,9 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 檢查點 API 與 RBAC（audit-checkpoint-chain tasks 8.1／8.2／8.5）。
+// 檢查點 API 與 RBAC（audit-checkpoint-chain）。
 //
-// **三支端點都是唯讀且對 auditor 開放**（D-3）；設定寫入端點維持 admin only。
+// **三支端點都是唯讀且對 auditor 開放**；設定寫入端點維持 admin only。
 // 兩個方向都測：只測「auditor 可讀」會漏掉「auditor 也能改設定」這種擴權。
 
 // fakeCheckpointSigner 測試用 Ed25519 簽章器（同時充當公鑰出口）
@@ -398,9 +398,9 @@ func TestCheckpointRBACMatrix(t *testing.T) {
 	}
 }
 
-// TestAuditIntegrityOpenToAuditor 列級驗證端點一併開放 auditor（D-3）。
+// TestAuditIntegrityOpenToAuditor 列級驗證端點一併開放 auditor。
 //
-// **這條是 D-3 裁決的核心**：若 auditor 只能證序列（檢查點）而內容真偽仍須
+// **這條是角色邊界裁決的核心**：若 auditor 只能證序列（檢查點）而內容真偽仍須
 // 請 admin 代驗，「被監督者代為出具監督證明」的角色錯配只解一半
 func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -446,7 +446,7 @@ func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 			continue
 		}
 		if w.Code == http.StatusForbidden {
-			t.Errorf("%s 被授權擋下（403），D-3 要求開放", name)
+			t.Errorf("%s 被授權擋下（403），此端點應開放", name)
 		}
 	}
 }

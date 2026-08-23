@@ -1,5 +1,5 @@
 /**
- * 日誌去識別（asset-multi-account 階段 5 對抗審查 HIGH-2）。
+ * 日誌去識別。
  *
  * 背景：`console.error('回應錯誤:', error)` 印的是完整 AxiosError，其 `config.data`
  * 即為原始請求本文——帳號 CRUD 會帶明文密碼與私鑰，DevTools 開著就等同外洩，
@@ -13,7 +13,7 @@
  * 邊界（誠實記載）：本模組只保證「不主動把敏感值寫進 console」。它不清除
  * JS 記憶體中既有的字串，也管不到瀏覽器 Network 面板（請求本文本來就看得到）。
  *
- * 分工（輪 2 後）：`redactAxiosError`／`apiErrorSummary` 皆為**白名單**摘要，
+ * 分工：`redactAxiosError`／`apiErrorSummary` 皆為**白名單**摘要，
  * 不輸出任何請求本文或後端訊息；`redactSensitive` 是留給「確實需要輸出某個
  * 結構化欄位」時的 opt-in 遮蔽器，呼叫端需自行說明為何這個欄位值得冒險。
  */
@@ -52,7 +52,7 @@ const MAX_DEPTH = 6
  * JSON 字串（axios 送出後 `config.data` 已被序列化成字串）會先嘗試解析再遮蔽，
  * 解析不了就整串當不可信內容遮掉——寧可少一點除錯資訊
  *
- * 深度上限一律回 placeholder（UI 對抗審查輪 2 codex MEDIUM-4）：原本超過
+ * 深度上限一律回 placeholder：原本超過
  * MAX_DEPTH 時回傳原值，等於「巢狀夠深就免檢查」——攻擊者或單純的深層 payload
  * （巢狀設定樹、批次匯入）可把 password 藏在第 7 層原封輸出。深度上限的語義
  * 必須是「這裡不再檢查，所以不輸出」，不能是「這裡不再檢查，所以照抄」。
@@ -87,7 +87,7 @@ export function redactSensitive(value, depth = 0) {
 }
 
 /**
- * 元件層日誌用的**最小**錯誤摘要（idp-oidc-integration 7.4 讀碼審查 MEDIUM-6）。
+ * 元件層日誌用的**最小**錯誤摘要。
  *
  * 與 `redactAxiosError` 的差別是白名單而非黑名單：只輸出機器碼與 HTTP 狀態，
  * 連 url／請求本文／錯誤訊息都不帶。元件處理的是使用者身分類資料（subject、
@@ -110,7 +110,7 @@ export function apiErrorSummary(event, error) {
 /**
  * 把 AxiosError 壓成可安全寫入 console 的摘要。
  *
- * 白名單而非黑名單（UI 對抗審查輪 2 codex MEDIUM-5）：舊版輸出後端 `error` 訊息、
+ * 白名單而非黑名單：舊版輸出後端 `error` 訊息、
  * axios `message` 與經欄位遮蔽的請求本文。欄位名遮蔽擋得住 password／token，
  * 擋不住**本身就是個資的欄位**——subject、email、username、full_name 全部原樣
  * 落進 console，而後端錯誤訊息常把衝突值回顯（「已綁定至帳號 xxx」）。

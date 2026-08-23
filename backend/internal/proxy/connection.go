@@ -157,7 +157,7 @@ func (c *Connection) handshake() error {
 	if readyInst.Opcode == "error" {
 		// 內部 error 值（僅落 log 與 apierror.RespondInternal 的 cause，永不直達
 		// 使用者：handler 以 INTERNAL_GUACD_HANDSHAKE 泛化回應）。原中文預設值
-		// 改英文，讓 D7 字面量守衛的清單歸零而不必為它開豁免
+		// 改英文，讓中文字面量守衛的清單歸零而不必為它開豁免
 		errorMsg := "unknown error"
 		if len(readyInst.Args) > 0 {
 			errorMsg = readyInst.Args[0]

@@ -83,7 +83,7 @@ var legacyVersionsSample = []string{
 	"20260814_audit_pivot_index_convergence",
 }
 
-// TestBaselineOnEmptySchemaPostgres 全新安裝的產物與冪等（tasks 1.5／4.2／4.3）。
+// TestBaselineOnEmptySchemaPostgres 全新安裝的產物與冪等。
 func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	dsn := testgate.Value(t, testgate.EnvPGDSN)
 	const pgSchema = "baseline_empty_test"
@@ -107,7 +107,7 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 		t.Errorf("CHECK 約束數 = %d, want 10", got.Checks)
 	}
 
-	// tasks 1.5：schema_migrations 恰好一列，且**不含** LDAP 執行期 marker。
+	// schema_migrations 恰好一列，且**不含** LDAP 執行期 marker。
 	// 預插 marker 會讓 LDAP env seed 永遠不執行——表建好了、設定沒進去、無錯誤可查。
 	var versions []string
 	if err := db.Raw(`SELECT version FROM schema_migrations ORDER BY version`).Scan(&versions).Error; err != nil {
@@ -119,10 +119,10 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 			versions, BaselineVersion, LDAPSeedMarkerVersion)
 	}
 
-	// tasks 4.2：12 條種子的 protocols 分佈＝三段疊加的終態
+	// 12 條種子的 protocols 分佈＝三段疊加的終態
 	assertBuiltinAlertRules(t, db)
 
-	// tasks 4.3：種子路徑重跑仍是 12 列（唯一索引＋ON CONFLICT DO NOTHING）
+	// 種子路徑重跑仍是 12 列（唯一索引＋ON CONFLICT DO NOTHING）
 	if err := seedBuiltinAlertRules(db); err != nil {
 		t.Fatalf("重跑種子失敗（冪等性不成立）: %v", err)
 	}
@@ -204,7 +204,7 @@ func assertBuiltinAlertRules(t *testing.T, db *gorm.DB) {
 	}
 }
 
-// TestBaselineRefusesLegacyDatabasePostgres fail-close 正向實走（tasks 9.2）。
+// TestBaselineRefusesLegacyDatabasePostgres fail-close 正向實走。
 //
 // 斷言的是**拒絕啟動本身**與**零寫入**，不是「規則仍是 12 列」——後者在一個
 // 根本還沒建表的資料庫上恆真，證明不了任何東西。
@@ -266,7 +266,7 @@ func TestBaselineRefusesLegacyDatabasePostgres(t *testing.T) {
 	}
 }
 
-// TestBaselineAllowsRuntimeMarkerOnlyPostgres fail-close 反向實走（tasks 9.3）。
+// TestBaselineAllowsRuntimeMarkerOnlyPostgres fail-close 反向實走。
 //
 // **這條漏了會擋住每一個正常安裝**：LDAP env seed 的 marker 是第一次啟動後才寫入的，
 // 若 fail-close 不扣掉執行期 marker，第二次啟動就會被自己擋下。
@@ -293,7 +293,7 @@ func TestBaselineAllowsRuntimeMarkerOnlyPostgres(t *testing.T) {
 	assertBuiltinAlertRules(t, db)
 }
 
-// TestBaselineIgnoresUnknownVersionAfterBaselinePostgres 降版情境不擋（tasks 9.5 前半）。
+// TestBaselineIgnoresUnknownVersionAfterBaselinePostgres 降版情境不擋。
 //
 // baseline 已在已套用集合內時，其餘未知版本屬「這個庫被較新版本的程式碼跑過」，
 // 沿既有的單向比對語義忽略（proposal 的 Non-goal）。
@@ -315,7 +315,7 @@ func TestBaselineIgnoresUnknownVersionAfterBaselinePostgres(t *testing.T) {
 	}
 }
 
-// TestBaselineRollbackIsRefusedPostgres baseline 的 Down 一律拒絕（tasks 1.4／design D7）。
+// TestBaselineRollbackIsRefusedPostgres baseline 的 Down 一律拒絕。
 func TestBaselineRollbackIsRefusedPostgres(t *testing.T) {
 	dsn := testgate.Value(t, testgate.EnvPGDSN)
 	const pgSchema = "baseline_rollback_test"

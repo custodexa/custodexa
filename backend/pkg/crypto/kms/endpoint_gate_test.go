@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-// Settings.Endpoint 的**結構性 test gate**（round-4 codex high #2 的配套）。
+// Settings.Endpoint 的**結構性 test gate**（安全審查 high #2 的配套）。
 //
-// H2 的修補讓生產路徑拒絕環境變數面的端點覆寫，但 Settings.Endpoint 這個
+// 端點覆寫的修補讓生產路徑拒絕環境變數面的改導，但 Settings.Endpoint 這個
 // **程式面**的旋鈕仍在（localstack 實測需要它）。「它只有測試碼設得到」若只是
 // 一句註解，第一個為了除錯而在 cmd/server 接上一個 env 鍵的人就會把它變成假話。
 //
@@ -31,12 +31,12 @@ const endpointFieldName = "Endpoint"
 // endpointWriteAllowlist 允許寫入 Endpoint 欄位的（相對 backend 根的檔路徑 → 函式名）。
 //
 // 新增任一項等於在生產二進位裡開一條「把敏感請求導向他處」的路徑，必須先在
-// design 上說明為何那不是 H2 的原樣重現。
+// design 上說明為何那不是端點覆寫缺陷的原樣重現。
 //
 // 本掃描刻意涵蓋所有名為 Endpoint 的欄位寫入（寧可誤報不漏報），故非 KMS 的
 // 合法用途須在此具名放行。
-// **鍵不再硬編碼檔路徑（modular-architecture W8 9.8）**：原本寫死
-// `internal/service/oidc_discovery.go`，該檔於 W8 搬入 `internal/modules/identity`
+// **鍵不再硬編碼檔路徑**：原本寫死
+// `internal/service/oidc_discovery.go`，該檔搬入 `internal/modules/identity`
 // 後豁免落空 ⇒ 合法用途被判違規（誤報方向，不是恆綠，但下一次搬檔照壞）。
 // 改以「**誰宣告了 OAuth2Config**」這個跟著程式碼走的結構性錨點定位，
 // 由 `resolveOAuth2ConfigFile` 於掃描時解析；找不到或找到多個即 t.Fatal
@@ -45,12 +45,12 @@ var endpointWriteAllowlist = map[string][]string{}
 
 // oauth2ConfigFuncName 豁免對象的錨點符號。
 //
-// idp-oidc-integration D3a：oauth2.Config.Endpoint 取自 go-oidc 的 discovery
+// oauth2.Config.Endpoint 取自 go-oidc 的 discovery
 // 結果，而 go-oidc 強制 discovery 文件的 issuer 與輸入完整字串一致；issuer
 // 本身建後不可變且經形狀/scheme 驗證，**無任何 env 可覆寫**。所有出站另受
 // OIDCEgressPolicy 約束（https、拒絕內部網段、每次連線重新解析檢查）。
 //
-// 與 H2 的本質差異：H2 是「外部可控的 env 直接決定含明文 DEK 之請求的目的地
+// 與端點覆寫缺陷的本質差異：該缺陷是「外部可控的 env 直接決定含明文 DEK 之請求的目的地
 // 且無任何驗證」；此處是「經 issuer 驗證的 discovery 結果 + 出站位址政策」。
 const oauth2ConfigFuncName = "OAuth2Config"
 
@@ -105,7 +105,7 @@ func TestNoProductionEndpointOverride(t *testing.T) {
 	if len(violations) > 0 {
 		t.Fatalf("偵測到生產碼寫入 kms.Settings.%s（端點覆寫僅供測試靶機，"+
 			"生產路徑一律走 SDK 預設解析）：\n%s\n"+
-			"若確有必要，須先於 design 說明為何這不是 round-4 codex high #2 的原樣重現，"+
+			"若確有必要，須先寫明為何這不是同型缺陷的原樣重現（外部可控的值決定含明文 DEK 之請求的目的地），"+
 			"並列入 endpointWriteAllowlist", endpointFieldName, strings.Join(violations, "\n"))
 	}
 }
@@ -142,7 +142,7 @@ func scanEndpointWrites(t *testing.T, root string) []string {
 		if perr != nil {
 			// 原先 `return nil` 靜默略過：解析失敗的檔等於沒被掃過，而本守衛
 			// 的失敗形態正是「掃不到＝零違規＝綠」。go/parser 不套用 build tag，
-			// 解析失敗即代表原始碼真的壞了，fail-close 才是正確反應（W1 1.21）。
+			// 解析失敗即代表原始碼真的壞了，fail-close 才是正確反應。
 			t.Fatalf("解析 %s 失敗，守衛拒絕在殘缺 AST 上宣稱零違規: %v", path, perr)
 		}
 		scanned++
@@ -262,7 +262,7 @@ const minKMSScannedFiles = 270
 // **原以 runtime.Caller + 固定 4 層 Dir 推算**（僅事後驗 go.mod 是否存在）：
 // 層數與「本 package 住在樹的第幾層」綁死，package 位置一變，上溯 4 層可能
 // 落在某個仍有 go.mod 的祖先或直接 Fatal，兩者都不是掃描根。改為「向上找
-// go.mod 並核對 module 行」——找到的必定是本 module 的根（W1 1.20）。
+// go.mod 並核對 module 行」——找到的必定是本 module 的根。
 func kmsGuardBackendRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)

@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 降級告警的守衛（command-audit-altscreen-bypass tasks 3.2／3.4）。
+// 降級告警的守衛。
 //
 // 兩件事必須同時成立，缺一都會使這條安全訊號失效：
 //   - **每個 span 至少一筆**——沒有告警的降級紀錄只是「可搜尋」，
@@ -154,7 +154,7 @@ func TestDegradeAlertDrainsAtClose(t *testing.T) {
 
 // TestQualifiedTextRowClosesSpanAndRaisesNoAlert 受限定的文字列
 //（Degraded=false 且 DegradeReason 非空）**不是**降級列：它有文字。
-// 它不得自己觸發降級告警，且應結束當前的 span（design §6.6：兩個值域刻意不合併）。
+// 它不得自己觸發降級告警，且應結束當前的 span（兩個值域刻意不合併）。
 func TestQualifiedTextRowClosesSpanAndRaisesNoAlert(t *testing.T) {
 	store, sink := newDegradeAlertStore(t)
 	now := time.Now()
@@ -171,7 +171,7 @@ func TestQualifiedTextRowClosesSpanAndRaisesNoAlert(t *testing.T) {
 // TestDegradeAlertWithoutSinkIsLoudNotSilent 未注入落地面時 SHALL NOT 靜默 no-op。
 //
 // 靜默的後果是「告警系統看起來正常但一筆都沒發」——那是本 repo 已經踩過的形態
-// （BD-1）。此處以「不 panic 且會話照常結束」為界：錯誤只記 log，不反壓會話。
+// 此處以「不 panic 且會話照常結束」為界：錯誤只記 log，不反壓會話。
 func TestDegradeAlertWithoutSinkIsLoudNotSilent(t *testing.T) {
 	store, _ := newDegradeAlertStore(t)
 	store.alerts = nil // 模擬組裝根漏接線

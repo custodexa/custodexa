@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { getEndReasonText, getEndReasonTagType, END_REASON_TEXT } from '../end-reason'
 
-// 值域硬拷後端（完備性守護，role-enum-metadata-sync）：
+// 值域硬拷後端（完備性守護）：
 // model/session.go:20-26＋bridge.go/tunnel.go/migrations default
 const BACKEND_END_REASONS = [
   'normal', 'idle_timeout', 'max_duration', 'admin_terminate',

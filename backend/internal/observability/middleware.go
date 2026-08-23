@@ -16,11 +16,11 @@ const UnmatchedPath = "<unmatched>"
 
 // HTTPMiddleware 記錄請求計數與耗時分佈。
 //
-// 取代 `middleware.Metrics()`（observability-lite D5）。**掛載位置即原位置**——
+// 取代 `middleware.Metrics`。**掛載位置即原位置**——
 // 全域中間件順序是契約（`cmd/server/main.go` 的 registerRoutes 說明），
 // 且封印閘必須維持在最外層。
 //
-// 記錄恆進行，是否**曝光**由 registry 的分階段註冊決定（design D4）：封印期
+// 記錄恆進行，是否**曝光**由 registry 的分階段註冊決定：封印期
 // 這些 collector 尚未註冊進 registry，故此期間的計數不出現在曝光內容中。
 func (m *Metrics) HTTPMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

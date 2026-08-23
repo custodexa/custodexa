@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 自動驗證營運狀態的揭露面（audit-chain-scheduled-verification tasks 5.1）。
+// 自動驗證營運狀態的揭露面。
 //
 // **零新增路由**：狀態掛在既有結構層報告上（GET /audit-checkpoints/verify），
 // 故本組不動端點索引與路由 golden。這裡釘的是兩件事：狀態真的到得了回應，
@@ -90,7 +90,7 @@ func TestVerifyCarriesAutoVerifyStatusWithoutLeakingSeqs(t *testing.T) {
 		"full_interval_seconds", "content_cursor_seq", "open_failed_intervals",
 		"rows_per_hour", "cycle_estimate_hours"} {
 		if _, ok := av[k]; !ok {
-			t.Errorf("auto_verify 缺欄位 %s（tasks 5.2 的顯示項）", k)
+			t.Errorf("auto_verify 缺欄位 %s（前端狀態面的顯示項）", k)
 		}
 	}
 	if av["open_failed_intervals"].(float64) != 2 {

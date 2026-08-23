@@ -21,7 +21,7 @@ func setupGroupDB(t *testing.T) (*AssetGroupService, *gorm.DB) {
 //
 // **為何需要它**：`audit_failclose_backstop_test.go` 的 AP-37 對照組斷言
 // 「無故障時級聯撤銷確實發生」，實驗組再斷言「注入審計失敗後那些列隨交易回滾」。
-// 若替身什麼都不刪，對照組必然失敗（W7 實測到這一點：換成純記錄式 stub 後
+// 若替身什麼都不刪，對照組必然失敗（實測到這一點：換成純記錄式 stub 後
 // 該格立刻紅在對照組，證明那條對照不是裝飾）。
 //
 // **它不是第二份規則**：這裡只複製「刪哪兩張表、用哪個外鍵」這個**效果**，
@@ -47,7 +47,7 @@ func setupGroupOnlyDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// AssetAuthorization/ApproverScope：Delete 連動撤銷（asset-node-tree D4）
+	// AssetAuthorization/ApproverScope：Delete 連動撤銷
 	if err := db.AutoMigrate(&model.AssetGroup{}, &model.AssetNode{}, &model.Asset{}, &model.AuditLog{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -55,7 +55,7 @@ func setupGroupOnlyDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// stubAssetGroupRevoker F8 tx-taking 窄 port 的測試替身（W7 7.4）。
+// stubAssetGroupRevoker tx-taking 窄 port 的測試替身。
 //
 // **為何不是真 authz**：authz import asset（`FillNodeInfo`／`ValidateAccountUsername`），
 // 故 asset 的測試 import authz 會構成 `import cycle not allowed in test`；
@@ -98,7 +98,7 @@ func TestAssetGroupCRUD(t *testing.T) {
 		t.Errorf("同層（根）同名應 409: %v", err)
 	}
 
-	// 同名不同層合法（同層唯一取代全域唯一——asset-node-tree D1）
+	// 同名不同層合法（同層唯一取代全域唯一）
 	child, err := svc.Create(&AssetGroupRequest{Name: "生產", ParentID: &g.ID}, 1, "admin", "127.0.0.1")
 	if err != nil {
 		t.Fatalf("不同層同名應合法: %v", err)
@@ -118,7 +118,7 @@ func TestAssetGroupCRUD(t *testing.T) {
 	}
 }
 
-// TestAssetNodeTreeDepthAndCycle 樹深上限與環路檢查（asset-node-tree D1/D4）
+// TestAssetNodeTreeDepthAndCycle 樹深上限與環路檢查
 func TestAssetNodeTreeDepthAndCycle(t *testing.T) {
 	svc, _ := setupGroupDB(t)
 
@@ -190,7 +190,7 @@ func TestAssetNodeMoveSiblingName(t *testing.T) {
 	}
 }
 
-// TestAssetNodeDeleteOnlyEmpty 僅空節點可刪（asset-node-tree D4）
+// TestAssetNodeDeleteOnlyEmpty 僅空節點可刪
 func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 	svc, db := setupGroupDB(t)
 	parent, _ := svc.Create(&AssetGroupRequest{Name: "P"}, 1, "admin", "127.0.0.1")
@@ -229,7 +229,7 @@ func TestAssetNodeDeleteOnlyEmpty(t *testing.T) {
 }
 
 // TestAssetGroupDeleteRevokesGrants 刪節點連動軟刪授權＋approver 範圍＋審計留痕
-// （asset-node-tree D4 沿 user-group-authorization 慣例）
+// （沿使用者群組授權的既有慣例）
 func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 	db := setupGroupOnlyDB(t)
 	revoker := newStubGroupRevoker(1, 1)
@@ -256,7 +256,7 @@ func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 		t.Fatalf("連動撤銷筆數 = %d, want 1", revoked)
 	}
 
-	// 委派恰一次、在交易句柄上、帶正確 groupID（F8／D-10 tx-taking 窄 port）
+	// 委派恰一次、在交易句柄上、帶正確 groupID（tx-taking 窄 port）
 	if len(revoker.calls) != 1 {
 		t.Fatalf("應恰好委派一次 authz 級聯撤銷, got %d 次: %+v", len(revoker.calls), revoker.calls)
 	}
@@ -264,7 +264,7 @@ func TestAssetGroupDeleteRevokesGrants(t *testing.T) {
 		t.Fatalf("委派引數錯誤: %+v（tx 不得為 nil、groupID 應為 %d）", revoker.calls[0], g.ID)
 	}
 
-	// **asset 自己不得再寫 authz 的表**（W6 資料邊界閘門的方向）：
+	// **asset 自己不得再寫 authz 的表**（資料邊界閘門的方向）：
 	// 兩列由 stub（不執行任何刪除）承接後應原封不動——若 asset 私下又刪一次，此處會紅
 	var active int64
 	db.Model(&model.AssetAuthorization{}).Where("asset_group_id = ?", g.ID).Count(&active)
@@ -339,7 +339,7 @@ func TestAssetNodeTreeListing(t *testing.T) {
 		t.Fatalf("不可視根層應為空: %d, %v", len(filtered), err)
 	}
 
-	// 計數收斂（codex P1）：prod 可視但僅 a2（kafka 掛載）在授權集——
+	// 計數收斂：prod 可視但僅 a2（kafka 掛載）在授權集——
 	// 直掛 a1 不可視故 asset_count=0、subtree 僅計 a2、has_children 依可視節點集
 	vis := &TreeVisibility{
 		NodeIDs:  map[uint]bool{prod.ID: true, kafka.ID: true},
@@ -380,14 +380,14 @@ func TestAssetMultiMembershipNodeInfo(t *testing.T) {
 }
 
 // uptrAsset 取位址的測試小工具（原 uptrScope 住在 authz 側的
-// access_request_service_test.go，W6 搬檔後跨包取不到；逐字複製一份，
+// access_request_service_test.go，搬檔後跨包取不到；逐字複製一份，
 // 不為此在生產碼開匯出面）。
 func uptrAsset(v uint) *uint { return &v }
 
-// TestAssetGroupDeleteFailsClosedWhenRevokeFails F8 fail-close（W7 7.4）：
+// TestAssetGroupDeleteFailsClosedWhenRevokeFails 級聯撤銷 fail-close：
 // 級聯撤銷失敗或撤銷面未注入時，節點刪除**必須整筆失敗**。
 //
-// **為何非有不可**：W7 波內的載重性驗證實測到，把
+// **為何非有不可**：載重性驗證實測到，把
 // `revoked, _, rerr = ...; if rerr != nil { return rerr }` 改成
 // 「撤銷失敗就記個 log 繼續刪」之後，`TestAssetGroupDeleteRevokesGrants` 與
 // AP-37 的 audit backstop **兩格都照樣綠**——backstop 注入的是**審計**失敗，

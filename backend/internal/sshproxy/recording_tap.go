@@ -11,10 +11,10 @@ import (
 	"github.com/custodexa/backend/internal/recorder"
 )
 
-// recordingTap 將 asciicast 錄製器掛上 bridge 旁路（design D4）。
+// recordingTap 將 asciicast 錄製器掛上 bridge 旁路。
 // 只錄輸出方向（"o" 事件）與尺寸變更（"r" 事件）。
 // 錄製失敗不影響轉發主路徑（fail-close 只掛簽發點），但不得沉默——
-// 首個失敗經 onFailure 通報一次（標記＋告警，recording-failure-handling D3）
+// 首個失敗經 onFailure 通報一次（標記＋告警）
 type recordingTap struct {
 	rec       *recorder.AsciicastRecorder
 	startTime time.Time
@@ -53,7 +53,7 @@ func (t *recordingTap) SetOnFailure(cb func(causeCode string, params map[string]
 	})
 }
 
-// fail 首個失敗通報一次。causeCode 為 model.Cause* 機器碼（D8），
+// fail 首個失敗通報一次。causeCode 為 model.Cause* 機器碼，
 // 底層 err 原文以 forensic detail 參數承載，不再組成散文 cause
 func (t *recordingTap) fail(causeCode string, err error) {
 	t.failOnce.Do(func() {

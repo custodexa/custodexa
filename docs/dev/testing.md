@@ -290,7 +290,7 @@ vitest 的偶發 `Test timed out` **極易被誤判為本機並行負載**——
 | 審計寫入與 fail-close 回滾 | 有（runtime，射程 asset／identity） | GORM Create callback 注入器 `internal/modules/asset/audit_failclose_backstop_test.go:196`；目標判定看**表名 OR Go 型別**，不看函式名 `:372` |
 | 審計列不可刪 | 有（runtime） | `internal/modules/audit/audit_log_guard_test.go:16`（BeforeDelete 副作用，含 Unscoped） |
 | 審計寫入點完備登記（manifest） | 部分 | 掃描器認 `model.AuditLog{…}` 複合字面量＋recorder 名 `cmd/server/audit_points_manifest_guard_test.go:407`；GORM 層 backstop 只覆蓋 asset／identity 兩模組 |
-| 憑證明文解封 | 有（runtime） | 計數式 `ColumnCodec` 直接觀測 `DecryptFor` 次數 `internal/sshproxy/w10_stage_transition_test.go:239`，附對照組 `:287`；掃描器對**非字面 ref** fail-close `internal/guards/moduleboundary/asset_credential_exit_guard_test.go:190`（具名例外 `:46`＋例外的二次條件 `:206`） |
+| 憑證明文解封 | 有（runtime） | 計數式 `ColumnCodec` 直接觀測 `DecryptFor` 次數 `internal/sshproxy/stage_transition_test.go:239`，附對照組 `:287`；掃描器對**非字面 ref** fail-close `internal/guards/moduleboundary/asset_credential_exit_guard_test.go:190`（具名例外 `:46`＋例外的二次條件 `:206`） |
 | 跨模組資料讀寫 ratchet | 有（型別＋fail-close） | 句柄以 `*gorm.DB` **型別**辨識、raw SQL 抽表名、**非字面即報紅** `internal/guards/moduleboundary/module_data_boundary_guard_test.go:815`（判準說明 `:19-22`） |
 | 跨模組交易外交（tx-taking） | 有（型別層） | 以簽章是否含 `*gorm.DB` 判定 `internal/guards/txtaking/tx_taking_whitelist_test.go:320`，明言不看識別字拼法 `:337` |
 | KEK 材料產生 | 有（來源軸，名稱無關） | 軸 B 要求每一處直接取用 `crypto/rand`／`math/rand` 的函式具名登記 `internal/modules/keyvault/key_rewrap_no_generation_ast_test.go:572`、`:633`；殘餘缺口（自實作 CSPRNG）已於該檔頭自陳 |
@@ -392,7 +392,7 @@ vitest 的偶發 `Test timed out` **極易被誤判為本機並行負載**——
 10. **既有的 fail-close backstop 不會自動涵蓋新加的 fail-close 點**：backstop 的
     注入軸是**特定一種故障**（例如「審計寫入失敗」）。新增一條「協作者回錯誤就整筆
     失敗」的路徑後，把它改成 log-and-continue **不會**讓任何既有格子轉紅——實證：
-    某波把交易級聯撤銷的錯誤處置改成吞掉，委派斷言與審計 backstop 兩格都照樣綠。
+    把交易級聯撤銷的錯誤處置改成吞掉，委派斷言與審計 backstop 兩格都照樣綠。
     **每新增一個 fail-close 點，就要有一格以該點自己的故障驅動的測試。**
 11. **測試替身的「不做事」會打掉別人的對照組**：把一個有副作用的協作者換成純記錄式
     stub，會讓「無故障對照組」的副作用斷言失效（實證：級聯刪除的替身不刪東西，
@@ -490,7 +490,7 @@ ADMIN_PASS='<現行 admin 密碼>' bash scripts/e2e_smoke.sh
   但「必須在場」的下界名單漏了新模組）；**指名式定位子必須跟著改**
   ——以包名比對的型別宣告判定（`pf.Pkg == "<舊包名>"`）與以
   `"<舊包名>.<型別>"` 字串指名的型別，包一改名就再也命中不到。
-- **改名波的特有形態（比搬檔更隱蔽）**：以**字串字面量**指名 import 路徑或檔案路徑的
+- **改包名的特有形態（比搬檔更隱蔽）**：以**字串字面量**指名 import 路徑或檔案路徑的
   守衛，在包被改名的當下就再也匹配不到目標。若那個字串是**禁令**（「不得出現 X」），
   守衛從此**恆綠**而完全不守任何東西；若是**豁免**（「X 除外」），則轉為誤報。
   兩種都不接受「把字串換成新名字」的修法——下一次改名照壞。修法是換成

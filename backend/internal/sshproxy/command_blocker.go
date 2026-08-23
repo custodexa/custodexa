@@ -20,7 +20,7 @@ type blockMatcher interface {
 type commandBlocker struct {
 	buf     *InputLineBuffer
 	matcher blockMatcher
-	// alerts 告警落地面（modular-architecture W5／BD-1）：取代原本的 *gorm.DB 直寫。
+	// alerts 告警落地面：取代原本的 *gorm.DB 直寫。
 	// 型別是介面而非 *gorm.DB 正是修法本體——本型別自此沒有「自己寫一列」的能力，
 	// 入庫、通知與 syslog tee 三件事一起發生或一起不發生
 	alerts    gatewayapi.AlertSink
@@ -54,7 +54,7 @@ func newCommandBlocker(matcher blockMatcher, alerts gatewayapi.AlertSink, sessio
 // Inspect 檢視一段輸入：命中 block 規則時回傳規則，未命中回 nil；
 // 緩衝失準（ESC 後）fail-open。
 //
-// D7：不再回傳注入用警告字串——警告改由 bridge 送 MsgNotice 控制幀
+// 不再回傳注入用警告字串——警告改由 bridge 送 MsgNotice 控制幀
 // （Code＋zh fallback＋params{rule}），文案與 ANSI 上色歸前端。
 func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
 	line, submitted, trusted := c.buf.Feed(data)
@@ -72,7 +72,7 @@ func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
 
 // recordBlocked 阻斷事件經告警落地面入庫＋推送通知＋離機 syslog 轉發。
 //
-// # BD-1 修復（modular-architecture W5 5.1，本 change 唯一的行為變更）
+// # 為何離機轉發收在這個落地面
 //
 // 收口前本函式 `db.Create(&alert)` 後只 Enqueue 到 AlertNotifier，**不呼叫
 // SyslogForwarder.EnqueueAlert**——而 EnqueueAlert 當時全庫唯一呼叫點在
@@ -81,11 +81,11 @@ func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
 // 竄改或清除」。改走 AlertSink 後入庫→通知→tee 三件事收在同一個落地面，
 // 不再可能只做前兩件。
 //
-// **錯誤處置維持「只記 log 不阻斷」**（W5 5.4）：告警寫入失敗時指令**已經**被擋下，
+// **錯誤處置維持「只記 log 不阻斷」**：告警寫入失敗時指令**已經**被擋下，
 // 沒有可回滾的業務交易；把它升級為中斷會話會讓告警系統故障變成使用者被踢線。
 // 未注入（ErrAlertSinkMissing）與寫入失敗落在同一格，兩者都會留下 log。
 func (c *commandBlocker) recordBlocked(rule *model.AlertRule, command string) {
-	// D6 payload 衛生：RuleName 存規則原名（原為 name+"（已阻斷）"，把 UI 文案
+	// payload 衛生：RuleName 存規則原名（原為 name+"（已阻斷）"，把 UI 文案
 	// 混進機器欄，害通知與列表無法在非中文語系正確呈現）；阻斷事實改由
 	// Blocked 布林欄承載
 	ruleID := rule.ID
@@ -102,10 +102,10 @@ func (c *commandBlocker) recordBlocked(rule *model.AlertRule, command string) {
 		SessionID:  c.sessionID,
 		Actor:      gatewayapi.Actor{UserID: c.userID},
 		AssetID:    c.assetRef(),
-		// W5 5.2：與 matcher 路徑統一。收口前本路徑未設此欄（DB 收到空字串），
+		// 與 matcher 路徑統一。收口前本路徑未設此欄（DB 收到空字串），
 		// matcher 路徑寫 pending——同一張表兩種處置值。
 		//
-		// **這是欄位一致性補齊，不是修正已知的消費端差異**（W5 對抗 F4 訂正）：
+		// **這是欄位一致性補齊，不是修正已知的消費端差異**：
 		// 現況無任何消費者依賴本欄判定未審閱——`command_alert_service.go` 的
 		// Unreviewed 篩選、`daily_review_service.go` 的 PCI 10.4.1 未審閱計數、
 		// `Alerts.vue` 的三個呈現函式一律走 `reviewed_at IS NULL`，故收口前的阻斷告警
@@ -122,7 +122,7 @@ func (c *commandBlocker) recordBlocked(rule *model.AlertRule, command string) {
 	}
 }
 
-// assetRef 資產外鍵的可空形態（W5 5.2）。
+// assetRef 資產外鍵的可空形態。
 //
 // command_alerts.asset_id 在 DB 為 nullable（手動連線可能無資產，與 session_commands
 // 一致）。以值型 uint 承載會把「無資產」寫成 0，而 0 不是任何一筆資產的 ID，

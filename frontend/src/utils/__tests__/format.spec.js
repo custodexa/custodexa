@@ -56,7 +56,7 @@ describe('formatDurationSeconds', () => {
     expect(formatDurationSeconds(null)).toBe('-')
   })
 
-  // i18n-foundation D7/F9：en 單複數、ja 無空格排版
+  // en 單複數、ja 無空格排版
   it('en-US distinguishes singular and plural (never "1 hours")', () => {
     withLocale('en-US', () => {
       expect(formatDurationSeconds(3600)).toBe('1 hour')
@@ -87,7 +87,7 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime('')).toBe('')
   })
 
-  // i18n-foundation D7：相對時間走 Intl.RelativeTimeFormat 隨語言
+  // 相對時間走 Intl.RelativeTimeFormat 隨語言
   it('localizes relative time per active language', () => {
     const fiveMinAgo = new Date(Date.now() - 5 * 60000).toISOString()
     withLocale('en-US', () => {
@@ -111,10 +111,10 @@ describe('formatRelativeTime', () => {
   })
 })
 
-// recording-quota-removal 7.1：1024 進位、至 TB、一位小數。
+// 1024 進位、至 TB、一位小數。
 // 逐級邊界各一，確保進位基數不是 1000（1000 進位時 1024 B 會顯示 1.0 KB 而
 // 1500 B 會顯示 1.5 KB——後者在 1024 進位下是 1.5 KB 之外的值，故取可分辨的點）
-describe('formatBytes（recording-quota-removal：錄影佔用顯示）', () => {
+describe('formatBytes（錄影佔用顯示）', () => {
   it('renders bytes below 1 KiB without a unit jump', () => {
     expect(formatBytes(0)).toBe('0 B')
     expect(formatBytes(931)).toBe('931 B')

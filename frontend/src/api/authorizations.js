@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 取得授權列表（authorization-page-redesign D1：零篩選＝全量分頁；
+ * 取得授權列表（零篩選＝全量分頁；
  * user_id / user_group_id / asset_id 至多一個）
  * @param {Object} params - 查詢參數
  * @param {number} params.user_id - 使用者 ID（選填）
@@ -39,7 +39,7 @@ export function createAuthorization(data) {
 }
 
 /**
- * 刪除授權（D4：ticket 來源且有關聯申請單者伺服端 409——走申請單撤銷流）
+ * 刪除授權（ticket 來源且有關聯申請單者伺服端 409——走申請單撤銷流）
  * @param {number} id - 授權 ID
  * @returns {Promise}
  */
@@ -51,7 +51,7 @@ export function deleteAuthorization(id) {
 }
 
 /**
- * 批次創建授權（user-group-authorization：伺服端交易內展開，
+ * 批次創建授權（伺服端交易內展開，
  * 主體集 users∪user_groups × 客體集 assets∪asset_groups，既有組合跳過）
  * @param {Object} data - { user_ids, user_group_ids, asset_ids, asset_group_ids, permission }
  * @returns {Promise} { created, skipped }
@@ -65,7 +65,7 @@ export function batchCreateAuthorizations(data) {
 }
 
 /**
- * 調整授權列的帳號範圍（asset-multi-account D5，admin only）。
+ * 調整授權列的帳號範圍（admin only）。
  * 收緊即時生效——兌換點 DB 現查，不受既簽發 token 效期影響。
  * ticket 來源列伺服端回 409 CONFLICT_TICKET_ACCOUNT_SCOPE_IMMUTABLE。
  * @param {number} id - 授權 ID
@@ -82,7 +82,7 @@ export function updateAuthorizationAccounts(id, accounts) {
 }
 
 /**
- * 主體視角有效權限（authorization-page-redesign D3，admin only）：
+ * 主體視角有效權限（admin only）：
  * 四路徑＋approver_scope＋role_override 溯因
  * @param {number} userId
  * @returns {Promise} { user_id, username, role_override, assets: [{ asset_id, asset_name, protocol, permission, paths }] }
@@ -96,7 +96,7 @@ export function getEffectiveAssets(userId) {
 }
 
 /**
- * 客體視角有效權限（authorization-page-redesign D3，admin only）：
+ * 客體視角有效權限（admin only）：
  * 群組展開至成員＋approver_scope＋role_override 摘要
  * @param {number} assetId
  * @returns {Promise} { asset_id, asset_name, role_override_note, users: [{ user_id, username, permission, paths }] }

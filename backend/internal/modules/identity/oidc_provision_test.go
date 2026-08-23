@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 身分對應與供應測試（idp-oidc-integration tasks 4.5/4.6，design D7b/D7c/D7d）。
+// 身分對應與供應測試。
 //
 // 覆蓋固定順序（准入判定不因身分已存在而被略過）、同名不接管、並發首登收斂、
 // username 映射順序，以及回訪時本體與快照的分離。
@@ -92,7 +92,7 @@ func TestPreboundOnlyAcceptsBoundIdentity(t *testing.T) {
 	}
 }
 
-// --- 准入判定於每次認證求值（D7b） ---
+// --- 准入判定於每次認證求值 ---
 
 func TestAdmissionEvaluatedOnEveryAuthNotOnlyProvisioning(t *testing.T) {
 	login, _, db := setupOIDCEnv(t)
@@ -206,7 +206,7 @@ func TestProvisionUnverifiedEmailNotAdopted(t *testing.T) {
 	}
 }
 
-// --- 同名不接管（D7d） ---
+// --- 同名不接管 ---
 
 func TestProvisionDoesNotTakeOverExistingLocalAccount(t *testing.T) {
 	login, _, db := setupOIDCEnv(t)
@@ -239,7 +239,7 @@ func TestProvisionDoesNotTakeOverExistingLocalAccount(t *testing.T) {
 	}
 }
 
-// --- 並發首登收斂（D7b） ---
+// --- 並發首登收斂 ---
 
 func TestConcurrentFirstLoginConvergesToSameUser(t *testing.T) {
 	login, _, db := setupOIDCEnv(t)
@@ -353,7 +353,7 @@ func TestRealUsernameConflictStillAudited(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("真撞名應恰落 1 筆冒名衝突事件，實得 %d", len(got))
 	}
-	// 撞名是「身分成立但不准接管既有帳號」＝授權拒絕語義（D3），不得與憑證
+	// 撞名是「身分成立但不准接管既有帳號」＝授權拒絕語義，不得與憑證
 	// 不成立的認證失敗混為一談
 	if got[0].Status != model.StatusDenied || got[0].Resource != model.ResourceAuth {
 		t.Errorf("撞名事件應為 status=denied／resource=auth，實得 status=%q resource=%q",
@@ -375,7 +375,7 @@ func TestAdmissionDeniedIsAudited(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("准入拒絕應落 1 筆事件，實得 %d", len(got))
 	}
-	// **准入拒絕是授權拒絕（denied），不是認證失敗（failure）**（D3）：身分已在
+	// **准入拒絕是授權拒絕（denied），不是認證失敗（failure）**：身分已在
 	// IdP 端驗證通過，被拒的是「不符本系統准入條件」。一刀切成 failure 會使
 	// 既有授權拒絕列不可解釋
 	if got[0].Status != model.StatusDenied {
@@ -392,7 +392,7 @@ func TestAdmissionDeniedIsAudited(t *testing.T) {
 	}
 }
 
-// --- username 映射順序（D7c） ---
+// --- username 映射順序 ---
 
 func TestMapUsernamePrefersPreferredUsername(t *testing.T) {
 	login, _, _ := setupOIDCEnv(t)
@@ -445,7 +445,7 @@ func TestMapUsernameTruncatesOverlong(t *testing.T) {
 	}
 }
 
-// --- 回訪：本體與快照分離（D7b） ---
+// --- 回訪：本體與快照分離 ---
 
 func TestTouchIdentityDoesNotRewriteUserRecord(t *testing.T) {
 	login, _, db := setupOIDCEnv(t)

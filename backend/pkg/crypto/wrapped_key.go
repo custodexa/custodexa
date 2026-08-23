@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// wrapped_key 值自描述格式（kek-provider-modularization D4／D5 定案 B2；
-// 相容窗於 release-transitional-cleanup D5 拆除）：
+// wrapped_key 值自描述格式（定案 B2；相容窗已拆除）：
 //
 //	wk:2:<格式標記>:<base64>   ＝ 以 DEKAAD(purpose, version) **帶 AAD** 包裹（唯一合法形式）
 //	wk:1:<格式標記>:<base64>   ＝ 無 AAD 包裹（發佈前過渡格式，**讀端於解包前拒收**）
@@ -60,14 +59,14 @@ func IsAADBoundWrapped(s string) bool { return strings.HasPrefix(s, wrappedKeyPr
 
 // AADBoundWrappedPrefix 指定格式標記的「帶 AAD」前綴（如 `wk:2:kms:`）。
 //
-// 存在理由（D11.1 裁決 1「收窄一」）：委託模式的非正規 kek_id 偵測 SHALL **只**
+// 存在理由：委託模式的非正規 kek_id 偵測 SHALL **只**
 // 檢查可證明為該委託格式的列，故呼叫端需要一個由**本檔的單一事實源**導出的
 // 前綴字面——手寫 "wk:2:kms:" 會與 wrappedKeyPrefixV2 各自漂移。
 func AADBoundWrappedPrefix(tag string) string { return wrappedKeyPrefixV2 + tag + ":" }
 
 // EncodeWrappedKey 編碼 wrapped_key 欄位值：**一律** `wk:2:<格式標記>:<base64>`。
 //
-// **無前綴與判別子 `1` 的寫出分支已於 release-transitional-cleanup 刪除**，
+// **無前綴與判別子 `1` 的寫出分支已刪除**，
 // AAD 在場性參數（恆真）與收斂階段參數（恆強制）一併移除——「寫入端不可能
 // 產出非終態 wrapped 值」自此是**建構事實**，不是靠呼叫端自律的承諾。
 func EncodeWrappedKey(tag string, raw []byte) (string, error) {

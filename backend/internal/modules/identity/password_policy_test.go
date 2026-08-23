@@ -34,7 +34,7 @@ func createTestUser(t *testing.T, users *UserService, db *gorm.DB, password stri
 	if err := db.Create(user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	// 初始密碼入歷史（D12 語義，seed/Create 皆如此）
+	// 初始密碼入歷史（seed/Create 皆如此）
 	if err := db.Create(&model.PasswordHistory{UserID: user.ID, PasswordHash: string(hash)}).Error; err != nil {
 		t.Fatalf("seed history: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestValidateNewPasswordLengthAndComposition(t *testing.T) {
 func TestValidateNewPasswordCountsRunesNotBytes(t *testing.T) {
 	users, _, _ := setupPasswordDB(t)
 
-	// "密碼安全1a" = 6 runes / 14 bytes；min-length=12 下應以字元數判定為過短（PW-1）
+	// "密碼安全1a" = 6 runes / 14 bytes；min-length=12 下應以字元數判定為過短
 	err := users.ValidateNewPassword(0, "密碼安全1a")
 	if !errors.Is(err, policy.ErrPasswordTooShort) {
 		t.Errorf("6 字元多位元組密碼 = %v, want policy.ErrPasswordTooShort（byte 數會誤放行）", err)
@@ -105,7 +105,7 @@ func TestValidateNewPasswordRejectsOverBcryptLimit(t *testing.T) {
 
 func TestSetPasswordRejectsSameAsCurrent(t *testing.T) {
 	users, policies, db := setupPasswordDB(t)
-	// 即使關閉歷史，新舊相同仍須被獨立檢查擋下（PW-3）
+	// 即使關閉歷史，新舊相同仍須被獨立檢查擋下
 	policies.Update(policy.PolicyPasswordHistoryCount, "0", "admin")
 	user := createTestUser(t, users, db, "current-pass-1")
 
@@ -131,7 +131,7 @@ func TestPasswordHistoryRejectsReuse(t *testing.T) {
 	users, _, db := setupPasswordDB(t)
 	user := createTestUser(t, users, db, "initial-pass-1")
 
-	// 設回初始密碼被拒（D12：初始密碼已入歷史）
+	// 設回初始密碼被拒（初始密碼已入歷史）
 	err := users.SelfChangePassword(user.ID, "initial-pass-1", "initial-pass-1")
 	if !errors.Is(err, policy.ErrPasswordReused) {
 		t.Errorf("設回初始密碼 = %v, want policy.ErrPasswordReused", err)

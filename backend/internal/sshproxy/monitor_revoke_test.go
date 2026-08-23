@@ -9,7 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// 監看訂閱的撤銷收線（idp-oidc-integration 1.9a）。
+// 監看訂閱的撤銷收線。
 //
 // 監看是唯一「不建 session 列、不經連線授權、靠一次角色檢查就長期存活」的能力。
 // 按 session 掃描收不到它——被監看的會話可能是別人（甚至本地帳號）建立的，
@@ -51,7 +51,7 @@ func dialObserver(t *testing.T, hub *MonitorHub, sessionID uint, obs ObserverCon
 //
 // **逾時不算關閉**：原實作對 ReadMessage 的任何 err 都 return（視為已收線），
 // 而讀取逾時本身就是一個 err——於是「訂閱根本沒被收線」的實作照樣全綠，
-// 只是每格多花 2 秒。C1 的對抗驗證即在此處失效（拿掉 authenticate 的脈絡寫入後，
+// 只是每格多花 2 秒。脈絡驗證即在此處失效（拿掉 authenticate 的脈絡寫入後，
 // 靠 expectClosed 斷言的那幾格仍然是綠的），故一併收緊
 func expectClosed(t *testing.T, ws *websocket.Conn, why string) {
 	t.Helper()

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// refresh 憑證 cookie 的名稱與 Path（refresh-token-httponly-cookie 決策 1）。
+// refresh 憑證 cookie 的名稱與 Path。
 //
 // **不用 `__Host-` 前綴**：該前綴強制 `Path=/`，與下方的 Path 收斂互斥。
 // 在「前綴保護」與「Path 收斂」之間選後者——對本案的威脅模型，
@@ -42,7 +42,7 @@ type RefreshCookieSecurePolicy interface {
 // 不用 gin 的 `c.SetCookie`——後者的 SameSite 依賴 context 全域狀態
 // （`c.SetSameSite`），屬性會散落在呼叫端，守衛測試也就得比對多種序列化形狀。
 type RefreshCookieWriter struct {
-	// policy Secure 屬性的事實源（codeql-rescan-settlement 決策 8）：
+	// policy Secure 屬性的事實源：
 	// **發放時現讀**，不持啟動期常數——管理員在政策頁改了即生效、不需重啟，
 	// 而那正是設錯時唯一好走的復原路徑
 	policy RefreshCookieSecurePolicy

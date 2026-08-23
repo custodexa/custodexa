@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 密碼生成字集（change-secret-ssh-deepening D7）。
+// 密碼生成字集。
 //
 // **硬排除不可經任何設定放寬**：shell 敏感字元（單引號、雙引號、反引號、反斜線、$）、
 // 控制字元與空白一律不進字集。理由有二：
@@ -36,7 +36,7 @@ const (
 // 任何時候都不得出現於生成的密碼中。
 const shellSensitiveChars = "'\"`\\$"
 
-// PasswordPolicy 改密的密碼生成策略（per-plan，見 design D7）
+// PasswordPolicy 改密的密碼生成策略（per-plan）
 type PasswordPolicy struct {
 	Length           int
 	IncludeSymbol    bool

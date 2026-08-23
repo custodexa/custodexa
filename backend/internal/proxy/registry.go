@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// CloseFunc per-connection 的執行緒安全關閉回呼（break-glass-revocation F4）：
+// CloseFunc per-connection 的執行緒安全關閉回呼：
 // 由各 bridge 於 Register 時提供——關閉通知的寫入必須與該連線資料橋接共用同一把
 // 寫鎖（禁止對底層 WebSocket 併發寫），且按連線協議正確編碼（文字終端走自身
 // 訊息協議、圖形通道走 Guacamole disconnect）。回呼必須冪等（bridge 側以
@@ -13,7 +13,7 @@ import (
 type CloseFunc func() error
 
 // ConnectionRegistry 管理所有活動連線的關閉回呼。
-// F4 前身直接持有 *websocket.Conn 並裸寫 guac disconnect——繞過兩側 bridge 的
+// 前身直接持有 *websocket.Conn 並裸寫 guac disconnect——繞過兩側 bridge 的
 // 寫鎖（gorilla 併發寫 panic）且對 SSH 連線發錯協議，故改存回呼不存連線
 type ConnectionRegistry struct {
 	mu          sync.RWMutex
@@ -63,7 +63,7 @@ func (r *ConnectionRegistry) Close(sessionID uint) error {
 	return nil
 }
 
-// CloseAll 全量收線並清空註冊表（kek-provider-modularization D6.2.4）。
+// CloseAll 全量收線並清空註冊表。
 //
 // 段 2 服務圖被丟棄時，其連線 goroutine 不會自己結束——逐一 Close 是唯一
 // 收線途徑，缺此方法時「舊持有者釋放已建構資源」只能靠呼叫端自己遍歷，

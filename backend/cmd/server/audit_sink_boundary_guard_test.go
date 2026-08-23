@@ -1,11 +1,11 @@
 package main
 
-// 收口邊界的三道守衛（modular-architecture W4 任務 4.5／4.6／4.7）。
+// 收口邊界的三道守衛。
 //
 // 這三件事都屬於「**做了以後很難看得出來被改掉**」的類別：
 //
 //	4.5  三個 GORM hook 刻意維持直寫。日後有人「順手收口」把它們改走 sink，
-//	     model 就得持一個包級全域 sink——R3.1 §2.5 明確拒絕過的形態
+//	     model 就得持一個包級全域 sink——設計上明確拒絕過的形態
 //	     （可被漏接成 nil no-op 的全域旗標，`model/audit_log.go:164-183` 自陳）。
 //	     改完之後所有測試照樣綠。
 //	4.6  DirectSink 是唯一繞過 AuditLogEnabled 的落地面。它一旦被當成「比較好寫的
@@ -138,7 +138,7 @@ func TestModelPackageHasNoSinkImport(t *testing.T) {
 				if strings.Contains(p, bad) {
 					t.Errorf("internal/model/%s import 了 %s：model 一旦認識 sink，"+
 						"「三個 hook 改走全域 sink」就成為可行的下一步——"+
-						"那是 R3.1 §2.5 明確拒絕的形態（可被漏接成 nil no-op 的全域旗標）",
+						"那是明確拒絕過的形態（可被漏接成 nil no-op 的全域旗標）",
 						e.Name(), p)
 				}
 			}
@@ -183,7 +183,7 @@ func TestDirectSinkIsConstructedOnlyAtAssemblyRoot(t *testing.T) {
 // TestAssemblyChecksAuditSinksAtStartup 4.7／5.4：組裝根確實有 sink 注入自檢。
 //
 // 斷言 stage2.go 同時呼叫 requireAuditTxSink、requireAuditAsyncSinks 與
-// requireAlertSink（W5 5.4 新增），且**三者都在自己的
+// requireAlertSink，且**三者都在自己的
 // `if err != nil { return fail(...) }` 形態內**——只呼叫不看回傳值等於沒檢查。
 func TestAssemblyChecksAuditSinksAtStartup(t *testing.T) {
 	root := auditPointModuleRoot(t)

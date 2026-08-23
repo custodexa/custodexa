@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 登入時密碼 gate 測試（login-password-policy-gate）：沿用 setupLockoutEnv 的
+// 登入時密碼 gate 測試：沿用 setupLockoutEnv 的
 // sqlite in-memory 環境（單 goroutine 循序讀寫，無 :memory: 連線池風險）。
 // 出廠政策：min_length=12、require_alnum=true、max_age=0（關閉）
 
@@ -190,7 +190,7 @@ func TestLoginGateHistoryNotEvaluated(t *testing.T) {
 		now := time.Now()
 		u.PasswordChangedAt = &now
 	})
-	// 現行密碼寫入歷史（D12 慣例：每次設密都入歷史）
+	// 現行密碼寫入歷史（慣例：每次設密都入歷史）
 	if err := db.Create(&model.PasswordHistory{UserID: user.ID, PasswordHash: user.Password}).Error; err != nil {
 		t.Fatalf("seed history: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestLoginGateNoncompliantBeatsExpired(t *testing.T) {
 
 func TestLoginGateMFAPersistFailureFailsClose(t *testing.T) {
 	// MFA 用戶的 gate 依賴持久化旗標（第二階段明文不可得）：偵測命中但寫入失敗
-	// 必須拒發 pending token（codex HIGH：否則違規判定遺失、過完 MFA 取得正式會話）
+	// 必須拒發 pending token（否則違規判定遺失、過完 MFA 取得正式會話）
 	auth, _, db := setupLockoutEnv(t)
 	seedGateUser(t, db, "admin123", func(u *model.User) { u.TOTPEnabled = true })
 	// sqlite trigger 強制 must_change_password 寫入失敗（模擬暫時性 DB 故障）

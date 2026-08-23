@@ -116,7 +116,7 @@ describe('response interceptor', () => {
   })
 })
 
-// auth-hardening 輪2b：401 透明刷新（D6/D10）
+// 401 透明刷新
 describe('response interceptor - token refresh', () => {
   const originalAdapter = request.defaults.adapter
   let adapterMock
@@ -171,7 +171,7 @@ describe('response interceptor - token refresh', () => {
     expect(retriedConfig._retried).toBe(true)
   })
 
-  // refresh-token-httponly-cookie：憑證是 httpOnly cookie，script 讀不到。
+  // 憑證是 httpOnly cookie，script 讀不到。
   // 「本地沒有憑證就別打了」這種前置檢查在遷移後只會製造假的失敗——
   // 有沒有憑證只有伺服器答得出來，前端一律送出、由 401 驅動導向登入
   it('attempts refresh even with no credential in localStorage (cookie is invisible to script)', async () => {
@@ -247,7 +247,7 @@ describe('response interceptor - token refresh', () => {
   })
 })
 
-// i18n-backend-error-codes New-C2 / 實作審查 P2：401 依 response code 分流，非 URL。
+// 401 依 response code 分流，非 URL。
 // 雙模端點（同 URL 可回兩類 401）唯有靠 code 才能正確區分。
 describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2）', () => {
   const originalAdapter = request.defaults.adapter
@@ -290,7 +290,7 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
     expect(result).toEqual({ ok: true })
   })
 
-  it('雙模端點 /auth/change-password 自願改密過期（AUTH_TOKEN_INVALID）仍刷新（codex 案1）', async () => {
+  it('雙模端點 /auth/change-password 自願改密過期（AUTH_TOKEN_INVALID）仍刷新', async () => {
     localStorage.setItem('token', 'stale-jwt')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: { token: 'fresh-jwt' },
@@ -302,7 +302,7 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
     expect(result).toEqual({ ok: true })
   })
 
-  it('雙模端點 /auth/mfa/disable 密碼錯（AUTH_INVALID_CREDENTIALS）不刷新不導向（codex 案2）', async () => {
+  it('雙模端點 /auth/mfa/disable 密碼錯（AUTH_INVALID_CREDENTIALS）不刷新不導向', async () => {
     localStorage.setItem('token', 'x')
     const postSpy = vi.spyOn(axios, 'post')
 
@@ -336,7 +336,7 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
     expect(window.location.href).not.toContain('/login')
   })
 
-  // 錯版相容（實作審查 P2）：舊後端 401 無 code
+  // 錯版相容：舊後端 401 無 code
   it('無 code 的 401 於非 /auth/* 仍刷新（新前端＋舊後端相容）', async () => {
     localStorage.setItem('token', 'stale-jwt')
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
@@ -370,7 +370,7 @@ describe('response interceptor - 401 依 code 分流（New-C2 / 實作審查 P2�
   })
 })
 
-// 對抗審查 HIGH-2：攔截器是全域唯一的 API 錯誤日誌出口，
+// 攔截器是全域唯一的 API 錯誤日誌出口，
 // 印出 error 本體即等同把明文憑證與有效 token 寫進 DevTools
 describe('攔截器錯誤日誌去識別', () => {
   let consoleSpy
@@ -426,7 +426,7 @@ describe('攔截器錯誤日誌去識別', () => {
   })
 })
 
-// 封印閘的執行期訊號（kek-encoding-and-unseal-entry 決策 6 的第 3 個相位來源）：
+// 封印閘的執行期訊號（第 3 個相位來源）：
 // 使用者停留於頁面時後端行程重啟而重新封印，導覽守衛不會再跑一次，
 // 唯一會撞到的就是下一個 API 呼叫的 503。
 describe('封印閘 503 的導向', () => {
@@ -465,7 +465,7 @@ describe('封印閘 503 的導向', () => {
   })
 })
 
-// 明文連線下登入狀態無法保存的說明（codeql-rescan-settlement 決策 3）。
+// 明文連線下登入狀態無法保存的說明。
 // 觸發矩陣照設計逐格釘死：三條件同時成立才留脈絡。放寬一格就是狼來了
 //（健康的明文部署每次正常逾時都被扣上協定問題的帽子），收緊一格就是
 // 使用者永遠看不到解釋

@@ -20,13 +20,13 @@ var (
 	ErrChannelNotFound   = errors.New("通知通道不存在")
 	ErrInvalidChannelURL = errors.New("URL 必須為 http 或 https")
 	ErrInvalidChannelTyp = errors.New("通道類型必須為 webhook 或 slack")
-	// ErrInvalidChannelLanguage 語系非白名單三值（design D5）；
+	// ErrInvalidChannelLanguage 語系非白名單三值；
 	// Update 顯式給空字串或白名單外值都回此錯——省略（nil）才是「保留舊值」
 	ErrInvalidChannelLanguage = errors.New("語系必須為 zh-TW、en-US 或 ja-JP")
 )
 
 // NotificationChannelRequest 通道建立/更新請求（Create 與 Update 欄位相同，共用一個結構）。
-// URL 不再 binding 必填（key-management-envelope G8）：回應已遮罩、前端無從回填，
+// URL 不再 binding 必填：回應已遮罩、前端無從回填，
 // Update 時空字串＝沿用既有（與 secret 同語義）；Create 時空 URL 由 validate 擋下
 type NotificationChannelRequest struct {
 	Name        string `json:"name" binding:"required"`
@@ -36,13 +36,13 @@ type NotificationChannelRequest struct {
 	ClearSecret bool   `json:"clear_secret"` // Update 時顯式清除簽名（改為不簽名推送）；Create 忽略
 	Enabled     *bool  `json:"enabled"`      // 指標區分「未傳」與「false」；未傳預設啟用
 
-	// Language per-channel 語系（backend-i18n-unification D5）。指標區分「未傳」
+	// Language per-channel 語系。指標區分「未傳」
 	// 與「顯式空字串」——與 URL/secret 的「空字串＝沿用既有」語義不同：
 	// nil＝省略＝Create 預設 zh-TW／Update 保留舊值；非 nil 一律驗證，
 	// 空字串或白名單外值都拒（ErrInvalidChannelLanguage），不可能靜默留下非法值
 	Language *string `json:"language"`
 
-	// RiskAcknowledged 傳輸風險確認聲明（transmission-security-policy D6）：
+	// RiskAcknowledged 傳輸風險確認聲明：
 	// warn 檔存 http URL 時必須為 true，聲明入審計
 	RiskAcknowledged bool `json:"risk_acknowledged"`
 	// Actor* 操作者（handler 從 JWT 填入，比照 CreateAssetRequest.CreatedBy 慣例）
@@ -51,28 +51,28 @@ type NotificationChannelRequest struct {
 	ActorIP   string `json:"-"`
 }
 
-// ChannelInventoryProvider 的實作在 audit 側（4.11 環拆解，W1 1.12）：介面由 policy
+// ChannelInventoryProvider 的實作在 audit 側（環相依拆解）：介面由 policy
 // 宣告、由本型別滿足，方向 audit→policy 單向合法。編譯期斷言寫在此處而非 policy 側，
 // 理由同 audit_failure_service.go 的 keyvault.AuditFailureReporter 斷言。
 var _ policy.ChannelInventoryProvider = (*NotificationChannelService)(nil)
 
-// NotificationChannelService 通知通道 CRUD 服務（alert-notifications D4/D5）。
-// secret 與 url 信封加密落庫（key-management-envelope G8）：url 本身即
+// NotificationChannelService 通知通道 CRUD 服務。
+// secret 與 url 信封加密落庫：url 本身即
 // bearer secret（Slack webhook），API 回應一律遮罩、DB 不落明文
 type NotificationChannelService struct {
 	db *gorm.DB
-	// codec 信封加解密。**ColumnCodec**（kek-provider-modularization D5 cutover，
-	// tasks 1.7）：介面上**沒有** Encrypt(plaintext)，故持有者在**建構上**不可能
+	// codec 信封加解密。**ColumnCodec**：介面上**沒有**
+	// Encrypt(plaintext)，故持有者在**建構上**不可能
 	// 寫出無 AAD 的 enc:v 密文。**建構時注入、無 SetCodec 事後覆寫**——
 	// 消除「組裝順序錯置時以錯誤 codec 寫出密文」的窗口。
 	// nil＝明文直通（僅單測建構路徑，生產組裝一律注入）
 	codec crypto.ColumnCodec
-	// transmission 傳輸政策閘（transmission-security-policy D6）；nil＝閘不生效
+	// transmission 傳輸政策閘；nil＝閘不生效
 	transmission *policy.TransmissionPolicyService
 }
 
 // NewNotificationChannelService 創建通知通道服務；codec 為 secret/url 的信封
-// 加解密器（D5 cutover 後為 ColumnCodec），單測可傳 nil＝明文直通
+// 加解密器（ColumnCodec），單測可傳 nil＝明文直通
 func NewNotificationChannelService(db *gorm.DB, codec crypto.ColumnCodec) *NotificationChannelService {
 	return &NotificationChannelService{db: db, codec: codec}
 }
@@ -82,7 +82,7 @@ func (s *NotificationChannelService) SetTransmissionPolicy(tp *policy.Transmissi
 	s.transmission = tp
 }
 
-// checkTransmissionGate 存檔閘（D6）：以「存檔後生效的 URL」判定；
+// checkTransmissionGate 存檔閘：以「存檔後生效的 URL」判定；
 // 通過且屬 warn 確認情境時把聲明入審計
 func (s *NotificationChannelService) checkTransmissionGate(effectiveURL string, req *NotificationChannelRequest, channelName string) error {
 	if s.transmission == nil {
@@ -148,7 +148,7 @@ func readChannelValue(codec crypto.ColumnCodec, ref crypto.CipherRef, v string) 
 	return codec.DecryptFor(context.Background(), ref, v)
 }
 
-// maskChannelURL 遮罩顯示（key-management-envelope G8/spec）：保留 scheme+host
+// maskChannelURL 遮罩顯示（G8/spec）：保留 scheme+host
 // 與末 4 碼，路徑整段以 **** 取代——url 可能整段等同密碼（Slack webhook）
 func maskChannelURL(plain string) string {
 	parsed, err := url.Parse(plain)
@@ -184,7 +184,7 @@ func (s *NotificationChannelService) toDisplay(ch *model.NotificationChannel) er
 	return nil
 }
 
-// validateChannelURL URL 僅允許 http/https scheme（design D5）——
+// validateChannelURL URL 僅允許 http/https scheme——
 // 擋掉 file:// 等非 web 協議與格式錯誤；內網位址首版信任 admin 輸入（design 風險註記）
 func validateChannelURL(raw string) error {
 	parsed, err := url.Parse(raw)
@@ -202,7 +202,7 @@ func validateChannel(req *NotificationChannelRequest) error {
 	return validateChannelURL(req.URL)
 }
 
-// validateChannelLanguage 語系合法性檢查（design D5）：嚴格匹配三值，
+// validateChannelLanguage 語系合法性檢查：嚴格匹配三值，
 // 空字串與白名單外一律拒。呼叫端以 *string 是否為 nil 判別「省略」
 // （不呼叫本函式、沿用既有語義）與「顯式提供」（呼叫本函式驗證）
 func validateChannelLanguage(lang string) error {
@@ -267,12 +267,12 @@ func (s *NotificationChannelService) GetForDelivery(id uint) (*model.Notificatio
 	return channel, nil
 }
 
-// Create 建立通道；成功後刷新推送快取（design D1）
+// Create 建立通道；成功後刷新推送快取
 func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*model.NotificationChannel, error) {
 	if err := validateChannel(req); err != nil {
 		return nil, err
 	}
-	// language 未給＝預設 zh-TW；顯式提供則驗證（design D5）
+	// language 未給＝預設 zh-TW；顯式提供則驗證
 	language := model.NotificationChannelLanguageDefault
 	if req.Language != nil {
 		if err := validateChannelLanguage(*req.Language); err != nil {
@@ -289,12 +289,12 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	// slack 不簽名，secret 對其無意義——強制清空使 has_secret 恆 false（design D7）
+	// slack 不簽名，secret 對其無意義——強制清空使 has_secret 恆 false
 	secret := req.Secret
 	if channelType == model.NotificationChannelTypeSlack {
 		secret = ""
 	}
-	// 傳輸政策閘（transmission-security-policy D6）：驗證之後、落庫之前
+	// 傳輸政策閘：驗證之後、落庫之前
 	if err := s.checkTransmissionGate(req.URL, req, req.Name); err != nil {
 		return nil, err
 	}
@@ -325,7 +325,7 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 }
 
 // Update 更新通道；成功後刷新推送快取。
-// url 空字串＝沿用既有（key-management-envelope G8：回應已遮罩，前端無從回填，
+// url 空字串＝沿用既有（G8：回應已遮罩，前端無從回填，
 // 語義與 secret 一致），有帶值才驗證、加密、落庫
 func (s *NotificationChannelService) Update(id uint, req *NotificationChannelRequest) (*model.NotificationChannel, error) {
 	if req.Type != "" && !model.ValidNotificationChannelType(req.Type) {
@@ -336,7 +336,7 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 			return nil, err
 		}
 	}
-	// language：nil＝省略＝保留舊值；非 nil 一律驗證（空字串或白名單外都拒，design D5）
+	// language：nil＝省略＝保留舊值；非 nil 一律驗證（空字串或白名單外都拒）
 	if req.Language != nil {
 		if err := validateChannelLanguage(*req.Language); err != nil {
 			return nil, err
@@ -348,7 +348,7 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 		return nil, err
 	}
 
-	// 傳輸政策閘（transmission-security-policy D6）：以存檔後生效的 URL 判定——
+	// 傳輸政策閘：以存檔後生效的 URL 判定——
 	// 未帶 URL＝沿用既有（解密評估；解不開的殘留列跳過閘，缺陷已由列表全遮罩呈現）。
 	// 存量不安全通道不被回溯停用，但「再次存檔」即受閘（spec 場景鎖定此語義）
 	effectiveURL := req.URL
@@ -379,7 +379,7 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 	if req.Type != "" {
 		effectiveType = req.Type
 	}
-	// slack 恆無 secret（含 webhook→slack 轉換時清掉殘留，design D7）；
+	// slack 恆無 secret（含 webhook→slack 轉換時清掉殘留）；
 	// webhook 則：空字串＝沿用既有（secret 不回傳、編輯表單無從回填，避免任何編輯靜默清空），
 	// clear_secret＝顯式清除
 	switch {

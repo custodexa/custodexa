@@ -1,5 +1,5 @@
 <!--
-  AccountSelector：連線時選資產帳號（asset-multi-account D2/D5）。
+  AccountSelector：連線時選資產帳號。
   沿 K8sPodSelector 的 openTab→selector→createTab 流程；帳號清單由呼叫端傳入
   （Workspace 為了判斷「是否需要打擾」本就得先取清單，元件內再取一次等於雙倍請求）。
   清單已由後端依有效授權帳號範圍過濾——前端不再自行推斷可見性。
@@ -107,7 +107,7 @@ const tableRef = ref(null)
 
 // 預選預設帳號（無預設則取首筆）。@open 在 el-dialog stub 環境不必然觸發，
 // 故 modelValue 轉真時也走同一條預選路徑。
-// **同步套用 current-row**（UI 走查 F1）：只設 selected 而不設 current-row，
+// **同步套用 current-row**（UI 走查）：只設 selected 而不設 current-row，
 // 表格看起來一列都沒選中，使用者只能靠頁尾「將以 X 連線」文字推斷——
 // 預選是否生效必須在主視覺上看得見
 async function preselect() {

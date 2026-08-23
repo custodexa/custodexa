@@ -10,10 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// 本檔為 characterization 測試（ldap-settings-migration tasks.md 2.12 / design.md D9、D7）：
+// 本檔為 characterization 測試：
 // 釘住三條「既有的、非本 change 引入」的結構性行為，供本 change 把 LDAP 設定
 // 自 env 遷到 DB＋UI 後，回歸驗證這些不變式未被動到。三條皆有現況即可、不代表
-// 理想設計——第三條屬已知殘留（design.md D7「殘留誠實記載」），修法記 backlog。
+// 理想設計——第三條屬已知殘留（「殘留誠實記載」），修法另列待辦。
 
 // ---------------------------------------------------------------------------
 // 不變式一：本地帳號不可被目錄接管
@@ -114,7 +114,7 @@ func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *tes
 }
 
 // ---------------------------------------------------------------------------
-// 不變式三（已知殘留，design.md D7/D9 明載）：影子帳號名取自請求端輸入，
+// 不變式三（已知殘留，檔頭明載）：影子帳號名取自請求端輸入，
 // 而非目錄 entry 的屬性
 // ---------------------------------------------------------------------------
 //
@@ -128,8 +128,8 @@ func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *tes
 // 本測試在 AuthService 這一端釘住「provisionShadowUser 信任 info.Username
 // 原樣入庫，不受 Email/FullName 影響」；配合上述 ldap_authenticator.go 的
 // 既有事實（未變、非本測試檔可驗證範圍），完整鏈路即為「影子帳號名＝
-// 請求端輸入」。這是已知殘留（filter 驗證只是縱深防禦而非完整封閉，
-// design.md D7），根本修法（以 entry 穩定屬性回填帳號名）記 backlog、
+// 請求端輸入」。這是已知殘留（filter 驗證只是縱深防禦而非完整封閉），
+// 根本修法（以 entry 穩定屬性回填帳號名）另列待辦、
 // 不在本 change 範圍——測試釘住的是「現況如此」，供未來變更時能明確
 // 看到行為改變。
 func TestCharacterization_ShadowUsernameComesFromRequestInputNotDirectoryAttributes(t *testing.T) {

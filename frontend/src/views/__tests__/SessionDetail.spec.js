@@ -1,5 +1,5 @@
-// SessionDetail 的錄影失敗標示（backend-i18n-unification D8）：
-// recording_error 自 M5 起存 cause code，tooltip 必須查譯而非顯裸碼。
+// SessionDetail 的錄影失敗標示：
+// recording_error 存的是 cause code，tooltip 必須查譯而非顯裸碼。
 // Sessions.vue 的三處同型 tooltip 另有 Sessions.spec.js 把關——本檔專守詳情頁。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'

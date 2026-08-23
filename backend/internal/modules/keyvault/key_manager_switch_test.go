@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// key-inventory-transparency：KEK 切換狀態機（軟刪除退役、明確欄位狀態）核心轉移測試。
-// 涵蓋 5 輪 codex 對抗審查揭露的關鍵轉移：正常切換不 fail-close（切換後 live 舊列合法）、
+// KEK 切換狀態機（軟刪除退役、明確欄位狀態）核心轉移測試。
+// 涵蓋審查揭露的關鍵轉移：正常切換不 fail-close（切換後 live 舊列合法）、
 // 原子軟退役、backlog 重試、pending/backlog 精確區分、金鑰鏈完整性、非法形狀、退役史 from→to。
 
 // setupKM 建立含 data v1 + audit v0/v1 的金鑰表（KEK=kmTestKey(1)）
@@ -24,7 +24,7 @@ func setupKM(t *testing.T) (*gorm.DB, *KeyManagerService) {
 }
 
 // rewrapAndReinit 執行重包並以新 KEK 重啟（模擬改 env 重啟切換），回新 km 與新舊指紋。
-// 切換那次 InitKeyManager 不應 fail-close——這是 codex 第五輪 HIGH-1 的回歸點：
+// 切換那次 InitKeyManager 不應 fail-close——這是安全審查所列問題的回歸點：
 // 切換後舊列 live 且 kek_id<>env 是合法的「待退役 predecessor」角色，不得誤判非法。
 func rewrapAndReinit(t *testing.T, db *gorm.DB, km *KeyManagerService) (*KeyManagerService, string, string) {
 	t.Helper()
@@ -50,7 +50,7 @@ func makeBacklog(db *gorm.DB, oldKEK string) {
 }
 
 // TestKEKSwitchSoftRetire 正常切換：舊列軟退役（保留列、**材料保留至顯式清理**、
-// 記 replacement 與 reason=switched——kek-rewrap-hygiene-hardening D9）、
+// 記 replacement 與 reason=switched）、
 // pending 轉正、LastKEKSwitch 正確、rewrapPending 歸零、資料仍可解
 func TestKEKSwitchSoftRetire(t *testing.T) {
 	db, km := setupKM(t)
@@ -67,7 +67,7 @@ func TestKEKSwitchSoftRetire(t *testing.T) {
 			t.Fatalf("舊列應軟退役（retired_at 非空、retired_by=%s、reason=switched）：%+v", newKEK, r)
 		}
 		if r.WrappedKey == "" {
-			t.Fatalf("退役不得清空材料（D9 軟刪除：銷毀僅發生於顯式清理）：%+v", r)
+			t.Fatalf("退役不得清空材料（軟刪除：銷毀僅發生於顯式清理）：%+v", r)
 		}
 	}
 	var newRows []model.DataKey

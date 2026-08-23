@@ -15,7 +15,7 @@ import (
 // （`internal/modules/session/session_provider_termination.go` 的
 // `SessionService.CreateWithGenerationGuard` 與 `JoinWithGenerationGuard`）。
 //
-// # 為何需要這一格（modular-architecture W9 10.3）
+// # 為何需要這一格
 //
 // 兩個引數同為 `uint`，**對調不會編譯失敗**；而鎖內的判定（重讀使用者、世代閘）
 // 完全不看鎖是用哪個 key 取的，故對調後**既有測試無一轉紅**：
@@ -25,7 +25,7 @@ import (
 // 不再互斥，3.8b 的 TOCTOU 窗口就此重開。
 //
 // 搬包波正是這種對調最容易發生的時候（呼叫點連同整個檔案換包、簽名以套件限定詞
-// 重寫），故本波把它釘住。
+// 重寫），故此處把它釘住。
 //
 // 判別式是**鎖的 key 身分**而非計時：於鎖內（`join` 回呼／pre-write 同步點）探測
 // 四把鎖的持有狀態，正確配置下 `provider[P]` 與 `user[U]` 為持有、

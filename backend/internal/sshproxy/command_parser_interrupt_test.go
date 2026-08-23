@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// === 中斷鍵中止當輪輸入（terminal-screen-parser-inhouse，design.md D4.2）===
+// === 中斷鍵中止當輪輸入 ===
 //
 // Ctrl-C 不含 `\r`，在中止鍵加入前它開啟的那一輪 typing 永遠不會結算：
 // shell 隨後印的 `^C`、換行與**重印的提示符**全落進同一個 typingBuf，

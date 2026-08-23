@@ -1,4 +1,4 @@
-// 日誌去識別（對抗審查 HIGH-2）：全域攔截器印的是 AxiosError，其 config.data
+// 日誌去識別：全域攔截器印的是 AxiosError，其 config.data
 // 為原始請求本文——帳號 CRUD 帶明文密碼／私鑰。以欄位名（非端點清單）遮蔽，
 // 新端點沿用同一組命名即自動受保護。
 import { describe, it, expect } from 'vitest'
@@ -65,7 +65,7 @@ describe('redactSensitive', () => {
     expect(redactSensitive(null)).toBe(null)
   })
 
-  it('超過深度上限一律回 placeholder，不得原樣吐回未檢查的值（輪 2 codex MEDIUM-4）', () => {
+  it('超過深度上限一律回 placeholder，不得原樣吐回未檢查的值', () => {
     // 深度上限的語義必須是「這裡不再檢查，所以不輸出」——回原值等於
     // 「巢狀夠深就免檢查」，深層 payload 可原封帶出 password
     const deep = { l1: { l2: { l3: { l4: { l5: { l6: { l7: { password: 'hunter2' } } } } } } } }
@@ -105,7 +105,7 @@ describe('redactAxiosError', () => {
     })
   })
 
-  it('不輸出請求本文與後端訊息（輪 2 codex MEDIUM-5：欄位名遮蔽擋不住個資欄位）', () => {
+  it('不輸出請求本文與後端訊息（欄位名遮蔽擋不住個資欄位）', () => {
     // password/token 靠欄位名可擋，subject／email／username／full_name 本身就是
     // 個資；後端錯誤訊息又常回顯衝突值。console 會被截圖與集中收集，一律不輸出
     const out = redactAxiosError({

@@ -49,7 +49,7 @@ func (idx *txIndex) verdictAt(pf *parsedFile, n ast.Node, kind auditPointKind) (
 		if !ok || len(call.Args) == 0 {
 			return txIndeterminate, reasonUnresolvedRoot, "審計 helper 呼叫無引數"
 		}
-		// 交易句柄的位置隨收口形態改變（W6 6.1）：
+		// 交易句柄的位置隨收口形態改變：
 		//   收口前 `model.RecordAssetAccountChange(tx, …)`  → 第 1 引數
 		//   收口後 `writeAssetAccountAudit(sink, tx, …)`    → 第 2 引數
 		// **不能只認第 1 引數**：那會把 sink（非 DB 句柄）當成落地句柄去追，
@@ -493,7 +493,7 @@ func assertGormImportUnaliased(t *testing.T, rel string, file *ast.File) {
 	}
 }
 
-// ── W4 收口形態：AuditEvent 字面量 ────────────────────────────────────────
+// ── 收口形態：AuditEvent 字面量 ────────────────────────────────────────
 
 // sinkTxWriteMethods TxSink 落地面的方法／函式名（吃 tx，回 error）。
 var sinkTxWriteMethods = map[string]bool{"WriteInTx": true}

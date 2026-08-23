@@ -34,7 +34,7 @@ func TestDefaultSecretViolations(t *testing.T) {
 }
 
 // TestDefaultSecretViolationsIsEncodingAgnostic PCI 2.2.2 出廠預設值閘的**編碼無關性**常設守衛
-// （kek-encoding-and-unseal-entry 決策 5；config.go 的 `DefaultSecretViolations` 兩處判定）。
+// （config.go 的 `DefaultSecretViolations` 兩處判定）。
 //
 // **為什麼需要一支專門的測試**：KEK 材料接受三種寫法之後，字串字面比對式的閘會被
 // `hex(出廠預設值)` 與 `base64(出廠預設值)` 直接繞過——那些不是別的祕密，是同一把
@@ -152,7 +152,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Server.CORSAllowedOrigins != nil {
 		t.Errorf("CORS 未設應為 nil, got %v", cfg.Server.CORSAllowedOrigins)
 	}
-	// ENCRYPTION_KEY 的出廠預設值注入已廢除（kek-provider-modularization D3）：
+	// ENCRYPTION_KEY 的出廠預設值注入已廢除：
 	// 未設即為空字串，由 DecideKEK 依矩陣列 2 fail-close，而非靜默使用公開已知材料。
 	if cfg.Security.EncryptionKey != "" {
 		t.Errorf("ENCRYPTION_KEY 未設時應為空字串（不得回落出廠預設值），got %q", cfg.Security.EncryptionKey)

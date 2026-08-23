@@ -29,11 +29,11 @@ const BACKEND_RESOURCES = [
   'security_policy', 'command_alert', 'audit_export', 'access_review',
   'retention', 'daily_review', 'syslog_setting', 'audit_log', 'user_group',
   'command', 'key_management', 'transmission', 'access_request', 'approver_scope',
-  // auditor-workbench D1.3(a) 訂正的三個獨立分類（原落 default asset 分支）
+  // auditor-workbench 訂正的三個獨立分類（原落 default asset 分支）
   'change_secret_plan', 'authorization', 'audit_timeline',
-  // clipboard-read-provenance：取走剪貼簿明文的動作獨立分類
+  // 取走剪貼簿明文的動作獨立分類
   'clipboard_event',
-  // audit-resource-classification-closure 批 3：A 類新分類十族＋兜底哨兵
+  // A 類新分類十族＋兜底哨兵
   'audit_checkpoint', 'audit_failure', 'audit_integrity', 'alert_rule',
   'notify_channel', 'oidc_provider', 'ldap_directory', 'asset_group',
   'snippet', 'role',
@@ -45,17 +45,17 @@ const BACKEND_MECHANISMS = [
   'audit_write', 'syslog_forward',
   'recording_probe', 'recording_text', 'recording_graphics',
   'session_record', 'kek_retirement', 'aad_residue',
-  // audit-checkpoint-chain D7／O4：檢查點離機錨定失效（不與 syslog_forward 合併——
+  // audit-checkpoint-chain：檢查點離機錨定失效（不與 syslog_forward 合併——
   // 前者的證據缺口不可回溯，後者恢復即補回）
   'checkpoint_anchor',
-  // audit-chain-scheduled-verification D5：鏈驗證異常按攻擊面分三碼（結構層／內容層／
+  // 鏈驗證異常按攻擊面分三碼（結構層／內容層／
   // 驗證本身不可完成），不按驗證層分、亦不彼此合併
   'audit_chain_structure',
   'audit_chain_content',
   'audit_chain_verify',
 ]
 
-// 後端↔前端雙向完備性守衛（kek-rewrap-hygiene-hardening 4.6）：直讀後端原始碼取
+// 後端↔前端雙向完備性守衛：直讀後端原始碼取
 // 常數值域，兩側互為全集——舊版單向硬拷守衛放行過 session_record 漏項（Go 有、前端無），
 // 本守衛使任一方向缺漏都紅。路徑以 cwd（frontend 根）為錨，對齊 i18n.spec.js／
 // websocket-scheme-guard.spec.js 讀磁碟原始檔的慣例。
@@ -98,7 +98,7 @@ const parseBackendResources = (src) => [
   ),
 ]
 
-// 抽 `CauseXxx = "value"` 常數值（backend-i18n-unification D8）。
+// 抽 `CauseXxx = "value"` 常數值。
 // CauseParamDetail 是參數鍵而非原因碼，其值為 "detail" 且宣告為 const 區塊，
 // 正則的 `Cause\w+\s*=\s*"..."` 會誤收——顯式排除
 const parseBackendCauses = (src) =>

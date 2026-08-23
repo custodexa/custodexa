@@ -251,8 +251,8 @@ const statusTagType = (status) => {
   return map[status] || 'info'
 }
 
-// 已撤銷的核准單顯示「已提前撤銷」而非「已核准」（break-glass-revocation D4：
-// 撤銷是附註不是狀態轉移，前端據 revoked_at 覆蓋顯示）
+// 已撤銷的核准單顯示「已提前撤銷」而非「已核准」
+//（撤銷是附註不是狀態轉移，前端據 revoked_at 覆蓋顯示）
 const displayStatusText = (row) => {
   if (row.revoked_at && row.status === 'approved') return t('myRequests.statusRevoked')
   return statusText(row.status)

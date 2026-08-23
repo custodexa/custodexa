@@ -24,7 +24,7 @@ import (
 
 // setupGraphicsRedeemTest 建完整圖形兌換 fixture（role/authz/policy 齊備）：
 // user1=一般 user（對 asset1 有常設 connect grant）、user2=admin（無 grant，連線資格
-// 純來自 admin 短路）。供 CPG-010 圖形路徑兌換點 role／授權／政策重查測試。
+// 純來自 admin 短路）。供圖形路徑兌換點 role／授權／政策重查測試。
 func setupGraphicsRedeemTest(t *testing.T) (*ConnectionHandler, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -97,7 +97,7 @@ func redeemGuac(h *ConnectionHandler, token string) (int, map[string]interface{}
 	return w.Code, resp
 }
 
-// TestGraphicsRedeemRoleAndPolicyRecheck CPG-010-01／TEST-01（圖形路徑）：圖形 WS
+// TestGraphicsRedeemRoleAndPolicyRecheck 圖形路徑的兌換重查：圖形 WS
 // 兌換點 SHALL 對授權撤銷、存取政策收緊、角色降權即時生效（403），與文字終端路徑
 // 對稱；授權與政策不變則不被重查閘誤擋。撤權/降權/政策攔截皆在 guacd 握手之前。
 func TestGraphicsRedeemRoleAndPolicyRecheck(t *testing.T) {
@@ -159,7 +159,7 @@ func TestGraphicsRedeemRoleAndPolicyRecheck(t *testing.T) {
 			t.Fatalf("issue: %v", err)
 		}
 		// user1 授權/政策皆有效：SHALL 通過兌換重查閘，落到後續 guacd 連線階段。
-		// 正向斷言強化（codex Finding 2）：不止「非 403」——同時排除假通過（200 成功/
+		// 正向斷言強化：不止「非 403」——同時排除假通過（200 成功/
 		// 101 WS 升級），確認確實過閘進入建線階段（測試環境無可達 guacd，於握手失敗）
 		code, resp := redeemGuac(h, token)
 		if code == http.StatusForbidden {

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// model ↔ baseline 的**第 1 層** parity 守衛（migration-baseline-compression D3）。
+// model ↔ baseline 的**第 1 層** parity 守衛。
 //
 // # 本檔守的是什麼
 //
@@ -33,7 +33,7 @@ import (
 // **燒盡制**：每一列都是「baseline 為某個 model 的表多建了一欄」的宣告，
 // 新增一列必須說明那一欄由誰使用。空著才是正常狀態。
 // 目前為空：唯一曾登記的 `assets.db_ca_cert`（壓縮前既有的死欄，`model.Asset.DBCACert`
-// 的 GORM 欄名其實是 `dbca_cert`）已隨 D6 刻意變更清單第 2 項自 baseline 移除，
+// 的 GORM 欄名其實是 `dbca_cert`）已隨刻意變更清單第 2 項自 baseline 移除，
 // 例外條目同步刪除以免留下殭屍豁免。
 var baselineColumnExceptions = map[string]string{}
 

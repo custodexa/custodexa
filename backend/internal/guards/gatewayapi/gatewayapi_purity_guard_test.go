@@ -1,24 +1,24 @@
 package gatewayapi
 
-// pkg/gatewayapi 型別純淨守衛（modular-architecture W1 任務 1.7）。
+// pkg/gatewayapi 型別純淨守衛（任務 1.7）。
 //
 // **釘住什麼**：
 //
 //	1. pkg/gatewayapi 的**傳遞相依閉包**內零 internal/model、零 gorm、零 gin，
 //	   且不相依本 module 的任何 internal/... 包（訂正後無例外項）。
 //	2. TxSink SHALL NOT 出現在 pkg/gatewayapi——它帶 *gorm.DB，宣告在公開包等於
-//	   整包相依 GORM（S4 codex 採納項 #2）。放錯位置即紅。
+//	   整包相依 GORM。放錯位置即紅。
 //	3. TxSink 的簽名是 WriteInTx(tx *gorm.DB, ev AuditEvent) error：**不得帶額外
 //	   ctx**（額外的取消來源會讓原本不會回滾的交易回滾，是行為變更）。
-//	4. tasks.md 1.5 的型別清單逐項存在，且 SessionLimits 不含 RecordingRequired
-//	   （D-6 未拍板，寫入即固化未定案行為）。
+//	4. 契約型別清單逐項存在，且 SessionLimits 不含 RecordingRequired
+//	   （未拍板，寫入即固化未定案行為）。
 //
 // **為何第 4 項也在這個守衛裡**：掃描式守衛的頭號死法是「掃描範圍靜默縮小 → 空集合
 // → 全綠」。若只驗「沒有壞相依」，把整個 pkg/gatewayapi 刪空即完美通過。要求清單內
 // 每個型別都在，才使「零違規」有意義。這是 minScannedFiles 慣例在型別層的等價物。
 //
 // **掃描根定位**：以 go.mod 的 module 行為身分錨點，不用檔案深度推算、不用 cwd 相對
-// 路徑（R4 實證 17 處既有守衛因此在搬檔後掃空仍綠）。
+// 路徑（已實證 17 處既有守衛因此在搬檔後掃空仍綠）。
 //
 // **突變自檢**：在 pkg/gatewayapi 暫加一個 internal/model 引用，本守衛須變紅。
 
@@ -49,7 +49,7 @@ const gwAuditPortPkgPath = gwModulePath + "/internal/modules/audit/port"
 
 // minGatewayGuardPackages packages.Load 的載入包數下限。
 // 兩個 pattern 各至少一個包；載入數低於此即代表 pattern 掃空（包被搬走／改名），
-// 守衛將在空集合下假綠。**這兩個包在後續九波都不會消失**（W4 只往 audit 模組加東西），
+// 守衛將在空集合下假綠。**這兩個包不會消失**（後續只往 audit 模組加東西），
 // 故下限恆有效。
 const minGatewayGuardPackages = 2
 
@@ -65,16 +65,16 @@ var gwForbiddenImports = []struct {
 }{
 	{gwModulePath + "/internal/", "公開契約包不得相依本 module 的 internal 實作（含 internal/model）；" +
 		"相依即代表這些型別無法在 gateway 行程獨立成立"},
-	{"gorm.io/", "型別一旦帶 GORM，整個公開包就把 ORM 拖進未來的 gateway 行程（S4 codex 採納項 #2）；" +
+	{"gorm.io/", "型別一旦帶 GORM，整個公開包就把 ORM 拖進未來的 gateway 行程；" +
 		"需要 *gorm.DB 的介面一律放 internal/modules/audit/port"},
 	{"github.com/gin-gonic/", "HTTP 框架語義屬邊界 adapter，判定結果只帶 apierror 機器碼（P2）"},
 }
 
-// gwRequiredTypes tasks.md 1.5 的型別清單。key＝型別名，value＝該型別必須具備的
+// gwRequiredTypes 契約型別清單。key＝型別名，value＝該型別必須具備的
 // 成員（struct 欄位或 interface 方法）。空 slice 代表只驗型別存在。
 var gwRequiredTypes = map[string][]string{
 	"AsyncSink": {"Submit"},
-	// PolicyValue 已於 W10.2 接線時自 PolicyGate 移除：全庫零實作零消費者，
+	// PolicyValue 已於閘道接線時自 PolicyGate 移除：全庫零實作零消費者，
 	// 且 r4-adversarial-security §272 已標其為「對 36 鍵政策的無允許清單通用讀取面」
 	// ——留著就是契約描述未實作能力，且是一個尚未被守衛覆蓋的讀取面。
 	"PolicyGate": {"AuthorizePreResolve", "AuthorizeResolvedAccount"},
@@ -88,23 +88,23 @@ var gwRequiredTypes = map[string][]string{
 		"Risks", "MaxDurationMinutes", "PendingRequestID", "Limits", "ResolvedRole", "Hints"},
 	"RiskDetail":    {"Key", "Label"},
 	"SessionLimits": {"IdleTimeout", "MaxDuration"},
-	// W10.2 接線時拆分：VerifySession 歸 SessionVerifier（identity.AuthService 實作），
+	// 閘道接線時拆分：VerifySession 歸 SessionVerifier（identity.AuthService 實作），
 	// 簽發／兌換歸 TokenService（proxy.ConnectTokenManager 實作）——現實中沒有任何
 	// 型別同時擔任兩者，合成單一介面只能靠一層為滿足介面而生的合成器。
 	"SessionVerifier": {"VerifySession"},
 	"TokenService":    {"IssueConnectToken", "RedeemConnectToken"},
 	"Principal":       {"UserID", "Username", "Role", "Scope", "AuthMethod", "ProviderID", "AuthEpoch", "CredEpoch"},
-	// ConnectGrant 客體改平鋪（W10.2）：現行票證只帶 asset_id／account_id 兩個選擇器，
+	// ConnectGrant 客體改平鋪：現行票證只帶 asset_id／account_id 兩個選擇器，
 	// 嵌 ConnectObjectRef 等於宣稱票證帶著 Protocol／Channel 而實作永遠填不了。
-	// Limits 一併移除（零生產者零消費者，D-6 未拍板）。
+	// Limits 一併移除（零生產者零消費者，未拍板）。
 	"ConnectGrant": {"UserID", "AssetID", "AccountID", "AuthMethod", "ProviderID", "AuthEpoch", "CredEpoch", "ExpiresAt"},
 	"AlertSink":    {"RecordAlert", "RecordAlerts"},
-	// Kind／ReasonCode 為 command-audit-altscreen-bypass §6.3 新增：降級告警不掛規則，
+	// Kind／ReasonCode 為降級告警而設：降級告警不掛規則，
 	// 缺這兩欄則「這筆告警為何存在」只能塞回 RuleName 那個字串欄——
-	// 那正是 D6 payload 衛生禁止的形態（把分類混進顯示欄）
+	// 那正是 payload 衛生禁止的形態（把分類混進顯示欄）
 	"CommandAlert": {"OccurredAt", "SessionID", "Actor", "AssetID", "Command",
 		"RuleID", "RuleName", "Kind", "ReasonCode", "Level", "Disposition", "Blocked"},
-	// AssetID 為 auditor-workbench D4 新增：資產主體鍵必須能經 sink 傳到落地面，
+	// AssetID 為 auditor-workbench 新增：資產主體鍵必須能經 sink 傳到落地面，
 	// 否則經 sink 的產生點無法表達主體，工作台的資產樞紐會少掉整批事件
 	"AuditEvent": {"OccurredAt", "Actor", "Action", "Resource", "ResourceID",
 		"Status", "AssetID", "Request", "Details", "ErrorMsg"},
@@ -129,23 +129,22 @@ var gwRequiredFieldTypes = map[string]map[string]string{
 // gwExactFieldSets **欄位白名單**：這幾個型別的欄位集合必須與清單**精確相等**，
 // 多一個未登記欄位即紅。
 //
-// **為什麼黑名單不夠**（W1 fresh-context 對抗演練發現 F2；演練紀錄歸檔於維護者的
-// 私有開發歷程，未隨公開倉庫發佈）：
+// **為什麼黑名單不夠**：
 // 原本只有 gwForbiddenMembers 的名稱黑名單（禁 `ConnectGrant.ClaimedRole`、
-// `ConnectSubject.Role`、`SessionLimits.RecordingRequired` 三個字面名）。紅隊在
+// `ConnectSubject.Role`、`SessionLimits.RecordingRequired` 三個字面名）。審查時在
 // `ConnectGrant` 加一欄 `Role string`——三個守衛全 PASS。`Role`／`UserRole`／
 // `RoleSnapshot` 任意別名都能把角色帶進 token 快照，而「快照 SHALL NOT 攜帶角色」
-// （`internal/proxy/connect_token.go:11-14`、D-11）正是 C-1 同源的安全性質。
+// （`internal/proxy/connect_token.go:11-14`）正是同一條安全性質。
 //
 // 白名單把防線由「禁這幾個名字」改為「只准這些欄位」，任意命名的新欄位一律紅。
-// **代價是後續波次新增欄位必須同時改本清單**——這是刻意的：token 快照的形狀是
+// **代價是日後新增欄位必須同時改本清單**——這是刻意的：token 快照的形狀是
 // 安全契約，增欄應該在 PR diff 裡被看見並被質問「這欄會不會變成授權判定依據」。
 //
 // **界定（不誇大）**：這仍是**守衛強制**而非編譯器強制。有 commit 權者可以連同本清單
-// 一起改；它擋的是「順手加一欄」的意外，不是有意繞過。round-log／tasks 的措辭已同步
-// 由「編譯期不可能」降級為「不嵌入＋守衛欄位白名單」。
+// 一起改；它擋的是「順手加一欄」的意外，不是有意繞過。故此處的措辭是
+// 「不嵌入＋守衛欄位白名單」，不是「編譯期不可能」。
 var gwExactFieldSets = map[string][]string{
-	// 客體平鋪＋去 Limits（W10.2，理由見 gwRequiredTypes 同名項）。
+	// 客體平鋪＋去 Limits（理由見 gwRequiredTypes 同名項）。
 	// **白名單守的安全性質未變**：仍無任何角色欄——ConnectGrant 加 Role／UserRole／
 	// RoleSnapshot 之類任意命名的欄位一律紅。
 	"ConnectGrant": {"UserID", "AssetID", "AccountID", "AuthMethod", "ProviderID",
@@ -160,9 +159,9 @@ var gwExactFieldSets = map[string][]string{
 // 與 gwExactFieldSets 並存而非被取代：白名單擋任意命名的新欄位，黑名單保留這三個
 // **具名**形態的專屬失敗訊息（改名、回填未拍板欄位），讓犯錯者讀到的是為他而寫的理由。
 var gwForbiddenMembers = map[string]map[string]string{
-	"SessionLimits": {"RecordingRequired": "D-6 未拍板：兌換側現況零強制，無生產者無消費者，" +
-		"寫入契約即固化未定案行為（F16）"},
-	"ConnectSubject": {"Role": "已更名 ClaimedRole（D-11）：舊名讀起來像權威角色，" +
+	"SessionLimits": {"RecordingRequired": "未拍板：兌換側現況零強制，無生產者無消費者，" +
+		"寫入契約即固化未定案行為"},
+	"ConnectSubject": {"Role": "已更名 ClaimedRole：舊名讀起來像權威角色，" +
 		"新名讓「這是呼叫端自陳的」寫在型別上"},
 	"ConnectGrant": {"ClaimedRole": "connect-token 快照 SHALL NOT 攜帶角色" +
 		"（internal/proxy/connect_token.go:11-14），使憑角色快照判定成為編譯期不可能"},
@@ -350,7 +349,7 @@ func TestGatewayAPIContractSurface(t *testing.T) {
 	for name, members := range gwRequiredTypes {
 		obj := scope.Lookup(name)
 		if obj == nil {
-			missing = append(missing, fmt.Sprintf("  型別 %s 不存在（tasks.md 1.5 清單項）", name))
+			missing = append(missing, fmt.Sprintf("  型別 %s 不存在（gwRequiredTypes 登記的契約型別）", name))
 			continue
 		}
 		if !obj.Exported() {
@@ -423,7 +422,7 @@ func TestGatewayAPIContractSurface(t *testing.T) {
 				missing = append(missing, fmt.Sprintf(
 					"  %s 出現未登記欄位 %s：本型別採**欄位白名單**（gwExactFieldSets），"+
 						"任何新增欄位一律紅。若確有必要，改守衛白名單並在 PR 說明該欄不會成為授權判定依據——"+
-						"名稱黑名單擋不住 Role／UserRole／RoleSnapshot 這類別名（W1 對抗 F2 實證）",
+						"名稱黑名單擋不住 Role／UserRole／RoleSnapshot 這類別名（對抗審查實證）",
 					tname, f))
 			}
 		}
@@ -451,12 +450,12 @@ func TestGatewayAPIContractSurface(t *testing.T) {
 	// TxSink 不得出現在公開包——它帶 *gorm.DB，位置本身就是契約的一部分。
 	if obj := scope.Lookup("TxSink"); obj != nil {
 		missing = append(missing, "  pkg/gatewayapi 宣告了 TxSink：它的簽名帶 *gorm.DB，"+
-			"放在公開包會讓整包相依 GORM（S4 codex 採納項 #2）。唯一合法住所是 "+gwAuditPortPkgPath)
+			"放在公開包會讓整包相依 GORM。唯一合法住所是 "+gwAuditPortPkgPath)
 	}
 
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		t.Fatalf("gateway 契約面不符 tasks.md 1.5 規格，共 %d 項：\n%s",
+		t.Fatalf("gateway 契約面不符本檔登記的契約規格，共 %d 項：\n%s",
 			len(missing), strings.Join(missing, "\n"))
 	}
 	t.Logf("契約面完備：%d 個型別、%d 個 Stage 常數逐項到位", len(gwRequiredTypes), len(gwRequiredStageConsts))
@@ -517,7 +516,7 @@ func TestAuditTxSinkPortShape(t *testing.T) {
 		}
 		t.Fatalf("WriteInTx 有 %d 個參數（%v），應為 2：(tx *gorm.DB, ev AuditEvent)。"+
 			"**不得帶額外 ctx**——現況 fail-close 函式本就無 ctx，補一個會引入額外的取消來源，"+
-			"交易期間該 ctx 被取消將導致原本不會回滾的交易回滾，是行為變更（S4 codex 採納項 #2）",
+			"交易期間該 ctx 被取消將導致原本不會回滾的交易回滾，是行為變更",
 			got, ps)
 	}
 	if got := sig.Params().At(0).Type().String(); got != wantTx {

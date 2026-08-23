@@ -51,7 +51,7 @@ logs/
 /backend/build/
 /backend/server
 /tmp/
-# 連線測試工具的本機編譯產物（無副檔名 ELF；曾誤入版控，opensource-release-prep 1.3 移除）
+# 連線測試工具的本機編譯產物（無副檔名 ELF，容易被當成源碼一起 add）
 /backend/test_*_connection
 /backend/scripts/test_*_connection
 
@@ -81,7 +81,7 @@ coverage/
 .claude/ralph-loop.local.md
 .screenshots/
 .playwright-mcp/
-# Codex / OpenSpec CLI 生成物（本機工具狀態，非源碼）
+# 本機 CLI 工具的生成物（工具狀態，非源碼）
 .agents/
 .codex/
 AGENTS.md
@@ -89,11 +89,11 @@ AGENTS.md
 # 標準與法規原文 PDF：授權限制再散布，僅供本機條文對照，一律不入版控
 docs/*.pdf
 
-# i18n-backend-error-codes：docker 完備性測試唯讀掛載點（./frontend locale → /app/testdata/locales）
+# i18n 完備性測試的唯讀掛載點（./frontend locale → /app/testdata/locales）
 # 容器建立的 host mount 副產物（空目錄），非源碼
 backend/testdata/locales/
 
-# api-doc-single-source：端點索引守衛的 docs/ 掛載點（唯讀）與 -update 專用可寫掛載點。
+# 端點索引守衛的 docs/ 掛載點（唯讀）與 -update 專用可寫掛載點。
 # 同為容器建立的空目錄副產物；置於 cmd/server/testdata 下是為了讓 go test 的結果快取
 # 追蹤 API_SPEC.md 的變動（module 外的路徑不被追蹤，改文件會拿到 (cached) 假綠）。
 backend/cmd/server/testdata/docs/
@@ -103,10 +103,10 @@ backend/cmd/server/testdata/docs-rw/
 # 放在 cmd/server/testdata 下有其理由——go 工具鏈忽略 testdata，故暫存的樣本 .go 不會被
 # 編譯，而 `packages.Load` 又需要它落在 module 內。**但該測試未清理**，每跑一次就留一個
 # 帶隨機後綴的目錄，且已有一個（guardselfcheck-4107287797）被誤 commit 進版控。
-# 本規則先擋住繼續累積；測試未清理與既有殘留的清除記於 ROADMAP backlog。
+# 本規則先擋住繼續累積；測試自身的清理與既有殘留的移除另案處理。
 backend/cmd/server/testdata/guardselfcheck-*/
 
-# modular-architecture：兩份 manifest（審計產生點／lifecycle）守衛的 openspec 唯讀掛載點。
+# 兩份 manifest（審計產生點／lifecycle）守衛的 openspec 唯讀掛載點。
 # 同為容器建立的空目錄副產物；掛在 /app（module 根）內是為了讓 go test 的結果快取
 # 追蹤 manifest 的變動（module 外的路徑不被追蹤，改 manifest 會拿到 (cached) 假綠）。
 backend/testdata/openspec/

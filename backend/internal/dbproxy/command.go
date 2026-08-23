@@ -22,7 +22,7 @@ type Target struct {
 	// TLSMode DB 連線 TLS 模式（per-asset 可選）：
 	//   ""(預設，沿用 client 預設，不破壞既有資產) / disable(停用) /
 	//   require(加密不驗憑證) / verify-ca(加密並驗證伺服器憑證) /
-	//   verify-full(加密、驗證憑證並核對主機名——M6；Redis 無獨立檔位等同 verify-ca)
+	//   verify-full(加密、驗證憑證並核對主機名；Redis 無獨立檔位等同 verify-ca)
 	TLSMode string
 	CACert  string // verify-ca/verify-full 用的自訂 CA（PEM，選填；空＝驗系統根憑證）
 }
@@ -72,7 +72,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 		case "require":
 			env = append(env, "PGSSLMODE=require")
 		case "verify-ca", "verify-full":
-			// verify-full 額外核對憑證 CN/SAN 與連線主機名（M6，PGSSLMODE 原生支援）
+			// verify-full 額外核對憑證 CN/SAN 與連線主機名（PGSSLMODE 原生支援）
 			env = append(env, "PGSSLMODE="+t.TLSMode)
 			if caFile != "" {
 				env = append(env, "PGSSLROOTCERT="+caFile)
@@ -170,7 +170,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 		}
 		// -S <host>,<port> 的逗號是 sqlcmd 的埠分隔語義：host 欄位本身若含逗號會被
 		// 解讀成埠。SafeArg 只擋 - 開頭與控制字元（逗號在其他協議合法），故此處
-		// 另外擋，不動 SafeArg 的通用語義（mssql-web-cli D8）
+		// 另外擋，不動 SafeArg 的通用語義
 		if strings.Contains(t.Host, ",") {
 			return "", nil, nil, fmt.Errorf("mssql 主機不得含逗號（-S host,port 的埠分隔語義）")
 		}
@@ -179,7 +179,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 			"-U", t.Username,
 			// -X 0＝disable-cmd-and-warn：關閉 :!!（執行本機程式）與 :ED（開編輯器），
 			// 這兩者是 sqlcmd 僅有的本機執行原語。取 0（警告）而非 1（遇到即結束程序）：
-			// 一個誤打的 :!! 不該讓整條會話與未存的查詢一起消失（D5）。
+			// 一個誤打的 :!! 不該讓整條會話與未存的查詢一起消失。
 			// **-X 與 0 必須是兩個獨立 argv 元素**——它是 cobra 的 Int 旗標且無
 			// NoOptDefVal（上游 cobra issue 866），裸 -X 會被拒。
 			"-X", "0",
@@ -187,7 +187,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 		if t.DBName != "" {
 			args = append(args, "-d", t.DBName)
 		}
-		// TLS（D7）：-N 加密檔位、-C 信任伺服器憑證（不驗）、-J 指定伺服器憑證。
+		// TLS：-N 加密檔位、-C 信任伺服器憑證（不驗）、-J 指定伺服器憑證。
 		// **-J 的語義是憑證「釘選」而非 CA 信任錨**，與其他三協議的 db_ca_cert
 		// （CA bundle）不同；UI 說明文字另以 mssqlCaCertHint 標示。
 		switch t.TLSMode {

@@ -14,7 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/seal"
 )
 
-// 解封端點的來源控管驗收（kek-provider-modularization D6.4）。
+// 解封端點的來源控管驗收。
 
 // sourceTestRouter 建一個只掛 seal 端點的 router。
 func sourceTestRouter(t *testing.T, h *SealHandler) *gin.Engine {
@@ -67,7 +67,7 @@ func sourceBodyCode(t *testing.T, body []byte) string {
 }
 
 // TestUnsealCIDRIgnoresForwardedHeadersWithoutTrustedProxy 未設可信代理時，
-// 轉送標頭不得影響網段白名單判定（H6）。
+// 轉送標頭不得影響網段白名單判定。
 //
 // 缺此性質時，SEAL_UNSEAL_ALLOWED_CIDRS 形同虛設：攻擊者從任意位置送一個
 // `X-Forwarded-For: 10.0.0.5` 就自稱位於管理網段——而 gin 的預設正是信任
@@ -107,10 +107,10 @@ func TestUnsealCIDRUsesClientIPWhenTrustedProxyConfigured(t *testing.T) {
 	}
 }
 
-// TestSealStatusRespectsSourceCIDR 網段限制涵蓋整個 seal 端點群（M1 冷驗收）。
+// TestSealStatusRespectsSourceCIDR 網段限制涵蓋整個 seal 端點群。
 //
 // 只擋解封而放行狀態，等於把「是否待初始化、繫結位址、冷卻到期時間」這組
-// 偵察面留在網段之外——D6.4 的網段繫結是對端點群的限制，不是對單一動作的限制。
+// 偵察面留在網段之外——網段繫結是對端點群的限制，不是對單一動作的限制。
 func TestSealStatusRespectsSourceCIDR(t *testing.T) {
 	h := NewSealHandler(seal.NewUnsealed(nil), nil)
 	h.SetSourceControls(false, mustCIDRs(t, "10.0.0.0/24"), "")
@@ -127,7 +127,7 @@ func TestSealStatusRespectsSourceCIDR(t *testing.T) {
 	}
 }
 
-// TestUnsealRelocatedRejectsOnMainListener 解封端點另行繫結時，主監聽硬拒解封（H2）。
+// TestUnsealRelocatedRejectsOnMainListener 解封端點另行繫結時，主監聽硬拒解封。
 //
 // 缺此拒絕時，獨立監聽只是多開一個入口：部署方把管理埠收進管理網段，
 // 而解封仍可從業務埠進來——網段隔離完全沒有發生。

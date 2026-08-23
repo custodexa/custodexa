@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// DailyReviewLog 每日審閱簽核記錄（audit-log-compliance，PCI 10.4.1/10.4.1.1）。
+// DailyReviewLog 每日審閱簽核記錄（PCI 10.4.1/10.4.1.1）。
 // 每個審閱日至多一筆（ReviewDate 唯一）；SnapshotJSON 固化簽核當下所見的
 // 事件計數，供 QSA 比對簽核者當時審閱的內容
 type DailyReviewLog struct {

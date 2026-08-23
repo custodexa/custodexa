@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 綁定失敗門檻的原子性（批 14 對抗審查 M4 / spec oidc-auth L80「達三次即作廢」）。
+// 綁定失敗門檻的原子性（spec oidc-auth L80「達三次即作廢」）。
 //
 // 遞增本身是原子的（`binding_failures + 1` 由 DB 計算），但門檻判定若用**本次
 // 請求開頭讀出的陳舊值**，三個並發的錯誤綁定就會各自算出 `0+1 < 3` 而都不刪除；

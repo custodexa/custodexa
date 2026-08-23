@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 登入後重導向目標的清洗（idp-oidc-integration tasks 4.3，spec「開放重導向被拒」）。
+// 登入後重導向目標的清洗（spec「開放重導向被拒」）。
 //
 // 這是登入流程唯一接受使用者提供之 URL 的地方。它同時要擋住 scheme-relative、
 // 絕對 URL、反斜線與多重編碼，並把目標限制在前端既有路由內。

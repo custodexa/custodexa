@@ -16,12 +16,12 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// audit-checkpoint-chain 第 1 組「前置基準實測」的量測腳本（tasks 1.2／1.3／1.4）。
+// audit-checkpoint-chain 第 1 組「前置基準實測」的量測腳本。
 //
 // **為何非測不可**：retention 對 audit_logs 的清除是刻意繞過 BeforeDelete 守衛的
 // 原生 SQL 熱路徑（retention_service.go:130-134）。第 6 組要把它從「逐列刪」改成
 // 「整區間刪」——不先記下現況的批次行為、partial 判定與耗時，改完就沒有對照組，
-// 部署後首輪 retention 的差異將無從歸因。第 4 組的「封章不進熱路徑」（tasks 4.8）
+// 部署後首輪 retention 的差異將無從歸因。第 4 組的「封章不進熱路徑」
 // 同樣需要一組改造前的寫入吞吐基準，故 1.4 的腳本在此一併定形供後續重跑。
 //
 // 一律在**獨立 schema** 內建表量測，不觸碰 dev 資料庫的 public schema 現況資料。
@@ -104,7 +104,7 @@ func countAuditLogs(t *testing.T, db *gorm.DB) int64 {
 	return n
 }
 
-// TestRetentionBaselinePostgres tasks 1.2／1.3：現行逐列清除的實際行為與耗時。
+// TestRetentionBaselinePostgres：現行逐列清除的實際行為與耗時。
 func TestRetentionBaselinePostgres(t *testing.T) {
 	db := baselineSchemaDB(t, "cpchain_retention_baseline")
 
@@ -128,7 +128,7 @@ func TestRetentionBaselinePostgres(t *testing.T) {
 	auditSink := &fakeAuditLogger{}
 	svc := NewRetentionService(db, pol, nil, auditSink)
 	t.Logf("[1.3] maxPerRunNow() 生效值 = %d（預設 %d、下界 %d；"+
-		"policy-numeric-lower-bounds 後由安全政策鍵 retention_max_per_run 供給，env 僅為初值）",
+		"生效值由安全政策鍵 retention_max_per_run 供給，env 僅為初值）",
 		svc.maxPerRunNow(), retentionMaxPerRunDefault, retentionMinPerRun)
 
 	start := time.Now()
@@ -215,7 +215,7 @@ func TestRetentionBaselinePostgres(t *testing.T) {
 	}
 }
 
-// TestAuditWriteThroughputPostgres tasks 1.4：audit_logs 入庫吞吐與 p95 基準。
+// TestAuditWriteThroughputPostgres：audit_logs 入庫吞吐與 p95 基準。
 //
 // 量測的是**入庫路徑本身**（model.AuditLog 的 BeforeCreate 蓋章 hook ＋ INSERT），
 // 不含 HTTP 中介層——第 4 組要對照的「封章是否拖慢寫入」正是這一段。

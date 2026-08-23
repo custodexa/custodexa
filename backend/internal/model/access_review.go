@@ -10,7 +10,7 @@ import (
 // ErrAccessReviewImmutable 複審簽核不可修改/刪除（append-only 稽核證據）
 var ErrAccessReviewImmutable = errors.New("存取複審簽核為不可變證據，不得修改或刪除")
 
-// AccessReview 週期性存取複審簽核紀錄（audit-workflows D2 v1，PCI 7.2.4）。
+// AccessReview 週期性存取複審簽核紀錄（audit-workflows v1，PCI 7.2.4）。
 // v1 補償控制：一筆簽核＝複審者＋時間＋範圍＋結論＋複審當下的存取矩陣快照（不可變證據）。
 // 完整逐列 campaign（保留/撤銷決策）列 v1.1，本表為 append-only 稽核紀錄
 type AccessReview struct {
@@ -36,7 +36,7 @@ func (AccessReview) TableName() string {
 	return "access_reviews"
 }
 
-// BeforeUpdate 縱深防禦（對抗驗證 F4）：簽核為不可變證據，ORM 層拒更新——
+// BeforeUpdate 縱深防禦：簽核為不可變證據，ORM 層拒更新——
 // 即使未來誤加 update 路由或程式路徑，快照也不會被靜默竄改（比照 AuditLog）
 func (AccessReview) BeforeUpdate(tx *gorm.DB) error {
 	return ErrAccessReviewImmutable

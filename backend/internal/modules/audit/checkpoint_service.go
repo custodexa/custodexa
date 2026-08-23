@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 封章參數（audit-checkpoint-chain D3）：門檻可調但**不可關閉**——
+// 封章參數：門檻可調但**不可關閉**——
 // spec 明文「SHALL NOT 可被關閉為『不封章』」，故非法值一律退回預設並記 log，
 // 不接受 0／負值當作停用開關
 const (
@@ -29,7 +29,7 @@ const (
 	checkpointRowThresholdDefault int64 = 10000
 	// checkpointRowThresholdMax 筆數門檻上限（同上，防以極大值實質關閉）
 	checkpointRowThresholdMax int64 = 1000000
-	// checkpointGraceDefault 在途交易 grace（D3／O2）：觸發時取上界，
+	// checkpointGraceDefault 在途交易 grace：觸發時取上界，
 	// 延遲此時長後才掃描，讓「已取號未 commit」的交易落地
 	checkpointGraceDefault = 30 * time.Second
 	// checkpointGraceMax grace 上限：超過即失去「每小時一個檢查點」的意義
@@ -59,7 +59,7 @@ var ErrCheckpointSigningKeyRotated = errors.New("簽章鑰版本於封章期間�
 
 // CheckpointService 審計檢查點封章器（audit-checkpoint-chain 第 4 組）。
 //
-// **旁路批次工作，絕不進入審計寫入熱路徑**（D3）：本型別只做「讀 audit_logs
+// **旁路批次工作，絕不進入審計寫入熱路徑**：本型別只做「讀 audit_logs
 // 三欄 → 算聚合 → 簽章 → 插一列 audit_checkpoints → 丟一則 syslog」，
 // 審計寫入端不知道它存在，也不等它。封章失敗、排程停擺、簽章鑰不可用，
 // 審計寫入照常成功，鏈於恢復後自上次 id_to 續接（不偽造補蓋遺漏時段）。
@@ -272,7 +272,7 @@ func (s *CheckpointService) EnsureGenesis() error {
 
 // Due 是否達封章觸發條件；回傳 (是否觸發, 觸發時觀測到的 MAX(id))。
 //
-// **觸發即取上界**（D3）：回傳的 idHi 就是本輪區間上界，呼叫端等 grace 後
+// **觸發即取上界**：回傳的 idHi 就是本輪區間上界，呼叫端等 grace 後
 // 才掃描——先取上界再等待，才可能把「已取號未 commit」的列納入
 func (s *CheckpointService) Due() (bool, uint, error) {
 	last, err := s.Latest()
@@ -327,7 +327,7 @@ func (s *CheckpointService) SealNow() (*model.AuditCheckpoint, error) {
 
 // SealUpTo 封章覆蓋 `[上一檢查點 id_to + 1, idHi]`。
 //
-// **空區間照蓋**（D4）：idHi 等於上一檢查點 id_to 時 id_from > id_to、
+// **空區間照蓋**：idHi 等於上一檢查點 id_to 時 id_from > id_to、
 // row_count=0、聚合為空輸入雜湊，照常鏈接與簽章。「那一小時沒事發生」本身
 // 成為被簽章的主張——否則攻擊者可「刪光該區間資料＋刪掉該檢查點」，
 // 使其看起來像那小時沒事發生。
@@ -411,12 +411,12 @@ func (s *CheckpointService) signAndPersist(cp *model.AuditCheckpoint) error {
 	return nil
 }
 
-// Aggregate 計算 `[idFrom, idTo]` 的聚合雜湊、列數與時間跨度（D2）。
+// Aggregate 計算 `[idFrom, idTo]` 的聚合雜湊、列數與時間跨度。
 //
 // 只取三欄（id、key_version、integrity_hmac）＋created_at：
 // 列內容真偽已由列級 HMAC 綁定，聚合的職責是「這批列的集合與順序未被動」，
 // 重讀全欄位是重複勞動且封章掃描成本翻數倍。
-// created_at 只為人讀映射，**不參與雜湊**（D1：時間不參與完整性判定）。
+// created_at 只為人讀映射，**不參與雜湊**（時間不參與完整性判定）。
 //
 // Unscoped：軟刪列在範圍內（與列級驗證一致）。
 func (s *CheckpointService) Aggregate(idFrom, idTo uint) (string, int64, *time.Time, *time.Time, error) {
@@ -474,7 +474,7 @@ func (s *CheckpointService) Aggregate(idFrom, idTo uint) (string, int64, *time.T
 	return h, n, minAt, maxAt, nil
 }
 
-// anchorCheckpoint 離機錨定（D7／裁決 5）：**任何失敗都不影響檢查點落庫**。
+// anchorCheckpoint 離機錨定：**任何失敗都不影響檢查點落庫**。
 //
 // 落庫已完成才走到這裡；此處只負責把結果反映到 anchor_status 並在丟棄時
 // 上報失效事件。上報用獨立機制碼 MechanismCheckpointAnchor 而非沿用

@@ -1,4 +1,4 @@
-// 使用者外部身分管理（idp-oidc-integration 5.5 / spec user-account-administration UA-1）。
+// 使用者外部身分管理（spec user-account-administration）。
 //
 // 守的是三件「錯了不會有任何報錯、只會讓管理者做出錯誤決定」的事：
 //   - claim 快照是 IdP 自報值，必須與本地 username 分區且標示來源（低權使用者
@@ -487,7 +487,7 @@ describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH
     confirmSpy.mockRestore()
   })
 
-  it('元件卸載後才按下的確認框不得送出（輪 2 codex HIGH-1：確認框在 body，不隨卸載失效）', async () => {
+  it('元件卸載後才按下的確認框不得送出（確認框在 body，不隨卸載失效）', async () => {
     // 父層以 `:key="user.id"` 重掛面板時本實例被卸載，但 ElMessageBox 是 teleport
     // 到 body 的全域節點，畫面上那個框還在。舊實例閉包裡的 props.user 停在舊值，
     // 只比對 user id 的守衛會回 true——按下確認就對「抽屜上已經不是他」的帳號送出
@@ -532,7 +532,7 @@ describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH
     confirmSpy.mockRestore()
   })
 
-  it('切換使用者後，舊 handler 的 finally 不得釋放新操作的鎖（輪 2 codex MEDIUM-2）', async () => {
+  it('切換使用者後，舊 handler 的 finally 不得釋放新操作的鎖', async () => {
     // 舊版 finally 無條件 `busy.value = false`：切換使用者後新操作已經上鎖，
     // 舊 handler 一收尾就把新操作的鎖清掉，第二個破壞性動作因此得以並行進場
     listMock.mockResolvedValue({ data: [dexIdentity], total: 1 })
@@ -604,7 +604,7 @@ describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH
     confirmSpy.mockRestore()
   })
 
-  it('切換使用者後才成功的 mutation：changed 事件帶原目標 userId（輪 3 codex MEDIUM）', async () => {
+  it('切換使用者後才成功的 mutation：changed 事件帶原目標 userId', async () => {
     // 舊實例仍要通知父層「後端資料已變」，但父層必須分辨得出這是**誰**的變更——
     // 不帶 userId 時，父層只能無條件刷新目前抽屜，等於用舊操作驅動新使用者的狀態
     listMock.mockResolvedValue({ data: [dexIdentity], total: 1 })
@@ -668,7 +668,7 @@ describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH
     confirmSpy.mockRestore()
   })
 
-  it('複製 subject 的結果提示在卸載後不得再彈出（輪 3 codex LOW）', async () => {
+  it('複製 subject 的結果提示在卸載後不得再彈出', async () => {
     // toast 出現在「已經是別人」的畫面上，會被讀成剛才複製的是這個帳號的 subject
     listMock.mockResolvedValue({ data: [dexIdentity], total: 1 })
     const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
@@ -808,7 +808,7 @@ describe('UserExternalIdentities 改為僅外部登入（2.8 端點 d）', () =>
     expect(wrapper.text()).not.toContain('需先綁定至少一筆外部身分')
   })
 
-  it('父層列表刷新失敗時停用轉換入口並就地說明（輪 2 codex MEDIUM-3）', async () => {
+  it('父層列表刷新失敗時停用轉換入口並就地說明', async () => {
     // 刷新失敗＝畫面上的「具本地密碼／帳號啟用中」還是操作前的舊值；
     // 讓管理者依舊值再按一次不可逆的轉換，是拿過期事實做決定
     const wrapper = mount(UserExternalIdentities, {

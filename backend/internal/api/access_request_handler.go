@@ -22,7 +22,7 @@ type ApproverScopeServiceInterface interface {
 	Delete(id uint) error
 }
 
-// AccessRequestHandler 申請核准流 API（access-policy-approval）
+// AccessRequestHandler 申請核准流 API
 type AccessRequestHandler struct {
 	requests authz.AccessRequestServiceInterface
 	scopes   ApproverScopeServiceInterface
@@ -74,7 +74,7 @@ func respondAccessRequestError(c *gin.Context, internalCode apierror.ErrCode, er
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccessRequestPolicyOpen, nil)
 	case errors.Is(err, authz.ErrStartInPast):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccessRequestStartInPast, nil)
-	// 帳號範圍與授權列共用同一驗證（asset-multi-account D5），故共用同一支碼
+	// 帳號範圍與授權列共用同一驗證，故共用同一支碼
 	case errors.Is(err, authz.ErrAccountScopeInvalid):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountScopeInvalid, nil)
 	case errors.Is(err, authz.ErrNotBreakGlass):
@@ -120,16 +120,15 @@ func requesterIdentity(c *gin.Context) (uint, string, string, bool) {
 	return userID, username, role, true
 }
 
-// notEffectiveAdmin D-12 收斂（W7b 8.3）：`admin` 角色本身不構成有效審核資格，
+// notEffectiveAdmin 審核資格收斂：`admin` 角色本身不構成有效審核資格，
 // 審核端點因此**不存在 admin 兜底身分**——範圍過濾、決定資格、quorum 計票一律依
 // 審核範圍。service 層 `isAdmin` 參數自審核路徑一律傳本常數（撤銷端點例外，
-// 見 `revokeIdentity`）。參數本身的移除留待後續結構波（backlog 項 B-26；該清單
-// 歸檔於維護者的私有開發歷程，未隨公開倉庫發佈）
+// 見 `revokeIdentity`）。參數本身的移除留待後續的結構調整。
 const notEffectiveAdmin = false
 
 // approverIdentity 審核端點身分（RequireApproverRole 已放行＝操作者為有效審核者）。
 //
-// **W7b 8.3**：不再讀取 admin 兜底旗標——`middleware.ApproverAdminKey` 已隨 D-12 移除
+// 不再讀取 admin 兜底旗標——`middleware.ApproverAdminKey` 已隨資格收斂移除
 func approverIdentity(c *gin.Context) (uint, bool) {
 	userID, exists := middleware.GetCurrentUserID(c)
 	if !exists {
@@ -140,7 +139,7 @@ func approverIdentity(c *gin.Context) (uint, bool) {
 }
 
 // revokeIdentity 撤銷端點身分（RequireRevokeEligibility 已放行並寫入 admin 旗標）：
-// 撤銷屬遏制動作非審核，admin 資格保留（W7b 8.2 端點分離）
+// 撤銷屬遏制動作非審核，admin 資格保留（與審核端點分離）
 func revokeIdentity(c *gin.Context) (uint, bool, bool) {
 	userID, exists := middleware.GetCurrentUserID(c)
 	if !exists {
@@ -157,8 +156,8 @@ type createAccessRequestReq struct {
 	Reason          string     `json:"reason" binding:"required,max=1000"`
 	DurationMinutes int        `json:"duration_minutes" binding:"required,min=1"`
 	DateStart       *time.Time `json:"date_start"`
-	// Accounts 申請的帳號範圍（asset-multi-account D5）：省略（nil）＝@ALL（既有行為）；
-	// 顯式 [] 拒收（F1）
+	// Accounts 申請的帳號範圍：省略（nil）＝@ALL（既有行為）；
+	// 顯式 [] 拒收（見 authz.NormalizeGrantAccounts）
 	Accounts *[]string `json:"accounts"`
 }
 
@@ -236,7 +235,7 @@ func (h *AccessRequestHandler) Cancel(c *gin.Context) {
 }
 
 // ListPending GET /access-requests/pending 待審列表（一律依審核範圍；
-// D-12 起 admin 身分本身不構成審核資格，故不再有 admin 全量視圖）
+// admin 身分本身不構成審核資格，故不再有 admin 全量視圖）
 func (h *AccessRequestHandler) ListPending(c *gin.Context) {
 	userID, ok := approverIdentity(c)
 	if !ok {
@@ -261,7 +260,7 @@ func (h *AccessRequestHandler) PendingCount(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAccessRequestPendingCount, err)
 		return
 	}
-	// 待補審計數併入同一輪詢回應（break-glass-revocation D7，導航 badge 共用）
+	// 待補審計數併入同一輪詢回應（導航 badge 共用）
 	reviewCount, err := h.requests.PendingReviewCount(userID, notEffectiveAdmin)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalBreakGlassReviewCount, err)
@@ -466,12 +465,12 @@ func (h *AccessRequestHandler) ListPendingReview(c *gin.Context) {
 }
 
 type createApproverScopeReq struct {
-	// 審核方（恰一，approval-routing-quorum D-7）：個人 XOR 使用者群組
+	// 審核方（恰一）：個人 XOR 使用者群組
 	ApproverID      uint `json:"approver_id"`
 	ApproverGroupID uint `json:"approver_group_id"`
 	AssetID         uint `json:"asset_id"`
 	AssetGroupID    uint `json:"asset_group_id"`
-	// 申請人側客體（approval-routing-quorum）：與資產側四維恰一
+	// 申請人側客體：與資產側四維恰一
 	SubjectUserID  uint `json:"subject_user_id"`
 	SubjectGroupID uint `json:"subject_group_id"`
 }
@@ -555,8 +554,8 @@ func (h *AccessRequestHandler) DeleteScope(c *gin.Context) {
 }
 
 // RegisterRoutes 註冊路由：申請側登入即可（service 層拒 admin/auditor 申請）；
-// 審核側 RequireApproverRole 即時查 DB roles（**D-12 後不含 admin**）；
-// 撤銷側 RequireRevokeEligibility（admin OR 有效審核者，W7b 8.2 端點分離）；
+// 審核側 RequireApproverRole 即時查 DB roles（**不含 admin**）；
+// 撤銷側 RequireRevokeEligibility（admin OR 有效審核者，與審核端點分離）；
 // 範圍管理 admin only（＝admin 脫困路徑之一，不得加掛審核類守衛）
 func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	requests := r.Group("/access-requests")
@@ -566,7 +565,7 @@ func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		requests.GET("/mine", h.ListMine)
 		requests.GET("/mine/tickets", h.MyTickets)
 		requests.POST("/:id/cancel", h.Cancel)
-		// 破窗（break-glass-revocation）：登入即可呼叫，開關/資格在 service 裁決
+		// 破窗：登入即可呼叫，開關/資格在 service 裁決
 		requests.POST("/break-glass", h.BreakGlass)
 
 		review := requests.Group("")
@@ -582,7 +581,7 @@ func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 			review.POST("/:id/review", h.Review)
 		}
 
-		// 撤銷端點分離（W7b 8.2）：遏制動作非審核，資格＝admin OR 原核准人
+		// 撤銷端點分離：遏制動作非審核，資格＝admin OR 原核准人
 		// （auto/破窗單＝admin OR 範圍命中的有效審核者），細緻裁決在 service
 		revocation := requests.Group("")
 		revocation.Use(middleware.RequireRevokeEligibility(h.db))

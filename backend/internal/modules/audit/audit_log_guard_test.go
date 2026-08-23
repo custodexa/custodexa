@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// TestAuditLogDeleteGuard audit-log-compliance 10.3.2：audit_logs 經 ORM 的
+// TestAuditLogDeleteGuard audit_logs 經 ORM 的
 // 刪除（含軟刪與 Unscoped 硬刪）都必須被 BeforeDelete 拒絕；
 // 保留清除走 repository 原生 SQL 路徑不受影響
 func TestAuditLogDeleteGuard(t *testing.T) {

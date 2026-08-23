@@ -28,9 +28,9 @@ type UserServiceInterface interface {
 	ChangePassword(userID uint, newPassword string) error
 	Unlock(userID uint) error
 	SetInactivityExempt(userID uint, exempt bool) error
-	// CountLocalAdmins 本地 admin 計數（管理端條件式警示，oidc-ops-hygiene B10）
+	// CountLocalAdmins 本地 admin 計數（管理端條件式警示）
 	CountLocalAdmins() (int64, error)
-	// 外部身分管理四操作（idp-oidc-integration 2.8）
+	// 外部身分管理四操作
 	ListExternalIdentities(userID uint) ([]identity.ExternalIdentityDTO, error)
 	BindExternalIdentity(userID, providerID uint, subject string,
 		actor identity.IdentityAdminActor) (*identity.ExternalIdentityDTO, error)
@@ -84,7 +84,7 @@ func (h *UserHandler) List(c *gin.Context) {
 		}
 	}
 
-	// 供應來源篩選（idp-oidc-integration D14.1）。**值域封閉**：
+	// 供應來源篩選。**值域封閉**：
 	// 未知值靜默忽略會使前端拼錯參數時「篩選看似沒生效」，比直接不接受更難查
 	if origin := c.Query("provisioning_origin"); origin != "" {
 		switch origin {
@@ -197,7 +197,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, identity.ErrEmailConflict) {
-			// email 撞其他 live 帳號回 409（R1，非通用 500）
+			// email 撞其他 live 帳號回 409（非通用 500）
 			apierror.Respond(c, http.StatusConflict, apierror.CodeEmailConflict, nil)
 			return
 		}
@@ -210,7 +210,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 欄位級 before/after 變更注入審計 details（R2）：審計 middleware 會與查詢摘要合併，
+	// 欄位級 before/after 變更注入審計 details：審計 middleware 會與查詢摘要合併，
 	// 讓「改了什麼」可稽核。full_name 不再被脫敏（MaskSensitiveFields 白名單已納入）
 	if len(diff) > 0 {
 		c.Set("audit_details", diff)
@@ -254,7 +254,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	// message 欄已移除（D9：成功回應不攜帶 UI 文案，前端自有 $t 文案）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -298,11 +298,11 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 		return
 	}
 
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
-// AddRole 冪等追加單一角色（approval-routing-quorum 一站式代配用）
+// AddRole 冪等追加單一角色（一站式代配用）
 func (h *UserHandler) AddRole(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -322,7 +322,7 @@ func (h *UserHandler) AddRole(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleAdd, err)
 		return
 	}
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -371,7 +371,7 @@ func (h *UserHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -384,7 +384,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	// 解析請求。長度等規則由 service 層政策 validator 統一判定（單一事實源，D3），
+	// 解析請求。長度等規則由 service 層政策 validator 統一判定（單一事實源），
 	// binding 不再帶 min 長度
 	var req struct {
 		Password string `json:"password" binding:"required"`
@@ -420,7 +420,7 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -460,11 +460,11 @@ func (h *UserHandler) Unlock(c *gin.Context) {
 		})
 	}
 
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
-// SetInactivityExempt 設定閒置停用豁免（PCI 8.2.6，D8）
+// SetInactivityExempt 設定閒置停用豁免（PCI 8.2.6）
 func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -489,7 +489,7 @@ func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 		return
 	}
 
-	// 豁免旗標變更屬合規例外文件化（D8），顯式留痕
+	// 豁免旗標變更屬合規例外文件化，顯式留痕
 	if h.auditService != nil {
 		adminID, _ := middleware.GetCurrentUserID(c)
 		adminName, _ := middleware.GetCurrentUsername(c)
@@ -509,7 +509,7 @@ func (h *UserHandler) SetInactivityExempt(c *gin.Context) {
 		})
 	}
 
-	// message 欄已移除（D9）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
@@ -521,7 +521,7 @@ func inactivityExemptAuditMsg(exempt bool) string {
 	return "inactivity_exempt_revoked"
 }
 
-// --- 外部身分管理（idp-oidc-integration 2.8）---
+// --- 外部身分管理---
 //
 // 四個操作的共同性質：admin only（路由群組已掛 RequireRole）、全部留痕於審計、
 // 失敗零副作用（service 端以交易與鎖保證）。**解綁類操作一律使該使用者的既有存取
@@ -673,7 +673,7 @@ func (h *UserHandler) ConvertToExternalOnly(c *gin.Context) {
 
 // GetLocalAdminCount 現存本地 admin 數（唯讀，admin only）。
 //
-// 管理端「已無本地管理員 → 解封能力已失」警示的資料來源（oidc-ops-hygiene B10 / D1）：
+// 管理端「已無本地管理員 → 解封能力已失」警示的資料來源：
 // 計數直接來自 identity.CountLocalAdmins，與不變式拒絕四條路徑時的判定同一定義。
 // 不入快取、每次現查——低頻管理頁讀取，一致性優先於延遲；讀取失敗時前端 fail-safe
 // 退回通用警語，故此處不需要專屬錯誤碼（沿用既有查詢碼）
@@ -706,7 +706,7 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		users.PUT("/:id/password", h.ChangePassword)
 		users.POST("/:id/unlock", h.Unlock)
 		users.PUT("/:id/inactivity-exempt", h.SetInactivityExempt)
-		// 外部身分管理（idp-oidc-integration 2.8）。
+		// 外部身分管理。
 		// 「解綁＋停用」與「改為僅外部登入」是狀態轉換而非資源刪除，故用 POST
 		// 動作端點（同既有的 /unlock 慣例），不塞進 DELETE 的查詢參數——
 		// 後者會讓「順手多帶一個參數就停用帳號」變成可能

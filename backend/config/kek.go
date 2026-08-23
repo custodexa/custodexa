@@ -9,10 +9,10 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// KEK 來源模式判定（kek-provider-modularization D2）。
+// KEK 來源模式判定。
 //
 // **本檔的全部 env 讀取一律走 LookupEnv 三值語義**（未設／設為空字串／設為
-// 有效值互相區分），SHALL NOT 經任何預設值注入（D2.0）——config.getEnv 的
+// 有效值互相區分），SHALL NOT 經任何預設值注入——config.getEnv 的
 // 「空字串即視為未設並回落預設值」語義用於金鑰類鍵會造成兩個致命後果：
 // (1) 委託／ui 模式下「本地鑰有值」恆為真而永遠不可啟動；
 // (2) 公開已知的出廠預設材料被靜默注入為 KEK。
@@ -108,11 +108,11 @@ func MapEnvLookup(m map[string]string) EnvLookup {
 }
 
 // KEKDecision 組態段（DB-independent）判定結果。
-// 判定於連 DB 之前完成，任一 fail-close 路徑不產生任何 DB 寫入（D2.3 第一段）。
+// 判定於連 DB 之前完成，任一 fail-close 路徑不產生任何 DB 寫入。
 type KEKDecision struct {
 	// Mode 執行期模式（env／ui／kms／hsm）
 	Mode string
-	// MatrixRow 命中的判定矩陣列（決議依據；啟動 log 與 D10 稽核證據來源）
+	// MatrixRow 命中的判定矩陣列（決議依據；啟動 log 與稽核證據來源）
 	MatrixRow string
 	// Rationale 決議依據的人可讀說明（不含任何金鑰材料）
 	Rationale string
@@ -147,9 +147,9 @@ func lookupTrimmed(lookup EnvLookup, key string) (raw, trimmed string, set bool)
 	return raw, strings.TrimSpace(raw), set
 }
 
-// DecideKEK 判定 KEK 來源模式（D2.2 判定矩陣）。
+// DecideKEK 判定 KEK 來源模式（依判定矩陣）。
 //
-// **legacy 解密鑰格已拆除**（release-transitional-cleanup D3）：
+// **legacy 解密鑰格已拆除**：
 // `LEGACY_ENCRYPTION_KEY` 完全不被讀取（與 `AUDIT_INTEGRITY_KEY` 同處置），
 // 原列 3b 的 legacy 長度驗證與列 6b 的 legacy 殘縫閘隨之消滅——該鍵已無解密
 // 能力，為一把死值新增一格與「矩陣簡化」目標矛盾，且會迫使 config 繼續消費它。
@@ -246,7 +246,7 @@ func DecideKEK(lookup EnvLookup, hsmBuild bool) (*KEKDecision, error) {
 			}
 			d.KMS = kms
 		} else {
-			// **列 11 先於列 8**（雙審 F4，與 design D2.2 表列序對齊）：
+			// **列 11 先於列 8**（與判定矩陣的表列序對齊）：
 			// 執行檔不具 pkcs11 能力時，無論 HSM 組態齊不齊都不可能啟動——
 			// 先回「請換 HSM 變體映像」比先回「組態不齊」更接近根因，
 			// 免得操作者把組態補齊了才發現映像根本不對。兩者皆 fail-close，
@@ -340,7 +340,7 @@ func collectHSM(lookup EnvLookup) (HSMSettings, []string) {
 // kekReasonFactoryDefault 出廠預設值的違規原因（單一事實源）。
 const kekReasonFactoryDefault = "仍為出廠預設值（PCI 2.2.2）"
 
-// ValidateKEKMaterial 本地 KEK 材料的伺服端格式驗證（D2.1 列 3b／D8）：
+// ValidateKEKMaterial 本地 KEK 材料的伺服端格式驗證（判定矩陣列 3b）：
 // 輸入編碼可解為 32 位元組、原字元形態的字元集、非出廠預設值。回空字串＝合格。
 func ValidateKEKMaterial(material string) string {
 	if v := crypto.ValidateKEKMaterialFormat(material); v != "" {
@@ -427,7 +427,7 @@ func zeroKey(b []byte) {
 // UsesLocalMaterial 本模式是否於本行程持有本地 KEK 材料
 func (d *KEKDecision) UsesLocalMaterial() bool { return d.Mode == KEKModeEnv }
 
-// LogLine 啟動時輸出的單行決議 log（D2.3／D10 稽核證據來源）。
+// LogLine 啟動時輸出的單行決議 log（稽核證據來源）。
 // **不含任何金鑰材料**——僅列模式、矩陣列、材料來源鍵名與決議依據。
 func (d *KEKDecision) LogLine() string {
 	return fmt.Sprintf("[KEK] provider=%s matrix_row=%s material_source=%s rationale=%s",

@@ -60,7 +60,7 @@ func newKeyMgmtTestHandlerWithKey(t *testing.T, key []byte) *KeyManagementHandle
 
 // TestRewrapResponseNoStore 重包回應禁止任何快取層留存。
 //
-// **D7 之後保護的對象變了**：回應已不含任何 KEK 明文（材料由請求體帶入），
+// **明文流向反轉後保護的對象變了**：回應已不含任何 KEK 明文（材料由請求體帶入），
 // no-store 現在防的是**請求／回應被中間層留存後重放**，而非回應洩漏明文。
 // 「回應無明文」由 TestRewrapResponseCarriesNoPlaintext 另行釘住。
 func TestRewrapResponseNoStore(t *testing.T) {
@@ -146,7 +146,7 @@ func TestKeyConflictsUseMachineCodes(t *testing.T) {
 }
 
 // TestInventoryHasNoMigrationFields 清冊 SHALL NOT 含任何 legacy 遷移狀態欄位
-// （release-transitional-cleanup 3.3／key-management spec）。
+// （key-management spec）。
 //
 // 為何以「欄位不在」為斷言而非「值為 0」：留著恆為 0/null 的欄位會讓前端
 // 繼續依它做禁用判斷，而那個判斷永遠不會成立——死條件比缺欄位更難察覺。

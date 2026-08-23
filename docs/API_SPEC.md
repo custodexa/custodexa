@@ -689,7 +689,7 @@ scope 限定 `mfa_pending`），再以 TOTP 驗證碼換取正式 JWT。
 | POST | `/auth/mfa/setup` | 產生 secret 與 otpauth URL：`{secret, otpauth_url}`（發行者 "Custodexa"；重做即覆蓋舊 secret）。POST 而非 GET：有寫入副作用（覆蓋 pending secret、重設 enabled） | JWT |
 | POST | `/auth/mfa/enable` | body: `{code}`，驗證通過後啟用 | JWT |
 | POST | `/auth/mfa/disable` | body: `{password}`，驗密後停用 | JWT |
-| POST | `/auth/mfa/enroll/setup` | 強制註冊：以 `enrollment_token`（Bearer）產生 TOTP 設定 → `{secret, otpauth_url}`。已註冊者持 token 重放回 409（防改綁，MFA-1） | 公開（自帶 enrollment token） |
+| POST | `/auth/mfa/enroll/setup` | 強制註冊：以 `enrollment_token`（Bearer）產生 TOTP 設定 → `{secret, otpauth_url}`。已註冊者持 token 重放回 409（防改綁） | 公開（自帶 enrollment token） |
 | POST | `/auth/mfa/enroll/confirm` | 強制註冊：body `{code}` ＋ `enrollment_token`（Bearer）完成綁定，直接換發正式會話；若仍須改密則回 `password_change_required`。綁定碼暴力達門檻回 423 | 公開（自帶 enrollment token） |
 | POST | `/users/:id/mfa/disable` | 管理員救援停用（審計記入 admin 身分＋目標用戶 ID） | JWT + admin |
 

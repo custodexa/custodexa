@@ -1,6 +1,6 @@
 package main
 
-// 拒絕路徑審計覆蓋守衛（audit-coverage-closure 批 0，design D4）。
+// 拒絕路徑審計覆蓋守衛。
 //
 // # 這個守衛量的是什麼
 //
@@ -15,10 +15,10 @@ package main
 // 必產 ≥1 列**。sink 是真的 `AuditLogService` 接真的 `database.DB`（sqlite
 // `:memory:`），不是 mock——量的是實際入庫，不是「有沒有呼叫某個函式」。
 //
-// # 批 0 的守衛預期是紅的
+// # 這個守衛剛立起來時預期是紅的
 //
-// 本批只立儀表、不補洞（tasks.md 批 0）。跑起來 `TestRejectionAuditCoverage/
-// 每條受保護路由的拒絕必留痕` 必然失敗，失敗數即批 1～批 4 的收斂儀表。
+// 儀表先立、洞後補。跑起來 `TestRejectionAuditCoverage/
+// 每條受保護路由的拒絕必留痕` 必然失敗，失敗數即補洞進度的收斂儀表。
 // `rejectionAuditGapBaseline` 釘住當下數字，使**缺口變多**在補洞完成前就會轉紅。
 //
 // # 為什麼不能用「人工填一張留痕清單」的守衛
@@ -44,12 +44,12 @@ package main
 //     （AuthMiddleware abort），故受判定的 171 條路由完全不觸及 handler 依賴。
 //     但反過來說，**拒絕判定寫在 handler 內**的路由（WS 閘、rtoken 取流、
 //     scoped token 自解析那幾條）在本裝配下打不出真實行為——它們正是
-//     `coverageExemptRoutes` 的內容，其留痕義務由批 4 的實走驗證承擔，
+//     `coverageExemptRoutes` 的內容，其留痕義務由實走驗證承擔，
 //     豁免**不等於**免除留痕義務。
 //   - **403 在本裝配打不出來**：RBAC 中介層排在認證之後，壞憑證永遠停在 401。
-//     判準本身涵蓋 403（`judgeShot`），但本批的實測樣本全是 401。
+//     判準本身涵蓋 403（`judgeShot`），但實測樣本全是 401。
 //   - 本守衛驗「拒絕有沒有留下一列」，**不驗那一列的欄位對不對**。欄位契約由
-//     批 1 的單點契約守衛與 spec 的 scenario 承擔。
+//     單點契約守衛與 spec 的 scenario 承擔。
 
 import (
 	"fmt"
@@ -109,7 +109,7 @@ func judgeShot(statusCode int, rowsWritten int64) shotVerdict {
 // ── 豁免白名單（default-deny）──────────────────────────────────────────────
 
 // coverageExemptReason 豁免理由的**閉集合**。自由文字理由是同型缺口能潛伏三年的
-// 成因（design D4），故理由必須是可枚舉的常數，不是散文。
+// 成因，故理由必須是可枚舉的常數，不是散文。
 type coverageExemptReason string
 
 const (
@@ -118,9 +118,9 @@ const (
 	// exemptPreAuth 登入前可達：身分尚未成立，拒絕留痕由登入流程自身的產生點承擔。
 	exemptPreAuth coverageExemptReason = "登入前可達，身分尚未成立"
 	// exemptHandlerSelfAuth 憑證在 handler 內自解析（WS 閘、rtoken、scoped token），
-	// 中介層刻意不掛認證。留痕義務**不因豁免而消失**——由批 4 的實走驗證承擔。
+	// 中介層刻意不掛認證。留痕義務**不因豁免而消失**——由實走驗證承擔。
 	exemptHandlerSelfAuth coverageExemptReason = "憑證於 handler 內自解析，中介層不掛認證"
-	// exemptSealEpoch 封印期端點：須早於認證系統可用，留痕在 seal journal（design D6）。
+	// exemptSealEpoch 封印期端點：須早於認證系統可用，留痕在 seal journal。
 	exemptSealEpoch coverageExemptReason = "封印期端點，留痕由 seal journal 承擔"
 )
 
@@ -141,7 +141,7 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 	{"POST", "/health"}:                 exemptProbe,
 	{"GET", "/healthz"}:                 exemptProbe,
 	{"GET", "/api/v1/ping"}:             exemptProbe,
-	// 營運指標曝光（observability-lite）：監控採集端無使用者身分，
+	// 營運指標曝光：監控採集端無使用者身分，
 	// 且封印期即須可採（否則「封印中」與「當機」在監控上不可區分）。
 	// 保護不靠認證中介層而靠拓撲——它不在 `/api` 之下，正式版 edge 只代理
 	// `/api` 與 `/ws`；需對外時另以 `METRICS_TOKEN` 於 handler 內強制 bearer。
@@ -162,10 +162,10 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 	{"GET", "/api/v1/recordings/stream"}:        exemptHandlerSelfAuth,
 	{"GET", "/api/v1/sessions/:id/monitor"}:     exemptHandlerSelfAuth,
 	{"GET", "/api/v1/sessions/share/:code/ws"}:  exemptHandlerSelfAuth,
-	// `/api/v1/ssh` **不能移出豁免**（批 10 判定）：連線票證於 handler 內自解析，
+	// `/api/v1/ssh` **不能移出豁免**：連線票證於 handler 內自解析，
 	// 路由刻意不掛 AuthMiddleware，故 ④ 的反向核對（豁免者鏈中不得含認證中介層）
 	// 正是它成立的條件；移出反而會撞上 ③ 的 default-deny。
-	// 留痕已由 handler 自寫（批 10 AP-69 `proxy.AuditConnectDenied`，
+	// 留痕已由 handler 自寫（AP-69 `proxy.AuditConnectDenied`，
 	// 與 `/connect` 共用同一寫入點）：缺票／偽票／過期票／閘序拒絕四路皆寫列，
 	// 行為由 `internal/sshproxy/ssh_redeem_deny_audit_test.go` 承擔。
 	// 同 `/recordings/stream` 的形態——豁免的是**本守衛的機打判定**，不是留痕義務。
@@ -177,8 +177,8 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 
 // rejectionAuditGapBaseline 拒絕路徑無留痕的**路由**條數上限（單調下降的儀表）。
 //
-// **現值 0**（批 10 下修，2026-08-14 實測）。起始值 171 是 2026-08-13 批 0 的實測數，
-// 即「掛認證中介層卻對拒絕零留痕」的路由總數；批 1 於 `audit_log.go` 單點插入匿名
+// **現值 0**（2026-08-14 實測下修）。起始值 171 是 2026-08-13 的實測數，
+// 即「掛認證中介層卻對拒絕零留痕」的路由總數；後於 `audit_log.go` 單點插入匿名
 // 失敗列後歸零。**棘輪停在 171 等同全鬆**：現況缺口是 0，上限卻容得下 171 條，
 // 於是任何新缺口都不會讓這條轉紅——刻度失去意義。下修是收緊，不是放寬。
 //
@@ -411,10 +411,10 @@ func containsAuthMiddleware(chainEntry string) bool {
 // TestRejectionAuditSinkIsLive 前置條件：計數機制本身要能數到列。
 //
 // 若 AutoMigrate 失敗、連線池設定失誤或 `AuditLogEnabled` 沒開，列數會**恆為 0**，
-// 於是覆蓋守衛會因為完全錯誤的理由而紅（假紅），且批 1 補洞後也不會轉綠。
+// 於是覆蓋守衛會因為完全錯誤的理由而紅（假紅），且補洞後也不會轉綠。
 // 本測試以「帶身分的請求」走真的審計中介層，斷言確實入庫 ≥1 列。
 //
-// 刻意**不**斷言「無身分 ⇒ 零列」：那正是批 1 要改掉的行為，釘住它等於替缺陷
+// 刻意**不**斷言「無身分 ⇒ 零列」：那正是補洞要改掉的行為，釘住它等於替缺陷
 // 立一道護欄。
 func TestRejectionAuditSinkIsLive(t *testing.T) {
 	prev := gin.Mode()
@@ -488,7 +488,7 @@ func TestRejectionAuditCoverage(t *testing.T) {
 	sweep := runCoverageSweep(t)
 
 	// ① 覆蓋本體：受判定路由的每一發拒絕都必須留下列。
-	//    **批 0 預期為紅**——這就是要記錄下來的基準。
+	//    **儀表剛立時預期為紅**——這就是要記錄下來的基準。
 	t.Run("每條受保護路由的拒絕必留痕", func(t *testing.T) {
 		var gapRoutes []routeCoverage
 		for _, rc := range sweep {
@@ -517,12 +517,12 @@ func TestRejectionAuditCoverage(t *testing.T) {
 		t.Errorf("%d 條路由的拒絕路徑零留痕（基準 %d）。"+
 			"認證中介層 abort 時從未設過 userID，審計中介層在 audit_log.go:52-56 整筆跳過——"+
 			"「誰在敲門、敲了幾次」在稽核上完全答不出來。\n"+
-			"批 0 只立儀表不補洞，本失敗為預期結果；批 1 單點插入匿名失敗列後應歸零。\n"+
+			"現階段只立儀表不補洞，本失敗為預期結果；單點插入匿名失敗列後應歸零。\n"+
 			"前 %d 條（共 %d 條）：%s",
 			len(gapRoutes), rejectionAuditGapBaseline, shown, len(gapRoutes), msg)
 	})
 
-	// ② 儀表：缺口數不得增加。批 0 之後這條若轉紅，代表補洞倒退或新端點帶進新缺口。
+	// ② 儀表：缺口數不得增加。這條若轉紅，代表補洞倒退或新端點帶進新缺口。
 	t.Run("缺口數不得超過基準", func(t *testing.T) {
 		n := 0
 		for _, rc := range sweep {

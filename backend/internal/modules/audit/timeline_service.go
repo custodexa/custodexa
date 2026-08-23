@@ -126,14 +126,14 @@ type TimelineSpan struct {
 	RecordingState string     `json:"recording_state"` // available | purged | none
 }
 
-// 錄影三態（D5）
+// 錄影三態
 const (
 	RecordingStateAvailable = "available"
 	RecordingStatePurged    = "purged"
 	RecordingStateNone      = "none"
 )
 
-// 保留期三態（D5）
+// 保留期三態
 const (
 	CoveragePresent     = "present"
 	CoveragePurged      = "purged"
@@ -177,7 +177,7 @@ const (
 	timelineMaxLimit     = 500
 )
 
-// TimelineService 六來源聚合（auditor-workbench D7）
+// TimelineService 六來源聚合
 type TimelineService struct {
 	db         *gorm.DB
 	watermarks *RetentionWatermarkService
@@ -348,7 +348,7 @@ func (s *TimelineService) fetchSource(t TimelineEventType, q TimelineQuery, fetc
 // auditLogScope audit_logs 兩個類別的共同 where。
 //
 // 資產樞紐**只認 asset_id 欄**，SHALL NOT 退回 (resource, resource_id)：
-// 後者會把「改密計畫 130」「授權列 130」當成資產 130 的事件（D1.3(a)）
+// 後者會把「改密計畫 130」「授權列 130」當成資產 130 的事件
 func (s *TimelineService) auditLogScope(t TimelineEventType, q TimelineQuery) *gorm.DB {
 	tx := s.db.Model(&model.AuditLog{}).
 		Where("created_at >= ? AND created_at < ?", q.From, q.To)
@@ -517,7 +517,7 @@ func (s *TimelineService) fetchAlerts(q TimelineQuery, fetch int) ([]TimelineEve
 	return out, nil
 }
 
-// clipboardRow clipboard_events 無主體欄，一律經 sessions 解析（D1.2）
+// clipboardRow clipboard_events 無主體欄，一律經 sessions 解析
 type clipboardRow struct {
 	ID        uint
 	SessionID uint
@@ -631,9 +631,9 @@ func (s *TimelineService) fetchSpans(q TimelineQuery) ([]TimelineSpan, error) {
 			End:       r.EndTime,
 			Status:    string(r.Status),
 		}
-		// 錄影三態（D5）：has_recording=false 一律 none（從未錄或錄失敗）；
+		// 錄影三態：has_recording=false 一律 none（從未錄或錄失敗）；
 		// 有錄影但結束時刻早於錄影清除水位者判 purged。
-		// **這是時間近似而非逐檔事實**（Q6）：單檔清除失敗時會誤標為 purged。
+		// **這是時間近似而非逐檔事實**：單檔清除失敗時會誤標為 purged。
 		// 誤標方向刻意選在此側——把仍在的檔標成已清除，使用者點下去會發現它還在；
 		// 反過來把已清除的標成可回放，使用者只會得到一個無解釋的回放失敗
 		switch {
@@ -726,7 +726,7 @@ func minTime(a, b time.Time) time.Time {
 	return b
 }
 
-// checkpointRange 已清除區間對應的檢查點 seq 範圍（tasks 3.4）。
+// checkpointRange 已清除區間對應的檢查點 seq 範圍。
 //
 // **唯讀**：本函式（與整個工作台）不寫入也不驗證檢查點——完整性主張由
 // /checkpoint-verification 獨佔（2026-08-11 劃界裁決），此處只提供跳轉座標

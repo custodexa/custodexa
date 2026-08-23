@@ -54,14 +54,14 @@ func AADResidueLowerBound(db *gorm.DB) ([]AADResidue, int64, error) {
 	return out, total, nil
 }
 
-// 啟動哨兵：非終態密文的「不可能態」偵測（release-transitional-cleanup D6）。
+// 啟動哨兵：非終態密文的「不可能態」偵測。
 //
 // 過渡機制拆除後，AAD 綁定恆為強制：寫入端在建構上只產 `enc:a1`，
 // 系統不具備 permissive 讀取、模式切換或存量遷移能力。故啟動掃描發現任何
 // 非 `enc:a1` 的登記欄位值，語義**不再是「遷移未執行」**，而是
 // 「程式缺陷或繞過 API 的資料庫直寫」——一個依設計不可能發生的狀態。
 //
-// **分工（D6）**：本哨兵屬**資料層 fail-visible**——warn log ＋失效事件告警，
+// **分工**：本哨兵屬**資料層 fail-visible**——warn log ＋失效事件告警，
 // SHALL NOT 阻塞啟動、SHALL NOT 附遷移指引、SHALL NOT 自動改寫任何值。
 // 「過渡格式資料庫擋啟動」由**金鑰層 fail-close** 承擔（無前綴／`wk:1` 的
 // wrapped_key、v0 金鑰列於載入時拒絕啟動）。
@@ -74,9 +74,9 @@ func AADResidueLowerBound(db *gorm.DB) ([]AADResidue, int64, error) {
 //
 // **計數失敗記「狀態未知」，SHALL NOT 以零頂替**（未知狀態顯示為安全是最糟的謊）。
 //
-// af 為 keyvault 自宣告的窄介面（4.10 拆環，W1 1.11）：本函式是該環的**第二實例**
-// ——R3.1 §3.1 只列了 `key_manager_degraded.go` 的 monitor，本輪由 1.13 的參照圖
-// 守衛掃出（同 §3.6 對 C↔E 環第二實例的處置形態）。呼叫端傳入型別化的 nil 指標時，
+// af 為 keyvault 自宣告的窄介面（4.10 拆環）：本函式是該環的**第二實例**
+// ——原先只列了 `key_manager_degraded.go` 的 monitor，本實例由參照圖
+// 守衛掃出（處置形態同 C↔E 環的第二實例）。呼叫端傳入型別化的 nil 指標時，
 // 下方 `af == nil` 擋不住（介面不為 nil），故契約是 SHALL 傳入非 nil 實作
 func ReportAADResidueOnStartup(db *gorm.DB, af AuditFailureReporter) {
 	if db == nil || af == nil {

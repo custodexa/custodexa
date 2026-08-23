@@ -144,7 +144,7 @@
           until: formatDateTime(status.cooldown_until),
         })"
       />
-      <!-- 逾時 × 初始化的重試指引（D6.2.4）：逾時後 bootstrap 可能已完成，
+      <!-- 逾時 × 初始化的重試指引：逾時後 bootstrap 可能已完成，
            改用新材料會使第一把材料成為無人知曉的主 KEK -->
       <el-alert
         v-if="status.timeout_retry_hint_code"
@@ -347,9 +347,9 @@ import { publishSealStatus } from '@/utils/sealPhase'
 import GenerateCommands from '@/components/KEKGenerateCommands.vue'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage, t } from '@/i18n'
 
-// 解封頁（kek-provider-modularization D6）。**封印期可達且不需登入**——
+// 解封頁。**封印期可達且不需登入**——
 // 要求 JWT 會在 admin 已開 MFA 時死鎖（TOTP secret 是信封加密欄，封印期解不開）。
-// 授權由「知道 KEK」承擔；初始化解封另要求初始管理員憑證（D6.3）。
+// 授權由「知道 KEK」承擔；初始化解封另要求初始管理員憑證。
 
 const router = useRouter()
 // 切換選單以 locale 為當前值來源（同 Login.vue）；setLanguage 直接當 @command 處理器
@@ -469,7 +469,7 @@ const loadStatus = async () => {
   statusLoading.value = true
   try {
     status.value = await getSealStatus({ skipErrorToast: true })
-    // 導覽守衛的相位來源之一（kek-encoding-and-unseal-entry 決策 6）：
+    // 導覽守衛的相位來源之一：
     // 少了這一步，解封成功後點「前往登入」會被守衛以陳舊的 sealed 相位彈回本頁
     publishSealStatus(status.value)
     statusError.value = ''
@@ -606,7 +606,7 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
   box-shadow: var(--el-box-shadow-light);
 }
 
-/* 初始化解封與一般解封的視覺區分（D6.3）：此畫面的輸入會固化為部署主金鑰 */
+/* 初始化解封與一般解封的視覺區分：此畫面的輸入會固化為部署主金鑰 */
 .unseal-card.is-initialization {
   border: 2px solid var(--el-color-danger);
   box-shadow: 0 0 0 4px var(--el-color-danger-light-9);

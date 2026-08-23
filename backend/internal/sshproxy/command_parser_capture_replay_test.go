@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// B 層端到端重放（design.md D9 的 B 層協議、tasks 3.5）。
+// B 層端到端重放。
 //
 // 以真實錄製的 28 個情境重放 CommandParser：事件依錄製時的**原始 chunk 邊界**逐筆餵入，
 // 最後斷言結算出的指令等於人工標註的 expected_command（標註依據為輸入方向的按鍵序列，
@@ -289,9 +289,9 @@ func TestCaptureReplayEveryScenarioIsAsserted(t *testing.T) {
 	}
 }
 
-// TestCaptureReplayFabricatedCommandSamples 把三筆偽證樣本單獨釘死（design.md D4.4）。
+// TestCaptureReplayFabricatedCommandSamples 把三筆偽證樣本單獨釘死。
 //
-// 它們與上面的逐情境斷言重疊是刻意的：D4.4 是本 change 的核心驗收面，
+// 它們與上面的逐情境斷言重疊是刻意的：偽證樣本是本 change 的核心驗收面，
 // 需要一個名字就說得出「這裡驗的是什麼」的測試，而不是淹沒在 21 個子測試裡。
 // 除了「等於使用者實際送出的指令」，另外斷言「入庫文字不得含使用者已清除的片段」——
 // 前者是正面條件，後者直接描述偽證的形態。

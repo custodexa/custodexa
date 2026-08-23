@@ -43,7 +43,7 @@ type CommandAlertListResponse struct {
 	PageSize int                `json:"page_size"`
 }
 
-// CommandAlertService 告警查詢服務（command-alerts D4）
+// CommandAlertService 告警查詢服務
 type CommandAlertService struct {
 	db *gorm.DB
 }
@@ -138,7 +138,7 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 	}, nil
 }
 
-// Review 審閱處置一筆告警（audit-workflows D3，PCI 10.4.1）：記複審者/時間/處置分類/備註。
+// Review 審閱處置一筆告警（PCI 10.4.1）：記複審者/時間/處置分類/備註。
 // disposition 僅接受 benign/escalated（pending 是未審閱狀態，不可主動設回）。
 // 冪等：重覆審閱同一告警視為更新處置（可修正誤判），reviewed_at 刷新為最新
 func (s *CommandAlertService) Review(alertID, reviewerID uint, disposition, note string) error {

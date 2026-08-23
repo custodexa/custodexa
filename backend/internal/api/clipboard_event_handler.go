@@ -11,7 +11,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// ClipboardEventLister 會話剪貼簿記錄查詢能力（消費者側窄介面，SD-2 收斂）。
+// ClipboardEventLister 會話剪貼簿記錄查詢能力（消費者側窄介面）。
 // handler 不再自持 `*gorm.DB`：剪貼簿留存屬 session 域，由 `service.SessionService` 實作。
 type ClipboardEventLister interface {
 	ListClipboardEvents(sessionID uint) ([]model.ClipboardEvent, error)

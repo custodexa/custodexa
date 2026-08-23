@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// 審計類表的原生 SQL 刪除入口清冊（audit-checkpoint-chain tasks 10.1
+// 審計類表的原生 SQL 刪除入口清冊（audit-checkpoint-chain
 //「audit_logs 刪除入口唯一性」的**放寬方向**守衛）。
 //
 // 為何需要本守衛：`model.AuditLog.BeforeDelete`／`AuditCheckpoint.BeforeDelete`

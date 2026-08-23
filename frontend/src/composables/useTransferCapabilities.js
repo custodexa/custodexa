@@ -26,7 +26,7 @@ export function useTransferCapabilities() {
   const loading = ref(false)
   // 上一次查詢失敗（呈現可能不反映現行政策）
   const stale = ref(false)
-  // 剪貼簿邊界事實由伺服端下發，前端不硬編（D11-1／D4）
+  // 剪貼簿邊界事實由伺服端下發，前端不硬編
   const clipboardProtocols = ref([])
   const clipboardRequiresReconnect = ref(true)
 

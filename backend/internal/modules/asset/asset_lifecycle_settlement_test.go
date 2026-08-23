@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 停用即收線（security-backlog-settlement 塊 1）。
+// 停用即收線（塊 1）。
 //
 // 塊 2（刪除即失效授權）的測試在 `internal/modules/authz`——那裡才有權限查詢
 // 與其姊妹查詢，且 authz 已 import asset，反向 import 會循環。

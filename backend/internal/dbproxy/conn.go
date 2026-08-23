@@ -16,7 +16,7 @@ type Conn = localpty.Conn
 // 子程序環境最小化由 localpty 保證。
 // verify-ca/verify-full 模式：把自訂 CA 寫成暫存檔供 client 驗證，連線結束時清掉（CA 為公開憑證非機密）。
 //
-// CLI 子程序以專用非 root 身分執行（db-cli-shell-escape-hardening 的環境降權）：
+// CLI 子程序以專用非 root 身分執行（環境降權）：
 // client 的本機能力面（`\copy … FROM`、`\i` 等讀檔類命令）維持開放，安全保證改由
 // 「該身分在容器內讀不到、寫不了任何有價值的東西」承擔，不依賴輸入解析。
 func Start(t Target, cols, rows int) (*Conn, error) {
@@ -77,7 +77,7 @@ const (
 	defaultRows = 24
 )
 
-// clampWinsize mssql 專屬的終端尺寸保底（mssql-web-cli：liner 的 winsize 前提）。
+// clampWinsize mssql 專屬的終端尺寸保底（liner 的 winsize 前提）。
 //
 // sqlcmd 經 peterh/liner 讀密碼，liner 在**終端寬度為 0 時直接回錯誤且不印提示**
 // （peterh/liner v1.2.2 line.go 的 getColumns 檢查）。cols／rows 來自前端查詢參數，

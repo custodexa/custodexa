@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// LDAP 目錄位址（URL）的單一嚴格文法 parser（ldap-settings-migration D3）。
+// LDAP 目錄位址（URL）的單一嚴格文法 parser。
 //
 // # 為什麼把文法收斂到 origin 形狀
 //

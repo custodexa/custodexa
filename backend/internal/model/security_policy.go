@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// SecurityPolicy 安全政策（key-value 儲存，auth-hardening D1）。
+// SecurityPolicy 安全政策（key-value 儲存）。
 // 政策值一律以字串存放，型別語義由 service 層常數表（PolicyDef）定義；
 // 無對應列時以常數表出廠預設值生效，故 seed 不需預先物化政策列
 type SecurityPolicy struct {
@@ -17,10 +17,10 @@ func (SecurityPolicy) TableName() string {
 	return "security_policies"
 }
 
-// PasswordHistory 密碼歷史（PCI 8.3.7，auth-hardening D3/D12）。
+// PasswordHistory 密碼歷史（PCI 8.3.7）。
 // 每次設定密碼（建立帳號/seed/自助改密/admin 重設）都寫入一筆，
 // 改密時 bcrypt 逐筆比對近 N 筆拒絕重用；初始密碼也入表，
-// 否則首次強制改密可設回原密碼（D12）
+// 否則首次強制改密可設回原密碼
 type PasswordHistory struct {
 	ID           uint      `gorm:"primarykey" json:"id"`
 	UserID       uint      `gorm:"not null;index" json:"user_id"`

@@ -21,11 +21,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// change-secret-ssh-deepening 的可靠性語義守衛。
+// 改密的可靠性語義守衛。
 //
-// 覆蓋 design D2（候選先於遠端落庫）、D3（遠端失敗的兩種可知性）、
-// D4（unverified 保留＋重試＋放棄）、D6（金鑰三段式與零鎖死）、
-// D8（同帳號不疊加候選）。全部以行程內 SSH 靶機實跑真連線，不 mock 傳輸層。
+// 覆蓋：候選先於遠端落庫、遠端失敗的兩種可知性、
+// unverified 保留＋重試＋放棄、金鑰三段式與零鎖死、
+// 同帳號不疊加候選。全部以行程內 SSH 靶機實跑真連線，不 mock 傳輸層。
 
 type csFixture struct {
 	db         *gorm.DB
@@ -129,7 +129,7 @@ func (f *csFixture) storedPrivateKey(t *testing.T) string {
 	return creds.PrivateKey
 }
 
-// --- D2／成功路徑 ---
+// --- 候選先於遠端落庫／成功路徑 ---
 
 func TestChangeSecretRunnerPasswordSuccessClearsCandidate(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")
@@ -169,7 +169,7 @@ func TestChangeSecretCredentialsNeverEnterArgv(t *testing.T) {
 	assert.Contains(t, stdin, "oldpass123", "sudo 密碼未經 stdin 投遞")
 }
 
-// --- D3：遠端失敗的兩種可知性 ---
+// --- 遠端失敗的兩種可知性 ---
 
 func TestChangeSecretExitErrorClearsCandidateAndKeepsCredential(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")
@@ -200,7 +200,7 @@ func TestChangeSecretTransportFailureKeepsCandidate(t *testing.T) {
 	require.Positive(t, f.server.chpasswdDropFired.Load(), "斷線注入器未觸發：假綠")
 }
 
-// --- D4：驗證失敗保留 unverified，重試轉正 ---
+// --- 驗證失敗保留 unverified，重試轉正 ---
 
 func TestChangeSecretVerifyFailureThenRetryPromotes(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")
@@ -275,7 +275,7 @@ func TestChangeSecretRetryBackoffAndAbandon(t *testing.T) {
 	assert.Empty(t, due, "已放棄者 SHALL NOT 再被排入重試")
 }
 
-// --- D8：同帳號不疊加候選 ---
+// --- 同帳號不疊加候選 ---
 
 func TestChangeSecretSkipsAccountWithPendingCandidate(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")
@@ -320,7 +320,7 @@ func TestChangeSecretAccountScopeResolution(t *testing.T) {
 	records := f.runner.RunPlan(all)
 	assert.Len(t, records, 2, "@ALL SHALL 展開為該資產全部帳號")
 
-	// 清掉第一輪產生的候選，讓第二輪不被 D8 擋下
+	// 清掉第一輪產生的候選，讓第二輪不被「不疊加候選」擋下
 	require.NoError(t, f.db.Where("1 = 1").Delete(&model.ChangeSecretCandidate{}).Error)
 
 	named := f.plan(t, func(p *model.ChangeSecretPlan) {
@@ -341,7 +341,7 @@ func TestChangeSecretPlanAccountScopeDefaultsToAll(t *testing.T) {
 	assert.False(t, scope.Contains("deploy"))
 }
 
-// --- D6：SSH 金鑰輪替三段式 ---
+// --- SSH 金鑰輪替三段式 ---
 
 func TestChangeSecretKeyRotationThreeStage(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")

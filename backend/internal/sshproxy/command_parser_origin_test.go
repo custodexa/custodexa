@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// === 指令原點修正（terminal-screen-parser-inhouse，design.md D4）===
+// === 指令原點修正 ===
 //
 // 結算時解析的緩衝區不含提示符，但 shell／readline 的欄位算術以「含提示符的整行」為原點。
 // 清行序列（`\r` ＋ CUF×N ＋ EL，N 等於提示符顯示寬度）因而從錯誤的欄位切開，
@@ -25,7 +25,7 @@ func captureLog(buf *bytes.Buffer) func() {
 	}
 }
 
-// TestBeginTypingSnapshotsUntrimmedOrigin 釘死原點快照的兩個關鍵語義（tasks 4.3）。
+// TestBeginTypingSnapshotsUntrimmedOrigin 釘死原點快照的兩個關鍵語義。
 //
 // 為什麼不能拿 promptText 當原點：它經過 TrimSpace。
 // `ssh-test-server:~$ ` 是 19 欄，trim 後只剩 18 欄，種進去就又差一欄；
@@ -160,11 +160,11 @@ func TestCommandParserOriginPrefixIsVerifiedNotAssumed(t *testing.T) {
 }
 
 // TestCommandParserScreenHasNoOrphanPromptRemnant 是移除 trimOrphanPromptRemnantPrefix 的
-// 前置閘門（tasks 4.4）與斷言搬家的去處（tasks 5.4）。
+// 前置閘門與斷言搬家的去處。
 //
 // chunk 切在 sqlcmd 提示符數字**之後**時（快照 `55`、回顯 `> …`），舊虛擬螢幕對 `\x1b[1G`
 // 從第 2 欄起覆寫，行首會殘留一個孤立的 `>`（螢幕 `>55> SELECT name`）。
-// 自有解析器修好 CHA（`CSI 1G` 落在第 0 欄，D5 B1）之後，該形態在原理上不再產生。
+// 自有解析器修好 CHA（`CSI 1G` 落在第 0 欄）之後，該形態在原理上不再產生。
 func TestCommandParserScreenHasNoOrphanPromptRemnant(t *testing.T) {
 	cases := []struct {
 		name string
@@ -191,7 +191,7 @@ func TestCommandParserScreenHasNoOrphanPromptRemnant(t *testing.T) {
 				t.Errorf("螢幕最後一行 = %q, want %q", got, c.want)
 			}
 			if strings.HasPrefix(got, ">") {
-				t.Errorf("孤立的 `>` 殘骸又出現了：%q——D6 的移除裁決須作廢", got)
+				t.Errorf("孤立的 `>` 殘骸又出現了：%q——該移除裁決須作廢", got)
 			}
 		})
 	}
@@ -231,8 +231,8 @@ func TestTrimSqlcmdPromptPrefixOrphanRemnantCases(t *testing.T) {
 	}
 }
 
-// TestCommandParserDegradeLogsOnceWithoutCommandBytes 驗證解析 panic 的降級可觀測性
-// （tasks 4.2、design.md D7.4）：每個實例最多一行，且日誌不含任何指令位元組。
+// TestCommandParserDegradeLogsOnceWithoutCommandBytes 驗證解析 panic 的降級可觀測性：
+// 每個實例最多一行，且日誌不含任何指令位元組。
 func TestCommandParserDegradeLogsOnceWithoutCommandBytes(t *testing.T) {
 	// 指令文字可能是使用者在終端打錯位置的密碼，一個位元組都不得進日誌
 	const secret = "mysql -u root -pSuperSecret123"
@@ -270,7 +270,7 @@ func TestCommandParserDegradeLogsOnceWithoutCommandBytes(t *testing.T) {
 }
 
 // TestCommandParserDropLogsOnceWithoutCommandBytes 驗證「虛擬螢幕觸及記憶體上限而丟棄內容」
-// 的可觀測性（tasks 4.2、design.md D14 第 11 條）。上限本身保留，但不得靜默。
+// 的可觀測性。上限本身保留，但不得靜默。
 func TestCommandParserDropLogsOnceWithoutCommandBytes(t *testing.T) {
 	const secret = "psql -h db -U admin -W Hunter2Hunter2"
 	// 超限定位：CHA 到最大欄後再右移，寫入時必然越過 maxCols

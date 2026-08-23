@@ -115,7 +115,7 @@ func TestTOTPNextStepAccepted(t *testing.T) {
 	}
 }
 
-// TestMFAEnrollmentGateByPolicy D5：三態政策決定誰被導向強制註冊
+// TestMFAEnrollmentGateByPolicy 三態政策決定誰被導向強制註冊
 func TestMFAEnrollmentGateByPolicy(t *testing.T) {
 	auth, policies, db := setupMFAEnv(t)
 
@@ -185,7 +185,7 @@ func TestEnrollmentTokenScopeAndDenyByDefault(t *testing.T) {
 	}
 }
 
-// TestCompleteEnrollmentIssuesSession D12：綁定完成直接換發正式 token
+// TestCompleteEnrollmentIssuesSession 綁定完成直接換發正式 token
 func TestCompleteEnrollmentIssuesSession(t *testing.T) {
 	auth, policies, db := setupMFAEnv(t)
 	policies.Update(policy.PolicyMFARequired, policy.MFARequiredAll, "admin")
@@ -223,7 +223,7 @@ func TestCompleteEnrollmentIssuesSession(t *testing.T) {
 	}
 }
 
-// TestEnrollmentTokenReplayCannotRebind 對抗驗證 MFA-1：綁定完成後同枚 enrollment token
+// TestEnrollmentTokenReplayCannotRebind：綁定完成後同枚 enrollment token
 // 重放 setup/confirm 不得重置或改綁已註冊帳號的第二因子
 func TestEnrollmentTokenReplayCannotRebind(t *testing.T) {
 	auth, policies, db := setupMFAEnv(t)
@@ -271,7 +271,7 @@ func TestEnrollmentTokenReplayCannotRebind(t *testing.T) {
 	}
 }
 
-// TestEnrollmentConfirmFailureCountsToLockout 對抗驗證 MFA-2：綁定確認的碼錯計入共用鎖定計數
+// TestEnrollmentConfirmFailureCountsToLockout：綁定確認的碼錯計入共用鎖定計數
 func TestEnrollmentConfirmFailureCountsToLockout(t *testing.T) {
 	auth, policies, db := setupMFAEnv(t)
 	policies.Update(policy.PolicyMFARequired, policy.MFARequiredAll, "admin")

@@ -17,18 +17,18 @@ import (
 	"gorm.io/gorm"
 )
 
-// 匯出上限（audit-workflows D1）：同步串流的保護，超過即截斷並在 manifest 標明（不靜默截斷）。
+// 匯出上限：同步串流的保護，超過即截斷並在 manifest 標明（不靜默截斷）。
 // 錄影檔可能很大，數量上限最緊
 const (
 	maxExportAuditLogs  = 50000
 	maxExportCommands   = 50000
 	maxExportRecordings = 100
 	exportPageSize      = 1000
-	// auditLogPageSize AuditLogService.List 對 PageSize>100 會砍成 20（F1），故此段用 100
+	// auditLogPageSize AuditLogService.List 對 PageSize>100 會砍成 20，故此段用 100
 	auditLogPageSize = 100
 )
 
-// ExportFilter 證據匯出篩選（audit-workflows D1）：user/asset/time 或指定 session
+// ExportFilter 證據匯出篩選：user/asset/time 或指定 session
 type ExportFilter struct {
 	UserID    *uint
 	AssetID   *uint
@@ -36,7 +36,7 @@ type ExportFilter struct {
 	EndTime   *time.Time
 	SessionID *uint // 指定單一會話（優先於 user/asset/time）
 
-	// Subject 樞紐宣告（workbench-exits-and-export D3 方案 C）：非空即進入
+	// Subject 樞紐宣告：非空即進入
 	// **事件報告模式**——六來源的事件事實報告，不含任何內容本體（剪貼簿內容、
 	// 檔案本體、錄影檔）。空＝維持既有證據包模式，行為與本欄位出現前完全相同。
 	// 樞紐 id 沿用 UserID／AssetID，不另立參數
@@ -81,7 +81,7 @@ type ExportedFile struct {
 	SHA256 string `json:"sha256"`
 }
 
-// ExportManifest 證據包 manifest（保管鏈證據，audit-workflows D1）
+// ExportManifest 證據包 manifest（保管鏈證據）
 type ExportManifest struct {
 	// Mode 包裡有什麼（evidence_bundle｜event_report）。**放在最前面**：
 	// 讀者判讀任何一段之前，得先知道自己拿到的是哪一種包
@@ -105,7 +105,7 @@ type ExportManifest struct {
 	// **沒有這段，一段空白會被讀成「這段期間沒發生過這類事」**
 	Coverage []ExportCoverage `json:"coverage,omitempty"`
 	// Signed 本包是否已簽章；未簽時 SignedReason 給機器碼。
-	// 靜默不寫簽章檔會讓讀者無從分辨「未啟用」與「簽章被刪」（D5 E2）
+	// 靜默不寫簽章檔會讓讀者無從分辨「未啟用」與「簽章被刪」
 	Signed       bool   `json:"signed"`
 	SignedReason string `json:"signed_reason,omitempty"`
 	// Disclosures 這個包能證明什麼、不能證明什麼（機器碼＋說明）
@@ -115,7 +115,7 @@ type ExportManifest struct {
 	NoteCodes map[string]string `json:"note_codes,omitempty"`
 }
 
-// AuditExportService 稽核證據匯出打包（audit-workflows D1，PCI 10.5.1）
+// AuditExportService 稽核證據匯出打包（PCI 10.5.1）
 type AuditExportService struct {
 	db         *gorm.DB
 	auditLogs  *AuditLogService
@@ -125,7 +125,7 @@ type AuditExportService struct {
 	// 報告的範圍條件、逐類別筆數與保留覆蓋三態必須與畫面同一段程式碼算出來，
 	// 否則「包內範圍 ≠ 畫面範圍」會在兩份實作各自漂移時無聲發生
 	timeline *TimelineService
-	// signing manifest Ed25519 簽章（audit-log-compliance 10.3.4/F5）；
+	// signing manifest Ed25519 簽章；
 	// nil = 不簽（單測與降級相容），SetSigning 注入
 	signing *keyvault.ExportSigningService
 }
@@ -227,10 +227,10 @@ func (s *AuditExportService) writeEntry(zw *zip.Writer, name string, manifest *E
 }
 
 // writeAuditLogs 分頁撈操作日誌（至上限），寫 JSON 陣列。
-// 對抗驗證 F1：AuditLogService.List 對 PageSize>100 會靜默砍成 20，故此處用
+// AuditLogService.List 對 PageSize>100 會靜默砍成 20，故此處用
 // auditLogPageSize(=100)；truncated 由 res.Total 與已收集數推導（不可用「回傳數<請求
 // pageSize」判最後一頁——被砍頁時恆成立、會誤判未截斷）。
-// 對抗驗證 F2 的**訂正**（workbench-exits-and-export D0）：立案當時 audit_logs 確實
+// 一項**訂正**：立案當時 audit_logs 確實
 // 無資產維度，故原實作只套 user/time 並標註「asset 篩選未及於此段」。`audit_logs.asset_id`
 // 已由 auditor-workbench 補上，若仍照原文放行，資產樞紐的匯出會回傳該時段**全體使用者**
 // 的操作日誌——那不是標註問題，是實質過度揭露。現改為**套用**資產維度，並改標其
@@ -265,7 +265,7 @@ func (s *AuditExportService) writeAuditLogs(zw *zip.Writer, filter *ExportFilter
 	}
 	manifest.Counts["audit_logs"] = len(logs)
 	manifest.Truncated["audit_logs"] = truncated
-	// 資產維度已套用，但其歷史邊界須誠實標註（D5 E5）
+	// 資產維度已套用，但其歷史邊界須誠實標註
 	if filter.AssetID != nil {
 		manifest.NoteCodes["audit_logs"] = NoteCodeAuditLogAssetBoundary
 	}
@@ -426,7 +426,7 @@ func (s *AuditExportService) writeManifest(zw *zip.Writer, manifest *ExportManif
 		return fmt.Errorf("寫入 manifest 失敗: %w", err)
 	}
 
-	// manifest.sig：Ed25519 簽章（base64，audit-log-compliance 10.3.4/F5）。
+	// manifest.sig：Ed25519 簽章（base64）。
 	// 驗證：以公鑰對 manifest.json 檔案位元組驗 base64 簽章
 	if s.signing != nil {
 		sigEntry, err := zw.Create("manifest.sig")

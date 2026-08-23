@@ -46,7 +46,7 @@ func sampleAlert() model.CommandAlert {
 }
 
 func TestAlertNotifier_Notify(t *testing.T) {
-	t.Run("payload 欄位符合 design D3 形狀", func(t *testing.T) {
+	t.Run("payload 欄位符合約定形狀", func(t *testing.T) {
 		var gotBody []byte
 		var gotContentType string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func TestAlertNotifier_Notify(t *testing.T) {
 	})
 }
 
-// TestAlertBlockedSurfacing 阻斷型告警的 payload 衛生（design D6）：
+// TestAlertBlockedSurfacing 阻斷型告警的 payload 衛生：
 // 阻斷事實走 blocked 布林欄與通道語系短語，不靠 RuleName 後綴散文
 func TestAlertBlockedSurfacing(t *testing.T) {
 	t.Run("webhook payload 帶 blocked 欄", func(t *testing.T) {
@@ -332,7 +332,7 @@ func awaitBody(t *testing.T, received chan []byte) []byte {
 	}
 }
 
-// TestNotifyEvent 系統事件結構化投遞（design D3/D4）：webhook 機器形狀、
+// TestNotifyEvent 系統事件結構化投遞：webhook 機器形狀、
 // Slack 走 per-channel 語系渲染、契約異常降級不拒發
 func TestNotifyEvent(t *testing.T) {
 	t.Run("webhook payload 為 {event,params,sent_at}", func(t *testing.T) {
@@ -435,7 +435,7 @@ func TestNotifyEvent(t *testing.T) {
 		assert.Equal(t, "ghost.event", got.Event)
 		assert.True(t, got.Degraded)
 		assert.NotEmpty(t, got.SentAt)
-		// 未註冊 event 無契約可依：params 值全數剝除（codex 批 2 M1）
+		// 未註冊 event 無契約可依：params 值全數剝除
 		assert.Empty(t, got.Params)
 		assert.NotContains(t, string(body), "alice")
 	})
@@ -472,9 +472,9 @@ func TestNotifyEvent(t *testing.T) {
 		assert.True(t, got.Degraded, "缺必要參數時仍須投遞（合規告警不得消失）")
 	})
 
-	// 降級投遞的洩漏面（codex 批 2 M1）：Validate 失敗時，未宣告的鍵
+	// 降級投遞的洩漏面：Validate 失敗時，未宣告的鍵
 	// （呼叫端誤傳的 forensic detail、錯字鍵）值一律不得抵達收端。
-	// 淨化只管形狀，管不了「該不該出站」——D8 去識別紅線是靠 EventSpec 守的
+	// 淨化只管形狀，管不了「該不該出站」——去識別紅線是靠 EventSpec 守的
 	const leakyDetail = "dial tcp 10.0.0.5:514: connection refused"
 
 	t.Run("降級不得挾帶未宣告鍵的值（webhook）", func(t *testing.T) {
@@ -543,7 +543,7 @@ func TestNotifyEvent(t *testing.T) {
 			assert.NoError(t, json.Unmarshal(awaitBody(t, received), &payload))
 			texts[payload["text"]] = true
 		}
-		assert.Len(t, texts, 2, "降級文案應 per-channel 語系分歧（codex 批 2 M4）")
+		assert.Len(t, texts, 2, "降級文案應 per-channel 語系分歧")
 
 		var enText, zhText string
 		for text := range texts {
@@ -641,7 +641,7 @@ func TestSendTestNotification(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(gotBody, &payload))
 		assert.Equal(t, "test", payload["event"])
 		assert.NotEmpty(t, gotSignature)
-		// rule_name 為機器識別字，不再是散文「測試發送」（design D6）
+		// rule_name 為機器識別字，不再是散文「測試發送」
 		assert.Equal(t, testRuleName, payload["alert"].(map[string]any)["rule_name"])
 	})
 
@@ -676,10 +676,10 @@ func TestSendTestNotification(t *testing.T) {
 	})
 }
 
-// TestSanitizeDeliveryError 投遞錯誤脫敏（key-management-envelope M3 修正）：
+// TestSanitizeDeliveryError 投遞錯誤脫敏：
 // url.Error.Error() 內嵌完整請求 URL（webhook 路徑＝持有型 secret），脫敏後
 // 只保留 op 與 host，不得洩漏 path/query/userinfo；底層錯誤或非 url.Error
-// 夾帶已知目標 URL 時亦須抹除（codex 外審復現情境）
+// 夾帶已知目標 URL 時亦須抹除（安全審查復現的情境）
 func TestSanitizeDeliveryError(t *testing.T) {
 	t.Run("真實投遞失敗不洩漏 URL 敏感段但保留 host", func(t *testing.T) {
 		// 起再關取必然拒連位址，帶敏感 path/query/userinfo
@@ -733,11 +733,11 @@ func TestSanitizeDeliveryError(t *testing.T) {
 	})
 }
 
-// TestAlertContextReadability 脈絡行的主體可辨識性（alert-notification-readability）。
+// TestAlertContextReadability 脈絡行的主體可辨識性。
 //
 // 只測三種形態：有資產、無資產、名稱解析不到（降級）。**刻意不測**故障注入
 // （與「查不到名稱」是同一條降級分支）、字元跳脫（slackEscape 有自己的測試）、
-// 改名後重試（spec 明載的預期行為）——理由逐條見該 change 的 design D7。
+// 改名後重試（spec 明載的預期行為）——理由逐條見該 change 的 design。
 func TestAlertContextReadability(t *testing.T) {
 	zh := model.NotificationChannelLanguageZhTW
 

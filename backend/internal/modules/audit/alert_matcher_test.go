@@ -167,10 +167,10 @@ func TestAlertMatcher_MatchAndStore(t *testing.T) {
 		})
 
 		mock.ExpectBegin()
-		// audit-workflows D3：INSERT 補審閱欄 reviewed_by(nil)/reviewed_at(nil)/
+		// INSERT 補審閱欄 reviewed_by(nil)/reviewed_at(nil)/
 		// disposition="pending"/note=""（新告警未審閱；批次 Create 含全部欄位）；
-		// backend-i18n-unification D6：blocked 欄（AlertMatcher 走 alert 型規則，恆 false）
-		// command-audit-altscreen-bypass §6.3：另補 kind（規則類為 "rule"）與
+		// blocked 欄（AlertMatcher 走 alert 型規則，恆 false）
+		// 另補 kind（規則類為 "rule"）與
 		// reason_code（規則類為空字串）兩欄，位置依 model 欄序在 rule_name 之後
 		mock.ExpectQuery(`INSERT INTO "command_alerts"`).
 			WithArgs(uint(7), "遞迴強制刪除", model.AlertKindRule, "", uint(5), uint(1), nil, "rm -rf /data", model.AlertSeverityHigh, executedAt, nil, nil, model.AlertDispositionPending, "", false).

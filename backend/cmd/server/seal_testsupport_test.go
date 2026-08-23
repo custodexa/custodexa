@@ -20,7 +20,7 @@ import (
 //
 // 不用 gin.New()：段 1 專屬的設定（關閉尾斜線／路徑修正的自動 redirect、
 // 可信代理套用）全掛在 newEngine 上，測試自建 engine 等於驗一個不存在於
-// production 的 router——而 M2 的路由存在性 oracle 正是只在那些設定缺席時出現。
+// production 的 router——而 redirect 洩漏出的路由存在性 oracle 正是只在那些設定缺席時出現。
 // 日誌導向 io.Discard：逐路由掃描會產生上百行 gin 日誌，淹掉真正的失敗訊息。
 func newStageOneTestEngine(t *testing.T, s1 *stage1) *gin.Engine {
 	t.Helper()
@@ -39,7 +39,7 @@ func newStageOneTestEngine(t *testing.T, s1 *stage1) *gin.Engine {
 
 // 封印相關測試的共用夾具。
 //
-// **一律用真的 journal**（開在 t.TempDir 的定長檔）而非假物件：本批要驗的多數
+// **一律用真的 journal**（開在 t.TempDir 的定長檔）而非假物件：要驗的多數
 // 性質——admission 間隔、received 落地與否、回灌——都落在 journal 的真實行為上，
 // 用假物件驗這些等於驗自己寫的假物件。
 

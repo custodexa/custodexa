@@ -325,7 +325,7 @@
 </template>
 
 <script setup>
-// 審核範圍雙視角總覽（approval-routing-quorum D-5/D-7）：admin only 獨立頁。
+// 審核範圍雙視角總覽：admin only 獨立頁。
 // 預設客體中心（這個節點/資產誰審、可審人數 vs 門檻——涵蓋缺口與卡單風險可視）；
 // 「按審核人員」矩陣（個人與群組皆成列）。一站式新增（個人代配角色/群組零代配）
 import { ref, reactive, computed, onMounted } from 'vue'

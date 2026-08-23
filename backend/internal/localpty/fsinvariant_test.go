@@ -98,7 +98,7 @@ func scanFilesystem(t *testing.T, uid, gid uint32) *fsScan {
 	t.Helper()
 	scanOnce.Do(func() {
 		res := &fsScan{}
-		// **單趟不剪枝遍歷，可達性沿途維護**（fsinvariant-scope-correction）。
+		// **單趟不剪枝遍歷，可達性沿途維護**。
 		//
 		// 原本是兩趟：第一趟剪枝收可讀／可寫面、第二趟不剪枝收 setuid。兩趟的判準
 		// 不同（setuid 是全映像性質，不得因「該身分進不去」而漏掃），但走的是同一棵樹。
@@ -215,7 +215,7 @@ var credNameRe = regexp.MustCompile(`(?i)(SECRET|PASSWORD|PASSWD|_PWD|TOKEN|_KEY
 // 樣板字串」，且每次執行都會把被排除的檔案數印出來（不靜默）。
 var shortProbeExcludedTrees = []string{"/app", "/go"}
 
-// contentScanExcludedTrees **完全不讀取內容**的樹（fsinvariant-scope-correction）。
+// contentScanExcludedTrees **完全不讀取內容**的樹。
 //
 // 與 shortProbeExcludedTrees 是不同軸：那個只降低探針敏感度、檔案內容照樣讀過；
 // 這個是整棵移出內容讀取範圍，省下的是 I/O 本身。
@@ -585,7 +585,7 @@ func TestCLIUserCannotReadBackendProcessEnviron(t *testing.T) {
 
 // TestCLIProcessEnvironFirstEntryIsNotCredential 子程序環境組裝順序的確定性斷言。
 //
-// **本測試原本的論證已被推翻（2026-08-12，design D15）**：舊版以「環境區塊以 NUL
+// **本測試原本的論證已被推翻（2026-08-12）**：舊版以「環境區塊以 NUL
 // 分隔，client 的讀檔類命令只取得到第一段」為由讓憑證走環境變數，並以本測試釘住
 // 「第一段是 PATH」作為該保護的前提。實測 psql 的 `\lo_import` 是二進位讀取原語，
 // 可完整讀出 `/proc/<pid>/environ`（含跨會話），該保護根本不存在。
@@ -616,7 +616,7 @@ func TestCLIProcessEnvironFirstEntryIsNotCredential(t *testing.T) {
 //
 // 已知且已實測的殘留：同一降權身分的其他 DB 會話讀得到彼此的 `environ`／`cmdline`
 // （以 `\lo_import` 這類二進位讀取原語可取得完整內容——舊版「止於第一個 NUL」的
-// 說法只對文字讀取成立，見 design D15；憑證已不在其中），`fd/` 亦可列出並 readlink
+// 說法只對文字讀取成立；憑證已不在其中），`fd/` 亦可列出並 readlink
 // （同 uid 的 ptrace 檢查通過）。擋下 fd 實際讀寫的是 pts 節點的 root:tty 權限，
 // 見 TestCLISessionPTYIsNotAccessibleToCLIUser。
 // 要完全消除跨會話面需 per-session uid，見 design 的殘留風險段。

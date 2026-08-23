@@ -16,12 +16,12 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// keyvault 包內測試助手（modular-architecture W2 2.5）。
+// keyvault 包內測試助手。
 //
 // **為何是複本而非共用**：本包的包內測試（`package keyvault`）SHALL NOT import
 // `internal/service`——後者 import 本包，測試內 import 會構成 Go 的
 // 「import cycle not allowed in test」。原本住 `internal/service` 的
-// `aes_codec_testhelper_test.go`／`aad_write_guard_test.go` 已於 W9 遷入本目錄的
+// `aes_codec_testhelper_test.go`／`aad_write_guard_test.go` 已遷入本目錄的
 // 外部測試包 `package keyvault_test`（該包同樣看不見本檔），本檔仍為 keyvault
 // 側的等價複本，實作逐行相同、只調整型別限定。兩份都只存在於 `_test.go`，
 // 不構成新的無 AAD 寫出入口。
@@ -29,8 +29,8 @@ import (
 // sealNoAAD **測試層 stdlib 助手**：以 crypto/aes＋cipher.NewGCM 直接封出
 // 無 AAD 的 nonce+ciphertext。
 //
-// 為何在測試裡手工封：無 AAD 的寫出能力已於 release-transitional-cleanup 整組
-// 刪除（先是 encryptNoAADForRollback／EncodeEnvelope，P2 M1 再刪
+// 為何在測試裡手工封：無 AAD 的寫出能力已在過渡格式收尾時整組
+// 刪除（先是 encryptNoAADForRollback／EncodeEnvelope，P2 再刪
 // AESCrypto.Encrypt／EncryptBytes 並使 EncryptBytesAAD 對空 aad 回
 // crypto.ErrAADRequired）——那正是被驗收的事實。負向測試仍需要這種值來模擬
 // 「拆除前建立的資料庫」或「繞過 API 的資料庫直寫」，故由測試自行構造。
@@ -112,7 +112,7 @@ func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 
 // decryptColumn 測試用：以欄位身分（table|column）解密。
 //
-// D5 cutover（tasks 1.7）後，遷移／輪替／服務層寫出的一律是帶 AAD 的 `enc:a1`，
+// AAD cutover 後，遷移／輪替／服務層寫出的一律是帶 AAD 的 `enc:a1`，
 // 而 ref-less 的 KeyManagerService.Decrypt **會（正確地）拒收帶 AAD 密文**
 // （ErrCipherRefIncomplete）——測試要驗「migrate/rotate 之後仍解得回原值」時
 // 必須經此入口，與生產讀取路徑同源。
@@ -123,7 +123,7 @@ func decryptColumn(km *KeyManagerService, table, column, ciphertext string) (str
 
 // encryptColumn 測試用：以欄位身分（table|column）加密為終態格式（`enc:a1`）。
 //
-// 取代已刪除的 `encryptNoAADForRollback`（release-transitional-cleanup 3.2）——
+// 取代已刪除的 `encryptNoAADForRollback`——
 // 那是全專案唯一的無 AAD 寫出方法，被大量測試借用為「取得一個合法密文」的捷徑。
 // 拆除後測試改走與生產同源的 EncryptFor；**刻意要求列身分**，使測試不可能繞過
 // AAD 綁定。真正需要過渡格式值的負向測試另用 preReleaseEnvelope 手工構造。
@@ -145,9 +145,9 @@ const keyvaultGuardModulePath = "github.com/custodexa/backend"
 
 // repoRoot 定位 backend module 根（本套件守衛的共用掃描根）。
 //
-// **不用 cwd 相對、也不用固定層數 `..`**（modular-architecture W1 1.19 定的修法，
-// W2 隨檔遷入 keyvault 時原樣沿用）：兩者都與「本 package 目前住在樹的第幾層」
-// 綁死，package 一下移就指向錯誤位置，而 WalkDir 對不存在／空目錄多半只回零命中
+// **不用 cwd 相對、也不用固定層數 `..`**：
+// 兩者都與「本 package 目前住在樹的第幾層」綁死，package 一下移就指向錯誤位置，
+// 而 WalkDir 對不存在／空目錄多半只回零命中
 // ——守衛於是在掃空的情況下照樣綠。改以「自本測試檔位置向上找 go.mod，並核對
 // module 行」為身分錨點：檔案搬到 module 內任何深度都仍指向同一個根，
 // 錨點若失效則 Fatal 而非靜默掃錯樹。

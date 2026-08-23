@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// refresh cookie 的 `Secure` 屬性改由安全政策管轄（codeql-rescan-settlement 決策 8）：
+// refresh cookie 的 `Secure` 屬性改由安全政策管轄：
 // 發放時現讀、管理端可調、變更即生效不需重啟；政策未接線時落安全側。
 //
 // **本檔釘的是「值從哪裡來」與「讀不到時往哪邊倒」**，不是 cookie 的其餘屬性

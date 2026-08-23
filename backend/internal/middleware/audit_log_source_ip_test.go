@@ -1,8 +1,8 @@
 package middleware
 
-// 已認證請求審計列的來源位址不可偽造（audit-coverage-closure 批 8／8.7）。
+// 已認證請求審計列的來源位址不可偽造。
 //
-// 批 7 修掉了 `/auth/login` 那條零憑證路徑；本檔守的是**覆蓋面最大的一處**——
+// `/auth/login` 那條零憑證路徑已另行修掉；本檔守的是**覆蓋面最大的一處**——
 // `AuditLogMiddleware` 為每一個已認證請求寫的那一列。它原本取 `c.ClientIP()`，
 // 在未設 `TRUSTED_PROXIES` 的部署下由請求方的轉送標頭決定，故任何持有有效帳號者
 // 送一個 `X-Forwarded-For`，就能把自己**全部操作**的來源位址寫成任選的值：

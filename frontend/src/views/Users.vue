@@ -57,7 +57,7 @@
             />
           </el-select>
         </el-form-item>
-        <!-- 供應來源篩選（idp-oidc-integration D14.1）：伺服端篩選。
+        <!-- 供應來源篩選：伺服端篩選。
              列表是分頁的，在前端篩當頁會讓使用者看到「第 2 頁明明有 oidc 帳號，
              篩選後卻說沒有」 -->
         <el-form-item :label="$t('users.sourceColumn')">
@@ -94,7 +94,7 @@
 
     <!-- 用戶列表 -->
     <div class="list-card">
-      <!-- 欄寬預算（UI 審查輪 2 R5／NEW-HIGH-1 的**類**修法）——
+      <!-- 欄寬預算——
            先算再排，不逐欄補丁：1280 視窗下本頁表格可視寬約 978px，
            下列宣告寬總和 918（46+70+180+140+130+112+240）必須守在該值內，
            因此不會產生橫向捲軸，也就沒有任何欄位被浮層蓋住的可能。
@@ -136,7 +136,7 @@
                 <span class="row-detail__label">{{ $t('common.createdAt') }}</span>
                 <span class="row-detail__value">{{ formatDateTime(row.created_at) }}</span>
               </div>
-              <!-- 閒置豁免是**控制項**不是資訊，收進展開列仍須可直接操作（D8） -->
+              <!-- 閒置豁免是**控制項**不是資訊，收進展開列仍須可直接操作 -->
               <div class="row-detail__item">
                 <el-tooltip
                   :content="$t('users.inactivityExemptTooltip')"
@@ -192,10 +192,10 @@
             </div>
           </template>
         </el-table-column>
-        <!-- 帳號來源（idp-oidc-integration D14.1）：供應來源為權威欄位，
+        <!-- 帳號來源：供應來源為權威欄位，
              不由 is_ldap 推導——OIDC 供應帳號的 is_ldap 為 false，只認該欄
              會把外部帳號一律顯示成本地帳號。
-             位置緊接使用者名稱（UI 審查 MEDIUM-1）：擺在 email/全名之後時，
+             位置緊接使用者名稱：擺在 email/全名之後時，
              1280 寬度下這欄落在 fixed 操作欄的覆蓋範圍內，本輪最重要的新資訊
              預設看不到，而 macOS 覆蓋式捲軸不會提示右邊還有欄位 -->
         <el-table-column
@@ -217,7 +217,7 @@
             >
               {{ sourceLabel(row) }}
             </el-tag>
-            <!-- provider 實例名（D14.1）：多 provider 並存下，「這個人從哪個 IdP 來」
+            <!-- provider 實例名：多 provider 並存下，「這個人從哪個 IdP 來」
                  才是管理者要看的；只顯示籠統的「OIDC」無從判斷解綁影響面。
                  綁多個時全部列出——只顯示第一個會讓人誤以為解綁一個就切斷全部途徑 -->
             <el-tag
@@ -283,8 +283,8 @@
             </el-space>
           </template>
         </el-table-column>
-        <!-- 操作欄**不再 fixed**（UI 審查輪 2 R5）：fixed 欄是浮在內容上的浮層，
-             一旦總寬超出可視寬就會靜默蓋掉右側資料欄——輪 1 把它從 470 縮到 280
+        <!-- 操作欄**不再 fixed**：fixed 欄是浮在內容上的浮層，
+             一旦總寬超出可視寬就會靜默蓋掉右側資料欄——先前把它從 470 縮到 280
              只換回 190px，1280 下角色與狀態仍是 100% 被覆蓋。與其逐欄前移，
              不如讓表格根本不橫捲：欄寬總和已收在可視寬內，fixed 沒有存在意義，
              留著只是把同一個缺陷留給下一次「再加一欄」 -->
@@ -303,7 +303,7 @@
             >
               {{ $t('common.edit') }}
             </el-button>
-            <!-- 外部身分管理（idp-oidc-integration 5.5）：對每個帳號都開放——
+            <!-- 外部身分管理：對每個帳號都開放——
                  本地帳號亦可由 admin 綁定外部身分（UA-1「admin SHALL 可為既有帳號
                  顯式綁定」），只對 oidc 來源開放會使該路徑無從進入。
                  這是本 change 的主要入口，維持常駐可見，不收進選單 -->
@@ -332,7 +332,7 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <!-- 變更密碼（D14.5）：外部身分帳號無本地密碼，保留項目但停用並
+                  <!-- 變更密碼：外部身分帳號無本地密碼，保留項目但停用並
                        就地說明原因（隱藏會讓人以為功能不存在）。停用項的 tooltip
                        在 EP 下不會觸發（pointer-events: none），故原因寫成副行；
                        用短句而非完整 tooltip 文案——長句會把選單撐到 217×297，
@@ -477,7 +477,7 @@
           :label="$t('common.role')"
           prop="roles"
         >
-          <!-- 由 /roles API 生成（role-enum-metadata-sync 補遺）：勿硬編碼 -->
+          <!-- 由 /roles API 生成（補遺）：勿硬編碼 -->
           <el-checkbox-group v-model="form.roles">
             <el-checkbox
               v-for="role in assignableRoles"
@@ -503,8 +503,8 @@
       </template>
     </el-dialog>
 
-    <!-- 審核範圍對話框（role-enum-metadata-sync H4）：
-         approver-scope API 自 access-policy-approval 即存在，本對話框補上缺線的管理 UI；
+    <!-- 審核範圍對話框：
+         approver-scope API 早已存在，本對話框補上缺線的管理 UI；
          admin only（後端 RequireRole 強制），資產 XOR 資產分組 -->
     <el-dialog
       v-model="scopeDialogVisible"
@@ -571,7 +571,7 @@
         </template>
       </el-table>
 
-      <!-- 新增表單與矩陣頁共用（approval-routing-quorum：雙入口同組件防漂移） -->
+      <!-- 新增表單與矩陣頁共用（雙入口同組件防漂移） -->
       <ApproverScopeForm
         v-if="scopeDialogVisible && scopeUser.id"
         class="scope-add-form"
@@ -594,7 +594,7 @@
         :closable="false"
         style="margin-bottom: 20px"
       />
-      <!-- 可指派清單由 /roles API 拉取（role-enum-metadata-sync）：
+      <!-- 可指派清單由 /roles API 拉取：
            後端新增角色自動出現，勿硬編碼 checkbox -->
       <el-form label-position="top">
         <el-form-item :label="$t('common.role')">
@@ -680,7 +680,7 @@
       </template>
     </el-dialog>
 
-    <!-- 外部身分管理（idp-oidc-integration 5.5 / design 行 313）。
+    <!-- 外部身分管理。
          承載形式定案為**抽屜**而非獨立路由頁：內容是既有列表列的縱深（基本資料
          已在列上），抽屜可保留列表脈絡且不需新增路由與側欄項目；表格本體抽成
          獨立元件，抽屜只是殼（happy-dom 對 el-drawer 的 teleport 不友善，
@@ -691,7 +691,7 @@
       size="90%"
       direction="rtl"
     >
-      <!-- 面板操作成功但列表刷新失敗（輪 2 codex MEDIUM-3）：抽屜標頭與帳號狀態
+      <!-- 面板操作成功但列表刷新失敗：抽屜標頭與帳號狀態
            標籤仍是舊值，不得靜默——尤其「可轉換為僅外部登入」這種以舊狀態為前提
            的入口，會讓管理者對已轉換的帳號再按一次 -->
       <el-alert
@@ -716,7 +716,7 @@
           </el-button>
         </template>
       </el-alert>
-      <!-- :key 綁 user id（讀碼審查 HIGH-1）：換使用者時強制重建元件，
+      <!-- :key 綁 user id：換使用者時強制重建元件，
            連同在途請求與表單狀態一併丟棄，不倚賴元件內部的清理是否完備 -->
       <UserExternalIdentities
         v-if="identityDrawerVisible && identityUser.id"
@@ -775,7 +775,7 @@ import {
   deleteApproverScope,
 } from '@/api/accessRequests'
 
-// 元件層日誌一律走白名單摘要（讀碼審查 MEDIUM-6）：本頁的請求本文含明文密碼
+// 元件層日誌一律走白名單摘要：本頁的請求本文含明文密碼
 // 與 Email，把 AxiosError 原樣寫進 console 等同於在 DevTools 與集中日誌外洩
 const logFailure = (event, error) => console.error(...apiErrorSummary(event, error))
 
@@ -834,13 +834,13 @@ const dialogTitle = computed(() => {
   return isEdit.value ? t('users.editTitle') : t('users.create')
 })
 
-// —— 帳號來源與外部憑證判定（idp-oidc-integration D14.1/D14.5）——
+// —— 帳號來源與外部憑證判定——
 
 // 供應來源值域（後端 model.AuthSource*）；未知值原樣顯示，不吞成「本地」
 const KNOWN_AUTH_SOURCES = ['local', 'ldap', 'oidc']
 
 // 供應來源標籤：以 provisioning_origin 為權威；舊後端無此欄時退回 is_ldap 推導
-// 未知值不吞成「本地」，但也不直接輸出裸機器碼（UI 審查 LOW-3）：後端日後加
+// 未知值不吞成「本地」，但也不直接輸出裸機器碼：後端日後加
 // saml／oauth2 時，畫面應顯示「其他（saml）」而非違反 i18n 規範的裸值
 const sourceLabel = (row) => {
   const origin = row?.provisioning_origin || (row?.is_ldap ? 'ldap' : 'local')
@@ -856,7 +856,7 @@ const isExternalAccount = (row) =>
   (row?.external_credential === undefined && row?.is_ldap === true)
 
 // 列上「更多」選單靠右對齊（bottom-end）：en-US 的長項目會把選單推到距視窗
-// 右緣僅 1px（輪 3 NEW-LOW-1）。preventOverflow 的 padding 保底留白，
+// 右緣僅 1px。preventOverflow 的 padding 保底留白，
 // 與抽屜內選單的視覺留白一致。保留 EP 預設的 computeStyles 設定
 const menuPopperOptions = {
   modifiers: [
@@ -900,7 +900,7 @@ const passwordRules = computed(() => ({
 }))
 
 // 取得用戶列表。
-// 回傳成功與否（輪 2 codex MEDIUM-3）：呼叫端若把「刷新完成」當成「拿到新資料」，
+// 回傳成功與否：呼叫端若把「刷新完成」當成「拿到新資料」，
 // 失敗時會拿舊列表回填抽屜狀態，畫面上就出現「操作成功」後仍顯示舊狀態的假象
 const fetchUserList = async () => {
   loading.value = true
@@ -974,7 +974,7 @@ const handleStatusChange = async (row) => {
   }
 }
 
-// 切換閒置停用豁免（D8）：失敗回滾 switch，避免顯示與後端不一致
+// 切換閒置停用豁免：失敗回滾 switch，避免顯示與後端不一致
 const handleExemptChange = async (row) => {
   row._exemptLoading = true
   try {
@@ -1057,7 +1057,7 @@ const handleSubmit = async () => {
   }
 }
 
-// —— 審核範圍管理（role-enum-metadata-sync H4；approval-routing-quorum 四維化，
+// —— 審核範圍管理（四維化，
 // 新增表單收斂至共用 ApproverScopeForm，矩陣總覽在 /approver-scopes 獨立頁）——
 const scopeDialogVisible = ref(false)
 const scopeLoading = ref(false)
@@ -1065,7 +1065,7 @@ const scopeUser = reactive({ id: null, username: '' })
 const userScopes = ref([])
 const scopeGroupPaths = ref({})
 
-// D5 整改：物件/字串兩形判定收斂至 useRoles 的 hasRole，本頁不再自寫
+// 物件/字串兩形判定收斂至 useRoles 的 hasRole，本頁不再自寫
 const hasApproverRole = (row) => hasRole(row.roles, 'approver')
 
 const loadScopes = async () => {
@@ -1123,7 +1123,7 @@ const handleRemoveScope = async (row) => {
   }
 }
 
-// —— 外部身分管理（idp-oidc-integration 5.5）——
+// —— 外部身分管理——
 // 傳整列（而非只有 id）：面板需要 username 與 external_credential 才能把
 // 「解綁後這個帳號還能不能登入」講清楚
 const identityDrawerVisible = ref(false)
@@ -1139,14 +1139,14 @@ const handleManageIdentities = (row) => {
 
 // 面板內的破壞性操作（解綁＋停用、改為僅外部登入）會改變帳號本體狀態。
 // 只刷新列表而不回填抽屜標頭，管理者會看到「操作成功」的 toast 消失後畫面
-// 仍寫著舊狀態，無從自證剛才那一下是否生效（UI 審查 MEDIUM-7）。
+// 仍寫著舊狀態，無從自證剛才那一下是否生效。
 //
-// 刷新本身也會失敗（輪 2 codex MEDIUM-3）：`fetchUserList` 吞掉錯誤並保留舊列表，
+// 刷新本身也會失敗：`fetchUserList` 吞掉錯誤並保留舊列表，
 // 舊版把它當成一定成功，於是 external-only 轉換成功後畫面仍顯示「具本地密碼、
 // 可轉換」——管理者會再按一次，或據此判斷轉換沒生效。失敗時一律標記狀態過期，
 // 由抽屜警示與面板的入口停用共同承擔，不靜默
 //
-// 事件歸屬與順序（輪 3 codex MEDIUM）：面板可在換人／卸載後才收到成功回應，
+// 事件歸屬與順序：面板可在換人／卸載後才收到成功回應，
 // 該事件帶的是**當時**的 user id；與目前抽屜不符時一律忽略，否則等於拿別人的
 // 操作驅動這個帳號的狀態。同時以序號防止較舊的刷新覆蓋較新的結論
 let identityRefreshSeq = 0
@@ -1165,7 +1165,7 @@ const handleIdentitiesChanged = async (userId) => {
   const fresh = userList.value.find((u) => u.id === targetId)
   if (!fresh) {
     // 刷新成功但目標缺席（篩選、分頁，或操作本身讓帳號退出目前結果集）：
-    // 抽屜上的帳號狀態同樣是舊值，清掉旗標等於重新開放不可逆入口（輪 3 codex MEDIUM）
+    // 抽屜上的帳號狀態同樣是舊值，清掉旗標等於重新開放不可逆入口
     identityRefreshFailed.value = true
     return
   }
@@ -1341,7 +1341,7 @@ onMounted(() => {
 /* Element Plus 的按鈕間距靠相鄰選擇器 `.el-button + .el-button` 給，被
    `el-dropdown` 包住的按鈕不再是前一顆的相鄰兄弟，margin 直接失效——
    結果是「更多」觸發鈕與前一顆按鈕的點擊熱區貼在一起（gap 0px），
-   且 el-dropdown 預設 vertical-align: top 使兩者基線差 4px（輪 2 NEW-MEDIUM-2） */
+   且 el-dropdown 預設 vertical-align: top 使兩者基線差 4px */
 .row-more {
   margin-left: 12px;
   vertical-align: middle;

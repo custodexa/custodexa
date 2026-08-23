@@ -15,7 +15,7 @@ type Ticket struct {
 
 // Admit 取得 admission 資格。
 //
-// 正面契約（D6.5 誠實邊界 1）：
+// 正面契約：
 //   - 範圍＝單一全域最小間隔，不做 per-source（保護的是全域 fsync 與材料驗證成本）。
 //   - 時鐘＝單調時鐘（time.Since），SHALL NOT 使用牆鐘，否則校時可繞過或無限延長。
 //   - 基準僅於「CAS 勝出且 received 成功落地」之後更新（見 Release），

@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * LDAP 目錄設定（ldap-settings-migration 3.1／4.x）的 API 客戶端。
+ * LDAP 目錄設定的 API 客戶端。
  *
  * **singleton 資源**：無集合端點、無資源 id——`/ldap-directory` 一條路徑同時是
  * 讀、upsert 與軟刪的對象。全部 admin only（後端 RequireRole 才是強制點）。

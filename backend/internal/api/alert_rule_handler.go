@@ -21,7 +21,7 @@ type AlertRuleServiceInterface interface {
 	Delete(id uint) error
 }
 
-// AlertRuleHandler 告警規則 API handler（command-alerts D4，admin only）
+// AlertRuleHandler 告警規則 API handler（command-alerts，admin only）
 type AlertRuleHandler struct {
 	ruleService AlertRuleServiceInterface
 }
@@ -120,12 +120,12 @@ func (h *AlertRuleHandler) Delete(c *gin.Context) {
 		respondRuleError(c, err)
 		return
 	}
-	// 成功訊息不落 payload（design D9）：前端以自有 $t 文案顯示
+	// 成功訊息不落 payload：前端以自有 $t 文案顯示
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // RegisterRoutes 註冊告警規則路由：
-// 規則 CUD 影響全系統告警行為，整組 admin only（與 user 管理同模式，design D4）
+// 規則 CUD 影響全系統告警行為，整組 admin only（與 user 管理同模式）
 func (h *AlertRuleHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	rules := r.Group("/alert-rules")
 	rules.Use(middleware.AuthMiddleware(authService))

@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 連線申請與審核 API（access-policy-approval）
+ * 連線申請與審核 API
  * 申請人側：提出/我的申請/撤回；審核側：待審/歷史/核准/拒絕（approver 或 admin）；
  * 審核範圍管理 admin only
  */
@@ -132,7 +132,7 @@ export function deleteApproverScope(id) {
 }
 
 /**
- * 破窗緊急連線（break-glass-revocation）：立即取得短窗連線、事後補審。
+ * 破窗緊急連線：立即取得短窗連線、事後補審。
  * 時長固定由政策決定，不接受自填。開關關閉時回 403 code=RULE_BREAK_GLASS_DISABLED
  * @param {Object} data - { asset_id, reason }
  */

@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// A/B→C 重包的服務層行為（kek-provider-modularization tasks 3.3）。
+// A/B→C 重包的服務層行為。
 //
 // **為何用替身而非真 KMS provider**：本檔驗的是**服務層**的語義——落庫值的格式
 // 標記、kek_id 形式、守衛的判定範圍、切換後可否開機。KMS 的 wire 行為
@@ -88,7 +88,7 @@ func delegatedTargetForTest(t *testing.T, p crypto.KEKProvider) *RewrapTarget {
 }
 
 // TestRewrapToDelegatedTargetWritesKMSFormat 重包到委託目標後：
-// clone 列的 wrapped_key 帶 **wk:2:kms:** 前綴（D11.1 裁決 7 更正，非 wk:1:kms）、
+// clone 列的 wrapped_key 帶 **wk:2:kms:** 前綴（非 wk:1:kms）、
 // kek_id 為正規 ARN、回應形狀不含任何明文欄
 func TestRewrapToDelegatedTargetWritesKMSFormat(t *testing.T) {
 	db := newMigrationDB(t)
@@ -160,7 +160,7 @@ func TestBootWithDelegatedKEKAfterRewrap(t *testing.T) {
 	}
 }
 
-// TestDelegatedTargetGuardAllowsAbandonedARN **本項的存在理由**（D11.1 裁決 6）：
+// TestDelegatedTargetGuardAllowsAbandonedARN **本項的存在理由**：
 // 一次 abandon 過的 ARN 仍可再次被指定為重包目標。
 //
 // 沿用本地的「曾出現過即拒」會使該 ARN 永久無法再指定＝**永久燒毀該 CMK**

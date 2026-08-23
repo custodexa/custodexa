@@ -6,8 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 )
 
-// ErrCodeOf 將 K8sError.Kind 映為 apierror 碼（backend-i18n-unification A8；
-// V2 對抗驗收 H1 起改置於本套件供多呼叫端共用）。
+// ErrCodeOf 將 K8sError.Kind 映為 apierror 碼（置於本套件供多呼叫端共用）。
 //
 // 為何住在 k8sproxy 而非呼叫端：分類（classifyErr）與映射是同一份知識，
 // 分散在 sshproxy 與 api 兩側會讓新增 Kind 時只改到一邊（pod 列表原本就

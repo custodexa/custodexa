@@ -1,6 +1,6 @@
 package database
 
-// 資產與憑證——baseline schema 的「asset」域（migration-baseline-compression D1）。
+// 資產與憑證——baseline schema 的「asset」域。
 //
 // 資產本體、分組、節點樹、帳號與改密工作流。
 //

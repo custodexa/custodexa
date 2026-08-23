@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestClassifyErrUnknownNoLeak pins the i18n-backend-error-codes security fix:
+// TestClassifyErrUnknownNoLeak pins the error-code security fix:
 // the "unknown" classification must NOT concatenate the raw error into the
 // user-facing Message (which is emitted to clients by asset_handler/sshproxy).
 func TestClassifyErrUnknownNoLeak(t *testing.T) {

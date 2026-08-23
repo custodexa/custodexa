@@ -35,7 +35,7 @@ func seedAuth(t *testing.T, db *gorm.DB, userID uint, assetID *uint, groupID *ui
 	}
 }
 
-// seedGroupAuth 群組主體授權（user-group-authorization：user_id 為 NULL）
+// seedGroupAuth 群組主體授權（user_id 為 NULL）
 func seedGroupAuth(t *testing.T, db *gorm.DB, userGroupID uint, assetID *uint, groupID *uint, perm model.PermissionType) {
 	t.Helper()
 	if err := db.Create(&model.AssetAuthorization{
@@ -83,7 +83,7 @@ func TestAccessMatrixListsAllAuthorizations(t *testing.T) {
 }
 
 // TestAccessMatrixHandlesGroupSubject 群組主體授權（user_id NULL）不得使矩陣崩壞，
-// 且須帶群組主體識別資訊（codex P1：user_id 改 nullable 後 raw select 掃進 uint 會壞）
+// 且須帶群組主體識別資訊（user_id 改 nullable 後 raw select 掃進 uint 會壞）
 func TestAccessMatrixHandlesGroupSubject(t *testing.T) {
 	svc, db := setupAccessReviewDB(t)
 	db.Create(&model.User{Username: "alice"}) // id 1
@@ -214,7 +214,7 @@ func TestListReviewsExcludesSnapshot(t *testing.T) {
 	}
 }
 
-// TestAccessReviewImmutable 對抗驗證 F4：簽核不可 UPDATE/DELETE（ORM 層縱深防禦）
+// TestAccessReviewImmutable：簽核不可 UPDATE/DELETE（ORM 層縱深防禦）
 func TestAccessReviewImmutable(t *testing.T) {
 	_, db := setupAccessReviewDB(t)
 	review := &model.AccessReview{
@@ -241,7 +241,7 @@ func TestAccessReviewImmutable(t *testing.T) {
 	}
 }
 
-// ===== authorization-page-redesign D5：單筆複審檢視 =====
+// ===== 單筆複審檢視 =====
 
 // TestGetReviewDetail_TypedMatrix 快照解析為型別化矩陣陣列＋中繼資料齊全
 func TestGetReviewDetail_TypedMatrix(t *testing.T) {

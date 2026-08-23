@@ -34,14 +34,14 @@ func (m *MockHostKeyService) Reset(assetID uint) (bool, error) {
 }
 
 // setupAssetGateEnv 經完整 RegisterRoutes（真 AuthMiddleware＋真 JWT）建立測試環境，
-// 鎖定 asset-access-scoping 的逐資產守門：/assets/:id、/:id/k8s/pods、/:id/host-key
+// 鎖定逐資產守門：/assets/:id、/:id/k8s/pods、/:id/host-key
 // 三端點掛 RequireAssetVisible。原以 FEATURE_PERMISSION_CHECK_ENABLED 為維度，
-// 該旗標已於 security-backlog-settlement 退場，逐資產守門本就無條件生效
+// 該旗標已退場，逐資產守門本就無條件生效
 func setupAssetGateEnv(t *testing.T, allow bool) (*gin.Engine, *crypto.JWTManager, *MockAssetAuthorizationService) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	// 世代閘現查 users（M6 起 DB 未注入即 fail-close）：token 宣稱的 1／7 兩個 ID 須存在
+	// 世代閘現查 users（DB 未注入即 fail-close）：token 宣稱的 1／7 兩個 ID 須存在
 	installEpochGateDB(t, 1, 7)
 
 	jwtSecret := "asset-gate-test-secret"

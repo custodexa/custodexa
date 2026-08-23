@@ -105,8 +105,8 @@ func TestDocumentedKEKCommandsCoverEveryForm(t *testing.T) {
 }
 
 // TestRow3bErrorMessageQuotesEveryCommand 列 3b 的錯誤訊息必須附上**全部**可用的
-// 生成指令——缺陷史第一輪它重複了同一條壞指令，第二輪它只給了一條而使用者自創了
-// 一條被拒的指令。兩次的共同解法都是「把可用的選項完整攤在眼前」
+// 生成指令——這條訊息壞過兩次：一次重複了同一條壞指令，一次只給了一條而使用者
+// 自創了一條被拒的指令。兩次的共同解法都是「把可用的選項完整攤在眼前」
 func TestRow3bErrorMessageQuotesEveryCommand(t *testing.T) {
 	env := map[string]string{
 		EnvKeyKEKProvider:   KEKModeEnv,

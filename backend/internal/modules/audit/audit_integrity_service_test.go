@@ -24,8 +24,8 @@ func newIntegrityDB(t *testing.T) *gorm.DB {
 
 // newIntegrityServiceWithKey 測試用建構：以固定單鑰充當 **v1** 蓋章鑰。
 //
-// 取代已刪除的 `InitAuditIntegrity`（legacy 單鑰模式、版本恆 0，
-// release-transitional-cleanup D4）。**版本刻意為 1 而非 0**：終態下系統無 v0 鑰，
+// 取代已刪除的 `InitAuditIntegrity`（legacy 單鑰模式、版本恆 0）。
+// **版本刻意為 1 而非 0**：終態下系統無 v0 鑰，
 // 測試若沿用 0 會讓「key_version=0 一律不符」的不變式在測試裡自相矛盾。
 func newIntegrityServiceWithKey(t *testing.T, db *gorm.DB, key string) *AuditIntegrityService {
 	t.Helper()
@@ -83,7 +83,7 @@ func TestIntegrityHMACDeterministic(t *testing.T) {
 }
 
 // TestIntegrityKeyVersionZeroAlwaysMismatches 偽造 v0 版本列計為不符
-// （release-transitional-cleanup D4／audit-integrity spec）：
+// （audit-integrity spec）：
 // 系統無 v0 鑰，`HMACKeyByVersion`／keyFn 對不存在版本回 nil＝驗證不符。
 func TestIntegrityKeyVersionZeroAlwaysMismatches(t *testing.T) {
 	db := newIntegrityDB(t)
@@ -195,7 +195,7 @@ func TestIntegrityVerify(t *testing.T) {
 	}
 }
 
-// TestIntegrityBlankEvasionDetected 對抗驗證回歸：竄改內容並同時清空 HMAC
+// TestIntegrityBlankEvasionDetected 回歸：竄改內容並同時清空 HMAC
 // 不得歸入 Legacy 洗白——基準之後的空 HMAC 列必須列為不符
 func TestIntegrityBlankEvasionDetected(t *testing.T) {
 	db := newIntegrityDB(t)
@@ -226,8 +226,8 @@ func TestIntegrityBlankEvasionDetected(t *testing.T) {
 	}
 }
 
-// TestIntegrityBackdatedInsertDetected H2 回歸（key-management-envelope
-// 對抗驗證）：基準後插入的列即使回填 created_at 至基準前並留空 HMAC，
+// TestIntegrityBackdatedInsertDetected 回歸：基準後插入的列即使回填
+// created_at 至基準前並留空 HMAC，
 // 也不得歸 Legacy——legacy 判定以不可回填的自增 id 為錨，非時間欄
 func TestIntegrityBackdatedInsertDetected(t *testing.T) {
 	db := newIntegrityDB(t)
@@ -242,7 +242,7 @@ func TestIntegrityBackdatedInsertDetected(t *testing.T) {
 	svc := newIntegrityService(t, db)
 
 	// 攻擊：基準後插新列，created_at 回填到基準前、HMAC 留空——
-	// 原 created_at 判定會歸 Legacy 洗白（對抗驗證實證 mismatched=0/legacy=1）
+	// 原 created_at 判定會歸 Legacy 洗白（mismatched=0/legacy=1）
 	forged := &model.AuditLog{
 		CreatedAt: time.Now().Add(-90 * time.Minute), Action: model.ActionDelete,
 		Resource: model.ResourceAsset, Status: model.StatusSuccess, UserID: 9, Username: "attacker",

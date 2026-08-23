@@ -1,6 +1,6 @@
 import request from './request'
 
-// 金鑰清冊與換鑰精靈（key-management-envelope，admin only）
+// 金鑰清冊與換鑰精靈（admin only）
 
 // 取得金鑰清冊：DB 側版本鏈＋env 側存在性＋遷移/重包狀態
 export function getKeyInventory() {
@@ -19,7 +19,7 @@ export function rotateKey(purpose) {
   })
 }
 
-// KEK 重包（kek-provider-modularization D7 明文流向反轉後）。
+// KEK 重包（明文流向反轉後）。
 //
 // payload 為 **discriminated union**，由 mode 判別，變體互斥且鍵集精確
 //（多鍵／少鍵／未知鍵／mode 與欄位不符一律 400 VALIDATION_KEY_REWRAP_*）：
@@ -45,7 +45,7 @@ export function abandonRewrap() {
   })
 }
 
-// 清理退役金鑰資料（kek-rewrap-hygiene-hardening D9）：唯一的材料銷毀點。
+// 清理退役金鑰資料：唯一的材料銷毀點。
 // 回 { purged: [{purpose,version,kek_id}], skipped: [{purpose,version,kek_id,refs,reason}] }；
 // 未收斂或鎖忙時 409（apierror 碼 CONFLICT_KEY_CLEANUP_NOT_CONVERGED／CONFLICT_KEY_OP_BUSY）。
 // config 可傳 { skipErrorToast: true } 讓呼叫端自行呈現錯誤

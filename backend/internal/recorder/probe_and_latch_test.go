@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// TestProbeWritable 簽發點前置探測（recording-failure-handling D1）
+// TestProbeWritable 簽發點前置探測
 func TestProbeWritable(t *testing.T) {
 	t.Run("可寫目錄通過", func(t *testing.T) {
 		if err := ProbeWritable(t.TempDir()); err != nil {
@@ -28,7 +28,7 @@ func TestProbeWritable(t *testing.T) {
 	})
 
 	t.Run("日期子目錄被檔案佔用時失敗", func(t *testing.T) {
-		// 對抗驗證 High-3：文字路徑實際寫 {base}/{YYYY-MM-DD}/，只驗 base
+		// 文字路徑實際寫 {base}/{YYYY-MM-DD}/，只驗 base
 		// 會放行「base 可寫但日期層被佔用」→ probe 必須探到日期層
 		dir := t.TempDir()
 		today := time.Now().Format("2006-01-02")
@@ -54,7 +54,7 @@ func TestProbeWritable(t *testing.T) {
 }
 
 // TestAutoFlushIdleErrorNotify 閒置路徑：錯誤只發生在定時 flush（無後續寫入）
-// 時仍須通知——D5 的核心保證
+// 時仍須通知——這是核心保證
 func TestAutoFlushIdleErrorNotify(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("RECORDING_PATH", dir)
@@ -85,7 +85,7 @@ func TestAutoFlushIdleErrorNotify(t *testing.T) {
 	}
 }
 
-// TestSetOnErrorAfterLatch 註冊窗口（對抗驗證 Medium-1）：Start 與 SetOnError
+// TestSetOnErrorAfterLatch 註冊窗口：Start 與 SetOnError
 // 之間已 latch 的錯誤，註冊當下立即補通知
 func TestSetOnErrorAfterLatch(t *testing.T) {
 	dir := t.TempDir()
@@ -119,7 +119,7 @@ func TestSetOnErrorAfterLatch(t *testing.T) {
 	}
 }
 
-// TestAutoFlushErrorLatch autoFlush 錯誤 latch（D5）：磁碟層失敗須通知一次、
+// TestAutoFlushErrorLatch autoFlush 錯誤 latch：磁碟層失敗須通知一次、
 // 後續寫入浮出錯誤，閒置不沉默
 func TestAutoFlushErrorLatch(t *testing.T) {
 	dir := t.TempDir()

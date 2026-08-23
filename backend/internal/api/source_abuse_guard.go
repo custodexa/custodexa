@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// OIDC 公開端點的濫用防護（idp-oidc-integration 3.7a／design D13）。
+// OIDC 公開端點的濫用防護。
 //
 // callback 與 exchange 皆為**未認證可達**且會觸發持久化副作用的端點：前者在
 // state 查找階段即失敗（無須接觸 IdP、不受 flow state 容量限制），後者以隨機

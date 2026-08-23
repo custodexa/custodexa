@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 登入回應不洩漏帳號存在性（security-backlog-settlement 塊 4）。
+// 登入回應不洩漏帳號存在性（塊 4）。
 //
 // 缺陷本體：停用判定原本在 bcrypt 比對**之前**，於是未認證者送任意密碼即可
 // 分辨「此帳號存在但已停用」（403 user_inactive）與「此帳號不存在」

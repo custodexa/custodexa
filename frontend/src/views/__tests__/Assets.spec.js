@@ -139,7 +139,7 @@ const mountView = (extraStubs = {}) =>
     },
   })
 
-describe('Assets 授權狀態欄按角色顯示（asset-access-scoping）', () => {
+describe('Assets 授權狀態欄按角色顯示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -192,7 +192,7 @@ describe('Assets 授權狀態欄按角色顯示（asset-access-scoping）', () =
   })
 })
 
-describe('Assets 破窗緊急連線入口（break-glass-revocation）', () => {
+describe('Assets 破窗緊急連線入口', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -252,7 +252,7 @@ describe('Assets 破窗緊急連線入口（break-glass-revocation）', () => {
   })
 })
 
-describe('Assets 節點樹與資產表單（asset-node-tree）', () => {
+describe('Assets 節點樹與資產表單', () => {
   // el-dialog teleport 到 body，happy-dom 下 wrapper.text() 撈不到——
   // inline stub 讓對話框內容留在元件樹內供斷言
   const dialogStub = {
@@ -327,7 +327,7 @@ describe('Assets 節點樹與資產表單（asset-node-tree）', () => {
     expect(text).toContain('連線政策')
     expect(text).toContain('跟隨全域設定（目前：不需申請）')
     expect(text).toContain('需審核人核准')
-    // 表單掛載節點走 el-tree-select 多選（asset-node-tree D5）
+    // 表單掛載節點走 el-tree-select 多選
     expect(wrapper.findComponent({ name: 'ElTreeSelect' }).exists()).toBe(true)
   }, 15000)
 
@@ -391,7 +391,7 @@ describe('Assets 節點樹與資產表單（asset-node-tree）', () => {
 })
 
 
-describe('Assets 資產標籤（authz-tag-node-filters D4/D5）', () => {
+describe('Assets 資產標籤', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -494,7 +494,7 @@ describe('Assets 資產標籤（authz-tag-node-filters D4/D5）', () => {
   })
 })
 
-describe('Assets 資訊分層（asset-list-info-layering）', () => {
+describe('Assets 資訊分層', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -554,7 +554,7 @@ describe('Assets 資訊分層（asset-list-info-layering）', () => {
     expect(wrapper.find('.conn-badge.testing').text()).toContain('測試中')
   })
 
-  // db-protocol-connection-test 4.3：測試中態逐列獨立
+  // 測試中態逐列獨立
   it('測試中態逐列獨立：兩列可同時 spinner，只禁用自己的測試入口', async () => {
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue({
@@ -579,7 +579,7 @@ describe('Assets 資訊分層（asset-list-info-layering）', () => {
     expect(wrapper.vm.isTesting(2)).toBe(false)
   })
 
-  // db-protocol-connection-test 4.4：DB 可達徽章須標明僅埠可達
+  // DB 可達徽章須標明僅埠可達
   it('DB 協議可達徽章 tooltip 明示僅連接埠可達；非 DB 協議不加註', async () => {
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue({
@@ -600,7 +600,7 @@ describe('Assets 資訊分層（asset-list-info-layering）', () => {
     expect(contents.some((c) => c.includes('12ms') && !c.includes('僅代表連接埠可達'))).toBe(true)
   })
 
-  // db-protocol-connection-test 4.2：撥測失敗以撥測機器碼呈現，不得退化為「網路錯誤」
+  // 撥測失敗以撥測機器碼呈現，不得退化為「網路錯誤」
   it('撥測失敗顯示機器碼譯文；未收到回應顯示撥測未完成', async () => {
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue({

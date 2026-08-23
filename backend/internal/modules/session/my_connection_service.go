@@ -75,7 +75,7 @@ func (s *MyConnectionService) ListMyConnections(userID uint, page, pageSize int)
 		return nil, fmt.Errorf("查詢連線總數失敗: %w", err)
 	}
 
-	// 以「頁數比較」判定是否超界，避免極端 page 的乘法溢位（codex F3）：
+	// 以「頁數比較」判定是否超界，避免極端 page 的乘法溢位：
 	// 先算總頁數（ceil），page 超過末頁一律回空——offset 乘法只在 page 落在
 	// 有效範圍時執行，此時 (page-1)*pageSize < total 不可能溢位
 	var sessions []model.Session
@@ -127,7 +127,7 @@ func (s *MyConnectionService) TerminateMyConnection(userID, sessionID uint) erro
 	return s.terminator.Terminate(sess.ID, model.EndReasonUserTerminate)
 }
 
-// projectMyConnection 單筆投影。時長契約（design D3）：
+// projectMyConnection 單筆投影。時長契約：
 // ended 用持久化 Duration；active 用 floor(now-StartTime) 且時鐘異常負值夾 0
 func projectMyConnection(sess *model.Session, now time.Time) MyConnectionDTO {
 	dto := MyConnectionDTO{
@@ -149,7 +149,7 @@ func projectMyConnection(sess *model.Session, now time.Time) MyConnectionDTO {
 	} else {
 		// disconnected 與 closed 皆歸 ended，前端負責顯示文案
 		dto.Status = "ended"
-		// 持久化 Duration 也夾 0（codex F4）：legacy/損毀列的負值不得違反非負契約
+		// 持久化 Duration 也夾 0：legacy/損毀列的負值不得違反非負契約
 		d := int64(sess.Duration)
 		if d < 0 {
 			d = 0

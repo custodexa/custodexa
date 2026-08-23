@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestEffectiveIssuerKindPrecedence 身分域判定的固定優先序（D7a）。
+// TestEffectiveIssuerKindPrecedence 身分域判定的固定優先序。
 //
 // 這條的價值在於「管理者不能放寬」：判定權歸系統，未知 issuer 一律 fail-close
 // 視為共用；部署層可宣告專屬 issuer（Okta 等不發組織 claim 者的必要逃生口），
@@ -181,7 +181,7 @@ func TestEvaluateAdmissionEmailDomain(t *testing.T) {
 	}
 }
 
-// TestEvaluateAdmissionAllowListIsOR 同一規則的允許清單內為 OR（D7a）。
+// TestEvaluateAdmissionAllowListIsOR 同一規則的允許清單內為 OR。
 //
 // 其他准入測試的清單一律只有單一元素，於是「命中即回 true」與「只比對第一個
 // 元素」兩種實作**無法被區分**——一份列了三個租戶的組態可能只有第一個真的生效，

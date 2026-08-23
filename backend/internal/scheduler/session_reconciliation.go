@@ -18,7 +18,7 @@ type SessionReconciliationScheduler struct {
 }
 
 // NewSessionReconciliationScheduler 建立孤兒偵測排程器。
-// SkipIfStillRunning 防重入（雙軌驗證 F2）：DB 緩慢或 backlog 使一輪逾 60s 時，
+// SkipIfStillRunning 防重入：DB 緩慢或 backlog 使一輪逾 60s 時，
 // 下一輪跳過而非疊掃同批資料造成工作放大
 func NewSessionReconciliationScheduler(svc *session.SessionReconciliationService) *SessionReconciliationScheduler {
 	return &SessionReconciliationScheduler{

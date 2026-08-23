@@ -10,10 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// clipboardMaxBytes 單筆留存上限（design D2）：超出即截斷丟棄後續
+// clipboardMaxBytes 單筆留存上限：超出即截斷丟棄後續
 const clipboardMaxBytes = 64 * 1024
 
-// ClipboardTap 重組 guacamole clipboard 流並留存（clipboard-audit D1）：
+// ClipboardTap 重組 guacamole clipboard 流並留存（clipboard-audit）：
 // 觀察 clipboard/blob/end 指令，僅 text/* mimetype；入庫失敗不影響會話
 type ClipboardTap struct {
 	db        *gorm.DB

@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 觀察者脈絡在**生產路徑**上真的存在（idp-oidc-integration 對抗審查 C1）。
+// 觀察者脈絡在**生產路徑**上真的存在。
 //
 // 與 share_revoke_parity_test.go 的分工：該檔以 `c.Set("authContext", …)` 注入脈絡，
 // 等於替 handler 把它最該做的那件事先做完了——脈絡從哪來、有沒有來，那檔完全測不到。
@@ -211,7 +211,7 @@ func (p wsTokenPath) dialExpectHandshakeRejected(t *testing.T, e *wsTokenEnv, to
 	}
 }
 
-// --- C1 第一格：脈絡真的抵達 ObserverContext（安全） ---
+// --- 第一格：脈絡真的抵達 ObserverContext（安全） ---
 
 // TestQueryTokenObserverCarriesProviderContext 經 `?token=` 進入的觀察者，
 // 其 ObserverContext SHALL 帶 token 內的 providerID——否則 provider 停用時
@@ -242,7 +242,7 @@ func TestQueryTokenObserverCarriesProviderContext(t *testing.T) {
 	}
 }
 
-// --- C1 第二格：credential_epoch > 0 的使用者仍可訂閱（功能迴歸） ---
+// --- 第二格：credential_epoch > 0 的使用者仍可訂閱（功能迴歸） ---
 
 // TestQueryTokenObserverWithAdvancedCredentialEpochCanJoin 凡改過密、解過綁的
 // 使用者其 credential_epoch > 0；脈絡若在 handler 內遺失，JoinWithGenerationGuard

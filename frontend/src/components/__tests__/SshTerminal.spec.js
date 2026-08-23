@@ -204,7 +204,7 @@ describe('SshTerminal', () => {
     wrapper.unmount()
   })
 
-  // ssh-connect-error-surfacing：撥號失敗 code 的 i18n 顯示與 host key 引導
+  // 撥號失敗 code 的 i18n 顯示與 host key 引導
   it('error 訊息帶已譯 code 時顯示 apiError 譯文', async () => {
     const wrapper = mountTerminal()
     await layoutReady(wrapper)
@@ -280,7 +280,7 @@ describe('SshTerminal', () => {
     wrapper.unmount()
   })
 
-  // backend-i18n-unification F2：token 簽發失敗改走 resolveApiError（原直讀 data.error）
+  // token 簽發失敗改走 resolveApiError（原直讀 data.error）
   it('連線 token 簽發失敗帶 code 時顯譯文，未知 code 退回後端 error', async () => {
     createConnectTokenWithConsent.mockRejectedValueOnce({
       response: { status: 403, data: { error: '後端 zh 原文', code: 'RULE_ASSET_DISABLED' } },
@@ -304,7 +304,7 @@ describe('SshTerminal', () => {
     w2.unmount()
   })
 
-  // backend-i18n-unification D7：MsgNotice 控制幀（指令阻斷警告）
+  // MsgNotice 控制幀（指令阻斷警告）
   it('notice 幀查譯後以紅字注入終端，且不改變連線狀態', async () => {
     const wrapper = mountTerminal()
     await layoutReady(wrapper)
@@ -489,7 +489,7 @@ describe('SshTerminal 行動快捷鍵列', () => {
   })
 })
 
-// mssql 批次終止符提示（mssql-cli-audit-fidelity D6）：同一個 web CLI 上
+// mssql 批次終止符提示：同一個 web CLI 上
 // mysql/postgres 以 `;` 執行、mssql 需要獨立一行的 GO。協議一律取自資產欄位，
 // 不從終端輸出內容推測；提示不寫入終端輸出流（不進錄影與審計）。
 describe('SshTerminal mssql 批次終止符提示', () => {
@@ -550,7 +550,7 @@ describe('SshTerminal mssql 批次終止符提示', () => {
   })
 
   // 遮擋防線（結構代理）：jsdom 無版面計算，無法直接斷言「關閉鈕可被點到」，
-  // 真正的遮擋驗證由 Playwright 實點覆蓋（見 tasks 3.4）。此處釘死的是造成遮擋的
+  // 真正的遮擋驗證由 Playwright 實點覆蓋。此處釘死的是造成遮擋的
   // **結構成因**：延遲徽章／搜尋列一旦回到 .ssh-terminal 這層當絕對定位子節點，
   // 就會壓在提示條帶上（實測 latency-badge subtree intercepts pointer events）。
   it('浮層（延遲徽章／搜尋列）錨在終端主體容器內，不與提示條同層', async () => {

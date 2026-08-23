@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// LDAP 連線測試端點的資源上限（ldap-settings-migration D5／tasks 2.6）。
+// LDAP 連線測試端點的資源上限。
 //
 // # 為什麼一個 admin-only 端點需要限流
 //
@@ -21,7 +21,7 @@ import (
 //     **不消耗 target 額度**（否則一個 admin 即可把某目標的額度打空，
 //     其他 admin 連正常測試都做不了）。
 //   - per-target：同一目錄位址的節流。admin 對「目標位址」有寫入權，
-//     階梯回應天然是 open/closed oracle（D5 誠實記載的殘餘面），
+//     階梯回應天然是 open/closed oracle（誠實記載的殘餘面），
 //     per-target 直接壓低掃描速率——這是 oracle 殘餘面的收斂手段之一。
 //   - 全域 in-flight：速率上限擋不住「每個都很慢」造成的堆積（15 秒的阻塞
 //     呼叫），故另設同時處理中的上限。

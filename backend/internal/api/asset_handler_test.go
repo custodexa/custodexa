@@ -85,7 +85,7 @@ func (m *MockAssetService) K8sCopyFromPod(ctx context.Context, id uint, pod, con
 	return m.Called(ctx, id, pod, container, srcPath, localPath).Error(0)
 }
 
-// 節點過濾/資訊填充（asset-node-tree）：未顯式設定期望時回無過濾/no-op，
+// 節點過濾/資訊填充：未顯式設定期望時回無過濾/no-op，
 // 讓既有測試不需逐一補 On 設定
 func (m *MockAssetService) AssetIDsForNodeFilter(nodeID *uint, includeSubtree, ungrouped bool) (map[uint]bool, error) {
 	args := m.Called(nodeID, includeSubtree, ungrouped)
@@ -645,8 +645,8 @@ func TestAssetHandler_Get(t *testing.T) {
 	})
 }
 
-// TestAssetHandler_ServerSideScoping 伺服端授權收斂（session-access-scoping →
-// asset-access-scoping）：非 admin/auditor 的讀取可視面一律由伺服端裁決
+// TestAssetHandler_ServerSideScoping 伺服端授權收斂：
+// 非 admin/auditor 的讀取可視面一律由伺服端裁決
 func TestAssetHandler_ServerSideScoping(t *testing.T) {
 	t.Run("一般 user 不帶參數也強制走授權分支", func(t *testing.T) {
 		mockAssetService := new(MockAssetService)
@@ -988,7 +988,7 @@ func TestAssetHandler_Delete(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// backend-i18n-unification D9：成功回應不再攜帶 UI 文案（前端以 $t 提示）
+		// 成功回應不再攜帶 UI 文案（前端以 $t 提示）
 		var response map[string]any
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -1189,8 +1189,8 @@ func TestAssetHandler_TestConnection(t *testing.T) {
 	})
 }
 
-// TestAssetHandler_DownloadK8sFile_NoLeak pins the i18n-backend-error-codes
-// security fix (6.2): a failing K8s copy must not leak the raw error (kubectl
+// TestAssetHandler_DownloadK8sFile_NoLeak pins the error-code
+// security fix: a failing K8s copy must not leak the raw error (kubectl
 // stderr / container paths) into the response body; it returns a generalized
 // message + code at 502.
 func TestAssetHandler_DownloadK8sFile_NoLeak(t *testing.T) {
@@ -1226,7 +1226,7 @@ func TestAssetHandler_DownloadK8sFile_NoLeak(t *testing.T) {
 }
 
 // TestAssetHandler_AuditorEntryPermission auditor 連線入口判定欄
-// （auditor-connect-entry-honesty）：全量分支對 auditor 當頁標 permission
+// 全量分支對 auditor 當頁標 permission
 // （顯式 connect grant 命中 connect、餘 view）；admin 回應形狀凍結不帶欄；
 // 集合查詢失敗降級全 view 不擋列表
 func TestAssetHandler_AuditorEntryPermission(t *testing.T) {
@@ -1317,7 +1317,7 @@ func TestAssetHandler_AuditorEntryPermission(t *testing.T) {
 	})
 }
 
-// TestAssetHandler_ErrorEnvelope 資產端點的機器碼封套（backend-i18n-unification A2）：
+// TestAssetHandler_ErrorEnvelope 資產端點的機器碼封套：
 // 已知 sentinel 依 errors.Is 映射到碼、狀態碼與遷移前一致；未知錯誤走 INTERNAL_*
 // 且成因不外洩；角色閘與參數驗證同樣帶碼。
 func TestAssetHandler_ErrorEnvelope(t *testing.T) {

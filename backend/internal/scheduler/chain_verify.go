@@ -18,8 +18,7 @@ import (
 // 兩個索引查詢（鏈尾檢查點、狀態單列），可忽略。
 const chainVerifyCronSpec = "0 * * * * *"
 
-// ChainVerifyScheduler 檢查點鏈兩層自動驗證的排程外殼
-// （audit-chain-scheduled-verification D1／D2）。
+// ChainVerifyScheduler 檢查點鏈兩層自動驗證的排程外殼。
 //
 // **本型別只負責節奏，不負責判斷**：到期判定、兩層編排、滾動游標、失敗區間集合
 // 與告警全在 audit.ChainVerifyService.Tick——那是唯一入口。排程器若自行判斷
@@ -29,11 +28,11 @@ const chainVerifyCronSpec = "0 * * * * *"
 // 前例）：單輪的內容層掃描可達列預算上限（出廠 100 萬列/小時 × 1 小時間隔），
 // 耗時遠超一分鐘。無防重入時第二輪會與第一輪並行推進同一份狀態列與同一份失敗
 // 區間集合，結果是游標互相覆寫、集合成員在兩輪之間丟失——而丟失的成員正是
-// 「未結案的竄改事件」，其後果是假恢復（D9 要防的正是這件事）。
+// 「未結案的竄改事件」，其後果是假恢復（正是要防的那件事）。
 //
 // **驗證是旁路唯讀工作**：本排程器停擺、報錯或被關閉，審計寫入與封章完全不受
 // 影響，失去的只是「自動發現」——驗證頁的人工入口仍在，兩層的最近執行時點會
-// 停在舊值，故停擺本身可由驗證頁判讀（D8）。
+// 停在舊值，故停擺本身可由驗證頁判讀。
 type ChainVerifyScheduler struct {
 	cron    *cron.Cron
 	service *audit.ChainVerifyService

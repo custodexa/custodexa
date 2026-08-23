@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 段 2 資源收束的驗收（kek-provider-modularization D6.2.4）。
+// 段 2 資源收束的驗收。
 
 // TestStopAlertNotifierForRelease 推送器的收束：停 worker、清材料、解單例、可重入。
 //

@@ -55,7 +55,7 @@ func patchMe(t *testing.T, r *gin.Engine, token string, body interface{}) *httpt
 }
 
 // TestUpdateMe_OnlyDisplayNameWritable 惡意 body 夾帶 full_name/email/role/username/id
-// 一律被忽略，只有 local_display_name 生效（profile-display-name R1 白名單＋身分綁定）
+// 一律被忽略，只有 local_display_name 生效（白名單＋身分綁定）
 func TestUpdateMe_OnlyDisplayNameWritable(t *testing.T) {
 	r, mgr, db := setupUpdateMeEnv(t)
 	u := &model.User{Username: "alice", FullName: "Alice Wang", Email: emailPtr("a@x"), Active: true}
@@ -125,7 +125,7 @@ func TestUpdateMe_InvalidRejected(t *testing.T) {
 }
 
 // TestUpdateMe_MissingFieldNotCleared 缺 local_display_name 欄位的 body（如惡意只帶
-// full_name，或空 body）回 400，且不得意外清除既有顯示名（codex round-2 抓到的清除 bug）
+// full_name，或空 body）回 400，且不得意外清除既有顯示名
 func TestUpdateMe_MissingFieldNotCleared(t *testing.T) {
 	r, mgr, db := setupUpdateMeEnv(t)
 	pre := "既有顯示名"

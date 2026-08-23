@@ -25,12 +25,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// `GET /api/v1/ssh` 的連線票證兌換遭拒必須留痕（audit-coverage-closure 批 10／
-// connection-gating spec）。
+// `GET /api/v1/ssh` 的連線票證兌換遭拒必須留痕（connection-gating spec）。
 //
 // # 缺陷
 //
-// `connection-gating` 的「兌換拒絕留痕」**沒有端點限定**，但批 4 只補了 `/connect`。
+// `connection-gating` 的「兌換拒絕留痕」**沒有端點限定**，但當初只補了 `/connect`。
 // 文字側的 `/api/v1/ssh` 缺票／無效票各回 401 即返，且用不帶原因的
 // `RedeemConnectToken`；閘序拒絕走 `writeOutcome` 亦純 HTTP。該路由在
 // `cmd/server/audit_rejection_coverage_guard_test.go` 中列為 `exemptHandlerSelfAuth`
@@ -45,13 +44,13 @@ import (
 //  1. 票證不成立（缺／偽造／過期）三種拒絕**各自**留痕，原因在審計上**可區分**。
 //  2. 閘序拒絕留痕，原因與票證類可區分，且 `asset_id` 填實
 //     （「有人試圖連這台機器但被擋下」必須出現在資產樞紐上）。
-//  3. `status` 依 design D3 分流：401＝憑證不成立→`failure`；其餘→`denied`。
+//  3. `status` 依下列規則分流：401＝憑證不成立→`failure`；其餘→`denied`。
 //  4. `details.via` 為 `ssh`——兩條兌換入口的拒絕列同表，沒有這個欄位就分不出
 //     被探測的是哪一個入口。
 //  5. **對外回應不因留痕而分化**：偽造票與過期票的狀態碼與 body 逐字元相同。
 //     審計分得出來、攻擊者分不出來，是本 change 的既有裁決。
 //
-// # 突變自檢（tasks 10-A.6）
+// # 突變自檢
 //
 // 拿掉 `HandleSSH` 內票證分支的 `h.auditRedeemDenied(...)` ⇒ 票證三格轉紅；
 // 拿掉 `writeRedeemOutcome` 內的呼叫 ⇒ 閘序格轉紅。兩者互不掩蓋。
@@ -340,7 +339,7 @@ func TestSSHGateDenialIsAudited(t *testing.T) {
 // TestSSHTicketDenialResponsesAreIndistinguishable 票證類拒絕的對外回應必須
 // **逐字元相同**，且不得洩漏內部拒絕原因。
 //
-// 這是本 change 的既有裁決（批 4 的 `/connect` 同此）：原因分流只存在於審計。
+// 這是本 change 的既有裁決（`/connect` 同此）：原因分流只存在於審計。
 // 若對外分得出來，攻擊者拿一張猜來的票就能問出「這張票存不存在」——那就是票證
 // 存在性探測面。狀態碼、body、`Content-Type` 三者一併比對：只比狀態碼會漏掉
 // body 分化。

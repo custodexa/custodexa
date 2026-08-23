@@ -1,4 +1,4 @@
-// KEK 材料的文件化生成指令（kek-encoding-and-unseal-entry 決策 8）。
+// KEK 材料的文件化生成指令。
 //
 // **權威事實源在後端** `config.KEKGenerateCommands`；本模組只是介面側的取用入口，
 // 資料放在 JSON 以便 backend 守衛（TestFrontendKEKCommandsMatchBackend）逐條比對

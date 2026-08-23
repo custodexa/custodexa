@@ -43,7 +43,7 @@ const mountView = () =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('Profile 個人資料頁（navigation-ia D3）', () => {
+describe('Profile 個人資料頁', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -122,7 +122,7 @@ describe('Profile 個人資料頁（navigation-ia D3）', () => {
     expect(changePasswordMock).not.toHaveBeenCalled()
   })
 
-  it('LDAP 影子帳號：隱藏改密表單、顯示目錄服務管理提示（ux-consistency D5）', async () => {
+  it('LDAP 影子帳號：隱藏改密表單、顯示目錄服務管理提示', async () => {
     getCurrentUserMock.mockResolvedValue({ ...accountInfo, is_ldap: true })
     const wrapper = mountView()
     await flushPromises()
@@ -132,7 +132,7 @@ describe('Profile 個人資料頁（navigation-ia D3）', () => {
     expect(wrapper.findAll('button').some((b) => b.text().includes('更新密碼'))).toBe(false)
   })
 
-  // idp-oidc-integration D14.6：判定自 is_ldap 泛化為 external_credential。
+  // 判定自 is_ldap 泛化為 external_credential。
   // 只認 is_ldap 會讓 OIDC 供應帳號（is_ldap=false）看到一個必被後端擋的改密表單
   it('OIDC 外部帳號：改密卡整卡換說明 alert，不出現改密表單', async () => {
     getCurrentUserMock.mockResolvedValue({
@@ -202,7 +202,7 @@ describe('Profile 個人資料頁（navigation-ia D3）', () => {
     expect(wrapper.text()).toContain('已啟用')
   })
 
-  // —— 自助顯示名（profile-display-name）——
+  // —— 自助顯示名——
 
   it('基本資料露出 full_name 並標示身分權威唯讀', async () => {
     getCurrentUserMock.mockResolvedValue({

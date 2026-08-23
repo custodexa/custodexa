@@ -110,7 +110,7 @@ func TestSyslogTCPForwarding(t *testing.T) {
 }
 
 // TestSyslogOverflowNonBlocking 緩衝溢出：producer 側只計數丟棄、零上報
-// （對抗驗證修正：producer 側上報與 run loop 恢復跨 goroutine 交錯，
+// （producer 側上報與 run loop 恢復跨 goroutine 交錯，
 // 且上報含 DB/通知 IO，違反審計主鏈零阻塞——偵測移 run loop 計數差）
 func TestSyslogOverflowNonBlocking(t *testing.T) {
 	db := setupSyslogDB(t)
@@ -138,7 +138,7 @@ func TestSyslogOverflowNonBlocking(t *testing.T) {
 }
 
 // TestSyslogOverflowReportAndRecover run loop 計數差偵測溢出失效＋
-// 寫出成功且計數穩定即恢復（對抗驗證回歸：原恢復只掛重撥成功，
+// 寫出成功且計數穩定即恢復（原恢復只掛重撥成功，
 // 溢出時連線健在永不重撥，失效事件永無人回填）
 func TestSyslogOverflowReportAndRecover(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -181,7 +181,7 @@ func TestSyslogOverflowReportAndRecover(t *testing.T) {
 		if recovered {
 			t.Fatal("首個上報應為溢出失效而非恢復")
 		}
-		// M5：cause 走機器碼，不再是散文
+		// cause 走機器碼，不再是散文
 		if firstCause != model.CauseSyslogBufferOverflow {
 			t.Fatalf("溢出上報的 cause code = %q, want %q",
 				firstCause, model.CauseSyslogBufferOverflow)

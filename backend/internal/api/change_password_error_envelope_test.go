@@ -28,7 +28,7 @@ func (e *pwCtxEnv) changePasswordRaw(t *testing.T, bearer, oldPw, newPw string) 
 	return w
 }
 
-// 改密錯誤回應的信封完整性（批 14 對抗審查 M3）。
+// 改密錯誤回應的信封完整性。
 //
 // respondChangePasswordError 是一個 switch：每個分支只設定 code／status，統一由
 // 函式尾端寫出一次回應。若某個分支自行呼叫 apierror.Respond 卻忘了 return，

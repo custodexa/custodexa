@@ -1,4 +1,4 @@
-// 傳輸風險 label 與清冊 note/preflight/detail 的查譯（i18n-backend-labels）。
+// 傳輸風險 label 與清冊 note/preflight/detail 的查譯。
 // 錨定後端穩定機器碼（risk.key、note_code、preflight_code、detail_codes 的鍵），
 // 當前語言精確命中且 required params 齊全才譯，否則降級後端 zh 字串。四頁與資產列表、
 // 連線同意、告警、syslog 卡共用同源。
@@ -13,7 +13,7 @@ import {
 // 各碼所需 params（鏡射後端 registry RequiredParams）：缺參數時降級回後端 zh，
 // 避免 vue-i18n 對缺 named param 渲染空字串而露殘缺文案。export 供跨層防漂移測試
 // （transportDisplay.spec 從 locale placeholder 導出比對，locale 又由後端完備性測試釘死
-//  ↔ registry，形成 registry↔locale↔前端常數 閉環——codex impl-review I4）。
+//  ↔ registry，形成 registry↔locale↔前端常數 閉環）。
 export const RISK_REQUIRED_PARAMS = { syslog_non_tls: ['protocol'] }
 export const NOTE_REQUIRED_PARAMS = { syslog_protocol: ['protocol'] }
 // 帶 {n}（vue-i18n 隱式 plural 參數）的 preflight 碼
@@ -66,7 +66,7 @@ export function inventoryPreflight(ch) {
   return ch.strict_preflight || ''
 }
 
-// inventoryDetail 清冊明細（rr-I4）：有 detail_codes 則整份採用之——逐鍵
+// inventoryDetail 清冊明細：有 detail_codes 則整份採用之——逐鍵
 // transportDetail.<code> 命中則譯（如 unset），否則原樣（技術複合鍵語言中性）；
 // 無 detail_codes（舊後端）才回舊 detail。回傳 {顯示鍵: 數量} 供模板 v-for。
 export function inventoryDetail(ch) {
@@ -77,7 +77,7 @@ export function inventoryDetail(ch) {
   for (const [code, count] of Object.entries(codes)) {
     const key = `transportDetail.${code}`
     const label = hasCurrentTranslation(key) ? t(key) : code
-    // 累加而非覆蓋：多個 code 映到同一顯示鍵時 count 守恆（codex impl-review I2）
+    // 累加而非覆蓋：多個 code 映到同一顯示鍵時 count 守恆
     out[label] = (out[label] || 0) + count
   }
   return out

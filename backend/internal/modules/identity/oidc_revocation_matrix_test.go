@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 撤銷矩陣的**使用者維度**（idp-oidc-integration tasks 4.14g／4.14d／4.14b）。
+// 撤銷矩陣的**使用者維度**。
 //
 // 與既有三檔的分工：
 //
@@ -319,7 +319,7 @@ func revMatrixAttachAdminRole(t *testing.T, db *gorm.DB, userID uint) {
 // --- 4.14g 鎖定不得成為斷線武器 ---
 
 // TestLockoutIsNotADisconnectWeapon 自動鎖定 SHALL NOT 影響受害者**既有**的
-// 協議連線與唯讀訂閱（tasks 4.14g）。
+// 協議連線與唯讀訂閱。
 //
 // 攻擊面：鎖定可由**未認證的第三方**觸發——只要知道 username，連續打錯密碼即可，
 // 且每個鎖定窗結束後可重複。若鎖定順帶推進 credential_epoch 或走按-user 收線，
@@ -429,7 +429,7 @@ func TestLockoutIsNotADisconnectWeapon(t *testing.T) {
 
 // TestUnbindRejectsUnredeemedCapabilitiesAndRebindDoesNotRevive
 // 解綁後**未兌換**的 ticket／MFA pending／connect grant 皆拒；身分重綁後舊憑證不復活
-// （tasks 4.14d 第一、二情境）。
+// （第一、二情境）。
 //
 // 「未兌換」是關鍵字：掃描既有連線完全管不到它們——ticket 與 pending 是 stateless
 // 或半 stateless 的能力憑證，connect grant 尚未變成 session 列，三者都不在任何
@@ -544,7 +544,7 @@ func TestUnbindRejectsUnredeemedCapabilitiesAndRebindDoesNotRevive(t *testing.T)
 }
 
 // TestAccountDisableCutsLocalAdminSubscription 帳號停用 SHALL 收線該帳號的監看訂閱，
-// 涵蓋 providerID=0 的本地 admin（tasks 4.14d 第三情境）。
+// 涵蓋 providerID=0 的本地 admin（第三情境）。
 //
 // 為什麼一定要按**觀察者**收線：監看訂閱不建 sessions 列，TerminateAllByUser
 // 完全掃不到；而本地 admin 的 providerID=0，按 provider 的收線也掃不到。
@@ -555,8 +555,8 @@ func TestUnbindRejectsUnredeemedCapabilitiesAndRebindDoesNotRevive(t *testing.T)
 // TestDisconnectByUserCoversLocalObserver 驗過；**本測試驗的是 service 的停用路徑
 // 真的把這條管道打出去**（那支測試直接呼叫 hub 方法，service 漏接完全不會紅）。
 //
-// **本測試原為 t.Skip（實作與 tasks 4.14d 不符，屬既有缺陷）**，缺口已於對抗審查
-// H2 修復：UpdateStatus 的 !active 分支與 Delete 成功後皆呼叫 revokeUserAccess
+// **本測試原為 t.Skip（實作與規格不符，屬既有缺陷）**，缺口已由
+// UpdateStatus 的 !active 分支與 Delete 成功後皆呼叫 revokeUserAccess
 // （user_service.go），故 subscriptions.DisconnectByUser 與 recordingTokens.RevokeByUser
 // 兩條管道在停用／刪除路徑上都有呼叫點。修復前本測試的實際紅訊為：
 //
@@ -604,7 +604,7 @@ func TestAccountDisableCutsLocalAdminSubscription(t *testing.T) {
 }
 
 // TestConvertToExternalOnlyBlocksMFAPendingCompletion 轉換為僅外部登入後，
-// 以本地密碼啟動的 MFA pending **無法完成、拿不到正式會話**（tasks 4.14d 第四情境）。
+// 以本地密碼啟動的 MFA pending **無法完成、拿不到正式會話**（第四情境）。
 //
 // 與既有 TestConvertToExternalOnlyKillsMFAPending 的分工：該測試自行簽 pending
 // token 並以固定錯碼呼叫，斷言錯誤型別；**本測試補的是全鏈**——真的走本地密碼
@@ -693,7 +693,7 @@ func TestConvertToExternalOnlyBlocksMFAPendingCompletion(t *testing.T) {
 
 // TestUnbindOneProviderRevokesUserWide 綁兩個 provider 的帳號解綁其一 →
 // 該**使用者**的全部憑證／連線／訂閱失效（含經另一 provider 建立者），
-// 重新登入後正常（tasks 4.14b）。
+// 重新登入後正常。
 //
 // 為什麼粒度是使用者而非 (使用者, provider)：解綁的動機是「這個身分不該再代表
 // 這個人」，最常見的情境正是該身分已遭入侵。若只撤 provider A 那一份，攻擊者

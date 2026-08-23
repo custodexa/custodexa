@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SessionStats SSH 會話目標主機即時指標（session-stats D2）：
+// SessionStats SSH 會話目標主機即時指標（session-stats）：
 // counters 回原始值，CPU%/網速由前端兩次輪詢差分，後端 stateless
 type SessionStats struct {
 	Hostname   string  `json:"hostname"`
@@ -26,7 +26,7 @@ type SessionStats struct {
 
 const statsSectionSep = "__OT_SEP__"
 
-// statsCommand 單 channel 串讀（design D1）：以分隔標記切段，降低輪詢 channel 開銷
+// statsCommand 單 channel 串讀：以分隔標記切段，降低輪詢 channel 開銷
 const statsCommand = "cat /proc/uptime; echo " + statsSectionSep +
 	"; cat /proc/loadavg; echo " + statsSectionSep +
 	"; cat /proc/meminfo; echo " + statsSectionSep +

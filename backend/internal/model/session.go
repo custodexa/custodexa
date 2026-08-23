@@ -22,8 +22,8 @@ const (
 	EndReasonUserTerminate  = "user_terminate"
 	EndReasonBackendRestart = "backend_restart"
 	EndReasonOrphaned       = "orphaned"
-	EndReasonRevoked        = "revoked" // 臨時授權提前撤銷收線（break-glass-revocation D5）
-	// EndReasonAssetDisabled 資產被停用而收線（security-backlog-settlement）：
+	EndReasonRevoked        = "revoked" // 臨時授權提前撤銷收線
+	// EndReasonAssetDisabled 資產被停用而收線：
 	// 與帳號停用收線（走 admin_terminate）分開記，使審計能區分「人被停」與「機器被停」
 	EndReasonAssetDisabled = "asset_disabled"
 )
@@ -54,17 +54,17 @@ type Session struct {
 	// 斷線原因（session-timeout/session-reconciliation）：normal/idle_timeout/
 	// max_duration/admin_terminate/user_terminate/backend_restart/orphaned/
 	// revoked/block_clear_failed（阻斷後清行失敗的 fail-close 收線，
-	// backend-i18n-unification A1；值定義於 sshproxy.bridge）
+	// 值定義於 sshproxy.bridge）
 	EndReason string `gorm:"size:20;default:normal" json:"end_reason,omitempty"`
 
 	// 錄製資訊
 	RecordingPath string `gorm:"size:500" json:"recording_path,omitempty"`
 	RecordingSize int64  `json:"recording_size,omitempty"` // bytes
 	HasRecording  bool   `gorm:"default:false" json:"has_recording"`
-	// RecordingError 錄影失敗原因（recording-failure-handling D3）：非空＝
+	// RecordingError 錄影失敗原因：非空＝
 	// 本會話錄影缺失或不完整，前端據此顯「無錄影」標示；空＝正常
 	RecordingError string `gorm:"type:text" json:"recording_error,omitempty"`
-	// RecordingStartedAt 錄影本身的時間原點（workbench-exits-and-export D2）。
+	// RecordingStartedAt 錄影本身的時間原點。
 	// **不等於 StartTime**：回放的 elapsed=0 是錄製器啟動當下，而 StartTime 是
 	// 會話建檔當下。深連結帶的秒數 t 以 StartTime 為基準，正確的回放位置是
 	// p = t −（RecordingStartedAt − StartTime）——沒有這一欄就只能直接 seek(t)，
@@ -75,14 +75,14 @@ type Session struct {
 	// NULL＝無錄影或存量資料，此時前端退回未校正值並明示（見 SessionDetail 的降級文案）。
 	RecordingStartedAt *time.Time `json:"recording_started_at,omitempty"`
 
-	// 帳號雙快照（asset-multi-account D7）：連線當下所用的資產帳號 ID 與 username
+	// 帳號雙快照：連線當下所用的資產帳號 ID 與 username
 	// 同時釘住——只存 FK 不足以保證不可否認性（帳號改名／刪除會洗掉歷史語義），
 	// 只存 username 又無法回指帳號物件。0／空＝該會話未帶帳號（歷史資料、
 	// 零帳號路徑）。沿 k8s 六欄不可變快照先例：寫入後永不隨帳號變動更新。
 	AccountID       uint   `gorm:"index" json:"account_id,omitempty"`
 	AccountUsername string `gorm:"size:100" json:"account_username,omitempty"`
 
-	// 認證溯源（idp-oidc-integration 1.9）：建立此會話的憑證是經哪個 OIDC provider
+	// 認證溯源：建立此會話的憑證是經哪個 OIDC provider
 	// 認證的，以及當下的 provider 世代。NULL／0＝本地或 LDAP 登入。
 	//
 	// **定位是溯源快照，不是授權快照**：授權一律 DB 現查。它的用途是
@@ -92,7 +92,7 @@ type Session struct {
 	AuthProviderID *uint `gorm:"index" json:"auth_provider_id,omitempty"`
 	AuthEpoch      int   `gorm:"not null;default:0" json:"-"`
 
-	// K8s 會話不可變快照（k8s-exec 對抗審查 mustFix #2）：pod 短命且名稱可複用，
+	// K8s 會話不可變快照：pod 短命且名稱可複用，
 	// 連線當下由 get pod 釘住 uid/image/node 才有不可否認性。
 	K8sNamespace string `gorm:"size:63" json:"k8s_namespace,omitempty"`
 	K8sPod       string `gorm:"size:253" json:"k8s_pod,omitempty"`

@@ -17,7 +17,7 @@ import (
 )
 
 // TestK8sDialCode k8sproxy 分類（K8sError.Kind）→ apierror code 映射
-// （backend-i18n-unification A8）：六類各配一碼、彼此相異且都已註冊；
+// 六類各配一碼、彼此相異且都已註冊；
 // Kind 值變動或漏配時本測試紅（散文降級為 Data fallback 後，碼是唯一分辨依據）。
 func TestK8sDialCode(t *testing.T) {
 	kinds := []string{
@@ -47,7 +47,7 @@ func TestK8sDialCode(t *testing.T) {
 	}
 }
 
-// TestDialErrorCode sentinel → apierror code 映射（ssh-connect-error-surfacing D3）
+// TestDialErrorCode sentinel → apierror code 映射
 func TestDialErrorCode(t *testing.T) {
 	tests := []struct {
 		name string
@@ -71,7 +71,7 @@ func TestDialErrorCode(t *testing.T) {
 }
 
 // TestWriteDialErrorWS 瀏覽器 WS 客戶端收到升級後的 MsgError（code＋zh fallback）
-// 後連線正常關閉（ssh-connect-error-surfacing D1）
+// 後連線正常關閉
 func TestWriteDialErrorWS(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

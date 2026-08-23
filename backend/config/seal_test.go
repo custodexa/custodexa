@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// 解封端點速率參數的 fail-close 驗收（kek-provider-modularization D6.4）。
+// 解封端點速率參數的 fail-close 驗收。
 //
 // 這些旋鈕唯一的作用是限制未認證端點的嘗試速率。零、負值、max < base 與溢位
 // 的寫法效果都是**把保護關掉**，且都不會有任何執行期症狀——沒有守衛時，

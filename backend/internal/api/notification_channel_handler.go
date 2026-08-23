@@ -28,7 +28,7 @@ type NotificationChannelServiceInterface interface {
 	Delete(id uint) error
 }
 
-// NotificationChannelHandler 通知通道 API handler（alert-notifications D4，admin only）
+// NotificationChannelHandler 通知通道 API handler（alert-notifications，admin only）
 type NotificationChannelHandler struct {
 	channelService NotificationChannelServiceInterface
 	// testSender 可注入：handler 測試不該真的發 HTTP，預設為 service.SendTestNotification
@@ -56,7 +56,7 @@ func respondChannelError(c *gin.Context, err error) {
 	case errors.Is(err, audit.ErrInvalidChannelTyp):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelType, nil)
 	case errors.Is(err, audit.ErrInvalidChannelLanguage):
-		// M7 已埋的語系 sentinel（design D5）：空值／白名單外皆走此碼
+		// 既有的語系 sentinel：空值／白名單外皆走此碼
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelLanguage, nil)
 	case errors.Is(err, audit.ErrChannelNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeChannelNotFound, nil)
@@ -137,14 +137,14 @@ func (h *NotificationChannelHandler) Delete(c *gin.Context) {
 		respondChannelError(c, err)
 		return
 	}
-	// 成功訊息不落 payload（design D9）：前端以自有 $t 文案顯示
+	// 成功訊息不落 payload：前端以自有 $t 文案顯示
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// Test 對指定通道同步發送測試 payload（design D4）：
+// Test 對指定通道同步發送測試 payload：
 // admin 即時回饋——投遞結果直接回傳而非丟佇列。
 // 送達對端：HTTP 200 + body success/status_code（對端 2xx 才算成功）；
-// 連線層失敗（DNS/逾時/拒連）：HTTP 502 + 統一錯誤封套（error-message-consistency）
+// 連線層失敗（DNS/逾時/拒連）：HTTP 502 + 統一錯誤封套
 func (h *NotificationChannelHandler) Test(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -152,7 +152,7 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 		return
 	}
 
-	// 投遞需要明文 url/secret（key-management-envelope G8）；此物件不得入回應
+	// 投遞需要明文 url/secret；此物件不得入回應
 	channel, err := h.channelService.GetForDelivery(uint(id))
 	if err != nil {
 		respondChannelError(c, err)
@@ -181,7 +181,7 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 }
 
 // RegisterRoutes 註冊通知通道路由：
-// 通道含 secret 且控制告警外發目的地，整組 admin only（與 alert-rules 同模式，design D4）
+// 通道含 secret 且控制告警外發目的地，整組 admin only（與 alert-rules 同模式）
 func (h *NotificationChannelHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	channels := r.Group("/notification-channels")
 	channels.Use(middleware.AuthMiddleware(authService))

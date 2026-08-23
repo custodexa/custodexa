@@ -8,7 +8,7 @@ import SecurityPolicies from '../SecurityPolicies.vue'
 // AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
 enableAutoUnmount(afterEach)
 
-// audit-log-compliance task 7.1：日誌保留與審閱區塊 + syslog 轉發設定卡
+// 日誌保留與審閱區塊 + syslog 轉發設定卡
 
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
@@ -172,7 +172,7 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
       daily_review_enabled: 'true',
       failure_alert_enabled: 'true',
     })
-    // 0（永久）→365 屬收縮，須先過保留清除確認（對抗驗證 F13）
+    // 0（永久）→365 屬收縮，須先過保留清除確認
     expect(ElMessageBox.confirm).toHaveBeenCalledWith(
       expect.stringContaining('永久清除'),
       expect.stringContaining('保留期限縮短'),
@@ -278,7 +278,7 @@ describe('SecurityPolicies syslog 轉發設定卡', () => {
     )
     expect(wrapper.text()).toContain('測試訊息已發送')
 
-    // 失敗改由 502＋registered code 表達（asset-syslog-debt-cleanup D1）：
+    // 失敗改由 502＋registered code 表達：
     // 不再是 200＋{success:false}＋後端原始錯誤字串；UI 顯示前端查譯的泛化訊息
     const err = new Error('HTTP 502')
     err.response = {

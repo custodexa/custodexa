@@ -12,12 +12,12 @@ import (
 // 僅 /auth/mfa/verify 接受，一般 API 的 AuthMiddleware 必須拒絕
 const ScopeMFAPending = "mfa_pending"
 
-// ScopePasswordChange 強制改密的中繼 token scope（auth-hardening D4）：
+// ScopePasswordChange 強制改密的中繼 token scope：
 // 僅 /auth/change-password 接受。middleware 與 WS 連線端點對任何非空 scope
 // 一律 deny-by-default，新增 scope 不需逐處放行
 const ScopePasswordChange = "password_change"
 
-// ScopeMFAEnrollment MFA 強制註冊的中繼 token scope（auth-hardening D5）：
+// ScopeMFAEnrollment MFA 強制註冊的中繼 token scope：
 // 受強制但未註冊 TOTP 者通過密碼驗證後取得，僅可打 TOTP setup/confirm 端點；
 // 綁定完成後直接換發正式 token。同樣受 deny-by-default 保護
 const ScopeMFAEnrollment = "mfa_enrollment"
@@ -28,7 +28,7 @@ const ScopeMFAEnrollment = "mfa_enrollment"
 // 不引用 internal/branding.Slug 的理由同 codec.go 的 aadNamespace。
 const tokenIssuer = "custodexa"
 
-// 認證方式（AuthContext.AuthMethod 值域，idp-oidc-integration D6）
+// 認證方式（AuthContext.AuthMethod 值域）
 const (
 	// AuthMethodLocalPassword 以本地密碼認證；密碼類 gate 僅對此方式適用
 	AuthMethodLocalPassword = "local_password"
@@ -177,7 +177,7 @@ func (m *JWTManager) GenerateScopedToken(userID uint, username, email, role, sco
 
 // ValidateToken 驗證 JWT token。
 //
-// 解析器約束刻意收到最窄（對抗審查 G-A）：
+// 解析器約束刻意收到最窄（安全審查 G-A）：
 //
 //	WithValidMethods([]string{"HS256"})  只認演算法本身，不認 HMAC**族**。
 //	  原本的 `token.Method.(*jwt.SigningMethodHMAC)` 型別判定同時放行
@@ -220,6 +220,6 @@ func (m *JWTManager) ValidateToken(tokenString string) (*Claims, error) {
 
 // 註：舊版 RefreshToken（接受過期 token 後以 GenerateToken 重簽、且不帶 Scope）已移除。
 // 它是 scope-stripping 逃逸的未爆彈——一旦接上任何 /auth/refresh 端點，持 scoped token
-// 即可換出無 scope 的正式 session token 繞過 deny-by-default（對抗驗證 AUTH-2）。
-// 輪 2 的會話刷新改走資料庫 refresh_tokens（rotation＋reuse detection，design D6），
+// 即可換出無 scope 的正式 session token 繞過 deny-by-default（安全審查 AUTH-2）。
+// 現行的會話刷新改走資料庫 refresh_tokens（rotation＋reuse detection），
 // 不重用此 JWT 自刷新機制。

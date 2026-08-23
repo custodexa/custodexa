@@ -2,13 +2,13 @@ package model
 
 import "time"
 
-// OIDCFlowState 登入流程的伺服端狀態（idp-oidc-integration D4）。
+// OIDCFlowState 登入流程的伺服端狀態。
 //
 // 本系統無 server-side session（純 JWT），故 state/nonce/PKCE verifier 落庫。
 // 一次性消費：callback 以 state 查表並於單一原子操作中「僅在未過期時取用並失效」——
 // 過期記錄即使清理排程尚未執行亦須拒絕（排程延遲不得擴大有效窗口）。
 //
-// BindingHash 是瀏覽器綁定（D4）：DB 保存 state 只證明「伺服器簽發且未用過」，
+// BindingHash 是瀏覽器綁定：DB 保存 state 只證明「伺服器簽發且未用過」，
 // 不證明 callback 發生在發起的瀏覽器。攻擊者可自行發起流程、以自己的 IdP 帳號完成授權
 // 但攔住 callback，再把該 URL 交給受害者——state/nonce/PKCE 全部有效，受害者會被登入
 // 攻擊者帳號（login CSRF），其後操作與審計全歸屬錯誤。故發起端產生 secret 存
@@ -44,7 +44,7 @@ func (OIDCFlowState) TableName() string {
 	return "oidc_flow_states"
 }
 
-// OIDCLoginTicket callback 至 SPA 的一次性交棒憑證（idp-oidc-integration D5）。
+// OIDCLoginTicket callback 至 SPA 的一次性交棒憑證。
 //
 // callback 是瀏覽器對後端的 GET，無法直接回傳 JSON 形式的登入回應；而把 token 放進
 // URL 會落入瀏覽器歷史與反向代理日誌。故 callback 完成全部驗證後產生本憑證，

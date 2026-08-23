@@ -1,6 +1,6 @@
 package identity
 
-// SessionVerifier 的**消費側**測試（modular-architecture W10.2，DoD-2）
+// SessionVerifier 的**消費側**測試
 //
 // 「消費側」＝以 `gatewayapi.SessionVerifier` 這個**介面型別**為依賴的測試。
 // `authenticateWS` 只認得介面，對 `AuthService` 一無所知——它同時被手寫替身與

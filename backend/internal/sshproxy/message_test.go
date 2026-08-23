@@ -35,7 +35,7 @@ func TestEncodeMessage(t *testing.T) {
 }
 
 // TestEncodeMessageRejectsCodedFrames MsgError／MsgNotice 不得由 EncodeMessage
-// 產生（D7 不變量的執行期半邊；靜態半邊見 TestNoUncodedErrorFrames）。
+// 產生（不變量的執行期半邊；靜態半邊見 TestNoUncodedErrorFrames）。
 //
 // 舊版此處還有一筆 `{MsgError, "認證失敗"} → {"type":"error","data":"認證失敗"}`
 // 的期望——那正是要消滅的無碼幀形態，已改為斷言拒絕。
@@ -102,7 +102,7 @@ func TestEncodeErrorMessage(t *testing.T) {
 	}
 }
 
-// TestEncodeCodedErrorMessage Data 取 registry 的 zh fallback（D7：呼叫點不碰文案）
+// TestEncodeCodedErrorMessage Data 取 registry 的 zh fallback（呼叫點不碰文案）
 func TestEncodeCodedErrorMessage(t *testing.T) {
 	for _, code := range []apierror.ErrCode{
 		apierror.CodeSessionEnded,
@@ -135,7 +135,7 @@ func TestEncodeCodedErrorMessage(t *testing.T) {
 	}
 }
 
-// TestEncodeNoticeMessage MsgNotice 幀（D7）：Code＋zh fallback Data＋params。
+// TestEncodeNoticeMessage MsgNotice 幀：Code＋zh fallback Data＋params。
 // Data 的 zh fallback 是安全 UX 要求——譯文漏鍵時阻斷不可靜默無提示。
 func TestEncodeNoticeMessage(t *testing.T) {
 	raw, err := EncodeNoticeMessage(apierror.CodeCommandBlocked, map[string]string{"rule": "禁止刪根目錄"})

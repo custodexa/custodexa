@@ -1,4 +1,4 @@
-// Login.vue 的 SSO（OIDC）區塊與交棒流程（idp-oidc-integration D14.4 / tasks 5.1-5.2）。
+// Login.vue 的 SSO（OIDC）區塊與交棒流程。
 //
 // 守的是四件會靜默壞掉的事：
 //   1. `/auth/methods` 失敗必須降級為「只有本地表單」（封印期該端點為 503）；

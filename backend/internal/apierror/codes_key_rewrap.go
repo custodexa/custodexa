@@ -1,16 +1,16 @@
 package apierror
 
-// 換鑰精靈重包請求的出口碼（kek-provider-modularization D7／D8）。
+// 換鑰精靈重包請求的出口碼。
 //
 // 與 codes.go 同一 registry，分檔僅為 domain 隔離；命名沿 codes.go 的既有 grammar
 // （VALIDATION_* / CONFLICT_*）。三語 apiError.* 由 TestCodeTranslationsComplete
 // 的雙射守衛把關，zh-TW 逐字＝此處 ZhFallback。
 //
-// **明文流向反轉（D7）**：重包請求體改由呼叫端提供新 KEK 材料，伺服端不生成、
+// **明文流向反轉**：重包請求體改由呼叫端提供新 KEK 材料，伺服端不生成、
 // 不回傳、不落庫、不落日誌。以下的碼一律**只描述違規類別**，SHALL NOT 於文字或
 // Meta 攜帶任何材料片段（含長度以外的形制細節）。
 //
-// **兩個確認欄位的證明力不同（D7／codex 批 B2 high）**：
+// **兩個確認欄位的證明力不同**：
 // `new_kek_confirm` 的逐字比對是伺服端**唯一**信任的機械不變式（可獨立驗證
 // 「呼叫端當下持有並能完整重述該材料」）；`confirm_saved` 只是使用者意圖聲明，
 // **不具授權力**（直打 API 可機械式填 true），SHALL NOT 被描述為安全不變式。
@@ -25,7 +25,7 @@ var (
 	CodeKeyRewrapMode = register("VALIDATION_KEY_REWRAP_MODE",
 		Descriptor{ZhFallback: "重包目標模式無效：mode 須為 local、kms 或 hsm 之一"})
 
-	// CodeKeyRewrapPayloadMixed 混合 payload 或 mode 與所帶欄位不符（D7 fail-close）。
+	// CodeKeyRewrapPayloadMixed 混合 payload 或 mode 與所帶欄位不符（fail-close）。
 	// **SHALL NOT 以欄位優先序擇一處理**——那會留下 provider-confusion 空間：
 	// 以優先序繞過本地目標的格式驗證與 paste-back，或把 KEK 明文誤送進本應只收
 	// 引用的委託路徑。
@@ -42,7 +42,7 @@ var (
 	CodeKeyRewrapNotSaved = register("VALIDATION_KEY_REWRAP_NOT_SAVED",
 		Descriptor{ZhFallback: "請先確認已保存新 KEK：遺失後既有資料將永久不可解，且系統不提供任何救回途徑"})
 
-	// CodeKeyRewrapMaterial 新 KEK 材料未通過伺服端格式驗證（D8 路 2）。
+	// CodeKeyRewrapMaterial 新 KEK 材料未通過伺服端格式驗證。
 	// **誠實界定**（沿 JWT_SECRET 長度下限的既有措辭）：格式驗證是降低常見弱值
 	// 風險的務實手段，系統 SHALL NOT 宣稱能由單一值驗證其熵。
 	CodeKeyRewrapMaterial = register("VALIDATION_KEY_REWRAP_MATERIAL",

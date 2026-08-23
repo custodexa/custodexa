@@ -1,6 +1,6 @@
 package apierror
 
-// 申請核准流／存取複審／每日審閱三個 handler 的出口碼（backend-i18n-unification A1）。
+// 申請核准流／存取複審／每日審閱三個 handler 的出口碼。
 //
 // 本檔與 codes.go / codes_stream.go 同一 registry，分檔僅為並行遷移隔離。
 // 涵蓋範圍：
@@ -29,7 +29,7 @@ var (
 var (
 	CodeAccessRequestStateChanged = register("CONFLICT_ACCESS_REQUEST_STATE", Descriptor{ZhFallback: "申請單狀態已變更，請重新整理"})
 	// 服務層以 fmt.Errorf("%w（單號 %d）", …) 附帶單號，碼化後單號不再進 wire
-	// （附帶值需服務層改為具名欄位才能轉 param，屬本批範圍外）。
+	// （附帶值需服務層改為具名欄位才能轉 param，尚未實作）。
 	CodeDuplicatePendingRequest   = register("CONFLICT_ACCESS_REQUEST_DUPLICATE_PENDING", Descriptor{ZhFallback: "同資產已有在途申請"})
 	CodeAlreadyApprovedByActor    = register("CONFLICT_ACCESS_REQUEST_ALREADY_APPROVED", Descriptor{ZhFallback: "您已核准過此申請"})
 	CodeDuplicateBreakGlass       = register("CONFLICT_BREAK_GLASS_DUPLICATE", Descriptor{ZhFallback: "同資產已有有效的破窗連線"})
@@ -83,7 +83,7 @@ var (
 // --- VALIDATION_* ---
 var (
 	// 路徑參數 ID 解析失敗。既有 VALIDATION_INVALID_ID 以 {resource} enum 承載資源，
-	// 但其 ZhLabels 允許清單在 codes.go（本批不動他檔），故三個資源各自建碼。
+	// 但其 ZhLabels 允許清單在 codes.go，不跨檔擴充，故三個資源各自建碼。
 	CodeInvalidAccessRequestID = register("VALIDATION_INVALID_ACCESS_REQUEST_ID", Descriptor{ZhFallback: "無效的申請單 ID"})
 	CodeInvalidApproverScopeID = register("VALIDATION_INVALID_APPROVER_SCOPE_ID", Descriptor{ZhFallback: "無效的範圍 ID"})
 	CodeInvalidAccessReviewID  = register("VALIDATION_INVALID_ACCESS_REVIEW_ID", Descriptor{ZhFallback: "無效的複審 ID"})

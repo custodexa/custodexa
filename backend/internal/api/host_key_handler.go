@@ -26,7 +26,7 @@ type HostKeyHandler struct {
 }
 
 // NewHostKeyHandler 建立 host key handler。authz 用於逐資產可視性守門
-// （asset-access-scoping：host-key 揭露資產指紋與存在性，須與 /assets/:id 同級授權）
+// （host-key 揭露資產指紋與存在性，須與 /assets/:id 同級授權）
 func NewHostKeyHandler(hostKeys HostKeyServiceInterface, authz middleware.AssetPermissionChecker) *HostKeyHandler {
 	return &HostKeyHandler{hostKeys: hostKeys, authz: authz}
 }

@@ -1,12 +1,12 @@
 package identity_test
 
-// identity 測試夾具的複本（modular-architecture W8 9.9）。
+// identity 測試夾具的複本。
 //
 // **為何是複本而非共用**：留在本包的六支測試（OIDC 並發矩陣、撤銷矩陣、
 // provider 撤銷點、輪替撤銷、使用者生命週期撤銷、AAD cutover）同時驅動 identity
 // 與 session，而 identity 的**同包**測試不得 import `internal/service`
-// （session 於 W8 起 import identity ⇒ `import cycle not allowed in test`，W7 踩坑 #1）。
-// 兩邊都需要這些夾具，故各留一份，比照 W2／W3／W4／W6／W7 的夾具複本作法。
+// （session 端 import identity ⇒ `import cycle not allowed in test`）。
+// 兩邊都需要這些夾具，故各留一份，比照其他模組的夾具複本作法。
 //
 // 檔尾三個是 identity 未匯出**生產**函式的等價複本：**刻意不為它們開匯出接縫**
 // ——前兩者是 sha256-hex 這種無語義的純函式，第三者是純字串對應，
@@ -34,7 +34,7 @@ import (
 )
 
 // authContextUnknownRecv 解析不出接收者識別字時的佔位鍵（複本；原件隨
-// auth_context_touchpoints_guard_test.go 於 W8 9.6 遷入 cmd/server）
+// auth_context_touchpoints_guard_test.go 已遷入 cmd/server）
 const authContextUnknownRecv = "<unknown>"
 
 // testTOTPSecret identity 測試常數的複本

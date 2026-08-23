@@ -4,11 +4,11 @@ import (
 	"testing"
 )
 
-// 自 `internal/service/aad_residue_alert_test.go` 遷入（modular-architecture W2 2.5）：
+// 自 `internal/service/aad_residue_alert_test.go` 遷入：
 // 本測試逐項走 envelopeMigrationTargets 並呼叫 countPendingColumnValues／
 // envelopeVersionOf（皆為 keyvault 未匯出內部），必須隨包遷入；
-// 原檔其餘三項驗的是「哨兵上報到 AuditFailureService」的協作，W2 留在 internal/service，
-// W9 該包解散後隨檔遷入本目錄的外部測試包（`aad_residue_alert_test.go`）。
+// 原檔其餘三項驗的是「哨兵上報到 AuditFailureService」的協作，當時留在 internal/service，
+// 該包解散後才隨檔遷入本目錄的外部測試包（`aad_residue_alert_test.go`）。
 // 斷言逐字未改，僅把 fixture 由 setupAADAlertFixture（含 audit failure service）
 // 換成同一組 DB／KM／殘值播種的 keyvault 本地 fixture——原測試取得的第三個
 // 回傳值本就被丟棄（`db, _, _ := setupAADAlertFixture(t)`）。

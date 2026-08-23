@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TestCurrentConnectRole connect-role-revocation-hardening D1：一次查詢完成可連線
+// TestCurrentConnectRole 一次查詢完成可連線
 // 複查與 DB 現查有效角色折疊。角色以 primaryRoleOf（admin>auditor>user）折疊、不受
 // 綁定順序影響；不可連線回既有 sentinel（與 CheckUserConnectable 對齊）。
 func TestCurrentConnectRole(t *testing.T) {

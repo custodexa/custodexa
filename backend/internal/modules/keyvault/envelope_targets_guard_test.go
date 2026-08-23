@@ -11,7 +11,7 @@ import (
 	"unicode"
 )
 
-// envelopeMigrationTargets 完備性守衛（kek-rewrap-hygiene-hardening 冷驗收後補）。
+// envelopeMigrationTargets 完備性守衛（後補）。
 //
 // 這份清單原本只是「遷移覆蓋面」——漏一欄的後果是該值停在 legacy 格式。
 // 本 change 讓它同時成為**銷毀前置閘**：清理退役 DEK 版本前的引用掃描就是照

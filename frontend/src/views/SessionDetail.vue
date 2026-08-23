@@ -95,7 +95,7 @@
           <el-descriptions-item :label="$t('sessionDetail.host')">
             {{ session.asset?.host || '-' }}:{{ session.asset?.port || '-' }}
           </el-descriptions-item>
-          <!-- 連線帳號（asset-multi-account D7）：連線當下的 username 快照，
+          <!-- 連線帳號：連線當下的 username 快照，
                帳號日後改名／刪除不改寫此欄 -->
           <el-descriptions-item :label="$t('sessionDetail.account')">
             <span
@@ -108,7 +108,7 @@
             {{ session.client_ip || '-' }}
           </el-descriptions-item>
           <el-descriptions-item :label="$t('sessionDetail.recordingStatus')">
-            <!-- 錄影失敗誠實標示（recording-failure-handling D3）：
+            <!-- 錄影失敗誠實標示：
                  失敗與「本來就無錄製」是兩回事，須帶原因可辨 -->
             <el-tooltip
               v-if="session.recording_error"
@@ -154,7 +154,7 @@
         </el-descriptions>
       </div>
 
-      <!-- 回放定位提示（workbench-exits-and-export 出口 A）：帶 ?t= 進來時**一律**
+      <!-- 回放定位提示：帶 ?t= 進來時**一律**
            給出結果，含做不到的情形。靜默忽略會讓稽核以為畫面上就是那一刻。
            `:description` 不可省：el-alert 的描述段以 `$slots.default || description`
            決定是否渲染，而具名 slot 由「無 → 有」時（提示先出現、播放器稍後才回報落點）
@@ -353,7 +353,7 @@ import { isTextTerminal, protocolTagType } from '@/utils/protocol'
 import { getEndReasonText, getEndReasonTagType } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
-// recording_error 自 backend-i18n-unification M5 起存機器碼（cause code），
+// recording_error 存機器碼（cause code），
 // 散文僅存量資料才有——auditCauseLabel 未知值原樣回傳，兩者共存不需分支
 import { auditCauseLabel } from '@/constants/audit-enums'
 
@@ -383,10 +383,10 @@ const commandRecordingState = computed(() =>
 )
 
 // ---------------------------------------------------------------------------
-// 回放定位錨點（?t=，workbench-exits-and-export 出口 A）
+// 回放定位錨點（?t=）
 //
 // 工作台送來的 t 是「事件時刻 − 會話 StartTime」的秒數，但回放的 elapsed=0 是
-// **錄影起點**，兩者不同源（design D2）。正確落點 p = t − (recording_started_at −
+// **錄影起點**，兩者不同源。正確落點 p = t − (recording_started_at −
 // start_time)；直接 seek(t) 的誤差恆等於那個差，方向依協議而異：
 //   文字終端 錄影晚於建檔（差為正）→ 未校正**偏晚、衝過目標指令**（危險側）；
 //   圖形     guacd 握手早於建檔（差為負）→ 未校正偏早。
@@ -492,7 +492,7 @@ const SEEK_DRIFT_TOLERANCE_SECONDS = 1
 // 偏差秒數的呈現：留一位小數，不假裝整秒（落點本身就不是整秒）
 const formatDrift = (seconds) => String(Math.round(Math.abs(seconds) * 10) / 10)
 
-// 提示文案：一律以「前後」表述，不宣稱精確（design D2 處置 1）
+// 提示文案：一律以「前後」表述，不宣稱精確
 const seek = computed(() => {
   if (!seekAnchorPresent.value) return { present: false }
   if (seekAnchorInvalid.value) {

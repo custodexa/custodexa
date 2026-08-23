@@ -1,7 +1,7 @@
 <template>
-  <!-- syslog 轉發設定卡（audit-log-compliance D9）：獨立 API，儲存/測試不走
+  <!-- syslog 轉發設定卡：獨立 API，儲存/測試不走
        政策整頁提交流；表單欄位樣式沿通知通道表單模式
-       （settings-domain-restructure D7 自 SecurityPolicies.vue 抽取，行為不變） -->
+       （自 SecurityPolicies.vue 抽取，行為不變） -->
   <div
     v-loading="syslogLoading"
     class="policy-card syslog-card"
@@ -179,7 +179,7 @@ const loadSyslogSettings = async () => {
 const handleSaveSyslog = async () => {
   syslogSaving.value = true
   try {
-    // 傳輸政策 warn 檔存非 TLS 轉發（transmission-security-policy D6）：
+    // 傳輸政策 warn 檔存非 TLS 轉發：
     // 後端回 400＋code=VALIDATION_TRANSMISSION_ACK_REQUIRED＋risks，確認後帶 risk_acknowledged 重送
     let acknowledged = false
     let response
@@ -235,7 +235,7 @@ const handleTestSyslog = async () => {
           { ...syslogPayload(), risk_acknowledged: acknowledged },
           { skipErrorToast: true }
         )
-        // 成功由 HTTP 2xx 表達（asset-syslog-debt-cleanup D1）：不再依賴
+        // 成功由 HTTP 2xx 表達：不再依賴
         // 回應 body 的 success 旗標形狀
         syslogTestResult.value = { success: true }
         break

@@ -1,4 +1,4 @@
-// 全域測試環境（i18n-foundation D9）：
+// 全域測試環境：
 // 1) 所有 mount 注入 i18n（zh-TW 預設，既有中文斷言不變）；
 // 2) singleton Composer 跨測試 locale 污染防護——happy-dom 的 navigator.language
 //    是 en-US，若不強制重設，resolveInitialLocale 會讓測試起始語言飄走。

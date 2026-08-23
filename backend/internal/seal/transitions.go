@@ -2,7 +2,7 @@ package seal
 
 import "time"
 
-// Event 為遷移表的事件維度（D6.2.2，12 格）。
+// Event 為遷移表的事件維度（12 格）。
 type Event string
 
 const (
@@ -96,7 +96,7 @@ type Cell struct {
 	match func(Situation) bool
 }
 
-// cells 為 12 格定稿表（D6.2.2）。順序即表列順序。
+// cells 為 12 格定稿表。順序即表列順序。
 var cells = []Cell{
 	{
 		ID: cellBoot, Event: EventBoot, Target: StateSealed,
@@ -108,7 +108,7 @@ var cells = []Cell{
 	{
 		ID: cellAcquire, Event: EventUnsealRequest, Target: StateUnsealing,
 		// 格 2：來源態集合為 {sealed, sealed-faulted}，且結構性前置 cleanup == nil。
-		// 驗證尚未開始——CAS 進入 unsealing 發生在任何驗證之前（D6.2.1）。
+		// 驗證尚未開始——CAS 進入 unsealing 發生在任何驗證之前。
 		match: func(s Situation) bool {
 			return s.Event == EventUnsealRequest && s.HolderAcquired &&
 				!s.HasCleanup && (s.From == StateSealed || s.From == StateSealedFaulted)

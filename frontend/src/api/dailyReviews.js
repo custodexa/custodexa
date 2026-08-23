@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 取得今日審閱簽核狀態（audit-log-compliance，PCI 10.4.1）
+ * 取得今日審閱簽核狀態（PCI 10.4.1）
  * @returns {Promise} { data: { enabled, signed?, snapshot?: { date, login_failures,
  *   unreviewed_alerts, high_risk_ops }, review?: { review_date, reviewer_name,
  *   created_at, note, snapshot_json } } }；enabled=false 時僅 { enabled: false }

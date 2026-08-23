@@ -7,14 +7,14 @@ import (
 
 // MaxOpaqueRunes opaque 值長度上限（rune 而非 byte——中日文合法名不受傷；
 // asset name 上限 100、username 50，合法值永不觸限）。超限即可見截斷，
-// 不拒發不靜默：合規通知不因單一長值消失（design D3）。
+// 不拒發不靜默：合規通知不因單一長值消失。
 const MaxOpaqueRunes = 128
 
 // truncationMark 截斷標記；計入 MaxOpaqueRunes。
 const truncationMark = "…"
 
-// SanitizeOpaque 淨化自由字串值（design D3 的單一共用淨化契約，
-// notifycat 與後續 WS 幀共用；D7 的 MsgNotice params 亦走本函式）。
+// SanitizeOpaque 淨化自由字串值（單一共用淨化契約，
+// notifycat 與 WS 幀共用；MsgNotice 的 params 亦走本函式）。
 //
 // 三件事，順序固定：
 //  1. 移除 ANSI/ESC 逸出序列（CSI/OSC/SS/兩字元序列）——AlertRule.Name 等來源
@@ -24,7 +24,7 @@ const truncationMark = "…"
 //     （含 C1 U+0080-U+009F 與 DEL）與整個 Unicode Cf 類（格式字元）一律移除。
 //  3. 超過 MaxOpaqueRunes 即截斷並附「…」，截斷後總長仍為 MaxOpaqueRunes。
 //
-// 為何 Cf 整類與 U+2028/U+2029 也要處理（V2 對抗驗收 C2/C3）：
+// 為何 Cf 整類與 U+2028/U+2029 也要處理：
 //   - U+2028/U+2029 是 Unicode 行/段分隔符，unicode.IsControl 為 false，
 //     卻在 JS/JSON 與部分渲染器中構成換行——放行等於留了一條偽造多行訊息
 //     （假造「系統通知」段落）的路。折成空白與 \n 同級處置。
@@ -129,7 +129,7 @@ func skipEscapeSequence(runes []rune, start int) int {
 }
 
 // 註：原 SanitizeParams（降級路徑「全 params 淨化後照發」）已由
-// FilterDeclared 取代（codex 批 2 M1）——淨化只管形狀，管不了「該不該出站」。
+// FilterDeclared 取代——淨化只管形狀，管不了「該不該出站」。
 // 唯一呼叫端改走 FilterDeclared 後本函式無人使用，一併移除以免回潮。
 
 // slackEscape 轉義 Slack mrkdwn 控制字元（與 service.slackEscape 同語義；

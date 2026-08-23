@@ -21,22 +21,22 @@ const integrityVerifyBatch = 1000
 // integrityMismatchIDCap 回報不符列 ID 的上限（防巨量結果撐爆回應）
 const integrityMismatchIDCap = 100
 
-// AuditIntegrityService audit_logs 逐列 HMAC（audit-log-compliance，
+// AuditIntegrityService audit_logs 逐列 HMAC（
 // PCI 10.3.4 補償控制之一）：寫入時計算（model BeforeCreate hook，覆蓋
 // 全部**入庫**路徑）、驗證端點掃描比對。
-// 限制（design D6 誠實聲明）：可偵測「改內容」與「基準後清空 HMAC」；
+// 限制（誠實聲明）：可偵測「改內容」與「基準後清空 HMAC」；
 // 整筆刪除（連 HMAC 一起刪）本層不可偵測——該職責自 audit-checkpoint-chain
 // 起由檢查點鏈承擔（本層是「內容真不真」，鏈是「序列少沒少」，兩層不得互相
 // 宣稱對方的保證）。降級與丟棄的事件不入庫故不在任一層覆蓋內（誠實邊界 R2）
 type AuditIntegrityService struct {
-	// keyFn 版本→蓋章鑰（key-management-envelope D4）；未知版本回 nil，
+	// keyFn 版本→蓋章鑰；未知版本回 nil，
 	// 驗證端計為不符。activeFn 現行版本與鑰（Stamp 寫入 key_version）。
 	keyFn    func(version int) []byte
 	activeFn func() (int, []byte)
 	// baselineMaxID 功能啟用基準（首啟持久化的當下最大 audit_logs.id）：
 	// 之後寫入的列（id 更大）必帶 HMAC，空 HMAC 判不符——堵「竄改＋清空
-	// HMAC」規避（對抗驗證實證的真洞）。以 id 而非 created_at 判定：
-	// created_at 可隨列回填偽裝歷史列，自增 id 不可（H2 修正）
+	// HMAC」規避（實證的真洞）。以 id 而非 created_at 判定：
+	// created_at 可隨列回填偽裝歷史列，自增 id 不可
 	baselineMaxID uint
 }
 
@@ -74,8 +74,8 @@ func registerAuditIntegrity(svc *AuditIntegrityService) {
 	auditIntegrityMu.Unlock()
 }
 
-// InitAuditIntegrityVersioned 建立並註冊單例（**唯一建構子**，
-// key-management-envelope D4；legacy 單鑰模式已於 release-transitional-cleanup
+// InitAuditIntegrityVersioned 建立並註冊單例（**唯一建構子**；
+// legacy 單鑰模式已於過渡格式收尾時
 // 拆除）：蓋章鑰由 key manager 供給——新列以現行版本蓋章並記 key_version，
 // 驗證按列版本取鑰。版本鏈自 v1 起，不存在 v0 快照鑰；`HMACKeyByVersion` 對
 // 不存在的版本（含 0）回 nil＝驗證不符，天然覆蓋偽造 v0。
@@ -198,7 +198,7 @@ type IntegrityReport struct {
 // VerifyIDRange 以 **id 區間**掃描重算列級 HMAC（audit-checkpoint-chain 8.3）。
 //
 // 與 Verify 的差別只有切窗維度：Verify 以 created_at 切窗回答「這段時間的列
-// 內容真不真」，本方法以 id 切窗，因為檢查點的區間主軸是 id（D1——回灌列的
+// 內容真不真」，本方法以 id 切窗，因為檢查點的區間主軸是 id（回灌列的
 // created_at 是過去時刻，時間切窗必然切不齊檢查點區間）。
 //
 // 判定規則與 Verify 逐條相同（含基準前空 HMAC 列獨立計為 Legacy 不算不符），
@@ -263,7 +263,7 @@ func (s *AuditIntegrityService) Verify(db *gorm.DB, from, to time.Time) (*Integr
 			// 空 HMAC：基準前（id 不大於基準 max_log_id）=歷史列（誠實獨立
 			// 計數）；基準後=可疑——上線後所有寫入路徑必經 BeforeCreate
 			// 蓋章，空值即異常。判 id 不判 created_at：新插列必拿更大的
-			// 自增 id，回填時間欄無法偽裝歷史列（H2 修正）
+			// 自增 id，回填時間欄無法偽裝歷史列
 			if l.IntegrityHMAC == "" && l.ID <= s.baselineMaxID {
 				report.Legacy++
 				continue

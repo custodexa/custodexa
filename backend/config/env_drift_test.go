@@ -60,7 +60,7 @@ var driftAllowlist = map[string]bool{
 	// 不上移至 .env.example。理由是分類判準看的是「誰供給、使用者調不調得動」而非
 	// 「必不必填」：兩份 compose 的 backend environment: 都寫死 postgres，而
 	// environment: 優先於 env_file，使用者在 .env 裡填任何值都不會生效——列入範本
-	// 只會製造一個看得到、改了沒用的假旋鈕（config-env-drift-sync 明列的反模式）。
+	// 只會製造一個看得到、改了沒用的假旋鈕（明列的反模式）。
 	// 且它沒有第二個合法部署值：postgres 是唯一正式目標，sqlite 只服務單元測試。
 	// 真正需要自己供給它的是裸二進位／自製編排的部署者，那條路徑由
 	// config.ValidateDatabaseDriver 的拒絕啟動訊息當場指路，而非靠範本。
@@ -81,7 +81,7 @@ var driftAllowlist = map[string]bool{
 var knownIndirectKeys = []string{
 	"SSH_IDLE_TIMEOUT_MINUTES",
 	"SSH_MAX_SESSION_MINUTES",
-	// KEK 來源模式判定（kek-provider-modularization D2）：config/kek.go 一律經
+	// KEK 來源模式判定：config/kek.go 一律經
 	// 可注入的 EnvLookup 讀取，且 key 以具名常數（EnvKeyKEKProvider 等）傳入，
 	// 字面掃描看不到。可注入是矩陣「十一格逐格測試」的前提（不得污染行程 env），
 	// 故此處以安全網登記；新增金鑰類鍵時務必同步本清單與 .env.example。
@@ -98,7 +98,7 @@ var knownIndirectKeys = []string{
 
 // commentedAssignment 註解掉的賦值行（`# KEY=` 形式）。
 //
-// 為何需要（kek-provider-modularization 1.1b）：金鑰類鍵改為三值語義且無
+// 為何需要：金鑰類鍵改為三值語義且無
 // 出廠預設值注入後，範本若帶生效賦值即等於「所有部署共用一把公開已知的
 // KEK」。故 KEK 材料鍵在範本中**必須是註解掉的佔位**（＝未設），
 // 使 `cp .env.example .env` 後必須顯式填值才起得來。
@@ -152,7 +152,7 @@ const minEnvDriftScannedFiles = 260
 // **原以 runtime.Caller + 固定 2 層 Dir 推算**：那與「本 package 住在樹的第幾層」
 // 綁死，package 下移一層即把掃描根指向 config/（而非 backend/），Walk 照樣成功、
 // 只是掃到錯的子樹——消費的 env key 集合縮成近乎空集合，於是「沒有漂移」
-// （modular-architecture W1 1.20）。改以「向上找 go.mod 並核對 module 行」為錨點。
+// 成了假結論。改以「向上找 go.mod 並核對 module 行」為錨點。
 func backendRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
@@ -369,8 +369,7 @@ func sample() {
 	}
 }
 
-// TestEnvExampleKEKMaterialKeysArePlaceholders 出貨值佔位化守衛
-// （kek-provider-modularization 1.1b）。
+// TestEnvExampleKEKMaterialKeysArePlaceholders 出貨值佔位化守衛。
 //
 // 為何是硬閘：範本原值 `ENCRYPTION_KEY=dev-key-for-testing-only-ok32bts` 與
 // config.DefaultEncryptionKey 逐字相同；金鑰類鍵廢除預設注入後，照抄該值等於
@@ -387,7 +386,7 @@ func TestEnvExampleKEKMaterialKeysArePlaceholders(t *testing.T) {
 	}
 	lines := strings.Split(string(data), "\n")
 
-	// **LEGACY_ENCRYPTION_KEY 已自本集合移除**（release-transitional-cleanup D3）：
+	// **LEGACY_ENCRYPTION_KEY 已自本集合移除**：
 	// 該鍵不再被任何產品碼消費，對它施加「必須有註解佔位」的要求會迫使範本
 	// 永遠保留一個死鍵。此為機制拆除的一部分，非放寬守衛——集合其餘鍵不動。
 	materialKeys := map[string]bool{

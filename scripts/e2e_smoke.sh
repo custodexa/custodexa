@@ -3,7 +3,7 @@
 #
 # 覆蓋：SSH xterm 直連（WS 級）、指令審計、asciicast 錄製回放、工作區 API 面與
 # 統一錯誤封套（api-error-responses spec 回歸）、指令阻斷、資料庫協議、K8s、
-# SFTP 保真、多帳號切換、OIDC SSO 全鏈路（場景 12，idp-oidc-integration），
+# SFTP 保真、多帳號切換、OIDC SSO 全鏈路（場景 12），
 # 以及 RDP／VNC 圖形協議走 guacd 的建線／落庫／錄影／審計（場景 16-17）。
 # 依賴：docker compose 全棧運行、curl、python3。失敗即非零退出。
 #
@@ -14,7 +14,7 @@ set -u
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 ADMIN_USER="${ADMIN_USER:-admin}"
 # ADMIN_PASS **刻意無預設值**：admin 密碼於首登強制改密後就只有操作者持有，
-# 任何寫死的字面值都會週期性失效（2026-08-04、2026-08-16 各失效一次）。
+# 任何寫死的字面值都會週期性失效。
 # **也不自 .env 的 ADMIN_INITIAL_PASSWORD 回退**，理由不是「風險高」而是那條路徑
 # 恆不可用：該值仍是現行密碼的唯一情況＝admin 從未改密（`must_change_password`
 # 為真），而該狀態下 `/auth/login` 只回 `change_token` 不回 `token`
@@ -55,7 +55,7 @@ fi
 
 # resolve_ssh_asset_id 自 API 查出主線 SSH 靶機的資產 ID。
 # **不寫死預設值**：資產 ID 隨清庫重建漂移，寫死會讓整批場景以「連錯資產」的形式
-# 假紅（2026-08-09 首跑 31/4，僅改 ID 即 35/0）。判準取 host 而非 name／id：
+# 假紅：連錯資產的失敗看起來與真回歸沒有兩樣。判準取 host 而非 name／id：
 # 靶機主機名是 compose 定義的、比資產名穩定
 resolve_ssh_asset_id() {
   curl -s "$BASE_URL/api/v1/assets?protocol=ssh&active=true&page=1&page_size=200" \
@@ -127,7 +127,7 @@ else
   echo "  INFO: 使用指定的 SSH_ASSET_ID=$SSH_ASSET_ID"
 fi
 
-# 401 無 token：機器碼＋文案封套（backend-i18n-unification 後契約），
+# 401 無 token：機器碼＋文案封套，
 # 精確 key 集合——多出欄位（debug/stack 等洩漏面）也算 FAIL
 BODY=$(curl -s "$BASE_URL/api/v1/assets")
 echo "$BODY" | python3 -c "
@@ -259,7 +259,7 @@ else
   done
   [ "${DB_AUDIT:-0}" -ge 1 ] 2>/dev/null && ok "SQL 指令入審計庫" || bad "SQL 指令未入審計庫"
 
-  # 撥測（db-protocol-connection-test 5.3）：DB 協議曾被撥測分派的 else 分支送進
+  # 撥測：DB 協議曾被撥測分派的 else 分支送進
   # guacd（沒有 mysql/postgres/redis client library）而永不返回，前端 10 秒後誤報
   # 「網路錯誤」。這裡驗三件事：可達回 success、有界時間內返回、不可達的失敗
   # 分類不是 protocol_unsupported（後者代表分派又掉回未登記狀態）。
@@ -295,7 +295,7 @@ else
   echo "  (mysql-test 未運行，跳過 mysql 撥測)"
 fi
 
-# mssql 靶機（mssql-web-cli 5.2；dev compose 專屬，缺靶機一律 skip 而非 fail）。
+# mssql 靶機（dev compose 專屬，缺靶機一律 skip 而非 fail）。
 # 這條與 postgres 場景的差別在於**批次終止符**：mssql 的一筆指令由 `GO` 結算，
 # 故 -extra 送的是「SQL 一行 ↵ GO」；若審計切分沒帶協議感知，marker 永遠不會入庫。
 if docker compose ps mssql-test 2>/dev/null | grep -q "Up"; then
@@ -466,7 +466,7 @@ else
   curl -s -X DELETE "$BASE_URL/api/v1/assets/$MA_ASSET_ID" -H "Authorization: Bearer $TOKEN" > /dev/null
 fi
 
-# --- 12. OIDC SSO 全鏈路（idp-oidc-integration 4.10：dex 靶機三情境）---
+# --- 12. OIDC SSO 全鏈路（dex 靶機三情境）---
 #
 # 三情境：成功登入→exchange→建 SSH 連線／准入拒絕／同名衝突。全程走真實 HTTP
 # （begin 302 → dex 授權頁 → dex 密碼登入 → callback → exchange → connect token → WS）。
@@ -732,7 +732,7 @@ print(c.get('user_id'), c.get('username'), c.get('auth_method'), c.get('provider
 
 oidc_scenarios
 
-# --- 13. LDAP 目錄設定與登入（ldap-settings-migration 5.3）---
+# --- 13. LDAP 目錄設定與登入 ---
 #
 # 一條線走完：API upsert（含啟用）→ 連線測試 → LDAP 使用者登入 → 影子帳號斷言 → 清理。
 #
@@ -916,7 +916,7 @@ print(json.load(sys.stdin)['data']['chain'].get('status',''))" 2>/dev/null)
   # **下限 row_count >= 3 是斷言正確性的前提，不是效能調校**：抽走單列區間的唯一一列
   # 等於抽空整個區間，驗證器依定義回 purged_invalid（checkpoint_verify.go 的
   # remain == 0 分支），與「抽一列」是兩件不同的事。dev 環境常出現單列／空區間，
-  # 不設下限則 (5) 會確定性假紅（2026-08-16 seq=49 即 row_count=1）。
+  # 不設下限則 (5) 會確定性假紅。
   # 規範來源 openspec/specs/audit-checkpoint-chain/spec.md 的
   # Scenario「抽走中段列被偵測」同樣以「抽中段列」為語義，此處對齊之。
   seq=$(psql_q "SELECT seq FROM audit_checkpoints
@@ -1102,8 +1102,8 @@ workbench_scenario
 # 撥測不建線。此處要求收到 guacd 的 **sync 幀**——那代表協議協商完成、畫面串流
 # 已經開始，且 error 幀會被驅動判為失敗（VNC 認證失敗即以 in-band error 現形）。
 #
-# 錄影斷言是 observability-lite 錄影路徑正規化（`internal/proxy/handler.go`
-# 更名段改走 recorder.GraphicsRecordingPath）在圖形協議上的唯一端到端驗證：
+# 錄影斷言是錄影路徑正規化（`internal/proxy/handler.go` 改走
+# recorder.GraphicsRecordingPath）在圖形協議上的唯一端到端驗證：
 # 路徑不做逐字比對常數，改驗其**性質**——結尾為 `session-<id>.guac`、
 # 全路徑不含 `//`。雙斜線正是該正規化要防的回歸（保留期清理刪得掉檔案、
 # 清不掉 DB 欄位），而寫死根目錄字面值只會讓場景綁死一組 RECORDING_PATH。
@@ -1203,7 +1203,7 @@ graphics_scenario() {
     # 不產生畫面活動，故 guacd 的 8192 B 輸出緩衝在畫格邊界已清空，收尾殘量就只有
     # 那幾則 dispose。**K 不是普遍上界**——若日後把場景改成跑動畫，收線可能落在畫格
     # 中途，殘量可達一個畫格的量級（遠大於 K），屆時應改場景設計，不是調大 K。
-    # 差額超過 K 一律視為待查缺陷（見 change graphics-teardown-sync design D5）。
+    # 差額超過 K 一律視為待查缺陷。
     slack_def="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/backend/internal/recorder/graphics_teardown_slack.go"
     slack_k=$(grep -oE 'GraphicsTeardownSlackBytes = [0-9]+' "$slack_def" 2>/dev/null | grep -oE '[0-9]+$')
     if [ -z "$slack_k" ]; then

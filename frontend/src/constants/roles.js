@@ -1,5 +1,5 @@
 /**
- * 角色顯示中繼資料唯一事實源（role-enum-metadata-sync＋i18n-foundation D6）。
+ * 角色顯示中繼資料唯一事實源。
  * 後端 roles 表為角色存在性事實源；此處只管前端顯示的值域與非譯 metadata（tag 色），
  * label／description 譯文住 locale 檔（enum.role.*），以 getter 回 t()——render 期
  * 取值會被依賴追蹤，切語言自動重繪。roles 為開放集：僅鎖 seeded 四角色，

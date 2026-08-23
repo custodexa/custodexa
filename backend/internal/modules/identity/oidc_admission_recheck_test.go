@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 登入路徑上的規則集合規性重驗（F1 / spec oidc-auth L161-163）。
+// 登入路徑上的規則集合規性重驗（spec oidc-auth L161-163）。
 //
 // 缺這一步的實際後果：部署方把某 issuer 自 OIDC_DEDICATED_ISSUERS 移除後，
 // 原本合法的「僅 email 網域」規則就地變成不合規，但**沒有任何寫入操作發生**，

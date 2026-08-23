@@ -15,8 +15,8 @@ import (
 // 全數正確，收尾指令原有兩筆無法還原；ctrl-c 那一筆已在本 change 修復並移出，
 // 現只剩下面一筆 **psql-meta**。
 //
-// 它不是語料缺陷，是以「螢幕上出現過什麼」為原理的解析器的能力邊界
-// （design.md D14.1）。把它們列成具名清單而不是放著紅，是為了讓
+// 它不是語料缺陷，是以「螢幕上出現過什麼」為原理的解析器的能力邊界。
+// 把它們列成具名清單而不是放著紅，是為了讓
 // CI 上的紅只代表「新的回歸」；但清單必須是**精確集合**而非上限——
 // 本專案踩過「棘輪卡在舊基準等同全鬆」的坑，所以
 // TestCaptureReplayKnownTeardownGapsAreExact 用集合相等（含結算值逐字相等）把關：
@@ -34,7 +34,7 @@ type teardownGap struct {
 	gotCommand string
 	// reason 為成因（逐位元組追過事件流後的結論，不是推測）。
 	reason string
-	// designRef 為對應的設計依據段落。
+	// designRef 為這一筆所依據的設計原則。
 	designRef string
 	// removalCondition 說明什麼情況下這一筆應該被刪掉。
 	removalCondition string
@@ -52,7 +52,7 @@ var knownTeardownGaps = map[string]teardownGap{
 			"**回顯根本不在輸出流裡**（實測事件流：`\\q\\r` 之後的 out 只有 pager 的重繪與重印的提示符，" +
 			"沒有任何 `\\q` 字樣）。以螢幕重建為原理的解析器記的是「終端上出現過什麼」，" +
 			"不是「使用者按了什麼」，故在原理上無法還原它。",
-		designRef:        "design.md D14.1（誠實邊界）",
+		designRef:        "誠實邊界：重建不出來的缺口如實列出，不以推測補足。",
 		removalCondition: "指令來源改為以輸入方向為事實源（或新增 pager 感知的輸入側記錄）之後，這一筆即應刪除。",
 	},
 }

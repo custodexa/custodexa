@@ -170,7 +170,7 @@ func freshSchema(t *testing.T, dsn, name string) *gorm.DB {
 // TestDeclaredIndexesMatchDatabasePostgres 全新部署的宣告／實際一致性
 // （gating：未設 TEST_PG_DSN 即 skip；REQUIRE_INTEGRATION=1 時 skip 轉 fail）。
 //
-// 走的是生產路徑：**baseline 建整個 schema**（migration-baseline-compression 後，
+// 走的是生產路徑：**baseline 建整個 schema**（增量 migration 退場後，
 // 開機 AutoMigrate 已不存在，baseline 是 schema 的唯一事實源）。隨後逐條比對每個
 // gorm tag 宣告的索引與 pg 目錄裡的欄序、唯一性。
 //

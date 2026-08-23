@@ -13,8 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 按 provider 的協議會話收線與「兌換建 session」的序列化
-// （idp-oidc-integration 3.8／3.8a／3.8b）。
+// 按 provider 的協議會話收線與「兌換建 session」的序列化。
 //
 // 兩階段拆分（MarkTerminatedByProvider ／ CloseTerminated）與 TerminateAllByUser
 // 的單階段語義不同，理由見 ProviderSessionTerminator 的介面說明：

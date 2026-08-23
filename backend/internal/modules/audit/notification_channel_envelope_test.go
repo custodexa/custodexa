@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupEnvelopeChannelSvc 帶信封 codec 的通知服務（key-management-envelope G8）
+// setupEnvelopeChannelSvc 帶信封 codec 的通知服務
 func setupEnvelopeChannelSvc(t *testing.T) (*NotificationChannelService, *keyvault.KeyManagerService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -43,7 +43,7 @@ func TestChannelEncryptedAtRest(t *testing.T) {
 	if err := db.Raw("SELECT url, secret FROM notification_channels WHERE id = ?", created.ID).Scan(&stored).Error; err != nil {
 		t.Fatalf("raw: %v", err)
 	}
-	// cutover（tasks 1.7）後寫入端一律產帶 AAD 的 enc:a1——**不再可能**是 enc:v
+	// cutover 後寫入端一律產帶 AAD 的 enc:a1——**不再可能**是 enc:v
 	if !strings.HasPrefix(stored.URL, "enc:a1:v") || !strings.HasPrefix(stored.Secret, "enc:a1:v") {
 		t.Fatalf("落庫值應為帶 AAD 的信封密文: url=%q secret=%q", stored.URL[:12], stored.Secret[:12])
 	}

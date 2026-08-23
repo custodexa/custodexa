@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AnchorStatus 檢查點的離機錨定狀態（audit-checkpoint-chain D7）
+// AnchorStatus 檢查點的離機錨定狀態（audit-checkpoint-chain）
 const (
 	// AnchorStatusEnqueued 已入 syslog 轉發佇列（**不等於送達**，誠實邊界 R4）
 	AnchorStatusEnqueued = "enqueued"
@@ -18,7 +18,7 @@ const (
 	AnchorStatusDisabled = "disabled"
 )
 
-// AggSchemeV1 聚合演算法版本標識（audit-checkpoint-chain D2）：
+// AggSchemeV1 聚合演算法版本標識（audit-checkpoint-chain）：
 // canonical 編碼一經釘定不再變更，任何編碼演進以新的 scheme 值表示，
 // 舊檢查點續以其原 scheme 重算驗證
 const AggSchemeV1 = "cp-agg-v1"
@@ -26,18 +26,18 @@ const AggSchemeV1 = "cp-agg-v1"
 // ErrCheckpointImmutable 檢查點守衛的統一錯誤（改／刪皆回此值）
 var ErrCheckpointImmutable = errors.New("audit_checkpoints 為不可變證據：不得經 ORM 刪除，且僅允許更新錨定與清除狀態欄")
 
-// AuditCheckpoint 審計檢查點（audit-checkpoint-chain D1／D6）。
+// AuditCheckpoint 審計檢查點（audit-checkpoint-chain）。
 //
 // 列級 HMAC 能偵測「列被改」，偵測不了「列被刪」——DB 直寫 DELETE 抽掉中段列
 // 後殘列全數驗過。檢查點以 audit_logs 的 **id 閉區間 [id_from, id_to]** 為覆蓋
 // 單位，週期性把區間內每列的 (id, key_version, integrity_hmac) 聚合成一個雜湊、
 // 鏈接前一檢查點、以 Ed25519 簽章並向 syslog 錨定，使「少了列」成為可偵測事件。
 //
-// **區間主軸是 id 不是 created_at**（D1）：封印期回灌列的 created_at 是過去
+// **區間主軸是 id 不是 created_at**：封印期回灌列的 created_at 是過去
 // 事件時刻而 id 是新取號（seal_replay_sink.go:216-218），時間區間必然被後來長出
 // 的列打破；自增 id 是唯一 append-closed 的切法。
 //
-// **空區間照蓋**（D4）：`row_count=0` 時 `id_from = 前一檢查點 id_to + 1 > id_to`，
+// **空區間照蓋**：`row_count=0` 時 `id_from = 前一檢查點 id_to + 1 > id_to`，
 // 「那一小時沒事發生」本身成為被簽章的主張。
 type AuditCheckpoint struct {
 	ID uint `gorm:"primarykey" json:"id"`
@@ -47,7 +47,7 @@ type AuditCheckpoint struct {
 	Seq uint `gorm:"not null;uniqueIndex:idx_audit_checkpoints_seq" json:"seq"`
 
 	// IDFrom／IDTo 覆蓋的 audit_logs id **閉區間**（含兩端）。
-	// 空區間以 IDFrom = IDTo + 1 表示（D8 訂正：全設計一律閉區間，
+	// 空區間以 IDFrom = IDTo + 1 表示（全設計一律閉區間，
 	// 半開區間會漏掉 IDFrom 那一列）
 	IDFrom uint `gorm:"not null;index:idx_audit_checkpoints_range,priority:1" json:"id_from"`
 	IDTo   uint `gorm:"not null;index:idx_audit_checkpoints_range,priority:2" json:"id_to"`
@@ -64,7 +64,7 @@ type AuditCheckpoint struct {
 	PrevCheckpointHash string `gorm:"type:varchar(64);not null" json:"prev_checkpoint_hash"`
 
 	// MinCreatedAt／MaxCreatedAt 區間內實際列的時間跨度（空區間為 NULL）。
-	// **僅供人讀與時間查詢的近似映射，不參與完整性判定**（D1）
+	// **僅供人讀與時間查詢的近似映射，不參與完整性判定**
 	MinCreatedAt *time.Time `json:"min_created_at,omitempty"`
 	MaxCreatedAt *time.Time `json:"max_created_at,omitempty"`
 
@@ -81,15 +81,15 @@ type AuditCheckpoint struct {
 	AnchorStatus string `gorm:"type:varchar(16);not null" json:"anchor_status"`
 
 	// PurgedAt／PurgeSignature／PurgeSigningKeyVersion 合法清除的 tombstone
-	// （D8，同樣不在檢查點簽章涵蓋內，其真實性由 PurgeSignature 自行承擔）。
+	// （同樣不在檢查點簽章涵蓋內，其真實性由 PurgeSignature 自行承擔）。
 	// PurgeSigningKeyVersion 為實作階段增列：無此欄則簽章鑰輪替後 tombstone 不可驗
 	PurgedAt               *time.Time `json:"purged_at,omitempty"`
 	PurgeSignature         *string    `gorm:"type:varchar(128)" json:"purge_signature,omitempty"`
 	PurgeSigningKeyVersion *int       `json:"purge_signing_key_version,omitempty"`
-	// PurgePolicyDays 清除當下生效的保留天數（tasks 8.3 增列）。
+	// PurgePolicyDays 清除當下生效的保留天數。
 	//
 	// **不存它，tombstone 的可驗期就只到下一次政策調整為止**：purge 簽章
-	// 涵蓋 policy_days（D8），驗證端若拿「現行政策值」重算，admin 把保留期
+	// 涵蓋 policy_days，驗證端若拿「現行政策值」重算，admin 把保留期
 	// 由 365 改成 730 的那一刻，全部歷史 tombstone 一起驗不過而回報
 	// purged_invalid——系統對自己的合法清除發出大規模竄改告警。
 	// 與 PurgeSigningKeyVersion 是同一種錯誤的兩個面（簽章的輸入必須隨簽章保存）
@@ -103,7 +103,7 @@ func (AuditCheckpoint) TableName() string {
 	return "audit_checkpoints"
 }
 
-// checkpointUpdatableColumns BeforeUpdate 的欄位白名單（audit-checkpoint-chain D6）。
+// checkpointUpdatableColumns BeforeUpdate 的欄位白名單（audit-checkpoint-chain）。
 //
 // 只有「封章之後才發生、且不在簽章涵蓋內」的狀態欄可更新：錨定結果與清除
 // tombstone。任何被簽章欄位可改＝鏈可被系統自己改寫＝在稽核面前一文不值。

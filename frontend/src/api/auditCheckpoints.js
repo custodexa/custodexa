@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 審計檢查點鏈（audit-checkpoint-chain D10）。
+ * 審計檢查點鏈（audit-checkpoint-chain）。
  *
  * 三支端點皆為 admin 與 auditor 可讀的**唯讀**面：本模組刻意沒有任何寫入
  * 方法——檢查點的補蓋、重簽、修鏈能力本身即偽造面，後端亦不存在對應端點。

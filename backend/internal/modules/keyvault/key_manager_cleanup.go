@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 顯式清理退役金鑰資料（kek-rewrap-hygiene-hardening D9）：
+// 顯式清理退役金鑰資料：
 // 唯一的材料銷毀點。列本身、指紋與退役軌跡永久保留（PCI 3.7.5：銷毀是
 // 有紀錄的主動操作而非自動副作用）。
 
@@ -17,7 +17,7 @@ import (
 var ErrCleanupNotConverged = errors.New("金鑰輪換尚未全數收斂（存在待切換 pending 或退役 backlog），請先完成切換或重啟收斂後再清理")
 
 // ErrCleanupResidueDetected 引用掃描遇不可歸屬殘值：整筆拒清
-// （release-transitional-cleanup spec delta「引用掃描遇不可歸屬殘值保守拒清」）。
+// （spec delta「引用掃描遇不可歸屬殘值保守拒清」）。
 //
 // **為何必須是獨立的閘而非讓引用掃描自行處理**：引用掃描以
 // `envelopeVersionOf` 判定「這個值屬於哪個版本」，解析不過的值回 `ok=false`，
@@ -100,9 +100,9 @@ func (s *KeyManagerService) CleanupRetiredMaterial() (*KeyCleanupResult, error) 
 
 		// 類 1：KEK 退役列（材料尚存）。「全收斂下現行 KEK 對每 slot 皆有 live 列」
 		// 的不變式只在開機被強制——銷毀是不可逆操作，交易內逐 slot 自證：
-		// 該 slot 無現行 KEK 的 live 材料列即拒清（opus 第一輪審 M5，論證變機制）
+		// 該 slot 無現行 KEK 的 live 材料列即拒清（論證變機制）
 		var kekRetired []model.DataKey
-		// 候選只需識別欄位——不投影 wrapped_key，材料觸及面收斂（冷驗收 P6）
+		// 候選只需識別欄位——不投影 wrapped_key，材料觸及面收斂
 		if err := tx.Select("id", "purpose", "version", "kek_id").
 			Where("kek_retired_at IS NOT NULL AND wrapped_key <> ''").
 			Find(&kekRetired).Error; err != nil {
@@ -120,7 +120,7 @@ func (s *KeyManagerService) CleanupRetiredMaterial() (*KeyCleanupResult, error) 
 				}
 				return fmt.Errorf("清理前置自證查詢失敗: %w", err)
 			}
-			// 非空不等於有效（codex 第二輪審 H2）：現行列材料須實際以現行 KEK
+			// 非空不等於有效：現行列材料須實際以現行 KEK
 			// 解包成功，否則退役副本可能是該版本最後的有效材料——拒清
 			if _, err := s.unwrapRow(envRow); err != nil {
 				return fmt.Errorf("清理中止：slot %s v%d 現行 KEK 材料列無法解包（%v），退役副本可能是最後有效材料", r.Purpose, r.Version, err)
@@ -130,7 +130,7 @@ func (s *KeyManagerService) CleanupRetiredMaterial() (*KeyCleanupResult, error) 
 		}
 
 		// 類 2：退役 DEK 版本的現行列——逐版本引用掃描。
-		// kek_id=env 在全收斂閘下可由謂詞推導，仍顯式寫明（opus 第二輪審 L5）：
+		// kek_id=env 在全收斂閘下可由謂詞推導，仍顯式寫明：
 		// 日後放寬收斂閘時不得靜默開始清到他 KEK 的列
 		var dekRetired []model.DataKey
 		if err := tx.Select("id", "purpose", "version", "kek_id").
@@ -146,12 +146,12 @@ func (s *KeyManagerService) CleanupRetiredMaterial() (*KeyCleanupResult, error) 
 				return err
 			}
 		}
-		// **已知限制：引用掃描與材料清除無法阻止「其他實例以舊記憶體 DEK 寫入」**
-		// （P1 雙審 codex high #2）。掃描歸零後、清除生效前，另一個尚未重啟的行程
+		// **已知限制：引用掃描與材料清除無法阻止「其他實例以舊記憶體 DEK 寫入」**。
+		// 掃描歸零後、清除生效前，另一個尚未重啟的行程
 		// 仍可能以其快取的舊版本 DEK 加密新資料，該筆密文將引用已銷毀的材料而永久
 		// 不可讀。**非本 change 引入、單實例部署不可達**——完整解是「加密寫入時檢查
 		// 版本仍為現行」的柵欄，屬多副本部署的前置項（與 AlertNotifier 快取一致性
-		// 缺口同屬一項），已登記於維護者的私有開發路線圖，未隨公開倉庫發佈。
+		// 缺口同屬一項），尚未實作。
 		// 現有緩解三層：stale 實例的輪替／重包／清理一律 409
 		// fail-close（ErrStaleKeyCache）、清理前逐 slot 自證、清理確認文案要求先重啟
 		// 所有實例。**上 HA 或滾動更新前必須先做該項，否則會掉資料。**

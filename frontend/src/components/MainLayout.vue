@@ -73,7 +73,7 @@
           <span class="current-path">{{ currentPageTitle }}</span>
         </div>
         <div class="header-right">
-          <!-- 語言切換（i18n-foundation 2.1）：即時生效免 reload，偏好存 ot-lang -->
+          <!-- 語言切換：即時生效免 reload，偏好存 ot-lang -->
           <el-dropdown @command="setLanguage">
             <span class="lang-switch">
               {{ LOCALE_LABELS[locale] }}
@@ -165,14 +165,14 @@ const isAdmin = ref(false)
 const userRoles = ref([])
 const isCollapsed = ref(localStorage.getItem(COLLAPSE_KEY) === 'true')
 
-// 選單資料只存 i18n key（i18n-foundation 2.1）；譯文在 visibleGroups computed
+// 選單資料只存 i18n key；譯文在 visibleGroups computed
 // 內以 t() 解出——computed 追蹤 locale，切語言即時重繪
 const menuGroups = [
   {
     labelKey: 'menu.group.overview',
     items: [
       { path: '/dashboard', titleKey: 'menu.dashboard', icon: Odometer },
-      // 工作區入口（navigation-ia D6）：同分頁導航，工作區「◀」返回；
+      // 工作區入口：同分頁導航，工作區「◀」返回；
       // 工作區本體為純連線面，不因此新增任何門戶功能
       { path: '/workspace', titleKey: 'menu.workspace', icon: Position },
     ],
@@ -180,7 +180,7 @@ const menuGroups = [
   {
     labelKey: 'menu.group.assets',
     items: [
-      // 一般 user 視角顯示「我的資產」（navigation-ia D6）：同一頁面、僅文案分角色
+      // 一般 user 視角顯示「我的資產」：同一頁面、僅文案分角色
       {
         path: '/assets',
         titleKey: 'menu.assets',
@@ -194,7 +194,7 @@ const menuGroups = [
   {
     labelKey: 'menu.group.sessions',
     items: [
-      // session 管理視圖收斂為稽核職能（session-access-scoping）；
+      // session 管理視圖收斂為稽核職能；
       // 一般 user 走自助「我的連線」，以「不具 admin/auditor」判定（非 roles 含 user）
       {
         path: '/sessions',
@@ -209,7 +209,7 @@ const menuGroups = [
         hideRoles: ['admin', 'auditor'],
       },
       {
-        // 我的申請（access-policy-approval D7）：申請人自助頁，
+        // 我的申請：申請人自助頁，
         // 與我的連線同屬一般 user 自助入口
         path: '/my-requests',
         titleKey: 'menu.myRequests',
@@ -221,7 +221,7 @@ const menuGroups = [
   {
     labelKey: 'menu.group.approval',
     items: [
-      // 審核中心（access-policy-approval D7）。**W7b D-12 收斂**：拿掉 admin 兜底
+      // 審核中心。**不做 admin 兜底**
       // ——僅具 admin 者對審核端點一律 403，留著入口只會把他導向一個假空態頁面。
       // `approver` 述詞由 effectiveApprover（/auth/me 的 is_approver）裁決，
       // 與路由守衛、badge 輪詢同一來源
@@ -238,7 +238,7 @@ const menuGroups = [
     labelKey: 'menu.group.audit',
     items: [
       {
-        // 稽核調查工作台（auditor-workbench D3）：置於審計群**首項**——
+        // 稽核調查工作台（auditor-workbench）：置於審計群**首項**——
         // 調查是最高頻入口，其餘六頁承載的是審閱、簽核、監看等作業，
         // 工作台與它們並存而非取代
         path: '/audit/workbench',
@@ -246,7 +246,7 @@ const menuGroups = [
         icon: Search,
         roles: ['admin', 'auditor'],
       },
-      // 最小權限（7.2.x/D9）：審計屬稽核職能，僅 admin/auditor
+      // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
       {
         path: '/audit-logs',
         titleKey: 'menu.auditLogs',
@@ -273,7 +273,7 @@ const menuGroups = [
         roles: ['admin', 'auditor'],
       },
       {
-        // 存取複審（authorization-page-redesign D5）：稽核職能歸審計區
+        // 存取複審：稽核職能歸審計區
         path: '/access-reviews',
         titleKey: 'menu.accessReviews',
         icon: Finished,
@@ -281,7 +281,7 @@ const menuGroups = [
       },
     ],
   },
-  // 系統管理拆兩組（navigation-ia D2）：身分自成領域、政策開關收設定域
+  // 系統管理拆兩組：身分自成領域、政策開關收設定域
   {
     labelKey: 'menu.group.identity',
     adminOnly: true,
@@ -291,14 +291,14 @@ const menuGroups = [
       { path: '/user-groups', titleKey: 'menu.userGroups', icon: UserFilled, adminOnly: true },
       { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: Stamp, adminOnly: true },
       {
-        // OIDC 身分提供者（idp-oidc-integration D14.3）
+        // OIDC 身分提供者
         path: '/oidc-providers',
         titleKey: 'menu.oidcProviders',
         icon: Connection,
         adminOnly: true,
       },
       {
-        // LDAP 目錄（ldap-settings-migration D8）：與 OIDC 是同層的身分來源，
+        // LDAP 目錄：與 OIDC 是同層的身分來源，
         // 故緊鄰並列。群組語彙維持「身分與權限」而非 SSO——LDAP 是目錄型身分來源，
         // 與 OIDC/SAML2 這類瀏覽器重導式 SSO 不同層，混為一組會誤導設定者
         path: '/ldap-directory',
@@ -340,7 +340,7 @@ const menuGroups = [
   },
 ]
 
-// 有效審核資格（approval-routing-quorum D-7 群組即資格）：roles 快取蓋不到
+// 有效審核資格（群組即資格）：roles 快取蓋不到
 // 「審核方群組成員」——以 /auth/me 的 is_approver 判定（後端即時計算）。
 // 初值先取登入時寫入 localStorage 的 is_approver，避免首屏閃爍；掛載後以
 // /auth/me 覆蓋（角色/群組變更即時反映）
@@ -348,7 +348,7 @@ const effectiveApprover = ref(false)
 
 // 項目可見性：adminOnly 僅 admin；roles 列表需與使用者角色有交集；
 // **`approver` 例外——不從 roles 快取比對，一律走 effectiveApprover**
-//（W7b D-12：僅具 admin 者沒有審核資格，群組審核方沒有 approver 角色卻有資格。
+//（僅具 admin 者沒有審核資格，群組審核方沒有 approver 角色卻有資格。
 // 兩個方向都證明 roles 陣列不是這個述詞的正確來源）；
 // hideRoles 命中任一即隱藏（自助入口「不具 admin/auditor 才顯示」）
 const isItemVisible = (item) => {
@@ -443,7 +443,7 @@ const handleCommand = (command) => {
   }
 }
 
-// 登出：先請後端撤銷 refresh 憑證並清除其 cookie（D6 會話撤銷），再清本地並導向。
+// 登出：先請後端撤銷 refresh 憑證並清除其 cookie（會話撤銷），再清本地並導向。
 // 憑證由瀏覽器以 httpOnly cookie 自動附帶，前端不經手；
 // 撤銷失敗不阻擋登出——本地清除後攻擊面只剩 ≤15 分的殘餘 access
 const handleLogout = async () => {
@@ -458,7 +458,7 @@ const handleLogout = async () => {
   ElMessage.success(t('common.loggedOut'))
 }
 
-// 審核中心待審 badge（access-policy-approval D7）：僅 admin/approver 輪詢；
+// 審核中心待審 badge：僅 admin/approver 輪詢；
 // 輪詢失敗靜默（skipErrorToast），下一輪自然重試——badge 是提示不是事實源
 const approvalPendingCount = ref(0)
 const BADGE_POLL_MS = 30000
@@ -467,7 +467,7 @@ let badgeTimer = null
 const refreshApprovalBadge = async () => {
   try {
     const res = await getPendingAccessRequestCount({ skipErrorToast: true })
-    // 待審＋待補審合計（break-glass-revocation D7：破窗補審共用審核中心收件匣）
+    // 待審＋待補審合計（破窗補審共用審核中心收件匣）
     approvalPendingCount.value = (res.count ?? 0) + (res.review_count ?? 0)
   } catch {
     // 靜默：403（撤職殘窗）/網路抖動不打擾使用者
@@ -475,14 +475,14 @@ const refreshApprovalBadge = async () => {
 }
 
 const startApprovalBadgePolling = () => {
-  // W7b D-12：badge 端點與審核端點同一守衛，admin 打了必 403——
+  // badge 端點與審核端點同一守衛，admin 打了必 403——
   // 判定與入口可見性收斂到同一述詞，避免對後端做無謂的必敗輪詢
   if (!effectiveApprover.value) return
   refreshApprovalBadge()
   badgeTimer = setInterval(refreshApprovalBadge, BADGE_POLL_MS)
 }
 
-// 審核資格的權威判定（D-7 群組即資格 / W7b D-12 admin 不再兜底）：/auth/me 現算。
+// 審核資格的權威判定（群組即資格、admin 不兜底）：/auth/me 現算。
 // 查失敗靜默——沿用 localStorage 快取值（後端守衛才是強制點）。
 // **回寫 localStorage**：路由守衛是同步的、只讀得到快取，不回寫的話
 // 「剛被指派 approver 的人」選單會亮但直接進頁被守衛擋掉（兩套述詞的老毛病）
@@ -514,7 +514,7 @@ const persistApproverFlag = (value) => {
   }
 }
 
-// 側欄自己的名字走 resolved display_name（profile-display-name D4：僅自我檢視的
+// 側欄自己的名字走 resolved display_name（僅自我檢視的
 // 裝飾場景；身分敏感頁面另用 username）。自 localStorage 快取讀取，隨登入/自助更新同步
 const syncUserFromStorage = () => {
   const user = localStorage.getItem('user')

@@ -13,7 +13,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// provider 停用撤銷的七個驗證點矩陣（idp-oidc-integration tasks 4.11）。
+// provider 停用撤銷的七個驗證點矩陣。
 //
 // 與 oidc_provider_revocation_test.go 的分工：
 //
@@ -161,7 +161,7 @@ func (e *oidcLifecycleEnv) assertCapabilitySetRejected(t *testing.T, s *oidcCapa
 	}
 }
 
-// Scenario: provider 停用後七個驗證點逐一被拒；重新啟用後仍逐一被拒（tasks 4.11）
+// Scenario: provider 停用後七個驗證點逐一被拒；重新啟用後仍逐一被拒
 func TestProviderDisableRejectsAllPointsAndReEnableDoesNotRevive(t *testing.T) {
 	e := setupOIDCLifecycleEnv(t)
 
@@ -208,7 +208,7 @@ func TestProviderDisableRejectsAllPointsAndReEnableDoesNotRevive(t *testing.T) {
 	}
 }
 
-// Scenario: 混合帳號的本地會話不受 provider 停用牽連（tasks 4.11）。
+// Scenario: 混合帳號的本地會話不受 provider 停用牽連。
 //
 // 同一個帳號同時持有本地密碼與外部身分時，兩條路徑各自產生一組會話。
 // 停用 provider 必須只切斷 OIDC 那一組——按帳號一刀切會把「以本地密碼登入」的
@@ -280,7 +280,7 @@ func TestProviderDisableSparesHybridAccountLocalSession(t *testing.T) {
 	}
 }
 
-// --- 併發兌換洪水 vs 停用（tasks 4.11 的競態項；pg-gated） ---
+// --- 併發兌換洪水 vs 停用（競態項；pg-gated） ---
 //
 // 既有的 TestPGConcurrentExchangeVsDisable 以同步點製造**單一**精確交錯，
 // 驗的是「鎖有沒有被拿掉」。本測試補的是另一種形狀：不掛同步點、多個兌換同時

@@ -310,13 +310,13 @@ var updateFlag = flag.Bool("update", false,
 
 // writeGolden 以現況重新生成單格 golden。
 //
-// **取捨明載（D4）**：加入 -update 使 golden 從「不可竄改的基準」降為「可重新
+// **取捨明載**：加入 -update 使 golden 從「不可竄改的基準」降為「可重新
 // 生成的快照」。這是有意識的降級——本測試的價值自此依賴流程而非機制：
 // golden 的 diff **必須在 commit 中被逐條審視**，與任何 snapshot 測試相同。
 // 若審視被省略，重新生成就成了「使測試變綠」的捷徑，而非記錄真實變動。
 //
 // 之所以仍為淨改善：替代方案是永久保留 build-tagged characterization hook 與
-// 專用 compose 檔，而那正是 route-composition-root 判定應移除的攻擊面。
+// 專用 compose 檔，而那正是路由組裝收斂時判定應移除的攻擊面。
 func writeGolden(t *testing.T, state string, routes map[[2]string]string, chains map[[2]string][]string) {
 	t.Helper()
 
@@ -380,13 +380,13 @@ func TestRoutesMatchGolden(t *testing.T) {
 		mode            string
 		auditLogEnabled bool
 	}{
-		// permission 維度已退場（security-backlog-settlement D5）：權限檢查無旗標，
+		// permission 維度已退場：權限檢查無旗標，
 		// 原本的 *-permoff 三格不再是可達組態，其 golden 檔一併刪除
 		{"dev-auditon", gin.DebugMode, true},
 		{"dev-auditoff", gin.DebugMode, false},
 		{"release-auditon", gin.ReleaseMode, true},
-		// release-auditoff：**生產路徑不可達**（audit-release-floor 起，release 模式
-		// 於旗標決定處強制啟用審計，見 config.EnforceReleaseSecurityFloor）。
+		// release-auditoff：**生產路徑不可達**（release 模式於旗標決定處強制啟用
+		// 審計，見 config.EnforceReleaseSecurityFloor）。
 		// 保留本格是因為 buildRouter 直接以旗標值呼叫 registerRoutes、不經 Config，
 		// 故它記錄的是「registerRoutes 在此輸入下的輸出」這一純函式事實，仍有迴歸
 		// 價值；但 SHALL NOT 被讀成「生產支援此組態」。生產面的真實斷言在

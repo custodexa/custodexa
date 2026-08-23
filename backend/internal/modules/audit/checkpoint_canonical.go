@@ -30,7 +30,7 @@ import (
 //
 //	簽章 payload（檢查點欄位）＝**固定 struct canonical JSON**。
 //	  理由：欄位少、人可讀，且離線驗證者（auditor／QSA）以任何語言的 JSON
-//	  函式庫即可重建位元組——公鑰離線驗章是本機制的對外承諾（D5），
+//	  函式庫即可重建位元組——公鑰離線驗章是本機制的對外承諾，
 //	  可重建性優先於微幅效能。與列級 `integrityPayload` 同形，維護心智一致。
 //
 // 時間欄一律取 UnixMicro：postgres timestamptz 保存微秒精度，
@@ -98,9 +98,9 @@ func ComputeAggHash(entries []checkpointAggEntry) (string, int64) {
 
 // checkpointSignPayload 檢查點簽章涵蓋欄位的 canonical 序列化（固定 struct＝固定鍵序）。
 //
-// 涵蓋範圍與 design D6 逐字對應。**不含** anchor_status／purged_at／
+// 涵蓋範圍**不含** anchor_status／purged_at／
 // purge_signature／purge_signing_key_version——皆為封章後才發生的狀態，
-// 蓋進簽章就永遠簽不了；purge 的真實性由獨立的 purge 簽章承擔（D8）。
+// 蓋進簽章就永遠簽不了；purge 的真實性由獨立的 purge 簽章承擔。
 type checkpointSignPayload struct {
 	Seq                uint   `json:"seq"`
 	IDFrom             uint   `json:"id_from"`
@@ -185,7 +185,7 @@ func CheckpointLinkHash(cp *model.AuditCheckpoint) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// ── 清除 tombstone 與鏈修剪的 canonical 編碼（D8／log-retention spec）────────
+// ── 清除 tombstone 與鏈修剪的 canonical 編碼（log-retention spec）────────────
 
 // checkpointPurgeKind／checkpointTrimKind 域標識。
 //

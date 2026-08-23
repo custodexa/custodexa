@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ---- approval-routing-quorum：申請人維度範圍 ----
+// ---- 核准路由與門檻：申請人維度範圍 ----
 
 // TestApproverScope_SubjectSide 申請人側範圍：群組命中/直配命中/退組失效/
 // 不隱含資產可視/待審列表路由
@@ -94,7 +94,7 @@ func TestApproverScope_SubjectSide(t *testing.T) {
 	})
 }
 
-// TestApproverScope_SingleListEquivalence D1 整改防復發：同一組四維範圍下，
+// TestApproverScope_SingleListEquivalence 整改防復發：同一組四維範圍下，
 // 單筆資格判定（ApproverScopeCoversRequest）與待審列表過濾結論必須一致
 func TestApproverScope_SingleListEquivalence(t *testing.T) {
 	svc, _, db := setupAccessRequestEnv(t)
@@ -125,7 +125,7 @@ func TestApproverScope_SingleListEquivalence(t *testing.T) {
 	db.Create(&model.ApproverScope{ApproverID: uptrScope(6), SubjectUserID: &u1, GrantedBy: 3})
 	db.Create(&model.ApproverScope{ApproverID: uptrScope(7), AssetID: &a1, GrantedBy: 3})
 
-	// user 8＝審核方群組成員（D-7）：群組 REV(id 1) × 節點 prod——與 user 5 同涵蓋、
+	// user 8＝審核方群組成員（群組即資格）：群組 REV(id 1) × 節點 prod——與 user 5 同涵蓋、
 	// 資格經群組
 	if err := db.Create(&model.User{Username: "ap-gmember", Email: strPtr("gm@x"), Active: true}).Error; err != nil {
 		t.Fatalf("seed ap-gmember: %v", err)
@@ -165,7 +165,7 @@ func TestApproverScope_SingleListEquivalence(t *testing.T) {
 	}
 }
 
-// ---- approval-routing-quorum：最少核准人數 ----
+// ---- 核准路由與門檻：最少核准人數 ----
 
 // TestAccessRequest_Quorum 門檻 2：逐票推進/同人重複拒/admin 不單票通過/
 // 任一人拒即拒（票留存）/僅一次授權
@@ -239,7 +239,7 @@ func TestAccessRequest_Quorum(t *testing.T) {
 		}
 	})
 
-	// **W7b（D-12）後的射程界定**：service 層的 admin 兜底分支仍在（撤銷端點與
+	// **審核資格收斂後的射程界定**：service 層的 admin 兜底分支仍在（撤銷端點與
 	// 既有契約需要），但**審核 HTTP 路徑已不再產生 isAdmin=true**——handler 一律傳
 	// false（`api.notEffectiveAdmin`）。故本子測試驗的是 service 契約，不再對應
 	// 任何可經 API 觸發的情境；池不足時的補位改走脫困路徑（admin 指派 approver）
@@ -302,7 +302,7 @@ func TestAccessRequest_Quorum(t *testing.T) {
 	})
 }
 
-// TestAccessRequest_QuorumExpiredVoteBlocked 逾期單投票守衛（codex gpt-5.6-sol 審查 P2）：
+// TestAccessRequest_QuorumExpiredVoteBlocked 逾期單投票守衛：
 // 門檻>1 時未達門檻的票不呼叫 approveInTx，其逾時守衛被繞過——鎖單 CAS 必須自帶
 // pending_expires_at > now，讓 scheduler 未掃描的逾期單投票落敗回衝突、不記任何票
 func TestAccessRequest_QuorumExpiredVoteBlocked(t *testing.T) {
@@ -347,7 +347,7 @@ func TestPolicyMinApprovalsValidation(t *testing.T) {
 	}
 }
 
-// ---- approval-routing-quorum D-7：審核方群組（群組即資格）----
+// ---- 核准路由與門檻：審核方群組（群組即資格）----
 
 // TestApproverScope_GroupActor 審核方群組：成員命中可核/成員不得自審/
 // 門檻下成員逐票/退組即失效/admin 補位（使用者兩鐵則）
@@ -424,7 +424,7 @@ func TestApproverScope_GroupActor(t *testing.T) {
 			t.Fatalf("一票後應 pending 1/2，得 %s %d", r1.Status, r1.ApprovalsReceived)
 		}
 		// admin 補位第二票（鐵則 2：池不足或缺席時 admin 可介入湊門檻）
-		// **W7b（D-12）後**：此路徑僅存於 service 契約，API 已不會產生 isAdmin=true；
+		// **審核資格收斂後**：此路徑僅存於 service 契約，API 已不會產生 isAdmin=true；
 		// 池不足的實際解法是 admin 先指派 approver 角色（脫困路徑）再由該人投票
 		r2, err := svc.Approve(3, true, req.ID, DecideInput{})
 		if err != nil {
@@ -451,7 +451,7 @@ func TestApproverScope_GroupActor(t *testing.T) {
 	})
 }
 
-// TestApproverScopeCoversRequestTx_TxVisibility 交易內資格重查（codex #3 TOCTOU）：
+// TestApproverScopeCoversRequestTx_TxVisibility 交易內資格重查（TOCTOU）：
 // Tx 變體必須讀傳入交易的未提交狀態——鎖單交易內撤銷的範圍即時失效，
 // 而非透過 r.db 讀到交易外的舊快照（否則重查形同虛設）
 func TestApproverScopeCoversRequestTx_TxVisibility(t *testing.T) {

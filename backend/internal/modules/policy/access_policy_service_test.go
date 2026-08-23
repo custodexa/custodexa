@@ -11,7 +11,7 @@ import (
 )
 
 // setupAccessPolicyDB 真 SQL（in-memory SQLite）：政策解析的資產欄位/全域鍵
-// 兩層路徑用實際查詢驗證（asset-level-access-policy D1）
+// 兩層路徑用實際查詢驗證
 func setupAccessPolicyDB(t *testing.T) (*AccessPolicyService, *SecurityPolicyService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -29,7 +29,7 @@ func setupAccessPolicyDB(t *testing.T) (*AccessPolicyService, *SecurityPolicySer
 
 func strPtr(s string) *string { return &s }
 
-// stubConnectSources 測試用的 ConnectSourceResolver 空實作（W3 §4.8 拆環後
+// stubConnectSources 測試用的 ConnectSourceResolver 空實作（拆環後
 // policy 不再自持 authz 的 repository）。本檔只驗段位解析（AccessPolicyOf），
 // 不走票證／在途單分支，故回零值即可；走那兩個分支的行為測試在 authz 側
 // （internal/service 的 access_request_service_test.go）與兌換點整合測試。
@@ -48,7 +48,7 @@ func (s stubConnectSources) PendingConnectRequestID(uint, uint) (*uint, error) {
 }
 
 // TestAccessPolicyOf 政策解析兩層路徑：資產設定/未設定走全域/非法值視同未設定
-// （asset-level-access-policy D1：政策掛資產，組織結構不影響解析）
+// （政策掛資產，組織結構不影響解析）
 func TestAccessPolicyOf(t *testing.T) {
 	svc, policies, db := setupAccessPolicyDB(t)
 

@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 會話帳號雙快照的不可變性（asset-multi-account D7／asset-accounts spec
+// 會話帳號雙快照的不可變性（asset-accounts spec
 // 「會話審計雙快照」）：只存 FK 不足以保證不可否認性——帳號改名或刪除後，
 // 靠 JOIN 還原的「當時用哪個帳號連的」會跟著變。故 sessions 同時釘住
 // AccountID 與連線當下的 username，寫入後永不隨帳號變動更新。
@@ -64,7 +64,7 @@ func TestSessionAccountSnapshotImmutable(t *testing.T) {
 	require.Equal(t, "app", afterDelete.AccountUsername, "刪帳號後 username 快照不得被清空")
 }
 
-// TestSFTPAccountForSession 自會話沿用帳號的 fail-close（D9）：檔案分頁由某會話
+// TestSFTPAccountForSession 自會話沿用帳號的 fail-close：檔案分頁由某會話
 // 進入時沿用該會話的帳號；非本人或非本資產的 session_id 一律拒絕——若退回預設
 // 帳號，session_id 就成了「換一組（通常更高權）憑證傳檔」的旁路
 func TestSFTPAccountForSession(t *testing.T) {
@@ -93,7 +93,7 @@ func TestSFTPAccountForSession(t *testing.T) {
 	require.ErrorIs(t, err, ErrSessionAccountNotFound, "不存在的會話不得沿用")
 }
 
-// asset 夾具的 session 側複本（modular-architecture W6 6.6）。
+// asset 夾具的 session 側複本。
 //
 // **為何是複本**：原件隨 `asset_account_service_test.go` 遷入
 // `internal/modules/asset`，而該包的**包內**測試 SHALL NOT 被 `internal/service`

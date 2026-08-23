@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// 准入規則鍵（封閉集合，idp-oidc-integration D7a）。
+// 准入規則鍵（封閉集合）。
 //
 // 「封閉」是安全要求而非潔癖：未知鍵若被存入後於執行期忽略，一份看似有限制的
 // 組態會靜默退化為「無限制」——管理者以為設了 tenant 白名單，實際上全世界都能進。
@@ -49,7 +49,7 @@ var (
 
 // AdmissionRules 准入規則集。
 //
-// 語義完全確定（D7a）：**跨規則 AND、同規則清單內 OR**；claim 缺失、為 null
+// 語義完全確定：**跨規則 AND、同規則清單內 OR**；claim 缺失、為 null
 // 或型別不符一律視為不匹配（fail-close，不做寬鬆轉型）。
 type AdmissionRules struct {
 	// TenantIDs Entra tid 允許清單
@@ -123,7 +123,7 @@ const admissionJIT = "jit_with_rules"
 
 // EvaluateAdmission 以 id_token claims 求值准入規則。
 //
-// **每次認證都呼叫**（D7b），不只首次供應——規則收緊或使用者 claim 變更後，
+// **每次認證都呼叫**，不只首次供應——規則收緊或使用者 claim 變更後，
 // 既有身分再次登入須依現行規則判定。身分已存在不使判定被略過。
 //
 // claims 須為已通過簽章與 iss/aud 驗證的 id_token 內容（不取 userinfo 未驗證回應）。
@@ -182,7 +182,7 @@ func emailDomainInList(email string, allow []string) bool {
 	return false
 }
 
-// 內建的共用身分域清單（idp-oidc-integration D7a）。
+// 內建的共用身分域清單。
 //
 // 「共用」指同一 issuer 服務多個組織與個人帳號——此時 issuer 本身不構成任何
 // 組織歸屬證明，故其准入規則必須含 tid/hd 類條件。
@@ -202,7 +202,7 @@ var builtinSharedIssuers = []string{
 	"https://login.microsoftonline.com/" + microsoftConsumerTenantID + "/v2.0",
 }
 
-// EffectiveIssuerKind 現算身分域類型（idp-oidc-integration D7a）。
+// EffectiveIssuerKind 現算身分域類型。
 //
 // **不持久化**：三個判定來源（內建清單／管理者收緊／部署層宣告）若壓成單一
 // 持久欄位即無法分辨來源——啟動時以部署宣告覆寫會抹掉管理者的收緊，不覆寫則

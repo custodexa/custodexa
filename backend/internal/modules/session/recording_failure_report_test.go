@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// TestReportSessionRecordingFailure 三位一體整合（recording-failure-handling D3）：
+// TestReportSessionRecordingFailure 三位一體整合：
 // sessions 首因標記（不覆蓋）＋逐 session 審計列（不去重）＋失效事件（同機制去重）
 func TestReportSessionRecordingFailure(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -49,7 +49,7 @@ func TestReportSessionRecordingFailure(t *testing.T) {
 	if err := db.First(&got, sess.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	// M5：recording_error 存機器碼（前端查譯），首因仍不得被覆蓋
+	// recording_error 存機器碼（前端查譯），首因仍不得被覆蓋
 	if got.RecordingError != model.CauseRecordingWriteFailed {
 		t.Fatalf("首因不得被覆蓋且應為機器碼: %q", got.RecordingError)
 	}
@@ -67,7 +67,7 @@ func TestReportSessionRecordingFailure(t *testing.T) {
 	if entry.Username != "u-rec" || entry.ResourceID == nil || *entry.ResourceID != sess.ID {
 		t.Fatalf("審計列應掛 session 擁有者與 resource_id: %+v", entry)
 	}
-	// audit_logs.Details 維持 forensic 原文（zh 短語＋底層 err），不碼化（D8 non-goal）
+	// audit_logs.Details 維持 forensic 原文（zh 短語＋底層 err），不碼化（non-goal）
 	if !strings.Contains(entry.Details, "no space left") {
 		t.Fatalf("審計 Details 應保留 forensic 原文: %q", entry.Details)
 	}

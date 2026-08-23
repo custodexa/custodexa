@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// 健康檢查輸出部署宣告指紋（idp-oidc-integration 3.10a）。
+// 健康檢查輸出部署宣告指紋。
 //
 // 沒有這條，`OIDC_DEDICATED_ISSUERS` 在多副本部署下的分歧就只能靠人工登入
 // 每個副本比對環境變數；有了它，監控可直接比對各副本 /health 的同一欄位。

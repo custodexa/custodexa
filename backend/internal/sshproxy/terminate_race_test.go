@@ -60,7 +60,7 @@ func newTestWSPair(t *testing.T) (*websocket.Conn, *httptest.Server) {
 	return ws, srv
 }
 
-// TestTerminateConcurrentWithBridgeWrites F4 核心競態：資料橋接持續寫出的同時
+// TestTerminateConcurrentWithBridgeWrites 核心競態：資料橋接持續寫出的同時
 // 管理路徑觸發 terminate——關閉通知與資料寫入必須經同一把 wsWriteMu 串行，
 // go test -race 下不得有併發寫（前身 Registry 裸寫 conn 即在此炸）
 func TestTerminateConcurrentWithBridgeWrites(t *testing.T) {

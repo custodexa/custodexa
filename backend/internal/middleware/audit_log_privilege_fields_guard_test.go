@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 提權事件課責欄位的行為守衛（audit-coverage-closure 批 6）。
+// 提權事件課責欄位的行為守衛。
 //
 // **釘子打在實際入庫的那一列**（讀回 audit_logs.request_body），不是
 // `MaskSensitiveFields` 的回傳值：缺陷的形態是「審計列存在、內容全是遮罩標記」，
@@ -93,7 +93,7 @@ func TestRoleAssignmentAuditRecordsTargetRoles(t *testing.T) {
 		t.Fatalf("request_body 沒有 roles 鍵: %s", row.RequestBody)
 	}
 	if s, isStr := raw.(string); isStr && strings.Contains(s, "MASKED") {
-		t.Fatalf("roles 被遮成 %q——「升成什麼角色」無處可查，這正是批 6 要修的缺陷", s)
+		t.Fatalf("roles 被遮成 %q——「升成什麼角色」無處可查，這正是要修的缺陷", s)
 	}
 	list, ok := raw.([]any)
 	if !ok {
@@ -163,7 +163,7 @@ func TestPrivilegeAuditKeepsSecretsMasked(t *testing.T) {
 		}
 	}
 	// 反向：遮罩必須是**選擇性**的。整列全遮也能通過上面的斷言，
-	// 而那就是批 6 修掉的缺陷本身
+	// 而那就是這裡要防的缺陷本身
 	if _, ok := parsed["roles"].([]any); !ok {
 		t.Errorf("roles = %#v——課責欄位連同機密一起被遮，等於沒修", parsed["roles"])
 	}
@@ -171,7 +171,7 @@ func TestPrivilegeAuditKeepsSecretsMasked(t *testing.T) {
 
 // TestDeniedPrivilegeEscalationStillRecordsAttempt 授權閘行為未受影響（反向斷言）。
 //
-// 兩件事一起釘：低權越權仍是 403 ＋ `status=denied` 留痕（既有行為，本波不得動到），
+// 兩件事一起釘：低權越權仍是 403 ＋ `status=denied` 留痕（既有行為，不得被動到），
 // 且**未遂的提權企圖照樣留下他想升成什麼**——拒絕列少了這個欄位，稽核只知道
 // 「有人被擋了」，答不出「他想幹什麼」。
 func TestDeniedPrivilegeEscalationStillRecordsAttempt(t *testing.T) {
@@ -182,7 +182,7 @@ func TestDeniedPrivilegeEscalationStillRecordsAttempt(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
-		t.Fatalf("低權提權應被擋下（403），得 %d——授權閘行為已被本波改動影響", w.Code)
+		t.Fatalf("低權提權應被擋下（403），得 %d——授權閘行為已被改動影響", w.Code)
 	}
 	row := latestAuditRow(t, db)
 	if row.Status != model.StatusDenied {

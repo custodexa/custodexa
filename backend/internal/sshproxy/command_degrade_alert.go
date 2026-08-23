@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 指令審計降級的告警發射器（command-audit-altscreen-bypass design §6.3）。
+// 指令審計降級的告警發射器。
 //
 // # 為什麼是專用路徑而不是一條規則
 //
@@ -24,7 +24,7 @@ import (
 //
 // # 為什麼**沒有**「超過門檻升級為 high」的第二筆
 //
-// design §6.3 原訂「span 開啟發 medium、超過門檻再發一筆 high」，門檻依實測填。
+// 原訂「span 開啟發 medium、超過門檻再發一筆 high」，門檻依實測填。
 // 2026-08-19 真 WS 量測（9 條會話，正常側 vim／nano ×4、攻擊側 ×5）的結論是
 // **兩者的 span 在時長、輪數、reason 組成上都落在同一個分佈裡**：
 // 正常 vim 的降級列全部由佇列在結算那一刻一次發出（時間戳相同、輪數 4–13），
@@ -50,7 +50,7 @@ type degradeSpan struct {
 //
 // 一筆非降級列即關閉 span：使用者又打出了可信重組的指令，代表這段降級結束了。
 // 受限定的文字列（Degraded=false 且 DegradeReason 非空）同樣關閉 span——
-// 它有文字、不是「無法還原」那一類（design §6.6：兩個值域刻意不合併）。
+// 它有文字、不是「無法還原」那一類（兩個值域刻意不合併）。
 func (s *CommandStore) observeDegraded(batch []model.SessionCommand) {
 	for i := range batch {
 		if !batch[i].Degraded {

@@ -1,4 +1,4 @@
-// Package observability 提供營運指標的 Prometheus 曝光（observability-lite）。
+// Package observability 提供營運指標的 Prometheus 曝光。
 //
 // **本包不 import 任何業務模組**：所有資料源以函式型別注入（`SetXxxSource`），
 // 故 asset／session／audit 等模組不因指標需求而被本包耦合，也不會產生循環。
@@ -26,7 +26,7 @@ type SealStateSource func() (current string, all []string)
 // 一個測試註冊的序列會殘留給下一個測試，使斷言結果取決於執行順序。自建 registry
 // 讓每個測試能建構獨立實例。
 //
-// **註冊分兩階段**（design D4）：建構時只註冊封印期即成立的指標（封印狀態＋行程
+// **註冊分兩階段**：建構時只註冊封印期即成立的指標（封印狀態＋行程
 // 執行期）；段 2 服務就緒後才註冊其餘。未註冊的指標在曝光內容中**缺席而非為 0**
 // ——0 值會讓採集端把「服務不存在」讀成「服務正常且計數為零」，而缺值在 PromQL
 // 中可由 `absent()` 明確偵測。

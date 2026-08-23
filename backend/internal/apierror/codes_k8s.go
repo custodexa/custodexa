@@ -1,6 +1,6 @@
 package apierror
 
-// K8s 連線錯誤分類碼（backend-i18n-unification A8）。
+// K8s 連線錯誤分類碼。
 //
 // 對應 `k8sproxy.classifyErr` 的六類（K8sError.Kind：unauthorized / forbidden /
 // notfound / tls / unreachable / unknown）。原本這六類只以 `Message` 散文經
@@ -10,7 +10,7 @@ package apierror
 // 與 k8sproxy 的分工：分類邏輯與其 zh 文案留在 k8sproxy（含 namespace 等
 // 具體脈絡），映射（Kind → 本檔的碼）在 sshproxy 側；WS 幀的 Data 仍帶
 // k8sproxy 的原文案當 fallback，故本檔的 ZhFallback 是**不含 namespace 的
-// 泛化版**（碼的 ZhFallback 不接受 opaque 值內嵌，見 D3 opaque 契約）。
+// 泛化版**（碼的 ZhFallback 不接受 opaque 值內嵌，見 ParamOpaque 契約）。
 var (
 	CodeK8sUnauthorized = register("RULE_K8S_UNAUTHORIZED", Descriptor{
 		ZhFallback: "Token 認證失敗（401）：請確認 Bearer Token 有效"})

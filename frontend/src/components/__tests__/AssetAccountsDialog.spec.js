@@ -1,4 +1,4 @@
-// 資產帳號管理（asset-multi-account 階段 5）：CRUD、預設切換、跨資產複製建號、
+// 資產帳號管理：CRUD、預設切換、跨資產複製建號、
 // 新增前明示授權影響面。憑證只進不出——編輯不回填、空值不送（沿用既有語義）。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
@@ -321,7 +321,7 @@ describe('AssetAccountsDialog 資產帳號管理', () => {
     expect(emptyAddBtn.props('disabled')).toBe(false)
   })
 
-  // 認證類型（mssql-web-cli D3）：欄位只在 DB 協議出現，1.0 只送 sql
+  // 認證類型：欄位只在 DB 協議出現，1.0 只送 sql
   it('DB 協議帶 auth_method 送出，非 DB 協議完全不帶該欄', async () => {
     createAssetAccount.mockResolvedValue({ id: 30 })
     const dbWrapper = mountDialog({ protocol: 'mssql' })
@@ -367,7 +367,7 @@ describe('AssetAccountsDialog 資產帳號管理', () => {
     expect(wrapper.vm.form.auth_method).toBe('sql')
   })
 
-  // 對抗審查 MED-3：只隱藏對話框會讓明文續留 reactive state，DevTools 可讀
+  // 只隱藏對話框會讓明文續留 reactive state，DevTools 可讀
   it('關閉表單即清空明文密碼與私鑰（取消、成功、切換帳號三路徑）', async () => {
     createAssetAccount.mockResolvedValue({ id: 20 })
     const wrapper = mountDialog()
@@ -425,7 +425,7 @@ describe('AssetAccountsDialog 資產帳號管理', () => {
     consoleSpy.mockRestore()
   })
 
-  // UI 走查 F6：走查未觀察到成功 toast，此處鎖住四條寫入路徑都有回饋
+  // UI 走查：走查未觀察到成功 toast，此處鎖住四條寫入路徑都有回饋
   it('新增／編輯／刪除／設為預設皆給成功回饋', async () => {
     const successSpy = vi.spyOn(ElMessage, 'success').mockImplementation(() => {})
     createAssetAccount.mockResolvedValue({ id: 21 })

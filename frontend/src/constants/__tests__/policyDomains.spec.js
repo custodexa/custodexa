@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { POLICY_DOMAINS, sectionKeys } from '../policyDomains'
 
-// 後端全鍵集對照組（backend/internal/service/security_policy_service.go:19-64）。
-// 一致性守護（settings-domain-restructure D5）：四域鍵集互斥且聯集＝後端全鍵集——
+// 後端全鍵集對照組（backend/internal/modules/policy/security_policy_service.go）。
+// 一致性守護：四域鍵集互斥且聯集＝後端全鍵集——
 // 後端新增政策鍵時必須在 policyDomains.js 歸域並同步本清單，否則此測試紅燈提醒。
 const BACKEND_POLICY_KEYS = [
   'lockout_max_attempts',
@@ -15,7 +15,7 @@ const BACKEND_POLICY_KEYS = [
   'mfa_required',
   'web_idle_minutes',
   'web_max_session_hours',
-  // refresh cookie 的 Secure 屬性（codeql-rescan-settlement 決策 8）
+  // refresh cookie 的 Secure 屬性
   'refresh_cookie_secure',
   'session_idle_minutes',
   'session_max_minutes',
@@ -27,7 +27,7 @@ const BACKEND_POLICY_KEYS = [
   'retention_checkpoint_days',
   'audit_checkpoint_interval_seconds',
   'audit_checkpoint_row_threshold',
-  // 鏈自動驗證三鍵（audit-chain-scheduled-verification）
+  // 鏈自動驗證三鍵
   'audit_chain_recent_verify_days',
   'audit_chain_verify_interval_seconds',
   'audit_chain_verify_rows_per_hour',
@@ -53,7 +53,7 @@ const BACKEND_POLICY_KEYS = [
   'break_glass_duration_minutes',
   'break_glass_review_timeout_hours',
   'access_revoke_disconnect',
-  // 資料傳輸管控（data-transfer-control D1）
+  // 資料傳輸管控（data-transfer-control）
   'clipboard_send_enabled',
   'clipboard_recv_enabled',
   'file_upload_enabled',

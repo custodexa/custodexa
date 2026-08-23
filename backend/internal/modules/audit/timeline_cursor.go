@@ -12,7 +12,7 @@ import (
 // ErrInvalidCursor 游標無法解析（格式錯、被截斷、非本端點產出的字串）
 var ErrInvalidCursor = errors.New("invalid timeline cursor")
 
-// TimelineCursor 複合游標 `(ts, type, id)`（auditor-workbench D7）。
+// TimelineCursor 複合游標 `(ts, type, id)`。
 //
 // **為什麼不是 offset**：時間軸由六個來源各自查詢後合併。offset 是「跳過前 N 筆
 // 合併結果」，但每個來源只知道自己的 N，服務層無從把一個全域 offset 拆給六個

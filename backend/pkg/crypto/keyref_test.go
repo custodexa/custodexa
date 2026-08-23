@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-// KeyRef 與本地 provider 的釘子（kek-provider-modularization D4／D9）。
+// KeyRef 與本地 provider 的釘子。
 
-// D9 免遷移三條釘子（opus H5 修正版）：AES-GCM 隨機 nonce 使「位元相同」
+// env↔ui 免遷移的三條釘子：AES-GCM 隨機 nonce 使「位元相同」
 // 物理上不可滿足，故驗收改為 (a) KeyRef 完全相同、(b) 互解、(c) 格式標記相同。
 func TestLocalProviderEnvUIEquivalence(t *testing.T) {
 	material := testKey(5)
@@ -96,7 +96,7 @@ func TestLocalProviderAADBinding(t *testing.T) {
 	if _, err := p.Unwrap(ctx, wrapped, DEKAAD("audit_integrity", 1)); err == nil {
 		t.Fatal("以不同 slot 的 AAD 解包應失敗（跨 slot 搬移防線）")
 	}
-	// 空 AAD 於原語層即被拒（ErrAADRequired，P2 M1）——連 GCM 驗證都不會走到
+	// 空 AAD 於原語層即被拒（ErrAADRequired，P2）——連 GCM 驗證都不會走到
 	if _, err := p.Unwrap(ctx, wrapped, nil); !errors.Is(err, ErrAADRequired) {
 		t.Fatalf("不帶 AAD 解包 MUST 回 ErrAADRequired，得 %v", err)
 	}
@@ -127,7 +127,7 @@ func TestReEncryptDefault(t *testing.T) {
 	}
 }
 
-// wrapped_key 前綴恆強制（release-transitional-cleanup D5）：
+// wrapped_key 前綴恆強制：
 // 寫端一律 `wk:2:`、讀端於解包前拒收無前綴與判別子 `1`。
 func TestWrappedKeyPrefixAlwaysEnforced(t *testing.T) {
 	raw := []byte("wrapped-material-bytes")
@@ -187,7 +187,7 @@ func TestWrappedKeyPrefixAlwaysEnforced(t *testing.T) {
 }
 
 // TestWrappedKeyNoAADFallback AAD 在場性由格式版本承載、SHALL NOT 由讀端試錯判定
-// （D5 定案 B2）：`wk:2:` 列以**無 AAD** 解包 MUST 失敗且 MUST NOT 回退。
+// （定案 B2）：`wk:2:` 列以**無 AAD** 解包 MUST 失敗且 MUST NOT 回退。
 //
 // 這是「無 fallback」的核心回歸釘子。判別子 `1` 的產出器（AddLocalWrappedPrefix／
 // RelabelAsAADBound）已刪除，故此處以手工字面構造該類值，證明**即使有人以
@@ -221,7 +221,7 @@ func TestWrappedKeyNoAADFallback(t *testing.T) {
 	}
 
 	// DB 直寫塞入的無 AAD 包裹（判別子 1）：讀端於解包前即拒，材料永無機會被解。
-	// 無 AAD 的包裹能力已於 P2 M1 自原語層刪除，故此材料由測試層 stdlib 助手封出
+	// 無 AAD 的包裹能力已於 P2 自原語層刪除，故此材料由測試層 stdlib 助手封出
 	rawV1 := sealNoAAD(t, testKey(1), dek)
 	forged := "wk:1:" + kek.FormatTag() + ":" + base64.StdEncoding.EncodeToString(rawV1)
 	if _, _, err := ParseWrappedKey(forged); !errors.Is(err, ErrWrappedKeyPreRelease) {
@@ -238,7 +238,7 @@ func TestWrappedKeyNoAADFallback(t *testing.T) {
 	}
 }
 
-// enc:a1 密文格式與未知 scheme 的處置（D5）
+// enc:a1 密文格式與未知 scheme 的處置
 func TestEnvelopeAADScheme(t *testing.T) {
 	raw := []byte("nonce-and-ct")
 	s, err := EncodeEnvelopeAAD(AADSchemeA1, 2, raw)
@@ -253,7 +253,7 @@ func TestEnvelopeAADScheme(t *testing.T) {
 		t.Fatalf("roundtrip 失敗: scheme=%q ver=%d ok=%v err=%v", scheme, ver, ok, err)
 	}
 
-	// 未知 enc:* scheme MUST 報格式錯而非落入 legacy 路徑（codex info）
+	// 未知 enc:* scheme MUST 報格式錯而非落入 legacy 路徑
 	for _, bad := range []string{"enc:a2:v1:aGk=", "enc:x:v1:aGk=", "enc:zz:v1:aGk="} {
 		if _, _, _, ok, err := ParseEnvelopeFull(bad); err == nil || ok {
 			t.Fatalf("未知 scheme %q 應回格式錯（ok=%v err=%v）", bad, ok, err)
@@ -265,7 +265,7 @@ func TestEnvelopeAADScheme(t *testing.T) {
 		t.Fatal("ParseEnvelope 應拒絕帶 AAD 方案的密文")
 	}
 
-	// **無 AAD 編碼能力已刪除**（release-transitional-cleanup D1）：
+	// **無 AAD 編碼能力已刪除**：
 	// 空 scheme MUST 回錯，SHALL NOT 退回 `enc:v<N>` 形式
 	if out, err := EncodeEnvelopeAAD(AADSchemeNone, 3, raw); err == nil {
 		t.Fatalf("空 scheme 竟編碼成功（無 AAD 寫出能力應已在建構上消失）：%q", out)
@@ -294,12 +294,12 @@ func TestDEKAADHasNoMutableIdentifier(t *testing.T) {
 	if string(ref.AAD()) != "custodexa|data-field|v1|6:assets|12:password_enc" {
 		t.Fatalf("資料層 AAD 組成漂移: %q", ref.AAD())
 	}
-	// AAD 裁決 A2：資料層 AAD **不綁主鍵**——同表同欄的兩列共用同一份 AAD。
+	// 資料層 AAD **不綁主鍵**——同表同欄的兩列共用同一份 AAD。
 	// 這是明載的信任邊界（見 CipherRef 文件註），不是缺陷；此處釘住該事實，
 	// 使日後若改回綁 pk 必須連同本測試與 create 路徑一併重新裁決。
 	if string((CipherRef{Table: "assets", Column: "password_enc"}).AAD()) !=
 		string(ref.AAD()) {
-		t.Fatal("同表同欄的 AAD 不應因列而異（A2 定案：不綁主鍵）")
+		t.Fatal("同表同欄的 AAD 不應因列而異（定案：不綁主鍵）")
 	}
 }
 
@@ -323,7 +323,7 @@ func TestCanonicalAADIsInjective(t *testing.T) {
 }
 
 // TestEncodeWrappedKeyHasNoUnboundBranch 「寫入端不可能產出非終態 wrapped 值」
-// 的**建構事實**（release-transitional-cleanup D5）：EncodeWrappedKey 的簽章
+// 的**建構事實**：EncodeWrappedKey 的簽章
 // 不再有 AAD 在場性與階段參數，故不存在任何可產出裸 base64 或 `wk:1` 的呼叫形式。
 //
 // 缺陷史：原本第三參數是裸 `bool`、第四是階段，本地＋相容窗＋false 即產出

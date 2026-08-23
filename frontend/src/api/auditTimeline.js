@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 稽核調查工作台的兩支唯讀端點（auditor-workbench D7）。
+ * 稽核調查工作台的兩支唯讀端點（auditor-workbench）。
  * 本模組**只有 GET**：工作台零寫入是規格要求，不得在此新增任何寫方法。
  */
 

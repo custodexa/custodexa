@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// D-12 審核者資格收斂（modular-architecture W7b）的**路由級**驗證：經完整
+// 審核者資格收斂的**路由級**驗證：經完整
 // `RegisterRoutes`（真 AuthMiddleware＋真 JWT＋真 sqlite＋真守衛），確認
 //   - 8.6 僅具 admin 者對審核端點一律 403，有效審核者放行
 //   - 8.7 兼具 admin 的有效審核者其核准以「非 admin」身分進 service
@@ -119,7 +119,7 @@ func (e approverGateEnv) call(t *testing.T, method, path, token string, body int
 	return w
 }
 
-// TestApproverRouteGate_AdminOnlyDenied （8.6／8.9）D-12 行為變更：僅具 admin
+// TestApproverRouteGate_AdminOnlyDenied （8.6／8.9）行為變更：僅具 admin
 // 角色者對審核類端點一律 403，且**不得抵達 service**（抵達即代表資格判定被繞過）
 func TestApproverRouteGate_AdminOnlyDenied(t *testing.T) {
 	e := setupApproverGateEnv(t)
@@ -134,7 +134,7 @@ func TestApproverRouteGate_AdminOnlyDenied(t *testing.T) {
 	}
 	for _, p := range gets {
 		w := e.call(t, http.MethodGet, p, adminToken, nil)
-		assert.Equal(t, http.StatusForbidden, w.Code, "僅具 admin 者對 %s 應 403（D-12）", p)
+		assert.Equal(t, http.StatusForbidden, w.Code, "僅具 admin 者對 %s 應 403", p)
 	}
 	posts := []string{
 		"/api/v1/access-requests/1/approve",
@@ -143,19 +143,19 @@ func TestApproverRouteGate_AdminOnlyDenied(t *testing.T) {
 	}
 	for _, p := range posts {
 		w := e.call(t, http.MethodPost, p, adminToken, map[string]string{"note": "x", "disposition": "confirmed"})
-		assert.Equal(t, http.StatusForbidden, w.Code, "僅具 admin 者對 %s 應 403（D-12）", p)
+		assert.Equal(t, http.StatusForbidden, w.Code, "僅具 admin 者對 %s 應 403", p)
 	}
 
 	// 守衛必須在抵達 service 之前擋下。
 	// 刻意不用 `AssertNotCalled(t, m)`——testify 的零引數形式是**恆真斷言**：
 	// 它以 `Arguments(expected).Diff(call.Arguments)` 比對，空 expected 對任何帶參數的
-	// 呼叫都會產生 differences 而判為不匹配，故永遠不會失敗（2026-08-10 W7b 獨立驗收發現）。
+	// 呼叫都會產生 differences 而判為不匹配，故永遠不會失敗（2026-08-10 獨立驗收發現）。
 	// 直接查呼叫記錄則與參數個數無關，改動 service 簽名也不會讓它靜默失效。
 	for _, m := range []string{"ListPending", "PendingCount", "ListHistory", "ActiveTickets",
 		"ListPendingReview", "Approve", "Reject", "Review"} {
 		for _, c := range e.reqSvc.Calls {
 			assert.NotEqual(t, m, c.Method,
-				"僅具 admin 者應被守衛擋下，但 service.%s 仍被呼叫（D-12）", m)
+				"僅具 admin 者應被守衛擋下，但 service.%s 仍被呼叫", m)
 		}
 	}
 }
@@ -227,7 +227,6 @@ func TestRevokeRouteGate_AdminStillAllowed(t *testing.T) {
 // TestApproverRouteGate_EscapeHatchNotGuarded （8.5 的結構前提）審核範圍管理端點
 // **不得**掛上審核類守衛——它是 admin 的脫困路徑，若被 `RequireApproverRole` 罩住，
 // 零有效審核者時系統將永久死鎖（無人能核准，也無人能指派審核者）。
-// 端到端實跑證據見 round-log W7b 的脫困路徑一節
 func TestApproverRouteGate_EscapeHatchNotGuarded(t *testing.T) {
 	e := setupApproverGateEnv(t)
 	adminToken := e.token(t, 1, "gate-admin", model.RoleAdmin)

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 背景刷新任務的韌性與停止語義（observability-lite，2026-08-16 競態 FAIL 的回歸）。
+// 背景刷新任務的韌性與停止語義（2026-08-16 競態 FAIL 的回歸）。
 //
 // 被回歸的缺陷：資料源在執行當下解參考一個已消失的 DB 句柄 → panic → 因為刷新跑在
 // 背景 goroutine，panic 直接終止整個行程；而停止函式只送信號不等待，關機序把

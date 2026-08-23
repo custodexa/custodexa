@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// 行為基準守衛（design.md D9 的比對協議）。
+// 行為基準守衛：把「標註者訂死的期望值」與新實作的實得輸出對起來。
 //
-// 基準的期望值由「只看規格、不看實作」的標註者逐筆訂死，實作則由看不到期望值的人寫成；
-// 本檔把兩邊對起來。任何不一致都是有價值的訊號——處置是逐欄依 ECMA-48 推算後判定哪一邊錯，
+// 基準的期望值由「只看規格、不看實作」的標註者逐筆訂死，實作則由看不到期望值的人寫成。
+// 任何不一致都是有價值的訊號——處置是逐欄依 ECMA-48 推算後判定哪一邊錯，
 // **不得為了讓測試轉綠而改 expected_lines**。
 //
 // 除逐筆比對外另有三條防假綠斷言：
@@ -26,7 +26,7 @@ const baselineMinSamples = 119
 // baselineFile 為版控中的行為基準。
 const baselineFile = "testdata/behavior-baseline.json"
 
-// baselineSample 對應 design.md D9 的欄位格式。
+// baselineSample 對應基準檔的欄位格式。
 // legacy_* 三欄是舊實作的既成事實（歷史紀錄，不參與斷言的正確性判準）；
 // expected_lines 才是新實作 SHALL 產出的結果。
 type baselineSample struct {
@@ -138,7 +138,7 @@ func linesEqual(a, b []string) bool {
 }
 
 // TestBaselineLinesMatchExpected 對基準的每一組樣本斷言
-// vtscreen.Lines(input) 等於標註者訂死的 expected_lines（design.md D9 協議 1）。
+// vtscreen.Lines(input) 等於標註者訂死的 expected_lines。
 func TestBaselineLinesMatchExpected(t *testing.T) {
 	samples := loadBaseline(t)
 	t.Logf("行為基準樣本數：%d（下限 %d）", len(samples), baselineMinSamples)
@@ -204,7 +204,7 @@ func firstDiff(want, got []string) string {
 }
 
 // TestBaselineDifferenceRequiresWrittenReason 斷言每一筆與舊實作有差異的樣本
-// 都留下了 decision_ref 與 reason（design.md D9 協議 2）。
+// 都留下了 decision_ref 與 reason。
 //
 // 這條守的是流程而非語義：差異一律要有書面理由，否則「跑出什麼就把期望值改成什麼」
 // 會讓整份基準退化成實作的鏡子，失去對照價值。
@@ -231,7 +231,7 @@ func TestBaselineDifferenceRequiresWrittenReason(t *testing.T) {
 }
 
 // TestBaselineLegacyPanicSamplesDoNotPanic 斷言舊實作會 panic 的樣本
-// 在新實作下不 panic（design.md D9 協議 3、D5 B5）。
+// 在新實作下不 panic。
 //
 // 舊實作對被截斷的 CSI 做負索引切片而 panic；新實作把未完成序列保留在狀態機內，
 // 這一整類因而消失。
@@ -252,11 +252,11 @@ func TestBaselineLegacyPanicSamplesDoNotPanic(t *testing.T) {
 	t.Logf("legacy_panicked=true 的樣本數：%d", checked)
 	if checked == 0 {
 		t.Fatal("基準內找不到任何 legacy_panicked=true 的樣本：" +
-			"B5 的兩組截斷樣本是這條守衛的射程，消失即代表基準被動過")
+			"CSI 被截斷的那兩組樣本是這條守衛的射程，消失即代表基準被動過")
 	}
 }
 
-// TestBaselineSampleCountNotReduced 斷言樣本總數不低於下限（design.md D9 協議 4）。
+// TestBaselineSampleCountNotReduced 斷言樣本總數不低於下限。
 // 這條擋的是「刪掉不過的樣本讓測試轉綠」。
 func TestBaselineSampleCountNotReduced(t *testing.T) {
 	samples := loadBaseline(t)

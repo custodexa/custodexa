@@ -1,9 +1,9 @@
-// Package kms 提供 AWS KMS 委託型 KEK provider（kek-provider-modularization D11／D11.1）。
+// Package kms 提供 AWS KMS 委託型 KEK provider。
 //
 // 本套件是 crypto.KEKProvider 的委託實作，與本地 AES provider 完全可互換：
 // 上層（KeyManagerService 以上）看不到任何模式差異，差別全部封裝於此。
 //
-// **供應鏈立場（D11.1 裁決 3）**：一律採 AWS 官方 SDK v2，
+// **供應鏈立場**：一律採 AWS 官方 SDK v2，
 // SHALL NOT 自建 SigV4 簽章與 KMS JSON 呼叫——自建簽章屬密碼學相鄰程式碼，
 // 其維護成本與出錯後果遠高於一個官方維護的相依。
 package kms
@@ -21,7 +21,7 @@ import (
 // 使「餵一段超長輸入進語法檢查」不會成為一條可探索的路徑。
 const maxKeyARNLength = 256
 
-// 語法零件（各段皆為封閉值域，D11.1 裁決 1「收窄三」＋round-4 codex med #3）。
+// 語法零件（各段皆為封閉值域；安全審查 med #3）。
 //
 // **為何逐段收窄**：原式的 partition／region 段都寫成 `[a-z0-9-]+`，
 // 使 `arn:x:kms:-:000000000000:key/A` 這種**無意義但語法合格**的字串通過檢查。
@@ -44,7 +44,7 @@ const (
 	arnKeyIDPattern     = `(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|mrk-[0-9a-f]{32})`
 )
 
-// canonicalKeyARN KMS **key ARN** 的語法形式（D11.1 裁決 1「收窄三」）：
+// canonicalKeyARN KMS **key ARN** 的語法形式：
 //
 //	arn:<partition>:kms:<region>:<account>:key/<key-id>
 //
@@ -84,7 +84,7 @@ func ParseKeyARN(s string) (KeyARNParts, bool) {
 
 // IsCanonicalKeyARN 判定字串是否符合 KMS key ARN 語法。
 //
-// **這是「非正規」偵測的唯一判定式（D11.1 裁決 1 收窄三）**：
+// **這是「非正規」偵測的唯一判定式**：
 // SHALL NOT 以「不等於當前 KeyRef().KeyID」判定——後者會把**其他合法 KMS ARN**
 // （退役 KEK、重包過渡期的舊列）一律誤殺。語法合格但非當前金鑰者屬正常存量，
 // 由既有代表列篩選（key_manager_service.go 的 kek_id == env 過濾）處理，
@@ -94,12 +94,12 @@ func IsCanonicalKeyARN(s string) bool {
 	return ok
 }
 
-// AccountScope 部署端宣告的**信任帳號範圍**（round-4 codex high #1）。
+// AccountScope 部署端宣告的**信任帳號範圍**（安全審查 high #1）。
 //
 // **要解的問題**：委託重包精靈的請求體只帶 `key_ref`，region／provider 沿用本行程
 // 組態——但完整 ARN 仍可指定**同 region 的任意 AWS 帳號**。只要對方的 key policy
 // 或 grant 放行，一次 API 呼叫就把全部 DEK 材料重包進外部信任域，而「不讓請求體
-// 決定重包到哪個雲端帳號」正是原裁決 6 要防的事。region 沿用擋不住這件事。
+// 決定重包到哪個雲端帳號」正是 region 沿用原本要防的事，但它擋不住這條路徑。
 //
 // **信任範圍的來源＝部署組態，不是請求**：由 KEK_KMS_KEY_ID 所屬帳號推導
 // （見 cmd/server/kek_provider.go 的 resolveTrustedAccountScope）。零值 Scope
@@ -126,7 +126,7 @@ func (s AccountScope) String() string { return s.Partition + ":" + s.Account }
 //
 // **本方法只判語法、不判歸屬**：回 nil 不代表該 kek_id 指向本 provider 的金鑰，
 // 只代表它是一個語法合格的 KMS key ARN。歸屬由代表列篩選與實際解包成功承擔
-// （D4／1.5 的判準優先序）。
+// （語法合格不等於歸屬正確）。
 func (p *Provider) ValidateKeyIDSyntax(keyID string) error {
 	if IsCanonicalKeyARN(keyID) {
 		return nil

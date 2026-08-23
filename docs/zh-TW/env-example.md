@@ -294,7 +294,7 @@ CORS_ALLOWED_ORIGINS=
 
 ### `METRICS_TOKEN`
 
-維運指標端點 `/metrics`（observability-lite）的 Bearer token。
+維運指標端點 `/metrics` 的 Bearer token。
 留空 = 不做認證，而留空是安全的預設值：`/metrics` 不在 `/api` 之下，
 且正式環境的邊緣只代理 `/api` 與 `/ws`，所以外部無從觸及它。
 但如果你為了從另一台主機抓取指標而在反向代理上開了一條通往 `/metrics` 的路由，

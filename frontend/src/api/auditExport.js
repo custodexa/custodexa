@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 稽核證據匯出打包（audit-workflows D1，audit:view）。
+ * 稽核證據匯出打包（audit-workflows，audit:view）。
  * 回傳 ZIP blob——用 responseType blob 讓瀏覽器可另存；篩選隨目前查詢範圍。
  *
  * 兩種包，由 subject 決定（同一端點、同一包結構）：

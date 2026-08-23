@@ -104,7 +104,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	// 東亞寬字元字寬表，internal/vtscreen/screen.go 直接使用（自 indirect 提升）。
 	// **版本釘在 v0.0.9 不升版**：本 change 的 119 組行為基準是在這一版的字寬表下抽取的，
-	// 同一個 change 內同時換解析器又換字寬表會使基準差異無法歸因（design.md D8）。升版另立 change。
+	// 同一個 change 內同時換解析器又換字寬表會使基準差異無法歸因。升版另立 change。
 	github.com/mattn/go-runewidth v0.0.9
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

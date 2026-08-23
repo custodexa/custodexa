@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// DNS rebinding：名稱只解析一次（批 14 對抗審查 M1 / spec oidc-auth L33）。
+// DNS rebinding：名稱只解析一次（spec oidc-auth L33）。
 //
 // 既有格點（TestEgressBlocksDNSNameResolvingToPrivateIP）證明的是「解析到私網
 // 就擋」，它用的是**穩定**的 DNS 事實，因此對「檢查一次、連線時再解析一次」

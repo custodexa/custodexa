@@ -400,7 +400,7 @@ func (s *RecordingService) GetRecordingMetadata(sessionID uint) (*RecordingMetad
 	return metadata, nil
 }
 
-// RecordingProtocol 取該會話錄影的協定別（modular-architecture W4 4.8）。
+// RecordingProtocol 取該會話錄影的協定別。
 //
 // **薄包裝，語義逐字等同 GetRecordingMetadata 的 Protocol 欄**：匯出端（audit 模組）
 // 對 metadata 的唯一用途是決定 zip 內副檔名，若讓它照抄 GetRecordingMetadata 的簽名，

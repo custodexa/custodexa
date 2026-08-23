@@ -31,53 +31,53 @@ var (
 	ErrUserInactive = errors.New("使用者帳號未啟用")
 	// ErrUserNotFound 使用者不存在
 	ErrUserNotFound = errors.New("使用者不存在")
-	// ErrAccountLocked 帳號因連續失敗被鎖定（D2 明示訊息：不透露剩餘時間/次數）
+	// ErrAccountLocked 帳號因連續失敗被鎖定（明示訊息：不透露剩餘時間/次數）
 	ErrAccountLocked = errors.New("嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員")
-	// ErrConnectionNotAuthorized WS 連線授權失敗（scoped token / 停用 / 鎖定，D11）
+	// ErrConnectionNotAuthorized WS 連線授權失敗（scoped token / 停用 / 鎖定）
 	ErrConnectionNotAuthorized = errors.New("此 token 不可用於建立連線")
-	// ErrLDAPTransportRejected LDAP 登入被傳輸安全政策（strict）拒絕
-	//（transmission-security-policy D9）。明確原因是 spec 要求：否則使用者
+	// ErrLDAPTransportRejected LDAP 登入被傳輸安全政策（strict）拒絕。
+	// 明確原因是 spec 要求：否則使用者
 	// 只看到「密碼錯誤」，支援負擔轉嫁給目錄管理員。
 	//
-	// **文案指向身分管理 UI**（ldap-settings-migration D6）：設定自 env 遷入 DB
+	// **文案指向身分管理 UI**：設定自 env 遷入 DB
 	// 後，修復動作不再是「請部署方改 LDAP_URL 重啟」，而是 admin 於目錄設定頁
 	// 改用 ldaps://。指錯修復位置的錯誤訊息比沒有訊息更浪費時間。
 	// **同一句話在兩處各寫一次**：此處與 apierror.CodeLDAPTransportRejected 的
 	// zh fallback（bijection 測試釘住 zh-TW locale == ZhFallback），改一處必改另一處
 	ErrLDAPTransportRejected = errors.New("LDAP 登入被傳輸安全政策拒絕：目錄連線未達加密要求，請管理員於身分管理的目錄設定頁改用 ldaps://")
-	// ErrInvalidDisplayName 自助顯示名格式驗證失敗（長度上限/控制字元/換行，profile-display-name R1）
+	// ErrInvalidDisplayName 自助顯示名格式驗證失敗（長度上限/控制字元/換行）
 	ErrInvalidDisplayName = errors.New("顯示名稱格式不正確")
 )
 
 // maxDisplayNameLen 自助顯示名長度上限（rune 數，與 users.local_display_name varchar(100) 對齊）
 const maxDisplayNameLen = 100
 
-// passwordChangeTokenTTL 強制改密 scoped token 存活時間（D4：流程機制常數，不進政策）
+// passwordChangeTokenTTL 強制改密 scoped token 存活時間（流程機制常數，不進政策）
 const passwordChangeTokenTTL = 15 * time.Minute
 
 // AuthService 認證服務
 type AuthService struct {
 	jwtManager *crypto.JWTManager
 	// mfaCrypto 用於加解密 TOTP secret（users.totp_secret_enc）；nil 表示 MFA 功能未啟用。
-	// **ColumnCodec**（kek-provider-modularization D5 cutover，tasks 1.7）：介面上
+	// **ColumnCodec**：介面上
 	// **沒有** Encrypt(plaintext)，故持有者在**建構上**不可能寫出無 AAD 的 enc:v 密文。
-	// **建構時注入**（D3 職 3 拆解，無 SetMFACodec 事後覆寫）
+	// **建構時注入**（無 SetMFACodec 事後覆寫）
 	mfaCrypto crypto.ColumnCodec
-	// ldapResolver LDAP 登入路徑的單次設定解析（ldap-settings-migration D2）。
-	// nil 表示本組裝完全不接目錄，登入流程跳過 LDAP 路徑（design.md D1/D3）；
+	// ldapResolver LDAP 登入路徑的單次設定解析。
+	// nil 表示本組裝完全不接目錄，登入流程跳過 LDAP 路徑；
 	// 「有接但未設定／已停用」由解析結果的 unavailable 態表達，兩者不混用
 	ldapResolver LDAPLoginResolver
 	// policies nil 表示不啟用鎖定/強制改密等政策 gate（僅測試建構路徑，生產組裝一律注入）
 	policies *policy.SecurityPolicyService
-	// transmission LDAP 登入傳輸閘（transmission-security-policy D9）；nil＝閘不生效。
+	// transmission LDAP 登入傳輸閘；nil＝閘不生效。
 	// 判定撥號當下最終參數（scheme/SkipTLSVerify），與設定存放位置解耦
 	transmission *policy.TransmissionPolicyService
-	// extLoginAgg 外部帳號本地登入嘗試的聚合審計（L1）；延遲建立，
+	// extLoginAgg 外部帳號本地登入嘗試的聚合審計；延遲建立，
 	// 見 external_login_attempt_audit.go 的 externalLoginAttempts()
 	extLoginAgg     *externalLoginAttemptAggregator
 	extLoginAggOnce sync.Once
-	// epochGateDB 憑證世代閘的資料來源（modular-architecture W8 9.3／R3 I2：
-	// 原為包級函式直讀全域 database.DB）。nil＝未注入，回退全域，
+	// epochGateDB 憑證世代閘的資料來源（原為包級函式直讀
+	// 全域 database.DB）。nil＝未注入，回退全域，
 	// 見 auth_epoch_gate.go 的 epochDB() 註解
 	epochGateDB *gorm.DB
 }
@@ -92,7 +92,7 @@ func (s *AuthService) SetSecurityPolicies(policies *policy.SecurityPolicyService
 	s.policies = policies
 }
 
-// SetLDAPResolver 注入 LDAP 登入解析器（ldap-settings-migration D2；原
+// SetLDAPResolver 注入 LDAP 登入解析器（原
 // SetLDAPAuthenticator）。
 //
 // **注入 resolver 而非 authenticator**：設定存於 DB 可隨時變更，啟動時建構
@@ -113,7 +113,7 @@ func NewAuthService(jwtSecret string, tokenDuration time.Duration) *AuthService 
 }
 
 // NewAuthServiceWithMFA 建立含 MFA（TOTP secret 加密）能力的認證服務。
-// codec 為必要參數（D3：建構期零 env 依賴），nil 即拒絕建構
+// codec 為必要參數（建構期零 env 依賴），nil 即拒絕建構
 func NewAuthServiceWithMFA(jwtSecret string, tokenDuration time.Duration, codec crypto.ColumnCodec) (*AuthService, error) {
 	if codec == nil {
 		return nil, fmt.Errorf("初始化 MFA 加密服務失敗: codec 為必要參數（不得於建構期自 env 材料自建）")
@@ -124,7 +124,7 @@ func NewAuthServiceWithMFA(jwtSecret string, tokenDuration time.Duration, codec 
 	}, nil
 }
 
-// 強制改密觸發原因值域（login-password-policy-gate D6）
+// 強制改密觸發原因值域
 const (
 	PasswordChangeReasonMustChange   = "must_change"
 	PasswordChangeReasonNoncompliant = "policy_noncompliant"
@@ -144,9 +144,9 @@ type LoginResponse struct {
 	Token string    `json:"token,omitempty"`
 	User  *UserInfo `json:"user,omitempty"`
 
-	// RefreshToken 會話刷新憑證（D6）：access 固定短效 15 分，前端以此透明換發。
+	// RefreshToken 會話刷新憑證：access 固定短效 15 分，前端以此透明換發。
 	//
-	// **`json:"-"` 是本 change 的結構層保證**（refresh-token-httponly-cookie 決策 3）：
+	// **`json:"-"` 是本 change 的結構層保證**（決策 3）：
 	// 憑證改由 httpOnly cookie 下發，欄位保留僅供 handler 讀它來寫 cookie。
 	// 任何序列化路徑——含 OIDC 交換的巢狀 `gin.H{"login": resp}`——都不可能再把
 	// 明文帶進回應 body，不依賴每個 handler 記得抹除欄位。
@@ -162,20 +162,20 @@ type LoginResponse struct {
 	MFARequired  bool   `json:"mfa_required,omitempty"`
 	PendingToken string `json:"pending_token,omitempty"`
 
-	// MFA 強制註冊（8.4.2，D5）：受強制但未註冊 TOTP 者密碼驗證通過後回此，
+	// MFA 強制註冊（8.4.2）：受強制但未註冊 TOTP 者密碼驗證通過後回此，
 	// 持 enrollment_token 走 TOTP 綁定端點，綁定完成直接換發正式 token
 	MFAEnrollmentRequired bool   `json:"mfa_enrollment_required,omitempty"`
 	EnrollmentToken       string `json:"enrollment_token,omitempty"`
 
 	// 強制改密（8.3.5/2.2.2）：密碼（與 MFA，如有）驗證通過但須先改密，
-	// 回 change_token（僅可打 /auth/change-password），改密成功直接換發正式 token（D12）。
+	// 回 change_token（僅可打 /auth/change-password），改密成功直接換發正式 token。
 	// PolicyHint 為改密表單的政策提示文案（task 2.4：長度/組成），政策頁 API 是 admin-only，
 	// 未登入的改密表單拿不到，故隨登入回應附帶
 	PasswordChangeRequired bool   `json:"password_change_required,omitempty"`
 	ChangeToken            string `json:"change_token,omitempty"`
 	PolicyHint             string `json:"policy_hint,omitempty"`
 
-	// 強制改密觸發原因（login-password-policy-gate D6）：must_change（首登/重設）、
+	// 強制改密觸發原因：must_change（首登/重設）、
 	// policy_noncompliant（現行密碼不符政策，附 reason_code+reason_params 供 i18n 插值）、
 	// password_expired（逾 password_max_age_days）。MFA 用戶的合規偵測在第一階段持久化
 	// 旗標，第二階段 gate 以 must_change 呈現（明文已不可得，細節仍在 PolicyHint）
@@ -207,18 +207,18 @@ type UserInfo struct {
 	Email    string `json:"email"`
 	FullName string `json:"full_name"`
 	// LocalDisplayName 自助顯示名原始值（可為 null＝未自訂）：供 Profile 編輯欄回填。
-	// 顯示一律用 DisplayName（已 resolve）；此欄僅編輯用（profile-display-name R1）
+	// 顯示一律用 DisplayName（已 resolve）；此欄僅編輯用
 	LocalDisplayName *string `json:"local_display_name"`
 	// DisplayName 後端 resolve 的顯示名（local_display_name || full_name || username，
-	// R3 單一事實源）：僅裝飾/自我檢視場景使用，身分敏感場景一律 username（D4）
+	// 單一事實源）：僅裝飾/自我檢視場景使用，身分敏感場景一律 username
 	DisplayName string   `json:"display_name"`
 	Active      bool     `json:"active"`
 	Roles       []string `json:"roles"`
 	TOTPEnabled bool     `json:"totp_enabled"`
-	// IsLDAP：目錄服務供應的影子帳號——密碼由 LDAP 管理，前端據此隱藏自助改密（ux-consistency D5）
+	// IsLDAP：目錄服務供應的影子帳號——密碼由 LDAP 管理，前端據此隱藏自助改密
 	IsLDAP bool `json:"is_ldap"`
-	// ExternalCredential：憑證由外部提供者管理，一切本地密碼路徑皆不適用
-	//（idp-oidc-integration D8）。前端的自助改密與密碼到期提示一律依此欄泛化——
+	// ExternalCredential：憑證由外部提供者管理，一切本地密碼路徑皆不適用。
+	// 前端的自助改密與密碼到期提示一律依此欄泛化——
 	// **不可續用 is_ldap**：OIDC 影子帳號的 is_ldap 為 false，只看它會讓
 	// OIDC 使用者看到一個按下去必然失敗的改密表單
 	ExternalCredential bool `json:"external_credential"`
@@ -226,13 +226,13 @@ type UserInfo struct {
 	// 與 ExternalCredential 分離是刻意的——混合帳號（OIDC 供應但保有本地密碼）
 	// 兩者不同值，UI 需要分別呈現「哪裡來的」與「密碼歸誰管」
 	ProvisioningOrigin string `json:"provisioning_origin"`
-	// IsApprover：有效審核資格（approval-routing-quorum D-7 群組即資格）＝
+	// IsApprover：有效審核資格（群組即資格）＝
 	// 具 approver 角色 OR 屬任一審核方群組——前端審核中心入口/badge 依此判定
 	//（roles 陣列蓋不到群組成員的情形）
 	IsApprover bool `json:"is_approver"`
 }
 
-// Login 使用者登入。gate chain（design.md 登入狀態機，順序固定）：
+// Login 使用者登入。gate chain（登入狀態機，順序固定）：
 // 鎖定檢查 → 密碼/LDAP 驗證（失敗計數）→ MFA 分流 → 強制改密 → 發正式 token。
 // 本地查到非 is_ldap 用戶 -> bcrypt 原路徑；
 // 查到 is_ldap 用戶或查無且 LDAP 啟用 -> LDAP 驗證（成功且查無時供應影子用戶）
@@ -242,7 +242,7 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResponse, error) {
 		return nil, err
 	}
 
-	// 本次認證脈絡（idp-oidc-integration D6）：本地與 LDAP 路徑皆無 provider，
+	// 本次認證脈絡：本地與 LDAP 路徑皆無 provider，
 	// providerID 留 0 表「不受任何 provider 停用影響」。世代現查（buildAuthContext）
 	authMethod := crypto.AuthMethodLocalPassword
 	if authSource == model.AuthSourceLDAP {
@@ -250,7 +250,7 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResponse, error) {
 	}
 	authCtx := s.buildAuthContext(user, authMethod, 0)
 
-	// 登入時政策合規偵測（login-password-policy-gate D1/D3）：明文僅此刻可得，
+	// 登入時政策合規偵測：明文僅此刻可得，
 	// 於 MFA 分流前偵測並持久化旗標；gate 判定統一留在 finishLogin（MFA 之後，
 	// 防竊得弱密碼者持改密 token 繞過 MFA）。旗標已為 true 者毋須偵測（gate 必
 	// 命中且依優先序取 must_change 原因）；LDAP 密碼由目錄管理不評估
@@ -264,7 +264,7 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResponse, error) {
 
 	// MFA 兩階段的 gate 依賴持久化旗標（第二階段重載使用者、明文不可得），
 	// 偵測命中但寫入失敗時 fail-close 拒絕進入第二階段——否則暫時性 DB 故障
-	// 會讓違規判定遺失、不合規者過完 MFA 取得正式會話（codex HIGH）。
+	// 會讓違規判定遺失、不合規者過完 MFA 取得正式會話。
 	// 純密碼路徑不受此限：in-memory 旗標在本請求內即完成 gate
 	if persistFailed && (user.TOTPEnabled || s.mfaEnrollmentRequired(user)) {
 		return nil, fmt.Errorf("登入時政策偵測狀態寫入失敗，拒絕進入 MFA 階段（user=%d）", user.ID)
@@ -290,7 +290,7 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResponse, error) {
 		}, nil
 	}
 
-	// 受強制但未註冊 TOTP（D5）：密碼驗證通過，改發 enrollment token 走綁定流程，
+	// 受強制但未註冊 TOTP：密碼驗證通過，改發 enrollment token 走綁定流程，
 	// 綁定完成前不得取得正式會話。同樣不歸零計數（留給綁定完成後 finishLogin）
 	if s.mfaEnrollmentRequired(user) {
 		enrollmentToken, err := s.jwtManager.GenerateScopedToken(
@@ -341,7 +341,7 @@ func (s *AuthService) persistMustChange(user *model.User) error {
 	return err
 }
 
-// passwordExpired 密碼有效期判定（login-password-policy-gate D5）：政策 0=關閉不評估；
+// passwordExpired 密碼有效期判定：政策 0=關閉不評估；
 // NULL 時間戳視為已過期（fail-secure：欄位引入前的 legacy 列不得恰好豁免，
 // 改密後時間戳寫入即永久自癒）
 func (s *AuthService) passwordExpired(user *model.User) bool {
@@ -369,7 +369,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		return nil, "", result.Error
 	}
 
-	// 鎖定 gate 先於密碼驗證（D2 判定順序）；查無帳號者無計數對象、直接走驗證失敗路徑
+	// 鎖定 gate 先於密碼驗證（判定順序）；查無帳號者無計數對象、直接走驗證失敗路徑
 	if !notFound {
 		if err := s.gateLockout(&user); err != nil {
 			return nil, "", err
@@ -379,7 +379,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 	var authSource string
 	switch {
 	case !notFound && !user.IsLDAP && user.IsExternal():
-		// 外部但非目錄供應（OIDC 帳號）→ 顯式拒絕本地密碼路徑（idp-oidc-integration D8）。
+		// 外部但非目錄供應（OIDC 帳號）→ 顯式拒絕本地密碼路徑。
 		//
 		// 此分支不可省略、也不可靠「把原本的 !user.IsLDAP 條件改成 !user.IsExternal()」
 		// 達成：那樣寫會讓 OIDC 帳號落入下方的 else（目錄路徑），而 authenticateLDAP
@@ -387,7 +387,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		//（含目錄側同名帳號、目錄管理員重設密碼）即可登入該 OIDC 帳號，且因
 		// authMethod=ldap 而不套密碼 gate。目標部署正是「地端 LDAP＋多路 OIDC 並存」。
 		//
-		// 失敗計數與回應形狀（r4 對抗審查）：**不計入 recordFailedAttempt**——該帳號本
+		// 失敗計數與回應形狀：**不計入 recordFailedAttempt**——該帳號本
 		// 就無本地密碼可驗，計數只會讓任何未認證者用本地表單把 SSO 帳號鎖死（鎖定後
 		// 連正常的 OIDC 登入都會被 finishLogin 的複查擋掉）。對外回應沿用一般憑證錯誤，
 		// 專屬錯誤碼只用於已認證的管理操作，否則即成「此帳號是 OIDC 帳號」的枚舉 oracle。
@@ -397,7 +397,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 	case !notFound && !user.IsLDAP:
 		// 本地路徑。
 		//
-		// **停用判定必須在密碼驗證之後**（security-backlog-settlement D4）：
+		// **停用判定必須在密碼驗證之後**：
 		// 放在之前等於對未認證者提供帳號存在性預言機——送任意密碼，存在但停用的
 		// 帳號回 403 user_inactive、不存在的帳號回 401 invalid_credentials，兩者可辨。
 		// 同函式的 OIDC 分支早已為此刻意收斂回應（見上方 case 的註解），本分支補齊。
@@ -407,7 +407,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		if err := crypto.DefaultPasswordVerifier().Verify(user.Password, []byte(req.Password)); err != nil {
 			return nil, "", s.recordFailedAttempt(user.ID)
 		}
-		// 漸進遷移（password-hasher-interface 3.1）：登入成功是**唯一**同時握有
+		// 漸進遷移：登入成功是**唯一**同時握有
 		// 明文與該帳號雜湊的時機，故重雜湊只能掛在這裡。
 		//
 		// **射程嚴格限於本地路徑的 `users.password`**：本 case 已排除 LDAP／外部帳號，
@@ -425,7 +425,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		if s.ldapResolver == nil {
 			return nil, "", ErrInvalidCredentials
 		}
-		// **每次登入單次解析**（ldap-settings-migration D2）：本次的傳輸閘判定
+		// **每次登入單次解析**：本次的傳輸閘判定
 		// 與實際撥號共用這一份結果，設定並發變更不產生「閘檢查新值、撥號舊值」
 		// 的窗口
 		resolution := s.ldapResolver()
@@ -445,7 +445,7 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		}
 		ldapUser, err := s.authenticateLDAP(req, &user, notFound, resolution)
 		if err != nil {
-			// LDAP 帳戶納入應用層計數（D2 兩層並行）；影子用戶尚未供應（查無）時無計數對象
+			// LDAP 帳戶納入應用層計數（兩層並行）；影子用戶尚未供應（查無）時無計數對象
 			if !notFound && errors.Is(err, ErrInvalidCredentials) {
 				return nil, "", s.recordFailedAttempt(user.ID)
 			}
@@ -458,11 +458,11 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 	return &user, authSource, nil
 }
 
-// auditExternalLocalLoginAttempt 外部身分帳號被嘗試以本地密碼登入時落審計
-// （idp-oidc-integration D8）。對外回應與一般憑證錯誤無異，偵測訊號只走審計——
+// auditExternalLocalLoginAttempt 外部身分帳號被嘗試以本地密碼登入時落審計。
+// 對外回應與一般憑證錯誤無異，偵測訊號只走審計——
 // 此類嘗試多為攻擊探測或使用者誤用，兩者都值得管理員看見。
 //
-// **聚合而非逐筆**（批 14 對抗審查 L1）：本分支未認證可達、不計入鎖定計數、
+// **聚合而非逐筆**：本分支未認證可達、不計入鎖定計數、
 // 且在密碼比對之前就返回，逐筆落審計等於把偵測訊號變成無界寫入載體。
 // 每個（使用者, 分鐘窗）最多兩筆：窗首即時筆＋窗尾彙總筆。
 // 詳見 external_login_attempt_audit.go
@@ -471,7 +471,7 @@ func (s *AuthService) auditExternalLocalLoginAttempt(user *model.User) {
 	writeExternalLoginAttemptAudits(emits)
 }
 
-// mfaEnrollmentRequired 判定用戶是否受 MFA 強制且尚未註冊（D5）：
+// mfaEnrollmentRequired 判定用戶是否受 MFA 強制且尚未註冊：
 // 政策 off→從不；admin_only→僅 admin 角色；all→所有人。已註冊 TOTP 者不需 enrollment
 func (s *AuthService) mfaEnrollmentRequired(user *model.User) bool {
 	if user.TOTPEnabled || s.policies == nil {
@@ -487,7 +487,7 @@ func (s *AuthService) mfaEnrollmentRequired(user *model.User) bool {
 	}
 }
 
-// gateLockout 鎖定 gate：鎖定中拒絕；locked_until 到期放行時計數一併歸零（D12，防死循環）
+// gateLockout 鎖定 gate：鎖定中拒絕；locked_until 到期放行時計數一併歸零（防死循環）
 func (s *AuthService) gateLockout(user *model.User) error {
 	if user.LockedUntil == nil {
 		return nil
@@ -507,7 +507,7 @@ func (s *AuthService) gateLockout(user *model.User) error {
 	return nil
 }
 
-// rehashPasswordIfNeeded 登入成功後的機會性密碼雜湊升級（password-hasher-interface 3.1）。
+// rehashPasswordIfNeeded 登入成功後的機會性密碼雜湊升級。
 //
 // **為什麼漸進遷移是唯一可行的做法**：把一筆舊演算法的雜湊轉成新演算法需要**明文密碼**，
 // 而系統沒有明文——那正是雜湊存在的意義。任何「一鍵把所有帳號遷移過去」的功能
@@ -587,7 +587,7 @@ func (s *AuthService) recordFailedAttempt(userID uint) error {
 		log.Printf("[AuthService] 帳號因連續失敗被鎖定 (userID=%d, attempts=%d, until=%s)",
 			userID, user.FailedLoginAttempts, user.LockedUntil.Format(time.RFC3339))
 		// 鎖定即撤銷全部 refresh（spec 會話撤銷）：阻新登入也阻既有 Web 會話續命；
-		// 協議會話不砍（D13，避免鎖定成為遠端斷線武器），殘餘 access ≤15 分
+		// 協議會話不砍（避免鎖定成為遠端斷線武器），殘餘 access ≤15 分
 		if _, err := RevokeAllRefreshTokens(database.DB, userID, model.RefreshRevokeLocked); err != nil {
 			log.Printf("[AuthService] 鎖定撤銷 refresh 憑證失敗 (userID=%d): %v", userID, err)
 		}
@@ -627,11 +627,11 @@ func (s *AuthService) finishLogin(user *model.User, violation *policy.PasswordPo
 		return nil, err
 	}
 
-	// 登入時密碼 gate（D4：排在 MFA 之後防繞過；LDAP 用戶密碼由目錄管理，三觸發源
-	// 皆不適用）。優先序＝旗標 → 政策合規 → 有效期（login-password-policy-gate D1）；
+	// 登入時密碼 gate（排在 MFA 之後防繞過；LDAP 用戶密碼由目錄管理，三觸發源
+	// 皆不適用）。優先序＝旗標 → 政策合規 → 有效期；
 	// violation 僅在本次登入偵測（原旗標為 false）時非 nil，故排前不違反旗標優先——
 	// 它攜帶具體違規碼，比壓成 must_change 更有指引價值
-	// 密碼類 gate 依**本次登入方式**判定（idp-oidc-integration D6），非帳號屬性——
+	// 密碼類 gate 依**本次登入方式**判定，非帳號屬性——
 	// 混合帳號（同時有本地密碼與外部身分）才能兩條路徑各依其性質判定。
 	// 雙條件 fail-secure：缺值視為 local_password（升級期舊 token），此時仍需
 	// !IsExternal() 才套用，故任一訊號缺失都不會使 gate 靜默失效。
@@ -679,10 +679,10 @@ func (s *AuthService) finishLogin(user *model.User, violation *policy.PasswordPo
 func (s *AuthService) authenticateLDAP(
 	req *LoginRequest, existing *model.User, notFound bool, resolution LDAPLoginResolution,
 ) (*model.User, error) {
-	// LDAP 登入傳輸閘（transmission-security-policy D9）：檢查撥號當下最終參數。
+	// LDAP 登入傳輸閘：檢查撥號當下最終參數。
 	// strict＝通道不安全即拒絕，撥號前擋下（密碼不出門）；本地帳號路徑不經此處。
 	//
-	// **風險項取自本次解析結果**（ldap-settings-migration D2）：與下方
+	// **風險項取自本次解析結果**：與下方
 	// resolution.Auth 撥號用的是同一份 snapshot，型別上不可能是兩次讀取
 	risks := resolution.Risks
 	if len(risks) > 0 && s.transmission != nil &&
@@ -698,7 +698,7 @@ func (s *AuthService) authenticateLDAP(
 		return nil, ErrInvalidCredentials
 	}
 
-	// 已停用的 is_ldap 用戶於**目錄認證通過後**才拒絕（security-backlog-settlement D4，
+	// 已停用的 is_ldap 用戶於**目錄認證通過後**才拒絕（
 	// 與本地路徑的檢查順序一致）。原先在打目錄前就回 ErrUserInactive，省下一次目錄
 	// 請求，代價是未認證者送任意密碼即可分辨「此帳號存在但已停用」與「此帳號不存在」
 	// ——同一個枚舉 oracle 的 LDAP 側。一次目錄請求換掉存在性洩漏，值得
@@ -713,7 +713,7 @@ func (s *AuthService) authenticateLDAP(
 		}
 	}
 
-	// warn＝放行但每次成功登入落傳輸偏離審計（D9：留痕對象是稽核與管理員，
+	// warn＝放行但每次成功登入落傳輸偏離審計（留痕對象是稽核與管理員，
 	// 不彈同意對話框——登入者無權修復部署層設定。失敗嘗試由既有登入失敗
 	// 審計涵蓋，不另落偏離事件以免探測流量灌爆審計）
 	if len(risks) > 0 && s.transmission != nil &&
@@ -723,7 +723,7 @@ func (s *AuthService) authenticateLDAP(
 	return resolved, nil
 }
 
-// auditLDAPResolveFailure 設定解析失敗的 fail-close 審計（ldap-settings-migration D2）。
+// auditLDAPResolveFailure 設定解析失敗的 fail-close 審計。
 //
 // spec 要求「內部 log 與審計事件可辨識為解析失敗而非帳密錯誤」：金鑰事故下
 // 全體目錄使用者同時登不進來，若審計只留一片「密碼錯誤」，管理員會去查
@@ -770,7 +770,7 @@ func (s *AuthService) auditLDAPTransport(userID uint, username string, risks []p
 	}
 }
 
-// provisionShadowUser 首次 LDAP 登入自動建立影子用戶（design.md D3）：
+// provisionShadowUser 首次 LDAP 登入自動建立影子用戶：
 // is_ldap=true、預設 user 角色；password 填隨機 bcrypt 是因為欄位 NOT NULL，
 // 且即使誤走本地路徑也無人知道此密碼，杜絕影子帳號被本地密碼登入
 func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, error) {
@@ -783,10 +783,10 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 		return nil, fmt.Errorf("影子用戶密碼雜湊失敗: %w", err)
 	}
 
-	// email 未知/衝突以 NULL 表達（profile-display-name D7）：trim+小寫正規化後
+	// email 未知/衝突以 NULL 表達：trim+小寫正規化後
 	// 以大小寫不敏感比對（與 admin Update 的 normalizeEmail 一致），衝突時存 NULL
 	//（非空字串），唯一性僅約束非 NULL，故多個無 email 影子帳號可並存；
-	// 登入不可因附屬欄位失敗（design.md 風險項）
+	// 登入不可因附屬欄位失敗（既有風險項）
 	emailPtr := normalizeEmail(info.Email)
 	if emailPtr != nil {
 		var emailCount int64
@@ -805,7 +805,7 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 		FullName: info.FullName,
 		Active:   true,
 		IsLDAP:   true,
-		// 身分欄位顯式賦值（idp-oidc-integration D2）：目錄供應帳號的憑證在目錄端，
+		// 身分欄位顯式賦值：目錄供應帳號的憑證在目錄端，
 		// external_credential=true 使其本地密碼路徑全數關閉（自助改密、admin 重設、
 		// 本地登入分派）。此欄語義刻意是「外部化＝true」——若採「有本地密碼＝true」
 		// 並配 default:true，GORM 會把顯式寫入的 false 覆寫成 true（已實測），
@@ -846,7 +846,7 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	return user, nil
 }
 
-// primaryRoleOf 取得有效角色，優先序固定 admin > auditor > user（session-access-scoping D4）：
+// primaryRoleOf 取得有效角色，優先序固定 admin > auditor > user：
 // 不得依 Roles[0] 綁定順序取值——[user,auditor] 帳號若取到 user，後端 403 而前端依
 // 完整 roles 陣列放行，會造成前後端判定不一致的破版。無已知角色時退回第一個角色名，
 // 無角色預設 user
@@ -885,7 +885,7 @@ func (s *AuthService) passwordPolicyHint() string {
 	return hint
 }
 
-// buildAuthContext 組裝簽發當下的認證脈絡（idp-oidc-integration D2/D9）。
+// buildAuthContext 組裝簽發當下的認證脈絡。
 //
 // method 與 providerID 由呼叫端指定——它們描述「本次是怎麼認證的」，不隨時間變，
 // 換發路徑可自來源憑證繼承。但兩個世代**一律現查**，絕不可繼承：改密會推進
@@ -925,14 +925,14 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 		return nil, err
 	}
 
-	// refresh 憑證與 access 同時發放（D6）：發放失敗即整體失敗——
+	// refresh 憑證與 access 同時發放：發放失敗即整體失敗——
 	// 沒有 refresh 的會話 15 分後必斷，fail-open 等於會話治理不存在
 	refreshToken, refreshExpiresAt, err := s.issueRefreshToken(user.ID, time.Now(), authCtx)
 	if err != nil {
 		return nil, err
 	}
 
-	// 有效審核資格（D-7，codex gpt-5.6-sol 審查 P1）：登入回應也帶 is_approver，
+	// 有效審核資格：登入回應也帶 is_approver，
 	// 否則群組審核方（roles 不含 approver）的 localStorage.user 缺此欄，前端路由守衛
 	// 只認 cached 角色 → 看得到審核中心卻被踢回 dashboard。查失敗不阻斷登入（顯示性欄位）
 	isApprover, err := authz.NewAssetAuthorizationService(database.DB).
@@ -970,10 +970,10 @@ func (s *AuthService) ValidateToken(tokenString string) (*crypto.Claims, error) 
 	return s.jwtManager.ValidateToken(tokenString)
 }
 
-// ValidateConnectionToken WS 連線端點統一認證（D11 認證邊界一致性）：
+// ValidateConnectionToken WS 連線端點統一認證（認證邊界一致性）：
 //  1. token 簽章/過期驗證；
 //  2. deny-by-default：任何 scoped token（MFA pending/enrollment/改密）不得建立連線——
-//     與 middleware 同一判定，堵住既有 MFA 繞過（P1）；
+//     與 middleware 同一判定，堵住既有 MFA 繞過；
 //  3. 重載用戶拒 inactive 與鎖定中——剛被停用/鎖定者不得用未過期 token 開新特權 shell
 func (s *AuthService) ValidateConnectionToken(tokenString string) (*crypto.Claims, error) {
 	claims, err := s.jwtManager.ValidateToken(tokenString)
@@ -986,7 +986,7 @@ func (s *AuthService) ValidateConnectionToken(tokenString string) (*crypto.Claim
 	if err := s.CheckUserConnectable(claims.UserID); err != nil {
 		return nil, err
 	}
-	// 憑證世代閘（idp-oidc-integration D2/D9）——**這條旁路絕不可漏**：
+	// 憑證世代閘——**這條旁路絕不可漏**：
 	// /connect、/ssh、/sessions/:id/monitor 三個路由不掛 AuthMiddleware（各自
 	// 「手動處理認證，支援 WebSocket query token」），故中介層的世代比對救不到它們。
 	// 漏此檢查則 provider 停用後，攻擊者持停用前簽發的 access token 仍可開啟會話監看
@@ -1004,7 +1004,7 @@ func (s *AuthService) ValidateConnectionToken(tokenString string) (*crypto.Claim
 var _ gatewayapi.SessionVerifier = (*AuthService)(nil)
 
 // VerifySession 驗 web session JWT 並套用認證世代閘，回傳已驗證身分快照。
-// **`gatewayapi.SessionVerifier` 的實作**（modular-architecture W10.2 接線）。
+// **`gatewayapi.SessionVerifier` 的實作**。
 //
 // 判定本體即 ValidateConnectionToken——本方法只做 claims → Principal 的欄位對映，
 // **不新增、不放寬任何判定**：scope deny-by-default、重載用戶拒停用/鎖定、
@@ -1014,7 +1014,7 @@ var _ gatewayapi.SessionVerifier = (*AuthService)(nil)
 // ctx 未被使用（下游以 database.DB 直查，不吃 ctx）：刻意保留參數而不改契約，
 // 同 gatewayapi.AsyncSink.Submit 的既定紀律。
 //
-// **Principal.Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**（D-11）：
+// **Principal.Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**：
 // 連線閘序的角色一律由 CurrentConnectRole 現查。
 func (s *AuthService) VerifySession(_ context.Context, rawJWT string) (gatewayapi.Principal, error) {
 	claims, err := s.ValidateConnectionToken(rawJWT)
@@ -1033,11 +1033,11 @@ func (s *AuthService) VerifySession(_ context.Context, rawJWT string) (gatewayap
 	}, nil
 }
 
-// CheckUserConnectable 重載用戶並拒 inactive 與鎖定中（D11 即時撤權）。
+// CheckUserConnectable 重載用戶並拒 inactive 與鎖定中（即時撤權）。
 // 抽出共用是因為連線經兩階段入口：connect-token 簽發（HandleCreateConnectToken，
 // 經 ValidateConnectionToken 認證）、connect-token 消費（HandleSSH/HandleConnect）——
 // 消費端 AUTH-1 原本漏了重載，停用/鎖定者仍能鑄 token 開新 shell。
-// 資產連線的 query-JWT 直連模式已收口（transmission-security-policy：繞過簽發閘）；
+// 資產連線的 query-JWT 直連模式已收口（繞過簽發閘）；
 // ValidateConnectionToken 仍供監看/分享/同意等輔助 WS 端點的 query token 認證
 func (s *AuthService) CheckUserConnectable(userID uint) error {
 	var user model.User
@@ -1056,11 +1056,11 @@ func (s *AuthService) CheckUserConnectable(userID uint) error {
 	return nil
 }
 
-// CurrentConnectRole 一次查詢完成 connect 路徑的「可連線複查」與「現查有效角色」
-// （connect-role-revocation-hardening D1）：載入 active/locked_until/Roles，不可連線
+// CurrentConnectRole 一次查詢完成 connect 路徑的「可連線複查」與「現查有效角色」：
+// 載入 active/locked_until/Roles，不可連線
 // 回既有 sentinel（與 CheckUserConnectable 對齊），可連線回 primaryRoleOf 折疊後的現時
 // 角色。connect token 簽發與兌換 SHALL 以此現況角色判定 admin 特權，不得憑 JWT／token
-// 攜帶的角色快照——降權即時生效、撤權殘窗歸零（CPG-010-01）。
+// 攜帶的角色快照——降權即時生效、撤權殘窗歸零。
 // 與 CheckUserConnectable 並存：後者仍供 refresh／bridge 啟動前複查以 error 語義使用
 func (s *AuthService) CurrentConnectRole(userID uint) (string, error) {
 	var user model.User
@@ -1079,7 +1079,7 @@ func (s *AuthService) CurrentConnectRole(userID uint) (string, error) {
 	return primaryRoleOf(&user), nil
 }
 
-// LoginWithExternalIdentity 外部身分認證通過後的登入後段（idp-oidc-integration D6）。
+// LoginWithExternalIdentity 外部身分認證通過後的登入後段。
 //
 // **必須走 finishLogin**（不可自建捷徑）：該函式內含發 token 前的鎖定複查
 // （並發窗）與 last_login_at 更新——後者是閒置停用判定的依據，跳過會使天天以
@@ -1095,7 +1095,7 @@ func (s *AuthService) LoginWithExternalIdentity(user *model.User, authCtx crypto
 		return nil, err
 	}
 
-	// MFA 疊加（D6）：已註冊 TOTP 者不直接發正式會話，進入既有兩階段流程；
+	// MFA 疊加：已註冊 TOTP 者不直接發正式會話，進入既有兩階段流程；
 	// scoped token 攜帶本次認證脈絡，使 MFA 完成點能複查 provider 與世代
 	if user.TOTPEnabled {
 		pendingToken, err := s.jwtManager.GenerateScopedToken(
@@ -1134,7 +1134,7 @@ func (s *AuthService) LoginWithExternalIdentity(user *model.User, authCtx crypto
 	return resp, nil
 }
 
-// IssueSessionResponse 對已完成必要驗證的用戶直接換發正式會話（D12：
+// IssueSessionResponse 對已完成必要驗證的用戶直接換發正式會話（
 // enrollment/改密完成後不重走登入）。呼叫端負責確認前置驗證已完成
 // authCtx 的 method/provider 由呼叫端自其 scoped token 繼承（描述本次怎麼認證的），
 // 但**世代於此重新現查**——改密會推進 credential_epoch，若沿用 scoped token 內的
@@ -1170,7 +1170,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 		roles[i] = role.Name
 	}
 
-	// 有效審核資格（D-7）：查失敗不阻斷主流程（顯示性欄位，守衛另有強制）
+	// 有效審核資格：查失敗不阻斷主流程（顯示性欄位，守衛另有強制）
 	isApprover, err := authz.NewAssetAuthorizationService(database.DB).
 		IsEffectiveApprover(user.ID)
 	if err != nil {
@@ -1194,7 +1194,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 	}, nil
 }
 
-// UpdateOwnDisplayName 自助更新顯示名（profile-display-name R1/R2）。
+// UpdateOwnDisplayName 自助更新顯示名。
 // 身分綁定：userID 由 handler 從 token claims 取得（不接受 path/body 指定他人）。
 // 重查帳號 active——AuthMiddleware 只驗 token 不重查 active 的補正，拒絕已停用/刪除帳號。
 // 只寫 local_display_name 一欄（其他欄位不可經此寫入）；輸入驗證：長度上限、
@@ -1235,7 +1235,7 @@ func (s *AuthService) UpdateOwnDisplayName(userID uint, raw *string) (*UserInfo,
 	return s.GetUserByID(userID)
 }
 
-// validateDisplayName 校驗並正規化自助顯示名（profile-display-name R1）：
+// validateDisplayName 校驗並正規化自助顯示名：
 // nil 或 trim 後空白 → nil（清除為 NULL）；否則檢查 rune 長度上限與控制字元/換行
 func validateDisplayName(raw *string) (*string, error) {
 	if raw == nil {

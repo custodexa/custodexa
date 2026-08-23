@@ -44,7 +44,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // dialErrorCode 將 classifyDialError 的 sentinel 映射為 apierror code
-// （ssh-connect-error-surfacing D3）；僅 SSH 撥號分支使用
+// 僅 SSH 撥號分支使用
 func dialErrorCode(err error) apierror.ErrCode {
 	switch {
 	case errors.Is(err, asset.ErrHostKeyChanged):
@@ -58,24 +58,24 @@ func dialErrorCode(err error) apierror.ErrCode {
 	}
 }
 
-// k8sDialCode 將 k8sproxy 的錯誤分類（K8sError.Kind）映為 apierror 碼（A8）。
+// k8sDialCode 將 k8sproxy 的錯誤分類（K8sError.Kind）映為 apierror 碼。
 //
-// 映射本體已移入 k8sproxy.ErrCodeOf（V2 對抗驗收 H1）——WS 撥號與
+// 映射本體已移入 k8sproxy.ErrCodeOf——WS 撥號與
 // HTTP pod 列表（api.ListK8sPods）共用同一份，避免兩處分頭維護時漏配
 // 新 Kind。本函式保留為套件內薄別名，呼叫點與既有測試不動。
 func k8sDialCode(err error) apierror.ErrCode {
 	return k8sproxy.ErrCodeOf(err)
 }
 
-// writeDialError 對瀏覽器透傳升級前的終端連線建立失敗（ssh-connect-error-surfacing
-// D1）：WS 握手失敗的 HTTP body 瀏覽器讀不到，故先升級再以 MsgError（code＋zh
+// writeDialError 對瀏覽器透傳升級前的終端連線建立失敗：
+// WS 握手失敗的 HTTP body 瀏覽器讀不到，故先升級再以 MsgError（code＋zh
 // fallback）送出原因後關閉。非 WS 升級請求維持既有 HTTP 502 JSON 語義。
 //
-// D7：code 改 apierror.ErrCode 必填（原「空字串＝尚未 code 化」的 k8s/database
+// code 為 apierror.ErrCode 必填（原「空字串＝尚未 code 化」的 k8s/database
 // 分支已補碼）；msg 為 zh fallback，撥號類傳底層已分類的具體訊息。
 func writeDialError(c *gin.Context, code apierror.ErrCode, msg string) {
 	if !websocket.IsWebSocketUpgrade(c.Request) {
-		// 非 WS 分支同步碼化（A8）：error 欄由碼的 ZhFallback 渲染，
+		// 非 WS 分支同步碼化：error 欄由碼的 ZhFallback 渲染，
 		// msg（撥號分類後的具體訊息）只服務 WS 幀的 Data fallback
 		apierror.Respond(c, http.StatusBadGateway, code, nil)
 		return
@@ -95,7 +95,7 @@ func writeDialError(c *gin.Context, code apierror.ErrCode, msg string) {
 }
 
 // ---------------------------------------------------------------------------
-// 連線決策閘出口（backend-i18n-unification M8）
+// 連線決策閘出口
 //
 // 這些回應除 {error, code} 外還帶 reason/policy 等**機器欄**：前端 connect.js
 // 以 `resp.data.reason` 做控制流分支（彈事由輸入框／錄影異常提示／申請核准流），
@@ -103,7 +103,7 @@ func writeDialError(c *gin.Context, code apierror.ErrCode, msg string) {
 //（見 apierror.Write：`body[k] = v`），故遷移後讀法完全不變。
 // ---------------------------------------------------------------------------
 
-// writeSessionRecordFailed 會話記錄 fail-close（CPG-003）
+// writeSessionRecordFailed 會話記錄 fail-close
 func writeSessionRecordFailed(c *gin.Context) {
 	apierror.Write(c, http.StatusForbidden, apierror.ErrorResponse{
 		Code: apierror.CodeSessionRecordFailed,
@@ -128,7 +128,7 @@ func accessGateCode(reason string) apierror.ErrCode {
 	return apierror.CodeAccessApprovalRequired
 }
 
-// Handler 原生 SSH 終端的 WebSocket 處理器（design D2）
+// Handler 原生 SSH 終端的 WebSocket 處理器
 //
 // 與 guacd 路徑的根本差異：endpoint 只收 token + asset_id，
 // 憑證由後端解密注入，前端與 URL 全程不出現明文密碼。
@@ -143,27 +143,27 @@ type Handler struct {
 	Shares               *ShareManager
 	ConnectTokens        *proxy.ConnectTokenManager
 	HostKeys             *asset.HostKeyService
-	// TransmissionConsent 傳輸安全連線閘＋同意立據（transmission-security-policy D2/D3）；
+	// TransmissionConsent 傳輸安全連線閘＋同意立據；
 	// nil 時閘不生效（既有測試與獨立部署路徑，等同全通道 off）
 	TransmissionConsent *policy.TransmissionConsentService
-	// AccessPolicy 存取政策閘（access-policy-approval D4）：簽發點第三道閘，
+	// AccessPolicy 存取政策閘：簽發點第三道閘，
 	// 授權檢查之後、傳輸閘之前。組裝端一律注入（不掛功能開關）；
 	// nil 僅限既有測試路徑，等同全域段位 open
 	AccessPolicy *policy.AccessPolicyService
-	// TimeoutPolicy 會話閒置/最大時長來源（auth-hardening D7）：由組裝端注入
+	// TimeoutPolicy 會話閒置/最大時長來源：由組裝端注入
 	// 安全政策讀取（session_idle_minutes/session_max_minutes，政策改動新連線即生效）；
 	// nil 時退回環境變數（既有測試與獨立部署路徑）
 	TimeoutPolicy func() (idle, max time.Duration)
-	// RecordingFailClose 錄影 fail-close 政策讀取（recording-failure-handling D4）：
+	// RecordingFailClose 錄影 fail-close 政策讀取：
 	// 組裝端注入；nil 視為關閉（既有測試路徑）。偵測/告警不受此開關影響
 	RecordingFailClose func() bool
-	// AlertSink 指令告警落地面（modular-architecture W5／BD-1）：阻斷告警的入庫、
+	// AlertSink 指令告警落地面：阻斷告警的入庫、
 	// 通知與 syslog 離機轉發共用出口。組裝端一律注入且於啟動時自檢
 	//（cmd/server/audit_sinks.go 的 requireAlertSink）；nil 僅限既有測試路徑，
 	// 該情形下阻斷仍生效、告警落地失敗會留 log，SHALL NOT 靜默丟棄
 	AlertSink gatewayapi.AlertSink
 	// AuditService 本 handler 自寫留痕的出口：監看／分享觀看加入
-	//（audit-coverage-closure 批 4，D5）與 `GET /api/v1/ssh` 的**兌換拒絕**（批 10）。
+	//與 `GET /api/v1/ssh` 的**兌換拒絕**。
 	//
 	// **為何非有不可**：`/ssh`、`/sessions/:id/monitor`、`/sessions/share/:code/ws`
 	// 三條路由都不掛 AuthMiddleware（WebSocket 只能以 query token／connect_token
@@ -172,13 +172,13 @@ type Handler struct {
 	// nil 僅限既有測試路徑，該情形下 `auditObserverJoin`／`auditRedeemDenied` 記 log，
 	// SHALL NOT 靜默略過
 	AuditService *audit.AuditLogService
-	// statsClients 活躍會話的 ssh.Client（session-stats D3）：sessionID -> *ssh.Client
+	// statsClients 活躍會話的 ssh.Client（session-stats）：sessionID -> *ssh.Client
 	statsClients sync.Map
 }
 
 // NewHandler 建立 SSH 終端處理器。
 //
-// auditService 走建構子而非組裝根的裸欄位注入（audit-coverage-closure 批 4）：
+// auditService 走建構子而非組裝根的裸欄位注入：
 // 監看留痕是本產品最敏感的稽核項，缺席即「誰旁觀了誰」不可查；建構子參數使
 // 「漏接」成為編譯錯誤，比登記表更早一步。既有測試路徑傳 nil，該情形下記 log
 // 不靜默。
@@ -211,12 +211,12 @@ func NewHandler(
 // 建 Session 記錄 → 升級 WebSocket → 雙向 pump → 斷線清理。
 // SSH 握手在 WS 升級前完成，失敗時能以一般 HTTP 錯誤回應。
 func (h *Handler) HandleSSH(c *gin.Context) {
-	// 1-3. 身分與授權：connect_token 一次性簽發即焚（connect-token D3），
+	// 1-3. 身分與授權：connect_token 一次性簽發即焚，
 	// 唯一連線入口——授權與傳輸政策閘都在簽發時完成。舊 query-JWT 直連
-	// 模式已收口（繞過簽發閘＝繞過傳輸政策，transmission-security-policy）
+	// 模式已收口（繞過簽發閘＝繞過傳輸政策）
 	ct := c.Query("connect_token")
 	if ct == "" {
-		// 兌換拒絕留痕（audit-coverage-closure 批 10／connection-gating spec）：
+		// 兌換拒絕留痕（connection-gating spec）：
 		// 與 `/connect` 共用 `proxy.AuditConnectDenied` 這一個寫入點
 		h.auditRedeemDenied(c, proxy.ConnectDenial{
 			Reason: string(proxy.RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized})
@@ -233,11 +233,11 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		return
 	}
 
-	// 兩階段閘序（W10）：AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount。
+	// 兩階段閘序：AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount。
 	// 閘序表在 connect_gates.go，順序即該表的列序（G-S* 編號的定義亦在該檔）
 	st := &redeemState{grant: grant}
 	// 主體＝票證所帶的溯源脈絡。**ClaimedRole 留空是實質**：grant 刻意不攜帶角色
-	// （proxy/connect_token.go D4），兌換側的角色一律由 G-S3 現查
+	// （見 proxy/connect_token.go），兌換側的角色一律由 G-S3 現查
 	subj := st.contractSubject(sourceip.Of(c))
 	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
 		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
@@ -256,7 +256,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	cols, rows := st.cols, st.rows
 
 	// 4. 取資產與憑證（記憶體內解密，永不出後端）——**兩階段之間的唯一解封點**。
-	// asset-multi-account 階段 3：以 grant 所帶帳號取憑證（0＝預設帳號）。
+	// 以 grant 所帶帳號取憑證（0＝預設帳號）。
 	// 帳號於簽發後被刪除／改隸他資產者在此 fail-close 拒絕——**絕不靜默退回
 	// 預設帳號**（那等於以另一組憑證建線，且跨資產注入即可拿到目標預設憑證）
 	creds, err := h.AssetService.GetWithCredentialsForAccount(assetID, grant.AccountID)
@@ -290,7 +290,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		sshConn, err := Dial(ConnConfig{
 			Host: assetRow.Host,
 			Port: assetRow.Port,
-			// username 與憑證同取自同一帳號（D6）；不再讀 assetRow.Username
+			// username 與憑證同取自同一帳號；不再讀 assetRow.Username
 			Username:   creds.Username,
 			Password:   password,
 			PrivateKey: privateKey,
@@ -333,7 +333,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeK8sPodRequired, nil)
 			return
 		}
-		// 釘 session 快照（同時驗證 pod 存在/可達/權限），錯誤已分類為六類（A8 各配一碼）
+		// 釘 session 快照（同時驗證 pod 存在/可達/權限），錯誤已分類為六類（各配一碼）
 		snap, gerr := k8sproxy.GetPod(c.Request.Context(), target)
 		if gerr != nil {
 			log.Printf("[K8sProxy] GetPod 失敗: assetID=%d, pod=%s, err=%v", assetID, target.Pod, gerr)
@@ -355,7 +355,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 			Protocol: string(assetRow.Protocol),
 			Host:     assetRow.Host,
 			Port:     assetRow.Port,
-			// username 與憑證同取自同一帳號（D6）；不再讀 assetRow.Username
+			// username 與憑證同取自同一帳號；不再讀 assetRow.Username
 			Username: creds.Username,
 			Password: password,
 			DBName:   assetRow.DBName,
@@ -371,11 +371,11 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		conn = dbConn
 	}
 
-	// 6. Session 記錄 fail-close（CPG-003）：能走到此步證明 DB 讀正常（前置
+	// 6. Session 記錄 fail-close：能走到此步證明 DB 讀正常（前置
 	// CheckUserConnectable/GetWithCredentials 皆已過），故 session INSERT 失敗＝
 	// 部分故障。無 session 主鍵即無 registry/錄影/指令審計/監看，一律拒連——admin
 	// 亦不豁免（完全無審計歸屬，與錄影 fail-close 的 admin 例外刻意不同）
-	// 帳號雙快照（D7）：帶入連線當下實際使用的帳號 ID 與 username
+	// 帳號雙快照：帶入連線當下實際使用的帳號 ID 與 username
 	// 認證溯源（1.9）：provider/世代自 grant 原樣帶入，SSH/K8s/DB 三協議共此一路徑
 	sess := h.createSession(userID, assetID, assetRow.Protocol, sourceip.Of(c), k8sSnapshot,
 		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
@@ -408,7 +408,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	bridge := newBridge(ws, conn, sess, h.SessionService, h.RecordingPath, userID, assetID)
 
 	if sess != nil {
-		// Registry 登記關閉回呼（F4）：通知經 bridge 寫鎖＋文字協議，取代裸 conn 直寫；
+		// Registry 登記關閉回呼：通知經 bridge 寫鎖＋文字協議，取代裸 conn 直寫；
 		// 登記於 bridge 建立後、下方 CheckUserConnectable 複查前——REVOKE-1 窗口語義不變
 		h.Registry.Register(sess.ID, bridge.terminate)
 		// 已標記終止的 session SHALL NOT 啟動 proxy（design 行 268）。
@@ -427,7 +427,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 			h.statsClients.Store(sess.ID, sshClient)
 		}
 	}
-	// 會話閒置/最大時長自動斷線（session-timeout/D7）：政策優先、env 退路，0=停用。
+	// 會話閒置/最大時長自動斷線（session-timeout）：政策優先、env 退路，0=停用。
 	// SSH/k8s/DB 三協議共用本 handler，一處設定全協議生效
 	idleTimeout, maxDuration := h.sessionTimeouts()
 	bridge.setTimeouts(idleTimeout, maxDuration)
@@ -436,8 +436,8 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	var tap *auditTap
 	var recTap *recordingTap
 	if sess != nil {
-		// asciicast 錄製：啟動失敗不斷線（fail-close 只掛簽發點，
-		// recording-failure-handling D2/D3），但須標記＋告警不得沉默
+		// asciicast 錄製：啟動失敗不斷線（fail-close 只掛簽發點），
+		// 但須標記＋告警不得沉默
 		var recErr error
 		if recTap, recErr = newRecordingTap(h.RecordingPath, sess.ID, cols, rows); recErr != nil {
 			session.ReportSessionRecordingFailure(sess.ID, model.MechanismRecordingText,
@@ -449,7 +449,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 				session.ReportSessionRecordingFailure(sid, model.MechanismRecordingText, causeCode, params)
 			})
 			bridge.attachRecording(recTap)
-			// 錄影的時間原點（workbench-exits-and-export D2）：asciicast 的 elapsed=0
+			// 錄影的時間原點：asciicast 的 elapsed=0
 			// 是**此刻**，不是 sess.StartTime（會話建檔早於認證與 PTY 就緒）。
 			// 不釘住這個時刻，回放深連結只能直接 seek(t)，落點會**偏晚**該段耗時、
 			// 衝過目標指令——文字終端正是受害最重的一側。
@@ -463,15 +463,15 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 			log.Printf("[SSHProxy] 錄製已啟用 (SessionID=%d)", sess.ID)
 		}
 
-		// 即時監看 room（ssh-session-monitor）：會話結束時於下方 CloseRoom
+		// 即時監看 room：會話結束時於下方 CloseRoom
 		bridge.attachMonitor(h.Monitor.OpenRoom(sess.ID, cols, rows))
 
-		// 指令審計與阻斷：K8s logs 唯讀模態跳過（k8s-exec D6：logs 無指令、無注入）
+		// 指令審計與阻斷：K8s logs 唯讀模態跳過（k8s-exec：logs 無指令、無注入）
 		if !k8sLogsMode {
 			aid := assetID
 			store = NewCommandStore(database.DB, sess.ID, userID, &aid, string(assetRow.Protocol))
-			// 降級告警的落地面（design §6.3）：與阻斷路徑共用同一個 AlertSink，
-			// 通知與 syslog 離機轉發因此自動接上，不重演 BD-1 的「只入庫不 tee」
+			// 降級告警的落地面：與阻斷路徑共用同一個 AlertSink，
+			// 通知與 syslog 離機轉發因此自動接上，不重演「只入庫不 tee」
 			store.SetAlertSink(h.AlertSink)
 			if k8sSnapshot != nil {
 				store.SetK8s(k8sSnapshot.Pod, k8sSnapshot.Container)
@@ -480,7 +480,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 			// 審計完整且告警比對看得到完整語句（redis 為逐行，不啟用）。
 			// mssql 另承認 GO 為批次終止符——模式由協議在 NewCommandParser 內推導
 			parser := NewCommandParser(store.Enqueue, string(assetRow.Protocol))
-			// 降級／限定紀錄的落地（command-audit-altscreen-bypass C）：
+			// 降級／限定紀錄的落地：
 			// 無法可信重組的輪次改記為明確標記的降級列，不再是零紀錄
 			parser.SetRecordSink(store.Record)
 			tap = newAuditTap(parser)
@@ -493,7 +493,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		}
 	}
 
-	// 轉發啟動前最後一次複查（對抗驗證 REVOKE-1＋break-glass-revocation codex 複審 High）：
+	// 轉發啟動前最後一次複查：
 	// 收緊「連線授權通過後、bridge 掛上 Registry 前」窗口——會話列以 active 寫入 DB 早於
 	// Register，若 admin 停用或撤銷即斷線恰落此窗，Terminate 的 registry.Close 會 no-op、
 	// 讓已收線者逃過即時終斷。兩道閘：(1) 帳號可連線；(2) session 仍 active（撤銷/停用
@@ -533,13 +533,13 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	log.Printf("[SSHProxy] 連線已結束: assetID=%d reason=%s", assetID, endReason)
 }
 
-// 預設閒置 30 分鐘（合規安全基線）、最大時長不限（session-timeout design D3）
+// 預設閒置 30 分鐘（合規安全基線）、最大時長不限（session-timeout）
 const (
 	defaultIdleTimeoutMinutes = 30
 	defaultMaxSessionMinutes  = 0
 )
 
-// sessionTimeouts 會話超時來源分派（D7）：政策注入優先，未注入退回環境變數
+// sessionTimeouts 會話超時來源分派：政策注入優先，未注入退回環境變數
 func (h *Handler) sessionTimeouts() (idle, max time.Duration) {
 	if h.TimeoutPolicy != nil {
 		return h.TimeoutPolicy()
@@ -549,7 +549,7 @@ func (h *Handler) sessionTimeouts() (idle, max time.Duration) {
 
 // sessionTimeoutsFromEnv 自環境變數讀會話超時（分鐘）：
 // SSH_IDLE_TIMEOUT_MINUTES（預設 30）、SSH_MAX_SESSION_MINUTES（預設 0=不限）；
-// 0 = 停用該檢查，非法值回退預設。D7 後為政策未注入時的退路
+// 0 = 停用該檢查，非法值回退預設。此為政策未注入時的退路
 func sessionTimeoutsFromEnv() (idle, max time.Duration) {
 	parse := func(key string, def int) time.Duration {
 		v := def
@@ -566,7 +566,7 @@ func sessionTimeoutsFromEnv() (idle, max time.Duration) {
 
 // HandleMonitor 處理 GET /api/v1/sessions/:id/monitor 的唯讀監看連線
 //
-// 監看是稽核職能：僅 admin/auditor 角色，不走資產授權（design D2）。
+// 監看是稽核職能：僅 admin/auditor 角色，不走資產授權。
 // 觀察者輸入一律忽略（僅回應 ping），斷線不影響被監看會話。
 func (h *Handler) HandleMonitor(c *gin.Context) {
 	observerID, role, ok := h.authenticate(c)
@@ -631,7 +631,7 @@ func (h *Handler) HandleMonitor(c *gin.Context) {
 		ws.Close()
 		return
 	}
-	// 監看加入留痕（audit-coverage-closure 批 4／session-monitor spec）：
+	// 監看加入留痕（session-monitor spec）：
 	// 記於 Join 成功之後——「訂閱真的建立了」才是稽核要回答的事實，
 	// 世代複查拒絕與 room 已關閉兩條路徑沒有任何畫面外流
 	h.auditObserverJoin(c, observerJoinAudit{
@@ -657,7 +657,7 @@ func (h *Handler) HandleMonitor(c *gin.Context) {
 
 // authenticate 解析使用者身分與角色；失敗時已寫入 HTTP 回應。
 //
-// **同時把認證脈絡寫入 gin context**（idp-oidc-integration D18a）：
+// **同時把認證脈絡寫入 gin context**：
 // /monitor、/share/:code/ws、/ssh、/connect 四條路由都不掛 AuthMiddleware
 // （手動處理認證以支援 WebSocket query token），故 `?token=` 分支上**本函式是
 // authContext 的唯一寫入者**。不寫則下游的 middleware.GetAuthContext(c) 恆回零值，
@@ -679,9 +679,9 @@ func (h *Handler) authenticate(c *gin.Context) (uint, string, bool) {
 		return 0, "", false
 	}
 
-	// 連線端點統一認證（auth-hardening D11）：scoped token deny-by-default、
+	// 連線端點統一認證：scoped token deny-by-default、
 	// 重載用戶拒停用/鎖定中——與一般 API middleware 同一邊界，堵 ?token= 旁路。
-	// **只經 gatewayapi.SessionVerifier 介面消費**（W10.2 接線）：判定本體不變
+	// **只經 gatewayapi.SessionVerifier 介面消費**：判定本體不變
 	// （VerifySession 即 ValidateConnectionToken ＋欄位對映，不新增亦不放寬判定）
 	var verifier gatewayapi.SessionVerifier = h.AuthService
 	p, err := verifier.VerifySession(c.Request.Context(), tokenStr)
@@ -697,7 +697,7 @@ func (h *Handler) authenticate(c *gin.Context) (uint, string, bool) {
 		AuthMethod: p.AuthMethod, ProviderID: p.ProviderID,
 		AuthEpoch: p.AuthEpoch, CredEpoch: p.CredEpoch,
 	})
-	// username 供 handler 自寫的審計列填實（audit-coverage-closure 批 4）：
+	// username 供 handler 自寫的審計列填實：
 	// 審計表的 username 是稽核第一眼要看的欄，只有 user_id 得再查一次使用者表，
 	// 且帳號刪除後就查不回來了。
 	//
@@ -705,13 +705,13 @@ func (h *Handler) authenticate(c *gin.Context) (uint, string, bool) {
 	// 記錄條件，補上 userID 會讓這幾條 WebSocket 路由同時由中介層與 handler
 	// 各寫一列（重複計數），而中介層那一列反而缺少會話與資產脈絡
 	c.Set("username", p.Username)
-	// **Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**（D-11）：
+	// **Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**：
 	// 連線閘序的角色一律由 CurrentConnectRole 現查（G-I2／G-S3／G-G4）
 	return p.UserID, p.Role, true
 }
 
 // connectionAuthError 連線認證錯誤映射：僅 sentinel 各配一碼，其餘泛化
-// （A8：原回傳散文 msg，改回傳碼——碼的 ZhFallback 與 sentinel 文案逐字相同）
+// （原回傳散文 msg，改回傳碼——碼的 ZhFallback 與 sentinel 文案逐字相同）
 func connectionAuthError(err error) (int, apierror.ErrCode) {
 	switch {
 	case errors.Is(err, identity.ErrAccountLocked):
@@ -745,7 +745,7 @@ func authorizationContext(c *gin.Context, role string) context.Context {
 // checkPermission 檢查連線授權；失敗時已寫入 HTTP 回應
 //
 // role 經 context 傳入：CheckPermission 對 admin 角色自動放行；auditor 為稽核
-// 唯讀，connect 不自動放行（CPG-002），須有顯式授權——與 guacd 路徑一致
+// 唯讀，connect 不自動放行，須有顯式授權——與 guacd 路徑一致
 func (h *Handler) checkPermission(c *gin.Context, userID uint, role string, assetID uint) bool {
 	if out := h.connectPermissionOutcome(c, userID, role, assetID); out != nil {
 		h.writeOutcome(c, out)
@@ -754,7 +754,7 @@ func (h *Handler) checkPermission(c *gin.Context, userID uint, role string, asse
 	return true
 }
 
-// connectPermissionOutcome 連線授權判定的**不寫回應**版本（W10 兩階段骨架用）：
+// connectPermissionOutcome 連線授權判定的**不寫回應**版本（兩階段骨架用）：
 // 判定與回應寫出分離，使同一道閘能以 connectgate.Gate 的形式登記進閘序表。
 // 判定邏輯與回應語義與 checkPermission 完全同源——後者即以本函式實作，
 // 兩條路徑不可能分化
@@ -787,7 +787,7 @@ func (h *Handler) writeOutcome(c *gin.Context, out *connectgate.Outcome) {
 }
 
 // writeRedeemOutcome **兌換側**閘序的唯一出口：回應照 writeOutcome 原樣寫出，
-// 另為該次拒絕留痕（audit-coverage-closure 批 10）。
+// 另為該次拒絕留痕。
 //
 // **為何不把留痕放進 writeOutcome**：後者同時服務簽發端點
 // （`POST /api/v1/connect-tokens`，掛 AuthMiddleware）。在那裡留痕會與
@@ -817,14 +817,14 @@ func (h *Handler) auditRedeemDenied(c *gin.Context, ev proxy.ConnectDenial) {
 	proxy.AuditConnectDenied(h.AuditService, c, ev)
 }
 
-// accountSnapshot 連線當下的帳號雙快照（asset-multi-account D7）：
+// accountSnapshot 連線當下的帳號雙快照：
 // ID 與 username 一併釘住，帳號日後改名或刪除都不影響已完成會話的審計語義
 type accountSnapshot struct {
 	ID       uint
 	Username string
 }
 
-// authProvenance 建立會話的認證溯源（idp-oidc-integration 1.9）：
+// authProvenance 建立會話的認證溯源：
 // 由 connect grant 原樣帶入（脈絡只有簽發階段知道），**禁止在此查外部身分表反推
 // provider**——混合帳號（同時有本地密碼與外部身分）會被誤標，導致停用某 provider
 // 時連帶砍掉該帳號以本地密碼建立的會話。ProviderID 0 表本地／LDAP 登入
@@ -838,7 +838,7 @@ type authProvenance struct {
 	CredEpoch  int
 }
 
-// createSession 建立會話記錄；失敗回傳 nil，由呼叫點 fail-close 拒連（CPG-003）
+// createSession 建立會話記錄；失敗回傳 nil，由呼叫點 fail-close 拒連
 func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolType, clientIP string, k8sSnap *k8sproxy.PodSnapshot, acct accountSnapshot, prov authProvenance) *model.Session {
 	id := assetID
 	sess := &model.Session{
@@ -847,7 +847,7 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		Protocol: protocol,
 		ClientIP: clientIP,
 		Status:   model.SessionStatusActive,
-		// 帳號雙快照（D7）：與 session 建立原子寫入，之後永不更新
+		// 帳號雙快照：與 session 建立原子寫入，之後永不更新
 		AccountID:       acct.ID,
 		AccountUsername: acct.Username,
 	}
@@ -858,7 +858,7 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		sess.AuthProviderID = &pid
 	}
 	sess.AuthEpoch = prov.AuthEpoch
-	// K8s 不可變 pod 快照（mustFix #2）：與 session 建立原子寫入
+	// K8s 不可變 pod 快照：與 session 建立原子寫入
 	if k8sSnap != nil {
 		sess.K8sNamespace = k8sSnap.Namespace
 		sess.K8sPod = k8sSnap.Pod
@@ -875,7 +875,7 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		AuthMethod: prov.AuthMethod, ProviderID: prov.ProviderID,
 		AuthEpoch: prov.AuthEpoch, CredEpoch: prov.CredEpoch,
 	}, sess); err != nil {
-		log.Printf("[SSHProxy] 創建 Session 失敗: %v（呼叫點將 fail-close 拒連，CPG-003）", err)
+		log.Printf("[SSHProxy] 創建 Session 失敗: %v（呼叫點將 fail-close 拒連）", err)
 		return nil
 	}
 	return sess
@@ -1001,15 +1001,15 @@ func (h *Handler) HandleRevokeShare(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeShareNotFound, nil)
 		return
 	}
-	// D9：成功回應不帶 UI 文案（前端 ShareDialog 以 $t 自有成功訊息呈現）
+	// 成功回應不帶 UI 文案（前端 ShareDialog 以 $t 自有成功訊息呈現）
 	c.JSON(http.StatusOK, gin.H{"revoked": true})
 }
 
-// HandleShareJoin 處理 GET /api/v1/sessions/share/:code/ws（session-share D3）：
+// HandleShareJoin 處理 GET /api/v1/sessions/share/:code/ws（session-share）：
 // 任何已登入用戶持有效碼加入唯讀觀看。
 //
-// **加入由本 handler 自寫審計，成功與拒絕兩路皆然**（audit-coverage-closure
-// 批 4，AP-70；批 10 訂正本註解）。中介層在此路徑幫不上忙：本路由註冊於 `v1`
+// **加入由本 handler 自寫審計，成功與拒絕兩路皆然**（AP-70）。
+// 中介層在此路徑幫不上忙：本路由註冊於 `v1`
 // 群組且不掛 AuthMiddleware（理由見 `authenticate` 檔頭：WebSocket 只能以 query
 // token 認證），而 `authenticate` 的 `?token=` 分支只寫 `authContext`，不寫
 // `userID`／`username`；`AuditLogMiddleware` 缺這兩個鍵時整筆跳過
@@ -1019,7 +1019,7 @@ func (h *Handler) HandleRevokeShare(c *gin.Context) {
 // 成功加入走 `auditObserverJoin`（`via=share`），無效／失效分享碼走同一個寫入點
 // 並記 `status=denied`。
 //
-// **註解曾與實況相反**：批 4 補上留痕後，這裡仍留著「加入不入審計＝已知缺口」的
+// **註解曾與實況相反**：留痕補上之後，這裡仍留著「加入不入審計＝已知缺口」的
 // 舊文字。註解不是判準（沒有測試會因它轉紅），但它是下一輪稽核的起點——寫錯會讓
 // 人去補一個已經存在的東西，或反過來相信一個已消失的缺口還在。
 func (h *Handler) HandleShareJoin(c *gin.Context) {
@@ -1076,7 +1076,7 @@ func (h *Handler) HandleShareJoin(c *gin.Context) {
 		ws.Close()
 		return
 	}
-	// 分享加入留痕（audit-coverage-closure 批 4／session-share spec）：與監看同一
+	// 分享加入留痕（session-share spec）：與監看同一
 	// 個 hub、同一份留痕形狀，`via` 區分兩者。目標會話與資產另查一次——加入不在
 	// 熱路徑上（每次觀看一次），而缺了資產鍵就答不出「他看的是哪台機器」
 	shareTarget, shareErr := h.SessionService.GetByID(sessionID)
@@ -1108,7 +1108,7 @@ const (
 	observerViaShare   = "share"
 )
 
-// observerJoinAudit 唯讀觀看加入事件的審計輸入（audit-coverage-closure 批 4）
+// observerJoinAudit 唯讀觀看加入事件的審計輸入
 type observerJoinAudit struct {
 	userID uint
 	// sessionID 目標會話；0＝分享碼解析不出目標（拒絕路徑）
@@ -1125,7 +1125,7 @@ type observerJoinAudit struct {
 
 // auditObserverJoin 為「加入他人會話的唯讀觀看」寫審計列。
 //
-// # 為何由 handler 自寫（design D5）
+// # 為何由 handler 自寫
 //
 // `/sessions/:id/monitor` 與 `/sessions/share/:code/ws` 兩條路由不掛
 // AuthMiddleware（WebSocket 只能以 query token 認證，見 `authenticate` 檔頭），
@@ -1199,7 +1199,7 @@ func mergeAuditDetails(c *gin.Context, kv map[string]string) {
 	c.Set("audit_details", m)
 }
 
-// parseSizeOutcome 解析初始終端尺寸的**不寫回應**版本（W10 兩階段骨架用）：
+// parseSizeOutcome 解析初始終端尺寸的**不寫回應**版本（兩階段骨架用）：
 // 回傳非 nil 即解析失敗。判定與碼與 parseSize 同源（後者以本函式實作）
 func parseSizeOutcome(c *gin.Context) (int, int, *connectgate.Outcome) {
 	cols, err := strconv.Atoi(c.Query("cols"))
@@ -1215,7 +1215,7 @@ func parseSizeOutcome(c *gin.Context) (int, int, *connectgate.Outcome) {
 	return cols, rows, nil
 }
 
-// HandleCreateConnectToken 處理 POST /api/v1/connect-tokens（connect-token D1）：
+// HandleCreateConnectToken 處理 POST /api/v1/connect-tokens：
 // JWT 認證＋授權檢查後簽發一次性 token，WS 端憑 token 直接建線
 func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 	userID, claimedRole, ok := h.authenticate(c)
@@ -1223,14 +1223,14 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 		return
 	}
 
-	// 兩階段閘序（W10）：AuthorizePreResolve → 帳號身分解析 → AuthorizeResolvedAccount。
+	// 兩階段閘序：AuthorizePreResolve → 帳號身分解析 → AuthorizeResolvedAccount。
 	// 閘序表在 connect_gates.go，順序即該表的列序（G-I* 編號的定義亦在該檔）。
 	// **簽發側的「解析」不解封憑證**——只解析 username（ResolveAccountIdentity 與
 	// GetWithCredentialsForAccount 共用 resolveAssetAccount，故 fail-close 語義一致）
 	st := &issueState{}
 	// 主體：ClaimedRole＝**呼叫端自陳的**角色（JWT／middleware 的角色快照）。
 	// 它僅供溯源，SHALL NOT 作判定依據——閘序用的角色一律是 G-I2 由
-	// CurrentConnectRole 現查後寫進 st.role 的那一份（CPG-010-01）。
+	// CurrentConnectRole 現查後寫進 st.role 的那一份。
 	issueAuthCtx := middleware.GetAuthContext(c)
 	subj := gatewayapi.ConnectSubject{
 		UserID:      userID,
@@ -1300,7 +1300,7 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 }
 
 // HandleCreateTransmissionConsent 處理 POST /api/v1/transmission-consents
-// （transmission-security-policy D3）：使用者對資產的傳輸風險立據。
+// 使用者對資產的傳輸風險立據。
 // 與簽發同一授權邊界（authenticate＋checkPermission）；body 帶使用者
 // 實際看到的風險項 key，與當下不符即 409 要求重新確認
 func (h *Handler) HandleCreateTransmissionConsent(c *gin.Context) {

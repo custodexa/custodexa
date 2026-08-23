@@ -12,14 +12,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrCredentialGenerationStale 憑證世代已過期（idp-oidc-integration D2/D9）：
+// ErrCredentialGenerationStale 憑證世代已過期：
 // 該憑證簽發後，其 provider 或使用者的憑證世代已被推進，故不再有效。
 // 對外一律收斂為既有的認證失敗回應，不單獨暴露成因
 var ErrCredentialGenerationStale = errors.New("憑證世代已失效")
 
 // ErrEpochGateUnavailable 世代閘無法運作（資料庫未注入）。
 //
-// **fail-close 而非放行**（批 14 對抗審查 M6）：閘門是整套撤銷機制的執行點，
+// **fail-close 而非放行**：閘門是整套撤銷機制的執行點，
 // 讀不到判定所需的事實時證明不了憑證仍有效。原本此路徑回 nil（每進程印一行
 // 日誌後全部放行），一條漏接 database.DB 的組裝路徑即可讓 provider 停用、
 // 帳號停用、改密全數靜默失效，且沒有任何測試會紅。
@@ -28,7 +28,7 @@ var ErrCredentialGenerationStale = errors.New("憑證世代已失效")
 // 後者是「系統組裝錯誤」，兩者的處置完全不同（後者要修部署，不是叫使用者重登）
 var ErrEpochGateUnavailable = errors.New("憑證世代閘無法運作：資料庫未初始化")
 
-// VerifyCredentialGeneration 憑證世代閘（idp-oidc-integration 的核心失效機制）。
+// VerifyCredentialGeneration 憑證世代閘：外部身分整合的核心失效機制。
 //
 // 七個驗證點共用此判定：認證中介層、ValidateConnectionToken（WS query token 旁路）、
 // MFA verify、MFA enrollment 完成、OIDC exchange、OIDC callback、connect token 兌換，
@@ -56,9 +56,9 @@ var ErrEpochGateUnavailable = errors.New("憑證世代閘無法運作：資料�
 //
 // **授權關鍵欄位一律現查 DB，不得讀程序快取**：epoch 驗證的整個價值就在於讀到
 // 最新狀態；若落入行程快取，多副本部署下攻擊者把舊 token 導向未更新的副本即可
-// 繼續使用，停用形同虛設（design D3 明令）。
+// 繼續使用，停用形同虛設。
 //
-// **方法化（modular-architecture W8 9.3／R3 I2）**：本閘原為包級函式直讀全域
+// **方法化**：本閘原為包級函式直讀全域
 // `database.DB`。改掛 `*AuthService` 後，資料來源改由 `epochDB()` 決定，
 // 組裝根顯式注入（`SetEpochGateDB`）。**判定邏輯、呼叫時機與 fail-close 方向
 // 逐位未動**——db 為 nil 一律回 `ErrEpochGateUnavailable`（拒），不是放行。
@@ -74,7 +74,7 @@ func (s *AuthService) VerifyCredentialGeneration(authCtx crypto.AuthContext, use
 // 以「拔掉全域仍能判定」釘住——**不是讀碼推論**）；
 // 回退只服務「未經組裝根建構 AuthService」的測試路徑——那些路徑本來就是
 // 靠設定全域 `database.DB` 讓閘門讀到資料的。若此處不回退而直接 nil，
-// 本波就會夾帶一個「大量既有測試由通過變成 fail-close 拒絕」的行為變更，
+// 這次改動就會夾帶一個「大量既有測試由通過變成 fail-close 拒絕」的行為變更，
 // 那與搬檔波的零行為變更前提直接衝突。移除回退需先改造測試夾具，登記 backlog。
 func (s *AuthService) epochDB() *gorm.DB {
 	if s.epochGateDB != nil {
@@ -91,9 +91,9 @@ func (s *AuthService) SetEpochGateDB(db *gorm.DB) {
 	s.epochGateDB = db
 }
 
-// VerifyCredentialGenerationTx 世代閘的**交易內**版本（idp-oidc-integration 3.8b）。
+// VerifyCredentialGenerationTx 世代閘的**交易內**版本。
 //
-// **匯出（modular-architecture W8 9.1／R3.1 §5.3）**：session 模組的
+// **匯出**：session 模組的
 // `CreateWithGenerationGuard`／`JoinWithGenerationGuard` 在 identity 的能力鎖交易內
 // 呼叫本函式，跨包後私有即編譯不過。**維持包級函式而非方法**：它的資料來源是
 // 呼叫端交出的交易句柄，本來就不讀任何全域，方法化只會逼呼叫端多持一個實例。
@@ -112,7 +112,7 @@ func VerifyCredentialGenerationTx(db *gorm.DB, authCtx crypto.AuthContext, user 
 
 	// 使用者世代：user 由呼叫端剛自 DB 載入，其 CredentialEpoch 即現行值。
 	//
-	// **user == nil 一律拒**（M6）：原本靜默跳過整個使用者維度，等於呼叫端只要
+	// **user == nil 一律拒**：原本靜默跳過整個使用者維度，等於呼叫端只要
 	// 少載入一次 user，改密／停用／解綁就不再失效既簽憑證。全部生產呼叫端都在
 	// 交易內剛載入 user 後才進來，故此分支不可達——正因不可達，方向必須是拒絕
 	if user == nil {
@@ -123,7 +123,7 @@ func VerifyCredentialGenerationTx(db *gorm.DB, authCtx crypto.AuthContext, user 
 	}
 
 	if authCtx.ProviderID == 0 {
-		// **method 與 provider 不一致一律拒**（codex 對抗審查 F-D）：
+		// **method 與 provider 不一致一律拒**：
 		// EffectiveMethod()==oidc 卻沒有 provider 是任何簽發點都產生不出的組合
 		//（issueTicket 一律寫入鎖內重讀的 freshProvider.ID）。放行等於讓此組合的
 		// 憑證被當成本地登入而跳過**全部** provider 維度的撤銷——provider 停用、
@@ -169,7 +169,7 @@ func warnEpochGateDisabled() {
 // VerifyCredentialGenerationByUserID 同上，但自行載入使用者。
 // 供手上只有 claims 而無 user 實體的驗證點使用（如認證中介層）。
 //
-// **方法化同 VerifyCredentialGeneration**（W8 9.3）：三個模組外消費點
+// **方法化同 VerifyCredentialGeneration**：三個模組外消費點
 // （`middleware/auth.go`、`proxy/handler.go`、`sshproxy/handler.go`）手上本來
 // 就持有 `*AuthService`，故改為方法呼叫後**呼叫時機與相對順序逐位未動**。
 func (s *AuthService) VerifyCredentialGenerationByUserID(authCtx crypto.AuthContext, userID uint) error {
@@ -188,7 +188,7 @@ func (s *AuthService) VerifyCredentialGenerationByUserID(authCtx crypto.AuthCont
 	return s.VerifyCredentialGeneration(authCtx, &user)
 }
 
-// BumpCredentialEpoch 推進使用者憑證世代（idp-oidc-integration D2）。
+// BumpCredentialEpoch 推進使用者憑證世代。
 //
 // 呼叫時機限「管理者的顯式動作使該使用者既有憑證應失效」：帳號停用、刪除、
 // 改為僅外部登入、解除外部身分綁定、改密。

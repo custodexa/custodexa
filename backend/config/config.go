@@ -28,7 +28,7 @@ const DefaultAdminInitialPassword = "change-me-admin-initial-password-in-env"
 // 避免部署者把已公開的舊預設值當成初始密碼。legacy 既有安裝掃描於 repository 層另行比對。
 const legacyDefaultAdminPassword = "admin123"
 
-// ValidateAdminInitialPassword 檢查 bootstrap 初始密碼的 byte 契約（deployment-hardening D8）。
+// ValidateAdminInitialPassword 檢查 bootstrap 初始密碼的 byte 契約（deployment-hardening）。
 // 回空字串＝合格；否則回不洩密的違規原因。驗證與後續 bcrypt SHALL 使用完全相同的 bytes，
 // 故此處只檢查、不改寫值（呼叫端不得先 TrimSpace），以免 operator 實際輸入與 hash 的 bytes 不一致。
 func ValidateAdminInitialPassword(pw string) string {
@@ -101,18 +101,18 @@ type Config struct {
 	Database  DatabaseConfig
 	Security  SecurityConfig
 	Guacamole GuacamoleConfig
-	// LDAP 欄位已移除（ldap-settings-migration D2/2.11）：目錄設定的執行期
+	// LDAP 欄位已移除：目錄設定的執行期
 	// 事實源是 ldap_directories 表，不再有啟動時的 env 快照。九個 LDAP_* 鍵
 	// 僅由首次啟動的 seed 路徑（service/ldap_seed_migration.go）讀取
 	Features FeatureFlags
-	// Seal B 模式解封端點組態（kek-provider-modularization D6.4）：速率、
+	// Seal B 模式解封端點組態：速率、
 	// 可信代理、來源網段與獨立監聽位址。不含任何金鑰材料。
 	Seal SealConfig
-	// OIDC 身分提供者整合組態（idp-oidc-integration）
+	// OIDC 身分提供者整合組態
 	OIDC OIDCConfig
 }
 
-// OIDCConfig OIDC 整合的部署層設定（idp-oidc-integration D3/D12）。
+// OIDCConfig OIDC 整合的部署層設定。
 //
 // provider 本身的設定（issuer/client_id/secret/規則）存 DB 由管理端維護；
 // 此處只放**部署層**才該決定的三件事
@@ -143,9 +143,9 @@ type ServerConfig struct {
 	Port string
 	Mode string // debug, release, test
 	// CORSAllowedOrigins CORS 來源 allowlist（CORS_ALLOWED_ORIGINS 逗號分隔）；
-	// 空 = 未設定：dev 模式全開、release 模式僅同源（7.3/D9）
+	// 空 = 未設定：dev 模式全開、release 模式僅同源（PCI 7.3）
 	CORSAllowedOrigins []string
-	// MetricsToken 指標端點（`/metrics`）的 bearer token（observability-lite D3）。
+	// MetricsToken 指標端點（`/metrics`）的 bearer token。
 	//
 	// **空 = 免認證曝光**，此為預設且刻意：該端點不在 `/api` 之下，正式版 edge
 	// 只代理 `/api` 與 `/ws`，故預設部署下自外部打不到——安全性由拓撲承擔。
@@ -173,14 +173,13 @@ type DatabaseConfig struct {
 type SecurityConfig struct {
 	JWTSecret     string
 	EncryptionKey string // AES-256 需要 32 bytes
-	// AdminInitialPassword 全新（空 DB）部署建立初始 admin 的密碼（deployment-hardening CPG-001）。
+	// AdminInitialPassword 全新（空 DB）部署建立初始 admin 的密碼（deployment-hardening）。
 	// 僅空 DB seed 時使用，首登強制改密後退役；非空 DB 啟動忽略其值（僅告警提醒移除）。
 	AdminInitialPassword string
-	// RefreshCookie refresh 憑證 cookie 的 Secure 旗標推導結果
-	// （refresh-token-httponly-cookie 決策 2）。
+	// RefreshCookie refresh 憑證 cookie 的 Secure 旗標推導結果。
 	//
-	// **自 codeql-rescan-settlement 起僅為政策鍵 refresh_cookie_secure 的
-	// 首次啟動播種值**：執行期生效值由該政策鍵承載（發放時現讀、管理端可調）。
+	// **僅為政策鍵 refresh_cookie_secure 的首次啟動播種值**：執行期生效值
+	// 由該政策鍵承載（發放時現讀、管理端可調）。
 	RefreshCookie RefreshCookieSecureDerivation
 }
 
@@ -209,7 +208,7 @@ const (
 
 // DeriveRefreshCookieSecure 依決策 2 的優先序推導 refresh cookie 的 Secure 旗標。
 //
-// **自 codeql-rescan-settlement（決策 8）起，本推導的結果不再直接注入 writer**：
+// **本推導的結果不再直接注入 writer**：
 // 執行期事實源是安全政策鍵 refresh_cookie_secure（發放時現讀、管理端可調），
 // 本函式只負責算出**首次啟動的播種值**——給新部署一個合理起點。Source 為
 // default 時呼叫端不寫政策列（出廠預設即同值），故三層推導只在前兩層產生種子。
@@ -265,7 +264,7 @@ type GuacamoleConfig struct {
 
 // LDAPConfig LDAP 認證器的撥號參數（search-then-bind 模式）。
 //
-// **自 ldap-settings-migration 起不再由 env 供給**：執行期事實源是
+// **不再由 env 供給**：執行期事實源是
 // ldap_directories 表，本結構僅作為「一次登入的撥號參數」傳入認證器
 // （service.newLDAPAuthenticatorFromSnapshot 由 LDAPDialSnapshot 填入）。
 // 型別留在 config 套件是為了不動既有認證器與其撥號接縫測試；
@@ -285,7 +284,7 @@ type LDAPConfig struct {
 
 // FeatureFlags 功能開關配置
 //
-// **權限檢查不在此列**（security-backlog-settlement D5）：它於所有模式無條件生效，
+// **權限檢查不在此列**：它於所有模式無條件生效，
 // 開關本身已移除。安全紅線中「任何組態都不該關」者，正確處置是不提供開關，
 // 而非提供後於 release 模式強制——後者使開發與測試組態成為「權限缺陷測不出來」
 // 的環境，且每新增一個消費點就多一條需要記得強制的路徑
@@ -327,7 +326,7 @@ func Load() *Config {
 		},
 		Security: SecurityConfig{
 			JWTSecret: getEnv("JWT_SECRET", DefaultJWTSecret),
-			// ENCRYPTION_KEY **不再有出廠預設值回落**（kek-provider-modularization D2.0／D3）：
+			// ENCRYPTION_KEY **不再有出廠預設值回落**：
 			// 金鑰類鍵一律三值語義、不經預設注入。未設即由 DecideKEK 依矩陣 fail-close，
 			// 沿 JWT_SECRET 的既有處置慣例。此欄僅存原始讀值供守衛比對，
 			// **實際使用的 KEK 材料一律取自 KEKDecision**。
@@ -344,7 +343,7 @@ func Load() *Config {
 			DedicatedIssuers:     parseCSV(getEnv("OIDC_DEDICATED_ISSUERS", "")),
 			AllowedInternalHosts: parseCSV(getEnv("OIDC_ALLOWED_INTERNAL_HOSTS", "")),
 		},
-		// LDAP 段刻意不在此讀 env（ldap-settings-migration 2.11）：設定已遷入
+		// LDAP 段刻意不在此讀 env：設定已遷入
 		// ldap_directories 表，啟動時再讀一份 env 快照只會製造第二個事實源。
 		// 首次啟動的一次性 seed 由 post-unseal 佇列以字面 key 直接讀 env
 		// （service/ldap_seed_migration.go），解析語義與此處的 getEnv 系列同源
@@ -395,7 +394,7 @@ type releaseFloorFlag struct {
 
 func releaseSecurityFloorMembers() []releaseFloorFlag {
 	return []releaseFloorFlag{
-		// **權限控制不在此列**：其開關已移除（security-backlog-settlement D5），
+		// **權限控制不在此列**：其開關已移除，
 		// 路由一律帶 RequirePermission。不存在的開關無需 release 模式強制
 		//
 		// 全操作審計：關閉即審計中間件不掛、/audit-logs 不註冊、寫入路徑短路，
@@ -432,12 +431,12 @@ func (c *Config) EnforceReleaseSecurityFloor() []string {
 // DefaultSecretViolations 回傳仍為出廠預設值的密鑰名稱清單（2.2.2）。
 // 空清單 = 全部已改。供 release 啟動自檢：非空即 fatal。
 //
-// **模式感知（kek-provider-modularization D3，SHALL NOT 以整體放寬取代）**：
+// **模式感知（SHALL NOT 以整體放寬取代）**：
 // kek 為 nil 或 env 模式時，「KEK 材料等於出廠預設值」仍判為違規（PCI 2.2.2
 // 紅線不放寬）；非 env 模式（ui／kms／hsm）下「本地 KEK 鑰未設」是**合法組態**，
 // SHALL NOT 列為違規——否則 B／C 模式在 release 下永不可啟動。
 //
-// **回報實際來源鍵名（codex high #1 的殘留紀律）**：違規清單一律回報
+// **回報實際來源鍵名**：違規清單一律回報
 // `KEKDecision.MaterialSource`，而非硬編鍵名字面——否則操作者會去改一個
 // 不是問題的鍵。KEK 材料鍵已收斂為單一 `ENCRYPTION_KEY`（雙鍵與 legacy
 // 解密鑰回落皆已拆除），故此處來源必為該鍵或空。
@@ -448,7 +447,7 @@ func (c *Config) DefaultSecretViolations(kek *KEKDecision) []string {
 	}
 	if kek == nil {
 		// 判定尚未產生（早期呼叫端）：直接檢 KEK 材料鍵原始讀值。
-		// **編碼無關比對**（kek-encoding-and-unseal-entry 決策 5）：材料可為原字元、
+		// **編碼無關比對**：材料可為原字元、
 		// 十六進位或 base64 三種寫法，字串比對會被 `hex(預設值)` 直接繞過。
 		if IsDefaultEncryptionKeyMaterial(c.Security.EncryptionKey) {
 			v = append(v, EnvKeyEncryptionKey)
@@ -459,7 +458,7 @@ func (c *Config) DefaultSecretViolations(kek *KEKDecision) []string {
 		// ui／kms／hsm：本地鑰未設是合法組態（模式感知，非整體放寬）
 		return v
 	}
-	// **legacy 材料格已移除**（release-transitional-cleanup D10）：無 legacy 解密
+	// **legacy 材料格已移除**：無 legacy 解密
 	// 路徑後，`ENCRYPTION_KEY` 僅作為 KEK 材料被檢查。
 	// env 模式下 KEK 材料等於出廠預設仍判違規（紅線不放寬）。
 	// 比對解碼後的金鑰，使 hex／base64 寫法同樣被判為出廠預設值。

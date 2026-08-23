@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// client secret 輪替的終斷語義（idp-oidc-integration tasks 4.14h）。
+// client secret 輪替的終斷語義。
 //
 // 既有的 TestProviderSecretRotationTriggersRevocation 已驗「輪替走五管道」，
 // 但它從未讓任何訂閱**真的存在**過——fakeProviderHub 的 observers 集合是空的，

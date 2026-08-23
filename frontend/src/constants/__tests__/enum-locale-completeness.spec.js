@@ -1,4 +1,4 @@
-// 枚舉三語完備性（i18n-foundation 3.3——枚舉顯示鐵則升級版）：
+// 枚舉三語完備性（3.3——枚舉顯示鐵則升級版）：
 // 對每個「後端值域值 × 支援 locale」斷言 locale 檔存在非空 key。
 // 後端加值時：值域模組補一筆＋三語 locale 補 key，缺任一語此測試即紅燈——
 // 防護面較舊版（僅中文 label）更廣。值域硬拷檢查仍在各模組原測試檔。
@@ -101,8 +101,8 @@ describe('枚舉三語完備性（值域 × locale）', () => {
   })
 
   it('policyDomain：四域 label 與各 section title/hint 三語皆有 key', () => {
-    // id 清單由 policyDomains.js exports 導出，勿手抄（對抗驗證 Low-1：
-    // 手抄清單會漂移——新 section 三語全缺 key 時對齊測試照過、UI 顯裸 key）
+    // id 清單由 policyDomains.js exports 導出，勿手抄
+    //（手抄清單會漂移——新 section 三語全缺 key 時對齊測試照過、UI 顯裸 key）
     for (const d of POLICY_DOMAINS.map((x) => x.id)) {
       expectKeyInAllLocales(`policyDomain.${d}`)
     }

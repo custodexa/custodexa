@@ -32,7 +32,7 @@ var forbiddenDeps = []forbiddenDep{
 		modulePath: "github.com/LeeEirc/terminalparser",
 		reason: "無授權（repo 內沒有 LICENSE，作者未宣告任何授權條款）——" +
 			"未授權即預設保留全部權利，商業散布本產品時它是一顆法務未爆彈。",
-		replacement: "internal/vtscreen（terminal-screen-parser-inhouse 自行實作的終端螢幕解析器）",
+		replacement: "internal/vtscreen（自行實作的終端螢幕解析器）",
 	},
 }
 

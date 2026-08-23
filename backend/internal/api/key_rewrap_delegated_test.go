@@ -11,7 +11,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 委託重包目標的 wire 面（kek-provider-modularization tasks 3.3）。
+// 委託重包目標的 wire 面。
 //
 // 三類失敗各有專屬機器碼與狀態碼，因為處置完全不同：
 // 「本部署做不到」（501）／「這次沒通」（502）／「判別子打錯」（400）。

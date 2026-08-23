@@ -12,14 +12,14 @@ import (
 // strP 測試用字串指標助手（隨本測試自 internal/database 遷入）。
 func strP(s string) *string { return &s }
 
-// **W7 7.7 遷移說明（是否放寬：否）**：本測試原住 `internal/database`
+// **遷移說明（是否放寬：否）**：本測試原住 `internal/database`
 // （原 `internal/repository`）的 migrations_test.go。授權資料存取層內化為 authz 的
 // 未匯出 `assetAuthorizationRepository` 後，database 的測試已無法取得它，
 // 而 database 的測試包也不得 import authz（authz→database 存在，會構成
 // `import cycle not allowed in test`）。斷言與夾具逐字未動，只換了所在包。
 
-// TestAssetNodeTreeMigrationEquivalence 3b 遷移等價測試（asset-node-tree D7
-// 行為零變化鐵則）：模擬舊 schema（assets 帶 group_id 單員籍）灌資料與授權，
+// TestAssetNodeTreeMigrationEquivalence 3b 遷移等價測試（行為零變化鐵則）：
+// 模擬舊 schema（assets 帶 group_id 單員籍）灌資料與授權，
 // 執行成員遷移 SQL 後，逐使用者以新解析（節點含子樹）驗證授權資產集合
 // 與舊語義（組內資產）完全相同——根節點無子樹時兩者等價
 func TestAssetNodeTreeMigrationEquivalence(t *testing.T) {
@@ -71,7 +71,7 @@ func TestAssetNodeTreeMigrationEquivalence(t *testing.T) {
 	}
 
 	// 軟刪資產帶 group_id（舊資料常態）：不得遷成員——幽靈成員會讓
-	// 空節點永不可刪（codex 對抗審查 P1）
+	// 空節點永不可刪
 	deletedAsset := seedAsset("a-deleted", &g1)
 	if err := db.Exec("UPDATE assets SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", deletedAsset).Error; err != nil {
 		t.Fatalf("soft-delete asset: %v", err)

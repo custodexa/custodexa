@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 指標端點的暴露面與保護（observability-lite D1／D3）。
+// 指標端點的暴露面與保護。
 
 func newMetricsRouter(t *testing.T, token string) (*gin.Engine, *Metrics) {
 	t.Helper()
@@ -38,7 +38,7 @@ func scrape(t *testing.T, r *gin.Engine, authHeader string) *httptest.ResponseRe
 	return w
 }
 
-// TestMetricsPathIsNotUnderAPIPrefix 釘住 D1 的結構保證。
+// TestMetricsPathIsNotUnderAPIPrefix 釘住「指標端點不在 `/api` 之下」這條結構保證。
 //
 // **這是本 change 的安全核心**：正式版 edge 只代理 `/api` 與 `/ws`，指標端點因此
 // 預設自外部不可達。前身 `/api/v1/internal/metrics` 自稱「內部使用、無需認證」，

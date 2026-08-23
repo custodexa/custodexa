@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// === 密碼雜湊的漸進遷移：可見性與觸發（password-hasher-interface 3.3／3.4）===
+// === 密碼雜湊的漸進遷移：可見性與觸發===
 //
 // **批次重新雜湊在密碼學上不可實作，這不是實作限制。** 把一筆舊演算法的雜湊轉成
 // 新演算法需要**明文密碼**，而系統沒有明文——那正是雜湊存在的意義。
@@ -66,7 +66,7 @@ func (s *UserService) PasswordMigrationStatus() (*PasswordMigrationStatus, error
 
 // MarkPendingForPasswordChange 把待遷移的帳號標記為「下次登入須改密」。
 //
-// **沿用既有的 `must_change_password` 機制，不新造流程**（tasks 3.4）：
+// **沿用既有的 `must_change_password` 機制，不新造流程**：
 // 首次登入強制改密即是用它，被標記者下次登入被要求改密，改完即為新演算法。
 //
 // **這不是批次重雜湊**——它不碰任何密碼欄位，只設一個旗標。

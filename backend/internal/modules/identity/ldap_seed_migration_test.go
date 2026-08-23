@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// LDAP env→DB seed 的逐格覆蓋（ldap-settings-migration D4／tasks 1.4）。
+// LDAP env→DB seed 的逐格覆蓋。
 //
 // 覆蓋矩陣：marker 有無 × 表空／軟刪／live × env 開關；外加
 // `LDAP_ENABLED=1`、最小 5 鍵得預設值、密碼為密文非明文、基礎設施失敗不寫
@@ -455,7 +455,7 @@ func TestLDAPSeedInfrastructureFailureLeavesNoMarker(t *testing.T) {
 	}
 }
 
-// TestLDAPSeedAuditFailureRollsBackRowAndMarker 審計與資料列同進退（R4-codex HIGH）。
+// TestLDAPSeedAuditFailureRollsBackRowAndMarker 審計與資料列同進退。
 //
 // 審計表暫時不可寫時，若 seed 列與 marker 仍提交，一個外部認證來源就被永久
 // 建立而**毫無審計紀錄**，且 marker 使後續啟動不再補寫——違反「全操作審計」
@@ -502,7 +502,7 @@ func TestLDAPSeedAuditFailureRollsBackRowAndMarker(t *testing.T) {
 	}
 }
 
-// TestLDAPSeedTableProbeFailurePropagates 表存在性判定的錯誤路徑（R4-codex LOW）。
+// TestLDAPSeedTableProbeFailurePropagates 表存在性判定的錯誤路徑。
 //
 // GORM `Migrator().HasTable` 只回 bool：catalog 查詢因權限、連線中斷等原因失敗時
 // 與「表不存在」無從區分，seed 會誤走 no-op 並向佇列回報成功，基礎設施故障靜默。
@@ -545,7 +545,7 @@ func TestLDAPSeedTableProbeFailurePropagates(t *testing.T) {
 // 命名不得含 "aad"：aad_strict_guard_test.go 以子字串比對做負向成員斷言，
 // 含該子字串的項名會被誤判為「AAD 正向遷移自動執行」而打紅。
 func TestLDAPSeedRegisteredInBuiltinQueue(t *testing.T) {
-	// 登記器由組裝根提供（W1 1.10 拆 4.9 環）；本測試驗的是「登記後它確實在佇列裡、
+	// 登記器由組裝根提供（斷 keyvault→identity 環）；本測試驗的是「登記後它確實在佇列裡、
 	// 且名稱不含 aad」，生產側真的有登記那一行由
 	// TestAssemblyRegistersPostUnsealBuiltins 對 cmd/server 獨立斷言
 	registerBuiltinsLikeAssembly()
@@ -568,7 +568,7 @@ func TestLDAPSeedRegisteredInBuiltinQueue(t *testing.T) {
 	}
 }
 
-// TestLDAPSeedTakesDirectoryLockAndRereadsInside 封死軟刪競態（設計 D1 並發線性化）。
+// TestLDAPSeedTakesDirectoryLockAndRereadsInside 封死軟刪競態（並發線性化）。
 //
 // 兩件事一起釘住：
 //

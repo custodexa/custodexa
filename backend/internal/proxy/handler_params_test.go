@@ -6,7 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TestRDPSecurityParamsDefaultUnchanged 回歸（transmission-security-policy 1.3）：
+// TestRDPSecurityParamsDefaultUnchanged 回歸：
 // 未設定 RDP 安全欄位的存量資產，經注入＋fillDefaults 後的最終參數
 // 必須與本 change 之前的預設完全一致（security=any、ignore-cert=true）
 func TestRDPSecurityParamsDefaultUnchanged(t *testing.T) {

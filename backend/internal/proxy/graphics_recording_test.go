@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 圖形錄影落地鏈的回歸測試（change graphics-teardown-sync，design D8 第 4 類）。
+// 圖形錄影落地鏈的回歸測試。
 //
 // 這四條守的是**失效通報不得沉默**：落地鏈四條失敗路徑各自要報出對應的 cause。
 // 每條斷言的是「回報了哪一個 cause」，不是「沒 panic」——後者在注入根本沒觸發時
-// 一樣會綠（memory: fault-injection-never-fired），故每條都先確認注入真的成立。
+// 一樣會綠，故每條都先確認注入真的成立。
 
 // recordingProbe 收集落地鏈對外的三個作用，供斷言。
 type recordingProbe struct {

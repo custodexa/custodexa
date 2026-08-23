@@ -12,8 +12,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 授權引用缺失：service 實際回傳的錯誤 → handler 映射的端到端耦合測試
-// （V2 對抗驗收 H2）。
+// 授權引用缺失：service 實際回傳的錯誤 → handler 映射的端到端耦合測試。
 //
 // 為什麼要真的呼叫 DB 而不是餵造好的錯誤：修正前 handler 以中文子字串比對
 // service 的 fmt.Errorf 文案，兩端的一致性沒有任何測試看守——handler 測試餵

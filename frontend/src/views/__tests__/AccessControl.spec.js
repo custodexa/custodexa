@@ -112,7 +112,7 @@ const policyFixture = () => ({
   deviation_count: 2,
 })
 
-// 資產政策覆寫（asset-level-access-policy）：高敏 SSH 已覆寫、一般 RDP 未覆寫
+// 資產政策覆寫：高敏 SSH 已覆寫、一般 RDP 未覆寫
 const assetsFixture = () => ({
   data: [
     { id: 1, name: '高敏SSH', protocol: 'ssh', access_policy: 'approval' },

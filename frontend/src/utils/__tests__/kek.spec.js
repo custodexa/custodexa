@@ -8,7 +8,7 @@ import {
   validateKEKMaterialFormat,
 } from '@/utils/kek'
 
-// kek-provider-modularization D8 路 2：本地生成與前端格式檢查。
+// 本地生成與前端格式檢查。
 // 字元集／長度須與伺服端 crypto.KEKAlphabet／KEKMaterialLength 一致——
 // 兩端漂移的後果是「前端生成的材料被伺服端拒收」，故此處直接釘住常數本身。
 
@@ -69,7 +69,7 @@ describe('validateKEKMaterialFormat', () => {
   })
 })
 
-// kek-encoding-and-unseal-entry：三種輸入編碼。判定規則逐條對齊伺服端
+// 三種輸入編碼。判定規則逐條對齊伺服端
 // pkg/crypto/kek_material.go——兩端漂移的後果是「前端擋下伺服端會接受的材料」
 // 或反之，兩者都會讓合法管理員解不開自己的部署。
 describe('三種輸入編碼', () => {

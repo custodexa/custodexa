@@ -108,10 +108,10 @@ func TestCreateSession(t *testing.T) {
 			int64(0),         // recording_size
 			false,            // has_recording
 			"",               // recording_error
-			sqlmock.AnyArg(), // recording_started_at（workbench-exits-and-export D2 回放時間原點；建檔時為 NULL）
-			uint(0),          // account_id（asset-multi-account D7 帳號雙快照）
+			sqlmock.AnyArg(), // recording_started_at（回放時間原點；建檔時為 NULL）
+			uint(0),          // account_id（帳號雙快照）
 			"",               // account_username
-			sqlmock.AnyArg(), // auth_provider_id（idp-oidc-integration 1.9 認證溯源；本地登入為 NULL）
+			sqlmock.AnyArg(), // auth_provider_id（認證溯源；本地登入為 NULL）
 			0,                // auth_epoch
 			"",               // k8s_namespace
 			"",               // k8s_pod
@@ -493,7 +493,7 @@ func TestClose(t *testing.T) {
 				// mock 列不含 user_id/asset_id（零值），GORM 跳過 Preload
 
 				// Update：GORM 對 struct 欄位依字母序排列：duration, end_time, status, updated_at；
-				// CAS 加 WHERE status=active（codex #2），末尾多帶 status arg
+				// CAS 加 WHERE status=active，末尾多帶 status arg
 				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE "sessions" SET`).
 					WithArgs(
@@ -528,7 +528,7 @@ func TestClose(t *testing.T) {
 					AddRow(1, model.SessionStatusClosed, time.Now().Add(-1*time.Hour))
 				mock.ExpectQuery(`SELECT .+ FROM "sessions"`).
 					WillReturnRows(rows)
-				// CAS status=active（codex #2）：已終態列 RowsAffected=0，冪等回
+					// CAS status=active：已終態列 RowsAffected=0，冪等回
 				// ErrSessionAlreadyClosed，不覆寫終態
 				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE "sessions" SET`).
@@ -595,7 +595,7 @@ func TestTerminate(t *testing.T) {
 					WillReturnRows(rows)
 
 				// Update：GORM 欄位字母序 duration, end_reason, end_time, status, updated_at；
-				// CAS 守衛（F1）在 WHERE 追加 id, status=active
+				// CAS 守衛在 WHERE 追加 id, status=active
 				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE "sessions" SET`).
 					WithArgs(
@@ -630,7 +630,7 @@ func TestTerminate(t *testing.T) {
 					WillReturnRows(rows)
 
 				// Update：GORM 欄位字母序 duration, end_reason, end_time, status, updated_at；
-				// CAS 守衛（F1）在 WHERE 追加 id, status=active
+				// CAS 守衛在 WHERE 追加 id, status=active
 				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE "sessions" SET`).
 					WithArgs(
@@ -661,7 +661,7 @@ func TestTerminate(t *testing.T) {
 					WillReturnRows(rows)
 
 				// Update：GORM 欄位字母序 duration, end_reason, end_time, status, updated_at；
-				// CAS 守衛（F1）在 WHERE 追加 id, status=active
+				// CAS 守衛在 WHERE 追加 id, status=active
 				mock.ExpectBegin()
 				mock.ExpectExec(`UPDATE "sessions" SET`).
 					WithArgs(
@@ -707,7 +707,7 @@ func TestTerminate(t *testing.T) {
 			wantCallCount: 0,
 		},
 		{
-			// CAS 競態（F1）：GetByID 讀到 active，UPDATE 時已被他路徑收線，
+			// CAS 競態：GetByID 讀到 active，UPDATE 時已被他路徑收線，
 			// RowsAffected=0 → ErrSessionAlreadyClosed 且不呼叫 registry.Close
 			name:      "Concurrent close race (RowsAffected=0)",
 			sessionID: 1,

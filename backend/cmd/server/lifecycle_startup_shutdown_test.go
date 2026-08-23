@@ -1,14 +1,13 @@
 package main
 
-// 啟停整合測試（modular-architecture Phase B / W1 任務 1.15）。
+// 啟停整合測試。
 //
 // **本檔要證明的事，既有的 build／test／golden 一個也證明不了**：模組化會改變
 // init／註冊／shutdown／zeroize 的**順序**，而順序錯誤的失敗形態全部是安靜的——
 // 少蓋一個章、晚一步歸零、早一步關佇列，編譯照過、既有測試照綠。故本檔驗的
 // 不是「跑得起來」，而是「以什麼順序跑起來、以什麼順序收回去」。
 //
-// 三個順序敏感點（W1.3-1.4 lifecycle manifest 盤點得出的結論；原始推演紀錄歸檔於
-// 維護者的私有開發歷程，未隨公開倉庫發佈）：
+// 三個順序敏感點（lifecycle manifest 盤點得出的結論）：
 //
 //  1. `model.SetAuditCreateHooks` 註冊時點：此點之前寫出的審計列 HMAC 為空，
 //     而驗章端把空章列當成上線前的歷史列**不計入竄改判定**——失敗形態是
@@ -71,7 +70,7 @@ var expectedReleaseRegistration = []string{
 	"exportSigning",              // R-10 衍生材料，早於根材料執行
 	"checkpointSigning",          // R-10b 同上（檢查點簽章鑰，多版本逐一歸零）
 	"changeSecretScheduler",      // R-11
-	"changeSecretRetryScheduler", // R-11b（change-secret-ssh-deepening D4）
+	"changeSecretRetryScheduler", // R-11b
 	"accessRequestScheduler",     // R-12
 	"retentionScheduler",         // 迴圈登記（manifest §7 摺疊）
 	"reviewReminderScheduler",    // 迴圈登記
@@ -79,8 +78,8 @@ var expectedReleaseRegistration = []string{
 	"kekRetirementScheduler",     // 迴圈登記
 	"reconcileScheduler",         // 迴圈登記
 	"checkpointScheduler",        // 迴圈登記（audit-checkpoint-chain 第 4 組）
-	"chainVerifyScheduler",       // 迴圈登記（audit-chain-scheduled-verification 第 1 組）
-	"metricsRefresher",           // R-13 段 2 最後登記（observability-lite，接替 perfMonitor）
+	"chainVerifyScheduler",       // 迴圈登記
+	"metricsRefresher",           // R-13 段 2 最後登記（接替 perfMonitor）
 	"sealJournalReplay",          // R-1　publishStage2 內登記 ⇒ 最先被等待
 }
 
@@ -346,7 +345,7 @@ const (
 //
 // 直接呼叫 runStage2（而非經解封端點）是為了拿到**半建構圖本身**：狀態機在失敗
 // 路徑上會收束並丟棄它，經端點只能觀察到「狀態轉 sealed-faulted」，觀察不到
-// 「被丟棄的那張圖上還留著什麼」——而後者正是 D6.2.4 要擋的形態。
+// 「被丟棄的那張圖上還留著什麼」——而後者正是合作式取消要擋的形態。
 // 狀態機層的失敗處置另由 TestStage2FailureKeepsProcessAliveAndRetryable 涵蓋。
 func TestLifecycleStage2InjectedFailureRollsBack(t *testing.T) {
 	env := newSealIntegrationEnv(t)
@@ -568,7 +567,7 @@ func TestLifecycleKnownUncoveredOrderingTension(t *testing.T) {
 		t.Errorf("connectionRegistry 登記於第 %d 位、auditService 於第 %d 位——相對序已與基線"+
 			"（§5.1.2／manifest R-6·R-7）不同。\n"+
 			"　　現況是 auditService.Shutdown 先執行、connectionRegistry.CloseAll 後執行；"+
-			"若本波刻意改了方向，SHALL 於 manifest 更新並說明理由，"+
+			"若這是刻意改的方向，SHALL 於 manifest 更新並說明理由，"+
 			"不得反向遷就程式碼", registry+1, audit+1)
 	}
 	t.Logf("已知排序張力（未涵蓋、僅釘住現況）：auditService.Shutdown 於第 %d 位釋放、"+

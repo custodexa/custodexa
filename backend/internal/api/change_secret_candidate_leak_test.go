@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// change-secret-ssh-deepening D10：候選憑證零外洩的**行為式**守衛。
+// 候選憑證零外洩的**行為式**守衛。
 //
 // 為何不用結構式（檢查 struct tag）：那只擋得住「直接序列化 model」這一種寫法，
 // handler 自己拼一個 gin.H 把欄位塞進去照樣洩漏。本測試種入已知明文，

@@ -43,7 +43,7 @@ func TestBuildCommandMySQLRedis(t *testing.T) {
 	}
 }
 
-// TestCredentialNeverEntersChildProcess 憑證面的守衛（db-cli-shell-escape-hardening 第二輪 P0）：
+// TestCredentialNeverEntersChildProcess 憑證面的守衛：
 // 三種協議在有密碼時，密碼值與其歷史環境變數名一律不得出現在 argv 或環境。
 // 這條擋住的是「有人為了省事把密碼放回 PGPASSWORD/MYSQL_PWD/REDISCLI_AUTH」——
 // 那等於重新打開 `\lo_import '/proc/<pid>/environ'` 的憑證外洩路徑（含跨會話）。
@@ -97,7 +97,7 @@ func TestPasswordPromptStrings(t *testing.T) {
 }
 
 // TestBuildCommandLocalSurfaceFlags CLI 啟動即關閉可被間接利用的本機面
-// （db-cli-shell-escape-hardening）：psqlrc、pager、client 原生 sandbox、歷史檔
+// psqlrc、pager、client 原生 sandbox、歷史檔
 func TestBuildCommandLocalSurfaceFlags(t *testing.T) {
 	_, args, env, _ := BuildCommand(Target{Protocol: "postgres", Host: "h", Username: "u"}, "")
 	joined := strings.Join(args, " ")
@@ -158,7 +158,7 @@ func TestBuildCommandTLSModes(t *testing.T) {
 		t.Errorf("mysql verify-ca args=%v", args)
 	}
 
-	// verify-full（M6）：postgres 原生檔位含主機名核對；mysql 同 verify-ca 映射
+	// verify-full：postgres 原生檔位含主機名核對；mysql 同 verify-ca 映射
 	//（--ssl-verify-server-cert 即含主機名核對）；redis 等同 verify-ca
 	_, _, env, _ = BuildCommand(Target{Protocol: "postgres", Host: "h", Username: "u", TLSMode: "verify-full"}, "/tmp/ca.pem")
 	if !containsStr(env, "PGSSLMODE=verify-full") || !containsStr(env, "PGSSLROOTCERT=/tmp/ca.pem") {

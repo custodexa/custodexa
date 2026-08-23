@@ -13,7 +13,7 @@ var (
 	ErrInvalidKey = errors.New("加密金鑰長度必須為 32 bytes (AES-256)")
 	// ErrInvalidCiphertext 密文無效
 	ErrInvalidCiphertext = errors.New("密文格式無效")
-	// ErrAADRequired 未帶 AAD 綁定的加解密請求（release-transitional-cleanup P2 M1）。
+	// ErrAADRequired 未帶 AAD 綁定的加解密請求。
 	//
 	// 無 AAD 的寫出／讀取入口（Encrypt／Decrypt／EncryptBytes／DecryptBytes）已整組
 	// 刪除；本錯誤封住最後一條退化路徑——「帶 AAD 的方法但傳 nil 進去」。兩者合起來
@@ -25,7 +25,7 @@ var (
 // AESCrypto AES-256-GCM 加密服務。
 //
 // **本型別只有帶 AAD 的入口**：無 AAD 的 Encrypt／Decrypt／EncryptBytes／
-// DecryptBytes 已於 release-transitional-cleanup P2 M1 刪除。需要製造無 AAD
+// DecryptBytes 均已刪除。需要製造無 AAD
 // 密文的負向測試 fixture 一律由測試層以 stdlib（crypto/aes＋cipher.NewGCM）
 // 自備，故該能力不存在於任何生產可達的路徑上。
 type AESCrypto struct {

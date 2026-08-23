@@ -3,7 +3,7 @@ package crypto
 import "testing"
 
 // TestFingerprintVector 固定測試向量：鎖定 hex 小寫、SHA-256 前 8 bytes 截斷方向、
-// 輸出長度（key-inventory-transparency：三鑰共用，避免日後漂移）
+// 輸出長度（三鑰共用，避免日後漂移）
 func TestFingerprintVector(t *testing.T) {
 	cases := []struct {
 		in   string

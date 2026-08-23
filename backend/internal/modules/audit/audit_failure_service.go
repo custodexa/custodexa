@@ -15,10 +15,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// AuditFailureService 審計機制失效事件（audit-log-compliance，PCI 10.7.2/10.7.3）。
+// AuditFailureService 審計機制失效事件（PCI 10.7.2/10.7.3）。
 // 事件記錄恆開；通知受政策 failure_alert_enabled 控制。
 // 進行中去重：狀態機以 in-memory map 為第一層（mu 內原子轉換——呼叫端
-// 自帶 CAS 旗標曾與本服務交錯出懸掛事件，對抗驗證發現後收攏於此），
+// 自帶 CAS 旗標曾與本服務交錯出懸掛事件，審查發現後收攏於此），
 // DB 未結束事件查詢為第二層（防重啟後重複開列）。
 // 呼叫端對每次成敗直接呼叫 Report/Resolve，狀態未變時為廉價 no-op
 type AuditFailureService struct {
@@ -29,18 +29,18 @@ type AuditFailureService struct {
 	mu sync.Mutex
 	// failing 各機制進行中失效狀態（惰性初始化——測試直接建構 struct）
 	failing map[string]bool
-	// pendingClose 結案 UPDATE 失敗的機制 → 應記的結束時刻（codex 批 2 M2）。
+	// pendingClose 結案 UPDATE 失敗的機制 → 應記的結束時刻。
 	// 失敗當下若只清 in-memory failing 旗標就放行，後續 Resolve 會因「非失效中」
 	// 而 no-op，open event 永不結案——PCI 失效區間的結束端證據永久破損。
 	// 補結案在下一次 Report/Resolve 開頭 best-effort 進行；跨行程仍由
 	// ReconcileOnStartup 兜底（其語義不變）
 	pendingClose map[string]time.Time
 	// notify 通知出口（測試注入；nil 走 AlertNotifier）。
-	// 型別與 NotifyEvent 一致——散文自簽名消失，編譯期擋回潮（design D3）
+	// 型別與 NotifyEvent 一致——散文自簽名消失，編譯期擋回潮
 	notify func(event notifycat.Event, params map[string]string)
 }
 
-// keyvault.AuditFailureReporter 的實作在 audit 側（4.10 環拆解，W1 1.11）：介面由 keyvault
+// keyvault.AuditFailureReporter 的實作在 audit 側（環相依拆解）：介面由 keyvault
 // 宣告、由本型別滿足，方向 audit→keyvault 單向合法。編譯期斷言在此而非 keyvault 側，
 // 正是為了讓「誰依賴誰」與斷言的位置一致——斷言寫在 keyvault 會把出向邊加回來。
 var _ keyvault.AuditFailureReporter = (*AuditFailureService)(nil)
@@ -81,7 +81,7 @@ func (s *AuditFailureService) sendNotify(event notifycat.Event, params map[strin
 	}
 }
 
-// AlertEnabled 失效告警政策是否允許投遞（codex 批 2 M5）。
+// AlertEnabled 失效告警政策是否允許投遞。
 //
 // 供提醒節流器（keyvault.KEKRetirementMonitor.lastReminded 這類「同日只提醒一次」的
 // 狀態）判斷：政策關閉時 sendNotify 靜默丟棄，此時仍推進節流狀態會讓
@@ -132,9 +132,9 @@ func (s *AuditFailureService) flushPendingClose(mechanism string) {
 //
 // 權威表述是 CauseCode；本函式的產物只落 DB 的 cause 欄與本地 log，
 // 讓尚未改查譯的讀取點不白屏。**不供出站**——detail 含底層 err 原文
-// （路徑/位址），出站 payload 只帶碼（design D8 去識別紅線）
+// （路徑/位址），出站 payload 只帶碼（去識別紅線）
 //
-// **匯出理由（W4 export budget）**：唯一包外消費者是 session 模組的
+// **匯出理由（export budget）**：唯一包外消費者是 session 模組的
 // internal/service/recording_failure_report.go:49（錄影失敗審計列的 Details 欄）。
 // 它與本模組同用一份 cause 詞彙表，複製一份到 session 側等於製造第二個會漂移的
 // 顯示規則；改由 audit 提供是唯一不製造第二事實來源的形式。
@@ -161,11 +161,11 @@ func encodeCauseParams(causeCode string, params map[string]string) string {
 }
 
 // Report 上報失效：狀態未變（進行中）即 no-op；轉換時建列＋（政策開時）通知。
-// 通知不依賴 DB 寫入成功——DB 全掛正是最需要告警的時刻（對抗驗證修正：
+// 通知不依賴 DB 寫入成功——DB 全掛正是最需要告警的時刻（
 // 原寫法 Create 失敗直接 return，失效區間零紀錄零告警）。
 // 失效記錄本身失敗僅 log——失效服務不能反向拖垮上報端
 // causeCode 為 model.Cause* 常數；params 承載結構化細節（含 forensic
-// detail），落 cause_params 供稽核，出站只帶碼（design D8）
+// detail），落 cause_params 供稽核，出站只帶碼
 func (s *AuditFailureService) Report(mechanism, causeCode string, params map[string]string) {
 	s.ReportWithCounts(mechanism, causeCode, params, nil)
 }
@@ -213,7 +213,7 @@ func (s *AuditFailureService) ReportWithCounts(mechanism, causeCode string,
 		First(&existing).Error; {
 	case err == nil:
 		// DB 已有進行中事件，沿用；仍屬新一輪 in-memory 轉換，通知照發。
-		// 出站 started_at 取該事件的真實起點而非此刻（codex 批 2 M3）：
+		// 出站 started_at 取該事件的真實起點而非此刻：
 		// 沿用的前提就是失效自那時起未曾中斷，報 time.Now() 會把已持續數小時的
 		// 失效講成剛剛才發生，收件人與後續 Resolve 的區間對不上
 		startedAt = existing.StartedAt
@@ -232,7 +232,7 @@ func (s *AuditFailureService) ReportWithCounts(mechanism, causeCode string,
 	}
 	log.Printf("[AuditFailure] 機制 %s 失效: %s", mechanism, CauseText(causeCode, params))
 
-	// 出站只帶碼：detail 不進 params（design D8 去識別紅線）
+	// 出站只帶碼：detail 不進 params（去識別紅線）
 	outbound := map[string]string{
 		"mechanism":  mechanism,
 		"started_at": startedAt.Format(time.RFC3339),
@@ -253,14 +253,14 @@ func (s *AuditFailureService) ReportWithCounts(mechanism, causeCode string,
 //
 // 回填 UPDATE 失敗時通知照發（恢復是既成事實，優先出站），但會留下
 // pendingClose 標記，由下一次 Report/Resolve/AdoptOpenEvent 補結案——
-// 不可讓 open event 因一次寫庫抖動而永久懸掛（codex 批 2 M2）
+// 不可讓 open event 因一次寫庫抖動而永久懸掛
 func (s *AuditFailureService) Resolve(mechanism string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// 先補上前次失敗的結案。此步驟刻意在 failing 檢查**之前**：前次失敗時
 	// failing 已被清為 false，之後每次 Resolve 都會走下面的 no-op 早退，
-	// 補結案若放在早退之後就永遠到不了（codex 批 2 M2 的病灶正是這個順序）
+	// 補結案若放在早退之後就永遠到不了（病灶正是這個順序）
 	s.flushPendingClose(mechanism)
 
 	if !s.failing[mechanism] {
@@ -299,7 +299,7 @@ func (s *AuditFailureService) Resolve(mechanism string) {
 }
 
 // AdoptOpenEvent 認領 DB 中該機制未結束的事件為「進行中」in-memory 狀態，
-// 使後續 Resolve 得以與之配對（kek-rewrap-hygiene-hardening D5）。
+// 使後續 Resolve 得以與之配對。
 // 用於狀態可由 DB 謂詞導出、且不被 ReconcileOnStartup 無條件關閉的機制：
 // 重啟後 in-memory 狀態歸零，不認領則遺留事件永無人回填。
 // 回傳是否處於失效中（true 時呼叫 Resolve 才會實際結案）
@@ -330,21 +330,21 @@ func (s *AuditFailureService) AdoptOpenEvent(mechanism string) bool {
 	return true
 }
 
-// NotifyOngoing 對「仍在進行中」的失效狀態直接投遞提醒（週期重發入口，
-// kek-rewrap-hygiene-hardening D5）：不經 Report——Report 的進行中去重語義
+// NotifyOngoing 對「仍在進行中」的失效狀態直接投遞提醒（週期重發入口）：
+// 不經 Report——Report 的進行中去重語義
 // 就是不重發。本方法不動狀態機也不動事件列，只走通知出口，
 // 投遞仍受 failure_alert_enabled 政策與通道配置節制（無通道即無外送）
 func (s *AuditFailureService) NotifyOngoing(event notifycat.Event, params map[string]string) {
 	s.sendNotify(event, params)
 }
 
-// EnsureEventRow 確保進行中失效有事件列（codex 第二輪審 H1）：Report 當時
+// EnsureEventRow 確保進行中失效有事件列：Report 當時
 // 事件表暫時拒寫會使 in-memory failing=true 但 DB 無列，且 Report 的
 // in-memory 去重讓它永不重試——週期評估經此 best-effort 補列（PCI 證據
 // 完整性）。不投遞通知、不動 in-memory 狀態；失敗僅 log 待下輪再試
 // 起點誠實註記：補列的 StartedAt 為補列時刻而非真實失效起點（真實起點在
 // Report 寫庫失敗時已無從取得）——Details 明載，避免稽核把 T0–T1 失效期
-// 誤讀為未發生（第三輪審查 H2）
+// 誤讀為未發生
 const failureEventBackfillDetails = "補列事件：原始上報時寫入失敗，起始時間為補列時刻而非實際失效起點"
 
 func (s *AuditFailureService) EnsureEventRow(mechanism, causeCode string, params map[string]string) {
@@ -371,11 +371,11 @@ func (s *AuditFailureService) EnsureEventRow(mechanism, causeCode string, params
 	}
 }
 
-// ReconcileOnStartup 啟動時回填重啟遺留的進行中事件（對抗驗證修正：失效
+// ReconcileOnStartup 啟動時回填重啟遺留的進行中事件（失效
 // 狀態為 in-memory，重啟歸零後 open 事件永無人回填）。結束時間取重啟時刻
 // 並於 Details 誠實註明非精確；條件仍在時新事件會重新開列。
 //
-// 例外（kek-rewrap-hygiene-hardening D5）：狀態可由 DB 謂詞導出的機制
+// 例外：狀態可由 DB 謂詞導出的機制
 // （kek_retirement）排除在無條件回填之外——以「重評估」取代「盲目關閉」。
 // 否則 backlog 跨重啟仍在卻被記為已恢復，PCI 退役證據反成假證據
 func (s *AuditFailureService) ReconcileOnStartup() {

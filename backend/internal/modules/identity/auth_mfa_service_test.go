@@ -290,7 +290,7 @@ func TestVerifyMFALogin_Success(t *testing.T) {
 	pendingToken, err := svc.jwtManager.GenerateScopedToken(1, "mfauser", "mfauser@example.com", "user", "mfa_pending", time.Minute, crypto.AuthContext{})
 	assert.NoError(t, err)
 
-	// 先重新載入用戶（含角色）——鎖定 gate 需要最新狀態（auth-hardening D2）
+	// 先重新載入用戶（含角色）——鎖定 gate 需要最新狀態
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ LIMIT`).
 		WillReturnRows(mockUserWithTOTP(1, "mfauser", "", secretEnc, true))
 	mock.ExpectQuery(`SELECT .+ FROM "user_roles"`).

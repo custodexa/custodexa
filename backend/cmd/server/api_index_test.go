@@ -17,7 +17,7 @@ import (
 // 沒有任何機制防止與實碼漂移——本 change 開工前已可指認至少兩處實質錯誤。
 // 索引改由 registerRoutes 的實際註冊結果生成，消滅「人工抄寫路徑」這個錯誤類別。
 //
-// 信任邊界（design D3）：一般測試容器以**唯讀**掛載取得 docs/，故守衛不具備修改
+// 信任邊界：一般測試容器以**唯讀**掛載取得 docs/，故守衛不具備修改
 // 其驗證對象的能力——否則「重新生成使測試變綠」會成為掩蓋真實漂移的捷徑。
 // 重新生成須以可寫掛載的一次性容器執行，指令見 updateIndexCmd。
 
@@ -40,7 +40,7 @@ const (
 	// apiSpecRWDir 是 -update 專用的可寫掛載點，**刻意與唯讀點不同路徑**。
 	//
 	// 為何不能沿用同一路徑：`docker compose run -v ./docs:<唯讀點>` 無法覆蓋 compose
-	// 檔中同目標的 :ro 掛載——compose 的 service 定義優先，實測仍為唯讀（design D3
+	// 檔中同目標的 :ro 掛載——compose 的 service 定義優先，實測仍為唯讀（設計文件
 	// 原指令的錯誤，實作時修正）。改用獨立掛載點後，一般容器沒有這個點、寫入必失敗，
 	// 信任邊界反而更明確：可寫能力只存在於刻意加掛的一次性容器。
 	apiSpecRWDir = "testdata/docs-rw"
@@ -53,7 +53,7 @@ const (
 		"go test ./cmd/server -run '^TestAPIIndex$' -update"
 )
 
-// 註冊條件的值域（design D2）。
+// 註冊條件的值域。
 //
 // 刻意為枚舉而非自由文字：若日後新增「依旗標條件註冊」的機制，deriveCondition
 // 會因無法歸類而 fail，迫使新增者檢視文件並擴充此值域——而不是讓新端點悄悄
@@ -63,7 +63,7 @@ const (
 	condAuditFlag = "FEATURE_AUDIT_LOG_ENABLED"
 )
 
-// indexEntry 是索引的一列，三欄（design D1：不含「文件章節」第四欄）。
+// indexEntry 是索引的一列，三欄（不含「文件章節」第四欄）。
 type indexEntry struct {
 	Method    string
 	Path      string
@@ -83,7 +83,7 @@ func apiSpecPath(t *testing.T) string {
 	t.Helper()
 	// host fallback 不再由 cmd/server 往上數三層（與「組裝根住在樹的第幾層」綁死，
 	// 且 cmdServerDir 本身已改為 module 錨點定位）：改由 module 根上溯一層取專案根。
-	// 那一層是相對 go.mod 錨定的 module 根，package 下移不影響（W1 1.20）。
+	// 那一層是相對 go.mod 錨定的 module 根，package 下移不影響。
 	for _, p := range []string{
 		filepath.Join(cmdServerDir(t), apiSpecRODir, "API_SPEC.md"),            // 容器唯讀掛載點
 		filepath.Join(filepath.Dir(guardModuleRoot(t)), "docs", "API_SPEC.md"), // host 專案根
@@ -119,7 +119,7 @@ func fileExists(p string) bool {
 //
 // 順序為契約：maskAlways／maskAuditFlag 的常數值依賴它，改順序必須同步改常數。
 //
-// **permission 維度已退場**（security-backlog-settlement D5）：權限檢查不再有旗標，
+// **permission 維度已退場**：權限檢查不再有旗標，
 // 路由一律帶 RequirePermission。原本的四格（audit × permission）笛卡兒積收斂為兩格
 var deployConfigs = []struct {
 	auditLogEnabled bool
@@ -140,7 +140,7 @@ const (
 //
 // **membership 必須逐組態保留，不可壓縮成單一布林**：壓縮會遺失「某端點只在
 // 部分組態出現」的事實，使條件註冊的端點被誤標為 always，守衛全綠而事實消失
-// （codex 審查 Finding 1）。目前唯一維度是 audit，但結構保留 bitmask 形式——
+// （審查 Finding 1）。目前唯一維度是 audit，但結構保留 bitmask 形式——
 // 新增任何條件註冊旗標時擴充 deployConfigs 即可，TestRouteDepsFlagsCoveredByMatrix
 // 會在有人新增 routeDeps bool 欄位而未擴充矩陣時打紅。
 func routeUniverse(t *testing.T) []indexEntry {
@@ -202,7 +202,7 @@ func conditionForMask(mask int) (string, error) {
 // 這些斷言與索引本身無關，但若它們失效，索引的「註冊條件」欄就會建立在錯誤的
 // 前提上——例如 audit 旗標若開始增減 /audit-logs 以外的端點，聯集會悄悄多出條目。
 //
-// 原有的 permission 旗標語義斷言已隨旗標退場移除（security-backlog-settlement D5）；
+// 原有的 permission 旗標語義斷言已隨旗標退場移除；
 // 「權限不得條件註冊」改由 TestNoConditionalPermissionRegistration 以結構檢查承擔。
 func assertFlagSemantics(t *testing.T) {
 	t.Helper()
@@ -232,10 +232,10 @@ func assertFlagSemantics(t *testing.T) {
 	//
 	// **必須比對完整鍵集，不可只比數量**：release 註冊 /prod-only、debug 註冊
 	// /dev-only 時兩邊數量相同，只比長度會通過，而 /dev-only 被標成 always、
-	// /prod-only 從索引徹底消失——production 端點無人守護（codex 第一輪 Finding 2）。
+	// /prod-only 從索引徹底消失——production 端點無人守護（審查 Finding 2）。
 	//
 	// **且必須逐格比對，不可只驗一格**：若某路由的條件是 `release && !auditLogEnabled`，
-	// 只比 {audit=on, perm=on} 那一格根本看不到它（codex 第二輪 Finding 2）。
+	// 只比 {audit=on, perm=on} 那一格根本看不到它（同上）。
 	// 這裡遍歷全部 deployConfigs——registerRoutes 本就不讀 gin mode，故「mode 完全
 	// 不影響路由集合」是可主張的強契約，比只驗 release 可達組態更早攔截。
 	for _, c := range deployConfigs {
@@ -376,7 +376,7 @@ func TestAPIIndex(t *testing.T) {
 	assertFlagSemantics(t)
 
 	want := routeUniverse(t)
-	// 防空集合假綠（W1 1.21）：雙向相等在「兩邊都空」時同樣成立。路由宇宙一旦
+	// 防空集合假綠：雙向相等在「兩邊都空」時同樣成立。路由宇宙一旦
 	// 因組裝根被拆散而縮水，索引比對會安靜地什麼都不比。下限使其當場轉紅。
 	if len(want) < minRouteUniverse {
 		t.Fatalf("路由宇宙只有 %d 條（下限 %d）：四格組態的路由列舉已失真，"+

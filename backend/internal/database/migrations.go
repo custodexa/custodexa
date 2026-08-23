@@ -31,8 +31,8 @@ type Migration struct {
 
 // migrations 所有可用的 migrations（按版本順序）。
 //
-// **只有 baseline**：壓縮前的 49 條增量 migration 已隨 migration-baseline-compression
-// 一併退場，其最終 schema 形狀併入 baseline，其存量回填在全新資料庫上一律零列。
+// **只有 baseline**：壓縮前的 49 條增量 migration 已
+// 退場，其最終 schema 形狀併入 baseline，其存量回填在全新資料庫上一律零列。
 // 本產品**不提供既有資料庫的就地升級路徑**（見 RunMigrations 的 fail-close）。
 var migrations = []Migration{
 	{
@@ -45,7 +45,7 @@ var migrations = []Migration{
 
 // LDAPSeedMarkerVersion LDAP env→DB seed 的執行標記（寫入 schema_migrations 的 version）。
 //
-// **定義於 repository 而非 service**（R4-codex MEDIUM）：本標記由 service 的 seed
+// **定義於 repository 而非 service**：本標記由 service 的 seed
 // 寫入，兩端必須是同一個字串。repository 不得依賴 service（現行相依方向是
 // service → repository，反向即循環），故常數落在兩者都可依賴的下層，service 端以
 // `ldapSeedMarker = database.LDAPSeedMarkerVersion` 引用，杜絕字面值各寫一份而漂移。

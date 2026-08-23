@@ -6,9 +6,9 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 )
 
-// applyTransferParams 依有效傳輸能力注入 guacd 連線參數（data-transfer-control D3）。
+// applyTransferParams 依有效傳輸能力注入 guacd 連線參數（data-transfer-control）。
 //
-// **方向映射是本 change 最容易搞反的地方**（design D2 預警）：
+// **方向映射是本 change 最容易搞反的地方**：
 //
 //	ClipboardSend（本機→遠端，貼進資產）→ disable-paste
 //	ClipboardRecv（遠端→本機，自資產抄出）→ disable-copy
@@ -25,7 +25,7 @@ import (
 //
 // **這是縱深不是主強制點**：guacd 參數在握手時一次性送出，改政策不影響進行中
 // 連線；檔案方向的主強制點在 tunnel／file_tap 側（逐次判定、即時生效）。
-// 順序不可倒過來——guacd 版本一換，只靠參數的控制就消失了（D3 註 3）。
+// 順序不可倒過來——guacd 版本一換，只靠參數的控制就消失了。
 func applyTransferParams(params map[string]string, protocol string, caps policy.TransferCapabilities) {
 	if params == nil {
 		return

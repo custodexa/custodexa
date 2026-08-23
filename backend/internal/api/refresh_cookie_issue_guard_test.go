@@ -25,19 +25,19 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 守衛 G1（refresh-token-httponly-cookie 決策 9）：
+// 守衛 G1：
 // **六個**發放 refresh 憑證的端點全部以 httpOnly cookie 下發，且回應 body 無明文。
 //
 // # 為什麼需要一張表而不是一兩格
 //
 // 發放路徑有六條，不是兩條。漏掉任何一條不會有任何既有測試轉紅、不會有錯誤訊息，
 // 只會讓該登入路徑的會話在 access token 到期（15 分鐘）後靜默斷掉——而人工測試
-// 在 15 分鐘內看不出任何異常。表即 design.md 決策 3 的清單：
+// 在 15 分鐘內看不出任何異常。六條路徑如下：
 //
 //	1. POST /api/v1/auth/login              一階段登入
 //	2. POST /api/v1/auth/mfa/verify         MFA 第二階段
 //	3. POST /api/v1/auth/mfa/enroll/confirm 強制註冊完成
-//	4. POST /api/v1/auth/change-password    D12 改密換發
+//	4. POST /api/v1/auth/change-password    改密換發
 //	5. POST /api/v1/auth/oidc/exchange      **巢狀 {"login": {...}} 回應，六者中最易漏**
 //	6. POST /api/v1/auth/refresh            輪替後的新憑證
 //
@@ -277,7 +277,7 @@ func assertIssuedViaCookie(t *testing.T, endpoint string, w *httptest.ResponseRe
 	}
 }
 
-// --- 表：六個發放端點（表即 design.md 決策 3 清單）---
+// --- 表：六個發放端點 ---
 
 func TestAllRefreshIssuingEndpointsSetCookie(t *testing.T) {
 	cases := []struct {

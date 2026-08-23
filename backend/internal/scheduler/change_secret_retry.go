@@ -12,7 +12,7 @@ import (
 // 重啟後不會因排程重建而丟失退避進度
 const changeSecretRetryCron = "@every 1m"
 
-// ChangeSecretRetryScheduler 未驗證候選憑證的重試排程（change-secret-ssh-deepening D4）。
+// ChangeSecretRetryScheduler 未驗證候選憑證的重試排程。
 //
 // 沿 access_request_timeout 的既有形態：固定間隔 ＋ 單輪有界批次 ＋ SkipIfStillRunning
 // 防重入（一輪要對多台目標機建線，慢輪疊輪會使同一候選被兩個 goroutine 同時提交）。

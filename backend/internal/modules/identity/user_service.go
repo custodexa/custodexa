@@ -16,8 +16,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// emailValidator 沿用 gin binding 所用的 go-playground validator 的 `email` 語義
-// （profile-display-name）：Update 端點放寬 binding 後，由 service 於 trim/小寫正規化
+// emailValidator 沿用 gin binding 所用的 go-playground validator 的 `email` 語義：
+// Update 端點放寬 binding 後，由 service 於 trim/小寫正規化
 // 「之後」以「同一套 validator」把關格式——與原 binding:"email" 完全一致（不比其寬鬆），
 // 且讓「僅前後空白差異的既有 email」能被 trim 後偵測為衝突回 409，而非在 binding 層被 400
 var emailValidator = validator.New()
@@ -29,17 +29,17 @@ var (
 	ErrLastAdmin = errors.New("不能刪除最後一個管理員")
 	// ErrRoleNotFound 角色不存在
 	ErrRoleNotFound = errors.New("角色不存在")
-	// ErrLDAPUserPassword LDAP 使用者的密碼由目錄管理，本地不可修改（design.md D5）。
+	// ErrLDAPUserPassword LDAP 使用者的密碼由目錄管理，本地不可修改。
 	// 保留供既有呼叫端相容；新路徑一律用 ErrExternalUserPassword
 	ErrLDAPUserPassword = errors.New("LDAP 使用者的密碼由目錄服務管理，無法在本系統修改")
-	// ErrExternalUserPassword 外部身分帳號（LDAP／OIDC）的密碼由身分提供者管理
-	//（idp-oidc-integration D8）。判定經 user.IsExternal() 取三訊號聯集，
+	// ErrExternalUserPassword 外部身分帳號（LDAP／OIDC）的密碼由身分提供者管理。
+	// 判定經 user.IsExternal() 取三訊號聯集，
 	// 不直讀 is_ldap——OIDC 供應帳號的 is_ldap 為 false，只認該欄會讓 admin
 	// 得以為其設定本地密碼，形成繞過 IdP 的 MFA 與條件式存取的永久後門
 	ErrExternalUserPassword = errors.New("此帳號的密碼由外部身分提供者管理，無法在本系統修改")
 	// ErrOldPasswordMismatch 自助改密時目前密碼驗證失敗
 	ErrOldPasswordMismatch = errors.New("目前密碼錯誤")
-	// ErrEmailConflict admin 更新 email 撞其他 live 帳號（profile-display-name R1）：
+	// ErrEmailConflict admin 更新 email 撞其他 live 帳號：
 	// handler 據此回 409（非通用 500）
 	ErrEmailConflict = errors.New("此 email 已被其他帳號使用")
 	// ErrInvalidEmail 正規化後仍非合法 email 格式（Update 端點放寬 binding 後由 service 把關）
@@ -47,7 +47,7 @@ var (
 )
 
 // normalizeEmail 正規化 email：trim + 小寫；空字串（未知）回 nil，以 NULL 儲存
-// （profile-display-name D7：未知 email 存 NULL，唯一性僅約束非 NULL 值）
+// （未知 email 存 NULL，唯一性僅約束非 NULL 值）
 func normalizeEmail(raw string) *string {
 	t := strings.ToLower(strings.TrimSpace(raw))
 	if t == "" {
@@ -70,9 +70,9 @@ func (s *UserService) emailInUseByOther(normalizedEmail string, excludeID uint) 
 	return count > 0, nil
 }
 
-// authorizationCascadeRevoker 刪除使用者／使用者群組時對 authz 表的級聯撤銷（F8）。
+// authorizationCascadeRevoker 刪除使用者／使用者群組時對 authz 表的級聯撤銷。
 //
-// **消費者側窄介面（D-10）**：介面在消費者側宣告、由組裝根注入 authz 的實作，
+// **消費者側窄介面**：介面在消費者側宣告、由組裝根注入 authz 的實作，
 // 使 identity 的呼叫面收斂為兩個具名方法而非「任意對 authz 的表下 Delete」。
 //
 // **誠實邊界（不得高估）**：identity **本來就 import authz**
@@ -86,7 +86,7 @@ type authorizationCascadeRevoker interface {
 	RevokeByUser(tx *gorm.DB, userID uint) error
 }
 
-// SessionTerminator 停用帳號時強制終斷該使用者全部進行中協議會話（D6：
+// SessionTerminator 停用帳號時強制終斷該使用者全部進行中協議會話（
 // 沿用 admin_terminate 語義）。介面而非直接依賴 SessionService，避免 service 相互耦合
 type SessionTerminator interface {
 	TerminateAllByUser(userID uint) (int, error)
@@ -100,19 +100,19 @@ type UserService struct {
 	policies *policy.SecurityPolicyService
 	// sessionTerminator 停用帳號的即時撤權收線（8.2.5）；nil 時僅撤 refresh 不斷協議會話
 	sessionTerminator SessionTerminator
-	// subscriptions 唯讀訂閱（監看／分享觀看）的按-user 收線管道（idp-oidc-integration 2.8）。
+	// subscriptions 唯讀訂閱（監看／分享觀看）的按-user 收線管道。
 	// 訂閱不建 sessions 列，sessionTerminator 掃不到它；nil 時該管道不生效
 	subscriptions SubscriptionTerminator
 	// recordingTokens 錄影存取 token 的按-user 撤銷管道（同上，nil 時不生效）
 	recordingTokens RecordingTokenRevoker
 	// audit 外部身分管理四操作的審計出口；nil 表示停用（僅測試建構路徑）
 	audit oidcAuditSink
-	// authzRevoker 刪除使用者時的 authz 級聯撤銷（F8／D-10 tx-taking 窄 port）
+	// authzRevoker 刪除使用者時的 authz 級聯撤銷（tx-taking 窄 port）
 	authzRevoker authorizationCascadeRevoker
 }
 
 // NewUserService 創建使用者服務。
-// authzRevoker 為 F8 級聯撤銷面（D-10 窄 port），未注入時 Delete 會 fail-close。
+// authzRevoker 為級聯撤銷面（窄 port），未注入時 Delete 會 fail-close。
 func NewUserService(db *gorm.DB, authzRevoker authorizationCascadeRevoker) *UserService {
 	return &UserService{
 		db:           db,
@@ -179,7 +179,7 @@ func (s *UserService) CountLocalAdmins() (int64, error) {
 	return CountLocalAdmins(s.db)
 }
 
-// ListRoles 角色清單（SD-2 收斂，modular-architecture W7 7.1）。
+// ListRoles 角色清單。
 //
 // 原本住在 `api/role_handler.go:28`——handler 自持 `*gorm.DB` 直查 `model.Role`，
 // 是 api 層繞過 service 直接碰資料層的四處之一。查詢本體逐字搬入，行為位元相同
@@ -236,7 +236,7 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 		query = query.Where("active = ?", *req.Active)
 	}
 
-	// 供應來源篩選（idp-oidc-integration D14.1）
+	// 供應來源篩選
 	if req.ProvisioningOrigin != "" {
 		query = query.Where("provisioning_origin = ?", req.ProvisioningOrigin)
 	}
@@ -278,7 +278,7 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 	}, nil
 }
 
-// fillAuthProviderNames 為當頁使用者填入已綁定的 provider 實例名（D14.1 來源欄）。
+// fillAuthProviderNames 為當頁使用者填入已綁定的 provider 實例名（來源欄）。
 //
 // 單次批量查詢而非逐列查——列表頁一次 20 筆，逐列查即 20 次往返。
 // 查詢失敗只記錄不中斷：來源欄是輔助資訊，不值得讓整個列表 500
@@ -328,7 +328,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		return nil, fmt.Errorf("檢查使用者名稱失敗: %w", err)
 	}
 
-	// 密碼政策驗證（D3 單一 validator；新帳號無歷史，userID=0 跳過歷史比對）
+	// 密碼政策驗證（單一 validator；新帳號無歷史，userID=0 跳過歷史比對）
 	if err := s.ValidateNewPassword(0, req.Password); err != nil {
 		return nil, err
 	}
@@ -340,10 +340,10 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		return nil, fmt.Errorf("密碼加密失敗: %w", err)
 	}
 
-	// 創建使用者。last_login_at 以建立時間起算（D8：閒置停用以「距最後登入」判定，
+	// 創建使用者。last_login_at 以建立時間起算（閒置停用以「距最後登入」判定，
 	// 新建卻未登入者若 last_login_at 為 NULL 亦以 created_at 起算，此處顯式填入更直觀）
 	now := time.Now()
-	// 身分欄位顯式賦值（idp-oidc-integration D2）：GORM 對 struct literal 未列的
+	// 身分欄位顯式賦值：GORM 對 struct literal 未列的
 	// 欄位交由 DB default，雖然本路徑的值恰與 default 相同，仍顯式寫出——
 	// 三個建號路徑各自顯式賦值是不變式守衛的前提，靠 default 巧合成立的語義
 	// 會在日後有人改 default 時無聲失效
@@ -371,7 +371,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		return nil, fmt.Errorf("創建使用者失敗: %w", err)
 	}
 
-	// 初始密碼寫入歷史（D12：否則首次改密可設回原密碼）
+	// 初始密碼寫入歷史（否則首次改密可設回原密碼）
 	if err := s.recordPasswordHistory(tx, user.ID, user.Password); err != nil {
 		tx.Rollback()
 		log.Printf("[UserService] Create: Record password history error: %v", err)
@@ -421,7 +421,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 
 // Update 更新使用者（基本資訊，不含密碼和角色）。
 // 回傳的 diff 為欄位級 before/after 變更（key 形如 "email.before"/"email.after"，
-// 僅含實際變更的欄位），供 handler 注入審計日誌（profile-display-name R2 稽核可查）
+// 僅含實際變更的欄位），供 handler 注入審計日誌（稽核可查）
 func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[string]string, error) {
 	// 檢查使用者是否存在
 	var user model.User
@@ -444,7 +444,7 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 			return nil, nil, ErrInvalidEmail
 		}
 		if normalized != user.EmailString() {
-			// email 唯一性預查（R1）：trim/小寫正規化後與其他 live 帳號比對，
+			// email 唯一性預查：trim/小寫正規化後與其他 live 帳號比對，
 			// 撞則回 typed ErrEmailConflict → handler 回 409（取代原直寫撞 DB 唯一索引的通用 500）
 			conflict, err := s.emailInUseByOther(normalized, id)
 			if err != nil {
@@ -527,7 +527,7 @@ func (s *UserService) Delete(id uint) error {
 		}
 	}
 
-	// 執行軟刪除＋連動清理（同交易：不留幽靈引用，對抗驗證 aaa2018 #2）：
+	// 執行軟刪除＋連動清理（同交易：不留幽靈引用）：
 	// 審核範圍（作審核方 approver_id 或作申請人 subject_user_id）連動軟刪；
 	// 群組成員關係（join 表無軟刪）直接清——否則殘留成員列可回復審核方群組資格
 	//
@@ -535,10 +535,10 @@ func (s *UserService) Delete(id uint) error {
 	// 「還有沒有 admin」且在鎖外，擋不住「刪掉最後一個**本地** admin（其他 admin 皆為
 	// 外部身分）」，也擋不住兩個並發刪除各自看見對方仍在。判定於鎖內重讀且與寫入同交易
 	//
-	// 憑證失效與軟刪除同交易（idp-oidc-integration D2/D9，spec「帳號刪除」情境）：
+	// 憑證失效與軟刪除同交易（spec「帳號刪除」情境）：
 	// 原本此路徑**連 refresh 與協議會話都不動**，是三條生命週期路徑中缺口最大的一條
 	// ——帳號已不存在，其持有者卻仍有活著的 shell、活著的監看訂閱，以及可再撐一個
-	// TTL 的 access token。取鎖順序 system → user（D13）
+	// TTL 的 access token。取鎖順序 system → user
 	if err := WithLocalAdminInvariant(s.db, id, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, id, func(tx *gorm.DB) error {
 			// **必須早於軟刪除**：軟刪後 Model(&User{}).Where("id = ?") 帶
@@ -546,7 +546,7 @@ func (s *UserService) Delete(id uint) error {
 			if err := s.invalidateCredentialsLocked(tx, id, "account_deleted"); err != nil {
 				return err
 			}
-			// 審核範圍屬 authz（F8／D-10）：經 tx-taking 窄 port 交由擁有者寫入。
+			// 審核範圍屬 authz：經 tx-taking 窄 port 交由擁有者寫入。
 			// 未注入即 fail-close——靜默略過會留下可回復審核資格的幽靈範圍
 			if s.authzRevoker == nil {
 				return fmt.Errorf("authz 級聯撤銷面未注入：刪帳號不得在不撤銷審核範圍的情況下完成")
@@ -575,9 +575,9 @@ func (s *UserService) Delete(id uint) error {
 	return nil
 }
 
-// AddRole 冪等追加單一角色（approval-routing-quorum 一站式代配用）：
+// AddRole 冪等追加單一角色（一站式代配用）：
 // 不觸碰既有角色——避免以舊快照呼叫全量 AssignRoles 的 lost update
-// （併發 admin 剛授予的 admin/auditor 被靜默覆蓋，codex 審查 #1）。
+// （併發 admin 剛授予的 admin/auditor 被靜默覆蓋）。
 // 已具該角色時為 no-op（先查後寫，跨 PG/SQLite 可攜的冪等）
 func (s *UserService) AddRole(userID uint, roleName string) error {
 	var user model.User
@@ -594,7 +594,7 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 		}
 		return fmt.Errorf("查詢角色失敗: %w", err)
 	}
-	// 原子冪等追加（codex gpt-5.6-sol 審查 P2）：ON CONFLICT DO NOTHING 讓兩 admin
+	// 原子冪等追加：ON CONFLICT DO NOTHING 讓兩 admin
 	// 併發代配同一人時，敗方 no-op 而非撞 user_roles 複合主鍵回 500——先查後寫有
 	// TOCTOU 窗會退化 idempotent 端點。單條 upsert 不觸碰其他角色列，Postgres/SQLite 皆支援
 	if err := s.db.Exec(
@@ -677,7 +677,7 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	}
 	// applyRoles 鎖內三步：重讀現行角色 → 比對 → 替換＋（有變動時）失效既有憑證。
 	//
-	// 角色變更 SHALL 推進 credential_epoch（C-1）：管理面的權限判定讀的是 JWT 內的
+	// 角色變更 SHALL 推進 credential_epoch：管理面的權限判定讀的是 JWT 內的
 	// **角色快照**（middleware/auth.go 的 RequireRole、permission.go 的 RequirePermission），
 	// 世代閘只比對 epoch 不重查角色。不推進世代，被撤除 admin 者在其 access token 的
 	// 剩餘壽命內仍以 admin 通過管理端判定，據以呼叫本端點把自己的角色改回來——
@@ -691,9 +691,9 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	// 刻意**不呼叫 revokeUserAccess**：終斷協議會話／唯讀訂閱／錄影 token 是「此帳號
 	// 整體不該再有存取」的語義（停用、刪除、解綁），角色縮減不屬之——同改密路徑的取捨。
 	// 惟此類比不完全成立：改密是使用者自身的例行操作，降權是管理者發動的權限剝奪，
-	// 兩者威脅模型不等價。進行中唯讀監看訂閱的殘留（monitor 不受 CPG-010-01 約束）
-	// 已記於 role-change-revocation/backlog.md（F1），非本函式邏輯需處理範圍。
-	// 降權後**新的**特權連線已由 CPG-010-01 的 DB 現查角色擋下
+	// 兩者威脅模型不等價。進行中唯讀監看訂閱的殘留（monitor 不受 -01 約束）
+	// 已另行記錄，非本函式邏輯需處理範圍。
+	// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下
 	applyRoles := func(tx *gorm.DB) error {
 		changed, err := roleSetDiffers(tx, userID, roles)
 		if err != nil {
@@ -719,7 +719,7 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	if keepsAdmin {
 		assignErr = WithUserCredentialLock(s.db, userID, applyRoles)
 	} else {
-		// 取鎖順序 system → user（D13），與停用路徑同形
+		// 取鎖順序 system → user，與停用路徑同形
 		assignErr = WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 			return withUserCredentialLockTx(tx, userID, applyRoles)
 		})
@@ -789,11 +789,11 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 	if active {
 		statusErr = writeStatus(s.db)
 	} else {
-		// 停用同時推進 credential_epoch（D2/D9，spec「帳號停用」情境）：**access token
+		// 停用同時推進 credential_epoch（spec「帳號停用」情境）：**access token
 		// 是 stateless 的**，只撤 refresh 對它毫無作用，攻擊者手上的 access 與尚未兌換的
 		// ticket／MFA pending／connect grant 會全數撐滿一個 TTL。
 		// 三步同交易同鎖（active=false ＋ 世代推進 ＋ 撤 refresh）：中途失敗一律整筆回滾，
-		// 不得停在「已停用但憑證仍有效」的中間態。取鎖順序 system → user（D13）
+		// 不得停在「已停用但憑證仍有效」的中間態。取鎖順序 system → user
 		statusErr = WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 			return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
 				if err := writeStatus(tx); err != nil {
@@ -818,7 +818,7 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 		return fmt.Errorf("更新使用者狀態失敗: %w", statusErr)
 	}
 
-	// 停用即時撤權（8.2.5/D6 ＋ idp-oidc-integration D2/D9）：鎖外收線三管道——
+	// 停用即時撤權（8.2.5）：鎖外收線三管道——
 	// 協議會話（活著的目標機 shell 不得等閒置逾時）、唯讀訂閱（監看／分享不建
 	// sessions 列，會話掃描完全掃不到）、錄影 token（in-memory 且不做世代比對）。
 	// 與外部身分四操作共用 revokeUserAccess 出口，避免各寫一份而漏掉其中一條。
@@ -831,7 +831,7 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 	return nil
 }
 
-// SetInactivityExempt 設定閒置停用豁免旗標（PCI 8.2.6，D8；呼叫端負責權限與審計）
+// SetInactivityExempt 設定閒置停用豁免旗標（PCI 8.2.6；呼叫端負責權限與審計）
 func (s *UserService) SetInactivityExempt(userID uint, exempt bool) error {
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
@@ -855,7 +855,7 @@ func (s *UserService) ChangePassword(userID uint, newPassword string) error {
 	return s.setPassword(userID, newPassword, forceChange)
 }
 
-// SelfChangePassword 自助改密（/auth/change-password，D11）：
+// SelfChangePassword 自助改密（/auth/change-password）：
 // userID 一律取自 token claims；須驗證目前密碼，防 token 被竊後直接奪取帳號
 func (s *UserService) SelfChangePassword(userID uint, oldPassword, newPassword string) error {
 	var user model.User
@@ -892,7 +892,7 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 		return ErrExternalUserPassword
 	}
 
-	// 新密碼須異於目前密碼（PW-3）：獨立於歷史政策，history_count=0 時仍成立——
+	// 新密碼須異於目前密碼：獨立於歷史政策，history_count=0 時仍成立——
 	// 否則 must_change 用戶可「改」成相同值卻清掉強制改密旗標，8.3.5 形同虛設
 	if crypto.DefaultPasswordVerifier().Verify(user.Password, []byte(newPassword)) == nil {
 		return &policy.PasswordPolicyViolation{
@@ -902,7 +902,7 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 		}
 	}
 
-	// 密碼政策驗證（D3 單一 validator，含歷史重用比對）
+	// 密碼政策驗證（單一 validator，含歷史重用比對）
 	if err := s.ValidateNewPassword(userID, newPassword); err != nil {
 		return err
 	}
@@ -913,11 +913,11 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 		return fmt.Errorf("密碼加密失敗: %w", err)
 	}
 
-	// 寫入與世代推進同交易同鎖（D2/D9、D13）：改密 SHALL 推進 credential_epoch——
+	// 寫入與世代推進同交易同鎖：改密 SHALL 推進 credential_epoch——
 	// **access token 是 stateless 的**，撤 refresh 對它毫無作用，不推進世代則
 	// 「密碼可能已洩漏所以改掉」之後，竊得舊 access 者仍可用滿一整個 TTL，
 	// 且未兌換的 connect grant／MFA pending 一併存活。
-	// 改密者本人不會被自己的推進鎖在門外：D12 的換發路徑以**現查**世代簽新會話
+	// 改密者本人不會被自己的推進鎖在門外：換發路徑以**現查**世代簽新會話
 	now := time.Now()
 	err = WithUserCredentialLock(s.db, userID, func(tx *gorm.DB) error {
 		if err := tx.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
@@ -938,7 +938,7 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 	}
 
 	// 改密撤銷全部會話（spec：自助或 admin 重設皆同）——密碼可能因洩漏而改，
-	// 各裝置既存會話須重新驗證。強制改密流程隨後由 handler 換發新會話（D12），順序不受影響。
+	// 各裝置既存會話須重新驗證。強制改密流程隨後由 handler 換發新會話，順序不受影響。
 	//
 	// **刻意不呼叫 revokeUserAccess**：spec 對改密只要求推進世代，未列入收線；
 	// 改密是使用者自己的例行操作，連帶砍掉其正在進行的維運 shell 與監看不是該條款的

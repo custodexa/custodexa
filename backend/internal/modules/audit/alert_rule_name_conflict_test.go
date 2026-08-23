@@ -14,7 +14,7 @@ import (
 // setupAlertRuleDB 建 alert_rules 表並**顯式**加上 name 的唯一索引。
 //
 // 時序說明：正式的唯一索引由 migration baseline 建立
-// （migration-baseline-compression 任務 4.1，種子冪等的前提），本次改動不碰
+// （任務 4.1，種子冪等的前提），本次改動不碰
 // migration。測試因此自行建立同形約束——`CREATE UNIQUE INDEX ... (name)`，
 // 與 baseline 將建的那條語義相同（該表無 DeletedAt，故為一般唯一索引而非
 // partial）。這樣測的仍是「真實約束觸發 → 服務轉譯」的完整路徑，而不是把

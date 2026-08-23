@@ -1,9 +1,9 @@
-// Package connectgate 承載 W10「連線閘判斷點位置」機械守衛。
+// Package connectgate 承載「連線閘判斷點位置」機械守衛。
 //
 // # 為什麼是獨立 package（自 cmd/server 拆出）
 //
 // 本守衛以 `packages.Load`／檔案樹走訪把**原始碼樹**當輸入，一行都不碰
-// `package main` 的內部符號（掃描根由自帶的 w10ModuleRoot 從 go.mod 反查，
+// `package main` 的內部符號（掃描根由自帶的 gateModuleRoot 從 go.mod 反查，
 // 與守衛檔住哪無關）。它原本與另外八支同型全樹掃描守衛擠在 `cmd/server`
 // 一個 package 內循序執行，整包逼近 `go test` 的 600 秒 per-package 預設上限
 // ——照專案文件跑 `go test ./...`（不帶 `-timeout`）會得到一個

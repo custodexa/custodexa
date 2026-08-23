@@ -9,23 +9,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// alertRecorder 指令告警落地面（modular-architecture W4 任務 4.9 建置、W5 接線）。
+// alertRecorder 指令告警落地面。
 //
 // 介面契約見 pkg/gatewayapi/alert.go 的 AlertSink。
 //
-// # BD-1 的結構性解法（W5 已接線）
+// # 告警落地面的結構性解法
 //
 // 收口前兩條寫入路徑：
 //
 //	internal/modules/audit/alert_matcher.go  批寫 → 通知 → syslog tee（完整）
-//	internal/sshproxy/command_blocker.go     直寫 DB，**繞過 syslog tee**（BD-1 缺陷）
+//	internal/sshproxy/command_blocker.go     直寫 DB，**繞過 syslog tee**
 //
 // 本型別把「入庫＋通知＋離機轉發」三件事收成一個落地面，使 tee 結構性不可漏。
-// W5 已把上述兩條路徑改接過來（tasks 5.1／5.3）：阻斷告警自此與比對告警同軌，
+// 上述兩條路徑都已改接過來：阻斷告警自此與比對告警同軌，
 // 離機 syslog 不再獨缺「實際被阻斷的指令」這一類最高價值證據。
 // 「只有本檔可以寫 command_alerts 列」由 cmd/server/command_alert_write_guard_test.go 釘住。
 //
-// # 錯誤語義（W5 5.4 明訂，與 gatewayapi.AlertSink 註解互為引用）
+// # 錯誤語義（與 gatewayapi.AlertSink 註解互為引用）
 //
 // RecordAlert／RecordAlerts 同步寫、error 原樣回傳、不吞不包裝、不入佇列。
 // 呼叫端（阻斷路徑與比對路徑）維持「只記 log 不阻斷」——兩者都沒有可回滾的業務交易，
@@ -90,8 +90,8 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 // alertRowOf 由傳輸形狀組出落地列。
 //
 // Disposition **不補預設值**：gatewayapi.CommandAlert 的欄位註解明訂「實作端 SHALL
-// 顯式設值，不得倚賴 DB default」。W5 5.2 已讓兩條路徑各自顯式寫 pending；在此補一層
-// 預設會把「將來某條新路徑忘了設」重新藏起來，那正是 BD-1 這類缺陷的成因。
+// 顯式設值，不得倚賴 DB default」。兩條路徑目前各自顯式寫 pending；在此補一層
+// 預設會把「將來某條新路徑忘了設」重新藏起來，那正是這類缺陷的成因。
 // 兩條路徑確實都設了 pending，由 TestBothAlertPathsWriteIdenticalShape 逐欄釘住。
 func alertRowOf(a gatewayapi.CommandAlert) model.CommandAlert {
 	return model.CommandAlert{

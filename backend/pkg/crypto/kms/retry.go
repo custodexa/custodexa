@@ -12,8 +12,8 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// 建構期 DescribeKey 的有界重試（D11.1 裁決 1「有界重試」＋round-2 精確化
-// ＋round-4 codex med #1／#2）。
+// 建構期 DescribeKey 的有界重試（安全審查 med #1／#2
+// 的精確化）。
 //
 // **為何需要重試**：C 模式沒有 B 模式的段 1，建構期單次失敗即 fail-close＝
 // 連 /healthz 都起不來，一次節流或區域抖動就是 crash loop 且零可觀測面。
@@ -21,7 +21,7 @@ import (
 // **為何必須有界**：無界重試等於把「金鑰組態錯誤」拖成「服務永遠不就緒」，
 // 操作者看不到根因。故總嘗試上限 3 次、總時間預算 <10s。
 //
-// **「3 次」必須是實際 HTTP 請求數，不是本層的迴圈次數（codex med #1）**：
+// **「3 次」必須是實際 HTTP 請求數，不是本層的迴圈次數（安全審查 med #1）**：
 // AWS SDK v2 的預設 retryer 自帶 3 次嘗試，與本層的 3 次相乘＝最多 9 個 HTTP
 // 請求、退避總長遠超本層預算，且啟動風暴放大三倍。故 describeCallOptions 於
 // **呼叫點**把 SDK 內層重試關掉（RetryMaxAttempts=1），由本層獨佔重試語義。
@@ -46,9 +46,9 @@ var ErrKMSUnavailable = errors.New("KMS 不可達：拒絕啟動")
 var ErrKMSRejected = errors.New("KMS 拒絕請求")
 
 // retryableCodes **允許清單**：確定屬瞬時、且重試確實可能改變結果的錯誤碼
-// （round-4 codex med #2 收窄）。
+// （安全審查 med #2 收窄）。
 //
-// **LimitExceededException 已移出（codex med #2）**：它在 KMS 是「已達帳號資源
+// **LimitExceededException 已移出（同上）**：它在 KMS 是「已達帳號資源
 // 配額」（如金鑰數、grant 數上限），屬需要人介入的組態問題而非瞬時節流——
 // 對它重試只是把一個明確錯誤延後 9 秒，訊息還一模一樣。
 //
@@ -77,7 +77,7 @@ var retryableCodes = map[string]bool{
 
 // retryDecision 錯誤分流結果。
 //
-// **為何需要三分而非二分（codex med #2 的連帶修正）**：原實作把「不可重試」
+// **為何需要三分而非二分（安全審查 med #2 的連帶修正）**：原實作把「不可重試」
 // 一律包成 ErrKMSRejected（「遭拒」），但 DNS NXDOMAIN、TLS 憑證錯誤這些
 // **非 API 層**的永久性失敗根本不是 KMS 拒絕了我們——把它們說成「遭拒」會讓
 // 操作者去查 IAM policy，而根因在 DNS／網路組態。
@@ -94,7 +94,7 @@ const (
 
 // transientSyscallErrs 連線層的瞬時失敗（區域抖動／LB 換節點的實際長相）。
 //
-// 逐一列舉而非「凡 net.Error 皆重試」（codex med #2）：後者會把
+// 逐一列舉而非「凡 net.Error 皆重試」（安全審查 med #2）：後者會把
 // **DNS NXDOMAIN**（region 拼錯）、憑證驗證失敗這類永久性問題也重試三輪，
 // 把一個一秒可見的組態錯誤變成九秒的啟動延遲。
 var transientSyscallErrs = []error{
@@ -164,12 +164,12 @@ func classifyKMSError(err error) retryDecision {
 // retryDescribe 以有界退避重試執行建構期探測。
 //
 // 四個終止條件互斥且各有專屬訊息：
-//   - 呼叫端 context 取消 → 回原因，**不吞成逾時**（round-2 codex low 明列）；
+//   - 呼叫端 context 取消 → 回原因，**不吞成逾時**（安全審查 low 明列）；
 //   - 錯誤不可重試 → 依 API／非 API 分別回 ErrKMSRejected／ErrKMSUnavailable；
 //   - 總時間預算耗盡 → 明示預算；
 //   - 嘗試次數用盡 → 明示次數。
 //
-// **預算檢查置於「次數用盡」之前（round-4 codex low #1）**：最後一次呼叫若正好
+// **預算檢查置於「次數用盡」之前（安全審查 low #1）**：最後一次呼叫若正好
 // 把 9s 預算耗光，原實作會報「重試 3 次仍失敗」——那是誤導，真因是預算耗盡
 // （操作者該調的是網路而不是次數）。故每次呼叫返回後先看預算 context 的 Err()。
 func retryDescribe[T any](ctx context.Context, label string, call func(context.Context) (T, error)) (T, error) {

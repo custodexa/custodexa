@@ -10,9 +10,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// 解封後遷移佇列與重加密入口（kek-provider-modularization 交叉相容契約 3／tasks 1.8）。
+// 解封後遷移佇列與重加密入口（交叉相容契約 3）。
 //
-// **為何需要佇列（opus 復審 N3 的實質解法）**：需要 codec 的資料 migration 不能留在
+// **為何需要佇列**：需要 codec 的資料 migration 不能留在
 // 啟動段 1——B（ui）模式的段 1 既無 KEK 也無 DEK（兩者都要等解封後的段 2），
 // 「migration 期自建 codec」在 B 模式下不可能成立。故：
 //
@@ -44,19 +44,19 @@ var (
 	postUnsealQueue []PostUnsealMigration
 	// postUnsealBuiltins 已登記的內建登記器（依登記序保存＝佇列順序）。
 	//
-	// **存在理由是 4.9 環拆解**（Phase B W1 1.10）：原本
+	// **存在理由是 4.9 環拆解**：原本
 	// RegisterBuiltinPostUnsealMigrations 直接呼叫 identity 的
 	// registerLDAPSeedMigration，使 keyvault→identity 成為真出向邊
-	// （R3.1 §3.1 環 4.9）。改由各模組把自己的登記器交給組裝根、組裝根注入本清單後，
+	// （即 4.9 環）。改由各模組把自己的登記器交給組裝根、組裝根注入本清單後，
 	// keyvault 只擁有佇列機制，不再認識任何業務模組。
 	//
 	// 清單與佇列分開保存，是為了讓 ResetPostUnsealQueueForTest 仍能
-	// 「清空後重新登記 builtin」（D5.1 round-4 F10 的決定不因拆環而失效）——
+	// 「清空後重新登記 builtin」（該決定不因拆環而失效）——
 	// 佇列被清空，登記器不被清空，重播即回到生產狀態。
 	postUnsealBuiltins []postUnsealBuiltin
 	// postUnsealRuns 逐項執行次數。
 	//
-	// 存在理由是 B 模式的時序驗收（tasks 2.0）：「envelope_legacy 於 sealed 期
+	// 存在理由是 B 模式的時序驗收：「envelope_legacy 於 sealed 期
 	// 不執行、解封後恰執行一次」無法由佇列成員清單觀察——那只說明它被登記了，
 	// 不說明它被跑了幾次。沒有計數器時，該驗收只能靠日誌字串比對。
 	postUnsealRuns = map[string]int{}
@@ -97,9 +97,9 @@ func RegisterPostUnsealMigration(m PostUnsealMigration) {
 // RegisterPostUnsealBuiltin 登記一個內建遷移的登記器，並立即執行它一次。
 //
 // **呼叫者是組裝根**（`cmd/server/stage2.go`）**與測試 setup**，不是 keyvault 自己：
-// 佇列機制屬 keyvault，遷移內容屬各業務模組，兩者由組裝層縫合（R3.1 §3.1 環 4.9 拆法）。
+// 佇列機制屬 keyvault，遷移內容屬各業務模組，兩者由組裝層縫合（4.9 環的拆法）。
 //
-// **為何仍不是 init()**（沿用 D5.1 round-4 F10 的理由）：Go 的 init 依檔名字典序執行，
+// **為何仍不是 init()**：Go 的 init 依檔名字典序執行，
 // 順序不可控；改為組裝根顯式登記後，佇列順序＝組裝根的登記順序，是可讀、可測、
 // 可重置的單一事實。
 //
@@ -126,10 +126,10 @@ func RegisterPostUnsealBuiltin(name string, register func()) {
 
 // RegisterBuiltinPostUnsealMigrations 重播全部已登記的內建登記器（冪等）。
 //
-// **佇列不含任何過渡格式遷移**（release-transitional-cleanup）：legacy 密文信封化
+// **佇列不含任何過渡格式遷移**：legacy 密文信封化
 // （`envelope_legacy`）與 AAD 正向遷移已整組拆除——終態下寫入端只產 `enc:a1`，
 // 無存量可遷。佇列機制本身是三模式共用的正式架構，保留。
-// 生產佇列現有一項：LDAP 設定 env seed（`ldap_seed`，ldap-settings-migration D4
+// 生產佇列現有一項：LDAP 設定 env seed（`ldap_seed`
 // ——需 codec 加密 bind 密碼，故必登記於本佇列而非段 1 migration），
 // 其登記器由 `cmd/server/stage2.go` 注入。
 func RegisterBuiltinPostUnsealMigrations() {
@@ -153,8 +153,8 @@ func PostUnsealMigrationNames() []string {
 	return names
 }
 
-// ResetPostUnsealQueueForTest 測試用重置：**清空後重新登記 builtin**
-// （D5.1 round-4 F10）。單純清空會讓「用了 Reset 的測試」看到一個沒有內建項的
+// ResetPostUnsealQueueForTest 測試用重置：**清空後重新登記 builtin**。
+// 單純清空會讓「用了 Reset 的測試」看到一個沒有內建項的
 // 佇列，與生產狀態不符——那正是登記改為顯式函式後必須配套的一半。
 func ResetPostUnsealQueueForTest() {
 	postUnsealMu.Lock()
@@ -188,8 +188,8 @@ func RunPostUnsealMigrations(db *gorm.DB, codec crypto.ColumnCodec) int {
 
 // RecryptForNewRef 重加密入口（交叉相容契約 3(a)）：將綁定 oldRef 的密文改綁 newRef。
 //
-// 定案 A2 後 AAD 綁 table|column（不綁 pk），故**同表同欄的列間複製不需經本入口**
-// （密文原樣複製即可，asset-multi-account 的複製契約因此完好）；本入口用於
+// AAD 綁 table|column（不綁 pk），故**同表同欄的列間複製不需經本入口**
+// （密文原樣複製即可，資產多帳號的複製契約因此完好）；本入口用於
 // **跨表或跨欄**的搬遷（如 assets.password_enc → asset_accounts.password_enc）。
 //
 // **codec 由呼叫端傳入**，不自全域或 KeyManager 取得——「複製一列密文到另一列」

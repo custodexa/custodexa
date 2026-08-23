@@ -16,16 +16,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrKEKMismatch 開機 KEK 與金鑰表不符（key-management-envelope D8）：
+// ErrKEKMismatch 開機 KEK 與金鑰表不符：
 // 拒絕啟動，不靜默退回 legacy 路徑帶病運行
 var ErrKEKMismatch = errors.New("KEK 與金鑰表不符：請確認 ENCRYPTION_KEY 是否為換鑰精靈重包後的新值（或誤改回舊值）")
 
-// KeyManagerService 信封加密金鑰管理（key-management-envelope D1-D5）：
+// KeyManagerService 信封加密金鑰管理：
 // 資料由 DEK 加密、DEK 被 KEK 包裹落庫（data_keys 表）。
 // 實作 crypto.ColumnCodec（data 用途）：EncryptFor 以 active DEK 寫帶 AAD 的
 // 版本化信封格式（`enc:a1:v<N>`），DecryptFor 依列身分驗證 AAD 後解密。
 //
-// **終態（release-transitional-cleanup）**：無 AAD 寫入能力與 legacy 單鑰解密
+// **終態**：無 AAD 寫入能力與 legacy 單鑰解密
 // 路徑皆已整組刪除——非 `enc:a1` 之值一律 fail-close（ErrNonFinalCiphertext）。
 // 審計 HMAC 鑰（audit_integrity 用途）以原始位元組提供給完整性服務。
 type KeyManagerService struct {
@@ -40,11 +40,11 @@ type KeyManagerService struct {
 	active map[string]int
 	// rewrapPending KEK 重包已執行但尚未以新 KEK 開機（清冊顯示「重包未完成」）
 	rewrapPending bool
-	// lastSwitch 本次啟動偵測並收尾的 KEK 切換結果（key-inventory-transparency）：
+	// lastSwitch 本次啟動偵測並收尾的 KEK 切換結果：
 	// 供 main 於 audit 就緒後 best-effort 補記審計；證據主體為退役列本身。
 	// nil＝本次啟動無切換收尾。
 	lastSwitch *KEKSwitchResult
-	// lastFinalizeErr 本次啟動收尾失敗原因（kek-rewrap-hygiene-hardening D5）：
+	// lastFinalizeErr 本次啟動收尾失敗原因：
 	// KeyManager 初始化早於告警服務，此處僅記錄；main 於 InitAuditFailure＋
 	// InitAlertNotifier 就緒後讀取上報（沿 LastKEKSwitch 補記模式）。
 	// nil＝本次啟動收尾成功或無收尾。取鎖跳過不記（非失敗）。
@@ -56,7 +56,7 @@ type KeyManagerService struct {
 // KEKSwitchResult 本次啟動 KEK 切換收尾結果（供審計與退役史 from→to）
 type KEKSwitchResult struct {
 	ToKEKID      string         // 切換到的新 KEK 指紋（現行）
-	Retired      map[string]int // 各舊 KEK 指紋 → 退役筆數（逐把審計，codex 實作審 D6）
+	Retired      map[string]int // 各舊 KEK 指紋 → 退役筆數（逐把審計）
 	RetiredCount int            // 退役總數
 }
 
@@ -71,7 +71,7 @@ type kekSlot struct {
 //   - KEK 一致性：某 (purpose,version) 僅存在其他 KEK 包裹的列 → ErrKEKMismatch
 //   - 重包收尾：同 (purpose,version) 新舊 KEK 並存且本 KEK 為較新者 → 清除舊列
 //
-// **legacy 單鑰參數已刪除**（release-transitional-cleanup D3）：系統不具備任何
+// **legacy 單鑰參數已刪除**：系統不具備任何
 // legacy 解密路徑，無前綴密文於解密時即 fail-close。
 func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (*KeyManagerService, error) {
 	s := &KeyManagerService{
@@ -81,7 +81,7 @@ func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (*KeyManagerService, er
 		ciphers: map[int]*crypto.AESCrypto{},
 		active:  map[string]int{},
 	}
-	// bootstrap 閘門（key-inventory-transparency）：僅金鑰表完全為空時補鑄；
+	// bootstrap 閘門：僅金鑰表完全為空時補鑄；
 	// 非空表由 load 驗證完整性（缺代表／斷號／損毀即 fail-close，不補鑄），
 	// 避免退役列使某 slot 只剩歷史而被誤判為空、補出新鑰使歷史密文永久不可解
 	var count int64
@@ -101,7 +101,7 @@ func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (*KeyManagerService, er
 
 // load 讀取金鑰表、驗證形狀與完整性、以現行 KEK 代表列解密、偵測並收尾 KEK 切換。
 // 狀態靠明確欄位（KEKPending/KEKRetiredAt/KEKRetiredBy）而非 CreatedAt 推導；
-// 收尾為軟刪除退役、best-effort：失敗不阻塞啟動、下次啟動重試（key-inventory-transparency）
+// 收尾為軟刪除退役、best-effort：失敗不阻塞啟動、下次啟動重試
 func (s *KeyManagerService) load() error {
 	var rows []model.DataKey
 	if err := s.db.Order("purpose, version, created_at").Find(&rows).Error; err != nil {
@@ -112,7 +112,7 @@ func (s *KeyManagerService) load() error {
 	}
 	env := s.kekKeyID()
 
-	// 0. 委託模式的 kek_id 形式守衛（D11.1 裁決 1）：只偵測、不改寫。
+	// 0. 委託模式的 kek_id 形式守衛：只偵測、不改寫。
 	// 本地 provider 下為 no-op；委託下僅檢查可證明為本 provider 委託格式的列。
 	if err := guardDelegatedKEKIDCanonical(rows, s.kek); err != nil {
 		return err
@@ -159,11 +159,11 @@ func (s *KeyManagerService) load() error {
 			reps[sk] = r
 		}
 	}
-	// 定向回退指引（kek-rewrap-hygiene-hardening D9）：env 為已退役且材料尚未
+	// 定向回退指引：env 為已退役且材料尚未
 	// 清理的 KEK 時，fail-close 不變，但錯誤指明回退路徑（取代籠統 mismatch）。
 	// 材料已清理者不觸發——訊息不洩漏退役史之外的資訊。不做自動 un-retire：
 	// 切換完成後誤設舊 env 幾乎必為操作失誤，自動反轉會靜默撤銷金鑰儀式。
-	// 指引依退役原因分流（opus 第二輪審 M2）：switched＝曾在役、「回退」語義
+	// 指引依退役原因分流：switched＝曾在役、「回退」語義
 	// 成立；abandoned＝從未在役、「回退」是誤稱，照 runbook 復原退役列等於
 	// 靜默撤銷一次刻意的放棄決策——指引改為重跑重包
 	envRetiredReason := ""
@@ -216,7 +216,7 @@ func (s *KeyManagerService) load() error {
 	}
 
 	// 6. 切換偵測與 best-effort 原子收尾（收尾自行鎖內重讀，不用本函式的舊快照）。
-	// 寫入持 s.mu 與 getter 對稱（opus 第一輪審 L7）——目前僅 Init 期單執行緒，
+	// 寫入持 s.mu 與 getter 對稱——目前僅 Init 期單執行緒，
 	// 但鎖用法不對稱是未來線上重載改動的地雷
 	s.mu.Lock()
 	s.rewrapPending = foreignPending // env 為舊 KEK＋有 foreign pending＝待切換（UI 提示用）
@@ -228,8 +228,7 @@ func (s *KeyManagerService) load() error {
 	return nil
 }
 
-// kekShapeValid 驗證單列 KEK 欄位形狀合法（key-inventory-transparency＋
-// kek-rewrap-hygiene-hardening D9 軟刪除）：
+// kekShapeValid 驗證單列 KEK 欄位形狀合法（軟刪除語義下）：
 // live（非 pending、未退役、有 wrapped）／pending（待切換、未退役、有 wrapped）／
 // retired-switched（切換退役：有 replacement）／retired-abandoned（放棄退役：
 // 無 replacement）。退役列的 wrapped 保留至顯式清理（清理後為空）——兩態皆合法。
@@ -245,7 +244,7 @@ func kekShapeValid(r model.DataKey) bool {
 		r.KEKRetiredReason == model.KEKRetireReasonSwitched && r.KEKRetiredBy != ""
 	retiredAbandoned := !r.KEKPending && r.KEKRetiredAt != nil &&
 		r.KEKRetiredReason == model.KEKRetireReasonAbandoned && r.KEKRetiredBy == ""
-	// 已清理佔位（D9 顯式清理後的退役 DEK 版本現行列）：材料已銷毀、
+	// 已清理佔位（顯式清理後的退役 DEK 版本現行列）：材料已銷毀、
 	// 列保留使版本鏈不斷號；load 跳過 unwrap、不再供解密。
 	// 佔位亦可為 pending（KEK 重包時佔位隨行複製，切換後轉正保鏈）
 	purgedPlaceholder := r.KEKRetiredAt == nil && r.KEKRetiredBy == "" &&
@@ -255,13 +254,13 @@ func kekShapeValid(r model.DataKey) bool {
 
 // ErrPreReleaseKeyTable 金鑰表含發佈前過渡格式（version 0 之列）。
 //
-// **為何必須顯式拒絕而非靠既有閘攔下**（release-transitional-cleanup D4）：
+// **為何必須顯式拒絕而非靠既有閘攔下**：
 // v0 列既不構成版本斷號（它在 1..max 之外）也不使某用途缺 active，故既有的
 // 連續性／active 數檢查會**放行**它，而放行的後果是該 v0 鑰被載入——
 // `key_version=0` 的舊審計列反而驗章成功，推翻「系統無 v0 鑰」的不變式。
 var ErrPreReleaseKeyTable = errors.New("資料庫含發佈前過渡格式（金鑰表存在 version 0 之列），請重建資料庫")
 
-// validateKeyChain 驗證現行代表列形成的金鑰鏈完整性（key-inventory-transparency）：
+// validateKeyChain 驗證現行代表列形成的金鑰鏈完整性：
 // Status ∈ {active,retired}、每必要用途恰一 active、data 與 audit_integrity 版本
 // 皆自 1 至 max 連續、**任何用途之 version 0 列一律拒絕啟動**。
 // 缺用途／缺 active／多 active／斷號／非法 Status／v0 殘列 → fail-close
@@ -269,7 +268,7 @@ func validateKeyChain(reps map[kekSlot]*model.DataKey) error {
 	versByPurpose := map[string][]int{}
 	activeByPurpose := map[string]int{}
 	for sk, r := range reps {
-		// v0 殘列閘（D4）：**任何用途**，不限 audit_integrity——判定放在其他
+		// v0 殘列閘：**任何用途**，不限 audit_integrity——判定放在其他
 		// 檢查之前，使錯誤訊息直指「須重建」而非籠統的金鑰表損毀
 		if sk.version == 0 {
 			return fmt.Errorf("%w（%s v0）", ErrPreReleaseKeyTable, sk.purpose)
@@ -305,13 +304,13 @@ func validateKeyChain(reps map[kekSlot]*model.DataKey) error {
 	return nil
 }
 
-// finalizeSwitch 切換收尾（key-inventory-transparency＋kek-rewrap-hygiene-hardening
-// D3/D4/D9）：現行代表為 env pending（切換完成待轉正）者轉正；kek_id<>env 的 live
+// finalizeSwitch 切換收尾：
+// 現行代表為 env pending（切換完成待轉正）者轉正；kek_id<>env 的 live
 // 舊列（待退役 predecessor／退役 backlog）軟退役（reason=switched，材料保留至
 // 顯式清理）。整段在跨實例互斥鎖內、判定以鎖內重讀為準（鎖外 load 快照不可信——
 // 另一實例的 abandon 可能已改動 pending 集合）。
 //
-// 語義守衛（D4，鎖擋「同時」、守衛擋「先後皆合法但組合致命」）：
+// 語義守衛（鎖擋「同時」、守衛擋「先後皆合法但組合致命」）：
 //   - promote 影響列數必須等於鎖內重讀的預期數，否則整筆 rollback；
 //   - 逐 slot 驗證退役後仍存在 env 的 live 代表列，否則整筆 rollback。
 //
@@ -374,7 +373,7 @@ func (s *KeyManagerService) finalizeSwitch(env string) {
 		}
 		if len(toRetire) > 0 {
 			now := time.Now()
-			// 軟退役（D9）：僅改狀態欄位，wrapped_key 保留至顯式清理
+			// 軟退役：僅改狀態欄位，wrapped_key 保留至顯式清理
 			res := tx.Model(&model.DataKey{}).
 				Where("id IN ? AND kek_retired_at IS NULL", toRetire).
 				Updates(map[string]interface{}{
@@ -413,7 +412,7 @@ func (s *KeyManagerService) finalizeSwitch(env string) {
 }
 
 func (s *KeyManagerService) unwrapRow(row model.DataKey) ([]byte, error) {
-	// 守衛（key-inventory-transparency）：退役列／空 wrapped／非現行 KEK 包裹一律拒絕，
+	// 守衛：退役列／空 wrapped／非現行 KEK 包裹一律拒絕，
 	// 防未來新增 caller 繞過 load 的現行代表列篩選而誤解密
 	if row.KEKRetiredAt != nil || row.WrappedKey == "" {
 		return nil, fmt.Errorf("%w（金鑰 %s v%d 為退役或空列，不可解密）", ErrKEKMismatch, row.Purpose, row.Version)
@@ -423,35 +422,35 @@ func (s *KeyManagerService) unwrapRow(row model.DataKey) ([]byte, error) {
 	}
 	raw, err := unwrapMaterial(s.kek, row.Purpose, row.Version, row.WrappedKey)
 	if err != nil {
-		// **發佈前過渡格式另立一類**（release-transitional-cleanup D5）：無前綴或
+		// **發佈前過渡格式另立一類**：無前綴或
 		// 判別子 `1` 的值不是 KEK 不符，把它折進 ErrKEKMismatch 會讓操作者照著
 		// 「檢查 ENCRYPTION_KEY」的指引白忙——正解是重建資料庫。錯誤保持可辨識。
 		if errors.Is(err, crypto.ErrWrappedKeyPreRelease) {
 			return nil, fmt.Errorf("%w（金鑰 %s v%d）", err, row.Purpose, row.Version)
 		}
 		// kek_id 相符但解包失敗＝指紋碰撞或資料損毀，一律視為 KEK 不符拒啟動。
-		// **一致性的權威判準是「代表列 Unwrap 成功」，kek_id 比對僅為篩選**（D4／1.5）
+		// **一致性的權威判準是「代表列 Unwrap 成功」，kek_id 比對僅為篩選**
 		return nil, fmt.Errorf("%w（金鑰 %s v%d 解包失敗: %v）", ErrKEKMismatch, row.Purpose, row.Version, err)
 	}
 	return raw, nil
 }
 
 // kekKeyID 現行 KEK 的金鑰識別（落 kek_id 的值＝KeyRef().KeyID）。
-// 執行期模式（env／ui）SHALL NOT 進入此值（D4）。
+// 執行期模式（env／ui）SHALL NOT 進入此值。
 func (s *KeyManagerService) kekKeyID() string { return s.kek.KeyRef().KeyID }
 
 // KEKRef 現行 KEK 的金鑰引用（清冊與稽核用）
 func (s *KeyManagerService) KEKRef() crypto.KeyRef { return s.kek.KeyRef() }
 
-// KEKMode 現行 KEK 的執行期模式（D10 雙軌互證：清冊 SHALL 由此導出，
+// KEKMode 現行 KEK 的執行期模式（與執行期組態雙軌互證：清冊 SHALL 由此導出，
 // SHALL NOT 重讀 os.Getenv、亦 SHALL NOT 由 KeyRef().Provider 推導）
 func (s *KeyManagerService) KEKMode() string { return s.kek.Mode() }
 
 // wrapMaterial 以指定 provider 包裹金鑰材料並編為 wrapped_key 欄位值。
-// DEK 層 AAD＝`DEKAAD(purpose, version)`（D5，canonical 編碼、不含 kek_id 等
+// DEK 層 AAD＝`DEKAAD(purpose, version)`（canonical 編碼、不含 kek_id 等
 // 可變識別符）。
 //
-// **恆帶 AAD、恆帶 `wk:2` 前綴**（release-transitional-cleanup D5）：本地格式的
+// **恆帶 AAD、恆帶 `wk:2` 前綴**：本地格式的
 // 相容窗（裸 base64、無 AAD）已拆除，寫入端不再有任何格式分岔。
 func wrapMaterial(kek crypto.KEKProvider, purpose string, version int, raw []byte) (string, error) {
 	tag := kek.FormatTag()
@@ -490,17 +489,17 @@ func (s *KeyManagerService) putKey(purpose string, version int, raw []byte) {
 	}
 }
 
-// bootstrap 冪等補齊缺失金鑰（D3/D4）。
+// bootstrap 冪等補齊缺失金鑰。
 //
-// **僅鑄造各必要用途的 v1 active 鑰**（release-transitional-cleanup D4）：
+// **僅鑄造各必要用途的 v1 active 鑰**：
 // 原「audit_integrity 快照 legacy 派生鑰為 v0（retired）」已拆除——全新安裝不再
 // 出生即帶退役列，版本鏈自 v1 起。此適用於**全部**初始化路徑（env 模式首啟與
 // `ui` 模式初始化解封同）。
 func (s *KeyManagerService) bootstrap() error {
-	// 原子化（key-inventory-transparency，codex 實作審 MED）：三筆初始金鑰包同一交易，
+	// 原子化：三筆初始金鑰包同一交易，
 	// 中途失敗 rollback——不留「非空但不完整」的表，致後續啟動的金鑰鏈完整性檢查永久
 	// ErrKEKMismatch。記憶體狀態（keys/active）於 commit 成功後才更新。
-	// 跨實例互斥（D3，codex 第一輪審 #1）：bootstrap 也是 data_keys 寫入路徑——
+	// 跨實例互斥：bootstrap 也是 data_keys 寫入路徑——
 	// 空庫多副本同時啟動時，不入鎖會各自鑄出同版本不同材料的 v1（不同 KEK 下
 	// 唯一索引攔不住）形成腦裂。入鎖＋鎖內重讀該用途列數：已被他副本補齊即
 	// fail-close 要求重啟重載（不可沿用鎖外舊判定續寫）。
@@ -597,7 +596,7 @@ func (s *KeyManagerService) Decrypt(ciphertext string) (string, error) {
 	return s.decryptWith(ciphertext, crypto.CipherRef{})
 }
 
-// EncryptFor 以 active data DEK 加密並綁定列身分（D5 資料層 AAD）。
+// EncryptFor 以 active data DEK 加密並綁定列身分（資料層 AAD）。
 // ref 不完整（缺表／欄／pk）即拒絕——AAD 綁定不得因呼叫端疏漏而靜默退化。
 func (s *KeyManagerService) EncryptFor(_ context.Context, ref crypto.CipherRef, plaintext string) (string, error) {
 	if plaintext == "" {
@@ -629,7 +628,7 @@ func (s *KeyManagerService) DecryptFor(_ context.Context, ref crypto.CipherRef, 
 // ErrCipherRefIncomplete 資料層 AAD 綁定所需的列身分不完整
 var ErrCipherRefIncomplete = errors.New("密文列身分不完整，無法建立 AAD 綁定")
 
-// decryptWith 解密分派（release-transitional-cleanup D1：AAD 恆強制）。
+// decryptWith 解密分派（AAD 恆強制）。
 //
 // **兩個非終態分支一律 fail-close 回可辨識格式錯**，SHALL NOT 回退任何其他路徑：
 //   - 無前綴（`ok=false`，發佈前的 legacy 純 base64）→ ErrNonFinalCiphertext；
@@ -704,15 +703,15 @@ func (s *KeyManagerService) KEKKeyID() string {
 }
 
 // LastKEKSwitch 本次啟動偵測並收尾的 KEK 切換結果（nil＝無切換），供 main 於
-// audit 就緒後 best-effort 補記審計（key-inventory-transparency）
+// audit 就緒後 best-effort 補記審計
 func (s *KeyManagerService) LastKEKSwitch() *KEKSwitchResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastSwitch
 }
 
-// DEKVersionEntry 清冊 DEK 版本項（D9 顯式清理後補「已清理」衍生態，codex 第一輪
-// 審 #7）。material_purged 為 SQL 端衍生布林（wrapped_key 是否已清空）——查詢
+// DEKVersionEntry 清冊 DEK 版本項（顯式清理後補「已清理」衍生態）。
+// material_purged 為 SQL 端衍生布林（wrapped_key 是否已清空）——查詢
 // 絕不選取 wrapped_key 本值，服務記憶體也不經手材料。
 type DEKVersionEntry struct {
 	ID             uint       `json:"id"`
@@ -726,7 +725,7 @@ type DEKVersionEntry struct {
 }
 
 // ListKeys 金鑰清冊主 DEK 版本鏈（DB 側）：僅回現行 KEK 未退役、非 pending 的
-// 代表列（key-inventory-transparency D7）——退役史與 pending 各自獨立呈現，
+// 代表列——退役史與 pending 各自獨立呈現，
 // 版本鏈不摻雜歷史/過渡列。不含任何金鑰材料與 wrapped 值。
 func (s *KeyManagerService) ListKeys() ([]DEKVersionEntry, error) {
 	var rows []DEKVersionEntry
@@ -745,10 +744,10 @@ func (s *KeyManagerService) ListKeys() ([]DEKVersionEntry, error) {
 	return rows, nil
 }
 
-// KEKRetirementRecord KEK 退役史一筆（key-inventory-transparency D6）：
+// KEKRetirementRecord KEK 退役史一筆：
 // 按 from(舊 KEK 指紋)/to(replacement 指紋)/退役時間聚合後的一組退役列。
 // rows 為該組退役列數；material_rows 為其中材料尚存（未經顯式清理）的列數
-// （D9 軟刪除後材料保留至清理，清冊須可驗證銷毀結果）。不含 wrapped_key 本值。
+// （軟刪除後材料保留至清理，清冊須可驗證銷毀結果）。不含 wrapped_key 本值。
 type KEKRetirementRecord struct {
 	FromKEKID    string    `json:"from_kek_id"`
 	ToKEKID      string    `json:"to_kek_id"`
@@ -757,7 +756,7 @@ type KEKRetirementRecord struct {
 	MaterialRows int       `json:"material_rows"`
 }
 
-// ListRetiredKEKs KEK 退役史（key-inventory-transparency D6/D7）：查退役列
+// ListRetiredKEKs KEK 退役史：查退役列
 // （kek_retired_at IS NOT NULL），SELECT 僅取指紋/退役中繼欄位與材料存量
 // 衍生布林（絕不選 wrapped_key 本值），按 (kek_id, kek_retired_by, retired_at)
 // 聚合成 from→to 記錄，依退役時間新→舊排序。多次 A→B→C 切換以 replacement

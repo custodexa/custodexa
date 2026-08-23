@@ -2,7 +2,7 @@
 //
 // # 守的是什麼
 //
-// terminal-screen-parser-inhouse 自行實作了終端螢幕解析器（internal/vtscreen），
+// 本專案自行實作了終端螢幕解析器（internal/vtscreen），
 // 把無授權的 `github.com/LeeEirc/terminalparser` 從相依樹上拔掉。
 // 拔掉是一次性動作，**留下來的風險是它會自己長回來**：
 // 任何人一次 `go get`、一段從舊碼複製過來的片段、或 IDE 自動補上的 import，

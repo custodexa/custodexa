@@ -6,11 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 電支基準雙軌（security-backlog-settlement 塊 6）。
+// 電支基準雙軌（塊 6）。
 //
 // 本檔的重點是**取嚴語義**：兩基準在部分項目上方向相反，若「套用電支基準」
 // 實作為無條件覆寫，一個已符合 PCI 的設定會被改差——「套用合規基準」這個動作
-// 反而降低系統安全性。design D6 標為本塊唯一容易做錯之處。
+// 反而降低系統安全性。這是本塊唯一容易做錯之處。
 
 func TestEvaluateStrictest_TakesStricterOfTwoBaselines(t *testing.T) {
 	cases := []struct {
@@ -126,8 +126,8 @@ func TestEPaymentCompliance_NilWhenNoBaseline(t *testing.T) {
 }
 
 // 五個有電支值的政策項與其條號。**本表即為機器可檢的權威副本**——值與條號直接寫在
-// 這裡並被逐一斷言，改動任何一格都會紅；完整的法規逐條差異對照另存於維護者的
-// 私有文件，未隨公開倉庫發佈。**釘住值本身**：這些數字來自法規，被誤改時應該紅
+// 這裡並被逐一斷言，改動任何一格都會紅。
+// **釘住值本身**：這些數字來自法規，被誤改時應該紅
 func TestPolicyDefs_EPaymentBaselineValues(t *testing.T) {
 	want := map[string]struct{ value, requirement string }{
 		PolicyLockoutMaxAttempts:    {"5", "4-7(五)"},

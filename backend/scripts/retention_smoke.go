@@ -1,6 +1,6 @@
 //go:build ignore
 
-// retention_smoke.go 保留政策 live 驗證（audit-log-compliance task 2.3）：
+// retention_smoke.go 保留政策 live 驗證：
 // 對真 postgres 造過期資料 → 設保留政策 → PurgeAll → 驗刪除正確與 audit 留痕。
 // 用法：docker compose exec -T backend go run scripts/retention_smoke.go
 // 結束時還原政策為 0（永久），測試資料自行清除。
@@ -61,7 +61,7 @@ func main() {
 	// 4. 驗證 audit 留痕：本次 PurgeAll 至少刪了 3 筆 session_commands。
 	// 注意 retention 建構時 audit 傳 nil（script 不拉 worker pool），
 	// 故此處驗證的是「結果含刪除計數」而 audit 留痕由單測覆蓋；
-	// live 排程鏈的留痕在 02:00 排程或對抗驗證段驗
+	// live 排程鏈的留痕在 02:00 排程或端到端驗證段驗
 	deletedOK := false
 	for _, r := range results {
 		if r.Target == "session_commands" && r.Deleted >= 3 && r.Error == "" {

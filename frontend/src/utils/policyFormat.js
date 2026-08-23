@@ -1,11 +1,11 @@
-// 安全政策鍵的呈現與換算純函式（settings-domain-restructure D7 抽取）：
+// 安全政策鍵的呈現與換算純函式：
 // 四個設定域頁與共用元件同源，避免 enum 文案與符合性判定跨頁複製。
-// 譯文住 locale 檔 enum.policyEnum/transportLevel/accessPolicy.*（i18n-foundation D6）
+// 譯文住 locale 檔 enum.policyEnum/transportLevel/accessPolicy.*
 
 import { t } from '@/i18n'
 import { translated, warnMissingTranslation } from '@/utils/i18nDisplay'
 
-// policyLabel 政策項顯示名（i18n-backend-labels）：錨定既有 policy.key，當前語言有
+// policyLabel 政策項顯示名：錨定既有 policy.key，當前語言有
 // 非空 policyLabel.<key> 才譯，否則後端 label（zh fallback），再缺回 key。getter 內呼 t()
 // → render/computed 取值被依賴追蹤，切語言自動重繪。
 export function policyLabel(policy) {
@@ -32,8 +32,8 @@ export function policyNote(policy) {
   return v == null ? '' : v
 }
 
-// policyUnit 單位（i18n-backend-labels）：無 unit_key／當前語言無鍵／空 → 一律回
-// policy.unit（zh fallback），不回空字串（rr-I9）。
+// policyUnit 單位：無 unit_key／當前語言無鍵／空 → 一律回
+// policy.unit（zh fallback），不回空字串。
 export function policyUnit(policy) {
   if (!policy) return ''
   if (policy.unit_key) {
@@ -58,10 +58,10 @@ const localizedEnum = (ns, values) => {
 
 const enumLabels = localizedEnum('policyEnum', ['off', 'admin_only', 'all'])
 
-// 傳輸等級鍵的枚舉文案（transmission-security-policy）：off 與 mfa 的「未啟用」語義不同
+// 傳輸等級鍵的枚舉文案：off 與 mfa 的「未啟用」語義不同
 const transportEnumLabels = localizedEnum('transportLevel', ['off', 'warn', 'strict'])
 
-// 存取政策段位文案（access-policy-approval）：白話呈現三段語義
+// 存取政策段位文案：白話呈現三段語義
 export const accessPolicyEnumLabels = localizedEnum('accessPolicy', [
   'open',
   'reason',
@@ -97,7 +97,7 @@ export const formatValue = (policy, raw) => {
   return `${raw} ${policyUnit(policy)}`.trim()
 }
 
-// policyMin 數值輸入框的下界（policy-numeric-lower-bounds）。
+// policyMin 數值輸入框的下界。
 //
 // 後端的合法值域是 `{0 若 zero_disables} ∪ [min, max]`——**不連續**，而數字
 // 輸入框只表達得了連續區間。兩種情形分開處理：
@@ -115,8 +115,8 @@ export const policyMin = (policy) => {
   return policy.min || 1
 }
 
-// 保留天數鍵的 0 是「永久保留」語義（audit-log-compliance D2）、
-// 金鑰提醒鍵的 0 是「不提醒」（key-management-envelope D6），
+// 保留天數鍵的 0 是「永久保留」語義、
+// 金鑰提醒鍵的 0 是「不提醒」，
 // 與其他鍵的「0 = 停用」區分標註
 export const zeroHelperText = (policy) => {
   if (policy.key.startsWith('retention_')) return t('policyValue.zeroRetention')
@@ -129,7 +129,7 @@ export const zeroHelperText = (policy) => {
 
 // 未儲存的編輯即時反映符合性（儲存後以後端計算為準）。
 // 基準值與後端已算好的符合性欄位由呼叫端指定，使兩個基準共用同一套比較邏輯
-// （security-backlog-settlement D6：複製比較邏輯會使兩側日後漂移）
+// （複製比較邏輯會使兩側日後漂移）
 const isNonCompliantAgainst = (policy, value, savedValue, baseline, backendCompliant) => {
   if (value === savedValue) {
     return backendCompliant === false

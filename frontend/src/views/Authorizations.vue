@@ -85,7 +85,7 @@
                 />
               </el-select>
             </el-form-item>
-            <!-- 節點涵蓋盤點（authz-tag-node-filters D7）：第四個互斥維度 -->
+            <!-- 節點涵蓋盤點：第四個互斥維度 -->
             <el-form-item>
               <template #label>
                 <span>{{ $t('common.node') }}</span>
@@ -126,7 +126,7 @@
             </el-form-item>
           </el-form>
 
-          <!-- 快速篩選 chip（D7：對應伺服端 validity/source 參數，跨頁正確） -->
+          <!-- 快速篩選 chip（對應伺服端 validity/source 參數，跨頁正確） -->
           <div class="quick-filters">
             <el-radio-group
               v-model="quickFilter"
@@ -249,7 +249,7 @@
                 </template>
               </template>
             </el-table-column>
-            <!-- 帳號範圍（asset-multi-account D5）：預設全部帳號，可個別指定 username -->
+            <!-- 帳號範圍：預設全部帳號，可個別指定 username -->
             <el-table-column
               :label="$t('authorizations.colAccountScope')"
               min-width="160"
@@ -352,7 +352,7 @@
                   <el-icon><Key /></el-icon>
                   {{ $t('authorizations.accountScopeAction') }}
                 </el-button>
-                <!-- ticket 列按 revocable 分流（D4）：可撤走申請單撤銷流、
+                <!-- ticket 列按 revocable 分流：可撤走申請單撤銷流、
                      過期/未生效唯讀留存（審計證據）；manual 照常刪除 -->
                 <el-button
                   v-if="row.source === 'ticket' && row.revocable"
@@ -428,7 +428,7 @@
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 批次授權精靈（D6 拆檔；node_id 深連結預填經 prop 傳遞） -->
+    <!-- 批次授權精靈（node_id 深連結預填經 prop 傳遞） -->
     <AuthzBatchWizard
       v-model="batchDialogVisible"
       :prefill-node-id="prefillNodeId"
@@ -479,7 +479,7 @@
       </template>
     </el-dialog>
 
-    <!-- 帳號範圍調整（asset-multi-account D5） -->
+    <!-- 帳號範圍調整 -->
     <AuthzAccountScopeDialog
       v-model="accountScopeVisible"
       :row="accountScopeRow"
@@ -535,7 +535,7 @@ const activeTab = ref('records')
 const { isAdmin } = useRoles()
 
 // 過濾表單（user_id / user_group_id / asset_id / node_id 至多一個；
-// 零篩選＝全量，D1；node_id＝涵蓋盤點語義，authz-tag-node-filters D7）
+// 零篩選＝全量；node_id＝涵蓋盤點語義）
 const filterForm = reactive({
   user_id: '',
   user_group_id: '',
@@ -543,7 +543,7 @@ const filterForm = reactive({
   node_id: '',
 })
 
-// 快速篩選 chip → 伺服端 validity/source 參數（D7）
+// 快速篩選 chip → 伺服端 validity/source 參數
 const quickFilter = ref('all')
 const quickFilterParams = () => {
   switch (quickFilter.value) {
@@ -568,7 +568,7 @@ const handleSubjectFilterChange = (field) => {
   handleFilter()
 }
 
-// 取得授權列表：實送分頁參數；失敗顯錯不偽裝空狀態（D1）
+// 取得授權列表：實送分頁參數；失敗顯錯不偽裝空狀態
 const fetchAuthorizationList = async () => {
   loading.value = true
   loadError.value = ''
@@ -618,7 +618,7 @@ const fetchAssetList = async () => {
   }
 }
 
-// 節點樹選項（authz-tag-node-filters D7 篩選用）：平面列表組樹，
+// 節點樹選項（篩選用）：平面列表組樹，
 // 與精靈 nodeTreeOptions 同型轉換
 const groupList = ref([])
 const loadGroupList = async () => {
@@ -654,7 +654,7 @@ const loadUserGroupList = async () => {
   }
 }
 
-// 篩選/快速篩選/每頁筆數變更一律重設頁碼（codex M7：否則伺服端正確回
+// 篩選/快速篩選/每頁筆數變更一律重設頁碼（否則伺服端正確回
 // 空的第 N 頁，重現偽空狀態）
 const handleFilter = () => {
   pagination.page = 1
@@ -754,7 +754,7 @@ const handleDelete = async (row) => {
   }
 }
 
-// 帳號範圍調整（asset-multi-account D5）
+// 帳號範圍調整
 const accountScopeVisible = ref(false)
 const accountScopeRow = ref(null)
 
@@ -763,7 +763,7 @@ const openAccountScope = (row) => {
   accountScopeVisible.value = true
 }
 
-// ticket 撤銷（D4：借道 Change 2b 申請單撤銷 API，資格/附註/斷線聯動零新語義）
+// ticket 撤銷（借道 Change 2b 申請單撤銷 API，資格/附註/斷線聯動零新語義）
 const revokeDialogVisible = ref(false)
 const revokeSubmitting = ref(false)
 const revokeNote = ref('')
@@ -809,7 +809,7 @@ onMounted(() => {
   loadUserGroupList()
   loadGroupList()
 
-  // 資產/節點視角授權入口（asset-node-tree D5）：自資產頁樹「授權此節點」
+  // 資產/節點視角授權入口：自資產頁樹「授權此節點」
   // 跳轉預填——開精靈並經 prop 傳入節點 id，由精靈於清單落地後預勾
   //（route 可為 undefined：單測掛載無 router）
   const nodeIDRaw = route?.query?.node_id

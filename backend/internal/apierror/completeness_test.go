@@ -14,8 +14,8 @@ import (
 // the locale directory read-only and points this variable at it (see
 // docker-compose.dev.yml). Only the host fallback is decoupled.
 //
-// **The fallback no longer counts `..` levels from this test file**
-// (modular-architecture W1 1.20): that was tied to how deep this package sits,
+// **The fallback no longer counts `..` levels from this test file**:
+// that was tied to how deep this package sits,
 // so moving the package one level down would silently point at a non-existent
 // directory. It now anchors on the go.mod module root and goes up exactly one
 // level (backend/ → repo root), asserting the marker exists — an unreadable

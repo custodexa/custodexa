@@ -6,8 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// ApproverScope 審核範圍（access-policy-approval D5；approval-routing-quorum 擴
-// 「審核方 × 客體」全交叉）：審核方＝個人 XOR 使用者群組（D-7 群組即資格——
+// ApproverScope 審核範圍（「審核方 × 客體」全交叉）：
+// 審核方＝個人 XOR 使用者群組（群組即資格——
 // 屬於審核方群組即具審核資格，成員異動即時反映）；客體＝資產 XOR 節點 XOR
 // 申請人 XOR 申請人群組。
 // 資產側與授權客體同構——範圍命中查詢與授權解析同形（共用寫法不共用語義）；

@@ -29,7 +29,7 @@ import (
 // 反向斷言同樣必要：只驗「明文不在」的話，「details 一律寫空字串」也會過，而那會
 // 拆掉 PCI 10.2.1.3 要的「誰以什麼條件查了什麼」。故另有可稽核性斷言。
 //
-// **突變自證**（已實跑，見 change 紀錄）：把 audit_log.go 的
+// **突變自證**：把 audit_log.go 的
 // `summary["query"] = MaskCredentialQuery(query)` 改回 `= query`
 // → TestAuditDetailsNeverContainsCredentialPlaintext 全 8 個子案例轉紅。
 

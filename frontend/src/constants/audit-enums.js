@@ -1,5 +1,5 @@
 /**
- * 審計枚舉顯示中繼資料唯一事實源（role-enum-metadata-sync＋i18n-foundation D6）。
+ * 審計枚舉顯示中繼資料唯一事實源。
  * 值域硬拷後端：AuditAction/AuditResource＝backend/internal/model/audit_log.go:13-90、
  * 失效機制＝backend/internal/model/audit_failure.go 的 Mechanism* 常數區。
  * 譯文住 locale 檔（enum.auditAction/auditResource/mechanism.*），以 getter 回 t()；
@@ -58,16 +58,16 @@ export const AUDIT_RESOURCE_VALUES = [
   'transmission',
   'access_request',
   'approver_scope',
-  // auditor-workbench D1.3(a) 訂正的三個獨立分類：原先全落在 `extractResource`
+  // auditor-workbench 訂正的三個獨立分類：原先全落在 `extractResource`
   // 的 default asset 分支（resource_id 卻是計畫／授權列／查詢的 id），
   // 後端已分家，前端值域補齊才不會在介面上顯示機器碼
   'change_secret_plan',
   'authorization',
   'audit_timeline',
-  // clipboard-read-provenance：取走剪貼簿明文內容的動作，與一般連線讀取
+  // 取走剪貼簿明文內容的動作，與一般連線讀取
   // 在後端已分屬兩個 resource；此處補值域，介面才不會顯示機器碼
   'clipboard_event',
-  // audit-resource-classification-closure 批 3：十族的常數從未存在，整族落
+  // 十族的常數從未存在，整族落
   // `extractResource` 的兜底（舊兜底是 asset，於是帶 :id 的五族把規則／分組／
   // 通道／提供者／片段的 id 灌進 asset_id，在同號資產的時間軸上長出假事件）
   'audit_checkpoint',
@@ -96,12 +96,12 @@ export const AUDIT_MECHANISM_VALUES = [
   'recording_graphics',
   'session_record',
   'kek_retirement',
-  // kek-provider-modularization D5.1：AAD 無 AAD 密文殘餘（顯式遷移的 push 面）
+  // AAD 無 AAD 密文殘餘（顯式遷移的 push 面）
   'aad_residue',
-  // audit-checkpoint-chain D7／O4：檢查點離機錨定失效（與 syslog_forward 分開，
+  // audit-checkpoint-chain：檢查點離機錨定失效（與 syslog_forward 分開，
   // 前者的缺口不可回溯，後者恢復即補回）
   'checkpoint_anchor',
-  // audit-chain-scheduled-verification D5：鏈驗證異常按攻擊面分三碼（不按驗證層分）。
+  // 鏈驗證異常按攻擊面分三碼（不按驗證層分）。
   // 結構層（檢查點自身被動）與內容層（檢查點覆蓋的審計紀錄被動）不共用碼——失效事件
   // 去重是 per-mechanism 的，合併會使其中一類在另一類未結案期間完全靜默
   'audit_chain_structure',
@@ -142,9 +142,9 @@ for (const value of AUDIT_MECHANISM_VALUES) {
 
 // 失效原因（cause）值域：與後端 model/audit_failure.go 的 Cause* 常數雙向等同
 // （audit-enums.spec.js 直讀後端原始碼斷言，缺任一邊即紅）。
-// backend-i18n-unification D8 起同一組碼有兩個消費點：
+// 同一組碼有兩個消費點：
 //   1. audit_failure_events.cause_code（散文 cause 欄降為 fallback）
-//   2. sessions.recording_error（M5 起存碼不存散文）
+//   2. sessions.recording_error（存碼不存散文）
 // 譯文與後端 notifycat cause 詞庫同文，避免 Slack 與 UI 對同一事實兩種說法。
 export const AUDIT_CAUSE_VALUES = [
   'recording_probe_failed',
@@ -165,7 +165,7 @@ export const AUDIT_CAUSE_VALUES = [
   'kek_retirement_backlog',
   'aad_residue_impossible_state',
   'checkpoint_anchor_dropped',
-  // audit-chain-scheduled-verification D5：鏈驗證異常四碼。同一機制一輪內出現多種
+  // 鏈驗證異常四碼。同一機制一輪內出現多種
   // 狀態時取較嚴重者（mismatch > extra_rows）；extra_rows 為待人工確認態，非逕判竄改
   'audit_chain_structure_invalid',
   'audit_chain_content_mismatch',
@@ -187,7 +187,7 @@ export const auditResourceLabel = (v) => AUDIT_RESOURCES[v] || v
 export const auditMechanismLabel = (v) => AUDIT_MECHANISMS[v] || v
 
 /**
- * auditCauseLabel 失效原因查譯（backend-i18n-unification F4）。
+ * auditCauseLabel 失效原因查譯。
  * 與其他 getter 不同之處在於「未知碼」的降級對象可指定：cause 有一個仍活著的
  * 散文欄（audit_failure_events.cause）與存量未碼化的 sessions.recording_error，
  * 未知碼時顯示那份散文比顯示裸碼有用。

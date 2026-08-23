@@ -1,14 +1,13 @@
 package main
 
-// 審計產生點「呼叫方交易內」欄的機器驗證守衛（W1 對抗 F1 的修補，2026-08-09 依
-// codex 外審 C1/C2/C3 重寫判定與豁免紀律）。
+// 審計產生點「呼叫方交易內」欄的機器驗證守衛（2026-08-09 依安全審查意見
+// 重寫判定與豁免紀律）。
 //
 // 本檔＝守衛本體（雙向比對、允許清單、不變式）；判定邏輯在
 // `audit_points_tx_dataflow_test.go`；產生點掃描在 `audit_points_manifest_guard_test.go`。
 //
 // **為什麼要有這一段**：manifest 的「呼叫方交易內」欄原本是純人工註記，從不與現實
-// 比對。W1 fresh-context 對抗演練（發現編號 F1；演練紀錄歸檔於維護者的私有開發歷程，
-// 未隨公開倉庫發佈）實證：把某一列
+// 比對。一次獨立的安全審查實證：把某一列
 // **同時**翻成「否｜否｜AsyncSink」，雙向完備性與 TxSink 分派兩個守衛雙雙 PASS——
 // 因為前者不看 tx 欄、後者只在 tx 欄＝是時才斷言。tx 欄＋變體協同翻轉不在原威脅模型內，
 // 而它正是 fail-close 退化為 fail-open 的最短路徑。
@@ -16,10 +15,10 @@ package main
 // ── 三條硬不變式（缺一即為本守衛失守） ─────────────────────────────────
 //
 //	I1 雙向比對：機器判 TxBound 而 manifest 標「否」→ 紅；反之亦然。
-//	I2 **Indeterminate 不得標 AsyncSink**（C1 核心指標）：機器證不出「不在交易內」的點
+//	I2 **Indeterminate 不得標 AsyncSink**：機器證不出「不在交易內」的點
 //	   若被 fire-and-forget 化，就是把未知當成安全。允許清單**不豁免這一條**——豁免只
 //	   說明「人看過」，不足以支撐把未知寫入丟進 at-most-once 通道。
-//	I3 豁免不得濫發（C3）：`isMU ⇒ 機器 verdict == Indeterminate`，且豁免須綁定
+//	I3 豁免不得濫發：`isMU ⇒ 機器 verdict == Indeterminate`，且豁免須綁定
 //	   file／最內層函式／機器給出的理由類別，並受條數上限節制。
 
 import (
@@ -49,10 +48,10 @@ type txExemption struct {
 	Reason txReason // **機器自己給出的** Indeterminate 理由類別
 	// TxBase 人工複核所認定的交易歸屬（manifest 交易欄括號**前**的值）。
 	//
-	// **W4 4.12b(a) 補上的第四段指紋**：在此之前，豁免列的交易欄可以在保留
+	// **第四段指紋**：在此之前，豁免列的交易欄可以在保留
 	// 「機器不可判定」標記的前提下被任意翻轉（實測 `自開交易→是` 全綠），
 	// 因為機器對這些列本來就說不出話、而其餘檢查只看標記在不在。
-	// 把人工結論也釘進守衛，改 manifest 就必須同時改這裡——這正是 C3 對豁免的
+	// 把人工結論也釘進守衛，改 manifest 就必須同時改這裡——這正是豁免的
 	// 一貫要求（缺口必須在 PR diff 裡看得見），只是原本漏了這一欄。
 	TxBase string
 	Note   string // 人讀說明
@@ -80,7 +79,7 @@ var auditPointTxMachineUndeterminable = map[string]txExemption{
 		Reason: reasonEscapesScope, TxBase: "自開交易",
 		Note: "列由 sealAggregateRow 回傳給同一落地入口",
 	},
-	// W4 4.3 新增：TxSink 落地本體。**這是本波唯一新增的豁免**，理由與 AP-56／57 同型
+	// TxSink 落地本體。**這是唯一新增的豁免**，理由與 AP-56／57 同型
 	//（列在 A 函式建構、回傳後才落地），且它本身就是 19 個 TxSink 點的落地實作——
 	// 它的交易歸屬由呼叫端決定，不是它自己的性質。變體「不進 sink」滿足 I2。
 	"AP-61": {
@@ -90,16 +89,16 @@ var auditPointTxMachineUndeterminable = map[string]txExemption{
 	},
 }
 
-// maxTxMachineUndeterminable 豁免條數上限（W4 起 4；W1 為 3）。
+// maxTxMachineUndeterminable 豁免條數上限（現為 4，原為 3）。
 //
-// **本波調高 1 的理由必須被質問，故寫在這裡**：4.3 的 TxSink 落地器把 19 個交易內
+// **調高 1 的理由必須被質問，故寫在這裡**：TxSink 落地器把 19 個交易內
 // 產生點的 `model.AuditLog` 建構收攏到 `auditRowOf` 一處，該處的列回傳後才落地
-// （escapes-scope）。收攏本身是本波的目的，但它確實製造了一列機器不可判定——
+// （escapes-scope）。收攏本身是刻意的，但它確實製造了一列機器不可判定——
 // 代價是這一列，回報是原本 5 個分散的 fail-close 點全部升級為機器可正面證明的
 // `sink-tx-arg`（見 dump：五點皆 TxBound）。淨值為正，且新增的那一列變體是
 // 「不進 sink」、由 4.12c 的 runtime backstop 從執行期覆蓋。
 //
-// **這個常數是 C3 的關鍵**：沒有它，允許清單可以靠「多列進豁免」把比對覆蓋率稀釋掉，
+// **這個常數是豁免紀律的關鍵**：沒有它，允許清單可以靠「多列進豁免」把比對覆蓋率稀釋掉，
 // 而每一列的失去保護都不必付出任何代價。要新增豁免就得在 PR diff 裡把這個數字調高，
 // 那是一個必須被質問的動作。
 const maxTxMachineUndeterminable = 4
@@ -108,7 +107,7 @@ const maxTxMachineUndeterminable = 4
 // 仍受雙向比對約束（是↔TxBound），但括號註記與人工複核標記是該列語義的權威。
 var auditPointTxHumanQualified = map[string]string{
 	"AP-50": "ldapDirectoryAuditLog 六條呼叫路徑二分：三條在 WithLDAPDirectoryLock 交易閉包內（fail-close）、" +
-		"三條傳 s.db（fail-open）。機器只能判到 TxBound（W4 起理由類別為 sink-tx-arg），路徑二分屬人工權威",
+		"三條傳 s.db（fail-open）。機器只能判到 TxBound（理由類別為 sink-tx-arg），路徑二分屬人工權威",
 }
 
 // minTxBoundSites 機器判為 TxBound 的產生點數量下限（現況 19，取 15）。
@@ -286,7 +285,7 @@ func assertMachineFactsIntact(t *testing.T, idx *txIndex) {
 	}
 }
 
-// assertExemptionFingerprint 豁免的三段指紋比對（C3 的核心）。
+// assertExemptionFingerprint 豁免的三段指紋比對。
 func assertExemptionFingerprint(t *testing.T, r manifestRow, site auditPointSite, ex txExemption) {
 	t.Helper()
 	if site.Tx != txIndeterminate {
@@ -310,7 +309,7 @@ func assertExemptionFingerprint(t *testing.T, r manifestRow, site auditPointSite
 	}
 	if ex.TxBase == "" {
 		t.Errorf("%s 的豁免未登記 TxBase：人工複核的交易歸屬結論必須釘在守衛內，"+
-			"否則 manifest 的那一欄可以被任意翻轉而無人攔（W4 4.12b(a) 實證）", r.ID)
+			"否則 manifest 的那一欄可以被任意翻轉而無人攔（已實證）", r.ID)
 	} else if ex.TxBase != r.TxBase {
 		t.Errorf("[豁免指紋不符] %s 登記交易歸屬 %q，manifest 交易欄卻是 %q："+
 			"機器對本列說不出話，人工結論就是唯一權威——它一變就必須在守衛的 diff 裡看得見",
@@ -349,7 +348,7 @@ func splitTxCell(cell string) (base, note string) {
 	return strings.TrimSpace(cell[:i]), note
 }
 
-// ── 判定格序的自檢（C1 的核心指標，不依賴現實碼） ─────────────────────────
+// ── 判定格序的自檢（不依賴現實碼） ─────────────────────────
 
 // TestTxVerdictLatticeIsConservative 用合成原始碼直接考判定器：**未知形態一律不得被判成
 // NotTxBound**。這條比任何 manifest 突變都關鍵——manifest 突變只證明「現況這一列被守住」，

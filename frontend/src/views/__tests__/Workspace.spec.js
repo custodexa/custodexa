@@ -69,7 +69,7 @@ vi.mock('@/api/assets', () => ({
   getAsset: vi.fn(),
 }))
 
-// 多帳號（asset-multi-account D2）：openTab 開籤前查有效授權帳號，
+// 多帳號：openTab 開籤前查有效授權帳號，
 // 預設回零帳號＝維持既有直連行為
 vi.mock('@/api/assetAccounts', () => ({ listAssetAccounts: vi.fn() }))
 
@@ -84,7 +84,7 @@ describe('Workspace 頁籤邏輯', () => {
     listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
   })
 
-  // i18n-foundation：連線面在 MainLayout 之外，工作區頂欄須有自己的切換入口；
+  // 連線面在 MainLayout 之外，工作區頂欄須有自己的切換入口；
   // 切語言就地重繪（同一 wrapper、頁籤/連線元件不重建）
   it('頂欄語言切換就地換語且不重建頁籤（免 reload 不斷線）', async () => {
     const wrapper = mountWorkspace()
@@ -246,7 +246,7 @@ describe('Workspace 頁籤右鍵選單', () => {
   })
 })
 
-// 多帳號連線（asset-multi-account D2/D5）：開籤前的帳號分流
+// 多帳號連線：開籤前的帳號分流
 describe('Workspace 多帳號連線', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -385,7 +385,7 @@ describe('Workspace 多帳號連線', () => {
     expect(wrapper.vm.tabs.map((t) => t.assetId).sort()).toEqual([1, 77])
   })
 
-  it('自會話分頁的檔案管理帶該 session 與其帳號（D9 帳號沿用）', async () => {
+  it('自會話分頁的檔案管理帶該 session 與其帳號（帳號沿用）', async () => {
     listAssetAccounts.mockResolvedValue({
       data: [
         { id: 3, username: 'root', is_default: true },

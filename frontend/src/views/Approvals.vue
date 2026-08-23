@@ -12,7 +12,7 @@
       </template>
     </PageHeader>
 
-    <!-- 無審核資格（W7b D-12）：直接打 URL 進來時後端一律 403。此處必須明說
+    <!-- 無審核資格：直接打 URL 進來時後端一律 403。此處必須明說
          「你沒有資格」，不得退化成一張空表格——那會被讀成「佇列是空的」 -->
     <div
       v-if="accessDenied"
@@ -332,7 +332,7 @@
         </div>
       </el-tab-pane>
 
-      <!-- 待補審（break-glass-revocation）：破窗連線事後補審 -->
+      <!-- 待補審：破窗連線事後補審 -->
       <el-tab-pane
         :label="pendingReviewLabel"
         name="reviews"
@@ -523,7 +523,7 @@
       </template>
     </el-dialog>
 
-    <!-- 提前撤銷對話框（break-glass-revocation）：事由必填 -->
+    <!-- 提前撤銷對話框：事由必填 -->
     <el-dialog
       v-model="revokeVisible"
       :title="$t('approvals.revokeDialogTitle')"
@@ -573,7 +573,7 @@
       </template>
     </el-dialog>
 
-    <!-- 補審對話框（break-glass-revocation）：處置＋備註 -->
+    <!-- 補審對話框：處置＋備註 -->
     <el-dialog
       v-model="reviewVisible"
       :title="$t('approvals.reviewDialogTitle')"
@@ -678,7 +678,7 @@ const pendingLabel = computed(() =>
     : t('approvals.pendingTab')
 )
 
-// quorum（approval-routing-quorum）：門檻 >1 才顯示進度欄；已投票者禁重複核准
+// quorum：門檻 >1 才顯示進度欄；已投票者禁重複核准
 const { currentUserId } = useRoles()
 const quorumEnabled = computed(() =>
   pendingRequests.value.some((r) => (r.approvals_required || 1) > 1)
@@ -697,9 +697,9 @@ const pendingReviewLabel = computed(() =>
     : t('approvals.reviewTab')
 )
 
-// 載入結果狀態（W7b 對抗輪 High）：**403 不得被吞成空陣列**。
+// 載入結果狀態：**403 不得被吞成空陣列**。
 // 收斂前四個頁籤的 catch 都只 console.error，於是不具審核資格者（例如僅具
-// admin 者，D-12 後審核端點對他一律 403）看到的是一張空表格＋「目前沒有等候
+// admin 者，審核端點對他一律 403）看到的是一張空表格＋「目前沒有等候
 // 審核的申請」——把「你看不到」謊報成「沒有東西」。有待審單時這會讓人誤判佇列
 // 已清空。'forbidden'＝無資格（連頁籤都不該給）；'failed'＝其他載入失敗
 //（頁籤保留，但空態文案必須說是載入失敗而非沒有資料）
@@ -866,7 +866,7 @@ const submitReject = async () => {
   }
 }
 
-// 提前撤銷（break-glass-revocation）：撤銷限時連線，事由必填
+// 提前撤銷：撤銷限時連線，事由必填
 const revokeVisible = ref(false)
 const revokeTarget = ref(null)
 const revokeNote = ref('')
@@ -895,7 +895,7 @@ const submitRevoke = async () => {
   }
 }
 
-// 補審（break-glass-revocation）：破窗事後審核，處置＋備註
+// 補審：破窗事後審核，處置＋備註
 const reviewVisible = ref(false)
 const reviewTarget = ref(null)
 const reviewForm = ref({ disposition: 'confirmed', note: '' })

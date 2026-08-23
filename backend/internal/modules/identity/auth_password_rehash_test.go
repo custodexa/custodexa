@@ -67,7 +67,7 @@ func seedRehashUser(t *testing.T, db *gorm.DB, username, password string) *model
 	return u
 }
 
-// TestLoginUpgradesLegacyHash 以舊參數雜湊登入 → 登入成功且雜湊被升級（tasks 6.4）。
+// TestLoginUpgradesLegacyHash 以舊參數雜湊登入 → 登入成功且雜湊被升級。
 //
 // 這是漸進遷移**唯一**會實際發生的時機：登入成功是同時握有明文與該帳號雜湊的那一刻。
 func TestLoginUpgradesLegacyHash(t *testing.T) {

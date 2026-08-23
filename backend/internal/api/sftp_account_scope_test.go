@@ -22,10 +22,10 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// SFTP 檔案面的帳號授權複查（asset-multi-account D5 強制點 3／3）。
+// SFTP 檔案面的帳號授權複查（強制點 3／3）。
 //
-// 前階段 opus 審查指認的旁路：`session_id` 路徑取的是**連線當下的帳號快照**
-// （D7 不可變審計欄）。若逕以該快照建線，帳號被移出授權範圍後，使用者只要
+// 安全審查指認的旁路：`session_id` 路徑取的是**連線當下的帳號快照**
+// （不可變審計欄）。若逕以該快照建線，帳號被移出授權範圍後，使用者只要
 // 翻出一個舊 session id 就能無限延續檔案存取——歷史快照成為繞過現行授權的門。
 // 快照只該決定「用哪個帳號」，「是否還能用」必須現查。
 
@@ -75,7 +75,7 @@ func setupSFTPScopeEnv(t *testing.T) (*SFTPHandler, *gorm.DB) {
 	return handler, db
 }
 
-// newSFTPTestAuthService 角色現況重判所需的 AuthService（codex 階段 4 high）。
+// newSFTPTestAuthService 角色現況重判所需的 AuthService。
 //
 // CurrentConnectRole 走 database.DB 全域，故呼叫端必須先把它指向測試庫；
 // 未指向即 nil 解參考——這正是「檔案面確實在查 DB 而非信任 JWT 快照」的證明

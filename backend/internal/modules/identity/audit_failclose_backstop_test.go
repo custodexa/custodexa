@@ -19,8 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 強制審計 fail-close 的 **runtime fault-injection backstop**
-// （modular-architecture W4 任務 4.12c；codex W1 外審焦點 C4 的解方）。
+// 強制審計 fail-close 的 **runtime fault-injection backstop**。
 //
 // # 為什麼這組測試的優先序高於所有 AST 守衛
 //
@@ -38,11 +37,11 @@ import (
 // # 故障注入點：GORM Create callback，而不是替身 sink
 //
 // 刻意**不**用「傳一個永遠回錯的 TxSink 替身」——那只證明得了「已經改走 TxSink 的
-// 那幾條路徑」，而 T-2 的 11 個點在 W4 尚未收口（走 `model.RecordAsset*Change` 的
+// 那幾條路徑」，而 T-2 的 11 個點當時尚未收口（走 `model.RecordAsset*Change` 的
 // `tx.Create`）。註冊在 `audit_logs` 上的 Create callback 對兩種形態一視同仁，
 // 也對未來任何新的寫入形態一視同仁——**這是換 oracle 的關鍵**，不是實作上的方便。
 //
-// # 🔴 射程與盲區（codex W4 外審焦點 1；**不得再無條件稱「最終權威」**）
+// # 🔴 射程與盲區（**不得再無條件稱「最終權威」**）
 //
 // 本組是 **GORM Create callback 路徑上的最終權威**，不是所有審計寫入路徑的最終權威。
 // 注入器**看得見**的：任何經由本測試持有的 `*gorm.DB` 句柄（含其 `Session`／交易衍生
@@ -57,8 +56,8 @@ import (
 //	B-d 非 GORM 寫入：`database/sql` 直連、外部程序、其他服務寫同一張表。
 //
 // **批次（`CreateInBatches`）不是盲區**——實測命中（見 `TestBackstopSeesBatchAuditWrites`），
-// 且逐列抽出身分。現況生產碼零筆 B-a…B-d 形態的審計寫入；若日後出現（W6-W9 的
-// raw SQL 審計寫入是最可能的來源），backlog B-15 的「DB 層 INSERT trigger 注入器」
+// 且逐列抽出身分。現況生產碼零筆 B-a…B-d 形態的審計寫入；若日後出現（後續模組的
+// raw SQL 審計寫入是最可能的來源），「DB 層 INSERT trigger 注入器」
 // 升級為必做。
 //
 // # 誠實界定：覆蓋哪些點
@@ -92,7 +91,7 @@ func (h auditHit) String() string {
 
 // auditHitSpec 本格**預期命中**的審計點身分。
 //
-// # 為什麼「命中身分」比「命中次數」重要（codex W4 外審焦點 2）
+// # 為什麼「命中身分」比「命中次數」重要
 //
 // 舊版防呆只累計 `fired`：只要本次執行中有**任何**審計寫入被攔到就算數。這在
 // 「一個操作寫多筆審計」的路徑上會**由不相干的那筆取得 credit**——最典型的是
@@ -150,7 +149,7 @@ func (s auditHitSpec) matches(h auditHit) bool {
 //  3. **哨兵歸因**（各格顯式呼叫 `assertCausedBy`／`assertRolledBack`）——回傳的
 //     error 必須 `errors.Is` 得到本格的唯一哨兵。
 //
-// # 併發與共享狀態（codex W4 外審焦點 2 之二）
+// # 併發與共享狀態
 //
 // 真正的風險不是 `t.Cleanup` 被跳過（Go 的正常 panic 仍會執行 Cleanup），而是：
 //   - **平行子測試共享同一個 DB／callback**——本檔每格自建 DB 句柄（`setupAccountDB`
@@ -222,7 +221,7 @@ func (inj *auditFaultInjector) attach(db *gorm.DB) {
 		}
 		if !hit {
 			// **不相干的審計寫入照樣放行**——否則它會替本格取得 credit，
-			// 而本格指定的審計點永遠不可達（codex 焦點 2）。
+			// 而本格指定的審計點永遠不可達。
 			return
 		}
 		inj.matched++
@@ -321,7 +320,7 @@ func (inj *auditFaultInjector) assertCausedBy(label string, err error) {
 // assertRolledBack 斷言「業務交易真的回滾」的四件事，而不是只斷言呼叫回了 error。
 //
 //	(1) 呼叫回非 nil error；
-//	(2) 該 error 可歸因於**本格**注入的哨兵（codex 焦點 2：err != nil 可能來自別處）；
+//	(2) 該 error 可歸因於**本格**注入的哨兵（err != nil 可能來自別處）；
 //	(3) 業務列不存在（bizCount 為 0）；
 //	(4) 審計列不存在（回滾後不得留下半筆留痕；已含對照組留痕者傳差值）。
 //
@@ -550,7 +549,7 @@ func TestFailCloseLDAPSeedRollsBackOnAuditFailure(t *testing.T) {
 	// **codec 必須是真的**：`identity.RunLDAPEnvSeed` 在 bind password 非空時，於**進入交易之前**
 	// 就有 `if codec == nil { return err }`（`ldap_seed_migration.go`）。傳 nil 會在那裡早退，
 	// 永不觸及插列／審計／marker，使下方四條斷言全因「什麼都沒發生」成立——
-	// 這正是 W4 對抗發現 1 的假綠根因。防呆使此前提不可能再靜默退化。
+	// 這正是對抗驗證揭露的假綠根因。防呆使此前提不可能再靜默退化。
 	err := identity.RunLDAPEnvSeed(db, aesColumnCodec(t, make([]byte, 32)), audit.NewTxSink())
 
 	// **落地狀態先斷言、回傳值後斷言**：本檔的突變配方要求「移除 fail-close 後該格在
@@ -599,7 +598,7 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 // auditURLChange／auditDelete 三條在鎖內交易且 `return`（fail-close），auditRejection
 // 與 probe 兩處傳根 DB 只記 log（fail-open）。三條 fail-close 路徑各給一格、
 // 各自釘住 Details 的 `event` 欄——舊版把 save 與 url_changed 合在一格，
-// 先寫的 save 一失敗，url_changed 就永遠不可達（codex 焦點 2 的「多點共用一格」）。
+// 先寫的 save 一失敗，url_changed 就永遠不可達（「多點共用一格」的形態）。
 
 func newLDAPDirectoryFixture(t *testing.T) (*identity.LDAPDirectoryService, *gorm.DB, identity.LDAPDirectoryRequest) {
 	t.Helper()
@@ -811,8 +810,8 @@ func TestAuditWriteFaultInjectionActuallyFires(t *testing.T) {
 	inj.disarm()
 }
 
-// 突變自檢的可重現配方（4.12c 驗收要求「每個案例都須有『移除 fail-close 處置後
-// 該案例轉紅』的突變證明」）：把對應呼叫點的 `return fmt.Errorf("審計留痕失敗: %w", err)`
+// 突變自檢的可重現配方（每個案例都須有「移除 fail-close 處置後該案例轉紅」的
+// 突變證明）：把對應呼叫點的 `return fmt.Errorf("審計留痕失敗: %w", err)`
 // 改成 `log.Printf(...)` 後跑本檔，該案例必須從綠轉紅，**且是在「業務列仍在」那條
 // 斷言上紅**（不是在「err == nil」那條——那只證明錯誤有回傳，證不到回滾）。
 //
@@ -820,7 +819,7 @@ func TestAuditWriteFaultInjectionActuallyFires(t *testing.T) {
 // `nil`，使 `identity.RunLDAPEnvSeed` 在進交易前早退），該格必須因 `assertHealthy` 的
 // 「一次都沒有命中指定的審計點」而紅——**且此時業務斷言全部通過**。
 //
-// **第三種突變（身分歸屬，W4 codex 外審後新增）**：讓不相干的審計寫入 fire
+// **第三種突變（身分歸屬）**：讓不相干的審計寫入 fire
 // （例：AP-38 格的 `(*Asset).AfterCreate` hook 早於 `RecordAssetAccountChange`
 // 寫一筆），本格**不得**因此通過——選擇性注入使該筆放行、`errors.Is(sentinel)`
 // 使歸因無法混淆。
@@ -828,13 +827,13 @@ func TestAuditWriteFaultInjectionActuallyFires(t *testing.T) {
 // **第四種突變（對照組）**：拿掉某格的業務列建立（或把查詢條件改成永遠 0 筆），
 // 該格必須在 `control` 那三條之一轉紅，而不是靜默通過。
 //
-// 四種突變均已於 W4 實跑驗證（實跑紀錄歸檔於維護者的私有開發歷程，未隨公開倉庫發佈）。
+// 四種突變均已實跑驗證。
 
 // ── T-2：資產與資產帳號（AP-22／30…35／38／40）────────────────────────────
 //
-// 這批點在 W4 **尚未**收口（仍走 `model.RecordAsset*Change` 的 `tx.Create`，
-// 收口排 W6 6.1／6.2）。**但 backstop 現在就必須涵蓋它們**——4.12c 的涵蓋範圍是
-// manifest 的 `fail-close?＝是` 欄，不是「已收口的點」。先立好，W6 收口時這組
+// 這批點**尚未**收口（仍走 `model.RecordAsset*Change` 的 `tx.Create`，
+// 收口另行排程）。**但 backstop 現在就必須涵蓋它們**——涵蓋範圍取自
+// manifest 的 `fail-close?＝是` 欄，不是「已收口的點」。先立好，收口時這組
 // 測試就是現成的等價證據：收口前後同一組斷言必須都綠，任一轉紅即語義漂移。
 //
 // **注意 setupAccountDB 會改寫套件級 `database.DB`**——本區各格因此絕不可平行，
@@ -842,19 +841,19 @@ func TestAuditWriteFaultInjectionActuallyFires(t *testing.T) {
 
 // AP-38（＋落地側 AP-22）：AssetService.Create 的預設帳號建立審計。
 //
-// **本格是 codex 焦點 2 的原始案例**：`(*Asset).AfterCreate`（AP-23）會在
+// **本格是「多點共用一格」的原始案例**：`(*Asset).AfterCreate`（AP-23）會在
 // `RecordAssetAccountChange`（AP-38）**之前**寫一筆 `Details` 為空的審計列。
 // 舊版「fired > 0」的防呆會由那一筆取得 credit，AP-38 整條被刪掉也不會轉紅。
 // 現在 spec 釘住 `"resource":"asset_account"`，hook 那筆不命中、照樣放行。
-// ── 🔴 射程與盲區：注入器**看不見**什麼（codex W4 外審焦點 1）─────────────
+// ── 🔴 射程與盲區：注入器**看不見**什麼─────────────
 //
 // 下面四格刻意斷言「注入器沒有攔到」。它們不是 fail-close 案例，故**不使用**
 // `auditFaultInjector`（那個的防呆會要求「至少命中一次」，與本節目的相反），
 // 改用純觀察器 `observeAuditWrites`。
 //
 // 目的不是修好盲區——GORM callback 本來就只看得見 GORM callback 走過的路——
-// 而是讓盲區**可見**：任何人日後把審計寫入改走這些形態，本節的 t.Log 與 tasks.md
-// 4.12c 的射程宣告會直接告訴他「backstop 從此看不到這條路」。
+// 而是讓盲區**可見**：任何人日後把審計寫入改走這些形態，本節的 t.Log
+// 會直接告訴他「backstop 從此看不到這條路」。
 
 type auditWriteObserver struct {
 	mu   sync.Mutex
@@ -920,10 +919,10 @@ func TestBackstopBlindSpotRawSQLInsert(t *testing.T) {
 	}
 	if n := obs.count(); n != 0 {
 		t.Fatalf("射程宣告與現實不符：原生 SQL 竟被 Create callback 攔到 %d 次——"+
-			"tasks.md 4.12c 的盲區清單須改寫（這是好消息，但宣告必須跟著改）", n)
+			"本檔的盲區清單須改寫（這是好消息，但宣告必須跟著改）", n)
 	}
 	t.Log("盲區 B-a 確認：db.Exec 的原生 INSERT 不經 Create callback，backstop 看不見。" +
-		"若日後出現原生 SQL 的審計寫入，須升級為 DB 層 INSERT trigger 注入器（backlog B-15）")
+		"若日後出現原生 SQL 的審計寫入，須升級為 DB 層 INSERT trigger 注入器")
 }
 
 // B-b：Update 路徑（`Save`／`Updates`）——**注入器看不見，但該路徑本身被 model 層封死**
@@ -993,7 +992,7 @@ func TestBackstopSeesBatchAuditWrites(t *testing.T) {
 	if n := obs.count(); n != 2 {
 		t.Fatalf("批次寫入應被逐列觀察到 2 筆，實得 %d——"+
 			"射程宣告稱「批次不是盲區」，此處即其證據；若 GORM 版本改變此行為，"+
-			"tasks.md 4.12c 的射程段必須跟著改", n)
+			"本檔的射程宣告必須跟著改", n)
 	}
 	spec := auditHitSpec{AP: "batch", Action: model.ActionDelete, Details: "batch-2"}
 	matched := false
@@ -1005,12 +1004,12 @@ func TestBackstopSeesBatchAuditWrites(t *testing.T) {
 	}
 	obs.mu.Unlock()
 	if !matched {
-		t.Fatal("批次寫入的**逐列身分**抽不出來——身分比對（codex 焦點 2 的修補）在批次形態上會失明")
+		t.Fatal("批次寫入的**逐列身分**抽不出來——身分比對在批次形態上會失明")
 	}
 	t.Log("射程確認：CreateInBatches 命中 Create callback，且逐列身分可抽出")
 }
 
-// ── 共享狀態隔離：本檔禁止平行（codex W4 外審焦點 2 之二）─────────────────
+// ── 共享狀態隔離：本檔禁止平行─────────────────
 
 // TestBackstopGridsDeclareNoParallel 以原始碼掃描釘住「本檔不得出現 t.Parallel」。
 //
@@ -1037,7 +1036,7 @@ func TestBackstopGridsDeclareNoParallel(t *testing.T) {
 	src := string(body)
 	// 下界：本檔被清空或改名時不得靜默通過
 	// 下界：本檔被清空或改名時不得靜默通過。
-	// **W6 6.6 自 12 調為 5**：backstop 依模組拆成兩份，asset 的 12 格隨檔遷入
+	// **下界自 12 調為 5**：backstop 依模組拆成兩份，asset 的 12 格隨檔遷入
 	// `internal/modules/asset/audit_failclose_backstop_test.go`（該檔有自己的同名禁令，
 	// 下界 12），本檔留下的是 identity 的 5 格（UserGroup 1＋LDAP 4）。
 	// **這不是放寬**——兩份下界相加仍為 17，且各自守著自己那半邊。

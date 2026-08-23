@@ -14,7 +14,7 @@ import (
 
 // 錄影存取 token 的簽發、兌換與撤銷。
 //
-// **單行程限制（對抗審查 G-D，尚未解決）**：grants 與撤銷集合皆為行程內 map，
+// **單行程限制（尚未解決）**：grants 與撤銷集合皆為行程內 map，
 // 故撤銷只對「簽出該 token 的那一個副本」生效。多副本部署（負載平衡後有 2 個以上
 // backend）時：
 //
@@ -73,7 +73,7 @@ func NewRecordingTokenManager() *RecordingTokenManager {
 // Issue 簽發綁定 (user, session) 的錄影 token。
 // authCtx.ProviderID 為簽發者本次認證的 provider（0＝本地/LDAP），供撤銷時篩選。
 //
-// **於 capability lock 內簽發**（對抗審查 G-C，3.8b 通則的執行點）。原本簽發完全
+// **於 capability lock 內簽發**。原本簽發完全
 // 不與撤銷序列化，留下這個交錯：
 //
 //	舊請求通過 AuthMiddleware → 暫停 → 管理者停用帳號／provider 並掃完整張表

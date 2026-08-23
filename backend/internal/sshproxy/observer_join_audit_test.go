@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 加入他人會話的唯讀觀看必須留痕（audit-coverage-closure 批 4，D5）。
+// 加入他人會話的唯讀觀看必須留痕。
 //
 // # 缺陷
 //
@@ -42,7 +42,7 @@ import (
 //  4. **恰好一列**：證明列來自 handler，且掛著的真 `AuditLogMiddleware` 確實跳過
 //     這條路徑——若哪天有人把路由移進認證群組，列數變 2，本檔轉紅並提醒重新設計。
 //
-// # 突變自檢（tasks 4.6）
+// # 突變自檢
 //
 // 拿掉 `HandleMonitor` 內的 `h.auditObserverJoin(...)` ⇒ 只有監看格轉紅；
 // 拿掉 `HandleShareJoin` 內成功分支的呼叫 ⇒ 只有分享格轉紅；

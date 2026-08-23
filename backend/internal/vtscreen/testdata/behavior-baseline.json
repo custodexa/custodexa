@@ -1,5 +1,5 @@
 {
-  "note": "terminalparser v0.0.0-20240205084113-fbf78c8480f2 的現行行為基準（2026-08-16 抽取）。legacy_* 為舊實作實測輸出；標記為缺陷者不得照抄，見 terminalparser-removal-inventory.md 第 3 節。",
+  "note": "terminalparser v0.0.0-20240205084113-fbf78c8480f2 的現行行為基準（2026-08-16 抽取）。legacy_* 為舊實作實測輸出；differs_from_legacy 為 true 者已判定為缺陷、不得照抄，判定依據記在同一筆的 decision_ref 與 reason。",
   "samples": [
     {
       "id": "synth/plain",
@@ -56,7 +56,7 @@
         "   def"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B10",
+      "decision_ref": "游標越過行尾時以空白補齊",
       "reason": "LF 依 ECMA-48 只下移一列、不歸零欄位，游標仍在第 3 欄；舊實作因「游標越界不補空白」把 def 貼回第 0 欄，補空白後還原成真實終端所見的第 3 欄起始，欄位算術自此與螢幕一致，屬改善。"
     },
     {
@@ -146,8 +146,8 @@
       ],
       "expected_lines": [],
       "differs_from_legacy": true,
-      "decision_ref": "B11",
-      "reason": "舊實作明示不支援 EL Ps=1（只印日誌、abcdef 原樣保留）；依 ECMA-48 自行首清至游標欄（含該欄）後整列皆為空白，Lines() 再依 D3.3 去除尾端空白列而得空清單，等於把已被使用者清掉的字不再送進審計，屬改善。"
+      "decision_ref": "EL Ps=1 自行首清至游標欄（含該欄）",
+      "reason": "舊實作明示不支援 EL Ps=1（只印日誌、abcdef 原樣保留）；依 ECMA-48 自行首清至游標欄（含該欄）後整列皆為空白，Lines() 再去除尾端空白列而得空清單，等於把已被使用者清掉的字不再送進審計，屬改善。"
     },
     {
       "id": "synth/el-2",
@@ -165,8 +165,8 @@
         "      xyz"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B2",
-      "reason": "EL Ps=2 只清當前列且游標不動（仍在第 6 欄），first line 不再被 eraseAll 誤刪，xyz 落在第 6 欄並依 B10 補齊前導空白。註：D5 B2 欄位原寫 [\"first line\",\"xyz\"] 未計入同批修正的 B10 補空白，2026-08-16 經裁決訂正為本值，design.md D5 B2 已載明。"
+      "decision_ref": "EL Ps=2 只清當前列，游標不動",
+      "reason": "EL Ps=2 只清當前列且游標不動（仍在第 6 欄），first line 不再被 eraseAll 誤刪，xyz 落在第 6 欄、左側補上前導空白。註：expected_lines 原寫 [\"first line\",\"xyz\"]，漏算了同時修正的越界補空白，2026-08-16 經裁決訂正為本值。"
     },
     {
       "id": "synth/ed-0",
@@ -212,7 +212,7 @@
         "  tail"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B7",
+      "decision_ref": "ED Ps=1 清為空白，列數與游標不動",
       "reason": "ED Ps=1 應把畫面起點至游標（含該欄）清為空白，列數與游標皆不動，故 tail 仍落在第 3 列第 2 欄；舊實作直接砍 Rows 切片把三列壓成一列（l3tail），是結構性失真，屬改善。"
     },
     {
@@ -248,7 +248,7 @@
         "ab> "
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B1",
+      "decision_ref": "CHA 參數為 1-based：CSI 1G 移到第 0 欄",
       "reason": "CHA 參數為 1-based，CSI 1G 應移到第 0 欄；舊實作把 1 當成 0-based 欄號而自第 1 欄起覆寫，使重繪前的第 0 欄字元 5 存活成殘骸。修正後 ab 自第 0 欄覆寫，孤立殘骸形態不再產生，屬改善。"
     },
     {
@@ -287,8 +287,8 @@
         "    X"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B13",
-      "reason": "CUP 為絕對定位，CSI 2;5H 應落在第 2 列第 5 欄（0-based 列 1 欄 4）並依需要建列；舊實作把列號夾到既有列數（日誌印「总行数 1 比当前行 2 小」）而把 X 寫進第 1 列，等於把兩列併成一列，屬改善。本缺陷於 2026-08-16 自 B4 分離另立 B13：B4 指多位數參數被整段忽略，本筆是單位數也會發生的列號夾擠。"
+      "decision_ref": "CUP 為絕對定位，依需要建列",
+      "reason": "CUP 為絕對定位，CSI 2;5H 應落在第 2 列第 5 欄（0-based 列 1 欄 4）並依需要建列；舊實作把列號夾到既有列數（日誌印「总行数 1 比当前行 2 小」）而把 X 寫進第 1 列，等於把兩列併成一列，屬改善。本缺陷於 2026-08-16 自「多位數參數被整段忽略」分出來另記一筆：那條講參數解析，這筆是單位數也照樣發生的列號夾擠。"
     },
     {
       "id": "synth/cup-multi-digit",
@@ -314,7 +314,7 @@
         "                   X"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B4",
+      "decision_ref": "CSI 參數以整數解析，多位數不得整段忽略",
       "reason": "參數以整數解析後 CSI 10;20H 定位至第 10 列第 20 欄（0-based 列 9 欄 19），X 與 abcdefgh 分屬不同列；舊實作只認單位數形態、整段忽略而讓 X 直接接在原列尾端，屬改善。"
     },
     {
@@ -352,8 +352,8 @@
         "l2 z"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B10",
-      "reason": "CUD 回到第 2 列時游標在第 3 欄、而該列只有兩欄內容，依 B10 補一格空白後 z 落在第 3 欄，即真實終端所見；舊實作直接接在行尾使 z 前移一欄，欄位算術自此偏移，屬改善。"
+      "decision_ref": "游標越過行尾時以空白補齊",
+      "reason": "CUD 回到第 2 列時游標在第 3 欄、而該列只有兩欄內容，補一格空白後 z 落在第 3 欄，即真實終端所見；舊實作直接接在行尾使 z 前移一欄，欄位算術自此偏移，屬改善。"
     },
     {
       "id": "synth/ich",
@@ -406,7 +406,7 @@
         "ab  ef"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B9",
+      "decision_ref": "ECH 原地清成空白，不左移",
       "reason": "ECH 依 ECMA-48 為原地清成空白、不左移，故 cd 兩欄變空白而 ef 留在原欄位；舊實作把 ECH 實作成 DCH 造成整行左移，與 synth/dch 的輸出無從區分，屬改善。"
     },
     {
@@ -442,7 +442,7 @@
         "cmd tail-text"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B3",
+      "decision_ref": "SGR 一律吃掉不解讀",
       "reason": "SGR 一律吃掉不解讀，不再因 SGR 90 啟動舊實作為灰色補全提示（fish 等 shell 的 autosuggestion）所加的錄製，該行其後的 tail-text 不再被 TrimSuffix 靜默剪除；審計少字是靜默漏記，屬改善。"
     },
     {
@@ -460,7 +460,7 @@
         "cmd ghost real"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B3",
+      "decision_ref": "SGR 一律吃掉不解讀",
       "reason": "舊實作的錄製只認 SGR 30 為終止、不認 SGR 0，使 ghost real 整段被吃掉；SGR 一律不解讀後文字完整保留，屬改善。"
     },
     {
@@ -535,7 +535,7 @@
         "prompt$ ls"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B6",
+      "decision_ref": "OSC 亦以 7-bit ST 為終止",
       "reason": "OSC 除 BEL 外亦須接受 7-bit ST（ESC 反斜線）為終止；舊實作不認 ST 使標題字串 0;title 洩進審計文字，修正後標題被正確吃掉，同時關掉視窗標題含使用者名與目錄的外洩面，屬改善。"
     },
     {
@@ -553,7 +553,7 @@
         "ls -la"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B5",
+      "decision_ref": "未完成序列保留於狀態機，不輸出、不 panic",
       "reason": "輸入結束處的未完成 CSI 保留在狀態機內、不輸出任何文字，既不 panic 也不把原始 ESC 位元組寫入結果；舊實作負索引切片 panic 後降級為 strings.Split，把 ESC[ 直接寫進審計文字，屬改善。"
     },
     {
@@ -571,7 +571,7 @@
         "ls"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B5",
+      "decision_ref": "未完成序列保留於狀態機，不輸出、不 panic",
       "reason": "同 synth/csi-truncated：參數被 chunk 切斷的 CSI 保留於狀態、不輸出，取代舊實作 panic 後把 ESC[12; 寫進審計文字的降級結果，屬改善。"
     },
     {
@@ -611,7 +611,7 @@
         "printf a        b"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B8",
+      "decision_ref": "HT 推進到下一個 8 欄 tab stop",
       "reason": "HT 推進到下一個 8 欄 tab stop：printf a 佔第 0 至 7 欄、游標已在第 8 欄（正落在一個 tab stop 上）故推進到第 16 欄，b 落在第 16 欄；舊實作整個丟棄 HT 使 b 緊貼 a，與使用者實際輸入不符，屬改善。"
     },
     {
@@ -647,8 +647,8 @@
         "X 文測試"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "D2",
-      "reason": "游標以顯示欄計（D3.3 CursorX），單寬 X 覆寫雙寬「中」的左半格後右半格成為孤兒格、真實終端渲染為空白，故結果為 X 空白 文測試；舊實作以 rune 索引覆寫，使其後所有欄位左移一欄。註：雙寬字元半格覆寫的語義原未列於 D5，2026-08-16 經裁決補入 design.md D2「雙寬字元的半格覆寫」列。"
+      "decision_ref": "雙寬字元被覆寫後的孤兒半格渲染為空白",
+      "reason": "游標以顯示欄計（CursorX），單寬 X 覆寫雙寬「中」的左半格後右半格成為孤兒格、真實終端渲染為空白，故結果為 X 空白 文測試；舊實作以 rune 索引覆寫，使其後所有欄位左移一欄。註：雙寬字元半格覆寫的語義原未定案，2026-08-16 經裁決補齊。"
     },
     {
       "id": "synth/utf8-emoji",
@@ -845,8 +845,8 @@
         "testuser@host:~$ ls -la"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "D3.3",
-      "reason": "Lines() 依 D3.3 去除尾端空白列，故 CRLF 造出的最後一個空列不再出現在結果中；兩個呼叫點都只取 lastNonEmptyLine（本就跳過空白列），此變動對產品行為零影響，僅使基準與介面契約一致。"
+      "decision_ref": "Lines() 去除尾端空白列",
+      "reason": "Lines() 去除尾端空白列，故 CRLF 造出的最後一個空列不再出現在結果中；兩個呼叫點都只取 lastNonEmptyLine（本就跳過空白列），此變動對產品行為零影響，僅使基準與介面契約一致。"
     },
     {
       "id": "synth/only-newlines",
@@ -863,8 +863,8 @@
       "legacy_upstream_log": [],
       "expected_lines": [],
       "differs_from_legacy": true,
-      "decision_ref": "D3.3",
-      "reason": "三列皆為空列，依 D3.3 去除尾端空白列後結果為空清單；lastNonEmptyLine 對兩者皆回傳空字串，產品行為零影響。"
+      "decision_ref": "Lines() 去除尾端空白列",
+      "reason": "三列皆為空列，去除尾端空白列後結果為空清單；lastNonEmptyLine 對兩者皆回傳空字串，產品行為零影響。"
     },
     {
       "id": "synth/cha-0g",
@@ -899,8 +899,8 @@
         "abc                                    X"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B10",
-      "reason": "CHA 40 換算為第 39 欄（B1 的 1-based 轉 0-based）後寫入 X，依 B10 以空白補齊第 3 至 38 欄共 36 格；舊實作既不換算也不補空白，使 X 緊貼 abc 而丟失 36 欄的位移資訊，屬改善。"
+      "decision_ref": "游標越過行尾時以空白補齊",
+      "reason": "CHA 40 換算為第 39 欄（參數是 1-based，故減一）後寫入 X，再以空白補齊第 3 至 38 欄共 36 格；舊實作既不換算也不補空白，使 X 緊貼 abc 而丟失 36 欄的位移資訊，屬改善。"
     },
     {
       "id": "synth/repeated-cr",
@@ -973,8 +973,8 @@
         "55> SELECT name"
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B1",
-      "reason": "CSI 1G 修正為自第 0 欄起覆寫後，重繪前殘留的半截提示符「大於號加空白」被完整蓋掉，螢幕即為 55> SELECT name；這正是 D6 移除 trimOrphanPromptRemnantPrefix 的前置條件（殘骸在原理上不再產生），屬改善。"
+      "decision_ref": "CHA 參數為 1-based：CSI 1G 移到第 0 欄",
+      "reason": "CSI 1G 修正為自第 0 欄起覆寫後，重繪前殘留的半截提示符「大於號加空白」被完整蓋掉，螢幕即為 55> SELECT name；這正是移除 trimOrphanPromptRemnantPrefix 的前置條件（殘骸在原理上不再產生），屬改善。"
     },
     {
       "id": "ssh-live/simple-ls#0-finalize",
@@ -1294,8 +1294,8 @@
       ],
       "expected_lines": [],
       "differs_from_legacy": true,
-      "decision_ref": "D3.3",
-      "reason": "唯一一列為空列，依 D3.3 去除尾端空白列後結果為空清單；beginTyping 取 lastNonEmptyLine 對兩者皆得空字串，產品行為零影響。"
+      "decision_ref": "Lines() 去除尾端空白列",
+      "reason": "唯一一列為空列，去除尾端空白列後結果為空清單；beginTyping 取 lastNonEmptyLine 對兩者皆得空字串，產品行為零影響。"
     },
     {
       "id": "ssh-live/ctrl-c#2-finalize",
@@ -1701,7 +1701,7 @@
         "ssh-test-server:~$ "
       ],
       "differs_from_legacy": true,
-      "decision_ref": "B4",
+      "decision_ref": "CSI 參數以整數解析，多位數不得整段忽略",
       "reason": "CSI 24;1H 等多位數 CUP 被舊實作整段忽略，使 vi 離場的三段重繪全部併進同一列而產出 :q!- ssh-test-server:~$ 這種螢幕上不存在的文字；修正後各段落在其原本的列上，第 24 列只剩最後一次寫入的提示符，lastNonEmptyLine 仍得 ssh-test-server:~$，屬改善。"
     },
     {

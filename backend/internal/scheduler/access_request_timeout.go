@@ -13,7 +13,7 @@ import (
 const accessRequestSweepInterval = 5 * time.Minute
 
 // AccessRequestTimeoutScheduler pending 申請超時作廢排程器
-// （access-policy-approval D2）：週期將逾 pending_expires_at 的申請 CAS 轉
+// 週期將逾 pending_expires_at 的申請 CAS 轉
 // expired（與人工決定併發時僅一方成立）。SkipIfStillRunning 防重入
 // （session-reconciliation 前例）
 type AccessRequestTimeoutScheduler struct {
@@ -54,7 +54,7 @@ func (s *AccessRequestTimeoutScheduler) run() {
 		log.Printf("[AccessRequest] pending 超時作廢 %d 筆", n)
 	}
 
-	// 破窗補審逾期升級告警（break-glass-revocation D7）：同輪掃描、防重標記，
+	// 破窗補審逾期升級告警：同輪掃描、防重標記，
 	// 失敗不影響超時作廢（兩者獨立）
 	m, err := s.service.NotifyOverdueReviews(now)
 	if err != nil {

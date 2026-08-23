@@ -24,7 +24,7 @@ func setupUserSvc(t *testing.T) (*UserService, *gorm.DB) {
 	return NewUserService(db, authz.NewAssetAuthorizationService(db)), db
 }
 
-// TestUpdateEmailConflict admin 改 email 撞其他 live 帳號回 typed ErrEmailConflict（R1，非通用 500）
+// TestUpdateEmailConflict admin 改 email 撞其他 live 帳號回 typed ErrEmailConflict（非通用 500）
 func TestUpdateEmailConflict(t *testing.T) {
 	svc, db := setupUserSvc(t)
 	db.Create(&model.User{Username: "a", Email: strPtr("a@x.com"), Active: true})
@@ -62,7 +62,7 @@ func TestUpdateInvalidEmail(t *testing.T) {
 	}
 }
 
-// TestUpdateAuditDiff 更新回傳欄位級 before/after diff（R2）；同值不記變更
+// TestUpdateAuditDiff 更新回傳欄位級 before/after diff；同值不記變更
 func TestUpdateAuditDiff(t *testing.T) {
 	svc, db := setupUserSvc(t)
 	u := &model.User{Username: "u", Email: strPtr("old@x.com"), FullName: "Old Name", Active: true}
@@ -94,7 +94,7 @@ func TestUpdateAuditDiff(t *testing.T) {
 	}
 }
 
-// TestFullNameNotMasked full_name/local_display_name 不再被脫敏（R2/4.3，非機密）
+// TestFullNameNotMasked full_name/local_display_name 不再被脫敏（非機密）
 func TestFullNameNotMasked(t *testing.T) {
 	masked := audit.MaskSensitiveFields(map[string]interface{}{
 		"full_name":          "Alice Wang",
@@ -112,7 +112,7 @@ func TestFullNameNotMasked(t *testing.T) {
 	}
 }
 
-// TestLDAPProvisionEmailNull LDAP 供應遇 email 衝突存 NULL（非 ”），多個無 email 影子帳號並存（R3/4.4）
+// TestLDAPProvisionEmailNull LDAP 供應遇 email 衝突存 NULL（非 ”），多個無 email 影子帳號並存
 func TestLDAPProvisionEmailNull(t *testing.T) {
 	auth, db := setupProfileEnv(t)
 	// provisionShadowUser 綁 "user" 角色，需先建

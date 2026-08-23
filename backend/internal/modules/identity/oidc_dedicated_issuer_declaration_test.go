@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 部署層專用 issuer 宣告（OIDC_DEDICATED_ISSUERS）的補格測試（idp-oidc-integration tasks 4.18）。
+// 部署層專用 issuer 宣告（OIDC_DEDICATED_ISSUERS）的補格測試。
 //
 // 既有覆蓋（oidc_provider_service_test.go）：
 //   - Okta 型 issuer 經宣告後可設僅含 email 網域的 JIT 規則（DedicatedIssuerAllowsEmailOnlyRules）

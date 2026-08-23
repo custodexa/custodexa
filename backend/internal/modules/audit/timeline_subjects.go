@@ -6,7 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TimelineSubjectRef 稽核專用的最小主體條目（D7）。
+// TimelineSubjectRef 稽核專用的最小主體條目。
 //
 // **欄位刻意極少**：本端點存在的理由是 `/users` 全組 admin-only，auditor 挑不了人；
 // 而放寬 `/users` 會把 email、角色、外部身分、鎖定狀態一併交出去。

@@ -127,7 +127,7 @@
 
     <div class="events-footer">
       <!-- 未顯示筆數獨立成句、只在真的還有沒看到的時才出現：讀者要的是
-           「還有幾筆沒看到」，不是自己拿兩個數字相減（H6） -->
+           「還有幾筆沒看到」，不是自己拿兩個數字相減 -->
       <span class="footer-hint">
         {{ $t('auditorWorkbench.events.shown', footerCounts)
         }}<span
@@ -204,7 +204,7 @@ import {
 } from './timelineSummary'
 import { formatDateTime } from '@/utils/format'
 
-// 事件時間軸。虛擬滾動以**分批渲染**實現（等效路徑，D7 允許）：捲到底再多渲染
+// 事件時間軸。虛擬滾動以**分批渲染**實現（等效路徑）：捲到底再多渲染
 // 一批，避免單日數萬列一次進 DOM。不引入任何第三方清單／圖表相依
 const props = defineProps({
   events: { type: Array, default: () => [] },
@@ -221,7 +221,7 @@ const props = defineProps({
   // 這段期間的**真實總筆數**（開啟中類別的 counts 加總，由父層算好傳入）。
   // events.length 只是「已抓回的頁數合計」、visibleEvents.length 只是分批
   // 渲染的批次量——兩者都不是總數，拿它們當總數會讓讀者在被截斷時
-  // 誤信自己看完了全部（auditor-readable-copy H6）
+  // 誤信自己看完了全部
   total: { type: Number, default: 0 },
 })
 const emit = defineEmits(['load-more', 'open-session'])
@@ -352,7 +352,7 @@ const scrollToEvent = async (id) => {
   rowRefs.get(id)?.scrollIntoView?.({ block: 'center' })
 }
 
-// 深連結 focus：捲到該事件並高亮（組 8 的入口會帶 focus=<type>:<id> 進來）。
+// 深連結 focus：捲到該事件並高亮（入口會帶 focus=<type>:<id> 進來）。
 // 換一批資料時先重置渲染批次再重新聚焦——兩件事寫在同一個 watcher 裡，
 // 拆成兩個會因註冊順序而互相覆蓋（重置把聚焦擴充的批次又縮回去）。
 //
@@ -396,7 +396,7 @@ watch(
   }
 )
 
-// totalCount／restCount 一併對外：文案接上之前，它們是 H6 唯一可斷言的表面
+// totalCount／restCount 一併對外：文案接上之前，它們是「還有幾筆沒看到」這件事唯一可斷言的表面
 defineExpose({ scrollToEvent, totalCount, restCount, revealedCount, statusKind })
 </script>
 

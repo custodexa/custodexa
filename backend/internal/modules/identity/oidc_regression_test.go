@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// OIDC 引入後的既有登入鏈路回歸（idp-oidc-integration tasks 2.9）。
+// OIDC 引入後的既有登入鏈路回歸。
 //
 // 本檔守的是「新機制不得誤傷舊路徑」與「新舊身分域不得互穿」四件事：
 //

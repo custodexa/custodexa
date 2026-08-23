@@ -190,7 +190,7 @@ func (h *SessionHandler) RegisterRoutes(r *gin.RouterGroup, authService *identit
 	sessions := r.Group("/sessions")
 	sessions.Use(middleware.AuthMiddleware(authService))
 
-	// 敏感讀取端點無條件要求 session:view（session-access-scoping）：
+	// 敏感讀取端點無條件要求 session:view：
 	// session 列表/詳情/活動/統計含他人連線紀錄，不得因
 	// debug 旁路而對一般登入者敞開（該旁路已隨權限旗標退場）
 	sessions.GET("", middleware.RequirePermission(middleware.PermSessionView), h.List)

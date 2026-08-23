@@ -642,7 +642,7 @@ func TestSessionHandler_Terminate(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// 成功回應 message 中文欄已移除（D9）：前端改走自有 $t 成功文案，
+		// 成功回應 message 中文欄已移除：前端改走自有 $t 成功文案，
 		// payload 不再攜帶 UI 文案，僅驗證空物件形狀
 		assert.Equal(t, "{}", w.Body.String())
 

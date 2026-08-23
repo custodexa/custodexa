@@ -1,4 +1,4 @@
-// 連線選帳號（asset-multi-account D2）：預選預設帳號、privileged 明示、確認即帶回帳號。
+// 連線選帳號：預選預設帳號、privileged 明示、確認即帶回帳號。
 // 清單由呼叫端（Workspace）傳入——後端已依有效授權帳號範圍過濾，元件不再自行判定可見性。
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
@@ -25,7 +25,7 @@ const STUB_ROWS = Symbol('stubTableRows')
 const tableStub = {
   name: 'ElTable',
   props: ['data'],
-  // 記錄 setCurrentRow：預選是否套到表格選取態（UI 走查 F1）只能由此驗證
+  // 記錄 setCurrentRow：預選是否套到表格選取態（UI 走查）只能由此驗證
   data() {
     return { currentRow: null }
   },

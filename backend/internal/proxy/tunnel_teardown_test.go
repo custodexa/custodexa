@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 圖形隧道收線時序的回歸測試（change graphics-teardown-sync，design D8）。
+// 圖形隧道收線時序的回歸測試。
 //
 // **為什麼這個檔案存在**：`internal/proxy` 先前對「`Start()` 何時返回」「keepalive」
 // 「錄影 rename-stat」三件事零覆蓋——這正是「客戶端送 WS close frame 後隧道要等下一次
@@ -203,12 +203,12 @@ func TestTunnelStartReturnsOnClientNormalClose(t *testing.T) {
 		assert.NoError(t, retErr(), "正常關閉不應產生錯誤——end_reason 必須維持 normal")
 	case <-time.After(2 * time.Second):
 		t.Fatal("Start() 未於 2 秒內返回：正常關閉仍在等保活 ping，" +
-			"會話會滯留 active 最長 30 秒（graphics-teardown-sync 修的就是這個）")
+			"會話會滯留 active 最長 30 秒")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 2.3 guacd 側關閉立即收線（design D1「兩條都要加」的守衛）
+// 2.3 guacd 側關閉立即收線（「兩條都要加」的守衛）
 // ---------------------------------------------------------------------------
 
 // TestTunnelStartReturnsOnGuacdClose guacd 側關閉 TCP 後 Start() 必須立即返回。
@@ -291,7 +291,6 @@ func (c *deadlineRecordingConn) SetReadDeadline(tm time.Time) error {
 // 或把 wsPingInterval／wsReadTimeout 改成可注入變數。後者會動到本 change 明文要求
 // 逐字不動的 keepalive 常數宣告，故本檔改為驗「武裝動作仍然發生」——逾時到期後
 // net.Conn 會讓 ReadMessage 出錯是標準庫行為，不是本專案的程式碼。
-// 這個取捨的完整理由與已排除的作法記在 change tasks.md 的 2.4。
 func TestTunnelKeepaliveArmsReadDeadlineAndPongRefresh(t *testing.T) {
 	guacd := newFakeGuacd(t)
 	conn := guacd.dial(t)

@@ -16,7 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/sealjournal"
 )
 
-// 封印期 journal 回灌落地端的驗收（kek-provider-modularization D6.5 第 1／4／6 點）。
+// 封印期 journal 回灌落地端的驗收。
 
 // newReplayAuditService 建一個同步寫入的審計服務（回灌經它落地）。
 func newReplayAuditService(t *testing.T) *AuditLogService {
@@ -151,7 +151,7 @@ func TestSealReplaySinkIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestSealReplaySinkDerivesOwnAggregateID 聚合列的冪等鍵由 sink 自行導出（M7）。
+// TestSealReplaySinkDerivesOwnAggregateID 聚合列的冪等鍵由 sink 自行導出。
 //
 // 冪等鍵同時是 DB 唯一鍵。若沿用上游交出的 DeterministicID，「兩批算不算同一批」
 // 的判定權就在呼叫端手上：上游對**不同區間**交出同一個 ID 時，第二批會被
@@ -193,7 +193,7 @@ func TestSealReplaySinkDerivesOwnAggregateID(t *testing.T) {
 	}
 }
 
-// TestSealReplaySinkRejectsInconsistentBatch 自我矛盾的批次一律拒絕（M7）。
+// TestSealReplaySinkRejectsInconsistentBatch 自我矛盾的批次一律拒絕。
 func TestSealReplaySinkRejectsInconsistentBatch(t *testing.T) {
 	db := newReplaySinkDB(t)
 	sink := newReplaySink(t, db)
@@ -230,7 +230,7 @@ func TestSealReplaySinkRejectsInconsistentBatch(t *testing.T) {
 	}
 }
 
-// TestSealReplaySinkRequiresAuditWriter 回灌必須經審計服務入口（H7）。
+// TestSealReplaySinkRequiresAuditWriter 回灌必須經審計服務入口。
 //
 // 自行 tx.Create 會讓回灌成為第二條無人維護的審計寫入路徑：繞過
 // FEATURE_AUDIT_LOG_ENABLED、繞過寫入失敗上報。此處以「審計停用時回錯而非
@@ -283,8 +283,7 @@ func captureBatch(t *testing.T, j *sealjournal.Journal) sealjournal.ReplayBatch 
 	return cs.batch
 }
 
-// TestSealReplayFailCloseOnAuditWriteFailure AP-56／AP-57 的 runtime backstop
-// （modular-architecture W4 4.12c）。
+// TestSealReplayFailCloseOnAuditWriteFailure AP-56／AP-57 的 runtime backstop。
 //
 // 封印期 journal 回灌是 audit 模組**自己的**落地入口（manifest 標「不進 sink」），
 // 它的 fail-close 語義是：任一列寫不進去 ⇒ 整批回滾 ⇒ 回 error ⇒
@@ -295,7 +294,7 @@ func TestSealReplayFailCloseOnAuditWriteFailure(t *testing.T) {
 	db := newReplaySinkDB(t)
 	j := writeSealJournalEvents(t)
 
-	// 通用防呆（W4 對抗發現 1）：計數證明「注入器真的被觸發過」。
+	// 通用防呆：計數證明「注入器真的被觸發過」。
 	// 下方兩條斷言（回 error／一列都沒落地）在「回灌根本沒跑到寫入」時也會成立
 	// ——例如 journal 擷取為空、sink 前置檢查早退。計數停在 0 即該格為假綠。
 	// 與 internal/service 的 assertFaultInjectorFired 同一道保護，跨包故各自實作。

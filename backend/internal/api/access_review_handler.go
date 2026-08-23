@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 )
 
-// AccessReviewHandler 週期性存取複審（audit-workflows D2 v1，PCI 7.2.4）
+// AccessReviewHandler 週期性存取複審（audit-workflows v1，PCI 7.2.4）
 type AccessReviewHandler struct {
 	reviewService *authz.AccessReviewService
 	auditService  *audit.AuditLogService
@@ -51,13 +51,13 @@ func (h *AccessReviewHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data":                 reviews,
 		"last_review_days_ago": daysAgo, // -1 = 從未複審
-		// 週期與逾期由伺服端單源回傳（authorization-page-redesign D5，前端不硬編碼）
+		// 週期與逾期由伺服端單源回傳（前端不硬編碼）
 		"review_period_days": authz.ReviewPeriodDays,
 		"overdue":            daysAgo < 0 || daysAgo > authz.ReviewPeriodDays,
 	})
 }
 
-// Detail 單筆複審檢視（authorization-page-redesign D5）
+// Detail 單筆複審檢視
 func (h *AccessReviewHandler) Detail(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -119,10 +119,10 @@ func (h *AccessReviewHandler) Create(c *gin.Context) {
 
 // RegisterRoutes 註冊存取複審路由：讀取限 audit:view、簽核限 admin——
 // 全部端點**無條件**強制權限
-// （authorization-page-redesign D5：矩陣快照為全庫授權展開、簽核為管理層
-// 確認語意，比照 session-access-scoping 敏感端點先例。本 handler 從未有過
-// 條件式註冊分支——同期其他 handler 的該類分支已於 security-backlog-settlement
-// 全面移除，旗標本身退場）。
+// （矩陣快照為全庫授權展開、簽核為管理層
+// 確認語意，比照敏感端點先例。本 handler 從未有過
+// 條件式註冊分支——同期其他 handler 的該類分支已全面移除，
+// 旗標本身退場）。
 // 路由順序：/matrix 必須先於 /:id
 func (h *AccessReviewHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	grp := r.Group("/access-reviews")

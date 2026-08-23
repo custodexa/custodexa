@@ -1,6 +1,6 @@
 package apierror
 
-// 「最後一個本地 admin」不變式的出口碼（idp-oidc-integration 2.7）。
+// 「最後一個本地 admin」不變式的出口碼。
 //
 // 與既有的 RULE_USER_LAST_ADMIN_DELETE／_DISABLE 語義**不同**、故不複用：
 // 那兩碼問的是「還有沒有 admin」，本碼問的是「還有沒有**本地** admin」

@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// uptr 便捷取址（AssetAuthorization.UserID 為 *uint，user-group-authorization）
+// uptr 便捷取址（AssetAuthorization.UserID 為 *uint）
 func uptr(v uint) *uint { return &v }
 
 // MockAuthorizationService - AuthorizationServiceInterface 的 mock
@@ -333,7 +333,7 @@ func TestAuthorizationHandler_Create(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
 
-		// NOTFOUND_GRANT_REFERENCE 帶 params.entity，回應非純字串 map（backend-i18n-unification A4）
+		// NOTFOUND_GRANT_REFERENCE 帶 params.entity，回應非純字串 map
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -372,7 +372,7 @@ func TestAuthorizationHandler_Create(t *testing.T) {
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
 
-		// NOTFOUND_GRANT_REFERENCE 帶 params.entity，回應非純字串 map（backend-i18n-unification A4）
+		// NOTFOUND_GRANT_REFERENCE 帶 params.entity，回應非純字串 map
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -414,7 +414,7 @@ func TestAuthorizationHandler_Create(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		// 內部錯誤不得洩漏至回應（error-message-consistency）
+		// 內部錯誤不得洩漏至回應
 		assert.Equal(t, "建立授權失敗", response["error"])
 		assert.NotContains(t, response["error"], "database error")
 
@@ -439,7 +439,7 @@ func TestAuthorizationHandler_Delete(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// message 欄已移除（backend-i18n-unification D9：成功回應不攜帶 UI 文案）
+		// message 欄已移除（成功回應不攜帶 UI 文案）
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -491,7 +491,7 @@ func TestAuthorizationHandler_Delete(t *testing.T) {
 		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("ticket 裸刪守門 409（D4）", func(t *testing.T) {
+	t.Run("ticket 裸刪守門 409", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		mockAuthService.On("RevokePermission", mock.Anything, uint(108)).
@@ -592,7 +592,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 	})
 
 	t.Run("組授權記錄帶分組目標", func(t *testing.T) {
-		// asset-access-scoping：serializer 原只帶資產資訊，組授權記錄無法辨識指向
+		// serializer 原只帶資產資訊，組授權記錄無法辨識指向
 		mockAuthService := new(MockAuthorizationService)
 
 		groupID := uint(5)
@@ -701,7 +701,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("零參數走全量列表（authorization-page-redesign D1）", func(t *testing.T) {
+	t.Run("零參數走全量列表", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		mockAuthService.On("ListAuthorizations", map[string]interface{}{}, 1, 20).
@@ -742,7 +742,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		assert.Contains(t, response["error"], "至多指定一個")
 	})
 
-	t.Run("三態與 ticket 欄位序列化（D2）", func(t *testing.T) {
+	t.Run("三態與 ticket 欄位序列化", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		assetID := uint(10)
@@ -849,7 +849,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("validity 與 source 篩選傳遞伺服端（D7）", func(t *testing.T) {
+	t.Run("validity 與 source 篩選傳遞伺服端", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		mockAuthService.On("ListAuthorizations", mock.MatchedBy(func(f map[string]interface{}) bool {
@@ -900,7 +900,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 
 		// VALIDATION_INVALID_QUERY_PARAM 帶 params.field，回應非純字串 map；
-		// {field} 渲染為 zh 顯示字（backend-i18n-unification A4）
+		// {field} 渲染為 zh 顯示字
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -921,7 +921,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 
 		// VALIDATION_INVALID_QUERY_PARAM 帶 params.field，回應非純字串 map；
-		// {field} 渲染為 zh 顯示字（backend-i18n-unification A4）
+		// {field} 渲染為 zh 顯示字
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
@@ -1002,7 +1002,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 	})
 }
 
-// TestAuthorizationHandler_Create_GroupSubject 群組主體授權（user-group-authorization）
+// TestAuthorizationHandler_Create_GroupSubject 群組主體授權
 func TestAuthorizationHandler_Create_GroupSubject(t *testing.T) {
 	t.Run("群組主體成功", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
@@ -1068,7 +1068,7 @@ func TestAuthorizationHandler_Create_GroupSubject(t *testing.T) {
 }
 
 // TestAuthorizationHandler_Create_IgnoresValidityInput 時效欄位手填封鎖
-// （user-group-authorization spec「手填入口關閉」：CreateRequest 無時效欄位，
+// （spec「手填入口關閉」：CreateRequest 無時效欄位，
 // 客戶端傳入的 date_start/date_expired 不進 GrantSpec，一律永久授權）
 func TestAuthorizationHandler_Create_IgnoresValidityInput(t *testing.T) {
 	mockAuthService := new(MockAuthorizationService)
@@ -1230,7 +1230,7 @@ func TestAuthorizationHandler_List_UserGroupFilter(t *testing.T) {
 	mockAuthService.AssertExpectations(t)
 }
 
-// ===== authorization-page-redesign D3：有效權限雙視角端點 =====
+// ===== 有效權限雙視角端點 =====
 
 // MockEffectiveResolver - EffectiveAccessResolverInterface 的 mock
 type MockEffectiveResolver struct {
@@ -1346,7 +1346,7 @@ func TestAuthorizationHandler_EffectiveUsers(t *testing.T) {
 	})
 }
 
-// TestAuthorizationHandler_List_NodeFilter（authz-tag-node-filters D7）：
+// TestAuthorizationHandler_List_NodeFilter：
 // node_id 第四維——互斥 400、傳遞入 filters、與 validity 疊加、非法值 400
 func TestAuthorizationHandler_List_NodeFilter(t *testing.T) {
 	t.Run("node_id 與 user_id 互斥 400", func(t *testing.T) {

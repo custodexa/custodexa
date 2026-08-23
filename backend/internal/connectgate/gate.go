@@ -1,5 +1,4 @@
-// Package connectgate 是 connect-token 三處入口的**兩階段閘序骨架**
-// （modular-architecture W10，design.md D-C 訂正後的形狀）。
+// Package connectgate 是 connect-token 三處入口的**兩階段閘序骨架**。
 //
 // # 契約
 //
@@ -27,9 +26,10 @@
 //
 // **編號在閘序中不連續是正常的**（如 G-I8 之後接 G-I10）：它們是穩定識別碼而非
 // 連續序號，且並非每一個編號都由本骨架承擔。完整編號集合與「哪些刻意不涵蓋、
-// 為什麼」逐條登記在 `internal/sshproxy/w10_characterization_matrix_test.go` 與
-// `internal/proxy/w10_characterization_matrix_test.go` 的 `TestW10MatrixCoverageIsDeclared`
-// ——該測試對「少一道閘」與「多一道閘」兩個方向都會紅，是這套編號的機器可檢登記表。
+// 為什麼」逐條登記在 `internal/sshproxy/characterization_matrix_test.go` 的
+// `TestMatrixCoverageIsDeclared` 與 `internal/proxy/characterization_matrix_test.go` 的
+// `TestGuacMatrixCoverageIsDeclared`——兩者對「少一道閘」與「多一道閘」兩個方向都會紅，
+// 是這套編號的機器可檢登記表。
 //
 // 閘序骨架與兩階段語義的規範來源為 `openspec/specs/gateway-interfaces/spec.md`
 // 的「政策閘兩階段判定契約」與 `openspec/specs/connection-gating/spec.md` 的「簽發閘序」。
@@ -39,18 +39,18 @@
 // 帳號範圍閘吃的是「已解析出的實際連線帳號名」，它憑證解封後才存在，故必然屬於後階段；
 // **其餘閘的歸屬依各入口的現況位置而定，不依閘的種類**（兌換側的資產 Active／協議適配／
 // 授權查詢／存取政策現況都在解封之後——它們吃的是解封當下那一份資產列，前移會多讀一次
-// 資產並製造新的 TOCTOU 窗口；見 design.md D-C 訂正 2 與等價表 K-1）。
+// 資產並製造新的 TOCTOU 窗口）。
 // 單一 Authorize 只有兩條出路，兩條都不可接受：(a) 讓判定層自行解封憑證，
 // 破「憑證唯一產生地」的連線收口紅線；(b) 丟掉吃 Username 的帳號範圍閘＝拆閘。
 //
 // # 與 pkg/gatewayapi.PolicyGate 的關係（誠實邊界）
 //
-// `Sequence` **是** `gatewayapi.PolicyGate` 的同行程實作（W10.2 接線，`var _` 釘住）。
+// `Sequence` **是** `gatewayapi.PolicyGate` 的同行程實作（`var _` 釘住）。
 // 契約參數（主體、已解析客體）是閘的真實輸入，逐處讀取點見 `Sequence` 註解；
 // 其餘 per-request 脈絡（資產列、已解封憑證、gin 請求脈絡、審計標記合併）仍以閉包捕獲
 // ——**這是同行程 orchestration 的本質，不是待補的缺口**：兌換側的解封後閘吃的是
 // 解封當下那一份資產列，把它塞進契約參數就得在判定層重讀一次資產，那是額外的 DB 讀取
-// 與新的 TOCTOU 窗口（design.md D-C 訂正 2、等價表 K-1）。
+// 與新的 TOCTOU 窗口。
 //
 // 因此可以誠實宣稱的是：**兩階段閘序骨架可以以 PolicyGate 的形狀被消費**。
 // 不可宣稱的是「跨行程消費者已可直接接上」——那還需要把上述脈絡也搬進契約，
@@ -74,7 +74,7 @@ type Stage = gatewayapi.Stage
 
 // Outcome 一道閘的拒絕結果＋邊界對映，**即 `gatewayapi.Denial`**（型別別名）。
 //
-// W10.2 接線前本包自持一份同形結構；接線時上移為契約型別，因為 PolicyGate 的
+// 接線前本包自持一份同形結構；接線時上移為契約型別，因為 PolicyGate 的
 // 回傳型別非它不可（Decision 表達不了狀態碼、平鋪機器欄與內部故障分支，
 // 理由逐條見 `gatewayapi.Denial` 的註解）。別名而非重新宣告，是為了讓
 // `internal/proxy`／`internal/sshproxy` 既有的兩百餘處 `*connectgate.Outcome`
@@ -113,7 +113,7 @@ type ResolvedAccountGates func(s gatewayapi.ConnectSubject, o gatewayapi.Resolve
 //	o.AccountID（選擇器，0＝預設）    G-S12
 //	o.Username                     G-I10／G-S13（帳號授權範圍閘）
 //
-// 跨行程實作要把其餘脈絡也塞進契約參數才成立——那是 backlog，不是本波。
+// 跨行程實作要把其餘脈絡也塞進契約參數才成立——那是 backlog，不是現在。
 // 本型別的存在證明的是：**兩階段閘序骨架確實可以以 PolicyGate 的形狀被消費**。
 type Sequence struct {
 	pre  PreResolveGates
@@ -128,7 +128,7 @@ func NewSequence(pre PreResolveGates, post ResolvedAccountGates) *Sequence {
 }
 
 // AuthorizePreResolve 憑證解封／帳號身分解析「之前」的閘序（各 Stage 涵蓋哪些閘
-// 見 design.md D-C 的介面註解，簽發側與兌換側不同）。
+// 見各入口的閘序宣告，簽發側與兌換側不同）。
 //
 // 逐一評估，第一個非 nil 即回傳並停止——**短路語義是契約的一部分**：
 // 後面的閘不得被執行，否則會產生現況沒有的副作用（多餘的 DB 讀、多餘的審計列）。
@@ -174,8 +174,8 @@ func run(stage Stage, gates []Gate) *Outcome {
 	// 將來的跨行程消費者分流），不是機器約束——本骨架不會因為某道閘「登記在別的
 	// Stage」而拒絕執行它。**唯一被機器強制的不變式是解封位置**（夾在兩次呼叫之間，
 	// 由 cmd/server 的 AST 守衛與執行期零解密測試釘住）。
-	// 要讓 Stage 真的產生約束需一份 Stage→閘 登記表＋執行期比對：backlog B-44。
-	// 在那之前，文件與 round-log SHALL NOT 把 Stage 的歸屬寫成「保證」。
+	// 要讓 Stage 真的產生約束，需一份 Stage→閘 登記表＋執行期比對。
+	// 在那之前，文件 SHALL NOT 把 Stage 的歸屬寫成「保證」。
 	_ = stage
 	return nil
 }

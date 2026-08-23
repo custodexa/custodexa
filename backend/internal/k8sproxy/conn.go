@@ -24,15 +24,15 @@ type Target struct {
 	Namespace string
 	Pod       string
 	Container string // 空＝pod 預設容器
-	// control plane TLS（對抗審查 mustFix #3）
+	// control plane TLS
 	CACert   string // API server CA（PEM，選填）
 	Insecure bool   // 顯式略過 TLS 驗證（預設 false）
-	// 連線模態（D6）：空＝interactive-exec
+	// 連線模態：空＝interactive-exec
 	Mode    Mode
 	Command string // one-shot 模態的單一指令
 }
 
-// Mode K8s 連線模態（D6）
+// Mode K8s 連線模態
 type Mode string
 
 const (
@@ -54,8 +54,8 @@ func clusterTLS(caCert string, insecure bool) string {
 	return ""
 }
 
-// kubeconfigYAML 記憶體組裝 kubeconfig；TLS 依 CA/insecure（對抗審查 mustFix #3：
-// 預設驗證 TLS，insecure 須資產顯式開啟）
+// kubeconfigYAML 記憶體組裝 kubeconfig；TLS 依 CA/insecure（預設驗證 TLS，
+// insecure 須資產顯式開啟）
 func kubeconfigYAML(server, token, caCert string, insecure bool) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Config
@@ -131,7 +131,7 @@ var distrolessHint = []byte("\r\n\x1b[33m[" + branding.Name + "] 此容器似乎
 	"可改用「日誌」模式檢視輸出，或改連同一 pod 中有 shell 的容器。\x1b[0m\r\n")
 
 // Read 覆寫：interactive/one-shot 模態下偵測 kubectl 無 shell 錯誤，
-// 於輸出後附繁中提示（D7），避免使用者只看到裸英文錯誤後被踢出。
+// 於輸出後附繁中提示，避免使用者只看到裸英文錯誤後被踢出。
 func (c *Conn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	if n > 0 && !c.hinted && c.mode != ModeLogs {

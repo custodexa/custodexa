@@ -14,12 +14,12 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 無碼錯誤幀守衛（backend-i18n-unification D7 收尾）
+// 無碼錯誤幀守衛
 //
 // 語義：MsgError／MsgNotice 幀必須帶 apierror registry 碼，因此只能由
 // EncodeErrorMessage／EncodeCodedErrorMessage／EncodeNoticeMessage 產生。
 // `EncodeMessage(MsgError, "認證失敗")` 這條路徑會產出無 Code 欄的幀，
-// 前端無從查譯——D7 的收口就從這一行漏光。
+// 前端無從查譯——碼化收口就從這一行漏光。
 //
 // 為什麼需要 AST 守衛而非只靠執行期檢查：EncodeMessage 的執行期防護
 // （message.go）只在該行真的被跑到時才報，且失敗表現是「使用者什麼都沒收到」。
@@ -46,7 +46,7 @@ const codedFrameModulePath = "github.com/custodexa/backend"
 
 // codedFrameBackendRoot 定位 backend module 根。
 //
-// **不用固定層數 `..`**（modular-architecture W1 1.20）：`Dir(caller)/../..`
+// **不用固定層數 `..`**：`Dir(caller)/../..`
 // 與「本 package 住在樹的第幾層」綁死，package 下移一層就指向 internal/，
 // 掃描根隨之失真而守衛在錯的子樹上掃出零違規。改以「向上找 go.mod 並核對
 // module 行」為身分錨點；錨點失效即 panic，不回傳可疑路徑。
@@ -176,7 +176,7 @@ func TestNoUncodedErrorFrames(t *testing.T) {
 
 	if len(violations) > 0 {
 		t.Errorf("偵測到 %d 處以 EncodeMessage 產生的無碼錯誤／通知幀：\n  %s\n"+
-			"MsgError 請改用 EncodeErrorMessage/EncodeCodedErrorMessage，MsgNotice 請用 EncodeNoticeMessage（D7）。",
+			"MsgError 請改用 EncodeErrorMessage/EncodeCodedErrorMessage，MsgNotice 請用 EncodeNoticeMessage。",
 			len(violations), strings.Join(violations, "\n  "))
 	}
 }

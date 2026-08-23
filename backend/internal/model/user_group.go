@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserGroup 使用者群組（user-group-authorization）：授權主體的分組維度。
+// UserGroup 使用者群組：授權主體的分組維度。
 // 與 RBAC 的 Role 正交——Role 管職能（端點權限），UserGroup 管授權分組
 // （資產可及範圍），不可混用。
 type UserGroup struct {

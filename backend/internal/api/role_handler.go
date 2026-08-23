@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// RoleLister 角色清單能力（消費者側窄介面，SD-2 收斂）。
+// RoleLister 角色清單能力（消費者側窄介面）。
 // handler 不再自持 `*gorm.DB`：角色主檔屬 identity 域，由 `identity.UserService` 實作。
 type RoleLister interface {
 	ListRoles() ([]model.Role, int64, error)

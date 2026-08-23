@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// audit-checkpoint-chain 的兩張表 ORM 守衛（tasks 2.3）。
+// audit-checkpoint-chain 的兩張表 ORM 守衛。
 //
 // 守衛擋的是什麼：檢查點鏈的全部價值在「系統自己也改不了已封的章」。
 // 一旦存在任何可經 ORM 改寫被簽章欄位或刪除檢查點的路徑，「可以被系統改的
@@ -172,7 +172,7 @@ func TestCheckpointUpdatableColumnsWhitelistIsExact(t *testing.T) {
 	want := map[string]bool{
 		"anchor_status": true, "purged_at": true,
 		"purge_signature": true, "purge_signing_key_version": true,
-		// purge_policy_days（tasks 8.3 增列）：簽章的輸入必須隨簽章保存，
+		// purge_policy_days：簽章的輸入必須隨簽章保存，
 		// 否則政策一改全部歷史 tombstone 一起驗不過
 		"purge_policy_days": true,
 	}

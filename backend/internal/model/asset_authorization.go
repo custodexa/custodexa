@@ -11,13 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// AccountScopeAll 全帳號別名（asset-multi-account D5）：
+// AccountScopeAll 全帳號別名：
 // 展開為客體範圍內資產的全部未刪帳號。授權綁 username 字串而非 AssetAccount FK，
 // 因授權客體可為資產群組、帳號卻是 per-asset 物件——「授權群組內的 root」
 // 只能以名字表達——這是「授權客體可為群組、帳號卻是 per-asset 物件」下的必然取捨
 const AccountScopeAll = "@ALL"
 
-// AccountScope 授權列的帳號範圍（asset-multi-account D5）。
+// AccountScope 授權列的帳號範圍。
 //
 // 儲存為 JSON 字串陣列（`type:text`，postgres/sqlite 皆可攜）。空值與空陣列
 // **一律視為 `["@ALL"]`**：既有列 migration 回填 @ALL，而任何漏設此欄的新寫入
@@ -126,13 +126,13 @@ const (
 	PermissionView    PermissionType = "view"    // 檢視資產資訊
 	PermissionConnect PermissionType = "connect" // 連線到資產
 
-	// Deprecated: manage 等級已於 access-policy-approval（J 決議）移除，等級階梯
+	// Deprecated: manage 等級已移除，等級階梯
 	// 收斂為 view<connect 兩階。此常數僅供 v7.5 歷史 migration 碼與歷史軟刪列
 	// 辨識引用，API 拒收、任何新寫入路徑不得使用
 	PermissionManage PermissionType = "manage"
 )
 
-// 授權來源（access-policy-approval D3）
+// 授權來源
 const (
 	AuthorizationSourceManual = "manual" // 管理員手動授權（永久，無時效窗）
 	AuthorizationSourceTicket = "ticket" // 申請核准流產生的臨時授權（帶時效窗）
@@ -146,11 +146,11 @@ type AssetAuthorization struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
-	// 主體：user XOR user_group（user-group-authorization）。
+	// 主體：user XOR user_group。
 	// PostgreSQL 唯一索引對 NULL 視為相異，主體×客體四種組合各需獨立唯一索引去重。
 	// 唯一索引一律 partial（WHERE deleted_at IS NULL）：撤銷＝軟刪，非 partial 索引
 	// 會讓「撤銷後重授同組合」永遠撞唯一衝突（實測證實的既有 bug）。
-	// 另排除核准流來源（AND source <> 'ticket'，access-policy-approval D3 補充）：
+	// 另排除核准流來源（AND source <> 'ticket'）：
 	// 臨時授權必須能與同組合常設授權並存（強制審核蓋過常設、持有者可申請的
 	// 核心場景），且同組合可有多筆不同時窗的臨時授權（預約維護窗）；
 	// ticket 列去重由申請流狀態機保證（pending 去重＋一單一授權）
@@ -160,18 +160,18 @@ type AssetAuthorization struct {
 	AssetGroupID *uint          `gorm:"uniqueIndex:idx_user_group_permission;uniqueIndex:idx_ugroup_agroup_permission" json:"asset_group_id,omitempty"`
 	Permission   PermissionType `gorm:"type:varchar(20);not null;uniqueIndex:idx_user_asset_permission;uniqueIndex:idx_user_group_permission;uniqueIndex:idx_ugroup_asset_permission;uniqueIndex:idx_ugroup_agroup_permission" json:"permission"`
 
-	// 時效窗（user-group-authorization D4）：空＝永久生效。到期語義＝解析不命中，
-	// 記錄留存供審計。來源限核准流（access-policy-approval），管理 API 不接受手填
+	// 時效窗：空＝永久生效。到期語義＝解析不命中，
+	// 記錄留存供審計。來源限核准流，管理 API 不接受手填
 	DateStart   *time.Time `json:"date_start,omitempty"`
 	DateExpired *time.Time `json:"date_expired,omitempty"`
 
-	// 來源（access-policy-approval D3）：manual=管理員手動、ticket=核准流臨時授權。
+	// 來源：manual=管理員手動、ticket=核准流臨時授權。
 	// 授權列表/複審矩陣直接可辨識，不需 join 申請單。欄位不帶 default tag
 	//（GORM default 觸發 RETURNING 破壞 sqlmock），DB 端 default 與既有列回填
 	// 由 20260718 migration 處理，寫入端顯式設值（BeforeCreate 兜底 manual）
 	Source string `gorm:"type:varchar(20)" json:"source"`
 
-	// Accounts 帳號範圍（asset-multi-account D5）：預設 `["@ALL"]`（客體範圍內
+	// Accounts 帳號範圍：預設 `["@ALL"]`（客體範圍內
 	// 資產的全部帳號，行為與多帳號前一致），可個別指定 username 清單
 	//（語義＝範圍內資產上的同名帳號）。
 	//
@@ -191,9 +191,9 @@ type AssetAuthorization struct {
 	AssetGroup    *AssetGroup `gorm:"foreignKey:AssetGroupID" json:"asset_group,omitempty"`
 	GrantedByUser User        `gorm:"foreignKey:GrantedBy" json:"granted_by_user,omitempty"`
 
-	// RequestID 該票證所屬申請單 id（break-glass-revocation：撤銷入口回鏈用）。
+	// RequestID 該票證所屬申請單 id（撤銷入口回鏈用）。
 	// 非 DB 欄位，由 ActiveTickets/MyActiveTickets 查詢後填入（撤銷走申請單，
-	// 附註掛單上——見 D4）
+	// 附註掛單上）
 	RequestID *uint `gorm:"-" json:"request_id,omitempty"`
 }
 
@@ -229,7 +229,7 @@ func (a *AssetAuthorization) ActiveWithin(now time.Time) bool {
 	return true
 }
 
-// 授權有效性三態（authorization-page-redesign D2）：單一布林會把「未生效」
+// 授權有效性三態：單一布林會把「未生效」
 // 誤標「已過期」，序列化與篩選一律用三態
 const (
 	ValidityScheduled = "scheduled" // 未達 date_start

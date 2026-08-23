@@ -11,14 +11,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// F8 fail-close（modular-architecture W7 7.4）：identity 側的級聯撤銷失敗
+// fail-close 語義：identity 側的級聯撤銷失敗
 // 或撤銷面未注入時，刪群組／刪帳號**必須整筆失敗**。
 //
-// **為何非有不可**：W7 波內的載重性驗證在 asset 側實測到——把
+// **為何非有不可**：載重性驗證在 asset 側實測到——把
 // 「撤銷回錯誤就 return」改成「記個 log 繼續刪」之後，既有的委派斷言與
 // audit backstop **兩格都照樣綠**（backstop 注入的是審計失敗，不是撤銷失敗）。
 // identity 側是同一形狀：群組／帳號刪了而授權與審核範圍留著＝幽靈授權
-// 與可回復的審核資格（對抗驗證 aaa2018 #1/#2），正是這條級聯存在的理由。
+// 與可回復的審核資格，正是這條級聯存在的理由。
 
 // failingCascadeRevoker 一律回錯誤的 authz 級聯撤銷面替身。
 type failingCascadeRevoker struct{ err error }

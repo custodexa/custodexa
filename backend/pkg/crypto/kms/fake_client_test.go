@@ -13,7 +13,7 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-// fakeKMS 捕獲請求的假 KMS 客戶端（D11.1 裁決 4 的雙軌驗收之 (a)）。
+// fakeKMS 捕獲請求的假 KMS 客戶端（雙軌驗收之 (a)）。
 //
 // **存在理由**：「每次 Decrypt／ReEncrypt 入參恆帶 KeyId 與 EncryptionContext」
 // 這條斷言的價值在於**不依賴模擬器保真度**——localstack 是否真的強制比對，
@@ -38,7 +38,7 @@ type fakeKMS struct {
 	describeErrs []error
 	// encryptErr／decryptErr 恆定的加解密錯誤（非 nil 即每次都回）。
 	// 用途：模擬「DescribeKey 過得去、但 IAM 沒給 kms:Encrypt／kms:Decrypt」
-	// ——正是 codex med #5 指出的、metadata 檢查看不見的失敗面。
+	// ——正是安全審查 med #5 指出的、metadata 檢查看不見的失敗面。
 	encryptErr error
 	decryptErr error
 }
@@ -131,7 +131,7 @@ func (f *fakeKMS) Decrypt(_ context.Context, in *awskms.DecryptInput, _ ...func(
 	if err != nil {
 		return nil, err
 	}
-	// 顯式 KeyId 比對（MED-1 的承載機制）：未帶或不符一律拒
+	// 顯式 KeyId 比對（跨金鑰解包防線的承載機制）：未帶或不符一律拒
 	if in.KeyId == nil || *in.KeyId == "" {
 		return nil, &smithy.GenericAPIError{Code: "InvalidCiphertextException", Message: "fake: Decrypt 未帶 KeyId"}
 	}

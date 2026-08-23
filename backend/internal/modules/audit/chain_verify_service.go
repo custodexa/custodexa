@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 檢查點鏈的兩層自動驗證編排（audit-chain-scheduled-verification D2／D9）。
+// 檢查點鏈的兩層自動驗證編排。
 //
 // **為什麼要有這一支**：鏈的驗證原本只有人拉的入口（驗證頁的按鈕）。有人以
 // 資料庫直寫刪掉某已封區間的中段列時，鏈**確實留下了證據**（該區間 agg_hash
@@ -203,7 +203,7 @@ func (s *ChainVerifyService) effectiveRowsPerHour() int64 {
 	return rate
 }
 
-// rowBudget 本輪內容層列預算＝掃描速率 × 本次間隔（D10）。
+// rowBudget 本輪內容層列預算＝掃描速率 × 本次間隔。
 //
 // **不是每輪固定列數**：繞行一輪全歷史所需時間正比於「間隔 ÷ 每輪預算」，
 // 若預算為每輪固定值，延長驗證間隔即等比延長繞行週期，而管理員從介面上
@@ -238,7 +238,7 @@ func (s *ChainVerifyService) LoadState() (*model.AuditChainVerifyState, error) {
 
 // loadStateOrReport 載入狀態列；失敗即以「驗證本身失敗」機制上報後才回錯。
 //
-// **為什麼載入失敗必須出聲**：狀態列讀不到＝資料庫不可讀，而那正是 D5 明列為
+// **為什麼載入失敗必須出聲**：狀態列讀不到＝資料庫不可讀，而那正是規格明列為
 // audit_chain_verify_failed 的成因之一。若此處只 return，這個成因在真實裝配上
 // 永遠不會上報、不會發通知，只留一行本地 log——偵測控制在最需要出聲的時候是啞的
 // （對抗驗收 6.5 的缺陷 A）。且它必須走**這個**機制碼而非竄改機制：
@@ -474,7 +474,7 @@ func (s *ChainVerifyService) verifyContent(ctx context.Context, layer string,
 	// 必驗集合（不受列預算限制，兩層皆適用）：
 	//   1. 鏈尾最新的已封區間——近期層已涵蓋它，全鏈層**刻意保留冗餘**，
 	//      使兩層各自自足、不因對方失效而失去鏈尾覆蓋；
-	//   2. 尚未重驗轉綠的失敗區間集合（D9 假恢復修法的核心）。
+	//   2. 尚未重驗轉綠的失敗區間集合（假恢復修法的核心）。
 	mandatory := map[uint]bool{tail: true}
 	for seq := range decodeSeqSet(st.OpenFailedSeqs) {
 		if seq >= head && seq <= tail {
@@ -624,7 +624,7 @@ func mergeSeqRanges(seqs map[uint]bool) []seqRange {
 	return out
 }
 
-// ── 失敗區間集合（D9）─────────────────────────────────────────────────────
+// ── 失敗區間集合 ─────────────────────────────────────────────────────────
 
 // mergeOpenFailed 以本輪結果更新未結案的失敗區間集合，並寫回狀態。
 //
@@ -733,7 +733,7 @@ func chainVerifyFingerprint(structureFailed int, open map[uint]string) string {
 //   - 進入異常狀態時發告警（失效事件的開始時間即首次發現時間，永久留存）；
 //   - 未結案集合改變時再次發出通知，且**不先結案再重開**——偽造一次不存在的
 //     恢復會破壞失效區間的起訖證據；
-//   - **結案以集合清空為條件**，不以「本輪驗過的區間全數通過」為條件（D9）。
+//   - **結案以集合清空為條件**，不以「本輪驗過的區間全數通過」為條件。
 func (s *ChainVerifyService) syncAlerts(layer string, structurePassed bool, structureFailed int,
 	open map[uint]string, prevFingerprint, fingerprint string) {
 	params := map[string]string{model.FailureParamChainVerifyLayer: layer}

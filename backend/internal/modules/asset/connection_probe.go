@@ -1,6 +1,6 @@
 package asset
 
-// 撥測（test-connection）的協議分派對照表與各協議 probe（db-protocol-connection-test）。
+// 撥測（test-connection）的協議分派對照表與各協議 probe。
 //
 // 為何獨立成檔：分派曾是「白名單 SSH ＋ else 一律送 guacd」的**否定式**結構，
 // 於是 mysql／postgres／redis／k8s 四種協議被 else 靜默吞進 guacd——guacd 沒有這些
@@ -24,7 +24,7 @@ import (
 	"github.com/custodexa/backend/pkg/guacamole"
 )
 
-// 撥測逾時夾制區間（D5）：呼叫端可傳 timeout，但服務層只接受 1..30 秒。
+// 撥測逾時夾制區間：呼叫端可傳 timeout，但服務層只接受 1..30 秒。
 // 上界的存在是為了「撥測不長佔」；前端 per-request timeout 必須大於本上界。
 const (
 	testTimeoutDefaultSeconds = 10
@@ -62,7 +62,7 @@ const (
 	probeNameK8sExec   = "k8s_can_exec"
 )
 
-// connectionProbes 協議 → 撥測方式的**顯式對照表**（D1）。
+// connectionProbes 協議 → 撥測方式的**顯式對照表**。
 //
 // 與 assetProtocols 互為雙向完備：兩邊都不得單方面增刪。未登記的協議在
 // testConnection 一律回 protocol_unsupported，不進 guacd 也不進任何中介。
@@ -71,7 +71,7 @@ const (
 //
 //	ssh                     完整登入（host key 驗證 + 密碼認證）
 //	rdp / vnc               guacd 完成協議連線握手
-//	mysql/postgres/redis/mssql  僅 TCP 埠可達（刻意不做握手與認證，見 D2）
+//	mysql/postgres/redis/mssql  僅 TCP 埠可達（刻意不做握手與認證）
 //	k8s                     API server 可達 + TLS 通過 + token 具 pods/exec 權限
 var connectionProbes = map[model.ProtocolType]connectionProbe{
 	model.ProtocolSSH: {name: probeNameSSHDirect, run: func(s *AssetService, _ context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
@@ -89,7 +89,7 @@ var connectionProbes = map[model.ProtocolType]connectionProbe{
 // probeGuacd rdp／vnc 撥測：經 guacd 完成協議握手（自舊 testConnection 原樣抽出）。
 //
 // 誠實邊界：params.Timeout 只涵蓋 TCP 撥號，guacd 讀取路徑無 deadline
-// （pkg/guacamole/client.go 刻意移除，見 D8 backlog）。本 change 不宣稱此路徑有
+// （pkg/guacamole/client.go 刻意移除，列為 backlog）。本 change 不宣稱此路徑有
 // 逾時保障——它只是不再收到 guacd 不支援的協議。
 func (s *AssetService) probeGuacd(ctx context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	asset := creds.Asset
@@ -97,7 +97,7 @@ func (s *AssetService) probeGuacd(ctx context.Context, creds *AssetCredentials, 
 		Protocol: string(asset.Protocol),
 		Host:     asset.Host,
 		Port:     asset.Port,
-		// username 與密碼同取自 default 帳號（D6：憑證與 username 必須同帳號）
+		// username 與密碼同取自 default 帳號（憑證與 username 必須同帳號）
 		Username: creds.Username,
 		Password: creds.Password,
 		Timeout:  time.Duration(timeout) * time.Second,
@@ -116,7 +116,7 @@ func (s *AssetService) probeGuacd(ctx context.Context, creds *AssetCredentials, 
 		TestedAt:  time.Now(),
 	}
 	if !result.Success {
-		// D9：guacd 原始訊息不外洩，只落伺服端日誌
+		// guacd 原始訊息不外洩，只落伺服端日誌
 		errorCode := mapGuacamoleErrorType(raw.ErrorType)
 		result.setFailure(testResultCodeFor(errorCode), errorCode)
 		log.Printf("[TestConnection] guacd 撥測失敗: Asset ID=%d Detail=%s", asset.ID, raw.Message)
@@ -144,7 +144,7 @@ func mapGuacamoleErrorType(errorType string) string {
 
 // probeTCP 資料庫協議（mysql／postgres／redis）撥測：只驗 host:port 的 TCP 可達性。
 //
-// **刻意不做協議握手與認證**（D2，使用者拍板）：真登入會在目標端留下失敗認證記錄
+// **刻意不做協議握手與認證**（使用者拍板）：真登入會在目標端留下失敗認證記錄
 // （MySQL max_connect_errors、Redis AUTH 稽核），且要新增 2-3 個直接相依。
 // 代價是「成功」僅代表埠可達，不代表對面是預期的 DB、更不代表憑證有效——
 // 此侷限已寫進 spec 並由前端徽章 tooltip 就地揭露。
@@ -220,7 +220,7 @@ func (s *AssetService) probeK8s(ctx context.Context, creds *AssetCredentials, ti
 	return result
 }
 
-// k8sFailureCode 把 k8sproxy.K8sError 的五類 Kind 映到撥測機器碼（D6）。
+// k8sFailureCode 把 k8sproxy.K8sError 的五類 Kind 映到撥測機器碼。
 // 非 K8sError（如 context deadline）歸逾時或未分類。
 func k8sFailureCode(err error) (apierror.ErrCode, string) {
 	var ke *k8sproxy.K8sError

@@ -139,7 +139,7 @@ const props = defineProps({
     type: String,
     default: ''
   },
-  // 所選資產帳號（asset-multi-account D2）：只進 connect-token 簽發 body
+  // 所選資產帳號：只進 connect-token 簽發 body
   accountId: {
     type: [Number, String],
     default: null
@@ -158,10 +158,10 @@ const pendingConnect = ref(false)
 // lastClipboardText 為最後同步值（雙向去重，避免 focus 把剛收到的內容回送形成迴圈）
 let pendingRemoteClipboard = null
 let lastClipboardText = null
-// 遠端最後一次送來的剪貼簿內容（F2：供「取遠端剪貼簿」鈕以使用者手勢寫入本機，
+// 遠端最後一次送來的剪貼簿內容（供「取遠端剪貼簿」鈕以使用者手勢寫入本機，
 // 繞過瀏覽器對非手勢 clipboard.writeText 的封鎖）
 let remoteClipboardText = ''
-// F3：RDP 上傳檔案的隱藏 file input
+// RDP 上傳檔案的隱藏 file input
 const fileInputRef = ref(null)
 
 // Debug 狀態 - 簡化版
@@ -174,7 +174,7 @@ const displayHeight = ref(768)
 let guacClient = null
 let keyboard = null
 let mouse = null
-// F3：遠端檔案系統物件（由 onfilesystem 提供）——RDP=重導磁碟、VNC=SFTP 側車
+// 遠端檔案系統物件（由 onfilesystem 提供）——RDP=重導磁碟、VNC=SFTP 側車
 // （vnc-file-transfer），上傳檔案走它的 createOutputStream
 let remoteFs = null
 // 檔案系統掛載才顯示上傳入口（未啟用 SFTP 的 VNC 不出現，RDP 磁碟就緒前也不出現）
@@ -329,7 +329,7 @@ function fitDisplay() {
   display.scale(scale)
 }
 
-// guacd error instruction 的 status code → apierror 碼（backend-i18n-unification D7）。
+// guacd error instruction 的 status code → apierror 碼。
 // guacamole-common-js 的 client error handler 只把 args[0] 當訊息、args[1] 當狀態碼，
 // 兩種逾時因此必須用不同狀態碼才分得開（後端 proxy/tunnel.go 拆碼的理由）。
 // 值刻意映射到既有 apiError 碼而非另立 UI 鍵：那兩條譯文已與後端 registry 的
@@ -374,7 +374,7 @@ function connect() {
 async function doConnect(containerWidth, containerHeight) {
   try {
     connecting.value = true
-    // 傳輸能力快照（data-transfer-control 6.2／D4）：**剪貼簿兩鍵是連線參數**，
+    // 傳輸能力快照（data-transfer-control 6.2）：**剪貼簿兩鍵是連線參數**，
     // 由 guacd 於握手時吃下，連線期間改政策不影響本條連線。故此處取的值就是
     // 這條連線的實際能力，之後不再刷新——刷新反而會讓按鈕狀態與連線實況不符
     // （政策改開＝按鈕亮但 guacd 仍擋；政策改關＝按鈕暗但其實還能貼）。
@@ -384,7 +384,7 @@ async function doConnect(containerWidth, containerHeight) {
     displayWidth.value = containerWidth
     displayHeight.value = containerHeight
 
-    // 兩段式連線（connect-token-guacd）：先換一次性 token，URL 不帶 JWT；
+    // 兩段式連線：先換一次性 token，URL 不帶 JWT；
     // warn 檔命中傳輸風險時內含同意對話框（428→立據→重試），拒絕即中止
     let connectToken
     try {
@@ -411,7 +411,7 @@ async function doConnect(containerWidth, containerHeight) {
     const wsUrl = `${wsProtocol}//${wsHost}/api/v1/connect?${params.toString()}`
 
     // 不記錄 wsUrl：其 query 含一次性 connect_token，印到 console 或狀態列等同
-    // 憑證外洩、破壞連線收口（前端零接觸明文憑證紅線；UI 對抗審查 R5）
+    // 憑證外洩、破壞連線收口（前端零接觸明文憑證紅線）
     debugLastMessage.value = t('guacClient.debugEstablishing')
 
     // 官方標準模式：創建 tunnel → 創建 client → 添加 display
@@ -425,10 +425,10 @@ async function doConnect(containerWidth, containerHeight) {
     // 遠端畫面尺寸變化（首幀、伺服器端重設解析度）時重新適配縮放
     guacClient.getDisplay().onresize = fitDisplay
 
-    // 遠端 → 本機剪貼簿（graphics-clipboard-sync D1）
+    // 遠端 → 本機剪貼簿
     guacClient.onclipboard = handleRemoteClipboard
 
-    // F3：遠端檔案系統掛載（RDP 重導磁碟／VNC SFTP 側車）——捕獲 filesystem 物件供上傳
+    // 遠端檔案系統掛載（RDP 重導磁碟／VNC SFTP 側車）——捕獲 filesystem 物件供上傳
     guacClient.onfilesystem = (object, name) => {
       remoteFs = object
       hasRemoteFs.value = true
@@ -459,7 +459,7 @@ async function doConnect(containerWidth, containerHeight) {
         ElMessage.success(t('guacClient.connectedMsg'))
         setupInput()
 
-        // 本機 → 遠端剪貼簿：視窗回焦時同步（graphics-clipboard-sync D2）
+        // 本機 → 遠端剪貼簿：視窗回焦時同步
         window.addEventListener('focus', syncClipboardOnFocus)
         syncClipboardOnFocus()
         console.log('[GuacamoleClient v6.1] 連線成功')
@@ -522,7 +522,7 @@ function handleRemoteClipboard(stream, mimetype) {
   }
 }
 
-// F2：遠端 → 本機（使用者手勢觸發，繞過瀏覽器對非手勢 writeText 的封鎖）
+// 遠端 → 本機（使用者手勢觸發，繞過瀏覽器對非手勢 writeText 的封鎖）
 async function copyRemoteToLocal() {
   if (!remoteClipboardText) {
     ElMessage.info(t('guacClient.remoteClipboardEmpty'))
@@ -537,9 +537,9 @@ async function copyRemoteToLocal() {
   }
 }
 
-// F3：上傳本機檔案到遠端（RDP 走 guacd "file" 串流→重導磁碟）
+// 上傳本機檔案到遠端（RDP 走 guacd "file" 串流→重導磁碟）
 function triggerFilePicker() {
-  // 檔案能力於 tunnel 側逐次判定（D4 即時生效），開挑選器前重取一次，
+  // 檔案能力於 tunnel 側逐次判定（即時生效），開挑選器前重取一次，
   // 使呈現跟得上會話進行中的政策改動；剪貼簿不重取（見 doConnect 註解）
   loadCapabilities(props.assetId)
   fileInputRef.value?.click()
@@ -622,7 +622,7 @@ async function pasteToRemote(silent = false) {
     writer.sendEnd()
     if (!silent) {
       ElMessage.success(t('guacClient.pastedToRemote'))
-      // F2：顯式點擊才補送 Ctrl+V 真的貼到游標處（只設剪貼簿、不按 Ctrl+V 是先前「沒用」的主因）；
+      // 顯式點擊才補送 Ctrl+V 真的貼到游標處（只設剪貼簿、不按 Ctrl+V 是先前「沒用」的主因）；
       // auto-sync（silent）不觸發，避免視窗回焦時亂貼。延遲讓遠端剪貼簿先到位。
       setTimeout(() => {
         if (!connected.value || !guacClient) return
@@ -744,7 +744,7 @@ defineExpose({
   background: transparent; /* Allows Guacamole's z-index: -1 canvas to display correctly */
 }
 
-/* F1：精簡工具列高度——對齊 SSH 終端的低調 chrome，不壓縮遠端桌面可視區 */
+/* 精簡工具列高度——對齊 SSH 終端的低調 chrome，不壓縮遠端桌面可視區 */
 .client-toolbar {
   padding: 3px 8px;
   background: #3d3d3d;

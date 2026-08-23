@@ -1,6 +1,6 @@
 package connectgate_test
 
-// PolicyGate 的**消費側**測試（modular-architecture W10.2，DoD-2）
+// PolicyGate 的**消費側**測試
 //
 // 「消費側」＝以 `gatewayapi.PolicyGate` 這個**介面型別**為依賴的測試，不是測某個實作。
 // 本檔的 `runConnectGates` 只認得介面，對 `connectgate` 的存在一無所知——它與兩個

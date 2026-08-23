@@ -6,7 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// ldapRiskProvider 測試用的 risk view provider（ldap-settings-migration 2.9）：
+// ldapRiskProvider 測試用的 risk view provider：
 // 固定回一份「解析成功」的視圖，取代改動前的 config.LDAPConfig 快照參數。
 // **只換注入形狀，判定輸入等價**——判準本身未動
 func ldapRiskProvider(view LDAPRiskView) func() LDAPRiskResult {

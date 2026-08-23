@@ -21,7 +21,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 全域裸文字錯誤出口守衛（backend-i18n-unification D1）
+// 全域裸文字錯誤出口守衛
 //
 // 語義：後端「使用者可見文字直寫」的出口必須全部走 apierror 出口。既有出口以
 // hash 制 allowlist 凍結（燒盡制），新出口一律紅。
@@ -59,7 +59,7 @@ var sinkScanDirs = []string{
 	"internal/k8sproxy",
 	"internal/dbproxy",
 	"internal/sourceip",
-	// internal/observability 的指標曝光端點 import gin（observability-lite）。
+	// internal/observability 的指標曝光端點 import gin。
 	// **納入掃描而非加入豁免**：豁免等於在該套件內放棄監管，而它確實有一條
 	// 錯誤回應路徑（token 不符的 401）。納入後守衛即持續保證該路徑不裸寫錯誤體。
 	"internal/observability",
@@ -100,7 +100,7 @@ const (
 
 // legacyCodeAllowlist lists documented out-of-system lowercase codes that are
 // written directly (not via apierror) and are exempt from grammar/registry.
-// backend-i18n-unification 收尾後應保持為空：break_glass_disabled 已改
+// 錯誤碼收斂完成後應保持為空：break_glass_disabled 已改
 // RULE_BREAK_GLASS_DISABLED、ack_required/strict_reject 已改
 // VALIDATION_TRANSMISSION_*（前後端同步收斂）。新條目須附書面理由。
 var legacyCodeAllowlist = map[string]bool{}
@@ -114,7 +114,7 @@ const apierrorModulePath = "github.com/custodexa/backend"
 
 // backendRoot 定位 backend module 根（本套件三個守衛的共用掃描根）。
 //
-// **不用固定層數 `..`**（modular-architecture W1 1.20）：`Dir(caller)/../..`
+// **不用固定層數 `..`**：`Dir(caller)/../..`
 // 與「本 package 住在樹的第幾層」綁死，package 一下移就指向 internal/（而非
 // backend/），Walk 照樣成功、只是掃到錯的子樹或空目錄——守衛於是掃空而照樣綠。
 // 改以「自本測試檔位置向上找 go.mod 並核對 module 行」為身分錨點。
@@ -433,7 +433,7 @@ func renderSinkAllowlist(m multiset) string {
 	sort.Strings(keys)
 
 	var b strings.Builder
-	b.WriteString("# 裸文字錯誤出口 allowlist（backend-i18n-unification D1，機器生成勿手改）\n")
+	b.WriteString("# 裸文字錯誤出口 allowlist（機器生成勿手改）\n")
 	b.WriteString("# 格式：<相對 backend/ 的檔案路徑> <sink 運算式正規化 hash> <同檔同 hash 筆數>\n")
 	b.WriteString("# 重生：docker compose exec -T backend go test ./internal/apierror/ -run TestNoRawErrorSinks -update\n")
 	b.WriteString("# 語義：燒盡制。條目只該減不該增；-update 的 diff 須在 commit 中逐條審視。\n")

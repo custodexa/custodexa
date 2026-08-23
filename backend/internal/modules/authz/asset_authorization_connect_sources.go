@@ -9,8 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// authz 側對 policy 窄介面 `policy.ConnectSourceResolver` 的實作
-// （modular-architecture W3 3.1／R3.1 §4.8(b)(c)）。
+// authz 側對 policy 窄介面 `policy.ConnectSourceResolver` 的實作。
 //
 // 編譯期斷言方向已翻轉：authz→policy。政策閘不再持有
 // `*assetAuthorizationRepository`，也不再直查 `access_requests`。

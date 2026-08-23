@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 )
 
-// LDAP 目錄設定 API（ldap-settings-migration 3.1，admin-only）。
+// LDAP 目錄設定 API（admin-only）。
 //
 // **singleton 資源**：`/api/v1/ldap-directory` 無集合式建立端點、無 `:id`——
 // 「至多一條 live 設定」由資源形狀＋DB 層守衛（CHECK＋partial unique index）

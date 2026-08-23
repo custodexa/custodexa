@@ -13,10 +13,9 @@ import (
 	"testing"
 )
 
-// 「`EncodeWrappedKey` 是 `wrapped_key` 值的唯一產出點」的結構守衛
-// （kek-provider-modularization tasks 3.0 的修正後前提）。
+// 「`EncodeWrappedKey` 是 `wrapped_key` 值的唯一產出點」的結構守衛。
 //
-// **本守衛守的是什麼**：D4 的相容窗依賴「無前綴 ⇒ 本地格式」恆真。該不變式的
+// **本守衛守的是什麼**：相容窗依賴「無前綴 ⇒ 本地格式」恆真。該不變式的
 // 根據是 EncodeWrappedKey 對委託格式在**建構上**拒絕無 AAD 包裹、帶 AAD 者恆編
 // `wk:2:<tag>:`（wrapped_key.go:89-107）。但那個保證只在「所有 wrapped_key 值都
 // 經過該函式」時才成立——只要有一條旁路（自己拼字串、直接寫 base64），
@@ -47,7 +46,7 @@ const wrappedKeyProducer = "wrapMaterial"
 // **新增任一項都必須確認其值來源仍是 wrapMaterial 或空字串**——
 // 本守衛的 G2 會逐一檢查，故此清單只放寬「哪裡可以寫」，不放寬「可以寫什麼」。
 var wrappedKeyWriteAllowlist = map[string][]string{
-	// 材料顯式清理（D9 軟刪除後的銷毀）：寫入空字串，不是編碼旁路
+	// 材料顯式清理（軟刪除後的銷毀）：寫入空字串，不是編碼旁路
 	"key_manager_cleanup.go": {"CleanupRetiredMaterial"},
 	// 金鑰鑄造與重包 clone：值恆為 wrapMaterial 的產物（或佔位列的空字串）
 	"key_manager_service.go":  {"insertKey"},
@@ -90,7 +89,7 @@ func TestEncodeWrappedKeyIsSoleProducer(t *testing.T) {
 	}
 	if len(violations) > 0 {
 		sort.Strings(violations)
-		t.Fatalf("偵測到繞過 canonical encoder 的 wrapped_key 寫路徑（tasks 3.0）：\n%s\n"+
+		t.Fatalf("偵測到繞過 canonical encoder 的 wrapped_key 寫路徑：\n%s\n"+
 			"「無前綴 ⇒ 本地格式」的相容窗不變式依賴 EncodeWrappedKey 為唯一產出點；"+
 			"任何旁路都可能讓委託格式落庫成無前綴值而被讀端誤判為本地格式",
 			strings.Join(violations, "\n"))

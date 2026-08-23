@@ -7,7 +7,7 @@ import (
 )
 
 // TestLDAPURLParseRejectsNonOriginShapes URL 文法收斂：origin 形狀以外一律拒。
-// 每格對應 D3「拒絕 userinfo／path／query／fragment／空 host／超界 port」的一項
+// 每格對應「拒絕 userinfo／path／query／fragment／空 host／超界 port」的一項
 func TestLDAPURLParseRejectsNonOriginShapes(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// 未兌換 grant 的無界成長（codex 對抗審查 G-B）。
+// 未兌換 grant 的無界成長。
 //
 // 原本 grants map 只有一條移除路徑：以**同一把 token** 呼叫 Resolve。
 // 已認證使用者只要反覆打簽發端點而從不兌換，每張 grant 就會永久留在 map 裡

@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// provider 停用／刪除／密鑰輪替的全面失效（idp-oidc-integration 3.8 / design 行 64）。
+// provider 停用／刪除／密鑰輪替的全面失效（3.8 / design 行 64）。
 //
 // 五條管道，缺一即留下一類存活的存取：
 //
@@ -20,7 +20,7 @@ import (
 //	監看／分享訂閱    不建 sessions 列，會話掃描完全掃不到
 //	錄影 token        in-memory 且不做世代比對，唯一失效途徑是直接撤銷
 //
-// **刪除亦走全套**（design 行 64，codex MEDIUM）：軟刪後管理端再也無從按 provider
+// **刪除亦走全套**：軟刪後管理端再也無從按 provider
 // 收線，若刪除只推進世代而不掃描，「外部身分已全數解綁、但先前建立的協議連線仍在」
 // 的狀態下刪除 provider，那些連線會永久存活。
 //

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// LimiterConfig 為退避／冷卻參數（D6.4）。
+// LimiterConfig 為退避／冷卻參數。
 type LimiterConfig struct {
 	// BaseBackoff 為 per-source 第一次失敗後的退避基準
 	BaseBackoff time.Duration
@@ -40,7 +40,7 @@ func DefaultLimiterConfig() LimiterConfig {
 
 // Limiter 是 per-source 失敗計數與退避的獨立限速結構。
 //
-// D6.2.3 明文：per-source 的失敗計數與退避 SHALL NOT 入 sealNode——它是無界的
+// per-source 的失敗計數與退避 SHALL NOT 入 sealNode——它是無界的
 // 來源集合，不得宣稱與 state／generation／services 在同一個 CAS 內更新
 // （宣稱了也做不到，只會逼實作者造一個假的原子性）。
 // 全域冷卻則相反：它是取得獨佔的前置條件，故 cooldownUntil 在 sealNode 內、
@@ -124,7 +124,7 @@ func (l *Limiter) RecordMaterialFailure(key string, now time.Time) (time.Time, b
 	return now.Add(backoffFor(l.cfg.GlobalCooldown, l.cfg.MaxGlobalCooldown, over)), true
 }
 
-// RecordSuccess 於解封成功後把計數歸零（D6.4：計數隨成功歸零）。
+// RecordSuccess 於解封成功後把計數歸零。
 func (l *Limiter) RecordSuccess(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

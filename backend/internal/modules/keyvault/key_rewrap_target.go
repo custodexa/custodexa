@@ -9,10 +9,10 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 重包目標（kek-provider-modularization D7）：換鑰精靈的 discriminated union
+// 重包目標：換鑰精靈的 discriminated union
 // 在服務層的表述。
 //
-// **為何不是裸 crypto.KEKProvider**：本地目標的材料格式驗證（D8 路 2）若只落在
+// **為何不是裸 crypto.KEKProvider**：本地目標的材料格式驗證若只落在
 // handler，任何繞過 handler 的呼叫端（含日後新增的內部流程）都能以不合格材料
 // 重包。改為「**唯一公開建構入口即驗證入口＋sink 端重驗**」。
 //
@@ -38,7 +38,7 @@ const (
 	RewrapTargetModeHSM   = crypto.KeyRefProviderHSM
 )
 
-// ErrRewrapMaterialFormat 本地目標材料未通過伺服端格式驗證（D8 路 2：長度、
+// ErrRewrapMaterialFormat 本地目標材料未通過伺服端格式驗證（長度、
 // 字元集、非出廠預設值）。**不得只靠前端**——前端驗證只是即時回饋。
 var ErrRewrapMaterialFormat = errors.New("新 KEK 材料不合格式要求")
 
@@ -53,7 +53,7 @@ var ErrRewrapTargetSameAsCurrent = errors.New("重包目標與現行 KEK 相同"
 
 // ErrRewrapTargetSeen 目標金鑰引用與金鑰表衝突。
 //
-// **本地與委託的判定範圍不同（D11.1 裁決 6）**：
+// **本地與委託的判定範圍不同**：
 //   - 本地目標：曾出現過即拒（含退役列）——KEK 隨機生成，碰撞就換一把即可；
 //   - 委託目標：僅「存在使用該 kek_id 的**未退役**列」才拒——ARN 不可重生，
 //     沿用嚴格語義等於一次 abandon 就永久燒毀該 CMK。
@@ -68,7 +68,7 @@ var ErrRewrapTargetUnavailable = errors.New("委託重包目標的連通性預�
 // 部署組態，而「讀部署組態」是組裝根的職責；service 層直接讀 env 會讓這條路徑
 // 繞過 config 的三值語義與判定矩陣，也讓測試無法在不污染行程 env 的前提下覆蓋。
 //
-// 實作 SHALL 於回傳前完成連通性預檢（D7 的 C 模式重包前置：確認目標金鑰已存在
+// 實作 SHALL 於回傳前完成連通性預檢（C 模式重包前置：確認目標金鑰已存在
 // 且本服務具備所需權限），使「預檢通過」與「拿得到 provider」是同一件事——
 // 分成兩步會留下「拿到 provider 但沒預檢」的呼叫路徑。
 type DelegatedProviderFactory func(ctx context.Context, mode, keyRef string) (crypto.KEKProvider, error)
@@ -87,10 +87,10 @@ type RewrapTarget struct {
 	//
 	// **為何持有一份而不是只留 provider**：不持有金鑰時，sink 能檢查的只有
 	// 「mode 合法、provider 非 nil」，那擋不住「以任意 provider 造一個 local
-	// 目標」——而那正是 R2 指出的繞道。持有之後，重驗可以同時證明
+	// 目標」——而那正是要擋下的繞道。持有之後，重驗可以同時證明
 	// 「金鑰形狀合格且非出廠預設值」與「provider 確實由這把金鑰建出」（指紋比對）。
 	//
-	// **存的是金鑰而非輸入字串**（kek-encoding-and-unseal-entry 決策 11）：
+	// **存的是金鑰而非輸入字串**（決策 11）：
 	// 材料可為原字元／十六進位／base64 三種寫法，指紋比對的對象只能是解碼結果；
 	// 存輸入字串會讓 hex 形態的目標永遠對不上自己的 provider。
 	// 生命週期以 Destroy 結束，且 RewrapKEK 用畢即銷毀。
@@ -99,11 +99,11 @@ type RewrapTarget struct {
 
 // NewLocalRewrapTarget 由使用者輸入的材料建構本地目標。
 //
-// **伺服端格式驗證的唯一落點**（D8 路 2）：可解碼為 32 位元組金鑰、原字元形態的
+// **伺服端格式驗證的唯一落點**：可解碼為 32 位元組金鑰、原字元形態的
 // 字元集限 crypto.KEKAlphabet、非出廠預設值——三者與啟動判定（config 列 3b）共用
 // 同一驗證器，兩端不會各自漂移。
 //
-// **三種輸入寫法**（kek-encoding-and-unseal-entry）：原字元 32 位元組、
+// **三種輸入寫法**：原字元 32 位元組、
 // 64 個十六進位字元、解碼後恰 32 位元組的 base64。三者解出同一把金鑰時，
 // 其 KeyRef（指紋）相同，故「以哪種寫法輸入」不影響任何落庫值。
 //
@@ -111,8 +111,8 @@ type RewrapTarget struct {
 // 單一值驗證其熵。
 //
 // provider 的執行期模式取 ui：本目標是**只用於包裹的過渡物件**，永不成為本行程
-// 的 runtime provider，而 mode 不影響任何落庫值（KeyRef 與格式標記皆與 mode 無關，
-// D1）——即材料日後被放進 ENCRYPTION_KEY 以 env 模式啟動，仍解得開本次寫出的列。
+// 的 runtime provider，而 mode 不影響任何落庫值（KeyRef 與格式標記皆與 mode 無關）
+// ——即材料日後被放進 ENCRYPTION_KEY 以 env 模式啟動，仍解得開本次寫出的列。
 func NewLocalRewrapTarget(material string) (*RewrapTarget, error) {
 	if reason := config.ValidateKEKMaterial(material); reason != "" {
 		return nil, fmt.Errorf("%w：%s", ErrRewrapMaterialFormat, reason)
@@ -147,7 +147,7 @@ func NewLocalRewrapTarget(material string) (*RewrapTarget, error) {
 //     且 provider 的 KeyID 等於該金鑰的指紋——後者證明 provider 真的由這把金鑰
 //     建出，否則「合格金鑰 ＋ 不相干 provider」的組合仍可通過。
 //
-// **sink 端驗的是金鑰、不是材料**（kek-encoding-and-unseal-entry 決策 11）：
+// **sink 端驗的是金鑰、不是材料**（決策 11）：
 // 字元集是**輸入編碼**的性質，解碼之後該資訊已不存在，宣稱在此重驗了字元集
 // 是不誠實的。真正撐住不變式的兩項（金鑰形狀合格、provider 由它建出）原樣保留。
 func (t *RewrapTarget) Validate() error {
@@ -216,11 +216,11 @@ func (t *RewrapTarget) Destroy() {
 //
 // **SHALL NOT 靜默退化為本地目標**：任一失敗都不得產生任何 data_keys 寫入。
 //
-// 連通性預檢（D7 的 C 模式重包前置）由 factory 實作承擔——KMS 為
+// 連通性預檢（C 模式重包前置）由 factory 實作承擔——KMS 為
 // DescribeKey（金鑰存在＋正規化＋可用性）＋一次真實 Encrypt／Decrypt 往返；
 // 所需 IAM action 為 kms:DescribeKey／kms:Encrypt／kms:Decrypt，
-// C1↔C1 原生 ReEncrypt 另需 **kms:ReEncryptFrom 與 kms:ReEncryptTo 兩個**
-// （非單一 kms:ReEncrypt，D11.1 裁決 5 的 opus L2）。
+// 同族 KMS 之間的原生 ReEncrypt 另需 **kms:ReEncryptFrom 與 kms:ReEncryptTo 兩個**
+// （非單一 kms:ReEncrypt）。
 func NewDelegatedRewrapTarget(ctx context.Context, mode, keyRef string, factory DelegatedProviderFactory) (*RewrapTarget, error) {
 	switch mode {
 	case RewrapTargetModeKMS, RewrapTargetModeHSM:

@@ -17,8 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LDAP 目錄設定的 singleton CRUD、執行期解析與存檔閘
-// （ldap-settings-migration D1／D2／D3／D6／D7／D11；tasks 2.1／2.4／2.7）。
+// LDAP 目錄設定的 singleton CRUD、執行期解析與存檔閘。
 //
 // 本檔是設定面自 env 遷入 DB 後的服務層核心，三件事：
 //
@@ -41,8 +40,8 @@ import (
 // # 執行期解析的三態與風險視圖已遷入 policy
 //
 // `LDAPResolveState`＋3 常數、`LDAPRiskView`、`LDAPRiskResult` 與純函式
-// `LDAPRisksOf` 已於 modular-architecture W3 3.2 遷入
-// `internal/modules/policy`（R3.1 §3.5：只搬兩型不足以斷 D↔B 環）。本檔以
+// `LDAPRisksOf` 已遷入
+// `internal/modules/policy`（只搬兩型不足以斷 D↔B 環）。本檔以
 // `policy.` 限定名消費，`LDAPDialSnapshot` 仍內嵌 `policy.LDAPRiskView`。
 
 // LDAPDialSnapshot 登入撥號路徑專用的 immutable 快照（含解密後的 bind 密碼）。
@@ -118,7 +117,7 @@ type LDAPDirectoryRequest struct {
 	SkipTLSVerify bool `json:"skip_tls_verify"`
 	Enabled       bool `json:"enabled"`
 
-	// RiskAcknowledged 傳輸風險確認聲明（D6，欄名與 syslog/notify 一致）
+	// RiskAcknowledged 傳輸風險確認聲明（欄名與 syslog/notify 一致）
 	RiskAcknowledged bool `json:"risk_acknowledged"`
 
 	// Actor 操作者；由 handler 填入，不接受請求端指定
@@ -150,7 +149,7 @@ var ErrLDAPBindPasswordConflict = errors.New("不可同時提供 bind 密碼與�
 
 // ErrLDAPBindPasswordRequired 端點已變更且既存列有密碼，卻未重新提供密碼。
 //
-// **為何不能讓「空=沿用」跨端點生效**（D3／D11）：攻擊者（或被劫持的 admin
+// **為何不能讓「空=沿用」跨端點生效**：攻擊者（或被劫持的 admin
 // session）可先 PUT 把 url 改成自控伺服器並沿用既存密碼，再由登入或連線測試
 // 路徑把既存的 service bind 憑證送往新位址。**既存列無密碼時不套此規則**——
 // 草稿改 URL 是正常路徑，且當下根本沒有憑證可被沿用
@@ -188,7 +187,7 @@ var ErrLDAPTransmissionGateUnavailable = errors.New("傳輸政策閘未接線，
 // LDAPDirectoryService LDAP 目錄設定服務（singleton 資源）
 type LDAPDirectoryService struct {
 	db *gorm.DB
-	// auditTx 交易內審計落地面（W4 4.4，AP-50）。**六條呼叫路徑語義二分**：
+	// auditTx 交易內審計落地面（AP-50）。**六條呼叫路徑語義二分**：
 	// auditSave／auditURLChange／auditDelete 在 WithLDAPDirectoryLock 的交易閉包內，
 	// 審計失敗即回滾整筆設定變更；auditRejection 與 probe 兩處傳根 DB、失敗只記 log。
 	// 兩者共用同一個落地面，差別只在呼叫端怎麼處置回傳的 error——收口未改變其中任何一條
@@ -215,7 +214,7 @@ func (s *LDAPDirectoryService) SetTransmissionPolicy(gate LDAPTransmissionGate) 
 
 // ldapDirectoryLiveRow 取唯一的 live 列；無列回 (nil, nil)。
 //
-// **>1 live 列時取 id 最小者**（D1／R2-opus N13）：單元測試庫走 AutoMigrate，
+// **>1 live 列時取 id 最小者**：單元測試庫走 AutoMigrate，
 // 不會建 versioned migration 的 CHECK 與 partial unique index，故服務層對
 // 「多列」必須有確定性行為，不得行為未定。生產由 DB 層保證不會走到這裡。
 func ldapDirectoryLiveRow(tx *gorm.DB) (*model.LDAPDirectory, error) {
@@ -232,7 +231,7 @@ func ldapDirectoryLiveRow(tx *gorm.DB) (*model.LDAPDirectory, error) {
 // ResolveDialSnapshot 單次解析為 immutable 撥號快照（一次 DB 讀取＋一次解密）。
 //
 // 登入路徑於觸發當下呼叫一次，閘判定與撥號共用回傳的同一份結果——保持
-// 「判定基於撥號當下的實際撥號參數」不變式（D2）。明文密碼僅存活於該次登入
+// 「判定基於撥號當下的實際撥號參數」不變式。明文密碼僅存活於該次登入
 // 的呼叫棧，不快取。
 func (s *LDAPDirectoryService) ResolveDialSnapshot(ctx context.Context) LDAPDialResult {
 	// 依賴缺席落 failed 三態而非 panic（見 ErrLDAPDirectoryServiceUnavailable）。
@@ -287,7 +286,7 @@ func (s *LDAPDirectoryService) ResolveDialSnapshot(ctx context.Context) LDAPDial
 	// 該列在解密路徑上完全無異常（沒有密文就不會解密失敗），卻會一路回 OK 而
 	// 讓登入 resolver 判為 ready——形成設計只承認三態之外的第四狀態「存在但
 	// 無效」。回 failed 而**非 unconfigured**：後者會把損壞偽裝成「未啟用」，
-	// 正是 D2 明令禁止的併吞形態
+	// 正是本檔明令禁止的併吞形態
 	if row.Enabled {
 		if missing := ldapDialSnapshotMissingField(snapshot); missing != "" {
 			log.Printf("[LDAPDirectory] 啟用態設定缺必要欄位（fail-close，非未設定）directory_id=%d field=%s",
@@ -344,7 +343,7 @@ func (s *LDAPDirectoryService) ResolveRiskView(ctx context.Context) policy.LDAPR
 
 // RiskViewProvider 供 TransmissionPolicyService 於 2.9 注入的 provider。
 //
-// 回傳三態結果而非 (view, bool)——nil 併吞故障正是 D2 明令禁止的形態
+// 回傳三態結果而非 (view, bool)——nil 併吞故障正是明令禁止的形態
 func (s *LDAPDirectoryService) RiskViewProvider() func() policy.LDAPRiskResult {
 	return func() policy.LDAPRiskResult {
 		// closure 入口即檢查：nil service 在 factory 呼叫當下不會失敗（Go 允許
@@ -483,7 +482,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 	// 存檔後是否會有密碼——驗證只消費此結果，不自行查 DB
 	hasBindPasswordAfter := req.BindPassword != "" || (reusing && existingHasPassword)
 
-	// (2) 存檔驗證（D7）：草稿只驗格式，啟用態驗完整性
+	// (2) 存檔驗證：草稿只驗格式，啟用態驗完整性
 	validation, err := ValidateLDAPDirectoryInput(LDAPDirectoryInput{
 		Name:            req.Name,
 		URL:             req.URL,
@@ -504,7 +503,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 	}
 	input := validation.Input
 
-	// (3) 端點變更 ⇒ 空密碼不得沿用（D3）。只在「既存有密碼且本次沿用」時成立
+	// (3) 端點變更 ⇒ 空密碼不得沿用。只在「既存有密碼且本次沿用」時成立
 	if existingHasPassword && reusing {
 		if !ldapSameStoredEndpoint(existing.URL, validation.ParsedURL) {
 			return LDAPDirectoryView{}, &ldapDirectoryRejection{
@@ -514,7 +513,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 		}
 	}
 
-	// (4) 存檔閘（D6／2.4）：以「儲存後生效的狀態」判定。
+	// (4) 存檔閘（2.4）：以「儲存後生效的狀態」判定。
 	// enabled=false 的草稿由 LDAPRisksOf 回 nil 風險而自然放行——停用的設定
 	// 不會撥號，不需要在存檔當下逼使用者確認
 	afterView := policy.LDAPRiskView{Enabled: input.Enabled, URL: input.URL, SkipTLSVerify: input.SkipTLSVerify}
@@ -599,7 +598,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 	if err := s.auditSave(tx, req, action, row, risks); err != nil {
 		return LDAPDirectoryView{}, nil, err
 	}
-	// URL 變更為高權重事件（D11）：admin 對外部身分來源的指向權是被信任的，
+	// URL 變更為高權重事件：admin 對外部身分來源的指向權是被信任的，
 	// 代償控制就是事後可稽核「哪一刻目錄被改指向」
 	if existing != nil {
 		if err := s.auditURLChange(tx, req, row, oldURL, validation.ParsedURL); err != nil {
@@ -692,7 +691,7 @@ func ldapValidationDetail(err error) string {
 	return ""
 }
 
-// ── 審計（D11：URL 變更為高權重事件）────────────────────────────────────
+// ── 審計（URL 變更為高權重事件）────────────────────────────────────
 
 // ldapDirectoryAuditEvent 審計事件碼（Details.event；供前端查譯與稽核檢索）
 const (
@@ -707,7 +706,7 @@ const (
 // resource 沿用既有的 model.ResourceAuth（同 seed 路徑）——不新增 resource
 // 常數，前端審計頁的枚舉查譯即無新增無譯文機器碼的風險
 //
-// **W4 4.4 收口（AP-50）**：改掛型別方法只為取得 s.auditTx——六個呼叫點全都已經
+// **審計收口（AP-50）**：改掛型別方法只為取得 s.auditTx——六個呼叫點全都已經
 // 在 *LDAPDirectoryService 的方法內。`db` 參數保留且仍是第一參數：它承載的正是
 // 「這次寫入屬於哪一筆交易」——三條 fail-close 路徑傳鎖內的 tx、三條 fail-open
 // 路徑傳 s.db，收口前後逐條相同。
@@ -748,7 +747,7 @@ func (s *LDAPDirectoryService) auditSave(tx *gorm.DB, req LDAPDirectoryRequest,
 	})
 }
 
-// auditURLChange URL 變更的高權重事件（D11）。
+// auditURLChange URL 變更的高權重事件。
 //
 // 記錄舊值與新值的 **canonical origin** 及 host 是否變更——「設定被更新」這種
 // 粒度無法回答「哪一刻目錄被改指向哪裡」，而那正是 admin 指向權被信任時唯一

@@ -1,6 +1,6 @@
 <template>
   <div class="assets">
-    <!-- 分角色文案（navigation-ia D6）：一般 user 的職能是連線不是管理 -->
+    <!-- 分角色文案：一般 user 的職能是連線不是管理 -->
     <PageHeader
       :title="isAdminOrAuditor ? $t('menu.assets') : $t('menu.myAssets')"
       :description="isAdminOrAuditor ? $t('assets.headerDescAdmin') : $t('assets.headerDescUser')"
@@ -10,7 +10,7 @@
           <el-icon><Refresh /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
-        <!-- 標籤治理單獨入口（authz-tag-node-filters D8）：全面改名/合併/刪除 -->
+        <!-- 標籤治理單獨入口：全面改名/合併/刪除 -->
         <el-button
           v-if="isAdmin"
           @click="tagManagerVisible = true"
@@ -108,7 +108,7 @@
             />
           </el-select>
         </el-form-item>
-        <!-- 標籤篩選（authz-tag-node-filters D4）：僅 admin/auditor——
+        <!-- 標籤篩選：僅 admin/auditor——
              一般 user 走授權分支不支援 tags 參數（伺服端 400） -->
         <el-form-item
           v-if="isAdminOrAuditor"
@@ -147,7 +147,7 @@
             {{ $t('common.reset') }}
           </el-button>
         </el-form-item>
-        <!-- 欄位自訂齒輪（asset-list-info-layering D4）：池欄找回的路 -->
+        <!-- 欄位自訂齒輪：池欄找回的路 -->
         <el-form-item class="column-settings-item">
           <AssetColumnSettings
             v-model="optionalColumns"
@@ -158,7 +158,7 @@
       </el-form>
     </div>
 
-    <!-- 左樹右表（asset-node-tree D5）：樹＝瀏覽＋授權分配主軸 -->
+    <!-- 左樹右表：樹＝瀏覽＋授權分配主軸 -->
     <div class="tree-table-layout">
       <AssetNodeTree
         ref="nodeTreeRef"
@@ -209,7 +209,7 @@
               </el-tooltip>
             </template>
           </el-table-column>
-          <!-- 協議欄（asset-list-info-layering D1/D5）：width 100＋cell padding
+          <!-- 協議欄：width 100＋cell padding
                6px——欄寬≠內容寬，POSTGRES chip 實測 84.2px 需內容區 ≥88px -->
           <el-table-column
             :label="$t('common.protocol')"
@@ -222,7 +222,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <!-- 主機欄（D5/D7）：截斷恆掛 tooltip；傳輸風險行內常駐標記
+          <!-- 主機欄：截斷恆掛 tooltip；傳輸風險行內常駐標記
               （transmission-security「恆顯示」語義，不入自訂池） -->
           <el-table-column
             :label="$t('assets.host')"
@@ -253,7 +253,7 @@
               </span>
             </template>
           </el-table-column>
-          <!-- 池欄（D4）：預設關、齒輪開啟 -->
+          <!-- 池欄：預設關、齒輪開啟 -->
           <el-table-column
             v-if="showCol('username')"
             prop="username"
@@ -279,7 +279,7 @@
               >{{ $t('assets.ungrouped') }}</span>
             </template>
           </el-table-column>
-          <!-- 標籤欄（authz-tag-node-filters D4）：chips 最多 2＋「+N」收納，
+          <!-- 標籤欄：chips 最多 2＋「+N」收納，
                全角色可見（一般 user 回應本就內嵌 tags） -->
           <el-table-column
             :label="$t('common.tags')"
@@ -314,9 +314,9 @@
               >—</span>
             </template>
           </el-table-column>
-          <!-- 狀態欄（asset-list-info-layering D3）：啟用＋連測縱排合併——
+          <!-- 狀態欄：啟用＋連測縱排合併——
                連測回饋常駐可見落點（原獨立連測欄 1366 下溢出不可見）；
-               僅 admin/auditor（一般 user 停用態在授權狀態 cell，D6） -->
+               僅 admin/auditor（一般 user 停用態在授權狀態 cell） -->
           <el-table-column
             v-if="isAdminOrAuditor"
             :label="$t('common.status')"
@@ -360,7 +360,7 @@
             </template>
           </el-table-column>
           <!-- 授權狀態僅對一般使用者有自查意義；admin/auditor 恆為全權限不顯示。
-               停用態優先呈現（asset-list-info-layering D6）：一般 user 無狀態欄，
+               停用態優先呈現：一般 user 無狀態欄，
                停用資產不得顯示可連假象 -->
           <el-table-column
             v-if="!isAdminOrAuditor"
@@ -401,7 +401,7 @@
             fixed="right"
           >
             <template #default="{ row }">
-              <!-- 連線入口三態（access-policy-approval D7 補充二）：狀態由伺服端
+              <!-- 連線入口三態：狀態由伺服端
                  access_state 單一事實源；按鈕僅是提示，點擊後仍以政策閘回應為準 -->
               <el-button
                 v-if="isPendingRequest(row)"
@@ -428,7 +428,7 @@
                   {{ $t('assets.applyConnect') }}
                 </el-button>
               </el-tooltip>
-              <!-- 入口不可用時須標示真實成因（asset-syslog-debt-cleanup D4）：
+              <!-- 入口不可用時須標示真實成因：
                  停用是資產態非權限態，對所有角色（含 admin）皆不可連，先於
                  權限判定，否則停用資產會被說成「權限不足」與同列授權狀態欄矛盾 -->
               <el-tooltip
@@ -679,7 +679,7 @@
             :placeholder="form.protocol === 'mssql' ? $t('assets.mssqlCaCertHint') : $t('assets.dbCaPlaceholder')"
           />
         </el-form-item>
-        <!-- RDP 傳輸安全（transmission-security-policy D4）：預設沿現狀，
+        <!-- RDP 傳輸安全：預設沿現狀，
              strict 檔的修復路徑＝調 NLA＋開啟憑證驗證 -->
         <template v-if="form.protocol === 'rdp'">
           <el-form-item :label="$t('assets.rdpSecurity')">
@@ -781,7 +781,7 @@
             </el-form-item>
           </template>
         </template>
-        <!-- 帳號區塊（asset-multi-account D9）：建立時上方憑證欄位透明成為預設帳號，
+        <!-- 帳號區塊：建立時上方憑證欄位透明成為預設帳號，
             建立後才有 assetID 可掛子資源，故僅編輯態提供帳號管理入口 -->
         <el-form-item
           v-if="isEdit"
@@ -806,7 +806,7 @@
             :placeholder="$t('assets.descPlaceholder')"
           />
         </el-form-item>
-        <!-- 標籤輸入輔助（authz-tag-node-filters D5）：既有標籤自動完成
+        <!-- 標籤輸入輔助：既有標籤自動完成
             （大小寫不敏感）＋自由建立（建立前相似確認、拒逗號） -->
         <el-form-item :label="$t('common.tags')">
           <el-select
@@ -830,7 +830,7 @@
             />
           </el-select>
         </el-form-item>
-        <!-- 掛載節點（asset-node-tree D2 多歸屬）：樹狀多選、全路徑顯示；
+        <!-- 掛載節點（多歸屬）：樹狀多選、全路徑顯示；
              空＝未分組。節點 CRUD 在資產頁左樹 -->
         <el-form-item :label="$t('assets.mountNodes')">
           <el-tree-select
@@ -846,7 +846,7 @@
             style="width: 360px"
           />
         </el-form-item>
-        <!-- 連線政策（asset-level-access-policy）：政策掛資產本身，主要設定入口 -->
+        <!-- 連線政策：政策掛資產本身，主要設定入口 -->
         <el-form-item :label="$t('assets.accessPolicy')">
           <!-- empty-values 排除 ''：繼承選項 value 為空字串，
                預設會被 el-select 當空值而顯示 placeholder -->
@@ -878,7 +878,7 @@
           />
         </el-form-item>
 
-        <!-- 主機金鑰（host-key-ui）：TOFU 指紋檢視與重置，僅編輯模式 SSH 資產 -->
+        <!-- 主機金鑰：TOFU 指紋檢視與重置，僅編輯模式 SSH 資產 -->
         <el-form-item
           v-if="isEdit && form.protocol === 'ssh'"
           class="host-key-item"
@@ -931,7 +931,7 @@
       </template>
     </el-dialog>
 
-    <!-- 申請連線（access-policy-approval）：填理由段送出即連；需核准段送出後等審核 -->
+    <!-- 申請連線：填理由段送出即連；需核准段送出後等審核 -->
     <el-dialog
       v-model="applyVisible"
       :title="$t('assets.applyConnect')"
@@ -981,7 +981,7 @@
           />
         </el-form-item>
       </el-form>
-      <!-- 緊急連線次入口（break-glass-revocation）：僅在伺服端標註可破窗時出現，
+      <!-- 緊急連線次入口：僅在伺服端標註可破窗時出現，
            放對話框內非列表主按鈕（防誤觸）；點擊另開確認框說明後果 -->
       <div
         v-if="applyTarget && applyTarget.break_glass_available"
@@ -1016,7 +1016,7 @@
       </template>
     </el-dialog>
 
-    <!-- 緊急連線確認（break-glass-revocation）：強制事由、後果白話說明 -->
+    <!-- 緊急連線確認：強制事由、後果白話說明 -->
     <el-dialog
       v-model="breakGlassVisible"
       :title="$t('assets.breakGlassTitle')"
@@ -1063,14 +1063,14 @@
       </template>
     </el-dialog>
 
-    <!-- 標籤治理（authz-tag-node-filters D8）：總覽/改名/合併/刪除 -->
+    <!-- 標籤治理：總覽/改名/合併/刪除 -->
     <AssetTagManager
       v-model="tagManagerVisible"
       :tags="tagOptions"
       @changed="handleTagsChanged"
     />
 
-    <!-- 資產帳號管理（asset-multi-account D9/D10） -->
+    <!-- 資產帳號管理 -->
     <AssetAccountsDialog
       v-model="accountsDialogVisible"
       :asset-id="accountsTarget ? accountsTarget.id : null"
@@ -1137,7 +1137,7 @@ const pagination = reactive({
 })
 
 // 過濾表單
-// 一般 user 的授權過濾由伺服端強制（asset-access-scoping），前端不再自帶參數
+// 一般 user 的授權過濾由伺服端強制，前端不再自帶參數
 const filterForm = reactive({
   search: '',
   protocol: '',
@@ -1145,7 +1145,7 @@ const filterForm = reactive({
   tags: [],
 })
 
-// 標籤（authz-tag-node-filters）：清單供篩選/表單/治理共用；
+// 標籤：清單供篩選/表單/治理共用；
 // 下拉過濾大小寫不敏感（Element Plus 預設過濾大小寫敏感，需自訂）
 const tagManagerVisible = ref(false)
 const tagOptions = ref([])
@@ -1173,7 +1173,7 @@ const resetFormTagOptions = () => {
 
 const assetTagList = (row) => (row.tags ? row.tags.split(',').filter(Boolean) : [])
 
-// 欄位自訂（asset-list-info-layering D4）：池按角色、localStorage 角色分域
+// 欄位自訂：池按角色、localStorage 角色分域
 // versioned key（同瀏覽器交替登入不互汙）、壞值容錯回預設
 const optionalColumns = ref([])
 const columnPool = computed(() => {
@@ -1221,8 +1221,8 @@ const resetColumnPrefs = () => {
   optionalColumns.value = []
 }
 
-// 連測延遲短格式（D3）：逾 9999ms 縮顯，完整值在 tooltip
-// 徽章用短格式（asset-syslog-debt-cleanup D6）：延遲缺失時回佔位符，
+// 連測延遲短格式：逾 9999ms 縮顯，完整值在 tooltip
+// 徽章用短格式：延遲缺失時回佔位符，
 // 不得串接原始值成 `nullms`。tooltip 不得改用本函式——三語 testedAtWithLatency
 // 模板已自帶 ms 單位且須呈現完整值，套用後會變成 `12msms`／`>9sms`
 const latencyText = (ms) => {
@@ -1250,7 +1250,7 @@ const handleTagsChanged = () => {
   fetchAssetList()
 }
 
-// 建立新標籤前相似確認（D5）：canonical 相等或互為包含 → 引導用既有；
+// 建立新標籤前相似確認：canonical 相等或互為包含 → 引導用既有；
 // 拒絕含半形逗號的新值（in-band 注入：落庫 join 後變兩個標籤）
 const handleFormTagChange = async (vals) => {
   const last = vals[vals.length - 1]
@@ -1288,7 +1288,7 @@ const handleFormTagChange = async (vals) => {
   }
 }
 
-// 節點過濾（asset-node-tree D5）：null＝全部、'ungrouped'＝未分組、物件＝節點；
+// 節點過濾：null＝全部、'ungrouped'＝未分組、物件＝節點；
 // 含子樹預設開、顯式 toggle
 const nodeTreeRef = ref(null)
 const selectedNode = ref(null)
@@ -1307,7 +1307,7 @@ watch(includeSubtree, () => {
   }
 })
 
-// 資產/節點視角授權入口（asset-node-tree D5）：預填授權精靈客體
+// 資產/節點視角授權入口：預填授權精靈客體
 const router = useRouter()
 const route = useRoute()
 const handleAuthorizeNode = (node) => {
@@ -1430,7 +1430,7 @@ const fetchAssetList = async () => {
           : undefined,
     }
 
-    // 節點過濾（asset-node-tree）
+    // 節點過濾
     if (selectedNode.value === 'ungrouped') {
       params.ungrouped = true
     } else if (selectedNode.value) {
@@ -1493,14 +1493,14 @@ const getPermissionText = (permission) => {
 
 // 檢查是否可以連線：access_state（伺服端三態）優先，未標註時沿 permission 欄
 const canConnect = (asset) => {
-  // 停用資產一律不可連（asset-list-info-layering D6/D8）：前端擋入口、
+  // 停用資產一律不可連：前端擋入口、
   // 後端簽發點 403 asset_disabled 兜底；admin 同受（停用是資產態非權限態）
   if (asset.active === false) {
     return false
   }
   // 僅 Admin 保留角色短路（政策豁免帶審計、角色自動 connect 為真語義）；
-  // auditor 執行期無角色自動 connect（CPG-002），落列表 permission 欄判定
-  //（auditor-connect-entry-honesty：無顯式 grant 即禁用，不再顯示假入口）
+  // auditor 執行期無角色自動 connect，落列表 permission 欄判定
+  //（無顯式 grant 即禁用，不再顯示假入口）
   if (isAdmin.value) {
     return true
   }
@@ -1510,8 +1510,8 @@ const canConnect = (asset) => {
   return asset.permission === 'connect'
 }
 
-// 連線入口三態（access-policy-approval）：需要申請／申請中——
-// 停用資產一併封（D6：申請/pending 入口不得引導向已停用資產）
+// 連線入口三態：需要申請／申請中——
+// 停用資產一併封（申請/pending 入口不得引導向已停用資產）
 const needsRequest = (asset) =>
   asset.active !== false &&
   !isAdminOrAuditor.value &&
@@ -1521,7 +1521,7 @@ const isPendingRequest = (asset) =>
   asset.active !== false &&
   !isAdminOrAuditor.value && asset.access_state === 'pending'
 
-// 連線入口提示三態（asset-syslog-debt-cleanup D4）：停用 > 可連 > 無權限。
+// 連線入口提示三態：停用 > 可連 > 無權限。
 // 停用優先——canConnect 對停用資產無條件早退，若先判權限，admin 會看到
 // 「權限不足」這種與事實不符的成因
 const connectTooltipContent = (asset) => {
@@ -1570,7 +1570,7 @@ const handleCreate = () => {
   dialogVisible.value = true
 }
 
-// 掛載節點選項（asset-node-tree）：平面列表組裝樹供表單 el-tree-select；
+// 掛載節點選項：平面列表組裝樹供表單 el-tree-select；
 // 節點 CRUD 已收斂於左樹（AssetNodeTree），本頁僅消費
 const nodeFlatList = ref([])
 
@@ -1601,7 +1601,7 @@ const nodeSelectOptions = computed(() => {
 
 // 連線測試（走查補入口：API 既有但前端缺引用）
 //
-// 測試中態逐列獨立（db-protocol-connection-test 4.3）：原本是單一 testingId ＋
+// 測試中態逐列獨立：原本是單一 testingId ＋
 // 全頁禁用測試入口，一筆資產撥測就鎖住整頁。改為 id 集合後，先完成的那筆只從
 // 集合移除自己，不會清掉他列的 spinner——原註解擔心的併發問題由集合語義解決。
 const testingIds = ref(new Set())
@@ -1624,7 +1624,7 @@ async function handleTest(row) {
         reason: resolveApiError({ code: res.code, error: res.message }, undefined, t('assets.unknownReason')),
       }))
     }
-    // await 到列表重載完成才解除測試中態（asset-syslog-debt-cleanup D5）：
+    // await 到列表重載完成才解除測試中態：
     // 不 await 會在新資料到達前就收掉 spinner，短暫閃回上一次的可達性徽章。
     // 清除仍留在 finally——fetchAssetList 自身拋錯時中態才不會永久卡住
     await fetchAssetList()
@@ -1668,7 +1668,7 @@ function handleRowCommand(command, row) {
   }
 }
 
-// 資產帳號管理（asset-multi-account 階段 5）：資產列與編輯對話框共用同一入口
+// 資產帳號管理：資產列與編輯對話框共用同一入口
 const accountsDialogVisible = ref(false)
 const accountsTarget = ref(null)
 
@@ -1677,7 +1677,7 @@ function openAccountsDialog(row) {
   accountsDialogVisible.value = true
 }
 
-// 主機金鑰（host-key-ui）
+// 主機金鑰
 const hostKey = ref(null)
 
 async function loadHostKey(assetId) {
@@ -1776,7 +1776,7 @@ const handleSubmit = async () => {
         : ''
     }
 
-    // RDP 傳輸安全（transmission-security-policy D4）
+    // RDP 傳輸安全
     if (form.protocol === 'rdp') {
       data.rdp_security = form.rdp_security
       data.rdp_verify_cert = form.rdp_verify_cert
@@ -1866,11 +1866,11 @@ const handleDelete = async (row) => {
 
 // 處理連線
 const handleConnect = (row) => {
-  // 工作區入口（session-workspace D4）：新分頁開工作區並自動開啟該資產頁籤
+  // 工作區入口（session-workspace）：新分頁開工作區並自動開啟該資產頁籤
   window.open(`/workspace?asset=${row.id}`, '_blank')
 }
 
-// 申請連線對話框（access-policy-approval）
+// 申請連線對話框
 const applyVisible = ref(false)
 const applying = ref(false)
 const applyTarget = ref(null)
@@ -1945,7 +1945,7 @@ const submitApply = async () => {
   }
 }
 
-// 緊急連線（break-glass-revocation）：對話框內次入口觸發，強制事由，
+// 緊急連線：對話框內次入口觸發，強制事由，
 // 成功即開工作區。開關/資格由伺服端裁決，403 由攔截器顯示白話訊息
 const breakGlassVisible = ref(false)
 const breakGlassing = ref(false)
@@ -1999,7 +1999,7 @@ const showPendingInfo = async (row) => {
   }
 }
 
-// 資產連線政策的繼承文案（asset-level-access-policy）：表單開啟時查一次
+// 資產連線政策的繼承文案：表單開啟時查一次
 // 全域預設，「跟隨全域設定（目前：X）」動態回顯；查失敗降級為無值文案
 //（admin-only 端點，開編輯表單者必為 admin）
 const globalAccessPolicy = ref('')
@@ -2032,12 +2032,12 @@ onMounted(() => {
   loadGroups()
   // 標籤清單（篩選下拉/表單自動完成/治理共用；僅 admin/auditor 端點可達）
   loadTagOptions()
-  // 欄位偏好（D4）：角色解析之後載入（key 角色分域）
+  // 欄位偏好：角色解析之後載入（key 角色分域）
   loadColumnPrefs()
   openEditFromQuery()
 })
 
-// 資產編輯深連結（ssh-connect-error-surfacing D4）：?edit=<id> 直開編輯框並捲至
+// 資產編輯深連結：?edit=<id> 直開編輯框並捲至
 // 主機金鑰欄位（終端 host key 拒線引導的落點）。404（不存在或不可視）由攔截器
 // 統一 toast「資產不存在」，此處只清參數——不洩漏存在性
 async function openEditFromQuery() {
@@ -2180,14 +2180,14 @@ async function openEditFromQuery() {
   margin-right: 4px;
 }
 
-/* 協議欄專用緊縮 padding（D1/D5）：el-table .cell 預設 12px×2 吃掉 24px，
+/* 協議欄專用緊縮 padding：el-table .cell 預設 12px×2 吃掉 24px，
    POSTGRES chip（實測 84.2px）在 width 100 下需內容區 ≥88px */
 .list-panel :deep(.protocol-col .cell) {
   padding-left: 6px;
   padding-right: 6px;
 }
 
-/* 狀態欄縱排（D3）：啟用 tag＋連測徽章 */
+/* 狀態欄縱排：啟用 tag＋連測徽章 */
 .status-stack {
   display: flex;
   flex-direction: column;
@@ -2233,7 +2233,7 @@ async function openEditFromQuery() {
   color: var(--el-text-color-placeholder);
 }
 
-/* 主機欄：截斷＋行內傳輸風險常駐標記（D5/D7） */
+/* 主機欄：截斷＋行內傳輸風險常駐標記 */
 .host-cell {
   display: inline-flex;
   align-items: center;
@@ -2258,7 +2258,7 @@ async function openEditFromQuery() {
   cursor: help;
 }
 
-/* 節點欄截斷（tooltip 恆掛，D5） */
+/* 節點欄截斷（tooltip 恆掛） */
 .node-paths {
   display: inline-block;
   max-width: 100%;
@@ -2268,7 +2268,7 @@ async function openEditFromQuery() {
   vertical-align: bottom;
 }
 
-/* 自選加欄溢寬時卷軸常顯（D5）：作用域限資產列表，不 hover 才現形 */
+/* 自選加欄溢寬時卷軸常顯：作用域限資產列表，不 hover 才現形 */
 .list-panel :deep(.el-scrollbar__bar.is-horizontal) {
   opacity: 1;
 }

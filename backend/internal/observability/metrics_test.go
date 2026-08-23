@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 指標盤的值斷言與封印期縮減盤（observability-lite D2／D4／D8）。
+// 指標盤的值斷言與封印期縮減盤。
 //
 // 以 testutil 做值斷言而非字串比對：字串比對會被 `# HELP` 文案的措辭變動打紅，
 // 那是噪音而非訊號。
@@ -75,7 +75,7 @@ func TestSealStateWithoutSourceExposesNothing(t *testing.T) {
 		"未注入資料源時不得曝光任何封印狀態序列")
 }
 
-// TestSealedPhaseExposesReducedSet 封印期縮減盤（D4）。
+// TestSealedPhaseExposesReducedSet 封印期縮減盤。
 //
 // 段 1 註冊完整路由樹（見 sealedStageOneDeps 說明），故封印期的請求解析得出
 // 路由模板。若此時曝光 HTTP 指標，其 path 標籤即端點清單全集——等於在未解封

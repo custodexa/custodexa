@@ -9,10 +9,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// 圖形路徑（RDP/VNC）兌換點的帳號授權範圍複查（asset-multi-account D5
-// 強制點 2／3 圖形側）。
+// 圖形路徑（RDP/VNC）兌換點的帳號授權範圍複查（強制點 2／3 圖形側）。
 //
-// 為何非補不可（opus 階段 4 F4）：D6 明列多帳號適用 ssh/rdp/vnc/mysql/postgres/redis，
+// 為何非補不可：規格明列多帳號適用 ssh/rdp/vnc/mysql/postgres/redis，
 // 圖形側佔其中一半，卻只有實碼沒有守衛——文字側的測試綠不代表圖形側那份
 // 各自獨立的取憑證／建線程式碼也擋得住。
 
@@ -94,7 +93,7 @@ func TestGuacRedeemAccountScopeRecheck(t *testing.T) {
 		}
 	})
 
-	// F3 回歸：零帳號資產必須回「未設定帳號」而非「無連線權限」。
+	// 回歸：零帳號資產必須回「未設定帳號」而非「無連線權限」。
 	// 兩者的修正動作完全不同（補帳號 vs 查權限），順序錯了會把管理員導向錯的地方
 	t.Run("零帳號資產回 RULE_ACCOUNT_NONE_USABLE 而非授權拒絕", func(t *testing.T) {
 		h, db := setupGraphicsRedeemTest(t)

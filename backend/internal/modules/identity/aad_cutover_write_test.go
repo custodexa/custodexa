@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// D5 AAD cutover 的**寫入端**驗收（kek-provider-modularization tasks 1.7）。
+// AAD cutover 的**寫入端**驗收。
 //
 // 本檔鎖定資料層 cutover 最後三處信封欄位的不變式：
 //
@@ -28,8 +28,8 @@ import (
 // 每處各驗三件事：
 //  1. 寫入落庫值帶 AAD 方案標記（`enc:a1:v<N>`），**不再可能**是 enc:v；
 //  2. 以正確的 CipherRef 解得回原文（生產讀取路徑同源）；
-//  3. 以**別欄的** CipherRef 解密必失敗——證明 AAD 真的綁進了 table|column
-//     （定案 A2），而非只是換了個前綴。
+//  3. 以**別欄的** CipherRef 解密必失敗——證明 AAD 真的綁進了 table|column，
+//     而非只是換了個前綴。
 //
 // 守衛（結構保證）另見 aad_write_guard_test.go。
 
@@ -130,7 +130,7 @@ func TestExportSigningKeyWrittenWithAAD(t *testing.T) {
 }
 
 // TestNotificationChannelWrittenWithAAD 通知通道 secret／url 寫入即帶 AAD，
-// 且**兩欄互換即解不開**——url 與 secret 同表不同欄，是 A2（綁 table|column）
+// 且**兩欄互換即解不開**——url 與 secret 同表不同欄，是綁 table|column
 // 唯一能擋、綁 pk 反而擋不到的搬移方向
 func TestNotificationChannelWrittenWithAAD(t *testing.T) {
 	svc, km, db := setupEnvelopeChannelSvcForAAD(t)
@@ -208,7 +208,7 @@ func TestChannelPlaintextRegistrationSemanticsPreserved(t *testing.T) {
 
 // setupEnvelopeChannelSvcForAAD 通知通道信封測試夾具。
 //
-// **本地副本的理由（W4 4.11 搬包）**：原本共用 notification_channel_envelope_test.go
+// **本地副本的理由**：原本共用 notification_channel_envelope_test.go
 // 的 setupEnvelopeChannelSvc，該檔已隨 audit 模組搬入 internal/modules/audit。
 // 本檔驗的是 keyvault 的 AAD cutover 寫入端（三張表的信封欄），與 audit 模組的
 // 通道服務只是共用夾具而非共用主題，故就地複製 12 行夾具，不為此把 audit 的測試

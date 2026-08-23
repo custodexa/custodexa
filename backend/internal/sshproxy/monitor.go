@@ -10,11 +10,11 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 )
 
-// replayBufferMax 中途加入觀察者的尾端回放緩衝上限（design D1）：
+// replayBufferMax 中途加入觀察者的尾端回放緩衝上限：
 // 足以讓 xterm.js 重建可讀畫面，不維護虛擬螢幕
 const replayBufferMax = 64 * 1024
 
-// monitorWriteTimeout 單次廣播寫入單一觀察者的上限（backend-i18n-unification A2）。
+// monitorWriteTimeout 單次廣播寫入單一觀察者的上限。
 //
 // 為什麼需要：room 的廣播在持有 r.mu 時同步呼叫 ws.WriteMessage，慢速或半死的
 // 觀察者（TCP 視窗塞滿、拔網路線的稽核員）會把整個 room 卡住，而 broadcastOutput
@@ -37,7 +37,7 @@ func writeToObserver(ws *websocket.Conn, raw []byte) error {
 	return ws.WriteMessage(websocket.TextMessage, raw)
 }
 
-// ObserverContext 觀察者的認證脈絡（idp-oidc-integration 1.9a）。
+// ObserverContext 觀察者的認證脈絡。
 //
 // 監看訂閱是一種**長效能力**：它不建 session 列、不經連線授權，
 // 純靠一次角色檢查就一直存活。缺了脈絡，provider 停用或帳號停用時

@@ -1,6 +1,6 @@
 package identity_test
 
-// identity 測試夾具的複本（W8 9.9）：假 IdP。理由見 identity_fixtures_test.go 檔頭。
+// identity 測試夾具的複本：假 IdP。理由見 identity_fixtures_test.go 檔頭。
 
 import (
 	"crypto/rand"
@@ -18,7 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// fakeIdP 測試用的 OIDC 身分提供者（idp-oidc-integration tasks 4.1）。
+// fakeIdP 測試用的 OIDC 身分提供者。
 //
 // 提供 discovery、JWKS 與可控的 id_token 簽發，使驗證失敗矩陣（簽章、演算法、
 // iss、aud/azp、exp/iat、nonce、空 sub）與 JWKS 輪替四情境得以逐格覆蓋——

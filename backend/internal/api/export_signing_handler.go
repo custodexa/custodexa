@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/keyvault"
 )
 
-// ExportSigningHandler 匯出簽章公鑰端點（audit-log-compliance 10.3.4/F5）
+// ExportSigningHandler 匯出簽章公鑰端點
 type ExportSigningHandler struct {
 	signing *keyvault.ExportSigningService
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// === 提示符污染（mssql-cli-audit-fidelity）===
+// === 提示符污染===
 //
 // sqlcmd 的提示符逐行遞增（1>／2>／…／55>），且實測「Enter 回顯的換行」與「下一行提示符」
 // 是兩次獨立的 write。使用者按上鍵召回歷史時，重繪會重印提示符；若按鍵落在那兩次 write 之間，
@@ -173,10 +173,10 @@ func TestCommandParserPromptStripIsMSSQLOnly(t *testing.T) {
 
 	// 孤立 `>` 殘骸形態同樣只對 mssql 生效
 	//
-	// 期望值由 `>55> SELECT name` 改為 `> SELECT name`（terminal-screen-parser-inhouse／D10.2）：
-	// 成因是自有解析器修好了 CHA（`CSI 1G` 自第 0 欄覆寫，D5 B1），重繪前已寫出的
+	// 期望值由 `>55> SELECT name` 改為 `> SELECT name`：
+	// 成因是自有解析器修好了 CHA（`CSI 1G` 自第 0 欄覆寫），重繪前已寫出的
 	// 半截提示符不再有位元組存活，螢幕成為 `55> SELECT name` 而非 `>55> SELECT name`；
-	// 非 mssql 協議走 D4.3 規則 2 切除種入的原點 `55` 後即為 `> SELECT name`。
+	// 非 mssql 協議走前綴剝除規則切除種入的原點 `55` 後即為 `> SELECT name`。
 	// **守衛目的不變**：驗的仍是「提示符剝除只對 mssql 生效」——
 	// 拿掉 tsqlMode 閘門後 mssql 的剝除會對這些協議生效、得到 `SELECT name`，此測試照樣轉紅。
 	for _, c := range cases {
@@ -227,8 +227,8 @@ func TestTrimSqlcmdPromptPrefix(t *testing.T) {
 }
 
 // TestTrimOrphanPromptRemnantPrefix（14 例矩陣）隨 trimOrphanPromptRemnantPrefix
-// 一併移除（terminal-screen-parser-inhouse／D6、D10.2）：該函式處理的
-// 「行首孤立 `>` ＋ 緊跟完整提示符」形態是 CHA 缺陷（D5 B1）的產物，
+// 一併移除：該函式處理的
+// 「行首孤立 `>` ＋ 緊跟完整提示符」形態是 CHA 缺陷的產物，
 // 自有解析器修好 `CSI 1G` 之後在原理上不再出現，留著就是不可達的防線。
 //
 // **斷言搬家、不是刪除**（原 14 例的新去處）：

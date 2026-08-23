@@ -4,7 +4,7 @@ import ElementPlus from 'element-plus'
 import AuditWorkbench from '../AuditWorkbench.vue'
 import TimelineEvents from '@/components/audit/TimelineEvents.vue'
 
-// 稽核調查工作台（auditor-workbench 組 6／7）。
+// 稽核調查工作台（auditor-workbench）。
 //
 // 斷言重心在四件規格明文要求的事：
 // 1) 全部狀態進 query string 且貼上 URL 可還原；
@@ -290,7 +290,7 @@ describe('類別開關', () => {
   })
 })
 
-// 事件軸底部的總筆數（auditor-readable-copy H6）。
+// 事件軸底部的總筆數。
 //
 // events.length 是「已抓回的頁數合計」，被截斷時遠小於真實總數；拿它當總數
 // 會讓稽核在只看到一部分時誤信自己看完了全部。真總數只有 counts 有
@@ -500,7 +500,7 @@ describe('事件時間軸', () => {
   })
 })
 
-// 續頁失敗不得與「已經沒有更多」同形（workbench-load-more-feedback）。
+// 續頁失敗不得與「已經沒有更多」同形。
 //
 // 修正前失敗處理是 `nextCursor.value = ''`：按鈕消失、頁尾不動、無任何訊息，
 // 與「已看完全部」完全一樣——稽核會據此停手，而那一頁根本沒拿到；且游標被

@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AccessRequestStatus 申請單狀態（access-policy-approval D2）
+// AccessRequestStatus 申請單狀態
 type AccessRequestStatus string
 
 const (
@@ -17,13 +17,13 @@ const (
 	AccessRequestExpired   AccessRequestStatus = "expired"   // pending 超時作廢
 )
 
-// 申請單類別（break-glass-revocation D1）：破窗單復用同一資料軌
+// 申請單類別：破窗單復用同一資料軌
 const (
 	AccessRequestKindNormal     = "normal"      // 一般申請（含 reason 段自動核准）
 	AccessRequestKindBreakGlass = "break_glass" // 破窗緊急連線（即時核准＋待補審）
 )
 
-// 破窗補審狀態（break-glass-revocation D7）：空值＝非破窗單無需補審
+// 破窗補審狀態：空值＝非破窗單無需補審
 const (
 	BreakGlassReviewPending  = "pending_review" // 待補審（破窗單建立即寫入）
 	BreakGlassReviewReviewed = "reviewed"       // 已補審（CAS 終態，不可重複）
@@ -35,7 +35,7 @@ const (
 	BreakGlassDispositionViolation = "violation" // 判定違規
 )
 
-// AccessRequest 連線申請單（access-policy-approval D2）。
+// AccessRequest 連線申請單。
 // 單資產申請；狀態轉移一律 CAS（WHERE status='pending'），終態不可復活。
 // 去重由 partial 唯一索引保證：同申請人×同資產僅一張 pending 在途單
 // （(requester_id, asset_id) WHERE status='pending' AND deleted_at IS NULL，
@@ -54,7 +54,7 @@ type AccessRequest struct {
 	RequestedDurationMinutes int        `gorm:"not null" json:"requested_duration_minutes"`
 	RequestedDateStart       *time.Time `json:"requested_date_start,omitempty"`
 
-	// Accounts 申請的帳號範圍（asset-multi-account D5）：空＝`@ALL`（既有行為）。
+	// Accounts 申請的帳號範圍：空＝`@ALL`（既有行為）。
 	// 核准時原樣傳遞給臨時授權列——申請「以 app 帳號連」核准後不該拿到 root。
 	// 核准人**不得上調**此範圍（同時長/起始的既有「只可下修」語義），
 	// 上調等於繞過申請內容授出未經申請的帳號
@@ -77,24 +77,24 @@ type AccessRequest struct {
 	// pending 超時時限（建單時以政策鍵計算寫入；scheduler 掃描＋讀取惰性過濾雙保險）
 	PendingExpiresAt time.Time `gorm:"not null;index" json:"pending_expires_at"`
 
-	// 單類別（break-glass-revocation D1）：normal / break_glass；migration 回填既有列
+	// 單類別：normal / break_glass；migration 回填既有列
 	Kind string `gorm:"type:varchar(20)" json:"kind"`
 
-	// 破窗補審（D7，僅 kind=break_glass 有值）：空 ReviewStatus＝非破窗單。
+	// 破窗補審（僅 kind=break_glass 有值）：空 ReviewStatus＝非破窗單。
 	// 補審轉移 CAS（WHERE review_status='pending_review'），不可重複補審
 	ReviewStatus      string     `gorm:"type:varchar(20);index" json:"review_status,omitempty"`
 	ReviewedBy        *uint      `json:"reviewed_by,omitempty"`
 	ReviewedAt        *time.Time `json:"reviewed_at,omitempty"`
 	ReviewDisposition string     `gorm:"type:varchar(20)" json:"review_disposition,omitempty"`
 	ReviewNote        string     `gorm:"type:varchar(1000)" json:"review_note,omitempty"`
-	// ReviewOverdueNotifiedAt 逾期升級告警的最近發送時刻（W7b 對抗輪修復）。
+	// ReviewOverdueNotifiedAt 逾期升級告警的最近發送時刻。
 	// **取代舊的 `review_overdue_notified` 布林**：布林＝每單至多一次，告警響一次
-	// 後永久靜默，無法承擔 D-12「admin 不再是有效審核者」所依賴的可見性保底
+	// 後永久靜默，無法承擔「admin 不再是有效審核者」所依賴的可見性保底
 	//（零有效審核者時，破窗單只會被提醒一次就沉沒）。改記時間戳後由
 	// `overdueRenotifyInterval` 節流週期重發；nil＝從未告警
 	ReviewOverdueNotifiedAt *time.Time `json:"-"`
 
-	// 提前撤銷附註（D4）：非狀態轉移——approved 終態不變（CAS 不變式），
+	// 提前撤銷附註：非狀態轉移——approved 終態不變（CAS 不變式），
 	// 撤銷事實由票證軟刪＋此三欄記錄
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
 	RevokedBy  *uint      `json:"revoked_by,omitempty"`
@@ -106,7 +106,7 @@ type AccessRequest struct {
 	Approver      *User               `gorm:"foreignKey:ApproverID" json:"approver,omitempty"`
 	Authorization *AssetAuthorization `gorm:"foreignKey:AuthorizationID" json:"authorization,omitempty"`
 
-	// quorum 逐票軌跡與進度（approval-routing-quorum D-3）：Approvals 為
+	// quorum 逐票軌跡與進度：Approvals 為
 	// 核准記錄關聯；Received/Required 非持久欄，讀取路徑由 service 回填
 	//（Required 僅對 pending 單有意義——終態單凍結於決定當下的軌跡）
 	Approvals         []AccessRequestApproval `gorm:"foreignKey:RequestID" json:"approvals,omitempty"`

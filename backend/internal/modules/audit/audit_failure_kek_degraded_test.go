@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// kek-rewrap-hygiene-hardening D5 測試組：degraded 謂詞、啟動/週期評估三態、
+// 本檔測試組：degraded 謂詞、啟動/週期評估三態、
 // 重啟不假恢復、以及「promote 未完成的殘缺態不可帶病開機」不變式
 //（該不變式是「謂詞不含 finalize_pending」的推理前提，推理失效時本測試先紅）。
 
@@ -25,7 +25,7 @@ type degradedFixture struct {
 	km       *keyvault.KeyManagerService
 	af       *AuditFailureService
 	notified []notifycat.Event
-	// notifiedParams 與 notified 同索引：出站 params 的斷言依據（V2 對抗驗收 L1）
+	// notifiedParams 與 notified 同索引：出站 params 的斷言依據
 	notifiedParams []map[string]string
 }
 
@@ -141,7 +141,7 @@ func TestFinalizePendingResidueUnbootable(t *testing.T) {
 	}
 }
 
-// TestReconcileOnStartupExcludesKEKRetirement 重啟不假恢復（D5）：
+// TestReconcileOnStartupExcludesKEKRetirement 重啟不假恢復：
 // 啟動回填必須排除 kek_retirement（狀態可由 DB 謂詞導出，以重評估取代盲目關閉），
 // 其他機制照舊回填
 func TestReconcileOnStartupExcludesKEKRetirement(t *testing.T) {
@@ -259,7 +259,7 @@ func TestKEKRetirementMonitorCleanBoot(t *testing.T) {
 	}
 }
 
-// TestKEKRetirementRestartConvergedResolves 重啟後謂詞重評估結案（D5）：
+// TestKEKRetirementRestartConvergedResolves 重啟後謂詞重評估結案：
 // 上一個行程留下的 open 事件（ReconcileOnStartup 不再關閉它）在 backlog 已
 // 收斂時，須由啟動評估認領並結束——重啟不假恢復，但也不永久懸掛
 func TestKEKRetirementRestartConvergedResolves(t *testing.T) {
@@ -281,7 +281,7 @@ func TestKEKRetirementRestartConvergedResolves(t *testing.T) {
 	}
 }
 
-// TestEvaluateOpensEventForPostBootEpisode（codex 第一輪審 #5／opus HIGH 回歸）：
+// TestEvaluateOpensEventForPostBootEpisode（回歸）：
 // 啟動時乾淨、backlog 於執行期才出現的 episode，週期評估 MUST 開失效事件列
 // （PCI 證據），收斂時 MUST 配對結案——不得只投遞提醒而無事件列
 func TestEvaluateOpensEventForPostBootEpisode(t *testing.T) {
@@ -317,7 +317,7 @@ func TestEvaluateOpensEventForPostBootEpisode(t *testing.T) {
 	}
 }
 
-// TestEnsureEventRowSingleOpenUnderRace（第三輪審查 H1/H2 回歸）：
+// TestEnsureEventRowSingleOpenUnderRace（回歸）：
 // 兩個 service 實例（等價多後端副本）同輪補列，DB partial unique index
 // MUST 使進行中事件恰一筆；補列事件 MUST 於 Details 誠實註明起點不精確
 func TestEnsureEventRowSingleOpenUnderRace(t *testing.T) {
@@ -343,7 +343,7 @@ func TestEnsureEventRowSingleOpenUnderRace(t *testing.T) {
 	}
 }
 
-// TestKEKReminderStateOnlyAdvancesWhenAlertEnabled（codex 批 2 M5 回歸）：
+// TestKEKReminderStateOnlyAdvancesWhenAlertEnabled（回歸）：
 // 提醒節流狀態（lastReminded）不得在「政策關閉、投遞其實被靜默丟棄」的評估中
 // 推進——否則政策當日稍後才開啟時，整日收不到任何 degraded 提醒
 func TestKEKReminderStateOnlyAdvancesWhenAlertEnabled(t *testing.T) {
@@ -383,11 +383,11 @@ func TestKEKReminderStateOnlyAdvancesWhenAlertEnabled(t *testing.T) {
 	}
 }
 
-// TestKEKRetirementOngoingCarriesBacklog 週期重發帶積壓筆數（V2 對抗驗收 L1）。
+// TestKEKRetirementOngoingCarriesBacklog 週期重發帶積壓筆數。
 //
 // 遷移前的本地 log 文案是「N 筆舊 KEK 包裹列仍未退役」，碼化後出站只剩機制與
 // 時刻——收件人失去唯一的量化訊號（積壓在擴大還是收斂中）。筆數是聚合指標，
-// 不屬 forensic 明細，與 D8「收尾錯誤原文不出站」不衝突。
+// 不屬 forensic 明細，與「收尾錯誤原文不出站」不衝突。
 func TestKEKRetirementOngoingCarriesBacklog(t *testing.T) {
 	f := newDegradedFixture(t)
 	km2, oldKEK, _ := rewrapAndReinit(t, f.db, f.km)
@@ -416,7 +416,7 @@ func TestKEKRetirementOngoingCarriesBacklog(t *testing.T) {
 	if got := params["backlog"]; got != strconv.FormatInt(want, 10) {
 		t.Fatalf("backlog = %q，預期 %d", got, want)
 	}
-	// 出站 payload 仍不得帶 forensic 明細（D8）
+	// 出站 payload 仍不得帶 forensic 明細
 	if _, leaked := params["detail"]; leaked {
 		t.Fatalf("出站 params 不得含 forensic detail: %v", params)
 	}
@@ -427,11 +427,11 @@ func TestKEKRetirementOngoingCarriesBacklog(t *testing.T) {
 	}
 }
 
-// 以下自 `key_manager_hygiene_test.go` 遷入（modular-architecture W2 2.5）：
+// 以下自 `key_manager_hygiene_test.go` 遷入：
 // 本測試以 newDegradedFixture（定義於本檔）取得 audit failure service 的內部殘態，
 // 而該服務留在 internal/service，故測試隨 fixture 留下；斷言逐字未改。
 
-// TestEnsureEventRowBackfills（codex 第二輪審 H1 回歸）：Report 當時事件表
+// TestEnsureEventRowBackfills（回歸）：Report 當時事件表
 // 拒寫留下「in-memory failing、DB 無列」殘態時，週期評估 MUST 補列
 func TestEnsureEventRowBackfills(t *testing.T) {
 	f := newDegradedFixture(t)

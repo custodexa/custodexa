@@ -4,10 +4,10 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 段 2 服務圖收束時，keyvault 側的資源歸零（modular-architecture W2 2.1 自
-// `internal/service/stage2_release.go:92-131` 拆出；R3.1 §5.1 坐實 F20——
+// 段 2 服務圖收束時，keyvault 側的資源歸零（自
+// `internal/service/stage2_release.go:92-131` 拆出——
 // 型別的方法必須與型別同包，故這兩個方法隨型別遷入 keyvault，
-// 其餘 4 個 audit 側釋放函式留在原檔待 W4）。
+// 其餘 4 個 audit 側釋放函式留在原檔）。
 //
 // **拆檔不得改動釋放登記順序**：`keyManager.ZeroizeForRelease` 於組裝根
 // （`cmd/server/stage2.go`）登記在 release 第 2 位（＝ ResourceBag 以 LIFO
@@ -21,7 +21,7 @@ import (
 
 // ZeroizeForRelease 歸零 KeyManagerService 持有的全部明文金鑰材料。
 //
-// 這是遷移表格 5b「清除已解封的 KEK」與 D6.2.4「舊持有者釋放已建構資源」的
+// 這是遷移表格 5b「清除已解封的 KEK」與「舊持有者釋放已建構資源」的
 // 落點：B 模式的 KEK 只存在於記憶體，被丟棄的服務圖若仍持有它，
 // 「封印」就只是路由層的假象。
 //
@@ -61,7 +61,7 @@ func (s *ExportSigningService) ZeroizeForRelease() {
 }
 
 // ZeroizeForRelease 歸零檢查點簽章服務持有的**全部版本** Ed25519 私鑰
-// （audit-checkpoint-chain D5）。
+// （audit-checkpoint-chain）。
 //
 // 與 ExportSigningService 的差異只有「多版本」：本服務自始帶版本欄，
 // 記憶體內同時持有歷史版本的私鑰（供輪替後仍能重驗歷史檢查點），

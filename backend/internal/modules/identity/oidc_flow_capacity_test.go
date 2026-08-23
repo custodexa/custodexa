@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// flow state 全表容量上限（idp-oidc-integration tasks 4.8／design D13）。
+// flow state 全表容量上限。
 //
 // begin 是未認證端點且每次呼叫都產生一列持久化狀態，沒有帳號可綁。驗收有兩面，
 // 缺一即為假綠：儲存量**有界**（否則洪水直接撐爆 DB），且**既有流程仍可完成**

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// 「套用電支基準」的取嚴語義（security-backlog-settlement 塊 6）。
+// 「套用電支基準」的取嚴語義。
 //
 // **這是本塊唯一容易做錯的地方**：兩基準在部分項目上方向相反——密碼最小長度
 // PCI 要求 >=12、電支只要求 >=6。若套用實作為「無條件填入 epayment_value」，

@@ -10,7 +10,7 @@ import (
 // ErrCheckpointSigningKeyImmutable 檢查點簽章鑰守衛的統一錯誤
 var ErrCheckpointSigningKeyImmutable = errors.New("checkpoint_signing_keys 不可改刪：刪除任一曾用於簽章的版本，將使該版本簽的歷史檢查點永久不可驗")
 
-// CheckpointSigningKey 檢查點鏈的 Ed25519 簽章鑰（audit-checkpoint-chain D5）。
+// CheckpointSigningKey 檢查點鏈的 Ed25519 簽章鑰（audit-checkpoint-chain）。
 //
 // 形態沿匯出簽章鑰（ExportSigningKey）的專表＋ColumnCodec AAD 包裹，但
 // **自始帶 version 與 active 語義**——匯出鑰無版本欄是既有缺陷，本表不重蹈。

@@ -6,14 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserExternalIdentity 使用者的外部身分關聯（idp-oidc-integration D2）。
+// UserExternalIdentity 使用者的外部身分關聯。
 //
 // 身分域鍵為 (Issuer, ClientID, Subject) 而非 ProviderID——身分歸屬於「issuer＋client_id」
 // 這個外部事實，不是我方 provider 列的識別碼。以代理鍵當身分域會使 admin 誤刪重建
 // provider 後全體使用者被鎖出（新 provider_id 使既有身分全數未命中，繼而撞名被拒）。
 // ProviderID 僅記錄當前設定來源，登入查找一律以三元組為準。
 //
-// Subject 驗證規則（D2）：非空、長度上限、原值大小寫敏感比對、不做任何正規化——
+// Subject 驗證規則：非空、長度上限、原值大小寫敏感比對、不做任何正規化——
 // 空 subject 會使第一個異常 token 吸附該 provider 後續全部異常 token。
 type UserExternalIdentity struct {
 	ID        uint           `gorm:"primarykey" json:"id"`

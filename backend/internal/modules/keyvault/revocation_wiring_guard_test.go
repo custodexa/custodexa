@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// 撤銷管道接線守衛（codex 對抗審查 F-F）。
+// 撤銷管道接線守衛。
 //
 // 三條使用者級／provider 級的收線管道（協議會話、唯讀訂閱、錄影 token）在
 // service 端一律採 **nil 容忍**：revokeUserAccess／revokeProviderAccess 對未注入的
@@ -104,7 +104,7 @@ func TestRevocationChannelsWired(t *testing.T) {
 	// 原先的 filepath.Join("..","..") 綁死「本 package 住在 internal/service」，
 	// package 一下移即指向不存在的路徑。
 	path := filepath.Join(repoRoot(t), filepath.FromSlash(revocationWiringFile))
-	// 具名路徑（P3）的 fail-close：組裝根搬家時必須「找不到即紅」，
+	// 具名路徑的 fail-close：組裝根搬家時必須「找不到即紅」，
 	// 不能讓 parser 的錯誤訊息把人導向別處。
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("找不到組裝根 %s（%s）：接線守衛的被驗證對象不存在即等於沒有守衛。"+
@@ -155,7 +155,7 @@ func TestRevocationWiringGuardDetectsMissingCall(t *testing.T) {
 
 // ── [cmd/server/auth_context_touchpoints_guard_test.go] 的複本 ─────
 //
-// W9 前這兩項住在 `internal/service/identity_fixtures_leftover_test.go`；
+// 這兩項原本住在 `internal/service/identity_fixtures_leftover_test.go`；
 // 該檔隨 `internal/service` 一併消滅，而本檔是它在本包內的唯一消費者，
 // 故就近落在本檔而不另立夾具檔。
 

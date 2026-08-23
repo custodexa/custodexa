@@ -14,13 +14,13 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// F8 tx-taking 跨模組寫入白名單（D-10 落地形態，modular-architecture W7 7.5）。
+// tx-taking 跨模組寫入白名單。
 //
 // **這個守衛存在的唯一理由**：把 `*gorm.DB` 交給別的模組之後，
-// **編譯器與資料邊界閘門（W6 6.0b ratchet）都看不見對方寫了哪張表**——
+// **編譯器與資料邊界閘門（6.0b ratchet）都看不見對方寫了哪張表**——
 // 寫入發生在 authz 的方法體內、對象是 authz 自有的表，掃描器判為「自己寫自己」，
 // 而真正的事實是「asset／identity 的交易在寫 authz 的表」。ratchet 因此會顯示
-// 「乾淨」，這正是 D-10 誠實邊界所說「DoD 第 1 條在此類路徑上名存實亡」的具體形狀。
+// 「乾淨」，這正是誠實邊界所說「DoD 第 1 條在此類路徑上名存實亡」的具體形狀。
 //
 // 本守衛以三個彼此獨立的軸維持可審計性：
 //
@@ -41,15 +41,15 @@ type txTakingEntry struct {
 	CallerFile string
 	// Callee authz 對外的 tx-taking 方法名
 	Callee string
-	// OriginalSites D-10 具名白名單所列的原始寫入點（收口前的 file:line）。
+	// OriginalSites 具名白名單所列的原始寫入點（收口前的 file:line）。
 	// 收口把多個 Delete 併進一個方法，這一欄使「五處」與現況呼叫點的對應不失聯。
 	OriginalSites []string
 	// Reason 為何非得把交易交出去（空白即紅）
 	Reason string
 }
 
-// txTakingWhitelist F8 交易級聯類的原始寫入點收口後的呼叫點。
-// 原為五處寫入點／三個呼叫點；security-backlog-settlement 塊 2 新增資產刪除一處。
+// txTakingWhitelist 交易級聯類的原始寫入點收口後的呼叫點。
+// 原為五處寫入點／三個呼叫點；資產刪除新增一處。
 var txTakingWhitelist = []txTakingEntry{
 	{
 		CallerFile: "internal/modules/asset/asset_group_service.go",
@@ -68,7 +68,7 @@ var txTakingWhitelist = []txTakingEntry{
 		Callee:     "RevokeByAsset",
 		OriginalSites: []string{
 			"internal/modules/asset/asset_service.go:1092（Delete AssetAuthorization，" +
-				"security-backlog-settlement 塊 2 初版直接寫 authz 的表，撞資料邊界閘門後收口）",
+				"初版直接寫 authz 的表，撞資料邊界閘門後收口）",
 		},
 		Reason: "刪除資產必須與「撤銷該資產的授權與審核範圍」原子成立：" +
 			"權限查詢只查 asset_authorizations、不 join assets，資產刪了而授權留著" +
@@ -98,7 +98,7 @@ var txTakingWhitelist = []txTakingEntry{
 			"internal/modules/identity/user_service.go:513（Delete ApproverScope）",
 		},
 		Reason: "帳號軟刪與其審核範圍失效必須原子成立，且整段被「本地 admin 不變式」" +
-			"的系統級鎖與使用者憑證鎖包住（取鎖順序 system → user，D13）。" +
+			"的系統級鎖與使用者憑證鎖包住（取鎖順序 system → user）。" +
 			"authz 無法另開交易——那會落在鎖外，且帳號刪除回滾時範圍已被撤。",
 	},
 }
@@ -156,7 +156,7 @@ var (
 // scanTxTaking 取（並快取）掃描結果，本檔兩支守衛（A／B 軸）共用。
 //
 // 兩軸看的是同一棵樹的同一份事實且都不改動它，而帶完整型別資訊的全 module
-// packages.Load 單次約 30 秒（guard-scan-cost-reduction 基準量測：本包 65s／2 次）。
+// packages.Load 單次約 30 秒（基準量測：本包 65s／2 次）。
 //
 // root 由呼叫點傳入而非在此取得，故 modroot 定位的失敗仍各自 Fatal，
 // 不會落進 Once 內造成零值快取。失敗處理見 txTakingScan.Err。
@@ -312,7 +312,7 @@ func isAuthzMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 		return true
 	}
 	// 消費者側窄介面：方法宣告在呼叫方的包，但簽名收 *gorm.DB 且名字落在
-	// authz 的 tx-taking 集合內——那正是 D-10 所定義的窄 port 形狀
+	// authz 的 tx-taking 集合內——那正是窄 port 的形狀
 	recv := sig.Recv()
 	return recv != nil && recv.Type() != nil && types.IsInterface(recv.Type())
 }
@@ -322,9 +322,9 @@ func isAuthzMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 // 刻意掃全部位置而非只看 At(0)：本庫自己的慣例就有 tx 不在首位的形式
 // （`port.WriteInTx(sink, tx, event)`），故 `RevokeByAsset(assetID uint, tx *gorm.DB)`
 // 是純風格選擇而非繞過。原本的位置式判定會讓這種寫法**靜默失明**——
-// 方法集合軸與呼叫點軸同源，兩軸會一起瞎，而 D-10 的誠實邊界已明列
-// F8 只剩「窄化／白名單／code review」三道防線，白名單這道不能被參數順序關掉。
-// （2026-08-10 W7 對抗輪 H-1 實證：tx 放第二位時三支守衛全 PASS。）
+// 方法集合軸與呼叫點軸同源，兩軸會一起瞎，而誠實邊界已明列
+// 交易級聯只剩「窄化／白名單／code review」三道防線，白名單這道不能被參數順序關掉。
+// （2026-08-10 對抗輪實證：tx 放第二位時三支守衛全 PASS。）
 func signatureTakesGormDB(sig *types.Signature) bool {
 	for i := 0; i < sig.Params().Len(); i++ {
 		if isGormDBPointer(sig.Params().At(i).Type()) {
@@ -373,7 +373,7 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	sort.Strings(unregistered)
 	if len(unregistered) > 0 {
 		t.Errorf("以下呼叫點把交易句柄交給了 authz 卻未登記於 txTakingWhitelist：\n  %s\n"+
-			"tx-taking 不受編譯器保護（D-10），未登記＝無人審視過它寫了什麼",
+			"tx-taking 不受編譯器保護，未登記＝無人審視過它寫了什麼",
 			strings.Join(unregistered, "\n  "))
 	}
 
@@ -397,8 +397,8 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 
 	// 具名白名單的每一處都必須有歸屬。
 	//
-	// **數量是契約**：D-10 原定五處（modular-architecture F8 收口的既有寫入點）；
-	// security-backlog-settlement 塊 2 新增資產刪除一處＝六處。調整此數字必須連同
+	// **數量是契約**：原定五處（收口的既有寫入點）；
+	// 資產刪除新增一處＝六處。調整此數字必須連同
 	// 上方 txTakingWhitelist 的登記與其理由一起改——這正是「新增 tx-taking 呼叫點
 	// 要被看見」的機制，不是可以隨手放寬的門檻。
 	const expectedTxTakingSites = 6
@@ -407,8 +407,8 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 		total += len(e.OriginalSites)
 	}
 	if total != expectedTxTakingSites {
-		t.Errorf("F8 交易級聯白名單應為 %d 處，現登記 %d 處："+
-			"新增／移除都必須同步 design.md D-H 的具名清單與本常數",
+		t.Errorf("交易級聯白名單應為 %d 處，現登記 %d 處："+
+			"新增／移除都必須同步本檔的具名清單與本常數",
 			expectedTxTakingSites, total)
 	}
 	if scan.Files < 250 {

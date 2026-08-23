@@ -8,7 +8,7 @@ import (
 )
 
 // TestQuickstartPlaceholderCoupling 守衛 scripts/quickstart.sh 與 .env.example 的
-// placeholder 耦合（change quickstart-bootstrap-script design「風險：placeholder 字面值耦合」）。
+// placeholder 耦合（change  design「風險：placeholder 字面值耦合」）。
 //
 // 腳本以「值等於範本出貨值」判定使用者未設定並代為生成；範本改了出貨值而腳本未同步時，
 // 腳本會把新出貨值當成「使用者已設定」而跳過生成——部署者就帶著範本的公開值上線，

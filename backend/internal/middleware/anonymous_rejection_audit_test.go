@@ -1,6 +1,6 @@
 package middleware
 
-// 匿名拒絕留痕與有界機制的行為守衛（audit-coverage-closure 批 1）。
+// 匿名拒絕留痕與有界機制的行為守衛。
 //
 // 這裡釘的是**單點契約**，不是路由清單：`cmd/server/audit_rejection_coverage_guard_test.go`
 // 負責掃遍實際註冊路由並量缺口數，本檔負責證明「經認證中介層 abort 的請求必產一列，
@@ -240,7 +240,7 @@ func TestAnonRejectionReasonDistinguishesCredentialCases(t *testing.T) {
 		})
 	}
 
-	// 已過期：**審計側分流、對外不分流**（audit-coverage-closure 批 3 裁決）。
+	// 已過期：**審計側分流、對外不分流**。
 	//
 	// 分流的理由在計數面：access token 每 15 分鐘到期一次、前端自動 refresh，
 	// 每次都留一列；與「無憑證」「簽章無效」混計會讓每日覆核的登入失敗數被正常
@@ -276,7 +276,7 @@ func TestAnonRejectionReasonDistinguishesCredentialCases(t *testing.T) {
 
 // ── 單點契約（與路由數量無關）────────────────────────────────────────────
 //
-// TestAuthMiddlewareAbortAlwaysProducesOneRow 釘住 D1 的核心主張：留痕發生在
+// TestAuthMiddlewareAbortAlwaysProducesOneRow 釘住核心主張：留痕發生在
 // **中介層單點**，故「有幾條路由」不影響契約。路徑刻意取一組現實中不存在的
 // 名字——若哪天有人把留痕改成逐 handler／逐路由的登記表，這些路徑不會在表上，
 // 本測試立刻轉紅。
@@ -326,7 +326,7 @@ func TestAuthMiddlewareAbortAlwaysProducesOneRow(t *testing.T) {
 // 症狀是「那條路徑的拒絕又回到零留痕」——沒有任何既有行為測試會轉紅，而覆蓋守衛
 // 要等到有人跑 cmd/server 全包才看得到。判準放在語法層，新增分支當場被擋。
 //
-// # 射程限制（獨立驗收 F2，明載而不擴大）
+// # 射程限制（明載而不擴大）
 //
 // 本守衛**只認 `apierror.Respond(…, http.StatusUnauthorized, …)` 這一種形態**。
 // 以其他表達式回 401——`c.AbortWithStatusJSON(401, …)`、`c.JSON` 後 `c.Abort()`、
@@ -593,7 +593,7 @@ func TestDefaultParamsKeepProductionBounded(t *testing.T) {
 
 // TestAnonRejectionAggregateOverflowKeepsEvents 聚合表滿載時**不得丟棄事件**。
 //
-// 這條是獨立驗收打出的零覆蓋（F3）：`aggregateLocked` 在表滿時把事件重映射到
+// 這條補的是獨立驗收打出的零覆蓋：`aggregateLocked` 在表滿時把事件重映射到
 // 共用的 `(overflow)` 鍵，語義是「偵測訊號可以失去來源解析度，但不該整段消失」。
 // 突變成「表滿即 return」時，`internal/middleware` 全包與覆蓋守衛**皆綠**——
 // 也就是說在本測試之前，那句宣稱沒有任何測試保護。
@@ -652,10 +652,10 @@ func TestAnonRejectionAggregateOverflowKeepsEvents(t *testing.T) {
 	}
 }
 
-// TestAnonRejectionOversizedPathStaysWithinSchema 獨立驗收 F1 的行為面。
+// TestAnonRejectionOversizedPathStaysWithinSchema 超長路徑仍須寫得進 schema。
 //
-// `:id` 型路由吸得下任意長度，而 `audit_logs.path` 是 varchar(500)：批 1 之前
-// 未認證請求根本不寫庫，批 1 之後這條路徑**零憑證即可產出一列寫不進去的審計列**
+// `:id` 型路由吸得下任意長度，而 `audit_logs.path` 是 varchar(500)：補匿名留痕前
+// 未認證請求根本不寫庫，補上之後這條路徑**零憑證即可產出一列寫不進去的審計列**
 // ——該次拒絕零留痕，且同批的合法審計列被一併回滾（第二層隔離在
 // `modules/audit` 的 flushBatch 守衛）。
 //
@@ -738,7 +738,7 @@ func TestAnonRejectionForgedForwardedHeaderDoesNotSplitAttribution(t *testing.T)
 
 // TestForbiddenKeepsNamedDeniedRow spec「授權拒絕維持既有語義」。
 //
-// 本批只補**認證失敗**（401）那一半。授權拒絕（403）的身分是成立的，既有的具名列
+// 這裡只補**認證失敗**（401）那一半。授權拒絕（403）的身分是成立的，既有的具名列
 // 與 `status=denied` 是稽核上「誰被擋在哪一道權限外」的答案，不得因為補 401 而被
 // 順手改寫成匿名或 failure。
 func TestForbiddenKeepsNamedDeniedRow(t *testing.T) {

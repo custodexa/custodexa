@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TestConnectRedeemRecheck 兌換點授權與政策重查（CPG-010，connection-gating delta）：
+// TestConnectRedeemRecheck 兌換點授權與政策重查（connection-gating）：
 // connect_token 於簽發後、兌換前遭撤銷之連線授權／收緊之存取政策，SHALL 於兌換
 // 即時生效（403），撤權殘窗（原以 60s TTL 為上界）歸零；授權與政策不變則正常放行。
 func TestConnectRedeemRecheck(t *testing.T) {
@@ -66,7 +66,7 @@ func TestConnectRedeemRecheck(t *testing.T) {
 		token, _ := resp["connect_token"].(string)
 
 		// 授權與政策皆未變動：兌換 SHALL 通過授權/政策重查閘（後續因測試環境
-		// 無真 SSH target 於連線階段失敗）。正向斷言強化（codex Finding 2）：除未被
+		// 無真 SSH target 於連線階段失敗）。正向斷言強化：除未被
 		// 授權/政策層 403 誤擋外，同時排除假通過（200 成功/101 WS 升級），確認確實過閘
 		rcode, rresp := redeemSSH(h, token)
 		if rcode == http.StatusForbidden {

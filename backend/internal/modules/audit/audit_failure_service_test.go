@@ -75,7 +75,7 @@ func TestFailureResolveWithoutOpen(t *testing.T) {
 	}
 }
 
-// TestFailureNotifyDespiteDBError 對抗驗證回歸：DB 全掛（事件表不可寫）時
+// TestFailureNotifyDespiteDBError 回歸：DB 全掛（事件表不可寫）時
 // 通知仍須發出——原實作 Create 失敗直接 return，失效區間零紀錄零告警。
 // in-memory 狀態機須繼續去重、恢復通知對稱發出
 func TestFailureNotifyDespiteDBError(t *testing.T) {
@@ -100,7 +100,7 @@ func TestFailureNotifyDespiteDBError(t *testing.T) {
 	if len(notified) != 1 || notified[0] != notifycat.EventAuditFailure {
 		t.Errorf("DB 掛掉時仍應通知一次, got %v", notified)
 	}
-	// 出站只帶碼：forensic detail 不進通知 params（design D8 去識別紅線）
+	// 出站只帶碼：forensic detail 不進通知 params（去識別紅線）
 	if lastParams["cause_code"] != model.CauseAuditWriteFallbackFile {
 		t.Errorf("通知應帶 cause_code, got %v", lastParams)
 	}
@@ -133,7 +133,7 @@ func blockUpdates(t *testing.T, db *gorm.DB) func() {
 	}
 }
 
-// TestFailureResolveBackfillsAfterUpdateFailure（codex 批 2 M2 回歸）：
+// TestFailureResolveBackfillsAfterUpdateFailure（回歸）：
 // 結案 UPDATE 失敗時，舊實作先清 in-memory failing 旗標又不重試，之後每次
 // Resolve 都被「非失效中」早退吞掉 → open event 永久懸掛，PCI 失效區間的
 // 結束端證據永久缺失。修正後失敗僅留待補標記，下次 Resolve 補結案
@@ -202,7 +202,7 @@ func TestFailureReportReopensAfterPendingClose(t *testing.T) {
 	}
 }
 
-// TestFailureReportReusesExistingStartedAt（codex 批 2 M3 回歸）：
+// TestFailureReportReusesExistingStartedAt（回歸）：
 // 沿用 DB 既有未結束事件時，出站 started_at 必須是該事件的真實起點；
 // 報 time.Now() 會把已持續數小時的失效講成剛剛才發生，且與 Resolve 的區間對不上
 func TestFailureReportReusesExistingStartedAt(t *testing.T) {

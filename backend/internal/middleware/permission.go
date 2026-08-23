@@ -10,7 +10,7 @@ import (
 
 // Permission 權限常數
 //
-// **SD-4 第一步（modular-architecture W7 7.2）**：型別與角色→權限表已搬入
+// **型別與角色→權限表已搬入**
 // `internal/modules/authz`（`authz.Permission`／`authz.RoutePermissions`）。
 // 此處保留的是**型別別名與常數轉出**，不是第二份定義——別名使既有 46 條路由的
 // `middleware.PermXxx` 呼叫點逐字不動（路由鏈位元相同），而唯一的權限真相在 authz。

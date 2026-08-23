@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// auth-session 能力在 OIDC 軌道上的差異情境（idp-oidc-integration tasks 4.12）。
+// auth-session 能力在 OIDC 軌道上的差異情境。
 //
 // 既有的 auth_refresh_service_test.go 只跑本地密碼軌道；本檔補的是 OIDC 軌道特有的
 // 三件事：脈絡欄位必須跨輪替沿用、絕對壽命不因輪替而重置、達上限須重新認證。
@@ -44,7 +44,7 @@ func (e *oidcLifecycleEnv) oidcLogin(t *testing.T, user *model.User) *LoginRespo
 	return resp
 }
 
-// Scenario: OIDC 會話同軌刷新（tasks 4.12）
+// Scenario: OIDC 會話同軌刷新
 func TestOIDCRefreshRotatesOnSameTrack(t *testing.T) {
 	e, user := newOIDCSessionEnv(t, "12", "0")
 	epoch := e.providerAuthEpoch(t)
@@ -91,7 +91,7 @@ func TestOIDCRefreshRotatesOnSameTrack(t *testing.T) {
 	}
 }
 
-// Scenario: 多次輪替不重置絕對壽命（tasks 4.12）
+// Scenario: 多次輪替不重置絕對壽命
 func TestOIDCRefreshRotationsDoNotResetAbsoluteLifetime(t *testing.T) {
 	e, user := newOIDCSessionEnv(t, "1", "0")
 
@@ -122,7 +122,7 @@ func TestOIDCRefreshRotationsDoNotResetAbsoluteLifetime(t *testing.T) {
 	}
 }
 
-// Scenario: 達絕對上限須重新認證（tasks 4.12）
+// Scenario: 達絕對上限須重新認證
 func TestOIDCRefreshAtAbsoluteLimitRequiresReauthentication(t *testing.T) {
 	e, user := newOIDCSessionEnv(t, "1", "0")
 
@@ -152,7 +152,7 @@ func TestOIDCRefreshAtAbsoluteLimitRequiresReauthentication(t *testing.T) {
 	}
 }
 
-// Scenario: 換發的 access 不越過絕對期限（tasks 4.12）
+// Scenario: 換發的 access 不越過絕對期限
 //
 // **本測試目前為 t.Skip（實作與 tasks 要求不符，屬既有缺陷）**：
 // RefreshSession 換發 access 時走 jwtManager.GenerateToken，其到期一律是

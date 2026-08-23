@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// session 級 advisory lock 的三組必測（D5.1 裁決 2 鎖分級）：
+// session 級 advisory lock 的三組必測（鎖分級）：
 // 洩漏（panic 後仍可取得）／取消後可重取／session↔xact 互斥。
 //
 // 前兩組在 sqlite 分流亦有意義（kekProcessMu 的 defer 解鎖語義相同）；
@@ -321,8 +321,8 @@ func TestPGSessionLockNoLeakUnderConcurrency(t *testing.T) {
 // TestKeyOpLockBusyBidirectional 兩級鎖共用同一把 key，故**雙向必測**：
 // 只測單向會漏掉「session 鎖用了另一把 key」這種一測就綠、上線才發現的失真。
 //
-// 註：原以 enable／migrate 兩個 AAD 操作為載體，該兩操作已隨過渡機制拆除
-// （release-transitional-cleanup 3.1）；此處直接以兩支鎖原語為載體，
+// 註：原以 enable／migrate 兩個 AAD 操作為載體，該兩操作已隨過渡機制拆除；
+// 此處直接以兩支鎖原語為載體，
 // 被驗證的互斥性質不變。
 func TestKeyOpLockBusyBidirectional(t *testing.T) {
 	db := newAADTestDB(t)

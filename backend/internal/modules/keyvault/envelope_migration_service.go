@@ -12,7 +12,7 @@ import (
 
 // envelopeMigrationColumn 登記的信封加密欄位描述。
 //
-// **`plaintext` 旗標已於 release-transitional-cleanup 移除**：它標示「現值為明文、
+// **`plaintext` 旗標已於過渡格式收尾時移除**：它標示「現值為明文、
 // 直接加密收編」，是 legacy 一次性遷移的產物。終態下所有登記欄位的值恆為
 // `enc:a1`，「明文收編」分支會使非終態值被靜默當作明文重新加密——正好違反
 // 哨兵的 fail-visible 語義（不可能態應被看見，而非被自動洗白）。
@@ -20,8 +20,8 @@ type envelopeMigrationColumn struct {
 	table  string
 	column string
 	// pkColumn 主鍵欄名，**僅供逐列掃描的 keyset 分頁使用；SHALL NOT 參與 AAD**
-	// （kek-provider-modularization 定案 A2：AAD 綁 table|column，不綁 pk）。
-	// **空＝id**——此預設是給 asset-multi-account 的**零改動契約**（交叉相容契約 2）：
+	// （AAD 綁 table|column，不綁 pk）。
+	// **空＝id**——此預設是給資產多帳號的**零改動契約**（交叉相容契約 2）：
 	// 其登記形式 {table, column} 無須任何改動。
 	pkColumn string
 }
@@ -44,26 +44,26 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	{table: "assets", column: "password_enc"},
 	{table: "assets", column: "private_key_enc"},
 	{table: "assets", column: "sftp_password_enc"},
-	// asset-multi-account D1a：帳號表密文與 model 同版入冊——本清單同時是退役 DEK
+	// 帳號表密文與 model 同版入冊——本清單同時是退役 DEK
 	// 銷毀前的引用掃描來源，漏登會誤判零引用而銷毀仍在用的金鑰材料
 	{table: "asset_accounts", column: "password_enc"},
 	{table: "asset_accounts", column: "private_key_enc"},
-	// change-secret-ssh-deepening D1：未驗證的候選憑證。與 model 同版入冊——
+	// 未驗證的候選憑證。與 model 同版入冊——
 	// 候選是「可能已在遠端生效」的秘密的唯一副本，漏登會使退役 DEK 誤判零引用而
 	// 被銷毀，該候選即永久不可解：其對應帳號在遠端已改密的情形下直接永久鎖死
 	{table: "change_secret_candidates", column: "password_enc"},
 	{table: "change_secret_candidates", column: "private_key_enc"},
 	{table: "users", column: "totp_secret_enc"},
 	{table: "export_signing_keys", column: "private_key_enc"},
-	// audit-checkpoint-chain D5：檢查點鏈簽章私鑰。與 model 同批入冊——漏登會使
+	// 檢查點鏈簽章私鑰。與 model 同批入冊——漏登會使
 	// 退役 DEK 誤判零引用而被銷毀，該私鑰即永久不可解：以它簽的**全部歷史檢查點
 	// 從此不可驗**，等同鏈證據整體損毀且無法救回
 	{table: "checkpoint_signing_keys", column: "private_key_enc"},
-	// idp-oidc-integration D2：OIDC provider 的 client secret。與 model 同批入冊——
+	// OIDC provider 的 client secret。與 model 同批入冊——
 	// 本清單同時是退役 DEK 銷毀前的引用掃描來源，漏登會誤判零引用而銷毀仍在用的
 	// 金鑰材料，使該欄密文永久不可解（provider 全數無法登入且無法救回）
 	{table: "oidc_providers", column: "client_secret_enc"},
-	// ldap-settings-migration D1：LDAP service bind 密碼。設定面自 env 遷入 DB 後
+	// LDAP service bind 密碼。設定面自 env 遷入 DB 後
 	// 這是本表唯一的密文欄；與 model 同批入冊的理由同上——本清單同時是退役 DEK
 	// 銷毀前的引用掃描來源，漏登會誤判零引用而銷毀仍在用的金鑰材料，使 LDAP
 	// 設定的 bind 密碼永久不可解（目錄認證全體失效且無法救回）
@@ -91,7 +91,7 @@ type EnvelopeMigrationResult struct {
 	Residue int64 `json:"residue,omitempty"`
 	// MaxOps 單次處理上限（0=無上限）；達上限即停，呼叫端以 pending 判 partial
 	MaxOps int64 `json:"-"`
-	// ColumnStats 逐欄位的實際分布（key＝`table.column`，codex round-6 M）。
+	// ColumnStats 逐欄位的實際分布（key＝`table.column`）。
 	// 完成審計只記總數時，事後查案無法回答「哪一欄改了幾筆、哪一欄全數失敗」；
 	// 掃過的欄位一律建項（含 0/0），故本表同時是「實際掃描範圍」的證據——
 	// 與登記集合不一致本身即為線索。
@@ -138,7 +138,7 @@ func (r *EnvelopeMigrationResult) bumpColumnStat(target envelopeMigrationColumn,
 // 判定一律在 Go 層以此為準——SQL LIKE 'enc:v%' 會把前綴撞名的明文
 // 誤判為已遷移（留明文＋pending 假陰性削弱 KEK 重包守衛）。
 //
-// **含帶 AAD 方案者（`enc:a1:v<N>`）**（D5 cutover，tasks 1.7）：版本是 DEK 的
+// **含帶 AAD 方案者（`enc:a1:v<N>`）**：版本是 DEK 的
 // 身分，與 AAD 方案正交。若此處沿用只認 `enc:v` 的 ParseEnvelope，cutover 後
 // 兩處會靜默失真——
 // (1) DEK 輪替的 skip／pending 永遠視 enc:a1 為「未達標」，輪替永不收斂；
@@ -164,9 +164,9 @@ type decryptFn func(ref crypto.CipherRef, ciphertext string) (string, error)
 
 // keyset 分頁以主鍵遞增掃描。**目前全部登記欄位的主鍵皆為整數 id**；
 // 若日後登記非整數主鍵（UUID），此處的 keyset 需改以字串序推進。
-// 主鍵僅是掃描與 CAS 寫回的座標，**不參與 AAD**（定案 A2）。
+// 主鍵僅是掃描與 CAS 寫回的座標，**不參與 AAD**。
 //
-// **寫出格式為 enc:a1**（D5 cutover，tasks 1.7）：本函式服務於 legacy 信封化遷移
+// **寫出格式為 enc:a1**：本函式服務於 legacy 信封化遷移
 // 與 DEK 輪替兩條重加密路徑，兩者都是**寫入端**。若仍寫 enc:v，則 strict 啟用後
 // 的一次 DEK 輪替會把全存量降級為不可讀，且「現查殘餘為 0」淪為瞬時快照。
 func reencryptEnvelopeColumn(db *gorm.DB, km *KeyManagerService, target envelopeMigrationColumn, skip func(string) bool, result *EnvelopeMigrationResult) {
@@ -214,7 +214,7 @@ func reencryptEnvelopeColumnWith(db *gorm.DB, target envelopeMigrationColumn, sk
 				continue
 			}
 			ref := target.cipherRef()
-			// **一律解密**（release-transitional-cleanup 3.3）：原「明文欄位在非
+			// **一律解密**：原「明文欄位在非
 			// 有效信封時原樣採用」的收編分支已移除——終態下非終態格式值是不可能
 			// 態，把它當明文重新加密等於靜默洗白，違反哨兵 fail-visible 語義。
 			// 該類值於此逐項記為失敗並留位置線索

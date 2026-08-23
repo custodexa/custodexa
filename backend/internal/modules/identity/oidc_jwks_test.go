@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// JWKS 輪替四情境（idp-oidc-integration tasks 4.7，design D17）。
+// JWKS 輪替四情境。
 //
 // 輪替是 IdP 的常態運維，本系統若不能跟上，全體使用者會在 IdP 換鑰當下集體
 // 登入失敗；反之若快取無上限，已自 JWKS 移除的金鑰會永久有效——後者才是安全

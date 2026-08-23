@@ -8,10 +8,10 @@ import (
 )
 
 // ResolveAccountScope 由**部署組態**（KEK_KMS_KEY_ID）推導信任帳號範圍
-// （round-4 codex high #1）。
+// （安全審查 high #1）。
 //
 // **為何信任範圍的來源是組態而非請求**：委託重包精靈的請求體只帶 `key_ref`。
-// 裁決 6 讓 region／provider 沿用本行程組態，目的是「不讓單次請求把材料重包到
+// region／provider 沿用本行程組態，目的是「不讓單次請求把材料重包到
 // 任意雲端帳號」——但 region 沿用擋不住**同 region 的其他 AWS 帳號**：完整 ARN
 // 可以指定任何帳號，只要對方 key policy／grant 放行就會成功，而材料自此落入
 // 不受本部署組態控制的信任域。組態宣告的那把鑰所屬的帳號，就是這個部署已經

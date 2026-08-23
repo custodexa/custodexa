@@ -18,8 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 強制審計 fail-close 的 **runtime fault-injection backstop**
-// （modular-architecture W4 任務 4.12c；codex W1 外審焦點 C4 的解方）。
+// 強制審計 fail-close 的 **runtime fault-injection backstop**。
 //
 // # 為什麼這組測試的優先序高於所有 AST 守衛
 //
@@ -37,11 +36,11 @@ import (
 // # 故障注入點：GORM Create callback，而不是替身 sink
 //
 // 刻意**不**用「傳一個永遠回錯的 TxSink 替身」——那只證明得了「已經改走 TxSink 的
-// 那幾條路徑」，而 T-2 的 11 個點在 W4 尚未收口（走 `model.RecordAsset*Change` 的
+// 那幾條路徑」，而 T-2 的 11 個點當時尚未收口（走 `model.RecordAsset*Change` 的
 // `tx.Create`）。註冊在 `audit_logs` 上的 Create callback 對兩種形態一視同仁，
 // 也對未來任何新的寫入形態一視同仁——**這是換 oracle 的關鍵**，不是實作上的方便。
 //
-// # 🔴 射程與盲區（codex W4 外審焦點 1；**不得再無條件稱「最終權威」**）
+// # 🔴 射程與盲區（**不得再無條件稱「最終權威」**）
 //
 // 本組是 **GORM Create callback 路徑上的最終權威**，不是所有審計寫入路徑的最終權威。
 // 注入器**看得見**的：任何經由本測試持有的 `*gorm.DB` 句柄（含其 `Session`／交易衍生
@@ -56,8 +55,8 @@ import (
 //	B-d 非 GORM 寫入：`database/sql` 直連、外部程序、其他服務寫同一張表。
 //
 // **批次（`CreateInBatches`）不是盲區**——實測命中（見 `TestBackstopSeesBatchAuditWrites`），
-// 且逐列抽出身分。現況生產碼零筆 B-a…B-d 形態的審計寫入；若日後出現（W6-W9 的
-// raw SQL 審計寫入是最可能的來源），backlog B-15 的「DB 層 INSERT trigger 注入器」
+// 且逐列抽出身分。現況生產碼零筆 B-a…B-d 形態的審計寫入；若日後出現
+// （raw SQL 審計寫入是最可能的來源），「DB 層 INSERT trigger 注入器」
 // 升級為必做。
 //
 // # 誠實界定：覆蓋哪些點
@@ -91,7 +90,7 @@ func (h auditHit) String() string {
 
 // auditHitSpec 本格**預期命中**的審計點身分。
 //
-// # 為什麼「命中身分」比「命中次數」重要（codex W4 外審焦點 2）
+// # 為什麼「命中身分」比「命中次數」重要
 //
 // 舊版防呆只累計 `fired`：只要本次執行中有**任何**審計寫入被攔到就算數。這在
 // 「一個操作寫多筆審計」的路徑上會**由不相干的那筆取得 credit**——最典型的是
@@ -149,7 +148,7 @@ func (s auditHitSpec) matches(h auditHit) bool {
 //  3. **哨兵歸因**（各格顯式呼叫 `assertCausedBy`／`assertRolledBack`）——回傳的
 //     error 必須 `errors.Is` 得到本格的唯一哨兵。
 //
-// # 併發與共享狀態（codex W4 外審焦點 2 之二）
+// # 併發與共享狀態
 //
 // 真正的風險不是 `t.Cleanup` 被跳過（Go 的正常 panic 仍會執行 Cleanup），而是：
 //   - **平行子測試共享同一個 DB／callback**——本檔每格自建 DB 句柄（`setupAccountDB`
@@ -221,7 +220,7 @@ func (inj *auditFaultInjector) attach(db *gorm.DB) {
 		}
 		if !hit {
 			// **不相干的審計寫入照樣放行**——否則它會替本格取得 credit，
-			// 而本格指定的審計點永遠不可達（codex 焦點 2）。
+			// 而本格指定的審計點永遠不可達。
 			return
 		}
 		inj.matched++
@@ -320,7 +319,7 @@ func (inj *auditFaultInjector) assertCausedBy(label string, err error) {
 // assertRolledBack 斷言「業務交易真的回滾」的四件事，而不是只斷言呼叫回了 error。
 //
 //	(1) 呼叫回非 nil error；
-//	(2) 該 error 可歸因於**本格**注入的哨兵（codex 焦點 2：err != nil 可能來自別處）；
+//	(2) 該 error 可歸因於**本格**注入的哨兵（err != nil 可能來自別處）；
 //	(3) 業務列不存在（bizCount 為 0）；
 //	(4) 審計列不存在（回滾後不得留下半筆留痕；已含對照組留痕者傳差值）。
 //
@@ -658,7 +657,7 @@ func TestFailCloseAssetAccountCreateRollsBackOnAuditFailure(t *testing.T) {
 	}
 }
 
-// AP-31：AssetAccountService.Update（W4 codex 外審後補齊；此前僅以「與 AP-30／32
+// AP-31：AssetAccountService.Update（後補；此前僅以「與 AP-30／32
 // 語法同型」代替逐格，那只證明得了當下的人工比對，擋不住其中一路日後獨立漂移）
 func TestFailCloseAssetAccountUpdateRollsBackOnAuditFailure(t *testing.T) {
 	db := setupAccountDB(t)
@@ -730,7 +729,7 @@ func TestFailCloseAssetAccountDeleteRollsBackOnAuditFailure(t *testing.T) {
 	}
 }
 
-// AP-33：AssetAccountService.SetDefault（W4 codex 外審後補齊）
+// AP-33：AssetAccountService.SetDefault（後補）
 func TestFailCloseAssetAccountSetDefaultRollsBackOnAuditFailure(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -768,7 +767,7 @@ func TestFailCloseAssetAccountSetDefaultRollsBackOnAuditFailure(t *testing.T) {
 	}
 }
 
-// AP-40：AssetService.UpdatePassword（改密 runner 的落點；W4 codex 外審後補齊）
+// AP-40：AssetService.UpdatePassword（改密 runner 的落點；後補）
 func TestFailCloseAssetUpdatePasswordRollsBackOnAuditFailure(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
@@ -811,7 +810,7 @@ func TestFailCloseAssetUpdatePasswordRollsBackOnAuditFailure(t *testing.T) {
 }
 
 // AP-34／AP-35：syncDefaultAccountFromAsset 的建立分支與更新分支
-// （唯一呼叫方是 `AssetService.Update`；W4 codex 外審後補齊——舊版把兩點掛在
+// （唯一呼叫方是 `AssetService.Update`；後補——舊版把兩點掛在
 // `AssetService.Create` 那格底下宣稱涵蓋，但 Create 根本不呼叫 sync，是錯記）。
 
 // AP-35：更新分支（既有 default 帳號 → 隨資產憑證變更同步）
@@ -907,7 +906,7 @@ func TestFailCloseSyncDefaultAccountCreateRollsBackOnAuditFailure(t *testing.T) 
 // 或者要靠改生產碼才會綠，那是行為變更不是測試。
 //
 // 本節能證明、也只證明一件事：注入審計寫入故障時，這兩個函式**把 error 原樣回傳**
-// （沒有內部吞掉）。W6 6.1 若把任一消費端改成 fail-close，屆時該消費端要另立回滾格；
+// （沒有內部吞掉）。日後若把任一消費端改成 fail-close，屆時該消費端要另立回滾格；
 // 本格則是那之前唯一的 runtime 證據，也擋住「落地本體被改成吞 error」這種退化。
 func TestFailCloseAssetChangeRecordersPropagateAuditError(t *testing.T) {
 	db := setupAccountDB(t)
@@ -959,7 +958,7 @@ func TestFailCloseAssetChangeRecordersPropagateAuditError(t *testing.T) {
 			inj.arm()
 			err := tc.run(db)
 			inj.assertCausedBy(tc.name+"：落地本體吞掉了審計寫入的 error——"+
-				"消費端從此無從得知留痕失敗（W6 收口為 fail-close 時會靜默失效）", err)
+				"消費端從此無從得知留痕失敗（收口為 fail-close 時會靜默失效）", err)
 		})
 	}
 }

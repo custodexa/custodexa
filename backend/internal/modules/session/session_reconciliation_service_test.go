@@ -151,7 +151,7 @@ func TestReconcileOrphans(t *testing.T) {
 	}
 }
 
-// TestNewSessionReconciliationService_TypedNil typed-nil liveness 正規化（F3）：
+// TestNewSessionReconciliationService_TypedNil typed-nil liveness 正規化：
 // 傳入 nil 指標不得使後續 Has() panic
 func TestNewSessionReconciliationService_TypedNil(t *testing.T) {
 	setupReconciliationDB(t)
