@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupSyslogGateEnv syslog 存檔閘測試環境（transmission-security-policy 3.1）：
+// setupSyslogGateEnv syslog 存檔閘測試環境：
 // 真 sqlite＋真政策服務，僅省略 JWT middleware（直接掛路由）
 func setupSyslogGateEnv(t *testing.T) (*gin.Engine, *policy.SecurityPolicyService, *gorm.DB) {
 	t.Helper()
@@ -53,7 +53,7 @@ func postSyslogTest(t *testing.T, router *gin.Engine, body map[string]interface{
 }
 
 // assertSyslogGatePassed 斷言「傳輸政策閘已放行」，且不把閘的判定與投遞結果混為
-// 一談（asset-syslog-debt-cleanup D8）。閘放行後只有兩種合法結果：
+// 一談。閘放行後只有兩種合法結果：
 //   - 200 + {data:{success:true}}（實際送達）
 //   - 502 + code=INTERNAL_SYSLOG_TEST_FAILED（閘放行、投遞失敗）
 //
@@ -65,7 +65,7 @@ func assertSyslogGatePassed(t *testing.T, w *httptest.ResponseRecorder, ctx stri
 	switch w.Code {
 	case http.StatusOK:
 		// 200 必須是成功 envelope：否則 200＋{data:{success:false}} 的舊契約
-		// 回歸會從這個分支溜過去（實作審查 L3）
+		// 回歸會從這個分支溜過去
 		var ok struct {
 			Data struct {
 				Success bool `json:"success"`
@@ -235,8 +235,8 @@ func TestSyslogTestEndpointGate(t *testing.T) {
 	assertSyslogGatePassed(t, w, "strict 檔對 TLS 端點測試不應受閘")
 }
 
-// TestSyslogTestEndpointDeliveryResult 投遞結果與狀態碼語義（asset-syslog-debt-cleanup
-// D1）：成功回 200、送達失敗回 502＋registered code。與上面的閘測試分開——閘的
+// TestSyslogTestEndpointDeliveryResult 投遞結果與狀態碼語義：
+// 成功回 200、送達失敗回 502＋registered code。與上面的閘測試分開——閘的
 // 判定與投遞結果是兩件事，混在一起會讓任一方的迴歸被另一方遮蔽
 func TestSyslogTestEndpointDeliveryResult(t *testing.T) {
 	router, _, _ := setupSyslogGateEnv(t)

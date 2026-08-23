@@ -24,7 +24,7 @@ var (
 // 目錄無回應時不可拖垮登入端點（比照 LDAP 的 5 秒設計）
 const oidcEgressTimeout = 10 * time.Second
 
-// OIDCEgressPolicy 對身分提供者的出站信任邊界（idp-oidc-integration D3）。
+// OIDCEgressPolicy 對身分提供者的出站信任邊界。
 //
 // **不做「endpoint 必須與 issuer 同源」的限制**——該限制曾出現在設計草案中，
 // 經實查證實會直接阻斷 Google：其 issuer 為 accounts.google.com，但 token endpoint
@@ -167,11 +167,11 @@ func (p *OIDCEgressPolicy) HTTPClient() *http.Client {
 //
 // 涵蓋 loopback、link-local（含 169.254.169.254 雲端 metadata 端點——這是
 // SSRF 最典型的目標，可取得執行個體的憑證）、私有網段與未指定位址，
-// 外加 Go 的 IsPrivate **不涵蓋**但同樣不可能是正當 IdP 的幾段（L2）。
+// 外加 Go 的 IsPrivate **不涵蓋**但同樣不可能是正當 IdP 的幾段。
 //
 // allowPrivate 放寬「私有網段」一項且**僅此一項**（RFC1918 與 IPv6 ULA fc00::/7）：
-// LDAP/AD 的常態位置就是內網故傳 true，OIDC 的常態是公網 SaaS IdP 故傳 false
-// （ldap-settings-migration D5）。刻意不放寬 CGNAT 100.64.0.0/10——該段是電信與
+// LDAP/AD 的常態位置就是內網故傳 true，OIDC 的常態是公網 SaaS IdP 故傳 false。
+// 刻意不放寬 CGNAT 100.64.0.0/10——該段是電信與
 // 雲端業者的共用位址空間而非企業內網，阿里雲的 metadata 端點即在其中；
 // 亦不放寬已廢止的 IPv6 site-local（fec0::/10，「已廢止」不等於「連不到」）。
 func isBlockedEgressIP(ip net.IP, allowPrivate bool) bool {

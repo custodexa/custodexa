@@ -1,23 +1,17 @@
-# 標籤正規化的共用預期表（SD-15／backlog B-8，modular-architecture W7 7.8）
+# 標籤正規化的共用預期表
 #
-# **為何是一份檔而不是兩份表**：標籤正規化現有兩份實作——
-#   1. `internal/modules/asset/asset_tags.go` 的 `normalizeTagList`（寫入路徑，逐次生效）
-#   2. `internal/database/migrations.go` 的 `migrateNormalizeAssetTags`（存量清洗，一次性）
-# 後者的註解自陳「正規化邏輯與 service 端 normalizeTagList 同規則」，但兩者分處
-# 不可互相 import 的包（asset → database 是單向邊），規則只能各寫一份。
-# 兩份規則若悄悄漂移，結果是「存量資料是舊規則的正規形、新寫入是新規則的正規形」，
-# 而兩邊的單元測試各自照樣綠——這正是 SD-15 登記的形態。
+# **為何是一份檔而不是寫死在測試裡**：正規化規則是「寫入時就要對」的產品行為，
+# 預期值集中在一處，規則改動時只有這裡要跟著改。
 #
-# 本檔是**唯一的預期來源**：兩側各有一支測試讀它並對照自己的實作，
-# 任一側漂移即該側轉紅。**不得只改單側的期望值**——那等於把守衛關掉。
+# **唯一讀取者**：`internal/modules/asset/tag_normalization_parity_test.go` 的
+# `TestTagNormalizationParityServiceSide`，對照 `asset_tags.go` 的 `normalizeTagList`。
+# 實作與本表漂移即該測試轉紅。**不得只改本表的期望值**——那等於把守衛關掉。
 #
 # 格式：`原始字串 => 預期結果`（皆為逗號串接）。以 `#` 開頭與空白行忽略。
 # 跳脫：`\s` 表單一空白、`\e` 表空字串（用於前後空白與空結果的案例）。
 #
-# **涵蓋範圍的誠實界定**：本表只比對「單一字串內」的正規化（切分／NFC／trim／
-# 去空／canonical 去重／保留首見書寫形）。migration 另有**跨資產**的書寫形統一
-# （全庫首見為準），那是一次性清洗才有的語義，service 側沒有對應物，
-# 故**不在本表的比對範圍內**，由 `TestNormalizeAssetTagsMigration` 單獨釘住。
+# **涵蓋範圍**：本表比對的是「單一字串內」的正規化（切分／NFC／trim／去空／
+# canonical 去重／保留首見書寫形）。
 
 web,db => web,db
 \sweb\s,\sdb\s => web,db

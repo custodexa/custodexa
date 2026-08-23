@@ -12,14 +12,14 @@ import (
 // VerifiedMaterial 是材料驗證通過後交給段 2 的控制代碼。
 // 本套件不解讀 Payload；它由接線批次填入已驗證的 KEK provider／key manager。
 type VerifiedMaterial struct {
-	// Bootstrap 為 true 代表走初始化解封路徑（data_keys 為空，D6.3）
+	// Bootstrap 為 true 代表走初始化解封路徑（data_keys 為空）
 	Bootstrap bool
 	// Payload 由呼叫端自訂
 	Payload any
 }
 
 // VerifyFunc 為材料格式檢查＋材料驗證（解包現行代表列／初始化路徑的憑證驗證）。
-// 它在臨界區之內執行——CAS 取得持有權在任何驗證之前（D6.2.1）。
+// 它在臨界區之內執行——CAS 取得持有權在任何驗證之前。
 type VerifyFunc func(ctx context.Context, material []byte) (VerifiedMaterial, error)
 
 // Stage2Func 為段 2 完整圖建構。
@@ -34,7 +34,7 @@ type UnsealRequest struct {
 	// Material 為 UI 輸入的 KEK 材料。驗證結束後由狀態機就地歸零。
 	Material []byte
 	// SourceKey 為 per-source 限速鍵。未設定可信代理時，呼叫端 SHALL 傳固定值
-	// 使 per-source 退避保守降級為全域退避（D6.4）。
+	// 使 per-source 退避保守降級為全域退避。
 	SourceKey string
 	// SourceDigest 為寫入 journal 的來源摘要。
 	// SHALL NOT 含請求體、KEK 材料或任何認證憑證及其衍生值。
@@ -246,7 +246,7 @@ func (m *Machine) acquire(req UnsealRequest) (*attempt, error) {
 	cur := m.node.Load()
 	now := m.now()
 
-	// D6.4：冷卻期間抵達的嘗試 SHALL 直接被拒——不驗證、不進 CAS、
+	// 冷卻期間抵達的嘗試 SHALL 直接被拒——不驗證、不進 CAS、
 	// SHALL NOT 計入失敗計數、SHALL NOT 刷新或延長冷卻到期時間。
 	if now.Before(cur.cooldownUntil) {
 		m.recordRejected(RejectedCooldown)

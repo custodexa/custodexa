@@ -150,7 +150,7 @@ describe('SecurityPolicies', () => {
   })
 
   it('母頁總覽：分域偏離合計＝全系統總數，未歸域鍵計入本頁', async () => {
-    // D5 一致性：後端 deviation_count（compliant=false 全鍵計數）＝分域列表合計；
+    // 分域一致性：後端 deviation_count（compliant=false 全鍵計數）＝分域列表合計；
     // 未歸任何域的新鍵 fallback 到本頁計數（domainDeviations 的 assigned 排除邏輯）
     getPoliciesMock.mockResolvedValue({
       data: [
@@ -194,7 +194,7 @@ describe('SecurityPolicies', () => {
   })
 })
 
-// 明文連線的建議提示（codeql-rescan-settlement 決策 4）。
+// 明文連線的建議提示。
 // 兩個事實缺一則提示要嘛漏報（不知生效值，關閉後的健康部署也彈）、
 // 要嘛誤報（不知協定，https 部署也彈）——四格逐一釘死
 describe('SecurityPolicies — 明文連線建議提示', () => {
@@ -235,7 +235,7 @@ describe('SecurityPolicies — 明文連線建議提示', () => {
     expect(alert.text()).toContain('關閉再儲存')
   })
 
-  // 裁決 4：語氣是建議不是警告。type 錯一格，管理員讀到的就是「系統壞了」
+  // 語氣是建議不是警告。type 錯一格，管理員讀到的就是「系統壞了」
   // 而不是「你有兩個選擇」
   it('語氣是建議：el-alert type=info，不是 warning／error', async () => {
     getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))
@@ -247,7 +247,7 @@ describe('SecurityPolicies — 明文連線建議提示', () => {
     expect(alert.props('type')).toBe('info')
   })
 
-  // 裁決 4：系統不得自動改設定。提示只指向同頁的開關，決定權在管理員——
+  // 系統不得自動改設定。提示只指向同頁的開關，決定權在管理員——
   // 載入頁面本身不得產生任何寫入
   it('顯示提示不觸發任何寫入（系統不自動改設定）', async () => {
     getPoliciesMock.mockResolvedValue(withRefreshCookieSecure('true'))

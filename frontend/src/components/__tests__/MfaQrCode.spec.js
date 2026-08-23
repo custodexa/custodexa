@@ -7,13 +7,13 @@ import MfaQrCode from '../MfaQrCode.vue'
 // AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
 enableAutoUnmount(afterEach)
 
-// happy-dom 無真 canvas 2d context——mock qrcode（D-2），真值渲染由 live 走查驗證
+// happy-dom 無真 canvas 2d context——mock qrcode，真值渲染由 live 走查驗證
 const toCanvasMock = vi.fn()
 vi.mock('qrcode', () => ({
   default: { toCanvas: (...a) => toCanvasMock(...a) },
 }))
 
-describe('MfaQrCode 共用元件（mfa-qr-and-button-contrast）', () => {
+describe('MfaQrCode 共用元件', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     toCanvasMock.mockResolvedValue(undefined)

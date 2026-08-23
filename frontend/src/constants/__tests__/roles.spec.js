@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { ROLE_META, roleLabel, roleTagType, roleDescription } from '../roles'
 
-// 角色顯示中繼資料完備性（role-enum-metadata-sync）：
+// 角色顯示中繼資料完備性：
 // 後端 seed 四角色必須每個都有 label/tagType/description——
 // 新增後端角色時此測試逼你補 META（缺漏=裸英文+缺說明段）
 const SEEDED_ROLES = ['admin', 'auditor', 'approver', 'user']

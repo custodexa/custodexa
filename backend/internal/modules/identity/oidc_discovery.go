@@ -21,7 +21,7 @@ var (
 	ErrOIDCTokenVerification = errors.New("id_token 驗證失敗")
 )
 
-// oidcSignatureAlgs 簽章演算法封閉白名單（idp-oidc-integration D11）。
+// oidcSignatureAlgs 簽章演算法封閉白名單。
 //
 // 「非對稱」是類別不是清單——`等`字使實際集合無法驗收。明確列出二者：
 // 三大 IdP 皆支援 RS256（Google 的 discovery 實查僅宣告 RS256）。
@@ -29,7 +29,7 @@ var (
 // 降級成「誰知道 secret」；三大 IdP 亦不簽發對稱演算法的 ID token
 var oidcSignatureAlgs = []string{oidc.RS256, oidc.ES256}
 
-// oidcClockSkew 時鐘偏移容忍（D11）。
+// oidcClockSkew 時鐘偏移容忍。
 //
 // 容器與 IdP 差幾秒即會出現隨機性登入失敗，症狀極難診斷。
 // go-oidc 的 Config **沒有 leeway 欄位**，且單一 Now 偏移無法同時放寬 exp 與 iat
@@ -38,11 +38,11 @@ var oidcSignatureAlgs = []string{oidc.RS256, oidc.ES256}
 // 等於完全不驗過期，故必須有守衛測試涵蓋容忍窗內外兩側。
 const oidcClockSkew = 60 * time.Second
 
-// oidcJWKSMaxStale JWKS 最大陳舊時間（D17）：超過即強制重建 verifier。
+// oidcJWKSMaxStale JWKS 最大陳舊時間：超過即強制重建 verifier。
 // 已自 JWKS 移除的金鑰最遲於此時間內失效
 const oidcJWKSMaxStale = 24 * time.Hour
 
-// oidcJWKSMinRefetch 未知 kid 觸發重取的最小間隔（D17）。
+// oidcJWKSMinRefetch 未知 kid 觸發重取的最小間隔。
 //
 // go-oidc 的 RemoteKeySet 遇未知 kid 會自動重取，但**未提供節流**——
 // 攻擊者以偽造 kid 灌本系統，即可把流量放大轉嫁到 IdP 的 JWKS 端點。
@@ -130,7 +130,7 @@ type oidcProviderCache struct {
 	throttle *jwksThrottleTransport
 }
 
-// OIDCDiscoveryService discovery 與 id_token 驗證（idp-oidc-integration D3/D11/D17）
+// OIDCDiscoveryService discovery 與 id_token 驗證
 type OIDCDiscoveryService struct {
 	egress *OIDCEgressPolicy
 
@@ -239,7 +239,7 @@ type VerifiedClaims struct {
 	Raw map[string]any
 }
 
-// VerifyIDToken 驗證 id_token 並取出 claims（D11 的驗證清單執行點）。
+// VerifyIDToken 驗證 id_token 並取出 claims（驗證清單的執行點）。
 //
 // go-oidc 負責：簽章（限白名單演算法）、iss 完整字串比對、aud 含 client_id、nonce。
 // 本函式另外負責：**時間判定（exp/iat/nbf ±60s，因 SkipExpiryCheck 已開）**、
@@ -293,7 +293,7 @@ func (s *OIDCDiscoveryService) VerifyIDToken(ctx context.Context, p *model.OIDCP
 	return vc, nil
 }
 
-// verifyTimeClaims 時間判定（SkipExpiryCheck 的配套，D11）。
+// verifyTimeClaims 時間判定（SkipExpiryCheck 的配套）。
 //
 // **此函式是安全關鍵**：verifier 已開 SkipExpiryCheck，若這裡漏檢即等於完全
 // 不驗過期。容忍 ±60 秒的時鐘偏移，兩端各自放寬
@@ -334,7 +334,7 @@ func verifyTimeClaims(tok *oidc.IDToken) error {
 	return nil
 }
 
-// verifyAudience 多 audience 時強制 azp 等於 client_id（D11）。
+// verifyAudience 多 audience 時強制 azp 等於 client_id。
 //
 // 缺此檢查時，若 IdP 簽出多 aud 的 id_token，本系統會接受**實際授權給另一個
 // client** 的 token，形成跨 client 冒名

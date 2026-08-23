@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-// profile-display-name D4（安全紅線，task 6.2）：作用域收窄回歸守衛。
+// 顯示名作用域收窄回歸守衛（安全紅線）。
 // local_display_name/display_name 使用者可自改且不唯一——若滲入身分敏感 UI，
 // 使用者可冒充他人（改成他人姓名/admin）製造審計/授權混淆。故身分敏感頁面
 // 一律 username，永不得引用 display_name/local_display_name。
@@ -27,7 +27,7 @@ const IDENTITY_SENSITIVE_VIEWS = [
   'MyConnections.vue',   // 自助連線（含 owner 身分）
 ]
 
-describe('display name 作用域收窄（D4 安全紅線）', () => {
+describe('display name 作用域收窄（安全紅線）', () => {
   it.each(IDENTITY_SENSITIVE_VIEWS)(
     '%s 不得引用 display_name/local_display_name（身分敏感場景一律 username）',
     (file) => {

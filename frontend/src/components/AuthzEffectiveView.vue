@@ -194,7 +194,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
 
-// 有效權限雙視角（authorization-page-redesign D3）：
+// 有效權限雙視角：
 // subject＝「這個人能連什麼」、object＝「這台機器誰能連」，皆含溯因
 const props = defineProps({
   mode: {

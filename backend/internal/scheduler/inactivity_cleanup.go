@@ -8,7 +8,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// InactivityCleanupScheduler 閒置帳號自動停用排程器（PCI 8.2.6，auth-hardening D8）：
+// InactivityCleanupScheduler 閒置帳號自動停用排程器（PCI 8.2.6）：
 // 每日固定時刻掃描＋啟動時補跑一次（補伺服器在排程時刻停機的漏掃）
 type InactivityCleanupScheduler struct {
 	cron    *cron.Cron

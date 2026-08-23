@@ -19,10 +19,10 @@ func TestPolicySeedCheckpointRetention(t *testing.T) {
 	if def == nil {
 		t.Fatal("retention_checkpoint_days 未定義於 policyDefs")
 	}
-	// 出廠 0＝永久（D-5）：四個資料保留鍵出廠 0/0/0/90，出廠 3650 會使
+	// 出廠 0＝永久：四個資料保留鍵出廠 0/0/0/90，出廠 3650 會使
 	// 出廠狀態本身違反跨鍵約束（0=無限大），逼跨鍵驗證退讓成只驗觸及關係
 	if def.Type != PolicyTypeInt || def.Default != "0" {
-		t.Errorf("type=%s default=%s，want int/0（D-5：出廠永久，使五鍵出廠即自洽）", def.Type, def.Default)
+		t.Errorf("type=%s default=%s，want int/0（出廠永久，使五鍵出廠即自洽）", def.Type, def.Default)
 	}
 	if !def.ZeroDisables {
 		t.Error("ZeroDisables 應為 true（0=永久保留）")
@@ -103,7 +103,7 @@ func TestCrossKeyRetention(t *testing.T) {
 			wantErr: true, wantKey: PolicyRetentionAuditLogDays,
 		},
 		{
-			// 種子把另外三個資料鍵設成有期：**觸及即全驗**（D-5）之下，
+			// 種子把另外三個資料鍵設成有期：**觸及即全驗**之下，
 			// 出廠的 0（永久）會先絆倒判定，那不是本 scenario 要測的關係
 			name: "調升資料鍵越界：checkpoint=1000 而錄影調到 2000",
 			seed: map[string]string{
@@ -234,7 +234,7 @@ func TestCrossKeyRetention(t *testing.T) {
 	}
 }
 
-// TestCrossKeyRetentionDoesNotBlockFactoryState D-5 驗收 (a)：出廠狀態下
+// TestCrossKeyRetentionDoesNotBlockFactoryState 驗收 (a)：出廠狀態下
 // 逐一調整四個資料保留鍵為任意合法值皆須通過（全域驗不產生誤擋）。
 //
 // **這條與全域驗是同一個裁決的兩半**：全域驗之所以可行，全靠出廠
@@ -278,7 +278,7 @@ func TestCrossKeyRetentionDoesNotBlockFactoryState(t *testing.T) {
 	}
 }
 
-// TestCrossKeyRetentionGlobalClosesBypass D-5 驗收 (b)：檢查點鍵設有期值後，
+// TestCrossKeyRetentionGlobalClosesBypass 驗收 (b)：檢查點鍵設有期值後，
 // **單獨**（同批不帶檢查點鍵）調升任一資料鍵越過它必被拒。
 //
 // 逐鍵跑而非只跑一個：只驗一個鍵的話，validator 少列一個鍵不會有任何測試轉紅
@@ -450,7 +450,7 @@ var policyKeyAllowlistProbe = map[string]struct{}{
 	PolicyRetentionCheckpointDays:     {},
 }
 
-// TestCrossKeyRetentionMaxBoundary 7.2（O5）：Max 3650 之下，資料鍵設到天花板
+// TestCrossKeyRetentionMaxBoundary Max 3650 之下，資料鍵設到天花板
 // 時檢查點鍵仍有合法解——這是「維持 3650」這個判定的成立條件。
 func TestCrossKeyRetentionMaxBoundary(t *testing.T) {
 	svc, _ := setupPolicyDB(t)

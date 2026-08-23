@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 掃描節奏常數（session-reconciliation design D4；可調的實作細節）
+// 掃描節奏常數（可調的實作細節）
 const (
 	// ReconcileInterval 孤兒偵測排程間隔
 	ReconcileInterval = 60 * time.Second
@@ -19,7 +19,7 @@ const (
 	reconcileGracePeriod = 120 * time.Second
 	// reconcileBatchSize 單「批」查詢上限。單輪掃至候選集清空（正確性優先：孤兒
 	// 要清乾淨），非固定單輪上限；每批 keyset（id > cursor）有界、cursor 前進不
-	// 重掃不無限迴圈，且排程層 SkipIfStillRunning 防重入避免疊掃（雙軌驗證 F2）
+	// 重掃不無限迴圈，且排程層 SkipIfStillRunning 防重入避免疊掃
 	reconcileBatchSize = 500
 )
 
@@ -38,7 +38,7 @@ type SessionReconciliationService struct {
 }
 
 // NewSessionReconciliationService 建立一致性收斂服務。
-// typed-nil 正規化（雙軌驗證 F3）：傳入 nil 指標轉介面時 `liveness != nil` 仍為
+// typed-nil 正規化：傳入 nil 指標轉介面時 `liveness != nil` 仍為
 // true，後續 Has() 會 panic；統一在建構時正規化為 interface nil（比照 SessionService）
 func NewSessionReconciliationService(liveness ConnectionLiveness) *SessionReconciliationService {
 	if liveness != nil {

@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/keyvault"
 )
 
-// asset-multi-account D1a 的**行為面**守衛。AST 守衛
+// 帳號密文欄安全紅線的**行為面**守衛。AST 守衛
 // （envelope_targets_guard_test.go）只證 asset_accounts 的加密欄位「列於清單」，
 // 不證清單成員真的被輪替與銷毀前引用掃描吃到。以下兩測試各鎖一端：
 // 漏掉任一端的後果都是「帳號密文所依賴的金鑰材料被誤銷毀 → 資料永久不可解」。
@@ -73,7 +73,7 @@ func TestRetiredKeyNotPurgedWhileAssetAccountReferences(t *testing.T) {
 	// 引用只植在 asset_accounts（其他目標表輪替後皆為 v2）——若掃描漏了本表，
 	// v1 會被判零引用而清理，此測試即紅。
 	//
-	// **殘值刻意用真正的 enc:a1 v1 密文而非 enc:v1:AAAA**（雙審 opus F2）：
+	// **殘值刻意用真正的 enc:a1 v1 密文而非 enc:v1:AAAA**：
 	// cutover 後所有寫入端產出的都是 enc:a1，若引用掃描的版本判定退回只認
 	// `enc:v` 的 ParseEnvelope，enc:a1 值會被漏數 → 誤判零引用 → 銷毀仍在用的
 	// 金鑰材料＝**資料永久不可解**。輪替側有間接釘子（pending 永不收斂），

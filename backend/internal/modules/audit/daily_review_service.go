@@ -46,12 +46,12 @@ type DailyReviewSnapshot struct {
 	LoginFailures int64 `json:"login_failures"`
 	// UnreviewedAlerts 當日觸發且尚未審閱的告警數
 	UnreviewedAlerts int64 `json:"unreviewed_alerts"`
-	// HighRiskOps 當日高危操作數（design D5 白名單：任何資源的刪除、
+	// HighRiskOps 當日高危操作數（白名單：任何資源的刪除、
 	// 安全政策/syslog 設定變更、稽核證據匯出、使用者帳號寫入）
 	HighRiskOps int64 `json:"high_risk_ops"`
 }
 
-// DailyReviewService 每日審閱簽核（audit-log-compliance，PCI 10.4.1/10.4.1.1）
+// DailyReviewService 每日審閱簽核（PCI 10.4.1/10.4.1.1）
 type DailyReviewService struct {
 	db     *gorm.DB
 	policy *policy.SecurityPolicyService
@@ -74,7 +74,7 @@ func (s *DailyReviewService) Snapshot(date time.Time) (*DailyReviewSnapshot, err
 	dayEnd := dayStart.AddDate(0, 0, 1)
 	snap := &DailyReviewSnapshot{Date: dayStart.Format(reviewDateFormat)}
 
-	// 登入失敗數涵蓋**兩種狀態值**（audit-coverage-closure D3）：認證失敗記
+	// 登入失敗數涵蓋**兩種狀態值**：認證失敗記
 	// `failure`（密碼錯誤、憑證交換失敗），授權拒絕記 `denied`（OIDC 准入規則拒絕、
 	// 外部帳號以本地密碼登入、LDAP 傳輸嚴格拒絕）。只數其一會讓外部身分提供者的
 	// 登入拒絕全數漏算，PCI 10.4.1 的覆核因而失效。

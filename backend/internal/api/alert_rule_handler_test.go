@@ -121,7 +121,7 @@ func TestAlertRuleHandler_Create(t *testing.T) {
 		mockService.AssertExpectations(t)
 	})
 
-	t.Run("無效 regex 回 400 並帶碼（backend-i18n-unification A6：碼化後不再外洩 regex 編譯器原文）", func(t *testing.T) {
+	t.Run("無效 regex 回 400 並帶碼（碼化後不再外洩 regex 編譯器原文）", func(t *testing.T) {
 		mockService := new(MockAlertRuleService)
 		// service 層以 %w 包裝編譯錯誤原文；errors.Is 仍能命中 sentinel，
 		// 但回應只帶固定碼＋zh fallback，不含 "missing closing" 等內部細節
@@ -152,7 +152,7 @@ func TestAlertRuleHandler_Create(t *testing.T) {
 	// 409 而非 400：與 CONFLICT_ASSET_NAME／CONFLICT_ACCOUNT_USERNAME 同形，
 	// 讓呼叫端能單憑狀態碼分流「送錯東西」與「既有資源同名」。
 	// 狀態碼與碼皆以 Equal 精確斷言（非「不是 2xx」之類的鬆判定），
-	// 故任一側被改動都會轉紅——見突變自檢 M3。
+	// 故任一側被改動都會轉紅。
 	t.Run("名稱已存在回 409 並帶碼（唯一索引違反轉譯）", func(t *testing.T) {
 		mockService := new(MockAlertRuleService)
 		mockService.On("Create", mock.Anything).Return(nil, audit.ErrAlertRuleNameExists)

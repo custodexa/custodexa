@@ -13,11 +13,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// audit-checkpoint-chain 第 4 組的 postgres 實測腳本（tasks 4.7 O2／4.8）。
+// audit-checkpoint-chain 第 4 組的 postgres 實測腳本。
 //
-// **為何非測不可**：D3 的 grace 預設 30 秒是**估計值**——「自增 id 的取號順序
+// **為何非測不可**：grace 預設 30 秒是**估計值**——「自增 id 的取號順序
 // 不等於 commit 順序」是事實，但「在途窗口有多長」從來沒被量過。太短會讓遲到
-// 列變成已封區間的多出列（誤報），太長則拖慢每次封章。tasks 4.7 明文要求實測
+// 列變成已封區間的多出列（誤報），太長則拖慢每次封章。驗收條件明文要求實測
 // 後定案，本檔即該量測的單一落點。
 //
 // 與第 1 組基準同樣走 TEST_PG_DSN gating 與獨立 schema，不觸碰 dev 現況資料。
@@ -42,7 +42,7 @@ func checkpointSchemaDB(t *testing.T, schema string) *gorm.DB {
 	return db
 }
 
-// TestCheckpointGraceMeasurementPostgres tasks 4.7（O2）：在途上界與封章掃描耗時。
+// TestCheckpointGraceMeasurementPostgres 在途上界與封章掃描耗時。
 //
 // 量測方法（三輪）：
 //  1. 起 N 條並發寫入者持續灌 audit_logs；
@@ -129,7 +129,7 @@ func TestCheckpointGraceMeasurementPostgres(t *testing.T) {
 			t.Logf("[4.7]   grace=%-6v → 已落地 %d/%d（%.1f%%）", d, landed, inFlight, pct)
 		}
 		if final < counts[0] {
-			t.Errorf("最終列數少於觸發瞬間列數：id 區間非 append-closed，D1 的前提不成立")
+			t.Errorf("最終列數少於觸發瞬間列數：id 區間非 append-closed，前提不成立")
 		}
 	}
 
@@ -138,7 +138,7 @@ func TestCheckpointGraceMeasurementPostgres(t *testing.T) {
 	// 上面三輪都量到 0，必須先證明本量測器**有能力**量到非 0，否則
 	// 「grace 0 秒就夠」的結論是儀器壞掉而非事實。
 	// 注入一筆**刻意長交易**：它先取得 id（INSERT）但延遲 commit，
-	// 期間其他寫入者繼續推進 MAX(id)——這正是 D3 描述的形態。
+	// 期間其他寫入者繼續推進 MAX(id)——這正是在途窗口的形態。
 	{
 		var held sync.WaitGroup
 		release := make(chan struct{})
@@ -211,9 +211,9 @@ func TestCheckpointGraceMeasurementPostgres(t *testing.T) {
 	}
 }
 
-// TestCheckpointSealDoesNotSlowWritesPostgres tasks 4.8：封章密集觸發下的寫入吞吐。
+// TestCheckpointSealDoesNotSlowWritesPostgres：封章密集觸發下的寫入吞吐。
 //
-// 判準（tasks 4.8 原文）：吞吐與 p95 相對第 1 組基準劣化 >10% 即未通過。
+// 判準（原文）：吞吐與 p95 相對第 1 組基準劣化 >10% 即未通過。
 // 本測在同一 schema 內先跑一次**無封章**的對照組，再跑一次**封章密集觸發**組，
 // 兩組同機同時段比對——直接拿 design 附錄的絕對數字比對會混入機器負載差異。
 func TestCheckpointSealDoesNotSlowWritesPostgres(t *testing.T) {

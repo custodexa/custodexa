@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * OIDC 身分提供者整合（idp-oidc-integration D14）的 API 客戶端。
+ * OIDC 身分提供者整合的 API 客戶端。
  *
  * 分兩組：登入流程（未認證可達）與 provider 管理（admin only）。
  */

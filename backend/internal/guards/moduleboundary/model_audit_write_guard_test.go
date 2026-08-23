@@ -1,12 +1,12 @@
 package moduleboundary
 
-// `internal/model` 的審計寫入面禁令（modular-architecture Phase B / W6 任務 6.2）。
+// `internal/model` 的審計寫入面禁令（Phase B 任務 6.2）。
 //
-// **擋的是什麼**：W6 把 T-2 的 11 個產生點自 `model.RecordAssetAccountChange`／
+// **擋的是什麼**：重構已把 T-2 的 11 個產生點自 `model.RecordAssetAccountChange`／
 // `RecordAssetChange`／`RecordAssetNodeChange` 收口到 `audit/port.WriteInTx`，
 // 那三個函式隨之自 `internal/model` 刪除。**復辟的形態不是有人硬要繞過守衛，
 // 而是「下一個要在交易內記一筆審計的人，照著 model 裡現成的 hook 再寫一個
-// helper」**——那正是「正常開發會意外發生」的錯誤（tasks.md 檔頭的加守衛判準），
+// helper」**——那正是「正常開發會意外發生」的錯誤，
 // 且一旦發生，asset／identity 的審計寫入會再度對 audit 模組隱形。
 //
 // **為何判「AuditLog 字面量」而不是「識別字叫 Record*Change」**：識別字禁令只擋
@@ -31,11 +31,11 @@ import (
 
 // modelAuditWriteAllowlist `internal/model` 中允許建構 AuditLog 的函式。
 //
-// 三個 T-3 GORM hook（tasks.md 4.5 裁決維持現況直寫，理由見 backlog B-1：
+// 三個 T-3 GORM hook（維持現況直寫：
 // model 不可 import 模組，改走 sink 需再造一個可漏接的包級全域）。
 // **新增一列 SHALL 附理由並經審查**——這份清單是「model 層審計入口」的全集。
 var modelAuditWriteAllowlist = map[string]string{
-	"(*Asset).AfterCreate": "T-3：資產建立 hook，刻意脫離呼叫方交易（B-1）",
+	"(*Asset).AfterCreate": "T-3：資產建立 hook，刻意脫離呼叫方交易",
 	"(*Asset).AfterUpdate": "T-3：資產更新 hook，同上",
 	"(*Asset).AfterDelete": "T-3：資產刪除 hook，同上",
 }
@@ -107,7 +107,7 @@ func TestModelPackageHasNoNewAuditWriter(t *testing.T) {
 	sort.Strings(extra)
 	if len(extra) > 0 {
 		t.Fatalf("`internal/model` 出現 %d 個未登記的審計產生點：\n  %s\n"+
-			"W6 6.2 已把 T-2 的三個 model 層落地函式收口到 audit/port.WriteInTx。"+
+			"6.2 已把 T-2 的三個 model 層落地函式收口到 audit/port.WriteInTx。"+
 			"交易內要記審計，SHALL 在**擁有該業務語義的模組**內建構事件並經 port.WriteInTx 落地"+
 			"（範例：internal/modules/asset/asset_audit_events.go）；在 model 層直寫會讓該筆寫入"+
 			"對 audit 模組與 manifest 完全隱形。",

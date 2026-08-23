@@ -1,6 +1,6 @@
 package main
 
-// openspec 下 manifest 檔的路徑解析（modular-architecture Phase C 歸檔時抽出）。
+// openspec 下 manifest 檔的路徑解析（歸檔時抽出）。
 //
 // # 為什麼需要這一層
 //
@@ -30,7 +30,7 @@ import (
 	"testing"
 )
 
-// openspecChangeDirName 本批 manifest 所屬 change 的目錄名（不含歸檔日期前綴）。
+// openspecChangeDirName manifest 所屬 change 的目錄名（不含歸檔日期前綴）。
 const openspecChangeDirName = "modular-architecture"
 
 // openspecManifestPath 解析 openspec 下某份 manifest 的絕對路徑。

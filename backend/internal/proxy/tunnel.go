@@ -26,7 +26,7 @@ const tunnelTimeoutCheckInterval = 15 * time.Second
 const defaultTunnelIdleTimeout = 30 * time.Minute
 
 // guacd error instruction 的 status code。兩種逾時**必須用不同碼**
-// （backend-i18n-unification M6）：guacamole-common-js 的 client error handler
+// guacamole-common-js 的 client error handler
 // 只讀 args[0]（訊息）與 args[1]（狀態碼），額外參數一律丟棄，因此前端唯一能
 // 據以分辨「閒置逾時」與「達會話上限」並各自查譯的欄位就是狀態碼。
 const (
@@ -37,7 +37,7 @@ const (
 	guacSessionClosedCode = "523"
 )
 
-// clientInputOpcodes 計入「使用者活動」的 client→guacd 指令（auth-hardening D7）：
+// clientInputOpcodes 計入「使用者活動」的 client→guacd 指令：
 // RDP/VNC 畫面更新永遠在動（時鐘/動畫），以輸出計時等於永不逾時，
 // 故僅以客戶端輸入事件重置閒置計時；sync/nop 是協議心跳、size 是視窗控制，不算
 var clientInputOpcodes = map[string]bool{
@@ -67,7 +67,7 @@ type Tunnel struct {
 	// 檔案上傳審計旁路（vnc-file-transfer）：RDP 磁碟＋VNC SFTP 共用；nil 時略過
 	fileTap *FileTap
 
-	// 會話閒置/最大時長（auth-hardening D7）：0 = 停用該檢查
+	// 會話閒置/最大時長：0 = 停用該檢查
 	idleTimeout   time.Duration
 	maxDuration   time.Duration
 	startTime     time.Time
@@ -151,7 +151,7 @@ func (t *Tunnel) Start() error {
 	pingDone := make(chan struct{})
 	go t.keepalive(pingDone)
 
-	// 閒置/最大時長監控（auth-hardening D7）：僅在啟用任一檢查時啟動
+	// 閒置/最大時長監控：僅在啟用任一檢查時啟動
 	if t.idleTimeout > 0 || t.maxDuration > 0 {
 		go t.pumpTimeout()
 	}
@@ -208,7 +208,7 @@ func (t *Tunnel) keepalive(done chan struct{}) {
 	}
 }
 
-// pumpTimeout 週期檢查閒置與最大時長，觸發即通知前端、記原因、收線（D7）。
+// pumpTimeout 週期檢查閒置與最大時長，觸發即通知前端、記原因、收線。
 // 判定邏輯與 sshproxy.evalTimeout 一致：max 優先於 idle、0=停用該檢查
 func (t *Tunnel) pumpTimeout() {
 	ticker := time.NewTicker(tunnelTimeoutCheckInterval)
@@ -224,7 +224,7 @@ func (t *Tunnel) pumpTimeout() {
 			if !fire {
 				continue
 			}
-			// 訊息取 apierror registry 的 zh fallback（D7：伺服端不再寫散文，
+			// 訊息取 apierror registry 的 zh fallback（伺服端不再寫散文，
 			// 前端依 status code 查譯，msg 僅為未查譯時的退路）
 			code, status := apierror.CodeSessionIdleTimeout, guacClientTimeoutCode
 			if reason == tunnelEndReasonMaxDuration {
@@ -267,7 +267,7 @@ func evalTunnelTimeout(now, start, lastInput time.Time, idle, max time.Duration)
 
 // pumpWebSocketToGuacamole 從 WebSocket 讀取並轉發到 Guacamole
 func (t *Tunnel) pumpWebSocketToGuacamole() error {
-	// 與 sshproxy/bridge.go 的 `defer b.stop()` 對稱（graphics-teardown-sync D1）：
+	// 與 sshproxy/bridge.go 的 `defer b.stop` 對稱：
 	// 本方向結束即收線，不論回的是錯誤還是 nil。少了這一行，客戶端送 WS close frame
 	// 的**正常關閉**路徑會回 nil 而不進 errChan，另一條 pump 仍阻塞在 ReadInstruction，
 	// Start() 要等下一次保活 ping 失敗（最長 30 秒）才解鎖。
@@ -312,7 +312,7 @@ func (t *Tunnel) pumpWebSocketToGuacamole() error {
 		}
 
 		log.Printf("[Tunnel] [WS->Guac] %s", instruction.Opcode)
-		// 客戶端輸入事件重置閒置計時（D7：畫面更新不算活動）
+		// 客戶端輸入事件重置閒置計時（畫面更新不算活動）
 		if clientInputOpcodes[instruction.Opcode] {
 			t.lastInputNano.Store(time.Now().UnixNano())
 		}
@@ -354,7 +354,7 @@ func (t *Tunnel) writeToClient(inst *guacamole.Instruction) error {
 
 // pumpGuacamoleToWebSocket 從 Guacamole 讀取並轉發到 WebSocket
 func (t *Tunnel) pumpGuacamoleToWebSocket() error {
-	// 與 sshproxy/bridge.go 的 `defer b.stop()` 對稱（graphics-teardown-sync D1）：
+	// 與 sshproxy/bridge.go 的 `defer b.stop` 對稱：
 	// **兩條 pump 都要加，不是只加 WS 側**——本方向在 `GuacClient == nil ||
 	// !IsConnected()` 時同樣回 nil（見下方守衛），是同型的第二個缺口，目標端斷線而
 	// backend 尚未自行 Close 時會走到。`Close()` 以 `closeOnce` 冪等，故與 `Start()`
@@ -424,7 +424,7 @@ func (t *Tunnel) IsClosed() bool {
 	return t.closed
 }
 
-// Disconnect 管理端強制收線（Registry CloseFunc，break-glass-revocation F4）：
+// Disconnect 管理端強制收線（Registry CloseFunc）：
 // 於本 tunnel 寫鎖內送 Guacamole disconnect 指令通知前端，再走冪等 Close。
 // 通知失敗不影響收線——Close 本身就會讓前端斷開
 func (t *Tunnel) Disconnect() error {

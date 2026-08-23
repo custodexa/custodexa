@@ -28,7 +28,7 @@ func setupAuthzRepoDB(t *testing.T) (*assetAuthorizationRepository, *gorm.DB) {
 	return newAssetAuthorizationRepository(db), db
 }
 
-// attachNode 掛載資產到節點（asset-node-tree M2M 成員）
+// attachNode 掛載資產到節點（M2M 成員）
 func attachNode(t *testing.T, db *gorm.DB, assetID, nodeID uint) {
 	t.Helper()
 	if err := db.Create(&model.AssetNode{AssetID: assetID, NodeID: nodeID}).Error; err != nil {
@@ -274,7 +274,7 @@ func TestAuthzResolution_RegrantAfterRevoke(t *testing.T) {
 	}
 }
 
-// TestResolveConnectSources 來源感知查詢矩陣（access-policy-approval D4）：
+// TestResolveConnectSources 來源感知查詢矩陣：
 // 常設命中/臨時命中/到期不命中/未達 start 不命中；view 不參與；四路徑主體條件沿用
 func TestResolveConnectSources(t *testing.T) {
 	now := time.Now()
@@ -375,7 +375,7 @@ func TestResolveConnectSources(t *testing.T) {
 	})
 }
 
-// TestApproverScopeVisibility 審核範圍＝可視第三來源（access-policy-approval D5）：
+// TestApproverScopeVisibility 審核範圍＝可視第三來源：
 // 範圍內可視（直配/經資產組）、不隱含連線、移除範圍即失效
 func TestApproverScopeVisibility(t *testing.T) {
 	scope := func(t *testing.T, db *gorm.DB, assetID, agID *uint) uint {
@@ -478,7 +478,7 @@ func mkRepoNode(t *testing.T, db *gorm.DB, name string, parentID *uint) uint {
 	return n.ID
 }
 
-// TestSubtreeAuthorization 授權掛節點含子樹（asset-node-tree D3）：
+// TestSubtreeAuthorization 授權掛節點含子樹：
 // 樹 prod(→kafka→broker)；資產掛不同層，授 prod 應涵蓋全子樹資產
 func TestSubtreeAuthorization(t *testing.T) {
 	repo, db := setupAuthzRepoDB(t)
@@ -628,7 +628,7 @@ func TestAssetAncestorNodes(t *testing.T) {
 	}
 }
 
-// TestSubtreeResolutionPerformance 效能基準（asset-node-tree D1 風險驗證）：
+// TestSubtreeResolutionPerformance 效能基準（風險驗證）：
 // 100 節點×深度 10 樹＋500 資產多歸屬掛載，CTE 即時解析（無快取路線）延遲
 // 量化。上限取寬鬆值（2s）防 CI 環境 flaky——實際量級見 t.Log（本機 SQLite
 // in-memory 預期毫秒級；live Postgres 另於瀏覽器實走驗證）
@@ -702,7 +702,7 @@ func TestSubtreeResolutionPerformance(t *testing.T) {
 	}
 }
 
-// TestListNodeCoverageFilter（authz-tag-node-filters D7）：授權列表 node_id
+// TestListNodeCoverageFilter：授權列表 node_id
 // 涵蓋盤點三分支——祖先/自身/後代（結構）、多歸屬橋接、子樹內資產客體；
 // 範圍外排除；每筆授權僅出現一次；與 validity 疊加。
 func TestListNodeCoverageFilter(t *testing.T) {

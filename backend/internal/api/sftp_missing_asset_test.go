@@ -22,7 +22,7 @@ func setupSFTPMissingAssetEnv(t *testing.T) (*gin.Engine, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// Role 必備：角色現況重判（codex 階段 4 high）改以 DB 現查折疊角色，
+	// Role 必備：角色現況重判改以 DB 現查折疊角色，
 	// query 帶入的 role 只決定「呼叫端自稱什麼」，實際判定看使用者的角色關聯——
 	// 這正是「降權的前 admin 不得憑 JWT 快照放行」的機制本體
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
@@ -60,7 +60,6 @@ func getSFTPList(r *gin.Engine, assetID string, role string) *httptest.ResponseR
 
 // TestSFTPNonexistentAssetReturns404ForAdmin admin 的權限檢查短路後直達存在性/
 // 停用閘：不存在的資產必須回 404「資產不存在」，而非誤導的 403「資產已停用」
-// （asset-syslog-debt-cleanup D3）
 func TestSFTPNonexistentAssetReturns404ForAdmin(t *testing.T) {
 	r, db := setupSFTPMissingAssetEnv(t)
 	db.Create(&model.User{Username: "admin1", Email: emailPtr("a@x"), Active: true,
@@ -102,8 +101,8 @@ func TestSFTPSoftDeletedAssetReturns404ForUser(t *testing.T) {
 	}
 }
 
-// TestSFTPSoftDeletedAssetReturns404ForAuditor auditor 的 connect 不因角色短路
-// （CPG-002），但持顯式 connect 授權時同樣會通過授權檢查走到存在性閘
+// TestSFTPSoftDeletedAssetReturns404ForAuditor auditor 的 connect 不因角色短路，
+// 但持顯式 connect 授權時同樣會通過授權檢查走到存在性閘
 func TestSFTPSoftDeletedAssetReturns404ForAuditor(t *testing.T) {
 	r, db := setupSFTPMissingAssetEnv(t)
 	db.Create(&model.User{Username: "aud1", Email: emailPtr("aud@x"), Active: true,

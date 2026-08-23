@@ -57,7 +57,7 @@ func TestHeaderRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCriticalSlotRoundTrip 驗證事件槽含齊 D6.5 要求的欄位並可偵測 torn write。
+// TestCriticalSlotRoundTrip 驗證事件槽含齊佈局要求的欄位並可偵測 torn write。
 func TestCriticalSlotRoundTrip(t *testing.T) {
 	s := &criticalSlot{
 		Kind:         slotKindOutcome,

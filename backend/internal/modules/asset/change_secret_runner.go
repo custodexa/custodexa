@@ -19,7 +19,7 @@ import (
 
 const changeSecretDialTimeout = 10 * time.Second
 
-// ChangeSecretRunner 改密執行器（change-secret-ssh-deepening）。
+// ChangeSecretRunner 改密執行器。
 //
 // 執行單位是**帳號**而非資產：計劃的（資產集 × 帳號範圍）展開為帳號清單，
 // 逐帳號隔離錯誤。兩種秘密型別共用同一套可靠性語義——
@@ -31,7 +31,7 @@ type ChangeSecretRunner struct {
 	hostKeys     *HostKeyService
 	notifier     *audit.AlertNotifier
 
-	// accountLocks per-account 行程內互斥（design D8）。本產品現為單實例部署，
+	// accountLocks per-account 行程內互斥。本產品現為單實例部署，
 	// 候選表的 account_id 唯一索引是最終防線，此鎖只是避免無謂的遠端往返
 	accountLocks sync.Map
 }
@@ -132,7 +132,7 @@ func (r *ChangeSecretRunner) runTarget(plan *model.ChangeSecretPlan, tgt changeS
 		return r.save(rec)
 	}
 
-	// 該帳號已有未驗證候選：不疊加第二個未知狀態（design D8）
+	// 該帳號已有未驗證候選：不疊加第二個未知狀態
 	existing, err := r.candidates.FindByAccount(tgt.accountID)
 	if err != nil {
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidateQueryFailed)
@@ -180,7 +180,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 	}
 
 	ctx := context.Background()
-	// 候選先於遠端落庫（design D2）
+	// 候選先於遠端落庫
 	cand, err := r.candidates.Create(ctx, CandidateInput{
 		AssetID: tgt.assetID, AccountID: tgt.accountID, AccountUsername: tgt.username,
 		PlanID: plan.ID, SecretType: model.ChangeSecretTypePassword, Password: newPassword,
@@ -210,7 +210,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 			_ = r.candidates.Discard(cand.ID)
 			return finish(model.ChangeSecretFailed, localErr.reason)
 		}
-		// design D3：指令跑完但非零退出＝遠端確定未變更，清候選走乾淨失敗；
+		// 指令跑完但非零退出＝遠端確定未變更，清候選走乾淨失敗；
 		// 其他錯誤（連線中斷／逾時）＝遠端狀態不可知，保留候選交給重試
 		var exitErr *ssh.ExitError
 		if errors.As(err, &exitErr) {
@@ -223,7 +223,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 
 	verify, err := dialSSHPassword(addr, tgt.username, newPassword, hostKeyCB)
 	if err != nil {
-		// design D4：本地憑證**不動**，候選保留待重試。硬提交是在猜遠端狀態，
+		// 本地憑證**不動**，候選保留待重試。硬提交是在猜遠端狀態，
 		// 猜錯就把還能用的憑證改壞
 		logRemoteCause(tgt, "新密驗證失敗", err)
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonVerifyFailed)
@@ -240,7 +240,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 	return finish(model.ChangeSecretSuccess, "")
 }
 
-// rotateKey SSH 金鑰輪替：加新 → 驗新 → 刪舊（design D6）
+// rotateKey SSH 金鑰輪替：加新 → 驗新 → 刪舊
 func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeSecretTarget,
 	creds *AssetCredentials, addr string, hostKeyCB ssh.HostKeyCallback,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
@@ -422,7 +422,7 @@ func runChpasswd(client *ssh.Client, user, oldPassword, newPassword string) erro
 	// 改到非目標帳號（stdin 注入），故在組裝 entry 前嚴格拒絕控制字元
 	//
 	// 本地前置驗證在**完全未接觸遠端**時失敗，故以專屬型別回傳：呼叫端據此走
-	// 乾淨 failed，不得落入 D3 的「狀態不可知」分支（那會留下擋住該帳號的候選）
+	// 乾淨 failed，不得落入「狀態不可知」分支（那會留下擋住該帳號的候選）
 	if strings.ContainsAny(user, "\n\r\x00:") {
 		return &localPreconditionError{reason: model.ChangeSecretReasonInvalidAccountName}
 	}
@@ -452,7 +452,7 @@ func runChpasswd(client *ssh.Client, user, oldPassword, newPassword string) erro
 	var stderr bytes.Buffer
 	sess.Stderr = &stderr
 	if err := sess.Run(cmd); err != nil {
-		// 保留 *ssh.ExitError 型別供 D3 的可知性分流；只在有 stderr 時附上訊息
+		// 保留 *ssh.ExitError 型別供可知性分流；只在有 stderr 時附上訊息
 		msg := strings.TrimSpace(stderr.String())
 		if msg != "" {
 			return fmt.Errorf("%s: %w", sanitizeRemoteMessage(msg), err)

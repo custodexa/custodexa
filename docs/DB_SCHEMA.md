@@ -629,7 +629,7 @@ const (
 | `LastTestAt` | *time.Time | - | `last_test_at` | 最近連測時間 |
 | `LastTestLatencyMS` | int64 | `default:0` | `last_test_latency_ms` | 最近連測延遲（毫秒） |
 | `DBName` | string | `size:128` | `db_name` | DB CLI 目標資料庫（僅 mysql/postgres/redis；空＝連預設庫）。 |
-| `DBTLSMode` | string | `size:20` | `db_tls_mode` | DB TLS 模式：''＝client 預設 / `disable` / `require` / `verify-ca` / `verify-full`（M6 補；Postgres=PGSSLMODE verify-full、Redis 等同 verify-ca）。 |
+| `DBTLSMode` | string | `size:20` | `db_tls_mode` | DB TLS 模式：''＝client 預設 / `disable` / `require` / `verify-ca` / `verify-full`（Postgres=PGSSLMODE verify-full、Redis 等同 verify-ca）。 |
 | `DBCACert` | string | `type:text` | `db_ca_cert` | verify-ca/verify-full 用 CA（PEM，選填）。**DB 欄名是 `dbca_cert`，不是 `db_ca_cert`**——GORM 的 `NamingStrategy` 把 `DBCACert` 斷成 `dbca`＋`cert`（`DB`／`CA` 都不在 GORM 的 initialism 清單內），而 `db_ca_cert` 只是 JSON 別名。壓縮前 `assets` 上另有一個真的叫 `db_ca_cert` 的**死欄**（無任何 model 欄對應、零讀寫），已隨本次壓縮自 baseline 移除 |
 | `RDPSecurity` | string | `size:10` | `rdp_security` | RDP 安全模式：''＝沿現狀 any / `nla` / `tls`。baseline |
 | `RDPVerifyCert` | bool | `default:false` | `rdp_verify_cert` | RDP 驗證伺服器憑證（預設 false＝ignore-cert，與現狀一致）。baseline |
@@ -945,7 +945,7 @@ const (
 | `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 封印期留痕回灌的冪等鍵。B 模式封印期的解封嘗試先寫入定長環狀 journal，解封後回灌審計；回灌為 **at-least-once**，故以本欄的唯一索引保證重複回灌不產生重複列。**一般審計列為 NULL**（唯一索引對 NULL 不生效）。合成的聚合列另以 `(journal_uuid, 起始 seq, 結束 seq)` 導出確定性 ID 填入本欄——聚合列無個別事件 uuid，若不給確定性鍵，checkpoint 未落盤而重跑時同一區間會重複入審計 |
 | `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 回灌冪等鍵。封印期 journal 的 at-least-once 回灌以此去重：個別事件列用 journal 的確定性事件 ID，合成聚合列用 `(journal_uuid, 起始 seq, 結束 seq)` 導出的確定性 ID。**可為 NULL 且必須是指標**——一般審計列不帶此鍵，若用空字串則唯一索引會讓第二筆一般審計列直接寫入失敗；多個 NULL 在 Postgres 與 SQLite 的唯一索引下皆允許並存 |
 
-**字串欄位長度收口**（批 1-R，`backend/internal/model/audit_log_bounds.go`）：
+**字串欄位長度收口**（`backend/internal/model/audit_log_bounds.go`）：
 `AuditLog.BeforeCreate` 在**蓋章之前**把字串欄位收進各自 gorm 標籤宣告的上界內（上界由標籤
 **反射導出**，不寫對照表——手寫表與 schema 雙向漂移都不會有測試轉紅），以字元（rune）而非
 位元組計。被截斷的值保留**逐字為真的前綴**並附 `…[trunc len=N sha256=…]` 標記。
@@ -1039,14 +1039,14 @@ const (
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `SessionID` | uint | `not null` | `session_id` | 所屬會話 ID |
 | `UserID` | uint | `not null` | `user_id` | 用戶 ID（冗餘，跨會話搜尋免 JOIN） |
-| `AssetID` | *uint | - | `asset_id` | 資產 ID（冗餘，手動連線可為 NULL）。W5 5.2 起阻斷路徑亦填此欄（修復前恆為 NULL）；無資產時寫 NULL，不得以 0 代表無值 |
+| `AssetID` | *uint | - | `asset_id` | 資產 ID（冗餘，手動連線可為 NULL）。阻斷路徑同樣填此欄；無資產時寫 NULL，不得以 0 代表無值 |
 | `Command` | string | `type:text;not null` | `command` | 重組出的指令行。**`Degraded=true` 時恆為空字串**，由 CHECK 約束釘死（見下方約束段）——降級列不得回填任何自螢幕內容推測的文字 |
 | `Seq` | int | `not null` | `seq` | 會話內執行順序（從 1 開始） |
 | `ExecutedAt` | time.Time | `type:timestamptz;not null` | `executed_at` | 執行（Enter）時間 |
 | `K8sPod` | string | `size:253` | `k8s_pod` | K8s 冗餘欄：當次選定 pod（跨會話搜尋免 JOIN sessions） |
 | `K8sContainer` | string | `size:63` | `k8s_container` | K8s 冗餘欄：當次 container |
 | `Degraded` | bool | `not null;default:false` | `degraded` | **該輪沒有可信的指令文字**。全螢幕重繪、alt-screen 標記區間、無回顯輸入等情形下，重組結果不可信，此時記一筆降級列而非靜默丟棄——後者可被主動觸發成「零紀錄」。為 true 時 `Command` 必為空 |
-| `DegradeReason` | string | `size:32` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**（design §6.6）：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go` |
+| `DegradeReason` | string | `size:32` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go` |
 
 **約束**:
 - `session_commands_degraded_no_text` - `CHECK ((NOT degraded) OR (command = ''))`。
@@ -1113,7 +1113,7 @@ const (
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
-| `RuleID` | *uint | - | `rule_id,omitempty` | 命中規則 ID。**指標型且 DB 為 nullable**（§6.3）：`kind='audit_degraded'` 的告警沒有規則可指，值型會把「無規則」寫成 0 |
+| `RuleID` | *uint | - | `rule_id,omitempty` | 命中規則 ID。**指標型且 DB 為 nullable**：`kind='audit_degraded'` 的告警沒有規則可指，值型會把「無規則」寫成 0 |
 | `RuleName` | string | `size:100;not null` | `rule_name` | 規則名稱快照（冗餘，免 JOIN）。**降級類填機器碼**（該類無規則名可快照，同 `alert_notifier` 的 `testRuleName` 慣例） |
 | `Kind` | string | `size:20;not null` | `kind` | 告警來源類別：`rule`（規則比對／阻斷）／`audit_degraded`（指令審計降級）。CHECK 限定值域，另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它 |
 | `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域：`audit_degraded_span`）；規則類為空字串 |
@@ -1137,8 +1137,8 @@ const (
 - `idx_command_alerts_asset_triggered` - `(asset_id, triggered_at)`，同上的資產樞紐側
 
 **設計說明**:
-- **三條寫入路徑、單一落地面**（BD-1；第三條為 §6.3 的降級告警）：比對路徑（`proxy.CommandRecorder` writeLoop 在指令批次 flush 成功後比對）與阻斷路徑（`sshproxy` 的 `commandBlocker`，指令送往目標前攔下）皆經 `internal/modules/audit/alert_sink.go` 的落地面寫入，該處同時做「入庫 → 通知推送 → syslog 離機轉發」。**修復前阻斷路徑直寫本表且不做 syslog tee**，導致「實際被阻斷的危險指令」這一類最高價值證據只存在本機一份。兩路徑的錯誤處置皆為「僅 log、不影響指令入庫與會話」（無可回滾的業務交易）
-- **第三條寫入路徑：指令審計降級的專用發射器**（§6.3）。由 `sshproxy` 的 `CommandStore` 在指令批次 flush 成功後、規則比對之後呼叫，落地經同一個 `AlertSink`（故通知與 syslog tee 自動接上）。
+- **三條寫入路徑、單一落地面**（第三條是下一則的降級告警）：比對路徑（`proxy.CommandRecorder` writeLoop 在指令批次 flush 成功後比對）與阻斷路徑（`sshproxy` 的 `commandBlocker`，指令送往目標前攔下）皆經 `internal/modules/audit/alert_sink.go` 的落地面寫入，該處同時做「入庫 → 通知推送 → syslog 離機轉發」。**修復前阻斷路徑直寫本表且不做 syslog tee**，導致「實際被阻斷的危險指令」這一類最高價值證據只存在本機一份。兩路徑的錯誤處置皆為「僅 log、不影響指令入庫與會話」（無可回滾的業務交易）
+- **第三條寫入路徑：指令審計降級的專用發射器**。由 `sshproxy` 的 `CommandStore` 在指令批次 flush 成功後、規則比對之後呼叫，落地經同一個 `AlertSink`（故通知與 syslog tee 自動接上）。
   **不走規則表**是刻意的：規則是可 CRUD 停用／刪除的營運物件，把規格要求的安全訊號掛上去等於交出「管理員一鍵靜默」的開關；且內建規則數有硬斷言，還得為它填一個永不匹配的 pattern＝在機器欄裡寫謊。
   該類的 `kind='audit_degraded'`、`rule_id IS NULL`、`command=''`（降級的定義就是沒有可信的指令文字）、`severity='medium'`。
   **以 span 為單位，一段連續降級只發一筆**：真 vim 一次編輯產生數十筆降級列，逐列告警＝告警疲勞。
@@ -1148,7 +1148,7 @@ const (
 - `rule_name`/`severity`/`blocked` 為觸發當下快照：規則之後改名、改級、改 action 或刪除不影響歷史告警可讀性
 - `blocked` 取代原先寫入 `rule_name` 的「（已阻斷）」後綴散文：阻斷事實改以布林欄結構化承載，`rule_name` 自此為純淨規則名；出站 webhook payload 帶 `blocked`，Slack 由伺服端翻譯目錄依通道語系渲染標示
 - 無 FK 約束：與 `session_commands` 同取向，寫入位於會話資料路徑旁，避免外鍵檢查影響可用性
-- 審閱處置（PCI 10.4.1）：**兩條寫入路徑皆**顯式設 `disposition=pending`（W5 5.2 統一；修復前阻斷路徑未設此欄，DB 收到空字串，使審閱清單的「未審閱」篩選漏掉阻斷告警）；
+- 審閱處置（PCI 10.4.1）：**兩條寫入路徑皆**顯式設 `disposition=pending`（阻斷路徑漏設此欄時 DB 收到空字串，審閱清單的「未審閱」篩選就會漏掉阻斷告警）；
   審閱冪等，重覆審閱同一告警更新處置並刷新 `reviewed_at`。struct 不用 gorm `default` tag（避免 GORM Create 對零值欄位改走 RETURNING 讀回，破壞既有 sqlmock 期望），NOT NULL DEFAULT 由 baseline 的建表語句設
 
 ---
@@ -1402,7 +1402,7 @@ const (
 **設計說明**:
 - 服務層 typed accessor（Get/GetInt/GetBool）＋ 30 秒 TTL 快取（「更新即失效」不等 TTL）
 - `SeedFromEnv` 以既有環境變數初始化（僅在 DB 尚無該鍵列時），升級相容
-- 常數表打錯字（enum PCIValue 非成員、int 預設不可解析等）在啟動時 panic（POL-4 自檢），寧可不上線也不靜默誤判符合性
+- 常數表打錯字（enum PCIValue 非成員、int 預設不可解析等）在啟動時 panic（常數表自檢），寧可不上線也不靜默誤判符合性
 
 ---
 
@@ -1567,7 +1567,7 @@ const (
 
 **表名**: `export_signing_keys`
 **檔案**: `backend/internal/model/signing_key.go`
-**建表方式**: baseline（`baseline_schema_platform.go`，PCI 10.3.4/叢集 D backlog F5；單列表 ID=1，首啟自動生成）
+**建表方式**: baseline（`baseline_schema_platform.go`，PCI 10.3.4；單列表 ID=1，首啟自動生成）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1582,14 +1582,14 @@ const (
 
 **表名**: `integrity_baselines`
 **檔案**: `backend/internal/model/integrity_baseline.go`
-**建表方式**: baseline（`baseline_schema_audit.go`；對抗驗證修正，PCI 10.3.4；單列表 ID=1，首啟寫入當下時間與最大列 id）
+**建表方式**: baseline（`baseline_schema_audit.go`，PCI 10.3.4；單列表 ID=1，首啟寫入當下時間與最大列 id）
 **Migration**: `20260715_integrity_baseline_max_log_id`（既有基準以 created_at 邊界一次性回填 max_log_id）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 恆為 1 |
 | `BaselineAt` | time.Time | `not null` | `baseline_at` | 完整性功能啟用時間（顯示與記載用） |
-| `MaxLogID` | uint | DB 端 default 0 | `max_log_id` | 基準建立當下 audit_logs 最大 id。驗證端點對「基準後（id > max_log_id）仍空 HMAC」的列判不符（堵竄改＋清空 HMAC、回填時間插列規避），基準前（id <= max_log_id）空 HMAC 列歸 Legacy。以不可回填的自增 id 判定，非 created_at（對抗驗證 H2 修正） |
+| `MaxLogID` | uint | DB 端 default 0 | `max_log_id` | 基準建立當下 audit_logs 最大 id。驗證端點對「基準後（id > max_log_id）仍空 HMAC」的列判不符（堵竄改＋清空 HMAC、回填時間插列規避），基準前（id <= max_log_id）空 HMAC 列歸 Legacy。以不可回填的自增 id 判定，非 created_at——created_at 可被插入端指定，判別力不足 |
 
 ---
 

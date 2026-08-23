@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 審計落地面的注入自檢（modular-architecture W4 任務 4.7）。
+// 審計落地面的注入自檢。
 //
 // # 為何是啟動 fail-close，而不是「未注入就跳過」
 //
@@ -44,20 +44,20 @@ func requireAuditTxSink(sink port.TxSink) error {
 	return nil
 }
 
-// requireAlertSink 指令告警落地面的注入自檢（modular-architecture W5 5.4）。
+// requireAlertSink 指令告警落地面的注入自檢。
 //
 // **落點 SHALL 早於 alertMatcher 與 sshHandler 的建構**——兩者是它僅有的消費者，
 // 自檢晚於任一者等於讓「未注入」在第一次告警時才以 log 現形。
 //
-// 為何告警也 fail-close 到啟動失敗：BD-1 的教訓不是「有人寫錯欄位」，而是
+// 為何告警也 fail-close 到啟動失敗：「漏 tee」那次的教訓不是「有人寫錯欄位」，而是
 // **一整類安全證據可以在沒有任何東西變紅的情況下停止離機**。sink 未注入的後果
-// 與 BD-1 完全同型（阻斷告警不入庫、不 tee），差別只在它更徹底；
+// 與它完全同型（阻斷告警不入庫、不 tee），差別只在它更徹底；
 // 允許它靜默啟動等於把剛修好的洞留一個開關在外面。
 func requireAlertSink(sink gatewayapi.AlertSink) error {
 	if isNilSink(sink) {
 		return fmt.Errorf("指令告警落地面（gatewayapi.AlertSink）未注入：" +
 			"阻斷告警的入庫、通知與 syslog 離機轉發共用本出口，未接線即拒絕啟動，" +
-			"不得降級為 no-op 而使阻斷證據靜默消失（BD-1）")
+			"不得降級為 no-op 而使阻斷證據靜默消失")
 	}
 	return nil
 }

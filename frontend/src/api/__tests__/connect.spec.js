@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// transmission-security-policy 5.2：連線前同意流程（428→對話框→立據→重試）
+// 連線前同意流程（428→對話框→立據→重試）
 
 const requestMock = vi.fn()
 vi.mock('../request', () => ({ default: (...args) => requestMock(...args) }))
@@ -68,7 +68,7 @@ describe('createConnectTokenWithConsent', () => {
   })
 
   it('403 recording_unavailable→顯式對話框告知並中止（不落 generic toast）', async () => {
-    // recording-failure-handling D2：阻斷性狀態走 reason 分流，不依賴
+    // 阻斷性狀態走 reason 分流，不依賴
     // 後端文案經 generic 呈現轉述
     const err = new Error('forbidden')
     err.response = {
@@ -94,7 +94,7 @@ describe('createConnectTokenWithConsent', () => {
   })
 })
 
-// asset-multi-account D3：account_id 為憑證選擇器，簽發與兌換兩點皆 DB 現查
+// account_id 為憑證選擇器，簽發與兌換兩點皆 DB 現查
 describe('connect-token 的帳號綁定', () => {
   beforeEach(() => vi.clearAllMocks())
 

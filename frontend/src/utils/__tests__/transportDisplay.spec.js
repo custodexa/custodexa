@@ -109,7 +109,7 @@ describe('inventoryNote / inventoryPreflight — 碼查譯 + 降級', () => {
   })
 })
 
-describe('前端 required-param 常數防漂移（codex impl-review I4）', () => {
+describe('前端 required-param 常數防漂移', () => {
   // 從 zh-TW locale 的 {placeholder} 導出「哪些碼需 param」，比對前端三常數。
   // locale 由後端完備性測試釘死 ↔ registry，故此測試補上 locale↔前端常數 一環，成閉環。
   const slotRe = /\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g
@@ -162,7 +162,7 @@ describe('inventoryDetail — detail_codes 完整 map（rr-I4）', () => {
       .toEqual({ '(未設定)': 2, disable: 1 })
   })
 
-  it('顯示鍵碰撞 → count 累加不覆蓋（codex impl-review I2）', () => {
+  it('顯示鍵碰撞 → count 累加不覆蓋', () => {
     // zh：unset→"(未設定)"；髒資料若另有字面技術鍵 "(未設定)"（穿透），兩者累加
     expect(inventoryDetail({ detail_codes: { unset: 2, '(未設定)': 3 } })).toEqual({ '(未設定)': 5 })
   })

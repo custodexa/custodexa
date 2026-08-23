@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// LDAP 出站位址政策的判定格點（ldap-settings-migration tasks 2.5 / D5）。
+// LDAP 出站位址政策的判定格點。
 //
 // 與 OIDC 的差異化是本檔的主軸：**私有網段預設放行**（目錄常態位置為內網），
 // 但 loopback／link-local（含雲端 metadata）／unspecified／multicast 照擋，
@@ -236,8 +236,8 @@ func (e *timeoutStubError) Temporary() bool {
 
 // TestLDAPDialFailureClassNotLeakedToError 粗分類字串不得混入回傳給呼叫端的錯誤。
 //
-// 回應面收斂由 tasks 2.6 接手，但「分類只存在於 log」這條界線在本層就要成立：
-// 若哪天有人把 class 併進 error 訊息，2.6 再怎麼收斂都會把它帶出去
+// 回應面收斂由連線測試端點接手，但「分類只存在於 log」這條界線在本層就要成立：
+// 若哪天有人把 class 併進 error 訊息，端點再怎麼收斂都會把它帶出去
 func TestLDAPDialFailureClassNotLeakedToError(t *testing.T) {
 	p := &LDAPEgressPolicy{}
 	err := p.checkDialAddress("localhost", "127.0.0.1:389")

@@ -36,7 +36,7 @@
         {{ $t('keyManagement.abandonRewrap') }}
       </el-button>
     </el-alert>
-    <!-- 切換收尾雙態（D7）：retire_backlog>0＝收斂失敗 degraded（warning，指引重啟收斂）；
+    <!-- 切換收尾雙態：retire_backlog>0＝收斂失敗 degraded（warning，指引重啟收斂）；
          僅 finalize_pending>0＝正常待切換（info）。並存時 degraded 優先，只顯示一則 -->
     <el-alert
       v-if="switchoverBanner"
@@ -69,7 +69,7 @@
       })"
     />
 
-    <!-- 金鑰政策鍵設定區（settings-domain-restructure 3.2 域收編）：
+    <!-- 金鑰政策鍵設定區（域收編）：
          提醒天數與清冊同頁；儲存後重載清冊，超齡提醒即時反映 -->
     <PolicyPciBanner
       :loading="policyLoading"
@@ -126,7 +126,7 @@
             {{ purposeLabel(row.purpose) }}
           </template>
         </el-table-column>
-        <!-- 欄寬 110：90 容不下 ja-JP 欄頭「バージョン」，會折成兩行（M3） -->
+        <!-- 欄寬 110：90 容不下 ja-JP 欄頭「バージョン」，會折成兩行 -->
         <el-table-column
           :label="$t('keyManagement.colVersion')"
           width="110"
@@ -147,7 +147,7 @@
             >
               {{ row.status === 'active' ? $t('keyManagement.statusActive') : $t('keyManagement.statusRetired') }}
             </el-tag>
-            <!-- 已清理佔位（D9）：材料已顯式銷毀，指紋仍列供稽核比對 -->
+            <!-- 已清理佔位：材料已顯式銷毀，指紋仍列供稽核比對 -->
             <el-tag
               v-if="row.material_purged && row.status === 'retired'"
               type="warning"
@@ -213,7 +213,7 @@
         >
           {{ $t('keyManagement.rewrapWizard') }}
         </el-button>
-        <!-- 顯式清理退役材料（D9）：唯一的材料銷毀點。未全收斂時禁用，
+        <!-- 顯式清理退役材料：唯一的材料銷毀點。未全收斂時禁用，
              tooltip 說明原因（後端亦有 409 全收斂閘） -->
         <el-tooltip
           :content="cleanupDisabledReason"
@@ -244,7 +244,7 @@
         <div class="card-header">
           <span class="card-title">{{ $t('keyManagement.envKeysTitle') }}</span>
           <span class="card-hint">{{ $t('keyManagement.envKeysHint') }}</span>
-          <!-- 封印態（D10）：與 degraded 為正交兩軸，各自獨立呈現、互不覆蓋亦不互相推導。
+          <!-- 封印態：與 degraded 為正交兩軸，各自獨立呈現、互不覆蓋亦不互相推導。
                後端未提供該欄時整個徽章不出現（不以「未知」或預設值頂替） -->
           <el-tag
             v-if="inventory.seal_state"
@@ -295,7 +295,7 @@
             </div>
           </template>
         </el-table-column>
-        <!-- provider／key_ref（D10）：**由後端的執行期 provider 物件導出**，
+        <!-- provider／key_ref：**由後端的執行期 provider 物件導出**，
              前端只呈現。欄位缺席時整欄不渲染——空欄比沒有欄更容易被誤讀為
              「本部署沒有 provider」，而真相是這版後端還沒送這個欄位 -->
         <el-table-column
@@ -417,7 +417,7 @@
       </el-table>
     </el-card>
 
-    <!-- KEK 重包精靈（D7 明文流向反轉）：材料由使用者輸入或本地生成，伺服端不生成不回傳。
+    <!-- KEK 重包精靈（明文流向反轉）：材料由使用者輸入或本地生成，伺服端不生成不回傳。
          關窗不再受限——舊流程鎖住關閉鍵是因為新 KEK 只在回應中出現一次，關掉就永久遺失；
          反轉後材料自始至終在使用者手上，鎖住關閉只剩妨礙 -->
     <el-dialog
@@ -469,7 +469,7 @@
           </template>
         </i18n-t>
 
-        <!-- 重包目標（D7 discriminated union 的判別子）：本地與委託為互斥變體。
+        <!-- 重包目標（discriminated union 的判別子）：本地與委託為互斥變體。
              委託目標本版未提供——以停用選項明示，不讓使用者送出後才吃 501 -->
         <div class="kek-field">
           <label class="kek-label">{{ $t('keyManagement.rewrapTargetLabel') }}</label>
@@ -588,7 +588,7 @@
             {{ rewrapResult.rewrapped_keys }}
           </template>
         </i18n-t>
-        <!-- 最後步驟依執行期 KEK provider 分岔（operator-guidance-fidelity）。
+        <!-- 最後步驟依執行期 KEK provider 分岔。
              四個分支不是四種措辭，是四條不同的操作路徑：
              env＝寫入環境變數後重啟；ui＝重啟後於解封頁輸入（且明確禁止寫入 .env）；
              kms／hsm＝部署層 provider 遷移，逐步程序未在產品內定案故指向營運文件；
@@ -754,7 +754,7 @@ const rewrapVisible = ref(false)
 const rewrapStep = ref(0)
 const rewrapping = ref(false)
 const abandoning = ref(false)
-// 回應恰三鍵，**無任何明文欄**（D7）：new_kek 已自契約消失，此處不得再有該欄
+// 回應恰三鍵，**無任何明文欄**：new_kek 已自契約消失，此處不得再有該欄
 const rewrapResult = ref({ target_mode: '', new_kek_id: '', rewrapped_keys: 0 })
 const rewrapMode = ref('local')
 const newKek = ref('')
@@ -819,7 +819,7 @@ const purposeLabel = (p) =>
     audit_integrity: t('keyManagement.purposeAudit'),
   })[p] || p
 
-// KEK provider 與封印態的顯示（D10）。清冊的 provider 欄由後端的執行期 provider
+// KEK provider 與封印態的顯示。清冊的 provider 欄由後端的執行期 provider
 // 物件導出（不重讀 env），前端僅負責查譯；未知值原樣顯示，不猜、不歸類
 const providerLabel = (p) =>
   ({
@@ -829,13 +829,13 @@ const providerLabel = (p) =>
     hsm: t('keyManagement.providerHsm'),
   })[p] || p
 
-// 完成切換的指示**依執行期 provider 分岔**（operator-guidance-fidelity）。
+// 完成切換的指示**依執行期 provider 分岔**。
 //
 // 無條件顯示 env 版本（「把新 KEK 存入 ENCRYPTION_KEY 後重啟」）對 ui 模式部署是
 // **有害**的：照做等於把根金鑰以明文寫上磁碟，而 ui 模式的唯一意義就是材料永不落地。
 // 2026-08-17 使用者實走踩到此坑，且實測確認 ui 的正確路徑為「重啟 → 於解封頁輸入新 KEK」。
 //
-// provider 來源＝清冊回應的頂層 `provider` 欄，由後端執行期 provider 物件導出（D10），
+// provider 來源＝清冊回應的頂層 `provider` 欄，由後端執行期 provider 物件導出，
 // 不重讀 env、不由前端推論（例如以「有封印狀態」反推模式為 ui——那是推論不是事實）。
 const KEK_GUIDE_MODE_BY_PROVIDER = {
   env: 'env',
@@ -918,7 +918,7 @@ const activeKeys = computed(() =>
 )
 
 // 退役列的唯一排序基準＝退役時間新到舊。version 是**每個 purpose 各自獨立的序列**，
-// 跨用途比大小既不是時序也不是分組（uiux-keymgmt-r1 H1：HMAC v1 比 DEK v3 晚退役卻被排在後面）。
+// 跨用途比大小既不是時序也不是分組（HMAC v1 比 DEK v3 晚退役卻被排在後面）。
 // 缺 retired_at／值不可解析時視為 0（排到最後而非插隊到最前）；同一時刻退役才以版本 desc 收斂。
 // 表格與清理確認清單共用本函式——兩份清單要能逐項對照，順序必須同源
 const retiredAtMillis = (k) => {
@@ -938,7 +938,7 @@ const displayedKeys = computed(() =>
   showRetiredKeys.value ? [...activeKeys.value, ...retiredKeys.value] : activeKeys.value
 )
 
-// 退役列整列視覺降階（uiux-keymgmt-r1 M1）：展開後多數列是歷史，僅靠狀態欄一顆
+// 退役列整列視覺降階：展開後多數列是歷史，僅靠狀態欄一顆
 // 小 tag 區分不足。文字降階以 token 為之、不動 tag 自身配色（tag 對比已驗過 AA）；
 // 交界列再加一條分隔線，讓「以下都是歷史」有明確起點
 const keyRowClass = ({ row, rowIndex }) => {
@@ -948,10 +948,10 @@ const keyRowClass = ({ row, rowIndex }) => {
     : 'retired-key-row'
 }
 
-// 切換收尾雙態橫幅（D7）：degraded（退役收斂失敗）優先於待切換（正常工作流）。
+// 切換收尾雙態橫幅：degraded（退役收斂失敗）優先於待切換（正常工作流）。
 // 兩者皆無時回 null，不渲染橫幅
 const switchoverBanner = computed(() => {
-  // 收斂狀態讀取失敗＝未知態（fail-close，opus 第一輪審 M4）：
+  // 收斂狀態讀取失敗＝未知態（fail-close）：
   // 不得以 0 呈現假健康——顯示警示並由 cleanupDisabled 保守禁用清理
   if (inventory.value.converge_state_error) {
     return {
@@ -1071,7 +1071,7 @@ const openRewrapWizard = () => {
   rewrapVisible.value = true
 }
 
-// 本地生成（D8 路 2）：CSPRNG 直接產出合格材料，並同步填入 paste-back 欄——
+// 本地生成：CSPRNG 直接產出合格材料，並同步填入 paste-back 欄——
 // 使用者剛剛「看到」的就是這個值，再要求他抄一次只會誘發複製貼上而非確認
 const generateLocalKek = () => {
   try {
@@ -1087,7 +1087,7 @@ const generateLocalKek = () => {
 const executeRewrap = async () => {
   rewrapping.value = true
   try {
-    // 本地變體的精確鍵集（D7 union）：多一鍵、少一鍵或 mode 與欄位不符皆 400，
+    // 本地變體的精確鍵集：多一鍵、少一鍵或 mode 與欄位不符皆 400，
     // 故此處逐字對齊契約，不夾帶任何額外欄位。
     // 兩欄套**同一次**修剪：貼上 `openssl rand -hex 32` 的輸出會帶結尾換行，
     // 而伺服端的 paste-back 比對的是原始位元組，兩欄修剪不一致就會誤判不符
@@ -1230,11 +1230,11 @@ const skippedItemText = (item) =>
     }
   )
 
-// 顯式清理退役金鑰材料（D9）：不可逆銷毀，先確認再送；成功後摘要 purged／skipped 並刷新清冊。
+// 顯式清理退役金鑰材料：不可逆銷毀，先確認再送；成功後摘要 purged／skipped 並刷新清冊。
 // 確認內容列明銷毀候選（退役且材料尚存的版本＋退役 KEK 包裹列數）與
-// 「先重啟所有實例」提醒（多實例舊快取寫入舊版密文的緩解，codex 第一輪審 #2/#6）。
+// 「先重啟所有實例」提醒（多實例舊快取寫入舊版密文的緩解）。
 //
-// 呈現為結構化 VNode 而非單段散文（uiux-keymgmt-r1 H2）：本框的核心告知是「會被銷毀什麼」，
+// 呈現為結構化 VNode 而非單段散文：本框的核心告知是「會被銷毀什麼」，
 // 埋在 6 行連續散文中段等於要求使用者逐字讀完才找得到清單。專案既有慣例即 VNode
 // （api/connect.js confirmTransmissionRisks），不引入 dangerouslyUseHTMLString。
 // 樣式走 inline：MessageBox 被 teleport 到 body，scoped CSS 到不了。
@@ -1356,7 +1356,7 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-/* wrap＋標題不縮（uiux-keymgmt-r1 M2）：nowrap 時 768 寬會保住 129px 的切換鈕、
+/* wrap＋標題不縮：nowrap 時 768 寬會保住 129px 的切換鈕、
    把區塊標題壓到 47px 折成兩行——優先犧牲的順序反了。窄幅讓控制換行到下一列即可 */
 .card-header {
   display: flex;
@@ -1390,7 +1390,7 @@ onMounted(() => {
   --el-tag-text-color: var(--el-text-color-secondary);
 }
 
-/* 退役列整列降階（M1）：只降儲存格文字色，不加 opacity——整列透明會連 tag 一起
+/* 退役列整列降階：只降儲存格文字色，不加 opacity——整列透明會連 tag 一起
    拉低對比（退役 tag 實測 5.4:1，扣掉透明度就掉出 AA）。交界線標出歷史區的起點 */
 .keys-table :deep(.retired-key-row .cell) {
   color: var(--el-text-color-secondary);

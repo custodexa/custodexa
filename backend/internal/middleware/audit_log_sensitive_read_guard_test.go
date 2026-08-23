@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 會話內取證動作的留痕守衛（audit-resource-classification-closure 批 1，PCI 10.2.1.3）。
+// 會話內取證動作的留痕守衛（PCI 10.2.1.3）。
 //
 // **釘子打在哪**：`/sessions/:id/recording{,/download,/stream,/token}` 取走的是
 // 終端畫面錄影本體，`/sessions/:id/commands` 取走的是被監控者輸入的指令原文。

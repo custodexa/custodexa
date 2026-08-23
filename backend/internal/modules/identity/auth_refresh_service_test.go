@@ -18,7 +18,7 @@ func loginForRefresh(t *testing.T, auth *AuthService, username, password string)
 		t.Fatalf("login: %v", err)
 	}
 	if resp.RefreshToken == "" {
-		t.Fatal("登入回應應含 refresh_token（D6）")
+		t.Fatal("登入回應應含 refresh_token")
 	}
 	return resp
 }
@@ -168,7 +168,7 @@ func TestLogoutRevokesOnlyCurrentRefresh(t *testing.T) {
 	}
 }
 
-// TestLogoutStaleRotatedTokenTriggersFamilyRevoke 對抗驗證 F1：登出提交「已 rotated」憑證
+// TestLogoutStaleRotatedTokenTriggersFamilyRevoke：登出提交「已 rotated」憑證
 // （分叉訊號）觸發家族撤銷，攻擊者的分叉鏈一併失效
 func TestLogoutStaleRotatedTokenTriggersFamilyRevoke(t *testing.T) {
 	auth, _, db := setupLockoutEnv(t)
@@ -207,7 +207,7 @@ func TestLogoutStaleRotatedTokenTriggersFamilyRevoke(t *testing.T) {
 	}
 }
 
-// TestLogoutCurrentTokenNoFamilyRevoke 對照 F1：登出提交「目前有效」憑證只單撤、不誤觸家族撤銷
+// TestLogoutCurrentTokenNoFamilyRevoke 對照組：登出提交「目前有效」憑證只單撤、不誤觸家族撤銷
 func TestLogoutCurrentTokenNoFamilyRevoke(t *testing.T) {
 	auth, _, db := setupLockoutEnv(t)
 	seedLockoutUser(t, db, "right-pass-1")
@@ -246,7 +246,7 @@ func TestPasswordChangeRevokesAllRefresh(t *testing.T) {
 	}
 }
 
-// TestLockoutRevokesAllRefresh 自動鎖定撤銷全部 refresh（Web 會話不得續命；協議會話不砍屬 D13，不在此測）
+// TestLockoutRevokesAllRefresh 自動鎖定撤銷全部 refresh（Web 會話不得續命；協議會話不砍，不在此測）
 func TestLockoutRevokesAllRefresh(t *testing.T) {
 	auth, policies, db := setupLockoutEnv(t)
 	seedLockoutUser(t, db, "right-pass-1")

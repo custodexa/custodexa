@@ -24,7 +24,7 @@ func newMigrationTestService(t *testing.T) *UserService {
 	return &UserService{db: db}
 }
 
-// === 遷移可見性與觸發（password-hasher-interface 3.3／3.4）===
+// === 遷移可見性與觸發===
 //
 // 這兩個能力存在的理由：批次重雜湊在密碼學上做不到（需要明文，系統沒有明文），
 // 故管理員想立刻收斂時，能做的是**看見還有多少沒遷移**＋**要求他們下次登入改密**。

@@ -15,12 +15,12 @@ type AssetPermissionChecker interface {
 	CheckPermission(ctx context.Context, userID, assetID uint, perm model.PermissionType) (bool, error)
 }
 
-// RequireAssetVisible 逐資產可視性守門（asset-access-scoping）：所有 /assets/:id/*
+// RequireAssetVisible 逐資產可視性守門：所有 /assets/:id/*
 // 讀取端點統一掛此中介層，非 admin/auditor 須對該資產有 view（含 connect/manage 推導）
 // 授權，否則回 404「資產不存在」——不洩漏資產存在性。admin/auditor 直通。
 //
 // 抽為中介層而非各 handler 自檢：資產子端點（詳情/host-key/k8s pods/未來擴充）
-// 共用同一道守門，避免逐一漏網（codex 審查揪出 host-key 端點漏守門）。
+// 共用同一道守門，避免逐一漏網（安全審查揪出 host-key 端點漏守門）。
 func RequireAssetVisible(checker AssetPermissionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// admin/auditor 直通（管理角色不做逐資產授權）

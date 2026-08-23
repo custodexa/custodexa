@@ -8,10 +8,10 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 委託模式的 kek_id 形式守衛（kek-provider-modularization D11／D11.1 裁決 1）。
+// 委託模式的 kek_id 形式守衛。
 //
-// **這裡刻意「只偵測、不改寫」**。round-1 曾規劃一次性存量正規化 migration，
-// round-2 雙審獨立同判其整項取消，理由有二：
+// **這裡刻意「只偵測、不改寫」**。早期曾規劃一次性存量正規化 migration，
+// 後續兩方獨立同判其整項取消，理由有二：
 //
 //  1. **目標族群為空**：data_keys.kek_id 的唯一寫入來源是
 //     `s.kek.KeyRef().KeyID`（三個寫入點全部經 kekKeyID()），而 KMS provider 的
@@ -74,7 +74,7 @@ func guardDelegatedKEKIDCanonical(rows []model.DataKey, kek crypto.KEKProvider) 
 	if len(offenders) == 0 {
 		return nil
 	}
-	// **指引不得是裸 UPDATE**（D11.1 裁決 1「收窄二」）：一次性全表 UPDATE 只是
+	// **指引不得是裸 UPDATE**：一次性全表 UPDATE 只是
 	// 把 alias 重指向的同款不可逆污染從程式碼搬到人手上。要求逐列以明確 KeyId＋AAD
 	// 實際試解包成功後才改標。
 	return fmt.Errorf("%w：拒絕啟動。受影響列：%s。"+

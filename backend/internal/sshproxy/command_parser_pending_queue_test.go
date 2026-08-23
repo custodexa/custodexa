@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// === 結算期間抵達的輸入不得遺失（command-audit-pending-queue）===
+// === 結算期間抵達的輸入不得遺失===
 //
 // 缺陷：Enter 送出後那一輪要等回顯換行才結算，期間抵達的輸入被整段丟棄——
 // 指令在遠端正常執行、審計零紀錄。送出時機與封包切分由使用者端控制，
@@ -203,8 +203,8 @@ func TestReplayQueueCapacityIsBoundedAndObservable(t *testing.T) {
 // TestReplayQueueSurvivesNeverEchoingPeer 對端永不回顯時，已排隊的輪次仍須留痕。
 //
 // 誠實邊界：**第一輪**（走既有 echo 重建路徑的那一輪）在沒有任何回顯時取不到文字，
-// 這是「指令文字取自 echo」的原理性邊界，不在本 change 射程內
-// （proposal Non-Goals 已列）。本測試釘的是排隊的那些輪次不因對端沉默而消失。
+// 這是「指令文字取自 echo」的原理性邊界，不在本次修法的射程內。
+// 本測試釘的是排隊的那些輪次不因對端沉默而消失。
 func TestReplayQueueSurvivesNeverEchoingPeer(t *testing.T) {
 	parser, commands := newTestParser()
 	parser.WriteOutput([]byte(promptFrame))
@@ -246,7 +246,6 @@ const (
 	// 於是該場景只會產生一筆紀錄，而**把修法改回「整段丟棄」時它同樣產生那一筆**
 	// （中斷鍵後的 echo 落在前一輪尚未結算的 typingBuf 裡，誤打誤撞被結算）。
 	// 一條在正確與錯誤實作下都綠的測試沒有守衛價值，只是噪音——故不寫。
-	// 實跑輸出存於 `openspec/changes/command-audit-pending-queue/evidence.md`。
 
 	// multiEnter1..4 同幀多個 Enter（空輪）夾在兩條指令之間（實測 scenario multienter）。
 	// 注意第三幀是**被切斷的提示符**（`sh-test-server:~$`）——真實封包不照語義邊界切。
@@ -254,7 +253,7 @@ const (
 	multiEnter2 = "A\r\n\x1b[?2004hssh-test-server:~$ \r\n\x1b[?2004l\r\x1b[?2004hs"
 	multiEnter3 = "sh-test-server:~$ \r\n\x1b[?2004l\r"
 	// 第 4 幀更極端：**整幀只有一個控制序列、一個可見字元都沒有**。
-	// 早期版本的測試把它併進第 5 幀省略掉了，與 evidence.md 不一致——
+	// 早期版本的測試把它併進第 5 幀省略掉了，與實測序列不一致——
 	// 那正是「用理想化序列取代實測序列」的失真，故補回逐字餵入。
 	multiEnter4 = "\x1b[?2004h"
 	multiEnter5 = "ssh-test-server:~$ echo B\r\n\x1b[?2004l\rB\r\n\x1b[?2004hssh-test-server:~$ "

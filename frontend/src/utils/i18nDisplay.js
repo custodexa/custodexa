@@ -1,9 +1,9 @@
-// 後端顯示字串查譯共用工具（i18n-backend-labels）。
+// 後端顯示字串查譯共用工具。
 // 三類後端顯示字串（policy label/unit、risk label、inventory note/preflight）皆錨定穩定
 // 機器碼、前端查譯，共用「當前語言精確命中才譯，否則降級後端 zh」的規則。
 import i18n, { currentLocale } from '@/i18n'
 
-// hasCurrentTranslation 當前語言精確命中檢查（rr-I4）：明確帶 currentLocale，不走
+// hasCurrentTranslation 當前語言精確命中檢查：明確帶 currentLocale，不走
 // vue-i18n 的 ja→en→zh fallback——缺鍵時降級回後端 zh，而非誤命中他語譯文。
 export function hasCurrentTranslation(key) {
   return i18n.global.te(key, currentLocale())
@@ -11,7 +11,7 @@ export function hasCurrentTranslation(key) {
 
 // translated 精確命中且產出非空（且非退回 key path）才回譯文，否則 null（供 getter 降級）。
 // produce 由各 getter 自訂（t(key)／t(key,params)／t(key,n)），涵蓋「存在但值為空」契約
-// （te 對空值仍為 true——codex impl-review m1）。
+// （te 對空值仍為 true）。
 export function translated(key, produce) {
   if (!hasCurrentTranslation(key)) return null
   const v = produce()

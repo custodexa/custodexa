@@ -15,8 +15,8 @@ var testAAD = []byte("assets|password_enc")
 // sealNoAAD **測試層 stdlib 助手**：以 crypto/aes＋cipher.NewGCM 直接封出
 // 無 AAD 的 nonce+ciphertext。
 //
-// 為何在測試裡手工封：無 AAD 的寫出能力（AESCrypto.Encrypt／EncryptBytes）已於
-// release-transitional-cleanup P2 M1 刪除，EncryptBytesAAD 亦對空 aad 回
+// 為何在測試裡手工封：無 AAD 的寫出能力（AESCrypto.Encrypt／EncryptBytes）已
+// 刪除，EncryptBytesAAD 亦對空 aad 回
 // ErrAADRequired——那正是被驗收的事實。負向測試仍需要這種值來模擬「拆除前建立的
 // 資料庫」或「繞過 API 的資料庫直寫」，故由測試自備。
 //
@@ -106,8 +106,8 @@ func TestAESCrypto_EncryptDecryptAAD(t *testing.T) {
 	}
 }
 
-// TestAESCryptoRejectsEmptyAAD 原語層的建構保證（release-transitional-cleanup
-// P2 M1）：加解密兩端對 nil 與空切片一律回 ErrAADRequired，且**不執行**加解密
+// TestAESCryptoRejectsEmptyAAD 原語層的建構保證：加解密兩端對 nil 與空切片
+// 一律回 ErrAADRequired，且**不執行**加解密
 // （回傳值為 nil）。少了這兩格，「無 AAD 寫出能力已刪除」就只是「入口改名」。
 func TestAESCryptoRejectsEmptyAAD(t *testing.T) {
 	key := make([]byte, 32)

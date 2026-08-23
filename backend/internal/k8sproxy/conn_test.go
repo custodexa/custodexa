@@ -75,7 +75,7 @@ func TestStartIncompleteTarget(t *testing.T) {
 	}
 }
 
-// TestKubeconfigTLSDefaults：mustFix #3——預設驗證 TLS（不含 skip-verify），
+// TestKubeconfigTLSDefaults：預設驗證 TLS（不含 skip-verify），
 // insecure 須顯式，CA 走 certificate-authority-data。
 func TestKubeconfigTLSDefaults(t *testing.T) {
 	def := kubeconfigYAML("https://s:6443", "tok", "", false)

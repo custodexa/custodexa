@@ -1,5 +1,5 @@
 /**
- * 事件摘要與標籤的碼→文案解析（auditor-workbench D9）。
+ * 事件摘要與標籤的碼→文案解析（auditor-workbench）。
  *
  * 後端零散文出站：時間軸每一列只回 `summary_code`＋`params`，文案在此組。
  * **未知 code 必須優雅降級**——後端日後新增一個 action 時，工作台要照樣

@@ -20,7 +20,7 @@
           :sub-title="statusDetail"
         >
           <template #extra>
-            <!-- host key 變更引導（ssh-connect-error-surfacing）：admin 直達資產
+            <!-- host key 變更引導：admin 直達資產
                  編輯框重置入口，非 admin 提示聯繫管理員 -->
             <p
               v-if="isHostKeyError && !isAdmin"
@@ -52,7 +52,7 @@
     <!-- 外層留白、內層為無 padding 的掛載點：FitAddon 量 parent 的
          clientHeight 含 padding，直接掛在有 padding 的容器會高估行數，
          導致最底行被裁半（使用者實測於 seq 1 100 後輸入行只見一半） -->
-    <!-- 行動快捷鍵列（mobile-terminal-keys）：觸控鍵盤沒有 ESC／Tab／Ctrl，補上最常用的控制序列 -->
+    <!-- 行動快捷鍵列：觸控鍵盤沒有 ESC／Tab／Ctrl，補上最常用的控制序列 -->
     <div
       v-if="showMobileKeys"
       class="mobile-key-row"
@@ -67,7 +67,7 @@
       </button>
     </div>
 
-    <!-- mssql 批次終止符提示（mssql-cli-audit-fidelity D6）：同一個 web CLI 上
+    <!-- mssql 批次終止符提示：同一個 web CLI 上
          mysql/postgres 以 `;` 執行、mssql 需要獨立一行的 GO，差異無說明時首次使用者
          會把「打了分號沒反應」誤判為連線失敗。提示由前端呈現，**不寫入終端輸出流**
          （寫進去會混進 asciicast 錄影與會話輸出基準）。關閉後本次會話不再出現。 -->
@@ -163,7 +163,7 @@ const props = defineProps({
     type: [Number, String],
     required: true
   },
-  // 所選資產帳號（asset-multi-account D2）：由 Workspace 經帳號選擇器帶入，
+  // 所選資產帳號：由 Workspace 經帳號選擇器帶入，
   // 只進 connect-token 簽發 body，不進 WS query（帳號綁定已封在 token 內）
   accountId: { type: [Number, String], default: null },
   // K8s 連線時選 pod（k8s-exec）：由 Workspace 經選擇器帶入，附加到 WS URL query
@@ -182,7 +182,7 @@ const mountRef = ref(null)
 // waiting: 等待容器尺寸 | connecting | connected | closed | error
 const status = ref('waiting')
 const statusDetail = ref('')
-// 撥號失敗的機器可讀錯誤碼（ssh-connect-error-surfacing）：host key 變更時據此出引導
+// 撥號失敗的機器可讀錯誤碼：host key 變更時據此出引導
 const errorCode = ref('')
 const { isAdmin } = useRoles()
 const isHostKeyError = computed(() => errorCode.value === 'RULE_SSH_HOST_KEY_CHANGED')
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
 })
 
 function initTerminal() {
-  // K8s logs 模態為唯讀串流：停用輸入並隱藏游標，避免使用者以為可輸入（UI 對抗審查 R2）
+  // K8s logs 模態為唯讀串流：停用輸入並隱藏游標，避免使用者以為可輸入
   const readOnly = props.k8sMode === 'logs'
   terminal = new Terminal({
     cursorBlink: !readOnly,
@@ -318,7 +318,7 @@ async function pasteFromClipboard() {
 }
 
 // 等待容器首個非零尺寸才連線：杜絕 layout 未完成時測得 0 而退回
-// 寫死解析度的根因（design D5）
+// 寫死解析度的根因
 function waitForSizeAndConnect() {
   resizeObserver = new ResizeObserver(() => {
     const el = containerRef.value
@@ -398,7 +398,7 @@ async function connect() {
         } catch { /* 舊版後端空 payload，忽略 */ }
         startPing()
         terminal.focus()
-        // 防誤關（terminal-navigation D3）：連線中關閉分頁需確認
+        // 防誤關（terminal-navigation）：連線中關閉分頁需確認
         window.addEventListener('beforeunload', confirmUnload)
         break
       case 'pong':
@@ -408,7 +408,7 @@ async function connect() {
         }
         break
       case 'notice':
-        // 後端控制通知（backend-i18n-unification D7）：目前唯一用途是指令阻斷
+        // 後端控制通知：目前唯一用途是指令阻斷
         // 警告。會話未斷，故不動 status——僅在終端內以紅字留痕
         writeNotice(msg)
         break
@@ -448,7 +448,7 @@ async function connect() {
   }
 }
 
-// sanitizeForTerminal 注入 xterm 前的縱深防禦（design D7）：後端組幀時
+// sanitizeForTerminal 注入 xterm 前的縱深防禦：後端組幀時
 // params 值已過 sanitizeOpaque，前端再剝一次控制字元——譯文插值後才是真正
 // 寫進終端的字串，只在後端把關等於信任了一條跨行程的假設。
 // 剝除 C0（含 ESC 0x1b）、DEL 與 C1（0x80-0x9f，含 8-bit CSI 0x9b）
@@ -492,7 +492,7 @@ function sendMessage(type, data) {
   socket.send(JSON.stringify(data ? { type, data } : { type }))
 }
 
-// 行動快捷鍵（mobile-terminal-keys D2）：六鍵＝觸控鍵盤缺席的控制鍵最小集（ESC／Tab／Ctrl+B／Ctrl+C／上下方向）
+// 行動快捷鍵：六鍵＝觸控鍵盤缺席的控制鍵最小集（ESC／Tab／Ctrl+B／Ctrl+C／上下方向）
 const MOBILE_KEYS = [
   { label: 'ESC', seq: '\x1b' },
   { label: 'Tab', seq: '\x09' },
@@ -514,7 +514,7 @@ function sendKey(seq) {
   terminal?.focus()
 }
 
-// 片段注入（terminal-snippets D1）：寫入終端輸入不附換行，使用者確認後自行執行
+// 片段注入（terminal-snippets）：寫入終端輸入不附換行，使用者確認後自行執行
 function sendText(text) {
   if (!text) return
   sendMessage('data', text)

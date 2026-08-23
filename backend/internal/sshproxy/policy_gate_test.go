@@ -23,7 +23,7 @@ import (
 
 // setupPolicyGateTest 政策閘全鏈測試（真 SQLite）：閘的段位×身分矩陣與閘序
 // 必須經 HandleCreateConnectToken 實際執行驗證——閘位置（授權後、傳輸閘前）
-// 是 design D4 的核心語義，單測 service 驗不了順序
+// 是閘序的核心語義，單測 service 驗不了順序
 func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPolicyService) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -52,7 +52,7 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 
 	policies := policy.NewSecurityPolicyService(db)
 	h.AccessPolicy = policy.NewAccessPolicyService(db, policies, authzSvc)
-	// 錄影失效事件整合驗證用（recording-failure-handling）：各測試以自己的
+	// 錄影失效事件整合驗證用：各測試以自己的
 	// in-memory DB 重新註冊單例
 	audit.InitAuditFailure(db, policies)
 	return h, db, policies
@@ -62,7 +62,7 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 // asset 1 ∈ group 1（政策由各測試設定）。user 1 持 asset 1 常設 connect
 func seedGateFixture(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	// DB 現查角色事實源（connect-role-revocation-hardening）：簽發/兌換點 CurrentConnectRole
+	// DB 現查角色事實源：簽發/兌換點 CurrentConnectRole
 	// 折疊 DB roles 判定 admin 特權，不再靠 issueToken 的 mock role——user2 須有真實 admin
 	// role 關聯、user3 須有 auditor role，否則折疊為 user、admin 特權失效
 	roles := []model.Role{{Name: model.RoleUser}, {Name: model.RoleAdmin}, {Name: model.RoleAuditor}}
@@ -96,8 +96,8 @@ func seedGateFixture(t *testing.T, db *gorm.DB) {
 	}
 }
 
-// setGroupPolicy 對組內全部資產設定政策段位（asset-level-access-policy：
-// 政策掛資產；helper 名與呼叫點沿用，語義自「設組政策」改為「組內資產逐一設定」，
+// setGroupPolicy 對組內全部資產設定政策段位（政策掛資產；
+// helper 名與呼叫點沿用，語義自「設組政策」改為「組內資產逐一設定」，
 // 兩者對閘測試等價）
 func setGroupPolicy(t *testing.T, db *gorm.DB, _ uint, policy string) {
 	t.Helper()
@@ -143,7 +143,7 @@ func issueToken(h *Handler, userID uint, role string, assetID uint) (int, map[st
 	return w.Code, resp, keys
 }
 
-// TestPolicyGate_Matrix 三段位×身分矩陣（design D4／決議 2、3、B）
+// TestPolicyGate_Matrix 三段位×身分矩陣
 func TestPolicyGate_Matrix(t *testing.T) {
 	t.Run("open：user 常設放行（現狀不變）", func(t *testing.T) {
 		h, db, _ := setupPolicyGateTest(t)
@@ -222,7 +222,7 @@ func TestPolicyGate_Matrix(t *testing.T) {
 		}
 	})
 
-	t.Run("approval：auditor 在授權閘即被擋（CPG-002）", func(t *testing.T) {
+	t.Run("approval：auditor 在授權閘即被擋", func(t *testing.T) {
 		h, db, _ := setupPolicyGateTest(t)
 		seedGateFixture(t, db)
 		setGroupPolicy(t, db, 1, model.AccessPolicyApproval)

@@ -42,8 +42,8 @@ func setupAuthMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *gorm.DB) {
 }
 
 // expectFinishLoginUpdate mock finishLogin：先 SELECT locked_until 複查（LOCK-2），
-// 再計數歸零＋last_login_at 更新（auth-hardening：認證全過後的固定寫入），
-// 最後 buildLoginResponse 發放 refresh 憑證（輪2b D6）——本套 sqlmock 測試皆無
+// 再計數歸零＋last_login_at 更新（認證全過後的固定寫入），
+// 最後 buildLoginResponse 發放 refresh 憑證——本套 sqlmock 測試皆無
 // must_change 分支，finishLogin 一律走到發放
 func expectFinishLoginUpdate(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ LIMIT`).
@@ -350,7 +350,7 @@ func TestGetUserByID_Success(t *testing.T) {
 
 	userID := uint(123)
 
-	// Mock 查詢使用者（含 is_ldap：ux-consistency D5，前端據此隱藏自助改密）
+	// Mock 查詢使用者（含 is_ldap：前端據此隱藏自助改密）
 	userRows := sqlmock.NewRows([]string{"id", "username", "email", "full_name", "active", "is_ldap"}).
 		AddRow(userID, "john.doe", "john@example.com", "John Doe", true, true)
 	mock.ExpectQuery(`SELECT .+ FROM "users" WHERE .+ LIMIT`).

@@ -20,7 +20,7 @@ import (
 // errBoom 代表底層 ssh/sftp 庫的原文（不得外洩至回應）
 var errBoom = errors.New("boom: connection reset by peer")
 
-// TestRespondSFTPErrorCodes respondSFTPError 的分流（V2 對抗驗收 H3）。
+// TestRespondSFTPErrorCodes respondSFTPError 的分流。
 //
 // 修正前所有遠端失敗共用 INTERNAL_SFTP_OPERATION_FAILED「檔案操作失敗」：
 // 按下「下載」失敗只看得到「檔案操作失敗」，比遷移前的「下載失敗」還模糊，
@@ -80,7 +80,7 @@ func TestRespondSFTPErrorCodes(t *testing.T) {
 }
 
 // TestSFTPHandlersUseDistinctActionCodes 五個 handler 各自傳入不同的動作碼
-// （H3 的重點是「錯在哪個動作」可辨；複製貼上時漏改就會退回同一碼）。
+// （重點是「錯在哪個動作」可辨；複製貼上時漏改就會退回同一碼）。
 //
 // 以 AST 讀 sftp_handler.go：每個 respondSFTPError 呼叫點的第三引數必須是
 // apierror.Code* 選擇器，且五個呼叫點兩兩相異。

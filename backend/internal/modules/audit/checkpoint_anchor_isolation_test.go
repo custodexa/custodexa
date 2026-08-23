@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 故障注入 C：錨定失敗的隔離（audit-checkpoint-chain tasks 10.3）。
+// 故障注入 C：錨定失敗的隔離（audit-checkpoint-chain）。
 //
 // 與 5.4（`TestCheckpointAnchorFailureDoesNotBlockSealing`，只測「緩衝滿」）
 // 的差別有兩點：本組**逐種故障記錄注入器觸發次數**，並額外覆蓋「收集器

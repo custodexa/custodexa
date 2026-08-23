@@ -1,5 +1,5 @@
 /**
- * 後端 API 錯誤的共用解析（i18n-backend-error-codes）。
+ * 後端 API 錯誤的共用解析。
  * 攔截器與直讀 data.error 的呼叫端共用同一函式，三層降級：
  *   1. 合法 code 且 apiError.<code> 有當前語言譯文 → 顯示譯文（params 語義 ID 經 enum 查譯後插值）
  *   2. 否則後端 error 欄（僅接受非空字串，防非字串進 Element Plus）

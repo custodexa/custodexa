@@ -13,10 +13,10 @@ import (
 	"github.com/custodexa/backend/internal/modules/keyvault"
 )
 
-// asset-multi-account 階段 2 雙審（opus fresh-context ＋ codex 兩批）的 HIGH／MED
+// 資產多帳號階段 2 安全審查所列問題的
 // 回歸測試。每個測試對應一條 finding，且都是「舊行為會紅」的真偵測器。
 
-// HIGH-1 UpdatePassword 原子性：帳號在驗證後、寫入前被軟刪，必須回錯且不留成功審計。
+// UpdatePassword 原子性：帳號在驗證後、寫入前被軟刪，必須回錯且不留成功審計。
 // 舊寫法（交易外驗證＋不看 RowsAffected）會回 nil，runner 據此記 success——
 // 遠端密碼已改、庫內卻沒有新密＝該機器永久鎖死而審計說一切正常。
 func TestUpdatePasswordFailsWhenAccountRemovedMidFlight(t *testing.T) {
@@ -43,7 +43,7 @@ func TestUpdatePasswordFailsWhenAccountRemovedMidFlight(t *testing.T) {
 	assert.Zero(t, passwordAudits, "寫入零列時不得留下憑證更新審計")
 }
 
-// HIGH-1 延伸（codex MED）：只釘 AccountID 不夠——帳號在執行期間被改名時，
+// 上一項的延伸：只釘 AccountID 不夠——帳號在執行期間被改名時，
 // 該列已代表另一個系統身分，新密不得寫進去
 func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	db := setupAccountDB(t)
@@ -72,7 +72,7 @@ func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	assert.Equal(t, "old", plain, "改名的帳號憑證必須維持原值")
 }
 
-// HIGH-2 連線入口空憑證 fail-close（服務層側）：零帳號資產的 k8s 兩處、連測與
+// 連線入口空憑證 fail-close（服務層側）：零帳號資產的 k8s 兩處、連測與
 // SFTP 各自擋住。guacd／終端入口的對應守衛見 internal/proxy、internal/sshproxy。
 func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	_ = setupAccountDB(t)
@@ -98,13 +98,13 @@ func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	assert.False(t, res.Success, "零帳號資產撥測必須判失敗，不得用空密碼試出『成功』")
 	assert.Equal(t, "no_usable_account", res.ErrorCode)
 
-	// **W6 6.6 搬檔**：原本此處還有一格「SFTP connect 對零帳號資產回同一個哨兵」。
+	// **搬檔**：原本此處還有一格「SFTP connect 對零帳號資產回同一個哨兵」。
 	// SFTPService 屬 session 模組且該斷言要呼叫它的未匯出 connect，跨包取不到；
 	// 等值斷言已移到 session 側 `internal/modules/session/sftp_zero_account_test.go` 的
 	// `TestSFTPConnectRejectsZeroAccountAsset`，**未放寬**（同一哨兵、同一入口）。
 }
 
-// HIGH-3 併發不變式：set-default 與 delete 交錯，
+// 併發不變式：set-default 與 delete 交錯，
 // 「至多一 default」與「有帳號必有 default」都不得被破壞
 func TestConcurrentSetDefaultAndDeleteKeepsInvariants(t *testing.T) {
 	db := setupAccountDB(t)
@@ -142,7 +142,7 @@ func TestConcurrentSetDefaultAndDeleteKeepsInvariants(t *testing.T) {
 	}
 	assert.LessOrEqual(t, defaults, 1, "至多一個 default")
 	if len(live) > 0 {
-		assert.Equal(t, 1, defaults, "有帳號必有 default（D8）")
+		assert.Equal(t, 1, defaults, "有帳號必有 default")
 		// 連線解析不得落入「有帳號但無預設」的破損態
 		creds, err := assets.GetWithCredentialsDefault(asset.ID)
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestConcurrentSetDefaultAndDeleteKeepsInvariants(t *testing.T) {
 	}
 }
 
-// HIGH-3 併發建號：兩個 goroutine 同時對零帳號資產建首筆帳號，
+// 併發建號：兩個 goroutine 同時對零帳號資產建首筆帳號，
 // 不得出現「兩筆 default」或「唯一一筆非 default」
 func TestConcurrentCreateFirstAccountKeepsSingleDefault(t *testing.T) {
 	db := setupAccountDB(t)
@@ -185,7 +185,7 @@ func TestConcurrentCreateFirstAccountKeepsSingleDefault(t *testing.T) {
 	assert.Equal(t, 1, defaults, "首筆建號競態後必須恰有一個 default")
 }
 
-// HIGH-3 併發更新：改備註的提交不得把剛輪換的密文倒回舊值
+// 併發更新：改備註的提交不得把剛輪換的密文倒回舊值
 // （舊寫法在交易外讀快照、交易內全欄覆寫，後提交者必然倒灌）
 func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	db := setupAccountDB(t)
@@ -223,7 +223,7 @@ func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	assert.Equal(t, rotated, plain, "備註更新不得覆寫已輪換的憑證")
 }
 
-// 刪除唯一帳號時 assets.username 鏡射一併清空（opus LOW-4／codex MED）
+// 刪除唯一帳號時 assets.username 鏡射一併清空
 func TestDeleteLastAccountClearsAssetIdentityMirror(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -243,7 +243,7 @@ func TestDeleteLastAccountClearsAssetIdentityMirror(t *testing.T) {
 	assert.False(t, stored.HasPassword)
 }
 
-// 複製建號的來源出處入審計（opus MED-1）：憑證跨資產複製必須留軌跡
+// 複製建號的來源出處入審計：憑證跨資產複製必須留軌跡
 func TestCopyAccountAuditRecordsSource(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -274,7 +274,7 @@ func TestCopyAccountAuditRecordsSource(t *testing.T) {
 	assert.Contains(t, logs[0].Details, "\"account_id\":"+strconv.Itoa(int(copied.ID)))
 }
 
-// 帳號名稱拒全部 C0/C1 控制字元與 DEL（codex LOW）：
+// 帳號名稱拒全部 C0/C1 控制字元與 DEL：
 // tab／ESC 一樣會進 SSH 認證、UI 與審計快照，ESC 還能操縱讀 log 的終端
 func TestAccountUsernameRejectsAllControlChars(t *testing.T) {
 	_ = setupAccountDB(t)

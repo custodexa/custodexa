@@ -22,7 +22,7 @@ type SnippetRequest struct {
 	Content string `json:"content" binding:"required"`
 }
 
-// SnippetService 使用者命令片段 CRUD（terminal-snippets D3）：
+// SnippetService 使用者命令片段 CRUD：
 // 全部查詢帶 user_id 條件，他人資源一律視為不存在（404）
 type SnippetService struct {
 	db *gorm.DB

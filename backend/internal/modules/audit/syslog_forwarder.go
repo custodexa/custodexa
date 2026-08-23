@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// syslog forwarder 參數（audit-log-compliance，PCI 10.3.3）
+// syslog forwarder 參數（PCI 10.3.3）
 const (
 	// syslogFacility RFC5424 facility 13 = log audit
 	syslogFacility = 13
@@ -48,12 +48,12 @@ type syslogEvent struct {
 
 // failureReporter 失效上報 hook（audit-failure-alerting 於任務 6 接上；nil 安全）。
 // mechanism 見 model.MechanismSyslogForward；causeCode 見 model.Cause*
-// （backend-i18n-unification D8：cause 走機器碼，散文與 err 原文放
+// （cause 走機器碼，散文與 err 原文放
 // params[model.CauseParamDetail]）；recovered=true 表示機制恢復（碼與參數為空）
 type failureReporter func(mechanism, causeCode string, params map[string]string, recovered bool)
 
 // SyslogForwarder RFC5424 syslog 離機轉發器。
-// 設計要點（design D4）：DB 寫入成功後 tee 入有界 channel，斷線指數退避重連、
+// 設計要點：DB 寫入成功後 tee 入有界 channel，斷線指數退避重連、
 // 緩衝滿丟棄並誠實計數——任何轉發故障都不得阻塞審計主鏈
 type SyslogForwarder struct {
 	db *gorm.DB
@@ -197,7 +197,7 @@ func (f *SyslogForwarder) EnqueueAlert(a *model.CommandAlert) {
 		"id": a.ID, "triggered_at": a.TriggeredAt.Format(time.RFC3339),
 		"user_id": a.UserID, "session_id": a.SessionID, "asset_id": a.AssetID,
 		"rule_name": a.RuleName, "severity": a.Severity, "command": a.Command,
-		// kind／reason_code（command-audit-altscreen-bypass §6.3）：離機收集端
+		// kind／reason_code：離機收集端
 		// 只讀 rule_name 會把降級類的機器碼當成規則名。這兩欄是穩定的機器鍵，
 		// 比翻譯過的散文更適合 SIEM 側的規則撰寫
 		"kind": a.Kind, "reason_code": a.ReasonCode,
@@ -208,7 +208,7 @@ func (f *SyslogForwarder) EnqueueAlert(a *model.CommandAlert) {
 	f.enqueue(syslogEvent{severity: syslogSeverityWarning, msgID: "alert", payload: payload})
 }
 
-// EnqueueCheckpoint 檢查點錨定事件（audit-checkpoint-chain D7）：封章成功並落庫後送出。
+// EnqueueCheckpoint 檢查點錨定事件：封章成功並落庫後送出。
 //
 // 與前兩個 Enqueue 的兩點差異（刻意）：
 //   - **回傳是否入列成功**：檢查點需把結果落回 `anchor_status`，
@@ -235,7 +235,7 @@ func (f *SyslogForwarder) EnqueueCheckpoint(cp *model.AuditCheckpoint) bool {
 
 // enqueue 入緩衝；滿即丟並計數（不阻塞呼叫端＝審計主鏈）。回傳是否入列成功。
 // 失效上報移至 run loop 的計數差偵測——producer 側上報會與 run loop 的
-// 恢復上報跨 goroutine 交錯（對抗驗證發現），且 producer 路徑必須零阻塞
+// 恢復上報跨 goroutine 交錯，且 producer 路徑必須零阻塞
 func (f *SyslogForwarder) enqueue(e syslogEvent) bool {
 	select {
 	case f.ch <- e:
@@ -250,7 +250,7 @@ func (f *SyslogForwarder) enqueue(e syslogEvent) bool {
 // 再失敗即丟棄計數，不無限重試單筆）。
 // 失效/恢復上報集中於此單一 goroutine：溢出經 dropped 計數差偵測；
 // 恢復以「寫出成功且計數穩定」為準——原寫法恢復掛在重撥成功，
-// 緩衝溢出（連線健在、永不重撥）的失效事件永無人回填（對抗驗證發現）
+// 緩衝溢出（連線健在、永不重撥）的失效事件永無人回填
 func (f *SyslogForwarder) run() {
 	defer close(f.doneCh)
 	var conn net.Conn
@@ -373,7 +373,7 @@ func (f *SyslogForwarder) format(e syslogEvent, ts time.Time) string {
 
 // SendTest 同步發送一筆測試訊息（設定 UI 測試按鈕；不經緩衝，直連直寫，
 // 回傳具體失敗原因）。傳入待測設定而非讀 DB——測試未儲存的表單值。
-// 不觸碰共享 setting（對抗驗證修正：原暫換寫法使測試期間真轉發被靜默
+// 不觸碰共享 setting（原暫換寫法使測試期間真轉發被靜默
 // 暫停且丟棄不計數）
 func (f *SyslogForwarder) SendTest(s model.SyslogSetting) error {
 	if s.Host == "" {
@@ -384,7 +384,7 @@ func (f *SyslogForwarder) SendTest(s model.SyslogSetting) error {
 		return fmt.Errorf("連線失敗: %w", err)
 	}
 	defer conn.Close()
-	// message 為機器識別字（design D9）：收端是機器（syslog server），非使用者
+	// message 為機器識別字：收端是機器（syslog server），非使用者
 	// 可見文案，英文常數即可，不需 i18n 碼化
 	payload, _ := json.Marshal(map[string]any{
 		"message": branding.Slug + " syslog test", "sent_at": time.Now().Format(time.RFC3339),

@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 檢查點驗證的兩層實作（audit-checkpoint-chain D10／tasks 8.1-8.3）。
+// 檢查點驗證的兩層實作。
 //
 // **結構層與內容層的成本差三個數量級**，故切開：
 //   - 結構層只讀 audit_checkpoints（萬級列），預設涵蓋全鏈、常開。
@@ -95,7 +95,7 @@ type ChainReport struct {
 	SealRowThreshold    int64 `json:"seal_row_threshold"`
 	// TrimmedThroughSeq 鏈頭曾被修剪至此 seq（含）；nil＝未修剪過
 	TrimmedThroughSeq *uint `json:"trimmed_through_seq,omitempty"`
-	// AutoVerify 兩層自動驗證的營運狀態（audit-chain-scheduled-verification D8）。
+	// AutoVerify 兩層自動驗證的營運狀態。
 	//
 	// **掛在本報告上而非另開端點**：狀態的讀者與結構層報告完全相同（驗證頁），
 	// 且新增路由要動兩份機器產物（端點索引與路由 golden）。nil＝本次未附帶
@@ -353,7 +353,7 @@ func (v *CheckpointVerifier) intervalDeps() IntervalVerifyDeps {
 	}
 }
 
-// SeqRangeByTime 日期區間 → seq 區間的近似映射（D1：時間映射為近似，
+// SeqRangeByTime 日期區間 → seq 區間的近似映射（時間映射為近似，
 // 精確定位以 id 為準）。
 //
 // 選取規則＝spec 明文：`sealed_at` 或 `[min_created_at, max_created_at]`

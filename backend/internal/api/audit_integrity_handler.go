@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// AuditIntegrityHandler audit_logs 完整性驗證 API（audit-log-compliance 10.3.4；
-// audit-checkpoint-chain D-3 起 admin 與 auditor 皆可讀）
+// AuditIntegrityHandler audit_logs 完整性驗證 API
+//（admin 與 auditor 皆可讀）
 type AuditIntegrityHandler struct {
 	db        *gorm.DB
 	integrity *audit.AuditIntegrityService
@@ -61,7 +61,7 @@ func (h *AuditIntegrityHandler) Verify(c *gin.Context) {
 
 // RegisterRoutes 註冊完整性驗證路由（admin 或 auditor）。
 //
-// **自 audit-checkpoint-chain D-3 起開放 auditor**：原本 admin 限定，使得
+// **自 audit-checkpoint-chain 起開放 auditor**：原本 admin 限定，使得
 // auditor 只能證「序列少沒少」（檢查點），內容真偽仍須請 admin 代驗——
 // 「被監督者代為出具監督證明」的角色錯配只解一半。本端點唯讀且不含設定面，
 // 開放不擴大寫入權

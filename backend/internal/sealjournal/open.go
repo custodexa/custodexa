@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultFileName 為 journal 的固定檔名。
-// 落點沿用既有 AUDIT_LOG_PATH 所在目錄，不新增任何 env 鍵（D6.5／tasks 2.3a）。
+// 落點沿用既有 AUDIT_LOG_PATH 所在目錄，不新增任何 env 鍵。
 const DefaultFileName = "seal_journal.bin"
 
 // 預設參數。

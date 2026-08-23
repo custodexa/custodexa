@@ -1,6 +1,6 @@
 package asset
 
-// 撥測分派的守衛測試（db-protocol-connection-test 5.1／5.2）。
+// 撥測分派的守衛測試。
 //
 // 這裡的雙向完備性守衛是**唯一能阻止同型缺陷復發的機制**：
 // e09658d（2026-06-12）以「白名單 SSH ＋ else 送 guacd」修過一次撥測盲區，
@@ -182,7 +182,7 @@ func TestConnectionDispatchUnsupportedProtocolNeverReachesGuacd(t *testing.T) {
 		"未登記協議不得建立任何往 guacd 的連線")
 }
 
-// TestClampTestTimeout 逾時夾制（D5）：呼叫端可傳任意值，服務層只接受 1..30 秒。
+// TestClampTestTimeout 逾時夾制：呼叫端可傳任意值，服務層只接受 1..30 秒。
 func TestClampTestTimeout(t *testing.T) {
 	cases := []struct {
 		in, want int

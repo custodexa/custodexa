@@ -1,7 +1,6 @@
-// 本檔刻意是**外部測試套件**（`package policy_test`）而非包內測試
-// （modular-architecture W3 3.7）。
+// 本檔刻意是**外部測試套件**（`package policy_test`）而非包內測試。
 //
-// 理由：清冊的 notify 通道走 `ChannelInventoryProvider`（W1 1.12 拆 4.11 環時
+// 理由：清冊的 notify 通道走 `ChannelInventoryProvider`（拆 4.11 環時
 // 宣告的窄介面），其唯一生產實作是 audit 的 `NotificationChannelService`。包內
 // 測試（`package policy`）SHALL NOT import `internal/service`——後者 import 本包，
 // 會構成「import cycle not allowed in test」。改用外部測試套件即可 import 兩者，
@@ -126,7 +125,7 @@ func TestInventoryAggregatesAssets(t *testing.T) {
 	}
 
 	ldap := channelOf(t, inv, policy.TransportChannelLDAP)
-	// Deployment 自 ldap-settings-migration 起為 false（設定改由身分管理 UI 維護，
+	// Deployment 自設定遷入 DB 後為 false（改由身分管理 UI 維護，
 	// 「部署方管理」徽章僅剩 nginx）；風險判定本身未變
 	if ldap.Deployment || ldap.AtRiskCount != 1 || len(ldap.Risks) != 1 {
 		t.Errorf("ldap = %+v, want 非部署層＋明文風險", ldap)
@@ -182,7 +181,7 @@ func TestInventorySyslogAndNotifyStates(t *testing.T) {
 	}
 }
 
-// TestInventoryDisplayCodes 驗證 i18n 顯示碼與 count 來源（i18n-backend-labels rr-I3/I4/I2）：
+// TestInventoryDisplayCodes 驗證 i18n 顯示碼與 count 來源：
 // note_code/preflight_code 正確、preflight count 逐碼來源（RDP/DB=AtRiskCount、VNC=total）、
 // detail_codes 用機器鍵 unset（非中文）、syslog channel 帶 display_params.protocol。
 func TestInventoryDisplayCodes(t *testing.T) {
@@ -217,7 +216,7 @@ func TestInventoryDisplayCodes(t *testing.T) {
 		}
 		n, ok := v.(int64)
 		if !ok {
-			t.Fatalf("%s preflight_params[%q] 型別 %T 非 int64（rr-I3 count 須整數）", ch.Channel, key, v)
+			t.Fatalf("%s preflight_params[%q] 型別 %T 非 int64（count 須整數）", ch.Channel, key, v)
 		}
 		return n
 	}
@@ -255,7 +254,7 @@ func TestInventoryDisplayCodes(t *testing.T) {
 		t.Errorf("db legacy detail 應保留中文 (未設定): %v", dbCh.Detail)
 	}
 
-	// syslog channel 帶 display_params.protocol（供清冊 risk label 查譯——rr-I2）
+	// syslog channel 帶 display_params.protocol（供清冊 risk label 查譯）
 	syslog := channelOf(t, inv, policy.TransportChannelSyslog)
 	if syslog.NoteCode != "syslog_protocol" {
 		t.Errorf("syslog note_code = %q, want syslog_protocol", syslog.NoteCode)
@@ -284,8 +283,7 @@ func TestInventoryReflectsPolicyLevels(t *testing.T) {
 	}
 }
 
-// TestInventoryLDAPResolveStates 清冊 LDAP 列的三態呈現（ldap-settings-migration
-// 2.10／D2 N3）。
+// TestInventoryLDAPResolveStates 清冊 LDAP 列的三態呈現。
 //
 // **故障必須有專屬狀態**：DEK 事故下若清冊顯示「未啟用」而設定頁顯示「已啟用」，
 // 兩個管理面互相打臉，管理員會去找「誰把 LDAP 關掉了」而真因在金鑰。
@@ -326,8 +324,8 @@ func TestInventoryLDAPResolveStates(t *testing.T) {
 	}
 }
 
-// TestInventoryDeploymentBadgeOnlyNginx 「部署方管理」徽章的唯一持有者是 nginx
-// （ldap-settings-migration D6）：LDAP 退出後若日後有人再把某通道標成部署層，
+// TestInventoryDeploymentBadgeOnlyNginx 「部署方管理」徽章的唯一持有者是 nginx：
+// LDAP 退出後若日後有人再把某通道標成部署層，
 // 本格會要求他顯式改這裡
 func TestInventoryDeploymentBadgeOnlyNginx(t *testing.T) {
 	svc, _, _ := setupInventorySvc(t, ldapRiskProvider(policy.LDAPRiskView{Enabled: true, URL: "ldap://dir:389"}))

@@ -14,8 +14,8 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 )
 
-// TransmissionInventoryHandler 通道加密清冊 API（transmission-security-policy 4.1/4.2，
-// admin 限定；清冊揭露全通道安全態勢屬敏感資源，讀取與匯出均入審計）
+// TransmissionInventoryHandler 通道加密清冊 API（admin 限定；清冊揭露全通道
+// 安全態勢屬敏感資源，讀取與匯出均入審計）
 type TransmissionInventoryHandler struct {
 	inventory    *policy.TransmissionInventoryService
 	auditService *audit.AuditLogService

@@ -1,4 +1,4 @@
-// SFTP 沿用會話帳號（asset-multi-account D9）：自會話分頁進入檔案管理時，
+// SFTP 沿用會話帳號：自會話分頁進入檔案管理時，
 // 五個檔案端點都必須帶 session_id——後端 `sftp_handler.go` 的帳號解析分支
 // 只認 query 的 session_id，漏帶＝終端用 app、檔案面靜默用 root（審計語義斷裂）。
 // 獨立入口（無 session）維持不帶＝走預設帳號。
@@ -108,7 +108,7 @@ describe('FileManager 會話帳號沿用', () => {
   })
 })
 
-// 對抗審查 HIGH-1：連線建立中即可開檔案管理，先以預設帳號載入目錄；
+// 連線建立中即可開檔案管理，先以預設帳號載入目錄；
 // sessionId 之後才到。若不重載，畫面是帳號 A 的清單、刪除卻打帳號 B 的同路徑
 describe('FileManager 清單與操作的身分一致性', () => {
   beforeEach(() => {

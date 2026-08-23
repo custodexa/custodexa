@@ -2,16 +2,16 @@ package apierror
 
 import "fmt"
 
-// 串流／連線閘出口碼（backend-i18n-unification M6 + M8）。
+// 串流／連線閘出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔僅為並行開發隔離：codes.go 是 HTTP handler
 // 大掃除（A 段）的地盤，本檔專收兩類出口——
 //
-//  1. M6：WebSocket 幀（MsgError／MsgNotice）與 guacd error instruction 的碼。
+//  1. WebSocket 幀（MsgError／MsgNotice）與 guacd error instruction 的碼。
 //     這些出口不是 HTTP JSON，走 sshproxy.EncodeErrorMessage /
 //     EncodeNoticeMessage / proxy 的 guac instruction，Data 欄一律取本檔的
 //     ZhFallback 當 fallback（前端查譯優先，譯文缺鍵時退回 Data）。
-//  2. M8：連線決策閘（asset/recording/session/access policy）的 HTTP 出口。
+//  2. 連線決策閘（asset/recording/session/access policy）的 HTTP 出口。
 //     這些回應除 error/code 外還帶 reason/policy 等**機器欄**，經
 //     ErrorResponse.Meta 平鋪到封套 top-level——前端 connect.js 依
 //     `resp.data.reason` 做控制流分支，欄位名與值一字不可改。
@@ -19,7 +19,7 @@ import "fmt"
 // 命名沿用 codes.go 的 RULE_<DOMAIN>_* 慣例（可預期的業務／連線規則攔截，
 // 非 5xx 內部故障）。
 var (
-	// --- M6: K8s / DB 撥號失敗（升級後以 MsgError 幀送出）---
+	// --- K8s / DB 撥號失敗（升級後以 MsgError 幀送出）---
 
 	// CodeK8sPodUnavailable 取 pod 快照失敗。k8sproxy 內部已把 client-go 錯誤分成
 	// 五類人話（unauthorized/forbidden/notfound/tls/unreachable），該分類目前仍走
@@ -31,7 +31,7 @@ var (
 	CodeDBClientStartFailed = register("RULE_DB_CLIENT_START_FAILED", Descriptor{
 		ZhFallback: "資料庫客戶端啟動失敗"})
 
-	// --- M6: 會話狀態注入（bridge / monitor / share）---
+	// --- 會話狀態注入（bridge / monitor / share）---
 
 	// CodeSessionEnded 監看／分享房間已關閉（會話剛結束的競態）。
 	CodeSessionEnded = register("RULE_SESSION_ENDED", Descriptor{
@@ -49,7 +49,7 @@ var (
 	CodeAccountDisabled = register("RULE_ACCOUNT_DISABLED", Descriptor{
 		ZhFallback: "帳號已停用或鎖定"})
 
-	// --- M6: 指令阻斷警告（MsgNotice 幀，非錯誤）---
+	// --- 指令阻斷警告（MsgNotice 幀，非錯誤）---
 
 	// CodeCommandBlocked 指令命中阻斷規則。規則名稱不進 ZhFallback：它是
 	// opaque 自由字串（AlertRule.Name 僅驗 required），以 Message.Params["rule"]
@@ -57,14 +57,14 @@ var (
 	CodeCommandBlocked = register("RULE_COMMAND_BLOCKED", Descriptor{
 		ZhFallback: "指令命中阻斷規則，已阻止送往目標主機"})
 
-	// CodeCommandBlockClearFailed 阻斷後送 Ctrl+C 清遠端行緩衝失敗（A1 fail-close）。
+	// CodeCommandBlockClearFailed 阻斷後送 Ctrl+C 清遠端行緩衝失敗（fail-close）。
 	// 清行失敗代表遠端行緩衝可能殘留被阻斷指令的前綴，使用者下次按 Enter 即送出
 	// 殘句——阻斷等於沒發生。故清行失敗一律終止會話（end_reason=block_clear_failed），
 	// 本碼即該終止的對使用者說明。
 	CodeCommandBlockClearFailed = register("RULE_COMMAND_BLOCK_CLEAR_FAILED", Descriptor{
 		ZhFallback: "阻斷後無法清除遠端輸入，連線已中止"})
 
-	// --- M8: 連線決策閘（HTTP，reason/policy 走 Meta）---
+	// --- 連線決策閘（HTTP，reason/policy 走 Meta）---
 
 	CodeAssetDisabled = register("RULE_ASSET_DISABLED", Descriptor{
 		ZhFallback: "資產已停用，無法連線"})
@@ -79,7 +79,7 @@ var (
 )
 
 // CommandBlockedAuditMarker 產生指令阻斷的**審計標準格式**標記文字
-// （backend-i18n-unification A5，2026-08-01 使用者核可的審計語義變更）。
+// （2026-08-01 使用者核可的審計語義變更）。
 //
 // 這不是「使用者所見文案的伺服端副本」——使用者端看到的是 MsgNotice 幀由前端依
 // 自身語系渲染的結果。本函式產出的是**伺服端固定 zh 格式＋機器碼前綴**，寫入

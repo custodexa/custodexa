@@ -46,7 +46,7 @@ func truncateAuditName(name string) string {
 // 原地無限等待（data-transfer-control 5.3）。前端據此狀態碼查譯三語訊息。
 const guacAckClientForbidden = "771"
 
-// TransferDecider 傳輸能力的逐次判定（data-transfer-control D4／5.6）。
+// TransferDecider 傳輸能力的逐次判定（data-transfer-control）。
 //
 // **每次呼叫都必須是當下值**，不得是連線建立時的一次性快照：政策改動經既有 30 秒
 // 政策快取窗口後即應對進行中連線生效（SFTP 與 file_tap 屬即時層）。
@@ -73,10 +73,10 @@ var fileTapForward = FileTapVerdict{Forward: true}
 // 掛在 client→guacd 方向（上傳 put，以及客戶端主動觸發的下載 get）。
 //
 // **這是 guac 通道的主強制點**，guacd 的 disable-upload／sftp-disable-* 參數是縱深
-// （D3 註 3）：guacd 版本一換，只靠參數的控制就消失了。
+// 防線：guacd 版本一換，只靠參數的控制就消失了。
 type FileTap struct {
 	db *gorm.DB
-	// auditSink 檔案傳輸審計的投遞面（W4 4.6，AP-28）。**刻意是 DirectSink 而非
+	// auditSink 檔案傳輸審計的投遞面（AP-28）。**刻意是 DirectSink 而非
 	// AuditLogService**：本點現況走 db.Create 直寫，從不看 AuditLogEnabled——
 	// 接到受開關管制的 sink 上會在開關關閉時新增「留痕消失」行為（見
 	// internal/modules/audit/async_sink.go 的 DirectSink 註解）
@@ -228,7 +228,7 @@ func (t *FileTap) Observe(inst *guacamole.Instruction) FileTapVerdict {
 	return fileTapForward
 }
 
-// recordDenied 寫入被拒留痕（data-transfer-control D6）。
+// recordDenied 寫入被拒留痕（data-transfer-control）。
 //
 // **「被拒不留痕」是本題最容易犯的錯**：拒絕分支常直接 return，審計只寫在成功路徑。
 // 沒有這一筆，「有沒有人試著把資料帶出去」這個稽核問題就無法回答。
@@ -262,19 +262,19 @@ func (t *FileTap) submit(action model.AuditAction, status model.AuditStatus, nam
 		}
 		details := fmt.Sprintf(`{"session_id":%d,"size":%d,"via":%q}`, sessionID, size, via)
 		if status == model.StatusDenied {
-			// 拒絕來源（D6）：期 1 只有全域政策層可能拒絕；期 2 會多出
+			// 拒絕來源：期 1 只有全域政策層可能拒絕；期 2 會多出
 			// 「無匹配放寬」一種來源，屆時由解析端回傳並填入此欄
 			details = fmt.Sprintf(`{"session_id":%d,"size":%d,"via":%q,"reason":"global_policy"}`,
 				sessionID, size, via)
 		}
-		// W4 4.6 收口（AP-28）：改經 AsyncSink，繞過 AuditLogEnabled 分支。
+		// 收口後（AP-28）：改經 AsyncSink，繞過 AuditLogEnabled 分支。
 		// 失敗處置維持現況——只記 log、不回壓會話（fail-open，刻意不改）
 		if err := sink.Submit(context.Background(), gatewayapi.AuditEvent{
 			Action:     string(action),
 			Resource:   string(model.ResourceFile),
 			ResourceID: assetID,
 			// ResourceID 維持既有語義（resource=file 的既有查詢靠它），主體鍵另記：
-			// 工作台的檔案傳輸類只讀 asset_id（auditor-workbench D4）
+			// 工作台的檔案傳輸類只讀 asset_id（auditor-workbench）
 			AssetID: assetID,
 			Status:  string(status),
 			Actor:   gatewayapi.Actor{UserID: userID, Username: username},

@@ -1,10 +1,10 @@
 package apierror
 
-// 資產／資產節點樹／標籤治理的出口碼（backend-i18n-unification A2）。
+// 資產／資產節點樹／標籤治理的出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔僅為並行開發隔離：收 internal/api 的
 // asset_handler.go、asset_group_handler.go 兩檔，以及 asset.ConnectionTestResult
-// 的碼化（D9）——後者不是 HTTP 錯誤封套，而是 200 回應內的結果欄，
+// 的碼化——後者不是 HTTP 錯誤封套，而是 200 回應內的結果欄，
 // `code` 供前端查譯、`message` 暫留同一 ZhFallback 當過渡 fallback。
 //
 // 命名沿用既有慣例：VALIDATION_*（請求欄位／參數）、AUTH_*（角色閘）、
@@ -32,11 +32,11 @@ var (
 	CodeInvalidDBTLSMode    = register("VALIDATION_ASSET_DB_TLS_MODE", Descriptor{ZhFallback: "db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full"})
 	CodeInvalidAccessPolicy = register("VALIDATION_ASSET_ACCESS_POLICY", Descriptor{ZhFallback: "access_policy 僅允許空值（跟隨全域預設）、open、reason 或 approval"})
 
-	// MSSQL 資產主機欄（mssql-web-cli D8）：sqlcmd 的 -S host,port 以逗號分隔埠，
+	// MSSQL 資產主機欄：sqlcmd 的 -S host,port 以逗號分隔埠，
 	// host 內含逗號會被解讀成埠。只擋 mssql，不動 SafeArg 的通用語義
 	CodeMSSQLHostComma = register("VALIDATION_ASSET_MSSQL_HOST_COMMA", Descriptor{ZhFallback: "mssql 主機不得含逗號（與連線字串的埠分隔語義衝突）"})
 
-	// 帳號認證類型（mssql-web-cli D3）。兩碼分開：值域錯是打錯字，
+	// 帳號認證類型。兩碼分開：值域錯是打錯字，
 	// 而 domain 是「值合法但本版做不到」——後者靜默降級會讓管理員誤以為域認證已生效
 	CodeAccountAuthMethod            = register("VALIDATION_ACCOUNT_AUTH_METHOD", Descriptor{ZhFallback: "auth_method 僅允許 sql 或 domain"})
 	CodeAccountAuthMethodUnsupported = register("VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED", Descriptor{ZhFallback: "本版尚未支援網域認證（Windows／Kerberos），請改用 SQL 認證"})
@@ -73,14 +73,14 @@ var (
 	CodeNodeNotEmpty      = register("RULE_NODE_NOT_EMPTY", Descriptor{ZhFallback: "僅可刪除無子節點且無直掛資產的空節點"})
 )
 
-// --- RULE_ASSET_TEST_*（D9：ConnectionTestResult.Message 碼化）---
+// --- RULE_ASSET_TEST_*（ConnectionTestResult.Message 碼化）---
 //
 // 撥測結果不是 HTTP 錯誤（端點回 200），但 message 同屬使用者可見文字，故一併
 // 進 registry：service 只設 Code，message 取同一支碼的 ZhFallback。
 // host key 變更與 SSH 認證失敗直接复用 RULE_SSH_*（codes.go）——同一事實、同一文案。
 var (
 	CodeAssetTestHostKeyUnavailable = register("RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE", Descriptor{ZhFallback: "host key 驗證未配置"})
-	// 協議中性（db-protocol-connection-test D6）：本碼自 DB／k8s 撥測上線後跨協議共用，
+	// 協議中性：本碼自 DB／k8s 撥測上線後跨協議共用，
 	// 原文案「SSH 連線失敗」會對 postgres／k8s 資產指錯協議。
 	CodeAssetTestConnectionFailed  = register("RULE_ASSET_TEST_CONNECTION_FAILED", Descriptor{ZhFallback: "連線失敗，請確認目標主機與網路可達性"})
 	CodeAssetTestConnectionRefused = register("RULE_ASSET_TEST_CONNECTION_REFUSED", Descriptor{ZhFallback: "連線被拒絕，請確認目標主機與連接埠"})
@@ -90,7 +90,7 @@ var (
 	// 未分類失敗：guacd 原始訊息只落伺服端日誌，不外洩（可含目標主機細節）。
 	CodeAssetTestUnknownError = register("RULE_ASSET_TEST_UNKNOWN_ERROR", Descriptor{ZhFallback: "連線測試失敗，請確認目標主機與服務狀態"})
 
-	// db-protocol-connection-test 新增：撥測對照表 default 分支與 k8s 五類錯誤分類
+	// 撥測對照表 default 分支與 k8s 五類錯誤分類
 	CodeAssetTestProtocolUnsupported = register("RULE_ASSET_TEST_PROTOCOL_UNSUPPORTED", Descriptor{ZhFallback: "此協議尚未支援連線測試"})
 	CodeAssetTestExecForbidden       = register("RULE_ASSET_TEST_EXEC_FORBIDDEN", Descriptor{ZhFallback: "憑證無此 namespace 的 pods/exec 權限"})
 	CodeAssetTestNamespaceNotFound   = register("RULE_ASSET_TEST_NAMESPACE_NOT_FOUND", Descriptor{ZhFallback: "目標 namespace 不存在"})

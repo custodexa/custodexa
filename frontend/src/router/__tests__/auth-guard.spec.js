@@ -58,7 +58,7 @@ describe('auth guard', () => {
   })
 
   it('redirects to /login when token exists but user data is absent (fail-closed)', () => {
-    // codex 審查修復：原實作在 roles 路由上 token 在、user 缺時跳過角色檢查放行
+    // 原實作在 roles 路由上 token 在、user 缺時跳過角色檢查放行，此處釘死 fail-closed
     localStorage.setItem('token', 'abc')
     guard(
       route('/access-control', { requiresAuth: true, roles: ['admin'] }),
@@ -79,7 +79,7 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('allows group-only approver on approver routes via is_approver (D-7, codex P1)', () => {
+  it('allows group-only approver on approver routes via is_approver', () => {
     // 群組審核方：roles 不含 approver，但後端 is_approver 為真
     localStorage.setItem('token', 'abc')
     localStorage.setItem('user', JSON.stringify({ username: 'g', roles: ['user'], is_approver: true }))
@@ -102,10 +102,10 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  // W7b 對抗輪（High）：D-12 後 admin 對審核端點一律 403，前端資格閘卻仍留著
+  // admin 對審核端點一律 403，前端資格閘卻仍留著
   // admin 述詞——admin 進得了審核中心，四個頁籤全部 403，頁面卻渲染成「目前沒有
   // 等候審核的申請」。有待審單時他會誤判佇列已清空。以下釘住實際註冊的路由 meta
-  it('僅具 admin 者不得進入審核中心（D-12 收斂，registered route meta）', () => {
+  it('僅具 admin 者不得進入審核中心（registered route meta）', () => {
     const approvalsRoute = router.getRoutes().find((r) => r.name === 'Approvals')
     expect(approvalsRoute, '審核中心路由必須存在').toBeTruthy()
     expect(approvalsRoute.meta.roles).not.toContain('admin')
@@ -142,7 +142,7 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
-  // kek-provider-modularization D6.6：封印期只有 /health、/seal/status、/seal/unseal
+  // 封印期只有 /health、/seal/status、/seal/unseal
   // 可達，登入端點本身回 503。解封頁若要求登入，管理員會被導去一個打不通的頁面
   it('解封路由不要求登入，未登入亦放行', () => {
     const unsealRoute = router.getRoutes().find((r) => r.name === 'Unseal')

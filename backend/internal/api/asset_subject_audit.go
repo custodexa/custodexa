@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 資產主體鍵的 handler 覆寫入口（auditor-workbench D4）。
+// 資產主體鍵的 handler 覆寫入口（auditor-workbench）。
 //
 // # 為何需要 handler 顯式指定，而不是全交給中介層推導
 //

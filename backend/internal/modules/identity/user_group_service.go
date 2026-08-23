@@ -22,14 +22,14 @@ var (
 	ErrUserGroupMemberNotFound = errors.New("成員名單含不存在的使用者")
 )
 
-// UserGroupService 使用者群組服務（user-group-authorization）：
+// UserGroupService 使用者群組服務：
 // 授權主體的分組維度，與 RBAC Role 正交
 type UserGroupService struct {
 	db *gorm.DB
-	// auditTx 交易內審計落地面（W4 4.4）：刪群組的留痕與級聯撤銷同交易，
+	// auditTx 交易內審計落地面：刪群組的留痕與級聯撤銷同交易，
 	// 留痕失敗即回滾（授權變更不可無痕）。未注入時寫入回 error
 	auditTx port.TxSink
-	// authzRevoker 刪群組時的 authz 級聯撤銷（F8／D-10 tx-taking 窄 port）
+	// authzRevoker 刪群組時的 authz 級聯撤銷（tx-taking 窄 port）
 	authzRevoker authorizationCascadeRevoker
 }
 
@@ -109,7 +109,7 @@ func (s *UserGroupService) Delete(id uint, actorID uint, actorName, clientIP str
 			return err
 		}
 
-		// 連動軟刪授權與審核範圍（F8／D-10）：兩張表皆屬 authz，
+		// 連動軟刪授權與審核範圍：兩張表皆屬 authz，
 		// 故經 tx-taking 窄 port 交由擁有者寫入。未注入即 fail-close——
 		// 靜默略過會留下惰性授權與可回復審核資格的幽靈範圍
 		if s.authzRevoker == nil {
@@ -131,7 +131,7 @@ func (s *UserGroupService) Delete(id uint, actorID uint, actorName, clientIP str
 		}
 
 		// 審計留痕與刪除同交易：留痕失敗即回滾（授權變更不可無痕）。
-		// W4 4.4 收口（AP-60）：改經 audit 模組的 TxSink，錯誤包裝詞與回滾語義不變
+		// 審計收口（AP-60）：改經 audit 模組的 TxSink，錯誤包裝詞與回滾語義不變
 		groupID := id
 		if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{
 			Action:     string(model.ActionDelete),

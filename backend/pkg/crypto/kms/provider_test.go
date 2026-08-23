@@ -29,7 +29,7 @@ const (
 
 // newTestProvider 建構 provider 並**清空建構期 canary 留下的加解密呼叫紀錄**。
 //
-// New 於建構期跑一次 Encrypt→Decrypt 往返（round-4 codex med #5：DescribeKey
+// New 於建構期跑一次 Encrypt→Decrypt 往返（安全審查 med #5：DescribeKey
 // 只證明 metadata 合格，不證明有加解密權限）。各測試斷言的是**自己觸發的**請求
 // 次數，故此處把加解密計數歸零，使「Wrap 一次 ⇒ encryptCalls==1」這類斷言仍然
 // 表達它字面上的意思。**describeCalls 刻意不清**——重試分流的測試正是要數它。
@@ -117,7 +117,7 @@ func TestNewRejectsUnsupportedProvider(t *testing.T) {
 // TestValidateKeyIDSyntaxUsesARNGrammar 「非正規」的判定式是 **ARN 語法**，
 // SHALL NOT 是「不等於當前 KeyID」。
 //
-// 正向斷言是本測試的重點（round-3 收窄三的失敗判準）：**語法合格的他把 ARN
+// 正向斷言是本測試的重點（收窄三的失敗判準）：**語法合格的他把 ARN
 // 不得被判為非正規**——否則退役 KEK 與重包過渡期的舊列會被一律誤殺。
 func TestValidateKeyIDSyntaxUsesARNGrammar(t *testing.T) {
 	_, p := newFakeWithKey(t)
@@ -149,7 +149,7 @@ func TestValidateKeyIDSyntaxUsesARNGrammar(t *testing.T) {
 		"arn:aws:kms:ap-northeast-1:123456789012:alias/custodexa-kek",
 		"a1b2c3d4e5f60718",                         // 本地 KEK 指紋（16 hex）
 		"arn:aws:kms:ap-northeast-1:12345:key/abc", // 帳號段長度不符
-		// 以下六格在收窄前**全部通過**（round-4 codex med #3 的實例）
+		// 以下六格在收窄前**全部通過**（安全審查 med #3 的實例）
 		"arn:x:kms:-:000000000000:key/A", // 任意 partition＋退化 region＋單字元資源
 		"arn:aws:kms:not-a-region:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab",    // region 形狀不符
 		"arn:evil:kms:ap-northeast-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab", // partition 不在列舉
@@ -263,7 +263,7 @@ func TestDescribeFailsImmediatelyOnDenial(t *testing.T) {
 }
 
 // TestDescribeRespectsContextCancel context 取消即中止並回原因，
-// **不吞成逾時**（round-2 codex low 明列）
+// **不吞成逾時**（安全審查 low 明列）
 func TestDescribeRespectsContextCancel(t *testing.T) {
 	f := newFakeKMS()
 	f.addKey(testKeyAlias, testKeyID, testKeyARN)
@@ -337,7 +337,7 @@ func TestWrapUnwrapRejectEmptyAAD(t *testing.T) {
 }
 
 // TestDecryptAlwaysCarriesKeyIDAndContext 雙軌驗收 (i)：每次 Decrypt 入參
-// **恆帶** KeyId 與 EncryptionContext（MED-1 的顯式承載機制）
+// **恆帶** KeyId 與 EncryptionContext（跨金鑰解包防線的顯式承載機制）
 func TestDecryptAlwaysCarriesKeyIDAndContext(t *testing.T) {
 	f, p := newFakeWithKey(t)
 	aad := crypto.DEKAAD("data", 1)
@@ -432,7 +432,7 @@ func TestReEncryptFallsBackForNonKMSSource(t *testing.T) {
 
 // TestReEncryptNativeCarriesFourExplicitParams 同族 KMS 來源走原生路徑，
 // 且 SHALL 顯式帶四項參數——**缺一即實作缺陷**：
-// 省 SourceKeyId＝MED-1 漏洞重現；省 DestinationEncryptionContext＝變成空 context
+// 省 SourceKeyId＝跨金鑰解包漏洞重現；省 DestinationEncryptionContext＝變成空 context
 func TestReEncryptNativeCarriesFourExplicitParams(t *testing.T) {
 	f := newFakeKMS()
 	f.addKey(testKeyAlias, testKeyID, testKeyARN)
@@ -455,7 +455,7 @@ func TestReEncryptNativeCarriesFourExplicitParams(t *testing.T) {
 	}
 	in := f.reEncryptCalls[0]
 	if in.SourceKeyId == nil || *in.SourceKeyId != testKeyARN {
-		t.Fatalf("缺 SourceKeyId（MED-1 漏洞重現）：%v", in.SourceKeyId)
+		t.Fatalf("缺 SourceKeyId（跨金鑰解包漏洞重現）：%v", in.SourceKeyId)
 	}
 	if in.DestinationKeyId == nil || *in.DestinationKeyId != otherKeyARN {
 		t.Fatalf("缺 DestinationKeyId：%v", in.DestinationKeyId)
@@ -527,7 +527,7 @@ func TestProviderIdentity(t *testing.T) {
 }
 
 // TestWrappedKeyEncodingIsAADBoundKMS 委託格式恆編為 `wk:2:kms:`
-// （D11.1 裁決 7：`wk:1:kms` 在 EncodeWrappedKey 被建構上拒絕）
+// （`wk:1:kms` 在 EncodeWrappedKey 被建構上拒絕）
 func TestWrappedKeyEncodingIsAADBoundKMS(t *testing.T) {
 	_, p := newFakeWithKey(t)
 	aad := crypto.DEKAAD("data", 1)
@@ -542,7 +542,7 @@ func TestWrappedKeyEncodingIsAADBoundKMS(t *testing.T) {
 	if !strings.HasPrefix(col, "wk:2:kms:") {
 		t.Fatalf("委託格式應恆帶 wk:2:kms: 前綴，得 %.16s", col)
 	}
-	// 無 AAD 包裹的**編碼能力本身**已刪除（release-transitional-cleanup D5）：
+	// 無 AAD 包裹的**編碼能力本身**已刪除：
 	// 簽章不再有 AAD 在場性參數，故不存在可產出 `wk:1:kms:` 的呼叫形式
 }
 

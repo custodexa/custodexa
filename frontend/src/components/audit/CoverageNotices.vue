@@ -40,7 +40,7 @@ import { useI18n } from 'vue-i18n'
 import { TIMELINE_TYPES, typeLabel } from './timelineSummary'
 import { formatDateTime } from '@/utils/format'
 
-// 保留期三態（D5）。**任何空白區間都不得無標記**——沒有這份標記，
+// 保留期三態。**任何空白區間都不得無標記**——沒有這份標記，
 // 一段空白會被稽核員讀成「紀錄被刪」，工作台自己製造竄改誤報。
 //
 // 文案紀律：一律「已依保留政策清除」，SHALL NOT 寫成「已全部刪除」

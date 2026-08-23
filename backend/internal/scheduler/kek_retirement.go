@@ -9,11 +9,11 @@ import (
 )
 
 // kekRetirementCronSpec 每日 10:00 評估（含秒欄位）。固定每日、不新增政策鍵——
-// 對齊每日簽核卡片的既有節奏（kek-rewrap-hygiene-hardening D5）
+// 對齊每日簽核卡片的既有節奏
 const kekRetirementCronSpec = "0 0 10 * * *"
 
-// KEKRetirementScheduler KEK 退役收斂 degraded 週期評估（kek-rewrap-hygiene-hardening
-// D5）。每日評估 retire backlog 謂詞：持續 > 0 → 直投提醒（不受失效事件族
+// KEKRetirementScheduler KEK 退役收斂 degraded 週期評估。
+// 每日評估 retire backlog 謂詞：持續 > 0 → 直投提醒（不受失效事件族
 // 「進行中即去重」抑制）；由 > 0 轉 0 → 結束 open 事件並發恢復通知。
 // 判定與投遞邏輯全在 keyvault.KEKRetirementMonitor，本型別僅為 cron 外殼，
 // 沿 DailyReviewReminderScheduler 前例

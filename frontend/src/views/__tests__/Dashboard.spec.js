@@ -181,7 +181,7 @@ describe('Dashboard', () => {
     expect(text).toContain('操作日誌')
   })
 
-  // —— 一般 user 的角色化儀表板（session-access-scoping 3.2）——
+  // —— 一般 user 的角色化儀表板——
 
   it('user role never calls privileged endpoints and shows my-connections summary', async () => {
     setUserRoles(['user'])
@@ -241,7 +241,7 @@ describe('Dashboard', () => {
     expect(wrapper.text()).toContain('進行中連線')
   })
 
-  // —— 人設待辦卡（navigation-ia D1）——
+  // —— 人設待辦卡——
 
   it('auditor sees audit-backlog cards with counts from existing endpoints', async () => {
     setUserRoles(['auditor'])
@@ -325,7 +325,7 @@ describe('Dashboard', () => {
     expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
   })
 
-  // —— 每日安全審閱簽核卡（audit-log-compliance 7.2）——
+  // —— 每日安全審閱簽核卡——
 
   it('does not render daily review card when feature disabled', async () => {
     setUserRoles(['admin'])
@@ -422,7 +422,7 @@ describe('Dashboard', () => {
 
   it('user role never queries daily review status nor renders the card', async () => {
     // 狀態端點掛 audit:view，一般 user 呼叫必 403 且全域攔截器會 toast
-    //「權限不足」（asset-access-scoping）——根本不該發出請求
+    //「權限不足」——根本不該發出請求
     setUserRoles(['user'])
     getDailyReviewStatusMock.mockResolvedValue({ data: enabledStatus })
 
@@ -446,7 +446,7 @@ describe('Dashboard', () => {
     expect(wrapper.text()).toContain('每日安全審閱')
   })
 
-  // —— 錄影佔用卡（recording-quota-removal D3）——
+  // —— 錄影佔用卡——
 
   it('auditor sees the recording-storage card with a formatted disk size', async () => {
     setUserRoles(['auditor'])

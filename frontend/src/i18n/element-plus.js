@@ -1,8 +1,8 @@
 /**
- * Element Plus locale 與 i18n 的橋接（i18n-foundation D4）。
+ * Element Plus locale 與 i18n 的橋接。
  * 單一 reactive 來源同時餵兩處：App.vue 的 el-config-provider（元件樹）與
  * main.js 的 app.use(ElementPlus, epGlobalConfig)（指令式 ElMessageBox/ElMessage
- * 走 app-level global config，provider 蓋不到——codex r1 F2 實證）。
+ * 走 app-level global config，provider 蓋不到）。
  */
 import { computed } from 'vue'
 import zhTw from 'element-plus/es/locale/lang/zh-tw'

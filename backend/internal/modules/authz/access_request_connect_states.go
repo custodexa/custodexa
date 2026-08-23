@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 )
 
-// 資產列表連線入口三態 bulk 標註（authz 側；modular-architecture W3 3.1／R3.1 §4.8(a)）。
+// 資產列表連線入口三態 bulk 標註（authz 側）。
 //
 // **為何在 authz 而非 policy**：本方法對 authz 自己的 `AuthorizedAssetDTO` 做標註，
 // 且所讀的三份資料（`access_requests` 在途單、`asset_authorizations` 票證時窗、
@@ -22,10 +22,10 @@ import (
 // 掛在 `AccessRequestService` 上是因為它已同時持有 db／policies／accessPolicy／
 // authzRepo 四者，改掛他型別會需要新增建構子參數。
 
-// 連線入口三態值（D7 補充二；reason_required/approval_required 沿 policy 的閘常數）。
+// 連線入口三態值（reason_required/approval_required 沿 policy 的閘常數）。
 // 值本體定義在 policy（`AccessStateConnectable`／`AccessStatePending`），此處不另立複本。
 
-// AnnotateConnectStates 資產列表連線入口三態 bulk 標註（D7 補充二）：
+// AnnotateConnectStates 資產列表連線入口三態 bulk 標註：
 // 伺服端單一事實源——政策解析（資產欄位直讀）＋一次查 pending 集合＋
 // 一次查 ticket 集合，前端零推導。僅供顯示提示；行為以簽發點政策閘為準
 func (s *AccessRequestService) AnnotateConnectStates(userID uint, assets []*AuthorizedAssetDTO) error {
@@ -34,7 +34,7 @@ func (s *AccessRequestService) AnnotateConnectStates(userID uint, assets []*Auth
 	}
 	now := time.Now()
 
-	// 1. 政策解析（asset-level-access-policy）：資產欄位直讀，無組 join。
+	// 1. 政策解析：資產欄位直讀，無組 join。
 	// 全域預設鍵整批只讀一次（語義與拆包前逐位相同，見 ResolveSegments 註解）
 	assetPolicies := make([]*string, len(assets))
 	for i, a := range assets {
@@ -75,7 +75,7 @@ func (s *AccessRequestService) AnnotateConnectStates(userID uint, assets []*Auth
 		}
 	}
 
-	// 4. 破窗可用性 bulk 判定（break-glass-revocation D3/六題 6）：開關開啟時，
+	// 4. 破窗可用性 bulk 判定：開關開啟時，
 	// 非 open 段位×持時窗內常設 connect×無有效票證的資產標註可破窗——
 	// 伺服端單一事實源，開關關閉＝前端零入口（藏入口語義）
 	breakGlassOn := s.policies.GetBool(policy.PolicyBreakGlassEnabled)

@@ -1,6 +1,6 @@
 // 連線結束原因唯一事實源（值域硬拷後端 model/session.go:20-26＋
 // sshproxy/bridge.go、proxy/tunnel.go；完備性由 end-reason.spec.js 釘住）。
-// 譯文住 locale 檔 enum.endReason.*（i18n-foundation D6），getter 回 t()
+// 譯文住 locale 檔 enum.endReason.*，getter 回 t()
 
 import { t } from '@/i18n'
 

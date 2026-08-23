@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 短語詞庫（backend-i18n-unification D8/M4）。
+// 短語詞庫。
 //
 // 與 event 目錄的分工：event 目錄渲染「一則通知」的 title/text；詞庫渲染
 // 「一個機器碼的三語短語」——cause code、告警等級、阻斷標示這類值層枚舉。
@@ -35,7 +35,7 @@ const (
 	LexiconAlertState Lexicon = "alert_state"
 	// LexiconDegraded 降級投遞的 generic 文案（RenderDegraded 用）。
 	//
-	// 為何走詞庫而非 locales 事件目錄（codex 批 2 M4）：降級文案不是「某個
+	// 為何走詞庫而非 locales 事件目錄：降級文案不是「某個
 	// 事件」的模板，它必須在 event 未註冊時仍可用；而 checkCatalog 的鍵集
 	// 雙向相等檢查（vExtraInLang ＋ 事件數比對）要求 locales 的鍵集恰等於
 	// registry，塞一個 registry 沒有的 `_degraded` 進去即紅。詞庫的鍵空間

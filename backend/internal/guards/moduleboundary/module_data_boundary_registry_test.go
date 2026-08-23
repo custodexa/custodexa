@@ -1,11 +1,11 @@
 package moduleboundary
 
-// 資料邊界閘門的**登記表**（modular-architecture Phase B / W6 任務 6.0a）。
+// 資料邊界閘門的**登記表**（Phase B 任務 6.0a）。
 //
 // 掃描器與守衛在 module_data_boundary_guard_test.go；本檔只放「人審過的事實」，
 // 使登記與判定分離——改登記表不必動掃描邏輯，反之亦然。
 
-// tableOwner 每張表的所屬模組（R3 §1.2 模組劃分）。
+// tableOwner 每張表的所屬模組。
 //
 // 判準＝「誰定義該表的業務語義、誰負責它的不變式」，不是「誰碰得最多」。
 // 未登記的表被掃到即紅——新表出現時必須有人回答「它屬於哪個模組」。
@@ -49,7 +49,7 @@ var tableOwner = map[string]string{
 	"audit_failure_events":  "audit",
 	"daily_review_logs":     "audit",
 	"integrity_baselines":   "audit",
-	// auditor-workbench D5：保留期水位（每個保留類別清到哪個時刻、是否部分清除）。
+	// auditor-workbench：保留期水位（每個保留類別清到哪個時刻、是否部分清除）。
 	// 產生與消費皆在 audit 的 retention 路徑，故屬 audit；未登記所有者時，
 	// 跨模組判定對這張表整個失效——任何模組讀寫它都不會被看見
 	"audit_retention_watermarks": "audit",
@@ -58,7 +58,7 @@ var tableOwner = map[string]string{
 	// audit-checkpoint-chain 第 6 組：鏈修剪記錄（殘鏈的新起點錨定），
 	// 與檢查點同屬 audit（產生於 retention 的鏈修剪路徑）
 	"audit_checkpoint_trims": "audit",
-	// audit-chain-scheduled-verification D8：兩層自動驗證的營運狀態（單列）。
+	// 兩層自動驗證的營運狀態（單列）。
 	// 產生與消費皆在 audit 的鏈驗證編排路徑，故屬 audit。
 	// **明示為營運狀態而非證據**：本表不在鏈的覆蓋範圍內（鏈只覆蓋 audit_logs）
 	"audit_chain_verify_states": "audit",
@@ -66,7 +66,7 @@ var tableOwner = map[string]string{
 	// keyvault
 	"data_keys":           "keyvault",
 	"export_signing_keys": "keyvault",
-	// audit-checkpoint-chain D5：檢查點簽章鑰為 keyvault 自有表（私鑰材料只在 keyvault 內解包），
+	// audit-checkpoint-chain：檢查點簽章鑰為 keyvault 自有表（私鑰材料只在 keyvault 內解包），
 	// audit 側只透過 CheckpointSigningService 的方法簽／驗，不直接碰本表
 	"checkpoint_signing_keys": "keyvault",
 	// policy
@@ -111,32 +111,32 @@ type crossModuleAccess struct {
 	Reason    string
 }
 
-// crossModuleDataAccessBaseline 現況基線（W6 開閘時的全數登記）。
+// crossModuleDataAccessBaseline 現況基線（開閘當時的全數登記）。
 //
 // **ratchet 方向：只准縮不准增。** 新增未登記的跨模組存取即紅；本表列了但現實中
 // 已不存在者亦紅（逼人在移除時顯式更新，而非讓白名單越留越寬）。
 //
-// **本表不是許可證**：它記錄的是「重構開閘當下已經存在的債」，每一列都是 D-4
-// （model 不拆）與共用 `*gorm.DB` 造成的既有繞道，而非設計意圖。逐列的正解在
-// backlog B-11／B-13；此處只負責讓它不再增加。
+// **本表不是許可證**：它記錄的是「重構開閘當下已經存在的債」，每一列都是
+// 「model 不拆」與共用 `*gorm.DB` 造成的既有繞道，而非設計意圖。
+// 此處只負責讓它不再增加。
 var crossModuleDataAccessBaseline = []crossModuleAccess{
-	// ---- asset → authz：**W7 7.4 已收口，故此處無列**（ratchet 縮 2 列）----
+	// ---- asset → authz：**7.4 已收口，故此處無列**（ratchet 縮 2 列）----
 	// `asset_group_service.go` 原在自己的交易內 Delete `asset_authorizations`
-	// 與 `approver_scopes`（F8）；7.4 改為經 tx-taking 窄 port
+	// 與 `approver_scopes`；7.4 改為經 tx-taking 窄 port
 	// `RevokeByAssetGroup(tx,id)` 由 authz 寫入，asset 不再直接碰他模組的表。
 	// **誠實界定（本閘門看不見的那一半）**：交易句柄仍然被交出去，
 	// 掃描器只看得到「authz 寫 authz 自己的表」。這條路徑改由
-	// `cmd/server/tx_taking_whitelist_test.go` 的具名白名單承擔（D-10）——
+	// `cmd/server/tx_taking_whitelist_test.go` 的具名白名單承擔——
 	// **ratchet 的數字變小不等於耦合消失**，不得如此解讀。
 
 	// ---- identity → authz／audit ----
 	{Module: "identity", Table: "asset_authorizations", Kind: "read",
-		Reason: "刪使用者群組前查該群組既有授權筆數（user_group_service.go 的 AuthorizationCount，供刪除確認 UI）。純讀，未收口——7.4 只收 F8 的寫入面。"},
-	// identity 的兩條 F8 寫入（asset_authorizations／approver_scopes）同樣於 W7 7.4
+		Reason: "刪使用者群組前查該群組既有授權筆數（user_group_service.go 的 AuthorizationCount，供刪除確認 UI）。純讀，未收口——7.4 只收交易級聯的寫入面。"},
+	// identity 的兩條交易級聯寫入（asset_authorizations／approver_scopes）同樣於 7.4
 	// 收口為 `RevokeByUserGroup(tx,id)`／`RevokeByUser(tx,id)`，故此處無列；
 	// 誠實界定同上。
 	{Module: "identity", Table: "audit_logs", Kind: "write",
-		Reason: "登入成功／失敗與外部登入嘗試的審計直寫（auth_service.go、external_login_attempt_audit.go）。manifest 已登記為 AsyncSink 目標；W8 搬包時改走 sink。"},
+		Reason: "登入成功／失敗與外部登入嘗試的審計直寫（auth_service.go、external_login_attempt_audit.go）。manifest 已登記為 AsyncSink 目標；搬包時改走 sink。"},
 
 	// ---- identity → 基礎設施表 ----
 	{Module: "identity", Table: "schema_migrations", Kind: "read",
@@ -150,28 +150,28 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 
 	// ---- authz → asset／identity（授權判定需要主體與客體的顯示欄與範圍）----
 	{Module: "authz", Table: "assets", Kind: "read",
-		Reason: "授權／申請單解析：以 JOIN／Preload 帶出資產名稱、協議與停用狀態。W7 之後仍為讀取型耦合（B-5 SQL 層 JOIN 家族）。"},
+		Reason: "授權／申請單解析：以 JOIN／Preload 帶出資產名稱、協議與停用狀態。收口之後仍為讀取型耦合。"},
 	{Module: "authz", Table: "asset_groups", Kind: "read",
 		Reason: "審核者範圍與複審清單以資產群組為單位展開。"},
 	{Module: "authz", Table: "users", Kind: "read",
 		Reason: "申請人／審核者的顯示名與狀態；有效權限解析需知使用者是否停用。"},
 	{Module: "authz", Table: "user_groups", Kind: "read",
-		Reason: "群組型授權主體的展開（user-group-authorization）。"},
+		Reason: "群組型授權主體的展開。"},
 	{Module: "authz", Table: "roles", Kind: "read",
-		Reason: "審核者資格判定讀角色（SD-3／D-12 的爭點所在）。"},
+		Reason: "審核者資格判定讀角色（判準的爭點所在）。"},
 	{Module: "authz", Table: "user_roles", Kind: "read",
 		Reason: "同上的 many2many join 表。"},
 	{Module: "authz", Table: "user_group_members", Kind: "read",
-		Reason: "群組即資格（D-7）：審核者資格與授權主體展開皆以「使用者屬哪些群組」為子查詢。" +
-			"**W7 新增登記，但不是新增的存取**——這段 SQL 原本住在 `middleware/approver_guard.go` " +
+		Reason: "群組即資格：審核者資格與授權主體展開皆以「使用者屬哪些群組」為子查詢。" +
+			"**新增登記，但不是新增的存取**——這段 SQL 原本住在 `middleware/approver_guard.go` " +
 			"與 `internal/repository`，兩處都不在任何模組的歸屬範圍內，掃描器從來看不到它；" +
 			"7.1／7.7 把它們搬進 authz 之後才第一次進入掃描面。"},
 	{Module: "authz", Table: "asset_nodes", Kind: "read",
-		Reason: "節點含子樹的授權涵蓋判定（asset-node-tree D3）：遞迴 CTE 自資產回溯掛載節點與祖先。" +
-			"**W7 新增登記，但不是新增的存取**——它原本住在 `internal/repository/" +
-			"asset_authorization_repository.go`（不屬任何模組）；且在 W6 的掃描器下，" +
+		Reason: "節點含子樹的授權涵蓋判定：遞迴 CTE 自資產回溯掛載節點與祖先。" +
+			"**新增登記，但不是新增的存取**——它原本住在 `internal/repository/" +
+			"asset_authorization_repository.go`（不屬任何模組）；且在早期的掃描器下，" +
 			"這段 SQL 常數超過 72 字元而被 `go/constant.Value.String()` 截斷，" +
-			"表名整段自掃描面消失（W7 修 `constant.StringVal`，見 guard 檔內註解）。"},
+			"表名整段自掃描面消失（改用 `constant.StringVal` 後修復，見 guard 檔內註解）。"},
 
 	// ---- session → asset／identity／audit ----
 	{Module: "session", Table: "assets", Kind: "read",
@@ -179,13 +179,13 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	{Module: "session", Table: "users", Kind: "read",
 		Reason: "會話與錄影清單帶出使用者顯示名。"},
 	{Module: "session", Table: "audit_logs", Kind: "write",
-		Reason: "錄影失效報告的審計直寫（recording_failure_report.go）。**W9 未改走 sink**：" +
-			"它是 manifest 的 AP-54，與另外 34 個 AsyncSink 點同屬 W4 分派、迄今仍直寫；" +
-			"W9 是零行為變更的搬檔波，單獨收口這一點會改變失敗處置語義（現況 log-and-continue）。"},
+		Reason: "錄影失效報告的審計直寫（recording_failure_report.go）。**搬包時未改走 sink**：" +
+			"它是 manifest 的 AP-54，與另外 34 個 AsyncSink 點同屬一次分派、迄今仍直寫；" +
+			"那次搬檔是零行為變更，單獨收口這一點會改變失敗處置語義（現況 log-and-continue）。"},
 
 	// ---- audit → asset／identity／session（顯示欄與匯出解析）----
 	{Module: "audit", Table: "assets", Kind: "read",
-		Reason: "指令告警與指令流清單 LEFT JOIN 補資產名（W4 已登記於 round-log）。"},
+		Reason: "指令告警與指令流清單 LEFT JOIN 補資產名。"},
 	{Module: "audit", Table: "users", Kind: "read",
 		Reason: "同上，補使用者名。"},
 	{Module: "audit", Table: "sessions", Kind: "read",
@@ -204,17 +204,17 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	{Module: "policy", Table: "users", Kind: "read",
 		Reason: "傳輸同意記錄帶出使用者顯示名。"},
 	{Module: "policy", Table: "syslog_settings", Kind: "read",
-		Reason: "傳輸清冊呈現 syslog 轉發是否啟用（W1 4.11 已把「通道清冊」反轉為窄介面，這一處讀的是設定表本身）。"},
+		Reason: "傳輸清冊呈現 syslog 轉發是否啟用（「通道清冊」已反轉為窄介面，這一處讀的是設定表本身）。"},
 	{Module: "policy", Table: "audit_logs", Kind: "write",
-		Reason: "傳輸同意的審計直寫（transmission_consent_service.go）。manifest 已登記；後續波改走 sink。"},
+		Reason: "傳輸同意的審計直寫（transmission_consent_service.go）。manifest 已登記；後續改走 sink。"},
 
 	// ---- keyvault → audit（KEK 退休監控）----
 	{Module: "keyvault", Table: "audit_logs", Kind: "read",
-		Reason: "KEK 退休監控以審計列數判斷降級期間的活動量（key_manager_cleanup.go）。backlog B-13 登記在案。"},
+		Reason: "KEK 退休監控以審計列數判斷降級期間的活動量（key_manager_cleanup.go）。"},
 
-	// ---- keyvault → identity：**W6 6.0d 已移除，故此處無列**（ratchet 縮的第一筆實績）----
+	// ---- keyvault → identity：**6.0d 已移除，故此處無列**（ratchet 縮的第一筆實績）----
 	// `VerifyInitialAdminCredential` 原以 Preload("Roles") 讀 users／roles／user_roles
-	// 並在 keyvault 包內做 admin 判定（W2 對抗 M3／backlog B-13）；6.0d 移交
+	// 並在 keyvault 包內做 admin 判定；6.0d 移交
 	// `internal/service/initial_admin_verifier.go`（identity）後，roles／user_roles
 	// 兩列已由本表刪除——刪除前守衛以「登記項已不存在」實跑轉紅，證明這條方向會擋。
 	// **誠實界定**：`keyvault→users`(read) 仍在本表，來源是信封重加密的動態掃描

@@ -5,7 +5,7 @@ export const isTextTerminal = (protocol) =>
   ['ssh', 'mysql', 'postgres', 'redis', 'mssql', 'k8s'].includes(protocol)
 
 // 資料庫 CLI 協議（對齊後端 model.ProtocolType.IsDatabase）。
-// 撥測只驗 TCP 埠可達（db-protocol-connection-test D2），故可達徽章須加註說明
+// 撥測只驗 TCP 埠可達，故可達徽章須加註說明
 export const isDatabaseProtocol = (protocol) =>
   ['mysql', 'postgres', 'redis', 'mssql'].includes(protocol)
 
@@ -27,7 +27,7 @@ export const PROTOCOL_DEFAULT_PORTS = {
   k8s: 6443,
 }
 
-// 協議 tag 顏色唯一映射（ux-consistency C 系規範）：
+// 協議 tag 顏色唯一映射：
 // 同一資產的協議 chip 全站同色；新協議在此登記，勿在頁面內寫 inline 判斷
 const PROTOCOL_TAG_TYPES = {
   ssh: 'success',

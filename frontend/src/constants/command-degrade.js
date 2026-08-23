@@ -1,12 +1,12 @@
 /**
- * 指令審計「降級／限定」原因碼的顯示中繼資料（command-audit-altscreen-bypass C）。
+ * 指令審計「降級／限定」原因碼的顯示中繼資料。
  *
  * 值域硬拷後端：`backend/internal/model/session_command.go` 的 `Degrade*`／`Qualify*`
  * 常數區（碼是權威表述，散文由此處按碼查譯）。**兩個值域刻意不合併**：
  *   - `Degraded=true`  → 該輪沒有可信的指令文字，`command` 必為空（DB CHECK 釘死）。
  *   - `Degraded=false` 且 `degrade_reason` 非空 → 文字已入庫、但可能不等於實際執行。
  *
- * **UI 紅線（design §6.5 張力一）**：沒有降級標記 SHALL NOT 被呈現為「內容已驗證」——
+ * **UI 紅線**：沒有降級標記 SHALL NOT 被呈現為「內容已驗證」——
  * 偵測判準是充分條件而非必要條件，故本模組只為「有標記」的列提供文案，
  * 一般列不加任何「已驗證」字樣。
  *
@@ -67,7 +67,7 @@ export const degradeRecordingHint = (code, recordingState = 'unknown') => {
 //
 // 告警走**獨立的**機器碼值域（`model.AlertReason*`），不與上面的 Degrade* 共用：
 // 那邊描述的是「某一輪為何沒有文字」，這邊描述的是「一段降級區間開始」。
-// 值域刻意不做後端原始碼雙向守衛——它由另一條線（tasks 3.2）在演進中，
+// 值域刻意不做後端原始碼雙向守衛——它由另一條線在演進中，
 // 未知碼有 default 分支承接，介面不會白屏也不會顯示裸鍵。
 // ---------------------------------------------------------------------------
 export const ALERT_KIND_AUDIT_DEGRADED = 'audit_degraded'

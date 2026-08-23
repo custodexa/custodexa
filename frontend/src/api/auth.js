@@ -16,7 +16,7 @@ export function login(data) {
 }
 
 /**
- * 使用者登出：後端自 httpOnly cookie 取得 refresh 憑證並撤銷（D6 會話撤銷），
+ * 使用者登出：後端自 httpOnly cookie 取得 refresh 憑證並撤銷（會話撤銷），
  * 同時於回應清除該 cookie；本地 access token／使用者快取的清除由呼叫端負責
  * @returns {Promise}
  */
@@ -84,7 +84,7 @@ export function disableMFA(data) {
 }
 
 /**
- * 自助修改密碼（auth-hardening）
+ * 自助修改密碼
  * 兩種情境：強制改密（傳入 changeToken）或已登入自願改密（走攔截器的正式 token）。
  * 成功時後端直接換發正式 token，回傳 { token, user }
  * @param {Object} data - { old_password, new_password }
@@ -147,7 +147,7 @@ export function getCurrentUser() {
 }
 
 /**
- * 自助更新個人資料顯示名（profile-display-name）
+ * 自助更新個人資料顯示名
  * PATCH /auth/me：僅放行 local_display_name；空字串/null 清除（回退 full_name/username）。
  * 身分綁定 token，target 使用者由後端從 claims 取得。成功回 canonical UserInfo（含 display_name）。
  * 就近顯示錯誤（如格式驗證），不走全域 toast

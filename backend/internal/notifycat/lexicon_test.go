@@ -13,7 +13,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// 詞庫完備性守衛（backend-i18n-unification D8）。
+// 詞庫完備性守衛。
 //
 // 與 checkCatalog 同體例：純函式 checkLexicons 供「刻意破壞的副本」做敏感度
 // 自檢——只斷言正本為綠不能證明守衛會紅。

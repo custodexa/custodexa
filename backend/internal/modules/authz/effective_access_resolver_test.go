@@ -15,7 +15,7 @@ import (
 )
 
 // setupResolverDB 真 SQL 整合測試（in-memory SQLite）：resolver 與既有解析引擎
-// 的雙向等價必須實際執行驗證（authorization-page-redesign D3 防漂移硬要求）
+// 的雙向等價必須實際執行驗證（防漂移硬要求）
 func setupResolverDB(t *testing.T) (*EffectiveAccessResolver, *AssetAuthorizationService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

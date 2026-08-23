@@ -4,7 +4,7 @@ import (
 	"github.com/custodexa/backend/internal/database"
 )
 
-// asset 模組：連線帳號身分解析（modular-architecture W6 6.5／R3.1 §5.4 拆檔）。
+// asset 模組：連線帳號身分解析。
 //
 // 自 `account_scope_service.go`（authz）遷出：該檔的主體是授權帳號範圍判定，
 // 但 `AccountIdentity` 與 `ResolveAccountIdentity` 是 asset 的型別與其方法。

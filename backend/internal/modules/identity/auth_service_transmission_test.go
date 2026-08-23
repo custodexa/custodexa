@@ -14,10 +14,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupLDAPGateEnv LDAP 登入傳輸閘測試環境（transmission-security-policy 3.1b）：
+// setupLDAPGateEnv LDAP 登入傳輸閘測試環境：
 // 真 sqlite 換入 database.DB（登入全流程真跑），LDAP 以 fake 替身控制。
 //
-// **ldap-settings-migration 2.8 後只換注入形狀**：同一份 view 同時餵給登入
+// **目錄設定遷入 DB 之後只換注入形狀**：同一份 view 同時餵給登入
 // resolver（產出 Risks）與清冊 provider（供 TransmissionPolicyService），
 // 與生產組裝「閘與撥號同源」的形狀一致；行為斷言全數未改
 func setupLDAPGateEnv(t *testing.T, view policy.LDAPRiskView) (*AuthService, *policy.SecurityPolicyService, *gorm.DB, *fakeLDAPAuthenticator) {

@@ -2,7 +2,7 @@ package model
 
 import "testing"
 
-// TestUserDisplayNameResolver 顯示名 resolver 三段優先序（profile-display-name R3）：
+// TestUserDisplayNameResolver 顯示名 resolver 三段優先序：
 // local_display_name || full_name || username，取第一個 trim 後非空者。
 func TestUserDisplayNameResolver(t *testing.T) {
 	sp := func(s string) *string { return &s }
@@ -26,7 +26,7 @@ func TestUserDisplayNameResolver(t *testing.T) {
 	}
 }
 
-// TestUserEmailString email NULL（未知）以空字串回傳（profile-display-name D7）
+// TestUserEmailString email NULL（未知）以空字串回傳
 func TestUserEmailString(t *testing.T) {
 	e := "a@x"
 	if got := (&User{Email: &e}).EmailString(); got != "a@x" {

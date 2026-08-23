@@ -1,6 +1,6 @@
 package apierror
 
-// LDAP 目錄設定（ldap-settings-migration 3.1）的 HTTP 出口碼。
+// LDAP 目錄設定的 HTTP 出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔只為收斂範圍：對應 internal/api 的
 // ldap_directory_handler.go 一檔。命名沿既有慣例——VALIDATION_*（請求欄位／

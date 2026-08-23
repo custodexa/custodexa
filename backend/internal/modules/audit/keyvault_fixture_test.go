@@ -14,14 +14,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// keyvault fixture 的 audit 側複本（modular-architecture W4 4.11）。
+// keyvault fixture 的 audit 側複本。
 //
 // **為何又一份複本**：`audit_failure_kek_degraded_test.go` 驗的是「KEK 退役積壓
 // → 失效事件狀態機」這條 keyvault→audit 的整合鏈，它同時需要 keyvault 的金鑰表
 // 夾具與 audit 的未匯出狀態（`notify` 注入口、`failing` map）。該檔原住
-// `internal/service`，W4 搬包後那裡再也取不到 audit 的未匯出面；把它留在原處
+// `internal/service`，搬包後那裡再也取不到 audit 的未匯出面；把它留在原處
 // 的代價是**為測試而在生產碼開匯出的注入口**（`SetNotifyForTest` 之類），
-// 那正是 W2/W3 一路拒絕的形態。故改為測試隨主題走、夾具複製一份。
+// 那正是其他模組搬包時一路拒絕的形態。故改為測試隨主題走、夾具複製一份。
 // 複本一律只呼叫 keyvault 的匯出面，逐行實作與
 // `internal/service/keyvault_fixture_test.go` 的原件相同。
 
@@ -42,8 +42,8 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	// asset_accounts 亦為信封目標表（asset-multi-account D1a），空表即 pending 0。
-	// ldap_directories 同理（ldap-settings-migration D1）——**測試庫例外**：生產
+	// asset_accounts 亦為信封目標表，空表即 pending 0。
+	// ldap_directories 同理——**測試庫例外**：生產
 	// 由 versioned migration 建表（CHECK 約束需求），此處僅需一張形狀等價的空表
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
@@ -75,7 +75,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 
 // seedEnvelopeData 佈建**終態格式**存量（enc:a1）：資產密碼、使用者 TOTP、
 // 兩個通知通道。取代已刪除的 seedLegacyData＋RunEnvelopeDataMigration 前置
-// （release-transitional-cleanup 3.3）——終態下不存在需要一次性信封化的存量。
+// ——終態下不存在需要一次性信封化的存量。
 func seedEnvelopeData(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) {
 	t.Helper()
 	pw := encryptColumn(t, km, "assets", "password_enc", "asset-password")
@@ -112,7 +112,7 @@ func setupKM(t *testing.T) (*gorm.DB, *keyvault.KeyManagerService) {
 }
 
 // rewrapAndReinit 執行重包並以新 KEK 重啟（模擬改 env 重啟切換），回新 km 與新舊指紋。
-// 切換那次 keyvault.InitKeyManager 不應 fail-close——這是 codex 第五輪 HIGH-1 的回歸點：
+// 切換那次 keyvault.InitKeyManager 不應 fail-close——這是安全審查所列問題的回歸點：
 // 切換後舊列 live 且 kek_id<>env 是合法的「待退役 predecessor」角色，不得誤判非法。
 func rewrapAndReinit(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (*keyvault.KeyManagerService, string, string) {
 	t.Helper()
@@ -180,7 +180,7 @@ func makeBacklog(db *gorm.DB, oldKEK string) {
 
 // encryptColumn 測試用：以欄位身分（table|column）加密為終態格式（`enc:a1`）。
 //
-// 取代已刪除的 `encryptNoAADForRollback`（release-transitional-cleanup 3.2）——
+// 取代已刪除的 `encryptNoAADForRollback`——
 // 那是全專案唯一的無 AAD 寫出方法，被大量測試借用為「取得一個合法密文」的捷徑。
 // 拆除後測試改走與生產同源的 EncryptFor；**刻意要求列身分**，使測試不可能繞過
 // AAD 綁定。真正需要過渡格式值的負向測試另用 preReleaseEnvelope 手工構造。

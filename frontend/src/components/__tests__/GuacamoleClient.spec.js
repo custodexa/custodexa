@@ -158,7 +158,7 @@ describe('GuacamoleClient 剪貼簿同步', () => {
   })
 })
 
-// backend-i18n-unification D7：guacd error instruction 帶狀態碼，前端按碼查譯，
+// guacd error instruction 帶狀態碼，前端按碼查譯，
 // 中文 args[0] 降為 fallback。guacamole-common-js 把 args[1] parseInt 後放進
 // Guacamole.Status.code、args[0] 放進 .message
 describe('GuacamoleClient guacd 逾時錯誤查譯', () => {

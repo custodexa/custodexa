@@ -95,7 +95,7 @@ func TestRewrapKEKFullFlow(t *testing.T) {
 	if kmNew.RewrapPending() {
 		t.Fatal("新 KEK 切換後不應再標 pending")
 	}
-	// 切換後舊列軟退役保留（非硬刪，key-inventory-transparency）：現行 KEK 未退役列=mine、
+	// 切換後舊列軟退役保留（非硬刪）：現行 KEK 未退役列=mine、
 	// 舊 KEK 列軟退役保留（kek_retired_at 非空、wrapped 已清）
 	var currentLive, retired int64
 	db.Model(&model.DataKey{}).Where("kek_id = ? AND kek_retired_at IS NULL", result.NewKEKID).Count(&currentLive)
@@ -141,8 +141,8 @@ func TestAbandonRewrap(t *testing.T) {
 		t.Fatalf("重包後應雙包裹並存＋pending：total=%d mine=%d pending=%v", total, mine, km.RewrapPending())
 	}
 
-	// 放棄：軟退役外來列數 == mine（每對一列外來）——kek-rewrap-hygiene-hardening
-	// D9 軟刪除：不硬刪、材料保留至顯式清理、reason=abandoned、無 replacement
+	// 放棄：軟退役外來列數 == mine（每對一列外來）——
+	// 軟刪除：不硬刪、材料保留至顯式清理、reason=abandoned、無 replacement
 	abandonedCount, err := km.AbandonRewrap()
 	if err != nil {
 		t.Fatalf("abandon: %v", err)
@@ -187,7 +187,7 @@ func TestAbandonRewrap(t *testing.T) {
 	}
 }
 
-// TestRotateDataDEKPartialResume H1 回歸：partial 後再按輪替必須以現行版本
+// TestRotateDataDEKPartialResume 回歸釘子：partial 後再按輪替必須以現行版本
 // 續跑，不得每按一次鑄一個新版本（連環膨脹）
 func TestRotateDataDEKPartialResume(t *testing.T) {
 	db := newMigrationDB(t)
@@ -240,7 +240,7 @@ func TestRotateDataDEKPartialResume(t *testing.T) {
 	}
 }
 
-// TestRotateBlockedWhileRewrapPending M4 回歸：KEK 重包待切換期間拒絕輪替——
+// TestRotateBlockedWhileRewrapPending 回歸釘子：KEK 重包待切換期間拒絕輪替——
 // 此時鑄的新鑰以舊 KEK 包裹、不在重包列中，切新 KEK 重啟會 KEK 不符鎖死
 func TestRotateBlockedWhileRewrapPending(t *testing.T) {
 	db := newMigrationDB(t)

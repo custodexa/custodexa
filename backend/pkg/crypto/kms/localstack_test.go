@@ -17,7 +17,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// localstack 實測（D11.1 裁決 4 的雙軌驗收之 (b)）。
+// localstack 實測（雙軌驗收之 (b)）。
 //
 // **雙軌的分工**：fake client 負責「我們送出去的請求恆帶 KeyId 與
 // EncryptionContext」這條確定性斷言；本檔負責**語義行為**——「他金鑰包裹的 blob
@@ -123,8 +123,8 @@ func TestLocalstackNormalizationAndRoundtrip(t *testing.T) {
 // TestLocalstackForeignKeyBlobRejected **本檔的核心語義斷言**：
 // 以他金鑰包裹的 blob 配上被竄改的 kek_id（＝以本 provider 解包）MUST 失敗。
 //
-// 這條在 D5 剔除 KeyID 出 AAD 之後，唯一的承載機制就是 Decrypt 顯式帶 KeyId
-// （MED-1）。若哪天有人把 KeyId 拿掉，本測試會轉紅。
+// 自 KeyID 被剔除出 AAD 之後，這條的唯一承載機制就是 Decrypt 顯式帶 KeyId。
+// 若哪天有人把 KeyId 拿掉，本測試會轉紅。
 func TestLocalstackForeignKeyBlobRejected(t *testing.T) {
 	endpoint := testgate.Value(t, testgate.EnvKMSEndpoint)
 	c := localstackClient(t, endpoint)
@@ -183,7 +183,7 @@ func localstackNotImplemented(err error) bool {
 		strings.Contains(msg, "not yet implemented or pro feature")
 }
 
-// TestLocalstackNativeReEncryptSameFamily C1↔C1 換金鑰走原生 ReEncrypt，
+// TestLocalstackNativeReEncryptSameFamily 同族 KMS 之間換金鑰走原生 ReEncrypt，
 // 四項顯式參數在真 API 上成立（省 DestinationEncryptionContext 會讓後續帶 AAD
 // 的 Decrypt 失敗——本測試的最後一步正是驗這件事）
 func TestLocalstackNativeReEncryptSameFamily(t *testing.T) {

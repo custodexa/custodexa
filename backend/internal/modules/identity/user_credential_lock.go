@@ -7,16 +7,16 @@ import (
 	"gorm.io/gorm"
 )
 
-// user-scoped 憑證鎖（idp-oidc-integration 2.8 / design D13）。
+// user-scoped 憑證鎖（2.8）。
 //
 // 用途：凡「以該使用者的登入途徑或憑證世代為前提做出判定、再據以寫入」的操作
 // SHALL 於本鎖內完成「重讀前提 → 判定 → 寫入」三步。單次操作內的檢查擋不住
 // write-skew——帳號有兩筆外部身分時，兩個並發解綁各自看見「還有另一筆」即可
-// 同時提交，結果登入途徑歸零（design 行 341，codex MEDIUM）。
+// 同時提交，結果登入途徑歸零。
 //
 // **與 localAdminLockKey 的分工**：後者是系統級（全體本地 admin 的總數不變式），
 // 本鎖是使用者級（單一帳號的登入途徑與憑證世代）。同時需要兩者的操作
-//（解綁＋停用、改為僅外部登入）一律**先系統後使用者**，即 design D13 所定的
+//（解綁＋停用、改為僅外部登入）一律**先系統後使用者**，即
 // system → provider → user 固定順序，避免與其他持鎖路徑互鎖。
 //
 // **鎖內只做 DB 判定與寫入**：實際的收線（終斷協議會話、收線監看訂閱、撤銷
@@ -49,7 +49,7 @@ func userCredentialLockFor(userID uint) *sync.Mutex {
 // 位置製造交錯，使「把鎖內重讀改成鎖外預讀」的突變被**確定性**地抓到。
 // 生產路徑此值恆為 nil，改寫者僅限 _test.go。
 //
-// **變數維持未匯出**（modular-architecture W8 9.9）：跨包後以
+// **變數維持未匯出**：跨包後以
 // `SetUserCredentialPreWriteHookForTest`（`export_test.go`）這個窄出口暴露，
 // 理由同 `oidcProviderPreWriteHook`——匯出可寫的包級 hook 等於讓任何包覆寫
 // 別人掛的同步點。
@@ -60,7 +60,7 @@ var userCredentialPreWriteHook func()
 // 阻塞而非 try 語義：解綁／轉換皆為管理者的互動操作，try 失敗會變成隨機的偽錯誤。
 // 未知 dialect fail-close——靜默退化為行程內鎖會使多副本部署失去保護。
 //
-// **兩種 dialect 一律先開交易、再於交易內取鎖**（批 14 對抗審查 M2）：sqlite 分支
+// **兩種 dialect 一律先開交易、再於交易內取鎖**：sqlite 分支
 // 原本先取 mutex 再開交易，與 withUserCredentialLockTx（呼叫端已持交易）相反，
 // 兩條路徑對同一 userID 並發即循環等待。詳見 WithCapabilityLocks 的同段說明。
 func WithUserCredentialLock(db *gorm.DB, userID uint, fn func(tx *gorm.DB) error) error {

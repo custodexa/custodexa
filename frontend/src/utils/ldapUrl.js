@@ -1,5 +1,5 @@
 /**
- * LDAP 目錄位址的 canonical origin 比較（前端側，ldap-settings-migration D3）。
+ * LDAP 目錄位址的 canonical origin 比較（前端側）。
  *
  * **後端才是權威**：伺服端以單一嚴格 parser 解析並在「位址變更且既存有密碼」時
  * 回 400 強制重供密碼。此處的唯一用途是**提前提示**——讓管理者在按下儲存之前就

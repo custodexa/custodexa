@@ -1,4 +1,4 @@
-// i18n 骨架單測（i18n-foundation specs/i18n）：
+// i18n 骨架單測：
 // 解析順序、無效存值、fallback 鏈確定性、三語 key 對齊、document metadata、
 // singleton locale 汙染防護（順序獨立）
 import { describe, it, expect, afterEach, vi } from 'vitest'
@@ -143,7 +143,7 @@ describe('三語 locale 檔 key 集合完全一致（結構鐵則）', () => {
   })
 })
 
-describe('document metadata 隨語言（D8）', () => {
+describe('document metadata 隨語言', () => {
   it('title 與 <html lang> 隨切換即時更新', async () => {
     setupDocumentMetadata()
     await Promise.resolve()
@@ -172,7 +172,7 @@ describe('locale 汙染防護（setup afterEach 重設）', () => {
   })
 })
 
-// vue-i18n 訊息語法防呆（asset-multi-account 階段 5 對抗審查衍生）：
+// vue-i18n 訊息語法防呆：
 // 編譯器把 `@` 當 linked message（`@:key`）起手，訊息內出現裸 `@` 會在 render
 // 期拋 "Invalid linked format"——**不是漏字而是整個元件渲染中斷**，且只有那條
 // 錯誤訊息真的被顯示時才會炸，正常測試路徑碰不到。字面 `@` 一律寫成 {'@'}。
@@ -197,7 +197,7 @@ describe('locale 訊息語法（linked message 轉義）', () => {
   })
 
   // `|` 是複數分支分隔符：訊息內出現字面 `|` 時，t(key) 只會回傳第一段——
-  // **無聲截斷**，不報錯、不留線索。ldap-settings-migration 4.3 補上本守衛時，
+  // **無聲截斷**，不報錯、不留線索。補上本守衛時，
   // 修掉了一個既有實例（filter 佔位符位置的 apiError 三語譯文寫了「OR（|）」，
   // 實際渲染成「…不可位於 OR（」）。要用複數形請登記於下方清單。
   const PLURAL_KEYS = new Set([
@@ -208,7 +208,7 @@ describe('locale 訊息語法（linked message 轉義）', () => {
     'format.durationSeconds',
     'ldapDirectory.matched',
     'ldapDirectory.matchedAtLeast',
-    // PCI 偏離摘要三處（uiux-keymgmt-r1 M3：英文寫死複數，1 項時顯示 "1 deviations"）
+    // PCI 偏離摘要三處（英文寫死複數，1 項時顯示 "1 deviations"）
     'pciBanner.overviewLink',
     'policyForm.pageDeviation',
     'securityPolicies.systemDeviation',
@@ -244,7 +244,7 @@ describe('locale 訊息語法（linked message 轉義）', () => {
     localStorage.removeItem(LANG_STORAGE_KEY)
   })
 
-  // 同型缺陷（uiux-keymgmt-r1 M3）：PCI 偏離摘要的英文亦寫死複數。呼叫端須以
+  // 同型缺陷：PCI 偏離摘要的英文亦寫死複數。呼叫端須以
   // named + plural 兩參數傳（{ n } 供插值、count 供分支），少傳 count 會恆選第一支
   it('PCI 偏離摘要的英文單複數各自選對分支', () => {
     setLanguage('en-US')

@@ -26,7 +26,7 @@ const (
 	endReasonIdleTimeout = "idle_timeout"
 	endReasonMaxDuration = "max_duration"
 	// endReasonBlockClearFailed 阻斷後清遠端行緩衝失敗而主動收線
-	// （backend-i18n-unification A1 fail-close）。經 setEndReason → handler 的
+	// （fail-close）。經 setEndReason → handler 的
 	// CloseWithReason 落 sessions.end_reason，與逾時／強制終止同一條審計軌
 	endReasonBlockClearFailed = "block_clear_failed"
 )
@@ -114,7 +114,7 @@ func (b *bridge) setTimeouts(idle, max time.Duration) {
 }
 
 // touchActive 標記會話活躍（使用者輸入或伺服器下行資料皆算；resize/ping 控制訊號不算）。
-// 「伺服器下行輸出也算活躍」是刻意權衡（對抗驗證 TIMEOUT-1，使用者決策方案 B）：
+// 「伺服器下行輸出也算活躍」是刻意權衡：
 // tail -f/top/journalctl -f 等監看類會話是真實維運需求，人在場盯著日誌流卻無鍵盤輸入，
 // 純輸入計 idle 會誤砍。代價是 idle 控制對持續輸出會話失效——由「最長會話時長」
 // （session_max_minutes，與 lastActive 無關的絕對封頂）治理長連線，達上限強制中斷。
@@ -213,7 +213,7 @@ func (b *bridge) pumpTimeout() {
 			if !fire {
 				continue
 			}
-			// D7：改送碼化 MsgError 幀（原為內嵌 ANSI 紅字的 MsgData）——
+			// 改送碼化 MsgError 幀（原為內嵌 ANSI 紅字的 MsgData）——
 			// 文案與紅字樣式改由前端依 code 決定，伺服端不再組終端逸出序列
 			code := apierror.CodeSessionIdleTimeout
 			if reason == endReasonMaxDuration {
@@ -248,7 +248,7 @@ func (b *bridge) stop() {
 	})
 }
 
-// terminate 管理端強制收線（Registry CloseFunc，break-glass-revocation F4）：
+// terminate 管理端強制收線（Registry CloseFunc）：
 // 斷線通知走本 bridge 寫鎖與文字訊息協議（前身 Registry 裸寫 guac 指令＝
 // 錯協議＋併發寫 panic 風險）；stop 冪等（stopOnce），與自然收線競態安全
 func (b *bridge) terminate() error {
@@ -275,7 +275,7 @@ func (b *bridge) writeMessage(msgType MessageType, data string) {
 	b.writeRaw(raw)
 }
 
-// writeErrorMessage 送出碼化的 MsgError 幀（D7：Data 取 registry zh fallback，
+// writeErrorMessage 送出碼化的 MsgError 幀（Data 取 registry zh fallback，
 // 前端依 code 查譯）。斷線類注入（逾時／終止／帳號停用）全走本函式
 func (b *bridge) writeErrorMessage(code apierror.ErrCode) {
 	raw, err := EncodeCodedErrorMessage(code)
@@ -286,7 +286,7 @@ func (b *bridge) writeErrorMessage(code apierror.ErrCode) {
 	b.writeRaw(raw)
 }
 
-// writeNoticeMessage 送出碼化的 MsgNotice 控制幀（D7：指令阻斷警告）
+// writeNoticeMessage 送出碼化的 MsgNotice 控制幀（指令阻斷警告）
 func (b *bridge) writeNoticeMessage(code apierror.ErrCode, params map[string]string) {
 	raw, err := EncodeNoticeMessage(code, params)
 	if err != nil {
@@ -296,13 +296,13 @@ func (b *bridge) writeNoticeMessage(code apierror.ErrCode, params map[string]str
 	b.writeRaw(raw)
 }
 
-// blockedMarkerFormat 阻斷標記寫入輸出旁路的終端呈現外殼（A5）：前後各一組 CRLF
+// blockedMarkerFormat 阻斷標記寫入輸出旁路的終端呈現外殼：前後各一組 CRLF
 // 讓標記獨佔一行，紅字 SGR 於回放時與一般輸出區別。中文本體由
-// apierror.CommandBlockedAuditMarker 提供（串流出口的中文一律出自 registry，D7）
+// apierror.CommandBlockedAuditMarker 提供（串流出口的中文一律出自 registry）
 const blockedMarkerFormat = "\r\n\x1b[31m%s\x1b[0m\r\n"
 
 // writeBlockedMarkerToSinks 將標準化阻斷標記寫入 outputSinks（錄影／即時監看／
-// 審計 tap 三軌，backend-i18n-unification A5）。
+// 審計 tap 三軌）。
 //
 // 此標記是**審計標準格式**，不是使用者所見渲染的副本：使用者端看到的是同時送出的
 // MsgNotice 幀由前端依語系渲染的結果，本標記則是伺服端固定 zh 格式＋機器碼
@@ -383,7 +383,7 @@ func (b *bridge) pumpOutput() {
 				flush()
 				return
 			}
-			// 下行資料也算活躍（k8s-exec D8：tail -f/等部署等「有輸出無鍵盤輸入」
+			// 下行資料也算活躍（k8s-exec：tail -f/等部署等「有輸出無鍵盤輸入」
 			// 的會話不被 idle 誤砍，貼近原生 kubectl；maxDuration 仍為上限 backstop）
 			b.touchActive()
 			pending = append(pending, res.data...)
@@ -428,17 +428,17 @@ func (b *bridge) pumpInput() {
 			b.touchActive()
 			if b.blocker != nil {
 				if blockedRule := b.blocker.Inspect(data); blockedRule != nil {
-					// 阻斷：本段輸入不轉發；送 MsgNotice 控制幀（D7：規則名以
+					// 阻斷：本段輸入不轉發；送 MsgNotice 控制幀（規則名以
 					// params 傳遞、由前端組字與上色）；中斷鍵清遠端行緩衝
 					b.writeNoticeMessage(apierror.CodeCommandBlocked,
 						map[string]string{"rule": blockedRule.Name})
 					b.writeBlockedMarkerToSinks(blockedRule.Name)
 					if _, err := b.conn.Write([]byte{0x03}); err != nil { // Ctrl+C 清遠端已鍵入行
-						// A1 fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
+						// fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
 						// 前綴，使用者下次按 Enter 就送出殘句——阻斷等於沒發生。
 						// 原行為只 log 續跑（fail-open），改為終止會話：先送碼化
 						// MsgError 說明原因，再記 end_reason 讓終止落入審計軌
-						// 規則名進日誌前淨化（C4）：AlertRule.Name 可含換行／ESC，
+						// 規則名進日誌前淨化：AlertRule.Name 可含換行／ESC，
 						// 未淨化即可在 log 裡偽造整行事件或操縱讀 log 的終端
 						log.Printf("[SSHProxy] 阻斷後清行失敗，終止會話: session=%v rule=%q err=%v",
 							b.sessionID(), notifycat.SanitizeOpaque(blockedRule.Name), err)

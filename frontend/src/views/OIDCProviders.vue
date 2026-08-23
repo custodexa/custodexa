@@ -19,8 +19,8 @@
       </template>
     </PageHeader>
 
-    <!-- 解封能力前提（D15）：封印期只認本地 admin 憑證，全員切 SSO 會使遇 KEK
-         重啟時無人能解封。**條件式**呈現（oidc-ops-hygiene B10 / design D2）——
+    <!-- 解封能力前提：封印期只認本地 admin 憑證，全員切 SSO 會使遇 KEK
+         重啟時無人能解封。**條件式**呈現——
          常駐警語在 count ≥ 1 時是純噪音，只會訓練管理者略過本頁警示區；
          部署前提的教育由 QUICKSTART／.env.example 承載。
          count = 0 才是實際已失能的狀態，升為 error 級；
@@ -44,7 +44,7 @@
       show-icon
     />
 
-    <!-- 讀取失敗（UI 審查 H5）：原本 catch 只 log，畫面照常渲染 EmptyState，
+    <!-- 讀取失敗：原本 catch 只 log，畫面照常渲染 EmptyState，
          於是伺服器出錯時本頁**主動宣稱**「尚未設定任何 OIDC 提供者」——管理者
          合理推論是設定被刪了，接著去重建或查稽核日誌，全是白工。
          LDAP 頁在同一事件上已明確區分「讀取失敗」與「尚未設定」；同層的兩個
@@ -71,11 +71,11 @@
       show-icon
     />
 
-    <!-- 准入規則不合規（F1）：issuer 身分域是**現算**的，部署層移除某 issuer 的
+    <!-- 准入規則不合規：issuer 身分域是**現算**的，部署層移除某 issuer 的
          專屬宣告後，原本合法的規則會就地變成不合規——沒有任何寫入、也沒有任何
          錯誤回應，唯一症狀是「使用者突然無法自動供應而查不到原因」。故必須在
          管理端主動標示，且要說出成因。
-         合併為單一 alert（UI 審查 MEDIUM-3）：一 provider 一條時，三個不合規
+         合併為單一 alert：一 provider 一條時，三個不合規
          就把表格推到摺線以下，且每條文案與列內 tooltip 逐字相同——重複的警示
          只會訓練管理者略過警示。成因細節留在列內徽章的 tooltip -->
     <el-alert
@@ -89,7 +89,7 @@
     />
 
     <div class="list-card">
-      <!-- 欄寬預算（UI 審查輪 2 NEW-HIGH-1 的**類**修法，與 Users.vue 同一條規則）——
+      <!-- 欄寬預算（與 Users.vue 同一條規則）——
            1280 視窗下本頁表格可視寬約 978px，下列宣告寬總和 930
            （46+70+200+150+240+112+112）守在該值內，表格不橫捲，
            因此**啟用開關不橫捲即可達**——它會推進憑證世代、重新啟用不復活，
@@ -179,9 +179,9 @@
             </el-tooltip>
           </template>
         </el-table-column>
-        <!-- Issuer 歸屬與**判定來源**（D14.3）：只顯示結果會讓「部署宣告打錯字
+        <!-- Issuer 歸屬與**判定來源**：只顯示結果會讓「部署宣告打錯字
              而未生效」表現成「規則設定莫名被拒」，故來源與結果同列。
-             欄寬 230（oidc-terminology-alignment）：自述式標籤變長後，
+             欄寬 230：自述式標籤變長後，
              量測三語最長者為 en 的來源標籤「Not declared, defaults to shared」
              （198px）與「Dedicated to this organization」（186px），
              el-tag 不換行、超出即被儲存格無聲裁掉，故取 230（可用 206） -->
@@ -189,7 +189,7 @@
           :label="$t('oidcProviders.issuerKindColumn')"
           width="230"
         >
-          <!-- 欄名自述但不足以承載後果（oidc-terminology-alignment D2）：
+          <!-- 欄名自述但不足以承載後果：
                「共用 issuer 上純 Email 網域規則會被拒」是設定時才會撞上的規則，
                寫在表頭 tooltip 才在管理者判讀該欄時就讀得到 -->
           <template #header>
@@ -227,14 +227,14 @@
             </el-space>
           </template>
         </el-table-column>
-        <!-- 不合規時准入模式必須就地顯示「已停止」（UI 審查 MEDIUM-4）：
+        <!-- 不合規時准入模式必須就地顯示「已停止」：
              橫向掃表格的管理者會把「依規則自動供應」讀成生效中，名稱旁的小徽章
              容易被略過，兩者並存等於畫面自相矛盾。
-             欄寬（輪 3 NEW-MEDIUM-1）：太窄裝不下三語的「模式＋（已停止）」，
+             欄寬：太窄裝不下三語的「模式＋（已停止）」，
              而 el-tag 是 inline-block，儲存格的 text-overflow 對它不生效——
              畫面上會出現一個紅色但寫著「依規則自動供應」的標籤，**無聲**丟掉
              「（已停止）」，等於回到修法前的自相矛盾狀態。280 取三語最長者
-             （oidc-terminology-alignment 後量測為 ja「ルールに基づく自動作成
+             （後量測為 ja「ルールに基づく自動作成
              （JIT）（停止中）」243px、en「Auto-provision by rules (JIT)
              (stopped)」236px）定寬；tooltip 與標籤內的省略號是兜底，任何
              未預期的長度都不會再無聲截斷 -->
@@ -242,7 +242,7 @@
           :label="$t('oidcProviders.admissionColumn')"
           width="280"
         >
-          <!-- 「准入模式」是既有 zh 企業安全詞、名稱不改（D1），語義改由表頭
+          <!-- 「准入模式」是既有 zh 企業安全詞、名稱不改，語義改由表頭
                tooltip 承載：每次登入都重判、兩模式各自的後果 -->
           <template #header>
             <el-tooltip
@@ -282,7 +282,7 @@
             />
           </template>
         </el-table-column>
-        <!-- 操作欄**不再 fixed**（輪 2 NEW-HIGH-1）：fixed 是浮在內容上的浮層，
+        <!-- 操作欄**不再 fixed**：fixed 是浮在內容上的浮層，
              1280 下它蓋掉了准入模式、密鑰與**啟用開關**——正是本頁最該看見的三欄。
              欄寬總和已收在可視寬內，不橫捲就不需要 fixed -->
         <el-table-column
@@ -310,7 +310,7 @@
         </el-table-column>
         <!-- 空狀態必須說得出「空是因為什麼」：讀取失敗時不得沿用
              「尚未設定任何提供者」——那是一句假的事實陳述。
-             **讀取尚未回來時同樣不得說**（輪 3）：清單當下是空的，原因是還沒讀到，
+             **讀取尚未回來時同樣不得說**：清單當下是空的，原因是還沒讀到，
              不是沒有設定；實測延遲 GET 期間畫面就寫著「尚未設定任何 OIDC 提供者」，
              與失敗態是同一句假話換一條路徑。載入中交由 v-loading 的遮罩與 spinner
              說明，本區塊保持沉默——不知道就不說 -->
@@ -328,7 +328,7 @@
       </el-table>
     </div>
 
-    <!-- 單頁 Modal 表單（D14.3：不做多步精靈——欄位總量小，分步只增加來回） -->
+    <!-- 單頁 Modal 表單（不做多步精靈——欄位總量小，分步只增加來回） -->
     <el-dialog
       v-model="dialogVisible"
       :title="isEdit ? $t('oidcProviders.editTitle') : $t('oidcProviders.create')"
@@ -433,7 +433,7 @@
           </div>
         </el-form-item>
 
-        <!-- 准入模式與規則為表單一等公民（D14.3），預設 prebound_only -->
+        <!-- 准入模式與規則為表單一等公民，預設 prebound_only -->
         <el-form-item :label="$t('oidcProviders.admissionMode')">
           <el-radio-group v-model="form.admission_mode">
             <el-radio value="prebound_only">
@@ -600,14 +600,14 @@ const ADMISSION_ISSUES = [
   'invalid_rules',
 ]
 
-// 元件層日誌只留白名單欄位（讀碼審查 MEDIUM-6）：本頁請求本文帶 client_secret
+// 元件層日誌只留白名單欄位：本頁請求本文帶 client_secret
 const logFailure = (event, error) => console.error(...apiErrorSummary(event, error))
 
 const loading = ref(false)
 const loadFailed = ref(false)
 const providerList = ref([])
 
-// 本地管理員警示三態（design D2）：
+// 本地管理員警示三態：
 //   'ok'      讀到 count ≥ 1 → 不顯示（初始值刻意是 ok，載入中不閃警語）
 //   'none'    讀到 count = 0 → error 級常駐警示
 //   'unknown' 讀取失敗 → fail-safe 退回 warning 級通用警語
@@ -683,7 +683,7 @@ const isNonCompliant = (row) => row?.admission_compliant === false
 
 const nonCompliantProviders = computed(() => providerList.value.filter(isNonCompliant))
 
-// 清單分隔符由語系決定（UI 審查 LOW-7）：「、」是中日排版符號，英文介面應為逗號
+// 清單分隔符由語系決定：「、」是中日排版符號，英文介面應為逗號
 const joinNames = (names) => names.join(t('common.listSeparator'))
 
 const nonCompliantNames = computed(() => joinNames(nonCompliantProviders.value.map((p) => p.name)))
@@ -979,7 +979,7 @@ onMounted(() => {
   cursor: help;
 }
 
-/* 准入模式標籤（輪 3 NEW-MEDIUM-1）：el-tag 是 inline-block，儲存格的
+/* 准入模式標籤：el-tag 是 inline-block，儲存格的
    text-overflow 對它不生效——超寬時直接被儲存格的 overflow:hidden 裁掉，
    畫面上沒有任何被截斷的線索。這裡讓標籤自己收在儲存格內並以省略號收尾，
    完整文字在 tooltip；欄寬已放到三語都裝得下，此為兜底 */
@@ -1032,7 +1032,7 @@ onMounted(() => {
 
 .field-hint {
   /* el-form-item 內容區是 flex，hint 不佔滿寬時會貼在 checkbox 右側，
-     讀成「email + 提示文字」同一句（UI 審查 LOW-1） */
+     讀成「email + 提示文字」同一句 */
   width: 100%;
   color: var(--ot-text-secondary);
   font-size: var(--ot-font-size-xs);

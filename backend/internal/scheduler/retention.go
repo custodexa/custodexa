@@ -8,7 +8,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// RetentionScheduler 保留政策執行排程器（audit-log-compliance，PCI 10.5.1）。
+// RetentionScheduler 保留政策執行排程器（PCI 10.5.1）。
 // 取代原 RecordingCleanupScheduler：錄影＋三類 DB 審計資料統一由
 // RetentionService 依政策值清除；政策值於每次執行時讀取，變更無需重啟
 type RetentionScheduler struct {

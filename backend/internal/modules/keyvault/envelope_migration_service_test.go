@@ -25,8 +25,8 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	// asset_accounts 亦為信封目標表（asset-multi-account D1a），空表即 pending 0。
-	// ldap_directories 同理（ldap-settings-migration D1）——**測試庫例外**：生產
+	// asset_accounts 亦為信封目標表，空表即 pending 0。
+	// ldap_directories 同理——**測試庫例外**：生產
 	// 由 versioned migration 建表（CHECK 約束需求），此處僅需一張形狀等價的空表
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
@@ -57,11 +57,11 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// TestReencryptColumnCASNotClobbered CAS 寫回（codex 外審 lost-update 情境）：
+// TestReencryptColumnCASNotClobbered CAS 寫回（lost-update 情境）：
 // SELECT 與 UPDATE 之間該列被並發改寫（如改密 live 輪換）時，不得以舊快照覆蓋
 // 新值、不計 Migrated。
 //
-// 原測試以 legacy 信封化遷移為載體，該遷移已於 release-transitional-cleanup 3.3
+// 原測試以 legacy 信封化遷移為載體，該遷移已於過渡格式收尾時
 // 拆除；CAS 語義屬共用重加密原語 reencryptEnvelopeColumn（現由 DEK 輪替使用），
 // 故改以該原語直接驅動——被驗證的性質不變。
 func TestReencryptColumnCASNotClobbered(t *testing.T) {
@@ -117,8 +117,8 @@ func TestReencryptColumnCASNotClobbered(t *testing.T) {
 	}
 }
 
-// TestReencryptColumnFailsOnPreReleaseValue 明文收編分支已移除
-// （release-transitional-cleanup 3.3）：非終態格式值 MUST 於解密階段記為失敗，
+// TestReencryptColumnFailsOnPreReleaseValue 明文收編分支已於過渡格式收尾時移除：
+// 非終態格式值 MUST 於解密階段記為失敗，
 // SHALL NOT 被當作明文重新加密而靜默洗白（那會使哨兵永遠看不到不可能態）。
 func TestReencryptColumnFailsOnPreReleaseValue(t *testing.T) {
 	db := newMigrationDB(t)

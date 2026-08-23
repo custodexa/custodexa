@@ -23,7 +23,7 @@ type UserGroupServiceInterface interface {
 	AuthorizationCount(id uint) (int64, error)
 }
 
-// UserGroupHandler 使用者群組 API（user-group-authorization，admin only）
+// UserGroupHandler 使用者群組 API（admin only）
 type UserGroupHandler struct {
 	groups UserGroupServiceInterface
 }
@@ -113,7 +113,7 @@ func (h *UserGroupHandler) AuthorizationCount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"authorization_count": count})
 }
 
-// Delete 刪除群組：連動撤銷授權＋審計留痕（user-group-authorization D5）
+// Delete 刪除群組：連動撤銷授權＋審計留痕
 func (h *UserGroupHandler) Delete(c *gin.Context) {
 	id, ok := parseUserGroupID(c)
 	if !ok {
@@ -131,7 +131,7 @@ func (h *UserGroupHandler) Delete(c *gin.Context) {
 		respondUserGroupError(c, apierror.CodeInternalUserGroupDelete, err)
 		return
 	}
-	// message 欄已移除（D9：成功回應不攜帶 UI 文案，前端自有 $t 文案）；
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）；
 	// revoked_authorizations 為機器數值，保留
 	c.JSON(http.StatusOK, gin.H{
 		"revoked_authorizations": revoked,

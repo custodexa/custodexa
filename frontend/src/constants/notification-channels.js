@@ -1,5 +1,5 @@
 /**
- * 通知通道枚舉（backend-i18n-unification D5）。
+ * 通知通道枚舉。
  * 值域硬拷後端 model/notification_channel.go 的 NotificationChannelLanguage* 常數，
  * 由 notification-channels.spec.js 直讀 Go 原始碼雙向斷言（audit-enums 金標準模式）。
  *

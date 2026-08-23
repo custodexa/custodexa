@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// 改密秘密型別（change-secret-ssh-deepening）
+// 改密秘密型別
 const (
 	// ChangeSecretTypePassword 密碼輪替（chpasswd）
 	ChangeSecretTypePassword = "password"
@@ -21,7 +21,7 @@ const (
 	KeyStrategyExclusive = "exclusive"
 )
 
-// 密碼策略邊界（design D7）：大小寫與數字恆為必要字類，不開放關閉
+// 密碼策略邊界：大小寫與數字恆為必要字類，不開放關閉
 const (
 	PasswordLengthMin     = 12
 	PasswordLengthMax     = 64
@@ -47,7 +47,7 @@ type ChangeSecretPlan struct {
 	// KeyStrategy 僅 SecretType=ssh_key 時有意義，見 KeyStrategy* 常數
 	KeyStrategy string `gorm:"size:16;default:append_replace" json:"key_strategy"`
 
-	// 密碼策略（design D7：per-plan，不進全域政策鍵——那域管的是平台使用者密碼）。
+	// 密碼策略（per-plan，不進全域政策鍵——那域管的是平台使用者密碼）。
 	// shell 敏感字元與控制字元為系統級硬排除，不在此開放設定
 	PasswordLength           int  `gorm:"default:16" json:"password_length"`
 	PasswordIncludeSymbol    bool `gorm:"default:true" json:"password_include_symbol"`
@@ -63,7 +63,7 @@ const (
 	// ChangeSecretFailed 遠端**確定未變更**（指令跑完但非零退出）：帳號憑證原樣、候選已清
 	ChangeSecretFailed = "failed"
 	// ChangeSecretUnverified 遠端狀態**不可知**（連線中斷／逾時／驗證失敗）：
-	// 帳號憑證維持舊值、候選保留待系統重試（design D3／D4）
+	// 帳號憑證維持舊值、候選保留待系統重試
 	ChangeSecretUnverified = "unverified"
 	ChangeSecretSkipped    = "skipped"
 )
@@ -86,7 +86,7 @@ type ChangeSecretRecord struct {
 	ExecutedAt time.Time `json:"executed_at"`
 }
 
-// ChangeSecretCandidate 未驗證的候選憑證（design D1／D2）。
+// ChangeSecretCandidate 未驗證的候選憑證。
 //
 // **一帳號至多一筆**（AccountID 唯一索引）：候選列的存在即代表該帳號憑證處於
 // 「未驗證」狀態，不另設會與之漂移的狀態欄位。
@@ -100,7 +100,7 @@ type ChangeSecretRecord struct {
 // 兩欄一律 json:"-"；API 回應走專屬 DTO，任何路徑皆不得回傳候選秘密。
 type ChangeSecretCandidate struct {
 	ID uint `gorm:"primarykey" json:"id"`
-	// AccountID 唯一：同一帳號不疊加第二個未知狀態（design D8）
+	// AccountID 唯一：同一帳號不疊加第二個未知狀態
 	AccountID uint `gorm:"uniqueIndex;not null" json:"account_id"`
 	AssetID   uint `gorm:"index;not null" json:"asset_id"`
 	PlanID    uint `json:"plan_id"`

@@ -1,21 +1,21 @@
 package moduleboundary
 
-// 資料邊界閘門（modular-architecture Phase B / W6 任務 6.0a–6.0c）。
+// 資料邊界閘門（Phase B 任務 6.0a–6.0c）。
 //
 // **為何非有不可**：`go list -deps` 證得了 import 層零出向，證不了資料層——七個模組
 // 共用 `internal/model` 並各自持有 `*gorm.DB`，任何模組都能直接讀寫他模組的表而
-// 編譯器與 import 圖守衛全都看不見（tasks.md:29 的 DoD-1 誠實界定、backlog B-11／B-13）。
-// W2 實證：keyvault 的 `VerifyInitialAdminCredential` 直接 `Preload("Roles")` 讀
+// 編譯器與 import 圖守衛全都看不見。
+// 實證：keyvault 的 `VerifyInitialAdminCredential` 直接 `Preload("Roles")` 讀
 // identity 的 users/roles 並在包內做 admin 判定。asset／identity／authz 是資料密集
 // 模組，若沿用現況搬入，缺口會從「單一自有表」放大成常態跨模組通道且再也收不回。
 //
-// **本閘門做什麼**（codex W2 外審 K4／K5 的裁決範圍，不多做）：
+// **本閘門做什麼**（限定於既有裁決範圍，不多做）：
 //   - 6.0a：每張表登記所屬模組（`tableOwner`）；跨模組讀／寫以**現況為基線全數登記**
 //     （`crossModuleDataAccessBaseline`）。
 //   - 6.0b：ratchet——**只准縮不准增**。掃到未登記的跨模組存取即紅；登記項在現實中
 //     消失（除刻意標記為掃描不可見者）亦紅，逼「移除須顯式更新登記」。
 //   - 6.0c：表名解析走 `go/types`，涵蓋 `Create(&model.X{})`／`Save(&row)`／
-//     `First(&row)` 這類**由變數型別決定表名**的形態（backlog B-12 誠實降級的缺口），
+//     `First(&row)` 這類**由變數型別決定表名**的形態，
 //     並對非字面量的 `Table`／`Raw`／`Exec` **fail-close**（具名例外另列）。
 //
 // **誠實界定**（不得越過）：本守衛是測試守衛不是編譯器保證，射程＝模組歸屬檔內、
@@ -532,7 +532,7 @@ func (r *stringResolver) resolveDepth(e ast.Expr, depth int) (string, bool) {
 		return "", false
 	}
 	if tv, ok := r.info.Types[e]; ok && tv.Value != nil {
-		// **必須用 constant.StringVal 而非 Value.String()**（W7 修，W6 遺留缺陷）：
+		// **必須用 constant.StringVal 而非 Value.String()**（修掉的遺留缺陷）：
 		// `go/constant` 的 String() 是**顯示用**表示，超過約 72 字元即截斷成
 		// `"…"...`。SQL 常數動輒數百字元，截斷點之後的 FROM／JOIN 表名**整段
 		// 自掃描面消失**，而守衛照樣綠——`subjectCondition` 的
@@ -681,7 +681,7 @@ var sqlAliasStopWords = map[string]bool{
 
 // sqlTables 自 SQL 抽出**真正的表名**。
 //
-// **必須排除 CTE 名與別名**（W7 修，W6 遺留缺陷；與 constant.StringVal 那條同源——
+// **必須排除 CTE 名與別名**（修掉的遺留缺陷；與 constant.StringVal 那條同源——
 // 截斷修好之後，遞迴 CTE 才第一次完整進入掃描面而暴露此事）：
 //   - `WITH RECURSIVE node_up(id) AS (…) … FROM node_up` 的 `node_up` 不是表；
 //   - `JOIN asset_node_ancestors ana ON …` 之後的 `FROM … ana` 同理。
@@ -723,8 +723,8 @@ func sqlTables(sql string) []string {
 // ---- 6.0b：ratchet 判定（純函式，供突變自檢）----
 
 // accessKey 跨模組存取的登記粒度：模組 × 表 × 讀寫。
-// **刻意不含 file:line**——行號每波都漂移，綁上去會讓登記表變成每波必改的噪音，
-// 且 W1 已實證 file:line allowlist 有「移位假綠」形態（testing.md §5 形態 15）。
+// **刻意不含 file:line**——行號隨每次改動漂移，綁上去會讓登記表變成必改的噪音，
+// 且已實證 file:line allowlist 有「移位假綠」形態（testing.md §5 形態 15）。
 type accessKey struct {
 	Module string
 	Table  string
@@ -740,7 +740,7 @@ type dataBoundaryVerdict struct {
 
 // evaluateDataBoundary ratchet 的判定本體。
 //
-// **抽成純函式的理由與 W1 `forbiddenEdgeViolations` 相同**：`packages.Load` 需要
+// **抽成純函式的理由與 `forbiddenEdgeViolations` 相同**：`packages.Load` 需要
 // 完整 module，掃描側無法以合成樣本做突變自檢；判定側可以。三個方向各自可獨立
 // 失效，故三者分開回報。
 func evaluateDataBoundary(findings []dataAccessFinding, owner map[string]string,

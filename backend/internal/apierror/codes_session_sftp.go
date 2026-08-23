@@ -1,6 +1,6 @@
 package apierror
 
-// Session / my-connection / SFTP handler codes (backend-i18n-unification A3 批).
+// Session / my-connection / SFTP handler codes (批).
 //
 // 涵蓋 internal/api 的 sftp_handler.go、my_connection_handler.go、
 // session_handler.go、session_command_handler.go 四檔——原先直寫
@@ -14,7 +14,7 @@ var (
 	CodeInternalSFTPAssetStatus     = register("INTERNAL_SFTP_ASSET_STATUS_CHECK", Descriptor{ZhFallback: "資產狀態檢查失敗"})
 	CodeInternalSFTPAccessPolicy    = register("INTERNAL_SFTP_ACCESS_POLICY_CHECK", Descriptor{ZhFallback: "存取政策檢查失敗"})
 
-	// respondSFTPError 的遠端操作失敗碼，依**呼叫點動作**拆分（V2 對抗驗收 H3）。
+	// respondSFTPError 的遠端操作失敗碼，依**呼叫點動作**拆分。
 	//
 	// 原為單一 INTERNAL_SFTP_OPERATION_FAILED「檔案操作失敗」：使用者按下「下載」
 	// 收到「檔案操作失敗」，資訊量低於遷移前那句「下載失敗」，是 i18n 統一的淨損失。
@@ -66,9 +66,9 @@ var (
 	//
 	// session ID 驗證复用 codes_connect.go 既有的 CodeInvalidSessionID
 	// （VALIDATION_INVALID_SESSION_ID，ZhFallback「無效的會話 ID」）——該碼由
-	// A8 批註冊，涵蓋 monitor/stats/share 三處「無效的 Session ID」/「無效的
-	// 會話 ID」措辭差異；本批 session_handler.go／session_command_handler.go
-	// 的「無效的 Session ID」語義相同，直接复用不重複註冊（D2 复用優先）。
+	// 既有註冊涵蓋 monitor/stats/share 三處「無效的 Session ID」/「無效的
+	// 會話 ID」措辭差異；session_handler.go／session_command_handler.go
+	// 的「無效的 Session ID」語義相同，直接复用不重複註冊（复用優先）。
 	//
 	// my-connection 的「連線 ID」是另一資源命名（非 session 的同義詞——
 	// my-connection 端點對外一律稱「連線」），故另立一碼：
@@ -84,12 +84,11 @@ var (
 	// --- session（管理端 Session 列表／詳情／統計／強制終止）---
 
 	// CodeSessionNotFound 复用 codes_connect.go 既有碼（NOTFOUND_SESSION，
-	// ZhFallback「會話不存在」）——同一資源不存在語義，D2 复用優先；本檔不重複註冊。
+	// ZhFallback「會話不存在」）——同一資源不存在語義，复用優先；本檔不重複註冊。
 	//
-	// INTERNAL_SESSION_QUERY 已被 codes_audit.go（A7 批，錄影播放前置查詢，
+	// INTERNAL_SESSION_QUERY 已被 codes_audit.go（錄影播放前置查詢，
 	// ZhFallback「獲取 Session 資訊失敗」）取走——雖語義相近但呼叫網域不同
-	// （本檔為 session 管理端列表/詳情查詢），另立 _ADMIN_ 命名避免同批次
-	// 平行作業撞碼（A3/A7 為並行 batch，非本檔可調解）。
+	// （本檔為 session 管理端列表/詳情查詢），故另立 _ADMIN_ 命名避免撞碼。
 	CodeInternalSessionAdminQuery  = register("INTERNAL_SESSION_ADMIN_QUERY", Descriptor{ZhFallback: "查詢 Session 失敗"})
 	CodeInternalSessionActiveQuery = register("INTERNAL_SESSION_ACTIVE_QUERY", Descriptor{ZhFallback: "查詢活動 Session 失敗"})
 	CodeSessionTerminateAdminOnly  = register("AUTH_SESSION_TERMINATE_ADMIN_ONLY", Descriptor{ZhFallback: "僅管理員可強制終止 Session"})

@@ -1,7 +1,6 @@
 package identity_test
 
-// 跨包測試包（`package identity_test`）自用的夾具複本
-// （modular-architecture W8 獨立驗收：export budget 收斂）。
+// 跨包測試包（`package identity_test`）自用的夾具複本（export budget 收斂）。
 //
 // **為何是複本**：本目錄有三個包——`identity`（生產）、`identity`（包內測試）、
 // `identity_test`（本外部測試包）。前兩者的 `_test.go` 夾具對本包不可見，
@@ -69,7 +68,7 @@ func (a aadTestCodec) DecryptFor(_ context.Context, ref crypto.CipherRef, cipher
 	return string(plain), nil
 }
 
-// aesColumnCodec 測試用 ColumnCodec（D5 AAD cutover 後的必要參數）
+// aesColumnCodec 測試用 ColumnCodec（AAD cutover 後的必要參數）
 func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 	t.Helper()
 	c, err := crypto.NewAESCrypto(key)

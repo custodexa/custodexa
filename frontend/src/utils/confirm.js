@@ -1,5 +1,5 @@
 /**
- * 破壞性動作的確認框（idp-oidc-integration 7.4 UI 對抗審查 HIGH-2）。
+ * 破壞性動作的確認框。
  *
  * 為什麼要獨立一個 helper 而不是每處各自傳選項：
  *   Element Plus 的 ElMessageBox 預設 `autofocus: true`，開啟後焦點落在**確認鈕**上，

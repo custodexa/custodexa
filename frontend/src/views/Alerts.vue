@@ -114,7 +114,7 @@
               </template>
             </el-table-column>
 
-            <!-- 規則名為純淨值（D6：後端不再把「（已阻斷）」串進 rule_name），
+            <!-- 規則名為純淨值（後端不再把「（已阻斷）」串進 rule_name），
                  阻斷與否改以 blocked 欄的 tag 呈現（既有枚舉 tag 慣例） -->
             <el-table-column
               prop="rule_name"
@@ -467,7 +467,7 @@
       </el-tab-pane>
     </el-tabs>
 
-    <!-- 告警審閱處置對話框（audit-workflows D3） -->
+    <!-- 告警審閱處置對話框（audit-workflows） -->
     <el-dialog
       v-model="reviewDialogVisible"
       :title="$t('alerts.reviewDialogTitle')"
@@ -1160,15 +1160,15 @@ const fetchChannels = async () => {
 
 const openChannelDialog = (row = null) => {
   editingChannelId.value = row ? row.id : null
-  // 編輯時 secret 與 url 皆留空＝沿用既有（key-management-envelope G8：
-  // 後端回應的 url 已遮罩，回填會把遮罩字串存成真 URL）；maskedUrl 僅供顯示
+  // 編輯時 secret 與 url 皆留空＝沿用既有（後端回應的 url 已遮罩，
+  // 回填會把遮罩字串存成真 URL）；maskedUrl 僅供顯示
   channelForm.value = row
     ? { name: row.name, type: row.type || 'webhook', url: '', maskedUrl: row.url, secret: '', clearSecret: false, hasSecret: !!row.has_secret, enabled: row.enabled, language: row.language || CHANNEL_LANGUAGE_DEFAULT }
     : { name: '', type: 'webhook', url: '', maskedUrl: '', secret: '', clearSecret: false, hasSecret: false, enabled: true, language: CHANNEL_LANGUAGE_DEFAULT }
   channelDialogVisible.value = true
 }
 
-// 傳輸政策 warn 檔存 http 通道（transmission-security-policy D6）：
+// 傳輸政策 warn 檔存 http 通道：
 // 後端回 400＋code=VALIDATION_TRANSMISSION_ACK_REQUIRED＋risks，前端確認後帶 risk_acknowledged 重送
 const saveChannelOnce = (payload, ack) => {
   const body = { ...payload, risk_acknowledged: ack }
@@ -1196,7 +1196,7 @@ const handleSaveChannel = async () => {
       secret: f.secret,
       enabled: f.enabled,
       clear_secret: f.clearSecret,
-      // 通道語系（D5）：Create 未給＝後端預設 zh-TW、Update 省略＝保留，
+      // 通道語系：Create 未給＝後端預設 zh-TW、Update 省略＝保留，
       // 表單恆有值故一律送出（白名單外由後端 VALIDATION 碼擋）
       language: f.language,
     }

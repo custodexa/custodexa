@@ -20,10 +20,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 改密後認證脈絡不被洗白（idp-oidc-integration tasks 4.14f）。
+// 改密後認證脈絡不被洗白。
 //
 // 混合帳號（有本地密碼、同時綁了外部身分）以 OIDC 登入後自願改密，handler 會
-// **直接換發正式 token**（auth_handler.go 的 D12：不重走登入）。換發時若把脈絡
+// **直接換發正式 token**（見 auth_handler.go 的 ChangePassword：不重走登入）。換發時若把脈絡
 // 當成新的一次本地登入（method=local_password、provider_id=0），使用者就得到一張
 // 對 provider 停用完全免疫的憑證——「改個密碼即可脫離 IdP 治理」是一條靠改密
 // 就能自助取得的永久後門，而所有既有測試（改密成功、refresh 被撤、政策驗證）
@@ -175,7 +175,7 @@ func TestChangePasswordKeepsProviderContext(t *testing.T) {
 		t.Fatalf("改密應成功: code=%d body=%+v", code, resp)
 	}
 	if resp.Token == "" {
-		t.Fatal("改密應直接換發正式 token（D12）")
+		t.Fatal("改密應直接換發正式 token")
 	}
 
 	after, err := env.auth.ValidateToken(resp.Token)

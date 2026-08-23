@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 授權帳號範圍強制點的閘測試（asset-multi-account D5 階段 4）。
+// 授權帳號範圍強制點的閘測試。
 //
 // 前階段雙審指認的缺口：階段 3 只驗「帳號屬於這台資產」（客體綁定），
 // 沒驗「你被授權用這個帳號」。本檔鎖住簽發點與兌換點兩處補上的判定。
@@ -22,7 +22,7 @@ func setAuthAccounts(t *testing.T, db *gorm.DB, scope model.AccountScope) {
 	}
 }
 
-// TestConnectTokenAccountScopeGate 簽發點帳號授權判定（D5 強制點 1／3，
+// TestConnectTokenAccountScopeGate 簽發點帳號授權判定（強制點 1／3，
 // authorization-management delta Scenario「個別指定帳號」）
 func TestConnectTokenAccountScopeGate(t *testing.T) {
 	t.Run("範圍外帳號簽發被拒且不洩漏存在性", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestConnectTokenAccountScopeGate(t *testing.T) {
 	})
 }
 
-// TestSSHRedeemAccountScopeRecheck 兌換點帳號授權複查（D5 強制點 2／3，
+// TestSSHRedeemAccountScopeRecheck 兌換點帳號授權複查（強制點 2／3，
 // authorization-management delta Scenario「帳號範圍收緊即時生效」）：
 // 簽發後把帳號移出授權範圍，兌換必須即時拒絕——token 效期未到不構成放行理由
 func TestSSHRedeemAccountScopeRecheck(t *testing.T) {

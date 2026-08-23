@@ -56,7 +56,7 @@
         </div>
       </div>
 
-      <!-- 自助顯示名（profile-display-name）：LDAP 帳號亦可自助（本地欄位，不參與目錄同步） -->
+      <!-- 自助顯示名：LDAP 帳號亦可自助（本地欄位，不參與目錄同步） -->
       <div
         v-loading="infoLoading"
         class="profile-card"
@@ -118,9 +118,8 @@
       </div>
 
       <!-- 自助改密；外部身分帳號（LDAP／OIDC）的憑證由提供者管理，不提供表單
-           （ux-consistency D5「整卡換說明 alert」；idp-oidc-integration D14.6
-           將判定自 is_ldap 泛化為 external_credential——只認 is_ldap 會讓
-           OIDC 供應帳號看到一個按下必被後端擋的改密表單） -->
+           （整卡換成說明 alert；判定自 is_ldap 泛化為 external_credential——
+           只認 is_ldap 會讓 OIDC 供應帳號看到一個按下必被後端擋的改密表單） -->
       <div class="profile-card">
         <div class="card-title">
           {{ $t('common.changePassword') }}
@@ -341,7 +340,7 @@ const infoLoading = ref(false)
 const account = ref({})
 const mfaEnabled = ref(false)
 
-// —— 外部憑證判定（idp-oidc-integration D14.6）——
+// —— 外部憑證判定 ——
 // external_credential 是權威旗標（LDAP／OIDC 一體適用）；舊後端未回該欄時
 // 退回 is_ldap，使新前端搭舊後端不致把 LDAP 帳號誤判為可改密
 const isExternalCredential = computed(
@@ -390,7 +389,7 @@ const displayNameLocalError = (value) => {
 }
 
 // 送出顯示名更新（save＝設定，clear＝清空回退）。成功後同步 account、localStorage.user
-// 與側欄（自訂事件），無需重新登入即反映（profile-display-name R1/5.2）
+// 與側欄（自訂事件），無需重新登入即反映
 const submitDisplayName = async (rawValue) => {
   displayNameSaving.value = true
   displayNameError.value = ''

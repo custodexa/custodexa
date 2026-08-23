@@ -1,5 +1,5 @@
 <!--
-  AuthzAccountScopeDialog：調整授權列的帳號範圍（asset-multi-account D5）。
+  AuthzAccountScopeDialog：調整授權列的帳號範圍。
   預設 `@ALL`（全部帳號，與多帳號維度引入前行為一致）；個別指定時綁 username
   字串而非 FK——授權客體可為節點，帳號卻是 per-asset 物件，「授權節點內的 root」
   只能以名字表達。username 建議清單僅為輸入輔助，非授權判定依據。
@@ -124,7 +124,7 @@ const trimmedUsernames = computed(() =>
   usernames.value.map((v) => v.trim()).filter(Boolean)
 )
 
-// allow-create 讓使用者可打任何字串，包含保留別名（對抗審查 MED-4）：
+// allow-create 讓使用者可打任何字串，包含保留別名：
 // 在「指定帳號」模式下送出 `@ALL` 會被後端展開成全部帳號——畫面說「指定」、
 // 結果卻是「全部」，語義完全相反。後端已擋 `@` 前綴的 username，前端同步擋
 // 並就近給訊息（`@` 為授權別名的保留前綴，不可能是真的帳號名）

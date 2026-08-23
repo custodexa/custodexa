@@ -13,11 +13,10 @@ import (
 	"testing"
 )
 
-// 「**不存在任何改寫既有 kek_id 的程式碼路徑**」的 AST 守衛
-// （kek-provider-modularization D11.1 裁決 1 的失敗判準之一）。
+// 「**不存在任何改寫既有 kek_id 的程式碼路徑**」的 AST 守衛。
 //
-// **為何需要一道結構守衛而不是靠 code review**：round-1 曾裁決要做存量正規化
-// migration，round-2 兩方獨立同判整項取消。取消的理由不是「暫時不做」而是
+// **為何需要一道結構守衛而不是靠 code review**：早期曾裁決要做存量正規化
+// migration，後續兩方獨立同判整項取消。取消的理由不是「暫時不做」而是
 // 「做了就是錯的」——天真述詞（`kek_id != canonical` 即改寫）在 alias 被重指向時，
 // 會把 ARN-A 包裹的列改標成 ARN-B：材料未動而標籤已錯，把原本正確的
 // keyvault.ErrKEKMismatch fail-close 換成**不可逆的標籤污染**。
@@ -48,7 +47,7 @@ var updateCallNames = map[string]bool{
 
 // kekIDRewriteAllowlist 允許改寫 kek_id 的（檔名 → 外層函式名）。
 //
-// **目前刻意為空**。新增任何一項都等於重新引入 round-1 已被否決的設計，
+// **目前刻意為空**。新增任何一項都等於重新引入已被否決的設計，
 // 必須先在 design 上翻案並說明如何避免 alias 重指向造成的標籤污染。
 var kekIDRewriteAllowlist = map[string][]string{}
 
@@ -66,9 +65,9 @@ func TestNoKEKIDRewritePath(t *testing.T) {
 			return err
 		}
 		if info.IsDir() {
-			// **scripts 刻意不排除（冷驗收 CV-L3）**：原本把它一併 SkipDir，
+			// **scripts 刻意不排除（CV-L3）**：原本把它一併 SkipDir，
 			// 於是把 `tx.Exec("UPDATE data_keys SET kek_id = ?")` 放進
-			// backend/scripts/ 完全不會被偵測——而 D11.1 的 runbook 明文禁止提供
+			// backend/scripts/ 完全不會被偵測——而 runbook 明文禁止提供
 			// 裸 UPDATE，盲區與被禁行為的型態完全重疊。
 			// 該目錄的檔案帶 //go:build ignore，但 AST 掃描不看 build tag，
 			// 故納入掃描零成本（env 漂移守衛排除 scripts 是另一回事：
@@ -88,7 +87,7 @@ func TestNoKEKIDRewritePath(t *testing.T) {
 			// 原先 `return nil` 靜默略過：解析失敗的檔等於沒被掃過，而本守衛的
 			// 失敗形態正是「掃不到＝零違規＝綠」。go/parser **不套用 build tag**，
 			// 故 //go:build ignore 的維運工具照樣能解析；解析失敗即代表原始碼真的
-			// 壞了，fail-close 才是正確反應（W1 1.21）。
+			// 壞了，fail-close 才是正確反應。
 			t.Fatalf("解析 %s 失敗，守衛拒絕在殘缺 AST 上宣稱零違規: %v", path, perr)
 		}
 		scanned++
@@ -108,7 +107,7 @@ func TestNoKEKIDRewritePath(t *testing.T) {
 
 	if len(violations) > 0 {
 		sort.Strings(violations)
-		t.Fatalf("偵測到改寫既有 kek_id 的程式碼路徑（D11.1 裁決 1 已整項取消該需求）：\n%s\n"+
+		t.Fatalf("偵測到改寫既有 kek_id 的程式碼路徑（該需求已整項取消）：\n%s\n"+
 			"若確要翻案，須先於 design 說明如何避免 alias 重指向造成的不可逆標籤污染，"+
 			"並把該函式列入 kekIDRewriteAllowlist", strings.Join(violations, "\n"))
 	}

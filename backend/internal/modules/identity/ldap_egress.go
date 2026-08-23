@@ -19,7 +19,7 @@ import (
 // 對外一律收斂為單一「無法連線」語義（不細分原因），詳見 DialURL 註解
 var ErrLDAPEgressBlocked = errors.New("LDAP 目錄位址不在允許範圍")
 
-// LDAPEgressPolicy LDAP 撥號的出站位址政策（ldap-settings-migration D5）。
+// LDAPEgressPolicy LDAP 撥號的出站位址政策。
 //
 // LDAP URL 自本 change 起成為 admin 可寫的執行期外連位址，**登入與連線測試
 // 兩條撥號路徑皆須過本政策**。
@@ -92,11 +92,11 @@ func parseLDAPAllowedLoopbackEndpoints(raw string) []string {
 // correlationID 為失敗事件的關聯識別碼（連線測試傳 diagnostic_id，登入路徑可傳空）。
 // **失敗的粗分類原因（DNS／逾時／拒絕／TLS／出站政策）只寫入伺服端 operational log**，
 // 不得進入 API 回應或 admin 可見的審計欄位——回應面收斂為單一「無法連線」碼的部分
-// 由連線測試端點（tasks 2.6）接手，本函式只負責保證分類資訊的落點在 log。
+// 由連線測試端點接手，本函式只負責保證分類資訊的落點在 log。
 func (p *LDAPEgressPolicy) DialURL(rawURL string, skipTLSVerify bool, correlationID string) (*ldap.Conn, error) {
 	// 主機名只用於 loopback 允許清單的名稱形式比對；解析失敗不影響位址判定
 	//（判定對象恆為 Control 收到的實際位址），故此處不做 URL 文法驗證——
-	// 嚴格文法驗證是存檔／測試入口的職責（tasks 2.2）
+	// 嚴格文法驗證是存檔／測試入口的職責
 	requestedHost := ""
 	if u, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
 		requestedHost = u.Hostname()

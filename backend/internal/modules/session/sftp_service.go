@@ -23,11 +23,11 @@ const sftpDialTimeout = 5 * time.Second
 var ErrInvalidRemotePath = errors.New("遠端路徑必須為絕對路徑且不得包含 ..")
 
 // ErrRemoveDirNotEmpty 刪除目錄失敗（須為空目錄）——可行動指引，handler 以
-// errors.Is 映射專碼（V2 對抗驗收 H3），不與「底層出錯」的泛碼混為一談
+// errors.Is 映射專碼，不與「底層出錯」的泛碼混為一談
 var ErrRemoveDirNotEmpty = errors.New("刪除目錄失敗（須為空目錄）")
 
 // ErrSessionAccountNotFound 以 session_id 沿用帳號時，該會話不存在／不屬於
-// 本人或本資產（asset-multi-account D9 fail-close）
+// 本人或本資產（fail-close）
 var ErrSessionAccountNotFound = errors.New("會話不存在或不屬於此使用者與資產")
 
 // FileEntry 目錄列表項目
@@ -39,7 +39,7 @@ type FileEntry struct {
 	IsDir   bool   `json:"is_dir"`
 }
 
-// SFTPService SSH 資產的檔案操作（design D1：每請求短連線，操作完即關）
+// SFTPService SSH 資產的檔案操作（每請求短連線，操作完即關）
 type SFTPService struct {
 	assetService *asset.AssetService
 	hostKeys     *asset.HostKeyService
@@ -64,7 +64,7 @@ func ValidateRemotePath(p string) (string, error) {
 	return path.Clean(p), nil
 }
 
-// AccountForSession 自會話沿用連線帳號（asset-multi-account D9）：檔案分頁由
+// AccountForSession 自會話沿用連線帳號：檔案分頁由
 // 某會話進入時，檔案操作應與該會話同帳號，否則使用者以 root 開的終端旁邊卻是
 // 以 app 帳號在傳檔。以 (id, user_id, asset_id) 現查，非本人／非本資產的會話
 // 一律回 ErrSessionAccountNotFound（fail-close，不退回預設帳號）。
@@ -85,7 +85,7 @@ func (s *SFTPService) AccountForSession(userID, assetID, sessionID uint) (uint, 
 }
 
 // AccountIdentity 解析檔案操作將實際使用的帳號身分（accountID=0＝預設帳號）。
-// 供 handler 於連線帳號授權複查（D5 強制點 3／3）取得判定所需的 username——
+// 供 handler 於連線帳號授權複查（強制點 3／3）取得判定所需的 username——
 // 檔案面與終端面共用同一組帳號授權判定，不另立語義
 func (s *SFTPService) AccountIdentity(assetID, accountID uint) (asset.AccountIdentity, error) {
 	return s.assetService.ResolveAccountIdentity(assetID, accountID)
@@ -93,7 +93,7 @@ func (s *SFTPService) AccountIdentity(assetID, accountID uint) (asset.AccountIde
 
 // connect 以資產收口模式建立短連線 SFTP client；呼叫端負責 closeFn。
 //
-// accountID=0＝預設帳號：SFTP 獨立入口（檔案管理頁直接進）走預設帳號（D9）；
+// accountID=0＝預設帳號：SFTP 獨立入口（檔案管理頁直接進）走預設帳號；
 // 自會話分頁進入者由呼叫端以 AccountForSession 帶入該會話的帳號
 func (s *SFTPService) connect(assetID, accountID uint) (*sftp.Client, func(), error) {
 	creds, err := s.assetService.GetWithCredentialsForAccount(assetID, accountID)
@@ -126,7 +126,7 @@ func (s *SFTPService) connect(assetID, accountID uint) (*sftp.Client, func(), er
 	}
 
 	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", assetRow.Host, assetRow.Port), &ssh.ClientConfig{
-		User:            creds.Username, // 與憑證同帳號（D6）
+		User:            creds.Username, // 與憑證同帳號
 		Auth:            methods,
 		HostKeyCallback: s.hostKeys.Callback(assetRow.ID), // TOFU（host-key-verification），與 SSH 連線路徑同庫
 		Timeout:         sftpDialTimeout,

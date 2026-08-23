@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// RetentionClass 保留期水位的資料類別（auditor-workbench D5）。
+// RetentionClass 保留期水位的資料類別（auditor-workbench）。
 // 值長須在 varchar(32) 內
 type RetentionClass string
 
@@ -26,7 +26,7 @@ const (
 // ErrRetentionWatermarkImmutable 水位列刪除守衛的拒絕原因
 var ErrRetentionWatermarkImmutable = errors.New("audit_retention_watermarks 為永久保留表，不得刪除")
 
-// AuditRetentionWatermark 保留期清除水位（auditor-workbench D5）。
+// AuditRetentionWatermark 保留期清除水位（auditor-workbench）。
 //
 // **為什麼需要一張新表**：現行的清除留痕本身是一筆 audit_log
 //（`modules/audit/retention_service.go` 於清除成功後寫入 Resource=retention 的列），

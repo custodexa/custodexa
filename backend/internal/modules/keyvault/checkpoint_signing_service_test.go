@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 檢查點簽章鑰服務（audit-checkpoint-chain D5，tasks 3.1／3.2／3.3）。
+// 檢查點簽章鑰服務（audit-checkpoint-chain）。
 //
 // 這把鑰是整條鏈的信任根：以它簽的檢查點若不可驗，鏈就只是一堆無意義的雜湊。
 // 故本檔的斷言集中在三件事——(1) 私鑰只以 AAD 綁定的 `enc:a1` 落庫、
@@ -187,7 +187,7 @@ func TestCheckpointSigningKeyUnknownVersion(t *testing.T) {
 	}
 }
 
-// TestCheckpointSigningKeyAADBinding tasks 3.1：私鑰密文綁定 checkpoint_signing_keys
+// TestCheckpointSigningKeyAADBinding：私鑰密文綁定 checkpoint_signing_keys
 // 的欄位身分，以其他欄位身分（含匯出簽章鑰）解包必失敗——AAD 錯配即拒解，
 // 使「把匯出鑰的密文搬進本表冒充」這條路不通
 func TestCheckpointSigningKeyAADBinding(t *testing.T) {
@@ -216,7 +216,7 @@ func TestCheckpointSigningKeyAADBinding(t *testing.T) {
 	}
 }
 
-// TestCheckpointSigningKeyHasNoPrivateKeyExit tasks 3.3：型別層無任何私鑰出口。
+// TestCheckpointSigningKeyHasNoPrivateKeyExit：型別層無任何私鑰出口。
 //
 // 路由層的守衛在第 8 組隨端點一併加；本測試釘住更根本的一層——**服務型別本身
 // 沒有可以把私鑰交出去的方法**，故不存在「新增端點時不小心把它接出去」的素材。

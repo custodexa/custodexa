@@ -1,12 +1,12 @@
 package identity
 
-// 搬包後的夾具複本（modular-architecture W8 9.9）。
+// 搬包後的夾具複本。
 //
 // 這幾個 helper 原本住在 `internal/service` 的測試檔裡，而那些檔案因為真的用到
 // session（`SessionService`／`JoinWithGenerationGuard`）必須留在原包——identity 的
-// 測試包不得 import `internal/service`（session 於 W8 起 import identity，
-// 反向 import 會構成 `import cycle not allowed in test`，W7 踩坑 #1）。
-// 故此處各留一份最小複本，比照 W2／W3／W4／W6／W7 的夾具複本作法。
+// 測試包不得 import `internal/service`（session 端 import identity，
+// 反向 import 會構成 `import cycle not allowed in test`）。
+// 故此處各留一份最小複本，比照其他模組的夾具複本作法。
 
 import (
 	"testing"
@@ -52,8 +52,8 @@ func (unknownDialector) Name() string { return "mystery" }
 // `internal/service/post_unseal_guard_test.go`）。
 //
 // **複本而非共用**：真正的守衛（「組裝根確有這一行」）在
-// `internal/modules/keyvault/post_unseal_guard_test.go`（W2-W8 期間住 `internal/service`，
-// W9 該包解散後遷入），本複本只是讓 identity 的 ldap_seed 測試能重現生產佇列的內容；
+// `internal/modules/keyvault/post_unseal_guard_test.go`（一度住 `internal/service`，
+// 該包解散後遷入），本複本只是讓 identity 的 ldap_seed 測試能重現生產佇列的內容；
 // 若把守衛也複製過來，兩份會各自漂移。
 func registerBuiltinsLikeAssembly() {
 	keyvault.RegisterPostUnsealBuiltin(PostUnsealMigrationLDAPSeed, func() {

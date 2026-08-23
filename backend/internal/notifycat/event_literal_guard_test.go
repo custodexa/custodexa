@@ -18,7 +18,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// Event 字面量守衛（design D4）。
+// Event 字面量守衛。
 //
 // **以 go/types 判定，不以識別字名稱猜測。** Go 的未定型字串常數可隱式轉換為
 // 具名型別——`NotifyEvent("access_reqeust.created")` 不產生任何轉換節點，
@@ -58,18 +58,18 @@ const minScannedPackages = 20
 // mustScanPackages 必須進入掃描的套件——通知呼叫端所在與可能新增呼叫端之處。
 // 數量門檻擋不住「載入器只回傳無關套件」，具名清單才擋得住。
 var mustScanPackages = []string{
-	// **七模組逐一具名（modular-architecture W8 9.7）**：掃描本身走 `./...` 故一直
+	// **七模組逐一具名**：掃描本身走 `./...` 故一直
 	// 涵蓋得到，但具名清單是「必須在場」的下界——不列的話，該包被排除在載入結果
-	// 外時不會有任何東西轉紅。**七個模組（W9 起全數搬包完成）逐條列出**。
+	// 外時不會有任何東西轉紅。**七個模組（全數搬包完成）逐條列出**。
 	"github.com/custodexa/backend/internal/modules/keyvault",
 	"github.com/custodexa/backend/internal/modules/policy",
-	// W7：authz 搬包後 `access_request_service.go` 的通知事件字面量住在此包
+	// authz 搬包後 `access_request_service.go` 的通知事件字面量住在此包
 	"github.com/custodexa/backend/internal/modules/authz",
 	"github.com/custodexa/backend/internal/modules/audit",
 	"github.com/custodexa/backend/internal/modules/asset",
-	// W8：identity 搬包後 OIDC／LDAP／使用者生命週期的通知呼叫端住在此包
+	// identity 搬包後 OIDC／LDAP／使用者生命週期的通知呼叫端住在此包
 	"github.com/custodexa/backend/internal/modules/identity",
-	// W9：session 搬包後，會話／錄影／SFTP 的通知呼叫端住在此包
+	// session 搬包後，會話／錄影／SFTP 的通知呼叫端住在此包
 	"github.com/custodexa/backend/internal/modules/session",
 	"github.com/custodexa/backend/internal/api",
 	"github.com/custodexa/backend/internal/scheduler",
@@ -92,7 +92,7 @@ const notifycatModulePath = "github.com/custodexa/backend"
 
 // backendRoot 定位 backend module 根（packages.Load 的 Dir）。
 //
-// **不用固定層數 `..`**（modular-architecture W1 1.20）：`Dir(caller)/../..`
+// **不用固定層數 `..`**：`Dir(caller)/../..`
 // 與「本 package 住在樹的第幾層」綁死，package 下移一層即把 Dir 指向 internal/，
 // 而 packages.Load 在非 module 根目錄下的 "./..." 只會載到該子樹——守衛的
 // 「全 backend」宣稱靜默縮成一小塊。改以「向上找 go.mod 並核對 module 行」為錨點。
@@ -282,7 +282,7 @@ func (m pkgImporter) Import(path string) (*types.Package, error) {
 	return nil, fmt.Errorf("合成套件不該引用 %q", path)
 }
 
-// TestEventGuardCatchesConstFolding 鎖住兩條常數摺疊繞法（codex 批3 審查發現）。
+// TestEventGuardCatchesConstFolding 鎖住兩條常數摺疊繞法。
 //
 // 紅→綠敏感度：把 scanEventConstExprs 的判準改回 v1（只認 *ast.BasicLit）後，
 // 串接與本地常數中轉這兩筆會消失，數量斷言即紅。

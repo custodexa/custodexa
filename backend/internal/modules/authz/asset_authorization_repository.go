@@ -67,7 +67,7 @@ func (r *assetAuthorizationRepository) Delete(id uint) error {
 	return nil
 }
 
-// ValidityFilter 有效性篩選（authorization-page-redesign D7）：三態於 COUNT 與
+// ValidityFilter 有效性篩選：三態於 COUNT 與
 // 分頁前生效（當頁過濾＝稽核漏報，設計裁決否決）。Now 由呼叫端一次捕捉注入，
 // 與 validityCondition 同語義（跨 PostgreSQL/SQLite 可攜、測試可固定時間）
 type ValidityFilter struct {
@@ -75,8 +75,8 @@ type ValidityFilter struct {
 	Now   time.Time
 }
 
-// nodeStructuralNodesSubquery 目標節點的祖先鏈∪自身∪後代集合（authz-tag-node-filters
-// D7 分支 1）：掛祖先的授權因子樹涵蓋本節點、掛後代的落在本節點範圍內。
+// nodeStructuralNodesSubquery 目標節點的祖先鏈∪自身∪後代集合（
+// 涵蓋盤點分支 1）：掛祖先的授權因子樹涵蓋本節點、掛後代的落在本節點範圍內。
 // 仿 3b CTE 模式的 node 錨定版（既有常數以 asset_id/approver_id 為錨不可復用）。
 // 佔位符：nodeID, nodeID
 const nodeStructuralNodesSubquery = `(WITH RECURSIVE node_up(id) AS (
@@ -91,10 +91,10 @@ const nodeStructuralNodesSubquery = `(WITH RECURSIVE node_up(id) AS (
 	WHERE g.deleted_at IS NULL
 ) SELECT id FROM node_up UNION SELECT id FROM node_down)`
 
-// nodeCoveringNodesSubquery「涵蓋目標子樹內任一資產」的節點集合（D7 分支 2
+// nodeCoveringNodesSubquery「涵蓋目標子樹內任一資產」的節點集合（涵蓋盤點分支 2
 // 多歸屬橋接）：子樹內資產的掛載節點＋其全部祖先——資產 X 同時掛 A 與 C 子樹、
 // 授權掛 C 時，以 A 盤點須命中該授權（其有效範圍涵蓋 A 子樹內的 X；缺此分支
-// 即稽核漏報，對抗驗證兩軌交叉確認）。佔位符：nodeID
+// 即稽核漏報，兩軌交叉確認）。佔位符：nodeID
 const nodeCoveringNodesSubquery = `(WITH RECURSIVE bridge_sub(id) AS (
 	SELECT id FROM asset_groups WHERE id = ? AND deleted_at IS NULL
 	UNION
@@ -109,7 +109,7 @@ const nodeCoveringNodesSubquery = `(WITH RECURSIVE bridge_sub(id) AS (
 	WHERE g.parent_id IS NOT NULL AND g.deleted_at IS NULL
 ) SELECT id FROM covering)`
 
-// nodeSubtreeAssetsSubquery 目標子樹內資產集合（D7 分支 3：資產客體掛於子樹內）。
+// nodeSubtreeAssetsSubquery 目標子樹內資產集合（涵蓋盤點分支 3：資產客體掛於子樹內）。
 // 佔位符：nodeID
 const nodeSubtreeAssetsSubquery = `(SELECT an.asset_id FROM asset_nodes an WHERE an.node_id IN (
 	WITH RECURSIVE asset_sub(id) AS (
@@ -120,16 +120,16 @@ const nodeSubtreeAssetsSubquery = `(SELECT an.asset_id FROM asset_nodes an WHERE
 	) SELECT id FROM asset_sub
 ))`
 
-// nodeCoverageCondition D7 涵蓋盤點三分支聯集：均為 IN 子查詢無 JOIN，
+// nodeCoverageCondition 涵蓋盤點三分支聯集：均為 IN 子查詢無 JOIN，
 // 每筆授權記錄僅出現一次。佔位符：nodeID ×4
 const nodeCoverageCondition = "(asset_group_id IN " + nodeStructuralNodesSubquery +
 	" OR asset_group_id IN " + nodeCoveringNodesSubquery +
 	" OR asset_id IN " + nodeSubtreeAssetsSubquery + ")"
 
 // List 查詢授權列表（支援過濾和分頁）
-// filters 支援的鍵: "user_id", "user_group_id", "asset_id", "node_id"（涵蓋盤點，
-// authz-tag-node-filters D7）, "permission", "source", "validity"（ValidityFilter）；
-// 空 map＝全量（authorization-page-redesign D1）
+// filters 支援的鍵: "user_id", "user_group_id", "asset_id", "node_id"（涵蓋盤點）,
+// "permission", "source", "validity"（ValidityFilter）；
+// 空 map＝全量
 func (r *assetAuthorizationRepository) List(
 	filters map[string]interface{},
 	page, pageSize int,
@@ -200,11 +200,11 @@ func (r *assetAuthorizationRepository) List(
 	return authorizations, total, nil
 }
 
-// subjectCondition 授權主體條件（user-group-authorization）：個人直屬 OR
+// subjectCondition 授權主體條件：個人直屬 OR
 // 所屬使用者群組。四路徑聯集語義的主體側，與客體側（直授 OR 節點含子樹）正交
 const subjectCondition = "(user_id = ? OR user_group_id IN (SELECT user_group_id FROM user_group_members WHERE user_id = ?))"
 
-// assetAncestorNodesSubquery 資產的「掛載節點＋全部祖先」集合（asset-node-tree D3）：
+// assetAncestorNodesSubquery 資產的「掛載節點＋全部祖先」集合：
 // 授權掛節點 N 含子樹涵蓋資產 A ⟺ N ∈ A 的掛載節點或其任一祖先。
 // 佔位符：asset_id 一個。軟刪節點防禦性排除（正常流程僅空節點可刪不會在鏈上）
 const assetAncestorNodesSubquery = `(WITH RECURSIVE asset_node_ancestors(id) AS (
@@ -218,7 +218,7 @@ const assetAncestorNodesSubquery = `(WITH RECURSIVE asset_node_ancestors(id) AS 
 // nodeObjectCondition 授權客體條件（直授 OR 節點含子樹）；佔位符：assetID, assetID
 const nodeObjectCondition = "(asset_id = ? OR asset_group_id IN " + assetAncestorNodesSubquery + ")"
 
-// validityCondition 時效窗條件（D4）：空值＝永久；未達 date_start 或已過
+// validityCondition 時效窗條件：空值＝永久；未達 date_start 或已過
 // date_expired 的授權不生效（到期＝判定不命中，記錄留存供審計）。
 // 時刻以參數注入（非 DB NOW()）：跨 PostgreSQL/SQLite 可攜，測試可用固定時間
 const validityCondition = "(date_start IS NULL OR date_start <= ?) AND (date_expired IS NULL OR date_expired > ?)"
@@ -226,7 +226,7 @@ const validityCondition = "(date_start IS NULL OR date_start <= ?) AND (date_exp
 // CheckPermission 檢查權限（核心查詢）
 // 查詢用戶（個人或經所屬群組）是否對指定資產擁有任一時效窗內的指定權限。
 // 語義鐵則：四路徑（個人∪群組）×（直授∪節點含子樹）聯集、純加法無 deny、
-// 無「個人優先」；節點授權隨掛隨涵蓋（asset-node-tree D3 即時查詢無快取）
+// 無「個人優先」；節點授權隨掛隨涵蓋（即時查詢無快取）
 func (r *assetAuthorizationRepository) CheckPermission(
 	userID uint,
 	assetID uint,
@@ -246,7 +246,7 @@ func (r *assetAuthorizationRepository) CheckPermission(
 	return count > 0, nil
 }
 
-// ConnectSources 來源感知的 connect 授權命中（access-policy-approval D4）：
+// ConnectSources 來源感知的 connect 授權命中：
 // 政策閘需要區分「常設授權」與「核准流臨時授權」——非 open 段位僅 ticket 來源放行
 type ConnectSources struct {
 	Standing bool // 時窗內常設 connect（source=manual 等非核准流來源）
@@ -265,7 +265,7 @@ func (r *assetAuthorizationRepository) ResolveConnectSources(
 }
 
 // ResolveConnectSourcesWithDB 同 ResolveConnectSources，但以指定 db/tx 執行——
-// 破窗於鎖定申請人列後於同一交易重判資格用（break-glass-revocation codex #2：
+// 破窗於鎖定申請人列後於同一交易重判資格用（
 // 收緊「交易外查資格、交易內建票證」窗口內授權被撤的 TOCTOU）
 func (r *assetAuthorizationRepository) ResolveConnectSourcesWithDB(
 	db *gorm.DB,
@@ -294,15 +294,14 @@ func (r *assetAuthorizationRepository) ResolveConnectSourcesWithDB(
 	return result, nil
 }
 
-// AccountScopesFor 使用者對某資產「命中授權列的帳號範圍」原始清單
-// （asset-multi-account D5）。
+// AccountScopesFor 使用者對某資產「命中授權列的帳號範圍」原始清單。
 //
 // 條件與 CheckPermission／ResolveConnectSources 就**授權列查詢**而言同構（四路徑
 // 主體×（直授 OR 節點含子樹）×時效窗×軟刪×權限階梯）——這是刻意的：帳號維度是
 // 既有授權判定的一個屬性，不是另一套平行判定。任何一邊的主體/客體/時效語義變動
 // 而另一邊沒跟上，就會出現「有連線權但無任何可用帳號」或反之的裂縫。
 //
-// **一項刻意的不同構**（opus 階段 4 F2，據實記載勿當成待補的漏）：
+// **一項刻意的不同構**（據實記載勿當成待補的漏）：
 // `CheckPermission(view)` 有第三來源「審核範圍隱含 view」（`ApproverScopeCoversAsset`），
 // 本函式**沒有**。這不是遺漏而是裁決：該來源存在的目的是讓 approver 看得見待審
 // 申請所指的資產以便判斷，而帳號清單是**憑證身分的盤點**（含 privileged 標記），
@@ -339,7 +338,7 @@ func (r *assetAuthorizationRepository) AccountScopesFor(
 }
 
 // StandingConnectAssetIDs 給定資產集合中，使用者持「時窗內常設 connect」
-// （source<>'ticket'）的資產 ID 集（break-glass-revocation D3：破窗資格 bulk 判定，
+// （source<>'ticket'）的資產 ID 集（破窗資格 bulk 判定，
 // 資產列表標註用——單資產裁決仍走 ResolveConnectSources）。
 // 條件與 ResolveConnectSources 同構：四路徑主體×（直授 OR 經資產組）×時效窗
 func (r *assetAuthorizationRepository) StandingConnectAssetIDs(userID uint, assetIDs []uint, now time.Time) (map[uint]bool, error) {
@@ -374,13 +373,13 @@ func (r *assetAuthorizationRepository) StandingConnectAssetIDs(userID uint, asse
 	return result, nil
 }
 
-// approverScopeActorCondition 審核方命中條件（approval-routing-quorum D-7）：
+// approverScopeActorCondition 審核方命中條件：
 // 個人直配 OR 屬於審核方群組（群組即資格，成員異動即時反映）。
 // 佔位符：user_id, user_id
 const approverScopeActorCondition = `(approver_id = ? OR approver_group_id IN (SELECT user_group_id FROM user_group_members WHERE user_id = ?))`
 
-// approverScopeAssetCondition 審核範圍命中條件（access-policy-approval D5，
-// asset-node-tree 升級）：直配資產 OR 經節點含子樹——審核範圍與授權客體
+// approverScopeAssetCondition 審核範圍命中條件（節點樹升級）：
+// 直配資產 OR 經節點含子樹——審核範圍與授權客體
 // 同構原則（範圍配節點者涵蓋子樹資產）
 const approverScopeAssetCondition = `(asset_id = ? OR asset_group_id IN ` + assetAncestorNodesSubquery + `)`
 
@@ -399,7 +398,7 @@ func (r *assetAuthorizationRepository) ApproverScopeCoversAsset(userID, assetID 
 }
 
 // scopeDescendantAssetsSubquery 審核範圍節點的「後代含自身」掛載資產集
-// （asset-node-tree：範圍配節點涵蓋子樹）。後代方向展開：自範圍節點起向下
+// （範圍配節點涵蓋子樹）。後代方向展開：自範圍節點起向下
 // 收全部子孫節點，再經 asset_nodes 收資產。佔位符：user_id ×2（審核方條件）
 const scopeDescendantAssetsSubquery = `(SELECT an.asset_id FROM asset_nodes an WHERE an.node_id IN (
 	WITH RECURSIVE scope_desc(id) AS (
@@ -411,11 +410,11 @@ const scopeDescendantAssetsSubquery = `(SELECT an.asset_id FROM asset_nodes an W
 	) SELECT id FROM scope_desc
 ))`
 
-// ApproverScopedAssets 使用者審核範圍內的全部資產（可視解析第三來源，D5）：
+// ApproverScopedAssets 使用者審核範圍內的全部資產（可視解析第三來源）：
 // 僅 view 語義——approver 對範圍內資產可見以便審核，不隱含連線權；
 // 不進存取複審矩陣（範圍是職能可視，不是授權記錄）。
-// 刻意僅資產側：申請人側範圍不隱含任何資產可視（approval-routing-quorum D-2）；
-// 審核方群組成員與個人同享資產側可視（D-7）
+// 刻意僅資產側：申請人側範圍不隱含任何資產可視；
+// 審核方群組成員與個人同享資產側可視（群組即資格）
 func (r *assetAuthorizationRepository) ApproverScopedAssets(userID uint) ([]*model.Asset, error) {
 	var assets []*model.Asset
 	err := r.db.
@@ -429,7 +428,7 @@ func (r *assetAuthorizationRepository) ApproverScopedAssets(userID uint) ([]*mod
 	return assets, nil
 }
 
-// ── 審核範圍命中家族（approval-routing-quorum D-1/D-2 收斂）─────────────
+// ── 審核範圍命中家族（收斂後）─────────────
 // 「範圍涵蓋」語義的全部 SQL 集中於本檔此區——禁止在 service 或他處另寫等價
 // SQL（歷史漂移：scopedAssetSubquery 曾在 service 手寫後代方向拷貝，致單筆
 // 判定與列表過濾兩套實作）。兩種查詢形狀、同一語義：
@@ -451,7 +450,7 @@ func (r *assetAuthorizationRepository) ApproverScopeCoversRequest(approverID, as
 	return r.coversRequest(r.db, approverID, assetID, requesterID)
 }
 
-// ApproverScopeCoversRequestTx 交易內資格重查（approval-routing-quorum，codex #3）：
+// ApproverScopeCoversRequestTx 交易內資格重查：
 // quorum 投票的鎖單交易內重跑資格判定，消除「eligibleToDecide 判定 → 鎖單投票」
 // 之間成員被移出群組/範圍被刪的 TOCTOU 窗口（否則已撤資格的票仍可能成為達門檻的最後一票）
 func (r *assetAuthorizationRepository) ApproverScopeCoversRequestTx(tx *gorm.DB, approverID, assetID, requesterID uint) (bool, error) {
@@ -470,11 +469,11 @@ func (r *assetAuthorizationRepository) coversRequest(db *gorm.DB, approverID, as
 	return count > 0, nil
 }
 
-// evaluateEffectiveApprover 審核資格的**唯一述詞**（D-12 收斂，W7b 8.1）：
+// evaluateEffectiveApprover 審核資格的**唯一述詞**：
 // 具 approver 角色 OR 屬於任一審核方群組。**`admin` 角色本身不構成審核資格。**
 // 即時查——入組/離組、配摘角色即刻生效，無快取。
 //
-// 收斂前存在兩份真相（守衛入口放行 admin、入口/badge 判定不放行），D-12 拍板
+// 收斂前存在兩份真相（守衛入口放行 admin、入口/badge 判定不放行），拍板
 // 以「不含 admin」為準，故審核端點守衛（`EvaluateApproverRouteEligibility`）與
 // 入口/badge（`IsEffectiveApprover`）自本函式取得同一份判定。
 //
@@ -500,16 +499,16 @@ func evaluateEffectiveApprover(db *gorm.DB, userID uint) (allowed bool, roleQuer
 	return count > 0, false, nil
 }
 
-// IsEffectiveApprover 審核資格判定（D-7 群組即資格）：具 approver 角色 OR
-// 屬於任一審核方群組。**D-12 收斂後**守衛（`RequireApproverRole`）與入口/badge
+// IsEffectiveApprover 審核資格判定（群組即資格）：具 approver 角色 OR
+// 屬於任一審核方群組。**收斂後**守衛（`RequireApproverRole`）與入口/badge
 // 判定確實共用同一述詞（`evaluateEffectiveApprover`）——收斂前守衛另有一份含
-// admin 放行的 SQL，並未呼叫本函式，原註解「守衛與入口共用」在當時不成立（W7b 8.4 訂正）
+// admin 放行的 SQL，並未呼叫本函式，原註解「守衛與入口共用」在當時不成立
 func (r *assetAuthorizationRepository) IsEffectiveApprover(userID uint) (bool, error) {
 	allowed, _, err := evaluateEffectiveApprover(r.db, userID)
 	return allowed, err
 }
 
-// scopeRouteAssetSubquery 資產側列表過濾（後代方向；自 service 遷入，D-1 整改）：
+// scopeRouteAssetSubquery 資產側列表過濾（後代方向；自 service 遷入）：
 // 直配資產 OR 範圍節點後代掛載資產。佔位符：user_id ×4（審核方條件 ×2 處）
 const scopeRouteAssetSubquery = `asset_id IN (
 	SELECT id FROM assets WHERE deleted_at IS NULL AND (
@@ -552,7 +551,7 @@ func permissionWeight(p model.PermissionType) int {
 
 // GetAuthorizedAssets 獲取用戶有權限的資產列表與每資產最高授權等級。
 // 四路徑聯集（與 CheckPermission 同語義）：主體＝個人 OR 所屬群組、
-// 客體＝直授 OR 節點含子樹（asset-node-tree D3）；僅計入時效窗內授權。
+// 客體＝直授 OR 節點含子樹；僅計入時效窗內授權。
 func (r *assetAuthorizationRepository) GetAuthorizedAssets(
 	userID uint,
 	permissions []model.PermissionType,
@@ -615,7 +614,7 @@ func (r *assetAuthorizationRepository) GetAuthorizedAssets(
 }
 
 // fourPathAccessibleAssetsCondition 四路徑可及資產相關子查詢（自 GetAuthorizedAssets
-// 抽出共用，authorization-page-redesign D3 防漂移：resolver 禁另寫等價 SQL）。
+// 抽出共用，防漂移：resolver 禁另寫等價 SQL）。
 // 佔位符：userID, userID, permissions, now, now
 const fourPathAccessibleAssetsCondition = `EXISTS (
 	SELECT 1 FROM asset_authorizations aa
@@ -650,7 +649,7 @@ func (r *assetAuthorizationRepository) AccessibleAssetsWithin(
 }
 
 // SubjectGrantsWithin 主體（個人＋所屬群組）於時窗內的全部授權記錄，
-// 帶群組關聯供溯因呈現（authorization-page-redesign D3）
+// 帶群組關聯供溯因呈現
 func (r *assetAuthorizationRepository) SubjectGrantsWithin(
 	userID uint,
 	now time.Time,
@@ -666,7 +665,7 @@ func (r *assetAuthorizationRepository) SubjectGrantsWithin(
 }
 
 // AssetGrantsWithin 命中指定資產（直授 OR 祖先節點含子樹）於時窗內的全部
-// 授權記錄，帶主體關聯供溯因呈現（authorization-page-redesign D3 客體視角）
+// 授權記錄，帶主體關聯供溯因呈現（客體視角）
 func (r *assetAuthorizationRepository) AssetGrantsWithin(
 	assetID uint,
 	now time.Time,
@@ -683,7 +682,7 @@ func (r *assetAuthorizationRepository) AssetGrantsWithin(
 }
 
 // ApproversCoveringAsset 審核範圍涵蓋指定資產的 approver 集合
-// （authorization-page-redesign D3 客體視角的 approver_scope 來源）
+// （客體視角的 approver_scope 來源）
 func (r *assetAuthorizationRepository) ApproversCoveringAsset(assetID uint) ([]uint, error) {
 	var ids []uint
 	if err := r.db.Model(&model.ApproverScope{}).
@@ -696,7 +695,7 @@ func (r *assetAuthorizationRepository) ApproversCoveringAsset(assetID uint) ([]u
 }
 
 // GroupMembersByGroupIDs 批次撈群組成員（排除軟刪使用者），供客體視角
-// 展開群組主體至成員（authorization-page-redesign D3）
+// 展開群組主體至成員
 func (r *assetAuthorizationRepository) GroupMembersByGroupIDs(groupIDs []uint) (map[uint][]model.User, error) {
 	result := make(map[uint][]model.User, len(groupIDs))
 	if len(groupIDs) == 0 {
@@ -719,7 +718,7 @@ func (r *assetAuthorizationRepository) GroupMembersByGroupIDs(groupIDs []uint) (
 	return result, nil
 }
 
-// AssetAncestorNodes 批次撈「資產→掛載節點＋全部祖先」映射（asset-node-tree）：
+// AssetAncestorNodes 批次撈「資產→掛載節點＋全部祖先」映射：
 // 單次遞迴 CTE 取代逐資產展開，供等級聚合與可視鏈組裝
 func (r *assetAuthorizationRepository) AssetAncestorNodes(assetIDs []uint) (map[uint][]uint, error) {
 	result := make(map[uint][]uint, len(assetIDs))
@@ -749,10 +748,9 @@ func (r *assetAuthorizationRepository) AssetAncestorNodes(assetIDs []uint) (map[
 
 // AuthorizationTargetAssetID 授權列的資產客體 id（審計主體鍵用）。
 //
-// **為何是本模組的匯出函式而不是接入層自查**（SD-2）：`asset_authorizations`
-// 由 authz 擁有，handler 一旦自己查它，「這列指向哪台資產」就出現第二份真相
-// （SD-3／SD-4 的成因）。形態沿 `asset.NodePathMap(db)` 的既有作法——接入層傳
-// 句柄、查詢留在擁有者這一側。
+// **為何是本模組的匯出函式而不是接入層自查**：`asset_authorizations`
+// 由 authz 擁有，handler 一旦自己查它，「這列指向哪台資產」就出現第二份真相。
+// 形態沿 `asset.NodePathMap(db)` 的既有作法——接入層傳句柄、查詢留在擁有者這一側。
 //
 // 三種情況一律回 (nil, nil)：查不到、客體是節點（一次涵蓋多台資產，沒有單一主體）、
 // 該列的 asset_id 為 NULL。nil 即中介層不填 asset_id，而非填 0。

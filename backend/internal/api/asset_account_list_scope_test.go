@@ -19,7 +19,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 帳號列表的有效範圍過濾（asset-multi-account D5，opus 階段 2 MED）。
+// 帳號列表的有效範圍過濾。
 //
 // 過濾前，本端點只需 asset:view 就回傳資產的**全部**帳號含 privileged 標記——
 // 等於把「這台機器上有哪些特權帳號」公開給只該看到自己那組帳號的人，
@@ -154,7 +154,7 @@ func TestAccountListNoGrantEmpty(t *testing.T) {
 }
 
 // TestAccountCopyCrossAssetVisibilityGuard 跨資產複製建號的來源可見性
-// （D10，階段 2 backlog）：沒有這道判定，只管得到自己那台的管理員可以把
+// （階段 2 backlog）：沒有這道判定，只管得到自己那台的管理員可以把
 // 生產核心機的 root 密文複製到自己的資產上，再從自己的資產連上去——
 // 密文原樣搬運不需解密即可用，是完整的憑證竊取路徑
 func TestAccountCopyCrossAssetVisibilityGuard(t *testing.T) {

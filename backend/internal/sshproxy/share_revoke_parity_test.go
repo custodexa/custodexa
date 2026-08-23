@@ -18,7 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 分享觀看與監看同受撤銷治理（idp-oidc-integration tasks 4.14e）。
+// 分享觀看與監看同受撤銷治理。
 //
 // 兩條路徑各自升級 WebSocket、各自組出 ObserverContext、各自呼叫
 // JoinWithGenerationGuard——**是兩份程式碼**（handler.go 的 HandleMonitor 與
@@ -29,10 +29,10 @@ import (
 // 故本檔的**每一格都跑兩遍**（monitor／share），且一律走 HTTP handler 進入，
 // 不直接呼叫 hub.Join——直接呼叫 hub 等於把被測的那段程式碼跳過去。
 //
-// **脈絡一律由真 `?token=` 帶入**（對抗審查 C1 修正）：本檔原以
+// **脈絡一律由真 `?token=` 帶入**：本檔原以
 // `c.Set("authContext", …)` 注入，等於替 handler 把它最該做的那件事先做完了——
 // 而生產路徑上這兩條路由都不掛 AuthMiddleware，authContext 若沒人寫入即恆為零值。
-// 那正是 C1 的形狀：實作壞掉、本檔全綠。唯一的例外是 TestSubscriptionJoinGuardParity
+// 那正是最危險的形狀：實作壞掉、本檔全綠。唯一的例外是 TestSubscriptionJoinGuardParity
 // （見該處說明：它要製造的競態在 token 閘之後）。
 //
 // 突變自檢（任一即應轉紅）：
@@ -41,7 +41,7 @@ import (
 //   - 把 HandleShareJoin 的 JoinWithGenerationGuard 換回裸 h.Monitor.Join：
 //     share 的「建立點世代閘」格轉紅。
 //   - 把 Handler.authenticate 的 `c.Set("authContext", …)` 刪掉：
-//     前三格的 monitor 與 share 皆轉紅（C1 迴歸）。
+//     前三格的 monitor 與 share 皆轉紅。
 
 // --- harness ---
 

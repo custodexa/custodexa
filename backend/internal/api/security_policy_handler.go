@@ -45,7 +45,7 @@ func (h *SecurityPolicyHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": views,
 		// deviation_count 語義不變＝PCI 偏離數（既有前端與 fixture 依賴此意義）；
-		// 電支偏離數以新欄位承載，兩者 SHALL NOT 合計（security-backlog-settlement D6）
+		// 電支偏離數以新欄位承載，兩者 SHALL NOT 合計
 		"deviation_count":          deviation,
 		"epayment_deviation_count": epaymentDeviation,
 	})
@@ -71,7 +71,7 @@ func (h *SecurityPolicyHandler) Update(c *gin.Context) {
 	username, _ := middleware.GetCurrentUsername(c)
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	// 單一交易內批次更新（POL-3：驗證與落庫皆在服務層，中途失敗全回滾不半套生效）
+	// 單一交易內批次更新（驗證與落庫皆在服務層，中途失敗全回滾不半套生效）
 	changes, err := h.policyService.UpdateBatch(req.Policies, username)
 	if err != nil {
 		// 批次一次送多鍵，故錯誤必須指名是哪一鍵，否則 admin 無從得知該改哪一項
@@ -81,7 +81,7 @@ func (h *SecurityPolicyHandler) Update(c *gin.Context) {
 				map[string]any{"key": unknownKey.Key})
 			return
 		}
-		// 跨鍵約束（audit-checkpoint-chain D9）：先於 InvalidValue 判定——
+		// 跨鍵約束（audit-checkpoint-chain）：先於 InvalidValue 判定——
 		// 兩者的修法不同（改關係 vs 改值域），共用碼會誤導 admin
 		var crossKey *policy.PolicyRetentionCrossKeyError
 		if errors.As(err, &crossKey) {

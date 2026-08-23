@@ -140,7 +140,7 @@ func TestRetentionBatchLimit(t *testing.T) {
 	}
 }
 
-// TestRetentionExactLimitNotPartial 對抗驗證回歸：過期筆數恰等於 maxPerRun
+// TestRetentionExactLimitNotPartial 回歸：過期筆數恰等於 maxPerRun
 // 時最後一批填滿但已清完，留痕不得誤報 partial（審計軌跡誠實性）
 func TestRetentionExactLimitNotPartial(t *testing.T) {
 	svc, db, _ := setupRetentionDB(t)

@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * SFTP 端點的會話帳號參數（asset-multi-account D9）。
+ * SFTP 端點的會話帳號參數。
  *
  * 帶 `session_id`＝自會話分頁進入檔案管理，後端沿用該會話的帳號快照
  * （終端開 root、旁邊卻以 app 傳檔是審計語義的斷裂）；不帶＝檔案管理獨立入口，

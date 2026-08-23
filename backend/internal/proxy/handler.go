@@ -60,9 +60,9 @@ type ConnectionHandler struct {
 	AssetService         *asset.AssetService
 	AuthService          *identity.AuthService
 	AuthorizationService *authz.AssetAuthorizationService // 授權服務
-	// AccessPolicy 兌換點存取政策重查（CPG-010）：nil 時不啟用（既有測試路徑）
+	// AccessPolicy 兌換點存取政策重查：nil 時不啟用（既有測試路徑）
 	AccessPolicy *policy.AccessPolicyService
-	// dataTransfer 資料傳輸有效能力解析（data-transfer-control D3）：決定連線參數
+	// dataTransfer 資料傳輸有效能力解析（data-transfer-control）：決定連線參數
 	// 的 disable-copy／disable-paste／disable-*load，並注入 FileTap 供逐次判定。
 	// nil＝既有測試路徑（不注入任何 disable 參數，行為與改動前一致）。
 	//
@@ -73,15 +73,15 @@ type ConnectionHandler struct {
 	// assetHandler／sftpHandler 兩處同構，未登記即由登記表守衛擋下
 	dataTransfer *policy.DataTransferService
 	Registry     *ConnectionRegistry // 連線註冊表
-	// ConnectTokens 一次性連線 token（connect-token-guacd D1）：與 sshproxy 共用實例
+	// ConnectTokens 一次性連線 token：與 sshproxy 共用實例
 	ConnectTokens *ConnectTokenManager
-	// TimeoutPolicy 會話閒置/最大時長來源（auth-hardening D7）：組裝端注入安全政策讀取；
+	// TimeoutPolicy 會話閒置/最大時長來源：組裝端注入安全政策讀取；
 	// nil 時不啟用逾時檢查（既有測試路徑）
 	TimeoutPolicy func() (idle, max time.Duration)
-	// AuditSink 檔案上傳審計的投遞面（W4 4.6，AP-28）：交給每條連線的 FileTap。
+	// AuditSink 檔案上傳審計的投遞面（AP-28）：交給每條連線的 FileTap。
 	// nil＝既有測試路徑（FileTap 取不到投遞面時記 log 不寫，維持「不回壓會話」）
 	AuditSink gatewayapi.AsyncSink
-	// AuditService 兌換拒絕的留痕出口（audit-coverage-closure 批 4）。
+	// AuditService 兌換拒絕的留痕出口。
 	//
 	// **與 AuditSink 分立不是重複**：AuditSink 是連線建立**之後**的事件投遞面
 	//（檔案傳輸、能力快照），拒絕發生在那之前——此刻既無 session 也無 tunnel。
@@ -92,7 +92,7 @@ type ConnectionHandler struct {
 
 // NewConnectionHandler 建立連線處理器。
 //
-// auditService 走建構子而非組裝根的裸欄位注入（audit-coverage-closure 批 4）：
+// auditService 走建構子而非組裝根的裸欄位注入：
 // 兌換拒絕留痕是安全紅線，缺席即整條探測路徑不可見；建構子參數使「漏接」成為
 // 編譯錯誤，比登記表更早一步。既有測試路徑傳 nil，該情形下記 log 不靜默。
 func NewConnectionHandler(guacdHost string, guacdPort int, sessionService *session.SessionService, assetService *asset.AssetService, authService *identity.AuthService, authorizationService *authz.AssetAuthorizationService, auditService *audit.AuditLogService) *ConnectionHandler {
@@ -121,16 +121,15 @@ func (h *ConnectionHandler) SetDataTransfer(dt *policy.DataTransferService) {
 
 // HandleConnect 處理 WebSocket 連線請求（RDP/VNC 圖形協議）
 //
-// 連線收口（connection-credential-gating）：只收 token + asset_id，
+// 連線收口：只收 token + asset_id，
 // 目標主機與憑證由後端從資產庫解析並在記憶體解密注入 guacd 握手，
 // 前端與 URL 全程不出現 hostname/username/password。
 // 流程：認證 → 授權 → 取憑證 → guacd 握手 → 升級 WebSocket。
 func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
-	// 1-3. 認證與授權：connect_token 一次性簽發即焚（connect-token-guacd D2），
+	// 1-3. 認證與授權：connect_token 一次性簽發即焚，
 	// 唯一連線入口——授權與傳輸政策閘都在簽發時完成。舊 query-JWT 直連與
-	// middleware context 回退已收口（繞過簽發閘＝繞過傳輸政策，
-	// transmission-security-policy）
-	// 連線收口防呆（connection-credential-gating）：URL 帶目標/憑證參數直接拒——
+	// middleware context 回退已收口（繞過簽發閘＝繞過傳輸政策）
+	// 連線收口防呆：URL 帶目標/憑證參數直接拒——
 	// 即使參數會被忽略，憑證出現在 URL 就會落 access log，必須顯式擋下
 	if c.Query("hostname") != "" || c.Query("password") != "" {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeConnectTargetParamsRejected, nil)
@@ -142,7 +141,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		ct = ct[:idx]
 	}
 	if ct == "" {
-		// 兌換拒絕留痕（audit-coverage-closure 批 4／connection-gating spec）
+		// 兌換拒絕留痕（connection-gating spec）
 		h.auditConnectDenied(c, ConnectDenial{
 			Reason: string(RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized})
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenMissing, nil)
@@ -157,11 +156,11 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenInvalid, nil)
 		return
 	}
-	// 兩階段閘序（W10）：AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount。
+	// 兩階段閘序：AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount。
 	// 閘序表在 connect_gates.go，順序即該表的列序（G-G* 編號的定義亦在該檔）
 	st := &graphicsRedeemState{grant: grant}
 	// 主體＝票證所帶的溯源脈絡。**ClaimedRole 留空是實質**：grant 刻意不攜帶角色
-	// （connect_token.go D4），兌換側的角色一律由 G-G4 現查
+	// （見 connect_token.go），兌換側的角色一律由 G-G4 現查
 	subj := st.contractSubject(sourceip.Of(c))
 	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
 		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
@@ -180,7 +179,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	userID, assetIDUint := grant.UserID, grant.AssetID
 
 	// 4. 取資產與憑證（記憶體內解密，永不出後端）——**兩階段之間的唯一解封點**。
-	// asset-multi-account 階段 3：以 grant 所帶帳號取憑證（0＝預設帳號）。
+	// 以 grant 所帶帳號取憑證（0＝預設帳號）。
 	// 帳號於簽發後被刪除／改隸他資產者在此 fail-close 拒絕——**絕不靜默退回
 	// 預設帳號**（那等於以另一組憑證建線，且跨資產注入即可拿到目標預設憑證）
 	creds, err := h.AssetService.GetWithCredentialsForAccount(assetIDUint, grant.AccountID)
@@ -217,7 +216,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	params["protocol"] = protocol
 	params["hostname"] = assetRow.Host
 	params["port"] = strconv.Itoa(assetRow.Port)
-	// username 與密碼同取自同一帳號（D6）；不再讀 assetRow.Username
+	// username 與密碼同取自同一帳號；不再讀 assetRow.Username
 	params["username"] = creds.Username
 	params["password"] = password
 
@@ -247,7 +246,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		params["drive-path"] = "/tmp/guacdrive-" + recordingName
 		params["create-drive-path"] = "true"
 
-		// RDP 傳輸安全參數（transmission-security-policy D4）：由資產欄位經
+		// RDP 傳輸安全參數：由資產欄位經
 		// 單一事實源注入；空欄位的最終值與 fillDefaults 原預設完全一致（零影響）
 		security, ignoreCert := assetRow.EffectiveRDPParams()
 		params["security"] = security
@@ -273,7 +272,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		}
 	}
 
-	// 資料傳輸管控（data-transfer-control D3）：解析五項有效能力，注入 guacd 連線
+	// 資料傳輸管控（data-transfer-control）：解析五項有效能力，注入 guacd 連線
 	// 參數並供 FileTap 逐次判定。解析失敗 fail-close（零值＝全禁）——傳輸控制的
 	// 失敗方向必須是擋住而非放行
 	var transferCaps policy.TransferCapabilities
@@ -298,7 +297,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeGuacdHandshake, err)
 		return
 	}
-	// 錄影的時間原點（workbench-exits-and-export D2）：guacd 一握手成功即開始寫
+	// 錄影的時間原點：guacd 一握手成功即開始寫
 	// .guac，而 SessionRecording 的 t=0 是檔內第一個 sync 幀。此刻**早於**下方的
 	// 會話建檔，故圖形路徑未校正的深連結落點偏「早」（與文字終端方向相反，見
 	// model.Session.RecordingStartedAt 的說明）。於此擷取，隨會話一併寫入
@@ -314,7 +313,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		Protocol: model.ProtocolType(protocol),
 		ClientIP: clientIP,
 		Status:   model.SessionStatusActive,
-		// 帳號雙快照（assetRow-multi-account D7）：連線當下的帳號 ID 與 username
+		// 帳號雙快照（assetRow-multi-account）：連線當下的帳號 ID 與 username
 		// 一併釘住，帳號日後改名／刪除都不改寫已完成會話的審計語義
 		AccountID:       creds.AccountID,
 		AccountUsername: creds.Username,
@@ -330,14 +329,14 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	sess.AuthEpoch = grant.AuthEpoch
 
-	// 序列化建立（idp-oidc-integration 3.8b）：與文字終端路徑（sshproxy/handler.go
+	// 序列化建立：與文字終端路徑（sshproxy/handler.go
 	// createSession）同語義——「重查前提 → 讀世代 → 建立」三步於 provider＋user 鎖內
 	// 完成，堵住「兌換讀到舊 epoch → 停用推進並掃完 → 兌換才插入」的 TOCTOU
 	if err := h.SessionService.CreateWithGenerationGuard(crypto.AuthContext{
 		AuthMethod: grant.AuthMethod, ProviderID: grant.ProviderID,
 		AuthEpoch: grant.AuthEpoch, CredEpoch: grant.CredEpoch,
 	}, sess); err != nil {
-		// session 記錄 fail-close（CPG-003）：無審計歸屬一律拒連，admin 亦不豁免
+		// session 記錄 fail-close：無審計歸屬一律拒連，admin 亦不豁免
 		//（與文字終端路徑對稱；能走到此步證明 DB 讀正常＝部分故障）
 		conn.Close()
 		log.Printf("[Handler] session 記錄建立失敗，連線已拒: %v", err)
@@ -356,7 +355,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	log.Printf("[Handler] Session 已創建: ID=%d", sess.ID)
 
-	// 連線建立時的有效傳輸能力快照（data-transfer-control D6／3.5）：使事後可回答
+	// 連線建立時的有效傳輸能力快照（data-transfer-control）：使事後可回答
 	// 「那次連線當時允許什麼」。政策可在連線後被改，只查政策現值答不出這個問題。
 	// 失敗只記 log——留痕失敗不回壓連線（與 FileTap 同處置）
 	if h.dataTransfer != nil && h.AuditSink != nil {
@@ -403,7 +402,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		fileTap = NewFileTap(database.DB, h.AuditSink, sess.ID, userID, &assetIDUint, protocol)
 		// 資料傳輸管控（data-transfer-control 5.1/5.6）：**逐次判定**，不是連線
 		// 建立時的一次性快照——每個 put／get 重解析一次，政策改動經 30 秒政策
-		// 快取窗口後即對進行中連線生效（D4 的即時層）
+		// 快取窗口後即對進行中連線生效（即時層）
 		if h.dataTransfer != nil {
 			dtSvc, uid, aid := h.dataTransfer, userID, assetIDUint
 			fileTap.SetDecider(func(action string) bool {
@@ -418,7 +417,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	tunnel := NewTunnel(ws, conn, sendTap, recvTap, fileTap)
 
-	// 10. 註冊關閉回呼到 Registry（F4）：disconnect 指令經 tunnel 寫鎖送出，
+	// 10. 註冊關閉回呼到 Registry：disconnect 指令經 tunnel 寫鎖送出，
 	// 取代裸 conn 直寫；登記於 tunnel 建立後、下方複查前——REVOKE-1 窗口語義不變
 	if sess != nil {
 		h.Registry.Register(sess.ID, tunnel.Disconnect)
@@ -433,8 +432,8 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 			return
 		}
 	}
-	// 會話閒置/最大時長自動斷線（auth-hardening D7）：以客戶端輸入 opcode 計閒置。
-	// 對抗驗證 TIMEOUT-3：TimeoutPolicy 未注入時退回安全預設而非零逾時——
+	// 會話閒置/最大時長自動斷線：以客戶端輸入 opcode 計閒置。
+	// TimeoutPolicy 未注入時退回安全預設而非零逾時——
 	// 與 sshproxy nil→env 退路對稱，避免注入被回歸/誤刪時 RDP/VNC 靜默永不逾時（fail-open）
 	idleTimeout, maxDuration := defaultTunnelIdleTimeout, time.Duration(0)
 	if h.TimeoutPolicy != nil {
@@ -442,7 +441,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	tunnel.SetTimeouts(idleTimeout, maxDuration)
 
-	// 轉發啟動前最後一次複查（對抗驗證 REVOKE-1＋break-glass-revocation codex 複審 High）：
+	// 轉發啟動前最後一次複查：
 	// 與 sshproxy 對稱，收緊「連線授權通過後、tunnel 掛上 Registry 前」窗口——兩道閘：
 	// (1) 帳號可連線；(2) session 仍 active（撤銷/停用收線已 CAS 成 disconnected 即攔下）
 	if err := h.AuthService.CheckUserConnectable(userID); err != nil {
@@ -462,7 +461,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	// 落地鏈本體抽到 finalizeGraphicsRecording（graphics_recording.go）：行為逐字不變，
 	// 只把 metadata 寫入、失效通報與 Resolve 三個外部作用參數化，使四條路徑
 	// （缺檔／更名失敗／取大小失敗／metadata 更新失敗）可在不起 WebSocket handler 的
-	// 情況下被測試覆蓋（graphics-teardown-sync D4／D8）
+	// 情況下被測試覆蓋
 	if (protocol == "rdp" || protocol == "vnc") && sess != nil && recordingName != "" {
 		finalizeGraphicsRecording(sess.ID, "", recordingName, graphicsRecordingDeps{
 			stat:            os.Stat,
@@ -501,7 +500,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 }
 
-// connectionAuthCode 兌換點認證錯誤映射（A8）：sentinel 各配一碼，其餘泛化為
+// connectionAuthCode 兌換點認證錯誤映射：sentinel 各配一碼，其餘泛化為
 // 「無效或過期的 token」。與 sshproxy 的同名映射語義一致（該側另處理
 // ErrConnectionNotAuthorized——guacd 路徑不走 scoped token 驗證，故不涉及）。
 // 碼的 ZhFallback 與 sentinel 文案逐字相同，遷移前後 error 欄不變。

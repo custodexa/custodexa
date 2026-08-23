@@ -155,7 +155,7 @@ export function adminDisableMFA(id) {
 }
 
 /**
- * 設定閒置停用豁免（PCI 8.2.6，auth-hardening D8）
+ * 設定閒置停用豁免（PCI 8.2.6）
  * @param {number} id - 用戶 ID
  * @param {boolean} exempt - 是否豁免自動停用
  * @returns {Promise}
@@ -169,7 +169,7 @@ export function setInactivityExempt(id, exempt) {
 }
 
 /**
- * 列出帳號已綁定的外部身分（idp-oidc-integration 2.8 / UA-1）。
+ * 列出帳號已綁定的外部身分。
  *
  * 回 { data: ExternalIdentityDTO[], total }；DTO 的 claim_username／claim_email
  * 是**身分提供者自報值**（IdP 端可任意設定），呈現時必須與本地 username 分欄

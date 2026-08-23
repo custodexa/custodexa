@@ -11,7 +11,7 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
-// LDAP 目錄設定的伺服端存檔驗證（ldap-settings-migration D7）。
+// LDAP 目錄設定的伺服端存檔驗證。
 //
 // 前端的必填驗證僅為 UX 提前提示，**權威在此**：任何寫入路徑（PUT upsert、
 // 連線測試的表單值）都須先過本檔的驗證，且驗證不得只存在於連線測試路徑。
@@ -30,7 +30,7 @@ import (
 // 複合 filter：`(&(objectClass=user)(sAMAccountName=%s))` 在 AND 之下，
 // placeholder 仍是必要條件，照樣通過。
 //
-// # 殘留誠實記載（design D7／R2-opus N10 已裁決）
+// # 殘留誠實記載
 //
 // 上述兩層**仍非充分**：根因是影子帳號名取自請求輸入而非目錄 entry 的穩定
 // 登入屬性。修它會動 ldap-auth 既有 requirement，違反本 change「認證行為零
@@ -362,7 +362,7 @@ type LDAPDirectoryValidation struct {
 	ParsedURL LDAPEndpoint
 }
 
-// ValidateLDAPDirectoryInput 條件式存檔驗證（D7）：
+// ValidateLDAPDirectoryInput 條件式存檔驗證：
 //
 //   - enabled=false（草稿）：僅驗「有值欄位」的格式，允許不完整（先存草稿、
 //     稍後補齊是正常流程）

@@ -89,8 +89,8 @@ type SubmitAccessRequestInput struct {
 	Reason          string
 	DurationMinutes int
 	DateStart       *time.Time // 空＝立即（核准時起算）
-	// Accounts 申請的帳號範圍（asset-multi-account D5）：**nil＝欄位省略＝@ALL**
-	// （既有行為）；非 nil 空清單拒收（F1）。核准後原樣落到臨時授權列——
+	// Accounts 申請的帳號範圍：**nil＝欄位省略＝@ALL**
+	// （既有行為）；非 nil 空清單拒收。核准後原樣落到臨時授權列——
 	// 申請「以 app 連」不該核出 root
 	Accounts *[]string
 }
@@ -116,7 +116,7 @@ type AccessRequestServiceInterface interface {
 	PendingCount(actorID uint, isAdmin bool, now time.Time) (int64, error)
 	ExpireOverdue(now time.Time) (int, error)
 
-	// break-glass-revocation：破窗、提前撤銷、補審
+	// 破窗、提前撤銷、補審
 	BreakGlass(requesterID uint, username, role string, assetID uint, reason string) (*model.AccessRequest, error)
 	Revoke(actorID uint, isAdmin bool, username string, requestID uint, note string) (*model.AccessRequest, error)
 	Review(actorID uint, isAdmin bool, requestID uint, disposition, note string) (*model.AccessRequest, error)
@@ -125,7 +125,7 @@ type AccessRequestServiceInterface interface {
 	NotifyOverdueReviews(now time.Time) (int, error)
 }
 
-// AccessRequestService 申請核准流（access-policy-approval D2/D3/D5）。
+// AccessRequestService 申請核准流。
 // 決議鐵則：時效來源唯一（核准流）、CAS 終態不可復活、審計完整、
 // 禁自核硬擋（含單人層）、payload 最小化
 type AccessRequestService struct {
@@ -135,13 +135,13 @@ type AccessRequestService struct {
 	authzRepo    *assetAuthorizationRepository
 	audit        *audit.AuditLogService
 	notifier     *audit.AlertNotifier
-	// sessions 撤銷即斷線收線（D5）；nil＝不聯動（測試路徑或政策恆關部署）
+	// sessions 撤銷即斷線收線；nil＝不聯動（測試路徑或政策恆關部署）
 	sessions SessionTerminator
 }
 
-// SessionTerminator 撤銷授權時強制終斷該使用者對該資產的進行中會話（D5）。
+// SessionTerminator 撤銷授權時強制終斷該使用者對該資產的進行中會話。
 //
-// **消費者側窄介面（modular-architecture W7 §4.6）**：authz 不得 import session
+// **消費者側窄介面**：authz 不得 import session
 // （矩陣 §1.4 authz→session ✗）。介面在此宣告、由組裝根注入 `*service.SessionService`，
 // 故不成編譯循環。同型前例＝`user_service.go:75` 的 `SessionTerminator`
 type SessionTerminator interface {
@@ -171,7 +171,7 @@ func NewAccessRequestService(
 	}
 }
 
-// Submit 提出申請（D2）：事由必填、時長≤政策上限、可預約起始、去重擋在途單、
+// Submit 提出申請：事由必填、時長≤政策上限、可預約起始、去重擋在途單、
 // open 段拒建單；reason 段同交易即時自動核准（決定者記 system、auto 標記）——
 // 與強制審核共用同一表單與資料軌（決議 B）
 func (s *AccessRequestService) Submit(requesterID uint, username, role string, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
@@ -203,7 +203,7 @@ func (s *AccessRequestService) Submit(requesterID uint, username, role string, i
 		}
 	}
 
-	// 區域變數改名 policy→segment（W3 搬包：`policy` 已是套件名，同名區域變數會遮蔽它）
+	// 區域變數改名 policy→segment（搬包後 `policy` 已是套件名，同名區域變數會遮蔽它）
 	segment := s.accessPolicy.AccessPolicyOf(&asset)
 	if segment == model.AccessPolicyOpen {
 		return nil, ErrPolicyOpenNoRequest
@@ -218,7 +218,7 @@ func (s *AccessRequestService) Submit(requesterID uint, username, role string, i
 		return nil, ErrStartInPast
 	}
 
-	// 帳號範圍（asset-multi-account D5）：與授權列共用同一組驗證與正規化，
+	// 帳號範圍：與授權列共用同一組驗證與正規化，
 	// 避免申請單接受了授權列拒收的形狀，核准時才炸在建授權那一步
 	accountScope, err := NormalizeGrantAccounts(input.Accounts)
 	if err != nil {
@@ -352,7 +352,7 @@ func (s *AccessRequestService) approveInTx(tx *gorm.DB, req *model.AccessRequest
 		"auto_approved":             auto,
 		"updated_at":                now,
 	}
-	// CAS 帶逾時守衛（codex 審查 #2）：scheduler 五分鐘間隙內，已逾 pending_expires_at
+	// CAS 帶逾時守衛：scheduler 五分鐘間隙內，已逾 pending_expires_at
 	// 的申請雖已從待審列表惰性過濾，直呼 approve 仍可能搶在掃描前把它合法化。
 	// 加 pending_expires_at > now 讓「本應 expired 的申請」核准落敗回 409（終態語義）。
 	// 自動核准路徑（Submit 同交易建單）的 expires_at 為未來值，此守衛恆過
@@ -366,14 +366,14 @@ func (s *AccessRequestService) approveInTx(tx *gorm.DB, req *model.AccessRequest
 		return ErrAccessRequestConflict
 	}
 
-	// 臨時授權：申請人×資產×connect＋時效窗＋source=ticket（D3）。
+	// 臨時授權：申請人×資產×connect＋時效窗＋source=ticket。
 	// granted_by 有 FK 至 users——自動核准以申請人落欄（觸發者），
 	// 決定者=system 由 auto_approved＋decision_note 承載
 	grantedBy := req.RequesterID
 	if approverID != nil {
 		grantedBy = *approverID
 	}
-	// 帳號範圍原樣自申請單傳遞（asset-multi-account D5）：核准人**不得上調**——
+	// 帳號範圍原樣自申請單傳遞：核准人**不得上調**——
 	// 沿用時長／起始「只可下修」的既有語義。核准動作沒有帳號範圍輸入欄，
 	// 故此處直接取申請值即已滿足「不可上調」；日後若開放核准時調整，
 	// 必須加上「新範圍 ⊆ 申請範圍」的驗證，否則核准即可授出未經申請的帳號
@@ -434,7 +434,7 @@ func (s *AccessRequestService) loadPending(requestID uint) (*model.AccessRequest
 	return &req, nil
 }
 
-// Approve 人工核准（範圍命中 approver 或 admin；approval-routing-quorum D-3）：
+// Approve 人工核准（範圍命中 approver 或 admin）：
 // 逐票記錄，核准數達政策門檻（access_request_min_approvals）的那一票才 CAS 轉
 // approved 產生臨時授權；門檻 1＝與單人核准零行為差異。admin 兜底語義在 quorum
 // 下＝「有資格投一票」而非「單票通過」（雙人完整性；各 isAdmin 短路點以此為準）。
@@ -459,7 +459,7 @@ func (s *AccessRequestService) Approve(actorID uint, isAdmin bool, requestID uin
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		// 鎖單（可攜寫法，Postgres/SQLite 皆適用）：UPDATE 取得列鎖並驗 pending，
 		// 併發核准/拒絕/撤回在此序列化；終態單 RowsAffected=0 走衝突。
-		// 逾時守衛（codex gpt-5.6-sol 審查 P2）：門檻>1 時未達門檻的票不呼叫
+		// 逾時守衛：門檻>1 時未達門檻的票不呼叫
 		// approveInTx，其 pending_expires_at 守衛遂被繞過——已逾期單的部分票會被
 		// 永久記入並回成功。此處鎖單即帶 pending_expires_at > now，讓逾期單鎖不命中
 		// 走衝突（與 approveInTx 同一守衛，投票入庫前擋下）
@@ -473,7 +473,7 @@ func (s *AccessRequestService) Approve(actorID uint, isAdmin bool, requestID uin
 			return ErrAccessRequestConflict
 		}
 
-		// 交易內重查資格（codex #3 TOCTOU）：鎖單後、投票入庫前，操作者可能已被
+		// 交易內重查資格（TOCTOU）：鎖單後、投票入庫前，操作者可能已被
 		// 移出審核方群組或範圍被刪——非 admin 一律於鎖內重判，杜絕以已撤資格寫入
 		// 達門檻的最後一票。admin 兜底恆具資格不需重查
 		if !isAdmin {
@@ -623,7 +623,7 @@ func (s *AccessRequestService) ExpireOverdue(now time.Time) (int, error) {
 	return expired, nil
 }
 
-// ListMine 申請人自助視圖（owner-scoped，D7）
+// ListMine 申請人自助視圖（owner-scoped）
 func (s *AccessRequestService) ListMine(requesterID uint) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
 	err := s.db.Preload("Asset").Preload("Approver").
@@ -654,7 +654,7 @@ func (s *AccessRequestService) MyActiveTickets(requesterID uint, now time.Time) 
 	return auths, nil
 }
 
-// 審核範圍列表過濾 SQL 已收斂至 repository（approval-routing-quorum D-1 整改）：
+// 審核範圍列表過濾 SQL 已收斂至 repository：
 // approverScopeRouteCondition(requesterCol)——雙側聯集（資產側後代
 // 方向＋申請人側成員展開），與單筆資格判定 ApproverScopeCoversRequest 同源家族。
 // 禁在本檔另寫等價 SQL；涵蓋規則變更一律改 repository 家族區
@@ -752,7 +752,7 @@ func (s *AccessRequestService) ActiveTickets(actorID uint, isAdmin bool, now tim
 	return auths, nil
 }
 
-// attachRequestIDs 為票證回填所屬申請單 id（撤銷入口回鏈，break-glass-revocation D4）：
+// attachRequestIDs 為票證回填所屬申請單 id（撤銷入口回鏈）：
 // 一次查 authorization_id→request_id 映射，避免 N+1
 func (s *AccessRequestService) attachRequestIDs(tickets []*model.AssetAuthorization) error {
 	if len(tickets) == 0 {
@@ -797,8 +797,8 @@ func (s *AccessRequestService) reload(id uint) (*model.AccessRequest, error) {
 	return &req, nil
 }
 
-// attachApprovalProgress 回填 quorum 逐票軌跡與進度（approval-routing-quorum
-// D-3）：批次 Preload 防 N+1；Required 讀當下政策值（僅 pending 單語義有效，
+// attachApprovalProgress 回填 quorum 逐票軌跡與進度：
+// 批次 Preload 防 N+1；Required 讀當下政策值（僅 pending 單語義有效，
 // 終態單軌跡凍結）。查失敗不阻斷主流程（進度為顯示性欄位）
 func (s *AccessRequestService) attachApprovalProgress(reqs []*model.AccessRequest) {
 	if len(reqs) == 0 {
@@ -859,7 +859,7 @@ func (s *AccessRequestService) logAudit(userID uint, username string, action mod
 // 結構化參數，不帶事由全文（出站去識別紅線）；通道未配置時 NotifyEvent
 // 自然 no-op，保底＝審核中心必見＋badge。
 //
-// 簽名不收散文（design D3）：導引文字與標題一律由 notifycat 依通道語系渲染，
+// 簽名不收散文：導引文字與標題一律由 notifycat 依通道語系渲染，
 // 呼叫端只提供事實。extra 為該事件 EventSpec 宣告的專屬參數（可為 nil）
 func (s *AccessRequestService) notify(event notifycat.Event, requestID uint, assetName string, extra map[string]string) {
 	if s.notifier == nil {
@@ -876,9 +876,9 @@ func (s *AccessRequestService) notify(event notifycat.Event, requestID uint, ass
 	log.Printf("[AccessRequest] 事件廣播: %s request=%d", event, requestID)
 }
 
-// ---- break-glass-revocation：破窗、提前撤銷、補審 ----
+// ---- 破窗、提前撤銷、補審 ----
 
-// BreakGlass 破窗緊急連線（D1/D2/D3）：開關（關=拒）→ 可視守門 → 資格
+// BreakGlass 破窗緊急連線：開關（關=拒）→ 可視守門 → 資格
 // （時窗內常設 connect，票證不算）→ 段位（open 不需破窗）→ 同交易
 // 鎖定申請人列＋去重（有效破窗票證擋 409）＋建單（kind=break_glass、
 // review_status=pending_review）＋即時核准（固定短窗政策鍵，忽略 client 時長/起始）。
@@ -942,7 +942,7 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 			}
 		}
 
-		// 資格於鎖後同交易重判（codex #2）：收緊「交易外查資格、交易內建票證」
+		// 資格於鎖後同交易重判：收緊「交易外查資格、交易內建票證」
 		// 窗口內常設授權被撤的 TOCTOU——Postgres 鎖後此查與授權刪除互斥
 		reSources, err := s.authzRepo.ResolveConnectSourcesWithDB(tx, requesterID, asset.ID, now)
 		if err != nil {
@@ -993,7 +993,7 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 		return nil, err
 	}
 
-	// 高亮審計（D2）：獨立 break_glass 標記，與 admin 豁免（policy_exemption）
+	// 高亮審計：獨立 break_glass 標記，與 admin 豁免（policy_exemption）
 	// 及一般核准可區分
 	s.logAudit(requesterID, username, model.ActionApprove, req.ID,
 		`{"auto":true,"break_glass":true,"decided_by":"system"}`)
@@ -1007,9 +1007,9 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 	return s.reload(req.ID)
 }
 
-// Revoke 臨時授權提前撤銷（D4）：同交易軟刪票證（CAS 先到者贏）＋單附註
+// Revoke 臨時授權提前撤銷：同交易軟刪票證（CAS 先到者贏）＋單附註
 // 三欄（不動狀態機——approved 終態不變）；資格分流見 eligibleToRevoke；
-// 政策開啟時交易後收線（D5，失敗不回滾）
+// 政策開啟時交易後收線（失敗不回滾）
 func (s *AccessRequestService) Revoke(actorID uint, isAdmin bool, username string, requestID uint, note string) (*model.AccessRequest, error) {
 	if note == "" {
 		return nil, ErrDecisionNoteRequired
@@ -1069,7 +1069,7 @@ func (s *AccessRequestService) Revoke(actorID uint, isAdmin bool, username strin
 	s.logAudit(actorID, username, model.ActionRevoke, req.ID,
 		fmt.Sprintf(`{"authorization_id":%d}`, ticket.ID))
 
-	// 斷線聯動（D5，H 決議預設關）：收線失敗不回滾——票證失效是主要目標
+	// 斷線聯動（政策預設關）：收線失敗不回滾——票證失效是主要目標
 	if s.policies.GetBool(policy.PolicyAccessRevokeDisconnect) && s.sessions != nil {
 		if n, terr := s.sessions.TerminateByUserAsset(req.RequesterID, req.AssetID, model.EndReasonRevoked); terr != nil {
 			log.Printf("[AccessRequest] 撤銷收線失敗 (request=%d): %v", req.ID, terr)
@@ -1104,7 +1104,7 @@ func (s *AccessRequestService) eligibleToRevoke(actorID uint, isAdmin bool, req 
 	return nil
 }
 
-// Review 破窗事後補審（D7）：資格＝範圍命中 approver OR admin、破窗人
+// Review 破窗事後補審：資格＝範圍命中 approver OR admin、破窗人
 // 自審硬擋（含 admin）；CAS（WHERE review_status='pending_review'）不可重複
 func (s *AccessRequestService) Review(actorID uint, isAdmin bool, requestID uint, disposition, note string) (*model.AccessRequest, error) {
 	if disposition != model.BreakGlassDispositionConfirmed && disposition != model.BreakGlassDispositionViolation {
@@ -1194,11 +1194,11 @@ func (s *AccessRequestService) pendingReviewFilter(actorID uint, isAdmin bool) *
 // 對「無人可補審」這種需要人介入的狀態足以持續施壓，又不至於淹沒通知管道。
 const overdueRenotifyInterval = 24 * time.Hour
 
-// NotifyOverdueReviews 補審逾期升級告警（D7，scheduler 週期呼叫）：
+// NotifyOverdueReviews 補審逾期升級告警（scheduler 週期呼叫）：
 // 逾 break_glass_review_timeout_hours 未補審的破窗單發 break_glass_review_overdue
 // 事件；單仍留在待補審視圖。
 //
-// **W7b 對抗輪修復（原為每單至多一次）**：D-12 收斂後 admin 不再是有效審核者，
+// **修復（原為每單至多一次）**：審核資格收斂後 admin 不再是有效審核者，
 // 系統可能進入「零有效審核者」狀態，spec 明定逾期告警是該情境下破窗單的可見性
 // **保底**。只響一次不構成保底——一封信被漏看，單就永久沉沒。故改為以
 // review_overdue_notified_at 節流的週期重發：仍待補審就每 overdueRenotifyInterval

@@ -25,13 +25,13 @@ type AssetGroupServiceInterface interface {
 	Delete(id uint, actorID uint, actorName, clientIP string) (int64, error)
 }
 
-// AssetNodeVisibilityResolver 非特權角色的樹收斂範圍解析（asset-node-tree D6）：
+// AssetNodeVisibilityResolver 非特權角色的樹收斂範圍解析：
 // 可視資產集＋其節點祖先鏈——節點過濾與計數同受收斂，不洩漏無關子樹
 type AssetNodeVisibilityResolver interface {
 	VisibleTreeScope(ctx context.Context, userID uint) (*asset.TreeVisibility, error)
 }
 
-// AssetGroupHandler 資產節點樹 API（asset-node-tree，寫入 admin only）
+// AssetGroupHandler 資產節點樹 API（寫入 admin only）
 type AssetGroupHandler struct {
 	groupService AssetGroupServiceInterface
 	authz        AssetAuthorizationServiceInterface
@@ -39,12 +39,12 @@ type AssetGroupHandler struct {
 }
 
 // NewAssetGroupHandler 建立 handler。authz 用於一般 user 的節點列表資產收斂、
-// visibility 用於樹端點的可視節點鏈收斂（asset-access-scoping／asset-node-tree D6）
+// visibility 用於樹端點的可視節點鏈收斂
 func NewAssetGroupHandler(groupService AssetGroupServiceInterface, authz AssetAuthorizationServiceInterface, visibility AssetNodeVisibilityResolver) *AssetGroupHandler {
 	return &AssetGroupHandler{groupService: groupService, authz: authz, visibility: visibility}
 }
 
-// respondGroupError 節點樹寫入端點的統一錯誤出口（backend-i18n-unification A2）：
+// respondGroupError 節點樹寫入端點的統一錯誤出口：
 // 已知 sentinel 依 errors.Is 映射到機器碼（狀態碼與遷移前逐一相同），未知一律
 // RespondInternal。internalCode 為該端點的 INTERNAL_ASSET_NODE_<VERB> 碼。
 func respondGroupError(c *gin.Context, internalCode apierror.ErrCode, err error) {
@@ -75,7 +75,7 @@ func scopedContext(c *gin.Context) context.Context {
 
 // List 節點平面列表（登入即可——授權精靈/工作區分節需要）。非 admin/auditor
 // 收斂：每節點僅回該 user 授權的直掛資產，並僅保留「有授權資產的節點＋其祖先鏈」
-// （祖先空殼保留以維持樹形連貫；asset-access-scoping 語義隨樹升級）
+// （祖先空殼保留以維持樹形連貫）
 func (h *AssetGroupHandler) List(c *gin.Context) {
 	groups, err := h.groupService.ListWithAssets()
 	if err != nil {
@@ -133,8 +133,8 @@ func (h *AssetGroupHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": groups, "total": len(groups)})
 }
 
-// Tree 樹導覽端點（asset-node-tree D5：惰性載入，parent_id 空＝根層）。
-// 非 admin/auditor 依可視節點鏈收斂（D6）
+// Tree 樹導覽端點（惰性載入，parent_id 空＝根層）。
+// 非 admin/auditor 依可視節點鏈收斂
 func (h *AssetGroupHandler) Tree(c *gin.Context) {
 	var parentID *uint
 	if raw := c.Query("parent_id"); raw != "" {
@@ -222,7 +222,7 @@ type moveRequest struct {
 	ParentID *uint `json:"parent_id"`
 }
 
-// Move 搬移節點（asset-node-tree D4：環路檢查＋深度重驗＋同層同名）
+// Move 搬移節點（環路檢查＋深度重驗＋同層同名）
 func (h *AssetGroupHandler) Move(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -267,7 +267,7 @@ func (h *AssetGroupHandler) Delete(c *gin.Context) {
 		respondGroupError(c, apierror.CodeInternalAssetNodeDelete, err)
 		return
 	}
-	// 成功回應不攜帶 UI 文案（D9）：前端以 $t('nodeTree.deleted') 自有文案提示；
+	// 成功回應不攜帶 UI 文案：前端以 $t('nodeTree.deleted') 自有文案提示；
 	// revoked_authorizations 是機器欄（連動撤銷筆數），保留
 	c.JSON(http.StatusOK, gin.H{
 		"revoked_authorizations": revoked,

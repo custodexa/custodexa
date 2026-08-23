@@ -1,6 +1,6 @@
 package brandidentity
 
-// 品牌識別字單一性守衛（brand-residual-cleanup，specs/brand-identity）。
+// 品牌識別字單一性守衛（specs/brand-identity）。
 //
 // **釘住什麼**：backend module 內不得出現歷史品牌名。歷史上這件事失敗過一次——
 // 一次只做顯示層的更名把技術識別字列為 Non-goals（見 specs/brand-identity
@@ -142,8 +142,7 @@ func scanBrand(t *testing.T) brandScan {
 
 // runBrandScan 遍歷 module 根，讀每個文字檔比對歷史品牌字面量。
 //
-// 不接 *testing.T：在 sync.Once 內執行，任何 t 都只屬於第一個進入者
-// （同 guard-scan-cost-reduction 對共用掃描的處置）。
+// 不接 *testing.T：在 sync.Once 內執行，任何 t 都只屬於第一個進入者。
 func runBrandScan(root string) brandScan {
 	res := brandScan{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

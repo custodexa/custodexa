@@ -23,7 +23,7 @@ var (
 	ErrConsentNotApplicable = errors.New("目前政策檔位不受理連線同意")
 )
 
-// TransmissionConsentService 傳輸風險同意立據與連線閘（transmission-security-policy D2/D3）：
+// TransmissionConsentService 傳輸風險同意立據與連線閘：
 // 立據（Record）與用據（CheckConnect）分離——同意是獨立審計事件，
 // 簽發端點唯讀記錄不寫
 type TransmissionConsentService struct {
@@ -47,9 +47,9 @@ type ConnectGateDecision struct {
 	Message string
 }
 
-// CheckConnect connect-token 簽發閘（D2，授權檢查之後呼叫）：
+// CheckConnect connect-token 簽發閘（授權檢查之後呼叫）：
 // off 或無風險＝放行；strict 命中＝拒絕（不吃同意）＋入審計；
-// warn 無有效同意＝428 要求同意。判定與清冊共用同一套規則（D1）
+// warn 無有效同意＝428 要求同意。判定與清冊共用同一套規則
 func (s *TransmissionConsentService) CheckConnect(userID uint, asset *model.Asset, clientIP string) ConnectGateDecision {
 	channel := s.policy.AssetChannel(asset)
 	if channel == "" {
@@ -106,7 +106,7 @@ func (s *TransmissionConsentService) HasValidConsent(userID, assetID uint, finge
 	return true
 }
 
-// Record 立據（D3）：使用者對資產提交同意。clientRiskKeys＝使用者實際看到的
+// Record 立據：使用者對資產提交同意。clientRiskKeys＝使用者實際看到的
 // 風險項 key 集合，與當下重算集合不符即拒（TOCTOU 守衛——同意不能立在
 // 已過期的風險認知上）。冪等 upsert per user×asset，成功即入審計
 func (s *TransmissionConsentService) Record(userID uint, asset *model.Asset, clientRiskKeys []string, clientIP string) (*model.TransmissionConsent, error) {
@@ -169,7 +169,7 @@ func (s *TransmissionConsentService) auditConsent(userID uint, asset *model.Asse
 		Resource:   model.ResourceTransmission,
 		ResourceID: &asset.ID,
 		// resource=transmission 使 (resource, resource_id) 反推不到資產；同意立據
-		// 是「對這台資產做的事」，主體鍵須直接釘上（auditor-workbench D4）
+		// 是「對這台資產做的事」，主體鍵須直接釘上（auditor-workbench）
 		AssetID:  &asset.ID,
 		Status:   model.StatusSuccess,
 		UserID:   userID,

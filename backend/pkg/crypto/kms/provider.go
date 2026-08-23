@@ -13,15 +13,14 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// EncryptionContextAADKey KMS EncryptionContext 承載 DEK 層 AAD 的**唯一鍵名**
-// （D11.1 裁決 2）。
+// EncryptionContextAADKey KMS EncryptionContext 承載 DEK 層 AAD 的**唯一鍵名**。
 //
 // **永久 wire contract**：本鍵名與下方的編碼一旦出貨即不可改——改動等同既有委託
 // 密文全不可解（EncryptionContext 逐位元參與 KMS 的認證加密）。故定為具名常數
 // 並由 TestEncryptionContextWireContract 釘住。
 const EncryptionContextAADKey = "aad"
 
-// ErrAADRequired 委託 provider 於 len(aad)==0 時的 fail-close（D11.1 裁決 2）。
+// ErrAADRequired 委託 provider 於 len(aad)==0 時的 fail-close。
 //
 // **與本地 provider 的行為刻意相反**：介面註解的「aad 為 nil 時不綁定」是
 // **本地語義**；委託格式在 EncodeWrappedKey（wrapped_key.go:95-98）上一律要求
@@ -36,7 +35,7 @@ var ErrKeyIDNotCanonical = errors.New("kek_id 非正規 KMS key ARN 形式")
 var ErrKeyUnusable = errors.New("KMS 金鑰不合用於 KEK 包裹")
 
 // ErrKeyOutsideTrustedAccount 目標金鑰所屬帳號不在部署宣告的信任範圍內
-// （round-4 codex high #1）
+// （安全審查 high #1）
 var ErrKeyOutsideTrustedAccount = errors.New("KMS 目標金鑰不在信任帳號範圍內：拒絕重包")
 
 // canaryAADPurpose 建構期／預檢用的往返探針 AAD purpose。
@@ -47,13 +46,13 @@ const canaryAADPurpose = "kek-preflight"
 
 // Provider AWS KMS 委託型 KEK provider（crypto.KEKProvider 實作）。
 //
-// **DEK 仍由本地 CSPRNG 生成（D11）**：本 provider 只做 Encrypt／Decrypt 包裹，
+// **DEK 仍由本地 CSPRNG 生成**：本 provider 只做 Encrypt／Decrypt 包裹，
 // SHALL NOT 改用 GenerateDataKey——那會使 DEK 生命週期與 A／B 分岔，
 // provider 就不再真正可互換。
 //
 // ---
 //
-// **已知限制：多區域金鑰（MRK）不支援跨區 replica 切換（round-4 codex med #4）**
+// **已知限制：多區域金鑰（MRK）不支援跨區 replica 切換（安全審查 med #4）**
 //
 // MRK 的原生賣點是「primary 與 replica 共用金鑰材料，任一區皆可解另一區的密文」。
 // 本版**不利用**該能力：落庫的 kek_id 是**含 region 的完整 key ARN**，而 primary
@@ -66,14 +65,14 @@ const canaryAADPurpose = "kek-preflight"
 // 這項好處。
 //
 // **為何本期不做**：要支援它得把「落庫的邏輯身分」與「本區的操作 ARN」拆成兩個
-// 概念——kek_id 欄的語義、代表列篩選、D11.1 裁決 1 釘死的「不得改寫既有 kek_id」
+// 概念——kek_id 欄的語義、代表列篩選、「不得改寫既有 kek_id」這條硬約束
 // 三者都得重新定案。那是資料模型層級的改動，不該夾帶在一次安全修補裡。
 // TestMultiRegionKeyIsRegionScopedIdentity 釘住此限制，使日後沒有人會**誤以為**
 // 它已被支援（沒有那格測試，這段註解會在第一次有人試切區時才被發現是真的）。
 type Provider struct {
 	client API
 	// keyARN 建構期經 DescribeKey 解析出的**正規 key ARN**；
-	// 落 kek_id 的值恆為此形式（D11.1 裁決 1）
+	// 落 kek_id 的值恆為此形式
 	keyARN string
 	// arnParts keyARN 的解析結果（partition／region／account／key-id）
 	arnParts KeyARNParts
@@ -84,7 +83,7 @@ type Provider struct {
 
 // New 建構 KMS provider。
 //
-// **DescribeKey 於此（＝連 DB 之前）呼叫（D11.1 裁決 1）**：組態段 DB-independent
+// **DescribeKey 於此（＝連 DB 之前）呼叫**：組態段 DB-independent
 // 的立約要求任一 fail-close 路徑不產生 DB 寫入；把探測移到 DB 連線之後即破壞該
 // 立約，且會讓「組態錯誤」在 migration／seed 之後才浮現。
 //
@@ -98,7 +97,7 @@ type Provider struct {
 //     ——**這是「請求指定的 key_ref 不得把材料重包到外部帳號」的承載機制**；
 //  5. 跑一次不落庫的 Encrypt→Decrypt 往返（canary）。
 //
-// **為何 (5) 不能省（round-4 codex med #5）**：DescribeKey 只證明 metadata 合格，
+// **為何 (5) 不能省（安全審查 med #5）**：DescribeKey 只證明 metadata 合格，
 // **不證明本角色有 Encrypt／Decrypt 權限**（IAM 可以只給 kms:DescribeKey），
 // 也不證明 XKS 外部金鑰存放區可達。少了這一步，一個「驗證通過」的部署會在
 // **首次真的要包裹金鑰時**才失敗——那時已經過了啟動關卡，錯誤面遠比啟動期難處理。
@@ -139,10 +138,10 @@ func New(ctx context.Context, s Settings) (*Provider, error) {
 		return client.DescribeKey(c, &awskms.DescribeKeyInput{KeyId: &keyID}, describeCallOptions()...)
 	})
 	if err != nil {
-		// 權限清單完整化（D7／D11.1 裁決 5 的 opus L-c）：漏列 DescribeKey 會使
+		// 權限清單完整化：漏列 DescribeKey 會使
 		// 「組態齊備但缺該權限」的部署得到誤導性錯誤
 		return nil, fmt.Errorf("%w（所需 IAM action：kms:DescribeKey、kms:Encrypt、kms:Decrypt；"+
-			"C1↔C1 換金鑰另需 kms:ReEncryptFrom 與 kms:ReEncryptTo）", err)
+			"同族 KMS 之間換金鑰另需 kms:ReEncryptFrom 與 kms:ReEncryptTo）", err)
 	}
 	meta := out.KeyMetadata
 	if meta == nil || meta.Arn == nil || *meta.Arn == "" {
@@ -167,7 +166,7 @@ func New(ctx context.Context, s Settings) (*Provider, error) {
 	return p, nil
 }
 
-// describeCallOptions 建構期 DescribeKey 的**每次呼叫**選項（round-4 codex med #1）。
+// describeCallOptions 建構期 DescribeKey 的**每次呼叫**選項（安全審查 med #1）。
 //
 // 關掉 SDK 內層重試，使「總嘗試 3 次」是實際的 HTTP 請求數而非本層迴圈數
 // （原本 3×3＝最多 9 個請求）。只作用於 DescribeKey：Encrypt／Decrypt 走執行期
@@ -200,12 +199,12 @@ func checkTrustedAccount(scope AccountScope, parts KeyARNParts, input string) er
 // 兩處字面由 TestTrustAnchorEnvKeyMatchesConfig（cmd/server）比對釘住。
 const trustAnchorEnvKeyName = "KEK_KMS_KEY_ID"
 
-// checkKeyUsable 建構期金鑰可用性驗證（D11.1 裁決 1「金鑰可用性」）。
+// checkKeyUsable 建構期金鑰可用性驗證。
 //
 // 三項逐一列出而非合併回一句：操作者要能直接看出是「用錯金鑰種類」還是
 // 「金鑰被停用」，兩者的處置完全不同。
 //
-// **本函式只看 metadata，不證明可用（codex med #5）**：Enabled＋
+// **本函式只看 metadata，不證明可用（安全審查 med #5）**：Enabled＋
 // SYMMETRIC_DEFAULT＋ENCRYPT_DECRYPT 三者全過，仍可能缺 kms:Encrypt 權限或
 // XKS 存放區不可達。實際可用性由 canary 承擔。
 func checkKeyUsable(meta *types.KeyMetadata) error {
@@ -227,7 +226,7 @@ func checkKeyUsable(meta *types.KeyMetadata) error {
 	return nil
 }
 
-// encryptionContext 把 DEK 層 AAD 映射為 KMS EncryptionContext（D11.1 裁決 2）。
+// encryptionContext 把 DEK 層 AAD 映射為 KMS EncryptionContext。
 //
 // **單鍵不透明映射，SHALL NOT 反解 AAD 內部結構**：語義多鍵
 // （{"purpose":…,"version":…}）要求本 provider 反解 crypto.DEKAAD 的 canonical
@@ -268,7 +267,7 @@ func (p *Provider) Wrap(ctx context.Context, plaintext, aad []byte) ([]byte, err
 
 // Unwrap 以 KMS Decrypt 解包。
 //
-// **KeyId SHALL 顯式傳入（D11 MED-1）**：AWS KMS 對對稱金鑰的 Decrypt **不要求**
+// **KeyId SHALL 顯式傳入**：AWS KMS 對對稱金鑰的 Decrypt **不要求**
 // 指定 KeyId（密文自帶金鑰識別），故只要本服務的角色對某把舊金鑰仍有 Decrypt
 // 權限，一個以**其他金鑰**包裹的 blob 配上被竄改的 kek_id 欄仍會解包成功。
 // 顯式帶 KeyId 使 KMS 端強制驗證「此密文確由該金鑰產生」——這是委託模式下
@@ -297,7 +296,7 @@ func (p *Provider) KeyRef() crypto.KeyRef {
 	return crypto.KeyRef{Provider: crypto.KeyRefProviderKMS, KeyID: p.keyARN}
 }
 
-// Mode 執行期模式（D10 雙軌互證的清冊來源）
+// Mode 執行期模式（清冊欄位的來源，與執行期組態雙軌互證）
 func (p *Provider) Mode() string { return crypto.KEKModeKMS }
 
 // FormatTag 委託格式標記
@@ -320,14 +319,14 @@ func (p *Provider) sameFamily(o *Provider) bool {
 
 // ReEncrypt 由舊 wrapped 直接產出本 provider 的 wrapped。
 //
-// **分派（D11.1 裁決 5(a)）**：AWS ReEncrypt 的來源**必須是 KMS 密文**。
-// P3 的主場景（tasks 3.3 的 A/B→C）來源是本地 AES-GCM blob，照「原生」字面
+// **分派**：AWS ReEncrypt 的來源**必須是 KMS 密文**。
+// 換鑰精靈的主場景（A/B→C）來源是本地 AES-GCM blob，照「原生」字面
 // 實作主路徑執行期即 InvalidCiphertextException。故僅在 from 為同族 KMS
 // provider 時走原生，否則一律回落 crypto.DefaultReEncrypt（unwrap→wrap）。
-// **A/B→C 走的是回落分支**；原生路徑服務的是 C1↔C1 換金鑰場景。
+// **A/B→C 走的是回落分支**；原生路徑服務的是同族 KMS 之間的換金鑰場景。
 //
-// **四項顯式參數（D11.1 裁決 5(b)），缺一即實作缺陷**：
-//   - SourceKeyId：原生 ReEncrypt 同樣會解密，省略即讓 MED-1 漏洞原樣重現；
+// **四項顯式參數，缺一即實作缺陷**：
+//   - SourceKeyId：原生 ReEncrypt 同樣會解密，省略即讓跨金鑰解包漏洞原樣重現；
 //   - DestinationKeyId：目標金鑰；
 //   - SourceEncryptionContext：來源 blob 的 AAD 綁定；
 //   - DestinationEncryptionContext：**省略不會沿用 source context 而是變成空
@@ -357,14 +356,14 @@ func (p *Provider) ReEncrypt(ctx context.Context, wrapped, aad []byte, from cryp
 	return out.CiphertextBlob, nil
 }
 
-// Preflight 連通性與權限預檢（D7 的 C 模式重包前置）。
+// Preflight 連通性與權限預檢（C 模式重包前置）。
 //
 // **與 New 的 canary 同一件事**：New 已於建構期跑過一次，故正常路徑上呼叫端
 // 不需要再呼叫本方法。保留為公開方法的理由是「在任意時點重驗一次」仍是合理需求
 // （例如長時間持有的 provider 於重包前想確認權限未被撤銷）。
 func (p *Provider) Preflight(ctx context.Context) error { return p.canary(ctx) }
 
-// canary 一次**不落庫**的真實 Encrypt→Decrypt 往返（round-4 codex med #5）。
+// canary 一次**不落庫**的真實 Encrypt→Decrypt 往返（安全審查 med #5）。
 //
 // 以實際往返驗證 Encrypt／Decrypt 權限與 EncryptionContext 行為——比逐一查
 // IAM policy 誠實：實際能不能用，只有打過一次才知道。這同時涵蓋 XKS

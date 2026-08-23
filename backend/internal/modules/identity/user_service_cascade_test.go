@@ -11,8 +11,8 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// TestUserServiceDeleteCascade 使用者軟刪連動清理（approval-routing-quorum D-7，
-// 對抗驗證 aaa2018 #2）：作審核方/申請人的審核範圍連動軟刪、群組成員關係清除，
+// TestUserServiceDeleteCascade 使用者軟刪連動清理：
+// 作審核方/申請人的審核範圍連動軟刪、群組成員關係清除，
 // 不留幽靈引用與殘留成員資格
 func TestUserServiceDeleteCascade(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -20,7 +20,7 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	// RefreshToken 為必要：Delete 於同交易內推進 credential_epoch 並撤銷 refresh
-	//（idp-oidc-integration 2.8 起），缺表會讓刪除以「撤銷刷新憑證失敗」整筆回滾
+	//（2.8 起），缺表會讓刪除以「撤銷刷新憑證失敗」整筆回滾
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.RefreshToken{}); err != nil {
@@ -76,8 +76,8 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 	}
 }
 
-// TestUserServiceAddRole 冪等追加單一角色（approval-routing-quorum 一站式代配，
-// codex #1）：不覆蓋既有角色集、重複追加 no-op、未知使用者/角色明確拒絕——
+// TestUserServiceAddRole 冪等追加單一角色（一站式代配）：
+// 不覆蓋既有角色集、重複追加 no-op、未知使用者/角色明確拒絕——
 // 對照 AssignRoles 整包替換語義，代配路徑不得以過期快照蓋回他處變更
 func TestUserServiceAddRole(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

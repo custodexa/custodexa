@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// 後端顯示字串 i18n 的全域 AST 守衛（i18n-backend-labels rr-C1/rr-I3，codex impl-review I1 強化）：
+// 後端顯示字串 i18n 的全域 AST 守衛：
 // risk 項只能經 newRisk（含 label）或 riskItemsFromKeys（key-only fingerprint）產生、
 // inventory note/preflight 只能經 setNote/setPreflight 設定。任何他處直接建 risk 字面量
 // （含 alias import／指標/map elision）或設 InventoryChannel 的 Note/StrictPreflight，都繞過
@@ -23,7 +23,7 @@ import (
 // 判定，屬已知限制；此類實務罕見，且完備性 bijection 測試為第二道防線。
 
 // sanctionedDisplayFuncs 唯一可建 risk 字面量／設 inventory Note/StrictPreflight 的建構子，
-// 精確到 (檔名, 函式名)——同名函式在他檔不豁免（codex impl-review I1）。
+// 精確到 (檔名, 函式名)——同名函式在他檔不豁免。
 var sanctionedDisplayFuncs = map[string]string{
 	"newRisk":           "transmission_policy_service.go",
 	"riskItemsFromKeys": "transmission_consent_service.go",
@@ -172,7 +172,7 @@ func scanDisplayViolations(fset *token.FileSet, f *ast.File, base string) []stri
 	return out
 }
 
-// TestNoBareDisplayLiterals is the acceptance gate (rr-C1/rr-I3): no production file outside
+// TestNoBareDisplayLiterals is the acceptance gate: no production file outside
 // the sanctioned constructors may build a risk item or inventory note/preflight directly.
 func TestNoBareDisplayLiterals(t *testing.T) {
 	fset := token.NewFileSet()
@@ -220,7 +220,7 @@ func newRisk() { _ = RiskItem{Key: "x", Label: "ok"} }  // OK: sanctioned in-fil
 		t.Errorf("got %d violations, want 10:\n  %s", len(got), strings.Join(got, "\n  "))
 	}
 
-	// off-file same-named sanctioned function is NOT exempt (codex impl-review I1).
+	// off-file same-named sanctioned function is NOT exempt.
 	const offFile = `package sample
 func newRisk() { _ = RiskItem{Key: "x", Label: "smuggled"} }
 `

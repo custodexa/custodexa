@@ -14,11 +14,11 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 阻斷軌跡測試（backend-i18n-unification A5/A1）
+// 阻斷軌跡測試
 //
-// A5：阻斷標記必須進 outputSinks（錄影／即時監看／審計 tap 三軌），
+// 一、阻斷標記必須進 outputSinks（錄影／即時監看／審計 tap 三軌），
 //     否則阻斷只在使用者當下的分頁閃一則提示，事後回放與稽核完全看不到。
-// A1：阻斷後的清行（Ctrl+C）失敗即終止會話，並把原因寫入既有審計軌
+// 二、阻斷後的清行（Ctrl+C）失敗即終止會話，並把原因寫入既有審計軌
 //     （sessions.end_reason，經 bridge.EndReason → handler.CloseWithReason）。
 // ---------------------------------------------------------------------------
 
@@ -135,7 +135,7 @@ func readFrames(t *testing.T, ws *websocket.Conn, n int) []Message {
 	return out
 }
 
-// TestBlockedCommandMarkerReachesOutputSinks A5：阻斷時標準化標記進三軌旁路，
+// TestBlockedCommandMarkerReachesOutputSinks 阻斷時標準化標記進三軌旁路，
 // 且使用者端照舊收到 MsgNotice（兩者並存，不是二選一）
 func TestBlockedCommandMarkerReachesOutputSinks(t *testing.T) {
 	const ruleName = "禁止刪根目錄"
@@ -197,7 +197,7 @@ func TestBlockedMarkerSanitizesRuleName(t *testing.T) {
 	}
 }
 
-// TestBlockClearFailureTerminatesSession A1：清行失敗＝遠端行緩衝可能殘留被阻斷
+// TestBlockClearFailureTerminatesSession 清行失敗＝遠端行緩衝可能殘留被阻斷
 // 指令的前綴，故 fail-close 終止會話；終止原因入既有審計軌（end_reason），
 // 使用者端收到碼化 MsgError 說明
 func TestBlockClearFailureTerminatesSession(t *testing.T) {

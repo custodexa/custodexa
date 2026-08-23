@@ -74,7 +74,7 @@ const sampleAlerts = [
     command: 'chmod 777 /etc/passwd',
     severity: 'medium',
     triggered_at: '2026-06-12T08:01:00Z',
-    // D6：規則名純淨，阻斷與否由 blocked 欄表達
+    // 規則名純淨，阻斷與否由 blocked 欄表達
     blocked: true,
   },
 ]
@@ -272,7 +272,7 @@ describe('Alerts', () => {
     const wrapper = mountAlerts()
     await flushPromises()
 
-    // url 為遮罩值（key-management-envelope G8：後端回應不含全文）
+    // url 為遮罩值（後端回應不含全文）
     const row = { id: 9, name: 'ops', url: 'https://hooks.example.com/****t/x', type: 'webhook', has_secret: true, enabled: true }
 
     // 開啟編輯：has_secret 帶入表單供狀態顯示，hasSecret 不進 payload；
@@ -284,7 +284,7 @@ describe('Alerts', () => {
     expect(wrapper.vm.channelForm.maskedUrl).toBe('https://hooks.example.com/****t/x')
 
     // 只改名、不重填 secret/url：payload 帶空 secret 與空 url + clear_secret=false（後端沿用既有值）；
-    // risk_acknowledged=false（傳輸閘 D6：首次存檔不預設確認）；skipErrorToast 供 warn 確認流程攔截
+    // risk_acknowledged=false（傳輸閘：首次存檔不預設確認）；skipErrorToast 供 warn 確認流程攔截
     wrapper.vm.channelForm.name = 'ops-renamed'
     await wrapper.vm.handleSaveChannel()
     await flushPromises()
@@ -298,7 +298,7 @@ describe('Alerts', () => {
         type: 'webhook',
         clear_secret: false,
         risk_acknowledged: false,
-        // D5：表單恆有語系值，未動時沿用列上的既有設定
+        // 表單恆有語系值，未動時沿用列上的既有設定
         language: 'zh-TW',
       },
       { skipErrorToast: true }
@@ -366,7 +366,7 @@ describe('Alerts', () => {
     expect(wrapper.vm.alertsLoading).toBe(false)
   })
 
-  // backend-i18n-unification D6：rule_name 去污染後，「已阻斷」改由 blocked 欄的 tag 表達
+  // rule_name 去污染後，「已阻斷」改由 blocked 欄的 tag 表達
   it('renders 已阻斷 tag only for alerts whose blocked flag is set', async () => {
     setUserRoles(['auditor'])
 
@@ -382,7 +382,7 @@ describe('Alerts', () => {
     expect(blockedTags[0].text()).toBe('已阻斷')
   })
 
-  // backend-i18n-unification D5：per-channel 語系
+  // per-channel 語系
   it('channel dialog offers the three backend languages and defaults to zh-TW', async () => {
     setUserRoles(['admin'])
     createChannelMock.mockResolvedValue({})

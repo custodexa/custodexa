@@ -16,10 +16,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// keyvault fixture 的 internal/service 側複本（modular-architecture W2 2.5）。
+// keyvault fixture 的 internal/service 側複本。
 //
 // **為何是複本**：這些 fixture 原本與 keyvault 的 13 個生產檔同住 `internal/service`；
-// W2 把生產檔與需要 keyvault 未匯出內部的測試一併遷入 `internal/modules/keyvault`，
+// 生產檔與需要 keyvault 未匯出內部的測試已一併遷入 `internal/modules/keyvault`，
 // 而 keyvault 的**包內**測試 SHALL NOT import `internal/service`（會構成
 // 「import cycle not allowed in test」）。故兩側各留一份：keyvault 側是原件，
 // 本檔是服務側複本。複本一律只呼叫 keyvault 的匯出面，逐行實作與原件相同。
@@ -27,7 +27,7 @@ import (
 // **唯一的刻意差異**：`aadFixture` 的殘值播種。原件用 `preReleaseEnvelope`
 // （取 active data DEK 直封，需 `km.mu`／`km.active`／`km.keys` 三個未匯出欄位），
 // 服務側取不到、也 SHALL NOT 為此開匯出面——那等於重新開一個無 AAD 寫出入口，
-// 正是 release-transitional-cleanup 拆掉的東西。改以**格式等價**的過渡格式值
+// 正是過渡格式收尾時拆掉的東西。改以**格式等價**的過渡格式值
 // （`enc:v1:<GCM 輸出>`，以測試自有金鑰封裝）播種。留在服務側的四項斷言
 // （`aad_residue_alert_test.go`）只判「是否為終態格式」與「值有沒有被改寫」，
 // **不解密殘值**，故格式等價已足；真正需要「可用 active DEK 解開的過渡值」的
@@ -114,7 +114,7 @@ func aadFixture(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (asse
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, totp_secret_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE export_signing_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, private_key_enc TEXT NOT NULL DEFAULT '')`,
-		// audit-checkpoint-chain D5：登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
+		// audit-checkpoint-chain：登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE checkpoint_signing_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, private_key_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE notification_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, secret TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '')`,
@@ -153,8 +153,8 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	// asset_accounts 亦為信封目標表（asset-multi-account D1a），空表即 pending 0。
-	// ldap_directories 同理（ldap-settings-migration D1）——**測試庫例外**：生產
+	// asset_accounts 亦為信封目標表，空表即 pending 0。
+	// ldap_directories 同理——**測試庫例外**：生產
 	// 由 versioned migration 建表（CHECK 約束需求），此處僅需一張形狀等價的空表
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
@@ -194,7 +194,7 @@ func setupKM(t *testing.T) (*gorm.DB, *keyvault.KeyManagerService) {
 }
 
 // rewrapAndReinit 執行重包並以新 KEK 重啟（模擬改 env 重啟切換），回新 km 與新舊指紋。
-// 切換那次 keyvault.InitKeyManager 不應 fail-close——這是 codex 第五輪 HIGH-1 的回歸點：
+// 切換那次 keyvault.InitKeyManager 不應 fail-close——這是安全審查所列問題的回歸點：
 // 切換後舊列 live 且 kek_id<>env 是合法的「待退役 predecessor」角色，不得誤判非法。
 func rewrapAndReinit(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (*keyvault.KeyManagerService, string, string) {
 	t.Helper()
@@ -283,7 +283,7 @@ func openPGLockDB(t *testing.T, dsn string) *gorm.DB {
 
 // seedEnvelopeData 佈建**終態格式**存量（enc:a1）：資產密碼、使用者 TOTP、
 // 兩個通知通道。取代已刪除的 seedLegacyData＋RunEnvelopeDataMigration 前置
-// （release-transitional-cleanup 3.3）——終態下不存在需要一次性信封化的存量。
+// ——終態下不存在需要一次性信封化的存量。
 func seedEnvelopeData(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) {
 	t.Helper()
 	pw := encryptColumn(t, km, "assets", "password_enc", "asset-password")

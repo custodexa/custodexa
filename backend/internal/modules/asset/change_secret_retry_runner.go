@@ -12,13 +12,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// ChangeSecretRetryRunner 未驗證候選憑證的重試執行器（design D4）。
+// ChangeSecretRetryRunner 未驗證候選憑證的重試執行器。
 //
 // 重試只做一件事：**以候選秘密登入目標機**。成功即代表遠端確實已是新秘密，
 // 於是提交為帳號憑證並刪除候選列；失敗則退避並等下一輪。
 //
 // 刻意**不**以舊秘密回探來分辨「遠端沒改成」——那會對目標機多打一輪認證，
-// 而分辨出來也不改變處置（不採自動回滾，見 design D4）。
+// 而分辨出來也不改變處置（不採自動回滾）。
 type ChangeSecretRetryRunner struct {
 	db         *gorm.DB
 	candidates *ChangeSecretCandidateService

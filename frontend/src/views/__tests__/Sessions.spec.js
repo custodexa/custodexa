@@ -48,7 +48,7 @@ const row = (over) => ({
   ...over,
 })
 
-describe('Sessions 無錄影標示（recording-failure-handling D3）', () => {
+describe('Sessions 無錄影標示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getActiveSessionsMock.mockResolvedValue([])
@@ -77,7 +77,7 @@ describe('Sessions 無錄影標示（recording-failure-handling D3）', () => {
     wrapper.unmount()
   }, 15000)
 
-  // backend-i18n-unification D8：recording_error 自 M5 起存 cause code
+  // recording_error 存的是 cause code
   it('recording_error 為 cause code 時 tooltip 顯詞庫短語，未知值原樣退回', async () => {
     getActiveSessionsMock.mockResolvedValue([
       row({ id: 9, status: 'active', recording_error: 'recording_flush_failed' }),
@@ -121,7 +121,7 @@ describe('Sessions 無錄影標示（recording-failure-handling D3）', () => {
   }, 15000)
 })
 
-// 連線帳號欄（asset-multi-account D7）：後端欄位為 `account_username,omitempty`，
+// 連線帳號欄：後端欄位為 `account_username,omitempty`，
 // 改名或漏送即靜默變 `-`——兩個分頁各鎖一條，免得回歸時無聲失守
 describe('Sessions 連線帳號欄', () => {
   beforeEach(() => {

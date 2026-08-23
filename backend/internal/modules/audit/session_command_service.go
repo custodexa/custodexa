@@ -62,7 +62,7 @@ func (s *SessionCommandService) ListBySession(sessionID uint) ([]model.SessionCo
 	return commands, nil
 }
 
-// Search 跨會話指令搜尋（D4：user_id/asset_id 冗餘欄位免 JOIN）
+// Search 跨會話指令搜尋（user_id/asset_id 冗餘欄位免 JOIN）
 // SessionCommandView 指令記錄＋關聯名稱（指令審計列表顯示用，2026-06-12 走查債）
 type SessionCommandView struct {
 	model.SessionCommand
@@ -94,7 +94,7 @@ func (s *SessionCommandService) scopedQuery(filter *SessionCommandFilter) *gorm.
 func (s *SessionCommandService) Search(filter *SessionCommandFilter) (*SessionCommandListResponse, error) {
 	query := s.scopedQuery(filter)
 
-	// keyword 用 ILIKE 子字串比對：量級內 btree 表掃可接受（design D4）
+	// keyword 用 ILIKE 子字串比對：量級內 btree 表掃可接受
 	if filter.Keyword != "" {
 		query = query.Where("command ILIKE ?", "%"+filter.Keyword+"%")
 	}

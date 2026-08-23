@@ -42,7 +42,7 @@ func init() {
 	}
 }
 
-// Render 渲染出站 Slack 標題與內文（design D4）。
+// Render 渲染出站 Slack 標題與內文。
 //
 // 語系未支援即 fallback DefaultLang；事件或 variant 於目錄缺鍵時再降一級走
 // RenderDegraded——本函式永不回空字串對，合規告警不因目錄問題消失。
@@ -98,7 +98,7 @@ func variantKey(event Event, params map[string]string) string {
 //   - 宣告 Lexicon 者：值視為詞庫鍵，換成該語系短語（缺鍵回吐機器碼）
 //   - 其餘（opaque / enum / int）：值本身直接插值
 //
-// 淨化紀律（V2 對抗驗收 C1）：**所有** kind 的值一律過 SanitizeOpaque，
+// 淨化紀律：**所有** kind 的值一律過 SanitizeOpaque，
 // 不因宣告的 kind 而豁免。理由是 Render 的契約明載「未經 Validate 直接呼叫
 // 亦安全」——只有 Validate 走過的路徑才保證 enum 值落在允許清單內；免驗證
 // 路徑（降級投遞、單測、未來新呼叫點）的 enum/int 值可以是任意字串，把
@@ -121,8 +121,7 @@ func renderValues(lang string, event Event, params map[string]string) map[string
 	return out
 }
 
-// RenderDegraded 目錄無鍵／參數不合契約時的 generic 文案（design D4；
-// 語系化與參數收口見 codex 批 2 M1/M4）。
+// RenderDegraded 目錄無鍵／參數不合契約時的 generic 文案。
 //
 // 不依賴任何 per-event 鍵，但**依賴收件通道語系**：標題與骨幹文案取自
 // LexiconDegraded 詞庫（三語，受 checkLexicons 完備性守衛保護），event

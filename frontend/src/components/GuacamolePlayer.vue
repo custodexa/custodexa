@@ -145,7 +145,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  // 初始定位秒數（workbench-exits-and-export 出口 A）：null＝不定位。
+  // 初始定位秒數：null＝不定位。
   // **不可在載入完成前下 seek**——SessionRecording 的 seek 在 frames 尚空時是
   // no-op（guacamole-common.js:`this.seek=function(b,d){if(0!==c.length)...`），
   // 靜默失敗會讓畫面停在開頭卻顯示「已定位」
@@ -174,7 +174,7 @@ let playStartWall = 0
 // 的播放位置彈回、導致拖不動／無法 seek。
 const isSeeking = ref(false)
 
-// 倍速（recording-playback-8x）：guacamole-common-js 無 playbackRate。
+// 倍速：guacamole-common-js 無 playbackRate。
 // speed=1 走原生 play()（行為零變更）；speed≠1 走 scrub 引擎——暫停原生播放，
 // 以「錨定位置 + 經過牆鐘 × 倍率」每 150ms 驅動 seek(target)，seek 未完成則跳過該 tick。
 const speed = ref(1)

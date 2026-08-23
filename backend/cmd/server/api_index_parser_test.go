@@ -186,7 +186,7 @@ func TestReplaceIndexBlockPreservesRest(t *testing.T) {
 	}
 }
 
-// TestConditionForMask 鎖住註冊條件的封閉值域（codex 審查 Finding 1 的回歸測試）。
+// TestConditionForMask 鎖住註冊條件的封閉值域（審查 Finding 1 的回歸測試）。
 //
 // 關鍵案例是 0b0111：條件為 `audit || permission` 的端點會出現於 {on,on}、{on,off}、
 // {off,on} 三格而不出現於 {off,off}。初版把四格壓縮成「audit on/off」兩個布林，
@@ -260,7 +260,7 @@ func TestDeployConfigsMatchMaskConstants(t *testing.T) {
 }
 
 // TestRouteDepsFlagsCoveredByMatrix 鎖住「routeDeps 的旗標集合」與「組態矩陣」同步
-// （codex 第二輪 Finding 1 的回歸測試）。
+// （審查 Finding 1 的回歸測試）。
 //
 // 失效情境：若有人為 routeDeps 新增 `featureX bool` 並在 registerRoutes 中條件註冊，
 // 而 testDeps 未設定它（零值 false），該路由在四次 buildRouter 中**都不存在**，

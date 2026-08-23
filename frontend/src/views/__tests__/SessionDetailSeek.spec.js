@@ -1,4 +1,4 @@
-// SessionDetail 消費工作台帶來的回放錨點 ?t=（workbench-exits-and-export 出口 A）。
+// SessionDetail 消費工作台帶來的回放錨點 ?t=。
 //
 // 守兩件事：
 //   1. **時間基準換算**。工作台的 t 是「事件時刻 − 會話 StartTime」，但回放的

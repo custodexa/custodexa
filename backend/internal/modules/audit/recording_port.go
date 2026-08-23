@@ -2,31 +2,30 @@ package audit
 
 import "io"
 
-// 錄影讀取／清理的**消費者側窄介面**（modular-architecture W4 任務 4.8、
-// R3 §4.5＋R3.1 §3.6 的 C↔E 環反轉）。
+// 錄影讀取／清理的**消費者側窄介面**（C↔E 環反轉）。
 //
 // # 為何宣告在 audit 側
 //
-// W4 當時 `AuditExportService` 與 `RetentionService` 都直接持有 session 模組的
-// `*service.RecordingService` 具體型別。session 搬包（W9）後那條參照會變成
+// 早期 `AuditExportService` 與 `RetentionService` 都直接持有 session 模組的
+// `*service.RecordingService` 具體型別。session 搬包後那條參照會變成
 // audit→session 的 import，而 session 反過來又消費 audit（`CauseText`／失效事件
 // 登記）——**直接是 import cycle**，編譯不過。介面由消費者宣告、由 session 側的
 // 既有型別隱式滿足、組裝根注入，方向即翻轉為 session→audit。
 //
-// **W9 實測（session 已搬入 `internal/modules/session`）**：兩個消費面都仍只認本檔
+// **實測（session 已搬入 `internal/modules/session`）**：兩個消費面都仍只認本檔
 // 的介面，唯一實作者是 `*session.RecordingService`，且組裝根注入的是**同一個實例**
 // （`cmd/server/stage2.go` 的 `recordingService`）；HTTP 播放／下載／串流三條路徑
 // 則不經本介面，直接持有該具體型別。
 //
-// # 為何切成兩個而不是一個 RecordingReader（相對 R3.1 §3.6 的判斷，可逆）
+// # 為何切成兩個而不是一個 RecordingReader（相對原始設計的判斷，可逆）
 //
-// R3.1 §3.6 的原話是「`NewRetentionService` 的 recording 參數同樣改
+// 原始設計的說法是「`NewRetentionService` 的 recording 參數同樣改
 // `RecordingReader` 窄介面」。實作時發現兩個消費者要的東西沒有交集：匯出要
 // 「讀」（協定別＋位元流），保留政策要「刪」（清理過期檔）。合成一個三方法介面，
 // 等於讓 retention 的測試替身被迫實作兩個它永遠不呼叫的方法，也讓「誰能刪錄影」
 // 這件事在型別上看不出來。故拆成 RecordingReader（2 方法）與 RecordingCleaner
 // （1 方法），兩者都由同一個 `*service.RecordingService` 滿足——環一樣斷、
-// 承載面更窄（codex W2 外審 K6 的 export budget 取向）。
+// 承載面更窄（export budget 取向）。
 //
 // # 為何是 RecordingProtocol 而不是 GetRecordingMetadata
 //

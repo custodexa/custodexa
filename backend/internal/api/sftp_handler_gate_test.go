@@ -17,7 +17,7 @@ import (
 )
 
 // TestSFTPUnauthorizedReturns404 未授權檔案端點回 404「資產不存在」語義
-// （access-policy-approval D8 順修）：與逐資產守門一致，不洩漏資產存在性；
+// 與逐資產守門一致，不洩漏資產存在性；
 // 拒絕發生在任何 SFTP 連線建立之前（sftpService 為 nil 仍安全通過即為證）
 func TestSFTPUnauthorizedReturns404(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -52,7 +52,7 @@ func TestSFTPUnauthorizedReturns404(t *testing.T) {
 	}
 }
 
-// TestSFTPPolicyGateBlocksStandingConnect 檔案資料面同套政策閘（codex 審查 #1）：
+// TestSFTPPolicyGateBlocksStandingConnect 檔案資料面同套政策閘：
 // approval 段位資產上，持常設 connect 但無有效 ticket 者，檔案端點須被擋（404），
 // 不可繞過強制審核直接傳檔
 func TestSFTPPolicyGateBlocksStandingConnect(t *testing.T) {

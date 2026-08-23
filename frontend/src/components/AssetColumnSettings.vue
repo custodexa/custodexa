@@ -40,7 +40,7 @@
 <script setup>
 import { Setting } from '@element-plus/icons-vue'
 
-// 欄位自訂齒輪（asset-list-info-layering D4）：池按角色由父層給定；
+// 欄位自訂齒輪：池按角色由父層給定；
 // 持久化（localStorage 角色分域 key）由父層負責，本元件純呈現
 const props = defineProps({
   // 已勾選的池欄 key 陣列

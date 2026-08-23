@@ -49,7 +49,7 @@ func (a aadTestCodec) DecryptFor(_ context.Context, ref crypto.CipherRef, cipher
 	return string(plain), nil
 }
 
-// aesColumnCodec 測試用 ColumnCodec（kek-provider-modularization D5 AAD cutover 後
+// aesColumnCodec 測試用 ColumnCodec（AAD cutover 後
 // NewAssetService 改收 crypto.ColumnCodec；生產路徑注入的是信封 key manager）
 func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 	t.Helper()

@@ -1,6 +1,6 @@
 package apierror
 
-// 外部身分管理（idp-oidc-integration 2.8）的出口碼。
+// 外部身分管理的出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔僅為並行開發隔離：收 internal/api 的
 // user_handler.go 外部身分四操作。命名沿用既有慣例：VALIDATION_*（請求欄位）、
@@ -14,7 +14,7 @@ package apierror
 // --- VALIDATION_* / NOTFOUND_* / CONFLICT_* ---
 var (
 	// subject 為空或逾長。空 subject 會使第一個異常 token 吸附該 provider
-	// 後續全部異常 token（design D2），故為硬性拒絕而非靜默截斷
+	// 後續全部異常 token，故為硬性拒絕而非靜默截斷
 	CodeValidationExternalIdentitySubject = register("VALIDATION_EXTERNAL_IDENTITY_SUBJECT",
 		Descriptor{ZhFallback: "外部身分識別碼（subject）不得為空，且長度不得超過 255 字元"})
 

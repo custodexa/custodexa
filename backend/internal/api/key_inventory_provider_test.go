@@ -29,7 +29,7 @@ func readSourceFile(name string) (string, error) {
 	return string(b), err
 }
 
-// 金鑰清冊 provider 欄的自證循環防線（kek-provider-modularization D10）。
+// 金鑰清冊 provider 欄的自證循環防線。
 //
 // 清冊要回答的是「這個行程**實際**跑的是哪一個 KEK provider」。若它自己去讀
 // 環境變數，回答的就只是「環境變數寫了什麼」——被稽核的對象自己宣稱自己的
@@ -82,7 +82,7 @@ func inventoryProviderViolations(src string) ([]string, error) {
 		return true
 	})
 	if !providerSeen {
-		out = append(out, "回應中找不到 provider 欄——D10 的清冊欄位已消失")
+		out = append(out, "回應中找不到 provider 欄——清冊欄位已消失")
 	}
 	return out, nil
 }
@@ -98,7 +98,7 @@ func TestInventoryProviderNotDerivedFromEnv(t *testing.T) {
 		t.Fatalf("解析 %s 失敗: %v", inventoryProviderSource, err)
 	}
 	if len(got) > 0 {
-		t.Fatalf("%s 違反 D10 自證循環防線：\n  %s", inventoryProviderSource, strings.Join(got, "\n  "))
+		t.Fatalf("%s 違反自證循環防線：\n  %s", inventoryProviderSource, strings.Join(got, "\n  "))
 	}
 }
 
@@ -142,7 +142,7 @@ func f() any { return map[string]any{"provider": h.km.KEKMode(), "key_ref": h.km
 	}
 }
 
-// TestInventoryExposesProviderFields 清冊回應帶齊 D10 的四個欄位。
+// TestInventoryExposesProviderFields 清冊回應帶齊自證循環防線要求的四個欄位。
 //
 // 欄位名為前後端契約（前端採「欄位存在才渲染」），故正向斷言逐個欄位名，
 // 而不是只驗「回應非空」。

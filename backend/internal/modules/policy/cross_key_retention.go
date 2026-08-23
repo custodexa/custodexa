@@ -6,7 +6,7 @@ import (
 	"strconv"
 )
 
-// 保留政策的跨鍵約束（audit-checkpoint-chain D9／security-policy spec
+// 保留政策的跨鍵約束（audit-checkpoint-chain／security-policy spec
 //「保留政策的跨鍵約束」）——本檔是政策服務的**第一個跨鍵驗證面**。
 //
 // 約束：`retention_checkpoint_days` 不得低於四個資料保留鍵的有效值，
@@ -56,7 +56,7 @@ func (e *PolicyRetentionCrossKeyError) Unwrap() error { return ErrPolicyRetentio
 
 // RetentionCovers 檢查點保留天數是否涵蓋資料保留天數（0 = 無限大）。
 //
-// 導出供 retention 執行期的保守判定複用（tasks 7.5）——設定期與執行期
+// 導出供 retention 執行期的保守判定複用——設定期與執行期
 // 用同一個比較器，才不會出現「設定時說合法、執行時說違規」的兩把尺
 func RetentionCovers(checkpointDays, dataDays int) bool {
 	switch {
@@ -71,12 +71,12 @@ func RetentionCovers(checkpointDays, dataDays int) bool {
 
 // validateCrossKeyRetention 批次層跨鍵驗證。updates 為本批次的待寫值。
 //
-// **觸及即全驗**（過程決策 D-5）：批次只要碰到五個保留鍵（四個資料鍵＋
+// **觸及即全驗**：批次只要碰到五個保留鍵（四個資料鍵＋
 // 檢查點鍵）中的任一個，就對**全部四組關係**以批次終值驗一遍；批次完全
 // 不含保留鍵時不驗（不相干的政策編輯不受本約束干擾）。
 //
 // 為何不是「只驗本批次觸及的關係」（本檔前一版的做法）：那個退讓源自
-// 「出廠檢查點鍵 3650 而資料鍵 0」的自相矛盾，D-5 把出廠值改為 0 之後，
+// 「出廠檢查點鍵 3650 而資料鍵 0」的自相矛盾，出廠值改為 0 之後，
 // 五鍵出廠即自洽（`RetentionCovers(0, 任意)` 恆真），退讓的理由消失。
 //
 // 退讓留下的實際缺口是**批次外造成的違規可以無限期靜默續存**：跨鍵約束

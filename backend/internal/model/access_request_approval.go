@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// AccessRequestApproval 申請單核准記錄（approval-routing-quorum D-3）：
+// AccessRequestApproval 申請單核准記錄：
 // 最少核准人數（quorum）的逐票資料軌。每筆核准一列；(request_id, approver_id)
 // 唯一索引硬擋同人重複核准（含 admin）。核准數達政策門檻
 // （access_request_min_approvals）的那一票才觸發申請單 CAS 轉 approved——

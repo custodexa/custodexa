@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 出站信任邊界的完整格點（idp-oidc-integration tasks 4.13）。
+// 出站信任邊界的完整格點。
 //
 // 既有覆蓋只有 oidc_verify_test.go 的 TestDiscoveryBlockedByEgressPolicy 一格
 //（未放行 loopback 時 discovery 被擋）與 oidc_provider_service_test.go 的
@@ -184,7 +184,7 @@ func TestEgressBlockedAddressMatrix(t *testing.T) {
 		"10.0.0.1", "172.16.0.1", "172.31.255.254", "192.168.1.1", // 私有網段
 		"0.0.0.0", "::", // 未指定
 		"fc00::1", "fd12:3456::1", // IPv6 unique local
-		// 批 14 對抗審查 L2 補格：Go 的 IsPrivate 不涵蓋這幾段，但它們同樣
+		// 這幾格：Go 的 IsPrivate 不涵蓋這幾段，但它們同樣
 		// 不可能是正當的 IdP，且都能到達內部資源
 		"100.64.0.1", "100.100.100.200", "100.127.255.254", // CGNAT（RFC 6598；阿里雲 metadata 亦在此段）
 		"0.1.2.3", "0.255.255.255", // 0.0.0.0/8「本網路」：多數堆疊視同本機
@@ -210,7 +210,7 @@ func TestEgressBlockedAddressMatrix(t *testing.T) {
 	}
 }
 
-// TestOIDCEgressUnaffectedByAllowPrivateParameterization ldap-settings-migration 2.5
+// TestOIDCEgressUnaffectedByAllowPrivateParameterization
 // 守衛：isBlockedEgressIP 因 LDAP 而參數化（allowPrivate），**OIDC 側行為必須零變更**。
 //
 // 本測試的存在理由是「共用安全函式被第二個呼叫端改動」這個具體風險：LDAP 需要放行

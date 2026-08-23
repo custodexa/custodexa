@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AccessTokenTTL 正式 access token 固定短效（D6）：它是撤銷後殘餘存活的上限，
+// AccessTokenTTL 正式 access token 固定短效：它是撤銷後殘餘存活的上限，
 // 屬隱形防護常數，不進政策頁、不隨閒置政策放寬而變大
 const AccessTokenTTL = 15 * time.Minute
 
@@ -80,14 +80,14 @@ type RefreshResponse struct {
 	Token string `json:"token"`
 	// RefreshToken 輪替後的新憑證明文。
 	//
-	// **`json:"-"` 是本 change 的結構層保證**（refresh-token-httponly-cookie 決策 3）：
+	// **`json:"-"` 是本 change 的結構層保證**（決策 3）：
 	// 欄位保留（handler 需讀它來下 httpOnly cookie），但任何序列化路徑都不可能再把
 	// 明文帶進回應 body——不依賴每個 handler 記得抹除欄位
 	RefreshToken string `json:"-"`
 	// RefreshExpiresAt 該憑證的絕對到期時刻，供 handler 把 cookie 效期對齊憑證。
 	// 輪替沿用原 `expires_at`（不重算絕對壽命），故此值即原列的 ExpiresAt
 	RefreshExpiresAt time.Time `json:"-"`
-	// UserID／Username 本次輪替的主體（audit-coverage-closure 批 4）：
+	// UserID／Username 本次輪替的主體：
 	// handler 需要它們才寫得出「誰在何處輪替了憑證」的審計列，而
 	// `/auth/refresh` 是公開端點，中介層取不到身分。
 	//
@@ -152,7 +152,7 @@ func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, aut
 	return plain, row.ExpiresAt, nil
 }
 
-// RefreshSession 以 refresh 憑證換發新 access token 並輪替 refresh（D6）。
+// RefreshSession 以 refresh 憑證換發新 access token 並輪替 refresh。
 // 判定順序：存在 → reuse detection → 絕對壽命 → 閒置窗口 → 用戶狀態複查 → CAS 輪替。
 // 任何失敗對外統一 ErrRefreshInvalid（reuse 以 typed error 供 handler 審計）
 func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
@@ -196,14 +196,14 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 		return nil, err
 	}
 
-	// CAS 撤舊 + 插新在單一交易內原子提交（對抗驗證 F2）：消除「舊已標 rotated、
+	// CAS 撤舊 + 插新在單一交易內原子提交：消除「舊已標 rotated、
 	// 新憑證尚未寫入」的窗口——否則改密/停用的 RevokeAllRefreshTokens 若落在此窗，
 	// 新憑證會逃過撤銷而續活至絕對壽命。CAS 條件 UPDATE 保證同一憑證併發刷新只有
 	// 一個成功，輸家 RowsAffected==0 視同 reuse（已有另一持有者拿走輪替權）。
 	// 殘餘（可接受）：RevokeAll 的語句快照理論上可錯過本交易「提交後才可見」的新列，
 	// 屬 sub-ms 且需改密同時進行的競態，不對所有 RevokeAll 路徑加 user 級序列化
 	//
-	// **輪替亦是「以既有憑證產生新長效能力」**（idp-oidc-integration 3.8b）：
+	// **輪替亦是「以既有憑證產生新長效能力」**：
 	// 少了鎖內的世代複查，一枚在 provider 密鑰輪替前簽出的 refresh 列會換出帶
 	// **現行**世代的 access token——provider 仍啟用（只是換了 secret），
 	// Enabled 檢查擋不住，等於密鑰輪替對已登入者完全無效。故交易改由
@@ -273,7 +273,7 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 		return nil, err
 	}
 	// 換發的 access token 的四個脈絡欄位**一律取自 refresh 列自身**，世代不得現查
-	//（codex 對抗審查 F-C）：交易內剛以列世代對 DB 現值驗過，非競態情況下兩者相等，
+	// 交易內剛以列世代對 DB 現值驗過，非競態情況下兩者相等，
 	// 現查沒有任何好處；競態情況下（驗證通過之後、簽發之前發生改密／停用／解綁／
 	// provider 密鑰輪替）現查會簽出帶**新**世代的 access token，使該次刷新把本應
 	// 失效的舊能力洗白並續活一個完整 TTL。沿用列世代則此時簽出的 token 對現值不符
@@ -310,8 +310,8 @@ func (s *AuthService) webIdleMinutes() int {
 // detectReuse 家族撤銷（RFC 9700）：撤銷該使用者全部 refresh 憑證，
 // 令攻擊者以竊得憑證換到的存活會話一併失效；回 typed error 供 handler 審計。
 //
-// **撤銷失敗一律回 RefreshFamilyRevokeError，不得續走成功路徑**（codex 對抗審查
-// F-E）：舊行為只記日誌卻仍回 RefreshReuseError，handler 據以寫下「已撤銷該使用者
+// **撤銷失敗一律回 RefreshFamilyRevokeError，不得續走成功路徑**：
+// 舊行為只記日誌卻仍回 RefreshReuseError，handler 據以寫下「已撤銷該使用者
 // 全部 refresh」的審計事件——DB 短暫失敗時這句話與現實相反，攻擊者持有的分叉鏈
 // 仍存活至絕對壽命，而稽核紀錄反倒宣告事件已處理，無人會回頭重試。
 //
@@ -348,7 +348,7 @@ func (s *AuthService) markRevoked(row *model.RefreshToken, reason string) {
 }
 
 // RevokeRefreshToken 撤銷單一 refresh 憑證（登出）。
-// 對抗驗證 F1：若登出提交的憑證「已被 rotation 作廢」，這是分叉訊號——
+// 若登出提交的憑證「已被 rotation 作廢」，這是分叉訊號——
 // 合法端登出時 localStorage 持有的應是最新未撤銷憑證；提交一枚已 rotated 的
 // 舊憑證意味該憑證曾被他人（竊得後）輪替出分叉鏈。此時只做冪等 no-op 會讓
 // 攻擊者的分叉鏈存活至絕對壽命（登出正好移除了受害者「重放舊憑證」才會觸發的

@@ -7,10 +7,10 @@ import (
 	"time"
 )
 
-// ProbeWritable 探測錄影落地可寫性（recording-failure-handling D1）：
+// ProbeWritable 探測錄影落地可寫性：
 // 連線 token 簽發點的前置檢查。探測「當日子目錄」而非僅 base——文字路徑
 // 實際寫入 {base}/{YYYY-MM-DD}/，只驗 base 會漏掉日期層被佔用/不可寫的
-// 情境（對抗驗證 High-3；建立子目錄本身也同時驗證了 base 可寫，涵蓋
+// 情境（建立子目錄本身也同時驗證了 base 可寫，涵蓋
 // guacd 直寫 base 的圖形路徑）。寫入帶 fsync 迫使配額/磁碟滿早期現形。
 // 限制（誠實記載）：backend 以 root 執行時權限類失敗探不到；小檔探測對
 // 「近滿磁碟寫大檔」「不同 UID（guacd）的權限差異」無保證——由建線與

@@ -3,7 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AuditWorkbench from '../AuditWorkbench.vue'
 
-// 工作台的匯出出口（workbench-exits-and-export 3.10-3.12）。
+// 工作台的匯出出口。
 //
 // 斷言重心在四件「錯了就會讓稽核拿著一份誤導文件走人」的事：
 // 1) 送出的範圍＝畫面上的範圍（樞紐、對象、起訖、開啟中的類別逐項相同）；
@@ -218,7 +218,7 @@ describe('誠實邊界在按下之前呈現', () => {
     )
   })
 
-  it('D5 的六條邊界在下載前全部到齊', async () => {
+  it('六條邊界在下載前全部到齊', async () => {
     const wrapper = await mountPage()
     await openDialog(wrapper)
     for (const code of [

@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 事件報告模式（workbench-exits-and-export D3 方案 C，2026-08-13 使用者裁決）。
+// 事件報告模式（2026-08-13 使用者裁決）。
 //
 // **報告 ≠ 資料傾印**：稽核要的是「誰、何時、對哪個資產、做了什麼」的可查證紀錄，
 // 不是把剪貼簿內容、檔案本體與錄影檔再複製一份帶出系統。內容本體改由介面上的
@@ -42,7 +42,7 @@ const (
 	// CoverageNoteCodeNotRetained 此類別不在自動清除範圍內（資料一直都在），
 	// 其空白才是確無此類事件。**與 purged 語義相反，不可混同**
 	CoverageNoteCodeNotRetained = "export.coverage.not_retained"
-	// NoteCodeAuditLogAssetBoundary 資產維度的歷史邊界（D5 E5）
+	// NoteCodeAuditLogAssetBoundary 資產維度的歷史邊界
 	NoteCodeAuditLogAssetBoundary = "export.limit.asset_scope"
 )
 
@@ -604,7 +604,7 @@ func toExportCoverage(cov []TimelineCoverage) []ExportCoverage {
 	return out
 }
 
-// reportDisclosures 這個包能證明什麼、不能證明什麼（D5）——**只出碼**。
+// reportDisclosures 這個包能證明什麼、不能證明什麼——**只出碼**。
 //
 // 順序刻意：`export.proves.*` 全部排在 `export.limit.*` 之前。反過來寫，
 // 讀者會先讀到一串免責，讀不出這份報告到底能拿來做什麼。

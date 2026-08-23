@@ -12,15 +12,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// retention 分批刪除參數（audit-log-compliance，PCI 10.5.1）：
+// retention 分批刪除參數（PCI 10.5.1）：
 // 分批+單次上限避免首次啟用時的巨量刪除鎖表；未刪完次日排程繼續。
 // 預設上限約 1.15 筆/秒的刪除預算——高流量部署（audit 每日新增遠超 10 萬）
-// 追不上時以 RETENTION_MAX_PER_RUN 調高（對抗驗證發現的規模化邊界）
+// 追不上時以 RETENTION_MAX_PER_RUN 調高（實測發現的規模化邊界）
 const (
 	retentionBatchSize        = 5000
 	retentionMaxPerRunDefault = 100000
 	retentionBatchPause       = 50 * time.Millisecond
-	// retentionMinPerRun 單次上限的下界（policy-numeric-lower-bounds）：
+	// retentionMinPerRun 單次上限的下界：
 	// 低於一個批次即代表單輪連一個批次都刪不完，分批機制失去意義且刪除速率
 	// 必然追不上新增量——保留政策實質失效。與 PolicyRetentionMaxPerRun 的 Min 同值
 	retentionMinPerRun = retentionBatchSize
@@ -76,7 +76,7 @@ var retentionTargets = []retentionTarget{
 	{policy.PolicyRetentionAlertDays, "command_alerts", "triggered_at", "告警記錄"},
 }
 
-// auditLogPurgeMode audit_logs 的清除策略（audit-checkpoint-chain tasks 6.1 分派層）。
+// auditLogPurgeMode audit_logs 的清除策略（audit-checkpoint-chain 分派層）。
 //
 // **新舊路徑並存而非直接替換**：區間清除與逐列清除的差異只有在真實資料上
 // 對跑才看得出來（design 附錄「對第 6 組的推論」），一次性替換等於把
@@ -112,7 +112,7 @@ type RetentionService struct {
 	// auditLogMode audit_logs 走哪條路徑；checkpoints 為 nil 時本欄無作用
 	auditLogMode auditLogPurgeMode
 
-	// watermarks 保留期清除水位（auditor-workbench D5）。nil＝不記水位
+	// watermarks 保留期清除水位。nil＝不記水位
 	//（單元測試與 scripts/retention_smoke.go），此時工作台一律回 present——
 	// 那是冷啟動語義，不是錯誤
 	watermarks *RetentionWatermarkService
@@ -158,7 +158,7 @@ func (s *RetentionService) recordWatermark(table string, days int, partial bool,
 func NewRetentionService(db *gorm.DB, policy *policy.SecurityPolicyService, recording RecordingCleaner, audit auditLogger) *RetentionService {
 	return &RetentionService{
 		db: db, policy: policy, recording: recording, audit: audit,
-		batchSize:    retentionBatchSize, // maxPerRun 留 0＝以政策為準（policy-numeric-lower-bounds）
+		batchSize:    retentionBatchSize, // maxPerRun 留 0＝以政策為準
 		auditLogMode: auditLogPurgeLegacy,
 	}
 }
@@ -166,7 +166,7 @@ func NewRetentionService(db *gorm.DB, policy *policy.SecurityPolicyService, reco
 // PurgeResult 單類清除結果。
 //
 // PreGenesis／Intervals 僅 audit_logs 的區間路徑會填；omitempty 使其餘三類
-// 與 legacy 路徑的留痕 JSON 與改造前**逐位元組相同**（tasks 6.1 的零行為變化判準）
+// 與 legacy 路徑的留痕 JSON 與改造前**逐位元組相同**（零行為變化的判準）
 type PurgeResult struct {
 	Target  string `json:"target"`
 	Days    int    `json:"days"`
@@ -220,7 +220,7 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 	if s.checkpoints != nil {
 		if days := s.policy.GetInt(policy.PolicyRetentionCheckpointDays); days > 0 {
 			result := PurgeResult{Target: "audit_checkpoints", Days: days}
-			// **執行期跨鍵保守閘**（audit-checkpoint-chain tasks 7.5）：政策值
+			// **執行期跨鍵保守閘**（audit-checkpoint-chain）：政策值
 			// 若經 SQL 直改而違反跨鍵約束，照著它修剪會刪掉仍在證明現存資料的
 			// 檢查點。設定面的驗證擋不到直改 DB，故執行面自己再判一次——
 			// 用的是設定面同一個比較器（policy.RetentionCovers），不另立一把尺
@@ -266,7 +266,7 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 	return results
 }
 
-// crossKeyViolation 執行期跨鍵約束檢查（audit-checkpoint-chain tasks 7.5）。
+// crossKeyViolation 執行期跨鍵約束檢查（audit-checkpoint-chain）。
 //
 // 回傳非空字串＝違反（字串即告警文字，同時進 log 與清除留痕）。
 //
@@ -294,7 +294,7 @@ func (s *RetentionService) crossKeyViolation(checkpointDays int) string {
 	return ""
 }
 
-// purgeTarget 單類目標的清除策略分派（audit-checkpoint-chain tasks 6.1）。
+// purgeTarget 單類目標的清除策略分派（audit-checkpoint-chain）。
 //
 // audit_logs 以外的三類永遠走逐列路徑（spec：其餘三類行為不變）；
 // audit_logs 依 auditLogMode 決定，未接入檢查點鏈時一律 legacy。
@@ -336,7 +336,7 @@ func (s *RetentionService) purgeAuditLogs(target retentionTarget, days int, resu
 	return preDeleted + intervalDeleted, prePartial || intervalPartial, err
 }
 
-// purgeIntervals 逐個可清區間整段清除（tasks 6.6：**上限一律在區間邊界停**）。
+// purgeIntervals 逐個可清區間整段清除（**上限一律在區間邊界停**）。
 //
 // 半個區間＋無 tombstone 就是自傷告警，故額度不足以吃下整個區間時整段留待
 // 次輪，而不是刪到額度用完為止。代價是單次執行可能少刪一個區間的量，
@@ -385,7 +385,7 @@ func (s *RetentionService) purgeIntervals(cutoff time.Time, days, budget int,
 }
 
 // UseCheckpointIntervals 把 audit_logs 切換到檢查點區間清除路徑
-// （audit-checkpoint-chain tasks 6.7 的**唯一切換點**）。
+// （audit-checkpoint-chain 的**唯一切換點**）。
 //
 // 不在建構子內接線：切換是有行為差異的決定（部署後首輪 retention 會出現
 // 「已過期但所屬區間未全數過期的列暫留」），必須在呼叫端顯式可見，
@@ -398,7 +398,7 @@ func (s *RetentionService) UseCheckpointIntervals(purger *CheckpointPurger) {
 // purgeOpts purgeTable 的可選約束。零值＝改造前的原始行為（全表、全額度）
 type purgeOpts struct {
 	// idBelow >0 時附加 `AND id < idBelow`，把逐列路徑限制在 pre-genesis 段
-	//（tasks 6.3）；0＝無上界
+	// 0＝無上界
 	idBelow uint
 	// budget >0 時取代 maxPerRun 作為本次刪除額度（區間路徑已用掉的部分）
 	budget int
@@ -443,7 +443,7 @@ func (s *RetentionService) purgeTable(target retentionTarget, days int, opts pur
 		time.Sleep(retentionBatchPause)
 	}
 	// 達單次上限：探測真殘留再定 partial——過期筆數恰等於上限時最後一批
-	// 填滿但已清完，無探測會在留痕誤報「部分完成」（對抗驗證實測重現）
+	// 填滿但已清完，無探測會在留痕誤報「部分完成」（實測重現）
 	return total, s.hasExpired(target, cutoff, opts.idBelow), nil
 }
 

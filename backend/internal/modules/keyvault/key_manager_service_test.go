@@ -68,8 +68,8 @@ func newTestKeyManager(t *testing.T, db *gorm.DB, kekByte byte) *KeyManagerServi
 	return km
 }
 
-// TestKeyManagerBootstrapMintsNoV0 全新部署 bootstrap **只鑄 v1 active**
-// （release-transitional-cleanup D4）：data v1 與 audit_integrity v1，
+// TestKeyManagerBootstrapMintsNoV0 全新部署 bootstrap **只鑄 v1 active**：
+// data v1 與 audit_integrity v1，
 // MUST NOT 產生任何 v0 或 retired 列（原 audit v0 legacy 快照已拆除）。
 func TestKeyManagerBootstrapMintsNoV0(t *testing.T) {
 	db := newKeyManagerDB(t)
@@ -99,7 +99,7 @@ func TestKeyManagerBootstrapMintsNoV0(t *testing.T) {
 	}
 }
 
-// TestPreReleaseV0RowRefusesBoot v0 殘列 fail-close（D4）：金鑰表存在**任何用途**
+// TestPreReleaseV0RowRefusesBoot v0 殘列 fail-close：金鑰表存在**任何用途**
 // 之 version 0 列即判為發佈前過渡格式並拒絕啟動，錯誤訊息指明須重建。
 //
 // 為何是獨立的閘：v0 列既不構成版本斷號也不缺 active，既有完整性檢查會放行它，
@@ -156,13 +156,13 @@ func TestKeyManagerEncryptDecryptRoundtrip(t *testing.T) {
 }
 
 // TestKeyManagerLegacyDecryptRemoved legacy 純 base64 密文 MUST fail-close
-// （release-transitional-cleanup D3：系統無 legacy 單鑰解密路徑）。
+// （系統無 legacy 單鑰解密路徑）。
 // 本測試由「legacy 可解」翻轉為「legacy 不可解」——若日後有人恢復回落分支即轉紅。
 func TestKeyManagerLegacyDecryptRemoved(t *testing.T) {
 	db := newKeyManagerDB(t)
 	km := newTestKeyManager(t, db, 1)
 
-	// 無 AAD 的寫出能力已刪除（P2 M1），legacy fixture 由測試層 stdlib 助手構造
+	// 無 AAD 的寫出能力已刪除，legacy fixture 由測試層 stdlib 助手構造
 	legacyCT := sealNoAADBase64(t, kmTestKey(1), "old-asset-password")
 	plain, err := km.Decrypt(legacyCT)
 	if err == nil || plain != "" {
@@ -195,7 +195,7 @@ func TestKeyManagerReloadIdempotent(t *testing.T) {
 	}
 }
 
-// TestKeyManagerWrongKEKRefusesBoot 錯誤 KEK 開機拒絕啟動（D8）
+// TestKeyManagerWrongKEKRefusesBoot 錯誤 KEK 開機拒絕啟動
 func TestKeyManagerWrongKEKRefusesBoot(t *testing.T) {
 	db := newKeyManagerDB(t)
 	newTestKeyManager(t, db, 1)
@@ -221,8 +221,8 @@ func TestKeyManagerUnknownVersionDecryptFails(t *testing.T) {
 	}
 }
 
-// TestPreReleaseWrappedKeyRefusesBoot 拆除前建立之資料庫的機械保證
-// （release-transitional-cleanup D5）：本地 wrapped_key 恆為無前綴裸 base64，
+// TestPreReleaseWrappedKeyRefusesBoot 拆除前建立之資料庫的機械保證：
+// 本地 wrapped_key 恆為無前綴裸 base64，
 // 改碼後首啟即於**金鑰載入**fail-close，且錯誤訊息指明須重建資料庫。
 //
 // 這是「舊庫不能誤用」的唯一機械保證（哨兵只 fail-visible、不擋啟動），

@@ -13,9 +13,9 @@ import (
 	"testing"
 )
 
-// 伺服端不生成 KEK 的 AST 守衛（kek-provider-modularization D7）。
+// 伺服端不生成 KEK 的 AST 守衛。
 //
-// D7 要求「generateKEKString 自 rewrap 路徑移除」。單純刪掉函式會讓任何守衛
+// 安全紅線要求「generateKEKString 自 rewrap 路徑移除」。單純刪掉函式會讓任何守衛
 // 淪為空氣（守衛假綠：目標不存在，掃描恆綠而不證明任何事），故本檔的守衛做兩件事：
 //
 //  1. **偵測器本身先被證明有效**——以合成 AST 餵入正向案例（呼叫鏈上確實出現
@@ -169,7 +169,7 @@ func unrelatedGenerateKEKString() string { return "" }`)
 }
 
 // TestRewrapPathHasNoServerSideKEKGeneration 真實套件：RewrapKEK 的呼叫傳遞
-// 閉包內不得出現任何 KEK 生成器或 rand 取用（D7「伺服端不生成」）
+// 閉包內不得出現任何 KEK 生成器或 rand 取用（「伺服端不生成」紅線）
 func TestRewrapPathHasNoServerSideKEKGeneration(t *testing.T) {
 	files, fset := parsePackageNonTestFiles(t, ".")
 	violations, reachable := scanKEKGenerationFromEntry(files, fset, "RewrapKEK")
@@ -179,7 +179,7 @@ func TestRewrapPathHasNoServerSideKEKGeneration(t *testing.T) {
 			lines = append(lines, v.Pos+" "+v.Reason)
 		}
 		sort.Strings(lines)
-		t.Fatalf("重包路徑上出現伺服端 KEK 生成跡象（D7 禁止）:\n%s", strings.Join(lines, "\n"))
+		t.Fatalf("重包路徑上出現伺服端 KEK 生成跡象（一律禁止）:\n%s", strings.Join(lines, "\n"))
 	}
 	// 涵蓋面下界：閉包必須確實走到重包會用到的函式，否則零違規只是掃到空集合
 	for _, must := range []string{"RewrapKEK", "wrapMaterial", "countRetireBacklog"} {
@@ -189,17 +189,17 @@ func TestRewrapPathHasNoServerSideKEKGeneration(t *testing.T) {
 	}
 }
 
-// **掃描對象隨檔遷移（modular-architecture W2 2.5）**：本檔的兩個真實掃描格皆以
+// **掃描對象隨檔遷移**：本檔的兩個真實掃描格皆以
 // `parsePackageNonTestFiles(t, ".")` 掃「自己所在的那個包」，而 RewrapKEK／
 // wrapMaterial／countRetireBacklog 已隨 13 檔遷入 keyvault，故守衛必須同遷——
 // 留在 internal/service 會掃到不含 RewrapKEK 的包而在空集合下假綠（涵蓋面下界
 // 斷言會先紅，這正是它存在的理由）。**測試名稱刻意不改**（`TestServicePackage…`）：
-// 改名會動到測試名集合，屬本波「零行為變更」之外的變動；名稱中的 Service 讀作
+// 改名會動到測試名集合，屬遷移「零行為變更」之外的變動；名稱中的 Service 讀作
 // 「原 service 套件中的這批金鑰程式碼」，實際射程即本包。
 //
-// **搬檔讓「本包」守衛的射程靜默縮水（W2 對抗驗證 H1，本次修補）**：
+// **搬檔讓「本包」守衛的射程靜默縮水**：
 // `TestServicePackageHasNoKEKGenerator` 在 HEAD 掃的是 internal/service 全包
-// （~200 檔），隨檔遷入後只剩 keyvault 的 14 檔——紅隊在 internal/service 放一個
+// （~200 檔），隨檔遷入後只剩 keyvault 的 14 檔——在 internal/service 放一個
 // 用 crypto/rand 的 KEK 產生器，本格照樣綠。**以「當前包」定位的守衛，搬檔後
 // 射程必然改變，且沒有任何機制會提醒**。修法不是改名或加註解，而是補上真正的
 // 射程：下方 `TestBackendHasNoKEKMaterialGenerator` 掃**整個 backend module**
@@ -225,7 +225,7 @@ func TestServicePackageHasNoKEKGenerator(t *testing.T) {
 		}
 	}
 	if len(found) > 0 {
-		t.Fatalf("service 套件不得存在 KEK 材料生成器（D7）:\n%s", strings.Join(found, "\n"))
+		t.Fatalf("service 套件不得存在 KEK 材料生成器:\n%s", strings.Join(found, "\n"))
 	}
 	// 敏感度：判別式對真正的生成器名稱必須為真（否則上面的空集合毫無意義）
 	if !looksLikeKEKGenerator("generateKEKString") {
@@ -233,7 +233,7 @@ func TestServicePackageHasNoKEKGenerator(t *testing.T) {
 	}
 }
 
-// ---- D7 全模組層：伺服端任何一處都不得生成 KEK 材料 ----
+// ---- 全模組層：伺服端任何一處都不得生成 KEK 材料 ----
 
 // kekGeneratorException 一筆具名例外：名稱命中生成器判別式、但實際不生成材料的函式。
 type kekGeneratorException struct {
@@ -263,14 +263,14 @@ var kekGeneratorAllowlist = []kekGeneratorException{
 		Reason: "同上的 []byte 入口。不產生任何位元組。"},
 	{File: "config/kek.go", Func: "KEKGenerateCommandLines",
 		Reason: "把文件化生成指令的**字串**攤成清單供錯誤訊息與範本比對。行程內不執行那些指令，也不取用任何隨機來源。"},
-	// ---- 套件層宣告（F2 起納入射程）：合成身分 `const:名稱`／`var:名稱` ----
+	// ---- 套件層宣告：合成身分 `const:名稱`／`var:名稱` ----
 	{File: "config/kek.go", Func: "var:KEKGenerateCommands",
-		Reason: "字串常數集合，內容是**給運維在 shell 執行**的產生指令（openssl／`tr -dc … < /dev/urandom`），由列 3b 錯誤訊息、.env.example 與介面的指令參考引用。行程內不執行它們、也不取用任何隨機來源——它正是 D7「KEK 由運維在行程外產生」的操作說明本體。"},
+		Reason: "字串常數集合，內容是**給運維在 shell 執行**的產生指令（openssl／`tr -dc … < /dev/urandom`），由列 3b 錯誤訊息、.env.example 與介面的指令參考引用。行程內不執行它們、也不取用任何隨機來源——它正是「KEK 由運維在行程外產生」的操作說明本體。"},
 	{File: "pkg/crypto/kek_material.go", Func: "const:KEKMaterialLength",
 		Reason: "整數常數 32（AES-256 的材料長度），供 ValidateKEKMaterialFormat 判形。純尺寸宣告，不產生任何位元組。"},
 }
 
-// ---- K2：掃描量下界改按頂層目錄計數（2026-08-10 codex W2 外審 K2）----
+// ---- K2：掃描量下界改按頂層目錄計數----
 //
 // 原本只有一個總量下限 270 對實測 300——容許 30 個檔悄悄消失而守衛照樣綠，
 // 且不隨專案成長自動收緊。改為**逐頂層目錄釘住現況檔數**：任一目錄的非測試
@@ -290,7 +290,7 @@ var backendScanFloors = map[string]int{
 // minBackendScannedFiles 總量下界（＝各目錄下界之和，保留為單一數字以利訊息可讀）。
 const minBackendScannedFiles = 303
 
-// ---- K1：隨機來源的別名解析與跨函式傳遞閉包（2026-08-10 codex W2 外審 K1）----
+// ---- K1：隨機來源的別名解析與跨函式傳遞閉包----
 
 // randSourcePackages 視為「隨機材料來源」的 import 路徑。
 var randSourcePackages = map[string]bool{
@@ -349,7 +349,7 @@ type moduleCallScan struct {
 
 // scanBackendCallGraph 以 repoRoot 為錨掃描整個 backend module 的非測試碼。
 //
-// 相對於 W2 版本的三處強化（K1）：
+// 相對於初版的三處強化（K1）：
 //  1. **import 別名解析**——`import crand "crypto/rand"` 的 `crand.Read` 一樣算；
 //     dot import 一律 fail-close（無正當用途，且 AST 層無法分辨其識別字來源）。
 //  2. **跨檔跨套件呼叫圖**——bare 呼叫解析到同目錄，`pkg.Fn(...)` 經 import 表
@@ -357,9 +357,9 @@ type moduleCallScan struct {
 //  3. 供 `TestBackendHasNoKEKMaterialGenerator` 對命中與**豁免**函式一併做
 //     傳遞閉包判定——豁免函式改以 helper 間接生成的路徑因此被封死。
 //
-// **第四處強化（2026-08-10 W3 fresh-context 對抗 F2）：套件層宣告的初始化式**。
+// **第四處強化：套件層宣告的初始化式**。
 // 原版只走 `*ast.FuncDecl` 且只 `ast.Inspect(fd.Body)`，`*ast.GenDecl` 整個不進
-// 掃描——紅隊以
+// 掃描——以
 //
 //	var generateKEKMaterialProbe = func() string { b := make([]byte, 32); crand.Read(b); … }()
 //
@@ -497,7 +497,7 @@ func scanBackendCallGraph(t *testing.T, root string) *moduleCallScan {
 				register(key, fset.Position(d.Pos()).Line)
 				inspectFor(key, d.Body)
 			case *ast.GenDecl:
-				// F2：套件層 var／const 的初始化運算式（含函式字面量與立即呼叫）
+				// 套件層 var／const 的初始化運算式（含函式字面量與立即呼叫）
 				if d.Tok != token.VAR && d.Tok != token.CONST {
 					continue
 				}
@@ -551,7 +551,7 @@ func (s *moduleCallScan) reachableRandUses(entry funcKey) []randUse {
 		for _, c := range s.Calls[k] {
 			next := c
 			if !s.Funcs[next] {
-				// `f()` 呼叫的可能是套件層 `var f = func(){…}`（F2）
+				// `f()` 呼叫的可能是套件層 `var f = func(){…}`
 				alias, ok := s.VarAlias[c]
 				if !ok {
 					continue
@@ -588,12 +588,12 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 	{File: "internal/modules/keyvault/export_signing_service.go", Func: "NewExportSigningService",
 		Reason: "匯出簽章用的 Ed25519 私鑰（簽章金鑰，非 KEK）；其自身以 KEK 包覆後落庫。"},
 	{File: "internal/modules/keyvault/checkpoint_signing_service.go", Func: "generateCheckpointSigningKey",
-		Reason: "檢查點鏈簽章用的 Ed25519 私鑰（audit-checkpoint-chain D5，簽章金鑰非 KEK）；其自身經 ColumnCodec 以 KEK 包覆後落庫，與匯出簽章鑰同型。"},
+		Reason: "檢查點鏈簽章用的 Ed25519 私鑰（audit-checkpoint-chain，簽章金鑰非 KEK）；其自身經 ColumnCodec 以 KEK 包覆後落庫，與匯出簽章鑰同型。"},
 	{File: "internal/modules/keyvault/key_manager_service.go", Func: "insertKey",
-		Reason: "資料加密金鑰 DEK。D7 禁止的是伺服端生成 **KEK**（根金鑰一律由運維在行程外產生）；DEK 由伺服端生成並以 KEK 包覆，正是信封加密的定義。"},
+		Reason: "資料加密金鑰 DEK。禁止的是伺服端生成 **KEK**（根金鑰一律由運維在行程外產生）；DEK 由伺服端生成並以 KEK 包覆，正是信封加密的定義。"},
 	{File: "internal/proxy/connect_token.go", Func: "IssueConnectToken",
 		Reason: "連線的一次性 connect token（記憶體內、短 TTL），非加密材料。" +
-			"（W10.2 接線後方法名對齊 gatewayapi.TokenService，原名 Issue）"},
+			"（方法名已對齊 gatewayapi.TokenService，原名 Issue）"},
 	{File: "internal/sealjournal/open.go", Func: "newBootID",
 		Reason: "封印期日誌的 boot 識別（防檔名／序列碰撞），非加密材料。"},
 	{File: "internal/modules/identity/auth_refresh_service.go", Func: "generateRefreshPlain",
@@ -602,7 +602,7 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 		Reason: "外部身分（LDAP／OIDC）影子帳號的不可用隨機佔位密碼——刻意讓本地密碼永不可猜中，非加密材料。"},
 	{File: "internal/modules/asset/change_secret_password_policy.go", Func: "GeneratePassword",
 		Reason: "改密期為目標帳號產生的新密碼（產品功能本體，含 Fisher-Yates 洗牌），非金鑰材料。" +
-			"（change-secret-ssh-deepening：自 change_secret_runner.go 遷入本檔並改為策略驅動）"},
+			"（自 change_secret_runner.go 遷入本檔並改為策略驅動）"},
 	{File: "internal/modules/asset/change_secret_password_policy.go", Func: "pickChar",
 		Reason: "上者的字元取樣輔助（自字集均勻取一字元），非金鑰材料。"},
 	{File: "internal/modules/asset/ssh_authorized_keys.go", Func: "GenerateSSHKeyPair",
@@ -620,15 +620,15 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 		Reason: "AES-GCM 的 12-byte nonce（每次加密必須唯一），非金鑰材料。"},
 }
 
-// TestBackendHasNoKEKMaterialGenerator D7 安全紅線的**模組級**機械把關：
+// TestBackendHasNoKEKMaterialGenerator 安全紅線的**模組級**機械把關：
 // 整個 backend module 的非測試碼中不得存在 KEK 材料生成器。
 //
-// **為何要有這一格**：本檔另兩格以「當前包」定位，射程隨檔案搬家而變（W2 對抗
-// 驗證 H1：13 檔遷入 keyvault 後，internal/service 全包的涵蓋面歸零而無人察覺）。
+// **為何要有這一格**：本檔另兩格以「當前包」定位，射程隨檔案搬家而變（實證：
+// 13 檔遷入 keyvault 後，internal/service 全包的涵蓋面歸零而無人察覺）。
 // 本格改以 go.mod module 身分為錨（repoRoot），檔案搬到 module 內任何深度都
 // 掃同一棵樹，射程不再是搬檔的副作用。
 //
-// **兩條互補的判準軸**（2026-08-10 codex W2 外審 K1 修補後）：
+// **兩條互補的判準軸**（修補後）：
 //
 //	軸 A（名稱＋傳遞閉包）：名稱命中 looksLikeKEKGenerator 的函式必須登記於
 //	  kekGeneratorAllowlist，且其**跨函式呼叫閉包內**不得出現任何隨機來源取用
@@ -639,7 +639,7 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 //	  這封死「取個中性名字（makeRootSecret）」——名稱層判別式抓不到它，
 //	  但它一定要碰隨機來源。
 //
-// **兩軸的掃描面（2026-08-10 W3 對抗 F2 修補後）**：`*ast.FuncDecl` 的函式體，
+// **兩軸的掃描面**：`*ast.FuncDecl` 的函式體，
 // **加上**套件層 `var`／`const` 帶初始化式的宣告（合成身分 `var:名稱`／
 // `const:名稱`，見 scanBackendCallGraph）。原本只走函式體，
 // `var x = func(){ crand.Read(b) }()` 因語法位置而兩軸皆盲——那是最直白的一種
@@ -649,7 +649,7 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 // 自行實作 CSPRNG、讀 /dev/urandom、或經第三方套件間接取得隨機性，兩軸都看不見。
 // 要擋那一類需要型別／資料流分析，不在本守衛射程。另，無初始化式的宣告
 // （`var kekBuf []byte`）不登記為身分——它不執行程式碼，寫入它的賦值必在某個
-// 函式內（含 `init()`）而已在射程中。本格擋的是「D7 被無意識地退回」與
+// 函式內（含 `init()`）而已在射程中。本格擋的是「該紅線被無意識地退回」與
 // 「以改名／別名／間接呼叫／套件層初始化式規避既有守衛」這些現實形態。
 func TestBackendHasNoKEKMaterialGenerator(t *testing.T) {
 	root := repoRoot(t)
@@ -710,12 +710,12 @@ func TestBackendHasNoKEKMaterialGenerator(t *testing.T) {
 			sort.Strings(detail)
 			t.Errorf("%s 列於 kekGeneratorAllowlist，但其呼叫閉包內取用了隨機來源：\n  %s\n"+
 				"該例外的前提（只驗證、不生成）已不成立——直接呼叫與間接 helper 都算，"+
-				"請移除例外並把生成移出伺服端（D7）", id, strings.Join(detail, "\n  "))
+				"請移除例外並把生成移出伺服端", id, strings.Join(detail, "\n  "))
 		}
 	}
 	if len(offenders) > 0 {
 		sort.Strings(offenders)
-		t.Fatalf("backend module 內出現伺服端 KEK 材料生成器（D7 禁止：KEK 一律由運維在行程外產生）:\n%s\n"+
+		t.Fatalf("backend module 內出現伺服端 KEK 材料生成器（禁止：KEK 一律由運維在行程外產生）:\n%s\n"+
 			"若確為誤報（名稱像生成器但不生成），於 kekGeneratorAllowlist 具名登記並寫明理由",
 			strings.Join(offenders, "\n"))
 	}
@@ -752,7 +752,7 @@ func TestBackendHasNoKEKMaterialGenerator(t *testing.T) {
 		sort.Strings(unregistered)
 		t.Errorf("下列函式直接取用隨機來源但未登記於 randomnessSourceAllowlist：\n%s\n"+
 			"新增隨機來源取用 SHALL 具名登記並寫明「產出的是什麼、為何不是 KEK 材料」"+
-			"——本軸不看函式名稱，故取中性名字（makeRootSecret）不能規避它（D7）",
+			"——本軸不看函式名稱，故取中性名字（makeRootSecret）不能規避它",
 			strings.Join(unregistered, "\n"))
 	}
 	for id := range registered {
@@ -769,7 +769,7 @@ func TestBackendHasNoKEKMaterialGenerator(t *testing.T) {
 	if looksLikeKEKGenerator("NewKEKRetirementMonitor") {
 		t.Fatal("判別式對建構子誤報——誤報會讓守衛被當噪音關掉")
 	}
-	t.Logf("D7 全模組掃描：非測試 .go %d 檔 %v；名稱命中 %d 筆／具名例外 %d 筆；"+
+	t.Logf("KEK 生成全模組掃描：非測試 .go %d 檔 %v；名稱命中 %d 筆／具名例外 %d 筆；"+
 		"隨機來源取用 %d 個函式／登記 %d 筆；掃描根 %s",
 		scan.Scanned, scan.ByTopDir, hits, len(kekGeneratorAllowlist),
 		len(scan.RandUses), len(randomnessSourceAllowlist), root)

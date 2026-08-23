@@ -16,8 +16,8 @@ import (
 // sealNoAAD **測試層 stdlib 助手**：以 crypto/aes＋cipher.NewGCM 直接封出
 // 無 AAD 的 nonce+ciphertext。
 //
-// 為何在測試裡手工封：無 AAD 的寫出能力已於 release-transitional-cleanup 整組
-// 刪除（先是 encryptNoAADForRollback／EncodeEnvelope，P2 M1 再刪
+// 為何在測試裡手工封：無 AAD 的寫出能力已在過渡格式收尾時整組
+// 刪除（先是 encryptNoAADForRollback／EncodeEnvelope，P2 再刪
 // AESCrypto.Encrypt／EncryptBytes 並使 EncryptBytesAAD 對空 aad 回
 // crypto.ErrAADRequired）——那正是被驗收的事實。負向測試仍需要這種值來模擬
 // 「拆除前建立的資料庫」或「繞過 API 的資料庫直寫」，故由測試自行構造。
@@ -47,7 +47,7 @@ func sealNoAADBase64(t *testing.T, key []byte, plaintext string) string {
 	return base64.StdEncoding.EncodeToString(sealNoAAD(t, key, []byte(plaintext)))
 }
 
-// 註：crypto.Codec 已於 D5 cutover（tasks 1.7）自 pkg/crypto 刪除，
+// 註：crypto.Codec 已於 AAD cutover 自 pkg/crypto 刪除，
 // 原 aesCodec 測試替身隨之移除——服務層一律以 aesColumnCodec 注入。
 
 // aadTestCodec 測試用 ColumnCodec：以固定金鑰的 AESCrypto 實作帶欄位身分的
@@ -90,7 +90,7 @@ func (a aadTestCodec) DecryptFor(_ context.Context, ref crypto.CipherRef, cipher
 	return string(plain), nil
 }
 
-// aesColumnCodec 測試用 ColumnCodec（D5 AAD cutover 後 NewAssetService 的必要參數）
+// aesColumnCodec 測試用 ColumnCodec（AAD cutover 後 NewAssetService 的必要參數）
 func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 	t.Helper()
 	c, err := crypto.NewAESCrypto(key)
@@ -102,7 +102,7 @@ func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 
 // decryptColumn 測試用：以欄位身分（table|column）解密。
 //
-// D5 cutover（tasks 1.7）後，遷移／輪替／服務層寫出的一律是帶 AAD 的 `enc:a1`，
+// AAD cutover 後，遷移／輪替／服務層寫出的一律是帶 AAD 的 `enc:a1`，
 // 而 ref-less 的 keyvault.KeyManagerService.Decrypt **會（正確地）拒收帶 AAD 密文**
 // （keyvault.ErrCipherRefIncomplete）——測試要驗「migrate/rotate 之後仍解得回原值」時
 // 必須經此入口，與生產讀取路徑同源。
@@ -113,7 +113,7 @@ func decryptColumn(km *keyvault.KeyManagerService, table, column, ciphertext str
 
 // encryptColumn 測試用：以欄位身分（table|column）加密為終態格式（`enc:a1`）。
 //
-// 取代已刪除的 `encryptNoAADForRollback`（release-transitional-cleanup 3.2）——
+// 取代已刪除的 `encryptNoAADForRollback`——
 // 那是全專案唯一的無 AAD 寫出方法，被大量測試借用為「取得一個合法密文」的捷徑。
 // 拆除後測試改走與生產同源的 EncryptFor；**刻意要求列身分**，使測試不可能繞過
 // AAD 綁定。真正需要過渡格式值的負向測試另用 preReleaseEnvelope 手工構造。

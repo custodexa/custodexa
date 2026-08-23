@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 竄改情境矩陣（audit-checkpoint-chain tasks 10.2）。
+// 竄改情境矩陣（audit-checkpoint-chain）。
 //
 // 與 `TestCheckpointVerifyStatuses`（八態各造一例）的分工：那組證明「每個
 // 狀態都造得出來」，本組反過來問「**每一種攻擊手法**落到哪個狀態」，並且
@@ -42,7 +42,7 @@ func TestCheckpointTamperMatrix(t *testing.T) {
 				return cp.Seq
 			},
 			want: IntervalStatusHashMismatch,
-			why:  "列級 HMAC 不含 key_version，鏈的聚合含之（D2 新增覆蓋）",
+			why:  "列級 HMAC 不含 key_version，鏈的聚合含之（新增覆蓋）",
 		},
 		{
 			name: "刪整個檢查點",
@@ -134,7 +134,7 @@ func TestCheckpointTamperMatrix(t *testing.T) {
 // 誇大的地方：改 `username`／`details` 之類的內容欄**不會**改動聚合輸入
 //（三元組只含 id、key_version、integrity_hmac），故檢查點內容層回報
 // `passed`——鏈證明的是「序列沒少沒多」，不是「每列內容沒被改」。
-// 內容真偽由列級 HMAC 承擔（design D2 選擇不重複覆蓋的理由），本測同時
+// 內容真偽由列級 HMAC 承擔（不重複覆蓋的理由），本測同時
 // 斷言列級驗證確實抓得到，否則這條分工就只是說法而非事實。
 func TestCheckpointTamperContentColumnIsRowLayer(t *testing.T) {
 	f := setupVerifyFixture(t)

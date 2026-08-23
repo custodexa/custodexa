@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// GET /api/v1/users/local-admin-count（oidc-ops-hygiene B10 / design D1）。
+// GET /api/v1/users/local-admin-count。
 //
 // 守三件事：admin 才讀得到（唯讀但仍是安全姿態的情報）、計數正確、且**與
 // identity.CountLocalAdmins 逐值一致**——後者是本端點存在的全部意義：管理端

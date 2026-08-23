@@ -20,10 +20,10 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// round-4 對抗審查（codex）與冷驗收的修補驗證。
+// 安全審查與獨立驗收的修補驗證。
 // 每一格對應一條 finding，且各自能在把修補改回原狀時轉紅。
 
-// ---- H1 跨帳號重包目標未受限 ----
+// ---- 跨帳號重包目標未受限 ----
 
 const (
 	trustedAccount    = "123456789012"
@@ -38,7 +38,7 @@ func trustedScope() AccountScope {
 	return AccountScope{Partition: "aws", Account: trustedAccount}
 }
 
-// TestNewRejectsKeyOutsideTrustedAccount **H1 的 fail-close 測試**：
+// TestNewRejectsKeyOutsideTrustedAccount **跨帳號限制的 fail-close 測試**：
 // 目標 ARN 與部署宣告的信任帳號不同時，建構期即拒絕。
 //
 // 這正是「region 沿用不足以防跨帳號重包」的直接對應：本格的目標與信任範圍
@@ -164,9 +164,9 @@ func TestResolveAccountScopeRequiresAnchor(t *testing.T) {
 	}
 }
 
-// ---- H2 端點覆寫仍然可能 ----
+// ---- 端點覆寫仍然可能 ----
 
-// TestProductionPathRejectsEndpointOverrideEnv **H2 的 fail-close 測試**。
+// TestProductionPathRejectsEndpointOverrideEnv **端點覆寫的 fail-close 測試**。
 //
 // 立論的糾正：實作者原本主張「不新增產品 env 鍵即消除端點覆寫」。實測
 // （見 TestEndpointOverrideEnvActuallyRedirects）證明 AWS_ENDPOINT_URL_KMS
@@ -224,7 +224,7 @@ func TestTestHarnessPathStillAllowsEndpoint(t *testing.T) {
 	}
 }
 
-// TestEndpointOverrideEnvActuallyRedirects **證明 H2 是真的**（而非理論風險）：
+// TestEndpointOverrideEnvActuallyRedirects **證明端點覆寫真的可行**（而非理論風險）：
 // 在沒有本產品守衛的情況下，AWS_ENDPOINT_URL_KMS 會讓 SDK 客戶端的
 // BaseEndpoint 指向任意位址。本格直接呼叫 SDK，不經 newAWSClient——
 // 它記錄的是「SDK 的行為」，而那正是原註解宣稱不存在的東西。
@@ -259,9 +259,9 @@ func TestRequireHTTPSEndpoint(t *testing.T) {
 	}
 }
 
-// ---- M1 重試疊加 ----
+// ---- 重試疊加 ----
 
-// TestDescribeIssuesExactlyThreeHTTPRequests **M1 的實證**：以真 SDK 打一個會數
+// TestDescribeIssuesExactlyThreeHTTPRequests **重試疊加的實證**：以真 SDK 打一個會數
 // 請求的 httptest 伺服器，斷言建構期節流重試共送出**恰 3 個 HTTP 請求**。
 //
 // 修補前 SDK 預設 retryer（3 次）與本層迴圈（3 次）相乘＝最多 9 個請求；
@@ -332,7 +332,7 @@ func TestEncryptKeepsSDKRetry(t *testing.T) {
 	}
 }
 
-// ---- M2 重試分類過寬 ----
+// ---- 重試分類過寬 ----
 
 // TestRetryClassificationIsAllowlisted 分流是**允許清單**：只有確定屬瞬時、
 // 且重試確實可能改變結果的錯誤才重試。
@@ -436,7 +436,7 @@ func TestQuotaErrorFailsImmediately(t *testing.T) {
 	}
 }
 
-// ---- M4 MRK 身分（已知限制的釘住）----
+// ---- MRK 身分（已知限制的釘住）----
 
 const (
 	mrkKeyID      = "mrk-1234567890abcdef1234567890abcdef"
@@ -444,7 +444,7 @@ const (
 	mrkReplicaARN = "arn:aws:kms:us-east-1:123456789012:key/mrk-1234567890abcdef1234567890abcdef"
 )
 
-// TestMultiRegionKeyIsRegionScopedIdentity **釘住已知限制**（codex med #4，取 (c)）：
+// TestMultiRegionKeyIsRegionScopedIdentity **釘住已知限制**（安全審查 med #4，取 (c)）：
 // MRK 可作為 KEK 使用，但本版把 primary 與 replica 視為**兩把不同的鑰**。
 //
 // **為何要有這一格**：限制若只寫在註解裡，日後第一個試著把 KEK_KMS_REGION 切到
@@ -494,7 +494,7 @@ func TestMultiRegionKeyIsRegionScopedIdentity(t *testing.T) {
 	}
 }
 
-// ---- M5 DescribeKey 不證明可用 ----
+// ---- DescribeKey 不證明可用 ----
 
 // TestNewRunsEncryptDecryptCanary 建構期 SHALL 跑一次真實往返：
 // DescribeKey 過得去不代表有 kms:Encrypt／kms:Decrypt 權限
@@ -517,7 +517,7 @@ func TestNewRunsEncryptDecryptCanary(t *testing.T) {
 	}
 }
 
-// TestNewFailsWhenEncryptPermissionMissing **M5 的核心**：metadata 全部合格
+// TestNewFailsWhenEncryptPermissionMissing **本節的核心**：metadata 全部合格
 // （Enabled＋SYMMETRIC_DEFAULT＋ENCRYPT_DECRYPT），但角色沒有 kms:Encrypt——
 // 修補前這種部署會「驗證通過」，直到第一次真的要包裹金鑰才爆。
 func TestNewFailsWhenEncryptPermissionMissing(t *testing.T) {
@@ -555,7 +555,7 @@ func TestNewFailsWhenDecryptPermissionMissing(t *testing.T) {
 	}
 }
 
-// ---- L1 預算耗盡誤報為次數耗盡 ----
+// ---- 預算耗盡誤報為次數耗盡 ----
 
 // TestBudgetExhaustionReportedAsBudgetNotAttempts 最後一次呼叫把預算耗光時，
 // 錯誤 SHALL 明示「總時間預算」而非「重試 N 次」——操作者該調的是網路，不是次數。

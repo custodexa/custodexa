@@ -410,7 +410,7 @@
       }
     ],
     "expected_command": "SELECT 2;",
-    "expected_command_note": "in 序列為 \"SELECT * FROM sess\" 加 TAB 加 Ctrl-U(0x15) 加 \"SELECT 2;\\r\"：Ctrl-U 在 Enter 之前清掉整行，SELECT * FROM sess 那串從未送出；\"\\\\q\\r\" 為收尾。（design.md D4.4 已知答案）"
+    "expected_command_note": "in 序列為 \"SELECT * FROM sess\" 加 TAB 加 Ctrl-U(0x15) 加 \"SELECT 2;\\r\"：Ctrl-U 在 Enter 之前清掉整行，SELECT * FROM sess 那串從未送出；\"\\\\q\\r\" 為收尾。（已知答案）"
   },
   {
     "name": "psql-long-wrap",

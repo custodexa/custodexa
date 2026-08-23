@@ -1,5 +1,4 @@
-// 本地 KEK 材料的前端生成、解碼與格式檢查（kek-provider-modularization D8 路 2、
-// kek-encoding-and-unseal-entry）。
+// 本地 KEK 材料的前端生成、解碼與格式檢查。
 //
 // **前端檢查是輸入輔助，不是把關**：伺服端 crypto.DecodeKEKMaterial／
 // crypto.ValidateKEKMaterialFormat／config.ValidateKEKMaterial 才是唯一權威

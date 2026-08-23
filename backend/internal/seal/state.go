@@ -1,7 +1,6 @@
 // Package seal 實作 B 模式（KEK 由 UI 輸入、只存記憶體）的四態封印狀態機。
 //
-// 設計權威為 kek-provider-modularization design.md 的 D6.2／D6.2.1／D6.2.2／
-// D6.2.3／D6.2.4，本套件逐字對應該設計，不自行擴充語義。
+// 四態語義由 transitions.go 的遷移表定義，本套件逐字對應，不自行擴充語義。
 //
 // 核心結構：全域狀態由單一 atomic.Pointer[sealNode] 承載，所有轉態一律以
 // CompareAndSwap(observed, new) 更新——observed 為呼叫方進入時所讀到的那個節點
@@ -41,7 +40,7 @@ type ServiceGraph interface {
 }
 
 // cleanupToken 表示「有前代持有者尚未收束」。
-// 取得持有權的 CAS 前置條件為 cleanup == nil（D6.2.2 格 2），
+// 取得持有權的 CAS 前置條件為 cleanup == nil（遷移表格 2），
 // 於是「不放行兩份服務圖」成為 CAS 的結構性前置，而非散文承諾。
 type cleanupToken struct {
 	// generation 為待收束的前代世代號
@@ -52,7 +51,7 @@ type cleanupToken struct {
 	startedAt time.Time
 }
 
-// sealNode 是全域狀態的唯一承載體（D6.2.3 逐欄）。
+// sealNode 是全域狀態的唯一承載體。
 //
 // 範圍界定：入節點的一律是全域狀態。per-source（每來源）的失敗計數與退避
 // SHALL NOT 入節點——它是無界的來源集合，實務上為獨立限速結構（見 limiter.go），
@@ -76,7 +75,7 @@ func (n *sealNode) clone() *sealNode {
 
 // Snapshot 是對外唯一的狀態讀取結果。
 //
-// 閘的狀態判定與 handler 的服務取用 SHALL 讀同一次指標載入結果（D6.2.3），
+// 閘的狀態判定與 handler 的服務取用 SHALL 讀同一次指標載入結果，
 // 故本套件只提供 Snapshot 這一個讀取入口；不提供會產生兩次載入的
 // State()＋Services() 配對，「閘看到 unsealed、handler 拿到 nil」的撕裂窗
 // 因此在 API 形狀上即不可達。

@@ -20,7 +20,7 @@
       </template>
     </PageHeader>
 
-    <!-- 傳輸政策鍵設定區（settings-domain-restructure 3.1 域收編）：
+    <!-- 傳輸政策鍵設定區（域收編）：
          政策與清冊同頁，等級變更儲存後清冊即時重載反映 -->
     <PolicyPciBanner
       :loading="policyLoading"
@@ -155,7 +155,7 @@
             >
               {{ inventoryNote(row) }}
             </div>
-            <!-- 產品內設定入口（ldap-settings-migration 4.3）：LDAP 自本 change 起
+            <!-- 產品內設定入口：LDAP 自本 change 起
                  由 UI 維護（清冊 note 已改口徑、部署方徽章僅剩 nginx），清冊只是
                  狀態面板——說了「在設定頁維護」就必須指得出那一頁在哪 -->
             <router-link
@@ -236,7 +236,7 @@ const channelLabel = (c) =>
 
 // 通道 → 產品內設定頁。**只列「本產品 UI 可改」的通道**：nginx 等部署層通道
 // 沒有可導向的頁面，硬給連結只會把人送到一個改不了東西的地方。
-// LDAP 於 ldap-settings-migration 由 env 遷入 DB＋UI，故自本 change 起入列
+// LDAP 已由 env 遷入 DB＋UI，故列入本表
 const CHANNEL_SETTINGS_ROUTES = { ldap: '/ldap-directory' }
 const channelSettingsPath = (c) => CHANNEL_SETTINGS_ROUTES[c] || ''
 
@@ -251,7 +251,7 @@ const fetchInventory = async () => {
   try {
     const resp = await getTransmissionInventory()
     channels.value = resp.data?.channels || []
-    // state 留 raw timestamp、顯示時才格式化（i18n-foundation D7：切語言要能重繪）
+    // state 留 raw timestamp、顯示時才格式化（切語言要能重繪）
     generatedAt.value = resp.data?.generated_at || ''
   } catch (error) {
     console.error('取得通道清冊失敗:', error)

@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// provider-scoped 認證世代鎖（idp-oidc-integration 3.8a / design D13）。
+// provider-scoped 認證世代鎖（3.8a）。
 //
 // 用途：凡「以某 provider 的 auth_epoch 為前提做出判定、再據以建立長效能力」的
 // 位置，SHALL 於本鎖內完成「重查前提 → 讀世代 → 建立」三步；provider 的停用／
@@ -56,7 +56,7 @@ func oidcProviderLockFor(providerID uint) *sync.Mutex {
 // 序列化同步點的位置標籤。每個「以既有身分或憑證產生新長效能力」的位置各有一個，
 // 使並發測試能只掛住其中一邊——兩邊都掛會在鎖生效時直接互相等死，測不出東西。
 //
-// **匯出面只留有生產跨包消費者的兩個**（W8 獨立驗收：export budget 收斂）：
+// **匯出面只留有生產跨包消費者的兩個**（export budget 收斂）：
 // `OIDCSiteSessionCreate`／`OIDCSiteMonitorJoin` 由 `internal/service` 的
 // `session_provider_termination.go` 傳給 `FirePreWriteHook`，故必須是公開常數；
 // 其餘三個只有 identity 自己觸發，測試側經 `export_test.go` 的同名別名取得。
@@ -76,7 +76,7 @@ const (
 // 使「把鎖內重讀改成鎖外預讀」或「拿掉鎖本身」的突變被**確定性**地抓到。
 // 生產路徑此值恆為 nil，改寫者僅限 _test.go。
 //
-// **變數本身維持未匯出**（modular-architecture W8 9.2）：跨包後改以
+// **變數本身維持未匯出**：跨包後改以
 // `FirePreWriteHook`（觸發，生產面）與 `SetPreWriteHookForTest`（設定，
 // `export_test.go`）兩個窄出口暴露，而不是把 var 匯出——匯出可寫的包級 hook
 // 等於讓任何包都能覆寫別人掛的同步點。
@@ -102,7 +102,7 @@ func WithOIDCProviderLock(db *gorm.DB, providerID uint, fn func(tx *gorm.DB) err
 	return WithCapabilityLocks(db, providerID, 0, fn)
 }
 
-// WithCapabilityLocks 以 design D13 的固定順序取 provider 鎖與 user 鎖後執行 fn。
+// WithCapabilityLocks 以固定順序取 provider 鎖與 user 鎖後執行 fn。
 //
 // 「以既有身分或憑證產生新長效能力」的位置（連線兌換建 session、監看／分享訂閱
 // Join、callback 簽 ticket、ticket exchange、refresh 輪替）一律經此進入：
@@ -110,7 +110,7 @@ func WithOIDCProviderLock(db *gorm.DB, providerID uint, fn func(tx *gorm.DB) err
 // 兩者皆須時**順序固定為 provider → user**（system 級鎖若需要，由更外層先取）。
 //
 // 任一 ID 為 0 即跳過該把鎖（0 為「不適用」的既有零值語義，非萬用字元）。
-// **兩種 dialect 一律先開交易、再於交易內取鎖**（批 14 對抗審查 M2）：
+// **兩種 dialect 一律先開交易、再於交易內取鎖**：
 // sqlite 分支原本把 key mutex 取在 db.Transaction 之外，與已持交易才取鎖的
 // withCapabilityLocksTx／withUserCredentialLockTx（WithLocalAdminInvariant 走這條）
 // 形成相反的取鎖順序——一邊持連線等 mutex、另一邊持 mutex 等連線，對同一 userID

@@ -9,7 +9,7 @@ import SyslogForwardCard from '../SyslogForwardCard.vue'
 enableAutoUnmount(afterEach)
 
 // API 與 Element Plus 的互動式元件在單元層以 mock 取代：本檔驗的是
-// 「回應形狀 -> UI 狀態」的契約（asset-syslog-debt-cleanup D2），不是網路層
+// 「回應形狀 -> UI 狀態」的契約，不是網路層
 const getSyslogSettingsMock = vi.fn()
 const testSyslogSettingsMock = vi.fn()
 const updateSyslogSettingsMock = vi.fn()
@@ -57,7 +57,7 @@ function resultAlert(wrapper) {
   return wrapper.find('.el-alert')
 }
 
-describe('SyslogForwardCard 測試訊息回應契約（asset-syslog-debt-cleanup）', () => {
+describe('SyslogForwardCard 測試訊息回應契約', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getSyslogSettingsMock.mockResolvedValue({ data: { dropped: 0, setting: { ...SETTING } } })

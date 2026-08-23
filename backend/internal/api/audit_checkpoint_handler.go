@@ -28,7 +28,7 @@ type checkpointSigningPublicKeyProvider interface {
 }
 
 // AuditCheckpointHandler 檢查點鏈的查詢／驗證／公鑰 API
-// （audit-checkpoint-chain D10，admin 與 auditor 皆可讀，一律唯讀）。
+// （audit-checkpoint-chain，admin 與 auditor 皆可讀，一律唯讀）。
 //
 // **本 handler 沒有任何寫入端點，這是設計而非疏漏**：檢查點的補蓋、重簽、
 // 修鏈能力本身即偽造面（spec「無修鏈入口」）。日後若有人想加「重新計算
@@ -208,10 +208,10 @@ func (h *AuditCheckpointHandler) PublicKey(c *gin.Context) {
 
 // RegisterRoutes 註冊檢查點路由。
 //
-// **admin 或 auditor**（D-3／spec「檢查點驗證的角色邊界」）：auditor 是出具
+// **admin 或 auditor**（見 spec「檢查點驗證的角色邊界」）：auditor 是出具
 // 證明的人，若只能證序列而內容真偽仍須請 admin 代驗，「被監督者代為出具
 // 監督證明」的角色錯配只解一半。授權走 RequireAnyRole 中間件而非 handler
-// 內檢查——路由 golden 逐格記錄中間件鏈，寫在鏈上才是可被守衛觀察的事實（O3）
+// 內檢查——路由 golden 逐格記錄中間件鏈，寫在鏈上才是可被守衛觀察的事實
 func (h *AuditCheckpointHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	g := r.Group("/audit-checkpoints")
 	g.Use(middleware.AuthMiddleware(authService))

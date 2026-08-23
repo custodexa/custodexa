@@ -1,6 +1,6 @@
 package main
 
-// 審計產生點 manifest 雙向完備性守衛（modular-architecture W1 任務 1.2）。
+// 審計產生點 manifest 雙向完備性守衛。
 //
 // **為什麼需要這個守衛**：模組化重構要把散落各處的審計寫入收口成兩個 sink 變體
 // （TxSink 同步／參與呼叫方交易／回 error；AsyncSink 非同步／fire-and-forget）。
@@ -56,7 +56,7 @@ const auditPointManifestRelPath = "research/manifest-audit-points.md"
 
 // auditPointModulePath 掃描根的身分錨點：go.mod 的 module 行必須完全等於此值。
 // 以 module 身分而非「往上跳幾層」定位掃描根——後者在檔案搬家時會靜默指到別處
-// （R4 已實證兩處現有守衛有此假綠孔）。
+// （已實證兩處現有守衛有此假綠孔）。
 const auditPointModulePath = "github.com/custodexa/backend"
 
 // minScannedGoFiles 掃描檔數下限：防止掃描根失真或走訪邏輯壞掉時「掃到 0 個檔＝
@@ -74,9 +74,9 @@ var auditRecordFuncs = map[string]bool{
 	"RecordAssetAccountChange": true,
 }
 
-// assetAuditWriteFuncs asset 模組收口後的三個審計產生 helper（W6 6.1／6.2）。
+// assetAuditWriteFuncs asset 模組收口後的三個審計產生 helper。
 //
-// **為何判準必須延伸到這裡**（沿 W4 的同一條教訓）：6.1 把 11 個 T-2 呼叫點自
+// **為何判準必須延伸到這裡**（沿收口的同一條教訓）：收口把 11 個 T-2 呼叫點自
 // `model.RecordAsset*Change(tx, …)` 改為呼叫本包內的 helper，helper 才建構
 // `port.AuditEvent` 並交給 `port.WriteInTx`。若判準停在「`model.` 限定的呼叫」，
 // **11 個交易內產生點會整批自掃描面消失**，而 manifest 這一側仍登記著它們——
@@ -104,14 +104,14 @@ const (
 	kindAuditLogLit   auditPointKind = "AuditLog"      // model.AuditLog 具名欄位字面量（直寫路徑與 hook 內落地）
 	kindAuditEntryLit auditPointKind = "AuditLogEntry" // audit.AuditLogEntry 字面量（走 AuditLogService.Log）
 	kindRecordCall    auditPointKind = "RecordCall"    // model.RecordAsset*Change 呼叫點
-	// kindAuditEventLit 收口後的產生點形態（W4）：`port.AuditEvent{...}` 或
+	// kindAuditEventLit 收口後的產生點形態：`port.AuditEvent{...}` 或
 	// `gatewayapi.AuditEvent{...}` 複合字面量。
 	//
 	// **為何必須納入判準**：4.4／4.6 收口把「建構審計列」與「落地」分了家——收口後的
 	// 產生點不再建構 model.AuditLog，而是建構傳輸形狀交給 sink。若判準停在舊三條，
 	// 那五個交易內 fail-close 點會**整批從掃描面上消失**，manifest 反向斷言不再看得見
 	// 它們，而 sink 內部那唯一一個 model.AuditLog 字面量會讓「產生點總數」看起來只是
-	// 少了幾個——正是本波要防的「收口即失明」。判準隨收口形態延伸，涵蓋面才守得住。
+	// 少了幾個——正是要防的「收口即失明」。判準隨收口形態延伸，涵蓋面才守得住。
 	kindAuditEventLit auditPointKind = "AuditEvent"
 )
 
@@ -196,7 +196,7 @@ func auditPointManifestPath(t *testing.T, moduleRoot string) string {
 //  1. `model.AuditLog{...}`（在 model 包內為 `AuditLog{...}`）**且至少帶一個欄位**——
 //     空字面量 `&model.AuditLog{}` 是 GORM 的型別標記（Model()／AutoMigrate），不產生列。
 //  2. `audit.AuditLogEntry{...}`（在 audit 包內為 `AuditLogEntry{...}`）且至少帶一個欄位。
-//  3. `port.AuditEvent{...}`／`gatewayapi.AuditEvent{...}`（W4 收口後的形態）且至少帶一個欄位。
+//  3. `port.AuditEvent{...}`／`gatewayapi.AuditEvent{...}`（收口後的形態）且至少帶一個欄位。
 //  3. 呼叫 `model.RecordAssetChange` ／ `RecordAssetNodeChange` ／ `RecordAssetAccountChange`。
 func scanAuditPointSites(t *testing.T, root string) ([]auditPointSite, int) {
 	sites, scanned, _ := scanAuditPointSitesIndexed(t, root)
@@ -262,14 +262,14 @@ func auditSiteAt(n ast.Node, pkg string) (token.Pos, auditPointKind, bool) {
 			return node.Pos(), kindAuditEventLit, true
 		}
 	case *ast.CallExpr:
-		// 收口後的形態（W6 6.1）：同包未匯出 helper，裸 Ident 呼叫
+		// 收口後的形態：同包未匯出 helper，裸 Ident 呼叫
 		if id, ok := node.Fun.(*ast.Ident); ok {
 			if assetAuditWriteFuncs[id.Name] {
 				return node.Pos(), kindRecordCall, true
 			}
 			return 0, "", false
 		}
-		// 收口前的形態：model.RecordAsset*Change（函式已於 W6 6.2 刪除，
+		// 收口前的形態：model.RecordAsset*Change（函式已刪除，
 		// 判準保留為復辟偵測——真被加回來，這裡會把呼叫點抓成未登記產生點）
 		sel, ok := node.Fun.(*ast.SelectorExpr)
 		if !ok {
@@ -307,7 +307,7 @@ type manifestRow struct {
 	Line    int
 	Kind    auditPointKind
 	Variant string
-	// Wave 落地波次欄（4.4b）：TxSink 點必須有主，否則會靜默停在舊形態。
+	// Wave 落地階段欄（4.4b）：TxSink 點必須有主，否則會靜默停在舊形態。
 	Wave    string
 	DocLine int // manifest 檔內行號，錯誤訊息用
 
@@ -324,7 +324,7 @@ func (r manifestRow) key() string { return fmt.Sprintf("%s:%d", r.File, r.Line) 
 // parseAuditPointManifest 解析 manifest 的產生點總表。
 //
 // 只認「以 `| AP-` 開頭」的資料列，欄位順序＝
-// ID | 產生點 file:line | 種類 | 呼叫方交易內 | fail-close? | 目標變體 | 落地波次 | 對應測試 | 證據
+// ID | 產生點 file:line | 種類 | 呼叫方交易內 | fail-close? | 目標變體 | 落地階段 | 對應測試 | 判定證據／備註
 func parseAuditPointManifest(t *testing.T, path string) []manifestRow {
 	t.Helper()
 	body, err := os.ReadFile(path)
@@ -518,7 +518,7 @@ func TestAuditPointTxSitesAreDispatchedToTxSink(t *testing.T) {
 	}
 }
 
-// waveCell 取落地波次欄（第 7 欄；欄數不足時回空字串由呼叫端判定）。
+// waveCell 取落地階段欄（第 7 欄；欄數不足時回空字串由呼叫端判定）。
 func waveCell(cols []string) string {
 	if len(cols) < 7 {
 		return ""
@@ -535,20 +535,20 @@ func keysOf(m map[string]bool) []string {
 	return out
 }
 
-// auditPointWaveRe 落地波次欄的合法形態（W1…W10，可帶括號的任務編號）。
+// auditPointWaveRe 落地階段欄的合法形態（W1…W10，可帶括號的任務編號）。
 var auditPointWaveRe = regexp.MustCompile(`^W(1|2|3|4|5|6|7b?|8|9|10)(（[^）]*）|／.*)?$`)
 
 // minTxSinkWaveRows 受本守衛檢查的 TxSink 列下限（現況 19，取 15）。
 const minTxSinkWaveRows = 15
 
-// TestTxSinkPointsAllHaveLandingWave 4.4b：每個 TxSink 點都必須有指定的落地波次。
+// TestTxSinkPointsAllHaveLandingWave 4.4b：每個 TxSink 點都必須有指定的落地階段。
 //
 // # 為什麼這件事需要機器管
 //
-// tasks.md 4.4b 的緣由正是一次人工清點失誤：正文寫「W4 的 5 條＋W6 的 11 處＝16」，
+// 本守衛的緣由正是一次人工清點失誤：正文寫「5 條＋11 處＝16」，
 // 而 manifest 實測 19 點——差的 3 點（AP-22／26／27，`RecordAsset*Change` 的落地本體）
 // 其實已由 6.2 涵蓋，是**正文漏算**而非真的無主。但那次差異靠的是有人去數；
-// 下一次新增 TxSink 點時，「忘了指定波次」不會有任何東西轉紅，而漏掉的那一點
+// 下一次新增 TxSink 點時，「忘了指定落地階段」不會有任何東西轉紅，而漏掉的那一點
 // 會停在舊形態上——fail-close 不會退化，但也永遠不會被收口，且沒有人知道。
 //
 // 本守衛把「每個 TxSink 點都有主」變成機器事實。
@@ -563,13 +563,13 @@ func TestTxSinkPointsAllHaveLandingWave(t *testing.T) {
 		}
 		checked++
 		if r.Wave == "" {
-			t.Errorf("%s（%s，manifest L%d）分派 TxSink 但落地波次欄為空："+
-				"沒有指定波次的收口點不會被任何一波認領，會靜默停在舊形態",
+			t.Errorf("%s（%s，manifest L%d）分派 TxSink 但落地階段欄為空："+
+				"沒有指定落地階段的收口點不會被任何一個階段認領，會靜默停在舊形態",
 				r.ID, r.key(), r.DocLine)
 			continue
 		}
 		if !auditPointWaveRe.MatchString(r.Wave) {
-			t.Errorf("%s（%s，manifest L%d）的落地波次 %q 不是合法形態（W1…W10，可帶括號任務編號）："+
+			t.Errorf("%s（%s，manifest L%d）的落地階段 %q 不是合法形態（W1…W10，可帶括號任務編號）："+
 				"自由字串會讓「有沒有主」變成讀者的主觀判斷", r.ID, r.key(), r.DocLine, r.Wave)
 		}
 	}
@@ -577,5 +577,5 @@ func TestTxSinkPointsAllHaveLandingWave(t *testing.T) {
 		t.Fatalf("只檢查到 %d 個 TxSink 列（下限 %d）：欄位順序或變體詞彙已變動，本斷言正在空集合上假綠",
 			checked, minTxSinkWaveRows)
 	}
-	t.Logf("4.4b 覆蓋完整性：%d 個 TxSink 點全部有指定落地波次", checked)
+	t.Logf("4.4b 覆蓋完整性：%d 個 TxSink 點全部有指定落地階段", checked)
 }

@@ -28,7 +28,7 @@ vi.mock('@/api/auth', () => ({
   mfaEnrollConfirm: (...args) => enrollConfirmMock(...args),
 }))
 
-// SSO 端點（idp-oidc-integration）：本檔案的既有案例一律走「無 provider」情境，
+// SSO 端點：本檔案的既有案例一律走「無 provider」情境，
 // SSO 專屬行為另見 LoginSSO.spec.js
 const getAuthMethodsMock = vi.fn()
 vi.mock('@/api/oidc', () => ({
@@ -60,7 +60,7 @@ describe('Login', () => {
     expect(loginMock).not.toHaveBeenCalled()
   })
 
-  // —— i18n-foundation 2.2：登入前語言切換 ——
+  // —— 登入前語言切換 ——
 
   it('pre-login language switch renders English immediately and persists ot-lang', async () => {
     const wrapper = mountLogin()
@@ -185,7 +185,7 @@ describe('Login', () => {
     expect(wrapper.findAll('input').length).toBeGreaterThanOrEqual(2)
   })
 
-  // auth-hardening：強制改密步驟（8.3.5/2.2.2）
+  // 強制改密步驟（8.3.5/2.2.2）
   const loginToChangeStep = async () => {
     loginMock.mockResolvedValue({
       password_change_required: true,
@@ -215,7 +215,7 @@ describe('Login', () => {
     expect(pwInputs[0].element.value).toBe('admin123')
   })
 
-  // 強制改密原因分流（login-password-policy-gate D6）
+  // 強制改密原因分流
   it('shows noncompliant reason title with detail from apiError code', async () => {
     loginMock.mockResolvedValue({
       password_change_required: true,
@@ -286,7 +286,7 @@ describe('Login', () => {
       { old_password: 'admin123', new_password: 'my-new-pass-33' },
       'change-jwt'
     )
-    // D12：改密成功直接換發正式 token，不重走登入
+    // 改密成功直接換發正式 token，不重走登入
     expect(localStorage.getItem('token')).toBe('fresh-jwt')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
   })
@@ -314,7 +314,7 @@ describe('Login', () => {
     expect(localStorage.getItem('token')).toBeNull()
   })
 
-  // auth-hardening 輪2：MFA 強制註冊步驟（8.4.2）
+  // MFA 強制註冊步驟（8.4.2）
   it('enters enrollment step and completes binding to log in', async () => {
     loginMock.mockResolvedValue({
       mfa_enrollment_required: true,
@@ -400,7 +400,7 @@ describe('Login', () => {
   })
 })
 
-// 明文連線下登入狀態無法保存的說明（codeql-rescan-settlement 決策 3）：
+// 明文連線下登入狀態無法保存的說明：
 // 訊息出現在使用者正在問「為什麼又要我登入」的那一刻。
 // 這裡驗的是登入頁這一端——寫入端的三條件矩陣見 api/__tests__/request.spec.js
 describe('Login — 明文連線的登入說明', () => {

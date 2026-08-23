@@ -25,16 +25,16 @@ import (
 
 // uptrScope 審核方個人指標 helper（approver_id 改 nullable 後測試字面值用）
 // strPtr 測試用字串指標助手。
-// 原宣告於 access_policy_service_test.go，該檔隨 W3 遷入 internal/modules/policy；
+// 原宣告於 access_policy_service_test.go，該檔已遷入 internal/modules/policy；
 // 本包多個測試檔仍在用，故在此保留同名同義的宣告（policy 包側亦有一份）。
 func strPtr(s string) *string { return &s }
 
 func uptrScope(v uint) *uint { return &v }
 
-// recordingSessionTerminator SessionTerminator 的測試替身（W7 §4.6 介面反轉後的必然形態）。
+// recordingSessionTerminator SessionTerminator 的測試替身（介面反轉後的必然形態）。
 //
 // **為何不是用真的 SessionService**：authz 不得 import session（矩陣 authz→session ✗），
-// 而 `internal/service` 於 W7 起 import authz（`auth_service.go` 的 IsEffectiveApprover），
+// 而 `internal/service` import authz（`auth_service.go` 的 IsEffectiveApprover），
 // 故 authz 的**同包**測試 import service 會構成 `import cycle not allowed in test`。
 // 收線的**行為本體**（CAS 冪等、終態不被自然清理覆寫）改由 session 側
 // `TestRevoke_ForceTerminatePreservesTerminalState` 直接對 SessionService 斷言；
@@ -100,7 +100,7 @@ func seedRequestFixture(t *testing.T, db *gorm.DB) {
 	}
 	approval := model.AccessPolicyApproval
 	reason := model.AccessPolicyReason
-	// 政策掛資產（asset-level-access-policy）；組保留供 approver 範圍測試沿用
+	// 政策掛資產；組保留供 approver 範圍測試沿用
 	db.Create(&model.AssetGroup{Name: "g-approval"}) // id 1
 	db.Create(&model.AssetGroup{Name: "g-reason"})   // id 2
 	db.Create(&model.Asset{Name: "a-approval", Protocol: "ssh", Host: "h", Port: 22, CreatedBy: 3, AccessPolicy: &approval})
@@ -289,7 +289,7 @@ func TestApproverScopeService_CRUD(t *testing.T) {
 	})
 }
 
-// TestCheckPermission_ScopeThirdSource service 解析入口的可視第三來源（D5）：
+// TestCheckPermission_ScopeThirdSource service 解析入口的可視第三來源：
 // 範圍內 view 命中、connect 不受影響（真 SQLite，走完整 CheckPermission 路徑）
 func TestCheckPermission_ScopeThirdSource(t *testing.T) {
 	_, _, db := setupAccessRequestEnv(t)
@@ -516,7 +516,7 @@ func TestAccessRequest_CASTerminal(t *testing.T) {
 		}
 	})
 
-	t.Run("逾期 pending 不可被核准（codex #2）", func(t *testing.T) {
+	t.Run("逾期 pending 不可被核准", func(t *testing.T) {
 		svc, _, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		req := submitBasic(t, svc, 1, 1)
@@ -701,7 +701,7 @@ func TestAccessRequest_NotifyPayloadMinimized(t *testing.T) {
 		if strings.Contains(payload, secretReason) {
 			t.Fatalf("出站 payload 不得含事由全文: %s", payload)
 		}
-		// M4 形狀：{event, params, sent_at}，散文零出站
+		// 出站形狀：{event, params, sent_at}，散文零出站
 		var got struct {
 			Event    string            `json:"event"`
 			Params   map[string]string `json:"params"`
@@ -731,12 +731,12 @@ func TestAccessRequest_NotifyPayloadMinimized(t *testing.T) {
 	}
 }
 
-// TestAnnotateConnectStates 連線入口三態 bulk 標註（D7 補充二）：
+// TestAnnotateConnectStates 連線入口三態 bulk 標註：
 // open+connect=connectable、open+view=空、非 open：ticket>pending>reason/approval
 func TestAnnotateConnectStates(t *testing.T) {
 	svc, _, db := setupAccessRequestEnv(t)
 	seedRequestFixture(t, db)
-	// W3 §4.8(a)：三態標註已改掛 AccessRequestService（authz 側）
+	// 三態標註已改掛 AccessRequestService（authz 側）
 	ap := svc
 
 	// user 1 夾具現況：asset 1（approval 組）view、asset 2（reason 組）view、asset 3（未分組=open）view
@@ -940,7 +940,7 @@ func TestAccessRequest_HistoryScopeFiltered(t *testing.T) {
 	_ = adminHist
 }
 
-// ---- break-glass-revocation：破窗、提前撤銷、補審 ----
+// ---- 破窗、提前撤銷、補審 ----
 
 // grantConnect 常設 connect 授權（破窗資格 seed 用）
 func grantConnect(t *testing.T, db *gorm.DB, userID, assetID uint) {
@@ -1053,7 +1053,7 @@ func TestAccessRequest_BreakGlass(t *testing.T) {
 		}
 	})
 
-	t.Run("重複破窗擋 409（帶單號＋到期，codex #4）", func(t *testing.T) {
+	t.Run("重複破窗擋 409（帶單號＋到期）", func(t *testing.T) {
 		svc, policies, db := setupAccessRequestEnv(t)
 		seedRequestFixture(t, db)
 		grantConnect(t, db, 1, 1)
@@ -1403,7 +1403,7 @@ func TestAccessRequest_BreakGlassReview(t *testing.T) {
 	})
 
 	// 本子測釘的是節流窗的**近側**（同一時刻重掃不重發）。跨窗必重發的遠側由
-	// access_request_no_approver_deadlock_test.go 釘住——W7b 對抗輪前只有近側，
+	// access_request_no_approver_deadlock_test.go 釘住——補上遠側之前只有近側，
 	// 於是「每單至多一次」的假保底能全綠通過
 	t.Run("逾期升級告警防重", func(t *testing.T) {
 		svc, _, db, bg := breakGlassFixture(t)
@@ -1425,7 +1425,7 @@ func TestAccessRequest_BreakGlassReview(t *testing.T) {
 	})
 }
 
-// TestAnnotateBreakGlassAvailable 破窗可用性標註（break-glass-revocation 六題 6）：
+// TestAnnotateBreakGlassAvailable 破窗可用性標註（六題 6）：
 // 開關關恆 false；開啟時=非 open 段×常設 connect×無有效票證；ticket 在手不標
 func TestAnnotateBreakGlassAvailable(t *testing.T) {
 	svc, policies, db := setupAccessRequestEnv(t)
@@ -1489,7 +1489,7 @@ func TestAnnotateBreakGlassAvailable(t *testing.T) {
 	}
 }
 
-// TestBreakGlass_EligibilityRecheckedInTx codex #2 回歸：破窗於鎖後同交易重判
+// TestBreakGlass_EligibilityRecheckedInTx 回歸：破窗於鎖後同交易重判
 // 資格——常設授權在交易前被撤，破窗應失敗（此測試以「交易前即無常設」代理
 // 驗證重判路徑存在且生效；完整 TOCTOU 需並發，Postgres FOR UPDATE 保證）
 func TestBreakGlass_EligibilityRecheckedInTx(t *testing.T) {

@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// refresh 憑證的**成功輪替**必須留痕（audit-coverage-closure 批 4／auth-session spec）。
+// refresh 憑證的**成功輪替**必須留痕（auth-session spec）。
 //
 // # 缺陷
 //
@@ -39,7 +39,7 @@ import (
 //  2. 成功列與失敗列可區分（`status` ＋ 事件標記），否則報表分不出「輪替了」與「被拒了」。
 //  3. 來源位址逐列落地：同一憑證自兩個位址輪替時，兩列的 client_ip 不同。
 //
-// # 突變自檢（tasks 4.6）
+// # 突變自檢
 //
 // 拿掉 `Refresh` 內的 `h.auditRefreshEvent(..., model.StatusSuccess, ...)` 一行
 // ⇒ 本檔三格中的兩格轉紅（第三格是失敗列的對照格，本就不依賴成功列）。
@@ -122,7 +122,7 @@ func (e *refreshAuditEnv) login(t *testing.T) string {
 // postRefresh 以指定來源位址打 /auth/refresh（掛真審計中介層，位置同生產）。
 //
 // 憑證以 httpOnly cookie 攜帶、輪替後的新憑證亦自 Set-Cookie 取回
-// （refresh-token-httponly-cookie）：request body 與回應 body 皆已無憑證通道
+// request body 與回應 body 皆已無憑證通道
 func (e *refreshAuditEnv) postRefresh(t *testing.T, token, remoteAddr string) (int, string) {
 	t.Helper()
 	r := gin.New()

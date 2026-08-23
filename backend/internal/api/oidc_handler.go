@@ -19,13 +19,13 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// OIDCHandler OIDC provider 管理與登入流程端點（idp-oidc-integration）
+// OIDCHandler OIDC provider 管理與登入流程端點
 type OIDCHandler struct {
 	providers *identity.OIDCProviderService
 	login     *identity.OIDCLoginService
 	frontend  string // 對外基準網址，用於 callback 導回 SPA
 	// audit 登入流程的審計出口。**留痕在 handler 而非 service**
-	//（audit-coverage-closure D3 前置）：service 拿不到 *gin.Context，其寫出的列
+	//service 拿不到 *gin.Context，其寫出的列
 	// 來源位址／路徑／方法／狀態碼必然全空，稽核無從判讀「誰從哪裡打了什麼」。
 	// nil 時不留痕（與 AuthHandler 的 auditService 同慣例）
 	audit *audit.AuditLogService
@@ -37,7 +37,7 @@ type OIDCHandler struct {
 	callbackGuard *sourceAbuseGuard
 	exchangeGuard *sourceAbuseGuard
 
-	// refreshCookies refresh 憑證的 httpOnly cookie 下發（refresh-token-httponly-cookie）。
+	// refreshCookies refresh 憑證的 httpOnly cookie 下發。
 	// nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
 }
@@ -52,7 +52,7 @@ const (
 	oidcEventExchangeTicketInvlid = "oidc_exchange_ticket_invalid"
 )
 
-// oidcAggregateStatus 聚合列的審計狀態（audit-coverage-closure D3 分流）。
+// oidcAggregateStatus 聚合列的審計狀態。
 //
 // 兩類事件語義不同，不可一刀切：無效的 state／ticket 是**憑證不成立**的認證失敗
 // （`failure`）；被限流擋下的請求是**政策拒絕**（`denied`，與 RBAC 403 同語義）。
@@ -247,7 +247,7 @@ func (h *OIDCHandler) Callback(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 
 	// 限流在一切之前：本端點的 state 查找失敗**不必接觸 IdP、不受 flow state
-	// 容量限制**，是全流程最便宜的洪水面（design D13 / codex HIGH-1）
+	// 容量限制**，是全流程最便宜的洪水面
 	ip, release, ok := h.throttle(c, h.callbackGuard, oidcEventCallbackThrottled)
 	if !ok {
 		return
@@ -313,7 +313,7 @@ func (h *OIDCHandler) Exchange(c *gin.Context) {
 		return
 	}
 	h.auditOIDCLogin(c, resp)
-	// 發放端點 5／6（refresh-token-httponly-cookie 決策 3）：**巢狀回應是六者中最易漏的一個**。
+	// 發放端點 5／6：**巢狀回應是六者中最易漏的一個**。
 	// `LoginResponse.RefreshToken` 已是 `json:"-"`，故 `gin.H{"login": resp}` 這條
 	// 序列化路徑不會帶出明文；憑證改由此處的 cookie 下發。
 	// MFA／強制註冊／強制改密分支尚未發出正式會話，SetFromLogin 對其零動作
@@ -447,7 +447,7 @@ func sanitizeRedirectNext(raw string) string {
 	if len(s) > 255 {
 		return "/"
 	}
-	// **dot-segment 一律拒絕**（codex）：枚舉只看第一段，而 `/dashboard/../../api/v1/users`
+	// **dot-segment 一律拒絕**：枚舉只看第一段，而 `/dashboard/../../api/v1/users`
 	// 的第一段是合法的 `dashboard`，瀏覽器卻會正規化成 `/api/v1/users`——
 	// 不擋則枚舉可被任意包裝繞過。逐段比對而非事後正規化：正規化後再判定會讓
 	// 「看起來合法、實際導向他處」的字串通過，此處要的是連形式都不接受

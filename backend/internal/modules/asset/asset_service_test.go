@@ -71,10 +71,10 @@ func setupAssetMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *gorm.DB) {
 
 // TestNewAssetService 測試創建 AssetService
 func TestNewAssetService(t *testing.T) {
-	// 三職拆解（kek-provider-modularization D3 職 3）後，建構子改收 codec 必要參數：
+	// 三職拆解後，建構子改收 codec 必要參數：
 	// 建構期**不再讀任何 env 金鑰材料**，故金鑰長度驗證改由 codec 自身的建構負責
 	// （見 crypto.NewAESCrypto）；此處驗的是「codec 為必要參數」。
-	// D5 AAD cutover 後型別收斂為 crypto.ColumnCodec——**建構上**不可能寫出
+	// AAD cutover 後型別收斂為 crypto.ColumnCodec——**建構上**不可能寫出
 	// 無 AAD 密文（該介面無 Encrypt(plaintext)）。
 	valid := aesColumnCodec(t, make([]byte, 32))
 	tests := []struct {
@@ -135,8 +135,8 @@ func TestCreate(t *testing.T) {
 	// AfterCreate hook 會在新的 session 中插入 audit log
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// asset-multi-account 階段 2：憑證與 username 同交易寫入 default 帳號，
-	// 並留 D7a 帳號建立審計
+	// 資產多帳號階段 2：憑證與 username 同交易寫入 default 帳號，
+	// 並留帳號建立審計
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -182,7 +182,7 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// default 帳號 INSERT ＋ 帳號審計（asset-multi-account 階段 2）
+	// default 帳號 INSERT ＋ 帳號審計
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -226,7 +226,7 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// default 帳號 INSERT ＋ 帳號審計（asset-multi-account 階段 2）
+	// default 帳號 INSERT ＋ 帳號審計
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -309,7 +309,7 @@ func TestAsset_GetByID(t *testing.T) {
 				mock.ExpectQuery(`SELECT .+ FROM "assets"`).
 					WillReturnRows(rows)
 
-				// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 			},
@@ -354,14 +354,14 @@ func TestAsset_GetByID(t *testing.T) {
 }
 
 // TestGetWithCredentialsDefault 測試取得資產＋預設帳號並解密憑證
-// （asset-multi-account 階段 2：憑證與 username 一律自帳號表取得，內嵌欄位不再讀）
+// （階段 2：憑證與 username 一律自帳號表取得，內嵌欄位不再讀）
 func TestGetWithCredentialsDefault(t *testing.T) {
 	_, mock, _ := setupAssetMockDB(t)
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 
-	// 先加密密碼和私鑰（D5：密文須以落點欄位的列身分綁定 AAD，否則讀端解不開）
+	// 先加密密碼和私鑰（密文須以落點欄位的列身分綁定 AAD，否則讀端解不開）
 	password := "myPassword123"
 	privateKey := "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"
 	encryptedPassword, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefAccountPassword, password)
@@ -373,7 +373,7 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets"`).
 		WillReturnRows(rows)
 
-	// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+	// fillAssetNodeInfo：成員空集即早退不查路徑
 	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 
@@ -395,7 +395,7 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 }
 
 // TestGetWithCredentialsForAccount_CrossAssetRejected 跨資產 account id 注入
-// 必須 fail-close（D3）：帳號不屬該資產時回錯，**不得靜默退回預設帳號**
+// 必須 fail-close：帳號不屬該資產時回錯，**不得靜默退回預設帳號**
 func TestGetWithCredentialsForAccount_CrossAssetRejected(t *testing.T) {
 	_, mock, _ := setupAssetMockDB(t)
 
@@ -429,7 +429,7 @@ func TestUpdate(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(rows)
 
-	// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+	// fillAssetNodeInfo：成員空集即早退不查路徑
 	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 
@@ -469,7 +469,7 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 
 	oldPassword := "oldPassword"
-	// assets.password_enc 自 asset-multi-account 階段 2 起凍結不再寫入，
+	// assets.password_enc 自資產多帳號階段 2 起凍結不再寫入，
 	// 此處僅作為「內嵌欄位不被覆寫」的比對基準，故綁該欄位的列身分
 	oldEncryptedPassword, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefAssetsPassword, oldPassword)
 
@@ -479,7 +479,7 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(rows)
 
-	// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+	// fillAssetNodeInfo：成員空集即早退不查路徑
 	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 
@@ -495,7 +495,7 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 	// AfterUpdate hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// D9 透明轉寫：鎖資產列（與帳號 CRUD 同一互斥點）→ 查 default 帳號 →
+	// 透明轉寫：鎖資產列（與帳號 CRUD 同一互斥點）→ 查 default 帳號 →
 	// 更新密文 → 帳號審計
 	mock.ExpectQuery(`SELECT id FROM assets WHERE id = .+ FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
@@ -526,7 +526,7 @@ func TestDelete(t *testing.T) {
 
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
-	// 資產刪除須連動撤銷 authz 的授權與審核範圍（security-backlog-settlement 塊 2）。
+	// 資產刪除須連動撤銷 authz 的授權與審核範圍（塊 2）。
 	// 未注入即 fail-close，故此處注入替身；替身不下 SQL，無須額外 mock 期望
 	revoker := &fakeAuthzRevoker{}
 	service.SetAuthorizationRevoker(revoker)
@@ -537,11 +537,11 @@ func TestDelete(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ ORDER BY .+ LIMIT`).
 		WillReturnRows(rows)
 
-	// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+	// fillAssetNodeInfo：成員空集即早退不查路徑
 	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 
-	// 軟刪除（節點成員先於資產清除——asset-node-tree codex P1）
+	// 軟刪除（節點成員先於資產清除）
 	mock.ExpectBegin()
 	mock.ExpectExec(`DELETE FROM "asset_nodes"`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -601,7 +601,7 @@ func TestAsset_List(t *testing.T) {
 				mock.ExpectQuery(`SELECT .+ FROM "assets" .+ ORDER BY created_at DESC`).
 					WillReturnRows(rows)
 
-				// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 			},
@@ -626,7 +626,7 @@ func TestAsset_List(t *testing.T) {
 				mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE protocol`).
 					WillReturnRows(rows)
 
-				// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 			},
@@ -650,7 +650,7 @@ func TestAsset_List(t *testing.T) {
 				mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE .+ LIKE .+ OR .+ LIKE`).
 					WillReturnRows(rows)
 
-				// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 			},
@@ -709,7 +709,7 @@ func TestValidateProtocol(t *testing.T) {
 }
 
 // TestEncryptionDecryption_Integration 測試加密解密整合（一律帶列身分 AAD——
-// 無 AAD 的加解密入口已於 release-transitional-cleanup P2 M1 自原語層刪除）
+// 無 AAD 的加解密入口已在過渡格式收尾時自原語層刪除）
 func TestEncryptionDecryption_Integration(t *testing.T) {
 	key := make([]byte, 32)
 	crypto1, _ := crypto.NewAESCrypto(key)

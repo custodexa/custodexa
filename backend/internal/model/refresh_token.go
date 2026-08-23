@@ -2,23 +2,23 @@ package model
 
 import "time"
 
-// RefreshToken 撤銷原因（auth-hardening D6）
+// RefreshToken 撤銷原因
 const (
 	RefreshRevokeRotated        = "rotated"         // 正常輪替：舊憑證作廢、鏈上有新憑證
 	RefreshRevokeLogout         = "logout"          // 使用者登出
 	RefreshRevokePasswordChange = "password_change" // 改密撤銷全部會話（8.3.5 語義延伸）
 	RefreshRevokeDisabled       = "disabled"        // 帳號停用（admin）撤銷全部
-	RefreshRevokeLocked         = "locked"          // 帳號自動鎖定撤銷全部（不砍協議會話，D13）
+	RefreshRevokeLocked         = "locked"          // 帳號自動鎖定撤銷全部（不砍協議會話）
 	RefreshRevokeReuseDetected  = "reuse_detected"  // 已輪替憑證被重放 → 家族撤銷（RFC 9700）
 	RefreshRevokeIdleTimeout    = "idle_timeout"    // 閒置逾政策窗口（8.2.8）
 	RefreshRevokeExpired        = "expired"         // 逾絕對壽命
-	// RefreshRevokeProviderDisabled provider 停用/刪除/密鑰輪替（idp-oidc-integration D9）
+	// RefreshRevokeProviderDisabled provider 停用/刪除/密鑰輪替
 	RefreshRevokeProviderDisabled = "provider_disabled"
 	// RefreshRevokeCredentialEpoch 使用者憑證世代推進（解綁外部身分／改為僅外部登入等）
 	RefreshRevokeCredentialEpoch = "credential_epoch"
 )
 
-// RefreshToken Web 會話 refresh 憑證（auth-hardening D6，PCI 8.2.8）。
+// RefreshToken Web 會話 refresh 憑證（PCI 8.2.8）。
 // 明文僅在發放當下回傳客戶端，資料庫只存 SHA-256；
 // 刷新時輪替（舊列標 rotated、發新列），已輪替列再被提交視為憑證洩漏訊號，
 // 撤銷該使用者全部 refresh（家族撤銷，RFC 9700）
@@ -35,7 +35,7 @@ type RefreshToken struct {
 	// LastUsedAt sliding 閒置錨點：發放與每次刷新時間（8.2.8 閒置判定基準）
 	LastUsedAt time.Time `gorm:"not null" json:"last_used_at"`
 
-	// 認證脈絡（idp-oidc-integration D9）：記錄「本會話由哪個 provider、以何種方式建立」。
+	// 認證脈絡：記錄「本會話由哪個 provider、以何種方式建立」。
 	//
 	// rotation SHALL 原樣沿用此三欄——現行 rotation 只複製五個欄位，若不顯式沿用，
 	// access token 到期輪替一次（分鐘級）後撤銷目標即失聯，provider 停用時

@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-// 審計落地面的 **sink 呼叫主索引**（modular-architecture W4；codex W4 外審焦點 3 的解方）。
+// 審計落地面的 **sink 呼叫主索引**。
 //
 // # 為什麼字面量不能當主索引
 //
 // `audit_points_manifest_guard_test.go` 的第 4 條判準（`port.AuditEvent{…}`／
-// `gatewayapi.AuditEvent{…}` 複合字面量）抓的是**事件在哪裡被建構**。它在 W4 的收口
+// `gatewayapi.AuditEvent{…}` 複合字面量）抓的是**事件在哪裡被建構**。它在現行收口
 // 形態下剛好與「審計寫入點」一一對應，但那是巧合，不是不變式：只要下一波把事件建構
 // 改成 helper constructor（`newAssetEvent(...)`）、函式回傳（`return port.AuditEvent{…}`
 // 收進一個 builder）、或用變數轉傳（`ev := …; …; WriteInTx(sink, tx, ev)`），
@@ -24,7 +24,7 @@ import (
 // `AsyncSink.Submit(ctx, ev)`）。它是「審計真的被交出去落地」的那一刻，
 // 不依賴事件是怎麼被組出來的。字面量判準退為輔助（仍在原守衛內）。
 //
-// 兩個下界分開釘（codex 焦點 3 明列）：
+// 兩個下界分開釘（同一份審查焦點 3 明列）：
 //   - **消費端產生點**——業務程式碼呼叫 sink 的位置。它們是 fail-close 語義的所在，
 //     少一個就是少一條審計；且每一個都必須在 manifest 有登記列。
 //   - **sink 實作點**——落地面自身（`WriteInTx`／`Submit` 的方法宣告）。它們是
@@ -38,7 +38,7 @@ const (
 )
 
 // minAuditSinkConsumerWriteInTx 消費端 `port.WriteInTx(...)` 呼叫點下界。
-// 現況 5（asset_group ×2／user_group／ldap_directory／ldap_seed）；W6 6.1／6.2 收口
+// 現況 5（asset_group ×2／user_group／ldap_directory／ldap_seed）；asset 模組收口
 // 後會增至 19。取現況值——**這條只准增不准減**，減少即代表某個 fail-close 點
 // 被改回舊形態或整條消失。
 const minAuditSinkConsumerWriteInTx = 5
@@ -73,7 +73,7 @@ type sinkImplSite struct {
 // scanAuditSinkSites 掃出全模組（非測試碼）的 sink 呼叫點與實作點。
 //
 // 判定規則（刻意保守且可解釋，不做型別推導——本守衛的價值在「索引軸不同」，
-// 不在「判定更聰明」；型別層的雙射留給 backlog B-16 的 go/types 三方雙射）：
+// 不在「判定更聰明」；型別層的雙射另以 go/types 三方雙射處理）：
 //
 //	消費端 WriteInTx：`port.WriteInTx(...)` 三引數呼叫，或 `X.WriteInTx(tx, ev)`
 //	                  兩引數選擇器呼叫且**不在** internal/modules/audit/ 下。
@@ -188,7 +188,7 @@ func TestAuditSinkCallSitesArePrimaryIndex(t *testing.T) {
 	// ── 下界 1：消費端產生點 ──
 	if got := len(byKind["WriteInTx"]); got < minAuditSinkConsumerWriteInTx {
 		t.Errorf("消費端 TxSink 呼叫點只剩 %d 個（下界 %d）：某個交易內 fail-close 點被改回舊形態、"+
-			"被繞過、或整條消失。**這條下界只准增不准減**——W6 6.1／6.2 收口後應為 19。實測清單：\n  %s",
+			"被繞過、或整條消失。**這條下界只准增不准減**——收口後應為 19。實測清單：\n  %s",
 			got, minAuditSinkConsumerWriteInTx, formatCalls(byKind["WriteInTx"]))
 	}
 	if got := len(byKind["Submit"]); got < minAuditSinkConsumerSubmit {
@@ -280,9 +280,9 @@ func TestAuditSinkSubmitArityIsDiscriminating(t *testing.T) {
 				if node.Name == nil || node.Name.Name != "Submit" || node.Recv == nil {
 					return true
 				}
-				// **以接收者型別定位，不以檔案路徑定位**（W7 7.7 改）：
+				// **以接收者型別定位，不以檔案路徑定位**：
 				// 原本判 `pf.Rel == "internal/service/access_request_service.go"`，
-				// 該檔於 W7 遷入 `internal/modules/authz/` 後這個判準就指不到東西。
+				// 該檔遷入 `internal/modules/authz/` 後這個判準就指不到東西。
 				// 它自帶 `accessReqArity < 0 即 t.Fatal` 故會紅不會恆綠，但「紅的理由是
 				// 找不到檔案」會誘人把路徑改一改了事——下一次搬檔再壞一次。
 				// 接收者型別名跟著程式碼走，搬到哪個包都成立。

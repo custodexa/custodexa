@@ -65,7 +65,7 @@ const historyFixture = {
   overdue: false,
 }
 
-describe('AccessReviews 存取複審獨立頁（D5：職能自授權頁遷出）', () => {
+describe('AccessReviews 存取複審獨立頁（職能自授權頁遷出）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()

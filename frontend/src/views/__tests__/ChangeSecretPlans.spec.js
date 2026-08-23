@@ -3,7 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import ChangeSecretPlans from '../ChangeSecretPlans.vue'
 
-// 改密計劃頁（change-secret-ssh-deepening 第 8 組）。
+// 改密計劃頁（第 8 組）。
 //
 // 斷言重心在三件會靜默出錯的事：
 //  1. 帳號範圍的 UI 狀態 ↔ 後端契約（`["@ALL"]` vs 明列）——送錯會使計劃

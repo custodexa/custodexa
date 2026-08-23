@@ -89,7 +89,7 @@ import { spanGeometry } from './timelineGeometry'
 import { sessionStatusLabel } from './timelineSummary'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 
-// 會話跨度條（D6）。**不做泳道**：同時段多人在線由多列在同一刻度上視覺重疊
+// 會話跨度條。**不做泳道**：同時段多人在線由多列在同一刻度上視覺重疊
 // 呈現，列依 start 升冪排序使重疊叢集相鄰。進行中會話右端漸層淡出，
 // SHALL NOT 畫硬邊——硬邊會被讀成「已結束於此刻」
 const props = defineProps({

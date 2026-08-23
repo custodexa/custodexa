@@ -1,4 +1,4 @@
-// Package notifycat 是後端出站通知的翻譯目錄（backend-i18n-unification D3/D4）。
+// Package notifycat 是後端出站通知的翻譯目錄。
 //
 // 職責邊界：只服務「出站 Slack 文案」的伺服端三語渲染與事件參數驗證。
 // HTTP 錯誤走 internal/apierror 機器碼、WS/串流走碼化幀由前端查譯，兩者都不經本套件。
@@ -17,7 +17,7 @@ import "github.com/custodexa/backend/internal/model"
 // Event 通知事件識別字。值＝webhook 收端契約，與現行呼叫點逐字一致，不可變更。
 type Event string
 
-// ParamKind 參數值域種類（design D3 值層策略）。
+// ParamKind 參數值域種類（值層策略）。
 type ParamKind string
 
 const (
@@ -84,7 +84,7 @@ var mechanismEnum = []string{
 	model.MechanismAuditChainVerify,
 }
 
-// ---- 事件常數（值＝現行呼叫點字串，逐一實查對照見 change 的 M3 回報）----
+// ---- 事件常數（值＝現行呼叫點字串，逐一與呼叫點實查對照）----
 
 const (
 	// EventAccessRequestCreated 新申請待審（access_request_service.go:235）
@@ -117,7 +117,7 @@ const (
 	EventTest Event = "test"
 )
 
-// ---- EventSpec 註冊（與上方常數同檔相鄰，D4 要求）----
+// ---- EventSpec 註冊（SHALL 與上方常數同檔相鄰）----
 
 // requestScopeParams 連線申請族共用參數：單號必帶，資產名可能查不到（assetName()
 // 於資產列不存在時回空字串，access_request_service.go:782-788），故為可選＋模板可選段。
@@ -170,11 +170,11 @@ var registry = map[Event]EventSpec{
 		Params: []ParamSpec{
 			{Name: "mechanism", Kind: KindEnum, Required: true, Enum: mechanismEnum},
 			{Name: "started_at", Kind: KindOpaque, Required: true},
-			// cause_code 為機器碼＋詞庫短語（D8）：出站只帶碼，forensic detail
+			// cause_code 為機器碼＋詞庫短語：出站只帶碼，forensic detail
 			// 留在 DB 的 cause_params，不進 webhook（去識別紅線）
 			{Name: "cause_code", Kind: KindEnum, Required: true,
 				Enum: causeEnum, Lexicon: LexiconCause},
-			// 鏈驗證告警的兩個計數（audit-chain-scheduled-verification D5）：
+			// 鏈驗證告警的兩個計數：
 			// **可選**——本事件是全部審計機制共用的失效入口，多數機制沒有可數的
 			// 失敗點或失敗區間；設為必要會讓其他機制的呼叫缺參被 Validate 拒而
 			// 降級投遞（合規告警品質倒退）。模板以可選段承接，缺值即整段不出現。
@@ -203,11 +203,11 @@ var registry = map[Event]EventSpec{
 			{Name: "cause_code", Kind: KindEnum, Required: true,
 				Enum: causeEnum, Lexicon: LexiconCause},
 			{Name: "reported_at", Kind: KindOpaque, Required: true},
-			// backlog 待處理筆數（V2 對抗驗收 L1）：**可選**——本事件是泛用的
+			// backlog 待處理筆數：**可選**——本事件是泛用的
 			// 週期重發入口，並非每個機制都有可數的積壓；設為必要會讓其他機制的
 			// 呼叫缺參被 Validate 拒而降級投遞（合規告警品質倒退）。模板以可選段
 			// 承接，缺值即整段不出現。
-			// 只帶聚合筆數不帶明細：收尾錯誤原文等 forensic 仍只落 cause_params（D8）。
+			// 只帶聚合筆數不帶明細：收尾錯誤原文等 forensic 仍只落 cause_params。
 			{Name: "backlog", Kind: KindInt},
 			// 鏈驗證的「異常範圍已變化」重發走本事件（不先結案再重開——偽造一次
 			// 不存在的恢復會破壞失效區間的起訖證據），故同樣需要這兩個可選計數

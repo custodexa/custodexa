@@ -8,20 +8,20 @@ import (
 	"testing"
 )
 
-// policy 包內測試助手（modular-architecture W3 3.7）。
+// policy 包內測試助手。
 //
 // **為何是複本而非共用**：本包的包內測試（`package policy`）SHALL NOT import
 // `internal/service`——後者 import 本包，測試內 import 會構成 Go 的
 // 「import cycle not allowed in test」。故 `internal/service` 側仍保留
 // `aad_write_guard_test.go` 的原本宣告，本檔為 policy 側的等價複本，
-// 實作逐行相同（比照 W2 keyvault 的 `testhelper_test.go`）。
+// 實作逐行相同（比照 keyvault 的 `testhelper_test.go`）。
 
 // policyGuardModulePath 掃描根的身分錨點：go.mod 的 module 行必須完全等於此值。
 const policyGuardModulePath = "github.com/custodexa/backend"
 
 // repoRoot 定位 backend module 根（本包守衛的共用掃描根）。
 //
-// **不用 cwd 相對、也不用固定層數 `..`**（W1 1.19／1.20 的統一修法）：兩者都與
+// **不用 cwd 相對、也不用固定層數 `..`**（統一修法）：兩者都與
 // 「本 package 目前住在樹的第幾層」綁死，package 一下移就指向錯誤位置，而
 // WalkDir 對不存在／空目錄多半只回零命中——守衛於是在掃空的情況下照樣綠。
 // 本包正是「下移一層」的當事人（`internal/service` → `internal/modules/policy`），

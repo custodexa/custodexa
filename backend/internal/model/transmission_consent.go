@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// TransmissionConsent 傳輸風險同意記錄（transmission-security-policy D3）：
+// TransmissionConsent 傳輸風險同意記錄：
 // per user×資產一列（唯一索引冪等更新）。不存 expires_at——效期以
 // consented_at＋政策 TTL 讀時動態判定，政策改動立即全域生效；
 // 失效另靠 risk_fingerprint 比對（資產傳輸屬性變更即不符，同意自然作廢）

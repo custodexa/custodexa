@@ -44,7 +44,7 @@ func NewRecordingHandler(recordingService *session.RecordingService, sessionServ
 	}
 }
 
-// TokenManager 暴露錄影 token 管理器供**撤銷**接線（idp-oidc-integration 1.9b/2.8）。
+// TokenManager 暴露錄影 token 管理器供**撤銷**接線。
 //
 // 錄影 token 是 in-memory、TTL 120 秒且刻意不做世代比對（Resolve 為 HTTP Range
 // 熱路徑），故帳號停用／解綁／外部化轉換時唯一的失效途徑是直接撤銷；
@@ -440,7 +440,7 @@ func (h *RecordingHandler) DeleteRecording(c *gin.Context) {
 		return
 	}
 
-	// message 欄已移除（D9：成功回應不攜帶 UI 文案，前端自有 $t 文案）；
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）；
 	// 仍回空 JSON 物件而非空 body，維持「200 一律是 JSON」的回應形狀慣例。
 	c.JSON(http.StatusOK, gin.H{})
 }

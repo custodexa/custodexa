@@ -13,11 +13,11 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// kek-rewrap-hygiene-hardening 測試組：跨實例互斥（D3）、收尾語義守衛（D4）、
-// 軟刪除與回退指引（D9）。sqlite 環境走 package 級 try-mutex 等價路徑；
+// KEK 重包衛生強化測試組：跨實例互斥、收尾語義守衛、
+// 軟刪除與回退指引。sqlite 環境走 package 級 try-mutex 等價路徑；
 // postgres advisory lock 路徑另由 TestPGAdvisoryLockMutex（TEST_PG_DSN gating）覆蓋。
 
-// TestAbandonThenFinalizeAborts abandon 先行、收尾後至（fable F1 的致命順序）：
+// TestAbandonThenFinalizeAborts abandon 先行、收尾後至（致命順序）：
 // 收尾的 promote 列數守衛必須偵測 clones 已被放棄而整筆中止，
 // data_keys 不得失去任何 live 列，任何列的材料不得被清空。
 func TestAbandonThenFinalizeAborts(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAbandonThenFinalizeAborts(t *testing.T) {
 		t.Fatalf("abandon: %v", err)
 	}
 
-	// 新 KEK 實例啟動收尾（F1 情境第二步）——load 會呼叫 finalizeSwitch。
+	// 新 KEK 實例啟動收尾（交錯情境的第二步）——load 會呼叫 finalizeSwitch。
 	// 放棄後新 KEK 已無 live 代表列，load 必須 fail-close（不可能刪光舊列後啟動）
 	_, err := InitKeyManager(db, newProvider)
 	if err == nil {
@@ -43,7 +43,7 @@ func TestAbandonThenFinalizeAborts(t *testing.T) {
 		Where("kek_id = ? AND kek_retired_at IS NULL AND wrapped_key <> ''", km.KEKKeyID()).
 		Count(&oldLive)
 	if oldLive == 0 {
-		t.Fatal("F1 守衛失效：abandon＋收尾交錯後現行 KEK live 列被清光")
+		t.Fatal("守衛失效：abandon＋收尾交錯後現行 KEK live 列被清光")
 	}
 	// 舊 KEK 實例重啟必須照常成功（資料可解）
 	km2 := newTestKeyManager(t, db, 1)
@@ -93,8 +93,8 @@ func TestAbandonThenRetryRewrap(t *testing.T) {
 }
 
 // TestRotationRejectedByForeignPendingInDB DEK 輪替的 campaign 判定必須以 DB
-// 現查為準（D3）：另一實例建立的 foreign pending 本行程記憶體不知道，
-// 但輪替仍須被拒（舊實作憑 in-memory rewrapPending 會放行——codex #4/fable F2）
+// 現查為準：另一實例建立的 foreign pending 本行程記憶體不知道，
+// 但輪替仍須被拒（舊實作憑 in-memory rewrapPending 會放行）
 func TestRotationRejectedByForeignPendingInDB(t *testing.T) {
 	db, km := setupKM(t)
 	// 模擬另一實例的重包：直接落 foreign pending 列（本實例 in-memory 旗標仍 false）
@@ -144,7 +144,7 @@ func TestLockBusyReturns409Sentinel(t *testing.T) {
 	// `defer kekProcessMu.Unlock()`（key_manager_lock.go:82）已執行。
 	//
 	// **只 close(hold) 不等 goroutine 是本包在 GOMAXPROCS=1 下恆紅的真因**
-	// （modular-architecture W2 對抗驗證 M2）：kekProcessMu 是 package 級鎖，
+	// kekProcessMu 是 package 級鎖，
 	// 單核時持鎖 goroutine 多半排程在下一格開跑之後，後續每一格取鎖都得
 	// ErrKeyOpBusy，失敗數與測試順序有關而不可歸因。等它確實釋放才離場。
 	released := make(chan struct{})
@@ -175,7 +175,7 @@ func TestLockBusyReturns409Sentinel(t *testing.T) {
 }
 
 // TestRetiredKEKBootTargetedError 以已退役且材料未清理的 KEK 開機：
-// fail-close 不變，但錯誤必須是定向回退指引；材料清理後回歸籠統 mismatch（D9）
+// fail-close 不變，但錯誤必須是定向回退指引；材料清理後回歸籠統 mismatch
 func TestRetiredKEKBootTargetedError(t *testing.T) {
 	db, km := setupKM(t)
 	oldProvider := km.kek
@@ -204,7 +204,7 @@ func TestRetiredKEKBootTargetedError(t *testing.T) {
 	}
 }
 
-// TestCleanupRetiredMaterial 顯式清理（D9）：全收斂閘、KEK 退役列清理、
+// TestCleanupRetiredMaterial 顯式清理：全收斂閘、KEK 退役列清理、
 // 退役 DEK 版本引用掃描（有引用拒清／零引用清理）、清理後重啟與再重包保鏈
 func TestCleanupRetiredMaterial(t *testing.T) {
 	db, km := setupKM(t)
@@ -223,7 +223,7 @@ func TestCleanupRetiredMaterial(t *testing.T) {
 	// 造一筆退役 DEK 版本引用：先以 v1 產出一筆**真正的 enc:a1:v1 密文**，
 	// DEK 輪替 v1→v2（全量重加密）後再手植回去模擬殘值。
 	//
-	// **殘值必須是可歸屬版本的合法密文**（release-transitional-cleanup 3.3）：
+	// **殘值必須是可歸屬版本的合法密文**：
 	// 原寫法植入 `enc:v1:AAAA`（發佈前過渡格式），在終態下會命中「不可歸屬殘值
 	// 保守拒清」閘而整筆中止，測不到本測試要驗的逐版本引用掃描。
 	v1ref := encryptColumn(t, km, "assets", "password_enc", "v1-residue")
@@ -347,7 +347,7 @@ func TestFinalizePromoteRowsGuard(t *testing.T) {
 	}
 }
 
-// TestRotationStaleInstanceRejected（opus 第一輪審 CRITICAL 回歸）：KEK 切換完成後，
+// TestRotationStaleInstanceRejected（回歸）：KEK 切換完成後，
 // 仍以舊 env 運行的實例執行 DEK 輪替 MUST 被 ErrStaleKeyCache 拒絕——放行會鑄出
 // 僅被已退役 KEK 包裹的新版本，新舊實例全數不可開機、v2 密文僅剩行程記憶體可解
 func TestRotationStaleInstanceRejected(t *testing.T) {
@@ -370,7 +370,7 @@ func TestRotationStaleInstanceRejected(t *testing.T) {
 }
 
 // TestRotationStaleVersionRejected 同 KEK 雙實例：另一實例已完成 data 輪替，
-// 本實例 in-memory active 落後 → ErrStaleKeyCache（codex 第一輪審 #3）
+// 本實例 in-memory active 落後 → ErrStaleKeyCache
 func TestRotationStaleVersionRejected(t *testing.T) {
 	db, km1 := setupKM(t)
 	km2 := newTestKeyManager(t, db, 1) // 同 KEK 第二實例
@@ -382,7 +382,7 @@ func TestRotationStaleVersionRejected(t *testing.T) {
 	}
 }
 
-// TestBootstrapRaceFailsClosed（codex 第一輪審 #1 回歸）：bootstrap 鎖內重讀
+// TestBootstrapRaceFailsClosed（回歸）：bootstrap 鎖內重讀
 // 發現用途已被另一實例補齊時 MUST fail-close——不同 KEK 下唯一索引攔不住
 // 「同版本不同材料」的腦裂，只能靠鎖內重讀拒絕
 func TestBootstrapRaceFailsClosed(t *testing.T) {
@@ -402,7 +402,7 @@ func TestBootstrapRaceFailsClosed(t *testing.T) {
 	}
 }
 
-// TestCleanupAbortsWithoutEnvLiveCopy（opus 第一輪審 M5 回歸）：KEK 退役列的
+// TestCleanupAbortsWithoutEnvLiveCopy（回歸）：KEK 退役列的
 // slot 若無現行 KEK 的 live 材料列，清理 MUST 整筆中止——退役副本是該版本
 // 唯一材料時銷毀＝永久不可解。病態以 DB 手術構造（自證防的就是不可預期路徑）
 func TestCleanupAbortsWithoutEnvLiveCopy(t *testing.T) {
@@ -427,7 +427,7 @@ func TestCleanupAbortsWithoutEnvLiveCopy(t *testing.T) {
 	}
 }
 
-// TestInventoryMaterialDerivation（opus 第二輪審 L2）：material_purged／
+// TestInventoryMaterialDerivation：material_purged／
 // material_rows 為 SQL 端衍生布林，SELECT 運算式被改動時本測試轉紅。
 // 覆蓋：切換軟退役後退役史材料尚存 → 輪替使 v1 零引用 → 清理 → 清冊標已清理、
 // 退役史材料歸零
@@ -481,7 +481,7 @@ func TestInventoryMaterialDerivation(t *testing.T) {
 	}
 }
 
-// TestFinalizeRetireGuardKeepsLiveRep（冷驗收 P1）：D4 第二道守衛——退役步驟
+// TestFinalizeRetireGuardKeepsLiveRep：收尾語義的第二道守衛——退役步驟
 // 將使某 slot 失去現行 KEK live 代表列時 MUST 整筆 rollback、舊列留在 backlog。
 // 這是「任何操作順序下不可能刪光 live 列」論證的另一半（第一道 promote 列數
 // 守衛由 TestFinalizePromoteRowsGuard 釘住）。
@@ -523,7 +523,7 @@ func TestFinalizeRetireGuardKeepsLiveRep(t *testing.T) {
 	}
 }
 
-// TestUnknownDialectFailsClose（冷驗收 P5）：白名單外的 dialect 無跨實例互斥
+// TestUnknownDialectFailsClose：白名單外的 dialect 無跨實例互斥
 // 能力，MUST 直接拒絕而非靜默退化為行程內鎖
 func TestUnknownDialectFailsClose(t *testing.T) {
 	db, km := setupKM(t)
@@ -681,7 +681,7 @@ func TestUnregisteredPurposeSkippedNotBlocking(t *testing.T) {
 }
 
 // TestCleanupRefusesOnNonAttributableResidue 引用掃描遇不可歸屬殘值保守拒清
-// （release-transitional-cleanup 3.3／spec delta）。
+// （3.3／spec delta）。
 //
 // **為何這道閘不可缺**：引用掃描以 `envelopeVersionOf` 判定值屬哪個版本，
 // 解析不過的值回 `ok=false`，而 skip 謂詞 `!ok || ver != version` 對它恆為真——

@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// EffectiveAccessResolver 有效權限解析（authorization-page-redesign D3）。
+// EffectiveAccessResolver 有效權限解析。
 // subject 一律顯式參數——嚴禁自 request context 推導（既有 CheckPermission/
 // GetAuthorizedAssets 從 ctx 讀呼叫者角色且 admin/auditor 短路全通過，
 // admin-only 端點直接復用會把任何目標誤判為全權）。
@@ -82,7 +82,7 @@ type EffectiveUserEntry struct {
 // EffectiveUsersResult 客體視角結果。RoleOverrideNote 恆帶：admin/auditor 角色
 // 帳號隱含可及本資產（不逐人列舉，spec「角色隱含以摘要標示」）
 //
-// i18n（backend-i18n-unification）：RoleOverrideNote 為 zh wire fallback，
+// i18n：RoleOverrideNote 為 zh wire fallback，
 // RoleOverrideNoteCode 為穩定機器碼供前端查譯（沿 key_management_handler 的
 // NameCode/NoteCode 同型作法）。此欄直穿 UI，硬編中文會在 en/ja 介面原樣外洩
 type EffectiveUsersResult struct {

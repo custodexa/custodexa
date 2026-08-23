@@ -60,7 +60,7 @@ func TestLockoutAfterMaxAttempts(t *testing.T) {
 		}
 	}
 
-	// 第 3 次達門檻：明示鎖定訊息（D2）
+	// 第 3 次達門檻：明示鎖定訊息
 	_, err := auth.Login(&LoginRequest{Username: "bob", Password: "wrong"})
 	if !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("達門檻 = %v, want ErrAccountLocked", err)
@@ -79,7 +79,7 @@ func TestLockoutAfterMaxAttempts(t *testing.T) {
 	}
 }
 
-// TestLockoutExpiryResetsCounter D12：到期放行時計數歸零，否則合法用戶每 30 分只能試 1 次
+// TestLockoutExpiryResetsCounter 到期放行時計數歸零，否則合法用戶每 30 分只能試 1 次
 func TestLockoutExpiryResetsCounter(t *testing.T) {
 	auth, policies, db := setupLockoutEnv(t)
 	policies.Update(policy.PolicyLockoutMaxAttempts, "3", "admin")
@@ -181,7 +181,7 @@ func TestMustChangeGateIssuesScopedToken(t *testing.T) {
 	}
 }
 
-// TestMFAFailureSharesLockoutCounter D2：TOTP 失敗與密碼失敗共用計數，
+// TestMFAFailureSharesLockoutCounter TOTP 失敗與密碼失敗共用計數，
 // 否則持被竊密碼者可在每個 pending 窗內無限暴力猜 6 位 TOTP
 func TestMFAFailureSharesLockoutCounter(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -304,13 +304,13 @@ func TestValidateConnectionTokenReloadsUserState(t *testing.T) {
 		t.Fatalf("正常 token = %v", err)
 	}
 
-	// 停用後：未過期 token 不得開新連線（D11 即時撤權殘窗）
+	// 停用後：未過期 token 不得開新連線（即時撤權殘窗）
 	db.Model(user).Update("active", false)
 	if _, err := auth.ValidateConnectionToken(resp.Token); !errors.Is(err, ErrUserInactive) {
 		t.Errorf("停用後 = %v, want ErrUserInactive", err)
 	}
 
-	// 鎖定中：不得開新連線（D13：既有會話不砍，僅擋新連線）
+	// 鎖定中：不得開新連線（既有會話不砍，僅擋新連線）
 	future := time.Now().Add(30 * time.Minute)
 	db.Model(user).Updates(map[string]interface{}{"active": true, "locked_until": future})
 	if _, err := auth.ValidateConnectionToken(resp.Token); !errors.Is(err, ErrAccountLocked) {

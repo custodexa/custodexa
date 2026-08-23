@@ -8,7 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// === 密碼雜湊介面（password-hasher-interface）===
+// === 密碼雜湊介面===
 //
 // 為什麼要有這層：密碼雜湊演算法原以 13 處直接呼叫 bcrypt 散在產品程式碼中，
 // 使演算法無法更換；而更換的需求具體且方向互相衝突——場域要求 FIPS 140-3 合規

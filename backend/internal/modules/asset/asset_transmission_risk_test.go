@@ -15,8 +15,8 @@ import (
 
 // newTransmissionRiskAssetDB 資產列表風險項測試用的 in-memory DB。
 // 原夾具來自 transmission_inventory_service_test.go 的 setupInventorySvc；該檔
-// 於 W3 遷入 internal/modules/policy 並改為外部測試套件，本測試驗的是
-// asset 側的 AssetService.List 行為，故隨 W6 6.6 遷入本包並自備夾具。
+// 已遷入 internal/modules/policy 並改為外部測試套件，本測試驗的是
+// asset 側的 AssetService.List 行為，故遷入本包並自備夾具。
 func newTransmissionRiskAssetDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -71,7 +71,7 @@ func TestAssetListCarriesTransmissionRisks(t *testing.T) {
 }
 
 // newPolicyServiceForTest 政策服務夾具（原件在 identity 側的
-// ldap_directory_service_test.go，W6 搬檔後跨包取不到）。逐行複製，只用匯出面。
+// ldap_directory_service_test.go，搬檔後跨包取不到）。逐行複製，只用匯出面。
 func newPolicyServiceForTest(t *testing.T) *policy.SecurityPolicyService {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

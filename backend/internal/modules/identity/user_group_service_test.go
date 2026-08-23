@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// uptrScope／strPtr 測試助手（原宣告於隨 W7 遷入 authz 的
+// uptrScope／strPtr 測試助手（原宣告於已遷入 authz 的
 // access_request_service_test.go；本包多處仍在用，故留同名同義的複本）
 func uptrScope(v uint) *uint { return &v }
 
@@ -121,8 +121,8 @@ func TestUserGroupDeleteCascade(t *testing.T) {
 		t.Fatalf("AuthorizationCount = %d, %v", n, err)
 	}
 
-	// 審核範圍：群組作審核方＋作申請人群組各一筆（approval-routing-quorum D-7）——
-	// 刪群組應連動軟刪，防幽靈引用與殘留成員回復資格（對抗驗證 aaa2018）
+	// 審核範圍：群組作審核方＋作申請人群組各一筆——
+	// 刪群組應連動軟刪，防幽靈引用與殘留成員回復資格
 	if err := db.Create(&model.ApproverScope{ApproverGroupID: &g.ID, AssetID: &aid, GrantedBy: 1}).Error; err != nil {
 		t.Fatalf("seed actor scope: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestGrantBatch_ExpandAndSkip(t *testing.T) {
 }
 
 // TestGrantBatch_ConflictSkipNotError 既有組合以 ON CONFLICT DO NOTHING 原子跳過，
-// 不因唯一索引衝突整批回滾回錯（codex P2：先查後寫並發不安全，改交 DB 兜底）
+// 不因唯一索引衝突整批回滾回錯（先查後寫並發不安全，改交 DB 兜底）
 func TestGrantBatch_ConflictSkipNotError(t *testing.T) {
 	svc, db, users, _ := setupBatchEnv(t)
 	ctx := context.Background()

@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 骨架本體的契約測試（modular-architecture W10）
+// 骨架本體的契約測試
 //
 // 只釘住**三處入口共用的骨架語義**，不重複驗各閘的內容——後者由
 // `internal/sshproxy`／`internal/proxy` 的 characterization matrix 與

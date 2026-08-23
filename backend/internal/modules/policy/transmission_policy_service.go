@@ -11,7 +11,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 傳輸通道識別（transmission-security-policy D1）：政策鍵、清冊與 API 共用
+// 傳輸通道識別：政策鍵、清冊與 API 共用
 const (
 	TransportChannelRDP    = "rdp"
 	TransportChannelVNC    = "vnc"
@@ -37,7 +37,7 @@ const (
 // transient 欄位與判定核心共用同一型別，避免兩處結構漂移）
 type RiskItem = model.TransmissionRisk
 
-// ── 後端顯示字串 i18n 共用基建（i18n-backend-labels）──────────────────────
+// ── 後端顯示字串 i18n 共用基建──────────────────────
 // 三類後端顯示字串（risk label、inventory note/preflight）皆錨定穩定機器碼、
 // 保留 zh 為 fallback；前端以碼查譯。此處為 risk 與 inventory 共用的 template
 // 驗證與內插——registry 註冊時雙向驗證 {placeholder} 集合恰等於 RequiredParams。
@@ -54,7 +54,7 @@ func templatePlaceholders(tmpl string) map[string]bool {
 	return set
 }
 
-// validateTemplateParams 註冊時雙向驗證（rr-C1）：template 的 {placeholder} 集合恰等於
+// validateTemplateParams 註冊時雙向驗證：template 的 {placeholder} 集合恰等於
 // required；required 無空/重複。共用於 risk 與 inventory registry。
 func validateTemplateParams(kind, code, tmpl string, required []string) error {
 	reqSet := map[string]bool{}
@@ -134,7 +134,7 @@ func AllRiskDescriptors() map[string]RiskDescriptor {
 
 // newRisk 由 registry 產生風險項（唯一 sanctioned 建構子）：驗 required params 齊全（缺則
 // fail-fast panic）、以 zh template 內插產生 Label，回傳既有 wire 結構 {Key, Label}——
-// 不加 Params 欄位，保持 consent／審計 JSON 形狀不變（rr-C1）。
+// 不加 Params 欄位，保持 consent／審計 JSON 形狀不變。
 // 全域 AST 守衛禁止 registry 外設 Label 的裸 RiskItem 字面量繞過本建構子。
 func newRisk(key string, params map[string]any) RiskItem {
 	d, ok := riskDefs[key]
@@ -159,14 +159,14 @@ var channelPolicyKeys = map[string]string{
 	TransportChannelNotify: PolicyTransportNotifyLevel,
 }
 
-// TransmissionPolicyService 傳輸安全政策判定核心（transmission-security-policy D1）：
+// TransmissionPolicyService 傳輸安全政策判定核心：
 // 風險判定規則唯一所在，供 connect-token 簽發閘、設定存檔閘、LDAP 登入閘、
 // 資產徽章與通道清冊共用——判定散落各 handler 會漂移，清冊與閘門對同一
 // 資產給出不同答案即誠實性破產
 type TransmissionPolicyService struct {
 	policy *SecurityPolicyService
-	// ldapRiskView LDAP 設定的**執行期**風險視圖 provider（ldap-settings-migration
-	// D2）。改自原本的 config.LDAPConfig 快照：設定遷入 DB 後可隨時變更，啟動時
+	// ldapRiskView LDAP 設定的**執行期**風險視圖 provider。
+	// 改自原本的 config.LDAPConfig 快照：設定遷入 DB 後可隨時變更，啟動時
 	// 拷貝一份 config 會使清冊與徽章永遠停在啟動當下的值。
 	//
 	// **provider 回三態不回 nil**：DEK 事故下若清冊顯示「LDAP 未啟用」而設定頁
@@ -261,10 +261,10 @@ func (s *TransmissionPolicyService) ldapView() LDAPRiskResult {
 	return s.ldapRiskView()
 }
 
-// LDAPRisks 認證通道風險判定（design D9）：檢查撥號當下實際參數，
+// LDAPRisks 認證通道風險判定：檢查撥號當下實際參數，
 // 與設定存放位置無關。LDAP 未設定/未啟用＝通道不存在，無風險項。
 //
-// **判準本體在 LDAPRisksOf 純函式**（ldap-settings-migration D2）：登入路徑
+// **判準本體在 LDAPRisksOf 純函式**：登入路徑
 // 的閘改為對「該次登入解析出的 snapshot」直接呼叫該純函式，本方法則是清冊
 // 等消費端的入口。兩者共用同一函式，判準不會因來源不同而漂移。
 //
@@ -299,7 +299,7 @@ func (s *TransmissionPolicyService) ConsentTTLDays() int {
 	return s.policy.GetInt(PolicyTransportConsentTTLDays)
 }
 
-// 設定類閘結果碼（D6）
+// 設定類閘結果碼
 const (
 	TransmissionGateAckRequired  = "ack_required"
 	TransmissionGateStrictReject = "strict_reject"
@@ -321,7 +321,7 @@ func (e *TransmissionGateError) Error() string {
 	return "設定含不安全傳輸，需附風險確認聲明（risk_acknowledged）"
 }
 
-// CheckSettingSave 設定類通道存檔閘（D6，與既有驗證同處 service 層）：
+// CheckSettingSave 設定類通道存檔閘（與既有驗證同處 service 層）：
 // off 或無風險＝nil；warn＋已確認＝nil（呼叫端負責聲明入審計）；
 // warn＋未確認＝ack_required；strict＝無條件拒絕。
 // 存量設定不回溯——本閘只攔「存檔」動作，運行中設定不中斷（spec 已鎖定）
@@ -342,7 +342,7 @@ func (s *TransmissionPolicyService) CheckSettingSave(channel string, risks []Ris
 	}
 }
 
-// TransmissionRiskFingerprint 風險項集合的確定性雜湊（transmission-security-policy D3）：
+// TransmissionRiskFingerprint 風險項集合的確定性雜湊：
 // 僅取 key、排序後雜湊——順序無關；集合變更（資產傳輸屬性改動）即不符，
 // 令既有同意自然失效，無需在資產寫路徑掛 hook
 func TransmissionRiskFingerprint(risks []RiskItem) string {

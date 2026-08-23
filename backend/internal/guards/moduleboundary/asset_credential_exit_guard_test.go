@@ -1,12 +1,12 @@
 package moduleboundary
 
-// 資產憑證的**解封出口清單**（modular-architecture Phase B / W6 任務 6.3，H-4）。
+// 資產憑證的**解封出口清單**（Phase B 任務 6.3）。
 //
 // **安全紅線**：資產憑證的明文只在「連線收口」的那一刻出現，前端零接觸。
 // 現況全庫只有兩個出口——`AssetService.GetWithCredentialsForAccount`（連線用）
-// 與 `AssetService.GetSftpPassword`（SFTP 用）。R3.1 §3.1 的 H-4 原本只列了前者，
-// 後者是**這一波查出來補上的**：一份不完整的出口清單比沒有清單更危險，因為它
-// 會讓人以為「都在這裡了」。
+// 與 `AssetService.GetSftpPassword`（SFTP 用）。清單最初只列了前者，後者是後來
+// 查出來補上的：一份不完整的出口清單比沒有清單更危險，因為它會讓人以為
+// 「都在這裡了」。
 //
 // **本守衛擋的是**：任何人在 asset 模組**之外**、或在 asset 內的**第三個函式**
 // 解封資產類密文欄。這正是「正常開發會意外發生」的形態——handler 想直接拿明文
@@ -35,8 +35,8 @@ import (
 // key＝`相對路徑#函式`，value＝理由。**新增一列＝新增一個明文出口，SHALL 經安全審查**。
 var assetCredentialExits = map[string]string{
 	"internal/modules/asset/asset_service.go#(*AssetService).GetWithCredentialsForAccount": "連線收口：SSH／RDP／VNC 撥線時把帳號憑證交給接入層，明文不出行程邊界。",
-	"internal/modules/asset/asset_service.go#(*AssetService).GetSftpPassword":              "SFTP 收口：獨立的 sftp_password_enc 欄，同上（H-4 於 W6 補列的第二出口）。",
-	"internal/modules/asset/change_secret_candidate_service.go#(*ChangeSecretCandidateService).Secret": "改密未驗證候選憑證的解封（change-secret-ssh-deepening D1）。" +
+	"internal/modules/asset/asset_service.go#(*AssetService).GetSftpPassword":              "SFTP 收口：獨立的 sftp_password_enc 欄，同上（後續補列的第二出口）。",
+	"internal/modules/asset/change_secret_candidate_service.go#(*ChangeSecretCandidateService).Secret": "改密未驗證候選憑證的解封。" +
 		"**新出口的正當性**：候選是尚未成為帳號憑證的秘密，不在 asset_accounts 的兩個既定出口涵蓋範圍內；" +
 		"其明文只在同一行程內交給兩個用途——以候選登入目標機驗證、驗證成功後提交為帳號憑證，" +
 		"SHALL NOT 進入任何 API 回應、日誌、審計欄位或子程序（行為式守衛 " +

@@ -14,9 +14,9 @@ import (
 // ErrReviewNotFound 複審紀錄不存在
 var ErrReviewNotFound = errors.New("複審紀錄不存在")
 
-// AccessMatrixEntry 存取矩陣單列（audit-workflows D2）：一筆授權的可讀展開。
+// AccessMatrixEntry 存取矩陣單列（audit-workflows）：一筆授權的可讀展開。
 // 主體分 user 或 user_group（二選一）、客體分 asset 或 asset_group（二選一），
-// 與 asset_authorization 的 XOR 約束一致（user-group-authorization：主體側 nullable）
+// 與 asset_authorization 的 XOR 約束一致（主體側 nullable）
 type AccessMatrixEntry struct {
 	AuthorizationID uint      `json:"authorization_id"`
 	UserID          *uint     `json:"user_id,omitempty"`
@@ -38,7 +38,7 @@ type AccessReviewView struct {
 	DaysAgo int `json:"days_ago"`
 }
 
-// AccessReviewService 週期性存取複審（audit-workflows D2 v1，PCI 7.2.4）
+// AccessReviewService 週期性存取複審（audit-workflows v1，PCI 7.2.4）
 type AccessReviewService struct {
 	db *gorm.DB
 }
@@ -152,14 +152,14 @@ func (s *AccessReviewService) GetReviewSnapshot(reviewID uint) (string, error) {
 	return review.MatrixSnapshot, nil
 }
 
-// ReviewPeriodDays 複審建議週期（authorization-page-redesign D5：v1 固定 180 天，
+// ReviewPeriodDays 複審建議週期（v1 固定 180 天，
 // 週期值與逾期判定由伺服端回傳，前端不硬編碼；政策鍵化登 backlog）
 const ReviewPeriodDays = 180
 
 // ErrReviewSnapshotCorrupted 快照損壞（不可解析），回明確錯誤而非空內容
 var ErrReviewSnapshotCorrupted = errors.New("複審快照損壞，無法解析")
 
-// AccessReviewDetail 單筆複審檢視 DTO（authorization-page-redesign D5）：
+// AccessReviewDetail 單筆複審檢視 DTO：
 // 中繼資料＋解析後的矩陣陣列（型別化，前端抽屜契約固定）
 type AccessReviewDetail struct {
 	ID                 uint                `json:"id"`

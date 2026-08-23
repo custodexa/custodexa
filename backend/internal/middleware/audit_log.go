@@ -41,7 +41,7 @@ func withTrustedProxyDecision(trust bool) auditLogOption {
 
 // AuditLogMiddleware 審計日誌中間件
 func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOption) gin.HandlerFunc {
-	// 匿名拒絕留痕器（audit-coverage-closure D1／D2）。**建在閉包外**：令牌桶與
+	// 匿名拒絕留痕器。**建在閉包外**：令牌桶與
 	// 聚合表必須跨請求存續，建在請求內等於每個請求都拿到滿額度＝無界
 	anon := newAnonRejectionAuditor(anonRejectionParams{},
 		config.LoadSeal().TrustedProxyConfigured(), auditService)
@@ -80,12 +80,12 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		userID, userIDExists := c.Get("userID") // 修復：與 AuthMiddleware 一致（駝峰式）
 		username, usernameExists := c.Get("username")
 
-		// 沒有身分時的兩條路（audit-coverage-closure D1）。
+		// 沒有身分時的兩條路。
 		//
 		// 這個分支是審計中介層**唯一**的整筆跳過條件，也就是「拒絕路徑零留痕」這個
 		// 系統性破口的所在：認證中介層的每個 401 出口都在還沒設過 userID 時 abort，
 		// 於是 171 條受保護路由的拒絕全部靜默消失。修在這裡一次涵蓋全部，且新增
-		// 端點自動涵蓋——逐 handler 補要改 171 處而且必漏（design D1）。
+		// 端點自動涵蓋——逐 handler 補要改 171 處而且必漏。
 		//
 		// **只補「認證中介層判的拒絕」**：標記由 `abortUnauthenticated` 留下。
 		// 沒有標記的無身分請求（/health 探針、/auth/login 自己留痕的密碼錯誤、
@@ -108,7 +108,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		// 解析 action 和 resource
 		action, resource, resourceID := parseRoute(c)
 
-		// handler 覆寫審計 resource/resource_id（profile-display-name R2）：
+		// handler 覆寫審計 resource/resource_id：
 		// 身分綁定自助端點（如 PATCH /auth/me）路由層歸 resource=auth 且無 :id，
 		// 端點覆寫為 resource=user, resource_id=當前使用者，避免模糊審計
 		if v, exists := c.Get("audit_resource"); exists {
@@ -122,7 +122,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			}
 		}
 
-		// 資產主體鍵（auditor-workbench D4）。兩條來源，順序不可倒置：
+		// 資產主體鍵（auditor-workbench）。兩條來源，順序不可倒置：
 		//  1. 路由推導——resource 已是 asset 且帶 :id，此時 resource_id **就是**
 		//     asset id。這條在 extractResource 訂正（change-secret-plans／
 		//     authorizations 各自獨立分類）之後才成立；訂正前 default 分支會讓
@@ -162,7 +162,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			}
 		}
 
-		// 審計資源的讀取記查詢條件摘要（audit-log-compliance，PCI 10.2.1.3）
+		// 審計資源的讀取記查詢條件摘要（PCI 10.2.1.3）
 		details := ""
 		if c.Request.Method == "GET" && auditSensitiveResources[resource] {
 			summary := map[string]string{}
@@ -203,7 +203,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			}
 		}
 
-		// handler 注入的補充審計標記（access-policy-approval：admin 政策豁免等），
+		// handler 注入的補充審計標記（admin 政策豁免等），
 		// 與查詢摘要合併——豁免連線必須在該筆日誌帶獨立可篩標記（決議 3）
 		if v, exists := c.Get("audit_details"); exists {
 			merged := map[string]interface{}{}
@@ -233,7 +233,7 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 			Status:     status,
 			Method:     c.Request.Method,
 			Path:       c.Request.URL.Path,
-			// 來源位址走全庫唯一取法（audit-coverage-closure 批 8）：本行是覆蓋面
+			// 來源位址走全庫唯一取法：本行是覆蓋面
 			// 最大的一處——**所有已認證請求的審計列都由它寫**。原本的 c.ClientIP()
 			// 在未設 TRUSTED_PROXIES 時採信任意轉送標頭，任何持有有效帳號者送一個
 			// X-Forwarded-For，就能把自己**全部操作**的來源位址寫成任選的值。
@@ -288,15 +288,15 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 	} else if strings.Contains(path, "/test") {
 		action = model.ActionExecute // Test 視為 Execute
 	} else if strings.HasSuffix(path, "/approve") {
-		// HasSuffix 而非 Contains（codex 審查 #6）：/approver-scopes 亦含 "/approve"
+		// HasSuffix 而非 Contains：/approver-scopes 亦含 "/approve"
 		// 子字串，Contains 會把範圍 CRUD 全誤判為 approve，破壞範圍配置稽核可信度
-		action = model.ActionApprove // 申請核准（access-policy-approval）
+		action = model.ActionApprove // 申請核准
 	} else if strings.HasSuffix(path, "/reject") {
 		action = model.ActionReject
 	} else if strings.HasSuffix(path, "/cancel") {
 		action = model.ActionCancel
 	} else if strings.HasSuffix(path, "/revoke") {
-		action = model.ActionRevoke // 臨時授權提前撤銷（break-glass-revocation）
+		action = model.ActionRevoke // 臨時授權提前撤銷
 	} else if strings.HasSuffix(path, "/review") {
 		// HasSuffix：GET /reviews/pending 不含此結尾，不受影響
 		action = model.ActionReview // 破窗事後補審
@@ -321,8 +321,7 @@ func extractResource(path string) model.AuditResource {
 	// 提取 "assets"
 	parts := strings.Split(path, "/")
 
-	// 會話內子資源的優先判定（clipboard-read-provenance；
-	// audit-resource-classification-closure 批 1 擴充至錄影與指令）：
+	// 會話內子資源的優先判定（涵蓋剪貼簿、錄影與指令）：
 	// 下方主迴圈依**路徑序**命中，`/sessions/:id/clipboard-events`、
 	// `/sessions/:id/recording/download`、`/sessions/:id/commands` 都會先撞上
 	// `sessions` 而歸 session。那不是 default asset 的誤歸（resource_id 確為連線
@@ -330,7 +329,7 @@ func extractResource(path string) model.AuditResource {
 	// resource 欄同形，稽核只剩不可索引的 path 散文可資區隔，無法以資源分類
 	// 篩出取證動作（PCI 10.2.1.3）。
 	//
-	// 判準（design D1 B 類）：**若這個回應被外洩，洩的是系統的設定與中繼資料，
+	// 判準：**若這個回應被外洩，洩的是系統的設定與中繼資料，
 	// 還是被監控者產生的原始材料本體？**是後者即須專屬分類——剪貼簿明文、
 	// 終端畫面錄影、被監控者輸入的指令原文三者皆是。
 	//
@@ -368,7 +367,7 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceUser
 		case "auth", "login", "logout":
 			return model.ResourceAuth
-		// 審計資源映射（audit-log-compliance，PCI 10.2.1.3）：對審計日誌的
+		// 審計資源映射（PCI 10.2.1.3）：對審計日誌的
 		// 存取須可辨識，不得落入 default asset 分類。
 		// 注：`commands` 已上移至前置特判迴圈（跨會話與單會話同歸 command），
 		// 留在此處會是永不可達的死規則
@@ -386,14 +385,14 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceSyslogSetting
 		case "keys":
 			return model.ResourceKeyManagement
-		// 申請核准流（access-policy-approval）：申請單與審核範圍不得落入
+		// 申請核准流：申請單與審核範圍不得落入
 		// default asset 分類；狀態轉移的語義動作（approve/reject/cancel/expire）
 		// 由 service 直接記錄，此處僅涵蓋路由層 create/read
 		case "access-requests":
 			return model.ResourceAccessRequest
 		case "approver-scopes":
 			return model.ResourceApproverScope
-		// 改密計畫與授權（auditor-workbench D1.3(a) 訂正）：兩者原本落入
+		// 改密計畫與授權（auditor-workbench 訂正）：兩者原本落入
 		// default asset 分支，使審計列 resource=asset 而 resource_id 是
 		// **計畫 id／授權列 id**。資產樞紐若以 (resource, resource_id) 查，
 		// 查資產 130 會撈到「改密計畫 130」與「授權列 130」——那是
@@ -410,21 +409,21 @@ func extractResource(path string) model.AuditResource {
 		// 稽核工作台的聚合讀取（同 PCI 10.2.1.3：對審計資料的讀取須可辨識）
 		case "timeline", "subjects":
 			return model.ResourceAuditTimeline
-		// ── 以下四族為 audit-resource-classification-closure 批 2 接線 ──
+		// ── 以下四族為後續接線補上的分類 ──
 		// 四者的常數皆早已存在、只是從未接上分類器，於是全族落 default asset。
 		// 帶 `:id` 的那些（access-reviews/:id、user-groups/:id*）後果不只是分類
 		// 不精確：上方 assetID 推導由 `resource == ResourceAsset && resource_id != nil`
 		// 無條件成立，複審單 id／群組 id 因此被寫進 asset_id，在稽核工作台的
-		// **同號資產**時間軸上長出假事件（design D2）。接線即止血。
+		// **同號資產**時間軸上長出假事件。接線即止血。
 		//
 		// 週期性存取複審（audit-workflows）：`:id` 指向複審單
 		case "access-reviews":
 			return model.ResourceAccessReview
-		// 使用者群組（user-group-authorization）：`:id` 指向群組，
+		// 使用者群組：`:id` 指向群組，
 		// `/user-groups/:id/members`、`/user-groups/:id/authorization-count` 同族
 		case "user-groups":
 			return model.ResourceUserGroup
-		// 傳輸安全（transmission-security-policy）：清冊與同意立據同歸一類——
+		// 傳輸安全：清冊與同意立據同歸一類——
 		// 兩者是同一份政策的兩面（現況與立據），且皆無 `:id`
 		case "transmission-inventory", "transmission-consents":
 			return model.ResourceTransmission
@@ -434,11 +433,11 @@ func extractResource(path string) model.AuditResource {
 		// 審計中介層必然早退，不由此處涵蓋（另有 proxy 側產生點）
 		case "connect-tokens":
 			return model.ResourceSession
-		// ── 以下十族為 audit-resource-classification-closure 批 3 新分類 ──
+		// ── 以下十族為新增的分類 ──
 		// 十者的常數從未存在，於是整族落兜底。帶 `:id` 的那些（alert-rules、
 		// asset-groups、notification-channels、oidc-providers、snippets）在兜底
 		// 為 asset 的年代把規則 id／分組 id／通道 id／提供者 id／片段 id 寫進
-		// asset_id，在同號**資產**的時間軸上長出假事件（design D2）。
+		// asset_id，在同號**資產**的時間軸上長出假事件。
 		//
 		// 三個審計端點（audit-checkpoints／audit-failures／audit-integrity）
 		// 另入 auditSensitiveResources——它們是審計資料的讀取，PCI 10.2.1.3
@@ -448,7 +447,7 @@ func extractResource(path string) model.AuditResource {
 		// 審計檢查點鏈（audit-checkpoint-chain）：無 `:id`
 		case "audit-checkpoints":
 			return model.ResourceAuditCheckpoint
-		// 審計失效事件（audit-log-compliance）：無 `:id`
+		// 審計失效事件：無 `:id`
 		case "audit-failures":
 			return model.ResourceAuditFailure
 		// 審計完整性驗證：無 `:id`
@@ -482,7 +481,7 @@ func extractResource(path string) model.AuditResource {
 		}
 	}
 
-	// 兜底＝專屬哨兵（audit-resource-classification-closure 批 3）。
+	// 兜底＝專屬哨兵。
 	//
 	// **SHALL NOT 落在任何有真實查詢面的類別上。** 舊實作回 `asset`，註解自承
 	// 動機只是「避免空值」——任何非空字串都滿足它，而 asset 的代價是把假列注入
@@ -502,20 +501,20 @@ var auditSensitiveResources = map[model.AuditResource]bool{
 	model.ResourceCommandAlert:  true,
 	model.ResourceAuditExport:   true,
 	model.ResourceDailyReview:   true,
-	model.ResourceKeyManagement: true, // 金鑰清冊讀取入審計（key-management-envelope 5.3）
-	// 工作台的聚合讀取（auditor-workbench D7）：一次查詢即橫跨六類審計資料，
+	model.ResourceKeyManagement: true, // 金鑰清冊讀取入審計
+	// 工作台的聚合讀取（auditor-workbench）：一次查詢即橫跨六類審計資料，
 	// 「誰以什麼條件查了誰」比單頁讀取更需要留痕
 	model.ResourceAuditTimeline: true,
-	// 剪貼簿證物讀取（clipboard-read-provenance）：Content 是 64KB 明文欄，
+	// 剪貼簿證物讀取：Content 是 64KB 明文欄，
 	// 該端點是調查流程中「取走證物」的動作，比任何審計列表讀取更需要留痕
 	model.ResourceClipboardEvent: true,
-	// 錄影調閱（audit-resource-classification-closure 批 1）：回傳的是終端畫面
+	// 錄影調閱：回傳的是終端畫面
 	// 錄影本體——被監控者產生的原始材料，且可能含憑證輸入畫面。取走它與看一眼
 	// 連線詳情必須分得開，且須答得出「取的是哪一場連線的錄影」（details.session_id）。
-	// 註：ResourceCommand 早已在集合內（跨會話 /commands），批 1 之後單會話
-	// /sessions/:id/commands 一併歸 command，取證與一般讀取因而同時可辨識
+	// 註：ResourceCommand 早已在集合內（跨會話 /commands），單會話
+	// /sessions/:id/commands 現已一併歸 command，取證與一般讀取因而同時可辨識
 	model.ResourceRecording: true,
-	// 三個審計端點分類（audit-resource-classification-closure 批 3）：它們讀的是
+	// 三個審計端點分類：它們讀的是
 	// **審計資料本身**（檢查點鏈、失效事件、完整性驗證），PCI 10.2.1.3 要求對審計
 	// 資料的讀取可辨識且記查詢範圍。`/audit-checkpoints/verify` 帶 seq_from／seq_to、
 	// `/audit-integrity/verify` 帶時間範圍，摘要因此非空。

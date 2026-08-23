@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// shareEntry 一筆會話分享（session-share D1）：記憶體存活，隨會話/重啟失效
+// shareEntry 一筆會話分享（session-share）：記憶體存活，隨會話/重啟失效
 type shareEntry struct {
 	SessionID uint
 	CreatedBy uint
@@ -29,7 +29,7 @@ func NewShareManager() *ShareManager {
 	}
 }
 
-// Create 為會話建立分享碼；同會話舊碼即刻失效（design D2）
+// Create 為會話建立分享碼；同會話舊碼即刻失效
 func (m *ShareManager) Create(sessionID, createdBy uint, ttl time.Duration) (string, time.Time, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {

@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// OIDC 流程安全測試（idp-oidc-integration tasks 4.3/4.4）：
+// OIDC 流程安全測試：
 // flow state 一次性與過期、交棒憑證的瀏覽器綁定與消費、世代閘於兌換點的執行。
 
 // setupOIDCEnv sqlite in-memory 環境。SetMaxOpenConns(1) 為必要——
@@ -91,7 +91,7 @@ func (r *recordingAudit) countEvent(event string) int {
 	return n
 }
 
-// ── 審計意向的斷言面（audit-coverage-closure 批 2）────────────────────────
+// ── 審計意向的斷言面 ────────────────────────
 //
 // 流程審計已改由 handler 落地（service 拿不到 *gin.Context，自寫必是四欄皆空的
 // 殘列），service 交回的是 `[]OIDCAuditEvent` 意向。故本包的斷言對象隨之從
@@ -316,7 +316,7 @@ func TestExchangeRejectsEmptyBrowserSecret(t *testing.T) {
 	p := seedProvider(t, db, nil)
 	user := seedOIDCUser(t, db, "alice")
 
-	// login CSRF 的實際攻擊路徑（codex HIGH）：攻擊者以 SHA256("") 當 binding 發起
+	// login CSRF 的實際攻擊路徑：攻擊者以 SHA256("") 當 binding 發起
 	// 流程、用自己的 IdP 帳號完成授權，再把 callback URL 交給受害者。受害者的
 	// sessionStorage 沒有 secret，若 exchange 接受空字串，雜湊恰好相符 → 受害者
 	// 被登入攻擊者帳號，其後全部操作與審計歸屬錯誤

@@ -267,7 +267,7 @@ func TestLocalAdminLockKeyDistinct(t *testing.T) {
 // 一切 DB 存取序列化，使「兩者各自讀到對方仍在」的 write-skew 交錯無法穩定重現——
 // 突變測試（把鎖內重讀改成鎖外預讀）會因為第二個 goroutine 的預讀被迫等到第一個
 // 交易提交後才發生而**看似仍然安全**，測試就失去辨識力。檔案型 DB 的兩條真連線
-// 可讓預讀真正並行，突變因此被確定性地抓到（見回報中的突變自檢紀錄）。
+// 可讓預讀真正並行，突變因此被確定性地抓到。
 func localAdminConcurrentDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := filepath.Join(t.TempDir(), "localadmin.db") + "?_pragma=busy_timeout(5000)"
@@ -287,8 +287,8 @@ func localAdminConcurrentDB(t *testing.T) *gorm.DB {
 // TestLocalAdminInvariantConcurrentRemovalKeepsOne 兩個並發的移除類操作
 // （停用 A、刪除 B）作用於僅剩的兩名本地 admin：至多一個成功，事後本地 admin ≥ 1。
 //
-// 單次操作內的檢查對此完全無感——兩個請求各自看見「對方還在」即可同時提交
-// （design r6，codex HIGH-2）。交錯由 localAdminPreWriteHook 在「判定通過、寫入之前」
+// 單次操作內的檢查對此完全無感——兩個請求各自看見「對方還在」即可同時提交。
+// 交錯由 localAdminPreWriteHook 在「判定通過、寫入之前」
 // 製造：正確實作下第二個操作被系統級鎖擋在門外，等第一個提交後才重讀而被拒絕。
 func TestLocalAdminInvariantConcurrentRemovalKeepsOne(t *testing.T) {
 	db := localAdminConcurrentDB(t)

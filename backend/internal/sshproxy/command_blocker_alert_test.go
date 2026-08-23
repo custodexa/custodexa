@@ -22,7 +22,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// BD-1 行為修復的結果證明（modular-architecture W5 5.1／5.2／5.7）
+// 阻斷告警離機留痕的結果證明
 //
 // 本檔刻意**不驗「有沒有呼叫 EnqueueAlert」**。呼叫是手段，離機留痕才是目的；
 // 驗呼叫的測試在「呼叫了但轉發器把它丟掉」「呼叫順序錯在入庫前」等形態下照樣綠。
@@ -30,7 +30,7 @@ import (
 // 阻斷 → 落地面 → 入庫 → tee 的路徑，斷言**那個行程外的接收端真的收到那一筆**。
 //
 // 修復前的同一條路徑在此必然轉紅：收口前 recordBlocked 只 db.Create ＋ Enqueue 通知，
-// 從不呼叫 SyslogForwarder.EnqueueAlert（BD-1），接收端永遠收不到 blocked 那筆。
+// 從不呼叫 SyslogForwarder.EnqueueAlert，接收端永遠收不到 blocked 那筆。
 // ---------------------------------------------------------------------------
 
 // setupAlertDB 檔案型 sqlite（不用 :memory:——連線池會讓不同連線看到不同的庫，
@@ -199,7 +199,7 @@ func blockRule() *model.AlertRule {
 	}
 }
 
-// TestBlockedAlertReachesSyslogDestination BD-1 的結果證明：
+// TestBlockedAlertReachesSyslogDestination 離機留痕的結果證明：
 // 阻斷告警寫入資料庫後，確實被轉發到行程外的 syslog 目的地。
 func TestBlockedAlertReachesSyslogDestination(t *testing.T) {
 	db := setupAlertDB(t)
@@ -251,8 +251,8 @@ func TestBlockedAlertReachesSyslogDestination(t *testing.T) {
 		t.Errorf("轉發 payload 的 session_id=%v，應為 %s", payload["session_id"], want)
 	}
 
-	// (3) 內容正確性（W5 對抗 F2）：只綁「是不是那一筆」不夠——一個把嚴重度、
-	//     行為人、資產全部寫錯的 tee 曾能完整通過本測試（紅隊實證：severity 偽造成
+	// (3) 內容正確性：只綁「是不是那一筆」不夠——一個把嚴重度、
+	//     行為人、資產全部寫錯的 tee 曾能完整通過本測試（實證：severity 偽造成
 	//     "low"、user_id 歸零、asset_id 抹成 nil，全庫零紅）。SIEM 端據以分級、
 	//     究責與關聯的正是這三欄，離機值錯＝離機證據無用。
 	//
@@ -317,7 +317,7 @@ func TestBlockedAlertNotForwardedWhenSyslogDisabled(t *testing.T) {
 	sink.expectSilence(t, 500*time.Millisecond, "syslog 轉發停用")
 }
 
-// TestBothAlertPathsWriteIdenticalShape W5 5.2：兩條路徑的告警欄位同構。
+// TestBothAlertPathsWriteIdenticalShape 兩條路徑的告警欄位同構。
 //
 // 阻斷路徑（command_blocker）與比對路徑（alert_matcher）針對同一條規則各產一筆，
 // 逐欄比對。收口前阻斷路徑的 disposition 為空字串、asset_id 恆為 NULL——
@@ -403,7 +403,7 @@ func TestBlockedAlertAssetIsNullWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestBlockedAlertSinkMissingIsLoudNotSilent W5 5.4 的 fail-close 三件套（呼叫側）。
+// TestBlockedAlertSinkMissingIsLoudNotSilent fail-close 三件套（呼叫側）。
 //
 //	成功對照：注入 sink 時同一條輸入確實落地 1 列（下面第一段）
 //	指定故障：sink 未注入時回的是 gatewayapi.ErrAlertSinkMissing（以 log 內容比對，
@@ -444,7 +444,7 @@ func TestBlockedAlertSinkMissingIsLoudNotSilent(t *testing.T) {
 	logged := buf.String()
 	if !strings.Contains(logged, gatewayapi.ErrAlertSinkMissing.Error()) {
 		t.Errorf("未注入 sink 時應留下 ErrAlertSinkMissing 的紀錄，實得 log：%q\n"+
-			"  SHALL NOT 靜默 no-op——那正是 BD-1 這類缺陷「沒有任何東西變紅」的成因", logged)
+			"  SHALL NOT 靜默 no-op——那正是這類缺陷「沒有任何東西變紅」的成因", logged)
 	}
 	missDB.Model(&model.CommandAlert{}).Count(&n)
 	if n != 0 {

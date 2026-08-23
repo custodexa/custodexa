@@ -18,7 +18,7 @@ const routes = [
     component: () => import('../views/Login.vue'),
   },
   {
-    // 解封頁（kek-provider-modularization D6.6）：**封印期可達且不要求登入**。
+    // 解封頁：**封印期可達且不要求登入**。
     // 封印期後端只放行 /health、/seal/status、/seal/unseal，登入端點本身是 503，
     // 故此頁 SHALL NOT 帶 requiresAuth——否則管理員被導去一個打不通的登入頁。
     path: '/unseal',
@@ -44,7 +44,7 @@ const routes = [
         path: 'sessions',
         name: 'Sessions',
         component: () => import('../views/Sessions.vue'),
-        // session 管理視圖含他人連線紀錄，收斂為稽核職能（session-access-scoping）
+        // session 管理視圖含他人連線紀錄，收斂為稽核職能
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
       {
@@ -53,20 +53,20 @@ const routes = [
         component: () => import('../views/MyConnections.vue'),
       },
       {
-        // 個人資料（navigation-ia D3）：全角色自助頁——基本資料/自助改密/MFA 管理
+        // 個人資料：全角色自助頁——基本資料/自助改密/MFA 管理
         path: 'profile',
         name: 'Profile',
         component: () => import('../views/Profile.vue'),
       },
       {
-        // 我的申請（access-policy-approval D7）：申請人獨立自助頁——
+        // 我的申請：申請人獨立自助頁——
         // 每角色功能頁單獨切開，不併入我的連線
         path: 'my-requests',
         name: 'MyRequests',
         component: () => import('../views/MyRequests.vue'),
       },
       {
-        // 審核中心（access-policy-approval D7）。**W7b D-12 收斂**：移除 admin 兜底
+        // 審核中心。**不做 admin 兜底**
         // ——僅具 admin 者對審核端點一律 403，若仍讓他進頁只會看到一個永遠是空的
         //「待審」表格（假空態，比擋住更危險）。`approver` 述詞的實際判定走
         // `is_approver`（見 createAuthGuard），與選單／badge 同一來源
@@ -76,7 +76,7 @@ const routes = [
         meta: { requiresAuth: true, roles: ['approver'] },
       },
       {
-        // 稽核調查工作台（auditor-workbench D3）：以人／資產為樞紐，把六類
+        // 稽核調查工作台（auditor-workbench）：以人／資產為樞紐，把六類
         // 稽核紀錄併到同一條時間軸上。唯讀頁，與既有六頁**並存不取代**；
         // 權限沿既有稽核頁模式收斂為 admin/auditor
         path: 'audit/workbench',
@@ -88,11 +88,11 @@ const routes = [
         path: 'audit-logs',
         name: 'AuditLogs',
         component: () => import('../views/AuditLogs.vue'),
-        // 最小權限（7.2.x/D9）：審計屬稽核職能，僅 admin/auditor
+        // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
       {
-        // 檢查點驗證（audit-checkpoint-chain 裁決 8）：**獨立成頁**而非
+        // 檢查點驗證（audit-checkpoint-chain）：**獨立成頁**而非
         // AuditLogs 的對話框——資訊量（鏈健康、九態逐區間、離機錨定、
         // 誠實邊界 R0-R6、公鑰）遠超對話框容量。唯讀頁，auditor 亦可入
         path: 'checkpoint-verification',
@@ -104,7 +104,7 @@ const routes = [
         path: 'access-reviews',
         name: 'AccessReviews',
         component: () => import('../views/AccessReviews.vue'),
-        // 存取複審（authorization-page-redesign D5）：稽核職能自授權頁遷出，
+        // 存取複審：稽核職能自授權頁遷出，
         // admin＋auditor 可見；簽核 admin only 由頁內與後端雙重控制
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
@@ -145,7 +145,7 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {
-        // OIDC 身分提供者（idp-oidc-integration D14.3）：身分域設定屬身分管理，
+        // OIDC 身分提供者：身分域設定屬身分管理，
         // 與使用者/角色同組；admin only（後端 RequireRole 才是強制點）
         path: 'oidc-providers',
         name: 'OIDCProviders',
@@ -153,7 +153,7 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {
-        // LDAP 目錄設定（ldap-settings-migration D8）：與 OIDC 同層的身分來源，
+        // LDAP 目錄設定：與 OIDC 同層的身分來源，
         // 兩者並列於身分管理群（分類語彙不是 SSO——LDAP 是 search-then-bind，
         // 實現差異屬內部細節）。singleton 資源，故路由無 :id
         path: 'ldap-directory',
@@ -198,7 +198,7 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       // （TestConnection 手動連線頁已隨連線收口移除：手動輸入任意主機帳密屬繞過資產管理的旁路；
-      //  RDPRecordingTest POC 頁已隨 JWT query fallback 移除——transmission-security-policy M8，
+      //  RDPRecordingTest POC 頁已隨 JWT query fallback 移除，
       //  正式回放走 rtoken／Bearer blob）
     ],
   },
@@ -218,7 +218,7 @@ const routes = [
     path: '/sessions/:id',
     name: 'SessionDetail',
     component: () => import('../views/SessionDetail.vue'),
-    // 與列表頁同步收斂：詳情含指令流與錄影入口（session-access-scoping）
+    // 與列表頁同步收斂：詳情含指令流與錄影入口
     meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
   },
   {
@@ -245,7 +245,7 @@ const router = createRouter({
   routes,
 })
 
-// 封印導覽守衛（kek-encoding-and-unseal-entry）：**單一守衛的兩個方向**。
+// 封印導覽守衛：**單一守衛的兩個方向**。
 //
 // 缺陷史：`KEK_PROVIDER=ui` 的全新安裝，管理員登入後只得到「請先於解封頁提交
 // 金鑰材料」而沒有任何東西把他送過去——ui 模式因此形同不可用。反向的
@@ -288,7 +288,7 @@ export function createAuthGuard() {
       next('/dashboard')
     } else if (to.meta.roles) {
       // Check role-based access（fail-closed：user 資料缺失視同未登入，
-      // 不得跳過角色檢查放行——codex 審查修復，原實作在 token 在、user 缺時 fail-open）
+      // 不得跳過角色檢查放行——原實作在 token 在、user 缺時 fail-open）
       const user = localStorage.getItem('user')
       if (!user) {
         next('/login')
@@ -298,9 +298,9 @@ export function createAuthGuard() {
         const userData = JSON.parse(user)
         const userRoles = userData.roles || []
 
-        // `approver` 是**唯一以 is_approver 裁決的述詞**（W7b D-12 收斂）：
+        // `approver` 是**唯一以 is_approver 裁決的述詞**：
         // 它不從 roles 快取比對——群組審核方的 roles 不含 approver 卻有資格
-        //（D-7），而僅具 admin 者 roles 有 admin 卻**沒有**審核資格。故把它從
+        // 而僅具 admin 者 roles 有 admin 卻**沒有**審核資格。故把它從
         // 靜態角色比對中排除，改由後端算出的 is_approver 單一來源決定，
         // 與選單可見性、badge 輪詢同源；其餘角色述詞維持 roles 交集判定
         const staticRoles = to.meta.roles.filter(role => role !== 'approver')

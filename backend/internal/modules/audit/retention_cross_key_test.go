@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 )
 
-// 執行期跨鍵保守行為（audit-checkpoint-chain tasks 7.5／security-policy spec
+// 執行期跨鍵保守行為（security-policy spec
 //「約束 SHALL 於執行期亦成立」）。
 //
 // 設定面的驗證只擋 API 路徑；政策表被 SQL 直改就繞過了。而鏈修剪是不可逆的

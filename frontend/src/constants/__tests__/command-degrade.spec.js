@@ -1,4 +1,4 @@
-// 降級／限定原因碼的值域與文案守衛（command-audit-altscreen-bypass 2.6）。
+// 降級／限定原因碼的值域與文案守衛。
 //
 // 三件事：
 // 1. **雙向完備性**：直讀後端 session_command.go 取 Degrade*／Qualify* 常數值，

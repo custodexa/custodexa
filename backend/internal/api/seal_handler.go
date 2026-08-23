@@ -22,7 +22,7 @@ type SealJournalStatus interface {
 	Faulted() bool
 }
 
-// SealAdmitFunc 取得一次 admission 資格（D6.5 的固定最小 admission 間隔）。
+// SealAdmitFunc 取得一次 admission 資格（固定最小 admission 間隔）。
 //
 // 回傳的 release SHALL 於本次嘗試結束時呼叫，並以 receivedLanded 表達
 // 「journal 的 received 是否真的落地」——**基準只在落地後才推進**，
@@ -33,25 +33,25 @@ type SealJournalStatus interface {
 // 且使單測不需要真的開一個定長檔。
 type SealAdmitFunc func(ctx context.Context) (release func(receivedLanded bool), err error)
 
-// SealHandler 封印狀態查詢與解封端點（kek-provider-modularization D6.4／D6.6）。
+// SealHandler 封印狀態查詢與解封端點。
 //
 // **不要求 JWT**：要求 JWT 會在「admin 已開 MFA」時死鎖——TOTP secret 是信封
 // 加密欄，封印期解不開，管理員無法登入來解封。授權改以「知道 KEK」承擔
 // （一般解封）；空金鑰表的初始化解封沒有這個證明，故另行要求初始管理員憑證，
-// 該要求由 VerifyFunc 在臨界區內執行（D6.3）。
+// 該要求由 VerifyFunc 在臨界區內執行。
 type SealHandler struct {
 	machine *seal.Machine
 	journal SealJournalStatus
 
 	// trustedProxyConfigured 為 false 時，per-source 退避 SHALL 保守降級為全域退避
-	// （D6.4 可信來源契約：寧可影響可用性，也不提供可被轉送標頭污染而繞過的假防線）。
+	// （可信來源契約：寧可影響可用性，也不提供可被轉送標頭污染而繞過的假防線）。
 	trustedProxyConfigured bool
 	// allowedSources 為解封端點允許的來源網段；空集合＝不限制。
 	allowedSources []*net.IPNet
 	// bindAddr 為解封端點的獨立監聽位址（空＝與主服務共用監聽）。僅供 status 呈現。
 	bindAddr string
 	// unsealRelocated 為真代表**本 handler 掛在主監聽**，而解封端點已另行繫結
-	// 到管理監聽（D6.4）。此時主監聽上的解封一律硬拒——否則獨立監聽只是多開
+	// 到管理監聽。此時主監聽上的解封一律硬拒——否則獨立監聽只是多開
 	// 一個入口，網段隔離完全沒有發生。
 	unsealRelocated bool
 	// initRequired 回報目前是否為「空金鑰表」（初始化解封路徑）。
@@ -73,7 +73,7 @@ func NewSealHandler(m *seal.Machine, j SealJournalStatus) *SealHandler {
 	return &SealHandler{machine: m, journal: j}
 }
 
-// SetSourceControls 注入可信代理與允許網段組態（D6.4）。
+// SetSourceControls 注入可信代理與允許網段組態。
 func (h *SealHandler) SetSourceControls(trustedProxyConfigured bool, allowed []*net.IPNet, bindAddr string) {
 	h.trustedProxyConfigured = trustedProxyConfigured
 	h.allowedSources = allowed
@@ -90,7 +90,7 @@ func (h *SealHandler) SetUnsealRelocated(relocated bool) { h.unsealRelocated = r
 // SetInitRequiredProbe 注入「金鑰表是否為空」的探針。
 func (h *SealHandler) SetInitRequiredProbe(fn func() (bool, error)) { h.initRequired = fn }
 
-// SetAdmitter 注入 admission 資格取得函式（D6.5）。
+// SetAdmitter 注入 admission 資格取得函式。
 func (h *SealHandler) SetAdmitter(fn SealAdmitFunc) { h.admit = fn }
 
 // SetOnUnsealed 注入解封成功後的放行回呼（段 2 router 換手）。
@@ -103,16 +103,16 @@ const globalSourceKey = "__global__"
 
 // RegisterRoutes 註冊封印期白名單端點。
 //
-// 兩條路徑都必須在封印閘的白名單內（D6.6），否則管理員無法查狀態、亦無法解封。
+// 兩條路徑都必須在封印閘的白名單內，否則管理員無法查狀態、亦無法解封。
 func (h *SealHandler) RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/seal/status", h.Status)
 	v1.POST("/seal/unseal", h.Unseal)
 }
 
 // Status 暴露當前態、generation、失敗機器碼、冷卻到期時間、待收束、journal 狀態
-// 與逾時提示，使管理員與監控無須猜測（D6.2.4）。
+// 與逾時提示，使管理員與監控無須猜測。
 func (h *SealHandler) Status(c *gin.Context) {
-	// 網段限制涵蓋**整個 seal 端點群**（D6.4）：狀態同樣暴露部署形態
+	// 網段限制涵蓋**整個 seal 端點群**：狀態同樣暴露部署形態
 	// （是否待初始化、繫結位址、冷卻到期時間），只擋解封而放行狀態，
 	// 等於把偵察面留在網段之外。
 	if !h.sourceAllowed(c) {
@@ -147,7 +147,7 @@ func (h *SealHandler) Status(c *gin.Context) {
 		}
 	}
 
-	// 逾時 × 初始化解封的重試指引（D6.2.4 opus MED-6）：逾時回 sourceState 時
+	// 逾時 × 初始化解封的重試指引：逾時回 sourceState 時
 	// bootstrap 可能已完成，改用新材料重試將使第一把材料成為無人知曉的部署主
 	// KEK，等同資料永久不可解。故只要發生過逾時就明示此提示。
 	if h.machine.TimeoutTotal() > 0 {
@@ -177,7 +177,7 @@ func (h *SealHandler) journalFaulted() bool {
 // Unseal 執行一次解封嘗試。
 //
 // 本方法本身**不做任何材料判斷**：整個請求體原樣成為 seal.UnsealRequest.Material，
-// 由狀態機在臨界區內交給 VerifyFunc。這是 D6.2.1「CAS 取得持有權發生在任何驗證
+// 由狀態機在臨界區內交給 VerifyFunc。這是「CAS 取得持有權發生在任何驗證
 // 開始之前」的直接落實——handler 若先解析並預檢，那份預檢就落在獨佔之外。
 func (h *SealHandler) Unseal(c *gin.Context) {
 	// 解封端點已另行繫結時，主監聽上的解封在**讀請求體之前**即被拒：
@@ -256,7 +256,7 @@ func receivedLanded(err error) bool {
 
 // sourceKey 決定 per-source 退避鍵。
 //
-// D6.4：未設定可信代理時，per-IP 退避 SHALL 保守降級為全域退避——經 ingress 時
+// 未設定可信代理時，per-IP 退避 SHALL 保守降級為全域退避——經 ingress 時
 // 限速鍵可被轉送標頭污染而誤歸戶或繞過，寧可影響可用性也不提供可繞過的假防線。
 func (h *SealHandler) sourceKey(c *gin.Context) string {
 	if !h.trustedProxyConfigured {
@@ -283,7 +283,7 @@ func (h *SealHandler) sourceIP(c *gin.Context) string {
 	return requestSourceIP(c, h.trustedProxyConfigured)
 }
 
-// sourceAllowed 判定來源是否落在允許網段內（D6.4 網段繫結組態）。
+// sourceAllowed 判定來源是否落在允許網段內（網段繫結組態）。
 // 未設定允許網段即不限制——是否啟用由部署方決定，但產品必須提供此控制。
 func (h *SealHandler) sourceAllowed(c *gin.Context) bool {
 	if len(h.allowedSources) == 0 {
@@ -303,7 +303,7 @@ func (h *SealHandler) sourceAllowed(c *gin.Context) bool {
 
 // sourceDigest 產生寫入 journal 的來源摘要。
 // 只送十六進位摘要：journal 的自由字串欄位只接受十六進位，原始 IP 與任何
-// 請求內容在建構上無法寫入（D6.5 內容白名單）。
+// 請求內容在建構上無法寫入（內容白名單）。
 func sourceDigest(clientIP string) string {
 	sum := sha256.Sum256([]byte(clientIP))
 	return hex.EncodeToString(sum[:])
@@ -332,7 +332,7 @@ var sealErrorStatus = map[string]struct {
 
 // SealErrorResponse 取得解封錯誤對應的 apierror 碼與 HTTP 狀態。
 // 未登記的碼一律退回「材料無效」而非 500：不可辨識的失敗不得因此洩漏出
-// 一個可區分的回應形狀（D6.6 回應內容不可區分）。
+// 一個可區分的回應形狀（回應內容不可區分）。
 func SealErrorResponse(err error) (apierror.ErrCode, int) {
 	if m, ok := sealErrorStatus[seal.CodeOf(err)]; ok {
 		return m.code, m.status

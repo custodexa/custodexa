@@ -52,7 +52,7 @@ const props = defineProps({
     type: [Number, String],
     required: true
   },
-  // 覆寫 WS 路徑（session-share D4）：分享頁傳 /api/v1/sessions/share/<code>/ws
+  // 覆寫 WS 路徑（session-share）：分享頁傳 /api/v1/sessions/share/<code>/ws
   wsPath: {
     type: String,
     default: ''

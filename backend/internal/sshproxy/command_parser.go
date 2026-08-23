@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/vtscreen"
 )
 
-// 緩衝上限：審計旁路不可無限制吃記憶體（design D3 degrade 原則）
+// 緩衝上限：審計旁路不可無限制吃記憶體（降級原則）
 const (
 	// typingBufMax 指令 echo 緩衝上限：單行指令遠小於此，超出代表異常輸出
 	typingBufMax = 64 * 1024
@@ -19,7 +19,7 @@ const (
 	// pendingFlushMax Enter 後等待回顯換行的上限：超出即強制結算
 	pendingFlushMax = 4 * 1024
 
-	// === 重放佇列上界（command-audit-pending-queue）===
+	// === 重放佇列上界===
 	// 結算期間抵達的輸入改為排隊重放而非丟棄，這引入一個新的失敗面：
 	// 對端**正是不受信的納管主機**，它若永不回顯，結算就永不完成、佇列無限增長。
 	// 三個上界都是為此存在，且以常數而非註解表達（goal-charter §7：誠實邊界要機器可見）。
@@ -50,7 +50,7 @@ var (
 	}
 )
 
-// interruptKeys 中斷鍵集合：在輸入行尚未送出時收到，即中止當輪輸入（design.md D4.2）。
+// interruptKeys 中斷鍵集合：在輸入行尚未送出時收到，即中止當輪輸入。
 //
 // 目前只有 Ctrl-C（0x03）——它是**唯一有實錄佐證**的一個（ssh-capture 的 ctrl-c 情境，
 // 逐事件追過：0x03 不含 \r，開啟的那輪 typing 永不結算）。Ctrl-D（0x04）／Ctrl-Z（0x1a）／
@@ -67,18 +67,18 @@ const interruptKeys = "\x03"
 // CommandFunc 指令結算回呼：command 為虛擬螢幕還原後的完整指令行
 type CommandFunc func(command string, executedAt time.Time)
 
-// CommandRecordFunc 「非乾淨」審計紀錄的回呼（command-audit-altscreen-bypass C）。
+// CommandRecordFunc 「非乾淨」審計紀錄的回呼。
 //
 //   - degraded=true  → 該輪**沒有可信的指令文字**，command 恆為空字串。
 //     降級紀錄 SHALL NOT 包含推測的指令文字：捏造比漏記更嚴重。
 //   - degraded=false → 文字已重組但**可能不等於實際執行的指令**，reason 說明限定的性質。
-//     兩者刻意不共用旗標（design §6.6）——合併會讓「未標記 ⇒ 文字可信」變成假話。
+//     兩者刻意不共用旗標——合併會讓「未標記 ⇒ 文字可信」變成假話。
 //
 // 未掛載（nil）時：降級紀錄無處可去故不發，限定紀錄退回 onCommand
 // ——後者的文字本來就會入庫，落地形式不該因為觀測管道缺席而改變。
 type CommandRecordFunc func(command string, degraded bool, reason string, executedAt time.Time)
 
-// CommandParser 以虛擬終端螢幕重組 SSH 會話指令（design D3）
+// CommandParser 以虛擬終端螢幕重組 SSH 會話指令
 //
 // 原理：指令文字不取自使用者按鍵，而取自伺服器的 echo 回顯——
 // 退格、tab 補全、歷史鍵的最終結果都會反映在回顯流中，
@@ -100,12 +100,12 @@ type CommandParser struct {
 	// 累積到語句結束符才結算為單一指令——使審計記錄完整、且告警比對看得到
 	// 完整語句（堵住「關鍵字拆行送出以規避 SQL 危險規則」的繞過）。redis 為逐行不啟用。
 	sqlMode bool
-	// tsqlMode：mssql 專屬，額外承認獨立一行的 GO 為批次終止符（D4）。
+	// tsqlMode：mssql 專屬，額外承認獨立一行的 GO 為批次終止符。
 	// 對其餘協議恆為 false，故它們的切分行為與本欄位加入前逐位元組相同。
 	tsqlMode bool
 
 	// altScreenMarked 對端印出過 alternate screen 進入標記且尚未印出離開標記。
-	// **它是汙染源不是抑制器**（design §6.1）：命中期間輸入輸出照常流經狀態機，
+	// **它是汙染源不是抑制器**：命中期間輸入輸出照常流經狀態機，
 	// 只是每一輪都被標成「這段回顯不是 shell 的指令回顯」。見 scanAltScreen。
 	altScreenMarked bool
 	typing          bool
@@ -122,7 +122,7 @@ type CommandParser struct {
 	// originText／originX：輸入起始那一刻「游標所在列的原文（未 trim）」與「游標顯示欄」。
 	// 這是 shell／readline 欄位算術的原點——指令回顯緩衝不含提示符，
 	// 不把原點種回螢幕，清行重繪就會從錯誤的欄位切開，
-	// 使審計得到一條使用者從未輸入過的指令（design.md D4.2）。
+	// 使審計得到一條使用者從未輸入過的指令。
 	originText string
 	originX    int
 
@@ -130,7 +130,7 @@ type CommandParser struct {
 	tailBuf    bytes.Buffer
 	pendingLen int
 
-	// === 重放佇列（command-audit-pending-queue）===
+	// === 重放佇列===
 	// pending 期間抵達的輸入排隊、結算後重放，取代原先的整段丟棄。
 	// 存原始位元組而非解析結果：重放走的是與真實輸入完全相同的路徑。
 	replayQueue bytes.Buffer
@@ -154,7 +154,7 @@ type CommandParser struct {
 	stmtBuf strings.Builder // sqlMode：累積中的多行語句
 	stmtLen int
 
-	// === 全螢幕重繪的兩個新狀態（command-audit-altscreen-bypass 原型 D）===
+	// === 全螢幕重繪的兩個新狀態===
 	//
 	// roundTainted 當輪的回顯緩衝出現過整螢幕層級的定位／清除（vtscreen.Redrawn）。
 	// 為真代表「這段位元組不是一次行編輯」，故**以輸入位元組結算的兩條退路
@@ -168,7 +168,7 @@ type CommandParser struct {
 	// （TestCommandParserAltScreenSuppressed）顯示 vim 內按 Enter 那一輪的
 	// **原點錨會命中**：beginTyping 從 tailBuf 取到的原點正是 vim 畫面上那一列，
 	// 而 vim 把使用者打進檔案的字接在它後面，`raw` 於是真的以原點為前綴。
-	// 只靠 `anchorNone && roundTainted`（design §6.1 的原文）會把
+	// 只靠 `anchorNone && roundTainted` 會把
 	// **使用者打進檔案的內文當成指令發出**＝捏造，且既有 Scenario
 	// 「Alternate screen suppressed」當場轉紅。
 	roundAltScreen bool
@@ -191,7 +191,7 @@ type CommandParser struct {
 	// 兩層，改簽章要動的呼叫點比它值得的多；單執行緒（auditTap 以單鎖序列化）故無競態。
 	pendingCaveat string
 
-	// 降級可觀測（design.md D7.4）：兩類降級各自最多記一行，
+	// 降級可觀測：兩類降級各自最多記一行，
 	// 避免持續出錯時灌爆日誌，也讓「解析出事」不再無聲。
 	degradeLogged bool
 	dropLogged    bool
@@ -313,7 +313,7 @@ func (p *CommandParser) WriteInput(data []byte) {
 // 下一次按鍵的 beginTyping 因而重新取得正確的原點。缺了這一步，那些位元組會全部
 // 落進同一輪 typingBuf，而該輪的原點與 promptText 皆為空（中斷發生時游標確實在行首），
 // 三條剝除規則同時落空，結算值就是「提示符＋下一條指令」這種使用者從未輸入過的字串
-// （實錄 ctrl-c 情境曾入庫 `ssh-test-server:~$ exit`，design.md D4.2／D4.3）。
+// （實錄 ctrl-c 情境曾入庫 `ssh-test-server:~$ exit`）。
 func (p *CommandParser) abortTyping() {
 	p.typing = false
 	p.pending = false
@@ -364,7 +364,7 @@ func (p *CommandParser) Flush() {
 	}
 }
 
-// beginTyping 進入輸入狀態：從 tailBuf 一次取三個值（design.md D4.2）——
+// beginTyping 進入輸入狀態：從 tailBuf 一次取三個值——
 // promptText（語義不變，既有剝除路徑照舊使用）、
 // originText（游標所在列的原文，**未 trim**）、originX（游標顯示欄）。
 //
@@ -432,7 +432,7 @@ func (p *CommandParser) appendPending(data []byte) {
 	}
 }
 
-// === 重放佇列（command-audit-pending-queue）===
+// === 重放佇列===
 //
 // 缺陷形態：Enter 送出後那一輪要等回顯換行才結算，期間抵達的輸入原先被整段丟棄——
 // 指令在遠端正常執行、審計零紀錄。兩種觸發形態皆已於 ssh-test 靶機實跑復現：
@@ -818,9 +818,9 @@ func (p *CommandParser) noteEmptyRound() {
 }
 
 // noteUnanchored 「認不出這是不是指令行」的可觀測訊號。
-// 這是原型 D 把捏造換成漏記的那個交換點，必須留下告警面（design §4.5）。
+// 這是原型 D 把捏造換成漏記的那個交換點，必須留下告警面。
 //
-// **降級紀錄在此發出**（tasks 2.3 列的第一個終態）：不發指令文字是對的，
+// **降級紀錄在此發出**（第一個終態）：不發指令文字是對的，
 // 但該輪確實存在——使用者按了 Enter、遠端執行了某件事。只設旗標而不發紀錄
 // 等於「該輪在審計上沒發生過」，正是 spec「SHALL NOT 為零紀錄」禁止的形態，
 // 且旗標是連線內一次性的，第二輪之後連旗標都不再變化。
@@ -847,7 +847,7 @@ func (p *CommandParser) noteTaintedDrop() {
 
 // noteReplayFallback 錨定失敗的可觀測訊號，並把下一筆入庫文字標為**受限定**。
 //
-// **不共用 degraded 旗標**（design §6.6）：這一類是「已入庫但文字可能≠實際執行」，
+// **不共用 degraded 旗標**：這一類是「已入庫但文字可能≠實際執行」，
 // 與「無文字」不同型。塞進同一個旗標會讓「degraded=false ⇒ 文字可信」也變成假話，
 // 而那正是稽核員唯一能倚賴的推論。
 func (p *CommandParser) noteReplayFallback() {
@@ -937,7 +937,7 @@ func roundSpannedRows(screen screenRender) bool {
 // finalize 解析 echo 緩衝、剝除前綴、發出指令。
 //
 // 螢幕以 beginTyping 快照的原點種入後才寫入 echo：種入的即是真實終端在輸入起始
-// 那一刻的螢幕狀態，欄位算術因而與 shell 一致（design.md D4.2）。
+// 那一刻的螢幕狀態，欄位算術因而與 shell 一致。
 func (p *CommandParser) finalize() {
 	p.pending = false
 	p.pendingLen = 0
@@ -967,7 +967,7 @@ func (p *CommandParser) finalize() {
 		// 錨全部落空 **且**（當輪回顯是全螢幕重繪 **或** 當輪跨了列）⇒ 不發。
 		// **這是原型 D 的整個重點**：此時發出去的會是螢幕殘留
 		// （實測形態：`<提示符> <指令>` 整行、vim 的檔案訊息列、插入模式打進檔案的內文），
-		// 即捏造。降級為可告警的漏記（design §4.5 的誠實天花板）。
+		// 即捏造。降級為可告警的漏記（誠實天花板）。
 		//
 		// 為什麼不是「認不出就一律不發」：當輪只有一列時，最後一個非空白行**就是**
 		// 使用者當時在編輯的那一行——伺服器以 `\r` 蓋掉提示符（進度條形態）即屬此類，
@@ -1026,7 +1026,7 @@ const (
 	anchorBare
 )
 
-// stripCommandPrefixes 依 design.md D4.3 的順序剝除指令行的前綴，
+// stripCommandPrefixes 依固定順序剝除指令行的前綴，
 // 並回傳**憑什麼**認定它是指令行。raw 為螢幕最後一個非空白行的**原文**（未 trim）。
 //
 // 順序寫死，不可顛倒：sqlcmd 的提示符逐行遞增（1>／2>／…／55>），
@@ -1143,7 +1143,7 @@ func sqlStatementComplete(line string) bool {
 	return strings.HasSuffix(t, ";") || strings.HasSuffix(t, `\g`) || strings.HasSuffix(t, `\G`)
 }
 
-// tsqlBatchTerminator 判斷一行是否為 T-SQL 的批次終止符（mssql 專用，D4）。
+// tsqlBatchTerminator 判斷一行是否為 T-SQL 的批次終止符（mssql 專用）。
 //
 // T-SQL 的執行單位是批次，以**獨立一行的 GO** 送出（sqlcmd 的 batchTerminatorRegex）；
 // `;` 只是語句分隔符、不觸發執行。不認 GO 的話，審計看到的切分與實際執行的批次
@@ -1220,7 +1220,7 @@ func trimSqlcmdPromptPrefix(s string) (string, bool) {
 
 // scanAltScreen 偵測 alternate screen 進出標記，維護 altScreenMarked 這個**汙染源旗標**。
 //
-// **標記由抑制器降格為汙染源（design §6.1）。** 舊行為是命中進入標記即整段早退
+// **標記由抑制器降格為汙染源。** 舊行為是命中進入標記即整段早退
 // （輸入與輸出都不進狀態機、佇列清空），後果是那些輪次**在狀態機裡根本不存在**：
 //   - vim 內按 Enter 的每一輪零紀錄——ADDED Scenario「vim 中編輯並多次按 Enter →
 //     存在可歸因的降級紀錄」無從產生；
@@ -1337,10 +1337,10 @@ func renderWithVTScreen(seedLine string, seedX int, data []byte) screenRender {
 
 // renderScreen 將原始終端輸出餵進虛擬螢幕，還原為可見文字行。
 //
-// recover 降級保留（design.md D7.2）：它防的是「審計旁路 panic 打死整個連線行程」
+// recover 降級保留：它防的是「審計旁路 panic 打死整個連線行程」
 // 這條紅線，與解析器品質無關，也是對「我們自己寫錯」的最後防線。
 // 降級內容改為「剝除所有控制序列與 C0 後的純文字行」——寧可少字，
-// 不可讓原始 ESC 位元組進審計（D7.3）。
+// 不可讓原始 ESC 位元組進審計。
 func (p *CommandParser) renderScreen(seedLine string, seedX int, data []byte) (res screenRender) {
 	if len(data) == 0 && seedLine == "" {
 		return screenRender{}
@@ -1364,7 +1364,7 @@ func (p *CommandParser) renderScreen(seedLine string, seedX int, data []byte) (r
 	return res
 }
 
-// logDegrade 記錄解析降級（design.md D7.4）。每個 CommandParser 實例最多一行。
+// logDegrade 記錄解析降級。每個 CommandParser 實例最多一行。
 //
 // 內容只有原因與輸入長度：指令文字可能含使用者在終端打錯位置的密碼，
 // 一個位元組都不得進日誌。panic 值同樣不記——它可能夾帶輸入內容。
@@ -1376,7 +1376,7 @@ func (p *CommandParser) logDegrade(n int) {
 	log.Printf("[SSHProxy] 指令解析降級：虛擬螢幕解析 panic，改以純文字剝除，輸入 %d bytes（本連線僅記錄一次）", n)
 }
 
-// logDrop 記錄虛擬螢幕觸及記憶體上限而丟棄內容（design.md D14 第 11 條）。
+// logDrop 記錄虛擬螢幕觸及記憶體上限而丟棄內容。
 // 同樣每個實例最多一行、且不含任何指令位元組。
 func (p *CommandParser) logDrop(n int) {
 	if p.dropLogged {
@@ -1386,7 +1386,7 @@ func (p *CommandParser) logDrop(n int) {
 	log.Printf("[SSHProxy] 指令解析降級：虛擬螢幕觸及記憶體上限並丟棄內容，還原文字不完整，輸入 %d bytes（本連線僅記錄一次）", n)
 }
 
-// stripControlLines 降級路徑：把原始輸出剝成純文字行（design.md D7.3）。
+// stripControlLines 降級路徑：把原始輸出剝成純文字行。
 //
 // 虛擬螢幕已經出事，此處刻意只做最簡單的線性掃描、不再呼叫解析器。
 // 控制序列與 C0 一律丟棄，只有換行切行——降級時寧可少字，

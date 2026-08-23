@@ -4,7 +4,7 @@ package main
 //
 // # 為什麼需要這個守衛
 //
-// 稽核工作台的資產樞紐採**納入原則**（design D4 裁決）：一個資產的時間軸＝
+// 稽核工作台的資產樞紐採**納入原則**：一個資產的時間軸＝
 // 「所有 `audit_logs.asset_id` 非空的列」，而不是一份列舉動作的清單。這個選擇讓
 // 日後新增的資產類動作自動涵蓋、不需回頭改工作台——**代價全部壓在寫入端**：
 // 產生點沒填 `asset_id`，該事件就從資產樞紐上整個消失。
@@ -58,7 +58,7 @@ const (
 	// pivotDelegated 該產生點是 helper 呼叫，AssetID 由 helper 內的產生點賦值。
 	pivotDelegated assetPivotClass = "委由 helper"
 	// pivotNotAsset 非資產類事件，**不得**賦值 AssetID（反向亦釘住：填了就是把
-	// 不相干的事件掛到某台機器上，是 D1.3(a) 要消滅的假事件）。
+	// 不相干的事件掛到某台機器上，是本守衛要消滅的假事件）。
 	pivotNotAsset assetPivotClass = "非資產類"
 	// pivotGap 屬資產類、現況未填的**已知缺口**。守衛斷言它「仍未填」——有人補上
 	// 就轉紅，逼登記改為 pivotFilled（缺口不會被默默關掉也不會被默默擴大）。
@@ -88,7 +88,7 @@ type assetPivotEntry struct {
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
 	// ── 資產類：直接賦值 ──
-	"AP-04": {pivotFilled, false, "kubectl cp 成功留痕；檔案傳輸類的資產樞紐來源（D4 檔案傳輸列）"},
+	"AP-04": {pivotFilled, false, "kubectl cp 成功留痕；檔案傳輸類的資產樞紐來源（檔案傳輸列）"},
 	"AP-65": {pivotFilled, false, "kubectl cp 被傳輸閘擋下的 denied 留痕，與 AP-04 對稱"},
 	"AP-14": {pivotFilled, false, "SFTP 上傳／下載／刪除／建目錄成功留痕（resource=file，資產樞紐讀 asset_id）"},
 	"AP-21": {pivotFilled, false, "HTTP 中介層批次：resource=asset 時由 resource_id 推導，其餘由 handler 經 audit_asset_id 覆寫（見面 3）"},
@@ -160,7 +160,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-20": {pivotNotAsset, false, "閒置停用豁免設定，主體是使用者"},
 	"AP-29": {pivotNotAsset, false, "連線申請單狀態轉移，主體是申請單；申請所指資產由 access_requests.asset_id 承擔"},
 	"AP-36": {pivotNotAsset, false, "節點建立／改名／搬移：ResourceID 是節點 id。一次影響其下全部資產，沒有單一主體可釘；" +
-		"把 nodeID 填進 asset_id 等於宣稱事件發生在編號相同的那台資產上（D1.3(a) 的假事件）"},
+		"把 nodeID 填進 asset_id 等於宣稱事件發生在編號相同的那台資產上（假事件）"},
 	"AP-37": {pivotNotAsset, false, "刪節點連動撤授權：主體是節點；被撤授權的逐資產事實在 authz 側各自留痕"},
 	"AP-44": {pivotNotAsset, false, "LDAP 身分解析失敗，主體是身分來源"},
 	"AP-45": {pivotNotAsset, false, "LDAP 傳輸層留痕"},
@@ -178,7 +178,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-57": {pivotNotAsset, false, "封印期 journal 回灌的合成聚合列，同上"},
 	"AP-60": {pivotNotAsset, false, "刪使用者群組連動撤授權：主體是群組"},
 	"AP-68": {pivotNotAsset, false, "以錄影 token 取走錄影本體的留痕：主體是連線（sessions.asset_id 已承擔資產樞紐），" +
-		"與同型的 AP-54（錄影失敗回報）一致。resource_id 是連線 id，填進 asset_id 等於宣稱這件事發生在編號相同的那台資產上（D1.3(a) 的假事件）"},
+		"與同型的 AP-54（錄影失敗回報）一致。resource_id 是連線 id，填進 asset_id 等於宣稱這件事發生在編號相同的那台資產上（假事件）"},
 }
 
 // maxAssetPivotGaps 已知缺口的條數上限。**要新增一個缺口就必須在 diff 裡把這個
@@ -412,7 +412,7 @@ func TestAssetPivotRegistryMatchesCode(t *testing.T) {
 				}
 				t.Errorf("%s（%s，%s）%s %s（＝%s）。\n"+
 					"  登記理由：%s\n"+
-					"  非資產類填了主體鍵＝把不相干事件掛到某台機器上，產出假事件（D1.3(a)）；"+
+					"  非資產類填了主體鍵＝把不相干事件掛到某台機器上，產出假事件；"+
 					"缺口被補上是好事，但登記必須同步改為「%s」，否則守衛會在下一次有人拿掉它時保持沉默。",
 					r.ID, r.key(), site.FuncLabel, verb, assetPivotFieldName, site.FieldExpr, entry.Why, pivotFilled)
 			}

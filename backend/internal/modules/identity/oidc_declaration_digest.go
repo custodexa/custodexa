@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// DedicatedIssuerDeclarationDigest 部署層專用 issuer 宣告的內容指紋
-// （idp-oidc-integration 3.10a）。
+// DedicatedIssuerDeclarationDigest 部署層專用 issuer 宣告的內容指紋。
 //
 // 為什麼需要它：`OIDC_DEDICATED_ISSUERS` 是**部署層**設定，多副本部署下每個副本
 // 各讀各的環境變數。滾動更新期間、或某個副本的環境檔漏改，就會出現「同一個 issuer

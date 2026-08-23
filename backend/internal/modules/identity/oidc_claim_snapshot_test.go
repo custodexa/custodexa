@@ -7,7 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// claim 快照欄（ClaimUsername／ClaimEmail）的語義測試（idp-oidc-integration 1.11）。
+// claim 快照欄（ClaimUsername／ClaimEmail）的語義測試。
 //
 // 三條不變式：
 //  1. admin 綁定時無 IdP 自報值可填，兩欄留空；首登時由 touchIdentity 補上。

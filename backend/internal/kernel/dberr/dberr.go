@@ -1,10 +1,10 @@
 // Package dberr 資料庫錯誤的方言無關判定。
 //
-// Phase B / W1 任務 1.9：`isUniqueViolation` 原寄居於改密域
+// `isUniqueViolation` 原寄居於改密域
 // （`internal/modules/asset/change_secret_plan_service.go`），卻被 authz／identity／asset
-// 三個未來模組共 6 處呼叫（R3.1 §5.6）。它零領域語義、零外部相依，留在任一
+// 三個模組共 6 處呼叫。它零領域語義、零外部相依，留在任一
 // 業務模組都會製造無謂的跨模組出向邊，故先於任何模組搬檔提取為 kernel 包
-// （R3.1 §3.4 遷移順序約束 2）。
+// （這是模組搬檔的順序約束）。
 //
 // 本包 SHALL NOT 依賴 `internal/model`、`internal/service` 或任何業務模組——
 // 它是被消費方，方向恆為單向。

@@ -26,7 +26,7 @@
       @update:value="(key, value) => (formValues[key] = value)"
     >
       <template #section-extra="{ section }">
-        <!-- 資料傳輸管控的邊界說明（data-transfer-control 7.2／D11）：
+        <!-- 資料傳輸管控的邊界說明（data-transfer-control 7.2）：
              五項邊界必須可查閱，否則「開了 file_download_enabled=false 就等於
              資料出不去」的誤解會直接變成稽核事故。折疊呈現＝不擋日常操作，
              但任何時候點得開 -->
@@ -49,7 +49,7 @@
 
       <template #section-footer="{ section }">
         <!-- 覆寫表格掛在「連線政策」區塊尾端（工作台主角）：
-             全域預設列在上、資產覆寫在下（asset-level-access-policy），
+             全域預設列在上、資產覆寫在下，
              兩層關係一眼可視 -->
         <AssetPolicyTable
           v-if="section.keys?.includes('access_policy_default')"

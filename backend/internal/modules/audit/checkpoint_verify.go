@@ -6,11 +6,11 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 內容層逐區間驗證狀態（audit-checkpoint-chain D10）。
+// 內容層逐區間驗證狀態。
 //
 // **本檔只做「單一區間的內容層」判定**——結構層（chain_broken／seq_gap，需要
 // 整條鏈）在 checkpoint_chain_verify.go。分開的理由是第 6 組必須能自證
-// 「合法清除流程在任何失敗組合下都不產生竄改告警」（tasks 6.13），
+// 「合法清除流程在任何失敗組合下都不產生竄改告警」，
 // 而那個自證不能等到 API 層才有。
 const (
 	// IntervalStatusPassed 區間列完整且聚合相符
@@ -28,7 +28,7 @@ const (
 	// 那是竄改而非 straggler
 	IntervalStatusHashMismatch = "hash_mismatch"
 	// IntervalStatusExtraRowsValidHMAC 列數多於封章主張，且**區間內全部列的
-	// 列級 HMAC 皆有效**（tasks 8.3 補齊：在此之前本狀態只判「多列」，
+	// 列級 HMAC 皆有效**（後補：在此之前本狀態只判「多列」，
 	// 名字宣稱的「HMAC 有效」從未被驗過）。
 	//
 	// 語義＝「多出來的列看起來是合法寫入的」：可能是超過 grace 才 commit 的

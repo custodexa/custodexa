@@ -3,7 +3,7 @@ package model
 import "testing"
 
 // TestDiffAssetAccessPolicy 政策覆寫變更須產生欄位級審計明細
-// （asset-level-access-policy；codex 對抗審查 P1 修復——nil＝跟隨全域以空字串入審計）
+// （nil＝跟隨全域以空字串入審計）
 func TestDiffAssetAccessPolicy(t *testing.T) {
 	approval := AccessPolicyApproval
 	reason := AccessPolicyReason

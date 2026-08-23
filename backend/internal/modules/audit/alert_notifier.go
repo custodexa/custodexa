@@ -24,7 +24,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 推送參數（design D2）：
+// 推送參數：
 //   - queue 64：告警是低頻事件，64 足以吸收突發批次；滿載代表下游嚴重異常，
 //     丟棄並記 log 優於阻塞 recorder 路徑（與 recorder 滿載丟棄同哲學）
 //   - timeout 5s + 重試 3 次（1s/2s/4s 指數退避）：webhook 收端短暫抖動可自癒，
@@ -38,7 +38,7 @@ const (
 // defaultNotifyBackoff 重試退避序列；長度即重試次數（3 次 -> 最多 4 次嘗試）
 var defaultNotifyBackoff = []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second}
 
-// notifyPayload 推送 payload 形狀（design D3）：
+// notifyPayload 推送 payload 形狀：
 // 扁平三段（event/alert/session）讓收端（Slack bot、自建系統）免查庫即可呈現脈絡
 type notifyPayload struct {
 	Event   string            `json:"event"`
@@ -51,19 +51,19 @@ type notifyAlertBody struct {
 	Command  string `json:"command"`
 	Severity string `json:"severity"`
 	RuleName string `json:"rule_name"`
-	// Kind／ReasonCode 告警來源類別與機器碼（command-audit-altscreen-bypass §6.3）。
+	// Kind／ReasonCode 告警來源類別與機器碼。
 	// **收端需要它們才分得出「規則命中」與「該輪內容無法還原」**：
 	// 降級類沒有規則可指，rule_name 存的是機器碼，只讀 rule_name 的收端會把
 	// 一個機器碼當成規則名。純加法，既有欄位語義不變。
 	Kind       string `json:"kind"`
 	ReasonCode string `json:"reason_code,omitempty"`
-	// Blocked 規則是否為阻斷型（design D6）：阻斷事實以布林欄承載，
+	// Blocked 規則是否為阻斷型：阻斷事實以布林欄承載，
 	// 不再靠 RuleName 後綴散文——散文零入 webhook payload
 	Blocked     bool      `json:"blocked"`
 	TriggeredAt time.Time `json:"triggered_at"`
 }
 
-// notifyEventPayload 系統事件 webhook payload（design D3/D4）：
+// notifyEventPayload 系統事件 webhook payload：
 // event 機器識別字＋結構化 params，散文一律不出站。
 // Degraded=true 代表 notifycat 目錄／參數契約異常，內容降級但仍投遞——
 // 合規告警永不因目錄問題靜默消失
@@ -79,7 +79,7 @@ type notifyEventPayload struct {
 const (
 	alertEventCommandAlert = "command_alert"
 	alertEventTest         = "test"
-	// testRuleName 測試發送的規則名：機器識別字，不譯不組字（design D6）
+	// testRuleName 測試發送的規則名：機器識別字，不譯不組字
 	testRuleName = "test"
 )
 
@@ -87,7 +87,7 @@ type notifySessionBody struct {
 	ID      uint  `json:"id"`
 	UserID  uint  `json:"user_id"`
 	AssetID *uint `json:"asset_id"`
-	// Username／AssetName 主體名稱（alert-notification-readability）：
+	// Username／AssetName 主體名稱：
 	// 純加法，既有欄位的名稱、型別與語義不變，收端不需改動即可繼續解析。
 	// omitempty——名稱解析不到時整個欄位不出現，而非送出空字串。
 	Username  string `json:"username,omitempty"`
@@ -100,7 +100,7 @@ type alertSubjectNames struct {
 	Asset string
 }
 
-// buildAlertPayload 將告警組裝為推送 payload（D3 形狀）
+// buildAlertPayload 將告警組裝為推送 payload
 func buildAlertPayload(alert model.CommandAlert, names alertSubjectNames) notifyPayload {
 	return notifyPayload{
 		Event: "command_alert",
@@ -132,7 +132,7 @@ func signBody(secret string, body []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// slackEscape 轉義 Slack mrkdwn 控制字元（design D2a）：& < > 須手動轉為 HTML 實體，
+// slackEscape 轉義 Slack mrkdwn 控制字元：& < > 須手動轉為 HTML 實體，
 // 否則告警指令常見的重導向/運算子（> < &&）會被 Slack 當連結/引用語法解析致破版。
 // 順序重要：& 先轉，否則會二次轉義後續產生的實體。Slack 顯示時會還原實體。
 func slackEscape(s string) string {
@@ -142,7 +142,7 @@ func slackEscape(s string) string {
 	return s
 }
 
-// severityEmoji 依告警等級給 emoji（design D2）；未知/空值落 default（不留空字串）
+// severityEmoji 依告警等級給 emoji；未知/空值落 default（不留空字串）
 func severityEmoji(severity string) string {
 	switch severity {
 	case model.AlertSeverityHigh:
@@ -156,7 +156,7 @@ func severityEmoji(severity string) string {
 	}
 }
 
-// buildSlackText 組 Slack mrkdwn 訊息文字（design D2/D4）：
+// buildSlackText 組 Slack mrkdwn 訊息文字：
 // 首行 emoji＋規則名＋等級（＋阻斷標示）、次行指令（三引號 code block）、末行脈絡。
 //
 // 系統文案（測試通知標題內文、等級與阻斷標示）一律走 notifycat 的通道語系渲染；
@@ -183,12 +183,12 @@ func buildSlackText(lang, event string, alert model.CommandAlert, names alertSub
 
 // buildAlertContext 組脈絡行：**誰 → 哪台 → 哪個會話 → 何時**。
 //
-// 順序是刻意的（alert-notification-readability D3）：稽核與資安讀告警的第一個問題是
+// 順序是刻意的：稽核與資安讀告警的第一個問題是
 // 「誰做的」、第二個是「在哪台機器」；會話識別碼是**追查用的索引**而非判讀用的資訊，
 // 故後置。原順序把最不可讀的欄位放在最前面。
 //
 // 名稱在前、識別碼在括號內：讀者先看到可辨識的部分，需要追查時括號內的值可直接查詢。
-// 名稱解析不到時該欄退化為僅識別碼——通知的價值在於送到，不因輔助資訊缺失而靜默（D5）。
+// 名稱解析不到時該欄退化為僅識別碼——通知的價值在於送到，不因輔助資訊缺失而靜默。
 func buildAlertContext(lang string, alert model.CommandAlert, names alertSubjectNames) string {
 	label := func(key string) string { return notifycat.Phrase(lang, notifycat.LexiconEntity, key) }
 	// subject 組「標籤 名稱 (#id)」；名稱為空時退化為「標籤 #id」
@@ -210,7 +210,7 @@ func buildAlertContext(lang string, alert model.CommandAlert, names alertSubject
 	return strings.Join(parts, " · ")
 }
 
-// buildChannelBody 依通道類型建推送 body（design D1）：
+// buildChannelBody 依通道類型建推送 body：
 // webhook 送通用 JSON（event 可覆寫為 command_alert/test）；slack 送 {"text": mrkdwn}。
 func buildChannelBody(ch *model.NotificationChannel, event string, alert model.CommandAlert,
 	names alertSubjectNames) ([]byte, error) {
@@ -222,16 +222,16 @@ func buildChannelBody(ch *model.NotificationChannel, event string, alert model.C
 	return json.Marshal(payload)
 }
 
-// AlertNotifier 告警 webhook 推送器（design D1/D2）：
+// AlertNotifier 告警 webhook 推送器：
 // 與 AlertMatcher 同模式——RWMutex 保護的啟用通道全量快取 + CUD Reload；
 // 推送走 buffered channel + 單 worker goroutine，確保告警入庫路徑零阻塞
 type AlertNotifier struct {
 	db     *gorm.DB
 	client *http.Client
 
-	// codec 通道 url/secret 信封解密（key-management-envelope G8）：
+	// codec 通道 url/secret 信封解密：
 	// 快取載入時解密一次，worker 投遞用明文；nil＝明文直通（單測路徑）。
-	// **ColumnCodec**（kek-provider-modularization D5 cutover，tasks 1.7）：
+	// **ColumnCodec**：
 	// 本路徑只讀不寫，但持有帶 Encrypt(plaintext) 的介面等同於把「無 AAD 寫入
 	// 能力」發給服務層——收斂為 ColumnCodec 後建構上不可能誤用。
 	// **建構時注入、無 SetCodec 事後覆寫**（原 SetCodec 須在 LoadChannels 前
@@ -245,11 +245,11 @@ type AlertNotifier struct {
 	channels []model.NotificationChannel
 
 	queue chan model.CommandAlert
-	// startOnce 確保 worker 只起一條：推送順序與 log 可讀性依賴單 worker（D2）
+	// startOnce 確保 worker 只起一條：推送順序與 log 可讀性依賴單 worker
 	startOnce sync.Once
 }
 
-// 套件級單例（design D1）：Enqueue 掛在 AlertMatcher.MatchAndStore（recorder 路徑深處），
+// 套件級單例：Enqueue 掛在 AlertMatcher.MatchAndStore（recorder 路徑深處），
 // 與 AlertMatcher 同理由——逐層傳遞建構參數不划算，main 啟動時注入、getter 取用
 var (
 	alertNotifierMu       sync.RWMutex
@@ -285,7 +285,7 @@ func GetAlertNotifier() *AlertNotifier {
 	return alertNotifierInstance
 }
 
-// ReloadAlertNotifier 通道 CUD 後刷新單例快取（design D1：同進程直接刷新）。
+// ReloadAlertNotifier 通道 CUD 後刷新單例快取（同進程直接刷新）。
 // 未初始化時 no-op；刷新失敗僅記 log——舊快取仍可用，下次 Reload 補上
 func ReloadAlertNotifier() {
 	n := GetAlertNotifier()
@@ -338,7 +338,7 @@ func (n *AlertNotifier) LoadChannels() error {
 	return nil
 }
 
-// Reload 重新載入通道（通道 CUD 後呼叫，design D1）
+// Reload 重新載入通道（通道 CUD 後呼叫）
 func (n *AlertNotifier) Reload() error {
 	return n.LoadChannels()
 }
@@ -350,7 +350,7 @@ func (n *AlertNotifier) Start() {
 	})
 }
 
-// Enqueue 非阻塞投遞告警至推送佇列（design D2）：
+// Enqueue 非阻塞投遞告警至推送佇列：
 // 呼叫點在告警入庫路徑上，滿載時丟棄記 log 而非阻塞——
 // 通知是告警的附加價值，絕不反向影響告警入庫與會話
 func (n *AlertNotifier) Enqueue(alert model.CommandAlert) {
@@ -368,15 +368,15 @@ func (n *AlertNotifier) worker() {
 	}
 }
 
-// NotifyEvent 發送結構化系統事件至所有啟用通道（design D3/D4；取代散文版
+// NotifyEvent 發送結構化系統事件至所有啟用通道（取代散文版
 // NotifyMessage）。頻率極低（每日個位數），直接起 goroutine 投遞不佔用告警佇列；
 // 失敗僅 log，與告警通知同語義。
 //
 // 兩通道分工：
 //   - webhook：送 {event, params, sent_at} 機器形狀，散文零出站
-//   - Slack：由 notifycat 依**該通道語系**渲染（per-channel language，D5）
+//   - Slack：由 notifycat 依**該通道語系**渲染（per-channel language）
 //
-// 降級（design D4）：params 不合契約（含 event 未註冊）時**不拒發**——
+// 降級：params 不合契約（含 event 未註冊）時**不拒發**——
 // webhook 加 degraded 旗標、Slack 走 RenderDegraded 的通道語系 generic 文案。
 // 合規告警不因目錄或呼叫端契約問題靜默消失，寧可露出機器碼。
 // 降級時 params 收斂到 EventSpec 宣告鍵，未註冊 event 則 params 全空——
@@ -390,7 +390,7 @@ func (n *AlertNotifier) NotifyEvent(event notifycat.Event, params map[string]str
 	clean, err := notifycat.Validate(event, params)
 	degraded := err != nil
 	if degraded {
-		// 降級 payload 的出站面收斂到 EventSpec 宣告鍵（codex 批 2 M1）：
+		// 降級 payload 的出站面收斂到 EventSpec 宣告鍵：
 		// 未驗證不等於未淨化，也不等於「什麼都能出站」——未宣告鍵（呼叫端誤傳的
 		// forensic detail、錯字鍵）值全數剔除；未註冊 event 則一鍵不留，
 		// 只送 {event, degraded, sent_at}。被剔除的鍵名記本地 log（信任邊界內）
@@ -408,8 +408,8 @@ func (n *AlertNotifier) NotifyEvent(event notifycat.Event, params map[string]str
 			if ch.Type == model.NotificationChannelTypeSlack {
 				var title, text string
 				if degraded {
-					// 降級文案亦走通道語系（D5 的 per-channel language 對降級
-					// 路徑同樣適用；codex 批 2 M4）
+					// 降級文案亦走通道語系（per-channel language 對降級
+					// 路徑同樣適用）
 					title, text = notifycat.RenderDegraded(ch.Language, event, clean)
 				} else {
 					title, text = notifycat.Render(ch.Language, event, clean)
@@ -443,7 +443,7 @@ func (n *AlertNotifier) snapshotChannels() []model.NotificationChannel {
 	return n.channels
 }
 
-// resolveSubjectNames 取告警主體的顯示名（design D1／D5）。
+// resolveSubjectNames 取告警主體的顯示名。
 //
 // 查不到一律回空字串交由呈現層降級——**不回錯誤**：通知的價值在於送到，
 // 為了補一個顯示欄位而讓告警靜默，是把輔助資訊放在主要目的之上。
@@ -467,7 +467,7 @@ func (n *AlertNotifier) notify(alert model.CommandAlert) {
 		return
 	}
 
-	// 主體名稱在此解析而非入庫時快照（design D1）：本函式由 worker 呼叫，
+	// 主體名稱在此解析而非入庫時快照：本函式由 worker 呼叫，
 	// 不在告警入庫路徑上；且每則告警只查一次，所有通道共用同一份結果。
 	// channels 為空時已提前返回，不會產生無用查詢。
 	names := n.resolveSubjectNames(alert)
@@ -529,7 +529,7 @@ func scrubSecretURL(msg, targetURL string) string {
 	return msg
 }
 
-// deliverWithRetry 對單一通道投遞，失敗時按退避序列重試（design D2）
+// deliverWithRetry 對單一通道投遞，失敗時按退避序列重試
 func (n *AlertNotifier) deliverWithRetry(ch *model.NotificationChannel, body []byte, alertID uint) {
 	attempts := len(n.backoff) + 1
 	for attempt := 1; attempt <= attempts; attempt++ {
@@ -551,7 +551,7 @@ func (n *AlertNotifier) deliverWithRetry(ch *model.NotificationChannel, body []b
 	log.Printf("[AlertNotifier] 通道 %q (id=%d) 推送最終失敗，放棄 (alert_id=%d)", ch.Name, ch.ID, alertID)
 }
 
-// deliverOnce 單次 HTTP 投遞：POST JSON body，secret 非空時附 HMAC 簽名 header（D3）。
+// deliverOnce 單次 HTTP 投遞：POST JSON body，secret 非空時附 HMAC 簽名 header。
 // 回傳 HTTP 狀態碼供呼叫端判斷重試；body 讀畢丟棄以利連線重用
 func deliverOnce(client *http.Client, ch *model.NotificationChannel, body []byte) (int, error) {
 	req, err := http.NewRequest(http.MethodPost, ch.URL, bytes.NewReader(body))
@@ -574,20 +574,20 @@ func deliverOnce(client *http.Client, ch *model.NotificationChannel, body []byte
 	return resp.StatusCode, nil
 }
 
-// SendTestNotification 同步發送測試 payload 至指定通道（design D4）：
+// SendTestNotification 同步發送測試 payload 至指定通道：
 // admin 點「測試發送」要即時回饋，單次嘗試不重試——失敗原因直接回給操作者，
 // 由人決定修正後重試，自動退避只會拖慢回饋
 func SendTestNotification(ch *model.NotificationChannel) (int, error) {
 	testAlert := model.CommandAlert{
 		Command:  "echo " + branding.Slug + " notification test",
 		Severity: model.AlertSeverityLow,
-		// 機器識別字（design D6）：webhook 的 rule_name 欄不再是散文，
+		// 機器識別字：webhook 的 rule_name 欄不再是散文，
 		// Slack 側的可讀標題改由 notifycat 依通道語系渲染
 		RuleName:    testRuleName,
 		TriggeredAt: time.Now(),
 	}
 	// 測試 payload 無真實主體（SessionID／UserID 皆為 0），故不解析名稱——
-	// 脈絡行會走 D5 的降級路徑只顯示識別碼，那是預期形態
+	// 脈絡行會走降級路徑只顯示識別碼，那是預期形態
 	body, err := buildChannelBody(ch, alertEventTest, testAlert, alertSubjectNames{})
 	if err != nil {
 		return 0, fmt.Errorf("測試 payload 序列化失敗: %w", err)

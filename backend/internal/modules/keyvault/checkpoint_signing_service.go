@@ -23,7 +23,7 @@ import (
 // 「改版本號使簽章免驗」開後門
 var ErrCheckpointSigningKeyVersionUnknown = errors.New("檢查點簽章鑰版本不存在：以該版本簽的檢查點不可驗")
 
-// CheckpointSigningService 檢查點鏈的 Ed25519 簽章鑰服務（audit-checkpoint-chain D5）。
+// CheckpointSigningService 檢查點鏈的 Ed25519 簽章鑰服務（audit-checkpoint-chain）。
 //
 // 與 ExportSigningService 的差異（刻意）：
 //   - **自始帶版本**：多版本並存於記憶體，依 version 取鑰；檢查點記錄其簽章版本，

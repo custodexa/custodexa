@@ -12,7 +12,7 @@ import (
 	kmskek "github.com/custodexa/backend/pkg/crypto/kms"
 )
 
-// 組裝根的 KEK provider 建構（kek-provider-modularization tasks 3.1／3.2）。
+// 組裝根的 KEK provider 建構。
 
 // kmsDecision 建構期 KMS 判定結果的測試樣本
 func kmsDecision(keyID, region string) *config.KEKDecision {
@@ -22,14 +22,14 @@ func kmsDecision(keyID, region string) *config.KEKDecision {
 	}
 }
 
-// TestBuildKEKProviderKMSFailsCloseWhenUnreachable **KMS 不可達即拒啟動**
-// （tasks 3.2 的失敗判準：KMS 不可達時降級啟動）。
+// TestBuildKEKProviderKMSFailsCloseWhenUnreachable **KMS 不可達即拒啟動**。
+// 失敗判準：KMS 不可達時降級啟動。
 //
 // region 指向一個不存在的 AWS 區域：端點 DNS 解不出來，建構 SHALL 回錯，
 // 呼叫端（stage1）以 log.Fatalf 收場。SHALL NOT 回落任何其他 provider、
 // SHALL NOT 回 nil error。
 //
-// **不再以 AWS_ENDPOINT_URL_KMS 模擬不可達（round-4 codex high #2）**：
+// **不再以 AWS_ENDPOINT_URL_KMS 模擬不可達（安全審查 high #2）**：
 // 該變數現在會被生產路徑直接拒絕（見下一格），拿它模擬會測到錯的東西。
 //
 // 此路徑同時證明「探測發生在建構期」——本測試完全沒有 DB。
@@ -56,8 +56,8 @@ func TestBuildKEKProviderKMSFailsCloseWhenUnreachable(t *testing.T) {
 	}
 }
 
-// TestBuildKEKProviderKMSRejectsEndpointOverride **H2 的組裝層 fail-close**
-// （round-4 codex high #2）。
+// TestBuildKEKProviderKMSRejectsEndpointOverride **端點覆寫在組裝層的 fail-close**
+// （安全審查 high #2）。
 //
 // 原立論「不新增產品 env 鍵即消除端點覆寫」不成立：AWS_ENDPOINT_URL_KMS／
 // AWS_ENDPOINT_URL 由 SDK 自行解析，能把**含明文 DEK 的 kms:Encrypt 請求**
@@ -117,7 +117,7 @@ func TestBuildKEKProviderUnsupportedModes(t *testing.T) {
 	}
 }
 
-// TestBuildKEKProviderEnvUnchanged env 模式的行為不因 P3 而改變
+// TestBuildKEKProviderEnvUnchanged 加進 kms 模式之後，env 模式的行為不得改變
 // （既有部署零可見變化的硬條件）
 func TestBuildKEKProviderEnvUnchanged(t *testing.T) {
 	material := "TestKEKMaterial00000000000000123"
@@ -141,7 +141,7 @@ func TestBuildKEKProviderEnvUnchanged(t *testing.T) {
 // TestDelegatedRewrapProviderRequiresProcessKMSConfig 委託重包目標的 region／
 // 服務商／信任帳號沿用本行程組態；缺項時錯誤 SHALL 逐鍵指名，而非籠統「建構失敗」。
 //
-// **KEK_KMS_KEY_ID 自本輪起也是必要鍵（round-4 codex high #1）**：
+// **KEK_KMS_KEY_ID 亦為必要鍵（安全審查 high #1）**：
 // 它是信任帳號範圍的唯一來源，沒有它就無從判定請求指定的 key_ref 是否屬於
 // 本部署信任的雲端帳號。
 func TestDelegatedRewrapProviderRequiresProcessKMSConfig(t *testing.T) {
@@ -161,7 +161,7 @@ func TestDelegatedRewrapProviderRequiresProcessKMSConfig(t *testing.T) {
 
 // TestDelegatedRewrapProviderRequiresTrustAnchor 信任錨點單獨缺席時亦拒絕受理。
 //
-// **這是 H1 在組裝層的 fail-close**：沒有錨點就沒有信任範圍，若此時放行，
+// **這是信任錨點在組裝層的 fail-close**：沒有錨點就沒有信任範圍，若此時放行，
 // kms.New 會收到零值 Scope 而**完全不做帳號檢查**——正是修補要消滅的狀態。
 // 故錨點缺席 SHALL NOT 靜默退化為「不檢查」。
 func TestDelegatedRewrapProviderRequiresTrustAnchor(t *testing.T) {
@@ -181,10 +181,10 @@ func TestDelegatedRewrapProviderRequiresTrustAnchor(t *testing.T) {
 	}
 }
 
-// TestDelegatedRewrapProviderRejectsForeignAccountTarget **H1 的組裝層 fail-close**。
+// TestDelegatedRewrapProviderRejectsForeignAccountTarget **跨帳號目標在組裝層的 fail-close**。
 //
 // 信任錨點是 123456789012 的金鑰；請求指定的 key_ref 是**同 region、他帳號**的
-// 完整 ARN。裁決 6 的 region 沿用完全擋不住這條路徑，故必須在此拒絕，
+// 完整 ARN。region 沿用完全擋不住這條路徑，故必須在此拒絕，
 // 且錯誤須指出目標帳號號碼（操作者要能分辨是誤設還是有人在試）。
 //
 // 本格於信任範圍推導完成後即拒絕，不需要真的連到 KMS——因為錨點本身是完整 ARN
@@ -219,7 +219,7 @@ func TestDelegatedRewrapProviderRejectsForeignAccountTarget(t *testing.T) {
 	}
 }
 
-// TestDelegatedRewrapProviderRejectsHSM P4 尚未交付：明示拒絕而非靜默回落
+// TestDelegatedRewrapProviderRejectsHSM hsm 委託尚未交付：明示拒絕而非靜默回落
 func TestDelegatedRewrapProviderRejectsHSM(t *testing.T) {
 	if _, err := buildDelegatedRewrapProvider(context.Background(), crypto.KeyRefProviderHSM, "token:label"); err == nil {
 		t.Fatal("hsm 目標尚未交付，應拒絕")

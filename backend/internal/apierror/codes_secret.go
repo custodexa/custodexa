@@ -1,7 +1,7 @@
 package apierror
 
-// A5 批：change-secret-plans / snippets / host-key handler 出口碼
-// （backend-i18n-unification A 段）。與 codes.go 同一 registry，分檔僅為
+// change-secret-plans / snippets / host-key handler 出口碼
+// 與 codes.go 同一 registry，分檔僅為
 // 批次隔離；命名沿用 codes.go 既有慣例（VALIDATION_* / CONFLICT_* /
 // NOTFOUND_* / INTERNAL_<RESOURCE>_<VERB>）。ZhFallback 逐字取自遷移前
 // c.JSON 文字（含既有 RespondInternalError 的 action+"失敗" 拼接結果），
@@ -21,7 +21,7 @@ var (
 	CodeInternalChangeSecretRecordQuery = register("INTERNAL_CHANGE_SECRET_RECORD_QUERY", Descriptor{ZhFallback: "查詢改密記錄失敗"})
 )
 
-// --- 改密期 1：秘密型別／策略／候選憑證（change-secret-ssh-deepening）---
+// --- 改密期 1：秘密型別／策略／候選憑證---
 var (
 	CodePlanBadSecretType  = register("VALIDATION_PLAN_BAD_SECRET_TYPE", Descriptor{ZhFallback: "秘密型別僅支援 password 或 ssh_key"})
 	CodePlanBadKeyStrategy = register("VALIDATION_PLAN_BAD_KEY_STRATEGY", Descriptor{ZhFallback: "金鑰策略僅支援 append_replace 或 exclusive"})

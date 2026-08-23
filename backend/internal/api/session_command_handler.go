@@ -107,7 +107,7 @@ func (h *SessionCommandHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// RegisterRoutes 註冊指令審計路由（design D5）：
+// RegisterRoutes 註冊指令審計路由：
 // - 單會話清單掛 session 檢視權限（與 session detail 同模式）
 // - 跨會話搜尋掛 audit 檢視權限（與 audit_logs 同模式）
 func (h *SessionCommandHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
@@ -118,7 +118,7 @@ func (h *SessionCommandHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 	commands.Use(middleware.AuthMiddleware(authService))
 
 	// per-session 指令含終端輸入原文（可能有密碼），無條件要求 session:view，
-	// 無條件強制（session-access-scoping；權限旗標已退場）
+	// 無條件強制（權限旗標已退場）
 	sessions.GET("/:id/commands", middleware.RequirePermission(middleware.PermSessionView), h.ListBySession)
 
 	commands.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Search)

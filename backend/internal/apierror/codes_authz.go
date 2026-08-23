@@ -1,6 +1,5 @@
 package apierror
 
-// A4 批：authorization/user_group/role handler 遷移（backend-i18n-unification）。
 // 本檔專收 internal/api/{authorization_handler,user_group_handler,role_handler}.go
 // 的新碼；复用既有碼（AUTH_UNAUTHENTICATED、VALIDATION_BAD_REQUEST、
 // VALIDATION_BAD_PARAMS、AUTH_USER_NOT_FOUND、NOTFOUND_ASSET、
@@ -31,7 +30,7 @@ var queryFieldZhLabels = map[string]string{
 	"range":   "時間窗",
 	"types":   "事件類別",
 	"cursor":  "分頁游標",
-	// 稽核證據匯出（workbench-exits-and-export）：同樣復用本泛用碼。
+	// 稽核證據匯出：同樣復用本泛用碼。
 	// 這三個欄位原本解析失敗是**靜默丟棄**的，等於把打錯字的查詢當成
 	// 「沒帶這個條件」照樣匯出——受害者拿到的是一包範圍不同、卻看不出異狀的證據
 	"session_id": "連線 ID",
@@ -94,7 +93,7 @@ var (
 	CodeInternalAuthorizationRevoke = register("INTERNAL_AUTHORIZATION_REVOKE", Descriptor{ZhFallback: "撤銷授權失敗"})
 )
 
-// --- authorization_handler.go: 帳號範圍（asset-multi-account D5）---
+// --- authorization_handler.go: 帳號範圍---
 var (
 	// CodeAccountScopeInvalid 對應 authz.ErrAccountScopeInvalid。
 	// 不回填違規的 username：帳號名是請求方可控輸入，apierror 的 params 僅收

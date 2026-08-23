@@ -15,7 +15,7 @@ import jaJP from '@/i18n/locales/ja-JP.json'
 enableAutoUnmount(afterEach)
 
 const LIMIT_CODES = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']
-// P4 為自動驗證那條（audit-chain-scheduled-verification 5.3）：保護範圍的條數
+// P4 為自動驗證那條：保護範圍的條數
 // 只增不減，少一條即為事實被砍掉
 const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4']
 
@@ -266,7 +266,7 @@ describe('檢查點驗證頁', () => {
 // 稽核只會讀到「一堆洞」。本組守衛掃的是**整個頁面 namespace 的三語文案**，
 // 不只邊界段——同一把尺也適用於降級橫幅與九態研判說明。
 //
-// **與後端完整版守衛的分工（auditor-readable-copy 組 2，勿讓兩份規則漂移）**：
+// **與後端完整版守衛的分工（勿讓兩份規則漂移）**：
 // `backend/internal/auditcopy/auditor_copy_guard_test.go` 是完整射程版，掃四個對外
 // namespace（checkpointVerification、auditorWorkbench、policyNote、policyLabel）
 // × 三語 × 全部葉鍵，並多帶「邊界兩部分齊備」「保護範圍鍵序在前」「豁免上限釘定」
@@ -316,10 +316,10 @@ describe('對外文案的可讀性（無內部函式名與狀態機器碼）', (
     })
   }
 
-  // 同一把尺延伸到封章門檻兩個政策鍵的對外文案（本批新增，讀者同為稽核：
+  // 同一把尺延伸到封章門檻兩個政策鍵的對外文案（讀者同為稽核：
   // 安全政策頁的說明會被當成控制描述引用，出現機器碼一樣毀掉可讀性）。
   //
-  // **掃描範圍限定本批擁有的 audit_checkpoint_* 兩鍵**：policyLabel 其餘四十餘鍵
+  // **掃描範圍限定 audit_checkpoint_* 兩鍵**：policyLabel 其餘四十餘鍵
   // 早於本標準存在，且合法帶有協定專名（syslog／RDP／VNC／LDAP），全族掃描只能
   // 靠豁免清單成立——而「豁免清單只驗刪除不驗放寬」是 docs/dev/testing.md §5
   // 點名的假綠形態。與其造一份會被逐鍵放寬的清單，不如誠實界定射程。
@@ -464,7 +464,7 @@ describe('九態文案與視覺分級', () => {
   })
 })
 
-// 自動驗證的運作狀態區塊（audit-chain-scheduled-verification tasks 5.2／5.3）。
+// 自動驗證的運作狀態區塊。
 //
 // 這組守的是兩件事，缺任一件這個區塊就會誤導稽核：
 //   1. **它必須看得見**——偵測控制若在畫面上不存在，稽核只能假設它沒在跑，

@@ -1,6 +1,6 @@
 package middleware
 
-// 匿名拒絕留痕與其有界機制（audit-coverage-closure 批 1，design D1／D2）。
+// 匿名拒絕留痕與其有界機制。
 //
 // # 這個檔補的是什麼洞
 //
@@ -8,13 +8,13 @@ package middleware
 // 而 `audit_log.go` 的審計中介層取不到 `userID`/`username` 就整筆跳過。兩者相乘的
 // 結果是：**171 條掛認證中介層的路由，其拒絕路徑一列審計都不會留下**——「誰在敲門、
 // 敲了幾次、敲的是哪一扇」在稽核上完全答不出來，而且沒有任何測試會因此變紅
-//（批 0 的 `cmd/server/audit_rejection_coverage_guard_test.go` 實測 171／171）。
+//（`cmd/server/audit_rejection_coverage_guard_test.go` 實測 171／171）。
 //
 // # 為什麼補在這裡而不是逐 handler 補
 //
 // 黑洞的位置是**單一**的（認證中介層 abort → 無 userID → 審計中介層跳過），故單點
 // 補寫即涵蓋全部 171 條，且新增端點自動涵蓋。逐 handler 補要改 171 處，新增端點
-// 必然遺漏——那正是本 change 要根除的模式（design D1）。
+// 必然遺漏——那正是本 change 要根除的模式。
 //
 // # 為什麼需要有界機制
 //
@@ -256,7 +256,7 @@ func anonRejectionDefaults(params anonRejectionParams) anonRejectionParams {
 //
 // **判定不在這裡**：本函式是 internal/sourceip（全庫唯一實作）的薄委派。本檔原本
 // 自帶一份逐行相同的實作，那正是「同一條紀律分家」的形態——分家的那一份會在後續
-// 演化中悄悄退回 c.ClientIP()，而不會有任何測試轉紅（audit-coverage-closure 批 8）
+// 演化中悄悄退回 c.ClientIP，而不會有任何測試轉紅
 func (a *anonRejectionAuditor) sourceIP(c *gin.Context) string {
 	return sourceip.From(c, a.trustProxy)
 }
@@ -267,7 +267,7 @@ func (a *anonRejectionAuditor) sourceIP(c *gin.Context) string {
 // 由 `abortUnauthenticated` 寫進 gin context。沿用既有碼而非另造散文字串：
 // 稽核端篩「憑證缺失 vs 憑證無效」與前端拿到的錯誤碼是同一套語彙。
 //
-// **唯一的例外是 `model.AuditReasonTokenExpired`**（批 3 裁決）：它只存在於審計側，
+// **唯一的例外是 `model.AuditReasonTokenExpired`**：它只存在於審計側，
 // 對外回應仍是 AUTH_TOKEN_INVALID。例行到期若與真正的無效存取嘗試同碼，
 // 每日覆核的登入失敗數會被正常流量淹沒；而若讓對外也分碼，就開出了憑證存在性探測面
 func (a *anonRejectionAuditor) record(c *gin.Context, reason, requestID string, elapsed time.Duration) {
@@ -420,7 +420,7 @@ type anonRow struct {
 //
 // 固定欄位即 spec「拒絕路徑必留痕」的契約：`user_id=0`、`username` 空——**不是**
 // 拿某個佔位帳號冒充，匿名就該看得出是匿名；`resource=auth`、`status=failure`
-// （認證失敗＝憑證不成立，與授權拒絕的 `denied` 分流，見 design D3）。
+// （認證失敗＝憑證不成立，與授權拒絕的 `denied` 分流）。
 //
 // `action=login` 沿用本庫既有的認證事件語彙（`auditLogin`、OIDC 的 writeAudit
 // 皆同）——這一列記的就是一次不成立的身分認定；「他想做什麼」不因此遺失，

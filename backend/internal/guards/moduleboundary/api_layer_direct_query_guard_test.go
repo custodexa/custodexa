@@ -11,21 +11,21 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// SD-2「api／middleware 繞 service 直查 model」的復辟守衛（modular-architecture W7 7.1）。
+// 「api／middleware 繞 service 直查 model」的復辟守衛。
 //
-// 收斂的四處（R3 §3.2）：
+// 收斂的四處：
 //   - `api/role_handler.go:28` 直查 `model.Role` → `identity.UserService.ListRoles`（identity）
 //   - `api/clipboard_event_handler.go:32` 直查 `model.ClipboardEvent` →
 //     `service.SessionService.ListClipboardEvents`（session）
-//   - `api/asset_handler.go:679` 直寫 `model.AuditLog` → W4 4.6 已改經 AsyncSink
+//   - `api/asset_handler.go:679` 直寫 `model.AuditLog` → 已改經 AsyncSink
 //   - `middleware/approver_guard.go:53` 直查 `model.ApproverScope` →
-//     `authz.EvaluateApproverRouteEligibility`（判準逐字未改，SD-3 第二步在 W7b）
+//     `authz.EvaluateApproverRouteEligibility`（判準逐字未改）
 //
 // **守衛的形狀**：接入層（`internal/api`＋`internal/middleware`）的非測試檔中，
 // 任何以 `*gorm.DB` 為接收者、以 `model.*` 型別或 SQL 字面量指名資料表的存取，
 // 都必須落在具名例外清單內。清單**不含**上述四處——那正是「擋復辟」的意思。
 //
-// **本守衛不做的事**：不追求把接入層的 `*gorm.DB` 清零。清單裡的三處是本波**刻意
+// **本守衛不做的事**：不追求把接入層的 `*gorm.DB` 清零。清單裡的三處是**刻意
 // 不動**的既有債（各有理由），列出來是為了讓它們可見且有數量上界，不是為了赦免。
 // 新增一處未登記的直查即紅——那才是這個守衛的用途。
 
@@ -34,17 +34,17 @@ var apiLayerScanDirs = []string{"./internal/api/...", "./internal/middleware/...
 
 // apiLayerDirectAccessExempt 具名例外：接入層現存的直接資料存取，逐條附理由。
 //
-// **四處 SD-2 收斂點不得出現在此表**——加進來就等於把守衛關掉，
-// 而 `TestAPILayerSD2SitesAreNotExempt` 會擋下那個動作。
+// **那四處收斂點不得出現在此表**——加進來就等於把守衛關掉，
+// 而 `TestAPILayerConvergedSitesAreNotExempt` 會擋下那個動作。
 var apiLayerDirectAccessExempt = map[string]string{
 	"internal/api/key_management_handler.go": "KEK 清冊查詢直接 Model(&model.DataKey{})：" +
-		"keyvault 的金鑰清冊尚未提供查詢面（W2 只搬檔未反轉查詢），列為既有債（backlog）。",
+		"keyvault 的金鑰清冊尚未提供查詢面（搬檔時未反轉查詢），列為既有債（backlog）。",
 	"internal/api/syslog_setting_handler.go": "syslog 單列設定的讀寫（First/Save）：" +
 		"policy 側無對應服務，且該表為單列組態，列為既有債（backlog）。",
 }
 
-// sd2ConvergedFiles 四處 SD-2 收斂點所在檔——**永遠不得列入例外清單**。
-var sd2ConvergedFiles = []string{
+// directQueryConvergedFiles 上述四處收斂點所在檔——**永遠不得列入例外清單**。
+var directQueryConvergedFiles = []string{
 	"internal/api/role_handler.go",
 	"internal/api/clipboard_event_handler.go",
 	"internal/api/asset_handler.go",
@@ -54,7 +54,7 @@ var sd2ConvergedFiles = []string{
 // minAPILayerScannedFiles 接入層非測試檔掃描下限（現況 60+，取 40 為保守下界）。
 const minAPILayerScannedFiles = 40
 
-// TestAPILayerHasNoDirectModelQuery SD-2 復辟守衛。
+// TestAPILayerHasNoDirectModelQuery 接入層直查的復辟守衛。
 func TestAPILayerHasNoDirectModelQuery(t *testing.T) {
 	root := lifecycleModuleRoot(t)
 	modelTables := modelTableNames(t, root)
@@ -140,26 +140,26 @@ func TestAPILayerHasNoDirectModelQuery(t *testing.T) {
 	sort.Strings(violations)
 	if len(violations) > 0 {
 		t.Errorf("接入層（internal/api／internal/middleware）出現未登記的直接資料存取：\n  %s\n"+
-			"SD-2 的處置是「改呼叫擁有該資料的模組」，不是把它加進例外清單——"+
-			"handler／middleware 一旦自己查表，判定就會出現第二份真相（SD-3／SD-4 的成因）",
+			"正確的處置是「改呼叫擁有該資料的模組」，不是把它加進例外清單——"+
+			"handler／middleware 一旦自己查表，判定就會出現第二份真相",
 			strings.Join(violations, "\n  "))
 	}
 	t.Logf("接入層掃描：%d 包／%d 非測試檔／存取點 %d 個／例外檔 %d 個",
 		len(pkgs), scanned, len(scan.Findings), len(apiLayerDirectAccessExempt))
 }
 
-// TestAPILayerSD2SitesAreNotExempt 例外清單的二次條件（「列進清單不是免死金牌」）：
-// 四處 SD-2 收斂點不得被加進例外清單。缺這條的話，把守衛關掉的成本只是加一行。
-func TestAPILayerSD2SitesAreNotExempt(t *testing.T) {
+// TestAPILayerConvergedSitesAreNotExempt 例外清單的二次條件（「列進清單不是免死金牌」）：
+// 那四處收斂點不得被加進例外清單。缺這條的話，把守衛關掉的成本只是加一行。
+func TestAPILayerConvergedSitesAreNotExempt(t *testing.T) {
 	var leaked []string
-	for _, f := range sd2ConvergedFiles {
+	for _, f := range directQueryConvergedFiles {
 		if _, ok := apiLayerDirectAccessExempt[f]; ok {
 			leaked = append(leaked, f)
 		}
 	}
 	if len(leaked) > 0 {
-		t.Errorf("SD-2 已收斂的檔被加進例外清單：%s\n"+
-			"這四處直查的消滅是 W7 的驗收條件，加進例外＝把驗收條件本身刪掉",
+		t.Errorf("已收斂的檔被加進例外清單：%s\n"+
+			"這四處直查的消滅是模組化的驗收條件，加進例外＝把驗收條件本身刪掉",
 			strings.Join(leaked, ", "))
 	}
 	// 例外清單的檔必須真實存在（防「登記已過期」的白名單越留越寬）

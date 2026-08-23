@@ -38,7 +38,7 @@
       </el-result>
     </div>
 
-    <!-- 連線介面：40px 細頂欄（terminal-navigation D2）+ 內容區 -->
+    <!-- 連線介面：40px 細頂欄（terminal-navigation）+ 內容區 -->
     <template v-else-if="asset">
       <div class="session-header">
         <el-link

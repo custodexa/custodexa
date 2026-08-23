@@ -1,12 +1,12 @@
 package main
 
-// 來源位址單一取法的 AST 守衛（audit-coverage-closure 批 8／8.6）。
+// 來源位址單一取法的 AST 守衛。
 //
 // # 守的是什麼
 //
 // 審計列的 `client_ip` 一旦取自 `c.ClientIP()`，在**未設 TRUSTED_PROXIES** 的部署下
-// 就由請求方的轉送標頭決定（gin 未呼叫 SetTrustedProxies 時信任全部代理）。批 7 修掉
-// 了零憑證可達的三處，批 8 收口其餘 33 處。這類偏差的共同形態是：
+// 就由請求方的轉送標頭決定（gin 未呼叫 SetTrustedProxies 時信任全部代理）。零憑證可達的三處先修掉，
+// 其餘 33 處隨後收口。這類偏差的共同形態是：
 // **改回去以後所有測試照樣綠**，審計列上仍有一個看起來很正常的 IP。
 //
 // # 為什麼判準是「全庫禁用」而不是「審計寫入路徑禁用」
@@ -59,7 +59,7 @@ var forwardedIPHeaders = []string{
 // TestClientIPHasSingleImplementation 產品碼中 `ClientIP()` 只准出現在唯一實作內。
 //
 // 掃描範圍＝module 根下全部非測試 `.go`（含 cmd／config／internal／pkg）。**不排除
-// 任何子樹**：排除規則本身就是下一個缺口——批 7 的三處分家實作分別住在
+// 任何子樹**：排除規則本身就是下一個缺口——當初的三處分家實作分別住在
 // api／middleware 兩個包，任何「只掃 internal/api」的守衛都看不到它們。
 //
 // 測試檔不掃：`_test.go` 內的 `c.ClientIP()` 多半正是在斷言「gin 預設會採信標頭」
@@ -101,7 +101,7 @@ func TestClientIPHasSingleImplementation(t *testing.T) {
 		t.Errorf("下列產品碼直接呼叫 ClientIP()（共 %d 處）：%v\n"+
 			"來源位址一律走 internal/sourceip（未設 TRUSTED_PROXIES 時不採信轉送標頭）："+
 			"直接呼叫在未設可信代理的部署下，等於讓請求方自選審計列上的來源位址，"+
-			"而這種偏差不會讓任何行為測試轉紅（audit-coverage-closure 批 7／批 8）",
+			"而這種偏差不會讓任何行為測試轉紅",
 			len(offenders), offenders)
 	}
 }

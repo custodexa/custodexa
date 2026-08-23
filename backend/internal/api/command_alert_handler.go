@@ -20,7 +20,7 @@ type CommandAlertServiceInterface interface {
 	Review(alertID, reviewerID uint, disposition, note string) error
 }
 
-// CommandAlertHandler 告警查詢 API handler（command-alerts D4，audit:view）
+// CommandAlertHandler 告警查詢 API handler（command-alerts，audit:view）
 type CommandAlertHandler struct {
 	alertService CommandAlertServiceInterface
 	// auditService 審閱處置的顯式審計；nil 表示停用
@@ -77,7 +77,7 @@ func (h *CommandAlertHandler) List(c *gin.Context) {
 		}
 	}
 
-	// 未審閱篩選（audit-workflows D3）：供每日審閱走查（10.4.1）
+	// 未審閱篩選（audit-workflows）：供每日審閱走查（10.4.1）
 	if c.Query("unreviewed") == "true" {
 		filter.Unreviewed = true
 	}
@@ -97,7 +97,7 @@ func (h *CommandAlertHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// Review 審閱處置一筆告警（audit-workflows D3，PCI 10.4.1）
+// Review 審閱處置一筆告警（audit-workflows，PCI 10.4.1）
 func (h *CommandAlertHandler) Review(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -146,12 +146,12 @@ func (h *CommandAlertHandler) Review(c *gin.Context) {
 		})
 	}
 
-	// 成功訊息不落 payload（design D9）：前端以自有 $t 文案顯示
+	// 成功訊息不落 payload：前端以自有 $t 文案顯示
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // RegisterRoutes 註冊告警查詢路由：
-// 與審計日誌/跨會話指令搜尋同掛 audit:view（design D4），無條件強制
+// 與審計日誌/跨會話指令搜尋同掛 audit:view，無條件強制
 func (h *CommandAlertHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	alerts := r.Group("/command-alerts")
 	alerts.Use(middleware.AuthMiddleware(authService))

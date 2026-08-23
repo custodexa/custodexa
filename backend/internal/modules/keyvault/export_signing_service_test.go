@@ -13,7 +13,7 @@ import (
 
 var testEncryptionKey = []byte("dev-key-for-testing-only-ok32bts")
 
-// testSigningCodec 簽章服務改收 crypto.ColumnCodec（D5 cutover，tasks 1.7）；
+// testSigningCodec 簽章服務改收 crypto.ColumnCodec；
 // 測試以固定金鑰的 aadTestCodec 滿足介面——與生產路徑同樣**沒有**無 AAD 寫入方法
 func testSigningCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 	t.Helper()

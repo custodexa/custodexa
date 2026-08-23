@@ -42,7 +42,7 @@ func seedAuditLog(t *testing.T, db *gorm.DB, action model.AuditAction, resource 
 	}
 }
 
-// seedAnonRejection 認證中介層的匿名拒絕列（批 1 的形狀）：user_id=0、無 username、
+// seedAnonRejection 認證中介層的匿名拒絕列：user_id=0、無 username、
 // 原因碼在 details。reason 決定它算不算「登入失敗」
 func seedAnonRejection(t *testing.T, db *gorm.DB, reason string, at time.Time) {
 	t.Helper()
@@ -82,8 +82,7 @@ func TestDailyReviewSnapshot(t *testing.T) {
 	}
 }
 
-// TestDailyReviewLoginFailuresCoverBothStatuses 登入失敗計數涵蓋兩種狀態值
-// （audit-coverage-closure 批 3）。
+// TestDailyReviewLoginFailuresCoverBothStatuses 登入失敗計數涵蓋兩種狀態值。
 //
 // 修正前只數 `status='failure'`，而外部身分提供者的登入拒絕（准入規則不符、
 // 外部帳號以本地密碼登入、LDAP 傳輸嚴格拒絕）在本庫一律記 `denied`——**全數漏算**，

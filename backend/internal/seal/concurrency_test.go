@@ -13,7 +13,7 @@ import (
 // 恰一方取得持有權並執行驗證＋初始化全程，另一方在「任何驗證開始前」被拒。
 //
 // 本測試斷言的是驗證次數，而非「恰一方初始化」——後者無法排除「兩者都跑了
-// 驗證、只是一方初始化」這個正是 D6.2.1 要消除的缺陷。
+// 驗證、只是一方初始化」這個缺陷——CAS 取得持有權必須發生在任何驗證之前。
 func TestConcurrentUnsealExactlyOneVerification(t *testing.T) {
 	const n = 8
 	h := newHarness(t, nil)

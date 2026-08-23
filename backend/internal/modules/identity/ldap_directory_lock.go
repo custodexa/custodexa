@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LDAP 目錄設定寫入路徑的並發線性化（ldap-settings-migration D1）。
+// LDAP 目錄設定寫入路徑的並發線性化。
 //
 // **獨立成檔**沿本專案的既有歸檔慣例：跨實例鎖一律有自己的檔
 // （key_manager_lock.go、user_credential_lock.go、oidc_provider_lock.go），
@@ -26,11 +26,11 @@ import (
 // 兩者的共同解是同一把交易範圍互斥：`WithLDAPDirectoryLock` 為 CRUD 與 seed
 // 的唯一寫入入口，**一切判定於鎖內以 tx 重讀**（鎖外預讀只能當提示）。
 
-// ── 跨實例互斥（D1）──────────────────────────────────────────────────────
+// ── 跨實例互斥 ──────────────────────────────────────────────────────
 
 // ldapDirectoryLockKey LDAP 目錄設定寫入的 advisory lock key。
 //
-// **自有 key、不複用 KEKDataKeysLockKey**（D1／R3-opus MED）：`withDataKeysLock`
+// **自有 key、不複用 KEKDataKeysLockKey**：`withDataKeysLock`
 // 綁在 KeyManagerService 上且硬寫 KEK 的 key，共用會使目錄設定的存檔與 KEK
 // 輪替無謂互斥（admin 存個 base DN 卻被「另一金鑰操作進行中」擋下）。
 //

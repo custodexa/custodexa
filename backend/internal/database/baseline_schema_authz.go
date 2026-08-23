@@ -1,6 +1,6 @@
 package database
 
-// 授權與申請流程——baseline schema 的「authz」域（migration-baseline-compression D1）。
+// 授權與申請流程——baseline schema 的「authz」域。
 //
 // 資產授權、臨時存取申請、簽核路由與週期性複審。
 //

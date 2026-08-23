@@ -35,31 +35,31 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 段 2（完整圖）——kek-provider-modularization D6.1。
+// 段 2（完整圖）。
 //
 // 內容：InitKeyManager（load／bootstrap／finalizeSwitch）、policy／audit／通知／
 // 排程器、全部業務 handler、完整路由樹。
 //
-// **fail-close 語義變更（D6.1，本檔的核心差異）**：段 2 的任何失敗一律
+// **fail-close 語義變更（本檔的核心差異）**：段 2 的任何失敗一律
 // `return nil, err`，**不得 log.Fatalf**。同一份建構邏輯、兩種失敗處置由呼叫端決定：
 //
 //   - A／C 模式（main.go）：啟動期失敗即 log.Fatalf，行為與現況零差異。
 //   - B 模式（sealwire.go）：轉為「回機器碼給解封請求＋狀態轉 sealed-faulted」，
 //     行程續存以便管理員讀狀態與重試。
 //
-// 合作式取消（D6.2.4）：每個具外部副作用的步驟之前 SHALL 呼叫
+// 合作式取消：每個具外部副作用的步驟之前 SHALL 呼叫
 // seal.CheckCancelStep——建立外部連線、開始通知投遞、啟動排程器為硬性檢查點。
 // 逾時只取消 context、epoch 只擋發佈，兩者都擋不住「已經啟動的副作用」。
 
-// stage2ServiceInventory 是段 2 建構的服務清單（tasks 2.0 驗收：
-// **延後建構的服務清單逐項列出並有測試**確認其在段 1 期間不存在）。
+// stage2ServiceInventory 是段 2 建構的服務清單：**延後建構的服務逐項列出
+// 並有測試**確認其在段 1 期間不存在。
 //
 // 本清單是可執行契約而非文件：appGraph.ServiceNames() 回傳實際建構的項目，
 // 守衛測試逐項比對兩者，任一遺漏或多出即紅。
 var stage2ServiceInventory = []string{
 	"keyManager",
 	"policyService",
-	// auditTxSink（W4 4.3／4.7）：交易內審計落地面＋未注入即 fail-close 的啟動自檢。
+	// auditTxSink：交易內審計落地面＋未注入即 fail-close 的啟動自檢。
 	// 落點在 ldapDirectoryService 之前是契約——它是第一個消費者，且 postUnsealMigrations
 	// 的 LDAP seed 在段 2 期間就會寫審計
 	"auditTxSink",
@@ -79,7 +79,7 @@ var stage2ServiceInventory = []string{
 	"dailyReviewService",
 	"connHandler",
 	"userService",
-	// alertSink（W5 5.1／5.4）：指令告警落地面＋未注入即 fail-close 的啟動自檢。
+	// alertSink：指令告警落地面＋未注入即 fail-close 的啟動自檢。
 	// 落點在 alertMatcher／sshHandler 之前是契約——兩者是它僅有的消費者
 	"alertSink",
 	"alertMatcher",
@@ -101,10 +101,10 @@ var stage2ServiceInventory = []string{
 	"kekRetirementScheduler",
 	"reconcileScheduler",
 	"checkpointScheduler",
-	// chainVerifyScheduler（audit-chain-scheduled-verification 第 1 組）：
+	// chainVerifyScheduler：
 	// 必須晚於 checkpointScheduler——驗證的對象是封章產出的鏈
 	"chainVerifyScheduler",
-	// metricsRefresher（observability-lite）：接替原 perfMonitor 的段 2 末步位置。
+	// metricsRefresher：接替原 perfMonitor 的段 2 末步位置。
 	// 刷新的是查詢成本不對稱的指標（DB 查詢、檔案系統遍歷），故定期刷新而非
 	// 於每次採集時同步查詢——後者會讓外部採集頻率直接放大成本系統的負載
 	"metricsRefresher",
@@ -123,7 +123,7 @@ type appGraph struct {
 	auditService *audit.AuditLogService
 	keyManager   *keyvault.KeyManagerService
 
-	// unsealedAt 本世代的解封時點（清冊 seal_state 的伴隨欄位，D10）。
+	// unsealedAt 本世代的解封時點（清冊 seal_state 的伴隨欄位）。
 	unsealedAt time.Time
 
 	// engine 為本世代的完整 router，**於 publish 之前建構完成**（runStage2Graph）。
@@ -173,10 +173,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		return g, fmt.Errorf("段 2 步驟 %q 失敗: %w", step, err)
 	}
 
-	// 信封加密金鑰管理（key-management-envelope D1-D4）：DEK 由 KEK 包裹落庫；首啟 bootstrap
+	// 信封加密金鑰管理：DEK 由 KEK 包裹落庫；首啟 bootstrap
 	// 生成 data DEK 並凍結 legacy 審計蓋章鑰為 v0 快照。KEK provider 與 legacy 審計鑰已於連 DB 前
 	// 建構（B 模式則來自解封材料）；此處為 DB-dependent 的金鑰表比對，
-	// KEK 與金鑰表不符即拒絕（D8，不靜默退回 legacy 帶病運行）。
+	// KEK 與金鑰表不符即拒絕（不靜默退回 legacy 帶病運行）。
 	if err := seal.CheckCancelStep(ctx, "InitKeyManager"); err != nil {
 		return fail("InitKeyManager", err)
 	}
@@ -192,24 +192,24 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("keyManager")
 
-	// 安全政策服務（auth-hardening D1）：政策數值後台可調，鎖定/密碼 validator 的讀取來源
+	// 安全政策服務：政策數值後台可調，鎖定/密碼 validator 的讀取來源
 	policyService := policy.NewSecurityPolicyService(database.DB)
-	// 協議會話逾時政策以既有 env 初始化（D7 升級相容：既有部署值沿用，政策頁設定後 env 不再介入）
+	// 協議會話逾時政策以既有 env 初始化（升級相容：既有部署值沿用，政策頁設定後 env 不再介入）
 	policyService.SeedFromEnv(policy.PolicySessionIdleMinutes, "SSH_IDLE_TIMEOUT_MINUTES")
 	policyService.SeedFromEnv(policy.PolicySessionMaxMinutes, "SSH_MAX_SESSION_MINUTES")
-	// 錄影保留政策以既有 env 播種（audit-log-compliance：升級後行為不變，此後政策為準）
+	// 錄影保留政策以既有 env 播種（升級後行為不變，此後政策為準）
 	policyService.SeedFromEnv(policy.PolicyRetentionRecordingDays, "RECORDING_RETENTION_DAYS")
 	// 封章門檻自 env 播種（audit-checkpoint-chain）：既有部署的 env 值成為初值，
 	// 此後政策頁為準。單位與 env 1:1（秒／筆），不做換算故播種不會失真
 	policyService.SeedFromEnv(policy.PolicyAuditCheckpointIntervalSeconds, "AUDIT_CHECKPOINT_INTERVAL_SECONDS")
 	policyService.SeedFromEnv(policy.PolicyAuditCheckpointRowThreshold, "AUDIT_CHECKPOINT_ROW_THRESHOLD")
-	// 三個營運調校鍵自 env 播種（policy-numeric-lower-bounds）：既有部署的 env 值
+	// 三個營運調校鍵自 env 播種：既有部署的 env 值
 	// 成為初值，此後政策頁為準。單位與 env 1:1（筆／筆／秒），不做換算故播種不會失真。
 	// 三者皆為「調小才危險」的預算／逾時型鍵，下界由 PolicyDef.Min 承擔
 	policyService.SeedFromEnv(policy.PolicyRetentionMaxPerRun, "RETENTION_MAX_PER_RUN")
 	policyService.SeedFromEnv(policy.PolicyKeyRotationMaxPerRun, "KEY_ROTATION_MAX_PER_RUN")
 	policyService.SeedFromEnv(policy.PolicyK8sListTimeoutSeconds, "K8S_LIST_TIMEOUT_SECONDS")
-	// refresh cookie 的 Secure 屬性自部署組態播種（codeql-rescan-settlement 決策 8）。
+	// refresh cookie 的 Secure 屬性自部署組態播種。
 	//
 	// **走 SeedValue 而非 SeedFromEnv**：本鍵的種子是兩層優先序的**推導結果**
 	//（AUTH_REFRESH_COOKIE_SECURE 顯式值 → PUBLIC_BASE_URL 的 scheme），
@@ -232,7 +232,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	k8sproxy.SetPolicySource(policyService)
 	mark("policyService")
 
-	// LDAP 目錄設定服務（ldap-settings-migration D1/D2）：設定自 env 遷入 DB，
+	// LDAP 目錄設定服務：設定自 env 遷入 DB，
 	// 執行期唯一事實源。**落點必須在 keyManager 之後**——bind 密碼走信封加密，
 	// codec 未就緒即無法解密。
 	//
@@ -240,7 +240,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 啟動時的 env 快照不再參與任何執行期判定；否則 admin 於 UI 建立設定後仍
 	// 須改 env 重啟才生效，遷移即形同未做
 	//
-	// **auditTxSink 的落點必須在此之前**（W4 4.3／4.7）：交易內審計落地面是無狀態的，
+	// **auditTxSink 的落點必須在此之前**：交易內審計落地面是無狀態的，
 	// 但它的第一個消費者就是本服務，且 LDAP seed 遷移（:261 的 post-unseal 佇列）
 	// 在段 2 期間就會寫審計——自檢晚於那一步等於沒檢查。
 	auditTxSink := audit.NewTxSink()
@@ -252,17 +252,17 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	ldapDirectoryService := identity.NewLDAPDirectoryService(database.DB, keyManager, auditTxSink)
 	mark("ldapDirectoryService")
 
-	// 傳輸安全政策判定核心（transmission-security-policy D1）：六通道判定規則
+	// 傳輸安全政策判定核心：六通道判定規則
 	// 唯一所在，簽發閘/設定閘/LDAP 登入閘/徽章/清冊共用。
 	//
-	// 打環順序（D2）：先建目錄服務 → 以其 risk view provider 建本服務 →
+	// 打環順序：先建目錄服務 → 以其 risk view provider 建本服務 →
 	// 回頭把本服務注入目錄服務當存檔閘。兩者互為對方依賴，setter 是唯一解
 	transmissionPolicy := policy.NewTransmissionPolicyService(
 		policyService, ldapDirectoryService.RiskViewProvider())
 	ldapDirectoryService.SetTransmissionPolicy(transmissionPolicy)
 	mark("transmissionPolicy")
 
-	// 審計機制失效事件（audit-log-compliance 10.7.2/10.7.3）：記錄恆開、
+	// 審計機制失效事件（10.7.2/10.7.3）：記錄恆開、
 	// 通知受政策 failure_alert_enabled 控制；啟動先回填重啟遺留的進行中事件
 	//（失效狀態不跨進程保存，不回填即成永久懸掛）
 	auditFailureService := audit.InitAuditFailure(database.DB, policyService)
@@ -273,7 +273,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("auditFailureService")
 
-	// syslog 離機轉發器（audit-log-compliance 10.3.3）：audit/alert 寫入鏈以
+	// syslog 離機轉發器（10.3.3）：audit/alert 寫入鏈以
 	// model hook 與套件級單例 tee 取用；預設停用，設定頁啟用後即時生效。
 	// reporter 必須先於 Start 注入——run loop 啟動後再無鎖寫 onFailure 是 data race
 	if err := seal.CheckCancelStep(ctx, "syslogForwarder.Start"); err != nil {
@@ -294,8 +294,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("syslogForwarder")
 
-	// audit_logs 逐列完整性 HMAC（audit-log-compliance 10.3.4）：
-	// 版本化蓋章（key-management-envelope D4）——新列以系統生成鑰蓋章並記
+	// audit_logs 逐列完整性 HMAC（10.3.4）：
+	// 版本化蓋章——新列以系統生成鑰蓋章並記
 	// key_version，v0=legacy 派生鑰快照，JWT_SECRET 輪替不再影響驗章
 	auditIntegrity, err := audit.InitAuditIntegrityVersioned(database.DB, keyManager)
 	if err != nil {
@@ -313,58 +313,58 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("auditIntegrity")
 
-	// 解封後遷移佇列（交叉相容契約 3(b)／tasks 1.8）：任何需要 codec 的資料 migration
+	// 解封後遷移佇列（交叉相容契約 3(b)）：任何需要 codec 的資料 migration
 	// 於此執行——A／C 模式下與段 1 連續執行故行為與現況無異，B 模式下自然延後至解封後。
 	// 內建項目前只有 LDAP 設定 env seed（ldap_seed）；AAD 與 legacy 遷移**不在**佇列。
 	if err := seal.CheckCancelStep(ctx, "RunPostUnsealMigrations"); err != nil {
 		return fail("RunPostUnsealMigrations", err)
 	}
-	// **內建遷移的登記在組裝根**（Phase B W1 1.10／R3.1 §3.1 環 4.9）：佇列機制屬 keyvault、
+	// **內建遷移的登記在組裝根**：佇列機制屬 keyvault、
 	// 遷移內容屬各業務模組，由此處縫合。新增內建遷移 SHALL 在此加一行登記，
 	// 且 SHALL 落在 RunPostUnsealMigrations 之前——否則佇列在執行時只有一半
 	// （守衛：post_unseal_guard_test.go 的 TestAssemblyRegistersPostUnsealBuiltins）。
-	// 登記器收 auditTxSink（W4 4.4／AP-51）：seed 的插列＋審計＋marker 同事務，
+	// 登記器收 auditTxSink（AP-51）：seed 的插列＋審計＋marker 同事務，
 	// 審計落地面以閉包捕獲——佇列項的執行體簽名（db, codec）表達不了第三個依賴，
-	// 而套件級全域 sink 正是 R3.1 §2.5 拒絕的形態（可漏接成 nil no-op）
+	// 而套件級全域 sink 正是被拒絕的形態（可漏接成 nil no-op）
 	keyvault.RegisterPostUnsealBuiltin(identity.PostUnsealMigrationLDAPSeed, func() {
 		identity.RegisterLDAPSeedMigration(auditTxSink)
 	})
 	keyvault.RunPostUnsealMigrations(database.DB, keyManager)
 	mark("postUnsealMigrations")
 
-	// 協議會話閒置/最大時長讀取（D7）：SSH/k8s/DB 與 guacd（RDP/VNC）路徑共用
+	// 協議會話閒置/最大時長讀取：SSH/k8s/DB 與 guacd（RDP/VNC）路徑共用
 	sessionTimeoutPolicy := func() (time.Duration, time.Duration) {
 		return time.Duration(policyService.GetInt(policy.PolicySessionIdleMinutes)) * time.Minute,
 			time.Duration(policyService.GetInt(policy.PolicySessionMaxMinutes)) * time.Minute
 	}
 
 	// 初始化服務（MFA TOTP secret 加解密走信封 key manager）。
-	// access token 固定短效 15 分（auth-hardening D6）：撤銷殘窗上限，
+	// access token 固定短效 15 分：撤銷殘窗上限，
 	// 會話續命走 /auth/refresh（rotation＋DB 撤銷），不再發 24h 長效 token
 	authService, err := identity.NewAuthServiceWithMFA(cfg.Security.JWTSecret, identity.AccessTokenTTL, keyManager)
 	if err != nil {
 		return fail("NewAuthServiceWithMFA", err)
 	}
 	authService.SetSecurityPolicies(policyService)
-	// 憑證世代閘的資料來源（modular-architecture W8 9.3／B-32）：**組裝根顯式注入**。
+	// 憑證世代閘的資料來源：**組裝根顯式注入**。
 	//
 	// 注入的就是回退分支會取到的同一個 `database.DB`（stage1 的 InitDatabase 已完成，
 	// 見 stage1.go 的資料庫初始化步），故生產行為逐位未變；差別在於「有沒有注入」
 	// 從此是組裝根的顯式決定，而不是靠 identity 內部的全域回退默默補上。
 	//
-	// 為何值得顯式注入：世代閘是撤銷機制的執行點，B-32 登記的風險正是
+	// 為何值得顯式注入：世代閘是撤銷機制的執行點，登記在案的風險正是
 	// 「一條漏接注入的組裝路徑會讓 fail-close 在生產靜默觸發而無人察覺」。
 	// 注入點釘在 `TestAssemblyInjectsEpochGateDB`（行為面，非讀碼）。
 	authService.SetEpochGateDB(database.DB)
 
-	// LDAP 認證（ldap-settings-migration D2）：**恆注入 resolver**，不再有
+	// LDAP 認證：**恆注入 resolver**，不再有
 	// cfg.LDAP.Enabled 分支——「是否啟用」由每次登入的 DB 解析結果表達，設定
 	// 於 UI 變更即時生效。無設定列或設定停用時 resolver 回 unavailable，
 	// 登入行為與舊版「未啟用」完全一致（查無帳號回憑證錯誤，本地帳號不受影響）。
 	//
 	// 撥號副作用發生在登入當下而非此處，故不需 CheckCancelStep。
 	authService.SetLDAPResolver(identity.NewLDAPLoginResolver(ldapDirectoryService))
-	// LDAP 登入傳輸閘（transmission-security-policy D9）：warn 留痕/strict 拒絕。
+	// LDAP 登入傳輸閘：warn 留痕/strict 拒絕。
 	// 舊版只在 LDAP 啟用時注入，現在恆注入——閘本身對本地路徑無作用
 	authService.SetTransmissionPolicy(transmissionPolicy)
 	mark("authService")
@@ -379,7 +379,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 
 	// 初始化授權服務
 	authorizationService := authz.NewAssetAuthorizationService(database.DB)
-	// 資產刪除即撤銷其授權與審核範圍（security-backlog-settlement 塊 2，F8 tx-taking 窄 port）
+	// 資產刪除即撤銷其授權與審核範圍（走 tx-taking 窄 port）
 	assetService.SetAuthorizationRevoker(authorizationService)
 
 	// 初始化連線註冊表（先創建，供 SessionService 使用）
@@ -393,7 +393,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 
 	// 初始化 Session 服務（注入 Registry）
 	sessionService := session.NewSessionService(registry)
-	assetService.SetSessionTerminator(sessionService) // 資產停用即收線（security-backlog-settlement D1）
+	assetService.SetSessionTerminator(sessionService) // 資產停用即收線
 	mark("sessionService")
 
 	// session-reconciliation 啟動清掃：重啟後不可能有存活連線，殘留 active
@@ -416,7 +416,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 
 	// 初始化審計日誌服務
 	auditService := audit.NewAuditLogService(&cfg.Features)
-	// C-plain 兩點（AP-04 k8s 檔案操作、AP-28 檔案上傳）的直寫投遞面（W4 4.6）：
+	// C-plain 兩點（AP-04 k8s 檔案操作、AP-28 檔案上傳）的直寫投遞面：
 	// 它們現況不受 AuditLogEnabled 管制，接到受管制的 auditService 上即行為變更
 	auditDirectSink := audit.NewDirectSink(database.DB)
 	if err := requireAuditAsyncSinks(auditService, auditDirectSink); err != nil {
@@ -426,10 +426,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	g.bag.AddFunc("auditService", func(rctx context.Context) error { return auditService.Shutdown(rctx) })
 	mark("auditService")
 
-	// KEK 切換審計補記（key-inventory-transparency D6，best-effort）
+	// KEK 切換審計補記（best-effort）
 	logKEKSwitchAudit(keyManager, auditService)
 
-	// 每日審閱簽核服務（audit-log-compliance 10.4.1）：政策 daily_review_enabled
+	// 每日審閱簽核服務（10.4.1）：政策 daily_review_enabled
 	// 控制，關閉時 API 拒簽、提醒排程空轉
 	dailyReviewService := audit.NewDailyReviewService(database.DB, policyService, auditService)
 	mark("dailyReviewService")
@@ -437,23 +437,23 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 初始化連線處理器（添加授權服務）
 	connHandler := proxy.NewConnectionHandler(cfg.Guacamole.Host, cfg.Guacamole.Port, sessionService, assetService, authService, authorizationService, auditService)
 	connHandler.Registry = registry // 設定 Registry
-	// RDP/VNC 會話閒置/最大時長改讀安全政策（D7，與 SSH/k8s/DB 同一政策鍵）
+	// RDP/VNC 會話閒置/最大時長改讀安全政策（與 SSH/k8s/DB 同一政策鍵）
 	connHandler.TimeoutPolicy = sessionTimeoutPolicy
-	// 檔案上傳審計的投遞面（W4 4.6，AP-28）：每條圖形連線的 FileTap 由此取得。
+	// 檔案上傳審計的投遞面（AP-28）：每條圖形連線的 FileTap 由此取得。
 	// 用 DirectSink 而非 auditService——該點現況不受 AuditLogEnabled 管制
 	connHandler.AuditSink = auditDirectSink
 	mark("connHandler")
 
 	// 使用者服務（頂層建立，供 v1 路由與閒置停用排程器共用）：自助改密端點依賴。
-	// 停用帳號即時撤權收線（D6）：撤 refresh 之外同步終斷進行中協議會話
+	// 停用帳號即時撤權收線：撤 refresh 之外同步終斷進行中協議會話
 	userService := identity.NewUserService(database.DB, authorizationService)
 	userService.SetSecurityPolicies(policyService)
 	userService.SetSessionTerminator(sessionService)
-	// 外部身分管理四操作的審計出口（idp-oidc-integration 2.8）
+	// 外部身分管理四操作的審計出口
 	userService.SetAuditSink(auditService)
 	mark("userService")
 
-	// 指令告警落地面（modular-architecture W5／BD-1）：入庫＋通知＋syslog 離機轉發
+	// 指令告警落地面：入庫＋通知＋syslog 離機轉發
 	// 收在同一個出口，比對路徑與阻斷路徑共用。**唯一建構點**——任何服務自行建構
 	// 等於繞過下方的注入自檢，由 TestAlertSinkIsConstructedOnlyAtAssemblyRoot 釘住
 	alertSink := audit.NewAlertRecorder(database.DB)
@@ -462,7 +462,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	}
 	mark("alertSink")
 
-	// 註冊危險指令告警路由（command-alerts D1/D4）：
+	// 註冊危險指令告警路由（command-alerts）：
 	// 啟動即載入規則快取供 recorder 路徑比對；載入失敗不致命（無快取=不告警）
 	alertMatcher := audit.InitAlertMatcher(database.DB, alertSink)
 	if err := alertMatcher.LoadRules(); err != nil {
@@ -474,7 +474,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("alertMatcher")
 
-	// 註冊告警通知通道路由（alert-notifications D1/D4）：
+	// 註冊告警通知通道路由（alert-notifications）：
 	// 啟動即載入通道快取並起推送 worker；載入失敗不致命（無快取=不推送）
 	if err := seal.CheckCancelStep(ctx, "alertNotifier"); err != nil {
 		return fail("alertNotifier", err)
@@ -492,22 +492,22 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("alertNotifier")
 
-	// KEK 退役收斂 degraded 首次評估（kek-rewrap-hygiene-hardening D5）
+	// KEK 退役收斂 degraded 首次評估
 	kekRetirementMonitor := keyvault.NewKEKRetirementMonitor(keyManager, auditFailureService)
 	kekRetirementMonitor.ReportOnStartup(time.Now())
 	mark("kekRetirementMonitor")
 
-	// 非終態格式殘值的啟動哨兵（release-transitional-cleanup D6）：廉價 SQL 下界
+	// 非終態格式殘值的啟動哨兵：廉價 SQL 下界
 	// 計數、fail-visible、不阻塞啟動、不提供遷移入口。置於告警服務就緒後
 	// （否則通知必被丟棄）
 	keyvault.ReportAADResidueOnStartup(database.DB, auditFailureService)
 
-	// codec 為建構參數（D5 cutover）：secret/url 一律以 ColumnCodec 寫 enc:a1
+	// codec 為建構參數（cutover）：secret/url 一律以 ColumnCodec 寫 enc:a1
 	notificationChannelService := audit.NewNotificationChannelService(database.DB, keyManager)
-	notificationChannelService.SetTransmissionPolicy(transmissionPolicy) // 傳輸政策閘（D6）
+	notificationChannelService.SetTransmissionPolicy(transmissionPolicy) // 傳輸政策閘
 	mark("notificationChannelService")
 
-	// OIDC 身分提供者整合（idp-oidc-integration）。
+	// OIDC 身分提供者整合。
 	//
 	// egress 政策：dev 靶機的 http hostname 僅在非 release 模式放行——
 	// release 一律無例外（issuer 必須 https）
@@ -524,7 +524,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		database.DB, oidcProviderService, oidcDiscovery, authService, auditService)
 	mark("oidcServices")
 
-	// 匯出簽章服務（audit-log-compliance 10.3.4）：首啟自動生成 Ed25519 金鑰，
+	// 匯出簽章服務（10.3.4）：首啟自動生成 Ed25519 金鑰，
 	// 私鑰經信封 key manager 加密落 DB
 	exportSigning, err := keyvault.NewExportSigningService(database.DB, keyManager)
 	if err != nil {
@@ -537,7 +537,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("exportSigning")
 
-	// 檢查點簽章服務（audit-checkpoint-chain D5）：首啟自動生成 Ed25519 v1，
+	// 檢查點簽章服務（audit-checkpoint-chain）：首啟自動生成 Ed25519 v1，
 	// 私鑰經 ColumnCodec 以 RefCheckpointSigningPrivateKey 綁定 AAD 落 DB。
 	// 載入失敗一律 fail-close——帶病啟動會產出一批永遠驗不了的檢查點，
 	// 而檢查點的全部價值就在「可驗」
@@ -552,30 +552,30 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("checkpointSigning")
 
-	// 原生 SSH 終端路由（ssh-xterm-direct）：只收 token + asset_id，憑證後端注入
+	// 原生 SSH 終端路由：只收 token + asset_id，憑證後端注入
 	sshHandler := sshproxy.NewHandler(assetService, authService, authorizationService, sessionService, registry, recordingBasePath, auditService)
 	sshHandler.TimeoutPolicy = sessionTimeoutPolicy
-	// 錄影 fail-close 政策（recording-failure-handling D4；改動對新簽發即時生效）
+	// 錄影 fail-close 政策（改動對新簽發即時生效）
 	sshHandler.RecordingFailClose = func() bool {
 		return policyService.GetBool(policy.PolicyRecordingFailCloseEnabled)
 	}
-	// 阻斷告警的落地面（W5／BD-1）：每條會話的 commandBlocker 由此取得。
+	// 阻斷告警的落地面：每條會話的 commandBlocker 由此取得。
 	// 未注入即在上方 requireAlertSink 拒絕啟動，不會走到這裡才發現
 	sshHandler.AlertSink = alertSink
-	// connect-token-guacd D1: 兩路徑共用同一 token manager（簽發端點掛在 sshHandler）
+	// 兩路徑共用同一 token manager（簽發端點掛在 sshHandler）
 	connHandler.ConnectTokens = sshHandler.ConnectTokens
 	// host-key-verification: TOFU host key 服務（SSH 與 SFTP 共用）
 	hostKeyService := asset.NewHostKeyService(database.DB)
 	sshHandler.HostKeys = hostKeyService
 	assetService.SetHostKeyService(hostKeyService) // SSH 直連測試共用 TOFU
-	// **釋放路徑待補（tasks 2.1a）**：MonitorHub／ShareManager／ConnectTokenManager
+	// **釋放路徑待補**：MonitorHub／ShareManager／ConnectTokenManager
 	// 與 statsClients 持有的活躍 *ssh.Client 皆無全量關閉入口。同上，不登記空
 	// releaser。實際收線的主力是 connectionRegistry.CloseAll（已登記）。
-	// 使用者級收線管道（idp-oidc-integration 2.8）：解綁外部身分／解綁＋停用／
+	// 使用者級收線管道：解綁外部身分／解綁＋停用／
 	// 改為僅外部登入推進 credential_epoch 後，須主動收線**已建立**的唯讀訂閱——
 	// 監看與分享觀看不建 sessions 列，SessionTerminator 完全掃不到它們
 	userService.SetSubscriptionTerminator(sshHandler.Monitor)
-	// provider 級收線管道（idp-oidc-integration 3.8）：provider 停用／刪除／密鑰
+	// provider 級收線管道：provider 停用／刪除／密鑰
 	// 輪替推進 auth_epoch 後，須主動收線**已建立**的協議連線與唯讀訂閱——
 	// 世代閘只能拒絕「下一次出示憑證」的請求，長連線建立後不再出示憑證。
 	// 錄影 token 的 provider 級撤銷於 recordingHandler 建立後接（見下方 stage）
@@ -605,7 +605,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("changeSecretScheduler")
 
-	// change-secret-ssh-deepening D4：未驗證候選憑證的重試排程。與改密排程分立——
+	// 未驗證候選憑證的重試排程。與改密排程分立——
 	// 改密是使用者定義的 cron，重試是系統自身的可靠性機制，兩者的節奏與失效語義不同
 	changeSecretRetryRunner := asset.NewChangeSecretRetryRunner(
 		database.DB, changeSecretCandidates, assetService, hostKeyService, alertNotifier)
@@ -620,12 +620,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	})
 	mark("changeSecretRetryScheduler")
 
-	// transmission-security-policy: 連線同意閘（D2/D3）
+	// 連線同意閘
 	transmissionConsent := policy.NewTransmissionConsentService(database.DB, transmissionPolicy)
 	sshHandler.TransmissionConsent = transmissionConsent
 
-	// access-policy-approval: 存取政策閘（D4）——無條件注入，不掛功能開關
-	// sources 為 policy 自宣告的窄介面（W3 §4.8 拆環）：authz 的
+	// 存取政策閘——無條件注入，不掛功能開關
+	// sources 為 policy 自宣告的窄介面（拆環）：authz 的
 	// AssetAuthorizationService 實作，policy 不再持有 authz 的 repository
 	// 資料傳輸有效能力解析（data-transfer-control 第 2 組）：SFTP／K8s 端點閘、
 	// guacd 連線參數與 FileTap 逐次判定共用同一實例——兩套解析遲早分岔，
@@ -633,14 +633,14 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	dataTransferService := policy.NewDataTransferService(policyService)
 	accessPolicyService := policy.NewAccessPolicyService(database.DB, policyService, authorizationService)
 	sshHandler.AccessPolicy = accessPolicyService
-	connHandler.AccessPolicy = accessPolicyService // 兌換點政策重查（CPG-010，與 SSH 對稱）
-	// 資料傳輸管控（data-transfer-control D3）：guacd 連線參數＋FileTap 逐次判定
+	connHandler.AccessPolicy = accessPolicyService // 兌換點政策重查（與 SSH 對稱）
+	// 資料傳輸管控（data-transfer-control）：guacd 連線參數＋FileTap 逐次判定
 	connHandler.SetDataTransfer(dataTransferService)
 
-	// access-policy-approval: 申請核准流（D2/D3/D5）
+	// 申請核准流
 	accessRequestService := authz.NewAccessRequestService(
 		database.DB, policyService, accessPolicyService, auditService, alertNotifier)
-	// break-glass-revocation D5：撤銷即斷線政策開啟時收線（沿 Terminate CAS）
+	// 撤銷即斷線政策開啟時收線（沿 Terminate CAS）
 	accessRequestService.SetSessionService(sessionService)
 	accessRequestScheduler := scheduler.NewAccessRequestTimeoutScheduler(accessRequestService)
 	if err := seal.CheckCancelStep(ctx, "accessRequestScheduler.Start"); err != nil {
@@ -675,7 +675,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	checkpointVerifier := audit.NewCheckpointVerifier(database.DB, checkpointService,
 		checkpointPurger, auditIntegrity, policyService)
 
-	// 檢查點鏈兩層自動驗證的編排者（audit-chain-scheduled-verification 第 2 組）。
+	// 檢查點鏈兩層自動驗證的編排者。
 	//
 	// **在路由建構之前建立，且全程只有這一個實例**：它同時是排程器的執行體與
 	// 驗證頁的營運狀態來源（狀態經既有結構層報告揭露，不新增路由）。
@@ -734,7 +734,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	g.deps = deps
 	mark("apiHandlers")
 
-	// 排程器群（audit-log-compliance／auth-hardening／session-reconciliation）：
+	// 排程器群：
 	// 每一個都是「具外部副作用的步驟」，故各自於啟動前檢查取消。
 	starts := []struct {
 		name  string
@@ -750,12 +750,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		{"chainVerifyScheduler", nil, nil},
 	}
 	retentionService := audit.NewRetentionService(database.DB, policyService, recordingService, auditService)
-	// audit_logs 改走檢查點區間清除（audit-checkpoint-chain tasks 6.7 的唯一切換點）：
+	// audit_logs 改走檢查點區間清除（本行是唯一切換點）：
 	// 已封區間整段清除＋簽章 tombstone，genesis 之前的殘量續走逐列路徑。
 	// 部署後首輪 retention 會出現「已過期但所屬區間未全數過期的列暫留」，
 	// 為 spec 明載的預期行為（有界過度保留）。回滾即拿掉這一行
 	retentionService.UseCheckpointIntervals(checkpointPurger)
-	// 保留水位（auditor-workbench D5）：每輪清除後前進 audit_retention_watermarks。
+	// 保留水位（auditor-workbench）：每輪清除後前進 audit_retention_watermarks。
 	// **缺這一行，招牌能力會反向失效**——真的被清除過的區間在工作台回 present＋空白，
 	// 亦即把「已依政策清除」呈現成「本來就沒發生」，正是本能力要防止的誤報
 	retentionService.SetWatermarks(audit.NewRetentionWatermarkService(database.DB))
@@ -777,7 +777,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 每輪都會失敗，是「活著但什麼都沒保護」的靜默狀態
 	checkpointScheduler := scheduler.NewCheckpointScheduler(checkpointService)
 	starts[5].start, starts[5].stop = checkpointScheduler.Start, checkpointScheduler.Stop
-	// 檢查點鏈兩層自動驗證（audit-chain-scheduled-verification 第 1／2 組）：
+	// 檢查點鏈兩層自動驗證：
 	// 每分鐘判到期，近期層買低延遲（隨封章觸發、驗最近 N 天已封區間）、
 	// 全鏈層買無盲區（依政策週期跑結構層全鏈＋內容層滾動窗）。
 	//
@@ -790,7 +790,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 後長期不一致——「顯示值 ≠ 生效值」是本專案在別處已拒絕的形態。
 	//
 	// **告警出口為 auditFailureService（三個獨立機制碼）**：出站 payload 只帶碼與
-	// 受控計數，序號清單與紀錄區間只落 cause_params（DB），見 D8 去識別紅線。
+	// 受控計數，序號清單與紀錄區間只落 cause_params（DB），以守住去識別紅線。
 	// 漏接此排程器不會有任何錯誤：鏈仍在、驗證頁的按鈕仍在，只是再也沒有人被
 	// 通知——證據存在卻無人知曉，正是本 change 要消滅的靜默狀態。
 	//
@@ -814,7 +814,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		mark(s.name)
 	}
 
-	// 營運指標的段 2 註冊與背景刷新（observability-lite）。
+	// 營運指標的段 2 註冊與背景刷新。
 	//
 	// **接替原 perfMonitor 的位置**（段 2 最後一步）：同為可停止的背景任務，
 	// 形態一致使啟停順序的變動面最小。原任務連同其行程內延遲統計整組退場——
@@ -940,14 +940,14 @@ func newMetricsRefreshSources(
 	}
 }
 
-// logKEKSwitchAudit 補記 load 期間偵測並收尾的 KEK 切換（key-inventory-transparency D6）。
+// logKEKSwitchAudit 補記 load 期間偵測並收尾的 KEK 切換。
 // best-effort：序列化失敗僅 log、不阻塞啟動；僅實際退役 >0 時產生。
 func logKEKSwitchAudit(keyManager *keyvault.KeyManagerService, auditService *audit.AuditLogService) {
 	sw := keyManager.LastKEKSwitch()
 	if sw == nil {
 		return
 	}
-	// 逐把舊 KEK 各記一筆審計（codex 實作審 D6：多把同次退役不合併）
+	// 逐把舊 KEK 各記一筆審計（多把同次退役不合併）
 	for fromKEK, count := range sw.Retired {
 		changes := []struct {
 			Field string      `json:"field"`
@@ -976,14 +976,14 @@ func logKEKSwitchAudit(keyManager *keyvault.KeyManagerService, auditService *aud
 
 // routeServices 是 buildRouteDeps 的輸入：段 2 建構完成的服務集合。
 type routeServices struct {
-	// metrics 段 1 建立、段 1／段 2 共用的指標實例（observability-lite）
+	// metrics 段 1 建立、段 1／段 2 共用的指標實例
 	metrics      *observability.Metrics
 	authService  *identity.AuthService
 	auditService *audit.AuditLogService
-	// auditTxSink 交易內審計落地面（W4 4.4）：節點樹與使用者群組的刪除留痕與
+	// auditTxSink 交易內審計落地面：節點樹與使用者群組的刪除留痕與
 	// 業務變更同交易，寫不進去即整筆回滾
 	auditTxSink port.TxSink
-	// auditDirectSink C-plain 兩點的直寫投遞面（W4 4.6）：不受 AuditLogEnabled 管制
+	// auditDirectSink C-plain 兩點的直寫投遞面：不受 AuditLogEnabled 管制
 	auditDirectSink            gatewayapi.AsyncSink
 	authorizationService       *authz.AssetAuthorizationService
 	policyService              *policy.SecurityPolicyService
@@ -1029,9 +1029,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authHandler := api.NewAuthHandler(s.authService, s.auditService)
 	authHandler.SetUserService(s.userService)
 
-	// refresh 憑證的 httpOnly cookie（refresh-token-httponly-cookie 決策 3）：
-	// 三個 handler 共用同一 writer，Secure 旗標於**發放時**自安全政策現讀
-	//（codeql-rescan-settlement 決策 8）——管理員在政策頁改了即生效，不需重啟
+	// refresh 憑證的 httpOnly cookie：
+	// 三個 handler 共用同一 writer，Secure 旗標於**發放時**自安全政策現讀——
+	// 管理員在政策頁改了即生效，不需重啟
 	refreshCookies := api.NewRefreshCookieWriter(s.policyService)
 	authHandler.SetRefreshCookieWriter(refreshCookies)
 
@@ -1042,14 +1042,14 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
 	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService)
 
-	// syslog 轉發設定（audit-log-compliance 10.3.3，admin 限定）
+	// syslog 轉發設定（10.3.3，admin 限定）
 	syslogSettingHandler := api.NewSyslogSettingHandler(database.DB, s.syslogForwarder, s.auditService)
-	syslogSettingHandler.SetTransmissionPolicy(s.transmissionPolicy) // 傳輸政策閘（D6）
+	syslogSettingHandler.SetTransmissionPolicy(s.transmissionPolicy) // 傳輸政策閘
 
-	// audit_logs 完整性驗證（audit-log-compliance 10.3.4；D-3 起 admin＋auditor）
+	// audit_logs 完整性驗證（10.3.4；admin＋auditor）
 	auditIntegrityHandler := api.NewAuditIntegrityHandler(database.DB, s.auditIntegrity)
 
-	// 檢查點鏈查詢／驗證／公鑰（audit-checkpoint-chain D10，admin＋auditor 唯讀）
+	// 檢查點鏈查詢／驗證／公鑰（audit-checkpoint-chain，admin＋auditor 唯讀）
 	auditCheckpointHandler := api.NewAuditCheckpointHandler(s.checkpointVerifier, s.checkpointSigning)
 	// 自動驗證的營運狀態掛在既有結構層報告上揭露（不新增路由）：
 	// 偵測控制若在畫面上看不見，稽核只能假設它沒在跑
@@ -1061,7 +1061,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	assetHandler := api.NewAssetHandler(s.assetService, s.authorizationService, s.auditDirectSink)
 	assetHandler.SetDataTransfer(s.dataTransferService) // K8s 檔案進出的資料傳輸閘（4.3）
 
-	// 資產帳號 CRUD（asset-multi-account 階段 2）
+	// 資產帳號 CRUD
 	assetAccountHandler := api.NewAssetAccountHandler(
 		asset.NewAssetAccountService(s.assetService, s.keyManager, s.auditTxSink).WithAuthorization(s.authorizationService),
 		s.authorizationService)
@@ -1075,28 +1075,28 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	alertRuleHandler := api.NewAlertRuleHandler(audit.NewAlertRuleService(database.DB))
 	commandAlertHandler := api.NewCommandAlertHandler(audit.NewCommandAlertService(database.DB))
-	commandAlertHandler.SetAuditService(s.auditService) // 審閱處置留痕（audit-workflows D3）
+	commandAlertHandler.SetAuditService(s.auditService) // 審閱處置留痕（audit-workflows）
 
 	dailyReviewHandler := api.NewDailyReviewHandler(s.dailyReviewService)
 	auditFailureHandler := api.NewAuditFailureHandler(s.auditFailureService)
 
-	// transmission-security-policy: 通道加密清冊＋稽核匯出（D5，admin-only）
+	// 通道加密清冊＋稽核匯出（admin-only）
 	transmissionInventoryHandler := api.NewTransmissionInventoryHandler(
 		policy.NewTransmissionInventoryService(database.DB, s.transmissionPolicy, s.notificationChannelService),
 		s.auditService,
 	)
 	notificationChannelHandler := api.NewNotificationChannelHandler(s.notificationChannelService)
 
-	// LDAP 目錄設定（ldap-settings-migration 3.1，admin-only singleton 資源）。
+	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
 	ldapDirectoryHandler := api.NewLDAPDirectoryHandler(s.ldapDirectoryService)
 
-	// 金鑰清冊與換鑰精靈（key-management-envelope D5/D6，admin only）。
-	// JWT 指紋於此算好注入（handler 不接觸 secret 材料，key-inventory-transparency）
+	// 金鑰清冊與換鑰精靈（admin only）。
+	// JWT 指紋於此算好注入（handler 不接觸 secret 材料）
 	jwtFingerprint := crypto.Fingerprint([]byte(cfg.Security.JWTSecret))
 	keyManagementHandler := api.NewKeyManagementHandler(database.DB, s.keyManager, s.policyService, jwtFingerprint, s.exportSigning)
 	keyManagementHandler.SetAuditService(s.auditService) // 清理退役資料顯式留痕
-	// 委託重包目標的 provider 建構器（tasks 3.3）：組裝根是唯一知道本部署
+	// 委託重包目標的 provider 建構器：組裝根是唯一知道本部署
 	// KMS 組態的地方，故由此注入；未注入時委託分支回「尚未提供」而非靜默退化
 	keyManagementHandler.SetDelegatedProviderFactory(buildDelegatedRewrapProvider)
 	// 檢查點簽章鑰的清冊項（audit-checkpoint-chain 3.4）：公鑰指紋＋版本＋系統管理標示
@@ -1113,12 +1113,12 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, authz.NewEffectiveAccessResolver(database.DB))
 	// 審計服務為建構子必填：`/recordings/stream` 未套 AuthMiddleware，審計中介層
 	// 因無身分而整筆跳過，取走錄影本體的留痕完全靠 handler 自寫（audit-resource-
-	// classification-closure 批 4）。漏接＝取證無痕，故不留 setter 形態
+	// classification-closure）。漏接＝取證無痕，故不留 setter 形態
 	recordingHandler := api.NewRecordingHandler(s.recordingService, s.sessionService, s.auditService)
-	// 錄影 token 的使用者級撤銷管道（idp-oidc-integration 1.9b/2.8）：token 不做
+	// 錄影 token 的使用者級撤銷管道：token 不做
 	// 世代比對，缺此接線時「已撤銷憑證者在 120 秒內仍能下載錄影」
 	s.userService.SetRecordingTokenRevoker(recordingHandler.TokenManager())
-	// 錄影 token 的 provider 級撤銷管道（idp-oidc-integration 3.8）：
+	// 錄影 token 的 provider 級撤銷管道：
 	// provider 停用／刪除時，經該 provider 認證者手上的錄影 token 同樣須即刻作廢
 	s.oidcProviderService.SetRecordingTokenRevoker(recordingHandler.TokenManager())
 	// 審計日誌查詢 handler：建構恆執行，實際是否註冊由 registerRoutes
@@ -1128,7 +1128,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		log.Println("審計日誌查詢 API 已註冊")
 	}
 
-	// 稽核證據匯出（audit-workflows D1，PCI 10.5.1）
+	// 稽核證據匯出（audit-workflows，PCI 10.5.1）
 	auditExportService := audit.NewAuditExportService(database.DB, s.auditService, sessionCommandService, s.recordingService)
 	auditExportService.SetSigning(s.exportSigning)
 	exportSigningHandler := api.NewExportSigningHandler(s.exportSigning)
@@ -1138,7 +1138,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	hostKeyHandler := api.NewHostKeyHandler(s.hostKeyService, s.authorizationService)
 	clipboardHandler := api.NewClipboardEventHandler(s.sessionService)
 
-	// 稽核調查工作台（auditor-workbench D7）：六來源聚合＋主體目錄，唯讀
+	// 稽核調查工作台（auditor-workbench）：六來源聚合＋主體目錄，唯讀
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
 		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretScheduler)
@@ -1146,11 +1146,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	accessRequestHandler := api.NewAccessRequestHandler(
 		s.accessRequestService, authz.NewApproverScopeService(database.DB), database.DB)
 
-	// 資產列表連線入口三態標註（D7 補充二：伺服端單一事實源）
-	// 三態標註歸 authz（W3 §4.8(a)）：改由 AccessRequestService 承載
+	// 資產列表連線入口三態標註（伺服端單一事實源）
+	// 三態標註歸 authz：改由 AccessRequestService 承載
 	assetHandler.SetAccessStateAnnotator(s.accessRequestService)
 
-	// SSH 資產檔案管理（sftp-file-management）：資產收口 + 全操作審計
+	// SSH 資產檔案管理：資產收口 + 全操作審計
 	sftpHandler := api.NewSFTPHandler(session.NewSFTPService(s.assetService, s.hostKeyService), s.authorizationService, s.auditService, s.authService)
 	sftpHandler.SetAccessPolicy(s.accessPolicyService) // 檔案資料面同套存取政策閘
 	sftpHandler.SetDataTransfer(s.dataTransferService) // 資料傳輸閘（data-transfer-control 4.1）

@@ -24,7 +24,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// OIDC 登入留痕（audit-coverage-closure 批 2）。
+// OIDC 登入留痕。
 //
 // # 本檔釘的是什麼
 //
@@ -173,7 +173,7 @@ func (e *oidcAuditEnv) rows(t *testing.T) []model.AuditLog {
 }
 
 // assertRequestContext 四欄非空且與本次請求相符——**這四欄是 service 層寫不出來的**，
-// 也是本批修正的全部理由。任何「把留痕搬回 service」的回退都會在此轉紅
+// 也是把留痕移到 handler 的全部理由。任何「把留痕搬回 service」的回退都會在此轉紅
 func assertRequestContext(t *testing.T, row model.AuditLog, wantPath string, wantStatus int) {
 	t.Helper()
 	if row.ClientIP != "203.0.113.9" {
@@ -308,7 +308,7 @@ func TestOIDCCallbackFailureRowCarriesRequestContext(t *testing.T) {
 	if row.Resource != model.ResourceAuth {
 		t.Errorf("resource = %q, want %q", row.Resource, model.ResourceAuth)
 	}
-	// 憑證不成立＝認證失敗；`denied` 是授權拒絕語義，不得混用（D3）
+	// 憑證不成立＝認證失敗；`denied` 是授權拒絕語義，不得混用
 	if row.Status != model.StatusFailure {
 		t.Errorf("status = %q, want %q", row.Status, model.StatusFailure)
 	}

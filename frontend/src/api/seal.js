@@ -1,6 +1,6 @@
 import request from './request'
 
-// 封印狀態與解封（kek-provider-modularization D6.4／D6.6）。
+// 封印狀態與解封。
 //
 // **兩條端點都不要求 JWT**：要求 JWT 會在「admin 已開 MFA」時死鎖——TOTP secret
 // 是信封加密欄，封印期解不開，管理員無法登入來解封。授權改由「知道 KEK」承擔
@@ -9,7 +9,7 @@ import request from './request'
 
 // 取得封印狀態：state（sealed／unsealing／unsealed／sealed-faulted）、generation、
 // cleanup_pending（待收束）、cooldown_until（冷卻到期）、fault_code（故障機器碼）、
-// journal_faulted、timeout_total 與 timeout_retry_hint_code（逾時重試指引，D6.2.4）、
+// journal_faulted、timeout_total 與 timeout_retry_hint_code（逾時重試指引）、
 // initialization_required（空金鑰表＝初始化解封路徑；未解封時才出現）
 export function getSealStatus(config = {}) {
   return request({

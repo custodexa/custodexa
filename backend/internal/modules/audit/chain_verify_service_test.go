@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/notifycat"
 )
 
-// 兩層自動驗證的行為釘子（audit-chain-scheduled-verification D2／D9／D10）。
+// 兩層自動驗證的行為釘子。
 //
 // 本組最重要的一項是 TestChainVerifyFalseResolveGuard：沒有那條修法，本機制會
 // **自動把真實的竄改事件結案**——比不做告警更糟，不做告警只是沒人知道，
@@ -160,7 +160,7 @@ func (f *chainVerifyFixture) rowIn(t *testing.T, seq uint, offset int) model.Aud
 	return rows[offset]
 }
 
-// ── D9：假恢復（驗收必查項）────────────────────────────────────────────────
+// ── 假恢復（驗收必查項）────────────────────────────────────────────────────
 
 // TestChainVerifyFalseResolveGuard 假恢復守衛。
 //
@@ -346,7 +346,7 @@ func TestChainVerifyPurgedLegalLeavesSet(t *testing.T) {
 	}
 }
 
-// ── D2.1：只跑結構層是不夠的 ─────────────────────────────────────────────
+// ── 只跑結構層是不夠的 ───────────────────────────────────────────────────
 
 // TestChainVerifyContentCatchesRowDeletionWhileStructurePasses 反向對照：
 // 已封區間被抽列時，**結構層全鏈仍回 passed**（檢查點一個字都沒動），
@@ -417,7 +417,7 @@ func TestChainVerifySelfCheckSkipsBothLayers(t *testing.T) {
 // TestChainVerifyStateLoadFailureReportsVerifyMechanism 狀態載入失敗（資料庫
 // 不可讀）時：以「驗證本身失敗」機制上報，且**不**以任何竄改機制上報。
 //
-// **為什麼這條非有不可**：D5 把「資料庫不可讀」明列為 audit_chain_verify_failed
+// **為什麼這條非有不可**：規格把「資料庫不可讀」明列為 audit_chain_verify_failed
 // 的成因，但 Tick 的第一件事就是載入狀態列——該早退若不上報，這個成因在真實
 // 裝配上永遠不會出聲（不開事件、不發通知，只剩一行本地 log），偵測控制就在
 // 最需要出聲的時候是啞的。這不是走不到的邊界：資料庫不可讀是維運故障，
@@ -461,7 +461,7 @@ func TestChainVerifyStateLoadFailureReportsVerifyMechanism(t *testing.T) {
 		assert(t, f)
 	})
 
-	// (b) 資料庫整體不可讀——D5 字面上的那個成因
+	// (b) 資料庫整體不可讀——規格字面上的那個成因
 	t.Run("資料庫整體不可讀", func(t *testing.T) {
 		f := setupChainVerifyFixture(t)
 		f.sealIntervals(t, 2, 3)
@@ -477,7 +477,7 @@ func TestChainVerifyStateLoadFailureReportsVerifyMechanism(t *testing.T) {
 	})
 }
 
-// ── 滾動窗與列預算（D10）─────────────────────────────────────────────────
+// ── 滾動窗與列預算 ───────────────────────────────────────────────────────
 
 // TestChainVerifyBudgetScalesWithInterval 每輪列預算＝速率 × 間隔。
 //

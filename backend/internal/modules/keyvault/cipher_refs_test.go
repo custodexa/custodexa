@@ -43,7 +43,7 @@ func TestCipherRefsMatchMigrationTargets(t *testing.T) {
 	}
 }
 
-// TestCipherRefAADIsColumnScopedNotRowScoped 釘住 A2 定案在**登記表層級**的後果：
+// TestCipherRefAADIsColumnScopedNotRowScoped 釘住「AAD 綁欄不綁列」在**登記表層級**的後果：
 // 每個登記欄位的 AAD 是常數，故 create 路徑無須兩階段寫入。
 // 任一登記欄位若哪天取得「隨列而變」的身分，本測試會轉紅。
 func TestCipherRefAADIsColumnScopedNotRowScoped(t *testing.T) {

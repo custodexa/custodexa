@@ -25,7 +25,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// SFTPHandler SSH 資產的檔案管理 API（sftp-file-management）
+// SFTPHandler SSH 資產的檔案管理 API
 //
 // 資產收口模式：client 只送 asset_id 與路徑，憑證由後端解析；
 // 權限沿用連線授權（能連線即能傳檔，收口點一致）；全操作審計。
@@ -33,16 +33,16 @@ type SFTPHandler struct {
 	sftpService          *session.SFTPService
 	authorizationService *authz.AssetAuthorizationService
 	auditService         *audit.AuditLogService
-	// authService 角色現況重判（codex 階段 4 high）：檔案面與三個連線強制點
+	// authService 角色現況重判：檔案面與三個連線強制點
 	// 共用同一事實源 CurrentConnectRole。不設此欄即等於信任 JWT 角色快照——
 	// 已被降權／停用的舊 admin JWT 在 token 效期內仍能以 admin 短路存取任意帳號的
 	// 檔案面。**建構期必填**（由 RegisterRoutes 的組裝端提供）
 	authService *identity.AuthService
-	// accessPolicy 存取政策閘（access-policy-approval，codex 審查 #1）：
+	// accessPolicy 存取政策閘：
 	// 檔案資料面與 connect-token 共用同一閘，非 open 段位須擋常設 connect。
 	// nil＝不套政策閘（既有測試路徑，等同全域 open）
 	accessPolicy *policy.AccessPolicyService
-	// dataTransfer 資料傳輸閘（data-transfer-control D3）：於 requireConnectPermission
+	// dataTransfer 資料傳輸閘（data-transfer-control）：於 requireConnectPermission
 	// 之後、動作之前判定。**List 不判**——列目錄不是資料傳輸，且 connect 授權已涵蓋
 	// 可見性（列目錄與 stat 不搬運內容，不屬資料傳輸動作）。
 	// nil＝不套傳輸閘（既有測試路徑，等同五鍵全允許）
@@ -103,7 +103,7 @@ func (h *SFTPHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 	// 資料傳輸有效能力查詢（data-transfer-control 6.2）：前端據此把不可用動作
 	// 呈現為不可用＋原因，而非讓使用者點下去才失敗。
 	// **這是呈現用的讀取面，不是強制點**——強制在 SFTP／K8s 端點、tunnel 與 guacd
-	// 參數三處，前端隱藏按鈕不構成控制（D11-1）。
+	// 參數三處，前端隱藏按鈕不構成控制。
 	caps := r.Group("/assets/:id/transfer-capabilities")
 	caps.Use(middleware.AuthMiddleware(authService))
 	caps.GET("", h.TransferCapabilities)
@@ -143,8 +143,8 @@ func (h *SFTPHandler) TransferCapabilities(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"capabilities": caps,
-		// 誠實邊界隨能力一起下發，讓 UI 不必在前端硬編這些事實（D11）：
-		// 剪貼簿只對圖形協議有強制力，且是連線參數——改政策不影響進行中連線（D4）
+		// 誠實邊界隨能力一起下發，讓 UI 不必在前端硬編這些事實：
+		// 剪貼簿只對圖形協議有強制力，且是連線參數——改政策不影響進行中連線
 		"clipboard_enforced_protocols": []string{"rdp", "vnc"},
 		"clipboard_requires_reconnect": true,
 	})
@@ -172,7 +172,7 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 		return 0, 0, "", false
 	}
 
-	// 角色現況重判（codex 階段 4 high，與 connect token 簽發／兌換三點對稱）：
+	// 角色現況重判（與 connect token 簽發／兌換三點對稱）：
 	// AuthMiddleware 不查 DB，停用／鎖定／降權者持變更前簽發的正式 JWT 仍能走到這裡。
 	// 不以 DB 現查角色覆蓋，其後所有 admin 短路（授權判定、帳號範圍全量）都會憑
 	// JWT 角色快照放行——降權的前 admin 在 token 效期內仍可存取任意帳號的檔案面。
@@ -191,17 +191,17 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 		return 0, 0, "", false
 	}
 	if !hasPermission {
-		// 未授權統一回 404「資產不存在」語義（access-policy-approval D8 順修）：
+		// 未授權統一回 404「資產不存在」語義：
 		// 與 RequireAssetVisible 逐資產守門一致，不洩漏資產存在性
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
 		return 0, 0, "", false
 	}
 
-	// 停用資產硬擋（asset-list-info-layering D8）：檔案面與 connect-token 同收口；
+	// 停用資產硬擋：檔案面與 connect-token 同收口；
 	// 授權檢查之後無存在性洩漏，403 機器可辨；admin 不豁免
 	active, err := h.authorizationService.AssetActive(assetID)
 	if err != nil {
-		// 資產不存在（含軟刪）回 404 而非誤報「已停用」（asset-syslog-debt-cleanup D3）：
+		// 資產不存在（含軟刪）回 404 而非誤報「已停用」：
 		// 走到這裡的兩種呼叫者——權限短路的 admin，以及持軟刪資產殘留授權的
 		// 一般 user/auditor（刪資產不撤銷授權、權限查詢不 join assets）。
 		// 404 與上方未授權同語義，不新增可區分訊號、不洩漏存在性
@@ -220,7 +220,7 @@ func (h *SFTPHandler) requireConnectAsset(c *gin.Context) (uint, uint, string, b
 		return 0, 0, "", false
 	}
 
-	// 存取政策閘（codex 審查 #1）：檔案資料面與 connect-token 共用同一閘——
+	// 存取政策閘：檔案資料面與 connect-token 共用同一閘——
 	// 非 open 段位僅時窗內臨時授權放行，常設 connect 被擋（強制審核不能只保護終端）；
 	// admin 豁免（檔案操作本就逐筆審計），auditor 與一般 user 同攔。
 	// role 用上方 DB 現查值，不再讀 JWT 快照——否則降權的前 admin 仍能豁免政策閘
@@ -260,7 +260,7 @@ func (h *SFTPHandler) requireConnectPermission(c *gin.Context) (uint, uint, uint
 	ctx := sftpRoleContext(c, role)
 	var err error
 
-	// 連線帳號解析（asset-multi-account D9）：帶 session_id＝自會話分頁進入，
+	// 連線帳號解析：帶 session_id＝自會話分頁進入，
 	// 沿用該會話的帳號（終端開 root、旁邊卻以 app 傳檔是審計語義的斷裂）；
 	// 不帶＝檔案管理獨立入口，走預設帳號。非本人／非本資產的會話一律 fail-close，
 	// 不靜默退回預設帳號（否則 session_id 成了換帳號的旁路）
@@ -282,10 +282,10 @@ func (h *SFTPHandler) requireConnectPermission(c *gin.Context) (uint, uint, uint
 		}
 	}
 
-	// 帳號授權範圍複查（asset-multi-account D5 強制點 3／3）：
+	// 帳號授權範圍複查（強制點 3／3）：
 	//
 	// **歷史 session 快照只決定「用哪個帳號」，不決定「還能不能用」**。
-	// session_id 路徑取的是連線當下的帳號快照（D7 不可變審計欄），若逕以它建線，
+	// session_id 路徑取的是連線當下的帳號快照（不可變審計欄），若逕以它建線，
 	// 帳號被移出授權範圍後使用者仍可翻出舊 session id 無限延續檔案存取——
 	// 舊快照成為繞過現行授權的旁路。故此處一律以現行有效帳號集合重判。
 	// 獨立入口（accountID=0，走預設帳號）同受此判定：連線面已擋預設帳號的
@@ -323,7 +323,7 @@ func (h *SFTPHandler) requireConnectPermission(c *gin.Context) (uint, uint, uint
 // StatusDenied 審計**，回傳 false。
 //
 // **拒絕必須留痕**：現行四個檔案端點的審計全在成功路徑（成功才呼叫 h.audit），
-// 拒絕分支直接 return 會讓「有沒有人試著把資料帶出去」這個稽核問題無法回答（D6）。
+// 拒絕分支直接 return 會讓「有沒有人試著把資料帶出去」這個稽核問題無法回答。
 //
 // **不豁免任何角色**：解析函式內沒有 role 分支，此處也不得補一個。
 func (h *SFTPHandler) requireTransferAllowed(c *gin.Context, userID, assetID uint, action string, remotePath string) bool {
@@ -333,7 +333,7 @@ func (h *SFTPHandler) requireTransferAllowed(c *gin.Context, userID, assetID uin
 // requireTransferAllowedAudited 同上，但由呼叫端指定**留痕動作**。
 //
 // **判定粒度與留痕粒度分離的唯一落實點**：mkdir 走 `file_upload` 鍵判定
-// （D3 註 2：對遠端檔案系統的寫入，upload 全禁時不該留一個能建目錄的洞），
+// （對遠端檔案系統的寫入，upload 全禁時不該留一個能建目錄的洞），
 // 但審計必須記 `file_mkdir`，否則被擋下的建目錄與被擋下的傳檔在 `action` 欄
 // 完全同形，事後查不出「被擋的是建目錄還是傳檔」。
 //
@@ -409,7 +409,7 @@ func (h *SFTPHandler) audit(c *gin.Context, userID, assetID uint, action model.A
 		Resource:   model.ResourceFile,
 		ResourceID: &aid,
 		// ResourceID 維持既有語義（resource=file 的既有查詢靠它），主體鍵另記：
-		// 工作台的檔案傳輸類只讀 asset_id（auditor-workbench D4）
+		// 工作台的檔案傳輸類只讀 asset_id（auditor-workbench）
 		AssetID:     &aid,
 		Status:      model.StatusSuccess,
 		Method:      c.Request.Method,
@@ -524,7 +524,7 @@ func (h *SFTPHandler) Mkdir(c *gin.Context) {
 		return
 	}
 
-	// Mkdir 判 FileUpload（D3 註 2）：它是對遠端檔案系統的寫入，upload 全禁時
+	// Mkdir 判 FileUpload：它是對遠端檔案系統的寫入，upload 全禁時
 	// 留一個能建目錄的洞不合理——建目錄與傳檔同為對遠端檔案系統的寫入。
 	// **留痕仍記 file_mkdir**：被擋的建目錄與被擋的傳檔若同記 file_upload，
 	// 稽核者以 action 篩選時分不出兩者，且同一操作會因成功／被擋而落在不同
@@ -568,7 +568,7 @@ func (h *SFTPHandler) Delete(c *gin.Context) {
 // service 層錯誤格式為「動作描述: %w」——僅動作描述屬使用者語言，
 // 被包裝的 ssh/sftp 庫原文留在伺服器日誌不外洩。
 //
-// actionCode 由呼叫點傳入（V2 對抗驗收 H3）：五個動作各自的失敗碼，
+// actionCode 由呼叫點傳入：五個動作各自的失敗碼，
 // 使「下載時失敗」不會顯示為泛化的「檔案操作失敗」。可行動的
 // ErrRemoveDirNotEmpty 另走專碼；狀態碼分類不變（400/502）
 func respondSFTPError(c *gin.Context, err error, actionCode apierror.ErrCode) {

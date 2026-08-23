@@ -11,7 +11,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 守衛 G2（refresh-token-httponly-cookie 決策 7／9）：
+// 守衛 G2：
 // **認證 middleware 不得自 cookie 接受 JWT**。
 //
 // # 為什麼這一格在本 change 才變成必要
@@ -22,7 +22,7 @@ import (
 // 很自然的好意改動，而它會讓 access token 事實上取得第二條傳輸通道，
 // 使決策 6 的 CSRF 分析（「cookie 的射程只有 /api/v1/auth/ 端點群」）整個崩塌。
 //
-// spec 條款：transmission-security-policy M8 ／ auth-session
+// spec 條款：auth-session
 // 「JWT 僅經 Authorization header 接受」——SHALL NOT 自 cookie 接受 JWT，
 // 任何 cookie（含 refresh cookie 本身）對認證 middleware SHALL NOT 構成憑證。
 //

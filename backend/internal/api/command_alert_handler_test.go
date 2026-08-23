@@ -200,7 +200,7 @@ func TestCommandAlertHandler_List(t *testing.T) {
 	})
 }
 
-// TestCommandAlertHandler_Review 審閱處置端點（audit-workflows D3）
+// TestCommandAlertHandler_Review 審閱處置端點（audit-workflows）
 func TestCommandAlertHandler_Review(t *testing.T) {
 	t.Run("成功審閱回 200 並傳遞處置分類", func(t *testing.T) {
 		mockService := new(MockCommandAlertService)

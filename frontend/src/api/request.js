@@ -34,17 +34,17 @@ request.interceptors.request.use(
   }
 )
 
-// —— access token 到期的透明刷新（auth-hardening D6/D10）——
+// —— access token 到期的透明刷新 ——
 // access 固定短效 15 分；401 時以 refresh 憑證換發後重試原請求，使用者無感。
 // 僅「access token 失效」型 401 值得刷新（換新 access token）；其餘 401——帳密錯、
 // MFA 驗證碼錯、scoped token 狀態、權限不足——是業務語義，刷新無用且會誤把業務錯誤
-// 當 session 過期。以**後端回傳的 code** 判定，不用 URL 前綴（i18n-backend-error-codes
-// New-C2／實作審查 P2）：同一端點可能回兩類 401（如 /auth/mfa/disable 密碼錯回
+// 當 session 過期。以**後端回傳的 code** 判定，不用 URL 前綴：
+// 同一端點可能回兩類 401（如 /auth/mfa/disable 密碼錯回
 // AUTH_INVALID_CREDENTIALS vs access token 過期由 middleware 回 AUTH_TOKEN_INVALID），
 // URL 無法區分；middleware 對 access token 失效一律發下列 code，故以此為準最穩健。
 const REFRESHABLE_401_CODES = new Set(['AUTH_TOKEN_INVALID', 'AUTH_TOKEN_MISSING'])
 
-// 錯版相容（實作審查 P2）：新前端＋舊後端時，舊 middleware 的 token 過期回應**無 code**。
+// 錯版相容：新前端＋舊後端時，舊 middleware 的 token 過期回應**無 code**。
 // 對「無 code 的 401」退回既有 URL 規則（非 /auth/* 才刷新），維持與舊後端的相容窗口；
 // 有 code 時才採 code-based 判定。/auth/* 業務端點的無-code 401 沿用舊行為（不刷新）。
 const isAuthPath = (url) => (url || '').startsWith('/auth/')
@@ -99,7 +99,7 @@ const refreshAccessToken = (staleToken) => {
   return refreshInFlight
 }
 
-// 封印的執行期訊號（kek-encoding-and-unseal-entry 決策 6 的第 3 個相位來源）：
+// 封印的執行期訊號（第 3 個相位來源）：
 // 使用者停留在頁面上時後端行程重啟而重新封印，導覽守衛不會再跑一次——
 // 唯一會撞到的就是下一個 API 呼叫的 503。此時把相位改回封印並導向解封頁，
 // 否則使用者只會看到一連串「服務未上線」的 toast 而不知道要去哪。
@@ -123,7 +123,7 @@ const clearSessionAndRedirect = () => {
   }
 }
 
-// 回應攔截器：全域唯一的 API 錯誤 toast 來源（error-message-consistency）。
+// 回應攔截器：全域唯一的 API 錯誤 toast 來源。
 // 後端統一以 {"error": <使用者可讀訊息>} 回應，呼叫端需自行呈現錯誤時
 // 以 { skipErrorToast: true } 關閉全域 toast。
 request.interceptors.response.use(
@@ -131,7 +131,7 @@ request.interceptors.response.use(
     return response.data
   },
   async (error) => {
-    // 全域唯一的 API 錯誤日誌出口——**絕不印 error 本體**（對抗審查 HIGH-2）：
+    // 全域唯一的 API 錯誤日誌出口——**絕不印 error 本體**：
     // AxiosError 的 config.data 是原始請求本文，帳號 CRUD 帶明文密碼／私鑰，
     // config.headers 帶有效 Authorization，寫進 console 即 DevTools 可見外洩
     console.error('回應錯誤:', redactAxiosError(error))
@@ -182,7 +182,7 @@ request.interceptors.response.use(
     }
 
     // 423 帳號鎖定一律由登入/MFA 視圖以 inline locked-alert 明示（含剩餘策略文案），
-    // 攔截器不再重複 toast——避免同一鎖定錯誤顯示兩次（實作審查 I4）。
+    // 攔截器不再重複 toast——避免同一鎖定錯誤顯示兩次。
     if (!error.config?.skipErrorToast && httpStatus !== 423) {
       ElMessage.error(message)
     }

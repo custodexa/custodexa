@@ -1,5 +1,5 @@
 // client.go：list pods / SSAR 預檢 / get pod 快照（k8s-exec 連線時選 pod）。
-// 走 client-go in-memory REST config（D3：免第二個落檔的 kubeconfig，縮短 token 暴露窗口）。
+// 走 client-go in-memory REST config（免第二個落檔的 kubeconfig，縮短 token 暴露窗口）。
 package k8sproxy
 
 import (
@@ -46,7 +46,7 @@ type PodInfo struct {
 	DefaultContainer string          `json:"default_container,omitempty"`
 }
 
-// PodSnapshot 會話不可變快照來源（mustFix #2）
+// PodSnapshot 會話不可變快照來源
 type PodSnapshot struct {
 	Namespace string
 	Pod       string
@@ -62,7 +62,7 @@ type K8sError struct {
 	Message string
 }
 
-// K8sError.Kind 的枚舉常數（backend-i18n-unification A8）。
+// K8sError.Kind 的枚舉常數。
 //
 // 值即機器識別字：sshproxy 依此映 apierror 碼、internal/api 的 pod 列表回應以
 // `kind` 欄直傳前端——**值一字不可改**（改了等於改 API 契約）。
@@ -77,7 +77,7 @@ const (
 
 func (e *K8sError) Error() string { return e.Message }
 
-// minListTimeout 列表逾時的下界（policy-numeric-lower-bounds）：一次列表要走完
+// minListTimeout 列表逾時的下界：一次列表要走完
 // TLS 握手＋API server 查詢＋回傳，健康但有負載的叢集本來就可能花上一兩秒。
 // 低於此值時正常叢集的正常回應也會被判逾時——K8s 功能實質不可用而資產列表
 // 上仍顯示著這些叢集。與 PolicyK8sListTimeoutSeconds 的 Min 同值
@@ -143,7 +143,7 @@ func isTimeout(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
-// classifyErr 將 client-go / 網路 / TLS 錯誤映成五類人話（D7）
+// classifyErr 將 client-go / 網路 / TLS 錯誤映成五類人話
 func classifyErr(ns string, err error) *K8sError {
 	if err == nil {
 		return nil
@@ -266,7 +266,7 @@ func GetPod(ctx context.Context, t Target) (*PodSnapshot, error) {
 	}, nil
 }
 
-// CanExec 以 SelfSubjectAccessReview 預檢 token 是否可對 pod exec（D2 fail-fast UX）
+// CanExec 以 SelfSubjectAccessReview 預檢 token 是否可對 pod exec（fail-fast UX）
 func CanExec(ctx context.Context, t Target) (bool, error) {
 	cs, err := clientset(t)
 	if err != nil {
@@ -291,7 +291,7 @@ func CanExec(ctx context.Context, t Target) (bool, error) {
 	return res.Status.Allowed, nil
 }
 
-// sweepResidualKubeconfigs 啟動期清掃殘留的臨時 kubeconfig 目錄（D8：補崩潰路徑）。
+// sweepResidualKubeconfigs 啟動期清掃殘留的臨時 kubeconfig 目錄（補崩潰路徑）。
 // 回傳清掉的目錄數。
 func SweepResidualKubeconfigs() int {
 	base := os.TempDir()

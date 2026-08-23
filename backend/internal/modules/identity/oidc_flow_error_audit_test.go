@@ -18,7 +18,7 @@ import (
 // 外加一格反向（走得通的流程不得落 flow-error）——沒有反向格，
 // 一個「無論如何都落一筆」的實作也會讓前四格全綠。
 //
-// **斷言對象是 Callback 交回的審計意向**（audit-coverage-closure 批 2）：留痕改由
+// **斷言對象是 Callback 交回的審計意向**：留痕改由
 // handler 落地（service 拿不到 *gin.Context，自寫必然缺來源位址／路徑／方法／
 // 狀態碼四欄）。故此處驗「service 有沒有交出該留的痕、狀態語義對不對」，
 // 「列真的有寫進去且四欄非空」由 internal/api/oidc_login_audit_test.go 承接。
@@ -58,7 +58,7 @@ func flowErrorEvents(t *testing.T, err error) []flowErrorEvent {
 // assertSingleFlowError 斷言恰落一筆 flow-error 事件，且 reason／provider_id／
 // status／resource 相符。
 //
-// **status 是 failure 不是 denied**（D3 狀態語義分流）：憑證交換失敗、id_token
+// **status 是 failure 不是 denied**（狀態語義分流）：憑證交換失敗、id_token
 // 驗證失敗等皆為「憑證不成立」的認證失敗；`denied` 在本庫是「身分成立但不准」的
 // 授權拒絕語義（RBAC 403、OIDC 准入拒絕）。混用會使既有授權拒絕列不可解釋
 func assertSingleFlowError(t *testing.T, err error,

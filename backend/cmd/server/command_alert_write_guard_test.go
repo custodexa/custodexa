@@ -11,12 +11,12 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 指令告警落地面的收口守衛（modular-architecture W5 5.5／5.6）。
+// 指令告警落地面的收口守衛。
 //
 // # 本檔守的是什麼
 //
-// BD-1 的形態不是「有人寫錯欄位」，而是**同一張表有第二條寫入路徑，而那條路徑
-// 少做了一件事**（syslog 離機轉發）。W5 的修法是把入庫、通知與 tee 收成單一落地面
+// 要防的形態不是「有人寫錯欄位」，而是**同一張表有第二條寫入路徑，而那條路徑
+// 少做了一件事**（syslog 離機轉發）。修法是把入庫、通知與 tee 收成單一落地面
 // （internal/modules/audit/alert_sink.go 的 alertRecorder），於是「漏 tee」不再是
 // 一個可以忘記做的動作，而是必須繞過整個落地面才做得到。
 //
@@ -35,7 +35,7 @@ import (
 // 那一行必須在 PR diff 裡被質問。
 var commandAlertLiteralAllowlist = map[string]string{
 	"internal/modules/audit/alert_sink.go": "唯一落地面（alertRowOf）：入庫＋通知＋syslog tee 三件事的收口處，" +
-		"BD-1 的結構性解法本體",
+		"「漏 tee」的結構性解法本體",
 	"internal/modules/audit/alert_notifier.go":        "SendTestNotification 的測試 payload：只序列化後送 webhook，不入庫（無 GORM 寫入）",
 	"internal/modules/audit/command_alert_service.go": "`Model(&model.CommandAlert{})` 查詢／審閱更新的型別標記，非資料列",
 	"internal/modules/audit/daily_review_service.go":  "同上，未審閱計數查詢的型別標記",
@@ -43,14 +43,14 @@ var commandAlertLiteralAllowlist = map[string]string{
 		"是 fetchAlerts 取窗與 countSource 計數的**查詢型別標記**，兩處皆只 Find／Count，" +
 		"函式內零 GORM 寫入呼叫——工作台是唯讀聚合面，本來就不該生出告警列，" +
 		"故「這一筆為何不需要 tee」的答案是：它根本不是一筆列。層 2 的無寫入斷言即此宣稱的機器化",
-	"internal/modules/audit/audit_export_report.go": "同上（workbench-exits-and-export）：" +
+	"internal/modules/audit/audit_export_report.go": "同上：" +
 		"`Model(&model.CommandAlert{})` 是事件報告匯出取窗的**查詢型別標記**，" +
 		"writeReportAlerts 只 Find 後寫進 CSV，函式內零 GORM 寫入呼叫——" +
 		"匯出是把既有告警**讀出去**，本來就不該生出告警列。層 2 的無寫入斷言即此宣稱的機器化",
-	"internal/modules/asset/change_secret_runner.go": "改密失敗借道告警**通知**通道（R3.1 §8.1 L-1／backlog B-7）：" +
+	"internal/modules/asset/change_secret_runner.go": "改密失敗借道告警**通知**通道：" +
 		"不入庫、不 tee，且 SHALL NOT 併入 AlertSink——併入會產生無對應規則的幽靈告警列",
-	"internal/modules/asset/change_secret_retry_runner.go": "同上：候選憑證逾期放棄重試時的通知" +
-		"（change-secret-ssh-deepening D4）。與 change_secret_runner.go 走同一條借道，" +
+	"internal/modules/asset/change_secret_retry_runner.go": "同上：候選憑證逾期放棄重試時的通知。" +
+		"與 change_secret_runner.go 走同一條借道，" +
 		"理由與邊界完全相同——不入庫、不 tee、不併入 AlertSink",
 }
 
@@ -74,7 +74,7 @@ type commandAlertSite struct {
 
 // TestCommandAlertRowsAreWrittenOnlyByAlertSink 5.6：`command_alerts` 無第二處直寫。
 //
-// 判定分兩層，缺一都會留下 BD-1 的復發空間：
+// 判定分兩層，缺一都會留下「漏 tee」的復發空間：
 //
 //	層 1（構造）：`model.CommandAlert{…}` 只准出現在登記過的檔——擋的是「在新的地方
 //	              長出一條寫入路徑」。
@@ -103,7 +103,7 @@ func TestCommandAlertRowsAreWrittenOnlyByAlertSink(t *testing.T) {
 			t.Errorf("%s:%d（%s）構造了 model.CommandAlert：\n"+
 				"  command_alerts 的寫入 SHALL 只經 %s 的落地面——"+
 				"那裡才同時做入庫、通知與 syslog 離機轉發。\n"+
-				"  繞過它的後果就是 BD-1：安全事件只留本機一份，"+
+				"  繞過它的後果就是漏掉 tee：安全事件只留本機一份，"+
 				"而離機轉發存在的理由正是「本機資料庫可能被竄改或清除」。\n"+
 				"  真的需要新的構造點時 SHALL 先在 commandAlertLiteralAllowlist 列名並寫明"+
 				"「這一筆為何不需要 tee」。",
@@ -116,7 +116,7 @@ func TestCommandAlertRowsAreWrittenOnlyByAlertSink(t *testing.T) {
 		if s.WritesToDB {
 			t.Errorf("%s:%d（%s）在同一函式內有 GORM 寫入呼叫 %s：\n"+
 				"  本檔登記於白名單的理由是「不入庫」（%s）。一旦它真的寫入，"+
-				"就是第二條繞過 syslog tee 的路徑，BD-1 原樣復發。",
+				"就是第二條繞過 syslog tee 的路徑，離機證據又缺一整類。",
 				s.File, s.Line, s.Fn, s.WriteCall, commandAlertLiteralAllowlist[s.File])
 		}
 	}
@@ -140,7 +140,7 @@ func TestCommandAlertRowsAreWrittenOnlyByAlertSink(t *testing.T) {
 
 // baselineSchemaFiles baseline 的 schema 定義檔（相對 module 根）。
 //
-// **為何需要這份具名清單**（migration-baseline-compression D2）：壓縮前，
+// **為何需要這份具名清單**：壓縮前，
 // `command_alerts` 的全部 DDL 都在宣告 `RunMigrations` 的那一個檔裡，故「migration 檔」
 // 這個結構性定位同時界定了 schema 定義的所在。壓縮後 baseline 的 47 張表 DDL
 // 超過單檔行數上限而必須切多檔，`RunMigrations` 仍只在 migrations.go 宣告，
@@ -191,10 +191,10 @@ func TestCommandAlertsHaveNoRawSQLInsert(t *testing.T) {
 			"殘留列會讓「清單＝schema 定義面」這個前提悄悄失效",
 			len(absent), strings.Join(absent, "、"))
 	}
-	// **以「誰宣告 RunMigrations」定位 migration 檔，不以路徑字串定位**（W7 7.7 改）：
-	// 原本判 `pf.Rel == "internal/repository/migrations.go"`。W7 把 `internal/repository`
+	// **以「誰宣告 RunMigrations」定位 migration 檔，不以路徑字串定位**：
+	// 原本判 `pf.Rel == "internal/repository/migrations.go"`。後來把 `internal/repository`
 	// 改名為 `internal/database`，那個字串從此匹配不到任何檔——**這正是「字串型守衛在
-	// 改名當下失效」的教科書形態**（R4 D-5 早已實證於 sealjournal）。本例的失效方向恰好是
+	// 改名當下失效」的教科書形態**（sealjournal 已實證過一次）。本例的失效方向恰好是
 	// 誤報（migration 的建表 SQL 會被判違規）而非恆綠，但修法一樣不能是「把字串改成新名字」：
 	// 下一次改名照壞。migration 檔的身分＝它宣告了 migration 執行入口 `RunMigrations`，
 	// 那個事實不隨包名或目錄移動。
@@ -239,7 +239,7 @@ func TestCommandAlertsHaveNoRawSQLInsert(t *testing.T) {
 				return true // schema 定義面（具名清單，見 baselineSchemaFiles）
 			}
 			t.Errorf("%s:%d 以原生 SQL INSERT command_alerts：SHALL 改經 %s 的落地面，"+
-				"否則入庫成功但通知與 syslog 離機轉發雙缺（BD-1 形態）",
+				"否則入庫成功但通知與 syslog 離機轉發雙缺",
 				pf.Rel, pf.Fset.Position(lit.Pos()).Line, commandAlertWriteFile)
 			return true
 		})
@@ -300,8 +300,7 @@ func TestChangeSecretAlertFailureStaysOffAlertSink(t *testing.T) {
 			sawEnqueue = true
 		case "RecordAlert", "RecordAlerts":
 			t.Errorf("%s:%d alertFailure 呼叫了 %s：改密失敗借道的是告警**通知**通道，"+
-				"併入 AlertSink 會在 command_alerts 產生無對應規則的幽靈列"+
-				"（R3.1 §8.1 L-1／backlog B-7）",
+				"併入 AlertSink 會在 command_alerts 產生無對應規則的幽靈列",
 				target, pf.Fset.Position(call.Pos()).Line, sel.Sel.Name)
 		}
 		return true
@@ -358,7 +357,7 @@ func TestRequireAlertSinkRejectsMissing(t *testing.T) {
 	}
 	if err := requireAlertSink(nil); err == nil {
 		t.Error("裸 nil sink 通過了自檢：未注入 SHALL 使啟動失敗，" +
-			"SHALL NOT 降級為 no-op 而使阻斷告警靜默消失（BD-1）")
+			"SHALL NOT 降級為 no-op 而使阻斷告警靜默消失")
 	}
 	var typedNil *nilAlertSink
 	if err := requireAlertSink(typedNil); err == nil {

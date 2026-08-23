@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-// refresh 憑證不得回到 script 可讀的儲存（refresh-token-httponly-cookie）。
+// refresh 憑證不得回到 script 可讀的儲存。
 //
 // # 這個守衛在守什麼
 //
@@ -15,7 +15,7 @@ import { join } from 'node:path'
 // 故本檔是源碼層的結構守衛：全 src/ 掃描，任何對 refresh_token 的儲存**寫入**
 // 一律不允許。啟動清理用的 removeItem 是唯一例外，且它必須存在。
 //
-// # 突變自檢
+// # 守衛自檢
 //
 //	在任一 .vue／.js 補上 localStorage.setItem('refresh_token', x) ⇒ 第一格轉紅。
 //	拿掉 main.js 的 localStorage.removeItem('refresh_token') ⇒ 第二格轉紅。

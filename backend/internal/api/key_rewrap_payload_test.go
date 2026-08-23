@@ -17,7 +17,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 換鑰精靈 discriminated union 的解析與 handler 行為（D7／D8 伺服端部分）。
+// 換鑰精靈 discriminated union 的解析與 handler 行為（伺服端部分）。
 
 // apiTestKEKMaterial 產生合格且互不相同的測試材料（32 字元、KEKAlphabet 值域）
 func apiTestKEKMaterial(n int) string {
@@ -128,7 +128,7 @@ func TestDecodeRewrapPayloadUnion(t *testing.T) {
 }
 
 // TestRewrapHandlerRejectionsProduceZeroKeyWrites 每一條拒絕路徑：狀態碼、機器碼，
-// 且 data_keys **零寫入**（D7 硬條件——繞過 paste-back 即不得觸發重包）
+// 且 data_keys **零寫入**（硬條件——繞過 paste-back 即不得觸發重包）
 func TestRewrapHandlerRejectionsProduceZeroKeyWrites(t *testing.T) {
 	m := apiTestKEKMaterial(3)
 	other := apiTestKEKMaterial(4)
@@ -261,7 +261,7 @@ func TestRewrapRejectsSameAndSeenKEK(t *testing.T) {
 	}
 }
 
-// TestDecodeRewrapPayloadRejectsDuplicateKeysAndTrailing 重複鍵與尾隨內容一律拒絕（codex R1）。
+// TestDecodeRewrapPayloadRejectsDuplicateKeysAndTrailing 重複鍵與尾隨內容一律拒絕。
 //
 // 兩者都是「逐變體精確鍵集」看不見的歧義：
 //   - `map[string]json.RawMessage` 對重複鍵靜默採最後值，於是判別子可以
@@ -303,7 +303,7 @@ func TestDecodeRewrapPayloadRejectsDuplicateKeysAndTrailing(t *testing.T) {
 	}
 }
 
-// TestRewrapZeroizeDefersArePresent 釘住三個 defer 銷毀點（codex R3）。
+// TestRewrapZeroizeDefersArePresent 釘住三個 defer 銷毀點。
 //
 // 明文的可控副本只有三份：原始請求體 []byte、payload 的欄位參考、
 // target 的材料副本。三個 defer 中任何一個被拿掉，都不會有任何行為測試變紅

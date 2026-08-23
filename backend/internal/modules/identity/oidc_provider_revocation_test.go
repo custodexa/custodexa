@@ -16,12 +16,12 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// provider 停用／刪除的全面失效與序列化（idp-oidc-integration 3.8／3.8a／3.8b）。
+// provider 停用／刪除的全面失效與序列化。
 //
 // 覆蓋兩類斷言：
 //
 //	靜態  停用與刪除各自觸發五條管道，且混合帳號的本地會話／本地 refresh 不受牽連
-//	並發  「兌換 vs 停用」與「Join vs 停用」——AST 守衛封不住這兩個競態（tasks 3.8b），
+//	並發 「兌換 vs 停用」與「Join vs 停用」——AST 守衛封不住這兩個競態，
 //	      只能靠在鎖內同步點製造精確交錯的並發測試
 //
 // 並發測試的突變自檢方式（拿掉序列化即應轉紅）記於各測試的註解。
@@ -314,7 +314,7 @@ func assertFiveChannels(t *testing.T, env *revocationEnv, dto *identity.OIDCProv
 	}
 }
 
-// Scenario: provider 停用觸發全面失效（tasks 3.8）
+// Scenario: provider 停用觸發全面失效
 func TestProviderDisableTriggersAllFiveChannels(t *testing.T) {
 	db := revocationDB(t)
 	env := newRevocationEnv(t, db)

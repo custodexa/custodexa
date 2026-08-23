@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// KEK 材料的**輸入編碼**與**金鑰**是兩件事（kek-encoding-and-unseal-entry 決策 1）。
+// KEK 材料的**輸入編碼**與**金鑰**是兩件事。
 //
 // 缺陷史：原本 `len(material) != 32` 這一條同時在說兩句話——「AES-256 要 32 bytes」
 // 與「輸入必須是 32 個字元」。於是 operator 以標準指令生成的**完全正確**的 32 位元組
@@ -50,7 +50,7 @@ const (
 )
 
 // 不洩密的違規原因（**只進伺服端錯誤鏈與啟動期日誌，不進 API 回應**）。
-// 解碼失敗與既有材料失敗共用同一機器碼，回應內容不可區分（D6.6）。
+// 解碼失敗與既有材料失敗共用同一機器碼，回應內容不可區分。
 const (
 	kekReasonEmpty = "為空或全為空白字元"
 	kekReasonForm  = "不是可接受的材料形態（須為 32 個字元、64 個十六進位字元、" +
@@ -165,7 +165,7 @@ func cloneKEKBytes(b []byte) []byte {
 	return out
 }
 
-// ValidateKEKMaterialFormat 本地 KEK 材料的伺服端**格式政策**驗證（D8 路 2）：
+// ValidateKEKMaterialFormat 本地 KEK 材料的伺服端**格式政策**驗證：
 // 可解碼為 32 位元組金鑰，且原字元形態須落在 KEKAlphabet 內。
 // 回空字串＝合格；否則回不洩密的違規原因。
 //

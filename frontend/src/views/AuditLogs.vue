@@ -42,7 +42,7 @@
                 style="width: 120px"
                 @change="handleSearch"
               >
-                <!-- 由 AUDIT_ACTIONS 事實源生成（role-enum-metadata-sync）：勿手寫選項 -->
+                <!-- 由 AUDIT_ACTIONS 事實源生成：勿手寫選項 -->
                 <el-option
                   v-for="(meta, value) in AUDIT_ACTIONS"
                   :key="value"
@@ -250,7 +250,7 @@
         </div>
       </el-tab-pane>
 
-      <!-- 頁籤二：每日簽核歷史（audit-log-compliance 7.3，PCI 10.4.1） -->
+      <!-- 頁籤二：每日簽核歷史（PCI 10.4.1） -->
       <el-tab-pane
         :label="$t('auditLogs.tabReviews')"
         name="reviews"
@@ -331,7 +331,7 @@
         </div>
       </el-tab-pane>
 
-      <!-- 頁籤三：審計機制失效事件（audit-log-compliance 7.3，PCI 10.7.3） -->
+      <!-- 頁籤三：審計機制失效事件（PCI 10.7.3） -->
       <el-tab-pane
         :label="$t('auditLogs.tabFailures')"
         name="failures"
@@ -385,7 +385,7 @@
               </template>
             </el-table-column>
 
-            <!-- cause_code 為權威表述（backend-i18n-unification D8），散文 cause
+            <!-- cause_code 為權威表述，散文 cause
                  欄降為未知碼／存量資料的 fallback -->
             <el-table-column
               :label="$t('auditLogs.causeColumn')"
@@ -428,7 +428,7 @@
     </el-tabs>
 
     <!-- 詳情對話框 -->
-    <!-- 稽核證據匯出對話框（audit-workflows D1）：ZIP=日誌+指令+錄影+manifest(SHA-256) -->
+    <!-- 稽核證據匯出對話框（audit-workflows）：ZIP=日誌+指令+錄影+manifest(SHA-256) -->
     <el-dialog
       v-model="exportDialogVisible"
       :title="$t('auditLogs.exportDialogTitle')"
@@ -613,7 +613,7 @@
       </el-descriptions>
     </el-dialog>
 
-    <!-- 完整性驗證對話框（audit-log-compliance 7.3，PCI 10.3.4；僅 admin） -->
+    <!-- 完整性驗證對話框（PCI 10.3.4；僅 admin） -->
     <el-dialog
       v-model="integrityDialogVisible"
       :title="$t('auditLogs.integrityTitle')"
@@ -833,7 +833,7 @@ const showDetails = (log) => {
   detailsVisible.value = true
 }
 
-// 稽核證據匯出（audit-workflows D1）
+// 稽核證據匯出（audit-workflows）
 const exportDialogVisible = ref(false)
 const exporting = ref(false)
 const exportTimeRange = ref([])
@@ -912,7 +912,7 @@ const formatValue = (value) => {
   return String(value)
 }
 
-// 翻譯操作/資源：constants/audit-enums 唯一事實源（role-enum-metadata-sync）
+// 翻譯操作/資源：constants/audit-enums 唯一事實源
 const translateAction = auditActionLabel
 const translateResource = auditResourceLabel
 

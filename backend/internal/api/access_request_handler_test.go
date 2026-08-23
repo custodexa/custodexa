@@ -172,8 +172,8 @@ func (m *MockApproverScopeService) Delete(id uint) error {
 
 // newAccessRequestRouter 掛 handler 的測試路由；identity 以 wrapper 注入。
 //
-// **W7b 8.3**：`isRevokeAdmin` 只注入撤銷端點的 admin 旗標（`RevokeAdminKey`）——
-// D-12 收斂後審核端點不存在 admin 兜底身分，`ApproverAdminKey` 已刪除
+// `isRevokeAdmin` 只注入撤銷端點的 admin 旗標（`RevokeAdminKey`）——
+// 審核資格收斂後審核端點不存在 admin 兜底身分，`ApproverAdminKey` 已刪除
 func newAccessRequestRouter(reqSvc *MockAccessRequestService, scopeSvc *MockApproverScopeService,
 	userID uint, role string, isRevokeAdmin *bool) (*gin.Engine, *AccessRequestHandler) {
 	gin.SetMode(gin.TestMode)
@@ -321,7 +321,7 @@ func TestAccessRequestHandler_Review(t *testing.T) {
 	admin := true
 	notAdmin := false
 
-	t.Run("待審列表一律依審核範圍（D-12 後無 admin 兜底）", func(t *testing.T) {
+	t.Run("待審列表一律依審核範圍（無 admin 兜底）", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
 		reqSvc.On("ListPending", uint(2), false, mock.Anything).
 			Return([]*model.AccessRequest{}, nil)
@@ -406,7 +406,7 @@ func TestAccessRequestHandler_Review(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
-	t.Run("badge 計數（含待補審，break-glass-revocation D7）", func(t *testing.T) {
+	t.Run("badge 計數（含待補審）", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
 		reqSvc.On("PendingCount", uint(2), false, mock.Anything).Return(int64(4), nil)
 		reqSvc.On("PendingReviewCount", uint(2), false).Return(int64(1), nil)
@@ -473,7 +473,7 @@ func TestAccessRequestHandler_Scopes(t *testing.T) {
 	})
 }
 
-// TestAccessRequestHandler_BreakGlassRevocation 破窗/撤銷/補審端點（break-glass-revocation）
+// TestAccessRequestHandler_BreakGlassRevocation 破窗/撤銷/補審端點
 func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 	notAdmin := false
 
@@ -509,7 +509,7 @@ func TestAccessRequestHandler_BreakGlassRevocation(t *testing.T) {
 			"asset_id": 1, "reason": "急",
 		})
 		assert.Equal(t, http.StatusForbidden, w.Code)
-		// 機器碼收口 apierror registry（backend-i18n-unification A1）：
+		// 機器碼收口 apierror registry：
 		// 原 legacy 小寫碼 break_glass_disabled → RULE_BREAK_GLASS_DISABLED，
 		// 語義不變（開關關閉＝封 API，前端據此隱藏入口自癒）
 		assert.Contains(t, w.Body.String(), `"code":"RULE_BREAK_GLASS_DISABLED"`)

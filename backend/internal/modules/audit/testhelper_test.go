@@ -9,12 +9,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// audit 模組的測試夾具複本（modular-architecture W4 4.11）。
+// audit 模組的測試夾具複本。
 //
 // **為何是複本**：這幾個 helper 原本與 audit 的 15 個生產檔同住 `internal/service`；
-// W4 把生產檔與其測試遷入本包後，本包的**包內**測試 SHALL NOT import
+// 生產檔與其測試遷入本包後，本包的**包內**測試 SHALL NOT import
 // `internal/service`——後者反過來消費本包（`AuditLogService`／`AlertNotifier`），
-// 會構成 import cycle。比照 W2 keyvault 與 W3 policy 的作法，兩側各留一份，
+// 會構成 import cycle。比照 keyvault 與 policy 的作法，兩側各留一份，
 // 複本一律只呼叫 keyvault 的匯出面，逐行實作與 `internal/service/keyvault_fixture_test.go`
 // 的原件相同。
 

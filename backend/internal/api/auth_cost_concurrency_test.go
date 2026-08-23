@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// === 認證端點的併發上限依實際雜湊成本設定（auth-cost-based-concurrency）===
+// === 認證端點的併發上限依實際雜湊成本設定===
 //
 // 缺陷：`MaxInFlight = 16` 只掛在 `/auth/login`，而登入每次只做 **1 次**雜湊；
 // 真正昂貴的 `/auth/change-password` 每次做 **2 + N + 1** 次（驗舊、比對現行、

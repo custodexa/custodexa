@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// id_token 驗證失敗矩陣（idp-oidc-integration tasks 4.2，design D11）。
+// id_token 驗證失敗矩陣。
 //
 // 這些情境在真實 IdP 上無法製造，故以 fakeIdP 逐格覆蓋。**其中時間判定與
 // 演算法白名單是本設計最脆弱的兩點**：verifier 已開 SkipExpiryCheck，
@@ -199,7 +199,7 @@ func TestVerifyIDTokenAcceptsFutureIssuedAtWithinSkew(t *testing.T) {
 
 func TestVerifyIDTokenRejectsMissingExpiry(t *testing.T) {
 	idp, svc, p := newVerifyFixture(t)
-	// **SkipExpiryCheck 之下最危險的一格**（codex HIGH）：go-oidc 不管過期，
+	// **SkipExpiryCheck 之下最危險的一格**：go-oidc 不管過期，
 	// 若我方只在「有值時」檢查，缺 exp 的 token 就是一張永不到期的憑證
 	raw := idp.issueIDToken(t, idTokenOpts{
 		subject: "sub-1", audience: "test-client", nonce: testNonce,
@@ -219,7 +219,7 @@ func TestVerifyIDTokenRejectsMissingIssuedAt(t *testing.T) {
 
 func TestVerifyIDTokenRejectsNotYetValid(t *testing.T) {
 	idp, svc, p := newVerifyFixture(t)
-	// nbf 逾容忍窗（tasks 4.16）：iat 可以是現在而 nbf 在未來，兩者是不同的宣告
+	// nbf 逾容忍窗：iat 可以是現在而 nbf 在未來，兩者是不同的宣告
 	raw := idp.issueIDToken(t, idTokenOpts{
 		subject: "sub-1", audience: "test-client", nonce: testNonce,
 		extra: map[string]any{"nbf": time.Now().Add(10 * time.Minute).Unix()},

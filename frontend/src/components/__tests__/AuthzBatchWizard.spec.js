@@ -62,7 +62,7 @@ const mountWizard = (props = {}) =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('AuthzBatchWizard 批次授權精靈（D6 拆檔）', () => {
+describe('AuthzBatchWizard 批次授權精靈', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -104,7 +104,7 @@ describe('AuthzBatchWizard 批次授權精靈（D6 拆檔）', () => {
     })
   })
 
-  it('客體節點樹：平面節點組樹、確認步驟帶含子樹語義（asset-node-tree）', async () => {
+  it('客體節點樹：平面節點組樹、確認步驟帶含子樹語義', async () => {
     const wrapper = mountWizard()
     await flushPromises()
 
@@ -157,7 +157,7 @@ describe('AuthzBatchWizard 批次授權精靈（D6 拆檔）', () => {
   })
 })
 
-describe('AuthzBatchWizard 挑選輔助（authz-tag-node-filters D6）', () => {
+describe('AuthzBatchWizard 挑選輔助', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -241,7 +241,7 @@ describe('AuthzBatchWizard 挑選輔助（authz-tag-node-filters D6）', () => {
     )
   })
 
-  it('重開精靈清空勾選與篩選（殘留勾選＝溢授，對抗驗證 M2）', async () => {
+  it('重開精靈清空勾選與篩選（殘留勾選＝溢授）', async () => {
     const wrapper = mountWizard()
     await flushPromises()
 

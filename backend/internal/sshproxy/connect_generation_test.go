@@ -24,7 +24,7 @@ import (
 )
 
 // 憑證世代閘於 connect_token 兌換點的複查，與會話的認證溯源快照
-// （idp-oidc-integration 1.9）。與 guacd 路徑（internal/proxy）語義對稱：
+// 與 guacd 路徑（internal/proxy）語義對稱：
 // 簽發後、兌換前 provider 或使用者世代推進者，一律 401＋AUTH_CONNECT_TOKEN_INVALID。
 //
 // 閘本體（session.VerifyCredentialGenerationByUserID）直查 database.DB，

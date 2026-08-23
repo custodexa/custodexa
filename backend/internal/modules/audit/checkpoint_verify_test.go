@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 檢查點驗證的九態（audit-checkpoint-chain tasks 8.3／spec「兩層語義與逐區間狀態」）。
+// 檢查點驗證的九態（audit-checkpoint-chain ／spec「兩層語義與逐區間狀態」）。
 //
 // **九態各造一例是硬性要求**：把不同成因壓成單一「失敗」正是本機制最想避免
 // 的事——`purged_legal` 與 `purged_invalid` 若不可區分，合法清除就會天天發告警，
@@ -136,7 +136,7 @@ func TestCheckpointVerifyStatuses(t *testing.T) {
 		f := setupVerifyFixture(t)
 		ids := f.stampedRows(t, 3, time.Now())
 		cp, _ := f.seal.SealNow()
-		// 改 key_version：列數不變，但聚合涵蓋該欄（D2 的新增覆蓋）
+		// 改 key_version：列數不變，但聚合涵蓋該欄（新增覆蓋）
 		f.mustExec(t, "UPDATE audit_logs SET key_version = 99 WHERE id = ?", ids[0])
 		if got := f.statusOf(t, cp.Seq).Status; got != IntervalStatusHashMismatch {
 			t.Fatalf("狀態 = %s, want %s", got, IntervalStatusHashMismatch)

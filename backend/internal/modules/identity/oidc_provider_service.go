@@ -27,7 +27,7 @@ var (
 	ErrOIDCUnknownScope = errors.New("scope 不在允許清單內")
 	// ErrOIDCBaseURLMissing 未設定對外基準網址
 	ErrOIDCBaseURLMissing = errors.New("未設定 PUBLIC_BASE_URL，無法組出 redirect_uri")
-	// ErrOIDCSharedCannotWiden 嘗試把系統判定為共用的身分域標記為專用（F2 / spec L169-171）。
+	// ErrOIDCSharedCannotWiden 嘗試把系統判定為共用的身分域標記為專用（spec L169-171）。
 	//
 	// 「靜默接受但不生效」不可接受：管理者會以為自己已把 provider 設為專用，
 	// 據以放寬准入規則（僅 email 網域），下一步的規則檢查卻以共用身分域為準而拒絕，
@@ -36,7 +36,7 @@ var (
 	ErrOIDCSharedCannotWiden = errors.New("此 issuer 由系統判定為共用身分域，不可標記為專用；如為企業專屬 IdP 請於部署層宣告")
 )
 
-// oidcAllowedExtraScopes 附加 scope 允許清單（idp-oidc-integration D11）。
+// oidcAllowedExtraScopes 附加 scope 允許清單。
 //
 // openid 由伺服端強制注入，不需列入。**offline_access 刻意不在清單**：
 // v1 明訂不保存 IdP 的 refresh token（會話生命週期不依賴 IdP token），
@@ -46,7 +46,7 @@ var oidcAllowedExtraScopes = map[string]bool{
 	"email":   true,
 }
 
-// OIDCProviderService OIDC provider 設定管理（idp-oidc-integration D8）。
+// OIDCProviderService OIDC provider 設定管理。
 //
 // 安全性質：
 //   - client_secret 走信封加密，write-only——任何讀取回應皆不含明文或密文，
@@ -127,7 +127,7 @@ type OIDCProviderDTO struct {
 	// 新使用者不再自動供應」，以及刪除被拒時「請先解綁 N 個身分」。
 	// 只說「有既有身分」會讓管理者無從判斷這個操作的影響面
 	IdentityCount int64 `json:"identity_count"`
-	// AdmissionCompliant 現行規則集是否仍符合**現算**身分域的合規要求（F1 / spec L161-163）。
+	// AdmissionCompliant 現行規則集是否仍符合**現算**身分域的合規要求（spec L161-163）。
 	//
 	// 為什麼需要獨立欄位：issuer kind 不持久化、每次現算，故部署層移除某 issuer
 	// 的專用宣告後，原本合法的「僅 email 網域」規則會就地變成不合規，但沒有任何
@@ -179,7 +179,7 @@ func (s *OIDCProviderService) toDTO(p *model.OIDCProvider) OIDCProviderDTO {
 // 這是關鍵：若兩處各寫一份判定，部署宣告變更後「寫入時會被拒的設定」與
 // 「執行期仍被放行的設定」會分岔，fail-close 就會有漏。
 //
-// 用於兩處：管理端 DTO 的不合規標示，以及登入路徑上自動供應前的重驗（F1）。
+// 用於兩處：管理端 DTO 的不合規標示，以及登入路徑上自動供應前的重驗。
 func (s *OIDCProviderService) AdmissionComplianceOf(p *model.OIDCProvider) error {
 	rules, err := ParseAdmissionRules(p.AdmissionRules)
 	if err != nil {
@@ -361,7 +361,7 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	}
 	forceShared := p.ForceShared
 	if req.ForceShared != nil {
-		// 放寬企圖須**拒絕並回明確錯誤**（F2 / spec L169-171），不得靜默接受
+		// 放寬企圖須**拒絕並回明確錯誤**（spec L169-171），不得靜默接受
 		if err := s.rejectSharedWidening(p.Issuer, req.ForceShared); err != nil {
 			return nil, err
 		}
@@ -387,7 +387,7 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	// 停用：推進世代（重新啟用不回退，故舊憑證永久失效）
 	disabling := req.Enabled != nil && !*req.Enabled && p.Enabled
 	if req.Enabled != nil {
-		// **啟用時重驗 issuer scheme**（M5 / spec L67-69）：issuer 建後不可變，
+		// **啟用時重驗 issuer scheme**（spec L67-69）：issuer 建後不可變，
 		// 但 AllowInsecureHosts 是部署層狀態——dev 建立的 http provider 在同一份
 		// DB 升為 release 後，若只有 Create 驗過 scheme，一句 `{"enabled":true}`
 		// 即可讓明文 issuer 重新上線。
@@ -451,7 +451,7 @@ func invalidationReason(disabling, secretRotated bool) string {
 	}
 }
 
-// rejectSharedWidening 「共用身分域不可被放寬為專用」（F2 / spec L169-171）。
+// rejectSharedWidening 「共用身分域不可被放寬為專用」（spec L169-171）。
 //
 // 判準是「送出 force_shared=false 之後，系統的**現算**判定是否仍為共用」：
 //   - 內建共用清單成員（Google／Entra common 等）→ 仍為共用 → 拒絕

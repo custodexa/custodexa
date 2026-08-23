@@ -1,10 +1,10 @@
-// Package auditcopy 只承載「稽核可讀文案」的機械層守衛（auditor-readable-copy 組 2）。
+// Package auditcopy 只承載「稽核可讀文案」的機械層守衛。
 //
 // # 掃描對象
 //
 // 三份 locale 的**對外 namespace**（checkpointVerification、auditorWorkbench、
 // policyNote、policyLabel），**不是原始碼**——原始碼的識別字本來就該是英文技術詞，
-// 掃原始碼只會製造誤報並逼人加豁免（design.md D2）。
+// 掃原始碼只會製造誤報並逼人加豁免。
 //
 // # 為什麼是獨立 package
 //
@@ -24,7 +24,7 @@
 //
 // 防漂移的約束寫死在這裡：**本檔的詞表必須是前端詞表的超集**。extendedLatinTerms
 // 與 extendedCJKTerms 就是照前端 JARGON／CJK_JARGON 逐字搬過來的（2026-08-13 對齊），
-// coreLatinTerms／coreCJKTerms 則是前端沒有、由 design.md D1 原則 3 要求的部分。
+// coreLatinTerms／coreCJKTerms 則是前端沒有、由對外文案的術語禁列要求的部分。
 // 兩檔互有交叉引用註解；改任一邊的詞表都須同步另一邊。
 //
 // 註：無法把這件事機械化成測試——backend 容器只掛得到 locale 目錄
@@ -60,7 +60,7 @@ var managedNamespaces = []string{
 	"policyLabel",
 }
 
-// namespaceMinLeaves 各 namespace 的葉鍵數下限——**空集合假綠的防線**（tasks 2.4）。
+// namespaceMinLeaves 各 namespace 的葉鍵數下限——**空集合假綠的防線**。
 // namespace 改名或結構調整導致選取為空時，守衛必須 Fatal 而非默默通過。
 // 括號內為 2026-08-13 實測值，門檻取其八成留改寫餘裕
 var namespaceMinLeaves = map[string]int{
@@ -71,7 +71,7 @@ var namespaceMinLeaves = map[string]int{
 }
 
 // coreLatinTerms 核心黑名單（拉丁字，全 namespace 適用）。
-// 來源：design.md D1 原則 3 逐字列舉。以 ASCII 詞界比對
+// 來源：對外文案的實作術語禁列逐字列舉。以 ASCII 詞界比對
 var coreLatinTerms = []string{
 	"seq",
 	"hmac",
@@ -140,7 +140,7 @@ var extendedCJKTerms = []string{
 	"キュー投入",
 }
 
-// policyExtendedKeyPrefix policy 兩族中適用延伸詞表的鍵前綴（本批擁有的封章門檻兩鍵）
+// policyExtendedKeyPrefix policy 兩族中適用延伸詞表的鍵前綴（封章門檻兩鍵）
 const policyExtendedKeyPrefix = "audit_checkpoint_"
 
 // snakeCasePat 狀態機器碼形態（extra_rows_valid_hmac、anchor_status）
@@ -169,7 +169,7 @@ func latinPattern(terms []string) *regexp.Regexp {
 // 見 TestAuditorCopyExemptionListStaysPinned 的上限釘定
 var jargonExemptions = map[string]string{}
 
-// maxJargonExemptions 豁免總數上限（tasks 2.6 的反向守衛）。
+// maxJargonExemptions 豁免總數上限（反向守衛）。
 //
 // **調高此值即為放寬守衛**：這行是刻意設置的絆線，任何人要新增豁免都必須同時
 // 改動這裡，讓「放寬」在 diff 中無法偽裝成「補一筆資料」。調高前請先確認
@@ -278,7 +278,7 @@ func decodeValue(dec *json.Decoder, tok json.Token) (any, error) {
 // localeDir 定位三語 locale 目錄：env 覆寫優先，否則自 cwd 逐層上溯找含
 // frontend/src/i18n/locales 的專案根（不寫死層數，package 移位不會指到錯目錄）。
 //
-// **找不到一律 Fatal 而非 Skip**（tasks 2.4）：掛載點改名或 env 掉了時，
+// **找不到一律 Fatal 而非 Skip**：掛載點改名或 env 掉了時，
 // skip 與 pass 在 CI 輸出裡幾乎沒有差別，守衛等於自願失效
 func localeDir(t *testing.T) string {
 	t.Helper()
@@ -363,7 +363,7 @@ func flatten(ns string, o *ordObj, prefix string, out []entry) []entry {
 }
 
 // extendedApplies 延伸詞表的射程：兩個稽核頁面 namespace 全部，
-// 加上 policy 兩族中本批擁有的封章門檻鍵
+// 加上 policy 兩族中的封章門檻鍵
 func extendedApplies(ns, path string) bool {
 	switch ns {
 	case "checkpointVerification", "auditorWorkbench":
@@ -429,10 +429,10 @@ func namespaceObj(t *testing.T, root *ordObj, locale, ns string) *ordObj {
 // ---------------------------------------------------------------------------
 
 // TestAuditorCopyNoImplementationJargon 對外文案不得出現內部函式名、狀態機器碼、
-// 實作術語（design.md D1 原則 3）。射程＝四個對外 namespace × 三語 × 全部葉鍵。
+// 實作術語。射程＝四個對外 namespace × 三語 × 全部葉鍵。
 //
-// 人工審查在本批文案累計抓到四處「把防不了的說成防得了」，靠的是有人逐句回去讀碼；
-// 下一批未必有人這樣做。本守衛守的是可機械化的那一半（術語），判斷層由組 6 承擔
+// 人工審查曾在對外文案累計抓到四處「把防不了的說成防得了」，靠的是有人逐句回去讀碼；
+// 往後未必有人這樣做。本守衛守的是可機械化的那一半（術語），判斷層仍只能靠人讀
 func TestAuditorCopyNoImplementationJargon(t *testing.T) {
 	dir := localeDir(t)
 	used := map[string]bool{}
@@ -545,7 +545,7 @@ func TestAuditorCopyExemptionListStaysPinned(t *testing.T) {
 // boundaryCodePat 邊界聲明的編碼（R0…R6）
 var boundaryCodePat = regexp.MustCompile(`^R\d+$`)
 
-// minBoundaryCodes 邊界條數下限。design.md D1 原則 4：改寫前後事實條數不得減少
+// minBoundaryCodes 邊界條數下限：改寫前後事實條數不得減少
 // （R0–R6 七條）。少一條即紅，不管少的那條是被刪還是被併
 const minBoundaryCodes = 7
 
@@ -556,8 +556,8 @@ const minProtectionCodes = 3
 const minPartRunes = 12
 
 // TestAuditorCopyBoundaryDeclarationsHaveBothParts 邊界聲明每一條都須具備
-// 「情境」與「由什麼承擔」兩部分，缺一即紅（design.md D1 原則 2；
-// 對得上 audit-checkpoint-chain 既有 scenario「邊界聲明以稽核可理解的語言撰寫」）。
+// 「情境」與「由什麼承擔」兩部分，缺一即紅
+//（對得上 audit-checkpoint-chain 既有 scenario「邊界聲明以稽核可理解的語言撰寫」）。
 //
 // 缺「承擔」的邊界＝把讀者留在恐慌裡，而且是靜默的：版面上看起來仍是一條邊界
 func TestAuditorCopyBoundaryDeclarationsHaveBothParts(t *testing.T) {
@@ -649,10 +649,10 @@ func limitsObj(t *testing.T, root *ordObj, locale string) *ordObj {
 // ---------------------------------------------------------------------------
 
 // TestAuditorCopyProtectionScopePrecedesBoundaries 保護範圍段的位置必須早於
-// 第一條邊界（design.md D1 原則 1：只列「防不了什麼」會使讀者誤判整體控制失效）。
+// 第一條邊界（只列「防不了什麼」會使讀者誤判整體控制失效）。
 //
 // **本守衛看的是 locale 檔中的鍵序**，那是譯者與改寫者實際編輯時看到的順序，
-// 也是 D2 界定的掃描對象（locale，不是原始碼）。渲染後 DOM 的順序由前端
+// 也是檔頭「掃描對象」界定的範圍（locale，不是原始碼）。渲染後 DOM 的順序由前端
 // CheckpointVerification.spec.js 守（`data-test="protection-scope"` 必須出現在
 // `data-test="honest-limits"` 之前）——Go 到不了 DOM，兩層各守一半，缺一都不完整
 func TestAuditorCopyProtectionScopePrecedesBoundaries(t *testing.T) {

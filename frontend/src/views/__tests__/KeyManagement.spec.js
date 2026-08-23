@@ -8,7 +8,7 @@ import KeyManagement from '../KeyManagement.vue'
 // AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
 enableAutoUnmount(afterEach)
 
-// key-management-envelope task 6：金鑰清冊與換鑰精靈前端
+// 金鑰清冊與換鑰精靈前端
 
 const getInventoryMock = vi.fn()
 const rotateKeyMock = vi.fn()
@@ -28,7 +28,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
-// 金鑰政策鍵設定區與清冊同頁（settings-domain-restructure 3.2 域收編）
+// 金鑰政策鍵設定區與清冊同頁（域收編）
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
@@ -77,12 +77,12 @@ const inventoryFixture = (overrides = {}) => ({
   ],
   kek_history: [],
   kek_id: 'abcd1234',
-  // 執行期 KEK provider（D10 頂層欄，後端恆送）。切換指示依它分岔
-  // （operator-guidance-fidelity）；缺欄的 fail-safe 態由個案 overrides 指定
+  // 執行期 KEK provider（頂層欄，後端恆送）。切換指示依它分岔；
+  // 缺欄的 fail-safe 態由個案 overrides 指定
   provider: 'env',
   rewrap_pending: false,
   rotation_pending: 0,
-  // 切換收尾雙態預設收斂（kek-rewrap-hygiene-hardening）：未收斂態由個案 overrides 指定
+  // 切換收尾雙態預設收斂：未收斂態由個案 overrides 指定
   finalize_pending: 0,
   retire_backlog: 0,
   reminder_days: 0,
@@ -92,7 +92,7 @@ const inventoryFixture = (overrides = {}) => ({
 const findButton = (wrapper, text) =>
   wrapper.findAll('button').find((b) => b.text().includes(text))
 
-// 清理確認框的內容自 uiux-keymgmt-r1 H2 起是結構化 VNode（段落＋清單）而非單一字串：
+// 清理確認框的內容是結構化 VNode（段落＋清單）而非單一字串：
 // 斷言改打在攤平後的文字上，順序資訊仍完整保留（清單項按渲染順序串接）
 const vnodeText = (node) => {
   if (node === null || node === undefined || typeof node === 'boolean') return ''
@@ -102,7 +102,7 @@ const vnodeText = (node) => {
   return ''
 }
 
-// D7 反轉後：材料由使用者提供，回應恰三鍵且無明文欄
+// 明文流向反轉後：材料由使用者提供，回應恰三鍵且無明文欄
 const VALID_KEK = 'NEWKEK1234567890abcdefABCDEF0000'
 const rewrapResponseFixture = () => ({
   target_mode: 'local',
@@ -214,7 +214,7 @@ describe('KeyManagement 金鑰清冊', () => {
     expect(wrapper.text()).toContain('deployer')
   })
 
-  // legacy 遷移狀態欄位已隨過渡機制整組拆除（release-transitional-cleanup 3.3）：
+  // legacy 遷移狀態欄位已隨過渡機制整組拆除：
   // 清冊回應不再帶 migration／migration_pending，頁面亦無對應橫幅與禁用條件。
   it('清冊回應不含 legacy 遷移欄位時頁面正常渲染且重包可用', async () => {
     getInventoryMock.mockResolvedValue(inventoryFixture())
@@ -273,7 +273,7 @@ describe('KeyManagement 金鑰清冊', () => {
     await findButton(wrapper, 'KEK 重包精靈').trigger('click')
     await flushPromises()
 
-    // D7 明文流向反轉：伺服端不生成不回傳，措辭不得再宣稱「顯示一次」
+    // 明文流向反轉：伺服端不生成不回傳，措辭不得再宣稱「顯示一次」
     expect(wrapper.text()).toContain('新 KEK 只存在於你手上')
     expect(wrapper.text()).toContain('伺服端不生成')
     // 委託目標（kms／hsm）契約已定但本版後端回 501：以停用選項明示，不讓使用者送出後才吃錯誤
@@ -282,9 +282,9 @@ describe('KeyManagement 金鑰清冊', () => {
   })
 
   it('對話框關閉事件當下清除新 KEK 明文（不得滯留至下次開窗）', async () => {
-    // kek-rewrap-hygiene-hardening 1.2：斷言打在關閉事件完成當下。
+    // 斷言打在關閉事件完成當下。
     // 注意不得以「重開對話框看不到舊值」驗證——openRewrapWizard 既有 reset
-    // 會使該寫法零改動即綠（審查 opus M8 假綠形態）
+    // 會使該寫法零改動即綠（假綠形態）
     const wrapper = await mountPage()
     await openRewrapInputStep(wrapper)
     await setKekInputs(wrapper, VALID_KEK, VALID_KEK)
@@ -305,8 +305,8 @@ describe('KeyManagement 金鑰清冊', () => {
   })
 })
 
-// kek-provider-modularization D7／D8：明文流向反轉後的重包精靈
-describe('KeyManagement 重包精靈（D7 明文由使用者提供）', () => {
+// 明文流向反轉後的重包精靈
+describe('KeyManagement 重包精靈（明文由使用者提供）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getInventoryMock.mockResolvedValue(inventoryFixture())
@@ -444,8 +444,8 @@ describe('KeyManagement 重包精靈（D7 明文由使用者提供）', () => {
   })
 })
 
-// kek-provider-modularization D10：清冊的 provider／key_ref／seal_state 顯示
-describe('KeyManagement 清冊 provider 顯示（D10）', () => {
+// 清冊的 provider／key_ref／seal_state 顯示
+describe('KeyManagement 清冊 provider 顯示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getPoliciesMock.mockResolvedValue(policyFixture())
@@ -497,7 +497,7 @@ describe('KeyManagement 清冊 provider 顯示（D10）', () => {
   })
 })
 
-// kek-rewrap-hygiene-hardening D7：切換收尾橫幅雙態
+// 切換收尾橫幅雙態
 describe('KeyManagement 切換收尾橫幅雙態', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -548,7 +548,7 @@ describe('KeyManagement 切換收尾橫幅雙態', () => {
   })
 })
 
-// kek-rewrap-hygiene-hardening D9 3.6：顯式清理退役資料
+// 顯式清理退役資料
 describe('KeyManagement 清理退役資料', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -654,12 +654,12 @@ describe('KeyManagement 清理退役資料', () => {
   })
 })
 
-// release-transitional-cleanup：系統管理金鑰表的退役列呈現治理。
+// 系統管理金鑰表的退役列呈現治理。
 // 退役列因稽核需求永久保留、只增不減，混排會讓現行鑰在數次輪替後被歷史淹沒
 describe('KeyManagement 系統管理金鑰退役列治理', () => {
   // 兩用途各輪替過數次：現行 audit v2／data v3，退役 audit v1／v0、data v2／v1。
   //
-  // fixture 刻意讓**版本序與退役時序相反**（uiux-keymgmt-r1 H1）：最新退役的是
+  // fixture 刻意讓**版本序與退役時序相反**：最新退役的是
   // audit v1（07-10），版本卻只有 1；版本最大的 data v2 反而早它 20 天退役。
   // 舊版以 version desc 排序在「版本序＝時序」的資料下與正解無從區分，測試因此
   // 鎖住假綠。version desc 於本資料會排成 data v2 → data v1 → audit v1 → audit v0，
@@ -804,7 +804,7 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     expect(message).toContain('退役於')
   })
 
-  // uiux-keymgmt-r1 S1：本頁三處確認框皆屬不可逆／高後果操作，一律走 confirmDestructive。
+  // 本頁三處確認框皆屬不可逆／高後果操作，一律走 confirmDestructive。
   // 守的是「Enter 關掉這個框」＝執行銷毀的肌肉記憶（EP 預設 autofocus 落在確認鈕上）
   it('清理／輪替／放棄重包三處確認框皆關閉 autofocus 且確認鈕為 danger', async () => {
     const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
@@ -877,7 +877,7 @@ describe('KeyManagement 第一輪審查修正（未知態／確認清單）', ()
     expect(message).toContain('重啟')
     // 已清理佔位（audit v0）不得出現在候選清單
     expect(message).not.toContain('v0')
-    // 三段警語各自獨立、可掃描（H2）：不可逆警語與結尾提問不再混在同一段散文裡
+    // 三段警語各自獨立、可掃描：不可逆警語與結尾提問不再混在同一段散文裡
     expect(message).toContain('此操作無法復原。')
     expect(message).toContain('確定清理？')
   })
@@ -887,7 +887,7 @@ describe('KeyManagement 第一輪審查修正（未知態／確認清單）', ()
 // 待切換橫幅，而關窗當下明文已由 @closed 清除，任何斷言都必然先綠（假綠形態）。
 // 該時機為縱深防禦（未來若放棄入口移入對話框內即成為第一道），碼中已註明。
 
-// operator-guidance-fidelity：完成切換的指示依**執行期 KEK provider** 分岔。
+// 完成切換的指示依**執行期 KEK provider** 分岔。
 //
 // 守衛的是一條安全性質，不是措辭偏好：ui 模式的不變式是金鑰材料永不落地，
 // 而舊版精靈無條件指示「把新 KEK 存入 ENCRYPTION_KEY 後重啟」——ui 模式的使用者

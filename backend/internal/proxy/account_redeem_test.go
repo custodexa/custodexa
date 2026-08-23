@@ -9,7 +9,7 @@ import (
 )
 
 // TestGuacRedeemAccountDeletedAfterIssue 圖形路徑（RDP/VNC）的帳號 fail-close
-// （asset-multi-account D3／connection-gating delta「帳號於簽發後被刪除」）：
+// （connection-gating delta「帳號於簽發後被刪除」）：
 // grant 所帶帳號在兌換時已不存在，一律拒絕建線，**不以預設帳號靜默替代**。
 //
 // 圖形路徑與文字路徑各有一份取憑證程式碼，兩邊都得有這道網——只驗其中一邊，
@@ -43,7 +43,7 @@ func TestGuacRedeemAccountDeletedAfterIssue(t *testing.T) {
 	}
 }
 
-// TestGuacRedeemForeignAccountRejected 跨資產 account id 注入（codex NEW high）：
+// TestGuacRedeemForeignAccountRejected 跨資產 account id 注入：
 // 即便 grant 直接被構造成帶他資產的帳號（繞過簽發閘），兌換點的
 // (account_id, asset_id) 複合現查仍須擋下——否則注入者拿到的是目標資產的預設憑證
 func TestGuacRedeemForeignAccountRejected(t *testing.T) {

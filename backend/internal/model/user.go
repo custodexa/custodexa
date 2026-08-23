@@ -13,7 +13,7 @@ const (
 	AuthSourceLocal = "local"
 	// AuthSourceLDAP LDAP 目錄認證
 	AuthSourceLDAP = "ldap"
-	// AuthSourceOIDC OIDC 身分提供者認證（idp-oidc-integration）
+	// AuthSourceOIDC OIDC 身分提供者認證
 	AuthSourceOIDC = "oidc"
 )
 
@@ -25,22 +25,22 @@ type User struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Username string `gorm:"uniqueIndex;not null;size:50" json:"username"`
-	// Email 未知以 NULL 表達（非空字串）；唯一性僅約束非 NULL 值（profile-display-name D7）。
+	// Email 未知以 NULL 表達（非空字串）；唯一性僅約束非 NULL 值。
 	// LDAP 供應遇 email 衝突時存 NULL，允許多個無 email 影子帳號並存
 	Email    *string `gorm:"uniqueIndex;size:100" json:"email"`
 	Password string  `gorm:"not null" json:"-"` // bcrypt hashed password
 	FullName string  `gorm:"size:100" json:"full_name"`
 	Active   bool    `gorm:"default:true" json:"active"`
 
-	// LocalDisplayName 使用者自助顯示名（profile-display-name D1/D2）：初始 NULL、
+	// LocalDisplayName 使用者自助顯示名：初始 NULL、
 	// 不由 username/full_name/IdP 初始化、無唯一性約束；trim 後空字串寫回 NULL。
-	// 僅用於裝飾/自我檢視場景，身分敏感場景一律 username（D4 安全紅線）
+	// 僅用於裝飾/自我檢視場景，身分敏感場景一律 username（安全紅線）
 	LocalDisplayName *string `gorm:"size:100" json:"local_display_name"`
 
 	// LDAP 使用者標記
 	IsLDAP bool `gorm:"default:false" json:"is_ldap"`
 
-	// 身分三分（idp-oidc-integration D2）：單一欄位無法同時承擔「帳號怎麼來的」、
+	// 身分三分：單一欄位無法同時承擔「帳號怎麼來的」、
 	// 「能不能用本地密碼」、「本次怎麼登入的」三種判定——admin 把外部身分綁到既有
 	// 本地帳號後即自相矛盾（判 local 則 OIDC 登入被密碼 gate 擋、判 oidc 則本地密碼
 	// 登入跳過 gate）。故拆為：供應來源（本欄，不可變）、憑證外部化（下欄）、
@@ -86,30 +86,30 @@ type User struct {
 	// MFA (TOTP)：secret 以 AES 加密儲存，永不輸出至 JSON
 	TOTPSecretEnc string `gorm:"size:512" json:"-"`
 	TOTPEnabled   bool   `gorm:"default:false" json:"totp_enabled"`
-	// TOTPLastStep 最後成功消耗的 TOTP time-step 索引（⌊unix/30⌋，PCI 8.5.1 防重放，D5）：
+	// TOTPLastStep 最後成功消耗的 TOTP time-step 索引（⌊unix/30⌋，PCI 8.5.1 防重放）：
 	// 驗證僅接受 step > 此值，並以條件 UPDATE（CAS）原子推進，擋同碼跨 skew 窗重放
 	TOTPLastStep *uint64 `json:"-"`
 
-	// 帳號鎖定（PCI 8.3.4，auth-hardening D2）：
-	// 密碼失敗與 TOTP 失敗共用同一計數；locked_until 到期放行時計數一併歸零（D12）
+	// 帳號鎖定（PCI 8.3.4）：
+	// 密碼失敗與 TOTP 失敗共用同一計數；locked_until 到期放行時計數一併歸零
 	FailedLoginAttempts int        `gorm:"default:0" json:"-"`
 	LockedUntil         *time.Time `json:"locked_until,omitempty"`
 
-	// 強制改密（PCI 8.3.5/2.2.2，auth-hardening D4）：
+	// 強制改密（PCI 8.3.5/2.2.2）：
 	// seed admin 預設 true；admin 重設後依政策 force_change_on_reset 設 true
 	MustChangePassword bool       `gorm:"default:false" json:"must_change_password"`
 	PasswordChangedAt  *time.Time `json:"password_changed_at,omitempty"`
 
-	// 最後成功登入時間（D2 成功時更新；閒置停用判定 8.2.6 據此）
+	// 最後成功登入時間（登入成功時更新；閒置停用判定 8.2.6 據此）
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
 
-	// 閒置帳號自動停用豁免（PCI 8.2.6，auth-hardening D8）：
+	// 閒置帳號自動停用豁免（PCI 8.2.6）：
 	// per-user 永久有效豁免旗標；seed admin 預設豁免，避免唯一管理員因久未登入被自動停用鎖死系統
 	InactivityExempt bool `gorm:"default:false" json:"inactivity_exempt"`
 
 	// 關聯
 	Roles []Role `gorm:"many2many:user_roles;" json:"roles,omitempty"`
-	// 授權分組成員資格（user-group-authorization；與 Roles 正交，不影響端點權限）
+	// 授權分組成員資格（與 Roles 正交，不影響端點權限）
 	Groups []UserGroup `gorm:"many2many:user_group_members;" json:"groups,omitempty"`
 }
 
@@ -118,10 +118,10 @@ func (User) TableName() string {
 	return "users"
 }
 
-// DisplayName 集中的顯示名 resolver（profile-display-name D2/R3，單一事實源）：
+// DisplayName 集中的顯示名 resolver（單一事實源）：
 // local_display_name || full_name || username——取第一個 trim 後非空者。
 // 各消費端（UserInfo.display_name）一律走此方法，前後端不各寫 fallback 鏈。
-// 僅供裝飾/自我檢視場景；身分敏感場景一律用 Username（D4 安全紅線）
+// 僅供裝飾/自我檢視場景；身分敏感場景一律用 Username（安全紅線）
 func (u *User) DisplayName() string {
 	if u.LocalDisplayName != nil {
 		if s := strings.TrimSpace(*u.LocalDisplayName); s != "" {
@@ -134,7 +134,7 @@ func (u *User) DisplayName() string {
 	return u.Username
 }
 
-// IsExternal 帳號的憑證是否由外部提供者管理（idp-oidc-integration D2）。
+// IsExternal 帳號的憑證是否由外部提供者管理。
 //
 // fail-secure 三訊號取聯集：任一指出外部即視為外部。單欄漂移（例如 migration
 // 半途、或某個建號路徑漏設欄位）因此不會打開本地密碼路徑，也不會誤把 LDAP

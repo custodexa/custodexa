@@ -54,8 +54,8 @@ services:
       target: production
       args:
         # 版本號建置時注入（/health 揭露的版號）。**空值是刻意的**：Dockerfile 於空值時
-        # 回退讀專案根 VERSION 檔，那才是單一事實源——不設環境變數的一般建置（含
-        # scripts/prod_build_check.sh 與 CI）因此自動拿到正確版號。
+        # 回退讀專案根 VERSION 檔，那才是單一事實源——不設環境變數的一般建置因此
+        # 自動拿到正確版號。
         # 設 VERSION 環境變數只用於覆寫，例：`VERSION=1.0.2-rc1 docker compose -f docker-compose.yml build`
         VERSION: ${VERSION:-}
     container_name: custodexa-backend
@@ -93,8 +93,8 @@ services:
       dockerfile: docker/frontend/Dockerfile
       target: production
     container_name: custodexa-frontend
-    # 只映射 80/HTTP（deployment-hardening CPG-012）：本專案採 external-ingress TLS 契約，
-    # 不自帶 TLS termination；移除舊 443 映射（曾宣告不存在的 TLS＝假安全訊號）。
+    # 只映射 80/HTTP：本專案採 external-ingress TLS 契約，不自帶 TLS termination。
+    # 不映射 443——宣告一個不存在的 TLS 端點，等於給部署方一個假的安全訊號。
     # 對外 TLS 由部署方的反向代理/ingress 承載，見部署指南 docs/QUICKSTART.md 與
     # docker/reverse-proxy/nginx-tls.conf.example。
     ports:

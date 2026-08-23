@@ -8,7 +8,7 @@ import TransmissionInventory from '../TransmissionInventory.vue'
 // AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
 enableAutoUnmount(afterEach)
 
-// transmission-security-policy 5.4：通道加密清冊儀表板
+// 通道加密清冊儀表板
 
 const getInventoryMock = vi.fn()
 const exportInventoryMock = vi.fn()
@@ -18,7 +18,7 @@ vi.mock('@/api/transmissionInventory', () => ({
   exportTransmissionInventory: (...args) => exportInventoryMock(...args),
 }))
 
-// 傳輸政策鍵設定區與清冊同頁（settings-domain-restructure 3.1 域收編）
+// 傳輸政策鍵設定區與清冊同頁（域收編）
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
@@ -76,7 +76,7 @@ const inventoryFixture = () => ({
       },
       { channel: 'vnc', level: 'off', total_count: 1, at_risk_count: 1 },
       {
-        // ldap-settings-migration：設定自部署層 env 遷入 UI，故 deployment 轉 false、
+        // 設定自部署層 env 遷入 UI，故 deployment 轉 false、
         // note 碼改 ldap_ui_managed（部署方徽章僅剩 nginx）
         channel: 'ldap', deployment: false, level: 'warn', total_count: 1, at_risk_count: 1,
         risks: [{ key: 'ldap_plaintext', label: '目錄連線未加密（非 ldaps）' }],

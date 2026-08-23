@@ -63,7 +63,7 @@
                 {{ row.asset?.host || '-' }}:{{ row.asset?.port || '-' }}
               </template>
             </el-table-column>
-            <!-- 連線帳號（asset-multi-account D7）：連線當下的 username 快照，
+            <!-- 連線帳號：連線當下的 username 快照，
                  帳號日後改名／刪除不改寫此欄 -->
             <el-table-column
               :label="$t('sessions.accountColumn')"
@@ -118,8 +118,8 @@
               fixed="right"
             >
               <template #default="{ row }">
-                <!-- 會中錄影失敗警示（fixed right 恆可見）：不做自動斷線（L3
-                     裁決）的前提是 admin 看得到才能人工處置強制斷線 -->
+                <!-- 會中錄影失敗警示（fixed right 恆可見）：不做自動斷線
+                     的前提是 admin 看得到才能人工處置強制斷線 -->
                 <el-tooltip
                   v-if="row.recording_error"
                   :content="$t('sessions.recordingErrorTooltip', { error: auditCauseLabel(row.recording_error) })"
@@ -184,7 +184,7 @@
                 style="width: 120px"
                 @change="handleFilter"
               >
-                <!-- 由協議事實源生成（role-enum-metadata-sync）：7 協議全覆蓋 -->
+                <!-- 由協議事實源生成：7 協議全覆蓋 -->
                 <el-option
                   v-for="(port, proto) in PROTOCOL_DEFAULT_PORTS"
                   :key="proto"
@@ -278,7 +278,7 @@
                 {{ row.asset?.host || '-' }}:{{ row.asset?.port || '-' }}
               </template>
             </el-table-column>
-            <!-- 連線帳號（asset-multi-account D7）：連線當下的 username 快照，
+            <!-- 連線帳號：連線當下的 username 快照，
                  帳號日後改名／刪除不改寫此欄 -->
             <el-table-column
               :label="$t('sessions.accountColumn')"
@@ -364,7 +364,7 @@
               width="90"
             >
               <template #default="{ row }">
-                <!-- 無錄影額外標示（recording-failure-handling D3）：
+                <!-- 無錄影額外標示：
                      缺錄影必須可見，不得只是播放鈕沉默消失 -->
                 <el-tooltip
                   v-if="row.recording_error"

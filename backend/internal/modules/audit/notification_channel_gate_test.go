@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupGatedChannelSvc 帶傳輸政策閘的通知服務（transmission-security-policy 3.1）
+// setupGatedChannelSvc 帶傳輸政策閘的通知服務
 func setupGatedChannelSvc(t *testing.T) (*NotificationChannelService, *policy.SecurityPolicyService, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {

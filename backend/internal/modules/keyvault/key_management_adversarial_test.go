@@ -1,6 +1,6 @@
 package keyvault
 
-// 對抗驗證回歸測試（key-management-envelope tasks 7.5 雙軌驗證產物，長期保留）。
+// 對抗測試的回歸集（長期保留）。
 // 攻擊面：KEK 重包鎖死/孤兒列、遷移雙重信封、DEK 輪替中斷、envelope 惡意輸入、
 // 金鑰材料外洩、KEK 隨機性、HMAC 版本化誠實性、通知 URL 遮罩。
 // 已由專項回歸取代的攻擊項不重複：續跑膨脹（TestRotateDataDEKPartialResume）、
@@ -54,7 +54,7 @@ func TestAuditDoubleRewrapSinglePendingSet(t *testing.T) {
 	seedEnvelopeData(t, db, km)
 
 	firstMaterial, first := mustRewrapKEK(t, km)
-	// 新行為（key-inventory-transparency）：已有待切換 pending 時第二次重包被拒，
+	// 新行為：已有待切換 pending 時第二次重包被拒，
 	// 不靜默覆蓋已交付的第一把 KEK（避免管理員已存的新 KEK 失效）
 	if _, err := rewrapKEKWith(t, km, newTestKEKMaterial(t)); !errors.Is(err, ErrRewrapPendingExists) {
 		t.Fatalf("已有 pending 應拒絕第二次重包，得 %v", err)
@@ -117,7 +117,7 @@ func TestAuditRotationMidFailureOldValuesReadable(t *testing.T) {
 	}
 
 	// 直接 bump（等價於 RotateDataDEK 在批次重加密前崩潰）；
-	// bump 走鎖內交易＋commit 後套用 in-memory（kek-rewrap-hygiene-hardening D3）
+	// bump 走鎖內交易＋commit 後套用 in-memory
 	var toVer int
 	var raw []byte
 	err := km.withDataKeysLock(func(tx *gorm.DB) error {
@@ -204,7 +204,7 @@ func TestAuditListKeysNoWrappedMaterial(t *testing.T) {
 	}
 }
 
-// 註（kek-provider-modularization D7）：原 TestAuditGenerateKEKStringDistribution
+// 註：原 TestAuditGenerateKEKStringDistribution
 // 已隨 generateKEKString 一併刪除——明文流向反轉後伺服端不生成 KEK，該函式在
 // rewrap 路徑上已不存在，留著它等於留一條「伺服端仍能生成材料」的可用旁路。
 // 取而代之的守衛是 key_rewrap_no_generation_ast_test.go：釘住 RewrapKEK 的呼叫
@@ -214,7 +214,7 @@ func TestAuditListKeysNoWrappedMaterial(t *testing.T) {
 
 // seedEnvelopeData 佈建**終態格式**存量（enc:a1）：資產密碼、使用者 TOTP、
 // 兩個通知通道。取代已刪除的 seedLegacyData＋RunEnvelopeDataMigration 前置
-// （release-transitional-cleanup 3.3）——終態下不存在需要一次性信封化的存量。
+// ——終態下不存在需要一次性信封化的存量。
 func seedEnvelopeData(t *testing.T, db *gorm.DB, km *KeyManagerService) {
 	t.Helper()
 	pw := encryptColumn(t, km, "assets", "password_enc", "asset-password")

@@ -8,12 +8,12 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 )
 
-// TestBreakGlassReviewStaysPendingWithNoApprover （W7b 8.9 後半）D-12 收斂後，
+// TestBreakGlassReviewStaysPendingWithNoApprover 審核資格收斂後，
 // 系統可能進入「無人可補審」狀態（唯一的 admin 不再是有效審核者）。此時破窗單
 // **必須維持 `pending_review`、持續逾期告警、不得自動結案**——若逾期掃描順手把
 // 單結掉，破窗使用就會在無人審視的情況下靜默消失，等同放棄事後補審這道控制。
 //
-// 這是本波唯一「行為變更製造出新常態」的地方，故以測試釘住其安全側行為。
+// 這是該次收斂唯一「行為變更製造出新常態」的地方，故以測試釘住其安全側行為。
 func TestBreakGlassReviewStaysPendingWithNoApprover(t *testing.T) {
 	svc, policies, db := setupAccessRequestEnv(t)
 	seedRequestFixture(t, db)
@@ -52,8 +52,8 @@ func TestBreakGlassReviewStaysPendingWithNoApprover(t *testing.T) {
 		t.Fatalf("逾期告警筆數 = %d, want 1（無人可補審時仍須持續升級）", notified)
 	}
 
-	// **持續升級才是保底**（W7b 對抗輪 M-H）：舊實作以布林防重，同一單只響一次
-	// 就永久靜默——一封信被漏看，破窗單即沉沒，D-12 賴以避免死鎖的補償控制形同
+	// **持續升級才是保底**：舊實作以布林防重，同一單只響一次
+	// 就永久靜默——一封信被漏看，破窗單即沉沒，避免死鎖所賴的補償控制形同
 	// 不存在。以下三次掃描釘住「節流內不重發、跨節流窗必重發」兩側。
 	quiet, err := svc.NotifyOverdueReviews(base.Add(3 * time.Hour))
 	if err != nil {

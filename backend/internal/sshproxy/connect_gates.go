@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// 兩階段閘序宣告（modular-architecture W10）
+// 兩階段閘序宣告
 //
 // 本檔只做一件事：把原本散在 handler 裡的一串 if 改寫成**有序的閘序表**，
 // 使閘序成為可被守衛測試逐位比對的資料。**閘的判定邏輯、拒絕碼、副作用與其
@@ -26,8 +26,7 @@ import (
 //
 // 閘編號（G-I*／G-S*）的定義即本檔的閘序表——每個 `{Name: "G-…"}` 之後緊接
 // 該閘的實作與理由；完整登記表（含刻意不涵蓋者與其逐條理由）見
-// `w10_characterization_matrix_test.go` 的 `TestW10MatrixCoverageIsDeclared`。
-// 收斂當時逐位比對用的等價基準表歸檔於維護者的私有開發歷程，未隨公開倉庫發佈。
+// `characterization_matrix_test.go` 的 `TestMatrixCoverageIsDeclared`。
 // 骨架＝`AuthorizePreResolve → 解封／解析 → AuthorizeResolvedAccount`，
 // 三個入口逐字相同，差異只由 Stage 與各自的閘序表達。
 //
@@ -39,7 +38,7 @@ import (
 // 因閘序需跨閘傳遞而具名，欄位與 tag 逐字未改）
 type connectTokenRequest struct {
 	AssetID uint `json:"asset_id" binding:"required"`
-	// AccountID 選填的連線帳號（asset-multi-account D3）：省略／0＝預設帳號，
+	// AccountID 選填的連線帳號：省略／0＝預設帳號，
 	// 語義與多帳號前的行為完全一致
 	AccountID uint `json:"account_id"`
 }
@@ -56,7 +55,7 @@ type issueState struct {
 // Username 為 ResolveAccountIdentity 解析出的帳號名——後者是帳號範圍閘（G-I10）的
 // 判定對象，**不是請求參數**。
 //
-// **單一事實源**：HandleCreateConnectToken 與 W10 守衛測試共用同一份構造。
+// **單一事實源**：HandleCreateConnectToken 與閘序守衛測試共用同一份構造。
 func (st *issueState) contractObject() gatewayapi.ResolvedConnectObject {
 	o := gatewayapi.ResolvedConnectObject{
 		ConnectObjectRef: gatewayapi.ConnectObjectRef{
@@ -73,15 +72,15 @@ func (st *issueState) contractObject() gatewayapi.ResolvedConnectObject {
 
 // issuePreResolveGates 簽發側「帳號身分解析之前」的閘序（G-I2…G-I8）。
 // s＝`gatewayapi.PolicyGate` 的主體入參；**s.ClaimedRole 在本階段零讀取**
-// ——角色一律由 G-I2 現查後寫入 st.role（CPG-010-01）
+// ——角色一律由 G-I2 現查後寫入 st.role
 func (h *Handler) issuePreResolveGates(c *gin.Context,
 	s gatewayapi.ConnectSubject, st *issueState) []connectgate.Gate {
 	return []connectgate.Gate{
 		{Name: "G-I2", Eval: func() *connectgate.Outcome {
-			// AUTH-1＋角色現況覆蓋（connect-role-revocation-hardening D2）：簽發前重載用戶，
+			// AUTH-1＋角色現況覆蓋：簽發前重載用戶，
 			// 並以 DB 現查有效角色覆蓋 JWT role——AuthMiddleware 不查 DB，停用/鎖定者持停用前
 			// 的正式 JWT 仍能走到此處，降權 admin 亦然。不覆蓋則其後所有 admin 短路（授權/錄影
-			// fail-close 例外/政策豁免/簽發）皆憑 JWT 角色快照放行（CPG-010-01）。CheckUserConnectable
+			// fail-close 例外/政策豁免/簽發）皆憑 JWT 角色快照放行。CheckUserConnectable
 			// 的可連線複查併入本次查詢，不多查一趟
 			role, connErr := h.AuthService.CurrentConnectRole(s.UserID)
 			if connErr != nil {
@@ -111,7 +110,7 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			return h.connectPermissionOutcome(c, s.UserID, st.role, st.req.AssetID)
 		}},
 		{Name: "G-I6", Eval: func() *connectgate.Outcome {
-			// 停用資產連線硬擋（asset-list-info-layering D8）：授權檢查之後（保未授權
+			// 停用資產連線硬擋：授權檢查之後（保未授權
 			// 404 不洩漏語義）、政策閘之前；admin 不豁免——停用是資產態非權限態，
 			// 要連先重新啟用留審計軌跡。後端強制，不受功能開關旁路
 			if !st.assetRow.Active {
@@ -120,7 +119,7 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I7", Eval: func() *connectgate.Outcome {
-			// K8s 固定單一預設帳號（D6）：帶 account_id 即拒，不靜默忽略
+			// K8s 固定單一預設帳號：帶 account_id 即拒，不靜默忽略
 			if st.req.AccountID != 0 && st.assetRow.Protocol == model.ProtocolK8s {
 				return connectgate.Deny(http.StatusBadRequest,
 					string(apierror.CodeAccountK8sDefaultOnly), nil)
@@ -128,7 +127,7 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I8", Eval: func() *connectgate.Outcome {
-			// 帳號客體綁定（asset-multi-account D3，codex NEW high）：授權閘之後
+			// 帳號客體綁定：授權閘之後
 			//（不對未授權者洩漏帳號存在性）、政策閘之前（無效客體不該觸發審批流／
 			// 建 access_request）。跨資產或已刪的 account_id 一律拒發——connect token
 			// 不承載未經 DB 現查的客體，兌換點另有一次重查（fail-close 兩道）
@@ -159,7 +158,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 	st *issueState) []connectgate.Gate {
 	return []connectgate.Gate{
 		{Name: "G-I10", Eval: func() *connectgate.Outcome {
-			// 帳號授權範圍（asset-multi-account D5 強制點 1／3）：客體綁定之後——
+			// 帳號授權範圍（強制點 1／3）：客體綁定之後——
 			// 「這個帳號屬於這台」與「你被授權用這個帳號」是兩件事。
 			// **判定對象是實際會用的帳號、不是請求參數**：req.AccountID=0 時解析出預設
 			// 帳號再判定，否則授權範圍收緊為 ["app"] 的使用者只要省略 account_id
@@ -184,7 +183,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I11", Eval: func() *connectgate.Outcome {
-			// 錄影前置檢查（recording-failure-handling D1/D2）：停用硬擋後、政策閘前
+			// 錄影前置檢查：停用硬擋後、政策閘前
 			//（錄影儲存壞了不該讓使用者走完申請流才發現連不上）。probe 以共用
 			// volume 代理 guacd（全協議唯一入口）；偵測/告警恆做，政策開啟時
 			// 才擋簽發——admin 為唯一例外（嚴重事故仍需能處理），豁免留審計標記
@@ -208,7 +207,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I12", Eval: func() *connectgate.Outcome {
-			// 存取政策閘（access-policy-approval D4）：授權檢查之後、傳輸閘之前——
+			// 存取政策閘：授權檢查之後、傳輸閘之前——
 			// 先確認「可不可以連」再談「怎麼連安全」。非 open 段位蓋過常設 connect，
 			// 僅時窗內核准流臨時授權放行；admin 豁免放行＋審計獨立標記（決議 3）；
 			// 攔截恆 403＋機器可辨 reason（428 為傳輸閘專用）。後端強制——直呼 API 同受此閘
@@ -240,7 +239,7 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-I13", Eval: func() *connectgate.Outcome {
-			// 傳輸安全閘（transmission-security-policy D2）：授權之後、簽發之前。
+			// 傳輸安全閘：授權之後、簽發之前。
 			// strict＝400＋不符項；warn 無有效同意＝428＋風險項（前端據此彈同意對話框）；
 			// off 或無風險＝零影響。後端強制——繞前端直呼 API 同受此閘
 			if h.TransmissionConsent == nil {
@@ -306,7 +305,7 @@ func (h *Handler) redeemPreResolveGates(c *gin.Context,
 	s gatewayapi.ConnectSubject, st *redeemState) []connectgate.Gate {
 	return []connectgate.Gate{
 		{Name: "G-S3", Eval: func() *connectgate.Outcome {
-			// AUTH-1＋角色現況（connect-role-revocation-hardening D3）：connect_token 於停用/鎖定/
+			// AUTH-1＋角色現況：connect_token 於停用/鎖定/
 			// 降權前簽發者，兌換時重載用戶狀態並取 DB 現查有效角色（即時撤權殘窗 = 60s TTL；
 			// 不重載＝停用/降權者仍可開新 shell）。currentRole 供下方授權/政策重查判定 admin 特權
 			currentRole, connErr := h.AuthService.CurrentConnectRole(s.UserID)
@@ -318,7 +317,7 @@ func (h *Handler) redeemPreResolveGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-S4", Eval: func() *connectgate.Outcome {
-			// 憑證世代複查（idp-oidc-integration 1.9）：簽發後、兌換前若該 provider 被停用／
+			// 憑證世代複查：簽發後、兌換前若該 provider 被停用／
 			// 刪除／輪替 secret，或使用者憑證世代被推進（解綁外部身分、改為僅外部登入、改密、
 			// 停用），這張一次性 token 必須失效。上方角色現查擋不到這一類——帳號可能仍啟用、
 			// 角色也沒變，但其外部身分已被解綁或該 provider 已停用。
@@ -368,10 +367,10 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-S9", Eval: func() *connectgate.Outcome {
-			// 兌換點授權與政策重查（CPG-010，與簽發點對稱）：connect_token 於簽發後、
+			// 兌換點授權與政策重查（與簽發點對稱）：connect_token 於簽發後、
 			// 兌換前，其連線授權/ticket/存取政策/角色若遭撤銷或收緊，於此即時生效——撤權
 			// 殘窗（原以 60s TTL 為上界）歸零。role 用 DB 現查 currentRole，不憑角色快照
-			// 授予 admin 特權（CPG-010-01）
+			// 授予 admin 特權
 			return h.connectPermissionOutcome(c, s.UserID, st.currentRole, o.AssetID)
 		}},
 		{Name: "G-S10", Eval: func() *connectgate.Outcome {
@@ -392,7 +391,7 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-S11", Eval: func() *connectgate.Outcome {
-			// 零帳號資產 fail-close（codex HIGH）：空 token／空密碼交給 k8s client 或
+			// 零帳號資產 fail-close：空 token／空密碼交給 k8s client 或
 			// DB CLI 會變成匿名 ServiceAccount／trust 認證／互動式提示——SSH 靠
 			// authMethods 空集擋得住，其餘協議沒有這道網，統一在此擋。
 			// 置於停用／授權／政策閘之後：那些閘的回應語義是既有契約，順序不動
@@ -404,7 +403,7 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-S12", Eval: func() *connectgate.Outcome {
-			// K8s 固定單一預設帳號（D6）：簽發點已擋，此處為兌換點的對稱防線
+			// K8s 固定單一預設帳號：簽發點已擋，此處為兌換點的對稱防線
 			//（簽發／兌換之間資產協議被改為 k8s 亦涵蓋）。拒而非忽略——靜默忽略會讓
 			// 使用者以為連的是所選帳號、實際用的是預設憑證
 			if model.ProtocolType(o.Protocol) == model.ProtocolK8s && o.AccountID != 0 {
@@ -416,7 +415,7 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 		{Name: "G-S13", Eval: func() *connectgate.Outcome {
-			// 帳號授權範圍兌換複查（D5 強制點 2／3）：與既有授權／政策重查同處、同哲學
+			// 帳號授權範圍兌換複查：與既有授權／政策重查同處、同哲學
 			//（DB 現查，簽發後遭收緊者於此即時生效，token 效期不構成放行理由）。
 			// 判定對象是 creds 實際解析出的帳號 username——grant.AccountID=0 時即預設帳號
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
@@ -443,7 +442,7 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 //
 // **跨包不是單一事實源**：`internal/proxy` 的 G-G7 仍 inline 一份同形回應
 // （403＋`RULE_ASSET_DISABLED`＋`reason=asset_disabled`）。要共用得跨包匯出，屬重構外溢，
-// 同 K-7 類，本波不做（等價表 §3.1 R-4 已以此措辭誠實記載）。
+// 同 K-7 類，目前不做（等價表 §3.1 R-4 已以此措辭誠實記載）。
 func assetDisabledOutcome() *connectgate.Outcome {
 	return connectgate.Deny(http.StatusForbidden, string(apierror.CodeAssetDisabled),
 		map[string]any{"reason": "asset_disabled"})

@@ -18,7 +18,7 @@
         {{ BRAND.name }}
       </el-link>
       <span class="workspace-hint">{{ $t('menu.workspace') }}</span>
-      <!-- 語言切換（i18n-foundation）：工作區是長駐連線面，切語言免 reload 不斷線 -->
+      <!-- 語言切換：工作區是長駐連線面，切語言免 reload 不斷線 -->
       <el-dropdown
         class="workspace-lang"
         @command="setLanguage"
@@ -111,7 +111,7 @@
           </el-tab-pane>
         </el-tabs>
 
-        <!-- 會話工具（workspace-side-toolbar）：置於頁籤列右端既有空白，
+        <!-- 會話工具：置於頁籤列右端既有空白，
              操作目前啟用文字終端會話；檔案/監控為 SSH 專屬能力 -->
         <div
           v-if="activeTermTab"
@@ -207,7 +207,7 @@
           @change="onK8sFileChange"
         >
 
-        <!-- 會話內容常駐 DOM、v-show 切換（design D1：保活不斷線） -->
+        <!-- 會話內容常駐 DOM、v-show 切換（保活不斷線） -->
         <div class="tab-panels">
           <div
             v-for="tab in tabs"
@@ -230,7 +230,7 @@
                 @status-change="tab.status = $event"
                 @session-id="tab.sessionId = $event"
               />
-              <!-- 自會話分頁進 SFTP 沿用該 session 的帳號（D9）：
+              <!-- 自會話分頁進 SFTP 沿用該 session 的帳號：
                    後端以 session_id 取帳號快照再依現行授權複查；
                    sessionId 尚未回傳（撥號中）時退回預設帳號，與獨立入口同語義 -->
               <FileManager
@@ -274,7 +274,7 @@
       </div>
     </div>
 
-    <!-- 頁籤右鍵選單（workspace-tab-context-menu） -->
+    <!-- 頁籤右鍵選單 -->
     <ul
       v-if="tabMenu.visible"
       class="tab-context-menu"
@@ -313,7 +313,7 @@
       @confirm="onPodSelected"
     />
 
-    <!-- 多帳號資產連線時選帳號（asset-multi-account D2，全域單例） -->
+    <!-- 多帳號資產連線時選帳號（全域單例） -->
     <AccountSelector
       v-model="accountSelectorVisible"
       :asset-name="pendingAccountAsset ? pendingAccountAsset.name : ''"
@@ -357,7 +357,7 @@ const assets = ref([])
 const assetFilter = ref('')
 const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1')
 
-// 頁籤狀態（design D2）：key 用遞增序號，同資產可多開
+// 頁籤狀態：key 用遞增序號，同資產可多開
 const tabs = ref([])
 const activeKey = ref('')
 let tabSeq = 0
@@ -373,7 +373,7 @@ const filteredAssets = computed(() => {
   return assets.value.filter((a) => a.name.toLowerCase().includes(term))
 })
 
-// 按節點路徑分節（asset-node-tree D5）：多歸屬資產在每個掛載節點下
+// 按節點路徑分節：多歸屬資產在每個掛載節點下
 // 各出現一次（與資產頁樹一致）；單一節（全未分組）時不顯示節標題
 const groupedAssets = computed(() => {
   const ungroupedLabel = t('assets.ungrouped')
@@ -396,7 +396,7 @@ const groupedAssets = computed(() => {
     .map(([name, list]) => ({ name, assets: list }))
 })
 
-// SSH 終端元件 ref（terminal-snippets D4）：以 tab.key 索引，供片段注入
+// SSH 終端元件 ref（terminal-snippets）：以 tab.key 索引，供片段注入
 const terminalRefs = new Map()
 
 function setTerminalRef(key, el) {
@@ -408,7 +408,7 @@ function useSnippet(key, content) {
   terminalRefs.get(key)?.sendText(content)
 }
 
-// 頁籤右鍵選單（workspace-tab-context-menu）
+// 頁籤右鍵選單
 const tabMenu = ref({ visible: false, x: 0, y: 0, key: '' })
 
 function openTabMenu(event, key) {
@@ -426,7 +426,7 @@ function onGlobalKeydown(e) {
 function menuReconnect() {
   const tab = tabs.value.find((t) => t.key === tabMenu.value.key)
   if (tab) {
-    // epoch 遞增強制面板 remount 重新撥接（design D2）
+    // epoch 遞增強制面板 remount 重新撥接
     tabs.value = tabs.value.map((t) =>
       t.key === tab.key ? { ...t, epoch: (t.epoch || 0) + 1, status: 'connecting' } : t
     )
@@ -481,8 +481,8 @@ function menuCloseAll() {
   applyCloseResult(closeAll())
 }
 
-// 頁籤拖曳排序（workspace-tab-drag-sort）：Sortable 掛 el-tabs nav，
-// onEnd 先還原 DOM 再不可變重排，交 Vue 重渲染（design D2）
+// 頁籤拖曳排序：Sortable 掛 el-tabs nav，
+// onEnd 先還原 DOM 再不可變重排，交 Vue 重渲染
 let tabSortable = null
 
 function setupTabSortable() {
@@ -530,7 +530,7 @@ onMounted(async () => {
   document.addEventListener('keydown', onGlobalKeydown)
   await loadAssets()
 
-  // ?asset= 自動開啟首個頁籤（design D4）
+  // ?asset= 自動開啟首個頁籤
   const initialAssetId = route.query.asset
   if (initialAssetId) {
     try {
@@ -555,7 +555,7 @@ async function loadAssets() {
 const podSelectorVisible = ref(false)
 const pendingK8sAsset = ref(null)
 
-// 多帳號資產連線時選帳號（asset-multi-account D2）：開籤前先取有效授權帳號清單，
+// 多帳號資產連線時選帳號：開籤前先取有效授權帳號清單，
 // 兩個以上才彈選擇器；k8s 固定單一預設帳號（RULE_ACCOUNT_K8S_DEFAULT_ONLY），
 // 分流順序必須 k8s 優先，不進帳號選擇器
 const accountSelectorVisible = ref(false)
@@ -643,7 +643,7 @@ function createTab(asset, k8s, account, picked = false) {
 
 // 分頁標籤：K8s 顯示 pod（同資產多 pod 可區分）+ 日誌標記 + 重複序號；
 // **使用者挑過帳號的**分頁顯示 `資產名@帳號`（同資產不同帳號可一眼分辨）；
-// 單帳號直連沿用純資產名（D2「不打擾」語義的一致延伸）
+// 單帳號直連沿用純資產名（「不打擾」語義的一致延伸）
 function tabLabel(tab) {
   if (tab.protocol === 'k8s' && tab.k8sPod) {
     const pod = tab.k8sPod

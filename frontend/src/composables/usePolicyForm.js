@@ -13,10 +13,10 @@ import {
 } from '@/utils/policyFormat'
 import { currentLocale, t } from '@/i18n'
 
-// 政策表單邏輯（settings-domain-restructure D7 抽取）：四個設定域頁共用。
+// 政策表單邏輯：四個設定域頁共用。
 // sections 決定本頁承載的鍵子集；includeRest=true（僅安全政策母頁）時，
 // 未歸任何域的鍵落到「其他」區塊，避免後端新增鍵靜默消失。
-// dirty/套用/儲存全部以本頁鍵子集為範圍（分域套用語義，D5）。
+// dirty/套用/儲存全部以本頁鍵子集為範圍（分域套用語義）。
 export function usePolicyForm(sections, { includeRest = false } = {}) {
   const loading = ref(false)
   const saving = ref(false)
@@ -119,7 +119,7 @@ export function usePolicyForm(sections, { includeRest = false } = {}) {
       ).length
   )
 
-  // 分域套用（D5）：只填入本頁鍵的 PCI 建議值，待使用者按儲存生效（可還原）
+  // 分域套用：只填入本頁鍵的 PCI 建議值，待使用者按儲存生效（可還原）
   const applyPagePCI = () => {
     pagePolicies.value.forEach((policy) => {
       if (!policy.pci_value) return
@@ -135,7 +135,7 @@ export function usePolicyForm(sections, { includeRest = false } = {}) {
     }
   }
 
-  // 套用電支基準（security-backlog-settlement D6）：填入的是後端算好的
+  // 套用電支基準：填入的是後端算好的
   // **兩基準取嚴值** `strictest_value`，不是 `epayment_value`。
   //
   // 兩基準在部分項目上方向相反（密碼最小長度 PCI 要求 >=12、電支只要求 >=6），
@@ -183,7 +183,7 @@ export function usePolicyForm(sections, { includeRest = false } = {}) {
       }
     }
 
-    // 保留天數收縮屬不可逆變更（audit-log-compliance 對抗驗證）：從永久（0）
+    // 保留天數收縮屬不可逆變更：從永久（0）
     // 或較大值改為較小的有限值，超出新窗的舊審計/錄影資料將於次日 02:00
     // 排程硬刪，且刪除不可還原。逐鍵比對舊值 → 收縮者明確確認
     const shrunk = Object.keys(changed)

@@ -16,7 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// fakeIdP 測試用的 OIDC 身分提供者（idp-oidc-integration tasks 4.1）。
+// fakeIdP 測試用的 OIDC 身分提供者。
 //
 // 提供 discovery、JWKS 與可控的 id_token 簽發，使驗證失敗矩陣（簽章、演算法、
 // iss、aud/azp、exp/iat、nonce、空 sub）與 JWKS 輪替四情境得以逐格覆蓋——

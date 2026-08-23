@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/config"
 )
 
-// ldapDialTimeout 連線逾時上限：目錄無回應時不可拖垮登入端點（design.md 風險項）
+// ldapDialTimeout 連線逾時上限：目錄無回應時不可拖垮登入端點（既有風險項）
 const ldapDialTimeout = 5 * time.Second
 
 // ErrLDAPAuthFailed LDAP 認證失敗（含查無用戶、密碼錯誤）。
@@ -24,7 +24,7 @@ type LDAPUserInfo struct {
 	FullName string
 }
 
-// LDAPAuthenticator LDAP 認證介面（design.md D2）。
+// LDAPAuthenticator LDAP 認證介面。
 // 以介面注入 AuthService 是為了單元測試可用 fake 實作，不依賴真實目錄
 type LDAPAuthenticator interface {
 	Authenticate(username, password string) (*LDAPUserInfo, error)
@@ -38,7 +38,7 @@ type ldapAuthenticator struct {
 
 // NewLDAPAuthenticator 建立 LDAP 認證器。
 //
-// 撥號一律經出站位址政策（ldap-settings-migration D5）——登入與連線測試兩條
+// 撥號一律經出站位址政策——登入與連線測試兩條
 // 路徑共用同一入口，任一路徑繞過即等於政策不存在
 func NewLDAPAuthenticator(cfg config.LDAPConfig) LDAPAuthenticator {
 	return &ldapAuthenticator{cfg: cfg, egress: NewLDAPEgressPolicyFromEnv()}

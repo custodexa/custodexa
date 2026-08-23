@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-// SD-15：標籤正規化的行為表守衛——**service 側**（modular-architecture W7 7.8）。
+// 標籤正規化的行為表守衛——**service 側**。
 //
 // 對照 `backend/testdata/tag_normalization_cases.txt`（唯一預期來源）。
 //
 // **原本是雙面守衛**：對側是 `internal/database` 的 migration 端測試，比對的是
 // 「存量清洗 SQL」與「寫入路徑 Go 實作」兩份規則有沒有漂移。存量清洗 migration
-// 隨 migration-baseline-compression 退場後只剩一份規則，對照面消失，
+// 退場後只剩一份規則，對照面消失，
 // 但共用預期表與本側的 canonical 行為斷言原樣保留——正規化的規則本身仍然是
 // 「寫入時就要對」的產品行為，不隨清洗腳本一起消失。
 
@@ -68,7 +68,7 @@ func unescapeTagCase(s string) string {
 }
 
 // tagCasesModuleRoot 由本測試檔位置向上找 go.mod 並核對 module 行
-// （不用 cwd 相對或固定層數 `..`：那與本 package 的樹深綁死，W1 1.20）。
+// （不用 cwd 相對或固定層數 `..`：那與本 package 的樹深綁死）。
 func tagCasesModuleRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
@@ -105,7 +105,7 @@ func TestTagNormalizationParityServiceSide(t *testing.T) {
 			t.Errorf("normalizeTagList(%q) = %q, 共用預期表要求 %q\n"+
 				"兩份規則（service 寫入路徑／migration 存量清洗）已漂移："+
 				"存量資料會停在舊規則的正規形而新寫入是新規則的正規形，"+
-				"而兩側的既有單測各自照樣綠（SD-15／backlog B-8）", c.Raw, got, c.Want)
+				"而兩側的既有單測各自照樣綠", c.Raw, got, c.Want)
 		}
 	}
 	// 冪等性（兩份規則都自陳冪等；破了會讓「跑第二次結果不同」這種難查的問題出現）

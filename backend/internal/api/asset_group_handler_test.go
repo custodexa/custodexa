@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockAssetGroupService - AssetGroupService 的 mock（asset-node-tree 介面）
+// MockAssetGroupService - AssetGroupService 的 mock
 type MockAssetGroupService struct {
 	mock.Mock
 }
@@ -69,7 +69,7 @@ func (m *MockAssetGroupService) Delete(id uint, actorID uint, actorName, clientI
 
 func clipOrEmpty(s string) string { return s }
 
-// MockNodeVisibility - 可視節點鏈解析 mock（asset-node-tree D6）
+// MockNodeVisibility - 可視節點鏈解析 mock
 type MockNodeVisibility struct {
 	mock.Mock
 }
@@ -102,7 +102,7 @@ func newGroupHandlerForTest(groups *MockAssetGroupService, auth *MockAssetAuthor
 	return NewAssetGroupHandler(groups, auth, vis)
 }
 
-// TestAssetGroupHandler_List_Scoping asset-access-scoping P1-1（樹語義升級）：
+// TestAssetGroupHandler_List_Scoping 資產可視範圍收斂（樹語義升級）：
 // List 不得把全站資產經節點洩漏給一般 user；有授權資產的節點保留祖先鏈
 func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 	t.Run("admin 看全量節點與資產", func(t *testing.T) {
@@ -255,7 +255,7 @@ func TestAssetGroupHandler_List_Scoping(t *testing.T) {
 	})
 }
 
-// TestAssetGroupHandler_Tree_Scoping 樹端點收斂（asset-node-tree D6）：
+// TestAssetGroupHandler_Tree_Scoping 樹端點收斂：
 // 非特權以可視節點鏈過濾；admin 全量（visible=nil）
 func TestAssetGroupHandler_Tree_Scoping(t *testing.T) {
 	t.Run("admin 全量樹", func(t *testing.T) {
@@ -323,8 +323,8 @@ func TestAssetGroupHandler_Tree_Scoping(t *testing.T) {
 }
 
 // TestAssetGroupHandler_ErrorEnvelope 節點樹端點的機器碼封套
-// （backend-i18n-unification A2）：sentinel 依 errors.Is 映射到碼、狀態碼不變；
-// 未知錯誤走 INTERNAL_*，成功刪除不再攜帶 UI 文案（D9）。
+// sentinel 依 errors.Is 映射到碼、狀態碼不變；
+// 未知錯誤走 INTERNAL_*，成功刪除不再攜帶 UI 文案。
 func TestAssetGroupHandler_ErrorEnvelope(t *testing.T) {
 	decode := func(w *httptest.ResponseRecorder) map[string]any {
 		var body map[string]any

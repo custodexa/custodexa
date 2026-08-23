@@ -96,7 +96,7 @@ func TestJWKSRefetchThrottled(t *testing.T) {
 
 func TestJWKSMinRefetchBoundIsMeaningful(t *testing.T) {
 	// 節流間隔本體的守衛：設為 0 會使前一格失去意義，設得過長則真實輪替
-	// 遲遲不生效。design D17 訂為 60 秒
+	// 遲遲不生效。設計上訂為 60 秒
 	if oidcJWKSMinRefetch <= 0 || oidcJWKSMinRefetch > oidcJWKSMaxStale {
 		t.Fatalf("最小重取間隔 = %v，應為正值且短於最大陳舊時間 %v",
 			oidcJWKSMinRefetch, oidcJWKSMaxStale)

@@ -48,7 +48,7 @@
       </el-col>
     </el-row>
 
-    <!-- 人設待辦卡列（navigation-ia D1）：待辦導向，非權限裁切；多角色聯集去重 -->
+    <!-- 人設待辦卡列：待辦導向，非權限裁切；多角色聯集去重 -->
     <el-row
       v-if="backlogCards.length"
       :gutter="16"
@@ -90,7 +90,7 @@
     >
       <el-col :md="12">
         <!-- 進行中連線（全域）屬稽核職能；一般 user 改顯示自己的連線摘要，
-             不呼叫需 session:view 的端點（session-access-scoping） -->
+             不呼叫需 session:view 的端點 -->
         <div
           v-if="isPrivileged"
           class="activity-card"
@@ -206,7 +206,7 @@
       </el-col>
     </el-row>
 
-    <!-- 每日安全審閱簽核卡（audit-log-compliance 7.2，PCI 10.4.1）：功能未啟用時完全不渲染 -->
+    <!-- 每日安全審閱簽核卡（PCI 10.4.1）：功能未啟用時完全不渲染 -->
     <div
       v-if="reviewStatus.enabled"
       class="review-card"
@@ -460,7 +460,7 @@ const myConnectionTotal = ref(0)
 // 不以 0 冒充「沒有錄影」
 const recordingStorageBytes = ref(null)
 
-// 人設判定（navigation-ia D1）：以「不具 admin/auditor」認定一般 user
+// 人設判定：以「不具 admin/auditor」認定一般 user
 //（與後端 admin > auditor > user 優先序一致）；approver 為疊加角色獨立判定。
 // 一般 user 的儀表板不呼叫需 session:view / alert:view 的端點（避免 403）
 const { isAdmin, isAuditor, isApprover, isPrivileged } = useRoles()
@@ -546,7 +546,7 @@ const statCards = computed(() => {
   ]
 })
 
-// —— 人設待辦卡（navigation-ia D1/D4）：一律以既有端點取數，不開新後端 ——
+// —— 人設待辦卡：一律以既有端點取數，不開新後端 ——
 const myPendingRequests = ref(0)
 const approvalPendingTotal = ref(0)
 const unreviewedAlerts = ref(0)
@@ -605,7 +605,7 @@ const backlogCards = computed(() => {
 })
 
 const loadBacklog = async () => {
-  // 多角色聯集：各分支獨立判定，疊加人設同時取數（D1）
+  // 多角色聯集：各分支獨立判定，疊加人設同時取數
   if (!isPrivileged.value) {
     // 一般 user（含 user＋approver）：我的申請待審計數（自助端點全量回傳，前端計 pending）
     try {
@@ -660,7 +660,7 @@ const loadActivity = async () => {
   try {
     const sessions = await getActiveSessions()
     const list = sessions || []
-    // 錄影失敗連線計數（recording-failure-handling 已標 recording_error）——
+    // 錄影失敗連線計數（已標 recording_error）——
     // 與進行中列表同一回應，不另發請求
     recordingFailures.value = list.filter((s) => s.recording_error).length
     recentActive.value = list.slice(0, 5)
@@ -740,7 +740,7 @@ const loadRecordingStorage = async () => {
   }
 }
 
-// —— 每日安全審閱簽核（audit-log-compliance 7.2，PCI 10.4.1）——
+// —— 每日安全審閱簽核（PCI 10.4.1）——
 const reviewStatus = ref({ enabled: false })
 const reviewNote = ref('')
 const signing = ref(false)
@@ -764,7 +764,7 @@ const reviewSnapshot = computed(() => {
 
 const loadReviewStatus = async () => {
   // 狀態查詢掛 audit:view（admin/auditor）——一般 user 不發請求，
-  // 否則必 403 且全域攔截器會 toast「權限不足」（asset-access-scoping）
+  // 否則必 403 且全域攔截器會 toast「權限不足」
   if (!isPrivileged.value) {
     reviewStatus.value = { enabled: false }
     return

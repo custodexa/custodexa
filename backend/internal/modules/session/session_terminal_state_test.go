@@ -28,13 +28,13 @@ func setupSessionTerminalStateDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// TestRevoke_ForceTerminatePreservesTerminalState codex #2 回歸：撤銷即斷線後，
+// TestRevoke_ForceTerminatePreservesTerminalState 回歸：撤銷即斷線後，
 // bridge/tunnel 自然清理呼叫 CloseWithReason 不得覆寫 Terminate 寫入的終態
 // （status=disconnected、end_reason=revoked、duration）。以真 SQLite 全鏈驗
 //
-// **W7 §4.6 遷移說明（是否放寬：否）**：本測試原住 authz 的
+// **遷移說明（是否放寬：否）**：本測試原住 authz 的
 // `access_request_service_test.go`，經 `AccessRequestService.Revoke` 觸發收線。
-// authz→session 的具體型別相依於 W7 反轉為 `SessionTerminator` 窄介面後，
+// authz→session 的具體型別相依反轉為 `SessionTerminator` 窄介面後，
 // authz 的同包測試已無法 import `internal/service`（`import cycle not allowed in test`）。
 // 拆法：**被測不變式本身（終態不被自然清理覆寫）與 authz 無關**，故在此直接對
 // `SessionService.TerminateByUserAsset` 斷言；「Revoke 是否以正確引數委派收線」
@@ -78,10 +78,10 @@ func TestRevoke_ForceTerminatePreservesTerminalState(t *testing.T) {
 	}
 }
 
-// TestSessionService_IsActive codex 複審 High 回歸：轉發啟動前存活閘——
+// TestSessionService_IsActive High 回歸：轉發啟動前存活閘——
 // active 回 true、被收線（disconnected/closed）或不存在回 false（fail-safe）
 //
-// **W7 遷移說明（是否放寬：否）**：原住 authz 的 `access_request_service_test.go`
+// **遷移說明（是否放寬：否）**：原住 authz 的 `access_request_service_test.go`
 // 只是借用了那裡的 sqlite 夾具；被測對象自始至終是 `SessionService`，
 // 與 authz 零關係。本次僅換夾具來源，斷言逐字未動。
 func TestSessionService_IsActive(t *testing.T) {

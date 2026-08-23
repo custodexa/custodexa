@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 重試節奏（design D4）：指數退避 ＋ 上限 ＋ 總期限。
+// 重試節奏：指數退避 ＋ 上限 ＋ 總期限。
 //
 // 固定短間隔不可行——「遠端其實沒改成」時會對目標機連打數百次錯誤密碼，
 // 足以觸發目標端的帳號鎖定或 fail2ban，把一個可修復的狀態變成兩個問題
@@ -30,7 +30,7 @@ var (
 	ErrCandidateNotFound = errors.New("候選憑證不存在")
 )
 
-// ChangeSecretCandidateService 未驗證候選憑證的生命週期（design D1／D2／D4）。
+// ChangeSecretCandidateService 未驗證候選憑證的生命週期。
 //
 // 候選秘密**只在本服務內解密**，且解密結果只交給 runner 用於「登入驗證」與
 // 「提交為帳號憑證」兩件事，不回傳給任何 handler。
@@ -69,7 +69,7 @@ type CandidateSecret struct {
 	PrivateKey string
 }
 
-// Create 建立候選列。**呼叫點必須在動遠端之前**（design D2）：後端在
+// Create 建立候選列。**呼叫點必須在動遠端之前**：後端在
 // 「已下達改密、尚未驗證」的窗口被砍時，候選若只在記憶體即永久遺失。
 //
 // AccountID 唯一鍵衝突回 ErrCandidateExists——同一帳號不疊加第二個未知狀態。
@@ -261,7 +261,7 @@ func truncateCandidateError(msg string) string {
 	return msg[:limit]
 }
 
-// DiscardByAdmin admin 顯式清除候選（design D4 的逃生口）。
+// DiscardByAdmin admin 顯式清除候選（逃生口）。
 //
 // 這是**破壞性操作**：候選是那把可能已在遠端生效的秘密的唯一副本，清除後
 // 若遠端確實已改密，該帳號只能由管理員以帶外途徑（主機 console）重設憑證救回。

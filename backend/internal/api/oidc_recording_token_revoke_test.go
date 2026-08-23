@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 錄影存取憑證的即時失效（idp-oidc-integration tasks 4.14i）。
+// 錄影存取憑證的即時失效。
 //
 // 錄影 token 是全系統唯一**不做世代比對**的憑證：Resolve 位於 HTTP Range 熱路徑，
 // 設計上刻意以 in-memory map ＋ 120 秒 TTL 取代每次查 DB 比對世代

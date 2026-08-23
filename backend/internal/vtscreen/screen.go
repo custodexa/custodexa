@@ -5,7 +5,7 @@ import "github.com/mattn/go-runewidth"
 // 行模型與螢幕語義。
 //
 // 模型刻意不含「螢幕寬度」：不做自動折行（DECAWM）、不做捲動、不做 alternate buffer。
-// 理由見 design.md D2——指令重組只取還原結果的最後一個非空行，
+// 理由是指令重組只取還原結果的最後一個非空行，
 // 一旦超寬指令被折成多行，審計留下的就只有指令尾段。
 //
 // 每一列是一串 cell，一個 cell 等於一個顯示欄；寬字元佔兩欄（主位 ＋ 續位）。
@@ -49,7 +49,7 @@ func (s *Screen) print(r rune) {
 	}
 	if s.cx+w > maxCols {
 		s.dropped = true
-		return // 超出上限即丟棄；不折行（D2）
+		return // 超出上限即丟棄；不折行
 	}
 	// 游標右移超出行尾時，寫入前以空白補齊到游標欄
 	row := s.padTo(s.cy, s.cx+w)
@@ -155,14 +155,14 @@ func (s *Screen) csiDispatch(final byte, params []int) {
 	case 'm', 'h', 'l':
 		// SGR／SM／RM：明確吃掉不解讀。
 		// SGR 不得有任何屬性相關的特殊處理——被取代的實作在此錄製補全提示，
-		// 會靜默剪掉該行後續文字（design.md D5 B3）。
+		// 會靜默剪掉該行後續文字。
 	default:
 		// 其餘 final byte：完整消耗、不留殘骸
 	}
 }
 
 // escDispatch 處理 ESC 引導的非 CSI 序列（字集指示、ESC 7/8、ESC D/E/M、ESC c、ST）。
-// 依 design.md D2：正確消耗即可，語義可略。
+// 正確消耗即可，語義可略。
 func (s *Screen) escDispatch(byte) {
 }
 

@@ -30,7 +30,7 @@ func setupProfileEnv(t *testing.T) (*AuthService, *gorm.DB) {
 	return NewAuthService("test-secret", 15*time.Minute), db
 }
 
-// TestValidateDisplayName 輸入驗證與正規化（profile-display-name R1）：
+// TestValidateDisplayName 輸入驗證與正規化：
 // nil/全空白 → nil（清除）；超長或控制字元 → ErrInvalidDisplayName
 func TestValidateDisplayName(t *testing.T) {
 	sp := func(s string) *string { return &s }

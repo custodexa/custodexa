@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/observability"
 )
 
-// 封印閘守衛（kek-provider-modularization 2.2）。
+// 封印閘守衛。
 //
 // 掃描的是**段 1 實際註冊的整份路由表**，不是抽樣清單：抽樣會在新增路由時
 // 靜默漏掉，而漏掉的那一條正是封印期唯一可達的洞。
@@ -36,7 +36,7 @@ func stageOneRouter(t *testing.T) *gin.Engine {
 	return r
 }
 
-// sealOnlyRouter 建出解封端點獨立監聽的 router（D6.4）。
+// sealOnlyRouter 建出解封端點獨立監聽的 router。
 func sealOnlyRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	prev := gin.Mode()
@@ -152,10 +152,10 @@ func TestSealGatePassesWhenLive(t *testing.T) {
 var stage2ServiceProbe = map[string]string{
 	"keyManager":    "/api/v1/keys",
 	"policyService": "/api/v1/security-policies",
-	// LDAP 目錄設定服務（tasks 3.1 落地）：singleton 資源的讀取端點，
+	// LDAP 目錄設定服務：singleton 資源的讀取端點，
 	// 封印期同樣須 503——設定面不得在服務未上線時可讀
 	"ldapDirectoryService": "/api/v1/ldap-directory",
-	// auditTxSink（W4 4.3／4.7）：純內部設施，無專屬端點——它是交易內審計的落地面，
+	// auditTxSink：純內部設施，無專屬端點——它是交易內審計的落地面，
 	// 由 requireAuditTxSink 於段 2 建構期自檢，涵蓋見 seal_integration_test 的清單比對
 	"auditTxSink":           "",
 	"transmissionPolicy":    "",
@@ -173,14 +173,14 @@ var stage2ServiceProbe = map[string]string{
 	"dailyReviewService":    "/api/v1/daily-reviews",
 	"connHandler":           "/api/v1/connect",
 	"userService":           "/api/v1/users",
-	// alertSink（W5 5.1／5.4）：純內部設施，無專屬端點——指令告警的落地面，
+	// alertSink：純內部設施，無專屬端點——指令告警的落地面，
 	// 由 requireAlertSink 於段 2 建構期自檢；其資料面的讀取端點即下方 alertMatcher 那條
 	"alertSink":                  "",
 	"alertMatcher":               "/api/v1/command-alerts",
 	"alertNotifier":              "",
 	"kekRetirementMonitor":       "",
 	"notificationChannelService": "/api/v1/notification-channels",
-	// OIDC 整合（idp-oidc-integration）：登入方法清單是未認證可讀的公開端點，
+	// OIDC 整合：登入方法清單是未認證可讀的公開端點，
 	// 封印期同樣須 503——封印閘白名單只有 health 與 seal 三支。
 	// 前端據此降級為只顯示本地表單（封印期本就只有本地 admin 能解封）
 	"oidcServices":  "/api/v1/auth/methods",
@@ -191,7 +191,7 @@ var stage2ServiceProbe = map[string]string{
 	"sshHandler":            "/api/v1/ssh",
 	"hostKeyService":        "/api/v1/assets/:id/host-key",
 	"changeSecretScheduler": "/api/v1/change-secret-plans",
-	// change-secret-ssh-deepening D4：候選憑證重試排程，其對外面即候選清單端點
+	// 候選憑證重試排程，其對外面即候選清單端點
 	"changeSecretRetryScheduler": "/api/v1/change-secret-candidates",
 	"accessRequestScheduler":     "/api/v1/access-requests/pending",
 	"apiHandlers":                "/api/v1/roles",
@@ -201,10 +201,10 @@ var stage2ServiceProbe = map[string]string{
 	"kekRetirementScheduler":     "",
 	"reconcileScheduler":         "",
 	"checkpointScheduler":        "",
-	// chainVerifyScheduler（audit-chain-scheduled-verification 第 1 組）：
+	// chainVerifyScheduler：
 	// 純背景排程，自動驗證狀態經既有 ChainReport 揭露、不新增路由，故無對外面
 	"chainVerifyScheduler": "",
-	// metricsRefresher（observability-lite，接替 perfMonitor）：純背景刷新任務。
+	// metricsRefresher（接替 perfMonitor）：純背景刷新任務。
 	// **對外面填空字串是刻意的**——`/metrics` 端點本身於段 1 即存在且刻意可達
 	// （封印期須能區分「封印中」與「當機」），它不隨本服務出現或消失；
 	// 本服務只負責填入段 2 才有的指標值。

@@ -1,6 +1,6 @@
-// Package port 是 audit 模組的同行程 internal port（modular-architecture W1 任務 1.6）。
+// Package port 是 audit 模組的同行程 internal port。
 //
-// # 為何 TxSink 在這裡而不在 pkg/gatewayapi（S4 codex 採納項 #2）
+// # 為何 TxSink 在這裡而不在 pkg/gatewayapi
 //
 // TxSink 的簽名必然帶 `*gorm.DB`。若把它宣告在 pkg/gatewayapi，那個公開包就整包相依
 // GORM——即使註解標了「不跨行程」，依賴事實仍在，將來 gateway 行程 import 該包就會把
@@ -20,7 +20,7 @@ import (
 
 // AuditEvent 與 AsyncSink 共用同一個事件形狀（型別別名，非另一個型別）。
 //
-// 別名而非複製：同一筆審計列不該因為走哪個 sink 而有兩種記憶體形狀，那會在 W4 收口時
+// 別名而非複製：同一筆審計列不該因為走哪個 sink 而有兩種記憶體形狀，那會在收口時
 // 製造一層無意義的轉換與一個失真點。方向上是 internal port 相依 pkg/gatewayapi，
 // 與拓樸序一致，不污染公開包。
 type AuditEvent = gatewayapi.AuditEvent
@@ -35,7 +35,7 @@ type AuditEvent = gatewayapi.AuditEvent
 // internal/modules/asset/asset_group_service.go:315-316「與變更同交易——審計失敗即回滾」、
 // internal/service/user_group_service.go:128「留痕失敗即回滾（授權變更不可無痕）」。
 //
-// # 為何不帶額外的 ctx（S4 codex 採納項 #2）
+// # 為何不帶額外的 ctx
 //
 // 簽名刻意是 `WriteInTx(tx, ev)`，不是 `WriteInTx(ctx, tx, ev)`。兩個理由：
 //
@@ -49,7 +49,7 @@ type AuditEvent = gatewayapi.AuditEvent
 //
 //   - SHALL NOT 以 gatewayapi.AsyncSink 替代本介面。AsyncSink 是 at-most-once、
 //     開關關閉即靜默丟棄、無回傳語義；換過去的後果是 fail-close 靜默退化為 fail-open，
-//     **而且測試會更綠**（原本會失敗的路徑變成永遠成功）。W4 的驗收核心即以突變自檢
+//     **而且測試會更綠**（原本會失敗的路徑變成永遠成功）。驗收核心即以突變自檢
 //     證明「把 TxSink 換成 AsyncSink 會讓測試變紅」。
 //   - 實作 SHALL NOT 受 `AuditLogEnabled` 管制。現況這批交易內直寫本就不看該旗標
 //     （它們不經 AuditLogService.Log），加上去即行為變更。
@@ -68,7 +68,7 @@ type TxSink interface {
 	WriteInTx(tx *gorm.DB, ev AuditEvent) error
 }
 
-// ErrTxSinkMissing 交易內審計落地面未注入（modular-architecture W4 4.4／4.7）。
+// ErrTxSinkMissing 交易內審計落地面未注入。
 //
 // **不是 panic**：生產上由組裝根的啟動自檢（cmd/server/audit_sinks.go 的
 // requireAuditTxSink）保證走不到這裡；在測試與工具路徑上以 error 表達，

@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 撤銷收線的**真 WebSocket 端到端**（idp-oidc-integration tasks 4.14c／4.14g）。
+// 撤銷收線的**真 WebSocket 端到端**。
 //
 // 與 monitor_revoke_test.go 的分工：該檔直接呼叫 hub 的三個 Disconnect 方法，
 // 驗的是「匹配語義對不對」；service 層若漏接管道（根本沒呼叫），那些測試全綠。
@@ -181,7 +181,7 @@ func dialShareObserver(t *testing.T, db *gorm.DB, h *Handler, tap *monitorTap,
 // --- 4.14c 停用收線監看：按觀察者脈絡，不按被監看會話 ---
 
 // TestProviderDisableCutsMonitorOfLocalSession 經 provider A 認證的管理者，
-// 監看一條由**本地帳號**建立的會話；停用 A → 該監看被收線（tasks 4.14c）。
+// 監看一條由**本地帳號**建立的會話；停用 A → 該監看被收線。
 //
 // 這是「按觀察者脈絡收線」與「按被監看會話收線」的分水嶺：被監看的會話
 // auth_provider_id 是 NULL（本地登入建立），與 provider A 完全不匹配。若收線
@@ -209,7 +209,7 @@ func TestProviderDisableCutsMonitorOfLocalSession(t *testing.T) {
 	localSession := wsMatrixSession(t, db, 100, 0, "sess-local")
 	tap := h.Monitor.OpenRoom(localSession.ID, 80, 24)
 
-	// 三位觀察者一律走真 `?token=`（對抗審查 C1）：脈絡由 Handler.authenticate
+	// 三位觀察者一律走真 `?token=`：脈絡由 Handler.authenticate
 	// 自 claims 解出，而非測試手工塞進 ObserverContext——後者測不到「脈絡有沒有真的來」
 	viaA := dialMonitorObserver(t, db, h, tap, localSession.ID, "obs-via-a", providerA.ID)
 	viaB := dialMonitorObserver(t, db, h, tap, localSession.ID, "obs-via-b", providerB.ID)
@@ -234,7 +234,7 @@ func TestProviderDisableCutsMonitorOfLocalSession(t *testing.T) {
 
 // TestProviderDisableCutsSubscriptionsAcrossRooms 同一位經 provider A 認證的
 // 觀察者同時持有監看與分享觀看兩條訂閱（不同 room），停用 A 須全數收線
-// （tasks 4.14c／4.14e 共用的防「只改一處」斷言）。
+// （防「只改一處」斷言）。
 //
 // 監看與分享在 handler 走的是兩個入口，但都經 JoinWithGenerationGuard 落到同一個
 // MonitorHub；只處理第一個命中的 room 會留下活著的訂閱
@@ -270,7 +270,7 @@ func TestProviderDisableCutsSubscriptionsAcrossRooms(t *testing.T) {
 // --- 4.14g 鎖定不得成為斷線武器（WS 端到端） ---
 
 // TestLockoutDoesNotCloseMonitorWebSocket 第三方觸發的自動鎖定 SHALL NOT 關閉
-// 受害者既有的監看 WebSocket，也不得終斷其進行中的協議會話（tasks 4.14g）。
+// 受害者既有的監看 WebSocket，也不得終斷其進行中的協議會話。
 //
 // service 層的對應斷言在 service/oidc_revocation_matrix_test.go
 // （TestLockoutIsNotADisconnectWeapon，含 credential_epoch 與 refresh 的完整矩陣）；

@@ -135,7 +135,7 @@ func (h *AuditLogHandler) GetByResourceID(c *gin.Context) {
 	// 驗證資源類型。白名單的既有規則：**各型的 :id SHALL 一致地指向該型自身的
 	// 實體 id**，否則樞紐回的是形式合法、語義虛假的結果集。
 	//
-	// `recording` 已於 audit-resource-classification-closure 批 1 移出：
+	// `recording` 已移出白名單：
 	// 該分類的 resource_id 自此是**連線 id**（`/sessions/:id/recording*`）或 nil
 	//（`/recordings/stats`），沒有一種是「錄影列 id」——留在白名單即違反
 	// 上述規則。移除代價為零：訂正前 `/recordings/*` 的 resource_id 恆為 nil，

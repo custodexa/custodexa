@@ -131,8 +131,7 @@ docker compose exec -T backend go run scripts/mssql_cred_probe.go \
 
 ## 錄像回放控制驗收
 
-> 規格：openspec `session-recording`（`graphic-recording-playback`、
-> `text-recording-playback-controls`）。
+> 規格：`openspec/specs/session-recording/`（圖形與文字兩條回放路徑的播放控制條文皆在其中）。
 
 每協議各錄一段會話後，於瀏覽器實際操作播放器，逐項確認：
 

@@ -14,7 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/sshproxy"
 )
 
-// 封印閘與段 1 路由面（kek-provider-modularization D6.6）。
+// 封印閘與段 1 路由面。
 
 // sealGateWhitelist 是封印期唯一可達的端點集合。
 //
@@ -22,7 +22,7 @@ import (
 // 狀態查詢（管理員與監控無須猜測）、解封端點（否則封印無法解除）。
 // 任何擴充 SHALL 先過設計——白名單每多一條，封印期的攻擊面就多一條。
 //
-// **第四項 `/metrics` 的設計依據**（observability-lite D4，已過設計）：
+// **第四項 `/metrics` 的設計依據**（已過設計）：
 // 封印期若回 503，採集端的 `up` 指標歸零，「封印中待解封」與「行程當機」
 // 在監控上不可區分，而這兩者的處置完全不同（前者要人去解封，後者要重啟）。
 // 新增的攻擊面被限制在**縮減盤**：封印期 registry 內只有封印狀態與行程執行期
@@ -93,7 +93,7 @@ func sealGateAllows(c *gin.Context) bool {
 
 // sealedStageOneDeps 組出段 1 的 routeDeps。
 //
-// **為何段 1 也註冊完整路由樹**：D6.6 要求封印期「其餘一律 503＋機器碼」。
+// **為何段 1 也註冊完整路由樹**：規格要求封印期「其餘一律 503＋機器碼」。
 // 若段 1 只註冊白名單，非白名單路由會回 404——監控無從分辨「服務封印中」
 // 與「這條 API 不存在」，而 404 恰恰是最容易被誤讀為「部署錯版本」的訊號。
 //
@@ -111,7 +111,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		metrics:        cfg.metrics,
 		metricsToken:   cfg.metricsToken,
 		// 審計中間件於段 1 關閉：其寫入鏈依賴段 2 才建構的蓋章服務與
-		// AuditLogService。封印期的留痕由 journal 承擔（D6.5），不靠 DB 審計。
+		// AuditLogService。封印期的留痕由 journal 承擔，不靠 DB 審計。
 		auditLogEnabled:   false,
 
 		auth:                  &api.AuthHandler{},
@@ -159,12 +159,12 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 // stageOneRouteConfig 是段 1 註冊路由所需的最小組態。
 type stageOneRouteConfig struct {
 	corsMiddleware    gin.HandlerFunc
-	// metrics 段 1／段 2 共用的指標實例（observability-lite）。
+	// metrics 段 1／段 2 共用的指標實例。
 	// 共用而非各建一份：counter 在換 router 時歸零會被採集端讀成行程重啟。
 	metrics *observability.Metrics
-	// metricsToken 指標端點的 bearer token；空＝免認證（D3）
+	// metricsToken 指標端點的 bearer token；空＝免認證
 	metricsToken string
-	// sealOnly 為真時只註冊 seal 端點群與健康檢查（D6.4 獨立解封監聽）。
+	// sealOnly 為真時只註冊 seal 端點群與健康檢查（獨立解封監聽）。
 	//
 	// **這是網段隔離之所以成立的關鍵**：獨立監聽若共用主 router，解封成功後
 	// 換上的完整業務樹就會同時暴露在管理監聽上——部署方以為自己把解封端點

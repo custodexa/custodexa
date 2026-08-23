@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// data_keys 跨實例互斥（kek-rewrap-hygiene-hardening D3）。
+// data_keys 跨實例互斥。
 //
 // 五個寫入路徑（RewrapKEK／AbandonRewrap／finalizeSwitch／RotateDataDEK／
 // RotateAuditKey）一律經 withDataKeysLock 進入：postgres 以 advisory
@@ -45,7 +45,7 @@ import (
 //	provider 認證世代鎖（oidc_provider_lock.go）採 `SELECT ... FOR UPDATE` 的
 //	**資料列鎖**，不佔用任何 advisory key。取列鎖而非 advisory 的理由是不同
 //	provider 天然互不阻塞，且鎖的生命週期與該列的交易完全一致。
-//	取鎖順序（design D13）：system（localAdminLockKey）→ provider（列鎖）→
+//	取鎖順序：system（localAdminLockKey）→ provider（列鎖）→
 //	user（userCredentialLockClass）。
 const KEKDataKeysLockKey int64 = 0x6F74_6B65_6B00_0001
 
@@ -82,7 +82,7 @@ func (s *KeyManagerService) withDataKeysLock(fn func(tx *gorm.DB) error) error {
 		defer kekProcessMu.Unlock()
 		return s.db.Transaction(fn)
 	default:
-		// 白名單 fail-close（opus 第一輪審 L8）：未知 dialect 無跨實例互斥能力，
+		// 白名單 fail-close：未知 dialect 無跨實例互斥能力，
 		// 靜默退化為行程內鎖會讓多實例部署失去保護——直接拒絕
 		return fmt.Errorf("不支援的資料庫 dialect %q：無跨實例金鑰互斥實作", s.db.Dialector.Name())
 	}
@@ -93,14 +93,14 @@ const sessionLockUnlockTimeout = 5 * time.Second
 
 // pgSessionLockAcquireSQL session 級取鎖查詢。
 //
-// **可覆寫的唯一理由是測試**（codex round-6 H1 的可驗證化）：「DB 端已取得鎖、
+// **可覆寫的唯一理由是測試**（使該分支可驗證）：「DB 端已取得鎖、
 // 但取鎖回應在客戶端失敗」這條路徑是本檔最危險的分支（歸池即永久鎖洩漏），
 // 而它在真 postgres 上無法用一般手段觸發。測試以「多回一欄使 Scan 失敗」的變體
 // 覆寫本變數，即可在鎖確實已被 DB 端授予的前提下走進錯誤路徑。
 // 生產路徑不改寫本變數；改寫者僅限 _test.go。
 var pgSessionLockAcquireSQL = "SELECT pg_try_advisory_lock($1)"
 
-// withKeyOpSessionLock 以 **session 級** advisory lock 執行長任務（D5.1 裁決 2 鎖分級）。
+// withKeyOpSessionLock 以 **session 級** advisory lock 執行長任務（鎖分級）。
 //
 // **為何不用 withDataKeysLock 的 xact lock**：AAD 正向遷移與退版回寫是可中斷續跑、
 // 逐值失敗續行的長任務，包成單一大交易＝失敗回滾全部進度＋長持鎖阻塞其他金鑰操作，
@@ -116,11 +116,11 @@ var pgSessionLockAcquireSQL = "SELECT pg_try_advisory_lock($1)"
 // 的 bounded cleanup context（不繼承可能已取消的請求 context）、核對回傳值為 true，
 // 失敗即丟棄該實體連線——連線關閉時 postgres 自動釋放其 session lock。
 //
-// **ctx 為操作 context**（codex round-6 M2）：取池連線與取鎖都受呼叫端的取消／逾時
+// **ctx 為操作 context**：取池連線與取鎖都受呼叫端的取消／逾時
 // 支配，否則請求早已中止而本函式仍在池上乾等。解鎖 cleanup 另用獨立的 bounded
 // context，不繼承可能已取消的 ctx。
 //
-// **取鎖回應失敗一律丟棄實體連線**（codex round-6 H1）：`pg_try_advisory_lock`
+// **取鎖回應失敗一律丟棄實體連線**：`pg_try_advisory_lock`
 // 可能已在 DB 端授予、僅回應在客戶端失敗（連線中斷、context 取消、回應解析失敗）。
 // 此時把連線歸池＝一條持鎖的連線回到池中＝**永久鎖洩漏**。故該路徑以
 // driver.ErrBadConn 語義丟棄連線，由 postgres 隨連線結束釋放其 session lock。

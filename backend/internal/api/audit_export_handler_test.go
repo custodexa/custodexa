@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// 匯出端點的查詢參數解析（workbench-exits-and-export tasks 3.1）。
+// 匯出端點的查詢參數解析。
 //
 // 這一組測試守的是同一件事：**參數看不懂就要當場拒絕**。靜默忽略會讓使用者
 // 拿到一包範圍完全不同、卻看起來一切正常的證據——那比直接失敗糟得多

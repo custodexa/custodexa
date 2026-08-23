@@ -4,12 +4,12 @@ import (
 	"context"
 )
 
-// 資料傳輸動作枚舉（data-transfer-control D5）。
+// 資料傳輸動作枚舉（data-transfer-control）。
 //
 // **與政策鍵名刻意不同**：政策鍵是 `*_enabled` 的全域開關名，action 是「做什麼」的
 // 語義名。期 2 的 `authorization_transfer_grants.action` 存的是本組值，且期 2 之後
 // 1.x 會為 port_forward／agent_forward／x11 另立 action 值——action 欄自始是
-// varchar＋註冊表而非固定五值枚舉，正是為此留的擴充位（D7）。
+// varchar＋註冊表而非固定五值枚舉，正是為此留的擴充位。
 const (
 	TransferActionClipboardSend = "clipboard_send"
 	TransferActionClipboardRecv = "clipboard_recv"
@@ -18,7 +18,7 @@ const (
 	TransferActionFileDelete    = "file_delete"
 )
 
-// 接入通道枚舉（D7）：1.0 的寫入面只接受 `web`，讀取面與解析函式自始支援全枚舉。
+// 接入通道枚舉：1.0 的寫入面只接受 `web`，讀取面與解析函式自始支援全枚舉。
 const (
 	TransferChannelWeb           = "web"
 	TransferChannelSCP           = "scp"
@@ -61,7 +61,7 @@ func (c TransferCapabilities) Allowed(action string) bool {
 // DataTransferService 資料傳輸有效能力解析（data-transfer-control 第 2 組）。
 //
 // 期 1 只有全域政策鍵層；期 2 會加上 per-authorization 放寬
-// （`effective = globalKey(action) OR ∃ grant(action, channel)`，D5），
+// （`effective = globalKey(action) OR ∃ grant(action, channel)`），
 // 屆時本結構會多持一個 grant repository，但**解析入口的簽名不變**。
 type DataTransferService struct {
 	policies *SecurityPolicyService
@@ -79,10 +79,10 @@ func NewDataTransferService(policies *SecurityPolicyService) *DataTransferServic
 // EffectiveTransfer 解析 (使用者, 資產) 的五項有效傳輸能力。
 //
 // **簽名自始帶 userID／assetID／channel**（期 1 未用到後兩者的解析語義，但期 2 的
-// per-authorization 放寬與通道維度會用；改簽名會波及全部呼叫點，故一次到位，D7）。
+// per-authorization 放寬與通道維度會用；改簽名會波及全部呼叫點，故一次到位）。
 //
 // **不豁免任何角色**：函式內 SHALL NOT 有 role 分支。使用者已拍板不留 admin 例外，
-// 且 admin 沒有授權列可掛 grant，故 admin 的有效值恆等於全域鍵值（D5「admin 短路」段）。
+// 且 admin 沒有授權列可掛 grant，故 admin 的有效值恆等於全域鍵值（「admin 短路」段）。
 // `TestEffectiveTransferNoRoleExemption` 守衛此不變式。
 //
 // 回傳 error 是為期 2 預留（放寬查詢會碰 DB）；期 1 恆為 nil。呼叫端遇 error

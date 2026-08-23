@@ -50,7 +50,7 @@
       show-icon
     />
 
-    <!-- 讀取失敗必須**真的**擋在表單之前（UI 審查 H3/H4）：原本只放一則 alert，
+    <!-- 讀取失敗必須**真的**擋在表單之前：原本只放一則 alert，
          但儲存鈕照樣可按——空白表單送出去，既存無 bind 密碼時就會把設定清空。
          警示本身不是閘門，閘門在下方 action-bar 的 :disabled。
          文案分工：狀態帶說「發生什麼事、怎麼復原」，本 alert 只說「我們替你停了
@@ -76,7 +76,7 @@
         {{ statusLabel }}
       </el-tag>
       <span class="status-strip__hint">{{ statusHint }}</span>
-      <!-- 已啟用且位址為明文 ldap://（UI 審查 M7）：warn 閘只在存檔那一刻確認過
+      <!-- 已啟用且位址為明文 ldap://：warn 閘只在存檔那一刻確認過
            一次，之後回到本頁就再也看不到風險，於是本頁的頭條結論（綠色「已啟用」）
            與傳輸安全頁的判定（列入 at_risk_count）相反。不另開 alert——警示疲勞
            是本專案既有的教訓，狀態帶補一條風險說明即可 -->
@@ -295,9 +295,9 @@
       >
         {{ $t('ldapDirectory.test') }}
       </el-button>
-      <!-- 讀取失敗**或讀取尚未回來**時停用（H3／輪 2 NEW-H1）：測試不寫入、
+      <!-- 讀取失敗**或讀取尚未回來**時停用：測試不寫入、
            留著可協助診斷，會覆蓋伺服端現況的只有儲存。
-           `loading` 這一半是輪 2 補上的——action-bar 在 el-form 之外，
+           `loading` 這一半是後來補上的——action-bar 在 el-form 之外，
            v-loading 的遮罩蓋不到它，於是初次載入（或按了重新整理）期間儲存鈕
            照樣可按，而此時表單還是空白預設值：實測按下去會把伺服器上的
            name／url／bind_dn／base_dn 清成空字串，還回一個綠色「設定已儲存」。
@@ -310,7 +310,7 @@
       >
         {{ $t('common.save') }}
       </el-button>
-      <!-- 未儲存變更指示（輪 2 NEW-M4）：本頁是整頁表單，切選單／按重新整理都會
+      <!-- 未儲存變更指示：本頁是整頁表單，切選單／按重新整理都會
            靜默丟掉草稿，而姊妹的整頁設定表單（安全政策）有 isDirty 橫幅與重設鈕。
            這裡不攔導覽（全站無此慣例），但必須讓「還沒存」被看見 -->
       <span
@@ -321,7 +321,7 @@
     </div>
 
     <!-- 連線測試結果：階梯是本端點存在的理由，故以分階段清單呈現而非單一成敗。
-         ref + aria-live（UI 審查 M3）：測試最長 15 秒，期間唯一回饋是按鈕上的
+         ref + aria-live：測試最長 15 秒，期間唯一回饋是按鈕上的
          spinner；結果卡又長在頁尾，實測按下後畫面「毫無變化」（結果整片在摺線
          以下）。測完主動捲進視野，並讓輔助技術也讀得到 -->
     <el-card
@@ -336,7 +336,7 @@
         </div>
       </template>
 
-      <!-- 結果與表單已不對應（輪 2 NEW-M3）：本頁的工作流是「先測後存」，
+      <!-- 結果與表單已不對應：本頁的工作流是「先測後存」，
            結果卡因此會與使用者接下來的編輯並存。改完 URL 或 bind DN 後，
            上一輪那句綠色「連線測試通過」仍留在畫面上，讀起來像是在替**現在**
            這份設定背書。不清掉結果（診斷碼還要轉交），只聲明它已過期 -->
@@ -358,11 +358,11 @@
       />
 
       <template v-else>
-        <!-- 三階皆過但命中 0 筆（輪 2 NEW-H2）：技術上每一階都成功，但這份設定
+        <!-- 三階皆過但命中 0 筆：技術上每一階都成功，但這份設定
              **一個使用者都登不進來**——啟用後每一次目錄登入都會失敗。原本
              這件事只以次要灰字的「搜尋命中 0 筆」表達，頭條卻是綠色「通過」，
              使用者的合理反應是「綠的，過了」，然後去啟用。
-             與 M5（屬性缺值）同一條規則：成功結果裡的壞消息不得與好消息同重 -->
+             與「屬性缺值」同一條規則：成功結果裡的壞消息不得與好消息同重 -->
         <el-alert
           :type="testHeadlineType"
           :title="testResult.success
@@ -379,7 +379,7 @@
           {{ $t('ldapDirectory.target') }}: {{ testResult.target }}
         </div>
 
-        <!-- 恆列三階（UI 審查 M2）：原本只 v-for 回應帶回來的階段，於是撥號失敗
+        <!-- 恆列三階：原本只 v-for 回應帶回來的階段，於是撥號失敗
              時整份清單只剩一行——分階段回報存在的理由就是讓人看出「走到哪一級、
              還差幾級」，把沒跑到的階段抽掉等於把這個資訊藏起來。
              TEST_STAGES 本就是前端閉集，不需後端配合 -->
@@ -417,7 +417,7 @@
               : $t('ldapDirectory.matched', matchedCount) }}
           </div>
           <!-- 命中 0 筆時不再另說「無命中項目，未取樣屬性」：那句與下方的後果
-               警語講同一件事，重複的警示只會訓練管理者略過警示（H4 的教訓） -->
+               警語講同一件事，重複的警示只會訓練管理者略過警示 -->
           <div
             v-if="noMatch"
             class="field-warning result-attr-warning"
@@ -446,7 +446,7 @@
               {{ $t('ldapDirectory.attrNotSampled') }}
             </template>
           </div>
-          <!-- 屬性缺值的後果（UI 審查 M5）：原本「無值」與「測試目標」同色同重，
+          <!-- 屬性缺值的後果：原本「無值」與「測試目標」同色同重，
                在一片綠色的「測試通過」底下讀起來像中性資訊；但它的實際後果是
                自動建立的帳號會缺該欄位，且是靜默缺 -->
           <div
@@ -466,8 +466,8 @@
           {{ $t('ldapDirectory.connectChecklist') }}
         </div>
 
-        <!-- 診斷碼要被轉交給維運（說明自己就這麼寫），故必須可一鍵複製（UI 審查
-             M4）——16 位十六進位手抄一定會出錯。說明另起一行（L7）：原本與碼
+        <!-- 診斷碼要被轉交給維運（說明自己就這麼寫），故必須可一鍵複製——
+             16 位十六進位手抄一定會出錯。說明另起一行：原本與碼
              擠在同一行，讀成一句 -->
         <div
           v-if="testResult.diagnostic_id"
@@ -603,11 +603,11 @@ const formRules = computed(() => ({
   attr_fullname: [requiredWhenEnabled()],
 }))
 
-// 狀態帶在**第一次成功讀取之前**不得宣稱任何事實（輪 3）：原本 loading 期間
+// 狀態帶在**第一次成功讀取之前**不得宣稱任何事實：原本 loading 期間
 // configured 仍是初始值 false，於是整條狀態帶以全對比度寫著「尚未設定／尚無目錄
 // 設定，目錄使用者無法登入」——而伺服器上可能正躺著一份已啟用的設定。
 // v-loading 的遮罩只蓋 el-form，狀態帶在它之外，不帶任何載入線索。
-// 這與 H5（OIDC 讀取失敗謊報「尚未設定」）是同一句假話換一條路徑：失敗與
+// 這與 OIDC 讀取失敗謊報「尚未設定」是同一句假話換一條路徑：失敗與
 // 「還沒讀到」都屬於「不知道」，不知道就不能斷言。
 // loaded 一經置真即不再回退——重新整理期間顯示的是「上一次讀到的事實」，
 // 那是陳舊而非虛構
@@ -631,7 +631,7 @@ const statusTagType = computed(() => STATUS_TAG_TYPES[status.value] || 'info')
 const statusLabel = computed(() => t(`ldapDirectory.status.${status.value}`))
 const statusHint = computed(() => t(`ldapDirectory.statusHint.${status.value}`))
 
-// 已儲存的位址是明文 ldap://（M7）：判的是**已儲存**值而非表單草稿——狀態帶
+// 已儲存的位址是明文 ldap://：判的是**已儲存**值而非表單草稿——狀態帶
 // 述說的一律是伺服端現況。未設定／讀取失敗時不判（沒有「現行連線」可言）
 const savedPlaintextRisk = computed(
   () =>
@@ -641,7 +641,7 @@ const savedPlaintextRisk = computed(
     /^ldap:\/\//i.test(savedURL.value)
 )
 
-// bind 密碼 placeholder 三態（M1）：勾選清除後欄位雖然 disabled，原本仍寫著
+// bind 密碼 placeholder 三態：勾選清除後欄位雖然 disabled，原本仍寫著
 // 「留空則不修改」——與正下方「儲存後既存密碼即被清除且無法還原」直接打臉
 const bindPasswordPlaceholder = computed(() => {
   if (form.clear_bind_password) return t('ldapDirectory.bindPasswordClearPlaceholder')
@@ -650,7 +650,7 @@ const bindPasswordPlaceholder = computed(() => {
     : t('ldapDirectory.bindPasswordPlaceholder')
 })
 
-// 恆列三階（M2）：回應未提及的階段＝沒跑到，標為未執行而非消失。
+// 恆列三階：回應未提及的階段＝沒跑到，標為未執行而非消失。
 // 以閉集 TEST_STAGES 為骨架，回應中的未知階段一律忽略（不顯示裸機器碼）
 const stageRows = computed(() => {
   const reported = new Map(
@@ -675,7 +675,7 @@ const attrSampleMissing = computed(() => {
 
 const attrStateClass = (present) => (present ? '' : 'attr-missing')
 
-// 三階全過但一個都沒命中（輪 2 NEW-H2）：`matched_at_least` 為真代表撞到單次
+// 三階全過但一個都沒命中：`matched_at_least` 為真代表撞到單次
 // 上限（那是命中很多，不是沒命中），故必須排除
 const noMatch = computed(
   () =>
@@ -696,14 +696,14 @@ const snapshotOf = () => JSON.stringify({ ...form })
 const savedSnapshot = ref(snapshotOf())
 const isDirty = computed(() => snapshotOf() !== savedSnapshot.value)
 
-// 畫面上的測試結果是否已與表單脫節（輪 2 NEW-M3）。
+// 畫面上的測試結果是否已與表單脫節。
 //
-// **比較的是會影響測試結果的欄位，不是整份 payload**（輪 3）：原本拿
+// **比較的是會影響測試結果的欄位，不是整份 payload**：原本拿
 // `basePayload()` 全欄比較，於是切一下「啟用目錄登入」就跳出「請重新測試」——
 // 但 `enabled` 對測試結果毫無影響（後端 ldap_directory_probe.go 的註解與程式碼
 // 都寫明：驗證強制以 Enabled=true 計算、閘判定不受請求的 enabled 限縮，該欄
 // 只入審計）。而「測通了 → 打開啟用 → 儲存」正是本頁最主要的動線，等於在使用者
-// 做對事情的那一刻喊狼來了——重複而無謂的警示只會訓練管理者略過警示（H4 的教訓）。
+// 做對事情的那一刻喊狼來了——重複而無謂的警示只會訓練管理者略過警示。
 // name 本就不在 basePayload 內，故無此問題
 // 以「剔除清單」而非「納入清單」表述：日後 basePayload 新增欄位會自動納入比較，
 // 誤差方向落在「多提醒一次」而非「該提醒卻沒提醒」
@@ -763,7 +763,7 @@ const applyView = (view) => {
   savedSnapshot.value = snapshotOf()
 }
 
-// 勾選「清除已保存的密碼」時一併清掉輸入框的值（輪 2 NEW-M2）：
+// 勾選「清除已保存的密碼」時一併清掉輸入框的值：
 // 欄位只是 disabled，先打字再勾選會讓 model 仍留著那串字，於是送出的 body
 // 同時帶 bind_password 與 clear_bind_password，伺服端以 400
 // 「不可同時填寫新的 bind 密碼與勾選清除密碼」拒絕——而畫面上的欄位是灰的，
@@ -811,7 +811,7 @@ const fetchLocalAdminState = async () => {
 }
 
 // 重新整理會以伺服端的值覆蓋整份表單——對有草稿的人而言就是「丟棄變更」，
-// 但按鈕名字聽起來完全無害（輪 2 NEW-M4）。有未儲存變更時先問
+// 但按鈕名字聽起來完全無害。有未儲存變更時先問
 const refreshPage = async () => {
   if (isDirty.value) {
     try {
@@ -895,11 +895,11 @@ const describeApiError = (resp, fallbackKey) => {
 }
 
 /**
- * 驗證失敗時把第一個出問題的欄位捲進視野並取得焦點（輪 2 NEW-H3）。
+ * 驗證失敗時把第一個出問題的欄位捲進視野並取得焦點。
  *
  * 動作列在三張分區卡之後，實測從頁尾按下儲存、驗證擋下時，**視窗內毫無變化**
  * ——沒有 toast、沒有頁面級警示，唯一的紅字在 350px 之上，焦點還留在按鈕上。
- * 使用者只會覺得按鈕壞了。這與 M3（測試結果在摺線以下）是同一種缺陷。
+ * 使用者只會覺得按鈕壞了。這與測試結果落在摺線以下是同一種缺陷。
  * @param {Object} fields Element Plus validate() reject 帶回的無效欄位表
  */
 const focusFirstInvalid = async (fields) => {
@@ -951,7 +951,7 @@ const handleSave = async () => {
     if (error?.response) {
       // strict 檔位拒存與拒測同源，但共用碼的通用譯文只把現象重述一次
       // （「設定含不安全傳輸」），沒有下一步；而**儲存才是主要動作**，被擋住的
-      // 人多半先按儲存。與 handleTest 同樣就地給出路（UI 審查 H6）
+      // 人多半先按儲存。與 handleTest 同樣就地給出路
       formError.value =
         error.response.data?.code === GATE_STRICT_REJECT
           ? t('ldapDirectory.saveStrictRejected')
@@ -963,7 +963,7 @@ const handleSave = async () => {
   }
 }
 
-// 測試結果捲進視野（M3）：結果卡在頁尾，實測按下測試後畫面可能毫無變化。
+// 測試結果捲進視野：結果卡在頁尾，實測按下測試後畫面可能毫無變化。
 // block: 'nearest' 讓已在視野內時不亂跳
 const revealTestResult = async () => {
   await nextTick()
@@ -1206,7 +1206,7 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-/* 診斷碼說明另起一行（L7）：原本與碼同一行，讀成「…c37e89a4a027118a 此碼同時…」 */
+/* 診斷碼說明另起一行：原本與碼同一行，讀成「…c37e89a4a027118a 此碼同時…」 */
 .result-diagnostic {
   display: flex;
   flex-direction: column;

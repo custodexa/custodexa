@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// txSink 交易內同步審計落地器（modular-architecture W4 任務 4.3）。
+// txSink 交易內同步審計落地器。
 //
 // 介面契約見 internal/modules/audit/port/txsink.go；本型別是它在同行程的唯一實作。
 //
@@ -59,7 +59,7 @@ func auditRowOf(ev port.AuditEvent) *model.AuditLog {
 		Action:      model.AuditAction(ev.Action),
 		Resource:    model.AuditResource(ev.Resource),
 		ResourceID:  ev.ResourceID,
-		// 資產主體鍵（auditor-workbench D4）：漏這一行，走 sink 的產生點
+		// 資產主體鍵：漏這一行，走 sink 的產生點
 		// 就算在上游填了 asset_id 也會在此被靜默丟棄，而資產樞紐只會少事件、
 		// 不會報錯——是最難察覺的一種缺口
 		AssetID:     ev.AssetID,

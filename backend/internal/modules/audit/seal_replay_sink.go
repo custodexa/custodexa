@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/sealjournal"
 )
 
-// 封印期 journal 的回灌落地端（kek-provider-modularization D6.5 第 6 點）。
+// 封印期 journal 的回灌落地端。
 //
 // **走既有審計寫入路徑（同一服務入口），不另開直寫**：本 Sink 建立 model.AuditLog
 // 之後，交由 AuditLogService 的回灌入口寫入，因此與一般審計共用同一個服務物件、
@@ -235,7 +235,7 @@ func sealEventStatus(e sealjournal.ReplayEvent) model.AuditStatus {
 	}
 }
 
-// sealAggregateRow 產生合成聚合審計列（D6.5 回灌第 4 點）。
+// sealAggregateRow 產生合成聚合審計列。
 //
 // 使洪水期的**總量與時間範圍**進入 HMAC 蓋章鏈：個別事件會被定長環繞回覆蓋，
 // 但「發生過多少次、涵蓋哪段序號」不該隨之消失。

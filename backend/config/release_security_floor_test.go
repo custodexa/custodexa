@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// release 安全底線守衛（audit-release-floor，deployment-hardening spec
+// release 安全底線守衛（deployment-hardening spec
 // 「release 安全底線不得由 feature flag 關閉」）。
 //
 // **守的是什麼**：`FEATURE_AUDIT_LOG_ENABLED=false` 曾可在 release 模式下靜默
@@ -34,7 +34,7 @@ func floorTestConfig(mode string, audit bool) *Config {
 // TestReleaseFloorForcesAudit release 模式下底線旗標即使被 env
 // 設為 false 仍須實得 true，且回報的鍵名精確等於實際被強制者。
 //
-// 權限檢查已不在底線成員之列（security-backlog-settlement D5）：其開關本身已移除，
+// 權限檢查已不在底線成員之列：其開關本身已移除，
 // 不存在可被強制的旗標。
 func TestReleaseFloorForcesAudit(t *testing.T) {
 	cfg := floorTestConfig("release", false)

@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/notifycat"
 )
 
-// MessageType WebSocket 訊息類型（design D1：JSON envelope）
+// MessageType WebSocket 訊息類型（JSON envelope）
 type MessageType string
 
 const (
@@ -24,9 +24,9 @@ const (
 	MsgConnected MessageType = "connected"
 	// MsgError 後端錯誤通知（後端 → 前端），data 為使用者可讀訊息
 	MsgError MessageType = "error"
-	// MsgNotice 後端非錯誤的控制通知（後端 → 前端，backend-i18n-unification D7）：
+	// MsgNotice 後端非錯誤的控制通知（後端 → 前端）：
 	// 目前唯一用途是指令阻斷警告。與 MsgError 的差別在語義而非結構——會話未斷，
-	// 前端以警示樣式注入終端後繼續連線。舊分頁忽略未知 type（已知限制，見 D7）
+	// 前端以警示樣式注入終端後繼續連線。舊分頁忽略未知 type（已知限制）
 	MsgNotice MessageType = "notice"
 )
 
@@ -37,11 +37,11 @@ const (
 )
 
 // Message WebSocket 訊息封包。Code 由 MsgError 與 MsgNotice 使用：機器可讀碼
-// （apierror registry，ssh-connect-error-surfacing／backend-i18n-unification D7），
+// （apierror registry），
 // Data 為 zh fallback 文案，與 HTTP 錯誤封套 {error, code} 同構；
 // 舊前端忽略未知欄位即退回 Data。
 //
-// Params 承載碼的插值參數（D7）：值一律為 opaque 自由字串，編碼時全數過
+// Params 承載碼的插值參數：值一律為 opaque 自由字串，編碼時全數過
 // notifycat.SanitizeOpaque（strip ANSI/控制字元＋限長），前端查譯後注入 xterm
 // 前再 escape 一次（縱深防禦）。
 type Message struct {
@@ -60,7 +60,7 @@ type ResizePayload struct {
 // EncodeMessage 將訊息編碼為 JSON bytes（僅限不帶碼的幀：data/resize/ping/pong/
 // connected）。
 //
-// **不變量（D7）**：MsgError 與 MsgNotice 一律不得由本函式產生——它們的語義是
+// **不變量**：MsgError 與 MsgNotice 一律不得由本函式產生——它們的語義是
 // 「機器可讀碼 + zh fallback」，少了 Code 欄前端就只剩伺服端硬寫的中文可顯示，
 // i18n 收口當場破功。型別系統擋不住 `EncodeMessage(MsgError, "認證失敗")`
 // （MessageType 是同一型別），故在此做執行期 fail-closed；靜態面另有
@@ -76,7 +76,7 @@ func EncodeMessage(msgType MessageType, data string) ([]byte, error) {
 
 // zhFallbackOf 取碼在 apierror registry 的 zh-TW fallback 文案。
 //
-// 這是 D7「送碼、前端查譯」的伺服端半邊：串流出口的中文一律由 registry 提供，
+// 這是「送碼、前端查譯」的伺服端半邊：串流出口的中文一律由 registry 提供，
 // sshproxy／proxy 的非測試碼因此不再有使用者可見的中文字面量
 // （由 TestNoChineseLiteralsInStreamExits 守衛）。未註冊碼在編譯期已被
 // apierror.ErrCode 型別＋registry 常數擋下，此處僅為防禦性退回空字串。
@@ -94,11 +94,11 @@ func zhFallbackOf(code apierror.ErrCode) string {
 //
 // **fail-closed**：ErrCode 的型別只保證「不是別的字串型別」，擋不住零值——
 // 一個未初始化的 ErrCode 變數會編出 `{"type":"error","data":"…"}` 這種無碼幀，
-// 正是 D7 要消滅的形態。空碼一律回 error（呼叫端已全數 log 並放棄該幀），
+// 正是本設計要消滅的形態。空碼一律回 error（呼叫端已全數 log 並放棄該幀），
 // 不容許靜默降級成無碼幀。
 func EncodeErrorMessage(code apierror.ErrCode, data string) ([]byte, error) {
 	if code == "" {
-		return nil, fmt.Errorf("sshproxy: MsgError 幀必須帶非空 apierror 碼（D7 不變量）")
+		return nil, fmt.Errorf("sshproxy: MsgError 幀必須帶非空 apierror 碼")
 	}
 	return json.Marshal(Message{Type: MsgError, Data: data, Code: string(code)})
 }
@@ -109,7 +109,7 @@ func EncodeCodedErrorMessage(code apierror.ErrCode) ([]byte, error) {
 	return EncodeErrorMessage(code, zhFallbackOf(code))
 }
 
-// EncodeNoticeMessage 編碼 MsgNotice 控制幀（D7）：Code＋zh fallback Data＋
+// EncodeNoticeMessage 編碼 MsgNotice 控制幀：Code＋zh fallback Data＋
 // 淨化後的 Params。
 //
 // Data 保留 zh fallback（比照 MsgError）是安全 UX 要求而非冗餘——譯文漏鍵時

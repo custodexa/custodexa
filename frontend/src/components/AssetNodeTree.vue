@@ -1,5 +1,5 @@
 <template>
-  <!-- 資產節點樹（asset-node-tree D5）：左樹導覽＋節點 CRUD＋授權入口。
+  <!-- 資產節點樹：左樹導覽＋節點 CRUD＋授權入口。
        惰性載入（點展開才拉子層）；「全部資產」與「未分組」為虛擬項不入庫 -->
   <div class="asset-node-tree">
     <div class="tree-header">

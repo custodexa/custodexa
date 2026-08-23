@@ -13,7 +13,7 @@ import (
 	"github.com/custodexa/backend/internal/middleware"
 )
 
-// DailyReviewHandler 每日審閱簽核 API（audit-log-compliance，PCI 10.4.1）
+// DailyReviewHandler 每日審閱簽核 API（PCI 10.4.1）
 type DailyReviewHandler struct {
 	reviewService *audit.DailyReviewService
 }
@@ -84,7 +84,7 @@ func (h *DailyReviewHandler) List(c *gin.Context) {
 }
 
 // RegisterRoutes 註冊每日審閱路由：查詢掛 audit:view、簽核掛 alert:manage
-// （auditor/admin 有；design D5——每日審閱是日常審閱操作，非管理層確認語義）
+// （auditor/admin 有；每日審閱是日常審閱操作，非管理層確認語義）
 func (h *DailyReviewHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	reviews := r.Group("/daily-reviews")
 	reviews.Use(middleware.AuthMiddleware(authService))

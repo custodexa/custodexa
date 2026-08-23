@@ -1,4 +1,4 @@
-// 授權帳號範圍調整（asset-multi-account D5）：預設 @ALL、可個別指定 username；
+// 授權帳號範圍調整：預設 @ALL、可個別指定 username；
 // ticket 來源列由伺服端 409 守門，前端就近呈現不吞錯。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
@@ -135,7 +135,7 @@ describe('AuthzAccountScopeDialog 帳號範圍', () => {
     expect(updateAuthorizationAccounts).not.toHaveBeenCalled()
   })
 
-  // 對抗審查 MED-4：allow-create 可打任何字串，`@ALL` 會被後端展開成全部帳號，
+  // allow-create 可打任何字串，`@ALL` 會被後端展開成全部帳號，
   // 畫面說「指定帳號」結果卻是「全部」，語義完全相反
   it('指定帳號模式擋下保留別名 @ALL，不得送出', async () => {
     const wrapper = mountDialog({ ...assetRow, accounts: ['app'] })

@@ -14,13 +14,13 @@ import (
 	"testing"
 )
 
-// keyvault 的**動態表名**與**跨模組寫入例外**守衛（modular-architecture W2 2.2／2.3）。
+// keyvault 的**動態表名**與**跨模組寫入例外**守衛。
 //
-// **為何非補不可（哪個改動會踩到它）**：W2 把 13 檔搬進獨立包後，`moduleguard`
+// **為何非補不可（哪個改動會踩到它）**：把 13 檔搬進獨立包後，`moduleguard`
 // 的表所有權判定要靠「抽取 SQL 內的表名」。keyvault 的存量掃描與信封重加密路徑
 // **不寫死表名**——`db.Table(target.table)`、
 // `fmt.Sprintf("UPDATE %s SET %s = ? ...", target.table, target.column)`
-// 全部由 `envelopeMigrationTargets` 這張登記表驅動（R3.1 §6.1 的 F11）。
+// 全部由 `envelopeMigrationTargets` 這張登記表驅動。
 // 靜態抽取器看到的是 `%s`，於是：
 //
 //   - **keyvault 對 7 張他模組表的 UPDATE 完全隱形**——表所有權守衛回零違規而綠；
@@ -30,8 +30,8 @@ import (
 // 故本檔改以「**登記表本身**」為守衛資料來源（2.2 原文），並把「keyvault 得寫
 // 哪些他模組的表」化為具名白名單（2.3）。
 //
-// **與 F8 交易級聯類分開登記、不共用解法（D-10）**：F8 是「A 模組在自己的交易內
-// 直接刪 B 模組的表」，出路是 B 提供 tx-taking 匯出方法；本檔的 F11 是
+// **與交易級聯類分開登記、不共用解法**：交易級聯類是「A 模組在自己的交易內
+// 直接刪 B 模組的表」，出路是 B 提供 tx-taking 匯出方法；本檔管的是
 // 「keyvault 依登記表對全庫密文欄做就地重加密」，**沒有 tx-taking 出路**
 // ——重加密要橫跨全部模組的表，逐一改呼叫擁有者會製造 keyvault→全模組 的出向
 // 依賴，正好摧毀 keyvault「零出向」的前提。兩者的登記結構、理由與驗收方式因此
@@ -42,34 +42,34 @@ import (
 // crossModuleWriteException 一筆具名的跨模組寫入例外。
 type crossModuleWriteException struct {
 	Table       string
-	OwnerModule string // R3 §1.2 的模組歸屬；"keyvault" 表示自有表（非例外）
+	OwnerModule string // 模組歸屬；"keyvault" 表示自有表（非例外）
 	Reason      string
 }
 
 // keyvaultCrossModuleWriteAllowlist keyvault 依 `envelopeMigrationTargets` 就地
 // 重加密時會 UPDATE 的表，逐張具名登記。
 //
-// **這份清單不受編譯器保護**（AR-3／D-10 的誠實讓步）：它擋的是「悄悄多寫一張
+// **這份清單不受編譯器保護**（AR-3 的誠實讓步）：它擋的是「悄悄多寫一張
 // 別人的表」，不是「不能寫」。新增登記欄位時 SHALL 同步補列，否則本守衛轉紅。
 var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 	{Table: "assets", OwnerModule: "asset",
 		Reason: "資產密碼／私鑰／SFTP 密碼三欄的信封重加密。DEK 輪替與 AAD 遷移必須橫跨全部密文欄，改呼叫 asset 的方法會產生 keyvault→asset 出向依賴，摧毀 keyvault 零出向前提。"},
 	{Table: "asset_accounts", OwnerModule: "asset",
-		Reason: "帳號密碼／私鑰兩欄（asset-multi-account D1a）。同 assets。"},
+		Reason: "帳號密碼／私鑰兩欄。同 assets。"},
 	{Table: "users", OwnerModule: "identity",
 		Reason: "MFA TOTP secret 欄。identity 只擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
 	{Table: "oidc_providers", OwnerModule: "identity",
-		Reason: "OIDC client secret 欄（idp-oidc-integration D2）。同 users。"},
+		Reason: "OIDC client secret 欄。同 users。"},
 	{Table: "ldap_directories", OwnerModule: "identity",
-		Reason: "LDAP service bind 密碼欄（ldap-settings-migration D1）。同 users。"},
+		Reason: "LDAP service bind 密碼欄。同 users。"},
 	{Table: "notification_channels", OwnerModule: "audit",
 		Reason: "通知通道的 url／secret 兩欄。audit 側只讀寫明文語義，密文由 keyvault 的 codec 產生與重包。"},
 	{Table: "change_secret_candidates", OwnerModule: "asset",
-		Reason: "改密未驗證候選憑證的 password_enc／private_key_enc 兩欄（change-secret-ssh-deepening D1）。同 asset_accounts：asset 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
+		Reason: "改密未驗證候選憑證的 password_enc／private_key_enc 兩欄。同 asset_accounts：asset 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
 	{Table: "export_signing_keys", OwnerModule: "keyvault",
 		Reason: "**自有表**（ExportSigningService 的 Ed25519 私鑰），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 	{Table: "checkpoint_signing_keys", OwnerModule: "keyvault",
-		Reason: "**自有表**（CheckpointSigningService 的 Ed25519 私鑰，audit-checkpoint-chain D5），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
+		Reason: "**自有表**（CheckpointSigningService 的 Ed25519 私鑰，audit-checkpoint-chain），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 }
 
 // TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry 白名單與登記表雙向完備。
@@ -105,7 +105,7 @@ func TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry(t *testing.T) {
 	for table := range inRegistry {
 		if !inAllowlist[table] {
 			t.Errorf("[登記表→白名單] %s 有登記欄位卻未登記於跨模組寫入白名單："+
-				"keyvault 會就地 UPDATE 該表而無人審過（F11）", table)
+				"keyvault 會就地 UPDATE 該表而無人審過", table)
 		}
 	}
 	// 他模組表的下界：現況 7 張（assets／asset_accounts／change_secret_candidates／
@@ -119,17 +119,17 @@ func TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry(t *testing.T) {
 	}
 	if foreign < 7 {
 		t.Fatalf("跨模組寫入例外只剩 %d 張表（下界 7）：白名單被縮減或登記表失真，"+
-			"F11 的涵蓋面已縮水", foreign)
+			"就地重加密的涵蓋面已縮水", foreign)
 	}
 	t.Logf("跨模組寫入例外 %d 張他模組表＋%d 張自有表（登記欄位 %d 筆）",
 		foreign, len(keyvaultCrossModuleWriteAllowlist)-foreign, len(envelopeMigrationTargets))
 }
 
-// TestKeyvaultWriteExceptionIsNotTxCascadeClass F8／F11 分類不得合流（D-10）。
+// TestKeyvaultWriteExceptionIsNotTxCascadeClass 兩類跨模組寫入不得合流。
 //
-// 白名單的每一列都必須是「登記表驅動的就地重加密」，不得混入 F8 那類
+// 白名單的每一列都必須是「登記表驅動的就地重加密」，不得混入交易級聯那類
 // 「在自己交易內刪別人的表」的授權——後者的正解是對方提供 tx-taking 方法，
-// 兩類共用一份清單會讓 F8 的個案借道本清單繞過應有的介面化。
+// 兩類共用一份清單會讓交易級聯的個案借道本清單繞過應有的介面化。
 func TestKeyvaultWriteExceptionIsNotTxCascadeClass(t *testing.T) {
 	registryTables := map[string]bool{}
 	for _, tgt := range envelopeMigrationTargets {
@@ -137,17 +137,17 @@ func TestKeyvaultWriteExceptionIsNotTxCascadeClass(t *testing.T) {
 	}
 	for _, e := range keyvaultCrossModuleWriteAllowlist {
 		if !registryTables[e.Table] {
-			t.Errorf("%s 不是由登記表驅動：本清單只承載 F11（登記表驅動的就地重加密），"+
-				"交易級聯刪除（F8）SHALL 走擁有者模組的 tx-taking 匯出方法，不得登記於此", e.Table)
+			t.Errorf("%s 不是由登記表驅動：本清單只承載登記表驅動的就地重加密，"+
+				"交易級聯刪除 SHALL 走擁有者模組的 tx-taking 匯出方法，不得登記於此", e.Table)
 		}
 	}
 }
 
 // ---- 2.2 表名來源守衛 ----
 //
-// **本守衛的射程＝「字串構造的表名」，逐條列明（W2 對抗驗證 M1 後改寫）**。
+// **本守衛的射程＝「字串構造的表名」，逐條列明**。
 // 原版只看「非字面量」的表名，並以「字面量表名有靜態抽取器涵蓋」為由明文跳過
-// `db.Table("users")`——紅隊查證**該靜態抽取器在本 repo 尚不存在**（全庫搜
+// `db.Table("users")`——查證**該靜態抽取器在本 repo 尚不存在**（全庫搜
 // `moduleguard`／`TableOwnership` 只命中本檔），那個跳過理由是錯的陳述，已刪除。
 // 現在字面量表名改為**納入判定**（必須是登記表或 keyvault 自有表）。
 //
@@ -163,8 +163,7 @@ func TestKeyvaultWriteExceptionIsNotTxCascadeClass(t *testing.T) {
 //	(c-部分) `tx.Model(&model.X{}).Update…` 型別解析的寫入 → X 必須是
 //	    keyvault 自有的 model 型別（見 keyvaultTypedWriteAllowlist）
 //
-// **不涵蓋（誠實邊界，已記入維護者私有開發歷程的 backlog 項 B-12，
-// 該清單未隨公開倉庫發佈）**：
+// **不涵蓋（誠實邊界，已列為待辦）**：
 //
 //   - `db.Create(&row)`／`db.Save(&row)`／`db.First(&row)` 這類表名由**變數型別**
 //     決定的形態。要判定它們得做真正的型別推導（go/types 或 packages.Load），
@@ -173,7 +172,7 @@ func TestKeyvaultWriteExceptionIsNotTxCascadeClass(t *testing.T) {
 //   - 跨包函式包裝出來的表名（keyvault 零出向，現況無此形態）。
 //
 // 換言之：本守衛能保證「**寫在 keyvault 原始碼裡的表名字串**都經過登記」，
-// 不能保證「keyvault 只碰登記過的表」。tasks 2.2 的敘述須照此界定。
+// 不能保證「keyvault 只碰登記過的表」。守衛敘述須照此界定。
 
 // dynamicTableSite 一處以字串構造表名的 SQL。
 type dynamicTableSite struct {
@@ -254,7 +253,7 @@ func scanDynamicTableSites(t *testing.T, dir string) (sites []dynamicTableSite, 
 			line := fset.Position(call.Pos()).Line
 			switch sel.Sel.Name {
 			case "Table":
-				// 字面量**不再跳過**（M1）：它同樣是一個沒被登記表把關的表名
+				// 字面量**不再跳過**：它同樣是一個沒被登記表把關的表名
 				sites = append(sites, dynamicTableSite{
 					File: name, Line: line,
 					Kind: "Table", Source: exprText(fset, call.Args[0])})
@@ -274,8 +273,8 @@ func scanDynamicTableSites(t *testing.T, dir string) (sites []dynamicTableSite, 
 					// 在 Sprintf 分支判定，不在此重複計數）。其餘任何呼叫——
 					// `db.Exec(buildSQL(tbl))`、`db.Exec(q.String())`——的表名
 					// 都藏在被呼叫者裡，本守衛看不見：fail-close。
-					// （2026-08-10 codex W2 外審 K3：原版對 *ast.CallExpr 一律略過，
-					// 是「現有保證可被普通重構繞過」的具體形態，非 B-12 型別推導缺口）
+					// （原版對 *ast.CallExpr 一律略過，
+					// 是「現有保證可被普通重構繞過」的具體形態，非型別推導缺口）
 					if !isFmtSprintfCall(arg) {
 						sites = append(sites, dynamicTableSite{
 							File: name, Line: line,
@@ -285,7 +284,7 @@ func scanDynamicTableSites(t *testing.T, dir string) (sites []dynamicTableSite, 
 					// database/sql 的 `conn.Raw(func(any) error {...})`，不是 SQL 字串
 				default:
 					// 字串串接（`"UPDATE " + tbl + " SET…"`）、變數、設定值：
-					// 表名無從靜態判讀 → fail-close（M1 形態 b）
+					// 表名無從靜態判讀 → fail-close
 					sites = append(sites, dynamicTableSite{
 						File: name, Line: line,
 						Kind: "Exec", Source: "<非字面 SQL：" + exprText(fset, call.Args[0]) + ">"})
@@ -294,7 +293,7 @@ func scanDynamicTableSites(t *testing.T, dir string) (sites []dynamicTableSite, 
 				lit, ok := call.Args[0].(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
 					// format 是具名常數／變數時無從判讀其中的表名 → fail-close
-					// （M1 形態 e）。keyvault 現況零命中；真有需要就改寫成字面 format
+					// keyvault 現況零命中；真有需要就改寫成字面 format
 					sites = append(sites, dynamicTableSite{
 						File: name, Line: line,
 						Kind: "Sprintf", Source: "<非字面 format：" + exprText(fset, call.Args[0]) + ">"})
@@ -315,7 +314,7 @@ func scanDynamicTableSites(t *testing.T, dir string) (sites []dynamicTableSite, 
 					File: name, Line: line,
 					Kind: "Sprintf", Source: exprText(fset, call.Args[1])})
 			case "Update", "Updates", "Delete", "Create", "Save", "FirstOrCreate":
-				// 型別解析的寫入（M1 形態 c）：往回走鏈找 `Model(&model.X{})`
+				// 型別解析的寫入：往回走鏈找 `Model(&model.X{})`
 				if typ, ok := modelTypeOfChain(sel.X); ok {
 					sites = append(sites, dynamicTableSite{
 						File: name, Line: line,
@@ -452,11 +451,11 @@ func allowedKeyvaultTables() map[string]bool {
 	return out
 }
 
-// minKeyvaultScannedFiles 本包非測試檔數下限（現況 14：13 檔搬入＋W2 2.1 拆出的
+// minKeyvaultScannedFiles 本包非測試檔數下限（現況 14：13 檔搬入＋拆出的
 // release.go）。取 12 為下界，保留合併檔案的正常重構空間。
 const minKeyvaultScannedFiles = 12
 
-// minDynamicTableSites 表名構造點下限。M1 修補後涵蓋面自 4 處擴為 9 處
+// minDynamicTableSites 表名構造點下限。修補後涵蓋面自 4 處擴為 9 處
 // （Table 3／Sprintf 1／TypedWrite 5，見測試的 t.Logf）。取 7 為下界——
 // 降到 0 代表掃描器失效，而「零構造點」正是本守衛的假綠形態。
 const minDynamicTableSites = 7
@@ -500,7 +499,7 @@ func TestKeyvaultDynamicTableNamesComeFromRegistry(t *testing.T) {
 			if _, ok := keyvaultTypedWriteAllowlist[typ]; !ok {
 				t.Errorf("%s:%d 以 Model(&model.%s{}) 型別寫入他模組的表："+
 					"keyvault 的跨模組寫入 SHALL 只走 envelopeMigrationTargets 驅動的就地重加密"+
-					"（F11），型別解析的寫入繞過登記表與跨模組寫入白名單", s.File, s.Line, typ)
+					"，型別解析的寫入繞過登記表與跨模組寫入白名單", s.File, s.Line, typ)
 			}
 		case dynamicTableSourceOK(s.Source):
 			// 登記表驅動：envelopeMigrationColumn.table
@@ -529,7 +528,7 @@ func TestKeyvaultDynamicTableNamesComeFromRegistry(t *testing.T) {
 // TestKeyvaultTableFieldIsUnambiguous `.table` 後綴比對的完備性前提。
 //
 // `dynamicTableSourceOK` 只做字串後綴比對，故「任何帶小寫 table 欄的型別」
-// 都能通過（W2 對抗驗證 M1 形態 d）。本格證明那個前提在本包成立：
+// 都能通過。本格證明那個前提在本包成立：
 // 本包只有 envelopeMigrationColumn 宣告了未匯出的 `table` 欄位；而未匯出欄位
 // **不可能**來自其他套件的型別（Go 的匯出規則），故後綴比對在本包是完備的。
 func TestKeyvaultTableFieldIsUnambiguous(t *testing.T) {
@@ -592,7 +591,7 @@ const envelopeColumnRegistryVar = "envelopeMigrationTargets"
 // TestEnvelopeColumnConstructedOnlyInRegistry `envelopeMigrationColumn` 只能在
 // 登記表宣告內構造，且其 `table` 欄不得於他處被賦值。
 //
-// **為何需要這一格**（2026-08-10 codex W2 外審 K3）：`dynamicTableSourceOK` 只證
+// **為何需要這一格**：`dynamicTableSourceOK` 只證
 // 「表名運算式是某個型別的 `table` 欄位」，`TestKeyvaultTableFieldIsUnambiguous`
 // 再證「本包只有 envelopeMigrationColumn 有這個欄位」。兩者合起來**仍不證明值
 // 來自登記表**——一次普通重構就能繞過：
@@ -604,7 +603,7 @@ const envelopeColumnRegistryVar = "envelopeMigrationTargets"
 // `envelope_migration_service.go` 的 `var envelopeMigrationTargets = ...` 內，
 // 且不得有 `x.table = ...` 形態的事後賦值。
 //
-// **指標間接賦值一併封死**（2026-08-10 W3 fresh-context 對抗 F3）：紅隊實證
+// **指標間接賦值一併封死**：實證
 //
 //	p := &envelopeMigrationTargets[0].table
 //	*p = v   // lhs 是 StarExpr，不是 SelectorExpr——四格守衛全 PASS
@@ -693,7 +692,7 @@ func TestEnvelopeColumnConstructedOnlyInRegistry(t *testing.T) {
 					}
 				}
 			case *ast.UnaryExpr:
-				// F3：`&x.table` 取址——拿到指標後 `*p = v` 的 lhs 是 StarExpr，
+				// `&x.table` 取址——拿到指標後 `*p = v` 的 lhs 是 StarExpr，
 				// 上面的 SelectorExpr 判定看不見它。往上游擋取址即可封死該路徑
 				if v.Op != token.AND {
 					return true

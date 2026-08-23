@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 登入路徑的單次設定解析（ldap-settings-migration D2／tasks 2.8）。
+// 登入路徑的單次設定解析。
 //
 // 本檔驗的是**接線的不變式**而非 LDAP 判定規則：
 //

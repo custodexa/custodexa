@@ -65,10 +65,10 @@ services:
       # 審計日誌和錄影檔案（DATA_PATH 資料夾根，預設 ./data；直掛 AUDIT_LOG_PATH/RECORDING_PATH）
       - ${DATA_PATH:-./data}/audit:/var/log/custodexa/audit
       - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
-      # i18n-backend-error-codes 完備性測試：唯讀掛前端三語 locale 供 apiError bijection 核對
+      # 錯誤碼 i18n 完備性測試：唯讀掛前端三語 locale 供 apiError bijection 核對
       # 掛載點統一在 /app（容器內專案根）下；testdata 為 Go 慣例目錄（go 工具鏈忽略）
       - ./frontend/src/i18n/locales:/app/testdata/locales:ro
-      # kek-encoding-and-unseal-entry：唯讀掛前端的 KEK 生成指令集合，供
+      # 唯讀掛前端的 KEK 生成指令集合，供
       # kek_generate_command_test.go 比對後端 config.KEKGenerateCommands。
       # 權威事實源在後端；範本（.env.example）、錯誤訊息與介面三處一致由守衛強制
       # ——不一致的指引比沒有指引更糟（使用者照著介面做卻被拒，正是本次的缺陷）。
@@ -106,7 +106,7 @@ services:
       #（登入後重導向目標須匹配前端既有路由；後端枚舉與 router 雙向核對）。
       # 目錄掛載＋掛在 /app 內，理由同上兩則（inode 假綠、go test 快取追蹤）。
       - ./frontend/src/router:/app/internal/api/testdata/router:ro
-      # 唯讀掛入 openspec/ 供 modular-architecture 的兩份 manifest 守衛比對
+      # 唯讀掛入 openspec/ 供兩份 manifest 守衛比對
       #（審計產生點 manifest 與 lifecycle manifest：登記項 ⇄ 現實雙向完備性）。
       #
       # **掛載點必須在 /app（Go module 根）內**：理由同上兩則——go test 的結果快取
@@ -120,21 +120,20 @@ services:
       # 唯讀掛入專案根 VERSION 與 CHANGELOG.md 供 version_source_guard_test.go 對照
       #（發版時兩者須同時更新，否則 /health 揭露的版號會與 CHANGELOG 不符）。
       #
-      # **逐檔掛而非掛父目錄**：兩者都住在 repo 根，而 repo 根不得整個掛進容器（見下方
-      # 那段實測記載）。代價是單檔 bind mount 綁 inode——以 atomic rename 更新 host 檔時
+      # **逐檔掛而非掛父目錄**：兩者都住在 repo 根，而 repo 根不得整個掛進容器（理由
+      # 見下一段）。代價是單檔 bind mount 綁 inode——以 atomic rename 更新 host 檔時
       # 容器仍讀舊 inode，dev 需 recreate backend 才反映（同 .env.example，理由見上）。
       # 掛載點在 /app（module 根）內：go test 的結果快取只追蹤 module 內被開啟的檔案，
       # 掛在外面會讓「只改 VERSION、不動 Go 碼」回報 (cached) 綠而根本不執行守衛。
       - ./VERSION:/app/cmd/server/testdata/release/VERSION:ro
       - ./CHANGELOG.md:/app/cmd/server/testdata/release/CHANGELOG.md:ro
       #
-      # **不得把 repo 根整個掛進容器**（brand-residual-cleanup 實測踩過）：曾為讓
-      # 品牌守衛掃全 repo 而加 `.:/app/testdata/repo:ro`，結果 host 的 .env（含
-      # JWT_SECRET／ENCRYPTION_KEY／ADMIN_INITIAL_PASSWORD）與 data*/ 備份目錄
-      # 一併對容器內的 dbcli 降權身分可讀，`TestCLIUserCannotReadLiveCredentials`
-      # 當場轉紅——那正是 DB CLI 逃逸防護的核心性質。掛單一檔案蓋掉 .env 只是補丁，
-      # repo 根日後仍會出現其他敏感檔。**要掃 backend 以外的內容，用 host 端腳本
-      # （scripts/brand_scan.sh），不要擴大容器的檔案視野。**
+      # **不得把 repo 根整個掛進容器**：backend 容器內跑著以降權身分執行的 DB CLI
+      # 逃逸防護測試，凡掛進來的路徑它都讀得到。repo 根同時住著本機部署的 .env 與
+      # data*/ 資料目錄，`.:/app/…:ro` 這種掛法等於把它們一併交到那個身分手上。
+      # 個別排除掛進來的檔案只能擋當下已知的那幾個，repo 根日後放什麼並不受控。
+      # 需要哪個檔就逐檔掛哪個檔；要檢查 backend 以外的內容，在 host 端執行，
+      # 不要靠擴大容器的檔案視野換取方便。
     # 使用者可調值一律走專案根 .env（與 prod 一致）：cp .env.example .env 後編輯。
     # 註：dev 測 LDAP 於 .env 設 LDAP_ENABLED=true；e2e 閒置場景於 .env 設 SSH_IDLE_TIMEOUT_MINUTES=1。
     env_file:
@@ -209,7 +208,7 @@ services:
     restart: unless-stopped
 
   # 多帳號 SSH 測試靶機（root+testuser，rootful sshd 可切換使用者；
-  # 供 asset-multi-account 的帳號切換與授權範圍驗證，與 ssh-test 並存）
+  # 供帳號切換與授權範圍驗證，與 ssh-test 並存）
   ssh-multi-test:
     image: custodexa/ssh-multi-test:dev
     build:
@@ -314,9 +313,9 @@ services:
       - custodexa-network
     restart: unless-stopped
 
-  # DB CLI 測試用 SQL Server（mssql-web-cli D9）：對標 mysql-test，供 dbproxy mssql 路徑驗證。
+  # DB CLI 測試用 SQL Server：對標 mysql-test，供 dbproxy mssql 路徑驗證。
   #
-  # **映像選擇（design D9 的原裁決已於 2026-08-14 推翻，改用 amd64 模擬）**：
+  # **映像選擇（為什麼不用原生 arm64 映像）**：
   # 本機為 Apple Silicon（arm64），原取 `mcr.microsoft.com/azure-sql-edge:latest`
   # 因其有原生 arm64 manifest。但該映像**產品連不上**：Edge 啟動時自簽的 TLS 憑證
   # 序號為負數，而產品用的 go-sqlcmd（Go 1.25 建置）在 x509 解析階段即拒絕，錯誤為
@@ -325,13 +324,12 @@ services:
   # 仍是同一錯誤（信任評估發生在解析之後）。能繞過的只有 `GODEBUG=x509negativeserial=1`
   # 與 `-N disable`，但那是替產品放寬 TLS 來遮蔽靶機缺陷，不得為之。
   # 容器重建（`--force-recreate`）不換憑證，設 `network.tlscert` 餵自訂憑證則
-  # 使 Edge 於 arm64 啟動即 fatal（mssql-web-cli tasks 8.6 已登記）。
+  # 使 Edge 於 arm64 啟動即 fatal。
   # 故改用 `mcr.microsoft.com/mssql/server`（只發 amd64，經 Docker Desktop 的 Rosetta
   # 模擬執行），其自簽憑證序號為正，未設任何 GODEBUG 即可完成交握。
   #
-  # 副作用（正面）：這同時解掉 mssql-web-cli 8.6 的阻塞——`-J` 是憑證釘選或 CA 信任錨
-  # 的決定性實驗需要「CA 簽發的葉憑證」，而完整版 mssql/server 支援 `network.tlscert`，
-  # 於此靶機上可做（`openspec/specs/database-protocol/spec.md` 的保守表述待該實測後複核）。
+  # 副作用（正面）：判定 `-J` 是憑證釘選或 CA 信任錨，其決定性實驗需要「CA 簽發的
+  # 葉憑證」，而完整版 mssql/server 支援 `network.tlscert`，於此靶機上可做（`openspec/specs/database-protocol/spec.md` 的保守表述待該實測後複核）。
   #
   # tag 釘死不用 `2025-latest`：靶機的憑證行為正是本次踩到的坑，映像靜默前滾即可能
   # 再次帶回同型問題。`2025-CU8-ubuntu-24.04` 與當下的 `2025-latest` 為同一 manifest。
@@ -373,7 +371,7 @@ services:
       start_period: 90s
     restart: unless-stopped
 
-  # OIDC 測試 IdP（idp-oidc-integration D18）：dex 為 CNCF 輕量 OIDC provider，
+  # OIDC 測試 IdP：dex 為 CNCF 輕量 OIDC provider，
   # 供 SSO 登入全鏈路（begin → IdP 授權 → callback → exchange → 建連線）實走驗證。
   #
   # **hostname 必須是 dex.localhost**：go-oidc 對 discovery 的 issuer 做完整字串比對，
@@ -402,7 +400,7 @@ services:
           - dex.localhost
     restart: unless-stopped
 
-  # KMS 模擬器（kek-provider-modularization D11.1 裁決 4）：C1 雲端 KMS 的整合測試靶機。
+  # KMS 模擬器：C1 雲端 KMS 的整合測試靶機。
   #
   # **僅啟用 kms 子集**：localstack 預設會拉起整套 AWS 模擬面，對本專案而言是
   # 純粹的啟動成本與攻擊面；SERVICES 收斂到唯一真的會用到的服務。

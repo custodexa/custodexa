@@ -24,7 +24,7 @@ var (
 	ErrDialTimeout = errors.New("連線目標主機逾時")
 )
 
-// ConnConfig SSH 連線參數（憑證由後端注入，design D2）
+// ConnConfig SSH 連線參數（憑證由後端注入）
 type ConnConfig struct {
 	Host       string
 	Port       int
@@ -80,7 +80,7 @@ func authMethods(cfg ConnConfig) ([]ssh.AuthMethod, error) {
 
 // classifyDialError 將底層錯誤映射為使用者可讀的分類錯誤
 func classifyDialError(err error) error {
-	// host key 變更是關鍵安全訊號（host-key-verification D2），原樣透傳不得泛化
+	// host key 變更是關鍵安全訊號（host-key-verification），原樣透傳不得泛化
 	if errors.Is(err, asset.ErrHostKeyChanged) {
 		return asset.ErrHostKeyChanged
 	}

@@ -23,7 +23,7 @@ type AssetAccountServiceInterface interface {
 	SetDefault(ctx context.Context, assetID, accountID uint) (*asset.AssetAccountDTO, error)
 }
 
-// AccountScopeResolver 有效帳號範圍解析（asset-multi-account D5）。
+// AccountScopeResolver 有效帳號範圍解析。
 //
 // 獨立於 AssetAuthorizationServiceInterface 的窄介面：帳號範圍只有帳號端點需要，
 // 併入共用介面會逼 asset/asset_group 兩支 handler 的既有測試替身全部補實作
@@ -31,13 +31,13 @@ type AccountScopeResolver interface {
 	EffectiveViewAccountScope(ctx context.Context, userID, assetID uint) (authz.EffectiveAccountScope, error)
 }
 
-// AssetAccountHandler 資產帳號 API（asset-multi-account 階段 2）。
+// AssetAccountHandler 資產帳號 API。
 //
 // 回應一律走 asset.AssetAccountDTO：帳號密文欄位在 model 已是 json:"-"，
 // DTO 再把「是否已設定憑證」降為布林——憑證本體與其密文都不出站（連線收口紅線）。
 type AssetAccountHandler struct {
 	accountService AssetAccountServiceInterface
-	// scopeResolver 列表過濾用（D5）。**建構期必填**：設為可選欄位＋nil 時不過濾
+	// scopeResolver 列表過濾用。**建構期必填**：設為可選欄位＋nil 時不過濾
 	// 等於留一個「忘記注入就退回舊的全量外洩行為」的 fail-open 開關
 	scopeResolver AccountScopeResolver
 }
@@ -106,7 +106,7 @@ func accountParams(c *gin.Context, wantAccount bool) (uint, uint, bool) {
 	return uint(assetID), uint(accountID), true
 }
 
-// accountContext 把操作者身分帶入 ctx（D7a 審計需要操作者，沿既有 asset 慣例）
+// accountContext 把操作者身分帶入 ctx（審計需要操作者，沿既有 asset 慣例）
 func accountContext(c *gin.Context) context.Context {
 	ctx := c.Request.Context()
 	if userID, exists := c.Get("userID"); exists {
@@ -115,7 +115,7 @@ func accountContext(c *gin.Context) context.Context {
 	if username, exists := c.Get("username"); exists {
 		ctx = context.WithValue(ctx, "username", username) //nolint:staticcheck // 同上
 	}
-	// role 供跨資產複製的來源可見性判定短路 admin（D10）：不帶 role 會讓 admin
+	// role 供跨資產複製的來源可見性判定短路 admin：不帶 role 會讓 admin
 	// 落一般授權查詢，管理員複製自己管得到的資產帳號反而被擋
 	if role, exists := c.Get("role"); exists {
 		ctx = context.WithValue(ctx, "role", role) //nolint:staticcheck // 沿用既有 CheckPermission 慣例
@@ -125,7 +125,7 @@ func accountContext(c *gin.Context) context.Context {
 
 // List 列出資產的帳號（預設帳號排首），依請求者的有效帳號範圍過濾。
 //
-// 為何過濾（D5，opus 階段 2 MED）：本端點僅需 asset:view，過濾前對任何可視該
+// 為何過濾：本端點僅需 asset:view，過濾前對任何可視該
 // 資產的使用者回傳全部帳號**含 privileged 標記**——等於把「這台機器上有哪些
 // 特權帳號」公開給只該看到自己那組帳號的人，是攻擊面偵察的現成清單。
 // admin 與 auditor 於解析器內短路全量（管理／稽核視圖語義不變）。
@@ -209,7 +209,7 @@ func (h *AssetAccountHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, account)
 }
 
-// Delete 刪除帳號（禁刪最後一個預設帳號，D8）
+// Delete 刪除帳號（禁刪最後一個預設帳號）
 func (h *AssetAccountHandler) Delete(c *gin.Context) {
 	assetID, accountID, ok := accountParams(c, true)
 	if !ok {
@@ -245,8 +245,8 @@ func (h *AssetAccountHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 	accounts := r.Group("/assets/:id/accounts")
 	accounts.Use(middleware.AuthMiddleware(authService))
 
-	// 逐資產可視性守門：無條件生效（權限旗標已退場，security-backlog-settlement D5）
-	//（session-access-scoping 讀取端點無條件守門紅線）
+	// 逐資產可視性守門：無條件生效（權限旗標已退場）
+	//（讀取端點無條件守門紅線）
 	visible := middleware.RequireAssetVisible(authz)
 
 	accounts.GET("", middleware.RequirePermission(middleware.PermAssetView), visible, h.List)

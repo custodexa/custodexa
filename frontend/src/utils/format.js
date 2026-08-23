@@ -1,5 +1,5 @@
 /**
- * 全站日期/時長格式化唯一實作（ux-consistency D2＋i18n-foundation D7）。
+ * 全站日期/時長格式化唯一實作。
  * 規則：locale 由 i18n 當前語言驅動（render 期呼叫被依賴追蹤，切語言自動重繪）；
  * hour12 固定 false 不隨語言——審計場景時間必須無歧義（24h 是審計精度決策）。
  * 勿在頁面內重新實作；勿把格式化結果存入 state（會斷 reactivity），
@@ -63,7 +63,7 @@ export function formatDate(datetime) {
 }
 
 // 時長：帶 count 的 plural message（en 單複數走 "{n} hour | {n} hours"），
-// 不可只翻單位字串後空格 join（codex r1 F9）。
+// 不可只翻單位字串後空格 join。
 // 分隔符不走訊息（空字串會被 vue-i18n 誤判缺 key 而 fallback）：ja 無空格排版
 const DURATION_SEPARATORS = { 'ja-JP': '' }
 
@@ -117,7 +117,7 @@ export function formatBytes(bytes) {
 }
 
 // 相對時間：剛剛/N 分鐘前/N 小時前/月日（Intl 全程隨語言；
-// >24h 分支不可手組字串——codex r2 P2：手組 MM-DD 會凍結在單一格式）
+// >24h 分支不可手組字串：手組 MM-DD 會凍結在單一格式）
 export function formatRelativeTime(ts) {
   if (!ts) return ''
   const diff = Date.now() - new Date(ts).getTime()

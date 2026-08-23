@@ -10,9 +10,9 @@ import (
 // ErrCheckpointTrimImmutable 修剪記錄守衛的統一錯誤
 var ErrCheckpointTrimImmutable = errors.New("audit_checkpoint_trims 為不可變證據：不得經 ORM 修改或刪除")
 
-// AuditCheckpointTrim 檢查點鏈的修剪記錄（audit-checkpoint-chain D8 步驟 5／log-retention spec）。
+// AuditCheckpointTrim 檢查點鏈的修剪記錄（audit-checkpoint-chain／log-retention spec）。
 //
-// **落點決策（tasks 6.10 要求明記）＝獨立表，不是 audit_log 型別**：
+// **落點決策＝獨立表，不是 audit_log 型別**：
 // 修剪記錄是「殘餘鏈的新起點錨定」，它必須活得比被它記錄的檢查點久。
 // 若寫成 audit_log 列，它自己就會落入某個檢查點區間並在保留期到期時
 // 被 retention 清掉——鏈頭錨定隨之消失，殘鏈自此永遠無法與被修剪段接續，

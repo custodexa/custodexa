@@ -21,29 +21,27 @@ import (
 	"gorm.io/gorm"
 )
 
-// W10 characterization matrix（modular-architecture W10 任務 11.6）
+// 連線閘序 characterization matrix
 //
 // **這份測試的職責不是「找缺陷」，是「證明閘序收斂前後等價」**：維度＝
 // `Stage × 各閘通過/失敗 × 帳號解析成敗`，每一格斷言三件事——
 // (Allowed, 拒絕碼, 副作用)。收斂前先跑一次把現況固定下來，收斂後必須逐格相同。
 //
 // 格名以閘編號（G-I*／G-S*）標註。**編號的定義在 `internal/sshproxy/connect_gates.go`**
-// ——每個 `{Name: "G-…"}` 之後緊接該閘的實作與理由；本檔的 `TestW10MatrixCoverageIsDeclared`
-// 則是編號的完整登記表（含刻意不涵蓋者與其逐條理由）。收斂當時逐格比對用的等價基準表
-// 歸檔於維護者的私有開發歷程，未隨公開倉庫發佈——它是一次性的搬遷證據，
-// 不是讀懂這套編號所需的字典。
+// ——每個 `{Name: "G-…"}` 之後緊接該閘的實作與理由；本檔的 `TestMatrixCoverageIsDeclared`
+// 則是編號的完整登記表（含刻意不涵蓋者與其逐條理由）。
 //
 // **副作用的統一斷言**：任何被閘擋下的請求 SHALL NOT 留下 session 列
 //（全部閘都排在 createSession 之前——這是「拒絕時機」的機器證據，
 // 只驗碼不驗副作用會漏掉「先建 session 再拒」這種同碼不同義的退化）。
 //
-// **D-9 雙碼不對稱**：同一語義失敗（帳號不在授權範圍）在簽發側是 404
+// **雙碼不對稱**：同一語義失敗（帳號不在授權範圍）在簽發側是 404
 // RULE_ASSET_ACCOUNT_NOT_FOUND、兌換側是 403 AUTH_ASSET_CONNECT_DENIED，
 // 兩格都在本矩陣內逐格釘住。看到不一致 SHALL NOT 逕行「修掉」。
 
-// w10Fixture 三處入口共用的基準夾具：user1（一般，持 asset1 常設 connect）、
+// gateFixture 三處入口共用的基準夾具：user1（一般，持 asset1 常設 connect）、
 // user2（admin）、user3（auditor）；asset1＝ssh／active／open 段位；尚未建帳號
-func w10Fixture(t *testing.T) (*Handler, *gorm.DB) {
+func gateFixture(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 	h, db, _ := setupPolicyGateTest(t)
 	seedGateFixture(t, db)
@@ -51,8 +49,8 @@ func w10Fixture(t *testing.T) (*Handler, *gorm.DB) {
 	return h, db
 }
 
-// w10SeedAccount 建帳號並回傳 ID
-func w10SeedAccount(t *testing.T, db *gorm.DB, assetID uint, username string, isDefault bool) uint {
+// gateSeedAccount 建帳號並回傳 ID
+func gateSeedAccount(t *testing.T, db *gorm.DB, assetID uint, username string, isDefault bool) uint {
 	t.Helper()
 	acct := model.AssetAccount{AssetID: assetID, Username: username, IsDefault: isDefault}
 	if err := db.Create(&acct).Error; err != nil {
@@ -61,9 +59,9 @@ func w10SeedAccount(t *testing.T, db *gorm.DB, assetID uint, username string, is
 	return acct.ID
 }
 
-// w10IssueRequest 以指定身分／帳號呼叫簽發端點；rawBody 非空時直送原始位元組
+// gateIssueRequest 以指定身分／帳號呼叫簽發端點；rawBody 非空時直送原始位元組
 // （供「請求體綁定失敗」格使用）
-func w10IssueRequest(h *Handler, userID uint, role string, assetID, accountID uint, rawBody string) (int, map[string]any, map[string]any) {
+func gateIssueRequest(h *Handler, userID uint, role string, assetID, accountID uint, rawBody string) (int, map[string]any, map[string]any) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	var keys map[string]any
@@ -93,10 +91,10 @@ func w10IssueRequest(h *Handler, userID uint, role string, assetID, accountID ui
 	return w.Code, resp, keys
 }
 
-// w10UnwritableRecordingPath 造一條必然探測失敗的錄影路徑：指向一個**普通檔案**
+// gateUnwritableRecordingPath 造一條必然探測失敗的錄影路徑：指向一個**普通檔案**
 // 而非目錄，使 ProbeWritable 的 MkdirAll 失敗。
 // 不用 chmod——容器內測試以 root 執行，權限位對 root 無效（會造成假綠）
-func w10UnwritableRecordingPath(t *testing.T) string {
+func gateUnwritableRecordingPath(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
@@ -105,8 +103,8 @@ func w10UnwritableRecordingPath(t *testing.T) string {
 	return p
 }
 
-// w10RedeemSSH 兌換終端連線；cols／rows 可覆寫（供尺寸解析格使用）
-func w10RedeemSSH(h *Handler, token, cols, rows string) (int, map[string]any) {
+// gateRedeemSSH 兌換終端連線；cols／rows 可覆寫（供尺寸解析格使用）
+func gateRedeemSSH(h *Handler, token, cols, rows string) (int, map[string]any) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.GET("/ssh", h.HandleSSH)
@@ -119,8 +117,8 @@ func w10RedeemSSH(h *Handler, token, cols, rows string) (int, map[string]any) {
 	return w.Code, resp
 }
 
-// w10AssertNoSession 副作用斷言：被閘擋下者不得留下 session 列
-func w10AssertNoSession(t *testing.T, db *gorm.DB, cell string) {
+// gateAssertNoSession 副作用斷言：被閘擋下者不得留下 session 列
+func gateAssertNoSession(t *testing.T, db *gorm.DB, cell string) {
 	t.Helper()
 	var n int64
 	if err := db.Model(&model.Session{}).Count(&n).Error; err != nil {
@@ -131,8 +129,8 @@ func w10AssertNoSession(t *testing.T, db *gorm.DB, cell string) {
 	}
 }
 
-// w10AssertMeta 機器欄逐項比對（JSON 反序列化後數值為 float64，故以字面比對）
-func w10AssertMeta(t *testing.T, cell string, resp map[string]any, want map[string]any) {
+// gateAssertMeta 機器欄逐項比對（JSON 反序列化後數值為 float64，故以字面比對）
+func gateAssertMeta(t *testing.T, cell string, resp map[string]any, want map[string]any) {
 	t.Helper()
 	for k, v := range want {
 		got, ok := resp[k]
@@ -145,7 +143,7 @@ func w10AssertMeta(t *testing.T, cell string, resp map[string]any, want map[stri
 	}
 }
 
-type w10IssueCell struct {
+type gateIssueCell struct {
 	name       string
 	gate       string
 	setup      func(t *testing.T, h *Handler, db *gorm.DB)
@@ -161,13 +159,13 @@ type w10IssueCell struct {
 	wantAudit  map[string]string // audit_details 副作用
 }
 
-// w10IssueCells StageIssue 矩陣的全部格。
+// gateIssueCells StageIssue 矩陣的全部格。
 //
-// **獨立於測試函式存在，是為了讓涵蓋面自證能真正耦合**：`TestW10MatrixCoverageIsDeclared`
+// **獨立於測試函式存在，是為了讓涵蓋面自證能真正耦合**：`TestMatrixCoverageIsDeclared`
 // 直接從本函式擷取 `gate` 欄，故「登記表說涵蓋了哪些閘」與「矩陣實際跑了哪些閘」
-// 不可能分家（W10 獨立驗收 F3：原版的 covered 由硬編碼閘表扣掉 uncovered 推導，恆真）。
-func w10IssueCells() []w10IssueCell {
-	return []w10IssueCell{
+// 不可能分家（原版的 covered 由硬編碼閘表扣掉 uncovered 推導，恆真）。
+func gateIssueCells() []gateIssueCell {
+	return []gateIssueCell{
 		{
 			name: "全閘通過（零帳號資產，帳號解析 Found=false）", gate: "—",
 			userID: 1, role: model.RoleUser, assetID: 1,
@@ -176,7 +174,7 @@ func w10IssueCells() []w10IssueCell {
 		{
 			name: "全閘通過（帳號解析成功＋範圍內）", gate: "—",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				w10SeedAccount(t, db, 1, "root", true)
+				gateSeedAccount(t, db, 1, "root", true)
 			},
 			userID: 1, role: model.RoleUser, assetID: 1,
 			wantStatus: http.StatusOK,
@@ -240,20 +238,20 @@ func w10IssueCells() []w10IssueCell {
 			wantStatus: http.StatusBadRequest, wantCode: apierror.CodeAccountK8sDefaultOnly,
 		},
 		{
-			name: "G-I8 帳號屬於別的資產（D-9 簽發側 404）", gate: "G-I8",
+			name: "G-I8 帳號屬於別的資產（簽發側 404）", gate: "G-I8",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
 				if err := db.Create(&model.Asset{Name: "a2", Protocol: "ssh", Host: "h2", Port: 22, CreatedBy: 2}).Error; err != nil {
 					t.Fatalf("seed asset2: %v", err)
 				}
-				w10SeedAccount(t, db, 2, "other", true)
+				gateSeedAccount(t, db, 2, "other", true)
 			},
 			userID: 1, role: model.RoleUser, assetID: 1, accountID: 1,
 			wantStatus: http.StatusNotFound, wantCode: apierror.CodeAssetAccountNotFound,
 		},
 		{
-			name: "G-I10 帳號不在授權範圍（D-9 簽發側 404，與不存在共用碼）", gate: "G-I10",
+			name: "G-I10 帳號不在授權範圍（簽發側 404，與不存在共用碼）", gate: "G-I10",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				w10SeedAccount(t, db, 1, "root", true)
+				gateSeedAccount(t, db, 1, "root", true)
 				if err := db.Model(&model.AssetAuthorization{}).Where("user_id = ?", 1).
 					Update("accounts", model.AccountScope{"app"}).Error; err != nil {
 					t.Fatalf("narrow scope: %v", err)
@@ -265,7 +263,7 @@ func w10IssueCells() []w10IssueCell {
 		{
 			name: "G-I11 錄影 probe 失敗＋fail-close（非 admin）", gate: "G-I11",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				h.RecordingPath = w10UnwritableRecordingPath(t)
+				h.RecordingPath = gateUnwritableRecordingPath(t)
 				h.RecordingFailClose = func() bool { return true }
 			},
 			userID: 1, role: model.RoleUser, assetID: 1,
@@ -275,7 +273,7 @@ func w10IssueCells() []w10IssueCell {
 		{
 			name: "G-I11 錄影 fail-close 的 admin 豁免（放行＋審計標記）", gate: "G-I11",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				h.RecordingPath = w10UnwritableRecordingPath(t)
+				h.RecordingPath = gateUnwritableRecordingPath(t)
 				h.RecordingFailClose = func() bool { return true }
 			},
 			userID: 2, role: model.RoleAdmin, assetID: 1,
@@ -339,15 +337,15 @@ func w10IssueCells() []w10IssueCell {
 	}
 }
 
-// TestW10CharacterizationMatrixIssue StageIssue 逐格特徵化
-func TestW10CharacterizationMatrixIssue(t *testing.T) {
-	for _, cell := range w10IssueCells() {
+// TestCharacterizationMatrixIssue StageIssue 逐格特徵化
+func TestCharacterizationMatrixIssue(t *testing.T) {
+	for _, cell := range gateIssueCells() {
 		t.Run(cell.name, func(t *testing.T) {
-			h, db := w10Fixture(t)
+			h, db := gateFixture(t)
 			if cell.setup != nil {
 				cell.setup(t, h, db)
 			}
-			status, resp, keys := w10IssueRequest(h, cell.userID, cell.role, cell.assetID, cell.accountID, cell.rawBody)
+			status, resp, keys := gateIssueRequest(h, cell.userID, cell.role, cell.assetID, cell.accountID, cell.rawBody)
 
 			if status != cell.wantStatus {
 				t.Fatalf("[%s] HTTP 狀態不符: got=%d want=%d resp=%v", cell.name, status, cell.wantStatus, resp)
@@ -364,7 +362,7 @@ func TestW10CharacterizationMatrixIssue(t *testing.T) {
 					t.Fatalf("[%s] 被拒者不得同時簽出 token: resp=%v", cell.name, resp)
 				}
 			}
-			w10AssertMeta(t, cell.name, resp, cell.wantMeta)
+			gateAssertMeta(t, cell.name, resp, cell.wantMeta)
 			for _, k := range cell.wantAbsent {
 				if _, ok := resp[k]; ok {
 					t.Fatalf("[%s] 機器欄 %q 不應存在: resp=%v", cell.name, k, resp)
@@ -378,12 +376,12 @@ func TestW10CharacterizationMatrixIssue(t *testing.T) {
 					}
 				}
 			}
-			w10AssertNoSession(t, db, cell.name)
+			gateAssertNoSession(t, db, cell.name)
 		})
 	}
 }
 
-type w10RedeemCell struct {
+type gateRedeemCell struct {
 	name       string
 	gate       string
 	setup      func(t *testing.T, h *Handler, db *gorm.DB) // 於發 token 之前
@@ -399,11 +397,11 @@ type w10RedeemCell struct {
 	wantBurned bool // 兌換後原 token 應已被消費（一次性即焚）
 }
 
-// w10RedeemCells StageRedeemTerminal 矩陣的全部格（涵蓋面自證的資料來源，同 w10IssueCells）
-func w10RedeemCells() []w10RedeemCell {
-	seedRoot := func(t *testing.T, h *Handler, db *gorm.DB) { w10SeedAccount(t, db, 1, "root", true) }
+// gateRedeemCells StageRedeemTerminal 矩陣的全部格（涵蓋面自證的資料來源，同 gateIssueCells）
+func gateRedeemCells() []gateRedeemCell {
+	seedRoot := func(t *testing.T, h *Handler, db *gorm.DB) { gateSeedAccount(t, db, 1, "root", true) }
 
-	return []w10RedeemCell{
+	return []gateRedeemCell{
 		{
 			name: "全閘通過（帳號解析＝預設帳號）抵達撥號", gate: "—",
 			setup: seedRoot,
@@ -478,8 +476,8 @@ func w10RedeemCells() []w10RedeemCell {
 		{
 			name: "G-S6 帳號於簽發後被刪（絕不退回預設帳號）", gate: "G-S6",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				w10SeedAccount(t, db, 1, "root", true)
-				w10SeedAccount(t, db, 1, "app", false)
+				gateSeedAccount(t, db, 1, "root", true)
+				gateSeedAccount(t, db, 1, "app", false)
 			},
 			mutate: func(t *testing.T, h *Handler, db *gorm.DB) {
 				if err := db.Delete(&model.AssetAccount{}, 2).Error; err != nil {
@@ -549,7 +547,7 @@ func w10RedeemCells() []w10RedeemCell {
 		{
 			name: "G-S12 K8s 資產帶指定帳號", gate: "G-S12",
 			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
-				w10SeedAccount(t, db, 1, "root", true)
+				gateSeedAccount(t, db, 1, "root", true)
 				if err := db.Model(&model.Asset{}).Where("id = ?", 1).
 					Update("protocol", model.ProtocolK8s).Error; err != nil {
 					t.Fatalf("set k8s: %v", err)
@@ -560,7 +558,7 @@ func w10RedeemCells() []w10RedeemCell {
 			wantBurned: true,
 		},
 		{
-			name: "G-S13 帳號於簽發後移出授權範圍（D-9 兌換側 403）", gate: "G-S13",
+			name: "G-S13 帳號於簽發後移出授權範圍（兌換側 403）", gate: "G-S13",
 			setup: seedRoot,
 			mutate: func(t *testing.T, h *Handler, db *gorm.DB) {
 				if err := db.Model(&model.AssetAuthorization{}).Where("user_id = ?", 1).
@@ -575,11 +573,11 @@ func w10RedeemCells() []w10RedeemCell {
 	}
 }
 
-// TestW10CharacterizationMatrixRedeemTerminal StageRedeemTerminal 逐格特徵化
-func TestW10CharacterizationMatrixRedeemTerminal(t *testing.T) {
-	for _, cell := range w10RedeemCells() {
+// TestCharacterizationMatrixRedeemTerminal StageRedeemTerminal 逐格特徵化
+func TestCharacterizationMatrixRedeemTerminal(t *testing.T) {
+	for _, cell := range gateRedeemCells() {
 		t.Run(cell.name, func(t *testing.T) {
-			h, db := w10Fixture(t)
+			h, db := gateFixture(t)
 			if cell.setup != nil {
 				cell.setup(t, h, db)
 			}
@@ -598,7 +596,7 @@ func TestW10CharacterizationMatrixRedeemTerminal(t *testing.T) {
 			if cols == "" {
 				cols, rows = "80", "24"
 			}
-			status, resp := w10RedeemSSH(h, token, cols, rows)
+			status, resp := gateRedeemSSH(h, token, cols, rows)
 
 			if status != cell.wantStatus {
 				t.Fatalf("[%s] HTTP 狀態不符: got=%d want=%d resp=%v", cell.name, status, cell.wantStatus, resp)
@@ -606,18 +604,18 @@ func TestW10CharacterizationMatrixRedeemTerminal(t *testing.T) {
 			if got, _ := resp["code"].(string); got != string(cell.wantCode) {
 				t.Fatalf("[%s] 拒絕碼不符: got=%q want=%q resp=%v", cell.name, got, cell.wantCode, resp)
 			}
-			w10AssertMeta(t, cell.name, resp, cell.wantMeta)
+			gateAssertMeta(t, cell.name, resp, cell.wantMeta)
 			for _, k := range cell.wantAbsent {
 				if _, ok := resp[k]; ok {
 					t.Fatalf("[%s] 機器欄 %q 不應存在: resp=%v", cell.name, k, resp)
 				}
 			}
 			// 副作用一：任何閘拒絕都不得留下 session 列
-			w10AssertNoSession(t, db, cell.name)
+			gateAssertNoSession(t, db, cell.name)
 			// 副作用二：一次性即焚——token 於 Resolve 當下即被消費，
 			// 之後任何一道閘拒絕都不會把它還回去（重放必然 401 invalid）
 			if cell.wantBurned {
-				replayStatus, replayResp := w10RedeemSSH(h, token, "80", "24")
+				replayStatus, replayResp := gateRedeemSSH(h, token, "80", "24")
 				if replayStatus != http.StatusUnauthorized ||
 					replayResp["code"] != string(apierror.CodeConnectTokenInvalid) {
 					t.Fatalf("[%s] token 於兌換後必須已焚: status=%d resp=%v", cell.name, replayStatus, replayResp)
@@ -627,16 +625,16 @@ func TestW10CharacterizationMatrixRedeemTerminal(t *testing.T) {
 	}
 }
 
-// TestW10MatrixCoverageIsDeclared 涵蓋面自證：**涵蓋集合從實際矩陣格機器擷取**
-// （`w10IssueCells()`／`w10RedeemCells()` 的 gate 欄），與基準表閘號、刻意不涵蓋登記表
+// TestMatrixCoverageIsDeclared 涵蓋面自證：**涵蓋集合從實際矩陣格機器擷取**
+// （`gateIssueCells()`／`gateRedeemCells()` 的 gate 欄），與基準表閘號、刻意不涵蓋登記表
 // 三方比對，任一方向不一致即紅。
 //
-// **修法背景（W10 獨立驗收 F3）**：原版的 `covered` 由硬編碼閘表扣掉 `uncovered` 推導，
+// **修法背景**：原版的 `covered` 由硬編碼閘表扣掉 `uncovered` 推導，
 // 與矩陣實際有幾格毫無耦合——刪光所有格子它照樣綠，`len(covered)>=24` 恆真。
 // 現版反過來：先擷取實跑格宣稱的閘號，再要求它與「基準表 − 不涵蓋」逐一相等。
 // 少一道閘（格被刪／閘號改錯）與多一道閘（新增格卻沒更新登記表、或某閘被移出不涵蓋
 // 卻沒補理由）**兩個方向都紅**。
-func TestW10MatrixCoverageIsDeclared(t *testing.T) {
+func TestMatrixCoverageIsDeclared(t *testing.T) {
 	// 基準表 §1.1／§1.2 的全部閘編號
 	issueGates := []string{"G-I1", "G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7",
 		"G-I8", "G-I9", "G-I10", "G-I11", "G-I12", "G-I13", "G-I14"}
@@ -682,10 +680,10 @@ func TestW10MatrixCoverageIsDeclared(t *testing.T) {
 		}
 		covered[gate] = true
 	}
-	for _, c := range w10IssueCells() {
+	for _, c := range gateIssueCells() {
 		collect("簽發", c.name, c.gate)
 	}
-	for _, c := range w10RedeemCells() {
+	for _, c := range gateRedeemCells() {
 		collect("SSH 兌換", c.name, c.gate)
 	}
 	if cellCount < 24 {

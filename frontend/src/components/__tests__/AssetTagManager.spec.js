@@ -41,7 +41,7 @@ const mountManager = () =>
     global: { plugins: [ElementPlus], stubs: { 'el-dialog': dialogStub } },
   })
 
-describe('AssetTagManager 標籤治理（authz-tag-node-filters D8）', () => {
+describe('AssetTagManager 標籤治理', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

@@ -20,7 +20,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 錯誤碼參數化的 wire 契約（backend-i18n-unification 收尾）。
+// 錯誤碼參數化的 wire 契約。
 //
 // A 批大掃除把 err.Error() 直傳改為機器碼時丟棄了動態細節；其中三組是使用者
 // 行動必需資訊（要改成多少／是不是自己漏簽／該修哪一個鍵），已改由 service 的

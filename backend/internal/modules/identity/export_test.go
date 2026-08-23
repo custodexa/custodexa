@@ -1,6 +1,6 @@
 package identity
 
-// 跨包測試接縫（modular-architecture W8 9.9；W8 獨立驗收後改為 `export_test.go` 形態）。
+// 跨包測試接縫（`export_test.go` 形態）。
 //
 // # 為何需要這個檔
 //
@@ -10,9 +10,9 @@ package identity
 //
 // # 為何是 export_test.go 而不是生產檔
 //
-// W8 初版把這些接縫寫在生產檔 `testseams.go`，代價是 **16 個純為測試而生的符號
+// 初版把這些接縫寫在生產檔 `testseams.go`，代價是 **16 個純為測試而生的符號
 // 永久留在 identity 的公開 API 上**——搬包降低耦合的同時把 private 實作細節
-// 固化成跨包介面，正是 W2 教訓所指的反面。
+// 固化成跨包介面，正是搬包本意的反面。
 //
 // Go 的標準解法是 `export_test.go`：本檔屬 `package identity`（故看得見未匯出成員），
 // 但因為是 `_test.go`，**只在測試 identity 這個包時被編進去**——對任何其他包
@@ -134,7 +134,7 @@ func WithUserCredentialLockTxForTest(tx *gorm.DB, userID uint, fn func(tx *gorm.
 	return withUserCredentialLockTx(tx, userID, fn)
 }
 
-// ── 能力鎖持有狀態的唯讀探針（W9 10.3）────────────────────────────
+// ── 能力鎖持有狀態的唯讀探針 ────────────────────────────
 
 // ProviderLockHeldForTest／UserCredentialLockHeldForTest 回報指定 key 的能力鎖
 // 此刻是否被任何人持有。

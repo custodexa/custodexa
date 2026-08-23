@@ -44,7 +44,7 @@ const setUser = (roles, isApprover = roles.includes('approver')) => {
   )
 }
 
-// header 現有兩個 dropdown（語言切換＋使用者選單，i18n-foundation 2.1）：
+// header 現有兩個 dropdown（語言切換＋使用者選單）：
 // 依內容鎖定，不可再用「第一個 ElDropdown」
 const userDropdown = (wrapper) =>
   wrapper
@@ -77,7 +77,7 @@ describe('MainLayout sidebar', () => {
   })
 
   it('admin sees access-control entry and renamed transmission entry', async () => {
-    // settings-domain-restructure：存取管控新項在系統管理群組；通道加密清冊更名傳輸安全
+    // 存取管控新項在系統管理群組；通道加密清冊更名傳輸安全
     setUser(['admin'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
@@ -101,12 +101,12 @@ describe('MainLayout sidebar', () => {
     expect(text).not.toContain('系統設定')
     expect(text).not.toContain('資產授權')
     expect(text).not.toContain('使用者管理')
-    // user 視角以「我的資產」呈現同一頁（navigation-ia D6）
+    // user 視角以「我的資產」呈現同一頁
     expect(text).not.toContain('資產管理')
     expect(text).toContain('我的資產')
   })
 
-  // —— session 管理入口收斂＋自助入口（session-access-scoping 3.3）——
+  // —— session 管理入口收斂＋自助入口 ——
 
   it('plain user sees my-connections entry instead of session management', () => {
     setUser(['user'])
@@ -139,7 +139,7 @@ describe('MainLayout sidebar', () => {
     expect(text).not.toContain('我的連線')
   })
 
-  it('hides the entire audit group for plain user (least privilege D9)', async () => {
+  it('hides the entire audit group for plain user (least privilege)', async () => {
     setUser(['user'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
@@ -161,7 +161,7 @@ describe('MainLayout sidebar', () => {
     expect(text).not.toContain('系統設定')
   })
 
-  // —— navigation-ia：人設矩陣新增斷言 ——
+  // —— 人設矩陣新增斷言 ——
 
   it('workspace entry visible to every persona', async () => {
     for (const roles of [['admin'], ['auditor'], ['user'], ['user', 'approver']]) {
@@ -201,16 +201,16 @@ describe('MainLayout sidebar', () => {
     expect(text).toContain('我的連線')
   })
 
-  // W7b 對抗輪（High）：D-12 後審核端點對僅具 admin 者一律 403。入口留著只會把他
+  // 審核端點對僅具 admin 者一律 403。入口留著只會把他
   // 帶到一個四頁籤全 403、卻渲染成「目前沒有等候審核的申請」的假空態頁
-  it('僅具 admin 者看不到審核中心入口（D-12 收斂）', async () => {
+  it('僅具 admin 者看不到審核中心入口', async () => {
     setUser(['admin'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).not.toContain('審核中心')
   })
 
-  // 群組即資格（D-7）：roles 不含 approver，但後端 is_approver 為真
+  // 群組即資格：roles 不含 approver，但後端 is_approver 為真
   it('審核方群組成員（roles 無 approver）仍看得到審核中心', async () => {
     setUser(['user'], true)
     const wrapper = mountLayout()
@@ -218,7 +218,7 @@ describe('MainLayout sidebar', () => {
     expect(wrapper.text()).toContain('審核中心')
   })
 
-  // —— i18n-foundation 2.1：語言切換 ——
+  // —— 語言切換 ——
 
   it('switches menu language in place and persists ot-lang (no reload)', async () => {
     setUser(['admin'])
@@ -281,7 +281,7 @@ describe('MainLayout sidebar', () => {
     userDropdown(wrapper).vm.$emit('command', 'logout')
     await flushPromises()
 
-    // 登出先請後端撤銷 refresh 憑證（D6）。憑證由瀏覽器以 httpOnly cookie 自動附帶，
+    // 登出先請後端撤銷 refresh 憑證。憑證由瀏覽器以 httpOnly cookie 自動附帶，
     // 前端不再持有也就不再傳參——傳參版本等於憑證仍存在於 script 可讀的地方
     expect(logoutMock).toHaveBeenCalledWith()
     expect(localStorage.getItem('token')).toBeNull()

@@ -21,15 +21,14 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// LDAPDirectoryService 的 singleton CRUD、存檔閘與三態解析覆蓋
-// （ldap-settings-migration tasks 2.1／2.4／2.7）。
+// LDAPDirectoryService 的 singleton CRUD、存檔閘與三態解析覆蓋。
 //
 // 測試庫以 AutoMigrate 建表——**刻意的例外**，同 newLDAPSeedDB 的理由：生產走
 // versioned migration（CHECK 約束需求），本檔驗的是服務層語義，不依賴 CHECK。
 // DB 層不變式的驗證在 repository 的 pg-gated 測試。
 
 // ldapRiskProvider／ldapRiskProviderState／newTransmissionSvc 測試助手。
-// 原宣告於 transmission_policy_service_test.go，該檔隨 W3 遷入 internal/modules/policy；
+// 原宣告於 transmission_policy_service_test.go，該檔已遷入 internal/modules/policy；
 // 本包測試仍在用，故保留同名同義的宣告（實作逐行相同，只調整型別限定）。
 func ldapRiskProvider(view policy.LDAPRiskView) func() policy.LDAPRiskResult {
 	return func() policy.LDAPRiskResult {
@@ -63,7 +62,7 @@ func newTransmissionSvc(t *testing.T, provider func() policy.LDAPRiskResult) *po
 }
 
 // riskKeys 取風險項 key 清單（測試比對用）。
-// 原宣告於 transmission_policy_service_test.go，該檔隨 W3 遷入 internal/modules/policy；
+// 原宣告於 transmission_policy_service_test.go，該檔已遷入 internal/modules/policy；
 // 本包測試仍在用，故保留同名同義的宣告。
 func riskKeys(risks []policy.RiskItem) []string {
 	out := make([]string, 0, len(risks))
@@ -173,7 +172,7 @@ func ldapDirAuditOf(t *testing.T, db *gorm.DB, event string) map[string]any {
 	return nil
 }
 
-// ── 密碼語義四格（D3）───────────────────────────────────────────────────
+// ── 密碼語義四格 ───────────────────────────────────────────────────
 
 func TestLDAPDirectoryBindPasswordSemantics(t *testing.T) {
 	t.Run("空密碼沿用既存", func(t *testing.T) {
@@ -330,7 +329,7 @@ func TestLDAPDirectoryBindPasswordSemantics(t *testing.T) {
 	})
 }
 
-// ── 存檔閘三格（D6 / 2.4）───────────────────────────────────────────────
+// ── 存檔閘三格（2.4）───────────────────────────────────────────────
 
 // newLDAPGateSvc 建服務並接上真的 TransmissionPolicyService（非自製 fake——
 // 閘的判定語義是既有共用契約，用 fake 等於驗自己寫的假設）
@@ -414,7 +413,7 @@ func TestLDAPDirectorySaveGate(t *testing.T) {
 	})
 }
 
-// ── 三態解析（D2 / 2.7）─────────────────────────────────────────────────
+// ── 三態解析（2.7）─────────────────────────────────────────────────
 
 // ldapDecryptFailCodec 模擬金鑰事故：加密正常、解密恆失敗
 type ldapDecryptFailCodec struct{ inner crypto.ColumnCodec }
@@ -551,7 +550,7 @@ func TestLDAPRisksOfMatchesTransmissionPolicy(t *testing.T) {
 	}
 }
 
-// TestLDAPRisksThreeStates 三態下的風險回報（D2）：只有解析成功才判定，
+// TestLDAPRisksThreeStates 三態下的風險回報：只有解析成功才判定，
 // 未設定與故障皆不回報風險項——捏造「無風險」與捏造風險同樣不誠實，
 // 故障的可見性由清冊的專屬 note 碼承擔（見 TestInventoryLDAPResolveStates）
 func TestLDAPRisksThreeStates(t *testing.T) {
@@ -567,7 +566,7 @@ func TestLDAPRisksThreeStates(t *testing.T) {
 	}
 }
 
-// ── 刪除與密文抹除（D3）─────────────────────────────────────────────────
+// ── 刪除與密文抹除 ─────────────────────────────────────────────────
 
 func TestLDAPDirectoryDeleteWipesCiphertext(t *testing.T) {
 	svc, db := newLDAPDirectorySvc(t)
@@ -606,7 +605,7 @@ func TestLDAPDirectoryDeleteWipesCiphertext(t *testing.T) {
 	}
 }
 
-// ── 審計：URL 變更為高權重事件（D11）────────────────────────────────────
+// ── 審計：URL 變更為高權重事件 ────────────────────────────────────
 
 func TestLDAPDirectoryURLChangeAudit(t *testing.T) {
 	svc, db := newLDAPDirectorySvc(t)
@@ -701,7 +700,7 @@ func TestLDAPDirectoryInvalidURLRejectedWithoutLeak(t *testing.T) {
 	}
 }
 
-// ── 並發線性化（D1）─────────────────────────────────────────────────────
+// ── 並發線性化 ─────────────────────────────────────────────────────
 
 // TestLDAPDirectoryConcurrentUpsert 兩個並發 Upsert 只有一個成功寫入，
 // 另一個回可重試的機器碼（**非 500**）。
@@ -807,11 +806,11 @@ func TestLDAPDirectoryLockUsesTransaction(t *testing.T) {
 	}
 }
 
-// ── 安全與健壯性補強（codex 對抗審查 F2／F3／F5／F6）─────────────────────
+// ── 安全與健壯性補強─────────────────────
 
 // captureLDAPLog 攔截 operational log，回傳「取得目前輸出」的函式。
 //
-// 敏感值是否落進日誌是本批多格的**直接斷言對象**：日誌的存取面遠大於密文
+// 敏感值是否落進日誌是多格測試的**直接斷言對象**：日誌的存取面遠大於密文
 // 本身，「不外傳」與「不入日誌」必須分別驗證
 func captureLDAPLog(t *testing.T) func() string {
 	t.Helper()
@@ -879,7 +878,7 @@ func ldapCompleteRow(enc string) *model.LDAPDirectory {
 	}
 }
 
-// TestLDAPDirectoryNilGateFailsClosed（F2）閘未接線時存檔一律拒絕。
+// TestLDAPDirectoryNilGateFailsClosed 閘未接線時存檔一律拒絕。
 //
 // **突變辨識力的關鍵在於請求本身無傳輸風險**（ldaps）：舊行為（nil＝放行）下
 // 這個請求會成功存檔，故把 fail-close 改回 `if s.gate != nil` 即轉紅。
@@ -916,7 +915,7 @@ func TestLDAPDirectoryNilGateFailsClosed(t *testing.T) {
 	}
 }
 
-// TestLDAPDirectoryCodecErrorSanitized（F3）加解密邊界的錯誤不得夾帶密文／明文。
+// TestLDAPDirectoryCodecErrorSanitized 加解密邊界的錯誤不得夾帶密文／明文。
 //
 // 斷言分兩面：**外傳的錯誤鏈**與 **operational log**——兩者的存取面不同，
 // 只驗其一會漏掉另一條管道
@@ -977,7 +976,7 @@ func TestLDAPDirectoryCodecErrorSanitized(t *testing.T) {
 	})
 }
 
-// TestLDAPNilDependencyResolvesFailedNotPanic（F5）nil 依賴落 failed 三態而非 panic。
+// TestLDAPNilDependencyResolvesFailedNotPanic nil 依賴落 failed 三態而非 panic。
 //
 // factory 在 nil 依賴下能成功建出 closure 是 Go 的既有語義，問題在於錯誤被
 // 延遲到**實際登入當下**才以 panic 形態爆發——那既不是三態的任何一格，也讓
@@ -1036,14 +1035,14 @@ func TestLDAPNilDependencyResolvesFailedNotPanic(t *testing.T) {
 	})
 }
 
-// TestLDAPDirectoryEnabledIncompleteRowIsFailed（F6）啟用態缺必要欄位＝failed。
+// TestLDAPDirectoryEnabledIncompleteRowIsFailed 啟用態缺必要欄位＝failed。
 //
 // migration、手工 SQL 或資料損壞可留下 enabled=true 但欄位殘缺的列。該列在
 // 解密路徑上毫無異常（沒有密文就不會解密失敗），舊行為一路回 OK、登入
 // resolver 隨即回 ready——形成設計只承認三態之外的第四狀態「存在但無效」。
 //
 // **必須是 failed 而非 unconfigured**：後者會把資料損壞偽裝成「管理員沒設定」，
-// 與 D2 禁止的併吞形態同一件事
+// 與本檔禁止的併吞形態同一件事
 func TestLDAPDirectoryEnabledIncompleteRowIsFailed(t *testing.T) {
 	cases := map[string]func(*model.LDAPDirectory){
 		"密文為空":          func(r *model.LDAPDirectory) { r.BindPasswordEnc = "" },
@@ -1068,7 +1067,7 @@ func TestLDAPDirectoryEnabledIncompleteRowIsFailed(t *testing.T) {
 
 			res := svc.ResolveDialSnapshot(context.Background())
 			if res.State == policy.LDAPResolveUnconfigured {
-				t.Fatal("殘缺列被偽裝為未設定（D2 禁止的併吞形態）")
+				t.Fatal("殘缺列被偽裝為未設定（禁止的併吞形態）")
 			}
 			if res.State != policy.LDAPResolveFailed {
 				t.Fatalf("state = %q, want failed", res.State)

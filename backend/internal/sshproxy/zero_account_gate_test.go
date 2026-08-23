@@ -7,8 +7,8 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TestSSHRedeemZeroAccountAsset 零帳號資產 fail-close（asset-multi-account 階段 2，
-// codex HIGH）：終端入口涵蓋 SSH／K8s／DB CLI 三種目標。SSH 原本靠「無可用認證
+// TestSSHRedeemZeroAccountAsset 零帳號資產 fail-close：
+// 終端入口涵蓋 SSH／K8s／DB CLI 三種目標。SSH 原本靠「無可用認證
 // 方法」擋得住，但 K8s 的空 token 會走匿名 ServiceAccount、DB CLI 的空密碼可能
 // 命中 trust 認證或落入互動式提示——三者統一在兌換點擋。
 //

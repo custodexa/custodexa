@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 剪貼簿證物讀取的留痕守衛（clipboard-read-provenance，PCI 10.2.1.3）。
+// 剪貼簿證物讀取的留痕守衛（PCI 10.2.1.3）。
 //
 // **釘子打在哪**：GET /api/v1/sessions/:id/clipboard-events 取走的是
 // ClipboardEvent.Content——64KB 明文欄，是調查流程中的證物。稽核歷程若只記得到

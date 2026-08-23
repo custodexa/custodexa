@@ -9,7 +9,7 @@ import { SUPPORTED_LOCALES, LOCALE_LABELS } from '@/i18n'
 // AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
 enableAutoUnmount(afterEach)
 
-// kek-provider-modularization D6：封印期解封頁（不需登入即可使用）
+// 封印期解封頁（不需登入即可使用）
 
 const getSealStatusMock = vi.fn()
 const unsealMock = vi.fn()
@@ -128,7 +128,7 @@ describe('Unseal 狀態呈現（四態）', () => {
     expect(wrapper.text()).toMatch(/剩餘 01:(29|30)/)
   })
 
-  it('逾時後顯示「以第一次輸入的材料重試」指引（D6.2.4）', async () => {
+  it('逾時後顯示「以第一次輸入的材料重試」指引', async () => {
     getSealStatusMock.mockResolvedValue(
       statusFixture({ timeout_total: 1, timeout_retry_hint_code: 'SEAL_STAGE2_TIMEOUT' })
     )
@@ -150,7 +150,7 @@ describe('Unseal 狀態呈現（四態）', () => {
   })
 })
 
-describe('Unseal 初始化與一般解封的視覺區分（D6.3）', () => {
+describe('Unseal 初始化與一般解封的視覺區分', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

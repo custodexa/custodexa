@@ -25,7 +25,7 @@ func TestBootStateIsSealed(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 格 2：CAS 進入 unsealing 發生在任何驗證之前（D6.2.1）
+// 格 2：CAS 進入 unsealing 發生在任何驗證之前
 // ---------------------------------------------------------------------------
 
 func TestAcquireEntersUnsealingBeforeAnyVerification(t *testing.T) {

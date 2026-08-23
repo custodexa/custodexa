@@ -16,9 +16,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// 資產帳號（asset-multi-account 階段 2）的服務層：帳號自此為「連線 username ＋
+// 資產帳號的服務層：帳號自此為「連線 username ＋
 // 憑證」的權威來源，Asset 內嵌憑證欄位（password_enc/private_key_enc）自本階段起
-// 凍結不再寫入（D1「單向切換」）。assets.username 與 has_password/has_private_key
+// 凍結不再寫入（單向切換）。assets.username 與 has_password/has_private_key
 // 仍隨預設帳號鏡射——前者是列表/審計 diff 的顯示欄，後者是 UI 的「已設定憑證」
 // 標記，兩者都不是憑證本體，凍結它們只會讓既有畫面說謊。
 
@@ -27,22 +27,22 @@ var (
 	ErrAssetAccountNotFound = errors.New("資產帳號不存在或不屬於該資產")
 	// ErrAssetAccountUsernameExists 同資產同名帳號（DB partial unique index 的服務層對應）
 	ErrAssetAccountUsernameExists = errors.New("同一資產下已有同名帳號")
-	// ErrAssetAccountDefaultMissing 資產有帳號卻無預設帳號（D8 不變式被破壞）。
+	// ErrAssetAccountDefaultMissing 資產有帳號卻無預設帳號（不變式被破壞）。
 	// 不靜默挑一筆頂替——那會讓連線悄悄用到非預期身分，寧可擋下要求人工修正
 	ErrAssetAccountDefaultMissing = errors.New("資產帳號資料異常：有帳號但無預設帳號")
-	// ErrAssetAccountDefaultRequired 資產仍有其他帳號時不可刪除預設帳號（D8「有帳號必有 default」）
+	// ErrAssetAccountDefaultRequired 資產仍有其他帳號時不可刪除預設帳號（「有帳號必有 default」）
 	ErrAssetAccountDefaultRequired = errors.New("資產仍有其他帳號時不可刪除預設帳號，請先指定新的預設帳號")
 	// ErrAssetAccountDefaultConflict 併發下 default partial unique index 衝突：
 	// 兩個交易同時為零帳號資產建首筆（皆判定為 default），或 default 切換交錯。
-	// 與「同名帳號」分流，否則回應會誤導成使用者根本沒犯的錯（codex LOW／opus LOW-5）
+	// 與「同名帳號」分流，否則回應會誤導成使用者根本沒犯的錯
 	ErrAssetAccountDefaultConflict = errors.New("預設帳號同時被其他操作變更，請重試")
-	// ErrAssetAccountSourceNotFound 複製來源帳號不存在（D10「從其他資產帳號複製」）
+	// ErrAssetAccountSourceNotFound 複製來源帳號不存在（「從其他資產帳號複製」）
 	ErrAssetAccountSourceNotFound = errors.New("複製來源帳號不存在")
 	// ErrAssetNoUsableAccount 資產無可用帳號（零帳號）卻要建線／取憑證。
 	// 連線入口一律 fail-close：空 username＋空密碼送進 guacd／dbproxy／k8s client
 	// 會變成「匿名或免密嘗試」——redis 無密碼即登入、mysql/postgres 可能命中 trust
 	// 認證、k8s 走匿名 ServiceAccount。受管連線的前提是有受管憑證，沒有就不連
-	// （codex HIGH，SSH 與 SFTP 原本靠「無可用認證方法」擋，其餘協議沒有這道網）
+	// （SSH 與 SFTP 原本靠「無可用認證方法」擋，其餘協議沒有這道網）
 	ErrAssetNoUsableAccount = errors.New("資產未設定可用帳號憑證")
 	// ErrAssetAccountUsernameInvalid 帳號名稱含控制字元／冒號。
 	// 非美觀問題：username 會進 chpasswd 的 `user:password` stdin 條目（change_secret_runner），
@@ -55,7 +55,7 @@ var (
 	ErrAssetAccountUsernameTooLong = errors.New("帳號名稱超過長度上限（100 字元）")
 	// ErrAssetAccountNoteTooLong 逾 model 欄位長度（size:255）
 	ErrAssetAccountNoteTooLong = errors.New("帳號備註超過長度上限（255 字元）")
-	// ErrAssetAccountAuthMethodInvalid auth_method 值域外（mssql-web-cli D3）
+	// ErrAssetAccountAuthMethodInvalid auth_method 值域外
 	ErrAssetAccountAuthMethodInvalid = errors.New("auth_method 僅允許 sql 或 domain")
 	// ErrAssetAccountAuthMethodUnsupported 值合法但本版做不到：go-sqlcmd 未引入
 	// gokrb5、ActiveDirectoryIntegrated 在 Linux 未實作，域認證在此工具鏈下根本不通。
@@ -70,7 +70,7 @@ const (
 
 // AssetCredentials 一次連線所需的「資產 ＋ 帳號」解析結果（階段 2 起的憑證出口）。
 //
-// 為何是單一結構而非多回傳值：憑證與 username 必須來自**同一帳號**（D6），
+// 為何是單一結構而非多回傳值：憑證與 username 必須來自**同一帳號**，
 // 分開回傳等於允許呼叫端把 A 帳號的密碼配 B 帳號的 username 送出去。
 type AssetCredentials struct {
 	Asset *model.Asset
@@ -120,13 +120,13 @@ type CreateAssetAccountRequest struct {
 	PrivateKey string `json:"private_key"`
 	IsDefault  bool   `json:"is_default"`
 	Privileged bool   `json:"privileged"`
-	// AuthMethod 認證類型（空＝sql）。1.0 只接受 sql，domain 明確拒絕（D3）
+	// AuthMethod 認證類型（空＝sql）。1.0 只接受 sql，domain 明確拒絕
 	AuthMethod string `json:"auth_method"`
 	Note       string `json:"note"`
 
-	// CopyFromAccountID 從其他資產的帳號複製 username 與憑證（D10 建號快捷）。
+	// CopyFromAccountID 從其他資產的帳號複製 username 與憑證（建號快捷）。
 	// **密文原樣複製**、不解密重加密：信封密文自帶 DEK 版本前綴、無 AAD 列綁定，
-	// 跨列可解（D1/D12）。顯式帶入的 username/password/private_key 覆蓋複製值。
+	// 跨列可解。顯式帶入的 username/password/private_key 覆蓋複製值。
 	CopyFromAccountID uint `json:"copy_from_account_id"`
 }
 
@@ -141,30 +141,30 @@ type UpdateAssetAccountRequest struct {
 	Note       *string `json:"note"`
 }
 
-// AssetAccountService 帳號 CRUD（D7a：全部變更走專屬審計，絕不落密文／明文）
+// AssetAccountService 帳號 CRUD（全部變更走專屬審計，絕不落密文／明文）
 type AssetAccountService struct {
 	// assets 提供 crypto codec 與資產存在性檢查。刻意共用 AssetService 而非自持
 	// codec：main 以 SetCodec 把資產服務升級為信封 key manager，另持一份 codec
 	// 會讓帳號憑證在管理員沒察覺時走 legacy AES 加密
 	assets *AssetService
-	// authz 跨資產複製建號的來源可見性判定（asset-multi-account 階段 2 backlog，
+	// authz 跨資產複製建號的來源可見性判定（階段 2 列為待辦，
 	// 階段 4 補上）。nil＝不判定，僅供未涉及複製路徑的既有單測建構；
 	// 生產組裝一律注入（main.go）
 	//
-	// **W6：型別由 `*AssetAuthorizationService` 改為消費者側宣告的窄介面**
+	// **型別由 `*AssetAuthorizationService` 改為消費者側宣告的窄介面**
 	// （K6 偏好的形式）。asset 只需要「這個人看得見那台資產嗎」這一個問句；
-	// 綁具體型別會產生 asset→authz 出向邊，而 authz 依 R5 排在 asset 之後。
+	// 綁具體型別會產生 asset→authz 出向邊，而 authz 的遷入順序排在 asset 之後。
 	// 介面**刻意不匯出**：外部呼叫端傳的是具體型別，不需要指名這個介面。
 	authz assetViewPermissionChecker
-	// crypto 憑證加解密（modular-architecture W6 6.4／SD-6）。
+	// crypto 憑證加解密。
 	//
 	// **不再穿透 `s.assets.crypto`**：穿透讓 asset 服務的未匯出欄位成為本服務的
 	// 隱性依賴，搬包後即編譯不過；且它把「兩者必須用同一把 codec」寄託在
 	// 「碰巧共用同一個物件」上。改為由組裝根注入**同一個** codec 實例——
 	// 保證不變、依賴顯式。原註解所擔心的「SetCodec 事後覆寫使兩者分歧」在
-	// D3 職 3 拆解後已不存在（AssetService 已無 SetCodec）。
+	// 三職拆解後已不存在（AssetService 已無 SetCodec）。
 	crypto crypto.ColumnCodec
-	// auditTx 交易內審計落地面（W6 6.1，T-2 收口）；nil 即 fail-close。
+	// auditTx 交易內審計落地面（T-2 收口）；nil 即 fail-close。
 	auditTx port.TxSink
 }
 
@@ -174,7 +174,7 @@ type assetViewPermissionChecker interface {
 }
 
 // NewAssetAccountService 建立帳號服務。
-// codec 與 auditTx 由組裝根注入（W6 6.4／6.1）；codec SHALL 與 assets 用同一個實例。
+// codec 與 auditTx 由組裝根注入；codec SHALL 與 assets 用同一個實例。
 func NewAssetAccountService(assets *AssetService, codec crypto.ColumnCodec, auditTx port.TxSink) *AssetAccountService {
 	return &AssetAccountService{assets: assets, crypto: codec, auditTx: auditTx}
 }
@@ -186,8 +186,7 @@ func (s *AssetAccountService) WithAuthorization(authz assetViewPermissionChecker
 	return s
 }
 
-// ErrAssetAccountSourceForbidden 複製來源帳號所屬資產對操作者不可見
-// （asset-multi-account D10）。
+// ErrAssetAccountSourceForbidden 複製來源帳號所屬資產對操作者不可見。
 //
 // 為何需要這道檢查：`copy_from_account_id` 只需對**目標**資產有 asset:update，
 // 來源帳號卻可以是任何資產的——沒有這道判定，一個只管得到自己那台的管理員
@@ -201,7 +200,7 @@ var ErrAssetAccountSourceForbidden = errors.New("複製來源帳號所屬資產�
 // resolveAssetAccount 取指定帳號（accountID=0＝取預設）。回傳 (nil, nil) 僅代表
 // 「該資產零帳號」——原本即無憑證的資產，屬合法狀態（spec「零憑證資產零帳號」）。
 //
-// fail-close（D3 同型）：指定 accountID 時以 (id, asset_id) 複合條件現查，
+// fail-close（與 AssetService 同型）：指定 accountID 時以 (id, asset_id) 複合條件現查，
 // 帳號不存在、已軟刪、或屬於別的資產一律回錯，**不退回預設帳號**——靜默退回
 // 等於讓「跨資產 account id 注入」拿到目標資產的預設憑證還連得上。
 func resolveAssetAccount(db *gorm.DB, assetID, accountID uint) (*model.AssetAccount, error) {
@@ -235,7 +234,7 @@ func resolveAssetAccount(db *gorm.DB, assetID, accountID uint) (*model.AssetAcco
 	return nil, ErrAssetAccountDefaultMissing
 }
 
-// VerifyAccountBinding 驗證連線帳號的客體綁定（asset-multi-account D3）：
+// VerifyAccountBinding 驗證連線帳號的客體綁定：
 // 以 (id, asset_id, deleted_at IS NULL) DB 現查該帳號確實隸屬該資產。
 //
 // accountID=0（預設帳號）恆通過——預設帳號的解析與零帳號 fail-close 屬取憑證
@@ -260,21 +259,21 @@ func liveAccountCount(db *gorm.DB, assetID uint) (int64, error) {
 
 // ValidateAccountUsername 帳號名稱驗證
 //
-// **W6 匯出**（R5 已預告「asset 先於 authz 的 ValidateAccountUsername 匯出面」）：
+// **匯出**（asset 先於 authz 遷入，故需要 ValidateAccountUsername 的匯出面）：
 // 唯一跨模組消費者是 authz 的 `asset_authorization_service.go:214`——授權列的帳號
 // 範圍寫入前要用**同一套**規則驗名字。複製一份規則到 authz 側等於製造第二個會漂移的
 // 驗證器，而這條規則的威脅面是 chpasswd stdin 與審計快照，兩份規則分歧即是漏洞。
 // 舊註解如下：
 // validateAccountUsername 帳號名稱驗證（空字串合法：VNC/Redis/K8s 等無 username 協議）。
 //
-// 拒全部 C0/C1 控制字元＋DEL＋冒號（codex LOW）：原本只擋 CR/LF/NUL/冒號，
+// 拒全部 C0/C1 控制字元＋DEL＋冒號：原本只擋 CR/LF/NUL/冒號，
 // 但 tab／ESC 等一樣會進 SSH 認證、UI 與審計快照——ESC 序列可操縱讀 log 的終端，
 // 與 apierror 的 logSafe 同一威脅面，在入口擋掉最省事。
 func ValidateAccountUsername(username string) error {
 	if strings.ContainsRune(username, ':') {
 		return ErrAssetAccountUsernameInvalid
 	}
-	// 保留字命名空間（codex 階段 4 medium）：授權帳號範圍是 username 字串清單，
+	// 保留字命名空間：授權帳號範圍是 username 字串清單，
 	// 別名與真名共處同一命名空間（`@ALL` 是別名、`root` 是真名，兩者同欄同型別）。
 	// 若容許真實帳號叫 `@ALL`，管理員「只授權這個帳號」會被正規化解讀成「全部帳號」
 	// ——一個純命名巧合直接變成溢授。
@@ -304,7 +303,7 @@ func validateAccountNote(note string) error {
 	return nil
 }
 
-// AuthMethodSQL／AuthMethodDomain 帳號認證類型值域（mssql-web-cli D3）
+// AuthMethodSQL／AuthMethodDomain 帳號認證類型值域
 const (
 	AuthMethodSQL    = "sql"
 	AuthMethodDomain = "domain"
@@ -366,7 +365,7 @@ func (s *AssetAccountService) Get(assetID, accountID uint) (*AssetAccountDTO, er
 	return NewAssetAccountDTO(account), nil
 }
 
-// lockAssetForAccountMutation 以資產列為互斥點序列化該資產的全部帳號變更（codex HIGH）。
+// lockAssetForAccountMutation 以資產列為互斥點序列化該資產的全部帳號變更。
 //
 // 為何鎖 assets 而非 asset_accounts：帳號集合的不變式（「至多一 default」「有帳號
 // 必有 default」）是**集合層**性質，判定依據包含「目前有幾筆帳號」——對零筆或
@@ -393,9 +392,9 @@ func lockAssetForAccountMutation(tx *gorm.DB, assetID uint) error {
 
 // Create 建立帳號。
 //
-// **判定與寫入全在同一交易、且先鎖住資產列**（codex HIGH）：default 判定讀的是
+// **判定與寫入全在同一交易、且先鎖住資產列**：default 判定讀的是
 // 「目前有幾筆帳號」，在交易外判定會讓「A 讀到尚有 1 筆 → 決定非 default」與
-// 「B 同時刪掉那筆」交錯，留下唯一一筆非 default 帳號（違反 D8「有帳號必有 default」）。
+// 「B 同時刪掉那筆」交錯，留下唯一一筆非 default 帳號（違反「有帳號必有 default」）。
 // partial unique index 只擋得住「兩筆 default」，擋不住「零筆 default」。
 func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *CreateAssetAccountRequest) (*AssetAccountDTO, error) {
 	if _, err := s.assets.GetByID(assetID); err != nil {
@@ -420,7 +419,7 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 		Note:       req.Note,
 	}
 
-	// 從其他帳號複製（密文原樣搬，不解密）。來源出處入審計（opus MED-1）：
+	// 從其他帳號複製（密文原樣搬，不解密）。來源出處入審計：
 	// 憑證跨資產複製若零軌跡，事後無從回答「這台的 root 密碼是從哪來的」
 	var copyFromAssetID uint
 	if req.CopyFromAccountID != 0 {
@@ -432,7 +431,7 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 			return nil, fmt.Errorf("查詢來源帳號失敗: %w", err)
 		}
 		copyFromAssetID = source.AssetID
-		// 來源可見性（D10，階段 2 backlog）：跨資產複製時操作者須對來源資產
+		// 來源可見性（階段 2 backlog）：跨資產複製時操作者須對來源資產
 		// 至少可視。同資產內複製免判——對目標資產的 asset:update 已涵蓋
 		if s.authz != nil && source.AssetID != assetID {
 			operatorID, _ := model.UserFromContext(ctx)
@@ -524,7 +523,7 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 
 // Update 更新帳號（含憑證輪換）。default 切換不走本方法，見 SetDefault。
 //
-// **快照與差異計算全在交易內、且只寫變更欄**（codex HIGH）：舊寫法在交易外讀
+// **快照與差異計算全在交易內、且只寫變更欄**：舊寫法在交易外讀
 // 快照、交易內以全欄 Updates 覆寫，兩個並發更新（一個改備註、一個輪換密碼）會
 // 讓後提交者把剛輪換的密文倒回舊值——遠端已改密、庫內卻是舊密＝鎖死，而審計
 // 只記 note，事後完全查不出憑證被回滾過。
@@ -660,11 +659,11 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	return NewAssetAccountDTO(result), nil
 }
 
-// Delete 刪除帳號（軟刪）。禁刪最後一個 default（D8）：資產仍有其他帳號時必須
+// Delete 刪除帳號（軟刪）。禁刪最後一個 default：資產仍有其他帳號時必須
 // 先指定新的預設，否則會留下「有帳號無預設」的狀態，系統路徑（改密／k8s／SFTP）
 // 將無帳號可用。資產僅剩這一個帳號時允許刪——零帳號資產合法。
 //
-// IsDefault 與帳號數皆在交易內、鎖後重讀（codex HIGH）：交易外快取的 IsDefault
+// IsDefault 與帳號數皆在交易內、鎖後重讀：交易外快取的 IsDefault
 // 會讓「讀到 B 非 default」與「另一交易把 B 設為 default」交錯，刪掉的其實是
 // 現行 default，留下有帳號無預設。
 func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uint) error {
@@ -703,7 +702,7 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 		}
 		if account.IsDefault {
 			// 刪掉的是唯一帳號：資產回到零帳號狀態，顯示欄一併清空——
-			// username 若留舊值，列表與審計 diff 會顯示一個已不存在的身分（opus LOW-4）
+			// username 若留舊值，列表與審計 diff 會顯示一個已不存在的身分
 			if err := tx.Model(&model.Asset{}).Where("id = ?", assetID).
 				UpdateColumns(map[string]interface{}{
 					"username":        "",
@@ -820,7 +819,7 @@ func clearDefaultAccounts(tx *gorm.DB, assetID, exceptID uint) error {
 // mirrorDefaultAccountToAsset 鏡射預設帳號到 assets 的顯示欄。
 //
 // 只鏡射 username 與「是否已設定憑證」的布林旗標——**密文欄位一律不寫**
-// （D1 凍結）。這三欄是列表、審計 diff 與前端「已設定密碼」標記的來源，
+// （欄位已凍結）。這三欄是列表、審計 diff 與前端「已設定密碼」標記的來源，
 // 不同步會讓既有畫面顯示與實際連線身分不一致。
 //
 // 用 UpdateColumns 而非 Updates（刻意，兩個理由）：一是鏡射屬派生同步、不是
@@ -840,7 +839,7 @@ func mirrorDefaultAccountToAsset(tx *gorm.DB, account *model.AssetAccount) error
 }
 
 // syncDefaultAccountFromAsset 把 PUT /assets/:id 的 username／憑證欄位透明轉寫到
-// default 帳號（D9 過渡期相容）。呼叫端必須已在交易內、且已把 asset.Username 更新完畢。
+// default 帳號（過渡期相容）。呼叫端必須已在交易內、且已把 asset.Username 更新完畢。
 //
 // 空密文＝不動既有憑證（沿用 UpdateAssetRequest「密碼空字串不更新」的既有語義），
 // 不是清空。資產原本零帳號時就地建一筆 default——否則舊表單改了 username／密碼，

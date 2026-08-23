@@ -30,7 +30,7 @@ import (
 	"github.com/custodexa/backend/internal/seal"
 )
 
-// 兩段啟動與初始化解封的整合驗收（kek-provider-modularization 2.0／2.2a）。
+// 兩段啟動與初始化解封的整合驗收。
 //
 // **跑真的段 2**：這些案例要驗的是「段 2 被延後、且延後後真的能起來」，
 // 用假的段 2 驗不出任何一條。DB 走檔案型 sqlite（非 :memory:——後者的連線池
@@ -42,7 +42,7 @@ import (
 const (
 	testAdminUser     = "admin"
 	testAdminPassword = "IntegrationPass!2026"
-	// 32 字元、字元集合格、非出廠預設：滿足 D8 完整格式驗證。
+	// 32 字元、字元集合格、非出廠預設：滿足完整格式驗證。
 	testInitialKEK = "aZ9bY8cX7dW6eV5fU4gT3hS2iR1jQ0kP"
 	testOtherKEK   = "pK0jQ1iR2hS3gT4fU5eV6dW7cX8bY9aZ"
 )
@@ -80,7 +80,7 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 
 	// 以 model 清單建表而非跑 baseline：baseline 是 postgres 專屬 DDL，sqlite 跑不動。
 	// 本測試驗的是段 1／段 2 的分界，不是 schema 形狀；schema 形狀由
-	// internal/database 的 parity 守衛在真 pg 上把關（migration-baseline-compression D3）。
+	// internal/database 的 parity 守衛在真 pg 上把關。
 	if err := db.AutoMigrate(database.SchemaParityModels()...); err != nil {
 		t.Fatalf("建表失敗: %v", err)
 	}
@@ -115,7 +115,7 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 		swap: &swappableHandler{},
 	}
 
-	// 內建遷移的登記器自 W1 1.10 起由組裝根提供（4.9 環拆解）：整合測試自建
+	// 內建遷移的登記器由組裝根提供（環拆解）：整合測試自建
 	// 段 1／段 2 環境而不經 main 的組裝順序，故 setup 顯式補上同一筆登記，
 	// 讓封印期的佇列成員斷言看到與生產一致的佇列
 	keyvault.RegisterPostUnsealBuiltin(identity.PostUnsealMigrationLDAPSeed, func() {
@@ -133,7 +133,7 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 	m := w.machine
 
 	// **以 production 的段 1 engine 建構路徑建 router**：段 1 的 redirect 政策
-	// （M2）與可信代理處理都掛在 newEngine 上，測試自己 gin.New() 等於驗一個
+	// 與可信代理處理都掛在 newEngine 上，測試自己 gin.New() 等於驗一個
 	// 不存在於 production 的 router。
 	r := newStageOneTestEngine(t, env.s1)
 	registerRoutes(r, sealedStageOneDeps(stageOneRouteConfig{
@@ -295,9 +295,9 @@ func retryUnsealUntilOK(t *testing.T, env *sealIntegrationEnv, body string) *htt
 	return w
 }
 
-// TestStage2RouterFailureIsRetryable 段 2 的 router 建構失敗必須是可重試的段 2 失敗（H1）。
+// TestStage2RouterFailureIsRetryable 段 2 的 router 建構失敗必須是可重試的段 2 失敗。
 //
-// **這是 H1 的核心驗收**：router 若在 publish 之後才建構，此處的失敗會停在
+// **這是本測試的核心驗收**：router 若在 publish 之後才建構，此處的失敗會停在
 // 「狀態已 unsealed、router 仍是段 1 的」——unsealed 沒有任何出邊，於是服務
 // 對外恆 503 且**不可重試**，只能重啟行程。把建構移進段 2 之後，同一個失敗
 // 走 sealed-faulted，修掉成因即可重試。
@@ -342,16 +342,16 @@ func TestStage2RouterFailureIsRetryable(t *testing.T) {
 	// 服務圖上必須帶著本世代的 router：換手回呼因此沒有任何可能失敗的建構工作。
 	g, ok := env.machine.Snapshot().Services.(*appGraph)
 	if !ok || g.engine == nil {
-		t.Fatal("已發佈的服務圖沒有帶著段 2 router——換手回呼仍需自行建構，H1 的成因未被移除")
+		t.Fatal("已發佈的服務圖沒有帶著段 2 router——換手回呼仍需自行建構，成因未被移除")
 	}
 }
 
-// TestBootstrapPendingSurvivesStage2Failure 初始化事件不因段 2 失敗重試而降級為一般解封（M1）。
+// TestBootstrapPendingSurvivesStage2Failure 初始化事件不因段 2 失敗重試而降級為一般解封。
 //
 // 初始化解封的段 2 在 InitKeyManager 就把 bootstrap 金鑰持久化了。若段 2 於其後
 // 失敗，重試時金鑰表已非空，分流會轉走一般解封——這次部署的初始化事件因此被
 // 記成一筆普通 unseal，稽核從此無法回答「這個部署的 KEK 是何時、由誰初始化的」，
-// 而那正是 D6.3 要求兩條路徑可區分的全部理由。
+// 而那正是要求兩條路徑可區分的全部理由。
 func TestBootstrapPendingSurvivesStage2Failure(t *testing.T) {
 	env := newSealIntegrationEnv(t, func(c *config.SealConfig) {
 		c.BackoffBase, c.BackoffMax = time.Millisecond, time.Millisecond
@@ -390,7 +390,7 @@ func TestBootstrapPendingSurvivesStage2Failure(t *testing.T) {
 	}
 }
 
-// TestSealJournalReplayIsAwaitedOnRelease 回灌 goroutine 納入服務圖的收束（B3）。
+// TestSealJournalReplayIsAwaitedOnRelease 回灌 goroutine 納入服務圖的收束。
 //
 // 沒有主的 goroutine 不在 WaitCleanup／Release 的涵蓋範圍內：行程收尾與測試
 // 清理都等不到它，實測形態是偶發的「TempDir RemoveAll: directory not empty」。
@@ -562,7 +562,7 @@ func TestInitializeUnsealRejectsIncompleteInput(t *testing.T) {
 //
 // 破壞方式刻意選在「驗證過得去、load 過不去」的縫隙：插一列 wrapped_key 為空的
 // data v3。ProbeKEKUnwrap 只看非空的代表列故會通過，而 load 對該 slot 取代表列
-// 時會落入「退役或空列不可解密」而 fail-close——這正是 D6.1 所指的
+// 時會落入「退役或空列不可解密」而 fail-close——這正是規格所指的
 // 「材料正確但段 2 初始化失敗」。
 func TestStage2FailureKeepsProcessAliveAndRetryable(t *testing.T) {
 	env := newSealIntegrationEnv(t)
@@ -652,7 +652,7 @@ func TestStage2FailureKeepsProcessAliveAndRetryable(t *testing.T) {
 // TestPostUnsealMigrationQueueBModeTiming 遷移佇列的 B 模式時序（具名驗收）。
 //
 // 三條斷言缺一不可：sealed 期不執行、解封後恰執行一次、
-// **佇列不含任何過渡遷移項**（release-transitional-cleanup 3.8 的 B 模式側釘子
+// **佇列不含任何過渡遷移項**（B 模式側的釘子
 // ——service 層的佇列成員測試綠，不足以證明「B 模式解封時不會自動跑過渡遷移」）。
 func TestPostUnsealMigrationQueueBModeTiming(t *testing.T) {
 	env := newSealIntegrationEnv(t)
@@ -754,8 +754,8 @@ func TestConcurrentInitializeUnsealExactlyOneWins(t *testing.T) {
 	}
 }
 
-// TestUIModeBootstrapMintsNoV0 `ui` 模式**初始化解封**路徑同樣只鑄 v1 active
-// （release-transitional-cleanup D4）：bootstrap 不鑄 v0 的規範適用於**全部**
+// TestUIModeBootstrapMintsNoV0 `ui` 模式**初始化解封**路徑同樣只鑄 v1 active：
+// bootstrap 不鑄 v0 的規範適用於**全部**
 // 初始化路徑，env 模式的 service 層測試不足以涵蓋 B 模式這條入口。
 func TestUIModeBootstrapMintsNoV0(t *testing.T) {
 	env := newSealIntegrationEnv(t)
@@ -784,7 +784,7 @@ func TestUIModeBootstrapMintsNoV0(t *testing.T) {
 }
 
 // TestSealJournalReplayRowsAreStamped 封印期審計事實的回歸釘子
-// （release-transitional-cleanup D4／design Context 錨點）。
+// （design Context 錨點）。
 //
 // 封印期**不寫 audit_logs**：事件走檔案 journal，解封後由 sealwire 回灌並走
 // 一般審計路徑——回灌發生於 SetAuditCreateHooks 之後，故**全部帶正常蓋章**。

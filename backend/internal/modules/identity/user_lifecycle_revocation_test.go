@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 帳號生命週期三動作的憑證失效（idp-oidc-integration D2/D9；對抗審查 H1／H2）。
+// 帳號生命週期三動作的憑證失效。
 //
 // spec（oidc-auth 行 84）明列「帳號停用、刪除、改為僅外部登入、解除外部身分綁定
 // 與使用者自身的密碼變更」皆 SHALL 推進使用者憑證世代。後兩者由
@@ -19,7 +19,7 @@ import (
 //	停用   同上，且未兌換的 ticket／MFA pending／connect grant 全部存活
 //	刪除   同上
 //
-// 停用與刪除另缺兩條收線管道（H2）：DisconnectByUser（監看／分享訂閱不建 sessions
+// 停用與刪除另缺兩條收線管道：DisconnectByUser（監看／分享訂閱不建 sessions
 // 列，SessionTerminator 完全掃不到）與 RevokeByUser（錄影 token 為 in-memory、
 // 不做世代比對，唯一失效途徑是直接撤銷）。
 //
@@ -79,12 +79,12 @@ func (e *lifecycleEnv) seedLiveAccess(t *testing.T) (refreshHash string, sess *m
 	return hashRefreshToken(loggedIn.RefreshToken), sess
 }
 
-// assertFourChannels 停用／刪除的四件事逐條斷言（缺一即為 H1／H2 的殘留缺口）
+// assertFourChannels 停用／刪除的四件事逐條斷言（缺一即為殘留缺口）
 func (e *lifecycleEnv) assertFourChannels(t *testing.T, epochBefore int,
 	refreshHash string, sess *model.Session, wantRefreshReason string) {
 	t.Helper()
 
-	// (1) 推進 credential_epoch（H1）：既簽 access 與未兌換的能力憑證一併失效
+	// (1) 推進 credential_epoch：既簽 access 與未兌換的能力憑證一併失效
 	if got := reloadUserUnscoped(t, e.db, e.victim.ID).CredentialEpoch; got != epochBefore+1 {
 		t.Errorf("應推進 credential_epoch: %d → %d, want %d", epochBefore, got, epochBefore+1)
 	}
@@ -101,14 +101,14 @@ func (e *lifecycleEnv) assertFourChannels(t *testing.T, epochBefore int,
 	if closed := e.registry.closedIDs(); len(closed) != 1 || closed[0] != sess.ID {
 		t.Errorf("應關閉該會話 WebSocket: %v, want [%d]", closed, sess.ID)
 	}
-	// (4a) 收線唯讀訂閱（H2）：監看／分享不建 sessions 列，會話掃描掃不到
+	// (4a) 收線唯讀訂閱：監看／分享不建 sessions 列，會話掃描掃不到
 	if sweeps := e.hub.userSweeps(); len(sweeps) != 1 || sweeps[0] != e.victim.ID {
 		t.Errorf("應觸發按-user 訂閱收線 = %v, want [%d]", sweeps, e.victim.ID)
 	}
 	if e.hub.alive("victim-monitor") {
 		t.Errorf("受測帳號的唯讀訂閱應被收線，存活集合 = %v", e.hub.aliveTags())
 	}
-	// (4b) 撤銷錄影 token（H2）：in-memory 且不做世代比對，唯一途徑是直接撤銷
+	// (4b) 撤銷錄影 token：in-memory 且不做世代比對，唯一途徑是直接撤銷
 	if calls := e.tokens.userCalls(); len(calls) != 1 || calls[0] != e.victim.ID {
 		t.Errorf("應撤銷該使用者的錄影存取憑證 = %v, want [%d]", calls, e.victim.ID)
 	}
@@ -118,7 +118,7 @@ func (e *lifecycleEnv) assertFourChannels(t *testing.T, epochBefore int,
 	}
 }
 
-// --- H1／H2 第一格：停用 ---
+// --- 第一格：停用 ---
 
 // TestAccountDisableInvalidatesCredentialsAndRevokesAllChannels
 // 管理端停用帳號 SHALL 一次完成四件事：推進 credential_epoch、撤 refresh、
@@ -166,7 +166,7 @@ func TestAccountEnableDoesNotInvalidateCredentials(t *testing.T) {
 	}
 }
 
-// --- H1／H2 第二格：刪除 ---
+// --- 第二格：刪除 ---
 
 // TestAccountDeleteInvalidatesCredentialsAndRevokesAllChannels
 // 刪除帳號 SHALL 與停用同樣完成四件事。
@@ -193,7 +193,7 @@ func TestAccountDeleteInvalidatesCredentialsAndRevokesAllChannels(t *testing.T) 
 	e.assertFourChannels(t, epochBefore, refreshHash, sess, model.RefreshRevokeCredentialEpoch)
 }
 
-// --- H1 第三格：改密 ---
+// --- 第三格：改密 ---
 
 // TestPasswordChangeAdvancesCredentialEpoch 改密（自助與管理員重設皆同）
 // SHALL 推進 credential_epoch。
@@ -203,7 +203,7 @@ func TestAccountDeleteInvalidatesCredentialsAndRevokesAllChannels(t *testing.T) 
 // 且未兌換的 connect grant／MFA pending 一併存活。
 //
 // 不收線既有連線是刻意的（spec 行 84 只要求推進世代）：改密是使用者自己的
-// 例行操作，連帶砍掉自己正在進行的維運 shell 不是該條款的意圖；D12 的換發路徑
+// 例行操作，連帶砍掉自己正在進行的維運 shell 不是該條款的意圖；換發路徑
 // 會以現查世代簽出新會話，故改密者本人不會被自己的 epoch 推進鎖在門外。
 func TestPasswordChangeAdvancesCredentialEpoch(t *testing.T) {
 	cases := []struct {
@@ -280,21 +280,21 @@ func currentRoleNames(t *testing.T, db *gorm.DB, userID uint) []string {
 	return names
 }
 
-// TestRoleChangeAdvancesCredentialEpoch 角色集實際變動 SHALL 推進 credential_epoch（C-1）。
+// TestRoleChangeAdvancesCredentialEpoch 角色集實際變動 SHALL 推進 credential_epoch。
 //
 // 原實作只做 Association("Roles").Replace 就回傳，一個世代推進都沒有。後果是**權限提升**：
 // 管理面的權限判定讀的是 JWT 內的角色**快照**（middleware/auth.go 的 RequireRole、
 // permission.go 的 RequirePermission），世代閘只比對 epoch、不重查角色。於是被撤除
 // admin 的帳號，其既簽 access token 仍以 admin 通過管理端判定，可在 TTL 內呼叫
-// `PUT /users/{自己}/roles` 把 admin 改回來——降權由當事人自行復原（紅隊 dev 環境實跑重現）。
+// `PUT /users/{自己}/roles` 把 admin 改回來——降權由當事人自行復原（dev 環境實跑重現）。
 //
 // **兩條分支都必須覆蓋**：新角色集含 admin 走 identity.WithUserCredentialLock、不含 admin 走
 // identity.WithLocalAdminInvariant（本地 admin 不變式的系統級鎖）。只修其中一條等於留一半漏洞，
 // 故本測試以子案分別打進兩條路徑——只改 remove-admin 那條時，keeps-admin 子案必紅。
 //
-// 邊界（D5 裁決，以反向斷言釘住）：角色變更**不**終斷既有協議會話與唯讀訂閱。
+// 邊界（以反向斷言釘住）：角色變更**不**終斷既有協議會話與唯讀訂閱。
 // 角色縮減不等同「此帳號整體不該再有存取」（那是停用／刪除／解綁的語義）；
-// 降權後**新的**特權連線已由 CPG-010-01 的 DB 現查角色擋下。
+// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下。
 func TestRoleChangeAdvancesCredentialEpoch(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -332,7 +332,7 @@ func TestRoleChangeAdvancesCredentialEpoch(t *testing.T) {
 				t.Errorf("refresh 撤銷成因 = %q, want %q",
 					r.RevokedReason, model.RefreshRevokeCredentialEpoch)
 			}
-			// D5：不是斷線動作
+			// 不是斷線動作
 			if s := reloadRevocationSession(t, db, sess.ID); s.Status != model.SessionStatusActive {
 				t.Errorf("角色變更不得終斷既有協議會話: status=%q", s.Status)
 			}

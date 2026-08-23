@@ -1,6 +1,6 @@
 <template>
   <!-- 分區卡片：依 key 分組渲染，後端新增政策鍵自動出現在對應區塊
-       （settings-domain-restructure D7 自 SecurityPolicies.vue 抽取，四域頁共用） -->
+       （自 SecurityPolicies.vue 抽取，四域頁共用） -->
   <div
     v-for="section in sections"
     :key="section.title"
@@ -91,7 +91,7 @@
           <el-icon><Warning /></el-icon>
           {{ $t('policyKeySections.nonCompliant') }}
         </el-tag>
-        <!-- 電支基準第二欄（security-backlog-settlement D6）：與 PCI 並列而非取代，
+        <!-- 電支基準第二欄：與 PCI 並列而非取代，
              兩基準的建議值可能不同且方向相反，各自標示符合性 -->
         <span
           v-if="policy.epayment_value"
@@ -114,7 +114,7 @@
       </div>
     </div>
 
-    <!-- 區塊尾端擴充（存取管控頁的資產覆寫表格等，settings-domain-restructure D2） -->
+    <!-- 區塊尾端擴充（存取管控頁的資產覆寫表格等） -->
     <slot
       name="section-footer"
       :section="section"

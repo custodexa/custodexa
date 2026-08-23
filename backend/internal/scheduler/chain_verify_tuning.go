@@ -16,8 +16,7 @@ type chainVerifyPolicyReader interface {
 	GetInt(key string) int
 }
 
-// ChainVerifyPolicyTuning 以安全政策三鍵實作 audit.ChainVerifyTuning
-//（audit-chain-scheduled-verification D4）。
+// ChainVerifyPolicyTuning 以安全政策三鍵實作 audit.ChainVerifyTuning。
 //
 // **每次呼叫都現讀，不快取、不在建構時取值**：政策一改下一分鐘就要生效，
 // 不能等重啟。建構時取值會使「政策頁上的數字」與「排程實際跑的節奏」在

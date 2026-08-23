@@ -48,7 +48,7 @@ type RequestMeta struct {
 //	AP-36／AP-37／AP-60（T-1 交易內 fail-close 3）：Action, Resource, ResourceID,
 //	  Status, UserID, Username, **ClientIP**, Details（internal/service/
 //	  asset_group_service.go:318／:529、user_group_service.go:130）。
-//	AP-50／AP-51（R3.1 漏列的 fail-close 2）：AP-50 同上再加 ClientIP
+//	AP-50／AP-51（漏列的 fail-close 2）：AP-50 同上再加 ClientIP
 //	  （ldap_directory_service.go:760）；AP-51 只填 UserID=0／Username="system"／
 //	  Action／Resource／Status／Details（ldap_seed_migration.go:311）。
 //
@@ -74,9 +74,9 @@ type AuditEvent struct {
 	ResourceID *uint
 	Status     string
 
-	// AssetID 資產主體鍵，對應 model.AuditLog.AssetID（auditor-workbench D4）。
+	// AssetID 資產主體鍵，對應 model.AuditLog.AssetID（auditor-workbench）。
 	//
-	// **不能由落地器從 (Resource, ResourceID) 推導**：那正是 D1.3(a) 判定會產生假事件的
+	// **不能由落地器從 (Resource, ResourceID) 推導**：那正是會產生假事件的
 	// 做法——同一組 (asset, 130) 可能來自改密計畫 130 或授權列 130。主體只有產生點知道，
 	// 故它必須是傳輸形狀的一部分；少了這欄，經 sink 的產生點就沒有任何管道表達主體，
 	// 而「表達不了」會被誤讀成「這動作與資產無關」。
@@ -89,7 +89,7 @@ type AuditEvent struct {
 
 	// Details 變更／操作詳情，對應 model.AuditLog.Details（TEXT 欄）。
 	//
-	// **型別是 string 而非 json.RawMessage**（訂正 R3 §2.3 的欄位型別）：現況並非
+	// **型別是 string 而非 json.RawMessage**（訂正原先的欄位型別）：現況並非
 	// 每個產生點都寫 JSON——internal/service/recording_failure_report.go:49 的
 	// Details 走 causeText()，產物是 zh-TW 散文（audit_failure_service.go:128）。
 	// 宣告成 json.RawMessage 等於在契約上聲稱「這裡一定是 JSON」，而該點會使它成為
@@ -111,7 +111,7 @@ type AuditEvent struct {
 // 亦 SHALL NOT 寫出「一定送達」的斷言（會在將來介面演進時被既有測試綁死）。
 // 未投遞的偵測由 AuditFailureService 另路上報。
 //
-// # 它承載不了什麼（W4 的 Critical#1 教訓）
+// # 它承載不了什麼
 //
 // **強制審計（交易內 fail-close）SHALL NOT 走本介面。** 那類寫入需要吃呼叫方的
 // `*gorm.DB` 並同步回 error，語義與此處相反；誤分派的後果是回滾語義靜默退化為
@@ -120,7 +120,7 @@ type AuditEvent struct {
 // 逐點分派見 openspec/changes/archive/2026-08-11-modular-architecture/research/manifest-audit-points.md
 //（隨公開快照出門，唯一權威）。
 //
-// # 跨行程落地前必須先完成的演進條件（S4 codex 部分採納項 #3）
+// # 跨行程落地前必須先完成的演進條件
 //
 // 同行程本機 sink 不需要下列機制，故本 change 不實作；但契約先寫清楚，避免將來被
 // 誤以為它已能承載強制審計。一般 error 分不出「未收到」與「已收但回應遺失」，

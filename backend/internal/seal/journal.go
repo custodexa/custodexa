@@ -2,7 +2,7 @@ package seal
 
 import "context"
 
-// outcome 結果碼值域（D6.5，五類）。
+// outcome 結果碼值域（五類）。
 // 「結果未知」不在此列——它由「有 received 無 outcome」表達，不是一個結果碼。
 const (
 	// OutcomeSuccess 材料驗證通過且段 2 完成。
@@ -18,7 +18,7 @@ const (
 	OutcomeAborted = "aborted"
 )
 
-// rejected 合批計數的 kind 值域（D6.5 rejected 環）。
+// rejected 合批計數的 kind 值域。
 const (
 	// RejectedCooldown 全域冷卻期內被拒。
 	RejectedCooldown = "cooldown"
@@ -28,7 +28,7 @@ const (
 	RejectedConflict = "conflict"
 )
 
-// Journal 是封印期留痕的注入介面（D6.5 的定長環狀 journal）。
+// Journal 是封印期留痕的注入介面（定長環狀 journal）。
 //
 // 本介面形狀為跨批次契約：實作由 internal/sealjournal 提供，本套件只依賴介面。
 // 呼叫定序由狀態機保證：

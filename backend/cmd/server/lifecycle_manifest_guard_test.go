@@ -1,6 +1,6 @@
 package main
 
-// lifecycle manifest 雙向完備性守衛（modular-architecture W1 任務 1.4）。
+// lifecycle manifest 雙向完備性守衛。
 //
 // **為什麼需要它**：Phase B 要把 223 檔的扁平 `internal/service` 拆成 7 個 Go
 // package。拆包會改變「包級變數初始化 → init() → 組裝根的注入／註冊 → 啟動步驟
@@ -22,12 +22,12 @@ package main
 // 例如 `model.SetAuditCreateHooks` 在審計 manifest 是「蓋章與 tee 的掛載點」，
 // 在本 manifest 是「必須早於任何會寫審計列的步驟、且釋放時必須先解 hook 再解單例」。
 //
-// **掃描式守衛的兩個假綠孔已顯式堵上**（R4 實證既有守衛踩過）：
+// **掃描式守衛的兩個假綠孔已顯式堵上**（既有守衛實際踩過）：
 //   - 掃描根不用「本檔目錄往上跳 N 層」推算，改以 go.mod 的 module 行當身分錨點；
 //   - 載入包數、掃描檔數、各類項目數皆有下限，且 `len(pkg.Errors) > 0` 一律 t.Fatal
 //     ——否則搬檔後掃描範圍靜默縮小，守衛會在空集合下全綠。
 //
-// **manifest 的 file:line 欄不受守衛對帳**（guard-scan-cost-reduction B 段撤除
+// **manifest 的 file:line 欄不受守衛對帳**（已撤除
 // TestLifecycleManifestAnchorsMatchSourceLines）。三個理由：manifest 位於
 // openspec/changes/archive/ 之下，逐行對帳等於要求持續改寫已歸檔的歷史紀錄；
 // file:line 是純定位資訊，不承載代碼表達不了的人工決定（manifest 真正無可取代的
@@ -132,7 +132,7 @@ type lcScan struct {
 // ── 掃描根定位 ────────────────────────────────────────────────────────────
 
 // lifecycleModuleRoot 由本測試檔位置向上找 go.mod，並核對 module 行。
-// 不用「Dir(Caller)/../..」的層數推算：那在守衛檔搬家時會靜默指到別處（R4 F-掃描根）。
+// 不用「Dir(Caller)/../..」的層數推算：那在守衛檔搬家時會靜默指到別處。
 func lifecycleModuleRoot(t *testing.T) string {
 	t.Helper()
 	_, self, _, ok := runtime.Caller(0)
@@ -177,7 +177,7 @@ var (
 // scanLifecycle 取（並快取）全樹掃描結果，本包五支守衛共用。
 //
 // 快取的理由是成本：帶完整型別資訊的全 module packages.Load 單次約 40 秒
-// （guard-scan-cost-reduction 基準量測），掃五次是純重複——五支守衛看的是
+// （基準量測），掃五次是純重複——五支守衛看的是
 // 同一棵樹的同一份事實，沒有任何一支會改動它。
 //
 // 快取也讓五支守衛必然看到**同一份**輸入：否則「登記項不存在」與「實際項未登記」
@@ -742,7 +742,7 @@ func TestLifecycleManifestIsBidirectionallyComplete(t *testing.T) {
 	sort.Strings(stale)
 	if len(stale) > 0 {
 		t.Errorf("[manifest→現實] 下列 %d 項登記與現實不符：\n  %s\n"+
-			"符號被刪除／改名／搬包時 SHALL 同步更新 manifest 的錨點鍵與所在波次（tasks 2.6 形態）",
+			"符號被刪除／改名／搬包時 SHALL 同步更新 manifest 的錨點鍵與落地階段",
 			len(stale), strings.Join(stale, "\n  "))
 	}
 

@@ -15,7 +15,7 @@ import (
 )
 
 // issueTokenForAccount 以指定身分＋指定 account_id 呼叫簽發端點。
-// accountID=0 時仍顯式送出 "account_id": 0——與完全省略欄位等價（D3：0＝預設帳號），
+// accountID=0 時仍顯式送出 "account_id": 0——與完全省略欄位等價（0＝預設帳號），
 // 兩種寫法都必須走預設帳號路徑
 func issueTokenForAccount(h *Handler, userID uint, role string, assetID, accountID uint) (int, map[string]interface{}) {
 	gin.SetMode(gin.TestMode)
@@ -46,8 +46,8 @@ func seedAccount(t *testing.T, db *gorm.DB, assetID uint, username string, isDef
 	return acct.ID
 }
 
-// TestConnectTokenAccountBinding 帳號客體綁定（asset-multi-account D3／
-// connection-gating delta「跨資產帳號注入被拒」）：簽發點以
+// TestConnectTokenAccountBinding 帳號客體綁定（connection-gating
+//「跨資產帳號注入被拒」）：簽發點以
 // (account_id, asset_id, deleted_at IS NULL) DB 現查，不屬該資產或已刪一律拒發。
 //
 // 這道閘不能只靠兌換點：token 一旦簽出即代表「這組 (user, asset, account) 已驗過」，
@@ -157,7 +157,7 @@ func TestSSHRedeemAccountDeletedAfterIssue(t *testing.T) {
 	}
 }
 
-// TestConnectTokenK8sRejectsAccount K8s 固定單一預設帳號（D6）：帶非預設
+// TestConnectTokenK8sRejectsAccount K8s 固定單一預設帳號：帶非預設
 // account_id 時明確拒絕，不靜默忽略。忽略會讓使用者以為連的是所選帳號、
 // 實際用的是預設憑證——比報錯更糟
 func TestConnectTokenK8sRejectsAccount(t *testing.T) {

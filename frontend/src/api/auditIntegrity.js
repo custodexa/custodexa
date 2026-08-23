@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 審計日誌完整性驗證（audit-log-compliance，PCI 10.3.4；僅 admin）
+ * 審計日誌完整性驗證（PCI 10.3.4；僅 admin）
  * 逐列重算完整性標記並與存檔比對，偵測日誌遭事後竄改
  * @param {Object} params - { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
  * @returns {Promise} { data: { from, to, checked, passed, mismatched,

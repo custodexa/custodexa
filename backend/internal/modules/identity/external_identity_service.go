@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 外部身分管理（idp-oidc-integration 2.8 / spec user-account-administration）。
+// 外部身分管理（2.8 / spec user-account-administration）。
 //
 // 四個授權操作，全部含審計且失敗零副作用：
 //
@@ -34,7 +34,7 @@ var (
 	// **不回填占用者是誰**：那會使綁定端點成為「某 subject 是否已在本系統」的探測器
 	ErrExternalIdentityExists = errors.New("此外部身分已綁定至某個帳號")
 	// ErrExternalIdentitySubjectInvalid subject 空白或逾長。
-	// 空 subject 會使第一個異常 token 吸附該 provider 後續全部異常 token（D2）
+	// 空 subject 會使第一個異常 token 吸附該 provider 後續全部異常 token
 	ErrExternalIdentitySubjectInvalid = errors.New("subject 不得為空且長度不得超過 255")
 	// ErrExternalIdentityRequired 「改為僅外部登入」要求帳號至少已有一筆外部身分——
 	// 否則轉換當下即製造出零登入途徑的孤兒帳號
@@ -166,7 +166,7 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 	actor IdentityAdminActor) (*ExternalIdentityDTO, error) {
 
 	subject = strings.TrimSpace(subject)
-	// 大小寫敏感、不做任何正規化（D2）：subject 的比對語義由 IdP 定義，
+	// 大小寫敏感、不做任何正規化：subject 的比對語義由 IdP 定義，
 	// 我方任何「順手」的正規化都可能把兩個不同身分折疊成一個
 	if subject == "" || len(subject) > 255 {
 		return nil, ErrExternalIdentitySubjectInvalid
@@ -248,7 +248,7 @@ func (s *UserService) UnbindExternalIdentity(userID, identityID uint, actor Iden
 		"event": "external_identity_unbound", "identity_id": identityID,
 		"revocation_scope": "user",
 	})
-	// 鎖外收線（design D13：關閉連線於鎖外，持鎖時長維持單次 DB 往返級）
+	// 鎖外收線（關閉連線於鎖外，持鎖時長維持單次 DB 往返級）
 	s.revokeUserAccess(userID, "external_identity_unbound")
 	return nil
 }
@@ -260,7 +260,7 @@ func (s *UserService) UnbindExternalIdentity(userID, identityID uint, actor Iden
 // 使系統不會停在「已解綁但帳號仍宣稱可登入」的中間態。**交易失敗時兩者皆不變**。
 //
 // 停用會移除該帳號的本地 admin 資格，故外層經系統級的本地 admin 不變式鎖；
-// 取鎖順序 system → user（design D13）。
+// 取鎖順序 system → user。
 func (s *UserService) UnbindExternalIdentityAndDisable(userID, identityID uint, actor IdentityAdminActor) error {
 	err := WithLocalAdminInvariant(s.db, userID, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, userID, func(tx *gorm.DB) error {
@@ -380,7 +380,7 @@ func (s *UserService) unbindLocked(tx *gorm.DB, userID, identityID uint) error {
 
 // countUsableExternalIdentities 帳號「仍能用來登入」的外部身分數（判準的單一查詢源）。
 //
-// **不只是未軟刪的身分列**（codex 對抗審查 F-B）：身分能不能登入取決於它所屬的
+// **不只是未軟刪的身分列**：身分能不能登入取決於它所屬的
 // provider——provider 已停用或已刪除時，該身分的登入流程一律被 Begin／Callback／
 // Exchange 的啟用檢查擋下。只數身分列會讓「剩下的那筆屬於已停用 provider」被當成
 // 可用途徑：解綁最後一筆可用身分照樣放行、或把仍有本地密碼的帳號轉成僅外部登入，

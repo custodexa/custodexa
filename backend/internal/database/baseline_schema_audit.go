@@ -1,6 +1,6 @@
 package database
 
-// 會話與審計——baseline schema 的「audit」域（migration-baseline-compression D1）。
+// 會話與審計——baseline schema 的「audit」域。
 //
 // 會話與其指令／剪貼簿留存、審計日誌鏈、告警與審閱。
 //

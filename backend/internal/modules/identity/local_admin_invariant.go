@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 「本地 admin 數量不得自一以上降為零」不變式（idp-oidc-integration 2.7 / design D14.5）。
+// 「本地 admin 數量不得自一以上降為零」不變式（2.7）。
 //
 // **本地 admin** ＝ 啟用中（active）、具 admin 角色、且憑證未由外部身分提供者託管
 //（model.User.IsExternal() 為 false，即 external_credential=false 且 is_ldap=false
@@ -18,12 +18,12 @@ import (
 //（seal_verify.go VerifyInitialAdminCredential）：解封只認本地 admin 憑證，
 // 失去最後一個此類帳號＝遇 KEK 重啟時無人能解封＝持久的管理面鎖死。
 //
-// **語義是「不得自一以上降為零」，不是「操作後必須 ≥1」**（design r6，opus N6-M6）：
+// **語義是「不得自一以上降為零」，不是「操作後必須 ≥1」**：
 // 後者會讓已處於零個狀態的既有部署（全員已切 SSO）連正常的帳號管理都做不了。
 // 故判定為「目標當下計為本地 admin，且系統本地 admin 總數為 1」時才拒絕；
 // 目標本就不是本地 admin（含總數已為零的部署）一律放行，僅由管理端持續警示。
 //
-// **必須跨操作序列化**（design r6，codex HIGH-2）：單次操作內檢查擋不住 write-skew——
+// **必須跨操作序列化**：單次操作內檢查擋不住 write-skew——
 // 僅有兩個本地 admin A、B 時，兩個並發請求各自看見「對方還在」即可同時提交，結果歸零。
 // 故四條路徑（停用、刪除、移除 admin 角色、改為僅外部登入）SHALL 共用同一把
 // 系統級鎖，且判定 SHALL 於鎖內重讀。
@@ -34,7 +34,7 @@ import (
 // 低位元為子系統內編號）；該檔的 0x...0001 為 data_keys 寫入互斥，本鍵取 0x...0002。
 // 兩者不得相同，由 TestLocalAdminLockKeyDistinct 守衛。
 //
-// **設計順序**：本鎖為 design D13 所定「system → provider → user」取鎖順序中的
+// **設計順序**：本鎖為「system → provider → user」取鎖順序中的
 // system 級鎖；2.8 的連線兌換／Join 若需同持多鎖，一律先取本鎖再取 provider/user 鎖。
 const localAdminLockKey int64 = 0x6F74_6B65_6B00_0002
 
@@ -82,7 +82,7 @@ var ErrLastLocalAdmin error = &LastLocalAdminError{Code: apierror.CodeLastLocalA
 // fail-secure 的聯集語義一致。provisioning_origin 的 NULL／空字串視同 local
 // （欄位帶 default 'local'，但既有列於 migration 前可能為空）。
 //
-// **密碼非空是第四個必要條件**（codex 對抗審查 F-A）：計數的用途是判斷「還有
+// **密碼非空是第四個必要條件**：計數的用途是判斷「還有
 // 沒有人能以本地憑證登入／解封」，而空密碼列**無法以本地密碼登入**——旗標與
 // 密碼不一致的漂移列（external_credential=false 但密碼為空字串，任一建號路徑
 // 漏設旗標即成立，見 oidc_invariant_matrix_test.go 的橫向守衛）若計入，會墊高
@@ -161,7 +161,7 @@ func assertLocalAdminInvariant(tx *gorm.DB, targetUserID uint) error {
 // **阻塞而非 try 語義**（與 withDataKeysLock 的取捨相反，刻意）：金鑰操作是低頻長任務，
 // 回「另一操作進行中」讓管理者重試是合理的；帳號停用／刪除是高頻管理動作，try 失敗
 // 會變成隨機的偽錯誤。持鎖時長界定為單次 DB 往返級（判定 ＋ fn 的資料寫入），
-// 實際的收線／終斷連線一律由呼叫端於**鎖外**執行（design D13：關閉連線於鎖外）。
+// 實際的收線／終斷連線一律由呼叫端於**鎖外**執行（關閉連線於鎖外）。
 //
 // 未知 dialect fail-close（沿用 withDataKeysLock 的白名單語義）：靜默退化為行程內鎖
 // 會讓多實例部署失去保護，而本不變式失效的後果是不可逆的管理面鎖死。

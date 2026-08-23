@@ -14,9 +14,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// 重包目標 union 與伺服端格式驗證的測試（D7／D8 路 2）。
+// 重包目標 union 與伺服端格式驗證的測試。
 //
-// 本檔同時提供全 service 套件測試共用的重包輔助：D7 之後伺服端不再有任何 KEK
+// 本檔同時提供全 service 套件測試共用的重包輔助：伺服端不再有任何 KEK
 // 生成器，測試必須自備材料——這正是「明文流向反轉」在測試面的具體表現。
 
 var testKEKMaterialSeq uint64
@@ -62,7 +62,7 @@ func mustRewrapKEK(t *testing.T, km *KeyManagerService) (string, *KEKRewrapResul
 	return material, res
 }
 
-// TestLocalRewrapTargetValidatesMaterial 伺服端格式驗證（D8 路 2）：
+// TestLocalRewrapTargetValidatesMaterial 伺服端格式驗證：
 // 長度／字元集／非出廠預設值皆在**服務層**擋下，不得只靠前端。
 func TestLocalRewrapTargetValidatesMaterial(t *testing.T) {
 	valid := newTestKEKMaterial(t)
@@ -134,7 +134,7 @@ func TestLocalRewrapTargetSameMaterialSameKeyRef(t *testing.T) {
 	}
 }
 
-// TestDelegatedRewrapTargetFailsClosed 委託目標的三類失敗分流（tasks 3.3）：
+// TestDelegatedRewrapTargetFailsClosed 委託目標的三類失敗分流：
 // factory 未注入＝「尚未提供」、白名單外＝「模式無效」、factory 失敗＝「預檢失敗」，
 // 三者**不得**互相混淆，更不得靜默退化為本地目標
 func TestDelegatedRewrapTargetFailsClosed(t *testing.T) {
@@ -199,7 +199,7 @@ func TestRewrapKEKRejectsNilAndDelegatedTarget(t *testing.T) {
 	}
 }
 
-// TestRewrapKEKRejectsCurrentAndSeenTarget D8「非現行 KEK」與既有守衛 (c)
+// TestRewrapKEKRejectsCurrentAndSeenTarget 「非現行 KEK」與既有守衛 (c)
 // 「指紋未曾出現過」：兩者皆拒且**零 data_keys 寫入**
 func TestRewrapKEKRejectsCurrentAndSeenTarget(t *testing.T) {
 	db := newMigrationDB(t)
@@ -259,7 +259,7 @@ func countDataKeys(t *testing.T, db *gorm.DB) int64 {
 	return n
 }
 
-// TestRewrapKEKRevalidatesTargetInvariant sink 端重驗不變式（codex R2）。
+// TestRewrapKEKRevalidatesTargetInvariant sink 端重驗不變式。
 //
 // 「欄位不導出」只擋得住**套件外**的呼叫端：同一個 service 套件內，
 // `RewrapTarget{mode: "local", provider: 任意}` 完全合法且不經任何驗證。

@@ -34,8 +34,8 @@ type purgeFixture struct {
 
 // setupPurgeFixture 建立可完整跑一輪 retention 的 sqlite 夾具。
 //
-// 封章器與清除器共用同一把 testSigner：tombstone 與檢查點簽章本來就同一把鑰
-//（design D8），分兩把會讓「輪替後 tombstone 仍可驗」的欄位語義失去測試意義
+// 封章器與清除器共用同一把 testSigner：tombstone 與檢查點簽章本來就同一把鑰，
+// 分兩把會讓「輪替後 tombstone 仍可驗」的欄位語義失去測試意義
 func setupPurgeFixture(t *testing.T) *purgeFixture {
 	t.Helper()
 	db := setupCheckpointDB(t)
@@ -336,7 +336,7 @@ func TestPurgeIntervalSuccess(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("tombstone 應可驗，ok=%v err=%v", ok, err)
 	}
-	// policy_days 隨簽章保存（tasks 8.3 增列 purge_policy_days 欄）：
+	// policy_days 隨簽章保存（增列 purge_policy_days 欄）：
 	// **驗證以記錄值為準，不受呼叫端傳入值影響**——否則 admin 調整保留天數
 	// 就會讓全部歷史 tombstone 一起驗不過（大規模自傷告警）
 	if got.PurgePolicyDays == nil || *got.PurgePolicyDays != 365 {
@@ -992,7 +992,7 @@ func TestPurgeIntervalInterrupted(t *testing.T) {
 	}
 }
 
-// TestPurgeNeverSelfAlarms 自傷告警回歸守衛（tasks 6.13）。
+// TestPurgeNeverSelfAlarms 自傷告警回歸守衛。
 //
 // 五種情形逐一造出，斷言**沒有任何一種**產生 purged_invalid。
 // 這是常駐守衛：日後任何人把 tombstone 移出交易、或讓刪除先於簽章提交，

@@ -6,7 +6,7 @@ import (
 	"hash/crc32"
 )
 
-// 本檔定義封印期 journal 的磁碟佈局（D6.5）。
+// 本檔定義封印期 journal 的磁碟佈局。
 // 佈局為段 1 預配置的定長檔案，永不成長：
 //
 //	[Header A | Header B]  雙槽輪替，各含 generation ＋ CRC32C
@@ -56,7 +56,7 @@ const (
 	KindPublished = "published"
 )
 
-// outcome 結果碼值域（D6.5，五類）。
+// outcome 結果碼值域（五類）。
 const (
 	OutcomeSuccess         = "success"
 	OutcomeMaterialFailure = "material_failure"
@@ -86,7 +86,7 @@ var (
 )
 
 // layout 描述一份 journal 檔的固定佈局。所有偏移與長度在建立時決定並寫入 header，
-// 開檔時逐項比對；任一項不合即 fail-close（D6.5 (i-b)）。
+// 開檔時逐項比對；任一項不合即 fail-close。
 type layout struct {
 	criticalSlots int
 	rejectedSlots int
@@ -281,7 +281,7 @@ func decodeHeader(buf []byte) (*header, error) {
 }
 
 // criticalSlot 為 critical 環的單一事件槽。
-// 每槽含格式版本／boot ID／全域序號／事件種類／長度／時間／來源摘要／CRC32C（D6.5）。
+// 每槽含格式版本／boot ID／全域序號／事件種類／長度／時間／來源摘要／CRC32C。
 type criticalSlot struct {
 	Kind         uint8
 	Seq          uint64
@@ -354,7 +354,7 @@ func decodeCriticalSlot(buf []byte) (*criticalSlot, error) {
 }
 
 // rejectedSlot 為 rejected 環的合批聚合槽。
-// 被拒嘗試不逐筆 pwrite，改以定長記憶體聚合器按固定頻率合批（D6.5 同步分級）。
+// 被拒嘗試不逐筆 pwrite，改以定長記憶體聚合器按固定頻率合批（同步分級）。
 type rejectedSlot struct {
 	BatchIndex uint64
 	Cooldown   uint64

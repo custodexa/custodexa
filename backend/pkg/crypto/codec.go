@@ -6,30 +6,30 @@ import (
 	"strings"
 )
 
-// 【已移除】Codec 介面（`Encrypt(plaintext)`＋`Decrypt(ciphertext)`）於
-// kek-provider-modularization D5 cutover（tasks 1.7）**自本套件刪除**，不留過渡別名。
+// 【已移除】Codec 介面（`Encrypt(plaintext)`＋`Decrypt(ciphertext)`）於 AAD
+// cutover **自本套件刪除**，不留過渡別名。
 //
 // 理由：該介面**不帶欄位身分**，寫出的是無 AAD 的 `enc:v<N>` 密文。cutover 的
 // 驗收判準是「寫入端在**建構上**不可能產出無 AAD 密文」——只要仍存在一個
 // 帶 `Encrypt(plaintext)` 的介面可供服務層持有，該保證就退化為「靠自律」，
-// 且「現查殘餘為 0」淪為瞬時快照（tasks 1.7 失敗判準第 4 條）。
+// 且「現查殘餘為 0」淪為瞬時快照。
 //
 // 服務層一律持 ColumnCodec（見下）。
 //
-// **無 AAD 寫出能力已於 release-transitional-cleanup 整組刪除**：原先僅存的
+// **無 AAD 寫出能力已整組刪除**：原先僅存的
 // 退版反向回寫路徑（未匯出方法＋無 AAD 信封編碼）連同其守衛一併移除，
 // 「寫入端不可能產出無 AAD 密文」自此是建構事實而非靠守衛維持的承諾。
 // 讀取端亦無相容語義——非 `enc:a1` 之值於 DecryptFor 一律 fail-close。
 
-// CipherRef 資料密文的邏輯位置（kek-provider-modularization D5 資料層 AAD）：
+// CipherRef 資料密文的邏輯位置（資料層 AAD）：
 // 登記表名與欄名。
 //
-// **主鍵不參與 AAD（定案 A2，fable 仲裁＋codex 第二意見獨立同結論）**：
+// **主鍵不參與 AAD（第二意見審查獨立同結論）**：
 // pk 綁定所防的「同表同欄跨列搬移」以具 DB 寫權為前提，而該層級已明載為信任邊界，
 // 且該攻擊者另有嚴格更強的等價手段（直接改同列的 host／username 等非加密欄位、
-// 刪列重建同 pk 貼回舊密文——後者 D5 自承不擋）。反之 pk 綁定有三處主動傷害：
+// 刪列重建同 pk 貼回舊密文——後者本方案自承不擋）。反之 pk 綁定有三處主動傷害：
 // (1) 還原至 pk 不同的環境使密文不可解；(2) sqlite 自增 pk 重用使保證本就打折；
-// (3) 破壞 asset-multi-account 的密文原樣複製契約。
+// (3) 破壞資產多帳號的密文原樣複製契約。
 // 移除 pk 後，create 路徑於 insert 前即可完成加密，**不需兩階段寫入**。
 type CipherRef struct {
 	Table  string
@@ -50,7 +50,7 @@ type ColumnCodec interface {
 // 使「跨欄搬移」的防護在特定命名下靜默失效。
 // **為何不引用 internal/branding.Slug**：本包位於 pkg/ 之下，外部可 import；
 // 依賴 internal/ 會使外部 import 編譯失敗。品牌識別字在此以字面量表達，
-// 與 branding.Slug 同值（brand-residual-cleanup）。
+// 與 branding.Slug 同值。
 const (
 	aadNamespace = "custodexa"
 	// aadDomainWrappedDEK DEK 包裹層
@@ -79,12 +79,12 @@ func canonicalAAD(domain string, parts ...string) []byte {
 	return []byte(b.String())
 }
 
-// DEKAAD DEK 包裹層 AAD（D5）：綁定用途與版本。
+// DEKAAD DEK 包裹層 AAD：綁定用途與版本。
 //
-// **不含 kek_id 等可變識別符**（design.md D5 round-2，codex 批 A high）：
-// 委託模式的 `kek_id` 正規化改寫（D11／tasks 3.1a）明訂「純識別欄改寫、不重包」，
-// AAD 一旦含 kek_id，該改寫必然使既有列解包失敗——tasks 3.1a 的
-// 「kek_id 改寫後既有列仍可解包」驗收與本項互為前提。包裹材料本就只能由當初
+// **不含 kek_id 等可變識別符**：委託模式的 `kek_id` 正規化改寫明訂
+// 「純識別欄改寫、不重包」，AAD 一旦含 kek_id，該改寫必然使既有列解包失敗——
+// 「kek_id 改寫後既有列仍可解包」的驗收與本項互為前提。
+// 包裹材料本就只能由當初
 // 包裹它的 KEK 解開，把該 KEK 的**名字**再寫進 AAD 是冗餘的。
 //
 // **完備性依賴（SHALL 明載，否則放寬時靜默失效）**：`purpose|version` 之所以是
@@ -95,7 +95,7 @@ func DEKAAD(purpose string, version int) []byte {
 	return canonicalAAD(aadDomainWrappedDEK, purpose, strconv.Itoa(version))
 }
 
-// AAD 資料密文層 AAD（D5）：綁定登記表名與欄名。
+// AAD 資料密文層 AAD：綁定登記表名與欄名。
 func (r CipherRef) AAD() []byte {
 	return canonicalAAD(aadDomainDataField, r.Table, r.Column)
 }

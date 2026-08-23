@@ -13,7 +13,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// AuditFailureHandler 審計機制失效事件查詢 API（audit-log-compliance 10.7.3）
+// AuditFailureHandler 審計機制失效事件查詢 API
 type AuditFailureHandler struct {
 	failureService *audit.AuditFailureService
 }
@@ -23,7 +23,7 @@ func NewAuditFailureHandler(failureService *audit.AuditFailureService) *AuditFai
 	return &AuditFailureHandler{failureService: failureService}
 }
 
-// failureEventItem 失效事件回應形狀（backend-i18n-unification D8）：
+// failureEventItem 失效事件回應形狀：
 // 內嵌 model 保留既有欄位，另以物件形態曝露 cause_params——DB 存的是 JSON
 // 字串，直送會讓前端拿到「JSON 裡的 JSON」還得二次 parse。
 // cause_code 為權威表述（前端查譯），cause 散文續留作既有讀取點的 fallback

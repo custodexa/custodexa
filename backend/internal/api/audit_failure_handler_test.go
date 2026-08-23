@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// TestToFailureEventItems 失效事件回應形狀（backend-i18n-unification D8）：
+// TestToFailureEventItems 失效事件回應形狀：
 // cause_code 為權威表述、cause_params 以物件而非「JSON 裡的 JSON」出口、
 // 壞資料不得讓整份列表失敗
 func TestToFailureEventItems(t *testing.T) {

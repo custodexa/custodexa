@@ -40,7 +40,7 @@ func NewChangeSecretHandler(planService *asset.ChangeSecretPlanService, runner *
 
 // changeSecretCandidateDTO 候選憑證的對外表示。
 //
-// **本結構刻意不含任何秘密欄位**（design D10）：model 的 PasswordEnc／PrivateKeyEnc
+// **本結構刻意不含任何秘密欄位**：model 的 PasswordEnc／PrivateKeyEnc
 // 標 json:"-" 只擋住「直接序列化 model」這一種洩漏；handler 一律回 DTO，
 // 使「不小心把 model 丟出去」在型別層即不成立。
 type changeSecretCandidateDTO struct {
@@ -96,7 +96,7 @@ func (h *ChangeSecretHandler) RetryCandidate(c *gin.Context) {
 		return
 	}
 	// 候選是單一資產單一帳號的憑證，路徑上的 :id 是候選 id——中介層推導不出主體，
-	// 只有讀出候選後才知道打的是哪台機器（auditor-workbench D4）
+	// 只有讀出候選後才知道打的是哪台機器（auditor-workbench）
 	setAuditAssetIDValue(c, cand.AssetID)
 	promoted := h.retry.RetryOne(cand)
 	c.JSON(http.StatusOK, gin.H{"promoted": promoted})
@@ -225,7 +225,7 @@ func (h *ChangeSecretHandler) Delete(c *gin.Context) {
 
 // Run 手動觸發（async：批次可能耗時，結果經 records 查詢）。
 //
-// **審計不填 asset_id**（auditor-workbench D4）：計畫的 AssetIDs 是一組資產，
+// **審計不填 asset_id**（auditor-workbench）：計畫的 AssetIDs 是一組資產，
 // 觸發一次即對多台執行，沒有單一主體。逐資產的改密事實由 runner 落地時的
 // 帳號變更審計（writeAssetAccountAudit，各自帶自己的 asset_id）承載——
 // 在這一列挑一台填，等於偽稱其餘幾台沒被改密。
@@ -276,7 +276,7 @@ func (h *ChangeSecretHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 		g.GET("/:id/records", h.Records)
 	}
 
-	// 候選憑證（change-secret-ssh-deepening D4）：另立資源路徑——候選的生命週期
+	// 候選憑證：另立資源路徑——候選的生命週期
 	// 跨計劃（計劃刪除後候選仍須被處置），掛在 plan 下會讓它隨計劃消失
 	cg := r.Group("/change-secret-candidates")
 	cg.Use(middleware.AuthMiddleware(authService))

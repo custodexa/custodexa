@@ -1,4 +1,4 @@
-// SFTP 端點的 session_id 線上格式（asset-multi-account D9）：後端一律以
+// SFTP 端點的 session_id 線上格式：後端一律以
 // `c.Query("session_id")` 取值（含 multipart 上傳與 JSON body 的 mkdir），
 // 故五個端點都必須把它放在 query；空值一律省略，不得送出 `session_id=null`。
 import { describe, it, expect, vi, beforeEach } from 'vitest'

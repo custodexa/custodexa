@@ -60,7 +60,7 @@ describe('protocol 分類（與後端 model.ProtocolType 對齊）', () => {
   })
 })
 
-describe('protocolTagType（ux-consistency 全站唯一色映射）', () => {
+describe('protocolTagType（全站唯一色映射）', () => {
   it('maps each protocol to its tag type', () => {
     expect(protocolTagType('ssh')).toBe('success')
     expect(protocolTagType('rdp')).toBe('primary')

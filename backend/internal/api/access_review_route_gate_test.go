@@ -22,7 +22,7 @@ import (
 )
 
 // setupAccessReviewGateEnv 經完整 RegisterRoutes（真 AuthMiddleware＋真 JWT＋真 sqlite）
-// 的複審路由環境。authorization-page-redesign D5：RegisterRoutes 已無權限旗標
+// 的複審路由環境。RegisterRoutes 已無權限旗標
 // 參數——守門無條件成立（原 false 分支零守門，一般登入者可讀快照甚至偽造簽核）
 func setupAccessReviewGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.DB) {
 	t.Helper()
@@ -106,7 +106,7 @@ func TestAccessReviewGate_AuditorReadOnlySignDenied(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	// 週期與逾期伺服端單源回傳（D5）
+	// 週期與逾期伺服端單源回傳
 	assert.Equal(t, float64(authz.ReviewPeriodDays), resp["review_period_days"])
 	assert.Contains(t, resp, "overdue")
 

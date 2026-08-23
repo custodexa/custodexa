@@ -21,8 +21,8 @@ func unwritableRecordingPath(t *testing.T) string {
 	return f
 }
 
-// TestRecordingFailCloseGate 錄影前置檢查（recording-failure-handling D1/D2／
-// connection-gating 簽發閘序五道）：政策開啟時 probe 失敗拒發非 admin；
+// TestRecordingFailCloseGate 錄影前置檢查（connection-gating 簽發閘序五道）：
+// 政策開啟時 probe 失敗拒發非 admin；
 // admin 唯一例外帶豁免標記；政策關閉不擋；閘位於停用後、政策閘前
 func TestRecordingFailCloseGate(t *testing.T) {
 	failCloseOn := func() bool { return true }
@@ -40,7 +40,7 @@ func TestRecordingFailCloseGate(t *testing.T) {
 		}
 	})
 
-	t.Run("政策開：auditor 在授權閘即被擋（CPG-002）", func(t *testing.T) {
+	t.Run("政策開：auditor 在授權閘即被擋", func(t *testing.T) {
 		h, db, _ := setupPolicyGateTest(t)
 		seedGateFixture(t, db)
 		setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
@@ -140,7 +140,7 @@ func TestRecordingFailCloseGate(t *testing.T) {
 	})
 
 	t.Run("機制族分列：健康 probe 不 Resolve 文字路徑事件（flapping 釘住）", func(t *testing.T) {
-		// 對抗驗證 High-1：session 級錄製失敗與儲存層 probe 是不同信號流，
+		// session 級錄製失敗與儲存層 probe 是不同信號流，
 		// 健康 probe 不得關閉另一路仍在進行的失效事件
 		h, db, _ := setupPolicyGateTest(t)
 		seedGateFixture(t, db)

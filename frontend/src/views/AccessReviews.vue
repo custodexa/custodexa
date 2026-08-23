@@ -20,7 +20,7 @@
       </template>
     </PageHeader>
 
-    <!-- 複審狀態卡：週期與逾期判定由伺服端回傳（D5，前端不硬編碼） -->
+    <!-- 複審狀態卡：週期與逾期判定由伺服端回傳（前端不硬編碼） -->
     <div
       class="review-bar"
       role="status"
@@ -289,7 +289,7 @@ import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 
-// 存取複審獨立頁（authorization-page-redesign D5：自授權頁遷出，
+// 存取複審獨立頁（自授權頁遷出，
 // 職能歸審計區；admin＋auditor 可見、簽核限 admin——auditor 隱藏發起按鈕，
 // 後端另有無條件 admin 守門）
 const loading = ref(false)

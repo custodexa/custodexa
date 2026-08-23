@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 降級紀錄的守衛（command-audit-altscreen-bypass tasks 2.x）。
+// 降級紀錄的守衛。
 //
 // 本檔釘的是「零紀錄不再存在」與「降級紀錄不含指令文字」這兩件事，
 // 以及 command_store 佇列滿載時**斷號即證據**的既有行為。
@@ -197,7 +197,7 @@ func countReason(records []degradeRecord, reason string) int {
 	return n
 }
 
-// 以下四支補齊 tasks 2.3 列舉的降級終態守衛（tasks 3.1）。
+// 以下四支補齊降級終態守衛。
 // **沒有這些斷言，「降級可告警」就是宣稱而不是事實**——一個終態若根本不發紀錄，
 // 告警面再完備也收不到它，而該終態的每一輪就是靜默零紀錄。
 // 第五個終態（discardFullScreenQueue）由上方
@@ -309,7 +309,7 @@ func TestReplayQueueOverflowProducesDegradedRecord(t *testing.T) {
 }
 
 // TestCommandStoreQueueFullDropLeavesSeqGap 釘 command_store 佇列滿載時的
-// **斷號即證據**（design §6.4）：s.seq++ 在 select 之前，故丟棄留下一個
+// **斷號即證據**：s.seq++ 在 select 之前，故丟棄留下一個
 // 用不掉的序號。稽核看到 1,2,4 就知道第 3 筆存在過且沒進來，
 // 遠好過一段看起來完整無缺的 1,2,3。
 //

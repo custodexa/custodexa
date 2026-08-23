@@ -14,10 +14,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// 認證脈絡貫穿點清冊與守衛（idp-oidc-integration D18a / tasks 1.0a）。
+// 認證脈絡貫穿點清冊與守衛。
 //
-// 背景：r7 補監看、r8 補分享與 IssueSessionResponse——同一類缺口連續三輪靠人工
-// 對抗審查才發現，說明「貫穿點清單不完整」是機制問題而非個案。本守衛比照
+// 背景：監看、分享與 IssueSessionResponse 的同一類缺口連續多次靠人工
+// 審查才發現，說明「貫穿點清單不完整」是機制問題而非個案。本守衛比照
 // envelopeMigrationTargets／envelope_targets_guard_test.go 的形狀，把「哪些位置
 // 必須攜帶或驗證認證脈絡」變成宣告式清冊，並以 AST 掃描擋住未登記的新呼叫點。
 //
@@ -41,7 +41,7 @@ type authContextTouchpoint struct {
 	file   string // 相對 backend/ 的檔案路徑
 	fn     string // 所在函式（方法記為 Type.Method；檔案層級初始化記為 <file-scope>）
 	count  int    // 該函式內的呼叫次數上限
-	source string // 脈絡來源／用途（D18a 要求：每項含函式與脈絡來源）
+	source string // 脈絡來源／用途（每一項都必須含函式與脈絡來源）
 }
 
 // authContextTouchpoints 認證脈絡貫穿點清冊。
@@ -74,7 +74,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "改密後換發：method/providerID 自 scoped token 繼承，世代必須現查（繼承舊值會卡在改密迴圈）"},
 	{symbol: "buildAuthContext", file: "internal/modules/identity/auth_mfa_service.go", fn: "AuthService.finishLoginCarryingContext", count: 1,
 		source: "scoped token 的 claims.EffectiveMethod()/ProviderID，世代現查。**VerifyMFALogin 與 " +
-			"CompleteEnrollment 兩條路徑共用此處**（audit-coverage-closure 批 2 收斂）：兩者原本各自呼叫，" +
+			"CompleteEnrollment 兩條路徑共用此處**：兩者原本各自呼叫，" +
 			"合併後同時回帶認證脈絡供 handler 落審計（spec 要求 MFA 完成路徑保留 provider 標註）"},
 	// 註：RefreshSession 已**不再**呼叫 buildAuthContext（F-C：改以 refresh 列自身的
 	// 世代簽發，現查會在競態下洗白舊能力）。清冊為單向判定，故此處僅留說明不留登記。
@@ -87,16 +87,16 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "buildLoginResponse", file: "internal/modules/identity/auth_service.go", fn: "AuthService.finishLogin", count: 1,
 		source: "登入主路徑；脈絡為參數，零值即代表 local_password"},
 	{symbol: "buildLoginResponse", file: "internal/modules/identity/auth_service.go", fn: "AuthService.IssueSessionResponse", count: 1,
-		source: "改密換發路徑（D12）"},
+		source: "改密換發路徑"},
 	{symbol: "IssueSessionResponse", file: "internal/api/auth_handler.go", fn: "AuthHandler.ChangePassword", count: 1,
 		source: "scoped token 的 claims.EffectiveMethod()/ProviderID；世代由 service 內部現查"},
 
 	// ── 簽發側：非 JWT 的短期能力（連線／錄影／監看） ─────────────
 	{symbol: "IssueConnectToken", file: "internal/sshproxy/handler.go", fn: "Handler.HandleCreateConnectToken", count: 1,
-		source: "ConnectTokenManager（W10.2 接線後方法名對齊 gatewayapi.TokenService，原名 Issue）：" +
+		source: "ConnectTokenManager（接線後方法名對齊 gatewayapi.TokenService，原名 Issue）：" +
 			"middleware.GetAuthContext(c) 經 subj 填入 proxy.ConnectGrant"},
 	{symbol: "Issue", file: "internal/api/recording_handler.go", fn: "RecordingHandler.IssueRecordingToken", count: 1,
-		source: "RecordingTokenManager：middleware.GetAuthContext(c).ProviderID（D18a 明令不得列為例外）"},
+		source: "RecordingTokenManager：middleware.GetAuthContext(c).ProviderID（不得列為例外）"},
 	{symbol: "Join", file: "internal/sshproxy/handler.go", fn: "Handler.HandleMonitor", count: 1,
 		source: "MonitorHub 監看訂閱：ObserverContext 帶 userID/providerID/世代，供按 provider／user 收線"},
 	{symbol: "Join", file: "internal/sshproxy/handler.go", fn: "Handler.HandleShareJoin", count: 1,
@@ -107,7 +107,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "建立 flow state：provider 的 auth_epoch 快照入列（begin 時尚未認證，不帶 cred_epoch）"},
 	{symbol: "issueTicket", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.callback", count: 1,
 		source: "login ticket 是使用者世代的第一個攜帶者（auth_epoch/cred_epoch 皆於此現查寫入）。" +
-			"**fn 由 Callback 改為小寫 callback**（audit-coverage-closure 批 2）：外層 Callback 現為薄包覆，" +
+			"**fn 是小寫的 callback**：外層 Callback 為薄包覆，" +
 			"只負責把審計意向掛到結果或錯誤上，流程本體與其世代寫入未變"},
 
 	// ── 驗證側：token 與世代閘 ───────────────────────────────────
@@ -115,7 +115,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "access token 的 claims.AuthContext 對 DB 現值比對"},
 	{symbol: "VerifyCredentialGenerationByUserID", file: "internal/modules/identity/auth_service.go", fn: "AuthService.ValidateConnectionToken", count: 1,
 		source: "WS ?token= 旁路（三條路由不掛 middleware，漏此即停用後仍可開監看）"},
-	// W10（兩階段閘序收斂）：兩處自 handler.go 的 Handle* 遷入 connect_gates.go 的
+	// 兩階段閘序收斂：兩處自 handler.go 的 Handle* 遷入 connect_gates.go 的
 	// 閘序宣告（G-S4／G-G5），呼叫本身逐字未改，只是改由 Gate.Eval 承載
 	{symbol: "VerifyCredentialGenerationByUserID", file: "internal/sshproxy/connect_gates.go", fn: "Handler.redeemPreResolveGates", count: 1,
 		source: "connect token 兌換：grant 內的脈絡對 DB 現值比對（G-S4）"},
@@ -123,7 +123,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "同上（guacamole 協議側兌換，G-G5）"},
 	{symbol: "VerifyCredentialGeneration", file: "internal/modules/identity/auth_epoch_gate.go", fn: "AuthService.VerifyCredentialGenerationByUserID", count: 1,
 		source: "閘門內部：自行載入 user 後委派"},
-	// **W8 9.6 刪除的陳舊登記**：原有一列 {VerifyCredentialGeneration,
+	// **已刪除的陳舊登記**：原有一列 {VerifyCredentialGeneration,
 	// oidc_login_service.go, OIDCLoginService.Exchange}。反向完備性斷言上線後當場
 	// 打出「登記 1 處、實際掃到 0 處」——`Exchange` 走的是交易內版本
 	// （下方 VerifyCredentialGenerationTx 那一列），非交易版從未在該函式出現過。
@@ -133,10 +133,10 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "VerifyCredentialGenerationByUserID", file: "internal/modules/identity/auth_mfa_service.go", fn: "AuthService.CompleteEnrollment", count: 1,
 		source: "enrollment scoped token 的世代現查；置於 EnableMFA 之前，失效憑證不得寫入 TOTP 因子"},
 	{symbol: "ValidateConnectionToken", file: "internal/modules/identity/auth_service.go", fn: "AuthService.VerifySession", count: 1,
-		source: "gatewayapi.SessionVerifier 的實作出口（W10.2 接線）：判定本體即 ValidateConnectionToken，" +
+		source: "gatewayapi.SessionVerifier 的實作出口（閘道接線）：判定本體即 ValidateConnectionToken，" +
 			"本方法只做 claims → gatewayapi.Principal 的欄位對映，不新增亦不放寬任何判定"},
 	{symbol: "VerifySession", file: "internal/sshproxy/handler.go", fn: "Handler.authenticate", count: 1,
-		source: "WS 連線認證出口（W10.2 起只經 gatewayapi.SessionVerifier 介面消費，" +
+		source: "WS 連線認證出口（只經 gatewayapi.SessionVerifier 介面消費，" +
 			"判定本體仍是 ValidateConnectionToken）；驗過的認證脈絡由本函式 c.Set(\"authContext\", …) " +
 			"寫入 gin context——`?token=` 分支上它是唯一寫入者，下游 HandleMonitor／HandleShareJoin " +
 			"的 middleware.GetAuthContext(c) 全靠這一步（方向性由 authContextWriterSites 斷言）"},
@@ -145,15 +145,15 @@ var authContextTouchpoints = []authContextTouchpoint{
 
 	// ── 驗證側：一次性能力兌換 ───────────────────────────────────
 	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/handler.go", fn: "Handler.HandleSSH", count: 1,
-		source: "ConnectTokenManager 兌換（W10.2 接線後方法名對齊 gatewayapi.TokenService，原名 Resolve）：" +
-			"取出 grant 後須複查 provider 啟用與世代。audit-coverage-closure 批 10 起改呼叫帶原因版本——" +
+		source: "ConnectTokenManager 兌換（接線後方法名對齊 gatewayapi.TokenService，原名 Resolve）：" +
+			"取出 grant 後須複查 provider 啟用與世代。此處呼叫帶原因的版本——" +
 			"**判定本體逐字不變**（RedeemConnectToken 即以本方法實作），多回傳的原因只供審計分辨" +
 			"票證無效／過期；對外回應仍收斂為同一則「token 無效」，不給票證存在性探測面"},
 	{symbol: "RedeemConnectTokenWithReason", file: "internal/proxy/connect_token.go", fn: "ConnectTokenManager.RedeemConnectToken", count: 1,
 		source: "**同一份判定的唯一實作**：RedeemConnectToken 即以本方法實作，故兩條兌換路徑" +
 			"不可能分化成「回應說無效、審計說過期」。本列釘住那個委派仍在——被拆成兩份實作時轉紅"},
 	{symbol: "RedeemConnectTokenWithReason", file: "internal/proxy/handler.go", fn: "ConnectionHandler.HandleConnect", count: 1,
-		source: "同上（guacamole 協議側）。audit-coverage-closure 批 4 起改呼叫帶原因版本——" +
+		source: "同上（guacamole 協議側）。此處呼叫帶原因的版本——" +
 			"**判定本體逐字不變**（RedeemConnectToken 即以本方法實作），多回傳的原因只供審計" +
 			"分辨票證無效／過期；對外回應仍收斂為同一則「token 無效」，不給票證存在性探測面"},
 	{symbol: "Resolve", file: "internal/api/recording_handler.go", fn: "RecordingHandler.StreamRecordingByToken", count: 1,
@@ -262,7 +262,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "錄影 token 簽發：借用同一「鎖內重讀前提 → 世代比對 → 非阻塞集合操作」契約，" +
 			"使簽發與 RevokeByUser／RevokeByProvider 的掃描不會交錯出漏網的 grant"},
 
-	// ── 跨包測試接縫（W8 9.9；W8 獨立驗收後已無登記列）────────────
+	// ── 跨包測試接縫（獨立驗收後已無登記列）──────────────────
 	// 原本這裡有兩列：`internal/modules/identity/testseams.go` 內
 	// `BuildAuthContextForTest`／`IssueTicketForTest` 對 `buildAuthContext`／
 	// `issueTicket` 的委派。那個生產檔已收斂為 `identity/export_test.go`
@@ -286,7 +286,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 
 // authContextHomonymDecls 與清冊符號同名、但語義無關的**宣告**（本 module 內）。
 //
-// **W8 9.6 起判準由「名稱＋接收者運算式字串」改為「go/types 解析出的宣告」**：
+// **判準已由「名稱＋接收者運算式字串」改為「go/types 解析出的宣告」**：
 // 呼叫點的 callee 先經 `TypesInfo.Uses` 解析成 `types.Object`，非本 module 的宣告
 // （`strings.Join`／`gorm.DB.Begin`／`oauth2.Config.Exchange`……）**在型別層就被排除**，
 // 不再需要逐個接收者變數名去猜。留在本表的只有「同一個 module 內、同名但語義無關」
@@ -300,11 +300,11 @@ var authContextTouchpoints = []authContextTouchpoint{
 // 也不必證明那個宣告真的存在——「允許清單只驗刪除、不驗放寬」的教科書形態。
 var authContextHomonymDecls = map[string]string{
 	// 審計失敗機制的復原標記，與認證脈絡無關。**三個宣告都要列**：實作在 audit，
-	// 而 keyvault 與鏈驗證編排者各自以窄介面消費（W1 1.11 的環拆解形態），
+	// 而 keyvault 與鏈驗證編排者各自以窄介面消費（1.11 的環拆解形態），
 	// 呼叫點解析到的是各自的介面方法而非實作
 	"github.com/custodexa/backend/internal/modules/audit.AuditFailureService.Resolve":     "審計失敗復原標記（實作）",
 	"github.com/custodexa/backend/internal/modules/keyvault.AuditFailureReporter.Resolve": "審計失敗復原標記（keyvault 側窄介面）",
-	// audit-chain-scheduled-verification 新增：`ChainVerifyService` 以自宣告的
+	// `ChainVerifyService` 以自宣告的
 	// `ChainVerifyAlerter`（chain_verify_service.go:102）消費同一個
 	// `AuditFailureService.Resolve`，故是第三個需列管的宣告位置。
 	// 四個呼叫點（`Tick`／`runNow`／`syncAlerts`×2）傳的都是 `model.Mechanism*`
@@ -315,12 +315,12 @@ var authContextHomonymDecls = map[string]string{
 	// host key TOFU 驗證回呼（`hostKeys.Callback(assetID)` 回 ssh.HostKeyCallback），
 	// 與認證脈絡無關
 	"github.com/custodexa/backend/internal/modules/asset.HostKeyService.Callback": "host key TOFU 回呼",
-	// F8 交易級聯撤銷 authz 的 approver_scopes（W7 7.4 的 tx-taking 窄 port），
+	// 交易級聯撤銷 authz 的 approver_scopes（7.4 的 tx-taking 窄 port），
 	// 與 `RecordingTokenManager.RevokeByUser`（錄影 token 失效）**只是同名**。
 	// 它撤的是「審核者範圍」這種授權資料，不簽發也不失效任何憑證。
 	// **兩個宣告都要列**：authz 的實作，與 identity／asset 側消費者自宣告的窄介面。
-	"github.com/custodexa/backend/internal/modules/authz.AssetAuthorizationService.RevokeByUser":      "F8 交易級聯撤銷授權資料（實作）",
-	"github.com/custodexa/backend/internal/modules/identity.authorizationCascadeRevoker.RevokeByUser": "F8 交易級聯撤銷授權資料（identity 側窄介面）",
+	"github.com/custodexa/backend/internal/modules/authz.AssetAuthorizationService.RevokeByUser":      "交易級聯撤銷授權資料（實作）",
+	"github.com/custodexa/backend/internal/modules/identity.authorizationCascadeRevoker.RevokeByUser": "交易級聯撤銷授權資料（identity 側窄介面）",
 }
 
 // maxAuthContextHomonymDecls 同名例外的條數上限（現況 7）。
@@ -336,9 +336,9 @@ const maxAuthContextHomonymDecls = 7
 // authContextWatchedSymbols 需要掃描呼叫點的符號集合。
 //
 // **每一個都必須在本 module 內解析到至少一個宣告**（見 assertWatchedDeclsResolved）
-// ——這是 W8 9.6 補的反向斷言：改名（例如 `verifyCredentialGenerationTx` 匯出為
+// ——這是後補的反向斷言：改名（例如 `verifyCredentialGenerationTx` 匯出為
 // `VerifyCredentialGenerationTx`）會讓舊名匹配不到任何東西，那一整批貫穿點就
-// **靜默地**自掃描面消失而測試照樣綠。W7 已在字串型定位子上實證過同一形態。
+// **靜默地**自掃描面消失而測試照樣綠。字串型定位子上已實證過同一形態。
 var authContextWatchedSymbols = []string{
 	// 簽發側
 	"GenerateToken", "GenerateTokenNotAfter", "GenerateScopedToken", "issueRefreshToken",
@@ -352,19 +352,19 @@ var authContextWatchedSymbols = []string{
 	"VerifyCredentialGenerationTx",
 	// 序列化側（3.8b 通則：以既有身分或憑證產生新長效能力的位置）
 	"WithCapabilityLocks", "CreateWithGenerationGuard", "JoinWithGenerationGuard",
-	// 失效側（RecordingTokenManager 依 D18a 不得列為例外）
+	// 失效側（RecordingTokenManager 不得列為例外）
 	"RevokeByUser", "RevokeByProvider",
 	"DisconnectByUser", "DisconnectByProvider",
 }
 
 // minAuthContextPackages `packages.Load("./...")` 的載入包數下限（空圖＝零命中＝綠）。
-// W8 實測 36 個包；取 30 為下界（遷移只會增加包）。
+// 實測 36 個包；取 30 為下界（遷移只會增加包）。
 const minAuthContextPackages = 30
 
 // minAuthContextCallSites 掃到的貫穿點呼叫數下限。
 // **這是「掃得到東西但掃錯範圍」的反向斷言**：把掃描根指到別的樹、或 watched
 // 清單因改名而失配時，命中數會塌陷而不是變成 0（清單裡總有幾個名字還在）。
-// W8 實測 106 處（掃 311 檔／36 包）；取 90 為下界——留 15% 餘裕給正當的收口，
+// 實測 106 處（掃 311 檔／36 包）；取 90 為下界——留 15% 餘裕給正當的收口，
 // 但任何整批消失（改名、掃描根偏移）都會遠低於它。
 const minAuthContextCallSites = 90
 
@@ -575,13 +575,13 @@ func scanAuthContextTouchpoints(t *testing.T) authContextScan {
 	return scan
 }
 
-// TestAuthContextTouchpointsGuard 認證脈絡貫穿點清冊守衛（**雙向**，W8 9.6 起）。
+// TestAuthContextTouchpointsGuard 認證脈絡貫穿點清冊守衛（**雙向**）。
 //
 // 三條斷言，缺一不可：
 //   - **watched 清單全數解析得到**：任一符號在本 module 內找不到宣告即 t.Fatal
 //     ——改名會讓那一批貫穿點靜默消失，這條是它的攔截點；
 //   - **現實 → 清冊**：未登記的呼叫點即紅（原有語義）；
-//   - **清冊 → 現實**：登記了卻掃不到即紅（W8 9.6 新增的反向完備性）。
+//   - **清冊 → 現實**：登記了卻掃不到即紅（後補的反向完備性）。
 //     原註解以「分批交付、允許超前登記」為由刻意做成單向；那批交付早已完成，
 //     而單向的代價是「清冊描述的行為其實不存在」不會有任何東西轉紅
 //     ——`authContextWriterSites` 當年正是為了同一個理由才做成雙向。
@@ -695,9 +695,9 @@ func assertAuthContextHomonymsAreBounded(t *testing.T, scan authContextScan) {
 
 // authContextWriterSites 寫入 gin context 之 "authContext" 的完整位置清冊。
 //
-// 與 authContextTouchpoints 的**方向相反**（批 14 對抗審查 L4）：清冊本體是單向的
+// 與 authContextTouchpoints 的**方向相反**：清冊本體是單向的
 // （只擋未登記的呼叫），所以「某個登記項所描述的行為其實不存在於程式碼」不會讓
-// 任何測試轉紅——C1 正是這樣被漏掉的：清冊寫著 authenticate「回傳 claims 供訂閱
+// 任何測試轉紅——曾有一處正是這樣被漏掉的：清冊寫著 authenticate「回傳 claims 供訂閱
 // 脈絡使用」，而該函式從未寫入脈絡，監看／分享訂閱因此一律拿到零值。
 //
 // 本清冊採**雙向**判定：登記的位置必須真的寫入（漏寫即紅），未登記的位置不得寫入

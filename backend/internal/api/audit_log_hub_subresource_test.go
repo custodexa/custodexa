@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 連線樞紐涵蓋子資源（clipboard-read-provenance）。
+// 連線樞紐涵蓋子資源。
 //
 // 缺口：剪貼簿取證讀取自 ResourceClipboardEvent 起獨立分類後，
 // `GET /audit-logs/resource/session/:id` 的白名單只認 session，稽核查一場連線
@@ -163,7 +163,7 @@ func TestNonSessionHubUnaffectedBySubResourceExpansion(t *testing.T) {
 
 // id 空間不同的分類不得入列：change_secret_plan／authorization 的 resource_id
 // 是計畫 id／授權列 id，展開會把別的實體的事件掛到連線上（產生假事件）。
-// 本斷言是「同型缺陷換條路徑」的擋板——D1.3(a) 訂正過的缺陷不得由樞紐展開重生。
+// 本斷言是「同型缺陷換條路徑」的擋板——已訂正過的缺陷不得由樞紐展開重生。
 func TestHubSubResourcesExcludeForeignIDSpaces(t *testing.T) {
 	forbidden := map[model.AuditResource]bool{
 		model.ResourceChangeSecretPlan: true,
@@ -188,7 +188,7 @@ func TestHubSubResourcesExcludeForeignIDSpaces(t *testing.T) {
 }
 
 // TestSessionHubIncludesRecordingAndCommandRetrieval 連線樞紐須帶出錄影調閱與
-// 指令查詢（audit-resource-classification-closure 批 1）。
+// 指令查詢。
 //
 // 缺口：兩族自 session 拆出獨立分類後，若不同批加進 AuditHubSubResources，
 // 稽核查一場連線就再也看不到「誰取走了這場連線的錄影／指令原文」——那是**真事件
@@ -234,9 +234,9 @@ func TestSessionHubIncludesRecordingAndCommandRetrieval(t *testing.T) {
 	}
 }
 
-// TestRecordingHubTypeRemoved `recording` 已非樞紐型別（批 1，design D4 面 3）。
+// TestRecordingHubTypeRemoved `recording` 已非樞紐型別。
 //
-// 其 resource_id 自批 1 起是**連線 id**（`/sessions/:id/recording*`）或 nil，
+// 其 resource_id 是**連線 id**（`/sessions/:id/recording*`）或 nil，
 // 沒有一種是「錄影列 id」，留在白名單即違反「各型的 :id 指向該型自身實體 id」。
 // 移除代價為零——訂正前 `/recordings/*` 的 resource_id 恆 nil，該入口永遠空集。
 func TestRecordingHubTypeRemoved(t *testing.T) {

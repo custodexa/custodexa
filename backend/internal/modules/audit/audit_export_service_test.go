@@ -47,7 +47,7 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 	return svc, db
 }
 
-// emptyRecordings 無錄影檔的 RecordingReader 替身（W4 4.8 的 C↔E 環反轉配套）。
+// emptyRecordings 無錄影檔的 RecordingReader 替身（C↔E 環反轉配套）。
 //
 // **等價性**：搬包前此處注入的是 `NewRecordingService(t.TempDir())`——一個指向空目錄的
 // 真實錄影服務，本檔任一測試都沒有放進真的錄影檔，故它對每個 sessionID 一律回
@@ -56,7 +56,7 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 // 唯一涉及錄影數的測試 TestExportRecordingTruncation 走的是 resolveRecordingSessions
 // （純 DB 查詢，不碰 reader），不受影響。
 //
-// **為何不能沿用真型別**：RecordingService 住 `internal/modules/session`（W9 前為
+// **為何不能沿用真型別**：RecordingService 住 `internal/modules/session`（早期在
 // `internal/service`），而 session 反過來消費本模組（`audit.CauseText`／失效事件登記）
 // ——包內測試 import 它即 import cycle。
 type emptyRecordings struct{}
@@ -194,7 +194,7 @@ func TestExportRecordingTruncation(t *testing.T) {
 	}
 }
 
-// TestExportAuditLogsCompleteNoSilentTruncation 對抗驗證 F1 回歸：
+// TestExportAuditLogsCompleteNoSilentTruncation 回歸：
 // >20 筆審計日誌須完整匯出（不因 List 的 PageSize>100→20 上限誤判最後一頁）、
 // 且未達匯出上限時 truncated 誠實為 false
 func TestExportAuditLogsCompleteNoSilentTruncation(t *testing.T) {
@@ -233,7 +233,7 @@ func TestExportAuditLogsCompleteNoSilentTruncation(t *testing.T) {
 	}
 }
 
-// TestExportAssetFilterNotesAuditLogScope 對抗驗證 F2 的**後續**：asset_id 篩選現已
+// TestExportAssetFilterNotesAuditLogScope 的**後續**：asset_id 篩選現已
 // 套用於 audit_logs 段（欄位補上後），manifest 改標其歷史邊界——該關聯自工作台上線
 // 起才寫入，之前的歷史列不在包內。標註以機器碼給（後端零散文出站）
 func TestExportAssetFilterNotesAuditLogScope(t *testing.T) {

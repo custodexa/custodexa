@@ -9,7 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// 外部帳號的本地密碼路徑（idp-oidc-integration tasks 4.17，design D8）。
+// 外部帳號的本地密碼路徑。
 //
 // 兩個性質必須同時成立，且兩者互相拉扯：
 //   - **不可枚舉**：回應與一般憑證錯誤完全不可區分，否則本地登入表單即成

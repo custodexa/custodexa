@@ -1,14 +1,14 @@
 #!/bin/bash
-# 危險指令告警 E2E 測試（command-alerts tasks 1.4）：
+# 危險指令告警 E2E 測試：
 #   規則 CRUD（無效 regex 400 / 非法 severity 400 / 建立 / 更新 / 刪除）
 #   -> 權限（非 admin 改規則 403、無權限查告警 403、未認證 401）
 #   -> 告警查詢（severity / user_id / 時間範圍過濾、分頁、rule_name 冗餘欄位）
 #
-# 測試邊界說明：告警比對掛在 proxy.CommandRecorder 的 writeLoop 入庫路徑（design D2），
+# 測試邊界說明：告警比對掛在 proxy.CommandRecorder 的 writeLoop 入庫路徑，
 # 直接 INSERT session_commands 不會經過該路徑、不會觸發比對；
 # 故本腳本的告警資料以 SQL 種子 INSERT command_alerts 驗證「查詢面」，
 # 「真實觸發鏈路」（瀏覽器 SSH 輸入危險指令 -> recorder -> matcher -> 告警入庫）
-# 由 tasks 3.1 的瀏覽器實機 E2E 驗證。
+# 由瀏覽器實機 E2E 驗證。
 # 可重複執行；需 docker compose 全套服務運行中
 
 set -u

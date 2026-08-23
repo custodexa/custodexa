@@ -1,4 +1,4 @@
-// AsciinemaPlayer 的初始定位（workbench-exits-and-export 出口 A／tasks 1.1）。
+// AsciinemaPlayer 的初始定位。
 //
 // 兩件事要守住：
 //   1. 給 start-at 時實際落在請求的秒數（不是停在 0——初始化的取時長 dance 原本

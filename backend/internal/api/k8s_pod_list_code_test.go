@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// TestListK8sPods_PerKindCode pod 列表的 k8s 錯誤逐類配碼（V2 對抗驗收 H1）。
+// TestListK8sPods_PerKindCode pod 列表的 k8s 錯誤逐類配碼。
 //
 // 修正前六類共用 RULE_K8S_POD_UNAVAILABLE：同一個 401，走 WS 撥號時前端拿到
 // RULE_K8S_UNAUTHORIZED（可提示換 Token），走 pod 列表時只拿到泛碼——同一件事

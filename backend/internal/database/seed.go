@@ -10,7 +10,7 @@ import (
 )
 
 // SeedDatabase 初始化資料庫資料（角色、初始管理員）。
-// adminInitialPassword 為建立初始 admin 用的密碼（deployment-hardening CPG-001）：
+// adminInitialPassword 為建立初始 admin 用的密碼：
 // 呼叫端（main.go）已於空 DB 時驗證其 byte 契約；非空 DB 時傳空字串，seedAdmin 依 count>0 略過。
 func SeedDatabase(adminInitialPassword string) error {
 	log.Println("開始初始化資料庫資料...")
@@ -29,7 +29,7 @@ func SeedDatabase(adminInitialPassword string) error {
 	return nil
 }
 
-// CountUsers 回傳使用者總數（deployment-hardening D5：main.go 據以判定全新/既有安裝）
+// CountUsers 回傳使用者總數（deployment-hardening：main.go 據以判定全新/既有安裝）
 func CountUsers() (int64, error) {
 	var count int64
 	if err := DB.Model(&model.User{}).Count(&count).Error; err != nil {
@@ -39,7 +39,7 @@ func CountUsers() (int64, error) {
 }
 
 // ScanLegacyDefaultAdmins 掃描所有具 admin 角色的帳號，回傳密碼仍為出廠預設 admin123 的帳號 ID
-// （deployment-hardening D6 legacy 掃描）。不依賴 username／資料列排序／單一 admin 假設／
+// （deployment-hardening 的 legacy 掃描）。不依賴 username／資料列排序／單一 admin 假設／
 // must_change_password 篩選；涵蓋 active 與 inactive（inactive 亦不得保留公開已知憑證）。
 // LDAP 用戶密碼在目錄端、空密碼無從比對，皆跳過。
 func ScanLegacyDefaultAdmins() ([]uint, error) {
@@ -53,7 +53,7 @@ func ScanLegacyDefaultAdmins() ([]uint, error) {
 		if u.IsLDAP || u.Password == "" || !userHasAdminRole(u) {
 			continue
 		}
-		// 走 Verifier 而非單一演算法（password-hasher-interface 4.4）：
+		// 走 Verifier 而非單一演算法：
 		// 它依雜湊前綴分派，故**掃描自動涵蓋全部支援的演算法**。
 		// 只比對當前演算法會讓舊雜湊的帳號逃過掃描，而那正是最可能中招的
 		// ——久未登入所以從未被漸進遷移升級。
@@ -91,7 +91,7 @@ func seedRoles() error {
 			Description: "稽核人員，可以檢視所有審計日誌和連線記錄",
 		},
 		{
-			// 可疊加職能角色（access-policy-approval D5）：僅授予審核職能，
+			// 可疊加職能角色：僅授予審核職能，
 			// 不改變 primaryRoleOf 判定。seedRoles 逐角色補建，既有部署升級即生效
 			Name:        model.RoleApprover,
 			Description: "審核人員，可核准/拒絕審核範圍內的連線申請",
@@ -117,7 +117,7 @@ func seedRoles() error {
 	return nil
 }
 
-// seedAdmin 建立初始管理員帳號（deployment-hardening CPG-001）。
+// seedAdmin 建立初始管理員帳號。
 // 僅在空 DB（count==0）建立；密碼取自部署方 .env 的 ADMIN_INITIAL_PASSWORD（呼叫端已驗證 byte 契約），
 // 不再有硬編碼公開預設值。首登強制改密後該值退役（見 main.go 退役告警與 QUICKSTART）。
 func seedAdmin(adminInitialPassword string) error {
@@ -150,19 +150,19 @@ func seedAdmin(adminInitialPassword string) error {
 		FullName: "Administrator",
 		Active:   true,
 		IsLDAP:   false,
-		// 身分欄位顯式賦值（idp-oidc-integration D2）：seed admin 是本地帳號，
+		// 身分欄位顯式賦值：seed admin 是本地帳號，
 		// 且必須保有本地密碼——它是封印狀態下唯一能解封的憑證來源
 		ProvisioningOrigin: model.AuthSourceLocal,
 		ExternalCredential: false,
-		// 首次登入強制改密（auth-hardening D4）
+		// 首次登入強制改密
 		MustChangePassword: true,
-		// 閒置停用豁免（D8）：避免唯一管理員因久未登入被自動停用鎖死系統
+		// 閒置停用豁免：避免唯一管理員因久未登入被自動停用鎖死系統
 		InactivityExempt: true,
 	}
 
 	// 建立管理員、初始歷史與 admin 角色須原子（PW-4 + deployment-hardening）：任一步失敗全回滾，
 	// 避免留下「已建 admin 但無歷史列」或「已建 admin 但未掛 admin 角色」的半初始化——下次啟動
-	// count>0 永久跳過 seed，導致可 serving 卻無有效管理員，或瓦解 D12「首次強制改密不可設回 vendor default」。
+	// count>0 永久跳過 seed，導致可 serving 卻無有效管理員，或瓦解「首次強制改密不可設回 vendor default」這條規則。
 	if err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&admin).Error; err != nil {
 			return err

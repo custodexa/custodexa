@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TestCellCountIsTwelve：D6.2.2 為 12 格定稿表，格數本身是驗收條件。
+// TestCellCountIsTwelve：遷移表為 12 格定稿表，格數本身是驗收條件。
 func TestCellCountIsTwelve(t *testing.T) {
 	if got := len(Cells()); got != 12 {
 		t.Fatalf("預期 12 格，實得 %d", got)
@@ -73,7 +73,7 @@ func TestEveryCellHasPositiveSituation(t *testing.T) {
 	}
 }
 
-// TestCellsMatchDesignTable：逐格對照 D6.2.2 的目標態與副作用欄位。
+// TestCellsMatchDesignTable：逐格對照遷移表定稿的目標態與副作用欄位。
 func TestCellsMatchDesignTable(t *testing.T) {
 	want := map[string]Cell{
 		"1":  {Target: StateSealed},

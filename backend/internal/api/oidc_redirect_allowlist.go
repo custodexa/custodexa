@@ -2,7 +2,7 @@ package api
 
 import "strings"
 
-// frontendRouteSegments 前端路由的第一段集合（idp-oidc-integration design 第 122 行）。
+// frontendRouteSegments 前端路由的第一段集合。
 //
 // 登入後重導向目標除了「同源相對路徑」之外，還須匹配前端既有路由枚舉。
 // 只比對**第一段**而非完整路徑：`/sessions/:id`、`/terminal/:assetId` 等帶動態

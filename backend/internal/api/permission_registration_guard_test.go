@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// 權限註冊不得條件化（security-backlog-settlement D5）。
+// 權限註冊不得條件化。
 //
 // # 這個守衛擋的是什麼
 //
@@ -118,7 +118,7 @@ func TestNoConditionalPermissionRegistration(t *testing.T) {
 	if len(offences) > 0 {
 		sort.Strings(offences)
 		t.Errorf("發現 %d 處條件式權限註冊：\n  %s\n\n"+
-			"權限檢查於所有模式無條件生效（security-backlog-settlement D5）——"+
+			"權限檢查於所有模式無條件生效——"+
 			"路由一律帶授權中間件，不得依旗標分歧。若確有需要條件註冊的正當理由，"+
 			"請先在 spec 立案，不要靜默恢復舊樣板",
 			len(offences), strings.Join(offences, "\n  "))

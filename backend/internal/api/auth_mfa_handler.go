@@ -89,7 +89,7 @@ func (h *AuthHandler) MFAEnrollSetup(c *gin.Context) {
 		case errors.Is(err, identity.ErrMFAPendingTokenInvalid):
 			status = http.StatusUnauthorized
 		case errors.Is(err, identity.ErrMFAAlreadyEnrolled):
-			// 已註冊者持 enrollment token 重放（MFA-1）：409 明示、記審計偵測改綁企圖
+			// 已註冊者持 enrollment token 重放：409 明示、記審計偵測改綁企圖
 			status = http.StatusConflict
 			h.auditAuthEvent(c, 0, "", model.ActionUpdate, model.StatusFailure, status, err.Error())
 		}
@@ -99,7 +99,7 @@ func (h *AuthHandler) MFAEnrollSetup(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// MFAEnrollConfirm 強制註冊：以 enrollment token + TOTP 碼完成綁定並直接換發正式會話（D12）
+// MFAEnrollConfirm 強制註冊：以 enrollment token + TOTP 碼完成綁定並直接換發正式會話
 func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 	token := extractBearer(c)
 	if token == "" {
@@ -124,7 +124,7 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 		case errors.Is(err, identity.ErrMFAPendingTokenInvalid), errors.Is(err, identity.ErrUserInactive):
 			status = http.StatusUnauthorized
 		case errors.Is(err, identity.ErrMFAAlreadyEnrolled):
-			status = http.StatusConflict // 已註冊者不得改綁（MFA-1）
+			status = http.StatusConflict // 已註冊者不得改綁
 		case errors.Is(err, identity.ErrAccountLocked):
 			status = http.StatusLocked // 綁定碼暴力達門檻（MFA-2 共用鎖定計數）
 		}
@@ -142,7 +142,7 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 		return
 	}
 	h.auditMFALoginSuccess(c, resp.User.ID, resp.User.Username, "mfa_enrolled", resp)
-	// 發放端點 3／6：強制註冊完成直接換發正式會話（D12）
+	// 發放端點 3／6：強制註冊完成直接換發正式會話
 	h.refreshCookies.SetFromLogin(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
@@ -194,7 +194,7 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 			errors.Is(err, identity.ErrMFANotEnabled) || errors.Is(err, identity.ErrUserInactive) {
 			status = http.StatusUnauthorized
 		}
-		// TOTP 失敗與密碼失敗共用鎖定計數（D2），達門檻回 423 明示鎖定
+		// TOTP 失敗與密碼失敗共用鎖定計數，達門檻回 423 明示鎖定
 		if errors.Is(err, identity.ErrAccountLocked) {
 			status = http.StatusLocked
 		}
@@ -204,7 +204,7 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 		return
 	}
 
-	// MFA 通過但須先改密（D4：改密 gate 排在 MFA 之後防繞過）
+	// MFA 通過但須先改密（改密 gate 排在 MFA 之後防繞過）
 	if resp.PasswordChangeRequired {
 		h.auditMFALoginSuccess(c, resp.PendingUserID, resp.PendingUsername, "password_change_required", resp)
 		c.JSON(http.StatusOK, resp)
@@ -243,7 +243,7 @@ func (h *AuthHandler) AdminDisableMFA(c *gin.Context) {
 		return
 	}
 
-	// 救援操作記入 admin 身分 + 目標用戶 ID，防濫用追責（design.md Risks）
+	// 救援操作記入 admin 身分 + 目標用戶 ID，防濫用追責
 	h.auditAuthEventWithResource(c, adminID, adminName, model.ActionUpdate, model.StatusSuccess, http.StatusOK, "", uint(targetID))
 	c.JSON(http.StatusOK, gin.H{})
 }

@@ -1,4 +1,4 @@
-// 資產帳號值域與導出（asset-multi-account 階段 5）：
+// 資產帳號值域與導出：
 // 值域硬拷後端（`@ALL` 對應 model.AccountScopeAll）；憑證型別為前端導出枚舉，
 // 必須窮盡 has_password × has_private_key 四種組合。
 import { describe, it, expect } from 'vitest'

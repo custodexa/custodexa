@@ -12,13 +12,13 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// data_keys 的 KEK 識別欄擴寬（kek-provider-modularization D4／tasks 1.4）。
+// data_keys 的 KEK 識別欄擴寬。
 //
 // 為什麼要測：委託模式的金鑰引用（KMS 正規 ARN 約 75 字元、PKCS#11 token:label）
 // 放不進 varchar(32)。擴寬本身無風險，**風險在唯一索引**——postgres 的
 // ALTER COLUMN TYPE 會重寫依賴該欄的索引，若重建遺漏，升級後
 // (purpose, version, kek_id) 的重複未退役列將可插入，重包狀態機的
-// 「同 slot 至多一列帶材料」不變式即靜默失效（此不變式同時是 D5 的 AAD 完備性依賴）。
+// 「同 slot 至多一列帶材料」不變式即靜默失效（此不變式同時是 AAD 完備性的依賴）。
 
 const longExternalKeyRef = "arn:aws:kms:ap-northeast-1:123456789012:key/12345678-1234-1234-1234-123456789012" +
 	"/very/long/suffix/to/exceed/thirty/two/characters/by/a/wide/margin/for/regression"

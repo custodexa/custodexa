@@ -622,7 +622,7 @@ func TestOIDCProviderBuiltinSharedOverridesDeployDeclaration(t *testing.T) {
 
 // Scenario: 共用身分域不可被放寬為專用
 //
-// F2 修復後：force_shared=false 的放寬企圖**於建立與更新兩處皆被拒絕並回
+// force_shared=false 的放寬企圖**於建立與更新兩處皆被拒絕並回
 // ErrOIDCSharedCannotWiden**，不再靜默接受。
 //
 // 原測試以「帶 force_shared=false 建立成功、但判定仍為 shared」表達安全性質；
@@ -886,7 +886,7 @@ func TestOIDCProviderDeployDeclarationRemovalRevertsToShared(t *testing.T) {
 	}
 
 	// 同 Scenario 的後半：既有 provider 的規則集合規性須被**重新驗證**，
-	// 不合規者於管理端標示（F1 修復後）。
+	// 不合規者於管理端標示。
 	// 宣告仍在時合規、宣告移除後即不合規——同一份規則、同一列資料，判定現算
 	for i := range list {
 		if list[i].ID != dto.ID {

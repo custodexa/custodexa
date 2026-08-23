@@ -9,7 +9,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 )
 
-// 密碼政策的**無狀態合規子集**（自 identity 拆出，modular-architecture W3 3.3／R3.1 §5.2）。
+// 密碼政策的**無狀態合規子集**（自 identity 拆出）。
 //
 // **為何只拆這一半**：`password_policy.go` 原本一檔混住兩種歸屬——政策判定
 // （純函式、只讀政策鍵、零 DB）與密碼歷史的讀寫（`password_histories` 表、bcrypt
@@ -62,7 +62,7 @@ func CheckCompliance(policies *SecurityPolicyService, password string) error {
 		return nil
 	}
 
-	// 以字元數（rune）而非位元組數判長度（PW-1）：否則多位元組字元讓
+	// 以字元數（rune）而非位元組數判長度：否則多位元組字元讓
 	// 「6 個中文字」滿足「12 字元」政策，弱化 8.3.6
 	minLength := policies.GetInt(PolicyPasswordMinLength)
 	if utf8.RuneCountInString(password) < minLength {

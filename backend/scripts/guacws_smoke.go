@@ -146,7 +146,7 @@ func main() {
 	// 煙測必須走它。瀏覽器關閉分頁時 WebSocket 送的是協議層正常關閉訊號，不是裸斷 TCP；
 	// 若煙測只測裸斷 TCP，正常關閉這條主要路徑就等於零覆蓋——圖形隧道先前「正常關閉後
 	// 滯留到下一次保活 ping」的缺陷正是這樣被繞過而長期未被發現的
-	//（change graphics-teardown-sync）。修法（兩條 pump 各 defer t.Close()）落地後
+	//（change）。修法（兩條 pump 各 defer t.Close()）落地後
 	// 正常關閉與異常關閉走同一條收線路徑，本煙測不需為此多等任何一輪 ticker。
 	_ = ws.WriteControl(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),

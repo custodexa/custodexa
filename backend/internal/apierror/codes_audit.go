@@ -1,6 +1,6 @@
 package apierror
 
-// Audit/recording/key-management handler codes (backend-i18n-unification A7).
+// Audit/recording/key-management handler codes .
 // Covers: recording_handler / audit_log_handler / audit_integrity_handler /
 // audit_failure_handler / audit_export_handler / security_policy_handler /
 // key_management_handler (residual RespondError/RespondInternalError) /
@@ -57,7 +57,7 @@ var (
 		ZhFallback: "安全政策值不合法：{key}",
 		Params:     []ParamSpec{{Key: "key", Kind: ParamEnum, EnumNS: "policyKey", ZhLabels: policyKeyZhLabels}},
 	})
-	// CodePolicyRetentionCrossKey 跨鍵保留約束違反（audit-checkpoint-chain D9）。
+	// CodePolicyRetentionCrossKey 跨鍵保留約束違反（audit-checkpoint-chain）。
 	//
 	// 與 INVALID_VALUE 分開一碼而非共用：後者的成因在**該鍵自己的值域**，
 	// 修法是改小／改大那一個數字；本碼的成因是**兩個鍵的關係**，修法是
@@ -74,7 +74,7 @@ var (
 // **允許清單**而非翻譯。新增政策鍵時必須同步本清單，否則
 // service.TestPolicyKeyAllowlistCoversDefs 會紅。
 var policyKeyZhLabels = identityLabels(
-	// 帳號安全（auth-hardening D1）
+	// 帳號安全
 	"lockout_max_attempts",
 	"lockout_duration_minutes",
 	"password_min_length",
@@ -85,37 +85,37 @@ var policyKeyZhLabels = identityLabels(
 	"mfa_required",
 	"web_idle_minutes",
 	"web_max_session_hours",
-	// refresh cookie 的 Secure 屬性（codeql-rescan-settlement 決策 8）
+	// refresh cookie 的 Secure 屬性
 	"refresh_cookie_secure",
 	"session_idle_minutes",
 	"session_max_minutes",
 	"inactive_disable_days",
-	// 日誌保留與審閱（audit-log-compliance，PCI Req 10）
+	// 日誌保留與審閱（PCI Req 10）
 	"retention_audit_log_days",
 	"retention_session_command_days",
 	"retention_alert_days",
 	"retention_recording_days",
-	// 檢查點鏈保留（audit-checkpoint-chain D9）
+	// 檢查點鏈保留（audit-checkpoint-chain）
 	"retention_checkpoint_days",
 	// 封章觸發門檻（audit-checkpoint-chain）：週期與筆數先到先觸發
 	"audit_checkpoint_interval_seconds",
 	"audit_checkpoint_row_threshold",
-	// 鏈自動驗證三鍵（audit-chain-scheduled-verification D4.1）
+	// 鏈自動驗證三鍵
 	"audit_chain_recent_verify_days",
 	"audit_chain_verify_interval_seconds",
 	"audit_chain_verify_rows_per_hour",
-	// 單輪清理刪除上限（policy-numeric-lower-bounds）：調小才危險，下界由 Min 承擔
+	// 單輪清理刪除上限：調小才危險，下界由 Min 承擔
 	"retention_max_per_run",
 	"daily_review_enabled",
 	"failure_alert_enabled",
 	"recording_failclose_enabled",
-	// 金鑰管理（key-management-envelope）
+	// 金鑰管理
 	"key_cryptoperiod_reminder_days",
-	// 單輪換鑰重加密上限（policy-numeric-lower-bounds）
+	// 單輪換鑰重加密上限
 	"key_rotation_max_per_run",
-	// 叢集存取（policy-numeric-lower-bounds）
+	// 叢集存取
 	"k8s_list_timeout_seconds",
-	// 傳輸安全（transmission-security-policy）
+	// 傳輸安全
 	"transport_rdp_level",
 	"transport_vnc_level",
 	"transport_db_level",
@@ -123,17 +123,17 @@ var policyKeyZhLabels = identityLabels(
 	"transport_syslog_level",
 	"transport_notify_level",
 	"transport_consent_ttl_days",
-	// 存取政策（access-policy-approval D1）
+	// 存取政策
 	"access_policy_default",
 	"access_request_max_duration_minutes",
 	"access_request_pending_timeout_hours",
 	"access_request_min_approvals",
-	// 破窗與撤銷（break-glass-revocation）
+	// 破窗與撤銷
 	"break_glass_enabled",
 	"break_glass_duration_minutes",
 	"break_glass_review_timeout_hours",
 	"access_revoke_disconnect",
-	// 資料傳輸管控（data-transfer-control D1）
+	// 資料傳輸管控（data-transfer-control）
 	"clipboard_send_enabled",
 	"clipboard_recv_enabled",
 	"file_upload_enabled",

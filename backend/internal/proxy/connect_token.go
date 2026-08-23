@@ -12,11 +12,11 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 )
 
-// ConnectGrant 一次性連線授權快照（connect-token D1），**即 `gatewayapi.ConnectGrant`**
-// （型別別名，W10.2 接線）。
+// ConnectGrant 一次性連線授權快照，**即 `gatewayapi.ConnectGrant`**
+// （型別別名）。
 //
 // 角色與連線授權/存取政策於簽發與兌換點各自 DB 現查——快照 SHALL NOT 攜帶角色，
-// 使「憑角色快照判定 admin 特權」成為編譯期不可能（connect-role-revocation-hardening D4）。
+// 使「憑角色快照判定 admin 特權」成為編譯期不可能。
 // 該性質現由 `cmd/server/gatewayapi_purity_guard_test.go` 的 `gwExactFieldSets`
 // 欄位白名單守住（任意命名的角色欄一律紅）。
 //
@@ -26,7 +26,7 @@ type ConnectGrant = gatewayapi.ConnectGrant
 
 const connectTokenTTL = 60 * time.Second
 
-// 未兌換 grant 的容量上限（對抗審查 G-B）。
+// 未兌換 grant 的容量上限。
 //
 // grant 原本只有「以同一把 token 呼叫 Resolve」這一條移除路徑：已認證使用者
 // 反覆簽發而從不兌換，map 即無界成長至記憶體耗盡。上限分兩層，缺一不可：
@@ -49,7 +49,7 @@ const (
 var ErrConnectTokenCapacity = errors.New("未兌換的連線 token 已達上限")
 
 // ConnectTokenManager 一次性連線 token：兌換即焚（兌換成功的當下即失效，重放無效）。
-// **`gatewayapi.TokenService` 的實作**（W10.2 接線）。
+// **`gatewayapi.TokenService` 的實作**。
 type ConnectTokenManager struct {
 	mu     sync.Mutex
 	grants map[string]ConnectGrant
@@ -62,13 +62,13 @@ func NewConnectTokenManager() *ConnectTokenManager {
 	return &ConnectTokenManager{grants: make(map[string]ConnectGrant)}
 }
 
-// IssueConnectToken 簽發一次性 token（60s TTL）。不收角色——角色於兌換點 DB 現查（D4）。
+// IssueConnectToken 簽發一次性 token（60s TTL）。不收角色——角色於兌換點 DB 現查。
 //
-// **W10.2 接線改名**（原 `Issue`）：本型別即 `gatewayapi.TokenService` 的實作，
+// **已改名**（原 `Issue`）：本型別即 `gatewayapi.TokenService` 的實作，
 // 方法名與契約對齊。ctx 未被使用（純記憶體 map 操作、無 I/O），刻意保留參數
 // 而不改契約——同 `gatewayapi.AsyncSink.Submit` 的既定紀律。
 //
-// **收結構而非位置參數**（idp-oidc-integration 1.8b）：原簽章是三個同型 uint，
+// **收結構而非位置參數**：原簽章是三個同型 uint，
 // 加上認證脈絡後變成六個 uint 與一個字串，傳錯順序**不會編譯錯**——
 // 把 providerID 傳成 assetID 的後果是連上錯誤的資產。結構強制具名。
 // 呼叫端不需填 ExpiresAt，由本方法統一設定。
@@ -124,14 +124,14 @@ func (m *ConnectTokenManager) sweepExpiredLocked(now time.Time, userID uint) int
 // RedeemConnectToken 驗證並消耗 token：成功與否一律自表中移除（一次性）。
 // **熱路徑**：僅 O(1) 查表＋刪除，逾時清理一律在簽發側（見上）。
 //
-// **W10.2 接線改名**（原 `Resolve`）。第二回傳值維持 bool：票不存在／已兌換／已過期
+// **已改名**（原 `Resolve`）。第二回傳值維持 bool：票不存在／已兌換／已過期
 // 三者一律收斂為同一則「token 無效」回應，分流即票證存在性探測面。
 func (m *ConnectTokenManager) RedeemConnectToken(ctx context.Context, token string) (ConnectGrant, bool) {
 	grant, reason := m.RedeemConnectTokenWithReason(ctx, token)
 	return grant, reason == RedeemDenyNone
 }
 
-// RedeemDenyReason 兌換拒絕的**內部**原因（audit-coverage-closure 批 4）。
+// RedeemDenyReason 兌換拒絕的**內部**原因。
 //
 // **對外回應仍收斂為同一則「token 無效」**——分流即票證存在性探測面，那條紀律
 // 不變（見 RedeemConnectToken 檔頭）。審計是內部視角，兩者是不同的觀眾：稽核

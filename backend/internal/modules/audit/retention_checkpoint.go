@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// audit_logs 的檢查點區間清除（audit-checkpoint-chain D8／log-retention spec）。
+// audit_logs 的檢查點區間清除（log-retention spec）。
 //
 // **為何非改不可**：改造前 retention 是「逐列刪過期列」，驗證端因此無法區分
 // 「retention 刪的」與「攻擊者挑過期時段抽列」——攻擊者只要抽夠舊的列就洗白。
@@ -220,7 +220,7 @@ func (p *CheckpointPurger) VerifyPurgeTombstone(cp *model.AuditCheckpoint, polic
 	if cp.PurgedAt == nil || cp.PurgeSignature == nil || cp.PurgeSigningKeyVersion == nil {
 		return false, nil
 	}
-	// **以清除當下記錄的政策天數重算**，不是現行政策值（tasks 8.3）：
+	// **以清除當下記錄的政策天數重算**，不是現行政策值：
 	// policy_days 是簽章的輸入，拿別的值重算等於在驗一個不同的主張——
 	// admin 把保留期由 365 改成 730 的那一刻，全部歷史 tombstone 會一起
 	// 驗不過而回報 purged_invalid（系統對自己的合法清除發大規模竄改告警）。

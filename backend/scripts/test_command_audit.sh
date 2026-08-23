@@ -1,9 +1,9 @@
 #!/bin/bash
-# 指令審計 E2E 測試（command-audit tasks 3.2）：
+# 指令審計 E2E 測試：
 #   DB 種子指令資料（兩個 session、不同 user）
 #   -> 單會話 API 順序驗證 -> 跨會話 keyword 搜尋 -> user_id 過濾
 #   -> 分頁 total -> 無權限用戶 403 -> 清理
-# 真鍵流由瀏覽器 E2E（tasks 3.1）驗證；本腳本以 DB 種子驗 API 形狀/權限/分頁
+# 真鍵流由瀏覽器 E2E 驗證；本腳本以 DB 種子驗 API 形狀/權限/分頁
 # 可重複執行；需 docker compose 全套服務運行中
 # 無權限用戶做法：建立不在 RBAC 矩陣（admin/user/auditor）內的臨時角色，
 # RequirePermission 對未知角色一律拒絕，得到 403

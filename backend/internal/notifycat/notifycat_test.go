@@ -215,7 +215,7 @@ func TestRenderVariants(t *testing.T) {
 	}
 
 	// variant 值缺失 → 目錄無 default 鍵 → 降級渲染，絕不回空字串。
-	// 降級標題自 M4 起是語系化的 generic 文案，event 識別字改由內文承載
+	// 降級標題是語系化的 generic 文案，event 識別字改由內文承載
 	title, text := Render("zh-TW", EventAccessRequestApproved, base)
 	if title == "" || !strings.Contains(text, string(EventAccessRequestApproved)) {
 		t.Fatalf("缺 variant 應降級渲染且帶 event 識別字，實得 (%q, %q)", title, text)
@@ -260,7 +260,7 @@ func TestRenderSanitizesEvenWithoutValidate(t *testing.T) {
 	}
 }
 
-// TestRenderDegradedIsLocalised 降級文案走通道語系（codex 批 2 M4）：
+// TestRenderDegradedIsLocalised 降級文案走通道語系：
 // 標題與骨幹取自 LexiconDegraded，event 識別字以 {event} 插入。
 func TestRenderDegradedIsLocalised(t *testing.T) {
 	for _, lang := range SupportedLangs {
@@ -285,7 +285,7 @@ func TestRenderDegradedIsLocalised(t *testing.T) {
 	}
 }
 
-// TestRenderDegradedDropsUndeclaredParams 降級路徑的出站面收口（codex 批 2 M1）：
+// TestRenderDegradedDropsUndeclaredParams 降級路徑的出站面收口：
 // 未註冊 event 一鍵不列；已註冊 event 只列 EventSpec 宣告的鍵。
 func TestRenderDegradedDropsUndeclaredParams(t *testing.T) {
 	_, text := RenderDegraded("zh-TW", "some.new.event", map[string]string{
@@ -317,7 +317,7 @@ func TestRenderUnregisteredEventFallsBackToDegraded(t *testing.T) {
 	}
 }
 
-// TestFilterDeclared 宣告鍵過濾與剔除清單（M1 的單元契約）。
+// TestFilterDeclared 宣告鍵過濾與剔除清單的單元契約。
 func TestFilterDeclared(t *testing.T) {
 	kept, dropped := FilterDeclared(EventAuditFailure, map[string]string{
 		"mechanism": "syslog_forward",
@@ -365,11 +365,11 @@ func TestSpecAndEvents(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// V2 對抗驗收：淨化強化（C2/C3）、免驗證路徑淨化（C1）、單一錯誤（validate）、
-// 週期重發帶 backlog（L1）
+// 對抗驗收：淨化強化、免驗證路徑淨化、單一錯誤（validate）、
+// 週期重發帶 backlog
 // ---------------------------------------------------------------------------
 
-// TestSanitizeOpaqueLineSeparators U+2028/U+2029 折成空白（C2）。
+// TestSanitizeOpaqueLineSeparators U+2028/U+2029 折成空白。
 //
 // 兩者的 unicode.IsControl 為 false，卻在 JSON/JS 與部分渲染器中構成換行——
 // 放行等於留下偽造多行訊息的路（在告警文字裡另起一段假的「系統通知」）。
@@ -396,7 +396,7 @@ func TestSanitizeOpaqueLineSeparators(t *testing.T) {
 	}
 }
 
-// TestSanitizeOpaqueFormatChars Unicode Cf 類（零寬、bidi 控制）整類移除（C3）。
+// TestSanitizeOpaqueFormatChars Unicode Cf 類（零寬、bidi 控制）整類移除。
 //
 // 零寬字元可讓兩個不同的名字看起來完全一樣（告警中的資產名冒充）；bidi 覆寫
 // 可讓顯示順序與實際字串相反。合法告警文字不需要這些字元。
@@ -428,7 +428,7 @@ func TestSanitizeOpaqueFormatChars(t *testing.T) {
 	}
 }
 
-// TestRenderSanitizesNonOpaqueKinds 免驗證路徑上 enum/int/Lexicon 值一律淨化（C1）。
+// TestRenderSanitizesNonOpaqueKinds 免驗證路徑上 enum/int/Lexicon 值一律淨化。
 //
 // Render 的契約明載「未經 Validate 直接呼叫亦安全」，但修正前只有 opaque 值走
 // 淨化，enum/int 被當成「值域封閉故安全」——那個前提只在 Validate 走過時成立。
@@ -454,7 +454,7 @@ func TestRenderSanitizesNonOpaqueKinds(t *testing.T) {
 	}
 }
 
-// TestValidateSingleErrorPerParam 同一參數只出一個錯（codex low）。
+// TestValidateSingleErrorPerParam 同一參數只出一個錯。
 //
 // 修正前：必要參數的值格式錯誤時，該值不進 out，required 檢查於是再補一筆
 // missing_required——「votes=abc」同時被說成「不是整數」與「沒給」，
@@ -507,7 +507,7 @@ func TestValidateMissingRequiredStillReported(t *testing.T) {
 	}
 }
 
-// TestRenderOngoingBacklog 週期重發帶 backlog 筆數（L1）。
+// TestRenderOngoingBacklog 週期重發帶 backlog 筆數。
 //
 // 出站文案原本只有機制與時刻，收件人看不出「積壓多少」——遷移前的本地 log
 // 文案（N 筆舊 KEK 包裹列仍未退役）反而更有資訊。backlog 為可選：本事件是

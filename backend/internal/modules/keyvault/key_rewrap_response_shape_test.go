@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// 重包回應形狀守衛（kek-provider-modularization D7）：回應不得含任何 KEK 明文欄。
+// 重包回應形狀守衛：回應不得含任何 KEK 明文欄。
 //
 // 守衛做兩層：偵測器先以合成型別自證會抓（正向）、會放行乾淨型別（敏感度），
 // 才拿去掃真正的 keyvault.KEKRewrapResult。缺了自證，「掃不到違規」等於什麼都沒證明。
@@ -69,7 +69,7 @@ func TestPlaintextFieldDetectorSelfCheck(t *testing.T) {
 // 且序列化後的鍵集恰為契約所定三鍵（多一個鍵就是回應形狀漂移）
 func TestRewrapResultHasNoPlaintextField(t *testing.T) {
 	if got := plaintextishFields(keyvault.KEKRewrapResult{}); len(got) != 0 {
-		t.Fatalf("重包回應含 KEK 明文欄（D7 禁止）: %v", got)
+		t.Fatalf("重包回應含 KEK 明文欄（禁止）: %v", got)
 	}
 	blob, err := json.Marshal(keyvault.KEKRewrapResult{TargetMode: keyvault.RewrapTargetModeLocal, NewKEKID: "abc", RewrappedKeys: 3})
 	if err != nil {

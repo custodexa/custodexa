@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 )
 
-// asset-multi-account 階段 2 的服務層行為鎖定：帳號是 username 與憑證的權威來源。
+// 資產多帳號階段 2 的服務層行為鎖定：帳號是 username 與憑證的權威來源。
 
 func setupAccountDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -53,7 +53,7 @@ func adminCtx() context.Context {
 	return context.WithValue(ctx, "username", "admin")                //nolint:staticcheck
 }
 
-// 建立資產：憑證只落 default 帳號，assets 內嵌憑證欄位凍結不再寫入（D1）
+// 建立資產：憑證只落 default 帳號，assets 內嵌憑證欄位凍結不再寫入
 func TestCreateAssetWritesDefaultAccountOnly(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
@@ -106,7 +106,7 @@ func TestCreateAssetWithoutCredentialsHasNoAccount(t *testing.T) {
 	assert.Empty(t, creds.Username)
 }
 
-// PUT /assets/:id 憑證欄位透明轉寫 default 帳號（D9）
+// PUT /assets/:id 憑證欄位透明轉寫 default 帳號
 func TestUpdateAssetWritesThroughToDefaultAccount(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
@@ -155,7 +155,7 @@ func TestUpdateAssetCreatesDefaultAccountWhenMissing(t *testing.T) {
 	assert.Equal(t, "vncpass", creds.Password)
 }
 
-// 帳號 CRUD ＋ default 交易式切換 ＋ 禁刪最後 default（D8）
+// 帳號 CRUD ＋ default 交易式切換 ＋ 禁刪最後 default
 func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -216,7 +216,7 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	assert.Zero(t, creds.AccountID)
 }
 
-// 從其他資產的帳號複製建號（D10）：密文原樣搬，複製後可正常解密
+// 從其他資產的帳號複製建號：密文原樣搬，複製後可正常解密
 func TestCreateAccountCopyFromOtherAsset(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -253,7 +253,7 @@ func TestCreateAccountCopyFromOtherAsset(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAssetAccountSourceNotFound)
 }
 
-// 跨資產 account id 注入 fail-close：不得靜默退回 default（D3）
+// 跨資產 account id 注入 fail-close：不得靜默退回 default
 func TestGetCredentialsRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -307,7 +307,7 @@ func TestAccountUsernameValidation(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAssetAccountUsernameTooLong)
 }
 
-// D7a：帳號操作留痕，且審計內容絕不含密文或明文憑證
+// 帳號操作留痕，且審計內容絕不含密文或明文憑證
 func TestAccountAuditNeverContainsSecrets(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
@@ -352,7 +352,7 @@ func TestAccountAuditNeverContainsSecrets(t *testing.T) {
 	}
 }
 
-// D9 回歸：改密 runner 釘住的 AccountID 貫穿讀寫——執行中切 default 不影響寫回目標。
+// 回歸：改密 runner 釘住的 AccountID 貫穿讀寫——執行中切 default 不影響寫回目標。
 //
 // 模擬 runAsset 的實際時序：開頭解析 default（釘住 A）→ 期間管理員把 default
 // 切到 B → 以釘住的 A 提交新密。舊行為（結尾以 assetID 重解析 default）會把新密

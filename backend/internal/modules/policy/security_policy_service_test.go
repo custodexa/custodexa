@@ -119,7 +119,7 @@ func TestPolicyUpdateValidation(t *testing.T) {
 	}
 }
 
-// TestPolicyDefsSelfCheck 常數表自檢（POL-4）：真常數表應通過；打錯字的表應被抓
+// TestPolicyDefsSelfCheck 常數表自檢：真常數表應通過；打錯字的表應被抓
 func TestPolicyDefsSelfCheck(t *testing.T) {
 	if err := validatePolicyDefs(); err != nil {
 		t.Fatalf("正式常數表自檢應通過，got %v", err)
@@ -130,7 +130,7 @@ func TestPolicyDefsSelfCheck(t *testing.T) {
 		Key: "x", Type: PolicyTypeEnum, Default: "off", PCIValue: "ALL",
 		EnumOrder: []string{"off", "admin_only", "all"},
 	}
-	// 直接驗比較器：PCIValue 不在序列，任何值都應判不符（POL-4）
+	// 直接驗比較器：PCIValue 不在序列，任何值都應判不符
 	if c := evaluateCompliance(bad, "off"); c == nil || *c {
 		t.Error("PCIValue 打錯字時，最弱值 off 不應被誤報合規")
 	}
@@ -139,7 +139,7 @@ func TestPolicyDefsSelfCheck(t *testing.T) {
 	}
 }
 
-// TestUpdateBatchTransactional 批次更新原子性（POL-3）＋審計回報僅含有變動者
+// TestUpdateBatchTransactional 批次更新原子性＋審計回報僅含有變動者
 func TestUpdateBatchTransactional(t *testing.T) {
 	svc, _ := setupPolicyDB(t)
 
@@ -172,7 +172,7 @@ func TestUpdateBatchTransactional(t *testing.T) {
 	}
 }
 
-// TestPolicyComplianceComparator D1 比較器：0=停用 sentinel 先判不符、min/max 方向、bool、枚舉序
+// TestPolicyComplianceComparator 比較器：0=停用 sentinel 先判不符、min/max 方向、bool、枚舉序
 func TestPolicyComplianceComparator(t *testing.T) {
 	boolPtr := func(vs []PolicyView, key string) *bool {
 		for _, v := range vs {
@@ -185,17 +185,17 @@ func TestPolicyComplianceComparator(t *testing.T) {
 
 	svc, _ := setupPolicyDB(t)
 
-	// 出廠預設（D0 易用取向的刻意偏離）：mfa_required=off（PCI 要 all）、
+	// 出廠預設（易用取向的刻意偏離）：mfa_required=off（PCI 要 all）、
 	// web_idle_minutes/session_idle_minutes=60（PCI 要 ≤15）判不符；
 	// web_max_session_hours/session_max_minutes 無 PCI 建議不評估（nil）；其餘全數符合
 	factoryDeviations := map[string]bool{
 		PolicyMFARequired:         true,
 		PolicyWebIdleMinutes:      true,
 		PolicySessionIdleMinutes:  true,
-		PolicyInactiveDisableDays: true, // 出廠 0=關閉，偏離 PCI 90（D0 易用取向）
-		// login-password-policy-gate：出廠 0=關閉，偏離 PCI 8.3.9 的 90 天
+		PolicyInactiveDisableDays: true, // 出廠 0=關閉，偏離 PCI 90（易用取向）
+		// 出廠 0=關閉，偏離 PCI 8.3.9 的 90 天
 		PolicyPasswordMaxAgeDays: true,
-		// audit-log-compliance 六鍵出廠全偏離（日常模式）：保留 0=永久視為未定義
+		// 稽核紀錄合規六鍵出廠全偏離（日常模式）：保留 0=永久視為未定義
 		// 保留政策、錄影 90 < 365、簽核與失效告警預設關
 		PolicyRetentionAuditLogDays:       true,
 		PolicyRetentionSessionCommandDays: true,
@@ -203,38 +203,38 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicyRetentionRecordingDays:      true,
 		PolicyDailyReviewEnabled:          true,
 		PolicyFailureAlertEnabled:         true,
-		// key-management-envelope：出廠 0=不提醒，偏離 PCI 365（cryptoperiod 提醒）
+		// 金鑰信封：出廠 0=不提醒，偏離 PCI 365（cryptoperiod 提醒）
 		PolicyKeyCryptoperiodReminderDays: true,
-		// transmission-security-policy：六通道出廠 off（零影響原則），偏離 PCI 建議 warn
+		// 傳輸安全政策：六通道出廠 off（零影響原則），偏離 PCI 建議 warn
 		PolicyTransportRDPLevel:    true,
 		PolicyTransportVNCLevel:    true,
 		PolicyTransportDBLevel:     true,
 		PolicyTransportLDAPLevel:   true,
 		PolicyTransportSyslogLevel: true,
 		PolicyTransportNotifyLevel: true,
-		// access-policy-approval：全域段位出廠 open（零破壞 opt-in），偏離 PCI 建議 approval；
+		// 存取政策核准：全域段位出廠 open（零破壞 opt-in），偏離 PCI 建議 approval；
 		// 時長上限/超時出廠即建議值，符合
 		PolicyAccessPolicyDefault: true,
-		// break-glass-revocation：撤銷即斷線出廠關（H 決議，與到期語義一致），
+		// 破窗與撤銷：撤銷即斷線出廠關（H 決議，與到期語義一致），
 		// 偏離建議 true；破窗開關出廠關即建議值、短窗/補審時限出廠即建議值，符合
 		PolicyAccessRevokeDisconnect: true,
-		// recording-failure-handling：錄影 fail-close 出廠關（升級不改變現狀），
+		// 錄影失效處置：錄影 fail-close 出廠關（升級不改變現狀），
 		// 偏離建議 true
 		PolicyRecordingFailCloseEnabled: true,
 	}
 	noPCIRecommendation := map[string]bool{
 		PolicyWebMaxSessionHours: true,
 		PolicySessionMaxMinutes:  true,
-		// refresh cookie 的 Secure 屬性無合規建議值（codeql-rescan-settlement 決策 8）：
+		// refresh cookie 的 Secure 屬性無合規建議值（決策 8）：
 		// 正確取值由部署對外協定決定（https 開、刻意明文關），不是合規基準線。
 		// 掛建議值會讓「套用本頁建議值」把明文部署的本鍵翻成開啟＝整站續期失敗
 		PolicyRefreshCookieSecure: true,
-		// 同意效期無 PCI 門檻（transmission-security-policy D3）
+		// 同意效期無 PCI 門檻
 		PolicyTransportConsentTTLDays: true,
-		// 最少核准人數＝內控強化非 PCI 要求（approval-routing-quorum D-6：
-		// dual control 僅金鑰管理 Req 3.7.6，存取核准 Req 7.2.3 單人即符合）
+		// 最少核准人數＝內控強化非 PCI 要求
+		// （dual control 僅金鑰管理 Req 3.7.6，存取核准 Req 7.2.3 單人即符合）
 		PolicyAccessRequestMinApprovals: true,
-		// 檢查點保留天數無 PCI 建議值（audit-checkpoint-chain D9）：其合規語義
+		// 檢查點保留天數無 PCI 建議值（audit-checkpoint-chain）：其合規語義
 		// 是「檢查點必須活得比它所證明的資料久」＝跨鍵關係，不是單鍵與常數比較。
 		// 掛 PCIValue 會讓它進「套用本頁建議值」並在偏離摘要與資料保留鍵並列
 		PolicyRetentionCheckpointDays: true,
@@ -242,21 +242,21 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		// 多大」＝與離機備份的分工，不是單鍵與常數比較
 		PolicyAuditCheckpointIntervalSeconds: true,
 		PolicyAuditCheckpointRowThreshold:    true,
-		// 鏈自動驗證三鍵無 PCI 建議值（audit-chain-scheduled-verification D4.1）：
+		// 鏈自動驗證三鍵無 PCI 建議值：
 		// PCI 未就「鏈驗證頻率／近期窗口／掃描速率」給出建議值。掛假的 PCIValue
 		// 會讓它們進「套用本頁建議值」並在偏離摘要中與真有條號的鍵並列。
 		// 其不可被實質關閉的保證由上界＋不可為 0（前兩鍵）與 Min 下界（速率鍵）承擔
 		PolicyAuditChainRecentVerifyDays:      true,
 		PolicyAuditChainVerifyIntervalSeconds: true,
 		PolicyAuditChainVerifyRowsPerHour:     true,
-		// 三個營運調校鍵無 PCI 建議值（policy-numeric-lower-bounds）：PCI 未就
+		// 三個營運調校鍵無 PCI 建議值：PCI 未就
 		// 單輪清理／重加密的批次預算或叢集列表逾時給出建議值。掛假的 PCIValue
 		// 會讓它們進「套用本頁建議值」並在偏離摘要中與真有條號的鍵並列，
 		// 違反政策鍵的合規標示誠實紀律。其安全語義由 Min 下界承擔，不由 PCI 比較承擔
 		PolicyRetentionMaxPerRun:    true,
 		PolicyKeyRotationMaxPerRun:  true,
 		PolicyK8sListTimeoutSeconds: true,
-		// data-transfer-control D9：五鍵法源是電支基準 §16-6／§21-8(七) 而非 PCI 條文。
+		// data-transfer-control：五鍵法源是電支基準 §16-6／§21-8(七) 而非 PCI 條文。
 		// 掛假 PCIValue 會讓它進「套用本頁建議值」並被標成 PCI 要求；電支基準值
 		// （皆為 false）由 G3 電支建議值雙軌承接
 		PolicyClipboardSendEnabled: true,
@@ -283,7 +283,7 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		}
 	}
 	if svc.DeviationCount() != 21 {
-		t.Errorf("出廠偏離數 = %d, want 21（mfa_required＋web_idle＋session_idle＋inactive_days＋password_max_age＋audit-log-compliance 六鍵＋金鑰提醒＋傳輸六通道＋存取政策段位＋撤銷即斷線＋錄影 fail-close）", svc.DeviationCount())
+		t.Errorf("出廠偏離數 = %d, want 21（mfa_required＋web_idle＋session_idle＋inactive_days＋password_max_age＋審計合規六鍵＋金鑰提醒＋傳輸六通道＋存取政策段位＋撤銷即斷線＋錄影 fail-close）", svc.DeviationCount())
 	}
 
 	// 0=停用：即使 0 <= 10 也必須判不符（sentinel 先判）
@@ -324,7 +324,7 @@ func TestPolicyComplianceComparator(t *testing.T) {
 	}
 }
 
-// TestPolicyEnumComparator 枚舉比較器（mfa_required 輪 2 加入常數表，先驗證機制本身）
+// TestPolicyEnumComparator 枚舉比較器（mfa_required 於後續階段加入常數表，先驗證機制本身）
 func TestPolicyEnumComparator(t *testing.T) {
 	def := &PolicyDef{
 		Key: "test_enum", Type: PolicyTypeEnum, PCIValue: "all",
@@ -352,7 +352,7 @@ func TestPolicyNoPCIValueSkipsCompliance(t *testing.T) {
 	}
 }
 
-// TestSeedFromEnv D7 env 初始化：僅在 DB 無列時寫入、非法值忽略、顯式設定不被覆蓋
+// TestSeedFromEnv env 初始化：僅在 DB 無列時寫入、非法值忽略、顯式設定不被覆蓋
 func TestSeedFromEnv(t *testing.T) {
 	t.Run("env 值初始化政策列", func(t *testing.T) {
 		svc, _ := setupPolicyDB(t)
@@ -391,11 +391,11 @@ func TestSeedFromEnv(t *testing.T) {
 	})
 }
 
-// --- refresh cookie Secure 政策鍵（codeql-rescan-settlement 決策 8）---
+// --- refresh cookie Secure 政策鍵（決策 8）---
 
 // TestRefreshCookieSecureDefaultsToTrue 出廠預設＝安全側。
 //
-// **這一格是 fallback 方向的最終防線**：政策 DB 讀不到（POL-1）或該鍵無列時，
+// **這一格是 fallback 方向的最終防線**：政策 DB 讀不到或該鍵無列時，
 // Get 都退回出廠預設，故出廠值一旦翻成 false，所有「讀不到」的情境都會靜默
 // 發出不帶 Secure 的 cookie。
 func TestRefreshCookieSecureDefaultsToTrue(t *testing.T) {
@@ -472,7 +472,7 @@ func TestSeedValue(t *testing.T) {
 	})
 }
 
-// --- 傳輸安全政策鍵（transmission-security-policy task 1.1）---
+// --- 傳輸安全政策鍵（task 1.1）---
 
 func TestTransportPolicyKeyDefaults(t *testing.T) {
 	svc, _ := setupPolicyDB(t)

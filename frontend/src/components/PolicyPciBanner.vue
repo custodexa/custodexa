@@ -1,5 +1,5 @@
 <template>
-  <!-- 頁首摘要條：本頁偏離摘要＋分域套用＋儲存列（settings-domain-restructure D5） -->
+  <!-- 頁首摘要條：本頁偏離摘要＋分域套用＋儲存列 -->
   <div
     v-loading="loading"
     class="summary-bar"
@@ -26,7 +26,7 @@
       >
         {{ $t('pciBanner.unsaved') }}
       </el-tag>
-      <!-- 電支基準的偏離摘要（security-backlog-settlement D6）：與 PCI 各自獨立，
+      <!-- 電支基準的偏離摘要：與 PCI 各自獨立，
            不合計——同一項可能符合其一而偏離另一，合計會使兩者都不可解讀。
            epaymentDeviationCount=null 時不渲染（未接該基準的頁面） -->
       <el-tag

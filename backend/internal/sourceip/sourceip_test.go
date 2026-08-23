@@ -1,6 +1,6 @@
 package sourceip
 
-// 唯一實作的行為釘（audit-coverage-closure 批 8）。
+// 唯一實作的行為釘。
 //
 // cmd/server 的 AST 守衛只保證「沒有人繞過本包」，不保證**本包自己**做對。
 // 這兩件事必須各有釘子：把 From 改成無條件回 `c.ClientIP()`，AST 守衛照樣全綠。

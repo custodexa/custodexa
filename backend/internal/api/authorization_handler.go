@@ -29,8 +29,7 @@ type AuthorizationServiceInterface interface {
 	ListUserGroupAuthorizations(userGroupID uint, page, pageSize int) ([]*model.AssetAuthorization, int64, error)
 }
 
-// EffectiveAccessResolverInterface 有效權限解析接口（用於測試注入，
-// authorization-page-redesign D3）
+// EffectiveAccessResolverInterface 有效權限解析接口（用於測試注入）
 type EffectiveAccessResolverInterface interface {
 	ResolveEffectiveAssets(subjectUserID uint, now time.Time) (*authz.EffectiveAssetsResult, error)
 	ResolveEffectiveUsers(assetID uint, now time.Time) (*authz.EffectiveUsersResult, error)
@@ -40,7 +39,7 @@ type EffectiveAccessResolverInterface interface {
 type AuthorizationHandler struct {
 	authorizationService AuthorizationServiceInterface
 	effectiveResolver    EffectiveAccessResolverInterface
-	// authService 角色現況重判（codex 階段 4 high）：本群組以 RequireRole("admin")
+	// authService 角色現況重判：本群組以 RequireRole("admin")
 	// 守門，但該中介讀的是 JWT 角色快照——已被降權／停用的前 admin 在 token 效期內
 	// 仍可改任何授權的帳號範圍（把自己加回去）。由 RegisterRoutes 於組裝期注入；
 	// 未注入時帳號範圍端點 fail-close（見 UpdateAccounts）
@@ -57,7 +56,7 @@ func NewAuthorizationHandler(authorizationService AuthorizationServiceInterface,
 
 // CreateRequest 創建授權請求：asset_id 與 asset_group_id 二擇一
 // CreateRequest 授權建立請求：主體 user_id XOR user_group_id、
-// 客體 asset_id XOR asset_group_id（user-group-authorization）。
+// 客體 asset_id XOR asset_group_id。
 // 不接受時效欄位——時效唯一來源是核准流（Change 2）
 type CreateRequest struct {
 	UserID       uint   `json:"user_id"`
@@ -65,9 +64,9 @@ type CreateRequest struct {
 	AssetID      uint   `json:"asset_id"`
 	AssetGroupID uint   `json:"asset_group_id"`
 	Permission   string `json:"permission" binding:"required,oneof=view connect"`
-	// Accounts 帳號範圍（asset-multi-account D5）：**省略（nil）＝`@ALL`**（全部帳號，
+	// Accounts 帳號範圍：**省略（nil）＝`@ALL`**（全部帳號，
 	// 與多帳號維度引入前行為一致，舊前端不送此欄即維持既有語義）；
-	// 顯式 `[]` 拒收——見 authz.NormalizeGrantAccounts 的 F1 說明
+	// 顯式 `[]` 拒收——見 authz.NormalizeGrantAccounts 的說明
 	Accounts *[]string `json:"accounts"`
 }
 
@@ -148,7 +147,7 @@ func respondGrantError(c *gin.Context, err error) {
 }
 
 // grantMissingEntity 由 service 哨兵判定引用缺失的實體種類，回傳 API 契約用的
-// entity 鍵（V2 對抗驗收 H2）。
+// entity 鍵。
 //
 // 原以中文子字串比對 err.Error()——service 文案一改（或翻譯、或補脈絡）即
 // 靜默退化為 500，且無任何測試會紅。改 errors.Is 後種類判定由型別系統背書；
@@ -169,14 +168,14 @@ func grantMissingEntity(err error) (string, bool) {
 }
 
 // serializeAuthorization 授權記錄序列化：主體（使用者或群組）與客體（資產或節點）
-// 都必須可辨識（user-group-authorization spec「不得出現無法辨識的記錄」）。
-// nodePaths 供節點客體帶全路徑（asset-node-tree：同層可重名，單名不可辨識——
+// 都必須可辨識（spec「不得出現無法辨識的記錄」）。
+// nodePaths 供節點客體帶全路徑（同層可重名，單名不可辨識——
 // spec SHALL「授權列表以全路徑呈現節點目標」）；nil＝退回單名
 func serializeAuthorization(auth *model.AssetAuthorization, nodePaths map[uint]string) gin.H {
 	return serializeAuthorizationAt(auth, nodePaths, time.Now())
 }
 
-// serializeAuthorizationAt 帶時刻的序列化（authorization-page-redesign D2）：
+// serializeAuthorizationAt 帶時刻的序列化：
 // source/時效窗直出＋validity_state 三態＋ticket 的 request_id/revocable；
 // 引用已軟刪實體（Preload 落空）的記錄以 *_deleted 標示，不得雙欄空白。
 // now 由呼叫端一次捕捉（列表整批同一時刻，與解析引擎同語義）
@@ -187,7 +186,7 @@ func serializeAuthorizationAt(auth *model.AssetAuthorization, nodePaths map[uint
 		"granted_by": auth.GrantedBy,
 		"created_at": auth.CreatedAt,
 		"source":     auth.Source,
-		// accounts 恆輸出且恆非空（asset-multi-account D5）：空值語義上等於 @ALL，
+		// accounts 恆輸出且恆非空：空值語義上等於 @ALL，
 		// 但讓前端自行把「缺欄」解讀成全帳號，等於把安全語義的預設值散到 UI 層；
 		// 伺服端直接把 @ALL 顯化，稽核截圖與 API 回應一致
 		"accounts":       effectiveAccountScope(auth.Accounts),
@@ -259,9 +258,9 @@ func effectiveAccountScope(scope model.AccountScope) []string {
 	return []string(scope)
 }
 
-// UpdateAccountsRequest 調整授權帳號範圍請求（D5）。
+// UpdateAccountsRequest 調整授權帳號範圍請求。
 //
-// 指標型別為必要（F1）：本端點的唯一職責就是設定帳號範圍，`{}`／
+// 指標型別為必要：本端點的唯一職責就是設定帳號範圍，`{}`／
 // `{"accounts":null}` 代表請求沒說清楚要什麼，必須擋下而非猜——猜錯的方向是溢授
 type UpdateAccountsRequest struct {
 	Accounts *[]string `json:"accounts"`
@@ -270,7 +269,7 @@ type UpdateAccountsRequest struct {
 // UpdateAccounts PUT /authorizations/:id/accounts：調整既有授權列的帳號範圍。
 // 收緊即時生效——連線兌換點 DB 現查，不受既簽發 token 效期影響
 func (h *AuthorizationHandler) UpdateAccounts(c *gin.Context) {
-	// 角色現況重判（codex 階段 4 high）：RequireRole("admin") 讀的是 JWT 角色快照，
+	// 角色現況重判：RequireRole("admin") 讀的是 JWT 角色快照，
 	// AuthMiddleware 不查 DB——已降權／停用的前 admin 在 token 效期內仍可改任何
 	// 授權的帳號範圍（例如把自己加回被移除的帳號）。此端點直接改授權事實，
 	// 必須與三個連線強制點同一事實源。未注入 authService 一律拒（fail-close：
@@ -338,7 +337,7 @@ func authNodePaths() map[uint]string {
 
 // authTargetAssetID 授權列的資產客體（審計主體鍵用）。
 //
-// **查詢留在 authz 側**（SD-2）：`asset_authorizations` 由 authz 擁有，接入層自查
+// **查詢留在 authz 側**：`asset_authorizations` 由 authz 擁有，接入層自查
 // 會讓「這列指向哪台資產」出現第二份真相。形態沿同檔 authNodePaths 的既有作法——
 // 傳句柄給擁有者的匯出函式，而非在 handler 內組 query。
 // 不擴充 AuthorizationServiceInterface：那是測試注入面，為了一個審計欄位而擴充它，
@@ -354,7 +353,7 @@ func authTargetAssetID(authorizationID uint) *uint {
 	return assetID
 }
 
-// BatchCreateRequest 批次授權請求（user-group-authorization D6）：
+// BatchCreateRequest 批次授權請求：
 // 主體集×客體集，伺服端展開為多筆單主體單客體記錄
 type BatchCreateRequest struct {
 	UserIDs       []uint `json:"user_ids"`
@@ -368,7 +367,7 @@ type BatchCreateRequest struct {
 
 // BatchCreate 批次授權：交易內展開、既有組合跳過、上限保護。
 //
-// **審計不填 asset_id**（auditor-workbench D4）：一次請求展開為主體集×客體集多筆授權，
+// **審計不填 asset_id**（auditor-workbench）：一次請求展開為主體集×客體集多筆授權，
 // 沒有單一資產主體。挑其中一台填等於偽稱其餘幾台沒被授權；正確的逐資產事實
 // 由展開後的各筆授權記錄承載，不由這一列的主體鍵表達。
 func (h *AuthorizationHandler) BatchCreate(c *gin.Context) {
@@ -420,7 +419,7 @@ func (h *AuthorizationHandler) Delete(c *gin.Context) {
 	authID := uint(id)
 
 	// 主體須在撤銷**之前**取——RevokePermission 是軟刪，事後再查得多帶 Unscoped，
-	// 且撤銷成功與否不該影響「這列指向哪台資產」的判讀（auditor-workbench D4）
+	// 且撤銷成功與否不該影響「這列指向哪台資產」的判讀（auditor-workbench）
 	assetID := authTargetAssetID(authID)
 
 	// 調用 Service 撤銷授權
@@ -431,7 +430,7 @@ func (h *AuthorizationHandler) Delete(c *gin.Context) {
 			return
 		}
 
-		// ticket 裸刪守門（D4）：409 提示走撤銷流，不得落 500
+		// ticket 裸刪守門：409 提示走撤銷流，不得落 500
 		if errors.Is(err, authz.ErrTicketRevocationRequired) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeTicketRevocationRequired, nil)
 			return
@@ -443,14 +442,14 @@ func (h *AuthorizationHandler) Delete(c *gin.Context) {
 
 	setAuditAssetID(c, assetID)
 
-	// message 欄已移除（D9：成功回應不攜帶 UI 文案，前端自有 $t 文案）
+	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }
 
 // List 查詢授權列表
 func (h *AuthorizationHandler) List(c *gin.Context) {
 	// 解析查詢參數：主體/客體維度至多一個；零維度＝全量列表
-	//（authorization-page-redesign D1：授權列表以全量進頁為預設，維度篩選是收斂而非必填）
+	//（授權列表以全量進頁為預設，維度篩選是收斂而非必填）
 	userIDStr := c.Query("user_id")
 	userGroupIDStr := c.Query("user_group_id")
 	assetIDStr := c.Query("asset_id")
@@ -489,7 +488,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 	filters := map[string]interface{}{}
 	for field, s := range map[string]string{
 		"user_id": userIDStr, "user_group_id": userGroupIDStr, "asset_id": assetIDStr,
-		// node_id＝涵蓋盤點語義（authz-tag-node-filters D7：祖先/自身/後代＋
+		// node_id＝涵蓋盤點語義（祖先/自身/後代＋
 		// 多歸屬橋接＋子樹內資產客體）
 		"node_id": nodeIDStr,
 	} {
@@ -503,7 +502,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 		filters[field] = id
 	}
 
-	// 有效性/來源篩選（D7）：白名單校驗，於 COUNT 與分頁前生效（跨頁正確不漏報）。
+	// 有效性/來源篩選：白名單校驗，於 COUNT 與分頁前生效（跨頁正確不漏報）。
 	// now 一次捕捉，序列化沿用同一時刻
 	now := time.Now()
 	if v := c.Query("validity"); v != "" {
@@ -546,7 +545,7 @@ func (h *AuthorizationHandler) List(c *gin.Context) {
 	})
 }
 
-// EffectiveAssets 主體視角有效權限（authorization-page-redesign D3）
+// EffectiveAssets 主體視角有效權限
 func (h *AuthorizationHandler) EffectiveAssets(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Query("user_id"), 10, 32)
 	if err != nil {
@@ -565,7 +564,7 @@ func (h *AuthorizationHandler) EffectiveAssets(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// EffectiveUsers 客體視角有效權限（authorization-page-redesign D3）
+// EffectiveUsers 客體視角有效權限
 func (h *AuthorizationHandler) EffectiveUsers(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Query("asset_id"), 10, 32)
 	if err != nil {
@@ -597,7 +596,7 @@ func (h *AuthorizationHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		authorizations.PUT("/:id/accounts", h.UpdateAccounts)
 		authorizations.DELETE("/:id", h.Delete)
 		authorizations.GET("", h.List)
-		// 有效權限雙視角（D3）：唯讀溯因，admin only 隨群組守門
+		// 有效權限雙視角：唯讀溯因，admin only 隨群組守門
 		authorizations.GET("/effective-assets", h.EffectiveAssets)
 		authorizations.GET("/effective-users", h.EffectiveUsers)
 	}

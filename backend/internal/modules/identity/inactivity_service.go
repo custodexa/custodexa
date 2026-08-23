@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// InactivityService 閒置帳號自動停用（PCI 8.2.6，auth-hardening D8）：
+// InactivityService 閒置帳號自動停用（PCI 8.2.6）：
 // 距最後登入逾政策天數的 active 帳號自動停用。復用 UserService.UpdateStatus
 // 確保停用語義一致（撤 refresh＋強制收線協議會話＋last-admin 守衛）
 type InactivityService struct {
@@ -27,7 +27,7 @@ func NewInactivityService(db *gorm.DB, policies *policy.SecurityPolicyService, u
 }
 
 // DisableInactive 掃描並停用閒置帳號。回傳實際停用數。
-// 政策 inactive_disable_days=0（出廠預設）時停用此檢查、直接返回（D0 易用取向）
+// 政策 inactive_disable_days=0（出廠預設）時停用此檢查、直接返回（易用取向）
 func (s *InactivityService) DisableInactive() (int, error) {
 	if s.policies == nil {
 		return 0, nil
@@ -40,7 +40,7 @@ func (s *InactivityService) DisableInactive() (int, error) {
 	cutoff := time.Now().AddDate(0, 0, -days)
 
 	// 候選：active 且非豁免；last_login_at 為 NULL（從未登入）者以 created_at 起算
-	//（D8：否則新建卻未登入的帳號永不觸發）。LDAP 影子用戶同受治理（8.2.6 涵蓋全帳號）
+	//（否則新建卻未登入的帳號永不觸發）。LDAP 影子用戶同受治理（8.2.6 涵蓋全帳號）
 	var candidates []model.User
 	if err := s.db.
 		Where("active = ? AND inactivity_exempt = ? AND COALESCE(last_login_at, created_at) < ?",

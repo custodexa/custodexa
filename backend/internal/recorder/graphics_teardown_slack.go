@@ -54,6 +54,6 @@ package recorder
 // # 不得為了讓 e2e 變綠而調大
 //
 // 差額超過本上界表示收線落在畫格中途、或收尾行為變了，正解是查為什麼，不是把界線推開。
-// 調大前必須重新推導（見 change `graphics-teardown-sync` design D5）並一併改 spec 條文；
+// 調大前必須重新推導（見上方推導）並一併改 spec 條文；
 // `TestGraphicsTeardownSlackNotInflated` 會在調大時打紅，強迫改動者面對本註解。
 const GraphicsTeardownSlackBytes = 512

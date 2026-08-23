@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 )
 
-// 本地登入端點的來源限流（security-backlog-settlement 塊 3）。
+// 本地登入端點的來源限流。
 //
 // **與帳號級鎖定防的是不同攻擊**：既有的 `failed_login_attempts`＋`locked_until`
 // 擋對單一帳號的暴力破解；本限流擋**換帳號輪流試**的密碼噴灑——每個帳號各試

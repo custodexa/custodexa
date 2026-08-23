@@ -21,8 +21,8 @@ var (
 	ErrNotApproverRole = errors.New("目標使用者不具 approver 角色")
 )
 
-// ApproverScopeService 審核範圍管理（access-policy-approval D5；
-// approval-routing-quorum 擴四維）：admin only 分配，approver×（資產 XOR 節點
+// ApproverScopeService 審核範圍管理（後擴為四維）：
+// admin only 分配，approver×（資產 XOR 節點
 // XOR 使用者 XOR 使用者群組）。資產側與授權客體同構；申請人側為 OR 資格擴充。
 // CRUD 審計由路由中介層記錄（POST/DELETE /approver-scopes → approver_scope）
 type ApproverScopeService struct {
@@ -58,7 +58,7 @@ func (s *ApproverScopeService) List() ([]*model.ApproverScope, error) {
 	return scopes, nil
 }
 
-// Create 分配審核範圍：審核方恰一（個人須具 approver 角色；群組即資格零代配，D-7）、
+// Create 分配審核範圍：審核方恰一（個人須具 approver 角色；群組即資格零代配）、
 // 客體四維恰一、引用存在、活躍組合去重
 func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverScope, error) {
 	actors := 0

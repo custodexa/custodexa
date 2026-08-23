@@ -21,7 +21,7 @@ export function searchAlerts(params) {
 }
 
 /**
- * 審閱處置一筆告警（audit-workflows D3，alert:manage 權限）
+ * 審閱處置一筆告警（audit-workflows，alert:manage 權限）
  * @param {number} id - 告警 ID
  * @param {Object} data - { disposition: 'benign'|'escalated', note?: string }
  * @returns {Promise}

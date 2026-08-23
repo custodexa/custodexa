@@ -1,4 +1,4 @@
-// OIDC provider 管理頁（idp-oidc-integration D14.3 / tasks 5.3）。
+// OIDC provider 管理頁。
 //
 // 守的是「設定看起來成功、實際上不生效」的幾個點：
 //   - issuer／client_id 編輯時必須停用並說明原因（後端亦強制，前端漏了會讓人白填）；
@@ -42,7 +42,7 @@ vi.mock('@/api/user', () => ({
 }))
 
 const LOCAL_ADMIN_NONE_TITLE = '系統已無本地管理員，解封能力已失'
-// 主詞是「外部登入」而非「SSO」（UI 審查 L2）：不變式涵蓋所有外部身分來源
+// 主詞是「外部登入」而非「SSO」：不變式涵蓋所有外部身分來源
 // （OIDC 與 LDAP 皆然），且本則警語的內文本來就寫「若全部管理員都改為外部登入」
 // ——標題說 SSO、內文說外部登入是頁內自相矛盾。與 LDAP 頁同頁面群、同措辭
 const LOCAL_ADMIN_FALLBACK_TITLE =
@@ -101,7 +101,7 @@ describe('OIDCProviders 管理頁', () => {
     expect(text).toContain('未宣告，保守視為多組織共用')
   })
 
-  // 自述式欄名仍載不動兩個後果（oidc-terminology-alignment D2）：
+  // 自述式欄名仍載不動兩個後果：
   // 共用 issuer 上純 Email 網域規則會被拒、准入模式每次登入都重判。
   // 這兩句只存在於表頭 tooltip，掉了不會有任何測試以外的訊號
   it('兩個欄位表頭帶 tooltip 說明後果（Issuer 歸屬、准入模式）', async () => {
@@ -115,7 +115,7 @@ describe('OIDCProviders 管理頁', () => {
     expect(contents.some((c) => c.includes('每次登入都重新判定，非僅首次'))).toBe(true)
   })
 
-  // UI 審查 H5：原本 catch 只 log，畫面照常渲染 EmptyState，於是伺服器出錯時
+  // 原本 catch 只 log，畫面照常渲染 EmptyState，於是伺服器出錯時
   // 本頁**主動宣稱**「尚未設定任何 OIDC 提供者」——管理者會以為設定被刪了。
   // LDAP 頁在同一事件上已明確區分兩者；同層的身分來源頁不得給相反的答案
   it('清單讀取失敗：明示讀取失敗，不得謊稱「尚未設定任何提供者」', async () => {
@@ -130,7 +130,7 @@ describe('OIDCProviders 管理頁', () => {
     expect(text).not.toContain('尚未設定任何 OIDC 提供者')
   })
 
-  // UI 審查輪 3：H5 只修了「讀取失敗」，但「讀取還沒回來」是同一句假話換一條
+  // 先前只修了「讀取失敗」，但「讀取還沒回來」是同一句假話換一條
   // 路徑——清單當下為空的原因是還沒讀到，不是沒有設定。實測延遲 GET 期間畫面
   // 就寫著「尚未設定任何 OIDC 提供者」（在遮罩下仍讀得出來）
   it('讀取尚未回來時：不得謊稱「尚未設定任何提供者」', async () => {
@@ -162,7 +162,7 @@ describe('OIDCProviders 管理頁', () => {
     expect(wrapper.text()).toContain('PUBLIC_BASE_URL')
   })
 
-  // 本地管理員警示三態（oidc-ops-hygiene B10 / design D2）。
+  // 本地管理員警示三態。
   // 舊語義是「常駐提示」，已改為條件式：常駐版在正常部署下是純噪音，
   // 會訓練管理者略過本頁警示區（同區還有「設定不完整」「准入不合規」兩條真警示）
   it('尚有本地管理員時不顯示任何本地管理員警示', async () => {
@@ -440,7 +440,7 @@ describe('OIDCProviders 管理頁', () => {
   })
 })
 
-describe('OIDCProviders 切換為「僅限已預先綁定的帳號」的影響面提示（idp-oidc-integration D14.3）', () => {
+describe('OIDCProviders 切換為「僅限已預先綁定的帳號」的影響面提示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -487,11 +487,11 @@ describe('OIDCProviders 切換為「僅限已預先綁定的帳號」的影響�
   })
 })
 
-// 「僅限已預先綁定的帳號」的效力**限制**（spec OA-4：SHALL 於管理介面明示；冷驗收 GAP-2）。
+// 「僅限已預先綁定的帳號」的效力**限制** SHALL 於管理介面明示。
 // 與「切換語義」提示是兩件不同的事：後者講「切過去之後既有身分會怎樣」，
 // 前者講「這個模式擋不住什麼」——只有後者存在時，管理者會誤以為 prebound_only
 // 等同於「IdP 端一有異動就自動失效」
-describe('OIDCProviders prebound_only 的效力限制明示（GAP-2）', () => {
+describe('OIDCProviders prebound_only 的效力限制明示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getProvidersMock.mockResolvedValue({ data: [okta] })
@@ -522,16 +522,16 @@ describe('OIDCProviders prebound_only 的效力限制明示（GAP-2）', () => {
   })
 })
 
-// 准入規則不合規（F1）。Issuer 歸屬是現算的：部署層移除某 issuer 的專屬宣告後，
+// 准入規則不合規。Issuer 歸屬是現算的：部署層移除某 issuer 的專屬宣告後，
 // 原本合法的規則**就地**變成不合規，卻沒有任何寫入、也沒有任何錯誤回應。
 // 管理端不標示的話，唯一症狀是「使用者突然無法自動供應而查不到原因」
-describe('OIDCProviders 准入規則不合規標示（F1）', () => {
+describe('OIDCProviders 准入規則不合規標示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it('不合規者列上掛徽章，頁面警示點名 provider，成因留在列內 tooltip', async () => {
-    // 警示自 UI 審查 MEDIUM-3 起合併為一條：一 provider 一條 full-width alert
+    // 警示合併為一條：一 provider 一條 full-width alert
     // 與列內 tooltip 逐字重複，三個不合規就把表格推到摺線以下
     getProvidersMock.mockResolvedValue({
       data: [

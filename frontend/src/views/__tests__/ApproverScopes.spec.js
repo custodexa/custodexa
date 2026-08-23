@@ -59,7 +59,7 @@ const mountView = () =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('ApproverScopes 審核範圍雙視角（approval-routing-quorum D-7）', () => {
+describe('ApproverScopes 審核範圍雙視角', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getSecurityPoliciesMock.mockResolvedValue({

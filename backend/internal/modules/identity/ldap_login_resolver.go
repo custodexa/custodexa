@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/config"
 )
 
-// LDAP 登入路徑的單次設定解析（ldap-settings-migration D2；tasks 2.8）。
+// LDAP 登入路徑的單次設定解析。
 //
 // # 為什麼登入路徑注入的是 resolver 而不是 authenticator
 //
@@ -60,7 +60,7 @@ type LDAPLoginResolver func() LDAPLoginResolution
 
 // NewLDAPLoginResolver 生產組裝用的 resolver：每次登入現讀 DB＋解密一次。
 //
-// 不快取（D2）：LDAP 登入頻率低，且信封解密走行程內 DEK 快取，相對 LDAP
+// 不快取：LDAP 登入頻率低，且信封解密走行程內 DEK 快取，相對 LDAP
 // 撥號成本可忽略；快取則要再添一份 HA 一致性債
 func NewLDAPLoginResolver(dir *LDAPDirectoryService) LDAPLoginResolver {
 	return newLDAPLoginResolverWith(dir, newLDAPAuthenticatorFromSnapshot)
@@ -78,7 +78,7 @@ func newLDAPLoginResolverWith(
 		//（Go 允許 nil 接收者），錯誤只會延遲到實際登入當下才以 panic 形態爆發
 		// ——那既不是三態的任何一格，也讓一次組裝疏漏變成整條認證路徑的崩潰。
 		// 收斂為 failed 而**非 unavailable**：後者會把組裝疏漏偽裝成「LDAP 未
-		// 啟用」，與 D2 禁止的併吞形態同一件事
+		// 啟用」，與禁止的併吞形態同一件事
 		if dir == nil || factory == nil {
 			log.Print("[LDAPLogin] 登入解析器依賴未接線（fail-close，非 LDAP 未啟用）")
 			return LDAPLoginResolution{State: LDAPLoginFailed, Err: ErrLDAPDirectoryServiceUnavailable}

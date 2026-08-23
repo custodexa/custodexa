@@ -1,4 +1,4 @@
-// 通道語系值域前後端雙向完備性（backend-i18n-unification D5）。
+// 通道語系值域前後端雙向完備性。
 // 沿用 audit-enums.spec.js 的金標準模式：硬拷對照組＋直讀後端 Go 原始碼雙向斷言。
 // docker-compose.dev.yml 已為 frontend 掛載 ./backend/internal/model（唯讀），
 // 無掛載的環境該案例 skip（測試清單可見 skipped，非靜默通過）。

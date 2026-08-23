@@ -15,7 +15,7 @@ type CommandAlert struct {
 	SessionID uint
 	Actor     Actor
 
-	// AssetID **指標型**（M-1）：手動連線可能無資產，該欄在 DB 為 nullable
+	// AssetID **指標型**：手動連線可能無資產，該欄在 DB 為 nullable
 	//（model/command_alert.go:25 與 session_commands 一致）。值型 uint 分不出
 	// 「無資產」與「資產 ID 為 0」，會把 NULL 靜默寫成 0。
 	AssetID *uint
@@ -26,7 +26,7 @@ type CommandAlert struct {
 	// 該欄在 DB 為 nullable。值型 uint 分不出「無規則」與「規則 ID 為 0」，
 	// 會把 NULL 靜默寫成 0。
 	RuleID *uint
-	// RuleName 觸發當下的規則名快照（M-1）：規則之後改名／刪除不影響既有告警可讀性，
+	// RuleName 觸發當下的規則名快照：規則之後改名／刪除不影響既有告警可讀性，
 	// 與 model.CommandAlert.RuleName 的冗餘設計同取向。缺此欄則收口後告警列會失去
 	// 現況已有的資訊。**降級類填機器碼**（該類無規則名可快照）。
 	RuleName string
@@ -46,13 +46,13 @@ type CommandAlert struct {
 
 	// Disposition 審閱處置（model.AlertDisposition* 之一）。
 	//
-	// **兩條寫入路徑已於 W5／BD-1 統一為 pending**：收口前 matcher 路徑顯式寫 pending、
+	// **兩條寫入路徑已統一為 pending**：收口前 matcher 路徑顯式寫 pending、
 	// 阻斷路徑未設（DB 收到空字串）。現況兩條路徑
 	//（internal/modules/audit/alert_matcher.go、internal/sshproxy/command_blocker.go）
 	// 皆顯式設 model.AlertDispositionPending。實作端 SHALL 顯式設值，
 	// 不得倚賴 DB default——本欄的預設值語義屬 migration，不屬本契約。
 	//
-	// **統一的性質是欄位一致性補齊，不是修正已知的消費端差異**（W5 對抗 F4 訂正）：
+	// **統一的性質是欄位一致性補齊，不是修正已知的消費端差異**：
 	// 現況無消費者以本欄判定未審閱（全庫的未審閱篩選一律走 reviewed_at IS NULL），
 	// 故統一在行為上是惰性的；它防的是未來——兩種值並存之下，任何以
 	// disposition = 'pending' 寫的查詢都會靜默漏掉整類阻斷告警。
@@ -65,11 +65,11 @@ type CommandAlert struct {
 
 // AlertSink 指令告警寫入面。與審計 sink 分開，因為落地表、轉發路徑與消費者都不同。
 //
-// **實作 SHALL 同時完成「入庫」與「離機轉發」**——這是 BD-1 的結構性解法：
+// **實作 SHALL 同時完成「入庫」與「離機轉發」**——這是「漏 tee」的結構性解法：
 // 現況阻斷告警直寫 DB、繞過 syslog tee，離機證據缺一整類。收口後兩條路徑共用本介面，
 // tee 即結構性不可漏。
 //
-// # 錯誤語義（W5 5.4 明訂，取代 W1 的「二擇一待定」）
+// # 錯誤語義（取代原先的「二擇一待定」）
 //
 // **選同步變體，不選 async 變體**，逐條理由：
 //
@@ -80,7 +80,7 @@ type CommandAlert struct {
 //   - **呼叫端**（阻斷路徑與比對路徑）維持「記 log 不阻斷」，這是**刻意保留現況**
 //     而非疏漏：兩條路徑都沒有可回滾的業務交易——比對是指令入庫**之後**的異步批次，
 //     阻斷則在告警寫入前就已生效（指令未送往目標）。把告警寫入失敗升級為中斷會話，
-//     是本波範圍外的另一個行為變更，且會讓「告警系統故障」變成「使用者被踢線」。
+//     是範圍外的另一個行為變更，且會讓「告警系統故障」變成「使用者被踢線」。
 //   - **fail-close 只掛在「未注入」這一格**：sink 未注入時 SHALL NOT 降級為 no-op
 //     （比照 cmd/server/audit_sinks.go 的啟動自檢，不沿用 alert_matcher 對**下游 tee**
 //     的寬鬆跳過）。組裝根 requireAlertSink 使啟動失敗；呼叫側以
@@ -89,7 +89,7 @@ type AlertSink interface {
 	// RecordAlert 落地單筆告警。
 	RecordAlert(ctx context.Context, a CommandAlert) error
 
-	// RecordAlerts 批次落地（M-2）。
+	// RecordAlerts 批次落地。
 	//
 	// **存在的理由是保存現況的單次批寫**：internal/modules/audit/alert_matcher.go 現況為
 	// 一次 Create(&alerts)；若只提供 RecordAlert，matcher 路徑會被拆成 N 次 INSERT
@@ -101,7 +101,7 @@ type AlertSink interface {
 	RecordAlerts(ctx context.Context, as []CommandAlert) error
 }
 
-// ErrAlertSinkMissing 告警落地面未注入（modular-architecture W5 5.4）。
+// ErrAlertSinkMissing 告警落地面未注入。
 //
 // **不是 panic**：生產上由組裝根的啟動自檢（cmd/server/audit_sinks.go 的
 // requireAlertSink）保證走不到這裡；在測試與旁路建構路徑上以 error 表達，

@@ -1,4 +1,4 @@
-// GuacamolePlayer 的初始定位（workbench-exits-and-export 出口 A／tasks 1.2）。
+// GuacamolePlayer 的初始定位。
 //
 // 本檔守的是一個**靜默失敗**：guacamole-common-js 的 SessionRecording.seek 在
 // frames 尚未解析出來時是 no-op（`this.seek=function(b,d){if(0!==c.length)...`），

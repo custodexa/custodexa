@@ -1,4 +1,4 @@
-# 串流出口中文字面量 allowlist（backend-i18n-unification D7，機器生成勿手改）
+# 串流出口中文字面量 allowlist（機器生成勿手改）
 # 範圍：internal/sshproxy、internal/proxy 的非測試碼；log 系呼叫與 fmt.Errorf/errors.New 已豁免。
 # 格式：<相對 backend/ 的檔案路徑> <字面量正規化 hash> <同檔同 hash 筆數>
 # 重生：docker compose exec -T backend go test ./internal/apierror/ -run TestNoChineseLiteralsInStreamExits -update

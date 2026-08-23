@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// syslog 設定驗證 sentinel（backend-i18n-unification A6）：errors.Is 映射至
+// syslog 設定驗證 sentinel：errors.Is 映射至
 // apierror 碼；err.Error() 不再直傳客戶端
 var (
 	errSyslogPortRange       = errors.New("port 須在 1-65535")
@@ -25,12 +25,12 @@ var (
 	errSyslogHostRequired = errors.New("host 不可為空")
 )
 
-// SyslogSettingHandler syslog 轉發設定 API（audit-log-compliance 10.3.3，admin 限定）
+// SyslogSettingHandler syslog 轉發設定 API（admin 限定）
 type SyslogSettingHandler struct {
 	db           *gorm.DB
 	forwarder    *audit.SyslogForwarder
 	auditService *audit.AuditLogService
-	// transmission 傳輸政策閘（transmission-security-policy D6）；nil＝閘不生效
+	// transmission 傳輸政策閘；nil＝閘不生效
 	transmission *policy.TransmissionPolicyService
 }
 
@@ -51,7 +51,7 @@ type syslogSettingRequest struct {
 	Port     int    `json:"port"`
 	Protocol string `json:"protocol"`
 	TLSCA    string `json:"tls_ca"`
-	// RiskAcknowledged 傳輸風險確認聲明（transmission-security-policy D6）：
+	// RiskAcknowledged 傳輸風險確認聲明：
 	// warn 檔存非 TLS 傳輸時必須為 true，聲明入審計
 	RiskAcknowledged bool `json:"risk_acknowledged"`
 }
@@ -96,7 +96,7 @@ func (h *SyslogSettingHandler) Get(c *gin.Context) {
 		}
 		s = model.SyslogSetting{ID: 1, Port: 514, Protocol: model.SyslogProtocolUDP}
 	}
-	// 傳輸偏離標示（transmission-security-policy 3.1）：存量非 TLS 轉發
+	// 傳輸偏離標示：存量非 TLS 轉發
 	// 不中斷但誠實標示；未啟用＝無傳輸即無偏離
 	deviation := false
 	if h.transmission != nil && s.Enabled {
@@ -124,7 +124,7 @@ func (h *SyslogSettingHandler) Update(c *gin.Context) {
 	username, _ := middleware.GetCurrentUsername(c)
 	userID, _ := middleware.GetCurrentUserID(c)
 
-	// 傳輸政策閘（transmission-security-policy D6）：只攔存檔動作，
+	// 傳輸政策閘：只攔存檔動作，
 	// 存量非 TLS 轉發不中斷（審計外送優先於強制，spec 場景鎖定）。
 	// 未啟用轉發的存檔不受閘——沒有傳輸就沒有傳輸風險
 	if h.transmission != nil && req.Enabled {
@@ -203,7 +203,7 @@ func (h *SyslogSettingHandler) Test(c *gin.Context) {
 		return
 	}
 
-	// 傳輸政策閘（同 Update；transmission-security-policy 6.5 收口）：
+	// 傳輸政策閘（同 Update）：
 	// 測試即對外實送，不受 enabled 影響——strict 下不得對非 TLS 端點發送，
 	// warn 下須帶風險確認聲明
 	if h.transmission != nil {
@@ -240,7 +240,7 @@ func (h *SyslogSettingHandler) Test(c *gin.Context) {
 		Host: req.Host, Port: req.Port, Protocol: req.Protocol, TLSCA: req.TLSCA,
 	})
 	if err != nil {
-		// 送達失敗回 502＋registered code（asset-syslog-debt-cleanup D1）：狀態碼
+		// 送達失敗回 502＋registered code：狀態碼
 		// 表達成敗，與通知通道測試端點同語義；具體原因（連線拒絕/逾時/TLS 驗證
 		// 失敗）僅入伺服端 log，對外泛化以免目的地可達性成為可探測訊號。
 		// RespondInternal 已記 cause/path/userID，故不另行 log.Printf

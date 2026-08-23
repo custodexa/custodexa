@@ -121,7 +121,7 @@ func TestSeedAdmin_EmptyPasswordRejected(t *testing.T) {
 }
 
 // TestScanLegacyDefaultAdmins：改名 admin、多 admin 任一用 admin123 皆須命中；
-// 良好密碼/LDAP/非 admin 皆不命中（deployment-hardening D6）。
+// 良好密碼/LDAP/非 admin 皆不命中（deployment-hardening）。
 func TestScanLegacyDefaultAdmins(t *testing.T) {
 	defer setupBootstrapDB(t)()
 	if err := seedRoles(); err != nil {

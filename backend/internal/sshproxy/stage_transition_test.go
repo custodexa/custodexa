@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// W10 專項測試四組（任務 11.8）
+// 連線閘序專項測試四組
 //
 //  1. Issue 與 Redeem **之間**的狀態改變（授權撤銷／資產停用／票證到期）——
 //     走真實簽發端點取得 token，改狀態，再走真實兌換入口；
@@ -31,7 +31,7 @@ import (
 // 組 1：Issue 與 Redeem 之間的狀態改變
 // ---------------------------------------------------------------------------
 
-func TestW10StateChangeBetweenIssueAndRedeem(t *testing.T) {
+func TestStateChangeBetweenIssueAndRedeem(t *testing.T) {
 	cases := []struct {
 		name       string
 		change     func(t *testing.T, h *Handler, db *gorm.DB)
@@ -81,10 +81,10 @@ func TestW10StateChangeBetweenIssueAndRedeem(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h, db := w10Fixture(t)
-			w10SeedAccount(t, db, 1, "root", true)
+			h, db := gateFixture(t)
+			gateSeedAccount(t, db, 1, "root", true)
 
-			status, resp, _ := w10IssueRequest(h, 1, model.RoleUser, 1, 0, "")
+			status, resp, _ := gateIssueRequest(h, 1, model.RoleUser, 1, 0, "")
 			if status != http.StatusOK {
 				t.Fatalf("前提不成立：簽發應成功 status=%d resp=%v", status, resp)
 			}
@@ -95,7 +95,7 @@ func TestW10StateChangeBetweenIssueAndRedeem(t *testing.T) {
 
 			tc.change(t, h, db)
 
-			rStatus, rResp := w10RedeemSSH(h, token, "80", "24")
+			rStatus, rResp := gateRedeemSSH(h, token, "80", "24")
 			if rStatus != tc.wantStatus {
 				t.Fatalf("兌換狀態不符: got=%d want=%d resp=%v", rStatus, tc.wantStatus, rResp)
 			}
@@ -113,11 +113,11 @@ func TestW10StateChangeBetweenIssueAndRedeem(t *testing.T) {
 	}
 }
 
-// TestW10TicketExpiryBetweenIssueAndRedeem 票證到期：approval 段位下以時窗內 ticket
+// TestTicketExpiryBetweenIssueAndRedeem 票證到期：approval 段位下以時窗內 ticket
 // 簽發成功，把 ticket 改為已到期後兌換即被政策閘擋下（token 未過期不構成放行理由）
-func TestW10TicketExpiryBetweenIssueAndRedeem(t *testing.T) {
-	h, db := w10Fixture(t)
-	w10SeedAccount(t, db, 1, "root", true)
+func TestTicketExpiryBetweenIssueAndRedeem(t *testing.T) {
+	h, db := gateFixture(t)
+	gateSeedAccount(t, db, 1, "root", true)
 	// 只留 ticket 來源授權：刪常設授權，否則到期後仍有常設可放行
 	if err := db.Where("user_id = ?", 1).Delete(&model.AssetAuthorization{}).Error; err != nil {
 		t.Fatalf("clear standing grant: %v", err)
@@ -125,7 +125,7 @@ func TestW10TicketExpiryBetweenIssueAndRedeem(t *testing.T) {
 	setGroupPolicy(t, db, 1, model.AccessPolicyApproval)
 	grantTicket(t, db, 1, 1)
 
-	status, resp, _ := w10IssueRequest(h, 1, model.RoleUser, 1, 0, "")
+	status, resp, _ := gateIssueRequest(h, 1, model.RoleUser, 1, 0, "")
 	if status != http.StatusOK {
 		t.Fatalf("時窗內 ticket 應可簽發: status=%d resp=%v", status, resp)
 	}
@@ -139,7 +139,7 @@ func TestW10TicketExpiryBetweenIssueAndRedeem(t *testing.T) {
 		t.Fatalf("expire ticket: %v", err)
 	}
 
-	rStatus, rResp := w10RedeemSSH(h, token, "80", "24")
+	rStatus, rResp := gateRedeemSSH(h, token, "80", "24")
 	if rStatus != http.StatusForbidden {
 		t.Fatalf("到期 ticket 不得兌換建線: status=%d resp=%v", rStatus, rResp)
 	}
@@ -162,13 +162,13 @@ func TestW10TicketExpiryBetweenIssueAndRedeem(t *testing.T) {
 // 組 2：並發兌換
 // ---------------------------------------------------------------------------
 
-// TestW10ConcurrentRedeemSingleWinner 一次性即焚在並發下仍只有一個贏家：
+// TestConcurrentRedeemSingleWinner 一次性即焚在並發下仍只有一個贏家：
 // 其餘一律 401 token 無效，且全程不得建立任何 session
-func TestW10ConcurrentRedeemSingleWinner(t *testing.T) {
-	h, db := w10Fixture(t)
-	w10SeedAccount(t, db, 1, "root", true)
+func TestConcurrentRedeemSingleWinner(t *testing.T) {
+	h, db := gateFixture(t)
+	gateSeedAccount(t, db, 1, "root", true)
 
-	status, resp, _ := w10IssueRequest(h, 1, model.RoleUser, 1, 0, "")
+	status, resp, _ := gateIssueRequest(h, 1, model.RoleUser, 1, 0, "")
 	if status != http.StatusOK {
 		t.Fatalf("簽發應成功: status=%d resp=%v", status, resp)
 	}
@@ -189,7 +189,7 @@ func TestW10ConcurrentRedeemSingleWinner(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			code, body := w10RedeemSSH(h, token, "80", "24")
+			code, body := gateRedeemSSH(h, token, "80", "24")
 			if code == http.StatusUnauthorized &&
 				body["code"] == string(apierror.CodeConnectTokenInvalid) {
 				atomic.AddInt64(&invalid, 1)
@@ -233,31 +233,31 @@ func TestW10ConcurrentRedeemSingleWinner(t *testing.T) {
 // 組 3：憑證提前解封不得發生
 // ---------------------------------------------------------------------------
 
-// w10CountingCodec 計數式 column codec：直接觀測「明文憑證有沒有被產生」。
+// gateCountingCodec 計數式 column codec：直接觀測「明文憑證有沒有被產生」。
 // **這是唯一能證明「沒有提前解封」的執行期訊號**——靜態守衛只能證明呼叫點位置，
 // 證不了某條路徑在執行期真的沒走到解封
-type w10CountingCodec struct {
+type gateCountingCodec struct {
 	inner    crypto.ColumnCodec
 	decrypts int64
 }
 
-func (c *w10CountingCodec) EncryptFor(ctx context.Context, ref crypto.CipherRef, plaintext string) (string, error) {
+func (c *gateCountingCodec) EncryptFor(ctx context.Context, ref crypto.CipherRef, plaintext string) (string, error) {
 	return c.inner.EncryptFor(ctx, ref, plaintext)
 }
 
-func (c *w10CountingCodec) DecryptFor(ctx context.Context, ref crypto.CipherRef, ciphertext string) (string, error) {
+func (c *gateCountingCodec) DecryptFor(ctx context.Context, ref crypto.CipherRef, ciphertext string) (string, error) {
 	atomic.AddInt64(&c.decrypts, 1)
 	return c.inner.DecryptFor(ctx, ref, ciphertext)
 }
 
-// w10CountingFixture 與 w10Fixture 同構，但 AssetService 掛計數 codec
-func w10CountingFixture(t *testing.T) (*Handler, *gorm.DB, *w10CountingCodec) {
+// gateCountingFixture 與 gateFixture 同構，但 AssetService 掛計數 codec
+func gateCountingFixture(t *testing.T) (*Handler, *gorm.DB, *gateCountingCodec) {
 	t.Helper()
 	h, db, _ := setupPolicyGateTest(t)
 	seedGateFixture(t, db)
 	setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
 
-	codec := &w10CountingCodec{inner: aesColumnCodec(t, make([]byte, 32))}
+	codec := &gateCountingCodec{inner: aesColumnCodec(t, make([]byte, 32))}
 	assetSvc, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
@@ -266,7 +266,7 @@ func w10CountingFixture(t *testing.T) (*Handler, *gorm.DB, *w10CountingCodec) {
 	return h, db, codec
 }
 
-func TestW10NoEarlyCredentialUnseal(t *testing.T) {
+func TestNoEarlyCredentialUnseal(t *testing.T) {
 	// 前置：帳號帶真實密文，否則「零解密」可能只是因為沒有東西可解
 	seedEncrypted := func(t *testing.T, db *gorm.DB, codec crypto.ColumnCodec) {
 		t.Helper()
@@ -285,13 +285,13 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 	}
 
 	t.Run("對照組：一路走到解封點時 DecryptFor 必被呼叫", func(t *testing.T) {
-		h, db, codec := w10CountingFixture(t)
+		h, db, codec := gateCountingFixture(t)
 		seedEncrypted(t, db, codec)
-		token, err := h.ConnectTokens.IssueConnectToken(context.Background(), w10Grant(1, 1, 0))
+		token, err := h.ConnectTokens.IssueConnectToken(context.Background(), gateGrant(1, 1, 0))
 		if err != nil {
 			t.Fatalf("issue: %v", err)
 		}
-		w10RedeemSSH(h, token, "80", "24")
+		gateRedeemSSH(h, token, "80", "24")
 		if atomic.LoadInt64(&codec.decrypts) == 0 {
 			t.Fatal("對照組不成立：走到解封點卻沒有任何 DecryptFor，計數器沒有偵測能力")
 		}
@@ -310,9 +310,9 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 		}},
 	} {
 		t.Run("解封前被拒者零解密："+tc.name, func(t *testing.T) {
-			h, db, codec := w10CountingFixture(t)
+			h, db, codec := gateCountingFixture(t)
 			seedEncrypted(t, db, codec)
-			token, err := h.ConnectTokens.IssueConnectToken(context.Background(), w10Grant(1, 1, 0))
+			token, err := h.ConnectTokens.IssueConnectToken(context.Background(), gateGrant(1, 1, 0))
 			if err != nil {
 				t.Fatalf("issue: %v", err)
 			}
@@ -320,7 +320,7 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 			atomic.StoreInt64(&codec.decrypts, 0)
 			tc.mutate(t, db)
 
-			status, resp := w10RedeemSSH(h, token, "80", "24")
+			status, resp := gateRedeemSSH(h, token, "80", "24")
 			if status == http.StatusOK || status == http.StatusSwitchingProtocols {
 				t.Fatalf("%s 應拒絕: status=%d resp=%v", tc.gate, status, resp)
 			}
@@ -332,14 +332,14 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 	}
 
 	t.Run("G-S5 尺寸解析失敗亦不得解封", func(t *testing.T) {
-		h, db, codec := w10CountingFixture(t)
+		h, db, codec := gateCountingFixture(t)
 		seedEncrypted(t, db, codec)
-		token, err := h.ConnectTokens.IssueConnectToken(context.Background(), w10Grant(1, 1, 0))
+		token, err := h.ConnectTokens.IssueConnectToken(context.Background(), gateGrant(1, 1, 0))
 		if err != nil {
 			t.Fatalf("issue: %v", err)
 		}
 		atomic.StoreInt64(&codec.decrypts, 0)
-		status, _ := w10RedeemSSH(h, token, "abc", "24")
+		status, _ := gateRedeemSSH(h, token, "abc", "24")
 		if status != http.StatusBadRequest {
 			t.Fatalf("尺寸解析失敗應 400，實得 %d", status)
 		}
@@ -349,10 +349,10 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 	})
 
 	t.Run("簽發側全程零解封（簽發只解析 username）", func(t *testing.T) {
-		h, db, codec := w10CountingFixture(t)
+		h, db, codec := gateCountingFixture(t)
 		seedEncrypted(t, db, codec)
 		atomic.StoreInt64(&codec.decrypts, 0)
-		status, resp, _ := w10IssueRequest(h, 1, model.RoleUser, 1, 0, "")
+		status, resp, _ := gateIssueRequest(h, 1, model.RoleUser, 1, 0, "")
 		if status != http.StatusOK {
 			t.Fatalf("簽發應成功: status=%d resp=%v", status, resp)
 		}
@@ -362,8 +362,8 @@ func TestW10NoEarlyCredentialUnseal(t *testing.T) {
 	})
 }
 
-// w10Grant 造一張兌換用 grant
-func w10Grant(userID, assetID, accountID uint) proxy.ConnectGrant {
+// gateGrant 造一張兌換用 grant
+func gateGrant(userID, assetID, accountID uint) proxy.ConnectGrant {
 	return proxy.ConnectGrant{UserID: userID, AssetID: assetID, AccountID: accountID}
 }
 
@@ -371,14 +371,14 @@ func w10Grant(userID, assetID, accountID uint) proxy.ConnectGrant {
 // 組 4：副作用順序（審計標記 vs 後續拒絕）
 // ---------------------------------------------------------------------------
 
-// TestW10AuditSideEffectOrdering 副作用順序：閘 A 產生的審計標記在閘 B 拒絕時
+// TestAuditSideEffectOrdering 副作用順序：閘 A 產生的審計標記在閘 B 拒絕時
 // **必須已經寫入**——「先寫審計再拒」與「先拒再寫審計」的拒絕碼相同、語義不同，
 // 只驗碼看不出差別
-func TestW10AuditSideEffectOrdering(t *testing.T) {
+func TestAuditSideEffectOrdering(t *testing.T) {
 	h, db, policies := setupPolicyGateTest(t)
 	seedGateFixture(t, db)
 	setGroupPolicy(t, db, 1, model.AccessPolicyApproval)
-	w10SeedAccount(t, db, 1, "root", true)
+	gateSeedAccount(t, db, 1, "root", true)
 
 	// 傳輸閘（G-I13，位於政策閘 G-I12 之後）攔截：RDP 資產＋warn 段位
 	if err := db.Create(&model.Asset{Name: "rdp1", Protocol: "rdp", Host: "h", Port: 3389, CreatedBy: 2}).Error; err != nil {
@@ -395,7 +395,7 @@ func TestW10AuditSideEffectOrdering(t *testing.T) {
 		policy.NewTransmissionPolicyService(policies, nil))
 
 	// admin：G-I12 豁免放行並寫下審計標記 → G-I13 傳輸閘攔截（428）
-	status, resp, keys := w10IssueRequest(h, 2, model.RoleAdmin, 2, 0, "")
+	status, resp, keys := gateIssueRequest(h, 2, model.RoleAdmin, 2, 0, "")
 	if status != http.StatusPreconditionRequired {
 		t.Fatalf("應由傳輸閘攔截（428）: status=%d resp=%v", status, resp)
 	}
@@ -405,7 +405,7 @@ func TestW10AuditSideEffectOrdering(t *testing.T) {
 	}
 
 	// 反向：政策閘自己攔截時，不得留下豁免標記（避免上面的斷言是無條件成立）
-	_, _, userKeys := w10IssueRequest(h, 1, model.RoleUser, 2, 0, "")
+	_, _, userKeys := gateIssueRequest(h, 1, model.RoleUser, 2, 0, "")
 	userDetails, _ := userKeys["audit_details"].(map[string]string)
 	if userDetails["policy_exemption"] != "" {
 		t.Fatalf("非 admin 被政策閘攔截時不應有豁免標記: keys=%v", userKeys)

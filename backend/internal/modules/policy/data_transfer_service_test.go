@@ -61,7 +61,7 @@ func TestEffectiveTransferEachKeyIndependently(t *testing.T) {
 	}
 }
 
-// TestEffectiveTransferNoRoleExemption 不豁免任何角色（D5「admin 短路」段、使用者拍板）。
+// TestEffectiveTransferNoRoleExemption 不豁免任何角色（「admin 短路」段、使用者拍板）。
 //
 // 三種角色的使用者在同一份政策下 SHALL 得到完全相同的結果。
 // 自證：在 EffectiveTransfer 內加 `if 該使用者是 admin { return 全允許 }`，本測試必紅。

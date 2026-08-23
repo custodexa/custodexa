@@ -20,7 +20,7 @@ var (
 	ErrInvalidProtocols  = errors.New("protocols 僅接受 ssh/k8s/mysql/postgres/redis/mssql（逗號分隔，空=全協議）")
 	// ErrAlertRuleNameExists 規則名撞上 alert_rules.name 的唯一索引。
 	//
-	// 該索引是種子冪等的前提（migration-baseline-compression D4），但規則名在
+	// 該索引是種子冪等的前提，但規則名在
 	// UI／API 是可編輯欄位：admin 建規則或改名到既有名稱時必然撞得到，沒有這條
 	// 轉譯就會冒成 500。判定一律取自「資料庫回傳的唯一鍵衝突」而非先查後寫——
 	// 後者在並發下仍會撞（TOCTOU），且多一次無用查詢。
@@ -73,7 +73,7 @@ func normalizeProtocols(raw string) (string, error) {
 	return strings.Join(normalized, ","), nil
 }
 
-// AlertRuleService 告警規則 CRUD 服務（command-alerts D4）
+// AlertRuleService 告警規則 CRUD 服務
 type AlertRuleService struct {
 	db *gorm.DB
 }
@@ -83,7 +83,7 @@ func NewAlertRuleService(db *gorm.DB) *AlertRuleService {
 	return &AlertRuleService{db: db}
 }
 
-// validateRule 驗證請求：regex 以 regexp.Compile 驗證後才入庫（design D4），
+// validateRule 驗證請求：regex 以 regexp.Compile 驗證後才入庫，
 // 編譯錯誤原文附在錯誤訊息中，讓 API 呼叫端知道 pattern 哪裡壞
 func validateRule(req *AlertRuleRequest) error {
 	if !model.ValidAlertSeverity(req.Severity) {
@@ -120,7 +120,7 @@ func (s *AlertRuleService) List() ([]model.AlertRule, error) {
 	return rules, nil
 }
 
-// Create 建立規則；成功後刷新比對快取（design D1）
+// Create 建立規則；成功後刷新比對快取
 func (s *AlertRuleService) Create(req *AlertRuleRequest) (*model.AlertRule, error) {
 	if err := validateRule(req); err != nil {
 		return nil, err

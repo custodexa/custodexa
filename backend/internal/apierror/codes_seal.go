@@ -1,6 +1,6 @@
 package apierror
 
-// B 模式封印狀態機的出口碼（kek-provider-modularization D6.4／D6.6）。
+// B 模式封印狀態機的出口碼。
 //
 // 與 codes.go 同一 registry，分檔僅為 domain 隔離。**碼值逐字等於
 // internal/seal 的 Code* 常數**——狀態機只生成機器碼、不生成文字，接線層
@@ -10,14 +10,14 @@ package apierror
 // 對照守衛把關）。三語 apiError.* 由 TestCodeTranslationsComplete 的雙射守衛
 // 把關，zh-TW 逐字＝此處 ZhFallback。
 //
-// **失敗回應內容不可區分（D6.6）**：格式錯、材料錯、paste-back 不符、初始管理員
+// **失敗回應內容不可區分**：格式錯、材料錯、paste-back 不符、初始管理員
 // 憑證錯，全部收斂為單一 CodeSealMaterialInvalid，回應體不得攜帶可區分成因的
-// 欄位。timing 差異不在承諾範圍內（誠實界定見 design D6.6）。
+// 欄位。timing 差異不在承諾範圍內。
 var (
 	// CodeSealServiceSealed 封印閘：白名單外的路由於封印期一律 503＋本碼。
 	// 不是 500、不是 401——狀態必須可被外部監控正確辨識。
 	//
-	// **文案明寫路徑 `/unseal`**（kek-encoding-and-unseal-entry）：原文案只說
+	// **文案明寫路徑 `/unseal`**：原文案只說
 	// 「請先於解封頁提交金鑰材料」而沒說那一頁在哪，全新安裝的管理員登入後就卡在
 	// 這裡。介面已有導覽守衛會把人接過去，本文案是守衛失效時（停用 JS、以 API
 	// 直接互動、非瀏覽器用戶端）的最後一道線索。
@@ -37,12 +37,12 @@ var (
 	CodeSealAlreadyUnsealed = register("SEAL_ALREADY_UNSEALED",
 		Descriptor{ZhFallback: "系統已解封，無需再次解封"})
 
-	// CodeSealCooldownActive 全域冷卻期內抵達（D6.4）。不驗證、不進 CAS、
+	// CodeSealCooldownActive 全域冷卻期內抵達。不驗證、不進 CAS、
 	// 不計入失敗計數、不刷新到期時間；冷卻到期時間由 /seal/status 暴露。
 	CodeSealCooldownActive = register("SEAL_COOLDOWN_ACTIVE",
 		Descriptor{ZhFallback: "解封嘗試太頻繁，已進入冷卻。時間到會自動恢復，不用重啟服務。"})
 
-	// CodeSealBackoffActive per-source 退避期內抵達（D6.4）。
+	// CodeSealBackoffActive per-source 退避期內抵達。
 	CodeSealBackoffActive = register("SEAL_BACKOFF_ACTIVE",
 		Descriptor{ZhFallback: "這個來源的解封嘗試太密集，請稍候再試。"})
 
@@ -67,7 +67,7 @@ var (
 		Descriptor{ZhFallback: "金鑰是對的，但服務初始化失敗，系統維持封印。請看伺服器日誌，再重試解封。"})
 
 	// CodeSealStage2Timeout 段 2 逾時（格 7）。不計入材料失敗計數。
-	// 初始化路徑逾時的重試指引（D6.2.4 opus MED-6）由 /seal/status 另行暴露。
+	// 初始化路徑逾時的重試指引由 /seal/status 另行暴露。
 	CodeSealStage2Timeout = register("SEAL_STAGE2_TIMEOUT",
 		Descriptor{ZhFallback: "服務初始化逾時。若這是初次初始化，請用第一次輸入的那把金鑰重試。千萬不要改用新的金鑰。"})
 
@@ -76,7 +76,7 @@ var (
 	CodeSealPublishUnconfirmed = register("SEAL_PUBLISH_UNCONFIRMED",
 		Descriptor{ZhFallback: "服務初始化完成，但發佈未確認，系統維持封印。請重試解封。"})
 
-	// CodeSealSourceNotAllowed 來源不在解封端點允許的網段內（D6.4 網段繫結組態）。
+	// CodeSealSourceNotAllowed 來源不在解封端點允許的網段內（網段繫結組態）。
 	CodeSealSourceNotAllowed = register("SEAL_SOURCE_NOT_ALLOWED",
 		Descriptor{ZhFallback: "此來源不在解封端點允許的網段內"})
 

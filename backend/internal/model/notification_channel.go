@@ -18,7 +18,7 @@ func ValidNotificationChannelType(t string) bool {
 	return t == NotificationChannelTypeWebhook || t == NotificationChannelTypeSlack
 }
 
-// 通道語系（backend-i18n-unification D5）：per-channel 語系決定 Slack 渲染
+// 通道語系：per-channel 語系決定 Slack 渲染
 // 與（未來）webhook payload 查譯用的語言；webhook 型可設但目前無作用（UI 註明）。
 // 嚴格三值，字串 enum + DB CHECK 約束，同 type 欄雙層驗證慣例
 const (
@@ -30,7 +30,7 @@ const (
 	NotificationChannelLanguageDefault = NotificationChannelLanguageZhTW
 )
 
-// ValidNotificationChannelLanguage 檢查通道語系是否為合法值（嚴格匹配三值，design D5）
+// ValidNotificationChannelLanguage 檢查通道語系是否為合法值（嚴格匹配三值）
 func ValidNotificationChannelLanguage(s string) bool {
 	switch s {
 	case NotificationChannelLanguageZhTW, NotificationChannelLanguageEnUS, NotificationChannelLanguageJaJP:
@@ -40,7 +40,7 @@ func ValidNotificationChannelLanguage(s string) bool {
 	}
 }
 
-// NotificationChannel 告警通知通道（alert-notifications D1/D3）
+// NotificationChannel 告警通知通道（alert-notifications）
 // secret 用於 HMAC-SHA256 簽名（X-OT-Signature），非空時推送會附簽名 header；
 // 整組端點 admin only；secret 不隨 JSON 回傳（json:"-"）。
 // Update 時空 secret＝沿用既有值，清除簽名需顯式 clear_secret（見 notification_channel_service.Update）
@@ -50,11 +50,11 @@ type NotificationChannel struct {
 	ID      uint   `gorm:"primarykey" json:"id"`
 	Name    string `gorm:"size:100;not null" json:"name"`
 	Type    string `gorm:"size:20;not null;default:webhook" json:"type"` // webhook/slack（CHECK 約束）
-	URL     string `gorm:"type:text;not null" json:"url"`                // 僅允許 http/https（design D5）
+	URL     string `gorm:"type:text;not null" json:"url"`                // 僅允許 http/https
 	Secret  string `gorm:"type:text" json:"-"`                           // HMAC 簽名密鑰，空字串=不簽名
 	Enabled bool   `gorm:"not null;default:true" json:"enabled"`
 
-	// Language per-channel 語系（backend-i18n-unification D5）：Create 未給預設 zh-TW，
+	// Language per-channel 語系：Create 未給預設 zh-TW，
 	// 嚴格匹配三值（CHECK 約束同 type 欄慣例）
 	Language string `gorm:"size:8;not null;default:zh-TW" json:"language"`
 
@@ -62,8 +62,8 @@ type NotificationChannel struct {
 	// 非 DB 欄位，由 service 讀取時依 Secret 是否為空填入
 	HasSecret bool `gorm:"-" json:"has_secret"`
 
-	// TransmissionDeviation 傳輸偏離標示（transmission-security-policy 3.1：
-	// 存量 http 通道不回溯停用，列表誠實標偏離）；非 DB 欄位，service 讀取時填入
+	// TransmissionDeviation 傳輸偏離標示（存量 http 通道不回溯停用，
+	// 列表誠實標偏離）；非 DB 欄位，service 讀取時填入
 	TransmissionDeviation bool `gorm:"-" json:"transmission_deviation"`
 
 	CreatedAt time.Time `json:"created_at"`

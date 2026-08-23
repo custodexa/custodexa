@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// gate chain 與 OIDC 的交互（idp-oidc-integration tasks 4.6）。
+// gate chain 與 OIDC 的交互。
 //
 // 三條性質：
 //
@@ -18,7 +18,7 @@ import (
 //	MFA 兩個完成點（VerifyMFALogin／CompleteEnrollment）都要複查憑證世代，
 //	  且複查必須排在「驗碼」與「寫入 TOTP 因子」之前。
 
-// Scenario: OIDC＋MFA 完成後不觸發密碼 gate（tasks 4.6）
+// Scenario: OIDC＋MFA 完成後不觸發密碼 gate
 func TestOIDCLoginWithMFADoesNotTriggerPasswordGate(t *testing.T) {
 	e := setupOIDCLifecycleEnv(t)
 	// 三個密碼 gate 觸發源同時成立：強制改密旗標、密碼有效期已過（時間戳為 NULL
@@ -65,7 +65,7 @@ func TestOIDCLoginWithMFADoesNotTriggerPasswordGate(t *testing.T) {
 	}
 }
 
-// Scenario: 混合帳號雙路徑各依登入方式判定（tasks 4.6）
+// Scenario: 混合帳號雙路徑各依登入方式判定
 func TestHybridAccountPasswordGateFollowsLoginMethod(t *testing.T) {
 	e := setupOIDCLifecycleEnv(t)
 	const password = "Str0ng-Passw0rd!x"
@@ -119,7 +119,7 @@ func TestHybridAccountPasswordGateFollowsLoginMethod(t *testing.T) {
 	}
 }
 
-// Scenario: pending 期間 provider 被停用，MFA 完成被拒（tasks 4.6）
+// Scenario: pending 期間 provider 被停用，MFA 完成被拒
 func TestMFACompletionRejectedWhenProviderDisabledDuringPending(t *testing.T) {
 	e := setupOIDCLifecycleEnv(t)
 	user := e.seedMFAIdentityUser(t, "sso-pending", "sub-sso-pending")
@@ -152,7 +152,7 @@ func TestMFACompletionRejectedWhenProviderDisabledDuringPending(t *testing.T) {
 	}
 }
 
-// Scenario: enrollment 期間 provider 被停用，綁定完成被拒且不得寫入因子（tasks 4.6）
+// Scenario: enrollment 期間 provider 被停用，綁定完成被拒且不得寫入因子
 func TestMFAEnrollmentCompletionRejectedWhenProviderDisabled(t *testing.T) {
 	e := setupOIDCLifecycleEnv(t)
 	e.policies.Update(policy.PolicyMFARequired, policy.MFARequiredAll, "admin")

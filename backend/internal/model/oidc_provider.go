@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AdmissionMode OIDC provider 的准入模式（idp-oidc-integration D7a）
+// AdmissionMode OIDC provider 的准入模式
 type AdmissionMode string
 
 const (
@@ -18,12 +18,12 @@ const (
 
 // OIDCProvider OIDC 身分提供者設定（多實例並存）。
 //
-// 身分域不可變（D2）：Issuer 與 ClientID 建立後不可變更，且由服務層強制——
+// 身分域不可變：Issuer 與 ClientID 建立後不可變更，且由服務層強制——
 // 外部身分以 (issuer, client_id, subject) 為鍵，變更任一即等同換身分域，
 // 會使既有使用者全部無法對應。Entra 的 sub 為 per-application pairwise，
 // 換 ClientID 後同一人會拿到不同 subject，此約束因而是硬需求而非潔癖。
 //
-// 生命週期為原地治理（D2）：secret 輪替、停用/重新啟用、改顯示名皆原地更新；
+// 生命週期為原地治理：secret 輪替、停用/重新啟用、改顯示名皆原地更新；
 // 有外部身分關聯者不可刪除（服務層回 409），僅能停用。
 //
 // 安全紅線：ClientSecretEnc 必須登記於 keyvault 的 envelopeMigrationTargets

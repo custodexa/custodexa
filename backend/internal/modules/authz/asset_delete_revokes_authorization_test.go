@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// 刪除資產即失效其授權（security-backlog-settlement 塊 2）。
+// 刪除資產即失效其授權（塊 2）。
 //
 // 本測試放在 authz 而非 asset：權限查詢與其姊妹查詢住在這裡，且 authz 已 import
 // asset，反向 import 會循環。
@@ -78,7 +78,7 @@ func setupDeleteRevokeDB(t *testing.T) (*gorm.DB, *asset.AssetService) {
 	svc, err := asset.NewAssetService(
 		deleteRevokeCodec{c: aesCrypto}, "localhost", 4822, audit.NewTxSink())
 	require.NoError(t, err)
-	// 資產刪除的級聯撤銷經 tx-taking 窄 port 交由 authz 寫入（F8／D-10）：
+	// 資產刪除的級聯撤銷經 tx-taking 窄 port 交由 authz 寫入：
 	// asset 不直接碰他模組的表。未注入即 fail-close，故此處注入真實的 authz 服務
 	svc.SetAuthorizationRevoker(NewAssetAuthorizationService(db))
 	return db, svc
@@ -136,7 +136,7 @@ func TestDeleteAsset_AuthorizationsStopMatchingPermissionQueries(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "已刪資產的授權不得再於權限檢查中命中")
 
-	// ② 姊妹查詢一併失效——**實測而非推論**（design D2）。軟刪作用於記錄本身，
+	// ② 姊妹查詢一併失效——**實測而非推論**。軟刪作用於記錄本身，
 	//    故同語義查詢自動繼承；若 GORM 對某查詢未套用軟刪範圍即為缺陷，
 	//    而那正是「只改 CheckPermission 會留下的旁路」
 	sources, err := repo.ResolveConnectSources(userID, a.ID, time.Now())

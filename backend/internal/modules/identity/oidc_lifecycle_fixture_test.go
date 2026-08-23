@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// OIDC 全鏈路測試環境（idp-oidc-integration tasks 4.6／4.11／4.12 共用）。
+// OIDC 全鏈路測試環境（共用）。
 //
 // 與 oidc_flow_test.go 的 setupOIDCEnv 的差別只有兩點，但兩點都是這三項任務的前提：
 //
@@ -176,6 +176,6 @@ func beginFlowWithChallenge(t *testing.T, login *OIDCLoginService, p *model.OIDC
 	return state, nonce, challenge
 }
 
-// boolPtr 取位址小工具（原件隨 change_secret_plan_service_test.go 於 W6 6.6
+// boolPtr 取位址小工具（原件隨 change_secret_plan_service_test.go
 // 遷入 asset 包，跨包取不到；逐字複製一份）。
 func boolPtr(b bool) *bool { return &b }

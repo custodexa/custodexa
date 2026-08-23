@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-// 審核範圍新增表單（approval-routing-quorum D-5/D-7）：矩陣頁與 Users 對話框
+// 審核範圍新增表單：矩陣頁與 Users 對話框
 // 共用同一組件避免雙入口漂移；審核方（個人代配角色/群組零代配）與客體四維、
 // 語義說明走 utils/approver-scope 事實源
 import { ref, reactive, computed, watch } from 'vue'
@@ -167,7 +167,7 @@ const loadOptions = async () => {
     options.subject_group = ugroups
     options.actor_group = ugroups
     // 審核方個人：排除 admin（恆可核，配範圍無意義）與 auditor（稽核與審批職能衝突）；
-    // 未具 approver 角色者標註代配（一站式，D-5）
+    // 未具 approver 角色者標註代配（一站式）
     options.actor_user = users
       .filter((u) => {
         const names = roleNames(u.roles)
@@ -201,7 +201,7 @@ const handleSubmit = async () => {
 
   const actor = props.presetActor || { type: form.actorType, id: form.actorId }
 
-  // 一站式代配（D-5）：表單內選到未具 approver 角色的個人 → 確認後先配角色。
+  // 一站式代配：表單內選到未具 approver 角色的個人 → 確認後先配角色。
   // 兩步各自入審計；第一步成功第二步失敗不回滾角色（誠實提示，重試只補第二步）
   let assignRoleFirst = null
   if (!props.presetActor && actor.type === 'user') {
@@ -224,7 +224,7 @@ const handleSubmit = async () => {
   try {
     if (assignRoleFirst) {
       try {
-        // 冪等追加端點（codex #1）：不整包覆蓋角色集，
+        // 冪等追加端點：不整包覆蓋角色集，
         // 避免載入後他處改過角色時以過期快照蓋回
         await addUserRole(assignRoleFirst.id, 'approver')
         assignRoleFirst.needsRole = false

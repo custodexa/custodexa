@@ -13,7 +13,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 )
 
-// AuditTimelineHandler 稽核調查工作台的兩支唯讀端點（auditor-workbench D7）。
+// AuditTimelineHandler 稽核調查工作台的兩支唯讀端點（auditor-workbench）。
 //
 // **零寫入**：工作台不提供任何狀態變更端點（沿 checkpoint 驗證頁刻意唯讀的先例）。
 // 稽核工具一旦能改東西，它產出的證據就要先自證沒被自己改過

@@ -16,7 +16,7 @@
             ? $t('externalIdentities.externalCredentialTag')
             : $t('externalIdentities.localCredentialTag') }}
         </el-tag>
-        <!-- 帳號啟用狀態就近顯示（UI 審查 MEDIUM-7）：「解除綁定並停用帳號」的
+        <!-- 帳號啟用狀態就近顯示：「解除綁定並停用帳號」的
              結果只靠 3 秒 toast 呈現時，管理者無法自證剛才那一下是否真的生效 -->
         <el-tag
           class="local-identity__status"
@@ -33,7 +33,7 @@
       </div>
     </div>
 
-    <!-- claim 與解綁後果的警示只在**有身分可談**時出現（UI 審查 MEDIUM-6）：
+    <!-- claim 與解綁後果的警示只在**有身分可談**時出現：
          純本地帳號的畫面上沒有任何 claim 欄位、也沒有可解綁的對象，常駐警示
          只會訓練管理者略過警示，等真的要解綁時反而不看 -->
     <template v-if="identities.length > 0">
@@ -58,9 +58,9 @@
       />
     </template>
 
-    <!-- 載入失敗必須是**錯誤態**而非空態（UI 審查 HIGH-4）：空態等於斷言
+    <!-- 載入失敗必須是**錯誤態**而非空態：空態等於斷言
          「此帳號沒有任何外部登入途徑」，管理者可能據此停掉本地密碼或刪帳號。
-         此處**只留單行標題**（輪 2 NEW-LOW-1）：完整說明與「重試」放在表格空區的
+         此處**只留單行標題**：完整說明與「重試」放在表格空區的
          錯誤態——就在資料本該出現的位置。原本 alert 與 EmptyState 逐字相同，
          加上綁定卡片的第三段，一屏內講同一件事三次，只會訓練管理者略過警示 -->
     <el-alert
@@ -72,9 +72,9 @@
       show-icon
     />
 
-    <!-- 抽屜表格不使用 fixed 操作欄（UI 審查 HIGH-3）：1280 寬度下 fixed 浮層會
+    <!-- 抽屜表格不使用 fixed 操作欄：1280 寬度下 fixed 浮層會
          蓋住「綁定時間」，時間戳被切一半在畫面上像資料損毀而非被截斷。
-         欄寬預算（輪 2 NEW-MEDIUM-1）：1280 視窗下抽屜可視寬約 1112px，
+         欄寬預算：1280 視窗下抽屜可視寬約 1112px，
          下列欄寬總和 1070（140+120+150+180+150+150+180）必須守在該值內，
          且操作欄取三語最寬者定寬——ja「バインド解除」+「その他」在 150 裝不下，
          會上下相疊成誤點面。新增欄位前先重算這條加總 -->
@@ -205,7 +205,7 @@
             {{ $t('externalIdentities.unbind') }}
           </el-button>
           <!-- 「解除綁定並停用帳號」是 5.5 明列的第一級 admin 操作，必須常駐可達，
-               但**不可**與一般解綁同色同權緊鄰（UI 審查 HIGH-1）：兩者字首相同、
+               但**不可**與一般解綁同色同權緊鄰：兩者字首相同、
                誤點代價是整個帳號被停用。收進「更多」選單並加分隔線，誤點面從
                「相鄰 12px」降為「需先展開選單再選 danger 項」 -->
           <el-dropdown
@@ -261,7 +261,7 @@
       </template>
     </el-table>
 
-    <!-- admin 顯式綁定（UA-1）：自助連結不在 v1 範圍，綁定一律由 admin 操作 -->
+    <!-- admin 顯式綁定：自助連結不在 v1 範圍，綁定一律由 admin 操作 -->
     <div class="bind-card">
       <div class="bind-card__title">
         {{ $t('externalIdentities.bindTitle') }}
@@ -312,7 +312,7 @@
           </el-button>
         </el-form-item>
       </el-form>
-      <!-- 送出值與輸入框不一致時必須先攤開（讀碼審查 MEDIUM-5）：subject 大小寫
+      <!-- 送出值與輸入框不一致時必須先攤開：subject 大小寫
            敏感且不正規化，前端只去頭尾空白（貼上殘留空白遠比合法空白 subject
            常見），但「你打的」與「實際送的」不同時，管理者有權在送出前看到 -->
       <div
@@ -329,7 +329,7 @@
       </div>
     </div>
 
-    <!-- 帳號本體狀態過期（輪 2 codex MEDIUM-3）：父層列表刷新失敗時，
+    <!-- 帳號本體狀態過期：父層列表刷新失敗時，
          「具本地密碼／帳號啟用中」等標籤與轉換入口的顯隱都還是操作**之前**的
          舊值。此時再讓管理者依畫面判斷要不要轉換，等於拿舊事實做不可逆決定 -->
     <el-alert
@@ -382,7 +382,7 @@
 
 <script setup>
 /**
- * 使用者的外部身分管理（idp-oidc-integration 5.5 / spec user-account-administration UA-1）。
+ * 使用者的外部身分管理（spec user-account-administration）。
  *
  * 五個刻意的設計約束，改動前請先讀 spec：
  *   1. claim 快照是 IdP 自報值，**與本地 username 分區並標示來源**，不得混排；
@@ -419,14 +419,14 @@ const props = defineProps({
   },
   // 父層列表刷新失敗（Users.vue handleIdentitiesChanged）：帳號本體狀態
   //（external_credential／active）可能已經改變，但畫面上仍是操作前的舊值。
-  // 此時必須停掉「再轉換一次」這條路（輪 2 codex MEDIUM-3）
+  // 此時必須停掉「再轉換一次」這條路
   accountStateStale: {
     type: Boolean,
     default: false,
   },
 })
 
-// changed 一律帶「這次變更的是哪個 user id」（輪 3 codex MEDIUM）：本元件在
+// changed 一律帶「這次變更的是哪個 user id」：本元件在
 // 換人／卸載後仍可能收到成功回應並通知父層，父層若無從分辨是誰的變更，就會
 // 拿舊操作去刷新目前抽屜的帳號狀態
 const emit = defineEmits(['changed'])
@@ -436,21 +436,21 @@ const loadError = ref(false)
 const identities = ref([])
 const providers = ref([])
 
-// 互斥鎖（讀碼審查 HIGH-2）：**從開啟確認框到 reload 完成**都算佔用。
+// 互斥鎖：**從開啟確認框到 reload 完成**都算佔用。
 // 只在送出期間上鎖是不夠的——確認框是非同步的，兩個框可以同時開著，各自
 // resolve 後交錯執行解綁與停用。busy 管互斥，mutation 只管 loading 指示，
-// 兩者分離是為了不讓「確認框開著」把整張表的按鈕都停在轉圈（UI 審查 LOW-5）
+// 兩者分離是為了不讓「確認框開著」把整張表的按鈕都停在轉圈
 const busy = ref(false)
 const mutation = ref(null)
 const isAction = (action) => mutation.value?.action === action
 const isRowAction = (row, action) =>
   mutation.value?.action === action && mutation.value?.id === row.id
 
-// 請求世代（讀碼審查 HIGH-1）：抽屜可在同一實例上換使用者，較慢返回的前一位
+// 請求世代：抽屜可在同一實例上換使用者，較慢返回的前一位
 // 使用者結果會覆蓋當前清單，接著的解綁就會拿新 user id 配舊 identity id
 const loadSeq = ref(0)
 
-// —— 生命週期世代與鎖的所有權（輪 2 codex HIGH-1／MEDIUM-2）——
+// —— 生命週期世代與鎖的所有權 ——
 //
 // 為什麼光比對 user id 不夠：ElMessageBox 的確認框被 teleport 到 body，**不隨
 // 元件卸載而失效**。父層以 `:key="user.id"` 重掛面板時，舊實例被卸載但它開著的
@@ -462,8 +462,8 @@ const loadSeq = ref(0)
 // 取得一枚 token（同時記下當時世代），**每次 await 之後、送出請求之前、任何
 // UI 副作用之前**都要重驗。
 //
-// 鎖的所有權：舊 handler 的 finally 不得改寫新世代的 busy／mutation
-//（輪 2 codex MEDIUM-2）。切換使用者時只淘汰舊 owner，stale finally 因不再持有
+// 鎖的所有權：舊 handler 的 finally 不得改寫新世代的 busy／mutation。
+// 切換使用者時只淘汰舊 owner，stale finally 因不再持有
 // 所有權而變成 no-op，不會提前釋放新操作的鎖。
 // lockOwner 刻意是普通變數而非 ref：以物件identity 判斷所有權，而 `ref()` 會把
 // 物件深度包成 reactive proxy，`lockOwner.value === token` 永遠不成立
@@ -502,7 +502,7 @@ const setMutation = (token, value) => {
 
 // 生命週期判準（不涉及鎖）：世代未變且目標 user 仍是畫面上的 user。
 // 非破壞性的非同步收尾（複製 subject 等）不持鎖，但同樣不得在「已經是別人」
-// 的畫面上留下訊息（輪 3 codex LOW）
+// 的畫面上留下訊息
 const sameLifecycle = (gen, userId) =>
   gen === generation && userId != null && userId === props.user?.id
 
@@ -511,7 +511,7 @@ const sameLifecycle = (gen, userId) =>
 const isCurrent = (token, userId) => ownsLock(token) && sameLifecycle(token.gen, userId)
 
 // 換人／卸載後才按下舊確認框的破壞性按鈕：中止是對的，但**靜默**中止會讓
-// 管理者以為已執行（輪 3 NEW-LOW-2）。沿用「已啟動流程才回饋」判準——按下
+// 管理者以為已執行。沿用「已啟動流程才回饋」判準——按下
 // 確認鈕已屬啟動，故給 info；第一層確認框的「取消」仍不給提示
 const notifyAborted = () => ElMessage.info(t('externalIdentities.userSwitchedAborted'))
 
@@ -596,7 +596,7 @@ const lastIdentityNote = () =>
 
 const providerNameOf = (row) => row.provider_name || t('externalIdentities.unknownProvider')
 
-// 逐段以單一空白接合（UI 審查 LOW-4：原本各段自帶尾空白，串出雙空白）
+// 逐段以單一空白接合（原本各段自帶尾空白，串出雙空白）
 const joinSentences = (...parts) => parts.filter(Boolean).join(' ')
 
 const confirmText = (row) =>
@@ -639,7 +639,7 @@ const doUnbindAndDisable = async (row, userId, token) => {
 
 // 解綁被後端以「登入途徑歸零」拒絕時，直接把正當出路擺在同一個對話框裡。
 // 只丟一句錯誤訊息會讓管理者卡死在「不能解綁、也不知道能做什麼」。
-// 文案同時帶規則說明與完整後果（讀碼審查 MEDIUM-4）：這個框的確認鍵會停用帳號，
+// 文案同時帶規則說明與完整後果：這個框的確認鍵會停用帳號，
 // 不能只顯示「為什麼不能解綁」就要人按下去
 const offerUnbindAndDisable = async (row, userId, token) => {
   try {
@@ -652,7 +652,7 @@ const offerUnbindAndDisable = async (row, userId, token) => {
       }
     )
   } catch {
-    // 取消回饋只給**已啟動流程**的收尾（輪 2 NEW-LOW-3 的判準）：使用者已經按過
+    // 取消回饋只給**已啟動流程**的收尾：使用者已經按過
     // 「解除綁定」、被後端擋下、又在出路框按取消，畫面上什麼都沒變會被讀成
     // 「按鈕壞了」。第一層確認框的取消不給 toast——那是還沒開始的動作，
     // 每次取消都彈提示只會製造噪音
@@ -751,7 +751,7 @@ const handleRowCommand = (command, row) => {
 
 const handleBind = async () => {
   if (busy.value) return
-  // subject 大小寫敏感且不做正規化（後端 D2），前端同樣只去頭尾空白；
+  // subject 大小寫敏感且不做正規化（依後端契約），前端同樣只去頭尾空白；
   // 實際送出值已於表單下方攤開（trimmedSubjectNotice）
   const subject = trimmedSubject.value
   if (!bindForm.providerId || !subject) {
@@ -759,7 +759,7 @@ const handleBind = async () => {
     return
   }
   // 同一帳號重複綁同一 provider+subject：後端回 409「已綁定至某個帳號」，
-  // 但衝突對象就在同一畫面上，就近說清楚（UI 審查 LOW-2）
+  // 但衝突對象就在同一畫面上，就近說清楚
   const duplicate = identities.value.some(
     (row) => row.provider_id === bindForm.providerId && row.subject === subject
   )
@@ -844,7 +844,7 @@ const handleExternalOnly = async () => {
 // subject 是登入比對的真正依據，管理者常需貼到 IdP 端核對；不可用剪貼簿時
 // 不靜默失敗（使用者會以為已複製而貼出空值）
 // 剪貼簿 API 是非同步的：await 之後可能已經換人或卸載，此時的成功／失敗提示
-// 會出現在別人的畫面上（輪 3 codex LOW），被讀成「剛才複製的是這個帳號的
+// 會出現在別人的畫面上，被讀成「剛才複製的是這個帳號的
 // subject」。不持鎖，故以生命週期世代判定
 const copySubject = async (subject) => {
   const gen = generation
@@ -873,7 +873,7 @@ watch(
   }
 )
 
-// 卸載同樣要遞增世代（輪 2 codex HIGH-1）：父層以 `:key` 重掛時本實例會被卸載，
+// 卸載同樣要遞增世代：父層以 `:key` 重掛時本實例會被卸載，
 // 但它 teleport 到 body 的確認框還在畫面上；沒有這一行，之後按下的「確認」
 // 會拿舊 user id 送出請求，而抽屜上顯示的已經是別人
 onBeforeUnmount(invalidateGeneration)
@@ -941,7 +941,7 @@ defineExpose({
 }
 
 /* Element Plus 的空白區文字預設只佔 50% 寬，長提示會在表格中央折成兩段
-   並留下巨大空隙，看起來像壞掉（UI 審查 MEDIUM-5） */
+   並留下巨大空隙，看起來像壞掉 */
 .identity-table :deep(.el-table__empty-text) {
   width: 100%;
   line-height: 1.6;
@@ -981,7 +981,7 @@ defineExpose({
 /* Element Plus 的按鈕間距靠相鄰選擇器 `.el-button + .el-button` 給，被
    `el-dropdown` 包住的按鈕不再是前一顆的相鄰兄弟，margin 直接失效——
    結果是紅色破壞性按鈕與「更多」觸發鈕的點擊熱區**貼在一起**（gap 0px），
-   且 el-dropdown 預設 vertical-align: top 使兩者基線差 4px（輪 2 NEW-MEDIUM-2）。
+   且 el-dropdown 預設 vertical-align: top 使兩者基線差 4px。
    這是誤點面，不是美觀問題 */
 .row-more {
   margin-left: 12px;

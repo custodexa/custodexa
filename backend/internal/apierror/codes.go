@@ -1,6 +1,6 @@
 package apierror
 
-// P1 error codes (i18n-backend-error-codes). Each code registers its zh-TW
+// Backend error codes. Each code registers its zh-TW
 // fallback template here; the three-language display strings live in the
 // frontend apiError.* locale, bound by the bijection completeness test.
 //
@@ -68,7 +68,7 @@ var (
 	CodeAssetNotFound = register("NOTFOUND_ASSET", Descriptor{ZhFallback: "資產不存在"})
 )
 
-// --- Internal (P1 exceptions: the three middleware 500s, and security fixes) ---
+// --- Internal (the three middleware 500s, and security fixes) ---
 var (
 	CodeInternalRoleQuery     = register("INTERNAL_ROLE_QUERY", Descriptor{ZhFallback: "查詢角色失敗"})
 	CodeInternalApproverQuery = register("INTERNAL_APPROVER_QUERY", Descriptor{ZhFallback: "查詢審核資格失敗"})
@@ -76,7 +76,7 @@ var (
 )
 
 // ============================================================================
-// Group 5: auth / mfa / user handler codes (i18n-backend-error-codes).
+// Group 5: auth / mfa / user handler codes.
 // Namespaces continue the middleware set. Each ZhFallback is byte-exact to the
 // pre-migration c.JSON text (bijection test pins zh-TW == ZhFallback template).
 // ============================================================================
@@ -88,25 +88,25 @@ var (
 	CodeInvalidCredentials = register("AUTH_INVALID_CREDENTIALS", Descriptor{ZhFallback: "使用者名稱或密碼錯誤"})
 	CodeUserNotFound       = register("AUTH_USER_NOT_FOUND", Descriptor{ZhFallback: "使用者不存在"})
 	// CodeAuthLoginRateLimited 本地登入端點的來源濫用防護攔截
-	// （security-backlog-settlement D3）。**不回填任何限流參數**：門檻、剩餘額度
+	// **不回填任何限流參數**：門檻、剩餘額度
 	// 與重試時間都會讓攻擊者把流量精確調到門檻之下持續消耗；正當使用者只需要
 	// 知道「稍後再試」。與帳號鎖定「不透露剩餘時間與次數」同一紀律
 	CodeAuthLoginRateLimited = register("AUTH_LOGIN_RATE_LIMITED",
 		Descriptor{ZhFallback: "登入請求過於頻繁，請稍後再試"})
 	// CodeAuthChangePasswordRateLimited 自助改密端點的來源濫用防護攔截
-	// （auth-cost-based-concurrency）。**與登入分開的理由是文案而非語義**：
+	// **與登入分開的理由是文案而非語義**：
 	// 兩者的限流紀律相同（皆不回填門檻、剩餘額度與重試時間），
 	// 但沿用登入的碼會讓使用者在**改密**時看到「登入請求過於頻繁」——
 	// 訊息指向一個他當下沒在做的動作，只會讓人以為是別的問題
 	CodeAuthChangePasswordRateLimited = register("AUTH_CHANGE_PASSWORD_RATE_LIMITED",
 		Descriptor{ZhFallback: "改密請求過於頻繁，請稍後再試"})
 	// CodeLDAPTransportRejected strict 檔位拒絕 LDAP 登入。
-	// 修復指引指向身分管理的目錄設定頁（ldap-settings-migration D6：設定已自
+	// 修復指引指向身分管理的目錄設定頁（設定已自
 	// env 遷入 DB，改 LDAP_URL 重啟不再生效）；**與 identity.ErrLDAPTransportRejected
 	// 的訊息逐字相同**，改一處必改另一處
 	CodeLDAPTransportRejected = register("AUTH_LDAP_TRANSPORT_REJECTED", Descriptor{ZhFallback: "LDAP 登入被傳輸安全政策拒絕：目錄連線未達加密要求，請管理員於身分管理的目錄設定頁改用 ldaps://"})
 
-	// CodeExternalUserPassword 外部身分帳號的密碼由身分提供者管理（idp-oidc-integration D8）。
+	// CodeExternalUserPassword 外部身分帳號的密碼由身分提供者管理。
 	// 涵蓋 LDAP 與 OIDC 供應帳號；僅用於**已認證的管理操作**（admin 重設、自助改密）
 	// 的拒絕，登入路徑的拒絕一律沿用一般憑證錯誤形狀——否則此碼即成帳號枚舉 oracle
 	CodeExternalUserPassword = register("AUTH_EXTERNAL_USER_PASSWORD", Descriptor{ZhFallback: "此帳號的密碼由外部身分提供者管理，無法在本系統修改"})
@@ -133,18 +133,18 @@ var (
 var (
 	CodeUsernameExists     = register("CONFLICT_USERNAME_EXISTS", Descriptor{ZhFallback: "使用者名稱已存在"})
 	CodeMFAAlreadyEnrolled = register("CONFLICT_MFA_ALREADY_ENROLLED", Descriptor{ZhFallback: "此帳號已完成 MFA 註冊"})
-	// admin 更新 email 撞其他 live 帳號（profile-display-name R1）：取代原直寫撞 DB 唯一索引的通用 500
+	// admin 更新 email 撞其他 live 帳號：取代原直寫撞 DB 唯一索引的通用 500
 	CodeEmailConflict = register("CONFLICT_EMAIL", Descriptor{ZhFallback: "此 email 已被其他帳號使用"})
 
-	// 金鑰管理的前置狀態衝突（kek-rewrap-hygiene-hardening）：全數走機器碼，
+	// 金鑰管理的前置狀態衝突：全數走機器碼，
 	// 前端查譯——本子系統原有五條 409 走 RespondError 裸中文訊息，
 	// 於本 change 一併補碼（全域 i18n 規範：使用者可見的 API 錯誤一律機器碼）
 	CodeKeyOpBusy = register("CONFLICT_KEY_OP_BUSY", Descriptor{ZhFallback: "另一金鑰操作進行中或互斥鎖被佔用，請稍後重試"})
 
-	// 清理退役金鑰資料的全收斂閘（kek-rewrap-hygiene-hardening D9）
+	// 清理退役金鑰資料的全收斂閘
 	CodeKeyCleanupNotConverged = register("CONFLICT_KEY_CLEANUP_NOT_CONVERGED", Descriptor{ZhFallback: "金鑰輪換尚未全數收斂（存在待切換 pending 或退役 backlog），請先完成切換或重啟收斂後再清理"})
 	// CodeKeyCleanupResidueDetected 引用掃描遇不可歸屬版本的非終態格式殘值：
-	// 保守拒清（release-transitional-cleanup 3.3）
+	// 保守拒清
 	CodeKeyCleanupResidueDetected = register("CONFLICT_KEY_CLEANUP_RESIDUE_DETECTED", Descriptor{ZhFallback: "偵測到無法歸屬版本的非終態格式殘值：已保守拒絕本次清理，請先排除該些值（其可能由退役版本加密，銷毀材料將永久不可解）"})
 
 	// 本實例金鑰狀態過期（另一實例已完成輪替或 KEK 切換）——須重啟本實例
@@ -174,7 +174,7 @@ var (
 	CodeActiveRequired       = register("VALIDATION_ACTIVE_REQUIRED", Descriptor{ZhFallback: "active 參數不能為空"})
 	CodeExemptRequired       = register("VALIDATION_EXEMPT_REQUIRED", Descriptor{ZhFallback: "請求參數錯誤：需提供 exempt"})
 	CodeRoleNotFound         = register("VALIDATION_ROLE_NOT_FOUND", Descriptor{ZhFallback: "指定的角色不存在"})
-	// 自助顯示名格式驗證（profile-display-name R1）：長度上限 100、不可含控制字元或換行
+	// 自助顯示名格式驗證：長度上限 100、不可含控制字元或換行
 	CodeInvalidDisplayName = register("VALIDATION_DISPLAY_NAME", Descriptor{ZhFallback: "顯示名稱格式不正確：長度上限 100，且不可含控制字元或換行"})
 )
 
@@ -210,8 +210,8 @@ var (
 	CodePasswordSameAsCurrent = register("RULE_USER_PASSWORD_SAME_AS_CURRENT", Descriptor{ZhFallback: "新密碼不可與目前密碼相同"})
 )
 
-// --- RULE_SSH_* (terminal dial failures surfaced over the WS error message;
-// ssh-connect-error-surfacing). ZhFallback mirrors the sshproxy sentinel texts. ---
+// --- RULE_SSH_* (terminal dial failures surfaced over the WS error message).
+// ZhFallback mirrors the sshproxy sentinel texts. ---
 var (
 	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯繫管理員重置 host key"})
 	CodeSSHAuthFailed     = register("RULE_SSH_AUTH_FAILED", Descriptor{ZhFallback: "SSH 認證失敗，請確認資產憑證"})
@@ -247,7 +247,7 @@ var (
 )
 
 // ============================================================================
-// Group 6: security-fix internal codes (i18n-backend-error-codes).
+// Group 6: security-fix internal codes.
 // Sinks that previously emitted raw err.Error() are generalized through these.
 // ============================================================================
 var (
@@ -257,6 +257,6 @@ var (
 	// Syslog test delivery failure. Single generalized code by design: splitting it
 	// by cause (connection refused / timeout / TLS verification) would turn the
 	// destination's reachability and TLS posture into a probe signal. The concrete
-	// cause is logged server-side only (asset-syslog-debt-cleanup D1).
+	// cause is logged server-side only.
 	CodeSyslogTestFailed = register("INTERNAL_SYSLOG_TEST_FAILED", Descriptor{ZhFallback: "syslog 測試訊息傳送失敗，請確認主機、連接埠與 TLS 設定"})
 )

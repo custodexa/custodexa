@@ -2,14 +2,14 @@ package model
 
 import "time"
 
-// 告警審閱處置分類（audit-workflows D3，PCI 10.4.1）
+// 告警審閱處置分類（audit-workflows，PCI 10.4.1）
 const (
 	AlertDispositionPending   = "pending"   // 未審閱（預設）
 	AlertDispositionBenign    = "benign"    // 已審閱：誤報/無害
 	AlertDispositionEscalated = "escalated" // 已審閱：升級處理
 )
 
-// 告警的來源類別（command-audit-altscreen-bypass design §6.3）。
+// 告警的來源類別。
 //
 // **為什麼不是「種一條內建規則」**：規則是可 CRUD 停用／刪除的營運物件，
 // 管理員一鍵就能靜默關掉一條規格要求的安全訊號；且內建規則數有硬斷言，
@@ -29,7 +29,7 @@ const (
 // 故不設「超過門檻升級」的第二筆——那個門檻會是編造的。
 const AlertReasonDegradedSpan = "audit_degraded_span"
 
-// CommandAlert 危險指令告警記錄（command-alerts D2/D3）
+// CommandAlert 危險指令告警記錄（command-alerts）
 // rule_name/severity 為觸發當下的快照冗餘：
 // 規則之後改名、改級或刪除，不影響既有告警的可讀性（與 session_commands
 // 冗餘 user_id/asset_id 同一設計取向：查詢免 JOIN、歷史不可變）
@@ -48,7 +48,7 @@ type CommandAlert struct {
 	RuleName string `gorm:"size:100;not null" json:"rule_name"`
 
 	// Kind 告警來源類別（AlertKind* 之一）：規則比對／阻斷為 rule，
-	// 指令審計降級為 audit_degraded。**存在的理由是後者不得掛在規則上**（design §6.3）。
+	// 指令審計降級為 audit_degraded。**存在的理由是後者不得掛在規則上**。
 	Kind string `gorm:"size:20;not null" json:"kind"`
 	// ReasonCode 非規則類告警的機器碼（值域見 AlertReason* 常數）；規則類為空字串。
 	ReasonCode string `gorm:"size:64;not null" json:"reason_code"`
@@ -61,7 +61,7 @@ type CommandAlert struct {
 	Severity    string    `gorm:"size:10;not null" json:"severity"`
 	TriggeredAt time.Time `gorm:"type:timestamptz;not null" json:"triggered_at"`
 
-	// 審閱處置（audit-workflows D3，PCI 10.4.1）：reviewed_at 為 NULL 即「未審閱」。
+	// 審閱處置（audit-workflows，PCI 10.4.1）：reviewed_at 為 NULL 即「未審閱」。
 	// DB 層 NOT NULL DEFAULT 由 migration 設；struct 不用 gorm default tag（避免
 	// GORM Create 對零值欄位改走 RETURNING 讀回，破壞既有 sqlmock 期望）。
 	// 寫入端（AlertMatcher）顯式設 Disposition=pending
@@ -70,7 +70,7 @@ type CommandAlert struct {
 	Disposition string     `gorm:"size:20;not null" json:"disposition"`
 	Note        string     `gorm:"type:text;not null" json:"note"`
 
-	// Blocked 觸發當下規則是否為阻斷型（backend-i18n-unification D6）：payload 衛生——
+	// Blocked 觸發當下規則是否為阻斷型：payload 衛生——
 	// command_blocker.go 改把「（已阻斷）」標示自 RuleName 移出，改用本欄結構化表達；
 	// 觸發當下快照，同 RuleName/Severity 慣例，規則之後改 action 不影響既有告警
 	Blocked bool `gorm:"not null;default:false" json:"blocked"`

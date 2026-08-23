@@ -13,8 +13,7 @@ import (
 	"testing"
 )
 
-// `schema_migrations` 執行期 marker 的登記完整性守衛
-// （migration-baseline-compression D5／tasks 5.9）。
+// `schema_migrations` 執行期 marker 的登記完整性守衛。
 //
 // # 本檔守的是什麼
 //

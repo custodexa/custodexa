@@ -2,22 +2,22 @@ package policy
 
 import "strings"
 
-// LDAP 設定的執行期風險視圖（自 identity 遷入，modular-architecture W3 3.2／R3.1 §3.5）。
+// LDAP 設定的執行期風險視圖（自 identity 遷入）。
 //
-// **為何整組遷入而非只搬兩型**：R3 §4.1 原只搬 `LDAPRiskResult`／`LDAPRiskView`，
+// **為何整組遷入而非只搬兩型**：原只搬 `LDAPRiskResult`／`LDAPRiskView`，
 // 環未斷——policy 仍消費 identity 的 `LDAPRisksOf` 與 `LDAPResolveState`＋3 常數。
-// R3.1 §3.5 訂正為 6 項一併遷入（型別＋3 常數＋兩個視圖型別＋純函式），identity
+// 訂正為 6 項一併遷入（型別＋3 常數＋兩個視圖型別＋純函式），identity
 // 反過來以 `policy.LDAPRisksOf` 消費（方向 identity→policy ✔）。
 //
 // 型別本體逐字未改；identity 側的 `LDAPDialSnapshot` 仍內嵌本檔的 `LDAPRiskView`
 // （跨包內嵌，欄名不變仍為 `LDAPRiskView`），故「閘檢查與撥號同一次解析」的型別
 // 保證不受搬遷影響。
 
-// ── 執行期解析：三態與兩型（2.7 / D2）────────────────────────────────────
+// ── 執行期解析：三態與兩型 ────────────────────────────────────
 
 // LDAPResolveState 設定解析的三態。
 //
-// **故障不得以 nil 併吞成「未設定」**（D2／R2-opus N3）：DEK 事故下若清冊顯示
+// **故障不得以 nil 併吞成「未設定」**：DEK 事故下若清冊顯示
 // 「LDAP 未啟用」而設定頁顯示「已啟用」，兩個管理面互相打臉且指向錯誤的排錯
 // 方向（管理者會去找「誰把 LDAP 關掉了」，而真因是金鑰）。
 type LDAPResolveState string
@@ -36,7 +36,7 @@ const (
 //
 // 風險判定只需三個值，卻與撥號共用同一型別會使明文 bind 密碼被帶進清冊、資產
 // 徽章等非撥號呼叫棧（TransmissionPolicyService 為多處共用），與「write-only、
-// 讀取回應不含明文」的收口方向相反。故拆型（D2）。
+// 讀取回應不含明文」的收口方向相反。故拆型。
 type LDAPRiskView struct {
 	Enabled       bool
 	URL           string

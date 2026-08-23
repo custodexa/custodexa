@@ -60,7 +60,7 @@ const mountView = () =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('Authorizations 授權管理（authorization-page-redesign）', () => {
+describe('Authorizations 授權管理', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
@@ -125,7 +125,7 @@ describe('Authorizations 授權管理（authorization-page-redesign）', () => {
     expect(text).not.toContain('分組')
   })
 
-  it('快速篩選送伺服端參數且重設頁碼（D7＋codex M7）', async () => {
+  it('快速篩選送伺服端參數且重設頁碼', async () => {
     const wrapper = mountView()
     await flushPromises()
     getAuthorizationsMock.mockClear()
@@ -149,7 +149,7 @@ describe('Authorizations 授權管理（authorization-page-redesign）', () => {
     )
   })
 
-  it('ticket 列動作三態分流：可撤→撤銷、過期→已到期唯讀、manual→刪除（D4）', async () => {
+  it('ticket 列動作三態分流：可撤→撤銷、過期→已到期唯讀、manual→刪除', async () => {
     getAuthorizationsMock.mockResolvedValue({
       data: [
         {
@@ -219,7 +219,7 @@ describe('Authorizations 授權管理（authorization-page-redesign）', () => {
     expect(revokeAccessRequestMock).toHaveBeenCalledWith(31, '維護窗結束提前收回')
   })
 
-  it('載入失敗顯錯不偽裝空狀態（D1）', async () => {
+  it('載入失敗顯錯不偽裝空狀態', async () => {
     getAuthorizationsMock.mockRejectedValue({
       response: { status: 500, data: { error: 'boom' } },
     })
@@ -274,7 +274,7 @@ describe('Authorizations 授權管理（authorization-page-redesign）', () => {
   })
 })
 
-describe('Authorizations 節點涵蓋盤點篩選（authz-tag-node-filters D7）', () => {
+describe('Authorizations 節點涵蓋盤點篩選', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.setItem('user', JSON.stringify({ id: 1, username: 'admin', roles: ['admin'] }))

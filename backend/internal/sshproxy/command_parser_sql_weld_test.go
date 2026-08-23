@@ -7,8 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 多行 SQL 的降級輪不得把半條語句焊接到後續乾淨輪（command-audit-altscreen-bypass
-// charter backlog #23）。
+// 多行 SQL 的降級輪不得把半條語句焊接到後續乾淨輪。
 //
 // 形狀：DB CLI（sqlMode）的多行語句靠 accumulateSQL 跨續行累積到 stmtBuf，遇語句
 // 結束符才 emit。若一條語句的**組成輪**中有一輪降級（該輪的回顯無法可信重組），
@@ -22,7 +21,7 @@ import (
 // 位置留下可搜尋、可歸因的訊號，整條語句因此呈現為「一筆降級」而非「一條假語句」，
 // 也非靜默少一列。
 //
-// 兩個子案各觸發 finalize 的一條降級分支（design §6 兩條落地路徑）：
+// 兩個子案各觸發 finalize 的一條降級分支（兩條落地路徑）：
 //   - roundAltScreen：對端在該輪處於 alternate-screen 標記區間內。
 //   - anchorNone && (roundTainted||spanned)：該輪的回顯是全螢幕重繪且錨全部落空。
 func TestCommandParserSQLDegradedRoundDoesNotWeldFakeStatement(t *testing.T) {

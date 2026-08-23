@@ -1,5 +1,5 @@
 # Custodexa 對外 TLS termination 反向代理範例（nginx）
-# deployment-hardening CPG-012：external-ingress TLS 契約。
+# 對應 openspec/specs/deployment-hardening 的 external-ingress TLS 契約。
 #
 # stock 部署本身不提供 TLS——frontend 只在內部聽 80/HTTP。對外 TLS termination 為部署方職責。
 # 本範例示範一個置於 Custodexa frontend 之前、負責 TLS termination 的反向代理，滿足契約：

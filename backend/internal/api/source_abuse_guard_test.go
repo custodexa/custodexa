@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// callback／exchange 濫用防護（idp-oidc-integration tasks 3.7a／4.15，design D13）。
+// callback／exchange 濫用防護。
 //
 // 驗收的三個性質：per-IP 與**全域**兩層各自生效、未設可信代理時偽造
 // X-Forwarded-For 不能換到新的限流桶、洪水下審計與 DB 存取有界。

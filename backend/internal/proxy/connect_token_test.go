@@ -25,7 +25,7 @@ func TestConnectTokenIssueResolve(t *testing.T) {
 	}
 }
 
-// TestConnectTokenCarriesAccount 帳號選擇器隨 grant 保存（asset-multi-account D3）：
+// TestConnectTokenCarriesAccount 帳號選擇器隨 grant 保存：
 // 兌換點據此取憑證，故 Issue 帶入什麼、Resolve 就必須原樣拿到什麼
 func TestConnectTokenCarriesAccount(t *testing.T) {
 	m := NewConnectTokenManager()

@@ -24,7 +24,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// 資料傳輸閘的角色×動作×政策矩陣（data-transfer-control tasks 4.5）。
+// 資料傳輸閘的角色×動作×政策矩陣（data-transfer-control）。
 //
 // 三條不變式由本檔釘死：
 //  1. **admin 不豁免**——全域禁止下 admin 與一般 user 同樣被 403 擋。
@@ -102,7 +102,7 @@ func transferMatrixActions() []transferMatrixAction {
 			dataPlaneCode: apierror.CodeInternalSFTPDeleteFailed,
 		},
 		{
-			// mkdir 判 file_upload 鍵（D3 註 2：對遠端檔案系統的寫入），
+			// mkdir 判 file_upload 鍵（對遠端檔案系統的寫入），
 			// 但審計仍記 file_mkdir——判定粒度與留痕粒度刻意分離。
 			// 本矩陣只驗 HTTP 狀態＋錯誤碼，**分離本身由
 			// TestDeniedMkdirAuditsAsMkdir 釘住**（該不變式先前只存在於註解）
@@ -157,7 +157,7 @@ func newUploadRequest() *http.Request {
 // 三個使用者：1=admin（掛 admin 角色）、2=user（無角色→折疊為 user，持 @ALL
 // connect 授權）、3=auditor（掛 auditor 角色，**不給任何授權**）。
 // auditor 之所以停在 404 而非 403，是因為 CheckPermission 對 connect 不為
-// auditor 短路（CPG-002 職責分離），落正常授權查詢後查無授權
+// auditor 短路（職責分離），落正常授權查詢後查無授權
 func setupTransferMatrixEnv(t *testing.T, globalAllow bool) (*SFTPHandler, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -325,13 +325,13 @@ func TestTransferGateMatrix(t *testing.T) {
 						if got.params["reason"] != "global_policy" {
 							t.Fatalf("拒絕來源 params.reason = %v，預期 global_policy", got.params["reason"])
 						}
-						// mkdir 判 file_upload 是刻意的（D3 註 2）：此處把它釘住，
+						// mkdir 判 file_upload 是刻意的：此處把它釘住，
 						// 否則哪天有人「順手」給 mkdir 開一支自己的鍵，upload 全禁
 						// 就會留下一個能寫遠端檔案系統的洞
 						if got.params["action"] != act.gateAction {
 							t.Fatalf("params.action = %v，預期 %s", got.params["action"], act.gateAction)
 						}
-						// 拒絕必須留痕（D6）：不留痕就答不出「有沒有人試著把資料帶出去」
+						// 拒絕必須留痕：不留痕就答不出「有沒有人試著把資料帶出去」
 						if after := countDeniedAudits(t, db); after != before+1 {
 							t.Fatalf("被拒的傳輸未寫入 denied 審計: before=%d after=%d", before, after)
 						}
@@ -422,7 +422,7 @@ func countDeniedAudits(t *testing.T, db *gorm.DB) int64 {
 	return n
 }
 
-// note（tasks 4.5 交付說明）：本矩陣沒有 200 格。
+// note：本矩陣沒有 200 格。
 // 五個端點的成功路徑都要求對遠端 SSH 資產真的建線，本包不建靶機、資產帳號亦無憑證，
 // 故「通過閘」一律以動作專屬的 502 表達。真 200 的端到端覆蓋在 `scripts/e2e_smoke.sh`。
 // 若日後有人想把這裡改成 200，請在本包內起一支真的 SFTP 測試伺服器
@@ -462,7 +462,7 @@ func TestTransferCapabilitiesRequiresConnectAuthorization(t *testing.T) {
 	h, _ := setupTransferMatrixEnv(t, true)
 
 	// auditor（userID=3）無任何 connect 授權：CheckPermission 對 connect 不為
-	// auditor 短路（CPG-002 職責分離），故落正常授權查詢後查無授權
+	// auditor 短路（職責分離），故落正常授權查詢後查無授權
 	w := callTransferCapabilities(h, 3, model.RoleAuditor)
 	if w.Code != http.StatusNotFound {
 		t.Errorf("未授權者 status = %d, want 404——授權前置若被拆除，"+
@@ -504,7 +504,7 @@ func TestTransferCapabilitiesRequiresConnectAuthorization(t *testing.T) {
 // 記 file_upload，同一個操作就會因成功／被擋而落在**兩個不同的 action 值**——
 // 稽核者以 `action=file_mkdir` 篩選時只看得到成功的那些，被擋的那些藏在
 // file_upload 桶裡與真正的傳檔混同。而「有沒有人試著繞過政策建目錄」正是
-// 拒絕留痕（D6）要回答的問題。
+// 拒絕留痕要回答的問題。
 //
 // 三條斷言：mkdir 被擋記 `file_mkdir`；upload 被擋記 `file_upload`（兩者不得
 // 同形，否則分離失去意義）；403 envelope 的 `action` 仍為判定鍵 `file_upload`

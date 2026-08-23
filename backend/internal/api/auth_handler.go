@@ -30,7 +30,7 @@ type AuthHandler struct {
 	// **零值 false＝不採信轉送標頭**，故未經 NewAuthHandler 建構的實例
 	// （測試與 sealgate 佔位）自動落在安全的那一邊，見 auditSourceIP
 	trustProxy bool
-	// loginGuard 本地登入端點的來源濫用防護（security-backlog-settlement D3）。
+	// loginGuard 本地登入端點的來源濫用防護。
 	//
 	// **與帳號級鎖定防的是不同攻擊**：`failed_login_attempts`＋`locked_until` 擋
 	// 對單一帳號的暴力破解；本 guard 擋**換帳號輪流試**的密碼噴灑——每個帳號各試
@@ -39,11 +39,11 @@ type AuthHandler struct {
 	// nil 安全：未經 NewAuthHandler 建構的實例不限流（測試與 sealgate 佔位）
 	loginGuard *sourceAbuseGuard
 	// changePasswordGuard 自助改密端點的來源濫用防護
-	// （auth-cost-based-concurrency）。**該端點原本完全沒有併發上限**，
+	// **該端點原本完全沒有併發上限**，
 	// 而其每請求的雜湊成本是登入的 7 倍（預設組態）至 27 倍（政策上界 24）。
 	changePasswordGuard *sourceAbuseGuard
 	// refreshCookies refresh 憑證的 httpOnly cookie 下發／清除
-	// （refresh-token-httponly-cookie）。nil 安全：視為 Secure（安全方向），功能不斷
+	// nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
 }
 
@@ -65,7 +65,7 @@ const changePasswordEventThrottled = "change_password_throttled"
 // **MaxInFlight 較 OIDC 低**：登入的每個請求都會做一次密碼雜湊（刻意的慢函式），
 // 並發堆積直接吃 CPU；OIDC 的出站請求是 I/O 等待，兩者的堆積代價不同。
 //
-// 上限**由雜湊實作回報的成本推導**（auth-cost-based-concurrency 2.2），
+// 上限**由雜湊實作回報的成本推導**，
 // 不再寫死——原本的常數 `16` 其註解直接寫死「bcrypt」，換演算法後那個依據就消失了。
 func defaultLoginGuardParams() sourceGuardParams {
 	p := defaultOIDCGuardParams()
@@ -205,7 +205,7 @@ func (h *AuthHandler) SetUserService(userService *identity.UserService) {
 
 // Login 登入 API
 func (h *AuthHandler) Login(c *gin.Context) {
-	// 來源濫用防護（security-backlog-settlement D3）：**在解析 body 之前**——
+	// 來源濫用防護：**在解析 body 之前**——
 	// 被擋下的請求不應付出任何解析成本，且限流的判準與請求內容無關。
 	// 回應不含剩餘額度或重試時間（沿帳號鎖定「不透露剩餘時間與次數」的既有語義）
 	if h.loginGuard != nil {
@@ -238,7 +238,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			status = http.StatusForbidden
 			code = apierror.CodeUserInactive
 		case errors.Is(err, identity.ErrAccountLocked):
-			// 423 Locked：鎖定訊息明示（D2），不透露剩餘時間/次數
+			// 423 Locked：鎖定訊息明示，不透露剩餘時間/次數
 			status = http.StatusLocked
 			code = apierror.CodeAccountLocked
 		case errors.Is(err, identity.ErrInvalidCredentials):
@@ -267,7 +267,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 登入時政策合規偵測審計（login-password-policy-gate D3）：偵測發生在憑證驗證
+	// 登入時政策合規偵測審計：偵測發生在憑證驗證
 	// 當下（MFA 分流前），故不論後續走 pending/enrollment/改密分支皆須落一筆
 	h.auditPasswordNoncompliant(c, resp)
 
@@ -358,16 +358,16 @@ func (h *AuthHandler) auditLogin(c *gin.Context, userID uint, username string, s
 
 // Logout 登出 API。
 //
-// 憑證取值來源為 refresh cookie（refresh-token-httponly-cookie 決策 5），
+// 憑證取值來源為 refresh cookie，
 // 不再自 request body 讀取——**分叉偵測語義原樣保留**：提交已輪替憑證＝分叉訊號，
 // 家族撤銷＋高價值審計事件，僅換了取值來源。
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// 登出撤銷目前 refresh 憑證（spec 會話撤銷）；access token 無狀態，
-	// 由客戶端刪除、殘餘存活 ≤15 分（D6 撤銷殘窗）。
+	// 由客戶端刪除、殘餘存活 ≤15 分（撤銷殘窗）。
 	// 登出事件由 AuditLogMiddleware 記錄（action=logout，已驗證）
 	if plain := readRefreshCookie(c); plain != "" {
 		if err := h.authService.RevokeRefreshToken(plain, model.RefreshRevokeLogout); err != nil {
-			// 登出提交已 rotated 憑證＝分叉訊號（F1）：已家族撤銷，記高價值審計事件
+			// 登出提交已 rotated 憑證＝分叉訊號：已家族撤銷，記高價值審計事件
 			var reuse *identity.RefreshReuseError
 			if errors.As(err, &reuse) {
 				h.auditRefresh(c, reuse.UserID, reuse.Username,
@@ -389,7 +389,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	})
 }
 
-// Refresh 會話刷新 API（auth-hardening D6）：以 refresh 憑證換發新 access token
+// Refresh 會話刷新 API：以 refresh 憑證換發新 access token
 // 並輪替 refresh。失敗一律 401 同文案（不洩漏憑證狀態），前端收 401 導向重新登入。
 //
 // 憑證**僅**自 httpOnly cookie 讀取（決策 4），無 body fallback。
@@ -408,7 +408,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		h.respondRefreshError(c, err)
 		return
 	}
-	// 成功輪替留痕（audit-coverage-closure 批 4／auth-session spec）：
+	// 成功輪替留痕（auth-session spec）：
 	// 原本只有失敗留痕，使「憑證遭竊後被持續用於維持存取」這條路徑在稽核上不可見
 	// ——成功的輪替正是該情境**唯一**會留下的訊號（攻擊者不會製造失敗）。
 	// 來源位址逐次落地，稽核比對同一帳號的輪替來源即可辨識異常他處使用。
@@ -487,7 +487,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, userInfo)
 }
 
-// UpdateMe 自助更新個人資料（profile-display-name R1/R2）。
+// UpdateMe 自助更新個人資料。
 // 身分綁定：target userID 只取自 token claims（GetCurrentUserID），不接受 path/body 指定他人；
 // 僅放行 local_display_name（其他欄位不可經此寫入）；重查帳號 active 拒停用/刪除帳號；
 // 審計歸類覆寫為 resource=user, resource_id=當前使用者（避免歸 resource=auth 無 id）
@@ -498,12 +498,12 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
-	// 審計歸類覆寫（R2）：即使後續驗證失敗，本次自助更新一律歸 resource=user、
+	// 審計歸類覆寫：即使後續驗證失敗，本次自助更新一律歸 resource=user、
 	// resource_id=當前使用者，避免落 resource=auth 無 id 的模糊審計
 	c.Set("audit_resource", model.ResourceUser)
 	c.Set("audit_resource_id", userID)
 
-	// 需明確提供 local_display_name 欄位（profile-display-name R1）：缺欄的 body
+	// 需明確提供 local_display_name 欄位：缺欄的 body
 	//（如惡意 body 只帶 full_name/role，或空 body {}）一律 400，避免「未帶欄位被解成
 	// nil」意外清除既有顯示名；且結構上杜絕經此端點寫入其他欄位。
 	// 欄位值：字串→設定；null 或空白→清除（寫回 NULL）
@@ -549,17 +549,17 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required"`
 }
 
-// ChangePassword 自助改密（auth-hardening D4/D11/D12）。
+// ChangePassword 自助改密。
 // 接受兩種 token：正式 session token（自願改密）或 password_change scoped token
 // （強制改密流程）；userID 一律取自 token claims，不接受路徑參數（防改他人密碼）。
-// 成功後直接換發正式 token（D12：不重走登入）
+// 成功後直接換發正式 token（不重走登入）
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	if h.userService == nil {
 		apierror.Respond(c, http.StatusServiceUnavailable, apierror.CodeChangePasswordUnavailable, nil)
 		return
 	}
 
-	// 來源濫用防護（auth-cost-based-concurrency 2.1）：**在解析 token 與 body 之前**，
+	// 來源濫用防護：**在解析 token 與 body 之前**，
 	// 與登入端點同一條紀律——被擋下的請求不應付出任何解析成本。
 	//
 	// 本端點的每請求雜湊成本是登入的約 7 倍（預設組態）至約 27 倍（政策上界 24），
@@ -595,7 +595,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 
 	h.auditPasswordChange(c, claims, model.StatusSuccess, http.StatusOK, "")
 
-	// D12：改密成功直接換發正式 token，不重走登入。
+	// 改密成功直接換發正式 token，不重走登入。
 	// 自 change token 繼承 method/provider（本次仍是同一條認證），但世代由
 	// IssueSessionResponse 內部現查——改密會推進 credential_epoch，若沿用
 	// change token 內的舊世代，換發的 token 立即失效、使用者永久卡在改密迴圈
@@ -646,7 +646,7 @@ func (h *AuthHandler) respondChangePasswordError(c *gin.Context, claims *crypto.
 	case errors.Is(err, identity.ErrOldPasswordMismatch):
 		code = apierror.CodeOldPasswordMismatch
 	case errors.Is(err, identity.ErrExternalUserPassword):
-		// **只設 code，不自行寫回應**（M3）：本 switch 的所有分支共用函式尾端的
+		// **只設 code，不自行寫回應**：本 switch 的所有分支共用函式尾端的
 		// 單一寫出點；分支內呼叫 apierror.Respond 而未 return 會讓回應被寫兩次，
 		// 第二次帶零值 ErrCode 落入 unregistered 分支串接一段泛化訊息
 		code = apierror.CodeExternalUserPassword
@@ -703,7 +703,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		// 故為公開路由，僅接受 ScopeMFAEnrollment）
 		auth.POST("/mfa/enroll/setup", h.MFAEnrollSetup)
 		auth.POST("/mfa/enroll/confirm", h.MFAEnrollConfirm)
-		// 會話刷新（D6）：refresh 憑證由 httpOnly cookie 自帶，access 可能已過期故為公開路由
+		// 會話刷新：refresh 憑證由 httpOnly cookie 自帶，access 可能已過期故為公開路由
 		auth.POST("/refresh", h.Refresh)
 
 		// 需要認證的路由
@@ -712,7 +712,7 @@ func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		{
 			authenticated.POST("/logout", h.Logout)
 			authenticated.GET("/me", h.Me)
-			// 自助更新個人資料（profile-display-name）：僅放行 local_display_name，
+			// 自助更新個人資料：僅放行 local_display_name，
 			// 身分綁定 token claims，AuthMiddleware 已擋 scoped token
 			authenticated.PATCH("/me", h.UpdateMe)
 			// POST 而非 GET：setup 有寫入副作用（覆蓋 pending secret、重設 enabled）

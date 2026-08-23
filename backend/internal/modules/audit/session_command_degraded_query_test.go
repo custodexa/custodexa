@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// 降級列的查詢面守衛（command-audit-altscreen-bypass tasks 2.7 的後端側）。
+// 降級列的查詢面守衛（後端側）。
 //
 // 這裡釘的是**一個語義決定**，不是欄位有沒有接上：
 // `degraded_total` 刻意不套 keyword、也不套 degraded 過濾。

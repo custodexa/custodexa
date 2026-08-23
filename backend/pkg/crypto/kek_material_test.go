@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// KEK 材料解碼器（kek-encoding-and-unseal-entry）：
+// KEK 材料解碼器：
 // 「輸入編碼」與「金鑰長度」拆開之後，三種寫法必須解出同一把 32 位元組金鑰，
 // 且解不出 32 位元組者一律拒絕。
 

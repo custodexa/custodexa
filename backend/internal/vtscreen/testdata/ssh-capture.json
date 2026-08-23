@@ -627,7 +627,7 @@
       }
     ],
     "expected_command": "echo safe",
-    "expected_command_note": "in 序列為 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行，rm 那串從未送出；\"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+    "expected_command_note": "in 序列為 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行，rm 那串從未送出；\"exit\\r\" 為收尾。（已知答案）"
   },
   {
     "name": "clear-screen",
@@ -1148,7 +1148,7 @@
       }
     ],
     "expected_command": "echo safe",
-    "expected_command_note": "in 序列為 \"bash\\r\"（建立子 shell）加 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行；兩個 \"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+    "expected_command_note": "in 序列為 \"bash\\r\"（建立子 shell）加 \"rm -rf /tmp/should-not-be-audited\" 加 Ctrl-U(0x15) 加 \"echo safe\\r\"：Ctrl-U 在 Enter 之前清掉整行；兩個 \"exit\\r\" 為收尾。（已知答案）"
   },
   {
     "name": "bash-history",
@@ -1492,7 +1492,7 @@
       }
     ],
     "expected_command": "echo done",
-    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"ls /etc/pa\" 加 TAB 加 TAB 加 Ctrl-U(0x15) 加 \"echo done\\r\"：兩次 TAB 只列出候選、未送出，Ctrl-U 清掉整行；兩個 \"exit\\r\" 為收尾。（design.md D4.4 已知答案）"
+    "expected_command_note": "in 序列為 \"bash\\r\" 加 \"ls /etc/pa\" 加 TAB 加 TAB 加 Ctrl-U(0x15) 加 \"echo done\\r\"：兩次 TAB 只列出候選、未送出，Ctrl-U 清掉整行；兩個 \"exit\\r\" 為收尾。（已知答案）"
   },
   {
     "name": "bash-long-wrap",

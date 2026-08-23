@@ -1,5 +1,5 @@
 /**
- * SSO 交棒工具（idp-oidc-integration D5／D14.4）。
+ * SSO 交棒工具。
  *
  * 兩件事必須在此收口，否則散落各處必有一處寫錯：
  *   1. **瀏覽器綁定**：原值只存 sessionStorage（per-tab，不隨網址流動），

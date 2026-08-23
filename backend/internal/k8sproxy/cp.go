@@ -1,4 +1,4 @@
-// cp.go：kubectl cp 容器檔案進出（k8s-exec D6）。
+// cp.go：kubectl cp 容器檔案進出（k8s-exec）。
 // 後端以選定 pod/container 跑 kubectl cp；檔名/大小/方向的審計由 API 層落 audit_log
 // （exec-tar 串流為不透明二進位，既有 PTY 指令審計解不出，故獨立記錄）。
 package k8sproxy

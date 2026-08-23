@@ -48,7 +48,7 @@ func TestParserCatchAllFinalBytes(t *testing.T) {
 }
 
 // TestParserTruncatedSequenceKeepsState 斷言輸入結束在序列中途時，
-// 狀態保留於狀態機內、不 panic、不吐出殘留位元組（design.md D5 B5）。
+// 狀態保留於狀態機內、不 panic、不吐出殘留位元組。
 func TestParserTruncatedSequenceKeepsState(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -106,7 +106,7 @@ func TestParserChunkSplitInvariance(t *testing.T) {
 	}
 }
 
-// TestParserOSCTerminators 斷言 OSC 同時接受 BEL 與 7-bit ST（design.md D5 B6）。
+// TestParserOSCTerminators 斷言 OSC 同時接受 BEL 與 7-bit ST。
 func TestParserOSCTerminators(t *testing.T) {
 	cases := []struct {
 		name  string

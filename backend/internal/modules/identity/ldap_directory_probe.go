@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// LDAP 目錄設定的連線測試（ldap-settings-migration D5／tasks 2.6）。
+// LDAP 目錄設定的連線測試。
 //
 // 測的是**請求中的表單當下值**（先測後存），admin-only。四階梯，順序固定且
 // 各階段可辨識：
@@ -63,7 +63,7 @@ const (
 
 // ldapProbeStageTimeout 各階段逾時。
 //
-// **逾時誠實化**（D5）：dial／bind／search 各 5 秒，端點最壞約 15 秒。
+// **逾時誠實化**：dial／bind／search 各 5 秒，端點最壞約 15 秒。
 // 不宣稱「context 封頂」——go-ldap 的阻塞呼叫不受 handler context 中止，
 // 唯一能讓它返回的手段是主動關閉連線（見 ldapProbeRunStage）。
 //
@@ -107,7 +107,7 @@ var ErrLDAPTestRateLimited = errors.New("LDAP 連線測試過於頻繁，請稍�
 // ErrLDAPTestStoredSettingsUnavailable 需沿用既存密碼但既存設定讀取／解密失敗。
 //
 // **不靜默改以空密碼測試**：那會讓 admin 得到「bind 失敗」而去查目錄權限，
-// 真因卻是本地金鑰事故——與 D2「故障不得偽裝為其他狀態」同一裁決
+// 真因卻是本地金鑰事故——與「故障不得偽裝為其他狀態」同一裁決
 var ErrLDAPTestStoredSettingsUnavailable = errors.New("既存 LDAP 目錄設定讀取失敗，無法沿用既存 bind 密碼")
 
 // ErrLDAPProbeStageTimeout 階段逾時的內部哨兵（不外洩為回應文案）
@@ -312,7 +312,7 @@ func (s *LDAPDirectoryService) TestConnection(ctx context.Context, req LDAPDirec
 	// (3) 傳輸閘：與存檔閘同一判定語義與請求欄名（strict 拒測、warn 缺確認即拒、
 	// 帶確認則放行並留痕）。
 	//
-	// **風險判定強制以 Enabled=true 計算，不受請求的 enabled 值限縮**（D5／R3）：
+	// **風險判定強制以 Enabled=true 計算，不受請求的 enabled 值限縮**：
 	// 存檔閘只在「儲存後啟用」時生效，是因為停用的設定不會撥號；但測試端點
 	// **當下就會撥號並送出 bind 密碼**。若比照存檔閘，admin 只要把表單的啟用
 	// 開關關掉，就能在 strict 檔位下照樣把 service bind 憑證以明文送上網路——
@@ -354,7 +354,7 @@ func (s *LDAPDirectoryService) TestConnection(ctx context.Context, req LDAPDirec
 //
 //  1. 請求密碼為空（有填就用填的，不查 DB）；
 //  2. 請求 URL 與既存列的 **canonical origin 相等**——否則等於把既存的 service
-//     bind 憑證送往另一台伺服器（D3／D11 的憑證外送不變式，測試路徑同樣適用）；
+//     bind 憑證送往另一台伺服器（憑證外送不變式，測試路徑同樣適用）；
 //  3. 請求**未帶** clear_bind_password——admin 勾了清除但尚未存檔就按測試，
 //     若仍沿用即將被清除的密碼會回報成功，存檔後卻實際不可用，測試結果誤導。
 //

@@ -18,7 +18,7 @@ import (
 	"github.com/custodexa/backend/internal/seal"
 )
 
-// 解封端點驗收（kek-provider-modularization 2.3／D6.4／D6.6）。
+// 解封端點驗收。
 
 // sealEndpointRouter 只掛解封端點（本檔驗的是端點語義，不是路由面）。
 func sealEndpointRouter(t *testing.T, h *api.SealHandler) *gin.Engine {
@@ -50,7 +50,7 @@ func getStatus(t *testing.T, r *gin.Engine) map[string]any {
 }
 
 // getStatusFrom 自指定來源 IP 取 /seal/status。
-// 狀態查詢與解封同受網段限制（D6.4），故來源在此是必要參數而非細節。
+// 狀態查詢與解封同受網段限制，故來源在此是必要參數而非細節。
 func getStatusFrom(t *testing.T, r *gin.Engine, sourceIP string) map[string]any {
 	t.Helper()
 	w := httptest.NewRecorder()
@@ -286,7 +286,7 @@ func TestUnsealSourceCIDRRestriction(t *testing.T) {
 	}
 
 	// 繫結位址經 status 暴露，使部署方可確認組態真的生效。
-	// **狀態查詢同樣受網段限制**（D6.4 是端點群層級的限制），故須自允許網段內查詢。
+	// **狀態查詢同樣受網段限制**（限制是端點群層級的），故須自允許網段內查詢。
 	st := getStatusFrom(t, r, "10.0.0.5")
 	if got := st["bind_addr"]; got != "127.0.0.1:8081" {
 		t.Fatalf("/seal/status 的 bind_addr 為 %v，期望 127.0.0.1:8081", got)

@@ -25,10 +25,10 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/access-requests/:id/approve", model.ResourceAccessRequest},
 		{"/api/v1/approver-scopes", model.ResourceApproverScope},
 		{"/api/v1/approver-scopes/:id", model.ResourceApproverScope},
-		// 會話內子資源優先於容器段（clipboard-read-provenance）：剪貼簿證物讀取
+		// 會話內子資源優先於容器段：剪貼簿證物讀取
 		// 不得與一般連線讀取同歸 session，否則取證動作無法以資源欄篩出
 		{"/api/v1/sessions/:id/clipboard-events", model.ResourceClipboardEvent},
-		// 錄影與指令同理（audit-resource-classification-closure 批 1）：取走
+		// 錄影與指令同理：取走
 		// 終端畫面錄影本體／被監控者輸入的指令原文都是取證動作
 		{"/api/v1/sessions/:id/commands", model.ResourceCommand},
 		{"/api/v1/sessions/:id/recording", model.ResourceRecording},
@@ -44,7 +44,7 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/recordings/stats", model.ResourceRecording},
 		// 對照組三：`recording` 是單數段特判，不得誤傷含 record 前綴的他族路徑
 		{"/api/v1/daily-reviews", model.ResourceDailyReview},
-		// A 類既有常數接線（audit-resource-classification-closure 批 2）：
+		// A 類既有常數接線：
 		// 四族的常數早已存在、只是從未接上分類器，於是整族落 default asset
 		{"/api/v1/access-reviews", model.ResourceAccessReview},
 		{"/api/v1/access-reviews/:id", model.ResourceAccessReview},
@@ -65,7 +65,7 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/access-requests/mine", model.ResourceAccessRequest},
 		{"/api/v1/authorizations/:id", model.ResourceAuthorization},
 		{"/api/v1/users/:id/roles", model.ResourceUser},
-		// A 類新分類（audit-resource-classification-closure 批 3）：十族的常數
+		// A 類新分類：十族的常數
 		// 從未存在，整族落兜底；帶 `:id` 的五族在兜底為 asset 的年代注入假 asset_id
 		{"/api/v1/audit-checkpoints", model.ResourceAuditCheckpoint},
 		{"/api/v1/audit-checkpoints/public-key", model.ResourceAuditCheckpoint},
@@ -93,7 +93,7 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/audit-export/public-key", model.ResourceAuditExport},
 		{"/api/v1/audit/timeline", model.ResourceAuditTimeline},
 		{"/api/v1/command-alerts/:id/review", model.ResourceCommandAlert},
-		// 兜底哨兵（批 3）：分類器不認得的路徑不再冒充 asset。
+		// 兜底哨兵：分類器不認得的路徑不再冒充 asset。
 		// 這條是機制斷言而非現況斷言——上限已為 0，全部已註冊路由都有分類，
 		// 但**下一條漏分類的新端點**必須落在這裡，而不是落進資產的查詢面
 		{"/api/v1/no-such-segment-anywhere/:id", model.ResourceUnclassified},
@@ -106,7 +106,7 @@ func TestExtractResource(t *testing.T) {
 }
 
 // TestParseRoute_ApproverScopeNotApprove 審核範圍 CRUD 的審計動作不得被
-// 誤判為 approve（codex 審查 #6：/approver-scopes 含 "/approve" 子字串）
+// 誤判為 approve（/approver-scopes 含 "/approve" 子字串）
 func TestParseRoute_ApproverScopeNotApprove(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cases := []struct {
@@ -121,7 +121,7 @@ func TestParseRoute_ApproverScopeNotApprove(t *testing.T) {
 		{"POST", "/api/v1/access-requests/:id/approve", "/api/v1/access-requests/5/approve", model.ActionApprove},
 		{"POST", "/api/v1/access-requests/:id/reject", "/api/v1/access-requests/5/reject", model.ActionReject},
 		{"POST", "/api/v1/access-requests/:id/cancel", "/api/v1/access-requests/5/cancel", model.ActionCancel},
-		// break-glass-revocation：撤銷/補審動作；GET reviews/pending 不落 review
+		// 撤銷/補審動作；GET reviews/pending 不落 review
 		{"POST", "/api/v1/access-requests/:id/revoke", "/api/v1/access-requests/5/revoke", model.ActionRevoke},
 		{"POST", "/api/v1/access-requests/:id/review", "/api/v1/access-requests/5/review", model.ActionReview},
 		{"GET", "/api/v1/access-requests/reviews/pending", "/api/v1/access-requests/reviews/pending", model.ActionRead},
@@ -140,8 +140,7 @@ func TestParseRoute_ApproverScopeNotApprove(t *testing.T) {
 	}
 }
 
-// TestBatch2FamiliesNoForgedAssetID A 類接線的**假 asset_id 迴歸**
-// （audit-resource-classification-closure 批 2）。
+// TestBatch2FamiliesNoForgedAssetID A 類接線的**假 asset_id 迴歸**。
 //
 // **釘子打在哪**：斷言打在 `audit_logs` 實列而非 `extractResource` 的回傳值，
 // 因為缺陷本體是「寫進去的那一列長什麼樣」。中介層由
@@ -242,10 +241,10 @@ func TestBatch2FamiliesNoForgedAssetID(t *testing.T) {
 }
 
 // TestBatch3FamiliesAndSentinelNoForgedAssetID A 類新分類與**兜底哨兵**的假
-// asset_id 迴歸（audit-resource-classification-closure 批 3）。
+// asset_id 迴歸。
 //
-// 與批 2 的同型測試（`TestBatch2FamiliesNoForgedAssetID`）差別只在一處，
-// 而那一處正是本批的重點：批 2 修的是「這五族該歸哪一類」，本批除了再修十族，
+// 與同型測試 `TestBatch2FamiliesNoForgedAssetID` 差別只在一處，
+// 而那一處正是重點：前者修的是「這五族該歸哪一類」，這裡除了再修十族，
 // 還把**兜底本身**換掉。故本測試多一格「分類器不認得的路徑」——它模擬的不是
 // 假想威脅，而是本 change 反覆量到的現實：新端點上線時沒人碰 `extractResource`，
 // 測試全綠、路由 golden 也全綠（golden 不記分類），漏是**預設值**。
@@ -345,8 +344,8 @@ func TestBatch3FamiliesAndSentinelNoForgedAssetID(t *testing.T) {
 	}
 }
 
-// TestSensitiveAuditResourcesRecordQueryScope 三個審計端點分類入敏感讀取集合
-// （批 3 的 3.3）：GET 須另記查詢範圍摘要，「誰以什麼條件驗了鏈」才答得出來。
+// TestSensitiveAuditResourcesRecordQueryScope 三個審計端點分類入敏感讀取集合：
+// GET 須另記查詢範圍摘要，「誰以什麼條件驗了鏈」才答得出來。
 //
 // 對照組是同批新增、**刻意不入**集合的設定面分類（3.4）——沒有它，
 // 「details 非空」可能只是因為中介層對所有 GET 都記摘要，斷言便與集合無關。

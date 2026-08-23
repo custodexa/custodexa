@@ -15,7 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 重包請求體不入審計的**回歸釘子**（kek-provider-modularization D7／opus L1 校正）。
+// 重包請求體不入審計的**回歸釘子**。
 //
 // **釘子打在哪很重要**：middleware 實際捕獲的欄位是 `audit_logs.request_body`
 // （internal/middleware/audit_log.go 讀 body → MaskSensitiveFields → 寫入該欄），

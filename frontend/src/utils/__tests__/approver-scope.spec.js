@@ -59,7 +59,7 @@ describe('approver-scope 顯示事實源', () => {
   })
 })
 
-// 審核方（actor）兩型（approval-routing-quorum D-7）
+// 審核方（actor）兩型
 import { ACTOR_TYPES, actorType, actorLabel } from '../approver-scope'
 
 describe('approver-scope 審核方顯示', () => {

@@ -84,7 +84,7 @@ describe('Approvals 審核中心', () => {
     getReviewsMock.mockResolvedValue({ data: [], total: 0 })
   })
 
-  it('待審空狀態渲染自訂文案（ui-quick-fixes：title 實際顯示）', async () => {
+  it('待審空狀態渲染自訂文案（title 實際顯示）', async () => {
     getPendingMock.mockResolvedValue({ data: [], total: 0 })
     const wrapper = mountView()
     await flushPromises()
@@ -164,7 +164,7 @@ describe('Approvals 審核中心', () => {
     expect(wrapper.text()).toContain('系統自動核准')
   })
 
-  it('提前撤銷帶申請單 id 與事由；成功後刷新限時連線（break-glass-revocation）', async () => {
+  it('提前撤銷帶申請單 id 與事由；成功後刷新限時連線', async () => {
     revokeMock.mockResolvedValue({ id: 30, status: 'approved' })
     const wrapper = mountView()
     await flushPromises()

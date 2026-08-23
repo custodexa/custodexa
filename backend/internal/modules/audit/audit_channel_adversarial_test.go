@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// keyvault × audit／notification 的對抗測試（modular-architecture W2 2.5 自
+// keyvault × audit／notification 的對抗測試（自
 // `key_management_adversarial_test.go` 分出）。
 //
 // **為何留在 internal/service**：這四項驗的是審計完整性鏈與通知通道的行為

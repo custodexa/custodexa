@@ -1,17 +1,16 @@
 package apierror
 
-// A6 批：syslog / notification-channel / alert-rule / command-alert HTTP 出口碼
-// （backend-i18n-unification design D2/D5/D9）。
+// syslog / notification-channel / alert-rule / command-alert 的 HTTP 出口碼。
 //
 // 命名沿用 codes.go 慣例：VALIDATION_*（輸入問題，使用者可據此改正）／
 // NOTFOUND_*／INTERNAL_*（500/502，泛化訊息+cause 入 log）。
 //
 // 已知例外（刻意不遷移，見 syslog_setting_handler.go／notification_channel_handler.go
 // 的 respondChannelError）：TransmissionGateError 的 "code"（ack_required/
-// strict_reject）與 "risks" 欄不經本檔碼化——它們是 transmission-security-policy
-// D6 既有的機器欄，SyslogForwardCard.vue/Alerts.vue 直接以字面值
+// strict_reject）與 "risks" 欄不經本檔碼化——它們是傳輸政策既有的
+// 機器欄，SyslogForwardCard.vue/Alerts.vue 直接以字面值
 // `resp.data.code === 'ack_required'` 做控制流分支（syslog_setting_gate_test.go
-// 亦鎖定此契約），與 apierror 的 "code" 保留鍵語義衝突，非本批範圍可安全合流。
+// 亦鎖定此契約），與 apierror 的 "code" 保留鍵語義衝突，無法安全合流。
 var (
 	// --- syslog 設定驗證（syslog_setting_handler.go）---
 
@@ -39,7 +38,7 @@ var (
 	CodeInvalidChannelType = register("VALIDATION_CHANNEL_TYPE", Descriptor{
 		ZhFallback: "通道類型必須為 webhook 或 slack"})
 	// CodeInvalidChannelLanguage 映射 service.ErrInvalidChannelLanguage sentinel
-	// （design D5：語系空值或白名單外皆拒，服務層不區分兩種成因）
+	// （語系空值或白名單外皆拒，服務層不區分兩種成因）
 	CodeInvalidChannelLanguage = register("VALIDATION_CHANNEL_LANGUAGE", Descriptor{
 		ZhFallback: "語系必須為 zh-TW、en-US 或 ja-JP"})
 	CodeInvalidChannelID = register("VALIDATION_INVALID_CHANNEL_ID", Descriptor{
@@ -76,7 +75,7 @@ var (
 	// --- 告警規則唯一性衝突（alert_rule_handler.go）---
 
 	// CodeAlertRuleNameExists 規則名撞 alert_rules.name 唯一索引
-	// （migration-baseline-compression D4 的種子冪等前提）。
+	// （種子冪等的前提）。
 	//
 	// 歸 CONFLICT_* 並回 409，與既有的 CONFLICT_ASSET_NAME／
 	// CONFLICT_ACCOUNT_USERNAME／CONFLICT_USERNAME_EXISTS 同一形狀：同一支 API
@@ -113,7 +112,7 @@ var (
 	CodeInternalAlertReview = register("INTERNAL_ALERT_REVIEW", Descriptor{
 		ZhFallback: "審閱告警失敗"})
 
-	// 傳輸政策門（backend-i18n-unification 收尾）：原為 legacy 小寫碼
+	// 傳輸政策門：原為 legacy 小寫碼
 	// ack_required/strict_reject 的裸 gin.H 回應，前後端同步收斂為 registry 碼；
 	// risks 陣列經 Meta 平鋪保留，前端據 code 分支彈確認框的控制流不變（值同步改）
 	CodeTransmissionAckRequired = register("VALIDATION_TRANSMISSION_ACK_REQUIRED", Descriptor{

@@ -21,8 +21,8 @@ import (
 // 解封後遷移佇列與審計蓋章序的**結構守衛**。
 //
 // 原「AAD 顯式化三道守衛」（G1 遷移無自動執行路徑／G2 佇列負向成員／G3 降級唯一
-// 入口）中的 G1 與 G3 已隨其守衛對象於 release-transitional-cleanup 3.1 整組刪除
-// ——守衛對象不存在時，AST 呼叫點比對只會在零命中下假綠（D9：先刪入口、後刪守衛）。
+// 入口）中的 G1 與 G3 已隨其守衛對象於過渡格式收尾時整組刪除
+// ——守衛對象不存在時，AST 呼叫點比對只會在零命中下假綠（先刪入口、後刪守衛）。
 //
 // 保留兩道：
 //
@@ -33,7 +33,7 @@ import (
 //	   ——否則該路徑寫出的審計列 HMAC 為空，驗章端會誤判為上線前的歷史列。
 //
 // aadGuardScanRoots AST 守衛的掃描根。**scripts/ 必須在列**：它是 //go:build ignore
-// 的維運工具所在，過去不在任何守衛視野內（round-4 F6 指出的空集合假綠來源）。
+// 的維運工具所在，過去不在任何守衛視野內（空集合假綠的來源之一）。
 var aadGuardScanRoots = []string{"internal", "cmd", "pkg", "scripts"}
 
 // scanCallsWithin 於指定掃描根掃出 names 中任一函式／方法的呼叫點。
@@ -53,7 +53,7 @@ func scanCallsWithin(t *testing.T, root string, roots []string, names map[string
 				return err
 			}
 			if d.IsDir() {
-				// testdata 必須跳過（冷驗收 B1）：`cmd/server` 的測試會在
+				// testdata 必須跳過：`cmd/server` 的測試會在
 				// `cmd/server/testdata/` 內建立與刪除臨時目錄，與本守衛的
 				// WalkDir 並行時會 ENOENT 而讓全量測試變成非確定性。
 				// 該目錄內不含產品碼，跳過不減守衛涵蓋。沿 env_drift_test.go 前例。
@@ -124,8 +124,7 @@ func scanCallsWithin(t *testing.T, root string, roots []string, names map[string
 // 2026-08-09 實測 15 檔（見測試的 t.Logf），門檻取 12。
 const minEntryPointScannedFiles = 12
 
-// TestPostUnsealQueueHasNoTransitionalMigration 佇列成員的正負向斷言
-// （release-transitional-cleanup 3.8）。
+// TestPostUnsealQueueHasNoTransitionalMigration 佇列成員的正負向斷言。
 //
 // 負向：佇列 SHALL NOT 含 legacy 密文信封化（`envelope_legacy`）或任何 AAD
 // 遷移項——兩者的機制本體已刪除，殘留一個同名佇列項即代表拆除不完整。
@@ -161,7 +160,7 @@ func TestPostUnsealQueueHasNoTransitionalMigration(t *testing.T) {
 // SHALL 同步加入本清單。
 var postUnsealAssemblyBuiltins = []string{"PostUnsealMigrationLDAPSeed"}
 
-// TestAssemblyRegistersPostUnsealBuiltins 組裝根登記守衛（W1 1.10 拆 4.9 環的配套）。
+// TestAssemblyRegistersPostUnsealBuiltins 組裝根登記守衛（拆 4.9 環的配套）。
 //
 // 三條斷言：
 //   - 組裝根確有 keyvault.RegisterPostUnsealBuiltin 呼叫（否則生產佇列為空＝遷移靜默不執行）；
@@ -249,9 +248,9 @@ func scanPostUnsealBuiltinArgs(t *testing.T, root string, calls []encryptCall) m
 
 // registerBuiltinsLikeAssembly 在測試中重現組裝根（cmd/server/stage2.go）的內建登記。
 //
-// **4.9 環拆解後這一步是測試自己的責任**（W1 1.10）：keyvault 的佇列不再認識任何
+// **4.9 環拆解後這一步是測試自己的責任**：keyvault 的佇列不再認識任何
 // 業務模組的遷移，生產側的登記在組裝根、測試側則由 setup 顯式呼叫
-// （R3.1 §3.1「由 main 與測試 setup 顯式呼叫」）。生產側真的有做這件事，
+// （由 main 與測試 setup 顯式呼叫）。生產側真的有做這件事，
 // 由 TestAssemblyRegistersPostUnsealBuiltins 以 AST 對組裝根獨立斷言——
 // 本函式只負責讓包內測試看見與生產一致的佇列，不承擔那項保證。
 //
@@ -280,7 +279,7 @@ func TestRegisterBuiltinPostUnsealIdempotent(t *testing.T) {
 
 // aadStampedMigrationEntries 「呼叫具名遷移函式的 main package 必須先蓋章」守衛的
 // 受管函式名。
-// **過渡遷移函式已全數刪除**（release-transitional-cleanup 3.1／3.3）：
+// **過渡遷移函式已全數刪除**：
 // 受管集合收斂為佇列執行器一支——它仍會寫出審計列（佇列項如 ldap_seed），
 // 故蓋章先後序的守衛必須保留。
 var aadStampedMigrationEntries = map[string]bool{
@@ -289,7 +288,7 @@ var aadStampedMigrationEntries = map[string]bool{
 
 // aadEntryPointRoots 「工具／服務進入點」的掃描根。
 //
-// **internal/tools 已自清單移除**（release-transitional-cleanup P1）：aadtool 整個
+// **internal/tools 已自清單移除**：aadtool 整個
 // 套件連同 scripts/ 的薄 main 已刪除，該掃描根不復存在（留著會讓 scanCallsWithin
 // 在 os.Stat 失敗時整批 Fatal）。scripts/ 保留在列——它仍是 //go:build ignore 的
 // 維運工具所在，日後任何新工具呼叫具名遷移函式時必須立刻落入蓋章守衛視野。
@@ -297,11 +296,11 @@ var aadEntryPointRoots = []string{"cmd", "scripts"}
 
 // aadStampedEntryFiles 蓋章守衛**必須**驗到的進入點檔（完備性下界的具名版）。
 // 具名而非只數數量：檔案改名或搬家時要當場失敗，不是靜靜地少驗一個。
-// 兩段啟動重構（kek-provider-modularization 2.0）後，服務進入點自
+// 兩段啟動重構後，服務進入點自
 // cmd/server/main.go 移至 cmd/server/stage2.go——遷移佇列的執行與審計蓋章
 // hook 註冊皆屬段 2，main.go 只剩組裝根。
 //
-// **aadtool runner 已刪除**（release-transitional-cleanup P1）：CLI 遷移工具整組
+// **aadtool runner 已刪除**：CLI 遷移工具整組
 // 拆除後，具名遷移函式在進入點掃描根內只剩服務端一個呼叫點。
 var aadStampedEntryFiles = []string{
 	"cmd/server/stage2.go",
@@ -368,15 +367,15 @@ func lineOfFirst(calls []encryptCall, file string) int {
 	return best
 }
 
-// 以下自 `kek_provider_aad_test.go` 遷入（modular-architecture W2 2.5）：
+// 以下自 `kek_provider_aad_test.go` 遷入：
 // 本測試需要 registerBuiltinsLikeAssembly（登記 identity 的 ldap_seed 內建項，
-// 定義於本檔）；W2-W8 期間留在 internal/service，W9 該包解散後遷入本包（外部測試包）；
+// 定義於本檔）；原先留在 internal/service，該包解散後遷入本包（外部測試包）；
 // 只用 keyvault 的匯出面，斷言逐字未改。
 
 // TestPostUnsealQueueRunsWithInjectedCodec 佇列項取得的 codec 由段 2 注入；
 // A／C 模式在啟動內跑完（行為與現況無異），B 模式延後至解封後——同一機制。
 func TestPostUnsealQueueRunsWithInjectedCodec(t *testing.T) {
-	// 內建登記器自 W1 1.10 起由組裝根提供；此處顯式補上，讓「內建項亦在佇列內」
+	// 內建登記器由組裝根提供；此處顯式補上，讓「內建項亦在佇列內」
 	// 的下方註解與失敗計數斷言維持成立（否則本測試會依賴其他測試的登記副作用）
 	registerBuiltinsLikeAssembly()
 	keyvault.ResetPostUnsealQueueForTest()
@@ -406,8 +405,8 @@ func TestPostUnsealQueueRunsWithInjectedCodec(t *testing.T) {
 	if sawCodec == nil {
 		t.Fatal("佇列 MUST 注入 codec（呼叫端不自全域取得）")
 	}
-	// 內建項亦在佇列內（Reset 助手清空後重註冊 builtin，D5.1 F10）：
-	//   - ldap_seed（ldap-settings-migration D4）：**不計入失敗**——env 未啟用時
+	// 內建項亦在佇列內（Reset 助手清空後重註冊 builtin）：
+	// - ldap_seed：**不計入失敗**——env 未啟用時
 	//     寫 marker 後正常返回（schema_migrations 已於 newKeyManagerDB 建立），
 	//     env 啟用時正常 seed；兩者皆非失敗。
 	// legacy 信封遷移項已隨過渡機制拆除，故失敗僅來自本測試刻意註冊的一項。

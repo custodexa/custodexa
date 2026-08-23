@@ -11,7 +11,7 @@ import (
 
 // MetricsPath 指標曝光端點的路徑。
 //
-// **刻意不在 `/api` 之下**（design D1）：正式版 edge 只代理 `location /api` 與 `/ws`
+// **刻意不在 `/api` 之下**：正式版 edge 只代理 `location /api` 與 `/ws`
 // （`docker/frontend/nginx.conf`），故此端點在預設部署下自 edge 打不到——安全性
 // 由拓撲保證，而非由「有沒有記得掛上認證中介層」這種每次改路由都可能失手的人為保證。
 //

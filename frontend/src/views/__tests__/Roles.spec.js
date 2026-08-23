@@ -35,7 +35,7 @@ const mountView = () =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('Roles 描述欄查譯（roles-description-i18n）', () => {
+describe('Roles 描述欄查譯', () => {
   beforeEach(() => {
     getRoleListMock.mockReset()
   })

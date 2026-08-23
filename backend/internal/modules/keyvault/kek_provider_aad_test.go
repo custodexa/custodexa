@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// kek-provider-modularization P1：一致性判準（1.5）、AAD 列綁定（1.6）、
+// KEK provider 模組化 P1：一致性判準（1.5）、AAD 列綁定（1.6）、
 // AAD 全存量遷移與 strict 把關（1.7）、解封後遷移佇列與重加密入口（1.8）。
 
 func newAADTestDB(t *testing.T) *gorm.DB {
@@ -28,8 +28,8 @@ func newAADTestDB(t *testing.T) *gorm.DB {
 // preReleaseEnvelope 以 active data DEK 產出**發佈前過渡格式**的 `enc:v<N>` 值。
 //
 // 為何在測試裡手工組：無 AAD 的寫出能力（encryptNoAADForRollback／
-// crypto.EncodeEnvelope，以及 P2 M1 起的 AESCrypto.Encrypt／EncryptBytes）已於
-// release-transitional-cleanup 整組刪除——那正是被驗收的事實。負向測試仍需要
+// crypto.EncodeEnvelope，以及 P2 起的 AESCrypto.Encrypt／EncryptBytes）已於
+// 過渡格式收尾時整組刪除——那正是被驗收的事實。負向測試仍需要
 // 這種值，故由測試以 stdlib 助手（sealNoAAD）自行構造，模擬「繞過 API 的
 // 資料庫直寫」或「拆除前建立的資料庫」。
 func preReleaseEnvelope(t *testing.T, km *KeyManagerService, plaintext string) string {
@@ -84,16 +84,16 @@ func TestConsistencyAuthorityIsUnwrapSuccess(t *testing.T) {
 
 // ---- 1.6 AAD 列綁定 ----
 
-// TestAADCrossTableAndColumnRelocationFails 搬移密文的攻擊情境（AAD 裁決 A2）：
+// TestAADCrossTableAndColumnRelocationFails 搬移密文的攻擊情境：
 // 具 DB 寫權者把某欄的帶 AAD 密文複製到**別的表或別的欄** → 解密 MUST 失敗、
 // MUST NOT 回傳明文。
 //
 // **同表同欄跨列搬移則預期「可解密」**——資料層 AAD 綁 `ct|table|column`
-// 而**不綁主鍵**（A2 定案，fable 仲裁＋codex 第二意見獨立同結論）。這是
+// 而**不綁主鍵**（兩方獨立審查同結論）。這是
 // **明載的信任邊界，不是缺陷**：該攻擊以 DB 寫權為前提，而具此權者另有嚴格更強
 // 的等價手段（直接改同列的 host／username，或刪列重建同 pk 貼回舊密文——後者
 // 綁 pk 也擋不住）；反之綁 pk 會使跨環境還原不可解、受 sqlite 自增 pk 重用影響、
-// 並破壞 asset-multi-account 的密文原樣複製契約。
+// 並破壞資產多帳號的密文原樣複製契約。
 // 本子測試以**斷言成功**釘住該邊界：若哪天改回綁 pk，這裡會轉紅並強迫重新裁決。
 func TestAADCrossTableAndColumnRelocationFails(t *testing.T) {
 	db := newAADTestDB(t)
@@ -146,11 +146,11 @@ func TestAADCrossTableAndColumnRelocationFails(t *testing.T) {
 		t.Fatalf("讀回: %v", err)
 	}
 	if got, err := km.DecryptFor(ctx, rowRef, relocated); err != nil || got != "row-1-secret" {
-		t.Fatalf("同表同欄跨列搬移**應可解密**（A2 明載的信任邊界，非缺陷）: got=%q err=%v", got, err)
+		t.Fatalf("同表同欄跨列搬移**應可解密**（明載的信任邊界，非缺陷）: got=%q err=%v", got, err)
 	}
 }
 
-// TestAADCreatePathNeedsNoTwoPhaseWrite A2 相對於綁 pk 的核心工程紅利：
+// TestAADCreatePathNeedsNoTwoPhaseWrite 不綁 pk 相對於綁 pk 的核心工程紅利：
 // **CipherRef 是常數**，呼叫端於 insert 之前即可完成加密——create 路徑
 // SHALL NOT 退化為「先插入取得 pk、再回寫密文」的兩階段寫入。
 //
@@ -201,7 +201,7 @@ func TestAADRequiresCompleteCipherRef(t *testing.T) {
 	}
 }
 
-// TestPreReleaseCiphertextFailsClose 終態負向（release-transitional-cleanup D1）：
+// TestPreReleaseCiphertextFailsClose 終態負向：
 // 兩類發佈前過渡格式密文——無前綴裸 base64（legacy 單鑰密文）與無 AAD 的
 // `enc:v<N>`——一律 fail-close 回**可辨識**的 ErrNonFinalCiphertext，
 // SHALL NOT 靜默回退任何解密路徑、SHALL NOT 回傳明文。
@@ -265,7 +265,7 @@ func TestAADCompositionSurvivesKEKIDRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncryptFor: %v", err)
 	}
-	// 模擬 D11 的識別欄改寫（純識別、不重包）——AAD 若含 kek_id，此後必解不開
+	// 模擬委託模式的識別欄改寫（純識別、不重包）——AAD 若含 kek_id，此後必解不開
 	if err := db.Exec("UPDATE data_keys SET kek_id = kek_id").Error; err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestAADCompositionSurvivesKEKIDRewrite(t *testing.T) {
 	}
 }
 
-// TestAADCompletenessDependency AAD 完備性依賴的守衛（opus LOW-1）：
+// TestAADCompletenessDependency AAD 完備性依賴的守衛：
 // `purpose|version` 之所以完備，依賴 data_keys 的三欄 partial 唯一索引。
 // 放寬該索引即靜默削弱 AAD 綁定強度——本測試釘住該依賴。
 func TestAADCompletenessDependencyOnUniqueIndex(t *testing.T) {
@@ -289,7 +289,7 @@ func TestAADCompletenessDependencyOnUniqueIndex(t *testing.T) {
 	}
 	if err := db.Create(&dup).Error; err == nil {
 		t.Fatal("同一 KEK 下同 slot 可存在第二列帶材料：AAD 的 purpose|version 判別式不再完備" +
-			"（放寬 data_keys 三欄唯一索引即等同削弱 AAD 綁定，見 D5 完備性依賴）")
+			"（放寬 data_keys 三欄唯一索引即等同削弱 AAD 綁定）")
 	}
 }
 
@@ -305,11 +305,11 @@ func aadFixture(t *testing.T, db *gorm.DB, km *KeyManagerService) (assetID, acco
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, totp_secret_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE export_signing_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, private_key_enc TEXT NOT NULL DEFAULT '')`,
-		// audit-checkpoint-chain D5：登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
+		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE checkpoint_signing_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, private_key_enc TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE notification_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, secret TEXT NOT NULL DEFAULT '',
 			url TEXT NOT NULL DEFAULT '')`,
-		// change-secret-ssh-deepening D1：登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
+		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE change_secret_candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
 	} {
@@ -334,11 +334,11 @@ func aadFixture(t *testing.T, db *gorm.DB, km *KeyManagerService) (assetID, acco
 
 // TestEnvelopeTargetsCoverAssetAccounts 跨 change 契約的證據（交叉相容）：
 // 登記集合**必須涵蓋** asset_accounts.password_enc 與 private_key_enc。
-// 兩欄由 asset-multi-account D1a 以 {table, column} 形式登記（未帶 pk 欄名），
+// 兩欄以 {table, column} 形式登記（未帶 pk 欄名），
 // 正是**零改動契約**（契約 2）的情形——pkColumn 省略時等同 id。
 //
-// 註：原「AAD 全存量遷移涵蓋兩欄」的斷言隨遷移機制拆除
-// （release-transitional-cleanup 3.1）；登記集合本身仍是退役 DEK 引用掃描與
+// 註：原「AAD 全存量遷移涵蓋兩欄」的斷言隨遷移機制拆除；
+// 登記集合本身仍是退役 DEK 引用掃描與
 // 啟動哨兵的掃描範圍，漏登會誤判零引用而銷毀仍在用的金鑰材料，故守衛保留。
 func TestEnvelopeTargetsCoverAssetAccounts(t *testing.T) {
 	found := map[string]bool{}
@@ -400,7 +400,7 @@ func TestRecryptForNewRefThreeUsages(t *testing.T) {
 
 	t.Run("來源列身分不符即失敗（不靜默產出可疑密文）", func(t *testing.T) {
 		bound, _ := km.EncryptFor(ctx, oldRef, "bound-value")
-		// A2 後「不符」只能來自不同表／欄（同表同欄不論哪一列皆為同一份 AAD）
+		// 「不符」只能來自不同表／欄（同表同欄不論哪一列皆為同一份 AAD）
 		wrong := crypto.CipherRef{Table: "assets", Column: "private_key_enc"}
 		if _, err := RecryptForNewRef(ctx, km, wrong, newRef, bound); err == nil {
 			t.Fatal("來源列身分不符 MUST 失敗")

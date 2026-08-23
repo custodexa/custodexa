@@ -1,6 +1,6 @@
 package database
 
-// 平台服務——baseline schema 的「platform」域（migration-baseline-compression D1）。
+// 平台服務——baseline schema 的「platform」域。
 //
 // 金鑰信封、簽章鑰與外送通道設定。
 //

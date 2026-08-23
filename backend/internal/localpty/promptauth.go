@@ -14,7 +14,7 @@ const maxSwallowBytes = 4096
 // PasswordAuth 以 PTY 提示注入提供密碼：憑證不進子程序環境、不進 argv，
 // 只在 client 實際開口要密碼的那一刻寫進終端。
 //
-// 為什麼不用環境變數（db-cli-shell-escape-hardening 第二輪的 P0）：
+// 為什麼不用環境變數：
 // psql 的 `\lo_import` 是二進位讀取原語，可完整讀出 `/proc/<pid>/environ`，
 // 且同一降權身分的會話彼此都讀得到——密碼只要進過子程序環境就等於公開。
 type PasswordAuth struct {

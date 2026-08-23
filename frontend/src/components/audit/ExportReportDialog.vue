@@ -29,7 +29,7 @@
         </ul>
       </section>
 
-      <!-- 2. 能證明什麼 —— **必須排在邊界之前**（D5 用語紀律）。
+      <!-- 2. 能證明什麼 —— **必須排在邊界之前**（用語紀律）。
            反過來寫，讀者先讀到一串免責，就讀不出這份報告到底能拿來做什麼 -->
       <section
         class="ex-block"
@@ -141,7 +141,7 @@ import { typeLabel } from './timelineSummary'
 import { formatDateTime } from '@/utils/format'
 import { downloadBlob, timestampSuffix } from '@/utils/download'
 
-// 工作台的匯出出口（workbench-exits-and-export 3.10-3.12）。
+// 工作台的匯出出口。
 //
 // **匯出＝報告，不是取證**：包內只有事件事實（誰、何時、對哪個資產、做了什麼），
 // 剪貼簿內容、傳輸的檔案本體與錄影檔一律不在其中，且三者的原因並不相同：剪貼簿

@@ -8,7 +8,7 @@ import (
 	"github.com/custodexa/backend/internal/seal"
 )
 
-// 封印機器碼的雙向對照守衛（kek-provider-modularization D6.6）。
+// 封印機器碼的雙向對照守衛。
 //
 // 狀態機只生成機器碼、不生成文字；apierror registry 才有三語文案。兩邊若各自
 // 維護一份碼表，同一失敗就會有兩個名字——監控依 API 回應歸類、稽核依狀態機
@@ -122,7 +122,7 @@ func TestSealPayloadZeroize(t *testing.T) {
 
 // TestSealPayloadDecodeIntoZeroableBuffers 解析結果必須落在可覆寫的 buffer。
 //
-// 這是 H8 的正向驗收：`encoding/json` 解出的 string 是獨立且不可覆寫的副本，
+// 這是正向驗收：`encoding/json` 解出的 string 是獨立且不可覆寫的副本，
 // 歸零原始 body 與清空欄位都碰不到它。改為自訂解析後，Zeroize 覆寫的就是
 // 承載明文的那一份。
 func TestSealPayloadDecodeIntoZeroableBuffers(t *testing.T) {
@@ -146,7 +146,7 @@ func TestSealPayloadDecodeIntoZeroableBuffers(t *testing.T) {
 	}
 }
 
-// TestSealPayloadRejectsTrailingAndDuplicate 尾隨值與重複鍵一律拒絕（M4）。
+// TestSealPayloadRejectsTrailingAndDuplicate 尾隨值與重複鍵一律拒絕。
 //
 // 只 Decode 一次時，`{...}{...}` 的第二個值完全不被檢視；而重複鍵在
 // last-wins 語義下使「送出的內容」與「被驗證的內容」可以不同——後者是

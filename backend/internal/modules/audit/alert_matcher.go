@@ -14,18 +14,18 @@ import (
 )
 
 // compiledRule 預編譯規則：Match 位於指令入庫熱路徑，
-// 每次比對重編 regex 浪費 CPU，啟動/Reload 時一次編好（design D1）
+// 每次比對重編 regex 浪費 CPU，啟動/Reload 時一次編好
 type compiledRule struct {
 	rule model.AlertRule
 	re   *regexp.Regexp
 }
 
-// AlertMatcher 告警規則比對器（design D1）：
+// AlertMatcher 告警規則比對器：
 // RWMutex 保護的全量預編譯快取——規則量級小（數十條），
 // 全量替換比增量維護簡單且無一致性問題；Go RE2 線性時間，無災難性回溯風險
 type AlertMatcher struct {
 	db *gorm.DB
-	// alerts 告警落地面（modular-architecture W5 5.3）：入庫＋通知＋syslog tee 收成
+	// alerts 告警落地面：入庫＋通知＋syslog tee 收成
 	// 一個出口。比對路徑改走它**不是為了比對路徑自己**（它本來就 tee 得好好的），
 	// 而是為了讓阻斷路徑無從繞過——兩條路徑共用同一個落地面，tee 才結構性不可漏。
 	alerts gatewayapi.AlertSink
@@ -34,7 +34,7 @@ type AlertMatcher struct {
 	rules []compiledRule
 }
 
-// 套件級單例（design D1）：比對掛在 proxy.CommandRecorder 的寫入路徑，
+// 套件級單例：比對掛在 proxy.CommandRecorder 的寫入路徑，
 // recorder 建構點深在連線處理流程內，逐層改建構簽名只為傳遞一個
 // 全進程唯一的依賴不划算；單體架構下以 getter 取用、main 啟動時注入
 var (
@@ -44,7 +44,7 @@ var (
 
 // NewAlertMatcher 建立比對器（不含單例註冊，供測試直接使用）。
 //
-// alerts 為告警落地面（W5 5.3）。**刻意由呼叫端注入而非在此 NewAlertRecorder(db)**：
+// alerts 為告警落地面。**刻意由呼叫端注入而非在此 NewAlertRecorder(db)**：
 // 內建構會讓組裝根的 requireAlertSink 自檢形同虛設（每個建構點各自生一份，
 // 檢查不到），也讓「唯一建構點在組裝根」這條可守的規則失去意義。
 func NewAlertMatcher(db *gorm.DB, alerts gatewayapi.AlertSink) *AlertMatcher {
@@ -67,7 +67,7 @@ func GetAlertMatcher() *AlertMatcher {
 	return alertMatcherInstance
 }
 
-// ReloadAlertMatcher 規則 CUD 後刷新單例快取（design D1：同進程直接刷新）。
+// ReloadAlertMatcher 規則 CUD 後刷新單例快取（同進程直接刷新）。
 // 未初始化時 no-op；刷新失敗僅記 log——舊快取仍可用，規則變更下次 Reload 補上
 func ReloadAlertMatcher() {
 	m := GetAlertMatcher()
@@ -119,7 +119,7 @@ func (m *AlertMatcher) LoadRules() error {
 	return nil
 }
 
-// Reload 重新載入規則（規則 CUD 後呼叫，design D1）
+// Reload 重新載入規則（規則 CUD 後呼叫）
 func (m *AlertMatcher) Reload() error {
 	return m.LoadRules()
 }
@@ -168,14 +168,14 @@ func (m *AlertMatcher) Match(command, protocol string) []*model.AlertRule {
 	return matched
 }
 
-// MatchAndStore 對一批指令逐條比對，命中即經 AlertSink 落地（design D2；W5 5.3 收口）。
+// MatchAndStore 對一批指令逐條比對，命中即經 AlertSink 落地。
 // 由 recorder writeLoop 在指令批次 flush 成功後呼叫；
 // 任何錯誤僅 log——告警是指令審計的附加價值，絕不反向影響指令入庫與會話。
 //
-// **W5 收口說明（零行為變更）**：入庫→通知→syslog tee 三步整段搬進 alertRecorder，
+// **收口說明（零行為變更）**：入庫→通知→syslog tee 三步整段搬進 alertRecorder，
 // 順序、批次形態（單次 Create）、通知與 tee 的「未初始化即靜默跳過」逐條保留。
 // 這裡不再直寫 DB 的理由不是本路徑有問題，而是要讓 command_alerts 只剩一個落地面，
-// 阻斷路徑就無從再開一條繞過 tee 的旁路（BD-1）。
+// 阻斷路徑就無從再開一條繞過 tee 的旁路。
 func (m *AlertMatcher) MatchAndStore(cmds []model.SessionCommand, protocol string) {
 	var alerts []gatewayapi.CommandAlert
 	for _, cmd := range cmds {
@@ -202,7 +202,7 @@ func (m *AlertMatcher) MatchAndStore(cmds []model.SessionCommand, protocol strin
 				// 以指令執行時間為觸發時間：比對是異步批次進行的，
 				// 用入庫時刻會讓告警時間漂移、無法對齊指令流
 				OccurredAt: cmd.ExecutedAt,
-				// 新告警預設未審閱（audit-workflows D3）：顯式設 pending 而非依賴
+				// 新告警預設未審閱：顯式設 pending 而非依賴
 				// gorm default tag，保 Create INSERT 欄位確定、不觸發 RETURNING
 				Disposition: model.AlertDispositionPending,
 				// Blocked 留 false：本路徑是「執行後比對」，指令已送達目標。

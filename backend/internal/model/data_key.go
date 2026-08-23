@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// DataKey 用途（key-management-envelope D2）
+// DataKey 用途
 const (
 	// DataKeyPurposeData 落庫資料加密 DEK（資產憑證、通知 secret/URL、MFA secret、簽章私鑰）
 	DataKeyPurposeData = "data"
@@ -16,7 +16,7 @@ const (
 	DataKeyStatusRetired = "retired"
 )
 
-// KEK 退役原因（kek-rewrap-hygiene-hardening D9）
+// KEK 退役原因
 const (
 	// KEKRetireReasonSwitched 切換退役：現行 KEK 已指向新列
 	KEKRetireReasonSwitched = "switched"
@@ -24,13 +24,13 @@ const (
 	KEKRetireReasonAbandoned = "abandoned"
 )
 
-// DataKey 信封加密金鑰表（key-management-envelope D2）：每列一把被 KEK
+// DataKey 信封加密金鑰表：每列一把被 KEK
 // 包裹的金鑰材料。每 purpose 同時僅一把 active；retired 鑰永久保留供舊資料
 // 解密/驗章，不得刪除。KEK 重包過渡期同一 (purpose, version) 允許新舊
-// kek_id 各一列並存（D5），新 KEK 開機驗證成功後軟退役舊列。
+// kek_id 各一列並存，新 KEK 開機驗證成功後軟退役舊列。
 // 金鑰明文不落庫：wrapped_key 為 KEK 包裹後材料的 base64。
 // 唯一索引為 partial（WHERE kek_retired_at IS NULL，migration 20260801 轉換）：
-// 退役列保留指紋史不阻擋同 KEK 重試（kek-rewrap-hygiene-hardening D9）。
+// 退役列保留指紋史不阻擋同 KEK 重試。
 type DataKey struct {
 	ID uint `gorm:"primarykey" json:"id"`
 	// Purpose 用途（data / audit_integrity）
@@ -42,7 +42,7 @@ type DataKey struct {
 	// KEKID 包裹所用 KEK 的**金鑰引用識別**（開機一致性篩選、重包過渡識別）。
 	// 本地模式為材料指紋（16 hex 字元）；委託模式為外部金鑰識別
 	// （KMS 正規 key ARN 約 75 字元、PKCS#11 token:label 可更長），
-	// 故欄寬自 varchar(32) 擴至 varchar(255)（kek-provider-modularization D4）。
+	// 故欄寬自 varchar(32) 擴至 varchar(255)。
 	// **執行期模式（env／ui）SHALL NOT 進入本欄**——否則同材料在兩模式下寫出的列不同。
 	KEKID string `gorm:"type:varchar(255);not null;uniqueIndex:idx_data_keys_purpose_version_kek,priority:3" json:"kek_id"`
 	// Status active / retired
@@ -51,7 +51,7 @@ type DataKey struct {
 	CreatedAt time.Time  `json:"created_at"`
 	RetiredAt *time.Time `json:"retired_at,omitempty"`
 
-	// KEK 切換狀態機（key-inventory-transparency＋kek-rewrap-hygiene-hardening D9）
+	// KEK 切換狀態機
 	// ——與 DEK Status 正交。合法欄位形狀三種：
 	// live（Pending=false,RetiredAt=NULL,RetiredBy='',Reason='',Wrapped!=''）、
 	// pending（Pending=true,RetiredAt=NULL,RetiredBy='',Reason='',Wrapped!=''）、

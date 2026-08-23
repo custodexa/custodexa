@@ -1,6 +1,6 @@
 package model
 
-// 審計列欄位長度收口的守衛（audit-coverage-closure 批 1-R，缺陷 F1 第一層）。
+// 審計列欄位長度收口的守衛（第一層）。
 //
 // # 突變自檢（互不掩蓋）
 //
@@ -59,7 +59,7 @@ func TestAuditLogRuneLimitsComeFromStructTags(t *testing.T) {
 	}
 }
 
-// TestBoundAuditLogFieldsCapsOversizedPath 缺陷 F1 的第一層本體：
+// TestBoundAuditLogFieldsCapsOversizedPath 第一層收口的本體：
 // `:id` 型路由可以吸收任意長度，匿名列原樣填 URL path，於是零憑證的請求就能
 // 產出一列超出 varchar(500) 的審計列。
 func TestBoundAuditLogFieldsCapsOversizedPath(t *testing.T) {

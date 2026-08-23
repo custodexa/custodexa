@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// setupCascadeDB F8 級聯撤銷的真 SQLite 環境（軟刪語義必須實跑才算驗過）。
+// setupCascadeDB 級聯撤銷的真 SQLite 環境（軟刪語義必須實跑才算驗過）。
 func setupCascadeDB(t *testing.T) (*AssetAuthorizationService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
@@ -25,9 +25,9 @@ func setupCascadeDB(t *testing.T) (*AssetAuthorizationService, *gorm.DB) {
 
 func uptrCascade(v uint) *uint { return &v }
 
-// TestCascadeRevokeByAssetGroup 節點刪除的級聯撤銷本體（F8／D-10 tx-taking 窄 port）。
+// TestCascadeRevokeByAssetGroup 節點刪除的級聯撤銷本體（tx-taking 窄 port）。
 //
-// **W7 7.4 遷移說明（是否放寬：否）**：這三條 DB 級斷言（授權軟刪留痕、
+// **遷移說明（是否放寬：否）**：這三條 DB 級斷言（授權軟刪留痕、
 // 審核範圍失效、筆數回傳）原本在 asset 的 `TestAssetGroupDeleteRevokesGrants` 內。
 // 撤銷本體收口到 authz 後，asset 的測試不得 import authz（authz→asset 存在，
 // 會構成 test import cycle），故本體斷言隨實作一起搬來；asset 側改為斷言
@@ -98,7 +98,7 @@ func TestCascadeRevokeByAssetGroup(t *testing.T) {
 	}
 }
 
-// TestCascadeRevokeByUserGroup 群組刪除的級聯撤銷本體（F8）：
+// TestCascadeRevokeByUserGroup 群組刪除的級聯撤銷本體：
 // 授權軟刪＋群組作審核方／作申請人群組的兩類範圍皆失效。
 func TestCascadeRevokeByUserGroup(t *testing.T) {
 	svc, db := setupCascadeDB(t)
@@ -144,7 +144,7 @@ func TestCascadeRevokeByUserGroup(t *testing.T) {
 	}
 }
 
-// TestCascadeRevokeByUser 帳號刪除的級聯撤銷本體（F8）：
+// TestCascadeRevokeByUser 帳號刪除的級聯撤銷本體：
 // 該人作審核方（approver_id）或作申請人（subject_user_id）的範圍皆失效。
 func TestCascadeRevokeByUser(t *testing.T) {
 	svc, db := setupCascadeDB(t)

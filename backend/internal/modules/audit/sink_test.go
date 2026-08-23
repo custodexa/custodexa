@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// audit 三個落地面的行為契約（modular-architecture W4 4.2／4.3／4.6／4.9）。
+// audit 三個落地面的行為契約。
 
 func sinkTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -329,7 +329,7 @@ func TestAlertRecorderImplementsGatewayContract(t *testing.T) {
 }
 
 // withRepositoryDB 把套件級 database.DB 暫時換成測試庫（AuditLogService 的
-// 落地走的是那個全域句柄——W4 未改變此事實，資料層去全域化不在本波範圍）。
+// 落地走的是那個全域句柄，資料層去全域化是另一件事）。
 func withRepositoryDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	old := database.DB

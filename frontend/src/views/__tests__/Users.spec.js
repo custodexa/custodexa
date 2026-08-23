@@ -55,7 +55,7 @@ vi.mock('@/api/user', () => ({
   adminDisableMFA: vi.fn(),
   unlockUser: vi.fn(),
   setInactivityExempt: vi.fn(),
-  // 外部身分面板（idp-oidc-integration 5.5）同源於 @/api/user，
+  // 外部身分面板同源於 @/api/user，
   // 缺這幾個 export 會讓抽屜內的元件在載入期就取到 undefined
   getExternalIdentities: (...a) => getExternalIdentitiesMock(...a),
   bindExternalIdentity: vi.fn(),
@@ -86,7 +86,7 @@ const mountView = () =>
     global: { plugins: [ElementPlus] },
   })
 
-describe('Users 用戶管理：啟停開關欄位契約（ui-quick-fixes）', () => {
+describe('Users 用戶管理：啟停開關欄位契約', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getUserListMock.mockResolvedValue(sampleUsers)
@@ -130,7 +130,7 @@ describe('Users 用戶管理：啟停開關欄位契約（ui-quick-fixes）', ()
   })
 })
 
-describe('Users 分配角色對話框（role-enum-metadata-sync）', () => {
+describe('Users 分配角色對話框', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getUserListMock.mockResolvedValue(sampleUsers)
@@ -163,10 +163,10 @@ describe('Users 分配角色對話框（role-enum-metadata-sync）', () => {
   })
 })
 
-// 帳號來源欄與外部憑證鎖定（idp-oidc-integration D14.1/D14.5）。
+// 帳號來源欄與外部憑證鎖定。
 // 兩個都是「靜默錯了也看不出來」的欄位：來源若由 is_ldap 推導，OIDC 帳號會被
 // 顯示成本地帳號；修改密碼若不鎖，管理員會按下一個必被後端擋的按鈕
-describe('Users 帳號來源與外部憑證鎖定（idp-oidc-integration）', () => {
+describe('Users 帳號來源與外部憑證鎖定', () => {
   const externalUsers = {
     data: [
       {
@@ -231,7 +231,7 @@ describe('Users 帳號來源與外部憑證鎖定（idp-oidc-integration）', ()
   })
 
   it('外部憑證帳號的「修改密碼」停用並就地說明原因；本地帳號可按', async () => {
-    // 入口自輪 2 欄寬重排起收進「更多」選單（操作欄改為不 fixed、總寬守在
+    // 入口自欄寬重排起收進「更多」選單（操作欄改為不 fixed、總寬守在
     // 1280 可視寬內），故改為比對各列選單內該項目的停用狀態
     document.body.innerHTML = ''
     mountView()
@@ -262,7 +262,7 @@ describe('Users 帳號來源與外部憑證鎖定（idp-oidc-integration）', ()
   })
 })
 
-describe('Users 審核範圍對話框（role-enum-metadata-sync H4）', () => {
+describe('Users 審核範圍對話框', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getUserListMock.mockResolvedValue(sampleUsers)
@@ -287,7 +287,7 @@ describe('Users 審核範圍對話框（role-enum-metadata-sync H4）', () => {
     // 全量回應過濾出 approver_id=8 的範圍
     expect(wrapper.vm.userScopes.map((sc) => sc.id)).toEqual([11])
 
-    // 新增表單收斂至共用組件（approval-routing-quorum：payload 契約測試在
+    // 新增表單收斂至共用組件（payload 契約測試在
     // ApproverScopeForm.spec.js，本頁只驗掛載與預選審核方傳遞）
     const form = wrapper.findComponent(ApproverScopeForm)
     expect(form.exists()).toBe(true)
@@ -327,7 +327,7 @@ describe('Users 審核範圍對話框（role-enum-metadata-sync H4）', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    // 入口自 UI 審查 MEDIUM-1 起收進「更多」選單（操作欄 470→280，避免 fixed
+    // 入口收進「更多」選單（操作欄 470→280，避免 fixed
     // 欄蓋住來源／Email），故改為比對兩列的選單內容：兩列各一個選單，
     // 只有 approver 那一列帶「審核範圍」
     const menus = Array.from(document.querySelectorAll('.el-dropdown__popper')).map(
@@ -344,7 +344,7 @@ describe('Users 審核範圍對話框（role-enum-metadata-sync H4）', () => {
   })
 })
 
-describe('Users 帳號來源欄與篩選（idp-oidc-integration D14.1）', () => {
+describe('Users 帳號來源欄與篩選', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getRoleListMock.mockResolvedValue({ data: [{ id: 2, name: 'user' }] })
@@ -415,10 +415,10 @@ describe('Users 帳號來源欄與篩選（idp-oidc-integration D14.1）', () =>
   })
 })
 
-// 外部身分管理入口（idp-oidc-integration 5.5）：後端四端點齊備但前端零表面，
+// 外部身分管理入口：後端四端點齊備但前端零表面，
 // 使 UA-1 的「admin SHALL 可檢視／綁定／解除」與純 UI 的 scenario 全數無從成立。
 // 入口必須對**每個**帳號開放——本地帳號亦可由 admin 綁定外部身分
-describe('Users 外部身分管理入口（idp-oidc-integration 5.5）', () => {
+describe('Users 外部身分管理入口', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getRoleListMock.mockResolvedValue({ data: [{ id: 2, name: 'user' }] })
@@ -464,7 +464,7 @@ describe('Users 外部身分管理入口（idp-oidc-integration 5.5）', () => {
     })
   })
 
-  it('面板操作後列表刷新失敗時標記狀態過期，不以舊列表回填抽屜（輪 2 codex MEDIUM-3）', async () => {
+  it('面板操作後列表刷新失敗時標記狀態過期，不以舊列表回填抽屜', async () => {
     // fetchUserList 吞掉錯誤並保留舊列表；把它當成一定成功，
     // external-only 轉換成功後畫面仍會顯示「具本地密碼、可轉換」
     const wrapper = mountView()
@@ -497,7 +497,7 @@ describe('Users 外部身分管理入口（idp-oidc-integration 5.5）', () => {
     expect(wrapper.vm.identityUser.external_credential).toBe(true)
   })
 
-  it('其他使用者（stale 面板）的 changed 事件一律忽略，不刷新目前抽屜（輪 3 codex MEDIUM）', async () => {
+  it('其他使用者（stale 面板）的 changed 事件一律忽略，不刷新目前抽屜', async () => {
     // 面板可在確認框開著期間被換人／卸載，舊實例的成功事件仍會抵達；
     // 拿它去刷新目前抽屜等於用別人的操作驅動這個帳號的狀態
     const wrapper = mountView()
@@ -514,7 +514,7 @@ describe('Users 外部身分管理入口（idp-oidc-integration 5.5）', () => {
     expect(wrapper.vm.identityRefreshFailed).toBe(false)
   })
 
-  it('較舊的刷新結果不得覆蓋較新的（父層序號防護，輪 3 codex MEDIUM）', async () => {
+  it('較舊的刷新結果不得覆蓋較新的（父層序號防護）', async () => {
     const wrapper = mountView()
     await flushPromises()
 
@@ -545,7 +545,7 @@ describe('Users 外部身分管理入口（idp-oidc-integration 5.5）', () => {
     expect(wrapper.vm.identityUser.external_credential).toBe(true)
   })
 
-  it('刷新成功但目標使用者不在結果集時維持過期旗標（輪 3 codex MEDIUM）', async () => {
+  it('刷新成功但目標使用者不在結果集時維持過期旗標', async () => {
     // 篩選條件、分頁或操作本身（例如帳號被停用而退出 active 篩選）都會讓目標
     // 缺席；此時抽屜上的帳號狀態同樣是舊值，清掉旗標等於重新開放不可逆入口
     const wrapper = mountView()

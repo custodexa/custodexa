@@ -8,8 +8,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// connect grant 於「停用後又重新啟用」的行為（idp-oidc-integration tasks 4.11
-// 的第 (7) 個驗證點的補格）。
+// connect grant 於「停用後又重新啟用」的行為。
 //
 // 既有的 TestConnectRedeemGenerationRecheck 覆蓋了停用／世代推進／使用者世代推進
 // 三種拒絕，以及本地 grant 不受影響；缺的是**重新啟用之後**——這正是世代維度

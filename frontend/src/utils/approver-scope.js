@@ -1,5 +1,5 @@
 /**
- * 審核範圍條目顯示唯一事實源（approval-routing-quorum）。
+ * 審核範圍條目顯示唯一事實源。
  * 值域硬拷後端 model/approver_scope.go（審核方恰一：approver_id/approver_group_id；
  * 客體四維恰一：asset_id/asset_group_id/subject_user_id/subject_group_id）；
  * 完備性由 approver-scope.spec.js 釘住——後端加維度時此處補一筆，
@@ -9,7 +9,7 @@
 import { computed } from 'vue'
 import { t } from '@/i18n'
 
-// 譯文住 locale 檔 enum.scopeType/actorType.*（i18n-foundation D6），getter 回 t()
+// 譯文住 locale 檔 enum.scopeType/actorType.*，getter 回 t()
 const typeMeta = (ns, value, tagType) => ({
   tagType,
   get label() {
@@ -24,7 +24,7 @@ export const SCOPE_TYPES = {
   subject_group: typeMeta('scopeType', 'subject_group', 'info'),
 }
 
-/** 審核方型別（D-7：個人 XOR 使用者群組） */
+/** 審核方型別（個人 XOR 使用者群組） */
 export const ACTOR_TYPES = {
   user: typeMeta('actorType', 'user', 'primary'),
   group: typeMeta('actorType', 'group', 'warning'),
@@ -54,7 +54,7 @@ export const scopeTypeTagType = (scope) => SCOPE_TYPES[scopeType(scope)]?.tagTyp
 
 /**
  * buildGroupPaths 節點 id → 全路徑（如「prod / db」）：前端由 parent_id 自組，
- * 解決同名節點不可分辨（approval-routing-quorum D-5）。環路防禦：深度上限 20
+ * 解決同名節點不可分辨。環路防禦：深度上限 20
  */
 export const buildGroupPaths = (groups) => {
   const byId = new Map((groups || []).map((g) => [g.id, g]))

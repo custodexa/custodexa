@@ -1,6 +1,6 @@
 package apierror
 
-// 資產帳號（asset-multi-account 階段 2）的出口碼。
+// 資產帳號的出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔僅為並行開發隔離：收 internal/api 的
 // asset_account_handler.go 一檔。命名沿用既有慣例：VALIDATION_*（請求欄位／
@@ -35,22 +35,22 @@ var (
 	// 帳號不存在、已刪除，或不屬於路徑上的資產——三者共用一碼是刻意的：
 	// 分開回應等於告訴請求方「這個 id 存在，只是不屬於你查的資產」
 	CodeAssetAccountNotFound = register("NOTFOUND_ASSET_ACCOUNT", Descriptor{ZhFallback: "資產帳號不存在或不屬於該資產"})
-	// 「從其他資產帳號複製」的來源帳號不存在（D10）
+	// 「從其他資產帳號複製」的來源帳號不存在
 	CodeAssetAccountSourceNotFound = register("NOTFOUND_ASSET_ACCOUNT_SOURCE", Descriptor{ZhFallback: "複製來源帳號不存在"})
 )
 
 // --- RULE_ACCOUNT_*（帳號業務規則；service sentinel 一對一）---
 var (
-	// D8「有帳號必有 default」：資產仍有其他帳號時不得刪掉預設帳號
+	// 「有帳號必有 default」：資產仍有其他帳號時不得刪掉預設帳號
 	CodeAccountDefaultRequired = register("RULE_ACCOUNT_DEFAULT_REQUIRED", Descriptor{ZhFallback: "資產仍有其他帳號時不可刪除預設帳號，請先指定新的預設帳號"})
-	// 資產有帳號卻無預設（D8 不變式破損）：不靜默挑一筆頂替，擋下要求人工修正
+	// 資產有帳號卻無預設（不變式破損）：不靜默挑一筆頂替，擋下要求人工修正
 	CodeAccountDefaultMissing = register("RULE_ACCOUNT_DEFAULT_MISSING", Descriptor{ZhFallback: "資產帳號資料異常：有帳號但無預設帳號，請指定預設帳號後再試"})
 	// 零帳號資產的連線／取憑證請求（連線入口 fail-close）：空憑證會退化成匿名或
 	// 免密嘗試，受管連線的前提是有受管憑證
 	CodeAccountNoneUsable = register("RULE_ACCOUNT_NONE_USABLE", Descriptor{ZhFallback: "資產未設定可用帳號憑證，請先新增帳號"})
 	// 併發下 default partial unique index 衝突（與「同名帳號」分流，語義不同）
 	CodeAccountDefaultConflict = register("CONFLICT_ACCOUNT_DEFAULT", Descriptor{ZhFallback: "預設帳號同時被其他操作變更，請重試"})
-	// K8s 資產固定單一預設帳號（D6）：連線 token 帶非預設 account_id 時擋下，
+	// K8s 資產固定單一預設帳號：連線 token 帶非預設 account_id 時擋下，
 	// 不靜默忽略——忽略會讓使用者以為連的是所選帳號，實際用的是別組憑證
 	CodeAccountK8sDefaultOnly = register("RULE_ACCOUNT_K8S_DEFAULT_ONLY", Descriptor{ZhFallback: "K8s 資產固定使用預設帳號，不支援指定連線帳號"})
 )

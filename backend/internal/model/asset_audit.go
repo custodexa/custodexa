@@ -9,8 +9,8 @@ import (
 
 // DiffAsset 比較兩個 Asset 物件的差異。
 //
-// **W6 6.2 由 diffAsset 匯出**：T-2 的服務側審計（`writeAssetChangeAudit`）與
-// T-3 的 GORM hook（`AfterUpdate`，依 B-1 裁決維持直寫）共用同一份 diff 規則。
+// **由 diffAsset 匯出**：T-2 的服務側審計（`writeAssetChangeAudit`）與
+// T-3 的 GORM hook（`AfterUpdate`，維持直寫）共用同一份 diff 規則。
 // hook 走不掉 `internal/model`（model 不得 import 模組），故規則必須留在此處；
 // 複製一份到 asset 側等於製造第二個會漂移的變更判定。
 func DiffAsset(old, new *Asset) []AssetChange {
@@ -80,10 +80,10 @@ func DiffAsset(old, new *Asset) []AssetChange {
 		})
 	}
 
-	// 節點掛載（asset-node-tree）為 M2M 非資產欄位，不經 hook diff——
+	// 節點掛載為 M2M 非資產欄位，不經 hook diff——
 	// 成員變更審計在 asset service 的節點同步邏輯落（node_ids 差集）
 
-	// AccessPolicy nil＝跟隨全域，審計以空字串表示（asset-level-access-policy）
+	// AccessPolicy nil＝跟隨全域，審計以空字串表示
 	oldPolicy := ""
 	if old.AccessPolicy != nil {
 		oldPolicy = *old.AccessPolicy
@@ -144,7 +144,7 @@ func (a *Asset) AfterCreate(tx *gorm.DB) error {
 		Action:     ActionCreate,
 		Resource:   ResourceAsset,
 		ResourceID: &a.ID,
-		// 主體鍵與 ResourceID 同值仍要各記一次（auditor-workbench D4）：資產樞紐只認
+		// 主體鍵與 ResourceID 同值仍要各記一次（auditor-workbench）：資產樞紐只認
 		// AssetID，靠 (Resource, ResourceID) 反推會把改密計畫／授權列的同號 id 一併撈進來
 		AssetID: &a.ID,
 		Status:  StatusSuccess,
@@ -201,8 +201,8 @@ func (a *Asset) AfterDelete(tx *gorm.DB) error {
 	return tx.Session(&gorm.Session{NewDB: true}).Create(auditLog).Error
 }
 
-// **W6 6.1／6.2**：`RecordAssetChange` 與 `RecordAssetNodeChange` 已隨 T-2 收口
+// `RecordAssetChange` 與 `RecordAssetNodeChange` 已隨 T-2 收口
 // 遷入 asset 模組（`internal/modules/asset/asset_audit_events.go` 的
 // `writeAssetChangeAudit`／`writeAssetNodeChangeAudit`），落地一律經
 // `audit/port.WriteInTx`。`internal/model` 自此只留資料型別與 T-3 的 GORM hook
-// （後者維持直寫，見 tasks.md 4.5 與 backlog B-1），不再是第四個審計落地入口。
+// （後者維持直寫），不再是第四個審計落地入口。

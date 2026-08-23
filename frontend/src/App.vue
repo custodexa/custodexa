@@ -6,7 +6,7 @@
 
 <script setup>
 // EP locale 與 main.js 的 app-level config 共用同一 reactive 來源
-//（i18n-foundation D4）：元件樹走 provider、指令式 API 走 app-level
+// 元件樹走 provider、指令式 API 走 app-level
 import { epLocale } from '@/i18n/element-plus'
 </script>
 

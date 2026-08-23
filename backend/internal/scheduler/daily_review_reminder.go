@@ -8,7 +8,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// DailyReviewReminderScheduler 每日審閱逾期提醒（audit-log-compliance，PCI 10.4.1）。
+// DailyReviewReminderScheduler 每日審閱逾期提醒（PCI 10.4.1）。
 // 每日 09:00 檢查昨日簽核：功能啟用且昨日未簽 → 經通知通道提醒；
 // 功能關閉時空轉無副作用
 type DailyReviewReminderScheduler struct {

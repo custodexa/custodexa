@@ -15,7 +15,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// 串流出口中文字面量守衛（backend-i18n-unification D7）
+// 串流出口中文字面量守衛
 //
 // 語義：`internal/sshproxy`、`internal/proxy` 的**非測試碼**中，中文字面量只允許
 // 出現在三種位置——
@@ -24,13 +24,13 @@ import (
 //	2. fmt.Errorf / errors.New：內部 error 值，由上層決定如何呈現；
 //	3. 註解（不是 BasicLit，天然不在掃描面內）。
 //
-// 其餘一律紅——使用者可見文字必須走 apierror registry 的碼（D7「送碼、前端查譯」）。
+// 其餘一律紅——使用者可見文字必須走 apierror registry 的碼（送碼、前端查譯）。
 //
 // 為什麼是「callee 名稱」而非「字串內容」：v2 版守衛以內容啟發式判斷，被審出
 // 「先賦值給變數再送出」即可繞過。改看呼叫點後，`msg := "中文"; c.JSON(...)` 的
 // 中轉寫法在賦值當下就紅，沒有可繞路徑。
 //
-// allowlist 與 D1 的 sink 守衛同一套 hash 燒盡制（檔名＋字面量正規化 hash＋筆數），
+// allowlist 與 sink 守衛同一套 hash 燒盡制（檔名＋字面量正規化 hash＋筆數），
 // 集合相等比對：新字面量紅、已消滅的條目 stale 也紅。行號不參與比對（漂移假綠）。
 //
 // 重生（沿用 sink 守衛的 -update 旗標，同套件共用）：
@@ -38,8 +38,8 @@ import (
 //	docker compose exec -T backend go test ./internal/apierror/ \
 //	  -run TestNoChineseLiteralsInStreamExits -update
 //
-// 初始清單＝M6/M8 遷移後的殘量，主體是 sshproxy/proxy 兩個 handler 的 HTTP JSON
-// 直寫（A8 批次的地盤），隨該批次歸零。
+// 初始清單的主體是 sshproxy/proxy 兩個 handler 的 HTTP JSON 直寫殘量，
+// 隨這些出口改走 apierror 碼而歸零。
 // ---------------------------------------------------------------------------
 
 // streamScanDirs 是本守衛的掃描範圍（相對 backend/）。
@@ -60,7 +60,7 @@ var exemptCallDesc = "log.*／fmt.Errorf／errors.New"
 //
 // 子樹放行而非僅直接引數：`log.Printf("%s", fmt.Sprintf("中文 %v", err))` 這類
 // 巢狀組字仍是日誌路徑。代價是 `log.Printf("x", f(gin.H{"error": "中文"}))` 會被
-// 誤赦——該形態在本兩套件不存在，且真要出口也會被 D1 的 sink 守衛攔下。
+// 誤赦——該形態在本兩套件不存在，且真要出口也會被 sink 守衛攔下。
 func isExemptCall(call *ast.CallExpr) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -83,7 +83,7 @@ func isExemptCall(call *ast.CallExpr) bool {
 
 // containsHan 回報字串是否含漢字。
 //
-// 守衛盲區（D10 殘量清單已記載）：只擋中文。英文的使用者可見字面量攔不到——
+// 守衛盲區：只擋中文。英文的使用者可見字面量攔不到——
 // 本專案的裸文字歷史包袱全是中文，先解決可機器判定的那半。
 func containsHan(s string) bool {
 	for _, r := range s {
@@ -151,7 +151,7 @@ func scanChineseLiterals(fset *token.FileSet, f *ast.File, rel string) ([]sinkEn
 	return out, nil
 }
 
-// renderStreamAllowlist 產生 golden 內容（格式與 D1 的 sink allowlist 一致，
+// renderStreamAllowlist 產生 golden 內容（格式與 sink allowlist 一致，
 // 標頭另述以免兩份清單被混淆）。
 func renderStreamAllowlist(m multiset) string {
 	keys := make([]string, 0, len(m))
@@ -161,7 +161,7 @@ func renderStreamAllowlist(m multiset) string {
 	sort.Strings(keys)
 
 	var b strings.Builder
-	b.WriteString("# 串流出口中文字面量 allowlist（backend-i18n-unification D7，機器生成勿手改）\n")
+	b.WriteString("# 串流出口中文字面量 allowlist（機器生成勿手改）\n")
 	b.WriteString("# 範圍：internal/sshproxy、internal/proxy 的非測試碼；log 系呼叫與 fmt.Errorf/errors.New 已豁免。\n")
 	b.WriteString("# 格式：<相對 backend/ 的檔案路徑> <字面量正規化 hash> <同檔同 hash 筆數>\n")
 	b.WriteString("# 重生：docker compose exec -T backend go test ./internal/apierror/ -run TestNoChineseLiteralsInStreamExits -update\n")
@@ -173,7 +173,7 @@ func renderStreamAllowlist(m multiset) string {
 	return b.String()
 }
 
-// TestNoChineseLiteralsInStreamExits 是 D7 的出口字面量守衛。
+// TestNoChineseLiteralsInStreamExits 是串流出口的字面量守衛。
 func TestNoChineseLiteralsInStreamExits(t *testing.T) {
 	root := backendRoot()
 
@@ -222,7 +222,7 @@ func TestNoChineseLiteralsInStreamExits(t *testing.T) {
 	added, stale := diffMultiset(got, want)
 	if len(added) > 0 {
 		t.Errorf("新增的中文字面量（%d 筆，未在 allowlist）：\n  %s\n"+
-			"串流出口的使用者可見文字一律走 apierror 碼（D7）；只有 %s 可帶中文。\n"+
+			"串流出口的使用者可見文字一律走 apierror 碼；只有 %s 可帶中文。\n"+
 			"對照行號：%s", len(added), strings.Join(added, "\n  "), exemptCallDesc, locateHashes(lits, added))
 	}
 	if len(stale) > 0 {

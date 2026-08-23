@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 列出資產帳號（asset-multi-account D2/D5）。
+ * 列出資產帳號。
  *
  * 後端已依請求者的**有效授權帳號範圍**過濾（admin/auditor 全量），
  * 前端不得再自行推斷可見性——連線選擇器直接用此清單即為有效帳號集合。

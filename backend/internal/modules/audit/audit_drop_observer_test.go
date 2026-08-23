@@ -10,7 +10,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 審計佇列滿載的可觀測性（observability-lite F2／塊 2.3）。
+// 審計佇列滿載的可觀測性。
 //
 // **這條路徑原先唯一的痕跡是 log.Printf**——不可查詢、不可告警、容器重啟即失。
 // `audit-failure-alerting` 的「審計機制失效事件記錄」條文其涵蓋範圍明文限定為

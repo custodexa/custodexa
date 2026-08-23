@@ -63,7 +63,7 @@
       <div class="card-header">
         <span class="card-title">{{ $t('roles.permissionCardTitle') }}</span>
       </div>
-      <!-- 由 ROLE_META 逐角色渲染（role-enum-metadata-sync）：
+      <!-- 由 ROLE_META 逐角色渲染：
            以後端角色列表為序，新增角色補一筆 META 即連動，勿再手寫段落 -->
       <el-descriptions
         :column="1"

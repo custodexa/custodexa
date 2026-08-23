@@ -1,5 +1,5 @@
 /**
- * 工作台狀態 ↔ query string 的唯一轉換點（auditor-workbench D3）。
+ * 工作台狀態 ↔ query string 的唯一轉換點（auditor-workbench）。
  *
  * **全部狀態進 URL**：稽核調查要能把連結貼給同事、要能回上一頁、要能被
  * 六個既有頁面深連結帶入；狀態藏在元件裡三者皆不可得。

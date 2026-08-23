@@ -1,7 +1,6 @@
 package apierror
 
-// 連線端點（internal/sshproxy、internal/proxy）的 HTTP JSON 出口碼
-// （backend-i18n-unification A8）。
+// 連線端點（internal/sshproxy、internal/proxy）的 HTTP JSON 出口碼。
 //
 // 分檔理由同 codes_stream.go：同一 registry，只為並行開發隔離——codes.go 是
 // internal/api 大掃除的地盤，本檔專收兩個連線 handler 的 HTTP 出口。

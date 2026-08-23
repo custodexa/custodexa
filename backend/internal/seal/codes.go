@@ -8,7 +8,7 @@ import (
 // 封印狀態機的出口機器碼。
 //
 // 本套件只回傳機器碼常數與 error，不生成任何使用者可見文字——HTTP 狀態碼、
-// 三語文案與 apierror registry 的登記由後續接線批次負責（D6.6）。
+// 三語文案與 apierror registry 的登記由接線層負責。
 const (
 	// CodeUnsealInProgress 已有持有者在飛（格 3）。對外 409。
 	CodeUnsealInProgress = "SEAL_UNSEAL_IN_PROGRESS"
@@ -17,10 +17,10 @@ const (
 	// CodeAlreadyUnsealed 已解封（格 3）。對外 409，且不重跑初始化。
 	CodeAlreadyUnsealed = "SEAL_ALREADY_UNSEALED"
 
-	// CodeCooldownActive 全域冷卻期內抵達（D6.4）。不驗證、不進 CAS、
+	// CodeCooldownActive 全域冷卻期內抵達。不驗證、不進 CAS、
 	// 不計入失敗計數、不刷新到期時間。
 	CodeCooldownActive = "SEAL_COOLDOWN_ACTIVE"
-	// CodeBackoffActive per-source 退避期內抵達（D6.4）。
+	// CodeBackoffActive per-source 退避期內抵達。
 	CodeBackoffActive = "SEAL_BACKOFF_ACTIVE"
 
 	// CodeMaterialInvalid 材料驗證失敗（格 4）。對外 400，計入材料失敗計數。
@@ -29,7 +29,7 @@ const (
 	// CodeAborted 解封嘗試被主動中止（格 3b／4b）：請求取消、panic 或
 	// PREPARE 寫入逾時。不計入材料失敗計數。
 	CodeAborted = "SEAL_ABORTED"
-	// CodeJournalIOFailure journal I/O 故障（格 3b 的成因之一，另觸發 D6.5 fail-close）。
+	// CodeJournalIOFailure journal I/O 故障（格 3b 的成因之一，另觸發封印期留痕的 fail-close）。
 	CodeJournalIOFailure = "SEAL_JOURNAL_IO_FAILURE"
 
 	// CodeInitFailed 段 2 初始化失敗（格 6，逾時以外的一切失敗，含取消／panic）。

@@ -12,8 +12,7 @@ import (
 //
 // 本版本是**全新安裝的唯一 schema 事實源**：47 張表的最終形狀、162 條索引、
 // 10 條 CHECK 與 12 條內建告警規則種子，全部由這一條 migration 建立。
-// 壓縮前的 49 條增量 migration 與開機 AutoMigrate 一併退場
-// （migration-baseline-compression）。
+// 壓縮前的 49 條增量 migration 與開機 AutoMigrate 一併退場。
 const BaselineVersion = "20260816_schema_baseline"
 
 // baselineGroup baseline DDL 的一個語義域。

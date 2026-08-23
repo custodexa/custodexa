@@ -66,8 +66,8 @@ func TestVersionedStampNewRowsUseV1(t *testing.T) {
 // TestVersionedJWTRotationNoFalsePositive JWT 輪替 SHALL NOT 影響任何列的驗證
 // 結果——蓋章鑰為系統生成之版本化鑰，與 JWT_SECRET 無任何派生關係。
 //
-// 註：原測試以「v0 legacy 快照凍結於 DB」為載體；v0 快照已於
-// release-transitional-cleanup D4 拆除，版本鏈自 v1 起，故改以「重啟後
+// 註：原測試以「v0 legacy 快照凍結於 DB」為載體；v0 快照已拆除，
+// 版本鏈自 v1 起，故改以「重啟後
 // 同一組 v1 列仍全數驗過」表達同一性質（JWT 未進入蓋章鑰的任何路徑）。
 func TestVersionedJWTRotationNoFalsePositive(t *testing.T) {
 	db := newVersionedDB(t)
@@ -147,7 +147,7 @@ func TestVersionedUnknownVersionDetected(t *testing.T) {
 }
 
 // TestRotateAuditKeyCrossVersionVerify 蓋章鑰輪替不動歷史：v1/v2 兩代列全數驗過
-// （v0 快照已於 release-transitional-cleanup D4 拆除，版本鏈自 v1 起）
+// （v0 快照已拆除，版本鏈自 v1 起）
 func TestRotateAuditKeyCrossVersionVerify(t *testing.T) {
 	db := newVersionedDB(t)
 	svc, km := newVersionedIntegrity(t, db)
@@ -195,7 +195,7 @@ func TestRotateAuditKeyCrossVersionVerify(t *testing.T) {
 	}
 }
 
-// 註：本測試自 internal/service/key_manager_rotation_test.go 隨 W4 搬包遷入
-// （modular-architecture 4.11）。它驗的是蓋章鑰輪替後的跨版本驗章，主題屬 audit
+// 註：本測試自 internal/service/key_manager_rotation_test.go 隨搬包遷入。
+// 它驗的是蓋章鑰輪替後的跨版本驗章，主題屬 audit
 // 完整性；留在原處需把 newVersionedDB／newVersionedIntegrity／versionedTestLog
 // 三個夾具複製過去，而那三者本就是本檔的東西。內容逐字未改。

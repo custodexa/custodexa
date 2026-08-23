@@ -26,7 +26,7 @@ func (Role) TableName() string {
 }
 
 // 預定義角色常數。
-// approver 為可疊加職能角色（access-policy-approval D5）：不參與 primaryRoleOf
+// approver 為可疊加職能角色：不參與 primaryRoleOf
 // 三階排序（admin>auditor>user）、不進 JWT；審核端點守門即時查 DB roles
 const (
 	RoleAdmin    = "admin"

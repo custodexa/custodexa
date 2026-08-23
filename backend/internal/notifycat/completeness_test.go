@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 目錄完備性守衛（design D4）。
+// 目錄完備性守衛。
 //
 // 檢查以純函式 checkCatalog 實作，故可用「刻意破壞的副本」做敏感度自檢
 // （TestCatalogGuardSensitivity）——避免守衛本身失效而長年假綠：

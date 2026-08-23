@@ -5,7 +5,7 @@
       :description="$t('securityPolicies.description')"
     />
 
-    <!-- 明文連線下的建議（codeql-rescan-settlement 決策 4）：本頁自己的協定是
+    <!-- 明文連線下的建議：本頁自己的協定是
          http，而「登入狀態僅在 https 連線保存」開著——使用者（含管理員自己）
          會每 15 分鐘被登出。語氣是建議不是警告：type="info"，列出兩條處置路徑，
          決定權在部署者。**系統不會自動改設定**，本頁唯一的寫入途徑仍是
@@ -27,7 +27,7 @@
       </ol>
     </el-alert>
 
-    <!-- 母頁總覽橫幅（settings-domain-restructure D5）：全系統偏離總數＋分域列表；
+    <!-- 母頁總覽橫幅：全系統偏離總數＋分域列表；
          套用鈕僅動本頁鍵——其他域到各自頁面套用，避免改到未檢視頁的值 -->
     <PolicyPciBanner
       :loading="loading"
@@ -133,7 +133,7 @@ setRestExclude(
   )
 )
 
-// 分域偏離列表（D5）：以後端 compliant 旗標（已儲存狀態）計數，與
+// 分域偏離列表：以後端 compliant 旗標（已儲存狀態）計數，與
 // deviation_count 同源——分域合計＝全系統總數。未歸域的鍵計入本頁
 const domainDeviations = computed(() => {
   const assigned = new Set(

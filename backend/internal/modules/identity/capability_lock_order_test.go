@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// sqlite 路徑的取鎖順序（批 14 對抗審查 M2 / design D13）。
+// sqlite 路徑的取鎖順序。
 //
 // postgres 路徑一律「先開交易、再於交易內取鎖」（advisory xact lock 與列鎖本來
 // 就只存在於交易內）。sqlite 的等價序列化是 key mutex，而它原本取在 db.Transaction
@@ -92,7 +92,7 @@ func TestSqliteCapabilityLocksTakeTransactionBeforeKeyMutex(t *testing.T) {
 }
 
 // TestSqliteUserCredentialLockStillSerializes 順序調整不得換掉序列化本身：
-// 同一 userID 的兩個進入者仍須互斥（否則 M2 的修法就把 write-skew 防護拆了）
+// 同一 userID 的兩個進入者仍須互斥（否則順序調整就把 write-skew 防護拆了）
 func TestSqliteUserCredentialLockStillSerializes(t *testing.T) {
 	db := localAdminDB(t)
 	sqlDB, err := db.DB()
@@ -133,9 +133,9 @@ func TestSqliteUserCredentialLockStillSerializes(t *testing.T) {
 }
 
 // TestCapabilityLocksAcquireProviderBeforeUser 取鎖順序不變式：
-// **provider 鎖 SHALL 早於 user 鎖取得**（design D13：system → provider → user）。
+// **provider 鎖 SHALL 早於 user 鎖取得**（system → provider → user）。
 //
-// # 為何既有兩支測試不足以承接這條不變式（modular-architecture W9 10.3）
+// # 為何既有兩支測試不足以承接這條不變式
 //
 //   - `TestSqliteCapabilityLocksTakeTransactionBeforeKeyMutex` 守的是另一條軸
 //     （交易 vs key mutex 的先後），對 provider／user 之間的先後完全不表態。
@@ -191,7 +191,7 @@ func TestCapabilityLocksAcquireProviderBeforeUser(t *testing.T) {
 	}
 	if !held {
 		t.Fatal("卡在 user 鎖上時 provider 鎖並未被持有——取鎖順序不是 provider → user。" +
-			"D13 的固定順序是跨路徑不互鎖的唯一依據（`WithOIDCProviderLock` 只取 provider、" +
+			"固定的取鎖順序是跨路徑不互鎖的唯一依據（`WithOIDCProviderLock` 只取 provider、" +
 			"`WithLocalAdminInvariant` 走 user 側），顛倒即與它們形成循環等待")
 	}
 }

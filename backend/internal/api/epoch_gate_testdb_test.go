@@ -13,8 +13,8 @@ import (
 // installEpochGateDB 為「只用 mock、原本完全不需要 DB」的路由測試裝一個最小的
 // database.DB，並建出 token 所宣稱的使用者列。
 //
-// 需要它的原因：AuthMiddleware 的憑證世代閘（idp-oidc-integration D2/D9）現查
-// users.credential_epoch，且 **DB 未注入時一律拒**（批 14 對抗審查 M6：原本回 nil
+// 需要它的原因：AuthMiddleware 的憑證世代閘現查
+// users.credential_epoch，且 **DB 未注入時一律拒**（原本回 nil
 // 放行，等於整套撤銷機制可被一條漏接的組裝路徑靜默關掉）。
 //
 // 這些 fixture 先前之所以會過，靠的是同一個 test binary 內其他測試遺留在

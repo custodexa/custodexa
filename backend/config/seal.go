@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// SealConfig B 模式解封端點的部署組態（kek-provider-modularization D6.4）。
+// SealConfig B 模式解封端點的部署組態。
 //
 // **本組態不含任何金鑰材料**：B 模式的 KEK 只由解封 API 進入記憶體，
 // 故此處一律是速率、來源與監聽面的旋鈕，SHALL NOT 新增任何承載材料的鍵。
-// journal 落點亦不在此——它沿用 AUDIT_LOG_PATH 所在目錄、不新增 env 鍵（D6.5）。
+// journal 落點亦不在此——它沿用 AUDIT_LOG_PATH 所在目錄、不新增 env 鍵。
 type SealConfig struct {
 	// BackoffBase per-source 第一次失敗後的退避基準
 	BackoffBase time.Duration
@@ -31,7 +31,7 @@ type SealConfig struct {
 	CooldownMax time.Duration
 
 	// TrustedProxies 可信代理清單（IP 或 CIDR）。
-	// **未設定時 per-IP 退避 SHALL 保守降級為全域退避**（D6.4）：無可信代理鏈
+	// **未設定時 per-IP 退避 SHALL 保守降級為全域退避**：無可信代理鏈
 	// 約定時，限速鍵可被轉送標頭污染而誤歸戶或繞過，寧可影響可用性也不提供
 	// 可繞過的假防線。
 	TrustedProxies []string
@@ -42,7 +42,7 @@ type SealConfig struct {
 	UnsealAllowedCIDRs []string
 }
 
-// 退避／冷卻參數的合法值域（D6.4）。
+// 退避／冷卻參數的合法值域。
 //
 // 上限存在的理由不是「這麼久沒意義」，而是**溢位**：env 是任意整數，
 // `time.Duration(secs) * time.Second` 在 secs 超過 ~9.2e9 時會回繞為負值或
@@ -73,7 +73,7 @@ const sealInvalidThreshold uint32 = 0
 // LoadSeal 讀取封印端點組態。
 //
 // 全部鍵皆有安全預設，未設定即為「不限制來源、共用監聽、內建退避參數」——
-// 產品必須提供這些控制（D6.4 網段繫結升為規範），是否啟用由部署方決定。
+// 產品必須提供這些控制（含網段繫結），是否啟用由部署方決定。
 //
 // 本函式只負責讀取與轉換，**不 fail-close**：合法性由 Validate 於啟動期集中
 // 判定（見 runStage1），使「組態不合法」只有一個出口與一種處置。
@@ -117,7 +117,7 @@ func sealThresholdFromEnv(key string, def uint32) uint32 {
 	return uint32(v)
 }
 
-// Validate 於啟動期驗證退避／冷卻參數，任一項不合法即 fail-close（D6.4）。
+// Validate 於啟動期驗證退避／冷卻參數，任一項不合法即 fail-close。
 //
 // **為何是 fail-close 而非取預設值**：這些旋鈕唯一的作用是限制未認證端點的
 // 嘗試速率。悄悄以預設值頂替一個打錯的值，等於讓部署方以為自己調過參數；

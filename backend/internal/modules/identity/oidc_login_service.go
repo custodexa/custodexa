@@ -26,7 +26,7 @@ var (
 	//
 	// **包裝 ErrOIDCFlowInvalid**：對外回應與其他流程失敗完全不可區分（errors.Is
 	// 仍成立），區分只給呼叫端內部用——此路徑無須接觸 IdP、不受 flow state 容量
-	// 限制，是最便宜的洪水面，其失敗須走聚合審計而非逐筆落庫（3.7a／design D13）
+	// 限制，是最便宜的洪水面，其失敗須走聚合審計而非逐筆落庫（3.7a）
 	ErrOIDCFlowStateNotFound = fmt.Errorf("%w", ErrOIDCFlowInvalid)
 	// ErrOIDCFlowCapacity flow state 全表容量已達上限，暫不接受新流程。
 	//
@@ -51,7 +51,7 @@ const (
 	// oidcTicketMaxBindingFailures 綁定不符的容忍次數。
 	// 不消耗憑證（否則「回原分頁重試」不可能成立）但計次，達此值即作廢
 	oidcTicketMaxBindingFailures = 3
-	// oidcFlowStateCapacity flow state 全表容量上限（design D13 的「儲存量有界」）。
+	// oidcFlowStateCapacity flow state 全表容量上限（「儲存量有界」）。
 	//
 	// begin 是未認證端點且每次呼叫產生一列持久化狀態，沒有帳號可綁、也沒有
 	// 成本可收，唯一不依賴客戶端可控輸入的保證就是全表上限。量級取「TTL 10 分鐘
@@ -79,7 +79,7 @@ type oidcAuditSink interface {
 
 // OIDCAuditEvent 登入流程產出的**審計意向**：只描述「發生了什麼」，不落地。
 //
-// service 一律不自寫流程審計（audit-coverage-closure design Non-Goals）：它拿不到
+// service 一律不自寫流程審計（design Non-Goals）：它拿不到
 // `*gin.Context`，來源位址／路徑／方法／狀態碼四欄必然為空，而那四欄正是稽核
 // 判讀「誰、從哪裡、打了什麼」的全部依據。解法是由持有請求脈絡的 handler 寫，
 // **不是**給 service 傳 context 或 IP——後者把 HTTP 關注點推進 service 層。
@@ -141,7 +141,7 @@ func (t *oidcAuditTrail) fail(err error) error {
 
 // flowError 流程失敗（provider 不可用／授權碼交換失敗／id_token 缺失或驗證失敗）。
 //
-// status 為 `failure` 而非 `denied`（D3 狀態語義分流）：這些是**憑證不成立**的
+// status 為 `failure` 而非 `denied`（狀態語義分流）：這些是**憑證不成立**的
 // 認證失敗，與「身分成立但不准」的授權拒絕（准入規則）語義不同，混為一談會使
 // 既有授權拒絕列不可解釋
 func (t *oidcAuditTrail) flowError(providerID uint, reason string) {
@@ -241,7 +241,7 @@ type BeginResult struct {
 	AuthorizationURL string
 }
 
-// Begin 發起登入流程（idp-oidc-integration D4）。
+// Begin 發起登入流程。
 //
 // bindingHash 為發起端瀏覽器 secret 的 SHA256——DB 保存 state 只證明「伺服器
 // 簽發且未用過」，**不證明 callback 發生在發起的瀏覽器**。攻擊者可自行發起流程、
@@ -298,7 +298,7 @@ func (s *OIDCLoginService) Begin(ctx context.Context, providerID uint,
 	return &BeginResult{AuthorizationURL: url}, nil
 }
 
-// reserveFlowCapacity 全表容量判定（design D13 驗收：begin 洪水下 DB 大小有界）。
+// reserveFlowCapacity 全表容量判定（驗收條件：begin 洪水下 DB 大小有界）。
 //
 // 達上限時**先清過期列再重數**——清理排程週期未到不該讓可回收的空間算進佔用，
 // 否則系統會在真正滿載前就開始拒絕。重數後仍達上限即拒新（不淘舊）。
@@ -347,9 +347,9 @@ type CallbackResult struct {
 	AuditEvents []OIDCAuditEvent
 }
 
-// Callback 處理 IdP 回呼（idp-oidc-integration D5/D7）。
+// Callback 處理 IdP 回呼。
 //
-// 固定順序（D7b，**身分已存在不使准入判定被略過**）：
+// 固定順序（**身分已存在不使准入判定被略過**）：
 // 消費 flow state → 驗證 id_token → 查身分 → 求值 admission → 對應或供應 → 簽出 ticket。
 func (s *OIDCLoginService) Callback(ctx context.Context, state, code string) (*CallbackResult, error) {
 	trail := &oidcAuditTrail{}
@@ -449,7 +449,7 @@ func (s *OIDCLoginService) consumeFlowState(state string) (*model.OIDCFlowState,
 	return &flow, nil
 }
 
-// resolveOrProvision 身分對應或供應（D7b 的固定順序）
+// resolveOrProvision 身分對應或供應（固定順序）
 func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *VerifiedClaims,
 	trail *oidcAuditTrail) (*model.User, error) {
 	rules, err := s.providers.AdmissionRulesOf(p)
@@ -467,7 +467,7 @@ func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *Ver
 		return nil, err
 	}
 
-	// **准入判定於每次認證求值**，不只首次供應（D7b）——規則收緊或使用者 claim
+	// **准入判定於每次認證求值**，不只首次供應——規則收緊或使用者 claim
 	// 變更後，既有身分再次登入須依現行規則判定。身分已存在不使判定被略過。
 	if p.AdmissionMode == model.AdmissionJITWithRules {
 		if ok, failedRule := EvaluateAdmission(rules, claims.Raw); !ok {
@@ -489,7 +489,7 @@ func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *Ver
 		return &user, nil
 	}
 
-	// **自動供應前重驗規則集合規性**（F1 / spec L161-163）：issuer kind 不持久化、
+	// **自動供應前重驗規則集合規性**（spec L161-163）：issuer kind 不持久化、
 	// 每次現算，故部署層移除某 issuer 的專用宣告後，原本合法的「僅 email 網域」
 	// 規則就地變成不合規——但沒有任何寫入發生，寫入期的 ValidateAdmissionConfig
 	// 永遠不會被觸發。缺這一步，共用身分域（如整個 Google／Entra）上任何符合
@@ -527,7 +527,7 @@ func (s *OIDCLoginService) touchIdentity(identity *model.UserExternalIdentity, p
 	}
 }
 
-// provisionFromClaims 首登供應影子用戶（D7b/D7c）。
+// provisionFromClaims 首登供應影子用戶。
 //
 // 三合一交易：建 user＋綁 user 角色＋建外部身分。並發首登以「唯一約束失敗後
 // 重查身分鍵」收斂——命中即視為另一分頁贏得競賽，正常登入且**不落衝突安全事件**
@@ -539,7 +539,7 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 		return nil, ErrOIDCUsernameConflict
 	}
 
-	// 同名不接管（D7d）：映射所得 username 已存在且該帳號無此外部身分 → 拒絕。
+	// 同名不接管：映射所得 username 已存在且該帳號無此外部身分 → 拒絕。
 	// 不做以 username 為鍵的 get_or_create 靜默接管——接管會讓 SSO 使用者直接登進
 	// 同名的本地帳號
 	var existing model.User
@@ -659,7 +659,7 @@ func (s *OIDCLoginService) convergeToExistingIdentity(p *model.OIDCProvider, cla
 	return &u, true
 }
 
-// mapUsername 固定映射順序（D7c）：preferred_username → 已驗證 email 的本地部分 → subject。
+// mapUsername 固定映射順序：preferred_username → 已驗證 email 的本地部分 → subject。
 //
 // **未驗證的 email 不得用於映射**——它可被任意設定，據以產生 username 等同讓
 // 外部使用者自選本地身分
@@ -699,10 +699,10 @@ func truncate(s string, max int) string {
 	return string(r[:max])
 }
 
-// issueTicket 簽出交棒憑證（D5）。DB 僅存雜湊，明文只回給呼叫端一次。
+// issueTicket 簽出交棒憑證。DB 僅存雜湊，明文只回給呼叫端一次。
 //
 // **本函式是 3.8b 通則最關鍵的執行點**：flow state 不帶使用者世代（begin 時尚未
-// 認證，見 D4），ticket 是使用者世代的**第一個攜帶者**。未序列化則序列
+// 認證），ticket 是使用者世代的**第一個攜帶者**。未序列化則序列
 //
 //	callback 讀到 cred_epoch=3 → admin 解綁該身分（推進至 4、掃完既有連線）
 //	→ callback 才簽出 ticket
@@ -757,7 +757,7 @@ func (s *OIDCLoginService) issueTicket(user *model.User, p *model.OIDCProvider,
 	return plain, nil
 }
 
-// Exchange 以交棒憑證換取正式登入回應（D5）。
+// Exchange 以交棒憑證換取正式登入回應。
 //
 // 回應與 /auth/login 同形（含 MFA 分支），故前端既有的登入狀態機零改動即可承接
 func (s *OIDCLoginService) Exchange(ticketPlain, browserSecret string) (*LoginResponse, string, error) {
@@ -772,7 +772,7 @@ func (s *OIDCLoginService) Exchange(ticketPlain, browserSecret string) (*LoginRe
 	// 瀏覽器綁定驗證：**不符時不消耗憑證**（否則「請回到原分頁重試」不可能成立，
 	// 憑證已被落錯的分頁消耗掉），但原子累計失敗次數，達上限即作廢。
 	//
-	// **空的 browser secret 一律視為不符**（codex HIGH）：否則攻擊者可用
+	// **空的 browser secret 一律視為不符**：否則攻擊者可用
 	// `SHA256("")` 當 binding 發起流程，而受害者的 SPA 在 sessionStorage 沒有
 	// secret 時若送出空字串，雜湊即恰好相符——綁定形同虛設，login CSRF 復活。
 	// 判定放在後端而非依賴前端「無 secret 就不呼叫 exchange」的自律
@@ -785,7 +785,7 @@ func (s *OIDCLoginService) Exchange(ticketPlain, browserSecret string) (*LoginRe
 			Where("token_hash = ?", hash).
 			UpdateColumn("binding_failures", gorm.Expr("binding_failures + 1"))
 		if res.Error == nil {
-			// **門檻以 DB 現值判定，不用本次請求開頭讀出的 ticket.BindingFailures**（M4）：
+			// **門檻以 DB 現值判定，不用本次請求開頭讀出的 ticket.BindingFailures**：
 			// 遞增雖是原子的，但陳舊值判門檻會讓三個並發的錯誤綁定各自算出
 			// `0+1 < 3` 而都不刪除——DB 早已是 3，憑證卻要到第 4 次才作廢。
 			// 條件式刪除把「是否達上限」交給同一句 SQL 判斷，與並發次序無關
@@ -865,13 +865,13 @@ func (s *OIDCLoginService) CleanupExpired() {
 	}
 }
 
-// LogAggregatedFailure 聚合失敗事件的審計出口（3.7a／design D13）。
+// LogAggregatedFailure 聚合失敗事件的審計出口（3.7a）。
 //
 // 公開端點的失敗**不逐筆落審計**：偵測訊號本身不得成為 DoS 載體——攻擊者
 // 持續送隨機 state／ticket 即等於持續寫 DB。改由呼叫端（api 層的濫用防護）
 // 以（事件, 來源 IP, 時間窗）聚合，窗結束時落一筆帶計數與首末時間的記錄。
 //
-// **status 由呼叫端給**（D3 狀態語義分流）：事件語義的常數在 api 層（限流拒絕
+// **status 由呼叫端給**（狀態語義分流）：事件語義的常數在 api 層（限流拒絕
 // 屬授權拒絕、隨機 state／ticket 屬憑證不成立），在此處反推事件名會把那份對照
 // 表複製成兩份各自演化
 func (s *OIDCLoginService) LogAggregatedFailure(event, clientIP string, status model.AuditStatus,
@@ -889,7 +889,7 @@ func (s *OIDCLoginService) LogAggregatedFailure(event, clientIP string, status m
 
 // auditUsernameConflict 撞名事件的成因判定（需查庫，故留在 service）。
 //
-// 成因區分（D7d）：既有帳號若已有「相同 issuer、不同 client_id」的身分，
+// 成因區分：既有帳號若已有「相同 issuer、不同 client_id」的身分，
 // 提示很可能是同一 IdP 建了多個 provider，而非真正的撞名
 func (s *OIDCLoginService) auditUsernameConflict(trail *oidcAuditTrail,
 	p *model.OIDCProvider, subject, username string, existingUserID uint) {

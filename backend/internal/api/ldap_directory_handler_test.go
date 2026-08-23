@@ -29,7 +29,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// LDAP 目錄設定 HTTP 面的守衛（ldap-settings-migration 3.1）。
+// LDAP 目錄設定 HTTP 面的守衛。
 //
 // 全部經**完整 RegisterRoutes**（真 AuthMiddleware＋真 RequireRole＋真服務層＋
 // sqlite），不 mock 服務層：本檔要證明的是「服務層既有的判定確實出得了 HTTP
@@ -280,7 +280,7 @@ func TestLDAPDirectoryBindPasswordRules(t *testing.T) {
 }
 
 // TestLDAPDirectoryValidationCodes 存檔驗證的三類拒因各自出得了門，
-// 且**不被併成一支泛碼**——逐因給碼是本批的設計裁決
+// 且**不被併成一支泛碼**——逐因給碼是刻意的
 func TestLDAPDirectoryValidationCodes(t *testing.T) {
 	r, mgr, _, db := setupLDAPDirectoryEnv(t)
 	token := ldapAdminToken(t, mgr, db, 104)
@@ -548,8 +548,8 @@ func TestLDAPDirectoryRequiresAdmin(t *testing.T) {
 // 典型的假綠形態。掃描使新增常數立刻紅
 func TestLDAPReasonCodeTablesExhaustive(t *testing.T) {
 	// **掃描根以 go.mod module 身分為錨，不用固定層數 `..`**
-	// （modular-architecture W1 1.20／W8 9.9）：原本寫 `Dir(thisFile)/../service`，
-	// LDAP 三檔於 W8 搬入 `internal/modules/identity` 後即指向不存在的目錄。
+	// 原本寫 `Dir(thisFile)/../service`，
+	// LDAP 三檔搬入 `internal/modules/identity` 後即指向不存在的目錄。
 	// 失效方向是 t.Fatal（下方「未掃到任何常數」）而非恆綠，但修法仍不能只換字串。
 	identityDir := filepath.Join(ldapReasonBackendRoot(t), "internal", "modules", "identity")
 

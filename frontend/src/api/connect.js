@@ -8,7 +8,7 @@ import { riskLabel } from '@/utils/transportDisplay'
 
 /**
  * 換取一次性連線 token（connect-token）：授權檢查在簽發時完成。
- * options.accountId（asset-multi-account D3）為所選資產帳號——**憑證選擇器而非
+ * options.accountId為所選資產帳號——**憑證選擇器而非
  * 授權快照**，簽發與兌換兩點都以 DB 現查驗客體綁定與帳號授權；省略＝預設帳號。
  * K8s 資產固定單一預設帳號，帶 account_id 會被後端擋（RULE_ACCOUNT_K8S_DEFAULT_ONLY）
  */
@@ -23,7 +23,7 @@ export function createConnectToken(assetId, options = {}) {
   })
 }
 
-/** 傳輸風險同意立據（transmission-security-policy D3）：risk_keys＝使用者看到的風險項 */
+/** 傳輸風險同意立據：risk_keys＝使用者看到的風險項 */
 export function createTransmissionConsent(assetId, riskKeys) {
   return request({
     url: '/transmission-consents',
@@ -43,7 +43,7 @@ export function confirmTransmissionRisks(risks) {
       h(
         'ul',
         { style: 'margin: 8px 0 8px 20px' },
-        // 風險項文案以 risk.key 查譯（i18n-backend-labels）；AssetRisks 無 params
+        // 風險項文案以 risk.key 查譯；AssetRisks 無 params
         risks.map((r) => h('li', { key: r.key }, riskLabel(r)))
       ),
       h('p', null, t('connect.risksConfirmNote')),
@@ -58,7 +58,7 @@ export function confirmTransmissionRisks(risks) {
 }
 
 /**
- * 帶同意流程的簽發（transmission-security-policy 5.2）：
+ * 帶同意流程的簽發：
  * 428（需同意）→對話框→立據→自動重試一次；拒絕即中止。
  * 後端閘才是強制點，本流程僅為呈現層——繞過它直呼簽發同樣被擋
  */
@@ -69,7 +69,7 @@ export async function createConnectTokenWithConsent(assetId, accountId = null) {
   } catch (error) {
     const resp = error?.response
 
-    // 存取政策閘 403 分流（access-policy-approval D7 補充二）：行為以後端
+    // 存取政策閘 403 分流：行為以後端
     // 回應為準——列表按鈕態過時（核准後/到期後未刷新）在此自癒
     if (resp?.status === 403 && resp.data?.reason === 'reason_required') {
       // 填理由段：就地補一張理由單（後端自動核准）後重試連線
@@ -93,7 +93,7 @@ export async function createConnectTokenWithConsent(assetId, accountId = null) {
       return await createConnectToken(assetId, { accountId })
     }
     if (resp?.status === 403 && resp.data?.reason === 'recording_unavailable') {
-      // 錄影 fail-close（recording-failure-handling D2）：reason 顯式分流，
+      // 錄影 fail-close：reason 顯式分流，
       // 不依賴後端文案經 generic toast 轉述——阻斷性狀態用對話框明確告知
       await ElMessageBox.alert(
         t('connect.recordingUnavailableMessage'),

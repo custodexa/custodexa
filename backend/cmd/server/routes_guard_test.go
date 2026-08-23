@@ -624,7 +624,7 @@ func guardModuleRoot(t *testing.T) string {
 //
 // **原以 Dir(runtime.Caller) 取本測試檔所在目錄**：那等於「守衛永遠掃自己住的
 // 那個包」——守衛檔一旦隨重構搬走，它會安靜地改掃新家，而真正的組裝根從此
-// 無人看守（modular-architecture W1 1.20）。改以 go.mod module 身分錨點
+// 無人看守。改以 go.mod module 身分錨點
 // ＋具名相對路徑定位，找不到即 Fatal：組裝根若搬遷，SHALL 同步改
 // assemblyPkgRel，而不是讓守衛靜默跟著漂走。
 func cmdServerDir(t *testing.T) string {
@@ -1100,8 +1100,8 @@ func snapshotHook(r *gin.Engine) { r.Use() }
 	}
 }
 
-// snapshotResidue：characterization hook 的識別字。hook 屬 route-composition-root
-// A-0 的一次性工具，golden 入庫後即移除，不得再度出現於 production 原始碼。
+// snapshotResidue：characterization hook 的識別字。hook 是 golden 入庫前的
+// 一次性工具，入庫後即移除，不得再度出現於 production 原始碼。
 var snapshotResidue = []string{
 	"routesnapshot",             // build tag 名
 	"installRouteSnapshotProbe", // probe 安裝點

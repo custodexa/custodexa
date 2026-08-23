@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TestEvalTunnelTimeout D7 判定：max 優先於 idle、0=停用該檢查
+// TestEvalTunnelTimeout 逾時判定：max 優先於 idle、0=停用該檢查
 func TestEvalTunnelTimeout(t *testing.T) {
 	now := time.Now()
 	start := now.Add(-2 * time.Hour)
@@ -37,7 +37,7 @@ func TestEvalTunnelTimeout(t *testing.T) {
 	}
 }
 
-// TestClientInputOpcodes D7：僅使用者輸入算活動，協議心跳與畫面更新不算
+// TestClientInputOpcodes 僅使用者輸入算活動，協議心跳與畫面更新不算
 func TestClientInputOpcodes(t *testing.T) {
 	for _, op := range []string{"mouse", "key", "touch", "clipboard", "file"} {
 		if !clientInputOpcodes[op] {

@@ -146,7 +146,7 @@ func TestChannelHasSecretFlag(t *testing.T) {
 	}
 }
 
-// TestChannelLanguageSemantics per-channel 語系 CUD 四情境（backend-i18n-unification D5）：
+// TestChannelLanguageSemantics per-channel 語系 CUD 四情境：
 // strPtr 小工具見 access_policy_service_test.go（同 package 共用，
 // NotificationChannelRequest.Language 用 *string 區分「省略」與「顯式提供」）
 // Create 未給預設 zh-TW／Update 省略保留舊值／顯式空值拒／白名單外值拒

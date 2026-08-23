@@ -21,9 +21,9 @@ import (
 const (
 	// totpIssuer otpauth URL 的發行者名稱（顯示於驗證器 App）
 	totpIssuer = branding.Name
-	// mfaPendingTokenTTL pending token 短效設計：縮小重放窗口（見 design.md D1）
+	// mfaPendingTokenTTL pending token 短效設計：縮小重放窗口
 	mfaPendingTokenTTL = 5 * time.Minute
-	// mfaEnrollmentTokenTTL 強制註冊 token TTL（D5：需裝 App＋掃 QR＋輸碼，5 分太緊）
+	// mfaEnrollmentTokenTTL 強制註冊 token TTL（需裝 App＋掃 QR＋輸碼，5 分太緊）
 	mfaEnrollmentTokenTTL = 15 * time.Minute
 	// totpPeriod/totpSkew 與 pquerna/otp 預設一致（SHA1、6 位、30 秒、skew 1）
 	totpPeriod = 30
@@ -43,7 +43,7 @@ var (
 	ErrMFASetupRequired = errors.New("請先產生 MFA 設定")
 	// ErrMFAPendingTokenInvalid pending token 無效、過期或 scope 不符
 	ErrMFAPendingTokenInvalid = errors.New("無效或過期的 MFA 驗證 token")
-	// ErrMFAAlreadyEnrolled 帳號已註冊 TOTP，不得再走強制註冊流程（對抗驗證 MFA-1）：
+	// ErrMFAAlreadyEnrolled 帳號已註冊 TOTP，不得再走強制註冊流程：
 	// enrollment token 洩漏後不得用以重置/改綁已註冊帳號的第二因子
 	ErrMFAAlreadyEnrolled = errors.New("此帳號已完成 MFA 註冊")
 )
@@ -69,7 +69,7 @@ func matchTOTPStep(code, secret string, now time.Time) (uint64, bool) {
 	return 0, false
 }
 
-// consumeTOTP 驗證 TOTP 碼並以 CAS 條件 UPDATE 原子推進已消耗 step（8.5.1，D5）。
+// consumeTOTP 驗證 TOTP 碼並以 CAS 條件 UPDATE 原子推進已消耗 step（8.5.1）。
 // 回傳：nil=通過且 step 已推進；ErrMFAInvalidCode=碼錯；ErrMFAReplay=step 已被消耗
 // （並發或跨 skew 窗同碼重放）。涵蓋登入驗證與綁定確認兩路徑
 func (s *AuthService) consumeTOTP(userID uint, secret, code string) error {
@@ -122,7 +122,7 @@ func (s *AuthService) GenerateMFASetup(userID uint) (*MFASetupResponse, error) {
 		return nil, err
 	}
 
-	// 帶欄位身分加密（D5 cutover）：AAD 綁 users.totp_secret_enc，
+	// 帶欄位身分加密：AAD 綁 users.totp_secret_enc，
 	// 密文搬到別表別欄即解不開
 	encSecret, err := s.mfaCrypto.EncryptFor(context.Background(), keyvault.RefUserTOTPSecret, key.Secret())
 	if err != nil {
@@ -200,7 +200,7 @@ func (s *AuthService) AdminDisableMFA(targetUserID uint) error {
 }
 
 // VerifyMFALogin 第二階段登入：以 pending token + TOTP 碼交換正式 session token。
-// TOTP 失敗與密碼失敗共用同一鎖定計數（D2：8.3.4 原文是 invalid authentication attempts
+// TOTP 失敗與密碼失敗共用同一鎖定計數（8.3.4 原文是 invalid authentication attempts
 // 不限密碼——否則持被竊密碼者可在每個 pending 窗內無限暴力猜 6 位 TOTP）
 func (s *AuthService) VerifyMFALogin(req *MFAVerifyRequest) (*LoginResponse, error) {
 	// 專用解析：僅接受 scope=mfa_pending 的 token，正式 token 不得走此通道
@@ -221,7 +221,7 @@ func (s *AuthService) VerifyMFALogin(req *MFAVerifyRequest) (*LoginResponse, err
 		return nil, ErrUserInactive
 	}
 
-	// 憑證世代閘（idp-oidc-integration 2.6/2.8）：pending token 是「第一因子已通過」
+	// 憑證世代閘：pending token 是「第一因子已通過」
 	// 的能力憑證，**尚未兌換**故不在任何連線掃描的涵蓋範圍內。缺此判定時，
 	// 管理者把帳號改為僅外部登入（或解綁身分、停用帳號）之後，持有 pending token 者
 	// 仍可完成 TOTP 驗證；且 finishLogin 會因帳號此時已外部化而跳過密碼 gate，
@@ -308,7 +308,7 @@ func (s *AuthService) validateEnrollmentClaims(tokenString string) (*crypto.Clai
 	return claims, nil
 }
 
-// requireNotEnrolled 強制註冊流程的前置守衛（對抗驗證 MFA-1）：重載用戶並拒已註冊者。
+// requireNotEnrolled 強制註冊流程的前置守衛：重載用戶並拒已註冊者。
 // enrollment 的前提是「受強制但未註冊」，token 簽發後 15 分內用戶可能已在他處完成綁定；
 // 若不重查，持洩漏的 enrollment token 可重置並改綁已註冊帳號的第二因子
 func (s *AuthService) requireNotEnrolled(userID uint) error {
@@ -328,21 +328,21 @@ func (s *AuthService) EnrollmentSetup(enrollmentToken string) (*MFASetupResponse
 	if err != nil {
 		return nil, err
 	}
-	// 已註冊者不得用 enrollment token 重置因子（MFA-1）
+	// 已註冊者不得用 enrollment token 重置因子
 	if err := s.requireNotEnrolled(claims.UserID); err != nil {
 		return nil, err
 	}
 	return s.GenerateMFASetup(claims.UserID)
 }
 
-// CompleteEnrollment 以 enrollment token + TOTP 碼完成綁定並直接換發正式會話（D12）。
+// CompleteEnrollment 以 enrollment token + TOTP 碼完成綁定並直接換發正式會話。
 // 綁定成功即證明持有因子，不重走登入；若同時須強制改密，finishLogin 會回改密 token
 func (s *AuthService) CompleteEnrollment(enrollmentToken, code string) (*LoginResponse, error) {
 	claims, err := s.validateEnrollmentClaims(enrollmentToken)
 	if err != nil {
 		return nil, err
 	}
-	// 已註冊者不得改綁（MFA-1）：即使搶在 setup 後、他處完成綁定前重放也擋下
+	// 已註冊者不得改綁：即使搶在 setup 後、他處完成綁定前重放也擋下
 	if err := s.requireNotEnrolled(claims.UserID); err != nil {
 		return nil, err
 	}

@@ -19,7 +19,7 @@
     </el-steps>
 
     <div class="step-content">
-      <!-- Step 1: 選擇主體（使用者或使用者群組，user-group-authorization） -->
+      <!-- Step 1: 選擇主體（使用者或使用者群組） -->
       <div v-show="currentStep === 0">
         <el-radio-group
           v-model="subjectMode"
@@ -105,7 +105,7 @@
             width="150"
           >
             <template #default="{ row }">
-              <!-- 角色取 role.name（原噴整包 role 物件 JSON，authorization-page-redesign 修錯） -->
+              <!-- 角色取 role.name（原噴整包 role 物件 JSON） -->
               <el-tag
                 v-for="role in row.roles || []"
                 :key="role.id"
@@ -133,7 +133,7 @@
         </el-table>
       </div>
 
-      <!-- Step 2: 選擇資產（逐資產或節點含子樹，asset-node-tree D5） -->
+      <!-- Step 2: 選擇資產（逐資產或節點含子樹） -->
       <div v-show="currentStep === 1">
         <el-radio-group
           v-model="targetMode"
@@ -168,7 +168,7 @@
           />
         </template>
 
-        <!-- 挑選輔助（authz-tag-node-filters D6）：搜尋/節點/標籤伺服端過濾疊加，
+        <!-- 挑選輔助：搜尋/節點/標籤伺服端過濾疊加，
              reserve-selection 跨篩選保勾選 -->
         <div
           v-if="targetMode === 'assets'"
@@ -418,7 +418,7 @@ import { getUserGroups } from '@/api/userGroups'
 import { getUsers } from '@/api/auth'
 import { t } from '@/i18n'
 
-// 批次授權精靈（authorization-page-redesign D6：自 Authorizations.vue 拆出，
+// 批次授權精靈（自 Authorizations.vue 拆出，
 // 流程零改動；prefillNodeId 承接資產樹「授權此節點」深連結預填契約）
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -448,7 +448,7 @@ const userGroupList = ref([])
 const assetList = ref([])
 const groupList = ref([])
 
-// 挑選輔助（authz-tag-node-filters D6）：伺服端過濾狀態
+// 挑選輔助：伺服端過濾狀態
 const assetNodeFilter = ref(null)
 const assetTagFilter = ref([])
 const tagOptions = ref([])
@@ -465,7 +465,7 @@ const assetListTruncated = computed(
 const assetListParams = () => {
   const params = { page_size: 1000 }
   if (assetSearchText.value) params.search = assetSearchText.value
-  // include_subtree 預設含子樹（後端 D5 契約）
+  // include_subtree 預設含子樹（後端契約）
   if (assetNodeFilter.value) params.node_id = assetNodeFilter.value
   if (assetTagFilter.value.length) params.tags = assetTagFilter.value.join(',')
   return params
@@ -531,14 +531,14 @@ const nodeTreeOptions = computed(() => {
   return roots
 })
 
-// 節點樹 checkbox（asset-node-tree D5）：check-strictly 各自獨立勾——
+// 節點樹 checkbox：check-strictly 各自獨立勾——
 // 授節點語義已含子樹，父子連動勾選反而造成重複授權
 const handleNodeCheck = () => {
   const checked = nodeCheckTreeRef.value?.getCheckedNodes() || []
   selectedGroups.value = checked
 }
 
-// 模式切換清殘留（codex 對抗審查 P1）：切到另一模式時隱藏面板的選擇
+// 模式切換清殘留：切到另一模式時隱藏面板的選擇
 // 仍在 state，提交會靜默同時授權兩者——切換即清空對面模式的選擇
 watch(targetMode, (mode) => {
   if (mode === 'assets') {
@@ -582,7 +582,7 @@ async function loadLists() {
   } catch (err) {
     console.error('載入精靈選項失敗:', err)
   }
-  // 資產清單走伺服端過濾（D6），與上列選項獨立載入
+  // 資產清單走伺服端過濾，與上列選項獨立載入
   await reloadAssetList()
 }
 
@@ -618,7 +618,7 @@ const handleNextStep = () => {
   }
 }
 
-// 批次提交：伺服端交易內展開（user-group-authorization D6），
+// 批次提交：伺服端交易內展開，
 // 主體集 users∪user_groups × 客體集 assets∪asset_groups，既有組合跳過
 const handleBatchSubmit = async () => {
   batchProcessing.value = true
@@ -676,7 +676,7 @@ function resetState() {
   batchProgress.value = 0
   batchProcessedCount.value = 0
   batchTotalCount.value = 0
-  // 挑選輔助歸零＋顯式清空表格選擇（對抗驗證 M2：reserve-selection 跨資料
+  // 挑選輔助歸零＋顯式清空表格選擇（reserve-selection 跨資料
   // 替換保留，重開精靈殘留上次勾選＝溢授；廢棄在途請求防舊回應落地）
   assetNodeFilter.value = null
   assetTagFilter.value = []
@@ -714,7 +714,7 @@ defineExpose({
   nodeTreeOptions,
   handleBatchSubmit,
   handleNodeCheck,
-  // 挑選輔助（authz-tag-node-filters D6）
+  // 挑選輔助
   assetList,
   assetListTotal,
   assetListTruncated,

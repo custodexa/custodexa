@@ -1,6 +1,6 @@
 package proxy
 
-// AsyncSink 的**消費側**測試（modular-architecture W10.2，DoD-2 補強）
+// AsyncSink 的**消費側**測試
 //
 // 既有的 `file_tap_test.go` 雖然也是經 `gatewayapi.AsyncSink` 注入，但注入的是
 // 生產實作（`audit.NewDirectSink`），驗的是「事件最終落到 audit_logs 表」——

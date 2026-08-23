@@ -1,4 +1,4 @@
-// env 側金鑰名稱/說明的查譯（i18n-backend-labels 模式）：錨後端穩定機器碼
+// env 側金鑰名稱/說明的查譯：錨後端穩定機器碼
 // name_code / note_code，當前語言命中才譯，否則降級後端 zh 字串（wire fallback）。
 import { t } from '@/i18n'
 import { translated, warnMissingTranslation } from '@/utils/i18nDisplay'
@@ -28,8 +28,8 @@ export function keyEnvNote(row) {
   return row.note || ''
 }
 
-// effectiveAccessNote 有效權限客體視角的角色隱含摘要（asset-multi-account
-// UI 走查 F2）：後端 role_override_note 為 zh wire fallback、
+// effectiveAccessNote 有效權限客體視角的角色隱含摘要：
+// 後端 role_override_note 為 zh wire fallback、
 // role_override_note_code 為機器碼；沿 keyEnvNote 同型查譯與降級。
 export function effectiveAccessNote(resp) {
   if (!resp) return ''

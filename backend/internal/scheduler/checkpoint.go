@@ -9,7 +9,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// CheckpointScheduler 審計檢查點封章排程器（audit-checkpoint-chain D3）。
+// CheckpointScheduler 審計檢查點封章排程器（audit-checkpoint-chain）。
 //
 // **每分鐘檢查一次觸發條件**，而非每小時跑一次：兩個門檻是「先到先觸發」
 // （滿 1 小時 或 累積 10000 筆），筆數門檻要能在小時內生效就必須高頻檢查。

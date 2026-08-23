@@ -1,6 +1,6 @@
 package apierror
 
-// OIDC 身分提供者整合（idp-oidc-integration）的出口碼。
+// OIDC 身分提供者整合的出口碼。
 //
 // 本檔與 codes.go 同一 registry，分檔僅為並行開發隔離：收 internal/api 的
 // oidc_handler.go 一檔。命名沿用既有慣例：VALIDATION_*（請求欄位／參數）、

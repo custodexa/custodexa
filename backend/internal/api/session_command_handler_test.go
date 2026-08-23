@@ -174,7 +174,7 @@ func TestSessionCommandHandler_Search(t *testing.T) {
 		mockService.AssertExpectations(t)
 	})
 
-	// degraded 過濾與 degraded_total 的接線（command-audit-altscreen-bypass）。
+	// degraded 過濾與 degraded_total 的接線。
 	//
 	// **未帶 degraded 時 filter.Degraded 必須是 nil**：值型 bool 的零值是 false，
 	// 會把「沒指定」靜默變成「只要有文字的列」——降級列整批消失而查詢看起來正常。

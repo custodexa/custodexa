@@ -7,7 +7,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// TestPrimaryRoleOf_Priority 有效角色優先序固定 admin > auditor > user（session-access-scoping D4）：
+// TestPrimaryRoleOf_Priority 有效角色優先序固定 admin > auditor > user：
 // 不得受 Roles 綁定順序影響——[user,auditor] 取到 user 會造成後端 403 前端放行的破版
 func TestPrimaryRoleOf_Priority(t *testing.T) {
 	cases := []struct {
@@ -23,7 +23,7 @@ func TestPrimaryRoleOf_Priority(t *testing.T) {
 		{"無角色預設 user", []string{}, "user"},
 		{"未知角色沿舊行為取第一個", []string{"ops"}, "ops"},
 		{"未知角色混已知取已知", []string{"ops", "auditor"}, "auditor"},
-		// approver 為可疊加職能角色（access-policy-approval D5）：不參與三階排序、
+		// approver 為可疊加職能角色：不參與三階排序、
 		// 不改變有效角色判定——釘死防止未來把 approver 塞進 priority 表
 		{"approver 疊加不改 user 判定", []string{"user", "approver"}, "user"},
 		{"approver 疊加不改 admin 判定", []string{"approver", "admin"}, "admin"},

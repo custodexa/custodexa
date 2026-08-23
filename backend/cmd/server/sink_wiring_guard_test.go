@@ -1,6 +1,6 @@
 package main
 
-// 接線完整性守衛（modular-architecture W5 對抗 F1）。
+// 接線完整性守衛。
 //
 // # 這道守衛補的是哪一種漏
 //
@@ -11,9 +11,9 @@ package main
 //	sshHandler.AlertSink = alertSink        ← 換成 `_ = alertSink`
 //	  → go build ./... 過
 //	  → cmd/server（含全部啟動自檢守衛）／internal/sshproxy／internal/modules/audit 三包全綠
-//	  → 生產後果：阻斷告警不入庫、不通知、不 tee，只剩一行 log（比 BD-1 更重）
+//	  → 生產後果：阻斷告警不入庫、不通知、不 tee，只剩一行 log（比單純漏 tee 更重）
 //
-// W5 對抗紅隊實跑證實了上述形態。這是**通用形態**而非單一案例：每一波新增的 sink 都會
+// 實跑證實了上述形態。這是**通用形態**而非單一案例：每個新增的 sink 都會
 // 產生一組「自檢過的變數」與「消費端欄位」，兩者之間的那一行永遠是無守衛的單點。
 //
 // # 為何是登記表而非硬編碼
@@ -21,14 +21,14 @@ package main
 // 本檔的判定資料全在 `sinkWiringRegistry`：新增一個 `require*` 自檢卻不登記它的消費端，
 // 由 `TestSinkWiringRegistryCoversEveryStartupGuard` 轉紅（登記表對現實的反向完備）；
 // 既有 sink 的某個消費端被拆線，由 `TestRequiredSinksAreWiredToConsumers` 指名轉紅。
-// W6-W10 只需在登記表加一列，不需要改判定邏輯。
+// 後續只需在登記表加一列，不需要改判定邏輯。
 //
 // # 守衛的界限（誠實界定）
 //
 // 本守衛做的是**語法層**判定：「組裝根裡存在一處把該變數交給指名消費端的賦值／傳入」。
 // 它保證不了「消費端拿到之後真的用它」——那要型別資訊與資料流分析。它擋的是
 // 「接線那一行被刪掉／被改成別的值／被 `_ =` 吃掉」這一類**沉默拆線**，
-// 而那正是紅隊實證可以全綠溜過的形態。
+// 而那正是實跑證實可以全綠溜過的形態。
 
 import (
 	"go/ast"
@@ -75,7 +75,7 @@ type sinkWiring struct {
 	consumers []sinkConsumer
 }
 
-// sinkWiringRegistry 接線登記表（W5 對抗 F1）。
+// sinkWiringRegistry 接線登記表。
 //
 // **新增 `require*` 自檢時 SHALL 一併在此登記其消費端**，否則
 // TestSinkWiringRegistryCoversEveryStartupGuard 轉紅。登記的消費端是
@@ -88,7 +88,7 @@ var sinkWiringRegistry = []sinkWiring{
 		consumers: []sinkConsumer{
 			{
 				kind: consumerCallArg, target: "NewLDAPDirectoryService",
-				why: "TxSink 的第一個消費者（W4 4.3）：LDAP 目錄設定的交易內審計由此落地",
+				why: "TxSink 的第一個消費者：LDAP 目錄設定的交易內審計由此落地",
 			},
 			{
 				kind: consumerCallArg, target: "RegisterLDAPSeedMigration",
@@ -96,7 +96,7 @@ var sinkWiringRegistry = []sinkWiring{
 			},
 			{
 				kind: consumerStructField, target: "auditTxSink",
-				why: "routeServices 注入：節點樹與使用者群組刪除留痕的唯一出口（W4 4.4）",
+				why: "routeServices 注入：節點樹與使用者群組刪除留痕的唯一出口",
 			},
 		},
 	},
@@ -110,7 +110,7 @@ var sinkWiringRegistry = []sinkWiring{
 			},
 			{
 				kind: consumerCallArg, target: "SetAuditSink",
-				why: "外部身分管理四操作的審計出口（idp-oidc-integration 2.8），拆線即該四操作無痕",
+				why: "外部身分管理四操作的審計出口，拆線即該四操作無痕",
 			},
 		},
 	},
@@ -134,8 +134,8 @@ var sinkWiringRegistry = []sinkWiring{
 		consumers: []sinkConsumer{
 			{
 				kind: consumerFieldAssign, target: "sshHandler.AlertSink",
-				why: "阻斷路徑（BD-1）：每條會話的 commandBlocker 由此取得落地面。" +
-					"拆線即阻斷告警不入庫、不通知、不 tee——W5 對抗 F1 的實證形態",
+				why: "阻斷路徑：每條會話的 commandBlocker 由此取得落地面。" +
+					"拆線即阻斷告警不入庫、不通知、不 tee——已實證的假綠形態",
 			},
 			{
 				kind: consumerCallArg, target: "InitAlertMatcher",
@@ -181,7 +181,7 @@ func parseAssemblyRoot(t *testing.T) *assemblyRootFiles {
 	return out
 }
 
-// TestRequiredSinksAreWiredToConsumers F1：自檢過的每個 sink 都必須接到登記的消費端。
+// TestRequiredSinksAreWiredToConsumers 自檢過的每個 sink 都必須接到登記的消費端。
 //
 // 「自檢通過」與「接線存在」是兩件事——前者只證明組裝根手上那個變數不是 nil。
 func TestRequiredSinksAreWiredToConsumers(t *testing.T) {
@@ -208,7 +208,7 @@ func TestRequiredSinksAreWiredToConsumers(t *testing.T) {
 			t.Errorf("組裝根少了一條接線：%s 的「%s → %s」不存在。\n"+
 				"　　該接線的作用：%s\n"+
 				"　　注意 %s 通過**不代表**接線存在——它檢的是變數是否為 nil，"+
-				"不是變數有沒有被交給消費端；把接線改成 `_ = %s` 之下自檢照樣通過（W5 對抗 F1）。\n"+
+				"不是變數有沒有被交給消費端；把接線改成 `_ = %s` 之下自檢照樣通過。\n"+
 				"　　若接線是正當地搬到別處，SHALL 更新 sinkWiringRegistry 的 target 而非刪除本格",
 				w.variable, c.kind, c.target, c.why, w.guard, w.variable)
 		}
@@ -241,7 +241,7 @@ func TestSinkWiringRegistryCoversEveryStartupGuard(t *testing.T) {
 	for name := range declared {
 		if _, ok := registered[name]; !ok {
 			t.Errorf("%s 是啟動自檢但未在 sinkWiringRegistry 登記接線："+
-				"自檢只證明變數非 nil，接線是否存在無人可擋（W5 對抗 F1）。"+
+				"自檢只證明變數非 nil，接線是否存在無人可擋。"+
 				"新增 require* 時 SHALL 一併登記其消費端", name)
 		}
 	}

@@ -17,7 +17,7 @@ import (
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
-// KEK 材料的輸入編碼於解封端點的驗收（kek-encoding-and-unseal-entry）。
+// KEK 材料的輸入編碼於解封端點的驗收。
 //
 // **紅線**：新增的解碼路徑不得製造新的可區分訊號。既有的
 // TestUnsealFailureResponsesIndistinguishable 只涵蓋「格式／材料／解析」三類；

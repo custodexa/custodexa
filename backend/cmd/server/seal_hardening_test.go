@@ -18,9 +18,9 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 )
 
-// 組裝根的 fail-close 驗收（kek-provider-modularization D6.1／D6.4／D6.6）。
+// 組裝根的 fail-close 驗收。
 
-// TestStageOneEngineDisablesRedirects 封印期不得以 redirect 洩漏路由是否存在（M2）。
+// TestStageOneEngineDisablesRedirects 封印期不得以 redirect 洩漏路由是否存在。
 //
 // gin 的尾斜線／路徑修正 redirect 發生在中間件鏈之前：封印閘根本沒有機會執行。
 // 於是 `/api/v1/assets/` 回 301 而 `/api/v1/not-a-route/` 回 503，
@@ -49,7 +49,7 @@ func TestStageOneEngineDisablesRedirects(t *testing.T) {
 	}
 }
 
-// TestHealthzProbeIsWhitelisted D6.1 指名的探針路徑於封印期可用（M3）。
+// TestHealthzProbeIsWhitelisted 規格指名的探針路徑於封印期可用。
 //
 // 依設計文件配置探針的部署，過去在封印期收到的是 503——不是因為服務真的不健康，
 // 而是因為那條路徑根本沒被註冊。
@@ -69,7 +69,7 @@ func TestHealthzProbeIsWhitelisted(t *testing.T) {
 	}
 }
 
-// TestSealOnlyRouterHasNoBusinessRoutes 獨立解封監聽只有 seal 端點群（H2）。
+// TestSealOnlyRouterHasNoBusinessRoutes 獨立解封監聽只有 seal 端點群。
 //
 // 主 router 與獨立監聽若共用同一份路由表，解封成功後換上的完整業務樹就會
 // **同時**出現在管理監聽上：部署方以為把解封端點收進管理網段，
@@ -139,7 +139,7 @@ func TestSealOnlyRoutesAreStrictSubset(t *testing.T) {
 	}
 }
 
-// TestNewEngineRejectsInvalidTrustedProxies 可信代理設定非法即拒絕，不得靜默沿用 gin 預設（H4）。
+// TestNewEngineRejectsInvalidTrustedProxies 可信代理設定非法即拒絕，不得靜默沿用 gin 預設。
 //
 // 舊行為的組合是最壞的：保留 gin 預設的「信任全部代理」，同時向來源控管回報
 // 「可信代理已設定」。偽造的轉送標頭因此可同時繞過網段白名單與 per-source 退避，
@@ -172,7 +172,7 @@ func TestNewEngineRejectsInvalidTrustedProxies(t *testing.T) {
 	}
 }
 
-// TestOpenListenersFailsClosed 任一監聽位址建立失敗即整體失敗（H3）。
+// TestOpenListenersFailsClosed 任一監聽位址建立失敗即整體失敗。
 //
 // 舊行為把獨立監聽的 ListenAndServe 丟進 goroutine、失敗只記一行 log：
 // 位址被佔用或無權繫結時，行程照樣以「解封端點已隔離」的姿態提供服務，
@@ -250,11 +250,11 @@ func TestRunShutdownKeepsExitCode(t *testing.T) {
 
 // TestSealMaterialFailuresShareOneResponse 材料類失敗共用同一回應；限速類刻意可區分。
 //
-// D6.6 的承諾範圍是**材料類五種**（格式／材料驗證失敗／初始化憑證錯／
+// 不可區分的承諾範圍是**材料類五種**（格式／材料驗證失敗／初始化憑證錯／
 // paste-back 不符／保存確認未勾）：狀態碼、機器碼、body 與 headers 全部相同。
 // 憑證錯必須併入——否則攻擊者可探得「密碼對但 KEK 錯」這個極有價值的區分。
 //
-// **限速類（退避／冷卻）刻意可區分**：D6.4 要求冷卻可被管理員與監控觀測，
+// **限速類（退避／冷卻）刻意可區分**：冷卻必須可被管理員與監控觀測，
 // 若連 429 都要偽裝成 400，運維就無從得知「現在只是在等冷卻」。
 func TestSealMaterialFailuresShareOneResponse(t *testing.T) {
 	env := newSealIntegrationEnv(t, func(c *config.SealConfig) {

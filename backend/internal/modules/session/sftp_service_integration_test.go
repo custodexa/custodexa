@@ -39,19 +39,19 @@ func newSFTPServiceForTest(t *testing.T) *SFTPService {
 	assetService, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
 	require.NoError(t, err)
 
-	// 密文落點為 asset_accounts.password_enc，AAD 須綁該欄位身分（D5）。
-	// **W6 6.6**：原本走 `assetService.crypto`（asset 的未匯出欄），搬包後跨包取不到；
+	// 密文落點為 asset_accounts.password_enc，AAD 須綁該欄位身分。
+	// 原本走 `assetService.crypto`（asset 的未匯出欄），搬包後跨包取不到；
 	// 改用**同一個** codec 實例——加密結果逐位元組相同，非放寬。
 	encrypted, _ := codec.EncryptFor(context.Background(), keyvault.RefAccountPassword, "testpass123")
 
 	// 每次 GetWithCredentialsDefault 查一次資產＋一次 default 帳號
-	//（asset-multi-account 階段 2：username 與憑證皆自帳號取得）；
+	//（階段 2：username 與憑證皆自帳號取得）；
 	// 預期足夠多次供整連串操作使用
 	for i := 0; i < 12; i++ {
 		rows := mock.NewRows([]string{"id", "name", "protocol", "host", "port", "username"}).
 			AddRow(1, "ssh-test", model.ProtocolSSH, "ssh-test", 2222, "testuser")
 		mock.ExpectQuery(`SELECT .+ FROM "assets"`).WillReturnRows(rows)
-		// fillAssetNodeInfo（asset-node-tree）：成員空集即早退不查路徑
+		// fillAssetNodeInfo：成員空集即早退不查路徑
 		mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 			WillReturnRows(mock.NewRows([]string{"id", "asset_id", "node_id"}))
 		mock.ExpectQuery(`SELECT .+ FROM "asset_accounts"`).
@@ -152,7 +152,7 @@ func TestSFTPInvalidPathShortCircuits(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrInvalidRemotePath))
 }
 
-// setupAssetMockDB 的 session 側複本（W6 6.6）：原件隨 asset_service_test.go
+// setupAssetMockDB 的 session 側複本：原件隨 asset_service_test.go
 // 遷入 asset 包，跨包取不到未匯出的測試 helper。逐行複製。
 func setupAssetMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *gorm.DB) {
 	db, mock, err := sqlmock.New()
@@ -172,7 +172,7 @@ func setupAssetMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock, *gorm.DB) {
 	return db, mock, gormDB
 }
 
-// setupHostKeyDB 的 session 側複本（W6 6.6，原件隨 hostkey_service_test.go 遷入 asset 包）。
+// setupHostKeyDB 的 session 側複本（原件隨 hostkey_service_test.go 遷入 asset 包）。
 func setupHostKeyDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {

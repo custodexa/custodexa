@@ -119,7 +119,7 @@ func TestCheckPermission_AuditorRole_ViewShortCircuit(t *testing.T) {
 }
 
 // TestCheckPermission_AuditorRole_ConnectDenied 稽核角色對 connect 不短路，
-// 無顯式授權時拒絕（CPG-002 職責分離：稽核者只檢視不連線）
+// 無顯式授權時拒絕（職責分離：稽核者只檢視不連線）
 func TestCheckPermission_AuditorRole_ConnectDenied(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
@@ -135,12 +135,12 @@ func TestCheckPermission_AuditorRole_ConnectDenied(t *testing.T) {
 	hasPermission, err := service.CheckPermission(ctx, 2, 200, model.PermissionConnect)
 
 	assert.NoError(t, err)
-	assert.False(t, hasPermission, "Auditor 不得因角色自動取得 connect（CPG-002）")
+	assert.False(t, hasPermission, "Auditor 不得因角色自動取得 connect")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
 // TestCheckPermission_AuditorRole_ConnectExplicitGrant 稽核角色若被顯式授予某資產
-// connect，仍可連（design D1：保留顯式授權單一事實源）
+// connect，仍可連（保留顯式授權單一事實源）
 func TestCheckPermission_AuditorRole_ConnectExplicitGrant(t *testing.T) {
 	_, mock, gormDB := setupAuthorizationMockDB(t)
 	service := NewAssetAuthorizationService(gormDB)
@@ -155,7 +155,7 @@ func TestCheckPermission_AuditorRole_ConnectExplicitGrant(t *testing.T) {
 	hasPermission, err := service.CheckPermission(ctx, 2, 200, model.PermissionConnect)
 
 	assert.NoError(t, err)
-	assert.True(t, hasPermission, "Auditor 顯式授權的資產仍可 connect（D1）")
+	assert.True(t, hasPermission, "Auditor 顯式授權的資產仍可 connect")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -274,7 +274,7 @@ func TestGrantPermission_UserNotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, auth)
-	// 哨兵可判（V2 對抗驗收 H2）：handler 以 errors.Is 分流，
+	// 哨兵可判：handler 以 errors.Is 分流，
 	// 不再依賴中文訊息子字串——故此處也斷言哨兵而非文案
 	assert.ErrorIs(t, err, ErrGrantUserNotFound)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -488,7 +488,7 @@ func TestGetAuthorizedAssets_UserRole(t *testing.T) {
 	ctx = context.WithValue(ctx, "userID", uint(10))
 
 	// 一般用戶只能查詢有權限的資產：EXISTS 條件涵蓋直授與節點含子樹
-	//（asset-node-tree D3——客體側經 asset_nodes 祖先集）
+	//（客體側經 asset_nodes 祖先集）
 	mock.ExpectQuery(`SELECT \* FROM "assets" WHERE \(EXISTS`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).
 			AddRow(1, "server1").
@@ -575,7 +575,7 @@ func TestGetAuthorizedAssets_NoPermissions(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ===== authorization-page-redesign D4：ticket 裸刪守門 =====
+// ===== ticket 裸刪守門 =====
 
 // TestRevokePermission_TicketWithRequestBlocked 有關聯申請單的 ticket 授權
 // 必須被 sentinel 擋下（走申請單撤銷流），不得執行軟刪
@@ -650,7 +650,7 @@ func TestRevokePermission_ManualUnaffected(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ===== authorization-page-redesign D2：ticket request_id 批次回填 =====
+// ===== ticket request_id 批次回填 =====
 
 // TestAttachTicketRequestIDs 僅 ticket 記錄回填 request_id、單次 IN 查詢
 func TestAttachTicketRequestIDs(t *testing.T) {
@@ -684,7 +684,7 @@ func TestAttachTicketRequestIDs_NoTickets(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ===== authorization-page-redesign D7：有效性伺服端篩選 =====
+// ===== 有效性伺服端篩選 =====
 
 // TestListAuthorizations_ValidityExpiredFilter expired 篩選於 COUNT 前生效
 func TestListAuthorizations_ValidityExpiredFilter(t *testing.T) {

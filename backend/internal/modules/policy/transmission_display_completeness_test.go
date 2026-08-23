@@ -12,7 +12,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// 後端顯示字串 i18n 完備性測試（i18n-backend-labels）：三個 registry / policy 表為
+// 後端顯示字串 i18n 完備性測試：三個 registry / policy 表為
 // 單一事實源，locale 三語必與之 bijection、zh 不漂移、placeholder 三語一致、en/ja
 // 非複製 zh。重用 error-codes 建立的 docker locale mount（APIERROR_LOCALE_DIR），
 // host `go test` 走 module 錨點 fallback（見 displayLocaleDir）。
@@ -138,7 +138,7 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// checkDisplayTranslations 完備性判準**純函式版**（W3 3.6）：回傳違規訊息清單。
+// checkDisplayTranslations 完備性判準**純函式版**：回傳違規訊息清單。
 //
 // **為何抽成純函式**：原本判準直接寫在 t.Errorf 裡，於是「判準本身是否真的會抓」
 // 無從證明——locale 檔全部正確時它必然零輸出，而「零輸出」與「判準失效」在
@@ -221,14 +221,14 @@ func TestBackendDisplayTranslationsComplete(t *testing.T) {
 	}
 }
 
-// TestDisplayLocaleFallbackIsProjectRootAnchored fallback 路徑的定位驗證（W3 3.6）。
+// TestDisplayLocaleFallbackIsProjectRootAnchored fallback 路徑的定位驗證。
 //
 // **為什麼需要它**：容器內 `APIERROR_LOCALE_DIR` 恆有值（dev compose 掛
 // `./frontend/src/i18n/locales:/app/testdata/locales:ro`），fallback 分支在 docker
 // 內**永遠不會被執行**；而 host 直跑才走 fallback。若只在 docker 驗，fallback 算錯
 // 了也不會有人知道——host 那次才炸，而且錯誤訊息會指向「locale 讀不到」而非
 // 「路徑算錯」。本格以合成的專案根驗它：路徑必須自 **module 根的上一層**推得，
-// 與本測試檔目前住在樹的第幾層無關（W1 1.20 去耦後的不變式）。
+// 與本測試檔目前住在樹的第幾層無關（去耦後的不變式）。
 func TestDisplayLocaleFallbackIsProjectRootAnchored(t *testing.T) {
 	projectRoot := t.TempDir()
 	want := filepath.Join(projectRoot, "frontend", "src", "i18n", "locales")
@@ -257,7 +257,7 @@ func TestDisplayLocaleFallbackIsProjectRootAnchored(t *testing.T) {
 	}
 }
 
-// TestDisplayTranslationCheckerCatchesMissing 缺譯 fixture 突變自檢（W3 3.6）。
+// TestDisplayTranslationCheckerCatchesMissing 缺譯 fixture 突變自檢。
 //
 // 以**真實 locale 內容**為基底，逐形態植入缺陷，斷言判準逐條抓得到。
 // 任一形態漏抓，主測試的「零違規」即不成立。
@@ -329,7 +329,7 @@ func TestDisplayTranslationCheckerCatchesMissing(t *testing.T) {
 	}
 }
 
-// TestDisplayNamespaceCardinality 釘死各 namespace 基數（codex impl-review I3）：expected 由
+// TestDisplayNamespaceCardinality 釘死各 namespace 基數：expected 由
 // map 導出，若來源 list 有重複鍵會被靜默覆蓋而基數變小——固定基數＋policyDefs 鍵唯一性雙檢。
 func TestDisplayNamespaceCardinality(t *testing.T) {
 	exp := expectedZhByNamespace()
@@ -337,16 +337,16 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// policyLabel 由 36 增為 37：audit-checkpoint-chain 新增 retention_checkpoint_days
 		// 再由 37 增為 42：data-transfer-control 新增資料傳輸五鍵
 		// 再由 42 增為 44、policyUnit 由 7 增為 8：封章週期與筆數門檻搬進政策頁（新單位「秒」）
-		// 再由 44 增為 47：policy-numeric-lower-bounds 的三個營運調校鍵搬進政策頁
+		// 再由 44 增為 47：三個營運調校鍵搬進政策頁
 		//（retention_max_per_run／key_rotation_max_per_run／k8s_list_timeout_seconds；
 		// 單位沿用既有的「筆」與「秒」，故 policyUnit 不變）
-		// 再由 47 增為 50、policyUnit 由 8 增為 9：audit-chain-scheduled-verification
-		// 的鏈自動驗證三鍵（新單位「筆/小時」＝速率，與批次大小的「筆」刻意分開）
-		// 再由 50 增為 51：codeql-rescan-settlement 的 refresh_cookie_secure
+		// 再由 47 增為 50、policyUnit 由 8 增為 9：鏈自動驗證的三個鍵
+		// （新單位「筆/小時」＝速率，與批次大小的「筆」刻意分開）
+		// 再由 50 增為 51：refresh_cookie_secure
 		//（bool 鍵無單位，故 policyUnit 不變）
 		"policyLabel": 51, "policyUnit": 9, "riskLabel": 8,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
-		// 之外另加故障態專屬碼 ldap_resolve_failed（ldap-settings-migration 2.10）
+		// 之外另加故障態專屬碼 ldap_resolve_failed
 		"transportNote": 9, "transportPreflight": 4, "transportDetail": 1,
 	}
 	for ns, n := range want {
@@ -363,7 +363,7 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 	}
 }
 
-// TestRiskSliceJSONShape 持久化形狀 golden（codex impl-review I3）：consent risk_items 與各類
+// TestRiskSliceJSONShape 持久化形狀 golden：consent risk_items 與各類
 // 審計 details 皆 marshal `[]RiskItem`——斷言切片每元素恰 {key,label} 兩欄，鎖住真實序列化形狀。
 func TestRiskSliceJSONShape(t *testing.T) {
 	risks := []RiskItem{
@@ -398,7 +398,7 @@ func keysOfRaw(m map[string]json.RawMessage) []string {
 }
 
 // TestInventoryConstructorFailFast 兩個 inventory constructor 缺 required param／kind 不符即 panic
-// （codex impl-review I3——原僅測 newRisk）。
+// （原僅測 newRisk）。
 func TestInventoryConstructorFailFast(t *testing.T) {
 	mustPanic := func(name string, fn func()) {
 		defer func() {
@@ -414,7 +414,7 @@ func TestInventoryConstructorFailFast(t *testing.T) {
 	mustPanic("setPreflight 用 note 碼（kind 不符）", func() { var ch InventoryChannel; setPreflight(&ch, "ssh_encrypted", nil) })
 }
 
-// TestValidateTemplateParams 驗證 registry 註冊時的雙向 template↔params 檢查（rr-C1/4.7）
+// TestValidateTemplateParams 驗證 registry 註冊時的雙向 template↔params 檢查
 func TestValidateTemplateParams(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -494,7 +494,7 @@ func TestRiskJSONShapeUnchanged(t *testing.T) {
 	}
 }
 
-// TestValidatePolicyDefsUnitInvariant 驗證 Unit↔UnitKey invariant（rr-I5/4.8）
+// TestValidatePolicyDefsUnitInvariant 驗證 Unit↔UnitKey invariant
 func TestValidatePolicyDefsUnitInvariant(t *testing.T) {
 	if err := validatePolicyDefs(); err != nil {
 		t.Fatalf("validatePolicyDefs: %v", err)

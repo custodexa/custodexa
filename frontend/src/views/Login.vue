@@ -1,6 +1,6 @@
 <template>
   <div class="login-container">
-    <!-- 登入前語言切換（i18n-foundation 2.2）：偏好存 ot-lang，未登入即生效 -->
+    <!-- 登入前語言切換：偏好存 ot-lang，未登入即生效 -->
     <div class="lang-switch">
       <el-dropdown @command="setLanguage">
         <span class="lang-switch-label">
@@ -34,7 +34,7 @@
         </p>
       </div>
 
-      <!-- 明文連線下登入狀態無法保存（codeql-rescan-settlement 決策 3）：
+      <!-- 明文連線下登入狀態無法保存：
            使用者被反覆踢回登入頁時，這裡回答「為什麼又要我登入」。
            排在其他 alert 之前——它是「你為什麼會在這一頁」的脈絡，
            鎖定／SSO 錯誤則是這次送出的結果，離表單近一點比較好讀。
@@ -62,7 +62,7 @@
         @close="lockedMessage = ''"
       />
 
-      <!-- SSO 交棒失敗（D14.4）：就近顯示於卡片內並附可行動指引。
+      <!-- SSO 交棒失敗：就近顯示於卡片內並附可行動指引。
            跨分頁綁定失敗另給「重新發起」按鈕，不以泛用錯誤打發 -->
       <el-alert
         v-if="ssoError"
@@ -310,7 +310,7 @@
         </el-button>
       </div>
 
-      <!-- SSO 區塊（D14.4）：只在 credentials 分支顯示——MFA／改密分支已在
+      <!-- SSO 區塊：只在 credentials 分支顯示——MFA／改密分支已在
            流程中段，此時再給一個「換個方式登入」的入口只會讓人半途跳出。
            縱向滿寬按鈕：provider 數成長時自然往下排，不像橫排小 icon 會換行崩壞。
            `/auth/methods` 失敗或回空即整區不渲染（降級為只顯示本地表單） -->
@@ -369,7 +369,7 @@ import {
 
 const MFA_CODE_LENGTH = 6
 
-// callback 失敗 slug → 使用者可讀訊息（D16：對外收斂，細節只落審計與伺服端日誌）。
+// callback 失敗 slug → 使用者可讀訊息（對外收斂，細節只落審計與伺服端日誌）。
 // 三類分流：准入未通過／帳號需管理員處理／流程失敗可重試
 const SSO_ERROR_SLUGS = new Set([
   'oidc_admission_denied',
@@ -384,7 +384,7 @@ const router = useRouter()
 const loginFormRef = ref(null)
 const loading = ref(false)
 
-// 多步登入狀態（auth-hardening 登入狀態機）：
+// 多步登入狀態（登入狀態機）：
 // credentials → mfa（TOTP 驗證）→ mfa_enrollment（強制註冊）→ password_change（強制改密）
 const step = ref('credentials')
 const pendingToken = ref('')
@@ -439,7 +439,7 @@ const stepSubtitle = computed(() => {
   return t('brand.subtitle')
 })
 
-// 強制改密原因分流（login-password-policy-gate）：must_change（首登/重設，含 MFA 用戶
+// 強制改密原因分流：must_change（首登/重設，含 MFA 用戶
 // 第一階段偵測的降級呈現）沿用既有文案；不符政策/已過期各自明示原因。
 // 未知 reason 一律降級既有文案（前後端版本錯位不炸）
 const changeHintTitle = computed(() => {
@@ -652,11 +652,11 @@ const handleChangePassword = async () => {
 const completeLogin = (response, next) => {
   localStorage.setItem('token', response.token)
   // refresh 憑證不落 localStorage：後端以 httpOnly cookie 下發，瀏覽器自動收存，
-  // script 讀不到也就帶不走（refresh-token-httponly-cookie）
+  // script 讀不到也就帶不走
   localStorage.setItem('user', JSON.stringify(response.user))
   ElMessage.success(
     t('login.welcomeBack', {
-      // 歡迎訊息走後端 resolved display_name（單一事實源，R3：前端不重寫 fallback 鏈；
+      // 歡迎訊息走後端 resolved display_name（單一事實源：前端不重寫 fallback 鏈；
       // 後端 resolver 已含 full_name 回退）。username 僅為舊快取的保底，與側欄一致
       name: response.user.display_name || response.user.username,
     })
@@ -718,7 +718,7 @@ const handleBackToCredentials = () => {
   loginForm.value.password = ''
 }
 
-// —— SSO（OIDC）—— idp-oidc-integration D14.4 ——
+// —— SSO（OIDC）——
 
 const setSSOError = (title, hint, canRestart = false) => {
   ssoError.value = title

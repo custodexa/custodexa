@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// ExportSigningService 匯出 manifest 的 Ed25519 簽章（audit-log-compliance，
-// PCI 10.3.4；收叢集 D backlog F5）。選 Ed25519 而非 HMAC（design D6）：
+// ExportSigningService 匯出 manifest 的 Ed25519 簽章（
+// PCI 10.3.4）。選 Ed25519 而非 HMAC：
 // 驗證者（QSA）在組織外，公鑰可分發離線驗證，共享密鑰不可行
 type ExportSigningService struct {
 	priv ed25519.PrivateKey
@@ -24,9 +24,9 @@ type ExportSigningService struct {
 
 // NewExportSigningService 載入或首次生成簽章金鑰：
 // DB 無列 → 生成 Ed25519 金鑰對，私鑰加密落 DB；有列 → 解密載入。
-// codec 為信封 key manager（key-management-envelope）。
+// codec 為信封 key manager。
 //
-// **ColumnCodec**（kek-provider-modularization D5 cutover，tasks 1.7）：新生成的
+// **ColumnCodec**：新生成的
 // 私鑰一律以 RefExportSigningPrivateKey 綁定 AAD 寫出 `enc:a1`——介面上沒有
 // Encrypt(plaintext)，建構上不可能寫出無 AAD 密文；既有 enc:v／legacy 密文
 // 由 DecryptFor 依前綴分派解密（strict 未啟用時）
