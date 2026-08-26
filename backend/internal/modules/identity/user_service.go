@@ -362,6 +362,13 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	// 欄位交由 DB default，雖然本路徑的值恰與 default 相同，仍顯式寫出——
 	// 三個建號路徑各自顯式賦值是不變式守衛的前提，靠 default 巧合成立的語義
 	// 會在日後有人改 default 時無聲失效
+	//
+	// MustChangePassword 一律 true，**不接任何政策開關**：初始密碼必然經建號者之手，
+	// 不存在「只有本人知道」的狀態，該帳號的操作在審計上無法與建號者區分。
+	// force_change_on_reset 管的是 admin 重設既有帳號密碼——那時帳號持有人已建立過
+	// 自己的密碼，管理者可依情境判斷；建號沒有對應的正當關閉場景，可關閉的強制會使
+	// 「本地帳號的現行密碼不曾為他人所知」退化為視設定而定。
+	// PasswordChangedAt 維持不賦值：NULL 的語義即「密碼從未由持有人變更過」。
 	user := &model.User{
 		Username:           req.Username,
 		Password:           string(hashedPassword),
@@ -372,6 +379,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		ProvisioningOrigin: model.AuthSourceLocal,
 		ExternalCredential: false,
 		AllowedCIDRs:       allowedCIDRs,
+		MustChangePassword: true,
 	}
 
 	// 開始事務

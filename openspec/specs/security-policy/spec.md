@@ -125,7 +125,7 @@
 - **THEN** 拒絕並提示不可重用近期密碼
 
 ### Requirement: 強制改密
-預設帳號與被重設密碼的帳號 SHALL 於下次登入被強制改密：通過密碼與 MFA 驗證後僅發放改密專用 scoped token，該 token SHALL NOT 可存取其他 API；完成改密前不得取得正式會話。改密 SHALL 經專用自助端點，使用者身分一律取自 token claims（不接受路徑參數指定他人）。改密確認成功後 SHALL 直接換發正式會話（不重走登入）。帳號建立時的初始密碼 SHALL 納入密碼歷史（否則首次強制改密可設回原密碼）。seed 預設管理員 SHALL 標記強制改密，且啟動日誌 SHALL NOT 印出明文密碼。admin 重設他人密碼後 SHALL 依政策（預設開）自動標記強制改密。
+預設帳號、admin 建立的本地帳號與被重設密碼的帳號 SHALL 於下次登入被強制改密：通過密碼與 MFA 驗證後僅發放改密專用 scoped token，該 token SHALL NOT 可存取其他 API；完成改密前不得取得正式會話。改密 SHALL 經專用自助端點，使用者身分一律取自 token claims（不接受路徑參數指定他人）。改密確認成功後 SHALL 直接換發正式會話（不重走登入）。帳號建立時的初始密碼 SHALL 納入密碼歷史（否則首次強制改密可設回原密碼）。seed 預設管理員 SHALL 標記強制改密，且啟動日誌 SHALL NOT 印出明文密碼。admin 建立本地帳號時 SHALL 標記強制改密，該標記 SHALL NOT 受任何政策鍵影響——初始密碼必然經建號者之手，可關閉的強制會使「本地帳號的現行密碼不曾為他人所知」退化為視設定而定。admin 重設他人密碼後 SHALL 依政策（預設開）自動標記強制改密。憑證由外部身分提供者管理的帳號 SHALL NOT 適用本要求（無本地密碼可改）。
 
 #### Scenario: 首次強制改密不可設回原密碼
 - **WHEN** 預設 admin 首次強制改密時提交與初始密碼相同的新密碼
@@ -142,6 +142,18 @@
 #### Scenario: admin 重設觸發強制改密
 - **WHEN** admin 重設某使用者密碼（政策開啟）
 - **THEN** 該使用者下次登入被強制改密
+
+#### Scenario: admin 新建帳號觸發強制改密
+- **WHEN** 使用者以 admin 建號時設定的初始密碼首次登入
+- **THEN** 憑證驗證通過但未取得正式會話，回應攜帶改密專用 token 與原因「首登」，完成改密後可正常登入
+
+#### Scenario: 建號強制改密不受政策開關影響
+- **WHEN** 管理員將 `force_change_on_reset` 關閉後，admin 建立新的本地帳號
+- **THEN** 該帳號仍被標記強制改密，首次登入仍須改密
+
+#### Scenario: 外部身分供應帳號不適用
+- **WHEN** 使用者經 LDAP 或 OIDC 首次登入而由系統供應影子帳號
+- **THEN** 不標記強制改密，登入流程不因此增加互動
 
 ### Requirement: 登入時密碼政策執法
 登入流程 SHALL 於憑證驗證（含 MFA 分流）通過後、發放正式會話前，對現行密碼施行登入時檢查（明文僅於此刻可得，為既有雜湊密碼唯一可行的回溯執法點），依序評估三個觸發源：既有 `must_change_password` 旗標、政策合規（現行 `password_min_length` 與 `password_require_alnum`）、密碼有效期（`password_changed_at` 距今超過 `password_max_age_days`，0=關閉不評估）。任一命中 SHALL 進入既有強制改密流程（僅發改密專用 scoped token，完成改密前不得取得正式會話），且回應 SHALL 攜帶 machine-readable 觸發原因（首登／不符政策含具體項目／已過期），前端據以顯示原因文案。
