@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/gin-gonic/gin"
 )
@@ -45,6 +46,13 @@ type AuthHandler struct {
 	// refreshCookies refresh 憑證的 httpOnly cookie 下發／清除
 	// nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
+	// sourceIPBaseline 帳號 × 來源位址「已見」基準：正式會話發出後把來源納入
+	// 基準，新位址另留一筆審計標記（不進告警表、不推通知，理由見
+	// auth_source_ip_observe.go 檔頭）。nil 僅限既有測試路徑，該情形下不觀察
+	sourceIPBaseline *audit.SourceIPBaseline
+	// sourcePolicy 允許來源網段的現讀面（G1 強制點）。
+	// **nil 即 fail-close**（不是放行）：見 source_policy_gate.go 的 requireSourceAllowed
+	sourcePolicy sourcePolicyReader
 }
 
 // loginEventThrottled 登入限流的聚合審計事件名。
@@ -271,11 +279,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// 當下（MFA 分流前），故不論後續走 pending/enrollment/改密分支皆須落一筆
 	h.auditPasswordNoncompliant(c, resp)
 
-	// MFA 用戶第一階段：密碼通過但尚未完成驗證，標註 mfa_pending 供稽核區分
+	// MFA 用戶第一階段：密碼通過但尚未完成驗證，標註 mfa_pending 供稽核區分。
+	// **本分支不判來源**（盤點表 #2）：判定放在發正式會話的那一點。提前判會讓
+	// 「密碼對但來源錯」的請求在 pending 訊號之外多一個分岔——持有密碼但無第二
+	// 因素者因此得以探知來源政策
 	if resp.MFARequired {
 		h.auditLogin(c, resp.PendingUserID, resp.PendingUsername, model.StatusSuccess, http.StatusOK,
 			annotateAuthSource("mfa_pending", resp.AuthSource))
 		c.JSON(http.StatusOK, resp)
+		return
+	}
+
+	// 來源限定（盤點表 #1／#3／#4）：憑證此刻已完整驗證，而其後的每一條分支都會
+	// 發出正式會話或受限票證（enrollment／password_change），故判定放在分岔
+	// **之前**一次涵蓋三者——分開判會讓新增一條分支時漏掉其中一個
+	loginUserID, loginUsername := loginSubject(resp)
+	if !h.requireSourceAllowed(c, loginUserID, func(note string) {
+		h.auditLogin(c, loginUserID, loginUsername, model.StatusDenied, http.StatusForbidden,
+			annotateAuthSource(note, resp.AuthSource))
+	}) {
 		return
 	}
 
@@ -300,7 +322,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// 發放端點 1／6：refresh 憑證僅經 httpOnly cookie 下發，回應 body 不再含明文
 	h.refreshCookies.SetFromLogin(c, resp)
+	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, resp)
+}
+
+// loginSubject 登入回應的主體（userID, username）。
+//
+// 正式會話分支帶 User；受限票證分支（enrollment／password_change）只帶
+// Pending* 兩欄。來源判定與其拒絕留痕在兩種分支上都要指得出「是誰」，
+// 故取值收斂到一處——各分支各取一次遲早有一條取到零值，而
+// 「拒絕列的 user_id 是 0」在稽核上與「不知道是誰」無從分辨
+func loginSubject(resp *identity.LoginResponse) (uint, string) {
+	if resp == nil {
+		return 0, ""
+	}
+	if resp.User != nil {
+		return resp.User.ID, resp.User.Username
+	}
+	return resp.PendingUserID, resp.PendingUsername
 }
 
 // annotateAuthSource 在審計慣例欄位（ErrorMsg）附註認證來源。
@@ -403,7 +442,10 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.RefreshSession(plain)
+	// 來源限定（盤點表 #9）：判定在服務內、交易內、世代複查之後、CAS 撤舊之前，
+	// 拒絕時零寫入。此處只負責把「本請求的來源」交進去——handler 自行判定
+	// 再呼叫服務會讓判定落在交易外，那正是「憑證已被消耗才發現來源不對」的形狀
+	resp, err := h.authService.RefreshSession(plain, sourceip.Of(c))
 	if err != nil {
 		h.respondRefreshError(c, err)
 		return
@@ -426,12 +468,18 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // 對外一律 401 同文案，不給攻擊者區分憑證狀態的訊號
 func (h *AuthHandler) respondRefreshError(c *gin.Context, err error) {
 	var reuse *identity.RefreshReuseError
+	var sourceDenied *identity.RefreshSourceDeniedError
 	switch {
 	case errors.As(err, &reuse):
 		h.auditRefresh(c, reuse.UserID, reuse.Username,
 			"refresh_reuse_detected; all refresh tokens revoked")
 	case errors.Is(err, identity.ErrRefreshInvalid):
 		h.auditRefresh(c, 0, "", "refresh_rejected")
+	case errors.As(err, &sourceDenied):
+		// 來源不允許／政策不可用：對外走**同一則 401**（不新增訊號，
+		// 與其他刷新失敗逐字相同），成因只進審計。憑證未被消耗——
+		// 同一枚憑證隨後自清單內來源刷新照常成功，不觸發家族撤銷
+		h.auditRefresh(c, sourceDenied.UserID, sourceDenied.Username, sourceDenied.AuditNote())
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRefresh, err)
 		return
@@ -483,6 +531,11 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserInfoQuery, err)
 		return
 	}
+
+	// 本人請求的來源位址，**僅供顯示**（允許網段表單的「你目前的來源」）。
+	// 不參與任何判定：落入與否一律問判定端點，兩套判斷必然分歧。
+	// 只回本人的來源＝呼叫端自己送出的那個位址，無新資料暴露
+	userInfo.SourceIP = h.auditSourceIP(c)
 
 	c.JSON(http.StatusOK, userInfo)
 }
@@ -582,6 +635,16 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// 來源限定（盤點表 #10，並涵蓋 #7 的改密後換發）：token（正式或
+	// password_change scoped）已驗＝知道是誰，而 SelfChangePassword 是密碼寫入。
+	// 判定放在 token 解析之後、寫入之前——放在寫入之後等於讓清單外來源
+	// 改得掉密碼，只是拿不到回應
+	if !h.requireSourceAllowed(c, claims.UserID, func(note string) {
+		h.auditPasswordChange(c, claims, model.StatusDenied, http.StatusForbidden, note)
+	}) {
+		return
+	}
+
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeChangePasswordFields, nil)
@@ -607,6 +670,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 	// 發放端點 4／6：改密換發的正式會話
 	h.refreshCookies.SetFromLogin(c, resp)
+	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 

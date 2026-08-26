@@ -39,7 +39,9 @@ func setupUpdateMeEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.DB) 
 	authService := identity.NewAuthService(secret, time.Minute)
 	r := gin.New()
 	group := r.Group("/api/v1")
-	NewAuthHandler(authService, nil).RegisterRoutes(group, authService)
+	profileHandler := NewAuthHandler(authService, nil)
+	profileHandler.SetSourcePolicyReader(unrestrictedSourcePolicy())
+	profileHandler.RegisterRoutes(group, authService)
 	return r, crypto.NewJWTManager(secret, time.Minute), db
 }
 

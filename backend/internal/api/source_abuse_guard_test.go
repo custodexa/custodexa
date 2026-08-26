@@ -139,6 +139,7 @@ func newOIDCAbuseTestEnv(t *testing.T, trustProxy bool, params sourceGuardParams
 	sink := &recordingAggSink{}
 	clock := newFakeClock()
 	h := NewOIDCHandler(nil, login, "https://bastion.example.com", nil)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 	h.callbackGuard = newSourceAbuseGuard(params, trustProxy, sink)
 	h.exchangeGuard = newSourceAbuseGuard(params, trustProxy, sink)
 	h.callbackGuard.now = clock.Now

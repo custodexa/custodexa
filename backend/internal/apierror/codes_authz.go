@@ -36,6 +36,9 @@ var queryFieldZhLabels = map[string]string{
 	"session_id": "連線 ID",
 	"start_time": "起始時間",
 	"end_time":   "結束時間",
+	// 匯出包型：證據包也吃樞紐後，
+	// subject 不再分辨得出包型，故包型改由 pack 明示；打錯字不得被當成缺席
+	"pack": "匯出包型",
 }
 
 // --- authorization_handler.go: Create ---

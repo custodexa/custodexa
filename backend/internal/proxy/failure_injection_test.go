@@ -22,7 +22,7 @@ import (
 
 var (
 	// 等價表 §1.3（G-G1…G-G3 為連線收口防呆與認證面，G-G6 為解封點本身的 fail-close）
-	gateBaselineGuacPre  = []string{"G-G4", "G-G5"}
+	gateBaselineGuacPre  = []string{"G-G4", "G-G13", "G-G5"}
 	gateBaselineGuacPost = []string{"G-G7", "G-G8", "G-G9", "G-G10", "G-G11", "G-G12"}
 )
 

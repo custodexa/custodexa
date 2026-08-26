@@ -192,6 +192,9 @@ func TestDeclaredIndexesMatchDatabasePostgres(t *testing.T) {
 	if err := applyBaseline(db); err != nil {
 		t.Fatalf("baseline 失敗: %v", err)
 	}
+	if err := applyMigrationsAfterBaseline(db); err != nil { // 增量表的具名索引同受比對
+		t.Fatalf("增量 migration 失敗: %v", err)
+	}
 
 	declared := declaredIndexesFromModels(t, db)
 	// 正向：宣告清單必須掃得到（防「解析不到 → 空清單 → 迴圈零次 → 假綠」）

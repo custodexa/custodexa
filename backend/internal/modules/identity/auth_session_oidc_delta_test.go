@@ -52,7 +52,7 @@ func TestOIDCRefreshRotatesOnSameTrack(t *testing.T) {
 	resp := e.oidcLogin(t, user)
 	before := reloadRefresh(t, e.db, hashRefreshToken(resp.RefreshToken))
 
-	rotated, err := e.auth.RefreshSession(resp.RefreshToken)
+	rotated, err := e.auth.RefreshSession(resp.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("刷新: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestOIDCRefreshRotationsDoNotResetAbsoluteLifetime(t *testing.T) {
 
 	current := resp.RefreshToken
 	for i := 1; i <= 3; i++ {
-		rotated, err := e.auth.RefreshSession(current)
+		rotated, err := e.auth.RefreshSession(current, "")
 		if err != nil {
 			t.Fatalf("第 %d 次刷新: %v", i, err)
 		}
@@ -136,7 +136,7 @@ func TestOIDCRefreshAtAbsoluteLimitRequiresReauthentication(t *testing.T) {
 		t.Fatalf("前提不成立：expires_at=%v 尚未過期", row.ExpiresAt)
 	}
 
-	if _, err := e.auth.RefreshSession(plain); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := e.auth.RefreshSession(plain, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("逾絕對壽命刷新 = %v, want ErrRefreshInvalid", err)
 	}
 	if reason := reloadRefresh(t, e.db, hashRefreshToken(plain)).RevokedReason; reason != model.RefreshRevokeExpired {
@@ -147,7 +147,7 @@ func TestOIDCRefreshAtAbsoluteLimitRequiresReauthentication(t *testing.T) {
 	// 「須重新認證」的另一半：重新走一次 OIDC 認證即可取得可用的新會話，
 	// 不是把帳號卡死
 	fresh := e.oidcLogin(t, user)
-	if _, err := e.auth.RefreshSession(fresh.RefreshToken); err != nil {
+	if _, err := e.auth.RefreshSession(fresh.RefreshToken, ""); err != nil {
 		t.Errorf("重新認證後的新會話應可刷新: %v", err)
 	}
 }
@@ -173,7 +173,7 @@ func TestOIDCReissuedAccessDoesNotOutliveAbsoluteDeadline(t *testing.T) {
 	}
 	deadline := reloadRefresh(t, e.db, hashRefreshToken(plain)).ExpiresAt
 
-	rotated, err := e.auth.RefreshSession(plain)
+	rotated, err := e.auth.RefreshSession(plain, "")
 	if err != nil {
 		t.Fatalf("刷新: %v", err)
 	}

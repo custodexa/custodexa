@@ -20,6 +20,10 @@ const (
 	AlertKindRule = "rule"
 	// AlertKindAuditDegraded 指令審計降級產生的告警，rule_id 必為 NULL。
 	AlertKindAuditDegraded = "audit_degraded"
+	// AlertKindNewSourceIP 帳號首次自某來源位址建立協議會話的告警，rule_id 必為 NULL。
+	// 不掛規則：管理員不得以停用規則的方式關掉這個訊號。位址由所屬會話承載
+	// （session_id NOT NULL 保證可 join），本表不另存位址。
+	AlertKindNewSourceIP = "new_source_ip"
 )
 
 // AlertReasonDegradedSpan 降級告警的機器碼：一段連續的降級輪次（span）開始。
@@ -28,6 +32,10 @@ const (
 // 正常 vim 與偽標記攻擊的 span 在時長／輪數上**實測不可分**，
 // 故不設「超過門檻升級」的第二筆——那個門檻會是編造的。
 const AlertReasonDegradedSpan = "audit_degraded_span"
+
+// AlertReasonNewSourceIPSession 新來源位址告警的機器碼：該（帳號, 位址）首次建線。
+// 同一（帳號, 位址）之後再建線不重響——判定依據是基準表的首次建線時刻。
+const AlertReasonNewSourceIPSession = "new_source_ip_session"
 
 // CommandAlert 危險指令告警記錄（command-alerts）
 // rule_name/severity 為觸發當下的快照冗餘：

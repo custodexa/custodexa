@@ -71,6 +71,13 @@ var driftAllowlist = map[string]bool{
 	"GUACD_PORT":     true,
 	"AUDIT_LOG_PATH": true, // 容器內審計路徑；host 側落點由 DATA_PATH 決定
 	"RECORDING_PATH": true, // 容器內錄影路徑；host 側落點由 DATA_PATH 決定
+	// 容器內匯出產物暫存路徑，同上兩者的
+	// 定位：非使用者面旋鈕，host 側落點屬 compose 拓撲
+	"EXPORT_ARTIFACT_PATH": true,
+	// 單實例守衛的一次性衝突確認：綁定當次持鎖者指紋碼、
+	// 持鎖者變更即失效、每次生效留審計。**刻意不入範本**——範本裡出現它就會被當成
+	// 常設值，而它的語義是「對這一次衝突的確認」；攔下訊息會當場指示要設什麼值
+	"INSTANCE_GUARD_ACK": true,
 }
 
 // knownIndirectKeys：經無法字面掃描的間接路徑讀取的 key（安全網）。

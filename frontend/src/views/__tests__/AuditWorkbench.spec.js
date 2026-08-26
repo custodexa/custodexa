@@ -181,9 +181,28 @@ const mountPage = async () => {
         'el-date-picker': true,
         SubjectPicker: true,
         'el-tooltip': { template: '<div><slot /></div>' },
+        // 說明句改由 popover 承載（頁首說明、類別 chip 的 coverage 說明）。
+        // popover 內容是惰性渲染的，stub 讓 reference 與內容同時進 DOM——
+        // 本檔守的是「語義還在、掛在正確的 chip 上、動作沒消失」；
+        // 「不常駐佔版面」是版面命題，由 5.7 的 Playwright 量測把關，
+        // 不在元件層冒充驗過
+        'el-popover': { template: '<div><slot name="reference" /><slot /></div>' },
       },
     },
   })
+  await flushPromises()
+  return wrapper
+}
+
+// 會話總覽兩層化後逐場列在展開層。既有逐場語義（開放端／裁切／最小寬度／
+// 文字等價／錄影三態／並發可辨識）逐條保留，只是要先展開才看得到：
+// 先開總覽層，再開每一台資產列
+const openSpans = async (wrapper) => {
+  await wrapper.find('[data-test="spans-overview-toggle"]').trigger('click')
+  await flushPromises()
+  for (const row of wrapper.findAll('[data-test^="asset-row-"]')) {
+    await row.trigger('click')
+  }
   await flushPromises()
   return wrapper
 }
@@ -246,8 +265,9 @@ describe('類別開關', () => {
 
   it('關掉一類 → types 縮減且 URL 同步', async () => {
     const wrapper = await mountPage()
-    const box = wrapper.find('[data-test="category-clipboard"] input')
-    await box.setValue(false)
+    // 載體從左欄核取方塊換成篩選列 chip（版面資訊層級規格），
+    // 「關掉一類 → 不進查詢、URL 同步」這條語義逐字不變
+    await wrapper.find('[data-test="category-clipboard"]').trigger('click')
     await flushPromises()
     expect(lastParams().types).not.toContain('clipboard')
     expect(replaceSpy.mock.calls.at(-1)[0].query.types).not.toContain('clipboard')
@@ -262,7 +282,7 @@ describe('類別開關', () => {
     expect(wrapper.find('[data-test="all-off-hint"]').exists()).toBe(true)
   })
 
-  it('左欄同時給筆數與 coverage 徽章（0 筆的三種成因才分得開）', async () => {
+  it('篩選列 chip 同時給筆數與 coverage 徽章（0 筆的三種成因才分得開）', async () => {
     const wrapper = await mountPage()
     expect(wrapper.find('[data-test="count-command"]').text()).toBe('1')
     // 徽章一律帶著「依什麼」或「有沒有被清過」的限定：脫掉限定的
@@ -274,7 +294,7 @@ describe('類別開關', () => {
 
   it('徽章不得再出現方向相反或無限定的舊說法', async () => {
     const wrapper = await mountPage()
-    const panel = wrapper.find('[data-test="category-panel"]').text()
+    const panel = wrapper.find('[data-test="category-chips"]').text()
     expect(panel).not.toContain('無政策')
     expect(panel).not.toContain('保留中')
     // 「保留期內」不得被寫成完整性宣稱（本頁不出具完整性證明）
@@ -383,7 +403,7 @@ describe('保留三態與空白標記', () => {
 
   it('四種 coverage 狀態沒有任何一種是無標記的空白', async () => {
     const wrapper = await mountPage()
-    const notices = wrapper.find('[data-test="coverage-notices"]').text()
+    const notices = wrapper.find('[data-test="category-chips"]').text()
     // 三個需要標記的類別（purged／not_retained／present+0）都要現身
     expect(notices).toContain('操作日誌')
     expect(notices).toContain('剪貼簿')
@@ -393,7 +413,7 @@ describe('保留三態與空白標記', () => {
 
 describe('會話跨度條', () => {
   it('每條帶 aria-label（使用者／資產／起訖／時長）', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     const label = wrapper.find('[data-test="span-bar-9"]').attributes('aria-label')
     expect(label).toContain('admin')
     expect(label).toContain('測試 SSH')
@@ -401,7 +421,7 @@ describe('會話跨度條', () => {
   })
 
   it('進行中會話走漸層淡出且標「進行中」，不畫硬邊', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     const bar = wrapper.find('[data-test="span-bar-10"]')
     expect(bar.classes()).toContain('is-ongoing')
     expect(bar.attributes('aria-label')).toContain('進行中')
@@ -409,20 +429,20 @@ describe('會話跨度條', () => {
   })
 
   it('跨窗會話兩端標裁切', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     const bar = wrapper.find('[data-test="span-bar-11"]')
     expect(bar.classes()).toContain('is-clipped-start')
     expect(bar.classes()).toContain('is-clipped-end')
   })
 
   it('0 秒會話寬度為 0，靠 CSS min-width 保底可見', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     const bar = wrapper.find('[data-test="span-bar-12"]')
     expect(bar.attributes('style')).toContain('width: 0%')
   })
 
   it('錄影三態各有可辨識文案', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     expect(wrapper.find('[data-test="recording-9"]').text()).toBe('可回放')
     expect(wrapper.find('[data-test="recording-11"]').text()).toBe('錄影已依保留政策清除')
     expect(wrapper.find('[data-test="recording-10"]').text()).toBe('無錄影檔')
@@ -431,7 +451,7 @@ describe('會話跨度條', () => {
   // 後端把「從未錄」與「錄影失敗」壓成同一個 none，而後者是重大缺失：
   // 標籤分不出來時，至少要在提示裡說明怎麼分辨
   it('無錄影檔附「未設定或失敗」的分辨說明，其餘兩態不掛空提示', async () => {
-    const wrapper = await mountPage()
+    const wrapper = await openSpans(await mountPage())
     const hint = wrapper.find('[data-test="recording-10"]').attributes('title')
     expect(hint).toContain('未設定')
     expect(hint).toContain('錄影失敗')
@@ -469,10 +489,10 @@ describe('事件時間軸', () => {
     const text = wrapper.find('[data-test="event-list"]').text()
     // 方向寫成人的動作（判斷外洩看的就是方向）
     expect(text).toContain('從本機複製內容到遠端主機')
-    // 「不顯示內容」要連同「為什麼」與「由什麼承擔」一起講，
-    // 否則稽核讀到的是「這個控制查不到東西」
-    expect(text).toContain('不顯示在這條時間軸上')
-    expect(text).toContain('誰、在哪一場連線、什麼時間、往哪個方向複製')
+    // 「不顯示內容」逐列以單行講明並指路（完整理由句收於
+    // tooltip，逐列不再重複 3 行長註記；tooltip 形態見 TimelineEvents 測試）
+    expect(text).toContain('內容刻意不顯示於時間軸')
+    expect(text).toContain('檢視內容')
   })
 
   it('focus=<type>:<id> 使該列高亮', async () => {
@@ -587,5 +607,143 @@ describe('誠實邊界', () => {
     expect(text).toContain('操作日誌與檔案傳輸的完整性證明')
     expect(text).not.toContain('六類紀錄的完整性')
     expect(text).not.toContain('所有紀錄的完整性')
+  })
+})
+
+// —— 來源位址樞紐與篩選（source-ip-forensics）——
+//
+// 三件錯了就會讓調查走偏的事：
+// 1) 位址樞紐的主體鍵是**字串**，不得走整數路徑（走了就永遠停在「請先選對象」）；
+// 2) 位址篩選與「只看未知來源」互斥，且兩者都要真的送進查詢；
+// 3) 位址樞紐**沒有匯出**，disabled 是真的不能，且說得出替代路徑。
+describe('來源位址樞紐', () => {
+  const IP = '203.0.113.5'
+
+  it('URL 的 id 在位址樞紐下原樣送成 subject_ip，不轉整數也不送 subject_id', async () => {
+    routeState.query = { subject: 'ip', id: IP, from: FROM, to: TO }
+    await mountPage()
+    const params = lastParams()
+    expect(params.subject).toBe('ip')
+    expect(params.subject_ip).toBe(IP)
+    expect(params.subject_id).toBeUndefined()
+  })
+
+  it('IPv6 位址逐字往返（正規化是後端的事）', async () => {
+    routeState.query = { subject: 'ip', id: '2001:db8::1', from: FROM, to: TO }
+    await mountPage()
+    expect(lastParams().subject_ip).toBe('2001:db8::1')
+    expect(routeState.query.id).toBe('2001:db8::1')
+  })
+
+  it('位址樞紐下不提供位址篩選（後端對兩者並存回 400）', async () => {
+    routeState.query = { subject: 'ip', id: IP, from: FROM, to: TO }
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-test="ip-filter"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="unknown-only"]').exists()).toBe(false)
+    expect(lastParams().client_ip).toBeUndefined()
+  })
+
+  it('兩顆匯出按鈕在位址樞紐下停用，且說得出替代路徑', async () => {
+    routeState.query = { subject: 'ip', id: IP, from: FROM, to: TO }
+    const wrapper = await mountPage()
+    const report = wrapper.find('[data-test="open-export"]')
+    const bundle = wrapper.find('[data-test="open-export-bundle"]')
+    expect(report.attributes('disabled')).toBeDefined()
+    expect(bundle.attributes('disabled')).toBeDefined()
+    // 停用理由不是「範圍還沒選齊」——範圍是齊的，是這個樞紐沒有匯出
+    expect(report.attributes('title')).toContain('切換到「以人調查」或「以資產調查」')
+    expect(report.attributes('title')).not.toContain('至少勾選一類')
+  })
+
+  it('沒有位址時提示語改問位址，不再說「選擇對象」', async () => {
+    routeState.query = { subject: 'ip', from: FROM, to: TO }
+    const wrapper = await mountPage()
+    const alert = wrapper.find('[data-test="no-subject"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('來源位址')
+    expect(timelineMock).not.toHaveBeenCalled()
+  })
+
+  it('樞紐切換清掉位址主體與位址篩選（換樞紐後它們沒有指涉）', async () => {
+    routeState.query = { subject: 'user', id: '1', ip: IP, from: FROM, to: TO }
+    const wrapper = await mountPage()
+    expect(lastParams().client_ip).toBe(IP)
+
+    await wrapper.findAll('[data-test="pivot-switch"] input')[2].setValue()
+    await flushPromises()
+    expect(routeState.query.ip).toBeUndefined()
+    expect(routeState.query.id).toBeUndefined()
+    expect(routeState.query.subject).toBe('ip')
+  })
+})
+
+describe('來源位址篩選（人／資產樞紐）', () => {
+  const IP = '203.0.113.9'
+
+  it('輸入後按「搜尋」才送出（C1：文字輸入不即時查）', async () => {
+    const wrapper = await mountPage()
+    expect(lastParams().client_ip).toBeUndefined()
+
+    // el-input 是 inheritAttrs:false，data-test 落在原生 input 上
+    await wrapper.find('[data-test="ip-filter"]').setValue(IP)
+    await flushPromises()
+    expect(lastParams().client_ip).toBeUndefined()
+
+    await wrapper.find('[data-test="ip-filter-search"]').trigger('click')
+    await flushPromises()
+    expect(lastParams().client_ip).toBe(IP)
+    expect(routeState.query.ip).toBe(IP)
+  })
+
+  it('「重設」清掉位址條件與未知來源勾選', async () => {
+    routeState.query = { ...baseQuery, ip: IP }
+    const wrapper = await mountPage()
+    expect(lastParams().client_ip).toBe(IP)
+
+    await wrapper.find('[data-test="ip-filter-reset"]').trigger('click')
+    await flushPromises()
+    expect(lastParams().client_ip).toBeUndefined()
+    expect(routeState.query.ip).toBeUndefined()
+  })
+
+  it('「只看未知來源」送保留字 unknown，並把位址輸入停用（兩者互斥）', async () => {
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="unknown-only"] input').setValue(true)
+    await flushPromises()
+    expect(lastParams().client_ip).toBe('unknown')
+    expect(routeState.query.ip).toBe('unknown')
+    expect(
+      wrapper.find('[data-test="ip-filter"]').attributes('disabled')
+    ).toBeDefined()
+  })
+
+  it('URL 帶 ip=unknown 時勾選還原（貼連結可還原同一個畫面）', async () => {
+    routeState.query = { ...baseQuery, ip: 'unknown' }
+    const wrapper = await mountPage()
+    expect(lastParams().client_ip).toBe('unknown')
+    expect(
+      wrapper.find('[data-test="unknown-only"] input').element.checked
+    ).toBe(true)
+  })
+})
+
+describe('來源位址的口徑與邊界說明', () => {
+  it('七條邊界皆在畫面上，且每條都說得出由什麼承擔', async () => {
+    const wrapper = await mountPage()
+    const text = wrapper.find('[data-test="ip-boundary-text"]').text()
+    // 逐條：候選口徑、取樣時刻、未知、IPv6 輪替、代理、匯出、精確比對
+    expect(text).toContain('候選清單只含成功登入或建線過的位址')
+    expect(text).toContain('所屬連線建線當下的來源')
+    expect(text).toContain('不論以人、以資產或以來源位址調查都查不到')
+    expect(text).toContain('不會把同一前綴的位址併成一筆')
+    expect(text).toContain('可信代理鏈')
+    expect(text).toContain('不提供匯出')
+    expect(text).toContain('不支援網段或前綴範圍查詢')
+    // 承擔：每條都指得出「由誰承擔」，不是一串沒有出口的免責
+    expect(text).toContain('由自由輸入承擔')
+    expect(text).toContain('由部署方與部署文件承擔')
+    expect(text).toContain('由那兩份報告的匯出承擔')
+    // 不得主張系統做不到的事
+    expect(text).not.toContain('支援網段查詢')
   })
 })

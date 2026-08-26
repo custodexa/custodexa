@@ -372,7 +372,7 @@ func TestPGConcurrentTicketExchangeVsUnbind(t *testing.T) {
 		t.Error("解綁後兌換出的 access 竟仍可開啟 WS 旁路連線——" +
 			"該憑證帶舊世代，世代閘必須拒絕它")
 	}
-	if _, err := env.auth.RefreshSession(resp.RefreshToken); err == nil {
+	if _, err := env.auth.RefreshSession(resp.RefreshToken, ""); err == nil {
 		t.Error("解綁後兌換出的 refresh 竟仍可輪替——" +
 			"持有者可藉此無限續命，解綁等於沒做")
 	}

@@ -2,14 +2,17 @@ package audit
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
 
@@ -33,7 +36,25 @@ func setupReportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 		&model.AuditCheckpoint{}); err != nil {
 		t.Fatalf("migrate report tables: %v", err)
 	}
+	// bundle 模式自 B2 起解密剪貼簿內容入包；本 fixture 的密文是可辨識假標記
+	// （clipboardCipherMarker），故注入標記解碼替身。報告模式不觸解密器，
+	// 真信封解密的驗證面在 audit_export_clipboard_test.go（真 keyvault codec）
+	svc.SetClipboardCodec(markerClipboardCodec{})
 	return svc, db
+}
+
+// markerClipboardCodec 標記密文的解碼替身（僅認得 clipboardCipherMarker）
+type markerClipboardCodec struct{}
+
+func (markerClipboardCodec) EncryptFor(context.Context, crypto.CipherRef, string) (string, error) {
+	return "", errors.New("測試替身不提供加密")
+}
+
+func (markerClipboardCodec) DecryptFor(_ context.Context, _ crypto.CipherRef, ciphertext string) (string, error) {
+	if ciphertext == clipboardCipherMarker {
+		return clipboardSecretMarker, nil
+	}
+	return "", errors.New("未知密文（fixture 只種入標記密文）")
 }
 
 // reportWindow 測試共用的時間窗與窗內時刻
@@ -64,8 +85,14 @@ func seedSixSources(t *testing.T, db *gorm.DB, at time.Time) {
 		VALUES (1, 2, '危險指令', 1, 1, 7, 'rm -rf /tmp/x', 'high', ?, 'pending', '', 1)`, at).Error; err != nil {
 		t.Fatalf("seed alert: %v", err)
 	}
+	// v2 語義（內容改為信封加密後）：落庫即密文，長度是事實欄。
+	// content_length 以明文長度種入——報告的長度欄必須來自事實欄而非密文長度
 	if err := db.Create(&model.ClipboardEvent{
-		SessionID: 1, Direction: "send", Content: clipboardSecretMarker, CreatedAt: at,
+		SessionID: 1, Direction: "send",
+		ContentEnc:    clipboardCipherMarker,
+		ContentLength: len(clipboardSecretMarker),
+		ContentStatus: model.ClipboardContentAvailable,
+		CreatedAt:     at,
 	}).Error; err != nil {
 		t.Fatalf("seed clipboard: %v", err)
 	}
@@ -85,8 +112,13 @@ func seedSixSources(t *testing.T, db *gorm.DB, at time.Time) {
 	}
 }
 
-// clipboardSecretMarker 可辨識的剪貼簿明文，用於守衛「內容不得出現在報告任一檔」
+// clipboardSecretMarker 可辨識的剪貼簿明文長度基準，用於守衛 content_length
+// 來自事實欄。**明文不落庫**，故「不得出現在報告」的守衛對象改為
+// 密文欄值（clipboardCipherMarker）——報告連密文都不得帶出
 const clipboardSecretMarker = "SUPER-SECRET-CLIPBOARD-PAYLOAD"
+
+// clipboardCipherMarker 可辨識的密文欄值：content_enc 不得出現在報告任一檔
+const clipboardCipherMarker = "enc:a1:v1:MARKER-CIPHERTEXT-MUST-NOT-EXPORT"
 
 func exportReport(t *testing.T, svc *AuditExportService, filter *ExportFilter) (*ExportManifest, map[string][]byte) {
 	t.Helper()
@@ -217,6 +249,9 @@ func TestReportClipboardExcludesContent(t *testing.T) {
 	for name, content := range files {
 		if bytes.Contains(content, []byte(clipboardSecretMarker)) {
 			t.Fatalf("%s 含剪貼簿內容明文——報告只得含事件事實", name)
+		}
+		if bytes.Contains(content, []byte(clipboardCipherMarker)) {
+			t.Fatalf("%s 含剪貼簿密文欄值——報告只得含事件事實，連密文都不得帶出", name)
 		}
 	}
 	rows := csvRows(t, files["clipboard_events.csv"])

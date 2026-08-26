@@ -25,6 +25,29 @@ vi.mock('@/api/auth', () => ({
   logout: (...args) => logoutMock(...args),
 }))
 
+// 待審 badge 輪詢：approver 人設的既有測試若不 mock 會打真網路，晚到的 401 回應
+// 被 vitest 歸到後面的測試名下變成 stderr 噪音。只擋噪音、回 0 筆，不改任何斷言
+vi.mock('@/api/accessRequests', () => ({
+  getPendingAccessRequestCount: () => Promise.resolve({ count: 0, review_count: 0 }),
+}))
+
+// 單實例守衛橫幅：粗狀態走 seal/status（不寫審計列、可輪詢），細節走 /instance-guard
+//（每次呼叫留一列審計讀取、只在橫幅出現時由管理者取一次）。兩條都 mock 掉，
+// 本檔的橫幅測試要證明的是「輪詢打的是哪一條」
+const getSealStatusMock = vi.fn()
+const getInstanceGuardMock = vi.fn()
+vi.mock('@/api/seal', () => ({
+  getSealStatus: (...args) => getSealStatusMock(...args),
+  unseal: vi.fn(),
+}))
+vi.mock('@/api/instanceGuard', () => ({
+  getInstanceGuard: (...args) => getInstanceGuardMock(...args),
+}))
+
+const GUARD_HELD = { state: 'held', since: '2026-08-25T09:22:39Z', reason: '', peers: 0 }
+const GUARD_OVERRIDDEN = { state: 'overridden', since: '2026-08-25T09:22:39Z', reason: 'ack_startup', peers: 0 }
+const sealStatusWith = (guard) => ({ state: 'unsealed', instance_guard: guard })
+
 const mountLayout = () =>
   mount(MainLayout, {
     global: {
@@ -60,6 +83,7 @@ describe('MainLayout sidebar', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
   })
 
   it('renders all five nav groups for admin', async () => {
@@ -264,6 +288,27 @@ describe('MainLayout sidebar', () => {
     expect(localStorage.getItem('ot-sidebar-collapsed')).toBe('false')
   })
 
+  // ui-navigation：收合鈕 SHALL 於初始視窗內可見，SHALL NOT 落在側欄的
+  // 捲動摺線之下。它原本住在側欄最底的 sidebar-footer，選單一長就被推出
+  // 視窗（1260px 起就看不見）——而螢幕不夠高正是最需要收合的時候。
+  // 「不隨選單捲動」的結構前提有三：鈕在 logo 列內、footer 不再存在、
+  // 捲動容器是選單而非整條側欄。像素層面的可見性由 Playwright 900px 實點把關
+  it('keeps the collapse control in the logo row, above the sidebar scroll fold', () => {
+    setUser(['admin'])
+    const wrapper = mountLayout()
+    expect(wrapper.find('.logo .collapse-btn').exists()).toBe(true)
+    expect(wrapper.find('.sidebar-footer').exists()).toBe(false)
+  })
+
+  it('labels the collapse control for both directions (icon-only needs a name)', async () => {
+    setUser(['admin'])
+    const wrapper = mountLayout()
+    const btn = () => wrapper.find('.collapse-btn')
+    expect(btn().attributes('aria-label')).toBe('收合側欄')
+    await btn().trigger('click')
+    expect(btn().attributes('aria-label')).toBe('展開側欄')
+  })
+
   it('restores collapsed state from localStorage on mount', () => {
     setUser(['admin'])
     localStorage.setItem('ot-sidebar-collapsed', 'true')
@@ -301,5 +346,121 @@ describe('MainLayout sidebar', () => {
     expect(localStorage.getItem('token')).toBeNull()
     expect(localStorage.getItem('user')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/login')
+  })
+})
+
+// —— 單實例守衛橫幅（single-instance-guard）——
+// 橫幅本體的顯示條件與細節內容在 InstanceGuardBanner.spec.js；本組只釘住 MainLayout 的輪詢契約：
+// 打的是不寫審計列的 seal/status，**從不**輪詢會留審計讀取列的 /instance-guard
+describe('MainLayout 單實例守衛橫幅輪詢', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+    // 只假 interval：flushPromises 依賴的 setImmediate／setTimeout 維持真實，
+    // 否則 await 會卡死（vitest 預設把它們一起假掉）
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('掛載即取一次 seal/status、每 60 秒再取，輪詢不打 /instance-guard', async () => {
+    setUser(['admin'])
+    const wrapper = mountLayout()
+    await flushPromises()
+    expect(getSealStatusMock).toHaveBeenCalledTimes(1)
+    expect(getSealStatusMock).toHaveBeenCalledWith({ skipErrorToast: true })
+
+    for (let i = 1; i <= 3; i++) {
+      vi.advanceTimersByTime(60000)
+      await flushPromises()
+      expect(getSealStatusMock).toHaveBeenCalledTimes(1 + i)
+    }
+    // held 且無對等：橫幅不出現、細節端點一次都沒打
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    expect(getInstanceGuardMock).not.toHaveBeenCalled()
+  })
+
+  it('overridden 時橫幅出現；admin 的細節只取一次，後續輪詢仍不打 /instance-guard', async () => {
+    setUser(['admin'])
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_OVERRIDDEN))
+    getInstanceGuardMock.mockResolvedValue({
+      ...GUARD_OVERRIDDEN,
+      instance: { hostname: 'c4a434007105', pid: 47, started_at: GUARD_OVERRIDDEN.since },
+      db_session_pid: 6445,
+      holder: {
+        application_name: 'custodexa-instance-guard',
+        pid: 6401,
+        backend_start: '2026-08-25T09:10:59.169055Z',
+        code: 'ab12cd34ef56',
+        fingerprint_source: 'pg_stat_activity',
+      },
+      ack: 'ab12cd34ef56',
+      lost_total: 0,
+    })
+    const wrapper = mountLayout()
+    await flushPromises()
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('ab12cd34ef56')
+    expect(getInstanceGuardMock).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(60000)
+    await flushPromises()
+    vi.advanceTimersByTime(60000)
+    await flushPromises()
+    expect(getSealStatusMock).toHaveBeenCalledTimes(3)
+    expect(getInstanceGuardMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('一般使用者看得到橫幅，但不打 /instance-guard', async () => {
+    setUser(['user'])
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_OVERRIDDEN))
+    const wrapper = mountLayout()
+    await flushPromises()
+    const alert = wrapper.find('[role="alert"]')
+    expect(alert.exists()).toBe(true)
+    expect(alert.text()).toContain('這道橫幅就是通知本身')
+    expect(getInstanceGuardMock).not.toHaveBeenCalled()
+  })
+
+  it('狀態回到 held 且無對等連線，下一次輪詢後橫幅消失（免重新整理）', async () => {
+    setUser(['user'])
+    getSealStatusMock.mockResolvedValueOnce(sealStatusWith(GUARD_OVERRIDDEN))
+    const wrapper = mountLayout()
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+    vi.advanceTimersByTime(60000)
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+  })
+
+  it('輪詢失敗沿用上一次值（橫幅不因一次網路抖動消失）', async () => {
+    setUser(['user'])
+    getSealStatusMock.mockResolvedValueOnce(sealStatusWith(GUARD_OVERRIDDEN))
+    const wrapper = mountLayout()
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+
+    getSealStatusMock.mockRejectedValue(new Error('network down'))
+    vi.advanceTimersByTime(60000)
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true)
+  })
+
+  it('卸載後停止輪詢', async () => {
+    setUser(['user'])
+    const wrapper = mountLayout()
+    await flushPromises()
+    expect(getSealStatusMock).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    vi.advanceTimersByTime(180000)
+    await flushPromises()
+    expect(getSealStatusMock).toHaveBeenCalledTimes(1)
   })
 })

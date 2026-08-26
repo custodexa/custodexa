@@ -248,6 +248,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/audit-export/jobs",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuditExportHandler).ListJobs-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-export/jobs/:id/download",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuditExportHandler).DownloadJob-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/audit-export/public-key",
       "handler": "github.com/custodexa/backend/internal/api.(*ExportSigningHandler).PublicKey-fm"
     },
@@ -363,6 +373,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/instance-guard",
+      "handler": "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).Get-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/keys",
       "handler": "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).Inventory-fm"
     },
@@ -430,6 +445,11 @@
       "method": "GET",
       "path": "/api/v1/sessions/:id/clipboard-events",
       "handler": "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/clipboard-events/:eventID/content",
+      "handler": "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).GetContent-fm"
     },
     {
       "method": "GET",
@@ -648,6 +668,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/audit-export/jobs",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuditExportHandler).CreateJob-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/auth/change-password",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthHandler).ChangePassword-fm"
     },
@@ -855,6 +880,11 @@
       "method": "POST",
       "path": "/api/v1/users/:id/unlock",
       "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).Unlock-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/source-policy/check",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).SourcePolicyCheck-fm"
     },
     {
       "method": "POST",
@@ -2066,6 +2096,36 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/audit-export/jobs",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).ListJobs-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-export/jobs/:id/download",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).DownloadJob-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/audit-export/public-key",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2569,6 +2629,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/instance-guard",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/keys",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2873,6 +2948,21 @@
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.RequirePermission.func2",
         "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sessions/:id/clipboard-events/:eventID/content",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*ClipboardEventHandler).GetContent-fm"
       ]
     },
     {
@@ -3856,6 +3946,21 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/audit-export/jobs",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*AuditExportHandler).CreateJob-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/auth/change-password",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -4776,6 +4881,21 @@
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*UserHandler).Unlock-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/users/source-policy/check",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).SourcePolicyCheck-fm"
       ]
     },
     {

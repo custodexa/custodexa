@@ -36,6 +36,12 @@ vi.mock('@/api/commands', () => ({
   getSessionCommands: (...a) => getSessionCommandsMock(...a),
 }))
 
+// 剪貼簿事實列表：本檔不驗剪貼簿面，mock 成空集保持密封（B3 新增呼叫）
+vi.mock('@/api/clipboardEvents', () => ({
+  getSessionClipboardEvents: vi.fn().mockResolvedValue({ data: [] }),
+  getClipboardEventContent: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 's-1' }, query: routeQuery.value }),
   useRouter: () => ({ push: vi.fn(), back: vi.fn() }),

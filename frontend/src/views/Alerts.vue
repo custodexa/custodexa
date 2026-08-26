@@ -126,6 +126,12 @@
                 <!-- 降級告警沒有規則可指（rule_id 為 NULL、rule_name 存的是機器碼），
                      此欄改顯示來源類別的散文，不把機器碼原樣丟給稽核員 -->
                 <span v-if="isDegradedAlert(row)">{{ $t('alerts.kindAuditDegraded') }}</span>
+                <!-- 新來源位址告警同樣不掛規則：rule_name 存的是機器碼，
+                     此欄改顯示來源類別的散文 -->
+                <span
+                  v-else-if="isNewSourceIPAlert(row)"
+                  data-test="alert-new-source-ip-kind"
+                >{{ $t('alerts.kindNewSourceIP') }}</span>
                 <span v-else>{{ row.rule_name }}</span>
                 <el-tag
                   v-if="row.blocked"
@@ -154,6 +160,32 @@
                 >
                   <span class="alert-degraded__title">{{ $t('commands.degrade.title') }}</span>
                   <span class="alert-degraded__reason">{{ commandAlertReasonLabel(row.reason_code) }}</span>
+                </div>
+                <!-- 新來源位址告警本來就沒有指令（`command` 為空字串是刻意的）：
+                     這一格改說它實際在講的事——位址，加上「首次自此位址建線」。
+                     位址為深連結：一鍵以該位址為樞紐進入調查工作台，時間窗為
+                     觸發當日、類別為全部，稽核員不必手動複製位址再重設條件 -->
+                <div
+                  v-else-if="isNewSourceIPAlert(row)"
+                  class="alert-new-source"
+                  data-test="alert-new-source-ip"
+                >
+                  <router-link
+                    v-if="newSourceIPLink(row)"
+                    :to="newSourceIPLink(row)"
+                    class="command-text alert-new-source__addr"
+                    :title="$t('alerts.newSourceIPPivot')"
+                    data-test="alert-new-source-ip-link"
+                  >
+                    {{ row.client_ip }}
+                  </router-link>
+                  <span
+                    v-else
+                    class="command-missing"
+                  >{{ $t('alerts.newSourceIPNoAddress') }}</span>
+                  <span class="alert-new-source__note">
+                    {{ $t('alerts.newSourceIPFirstSession') }}
+                  </span>
                 </div>
                 <!-- 非降級類但也沒有文字：不宣稱成因，只把事實講清楚 -->
                 <span
@@ -821,7 +853,12 @@ import { formatDateTime } from '@/utils/format'
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
 import { riskLabel } from '@/utils/transportDisplay'
-import { isDegradedAlert, commandAlertReasonLabel } from '@/constants/command-degrade'
+import {
+  isDegradedAlert,
+  isNewSourceIPAlert,
+  commandAlertReasonLabel,
+} from '@/constants/command-degrade'
+import { buildAddressPivotLink, localDayRange } from '@/components/audit/timelineQuery'
 import { resolveApiError } from '@/api/error'
 import {
   CHANNEL_LANGUAGE_VALUES,
@@ -964,6 +1001,17 @@ const handleRefresh = () => {
 
 const goToSession = (row) => {
   router.push(`/sessions/${row.session_id}`)
+}
+
+// 新來源位址告警的位址深連結：以該位址為樞紐、時間窗為**觸發當日的本地整日**、
+// 類別全部。「當日」用本地時區——稽核員讀的是自己所在時區的那一天，
+// 換成伺服器時區會讓跨時區調查的邊界對不上。
+// 位址缺席（會話已刪、或建線當下取不到來源）時不給連結：
+// 沒有目的地的連結是假話
+const newSourceIPLink = (row) => {
+  if (!row?.client_ip) return null
+  const [from, to] = localDayRange(row.triggered_at)
+  return buildAddressPivotLink(row.client_ip, { from, to })
 }
 
 // --- 規則管理 ---
@@ -1334,6 +1382,26 @@ const handleTabChange = (tab) => {
 .command-missing {
   font-size: var(--ot-font-size-sm);
   color: var(--ot-warning);
+}
+
+.alert-new-source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alert-new-source__addr {
+  color: var(--ot-primary);
+  text-decoration: none;
+}
+
+.alert-new-source__addr:hover {
+  text-decoration: underline;
+}
+
+.alert-new-source__note {
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
 }
 
 .alert-degraded {

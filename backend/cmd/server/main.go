@@ -149,6 +149,9 @@ func main() {
 		machine = seal.NewUnsealed(g)
 		sealHandler := api.NewSealHandler(machine, nil)
 		sealHandler.SetSourceControls(s1.cfg.Seal.TrustedProxyConfigured(), allowedSources, "")
+		// 守衛粗狀態：管理介面橫幅輪詢的資料出口，A／C 模式在此接線；
+		// B 模式在 sealwire.go 的 newWiredSealHandler 接線
+		sealHandler.SetInstanceGuardProbe(instanceGuardStatusProbe)
 		// **A／C 模式不建立獨立解封監聽**，且明說理由：該模式恆 unsealed，
 		// 解封端點只會回 409，另開一個監聽面不會增加任何運維能力，
 		// 卻會多一個對外開放的埠。組態被忽略時必須留下可查的一行。
@@ -510,6 +513,8 @@ type routeDeps struct {
 	notificationChannel   *api.NotificationChannelHandler
 	oidc                  *api.OIDCHandler
 	ldapDirectory         *api.LDAPDirectoryHandler
+	// instanceGuard 單實例守衛全貌（admin 限定、唯讀；橫幅出現時管理者取一次的細節出口）
+	instanceGuard         *api.InstanceGuardHandler
 	keyManagement         *api.KeyManagementHandler
 	snippet               *api.SnippetHandler
 	assetGroup            *api.AssetGroupHandler
@@ -627,6 +632,9 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// LDAP 目錄設定：與 OIDC provider 同屬
 		// 身分管理面的 admin-only 設定；singleton 資源（無 :id、無集合式建立）
 		d.ldapDirectory.RegisterRoutes(v1, d.authService)
+		// 單實例守衛全貌：admin 限定、唯讀、每次呼叫
+		// 留一列審計讀取；介面只在橫幅出現時取一次，粗狀態的輪詢走 /seal/status
+		d.instanceGuard.RegisterRoutes(v1, d.authService)
 		d.keyManagement.RegisterRoutes(v1, d.authService)
 		d.snippet.RegisterRoutes(v1, d.authService)
 		d.assetGroup.RegisterRoutes(v1, d.authService)

@@ -49,6 +49,11 @@ type issueState struct {
 	req      connectTokenRequest
 	assetRow *model.Asset
 	identity asset.AccountIdentity
+	// allowedCIDRs 該使用者的允許來源網段儲存字串，由 G-I2 的同一次載入帶出
+	// （來源閘不另查一趟，見 G-I15）
+	allowedCIDRs string
+	// sourceDenyCause 來源閘拒絕時的成因類別（政策不可讀才有值）：只進審計
+	sourceDenyCause string
 }
 
 // contractObject 簽發側的已解析客體：AccountID 為請求帶的**選擇器**值（0＝預設帳號），
@@ -82,13 +87,25 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			// 的正式 JWT 仍能走到此處，降權 admin 亦然。不覆蓋則其後所有 admin 短路（授權/錄影
 			// fail-close 例外/政策豁免/簽發）皆憑 JWT 角色快照放行。CheckUserConnectable
 			// 的可連線複查併入本次查詢，不多查一趟
-			role, connErr := h.AuthService.CurrentConnectRole(s.UserID)
+			role, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthError(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
 			st.role = role
+			st.allowedCIDRs = allowedCIDRs
 			return nil
+		}},
+		{Name: "G-I15", Eval: func() *connectgate.Outcome {
+			// 來源限定（G1）：**位置在角色現查之後、請求綁定之前**。
+			// 只依主體判定，不需資產——放在資產解析之後會對「來源不對」的請求
+			// 洩漏資產存在（G-I4 的 404）與授權（G-I5）狀態，而那是本閘要擋的人
+			// 最想知道的兩件事。
+			//
+			// 清單取自 G-I2 的同一次載入：兩道閘讀同一列，中間沒有窗口
+			out, cause := connectgate.SourceOutcome(st.allowedCIDRs, s.ClientIP)
+			st.sourceDenyCause = cause
+			return out
 		}},
 		{Name: "G-I3", Eval: func() *connectgate.Outcome {
 			if err := c.ShouldBindJSON(&st.req); err != nil {
@@ -267,6 +284,11 @@ type redeemState struct {
 	currentRole string
 	cols, rows  int
 	creds       *asset.AssetCredentials
+	// allowedCIDRs 兌換當下現讀的允許來源網段（G-S3 的同一次載入帶出）。
+	// **不信簽發**：票證可能在允許的位址簽出，再換個位址來兌換
+	allowedCIDRs string
+	// sourceDenyCause 來源閘拒絕時的成因類別（政策不可讀才有值）：只進審計
+	sourceDenyCause string
 }
 
 // contractSubject／contractObject SSH 兌換側的契約入參（構造與職責同圖形側，
@@ -308,13 +330,22 @@ func (h *Handler) redeemPreResolveGates(c *gin.Context,
 			// AUTH-1＋角色現況：connect_token 於停用/鎖定/
 			// 降權前簽發者，兌換時重載用戶狀態並取 DB 現查有效角色（即時撤權殘窗 = 60s TTL；
 			// 不重載＝停用/降權者仍可開新 shell）。currentRole 供下方授權/政策重查判定 admin 特權
-			currentRole, connErr := h.AuthService.CurrentConnectRole(s.UserID)
+			currentRole, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthError(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
 			st.currentRole = currentRole
+			st.allowedCIDRs = allowedCIDRs
 			return nil
+		}},
+		{Name: "G-S14", Eval: func() *connectgate.Outcome {
+			// 來源限定（G1）：**兌換當下現讀、不信簽發**。
+			// 只放簽發側的閘擋不住「在允許網段簽票、換個位址在 60 秒內兌換」
+			// ——票證的存活期就是那道閘的繞行窗口
+			out, cause := connectgate.SourceOutcome(st.allowedCIDRs, s.ClientIP)
+			st.sourceDenyCause = cause
+			return out
 		}},
 		{Name: "G-S4", Eval: func() *connectgate.Outcome {
 			// 憑證世代複查：簽發後、兌換前若該 provider 被停用／

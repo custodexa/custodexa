@@ -26,6 +26,10 @@ const (
 	// ActionRecordingFailed session 錄影失敗：
 	// 失效事件表同機制去重，逐 session 可追溯靠本審計列
 	ActionRecordingFailed AuditAction = "recording_failed"
+	// ActionNewSourceIP 帳號自從未見過的來源位址完成 web 登入：只留審計標記、
+	// 不進告警表（登入無會話可綁；且登入與建線各響一次會違反「同位址不重響」）。
+	// 與基準表的插入同交易寫入，失敗整筆回滾、下次登入再補。varchar(20) 內
+	ActionNewSourceIP AuditAction = "new_source_ip"
 
 	// SFTP 檔案操作
 	ActionFileList     AuditAction = "file_list"
@@ -180,6 +184,11 @@ const (
 	// ResourceRole 角色定義讀取（`GET /roles`）：無 `:id`，**resource_id 恆為 nil**。
 	// 與 ResourceUser 分開——角色是授權模型的一部分，不是使用者實體
 	ResourceRole AuditResource = "role"
+	// ResourceInstanceGuard 單實例守衛：
+	// 三個系統事件（overridden／lost／regained，`action=execute`，系統主體）與
+	// 管理者限定端點 `GET /instance-guard` 的讀取列。無 `:id`，resource_id 恆 nil。
+	// 值長 14（varchar(20) 內）
+	ResourceInstanceGuard AuditResource = "instance_guard"
 
 	// ResourceUnclassified 分類器的**兜底哨兵**。
 	//

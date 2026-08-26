@@ -255,6 +255,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/audit-checkpoints/public-key"}:                                  {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
 	{"GET", "/api/v1/audit-checkpoints/verify"}:                                      {classResource, model.ResourceAuditCheckpoint, "命中分類器段 `audit-checkpoints`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；/verify 帶 seq_from／seq_to）"},
 	{"GET", "/api/v1/audit-export"}:                                                  {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`"},
+	{"POST", "/api/v1/audit-export/jobs"}:                                            {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`；證據包 job 發起，另有 handler 側審計（AP-75）含完整篩選快照，中介層本列為請求層留痕、兩者並存"},
+	{"GET", "/api/v1/audit-export/jobs"}:                                             {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`；申請者本人 job 清單（敏感資源 GET 記查詢摘要）"},
+	{"GET", "/api/v1/audit-export/jobs/:id/download"}:                                {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`；產物下載＝取走證物整包，另有 handler 側逐次下載審計（AP-75），拒絕同樣入審計"},
 	{"GET", "/api/v1/audit-export/public-key"}:                                       {classResource, model.ResourceAuditExport, "命中分類器段 `audit-export`"},
 	{"GET", "/api/v1/audit-failures"}:                                                {classResource, model.ResourceAuditFailure, "命中分類器段 `audit-failures`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3）"},
 	{"GET", "/api/v1/audit-integrity/verify"}:                                        {classResource, model.ResourceAuditIntegrity, "命中分類器段 `audit-integrity`（新增常數接線）；審計資料讀取，**入 auditSensitiveResources**（PCI 10.2.1.3；驗證帶時間範圍）"},
@@ -301,6 +304,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
 	{"PUT", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
 	{"POST", "/api/v1/ldap-directory/test"}:                                          {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
+	{"GET", "/api/v1/instance-guard"}:                                                {classResource, model.ResourceInstanceGuard, "命中分類器段 `instance-guard`（新增常數接線）；管理者限定的守衛快照（含持鎖者指紋與確認碼），每次呼叫一列讀取留痕——「哪個管理者何時看了衝突細節」本身是有價值的留痕；介面不輪詢（粗狀態輪詢走 /seal/status，classNoIdentity）；唯讀、無 `:id`，不入 auditSensitiveResources"},
 	{"GET", "/api/v1/my/connections"}:                                                {classResource, model.ResourceSession, "命中分類器段 `connections`；/my/connections* 操作的是 session"},
 	{"POST", "/api/v1/my/connections/:id/terminate"}:                                 {classResource, model.ResourceSession, "命中分類器段 `connections`；/my/connections* 操作的是 session"},
 	{"GET", "/api/v1/notification-channels"}:                                         {classResource, model.ResourceNotifyChannel, "命中分類器段 `notification-channels`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向通道列"},
@@ -319,6 +323,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/sessions"}:                                                      {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id"}:                                                  {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id/clipboard-events"}:                                 {classResource, model.ResourceClipboardEvent, "命中分類器段 `clipboard-events`；子資源前置特判先於容器段 sessions"},
+	{"GET", "/api/v1/sessions/:id/clipboard-events/:eventID/content"}:                {classResource, model.ResourceClipboardEvent, "命中分類器段 `clipboard-events`；單筆內容調閱＝取走證物本體，另有 handler 側逐筆 fail-close 留痕（AP-74），中介層本列為請求層留痕、兩者語義並存"},
 	{"GET", "/api/v1/sessions/:id/commands"}:                                         {classResource, model.ResourceCommand, "命中前置特判段 `commands`；取走指令原文＝取證，與容器段 sessions 分開"},
 	{"DELETE", "/api/v1/sessions/:id/recording"}:                                     {classResource, model.ResourceRecording, "命中前置特判段 `recording`；刪除錄影證物須與一般連線操作分得開"},
 	{"GET", "/api/v1/sessions/:id/recording"}:                                        {classResource, model.ResourceRecording, "命中前置特判段 `recording`；錄影中繼資料讀取與取流同族"},
@@ -365,6 +370,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"PUT", "/api/v1/users/:id/status"}:                                              {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users/:id/unlock"}:                                             {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"GET", "/api/v1/users/local-admin-count"}:                                       {classResource, model.ResourceUser, "命中分類器段 `users`"},
+	{"POST", "/api/v1/users/source-policy/check"}:                                     {classResource, model.ResourceUser, "命中分類器段 `users`（允許來源網段的純判定端點，靜態段與 `:id` 並存）"},
 
 	// ── classNoIdentity：鏈中無認證中介層 ⇒ 審計中介層必然早退（22 條）──
 	//

@@ -42,6 +42,9 @@ var tableOwner = map[string]string{
 	"approver_scopes":          "authz",
 	// audit
 	"audit_logs":            "audit",
+	// 證據包非同步匯出 job（受理、打包、
+	// 下載授權皆在 audit 模組）
+	"audit_export_jobs":     "audit",
 	"command_alerts":        "audit",
 	"alert_rules":           "audit",
 	"notification_channels": "audit",
@@ -63,6 +66,10 @@ var tableOwner = map[string]string{
 	// **明示為營運狀態而非證據**：本表不在鏈的覆蓋範圍內（鏈只覆蓋 audit_logs）
 	"audit_chain_verify_states": "audit",
 	"syslog_settings":           "audit",
+	// source-ip-forensics：帳號 × 來源位址的已見基準。產生（建線點與登入點的
+	// 交易內 upsert）與消費（位址候選查詢）皆在 audit 模組，故屬 audit；
+	// 它是告警的判定依據，與 command_alerts 同家
+	"user_source_ips": "audit",
 	// keyvault
 	"data_keys":           "keyvault",
 	"export_signing_keys": "keyvault",
@@ -191,7 +198,9 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	{Module: "audit", Table: "sessions", Kind: "read",
 		Reason: "審計匯出解析「有錄影的會話」（audit_export_service.go）。auditor-workbench 起另有時間軸聚合以 sessions 為主體解析面（clipboard_events 無主體欄，須 JOIN 回 sessions 取 user_id／asset_id）。"},
 	{Module: "audit", Table: "clipboard_events", Kind: "read",
-		Reason: "**auditor-workbench 新增的一筆資料層債，非既有債**（timeline_service.go 的 fetchClipboard／countSource）。" +
+		Reason: "**auditor-workbench 新增的一筆資料層債，非既有債**（timeline_service.go 的 fetchClipboard／countSource；" +
+			"audit_export_report.go 的報告事實列與 audit_export_clipboard.go 的" +
+			"證據包內容段亦讀本表——匯出的範圍條件同樣須在 SQL 內表達，償還方向同下）。" +
 			"時間軸把六類事件合併成單一 keyset 游標序，取窗條件（時間＋主體＋游標）與 LIMIT 必須在 SQL 內表達；" +
 			"走 session 模組的既有清單介面會退化成「各類先各取一頁再於記憶體合併」，" +
 			"分頁邊界即失真（某一類事件會整批消失或重複）。" +
@@ -235,6 +244,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "同上（LDAP bind 密碼欄）。"},
 	{Module: "keyvault", Table: "notification_channels", Kind: "write", Invisible: true,
 		Reason: "同上（通知通道 url／secret 兩欄）。"},
+	{Module: "keyvault", Table: "clipboard_events", Kind: "write", Invisible: true,
+		Reason: "同上（剪貼簿留存內容欄 content_enc）。"},
 	{Module: "keyvault", Table: "assets", Kind: "read", Invisible: true,
 		Reason: "AAD 殘留哨兵與重加密前的掃描讀取，來源同上。"},
 	{Module: "keyvault", Table: "asset_accounts", Kind: "read", Invisible: true,
@@ -249,4 +260,11 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "同上。"},
 	{Module: "keyvault", Table: "notification_channels", Kind: "read", Invisible: true,
 		Reason: "同上。"},
+	{Module: "keyvault", Table: "clipboard_events", Kind: "read", Invisible: true,
+		Reason: "同上。"},
+	// ---- session 的剪貼簿加密轉換遷移 ----
+	{Module: "session", Table: "information_schema", Kind: "read",
+		Reason: "postgres 系統目錄：post-unseal 轉換前探測 clipboard_events 的 content 欄是否存在（冪等閘，沿 ldapSeedTableExists 慣例）。非業務表。"},
+	{Module: "session", Table: "sqlite_master", Kind: "read",
+		Reason: "sqlite 系統目錄：同上的方言分支。非業務表。"},
 }

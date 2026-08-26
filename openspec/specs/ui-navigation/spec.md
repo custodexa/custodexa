@@ -3,9 +3,7 @@
 ## Purpose
 
 管理介面的導覽結構與選單組織：側邊欄採分組資訊架構、可收合並標示目前位置，各頁採一致的頁面骨架；導覽依角色（persona）調整可見項與儀表板卡片；總覽群組含工作區入口（工作區維持純連線介面），審計群組含檢查點驗證與稽核工作台入口。
-
 ## Requirements
-
 ### Requirement: Grouped sidebar information architecture
 The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (Dashboard, Workspace entry), 資產 (Assets — shown as「我的資產」to non-admin/auditor roles, Authorizations, Change Secret Plans), 連線 (Sessions, My Connections, My Requests), 審核 (Approvals), 審計 (Audit Logs, Commands, Alerts, Access Reviews), 身分與權限 (Users, Roles, User Groups, Approver Scopes「審核範圍」), 系統設定 (Security Policies, Access Control, Key Management, Transmission Security). The former single 系統管理 group SHALL be split into 身分與權限 and 系統設定 with all route paths unchanged; the former 會話 group label SHALL be renamed 連線. Test-only pages (RDP recording test, connection test) MUST NOT appear in the production navigation.
 
@@ -28,9 +26,15 @@ The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (D
 ### Requirement: Sidebar collapse
 The sidebar SHALL support collapsing to an icon-only rail and persist the collapsed state across page reloads (localStorage).
 
+The collapse control SHALL be discoverable without scrolling: it SHALL remain visible within the initial viewport (900px height baseline) regardless of how many menu items the sidebar contains, and SHALL NOT be positioned below the sidebar's overflow fold.
+
 #### Scenario: Collapse persists
 - **WHEN** the user collapses the sidebar and reloads the page
 - **THEN** the sidebar renders collapsed with icon-only items and tooltips on hover
+
+#### Scenario: Collapse control visible without scrolling
+- **WHEN** the sidebar's menu content exceeds the viewport height
+- **THEN** the collapse control remains visible and operable within the initial viewport without scrolling the sidebar
 
 ### Requirement: Current location indication
 The layout SHALL clearly indicate the active page in the sidebar and show the current page title in the content header area.
@@ -67,6 +71,7 @@ The sidebar 總覽 group SHALL contain a 工作區 entry that navigates to the w
 #### Scenario: Workspace round trip
 - **WHEN** a user clicks the 工作區 sidebar entry and then the workspace back control
 - **THEN** the user lands in the workspace and returns to the management console, with the workspace UI unchanged apart from pre-existing behavior
+
 ### Requirement: Checkpoint verification entry in audit group
 
 The sidebar 審計 group SHALL contain a checkpoint verification entry that navigates to the standalone checkpoint verification page. The entry SHALL be visible to admin and auditor roles only (`roles: ['admin','auditor']`, consistent with the existing audit entries), and SHALL be hidden from general users while the route guard rejects direct URL access.
@@ -115,3 +120,4 @@ The workbench route SHALL accept its full investigation state (pivot, subject, t
 
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the workbench entry is added
+

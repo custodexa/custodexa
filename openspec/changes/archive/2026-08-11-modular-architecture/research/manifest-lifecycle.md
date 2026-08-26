@@ -90,10 +90,10 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 | 類別 | 現況筆數 | 守衛下限 |
 |---|---|---|
-| 個別登記的包級全域（`var:`） | 152 | 110 |
+| 個別登記的包級全域（`var:`） | 161 | 110 |
 | `init()`（`init:`） | 5 | —（雙向等值） |
-| 組裝根注入／註冊呼叫點（`hook:`） | 63 | 35 |
-| 組裝根裸欄位注入（`inject:`） | 13（納管判準見 §4.4／§4.5） | 8 |
+| 組裝根注入／註冊呼叫點（`hook:`） | 72 | 35 |
+| 組裝根裸欄位注入（`inject:`） | 15（納管判準見 §4.4／§4.5） | 8 |
 | 單例式 `Init`／`Reset`／`Zeroize` 宣告（`singleton:`） | 16 | —（雙向等值） |
 | 段 2 啟動步驟（`step:`） | 41（34 字面量＋7 迴圈） | 25（字面量） |
 | 釋放登記（`release:`） | 15 | —（有序等值） |
@@ -116,7 +116,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 2. 包級全域（`var:`，152 筆）
+## 2. 包級全域（`var:`，161 筆）
 
 ### 2.1 組裝根（`cmd/server`，5 筆）
 
@@ -158,7 +158,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-127 | var:internal/model/audit_checkpoint.go:checkpointUpdatableColumns | checkpointUpdatableColumns | internal/model/audit_checkpoint.go:110 | 包級全域／`BeforeUpdate` 欄位白名單 | 不搬（橫切 model） | —（不動，audit-checkpoint-chain 新增） | 無序，但**內容即安全邊界**：`AuditCheckpoint.BeforeUpdate` 只放行本表列出的四個封章後狀態欄。多列一個被簽章欄位（`agg_hash`／`signature`／`id_to` 等）＝檢查點鏈可被系統自己改寫，鏈的證明力歸零且無任何編譯錯誤。守衛：`TestCheckpointUpdatableColumnsWhitelistIsExact` 逐字釘住四個成員。 |
 | G-131 | var:internal/model/audit_log.go:AuditHubSubResources | AuditHubSubResources | internal/model/audit_log.go:161 | 包級全域／樞紐查詢的子資源涵蓋表 | 不搬（橫切 model） | —（不動，clipboard-read-provenance 新增） | 無序（無 init／注入，字面量在載入期即定值），但**內容即查詢正確性邊界**，故與 G-127 同型逐項登記。連線樞紐 `GET /audit-logs/resource/session/:id` 以本表把 `ResourceSession` 展開成含 `ResourceClipboardEvent`／`ResourceRecording`／`ResourceCommand` 的集合（後兩者為 audit-resource-classification-closure 追加，同一次改動把 `recording` 移出樞紐型別白名單——其 `:id` 語義已漂移為連線 id）；**入列的唯一判準是 resource_id 落在同一 id 空間**（clipboard_event 的 resource_id 是連線 id，非事件列 id）。誤增一個 id 空間不同的分類（例如 `ResourceChangeSecretPlan` 的 resource_id 是計畫 id）＝以連線 id 去撈別的實體的事件，樞紐上憑空出現不屬於這場連線的審計列——**假事件比遺漏更糟且無編譯錯誤**；反之整表被清空則取證動作從樞紐消失，稽核看到的是「這場連線沒人取走過剪貼簿」。拆包時若被搬離 `internal/model`，讀取端（`audit_log_service`／handler）與定義端就不再是同一份事實。 |
 
-### 2.4 全域 DB handle 與 schema baseline（`internal/database`，改名前為 `internal/repository`，21 筆）
+### 2.4 全域 DB handle 與 schema baseline（`internal/database`，改名前為 `internal/repository`，24 筆）
 
 > **migration-baseline-compression（2026-08-16）改寫本節**：49 條增量 migration 與開機
 > `AutoMigrate` 一併退場，schema 的唯一事實源改為單一 baseline 的 DDL 清單。
@@ -188,6 +188,11 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-22r | var:internal/database/baseline_schema_platform.go:baselinePlatformIndexes | baselinePlatformIndexes | internal/database/baseline_schema_platform.go:77 | 包級全域／不可變 DDL 清單 | infra | migration-baseline-compression | 平台域索引，含 `idx_data_keys_purpose_version_kek`（partial unique，重包狀態機「同 slot 至多一列帶材料」的 DB 層承載，同時是 AAD 完備性的依賴）。 |
 | G-22s | var:internal/database/baseline_seed.go:builtinAlertRules | builtinAlertRules | internal/database/baseline_seed.go:31 | 包級全域／不可變查表 | infra | migration-baseline-compression | 12 條內建危險指令規則的**最終狀態**（壓縮前是三個 migration 疊加的結果）。無序，但**內容即安全涵蓋面**：漏掉第三段（`mysql,postgres` → `mysql,postgres,mssql`）＝MSSQL 會話的危險 SQL 無規則覆蓋，而 schema 等價比對（`pg_dump --schema-only`）完全看不到種子資料。守衛：`assertBuiltinAlertRules` 逐條比對 name／pattern／severity／protocols 與三組分佈計數。 |
 | G-22t | var:internal/database/migrations.go:runtimeMarkerVersions | runtimeMarkerVersions | internal/database/migrations.go:66 | 包級全域／具名豁免清單 | infra | migration-baseline-compression | 由執行期寫入 `schema_migrations` 但**不是** migration 的版本值（現況唯一成員：LDAP env seed 的冪等標記）。無序，但**漏登記一個 marker 的後果是每一個跑過該模組初始化的全新安裝在第二次啟動時被自己的 fail-close 擋住**——第一次啟動完全正常（marker 尚未寫入），故顯現時機是「昨天還好好的，今天起不來」，且錯誤訊息會誤指資料庫是壓縮前的舊庫。守衛：`TestRuntimeMarkerVersionsCoverAllWriters` 雙面掃描（`*MarkerVersion` 常數＋對 `schema_migrations` 的原生 INSERT 檔）。 |
+| G-143 | var:internal/database/instance_guard.go:instanceGuard | instanceGuard | internal/database/instance_guard.go:497 | 包級全域／singleton（`atomic.Pointer[InstanceGuard]`） | infra | single-instance-guard | 單實例守衛的生產實例。**段 1 `AcquireInstanceLock` 於 `InitDatabase` 之後、`RunMigrations` 之前賦值**——那是「DB 已可用、尚未發生任何寫入」的唯一窗口，晚於 migration 即失去「未確認不寫入」的保證。讀者：指標 collector（H-66）、seal status 探針（H-68／H-69）、管理者端點、段 2 事件 sink 注入（H-67）皆經 `InstanceGuardSnapshot`／`SetInstanceGuardEventSink` 現讀。釋放：`database.Close()` **先** `releaseInstanceLock()`（Stop：stopping→取消 watchdog→join→釋放釘選連線→released）**再** `sqlDB.Close()`——釘選連線不在池的管理下，反序則 watchdog 可能把池關閉誤計為失鎖。 |
+| G-144 | var:internal/database/instance_guard.go:instanceGuardProcessMu | instanceGuardProcessMu | internal/database/instance_guard.go:502 | 包級全域／行程層級 try 互斥（sqlite 分支） | infra | single-instance-guard | sqlite（僅單元測試）以此提供「第二次取鎖被攔、ack 路徑可測」的同語義（沿 `kekProcessMu`／`ldapDirectoryProcessMu`），不宣稱跨行程互斥；同時承載持鎖者的 Acquire 時間供固定形式指紋。**必須是包級而非 per-instance**：單行程多守衛實例的互斥測試依賴它共用。 |
+| G-146 | var:internal/modules/identity/source_policy_gate.go:sourcePolicyDegraded | sourcePolicyDegraded | internal/modules/identity/source_policy_gate.go:46 | 包級全域／行程內失效旗標（atomic.Bool） | identity | —（source-ip-forensics 4.6） | 無序，但**它只決定「要不要付出掃描成本」，不決定放行與否**——判定一律由 `sourceip.Evaluate` 以當次讀到的字串作成。把它改成判定依據（例如「失效中就一律拒絕」）會讓一列損壞資料把全部帳號鎖在門外；把恢復謂詞改成無條件每次掃描，登入尖峰會變成每秒數十次 users 全表掃描。行程級是刻意的：多副本各自持有一份，各自依自己讀到的事實升降級。 |
+| G-147 | var:internal/api/source_policy_gate.go:errSourcePolicyGateUnwired | errSourcePolicyGateUnwired | internal/api/source_policy_gate.go:103 | 包級全域／不可變 sentinel | 不搬（接入層） | —（source-ip-forensics 4.2） | 無序。存在理由：讀取面未接線與 DB 讀取失敗**必須收斂到同一條處置**（拒絕＋政策不可讀留痕）——兩者對判定點而言是同一件事：判定所需的事實取不到。改成回 nil error 或布林旗標即等於「未注入＝放行」，而一條漏接的組裝路徑就能讓整套來源限定靜默關掉。 |
+| G-145 | var:internal/database/instance_guard_backend_pg.go:pgGuardTryLockSQL | pgGuardTryLockSQL | internal/database/instance_guard_backend_pg.go:43 | 包級全域／不可變 SQL 字面量 | infra | single-instance-guard | 無序——`var` 而非 `const` 僅為測試可替換（沿 G-47 `pgSessionLockAcquireSQL` 形態）：pg-gated 格 `TestInstanceGuardPGTryLockResponseFailureLeavesNoLock` 以「多回一欄使 Scan 失敗」覆寫，驗 spec「取鎖回應失敗不留殘鎖」（鎖已在 DB 端授予、回應在客戶端失敗 → 連線丟棄不歸池）；產品路徑不改寫。 |
 
 ### 2.5 `init()` 期填充的 registry 與其對表（policy／audit／橫切，14 筆）
 
@@ -278,6 +283,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-72 | var:internal/modules/keyvault/cipher_refs.go:RefLDAPBindPassword | RefLDAPBindPassword | internal/modules/keyvault/cipher_refs.go:52 | 包級全域／AAD 綁定登記 | keyvault | W2 | 同 G-62；**§3.1 的 4.9 keyvault↔identity 環的一條邊**（`ldap_seed_migration.go:125` 消費）。拆環後方向為 identity→keyvault ✔。 |
 | G-73 | var:internal/modules/keyvault/cipher_refs.go:allCipherRefs | allCipherRefs | internal/modules/keyvault/cipher_refs.go:56 | 包級全域／完備性守衛資料來源 | keyvault | W2 | **必須列齊 G-62…G-72 全部 11 個 ref**；此表是 AAD 完備性與 KEK 重寫守衛的枚舉基準。少列一項＝該欄位不受守衛涵蓋且無任何編譯錯誤。此類登記表本身即守衛的資料來源，須加雙向完備性。 |
 | G-128 | var:internal/modules/keyvault/cipher_refs.go:RefCheckpointSigningPrivateKey | RefCheckpointSigningPrivateKey | internal/modules/keyvault/cipher_refs.go:42 | 包級全域／AAD 綁定登記 | keyvault | —（audit-checkpoint-chain 新增） | 同 G-62。另：本 ref 對應的 `checkpoint_signing_keys.private_key_enc` **必須同時登記於 G-74 `envelopeMigrationTargets`**——漏登會使退役 DEK 誤判零引用而被銷毀，該私鑰即永久不可解，以它簽的全部歷史檢查點從此不可驗。 |
+| G-142 | var:internal/modules/keyvault/cipher_refs.go:RefClipboardContent | RefClipboardContent | internal/modules/keyvault/cipher_refs.go:58 | 包級全域／AAD 綁定登記 | keyvault | —（workbench-clipboard-and-layout 新增） | 同 G-62（跨模組：session 的剪貼簿留存內容由 keyvault 的 ref 描述）。對應的 `clipboard_events.content_enc` **必須同時登記於 G-74 `envelopeMigrationTargets`**——漏登會使退役 DEK 誤判零引用而被銷毀，剪貼簿審計證據整批永久不可解。 |
 | G-74 | var:internal/modules/keyvault/envelope_migration_service.go:envelopeMigrationTargets | envelopeMigrationTargets | internal/modules/keyvault/envelope_migration_service.go:43 | 包級全域／動態表名登記表 | keyvault | W2 | **守衛的資料來源**（動態表名登記表）。同時是「keyvault 對 7 張他模組表 UPDATE」這條既知缺口的來源（`:225`）——須以具名寫入例外白名單登記並附理由，且**與交易級聯刪除類分開登記、不共用解法**。 |
 | G-75 | var:internal/modules/keyvault/key_manager_cleanup.go:purgeClasses | purgeClasses | internal/modules/keyvault/key_manager_cleanup.go:222 | 包級全域／不可變分類表 | keyvault | W2 | 無序——金鑰清理的分類對照，執行期只讀。 |
 | G-76 | var:internal/modules/keyvault/key_manager_cleanup.go:unregisteredPurgeClass | unregisteredPurgeClass | internal/modules/keyvault/key_manager_cleanup.go:265 | 包級全域／fallback 分類 | keyvault | W2 | 無序——未登記類別的 fail-visible 兜底值。 |
@@ -299,6 +305,10 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-132 | var:internal/modules/policy/cross_key_retention.go:dataRetentionKeys | dataRetentionKeys | internal/modules/policy/cross_key_retention.go:25 | 包級全域／不可變鍵清單 | policy | —（audit-checkpoint-chain 第 7 組新增） | 受檢查點保留跨鍵約束涵蓋的四個資料保留鍵。**順序無關，但成員數有關**：漏列一個鍵＝該類資料可設定成比檢查點鏈更長的保留期，鏈到期被修剪後那些資料的完整性再也無法證明。設定期（UpdateBatch）與執行期（retention 跳過修剪）共用本清單。 |
 | G-84b | var:internal/modules/audit/async_sink.go:errDirectSinkNoDB | errDirectSinkNoDB | internal/modules/audit/async_sink.go:109 | 包級全域／不可變哨兵錯誤 | audit | W4（4.6） | 無序——`DirectSink` 未注入 DB 句柄時的哨兵。**值不可為 nil**：C-plain 兩點（AP-04／AP-28）現況對審計寫入失敗只記 log 不阻斷，若此哨兵被改成 nil，「未接線」會與「寫成功」不可分辨。 |
 | G-84c | var:internal/modules/audit/timeline_service.go:allTimelineTypes | allTimelineTypes | internal/modules/audit/timeline_service.go:35 | 包級全域／有序類別全集 | audit | —（auditor-workbench 新增） | **順序即字典序，與 `keysetWhere` 的比較同源**——重排即游標比較與資料排序脫鉤，時間軸分頁會漏事件或重複發事件（且兩者都不會讓任何既有測試轉紅）。同時是「六類審計資料」的單一事實源：**漏列一類＝工作台永遠看不到該類事件**，症狀與「那段期間沒發生事」不可分辨。 |
+| G-84d | var:internal/modules/audit/timeline_service.go:directIPPredicate | directIPPredicate | internal/modules/audit/timeline_service.go:413 | 包級全域／不可變查詢述詞 | audit | —（source-ip-forensics 新增） | 無序（包變數初始化期定值後不改寫），但**內容即位址樞紐與位址篩選的 WHERE 形狀**：自帶 `client_ip` 欄的兩張表（sessions／audit_logs）用它。三個述詞常數必須維持同一組語義——fetch／count／spans 三處共用同一份，拆成各自的字面量即回到「events 有、counts 沒有」的三處漂移。 |
+| G-84e | var:internal/modules/audit/timeline_service.go:joinedIPPredicate | joinedIPPredicate | internal/modules/audit/timeline_service.go:420 | 包級全域／不可變查詢述詞 | audit | —（source-ip-forensics 新增） | 同 G-84d：經 LEFT JOIN sessions 取位址的兩張表（session_commands／command_alerts）。**LEFT 而非 INNER 是語義的一部分**——會話列缺失的指令／告警列仍要在人／資產樞紐以未知來源呈現，改成 INNER 會把整列藏掉。 |
+| G-84f | var:internal/modules/audit/timeline_service.go:clipboardIPPredicate | clipboardIPPredicate | internal/modules/audit/timeline_service.go:426 | 包級全域／不可變查詢述詞 | audit | —（source-ip-forensics 新增） | 同 G-84d：剪貼簿沿既有 INNER JOIN（本表無主體欄，會話缺失的列任何樞紐皆不可達，已列為誠實邊界）。 |
+| G-84g | var:internal/modules/audit/timeline_subjects.go:seenAtLayouts | seenAtLayouts | internal/modules/audit/timeline_subjects.go:47 | 包級全域／不可變時刻格式表 | audit | —（source-ip-forensics 新增） | 無序。存在理由：`MAX(last_seen_at)` 是運算式，欄位宣告型別在聚合後即遺失——PostgreSQL 回 time.Time、sqlite 回字串。本表是後者的解析形式清單；**移除或縮減它會讓 sqlite 路徑的候選時刻靜默變成零值**（候選仍回得出位址，但「最近見到」全成 0001-01-01，排序看起來仍正常）。 |
 | G-85 | var:internal/modules/identity/auth_epoch_gate.go:epochGateWarnOnce | epochGateWarnOnce | internal/modules/identity/auth_epoch_gate.go:160 | 包級全域／一次性告警 | identity | W8 | 無序（僅去重 log 噪音）。但後續要把 `auth_epoch_gate.go` 的包級函式改方法，**改動不得把 `sync.Once` 併入實例**——那會讓每個實例各印一次，且在 B 模式重建段 2 時重複刷屏。 |
 | G-86 | var:internal/modules/identity/auth_service.go:lockoutWarnOnce | lockoutWarnOnce | internal/modules/identity/auth_service.go:532 | 包級全域／一次性告警 | identity | W8 | 無序，同 G-85。**行號因 audit-coverage-closure 於 `LoginResponse` 增列 `AuthProviderID`／`AuthProviderName` 而下移 5 行**，變數本身未變。 |
 | G-87 | var:internal/modules/identity/auth_refresh_service.go:refreshPostRotateHook | refreshPostRotateHook | internal/modules/identity/auth_refresh_service.go:76 | 包級全域／測試注入 hook | identity | W8 | 同 G-49（refresh token 輪替後的注入點，用於驗證撤銷競態）。 |
@@ -381,17 +391,18 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 4. 組裝根注入／註冊呼叫點（`hook:` 63 筆＋`inject:` 13 筆）
+## 4. 組裝根注入／註冊呼叫點（`hook:` 72 筆＋`inject:` 15 筆）
 
 > 依注入發生的位置分節（段 1、段 2 主序、封印接線、裸欄位注入）。**列序即程式碼中的出現序**（同一檔內）。
 
-### 4.1 段 1（`cmd/server/stage1.go`，1 筆）
+### 4.1 段 1（`cmd/server/stage1.go`，2 筆）
 
 | ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
 |---|---|---|---|---|---|---|---|
 | H-1 | hook:cmd/server/stage1.go:database.InitDatabase | `database.InitDatabase(cfg)` | cmd/server/stage1.go:156 | 啟動步驟／全域資源初始化 | infra（**已改名** `internal/database`） | W7 | **賦值 G-20 全域 handle 的唯一位置**，且必須晚於全部 DB-independent 的組態與金鑰驗證（`stage1.go:86-145`）——那條界線的目的是「任何金鑰設定錯誤在任何持久化（含 seed 初始 admin）之前即 fail-close，不留半初始化的 DB」。提前連 DB 會讓 fail-close 路徑留下寫入。 |
+| H-66 | hook:cmd/server/stage1.go:s.metrics.SetInstanceGuardSource | `s.metrics.SetInstanceGuardSource(instanceGuardMetricsSource)` | cmd/server/stage1.go:263 | setter 後綁定（現讀資料源） | assembly ← observability／database | single-instance-guard | 四條守衛序列（held／lost_total／overridden／peers）的現讀來源。**必須在段 1、指標實例建構之後、任何監聽開放之前**：守衛自段 1 起存在，封印期就要能採集。漏注入的症狀是四序列**缺席**（collector 對 nil 資料源刻意不曝光、非 0），「守衛不存在」與「未持鎖」在採集端可分辨，但失守自此無指標可告警。 |
 
-### 4.2 段 2 主序（`cmd/server/stage2.go`，54 筆）
+### 4.2 段 2 主序（`cmd/server/stage2.go`，55 筆）
 
 | ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
 |---|---|---|---|---|---|---|---|
@@ -409,6 +420,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-55 | hook:cmd/server/stage2.go:checkpointService.SetPolicySource | `checkpointService.SetPolicySource(policyService)` | cmd/server/stage2.go:650 | setter 後綁定 | audit ← policy | —（audit-chain-scheduled-verification 新增；原誤用已被 `retentionService.UseCheckpointIntervals` 佔用的 H-51，2026-08-13 由登記表單一寫者改編為 H-55） | 封章門檻的執行期事實源（env 僅為初值）。**必須在封章排程啟動之前注入**：漏注入不會報錯，而是靜默沿用 env 初值——管理員在安全政策頁調短封存週期以縮小未封窗口（誠實邊界 R5）將完全不生效，且頁面顯示的值與實際行為不一致。注入本身無副作用、可重入。 |
 | H-13 | hook:cmd/server/stage2.go:keyvault.RegisterPostUnsealBuiltin | `keyvault.RegisterPostUnsealBuiltin(service.PostUnsealMigrationLDAPSeed, service.RegisterLDAPSeedMigration)` | cmd/server/stage2.go:307 | 套件層註冊 | assembly（已自 keyvault 上移） | W1（1.10，已完成） | **必須早於下一行的 `RunPostUnsealMigrations`（`:259`），且兩者都必須晚於 H-10**。登記動作已上移組裝根以拆 4.9 keyvault↔identity 環：identity 匯出自己的 `RegisterLDAPSeedMigration`，由本呼叫注入 keyvault 的登記器清單（G-60b）。**日後每加一個內建遷移即多一行登記，全部 SHALL 落在 `Run` 之前**，否則佇列在執行時只有一半——`post_unseal_guard_test.go` 的 `TestAssemblyRegistersPostUnsealBuiltins` 對本檔逐條斷言（含具名清單，防止某一行被刪後包內測試仍綠）。 |
 | H-13b | hook:cmd/server/stage2.go:identity.RegisterLDAPSeedMigration | 登記器閉包內 `service.RegisterLDAPSeedMigration(auditTxSink)` | cmd/server/stage2.go:308 | 套件層註冊（閉包內） | identity ← audit | W4（4.4／AP-51） | **收口時新增**：登記器自無參數改為收 `port.TxSink`（seed 的插列＋審計＋marker 同事務，審計改經 TxSink 後需要落地面），故組裝根改以閉包呼叫。**捕獲的 `auditTxSink` 必須在此之前建立並通過 `requireAuditTxSink` 自檢**（`stage2.go:186` 一帶）——捕獲 nil 的後果是 seed 審計寫入回 `port.ErrTxSinkMissing`，整筆 seed 回滾、marker 未寫、下次啟動重試（fail-close，非靜默）。H-13 的「登記須早於 `RunPostUnsealMigrations`」不變。 |
+| H-64 | hook:cmd/server/stage2.go:keyvault.RegisterPostUnsealBuiltin | `keyvault.RegisterPostUnsealBuiltin(session.PostUnsealMigrationClipboardContent, session.RegisterClipboardContentMigration)` | cmd/server/stage2.go:334 | 套件層註冊 | assembly ← session | —（workbench-clipboard-and-layout 1.2 新增） | 與 H-13 同鍵（守衛以多重集合比對，第二個登記呼叫即第二列）。剪貼簿明文欄→信封加密欄轉換需要 codec，故走 post-unseal 佇列；**必須早於同檔 `RunPostUnsealMigrations`**（TestAssemblyRegistersPostUnsealBuiltins 具名斷言），晚於它即佇列執行時缺此項——既有帶明文欄的資料庫將停留在舊形狀，model 查詢以 column does not exist 大聲失敗（fail-visible，非靜默）。 |
 | H-14 | hook:cmd/server/stage2.go:authService.SetSecurityPolicies | `authService.SetSecurityPolicies(policyService)` | cmd/server/stage2.go:326 | setter 後綁定 | identity ← policy | W8 | 未注入時鎖定與密碼 validator 讀不到政策值，會退回硬編碼預設——**登入鎖定政策靜默失效**（PCI 8.3.4）。方向 identity→policy ✔。 |
 | H-14b | hook:cmd/server/stage2.go:authService.SetEpochGateDB | `authService.SetEpochGateDB(database.DB)` | cmd/server/stage2.go:336 | setter 後綁定 | identity | W8（獨立驗收補接） | 憑證世代閘的資料來源。**注入的即回退分支會取到的同一個 `database.DB`**，故行為零變更；顯式注入的價值在於「組裝路徑漏接」不再被 identity 內部的全域回退默默補上（B-32 登記的風險）。**必須晚於 `database.InitDatabase`（stage1）、早於任何簽發或驗證路徑**——段 2 期間尚未開放監聽，故落在此處即滿足。行為面由 `TestAssemblyInjectsEpochGateDB` 釘住（拔掉全域仍能判定）。 |
 | H-15 | hook:cmd/server/stage2.go:authService.SetLDAPResolver | `authService.SetLDAPResolver(service.NewLDAPLoginResolver(ldapDirectoryService))` | cmd/server/stage2.go:344 | setter 後綁定 | identity | W8 | **恆注入、無 `cfg.LDAP.Enabled` 分支**（設定遷入 DB 後由執行期查詢表達）。漏注入＝LDAP 登入全數失敗且與「未啟用」不可分辨。 |
@@ -440,7 +452,8 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-37 | hook:cmd/server/stage2.go:userHandler.SetAuditService | `userHandler.SetAuditService(s.auditService)` | cmd/server/stage2.go:980 | handler ← service 後綁定 | 接入層 ← audit | W4 | 同 H-34。 |
 | H-38 | hook:cmd/server/stage2.go:s.userService.SetRecordingTokenRevoker | `s.userService.SetRecordingTokenRevoker(recordingHandler.TokenManager())` | cmd/server/stage2.go:990 | 反向後綁定（service ← handler） | identity ← 接入層 | W8 | **必須晚於 `recordingHandler` 建構**（同函式內）。漏注入＝改密／停用後既發的錄影 token 仍可播放。 |
 | H-39 | hook:cmd/server/stage2.go:s.oidcProviderService.SetRecordingTokenRevoker | `s.oidcProviderService.SetRecordingTokenRevoker(recordingHandler.TokenManager())` | cmd/server/stage2.go:993 | 反向後綁定 | identity ← 接入層 | W8 | 同 H-38（provider 級）。 |
-| H-40 | hook:cmd/server/stage2.go:auditExportService.SetSigning | `auditExportService.SetSigning(s.exportSigning)` | cmd/server/stage2.go:1005 | setter 後綁定 | audit ← keyvault | W4 | 匯出簽章金鑰注入。漏注入＝審計匯出無簽章（PCI 10.5 完整性證明缺口）。§4.5／§3.6 的 `RecordingReader` 介面反轉改的是同一個建構子的另一個參數，**兩處不得互相波及**。 |
+| H-40 | hook:cmd/server/stage2.go:auditExportService.SetSigning | `auditExportService.SetSigning(exportSigning)` | cmd/server/stage2.go:699 | setter 後綁定 | audit ← keyvault | W4 | 匯出簽章金鑰注入。漏注入＝審計匯出無簽章（PCI 10.5 完整性證明缺口）。§4.5／§3.6 的 `RecordingReader` 介面反轉改的是同一個建構子的另一個參數，**兩處不得互相波及**。**呼叫點已自 buildRouteDeps 上移 runStage2**（workbench-clipboard-and-layout B2：匯出服務改與打包 worker 共用單一實例），同檔故錨點鍵不變。 |
+| H-65 | hook:cmd/server/stage2.go:auditExportService.SetClipboardCodec | `auditExportService.SetClipboardCodec(keyManager)` | cmd/server/stage2.go:700 | setter 後綁定 | audit ← keyvault | —（workbench-clipboard-and-layout B2 新增） | 證據包剪貼簿內容解密器注入。**漏注入不是靜默降級**：bundle 匯出遇到 content_status=available 的事件即整包失敗（fail-close——宣稱帶內容的包靜默缺內容等於對收包方說謊），事件報告與零剪貼簿事件的 bundle 不受影響。必須晚於 keyManager（H-10 一帶）建構、早於 worker 啟動與路由開放——段 2 內的現行位置即滿足。 |
 | H-41 | hook:cmd/server/stage2.go:assetHandler.SetAccessStateAnnotator | `assetHandler.SetAccessStateAnnotator(s.accessPolicyService)` | cmd/server/stage2.go:1023 | handler ← service 後綁定 | 接入層 ← policy | W3 | **後續要把 `AnnotateConnectStates` 就地重歸 authz 側**（§4.8 環拆解）——搬遷後此處注入的型別會變，注入點本身必須保留，否則資產列表的存取狀態標註消失。 |
 | H-56 | hook:cmd/server/stage2.go:auditCheckpointHandler.SetAutoVerifyStatus | `auditCheckpointHandler.SetAutoVerifyStatus(s.chainVerifyStatus)` | cmd/server/stage2.go:945 | handler ← service 後綁定 | 接入層 ← audit | —（audit-chain-scheduled-verification 5.1 新增） | 兩層自動驗證的營運狀態揭露（掛既有結構層報告，**不新增路由**）。**必須早於 `registerRoutes` 交出 handler**（`routeDeps` 契約要求註冊前完成注入）。**漏注入不會報錯**：驗證頁的鏈健康總覽照常顯示，只是自動驗證那一區塊永遠顯示「取不到狀態」——而該區塊正是稽核唯一能看出「排程其實沒在跑」的地方（排程靜默停擺時不會有任何告警，沒跑就沒有異常可報）。注入的實例 SHALL 與排程器執行的是同一個 `ChainVerifyService`：另建一份會讓頁面顯示一個從未跑過的物件的狀態，把停擺蓋成「剛啟動」。注入本身唯讀、無副作用、可重入。 |
 | H-41b | hook:cmd/server/stage2.go:assetHandler.SetDataTransfer | `assetHandler.SetDataTransfer(s.dataTransferService)` | cmd/server/stage2.go:932 | handler ← service 後綁定 | 接入層 ← policy | data-transfer-control 期 1（4.3） | K8s 檔案進出（`kubectl cp`）的資料傳輸閘。**必須早於 `registerRoutes` 交出 handler**（`routeDeps` 契約要求註冊前完成注入）。**漏注入＝K8s 端點的上傳／下載完全不受全域傳輸政策管制**，且症狀與「政策設為允許」不可分辨——安全紅線，同 H-42 的類別。 |
@@ -457,9 +470,10 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-60 | hook:cmd/server/stage2.go:s1.metrics.SetConnectionSource | `s1.metrics.SetConnectionSource(...)` | cmd/server/stage2.go:815 | setter 後綁定（現讀資料源） | assembly ← observability／proxy | observability-lite | 活躍連線數的現讀來源（`registry.Count()`，O(1) 故不走背景刷新）。**必須晚於 ST-3 連線註冊表建立**。漏注入不報錯：GaugeFunc 回 0，而「零連線」與「沒接線」在採集端不可分辨——是比缺值更糟的假訊號。 |
 | H-61 | hook:cmd/server/stage2.go:s1.metrics.SetAuditQueueSource | `s1.metrics.SetAuditQueueSource(...)` | cmd/server/stage2.go:816 | setter 後綁定（現讀資料源） | assembly ← observability／audit | observability-lite | 審計非同步佇列深度的現讀來源（`len(logChan)`）。漏注入的症狀同 H-60：恆 0，使「佇列將滿」這個丟棄前兆完全不可見。 |
 | H-62 | hook:cmd/server/stage2.go:auditService.SetDropObserver | `auditService.SetDropObserver(...)` | cmd/server/stage2.go:819 | setter 後綁定（觀測掛勾） | assembly ← audit／observability | observability-lite | 審計佇列滿載時的丟棄計數掛勾。**漏注入的代價最高且完全無聲**：該路徑不記 `audit_failure_events`（`audit-failure-alerting` 的涵蓋範圍明文限定為「fallback 檔案觸發時」），原本唯一的痕跡是 `log.Printf`。漏了這一行，「審計曾經永久掉過資料」就退回成不可查詢、不可告警、容器重啟即失的狀態。語義映射（降級寫檔 vs 直接丟棄）落在此處，使 audit 模組不因監控而新增依賴。 |
+| H-67 | hook:cmd/server/stage2.go:database.SetInstanceGuardEventSink | `database.SetInstanceGuardEventSink(instanceGuardAuditSink(auditService))` | cmd/server/stage2.go:438 | setter 後綁定（事件 sink） | assembly ← database／audit | single-instance-guard | 守衛三事件（overridden／lost／regained）落 `audit_logs` 的唯一通道（產生點 AP-77）。**必須晚於 `auditService` 建構**（緊接 `mark("auditService")`）；段 1 緩衝的事件（含 ack 啟動的 overridden）於注入當下依序補寫，B 模式在解封後才寫。漏注入＝三事件永遠只在行程日誌，「哪個實例何時失守、誰確認了衝突」在稽核上不存在，且緩衝（上限 16）溢出丟最舊。 |
 | H-63 | hook:cmd/server/main.go:s1.metrics.SetSealStateSource | `s1.metrics.SetSealStateSource(...)` | cmd/server/main.go:179 | setter 後綁定（現讀資料源） | assembly ← observability／seal | observability-lite | 封印狀態指標的來源。**刻意接在 B 模式與 A／C 模式分支之後的匯流點**：兩條路徑到該處都已產生 `machine`，一處接線即涵蓋全模式——分頭接線只要漏一邊，該模式的封印指標就靜默缺席。未注入時 collector **不曝光任何序列**（不輸出猜測值）：監控據此判斷要不要派人解封，猜錯的代價是實際封印中卻無人知曉。 |
 
-### 4.3 封印接線（`cmd/server/main.go`／`sealwire.go`，8 筆）
+### 4.3 封印接線（`cmd/server/main.go`／`sealwire.go`，10 筆）
 
 | ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
 |---|---|---|---|---|---|---|---|
@@ -473,6 +487,13 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-50 | hook:cmd/server/sealwire.go:deps.keyManagement.SetSealStateProbe | `deps.keyManagement.SetSealStateProbe(...)`（B 模式解封後） | cmd/server/sealwire.go:352 | setter 後綁定 | assembly（不搬） | —（不動） | 同 H-44（B 模式路徑）。與 H-44 同名不同檔，各佔一列。 |
 | H-57 | hook:cmd/server/stage2.go:assetService.SetSessionTerminator | `assetService.SetSessionTerminator(sessionService)` | cmd/server/stage2.go:374 | setter 後綁定 | asset ← session（介面反轉） | —（security-backlog-settlement 塊 1） | 停用資產即收線。**必須晚於 `sessionService` 建構**。漏注入＝資產停用後，已建立的連線活到自然斷線（殘窗以小時計），管理員在介面上看到已停用、操作者其實還在裡面打字。與 H-19（帳號停用收線）是同一語義的兩個主體（人／機器）。矩陣 asset→session 為 ✗，故注入的是窄介面 `SessionTerminator`。 |
 | H-58 | hook:cmd/server/stage2.go:assetService.SetAuthorizationRevoker | `assetService.SetAuthorizationRevoker(authorizationService)` | cmd/server/stage2.go:361 | setter 後綁定 | asset ← authz（tx-taking 窄 port，交易級聯刪除） | —（security-backlog-settlement 塊 2） | 刪除資產即撤銷其授權與審核範圍。**必須晚於 `authorizationService` 建構**。漏注入＝`AssetService.Delete` fail-close 拒絕刪除（刻意：靜默略過會留下幽靈授權——權限查詢不 join `assets`，已刪資產的授權仍會命中）。tx-taking 白名單見 `internal/guards/txtaking/tx_taking_whitelist_test.go`。 |
+| H-68 | hook:cmd/server/main.go:sealHandler.SetInstanceGuardProbe | `sealHandler.SetInstanceGuardProbe(instanceGuardStatusProbe)`（A／C 模式） | cmd/server/main.go:154 | setter 後綁定（現讀探針） | assembly ← api／database | single-instance-guard | `/seal/status` 的 `instance_guard` 粗狀態欄（state／since／reason／peers，不含識別資訊），即管理介面橫幅的輪詢出口。與 H-69 同名不同檔，各佔一列——**兩種模式各自接線，漏任一側不會讓另一側轉紅**，症狀是該模式下欄位省略、橫幅永不出現。`TestInstanceGuardBModeSealStatusCarriesGuardField` 只涵蓋 sealwire 側；本列（A／C）由手測承接。 |
+| H-69 | hook:cmd/server/sealwire.go:h.SetInstanceGuardProbe | `h.SetInstanceGuardProbe(instanceGuardStatusProbe)`（B 模式，主／管理監聽的 handler 共用同一函式） | cmd/server/sealwire.go:165 | setter 後綁定（現讀探針） | assembly ← api／database | single-instance-guard | 同 H-68（B 模式路徑，`newWiredSealHandler` 對兩個監聽面的 handler 皆生效）。 |
+| H-70 | hook:cmd/server/stage2.go:authHandler.SetSourceIPBaseline | `authHandler.SetSourceIPBaseline(s.sourceIPBaseline)` | cmd/server/stage2.go:1159 | setter 後綁定 | api ← audit | —（source-ip-forensics 3.2） | 帳號 × 來源位址「已見」基準的注入（本地認證流）。消費端 `internal/api/auth_source_ip_observe.go` 為 `baseline == nil` 即 return——**漏注入＝五個正式會話發放點全部不觀察，且完全無錯誤訊號**：基準表永遠是空的，於是每一次建線都判為新位址、告警不停響；或反過來說，「這個帳號從沒從這裡登入過」這件事永遠答不出來。**必須與 J-14／J-15 取到同一份服務**（同一個 `sourceIPBaseline` 變數）——登入點與建線點寫的是同一張表的同一組鍵，服務分裂即判定分裂。 |
+| H-71 | hook:cmd/server/stage2.go:oidcHandler.SetSourceIPBaseline | `oidcHandler.SetSourceIPBaseline(s.sourceIPBaseline)` | cmd/server/stage2.go:1160 | setter 後綁定 | api ← audit | —（source-ip-forensics 3.2） | 同 H-70 的 OIDC 交換流。**兩者缺任一側，另一側都不會轉紅**——症狀是「本地登入進得了基準、OIDC 登入進不了」，而該帳號自 OIDC 進來的位址從此永遠不算已見。 |
+| H-72 | hook:cmd/server/stage2.go:authHandler.SetSourcePolicyReader | `authHandler.SetSourcePolicyReader(s.authService)` | cmd/server/stage2.go:1165 | setter 後綁定 | api ← identity | —（source-ip-forensics 4.2） | 允許來源網段的現讀面注入（本地認證流）。**與 H-70 的方向相反**：那是旁路功能，漏注入即靜默不觀察；本列是**強制點**，漏注入即 fail-close——判定點讀不到清單一律拒絕，症狀是所有人登不進去。方向刻意如此：一條漏接的組裝路徑不得讓整套來源限定靜默關掉。三個 handler（H-72／H-73／H-74）必須取到同一份服務，否則會出現「登入判、管理端點不判」這種只有一半生效的狀態。 |
+| H-73 | hook:cmd/server/stage2.go:oidcHandler.SetSourcePolicyReader | `oidcHandler.SetSourcePolicyReader(s.authService)` | cmd/server/stage2.go:1166 | setter 後綁定 | api ← identity | —（source-ip-forensics 4.2） | 同 H-72 的 OIDC 交換流（交換點的判定）。 |
+| H-74 | hook:cmd/server/stage2.go:userHandler.SetSourcePolicyReader | `userHandler.SetSourcePolicyReader(s.authService)` | cmd/server/stage2.go:1239 | setter 後綁定 | api ← identity | —（source-ip-forensics 4.2） | 同 H-72 的使用者管理流（管理者對他人認證因子的三個端點：改密、解鎖、MFA 重設，依**操作者本人**的清單判定）。 |
 
 ### 4.4 段 2 裸欄位注入（`inject:`，`cmd/server/stage2.go`，11 筆）
 
@@ -514,6 +535,8 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 |---|---|---|---|---|---|---|---|
 | J-12 | inject:cmd/server/main.go:r.RedirectTrailingSlash | `r.RedirectTrailingSlash = false`（僅 `stageOne`） | cmd/server/main.go:325 | 裸欄位注入（engine 組態／封印期安全邊界） | assembly（不搬） | —（不動，access log 憑證遮蔽期納管） | **[紅線]** 封印期的路由存在性 oracle 關閉點。gin 的自動 redirect **發生在中間件鏈之前**：路由樹查無此路徑時直接回 301/307，不進任何 handler／middleware，故封印閘（G-4 的 `sealGateWhitelist`）根本攔不到——這兩行是唯一的關法。**必須在 engine 建出後、開放監聽之前設定**；漏設＝`/api/v1/assets/` 回 301 代表該路由真的存在、不存在的路徑回 503，正是封印閘刻意要抹平的區別，而外部表現只是「多了一次導向」，任何既有測試都不會紅。僅在 `stageOne` 為真時關閉：段 2 解封後回復 gin 預設，既有相容行為不變。 |
 | J-13 | inject:cmd/server/main.go:r.RedirectFixedPath | `r.RedirectFixedPath = false`（僅 `stageOne`） | cmd/server/main.go:326 | 裸欄位注入（engine 組態／封印期安全邊界） | assembly（不搬） | —（不動，access log 憑證遮蔽期納管） | **[紅線]** 同 J-12 的另一半：`RedirectFixedPath` 涵蓋大小寫與 `..`／`//` 清理後的路徑修正導向，其洩漏面與尾斜線相同且更寬（一次探測可試多種變形）。**兩行必須成對存在**——只關一行等於把 oracle 從「尾斜線」搬到「路徑變形」，緩解看似做了而實際仍在；故兩者各佔一列，缺任一行另一行都不會轉紅。 |
+| J-14 | inject:cmd/server/stage2.go:sshHandler.SourceIPBaseline | `sshHandler.SourceIPBaseline = sourceIPBaseline` | cmd/server/stage2.go:592 | 裸欄位注入（連線層 ← audit） | 接入層 ← audit | —（source-ip-forensics 3.1） | 文字終端建線點的新來源位址觀察。消費端 `internal/sshproxy/source_ip_observe.go` 為 `== nil` 即 return——**漏注入＝自新位址建線零告警、零基準列，且沒有任何錯誤或降級訊號**，事後查告警頁只看到「這段期間沒有新位址」，與真的沒有新位址不可分辨。**必須晚於 `alertSink` 與 `auditTxSink` 建構**（基準服務以兩者為建構參數）。 |
+| J-15 | inject:cmd/server/stage2.go:connHandler.SourceIPBaseline | `connHandler.SourceIPBaseline = sourceIPBaseline` | cmd/server/stage2.go:593 | 裸欄位注入（連線層 ← audit） | 接入層 ← audit | —（source-ip-forensics 3.1） | 同 J-14 的圖形協議側。**兩側共用同一份服務是契約**：分開建兩份不會編譯失敗，但「同帳號同位址只響一次」會退化成「每種協議各響一次」。缺任一側另一側都不轉紅，症狀是「SSH 會響、RDP 不響」。 |
 
 ---
 
@@ -540,10 +563,10 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 6. 段 2 啟動步驟（`step:`，41 項；列序＝執行序）
+## 6. 段 2 啟動步驟（`step:`，42 項；列序＝執行序）
 
 > 守衛以兩條斷言釘住：① 本節列序逐位等於 `stage2ServiceInventory`（`stage2.go:48`）；
-> ② 程式碼中 34 個字面量 `mark("…")` 的出現序是本節列序的**有序子序列**（告警 sink 收口新增 `alertSink`、audit-checkpoint-chain 新增 `checkpointSigning`）（其餘 7 項由排程器迴圈 `mark(s.name)` 產生，audit-chain-scheduled-verification 新增 `chainVerifyScheduler`）。
+> ② 程式碼中 34 個字面量 `mark("…")` 的出現序是本節列序的**有序子序列**（告警 sink 收口新增 `alertSink`、audit-checkpoint-chain 新增 `checkpointSigning`）（其餘 8 項由排程器迴圈 `mark(s.name)` 產生，audit-chain-scheduled-verification 新增 `chainVerifyScheduler`、workbench-clipboard-and-layout B2 新增 `auditExportJobWorker`）。
 > `stage2ServiceInventory` 另由既有守衛與 `appGraph.ServiceNames()` 逐項比對，故三方對齊。
 
 | ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
@@ -588,6 +611,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | ST-34 | step:reconcileScheduler | `NewSessionReconciliationScheduler(reconciliationService)` ＋ `Start` | cmd/server/stage2.go:776（迴圈） | 啟動步驟 | session | W9 | 同 ST-30；依賴 ST-13。 |
 | ST-34b | step:checkpointScheduler | `NewCheckpointService` ＋ `NewCheckpointScheduler` ＋ `Start`（含 genesis 建立） | cmd/server/stage2.go:776（迴圈） | 啟動步驟 | audit ← keyvault | —（audit-checkpoint-chain 新增） | 同 ST-30 的迴圈約束。依賴 ST-24b（簽章鑰）、ST-6（syslogForwarder 為錨定出口）、ST-5（失效上報）。`Start` 內含 genesis 建立，失敗即啟動失敗——沒有 genesis 的排程器每輪 Tick 都會失敗，是「活著但什麼都沒保護」的靜默狀態。**封章為旁路批次工作**：本排程器停擺不影響審計寫入，只讓鏈尾未封窗口（誠實邊界 R5）變長。 |
 | ST-34c | step:chainVerifyScheduler | `NewChainVerifyService` ＋ `NewChainVerifyPolicyTuning` ＋ `NewChainVerifyScheduler` ＋ `Start` | cmd/server/stage2.go:776（迴圈） | 啟動步驟 | audit ← policy／keyvault | —（audit-chain-scheduled-verification 新增） | 同 ST-30 的迴圈約束。**必須晚於 ST-34b**：驗證的對象是封章產出的鏈，且兩者共用同一組 `checkpointVerifier`／`checkpointService` 實例——另建一份即等於拿另一套聚合算法驗封章的產物。依賴 ST-24b（簽章鑰，供依賴自檢）、ST-5（失效上報出口）、政策服務（三顆旋鈕現讀、不快取）。**與 ST-34b 相反，`Start` 不做任何前置建立**：鏈為空是驗證要回報的結論而非啟動失敗，在此建立或修補鏈上物件會讓驗證者同時成為被驗者的作者。**漏登記不產生任何錯誤**：鏈仍在、驗證頁的人工按鈕仍在，只是竄改再也不會有人被通知——證據存在卻無人知曉的靜默狀態，正是本 change 要消滅的形態。 |
+| ST-34d | step:auditExportJobWorker | `NewAuditExportJobWorker` ＋ `Start` | cmd/server/stage2.go:838（迴圈） | 啟動步驟 | audit ← identity/authz（申請者重驗閉包） | —（workbench-clipboard-and-layout B2 新增） | 同 ST-30 的迴圈約束。**必須晚於 ST-33（apiHandlers）所依賴的匯出服務組裝**——worker 與 handler 共用同一個 `auditExportService` 實例（H-40/H-65 注入完成後才可啟動，否則打包出未簽章或缺剪貼簿內容的包）。`Start` 內含產物目錄建立（0700）與懸置 job 恢復（running→pending），恢復必須先於首輪領件。停止走資源袋（釋放序見 §7 摺疊註記）：**必須在 DB 關閉前停**，否則收尾週期對已關的 DB 寫狀態。**漏登記不產生任何錯誤**：job 永遠停在 pending、無人打包，發起端點照常受理——申請者看到的是永不完成的排隊，與「打包很慢」不可分辨。 |
 | ST-35 | step:metricsRefresher | `observability.StartRefresher(...)` | cmd/server/stage2.go:826 | 啟動步驟 | assembly ← observability | observability-lite（**取代 perfMonitor**） | **段 2 最後一步**，本步驟前有 `CheckCancelStep`；沿用原 `perfMonitor` 的位置與形態（可停止的背景任務），使啟停順序的變動面最小。刷新的是**查詢成本不對稱**的指標（活躍會話走 DB、錄影儲存量走檔案系統遍歷、未審閱告警走 DB 聚合）——**不可改為採集當下同步查詢**：採集間隔由外部 Prometheus 決定（可低至 15s），同步查詢等於讓外部設定直接放大本系統的 DB 與磁碟負載。停止函式以 `sync.Once` 保證冪等（B 模式每次解封建立新任務）。**前身 perfMonitor 連同 `internal/middleware/metrics.go` 整組退場**：其行程內延遲統計與新的 Prometheus middleware 落在同一個全域位置，留著即每個請求統計兩次；其「效能退化偵測」只 `log.Printf`（無人消費、容器重啟即失），正解是採集端對 histogram 設 alerting rule。 |
 
 ---

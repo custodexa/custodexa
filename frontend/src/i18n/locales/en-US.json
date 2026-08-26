@@ -70,7 +70,9 @@
     "hoursMinutes": "{h} hr {m} min",
     "unknownError": "Unknown error",
     "close": "Close",
-    "retry": "Retry"
+    "retry": "Retry",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar"
   },
   "menu": {
     "group": {
@@ -93,6 +95,7 @@
     "myRequests": "My Requests",
     "approvals": "Approval Center",
     "auditWorkbench": "Investigation Workbench",
+    "auditExports": "Downloads",
     "auditLogs": "Operation Logs",
     "commands": "Command Audit",
     "alerts": "Alerts",
@@ -245,6 +248,7 @@
       "unlock": "Unlock Account",
       "pw_noncompliant": "Password policy noncompliant",
       "recording_failed": "Recording Failed",
+      "new_source_ip": "Sign In From New Source",
       "file_list": "Browse Files",
       "file_upload": "File Upload",
       "file_download": "File Download",
@@ -292,6 +296,7 @@
       "asset_group": "Asset Group",
       "snippet": "Command Snippet",
       "role": "Role",
+      "instance_guard": "Instance Guard",
       "unclassified": "Unclassified"
     },
     "mechanism": {
@@ -306,7 +311,8 @@
       "checkpoint_anchor": "Checkpoint off-box copy",
       "audit_chain_structure": "Audit chain structure verification",
       "audit_chain_content": "Audit chain content verification",
-      "audit_chain_verify": "Audit chain automatic verification"
+      "audit_chain_verify": "Audit chain automatic verification",
+      "source_policy": "Source Range Policy"
     },
     "cause": {
       "recording_probe_failed": "Recording pre-flight check failed at issuance",
@@ -322,6 +328,7 @@
       "session_record_create_failed": "Session record creation failed; connection refused",
       "audit_write_fallback_file": "Audit batch write failed; fell back to file",
       "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
+      "audit_write_sync_refused": "Synchronous audit write failed; the access was refused (content not delivered)",
       "syslog_connect_failed": "Syslog forwarding connection failed",
       "syslog_buffer_overflow": "Syslog forwarding buffer overflow",
       "kek_retirement_backlog": "KEK retirement backlog not converged",
@@ -330,7 +337,9 @@
       "audit_chain_structure_invalid": "Checkpoint chain structure anomaly (signature, linkage or sequence tampered)",
       "audit_chain_content_mismatch": "Audit records in a sealed interval mismatch the checkpoint or are missing",
       "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
-      "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")"
+      "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")",
+      "source_policy_unreadable": "Judgment point could not read the user's allowed source ranges",
+      "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)"
     },
     "endReason": {
       "normal": "Ended Normally",
@@ -775,7 +784,29 @@
     "seekNoRecording": "This connection has no recording, so playback cannot be moved to that moment.",
     "seekUnsupported": "{protocol} has no recording playback, so playback cannot be moved to that moment. The command list is still available.",
     "seekUncorrected": "No recording start time is stored for this connection (legacy data), so the position is derived from the connection start and may be off by a few seconds.",
-    "degradedCount": "{n} round(s) not reconstructable"
+    "degradedCount": "{n} round(s) not reconstructable",
+    "clipboardTitle": "Clipboard Records",
+    "clipboardNote": "Content is decrypted only when you select Decrypt and view, and each access is recorded",
+    "clipboardCount": "{n} entries",
+    "clipboardFailedCount": "{n} with content not preserved",
+    "clipboardDirectionColumn": "Direction",
+    "clipboardLengthColumn": "Length (bytes)",
+    "clipboardStatusColumn": "Content Status",
+    "clipboardActionColumn": "Access",
+    "clipboardDirection": {
+      "send": "Copied from local to remote",
+      "recv": "Copied from remote to local"
+    },
+    "clipboardStatus": {
+      "available": "Viewable",
+      "failed": "Content not preserved"
+    },
+    "clipboardGapDetail": "Encryption failed while this event was being stored, so its content was not preserved; the facts (time, direction, length) remain intact. The missing content does not mean the event did not happen.",
+    "clipboardContentLoading": "Decrypting content…",
+    "clipboardContentError": "Failed to load the content; nothing was retrieved this time",
+    "clipboardDecryptButton": "Decrypt and view",
+    "clipboardLockedHint": "The content is stored encrypted. Select Decrypt and view to decrypt and display it; the access is recorded.",
+    "clipboardAccessLogged": "This access has been recorded ({time})"
   },
   "myConnections": {
     "headerDesc": "Review your own session records",
@@ -957,7 +988,11 @@
     "blockedTag": "Blocked",
     "languageColumn": "Language",
     "noCommandText": "This alert carries no command text",
-    "kindAuditDegraded": "Command audit degraded"
+    "kindAuditDegraded": "Command audit degraded",
+    "kindNewSourceIP": "New source address for account",
+    "newSourceIPFirstSession": "First connection from this address",
+    "newSourceIPNoAddress": "This connection has no usable source address",
+    "newSourceIPPivot": "Investigate this address across that whole day"
   },
   "transmission": {
     "headerDesc": "Transmission enforcement policy and channel encryption inventory (formerly the Channel Encryption Inventory page): each policy level is annotated with its PCI recommendation; the inventory aggregates encryption status and deviations across all channels, and exported snapshots carry a timestamp and generator for use as an audit inventory",
@@ -1278,7 +1313,31 @@
     "externalIdentities": "External Identities",
     "identityRefreshFailedTitle": "Could not reload the user list",
     "identityRefreshFailedHint": "The external-identity operation reached the backend, but the list could not be refreshed, so the account state shown may be stale. Retry loading before deciding.",
-    "externalPasswordShort": "Managed by the identity provider"
+    "externalPasswordShort": "Managed by the identity provider",
+    "allowedCidrs": "Allowed source ranges",
+    "allowedCidrsPlaceholder": "Type an address or range and press Enter, e.g. 10.0.0.0/8",
+    "allowedCidrsHint": "Leave empty for no source restriction. A bare address means a single host; up to {max} entries per account. Only sources in the list can sign in, refresh, and open connections.",
+    "allowedCidrsAdd": "Add",
+    "allowedCidrsRemove": "Remove {value}",
+    "allowedCidrsFormat": "\"{value}\" does not look like an address or range",
+    "allowedCidrsInvalid": "\"{value}\" cannot be parsed as an address or range",
+    "allowedCidrsTooMany": "\"{value}\" exceeds the limit of {max} entries per account",
+    "allowedCidrsDuplicate": "\"{value}\" is already in the list",
+    "allowedCidrsNormalized": "Will be stored as: {list}",
+    "allowedCidrsChecking": "Checking this list…",
+    "allowedCidrsCheckFailed": "This list cannot be checked right now — the check service did not respond. You can still save; the server validates it again on save.",
+    "allowedCidrsEffective": {
+      "v4": "This list is equivalent to no restriction: it contains a prefix covering all of IPv4, so every IPv4 source is allowed.",
+      "v6": "This list is equivalent to no restriction: it contains a prefix covering all of IPv6, so every IPv6 source is allowed.",
+      "both": "This list is equivalent to no restriction: it contains prefixes covering all of IPv4 and IPv6, so every source is allowed."
+    },
+    "allowedCidrsCurrentSource": "Your current source: {address}",
+    "allowedCidrsSelfLock": "After saving, your current source {address} will no longer be able to sign in or refresh.",
+    "allowedCidrsSelfLockNoSource": "Your current source address cannot be determined. With a non-empty list that always counts as not allowed, so you will not be able to sign in after saving.",
+    "allowedCidrsSelfLockRecovery": "You can still save. If this locks you out: another administrator can change the list back; if there is no other administrator, the operator must run the offline database reset described in the operations documentation. That path leaves no product audit trail — the change is accounted for by the operator’s own change management.",
+    "allowedCidrsTagRestricted": "Source restricted",
+    "allowedCidrsTagRestrictedTooltip": "This account has an allowed source range list; only sources in the list can sign in and open connections.",
+    "allowedCidrsTagEffective": "Same as unrestricted"
   },
   "userGroups": {
     "headerDesc": "A grouping dimension for authorization subjects (unrelated to RBAC roles): authorizing a group applies to all its members",
@@ -2075,6 +2134,53 @@
     "epaymentDeviation": "{n} item(s) below e-payment baseline",
     "applyEPayment": "Apply e-payment baseline"
   },
+  "instanceGuard": {
+    "ariaLabel": "Single-instance guard warning",
+    "headline": {
+      "overridden": "This instance started with an acknowledgement code; another database session still holds the single-instance lock",
+      "lost": "This instance has lost the single-instance lock: {reason}",
+      "peers": "Detected {n} other instance connected to the same database | Detected {n} other instances connected to the same database",
+      "other": "Single-instance guard state: {state}"
+    },
+    "reason": {
+      "ack_startup": "started with an acknowledgement code",
+      "contention": "the lock is held by another session",
+      "db_unreachable": "the database connection was lost",
+      "permanent": "the guard cannot verify the lock (permission or object error)",
+      "unknown": "reason unknown"
+    },
+    "summary": "Another application instance may be using the same database. The guard writes events like this to the audit log, but it sends no notification of any kind: this banner is the notification.",
+    "summaryUnreachable": "The database connection was lost, so the guard cannot confirm the lock state right now. This is not a sign of a second instance. While the connection is down the audit log may not be writable either, so this banner is the notification.",
+    "boundary": "The guard only makes this visible and records it. It does not prevent data problems caused by two instances running at the same time.",
+    "since": "since {time}",
+    "sinceHeld": "this instance has held the lock since {time}",
+    "detail": {
+      "show": "Show details",
+      "hide": "Hide details",
+      "loading": "Loading guard details",
+      "loadFailed": "Could not load guard details. Refresh to try again.",
+      "holder": "Lock holder",
+      "holderNone": "No other session currently holds the lock",
+      "code": "Acknowledgement code",
+      "fingerprintUnavailable": "Holder details are unavailable. This code is a degraded code and is not bound to a specific session.",
+      "ack": "Acknowledgement code used at startup",
+      "ackActor": "Acknowledged by: an operator via the INSTANCE_GUARD_ACK environment variable. The system cannot identify who set it; that is owned by your change management process.",
+      "instance": "This instance",
+      "hostname": "Hostname",
+      "pid": "Process ID",
+      "startedAt": "Guard started at",
+      "dbSessionPid": "Database session PID",
+      "lostTotal": "Total lock losses",
+      "peers": "Other guard instances",
+      "risk": "Risk",
+      "riskBody": "Two instances running at the same time will cause data problems in the key cache, export jobs, recording storage and sealed-period audit records.",
+      "nextStep": "Next step",
+      "nextStepHolder": "Confirm the other instance has stopped. This notice clears automatically once this instance acquires the lock; no restart is needed.",
+      "nextStepUnreachable": "The guard retries the lock at least every half minute. This notice clears within two minutes once the database connection is restored.",
+      "nextStepPermanent": "Check the application account's database permissions and the reason in the backend log. The guard keeps retrying the lock.",
+      "nextStepPeers": "Check whether another instance is running. Once it stops, this notice clears within two minutes. An instance started with an acknowledgement code leaves an instance_guard event in the audit log."
+    }
+  },
   "policyKeySections": {
     "pciRecommend": "PCI recommends: {value}",
     "noPciValue": "No PCI recommendation",
@@ -2086,12 +2192,15 @@
     "AUTH_ACCOUNT_LOCKED": "Too many attempts; the account is temporarily locked. Please try again later or contact an administrator",
     "AUTH_APPROVER_REQUIRED": "Insufficient permission: approver or administrator role required",
     "AUTH_ASSET_CONNECT_DENIED": "You do not have permission to connect to this asset; contact an administrator",
+    "AUTH_CHANGE_PASSWORD_RATE_LIMITED": "Too many password change requests. Please try again later",
     "AUTH_CONNECTION_NOT_AUTHORIZED": "This token cannot be used to establish a connection",
     "AUTH_CONNECT_TOKEN_INVALID": "The connection token is invalid or already used",
     "AUTH_CONNECT_TOKEN_MISSING": "Missing connect_token; start the connection through the token issuing endpoint",
+    "AUTH_EXPORT_JOB_REQUESTER_ONLY": "Export artifacts can only be downloaded by the requester",
     "AUTH_EXTERNAL_USER_PASSWORD": "This account's password is managed by an external identity provider and cannot be changed here",
     "AUTH_INVALID_CREDENTIALS": "Incorrect username or password",
     "AUTH_LDAP_TRANSPORT_REJECTED": "LDAP login rejected by the transport security policy: the directory connection does not meet encryption requirements. Ask an administrator to switch the directory to ldaps:// on the directory settings page under Identity Management",
+    "AUTH_LOGIN_RATE_LIMITED": "Too many sign-in requests. Please try again later",
     "AUTH_MFA_ENROLL_TOKEN_MISSING": "Enrollment token not provided",
     "AUTH_MFA_INCOMPLETE": "MFA verification is not yet complete",
     "AUTH_MFA_NOT_ENABLED": "MFA is not enabled for this account",
@@ -2114,6 +2223,7 @@
     "AUTH_SESSION_SHARE_OWNER_ONLY": "Only the session owner can manage sharing",
     "AUTH_SESSION_STATS_DENIED": "You do not have permission to view this session's metrics",
     "AUTH_SESSION_TERMINATE_ADMIN_ONLY": "Only administrators can force-terminate a session",
+    "AUTH_SOURCE_NOT_ALLOWED": "Your current source address is outside the allowed range. Contact an administrator.",
     "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "Tag filtering is limited to administrative roles",
     "AUTH_TAG_GOVERNANCE_ADMIN_ONLY": "Only admin may perform tag governance",
     "AUTH_TAG_LIST_PRIVILEGED_ONLY": "Only administrative roles may retrieve the tag list",
@@ -2123,8 +2233,6 @@
     "AUTH_UNAUTHENTICATED": "Not authenticated",
     "AUTH_USER_INACTIVE": "User account is not activated",
     "AUTH_USER_NOT_FOUND": "User does not exist",
-    "AUTH_CHANGE_PASSWORD_RATE_LIMITED": "Too many password change requests. Please try again later",
-    "AUTH_LOGIN_RATE_LIMITED": "Too many sign-in requests. Please try again later",
     "CONFLICT_ACCESS_REQUEST_ALREADY_APPROVED": "You have already approved this request",
     "CONFLICT_ACCESS_REQUEST_DUPLICATE_PENDING": "A pending request already exists for this asset",
     "CONFLICT_ACCESS_REQUEST_STATE": "The request status has changed; please refresh",
@@ -2140,6 +2248,7 @@
     "CONFLICT_BREAK_GLASS_DUPLICATE": "An active break-glass session already exists for this asset",
     "CONFLICT_DAILY_REVIEW_SIGNED": "Today's review has already been signed off at {time} by {signer}",
     "CONFLICT_EMAIL": "This email is already used by another account",
+    "CONFLICT_EXPORT_JOB_LIMIT": "Export packaging queue is full; please try again later",
     "CONFLICT_EXTERNAL_IDENTITY_EXISTS": "This external identity is already bound to an account; unbind the existing binding first",
     "CONFLICT_KEY_CLEANUP_NOT_CONVERGED": "Key rotation has not fully converged (pending switchover or retirement backlog exists). Complete the switchover or restart to converge before cleanup.",
     "CONFLICT_KEY_CLEANUP_RESIDUE_DETECTED": "Non-final-format residue that cannot be attributed to any key version was detected. Cleanup was conservatively refused; resolve those values first (they may be encrypted by a retired version, and destroying its material would make them permanently unreadable).",
@@ -2243,6 +2352,7 @@
     "INTERNAL_DAILY_REVIEW_LIST_QUERY": "Failed to query the sign-off history",
     "INTERNAL_DAILY_REVIEW_SIGN": "Sign-off failed",
     "INTERNAL_DAILY_REVIEW_STATUS_QUERY": "Failed to retrieve the review status",
+    "INTERNAL_EXPORT_JOB": "Failed to process export job",
     "INTERNAL_EXTERNAL_IDENTITY_BIND": "Failed to bind the external identity",
     "INTERNAL_EXTERNAL_IDENTITY_QUERY": "Failed to query external identities",
     "INTERNAL_EXTERNAL_IDENTITY_UNBIND": "Failed to unbind the external identity",
@@ -2352,6 +2462,7 @@
     "NOTFOUND_BATCH_GRANT_REFERENCE": "The {entity} list contains an ID that does not exist",
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "Pending credential not found",
     "NOTFOUND_CHANGE_SECRET_PLAN": "Change-secret plan not found",
+    "NOTFOUND_CLIPBOARD_EVENT": "Clipboard record not found",
     "NOTFOUND_COMMAND_ALERT": "Alert not found",
     "NOTFOUND_EXTERNAL_IDENTITY": "The external identity does not exist or does not belong to this account",
     "NOTFOUND_GRANT_REFERENCE": "{entity} does not exist",
@@ -2401,6 +2512,7 @@
     "RULE_ASSET_TEST_TIMEOUT": "Connection timed out",
     "RULE_ASSET_TEST_TLS_FAILED": "TLS certificate verification failed; check the CA certificate settings",
     "RULE_ASSET_TEST_UNKNOWN_ERROR": "Connection test failed; check the target host and service status",
+    "RULE_AUDIT_EXPORT_BUNDLE_ASYNC_ONLY": "Evidence bundles are now delivered asynchronously; initiate an export job instead",
     "RULE_BREAK_GLASS_DISABLED": "Break-glass emergency access is not enabled",
     "RULE_BREAK_GLASS_NOT_APPLICABLE": "This request is not a break-glass session; no post-review is required",
     "RULE_BREAK_GLASS_NOT_ELIGIBLE": "Not eligible for break-glass access (a standing connection grant for this asset is required)",
@@ -2414,6 +2526,8 @@
     "RULE_CONSENT_RISKS_CHANGED": "The risk items have changed; please confirm again",
     "RULE_DAILY_REVIEW_DISABLED": "The daily review feature is not enabled",
     "RULE_DB_CLIENT_START_FAILED": "Failed to start the database client",
+    "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "The export artifact is not currently downloadable",
+    "RULE_EXPORT_JOB_BUNDLE_ONLY": "Export jobs accept evidence bundles only; use the synchronous export endpoint for event reports",
     "RULE_K8S_FORBIDDEN": "Forbidden (403): the token lacks the list pods permission for this namespace",
     "RULE_K8S_NAMESPACE_NOT_FOUND": "Namespace not found (404)",
     "RULE_K8S_ONESHOT_DISABLED": "The one-shot single-command mode is not available yet",
@@ -2603,6 +2717,9 @@
     "VALIDATION_SFTP_UPLOAD_READ_FAILED": "Failed to read upload file",
     "VALIDATION_SNIPPET_NAME_EMPTY": "Snippet name cannot be empty",
     "VALIDATION_SNIPPET_TOO_LONG": "Snippet content exceeds the 4096-character limit",
+    "VALIDATION_SOURCE_ADDRESS": "Not a valid source address",
+    "VALIDATION_SOURCE_PREFIX_INVALID": "The allowed source ranges contain an entry that cannot be parsed",
+    "VALIDATION_SOURCE_PREFIX_LIMIT": "The allowed source ranges exceed the limit of 32 entries",
     "VALIDATION_SYSLOG_HOST_REQUIRED": "Host is required",
     "VALIDATION_SYSLOG_PORT_RANGE": "Port must be between 1 and 65535",
     "VALIDATION_SYSLOG_PROTOCOL": "Protocol must be udp/tcp/tcp+tls",
@@ -3181,7 +3298,8 @@
     "headerDesc": "See what one person — or one asset — did during a given period: sessions, commands, operation logs, file transfers, clipboard activity and alerts, lined up on a single timeline. This page only reads records; it never changes them, and it makes no judgment here about whether the records themselves have been altered. Integrity evidence for operation logs and file transfers is issued on the Checkpoint Verification page (button, top right), which also sets out which records that mechanism does and does not cover.",
     "pivot": {
       "user": "By user",
-      "asset": "By asset"
+      "asset": "By asset",
+      "ip": "By source address"
     },
     "subject": {
       "userPlaceholder": "Search users",
@@ -3189,7 +3307,12 @@
       "empty": "No matching user or asset",
       "inactive": "Disabled",
       "deleted": "Deleted",
-      "required": "Choose who or what to investigate first: a user, or an asset"
+      "required": "Choose who or what to investigate first: a user, or an asset",
+      "ipPlaceholder": "Enter or search a source address",
+      "ipEmpty": "No matching candidate; type a full address to query it directly",
+      "ipLastSeen": "Last seen {time}",
+      "requiredIp": "Enter the source address you want to investigate",
+      "ipInvalid": "Enter a full IPv4 or IPv6 address (range queries are not supported)"
     },
     "range": {
       "start": "Start time",
@@ -3208,13 +3331,27 @@
       "checkpoint": "Checkpoint verification"
     },
     "export": {
-      "button": "Export event report",
-      "title": "Export an event report for the current scope",
+      "buttonReport": "Export event report",
+      "buttonBundle": "Download evidence bundle",
+      "title": "Export the current investigation scope",
       "confirm": "Generate report",
       "cancel": "Cancel",
       "generating": "Generating — keep this page open",
       "failed": "Report generation failed; no file was produced. The scope is unchanged, so you can try again right away.",
-      "unavailable": "Choose who or what you are investigating, a time range, and at least one record category before exporting an event report",
+      "unavailable": "Choose who or what you are investigating, a time range, and at least one record category before exporting",
+      "pack": {
+        "label": "Which one do you need",
+        "event_report": "Event report",
+        "evidence_bundle": "Evidence bundle",
+        "eventReportHint": "States what happened; downloads as soon as you confirm",
+        "evidenceBundleHint": "Carries the evidence itself; packaged in the background, collected from Downloads",
+        "diff": "The event report states: it lists event facts only, stays small, and downloads the moment you confirm. The evidence bundle carries evidence: it also contains the session recordings themselves and the full clipboard contents, so its size cannot be bounded and it is packaged in the background instead — collect it from Downloads within the retention window."
+      },
+      "bundleConfirm": "Start packaging",
+      "bundleSubmitting": "Submitting…",
+      "bundleFailed": "Could not start packaging; no job was created. The scope is unchanged, so you can try again right away.",
+      "bundleQueued": "Accepted. Packaging is running in the background; collect it from Downloads when it finishes.",
+      "bundleDeduplicated": "A bundle for the same scope is already being packaged; Downloads has been opened for you.",
       "separator": ", ",
       "scope": {
         "title": "This report covers",
@@ -3222,29 +3359,46 @@
         "subjectAsset": "Asset: {name}",
         "window": "Period: {from} to {to}",
         "types": "Categories: {types} (total: {n})",
-        "counts": "Records per category: {summary}"
+        "counts": "Records per category: {summary}",
+        "countsIpFiltered": "Records per category (as filtered by source address on screen): {summary}",
+        "titleBundle": "This package covers"
       },
       "proves": {
         "title": "What this report can prove",
         "record_ref": "Every event carries a record number you can use to look up the original entry in the system.",
         "scope": "The report states who or what it covers, over which period and which categories, plus how many records it includes and how many exist in range for each category.",
         "export_logged": "The export itself is recorded: who exported what scope and when.",
-        "signature": "The report is signed: with the verification key published by the system, anyone can confirm independently that its contents have not been altered since export. The key is published by this system; the technical documentation sets out how to obtain it and how to check the signature. Obtain it in advance and keep your own copy, so later checks can be made offline."
+        "signature": "The report is signed: with the verification key published by the system, anyone can confirm independently that its contents have not been altered since export. The key is published by this system; the technical documentation sets out how to obtain it and how to check the signature. Obtain it in advance and keep your own copy, so later checks can be made offline.",
+        "bundle_contents": "This bundle carries the evidence itself: for the categories you selected it collects operation audit logs, command records, the session recordings for connections in scope, and the full clipboard contents; alerts and file transfers have no content of their own and are included as fact lists.",
+        "bundle_scope": "The manifest states which kind of package this is, the subject and period it covers, the categories collected, the records collected and the true totals per category, and the SHA-256 of every file.",
+        "bundle_logged": "Both the request and the download are recorded: who requested which scope, and who collected which bundle and when.",
+        "bundle_signature": "This bundle will be signed: the verification key published by this system lets anyone confirm independently that the contents have not changed since production, without trusting this system. How to obtain the key and verify the signature is documented in the external technical documentation.",
+        "titleBundle": "What this package can prove"
       },
       "limits": {
-        "title": "What this report cannot prove"
+        "title": "What this report cannot prove",
+        "titleBundle": "What this package cannot prove"
       },
       "limit": {
         "scope_is_query_range": "The report covers the whole query range, not just the rows currently loaded on screen.",
         "truncated_differs": "The load limit on screen and the per-category limit in the report are different things; the report records both separately and never merges them.",
-        "payload_excluded": "The report contains event facts only — no clipboard text, no transferred file, no recording — and the reasons differ. Clipboard text is still held in the system but is not exported with the report, and the screens offer no way to retrieve it today; ask the system administrator when you need it. A transferred file is never held by this system at all: only its name, path, size and content fingerprint are recorded, so the file itself cannot be obtained at any time. Recordings are not exported with the report either; whether a session has one is stated row by row through the recording status.",
+        "payload_excluded": "The report contains event facts only — no clipboard text, no transferred file, no recording — and the reasons differ. Clipboard text is still held in the system and simply is not exported with the report; when you need the content itself there are two routes — reveal it entry by entry on the session detail page, or request an evidence bundle instead, which carries the decrypted text in full. Both routes are themselves recorded. A transferred file is never held by this system at all: only its name, path, size and content fingerprint are recorded, so the file itself cannot be obtained at any time. Recordings are not exported with the report either; whether a session has one is stated row by row through the recording status, and the footage itself likewise comes from an evidence bundle.",
         "coverage_states": "Where records for a period were deleted under the retention policy, the report marks that period, and where checkpoints cover that stretch it states their number range as well — a blank stretch does not mean nothing happened.",
         "coverage_states_detail": "Categories that are never deleted automatically (sessions and clipboard, for example) are not removed by the retention policy, so a blank stretch there was not caused by deletion. It still does not mean nothing happened: only events the system actually captures become records. Clipboard events, for instance, are captured only on graphical desktop sessions and only for text — terminal sessions and database sessions never produce a clipboard record.",
         "recording_state": "Recording status is inferred from deletion progress by time, not verified file by file; 'no recording' means the session has no recording at all, which is different from 'deleted under the retention policy'.",
         "manifest_required": "Completeness rule: if the report has no manifest file, the export failed part-way and the package is incomplete — it must not be used as evidence.",
         "no_offline_tool": "The report does not bundle an offline verification tool, and the standalone verifier for the checkpoint chain does not cover this report either. To verify a report yourself, the technical documentation shipped with this system sets out how to obtain the verification key and the exact steps for checking the signature; ask the system administrator for a copy.",
         "not_signed": "Report signing is not enabled on this system (reason code {reason}), so this report has no signature file. Signing was never turned on here; the file was not removed after the fact.",
-        "asset_scope": "For an asset, operation records cover only entries that carry an asset association; that association has only been recorded since the Investigation Workbench went live on this system, so earlier operation records will not appear in an asset-scoped result. The date depends on when this deployment was upgraded, so ask the system administrator for the upgrade record when your working papers have to state the period the evidence covers."
+        "asset_scope": "For an asset, operation records cover only entries that carry an asset association; that association has only been recorded since the Investigation Workbench went live on this system, so earlier operation records will not appear in an asset-scoped result. The date depends on when this deployment was upgraded, so ask the system administrator for the upgrade record when your working papers have to state the period the evidence covers.",
+        "bundle_plaintext": "This bundle contains clipboard text in the clear and the session recordings themselves, all of it confidential. What the system can guarantee is that the handover is recorded; once collected, safekeeping is the recipient's responsibility.",
+        "bundle_async": "An evidence bundle does not download immediately: packaging runs in the background and the file can only be collected once it completes. Artifacts are kept for a limited time; after that they are deleted automatically and the download address stops working.",
+        "bundle_requester_only": "Only the person who requested it can download this artifact; other accounts are refused even when they hold audit view permission. Anyone who needs the same data should request their own copy, so every copy records who collected it.",
+        "bundle_category_scope": "This bundle collects only the categories you selected; an unselected category is left out entirely and its counts are absent from the manifest (writing a zero would make \"not selected\" look like \"none in scope\"). Alerts and file transfers have no content of their own and are included as fact lists.",
+        "bundle_clipboard_gap": "If clipboard content failed to encrypt at capture time, that entry is marked in the bundle as a retention failure with the content field absent — it is never faked with an empty string. That is a gap, not an empty clipboard.",
+        "bundle_scope_is_query_range": "What is collected is the whole query range, not just the records already loaded on screen.",
+        "bundle_truncated_differs": "The on-screen load limit and the per-category limit inside the bundle are two different things; the manifest records them separately and never merges them.",
+        "bundle_manifest_required": "Completeness test: if the package contains no manifest, packaging failed midway, that copy is incomplete and must not be used as evidence.",
+        "bundle_no_offline_tool": "No offline verification tool ships inside the package. To verify this bundle yourself, how to obtain the verification key and the step-by-step verification commands are in this system's external technical documentation; ask your administrator for it."
       },
       "coverage": {
         "title": "Retention status per category in this scope (the report states the same for each category)",
@@ -3252,13 +3406,16 @@
         "purged": "Part of this period was deleted under the retention policy (retained {policy_days} days; deleted through {purged_through_at}; last deletion run {last_purge_at}). A blank stretch here is the result of that deletion, not evidence that nothing happened.",
         "purgedCheckpoints": "Checkpoint numbers {archive_unit_from} to {archive_unit_to} cover that stretch and can be checked independently.",
         "purgedPartial": "The last deletion run did not complete, so some records for that period may still remain in the system.",
-        "not_retained": "This category is never deleted automatically (the retention policy does not remove it), so a blank stretch here was not caused by deletion. That is not the same as 'deleted under the retention policy'. It still does not prove nothing happened: only events the system actually captures become records — clipboard events, for example, are captured only on graphical desktop sessions and only for text."
+        "not_retained": "This category is never deleted automatically (the retention policy does not remove it), so a blank stretch here was not caused by deletion. That is not the same as 'deleted under the retention policy'. It still does not prove nothing happened: only events the system actually captures become records — clipboard events, for example, are captured only on graphical desktop sessions and only for text.",
+        "titleBundle": "Retention status per category in this scope (the package records the same assessment per category)"
       },
       "unsigned": {
         "title": "Report signing is not enabled on this system",
         "body": "This report will not include a signature file. Signing is not enabled — a signature was not removed. An unsigned report cannot attest that it has not been altered."
       },
-      "signingUnknown": "Whether report signing is enabled on this system could not be confirmed. Rely on the signing status recorded in the manifest file inside the report."
+      "signingUnknown": "Whether report signing is enabled on this system could not be confirmed. Rely on the signing status recorded in the manifest file inside the report.",
+      "unavailableIpPivot": "Export is not available when investigating by source address. Switch to the user or asset pivot to produce a report — those reports already carry the source address column.",
+      "ipFilterExcluded": "The source address filter on screen is not applied here: the scope is the subject and period listed above, every record within it is included, and the actual counts will not be lower than the numbers above."
     },
     "categories": {
       "title": "Record categories",
@@ -3271,7 +3428,9 @@
       "audit_log": "Operation logs",
       "file_transfer": "File transfers",
       "clipboard": "Clipboard",
-      "alert": "Alerts"
+      "alert": "Alerts",
+      "notQueriedDetail": "{category}: this category was not part of the search, so there is no count to report. Not searched is not the same as nothing happened — switch it on to include it.",
+      "countLine": "{category}: {count} records in this period."
     },
     "coverage": {
       "badge": {
@@ -3296,7 +3455,16 @@
       "tooltipStatus": "Status: {status}",
       "clippedStart": "This session started before the period you are viewing; only the part inside it is drawn",
       "clippedEnd": "This session continued past the period you are viewing; only the part inside it is drawn",
-      "ariaLabel": "User {user}, asset {asset}, {start} to {end}, duration {duration}"
+      "ariaLabel": "User {user}, asset {asset}, {start} to {end}, duration {duration}",
+      "overviewTitle": "Session overview",
+      "overviewSummary": "{assets} assets, {sessions} sessions",
+      "expandOverview": "Expand the session overview into one row per asset",
+      "collapseOverview": "Collapse the session overview",
+      "expandAsset": "Show each session on {name}",
+      "collapseAsset": "Hide the individual sessions on {name}",
+      "assetSessions": "{n} sessions",
+      "restAssets": "{n} more assets",
+      "unknownAsset": "Unknown asset"
     },
     "recording": {
       "available": "Replayable",
@@ -3315,12 +3483,32 @@
       "revealed": "Now showing {count} more.",
       "allShown": " No more to load; all events in this period are now shown.",
       "loadFailed": "Could not load more events. Nothing new was retrieved this time, so the counts above are unchanged — this does not mean you have seen everything. Use \"Retry\", or narrow the time range and search again.",
-      "truncated": "This period holds more events than the page loads at once, so you are not yet seeing all of them. The per-category counts on the left are the real totals for this period — check against those. To see the rest, use \"Load more\" below, or narrow the time range and search again.",
-      "focusNotFound": "The event you came here to see was not found. It may fall outside the current time range, belong to a category that is switched off, or simply not be loaded yet in a period this busy. Adjust the time range and the categories on the left, then search again. This does not mean the record was deleted; for operation logs and file transfers, whether records have been removed or altered is answered on the Checkpoint Verification page.",
+      "truncated": "This period holds more events than the page loads at once, so you are not yet seeing all of them. The per-category counts in the filter bar are the real totals for this period — check against those. To see the rest, use \"Load more\" below, or narrow the time range and search again.",
+      "truncatedBrief": "Not all events are shown. The per-category counts in the filter bar are the real totals; use \"Load more\" below or narrow the time range to see the rest.",
+      "focusNotFound": "The event you came here to see was not found. It may fall outside the current time range, belong to a category that is switched off, or simply not be loaded yet in a period this busy. Adjust the time range and the categories in the filter bar, then search again. This does not mean the record was deleted; for operation logs and file transfers, whether records have been removed or altered is answered on the Checkpoint Verification page.",
       "openSession": "Session detail",
       "counterpartUser": "User: {name}",
       "counterpartAsset": "Asset: {name}",
-      "clipboardNoContent": "The clipboard text itself is kept, but deliberately not shown on this timeline: the timeline pools many sessions into one view, and reproducing the text here would spread the sensitive data further. What is recorded here is who copied, in which session, at what time and in which direction — enough to judge whether data left the organization and to identify the person behind it. The text itself is retrieved session by session, and only with audit permission."
+      "clipboardNoContent": "The clipboard text is kept encrypted, but deliberately not shown on this timeline: the timeline pools many sessions into one view, and reproducing the text here would spread the sensitive data further. What is recorded here is who copied, in which session, at what time and in which direction. To read the text, click \"View content\" to open that session's clipboard records and select Decrypt and view on the entry — every access leaves a record.",
+      "clipboardNoContentBrief": "Content is deliberately not shown on the timeline; open the session's clipboard records and select Decrypt and view on each entry (every access is recorded).",
+      "viewClipboardContent": "View content",
+      "clientIpUnknown": "Unknown",
+      "clientIpReason": {
+        "system": "A system-initiated action, so there is no request source to record.",
+        "unresolvable": "The source address could not be resolved when the record was written.",
+        "session_missing": "The connection this record belongs to no longer exists, so its source cannot be retrieved."
+      },
+      "clientIpScope": {
+        "session": "The source this connection was established from.",
+        "request": "The source of this request.",
+        "viaSession": "The source the parent connection was established from, not sampled again for this record."
+      },
+      "actorUnauthenticated": "Unauthenticated source",
+      "actorUser": "Actor: {name}",
+      "pivotLink": "Investigate this address (keeps the current time range and categories)",
+      "emptyHint": "Try widening the time range, or turning on more record categories above.",
+      "emptyIpTitle": "No records from this address in this period",
+      "emptyIpHint": "Candidates cover only addresses that have signed in or connected successfully. Any address can be typed in directly, including ones that appear only in denial records."
     },
     "table": {
       "time": "Time",
@@ -3331,7 +3519,9 @@
       "protocol": "Protocol",
       "start": "Start",
       "end": "End",
-      "recording": "Recording"
+      "recording": "Recording",
+      "clientIp": "Source address",
+      "actor": "Actor"
     },
     "summary": {
       "fallback": "Event type not yet labeled in this version (system code {code} — give this to your administrator to look up)",
@@ -3343,6 +3533,7 @@
         "execute": "Executed {resource} operation",
         "login": "Signed in",
         "logout": "Signed out",
+        "new_source_ip": "Signed in from a new source address",
         "unlock": "Unlocked account",
         "pw_noncompliant": "Password not compliant with policy",
         "recording_failed": "Recording failed",
@@ -3365,12 +3556,33 @@
         "executed": "Executed command"
       },
       "alert": {
-        "triggered": "Triggered alert rule {rule}"
+        "triggered": "Triggered alert rule {rule}",
+        "kind": {
+          "new_source_ip": "New source address for account: first connection from this address"
+        }
       },
       "clipboard": {
         "send": "Copied from the local PC to the remote host",
         "recv": "Copied from the remote host to the local PC"
       }
+    },
+    "headerHelpLabel": "What this page is",
+    "filter": {
+      "clientIp": "Source address",
+      "clientIpPlaceholder": "Filter by source address",
+      "unknownOnly": "Unknown sources only",
+      "unknownOnlyHint": "Keeps only records with no source address; mutually exclusive with the address box above"
+    },
+    "ipBoundary": {
+      "label": "How source addresses are read here",
+      "title": "Before reading the source addresses on this timeline",
+      "candidates": "Candidates cover only addresses that have signed in or connected successfully. An address that appears only in denial records has no candidate entry, but can be typed in directly — that is what free input is for.",
+      "scope": "Connections, activity logs and file transfers carry their own address field. Commands, alerts and clipboard records do not — what you see is the source their parent connection was established from, as stated on each address cell.",
+      "unknown": "Records with no retrievable source show as \"Unknown\" with a reason (system-initiated, unresolvable at write time, or parent connection gone). Records with neither an attributable user nor an address cannot be reached from any pivot — that limit is stated here and nowhere else.",
+      "ipv6": "Temporary IPv6 addresses rotate, so one device appears here as several addresses; the system does not aggregate prefixes. Correlating them is up to the investigator, using time and account.",
+      "proxy": "When the deployment has not declared a trusted proxy chain, every record shows the proxy address. That is a deployment setting, owned by the operator and the deployment documentation; it affects all records at once, so no per-row marker is possible.",
+      "export": "Export is not available on the source address pivot. Switch to the user or asset pivot to produce a report — the source address column in those reports is unchanged.",
+      "exactMatch": "Addresses are matched exactly after normalization. Range and prefix queries are not supported."
     }
   },
   "kekCommands": {
@@ -3378,5 +3590,61 @@
     "hint": "Run one on any machine with a shell and paste the output into the field above. The three commands correspond to the three accepted forms, and each is verified by an automated test that actually runs it and confirms the output is accepted.",
     "entropyWarning": "Always generate the key with the commands above (CSPRNG); never invent one by hand. A low-entropy string can pass the format check yet be unsafe, and the system cannot verify entropy from a single value.",
     "copied": "Command copied"
+  },
+  "auditExports": {
+    "headerDesc": "Every export you requested is collected here. Artifacts are kept for a limited time and deleted automatically once they expire.",
+    "requesterOnlyNote": "This page lists only the exports you requested yourself. Other people's artifacts never appear here and you cannot download them — anyone who needs the same data should request their own copy.",
+    "column": {
+      "artifact": "Artifact",
+      "scope": "Scope",
+      "status": "Status",
+      "size": "Size",
+      "expires": "Retention",
+      "actions": "Actions"
+    },
+    "kind": {
+      "auditExport": "Audit evidence bundle"
+    },
+    "requestedAt": "Requested {time}",
+    "status": {
+      "pending": "Queued",
+      "running": "Packaging",
+      "done": "Ready",
+      "failed": "Failed",
+      "expired": "Expired"
+    },
+    "statusHint": {
+      "pending": "Accepted, waiting in the queue",
+      "running": "Producing the artifact",
+      "done": "Collectable within the retention window",
+      "failed": "No artifact was produced",
+      "expired": "Artifact deleted, download address no longer works"
+    },
+    "failureReason": {
+      "pack_failed": "Packaging failed and the retry limit was reached",
+      "requester_revoked": "The requester's account or audit view permission is no longer valid; packaging was cancelled and the artifact removed",
+      "unknown": "No reason was recorded",
+      "unmapped": "Failure code: {code} (this build has no description for it; give the code to your administrator)"
+    },
+    "scopeUser": "User #{id}",
+    "scopeAsset": "Asset #{id}",
+    "scopeSession": "Session #{id}",
+    "scopeRange": "Period {from} to {to}",
+    "scopeTypes": "Categories: {types} ({count} in total)",
+    "scopeUnknown": "No scope recorded",
+    "expiresIn": "{duration} left",
+    "expiresAt": "until {time}",
+    "expiredAlready": "Expired",
+    "noExpiry": "No artifact yet",
+    "download": "Download",
+    "retry": "Request again",
+    "downloadFailed": "Download failed; no file was received.",
+    "retrySuccess": "Packaging requested again; collect it on this page shortly.",
+    "retryFailed": "Could not request again; no job was created.",
+    "loadFailed": "Could not load the list.",
+    "empty": "No exports yet. Finish an investigation in the workbench, choose \"Evidence bundle\" when exporting, and the artifact will show up here.",
+    "polling": "Packaging is in progress; this page refreshes every {sec} seconds.",
+    "pollingStopped": "Automatic refresh stopped (this page reached its refresh limit). Use Refresh to get the latest status.",
+    "shaTip": "Artifact fingerprint SHA-256: {sha}"
   }
 }

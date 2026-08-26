@@ -23,6 +23,15 @@ func (h *AuthHandler) MFASetup(c *gin.Context) {
 		return
 	}
 
+	// 來源限定（盤點表 #14）：本端點有寫入副作用（覆蓋 pending secret、重設 enabled）
+	// 且**回傳 secret**，判定必須在產生 secret 之前
+	if !h.requireSourceAllowed(c, userID, func(note string) {
+		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusDenied,
+			http.StatusForbidden, note)
+	}) {
+		return
+	}
+
 	resp, err := h.authService.GenerateMFASetup(userID)
 	if err != nil {
 		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusFailure, http.StatusInternalServerError, err.Error())
@@ -39,6 +48,14 @@ func (h *AuthHandler) MFAEnable(c *gin.Context) {
 	userID, username, ok := currentUser(c)
 	if !ok {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
+		return
+	}
+
+	// 來源限定（盤點表 #15）：MFA 啟用是認證因子的狀態寫入
+	if !h.requireSourceAllowed(c, userID, func(note string) {
+		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusDenied,
+			http.StatusForbidden, note)
+	}) {
 		return
 	}
 
@@ -82,6 +99,17 @@ func (h *AuthHandler) MFAEnrollSetup(c *gin.Context) {
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeMFAEnrollTokenMissing, nil)
 		return
 	}
+	// 來源限定（盤點表 #11）：enrollment 票證已驗＝知道是誰，而本端點會寫入
+	// pending secret **並把 secret 回傳**。票證不成立時不判（subject 取不到），
+	// 由服務產生原本那份 401——來源政策不得讓票證有效性出現分岔
+	if subject, known := h.authService.EnrollmentTokenSubject(token); known {
+		if !h.requireSourceAllowed(c, subject, func(note string) {
+			h.auditAuthEvent(c, subject, "", model.ActionUpdate, model.StatusDenied,
+				http.StatusForbidden, note)
+		}) {
+			return
+		}
+	}
 	resp, err := h.authService.EnrollmentSetup(token)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -114,6 +142,17 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 		return
 	}
 
+	// 來源限定（盤點表 #12，並涵蓋 #6 的完成後換發正式會話）：判定在票證驗證之後、
+	// CompleteEnrollment 之前——放在其後等於讓清單外來源綁得成第二因子
+	if subject, known := h.authService.EnrollmentTokenSubject(token); known {
+		if !h.requireSourceAllowed(c, subject, func(note string) {
+			h.auditAuthEvent(c, subject, "", model.ActionUpdate, model.StatusDenied,
+				http.StatusForbidden, note)
+		}) {
+			return
+		}
+	}
+
 	resp, err := h.authService.CompleteEnrollment(token, req.Code)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -144,6 +183,7 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 	h.auditMFALoginSuccess(c, resp.User.ID, resp.User.Username, "mfa_enrolled", resp)
 	// 發放端點 3／6：強制註冊完成直接換發正式會話
 	h.refreshCookies.SetFromLogin(c, resp)
+	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -160,6 +200,14 @@ func (h *AuthHandler) MFADisable(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+
+	// 來源限定（盤點表 #16）：自助停用 MFA 是認證因子的狀態寫入
+	if !h.requireSourceAllowed(c, userID, func(note string) {
+		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusDenied,
+			http.StatusForbidden, note)
+	}) {
 		return
 	}
 
@@ -204,6 +252,18 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 		return
 	}
 
+	// 來源限定（盤點表 #13＝#5，並涵蓋 #4 經此路徑發出的改密票證）：
+	// 第二因素此刻已通過，其後每一條分支都會發出正式會話或改密票證，
+	// 故判定放在分岔之前一次涵蓋
+	mfaUserID, mfaUsername := loginSubject(resp)
+	if !h.requireSourceAllowed(c, mfaUserID, func(note string) {
+		h.auditAuthEventFull(c, mfaUserID, mfaUsername, model.ActionLogin, model.StatusDenied,
+			http.StatusForbidden, annotateAuthSource(note, resp.AuthSource), 0,
+			authProviderDetails(resp))
+	}) {
+		return
+	}
+
 	// MFA 通過但須先改密（改密 gate 排在 MFA 之後防繞過）
 	if resp.PasswordChangeRequired {
 		h.auditMFALoginSuccess(c, resp.PendingUserID, resp.PendingUsername, "password_change_required", resp)
@@ -216,6 +276,7 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 	h.auditMFALoginSuccess(c, resp.User.ID, resp.User.Username, "", resp)
 	// 發放端點 2／6：MFA 第二階段完成，正式會話由此發出
 	h.refreshCookies.SetFromLogin(c, resp)
+	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -230,6 +291,15 @@ func (h *AuthHandler) AdminDisableMFA(c *gin.Context) {
 	targetID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "user"})
+		return
+	}
+
+	// 來源限定（盤點表 #17）：管理者對他人的 MFA 重設，依**操作者本人**的清單判定。
+	// 目標帳號的清單不適用——被救援者往往正因來源受限而進不來
+	if !h.requireSourceAllowed(c, adminID, func(note string) {
+		h.auditAuthEventWithResource(c, adminID, adminName, model.ActionUpdate, model.StatusDenied,
+			http.StatusForbidden, note, uint(targetID))
+	}) {
 		return
 	}
 

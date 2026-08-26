@@ -20,6 +20,7 @@ func newMetricsRouter(t *testing.T, token string) (*gin.Engine, *Metrics) {
 	m.SetSealStateSource(func() (string, []string) {
 		return "unsealed", []string{"sealed", "unsealed"}
 	})
+	m.SetInstanceGuardSource(func() InstanceGuardStatus { return InstanceGuardStatus{State: "held"} })
 	m.RegisterStage2()
 
 	r := gin.New()
@@ -62,6 +63,8 @@ func TestMetricsWithoutTokenIsOpen(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Contains(t, w.Body.String(), "custodexa_seal_state",
 		"未設 token 時應正常曝光指標")
+	require.Contains(t, w.Body.String(), "custodexa_instance_guard_held 1",
+		"守衛序列應經同一曝光端點採集")
 }
 
 // TestMetricsTokenEnforced token 已設時的三種請求形態。

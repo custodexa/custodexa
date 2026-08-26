@@ -13,6 +13,7 @@
     "session_record_create_failed": "セッション記録の作成に失敗し、接続を拒否",
     "audit_write_fallback_file": "監査バッチ書き込みに失敗し、ファイルへ退避",
     "audit_write_batch_dropped": "監査バッチ書き込みに失敗し、ファイル退避が無効のためバッチを破棄",
+    "audit_write_sync_refused": "同期監査書き込みに失敗し、当該操作を拒否",
     "syslog_connect_failed": "syslog 転送の接続に失敗",
     "syslog_buffer_overflow": "syslog 転送バッファのオーバーフロー",
     "kek_retirement_backlog": "KEK 退役処理が未収束",
@@ -21,7 +22,9 @@
     "audit_chain_structure_invalid": "チェックポイントチェーンの構造異常（署名・連結・連番の改変）",
     "audit_chain_content_mismatch": "封印済み区間の監査記録がチェックポイントと不一致または欠落",
     "audit_chain_content_extra_rows": "封印済み区間に行単位署名が有効な追加記録あり（人手確認要）",
-    "audit_chain_verify_failed": "チェーン検証自体が完了不能（メカニズム状態は不明であり「異常なし」ではない）"
+    "audit_chain_verify_failed": "チェーン検証自体が完了不能（メカニズム状態は不明であり「異常なし」ではない）",
+    "source_policy_unreadable": "判定点でユーザーの許可送信元範囲を読み取れない",
+    "source_policy_corrupt": "保存された許可送信元範囲の文字列を解析できない（DB 直接書き込みまたはプログラム欠陥）"
   },
   "severity": {
     "high": "高",

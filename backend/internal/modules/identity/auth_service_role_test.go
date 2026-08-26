@@ -82,7 +82,7 @@ func TestMultiRoleEffectiveRoleSurvivesRefresh(t *testing.T) {
 		t.Errorf("登入 token 有效角色 = %q, want auditor", claims.Role)
 	}
 
-	rotated, err := auth.RefreshSession(resp.RefreshToken)
+	rotated, err := auth.RefreshSession(resp.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("refresh: %v", err)
 	}

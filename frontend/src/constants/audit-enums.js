@@ -22,6 +22,8 @@ const ACTION_TAG_TYPES = {
   unlock: 'warning',
   pw_noncompliant: 'warning',
   recording_failed: 'danger',
+  // 帳號自從未見過的來源位址完成 web 登入的標記列（無告警、無推送）
+  new_source_ip: 'warning',
   file_list: 'info',
   file_upload: 'warning',
   file_download: 'warning',
@@ -80,6 +82,9 @@ export const AUDIT_RESOURCE_VALUES = [
   'asset_group',
   'snippet',
   'role',
+  // 單實例守衛（single-instance-guard）：系統主體寫入的守衛事件
+  //（overridden／lost／regained）與管理者對快照端點的讀取列
+  'instance_guard',
   // 兜底哨兵：後端 `extractResource` 對未分類路徑的回傳值。**它會出現在審計列表
   // 與篩選下拉裡，且那是刻意的**——漏分類從此可計數、可篩選、可告警，
   // 而不是靜默冒充資產。此處若不補，介面會對這批列顯示裸機器碼
@@ -108,6 +113,10 @@ export const AUDIT_MECHANISM_VALUES = [
   'audit_chain_content',
   // 驗證本身無法完成＝機制狀態「未知」，非「無異常」（文案不得寫成後者）
   'audit_chain_verify',
+  // 來源網段限定政策不可用：判定點讀不到使用者的允許清單，或儲存的清單字串
+  // 無法解析。每個判定點遇此一律拒絕（不當成空清單放行），拒絕對外看起來
+  // 與「來源不允許」相同——經本機制上報，營運端才在失效面板上看得見「政策壞了」
+  'source_policy',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -160,6 +169,9 @@ export const AUDIT_CAUSE_VALUES = [
   'session_record_create_failed',
   'audit_write_fallback_file',
   'audit_write_batch_dropped',
+  // 同步（fail-close）審計寫入失敗：逐筆留痕是交付明文的前置條件
+  //（剪貼簿單筆調閱），留痕寫不進去即拒絕交付——證據未損、機制失效須揭露
+  'audit_write_sync_refused',
   'syslog_connect_failed',
   'syslog_buffer_overflow',
   'kek_retirement_backlog',
@@ -171,6 +183,10 @@ export const AUDIT_CAUSE_VALUES = [
   'audit_chain_content_mismatch',
   'audit_chain_content_extra_rows',
   'audit_chain_verify_failed',
+  // 來源網段限定政策的兩個成因：讀不到（DB 錯）與解析不了（清單字串損壞）。
+  // 兩者對外同樣只回「來源不允許」，歸因只在此處與審計列
+  'source_policy_unreadable',
+  'source_policy_corrupt',
 ]
 
 export const AUDIT_CAUSES = {}

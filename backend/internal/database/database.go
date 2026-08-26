@@ -120,6 +120,13 @@ var schemaParityModels = []interface{}{
 	&model.OIDCFlowState{},           // 登入流程狀態（一次性）
 	&model.OIDCLoginTicket{},         // callback→SPA 交棒憑證（一次性）
 	&model.AuditRetentionWatermark{}, // auditor-workbench: 保留期清除水位（永不清除，逐類別一列）
+	// 證據包非同步匯出 job。
+	// **由增量 migration 建表，不在 baseline 內**——parity 守衛的解析對象
+	// 已擴為 schemaDDLStatements()（baseline＋增量），本表因此同受兩層守衛
+	&model.AuditExportJob{},
+	// source-ip-forensics：帳號 × 來源位址的已見基準（判定依據，不受保留清除）。
+	// 由增量 migration 建表，同 audit_export_jobs 走 schemaDDLStatements() 受兩層守衛
+	&model.UserSourceIP{},
 	// 兩層自動驗證的營運狀態（單列）。
 	// **明示為營運狀態而非證據**：本表不在鏈的覆蓋範圍內，可由 DB 直寫改寫成
 	// 「最近驗過且通過」；它承載的是「機制到底有沒有在跑」這個 watchdog 盲點，
@@ -147,8 +154,12 @@ func SchemaParityModels() []interface{} {
 	return out
 }
 
-// Close 關閉資料庫連線
+// Close 關閉資料庫連線。
+//
+// **先釋放單實例鎖、再關連線池**：釘選連線不在池的
+// 管理下，池關閉不會替它解鎖；反序則 watchdog 可能在池已關閉時把取消誤計成失鎖。
 func Close() error {
+	releaseInstanceLock()
 	if DB != nil {
 		sqlDB, err := DB.DB()
 		if err != nil {

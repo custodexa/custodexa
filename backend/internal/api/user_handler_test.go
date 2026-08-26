@@ -148,7 +148,7 @@ func TestUserHandler_List(t *testing.T) {
 		mockUserService.On("List", mock.AnythingOfType("*identity.ListUsersRequest")).
 			Return(expectedResponse, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users", handler.List)
 
@@ -183,7 +183,7 @@ func TestUserHandler_List(t *testing.T) {
 			return req.Search == "admin"
 		})).Return(expectedResponse, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users", handler.List)
 
@@ -215,7 +215,7 @@ func TestUserHandler_List(t *testing.T) {
 			return req.Active != nil && *req.Active == true
 		})).Return(expectedResponse, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users", handler.List)
 
@@ -239,7 +239,7 @@ func TestUserHandler_List(t *testing.T) {
 			return req.Page == 2 && req.PageSize == 10
 		})).Return(expectedResponse, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users", handler.List)
 
@@ -258,7 +258,7 @@ func TestUserHandler_List(t *testing.T) {
 		mockUserService.On("List", mock.AnythingOfType("*identity.ListUsersRequest")).
 			Return(nil, errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users", handler.List)
 
@@ -294,7 +294,7 @@ func TestUserHandler_Create(t *testing.T) {
 			return req.Username == "newuser" && req.Email == "newuser@example.com"
 		})).Return(createdUser, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users", handler.Create)
 
@@ -327,7 +327,7 @@ func TestUserHandler_Create(t *testing.T) {
 	t.Run("請求格式錯誤（缺少必填欄位）", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users", handler.Create)
 
@@ -356,7 +356,7 @@ func TestUserHandler_Create(t *testing.T) {
 		mockUserService.On("Create", mock.AnythingOfType("*identity.CreateUserRequest")).
 			Return(nil, identity.ErrUsernameExists)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users", handler.Create)
 
@@ -388,7 +388,7 @@ func TestUserHandler_Create(t *testing.T) {
 		mockUserService.On("Create", mock.AnythingOfType("*identity.CreateUserRequest")).
 			Return(nil, identity.ErrRoleNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users", handler.Create)
 
@@ -421,7 +421,7 @@ func TestUserHandler_Create(t *testing.T) {
 		mockUserService.On("Create", mock.AnythingOfType("*identity.CreateUserRequest")).
 			Return(nil, errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users", handler.Create)
 
@@ -463,7 +463,7 @@ func TestUserHandler_Get(t *testing.T) {
 		}
 		mockUserService.On("GetByID", uint(1)).Return(user, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users/:id", handler.Get)
 
@@ -486,7 +486,7 @@ func TestUserHandler_Get(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users/:id", handler.Get)
 
@@ -508,7 +508,7 @@ func TestUserHandler_Get(t *testing.T) {
 
 		mockUserService.On("GetByID", uint(999)).Return(nil, identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users/:id", handler.Get)
 
@@ -531,7 +531,7 @@ func TestUserHandler_Get(t *testing.T) {
 
 		mockUserService.On("GetByID", uint(1)).Return(nil, errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.GET("/users/:id", handler.Get)
 
@@ -566,7 +566,7 @@ func TestUserHandler_Update(t *testing.T) {
 		mockUserService.On("Update", uint(1), mock.AnythingOfType("*identity.UpdateUserRequest")).
 			Return(updatedUser, map[string]string{}, nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id", handler.Update)
 
@@ -596,7 +596,7 @@ func TestUserHandler_Update(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id", handler.Update)
 
@@ -622,7 +622,7 @@ func TestUserHandler_Update(t *testing.T) {
 	t.Run("請求格式錯誤", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id", handler.Update)
 
@@ -646,7 +646,7 @@ func TestUserHandler_Update(t *testing.T) {
 		mockUserService.On("Update", uint(999), mock.AnythingOfType("*identity.UpdateUserRequest")).
 			Return(nil, nil, identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id", handler.Update)
 
@@ -676,7 +676,7 @@ func TestUserHandler_Update(t *testing.T) {
 		mockUserService.On("Update", uint(1), mock.AnythingOfType("*identity.UpdateUserRequest")).
 			Return(nil, nil, errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id", handler.Update)
 
@@ -708,7 +708,7 @@ func TestUserHandler_Delete(t *testing.T) {
 
 		mockUserService.On("Delete", uint(1)).Return(nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -730,7 +730,7 @@ func TestUserHandler_Delete(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -752,7 +752,7 @@ func TestUserHandler_Delete(t *testing.T) {
 
 		mockUserService.On("Delete", uint(999)).Return(identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -775,7 +775,7 @@ func TestUserHandler_Delete(t *testing.T) {
 
 		mockUserService.On("Delete", uint(1)).Return(identity.ErrLastAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -798,7 +798,7 @@ func TestUserHandler_Delete(t *testing.T) {
 
 		mockUserService.On("Delete", uint(1)).Return(errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -824,7 +824,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 
 		mockUserService.On("AssignRoles", uint(1), []string{"admin", "user"}).Return(nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -852,7 +852,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -878,7 +878,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 	t.Run("請求格式錯誤（缺少 roles）", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -904,7 +904,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService.On("AssignRoles", uint(999), []string{"admin"}).
 			Return(identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -934,7 +934,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService.On("AssignRoles", uint(1), []string{"invalid_role"}).
 			Return(identity.ErrRoleNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -964,7 +964,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService.On("AssignRoles", uint(1), []string{"admin"}).
 			Return(errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
@@ -996,7 +996,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 
 		mockUserService.On("UpdateStatus", uint(1), false).Return(nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1024,7 +1024,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1050,7 +1050,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 	t.Run("請求格式錯誤（active 為 nil）", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1076,7 +1076,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		mockUserService.On("UpdateStatus", uint(999), false).
 			Return(identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1106,7 +1106,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		mockUserService.On("UpdateStatus", uint(1), false).
 			Return(identity.ErrLastAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1136,7 +1136,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		mockUserService.On("UpdateStatus", uint(1), false).
 			Return(errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -1168,7 +1168,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 
 		mockUserService.On("ChangePassword", uint(1), "newpassword123").Return(nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/password", handler.ChangePassword)
 
@@ -1196,7 +1196,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 	t.Run("無效的用戶 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/password", handler.ChangePassword)
 
@@ -1233,7 +1233,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 				Params: map[string]any{"min": 12},
 			})
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/password", handler.ChangePassword)
 
@@ -1264,7 +1264,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		mockUserService.On("ChangePassword", uint(999), "newpassword123").
 			Return(identity.ErrUserNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/password", handler.ChangePassword)
 
@@ -1294,7 +1294,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		mockUserService.On("ChangePassword", uint(1), "newpassword123").
 			Return(errors.New("database error"))
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/password", handler.ChangePassword)
 

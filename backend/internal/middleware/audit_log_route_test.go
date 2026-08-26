@@ -92,6 +92,9 @@ func TestExtractResource(t *testing.T) {
 		{"/api/v1/audit-logs/:id", model.ResourceAuditLog},
 		{"/api/v1/audit-export/public-key", model.ResourceAuditExport},
 		{"/api/v1/audit/timeline", model.ResourceAuditTimeline},
+		// subjects 與 timeline 同資源：位址候選（type=ip）的讀取以稽核時間軸
+		// 資源分類留痕（含查詢摘要），這條釘住該分類不漂移
+		{"/api/v1/audit/subjects", model.ResourceAuditTimeline},
 		{"/api/v1/command-alerts/:id/review", model.ResourceCommandAlert},
 		// 兜底哨兵：分類器不認得的路徑不再冒充 asset。
 		// 這條是機制斷言而非現況斷言——上限已為 0，全部已註冊路由都有分類，
@@ -448,5 +451,86 @@ func TestParseRoute_MyConnectionTerminate(t *testing.T) {
 	}
 	if resourceID == nil || *resourceID != 42 {
 		t.Errorf("resourceID = %v, want 42", resourceID)
+	}
+}
+
+// TestSourcePolicyCheckAuditedAsRead 允許來源網段判定端點的審計形狀。
+//
+// **釘子打在寫進去的那一列**而不是 parseRoute 的回傳值：缺陷本體是稽核工作台上
+// 讀到的東西。訂正前，這支唯讀試算端點因 POST→create 的動詞推導寫出
+// `action=create, resource=user, details 空`，與真正的建帳號在動作與資源兩欄上完全
+// 同形——2026-08-26 於開發庫實測 6 分鐘留下 13 列，讀起來是有人反覆建帳號。
+//
+// 兩條對照組釘住訂正沒有外溢：真正的建帳號仍是 create、`:id` 更新仍是 update。
+// 少了它們，「判定端點是 read」有可能只是動詞推導整個壞掉的副作用。
+//
+// 射程邊界：本測試的判定端點替身只保留與審計形狀有關的行為（設 audit_details
+// 後回 200），摘要的**鍵集合**由 `internal/api` 的端點測試釘住；本測試釘的是
+// 那份摘要確實落進 details 欄，而不是被中介層丟掉。
+func TestSourcePolicyCheckAuditedAsRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := installClipboardAuditDB(t)
+
+	svc := audit.NewAuditLogService(&config.FeatureFlags{
+		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
+	})
+	r := gin.New()
+	r.Use(AuditLogMiddleware(svc))
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", uint(9))
+		c.Set("username", "admin")
+		c.Next()
+	})
+	r.POST("/api/v1/users/source-policy/check", func(c *gin.Context) {
+		c.Set("audit_details", map[string]string{"check": "source_policy", "cidr_count": "2"})
+		c.JSON(200, gin.H{})
+	})
+	r.POST("/api/v1/users", func(c *gin.Context) { c.JSON(200, gin.H{}) })
+	r.PUT("/api/v1/users/:id", func(c *gin.Context) { c.JSON(200, gin.H{}) })
+
+	cases := []struct {
+		name        string
+		method      string
+		reqURL      string
+		wantAction  model.AuditAction
+		wantID      *uint
+		wantDetails string // 期望 details 內含的子字串；空＝不檢查
+	}{
+		{"判定端點記成讀取", "POST", "/api/v1/users/source-policy/check",
+			model.ActionRead, nil, `"check":"source_policy"`},
+		{"對照組：真正的建帳號仍是 create", "POST", "/api/v1/users",
+			model.ActionCreate, nil, ""},
+		{"對照組：帳號更新仍是 update", "PUT", "/api/v1/users/7",
+			model.ActionUpdate, uintPtr(7), ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(tc.method, tc.reqURL, nil))
+			if w.Code != 200 {
+				t.Fatalf("請求應被受理（釘子須打在真正寫出審計列的請求上），得 %d", w.Code)
+			}
+			row := latestAuditRow(t, db)
+			if row.Path != tc.reqURL {
+				t.Fatalf("讀回的不是本次請求的列（path=%s，期望 %s）——連線池或排序有問題",
+					row.Path, tc.reqURL)
+			}
+			if row.Action != tc.wantAction {
+				t.Errorf("action = %s, want %s（唯讀試算與建帳號在操作日誌上同形即為假事件）",
+					row.Action, tc.wantAction)
+			}
+			if row.Resource != model.ResourceUser {
+				t.Errorf("resource = %s, want user", row.Resource)
+			}
+			if !uintPtrEqual(row.ResourceID, tc.wantID) {
+				t.Errorf("resource_id = %v, want %v（判定端點不指向任何一個帳號，須為空）",
+					derefUint(row.ResourceID), derefUint(tc.wantID))
+			}
+			if tc.wantDetails != "" && !strings.Contains(row.Details, tc.wantDetails) {
+				t.Errorf("details = %q，未含 %s——handler 的查詢摘要沒有落進 details 欄，"+
+					"那一列只說得出「有人打了判定端點」", row.Details, tc.wantDetails)
+			}
+		})
 	}
 }

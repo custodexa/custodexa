@@ -28,8 +28,15 @@ func NewAuditTimelineHandler(timeline *audit.TimelineService) *AuditTimelineHand
 // Timeline GET /api/v1/audit/timeline
 func (h *AuditTimelineHandler) Timeline(c *gin.Context) {
 	q := audit.TimelineQuery{
-		Subject:   audit.TimelineSubject(c.Query("subject")),
-		SubjectID: parseUintQuery(c.Query("subject_id")),
+		Subject:  audit.TimelineSubject(c.Query("subject")),
+		ClientIP: c.Query("client_ip"),
+	}
+	// 位址樞紐的主體鍵是 subject_ip；subject_id 對它**被忽略**（uint 語義只屬於
+	// user／asset 樞紐，混填不構成錯誤）。值域與正規化由 Normalize 統一把關
+	if q.Subject == audit.SubjectIP {
+		q.SubjectIP = c.Query("subject_ip")
+	} else {
+		q.SubjectID = parseUintQuery(c.Query("subject_id"))
 	}
 
 	from, okFrom := parseTimeQuery(c.Query("from"))
@@ -74,6 +81,9 @@ func (h *AuditTimelineHandler) Timeline(c *gin.Context) {
 			respondInvalidQueryParam(c, "range")
 		case errors.Is(err, audit.ErrUnknownEventType):
 			respondInvalidQueryParam(c, "types")
+		case errors.Is(err, audit.ErrInvalidSourceAddress):
+			// subject_ip 或 client_ip 不是合法位址（unknown 保留字除外）
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationSourceAddress, nil)
 		default:
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditLogQuery, err)
 		}
@@ -85,11 +95,22 @@ func (h *AuditTimelineHandler) Timeline(c *gin.Context) {
 // Subjects GET /api/v1/audit/subjects
 func (h *AuditTimelineHandler) Subjects(c *gin.Context) {
 	kind := audit.TimelineSubject(c.Query("type"))
+	limit := int(parseUintQuery(c.Query("limit")))
+	// 位址候選是另一種形狀（{ip, last_seen_at}，無整數 id）：不塞進
+	// TimelineSubjectRef——其欄位集合由白名單測試釘住，恆空欄位只會撐大讀取面
+	if kind == audit.SubjectIP {
+		subjects, err := h.timeline.ListIPSubjects(c.Query("q"), limit)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditLogQuery, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": subjects, "total": len(subjects)})
+		return
+	}
 	if kind != audit.SubjectUser && kind != audit.SubjectAsset {
 		respondInvalidQueryParam(c, "subject")
 		return
 	}
-	limit := int(parseUintQuery(c.Query("limit")))
 	subjects, err := h.timeline.ListSubjects(kind, c.Query("q"), limit)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditLogQuery, err)

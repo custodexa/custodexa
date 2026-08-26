@@ -14,6 +14,7 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
 
@@ -41,9 +42,18 @@ type ExportFilter struct {
 	// 檔案本體、錄影檔）。空＝維持既有證據包模式，行為與本欄位出現前完全相同。
 	// 樞紐 id 沿用 UserID／AssetID，不另立參數
 	Subject TimelineSubject
-	// Types 事件報告的類別篩選（空＝六類全收）；值域與時間軸同一套，
-	// 未知值由 handler 擋在門外（不靜默忽略）
+	// Types 類別篩選（空＝六類全收）；值域與時間軸同一套，
+	// 未知值由 handler 擋在門外（不靜默忽略）。
+	// **兩種包型都適用**（2026-08-25 使用者裁決）：事件報告決定出哪幾個 csv，
+	// 證據包決定收哪幾段證物（有本體者裝本體，無本體者以事件事實 csv 列入）
 	Types []TimelineEventType
+
+	// Pack 明示包型（ExportModeEventReport｜ExportModeEvidenceBundle）。
+	// 空＝沿既有推斷（Subject 非空即事件報告），既有呼叫端行為逐位不變。
+	//
+	// **為何需要明示**：證據包自 2026-08-25 起也吃樞紐與類別，Subject 不再
+	// 分辨得出包型；只靠推斷會把「帶樞紐的證據包發起」誤判為事件報告而拒絕
+	Pack string
 }
 
 // 匯出模式（manifest.mode）：包裡有什麼，讀者不必靠檔名猜
@@ -54,9 +64,37 @@ const (
 	ExportModeEventReport = "event_report"
 )
 
-// IsEventReport 是否為事件報告模式
+// IsEventReport 是否為事件報告模式（Pack 明示優先，缺席沿 Subject 推斷）
 func (f *ExportFilter) IsEventReport() bool {
+	switch f.Pack {
+	case ExportModeEventReport:
+		return true
+	case ExportModeEvidenceBundle:
+		return false
+	}
 	return f.Subject != ""
+}
+
+// SelectsType 本包是否收錄類別 t（Types 空＝六類全收，既有呼叫端行為不變）
+func (f *ExportFilter) SelectsType(t TimelineEventType) bool {
+	if len(f.Types) == 0 {
+		return true
+	}
+	for _, x := range f.Types {
+		if x == t {
+			return true
+		}
+	}
+	return false
+}
+
+// selectsTypeExplicitly 呼叫端**明寫**了此類別（Types 非空且含 t）。
+//
+// 與 SelectsType 的差別只在「參數缺席＝全收」那一態：缺席時產不出來的段
+// 可以略過（既有呼叫端不知道有這兩段，略過即維持原行為）；明寫了卻略過，
+// 就是靜默不給人家指名要的證物
+func (f *ExportFilter) selectsTypeExplicitly(t TimelineEventType) bool {
+	return len(f.Types) > 0 && f.SelectsType(t)
 }
 
 // SubjectID 樞紐 id（沿用 UserID／AssetID；0＝未指定，由 Normalize 擋下）
@@ -85,15 +123,23 @@ type ExportedFile struct {
 type ExportManifest struct {
 	// Mode 包裡有什麼（evidence_bundle｜event_report）。**放在最前面**：
 	// 讀者判讀任何一段之前，得先知道自己拿到的是哪一種包
-	Mode         string            `json:"mode"`
-	ExportedBy   string            `json:"exported_by"`
-	ExportedByID uint              `json:"exported_by_id"`
-	ExportedAt   time.Time         `json:"exported_at"`
-	Filter       map[string]string `json:"filter"`
+	Mode         string    `json:"mode"`
+	ExportedBy   string    `json:"exported_by"`
+	ExportedByID uint      `json:"exported_by_id"`
+	ExportedAt   time.Time `json:"exported_at"`
+	// JobRequestedAt 非同步 job 的**發起**時刻；ExportedAt 是**實際打包**時刻。
+	// 兩時戳並列（雙時戳），收包方才能判斷內容對應的資料時點——排隊期間
+	// 新落庫的事件會在包內，只看發起時刻會誤判涵蓋範圍。同步報告無此欄
+	JobRequestedAt *time.Time        `json:"job_requested_at,omitempty"`
+	Filter         map[string]string `json:"filter"`
 	// Scope 事件報告的涵蓋範圍（樞紐、時間區間、類別）。讀者據此判斷
 	// 「這份報告是不是全部」——只給筆數不給範圍，讀者會誤信自己看完了
-	Scope *ExportScope   `json:"scope,omitempty"`
-	Files []ExportedFile `json:"files"`
+	Scope *ExportScope `json:"scope,omitempty"`
+	// SelectedTypes 證據包的類別篩選：六類中實際收錄哪幾類。
+	// **參數缺席時展開為全部六類**，讀者不必去推斷「沒寫是全收還是沒記」。
+	// 事件報告的同一資訊在 Scope.Types（該模式恆有樞紐與時間窗可寫）
+	SelectedTypes []string       `json:"selected_types,omitempty"`
+	Files         []ExportedFile `json:"files"`
 	// Counts 本包**收錄**的筆數
 	Counts map[string]int `json:"counts"`
 	// Totals 範圍內的**真實**筆數（不受單類別上限影響）。與 Counts 不等
@@ -101,6 +147,10 @@ type ExportManifest struct {
 	Totals map[string]int64 `json:"totals,omitempty"`
 	// Truncated 標明哪些部分達上限被截斷（不靜默截斷，PCI 證據完整性）
 	Truncated map[string]bool `json:"truncated"`
+	// Clipboard 證據包剪貼簿段的三數（事件總數／內容可用數／留存失敗數，
+	// #R2-2）：讀者據此分得出「收了幾筆事件」與「其中幾筆真的帶內容、
+	// 幾筆是留存失敗的缺口」——只給一個總數會讓缺口與可用混同
+	Clipboard *ExportClipboardStats `json:"clipboard,omitempty"`
 	// Coverage 逐類別的保留覆蓋狀態（與工作台畫面同一判定來源）。
 	// **沒有這段，一段空白會被讀成「這段期間沒發生過這類事」**
 	Coverage []ExportCoverage `json:"coverage,omitempty"`
@@ -128,11 +178,20 @@ type AuditExportService struct {
 	// signing manifest Ed25519 簽章；
 	// nil = 不簽（單測與降級相容），SetSigning 注入
 	signing *keyvault.ExportSigningService
+	// clipboardCodec 剪貼簿內容解密器：
+	// 證據包裝入剪貼簿明文時解密 content_enc。nil 時遇到可用內容即整包失敗
+	// ——「宣稱帶內容的包靜默缺內容」是對收包方說謊，fail-close
+	clipboardCodec crypto.ColumnCodec
 }
 
 // SetSigning 注入 manifest 簽章服務
 func (s *AuditExportService) SetSigning(signing *keyvault.ExportSigningService) {
 	s.signing = signing
+}
+
+// SetClipboardCodec 注入剪貼簿內容解密器（組裝根呼叫）
+func (s *AuditExportService) SetClipboardCodec(codec crypto.ColumnCodec) {
+	s.clipboardCodec = codec
 }
 
 // NewAuditExportService 建立匯出服務（複用既有讀取服務）
@@ -158,34 +217,196 @@ func (hw *hashingWriter) Write(p []byte) (int, error) {
 }
 
 // Export 串流 ZIP 證據包到 w，回傳 manifest（含每檔 SHA-256、截斷標記）。
-// 寫入順序：操作日誌 → 指令流 → 錄影 → manifest（manifest 最後寫，含前面各檔雜湊，本身不入雜湊）
+// 寫入順序：操作日誌 → 指令流 → 剪貼簿內容 → 錄影 → manifest
+// （manifest 最後寫，含前面各檔雜湊，本身不入雜湊）
 func (s *AuditExportService) Export(w io.Writer, filter *ExportFilter, exporterID uint, exporterName string) (*ExportManifest, error) {
 	if filter.IsEventReport() {
 		return s.exportEventReport(w, filter, exporterID, exporterName)
 	}
+	return s.exportBundle(w, filter, exporterID, exporterName, nil)
+}
 
+// ExportForJob 非同步 job 的打包入口：
+// 僅接受證據包模式，requestedAt 為 job 發起時刻，與實際打包時刻一併寫入
+// manifest（雙時戳）。
+func (s *AuditExportService) ExportForJob(w io.Writer, filter *ExportFilter,
+	exporterID uint, exporterName string, requestedAt time.Time) (*ExportManifest, error) {
+	if filter.IsEventReport() {
+		return nil, fmt.Errorf("非同步匯出僅接受證據包模式，事件報告走既有同步端點")
+	}
+	return s.exportBundle(w, filter, exporterID, exporterName, &requestedAt)
+}
+
+// exportBundle 證據包本體（同步與 job 共用；jobRequestedAt 非 nil 時為 job 打包）
+func (s *AuditExportService) exportBundle(w io.Writer, filter *ExportFilter,
+	exporterID uint, exporterName string, jobRequestedAt *time.Time) (*ExportManifest, error) {
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 
 	manifest := s.newManifest(filter, exporterID, exporterName, ExportModeEvidenceBundle)
+	manifest.JobRequestedAt = jobRequestedAt
+	manifest.SelectedTypes = bundleSelectedTypes(filter)
 
+	// 各段依類別篩選收錄（2026-08-25 使用者裁決）：**未被選取的類別段不入包**，
+	// 且其 Counts／Truncated 鍵一併缺席——寫個 0 會讓「沒選」與「選了但範圍內沒有」
+	// 看起來是同一回事。類別參數缺席＝全部類別，既有呼叫端行為逐位不變。
+	//
 	// 1. 操作日誌 → audit_logs.json
-	if err := s.writeAuditLogs(zw, filter, manifest); err != nil {
-		return nil, err
+	if filter.SelectsType(TimelineTypeAuditLog) {
+		if err := s.writeAuditLogs(zw, filter, manifest); err != nil {
+			return nil, err
+		}
 	}
 	// 2. 指令流 → commands.csv
-	if err := s.writeCommands(zw, filter, manifest); err != nil {
+	if filter.SelectsType(TimelineTypeCommand) {
+		if err := s.writeCommands(zw, filter, manifest); err != nil {
+			return nil, err
+		}
+	}
+	// 3. 剪貼簿內容 → clipboard_contents.json（解密全文；缺口列內容欄缺席）
+	if filter.SelectsType(TimelineTypeClipboard) {
+		if err := s.writeClipboardContents(zw, filter, manifest); err != nil {
+			return nil, err
+		}
+	}
+	// 4. 錄影 → recordings/session-<id>.<ext>
+	if filter.SelectsType(TimelineTypeSession) {
+		if err := s.writeRecordings(zw, filter, manifest); err != nil {
+			return nil, err
+		}
+	}
+	// 5. 無本體之類別（告警、檔案傳輸）以事件事實 csv 列入
+	if err := s.writeBundleFactSections(zw, filter, manifest); err != nil {
 		return nil, err
 	}
-	// 3. 錄影 → recordings/session-<id>.<ext>
-	if err := s.writeRecordings(zw, filter, manifest); err != nil {
+	// 6. 逐類別的保留覆蓋狀態與範圍內真實筆數（spec「清單檔內容」要求兩者，
+	//    且不分包型）。**必須在 manifest 之前**——寫出去就補不上了
+	if err := s.fillBundleCoverageAndTotals(filter, manifest); err != nil {
 		return nil, err
 	}
-	// 4. manifest.json（最後寫，內含前三者雜湊）
+	// 7. manifest.json（最後寫，內含前面各檔雜湊）
 	if err := s.writeManifest(zw, manifest); err != nil {
 		return nil, err
 	}
 	return manifest, nil
+}
+
+// bundleSelectedTypes 本包實際收錄的類別清單（缺席＝展開為全部六類）
+func bundleSelectedTypes(f *ExportFilter) []string {
+	return typeNames(selectedTimelineTypes(f))
+}
+
+// selectedTimelineTypes 本包實際收錄的類別（缺席＝展開為全部六類）
+func selectedTimelineTypes(f *ExportFilter) []TimelineEventType {
+	if len(f.Types) == 0 {
+		return append([]TimelineEventType(nil), allTimelineTypes...)
+	}
+	return append([]TimelineEventType(nil), f.Types...)
+}
+
+// fillBundleCoverageAndTotals 補齊證據包 manifest 的 coverage 與 totals。
+//
+// **重用事件報告的產生器**（`buildCoverage`／`countSource`）：兩種包對同一段
+// 期間講的保留狀態與真實筆數若各算一份，遲早會出現「同一個時間窗、兩個包
+// 說法不同」——那正是稽核最難解釋的落差。
+//
+// 涵蓋**被選類別全體**，不只事實段：指令段與剪貼簿段各有自己的上限與清除
+// 政策，少了它們的 coverage，一段空白會被讀成「這段期間沒發生過這類事」。
+//
+// 無樞紐時（既有的指定 session 匯出）整段缺席：coverage 與 totals 都以
+// 樞紐＋時間窗為前提，產不出來就不寫——寫半套比缺席更難判讀
+func (s *AuditExportService) fillBundleCoverageAndTotals(filter *ExportFilter, m *ExportManifest) error {
+	q, err := bundlePivotQuery(filter)
+	if err != nil {
+		return nil
+	}
+	q.Types = selectedTimelineTypes(filter)
+
+	cov, cErr := s.timeline.buildCoverage(q)
+	if cErr != nil {
+		return cErr
+	}
+	m.Coverage = toExportCoverage(cov)
+
+	if m.Totals == nil {
+		m.Totals = map[string]int64{}
+	}
+	for _, t := range q.Types {
+		// 事實段已算過的不重複打 COUNT（同一查詢、同一結果）
+		if _, ok := m.Totals[string(t)]; ok {
+			continue
+		}
+		n, nErr := s.timeline.countSource(t, q)
+		if nErr != nil {
+			return nErr
+		}
+		m.Totals[string(t)] = n
+	}
+	return nil
+}
+
+// writeBundleFactSections 無本體之類別（告警、檔案傳輸）以事件事實 csv 入包。
+//
+// **重用事件報告的寫入器**：同一類別在兩種包裡的欄位集若各寫一份遲早漂移，
+// 而「同一件事在報告與證據包裡長得不一樣」正是稽核最難解釋的一種落差。
+//
+// 報告寫入器以 TimelineQuery 取數（樞紐＋時間窗），故此段需要樞紐。樞紐缺席時：
+// 類別參數也缺席（＝全收）就略過這兩段——既有呼叫端（指定 session 匯出）
+// 不知道有這兩段，略過即維持原行為；**明寫了卻無樞紐則整包失敗**，
+// 靜默不給人家指名要的證物比失敗糟得多
+func (s *AuditExportService) writeBundleFactSections(zw *zip.Writer, filter *ExportFilter, m *ExportManifest) error {
+	factTypes := []TimelineEventType{TimelineTypeAlert, TimelineTypeFileTransfer}
+	wanted := make([]TimelineEventType, 0, len(factTypes))
+	for _, t := range factTypes {
+		if filter.SelectsType(t) {
+			wanted = append(wanted, t)
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	q, err := bundlePivotQuery(filter)
+	if err != nil {
+		for _, t := range factTypes {
+			if filter.selectsTypeExplicitly(t) {
+				return fmt.Errorf("類別 %s 須有樞紐與時間窗才能收錄: %w", t, err)
+			}
+		}
+		return nil
+	}
+
+	for _, t := range wanted {
+		if err := s.writeReportSource(zw, t, q, m); err != nil {
+			return err
+		}
+		// 範圍內真實筆數與收錄數並列（截斷語義沿事件報告既有作法）
+		n, cErr := s.timeline.countSource(t, q)
+		if cErr != nil {
+			return cErr
+		}
+		if m.Totals == nil {
+			m.Totals = map[string]int64{}
+		}
+		m.Totals[string(t)] = n
+	}
+	return nil
+}
+
+// bundlePivotQuery 由證據包篩選組出樞紐查詢（供重用報告寫入器）。
+// 校驗走 TimelineQuery.Normalize——與事件報告同一套，兩邊各寫一份遲早漂移
+func bundlePivotQuery(f *ExportFilter) (TimelineQuery, error) {
+	q := TimelineQuery{Subject: f.Subject, SubjectID: f.SubjectID()}
+	if f.StartTime != nil {
+		q.From = *f.StartTime
+	}
+	if f.EndTime != nil {
+		q.To = *f.EndTime
+	}
+	if err := q.Normalize(); err != nil {
+		return TimelineQuery{}, err
+	}
+	return q, nil
 }
 
 // newManifest 兩種模式共用的 manifest 骨架（含簽章可用性揭露）

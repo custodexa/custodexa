@@ -95,10 +95,10 @@ func gateTestContext(method, target string, body any) *gin.Context {
 
 // gateBaselineIssuePre／Post 等價表 §1.1 的閘序（認證面 G-I1 與簽發動作 G-I14 不在骨架內）
 var (
-	gateBaselineIssuePre  = []string{"G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7", "G-I8"}
+	gateBaselineIssuePre  = []string{"G-I2", "G-I15", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7", "G-I8"}
 	gateBaselineIssuePost = []string{"G-I10", "G-I11", "G-I12", "G-I13"}
 	// 等價表 §1.2（G-S1／G-S2 為認證面，G-S6 為解封點本身的 fail-close）
-	gateBaselineRedeemPre  = []string{"G-S3", "G-S4", "G-S5"}
+	gateBaselineRedeemPre  = []string{"G-S3", "G-S14", "G-S4", "G-S5"}
 	gateBaselineRedeemPost = []string{"G-S7", "G-S8", "G-S9", "G-S10", "G-S11", "G-S12", "G-S13"}
 )
 
@@ -153,11 +153,21 @@ func TestIssueFailureInjectionPerGate(t *testing.T) {
 			wantStatus: http.StatusForbidden, wantCode: apierror.CodeUserInactive,
 		},
 		{
+			// 來源限定閘：短路語義的證據——它拒絕時 G-I3（請求綁定）尚未跑，
+			// 故「來源不對」的請求連請求體都沒被解析過
+			name: "G-I15 來源不在允許網段",
+			inject: func(t *testing.T, h *Handler, db *gorm.DB) {
+				db.Model(&model.User{}).Where("id = ?", 1).Update("allowed_cidrs", "10.0.0.0/8")
+			},
+			wantGate: "G-I15", wantExecuted: []string{"G-I2", "G-I15"},
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+		},
+		{
 			name: "G-I4 資產不存在",
 			inject: func(t *testing.T, h *Handler, db *gorm.DB) {
 				db.Where("id = ?", 1).Delete(&model.Asset{})
 			},
-			wantGate: "G-I4", wantExecuted: []string{"G-I2", "G-I3", "G-I4"},
+			wantGate: "G-I4", wantExecuted: []string{"G-I2", "G-I15", "G-I3", "G-I4"},
 			wantStatus: http.StatusNotFound, wantCode: apierror.CodeAssetNotFound,
 		},
 		{
@@ -165,7 +175,7 @@ func TestIssueFailureInjectionPerGate(t *testing.T) {
 			inject: func(t *testing.T, h *Handler, db *gorm.DB) {
 				db.Where("user_id = ?", 1).Delete(&model.AssetAuthorization{})
 			},
-			wantGate: "G-I5", wantExecuted: []string{"G-I2", "G-I3", "G-I4", "G-I5"},
+			wantGate: "G-I5", wantExecuted: []string{"G-I2", "G-I15", "G-I3", "G-I4", "G-I5"},
 			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAssetConnectDenied,
 		},
 		{
@@ -173,7 +183,7 @@ func TestIssueFailureInjectionPerGate(t *testing.T) {
 			inject: func(t *testing.T, h *Handler, db *gorm.DB) {
 				db.Model(&model.Asset{}).Where("id = ?", 1).Update("active", false)
 			},
-			wantGate: "G-I6", wantExecuted: []string{"G-I2", "G-I3", "G-I4", "G-I5", "G-I6"},
+			wantGate: "G-I6", wantExecuted: []string{"G-I2", "G-I15", "G-I3", "G-I4", "G-I5", "G-I6"},
 			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAssetDisabled,
 		},
 		{
@@ -182,13 +192,13 @@ func TestIssueFailureInjectionPerGate(t *testing.T) {
 				db.Model(&model.Asset{}).Where("id = ?", 1).Update("protocol", model.ProtocolK8s)
 			},
 			accountID: 4242,
-			wantGate:  "G-I7", wantExecuted: []string{"G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7"},
+			wantGate:  "G-I7", wantExecuted: []string{"G-I2", "G-I15", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7"},
 			wantStatus: http.StatusBadRequest, wantCode: apierror.CodeAccountK8sDefaultOnly,
 		},
 		{
 			name:      "G-I8 帳號不存在",
 			accountID: 4242,
-			wantGate:  "G-I8", wantExecuted: []string{"G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7", "G-I8"},
+			wantGate:  "G-I8", wantExecuted: []string{"G-I2", "G-I15", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7", "G-I8"},
 			wantStatus: http.StatusNotFound, wantCode: apierror.CodeAssetAccountNotFound,
 		},
 	}

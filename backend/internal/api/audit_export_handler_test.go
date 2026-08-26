@@ -156,3 +156,73 @@ func TestExportSummaryCarriesScopeAndTotals(t *testing.T) {
 		}
 	}
 }
+
+// 證據包模式的樞紐與類別參數（4b.1，2026-08-25 使用者裁決）。
+//
+// 守的仍是同一件事：**看不懂就當場拒絕**。另加一條——包型的分辨不得靠猜：
+// 證據包也吃 subject 後，只有明示的 pack 說得準這次要的是哪一種包
+func TestExportBundleScopeAccepted(t *testing.T) {
+	const window = "start_time=2026-08-01T00:00:00Z&end_time=2026-08-02T00:00:00Z"
+
+	filter, code, _ := parseFilterForQuery(t,
+		"pack=evidence_bundle&subject=user&user_id=3&types=clipboard,command,clipboard&"+window)
+	if filter == nil {
+		t.Fatalf("證據包帶樞紐與類別應通過，得 %d", code)
+	}
+	if filter.IsEventReport() {
+		t.Error("明示 pack=evidence_bundle 仍被判為事件報告（帶 subject 即報告的舊推斷未收口）")
+	}
+	if filter.Subject != audit.SubjectUser || filter.SubjectID() != 3 {
+		t.Errorf("樞紐未入篩選快照: %+v", filter)
+	}
+	if len(filter.Types) != 2 || filter.Types[0] != audit.TimelineTypeClipboard ||
+		filter.Types[1] != audit.TimelineTypeCommand {
+		t.Errorf("類別解析錯誤（應去重並保序）: %v", filter.Types)
+	}
+
+	// 無樞紐的既有範圍仍合法（指定 session 匯出這場的證物），且可帶不需樞紐的類別
+	filter, code, _ = parseFilterForQuery(t, "pack=evidence_bundle&session_id=42&types=command")
+	if filter == nil {
+		t.Fatalf("無樞紐的證據包範圍應通過，得 %d", code)
+	}
+	if filter.Subject != "" || len(filter.Types) != 1 {
+		t.Errorf("無樞紐範圍解析錯誤: %+v", filter)
+	}
+
+	// 不帶 pack 的既有呼叫端行為逐位不變
+	filter, _, _ = parseFilterForQuery(t, "subject=user&user_id=1&"+window)
+	if filter == nil || !filter.IsEventReport() {
+		t.Errorf("未帶 pack 時仍應沿 subject 推斷為事件報告: %+v", filter)
+	}
+}
+
+func TestExportBundleScopeValidation(t *testing.T) {
+	const window = "start_time=2026-08-01T00:00:00Z&end_time=2026-08-02T00:00:00Z"
+	cases := []struct {
+		name  string
+		query string
+		field string
+	}{
+		{"未知包型", "pack=bundle&user_id=1", "pack"},
+		{"未知類別", "pack=evidence_bundle&user_id=1&types=command,telepathy", "types"},
+		{"未知樞紐", "pack=evidence_bundle&subject=group&user_id=1", "subject"},
+		{"樞紐與 id 不相符", "pack=evidence_bundle&subject=asset&user_id=1", "asset_id"},
+		{"告警類別缺樞紐", "pack=evidence_bundle&session_id=42&types=alert", "subject"},
+		{"檔案傳輸類別缺時間窗", "pack=evidence_bundle&subject=user&user_id=1&types=file_transfer", "range"},
+		{"明示報告卻缺樞紐", "pack=event_report&user_id=1&" + window, "subject"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, code, detail := parseFilterForQuery(t, tc.query)
+			if filter != nil {
+				t.Fatalf("應拒絕，卻通過: %+v", filter)
+			}
+			if code != http.StatusBadRequest {
+				t.Errorf("狀態碼 = %d, want 400", code)
+			}
+			if want := "VALIDATION_INVALID_QUERY_PARAM:" + tc.field; detail != want {
+				t.Errorf("錯誤碼／欄位 = %q, want %q", detail, want)
+			}
+		})
+	}
+}

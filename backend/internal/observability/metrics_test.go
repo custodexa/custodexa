@@ -88,6 +88,9 @@ func TestSealedPhaseExposesReducedSet(t *testing.T) {
 	m.SetSealStateSource(func() (string, []string) {
 		return "sealed", []string{"sealed", "unsealed"}
 	})
+	m.SetInstanceGuardSource(func() InstanceGuardStatus {
+		return InstanceGuardStatus{State: "held"}
+	})
 	// 刻意不呼叫 RegisterStage2——這正是封印期的狀態
 
 	body := gatherBody(t, m)
@@ -95,6 +98,15 @@ func TestSealedPhaseExposesReducedSet(t *testing.T) {
 	// 封印期應有的
 	require.Contains(t, body, "custodexa_seal_state", "封印狀態須可採集")
 	require.Contains(t, body, "go_goroutines", "行程執行期指標須可採集")
+	// 單實例守衛四序列：守衛自段 1 起存在，封印期即可採集
+	for _, line := range []string{
+		"custodexa_instance_guard_held 1",
+		"custodexa_instance_guard_lost_total 0",
+		"custodexa_instance_guard_overridden 0",
+		"custodexa_instance_guard_peers 0",
+	} {
+		require.Contains(t, body, line, "封印期須可採集守衛序列：%s", line)
+	}
 
 	// 封印期不該有的（逐項點名，避免「少了一個沒人發現」）
 	for _, name := range []string{
@@ -110,6 +122,49 @@ func TestSealedPhaseExposesReducedSet(t *testing.T) {
 		require.NotContains(t, body, name,
 			"封印期不得曝光段 2 服務的指標：%s", name)
 	}
+}
+
+// TestInstanceGuardWithoutSourceExposesNothing 守衛資料源未注入時四序列缺席而非為 0。
+//
+// 0 會讓採集端把「守衛不存在」讀成「未持鎖」而誤報；缺值可由 absent() 明確偵測。
+func TestInstanceGuardWithoutSourceExposesNothing(t *testing.T) {
+	m := New()
+
+	body := gatherBody(t, m)
+
+	require.NotContains(t, body, "custodexa_instance_guard_", "未注入資料源時不得曝光任何守衛序列")
+}
+
+// TestInstanceGuardMetricsReflectState 四序列自守衛狀態推導。
+func TestInstanceGuardMetricsReflectState(t *testing.T) {
+	m := New()
+	var st InstanceGuardStatus
+	m.SetInstanceGuardSource(func() InstanceGuardStatus { return st })
+
+	st = InstanceGuardStatus{State: "held"}
+	body := gatherBody(t, m)
+	require.Contains(t, body, "custodexa_instance_guard_held 1")
+	require.Contains(t, body, "custodexa_instance_guard_overridden 0")
+
+	// 以 ack 啟動且尚未取得鎖：overridden 1、held 0
+	st = InstanceGuardStatus{State: "overridden", Peers: 1}
+	body = gatherBody(t, m)
+	require.Contains(t, body, "custodexa_instance_guard_held 0")
+	require.Contains(t, body, "custodexa_instance_guard_overridden 1")
+	require.Contains(t, body, "custodexa_instance_guard_peers 1")
+
+	// 失鎖：held 0、lost_total 累計
+	st = InstanceGuardStatus{State: "lost", LostTotal: 2}
+	body = gatherBody(t, m)
+	require.Contains(t, body, "custodexa_instance_guard_held 0")
+	require.Contains(t, body, "custodexa_instance_guard_lost_total 2")
+	require.Contains(t, body, "custodexa_instance_guard_overridden 0")
+
+	// 重取成功：held 回 1，lost_total 不歸零
+	st = InstanceGuardStatus{State: "held", LostTotal: 2}
+	body = gatherBody(t, m)
+	require.Contains(t, body, "custodexa_instance_guard_held 1")
+	require.Contains(t, body, "custodexa_instance_guard_lost_total 2")
 }
 
 func TestStage2ExposesFullSet(t *testing.T) {

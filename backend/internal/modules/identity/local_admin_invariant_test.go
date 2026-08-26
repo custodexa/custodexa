@@ -254,8 +254,8 @@ func TestLocalAdminInvariantDoesNotBlockWhenAlreadyZero(t *testing.T) {
 // --- 鎖鍵不撞號（key_manager_lock.go 的 advisory keyspace 登記要求）---
 
 func TestLocalAdminLockKeyDistinct(t *testing.T) {
-	if localAdminLockKey == keyvault.KEKDataKeysLockKey {
-		t.Fatalf("advisory lock key 撞號：localAdminLockKey 與 keyvault.KEKDataKeysLockKey 同為 %#x", localAdminLockKey)
+	if LocalAdminLockKey == keyvault.KEKDataKeysLockKey {
+		t.Fatalf("advisory lock key 撞號：LocalAdminLockKey 與 keyvault.KEKDataKeysLockKey 同為 %#x", LocalAdminLockKey)
 	}
 }
 

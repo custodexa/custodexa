@@ -76,6 +76,7 @@ func setupPasswordContextEnv(t *testing.T) *pwCtxEnv {
 	users.SetSecurityPolicies(policies)
 
 	h := NewAuthHandler(auth, nil)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 	h.SetUserService(users)
 
 	env := &pwCtxEnv{h: h, auth: auth, db: db}

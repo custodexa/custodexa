@@ -13,6 +13,7 @@
 | 模組 | 端點數 | 基礎路徑 | 說明 |
 |------|--------|----------|------|
 | 系統 | 3 | `/health`, `/api/v1/ping` | 健康檢查（GET/POST）與 ping |
+| 單實例守衛 | 1 | `/api/v1/instance-guard` | 守衛全貌快照（admin；每次呼叫留一筆讀取審計，介面不輪詢；粗狀態另隨 `/api/v1/seal/status` 出） |
 | 認證 / MFA | 12 | `/api/v1/auth`, `/api/v1/users` | 登入（本地/LDAP）、MFA 兩階段、強制註冊、自助改密、會話刷新、管理員救援 |
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
 | OIDC provider | 4 | `/api/v1/oidc-providers` | 身分提供者 CRUD（admin；secret write-only，身分域建後不可變） |
@@ -26,21 +27,22 @@
 | Session | 5 | `/api/v1/sessions` | 列表/詳情/活動/統計/終止（`session:view`＝admin/auditor） |
 | 自助連線 | 2 | `/api/v1/my/connections`（列表＋`:id/terminate` 自助終止） | 一般 user 自己的連線精簡紀錄與自助終止（僅需登入） |
 | 指令審計 | 2 | `/api/v1/sessions`, `/api/v1/commands` | 單會話指令流、跨會話搜尋 |
-| 剪貼簿審計 | 1 | `/api/v1/sessions/:id/clipboard-events` | RDP/VNC 剪貼簿留存 |
+| 剪貼簿審計 | 2 | `/api/v1/sessions/:id/clipboard-events` | RDP/VNC 剪貼簿留存事實列表＋單筆內容解密調閱（逐筆留痕） |
 | 會話分享 | 3 | `/api/v1/sessions` | 建立/撤銷分享、分享觀看（WS） |
 | 監看 / 會話指標 | 2 | `/api/v1/sessions`, `/api/v1/ssh` | 即時監看（WS）、目標主機指標 |
 | 連線 | 3 | `/api/v1/connect`, `/api/v1/ssh`, `/api/v1/connect-tokens` | 圖形/文字終端 WS、一次性連線 token（傳輸政策閘：strict 400／warn 428） |
 | 傳輸同意 | 1 | `/api/v1/transmission-consents` | 傳輸風險同意立據（warn 檔連線前） |
 | 通道清冊 | 2 | `/api/v1/transmission-inventory` | 全通道加密狀態清冊＋匯出快照（admin，PCI Req 4） |
 | 錄影 | 7 | `/api/v1/sessions`, `/api/v1/recordings` | 元數據/下載/串流/rtoken/刪除/統計 |
-| 用戶 | 11 | `/api/v1/users` | CRUD + 角色/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 |
+| 用戶 | 12 | `/api/v1/users` | CRUD + 角色/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 + 允許來源網段判定 |
 | 角色 | 1 | `/api/v1/roles` | 角色列表 |
 | 使用者群組 | 6 | `/api/v1/user-groups` | 群組 CRUD＋成員維護（授權主體，admin） |
 | 授權 | 7 | `/api/v1/authorizations` | 資產/節點授權（主體 user/群組二擇一）＋多主體批量＋有效權限雙視角＋帳號範圍更新 |
 | 連線申請 | 15 | `/api/v1/access-requests` | 三段存取政策申請核准流＋破窗/撤銷/補審：申請/破窗/撤回/我的單＋審核/撤銷/補審端點 |
 | 審核範圍 | 3 | `/api/v1/approver-scopes` | approver 審核範圍維護（admin，客體四維恰一：資產/節點/申請人/使用者群組） |
 | 審計日誌 | 3 | `/api/v1/audit-logs` | 日誌查詢（依功能開關註冊） |
-| 稽核匯出 | 1 | `/api/v1/audit-export` | 證據包 ZIP 匯出（PCI 10.5.1） |
+| 稽核工作台 | 2 | `/api/v1/audit/timeline`, `/api/v1/audit/subjects` | 六類審計資料的聚合時間軸＋樞紐候選（人／資產／來源位址；`audit:view`，唯讀） |
+| 稽核匯出 | 4 | `/api/v1/audit-export` | 事件報告同步匯出＋證據包非同步 job（發起/清單/下載）（PCI 10.5.1） |
 | 存取複審 | 4 | `/api/v1/access-reviews` | 存取矩陣/複審歷史/單筆快照/簽核（PCI 7.2.4；全端點無條件守門） |
 | 告警規則 | 4 | `/api/v1/alert-rules` | 危險指令規則 CRUD |
 | 告警查詢 / 審閱 | 2 | `/api/v1/command-alerts` | 告警記錄查詢 + 審閱處置（PCI 10.4.1） |
@@ -49,7 +51,7 @@
 | 改密 | 9 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 145 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 153 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -134,6 +136,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/audit-checkpoints/public-key` | always |
 | GET | `/api/v1/audit-checkpoints/verify` | always |
 | GET | `/api/v1/audit-export` | always |
+| GET | `/api/v1/audit-export/jobs` | always |
+| POST | `/api/v1/audit-export/jobs` | always |
+| GET | `/api/v1/audit-export/jobs/:id/download` | always |
 | GET | `/api/v1/audit-export/public-key` | always |
 | GET | `/api/v1/audit-failures` | always |
 | GET | `/api/v1/audit-integrity/verify` | always |
@@ -182,6 +187,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/daily-reviews` | always |
 | POST | `/api/v1/daily-reviews` | always |
 | GET | `/api/v1/daily-reviews/status` | always |
+| GET | `/api/v1/instance-guard` | always |
 | GET | `/api/v1/keys` | always |
 | DELETE | `/api/v1/keys/retired-material` | always |
 | DELETE | `/api/v1/keys/rewrap` | always |
@@ -213,6 +219,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/sessions` | always |
 | GET | `/api/v1/sessions/:id` | always |
 | GET | `/api/v1/sessions/:id/clipboard-events` | always |
+| GET | `/api/v1/sessions/:id/clipboard-events/:eventID/content` | always |
 | GET | `/api/v1/sessions/:id/commands` | always |
 | GET | `/api/v1/sessions/:id/monitor` | always |
 | DELETE | `/api/v1/sessions/:id/recording` | always |
@@ -262,6 +269,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | PUT | `/api/v1/users/:id/status` | always |
 | POST | `/api/v1/users/:id/unlock` | always |
 | GET | `/api/v1/users/local-admin-count` | always |
+| POST | `/api/v1/users/source-policy/check` | always |
 | GET | `/health` | always |
 | POST | `/health` | always |
 | GET | `/healthz` | always |
@@ -429,6 +437,7 @@ POST /api/v1/seal/unseal
 | `timeout_retry_hint_code` | 發生過逾時時出現，值為 `SEAL_STAGE2_TIMEOUT`：**初始化可能已完成，請以第一次輸入的材料重試，切勿改用新材料** |
 | `initialization_required` | 金鑰表為空（走初始化解封路徑）；判定失敗時回 500 而非以 `false` 頂替 |
 | `trusted_proxy` / `source_restricted` / `bind_addr` | 可信代理、來源網段限制與獨立監聽位址的組態現況 |
+| `instance_guard` | 單實例守衛的粗狀態 `{state, since, reason, peers}`：`state` 為 `held`／`overridden`／`lost`（關閉中短暫為 `stopping`／`released`）、`since` 狀態起始時間（RFC3339）、`reason` 為 `""`／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown`、`peers` 偵測到的其他守衛版實例連線數。**不含識別資訊**（無持鎖者指紋、確認碼、主機名、pid）；供管理介面橫幅每 60 秒輪詢，本端點不寫審計列。全貌走 `GET /api/v1/instance-guard`（下段） |
 
 **`POST /seal/unseal` 請求體**：
 
@@ -477,6 +486,60 @@ POST /api/v1/seal/unseal
 
 **遺失語義**：B 模式的 KEK 遺失＝全部信封密文永久不可解，**產品不提供任何 recovery**。
 
+### 單實例守衛快照（管理者限定）
+
+```
+GET /api/v1/instance-guard
+```
+
+**認證**: JWT ＋ `admin` 角色（`RequireRole("admin")`）；未登入 401、非 admin 403。
+
+單實例守衛在段 1 以 postgres session 級 advisory lock 保證「第二個應用實例不會在操作者不知情下運作」：
+第二實例啟動即被攔下並印出持鎖者指紋與確認碼，以 `INSTANCE_GUARD_ACK` 確認後可啟動但留審計事件；
+執行期失鎖只告知不退出。守衛防的是不知情，不是不發生——確認後的並存不由守衛阻擋。營運面判讀見
+`docs/ops/upgrade-sop.md` §2.6b／§3.4。
+
+本端點回守衛的**完整快照**，含持鎖者指紋與本實例識別。管理介面只在橫幅出現時取一次
+（與管理者手動重新整理），**不輪詢**；粗狀態的輪詢走 `GET /api/v1/seal/status` 的 `instance_guard` 欄
+（不含識別資訊、不寫審計列）。**本端點每次呼叫經審計中介層留一筆讀取列**（資源 `instance_guard`）：
+「哪個管理者何時看了衝突細節」本身是留痕。唯讀、無副作用。
+
+**回應** (200):
+```json
+{
+  "state": "overridden",
+  "since": "2026-08-25T10:05:58Z",
+  "reason": "ack_startup",
+  "instance": {"hostname": "bb34e4ff1892", "pid": 1, "started_at": "2026-08-25T10:05:50Z"},
+  "db_session_pid": 8744,
+  "holder": {
+    "application_name": "custodexa-instance-guard",
+    "pid": 8510,
+    "backend_start": "2026-08-25T10:04:22.2442Z",
+    "code": "55bd875b8d97",
+    "fingerprint_source": "pg_stat_activity"
+  },
+  "ack": "55bd875b8d97",
+  "lost_total": 0,
+  "peers": 0
+}
+```
+
+| 欄位 | 說明 |
+|---|---|
+| `state` | `held`（持鎖）／`overridden`（以確認碼啟動、尚未取得鎖）／`lost`（執行期失鎖，每週期重取中）；關閉中短暫為 `stopping`／`released` |
+| `since` | 目前狀態的起始時間（RFC3339） |
+| `reason` | 進入目前狀態的原因：`""`（held）／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown` |
+| `instance` | 本實例識別：`hostname`（容器主機名）、`pid`（應用行程 id）、`started_at`（守衛**開始**取鎖的時刻；實際持鎖時刻是 `since`，兩者可差數秒） |
+| `db_session_pid` | 本實例釘選連線在 postgres 內的 `pg_backend_pid()` |
+| `holder` | 持鎖者指紋（`overridden` 與 `lost{contention}` 時有值，否則 `null`）：`application_name`／`pid`（postgres 工作階段 id）／`backend_start`；`code` 為三欄正規化字串 sha256 前 12 碼＝確認碼；`fingerprint_source` 為 `pg_stat_activity`，查不到持鎖者細節時為 `unavailable`（此時 `code` 為降級碼，不綁定特定工作階段） |
+| `ack` | 本行程環境中的 `INSTANCE_GUARD_ACK` 值（去除前後空白），未設時為空字串。只有 `state=overridden` 代表它被用上；`state=held` 時它是留在環境裡的惰性值（啟動日誌會提示移除） |
+| `lost_total` | 本行程累計失鎖次數 |
+| `peers` | 偵測到的其他守衛版實例連線數（同一資料庫、同 `application_name`，每個驗證週期更新） |
+
+回應**不含**連線字串、密碼、主機位址、資料庫名、任何工作階段的 `client_addr`。守衛狀態是**行程本地的**：
+多個實例並存時，每個實例回的是自己的快照。
+
 ---
 
 ## 認證 API
@@ -493,7 +556,10 @@ POST /api/v1/auth/login
 ```
 
 登入為固定順序的 gate chain（登入狀態機）：
-**來源限流 → 鎖定檢查 → 密碼/LDAP 驗證 → 帳號啟用檢查 → MFA 分流（驗證或強制註冊）→ 強制改密 → 發正式 token**。
+**來源限流 → 鎖定檢查 → 密碼/LDAP 驗證 → 帳號啟用檢查 → 允許來源網段判定 →
+MFA 分流（驗證或強制註冊）→ 強制改密 → 發正式 token**。
+（網段判定在 MFA 分岔**之前**：該分岔會發出正式會話或受限票證（enrollment／password_change），
+清單外的來源連受限票證也不該拿到。）
 回應依所處階段為多形態（互斥，僅其一）：
 
 **來源限流**：本端點有 per-IP 速率上限，超出回
@@ -507,6 +573,15 @@ POST /api/v1/auth/login
 錯誤——三者回應**完全相同**（`401` ＋ `AUTH_INVALID_CREDENTIALS`），使未認證者
 無法藉回應差異枚舉帳號是否存在。憑證正確而帳號已停用者才回 `403` ＋
 `AUTH_USER_INACTIVE`（此時請求者已證明持有該帳號憑證，告知不構成洩漏）。
+
+**允許來源網段判定也在憑證驗證之後**，且位於「發正式會話／發受限票證」的分岔之前，
+故一次涵蓋正式會話、強制註冊票證與強制改密票證三條出口。不落使用者
+`allowed_cidrs` 者回 `403` ＋ `AUTH_SOURCE_NOT_ALLOWED`。三點須注意：
+- **MFA 第一階段（`mfa_required`）不判**：提前判會讓「密碼對但來源錯」在 pending 訊號
+  之外多一個分岔，持有密碼但無第二因素者因此得以探知來源政策。判定移到多因素完成那一點。
+- **回應不含來源位址值，也不含清單內容**——只說「此來源不允許」。位址與命中的清單快照
+  只進審計（登入審計列的 `error_msg`／`details`）。
+- 此類拒絕**不計入**失敗登入次數（憑證是對的），但仍受來源限流覆蓋；審計 status 為 `denied`。
 
 **回應** (200，全數通過，發正式會話):
 ```json
@@ -549,7 +624,8 @@ POST /api/v1/auth/login
 `pw_noncompliant`（僅違規類別，無密碼材料）。MFA 用戶的偵測發生在第一階段，第二階段以
 `must_change` 呈現）
 
-**錯誤**: 401 認證失敗、403 帳號已停用、423 帳號已鎖定（連續失敗達門檻，PCI 8.3.4；
+**錯誤**: 401 認證失敗、403 帳號已停用（`AUTH_USER_INACTIVE`）或來源不在允許網段
+（`AUTH_SOURCE_NOT_ALLOWED`）、423 帳號已鎖定（連續失敗達門檻，PCI 8.3.4；
 訊息明示鎖定但不透露剩餘時間/次數）、500 內部錯誤（訊息泛化為「登入失敗」）。
 
 登入失敗與成功均直接寫入審計日誌（登入前無用戶 context，全局中間件會跳過）；MFA/註冊/改密等
@@ -595,6 +671,12 @@ Authorization: Bearer <token>
 **回應** (200): `UserInfo`（同登入回應的 `user` 欄位，含 `totp_enabled`、`is_ldap`）。
 含後端 resolve 的 `display_name`（`local_display_name || full_name || username`，單一事實源）
 與自助顯示名原始值 `local_display_name`（可為 `null`＝未自訂）。
+
+另含 `source_ip`（**可選欄，`omitempty`**）：**本人這次請求的來源位址**，
+**僅供顯示**（允許來源網段表單的「你目前的來源」），**不參與任何判定**——
+「這個清單會不會把我鎖在外面」一律問判定端點（見「用戶 API」的允許來源網段段），
+前端自行以 CIDR 函式庫比對必與強制點分歧。取不到時整欄不出現；
+登入回應共用同一個型別但不填此欄，故既有登入回應的欄位集逐字不變。
 
 另含身分三分的兩欄：`external_credential`（憑證由外部提供者管理，
 前端的自助改密與密碼到期提示一律依此欄泛化——**不可續用 `is_ldap`**，OIDC 影子帳號的
@@ -645,6 +727,11 @@ POST /api/v1/auth/refresh
 - **reuse detection**：提交已輪替憑證 → 撤銷該使用者全部 refresh（家族撤銷，RFC 9700），記高價值審計
 - **壽命**：sliding 閒置窗（`web_idle_minutes` 政策）＋絕對壽命（`web_max_session_hours` 政策，
   以登入時刻起算、rotation 不重置）
+- **允許來源網段**：刷新亦判來源。判定在交易內、世代複查之後、撤舊之前，不落清單者
+  **零寫入**（不撤舊、不插新、不動 `last_used_at`），該憑證隨後自允許來源刷新照常成功，
+  也不觸發家族撤銷。對外回應與其他刷新失敗**逐字相同**（401 `AUTH_SESSION_EXPIRED`），
+  不新增訊號；成因只進審計。前端沿既有「續期失敗導回登入頁」流，登入頁再以
+  `AUTH_SOURCE_NOT_ALLOWED` 給出可行動的說明。**收緊清單後的殘窗＝access token 壽命**（15 分）
 - **錯誤**：一律 401 同文案「會話已失效，請重新登入」（不洩漏憑證狀態，讓攻擊者無法區分猜錯與已失效）。
   **cookie 缺失走同一則失敗回應**（不是 400）——「未提供」與「無效／已撤銷」在回應上不可區分；
   失敗事件直記審計
@@ -1486,7 +1573,14 @@ GET /api/v1/command-alerts
 
 **回應** (200): `{data, total, page, page_size}`；data 項為 CommandAlert + `username`/`asset_name`，
 `rule_name`/`severity` 為觸發當下快照（規則後續改名/刪除不影響歷史）。
-data 項另含審閱處置欄位 `reviewed_by`/`reviewed_at`/`disposition`（`pending`/`benign`/`escalated`）/`note`。
+data 項另含審閱處置欄位 `reviewed_by`/`reviewed_at`/`disposition`（`pending`/`benign`/`escalated`）/`note`，
+以及**可選** `client_ip`（該告警所屬會話的來源位址；查不到所屬會話時整欄不出現）。
+
+**`kind` 三類**：`rule`（規則比對／阻斷）／`audit_degraded`（指令審計降級）／
+`new_source_ip`（**該帳號首次自某來源位址建線**）。後兩類的 `rule_id` 為 `null`、`command` 為空字串，
+機器碼落 `reason_code`（`audit_degraded_span`／`new_source_ip_session`）。
+`new_source_ip` 為 `severity=medium`；它記錄的是「這個帳號以前沒從這個位址連過」，
+**不表示該次連線被阻擋**——是否放行由允許來源網段（見「用戶 API」）決定，兩者互不影響。
 
 ### 告警審閱處置（PCI 10.4.1）
 
@@ -1548,9 +1642,11 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
   "event": "command_alert",
   "alert": {"id": 12, "command": "rm -rf /", "severity": "high",
             "rule_name": "危險刪除", "blocked": true, "triggered_at": "..."},
-  "session": {"id": 34, "user_id": 2, "asset_id": 9}
+  "session": {"id": 34, "user_id": 2, "asset_id": 9, "client_ip": "198.51.100.7"}
 }
 ```
+
+- `session.client_ip`（可選）：該會話的來源位址；查不到所屬會話時整欄不出現（純加法，既有欄位集不變）。
 
 - `blocked`（布林）：規則是否為阻斷型，觸發當下快照。原以 `rule_name` 後綴「（已阻斷）」承載散文，**已移除**——`rule_name` 自此為純淨的規則名稱快照。
 - 測試發送（`POST /notification-channels/:id/test`）的 `rule_name` 固定為機器識別字 `"test"`，不再夾帶中文「測試發送」字樣。
@@ -1634,14 +1730,14 @@ nginx 標「部署方管理」）＋各通道政策等級＋「若切 strict 將
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/keys` | 金鑰清冊：DB 側金鑰版本鏈（DataKey，不含金鑰材料）＋env 側三鑰一致顯示指紋（JWT/KEK 為 secret 摘要指紋、Ed25519 為公鑰指紋，並附 Ed25519 公鑰供複製/下載）＋KEK 退役史（from→to）＋切換待收斂提示＋遷移與重包狀態＋超齡提醒 |
+| GET | `/keys` | 金鑰清冊：DB 側金鑰版本鏈（DataKey，不含金鑰材料）＋env 側四鑰一致顯示指紋（KEK／JWT_SECRET 為 secret 摘要指紋，匯出簽章鑰與檢查點簽章鑰為 Ed25519 公鑰指紋，並附公鑰供複製/下載）＋KEK 退役史（from→to）＋切換待收斂提示＋遷移與重包狀態＋超齡提醒 |
 | POST | `/keys/rotate` | 輪替金鑰。`{"purpose": "data"}` 生成新 DEK 並批次重加密（上限 `KEY_ROTATION_MAX_PER_RUN`）；現行版本仍有殘值時以現版續跑（回應 `resumed: true`，不鑄新版本），殘值歸零才鑄新版；`{"purpose": "audit_integrity"}` 僅新章換鑰、歷史不重算。KEK 重包待切換期間回 409（`rewrap_pending`，切換完成後恢復） |
 | POST | `/keys/rewrap` | KEK 重包：以**呼叫端指定的目標 KEK** 重包全部金鑰、新舊雙包裹並存。請求體為 discriminated union——本地目標 `{mode:"local", new_kek, new_kek_confirm, confirm_saved}`、委託目標 `{mode:"kms"\|"hsm", key_ref}`；混合欄位一律 400 拒絕。**伺服端不生成、不回傳、不落庫、不落日誌任何 KEK 明文**（明文流向反轉）。遷移未完成回 409；委託目標的連通性預檢失敗回 502 `INTERNAL_KEY_REWRAP_TARGET_UNAVAILABLE`；該模式未交付回 501 `VALIDATION_KEY_REWRAP_TARGET_UNSUPPORTED` |
 | DELETE | `/keys/rewrap` | 放棄尚未切換的 KEK 重包：**軟退役**新 KEK 的未切換包裹列（`kek_retired_reason=abandoned`，材料保留至顯式清理）、清除待切換狀態，回應 `{"deleted": n}`（鍵名保留 wire 相容，值＝軟退役筆數）。無待切換重包時回 409；另一金鑰操作進行中回 409 `CONFLICT_KEY_OP_BUSY` |
 | DELETE | `/keys/retired-material` | 清理退役金鑰材料：**系統唯一的材料銷毀點**。前置全收斂閘（有待切換 pending 或退役 backlog 即回 409 `CONFLICT_KEY_CLEANUP_NOT_CONVERGED`）＋逐 slot 自證（現行 KEK 須有可解包的 live 材料列）＋退役 DEK 版本引用掃描（仍被存量密文或審計列引用者拒清並逐項回報）。回應 `{"purged": [{purpose, version, kek_id}], "skipped": [{purpose, version, kek_id, refs, reason}]}`；指紋與退役軌跡永久保留，清理後留佔位列使版本鏈不斷號。清理明細顯式留痕審計 |
 
 **清冊回應**（節錄）: `{"keys": [{purpose, version, status, kek_id, age_days, over_cryptoperiod, material_purged, ...}], "env_keys": [{name, name_code, fingerprint, public_key, managed_by, note, note_code}], "kek_id": "...", "rewrap_pending": false, "kek_history": [{from_kek_id, to_kek_id, retired_at, rows, material_rows}], "finalize_pending": 0, "retire_backlog": 0, "converge_state_error": false, "migration_pending": 0, "rotation_pending": 0, "reminder_days": 0}`
-——`rotation_pending`＝現行 data DEK 版本尚未覆蓋的值數（partial 續跑提示）；`migration_pending`＝尚待信封化的 legacy 值數。兩者均以 Go 層嚴格信封判定計數。`env_keys` 三鑰皆顯示 `fingerprint`，Ed25519 那筆另附 `public_key`（base64，供複製/下載，私鑰不外洩）。`kek_history`＝KEK 退役史（每筆 `from_kek_id`→`to_kek_id` 指紋＋退役時間＋退役列數 `rows`，不選取 wrapped_key）；`finalize_pending`／`retire_backlog`＝KEK 切換收尾待收斂筆數（>0 表 best-effort 收尾未竟、需重啟收斂）；`converge_state_error=true` 表上述兩數讀取失敗、數字不可信（UI 顯示未知態並保守禁用清理，不得以 0 呈現為健康）。`material_purged`（每筆金鑰）／`material_rows`（每筆退役史）為材料存量衍生欄位——SQL 端比較運算式產出，不取 `wrapped_key` 本值。
+——`rotation_pending`＝現行 data DEK 版本尚未覆蓋的值數（partial 續跑提示）；`migration_pending`＝尚待信封化的 legacy 值數。兩者均以 Go 層嚴格信封判定計數。`env_keys` 四鑰（KEK、`JWT_SECRET`、匯出簽章鑰、檢查點簽章鑰）皆顯示 `fingerprint`，兩筆 Ed25519 另附 `public_key`（base64，供複製/下載，私鑰不外洩）；檢查點簽章鑰另帶 `version`。`kek_history`＝KEK 退役史（每筆 `from_kek_id`→`to_kek_id` 指紋＋退役時間＋退役列數 `rows`，不選取 wrapped_key）；`finalize_pending`／`retire_backlog`＝KEK 切換收尾待收斂筆數（>0 表 best-effort 收尾未竟、需重啟收斂）；`converge_state_error=true` 表上述兩數讀取失敗、數字不可信（UI 顯示未知態並保守禁用清理，不得以 0 呈現為健康）。`material_purged`（每筆金鑰）／`material_rows`（每筆退役史）為材料存量衍生欄位——SQL 端比較運算式產出，不取 `wrapped_key` 本值。
 
 **重包回應**（**恰三鍵，任何分支皆不含明文欄**）: `{"target_mode": "local|kms|hsm", "new_kek_id": "...", "rewrapped_keys": 3}`
 ——`target_mode` 為 union 判別子；`new_kek_id` 本地目標＝材料指紋、委託目標＝外部識別（KMS 正規 key ARN／HSM `token:label`），皆為非機密。
@@ -1653,18 +1749,52 @@ nginx 標「部署方管理」）＋各通道政策等級＋「若切 strict 將
 
 ## 剪貼簿審計 API
 
+> **內容以信封加密落庫**：列表僅回**事實投影**（不含內容），
+> 內容須經下方單筆調閱端點解密取得，且**逐筆入審計**（伺服器端留痕為交付前置，fail-close）。
+> 兩端點皆掛 `audit:view`。
+
+### 列表（事實投影）
+
 ```
 GET /api/v1/sessions/:id/clipboard-events
 ```
 
 **權限**: `audit:view`（此端點恆掛權限檢查）
 
-**回應** (200): `{"data": [ClipboardEvent], "total": N}`
+**回應** (200): `{"data": [ClipboardEventFact], "total": N}`
 ```json
-{"id": 1, "session_id": 10, "direction": "send", "content": "...", "created_at": "..."}
+{"id": 1, "session_id": 10, "direction": "send", "content_length": 402, "content_status": "available", "created_at": "..."}
 ```
 
-`direction`: `send`（入遠端）/ `recv`（回拷）；內容上限 64KB（超出截斷）。
+- 列表為**顯式 DTO**（`clipboardEventFact`），**不含內容**：識別、方向、內容長度、內容狀態、時間。
+- `direction`: `send`（入遠端）/ `recv`（回拷）。
+- `content_length`: 明文**位元組**數（與 64KB 截斷上限同單位）。
+- `content_status`: `available`（內容可調閱）/ `failed`（內容留存失敗的缺口紀錄）；
+  呈現端據此區分「可調閱」與「缺口」，**不以密文為空或長度為零推斷**。
+- 列表本身入頁面級審計（`audit_details.result_count`＝本次取走幾筆）。
+
+### 單筆內容調閱（解密＋逐筆留痕）
+
+```
+GET /api/v1/sessions/:id/clipboard-events/:eventID/content
+```
+
+**權限**: `audit:view`
+
+**回應** (200): `{"data": {...}}`
+```json
+{"id": 1, "session_id": 10, "direction": "send", "content_length": 402, "content_status": "available", "created_at": "...", "content": "..."}
+```
+
+- 伺服器端解密該筆並回全文；**每次調閱逐筆入審計**（操作者、會話、事件識別、時間；
+  `resource=clipboard_event`、`action=read`）。留痕成功是回傳內容的前置條件（**fail-close**）：
+  審計寫入不可用時拒絕該次調閱、回收斂錯誤、不交付明文，該失敗沿既有審計失敗告警鏈揭露。
+- 缺口紀錄（`content_status=failed`）回 200＋事實，但 **`content` 鍵缺席**（不以空字串冒充內容）。
+- 以單一受權查詢同時約束事件識別與所屬會話：事件不存在、識別非法、或**不屬路徑中會話**
+  三種情形一律收斂為同一 **404 `NOTFOUND_CLIPBOARD_EVENT`**，不洩存在性細節、不產生歸屬錯誤的審計。
+
+**錯誤**: 404 `NOTFOUND_CLIPBOARD_EVENT`（收斂拒絕）；500 `INTERNAL_CLIPBOARD_QUERY`
+（解密失敗／審計不可用等，原因只進伺服器 log 與告警鏈，對外不展開）。
 
 ---
 
@@ -1748,6 +1878,7 @@ GET    /api/v1/recordings/stats         （audit:view）
 | PUT | `/users/:id/password` | body: `{"password": "..."}`；長度/組成/歷史重用由密碼政策 validator 統一判定（單一事實源；預設最小長度 12、須含字母與數字、禁重用近 N 筆），違規回 400 附可讀原因；LDAP 用戶回 400 |
 | POST | `/users/:id/unlock` | 管理員手動解鎖帳號（PCI 8.3.4）：清零 `failed_login_attempts` 與 `locked_until` → `{}`；顯式審計 action=`unlock` |
 | PUT | `/users/:id/inactivity-exempt` | 設定閒置停用豁免（PCI 8.2.6）：body `{"exempt": true}` → `{}`；豁免旗標變更顯式審計（`inactivity_exempt_granted`/`revoked`） |
+| POST | `/users/source-policy/check` | 允許來源網段草稿的判定 → `{data 見下}`；**純判定、不寫任何狀態**（見下段） |
 | GET | `/users/local-admin-count` | 現存本地管理員數 → `{"count": n}`；唯讀、不入快取。計數直接來自 `service.CountLocalAdmins`，與「不得自一以上降為零」不變式的判定同一定義（啟用、具 admin 角色、密碼非空、憑證未外部化）。管理端據此條件式警示：`0` 表示遇 KEK 重啟時無人能解封 |
 
 **創建請求**（`CreateUserRequest`）:
@@ -1763,12 +1894,14 @@ GET    /api/v1/recordings/stats         （audit:view）
 （`username` 3-50 字元、`email` 需合法、用戶名重複回 400；`password` 除 binding 下限外，
 另過密碼政策 validator——預設最小長度 12、須含字母與數字，違規回 400 附可讀原因）
 
-**更新請求**（`UpdateUserRequest`）: `{"email": "...", "full_name": "..."}`
+**更新請求**（`UpdateUserRequest`）: `{"email": "...", "full_name": "...", "allowed_cidrs": ["10.0.0.0/8"]}`
+（`allowed_cidrs` 的 presence 三態見下段——**送 `[]` 會清空既有限制**）
 
 **User 欄位**: `id, username, email, full_name, active, is_ldap, totp_enabled, roles[], created_at, updated_at`，
 另含下列可見欄位 `locked_until`、`must_change_password`、`password_changed_at`、
 `last_login_at`、`inactivity_exempt`（`password`、`totp_secret_enc`、`failed_login_attempts`、
-`totp_last_step` 永不輸出）。
+`totp_last_step` 永不輸出），以及允許來源網段三欄 `allowed_cidrs`、`allowed_cidrs_status`、
+`allowed_cidrs_families`（見下段）。
 
 注意：登入/`/auth/me` 回應用的是精簡 `UserInfo`（`id/username/email/full_name/local_display_name/
 display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver`），
@@ -1783,6 +1916,112 @@ display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_
 `VALIDATION_USER_ORIGIN_FILTER`** 而非靜默忽略）與 `auth_provider_id`（依 provider 實例篩選）。
 兩者皆為伺服端篩選：列表是分頁的，在前端篩當頁會讓使用者看到「第 2 頁明明有 oidc 帳號，
 篩選後卻說沒有」。依 provider 篩選以子查詢實作，綁多個身分的帳號不會重複出現。
+
+### 允許來源網段（`allowed_cidrs`）
+
+限制某個帳號**可以從哪些來源位址使用系統**。清單為空＝不限來源。
+它限制的是可用來源，**不是**帳號憑證的強度，也不取代密碼政策、鎖定或多因素。
+
+**回應三欄**（Create／Update／Get／List 皆有）：
+
+```jsonc
+{
+  "allowed_cidrs": ["10.0.0.0/8", "198.51.100.0/24"],  // 已正規化、去重、排序
+  "allowed_cidrs_status": "restricted",                 // 見下表
+  "allowed_cidrs_families": ["v4"]                      // 僅 effectively_unrestricted 時出現
+}
+```
+
+| `allowed_cidrs_status` | 語義 |
+|---|---|
+| `unrestricted` | 清單為空＝不限來源 |
+| `effectively_unrestricted` | 清單非空但含全域前綴（`0.0.0.0/0` 或 `::/0`），**實際等同不限**；`allowed_cidrs_families` 指出被全放行的是哪一族（`v4`／`v6`／兩者） |
+| `restricted` | 其他 |
+
+**本欄由伺服端算出，前端不得自行推導**——「清單非空即已限定」在含全域前綴時會把實際放行呈現為受限。
+
+> **命名注意**：`User` 物件上的欄位是 **`allowed_cidrs_families`**；
+> 下方判定端點回覆裡的同一份資料則叫 **`families`**。兩者**不同名**，串接時勿互換。
+
+**`PUT /users/:id` 的 presence 三態**（最容易做錯的一點）——**缺欄＝保留、`null`＝保留、`[]`＝清空**：
+
+| 送出的 body | 後端行為 | 欄位級審計 diff |
+|---|---|---|
+| **省略** `allowed_cidrs` 欄 | 保留現值 | 無該欄 |
+| `"allowed_cidrs": null` | 保留現值（**與省略同**） | 無該欄 |
+| `"allowed_cidrs": []` | **清除為不限來源** | 記前後清單 |
+| `"allowed_cidrs": [...]` | 整體取代 | 記前後清單 |
+
+把整份表單物件送出的客戶端請注意：**未編輯清單時要送 `null` 或省略該欄，不可送 `[]`**
+——後者會把既有限制清空。
+
+驗證失敗**整體拒絕**（不靜默丟棄任何一項）：
+- `VALIDATION_SOURCE_PREFIX_INVALID`（400）：含無法解析為位址或 CIDR 的項目
+- `VALIDATION_SOURCE_PREFIX_LIMIT`（400）：去重後超過 32 項
+
+**判定端點**（前端不自行判落入）：
+
+```
+POST /api/v1/users/source-policy/check
+```
+
+**權限**: admin only。**純判定**：不寫任何狀態、不儲存草稿。
+判定權單一化是刻意的——IPv6 縮寫、IPv4-mapped 位址對 IPv4 前綴、遮罩正規化
+（`10.1.2.3/8` → `10.0.0.0/8`）這些行為在兩套實作之間必然分歧，分歧的後果是
+介面說「你還進得來」而下一次登入被擋在門外。本端點與登入、刷新、簽發、兌換各判定點
+共用同一份判定實作。
+
+**請求**:
+```jsonc
+{
+  "allowed_cidrs": ["10.0.0.0/8"],   // 草稿清單（尚未儲存）
+  "address": "203.0.113.9"           // 省略＝以本請求的來源判定（自鎖預警走這條）
+}
+```
+
+**回應** (200):
+```jsonc
+{
+  "valid": true,                      // 清單整體是否合法
+  "items": [                          // 逐項結果，順序同請求
+    {"input": "10.1.2.3/8", "normalized": "10.0.0.0/8"},
+    {"input": "bad", "error_code": "invalid"}        // 或 "too_many"
+  ],
+  "normalized": ["10.0.0.0/8"],       // 去重排序後（清單合法時）
+  "status": "restricted",             // 同上表的 allowed_cidrs_status 三值
+  "families": ["v4"],                 // 僅 status 為 effectively_unrestricted 時出現
+  "source": {
+    "address": "203.0.113.9",         // 不可解析時為顯式 null（不是空字串）
+    "reason": "provided"              // "request"（取自本請求）｜"provided"（呼叫端指定）｜"unresolvable"
+  },
+  "allowed": false                    // 該來源在此清單下是否放行
+}
+```
+
+`allowed` 的判準與各強制點**同源**且 fail-close：清單不合法、或清單非空而來源不可解析
+皆為 `false`；清單為空為 `true`。自鎖警告直接消費本欄。
+
+**審計語義為讀取**（`action=read`、`resource=user`）。POST 的動詞推導預設會把它記成「建立使用者」
+——那是假事件，故中介層依路徑訂正為讀取。該列的 `details` **記形狀不記內容**，六個鍵：
+
+| 鍵 | 值 | 答的問題 |
+|---|---|---|
+| `check` | `source_policy` | 這一列是哪一種試算 |
+| `cidr_count` | 草稿項數 | 送了幾條進來 |
+| `valid` | `true`／`false` | 草稿本身合不合法 |
+| `address_source` | `request`／`provided`／`unresolvable` | 試算的是他自己的來源還是指定的位址 |
+| `allowed` | `true`／`false` | 試算結果 |
+| `status` | 涵蓋狀態（**僅 `valid=true` 時才寫**） | 這份草稿等不等於不限 |
+
+**草稿清單與被試算的位址一律不進 `details`**：那是一份從未儲存的草稿，寫進去等於把試算輸入
+永久封存在受檢查點鏈保護、刪不掉的紀錄裡，卻換不到任何課責。
+草稿本體另由 `request_body` 承擔：`allowed_cidrs` 自 2026-08-26 起登記為審計放行的實質欄位
+（清單變更是安全開關，不放行就與改名寫出同一列），而遮罩以鍵名為單位、分不出端點，
+故本端點的草稿清單也會原樣入庫；被試算的 `address` 不在白名單內，入庫即為 `***MASKED***`。
+
+**自鎖與復原**：後端**不阻擋**把自己鎖在外面的儲存（管理者可能刻意設定尚未切換過去的網段），
+介面只就近顯示 warning。真的鎖住時的復原途徑見
+`docs/ops/deployment-topology-limits.md` 的「允許來源網段對部署的影響」段。
 
 ---
 
@@ -2293,43 +2532,116 @@ GET /api/v1/audit-logs/resource/:resource/:id     → {"resource": "asset", "res
 
 ---
 
+## 稽核調查工作台 API
+
+> 權限 `audit:view`（**無條件強制**，不隨任何部署組態進退）。兩支端點皆**唯讀**：
+> 工作台不提供任何狀態變更端點——稽核工具一旦能改東西，它產出的證據就要先自證沒被自己改過。
+> 兩支的讀取本身入審計（`resource=audit_timeline`、`action=read`）。
+
+### 時間軸
+
+```
+GET /api/v1/audit/timeline
+```
+
+把六類審計資料（`alert`／`audit_log`／`clipboard`／`command`／`file_transfer`／`session`）
+聚合到一條時間軸上，依所選**樞紐**取出與該主體相關的列。
+
+**Query 參數**:
+| 參數 | 類型 | 說明 |
+|------|------|------|
+| `subject` | string | 樞紐種類：`user`／`asset`／`ip`（必填；未知值 400） |
+| `subject_id` | uint | 人／資產樞紐的主體 id。**`subject=ip` 時本參數被忽略**（不構成錯誤） |
+| `subject_ip` | string | **位址樞紐的主體鍵**（`subject=ip` 時必填）。不是合法位址時回 400 `VALIDATION_SOURCE_ADDRESS`；保留字 `unknown` **不被接受**（樞紐需要一個具體位址） |
+| `client_ip` | string | 人／資產樞紐下的來源位址篩選。保留字 **`unknown`**＝只看未知來源列（位址欄為空，或所屬會話缺失）；其餘須為合法位址，否則 400 `VALIDATION_SOURCE_ADDRESS`。**位址樞紐下再帶本參數為 400**（樞紐已經是位址，再篩一次沒有語義） |
+| `from`, `to` | RFC3339 | 時間範圍 |
+| `types` | string | 逗號分隔的類別子集；空＝全部。**未知值回 400**，不靜默忽略——靜默忽略會回一份看起來完整、實際少了一整類的時間軸 |
+| `cursor` | string | 分頁游標（由前一頁的 `next_cursor` 取得） |
+| `limit` | int | 每頁筆數（預設 200、上限 500） |
+
+**回應** (200): `{"events": [...], "spans": [...], "coverage": [...], "counts": {...}, "next_cursor": "...", "truncated": false}`
+
+**事件欄（`events[]`）**：`id`、`ts`、`type`、`summary_code`、`params`、`counterpart`、`refs`、`severity`，
+另有來源位址三欄：
+
+- **`client_ip`**：`string | null`。**三樞紐皆帶，刻意不設 `omitempty`**——無位址時輸出**顯式 `null`**
+  而不是缺欄。「每筆事件皆帶來源位址」是條文；省略欄位會讓呼叫端無法區分「未帶」與「未知」，
+  筆數口徑也就無從定義。
+- **`client_ip_reason`**：只在 `client_ip` 為 `null` 時出現，三值閉集合：
+  `system`（系統發起的操作日誌列，無請求來源）／`unresolvable`（有請求脈絡但位址欄為空，
+  寫入當下來源無法解析）／`session_missing`（指令或告警列經 `session_id` 找不到所屬會話列
+  ——三表皆刻意無外鍵）。
+- **`actor`**：`{kind:"user", id, name}`，**只在位址樞紐下出現**，未認證列為缺欄。
+  位址軸上多帳號的事件會混在同一軸（NAT 共用出口），每列必須同時標「誰 · 哪台」——
+  `counterpart` 在位址樞紐下裝資產，人由本欄承載。
+
+**跨度欄（`spans[]`，僅會話類有跨度）** 同樣帶 `client_ip`（`string | null`、不設 `omitempty`）
+與 `client_ip_reason`，語義同上。
+
+### 樞紐候選
+
+```
+GET /api/v1/audit/subjects?type=<user|asset|ip>&q=<prefix>&limit=<n>
+```
+
+供工作台的樞紐選擇器做前綴查詢。**`type=ip` 的回應與 `user`／`asset` 是不同形狀**：
+
+```jsonc
+// type=user / type=asset
+{"data": [{"id": 7, "name": "alice", "display_name": "Alice", "active": true, "deleted": false}], "total": 1}
+
+// type=ip —— 位址沒有整數 id，也沒有啟停與軟刪語義
+{"data": [{"ip": "198.51.100.7", "last_seen_at": "2026-08-26T10:00:00+08:00"}], "total": 1}
+```
+
+`type=ip` 的候選自帳號來源位址基準表導出，**只含成功登入或建線過的位址**，依最近見到時間降序。
+只出現在拒絕列的位址不會進候選——但時間軸接受任一合法位址，呼叫端直接輸入即可查詢。
+
+**讀取留痕**：本端點與時間軸同樣入審計（`resource=audit_timeline`、`action=read`）。
+
+---
+
 ## 稽核證據匯出 API（PCI 10.5.1）
 
-> 權限 `audit:view`（**無條件強制**）。
-> 同一端點兩種包，由 `subject` 決定；匯出動作本身入審計
+> 權限 `audit:view`（**無條件強制**，不隨任何部署組態進退）。匯出動作本身入審計
 >（`resource=audit_export`、`action=read`，記匯出者、範圍與各部分筆數/截斷標記）。
 >
-> - **證據包**（`subject` 缺席）：操作日誌、指令流與錄影**本體**打包。
-> - **事件報告**（`subject` 存在）：六來源的事件事實，**不含**剪貼簿內容、
->   傳輸檔案本體與錄影檔。報告的職能是陳述發生了什麼；證物本體屬取證動作，
->   於介面上逐筆個別取得並各自留痕。
+> **兩種包，包型由 `pack` 決定**：
+> - **事件報告**（`pack=event_report`）：六來源的**事件事實**，**不含**剪貼簿內容、傳輸檔案本體與錄影檔。
+>   報告的職能是陳述發生了什麼；證物本體屬取證動作，於介面上逐筆個別取得並各自留痕。
+>   走**同步**匯出（本端點 `GET /audit-export`），既有呼叫端行為不變。
+> - **證據包**（`pack=evidence_bundle`）：含操作審計、指令、**剪貼簿內容全文**、關聯會話錄影**本體**，
+>   以及告警／檔案傳輸的事件事實。體積不可控，改為**非同步**交付——**不由本端點回傳**，改經下方
+>   `POST /audit-export/jobs` 發起、由申請者本人限時下載。
+>
+> **`pack` 缺席時沿既有推斷**（帶 `subject` 或 `types`＝事件報告，否則證據包）：不帶 `pack` 的既有
+> 呼叫端行為逐位不變。證據包自此也吃樞紐（`subject`）後，`subject` 不再單獨分辨得出包型，故以 `pack` 明示為正解。
 
 ```
 GET /api/v1/audit-export
 ```
 
+**同步匯出，僅事件報告。** 證據包模式一律以 **400 `RULE_AUDIT_EXPORT_BUNDLE_ASYNC_ONLY`** 拒絕
+（**不轉為 job 發起**——安全方法 GET 不得產生建立副作用，否則快取／預取／重試會誤觸發起；
+拒絕在設定任何串流標頭之前，回應零 bundle 位元組）。
+
 **權限**: `audit:view`
 **Produce**: `application/zip`（`Content-Disposition: attachment; filename="audit-evidence-<時間戳>.zip"`）
 
-**Query 參數**（至少須指定一個，全無條件回 400，避免匯出整庫；
+**Query 參數**（至少須指定一個範圍條件，全無條件回 400，避免匯出整庫；
 任一參數解析失敗回 400 `VALIDATION_INVALID_QUERY_PARAM` 並帶 `field`，**不靜默忽略**）:
 | 參數 | 類型 | 說明 |
 |------|------|------|
-| `session_id` | uint | 指定單一會話（優先於 user/asset/time）；事件報告模式不接受 |
+| `pack` | `event_report`｜`evidence_bundle` | 包型明示（缺席沿舊推斷；未知值→400 `field=pack`）。本同步端點僅受理 `event_report` |
+| `session_id` | uint | 指定單一會話；**事件報告模式不接受**（證據包模式接受） |
 | `user_id` | uint | 使用者 ID；`subject=user` 時即樞紐 id（必填） |
 | `asset_id` | uint | 資產 ID；`subject=asset` 時即樞紐 id（必填） |
 | `start_time` | RFC3339 | 起始時間；事件報告模式必填 |
 | `end_time` | RFC3339 | 結束時間；事件報告模式必填，且須晚於 `start_time` |
-| `subject` | `user`｜`asset` | 樞紐宣告。**存在即進入事件報告模式** |
-| `types` | csv | 事件報告的類別篩選，值域同時間軸：`session`／`command`／`audit_log`／`file_transfer`／`clipboard`／`alert`。空＝六類全收；未知值回 400；缺 `subject` 而單獨帶則回 400 |
+| `subject` | `user`｜`asset` | 樞紐宣告。事件報告模式**必填**；證據包模式**選填**（帶了即比照校驗其 id） |
+| `types` | csv | 類別篩選，值域同時間軸：`session`／`command`／`audit_log`／`file_transfer`／`clipboard`／`alert`。空＝六類全收；未知值回 400。**事件報告**模式缺 `subject` 而單獨帶 `types` 回 400；**證據包**模式選 `alert`／`file_transfer` 時須同時帶樞紐與正向時間窗（否則 400 `field=subject`／`range`） |
 
-**ZIP 內容（證據包模式）**:
-- `audit_logs.json` — 範圍內操作日誌（JSON 陣列；`asset_id` 篩選**已套用**，manifest 標明該關聯的歷史起始邊界）
-- `commands.csv` — 指令流（欄位 `session_id,user_id,asset_id,seq,command,executed_at`）
-- `recordings/session-<id>.<ext>` — 範圍內有錄影的會話（`.cast`/`.guac`；逐檔跳過缺失，不阻斷整包）
-- `manifest.json`
-
-**ZIP 內容（事件報告模式）**: 逐類別各一個 CSV，第一欄一律為紀錄編號
+**ZIP 內容（事件報告模式，本端點同步產出）**: 逐類別各一個 CSV，第一欄一律為紀錄編號
 `record_ref`（格式 `<類別>:<編號>`，與時間軸事件 id 同源，可回系統查對原始紀錄）。
 - `sessions.csv` — 含 `recording_state`（`available`／`purged`／`none`）與 `recording_error`；**不含錄影本體**
 - `commands.csv` — 含 `command_seq`、`command`
@@ -2338,20 +2650,32 @@ GET /api/v1/audit-export
 - `alerts.csv` — 含規則、風險等級、是否阻斷、審閱處置
 - `manifest.json`（＋ `manifest.sig`）
 
+**ZIP 內容（證據包模式，經 job 產出）**：**未被選取的類別段整段不入包**（其 `counts`／`truncated`
+鍵一併缺席——寫個 0 會讓「沒選」與「選了但範圍內沒有」看起來是同一回事）。`types` 缺席＝六類全收。
+- `audit_logs.json` — 操作日誌（`asset_id` 篩選已套用，manifest 標明該關聯的歷史起始邊界）〔類別 `audit_log`〕
+- `commands.csv` — 指令流〔類別 `command`〕
+- `clipboard_contents.json` — 剪貼簿**解密全文**，逐筆含 `record_ref`／`id`／`session_id`／`occurred_at`／`direction`／`content_status`／`content_length`／`content`（缺口列 `content_status=failed`、`content` 鍵缺席）〔類別 `clipboard`〕
+- `recordings/session-<id>.<ext>` — 有錄影的會話本體（`.cast`/`.guac`；逐檔跳過缺失，不阻斷整包）〔類別 `session`〕
+- `alerts.csv`／`file_transfers.csv` — 無本體之類別以**事件事實**列入（重用事件報告的寫入器）〔類別 `alert`／`file_transfer`〕
+- `manifest.json`（＋ `manifest.sig`）
+
 **manifest.json 欄位**:
 | 欄位 | 說明 |
 |---|---|
 | `mode` | `evidence_bundle`｜`event_report`（置於最前，讀者須先知道拿到的是哪一種包） |
-| `exported_by`／`exported_by_id`／`exported_at` | 保管鏈 |
+| `exported_by`／`exported_by_id`／`exported_at` | 保管鏈（`exported_at`＝實際打包執行時刻） |
+| `job_requested_at` | 證據包專屬：job 發起時刻。與 `exported_at` 併為**雙時戳**，使收包方能判斷內容對應的資料時點 |
 | `filter` | 原始查詢條件字串化 |
 | `scope` | 事件報告專屬：樞紐、樞紐 id 與名稱、時間區間、類別 |
+| `selected_types` | 證據包專屬：本包實際收錄的類別清單（缺席＝展開為全部六類） |
 | `files[]` | 各檔 `name`／`size`／`sha256` |
-| `counts` | 本包**收錄**筆數（逐類別） |
+| `counts` | 本包**收錄**筆數（逐類別；未選類別鍵缺席） |
 | `totals` | 範圍內**真實**筆數（逐類別，不受上限影響）。與 `counts` 不等即代表截斷 |
 | `truncated` | 逐類別截斷旗標 |
+| `clipboard` | 證據包剪貼簿段三數：`events`（事件總數）／`content_available`（內容可用）／`content_failed`（留存失敗） |
 | `coverage[]` | 逐類別保留覆蓋三態（`present`／`purged`／`not_retained`）＋保留天數、清除截止與最近清除時刻、`archive_unit_range`（封存單位編號區間）、`note_code`＋`note_params` |
 | `signed`／`signed_reason` | 是否已簽章；未簽時給機器碼原因（**不靜默省略**） |
-| `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前） |
+| `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前）。證據包含明文剪貼簿內容時，**明載本包含明文內容**（僅 `content_available>0` 時寫入——全缺口包不宣告，宣告即假警報） |
 | `note_codes` | 各段的範圍說明機器碼（如資產關聯的歷史邊界） |
 
 **manifest 內零散文**：`coverage[].note_code`、`disclosures[].code`、`note_codes`
@@ -2364,8 +2688,9 @@ GET /api/v1/audit-export
 （刻意不共用總上限，否則「哪一類被截斷」不可辨識）。
 
 **完整性判準**: `manifest.json` 是最後寫入的檔案。**包內若無 `manifest.json`，
-即代表匯出中途失敗、此包不完整，不得作為證據**——一旦開始串流 body 即無法改狀態碼，
-故串流中途失敗只記伺服器日誌並留一筆失敗審計（HTTP 狀態已為 200）。
+即代表匯出中途失敗、此包不完整，不得作為證據**——事件報告一旦開始串流 body 即無法改狀態碼，
+故串流中途失敗只記伺服器日誌並留一筆失敗審計（HTTP 狀態已為 200）；證據包則由 job worker
+於背景寫檔，失敗落 job `failed` 態並清除半成品。
 
 **離線驗簽**: 取公鑰 `GET /api/v1/audit-export/public-key`（base64 Ed25519），
 以該公鑰對 ZIP 內 `manifest.json` 的**位元組**驗證 `manifest.sig`（base64 簽章）；
@@ -2373,7 +2698,53 @@ GET /api/v1/audit-export
 `tools/checkpoint-verify/` 是封存鏈的獨立驗證工具，**不涵蓋匯出包**（已知缺口，明載不粉飾）。
 
 **錯誤**: 400 未指定任何篩選條件（`VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED`）；
-400 參數不合法（`VALIDATION_INVALID_QUERY_PARAM`，`params.field` 指出是哪一個）。
+400 參數不合法（`VALIDATION_INVALID_QUERY_PARAM`，`params.field` 指出是哪一個）；
+400 對同步端點請求證據包（`RULE_AUDIT_EXPORT_BUNDLE_ASYNC_ONLY`）。
+
+### 證據包非同步 job 端點
+
+> 證據包體積不可控，改為非同步：發起後進入打包排程，產物落於系統指定暫存位置
+>（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`），由申請者本人限時下載。
+> 三端點同屬 `/audit-export` 路由群、同掛 `audit:view`；下載另綁**申請者本人**。
+> 產物保留 **24h**（逾期自動清除並轉 `expired`）；job 終態紀錄另有 30 天保存期，兩者分別計。
+
+```
+POST /api/v1/audit-export/jobs                發起打包（僅證據包）
+GET  /api/v1/audit-export/jobs                申請者本人的 job 清單（分頁）
+GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人）
+```
+
+**POST `/audit-export/jobs`**（發起）：篩選參數與同步端點同一套解析。僅受理證據包——
+帶 `subject` 或 `types`（即被推斷為事件報告）者回 **400 `RULE_EXPORT_JOB_BUNDLE_ONLY`**。
+- **回應** (202): `{"data": ExportJob, "deduplicated": <bool>}`。命中 `pending`／`running` 去重時回既有 job（`deduplicated=true`，冪等，非錯誤）。
+- **額度**: 每申請者進行中（`pending`＋`running`）上限 3、全域 10；上限檢查與 job 建立為原子。超額回 **409 `CONFLICT_EXPORT_JOB_LIMIT`**。
+- 發起（成功與被拒）皆入審計，含完整篩選快照。
+
+**GET `/audit-export/jobs`**（清單）：`page`（預設 1）／`page_size`（預設 20），id 降冪穩定排序。
+**僅列申請者本人**的 job（與下載授權同判準）。回應 `{"data": [ExportJob], "total": N, "page": P, "page_size": S}`。
+
+**GET `/audit-export/jobs/:id/download`**（下載）：認證＋`audit:view` 由路由群承擔，本端點另加**申請者本人**。
+- 成功回產物 ZIP（`attachment; filename="audit-evidence-job-<id>.zip"`），下載入審計（誰、何時、哪個包＋SHA-256）。
+- **非申請者**（含其他具 `audit:view` 帳號）、job 不存在、識別非法：一律收斂 **403 `AUTH_EXPORT_JOB_REQUESTER_ONLY`**
+  （分成 404/403 會讓具權限的探測者以狀態碼枚舉 job 存在性；真實原因只進審計）。
+- 申請者本人但**不可下載態**（`pending`／`running`／`failed`／`expired`、或產物已清）：**410 `RULE_EXPORT_ARTIFACT_UNAVAILABLE`**。
+
+**ExportJob 回應投影**（顯式 DTO；`artifact_path`／`filter_json` 為伺服器內部，不出站）:
+| 欄位 | 說明 |
+|---|---|
+| `id` | job 識別 |
+| `status` | `pending`／`running`／`done`／`failed`／`expired` |
+| `requested_at` | 發起時刻 |
+| `artifact_size` | 產物位元組大小 |
+| `filter` | 篩選條件的顯示投影（`DisplayMap`；id 字串化，不含名稱） |
+| `artifact_sha256` | 產物 SHA-256（done 後出現） |
+| `error_summary` | 失敗摘要機器碼（`export_job.pack_failed`／`export_job.requester_revoked`；`failed` 時出現） |
+| `packaged_at` | 實際打包完成時刻（done 後出現） |
+| `expires_at` | 產物過期時刻（done 後出現） |
+
+打包 worker 對申請者於**領件與每次重試時**重驗主體狀態與 `audit:view` 權限——已停用／刪除／失權者
+job 取消（落 `failed`＋`error_summary=export_job.requester_revoked`）並清除已產出的產物；worker 異常
+不終止服務行程，重試上限 3，服務重啟時遺留的進行中 job 可恢復或重排。
 
 ---
 
@@ -2582,6 +2953,10 @@ GET /metrics
 | `custodexa_audit_queue_depth` | gauge | — |
 | `custodexa_audit_dropped_total` | counter | `reason`（`fallback_file` 降級寫檔／`discarded` 永久遺失） |
 | `custodexa_seal_state` | gauge | `state`（列舉形態：目前所處的態為 1、其餘為 0） |
+| `custodexa_instance_guard_held` | gauge | —（單實例鎖是否由本實例持有：1 持有、0 未持有） |
+| `custodexa_instance_guard_lost_total` | counter | —（本行程偵測到失鎖的累計次數） |
+| `custodexa_instance_guard_overridden` | gauge | —（本實例以 `INSTANCE_GUARD_ACK` 啟動且尚未取得鎖：1 是、0 否） |
+| `custodexa_instance_guard_peers` | gauge | —（偵測到的其他守衛版實例連線數；同一資料庫、同 `application_name`） |
 | `custodexa_http_requests_total` | counter | `method`, `path`, `status` |
 | `custodexa_http_request_duration_seconds` | histogram | `method`, `path` |
 | `go_*` / `process_*` | — | Go runtime 標準 collector |
@@ -2592,10 +2967,17 @@ GET /metrics
 **高成本指標讀的是快取值**：活躍會話（查資料庫）與錄影儲存量（遍歷檔案系統）由背景任務
 定期刷新（預設 30 秒）後供讀取，不於每次採集時同步查詢；其值因此最多落後一個刷新週期。
 
-**封印期（尚未解封）可採集，但只有縮減盤**：僅曝光 `custodexa_seal_state` 與 Go runtime 指標，
-使監控能區分「系統封印中待解封」與「系統當機」——兩者的處置完全不同。封印期尚未建構的服務
+**封印期（尚未解封）可採集，但只有縮減盤**：僅曝光 `custodexa_seal_state`、四條 `custodexa_instance_guard_*`
+序列與 Go runtime 指標，使監控能區分「系統封印中待解封」與「系統當機」——兩者的處置完全不同。
+守衛序列自段 1 起就存在（守衛在 migration 之前取鎖），封印期即可看到 `overridden`／`held`。封印期尚未建構的服務
 （會話、錄影、審計佇列、HTTP 統計），其指標**缺席而非為 0**：0 值會讓採集端把「服務不存在」
-讀成「服務正常且計數為零」，而缺值在 PromQL 中可由 `absent()` 明確偵測。
+讀成「服務正常且計數為零」，而缺值在 PromQL 中可由 `absent()` 明確偵測。守衛序列同理：
+資料源未注入時四條序列缺席而非為 0。
+
+**守衛序列的判讀**：`held 1／overridden 0／peers 0` 是正常態；`held 0` 配 `overridden 1` 表示本實例以確認碼啟動、
+尚未取得鎖；`held 0` 配 `overridden 0` 表示執行期失鎖（`lost_total` 同步加 1）；`peers > 0` 表示持鎖實例看到了
+其他守衛版實例的連線。四條序列都是**行程本地**的：兩個實例並存時各報各的，不做跨副本聚合。
+守衛失鎖不影響 `/health`。營運面判讀見 `docs/ops/upgrade-sop.md` §3.4。
 
 **多副本下各報各的**：行程內 gauge（活躍連線、佇列深度）不做跨副本聚合，與現行單實例部署
 不變式一致。
@@ -2614,8 +2996,9 @@ Upgrade: websocket（子協議 guacamole）
 **認證**: 僅收一次性 `connect_token`（授權與傳輸政策閘於簽發時完成；缺省或無效回 401）。
 本端點**僅接受一次性 `connect_token`**：不接受以 query 參數攜帶 JWT 或 `asset_id` 直連——
 那會繞過簽發閘，連同其上的授權檢查與傳輸政策一併落空。
-兌換時重載狀態（殘窗收斂）：使用者停用 403／鎖定 423；資產停用 403＋`{reason: "asset_disabled"}`
-——token 簽發後、兌換前被停用者同擋，不因 token 尚在效期放行。
+兌換時重載狀態（殘窗收斂）：使用者停用 403／鎖定 423；資產停用 403＋`{reason: "asset_disabled"}`；
+**兌換當下的來源不在該帳號的允許來源網段** 403＋`{code: "AUTH_SOURCE_NOT_ALLOWED", reason: "source_not_allowed"}`
+——token 簽發後、兌換前被停用或來源改變者同擋，不因 token 尚在效期放行。
 
 **連線收口**:
 - 只收 token + asset_id；目標主機與憑證由後端從資產庫解密注入 guacd 握手，
@@ -2646,7 +3029,8 @@ Upgrade: websocket
   （瀏覽器讀不到握手失敗的 HTTP body），非 WS 請求維持一般 HTTP 錯誤（502 為主）。
   SSH 撥號失敗帶 `RULE_SSH_*` code（`HOST_KEY_CHANGED`／`AUTH_FAILED`／`DIAL_TIMEOUT`／`UNREACHABLE`，
   入 apierror registry 受三語完備性守衛）；k8s/database 啟動失敗僅帶 `data` zh 文案
-- 兌換時重載狀態（殘窗收斂）：使用者停用/鎖定即擋；資產停用回 403＋`{reason: "asset_disabled"}`（簽發後停用者同擋）
+- 兌換時重載狀態（殘窗收斂）：使用者停用/鎖定即擋；資產停用回 403＋`{reason: "asset_disabled"}`（簽發後停用者同擋）；
+  來源不在允許來源網段回 403＋`{code: "AUTH_SOURCE_NOT_ALLOWED", reason: "source_not_allowed"}`（**兌換當下現讀清單，不信簽發時的判定**）
 - 全模態 asciinema 錄製；指令審計與阻斷（K8s logs 唯讀模態除外）；接入即時監看 room
 - 閒置/最大時長自動斷線：由安全政策 `session_idle_minutes`（出廠預設 **60**）與 `session_max_minutes`（0＝不限）決定。
   `SSH_IDLE_TIMEOUT_MINUTES`／`SSH_MAX_SESSION_MINUTES` 僅於首次啟動播種政策列；生產路徑一律走政策，
@@ -2670,6 +3054,17 @@ Authorization: Bearer <token>
 
 簽發時完成資產存在性與連線授權檢查（資產不存在 404、無授權 403）；
 token 綁定 user+asset+account，Resolve 即焚。guacd 與原生 SSH 兩路徑共用同一 token 管理器。
+
+**允許來源網段**：簽發端也判來源，位置在角色現查之後、請求綁定之前——只依主體判定，
+不需要資產，也就不對「來源不對」的請求洩漏資產是否存在或有無授權。
+不落清單回 **403 ＋ `{code: "AUTH_SOURCE_NOT_ALLOWED", reason: "source_not_allowed"}`**。
+兩條兌換入口（`/connect`、`/ssh`）**各自現讀清單再判一次，不信簽發時的結論**：
+只擋簽發側時，自允許網段簽票、換個位址兌換即成立。
+`reason` 值刻意不與 `asset_disabled`／`recording_unavailable`／`approval_required`／`reason_required`
+重疊，前端據此顯示「目前來源不在允許範圍」而**不彈申請框**。
+**回應不回顯位址，也不回顯清單**；位址與命中的清單快照只進拒絕留痕。
+清單讀不到或字串損壞時**走同一組回應值**，對外不分岔——分岔等於告訴呼叫端
+「這個帳號的政策壞了」，那是探測面；成因（`read_error`／`parse_error`）只進審計。
 
 `account_id` 為**憑證選擇器、非授權快照**：簽發點於授權檢查之後、
 政策閘之前以 `(account_id, asset_id, deleted_at IS NULL)` DB 現查客體綁定，不屬該資產或

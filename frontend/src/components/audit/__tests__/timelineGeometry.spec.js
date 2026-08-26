@@ -117,6 +117,9 @@ describe('query 序列化', () => {
     const state = {
       subject: 'asset',
       subjectId: 7,
+      // 位址樞紐上線後，狀態多了兩個位址欄；人／資產樞紐下它們恆為空字串
+      subjectIp: '',
+      clientIp: '',
       from: FROM,
       to: TO,
       types: ['alert'],

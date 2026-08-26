@@ -110,6 +110,19 @@ type Config struct {
 	Seal SealConfig
 	// OIDC 身分提供者整合組態
 	OIDC OIDCConfig
+	// InstanceGuard 單實例守衛的操作者確認（對這一次衝突的確認碼，不是開關）。
+	InstanceGuard InstanceGuardConfig
+}
+
+// InstanceGuardConfig 單實例守衛的啟動期確認值。
+//
+// **不是開關、不是旋鈕**：Ack 綁定「本次啟動查得的持鎖者指紋碼」，相符才允許在
+// 鎖由他人持有時啟動，持鎖者變更即失效，每次生效皆留審計事件。留在環境中的舊值是
+// 惰性的（不符＝未設）。刻意不入 `.env.example`：範本裡出現它就會被當成常設值，
+// 而它的語義是「對這一次衝突的確認」；登記於 env_drift_test.go 的 driftAllowlist。
+type InstanceGuardConfig struct {
+	// Ack INSTANCE_GUARD_ACK 的原始讀值（比對前由守衛去除前後空白）。
+	Ack string
 }
 
 // OIDCConfig OIDC 整合的部署層設定。
@@ -360,6 +373,10 @@ func Load() *Config {
 			AlertingEnabled: getEnvBool("FEATURE_ALERTING_ENABLED", false),
 		},
 		Seal: LoadSeal(),
+		// 一次性衝突確認碼（非旋鈕）：三值語義不重要——空與未設同義（皆為「未確認」）
+		InstanceGuard: InstanceGuardConfig{
+			Ack: getEnv("INSTANCE_GUARD_ACK", ""),
+		},
 	}
 }
 

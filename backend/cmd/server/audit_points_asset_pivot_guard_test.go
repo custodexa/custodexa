@@ -107,6 +107,9 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 		"否則探測行為在資產視角完全不可見（同 AP-66 的論證）。票證本身不成立時目標未知，該情形寫 NULL 而非 0"},
 	"AP-70": {pivotFilled, false, "唯讀觀看（監看／分享）加入留痕：稽核問題本身就是「誰看了這台機器上的操作」，" +
 		"缺資產鍵時資產樞紐與「沒有人看過」不可分辨。與 AP-68（錄影取證，主體是錄影檔本體）刻意不同"},
+	"AP-74": {pivotFilled, false, "剪貼簿單筆內容調閱的逐筆 fail-close 留痕：" +
+		"剪貼簿事件不帶資產欄，主體經所屬會話解析後填入——「這台資產的剪貼簿內容被誰調閱過」" +
+		"必須出現在資產樞紐上，缺鍵時與「沒有人調閱過」不可分辨（同 AP-70 的論證）"},
 	"AP-62": {pivotFilled, false, "AsyncSink.Submit 的 event→entry 轉換：gateway 側產生點的主體鍵入口"},
 
 	// ── 資產類：委由 helper ──（helper 內的產生點即 AP-22／26／27）
@@ -144,6 +147,11 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-02": {pivotNotAsset, false, "KEK 切換補記，主體是金鑰"},
 	"AP-03": {pivotNotAsset, false, "週期性存取複審建立，主體是複審單"},
 	"AP-05": {pivotNotAsset, false, "稽核證據匯出，主體是匯出作業"},
+	"AP-75": {pivotNotAsset, false, "匯出 job 發起／下載／拒絕留痕：主體是匯出作業，" +
+		"與 AP-05 同判——篩選內的資產維度是匯出範圍的一部分，記在 error_msg 的篩選快照，不冒充事件主體鍵"},
+	"AP-76": {pivotNotAsset, false, "worker 失權取消留痕：主體是匯出作業與申請者（details），與任何單一資產無關"},
+	"AP-77": {pivotNotAsset, false, "單實例守衛事件：主體是本實例與持鎖工作階段（details），系統列，與任何資產無關"},
+	"AP-78": {pivotNotAsset, false, "帳號自新來源位址登入的標記：主體是帳號與來源位址，登入本身不涉任何資產（建線點的同族告警才有資產，那一筆走 command_alerts 不走本表）"},
 	"AP-06": {pivotNotAsset, false, "登入時偵測密碼不符政策，主體是使用者"},
 	"AP-07": {pivotNotAsset, false, "登入留痕"},
 	"AP-08": {pivotNotAsset, false, "token 更新留痕"},

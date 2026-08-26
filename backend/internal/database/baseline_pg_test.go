@@ -1,6 +1,7 @@
 package database
 
 import (
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -95,28 +96,38 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	}
 
 	got := countSchemaObjects(t, db, pgSchema)
-	// 空庫實測基準（對照組 manifest 第 5 節）：47 表／162 索引／10 CHECK。
-	// baseline 另加 alert_rules.name 唯一索引 → 163。
-	if got.Tables != 47 {
-		t.Errorf("表數 = %d, want 47", got.Tables)
+	// 空庫實測基準（對照組 manifest 第 5 節）：47 表／162 索引／13 CHECK
+	// （manifest 寫 10 是漏數了 command_alerts 的兩條與 session_commands 的一條，
+	// 具名清單見 baseline_parity_pg_test.go）；baseline 另加 alert_rules.name 唯一索引 → 163。
+	// 全新安裝＝baseline＋增量：
+	// audit_export_jobs 增 1 表、4 索引（pkey＋兩具名＋pending/running 部分唯一）。
+	// source-ip-forensics 再增 1 表（user_source_ips：pkey＋1 具名）與 sessions 的 1 條
+	// 索引；command_alerts_kind_check 重建（名稱不變、數量不變）。
+	if got.Tables != 49 {
+		t.Errorf("表數 = %d, want 49（47 ＋ audit_export_jobs ＋ user_source_ips）", got.Tables)
 	}
-	if got.Indexes != 163 {
-		t.Errorf("索引數 = %d, want 163（舊鏈 162 ＋ baseline 新增的 uniq_alert_rules_name）", got.Indexes)
+	if got.Indexes != 170 {
+		t.Errorf("索引數 = %d, want 170（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條）", got.Indexes)
 	}
-	if got.Checks != 10 {
-		t.Errorf("CHECK 約束數 = %d, want 10", got.Checks)
+	if got.Checks != 13 {
+		t.Errorf("CHECK 約束數 = %d, want 13", got.Checks)
 	}
 
-	// schema_migrations 恰好一列，且**不含** LDAP 執行期 marker。
+	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。
 	// 預插 marker 會讓 LDAP env seed 永遠不執行——表建好了、設定沒進去、無錯誤可查。
 	var versions []string
 	if err := db.Raw(`SELECT version FROM schema_migrations ORDER BY version`).Scan(&versions).Error; err != nil {
 		t.Fatalf("讀取 schema_migrations 失敗: %v", err)
 	}
-	if len(versions) != 1 || versions[0] != BaselineVersion {
-		t.Fatalf("schema_migrations = %v, want 恰好 [%s]。"+
+	wantVersions := make([]string, 0, len(migrations))
+	for _, m := range migrations {
+		wantVersions = append(wantVersions, m.Version)
+	}
+	sort.Strings(wantVersions)
+	if strings.Join(versions, ",") != strings.Join(wantVersions, ",") {
+		t.Fatalf("schema_migrations = %v, want 恰好 %v。"+
 			"若含 %s，LDAP env seed 會被誤判為已完成而永不執行",
-			versions, BaselineVersion, LDAPSeedMarkerVersion)
+			versions, wantVersions, LDAPSeedMarkerVersion)
 	}
 
 	// 12 條種子的 protocols 分佈＝三段疊加的終態

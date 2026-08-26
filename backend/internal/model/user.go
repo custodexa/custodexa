@@ -107,6 +107,23 @@ type User struct {
 	// per-user 永久有效豁免旗標；seed admin 預設豁免，避免唯一管理員因久未登入被自動停用鎖死系統
 	InactivityExempt bool `gorm:"default:false" json:"inactivity_exempt"`
 
+	// AllowedCIDRs 允許來源網段清單的儲存形式：逗號分隔、已正規化的前綴字串
+	// （沿 alert_rules.protocols 的逗號分隔慣例；項目本身不含逗號，不需結構化格式）。
+	// 空字串＝不限制來源。**只由 service 層經 sourceip 單一實作驗證後寫入**，
+	// 對外以下方的陣列欄呈現，本欄不出 JSON。
+	// 欄名顯式釘住：GORM 的 snake_case 會把 CIDRs 拆成 c_id_rs
+	AllowedCIDRs string `gorm:"column:allowed_cidrs;type:text;not null;default:''" json:"-"`
+	// AllowedCIDRList 清單的 API 形狀（字串陣列），由 service 層自 AllowedCIDRs 拆出；
+	// 非持久化。未經 service 裝飾的 User 值此欄為 nil（序列化為 null）。
+	AllowedCIDRList []string `gorm:"-" json:"allowed_cidrs"`
+	// AllowedCIDRsStatus 有效涵蓋狀態（unrestricted／effectively_unrestricted／
+	// restricted）：由伺服端單一實作依清單**實際放行的範圍**計算，介面不自行推算。
+	// 非持久化，隨 AllowedCIDRList 一併由 service 層填入。
+	AllowedCIDRsStatus string `gorm:"-" json:"allowed_cidrs_status,omitempty"`
+	// AllowedCIDRFamilies 狀態為 effectively_unrestricted 時被全放行的位址家族
+	// （v4／v6），供介面指出「含全域前綴的是哪一族」。非持久化。
+	AllowedCIDRFamilies []string `gorm:"-" json:"allowed_cidrs_families,omitempty"`
+
 	// 關聯
 	Roles []Role `gorm:"many2many:user_roles;" json:"roles,omitempty"`
 	// 授權分組成員資格（與 Roles 正交，不影響端點權限）

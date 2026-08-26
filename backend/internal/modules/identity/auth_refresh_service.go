@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
@@ -66,6 +68,54 @@ func (e *RefreshFamilyRevokeError) Error() string {
 }
 
 func (e *RefreshFamilyRevokeError) Unwrap() error { return e.Err }
+
+// RefreshSourceDeniedError 刷新被來源限定擋下（或政策不可用）。
+//
+// **零寫入的證明就在型別上**：本錯誤只可能在交易早退時產生，此時舊憑證未撤、
+// 新憑證未插、`last_used_at` 未動。handler 據此走既有的統一 401，
+// 對外與其他刷新失敗逐字相同——成因（來源不對／政策壞了、位址、清單快照）
+// 只出現在審計註記裡。
+//
+// 與 RefreshReuseError 分型而非共用：後者的語義是「已撤銷該使用者全部憑證」，
+// 兩者若共用一個型別，稽核就分不出「憑證被作廢了」與「什麼都沒動」
+type RefreshSourceDeniedError struct {
+	UserID   uint
+	Username string
+	SourceIP string
+	Verdict  sourceip.Verdict
+}
+
+func (e *RefreshSourceDeniedError) Error() string {
+	return "refresh 來源不在允許範圍（或來源政策不可用）；憑證未被消耗"
+}
+
+// AuditNote 審計註記（**只進審計**）：原因碼、成因類別、位址與清單快照。
+//
+// 回應端不得使用本字串——對外只有統一 401。
+func (e *RefreshSourceDeniedError) AuditNote() string {
+	note := "refresh_" + e.Verdict.Reason
+	if e.Verdict.Cause != "" {
+		note += "; cause=" + e.Verdict.Cause
+	}
+	if e.SourceIP != "" {
+		note += "; ip=" + e.SourceIP
+	}
+	if len(e.Verdict.Policy) > 0 {
+		note += "; policy=" + strings.Join(e.Verdict.Policy, ",")
+	}
+	return note
+}
+
+// sourcePolicyCauseOf 把 sourceip 的成因類別對映到失效面的 cause 常數。
+//
+// 兩套常數各有其邊界：sourceip 不該認識審計失效面的詞彙，失效面也不該
+// 依賴判定實作的內部命名。對映寫成一個函式，使新增成因時只有一處要改
+func sourcePolicyCauseOf(cause string) string {
+	if cause == sourceip.CauseParseError {
+		return model.CauseSourcePolicyCorrupt
+	}
+	return model.CauseSourcePolicyUnreadable
+}
 
 // refreshPostRotateHook 測試用同步點：於「輪替交易已提交、access token 尚未簽發」
 // 的精確位置呼叫。
@@ -153,9 +203,24 @@ func (s *AuthService) issueRefreshToken(userID uint, sessionStart time.Time, aut
 }
 
 // RefreshSession 以 refresh 憑證換發新 access token 並輪替 refresh。
-// 判定順序：存在 → reuse detection → 絕對壽命 → 閒置窗口 → 用戶狀態複查 → CAS 輪替。
-// 任何失敗對外統一 ErrRefreshInvalid（reuse 以 typed error 供 handler 審計）
-func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
+// 判定順序：存在 → reuse detection → 絕對壽命 → 閒置窗口 → 用戶狀態複查 →
+// **交易內世代複查 → 來源限定 →** CAS 輪替。
+// 任何失敗對外統一 ErrRefreshInvalid（reuse 與來源拒絕以 typed error 供 handler 審計）
+//
+// # sourceIP 為何是參數而不是服務自取
+//
+// 服務拿不到 `*gin.Context`，而來源位址的取法（是否採信轉送標頭）只有一份。
+// 由 handler 交進來，判定與該次請求的審計列因此讀到同一個位址。
+//
+// # 來源判定的位置：交易內、世代複查之後、CAS 撤舊之前
+//
+// 放在輪替**之後**判會留下兩個缺陷（起草版即如此）：舊憑證已標 rotated、
+// 新憑證已寫，拒絕就留下一枚孤兒憑證；更糟的是持竊憑證者得以自清單外
+// **消耗**受害者手上仍有效的 refresh token——受害者下次刷新命中 reuse
+// detection，整個家族被撤，等於攻擊者拿到一個免費的登出原語。
+// 放在交易內、撤舊之前，拒絕路徑就是**零寫入**：不撤舊、不插新、不動
+// `last_used_at`，同一枚憑證隨後自清單內來源刷新照常成功。
+func (s *AuthService) RefreshSession(plain, sourceIP string) (*RefreshResponse, error) {
 	var row model.RefreshToken
 	err := database.DB.Where("token_hash = ?", hashRefreshToken(plain)).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -211,10 +276,24 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 	// 自身攜帶的世代對 DB 現值比對後才輪替。
 	casRotated := false
 	stale := false
+	// sourceVerdict 零值＝未判定；非零且不放行時走「零寫入」早退
+	var sourceVerdict sourceip.Verdict
+	sourceJudged := false
+	sourceUsername := ""
 	txErr := WithCapabilityLocks(database.DB, row.ProviderID, row.UserID, func(tx *gorm.DB) error {
 		var user model.User
-		if err := tx.Select("id", "credential_epoch", "active").First(&user, row.UserID).Error; err != nil {
-			return err
+		// allowed_cidrs 併入這次既有的 Select：使用者列本來就要載入，
+		// 來源判定因此不多一次查詢，也不會與世代複查讀到不同的列
+		// username 一併帶出：來源拒絕的審計列要指得出「是誰被擋」，
+		// 只有 user_id 的列在稽核頁上得再查一次才知道是誰
+		if err := tx.Select("id", "username", "credential_epoch", "active", "allowed_cidrs").
+			First(&user, row.UserID).Error; err != nil {
+			// 使用者列讀不到＝政策不可讀：拒絕，但走**零寫入**路徑
+			// ——把它當交易錯誤丟出去會回 500，且無法與「憑證有問題」區分
+			sourceVerdict = sourceip.Verdict{
+				Reason: sourceip.ReasonPolicyUnreadable, Cause: sourceip.CauseReadError}
+			sourceJudged = true
+			return nil
 		}
 		if err := VerifyCredentialGenerationTx(tx, crypto.AuthContext{
 			AuthMethod: row.AuthMethod, ProviderID: row.ProviderID,
@@ -222,6 +301,14 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 		}, &user); err != nil {
 			stale = true
 			return nil // 交易正常結束；輪替不執行，交易外統一回 ErrRefreshInvalid
+		}
+		// 來源限定（順序約束）：世代複查通過、**尚未變更任何狀態**時判定。
+		// 不落清單者在此早退，交易正常結束而一個位元組都沒寫
+		sourceVerdict = sourceip.Evaluate(user.AllowedCIDRs, nil, sourceIP)
+		sourceJudged = true
+		sourceUsername = user.Username
+		if !sourceVerdict.Allowed {
+			return nil
 		}
 		res := tx.Model(&model.RefreshToken{}).
 			Where("id = ? AND revoked_at IS NULL", row.ID).
@@ -253,6 +340,22 @@ func (s *AuthService) RefreshSession(plain string) (*RefreshResponse, error) {
 	})
 	if txErr != nil {
 		return nil, fmt.Errorf("refresh 憑證輪替失敗: %w", txErr)
+	}
+	if sourceJudged {
+		// 可用性記帳在交易之外（Report 會寫 audit_failure_events，
+		// 不可掛在能力鎖的交易裡）
+		if sourceVerdict.Cause != "" {
+			reportSourcePolicyFailure(sourcePolicyCauseOf(sourceVerdict.Cause), row.UserID)
+		} else if sourcePolicyDegraded.Load() {
+			EvaluateSourcePolicyHealth(database.DB)
+		}
+	}
+	if sourceJudged && !sourceVerdict.Allowed {
+		// **不呼叫 markRevoked**：憑證本身沒有問題，來源不對而已。
+		// 標撤等於讓清單外的一次嘗試把受害者的憑證作廢
+		return nil, &RefreshSourceDeniedError{
+			UserID: row.UserID, Username: sourceUsername,
+			Verdict: sourceVerdict, SourceIP: sourceIP}
 	}
 	if stale {
 		// 世代已失效（provider 停用／刪除／密鑰輪替，或使用者憑證世代推進）：

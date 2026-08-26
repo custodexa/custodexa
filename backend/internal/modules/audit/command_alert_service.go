@@ -33,6 +33,12 @@ type CommandAlertView struct {
 	model.CommandAlert
 	Username  string `json:"username"`
 	AssetName string `json:"asset_name"`
+	// ClientIP 該告警所屬會話**建線當下**的來源位址（經 join sessions 帶出，
+	// 不冗餘進 command_alerts）。可選欄：會話列缺失時不出現。
+	//
+	// 加這一欄的理由：新來源位址類的告警，位址就是告警的內容本身——
+	// 沒有它，列表上那一列除了「首次自某個位址建線」以外什麼都答不出來
+	ClientIP string `json:"client_ip,omitempty"`
 }
 
 // CommandAlertListResponse 告警列表回應（沿用 {data,total,page,page_size} 慣例）
@@ -120,9 +126,12 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 
 	var alerts []CommandAlertView
 	if err := query.
-		Select("command_alerts.*, users.username AS username, assets.name AS asset_name").
+		Select("command_alerts.*, users.username AS username, assets.name AS asset_name, " +
+			"sessions.client_ip AS client_ip").
 		Joins("LEFT JOIN users ON users.id = command_alerts.user_id").
 		Joins("LEFT JOIN assets ON assets.id = command_alerts.asset_id").
+		// LEFT 而非 INNER：會話列被清除的舊告警仍要列得出來，只是少一個位址
+		Joins("LEFT JOIN sessions ON sessions.id = command_alerts.session_id").
 		Order("triggered_at DESC, id DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).

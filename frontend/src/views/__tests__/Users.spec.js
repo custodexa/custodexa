@@ -26,6 +26,15 @@ const getApproverScopesMock = vi.fn()
 const createApproverScopeMock = vi.fn()
 const deleteApproverScopeMock = vi.fn()
 const getExternalIdentitiesMock = vi.fn().mockResolvedValue({ data: [], total: 0 })
+const checkSourcePolicyMock = vi.fn()
+const updateUserMock = vi.fn()
+const createUserMock = vi.fn()
+const getCurrentUserMock = vi.fn()
+
+// 允許來源網段的「你目前的來源」走 /auth/me（僅供顯示，不參與判定）
+vi.mock('@/api/auth', () => ({
+  getCurrentUser: (...a) => getCurrentUserMock(...a),
+}))
 
 vi.mock('@/api/assets', () => ({
   getAssetList: vi.fn().mockResolvedValue({ data: [{ id: 1, name: '測試 SSH 伺服器' }] }),
@@ -45,8 +54,8 @@ vi.mock('@/api/userGroups', () => ({
 vi.mock('@/api/user', () => ({
   getUserList: (...a) => getUserListMock(...a),
   getRoleList: (...a) => getRoleListMock(...a),
-  createUser: vi.fn(),
-  updateUser: vi.fn(),
+  createUser: (...a) => createUserMock(...a),
+  updateUser: (...a) => updateUserMock(...a),
   deleteUser: vi.fn(),
   assignRoles: vi.fn(),
   addUserRole: vi.fn(),
@@ -55,6 +64,7 @@ vi.mock('@/api/user', () => ({
   adminDisableMFA: vi.fn(),
   unlockUser: vi.fn(),
   setInactivityExempt: vi.fn(),
+  checkSourcePolicy: (...a) => checkSourcePolicyMock(...a),
   // 外部身分面板同源於 @/api/user，
   // 缺這幾個 export 會讓抽屜內的元件在載入期就取到 undefined
   getExternalIdentities: (...a) => getExternalIdentitiesMock(...a),
@@ -563,5 +573,363 @@ describe('Users 外部身分管理入口', () => {
 
     expect(wrapper.vm.identityRefreshFailed).toBe(true)
     expect(wrapper.vm.identityUser.external_credential).toBe(false)
+  })
+})
+
+// —— 允許來源網段（source-ip-forensics）——
+//
+// 這一組守的是三件「錯了就把管理者鎖在門外、或把限制靜默清空」的事：
+// 1) 更新請求的 presence 語義——沒動過清單就**不送**該欄位；
+// 2) 落入判定一律來自端點回覆，前端不自算（自算與強制點分歧＝警告說謊）；
+// 3) 警告是 warning 級，**不阻擋儲存**（管理者可能刻意設一個尚未切過去的網段）。
+describe('Users：允許來源網段', () => {
+  const withPolicy = (over = {}) => ({
+    data: [
+      {
+        id: 7,
+        username: 'carol',
+        email: 'carol@example.com',
+        active: true,
+        roles: [{ name: 'user' }],
+        created_at: '2026-07-01T10:00:00+08:00',
+        allowed_cidrs: [],
+        allowed_cidrs_status: 'unrestricted',
+        ...over,
+      },
+    ],
+    total: 1,
+  })
+
+  const okCheck = (over = {}) => ({
+    valid: true,
+    items: [],
+    normalized: [],
+    status: 'restricted',
+    source: { address: '203.0.113.9', reason: 'request' },
+    allowed: true,
+    ...over,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    getUserListMock.mockResolvedValue(withPolicy())
+    getRoleListMock.mockResolvedValue({ data: [{ name: 'user' }, { name: 'admin' }] })
+    getApproverScopesMock.mockResolvedValue({ data: [] })
+    getCurrentUserMock.mockResolvedValue({ id: 7, source_ip: '203.0.113.9' })
+    checkSourcePolicyMock.mockResolvedValue(okCheck())
+    updateUserMock.mockResolvedValue({})
+    createUserMock.mockResolvedValue({})
+  })
+
+  // 三態消費伺服端衍生的 allowed_cidrs_status。**不以陣列非空推算**：
+  // 清單含 0.0.0.0/0 時實際全部放行，標成「已限定」是把放行呈為受限
+  it('列表三態：不限不標、已限定標 info、等同不限標 warning', async () => {
+    getUserListMock.mockResolvedValue(withPolicy())
+    let wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="source-restricted-tag"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="source-effective-tag"]').exists()).toBe(false)
+    wrapper.unmount()
+
+    getUserListMock.mockResolvedValue(
+      withPolicy({ allowed_cidrs: ['10.0.0.0/8'], allowed_cidrs_status: 'restricted' })
+    )
+    wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="source-restricted-tag"]').text()).toContain(
+      '已限定來源'
+    )
+    // 內容不展開（清單本身不進列表）
+    expect(wrapper.find('[data-test="source-restricted-tag"]').text()).not.toContain(
+      '10.0.0.0/8'
+    )
+    wrapper.unmount()
+
+    getUserListMock.mockResolvedValue(
+      withPolicy({
+        allowed_cidrs: ['0.0.0.0/0'],
+        allowed_cidrs_status: 'effectively_unrestricted',
+        // User 物件的家族欄是 allowed_cidrs_families；判定端點回應才叫 families
+        allowed_cidrs_families: ['v4'],
+      })
+    )
+    wrapper = mountView()
+    await flushPromises()
+    const tag = wrapper.find('[data-test="source-effective-tag"]')
+    expect(tag.exists()).toBe(true)
+    expect(tag.text()).toContain('等同不限')
+    // tooltip 取的是 User 列上的 allowed_cidrs_families，不是端點回應的 families
+    expect(tag.attributes('title') ?? '').not.toContain('undefined')
+    expect(wrapper.vm.userList[0].allowed_cidrs_families).toEqual(['v4'])
+    expect(
+      wrapper.vm.effectiveUnrestrictedText(wrapper.vm.userList[0].allowed_cidrs_families)
+    ).toContain('IPv4')
+    // 錯欄名（families）在 User 列上恆為 undefined → 文案會空掉，守住這一點
+    expect(wrapper.vm.effectiveUnrestrictedText(wrapper.vm.userList[0].families)).toBe('')
+  })
+
+  it('編輯時沒動清單 → 更新請求不帶 allowed_cidrs（缺欄＝保留現值）', async () => {
+    getUserListMock.mockResolvedValue(
+      withPolicy({ allowed_cidrs: ['10.0.0.0/8'], allowed_cidrs_status: 'restricted' })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    await flushPromises()
+    wrapper.vm.form.email = 'carol2@example.com'
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(updateUserMock).toHaveBeenCalledTimes(1)
+    const body = updateUserMock.mock.calls[0][1]
+    expect(body.email).toBe('carol2@example.com')
+    expect('allowed_cidrs' in body).toBe(false)
+    // 沒動過就不必打判定端點
+    expect(checkSourcePolicyMock).not.toHaveBeenCalled()
+  })
+
+  it('把清單清空 → 送空陣列（`[]` 才是「清除為不限」）', async () => {
+    getUserListMock.mockResolvedValue(
+      withPolicy({ allowed_cidrs: ['10.0.0.0/8'], allowed_cidrs_status: 'restricted' })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    await flushPromises()
+    wrapper.vm.removeCidr(0)
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+
+    expect(updateUserMock.mock.calls[0][1].allowed_cidrs).toEqual([])
+  })
+
+  it('格式層就近紅字：明顯不是位址的輸入不進清單', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    await flushPromises()
+
+    wrapper.vm.cidrDraft = 'gateway.example'
+    wrapper.vm.addCidr()
+    await flushPromises()
+    expect(wrapper.vm.cidrDraftError).toContain('gateway.example')
+    expect(wrapper.vm.form.allowed_cidrs).toEqual([])
+
+    // 後端才拒的邊界不預先擋（判定權在後端）
+    wrapper.vm.cidrDraft = '10.0.0.999/24'
+    wrapper.vm.addCidr()
+    await flushPromises()
+    expect(wrapper.vm.form.allowed_cidrs).toEqual(['10.0.0.999/24'])
+  })
+
+  it('逐項錯誤與正規化預覽都來自端點回覆', async () => {
+    checkSourcePolicyMock.mockResolvedValue(
+      okCheck({
+        valid: false,
+        items: [{ input: '10.0.0.999/24', error_code: 'invalid' }],
+        normalized: [],
+      })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.999/24']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+
+    expect(wrapper.vm.itemErrors).toHaveLength(1)
+    expect(wrapper.vm.itemErrors[0].text).toContain('10.0.0.999/24')
+
+    checkSourcePolicyMock.mockResolvedValue(
+      okCheck({ normalized: ['10.0.0.0/8'], items: [{ input: '10.1.2.3/8' }] })
+    )
+    wrapper.vm.form.allowed_cidrs = ['10.1.2.3/8']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.itemErrors).toHaveLength(0)
+    expect(wrapper.vm.normalizedPreview).toBe('10.0.0.0/8')
+  })
+
+  it('正規化結果與輸入一致時不顯示預覽（一模一樣時那行是噪音）', async () => {
+    checkSourcePolicyMock.mockResolvedValue(okCheck({ normalized: ['10.0.0.0/8'] }))
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.normalizedPreview).toBe('')
+  })
+
+  it('端點回 effectively_unrestricted → 顯示「等同不限」並指出家族', async () => {
+    checkSourcePolicyMock.mockResolvedValue(
+      okCheck({ status: 'effectively_unrestricted', families: ['v4'] })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.allowed_cidrs = ['0.0.0.0/0']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.effectiveUnrestrictedLine).toContain('等同不限')
+    expect(wrapper.vm.effectiveUnrestrictedLine).toContain('IPv4')
+  })
+
+  it('自鎖警告：編輯本人且端點回 allowed=false 才出現，且帶本次來源', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, roles: ['admin'] }))
+    checkSourcePolicyMock.mockResolvedValue(okCheck({ allowed: false }))
+    getUserListMock.mockResolvedValue(withPolicy())
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
+    wrapper.vm.cidrTouched = true
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.selfLockLine).toContain('203.0.113.9')
+    expect(wrapper.vm.selfLockLine).toContain('無法登入')
+  })
+
+  it('編輯他人時不出現自鎖警告（那不是他的來源）', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, roles: ['admin'] }))
+    checkSourcePolicyMock.mockResolvedValue(okCheck({ allowed: false }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.selfLockLine).toBe('')
+  })
+
+  it('來源取不到時自鎖警告改說「取不到來源」，不假裝有位址', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, roles: ['admin'] }))
+    checkSourcePolicyMock.mockResolvedValue(
+      okCheck({ allowed: false, source: { address: null, reason: 'unresolvable' } })
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.selfLockLine).toContain('取不到')
+    expect(wrapper.vm.selfLockLine).not.toContain('null')
+  })
+
+  it('警告不阻擋儲存：自鎖狀態下仍送出，且儲存前再判定一次', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, roles: ['admin'] }))
+    checkSourcePolicyMock.mockResolvedValue(okCheck({ allowed: false }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    wrapper.vm.cidrDraft = '10.0.0.0/8'
+    wrapper.vm.addCidr()
+    await flushPromises()
+    const before = checkSourcePolicyMock.mock.calls.length
+
+    await wrapper.vm.handleSubmit()
+    await flushPromises()
+    expect(checkSourcePolicyMock.mock.calls.length).toBeGreaterThan(before)
+    expect(updateUserMock).toHaveBeenCalledTimes(1)
+    expect(updateUserMock.mock.calls[0][1].allowed_cidrs).toEqual(['10.0.0.0/8'])
+  })
+
+  it('判定端點失敗只說「無法確認」，不得渲染成允許', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, roles: ['admin'] }))
+    checkSourcePolicyMock.mockRejectedValue(new Error('boom'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    wrapper.vm.form.allowed_cidrs = ['10.0.0.0/8']
+    await wrapper.vm.runSourcePolicyCheck()
+    await flushPromises()
+    expect(wrapper.vm.cidrCheckFailed).toBe(true)
+    // 三種端點驅動的提示一律不出現——取不到結果不是「沒問題」
+    expect(wrapper.vm.selfLockLine).toBe('')
+    expect(wrapper.vm.effectiveUnrestrictedLine).toBe('')
+    expect(wrapper.vm.normalizedPreview).toBe('')
+  })
+
+  it('「你目前的來源」取自 /auth/me，取不到時整行不出現', async () => {
+    getCurrentUserMock.mockResolvedValue({ id: 7 })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.vm.handleCreate()
+    await flushPromises()
+    expect(wrapper.vm.currentSourceIp).toBe('')
+    expect(wrapper.vm.currentSourceLine).toBe('')
+  })
+
+  // 那個位址是**管理者自己**的。擺在別人的允許清單旁邊，會被讀成
+  // 「這個帳號的來源」而照著填——與自鎖警告同一道把關
+  it('「你目前的來源」只在編輯自己的帳號時出現', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 7, roles: ['admin'] }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0]) // 對象 id 7＝自己
+    await flushPromises()
+    expect(wrapper.vm.currentSourceLine).toContain('203.0.113.9')
+  })
+
+  it('編輯他人與新增帳號時都不顯示管理者自己的來源位址', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, roles: ['admin'] }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0]) // 對象 id 7≠自己（id 1）
+    await flushPromises()
+    expect(wrapper.vm.currentSourceIp).toBe('203.0.113.9') // 取得到，但不該渲染
+    expect(wrapper.vm.currentSourceLine).toBe('')
+
+    wrapper.vm.handleCreate()
+    await flushPromises()
+    expect(wrapper.vm.currentSourceLine).toBe('')
+  })
+
+  // 打完網段直接點「確定」，第一次點不會送出（實測三次全重現）：
+  // 按下按鈕使輸入框失焦 → 就地觸發判定 → 「檢查中」那行插進對話框內容裡，
+  // 把整個頁尾往下推一行 → 放開時按鈕已離開游標 → 瀏覽器不產生 click。
+  // 對使用者而言是主要儲存路徑「按了沒反應」且零回饋。
+  //
+  // 兩件事一起守，少一件就會復發：
+  // (1) 頁尾按下時不奪走輸入框的焦點（mousedown 被 preventDefault）＝不重排；
+  // (2) 送出自己收攏還停在輸入框裡的那一項，不倚賴失焦的副作用。
+  // 判定端點仍要被呼叫（自鎖警告與「等同不限」靠它），且**只呼叫一次**
+  // ——收攏時排的 debounce 必須被送出前的那次吃掉，不得變成兩次請求。
+  it('輸入後直接點「確定」：一次點擊即送出，且不因按下而失焦', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    wrapper.vm.handleEdit(wrapper.vm.userList[0])
+    await flushPromises()
+
+    await wrapper.find('[data-test="cidr-input"]').setValue('10.0.0.0/8')
+    await flushPromises()
+    expect(wrapper.vm.cidrDraft).toBe('10.0.0.0/8')
+    expect(wrapper.vm.form.allowed_cidrs).toEqual([]) // 還沒按 Enter，仍停在輸入框裡
+
+    const submit = wrapper.find('[data-test="user-dialog-submit"]').element
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    submit.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+
+    submit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    await flushPromises()
+    await flushPromises()
+
+    expect(updateUserMock).toHaveBeenCalledTimes(1)
+    expect(updateUserMock.mock.calls[0][1].allowed_cidrs).toEqual(['10.0.0.0/8'])
+    expect(checkSourcePolicyMock).toHaveBeenCalledTimes(1)
+    expect(checkSourcePolicyMock.mock.calls[0][0].allowed_cidrs).toEqual(['10.0.0.0/8'])
   })
 })

@@ -66,6 +66,11 @@ type SealHandler struct {
 	// 服務圖以參數傳入而非由呼叫端自行保存：逾時後才返回的殭屍段 2 會寫入
 	// 同一份共享狀態，用共享變數承接等於自造一個資料競賽。
 	onUnsealed func(seal.ServiceGraph)
+	// instanceGuard 單實例守衛的粗狀態探針。
+	// 狀態查詢已是「行程當下狀態」的公開出口，且不寫審計列，故供橫幅輪詢；
+	// 回應**不含**持鎖者指紋、確認碼、主機名／pid（那些走管理者限定端點）。
+	// nil＝未注入（僅單測），此時省略欄位。
+	instanceGuard func() InstanceGuardStatus
 }
 
 // NewSealHandler 建立解封端點 handler。
@@ -95,6 +100,9 @@ func (h *SealHandler) SetAdmitter(fn SealAdmitFunc) { h.admit = fn }
 
 // SetOnUnsealed 注入解封成功後的放行回呼（段 2 router 換手）。
 func (h *SealHandler) SetOnUnsealed(fn func(seal.ServiceGraph)) { h.onUnsealed = fn }
+
+// SetInstanceGuardProbe 注入單實例守衛的粗狀態探針（組裝根於兩種模式各呼叫一次）。
+func (h *SealHandler) SetInstanceGuardProbe(fn func() InstanceGuardStatus) { h.instanceGuard = fn }
 
 // globalSourceKey 是「未設可信代理」時全部來源共用的退避鍵。
 // 常數而非空字串：空字串在 map 中與「未設鍵」難以辨識，具名值使降級在
@@ -132,6 +140,11 @@ func (h *SealHandler) Status(c *gin.Context) {
 	}
 	if h.bindAddr != "" {
 		body["bind_addr"] = h.bindAddr
+	}
+	// 守衛粗狀態：對未認證呼叫者多揭露一個狀態列舉，
+	// 與本端點已揭露的封印狀態、bind_addr 同級；持鎖者細節不在此。
+	if h.instanceGuard != nil {
+		body["instance_guard"] = h.instanceGuard()
 	}
 	if snap.State == seal.StateSealedFaulted && snap.FaultCode != "" {
 		body["fault_code"] = snap.FaultCode

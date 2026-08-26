@@ -158,6 +158,9 @@ type CreateUserRequest struct {
 	Email    string   `json:"email" binding:"required,email"`
 	FullName string   `json:"full_name"`
 	Roles    []string `json:"roles"` // 角色名稱列表
+	// AllowedCIDRs 允許來源網段清單；省略＝不限。逐項驗證與正規化由
+	// sourceip 單一實作承載，任一項不合法整體拒絕
+	AllowedCIDRs []string `json:"allowed_cidrs"`
 }
 
 // UpdateUserRequest 更新使用者請求。
@@ -167,6 +170,10 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	Email    string `json:"email"`
 	FullName string `json:"full_name"`
+	// AllowedCIDRs 具 presence 語義：欄位省略與 JSON null 皆解為 nil 指標＝保留現值；
+	// 非 nil 空陣列＝清除為不限；非空＝整體取代。指標型別即語義——舊形狀 payload
+	// （只帶 email／full_name）不會把既有限制靜默清空
+	AllowedCIDRs *[]string `json:"allowed_cidrs"`
 }
 
 // CountLocalAdmins 現存本地 admin 數（管理端警示用的唯讀查詢）。
@@ -206,6 +213,7 @@ func (s *UserService) GetByID(id uint) (*model.User, error) {
 		return nil, result.Error
 	}
 
+	DecorateSourcePolicy(&user)
 	return &user, nil
 }
 
@@ -271,6 +279,7 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 	}
 
 	s.fillAuthProviderNames(users)
+	decorateSourcePolicyAll(users)
 
 	return &UserListResponse{
 		Data:  users,
@@ -333,6 +342,12 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		return nil, err
 	}
 
+	// 允許來源網段：省略＝不限；任一項不合法整體拒絕
+	allowedCIDRs, err := normalizeAllowedCIDRs(req.AllowedCIDRs)
+	if err != nil {
+		return nil, err
+	}
+
 	// 加密密碼
 	hashedPassword, err := crypto.DefaultPasswordHasher().Hash([]byte(req.Password))
 	if err != nil {
@@ -356,6 +371,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		LastLoginAt:        &now,
 		ProvisioningOrigin: model.AuthSourceLocal,
 		ExternalCredential: false,
+		AllowedCIDRs:       allowedCIDRs,
 	}
 
 	// 開始事務
@@ -412,10 +428,15 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if err := s.db.Preload("Roles").First(user, user.ID).Error; err != nil {
 		log.Printf("[UserService] Create: Reload user error: %v", err)
 		// 使用者已創建，但預加載失敗，返回不帶角色的使用者
+		DecorateSourcePolicy(user)
 		return user, nil
 	}
 
 	log.Printf("[UserService] Create: User created successfully, ID: %d, Username: %s", user.ID, user.Username)
+	DecorateSourcePolicy(user)
+	// 新帳號的清單也進恢復謂詞的評估面：失效中時新增一個乾淨帳號不該結案，
+	// 而 EvaluateSourcePolicyHealth 掃的是全表，判定因此不會被單筆新增誤導
+	EvaluateSourcePolicyHealth(s.db)
 	return user, nil
 }
 
@@ -463,6 +484,27 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 		diff["full_name.before"] = user.FullName
 		diff["full_name.after"] = req.FullName
 	}
+	// 允許來源網段（presence 語義）：nil 指標（欄位省略或 JSON null）＝保留現值、
+	// diff 無該欄；空陣列＝清除為不限；非空＝驗證正規化後整體取代。
+	// diff 記正規化後的前後清單原文（判定依據本身，不遮罩）
+	if req.AllowedCIDRs != nil {
+		normalized, err := normalizeAllowedCIDRs(*req.AllowedCIDRs)
+		if err != nil {
+			return nil, nil, err
+		}
+		if normalized != user.AllowedCIDRs {
+			updates["allowed_cidrs"] = normalized
+			diff["allowed_cidrs.before"] = user.AllowedCIDRs
+			diff["allowed_cidrs.after"] = normalized
+		}
+	}
+
+	// 清單成功寫入後重評估恢復謂詞：管理者修好損壞的那一列之後，
+	// 失效事件要能自己結案，不必等重啟。**放在寫入之後**——寫入前評估只會
+	// 看到舊值。無變更時 defer 仍會跑一次，成本是失效期間的一次全表掃描
+	if _, changed := updates["allowed_cidrs"]; changed {
+		defer func() { EvaluateSourcePolicyHealth(s.db) }()
+	}
 
 	// 執行更新
 	if len(updates) > 0 {
@@ -480,10 +522,12 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 	// 預加載角色後返回
 	if err := s.db.Preload("Roles").First(&user, id).Error; err != nil {
 		log.Printf("[UserService] Update: Reload user error: %v", err)
+		DecorateSourcePolicy(&user)
 		return &user, diff, nil
 	}
 
 	log.Printf("[UserService] Update: User updated successfully, ID: %d", id)
+	DecorateSourcePolicy(&user)
 	return &user, diff, nil
 }
 

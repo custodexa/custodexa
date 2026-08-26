@@ -13,6 +13,7 @@
     "session_record_create_failed": "會話記錄建立失敗，連線已拒",
     "audit_write_fallback_file": "審計批次寫入失敗，已降級至檔案",
     "audit_write_batch_dropped": "審計批次寫入失敗，檔案降級已關閉、批次丟棄",
+    "audit_write_sync_refused": "同步審計寫入失敗，該次操作已拒絕",
     "syslog_connect_failed": "syslog 轉發連線失敗",
     "syslog_buffer_overflow": "syslog 轉發緩衝溢出",
     "kek_retirement_backlog": "KEK 退役收尾未收斂",
@@ -21,7 +22,9 @@
     "audit_chain_structure_invalid": "檢查點鏈結構異常（簽章、鏈接或序號被動）",
     "audit_chain_content_mismatch": "已封區間的審計紀錄與檢查點不符或缺失",
     "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
-    "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）"
+    "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）",
+    "source_policy_unreadable": "判定點讀不到使用者的允許來源網段清單",
+    "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）"
   },
   "severity": {
     "high": "高風險",

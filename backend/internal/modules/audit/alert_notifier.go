@@ -92,12 +92,19 @@ type notifySessionBody struct {
 	// omitempty——名稱解析不到時整個欄位不出現，而非送出空字串。
 	Username  string `json:"username,omitempty"`
 	AssetName string `json:"asset_name,omitempty"`
+	// ClientIP 該會話建線當下的來源位址。同樣是純加法的可選欄——
+	// 新來源位址類的告警，位址就是告警的內容本身；收端不需改動即可繼續解析
+	ClientIP string `json:"client_ip,omitempty"`
 }
 
 // alertSubjectNames 一則告警的主體名稱（查不到即為空字串，由呈現層降級）。
 type alertSubjectNames struct {
 	User  string
 	Asset string
+	// ClientIP 所屬會話建線當下的來源位址（查不到即空字串）。
+	// 名字叫 subjectNames 而它不是名字——放在這裡是因為它與兩個名稱同源、
+	// 同一次解析取得、同樣「查不到就降級不報錯」
+	ClientIP string
 }
 
 // buildAlertPayload 將告警組裝為推送 payload
@@ -120,6 +127,7 @@ func buildAlertPayload(alert model.CommandAlert, names alertSubjectNames) notify
 			AssetID:   alert.AssetID,
 			Username:  names.User,
 			AssetName: names.Asset,
+			ClientIP:  names.ClientIP,
 		},
 	}
 }
@@ -455,6 +463,17 @@ func (n *AlertNotifier) resolveSubjectNames(alert model.CommandAlert) alertSubje
 	}
 	if alert.AssetID != nil && *alert.AssetID != 0 {
 		out.Asset = lookupAssetNamesDB(n.db, []uint{*alert.AssetID})[*alert.AssetID]
+	}
+	if alert.SessionID != 0 && n.db != nil {
+		var ip string
+		// 查不到（會話列已清除、或測試通知的零值）一律留空，不回錯誤——
+		// 理由同上：不為了補一個欄位而讓告警靜默
+		_ = n.db.Model(&model.Session{}).
+			Select("client_ip").
+			Where("id = ?", alert.SessionID).
+			Limit(1).
+			Scan(&ip).Error
+		out.ClientIP = ip
 	}
 	return out
 }

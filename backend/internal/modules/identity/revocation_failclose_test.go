@@ -197,7 +197,7 @@ func TestRefreshSignsAccessWithRowGeneration(t *testing.T) {
 	}
 	t.Cleanup(func() { refreshPostRotateHook = prev })
 
-	resp, err := auth.RefreshSession(first.RefreshToken)
+	resp, err := auth.RefreshSession(first.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("刷新 = %v, want nil", err)
 	}
@@ -222,7 +222,7 @@ func TestRefreshNonRacyKeepsTokenUsable(t *testing.T) {
 	user := seedLockoutUser(t, db, "right-pass-1")
 	first := loginForRefresh(t, auth, "bob", "right-pass-1")
 
-	resp, err := auth.RefreshSession(first.RefreshToken)
+	resp, err := auth.RefreshSession(first.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("刷新 = %v, want nil", err)
 	}
@@ -302,13 +302,13 @@ func TestReuseDetectionFailClosesWhenRevokeFails(t *testing.T) {
 	auth, _, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
 	first := loginForRefresh(t, auth, "bob", "right-pass-1")
-	if _, err := auth.RefreshSession(first.RefreshToken); err != nil {
+	if _, err := auth.RefreshSession(first.RefreshToken, ""); err != nil {
 		t.Fatalf("首次刷新: %v", err)
 	}
 
 	failFamilyRevoke(t, db)
 
-	_, err := auth.RefreshSession(first.RefreshToken) // 重放已 rotated 憑證
+	_, err := auth.RefreshSession(first.RefreshToken, "") // 重放已 rotated 憑證
 	var revokeErr *RefreshFamilyRevokeError
 	if !errors.As(err, &revokeErr) {
 		t.Fatalf("撤銷失敗時 = %v, want RefreshFamilyRevokeError", err)
@@ -327,11 +327,11 @@ func TestReuseDetectionSucceedsWhenRevokeWorks(t *testing.T) {
 	auth, _, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
 	first := loginForRefresh(t, auth, "bob", "right-pass-1")
-	if _, err := auth.RefreshSession(first.RefreshToken); err != nil {
+	if _, err := auth.RefreshSession(first.RefreshToken, ""); err != nil {
 		t.Fatalf("首次刷新: %v", err)
 	}
 
-	_, err := auth.RefreshSession(first.RefreshToken)
+	_, err := auth.RefreshSession(first.RefreshToken, "")
 	var reuse *RefreshReuseError
 	if !errors.As(err, &reuse) {
 		t.Fatalf("撤銷成功時 = %v, want RefreshReuseError", err)

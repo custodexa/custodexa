@@ -197,6 +197,10 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/daily_review_handler.go", fn: "DailyReviewHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/export_signing_handler.go", fn: "ExportSigningHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/host_key_handler.go", fn: "HostKeyHandler.RegisterRoutes", count: 1},
+	// 單實例守衛快照：唯讀端點，但它回答「這個部署現在有幾個實例、鎖在誰手上、
+	// 持鎖者的指紋是什麼」。漏掛認證＝把部署拓撲與確認碼線索交給匿名探測。
+	// 鏈上另以 RequireRole("admin") 疊加。
+	{symbol: "AuthMiddleware", file: "internal/api/instance_guard_handler.go", fn: "InstanceGuardHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/key_management_handler.go", fn: "KeyManagementHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/ldap_directory_handler.go", fn: "LDAPDirectoryHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/my_connection_handler.go", fn: "MyConnectionHandler.RegisterRoutes", count: 1},

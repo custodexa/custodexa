@@ -93,6 +93,9 @@ func TestBaselineMatchesModelSchemaPostgres(t *testing.T) {
 	if err := applyBaseline(baseDB); err != nil {
 		t.Fatalf("baseline 失敗: %v", err)
 	}
+	if err := applyMigrationsAfterBaseline(baseDB); err != nil { // 增量表同受本層比對
+		t.Fatalf("增量 migration 失敗: %v", err)
+	}
 
 	want := columnShapes(t, modelDB, modelSchema)
 	got := columnShapes(t, baseDB, baseSchema)
@@ -203,14 +206,19 @@ var baselineStructuralAssertions = map[string]string{
 	"uniq_alert_rules_name": "CREATE UNIQUE INDEX uniq_alert_rules_name ON %s.alert_rules USING btree (name)",
 }
 
-// baselineCheckConstraints 10 條 CHECK 約束的具名清單與定義。
+// baselineCheckConstraints 13 條 CHECK 約束的具名清單與所在表。
 //
 // `ldap_directories_singleton_check` 是其中最需要具名的一條：壓縮前它由
 // migration 的 inline CHECK 建立，且靠一條 AST 守衛（TestLDAPDirectoryNotInAutoMigrateList）
 // 擋住「有人把 model 加進 AutoMigrate 清單」——因為 GORM 不產出 inline CHECK，
 // 先被 AutoMigrate 建出的表會讓 CHECK 在生產完全不存在而無外顯症狀。
 // AutoMigrate 移除後那條守衛失去對象，保護責任落到這裡：**總量斷言不夠**
-// （少一條 CHECK 而多一條別的仍然是 10），故逐條比對定義文字。
+// （少一條 CHECK 而多一條別的仍然是 13），故逐條比對定義文字。
+//
+// 2026-08-25 訂正：清單原列 10 條而 baseline 實建 13 條（漏了 command_alerts 的
+// kind 值域與 kind↔rule_id 對應兩條、session_commands 的降級無文字一條），
+// 本測試因而長期紅——平時 PG-gated skip 故無人看見。三條補列，且 command_alerts_kind_check
+// 的值域自增量 migration 起含 new_source_ip，由下方專屬斷言釘住。
 var baselineCheckConstraints = map[string]string{
 	"alert_rules_action_check":             "alert_rules",
 	"alert_rules_severity_check":           "alert_rules",
@@ -219,6 +227,9 @@ var baselineCheckConstraints = map[string]string{
 	"chk_auth_target":                      "asset_authorizations",
 	"chk_authz_subject_xor":                "asset_authorizations",
 	"command_alerts_severity_check":        "command_alerts",
+	"command_alerts_kind_check":            "command_alerts",
+	"command_alerts_kind_rule_ref":         "command_alerts",
+	"session_commands_degraded_no_text":    "session_commands",
 	"ldap_directories_singleton_check":     "ldap_directories",
 	"notification_channels_language_check": "notification_channels",
 	"notification_channels_type_check":     "notification_channels",
@@ -230,6 +241,9 @@ func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
 	db := freshSchema(t, dsn, pgSchema)
 	if err := applyBaseline(db); err != nil {
 		t.Fatalf("baseline 失敗: %v", err)
+	}
+	if err := applyMigrationsAfterBaseline(db); err != nil {
+		t.Fatalf("增量 migration 失敗: %v", err)
 	}
 
 	// ── 索引定義逐條比對 ──
@@ -301,6 +315,15 @@ func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
 		if !strings.Contains(strings.ToLower(c.Def), "singleton = 1") {
 			t.Errorf("ldap_directories_singleton_check 的定義不是 (singleton = 1)：%s\n"+
 				"CHECK 被放寬時 partial unique index 擋不住 singleton=2，單列保證即失效", c.Def)
+		}
+	}
+	// command_alerts.kind 值域專屬斷言：增量 migration 重建後必須含 new_source_ip，
+	// 否則新來源位址告警的 INSERT 在生產直接撞 CHECK 而告警靜默消失
+	if c, ok := actualCons["command_alerts_kind_check"]; ok {
+		for _, kind := range []string{"rule", "audit_degraded", "new_source_ip"} {
+			if !strings.Contains(c.Def, "'"+kind+"'") {
+				t.Errorf("command_alerts_kind_check 的值域缺 %q：%s", kind, c.Def)
+			}
 		}
 	}
 }

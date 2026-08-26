@@ -35,7 +35,7 @@ func TestUnbindExternalIdentityEndpoint(t *testing.T) {
 		mockUserService.On("UnbindExternalIdentity", uint(7), uint(3),
 			mock.AnythingOfType("identity.IdentityAdminActor")).Return(nil)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id/external-identities/:identityId", handler.UnbindExternalIdentity)
 
@@ -51,7 +51,7 @@ func TestUnbindExternalIdentityEndpoint(t *testing.T) {
 		mockUserService.On("UnbindExternalIdentity", uint(7), uint(3),
 			mock.AnythingOfType("identity.IdentityAdminActor")).Return(identity.ErrLastLoginPath)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id/external-identities/:identityId", handler.UnbindExternalIdentity)
 
@@ -68,7 +68,7 @@ func TestUnbindExternalIdentityEndpoint(t *testing.T) {
 			mock.AnythingOfType("identity.IdentityAdminActor")).
 			Return(identity.ErrExternalIdentityNotFound)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id/external-identities/:identityId", handler.UnbindExternalIdentity)
 
@@ -87,7 +87,7 @@ func TestBindExternalIdentityEndpoint(t *testing.T) {
 			mock.AnythingOfType("identity.IdentityAdminActor")).
 			Return(nil, identity.ErrExternalIdentityExists)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users/:id/external-identities", handler.BindExternalIdentity)
 
@@ -103,7 +103,7 @@ func TestBindExternalIdentityEndpoint(t *testing.T) {
 
 	t.Run("缺欄位回 400 且不進 service", func(t *testing.T) {
 		mockUserService := new(MockUserService)
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users/:id/external-identities", handler.BindExternalIdentity)
 
@@ -125,7 +125,7 @@ func TestConvertToExternalOnlyEndpoint(t *testing.T) {
 			mock.AnythingOfType("identity.IdentityAdminActor")).
 			Return(identity.ErrExternalIdentityRequired)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users/:id/external-only", handler.ConvertToExternalOnly)
 
@@ -142,7 +142,7 @@ func TestConvertToExternalOnlyEndpoint(t *testing.T) {
 			mock.AnythingOfType("identity.IdentityAdminActor")).
 			Return(identity.ErrLastLocalAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.POST("/users/:id/external-only", handler.ConvertToExternalOnly)
 
@@ -162,7 +162,7 @@ func TestLastLocalAdminMapsToPreciseCode(t *testing.T) {
 		mockUserService := new(MockUserService)
 		mockUserService.On("UpdateStatus", uint(7), false).Return(identity.ErrLastLocalAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/status", handler.UpdateStatus)
 
@@ -180,7 +180,7 @@ func TestLastLocalAdminMapsToPreciseCode(t *testing.T) {
 		mockUserService := new(MockUserService)
 		mockUserService.On("Delete", uint(7)).Return(identity.ErrLastLocalAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.DELETE("/users/:id", handler.Delete)
 
@@ -195,7 +195,7 @@ func TestLastLocalAdminMapsToPreciseCode(t *testing.T) {
 		mockUserService := new(MockUserService)
 		mockUserService.On("AssignRoles", uint(7), []string{"user"}).Return(identity.ErrLastLocalAdmin)
 
-		handler := NewUserHandler(mockUserService)
+		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 

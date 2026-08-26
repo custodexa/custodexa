@@ -31,9 +31,11 @@ type Migration struct {
 
 // migrations 所有可用的 migrations（按版本順序）。
 //
-// **只有 baseline**：壓縮前的 49 條增量 migration 已
+// **baseline ＋ 其後的增量**：壓縮前的 49 條增量 migration 已
 // 退場，其最終 schema 形狀併入 baseline，其存量回填在全新資料庫上一律零列。
-// 本產品**不提供既有資料庫的就地升級路徑**（見 RunMigrations 的 fail-close）。
+// 「不提供就地升級」的 fail-close 只針對**壓縮前**的資料庫（見 RunMigrations）；
+// baseline 之後的新表／新欄回歸標準增量形態，全新庫依序跑 baseline→增量，
+// 既有（已套 baseline 的）庫只補增量。
 var migrations = []Migration{
 	{
 		Version: BaselineVersion,
@@ -41,6 +43,45 @@ var migrations = []Migration{
 		Up:      applyBaseline,
 		Down:    refuseBaselineRollback,
 	},
+	{
+		// 證據包非同步匯出 job 表
+		Version: "20260824_audit_export_jobs",
+		Name:    "audit_export_jobs",
+		Up:      applyAuditExportJobs,
+		Down:    rollbackAuditExportJobs,
+	},
+	{
+		// 來源位址追查：users.allowed_cidrs、user_source_ips 基準表、兩條索引、
+		// command_alerts kind 值域擴充與冷啟動回填。**Down 銷毀資料、開發庫限定**
+		// （見 migration_source_ip_forensics.go 檔頭）
+		Version: "20260826_source_ip_forensics",
+		Name:    "source_ip_forensics",
+		Up:      applySourceIPForensics,
+		Down:    rollbackSourceIPForensics,
+	},
+}
+
+// schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
+//
+// **parity 守衛的解析對象**（schema_parity_test.go 第 1 層；pg 兩層測試以
+// applyBaseline＋applyMigrationsAfterBaseline 建出同一形狀）：schema 事實源自
+// 增量 migration 出現起即為「baseline＋增量」的串接，守衛只看 baseline 會讓
+// 增量表的漂移整張脫離射程。**不供執行**——執行面由 RunMigrations 依已套用
+// 集合分別跑，兩者串接執行會在全新庫上重複建表。回填語句不在此列（不是 schema）。
+func schemaDDLStatements() []string {
+	out := append(baselineSchemaStatements(), auditExportJobsDDL()...)
+	return append(out, sourceIPForensicsDDL()...)
+}
+
+// applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity
+// 測試在 applyBaseline 後補齊終態形狀用；生產路徑一律走 RunMigrations）。
+func applyMigrationsAfterBaseline(db *gorm.DB) error {
+	for _, m := range migrations[1:] {
+		if err := m.Up(db); err != nil {
+			return fmt.Errorf("增量 %s 失敗: %w", m.Version, err)
+		}
+	}
+	return nil
 }
 
 // LDAPSeedMarkerVersion LDAP env→DB seed 的執行標記（寫入 schema_migrations 的 version）。

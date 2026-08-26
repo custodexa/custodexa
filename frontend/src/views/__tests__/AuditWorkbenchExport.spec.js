@@ -47,9 +47,13 @@ vi.mock('@/api/auditTimeline', () => ({
 
 const exportMock = vi.fn()
 const publicKeyMock = vi.fn()
+// createAuditExportJob 是證據包（非同步）那條路；本檔驗的是預設的事件報告
+// 同步路徑，故只需存在於 mock，不應被呼叫（下方一條斷言盯著）
+const createJobMock = vi.fn()
 vi.mock('@/api/auditExport', () => ({
   exportAuditEvidence: (...args) => exportMock(...args),
   getExportSigningPublicKey: (...args) => publicKeyMock(...args),
+  createAuditExportJob: (...args) => createJobMock(...args),
 }))
 
 const FROM = '2026-08-12T00:00:00+08:00'
@@ -166,7 +170,9 @@ describe('匯出範圍＝畫面範圍', () => {
 
   it('關掉一類之後匯出，送出的 types 隨之縮減（不是「全部」）', async () => {
     const wrapper = await mountPage()
-    await wrapper.find('[data-test="category-clipboard"] input').setValue(false)
+    // 類別選擇已由左欄核取方塊改為篩選列 chips（版面資訊層級規格）：
+    // 載體換了，「關掉的類別不進匯出範圍」這條語義逐字不變
+    await wrapper.find('[data-test="category-clipboard"]').trigger('click')
     await flushPromises()
     await openDialog(wrapper)
     await wrapper.find('[data-test="export-confirm"]').trigger('click')
@@ -176,6 +182,15 @@ describe('匯出範圍＝畫面範圍', () => {
     expect(types).not.toContain('clipboard')
     expect(types).toContain('session')
     expect(exportMock.mock.calls.at(-1)[0].user_id).toBe(1)
+  })
+
+  it('預設包型是事件報告：走同步端點，不會偷偷發起一份背景打包', async () => {
+    const wrapper = await mountPage()
+    await openDialog(wrapper)
+    await wrapper.find('[data-test="export-confirm"]').trigger('click')
+    await flushPromises()
+    expect(exportMock).toHaveBeenCalledTimes(1)
+    expect(createJobMock).not.toHaveBeenCalled()
   })
 
   it('以人調查時帶 user_id、以資產調查時帶 asset_id（樞紐不會帶錯欄）', async () => {
@@ -197,13 +212,125 @@ describe('匯出範圍＝畫面範圍', () => {
     expect(counts).toContain('剪貼簿 0')
   })
 
-  it('範圍不完整時不給按（沒有對象＝沒有「目前的調查範圍」）', async () => {
+  it('範圍不完整時兩顆入口都不給按（沒有對象＝沒有「目前的調查範圍」）', async () => {
     routeState.query = { subject: 'user' }
     const wrapper = await mountPage()
     expect(
       wrapper.find('[data-test="open-export"]').attributes('disabled')
     ).toBeDefined()
+    expect(
+      wrapper.find('[data-test="open-export-bundle"]').attributes('disabled')
+    ).toBeDefined()
     expect(wrapper.find('[data-test="export-dialog"]').exists()).toBe(false)
+  })
+
+  // 位址樞紐沒有匯出（匯出端點的範圍鍵只有 user_id／asset_id）。
+  // 範圍是齊的卻不給按，理由必須說得出替代路徑，否則讀起來像壞掉
+  it('位址樞紐即使範圍齊全也不給按，且對話框開不起來', async () => {
+    routeState.query = { subject: 'ip', id: '203.0.113.5', from: FROM, to: TO }
+    const wrapper = await mountPage()
+    const report = wrapper.find('[data-test="open-export"]')
+    expect(report.attributes('disabled')).toBeDefined()
+    expect(report.attributes('title')).toContain('切換到「以人調查」或「以資產調查」')
+    await report.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="export-dialog"]').exists()).toBe(false)
+    expect(exportMock).not.toHaveBeenCalled()
+  })
+
+  // 匯出端點沒有 client_ip 參數：畫面套著位址篩選時，拿到的是**篩選前**的
+  // 全部紀錄。不明說，使用者會以為那份就是他正在看的那一小段
+  it('畫面套著位址篩選時，範圍段明示該篩選不在匯出範圍內', async () => {
+    routeState.query = { ...baseQuery, ip: '203.0.113.5' }
+    const wrapper = await mountPage()
+    await openDialog(wrapper)
+    const caveat = wrapper.find('[data-test="export-scope-ip-filter"]')
+    expect(caveat.exists()).toBe(true)
+    expect(caveat.text()).toContain('不會套用到這份')
+    // 送出的參數確實沒有位址條件（文案說的與實際送的一致）
+    await wrapper.find('[data-test="export-confirm"]').trigger('click')
+    await flushPromises()
+    expect(exportMock.mock.calls.at(-1)[0].client_ip).toBeUndefined()
+  })
+
+  // counts 由時間軸查詢帶回、**吃 client_ip**，匯出端點卻不吃：同一段裡若一邊
+  // 列篩選後的數字、一邊說收錄篩選前的全部，讀者只能二選一相信。筆數行必須
+  // 自報口徑，兩者的關係由但書收束
+  it('套著位址篩選時筆數行自報「篩選後」口徑，且但書說明實收不會更少', async () => {
+    routeState.query = { ...baseQuery, ip: '203.0.113.5' }
+    const wrapper = await mountPage()
+    await openDialog(wrapper)
+    const counts = wrapper.find('[data-test="export-scope-counts"]').text()
+    expect(counts).toContain('套用來源位址篩選後')
+    expect(wrapper.find('[data-test="export-scope-ip-filter"]').text()).toContain(
+      '不會少於上面的數字'
+    )
+  })
+
+  it('沒有位址篩選時不出現那句但書（不是常駐免責）', async () => {
+    const wrapper = await mountPage()
+    await openDialog(wrapper)
+    expect(wrapper.find('[data-test="export-scope-ip-filter"]').exists()).toBe(false)
+    // 筆數行也回到原句：沒篩選時加註口徑等於憑空製造一個不存在的但書
+    expect(wrapper.find('[data-test="export-scope-counts"]').text()).not.toContain(
+      '套用來源位址篩選後'
+    )
+  })
+})
+
+// 4b.2：包型是取件方式與內容的分野（陳述／證物、同步／非同步），
+// 藏進對話框內的 radio 等於要使用者先按了才知道有另一種 → 工具列兩顆並排。
+// 斷言重心：兩顆各自預選對的包型，且證據包那顆發起時**帶得動類別**
+//（4b.1 起證據包也套類別；少了 pack 則整條路徑會被後端判成報告而拒絕）
+describe('工具列兩顆並排入口', () => {
+  it('兩顆都在，各自標明包型（事件報告／證據包）', async () => {
+    const wrapper = await mountPage()
+    expect(wrapper.find('[data-test="open-export"]').text()).toContain('匯出事件報告')
+    expect(wrapper.find('[data-test="open-export-bundle"]').text()).toContain('下載證據包')
+  })
+
+  it('按「下載證據包」開起來即證據包態（不必再點一次對話框內的 radio）', async () => {
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="open-export-bundle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="export-confirm"]').text()).toBe('發起打包')
+    expect(wrapper.find('[data-test="export-limits"]').text()).toContain('這一包不能證明什麼')
+  })
+
+  it('按「匯出事件報告」開起來即報告態（兩顆共用對話框，包型不得互相沾黏）', async () => {
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="open-export-bundle"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="export-cancel"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="open-export"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="export-confirm"]').text()).toBe('產生報告')
+  })
+
+  it('證據包發起帶 pack 與畫面上的類別：關掉一類之後，送出的 types 隨之縮減', async () => {
+    createJobMock.mockResolvedValue({ data: { id: 5, status: 'pending' }, deduplicated: false })
+    const wrapper = await mountPage()
+    await wrapper.find('[data-test="category-clipboard"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="open-export-bundle"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-test="export-confirm"]').trigger('click')
+    await flushPromises()
+
+    const sent = createJobMock.mock.calls.at(-1)[0]
+    expect(sent).toMatchObject({
+      pack: 'evidence_bundle',
+      subject: 'user',
+      user_id: 1,
+      start_time: FROM,
+      end_time: TO,
+    })
+    const types = sent.types.split(',')
+    expect(types).not.toContain('clipboard')
+    expect(types).toContain('session')
+    // 走的是非同步發起，不得順手打同步端點（那條會直接吐一個大檔案下來）
+    expect(exportMock).not.toHaveBeenCalled()
   })
 })
 
@@ -237,19 +364,24 @@ describe('誠實邊界在按下之前呈現', () => {
     }
   })
 
-  it('匯出＝報告：明說不含剪貼簿內容、檔案本體與錄影檔，且畫面上沒有取得內容的入口、檔案本體從未留存', async () => {
+  it('匯出＝報告：明說不含剪貼簿內容、檔案本體與錄影檔，且指得出取得內容的真實途徑', async () => {
     const wrapper = await mountPage()
     await openDialog(wrapper)
     const text = wrapper.find('[data-test="export-limit-payload_excluded"]').text()
     expect(text).toContain('不含剪貼簿內容')
     expect(text).toContain('錄影檔')
-    // 三者不在報告內的原因不同，缺一條就會讓讀者以為「畫面上點一下就拿得到」：
-    // 剪貼簿內容仍在系統內，但介面沒有出口（本 change 的 Non-goals 明載不做那顆按鈕）
-    expect(text).toContain('畫面上目前沒有取得內容的入口')
+    // 三者不在報告內的原因不同。剪貼簿內容仍在系統內，且**已經有兩條真實途徑**
+    // 取得（會話詳情逐筆解密調閱、證據包）——這一條必須指得出去哪裡拿。
+    // 原文案寫「畫面上沒有入口、請向系統管理員提出」，在那兩條途徑上線後成了
+    // 假話，會把稽核推去走一條不存在的流程
+    expect(text).toContain('解密調閱')
+    expect(text).toContain('證據包')
+    expect(text).not.toContain('沒有取得內容的入口')
+    expect(text).not.toContain('向系統管理員提出')
     // 檔案本體從來沒被留存過，只有指紋——不是「這次沒放進報告」而是任何時候都取不到
     expect(text).toContain('從未留存')
     expect(text).toContain('指紋')
-    // 舊文案指引使用者去做一個不存在的動作；退回舊語義必須立刻轉紅
+    // 更舊的文案指引使用者去做一個不存在的動作；退回舊語義必須立刻轉紅
     expect(text).not.toContain('個別下載')
   })
 

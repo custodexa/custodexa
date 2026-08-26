@@ -118,6 +118,7 @@ func setupAuthSourceEnv(t *testing.T) *authSrcEnv {
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
 	})
 	h := NewAuthHandler(auth, auditService)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 
 	p := model.OIDCProvider{
 		Name: "corp-idp", Issuer: "https://idp.example.com", ClientID: "cid",

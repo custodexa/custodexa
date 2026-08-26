@@ -31,7 +31,7 @@ func TestRefreshRotationAndReuseDetection(t *testing.T) {
 	first := loginForRefresh(t, auth, "bob", "right-pass-1")
 
 	// 正常刷新：換發新 access 與新 refresh，且與舊值不同
-	rotated, err := auth.RefreshSession(first.RefreshToken)
+	rotated, err := auth.RefreshSession(first.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("刷新 = %v, want nil", err)
 	}
@@ -47,7 +47,7 @@ func TestRefreshRotationAndReuseDetection(t *testing.T) {
 	}
 
 	// 已輪替的舊憑證重放：typed error（供審計）＋家族撤銷
-	_, err = auth.RefreshSession(first.RefreshToken)
+	_, err = auth.RefreshSession(first.RefreshToken, "")
 	var reuse *RefreshReuseError
 	if !errors.As(err, &reuse) {
 		t.Fatalf("舊憑證重放 = %v, want RefreshReuseError", err)
@@ -57,7 +57,7 @@ func TestRefreshRotationAndReuseDetection(t *testing.T) {
 	}
 
 	// 家族撤銷後：攻擊面上「換到新憑證的一方」也一併失效
-	if _, err := auth.RefreshSession(rotated.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(rotated.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Errorf("家族撤銷後新憑證 = %v, want ErrRefreshInvalid", err)
 	}
 
@@ -82,7 +82,7 @@ func TestRefreshIdleTimeoutRequiresRelogin(t *testing.T) {
 	db.Model(&model.RefreshToken{}).Where("user_id = ?", 1).
 		Update("last_used_at", time.Now().Add(-16*time.Minute))
 
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("閒置逾時刷新 = %v, want ErrRefreshInvalid", err)
 	}
 
@@ -107,7 +107,7 @@ func TestRefreshAbsoluteLifetimeExceeded(t *testing.T) {
 			"expires_at":   time.Now().Add(-time.Minute),
 		})
 
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("逾絕對壽命刷新 = %v, want ErrRefreshInvalid", err)
 	}
 }
@@ -121,7 +121,7 @@ func TestRefreshRejectsDisabledOrLockedUser(t *testing.T) {
 
 	// 停用（繞過撤銷點，模擬競態殘留的未撤銷憑證）
 	db.Model(&model.User{}).Where("id = ?", user.ID).Update("active", false)
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("停用後刷新 = %v, want ErrRefreshInvalid", err)
 	}
 
@@ -130,7 +130,7 @@ func TestRefreshRejectsDisabledOrLockedUser(t *testing.T) {
 		"active":       true,
 		"locked_until": time.Now().Add(10 * time.Minute),
 	})
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("鎖定中刷新 = %v, want ErrRefreshInvalid", err)
 	}
 }
@@ -148,7 +148,7 @@ func TestLogoutRevokesOnlyCurrentRefresh(t *testing.T) {
 	}
 
 	// 已登出憑證重放：拒絕但不是 reuse（不得誤殺 deviceB）
-	_, err := auth.RefreshSession(deviceA.RefreshToken)
+	_, err := auth.RefreshSession(deviceA.RefreshToken, "")
 	if !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("登出後刷新 = %v, want ErrRefreshInvalid", err)
 	}
@@ -157,7 +157,7 @@ func TestLogoutRevokesOnlyCurrentRefresh(t *testing.T) {
 		t.Fatal("登出憑證重放不應觸發家族撤銷")
 	}
 
-	if _, err := auth.RefreshSession(deviceB.RefreshToken); err != nil {
+	if _, err := auth.RefreshSession(deviceB.RefreshToken, ""); err != nil {
 		t.Errorf("他裝置刷新 = %v, want nil", err)
 	}
 
@@ -177,7 +177,7 @@ func TestLogoutStaleRotatedTokenTriggersFamilyRevoke(t *testing.T) {
 	// 受害者登入取得 R0
 	victim := loginForRefresh(t, auth, "bob", "right-pass-1")
 	// 攻擊者竊 R0 並刷新 → 分叉出 R2（R0 標 rotated）
-	rotated, err := auth.RefreshSession(victim.RefreshToken)
+	rotated, err := auth.RefreshSession(victim.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("attacker refresh: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLogoutStaleRotatedTokenTriggersFamilyRevoke(t *testing.T) {
 	}
 
 	// 攻擊者的分叉鏈 R2 一併失效
-	if _, err := auth.RefreshSession(rotated.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(rotated.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Errorf("家族撤銷後攻擊者 R2 = %v, want ErrRefreshInvalid", err)
 	}
 	var cnt int64
@@ -220,7 +220,7 @@ func TestLogoutCurrentTokenNoFamilyRevoke(t *testing.T) {
 		t.Fatalf("正常登出 = %v, want nil", err)
 	}
 	// 他裝置不受影響
-	if _, err := auth.RefreshSession(deviceB.RefreshToken); err != nil {
+	if _, err := auth.RefreshSession(deviceB.RefreshToken, ""); err != nil {
 		t.Errorf("他裝置刷新 = %v, want nil（登出不應誤觸家族撤銷）", err)
 	}
 }
@@ -240,7 +240,7 @@ func TestPasswordChangeRevokesAllRefresh(t *testing.T) {
 	}
 
 	for name, tok := range map[string]string{"deviceA": deviceA.RefreshToken, "deviceB": deviceB.RefreshToken} {
-		if _, err := auth.RefreshSession(tok); !errors.Is(err, ErrRefreshInvalid) {
+		if _, err := auth.RefreshSession(tok, ""); !errors.Is(err, ErrRefreshInvalid) {
 			t.Errorf("改密後 %s 刷新 = %v, want ErrRefreshInvalid", name, err)
 		}
 	}
@@ -258,7 +258,7 @@ func TestLockoutRevokesAllRefresh(t *testing.T) {
 		auth.Login(&LoginRequest{Username: "bob", Password: "wrong"})
 	}
 
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Fatalf("鎖定後刷新 = %v, want ErrRefreshInvalid", err)
 	}
 	var row model.RefreshToken
@@ -297,7 +297,7 @@ func TestDisableRevokesRefreshAndTerminatesSessions(t *testing.T) {
 	if len(term.calledWith) != 1 || term.calledWith[0] != user.ID {
 		t.Errorf("停用應觸發 TerminateAllByUser(%d)，got %v", user.ID, term.calledWith)
 	}
-	if _, err := auth.RefreshSession(resp.RefreshToken); !errors.Is(err, ErrRefreshInvalid) {
+	if _, err := auth.RefreshSession(resp.RefreshToken, ""); !errors.Is(err, ErrRefreshInvalid) {
 		t.Errorf("停用後刷新 = %v, want ErrRefreshInvalid", err)
 	}
 	var row model.RefreshToken

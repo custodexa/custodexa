@@ -17,6 +17,12 @@
 | `FEATURE_ANOMALY_DETECTION_ENABLED` | `false` | 異常連線行為偵測 |
 | `FEATURE_ALERTING_ENABLED` | `false` | 告警通知系統 |
 
+## 非開關的啟動期確認值
+
+| 環境變數 | 說明 |
+|---------|------|
+| `INSTANCE_GUARD_ACK` | 單實例守衛的一次性衝突確認碼（`config.InstanceGuard.Ack`）。**不是開關**：只對與本次啟動查得的持鎖者指紋碼相符的一次衝突生效，持鎖者變更即失效，每次生效皆寫審計事件。攔下訊息會當場印出要設的值；刻意不入 `.env.example`（登記於 `env_drift_test.go` 的 allowlist）。 |
+
 ## 設定方式
 
 在專案根 `.env`（由 `.env.example` 複製）設置——dev 與 prod compose 皆以 `env_file` 消費它：

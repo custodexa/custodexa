@@ -21,18 +21,31 @@ import (
 // AuditExportHandler 稽核證據匯出（audit-workflows，PCI 10.5.1）
 type AuditExportHandler struct {
 	exportService *audit.AuditExportService
-	auditService  *audit.AuditLogService
+	// jobs 證據包非同步匯出 job；
+	// 端點本體在 audit_export_job_handler.go
+	jobs         *audit.AuditExportJobService
+	auditService *audit.AuditLogService
 }
 
 // NewAuditExportHandler 建立匯出 handler
-func NewAuditExportHandler(exportService *audit.AuditExportService, auditService *audit.AuditLogService) *AuditExportHandler {
-	return &AuditExportHandler{exportService: exportService, auditService: auditService}
+func NewAuditExportHandler(exportService *audit.AuditExportService,
+	jobs *audit.AuditExportJobService, auditService *audit.AuditLogService) *AuditExportHandler {
+	return &AuditExportHandler{exportService: exportService, jobs: jobs, auditService: auditService}
 }
 
-// Export 匯出證據包
+// Export 同步匯出（僅事件報告）。
+//
+// **證據包模式一律機器碼拒絕**：
+// 非同步化後，同步路徑續供 bundle 即繞過申請者綁定與限時下載鏈；
+// 也**不轉為 job 發起**——安全方法 GET 不得產生建立副作用，否則快取、
+// 預取與重試會誤觸發起。拒絕在設定任何串流標頭之前，回應零 bundle 位元組。
 func (h *AuditExportHandler) Export(c *gin.Context) {
 	filter, ok := parseExportFilter(c)
 	if !ok {
+		return
+	}
+	if !filter.IsEventReport() {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAuditExportBundleAsyncOnly, nil)
 		return
 	}
 
@@ -104,7 +117,15 @@ func parseExportFilter(c *gin.Context) (*audit.ExportFilter, bool) {
 		*p.dest = &parsed
 	}
 
-	if !parseExportReportScope(c, filter) {
+	isReport, ok := parseExportPack(c, filter)
+	if !ok {
+		return nil, false
+	}
+	if isReport {
+		if !parseExportReportScope(c, filter) {
+			return nil, false
+		}
+	} else if !parseExportBundleScope(c, filter) {
 		return nil, false
 	}
 
@@ -117,6 +138,91 @@ func parseExportFilter(c *gin.Context) (*audit.ExportFilter, bool) {
 	return filter, true
 }
 
+// parseExportPack 解析包型參數 `pack`，回傳「本次請求是否為事件報告」。
+//
+// **缺席時沿既有推斷**（帶 subject 或 types＝報告，否則證據包）：不帶 pack 的既有
+// 呼叫端行為逐位不變。明示 pack 才是 2026-08-25 起的正解——證據包也吃樞紐後，
+// subject 不再分辨得出包型。未知值回錯誤碼，SHALL NOT 靜默當成預設值：
+// 打錯字的 `pack=bundle` 若被當成缺席，會回一包與請求者所想完全不同的東西
+func parseExportPack(c *gin.Context, filter *audit.ExportFilter) (isReport bool, ok bool) {
+	switch pack := c.Query("pack"); pack {
+	case "":
+		// 沿既有推斷：帶 subject **或** types 即事件報告。types 也算在內是
+		// 為了讓「想要報告卻忘了帶樞紐」維持既有的當場拒絕——少了這一半，
+		// 那個請求會安靜地變成另一種包
+		return c.Query("subject") != "" || c.Query("types") != "", true
+	case audit.ExportModeEventReport:
+		filter.Pack = pack
+		return true, true
+	case audit.ExportModeEvidenceBundle:
+		filter.Pack = pack
+		return false, true
+	}
+	respondInvalidQueryParam(c, "pack")
+	return false, false
+}
+
+// parseExportBundleScope 證據包模式的樞紐與類別參數（2026-08-25 使用者裁決）。
+//
+// 與事件報告的差別：樞紐與時間窗**非必填**——既有的「指定 session 匯出這場的
+// 證物」仍是合法範圍。帶了樞紐就比照報告校驗其 id。類別枚舉與稽核調查時間軸
+// 同一套，未知值回錯誤碼不靜默忽略
+func parseExportBundleScope(c *gin.Context, filter *audit.ExportFilter) bool {
+	if subject := c.Query("subject"); subject != "" {
+		sub := audit.TimelineSubject(subject)
+		if sub != audit.SubjectUser && sub != audit.SubjectAsset {
+			respondInvalidQueryParam(c, "subject")
+			return false
+		}
+		// 樞紐 id 沿用 user_id／asset_id，不另立參數（同報告模式）
+		if sub == audit.SubjectUser && filter.UserID == nil {
+			respondInvalidQueryParam(c, "user_id")
+			return false
+		}
+		if sub == audit.SubjectAsset && filter.AssetID == nil {
+			respondInvalidQueryParam(c, "asset_id")
+			return false
+		}
+		filter.Subject = sub
+	}
+
+	rawTypes := c.Query("types")
+	if rawTypes == "" {
+		return true
+	}
+	seen := map[string]bool{}
+	for _, t := range splitCSV(rawTypes) {
+		if !audit.IsTimelineEventType(t) {
+			respondInvalidQueryParam(c, "types")
+			return false
+		}
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
+		filter.Types = append(filter.Types, audit.TimelineEventType(t))
+	}
+
+	// 告警與檔案傳輸無內容本體，以事件事實 csv 列入，其取數走樞紐＋時間窗
+	// （重用事件報告的寫入器）。選了這兩類卻沒有樞紐或完整時間窗，包內就會
+	// 少掉指名要的段——當場拒絕，不讓它變成一包安靜缺料的證物
+	for _, t := range filter.Types {
+		if t != audit.TimelineTypeAlert && t != audit.TimelineTypeFileTransfer {
+			continue
+		}
+		if filter.Subject == "" {
+			respondInvalidQueryParam(c, "subject")
+			return false
+		}
+		if filter.StartTime == nil || filter.EndTime == nil ||
+			!filter.EndTime.After(*filter.StartTime) {
+			respondInvalidQueryParam(c, "range")
+			return false
+		}
+	}
+	return true
+}
+
 // parseExportReportScope 事件報告模式的參數（subject／types）。
 //
 // 兩者皆缺席時完全不動 filter，行為與本模式出現前相同（既有匯出入口不受影響）
@@ -125,8 +231,14 @@ func parseExportReportScope(c *gin.Context, filter *audit.ExportFilter) bool {
 	rawTypes := c.Query("types")
 
 	if subject == "" {
-		// types 只在事件報告模式下有意義。單獨帶 types 而靜默忽略，
-		// 會回一包「以為篩過、其實沒篩」的證據
+		// 明示 pack=event_report 卻沒帶樞紐：報告的樞紐是必填，
+		// 放行會讓錯誤延到串流中途才發生（標頭已寫出，改不了狀態碼）
+		if filter.Pack == audit.ExportModeEventReport {
+			respondInvalidQueryParam(c, "subject")
+			return false
+		}
+		// 未明示包型時：types 只在事件報告模式下有意義。單獨帶 types
+		// 而靜默忽略，會回一包「以為篩過、其實沒篩」的證據
 		if rawTypes != "" {
 			respondInvalidQueryParam(c, "subject")
 			return false
@@ -235,4 +347,9 @@ func (h *AuditExportHandler) RegisterRoutes(r *gin.RouterGroup, authService *ide
 	grp := r.Group("/audit-export")
 	grp.Use(middleware.AuthMiddleware(authService))
 	grp.GET("", middleware.RequirePermission(middleware.PermAuditView), h.Export)
+	// 證據包非同步匯出 job：
+	// 發起／清單／下載三端點同閘 audit:view；下載另綁申請者本人（handler 內）
+	grp.POST("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.CreateJob)
+	grp.GET("/jobs", middleware.RequirePermission(middleware.PermAuditView), h.ListJobs)
+	grp.GET("/jobs/:id/download", middleware.RequirePermission(middleware.PermAuditView), h.DownloadJob)
 }

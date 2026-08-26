@@ -125,11 +125,13 @@ func setupRefreshCookieEnv(t *testing.T) *refreshCookieEnv {
 	users.SetSecurityPolicies(policies)
 
 	h := NewAuthHandler(auth, nil)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 	h.SetUserService(users)
 
 	providers := identity.NewOIDCProviderService(db, nil, nil, nil, "https://bastion.example.com")
 	login := identity.NewOIDCLoginService(db, providers, nil, auth, nil)
 	oidcHandler := NewOIDCHandler(providers, login, "https://bastion.example.com", nil)
+	oidcHandler.SetSourcePolicyReader(unrestrictedSourcePolicy())
 
 	p := &model.OIDCProvider{
 		Name: "corp-idp", Issuer: "https://idp.example.com", ClientID: "cid",

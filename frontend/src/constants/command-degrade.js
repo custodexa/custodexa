@@ -72,10 +72,18 @@ export const degradeRecordingHint = (code, recordingState = 'unknown') => {
 // ---------------------------------------------------------------------------
 export const ALERT_KIND_AUDIT_DEGRADED = 'audit_degraded'
 
+// 帳號首次自某來源位址建線（source-ip-forensics）。同樣不掛規則
+//（`rule_id` 為 NULL、`rule_name` 存機器碼），故列表對它的規則名欄與指令欄
+// 都要另行渲染——沿 `audit_degraded` 的既有形態，不新建第二套判斷方式
+export const ALERT_KIND_NEW_SOURCE_IP = 'new_source_ip'
+
 export const COMMAND_ALERT_REASON_VALUES = ['audit_degraded_span']
 
 /** 該筆告警是否為指令審計降級告警（非規則比對） */
 export const isDegradedAlert = (row) => row?.kind === ALERT_KIND_AUDIT_DEGRADED
+
+/** 該筆告警是否為帳號新來源位址告警（非規則比對） */
+export const isNewSourceIPAlert = (row) => row?.kind === ALERT_KIND_NEW_SOURCE_IP
 
 /** 降級告警的原因碼查譯；未知碼帶出原碼 */
 export const commandAlertReasonLabel = (code) => {

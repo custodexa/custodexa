@@ -260,6 +260,71 @@ func diffSummaryCodes(codes map[string]bool, got map[string]string, exempt map[s
 // summaryExemptKeys 非碼對應但必存在的鍵（未知碼降級文案）
 var summaryExemptKeys = map[string]bool{"fallback": true}
 
+// alertKindModelRel 告警種類常數所在（相對本 package 目錄）。只讀不寫——本守衛不擁有 model 檔
+const alertKindModelRel = "../../model/command_alert.go"
+
+// alertKindPrefix 「按告警種類換整句」的覆寫鍵前綴（前端 timelineSummary.js 的 kindKey）
+const alertKindPrefix = "alert.kind."
+
+// summaryExemptSet 本次判定的豁免集合＝降級文案 ＋ 告警種類覆寫鍵。
+//
+// `auditorWorkbench.summary.alert.kind.<kind>` **不是摘要碼**，是另一個機制：
+// 不掛規則的告警（rule_id 為 NULL、rule_name 存機器碼）套用 `alert.triggered`
+// 會在時間軸印出裸機器碼，故前端先以 params.kind 查覆寫鍵、查到就換整句。
+// 這些鍵對不到任何 SummaryCode，不登記即被判為譯文腐爛。
+//
+// **刻意不寫成「alert.kind. 開頭一律放行」**：那會讓錯字（`alert.kind.new_source_id`）
+// 與已下架的種類永遠不被偵測，正是白名單靜默低報的形態。值域改由 model 的
+// AlertKind* 常數即時解析（與 audit_log 值域同一取法），於是「後端把某個種類拿掉、
+// locale 卻留著」仍然會紅
+func summaryExemptSet(t *testing.T) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	for k := range summaryExemptKeys {
+		out[k] = true
+	}
+	for _, kind := range alertKindValues(t) {
+		out[alertKindPrefix+kind] = true
+	}
+	return out
+}
+
+// alertKindValues 自 model 原始碼抽出 AlertKind* 常數的字面值（不硬拷值域）
+func alertKindValues(t *testing.T) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, alertKindModelRel, nil, 0)
+	if err != nil {
+		t.Fatalf("解析 %s 失敗：守衛拒絕在殘缺的 AST 上作判定: %v", alertKindModelRel, err)
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		for i, name := range vs.Names {
+			if !strings.HasPrefix(name.Name, "AlertKind") || i >= len(vs.Values) {
+				continue
+			}
+			lit, ok := vs.Values[i].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				continue
+			}
+			if s, err := strconv.Unquote(lit.Value); err == nil && s != "" {
+				out = append(out, s)
+			}
+		}
+		return true
+	})
+	if len(out) == 0 {
+		t.Fatalf("未從 %s 抽到任何 AlertKind 常數：AST 條件已失真，告警種類覆寫鍵會被全部誤判為腐爛",
+			alertKindModelRel)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // TestTimelineSummaryCodesTranslated 後端每個時間軸摘要碼在三語皆有譯文。
 //
 // 兩個方向都驗：後端有而 locale 缺＝該語系使用者看到「未知事件（timeline.xxx）」；
@@ -276,7 +341,7 @@ func TestTimelineSummaryCodesTranslated(t *testing.T) {
 		if got["fallback"] == "" {
 			t.Errorf("%s 缺 auditorWorkbench.summary.fallback：未知碼將顯示為空白而非降級文案", locale)
 		}
-		missing, stale := diffSummaryCodes(codes, got, summaryExemptKeys)
+		missing, stale := diffSummaryCodes(codes, got, summaryExemptSet(t))
 		for _, code := range missing {
 			t.Errorf("%s 的 auditorWorkbench.summary 缺 %q：該語系使用者在稽核工作台看到的是 fallback 文案（未知事件＋原碼）",
 				locale, code)

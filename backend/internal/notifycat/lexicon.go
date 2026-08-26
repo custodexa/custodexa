@@ -85,6 +85,7 @@ var causeEnum = []string{
 	model.CauseSessionRecordCreateFailed,
 	model.CauseAuditWriteFallbackFile,
 	model.CauseAuditWriteBatchDropped,
+	model.CauseAuditWriteSyncRefused,
 	model.CauseSyslogConnectFailed,
 	model.CauseSyslogBufferOverflow,
 	model.CauseKEKRetirementBacklog,
@@ -94,6 +95,8 @@ var causeEnum = []string{
 	model.CauseAuditChainContentMismatch,
 	model.CauseAuditChainContentExtraRows,
 	model.CauseAuditChainVerifyFailed,
+	model.CauseSourcePolicyUnreadable,
+	model.CauseSourcePolicyCorrupt,
 }
 
 //go:embed lexicons/*.json

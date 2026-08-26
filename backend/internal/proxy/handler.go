@@ -88,6 +88,18 @@ type ConnectionHandler struct {
 	// 組裝端一律注入；nil 僅限既有測試路徑，該情形下 `auditConnectDenied`
 	// 記 log，SHALL NOT 靜默略過
 	AuditService *audit.AuditLogService
+	// SourceIPBaseline 帳號 × 來源位址的「已見」基準與新來源位址告警。
+	//
+	// 建線成功、session 主鍵已得之後觀察一次（與文字終端路徑同語義）；首次自該
+	// 位址建線者在同一交易內得到一筆告警列。**失敗不阻連線**但一律記 log；
+	// 交易失敗即整筆回滾，下次自同位址建線補發。nil 僅限既有測試路徑
+	SourceIPBaseline *audit.SourceIPBaseline
+	// ClipboardEncrypt 剪貼簿內容加密器，
+	// 交給每條連線的 ClipboardTap。走建構子注入（同 auditService 的理由）：
+	// 剪貼簿落庫即密文是安全紅線，缺線的後果是全部剪貼簿事件退化為缺口紀錄
+	// ——fail-visible（缺口態）而非明文降級，但仍屬組裝錯誤，建構子參數使
+	// 「漏接」成為編譯錯誤。nil 僅限既有測試路徑
+	ClipboardEncrypt ClipboardEncryptor
 }
 
 // NewConnectionHandler 建立連線處理器。
@@ -95,7 +107,7 @@ type ConnectionHandler struct {
 // auditService 走建構子而非組裝根的裸欄位注入：
 // 兌換拒絕留痕是安全紅線，缺席即整條探測路徑不可見；建構子參數使「漏接」成為
 // 編譯錯誤，比登記表更早一步。既有測試路徑傳 nil，該情形下記 log 不靜默。
-func NewConnectionHandler(guacdHost string, guacdPort int, sessionService *session.SessionService, assetService *asset.AssetService, authService *identity.AuthService, authorizationService *authz.AssetAuthorizationService, auditService *audit.AuditLogService) *ConnectionHandler {
+func NewConnectionHandler(guacdHost string, guacdPort int, sessionService *session.SessionService, assetService *asset.AssetService, authService *identity.AuthService, authorizationService *authz.AssetAuthorizationService, auditService *audit.AuditLogService, clipboardEncrypt ClipboardEncryptor) *ConnectionHandler {
 	return &ConnectionHandler{
 		GuacdHost:            guacdHost,
 		GuacdPort:            guacdPort,
@@ -104,6 +116,7 @@ func NewConnectionHandler(guacdHost string, guacdPort int, sessionService *sessi
 		AuthService:          authService,
 		AuthorizationService: authorizationService,
 		AuditService:         auditService,
+		ClipboardEncrypt:     clipboardEncrypt,
 		Registry:             NewConnectionRegistry(),
 	}
 }
@@ -355,6 +368,16 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	}
 	log.Printf("[Handler] Session 已創建: ID=%d", sess.ID)
 
+	// 帳號新來源位址：session 主鍵已得（fail-close 已過）才觀察——告警列以
+	// session_id 為自然鍵，先觀察就沒有可綁的會話。失敗只記 log 不阻連線，
+	// 且交易整筆回滾，下次自同位址建線補發
+	if h.SourceIPBaseline != nil {
+		if _, err := h.SourceIPBaseline.ObserveSession(reqCtx, userID, clientIP,
+			sess.ID, assetID, time.Now()); err != nil {
+			audit.LogObserveError(audit.ObserveSiteGraphics, userID, err)
+		}
+	}
+
 	// 連線建立時的有效傳輸能力快照（data-transfer-control）：使事後可回答
 	// 「那次連線當時允許什麼」。政策可在連線後被改，只查政策現值答不出這個問題。
 	// 失敗只記 log——留痕失敗不回壓連線（與 FileTap 同處置）
@@ -396,8 +419,8 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	var sendTap, recvTap *ClipboardTap
 	var fileTap *FileTap
 	if sess != nil {
-		sendTap = NewClipboardTap(database.DB, sess.ID, "send")
-		recvTap = NewClipboardTap(database.DB, sess.ID, "recv")
+		sendTap = NewClipboardTap(database.DB, h.ClipboardEncrypt, sess.ID, "send")
+		recvTap = NewClipboardTap(database.DB, h.ClipboardEncrypt, sess.ID, "recv")
 		// 檔案上傳審計（vnc-file-transfer）：RDP 磁碟＋VNC SFTP 同一路徑補齊
 		fileTap = NewFileTap(database.DB, h.AuditSink, sess.ID, userID, &assetIDUint, protocol)
 		// 資料傳輸管控（data-transfer-control 5.1/5.6）：**逐次判定**，不是連線

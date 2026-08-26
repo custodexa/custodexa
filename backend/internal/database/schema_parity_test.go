@@ -39,14 +39,29 @@ var baselineColumnExceptions = map[string]string{}
 
 var createTableRe = regexp.MustCompile(`(?s)^CREATE TABLE (\w+) \((.*)\)$`)
 
-// baselineTableColumns 自 baseline 的 DDL 取出每張表的欄位名集合。
+// alterAddColumnRe 增量 migration 對既有表加欄的語句。
 //
-// 解析對象是 baselineSchemaStatements() 回傳的**實際執行語句**，不是 Go 原始碼檔——
-// 檔案搬家或改名不會使本守衛的射程靜默縮水。
+// 解析到的欄位折入該表的欄位集合：增量 migration 一旦以 ADD COLUMN 對 baseline 建的
+// 表加欄（users.allowed_cidrs 起），只認 CREATE TABLE 會讓「model 加了欄、增量
+// migration 也加了」被誤判為漂移，而「model 加了欄、增量 migration 忘了加」則
+// 與前者不可分辨。射程只擴不縮；ALTER 條數另設下界防「正則失效即靜默零命中」。
+var alterAddColumnRe = regexp.MustCompile(`^ALTER TABLE (\w+) ADD COLUMN (\w+) `)
+
+// minAlterAddColumnStatements 增量 DDL 內 ADD COLUMN 語句的下界（現況 1）。
+// 正則壞掉時本層會退化成「只看 CREATE TABLE」，而那正是加欄漂移的盲區。
+const minAlterAddColumnStatements = 1
+
+// baselineTableColumns 自 schema DDL（baseline＋增量 migration）取出每張表的
+// 欄位名集合。
+//
+// 解析對象是 schemaDDLStatements() 回傳的**實際執行語句**，不是 Go 原始碼檔——
+// 檔案搬家或改名不會使本守衛的射程靜默縮水；增量建的表（audit_export_jobs 起）
+// 與增量加的欄（users.allowed_cidrs 起）同受本層比對，只看 baseline 會讓它們脫離射程。
 func baselineTableColumns(t *testing.T) map[string]map[string]bool {
 	t.Helper()
 	out := map[string]map[string]bool{}
-	for _, stmt := range baselineSchemaStatements() {
+	stmts := schemaDDLStatements()
+	for _, stmt := range stmts {
 		s := strings.Join(strings.Fields(stmt), " ")
 		m := createTableRe.FindStringSubmatch(s)
 		if m == nil {
@@ -68,6 +83,30 @@ func baselineTableColumns(t *testing.T) map[string]map[string]bool {
 			t.Fatalf("baseline 的 %s 解析不出任何欄位：CREATE TABLE 解析器已失真", table)
 		}
 		out[table] = cols
+	}
+	// 第二遍折入 ADD COLUMN：增量 migration 必然晚於 baseline 建表，兩遍掃描
+	// 使語句順序不影響結果
+	altered := 0
+	for _, stmt := range stmts {
+		s := strings.Join(strings.Fields(stmt), " ")
+		m := alterAddColumnRe.FindStringSubmatch(s)
+		if m == nil {
+			continue
+		}
+		table, col := m[1], m[2]
+		cols, ok := out[table]
+		if !ok {
+			t.Fatalf("增量 DDL 對不存在於 CREATE TABLE 集合的表 %s 加欄 %s：ALTER 早於建表或表名打錯", table, col)
+		}
+		if cols[col] {
+			t.Fatalf("增量 DDL 對 %s 重複加欄 %s：無條件 ALTER 之下第二條必然執行失敗", table, col)
+		}
+		cols[col] = true
+		altered++
+	}
+	if altered < minAlterAddColumnStatements {
+		t.Fatalf("增量 DDL 只解析到 %d 條 ADD COLUMN（下界 %d）：ALTER 解析已失真，加欄漂移將脫離射程",
+			altered, minAlterAddColumnStatements)
 	}
 	return out
 }

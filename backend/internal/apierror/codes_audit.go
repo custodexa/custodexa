@@ -14,6 +14,41 @@ var (
 	CodeRecordingFileNotFound   = register("NOTFOUND_RECORDING_FILE", Descriptor{ZhFallback: "錄製檔案不存在"})
 	CodeRecordingTimingNotFound = register("NOTFOUND_RECORDING_TIMING", Descriptor{ZhFallback: "錄製時間檔案不存在"})
 	CodeAuditLogNotFound        = register("NOTFOUND_AUDIT_LOG", Descriptor{ZhFallback: "審計日誌不存在"})
+	// CodeClipboardEventNotFound 單筆剪貼簿內容調閱的**收斂拒絕**：
+	// 事件不存在、事件識別非法、事件不屬路徑中會話（跨會話探測）
+	// 三種情形共用本碼——存在性細節
+	// 不對外，只進審計（audit-detail-not-outward）
+	CodeClipboardEventNotFound = register("NOTFOUND_CLIPBOARD_EVENT", Descriptor{ZhFallback: "剪貼簿記錄不存在"})
+)
+
+// --- 證據包非同步匯出 ---
+var (
+	// CodeExportJobRequesterOnly 下載端點的**收斂 403**（下載綁申請者本人，
+	// 非申請者——含其他具稽核檢視權限帳號——一律 403）：job 不存在、識別非法、
+	// 非申請者本人三種情形共用本碼且同回 403——分成 404/403 會讓具權限的
+	// 探測者以狀態碼枚舉 job 存在性；文案只陳述規則，不指涉任何一筆 job
+	CodeExportJobRequesterOnly = register("AUTH_EXPORT_JOB_REQUESTER_ONLY",
+		Descriptor{ZhFallback: "匯出產物僅限申請者本人下載"})
+	// CodeAuditExportBundleAsyncOnly 既有同步端點對證據包模式的一律拒絕：
+	// 不轉 job（GET 不得產生建立副作用）、不回 bundle 位元組——同步路徑
+	// 若續供 bundle 即繞過申請者綁定與限時下載鏈
+	CodeAuditExportBundleAsyncOnly = register("RULE_AUDIT_EXPORT_BUNDLE_ASYNC_ONLY",
+		Descriptor{ZhFallback: "證據包已改為非同步交付，請改以匯出 job 發起"})
+	// CodeExportJobBundleOnly job 發起端點只受理證據包；事件報告維持同步匯出
+	CodeExportJobBundleOnly = register("RULE_EXPORT_JOB_BUNDLE_ONLY",
+		Descriptor{ZhFallback: "匯出 job 僅受理證據包，事件報告請走同步匯出端點"})
+	// CodeExportJobLimit 每申請者或全域進行中上限已滿（兩者收斂一碼：
+	// 申請者的可行動語義相同——稍後再試，拆開只是多洩系統負載細節）
+	CodeExportJobLimit = register("CONFLICT_EXPORT_JOB_LIMIT",
+		Descriptor{ZhFallback: "匯出打包佇列已滿，請稍後再試"})
+	// CodeExportArtifactUnavailable 申請者本人的 job 產物不可下載（未完成、
+	// 已失敗或已逾保留期收斂一碼，HTTP 410——即「過期後 410 或同型
+	// 收斂錯誤」；實際狀態申請者可經清單端點查得，細節不經下載端點展開）
+	CodeExportArtifactUnavailable = register("RULE_EXPORT_ARTIFACT_UNAVAILABLE",
+		Descriptor{ZhFallback: "匯出產物目前不可下載"})
+	// CodeInternalExportJob job 受理／查詢的 5xx 收斂碼
+	CodeInternalExportJob = register("INTERNAL_EXPORT_JOB",
+		Descriptor{ZhFallback: "匯出 job 處理失敗"})
 )
 
 // --- VALIDATION_* ---

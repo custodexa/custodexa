@@ -13,6 +13,7 @@
     "session_record_create_failed": "Session record creation failed; connection refused",
     "audit_write_fallback_file": "Audit batch write failed; fell back to file",
     "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
+    "audit_write_sync_refused": "Synchronous audit write failed; the operation was refused",
     "syslog_connect_failed": "Syslog forwarding connection failed",
     "syslog_buffer_overflow": "Syslog forwarding buffer overflow",
     "kek_retirement_backlog": "KEK retirement backlog not converged",
@@ -21,7 +22,9 @@
     "audit_chain_structure_invalid": "Checkpoint chain structure anomaly (signature, linkage or sequence tampered)",
     "audit_chain_content_mismatch": "Audit records in a sealed interval mismatch the checkpoint or are missing",
     "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
-    "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")"
+    "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")",
+    "source_policy_unreadable": "Judgment point could not read the user's allowed source ranges",
+    "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)"
   },
   "severity": {
     "high": "High",

@@ -601,6 +601,11 @@ async function syncClipboardOnFocus() {
     pendingRemoteClipboard = null
     navigator.clipboard.writeText(pending).catch(() => {})
   }
+  // 這條連線不允許把本機剪貼簿送到遠端時，自動同步一律不送。
+  // 內容本來就進不了遠端（連線參數已擋），但送出動作會在審計留下一筆
+  // 「有把內容傳進資產」的紀錄，事後查紀錄的人會以為真的發生過傳輸。
+  // 只擋自動同步這條路；顯式點擊由按鈕的不可用狀態擋住，不重複判定。
+  if (!canClipboardSend.value) return
   await pasteToRemote(true)
 }
 

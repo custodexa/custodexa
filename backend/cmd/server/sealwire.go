@@ -161,6 +161,8 @@ func newWiredSealHandler(s1 *stage1, machine *seal.Machine, allowed []*net.IPNet
 	sealCfg config.SealConfig, swap *swappableHandler, pending *bootstrapPendingState) *api.SealHandler {
 	h := api.NewSealHandler(machine, s1.journal)
 	h.SetSourceControls(sealCfg.TrustedProxyConfigured(), allowed, sealCfg.UnsealBindAddr)
+	// 守衛粗狀態（橫幅輪詢的資料出口）：兩個監聽面各一個 handler，探針共用同一份快照
+	h.SetInstanceGuardProbe(instanceGuardStatusProbe)
 	h.SetInitRequiredProbe(func() (bool, error) {
 		n, err := keyvault.CountDataKeys(database.DB)
 		return n == 0, err

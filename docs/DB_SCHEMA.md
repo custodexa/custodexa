@@ -1,10 +1,14 @@
 # Custodexa - 資料庫規格文件
 
-> 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`（schema 的**唯一事實源**）、
+> 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_source_ip_forensics.go`）——
+> 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
-> `backend/internal/database/database.go` 的 `schemaParityModels`（baseline 必須對得上的 model 清單，**只被驗證、不被執行**）。
-> **索引與約束以 baseline 的 DDL 為準**：schema 的唯一事實源是 `20260816_schema_baseline` 的 DDL，
-> 開機不跑 `AutoMigrate`，且 baseline 的 DDL **一律無條件**（產品程式碼中唯一的 `IF NOT EXISTS`
+> `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
+> **索引與約束以 `schemaDDLStatements()` 的 DDL 為準**：schema 的唯一事實源是 baseline（`20260816_schema_baseline`）
+> **加其後全部增量 migration** 的 DDL 串接；只看 baseline 會讓增量建的表與增量加的欄整張脫離射程
+> （parity 守衛因此也解析同一串接，見 `schema_parity_test.go`）。
+> 開機不跑 `AutoMigrate`，且 baseline 與各增量的 DDL **一律無條件**（產品程式碼中唯一的 `IF NOT EXISTS`
 > 是 `schema_migrations` 自身的 bootstrap 建表）。在非空 schema 上跑 baseline 會立刻失敗，不會靜默 no-op，
 > 因此不存在「宣告與現實分岔」的空間。
 >
@@ -28,7 +32,7 @@
 
 | 模型 | 表名 | 建表來源 | 說明 |
 |------|------|----------|------|
-| User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique） | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免） |
+| User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique）＋增量 `20260826_source_ip_forensics` 加 `allowed_cidrs` 欄 | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免、允許來源網段） |
 | Role | `roles` | baseline | 角色定義 |
 | - | `user_roles` | baseline | 用戶-角色關聯表（M2M，由 baseline 顯式建表） |
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
@@ -47,7 +51,7 @@
 | AlertRule | `alert_rules` | baseline（CHECK action／severity；`uniq_alert_rules_name` 唯一索引＝種子 `ON CONFLICT` 的衝突目標）＋`baseline_seed.go` 種入 12 條內建規則 | 危險指令告警/阻斷規則 |
 | CommandAlert | `command_alerts` | baseline（CHECK severity／kind／kind↔rule_id；**刻意無 FK**——rule_id/session_id 為觸發快照冗餘，規則改名或刪除不得破壞歷史告警） | 危險指令告警記錄（含審閱處置欄位） |
 | NotificationChannel | `notification_channels` | baseline（CHECK type／language） | 告警 webhook 通知通道 |
-| ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存 |
+| ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
 | AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
 | ChangeSecretPlan | `change_secret_plans` | baseline | 改密計劃 |
@@ -67,6 +71,8 @@
 | AuditCheckpointTrim | `audit_checkpoint_trims` | baseline | 檢查點鏈修剪記錄（殘鏈的新起點錨定，不可變；刻意獨立於 audit_logs——留痕會過期，錨定不會） |
 | AuditChainVerifyState | `audit_chain_verify_states` | baseline | 檢查點鏈兩層自動驗證的營運狀態（單列，ID 恆為 1；兩層各記最近執行時點、滾動重驗位置、未結案失敗區間集合）。**營運狀態非證明**：不在鏈的覆蓋範圍內，具 DB 寫入權者可改 |
 | AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；稽核工作台的 `present`／`purged` 三態來源） |
+| AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）** | 證據包非同步匯出 job 追蹤（純狀態表，非證據；申請者本人綁定、部分唯一索引去重） |
+| UserSourceIP | `user_source_ips` | **migration（增量 `20260826_source_ip_forensics`，非 baseline）** | 帳號×來源位址的「已見」基準（新來源位址告警的判定依據，**非證據**、不受保留政策清除；複合主鍵，刻意無 FK） |
 | DataKey | `data_keys` | baseline（`idx_data_keys_purpose_version_kek`＝同 slot 至多一列帶材料，partial unique） | 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）；`kek_id`／`kek_retired_by` 為 `varchar(255)` 以容納外部金鑰引用（KMS ARN） |
 | TransmissionConsent | `transmission_consents` | baseline | 傳輸風險同意記錄（per user×asset） |
 | OIDCProvider | `oidc_providers` | baseline（`idx_oidc_providers_identity_domain` partial unique） | OIDC 身分提供者設定（多實例並存）；`client_secret_enc` 登記於 `envelopeMigrationTargets` |
@@ -76,9 +82,13 @@
 | LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique） | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **44 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`）；
-連同 `schema_migrations` 共 47 張。baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
-另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **10 條 CHECK**。
+應用資料表共 **46 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **2 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs` 與 `user_source_ips`）；
+連同 `schema_migrations` 共 49 張。baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
+另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **10 條 CHECK**——**上述三個數字皆只計 baseline，
+不含兩條增量 migration**：`20260824_audit_export_jobs` 另建 1 表 ＋ 3 索引（含 1 條部分唯一索引）；
+`20260826_source_ip_forensics` 另建 1 表 ＋ 2 索引 ＋ 1 欄（`users.allowed_cidrs`），並重建
+`command_alerts_kind_check`（CHECK 條數不變，值域擴充）。兩者皆見「Migration 版本一覽」。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
 它有雞生蛋問題——必須先於「讀取已套用版本集合」而存在，故不能由 baseline 建立
@@ -94,7 +104,9 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
   ——AST 掃描產品程式碼，**零 `AutoMigrate`、無例外清單**。
 - `backend/internal/database/schema_parity_test.go`（第 1 層，離線、不需資料庫、不可被 skip）
-  ——`schemaParityModels` 的 **36 個 model** 與 baseline 的 `CREATE TABLE` 逐欄位名雙向比對。
+  ——`schemaParityModels` 的 **37 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
+  自 `20260824_audit_export_jobs` 起擴為 **baseline ＋ 全部增量**（`schemaDDLStatements()`），
+  故增量建的 `audit_export_jobs` 同受此守衛，不因不在 baseline 而脫離 parity 檢查。
 - `backend/internal/database/baseline_parity_pg_test.go`、`index_declaration_parity_test.go`
   （第 2 層，PG-gated）——型別／可空／預設／索引／約束層級的 parity，以及具名結構不變式的
   `pg_get_indexdef` 逐字比對。
@@ -152,6 +164,8 @@ erDiagram
     users ||--o{ user_external_identities : linked_to
     oidc_providers ||--o{ user_external_identities : configures
 
+    users ||--o{ user_source_ips : seen_from
+
     users {
         uint id PK
         string username UK
@@ -173,6 +187,16 @@ erDiagram
         time password_changed_at
         time last_login_at
         bool inactivity_exempt
+        string allowed_cidrs
+    }
+
+    user_source_ips {
+        uint user_id PK
+        string client_ip PK
+        time first_seen_at
+        time last_seen_at
+        time first_session_at
+        uint first_session_id
     }
 
     roles {
@@ -351,7 +375,9 @@ erDiagram
         uint id PK
         uint session_id FK
         string direction
-        string content
+        string content_enc
+        int content_length
+        string content_status
     }
 
     asset_host_keys {
@@ -476,7 +502,9 @@ erDiagram
 
 **表名**: `users`
 **檔案**: `backend/internal/model/user.go`
-**建表方式**: baseline（`baseline_schema_identity.go`）。兩條 partial unique index 承載帳號名的資料層不變式：
+**建表方式**: baseline（`baseline_schema_identity.go`）＋增量 migration `20260826_source_ip_forensics`
+（`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`，見下欄位表末列與「Migration 版本一覽」）。
+兩條 partial unique index 承載帳號名的資料層不變式：
 `idx_users_username`＝`(username) WHERE deleted_at IS NULL`、`idx_users_email`＝`(email) WHERE email IS NOT NULL AND deleted_at IS NULL`
 ——謂詞 GORM tag 表達不了，只能由顯式 DDL 承載
 
@@ -504,6 +532,10 @@ erDiagram
 | `PasswordChangedAt` | *time.Time | - | `password_changed_at,omitempty` | 最後改密時間。 |
 | `LastLoginAt` | *time.Time | - | `last_login_at,omitempty` | 最後成功登入時間；閒置停用判定（8.2.6）據此。 |
 | `InactivityExempt` | bool | `default:false` | `inactivity_exempt` | 閒置帳號自動停用豁免（per-user 永久旗標）；seed admin 預設豁免，避免唯一管理員久未登入被自動停用鎖死（PCI 8.2.6）。 |
+| `AllowedCIDRs` | string | `column:allowed_cidrs;type:text;not null;default:''` | `-`（不出 JSON） | **允許來源網段清單的儲存形式**：逗號分隔、已正規化的前綴字串（沿 `alert_rules.protocols` 的逗號分隔慣例；前綴本身不含逗號，不需結構化格式）。**空字串＝不限制來源**。只由 service 層經 `internal/sourceip` 單一實作驗證後寫入。欄名以 `column:` 顯式釘死——GORM 的 snake_case 會把 `CIDRs` 拆成 `c_id_rs`。DB 側為 `text NOT NULL DEFAULT ''`，由增量 migration `20260826_source_ip_forensics` 加欄 |
+| `AllowedCIDRList` | []string | `-`（非持久化） | `allowed_cidrs` | 清單的 API 形狀（字串陣列），由 service 層自 `AllowedCIDRs` 拆出。**衍生欄、不入庫**；未經 service 裝飾的 `User` 值此欄為 nil（序列化為 `null`） |
+| `AllowedCIDRsStatus` | string | `-`（非持久化） | `allowed_cidrs_status,omitempty` | 有效涵蓋狀態：`unrestricted`（清單空）／`effectively_unrestricted`（清單非空但含全域前綴，實際等於不限）／`restricted`。由伺服端單一實作依**實際放行的範圍**計算，介面不自行推算。**衍生欄、不入庫** |
+| `AllowedCIDRFamilies` | []string | `-`（非持久化） | `allowed_cidrs_families,omitempty` | 狀態為 `effectively_unrestricted` 時被全放行的位址家族（`v4`／`v6`），供介面指出「含全域前綴的是哪一族」。**衍生欄、不入庫**。注意判定端點 `POST /api/v1/users/source-policy/check` 的回應把同一份資料放在 `families` 鍵（非 `allowed_cidrs_families`），兩處不同名，見 [API_SPEC.md](API_SPEC.md) |
 
 **認證來源常數**（登入審計標註用，同時作為 `users.provisioning_origin` 的值域）:
 ```go
@@ -529,6 +561,10 @@ const (
 - `email` 唯一索引為 partial：`WHERE email IS NOT NULL AND deleted_at IS NULL`
   （僅約束非 NULL 值）。`email` 欄改以 **NULL 表達「未知」**（非空字串，model 型別 `*string`），
   既有 `''` 一次性正規化為 NULL；多個無 email 帳號（如 LDAP 衝突影子帳號）可並存。
+- `allowed_cidrs` **無索引**：判定一律以主鍵讀單列（每個判定點現讀該欄、不快取、不進 JWT），
+  沒有以清單內容為條件的查詢。唯一會掃該欄全表的是失效恢復謂詞
+  （`identity/source_policy_gate.go` 的 `EvaluateSourcePolicyHealth`），
+  呼叫時機限於啟動、清單成功寫入後、以及判定點成功讀取且目前失效中時。
 
 **欄位備註**:
 - `local_display_name`（nullable，`*string`，無唯一約束）：使用者自助顯示名。
@@ -842,6 +878,10 @@ const (
 - `idx_sessions_deleted_at` - `(deleted_at)`
 - `idx_sessions_user_start` - `(user_id, start_time)`，稽核工作台人樞紐的會話類 keyset 查詢
 - `idx_sessions_asset_start` - `(asset_id, start_time)`，同上的資產樞紐側
+- `idx_sessions_client_ip_start` - `(client_ip, start_time)`，稽核工作台**位址樞紐**的會話查詢與三表 join
+  皆以 `sessions.client_ip` 為鍵，時間窗 keyset 需第二鍵。**由增量 migration `20260826_source_ip_forensics`
+  建立**（DDL 逐字：`CREATE INDEX idx_sessions_client_ip_start ON sessions USING btree (client_ip, start_time)`），
+  非 baseline
 
 **關聯**:
 - `User *User` - 屬於（透過 `UserID`）
@@ -1108,6 +1148,8 @@ const (
 **表名**: `command_alerts`
 **檔案**: `backend/internal/model/command_alert.go`
 **建表方式**: baseline（`baseline_schema_audit.go`），含 `severity`／`kind`／`kind↔rule_id` 三條 CHECK。
+`command_alerts_kind_check` 的值域由增量 migration `20260826_source_ip_forensics` 重建擴充
+（`DROP CONSTRAINT` → `ADD CONSTRAINT ... CHECK (kind IN ('rule','audit_degraded','new_source_ip'))`，**約束名不變**）。
 **刻意不設外鍵**：`rule_id`／`session_id` 是觸發當下的快照冗餘，規則改名或刪除不得破壞歷史告警
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1115,8 +1157,8 @@ const (
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `RuleID` | *uint | - | `rule_id,omitempty` | 命中規則 ID。**指標型且 DB 為 nullable**：`kind='audit_degraded'` 的告警沒有規則可指，值型會把「無規則」寫成 0 |
 | `RuleName` | string | `size:100;not null` | `rule_name` | 規則名稱快照（冗餘，免 JOIN）。**降級類填機器碼**（該類無規則名可快照，同 `alert_notifier` 的 `testRuleName` 慣例） |
-| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別：`rule`（規則比對／阻斷）／`audit_degraded`（指令審計降級）。CHECK 限定值域，另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它 |
-| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域：`audit_degraded_span`）；規則類為空字串 |
+| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別，現行值域三值：`rule`（規則比對／阻斷）／`audit_degraded`（指令審計降級）／`new_source_ip`（帳號首次自某來源位址建線）。CHECK 限定值域（`command_alerts_kind_check`，由 `20260826_source_ip_forensics` 重建擴充），另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`——故後兩類的 `rule_id` 必為 NULL。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它；新來源位址告警同理 |
+| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域兩值：`audit_degraded_span`／`new_source_ip_session`，見 `model/command_alert.go` 的 `AlertReason*` 常數）；規則類為空字串 |
 | `SessionID` | uint | `not null` | `session_id` | 所屬會話 ID |
 | `UserID` | uint | `not null` | `user_id` | 用戶 ID（冗餘） |
 | `AssetID` | *uint | - | `asset_id` | 資產 ID（冗餘，手動連線可為 NULL） |
@@ -1137,12 +1179,18 @@ const (
 - `idx_command_alerts_asset_triggered` - `(asset_id, triggered_at)`，同上的資產樞紐側
 
 **設計說明**:
-- **三條寫入路徑、單一落地面**（第三條是下一則的降級告警）：比對路徑（`proxy.CommandRecorder` writeLoop 在指令批次 flush 成功後比對）與阻斷路徑（`sshproxy` 的 `commandBlocker`，指令送往目標前攔下）皆經 `internal/modules/audit/alert_sink.go` 的落地面寫入，該處同時做「入庫 → 通知推送 → syslog 離機轉發」。**修復前阻斷路徑直寫本表且不做 syslog tee**，導致「實際被阻斷的危險指令」這一類最高價值證據只存在本機一份。兩路徑的錯誤處置皆為「僅 log、不影響指令入庫與會話」（無可回滾的業務交易）
+- **四條寫入路徑、單一落地面**（第三條是下一則的降級告警，第四條是再下一則的新來源位址告警）：比對路徑（`proxy.CommandRecorder` writeLoop 在指令批次 flush 成功後比對）與阻斷路徑（`sshproxy` 的 `commandBlocker`，指令送往目標前攔下）皆經 `internal/modules/audit/alert_sink.go` 的落地面寫入，該處同時做「入庫 → 通知推送 → syslog 離機轉發」。**修復前阻斷路徑直寫本表且不做 syslog tee**，導致「實際被阻斷的危險指令」這一類最高價值證據只存在本機一份。兩路徑的錯誤處置皆為「僅 log、不影響指令入庫與會話」（無可回滾的業務交易）
 - **第三條寫入路徑：指令審計降級的專用發射器**。由 `sshproxy` 的 `CommandStore` 在指令批次 flush 成功後、規則比對之後呼叫，落地經同一個 `AlertSink`（故通知與 syslog tee 自動接上）。
   **不走規則表**是刻意的：規則是可 CRUD 停用／刪除的營運物件，把規格要求的安全訊號掛上去等於交出「管理員一鍵靜默」的開關；且內建規則數有硬斷言，還得為它填一個永不匹配的 pattern＝在機器欄裡寫謊。
   該類的 `kind='audit_degraded'`、`rule_id IS NULL`、`command=''`（降級的定義就是沒有可信的指令文字）、`severity='medium'`。
   **以 span 為單位，一段連續降級只發一筆**：真 vim 一次編輯產生數十筆降級列，逐列告警＝告警疲勞。
   **刻意沒有「超過門檻升級為 high」的第二筆**——正常的全螢幕程式（vim／nano）與偽標記攻擊，其 span 在時長與輪數上不可分（攻擊側只要令對端停止回顯，就與真 vim 同形），填一個看起來能分的門檻是編造判準
+- **第四條寫入路徑：新來源位址告警**（`kind='new_source_ip'`、`reason_code='new_source_ip_session'`、
+  `rule_id IS NULL`、`command=''`、`severity='medium'`）。由 `internal/modules/audit/source_ip_baseline.go`
+  的 `ObserveSession` 在**同一個交易內**寫入（`RecordAlertInTx`）：基準表 `user_source_ips` 的
+  `first_session_id` 條件更新決出單一勝者，只有勝者那一筆交易寫告警列——並發同址首連線因此恰好一筆。
+  推送與 syslog tee 在**提交之後**才做（`PublishCommitted`），入庫失敗即不發幽靈告警。
+  同樣不走規則表，理由與降級告警同：規則可被停用即可靜默關掉安全訊號。
 - **降級列不進規則比對**：`session_commands.degraded` 為真的列在 `MatchAndStore` 迴圈首即跳過。內建規則不會命中空字串，但使用者可自建 `.*` 規則，屆時每筆降級列都會生出一筆 `command=''` 的告警——那是把「這一輪無法還原」呈現成「使用者執行了一條空指令」，即另一種捏造
 - 批次告警為單次 INSERT（`RecordAlerts`），不得拆成 N 次
 - `rule_name`/`severity`/`blocked` 為觸發當下快照：規則之後改名、改級、改 action 或刪除不影響歷史告警可讀性
@@ -1190,11 +1238,20 @@ const (
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `SessionID` | uint | `index;not null` | `session_id` | 所屬會話 ID |
 | `Direction` | string | `size:8;not null` | `direction` | `send`=入遠端 / `recv`=回拷 |
-| `Content` | string | `type:text` | `content` | 剪貼簿內容，上限 64KB（tap 截斷） |
+| `ContentEnc` | string | `type:text` | `-` | 剪貼簿內容的**信封加密密文**（`enc:a1` 格式；AAD 綁 `clipboard_events\|content_enc`，登記於 `envelopeMigrationTargets` 與 `cipher_refs.go`）。**明文欄已移除**；`json:"-"` 不外露，內容僅經單筆調閱端點（逐筆留痕）與證據包（匯出留痕）解密取得。缺口紀錄（`content_status=failed`）此欄恆為空字串 |
+| `ContentLength` | int | `not null` | `content_length` | 明文**位元組**長度（與 64KB tap 截斷上限同單位）；長度是事實非機密，供列表與匯出陳述使用 |
+| `ContentStatus` | string | `size:16;not null` | `content_status` | 內容狀態：`available`＝已加密落庫可解密調閱／`failed`＝加密失敗的缺口紀錄（事實齊、內容缺）。**明確欄位，不以密文為空或長度為零推斷** |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 
 **設計說明**:
-- RDP/VNC 剪貼簿內容留存，無軟刪除、無更新路徑
+- RDP/VNC 剪貼簿內容留存，無軟刪除、無更新路徑。
+- **內容以信封加密落庫**：明文 `content` 欄移除，改存
+  `content_enc`（密文）＋`content_length`（事實）＋`content_status`（可調閱／缺口）。加密失敗時
+  不以明文落庫、不中斷會話、亦不整筆丟棄，改留缺口紀錄（`content_status=failed`、內容欄空），
+  使「此類永不清除、空白即無事件」的誠實宣稱不被靜默缺口打破。
+- 既有資料庫的 `content`→`content_enc` 轉換（加欄→逐筆加密回填→刪 `content`）需要 codec，
+  走 **post-unseal 佇列**（非增量 versioned migration），以「`content` 欄是否存在」判冪等，
+  整段包在單一交易內，回填失敗即 rollback、不刪欄（fail-close）。
 
 ---
 
@@ -1530,7 +1587,7 @@ const (
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
-| `Mechanism` | string | `type:varchar(30);not null;index:idx_failure_mechanism_open` | `mechanism` | 機制（`audit_write`/`syslog_forward`/`recording_probe`/`recording_text`/`recording_graphics`/`session_record`/`kek_retirement`） |
+| `Mechanism` | string | `type:varchar(30);not null;index:idx_failure_mechanism_open` | `mechanism` | 機制（`audit_write`/`syslog_forward`/`recording_probe`/`recording_text`/`recording_graphics`/`session_record`/`kek_retirement`/`source_policy`） |
 | `StartedAt` | time.Time | `not null` | `started_at` | 失效開始 |
 | `EndedAt` | *time.Time | `index:idx_failure_mechanism_open` | `ended_at` | 恢復時間（null=進行中；同機制進行中去重，另有 partial 唯一索引 `idx_failure_events_single_open` 強制） |
 | `Cause` | string | `type:text;not null` | `cause` | 失效原因散文（10.7.3）。**本欄為顯示 fallback**（zh-TW 短語＋forensic detail），權威表述改為 `CauseCode`；保留以免未改查譯的既有讀取點白屏 |
@@ -2002,17 +2059,26 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 只有一條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列）：
+**現行 migration 有三條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
 | `20260816_schema_baseline` | 建立整個 schema（46 張表、26 條外鍵、116 條索引，共 188 條無條件 DDL）＋種入 12 條內建告警規則。呼叫端把它與 `schema_migrations` 的版本記錄包在單一交易內，PostgreSQL 的 DDL 可交易，故全成或全不成，不會留下半套 schema | **一律回拒絕錯誤**（`refuseBaselineRollback`）。baseline 建的是整個 schema，「回滾」它等於刪掉全部使用者、資產、授權與審計證據——一個看起來像回滾入口、實際是資料庫毀滅按鈕的東西比沒有入口更危險。退路是還原備份 |
+| `20260824_audit_export_jobs` | 建 `audit_export_jobs` 表（1 建表 ＋ 3 索引，含 1 條部分唯一索引；見第 42 節）。**baseline 之後的首條增量 migration**——純新表、無加密欄、無回填，在全新庫（baseline → 本條）與既有庫（僅本條）上收斂同形。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `DROP TABLE audit_export_jobs`（`rollbackAuditExportJobs`）。純狀態表，證據不在其中，可棄可逆 |
+| `20260826_source_ip_forensics` | 來源位址追查：`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`、建 `user_source_ips` 表（見第 43 節）、建 `idx_sessions_client_ip_start` 與 `idx_user_source_ips_ip_seen` 兩索引、重建 `command_alerts_kind_check` 使 `kind` 值域含 `new_source_ip`，最後**冷啟動回填**（自 `sessions` 全史與 `audit_logs` 登入成功列合併，使部署當下已見的位址不觸發告警）。**Up 為純加法**：不刪不改任何既有資料列 | `rollbackSourceIPForensics`：反序 DROP 兩索引 → `DELETE FROM command_alerts WHERE kind = 'new_source_ip'` → 還原舊 CHECK → `DROP TABLE user_source_ips` → `DROP COLUMN allowed_cidrs`。**銷毀資料、開發庫限定**：丟掉整份已見位址基準與每位使用者的來源限定，再次 Up 後清單為空（來源限制靜默消失）、基準為空（全部位址重新判為新）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
+> **升級注意**：`20260824_audit_export_jobs` 與 `20260826_source_ip_forensics` 於既有部署升級時
+> 自動套用（段 1，無 codec 依賴；後者含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
+> 升級程序見 `docs/ops/upgrade-sop.md`）；
+> 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
+
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
-改登記於 post-unseal 佇列、由段 2 於 `InitKeyManager` 成功後執行。
-LDAP 的 env→DB seed（標記 `20260804_ldap_env_seeded`）屬此類：標記語義為
+改登記於 post-unseal 佇列、由段 2 於 `InitKeyManager` 成功後執行。此類含兩項：
+剪貼簿 `content`→`content_enc` 的加密回填（加欄→逐筆加密→刪 `content`，以「`content` 欄是否存在」判冪等，
+整段單一交易、回填失敗即 rollback 不刪欄；見第 12 節），以及
+LDAP 的 env→DB seed（標記 `20260804_ldap_env_seeded`）——後者標記語義為
 **「已完成評估」而非「已建立資料」**——實際 seed、env 未啟用、資料表非空三種終局皆寫入標記，
 僅基礎設施失敗不寫（留待下次啟動重試）。此語義使「資料列被硬刪後 env 仍為啟用」
 不會靜默重建一個外部認證來源。
@@ -2245,6 +2311,100 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 離機備份留存的副本，以及外部查核方以公鑰自行驗章。
 對外揭露（`GET /audit-checkpoints/verify` 的既有回應，**不新增路由**）**只帶計數不帶序號清單**，
 與告警出站同一條去識別紅線。
+
+---
+
+### 42. AuditExportJob（證據包非同步匯出 job）
+
+**表名**: `audit_export_jobs`
+**檔案**: `backend/internal/model/audit_export_job.go`
+**建表方式**: **增量 migration `20260824_audit_export_jobs`（非 baseline）**——純新表、無加密欄、
+無資料回填，增量 DDL 在全新資料庫（baseline → 本條）與既有資料庫（僅本條）上收斂到同一形狀，
+不需要剪貼簿轉換那種「baseline 終態＋post-unseal 回填」雙軌。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。
+
+證據包（`evidence_bundle`）匯出改為**非同步**後的 job 追蹤表。**只有證據包走 job；事件報告維持同步匯出**。
+本表是**純狀態表、非證據**：job 列是申請者的追蹤憑據，證據義務落在 `audit_logs`（發起與下載均留痕）
+與產物檔本身；drop 本表僅失去追蹤面，不觸及任何證據（故 Down 為可逆 `DROP TABLE`）。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `RequesterID` | uint | `not null;index:idx_audit_export_jobs_requester_status,priority:1` | `-` | 申請者（下載授權與清單範圍的判準；回應層另走 DisplayMap 投影） |
+| `RequesterName` | string | `size:50;not null` | `-` | 申請者名稱（發起當下快照，供 manifest `exported_by` 與審計列） |
+| `FilterJSON` | string | `type:text;not null` | `-` | 完整篩選條件快照（`ExportFilter` 的 JSON 序列化；供 worker 重建篩選，不出站） |
+| `FilterHash` | string | `size:64;not null` | `-` | 篩選正規化 SHA-256；`pending`／`running` 去重鍵 |
+| `Status` | string | `size:16;not null;index:idx_audit_export_jobs_requester_status,priority:2;index:idx_audit_export_jobs_status` | `status` | 狀態五態：`pending`／`running`／`done`／`failed`／`expired`（**無獨立「取消」態**——失權取消落 `failed` 並以 `ErrorSummary` 標因） |
+| `Attempts` | int | `not null` | `-` | 打包嘗試次數（含首次）；達上限（3）即轉 `failed` |
+| `ArtifactPath` | string | `size:500;not null` | `-` | 產物檔伺服器內部路徑（不出站；過期清除後清空） |
+| `ArtifactSHA256` | string | `size:64;not null` | `artifact_sha256` | 產物 SHA-256（過期後仍保留供紀錄比對） |
+| `ArtifactSize` | int64 | `not null` | `artifact_size` | 產物位元組大小 |
+| `ErrorSummary` | string | `size:64;not null` | `error_summary` | 失敗摘要機器碼（`export_job.pack_failed`／`export_job.requester_revoked`）；成功恆空 |
+| `RequestedAt` | time.Time | `not null` | `requested_at` | 發起時刻 |
+| `PackagedAt` | *time.Time | - | `packaged_at` | 實際打包完成時刻（與 `RequestedAt` 一併寫入 manifest 的雙時戳） |
+| `ExpiresAt` | *time.Time | - | `expires_at` | 產物過期時刻（`done` 時＝`PackagedAt`＋保留期）；逾期由 worker 清檔並轉 `expired` |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+
+**索引**（DDL 於 `backend/internal/database/migration_audit_export_jobs.go`）:
+- `idx_audit_export_jobs_requester_status`＝`(requester_id, status)`——下載中心清單與每申請者進行中計數的查詢面。
+- `idx_audit_export_jobs_status`＝`(status)`——worker 領件（`pending` 最舊優先）與過期清掃的查詢面。
+- `uniq_audit_export_jobs_active_filter`＝**部分唯一索引** `(requester_id, filter_hash) WHERE status IN ('pending','running')`
+  ——`pending`／`running` 去重的資料庫層防線（admission 交易是第一道，本索引擋住繞過服務層的寫入路徑）；
+  `failed`／`done` 不在 `WHERE` 內，故不阻擋重新發起、也不使舊包被復用。
+
+**設計說明**:
+- **產物與 job 列的保留期分別計**：產物檔 24h 後由 worker 清除並轉 `expired`；job 列（含終態）
+  另有紀錄保存期（30 天）後清理，兩者不同源。
+- 欄位刻意不帶 `gorm default` tag：所有欄位由程式碼顯式賦值（避免 GORM 對零值交由 DB 填值）。
+- **產物暫存目錄不落資料庫**（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`）：
+  屬暫存、限時清除，非備份對象（見 `docs/ops/backup-and-restore.md`）。
+
+---
+
+### 43. UserSourceIP（帳號來源位址基準）
+
+**表名**: `user_source_ips`
+**檔案**: `backend/internal/model/user_source_ip.go`
+**建表方式**: **增量 migration `20260826_source_ip_forensics`（非 baseline）**——建表、兩條索引、
+`users.allowed_cidrs` 加欄、`command_alerts_kind_check` 值域擴充與**冷啟動回填**同屬這一條。
+DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`，在已套用的庫上重跑必須大聲失敗。
+
+帳號 × 來源位址的「**已見**」基準。它是新來源位址告警的**判定依據，不是日誌、也不是防篡改證據**
+（證據是 `command_alerts` 的告警列與 `audit_logs` 的審計列）；故**不在任何保留政策的清除目標內**
+——清掉它會讓舊位址回來時再被判為新，告警就成了噪音。表大小上界＝使用者數 × 相異位址數，
+每列只更新時間、不追加，無無界增長來源。
+**刻意無外鍵**（與 `command_alerts` 同取向）：軟刪使用者的列保留（帳號可能重新啟用），
+硬刪使用者的殘列惰性無害。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `UserID` | uint | `primaryKey;autoIncrement:false` | `user_id` | 帳號 ID。DB 側 `bigint NOT NULL`，與 `ClientIP` 合為複合主鍵 `user_source_ips_pkey`（**本表無 `id` 代理鍵**） |
+| `ClientIP` | string | `primaryKey;size:50;index:idx_user_source_ips_ip_seen,priority:1` | `client_ip` | 來源位址（正規化後的字串）。DB 側 `character varying(50) NOT NULL` |
+| `FirstSeenAt` | time.Time | `not null` | `first_seen_at` | 首次見到（登入或建線皆算）。DB 側 `timestamp with time zone NOT NULL` |
+| `LastSeenAt` | time.Time | `not null;index:idx_user_source_ips_ip_seen,priority:2` | `last_seen_at` | 最近見到。位址候選查詢依此降序，故與 `ClientIP` 同在覆蓋索引內。DB 側 `timestamp with time zone NOT NULL` |
+| `FirstSessionAt` | *time.Time | -（nullable） | `first_session_at,omitempty` | 首次自此位址**建線**的時刻；NULL＝從未建線（只登入過）。DB 側 `timestamp with time zone`（可空、無預設） |
+| `FirstSessionID` | *uint | -（nullable） | `first_session_id,omitempty` | 取得首次建線資格的會話 id；NULL＝尚無勝者。DB 側 `bigint`（可空、無預設）。**同時是並發首連線的單勝者判定鍵**：條件更新只讓第一個提交者寫入，回傳值等於自己 session id 者才發告警 |
+
+**索引**（DDL 於 `backend/internal/database/migration_source_ip_forensics.go`）:
+- `user_source_ips_pkey`＝**複合主鍵** `(user_id, client_ip)`，由建表語句的
+  `CONSTRAINT user_source_ips_pkey PRIMARY KEY (user_id, client_ip)` 承載；也是回填與觀察 upsert 的
+  `ON CONFLICT` 目標。
+- `idx_user_source_ips_ip_seen`＝`(client_ip varchar_pattern_ops, last_seen_at)`
+  ——位址候選查詢是「前綴 `LIKE` ＋ 依 `MAX(last_seen_at)` 降序」的覆蓋索引。
+  首欄**必須**以 `varchar_pattern_ops` 建立：非 C collation 下 `LIKE 'p%'` 不走一般 btree。
+  DDL 逐字：`CREATE INDEX idx_user_source_ips_ip_seen ON user_source_ips USING btree (client_ip varchar_pattern_ops, last_seen_at)`。
+
+**設計說明**:
+- **登入不佔建線**：`FirstSeenAt` 與 `FirstSessionAt`／`FirstSessionID` 分開追蹤——登入只把位址納入基準，
+  首次建線才設後兩欄並取得告警資格。「先登入再建線」的典型流程因此仍會在建線時響一次，
+  登入不得抹掉「新」這件事。
+- **冷啟動回填**（migration Up 的最後兩句，不在 `schemaDDLStatements()` 內——回填不是 schema）：
+  自 `sessions` 全史（每組 `(user_id, client_ip)` 取最早會話為首次建線，`first_session_id` 一併填）
+  與 `audit_logs` 的登入成功列（只補 `first_seen_at`／`last_seen_at`）合併，
+  使部署當下**已見的位址不觸發告警**。軟刪列不計、空位址或 NULL 位址跳過；
+  全新庫兩表皆空、回填零列。
+- **Down 銷毀資料**：`DROP TABLE user_source_ips` 丟掉整份基準，再次 Up 後全部位址重新判為新。
+  詳見「Migration 版本一覽」與 `docs/ops/upgrade-sop.md` §4。
 
 ---
 
