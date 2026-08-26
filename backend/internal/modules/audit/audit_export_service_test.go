@@ -37,8 +37,11 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 		degraded BOOLEAN NOT NULL DEFAULT 0, degrade_reason TEXT NOT NULL DEFAULT '')`).Error; err != nil {
 		t.Fatalf("create session_commands: %v", err)
 	}
-	// Session/AuditLog 用一般 time.Time，AutoMigrate 成 sqlite datetime 可掃描
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{}); err != nil {
+	// Session/AuditLog 用一般 time.Time，AutoMigrate 成 sqlite datetime 可掃描。
+	// ClipboardEvent 為 bundle 的固定段，
+	// 純 bundle 測試也需要表存在（零列＝空段，無需解密器）
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{},
+		&model.ClipboardEvent{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

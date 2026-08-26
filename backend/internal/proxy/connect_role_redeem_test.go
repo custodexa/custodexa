@@ -77,7 +77,7 @@ func setupGraphicsRedeemTest(t *testing.T) (*ConnectionHandler, *gorm.DB) {
 	}
 	authzSvc := authz.NewAssetAuthorizationService(db)
 	h := NewConnectionHandler("localhost", 4822, nil, assetSvc,
-		identity.NewAuthService("test-secret", time.Hour), authzSvc, nil)
+		identity.NewAuthService("test-secret", time.Hour), authzSvc, nil, nil)
 	h.ConnectTokens = NewConnectTokenManager()
 	policies := policy.NewSecurityPolicyService(db)
 	h.AccessPolicy = policy.NewAccessPolicyService(db, policies, authzSvc)

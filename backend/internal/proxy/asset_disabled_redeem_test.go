@@ -48,7 +48,7 @@ func TestGuacRedeemDisabledAsset(t *testing.T) {
 		t.Fatalf("asset service: %v", err)
 	}
 	h := NewConnectionHandler("localhost", 4822, nil, assetSvc,
-		identity.NewAuthService("test-secret", time.Hour), nil, nil)
+		identity.NewAuthService("test-secret", time.Hour), nil, nil, nil)
 	h.ConnectTokens = NewConnectTokenManager()
 
 	token, err := h.ConnectTokens.IssueConnectToken(context.Background(), ConnectGrant{UserID: 1, AssetID: 1, AccountID: 0})

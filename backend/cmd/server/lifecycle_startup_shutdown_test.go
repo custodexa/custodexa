@@ -79,6 +79,7 @@ var expectedReleaseRegistration = []string{
 	"reconcileScheduler",         // 迴圈登記
 	"checkpointScheduler",        // 迴圈登記（audit-checkpoint-chain 第 4 組）
 	"chainVerifyScheduler",       // 迴圈登記
+	"auditExportJobWorker",       // 迴圈登記
 	"metricsRefresher",           // R-13 段 2 最後登記（接替 perfMonitor）
 	"sealJournalReplay",          // R-1　publishStage2 內登記 ⇒ 最先被等待
 }

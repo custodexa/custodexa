@@ -104,6 +104,9 @@ var stage2ServiceInventory = []string{
 	// chainVerifyScheduler：
 	// 必須晚於 checkpointScheduler——驗證的對象是封章產出的鏈
 	"chainVerifyScheduler",
+	// auditExportJobWorker：證據包打包 worker。
+	// 晚於 apiHandlers——與 handler 共用的匯出服務在 buildRouteDeps 之前建構完成
+	"auditExportJobWorker",
 	// metricsRefresher：接替原 perfMonitor 的段 2 末步位置。
 	// 刷新的是查詢成本不對稱的指標（DB 查詢、檔案系統遍歷），故定期刷新而非
 	// 於每次採集時同步查詢——後者會讓外部採集頻率直接放大成本系統的負載
@@ -329,6 +332,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	keyvault.RegisterPostUnsealBuiltin(identity.PostUnsealMigrationLDAPSeed, func() {
 		identity.RegisterLDAPSeedMigration(auditTxSink)
 	})
+	// 剪貼簿明文欄→信封加密欄的一次性轉換：
+	// 回填需要 codec 故走本佇列；全新庫由 baseline 直建終態形狀，此項為 no-op
+	keyvault.RegisterPostUnsealBuiltin(session.PostUnsealMigrationClipboardContent,
+		session.RegisterClipboardContentMigration)
 	keyvault.RunPostUnsealMigrations(database.DB, keyManager)
 	mark("postUnsealMigrations")
 
@@ -356,6 +363,11 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 「一條漏接注入的組裝路徑會讓 fail-close 在生產靜默觸發而無人察覺」。
 	// 注入點釘在 `TestAssemblyInjectsEpochGateDB`（行為面，非讀碼）。
 	authService.SetEpochGateDB(database.DB)
+
+	// 來源政策的恢復謂詞：啟動時掃一次 users.allowed_cidrs。
+	// **雙向**——有損壞列即開失效（否則那個狀態要等到有人登入才被看見），
+	// 全部可解析則結案重啟前遺留的 open 事件
+	identity.EvaluateSourcePolicyHealth(database.DB)
 
 	// LDAP 認證：**恆注入 resolver**，不再有
 	// cfg.LDAP.Enabled 分支——「是否啟用」由每次登入的 DB 解析結果表達，設定
@@ -426,6 +438,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	g.bag.AddFunc("auditService", func(rctx context.Context) error { return auditService.Shutdown(rctx) })
 	mark("auditService")
 
+	// 單實例守衛事件 sink：審計服務只在段 2 之後存在，
+	// 守衛在段 1 緩衝的事件（含 ack 啟動的 overridden）於此注入時依序補寫
+	database.SetInstanceGuardEventSink(instanceGuardAuditSink(auditService))
+
 	// KEK 切換審計補記（best-effort）
 	logKEKSwitchAudit(keyManager, auditService)
 
@@ -434,8 +450,14 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	dailyReviewService := audit.NewDailyReviewService(database.DB, policyService, auditService)
 	mark("dailyReviewService")
 
+	// 剪貼簿內容加密器：欄位身分於此封進閉包，
+	// proxy 層只拿得到「加密到 clipboard_events.content_enc」這一件事
+	clipboardEncrypt := func(ctx context.Context, plaintext string) (string, error) {
+		return keyManager.EncryptFor(ctx, keyvault.RefClipboardContent, plaintext)
+	}
+
 	// 初始化連線處理器（添加授權服務）
-	connHandler := proxy.NewConnectionHandler(cfg.Guacamole.Host, cfg.Guacamole.Port, sessionService, assetService, authService, authorizationService, auditService)
+	connHandler := proxy.NewConnectionHandler(cfg.Guacamole.Host, cfg.Guacamole.Port, sessionService, assetService, authService, authorizationService, auditService, clipboardEncrypt)
 	connHandler.Registry = registry // 設定 Registry
 	// RDP/VNC 會話閒置/最大時長改讀安全政策（與 SSH/k8s/DB 同一政策鍵）
 	connHandler.TimeoutPolicy = sessionTimeoutPolicy
@@ -562,6 +584,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 阻斷告警的落地面：每條會話的 commandBlocker 由此取得。
 	// 未注入即在上方 requireAlertSink 拒絕啟動，不會走到這裡才發現
 	sshHandler.AlertSink = alertSink
+	// 帳號新來源位址基準：兩條建線路徑共用**同一份**服務。
+	// 分開建兩份不會壞掉，但兩條協議的「已見」判定會落在同一張表的同一組鍵上、
+	// 卻各自持有不同的鉤子與接線狀態——接線只斷一側時症狀是「SSH 會響、RDP 不響」，
+	// 而兩者對同一帳號同一位址本該只響一次
+	sourceIPBaseline := audit.NewSourceIPBaseline(database.DB, alertSink, auditTxSink)
+	sshHandler.SourceIPBaseline = sourceIPBaseline
+	connHandler.SourceIPBaseline = sourceIPBaseline
 	// 兩路徑共用同一 token manager（簽發端點掛在 sshHandler）
 	connHandler.ConnectTokens = sshHandler.ConnectTokens
 	// host-key-verification: TOFU host key 服務（SSH 與 SFTP 共用）
@@ -687,6 +716,16 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		checkpointService, checkpointSigning, policyService,
 		scheduler.NewChainVerifyPolicyTuning(policyService), auditFailureService)
 
+	// 稽核證據匯出服務（audit-workflows；組裝根在此處而非
+	// buildRouteDeps 內）：打包 worker 與 API handler 必須共用**同一實例**——簽章與
+	// 剪貼簿解密器若只注入其中一份，另一份會產出未簽章、或遇可用內容即失敗的包。
+	// 指令流讀取服務無狀態，另建實例不與 sessionCommandHandler 那份分歧
+	auditExportService := audit.NewAuditExportService(database.DB, auditService,
+		audit.NewSessionCommandService(database.DB), recordingService)
+	auditExportService.SetSigning(exportSigning)
+	auditExportService.SetClipboardCodec(keyManager)
+	auditExportJobService := audit.NewAuditExportJobService(database.DB)
+
 	deps, err := buildRouteDeps(cfg, routeServices{
 		metrics:                    s1.metrics,
 		checkpointVerifier:         checkpointVerifier,
@@ -724,6 +763,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		changeSecretCandidates:     changeSecretCandidates,
 		changeSecretRetryRunner:    changeSecretRetryRunner,
 		changeSecretScheduler:      changeSecretScheduler,
+		sourceIPBaseline:           sourceIPBaseline,
+		auditExportService:         auditExportService,
+		auditExportJobs:            auditExportJobService,
 		connHandler:                connHandler,
 		sshHandler:                 sshHandler,
 		corsMiddleware:             s1.corsMiddleware,
@@ -748,6 +790,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		{"reconcileScheduler", nil, nil},
 		{"checkpointScheduler", nil, nil},
 		{"chainVerifyScheduler", nil, nil},
+		{"auditExportJobWorker", nil, nil},
 	}
 	retentionService := audit.NewRetentionService(database.DB, policyService, recordingService, auditService)
 	// audit_logs 改走檢查點區間清除（本行是唯一切換點）：
@@ -798,6 +841,36 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 執行的是同一個實例
 	chainVerifyScheduler := scheduler.NewChainVerifyScheduler(chainVerifyService)
 	starts[6].start, starts[6].stop = chainVerifyScheduler.Start, chainVerifyScheduler.Stop
+	// 證據包打包 worker：Ticker 領件、
+	// panic recover、領件與每次重試重驗申請者。
+	//
+	// 申請者重驗閉包由組裝根組出（audit 模組不直讀 users 表）：允許＝帳號存在
+	// 且啟用且任一角色具 audit:view。與 RequirePermission 的判定等價——
+	// middleware 取 primaryRole（優先序 admin>auditor>user），而 audit:view 僅
+	// admin/auditor 具備，故「任一角色具權」與「最高優先角色具權」同值。
+	// (allowed=false, err=nil)＝失權取消；err 非 nil＝查詢面故障，交給重試
+	// （查不到不等於失權，誤取消會把暫時性故障放大成申請者的損失）
+	exportJobVerify := func(userID uint) (bool, error) {
+		user, err := userService.GetByID(userID)
+		if err != nil {
+			if errors.Is(err, identity.ErrUserNotFound) {
+				return false, nil // 已刪除（含軟刪）＝失權
+			}
+			return false, err
+		}
+		if !user.Active {
+			return false, nil
+		}
+		for i := range user.Roles {
+			if authz.RoutePermissions(user.Roles[i].Name, authz.PermAuditView) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	auditExportJobWorker := audit.NewAuditExportJobWorker(database.DB, auditExportService,
+		exportJobVerify, auditService, audit.ResolveExportArtifactDir(""))
+	starts[7].start, starts[7].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
 
 	for _, s := range starts {
 		if err := seal.CheckCancelStep(ctx, s.name); err != nil {
@@ -974,6 +1047,40 @@ func logKEKSwitchAudit(keyManager *keyvault.KeyManagerService, auditService *aud
 		len(sw.Retired), sw.ToKEKID, sw.RetiredCount)
 }
 
+// instanceGuardAuditSink 把單實例守衛事件轉成 audit_logs 系統列。
+//
+// 三個事件各一列：overridden（ack 啟動）、lost（失鎖）、regained（取得或重取成功）。
+// 系統主體（user_id 0／username system）、action=execute、resource=instance_guard；
+// status：regained→success、lost／overridden→failure——反映的是「互斥是否成立」而非
+// 「行程有沒有跑起來」，稽核者篩 failure 即撈到所有守衛失守的時刻（不用 denied：系統並未拒絕）。
+//
+// **走 AsyncSink 的 Submit 而非 Log**：段 1 緩衝的 overridden 事件要以**發生當下**入列
+// （Log 的簽名表達不了事件時刻，見 audit_log_service.go 的 logAt）。AsyncSink 為
+// at-most-once、失敗落 JSONL，不宣稱必達。
+func instanceGuardAuditSink(auditService *audit.AuditLogService) func(database.GuardEvent) {
+	return func(ev database.GuardEvent) {
+		body, err := json.Marshal(instanceGuardEventDetails(ev))
+		if err != nil {
+			log.Printf("[InstanceGuard] 守衛事件 %s 序列化失敗（審計列未寫）: %v", ev.Event, err)
+			return
+		}
+		status := model.StatusFailure
+		if ev.Event == database.GuardEventRegained {
+			status = model.StatusSuccess
+		}
+		if err := auditService.Submit(context.Background(), gatewayapi.AuditEvent{
+			OccurredAt: ev.At,
+			Actor:      gatewayapi.Actor{UserID: 0, Username: "system"},
+			Action:     string(model.ActionExecute),
+			Resource:   string(model.ResourceInstanceGuard),
+			Status:     string(status),
+			Details:    string(body),
+		}); err != nil {
+			log.Printf("[InstanceGuard] 守衛事件 %s 投遞審計失敗: %v", ev.Event, err)
+		}
+	}
+}
+
 // routeServices 是 buildRouteDeps 的輸入：段 2 建構完成的服務集合。
 type routeServices struct {
 	// metrics 段 1 建立、段 1／段 2 共用的指標實例
@@ -1006,20 +1113,27 @@ type routeServices struct {
 	auditIntegrity             *audit.AuditIntegrityService
 	checkpointVerifier         *audit.CheckpointVerifier // 檢查點驗證服務（第 8 組）
 	// chainVerifyStatus 兩層自動驗證的營運狀態來源（與排程器同一實例）
-	chainVerifyStatus *audit.ChainVerifyService
-	checkpointSigning          *keyvault.CheckpointSigningService
-	alertNotifier              *audit.AlertNotifier
-	accessPolicyService        *policy.AccessPolicyService
-	dataTransferService        *policy.DataTransferService
-	accessRequestService       *authz.AccessRequestService
-	changeSecretPlanService    *asset.ChangeSecretPlanService
-	changeSecretRunner         *asset.ChangeSecretRunner
-	changeSecretCandidates     *asset.ChangeSecretCandidateService
-	changeSecretRetryRunner    *asset.ChangeSecretRetryRunner
-	changeSecretScheduler      *scheduler.ChangeSecretScheduler
-	connHandler                *proxy.ConnectionHandler
-	sshHandler                 *sshproxy.Handler
-	corsMiddleware             gin.HandlerFunc
+	chainVerifyStatus       *audit.ChainVerifyService
+	checkpointSigning       *keyvault.CheckpointSigningService
+	alertNotifier           *audit.AlertNotifier
+	accessPolicyService     *policy.AccessPolicyService
+	dataTransferService     *policy.DataTransferService
+	accessRequestService    *authz.AccessRequestService
+	changeSecretPlanService *asset.ChangeSecretPlanService
+	changeSecretRunner      *asset.ChangeSecretRunner
+	changeSecretCandidates  *asset.ChangeSecretCandidateService
+	changeSecretRetryRunner *asset.ChangeSecretRetryRunner
+	changeSecretScheduler   *scheduler.ChangeSecretScheduler
+	// auditExportService／auditExportJobs 段 2 建構（與打包 worker 共用實例），
+	// buildRouteDeps 只組 handler
+	auditExportService *audit.AuditExportService
+	auditExportJobs    *audit.AuditExportJobService
+	connHandler        *proxy.ConnectionHandler
+	sshHandler         *sshproxy.Handler
+	// sourceIPBaseline 與兩條建線路徑共用同一份（見 sshHandler.SourceIPBaseline
+	// 的注入處）：登入點與建線點寫的是同一張基準表，服務分裂即判定分裂
+	sourceIPBaseline *audit.SourceIPBaseline
+	corsMiddleware   gin.HandlerFunc
 }
 
 // buildRouteDeps 建構全部 API handler 並組出 routeDeps。
@@ -1038,6 +1152,18 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	oidcHandler := api.NewOIDCHandler(s.oidcProviderService, s.oidcLoginService,
 		cfg.OIDC.PublicBaseURL, s.auditService)
 	oidcHandler.SetRefreshCookieWriter(refreshCookies)
+
+	// 帳號新來源位址基準：本地認證流與 OIDC 流共用**同一份**（也與兩條建線路徑同一份）。
+	// 各建各的不會壞掉，但「已見」判定會分裂成幾套接線狀態，症狀是某一條登入路徑
+	// 的新位址從此永遠不算新——而那正是這個功能唯一要答的問題
+	authHandler.SetSourceIPBaseline(s.sourceIPBaseline)
+	oidcHandler.SetSourceIPBaseline(s.sourceIPBaseline)
+
+	// 允許來源網段的現讀面（G1 強制點）：三個 handler 共用同一份服務。
+	// **未注入即 fail-close**（判定點讀不到清單一律拒絕），故遺漏會在第一次登入
+	// 就被看見，不會變成靜默放行——這與世代閘同一條紀律
+	authHandler.SetSourcePolicyReader(s.authService)
+	oidcHandler.SetSourcePolicyReader(s.authService)
 
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
 	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService)
@@ -1090,6 +1216,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
 	ldapDirectoryHandler := api.NewLDAPDirectoryHandler(s.ldapDirectoryService)
+	// 單實例守衛全貌（admin 限定、唯讀）：探針讀包級單例快照
+	instanceGuardHandler := api.NewInstanceGuardHandler(instanceGuardProbe)
 
 	// 金鑰清冊與換鑰精靈（admin only）。
 	// JWT 指紋於此算好注入（handler 不接觸 secret 材料）
@@ -1108,6 +1236,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	userHandler := api.NewUserHandler(s.userService)
 	userHandler.SetAuditService(s.auditService)
+	userHandler.SetSourcePolicyReader(s.authService)
 
 	roleHandler := api.NewRoleHandler(s.userService)
 	authorizationHandler := api.NewAuthorizationHandler(s.authorizationService, authz.NewEffectiveAccessResolver(database.DB))
@@ -1128,15 +1257,18 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		log.Println("審計日誌查詢 API 已註冊")
 	}
 
-	// 稽核證據匯出（audit-workflows，PCI 10.5.1）
-	auditExportService := audit.NewAuditExportService(database.DB, s.auditService, sessionCommandService, s.recordingService)
-	auditExportService.SetSigning(s.exportSigning)
+	// 稽核證據匯出（audit-workflows，PCI 10.5.1）：服務已於段 2 建構
+	// （與打包 worker 共用同一實例），此處只組 handler
 	exportSigningHandler := api.NewExportSigningHandler(s.exportSigning)
-	auditExportHandler := api.NewAuditExportHandler(auditExportService, s.auditService)
+	auditExportHandler := api.NewAuditExportHandler(s.auditExportService, s.auditExportJobs, s.auditService)
 
 	accessReviewHandler := api.NewAccessReviewHandler(authz.NewAccessReviewService(database.DB), s.auditService)
 	hostKeyHandler := api.NewHostKeyHandler(s.hostKeyService, s.authorizationService)
-	clipboardHandler := api.NewClipboardEventHandler(s.sessionService)
+	// 單筆剪貼簿內容調閱：解密＋逐筆留痕
+	// （fail-close，留痕不成即不交付），審計失敗經告警鏈揭露
+	clipboardContentService := session.NewClipboardContentService(
+		database.DB, s.keyManager, s.auditTxSink, s.auditFailureService)
+	clipboardHandler := api.NewClipboardEventHandler(s.sessionService, clipboardContentService)
 
 	// 稽核調查工作台（auditor-workbench）：六來源聚合＋主體目錄，唯讀
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
@@ -1156,8 +1288,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	sftpHandler.SetDataTransfer(s.dataTransferService) // 資料傳輸閘（data-transfer-control 4.1）
 
 	return routeDeps{
-		corsMiddleware:    s.corsMiddleware,
-		auditLogEnabled:   cfg.Features.AuditLogEnabled,
+		corsMiddleware:  s.corsMiddleware,
+		auditLogEnabled: cfg.Features.AuditLogEnabled,
 
 		authService:          s.authService,
 		auditService:         s.auditService,
@@ -1181,6 +1313,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		notificationChannel:   notificationChannelHandler,
 		oidc:                  oidcHandler,
 		ldapDirectory:         ldapDirectoryHandler,
+		instanceGuard:         instanceGuardHandler,
 		keyManagement:         keyManagementHandler,
 		snippet:               snippetHandler,
 		assetGroup:            assetGroupHandler,

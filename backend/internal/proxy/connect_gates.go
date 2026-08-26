@@ -34,6 +34,10 @@ type graphicsRedeemState struct {
 	currentRole string
 	authzCtx    context.Context
 	creds       *asset.AssetCredentials
+	// allowedCIDRs 兌換當下現讀的允許來源網段（G-G4 的同一次載入帶出，見 G-G13）
+	allowedCIDRs string
+	// sourceDenyCause 來源閘拒絕時的成因類別（政策不可讀才有值）：只進審計
+	sourceDenyCause string
 }
 
 // contractSubject／contractObject 由兌換側狀態造出 `gatewayapi.PolicyGate` 的契約入參。
@@ -77,13 +81,20 @@ func (h *ConnectionHandler) redeemPreResolveGates(
 		{Name: "G-G4", Eval: func() *connectgate.Outcome {
 			// AUTH-1＋角色現況：connect_token 消費時重載
 			// 用戶狀態並取 DB 現查有效角色（停用/鎖定/降權前簽發者於殘窗內須擋）
-			currentRole, connErr := h.AuthService.CurrentConnectRole(s.UserID)
+			currentRole, allowedCIDRs, connErr := h.AuthService.CurrentConnectRoleAndSourcePolicy(s.UserID)
 			if connErr != nil {
 				status, code := connectionAuthCode(connErr)
 				return connectgate.Deny(status, string(code), nil)
 			}
 			st.currentRole = currentRole
+			st.allowedCIDRs = allowedCIDRs
 			return nil
+		}},
+		{Name: "G-G13", Eval: func() *connectgate.Outcome {
+			// 來源限定（G1）：兌換當下現讀、不信簽發（同 G-S14 的理由）
+			out, cause := connectgate.SourceOutcome(st.allowedCIDRs, s.ClientIP)
+			st.sourceDenyCause = cause
+			return out
 		}},
 		{Name: "G-G5", Eval: func() *connectgate.Outcome {
 			// 憑證世代複查（1.9）：簽發後、兌換前若 provider 被停用或使用者世代被推進，
@@ -220,7 +231,7 @@ func (h *ConnectionHandler) writeOutcome(c *gin.Context, out *connectgate.Outcom
 	code := apierror.ErrCode(out.Decision.Code)
 	h.auditConnectDenied(c, ConnectDenial{
 		UserID: st.grant.UserID, AssetID: st.grant.AssetID,
-		Reason: string(code), HTTPStatus: out.Status,
+		Reason: string(code), HTTPStatus: out.Status, Cause: st.sourceDenyCause,
 	})
 	if out.Internal != nil {
 		apierror.RespondInternal(c, out.Status, code, out.Internal)
@@ -243,6 +254,11 @@ type ConnectDenial struct {
 	// `ticket_expired`，閘序類為該閘的 apierror 碼（協議不符即 SSH_ENDPOINT_MOVED）
 	Reason     string
 	HTTPStatus int
+	// Cause 拒絕的**成因類別**，目前只有來源限定閘會填（`read_error`／
+	// `parse_error`）。與 Reason 分欄是因為兩者答的是不同問題：Reason 是
+	// 「被哪一道閘擋的」，Cause 是「那道閘為什麼判不出來」。
+	// 空值時審計輸出逐字不變，既有各閘的列因此零變動
+	Cause string
 	// Via 兌換入口（`ViaConnect`／`ViaSSH`）：兩條入口的拒絕列在同一張表裡，
 	// 沒有這個欄位就分不出「有人在探測圖形入口」與「有人在探測終端入口」
 	Via string
@@ -324,10 +340,28 @@ func AuditConnectDenied(svc *audit.AuditLogService, c *gin.Context, ev ConnectDe
 		ClientIP:   sourceip.Of(c),
 		StatusCode: ev.HTTPStatus,
 		RequestID:  c.GetString("request_id"),
-		ErrorMsg:   ev.Reason,
-		Details: fmt.Sprintf(`{"asset_id":%d,"reason":%q,"via":%q}`,
-			ev.AssetID, ev.Reason, via),
+		ErrorMsg:   ev.errorMsg(),
+		Details:    ev.detailsJSON(via),
 	})
+}
+
+// errorMsg 審計慣例欄（ErrorMsg）的拒絕註記：無成因時逐字等於 Reason，
+// 故既有各閘的列零變動
+func (ev ConnectDenial) errorMsg() string {
+	if ev.Cause == "" {
+		return ev.Reason
+	}
+	return ev.Reason + "; cause=" + ev.Cause
+}
+
+// detailsJSON 結構化細節。成因非空時多一個 `cause` 鍵——
+// 稽核據此把「被擋」歸因到「政策壞了」而非「來源不對」
+func (ev ConnectDenial) detailsJSON(via string) string {
+	if ev.Cause == "" {
+		return fmt.Sprintf(`{"asset_id":%d,"reason":%q,"via":%q}`, ev.AssetID, ev.Reason, via)
+	}
+	return fmt.Sprintf(`{"asset_id":%d,"reason":%q,"via":%q,"cause":%q}`,
+		ev.AssetID, ev.Reason, via, ev.Cause)
 }
 
 // auditConnectDenied 圖形側的薄包裝：把 `Via` 釘死在 `ViaConnect`。

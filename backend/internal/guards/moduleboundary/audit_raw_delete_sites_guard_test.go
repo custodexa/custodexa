@@ -32,6 +32,13 @@ var auditRawDeleteSites = map[string]string{
 		"區間清除：與 tombstone 簽章同一交易，刪除後才寫 purged_at",
 	"internal/modules/audit/retention_checkpoint.go#(*CheckpointPurger).TrimChain": "" +
 		"檢查點自身到期修剪：自鏈頭連續刪除，另寫簽章修剪記錄錨定殘鏈",
+	"internal/database/migration_source_ip_forensics.go#rollbackSourceIPForensics": "" +
+		"migration 20260826_source_ip_forensics 的反序：舊 CHECK 值域不含 new_source_ip，" +
+		"約束加不回去之前必須先刪掉該類告警列。**這一處不留 tombstone，是清冊上的誠實債務**——" +
+		"它成立的前提是路徑本身：Down 只能由 RollbackMigration 指名版本觸發（開發庫限定），" +
+		"生產回退一律還原升級前備份（docs/ops/upgrade-sop.md §4）而不經此函式；" +
+		"且同一函式接著 DROP TABLE／DROP COLUMN，屬結構整體回退而非逐列清除——" +
+		"回退後那張庫的檢查點鏈本來就不再與回退前的鏈同源",
 	"scripts/retention_smoke.go#main": "" +
 		"dev 一次性驗證腳本（//go:build ignore，不入產品二進位），只刪自己造的 marker 列。" +
 		"仍登記而非排除 build-ignore 檔：排除等於開一扇「加個 build tag 就不受清冊管」的門",

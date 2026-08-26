@@ -300,6 +300,17 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 	} else if strings.HasSuffix(path, "/review") {
 		// HasSuffix：GET /reviews/pending 不含此結尾，不受影響
 		action = model.ActionReview // 破窗事後補審
+	} else if strings.HasSuffix(path, "/source-policy/check") {
+		// 允許來源網段的判定端點是**唯讀試算**：它拿一份尚未儲存的清單草稿問
+		// 「這個位址進不進得來」，不寫任何狀態。上面的動詞推導卻把它記成
+		// create＋user，於是表單每問一次就在操作日誌長出一列「建立使用者」的
+		// 假事件（2026-08-26 實測 6 分鐘 13 列、details 全空），稽核讀到的是
+		// 有人反覆建帳號——與真正的建帳號在動作與資源兩欄上完全同形。
+		//
+		// 動詞推導在這裡失準的原因是 POST 同時承載「新增一個實體」與「送一份
+		// 輸入去算」兩種語義，只有路徑分得出來，故在此顯式訂正為讀取。
+		// 「查了什麼」由 handler 經 audit_details 補上（形狀而非明文，見該處註解）。
+		action = model.ActionRead
 	}
 
 	// 提取 resource_id（從 path params）
@@ -478,6 +489,10 @@ func extractResource(path string) model.AuditResource {
 		// 依路徑序仍歸 user，不受本條影響
 		case "roles":
 			return model.ResourceRole
+		// 單實例守衛快照：管理者限定、唯讀、無 `:id`。
+		// 每次呼叫一列讀取留痕是刻意的——它只在橫幅出現時由管理者取一次，不輪詢
+		case "instance-guard":
+			return model.ResourceInstanceGuard
 		}
 	}
 

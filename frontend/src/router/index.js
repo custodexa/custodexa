@@ -85,6 +85,16 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
       {
+        // 下載中心：證據包走非同步交付後，產物不再隨
+        // 按鈕落地，必須有一個「我發起的產物在哪裡」的常設位置。獨立成頁而非
+        // 掛在工作台對話框內——散落各功能的臨時進度介面正是本頁要取代的東西。
+        // 權限沿稽核頁模式收斂為 admin/auditor（＝後端的 audit:view 閘）
+        path: 'audit/exports',
+        name: 'AuditExports',
+        component: () => import('../views/AuditExports.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+      },
+      {
         path: 'audit-logs',
         name: 'AuditLogs',
         component: () => import('../views/AuditLogs.vue'),

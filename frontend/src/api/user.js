@@ -275,6 +275,38 @@ export function getLocalAdminCount() {
 }
 
 /**
+ * 允許來源網段清單的判定端點（admin only，純判定、不變更任何狀態）。
+ *
+ * **落入與否只能問這裡**：前端只做格式層的就近提示，正規化、有效涵蓋狀態、
+ * 以及「這個來源進不進得來」一律由本端點回覆。前端自行以 CIDR 函式庫比對
+ * 必與強制點分歧——IPv6 縮寫、IPv4-mapped 位址對 IPv4 前綴、遮罩正規化
+ * 三者在兩套實作間必然不同，而判定權在後端。
+ *
+ * 回覆失敗不得當成「允許」：呼叫端在取不到結果時只呈現「無法確認」，
+ * 不得代替端點下判斷。故此處關閉全域 toast，由表單就近呈現。
+ *
+ * @param {Object} data
+ * @param {Array<string>} data.allowed_cidrs 草稿清單（尚未儲存）
+ * @param {string} [data.address] 要判定的位址；**省略＝以本請求的來源判定**
+ *   （自鎖預警走這條）
+ * @returns {Promise<{valid:boolean, items:Array<{input:string, normalized?:string,
+ *   error_code?:'invalid'|'too_many'}>, normalized:Array<string>,
+ *   status:'unrestricted'|'effectively_unrestricted'|'restricted',
+ *   families?:Array<'v4'|'v6'>,  // 注意：判定端點回應叫 families，
+ *                                 // `User` 物件上的同一件事叫 allowed_cidrs_families
+ *   source:{address:string|null, reason:'request'|'provided'|'unresolvable'},
+ *   allowed:boolean}>}
+ */
+export function checkSourcePolicy(data) {
+  return request({
+    url: '/users/source-policy/check',
+    method: 'post',
+    data,
+    skipErrorToast: true,
+  })
+}
+
+/**
  * 取得角色列表
  * @returns {Promise}
  */

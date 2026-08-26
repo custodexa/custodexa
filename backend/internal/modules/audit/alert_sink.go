@@ -69,11 +69,37 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 	if err := s.db.Create(&rows).Error; err != nil {
 		return err
 	}
+	s.PublishCommitted(rows)
+	return nil
+}
 
-	// 入庫成功後才推送與 tee（沿用 alert_matcher.go 的既有順序與語義）：
-	// 通知與離機轉發是下游附加價值，寫入失敗不得發出「系統裡查不到」的幽靈告警。
-	// 未初始化（單測）時靜默跳過——**這條寬鬆跳過只適用於下游 tee**，
-	// 不適用於 sink 本身（4.7 的 nil 自檢管的是後者）。
+// RecordAlertInTx 在**呼叫方的交易內**落地單筆告警列，不推送、不 tee。
+//
+// 供「基準轉態與告警列必須同交易」的產生點使用（帳號新來源位址告警）：
+// 交易任何一步失敗即整筆回滾，不會出現基準已標「已見」而告警永不補發的狀態。
+// 推送與離機轉發由呼叫方在**提交之後**以 PublishCommitted 完成——順序與
+// RecordAlerts 相同：入庫成功才推送，不發出「系統裡查不到」的幽靈告警。
+//
+// 回傳落地後的列（含主鍵），呼叫方持有它只為提交後推送；列的構造仍只在本檔。
+// 簽名不進 gatewayapi.AlertSink：那個公開包零 gorm，交易句柄只能在同行程內傳遞。
+func (s *alertRecorder) RecordAlertInTx(tx *gorm.DB, a gatewayapi.CommandAlert) (model.CommandAlert, error) {
+	if s == nil || tx == nil {
+		return model.CommandAlert{}, fmt.Errorf("告警落地面未取得交易句柄")
+	}
+	row := alertRowOf(a)
+	if err := tx.Create(&row).Error; err != nil {
+		return model.CommandAlert{}, err
+	}
+	return row, nil
+}
+
+// PublishCommitted 已入庫告警列的推送與離機轉發。
+//
+// 入庫成功後才推送與 tee（沿用 alert_matcher.go 的既有順序與語義）：
+// 通知與離機轉發是下游附加價值，寫入失敗不得發出「系統裡查不到」的幽靈告警。
+// 未初始化（單測）時靜默跳過——**這條寬鬆跳過只適用於下游 tee**，
+// 不適用於 sink 本身（4.7 的 nil 自檢管的是後者）。
+func (s *alertRecorder) PublishCommitted(rows []model.CommandAlert) {
 	if notifier := GetAlertNotifier(); notifier != nil {
 		for _, row := range rows {
 			notifier.Enqueue(row)
@@ -84,7 +110,6 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 			forwarder.EnqueueAlert(&rows[i])
 		}
 	}
-	return nil
 }
 
 // alertRowOf 由傳輸形狀組出落地列。

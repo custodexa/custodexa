@@ -28,7 +28,7 @@ import (
 // 故四條路徑（停用、刪除、移除 admin 角色、改為僅外部登入）SHALL 共用同一把
 // 系統級鎖，且判定 SHALL 於鎖內重讀。
 
-// localAdminLockKey 系統級「本地 admin 不變式」互斥的 advisory lock key。
+// LocalAdminLockKey 系統級「本地 admin 不變式」互斥的 advisory lock key。
 //
 // keyspace 沿用 key_manager_lock.go 登記的專案保留段（高位元 "otkek" 專案識別、
 // 低位元為子系統內編號）；該檔的 0x...0001 為 data_keys 寫入互斥，本鍵取 0x...0002。
@@ -36,7 +36,7 @@ import (
 //
 // **設計順序**：本鎖為「system → provider → user」取鎖順序中的
 // system 級鎖；2.8 的連線兌換／Join 若需同持多鎖，一律先取本鎖再取 provider/user 鎖。
-const localAdminLockKey int64 = 0x6F74_6B65_6B00_0002
+const LocalAdminLockKey int64 = 0x6F74_6B65_6B00_0002
 
 // localAdminProcessMu 無 advisory lock 能力環境（sqlite）的等價序列化。
 // package 層級共用（跨 UserService 實例），與 postgres 路徑同語義。
@@ -181,7 +181,7 @@ func WithLocalAdminInvariant(db *gorm.DB, targetUserID uint, fn func(tx *gorm.DB
 		return db.Transaction(func(tx *gorm.DB) error {
 			// xact lock：隨交易結束自動釋放，無持有者崩潰殘留問題。
 			// 阻塞版（非 try）——見上方取捨說明。
-			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", localAdminLockKey).Error; err != nil {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", LocalAdminLockKey).Error; err != nil {
 				return fmt.Errorf("取得本地管理員不變式互斥鎖失敗: %w", err)
 			}
 			return run(tx)

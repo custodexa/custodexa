@@ -44,6 +44,9 @@ type UserHandler struct {
 	userService UserServiceInterface
 	// auditService 解鎖等安全事件的顯式審計；nil 表示停用
 	auditService *audit.AuditLogService
+	// sourcePolicy 允許來源網段的現讀面（G1 強制點）。管理者對他人認證因子的
+	// 三個端點依**操作者本人**的清單判定。**nil 即 fail-close**
+	sourcePolicy sourcePolicyReader
 }
 
 // NewUserHandler 創建用戶 handler
@@ -133,6 +136,10 @@ func (h *UserHandler) Create(c *gin.Context) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeRoleNotFound, nil)
 			return
 		}
+		if code, ok := sourcePolicyValidationCode(err); ok {
+			apierror.Respond(c, http.StatusBadRequest, code, nil)
+			return
+		}
 		// 密碼政策違規（長度/組成）回可讀訊息（code+params 由 service 綁定）
 		var violation *policy.PasswordPolicyViolation
 		if errors.As(err, &violation) {
@@ -204,6 +211,10 @@ func (h *UserHandler) Update(c *gin.Context) {
 		if errors.Is(err, identity.ErrInvalidEmail) {
 			// 正規化後仍非合法 email 格式（binding 放寬後由 service 把關）→ 400
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		if code, ok := sourcePolicyValidationCode(err); ok {
+			apierror.Respond(c, http.StatusBadRequest, code, nil)
 			return
 		}
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserUpdate, err)
@@ -384,6 +395,13 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	// 來源限定（盤點表 #18）：管理者對他人的密碼寫入，依**操作者本人**的清單判定。
+	// 留痕交 AuditLogMiddleware（本路由掛了中介層），helper 只把判定依據併進
+	// 那一列的 details——另寫一列會讓「被擋幾次」翻倍
+	if !h.requireSourceAllowed(c, currentActorID(c), nil) {
+		return
+	}
+
 	// 解析請求。長度等規則由 service 層政策 validator 統一判定（單一事實源），
 	// binding 不再帶 min 長度
 	var req struct {
@@ -429,6 +447,11 @@ func (h *UserHandler) Unlock(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "user"})
+		return
+	}
+
+	// 來源限定（盤點表 #19）：解鎖他人是認證狀態寫入，依操作者本人的清單判定
+	if !h.requireSourceAllowed(c, currentActorID(c), nil) {
 		return
 	}
 
@@ -697,6 +720,9 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		// 靜態路徑須與 /:id 共存（gin 1.9 支援同層 static/param 兄弟節點）；
 		// 命名帶連字號避免與任何數字 ID 形式衝突
 		users.GET("/local-admin-count", h.GetLocalAdminCount)
+		// 允許來源網段的判定端點：純判定、不寫狀態。掛在靜態段而非 /:id 之下
+		// ——建立表單尚無 id，且判定與特定使用者無關
+		users.POST("/source-policy/check", h.SourcePolicyCheck)
 		users.GET("/:id", h.Get)
 		users.PUT("/:id", h.Update)
 		users.DELETE("/:id", h.Delete)

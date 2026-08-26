@@ -103,6 +103,7 @@ func setupOIDCAuditEnv(t *testing.T) *oidcAuditEnv {
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
 	})
 	h := NewOIDCHandler(providers, login, "https://bastion.example.com", auditService)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 
 	p := &model.OIDCProvider{
 		Name: "corp-idp", Issuer: "https://idp.example.com", ClientID: "cid-1",
@@ -269,6 +270,56 @@ func TestOIDCExchangeMFAPendingIsNotCountedAsSuccessfulLogin(t *testing.T) {
 		}
 	}
 	assertRequestContext(t, rows[0], "/api/v1/auth/oidc/exchange", http.StatusOK)
+}
+
+// TestOIDCExchangeSourceDeniedWritesNoSuccessRow 被來源政策擋下的交換只留 denied 一列。
+//
+// 釘的是留痕與判定的**順序**：成功列若寫在來源閘之前，同一次被擋的交換會同時
+// 產生 success 與 denied 兩列（實測相差數百微秒），稽核以 `status=success` 查 login
+// 就會看到一次從未發生的成功登入——它沒有發出任何會話。本地登入路徑本來就是
+// 「閘在前、成功列在後」（auth_handler.go 的 Login，實測只有 denied 一列），
+// 本測試使兩條路徑的對稱性不再靠人盯。
+//
+// 突變自檢：把 `Exchange` 的 `h.auditOIDCLogin(c, resp)` 移回來源閘之前 → 本測試紅
+//（列數 2、且其中一列 status=success），其餘各格全綠。
+func TestOIDCExchangeSourceDeniedWritesNoSuccessRow(t *testing.T) {
+	env := setupOIDCAuditEnv(t)
+	// 清單不涵蓋本次請求來源（fixture 的 RemoteAddr 為 203.0.113.9）
+	env.h.SetSourcePolicyReader(fixedSourcePolicy{raw: "10.0.0.0/8"})
+	ticket := env.issueTicket(t)
+
+	if code := env.postExchange(t, ticket); code != http.StatusForbidden {
+		t.Fatalf("清單外的交換應回 403，實得 %d", code)
+	}
+
+	rows := env.rows(t)
+	for _, row := range rows {
+		if row.Status == model.StatusSuccess {
+			t.Errorf("被擋下的交換寫出了成功登入列（稽核以 status=success 查 login 會看到"+
+				"一次沒發生的登入）: %+v", row)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("應恰產生 1 筆 denied 列，實得 %d 筆: %+v", len(rows), rows)
+	}
+	row := rows[0]
+	if row.Action != model.ActionLogin || row.Resource != model.ResourceAuth ||
+		row.Status != model.StatusDenied {
+		t.Errorf("應為 action=login／resource=auth／status=denied，實得 %q／%q／%q",
+			row.Action, row.Resource, row.Status)
+	}
+	var details map[string]any
+	if err := json.Unmarshal([]byte(row.Details), &details); err != nil {
+		t.Fatalf("Details 應為合法 JSON，實得 %q: %v", row.Details, err)
+	}
+	if stage, _ := details["stage"].(string); stage != "source_denied" {
+		t.Errorf("拒絕列應標註 stage=source_denied，實得 %q（Details=%s）", stage, row.Details)
+	}
+	// 原因只進審計（對外回應不回顯位址與清單，由 source_policy_gate_test.go 承擔）
+	if reason, _ := details["reason"].(string); !strings.Contains(reason, "203.0.113.9") {
+		t.Errorf("拒絕列應在 details 記下被判的位址，實得 reason=%q", reason)
+	}
+	assertRequestContext(t, row, "/api/v1/auth/oidc/exchange", http.StatusForbidden)
 }
 
 // TestOIDCCallbackFailureRowCarriesRequestContext 失敗列補實四欄且 resource=auth。

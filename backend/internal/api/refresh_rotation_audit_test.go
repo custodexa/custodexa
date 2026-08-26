@@ -86,6 +86,7 @@ func setupRefreshAuditEnv(t *testing.T) *refreshAuditEnv {
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
 	})
 	h := NewAuthHandler(auth, auditService)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte("R3fresh-Audit!pw"), bcrypt.MinCost)
 	if err != nil {

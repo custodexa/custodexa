@@ -24,12 +24,16 @@ import (
 // 專案識別；低位元為子系統內編號。目前已用：
 //
 //	0x0001 data_keys 寫入互斥（本檔）
-//	0x0002 最後本地 admin 不變式（localAdminLockKey，local_admin_invariant.go；
+//	0x0002 最後本地 admin 不變式（LocalAdminLockKey，local_admin_invariant.go；
 //	       撞號守衛見 TestLocalAdminLockKeyDistinct）
-//	0x0003 LDAP 目錄設定寫入互斥（ldapDirectoryLockKey，ldap_directory_service.go；
+//	0x0003 LDAP 目錄設定寫入互斥（LDAPDirectoryLockKey，ldap_directory_service.go；
 //	       CRUD 與 env seed 共用，撞號守衛見 TestLDAPDirectoryLockKeyDistinct。
 //	       **刻意不複用 0x0001**：withDataKeysLock 綁在 KeyManagerService 上且
 //	       硬寫本檔的 key，共用會使目錄設定存檔與 KEK 輪替無謂互斥）
+//	0x0004 單實例開機守衛（database.InstanceGuardLockKey，internal/database/instance_guard.go；
+//	       **session 級**、由一條終生不歸池的釘選連線持有、持鎖期＝行程生命期。
+//	       撞號守衛見 cmd/server 的 TestInstanceGuardLockKeyDistinct——infra 不得反向
+//	       import keyvault，故守衛置於組裝根，直接以四把匯出常數兩兩比對）
 //
 // 新增 advisory lock 一律在此檔登記，防跨子系統撞號。
 //
@@ -45,7 +49,7 @@ import (
 //	provider 認證世代鎖（oidc_provider_lock.go）採 `SELECT ... FOR UPDATE` 的
 //	**資料列鎖**，不佔用任何 advisory key。取列鎖而非 advisory 的理由是不同
 //	provider 天然互不阻塞，且鎖的生命週期與該列的交易完全一致。
-//	取鎖順序：system（localAdminLockKey）→ provider（列鎖）→
+//	取鎖順序：system（LocalAdminLockKey）→ provider（列鎖）→
 //	user（userCredentialLockClass）。
 const KEKDataKeysLockKey int64 = 0x6F74_6B65_6B00_0001
 

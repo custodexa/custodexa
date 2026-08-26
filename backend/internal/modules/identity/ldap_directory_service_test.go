@@ -776,10 +776,10 @@ func TestLDAPDirectoryConcurrentUpsert(t *testing.T) {
 func TestLDAPDirectoryLockKeyDistinct(t *testing.T) {
 	for name, key := range map[string]int64{
 		"keyvault.KEKDataKeysLockKey": keyvault.KEKDataKeysLockKey,
-		"localAdminLockKey":           localAdminLockKey,
+		"LocalAdminLockKey":           LocalAdminLockKey,
 	} {
-		if ldapDirectoryLockKey == key {
-			t.Fatalf("advisory lock key 撞號：ldapDirectoryLockKey 與 %s 同為 %#x", name, key)
+		if LDAPDirectoryLockKey == key {
+			t.Fatalf("advisory lock key 撞號：LDAPDirectoryLockKey 與 %s 同為 %#x", name, key)
 		}
 	}
 }

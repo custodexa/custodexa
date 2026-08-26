@@ -50,6 +50,12 @@ var (
 
 	// ldap_directories
 	RefLDAPBindPassword = crypto.CipherRef{Table: "ldap_directories", Column: "bind_password_enc"}
+
+	// clipboard_events：RDP/VNC 剪貼簿
+	// 留存內容。與憑證類欄位不同，這是**被監控者產生的原始材料本體**——
+	// 落庫即密文（明文欄已於同一次改動移除），列表與匯出只回事實投影，
+	// 內容僅經單筆調閱端點（逐筆留痕）與證據包（匯出留痕）解密取得
+	RefClipboardContent = crypto.CipherRef{Table: "clipboard_events", Column: "content_enc"}
 )
 
 // allCipherRefs 供守衛測試逐項比對登記表
@@ -61,4 +67,5 @@ var allCipherRefs = []crypto.CipherRef{
 	RefChannelSecret, RefChannelURL,
 	RefOIDCClientSecret,
 	RefLDAPBindPassword,
+	RefClipboardContent,
 }

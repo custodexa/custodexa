@@ -70,7 +70,9 @@
     "hoursMinutes": "{h} 小時 {m} 分",
     "unknownError": "未知錯誤",
     "close": "關閉",
-    "retry": "重試"
+    "retry": "重試",
+    "collapseSidebar": "收合側欄",
+    "expandSidebar": "展開側欄"
   },
   "menu": {
     "group": {
@@ -93,6 +95,7 @@
     "myRequests": "我的申請",
     "approvals": "審核中心",
     "auditWorkbench": "調查工作台",
+    "auditExports": "下載中心",
     "auditLogs": "操作日誌",
     "commands": "指令審計",
     "alerts": "告警",
@@ -245,6 +248,7 @@
       "unlock": "解鎖帳號",
       "pw_noncompliant": "密碼不符政策",
       "recording_failed": "錄影失敗",
+      "new_source_ip": "自新來源位址登入",
       "file_list": "檔案瀏覽",
       "file_upload": "檔案上傳",
       "file_download": "檔案下載",
@@ -292,6 +296,7 @@
       "asset_group": "資產分組",
       "snippet": "命令片段",
       "role": "角色",
+      "instance_guard": "單實例守衛",
       "unclassified": "未分類"
     },
     "mechanism": {
@@ -306,7 +311,8 @@
       "checkpoint_anchor": "檢查點離機備份",
       "audit_chain_structure": "審計鏈結構驗證",
       "audit_chain_content": "審計鏈內容驗證",
-      "audit_chain_verify": "審計鏈自動驗證作業"
+      "audit_chain_verify": "審計鏈自動驗證作業",
+      "source_policy": "來源網段限定政策"
     },
     "cause": {
       "recording_probe_failed": "簽發點錄影前置檢查失敗",
@@ -322,6 +328,7 @@
       "session_record_create_failed": "會話記錄建立失敗，連線已拒",
       "audit_write_fallback_file": "審計批次寫入失敗，已降級至檔案",
       "audit_write_batch_dropped": "審計批次寫入失敗，檔案降級已關閉、批次丟棄",
+      "audit_write_sync_refused": "同步審計寫入失敗，該次調閱已拒絕（內容未交付）",
       "syslog_connect_failed": "syslog 轉發連線失敗",
       "syslog_buffer_overflow": "syslog 轉發緩衝溢出",
       "kek_retirement_backlog": "KEK 退役收尾未收斂",
@@ -330,7 +337,9 @@
       "audit_chain_structure_invalid": "檢查點鏈結構異常（簽章、鏈接或序號被動）",
       "audit_chain_content_mismatch": "已封區間的審計紀錄與檢查點不符或缺失",
       "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
-      "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）"
+      "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）",
+      "source_policy_unreadable": "判定點讀不到使用者的允許來源網段清單",
+      "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）"
     },
     "endReason": {
       "normal": "正常結束",
@@ -775,7 +784,29 @@
     "seekNoRecording": "此連線沒有錄影內容，無法定位至該時刻",
     "seekUnsupported": "{protocol} 協議無錄影回放，無法定位至該時刻；指令清單仍可查閱",
     "seekUncorrected": "此連線沒有錄影起始時刻的紀錄（存量資料），落點改以連線起點推算，可能有數秒偏差。",
-    "degradedCount": "{n} 輪無法還原"
+    "degradedCount": "{n} 輪無法還原",
+    "clipboardTitle": "剪貼簿記錄",
+    "clipboardNote": "按「解密調閱」才會解密內容，並留下一筆調閱紀錄",
+    "clipboardCount": "共 {n} 筆",
+    "clipboardFailedCount": "{n} 筆內容留存失敗",
+    "clipboardDirectionColumn": "方向",
+    "clipboardLengthColumn": "長度（位元組）",
+    "clipboardStatusColumn": "內容狀態",
+    "clipboardActionColumn": "調閱",
+    "clipboardDirection": {
+      "send": "從本機複製到遠端",
+      "recv": "從遠端複製回本機"
+    },
+    "clipboardStatus": {
+      "available": "可調閱",
+      "failed": "內容留存失敗"
+    },
+    "clipboardGapDetail": "這筆事件在留存當下內容加密失敗，內容未被儲存；時間、方向與長度等事實仍完整。內容缺席不代表事件不存在。",
+    "clipboardContentLoading": "正在解密內容…",
+    "clipboardContentError": "內容載入失敗，這次沒有取得內容",
+    "clipboardDecryptButton": "解密調閱",
+    "clipboardLockedHint": "內容以加密方式留存。按「解密調閱」才會解密顯示，並留下一筆調閱紀錄。",
+    "clipboardAccessLogged": "本次調閱已留存紀錄（{time}）"
   },
   "myConnections": {
     "headerDesc": "檢視自己的連線紀錄",
@@ -957,7 +988,11 @@
     "blockedTag": "已阻斷",
     "languageColumn": "語言",
     "noCommandText": "此告警未附指令文字",
-    "kindAuditDegraded": "指令審計降級"
+    "kindAuditDegraded": "指令審計降級",
+    "kindNewSourceIP": "帳號新來源位址",
+    "newSourceIPFirstSession": "首次自此位址建立連線",
+    "newSourceIPNoAddress": "這場連線沒有可用的來源位址",
+    "newSourceIPPivot": "以這個位址調查當日的全部紀錄"
   },
   "transmission": {
     "headerDesc": "傳輸強制政策與通道加密清冊（原「通道加密清冊」頁）：政策等級每項標示 PCI 建議值；清冊彙整全通道加密狀態與偏離，匯出快照帶時間戳與產生者，可作稽核 inventory",
@@ -1278,7 +1313,31 @@
     "externalIdentities": "外部身分",
     "identityRefreshFailedTitle": "使用者列表重新載入失敗",
     "identityRefreshFailedHint": "外部身分的操作已送達後端，但列表未能刷新，畫面上的帳號狀態可能是舊值。請重試載入後再判斷。",
-    "externalPasswordShort": "由外部身分提供者管理"
+    "externalPasswordShort": "由外部身分提供者管理",
+    "allowedCidrs": "允許來源網段",
+    "allowedCidrsPlaceholder": "輸入位址或網段後按 Enter，例如 10.0.0.0/8",
+    "allowedCidrsHint": "留空表示不限制來源。單一位址視為一台主機；每個帳號最多 {max} 項。清單內的來源才能登入、續期與建立連線。",
+    "allowedCidrsAdd": "新增",
+    "allowedCidrsRemove": "移除 {value}",
+    "allowedCidrsFormat": "「{value}」看起來不是位址或網段",
+    "allowedCidrsInvalid": "「{value}」無法解析為位址或網段",
+    "allowedCidrsTooMany": "「{value}」超出每個帳號 {max} 項的上限",
+    "allowedCidrsDuplicate": "「{value}」已在清單內",
+    "allowedCidrsNormalized": "儲存後會存成：{list}",
+    "allowedCidrsChecking": "正在確認這份清單…",
+    "allowedCidrsCheckFailed": "目前無法確認這份清單：判定服務暫時沒有回應。仍可儲存，儲存時後端會再驗一次。",
+    "allowedCidrsEffective": {
+      "v4": "這份清單等同不限：它含有涵蓋全部 IPv4 的前綴，所有 IPv4 來源都會放行。",
+      "v6": "這份清單等同不限：它含有涵蓋全部 IPv6 的前綴，所有 IPv6 來源都會放行。",
+      "both": "這份清單等同不限：它含有涵蓋全部 IPv4 與 IPv6 的前綴，所有來源都會放行。"
+    },
+    "allowedCidrsCurrentSource": "你目前的來源：{address}",
+    "allowedCidrsSelfLock": "儲存後，你目前的來源 {address} 將無法登入，也無法續期。",
+    "allowedCidrsSelfLockNoSource": "系統取不到你目前的來源位址。清單非空時這種情況一律視為不允許，儲存後你將無法登入。",
+    "allowedCidrsSelfLockRecovery": "仍然可以儲存。若儲存後被擋在外面：由另一位管理者改回清單；系統沒有其他管理者時，只能由部署方依營運文件執行離線資料庫重設，該途徑不經產品審計，改動由部署方的變更管理留痕。",
+    "allowedCidrsTagRestricted": "已限定來源",
+    "allowedCidrsTagRestrictedTooltip": "此帳號設有允許來源網段清單，只有清單內的來源可以登入與建立連線。",
+    "allowedCidrsTagEffective": "等同不限"
   },
   "userGroups": {
     "headerDesc": "授權主體的分組維度（與 RBAC 角色無關）：對群組授權即對全體成員生效",
@@ -2075,6 +2134,53 @@
     "epaymentDeviation": "{n} 項不符電支基準",
     "applyEPayment": "套用電支基準"
   },
+  "instanceGuard": {
+    "ariaLabel": "單實例守衛警示",
+    "headline": {
+      "overridden": "本實例以確認碼啟動，單實例鎖仍由另一個資料庫工作階段持有",
+      "lost": "本實例已失去單實例鎖：{reason}",
+      "peers": "偵測到 {n} 個其他實例連線到同一資料庫",
+      "other": "單實例守衛狀態：{state}"
+    },
+    "reason": {
+      "ack_startup": "以確認碼啟動",
+      "contention": "鎖由另一個工作階段持有",
+      "db_unreachable": "資料庫連線中斷",
+      "permanent": "守衛無法驗證鎖狀態（權限或物件錯誤）",
+      "unknown": "原因不明"
+    },
+    "summary": "系統偵測到可能有另一個應用實例正在使用同一資料庫。守衛會把這類事件寫入稽核紀錄，但不會寄送或推播任何通知；畫面上的這道橫幅就是通知本身。",
+    "summaryUnreachable": "資料庫連線中斷，守衛暫時無法確認鎖的狀態——這不代表偵測到另一個實例。連線中斷期間稽核紀錄可能也寫不進資料庫，畫面上的這道橫幅就是通知本身。",
+    "boundary": "守衛只確保這件事被看見並記錄，不會阻止兩個實例同時執行造成的資料問題。",
+    "since": "自 {time} 起",
+    "sinceHeld": "本實例持鎖自 {time} 起",
+    "detail": {
+      "show": "顯示細節",
+      "hide": "隱藏細節",
+      "loading": "正在取得守衛細節",
+      "loadFailed": "無法取得守衛細節，請重新整理",
+      "holder": "持鎖者",
+      "holderNone": "目前沒有其他工作階段持有鎖",
+      "code": "確認碼",
+      "fingerprintUnavailable": "無法取得持鎖者細節，此確認碼為降級碼，不綁定特定工作階段。",
+      "ack": "本次啟動使用的確認碼",
+      "ackActor": "確認來源：操作者透過環境變數 INSTANCE_GUARD_ACK 設定。系統無法識別確認者是誰，由部署方的變更管理承擔。",
+      "instance": "本實例",
+      "hostname": "主機名",
+      "pid": "行程 id",
+      "startedAt": "守衛啟動時間",
+      "dbSessionPid": "資料庫工作階段 pid",
+      "lostTotal": "累計失鎖次數",
+      "peers": "其他守衛版實例連線數",
+      "risk": "風險",
+      "riskBody": "兩個實例同時執行會造成金鑰快取、匯出工作、錄影檔儲存與封印期間稽核紀錄的資料問題。",
+      "nextStep": "處置",
+      "nextStepHolder": "確認另一個實例已停止。鎖由本實例取得後，此提示會自動解除，不需要重新啟動。",
+      "nextStepUnreachable": "守衛至少每半分鐘會重新嘗試取得鎖一次。資料庫恢復連線後，此提示會在兩分鐘內自動解除。",
+      "nextStepPermanent": "檢查應用帳號在資料庫上的權限，並查看後端日誌中的 reason。守衛會持續嘗試重新取得鎖。",
+      "nextStepPeers": "確認是否有另一個實例正在執行。它停止後，此提示會在兩分鐘內自動消失。以確認碼啟動的實例會在稽核日誌留下 instance_guard 事件。"
+    }
+  },
   "policyKeySections": {
     "pciRecommend": "PCI 建議：{value}",
     "noPciValue": "無 PCI 建議值",
@@ -2086,12 +2192,15 @@
     "AUTH_ACCOUNT_LOCKED": "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員",
     "AUTH_APPROVER_REQUIRED": "權限不足：需審核人員或管理員身分",
     "AUTH_ASSET_CONNECT_DENIED": "您沒有連線此資產的權限，請聯繫管理員",
+    "AUTH_CHANGE_PASSWORD_RATE_LIMITED": "改密請求過於頻繁，請稍後再試",
     "AUTH_CONNECTION_NOT_AUTHORIZED": "此 token 不可用於建立連線",
     "AUTH_CONNECT_TOKEN_INVALID": "連線 token 無效或已使用",
     "AUTH_CONNECT_TOKEN_MISSING": "缺少 connect_token，請經由簽發端點建立連線",
+    "AUTH_EXPORT_JOB_REQUESTER_ONLY": "匯出產物僅限申請者本人下載",
     "AUTH_EXTERNAL_USER_PASSWORD": "此帳號的密碼由外部身分提供者管理，無法在本系統修改",
     "AUTH_INVALID_CREDENTIALS": "使用者名稱或密碼錯誤",
     "AUTH_LDAP_TRANSPORT_REJECTED": "LDAP 登入被傳輸安全政策拒絕：目錄連線未達加密要求，請管理員於身分管理的目錄設定頁改用 ldaps://",
+    "AUTH_LOGIN_RATE_LIMITED": "登入請求過於頻繁，請稍後再試",
     "AUTH_MFA_ENROLL_TOKEN_MISSING": "未提供註冊 token",
     "AUTH_MFA_INCOMPLETE": "MFA 驗證尚未完成",
     "AUTH_MFA_NOT_ENABLED": "此帳號未啟用 MFA",
@@ -2114,6 +2223,7 @@
     "AUTH_SESSION_SHARE_OWNER_ONLY": "僅會話擁有者可管理分享",
     "AUTH_SESSION_STATS_DENIED": "您沒有檢視此會話指標的權限",
     "AUTH_SESSION_TERMINATE_ADMIN_ONLY": "僅管理員可強制終止 Session",
+    "AUTH_SOURCE_NOT_ALLOWED": "目前的來源位址不在允許範圍內，請聯繫管理員",
     "AUTH_TAG_FILTER_PRIVILEGED_ONLY": "標籤篩選僅限管理角色",
     "AUTH_TAG_GOVERNANCE_ADMIN_ONLY": "僅 admin 可執行標籤治理",
     "AUTH_TAG_LIST_PRIVILEGED_ONLY": "僅管理角色可取得標籤清單",
@@ -2123,8 +2233,6 @@
     "AUTH_UNAUTHENTICATED": "未認證",
     "AUTH_USER_INACTIVE": "使用者帳號未啟用",
     "AUTH_USER_NOT_FOUND": "使用者不存在",
-    "AUTH_CHANGE_PASSWORD_RATE_LIMITED": "改密請求過於頻繁，請稍後再試",
-    "AUTH_LOGIN_RATE_LIMITED": "登入請求過於頻繁，請稍後再試",
     "CONFLICT_ACCESS_REQUEST_ALREADY_APPROVED": "您已核准過此申請",
     "CONFLICT_ACCESS_REQUEST_DUPLICATE_PENDING": "同資產已有在途申請",
     "CONFLICT_ACCESS_REQUEST_STATE": "申請單狀態已變更，請重新整理",
@@ -2140,6 +2248,7 @@
     "CONFLICT_BREAK_GLASS_DUPLICATE": "同資產已有有效的破窗連線",
     "CONFLICT_DAILY_REVIEW_SIGNED": "當日已完成簽核（{time} 由 {signer} 簽核）",
     "CONFLICT_EMAIL": "此 email 已被其他帳號使用",
+    "CONFLICT_EXPORT_JOB_LIMIT": "匯出打包佇列已滿，請稍後再試",
     "CONFLICT_EXTERNAL_IDENTITY_EXISTS": "此外部身分已綁定至某個帳號，請先解除既有綁定",
     "CONFLICT_KEY_CLEANUP_NOT_CONVERGED": "金鑰輪換尚未全數收斂（存在待切換 pending 或退役 backlog），請先完成切換或重啟收斂後再清理",
     "CONFLICT_KEY_CLEANUP_RESIDUE_DETECTED": "偵測到無法歸屬版本的非終態格式殘值：已保守拒絕本次清理，請先排除該些值（其可能由退役版本加密，銷毀材料將永久不可解）",
@@ -2243,6 +2352,7 @@
     "INTERNAL_DAILY_REVIEW_LIST_QUERY": "查詢簽核歷史失敗",
     "INTERNAL_DAILY_REVIEW_SIGN": "簽核失敗",
     "INTERNAL_DAILY_REVIEW_STATUS_QUERY": "取得審閱狀態失敗",
+    "INTERNAL_EXPORT_JOB": "匯出 job 處理失敗",
     "INTERNAL_EXTERNAL_IDENTITY_BIND": "綁定外部身分失敗",
     "INTERNAL_EXTERNAL_IDENTITY_QUERY": "查詢外部身分失敗",
     "INTERNAL_EXTERNAL_IDENTITY_UNBIND": "解除外部身分綁定失敗",
@@ -2352,6 +2462,7 @@
     "NOTFOUND_BATCH_GRANT_REFERENCE": "{entity}名單含不存在的 ID",
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "候選憑證不存在",
     "NOTFOUND_CHANGE_SECRET_PLAN": "改密計劃不存在",
+    "NOTFOUND_CLIPBOARD_EVENT": "剪貼簿記錄不存在",
     "NOTFOUND_COMMAND_ALERT": "告警不存在",
     "NOTFOUND_EXTERNAL_IDENTITY": "外部身分不存在或不屬於此帳號",
     "NOTFOUND_GRANT_REFERENCE": "{entity}不存在",
@@ -2401,6 +2512,7 @@
     "RULE_ASSET_TEST_TIMEOUT": "連線逾時",
     "RULE_ASSET_TEST_TLS_FAILED": "TLS 憑證驗證失敗，請確認 CA 憑證設定",
     "RULE_ASSET_TEST_UNKNOWN_ERROR": "連線測試失敗，請確認目標主機與服務狀態",
+    "RULE_AUDIT_EXPORT_BUNDLE_ASYNC_ONLY": "證據包已改為非同步交付，請改以匯出 job 發起",
     "RULE_BREAK_GLASS_DISABLED": "破窗緊急連線未開放",
     "RULE_BREAK_GLASS_NOT_APPLICABLE": "此申請單非破窗連線，無需補審",
     "RULE_BREAK_GLASS_NOT_ELIGIBLE": "無破窗資格（需持有該資產的常設連線授權）",
@@ -2414,6 +2526,8 @@
     "RULE_CONSENT_RISKS_CHANGED": "風險項已變更，請重新確認",
     "RULE_DAILY_REVIEW_DISABLED": "每日審閱功能未啟用",
     "RULE_DB_CLIENT_START_FAILED": "資料庫客戶端啟動失敗",
+    "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "匯出產物目前不可下載",
+    "RULE_EXPORT_JOB_BUNDLE_ONLY": "匯出 job 僅受理證據包，事件報告請走同步匯出端點",
     "RULE_K8S_FORBIDDEN": "無權限（403）：Token 缺少該 namespace 的 list pods 權限",
     "RULE_K8S_NAMESPACE_NOT_FOUND": "namespace 不存在（404）",
     "RULE_K8S_ONESHOT_DISABLED": "one-shot 單指令模態尚未開放",
@@ -2603,6 +2717,9 @@
     "VALIDATION_SFTP_UPLOAD_READ_FAILED": "讀取上傳檔案失敗",
     "VALIDATION_SNIPPET_NAME_EMPTY": "片段名稱不可為空",
     "VALIDATION_SNIPPET_TOO_LONG": "片段內容超過 4096 字元上限",
+    "VALIDATION_SOURCE_ADDRESS": "不是合法的來源位址",
+    "VALIDATION_SOURCE_PREFIX_INVALID": "允許來源網段含無法解析的項目",
+    "VALIDATION_SOURCE_PREFIX_LIMIT": "允許來源網段超過上限（32 項）",
     "VALIDATION_SYSLOG_HOST_REQUIRED": "host 不可為空",
     "VALIDATION_SYSLOG_PORT_RANGE": "port 須在 1-65535",
     "VALIDATION_SYSLOG_PROTOCOL": "protocol 須為 udp/tcp/tcp+tls",
@@ -3181,7 +3298,8 @@
     "headerDesc": "查一個人、或一台資產，在指定期間內做了什麼：把連線、指令、操作日誌、檔案傳輸、剪貼簿、告警六類紀錄併到同一條時間軸上比對。本頁只供查閱，不會更動任何紀錄，也不在這裡判斷紀錄本身有沒有被竄改；操作日誌與檔案傳輸的完整性證明由「檢查點驗證」頁出具（右上角可直接前往，該頁另載明它涵蓋與不涵蓋哪些紀錄）。",
     "pivot": {
       "user": "以人調查",
-      "asset": "以資產調查"
+      "asset": "以資產調查",
+      "ip": "以來源位址調查"
     },
     "subject": {
       "userPlaceholder": "搜尋使用者",
@@ -3189,7 +3307,12 @@
       "empty": "找不到符合的使用者或資產",
       "inactive": "已停用",
       "deleted": "已刪除",
-      "required": "請先選擇要調查的對象：一位使用者，或一台資產"
+      "required": "請先選擇要調查的對象：一位使用者，或一台資產",
+      "ipPlaceholder": "輸入或搜尋來源位址",
+      "ipEmpty": "沒有相符的候選位址；直接輸入完整位址即可查詢",
+      "ipLastSeen": "最近見到 {time}",
+      "requiredIp": "請先輸入要調查的來源位址",
+      "ipInvalid": "請輸入完整的 IPv4 或 IPv6 位址（不支援網段查詢）"
     },
     "range": {
       "start": "開始時間",
@@ -3208,13 +3331,27 @@
       "checkpoint": "檢查點驗證"
     },
     "export": {
-      "button": "匯出事件報告",
-      "title": "匯出目前調查範圍的事件報告",
+      "buttonReport": "匯出事件報告",
+      "buttonBundle": "下載證據包",
+      "title": "匯出目前的調查範圍",
       "confirm": "產生報告",
       "cancel": "取消",
       "generating": "產生中，請勿關閉此頁",
       "failed": "報告產生失敗，未取得任何檔案。範圍未變動，可直接再試一次。",
-      "unavailable": "請先選好調查對象與時間範圍，並至少勾選一類紀錄，才能匯出事件報告",
+      "unavailable": "請先選好調查對象與時間範圍，並至少勾選一類紀錄，才能匯出",
+      "pack": {
+        "label": "要匯出哪一種",
+        "event_report": "事件報告",
+        "evidence_bundle": "證據包",
+        "eventReportHint": "陳述發生過什麼；按下即取得檔案",
+        "evidenceBundleHint": "附上證物本體；背景打包，完成後於下載中心取件",
+        "diff": "事件報告是陳述：只列事件事實，體積小，按下即取得檔案。證據包是證物：另含錄影檔本體與剪貼簿的完整內容，體積不可控，因此改為背景打包，完成後到下載中心限時取件。"
+      },
+      "bundleConfirm": "發起打包",
+      "bundleSubmitting": "發起中…",
+      "bundleFailed": "發起失敗，沒有建立任何打包工作。範圍未變動，可直接再試一次。",
+      "bundleQueued": "已受理，正在背景打包。完成後可在下載中心取件。",
+      "bundleDeduplicated": "相同範圍已有一份打包進行中，已為您開啟下載中心。",
       "separator": "、",
       "scope": {
         "title": "這份報告涵蓋",
@@ -3222,29 +3359,46 @@
         "subjectAsset": "資產：{name}",
         "window": "期間：{from} 至 {to}",
         "types": "類別：{types}（共 {n} 類）",
-        "counts": "各類別筆數：{summary}"
+        "counts": "各類別筆數：{summary}",
+        "countsIpFiltered": "各類別筆數（畫面上套用來源位址篩選後的數字）：{summary}",
+        "titleBundle": "這一包涵蓋"
       },
       "proves": {
         "title": "這份報告能證明什麼",
         "record_ref": "每一筆事件都帶紀錄編號，可持編號回系統查對原始紀錄。",
         "scope": "報告載明它涵蓋的對象、期間與類別，以及每一類的收錄筆數與範圍內總筆數。",
         "export_logged": "這次匯出本身會留下紀錄：誰、何時、匯出了哪個範圍。",
-        "signature": "報告已簽章：以系統公開的驗證金鑰即可獨立確認內容自產出後未被更動，不必信任本系統。驗證金鑰由本系統發布，取得方式與驗簽步驟載於對外技術文件；建議事先取得並自行保管，日後即可離線核對。"
+        "signature": "報告已簽章：以系統公開的驗證金鑰即可獨立確認內容自產出後未被更動，不必信任本系統。驗證金鑰由本系統發布，取得方式與驗簽步驟載於對外技術文件；建議事先取得並自行保管，日後即可離線核對。",
+        "bundle_contents": "這一包承載證物本身：依勾選的類別收錄操作審計日誌、指令審計紀錄、範圍內連線的錄影檔本體與剪貼簿的完整內容；告警與檔案傳輸沒有內容本體，以事件事實清單列入。",
+        "bundle_scope": "清單檔載明本包是哪一種、涵蓋的對象與期間、收錄的類別、每一類的收錄筆數與範圍內總筆數，以及每個檔案的 SHA-256。",
+        "bundle_logged": "發起與下載各自留下紀錄：誰用哪個範圍發起、誰在什麼時候取走了哪一包。",
+        "bundle_signature": "本包會附簽章：以系統公開的驗證金鑰即可獨立確認內容自產出後未被更動，不必信任本系統。驗證金鑰由本系統發布，取得方式與驗簽步驟載於對外技術文件。",
+        "titleBundle": "這一包能證明什麼"
       },
       "limits": {
-        "title": "這份報告不能證明什麼"
+        "title": "這份報告不能證明什麼",
+        "titleBundle": "這一包不能證明什麼"
       },
       "limit": {
         "scope_is_query_range": "報告匯出的是整個查詢範圍，不是畫面上已載入的那幾筆。",
         "truncated_differs": "畫面的載入上限與報告的類別上限是兩件不同的事，報告內分別記載，不合併。",
-        "payload_excluded": "報告只含事件事實，不含剪貼簿內容、傳輸的檔案本體與錄影檔，三者的原因並不相同：剪貼簿內容仍留存在系統內，只是不隨報告輸出，且畫面上目前沒有取得內容的入口，需要調閱時請向系統管理員提出；傳輸的檔案本體本系統從未留存，只記錄檔名、路徑、大小與內容指紋，因此任何時候都取不到檔案本身；錄影檔不隨報告輸出，該連線有沒有錄影檔則由報告的錄影狀態逐筆標明。",
+        "payload_excluded": "報告只含事件事實，不含剪貼簿內容、傳輸的檔案本體與錄影檔，三者的原因並不相同：剪貼簿內容仍留存在系統內，只是不隨報告輸出，需要內容本身時走另外兩條途徑——到該連線的會話詳情逐筆解密調閱，或改發起證據包（收錄解密後的完整內容），兩者都會留下調閱紀錄；傳輸的檔案本體本系統從未留存，只記錄檔名、路徑、大小與內容指紋，因此任何時候都取不到檔案本身；錄影檔不隨報告輸出，該連線有沒有錄影檔則由報告的錄影狀態逐筆標明，需要影像本體時同樣改發起證據包。",
         "coverage_states": "若某段期間的紀錄已依保留政策清除，報告會標明該段；該段若有對應的檢查點，會一併標明其序號區間。空白不代表當時沒有事情發生。",
         "coverage_states_detail": "不受自動清除的類別（如連線與剪貼簿）不會因保留政策而消失，故該處的空白不是清除造成的；但空白仍不等於當時沒有事情發生，只有系統實際採集到的事件才會成為紀錄。以剪貼簿為例，紀錄只在圖形桌面連線上採集，且只收文字內容——終端機連線與資料庫連線不會產生任何剪貼簿紀錄。",
         "recording_state": "錄影狀態依清除進度以時間近似判定，非逐檔查核；「無錄影檔」代表該連線沒有錄影檔，與「已依保留政策清除」不同。",
         "manifest_required": "完整性判準：報告內若沒有清單檔（manifest），代表匯出中途失敗、該份不完整，不得作為證據。",
         "no_offline_tool": "報告內不含離線驗證工具，檢查點鏈的獨立驗證工具也不涵蓋這份報告。要自行驗證這份報告時，驗證金鑰的取得方式與逐步的驗簽指令載於本系統的對外技術文件，可向系統管理員索取。",
         "not_signed": "本系統未啟用報告簽章（原因代碼 {reason}），故本份報告沒有簽章檔——這是「未啟用」，不是簽章被移除。",
-        "asset_scope": "以資產為對象時，操作紀錄只涵蓋帶有資產關聯的紀錄；該關聯自「調查工作台」在本系統上線起才寫入，更早的操作紀錄不會出現在以資產為對象的結果中。上線日期依各部署的升級時間而定，需要在底稿寫明證據涵蓋期間時，請向系統管理員索取本系統的升級紀錄。"
+        "asset_scope": "以資產為對象時，操作紀錄只涵蓋帶有資產關聯的紀錄；該關聯自「調查工作台」在本系統上線起才寫入，更早的操作紀錄不會出現在以資產為對象的結果中。上線日期依各部署的升級時間而定，需要在底稿寫明證據涵蓋期間時，請向系統管理員索取本系統的升級紀錄。",
+        "bundle_plaintext": "本包含剪貼簿的明文內容與錄影檔本體，屬機密資料。系統能保證的是交付過程留有紀錄；取件之後的保管責任在取件者身上。",
+        "bundle_async": "證據包不會立即下載完成：發起後在背景打包，完成才可取件。產物限時保留，逾期自動清除、原下載位址失效。",
+        "bundle_requester_only": "只有發起者本人能下載這份產物；其他帳號即使具備稽核檢視權限也會被拒。需要同一份資料的人請自行發起，這樣每一份都留得下取件者。",
+        "bundle_category_scope": "這一包只收錄勾選中的類別，未勾選者整段不入包，清單檔內該類別的筆數一併缺席（寫 0 會讓「沒選」看起來像「範圍內沒有」）。告警與檔案傳輸沒有內容本體，以事件事實清單列入。",
+        "bundle_clipboard_gap": "剪貼簿內容若在留存當下加密失敗，包內該筆會標示為留存失敗且內容欄缺席，不以空字串冒充內容——那是缺口，不是空的剪貼簿。",
+        "bundle_scope_is_query_range": "收錄的是整個查詢範圍，不是畫面上已載入的那幾筆。",
+        "bundle_truncated_differs": "畫面的載入上限與包內的類別上限是兩件不同的事，清單檔內分別記載，不合併。",
+        "bundle_manifest_required": "完整性判準：包內若沒有清單檔（manifest），代表打包中途失敗、該份不完整，不得作為證據。",
+        "bundle_no_offline_tool": "包內不含離線驗證工具。要自行驗證這一包時，驗證金鑰的取得方式與逐步的驗簽指令載於本系統的對外技術文件，可向系統管理員索取。"
       },
       "coverage": {
         "title": "本範圍各類別的留存狀況（報告內逐類別載明同一組判定）",
@@ -3252,13 +3406,16 @@
         "purged": "本區間內有一段紀錄已依保留政策清除（保留 {policy_days} 天，清除截至 {purged_through_at}，最近一次清除於 {last_purge_at}）。此處的空白是清除的結果，不代表當時沒有事件。",
         "purgedCheckpoints": "對應檢查點序號 {archive_unit_from} 至 {archive_unit_to}，可持此序號回系統獨立查核該段。",
         "purgedPartial": "上一次清除未全部完成，該區間仍可能有部分紀錄留在系統中。",
-        "not_retained": "此類別不在自動清除範圍內（不會因保留政策而消失），故本區間的空白不是清除造成的。這與「已依保留政策清除」是兩回事；但空白也不等於當時沒有事情發生，紀錄以系統實際採集到的為準（例如剪貼簿只在圖形桌面連線上採集，且只收文字內容）。"
+        "not_retained": "此類別不在自動清除範圍內（不會因保留政策而消失），故本區間的空白不是清除造成的。這與「已依保留政策清除」是兩回事；但空白也不等於當時沒有事情發生，紀錄以系統實際採集到的為準（例如剪貼簿只在圖形桌面連線上採集，且只收文字內容）。",
+        "titleBundle": "本範圍各類別的留存狀況（包內逐類別載明同一組判定）"
       },
       "unsigned": {
         "title": "本系統未啟用報告簽章",
         "body": "這份報告不會附簽章檔。這是「未啟用」，不是簽章被移除；未簽章的報告無法自證未被更動。"
       },
-      "signingUnknown": "目前無法確認本系統是否已啟用報告簽章。請以報告內清單檔記載的簽章狀態為準。"
+      "signingUnknown": "目前無法確認本系統是否已啟用報告簽章。請以報告內清單檔記載的簽章狀態為準。",
+      "unavailableIpPivot": "以來源位址調查時不提供匯出。要出報告請切換到「以人調查」或「以資產調查」——既有報告本來就帶來源位址欄。",
+      "ipFilterExcluded": "畫面上的來源位址篩選不會套用到這份：範圍是上面列出的對象與期間，篩選前的全部紀錄都會收錄，實際收錄的筆數不會少於上面的數字。"
     },
     "categories": {
       "title": "紀錄類別",
@@ -3271,7 +3428,9 @@
       "audit_log": "操作日誌",
       "file_transfer": "檔案傳輸",
       "clipboard": "剪貼簿",
-      "alert": "告警"
+      "alert": "告警",
+      "notQueriedDetail": "{category}：這一類這次沒有納入查詢，因此沒有筆數可談。沒查過不等於沒發生——要把它算進來，點一下這顆按鈕。",
+      "countLine": "{category}：這段期間共 {count} 筆。"
     },
     "coverage": {
       "badge": {
@@ -3296,7 +3455,16 @@
       "tooltipStatus": "狀態：{status}",
       "clippedStart": "這場連線在你查詢的期間之前就已開始，圖上只畫出期間內的部分",
       "clippedEnd": "這場連線延續到你查詢的期間之後，圖上只畫出期間內的部分",
-      "ariaLabel": "使用者 {user}，資產 {asset}，{start} 至 {end}，時長 {duration}"
+      "ariaLabel": "使用者 {user}，資產 {asset}，{start} 至 {end}，時長 {duration}",
+      "overviewTitle": "連線總覽",
+      "overviewSummary": "{assets} 台資產、{sessions} 場連線",
+      "expandOverview": "展開連線總覽，依資產分列",
+      "collapseOverview": "收合連線總覽",
+      "expandAsset": "展開 {name} 的逐場連線",
+      "collapseAsset": "收合 {name} 的逐場連線",
+      "assetSessions": "{n} 場",
+      "restAssets": "其餘 {n} 台資產",
+      "unknownAsset": "未知資產"
     },
     "recording": {
       "available": "可回放",
@@ -3315,12 +3483,32 @@
       "revealed": "已再顯示 {count} 筆事件。",
       "allShown": "已無更多可載入，這段期間的事件已全部顯示。",
       "loadFailed": "載入更多事件失敗，這次沒有取得新資料；畫面上的筆數維持原樣，不代表你已看完全部。請按「重試」，或把時間範圍縮小後重查。",
-      "truncated": "這段期間的事件太多，畫面目前只顯示其中一部分，你還沒有看到全部。左側各類別的筆數才是這段期間的實際總數，請以它為準核對。要看其餘部分，請按下方的「載入更多」，或把時間範圍縮小後重查。",
-      "focusNotFound": "找不到你要查看的那一筆事件。可能的原因是：目前的時間範圍沒有涵蓋它、它所屬的類別被關掉了，或這段期間筆數太多、還沒載入到它。請調整時間範圍與左側類別後重查。這不代表紀錄已被刪除；操作日誌與檔案傳輸這兩類是否遭刪改，可到檢查點驗證頁查核。",
+      "truncated": "這段期間的事件太多，畫面目前只顯示其中一部分，你還沒有看到全部。篩選列上各類別的筆數才是這段期間的實際總數，請以它為準核對。要看其餘部分，請按下方的「載入更多」，或把時間範圍縮小後重查。",
+      "truncatedBrief": "尚未顯示全部事件：總數請以篩選列各類別筆數為準，其餘按下方「載入更多」或縮小時間範圍。",
+      "focusNotFound": "找不到你要查看的那一筆事件。可能的原因是：目前的時間範圍沒有涵蓋它、它所屬的類別被關掉了，或這段期間筆數太多、還沒載入到它。請調整時間範圍與篩選列上的類別後重查。這不代表紀錄已被刪除；操作日誌與檔案傳輸這兩類是否遭刪改，可到檢查點驗證頁查核。",
       "openSession": "連線詳情",
       "counterpartUser": "使用者：{name}",
       "counterpartAsset": "資產：{name}",
-      "clipboardNoContent": "剪貼簿的內容另有留存，但刻意不顯示在這條時間軸上——時間軸是跨多場連線的彙總畫面，把內容攤在這裡等於讓機密再擴散一次。這裡記錄的是：誰、在哪一場連線、什麼時間、往哪個方向複製，足以判斷有無外傳行為並追查到人；內容本身須具稽核權限才能逐場連線調閱。"
+      "clipboardNoContent": "剪貼簿的內容另有加密留存，但刻意不顯示在這條時間軸上——時間軸是跨多場連線的彙總畫面，把內容攤在這裡等於讓機密再擴散一次。這裡記錄的是：誰、在哪一場連線、什麼時間、往哪個方向複製；要調閱內容，請點「檢視內容」進入該場連線詳情的剪貼簿記錄，逐筆按「解密調閱」，每次調閱都會留下紀錄。",
+      "clipboardNoContentBrief": "內容刻意不顯示於時間軸；調閱請至連線詳情逐筆解密調閱（每次調閱留存紀錄）。",
+      "viewClipboardContent": "檢視內容",
+      "clientIpUnknown": "未知",
+      "clientIpReason": {
+        "system": "系統發起的動作，沒有請求來源可記。",
+        "unresolvable": "寫入當下取不到來源位址。",
+        "session_missing": "這筆紀錄所屬的連線已不存在，無從取得當時的來源。"
+      },
+      "clientIpScope": {
+        "session": "這是該場連線建線當下的來源。",
+        "request": "這是該筆操作當下的請求來源。",
+        "viaSession": "這是所屬連線建線當下的來源，不是這筆紀錄當下另行取樣。"
+      },
+      "actorUnauthenticated": "未認證來源",
+      "actorUser": "操作者：{name}",
+      "pivotLink": "以這個位址開新調查（保留目前的時間範圍與類別）",
+      "emptyHint": "可放寬時間範圍，或在上方多勾幾類紀錄。",
+      "emptyIpTitle": "此位址在這段期間沒有紀錄",
+      "emptyIpHint": "候選清單只含成功登入或建線過的位址；任一位址都可以直接輸入查詢，包含只出現在拒絕紀錄裡的位址。"
     },
     "table": {
       "time": "時間",
@@ -3331,7 +3519,9 @@
       "protocol": "協議",
       "start": "開始",
       "end": "結束",
-      "recording": "錄影"
+      "recording": "錄影",
+      "clientIp": "來源位址",
+      "actor": "操作者"
     },
     "summary": {
       "fallback": "尚未支援顯示的事件類型（系統代碼 {code}，可提供給系統管理員查詢）",
@@ -3343,6 +3533,7 @@
         "execute": "執行{resource}操作",
         "login": "登入",
         "logout": "登出",
+        "new_source_ip": "自新的來源位址登入",
         "unlock": "解鎖帳號",
         "pw_noncompliant": "密碼不符政策",
         "recording_failed": "錄影失敗",
@@ -3365,12 +3556,33 @@
         "executed": "執行指令"
       },
       "alert": {
-        "triggered": "觸發告警規則 {rule}"
+        "triggered": "觸發告警規則 {rule}",
+        "kind": {
+          "new_source_ip": "帳號新來源位址：首次自此位址建立連線"
+        }
       },
       "clipboard": {
         "send": "從本機複製內容到遠端主機",
         "recv": "從遠端主機複製內容回本機"
       }
+    },
+    "headerHelpLabel": "這一頁是什麼",
+    "filter": {
+      "clientIp": "來源位址",
+      "clientIpPlaceholder": "以來源位址篩選",
+      "unknownOnly": "只看未知來源",
+      "unknownOnlyHint": "只保留取不到來源位址的紀錄；與上方的位址輸入互斥"
+    },
+    "ipBoundary": {
+      "label": "來源位址的口徑與邊界",
+      "title": "看這條時間軸上的來源位址之前",
+      "candidates": "候選清單只含成功登入或建線過的位址。只出現在拒絕紀錄裡的位址查不到候選，但可以直接輸入——由自由輸入承擔。",
+      "scope": "連線、操作日誌與檔案傳輸的位址取自紀錄自帶的欄位；指令、告警與剪貼簿本身沒有位址欄，顯示的是所屬連線建線當下的來源——由每一格位址的說明承擔。",
+      "unknown": "取不到來源的紀錄以「未知」呈現並附原因（系統發起、寫入當下無法解析、所屬連線已不存在）。既沒有可歸屬使用者、也沒有位址的紀錄，不論以人、以資產或以來源位址調查都查不到——由這條說明承擔。",
+      "ipv6": "同一台裝置的 IPv6 臨時位址會輪替，在這裡呈現為不同位址；系統不會把同一前綴的位址併成一筆——由調查者以時間與帳號交叉比對承擔。",
+      "proxy": "部署未宣告可信代理鏈時，所有紀錄的來源都是代理位址。這是部署組態，由部署方與部署文件承擔；影響範圍是全部紀錄，介面無法逐列標示。",
+      "export": "以來源位址調查時不提供匯出；要出報告請切換到「以人調查」或「以資產調查」，那兩份報告的來源位址欄不變——由那兩份報告的匯出承擔。",
+      "exactMatch": "位址比對是正規化後的精確比對，不支援網段或前綴範圍查詢。"
     }
   },
   "kekCommands": {
@@ -3378,5 +3590,61 @@
     "hint": "在任一具備 shell 的機器上執行後，把輸出貼進上方欄位。三條分別對應三種可接受的寫法，每一條都經自動化測試實跑驗證其產出必然被接受。",
     "entropyWarning": "請務必以上列指令（CSPRNG）生成，勿自行編造：低熵字串通過格式檢查但不安全，系統無法由單一值驗證其熵。",
     "copied": "指令已複製"
+  },
+  "auditExports": {
+    "headerDesc": "您發起的匯出產物集中在這裡。產物限時保留，逾期自動清除。",
+    "requesterOnlyNote": "此頁只列出您本人發起的匯出。他人的產物不會出現在這裡，您也無法下載他人的產物——需要同一份資料請自行發起。",
+    "column": {
+      "artifact": "產物",
+      "scope": "範圍",
+      "status": "狀態",
+      "size": "大小",
+      "expires": "保留期限",
+      "actions": "操作"
+    },
+    "kind": {
+      "auditExport": "稽核證據包"
+    },
+    "requestedAt": "發起於 {time}",
+    "status": {
+      "pending": "等待打包",
+      "running": "打包中",
+      "done": "可下載",
+      "failed": "打包失敗",
+      "expired": "已過期"
+    },
+    "statusHint": {
+      "pending": "已受理，排隊中",
+      "running": "正在產生產物",
+      "done": "在保留期限內可取件",
+      "failed": "沒有產出任何產物",
+      "expired": "產物已清除，下載位址失效"
+    },
+    "failureReason": {
+      "pack_failed": "打包過程失敗，已達重試上限",
+      "requester_revoked": "發起者的帳號或稽核檢視權限已失效，本次打包已取消並清除產物",
+      "unknown": "失敗原因未記錄",
+      "unmapped": "失敗原因代碼：{code}（本版介面尚無對應說明，請提供此代碼給系統管理員）"
+    },
+    "scopeUser": "使用者 #{id}",
+    "scopeAsset": "資產 #{id}",
+    "scopeSession": "連線 #{id}",
+    "scopeRange": "期間 {from} 至 {to}",
+    "scopeTypes": "類別：{types}（共 {count} 類）",
+    "scopeUnknown": "範圍未記錄",
+    "expiresIn": "剩餘 {duration}",
+    "expiresAt": "至 {time}",
+    "expiredAlready": "已過期",
+    "noExpiry": "尚未產生產物",
+    "download": "下載",
+    "retry": "重新發起",
+    "downloadFailed": "下載失敗，未取得任何檔案。",
+    "retrySuccess": "已重新發起打包，稍後於本頁取件。",
+    "retryFailed": "重新發起失敗，沒有建立任何打包工作。",
+    "loadFailed": "清單載入失敗。",
+    "empty": "目前沒有匯出產物。到調查工作台完成調查後選「證據包」發起匯出，產物會出現在這裡。",
+    "polling": "有打包正在進行，本頁每 {sec} 秒自動更新一次。",
+    "pollingStopped": "自動更新已停止（已達本頁的更新次數上限）。請按重新整理取得最新狀態。",
+    "shaTip": "產物指紋 SHA-256：{sha}"
   }
 }

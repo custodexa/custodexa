@@ -20,6 +20,8 @@ import {
 const BACKEND_ACTIONS = [
   'create', 'read', 'update', 'delete', 'execute', 'login', 'logout',
   'unlock', 'pw_noncompliant', 'recording_failed',
+  // source-ip-forensics：新來源位址的登入標記（只留審計、不告警）
+  'new_source_ip',
   'file_list', 'file_upload', 'file_download', 'file_mkdir', 'file_delete',
   'approve', 'reject', 'cancel', 'expire', 'revoke', 'review',
 ]
@@ -37,6 +39,8 @@ const BACKEND_RESOURCES = [
   'audit_checkpoint', 'audit_failure', 'audit_integrity', 'alert_rule',
   'notify_channel', 'oidc_provider', 'ldap_directory', 'asset_group',
   'snippet', 'role',
+  // 單實例守衛（single-instance-guard）
+  'instance_guard',
   // 兜底哨兵（`extractResource` 對未分類路徑的回傳值，取代舊兜底 asset）
   'unclassified',
 ]
@@ -53,6 +57,8 @@ const BACKEND_MECHANISMS = [
   'audit_chain_structure',
   'audit_chain_content',
   'audit_chain_verify',
+  // 來源網段限定政策不可用（source-ip-forensics）
+  'source_policy',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -122,6 +128,7 @@ const BACKEND_CAUSES = [
   'session_record_create_failed',
   'audit_write_fallback_file',
   'audit_write_batch_dropped',
+  'audit_write_sync_refused',
   'syslog_connect_failed',
   'syslog_buffer_overflow',
   'kek_retirement_backlog',
@@ -131,10 +138,12 @@ const BACKEND_CAUSES = [
   'audit_chain_content_mismatch',
   'audit_chain_content_extra_rows',
   'audit_chain_verify_failed',
+  'source_policy_unreadable',
+  'source_policy_corrupt',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
-  it('AUDIT_ACTIONS 與後端 21 動作互為全集', () => {
+  it('AUDIT_ACTIONS 與後端 22 動作互為全集', () => {
     expect(Object.keys(AUDIT_ACTIONS).sort()).toEqual([...BACKEND_ACTIONS].sort())
     for (const a of BACKEND_ACTIONS) {
       expect(AUDIT_ACTIONS[a]?.label, `${a} 缺 label`).toBeTruthy()
@@ -142,7 +151,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   })
 
-  it('AUDIT_RESOURCES 與後端 35 資源互為全集（無殭屍 alert 條目）', () => {
+  it('AUDIT_RESOURCES 與後端 36 資源互為全集（無殭屍 alert 條目）', () => {
     expect(Object.keys(AUDIT_RESOURCES).sort()).toEqual([...BACKEND_RESOURCES].sort())
     expect(AUDIT_RESOURCES.alert).toBeUndefined()
   })
@@ -155,7 +164,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
       expect(
         parsed.length,
         '未從後端原始碼抽到 Resource 常數（正則失效？）'
-      ).toBeGreaterThanOrEqual(35)
+      ).toBeGreaterThanOrEqual(36)
       // 雙向：後端多值（前端漏補）與前端多值（殭屍條目）皆紅
       expect(parsed.sort()).toEqual([...AUDIT_RESOURCE_VALUES].sort())
       // 硬拷對照組亦須與原始碼同步，避免對照組本身漂移（本族的既有缺口正是此點）
@@ -163,7 +172,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   )
 
-  it('AUDIT_MECHANISMS 與後端 12 機制互為全集（含錄影三機制族、session_record、kek_retirement、aad_residue、checkpoint_anchor、鏈驗證三機制）', () => {
+  it('AUDIT_MECHANISMS 與後端 13 機制互為全集（含錄影三機制族、session_record、kek_retirement、aad_residue、checkpoint_anchor、鏈驗證三機制、source_policy）', () => {
     expect(Object.keys(AUDIT_MECHANISMS).sort()).toEqual([...BACKEND_MECHANISMS].sort())
   })
 
@@ -172,7 +181,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     () => {
       const parsed = parseBackendMechanisms(readFileSync(backendSourcePath, 'utf8'))
       // 正則失效（後端改寫法）時集合會空掉而「意外全綠」——先鎖下界
-      expect(parsed.length, '未從後端原始碼抽到 Mechanism 常數（正則失效？）').toBeGreaterThanOrEqual(12)
+      expect(parsed.length, '未從後端原始碼抽到 Mechanism 常數（正則失效？）').toBeGreaterThanOrEqual(13)
       // 雙向：後端多值（前端漏補）與前端多值（殭屍條目）皆紅
       expect(parsed.sort()).toEqual([...AUDIT_MECHANISM_VALUES].sort())
       // 硬拷對照組亦須與原始碼同步，避免對照組本身漂移
@@ -180,9 +189,9 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   )
 
-  it('AUDIT_CAUSES 與後端 22 失效原因互為全集', () => {
+  it('AUDIT_CAUSES 與後端 24 失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(22)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(25)
   })
 
   it.skipIf(!backendSourcePath)(
@@ -190,7 +199,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     () => {
       const parsed = parseBackendCauses(readFileSync(backendSourcePath, 'utf8'))
       // 正則失效（後端改寫法）時集合會空掉而「意外全綠」——先鎖下界
-      expect(parsed.length, '未從後端原始碼抽到 Cause 常數（正則失效？）').toBeGreaterThanOrEqual(22)
+      expect(parsed.length, '未從後端原始碼抽到 Cause 常數（正則失效？）').toBeGreaterThanOrEqual(24)
       // 雙向：後端多值（前端漏補）與前端多值（殭屍條目）皆紅
       expect(parsed.sort()).toEqual([...AUDIT_CAUSE_VALUES].sort())
       // 硬拷對照組亦須與原始碼同步，避免對照組本身漂移

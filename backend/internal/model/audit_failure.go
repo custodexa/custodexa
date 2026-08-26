@@ -71,6 +71,12 @@ const (
 	// 「不可能態」——程式缺陷或繞過 API 的資料庫直寫。開列本機制（fail-visible，
 	// 不阻塞啟動）。狀態可由現查謂詞導出，收斂後自動結案
 	MechanismAADResidue = "aad_residue"
+	// MechanismSourcePolicy 來源位址政策不可用：判定點讀不到使用者的允許網段清單，
+	// 或儲存的清單字串無法解析。每一個判定點遇此一律**拒絕**而非視為空清單放行；
+	// 拒絕是靜默的（對外只看得到「來源不允許」），故經本機制上報使營運端在失效面板
+	// 與通知通道看得見「政策壞了」。狀態可由謂詞（全部使用者清單可解析＋最近讀取成功）
+	// 重評估，恢復即結案
+	MechanismSourcePolicy = "source_policy"
 )
 
 // 失效原因機器碼。
@@ -109,6 +115,10 @@ const (
 	CauseAuditWriteFallbackFile = "audit_write_fallback_file"
 	// CauseAuditWriteBatchDropped 審計批次寫庫失敗且檔案降級關閉，批次丟棄
 	CauseAuditWriteBatchDropped = "audit_write_batch_dropped"
+	// CauseAuditWriteSyncRefused 同步（fail-close）審計寫入失敗，該次操作已拒絕：
+	// 逐筆留痕是交付明文的前置條件（剪貼簿單筆調閱），留痕寫不進去即拒絕交付
+	// ——證據未損（明文沒出去），但審計機制本身失效，須經告警鏈揭露
+	CauseAuditWriteSyncRefused = "audit_write_sync_refused"
 	// CauseSyslogConnectFailed syslog 轉發連線失敗
 	CauseSyslogConnectFailed = "syslog_connect_failed"
 	// CauseSyslogBufferOverflow syslog 轉發緩衝溢出（丟棄計數）
@@ -140,6 +150,11 @@ const (
 	// 遷移進度／模式狀態的 permissive 與 strict-mismatch 兩值——那兩種狀態隨
 	// strict 狀態機一同消滅，其 cause 值不得沿用（語義已不成立）。
 	CauseAADResidueImpossibleState = "aad_residue_impossible_state"
+	// CauseSourcePolicyUnreadable 判定點讀取使用者的允許網段清單失敗（DB 錯）
+	CauseSourcePolicyUnreadable = "source_policy_unreadable"
+	// CauseSourcePolicyCorrupt 儲存的允許網段清單字串無法解析：唯一寫入路徑是
+	// 驗證後寫入，損壞只可能來自資料庫直寫或程式缺陷
+	CauseSourcePolicyCorrupt = "source_policy_corrupt"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。

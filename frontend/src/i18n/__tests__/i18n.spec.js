@@ -206,6 +206,8 @@ describe('locale 訊息語法（linked message 轉義）', () => {
     'format.durationHours',
     'format.durationMinutes',
     'format.durationSeconds',
+    // 單實例守衛：偵測到的對等實例數（en 單複數）
+    'instanceGuard.headline.peers',
     'ldapDirectory.matched',
     'ldapDirectory.matchedAtLeast',
     // PCI 偏離摘要三處（英文寫死複數，1 項時顯示 "1 deviations"）

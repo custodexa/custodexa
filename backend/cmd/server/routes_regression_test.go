@@ -100,6 +100,7 @@ func testDeps(isRelease, auditLogEnabled bool) routeDeps {
 		transmissionInventory: &api.TransmissionInventoryHandler{},
 		notificationChannel:   &api.NotificationChannelHandler{},
 		ldapDirectory:         &api.LDAPDirectoryHandler{},
+		instanceGuard:         &api.InstanceGuardHandler{},
 		keyManagement:         &api.KeyManagementHandler{},
 		snippet:               &api.SnippetHandler{},
 		assetGroup:            &api.AssetGroupHandler{},

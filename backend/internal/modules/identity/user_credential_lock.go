@@ -14,7 +14,7 @@ import (
 // write-skew——帳號有兩筆外部身分時，兩個並發解綁各自看見「還有另一筆」即可
 // 同時提交，結果登入途徑歸零。
 //
-// **與 localAdminLockKey 的分工**：後者是系統級（全體本地 admin 的總數不變式），
+// **與 LocalAdminLockKey 的分工**：後者是系統級（全體本地 admin 的總數不變式），
 // 本鎖是使用者級（單一帳號的登入途徑與憑證世代）。同時需要兩者的操作
 //（解綁＋停用、改為僅外部登入）一律**先系統後使用者**，即
 // system → provider → user 固定順序，避免與其他持鎖路徑互鎖。
@@ -28,7 +28,7 @@ import (
 // 取**兩參數形式**（classid, objid）而非 64 位元單鍵：objid 直接放 userID，
 // 使不同使用者的操作天然並行，不會像單一全域鍵那樣把所有帳號的解綁序列化。
 // postgres 的「一個 64 位元鍵」與「兩個 32 位元鍵」屬**不同的鎖空間**，
-// 故本 classid 與 key_manager_lock.go 登記的 KEKDataKeysLockKey／localAdminLockKey
+// 故本 classid 與 key_manager_lock.go 登記的 KEKDataKeysLockKey／LocalAdminLockKey
 // 天然不會相撞；classid 值仍取自同一保留段（"otk" ASCII ＋ 子系統序號 0x03）
 // 以維持「所有 advisory lock 都能在該檔追溯」的慣例。
 const userCredentialLockClass int32 = 0x6F74_6B03

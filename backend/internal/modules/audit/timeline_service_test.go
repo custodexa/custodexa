@@ -87,7 +87,9 @@ func seedAllSources(t *testing.T, db *gorm.DB, ts time.Time, n int) {
 			t.Fatalf("alert: %v", err)
 		}
 		if err := db.Create(&model.ClipboardEvent{
-			SessionID: sess.ID, Direction: "send", Content: "x", CreatedAt: ts,
+			SessionID: sess.ID, Direction: "send",
+			ContentEnc: "enc:a1:v1:x", ContentLength: 1, ContentStatus: model.ClipboardContentAvailable,
+			CreatedAt: ts,
 		}).Error; err != nil {
 			t.Fatalf("clipboard: %v", err)
 		}

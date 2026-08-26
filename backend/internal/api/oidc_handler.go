@@ -40,6 +40,12 @@ type OIDCHandler struct {
 	// refreshCookies refresh 憑證的 httpOnly cookie 下發。
 	// nil 安全：視為 Secure（安全方向），功能不斷
 	refreshCookies *RefreshCookieWriter
+	// sourceIPBaseline 帳號 × 來源位址「已見」基準（同 AuthHandler 的同名欄位，
+	// 兩者共用同一份服務與同一個判準）。nil 僅限既有測試路徑
+	sourceIPBaseline *audit.SourceIPBaseline
+	// sourcePolicy 允許來源網段的現讀面（G1 強制點，同 AuthHandler 的同名欄位）。
+	// **nil 即 fail-close**：見 source_policy_gate.go
+	sourcePolicy sourcePolicyReader
 }
 
 // 聚合審計的事件鍵。命名對齊審計既有慣例（動作_結果），並保留端點區分——
@@ -312,12 +318,31 @@ func (h *OIDCHandler) Exchange(c *gin.Context) {
 		h.respondLoginError(c, err)
 		return
 	}
+	// 來源限定（盤點表 #8）：正式會話與 enrollment 票證兩條分支要判，
+	// **pending 不判**（同密碼登入的第一階段：持有外部身分但無第二因素者
+	// 不得經此探知來源政策）。
+	//
+	// **判定必須早於成功留痕**：留痕在前，被擋下的交換會同時寫出 success 與
+	// denied 兩列（實測相差數百微秒），稽核以 `status=success` 查 login 就會看到
+	// 一次從未發生的成功登入——真相要讀相鄰列才還原得出。本地登入路徑早已是
+	// 「閘在前、成功列在後」（auth_handler.go 的 Login），兩條路徑就此對稱。
+	// pending 分支不判來源，其留痕不受本次調整影響（仍在閘之後無條件寫出）
+	if !resp.MFARequired {
+		oidcUserID, oidcUsername := loginSubject(resp)
+		if !h.requireSourceAllowed(c, oidcUserID, func(note string) {
+			h.auditOIDCSourceDenied(c, oidcUserID, oidcUsername, note, resp)
+		}) {
+			return
+		}
+	}
 	h.auditOIDCLogin(c, resp)
+
 	// 發放端點 5／6：**巢狀回應是六者中最易漏的一個**。
 	// `LoginResponse.RefreshToken` 已是 `json:"-"`，故 `gin.H{"login": resp}` 這條
 	// 序列化路徑不會帶出明文；憑證改由此處的 cookie 下發。
 	// MFA／強制註冊／強制改密分支尚未發出正式會話，SetFromLogin 對其零動作
 	h.refreshCookies.SetFromLogin(c, resp)
+	h.observeLoginSource(c, resp)
 	c.JSON(http.StatusOK, gin.H{"login": resp, "redirect_next": next})
 }
 
@@ -348,6 +373,24 @@ func (h *OIDCHandler) auditOIDCLogin(c *gin.Context, resp *identity.LoginRespons
 			"auth_method": resp.AuthSource,
 		},
 	}}, http.StatusOK)
+}
+
+// auditOIDCSourceDenied 交換點的來源拒絕留痕。
+//
+// 沿 auditOIDCLogin 的同一個寫入點與同一份 Details 形狀，只換 status 與原因
+// ——分成兩份會讓「拒絕列少了 provider」這種偏差無人發現，而多 provider
+// 部署下「他是經哪個身分來源被擋的」正是稽核第一個要問的問題
+func (h *OIDCHandler) auditOIDCSourceDenied(c *gin.Context, userID uint, username, note string,
+	resp *identity.LoginResponse) {
+	h.writeOIDCAudit(c, []identity.OIDCAuditEvent{{
+		Action: model.ActionLogin, Resource: model.ResourceAuth, Status: model.StatusDenied,
+		UserID: userID, Username: username,
+		Details: map[string]any{
+			"event": "oidc_login", "stage": "source_denied", "reason": note,
+			"provider_id": resp.AuthProviderID, "provider_name": resp.AuthProviderName,
+			"auth_method": resp.AuthSource,
+		},
+	}}, http.StatusForbidden)
 }
 
 // writeOIDCAudit 落地 service 交回的審計意向，補上**只有此處才有**的請求脈絡。

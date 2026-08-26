@@ -45,9 +45,12 @@ type Session struct {
 	AssetID *uint  `json:"asset_id,omitempty"` // 可選：手動連線時可能沒有資產 ID
 	Asset   *Asset `gorm:"foreignKey:AssetID" json:"asset,omitempty"`
 
-	// 連線資訊
-	ClientIP  string     `gorm:"size:50" json:"client_ip"`
-	StartTime time.Time  `json:"start_time"`
+	// 連線資訊。
+	// ClientIP／StartTime 的複合索引供稽核工作台以來源位址為樞紐時查會話、
+	// 以及指令／告警／剪貼簿三表經 session_id 帶出位址的 join 使用；
+	// 時間窗 keyset 需要第二鍵，故不是單欄索引
+	ClientIP  string     `gorm:"size:50;index:idx_sessions_client_ip_start,priority:1" json:"client_ip"`
+	StartTime time.Time  `gorm:"index:idx_sessions_client_ip_start,priority:2" json:"start_time"`
 	EndTime   *time.Time `json:"end_time,omitempty"`
 	Duration  int        `json:"duration"` // 秒數
 

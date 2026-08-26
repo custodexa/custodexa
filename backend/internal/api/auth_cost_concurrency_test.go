@@ -101,6 +101,7 @@ func TestBudgetIsMonotonicInCost(t *testing.T) {
 // 而測試若只驗 params 就完全看不出來。
 func TestChangePasswordGuardIsWired(t *testing.T) {
 	h := NewAuthHandler(nil, nil)
+	h.SetSourcePolicyReader(unrestrictedSourcePolicy())
 	if h.changePasswordGuard == nil {
 		t.Fatal("changePasswordGuard 未注入——成本推導的參數沒有被任何東西使用")
 	}

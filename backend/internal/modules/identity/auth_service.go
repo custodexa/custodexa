@@ -230,6 +230,13 @@ type UserInfo struct {
 	// 具 approver 角色 OR 屬任一審核方群組——前端審核中心入口/badge 依此判定
 	//（roles 陣列蓋不到群組成員的情形）
 	IsApprover bool `json:"is_approver"`
+	// SourceIP 本人這次請求的來源位址，**僅由 `GET /auth/me` 填寫、僅供顯示**
+	// （允許網段表單的「你目前的來源」）。不參與任何判定——落入與否一律問
+	// 判定端點，前端自算必與強制點分歧。
+	//
+	// omitempty 是刻意的：登入回應共用本型別，該路徑不填此欄，
+	// 既有回應的欄位集因此逐字不變
+	SourceIP string `json:"source_ip,omitempty"`
 }
 
 // Login 使用者登入。gate chain（登入狀態機，順序固定）：
@@ -1063,20 +1070,38 @@ func (s *AuthService) CheckUserConnectable(userID uint) error {
 // 攜帶的角色快照——降權即時生效、撤權殘窗歸零。
 // 與 CheckUserConnectable 並存：後者仍供 refresh／bridge 啟動前複查以 error 語義使用
 func (s *AuthService) CurrentConnectRole(userID uint) (string, error) {
+	role, _, err := s.CurrentConnectRoleAndSourcePolicy(userID)
+	return role, err
+}
+
+// CurrentConnectRoleAndSourcePolicy 同上，另帶出該使用者的允許來源網段儲存字串。
+//
+// **來源閘不另查一趟**：它緊接在角色現查之後，兩道閘吃的是同一列使用者。
+// 分成兩次查詢除了多一次 round-trip，還會在兩次讀取之間開一個新的 TOCTOU 窗口
+// ——角色以舊列判、來源以新列判，而那正是「換個位址在 60 秒內兌換」這類
+// 攻擊要找的縫。CurrentConnectRole 保留為薄包覆，非連線閘的呼叫端零改動。
+//
+// 回傳的字串**不在此判定**：交由呼叫端以 `sourceip.Evaluate` 作成裁決，
+// 判定邏輯全庫只有一份。讀取本身的可用性記帳（政策不可用的降級訊號）在此完成。
+func (s *AuthService) CurrentConnectRoleAndSourcePolicy(userID uint) (string, string, error) {
 	var user model.User
 	if err := database.DB.Preload("Roles").First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", ErrUserNotFound
+			return "", "", ErrUserNotFound
 		}
-		return "", err
+		// 使用者列讀不到＝政策不可讀：閘序對此 fail-close，
+		// 但降級訊號要看得見（否則 DB 抖動期間全部連線被擋卻沒有任何面板顯示原因）
+		s.noteSourcePolicyRead(userID, "", err)
+		return "", "", err
 	}
 	if !user.Active {
-		return "", ErrUserInactive
+		return "", "", ErrUserInactive
 	}
 	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		return "", ErrAccountLocked
+		return "", "", ErrAccountLocked
 	}
-	return primaryRoleOf(&user), nil
+	s.noteSourcePolicyRead(userID, user.AllowedCIDRs, nil)
+	return primaryRoleOf(&user), user.AllowedCIDRs, nil
 }
 
 // LoginWithExternalIdentity 外部身分認證通過後的登入後段。

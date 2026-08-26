@@ -1,5 +1,8 @@
 <template>
-  <div class="session-detail">
+  <div
+    ref="pageRef"
+    class="session-detail"
+  >
     <!-- 共用 PageHeader（左對齊，與全站一致） -->
     <PageHeader
       :title="$t('sessionDetail.title')"
@@ -309,6 +312,206 @@
         </el-table>
       </div>
 
+      <!-- Clipboard Records Card（調閱面：列表只給事實，按「解密調閱」才解密單筆。
+           無事件不渲染整卡——空殼區塊會讓「沒有剪貼簿流量」看起來像功能壞掉 -->
+      <div
+        v-if="showClipboard"
+        id="clipboard"
+        ref="clipboardCardRef"
+        class="clipboard-card"
+        data-test="clipboard-card"
+      >
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-title">{{ $t('sessionDetail.clipboardTitle') }}</span>
+            <!-- 按鍵＝解密＝留痕，事先講明：稽核員不該在不知情下留下調閱紀錄 -->
+            <span class="card-note">{{ $t('sessionDetail.clipboardNote') }}</span>
+          </div>
+          <div class="card-tag-group">
+            <el-tag type="info">
+              {{ $t('sessionDetail.clipboardCount', { n: clipboardEvents.length }) }}
+            </el-tag>
+            <!-- 缺口筆數另計：混在總數裡會讓「N 筆」聽起來像 N 筆都能調閱 -->
+            <el-tag
+              v-if="clipboardFailedCount > 0"
+              type="warning"
+              data-test="clipboard-failed-count"
+            >
+              {{ $t('sessionDetail.clipboardFailedCount', { n: clipboardFailedCount }) }}
+            </el-tag>
+          </div>
+        </div>
+
+        <el-table
+          ref="clipboardTableRef"
+          :data="clipboardEvents"
+          stripe
+          row-key="id"
+          style="width: 100%"
+        >
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <!-- 缺口列：展開給失敗說明而非呼端點——內容不存在，呼了也只是
+                   多一筆「交付了空無」的留痕；說明要講清楚「事件存在、內容缺席」 -->
+              <div
+                v-if="row.content_status !== 'available'"
+                class="clipboard-expand"
+              >
+                <el-alert
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                  :title="$t('sessionDetail.clipboardStatus.failed')"
+                  :description="$t('sessionDetail.clipboardGapDetail')"
+                  data-test="clipboard-gap-detail"
+                />
+              </div>
+              <div
+                v-else
+                class="clipboard-expand"
+                data-test="clipboard-content-pane"
+              >
+                <div
+                  v-if="clipboardContentState[row.id]?.loading"
+                  class="clipboard-content-loading"
+                  data-test="clipboard-content-loading"
+                >
+                  <el-icon class="is-loading">
+                    <Loading />
+                  </el-icon>
+                  {{ $t('sessionDetail.clipboardContentLoading') }}
+                </div>
+                <el-alert
+                  v-else-if="clipboardContentState[row.id]?.error"
+                  type="error"
+                  :closable="false"
+                  show-icon
+                  :title="$t('sessionDetail.clipboardContentError')"
+                  data-test="clipboard-content-error"
+                >
+                  <el-button
+                    size="small"
+                    data-test="clipboard-content-retry"
+                    @click="loadClipboardContent(row)"
+                  >
+                    {{ $t('common.retry') }}
+                  </el-button>
+                </el-alert>
+                <template v-else-if="clipboardContentState[row.id]?.loaded">
+                  <!-- 留痕回饋：內容之上先講「這一次調閱已經被記下來了」，
+                       時刻＝前端收到內容的時刻（語義為調閱時刻）。
+                       沒有這一行，解密內容看起來就跟本來就是明文一樣 -->
+                  <div
+                    class="clipboard-access-logged"
+                    data-test="clipboard-access-logged"
+                  >
+                    <el-icon><CircleCheck /></el-icon>
+                    {{ $t('sessionDetail.clipboardAccessLogged', {
+                      time: clipboardAccessTimeText(clipboardContentState[row.id]?.accessedAt),
+                    }) }}
+                  </div>
+                  <pre
+                    class="clipboard-content"
+                    data-test="clipboard-content"
+                  >{{ clipboardContentState[row.id]?.content }}</pre>
+                </template>
+                <!-- 尚未解密：展開只給「上鎖」狀態，不直載內容。
+                     展開本身不呼端點，唯一的解密入口是列上的「解密調閱」鍵 -->
+                <div
+                  v-else
+                  class="clipboard-locked"
+                  data-test="clipboard-locked-hint"
+                >
+                  <el-icon><Lock /></el-icon>
+                  {{ $t('sessionDetail.clipboardLockedHint') }}
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="created_at"
+            :label="$t('common.time')"
+            width="180"
+          >
+            <template #default="{ row }">
+              {{ formatDateTime(row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="direction"
+            :label="$t('sessionDetail.clipboardDirectionColumn')"
+            min-width="200"
+          >
+            <template #default="{ row }">
+              {{ clipboardDirectionText(row.direction) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            prop="content_length"
+            :label="$t('sessionDetail.clipboardLengthColumn')"
+            width="140"
+            align="right"
+          />
+          <el-table-column
+            :label="$t('sessionDetail.clipboardStatusColumn')"
+            width="160"
+          >
+            <template #default="{ row }">
+              <el-tag
+                v-if="row.content_status === 'available'"
+                type="success"
+                size="small"
+              >
+                {{ $t('sessionDetail.clipboardStatus.available') }}
+              </el-tag>
+              <el-tag
+                v-else
+                type="warning"
+                size="small"
+                data-test="clipboard-status-failed"
+              >
+                {{ $t('sessionDetail.clipboardStatus.failed') }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <!-- 調閱欄：鎖頭圖示標明「內容是加密留存的」，解密要按鍵才發生。
+               缺口列不給鍵——內容不存在，按了只會留下「交付了空無」的紀錄 -->
+          <el-table-column
+            :label="$t('sessionDetail.clipboardActionColumn')"
+            width="170"
+          >
+            <template #default="{ row }">
+              <div
+                v-if="row.content_status === 'available'"
+                class="clipboard-action"
+              >
+                <el-icon
+                  class="clipboard-lock"
+                  data-test="clipboard-lock-icon"
+                >
+                  <Lock />
+                </el-icon>
+                <el-button
+                  size="small"
+                  type="primary"
+                  plain
+                  :loading="clipboardContentState[row.id]?.loading"
+                  data-test="clipboard-decrypt-btn"
+                  @click="revealClipboardContent(row)"
+                >
+                  {{ $t('sessionDetail.clipboardDecryptButton') }}
+                </el-button>
+              </div>
+              <span
+                v-else
+                class="clipboard-action-none"
+                data-test="clipboard-action-none"
+              >—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
       <!-- No Recording Card -->
       <div
         v-if="!session.has_recording"
@@ -332,13 +535,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Back,
+  CircleCheck,
   Download,
   Loading,
+  Lock,
   VideoPlay,
 } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -349,10 +554,11 @@ import CommandCell from '@/components/audit/CommandCell.vue'
 import { isDegradedRow } from '@/constants/command-degrade'
 import { getSession, getRecordingUrl, getRecordingToken, recordingStreamUrlByToken, downloadRecording } from '@/api/sessions'
 import { getSessionCommands } from '@/api/commands'
+import { getSessionClipboardEvents, getClipboardEventContent } from '@/api/clipboardEvents'
 import { isTextTerminal, protocolTagType } from '@/utils/protocol'
 import { getEndReasonText, getEndReasonTagType } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
-import { t } from '@/i18n'
+import { t, currentLocale } from '@/i18n'
 // recording_error 存機器碼（cause code），
 // 散文僅存量資料才有——auditCauseLabel 未知值原樣回傳，兩者共存不需分支
 import { auditCauseLabel } from '@/constants/audit-enums'
@@ -376,6 +582,181 @@ const showCommands = computed(
 
 // 無法還原的輪次數（degraded 列）。與指令總數分開呈現
 const degradedCount = computed(() => commands.value.filter(isDegradedRow).length)
+
+// ---------------------------------------------------------------------------
+// 剪貼簿調閱面（按鍵才解密）
+//
+// 列表只給事實（時間、方向、長度、狀態），按「解密調閱」才呼單筆端點解密——
+// 「指定閱讀」語義：按鍵即解密即留痕（伺服器端逐筆審計，fail-close）。
+//
+// 為何不再「展開即直載」（使用者實走後裁決）：展開後內容直接出現，讀起來
+// 就像那些內容本來就是明文躺著，稽核員感受不到自己剛做了一次受控解密、也不
+// 知道這次調閱已經留痕。故改成鎖頭＋按鍵的顯式動作，並在內容之上回報留痕。
+//
+// 無事件不渲染整卡；`#clipboard` 錨點供工作台時間軸一鍵抵達。
+// ---------------------------------------------------------------------------
+const clipboardEvents = ref([])
+const clipboardCardRef = ref(null)
+const clipboardTableRef = ref(null)
+// 每筆解密內容的載入狀態（key＝事件 id）。收合再展開、或再按一次解密鍵都不
+// 重複呼叫：內容已在手上，重呼只會多出一筆語義相同的調閱留痕
+const clipboardContentState = reactive({})
+
+// 調閱時刻只取時分秒：同一列左邊已經有「事件時刻」，帶完整日期的第二個時間
+// 反而容易被讀成事件時間。hour12: false 沿審計場景的 24h 慣例（見 format.js）。
+// 這裡就地格式化而非進 format.js：全站僅此一處需要純時分秒，
+// state 存的仍是 raw timestamp、render 期才格式化（切語言會跟著重繪）
+const CLIPBOARD_ACCESS_TIME_OPTIONS = {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+}
+const clipboardAccessTimeText = (ts) => {
+  if (!ts) return ''
+  const date = new Date(ts)
+  if (!Number.isFinite(date.getTime())) return ''
+  return new Intl.DateTimeFormat(currentLocale(), CLIPBOARD_ACCESS_TIME_OPTIONS).format(date)
+}
+
+const showClipboard = computed(() => clipboardEvents.value.length > 0)
+
+// 缺口（內容留存失敗）筆數。判準用 content_status 明確欄位，
+// 不以長度為零或內容為空推斷（spec：SHALL NOT 以空值推斷）
+const clipboardFailedCount = computed(
+  () => clipboardEvents.value.filter((e) => e.content_status !== 'available').length
+)
+
+// 方向值域閉集查譯、未知值原樣顯示（與 getStatusText 同型防禦）
+const CLIPBOARD_DIRECTION_VALUES = ['send', 'recv']
+const clipboardDirectionText = (direction) =>
+  CLIPBOARD_DIRECTION_VALUES.includes(direction)
+    ? t(`sessionDetail.clipboardDirection.${direction}`)
+    : direction
+
+// 載入事實列表（best-effort；失敗不影響詳情頁——與指令記錄同準則）。
+// 資料就緒後才處理 #clipboard 錨點：卡片以資料驅動渲染，
+// DOM 尚不存在時捲動只會靜默落空
+const fetchClipboardEvents = async () => {
+  try {
+    const response = await getSessionClipboardEvents(sessionId)
+    clipboardEvents.value = response.data || []
+  } catch (err) {
+    console.error('[SessionDetail] 載入剪貼簿記錄失敗:', err)
+    clipboardEvents.value = []
+  }
+  if (clipboardEvents.value.length > 0 && route.hash === '#clipboard') {
+    await nextTick()
+    anchorClipboardCard()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// #clipboard 錨點捲動
+//
+// 首捲發生在剪貼簿資料就緒當下，但上方佈局還在長高：播放器等 recordingUrl
+// 才掛載、terminal/guac 容器掛載後才定高、指令表格與定位提示也晚於首捲。
+// 瀏覽器會把捲動量 clamp 在「當時的」最大值，卡片隨後被推到視窗外且無人補捲
+//（實證：帶 ?t= 進頁 cardTop=1058 > viewport 900）。
+// 修法：首捲後以 ResizeObserver 盯住頁面根元素，佈局每動一次就補捲，
+// 佈局靜默 SETTLE_MS 或總計 MAX_MS 即收工；使用者一有捲動意圖
+//（滾輪/觸控/按鍵）立即停手，不與人搶捲軸。
+//
+// 兩項刻意選擇，都是踩過才知道的（修復波第二輪，瀏覽器實測）：
+//   1. 首捲用 instant 而非 smooth。深連結落地本就該直接到位（原生 #fragment
+//      即如此）；smooth 期間補捲會蓋掉動畫，等於每次都在跟自己搶捲軸。
+//   2. **不跳過首個 RO 回報**。ResizeObserver 會把回報批次合併：長高若發生在
+//      observe 之後、首次回報派送之前，那次長高就併在「首個回報」裡。曾以
+//      `initialReport` 無條件跳過首報（為了不蓋掉 smooth），結果是長高落在首批
+//      時唯一的補捲機會被吃掉、其後再無回報，卡片停在視窗外——實測 /sessions/10
+//      不帶 ?t= 連開六次重現 2 次（cardTop 809、卡底 1003 > 視窗 900）。
+//      補捲是冪等的（捲到同一處），寧可多捲一次也不要漏掉那一次。
+// ---------------------------------------------------------------------------
+const pageRef = ref(null)
+const CLIPBOARD_ANCHOR_SETTLE_MS = 400
+const CLIPBOARD_ANCHOR_MAX_MS = 3000
+let stopClipboardAnchorWatch = null
+
+const anchorClipboardCard = () => {
+  const el = clipboardCardRef.value
+  if (!el || typeof el.scrollIntoView !== 'function') return
+  el.scrollIntoView({ block: 'start' })
+  if (typeof ResizeObserver === 'undefined' || !pageRef.value) return
+  stopClipboardAnchorWatch?.()
+  let settleTimer = null
+  let maxTimer = null
+  let observer = null
+  const cancelEvents = ['wheel', 'touchmove', 'keydown']
+  const stop = () => {
+    observer?.disconnect()
+    observer = null
+    clearTimeout(settleTimer)
+    clearTimeout(maxTimer)
+    cancelEvents.forEach((type) => window.removeEventListener(type, stop))
+    stopClipboardAnchorWatch = null
+  }
+  const armSettle = () => {
+    clearTimeout(settleTimer)
+    settleTimer = setTimeout(stop, CLIPBOARD_ANCHOR_SETTLE_MS)
+  }
+  observer = new ResizeObserver(() => {
+    el.scrollIntoView({ block: 'start' })
+    armSettle()
+  })
+  observer.observe(pageRef.value)
+  armSettle()
+  maxTimer = setTimeout(stop, CLIPBOARD_ANCHOR_MAX_MS)
+  cancelEvents.forEach((type) => window.addEventListener(type, stop, { passive: true }))
+  stopClipboardAnchorWatch = stop
+}
+
+onBeforeUnmount(() => {
+  stopClipboardAnchorWatch?.()
+})
+
+// 呼單筆端點載入解密內容。載入中／失敗態都要看得見；
+// 失敗給重試鍵，不靜默留一格空白
+const loadClipboardContent = async (row) => {
+  if (!clipboardContentState[row.id]) {
+    clipboardContentState[row.id] = {
+      loading: false,
+      error: false,
+      loaded: false,
+      content: null,
+      accessedAt: null,
+    }
+  }
+  // 賦值後必須**重讀** proxy：`(obj[k] = {...})` 運算式回傳的是 raw 物件，
+  // 對 raw 寫入不經 reactive set 攔截、不觸發重渲染——載入完成後畫面會
+  // 永卡「正在解密內容…」直到任何無關重渲染才更新
+  const state = clipboardContentState[row.id]
+  state.loading = true
+  state.error = false
+  try {
+    const response = await getClipboardEventContent(sessionId, row.id)
+    state.content = response.data?.content ?? ''
+    // 調閱時刻＝前端收到內容的時刻。伺服器端的審計時戳才是權威紀錄，
+    // 這裡回報的是「這一次動作」發生的當下，供人對得上自己剛做了什麼
+    state.accessedAt = Date.now()
+    state.loaded = true
+  } catch (err) {
+    console.error('[SessionDetail] 載入剪貼簿內容失敗:', err)
+    state.error = true
+  } finally {
+    state.loading = false
+  }
+}
+
+// 「解密調閱」鍵：唯一的解密入口。展開列本身不再觸發任何請求——
+// 沒按鍵就沒解密、沒留痕。按鍵先把該列展開（內容要有地方顯示），
+// 內容已在手上時只展開不重呼：同一份內容不該留下第二筆調閱紀錄
+const revealClipboardContent = async (row) => {
+  if (row.content_status !== 'available') return
+  clipboardTableRef.value?.toggleRowExpansion?.(row, true)
+  const state = clipboardContentState[row.id]
+  if (state?.loaded || state?.loading) return
+  await loadClipboardContent(row)
+}
 
 // 降級列能不能給「查看該時段錄影」這個下一步：沒有錄影就不能，文案須據實改口
 const commandRecordingState = computed(() =>
@@ -608,6 +989,10 @@ const fetchSessionDetail = async () => {
       fetchCommands()
       loadRecordingUrl()
     }
+
+    // 剪貼簿事實列表：不分協議一律查（卡片以資料驅動——有事件才渲染；
+    // 綁協議判斷會在後端擴協議時靜默漏卡）
+    fetchClipboardEvents()
   } catch (err) {
     console.error('[SessionDetail] 載入失敗:', err)
 
@@ -740,11 +1125,74 @@ onMounted(() => {
 
 .info-card,
 .player-card,
-.commands-card {
+.commands-card,
+.clipboard-card {
   background: var(--ot-bg-surface);
   border: 1px solid var(--ot-border-subtle);
   border-radius: var(--ot-radius-lg);
   padding: var(--ot-space-md);
+}
+
+/* 展開面：內容全文與缺口說明的容器 */
+.clipboard-expand {
+  padding: var(--ot-space-sm) var(--ot-space-md);
+}
+
+/* 內容全文：等寬、pre-wrap（保留換行與空白但不撐破版面）。
+   長內容限高內捲——單筆上限 64KB，攤平會把整頁推走 */
+.clipboard-content {
+  margin: 0;
+  font-family: var(--ot-font-mono, monospace);
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--ot-bg-elevated);
+  border-radius: var(--ot-radius-md);
+  padding: var(--ot-space-sm);
+}
+
+.clipboard-content-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
+/* 留痕回饋：貼在內容正上方，讓「已解密」與「已留痕」同時進眼 */
+.clipboard-access-logged {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  margin-bottom: var(--ot-space-xs);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
+/* 未解密的展開面：上鎖狀態，講清楚解密要按鍵才發生 */
+.clipboard-locked {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
+.clipboard-action {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
+}
+
+.clipboard-lock {
+  color: var(--ot-text-secondary);
+}
+
+.clipboard-action-none {
+  color: var(--ot-text-tertiary, var(--ot-text-secondary));
 }
 
 .card-header {

@@ -20,6 +20,19 @@ import (
 // 全集由 `seal` 套件提供而非在此抄寫——抄本在對方新增態時不會有任何訊號。
 type SealStateSource func() (current string, all []string)
 
+// InstanceGuardStatus 單實例守衛指標的現讀資料。
+//
+// State 為守衛狀態字串（held／overridden／lost／stopping／released），空字串＝守衛
+// 尚未建立（段 1 取鎖前）。四條序列由 collector 自本結構推導，不需狀態機另行寫入。
+type InstanceGuardStatus struct {
+	State     string
+	LostTotal uint64
+	Peers     int
+}
+
+// InstanceGuardSource 回傳守衛的現況；由組裝根注入（database 包的快照經 adapter 轉換）。
+type InstanceGuardSource func() InstanceGuardStatus
+
 // Metrics 持有本行程的營運指標與其專屬 registry。
 //
 // **不使用 prometheus 預設全域 registry**：全域 registry 是跨測試共用的可變狀態，
@@ -57,10 +70,11 @@ type Metrics struct {
 	httpDuration *prometheus.HistogramVec
 
 	// --- 注入的資料源 ---
-	mu               sync.RWMutex
-	sealStateSource  SealStateSource
-	connectionSource func() float64
-	auditQueueSource func() float64
+	mu                  sync.RWMutex
+	sealStateSource     SealStateSource
+	instanceGuardSource InstanceGuardSource
+	connectionSource    func() float64
+	auditQueueSource    func() float64
 }
 
 // New 建立指標集合並註冊封印期即成立的部分。
@@ -115,7 +129,67 @@ func New() *Metrics {
 	// 封印狀態：採集當下現讀，避免狀態機與指標之間出現需要同步的第二份真相
 	m.registry.MustRegister(&sealStateCollector{m: m})
 
+	// 單實例守衛：同樣段 1 註冊、採集當下現讀——守衛自段 1 起存在，封印期就該可採集
+	m.registry.MustRegister(newInstanceGuardCollector(m))
+
 	return m
+}
+
+// instanceGuardCollector 曝光單實例守衛的四條序列。
+//
+// 自訂 collector 而非 Gauge：理由同 sealStateCollector——狀態轉移時漏寫的症狀是
+// 指標永遠停在舊態，而「守衛失守但指標仍說持有」正是監控最不能說的謊。
+// 資料源未注入時四條序列**缺席而非為 0**：0 會讓採集端把「守衛不存在」讀成「未持鎖」
+// 而誤報，缺值可由 absent() 明確偵測。
+// Desc 放在 collector 內而非包級：避免為四個純描述子在生命週期 manifest 各登記一列。
+type instanceGuardCollector struct {
+	m          *Metrics
+	held       *prometheus.Desc
+	lostTotal  *prometheus.Desc
+	overridden *prometheus.Desc
+	peers      *prometheus.Desc
+}
+
+func newInstanceGuardCollector(m *Metrics) *instanceGuardCollector {
+	return &instanceGuardCollector{
+		m: m,
+		held: prometheus.NewDesc("custodexa_instance_guard_held",
+			"單實例鎖是否由本實例持有；1 持有、0 未持有。", nil, nil),
+		lostTotal: prometheus.NewDesc("custodexa_instance_guard_lost_total",
+			"偵測到失鎖的累計次數。", nil, nil),
+		overridden: prometheus.NewDesc("custodexa_instance_guard_overridden",
+			"本實例是否以 INSTANCE_GUARD_ACK 啟動且尚未取得鎖；1 是、0 否。", nil, nil),
+		peers: prometheus.NewDesc("custodexa_instance_guard_peers",
+			"偵測到的其他守衛版實例連線數（同一資料庫、同 application_name）。", nil, nil),
+	}
+}
+
+func (c *instanceGuardCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.held
+	ch <- c.lostTotal
+	ch <- c.overridden
+	ch <- c.peers
+}
+
+func (c *instanceGuardCollector) Collect(ch chan<- prometheus.Metric) {
+	c.m.mu.RLock()
+	src := c.m.instanceGuardSource
+	c.m.mu.RUnlock()
+	if src == nil {
+		return
+	}
+	st := src()
+	held, overridden := 0.0, 0.0
+	switch st.State {
+	case "held":
+		held = 1
+	case "overridden":
+		overridden = 1
+	}
+	ch <- prometheus.MustNewConstMetric(c.held, prometheus.GaugeValue, held)
+	ch <- prometheus.MustNewConstMetric(c.lostTotal, prometheus.CounterValue, float64(st.LostTotal))
+	ch <- prometheus.MustNewConstMetric(c.overridden, prometheus.GaugeValue, overridden)
+	ch <- prometheus.MustNewConstMetric(c.peers, prometheus.GaugeValue, float64(st.Peers))
 }
 
 // sealStateCollector 以 enum 慣例曝光封印狀態。
@@ -161,6 +235,13 @@ func (m *Metrics) SetSealStateSource(f SealStateSource) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sealStateSource = f
+}
+
+// SetInstanceGuardSource 注入單實例守衛狀態的現讀函式（段 1 組裝根，取鎖後即注入）。
+func (m *Metrics) SetInstanceGuardSource(f InstanceGuardSource) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.instanceGuardSource = f
 }
 
 // SetConnectionSource 注入活躍連線數的現讀函式（行程內註冊表，取值成本為 O(1)，

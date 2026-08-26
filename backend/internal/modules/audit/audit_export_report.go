@@ -224,11 +224,18 @@ func (s *AuditExportService) writeReportCSV(zw *zip.Writer, t TimelineEventType,
 	return nil
 }
 
-// pageExport 以 (時間, id) keyset 逐頁取數並交給 emit 串流輸出。
+// pageExport 以 (時間, id) keyset 逐頁取數並交給 emit 串流輸出（報告模式上限）。
 //
 // **截斷判定不靠「回傳數等於上限」猜**：取滿上限後再多探一筆，有殘餘才標 truncated——
 // 恰好等於上限的資料被誤標成截斷，與截斷卻不標，都是對讀者說謊
 func pageExport[T any](base func() *gorm.DB, tsCol, idCol string,
+	key func(*T) (time.Time, uint), emit func([]T) error) (int, bool, error) {
+	return pageExportN(base, tsCol, idCol, maxExportReportRows, key, emit)
+}
+
+// pageExportN 同 pageExport，上限由呼叫端供給（各類別自帶自己的上限；
+// 證據包剪貼簿段沿用本機制但上限獨立）
+func pageExportN[T any](base func() *gorm.DB, tsCol, idCol string, maxRows int,
 	key func(*T) (time.Time, uint), emit func([]T) error) (int, bool, error) {
 	order := fmt.Sprintf("%s ASC, %s ASC", tsCol, idCol)
 	after := fmt.Sprintf("(%s > ?) OR (%s = ? AND %s > ?)", tsCol, tsCol, idCol)
@@ -237,9 +244,9 @@ func pageExport[T any](base func() *gorm.DB, tsCol, idCol string,
 	var lastTS time.Time
 	var lastID uint
 	first := true
-	for n < maxExportReportRows {
+	for n < maxRows {
 		size := reportPageSize
-		if remaining := maxExportReportRows - n; remaining < size {
+		if remaining := maxRows - n; remaining < size {
 			size = remaining
 		}
 		tx := base().Order(order).Limit(size)
@@ -456,9 +463,10 @@ func (s *AuditExportService) writeReportAlerts(zw *zip.Writer, q TimelineQuery, 
 
 // clipboardExportRow 剪貼簿事件的匯出投影。
 //
-// **不含 Content 欄**：內容是明文機密，把它寫進可轉交的報告等於把機密再複製一份
-// 帶出系統。報告只給事件事實（時間、操作者、資產、方向、內容長度）；
-// 要看內容者走介面上的個別下載，那個動作有它自己的權限與留痕
+// **不含內容欄**：內容是機密（落庫即密文），把它寫進可轉交的事件報告等於把
+// 機密再複製一份帶出系統。報告只給事件事實（時間、操作者、資產、方向、
+// 內容長度）；要看內容者走**會話詳情的剪貼簿調閱面**（單筆解密、逐筆留痕）
+// 或**證據包匯出**（解密後入包、匯出留痕）——兩條路徑各有自己的權限與留痕
 type clipboardExportRow struct {
 	ID            uint
 	SessionID     uint
@@ -474,8 +482,10 @@ func (s *AuditExportService) writeReportClipboard(zw *zip.Writer, q TimelineQuer
 		"asset_id", "asset_name", "direction", "content_length"}
 	base := func() *gorm.DB {
 		return s.db.Table("clipboard_events AS ce").
+			// content_length 讀事實欄（信封加密後密文長度非事實；長度於落庫時
+			// 以明文位元組計，見 model.ClipboardEvent）
 			Select("ce.id, ce.session_id, ce.direction, ce.created_at, " +
-				"LENGTH(ce.content) AS content_length, se.user_id, se.asset_id").
+				"ce.content_length, se.user_id, se.asset_id").
 			Joins("JOIN sessions AS se ON se.id = ce.session_id").
 			Where("ce.created_at >= ? AND ce.created_at < ?", q.From, q.To).
 			Where("se."+subjectColumn(q.Subject)+" = ?", q.SubjectID)

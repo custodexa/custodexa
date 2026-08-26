@@ -70,6 +70,11 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	{table: "ldap_directories", column: "bind_password_enc"},
 	{table: "notification_channels", column: "secret"},
 	{table: "notification_channels", column: "url"},
+	// RDP/VNC 剪貼簿留存內容。
+	// 與 model 同批入冊——本清單同時是 DEK 輪替重加密與退役 DEK 銷毀前的
+	// 引用掃描來源，漏登會使該欄密文永久不可解（剪貼簿審計證據整批損毀）。
+	// 缺口紀錄（加密失敗）該欄為空字串，掃描的 `<> ''` 謂詞自然跳過
+	{table: "clipboard_events", column: "content_enc"},
 }
 
 // EnvelopeMigrationResult 遷移結果（審計 Details 與清冊狀態用）

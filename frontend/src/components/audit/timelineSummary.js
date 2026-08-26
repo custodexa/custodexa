@@ -50,6 +50,12 @@ export function summaryText(event) {
   const params = { ...(event?.params || {}) }
   if (params.resource) params.resource = resourceLabel(params.resource)
 
+  // 不掛規則的告警種類（`rule_id` 為 NULL、`rule_name` 存機器碼）：
+  // 套用一般的「觸發告警規則 {rule}」會在時間軸上印出裸機器碼。
+  // 種類由後端隨事件 params 帶來，此處按種類換整句
+  const kindKey = params.kind ? `auditorWorkbench.summary.alert.kind.${params.kind}` : ''
+  if (kindKey && te(kindKey)) return t(kindKey, params)
+
   const key = `auditorWorkbench.summary.${suffix}`
   if (suffix && te(key)) return t(key, params)
   return t('auditorWorkbench.summary.fallback', { code: code || '-' })

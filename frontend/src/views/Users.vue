@@ -256,12 +256,19 @@
             </el-space>
           </template>
         </el-table-column>
+        <!-- 狀態欄承載「這個帳號能不能登入」的三件事：啟用、鎖定、來源限定。
+             來源限定不另立一欄：本表欄寬預算（見上方註解）在 1280 下只剩
+             60px 餘裕，加一欄會把總寬推過可視寬而產生橫捲。
+             112 → 150 後總和 956，仍守在 978 內 -->
         <el-table-column
           :label="$t('common.status')"
-          width="112"
+          width="150"
         >
           <template #default="{ row }">
-            <el-space :size="6">
+            <el-space
+              :size="6"
+              wrap
+            >
               <el-switch
                 v-model="row.active"
                 :loading="row._statusLoading"
@@ -278,6 +285,35 @@
                 >
                   <el-icon><Lock /></el-icon>
                   {{ $t('users.locked') }}
+                </el-tag>
+              </el-tooltip>
+              <!-- 三態消費伺服端衍生的 allowed_cidrs_status，**不以陣列非空推算**：
+                   清單含 0.0.0.0/0 時實際全部放行，標成「已限定」是把放行呈為受限。
+                   不限（unrestricted）不標示——沒有限制不是一種狀態 -->
+              <el-tooltip
+                v-if="row.allowed_cidrs_status === 'restricted'"
+                :content="$t('users.allowedCidrsTagRestrictedTooltip')"
+                placement="top"
+              >
+                <el-tag
+                  type="info"
+                  size="small"
+                  data-test="source-restricted-tag"
+                >
+                  {{ $t('users.allowedCidrsTagRestricted') }}
+                </el-tag>
+              </el-tooltip>
+              <el-tooltip
+                v-else-if="row.allowed_cidrs_status === 'effectively_unrestricted'"
+                :content="effectiveUnrestrictedText(row.allowed_cidrs_families)"
+                placement="top"
+              >
+                <el-tag
+                  type="warning"
+                  size="small"
+                  data-test="source-effective-tag"
+                >
+                  {{ $t('users.allowedCidrsTagEffective') }}
                 </el-tag>
               </el-tooltip>
             </el-space>
@@ -472,6 +508,124 @@
             :placeholder="$t('users.fullNamePlaceholder')"
           />
         </el-form-item>
+        <!-- 允許來源網段（source-ip-forensics）。
+             前端只做**格式層**的就近提示；正規化、有效涵蓋狀態與「你進不進得來」
+             一律由判定端點回覆——前端自己解析 CIDR 必與強制點分歧，而分歧的那一側
+             正是自鎖警告會說錯話的地方。
+             全部警示皆為 warning 級、**不阻擋送出**：管理者可能刻意設定一個
+             尚未切換過去的網段 -->
+        <el-form-item :label="$t('users.allowedCidrs')">
+          <div class="cidr-field">
+            <div
+              v-if="form.allowed_cidrs.length"
+              class="cidr-tags"
+              data-test="cidr-tags"
+            >
+              <el-tag
+                v-for="(item, index) in form.allowed_cidrs"
+                :key="`${item}-${index}`"
+                size="small"
+                closable
+                :type="itemErrorKey(item) ? 'danger' : 'info'"
+                :aria-label="$t('users.allowedCidrsRemove', { value: item })"
+                @close="removeCidr(index)"
+              >
+                {{ item }}
+              </el-tag>
+            </div>
+            <el-input
+              v-model="cidrDraft"
+              :placeholder="$t('users.allowedCidrsPlaceholder')"
+              data-test="cidr-input"
+              @keyup.enter="addCidr"
+              @blur="onCidrBlur"
+            >
+              <template #append>
+                <el-button
+                  data-test="cidr-add"
+                  @click="addCidr"
+                >
+                  {{ $t('users.allowedCidrsAdd') }}
+                </el-button>
+              </template>
+            </el-input>
+
+            <p class="cidr-hint">
+              {{ $t('users.allowedCidrsHint', { max: SOURCE_POLICY_MAX_ENTRIES }) }}
+            </p>
+            <!-- 「你目前的來源」是**管理者自己**的位址（`/auth/me`）。編輯別人的
+                 帳號時它與那份清單毫無關係，卻緊挨在清單旁邊——累了的人會讀成
+                 「這個帳號的來源」而照著它填。故只在編輯自己的帳號時出現，
+                 那時「你」與被編輯的帳號是同一個人，句子才成立 -->
+            <p
+              v-if="currentSourceLine"
+              class="cidr-hint"
+              data-test="cidr-current-source"
+            >
+              {{ currentSourceLine }}
+            </p>
+
+            <!-- 就近紅字：格式層（本地）與端點層（逐項 error_code）分開呈現，
+                 前者說「看起來不像」，後者說「後端解析不了」 -->
+            <p
+              v-if="cidrDraftError"
+              class="cidr-error"
+              data-test="cidr-format-error"
+            >
+              {{ cidrDraftError }}
+            </p>
+            <p
+              v-for="err in itemErrors"
+              :key="err.input"
+              class="cidr-error"
+              data-test="cidr-item-error"
+            >
+              {{ err.text }}
+            </p>
+
+            <p
+              v-if="cidrChecking"
+              class="cidr-hint"
+              data-test="cidr-checking"
+            >
+              {{ $t('users.allowedCidrsChecking') }}
+            </p>
+            <p
+              v-else-if="cidrCheckFailed"
+              class="cidr-warning"
+              data-test="cidr-check-failed"
+            >
+              {{ $t('users.allowedCidrsCheckFailed') }}
+            </p>
+            <template v-else>
+              <p
+                v-if="normalizedPreview"
+                class="cidr-hint"
+                data-test="cidr-normalized"
+              >
+                {{ $t('users.allowedCidrsNormalized', { list: normalizedPreview }) }}
+              </p>
+              <p
+                v-if="effectiveUnrestrictedLine"
+                class="cidr-warning"
+                data-test="cidr-effective-warning"
+              >
+                {{ effectiveUnrestrictedLine }}
+              </p>
+              <template v-if="selfLockLine">
+                <p
+                  class="cidr-warning"
+                  data-test="cidr-self-lock"
+                >
+                  {{ selfLockLine }}
+                </p>
+                <p class="cidr-hint">
+                  {{ $t('users.allowedCidrsSelfLockRecovery') }}
+                </p>
+              </template>
+            </template>
+          </div>
+        </el-form-item>
         <el-form-item
           v-if="!isEdit"
           :label="$t('common.role')"
@@ -489,13 +643,24 @@
           </el-checkbox-group>
         </el-form-item>
       </el-form>
+      <!-- 頁尾按鈕一律 `mousedown.prevent`：**按下時不讓來源網段輸入框失焦**。
+           失焦會就地觸發一次判定，「檢查中」那行插進對話框內容後把整個頁尾往下推
+           一行；按下與放開之間按鈕已離開游標，瀏覽器不產生 click——使用者看到的是
+           「按了沒反應」。不失焦即無重排。輸入框裡還沒收進清單的那一項改由
+           handleSubmit 自己收攏，不倚賴失焦的副作用 -->
       <template #footer>
-        <el-button @click="dialogVisible = false">
+        <el-button
+          data-test="user-dialog-cancel"
+          @mousedown.prevent
+          @click="dialogVisible = false"
+        >
           {{ $t('common.cancel') }}
         </el-button>
         <el-button
           type="primary"
           :loading="submitting"
+          data-test="user-dialog-submit"
+          @mousedown.prevent
           @click="handleSubmit"
         >
           {{ $t('common.confirm') }}
@@ -752,7 +917,9 @@ import {
   adminDisableMFA,
   unlockUser,
   setInactivityExempt,
+  checkSourcePolicy,
 } from '@/api/user'
+import { getCurrentUser } from '@/api/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
@@ -760,7 +927,12 @@ import { confirmDestructive } from '@/utils/confirm'
 import { apiErrorSummary } from '@/api/redact'
 import { t } from '@/i18n'
 import { roleLabel, roleTagType } from '@/constants/roles'
-import { hasRole } from '@/composables/useRoles'
+import { hasRole, useRoles } from '@/composables/useRoles'
+import {
+  SOURCE_POLICY_MAX_ENTRIES,
+  looksLikeSourcePrefix,
+  sourceFamiliesKey,
+} from '@/utils/sourcePolicy'
 import ApproverScopeForm from '@/components/ApproverScopeForm.vue'
 import UserExternalIdentities from '@/components/UserExternalIdentities.vue'
 import {
@@ -812,6 +984,7 @@ const form = reactive({
   email: '',
   full_name: '',
   roles: [],
+  allowed_cidrs: [],
 })
 
 // 目前選中的用戶
@@ -863,6 +1036,214 @@ const menuPopperOptions = {
     { name: 'computeStyles', options: { gpuAcceleration: false } },
     { name: 'preventOverflow', options: { padding: 12 } },
   ],
+}
+
+// —— 允許來源網段（source-ip-forensics）——
+//
+// **判定權在後端**：本頁只做格式層的就近提示，`normalized`／`status`／`allowed`
+// 一律取自 `POST /users/source-policy/check`。自己解析 CIDR 的版本在
+// IPv6 縮寫、IPv4-mapped 與遮罩正規化三處必與強制點分歧，而自鎖警告一旦
+// 分歧就會對管理者說謊。
+
+const { currentUserId } = useRoles()
+
+const cidrDraft = ref('')
+const cidrDraftError = ref('')
+// **清單這次有沒有被動過**：更新請求對 `allowed_cidrs` 有 presence 語義
+//（缺欄與 null＝保留現值、`[]`＝清除）。沒動過就不送這個欄位——
+// 送 `[]` 會把既有限制靜默清空
+const cidrTouched = ref(false)
+const cidrCheck = ref(null)
+const cidrChecking = ref(false)
+const cidrCheckFailed = ref(false)
+// 本人的來源位址（`GET /auth/me` 的 source_ip，僅供顯示、不參與判定）
+const currentSourceIp = ref('')
+let currentSourceLoaded = false
+let checkTimer = null
+
+const isEditingSelf = computed(
+  () => isEdit.value && form.id != null && form.id === currentUserId.value
+)
+
+const resetCidrState = () => {
+  cidrDraft.value = ''
+  cidrDraftError.value = ''
+  cidrTouched.value = false
+  cidrCheck.value = null
+  cidrChecking.value = false
+  cidrCheckFailed.value = false
+  if (checkTimer) {
+    clearTimeout(checkTimer)
+    checkTimer = null
+  }
+}
+
+// 判定端點：清單變更後 debounce、失焦、以及儲存前各呼叫一次。
+// 取不到結果時**不代替端點下判斷**——畫面只說「無法確認」，
+// 不得把「查不到」渲染成「沒問題」
+const runSourcePolicyCheck = async () => {
+  cidrChecking.value = true
+  cidrCheckFailed.value = false
+  try {
+    // address 省略＝以本請求的來源判定（自鎖預警走這條）
+    cidrCheck.value = await checkSourcePolicy({
+      allowed_cidrs: [...form.allowed_cidrs],
+    })
+  } catch (error) {
+    cidrCheck.value = null
+    cidrCheckFailed.value = true
+    logFailure('source_policy_check_failed', error)
+  } finally {
+    cidrChecking.value = false
+  }
+}
+
+const scheduleSourcePolicyCheck = () => {
+  if (checkTimer) clearTimeout(checkTimer)
+  checkTimer = setTimeout(runSourcePolicyCheck, 400)
+}
+
+// 立刻判定一次，並吃掉還在等的 debounce——否則同一份清單會被判兩次
+const flushSourcePolicyCheck = () => {
+  if (checkTimer) {
+    clearTimeout(checkTimer)
+    checkTimer = null
+  }
+  return runSourcePolicyCheck()
+}
+
+// 回傳「這次輸入有沒有被收下」：被格式／重複／上限擋下時回 false，
+// 呼叫端據此決定要不要繼續（送出路徑靠它停在紅字上，而不是靜默丟掉那一項）
+const addCidr = () => {
+  const value = cidrDraft.value.trim()
+  if (!value) return true
+  if (form.allowed_cidrs.includes(value)) {
+    cidrDraftError.value = t('users.allowedCidrsDuplicate', { value })
+    return false
+  }
+  // 格式層寬鬆：只擋明顯不是位址的輸入。後端才拒的邊界（值域越界、
+  // 前綴長度越界）刻意放行——重複判斷的兩套規則遲早分歧
+  if (!looksLikeSourcePrefix(value)) {
+    cidrDraftError.value = t('users.allowedCidrsFormat', { value })
+    return false
+  }
+  if (form.allowed_cidrs.length >= SOURCE_POLICY_MAX_ENTRIES) {
+    cidrDraftError.value = t('users.allowedCidrsTooMany', {
+      value,
+      max: SOURCE_POLICY_MAX_ENTRIES,
+    })
+    return false
+  }
+  form.allowed_cidrs.push(value)
+  cidrDraft.value = ''
+  cidrDraftError.value = ''
+  cidrTouched.value = true
+  scheduleSourcePolicyCheck()
+  return true
+}
+
+const removeCidr = (index) => {
+  form.allowed_cidrs.splice(index, 1)
+  cidrDraftError.value = ''
+  cidrTouched.value = true
+  scheduleSourcePolicyCheck()
+}
+
+// 失焦：把還停在輸入框裡的那一項一併收進清單（打完字直接移開焦點是常態），
+// 再重新判定一次。**按頁尾按鈕走不到這裡**（那條路刻意不失焦），送出路徑
+// 另由 commitCidrDraft 收攏
+const onCidrBlur = () => {
+  if (cidrDraft.value.trim()) addCidr()
+  else if (cidrTouched.value) flushSourcePolicyCheck()
+}
+
+// 送出前收攏還停在輸入框裡的那一項。回 false＝那一項被擋下（紅字已就地顯示），
+// 送出停在原地讓使用者看見，不靜默把它丟掉
+const commitCidrDraft = () => addCidr()
+
+// 逐項錯誤：端點回的 error_code 就近顯示。`invalid`＝解析不了、
+// `too_many`＝去重後超過上限；未知碼退回通用的「解析不了」而非吞掉
+const ITEM_ERROR_KEYS = {
+  invalid: 'users.allowedCidrsInvalid',
+  too_many: 'users.allowedCidrsTooMany',
+}
+
+const itemErrorKey = (input) => {
+  const item = (cidrCheck.value?.items || []).find((i) => i.input === input)
+  if (!item?.error_code) return ''
+  return ITEM_ERROR_KEYS[item.error_code] || ITEM_ERROR_KEYS.invalid
+}
+
+const itemErrors = computed(() =>
+  (cidrCheck.value?.items || [])
+    .filter((i) => i.error_code)
+    .map((i) => ({
+      input: i.input,
+      text: t(ITEM_ERROR_KEYS[i.error_code] || ITEM_ERROR_KEYS.invalid, {
+        value: i.input,
+        max: SOURCE_POLICY_MAX_ENTRIES,
+      }),
+    }))
+)
+
+// 正規化預覽只在「存起來會跟你打的不一樣」時出現：一模一樣時多這一行是噪音
+const normalizedPreview = computed(() => {
+  const normalized = cidrCheck.value?.normalized
+  if (!cidrCheck.value?.valid || !Array.isArray(normalized) || !normalized.length) return ''
+  const same =
+    normalized.length === form.allowed_cidrs.length &&
+    normalized.every((v, i) => v === form.allowed_cidrs[i])
+  return same ? '' : normalized.join('、')
+})
+
+// 「等同不限」：三句分寫（v4／v6／both），不以分隔符拼接家族名——
+// 各語言的並列連接詞不同，拼接會在其中一語產出讀不通的句子
+// 兩個來源的家族欄**不同名**：`User` 物件是 `allowed_cidrs_families`
+// （`model/user.go` 的 `AllowedCIDRFamilies`），判定端點回應是 `families`。
+// 本函式只收陣列，呼叫端各自取對的欄位
+const effectiveUnrestrictedText = (families) => {
+  const key = sourceFamiliesKey(families)
+  return key ? t(`users.allowedCidrsEffective.${key}`) : ''
+}
+
+const effectiveUnrestrictedLine = computed(() => {
+  if (cidrCheck.value?.status !== 'effectively_unrestricted') return ''
+  return effectiveUnrestrictedText(cidrCheck.value?.families)
+})
+
+// 自鎖警告**只消費端點的 allowed**，不自行比對。編輯對象是本人、清單非空、
+// 端點判定本次來源不放行時出現；後端不擋、本頁也不擋
+const selfLockLine = computed(() => {
+  if (!isEditingSelf.value) return ''
+  if (!form.allowed_cidrs.length) return ''
+  if (cidrCheck.value?.allowed !== false) return ''
+  const address = cidrCheck.value?.source?.address
+  return address
+    ? t('users.allowedCidrsSelfLock', { address })
+    : t('users.allowedCidrsSelfLockNoSource')
+})
+
+// 「你目前的來源」只供顯示（`/auth/me` 的 source_ip），不參與任何判定。
+// 取不到時整行不出現——顯示「未知」會讓管理者以為那是判定結果。
+//
+// **只在編輯自己的帳號時出現**：它是管理者自己的位址，擺在別人的允許清單旁邊
+// 會被讀成「這個帳號的來源」。與 selfLockLine 同一道把關（isEditingSelf）
+const currentSourceLine = computed(() =>
+  isEditingSelf.value && currentSourceIp.value
+    ? t('users.allowedCidrsCurrentSource', { address: currentSourceIp.value })
+    : ''
+)
+
+// 取一次即快取（同一次進站不重複問）；失敗只留前端失敗紀錄，不打斷開窗
+const loadCurrentSource = async () => {
+  if (currentSourceLoaded) return
+  currentSourceLoaded = true
+  try {
+    const me = await getCurrentUser()
+    currentSourceIp.value = me?.source_ip || ''
+  } catch (error) {
+    logFailure('current_source_load_failed', error)
+  }
 }
 
 // 表單驗證規則（computed：切語言時錯誤訊息隨當下語言）
@@ -995,6 +1376,8 @@ const resetForm = () => {
   form.email = ''
   form.full_name = ''
   form.roles = []
+  form.allowed_cidrs = []
+  resetCidrState()
   formRef.value?.clearValidate()
 }
 
@@ -1004,6 +1387,7 @@ const handleCreate = () => {
   resetForm()
   isEdit.value = false
   dialogVisible.value = true
+  loadCurrentSource()
 }
 
 // 處理編輯
@@ -1014,13 +1398,24 @@ const handleEdit = (row) => {
   form.username = row.username
   form.email = row.email || ''
   form.full_name = row.full_name || ''
+  // 現值進表單但**不標記為已編輯**：沒動過就不送該欄（presence 語義）
+  form.allowed_cidrs = [...(row.allowed_cidrs || [])]
   dialogVisible.value = true
+  loadCurrentSource()
 }
 
 // 處理提交
 const handleSubmit = async () => {
   try {
+    // 打完字沒按 Enter 就直接送出是常態；那一項在這裡收進清單
+    if (!commitCidrDraft()) return
     await formRef.value.validate()
+
+    // 儲存前最後一次判定：警示是 warning 級、**不阻擋送出**（管理者可能刻意
+    // 設定一個尚未切換過去的網段），但要讓他在按下去之前就看到
+    if (cidrTouched.value) {
+      await flushSourcePolicyCheck()
+    }
     submitting.value = true
 
     if (isEdit.value) {
@@ -1029,6 +1424,9 @@ const handleSubmit = async () => {
         email: form.email,
         full_name: form.full_name,
       }
+      // presence 語義：**沒動過清單就不帶這個欄位**（缺欄＝保留現值）。
+      // 一律帶會在使用者只改了 Email 時把既有的來源限定靜默清空
+      if (cidrTouched.value) data.allowed_cidrs = [...form.allowed_cidrs]
       await updateUser(form.id, data)
       ElMessage.success(t('users.updated'))
     } else {
@@ -1040,6 +1438,8 @@ const handleSubmit = async () => {
         full_name: form.full_name,
         roles: form.roles.length > 0 ? form.roles : ['user'],
       }
+      // 建立時省略＝不限；空清單不必送出
+      if (form.allowed_cidrs.length) data.allowed_cidrs = [...form.allowed_cidrs]
       await createUser(data)
       ElMessage.success(t('users.created'))
     }
@@ -1325,6 +1725,48 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 允許來源網段：tag 清單 + 輸入框 + 逐條就近提示。
+   提示一律在欄位下方就近呈現（C6），不彈對話框、不擋送出 */
+.cidr-field {
+  width: 100%;
+}
+
+.cidr-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ot-space-xs);
+  margin-bottom: var(--ot-space-xs);
+}
+
+.cidr-tags :deep(.el-tag) {
+  font-family: var(--ot-font-mono);
+}
+
+.cidr-field :deep(.el-input__inner) {
+  font-family: var(--ot-font-mono);
+}
+
+.cidr-hint,
+.cidr-error,
+.cidr-warning {
+  margin: var(--ot-space-xs) 0 0;
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.6;
+}
+
+.cidr-hint {
+  color: var(--ot-text-secondary);
+}
+
+.cidr-error {
+  color: var(--ot-danger);
+}
+
+/* 警示是 warning 級：它不阻擋儲存，色階也不該偽裝成阻擋 */
+.cidr-warning {
+  color: var(--ot-warning);
+}
+
 /* provider 實例名緊接在來源標籤後；換行時不擠壓表格其他欄 */
 .source-provider-tag {
   margin-left: 4px;

@@ -32,8 +32,9 @@ func setupAlertDB(t *testing.T) (*CommandAlertService, *gorm.DB) {
 	)`).Error; err != nil {
 		t.Fatalf("create command_alerts: %v", err)
 	}
-	// users/assets 供 List 的 LEFT JOIN 補 username/asset_name
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}); err != nil {
+	// users/assets 供 List 的 LEFT JOIN 補 username/asset_name；
+	// sessions 供 List 的 LEFT JOIN 帶出建線當下的來源位址（client_ip）
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewCommandAlertService(db), db
@@ -101,8 +102,11 @@ func TestAlertUnreviewedFilter(t *testing.T) {
 
 	// 全部：2 筆
 	all, err := svc.List(&CommandAlertFilter{})
-	if err != nil || all.Total != 2 {
-		t.Fatalf("全部 = %d, want 2 (err=%v)", all.Total, err)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if all.Total != 2 {
+		t.Fatalf("全部 = %d, want 2", all.Total)
 	}
 	// 僅未審閱：1 筆（cmd2）
 	un, err := svc.List(&CommandAlertFilter{Unreviewed: true})

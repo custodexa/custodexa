@@ -142,6 +142,30 @@ func gateGuacCells() []gateGuacCell {
 			wantBurned: true,
 		},
 		{
+			// 兌換側現讀、不信簽發：票證在允許位址簽出，換個位址兌換照樣擋
+			name: "G-G13 兌換當下來源不在允許網段", gate: "G-G13",
+			setup: seedDefault,
+			mutate: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
+				gateGuacSetAllowedCIDRs(t, db, 1, "10.0.0.0/8")
+			},
+			grant:      ConnectGrant{UserID: 1, AssetID: 1},
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+			wantMeta:   map[string]any{"reason": "source_not_allowed"},
+			wantBurned: true,
+		},
+		{
+			// 政策損壞不得視為空清單放行；對外形狀與上一格逐字相同
+			name: "G-G13 清單字串損壞（不得當成不限）", gate: "G-G13",
+			setup: seedDefault,
+			mutate: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
+				gateGuacSetAllowedCIDRs(t, db, 1, "10.0.0.0/8,garbage")
+			},
+			grant:      ConnectGrant{UserID: 1, AssetID: 1},
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+			wantMeta:   map[string]any{"reason": "source_not_allowed"},
+			wantBurned: true,
+		},
+		{
 			name: "G-G5 憑證世代被推進", gate: "G-G5",
 			setup: seedDefault,
 			mutate: func(t *testing.T, h *ConnectionHandler, db *gorm.DB) {
@@ -258,6 +282,16 @@ func gateGuacCells() []gateGuacCell {
 	}
 }
 
+// gateGuacSetAllowedCIDRs 直寫使用者的允許來源網段（理由同文字側的同名輔助：
+// 「儲存字串損壞」那一格按定義造不出於 service 層）
+func gateGuacSetAllowedCIDRs(t *testing.T, db *gorm.DB, userID uint, raw string) {
+	t.Helper()
+	if err := db.Model(&model.User{}).Where("id = ?", userID).
+		Update("allowed_cidrs", raw).Error; err != nil {
+		t.Fatalf("set allowed_cidrs: %v", err)
+	}
+}
+
 // TestCharacterizationMatrixRedeemGraphical StageRedeemGraphical 逐格特徵化
 func TestCharacterizationMatrixRedeemGraphical(t *testing.T) {
 	for _, cell := range gateGuacCells() {
@@ -319,16 +353,18 @@ func TestCharacterizationMatrixRedeemGraphical(t *testing.T) {
 // 都必須有至少一格實跑格宣稱涵蓋它，缺一即紅；格宣稱了基準表外的閘也紅。
 // 原版只比對兩個硬編碼常數（`len(gates)!=12`、`len(uncovered)!=0`），與矩陣零耦合。
 func TestGuacMatrixCoverageIsDeclared(t *testing.T) {
+	// G-G13＝來源限定閘（G1）。編號接在末尾而位置在 G-G4 之後是既有慣例：
+	// 編號是穩定識別碼，不是序號（見 internal/connectgate 檔頭）
 	gates := []string{"G-G1", "G-G2", "G-G3", "G-G4", "G-G5", "G-G6",
-		"G-G7", "G-G8", "G-G9", "G-G10", "G-G11", "G-G12"}
+		"G-G7", "G-G8", "G-G9", "G-G10", "G-G11", "G-G12", "G-G13"}
 	baseline := map[string]bool{}
 	for _, g := range gates {
 		baseline[g] = true
 	}
 	// 刻意不涵蓋：圖形側為空集合。非空時每條須附理由（與文字側同一紀律）
 	uncovered := map[string]string{}
-	if len(gates) != 12 {
-		t.Fatalf("基準表 §1.3 閘數與矩陣宣稱不符: got=%d want=12", len(gates))
+	if len(gates) != 13 {
+		t.Fatalf("基準表 §1.3 閘數與矩陣宣稱不符: got=%d want=13", len(gates))
 	}
 
 	covered := map[string]bool{}
@@ -351,7 +387,7 @@ func TestGuacMatrixCoverageIsDeclared(t *testing.T) {
 		}
 		covered[c.gate] = true
 	}
-	if cellCount < 12 {
+	if cellCount < 14 {
 		t.Fatalf("矩陣格數 %d 低於下限 12：抽取器或矩陣疑似被削", cellCount)
 	}
 	for g := range baseline {

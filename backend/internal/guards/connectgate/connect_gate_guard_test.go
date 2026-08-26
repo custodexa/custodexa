@@ -38,6 +38,8 @@ var gateUnsealOutlets = map[string]bool{
 // gateJudgmentCalls 連線閘序的判定類方法：它們的呼叫位置即閘的位置
 var gateJudgmentCalls = map[string]bool{
 	"CurrentConnectRole":                 true,
+	"CurrentConnectRoleAndSourcePolicy":  true,
+	"SourceOutcome":                      true,
 	"VerifyCredentialGenerationByUserID": true,
 	"VerifyAccountBinding":               true,
 	"AuthorizeConnectAccount":            true,

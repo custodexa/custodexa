@@ -92,6 +92,11 @@ func runStage1() *stage1 {
 	log.Printf("異常偵測: %v", cfg.Features.AnomalyDetectionEnabled)
 	log.Printf("告警系統: %v", cfg.Features.AlertingEnabled)
 	log.Println("====================")
+	// 單實例守衛的一次性確認碼：不是機密、不是開關，
+	// 印出值本身讓操作者能核對它對到的是哪一次衝突
+	if cfg.InstanceGuard.Ack != "" {
+		log.Printf("INSTANCE_GUARD_ACK 已設定：%s（只對本次啟動查得的持鎖者指紋碼相符時生效）", cfg.InstanceGuard.Ack)
+	}
 
 	// 設定 Gin 模式
 	gin.SetMode(cfg.Server.Mode)
@@ -170,6 +175,15 @@ func runStage1() *stage1 {
 		log.Fatalf("資料庫初始化失敗: %v", err)
 	}
 
+	// 單實例守衛的掛點：**DB 已可用、尚未發生任何寫入的唯一窗口**。
+	// 鎖由他人持有且未經確認即在此攔下——不 migration、不 seed、不開監聽；
+	// 訊息本體由 database 包產生（單一事實源），此處不加工。
+	// 帶相符確認碼時允許啟動（狀態 overridden），留痕由段 2 注入的事件 sink 承擔。
+	if err := database.AcquireInstanceLock(context.Background(), database.DB, cfg.InstanceGuard.Ack); err != nil {
+		log.Fatalf("%v", err)
+	}
+	logInstanceGuardAcquired()
+
 	// 執行 migrations：schema baseline 建立全部表結構、索引、約束與內建告警規則種子。
 	// **開機 AutoMigrate 已移除**：schema 的唯一
 	// 事實源是 baseline 的 DDL，model 與 baseline 的一致性改由 parity 守衛把關。
@@ -244,6 +258,9 @@ func runStage1() *stage1 {
 		corsMiddleware: corsMiddleware,
 		metrics:        observability.New(),
 	}
+	// 單實例守衛指標的資料源：守衛自段 1 起存在，
+	// 封印期就要能採集；接在指標實例建構之後、任何監聽開放之前
+	s.metrics.SetInstanceGuardSource(instanceGuardMetricsSource)
 
 	// 封印期留痕：僅 B 模式需要——A／C 模式恆 unsealed，不存在封印期。
 	// **建立失敗即不開放監聽**：不受任何 feature flag 控制、不可關閉。

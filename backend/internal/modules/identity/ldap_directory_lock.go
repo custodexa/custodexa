@@ -28,7 +28,7 @@ import (
 
 // ── 跨實例互斥 ──────────────────────────────────────────────────────
 
-// ldapDirectoryLockKey LDAP 目錄設定寫入的 advisory lock key。
+// LDAPDirectoryLockKey LDAP 目錄設定寫入的 advisory lock key。
 //
 // **自有 key、不複用 KEKDataKeysLockKey**：`withDataKeysLock`
 // 綁在 KeyManagerService 上且硬寫 KEK 的 key，共用會使目錄設定的存檔與 KEK
@@ -37,7 +37,7 @@ import (
 // 取號沿 key_manager_lock.go 的保留段（"otkek" ASCII ＋ 子系統序號），並已於
 // 該檔的 keyspace 清單登記——比照 user_credential_lock.go 的先例，所有跨實例
 // 鎖都要能在該檔追溯。撞號守衛見 TestLDAPDirectoryLockKeyDistinct。
-const ldapDirectoryLockKey int64 = 0x6F74_6B65_6B00_0003
+const LDAPDirectoryLockKey int64 = 0x6F74_6B65_6B00_0003
 
 // ldapDirectoryProcessMu 無 advisory lock 能力環境（sqlite 測試）的等價序列化。
 // package 層級共用（跨 service 實例）、TryLock 非阻塞——與 postgres 路徑同語義
@@ -77,7 +77,7 @@ func WithLDAPDirectoryLock(db *gorm.DB, fn func(tx *gorm.DB) error) error {
 	case "postgres":
 		return db.Transaction(func(tx *gorm.DB) error {
 			var got bool
-			if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", ldapDirectoryLockKey).
+			if err := tx.Raw("SELECT pg_try_advisory_xact_lock(?)", LDAPDirectoryLockKey).
 				Scan(&got).Error; err != nil {
 				return fmt.Errorf("取得 LDAP 目錄設定互斥鎖失敗: %w", err)
 			}

@@ -39,10 +39,6 @@ var commandAlertLiteralAllowlist = map[string]string{
 	"internal/modules/audit/alert_notifier.go":        "SendTestNotification 的測試 payload：只序列化後送 webhook，不入庫（無 GORM 寫入）",
 	"internal/modules/audit/command_alert_service.go": "`Model(&model.CommandAlert{})` 查詢／審閱更新的型別標記，非資料列",
 	"internal/modules/audit/daily_review_service.go":  "同上，未審閱計數查詢的型別標記",
-	"internal/modules/audit/timeline_service.go": "同上（auditor-workbench）：`Model(&model.CommandAlert{})` " +
-		"是 fetchAlerts 取窗與 countSource 計數的**查詢型別標記**，兩處皆只 Find／Count，" +
-		"函式內零 GORM 寫入呼叫——工作台是唯讀聚合面，本來就不該生出告警列，" +
-		"故「這一筆為何不需要 tee」的答案是：它根本不是一筆列。層 2 的無寫入斷言即此宣稱的機器化",
 	"internal/modules/audit/audit_export_report.go": "同上：" +
 		"`Model(&model.CommandAlert{})` 是事件報告匯出取窗的**查詢型別標記**，" +
 		"writeReportAlerts 只 Find 後寫進 CSV，函式內零 GORM 寫入呼叫——" +
@@ -57,9 +53,12 @@ var commandAlertLiteralAllowlist = map[string]string{
 // commandAlertWriteFile 唯一可以把 command_alerts 列寫進 DB 的檔。
 const commandAlertWriteFile = "internal/modules/audit/alert_sink.go"
 
-// minCommandAlertLiteralSites 現況實測 10 處（alert_sink 1／alert_notifier 1／
-// command_alert_service 2／daily_review_service 1／timeline_service 2／
-// audit_export_report 1／change_secret_runner 1／change_secret_retry_runner 1）。
+// minCommandAlertLiteralSites 現況實測 8 處（alert_sink 1／alert_notifier 1／
+// command_alert_service 2／daily_review_service 1／audit_export_report 1／
+// change_secret_runner 1／change_secret_retry_runner 1）。
+// timeline_service 的兩處已隨位址樞紐消失——`Model(&model.CommandAlert{})` 改為
+// `Table("command_alerts AS sc")` 加 LEFT JOIN sessions 取建線當下的來源位址，
+// 型別標記不再出現，故該檔的豁免已撤（燒盡制：構造點沒了就不留無主的例外）。
 // 下限擋的是「掃描根失真 → 零命中 → 零違規」這個最危險的假綠形態。
 const minCommandAlertLiteralSites = 5
 

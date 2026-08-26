@@ -32,7 +32,7 @@ import (
 // 計時敏感測試已有 flaky 前科，長時間持鎖會把它變成常態。
 //
 // **取鎖順序固定 system → provider → user**（design 行 264）：system 級即
-// local_admin_invariant.go 的 localAdminLockKey；同時需要 provider 與 user 兩把者
+// local_admin_invariant.go 的 LocalAdminLockKey；同時需要 provider 與 user 兩把者
 // 一律經 WithCapabilityLocks 進入，不得自行分開取。
 
 // oidcProviderRowLockSQL pg 的 provider 列鎖。

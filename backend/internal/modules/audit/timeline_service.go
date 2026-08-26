@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/sourceip"
 	"gorm.io/gorm"
 )
 
@@ -58,6 +59,27 @@ type TimelineSubject string
 const (
 	SubjectUser  TimelineSubject = "user"
 	SubjectAsset TimelineSubject = "asset"
+	// SubjectIP 來源位址樞紐：主體鍵是位址字串而非整數 id，
+	// 查詢輸入走 TimelineQuery.SubjectIP，SubjectID 必為零
+	SubjectIP TimelineSubject = "ip"
+)
+
+// ClientIPUnknown 位址篩選的保留字：只保留位址欄為空或所屬會話缺失的列。
+// 先於位址正規化判定——unknown 不可能是合法位址，無歧義；
+// 位址樞紐不接受它（樞紐需要一個具體位址）
+const ClientIPUnknown = "unknown"
+
+// 未知來源的原因值域（閉集合，只收由儲存資料可誠實導出者；
+// 只在事件的 client_ip 為 null 時填）
+const (
+	// ClientIPReasonSystem 系統發起（操作日誌列 user_id=0）且位址欄為空：無請求來源
+	ClientIPReasonSystem = "system"
+	// ClientIPReasonUnresolvable 有請求脈絡（使用者操作或會話）但位址欄為空：
+	// 寫入當下來源無法解析
+	ClientIPReasonUnresolvable = "unresolvable"
+	// ClientIPReasonSessionMissing 指令／告警列經 session_id 找不到所屬會話列
+	//（三表皆刻意無 FK）
+	ClientIPReasonSessionMissing = "session_missing"
 )
 
 // 錯誤（handler 轉為 apierror 碼；service 層不回散文給前端）
@@ -65,17 +87,25 @@ var (
 	ErrInvalidSubject   = errors.New("invalid timeline subject")
 	ErrInvalidRange     = errors.New("invalid timeline range")
 	ErrUnknownEventType = errors.New("unknown timeline event type")
+	// ErrInvalidSourceAddress subject_ip 或 client_ip 篩選不是合法位址
+	//（client_ip 的保留字 unknown 除外）
+	ErrInvalidSourceAddress = errors.New("invalid timeline source address")
 )
 
 // TimelineQuery 一次查詢的全部輸入
 type TimelineQuery struct {
 	Subject   TimelineSubject
 	SubjectID uint
-	From      time.Time
-	To        time.Time
-	Types     []TimelineEventType // 空＝全部
-	Cursor    *TimelineCursor
-	Limit     int
+	// SubjectIP 位址樞紐的主體鍵（Subject == SubjectIP 時必填，Normalize 正規化）
+	SubjectIP string
+	// ClientIP 人／資產樞紐下的來源位址篩選：空＝不篩；保留字 unknown＝只看未知
+	// 來源列；其餘必須可正規化為位址。位址樞紐下不接受本欄
+	ClientIP string
+	From     time.Time
+	To       time.Time
+	Types    []TimelineEventType // 空＝全部
+	Cursor   *TimelineCursor
+	Limit    int
 }
 
 // Counterpart 每列的對造：人樞紐標「在哪台」，資產樞紐標「誰做的」
@@ -103,8 +133,18 @@ type TimelineEvent struct {
 	SummaryCode string            `json:"summary_code"`
 	Params      map[string]string `json:"params,omitempty"`
 	Counterpart *Counterpart      `json:"counterpart,omitempty"`
-	Refs        TimelineRefs      `json:"refs"`
-	Severity    string            `json:"severity,omitempty"`
+	// Actor 位址樞紐下的行為人（kind 恆 user；未認證列為 nil）。
+	// 位址軸上多帳號的事件混在同一軸（NAT 共用出口），每列必須同時標
+	// 「誰 · 哪台」——Counterpart 在位址樞紐下裝資產，人由本欄承載
+	Actor *Counterpart `json:"actor,omitempty"`
+	// ClientIP 來源位址。**三樞紐皆帶、刻意不設 omitempty**：無位址時輸出顯式
+	// null——「每筆事件皆帶來源位址」是條文，省略欄位會讓前端無法區分
+	// 「未帶」與「未知」，筆數口徑亦無法定義
+	ClientIP *string `json:"client_ip"`
+	// ClientIPReason 只在 ClientIP 為 null 時填（值域見 ClientIPReason* 常數）
+	ClientIPReason string       `json:"client_ip_reason,omitempty"`
+	Refs           TimelineRefs `json:"refs"`
+	Severity       string       `json:"severity,omitempty"`
 
 	// SourceID 來源表主鍵，游標與排序用（不出站——它在跨類別間沒有意義，
 	// 暴露只會誘導客戶端自行拼游標）
@@ -124,6 +164,9 @@ type TimelineSpan struct {
 	End            *time.Time `json:"end,omitempty"` // nil＝進行中
 	Status         string     `json:"status"`
 	RecordingState string     `json:"recording_state"` // available | purged | none
+	// ClientIP 建線當下的來源位址（同事件欄語義：null＋原因，不設 omitempty）
+	ClientIP       *string `json:"client_ip"`
+	ClientIPReason string  `json:"client_ip_reason,omitempty"`
 }
 
 // 錄影三態
@@ -189,10 +232,39 @@ func NewTimelineService(db *gorm.DB) *TimelineService {
 
 // Normalize 校驗並補預設。回錯誤即 400（未知型別不靜默忽略）
 func (q *TimelineQuery) Normalize() error {
-	if q.Subject != SubjectUser && q.Subject != SubjectAsset {
-		return ErrInvalidSubject
-	}
-	if q.SubjectID == 0 {
+	switch q.Subject {
+	case SubjectUser, SubjectAsset:
+		if q.SubjectID == 0 {
+			return ErrInvalidSubject
+		}
+		// 位址篩選：保留字先於正規化判定；其餘必須可正規化，
+		// 打錯字回 400 而非靜默回空結果
+		if q.ClientIP != "" && q.ClientIP != ClientIPUnknown {
+			canon, ok := sourceip.Canonical(q.ClientIP)
+			if !ok {
+				return ErrInvalidSourceAddress
+			}
+			q.ClientIP = canon
+		}
+	case SubjectIP:
+		// 主體鍵是位址字串：subject_id 被忽略（handler 不解析），保留字不是位址。
+		// 未知來源列由人／資產樞紐的 unknown 篩選抵達，位址樞紐需要一個具體位址
+		if q.SubjectID != 0 {
+			return ErrInvalidSubject
+		}
+		if q.SubjectIP == ClientIPUnknown {
+			return ErrInvalidSourceAddress
+		}
+		canon, ok := sourceip.Canonical(q.SubjectIP)
+		if !ok {
+			return ErrInvalidSourceAddress
+		}
+		q.SubjectIP = canon
+		// 位址樞紐已把位址當主體，再帶篩選是矛盾輸入——大聲拒絕
+		if q.ClientIP != "" {
+			return ErrInvalidSourceAddress
+		}
+	default:
 		return ErrInvalidSubject
 	}
 	if q.From.IsZero() || q.To.IsZero() || !q.To.After(q.From) {
@@ -320,12 +392,75 @@ func mergeStreams(streams [][]TimelineEvent, limit int) ([]TimelineEvent, bool) 
 	return out, false
 }
 
-// subjectColumn 樞紐鍵在各來源上的欄名
+// subjectColumn 樞紐鍵在各來源上的欄名（user／asset 樞紐用；位址樞紐走 ipPredicate）
 func subjectColumn(subject TimelineSubject) string {
 	if subject == SubjectAsset {
 		return "asset_id"
 	}
 	return "user_id"
+}
+
+// ipPredicate 單一來源上「位址等於」與「位址未知」兩個條件的 SQL 形狀。
+//
+// 位址樞紐與位址篩選的 WHERE 都由 applySubjectScope 組裝——fetch、count、spans
+// 三處共用同一組條件，避免「events 有、counts 沒有」的三處漂移
+type ipPredicate struct {
+	equals  string // 位址相等，帶一個 ? 參數
+	unknown string // 未知來源列（位址欄為空，或所屬會話缺失）
+}
+
+// 直接帶 client_ip 欄的表（sessions、audit_logs）
+var directIPPredicate = ipPredicate{
+	equals:  "client_ip = ?",
+	unknown: "(client_ip IS NULL OR client_ip = '')",
+}
+
+// 經 LEFT JOIN sessions AS se 取位址的表（session_commands、command_alerts）：
+// join 目標缺失（會話列被刪）也是未知來源
+var joinedIPPredicate = ipPredicate{
+	equals:  "se.client_ip = ?",
+	unknown: "(se.id IS NULL OR se.client_ip IS NULL OR se.client_ip = '')",
+}
+
+// clipboard 沿既有 INNER JOIN（無主體欄，會話缺失的列本就不可歸屬、任何樞紐不可達）
+var clipboardIPPredicate = ipPredicate{
+	equals:  "se.client_ip = ?",
+	unknown: "(se.client_ip IS NULL OR se.client_ip = '')",
+}
+
+// applySubjectScope 樞紐與位址篩選的統一組裝：
+// 位址樞紐＝位址相等、不依 user／asset 收斂（NAT 之下同位址多帳號都要看見）；
+// 人／資產樞紐＝主體鍵相等＋可選位址篩選（unknown 保留字＝只看未知來源列）
+func applySubjectScope(tx *gorm.DB, q TimelineQuery, subjCol string, pred ipPredicate) *gorm.DB {
+	if q.Subject == SubjectIP {
+		return tx.Where(pred.equals, q.SubjectIP)
+	}
+	tx = tx.Where(subjCol+" = ?", q.SubjectID)
+	switch q.ClientIP {
+	case "":
+	case ClientIPUnknown:
+		tx = tx.Where(pred.unknown)
+	default:
+		tx = tx.Where(pred.equals, q.ClientIP)
+	}
+	return tx
+}
+
+// eventClientIP 事件的位址欄三態封裝：有值、或 null＋原因
+func eventClientIP(ip string, reason string) (*string, string) {
+	if ip != "" {
+		return &ip, ""
+	}
+	return nil, reason
+}
+
+// auditLogReason 操作日誌列位址為空的原因：系統發起（user_id=0）沒有請求來源；
+// 有使用者脈絡者是寫入當下無法解析
+func auditLogReason(userID uint) string {
+	if userID == 0 {
+		return ClientIPReasonSystem
+	}
+	return ClientIPReasonUnresolvable
 }
 
 // fetchSource 單一來源的 keyset 查詢＋統一封裝
@@ -348,15 +483,12 @@ func (s *TimelineService) fetchSource(t TimelineEventType, q TimelineQuery, fetc
 // auditLogScope audit_logs 兩個類別的共同 where。
 //
 // 資產樞紐**只認 asset_id 欄**，SHALL NOT 退回 (resource, resource_id)：
-// 後者會把「改密計畫 130」「授權列 130」當成資產 130 的事件
+// 後者會把「改密計畫 130」「授權列 130」當成資產 130 的事件。
+// 位址樞紐不依 user／asset 收斂——未認證的拒絕列（user_id=0）也要在該位址下可見
 func (s *TimelineService) auditLogScope(t TimelineEventType, q TimelineQuery) *gorm.DB {
 	tx := s.db.Model(&model.AuditLog{}).
 		Where("created_at >= ? AND created_at < ?", q.From, q.To)
-	if q.Subject == SubjectAsset {
-		tx = tx.Where("asset_id = ?", q.SubjectID)
-	} else {
-		tx = tx.Where("user_id = ?", q.SubjectID)
-	}
+	tx = applySubjectScope(tx, q, subjectColumn(q.Subject), directIPPredicate)
 	// 兩類互斥切分同一張表：漏掉任一邊的條件，檔案傳輸列就會同時
 	// 以 audit_log 與 file_transfer 出現兩次
 	if t == TimelineTypeFileTransfer {
@@ -390,9 +522,19 @@ func (s *TimelineService) fetchAuditLogs(t TimelineEventType, q TimelineQuery, f
 			},
 			Refs: TimelineRefs{AssetID: r.AssetID},
 		}
-		if q.Subject == SubjectAsset {
+		ev.ClientIP, ev.ClientIPReason = eventClientIP(r.ClientIP, auditLogReason(r.UserID))
+		switch {
+		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID, Name: r.Username}
-		} else if r.AssetID != nil {
+		case q.Subject == SubjectIP:
+			// 位址樞紐雙對造：對造裝資產、行為人另欄；未認證列（user_id=0）無行為人
+			if r.AssetID != nil {
+				ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
+			}
+			if r.UserID > 0 {
+				ev.Actor = &Counterpart{Kind: "user", ID: r.UserID, Name: r.Username}
+			}
+		case r.AssetID != nil:
 			ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
 		}
 		out = append(out, ev)
@@ -403,8 +545,8 @@ func (s *TimelineService) fetchAuditLogs(t TimelineEventType, q TimelineQuery, f
 
 func (s *TimelineService) fetchSessions(q TimelineQuery, fetch int) ([]TimelineEvent, error) {
 	tx := s.db.Model(&model.Session{}).
-		Where("start_time >= ? AND start_time < ?", q.From, q.To).
-		Where(subjectColumn(q.Subject)+" = ?", q.SubjectID)
+		Where("start_time >= ? AND start_time < ?", q.From, q.To)
+	tx = applySubjectScope(tx, q, subjectColumn(q.Subject), directIPPredicate)
 	if where, args := keysetWhere("start_time", "id", TimelineTypeSession, q.Cursor); where != "" {
 		tx = tx.Where(where, args...)
 	}
@@ -429,9 +571,16 @@ func (s *TimelineService) fetchSessions(q TimelineQuery, fetch int) ([]TimelineE
 			},
 			Refs: TimelineRefs{SessionID: &id, AssetID: r.AssetID},
 		}
-		if q.Subject == SubjectAsset {
+		ev.ClientIP, ev.ClientIPReason = eventClientIP(r.ClientIP, ClientIPReasonUnresolvable)
+		switch {
+		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID}
-		} else if r.AssetID != nil {
+		case q.Subject == SubjectIP:
+			if r.AssetID != nil {
+				ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
+			}
+			ev.Actor = &Counterpart{Kind: "user", ID: r.UserID}
+		case r.AssetID != nil:
 			ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
 		}
 		out = append(out, ev)
@@ -440,15 +589,56 @@ func (s *TimelineService) fetchSessions(q TimelineQuery, fetch int) ([]TimelineE
 	return out, nil
 }
 
+// commandScope 指令流的共同 where：位址經 LEFT JOIN sessions 帶出（建線當下的
+// 來源）；LEFT 而非 INNER——會話列缺失的指令列仍可歸屬（自帶 user_id／asset_id），
+// 在人／資產樞紐以未知來源（session_missing）呈現，INNER 會把它整列藏掉
+func (s *TimelineService) commandScope(q TimelineQuery) *gorm.DB {
+	tx := s.db.Table("session_commands AS sc").
+		Joins("LEFT JOIN sessions AS se ON se.id = sc.session_id").
+		Where("sc.executed_at >= ? AND sc.executed_at < ?", q.From, q.To)
+	return applySubjectScope(tx, q, "sc."+subjectColumn(q.Subject), joinedIPPredicate)
+}
+
+// joinedSourceRow 經 LEFT JOIN sessions 的來源列（指令／告警共用形狀）
+type joinedSourceRow struct {
+	ID        uint
+	SessionID uint
+	UserID    uint
+	AssetID   *uint
+	Command   string
+	ExecutedAt time.Time
+	// 告警專屬
+	RuleName    string
+	ReasonCode  string
+	Kind        string
+	Severity    string
+	Disposition string
+	TriggeredAt time.Time
+	// join 結果：JoinedSessionID 為 nil＝所屬會話列缺失
+	JoinedSessionID *uint
+	SessionClientIP *string
+}
+
+// joinedClientIP 指令／告警列的位址三態：位址取自所屬會話（建線當下）
+func (r joinedSourceRow) joinedClientIP() (*string, string) {
+	if r.JoinedSessionID == nil {
+		return nil, ClientIPReasonSessionMissing
+	}
+	if r.SessionClientIP == nil || *r.SessionClientIP == "" {
+		return nil, ClientIPReasonUnresolvable
+	}
+	return r.SessionClientIP, ""
+}
+
 func (s *TimelineService) fetchCommands(q TimelineQuery, fetch int) ([]TimelineEvent, error) {
-	tx := s.db.Model(&model.SessionCommand{}).
-		Where("executed_at >= ? AND executed_at < ?", q.From, q.To).
-		Where(subjectColumn(q.Subject)+" = ?", q.SubjectID)
-	if where, args := keysetWhere("executed_at", "id", TimelineTypeCommand, q.Cursor); where != "" {
+	tx := s.commandScope(q).
+		Select("sc.id, sc.session_id, sc.user_id, sc.asset_id, sc.command, sc.executed_at, " +
+			"se.id AS joined_session_id, se.client_ip AS session_client_ip")
+	if where, args := keysetWhere("sc.executed_at", "sc.id", TimelineTypeCommand, q.Cursor); where != "" {
 		tx = tx.Where(where, args...)
 	}
-	var rows []model.SessionCommand
-	if err := tx.Order("executed_at ASC, id ASC").Limit(fetch).Find(&rows).Error; err != nil {
+	var rows []joinedSourceRow
+	if err := tx.Order("sc.executed_at ASC, sc.id ASC").Limit(fetch).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]TimelineEvent, 0, len(rows))
@@ -466,9 +656,16 @@ func (s *TimelineService) fetchCommands(q TimelineQuery, fetch int) ([]TimelineE
 			Params: map[string]string{"command": r.Command},
 			Refs:   TimelineRefs{SessionID: &sid, AssetID: r.AssetID},
 		}
-		if q.Subject == SubjectAsset {
+		ev.ClientIP, ev.ClientIPReason = r.joinedClientIP()
+		switch {
+		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID}
-		} else if r.AssetID != nil {
+		case q.Subject == SubjectIP:
+			if r.AssetID != nil {
+				ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
+			}
+			ev.Actor = &Counterpart{Kind: "user", ID: r.UserID}
+		case r.AssetID != nil:
 			ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
 		}
 		out = append(out, ev)
@@ -477,15 +674,24 @@ func (s *TimelineService) fetchCommands(q TimelineQuery, fetch int) ([]TimelineE
 	return out, nil
 }
 
+// alertScope 告警的共同 where（join 語義同 commandScope）
+func (s *TimelineService) alertScope(q TimelineQuery) *gorm.DB {
+	tx := s.db.Table("command_alerts AS sc").
+		Joins("LEFT JOIN sessions AS se ON se.id = sc.session_id").
+		Where("sc.triggered_at >= ? AND sc.triggered_at < ?", q.From, q.To)
+	return applySubjectScope(tx, q, "sc."+subjectColumn(q.Subject), joinedIPPredicate)
+}
+
 func (s *TimelineService) fetchAlerts(q TimelineQuery, fetch int) ([]TimelineEvent, error) {
-	tx := s.db.Model(&model.CommandAlert{}).
-		Where("triggered_at >= ? AND triggered_at < ?", q.From, q.To).
-		Where(subjectColumn(q.Subject)+" = ?", q.SubjectID)
-	if where, args := keysetWhere("triggered_at", "id", TimelineTypeAlert, q.Cursor); where != "" {
+	tx := s.alertScope(q).
+		Select("sc.id, sc.session_id, sc.user_id, sc.asset_id, sc.command, sc.rule_name, " +
+			"sc.reason_code, sc.kind, sc.severity, sc.disposition, sc.triggered_at, " +
+			"se.id AS joined_session_id, se.client_ip AS session_client_ip")
+	if where, args := keysetWhere("sc.triggered_at", "sc.id", TimelineTypeAlert, q.Cursor); where != "" {
 		tx = tx.Where(where, args...)
 	}
-	var rows []model.CommandAlert
-	if err := tx.Order("triggered_at ASC, id ASC").Limit(fetch).Find(&rows).Error; err != nil {
+	var rows []joinedSourceRow
+	if err := tx.Order("sc.triggered_at ASC, sc.id ASC").Limit(fetch).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]TimelineEvent, 0, len(rows))
@@ -498,17 +704,28 @@ func (s *TimelineService) fetchAlerts(q TimelineQuery, fetch int) ([]TimelineEve
 			Type:        TimelineTypeAlert,
 			SourceID:    r.ID,
 			SummaryCode: "timeline.alert.triggered",
+			// kind／reason_code 供前端對非規則類（audit_degraded、new_source_ip）
+			// 以機器碼對映顯示文案——規則名欄對它們是機器碼快照，不是可讀名
 			Params: map[string]string{
 				"rule":        r.RuleName,
 				"command":     r.Command,
 				"disposition": r.Disposition,
+				"kind":        r.Kind,
+				"reason_code": r.ReasonCode,
 			},
 			Severity: r.Severity,
 			Refs:     TimelineRefs{SessionID: &sid, AlertID: &aid, AssetID: r.AssetID},
 		}
-		if q.Subject == SubjectAsset {
+		ev.ClientIP, ev.ClientIPReason = r.joinedClientIP()
+		switch {
+		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID}
-		} else if r.AssetID != nil {
+		case q.Subject == SubjectIP:
+			if r.AssetID != nil {
+				ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
+			}
+			ev.Actor = &Counterpart{Kind: "user", ID: r.UserID}
+		case r.AssetID != nil:
 			ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
 		}
 		out = append(out, ev)
@@ -525,14 +742,21 @@ type clipboardRow struct {
 	CreatedAt time.Time
 	UserID    uint
 	AssetID   *uint
+	ClientIP  string
+}
+
+// clipboardScope 剪貼簿的共同 where：沿既有 INNER JOIN——本表無主體欄，
+// 會話缺失的列不可歸屬（任何樞紐皆不可達，誠實邊界既載）
+func (s *TimelineService) clipboardScope(q TimelineQuery) *gorm.DB {
+	tx := s.db.Table("clipboard_events AS ce").
+		Joins("JOIN sessions AS se ON se.id = ce.session_id").
+		Where("ce.created_at >= ? AND ce.created_at < ?", q.From, q.To)
+	return applySubjectScope(tx, q, "se."+subjectColumn(q.Subject), clipboardIPPredicate)
 }
 
 func (s *TimelineService) fetchClipboard(q TimelineQuery, fetch int) ([]TimelineEvent, error) {
-	tx := s.db.Table("clipboard_events AS ce").
-		Select("ce.id, ce.session_id, ce.direction, ce.created_at, se.user_id, se.asset_id").
-		Joins("JOIN sessions AS se ON se.id = ce.session_id").
-		Where("ce.created_at >= ? AND ce.created_at < ?", q.From, q.To).
-		Where("se."+subjectColumn(q.Subject)+" = ?", q.SubjectID)
+	tx := s.clipboardScope(q).
+		Select("ce.id, ce.session_id, ce.direction, ce.created_at, se.user_id, se.asset_id, se.client_ip")
 	if where, args := keysetWhere("ce.created_at", "ce.id", TimelineTypeClipboard, q.Cursor); where != "" {
 		tx = tx.Where(where, args...)
 	}
@@ -555,9 +779,16 @@ func (s *TimelineService) fetchClipboard(q TimelineQuery, fetch int) ([]Timeline
 			// 需要內容者走既有的 per-session 端點（有其自身的權限與留痕）
 			Refs: TimelineRefs{SessionID: &sid, AssetID: r.AssetID},
 		}
-		if q.Subject == SubjectAsset {
+		ev.ClientIP, ev.ClientIPReason = eventClientIP(r.ClientIP, ClientIPReasonUnresolvable)
+		switch {
+		case q.Subject == SubjectAsset:
 			ev.Counterpart = &Counterpart{Kind: "user", ID: r.UserID}
-		} else if r.AssetID != nil {
+		case q.Subject == SubjectIP:
+			if r.AssetID != nil {
+				ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
+			}
+			ev.Actor = &Counterpart{Kind: "user", ID: r.UserID}
+		case r.AssetID != nil:
 			ev.Counterpart = &Counterpart{Kind: "asset", ID: *r.AssetID}
 		}
 		out = append(out, ev)
@@ -566,29 +797,24 @@ func (s *TimelineService) fetchClipboard(q TimelineQuery, fetch int) ([]Timeline
 	return out, nil
 }
 
-// countSource 窗內真實筆數（不套游標、不套 limit）
+// countSource 窗內真實筆數（不套游標、不套 limit）。
+// WHERE 一律取自各來源的 scope 函式——與 fetch 同一組條件，
+// 三處（fetch／count／spans）不各寫一份
 func (s *TimelineService) countSource(t TimelineEventType, q TimelineQuery) (int64, error) {
 	var n int64
 	switch t {
 	case TimelineTypeAuditLog, TimelineTypeFileTransfer:
 		return n, s.auditLogScope(t, q).Count(&n).Error
 	case TimelineTypeSession:
-		return n, s.db.Model(&model.Session{}).
-			Where("start_time >= ? AND start_time < ?", q.From, q.To).
-			Where(subjectColumn(q.Subject)+" = ?", q.SubjectID).Count(&n).Error
+		tx := s.db.Model(&model.Session{}).
+			Where("start_time >= ? AND start_time < ?", q.From, q.To)
+		return n, applySubjectScope(tx, q, subjectColumn(q.Subject), directIPPredicate).Count(&n).Error
 	case TimelineTypeCommand:
-		return n, s.db.Model(&model.SessionCommand{}).
-			Where("executed_at >= ? AND executed_at < ?", q.From, q.To).
-			Where(subjectColumn(q.Subject)+" = ?", q.SubjectID).Count(&n).Error
+		return n, s.commandScope(q).Count(&n).Error
 	case TimelineTypeAlert:
-		return n, s.db.Model(&model.CommandAlert{}).
-			Where("triggered_at >= ? AND triggered_at < ?", q.From, q.To).
-			Where(subjectColumn(q.Subject)+" = ?", q.SubjectID).Count(&n).Error
+		return n, s.alertScope(q).Count(&n).Error
 	case TimelineTypeClipboard:
-		return n, s.db.Table("clipboard_events AS ce").
-			Joins("JOIN sessions AS se ON se.id = ce.session_id").
-			Where("ce.created_at >= ? AND ce.created_at < ?", q.From, q.To).
-			Where("se."+subjectColumn(q.Subject)+" = ?", q.SubjectID).Count(&n).Error
+		return n, s.clipboardScope(q).Count(&n).Error
 	}
 	return 0, fmt.Errorf("未支援的時間軸來源: %s", t)
 }
@@ -602,8 +828,8 @@ func (s *TimelineService) countSource(t TimelineEventType, q TimelineQuery) (int
 func (s *TimelineService) fetchSpans(q TimelineQuery) ([]TimelineSpan, error) {
 	tx := s.db.Model(&model.Session{}).
 		Where("start_time < ?", q.To).
-		Where("(end_time IS NULL OR end_time >= ?)", q.From).
-		Where(subjectColumn(q.Subject)+" = ?", q.SubjectID)
+		Where("(end_time IS NULL OR end_time >= ?)", q.From)
+	tx = applySubjectScope(tx, q, subjectColumn(q.Subject), directIPPredicate)
 	var rows []model.Session
 	// 上限與事件軸同階：跨度條是視覺元件，數千條列的畫面本身已不可讀，
 	// 真實筆數由 counts[session] 誠實呈現
@@ -631,6 +857,7 @@ func (s *TimelineService) fetchSpans(q TimelineQuery) ([]TimelineSpan, error) {
 			End:       r.EndTime,
 			Status:    string(r.Status),
 		}
+		span.ClientIP, span.ClientIPReason = eventClientIP(r.ClientIP, ClientIPReasonUnresolvable)
 		// 錄影三態：has_recording=false 一律 none（從未錄或錄失敗）；
 		// 有錄影但結束時刻早於錄影清除水位者判 purged。
 		// **這是時間近似而非逐檔事實**：單檔清除失敗時會誤標為 purged。
@@ -783,6 +1010,11 @@ func (s *TimelineService) resolveUserNames(events []TimelineEvent) {
 		if e.Counterpart != nil && e.Counterpart.Kind == "user" && e.Counterpart.Name == "" {
 			ids = append(ids, e.Counterpart.ID)
 		}
+		// 位址樞紐的行為人欄與對造同一批解析——漏掉它，位址軸上每列的
+		// 「誰」就只剩數字 id
+		if e.Actor != nil && e.Actor.Name == "" {
+			ids = append(ids, e.Actor.ID)
+		}
 	}
 	if len(ids) == 0 {
 		return
@@ -792,6 +1024,9 @@ func (s *TimelineService) resolveUserNames(events []TimelineEvent) {
 		cp := events[i].Counterpart
 		if cp != nil && cp.Kind == "user" && cp.Name == "" {
 			cp.Name = names[cp.ID]
+		}
+		if a := events[i].Actor; a != nil && a.Name == "" {
+			a.Name = names[a.ID]
 		}
 	}
 }

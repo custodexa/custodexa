@@ -178,6 +178,9 @@ services:
       # 後端 model 唯讀掛載：前後端枚舉雙向完備性守衛直讀 Go 常數
       # （audit-enums.spec.js 的 /repo 路徑；無此掛載該案例 skip）
       - ./backend/internal/model:/repo/backend/internal/model:ro
+      # 來源網段共用測試向量唯讀掛載：前端格式提示不得拒絕任何後端判為合法的
+      # 向量（sourcePolicyFormat.spec.js 的 /repo 路徑；無此掛載該案例 skip）
+      - ./backend/internal/sourceip/testdata:/repo/backend/internal/sourceip/testdata:ro
     environment:
       NODE_ENV: development
     depends_on:

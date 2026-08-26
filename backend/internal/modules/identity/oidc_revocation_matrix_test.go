@@ -799,7 +799,7 @@ func TestUnbindOneProviderRevokesUserWide(t *testing.T) {
 	if _, err := env.auth.ValidateConnectionToken(resp.Token); err != nil {
 		t.Errorf("重新登入後的 access 應可用: %v", err)
 	}
-	if _, err := env.auth.RefreshSession(resp.RefreshToken); err != nil {
+	if _, err := env.auth.RefreshSession(resp.RefreshToken, ""); err != nil {
 		t.Errorf("重新登入後的 refresh 應可輪替: %v", err)
 	}
 }

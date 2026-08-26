@@ -4,6 +4,11 @@
       :width="sidebarWidth"
       class="sidebar"
     >
+      <!-- 收合鈕住在 logo 列（ui-navigation：可發現性）。
+           它原本在側欄最底的 sidebar-footer，選單一長就被推到側欄的捲動摺線
+           之下——1260px 起就看不見，而收合正是螢幕不夠高時最需要的動作。
+           logo 列 flex-shrink: 0 且不在捲動區內，因此無論選單多長都留在
+           初始視窗內；捲動改由 .sidebar-menu 自己承擔 -->
       <div
         class="logo"
         :class="{ collapsed: isCollapsed }"
@@ -15,6 +20,18 @@
         <h2 v-show="!isCollapsed">
           {{ BRAND.name }}
         </h2>
+        <el-button
+          text
+          class="collapse-btn"
+          :aria-label="isCollapsed ? t('common.expandSidebar') : t('common.collapseSidebar')"
+          :title="isCollapsed ? t('common.expandSidebar') : t('common.collapseSidebar')"
+          @click="toggleCollapse"
+        >
+          <el-icon>
+            <Expand v-if="isCollapsed" />
+            <Fold v-else />
+          </el-icon>
+        </el-button>
       </div>
       <el-menu
         :default-active="activeMenu"
@@ -53,18 +70,6 @@
           </el-menu-item>
         </template>
       </el-menu>
-      <div class="sidebar-footer">
-        <el-button
-          text
-          class="collapse-btn"
-          @click="toggleCollapse"
-        >
-          <el-icon>
-            <Expand v-if="isCollapsed" />
-            <Fold v-else />
-          </el-icon>
-        </el-button>
-      </div>
     </el-aside>
 
     <el-container>
@@ -115,6 +120,13 @@
         </div>
       </el-header>
 
+      <!-- 單實例守衛常駐橫幅（single-instance-guard）：全頁寬、位於 header 與內容之間；
+           沒有關閉鈕，狀態回到 held 且無對等連線即自然消失 -->
+      <InstanceGuardBanner
+        :status="instanceGuardStatus"
+        :is-admin="isAdmin"
+      />
+
       <el-main class="main-content">
         <router-view />
       </el-main>
@@ -145,6 +157,7 @@ import {
   Position,
   OfficeBuilding,
   Search,
+  Download,
 } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
@@ -152,6 +165,8 @@ import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
 import { getPendingAccessRequestCount } from '@/api/accessRequests'
 import { getCurrentUser } from '@/api/auth'
 import { logout } from '@/api/auth'
+import { getSealStatus } from '@/api/seal'
+import InstanceGuardBanner from './InstanceGuardBanner.vue'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -223,7 +238,7 @@ const menuGroups = [
     items: [
       // 審核中心。**不做 admin 兜底**
       // ——僅具 admin 者對審核端點一律 403，留著入口只會把他導向一個假空態頁面。
-      // `approver` 述詞由 effectiveApprover（/auth/me 的 is_approver）裁決，
+      // `approver` 述詞由 effectiveApprover（/auth/me 的 is_approver）判定，
       // 與路由守衛、badge 輪詢同一來源
       {
         path: '/approvals',
@@ -244,6 +259,14 @@ const menuGroups = [
         path: '/audit/workbench',
         titleKey: 'menu.auditWorkbench',
         icon: Search,
+        roles: ['admin', 'auditor'],
+      },
+      {
+        // 下載中心：緊接工作台——證據包由工作台發起、
+        // 在這裡取件，兩者是同一條動線的前後兩段
+        path: '/audit/exports',
+        titleKey: 'menu.auditExports',
+        icon: Download,
         roles: ['admin', 'auditor'],
       },
       // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
@@ -404,6 +427,7 @@ const pageTitleKeys = {
   '/my-requests': 'menu.myRequests',
   '/approvals': 'menu.approvals',
   '/audit/workbench': 'menu.auditWorkbench',
+  '/audit/exports': 'menu.auditExports',
   '/audit-logs': 'menu.auditLogs',
   '/commands': 'menu.commands',
   '/alerts': 'menu.alerts',
@@ -456,6 +480,28 @@ const handleLogout = async () => {
   localStorage.removeItem('user')
   router.push('/login')
   ElMessage.success(t('common.loggedOut'))
+}
+
+// 單實例守衛橫幅（single-instance-guard）：粗狀態走不寫審計列的 seal/status，
+// 掛載即取一次、每 60 秒輪詢；失敗靜默沿用上一次值（橫幅是告知不是事實源，
+// 事實源是後端日誌、指標與 audit_logs）。管理者細節由橫幅元件自行一次性取得，
+// **不在此輪詢**（那條端點每次呼叫留一列審計讀取）
+const instanceGuardStatus = ref(null)
+const INSTANCE_GUARD_POLL_MS = 60000
+let instanceGuardTimer = null
+
+const refreshInstanceGuardStatus = async () => {
+  try {
+    const res = await getSealStatus({ skipErrorToast: true })
+    if (res?.instance_guard) instanceGuardStatus.value = res.instance_guard
+  } catch {
+    // 靜默：網路抖動不打擾使用者，下一輪自然重試
+  }
+}
+
+const startInstanceGuardPolling = () => {
+  refreshInstanceGuardStatus()
+  instanceGuardTimer = setInterval(refreshInstanceGuardStatus, INSTANCE_GUARD_POLL_MS)
 }
 
 // 審核中心待審 badge：僅 admin/approver 輪詢；
@@ -534,6 +580,7 @@ const syncUserFromStorage = () => {
 
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
+  if (instanceGuardTimer) clearInterval(instanceGuardTimer)
   window.removeEventListener('ot-user-updated', syncUserFromStorage)
 })
 
@@ -543,6 +590,7 @@ onMounted(() => {
   window.addEventListener('ot-user-updated', syncUserFromStorage)
   startApprovalBadgePolling()
   refreshEffectiveApprover()
+  startInstanceGuardPolling()
 })
 </script>
 
@@ -551,13 +599,14 @@ onMounted(() => {
   height: 100vh;
 }
 
+/* 側欄整體不再是捲動容器：它一捲，頂端的 logo 列（收合鈕現在住在那裡）
+   就會跟著捲出視窗。改由選單自己捲，頂端那一列因此恆在初始視窗內 */
 .sidebar {
   display: flex;
   flex-direction: column;
   background-color: var(--ot-bg-surface);
   border-right: 1px solid var(--ot-border-subtle);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   transition: width 0.2s ease;
 }
 
@@ -571,9 +620,12 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+/* 收合態只有 64px：標章與收合鈕都得留下（收合鈕消失＝再也展不開），
+   故兩者一起縮到剛好放得下 */
 .logo.collapsed {
-  justify-content: center;
-  padding: 0;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 0 var(--ot-space-xs);
 }
 
 .logo-mark {
@@ -587,10 +639,20 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+.logo.collapsed .logo-mark {
+  width: 24px;
+  height: 24px;
+}
+
 .logo-mark img {
   width: 22px;
   height: 22px;
   display: block;
+}
+
+.logo.collapsed .logo-mark img {
+  width: 18px;
+  height: 18px;
 }
 
 .logo h2 {
@@ -601,8 +663,13 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* 捲動的是選單本身（min-height: 0 讓 flex 子項真的收得下去，否則
+   它會被內容撐開、捲軸長回側欄身上） */
 .sidebar-menu {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-right: none;
   background-color: transparent;
 }
@@ -647,17 +714,19 @@ onMounted(() => {
   background-color: var(--ot-primary-dim);
 }
 
-.sidebar-footer {
+.collapse-btn {
   flex-shrink: 0;
-  padding: var(--ot-space-sm);
-  border-top: 1px solid var(--ot-border-subtle);
-  display: flex;
-  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--ot-text-secondary);
 }
 
-.collapse-btn {
-  color: var(--ot-text-secondary);
-  width: 100%;
+.logo.collapsed .collapse-btn {
+  margin-left: 0;
+  width: 24px;
+  height: 24px;
 }
 
 .collapse-btn:hover {

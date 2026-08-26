@@ -70,6 +70,8 @@ var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 		Reason: "**自有表**（ExportSigningService 的 Ed25519 私鑰），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 	{Table: "checkpoint_signing_keys", OwnerModule: "keyvault",
 		Reason: "**自有表**（CheckpointSigningService 的 Ed25519 私鑰，audit-checkpoint-chain），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
+	{Table: "clipboard_events", OwnerModule: "session",
+		Reason: "剪貼簿留存內容欄 content_enc。session 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與 AAD 遷移必須涵蓋本欄，否則輪替後剪貼簿審計證據不可解。"},
 }
 
 // TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry 白名單與登記表雙向完備。

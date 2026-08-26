@@ -204,6 +204,9 @@ var stage2ServiceProbe = map[string]string{
 	// chainVerifyScheduler：
 	// 純背景排程，自動驗證狀態經既有 ChainReport 揭露、不新增路由，故無對外面
 	"chainVerifyScheduler": "",
+	// auditExportJobWorker：
+	// 打包 worker 本身是純背景設施，其對外面即 job 發起／清單端點——封印期須 503
+	"auditExportJobWorker": "/api/v1/audit-export/jobs",
 	// metricsRefresher（接替 perfMonitor）：純背景刷新任務。
 	// **對外面填空字串是刻意的**——`/metrics` 端點本身於段 1 即存在且刻意可達
 	// （封印期須能區分「封印中」與「當機」），它不隨本服務出現或消失；

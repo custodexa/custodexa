@@ -158,7 +158,11 @@ func TestPostUnsealQueueHasNoTransitionalMigration(t *testing.T) {
 // 結構保證，而由組裝根的一行呼叫保證——那一行被刪掉時，包內測試會因為自行
 // registerBuiltinsLikeAssembly 而照樣綠，只有本清單會轉紅。新增內建遷移時
 // SHALL 同步加入本清單。
-var postUnsealAssemblyBuiltins = []string{"PostUnsealMigrationLDAPSeed"}
+var postUnsealAssemblyBuiltins = []string{
+	"PostUnsealMigrationLDAPSeed",
+	// 剪貼簿明文欄 → 信封加密欄的一次性轉換
+	"PostUnsealMigrationClipboardContent",
+}
 
 // TestAssemblyRegistersPostUnsealBuiltins 組裝根登記守衛（拆 4.9 環的配套）。
 //

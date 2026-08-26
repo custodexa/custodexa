@@ -63,7 +63,9 @@ var baselineAuditTables = []string{
 		id bigserial,
 		session_id bigint NOT NULL,
 		direction character varying(8) NOT NULL,
-		content text,
+		content_enc text,
+		content_length bigint NOT NULL,
+		content_status character varying(16) NOT NULL,
 		created_at timestamp with time zone,
 		CONSTRAINT clipboard_events_pkey PRIMARY KEY (id)
 	)`,

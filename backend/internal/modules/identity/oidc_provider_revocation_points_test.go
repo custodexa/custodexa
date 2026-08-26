@@ -82,7 +82,7 @@ func (e *oidcLifecycleEnv) newCapabilitySet(t *testing.T, tag string) *oidcCapab
 	}
 
 	// **至少一次輪替**（見檔頭）：其後所有 access／refresh 斷言都打在輪替後的憑證上
-	rotated, err := e.auth.RefreshSession(resp.RefreshToken)
+	rotated, err := e.auth.RefreshSession(resp.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("[%s] 停用前的刷新輪替應成功: %v", tag, err)
 	}
@@ -156,7 +156,7 @@ func (e *oidcLifecycleEnv) assertCapabilitySetRejected(t *testing.T, s *oidcCapa
 	}
 
 	// (6) refresh
-	if _, err := e.auth.RefreshSession(s.refresh); !errors.Is(err, identity.ErrRefreshInvalid) {
+	if _, err := e.auth.RefreshSession(s.refresh, ""); !errors.Is(err, identity.ErrRefreshInvalid) {
 		t.Errorf("[%s] (6) refresh 輪替 = %v, want identity.ErrRefreshInvalid", phase, err)
 	}
 }
@@ -238,7 +238,7 @@ func TestProviderDisableSparesHybridAccountLocalSession(t *testing.T) {
 	if localLogin.Token == "" {
 		t.Fatalf("本地登入應直接發正式 token，實得 %+v", localLogin)
 	}
-	localRotated, err := e.auth.RefreshSession(localLogin.RefreshToken)
+	localRotated, err := e.auth.RefreshSession(localLogin.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("本地會話的刷新輪替: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestProviderDisableSparesHybridAccountLocalSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OIDC 兌換: %v", err)
 	}
-	oidcRotated, err := e.auth.RefreshSession(oidcLogin.RefreshToken)
+	oidcRotated, err := e.auth.RefreshSession(oidcLogin.RefreshToken, "")
 	if err != nil {
 		t.Fatalf("OIDC 會話的刷新輪替: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestProviderDisableSparesHybridAccountLocalSession(t *testing.T) {
 	if _, err := e.auth.ValidateConnectionToken(oidcRotated.Token); !errors.Is(err, identity.ErrConnectionNotAuthorized) {
 		t.Errorf("OIDC 會話的 access = %v, want identity.ErrConnectionNotAuthorized", err)
 	}
-	if _, err := e.auth.RefreshSession(oidcRotated.RefreshToken); !errors.Is(err, identity.ErrRefreshInvalid) {
+	if _, err := e.auth.RefreshSession(oidcRotated.RefreshToken, ""); !errors.Is(err, identity.ErrRefreshInvalid) {
 		t.Errorf("OIDC 會話的 refresh = %v, want identity.ErrRefreshInvalid", err)
 	}
 
@@ -268,7 +268,7 @@ func TestProviderDisableSparesHybridAccountLocalSession(t *testing.T) {
 	if _, err := e.auth.ValidateConnectionToken(localRotated.Token); err != nil {
 		t.Errorf("本地會話的 access 不應被牽連: %v", err)
 	}
-	localAgain, err := e.auth.RefreshSession(localRotated.RefreshToken)
+	localAgain, err := e.auth.RefreshSession(localRotated.RefreshToken, "")
 	if err != nil {
 		t.Errorf("本地會話的 refresh 不應被牽連: %v", err)
 	} else if localAgain.Token == "" {

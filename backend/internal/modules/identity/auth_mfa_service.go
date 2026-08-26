@@ -308,6 +308,23 @@ func (s *AuthService) validateEnrollmentClaims(tokenString string) (*crypto.Clai
 	return claims, nil
 }
 
+// EnrollmentTokenSubject 解析 enrollment token 取出主體 userID（**不含任何狀態變更**）。
+//
+// 供強制註冊兩個端點在呼叫服務之前判定來源：規格要求判定落在
+// 「票證驗證之後、狀態寫入之前」，而 EnrollmentSetup／CompleteEnrollment 是
+// 「驗證＋寫入」一體的服務呼叫，handler 必須先自己知道是誰。
+//
+// **票證不成立時回 ok=false 而非錯誤回應**：此時 handler 不判來源，
+// 逕行走既有服務呼叫，由它產生原本那份 401 與審計列——來源政策不得讓
+// 「票證無效」的回應形狀出現分岔（那會是一個票證有效性的預言機）。
+func (s *AuthService) EnrollmentTokenSubject(enrollmentToken string) (uint, bool) {
+	claims, err := s.validateEnrollmentClaims(enrollmentToken)
+	if err != nil {
+		return 0, false
+	}
+	return claims.UserID, true
+}
+
 // requireNotEnrolled 強制註冊流程的前置守衛：重載用戶並拒已註冊者。
 // enrollment 的前提是「受強制但未註冊」，token 簽發後 15 分內用戶可能已在他處完成綁定；
 // 若不重查，持洩漏的 enrollment token 可重置並改綁已註冊帳號的第二因子

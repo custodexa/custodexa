@@ -117,6 +117,19 @@ func gateRedeemSSH(h *Handler, token, cols, rows string) (int, map[string]any) {
 	return w.Code, resp
 }
 
+// gateSetAllowedCIDRs 直寫使用者的允許來源網段儲存字串。
+//
+// **繞過 service 層的驗證是刻意的**：本檔要造的其中一格正是「儲存字串損壞」，
+// 而那個狀態按定義走不到 service 的驗證路徑（唯一寫入路徑是驗證後寫入，
+// 損壞只可能來自 DB 直寫或程式缺陷）。經 service 就造不出這一格。
+func gateSetAllowedCIDRs(t *testing.T, db *gorm.DB, userID uint, raw string) {
+	t.Helper()
+	if err := db.Model(&model.User{}).Where("id = ?", userID).
+		Update("allowed_cidrs", raw).Error; err != nil {
+		t.Fatalf("set allowed_cidrs: %v", err)
+	}
+}
+
 // gateAssertNoSession 副作用斷言：被閘擋下者不得留下 session 列
 func gateAssertNoSession(t *testing.T, db *gorm.DB, cell string) {
 	t.Helper()
@@ -199,6 +212,29 @@ func gateIssueCells() []gateIssueCell {
 			},
 			userID: 1, role: model.RoleUser, assetID: 1,
 			wantStatus: http.StatusLocked, wantCode: apierror.CodeAccountLocked,
+		},
+		{
+			// 來源限定：清單非空且請求來源（httptest 的 192.0.2.1）不在內。
+			// **assetID 指向不存在的資產**：本閘若被排到資產解析之後，
+			// 回應會變成 404 資產不存在——那正是「來源不對的人不該知道」的事
+			name: "G-I15 來源不在允許網段（先於資產存在性）", gate: "G-I15",
+			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
+				gateSetAllowedCIDRs(t, db, 1, "10.0.0.0/8")
+			},
+			userID: 1, role: model.RoleUser, assetID: 4242,
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+			wantMeta: map[string]any{"reason": "source_not_allowed"},
+		},
+		{
+			// 政策損壞（DB 直寫或程式缺陷）：**不得視為空清單放行**。
+			// 對外與上一格逐字相同——成因只進審計
+			name: "G-I15 清單字串損壞（不得當成不限）", gate: "G-I15",
+			setup: func(t *testing.T, h *Handler, db *gorm.DB) {
+				gateSetAllowedCIDRs(t, db, 1, "not-a-cidr")
+			},
+			userID: 1, role: model.RoleUser, assetID: 1,
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+			wantMeta: map[string]any{"reason": "source_not_allowed"},
 		},
 		{
 			name: "G-I3 請求體綁定失敗", gate: "G-I3",
@@ -428,6 +464,18 @@ func gateRedeemCells() []gateRedeemCell {
 			wantStatus: http.StatusUnauthorized, wantCode: apierror.CodeConnectTokenInvalid,
 		},
 		{
+			// 兌換側現讀：票證在允許位址簽出也擋不住——本閘不信簽發時的判定
+			name: "G-S14 兌換當下來源不在允許網段", gate: "G-S14",
+			setup: seedRoot,
+			mutate: func(t *testing.T, h *Handler, db *gorm.DB) {
+				gateSetAllowedCIDRs(t, db, 1, "10.0.0.0/8")
+			},
+			grant:      proxy.ConnectGrant{UserID: 1, AssetID: 1},
+			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAuthSourceNotAllowed,
+			wantMeta:   map[string]any{"reason": "source_not_allowed"},
+			wantBurned: true,
+		},
+		{
 			name: "G-S3 使用者已停用", gate: "G-S3",
 			setup: seedRoot,
 			mutate: func(t *testing.T, h *Handler, db *gorm.DB) {
@@ -636,10 +684,12 @@ func TestCharacterizationMatrixRedeemTerminal(t *testing.T) {
 // 卻沒補理由）**兩個方向都紅**。
 func TestMatrixCoverageIsDeclared(t *testing.T) {
 	// 基準表 §1.1／§1.2 的全部閘編號
+	// G-I15／G-S14＝來源限定閘（G1）。編號接在末尾而位置在閘序前段是本套編號的
+	// 既有慣例：編號是穩定識別碼，不是序號（見 internal/connectgate 檔頭）
 	issueGates := []string{"G-I1", "G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7",
-		"G-I8", "G-I9", "G-I10", "G-I11", "G-I12", "G-I13", "G-I14"}
+		"G-I8", "G-I9", "G-I10", "G-I11", "G-I12", "G-I13", "G-I14", "G-I15"}
 	redeemGates := []string{"G-S1", "G-S2", "G-S3", "G-S4", "G-S5", "G-S6", "G-S7",
-		"G-S8", "G-S9", "G-S10", "G-S11", "G-S12", "G-S13"}
+		"G-S8", "G-S9", "G-S10", "G-S11", "G-S12", "G-S13", "G-S14"}
 	baseline := map[string]bool{}
 	for _, g := range append(append([]string{}, issueGates...), redeemGates...) {
 		baseline[g] = true
@@ -653,8 +703,8 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 	}
 
 	total := len(issueGates) + len(redeemGates)
-	if total != 27 {
-		t.Fatalf("基準表閘數與矩陣宣稱不符: got=%d want=27（改動基準表時必須同步本測試）", total)
+	if total != 29 {
+		t.Fatalf("基準表閘數與矩陣宣稱不符: got=%d want=29（改動基準表時必須同步本測試）", total)
 	}
 
 	// 從實際矩陣格擷取涵蓋的閘號；gate=="—" 者是全閘通過格，不宣稱涵蓋任何單一閘。
@@ -686,7 +736,7 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 	for _, c := range gateRedeemCells() {
 		collect("SSH 兌換", c.name, c.gate)
 	}
-	if cellCount < 24 {
+	if cellCount < 27 {
 		t.Fatalf("矩陣格數 %d 低於下限 24：抽取器或矩陣疑似被削", cellCount)
 	}
 

@@ -125,7 +125,7 @@ func setupConnectDenyEnv(t *testing.T, protocol string) *connectDenyEnv {
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
 	})
 	h := NewConnectionHandler("localhost", 4822, nil, assetSvc,
-		identity.NewAuthService("connect-deny-secret", time.Hour), authzSvc, auditService)
+		identity.NewAuthService("connect-deny-secret", time.Hour), authzSvc, auditService, nil)
 	h.ConnectTokens = NewConnectTokenManager()
 	policies := policy.NewSecurityPolicyService(db)
 	h.AccessPolicy = policy.NewAccessPolicyService(db, policies, authzSvc)

@@ -49,6 +49,19 @@
           </template>
         </el-table-column>
         <el-table-column
+          :label="$t('auditorWorkbench.table.clientIp')"
+          width="170"
+        >
+          <template #default="{ row }">
+            <SourceAddressCell
+              :address="row.client_ip"
+              :reason="row.client_ip_reason"
+              event-type="session"
+              :link="addressLink(row)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column
           :label="$t('auditorWorkbench.table.recording')"
           width="140"
         >
@@ -109,11 +122,35 @@
           </template>
         </el-table-column>
         <el-table-column
+          v-if="subject === 'ip'"
+          :label="$t('auditorWorkbench.table.actor')"
+          min-width="140"
+        >
+          <template #default="{ row }">
+            {{ row.actor
+              ? (row.actor.name || `#${row.actor.id}`)
+              : $t('auditorWorkbench.events.actorUnauthenticated') }}
+          </template>
+        </el-table-column>
+        <el-table-column
           :label="$t('auditorWorkbench.table.counterpart')"
           min-width="140"
         >
           <template #default="{ row }">
             {{ row.counterpart ? (row.counterpart.name || `#${row.counterpart.id}`) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          :label="$t('auditorWorkbench.table.clientIp')"
+          width="170"
+        >
+          <template #default="{ row }">
+            <SourceAddressCell
+              :address="row.client_ip"
+              :reason="row.client_ip_reason"
+              :event-type="row.type"
+              :link="addressLink(row)"
+            />
           </template>
         </el-table-column>
       </el-table>
@@ -122,6 +159,8 @@
 </template>
 
 <script setup>
+import SourceAddressCell from './SourceAddressCell.vue'
+import { buildAddressPivotLink } from './timelineQuery'
 import { typeLabel, summaryText, detailText } from './timelineSummary'
 import { formatDateTime } from '@/utils/format'
 
@@ -132,9 +171,24 @@ const props = defineProps({
   spans: { type: Array, default: () => [] },
   subject: { type: String, default: 'user' },
   focusId: { type: String, default: '' },
+  // 深連結要保留的調查範圍（與時間軸檢視同一組）
+  from: { type: String, default: '' },
+  to: { type: String, default: '' },
+  types: { type: Array, default: () => [] },
 })
 
 const rowClass = ({ row }) => (row.id === props.focusId ? 'focus-row' : '')
+
+// 位址深連結行為與時間軸檢視逐字相同：人／資產樞紐下可點、位址樞紐下與
+// 未知來源不加連結。兩個檢視分岔就等於同一份資料有兩套規則
+const addressLink = (row) => {
+  if (props.subject === 'ip' || !row?.client_ip) return null
+  return buildAddressPivotLink(row.client_ip, {
+    from: props.from,
+    to: props.to,
+    types: props.types,
+  })
+}
 </script>
 
 <style scoped>
