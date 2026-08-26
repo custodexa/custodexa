@@ -1894,6 +1894,10 @@ GET    /api/v1/recordings/stats         （audit:view）
 （`username` 3-50 字元、`email` 需合法、用戶名重複回 400；`password` 除 binding 下限外，
 另過密碼政策 validator——預設最小長度 12、須含字母與數字，違規回 400 附可讀原因）
 
+建立的帳號一律標記 `must_change_password`：使用者以此處設定的初始密碼首次登入時，
+`POST /auth/login` 回 `password_change_required` 與 `change_token`（原因 `must_change`），
+完成改密後才換發正式會話。此標記不受 `force_change_on_reset` 政策影響。
+
 **更新請求**（`UpdateUserRequest`）: `{"email": "...", "full_name": "...", "allowed_cidrs": ["10.0.0.0/8"]}`
 （`allowed_cidrs` 的 presence 三態見下段——**送 `[]` 會清空既有限制**）
 

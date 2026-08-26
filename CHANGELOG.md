@@ -2,6 +2,18 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.0.6 — first sign-in password change for accounts an admin creates (2026-08-26)
+
+No schema change. No migration runs.
+
+### Accounts an admin creates
+
+- An account created through user administration now asks for a new password at
+  first sign-in. The person signing in with the initial password sets their own
+  password and goes straight to the system. This applies to every account an admin
+  creates.
+- Accounts created before this version are unchanged.
+
 ## 1.0.5 — source address forensics, encrypted clipboard auditing, and a check for a second instance (2026-08-26)
 
 **This release changes the database schema.** Two migrations run when the backend
