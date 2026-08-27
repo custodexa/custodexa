@@ -2,6 +2,17 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.0.7 — how the frontend image installs its dependencies (2026-08-27)
+
+No schema change. No migration runs. A running deployment behaves the same as 1.0.6.
+
+### Building from source
+
+- Both Node stages of the frontend image install with `npm ci --ignore-scripts`. The
+  install follows the committed lock file exactly, and package install scripts do not
+  run during the build. Building from a tree whose lock file and `package.json`
+  disagree now stops with an error instead of resolving new versions on its own.
+
 ## 1.0.6 — first sign-in password change for accounts an admin creates (2026-08-26)
 
 No schema change. No migration runs.

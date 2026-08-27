@@ -57,6 +57,9 @@ docker compose exec -T frontend npm run lint
 - **多帳號功能用 `ssh-multi-test` 靶機**（rootful sshd，root＋testuser 兩帳號可切換）；
   `ssh-test` 是 rootless、**只支援 testuser**，第二帳號建線必失敗
   （channel open error）——這是靶機限制，不是產品 bug。
+- **跑前端測試前先停十個協議靶機**：它們是常駐固定成本，而前端測試一個都用不到。
+  指令與判準見下方「當它真的是負載：判準與清場程序」。同理，任何重建映像的操作
+  （`docker compose build`、`up -d --build`）之後不要立刻跑測試，先看 `uptime`。
 - **整合測試突然全紅、錯誤是泛用的 `FAILURE`／`permission denied`／寫入失敗時，
   第一步查磁碟**，不要先讀程式碼：`docker compose exec <靶機> df -h /`、`docker system df`。
   磁碟耗盡會偽裝成泛用錯誤——`docker builder prune -af` 清出空間後，
@@ -169,6 +172,51 @@ vitest 的偶發 `Test timed out` **極易被誤判為本機並行負載**——
   **耗時大降本身就是診斷正確的反證**；若補完沒變快，真因不在這裡。
 - 注意：**同時跑後端與前端全量會自造過載**——要歸因負載，
   必須在無並行下重跑，否則證據不成立。
+
+### 當它真的是負載：判準與清場程序
+
+上一節的預設是「多半不是負載」，但負載確實會單獨造成整片假紅。兩者要分得開，
+否則會拿錯藥：元件沒卸載的症狀是**單檔內耗時單調上升**，負載的症狀是
+**多個不相干的檔一起紅、且各自單獨跑全綠**。
+
+**判準先看這兩個數字，不要先讀程式碼**：
+
+```bash
+uptime                      # load average 對照核心數（sysctl -n hw.ncpu）
+docker stats --no-stream    # 哪個容器在吃 CPU
+```
+
+load 高於核心數數倍即為過載。可參考的量級：load 達核心數十餘倍、單一容器佔用超過
+六個核心時，多個測試檔會一起失敗；清場後同一批檔單獨跑全數通過。
+
+**負載有三個來源，前兩個是自己製造的**：
+
+- **測試靶機常駐**。開發版編排檔有十個協議靶機（dex／k3s／ldap／localstack／
+  mssql／mysql／rdp／ssh／ssh-multi／vnc），`up -d` 會全部帶起來並**一直開著**。
+  前端測試是 happy-dom 單元測試，一個靶機都不需要。跑前端測試前先停：
+
+  ```bash
+  docker compose stop dex k3s-test ldap-test localstack mssql-test \
+    mysql-test rdp-test ssh-multi-test ssh-test vnc-test
+  ```
+
+  只留 postgres／backend／frontend／guacd 四個。要跑協議整合測試時再個別起回來。
+
+- **建置後未散熱**。重建映像（`docker compose build`、`up -d --build`）結束後，
+  系統仍在寫入與回收。緊接著跑測試量到的是建置的尾巴，不是測試本身。
+  先看 `uptime`，降到核心數以下再跑。
+
+- **上一輪測試沒真的停**。中斷 `docker compose exec` 只殺掉 exec 這一端，
+  **容器內的 vitest 與它開的 worker 會繼續跑並繼續吃 CPU**（worker 數量隨核心數而定，
+  可能有數個）。要進容器停，並確認歸零：
+
+  ```bash
+  docker compose exec -T frontend pkill -f vitest
+  docker compose exec -T frontend sh -c "ps -o pid,args | grep -c '[v]itest'"
+  ```
+
+**清場後的重跑不必是全量**：先單獨跑先前失敗的檔，全綠即為負載假紅。
+全量只在需要出具「整體通過」宣稱時跑一次，且必須在清場後的環境。
 
 ### happy-dom ＋ Element Plus
 

@@ -418,9 +418,8 @@ describe('攔截器錯誤日誌去識別', () => {
     }
   })
 
-  it('請求攔截器同樣去識別', () => {
-    expect(() => requestHandler.rejected(accountError)).toThrow
-    requestHandler.rejected(accountError).catch(() => {})
+  it('請求攔截器同樣去識別', async () => {
+    await expect(requestHandler.rejected(accountError)).rejects.toBe(accountError)
     const logged = JSON.stringify(consoleSpy.mock.calls)
     expect(logged).not.toContain('hunter2')
   })
