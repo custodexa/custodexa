@@ -17,7 +17,7 @@ RUN apk add --no-cache git \
        github.com/microsoft/go-sqlcmd/cmd/modern@${SQLCMD_VERSION}
 
 # **與正式版 builder 同版（1.26.6）**：測試在本 image 內跑，版本落差會使
-# 「開發期全綠、正式版建置失敗」的舊缺陷重演（container-build 已記載發生過兩次）。
+# 「開發期通過、正式版建置失敗」這類缺陷重演。
 # 更直接的理由：**這顆 image 就是驗證用的執行環境**，它若停在舊版，等於用一個工具鏈
 # 驗證、卻出貨另一個工具鏈建出的二進位。選 1.26.6 的理由（1.24 已 EOL、1.27rc 已出
 # 使 1.25 的 EOL 進入倒數）詳見正式版 Dockerfile 檔首。

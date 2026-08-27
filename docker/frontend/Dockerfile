@@ -35,8 +35,13 @@ WORKDIR /app
 # 複製 package files
 COPY frontend/package*.json ./
 
-# 安裝依賴
-RUN npm install
+# 安裝依賴。
+# `npm ci` 而非 `npm install`：嚴格依鎖定檔安裝，不一致時直接失敗而非改寫鎖定檔。
+# 兩個 node 階段必須解析出同一組依賴：階段間分岔會讓「開發期通過、正式版建置失敗」
+# 在無人改動依賴的情況下發生。
+# `--ignore-scripts`：抑制第三方套件的安裝期腳本。理由是執行時機而非套件品質
+# ——安裝腳本於建置階段執行，而建置階段的權限範圍大於執行階段。
+RUN npm ci --ignore-scripts
 
 # 複製所有原始碼（trailing slash：複製目錄內容而非目錄本身）
 COPY frontend/ ./
@@ -53,7 +58,8 @@ FROM node:20.20.2-alpine AS builder
 WORKDIR /app
 
 COPY frontend/package*.json ./
-RUN npm ci
+# --ignore-scripts 的理由同 development 階段
+RUN npm ci --ignore-scripts
 
 COPY frontend/ ./
 
