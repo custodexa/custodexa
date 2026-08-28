@@ -558,8 +558,15 @@ describe('解封頁的表單標籤關聯', () => {
     const unsealBranch = await idsOf(statusFixture())
     const initBranch = await idsOf(statusFixture({ initialization_required: true }))
 
-    expect(unsealBranch.length).toBeGreaterThan(0)
-    expect(initBranch.length).toBeGreaterThan(0)
+    // 釘住每個分支的關聯數，不只釘「大於零」。2026-08-29 的突變自檢證明鬆的版本
+    // 抓不到東西：把初始化分支的某個 aria-labelledby 整個移除，測試照樣全綠——
+    // 因為其他斷言都打在解封分支上，那個分支的欄位根本沒有任何測試看著。
+    expect(unsealBranch).toEqual(['unseal-material-label'])
+    expect(initBranch).toEqual([
+      'unseal-init-material-label',
+      'unseal-init-confirm-label',
+      'unseal-admin-label',
+    ])
 
     const shared = unsealBranch.filter((id) => initBranch.includes(id))
     expect(shared).toEqual([])

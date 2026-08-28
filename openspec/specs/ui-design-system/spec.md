@@ -168,6 +168,8 @@ The association SHALL be verified against the rendered DOM, not against the prop
 
 Where the control is a native element under the project's own control, `for` paired with `id` SHALL be preferred, because it also makes the label activate the control. Where the control is rendered by a component library that does not forward an identifier to its native element, the association SHALL be made with `aria-labelledby` pointing at the label's `id`. This form carries the semantic association without the click-to-focus behaviour, which is an accepted limitation of the component boundary rather than an omission.
 
+When the association is made with `aria-labelledby`, the element carrying the text SHALL NOT be a `label` element. A `label` element declares itself to be the title of a form control and completes that role through `for` or by wrapping the control; one that does neither is an incomplete element regardless of what points back at it. Use a neutral element instead. This is a matter of picking the right element, not of the association being absent.
+
 Identifier values SHALL be unique within the rendered page and stable across renders. Index-derived identifiers SHALL NOT be used where the same form can appear more than once (dialogs, repeated panels, branches that are currently mutually exclusive): a collision resolves to the wrong label, which reports incorrect information rather than none, and mutual exclusivity in today's implementation is not a structural guarantee.
 
 Controls that exist only as a programmatic trigger and are never presented to the user (for example a hidden file input activated by a button) SHALL be exempt, because they have no position in the visual layout where a label could belong. The visible control that activates them carries the accessible name instead.
@@ -183,6 +185,10 @@ Controls that exist only as a programmatic trigger and are never presented to th
 #### Scenario: Repeated or branched instances of the same form
 - **WHEN** the same field appears in more than one place, including branches that are mutually exclusive today
 - **THEN** their identifiers differ, so that a later change allowing both to render at once cannot silently collide
+
+#### Scenario: Text element under aria-labelledby association
+- **WHEN** a control's accessible name comes from `aria-labelledby`
+- **THEN** the element holding that text is not a `label` element, because it cannot complete the role a `label` declares
 
 #### Scenario: Hidden trigger control
 - **WHEN** a control is hidden from the layout and exists only to be activated programmatically

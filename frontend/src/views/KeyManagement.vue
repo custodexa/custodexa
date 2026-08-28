@@ -472,10 +472,10 @@
         <!-- 重包目標（discriminated union 的判別子）：本地與委託為互斥變體。
              委託目標本版未提供——以停用選項明示，不讓使用者送出後才吃 501 -->
         <div class="kek-field">
-          <label
+          <span
             id="kek-rewrap-target-label"
             class="kek-label"
-          >{{ $t('keyManagement.rewrapTargetLabel') }}</label>
+          >{{ $t('keyManagement.rewrapTargetLabel') }}</span>
           <el-radio-group
             v-model="rewrapMode"
             aria-labelledby="kek-rewrap-target-label"
@@ -517,10 +517,10 @@
           class="rewrap-once-alert"
         />
         <div class="kek-field">
-          <label
+          <span
             id="kek-new-label"
             class="kek-label"
-          >{{ $t('keyManagement.kekInputLabel') }}</label>
+          >{{ $t('keyManagement.kekInputLabel') }}</span>
           <div class="kek-input-row">
             <el-input
               v-model="newKek"
@@ -558,10 +558,10 @@
           <KEKGenerateCommands />
         </div>
         <div class="kek-field">
-          <label
+          <span
             id="kek-confirm-label"
             class="kek-label"
-          >{{ $t('keyManagement.kekConfirmLabel') }}</label>
+          >{{ $t('keyManagement.kekConfirmLabel') }}</span>
           <el-input
             v-model="newKekConfirm"
             aria-labelledby="kek-confirm-label"
