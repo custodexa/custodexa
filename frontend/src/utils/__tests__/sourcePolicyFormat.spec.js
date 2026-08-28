@@ -132,3 +132,86 @@ describe('上限常數與後端同值', () => {
     expect(SOURCE_POLICY_MAX_ENTRIES).toBe(32)
   })
 })
+
+// looksLikeSourceAddress 的 IPv6 比對式在 2026-08 改寫過：把冒號移出段內字元集，
+// 消除分割點歧義（原式耗時隨長度呈平方成長）。改寫的唯一驗收依據是**判定集合不變**，
+// 故下表逐筆釘住接受與拒絕兩面。
+//
+// 注意本函式的語義是「看起來像不像位址」而非嚴格驗證：`:`、`::::`、`2001:db8::1:`
+// 這些不是合法 IPv6，但**刻意仍為接受**。日後若有人覺得該收緊，那是行為變更，
+// 要先改這張表並說明為什麼，不是順手改式子。
+describe('looksLikeSourceAddress 的判定集合（改寫比對式的防退化基準）', () => {
+  const ACCEPTED = [
+    // 合法 IPv6：壓縮、全展開、邊界
+    '2001:db8::1', '2001:0db8:0000:0000:0000:0000:0000:0001', '::1', '::', 'fe80::1',
+    '2001:db8:0:0:1::1', 'ff02::1:2', 'a::b', '1:2:3:4:5:6:7:8',
+    // 帶區域識別碼
+    'fe80::1%eth0', 'fe80::1%en0', 'fe80::1%1', 'fe80::1%eth-0', 'fe80::1%eth_0', 'fe80::1%eth.0',
+    // IPv4-mapped / embedded
+    '::ffff:192.0.2.1', '::ffff:0:192.0.2.1', '64:ff9b::192.0.2.1',
+    // 大小寫不敏感
+    '2001:DB8::1', '2001:Db8::AbC',
+    // 非合法位址但刻意接受（本函式只判「像不像」）
+    ':', '::::', '2001:db8::1:',
+    // 前後空白：函式先 trim 再比對，故仍為接受。
+    // 這兩筆是差分驗證時的教訓——基準若只對比對式取樣，會漏掉函式層的正規化，
+    // 把「函式接受」誤記成「應拒絕」。判定表要對函式取樣，不是對式子。
+    '2001:db8::1 ', ' 2001:db8::1',
+  ]
+
+  const REJECTED = [
+    // 空與純分隔符
+    '', '.', '...', '%', '%eth0',
+    // 非法字元、帶前綴長度
+    'g::1', '2001:db8::z', 'hello',
+    '2001:db8::1/64', '10.0.0.0/8', 'http://[::1]',
+    // 區域識別碼形狀不合
+    'fe80::1%', 'fe80::1%eth 0', 'fe80::1%%eth0',
+    // 沒有冒號者不歸這條式子管（IPv4 由另一條負責，此處只驗 v6 式不誤收）
+    '1.2.3.4.5', 'abc.def',
+  ]
+
+  it.each(ACCEPTED)('接受 %j', (value) => {
+    expect(looksLikeSourceAddress(value)).toBe(true)
+  })
+
+  it.each(REJECTED)('拒絕 %j', (value) => {
+    expect(looksLikeSourceAddress(value)).toBe(false)
+  })
+
+  it('IPv4 走另一條式子，不受本次改寫影響', () => {
+    expect(looksLikeSourceAddress('10.1.2.3')).toBe(true)
+    expect(looksLikeSourceAddress('0.0.0.0')).toBe(true)
+    expect(looksLikeSourceAddress('255.255.255.255')).toBe(true)
+  })
+
+  // 回溯防護：以「耗時對長度的成長倍率」判定，不用絕對毫秒——
+  // 絕對值隨機器與當下負載漂移，倍率可攜。原式在長度翻倍時耗時約成四倍（平方成長），
+  // 改寫後接近線性。
+  //
+  // 取樣方式是這條測試能不能用的關鍵。改寫後單次比對只有數十微秒，在那個尺度上
+  // 排程抖動會主導比值：單次取樣實測 20 回有 1 回衝破 2.5，正確的實碼被判紅。
+  // 故改取多回合的中位數（抖動是單邊的偶發尖峰，中位數不受其影響），
+  // 門檻放到 3.0——線性為 2、平方為 4，退化實測落在 3.9 以上，分離度仍足夠。
+  it('比對耗時不隨輸入長度呈平方成長', () => {
+    const measure = (n) => {
+      const input = `${'1:'.repeat(n)}!` // 結尾字元不在任何字元集內，強制走完所有回溯
+      const started = process.hrtime.bigint()
+      looksLikeSourceAddress(input)
+      return Number(process.hrtime.bigint() - started) / 1e6
+    }
+
+    measure(1000) // 暖身，避免首次呼叫的 JIT 成本混進比較
+
+    const ratios = []
+    for (let round = 0; round < 9; round += 1) {
+      const short = Math.max(measure(4000), 0.001)
+      const long = measure(8000)
+      ratios.push(long / short)
+    }
+    ratios.sort((a, b) => a - b)
+    const median = ratios[Math.floor(ratios.length / 2)]
+
+    expect(median).toBeLessThan(3)
+  })
+})

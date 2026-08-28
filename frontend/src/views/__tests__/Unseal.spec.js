@@ -490,3 +490,78 @@ describe('Unseal 遺失警語', () => {
     expect(wrapper.find('.loss-notice').exists()).toBe(false)
   })
 })
+
+// 表單標籤關聯（ui-design-system：Form controls carry a programmatic label association）
+//
+// 這組測試盯的是一個容易假綠的落點：Element Plus 的 el-input **宣告了 id 這個 prop
+// 卻不把它放到原生節點上**（2026-08 實測：props.id／attrs.id／input-attrs 三種寫法，
+// 原生 input 的 id 皆為 undefined）。因此關聯改用 aria-labelledby，而驗收必須打在
+// 渲染後的原生節點上——只檢查「元件接受了屬性」的測試會在關聯根本不存在時照樣全綠。
+describe('解封頁的表單標籤關聯', () => {
+  beforeEach(() => {
+    getSealStatusMock.mockResolvedValue(statusFixture())
+  })
+
+  it('金鑰材料欄位的 aria-labelledby 指向實際存在的標籤元素', async () => {
+    const wrapper = await mountPage()
+    const input = materialInputs(wrapper)[0]
+    expect(input.exists()).toBe(true)
+
+    const target = input.attributes('aria-labelledby')
+    expect(target).toBeTruthy()
+
+    // 關鍵：屬性值必須解析得到一個真的元素，且該元素有可讀文字。
+    // 指向不存在的 id 比沒有關聯更糟——輔助技術報不出任何名稱卻宣稱有。
+    const label = wrapper.find(`#${target}`)
+    expect(label.exists()).toBe(true)
+    expect(label.text().trim().length).toBeGreaterThan(0)
+  })
+
+  it('管理員欄位群組以 role=group 標示，兩個輸入框各自帶可分辨的可及名稱', async () => {
+    getSealStatusMock.mockResolvedValue(statusFixture({ initialization_required: true }))
+    const wrapper = await mountPage()
+
+    // 這裡刻意不寫「找不到就 return」的早退：那會讓「屬性被整個拿掉」與
+    // 「分支沒渲染」變成同一個結果（都是綠），測試就不再是測試。
+    const group = wrapper.find('[role="group"]')
+    expect(group.exists()).toBe(true)
+
+    const labelledBy = group.attributes('aria-labelledby')
+    expect(wrapper.find(`#${labelledBy}`).exists()).toBe(true)
+
+    // placeholder 不算可及名稱（輸入後即消失），故兩個框各自要有 aria-label。
+    // 先釘數量：`.admin-input` 一旦改名，迴圈會是空的而斷言全數跳過。
+    const inputs = adminInputs(wrapper)
+    expect(inputs).toHaveLength(2)
+
+    const names = inputs.map((input) => input.attributes('aria-label'))
+    for (const name of names) expect(name).toBeTruthy()
+    // 兩個框的名稱必須不同，否則輔助技術報不出哪個是帳號、哪個是密碼
+    expect(new Set(names).size).toBe(2)
+  })
+
+  it('兩個分支各自渲染時，標籤 id 不相交', async () => {
+    // 互斥是當下的實作事實，不是結構保證：日後改成同頁並存時撞號會靜默發生，
+    // 而撞號的 aria-labelledby 指向錯誤標籤，報出的是錯的資訊而不是沒有資訊。
+    const idsOf = async (status) => {
+      getSealStatusMock.mockResolvedValue(status)
+      const wrapper = await mountPage()
+      return wrapper
+        .findAll('[aria-labelledby]')
+        .map((el) => el.attributes('aria-labelledby'))
+        .filter(Boolean)
+        // 排除元件庫自動生成的 id：它們的不撞號靠第三方的計數器跨掛載遞增，
+        // 那不是這條測試控制得了的變數，混進來會讓判定依賴實作細節
+        .filter((id) => id.startsWith('unseal-'))
+    }
+
+    const unsealBranch = await idsOf(statusFixture())
+    const initBranch = await idsOf(statusFixture({ initialization_required: true }))
+
+    expect(unsealBranch.length).toBeGreaterThan(0)
+    expect(initBranch.length).toBeGreaterThan(0)
+
+    const shared = unsealBranch.filter((id) => initBranch.includes(id))
+    expect(shared).toEqual([])
+  })
+})

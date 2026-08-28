@@ -135,6 +135,7 @@
           </span>
           <el-tooltip :content="$t('workspace.shareSession')">
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.shareSession')"
               @click="activeTermTab.shareVisible = true"
@@ -147,6 +148,7 @@
             :content="$t('workspace.fileManager')"
           >
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.fileManager')"
               @click="activeTermTab.fileVisible = true"
@@ -159,6 +161,7 @@
             :content="$t('workspace.systemMonitor')"
           >
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.systemMonitor')"
               @click="activeTermTab.statsVisible = true"
@@ -168,6 +171,7 @@
           </el-tooltip>
           <el-tooltip :content="$t('workspace.commandSnippets')">
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.commandSnippets')"
               @click="activeTermTab.snippetVisible = true"
@@ -180,6 +184,7 @@
             :content="$t('workspace.uploadTooltip')"
           >
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.uploadAria')"
               @click="triggerK8sUpload"
@@ -192,6 +197,7 @@
             :content="$t('workspace.downloadFromContainer')"
           >
             <button
+              type="button"
               class="tool-btn"
               :aria-label="$t('workspace.downloadFromContainer')"
               @click="triggerK8sDownload"

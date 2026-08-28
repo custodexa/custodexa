@@ -600,7 +600,6 @@ onBeforeUnmount(() => {
   background: #ffffff;
   border-radius: 4px;
   overflow: hidden;
-  position: relative;
   /* 創建 Stacking Context 托住 Guacamole Canvas (z-index: -1) */
   position: relative;
   z-index: 0;

@@ -3,9 +3,7 @@
 ## Purpose
 
 前端 UI 設計語言的一致性規範：以暗色優先的設計 token 定義色彩與間距、整合 Element Plus 暗色模式、統一非同步狀態呈現、終端與回放的視覺一致、可讀性與對比要求、Custodexa 品牌識別，並訂定 zh-TW 文案的用語標準與互動慣例、角色顯示的單一來源與列舉顯示完整性。
-
 ## Requirements
-
 ### Requirement: Dark-first design tokens
 The frontend SHALL define a single source of design tokens (CSS custom properties) covering color, spacing, radius, shadow, and typography scale, with dark theme as the default. All view pages and shared components MUST consume these tokens instead of hard-coded color or spacing values.
 
@@ -162,3 +160,38 @@ Frontend enumeration display metadata (audit actions, audit resources, failure m
 #### Scenario: Approver scope manageable from UI
 - **WHEN** an admin opens the 審核範圍 dialog for an approver-role user
 - **THEN** existing scopes are listed (asset or asset-group), new scopes can be assigned via the asset XOR group selector, and removal requires an explicit confirmation
+
+### Requirement: Form controls carry a programmatic label association
+Every form control that a user is expected to operate SHALL be programmatically associated with its visible label, so that assistive technology can report which control the text describes. A label that merely sits next to a control SHALL NOT be treated as satisfying this requirement.
+
+The association SHALL be verified against the rendered DOM, not against the props a component declares. A component library may declare an attribute as a prop, consume it, and never place it on the underlying native element; a test that only checks the prop was accepted passes while the association does not exist.
+
+Where the control is a native element under the project's own control, `for` paired with `id` SHALL be preferred, because it also makes the label activate the control. Where the control is rendered by a component library that does not forward an identifier to its native element, the association SHALL be made with `aria-labelledby` pointing at the label's `id`. This form carries the semantic association without the click-to-focus behaviour, which is an accepted limitation of the component boundary rather than an omission.
+
+Identifier values SHALL be unique within the rendered page and stable across renders. Index-derived identifiers SHALL NOT be used where the same form can appear more than once (dialogs, repeated panels, branches that are currently mutually exclusive): a collision resolves to the wrong label, which reports incorrect information rather than none, and mutual exclusivity in today's implementation is not a structural guarantee.
+
+Controls that exist only as a programmatic trigger and are never presented to the user (for example a hidden file input activated by a button) SHALL be exempt, because they have no position in the visual layout where a label could belong. The visible control that activates them carries the accessible name instead.
+
+#### Scenario: Native control under project control
+- **WHEN** the control is a native form element the project renders directly
+- **THEN** the label carries `for` and the control carries the matching `id`, and activating the label moves focus to the control
+
+#### Scenario: Component library control
+- **WHEN** the control is rendered by a component library that does not forward an identifier to its native element
+- **THEN** the label carries an `id` and the control carries `aria-labelledby` with that value, verified on the rendered node rather than on the wrapper component
+
+#### Scenario: Repeated or branched instances of the same form
+- **WHEN** the same field appears in more than one place, including branches that are mutually exclusive today
+- **THEN** their identifiers differ, so that a later change allowing both to render at once cannot silently collide
+
+#### Scenario: Hidden trigger control
+- **WHEN** a control is hidden from the layout and exists only to be activated programmatically
+- **THEN** it is exempt from the label association requirement, and the visible activating control carries the accessible name
+
+### Requirement: Buttons declare their type
+Every `button` element SHALL declare an explicit `type`. HTML defaults an undeclared button to `submit`, so a button that is later moved inside a form changes behaviour without any edit to the button itself. Buttons that perform an action other than form submission SHALL declare `type="button"`.
+
+#### Scenario: Action button outside a form
+- **WHEN** a button triggers an action that is not a form submission
+- **THEN** it declares `type="button"` regardless of whether a form element currently encloses it
+

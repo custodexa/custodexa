@@ -472,8 +472,14 @@
         <!-- 重包目標（discriminated union 的判別子）：本地與委託為互斥變體。
              委託目標本版未提供——以停用選項明示，不讓使用者送出後才吃 501 -->
         <div class="kek-field">
-          <label class="kek-label">{{ $t('keyManagement.rewrapTargetLabel') }}</label>
-          <el-radio-group v-model="rewrapMode">
+          <label
+            id="kek-rewrap-target-label"
+            class="kek-label"
+          >{{ $t('keyManagement.rewrapTargetLabel') }}</label>
+          <el-radio-group
+            v-model="rewrapMode"
+            aria-labelledby="kek-rewrap-target-label"
+          >
             <el-radio
               v-for="opt in REWRAP_TARGET_OPTIONS"
               :key="opt.mode"
@@ -511,10 +517,14 @@
           class="rewrap-once-alert"
         />
         <div class="kek-field">
-          <label class="kek-label">{{ $t('keyManagement.kekInputLabel') }}</label>
+          <label
+            id="kek-new-label"
+            class="kek-label"
+          >{{ $t('keyManagement.kekInputLabel') }}</label>
           <div class="kek-input-row">
             <el-input
               v-model="newKek"
+              aria-labelledby="kek-new-label"
               class="kek-input"
               spellcheck="false"
               autocomplete="off"
@@ -548,9 +558,13 @@
           <KEKGenerateCommands />
         </div>
         <div class="kek-field">
-          <label class="kek-label">{{ $t('keyManagement.kekConfirmLabel') }}</label>
+          <label
+            id="kek-confirm-label"
+            class="kek-label"
+          >{{ $t('keyManagement.kekConfirmLabel') }}</label>
           <el-input
             v-model="newKekConfirm"
+            aria-labelledby="kek-confirm-label"
             class="kek-input"
             spellcheck="false"
             autocomplete="off"
