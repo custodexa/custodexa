@@ -1010,3 +1010,56 @@ describe('KeyManagement 切換指示依 KEK provider 分岔', () => {
     expect(wrapper.text()).not.toContain('請將新 KEK 存入 ENCRYPTION_KEY 後重啟後端服務')
   })
 })
+
+// 重包精靈的表單標籤關聯（ui-design-system：Form controls carry a programmatic label association）
+//
+// Element Plus 的 el-input 宣告了 id 這個 prop 卻不把它放到原生節點上（實測：props.id、
+// attrs.id、input-attrs 三種寫法，原生 input 的 id 皆為 undefined），故關聯改用
+// aria-labelledby。驗收必須打在渲染後的 DOM 上——只檢查「元件接受了屬性」的測試，
+// 會在關聯根本不存在時照樣全綠。
+describe('KEK 重包精靈的表單標籤關聯', () => {
+  const openRewrapWizard = async () => {
+    getInventoryMock.mockResolvedValue(inventoryFixture())
+    const wrapper = await mountPage()
+    const rewrapBtn = wrapper.findAll('button').find((b) => b.text().includes('KEK 重包精靈'))
+    await rewrapBtn.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  // 三個欄位分屬精靈的不同步驟（step 0 選重包目標、step 1 輸入與確認新 KEK），
+  // 故逐步取樣後合併，不能只開對話框就數——那樣只看得到第一步。
+  const labelledByIn = (wrapper) =>
+    wrapper
+      .findAll('[aria-labelledby]')
+      .map((el) => el.attributes('aria-labelledby'))
+      .filter((id) => id && id.startsWith('kek-'))
+
+  const assertResolvable = (wrapper, ids) => {
+    for (const id of ids) {
+      const label = wrapper.find(`#${id}`)
+      expect(label.exists()).toBe(true)
+      expect(label.text().trim().length).toBeGreaterThan(0)
+    }
+  }
+
+  it('第一步的重包目標欄位，標籤解析得到且有文字', async () => {
+    const wrapper = await openRewrapWizard()
+    const ids = labelledByIn(wrapper)
+    expect(ids).toEqual(['kek-rewrap-target-label'])
+    assertResolvable(wrapper, ids)
+  })
+
+  it('第二步的兩個 KEK 欄位，標籤各自解析得到且互不相同', async () => {
+    const wrapper = await openRewrapWizard()
+    wrapper.vm.rewrapStep = 1
+    await flushPromises()
+
+    const ids = labelledByIn(wrapper)
+    // 先釘數量：少一個就是有欄位漏接，而漏接的欄位不會自己報錯
+    expect(ids).toHaveLength(2)
+    assertResolvable(wrapper, ids)
+    // 兩個欄位若共用同一標籤，輔助技術會把「新 KEK」與「確認」報成同一個名稱
+    expect(new Set(ids).size).toBe(2)
+  })
+})

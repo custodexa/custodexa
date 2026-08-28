@@ -223,10 +223,14 @@
           />
 
           <div class="field">
-            <label class="field-label">{{ $t('unseal.materialLabel') }}</label>
+            <label
+              id="unseal-init-material-label"
+              class="field-label"
+            >{{ $t('unseal.materialLabel') }}</label>
             <div class="field-row">
               <el-input
                 v-model="material"
+                aria-labelledby="unseal-init-material-label"
                 class="material-input"
                 spellcheck="false"
                 autocomplete="off"
@@ -254,9 +258,13 @@
           </div>
 
           <div class="field">
-            <label class="field-label">{{ $t('unseal.materialConfirmLabel') }}</label>
+            <label
+              id="unseal-init-confirm-label"
+              class="field-label"
+            >{{ $t('unseal.materialConfirmLabel') }}</label>
             <el-input
               v-model="materialConfirm"
+              aria-labelledby="unseal-init-confirm-label"
               class="material-input"
               spellcheck="false"
               autocomplete="off"
@@ -270,8 +278,18 @@
             </p>
           </div>
 
-          <div class="field">
-            <label class="field-label">{{ $t('unseal.adminLabel') }}</label>
+          <!-- 這個標題描述的是「帳號＋密碼」兩個欄位構成的一組，不是單一控制項，
+               故用 role="group" 加 aria-labelledby，而非 label。兩個輸入框各自帶
+               aria-label：placeholder 不是可及名稱（輸入後即消失，且部分輔助技術不讀）。 -->
+          <div
+            class="field"
+            role="group"
+            aria-labelledby="unseal-admin-label"
+          >
+            <span
+              id="unseal-admin-label"
+              class="field-label"
+            >{{ $t('unseal.adminLabel') }}</span>
             <p class="field-hint">
               {{ $t('unseal.adminHint') }}
             </p>
@@ -279,6 +297,7 @@
               v-model="username"
               class="admin-input"
               autocomplete="off"
+              :aria-label="$t('unseal.usernamePlaceholder')"
               :placeholder="$t('unseal.usernamePlaceholder')"
             />
             <el-input
@@ -287,6 +306,7 @@
               type="password"
               show-password
               autocomplete="off"
+              :aria-label="$t('unseal.passwordPlaceholder')"
               :placeholder="$t('unseal.passwordPlaceholder')"
             />
           </div>
@@ -308,9 +328,13 @@
             {{ $t('unseal.normalDesc') }}
           </p>
           <div class="field">
-            <label class="field-label">{{ $t('unseal.materialLabel') }}</label>
+            <label
+              id="unseal-material-label"
+              class="field-label"
+            >{{ $t('unseal.materialLabel') }}</label>
             <el-input
               v-model="material"
+              aria-labelledby="unseal-material-label"
               class="material-input"
               spellcheck="false"
               autocomplete="off"

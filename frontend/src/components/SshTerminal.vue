@@ -60,6 +60,7 @@
       <button
         v-for="key in MOBILE_KEYS"
         :key="key.label"
+        type="button"
         class="mobile-key"
         @click="sendKey(key.seq)"
       >
