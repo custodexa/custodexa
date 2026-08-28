@@ -223,10 +223,10 @@
           />
 
           <div class="field">
-            <label
+            <span
               id="unseal-init-material-label"
               class="field-label"
-            >{{ $t('unseal.materialLabel') }}</label>
+            >{{ $t('unseal.materialLabel') }}</span>
             <div class="field-row">
               <el-input
                 v-model="material"
@@ -258,10 +258,10 @@
           </div>
 
           <div class="field">
-            <label
+            <span
               id="unseal-init-confirm-label"
               class="field-label"
-            >{{ $t('unseal.materialConfirmLabel') }}</label>
+            >{{ $t('unseal.materialConfirmLabel') }}</span>
             <el-input
               v-model="materialConfirm"
               aria-labelledby="unseal-init-confirm-label"
@@ -328,10 +328,10 @@
             {{ $t('unseal.normalDesc') }}
           </p>
           <div class="field">
-            <label
+            <span
               id="unseal-material-label"
               class="field-label"
-            >{{ $t('unseal.materialLabel') }}</label>
+            >{{ $t('unseal.materialLabel') }}</span>
             <el-input
               v-model="material"
               aria-labelledby="unseal-material-label"
