@@ -27,7 +27,7 @@ import "time"
 //     同一擁有者在同一設定世代只追蹤一個物件，重傳更新同列；世代含在鍵內，
 //     故新世代可有新物件而舊世代的列不被覆蓋。**EnqueueTx 的冪等衝突目標**。
 //   - `idx_offsite_objects_due` (origin, next_attempt_at, id) WHERE state='pending'：
-//     雙車道取件（各自 ORDER BY id DESC）。
+//     雙佇列取件（各自 ORDER BY id DESC）。
 //   - `idx_offsite_objects_lease` (lease_until) WHERE state='uploading'：租約回收。
 //   - `idx_offsite_objects_state` (state)：各態計數與失敗清單。
 type OffsiteObject struct {
@@ -37,7 +37,7 @@ type OffsiteObject struct {
 	Kind string `gorm:"size:16;not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:1"`
 	// OwnerID sessions.id／audit_export_jobs.id
 	OwnerID uint `gorm:"not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:2"`
-	// Origin live（會話結束／打包完成即排入）／backfill（回填掃描排入）；雙車道配額用
+	// Origin live（會話結束／打包完成即排入）／backfill（回填掃描排入）；雙佇列配額用
 	Origin string `gorm:"size:8;not null;index:idx_offsite_objects_due,priority:1,where:state = 'pending'"`
 	// Provider 上傳當時的 provider（冗餘明文身分欄：對帳與顯示直讀，免 join）
 	Provider string `gorm:"size:8;not null"`

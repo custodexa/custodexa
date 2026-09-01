@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="fetchCommands">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -177,7 +177,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
+import { RefreshCw } from 'lucide-vue-next'
 import { searchCommands } from '@/api/commands'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'

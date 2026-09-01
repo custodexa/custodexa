@@ -7,7 +7,7 @@
     >
       <template #actions>
         <el-button @click="fetchAssetList">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
         <!-- 標籤治理單獨入口：全面改名/合併/刪除 -->
@@ -15,7 +15,7 @@
           v-if="isAdmin"
           @click="tagManagerVisible = true"
         >
-          <el-icon><CollectionTag /></el-icon>
+          <el-icon><Tag /></el-icon>
           {{ $t('assets.tagManager') }}
         </el-button>
         <el-button
@@ -143,7 +143,7 @@
             {{ $t('common.search') }}
           </el-button>
           <el-button @click="handleResetFilter">
-            <el-icon><Refresh /></el-icon>
+            <el-icon><RefreshCw /></el-icon>
             {{ $t('common.reset') }}
           </el-button>
         </el-form-item>
@@ -334,7 +334,7 @@
                   v-if="isTesting(row.id)"
                   class="conn-badge testing"
                 >
-                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <el-icon class="is-loading"><LoaderCircle /></el-icon>
                   {{ $t('assets.testing') }}
                 </span>
                 <!-- tooltip 傳原始數值（模板自帶 ms 單位）以保留完整值；
@@ -424,7 +424,7 @@
                   link
                   @click="openApplyDialog(row)"
                 >
-                  <el-icon><EditPen /></el-icon>
+                  <el-icon><Pencil /></el-icon>
                   {{ $t('assets.applyConnect') }}
                 </el-button>
               </el-tooltip>
@@ -444,7 +444,7 @@
                     :disabled="!canConnect(row)"
                     @click="handleConnect(row)"
                   >
-                    <el-icon><Connection /></el-icon>
+                    <el-icon><Cable /></el-icon>
                     {{ $t('common.connect') }}
                   </el-button>
                 </span>
@@ -456,7 +456,7 @@
                 link
                 @click="handleEdit(row)"
               >
-                <el-icon><Edit /></el-icon>
+                <el-icon><SquarePen /></el-icon>
                 {{ $t('common.edit') }}
               </el-button>
               <el-dropdown
@@ -469,7 +469,7 @@
                   link
                 >
                   {{ $t('common.more') }}
-                  <el-icon><ArrowDown /></el-icon>
+                  <el-icon><ChevronDown /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -994,7 +994,7 @@
           size="small"
           @click="openBreakGlassDialog(applyTarget)"
         >
-          <el-icon><Warning /></el-icon>
+          <el-icon><CircleAlert /></el-icon>
           {{ $t('assets.breakGlassEntry') }}
         </el-button>
         <p class="break-glass-note">
@@ -1086,17 +1086,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus,
   Search,
-  Refresh,
-  Edit,
-  Connection,
-  ArrowDown,
+  RefreshCw,
+  SquarePen,
+  Cable,
+  ChevronDown,
   Clock,
-  EditPen,
-  Warning,
-  CollectionTag,
-  Loading,
+  Pencil,
+  CircleAlert,
+  Tag,
+  LoaderCircle,
   Key,
-} from '@element-plus/icons-vue'
+} from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import {
   getAssetList,

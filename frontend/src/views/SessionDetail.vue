@@ -10,7 +10,7 @@
     >
       <template #actions>
         <el-button @click="goBack">
-          <el-icon><Back /></el-icon>
+          <el-icon><ArrowLeft /></el-icon>
           {{ $t('sessionDetail.backToList') }}
         </el-button>
         <el-button
@@ -35,7 +35,7 @@
         :size="40"
         style="color: var(--ot-text-disabled)"
       >
-        <Loading />
+        <LoaderCircle />
       </el-icon>
       <p class="state-text">
         {{ $t('sessionDetail.loading') }}
@@ -126,7 +126,7 @@
               v-else-if="session.has_recording"
               type="success"
             >
-              <el-icon><VideoPlay /></el-icon>
+              <el-icon><CirclePlay /></el-icon>
               {{ $t('sessionDetail.hasRecording') }}
             </el-tag>
             <el-tag
@@ -418,7 +418,7 @@
                   data-test="clipboard-content-loading"
                 >
                   <el-icon class="is-loading">
-                    <Loading />
+                    <LoaderCircle />
                   </el-icon>
                   {{ $t('sessionDetail.clipboardContentLoading') }}
                 </div>
@@ -580,13 +580,13 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'v
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Back,
+  ArrowLeft,
   CircleCheck,
   Download,
-  Loading,
+  LoaderCircle,
   Lock,
-  VideoPlay,
-} from '@element-plus/icons-vue'
+  CirclePlay,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import AsciinemaPlayer from '@/components/AsciinemaPlayer.vue'
 import GuacamolePlayer from '@/components/GuacamolePlayer.vue'

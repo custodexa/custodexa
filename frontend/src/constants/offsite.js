@@ -110,7 +110,7 @@ export const OFFSITE_ERROR_CODES = [
   'offsite.credentials_unavailable',
 ]
 
-// 排入來源（`offsite_objects.origin`）：雙車道配額的判準
+// 排入來源（`offsite_objects.origin`）：雙佇列配額的判準
 export const OFFSITE_ORIGINS = ['live', 'backfill']
 
 // bucket 治理揭露（`ProbeBucket` 的資訊性回報）：中性呈現、不判好壞

@@ -11,7 +11,7 @@
           @change="handleAutoRefreshChange"
         />
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -140,7 +140,7 @@
                   link
                   @click="handleMonitor(row)"
                 >
-                  <el-icon><View /></el-icon>
+                  <el-icon><Eye /></el-icon>
                   {{ $t('sessions.monitor') }}
                 </el-button>
                 <el-button
@@ -149,7 +149,7 @@
                   link
                   @click="handleTerminate(row)"
                 >
-                  <el-icon><Close /></el-icon>
+                  <el-icon><X /></el-icon>
                   {{ $t('sessions.terminate') }}
                 </el-button>
               </template>
@@ -234,7 +234,7 @@
                 {{ $t('common.search') }}
               </el-button>
               <el-button @click="handleResetFilter">
-                <el-icon><Refresh /></el-icon>
+                <el-icon><RefreshCw /></el-icon>
                 {{ $t('common.reset') }}
               </el-button>
             </el-form-item>
@@ -382,7 +382,7 @@
                   v-else-if="row.has_recording"
                   style="color: var(--ot-success)"
                 >
-                  <VideoPlay />
+                  <CirclePlay />
                 </el-icon>
                 <span v-else>-</span>
               </template>
@@ -400,7 +400,7 @@
                   link
                   @click="handleViewRecording(row)"
                 >
-                  <el-icon><VideoPlay /></el-icon>
+                  <el-icon><CirclePlay /></el-icon>
                   {{ $t('sessions.viewRecording') }}
                 </el-button>
                 <!-- 操作欄 fixed right 恆可見——無錄影標示在此兜底，
@@ -452,12 +452,12 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Refresh,
+  RefreshCw,
   Search,
-  Close,
-  VideoPlay,
-  View,
-} from '@element-plus/icons-vue'
+  X,
+  CirclePlay,
+  Eye,
+} from 'lucide-vue-next'
 import {
   getSessionList,
   getActiveSessions,

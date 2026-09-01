@@ -9,13 +9,13 @@
 
 ## 致謝
 
-本產品建立在下列 218 個開源元件之上。
+本產品建立在下列 219 個開源元件之上。
 
 瀏覽器能操作 RDP 與 VNC，來自 Apache Guacamole；
 SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 即時會話由 `gorilla/websocket` 承接。
 資料層有 GORM 與各家資料庫驅動，
-介面是 Vue、Element Plus 與 Vite，
+介面是 Vue、Element Plus 與 Vite，介面上的 icon 出自 Lucide，
 執行環境則是 Alpine Linux 與其上的系統套件。
 
 謝謝這些專案的維護者。下列清單是授權合規的記錄，也是我們用了哪些人的成果的說明。
@@ -33,9 +33,9 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 不含：僅在建置或測試時使用而未進入產物的依賴（dev／test／graph 範圍）；
 容器映像內以獨立行程執行的元件另見第 3 節。
 
-共 **218** 個相異元件（218 ＝ 掃描輸出 220 列去重後；`emoji-regex@8.0.0` 與
+共 **219** 個相異元件（219 ＝ 掃描輸出 221 列去重後；`emoji-regex@8.0.0` 與
 `string-width@4.2.3` 在鎖檔中各出現於兩條安裝路徑，屬同一元件）。
-授權分佈：MIT 144、Apache-2.0 44、BSD-3-Clause 18、ISC 9、BSD-2-Clause 3。
+授權分佈：MIT 144、Apache-2.0 44、BSD-3-Clause 18、ISC 10、BSD-2-Clause 3。
 
 <!-- BEGIN GENERATED: shipped-components -->
 | 生態 | 元件 | 版本 | 授權 |
@@ -220,6 +220,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | npm | lodash | 4.17.21 | MIT |
 | npm | lodash-es | 4.17.21 | MIT |
 | npm | lodash-unified | 1.0.3 | MIT |
+| npm | lucide-vue-next | 1.0.0 | ISC |
 | npm | magic-string | 0.30.21 | MIT |
 | npm | math-intrinsics | 1.1.0 | MIT |
 | npm | memoize-one | 6.0.0 | MIT |

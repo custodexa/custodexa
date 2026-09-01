@@ -30,7 +30,7 @@ const (
 // **現行世代＝`retired_at IS NULL` 至多一列（0 或 1）**。零列有兩種語義，
 // 由帳冊區分：`offsite_profiles` 完全零列＝從未設定（行為完全不變的機械保證繫於此）；
 // 有歷史世代而零現行世代＝**停用態**（管理介面的「停止離機」），此時不建 uploader、
-// 上傳車道指標缺席，但**取回子系統照常組裝**、歷史物件仍可取回。
+// 上傳佇列指標缺席，但**取回子系統照常組裝**、歷史物件仍可取回。
 // 唯一性由 `Singleton` 常數欄 ＋ CHECK `(singleton = 1)` ＋ partial unique index
 // `(singleton) WHERE retired_at IS NULL` 三者共同保證——**CHECK 不可省**，
 // 單靠 unique index 只禁止相同值重複，`singleton=2` 仍可並存。

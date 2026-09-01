@@ -9,7 +9,7 @@
           class="is-loading"
           :size="32"
         >
-          <Loading />
+          <LoaderCircle />
         </el-icon>
         <p>{{ status === 'waiting' ? $t('sshTerminal.preparing') : $t('sshTerminal.connecting') }}</p>
       </template>
@@ -148,7 +148,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import { Loading } from '@element-plus/icons-vue'
+import { LoaderCircle } from 'lucide-vue-next'
 import { createConnectTokenWithConsent } from '@/api/connect'
 import '@xterm/xterm/css/xterm.css'
 import { xtermTheme } from '@/styles/terminal-theme'

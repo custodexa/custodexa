@@ -9,7 +9,7 @@
   >
     <div class="cmd-degraded__head">
       <el-icon class="cmd-degraded__icon">
-        <WarningFilled />
+        <TriangleAlert />
       </el-icon>
       <span class="cmd-degraded__title">{{ $t('commands.degrade.title') }}</span>
     </div>
@@ -66,7 +66,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { WarningFilled } from '@element-plus/icons-vue'
+import { TriangleAlert } from 'lucide-vue-next'
 import {
   degradeReasonLabel,
   degradeRecordingHint,

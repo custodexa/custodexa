@@ -15,14 +15,14 @@ import (
 // 三種狀態在 `/metrics` 上必須**可分辨**，而分辨的方式是序列的有無，不是值：
 //
 //	設定表零列（從未設定） 全部 custodexa_offsite_ 序列缺席
-//	停用態（零現行世代）   上傳車道缺席、存量與失敗面照常
+//	停用態（零現行世代）   上傳佇列缺席、存量與失敗面照常
 //	有現行世代             全部曝光
 //
-// 若把上傳車道在停用態下也留著，採集端讀到的是「待上傳恆為 0、最後成功時刻
+// 若把上傳佇列在停用態下也留著，採集端讀到的是「待上傳恆為 0、最後成功時刻
 // 停在某個過去」——那與「一切正常且無事可做」在 PromQL 上無從分辨，而
 // `absent()` 對缺席能給出明確答案。這是本組測試唯一要守的東西。
 
-// offsiteUploadLaneSeries 上傳車道的序列名（停用態下 SHALL 全部缺席）。
+// offsiteUploadLaneSeries 上傳佇列的序列名（停用態下 SHALL 全部缺席）。
 var offsiteUploadLaneSeries = []string{
 	"custodexa_offsite_pending",
 	"custodexa_offsite_uploading",
@@ -85,17 +85,17 @@ func TestOffsiteSeriesAbsentWhenNeverConfigured(t *testing.T) {
 			"採集端會把一個從未啟用的功能讀成「已啟用且一切為零」")
 }
 
-// TestOffsiteMetricsDisabledStateKeepsInventorySeries 停用態：上傳車道缺席、存量面照常。
+// TestOffsiteMetricsDisabledStateKeepsInventorySeries 停用態：上傳佇列缺席、存量面照常。
 //
 // 具名依驗收條款。與零列態各一格，兩者**不得合併**——
-// 合併之後「停用時整組消失」與「停用時只少了車道」會用同一個斷言通過。
+// 合併之後「停用時整組消失」與「停用時只少了佇列」會用同一個斷言通過。
 func TestOffsiteMetricsDisabledStateKeepsInventorySeries(t *testing.T) {
 	m := New()
 	m.RegisterStage2()
 	m.RegisterOffsiteInventory() // 停用態只註冊這一面
 
 	m.SetOffsiteQueue(offsiteFullSnapshot())
-	// worker 在停用態不存在，但即使有人誤呼叫，車道序列仍須缺席
+	// worker 在停用態不存在，但即使有人誤呼叫，佇列序列仍須缺席
 	m.ObserveOffsiteUpload("recording", OffsiteUploadResultUploaded, 1024)
 	m.SetOffsiteLastSuccess(time.Now())
 
@@ -181,9 +181,9 @@ func TestOffsiteCredentialStateFailedIsDistinctFromUnconfigured(t *testing.T) {
 
 // TestOffsiteQueueAbsentLanesDoNotBecomeZero 缺席與 0 是兩件事。
 //
-// `OldestPendingAges` 對「無待上傳件的車道」是**不回該鍵**（帳冊層的刻意設計）。
-// 若指標層把缺席的鍵補成 0，回填車道從「積壓 10 天」變成「0 秒」時，
-// 採集端看到的是一個健康值，而不是序列消失——後者才是「該車道現在沒東西」的
+// `OldestPendingAges` 對「無待上傳件的佇列」是**不回該鍵**（帳冊層的刻意設計）。
+// 若指標層把缺席的鍵補成 0，回填佇列從「積壓 10 天」變成「0 秒」時，
+// 採集端看到的是一個健康值，而不是序列消失——後者才是「該佇列現在沒東西」的
 // 正確表達。`Reset` 之後只寫有值的鍵即為此。
 func TestOffsiteQueueAbsentLanesDoNotBecomeZero(t *testing.T) {
 	m := New()
@@ -195,7 +195,7 @@ func TestOffsiteQueueAbsentLanesDoNotBecomeZero(t *testing.T) {
 	require.Contains(t, gatherBody(t, m), `custodexa_offsite_oldest_pending_age_seconds{origin="backfill"}`,
 		"前置條件不成立：積壓序列一開始就不存在，下面的「消失」斷言將由假前提成立")
 
-	// 積壓清空：該車道的鍵自快照消失
+	// 積壓清空：該佇列的鍵自快照消失
 	drained := offsiteFullSnapshot()
 	drained.OldestPendingAgeSeconds = map[string]float64{}
 	drained.Pending = map[OffsiteKindOrigin]float64{}
@@ -207,7 +207,7 @@ func TestOffsiteQueueAbsentLanesDoNotBecomeZero(t *testing.T) {
 	require.NotContains(t, body, `custodexa_offsite_pending{kind="recording"`,
 		"待上傳清空後標籤組竟仍在（Reset 未生效）")
 	// 計數器不受 Reset 影響（累計語義）
-	require.Contains(t, body, "custodexa_offsite_generations 2", "存量面不該被車道的 Reset 波及")
+	require.Contains(t, body, "custodexa_offsite_generations 2", "存量面不該被佇列的 Reset 波及")
 }
 
 // TestOffsiteRegistrationIsIdempotent B 模式重複解封不得重複註冊。

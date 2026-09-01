@@ -113,7 +113,7 @@ describe('Unseal 狀態呈現（四態）', () => {
 
     // 故障碼一律查譯 apierror，前端不自行詮釋成因
     expect(wrapper.text()).toContain('金鑰是對的，但服務初始化失敗')
-    expect(wrapper.text()).toContain('無法寫入審計紀錄，已暫停受理解封')
+    expect(wrapper.text()).toContain('無法寫入稽核紀錄，已暫停受理解封')
     expect(wrapper.text()).toContain('第 4 代')
     expect(wrapper.text()).toContain('stage2-timeout')
   })

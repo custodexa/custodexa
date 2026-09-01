@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="loadInventory">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -701,7 +701,7 @@
 <script setup>
 import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import PolicyPciBanner from '@/components/PolicyPciBanner.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'

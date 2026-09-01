@@ -160,11 +160,11 @@ func (l *Ledger) HasCurrentGeneration() (bool, error) {
 	return true, nil
 }
 
-// ListDue 取一條車道上到期可領的件（最新優先）。
+// ListDue 取一個佇列上到期可領的件（最新優先）。
 //
-// 兩條車道各自 `ORDER BY id DESC`：純「最新優先」在持續高流量下會讓回填無限期
+// 兩個佇列各自 `ORDER BY id DESC`：純「最新優先」在持續高流量下會讓回填無限期
 // 停在本機唯一副本，故給回填一個有界的配額下限；配額由 Uploader 決定，
-// 本方法只負責「這條車道有哪些到期件」。
+// 本方法只負責「這條佇列有哪些到期件」。
 func (l *Ledger) ListDue(lane string, limit int) ([]model.OffsiteObject, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -544,11 +544,11 @@ func (l *Ledger) CountsDetailed() ([]StateCount, error) {
 	return rows, nil
 }
 
-// OldestPendingAges 各車道最老待上傳件的年齡（秒）。
+// OldestPendingAges 各佇列最老待上傳件的年齡（秒）。
 //
 // **回填積壓的可見性靠它**：純「最新優先」下，回填件可能
 // 長期停在本機唯一副本，而「待上傳數」這個計數在穩定積壓時是平的——年齡才會漲。
-// 無待上傳件的車道**不出現在結果中**（缺席與 0 是兩件事）。
+// 無待上傳件的佇列**不出現在結果中**（缺席與 0 是兩件事）。
 func (l *Ledger) OldestPendingAges(now time.Time) (map[string]float64, error) {
 	type row struct {
 		Origin string

@@ -26,7 +26,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { FolderOpened } from '@element-plus/icons-vue'
+import { FolderOpen } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -43,7 +43,7 @@ const props = defineProps({
   },
   icon: {
     type: [Object, Function],
-    default: () => FolderOpened,
+    default: () => FolderOpen,
   },
 })
 

@@ -46,7 +46,7 @@
         :loading="loading"
         @click="load"
       >
-        <el-icon><Refresh /></el-icon>
+        <el-icon><RefreshCw /></el-icon>
         {{ $t('common.refresh') }}
       </el-button>
     </div>
@@ -69,7 +69,7 @@
             placement="top"
           >
             <el-icon class="acct-mgr__star">
-              <StarFilled />
+              <Star fill="currentColor" />
             </el-icon>
           </el-tooltip>
           <span class="acct-mgr__name">{{ row.username }}</span>
@@ -323,7 +323,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, StarFilled } from '@element-plus/icons-vue'
+import { Plus, RefreshCw, Star } from 'lucide-vue-next'
 import {
   listAssetAccounts,
   createAssetAccount,

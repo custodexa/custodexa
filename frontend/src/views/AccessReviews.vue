@@ -10,11 +10,11 @@
           type="primary"
           @click="openReviewDialog"
         >
-          <el-icon><Select /></el-icon>
+          <el-icon><Check /></el-icon>
           {{ $t('accessReviews.initReview') }}
         </el-button>
         <el-button @click="fetchReviews">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -27,7 +27,7 @@
     >
       <div class="review-status">
         <el-icon :class="overdue ? 'review-icon is-warn' : 'review-icon is-ok'">
-          <Warning v-if="overdue" />
+          <CircleAlert v-if="overdue" />
           <CircleCheck v-else />
         </el-icon>
         <span v-if="lastReviewDaysAgo < 0">{{ $t('accessReviews.neverReviewed', { n: periodDays }) }}</span>
@@ -102,7 +102,7 @@
               link
               @click="openDetail(row)"
             >
-              <el-icon><View /></el-icon>
+              <el-icon><Eye /></el-icon>
               {{ $t('accessReviews.viewSnapshot') }}
             </el-button>
           </template>
@@ -275,7 +275,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Select, View, Warning, CircleCheck } from '@element-plus/icons-vue'
+import { RefreshCw, Check, Eye, CircleAlert, CircleCheck } from 'lucide-vue-next'
 import {
   getAccessReviews,
   getAccessMatrix,

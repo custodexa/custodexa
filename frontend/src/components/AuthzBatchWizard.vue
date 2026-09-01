@@ -288,11 +288,11 @@
           size="large"
         >
           <el-radio-button label="view">
-            <el-icon><View /></el-icon>
+            <el-icon><Eye /></el-icon>
             {{ $t('assets.permission.view') }}
           </el-radio-button>
           <el-radio-button label="connect">
-            <el-icon><Connection /></el-icon>
+            <el-icon><Cable /></el-icon>
             {{ $t('assets.permission.connect') }}
           </el-radio-button>
         </el-radio-group>
@@ -411,7 +411,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { protocolTagType } from '@/utils/protocol'
 import { ElMessage } from 'element-plus'
-import { Search, View, Connection } from '@element-plus/icons-vue'
+import { Search, Eye, Cable } from 'lucide-vue-next'
 import { batchCreateAuthorizations } from '@/api/authorizations'
 import { getAssetGroups, getAssetList, getAssetTags } from '@/api/assets'
 import { getUserGroups } from '@/api/userGroups'

@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="fetchCurrentTab">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -642,7 +642,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Refresh, Lock } from '@element-plus/icons-vue'
+import { RefreshCw, Lock } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'

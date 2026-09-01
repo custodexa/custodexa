@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="loadAll">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -518,7 +518,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
+import { RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'

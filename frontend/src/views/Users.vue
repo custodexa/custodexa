@@ -13,7 +13,7 @@
           {{ $t('users.create') }}
         </el-button>
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -85,7 +85,7 @@
             {{ $t('common.search') }}
           </el-button>
           <el-button @click="handleResetFilter">
-            <el-icon><Refresh /></el-icon>
+            <el-icon><RefreshCw /></el-icon>
             {{ $t('common.reset') }}
           </el-button>
         </el-form-item>
@@ -363,7 +363,7 @@
                 link
               >
                 {{ $t('common.more') }}<el-icon class="more-caret">
-                  <ArrowDown />
+                  <ChevronDown />
                 </el-icon>
               </el-button>
               <template #dropdown>
@@ -899,12 +899,12 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Plus,
-  Refresh,
+  RefreshCw,
   Search,
   Lock,
   CircleCheck,
-  ArrowDown,
-} from '@element-plus/icons-vue'
+  ChevronDown,
+} from 'lucide-vue-next'
 import {
   getRoleList,
   getUserList,

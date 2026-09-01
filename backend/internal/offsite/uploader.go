@@ -31,10 +31,10 @@ var ErrNotReadyYet = errors.New("offsite: 上傳目標尚未就緒（寬限期�
 // **調小即降低保護**，守衛 TestGraphicsUploadGraceNotLowered 釘住下限。
 const GraphicsUploadGraceSeconds = 60
 
-// 雙車道每輪配額：live 16 ＋ backfill 4（4:1）。
+// 雙佇列每輪配額：live 16 ＋ backfill 4（4:1）。
 //
 // 純「最新優先」在持續高流量下會讓回填**無限期**停在本機唯一副本；配額給回填一個
-// 有界的下限而不搶新件。任一車道不足時另一車道補滿（總量仍為 20）。
+// 有界的下限而不搶新件。任一個佇列不足時另一佇列補滿（總量仍為 20）。
 const (
 	LaneQuotaLive     = 16
 	LaneQuotaBackfill = 4
@@ -58,7 +58,7 @@ const leaseSlack = time.Minute
 type BackfillClass string
 
 const (
-	// BackfillUploadable 本機檔 stat 成功且未逾保留期 → 排入 backfill 車道
+	// BackfillUploadable 本機檔 stat 成功且未逾保留期 → 排入 backfill 佇列
 	BackfillUploadable BackfillClass = "uploadable"
 	// BackfillMissing 路徑非空但 stat 失敗 → **不建帳冊列**，快取 skipped_missing；
 	// 下一輪掃描會再看一次（還原備份後檔案回來即可上傳）
@@ -111,7 +111,7 @@ type FailureReporter interface {
 	Resolve(mechanism string)
 }
 
-// UploadMetrics 上傳車道的指標面（「worker 直寫」四項）。
+// UploadMetrics 上傳佇列的指標面（「worker 直寫」四項）。
 //
 // **消費者側窄介面**，沿本包 `CustodyJournal`／`FailureReporter` 的形態：
 // `internal/offsite` 因此不 import observability，指標實體由組裝根注入。
@@ -173,7 +173,7 @@ func NewUploader(ledger *Ledger, profiles *OffsiteProfileService, failure Failur
 	}
 }
 
-// SetMetrics 注入上傳車道的指標面（組裝根；nil 視為不注入）。
+// SetMetrics 注入上傳佇列的指標面（組裝根；nil 視為不注入）。
 func (u *Uploader) SetMetrics(m UploadMetrics) {
 	if m == nil {
 		m = noopUploadMetrics{}
@@ -200,7 +200,7 @@ func (u *Uploader) Run(ctx context.Context) {
 	}
 }
 
-// RunCycle 單輪：租約回收 → 雙車道取件 → 逐件上傳 → 週期性回填掃描。
+// RunCycle 單輪：租約回收 → 雙佇列取件 → 逐件上傳 → 週期性回填掃描。
 //
 // **panic 不得殺行程**（Go 的 goroutine panic 直接終止行程；旁路功能不該有這個
 // 權力）：本函式一層 recover、單件另一層。守衛
@@ -216,12 +216,12 @@ func (u *Uploader) RunCycle(ctx context.Context) {
 
 	live, err := u.ledger.ListDue(OriginLive, LaneQuotaTotal)
 	if err != nil {
-		log.Printf("[OffsiteUploader] 查詢 live 車道失敗: %v", err)
+		log.Printf("[OffsiteUploader] 查詢 live 佇列失敗: %v", err)
 		return
 	}
 	backfill, err := u.ledger.ListDue(OriginBackfill, LaneQuotaTotal)
 	if err != nil {
-		log.Printf("[OffsiteUploader] 查詢 backfill 車道失敗: %v", err)
+		log.Printf("[OffsiteUploader] 查詢 backfill 佇列失敗: %v", err)
 		return
 	}
 	for _, obj := range planLanes(live, backfill) {
@@ -234,14 +234,14 @@ func (u *Uploader) RunCycle(ctx context.Context) {
 	u.maybeBackfillScan(ctx)
 }
 
-// planLanes 雙車道配額（純函式，供逐格測試）。
+// planLanes 雙佇列配額（純函式，供逐格測試）。
 //
-// live 取 16、backfill 取 4；**任一車道不足時另一車道補滿**（總量恆 ≤ 20）。
-// 兩條車道各自已是「最新優先」（ListDue 的 ORDER BY id DESC）。
+// live 取 16、backfill 取 4；**任一個佇列不足時另一佇列補滿**（總量恆 ≤ 20）。
+// 兩個佇列各自已是「最新優先」（ListDue 的 ORDER BY id DESC）。
 func planLanes(live, backfill []model.OffsiteObject) []model.OffsiteObject {
 	takeLive := min(len(live), LaneQuotaLive)
 	takeBackfill := min(len(backfill), LaneQuotaBackfill)
-	// 補滿：另一車道未用完的額度讓給有件的那一條
+	// 補滿：另一佇列未用完的額度讓給有件的那一條
 	if spare := LaneQuotaLive - takeLive; spare > 0 {
 		takeBackfill = min(len(backfill), takeBackfill+spare)
 	}

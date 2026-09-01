@@ -16,7 +16,7 @@
   >
     <div class="banner-main">
       <el-icon class="banner-icon">
-        <Warning />
+        <CircleAlert />
       </el-icon>
       <div class="banner-text">
         <p class="banner-headline">
@@ -186,7 +186,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Warning } from '@element-plus/icons-vue'
+import { CircleAlert } from 'lucide-vue-next'
 import { getInstanceGuard } from '@/api/instanceGuard'
 import { formatDateTime } from '@/utils/format'
 
