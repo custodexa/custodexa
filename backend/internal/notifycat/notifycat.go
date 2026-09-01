@@ -67,7 +67,7 @@ const (
 	IntervalUnknown = "unknown"
 )
 
-// mechanismEnum 審計機制允許清單。以 model 常數引用而非重打字面量：
+// mechanismEnum 稽核機制允許清單。以 model 常數引用而非重打字面量：
 // 常數改名即編譯失敗；新增機制未同步則由 TestMechanismEnumMatchesModel 攔截。
 var mechanismEnum = []string{
 	model.MechanismAuditWrite,
@@ -104,9 +104,9 @@ const (
 	// EventBreakGlassReviewOverdue 破窗補審逾期（access_request_service.go:1156）
 	EventBreakGlassReviewOverdue Event = "break_glass_review_overdue"
 
-	// EventAuditFailure 審計機制失效（audit_failure_service.go:102）
+	// EventAuditFailure 稽核機制失效（audit_failure_service.go:102）
 	EventAuditFailure Event = "audit_failure"
-	// EventAuditFailureResolved 審計機制恢復（audit_failure_service.go:136）。
+	// EventAuditFailureResolved 稽核機制恢復（audit_failure_service.go:136）。
 	// 注意：design v4 誤記為 audit_failure_recovered，實碼為 _resolved
 	EventAuditFailureResolved Event = "audit_failure_resolved"
 	// EventAuditFailureOngoing 失效持續中的週期重發（NotifyOngoing 唯一呼叫端
@@ -177,7 +177,7 @@ var registry = map[Event]EventSpec{
 			{Name: "cause_code", Kind: KindEnum, Required: true,
 				Enum: causeEnum, Lexicon: LexiconCause},
 			// 鏈驗證告警的兩個計數：
-			// **可選**——本事件是全部審計機制共用的失效入口，多數機制沒有可數的
+			// **可選**——本事件是全部稽核機制共用的失效入口，多數機制沒有可數的
 			// 失敗點或失敗區間；設為必要會讓其他機制的呼叫缺參被 Validate 拒而
 			// 降級投遞（合規告警品質倒退）。模板以可選段承接，缺值即整段不出現。
 			// KindInt 走既有型別驗證，結構上不可能挾帶字串——受影響的 seq 清單、

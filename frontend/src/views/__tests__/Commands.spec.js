@@ -73,7 +73,7 @@ describe('Commands', () => {
       page: 1,
       page_size: 20,
     })
-    expect(wrapper.text()).toContain('指令審計')
+    expect(wrapper.text()).toContain('指令稽核')
     expect(wrapper.text()).toContain('ls -la /etc')
     expect(wrapper.text()).toContain('cat /var/log/syslog')
   })
@@ -117,7 +117,7 @@ describe('Commands', () => {
     const wrapper = mountCommands()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('指令審計')
+    expect(wrapper.text()).toContain('指令稽核')
     expect(wrapper.vm.loading).toBe(false)
   })
 

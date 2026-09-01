@@ -59,7 +59,7 @@ var (
 	// CodeSealJournalIOFailure 封印期 journal I/O 故障：fail-close 拒收新嘗試，
 	// 運維修復後自動恢復（狀態經 /seal/status 標示）。
 	CodeSealJournalIOFailure = register("SEAL_JOURNAL_IO_FAILURE",
-		Descriptor{ZhFallback: "無法寫入審計紀錄，已暫停受理解封。請檢查審計目錄的磁碟空間與寫入權限。"})
+		Descriptor{ZhFallback: "無法寫入稽核紀錄，已暫停受理解封。請檢查稽核目錄的磁碟空間與寫入權限。"})
 
 	// CodeSealInitFailed 段 2 初始化失敗（格 6，逾時以外的一切失敗）。
 	// 行程續存、狀態轉 sealed-faulted、可重試——SHALL NOT log.Fatalf。

@@ -13,11 +13,11 @@ var (
 	CodeSessionHasNoRecording   = register("NOTFOUND_SESSION_RECORDING", Descriptor{ZhFallback: "此 Session 沒有錄製檔案"})
 	CodeRecordingFileNotFound   = register("NOTFOUND_RECORDING_FILE", Descriptor{ZhFallback: "錄製檔案不存在"})
 	CodeRecordingTimingNotFound = register("NOTFOUND_RECORDING_TIMING", Descriptor{ZhFallback: "錄製時間檔案不存在"})
-	CodeAuditLogNotFound        = register("NOTFOUND_AUDIT_LOG", Descriptor{ZhFallback: "審計日誌不存在"})
+	CodeAuditLogNotFound        = register("NOTFOUND_AUDIT_LOG", Descriptor{ZhFallback: "稽核日誌不存在"})
 	// CodeClipboardEventNotFound 單筆剪貼簿內容調閱的**收斂拒絕**：
 	// 事件不存在、事件識別非法、事件不屬路徑中會話（跨會話探測）
 	// 三種情形共用本碼——存在性細節
-	// 不對外，只進審計（audit-detail-not-outward）
+	// 不對外，只進稽核（audit-detail-not-outward）
 	CodeClipboardEventNotFound = register("NOTFOUND_CLIPBOARD_EVENT", Descriptor{ZhFallback: "剪貼簿記錄不存在"})
 )
 
@@ -210,8 +210,8 @@ var (
 	CodeInternalRecordingStatsQuery    = register("INTERNAL_RECORDING_STATS_QUERY", Descriptor{ZhFallback: "獲取統計資訊失敗"})
 	CodeInternalRecordingDelete        = register("INTERNAL_RECORDING_DELETE", Descriptor{ZhFallback: "刪除錄製檔案失敗"})
 
-	CodeInternalAuditLogQuery                = register("INTERNAL_AUDIT_LOG_QUERY", Descriptor{ZhFallback: "查詢審計日誌失敗"})
-	CodeInternalAuditLogResourceHistoryQuery = register("INTERNAL_AUDIT_LOG_RESOURCE_HISTORY_QUERY", Descriptor{ZhFallback: "查詢資源審計歷史失敗"})
+	CodeInternalAuditLogQuery                = register("INTERNAL_AUDIT_LOG_QUERY", Descriptor{ZhFallback: "查詢稽核日誌失敗"})
+	CodeInternalAuditLogResourceHistoryQuery = register("INTERNAL_AUDIT_LOG_RESOURCE_HISTORY_QUERY", Descriptor{ZhFallback: "查詢資源稽核歷史失敗"})
 	CodeInternalAuditIntegrityVerify         = register("INTERNAL_AUDIT_INTEGRITY_VERIFY", Descriptor{ZhFallback: "完整性驗證失敗"})
 	CodeInternalAuditFailureQuery            = register("INTERNAL_AUDIT_FAILURE_QUERY", Descriptor{ZhFallback: "查詢失效事件失敗"})
 	CodeInternalCheckpointQuery              = register("INTERNAL_CHECKPOINT_QUERY", Descriptor{ZhFallback: "查詢檢查點失敗"})

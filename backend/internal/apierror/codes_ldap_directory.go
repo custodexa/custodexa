@@ -37,7 +37,7 @@ var (
 		Descriptor{ZhFallback: "目錄位址格式不正確，須為 ldap://主機[:埠] 或 ldaps://主機[:埠]"})
 	CodeValidationLDAPURLScheme = register("VALIDATION_LDAP_URL_SCHEME",
 		Descriptor{ZhFallback: "目錄位址的通訊協定僅接受 ldap:// 或 ldaps://"})
-	// 位址內嵌憑證會流入 UI 顯示、錯誤訊息與審計的目標欄位，故直接拒絕而非清洗
+	// 位址內嵌憑證會流入 UI 顯示、錯誤訊息與稽核的目標欄位，故直接拒絕而非清洗
 	CodeValidationLDAPURLUserinfo = register("VALIDATION_LDAP_URL_USERINFO",
 		Descriptor{ZhFallback: "目錄位址不可包含帳號密碼，請改填於 bind DN 與 bind 密碼欄位"})
 	CodeValidationLDAPURLPath = register("VALIDATION_LDAP_URL_PATH",

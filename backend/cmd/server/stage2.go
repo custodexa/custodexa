@@ -13,6 +13,7 @@ import (
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -943,8 +944,11 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	}
 	// 離機上傳 worker。**未啟用時不建 goroutine**：
 	// 啟動時無現行世代（設定表零列＝從未設定，或零現行世代＝已停用）即只記一行
-	// 日誌。首次於管理介面完成設定後，本輪次不會自行啟動——下次重啟時的回填掃描
-	// 會把期間累積的證據整批補上（回填掃描存在的理由之一），故不會遺漏，只是延後。
+	// 日誌，等管理員完成設定後由設定服務即時拉起（startOffsiteUploader）。
+	//
+	// env→DB 的初次 seed **不需要**另一條熱啟動路徑：它跑在解封後遷移佇列
+	// （本步之前的 postUnsealMigrations），故 seed 建出的世代在此就讀得到。
+	// 兩者的先後由服務清單的順序釘住。
 	offsiteUploader := offsite.NewUploader(offsiteLedger, offsiteProfiles, auditFailureService,
 		recordingOffsiteAdapter, exportOffsiteAdapter)
 	offsiteWorkerCtx, stopOffsiteWorker := context.WithCancel(context.Background())
@@ -966,12 +970,35 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 上傳車道的四項由 worker 直寫。`*observability.Metrics` 直接滿足
 	// `offsite.UploadMetrics`（方法名對齊），故此處零 adapter
 	offsiteUploader.SetMetrics(s1.metrics)
+	// worker 的**唯一啟動點**，冪等：啟動時已有現行世代即由下方的啟動步呼叫，
+	// 否則等管理員於管理介面完成首次設定時由設定服務呼叫。
+	//
+	// **once 而非「有沒有在跑」的旗標**：後者要嘛在兩個 goroutine 之間比對狀態
+	// （競態下起兩條迴圈，同一件被兩邊各領一次），要嘛得再加一把鎖；
+	// 而這裡真正要的語義就是「至多一次」。
+	//
+	// 停用（退役現行世代）不需要反向殺 worker：該世代的帳冊列在同一筆交易內
+	// 轉為 foreign，取件查的是待上傳列，故 worker 只是空轉不領件。
+	var offsiteUploaderOnce sync.Once
+	startOffsiteUploader := func() {
+		offsiteUploaderOnce.Do(func() {
+			// 收束已開始：不再放出新的 goroutine，否則它會逃過本次資源收束
+			if offsiteWorkerCtx.Err() != nil {
+				return
+			}
+			go offsiteUploader.Run(offsiteWorkerCtx)
+		})
+	}
+	// 熱啟動的接線：零現行世代啟動的服務，於管理介面完成設定後不必重啟即開始上傳。
+	// **接線落在此處**（worker 建構之後、路由發佈之前）：更早接不到 worker，
+	// 更晚則存在「設定已可寫入而 worker 拉不起來」的窗口
+	offsiteProfiles.SetUploaderStarter(startOffsiteUploader)
 	starts[7].start = func() error {
 		if !offsiteEnabled {
-			log.Printf("[OffsiteUploader] 目前無現行離機儲存設定世代，不啟動上傳 worker")
+			log.Printf("[OffsiteUploader] 目前無現行離機儲存設定世代，暫不啟動上傳 worker（完成設定後即時啟動）")
 			return nil
 		}
-		go offsiteUploader.Run(offsiteWorkerCtx)
+		startOffsiteUploader()
 		return nil
 	}
 	starts[7].stop = stopOffsiteWorker

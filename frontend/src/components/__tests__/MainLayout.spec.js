@@ -92,7 +92,7 @@ describe('MainLayout sidebar', () => {
     // isAdmin 於 onMounted 設定，需等待重新渲染
     await wrapper.vm.$nextTick()
     const text = wrapper.text()
-    for (const label of ['總覽', '資產', '連線', '審計', '身分與權限', '系統設定']) {
+    for (const label of ['總覽', '資產', '連線', '稽核', '身分與權限', '系統設定']) {
       expect(text).toContain(label)
     }
     expect(text).toContain('資產授權')

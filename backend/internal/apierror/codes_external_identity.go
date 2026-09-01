@@ -9,7 +9,7 @@ package apierror
 //
 // **不回填身分域內容**：issuer／subject／占用者帳號一律不入錯誤訊息——綁定端點
 // 會因此成為「某個 subject 是否已存在於本系統」的枚舉 oracle，而 subject 是
-// 請求方可控輸入。細節一律只落審計與伺服端日誌。
+// 請求方可控輸入。細節一律只落稽核與伺服端日誌。
 
 // --- VALIDATION_* / NOTFOUND_* / CONFLICT_* ---
 var (

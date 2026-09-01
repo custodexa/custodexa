@@ -114,8 +114,8 @@ var (
 	CodeInternalAccessRequestMineQuery    = register("INTERNAL_ACCESS_REQUEST_MINE_QUERY", Descriptor{ZhFallback: "查詢我的申請失敗"})
 	CodeInternalAccessTicketQuery         = register("INTERNAL_ACCESS_TICKET_QUERY", Descriptor{ZhFallback: "查詢有效臨時授權失敗"})
 	CodeInternalAccessRequestPendingQuery = register("INTERNAL_ACCESS_REQUEST_PENDING_QUERY", Descriptor{ZhFallback: "查詢待審申請失敗"})
-	CodeInternalAccessRequestPendingCount = register("INTERNAL_ACCESS_REQUEST_PENDING_COUNT", Descriptor{ZhFallback: "查詢待審計數失敗"})
-	CodeInternalBreakGlassReviewCount     = register("INTERNAL_BREAK_GLASS_REVIEW_COUNT", Descriptor{ZhFallback: "查詢待補審計數失敗"})
+	CodeInternalAccessRequestPendingCount = register("INTERNAL_ACCESS_REQUEST_PENDING_COUNT", Descriptor{ZhFallback: "查詢待稽核數失敗"})
+	CodeInternalBreakGlassReviewCount     = register("INTERNAL_BREAK_GLASS_REVIEW_COUNT", Descriptor{ZhFallback: "查詢待補稽核數失敗"})
 	CodeInternalAccessRequestHistoryQuery = register("INTERNAL_ACCESS_REQUEST_HISTORY_QUERY", Descriptor{ZhFallback: "查詢申請歷史失敗"})
 	CodeInternalBreakGlassReviewQuery     = register("INTERNAL_BREAK_GLASS_REVIEW_QUERY", Descriptor{ZhFallback: "查詢待補審破窗單失敗"})
 
