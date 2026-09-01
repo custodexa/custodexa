@@ -17,7 +17,7 @@
         type="warning"
         size="small"
       >
-        <el-icon><Warning /></el-icon>
+        <el-icon><CircleAlert /></el-icon>
         {{ $t('syslogCard.dropped', { n: syslogDropped }) }}
       </el-tag>
     </div>
@@ -120,7 +120,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning } from '@element-plus/icons-vue'
+import { CircleAlert } from 'lucide-vue-next'
 import {
   getSyslogSettings,
   testSyslogSettings,

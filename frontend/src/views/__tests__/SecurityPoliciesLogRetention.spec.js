@@ -79,7 +79,7 @@ const policyFixture = (overrides = {}) => ({
       default: 'false',
       pci_value: 'true',
       requirement: '10.7.2',
-      label: '審計失效告警通知',
+      label: '稽核失效告警通知',
       value: 'false',
       compliant: false,
     },
@@ -131,13 +131,13 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('日誌保留與審閱')
-    expect(wrapper.text()).toContain('審計資料保留與每日審閱（PCI 10.4.1/10.5.1）')
+    expect(wrapper.text()).toContain('稽核資料保留與每日審閱（PCI 10.4.1/10.5.1）')
     expect(wrapper.text()).toContain('操作日誌保留天數')
     expect(wrapper.text()).toContain('指令流保留天數')
     expect(wrapper.text()).toContain('告警記錄保留天數')
     expect(wrapper.text()).toContain('連線錄影保留天數')
     expect(wrapper.text()).toContain('每日審閱簽核')
-    expect(wrapper.text()).toContain('審計失效告警通知')
+    expect(wrapper.text()).toContain('稽核失效告警通知')
     expect(wrapper.text()).toContain('PCI 10.5.1')
     expect(wrapper.text()).toContain('PCI 10.4.1')
     // 保留鍵的 0 是「永久保留」語義；非保留鍵維持「0 = 停用」

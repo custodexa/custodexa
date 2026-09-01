@@ -13,7 +13,7 @@
           {{ $t('userGroups.create') }}
         </el-button>
         <el-button @click="fetchGroups">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -91,7 +91,7 @@
               link
               @click="openEditDialog(row)"
             >
-              <el-icon><Edit /></el-icon>
+              <el-icon><SquarePen /></el-icon>
               {{ $t('common.edit') }}
             </el-button>
             <el-button
@@ -100,7 +100,7 @@
               link
               @click="handleDelete(row)"
             >
-              <el-icon><Delete /></el-icon>
+              <el-icon><Trash2 /></el-icon>
               {{ $t('common.delete') }}
             </el-button>
           </template>
@@ -197,7 +197,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Edit, Delete, User } from '@element-plus/icons-vue'
+import { Plus, RefreshCw, SquarePen, Trash2, User } from 'lucide-vue-next'
 import {
   getUserGroups,
   createUserGroup,

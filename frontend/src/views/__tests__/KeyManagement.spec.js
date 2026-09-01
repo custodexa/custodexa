@@ -230,7 +230,7 @@ describe('KeyManagement 金鑰清冊', () => {
     expect(wrapper.text()).toContain('KEK 重包尚未切換')
     // 重包待切換期間 DEK 與蓋章鑰輪替均停用（後端亦 409 守衛）
     const dekBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替資料加密鑰'))
-    const auditBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替審計蓋章鑰'))
+    const auditBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替稽核蓋章鑰'))
     expect(dekBtn.attributes('disabled')).toBeDefined()
     expect(auditBtn.attributes('disabled')).toBeDefined()
   })
@@ -770,8 +770,8 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     await flushPromises()
 
     const message = vnodeText(confirmSpy.mock.calls[0][0])
-    expect(message).toContain('審計蓋章鑰（HMAC） v0')
-    expect(message).toContain('審計蓋章鑰（HMAC） v1')
+    expect(message).toContain('稽核蓋章鑰（HMAC） v0')
+    expect(message).toContain('稽核蓋章鑰（HMAC） v1')
     expect(message).toContain('資料加密鑰（DEK） v1')
     expect(message).toContain('資料加密鑰（DEK） v2')
   })
@@ -792,8 +792,8 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     // 確認框逐項的出現位置須與表格退役段同序（比對 index 而非只驗有列到）
     const message = vnodeText(confirmSpy.mock.calls[0][0])
     const labels = {
-      'audit_integrity v1': '審計蓋章鑰（HMAC） v1',
-      'audit_integrity v0': '審計蓋章鑰（HMAC） v0',
+      'audit_integrity v1': '稽核蓋章鑰（HMAC） v1',
+      'audit_integrity v0': '稽核蓋章鑰（HMAC） v0',
       'data v2': '資料加密鑰（DEK） v2',
       'data v1': '資料加密鑰（DEK） v1',
     }

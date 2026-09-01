@@ -463,7 +463,7 @@ func TestUploaderStalledLeaseRaisesEvent(t *testing.T) {
 	}
 }
 
-// TestUploaderLaneQuota 雙車道配額（純函式逐格）。
+// TestUploaderLaneQuota 雙佇列配額（純函式逐格）。
 func TestUploaderLaneQuota(t *testing.T) {
 	mk := func(n int, origin string) []model.OffsiteObject {
 		out := make([]model.OffsiteObject, n)
@@ -482,7 +482,7 @@ func TestUploaderLaneQuota(t *testing.T) {
 		return n
 	}
 
-	// 兩條車道都塞滿：16 live + 4 backfill（**backfill 仍得 4**）
+	// 兩個佇列都塞滿：16 live + 4 backfill（**backfill 仍得 4**）
 	got := planLanes(mk(30, OriginLive), mk(30, OriginBackfill))
 	if len(got) != LaneQuotaTotal ||
 		count(got, OriginLive) != LaneQuotaLive || count(got, OriginBackfill) != LaneQuotaBackfill {

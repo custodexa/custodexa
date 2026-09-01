@@ -15,7 +15,7 @@
         <div class="control-row">
           <!-- Play/Pause Button -->
           <el-button
-            :icon="isPlaying ? VideoPause : VideoPlay"
+            :icon="isPlaying ? CirclePause : CirclePlay"
             size="small"
             @click="togglePlay"
           >
@@ -67,7 +67,7 @@
 
           <!-- Fullscreen Toggle -->
           <el-button
-            :icon="FullScreen"
+            :icon="Maximize"
             size="small"
             @click="toggleFullscreen"
           >
@@ -86,7 +86,7 @@
         class="is-loading"
         :size="40"
       >
-        <Loading />
+        <LoaderCircle />
       </el-icon>
       <p>{{ $t('asciiPlayer.loading') }}</p>
     </div>
@@ -117,7 +117,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Loading, VideoPlay, VideoPause, FullScreen } from '@element-plus/icons-vue'
+import { LoaderCircle, CirclePlay, CirclePause, Maximize } from 'lucide-vue-next'
 import * as AsciinemaPlayer from 'asciinema-player'
 import 'asciinema-player/dist/bundle/asciinema-player.css'
 import { t } from '@/i18n'

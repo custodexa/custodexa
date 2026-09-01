@@ -14,7 +14,7 @@
       </template>
       <template v-else>
         <el-icon class="summary-icon is-warn">
-          <Warning />
+          <CircleAlert />
         </el-icon>
         <span>{{ deviationText }}</span>
       </template>
@@ -87,7 +87,7 @@
 </template>
 
 <script setup>
-import { CircleCheck, Warning } from '@element-plus/icons-vue'
+import { CircleCheck, CircleAlert } from 'lucide-vue-next'
 
 defineProps({
   loading: { type: Boolean, default: false },

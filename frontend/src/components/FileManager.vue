@@ -167,7 +167,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User } from '@element-plus/icons-vue'
+import { User } from 'lucide-vue-next'
 import { listFiles, uploadFile, downloadFile, mkdir, deleteFile } from '@/api/files'
 import { useTransferCapabilities } from '@/composables/useTransferCapabilities'
 import { t, currentLocale } from '@/i18n'

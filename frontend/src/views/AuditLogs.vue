@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
         <el-button
@@ -728,7 +728,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Refresh } from '@element-plus/icons-vue'
+import { Download, RefreshCw } from 'lucide-vue-next'
 import { getAuditLogs } from '@/api/audit'
 import { exportAuditEvidence } from '@/api/auditExport'
 import { getDailyReviews } from '@/api/dailyReviews'

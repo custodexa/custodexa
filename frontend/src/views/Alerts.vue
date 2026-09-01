@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -833,7 +833,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CircleCheck, Warning, Clock, Refresh } from '@element-plus/icons-vue'
+import { CircleCheck, CircleAlert, Clock, RefreshCw } from 'lucide-vue-next'
 import {
   searchAlerts,
   reviewAlert,
@@ -915,7 +915,7 @@ const dispositionTagType = (row) => {
 }
 const dispositionIcon = (row) => {
   if (!row.reviewed_at) return Clock
-  return row.disposition === 'escalated' ? Warning : CircleCheck
+  return row.disposition === 'escalated' ? CircleAlert : CircleCheck
 }
 
 const openReviewDialog = (row) => {

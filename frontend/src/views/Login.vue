@@ -5,7 +5,7 @@
       <el-dropdown @command="setLanguage">
         <span class="lang-switch-label">
           {{ LOCALE_LABELS[locale] }}
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          <el-icon class="el-icon--right"><ChevronDown /></el-icon>
         </span>
         <template #dropdown>
           <el-dropdown-menu>
@@ -341,7 +341,7 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, ArrowDown } from '@element-plus/icons-vue'
+import { User, Lock, ChevronDown } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'

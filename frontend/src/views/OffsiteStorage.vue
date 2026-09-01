@@ -23,7 +23,7 @@
           data-test="offsite-refresh"
           @click="refreshPage"
         >
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -444,8 +444,8 @@
               >
                 <el-icon class="stage-item__icon">
                   <CircleCheck v-if="stage.outcome === 'ok'" />
-                  <CircleClose v-else-if="stage.outcome === 'fail'" />
-                  <WarningFilled v-else-if="stage.outcome === 'warn'" />
+                  <CircleX v-else-if="stage.outcome === 'fail'" />
+                  <TriangleAlert v-else-if="stage.outcome === 'warn'" />
                   <Minus v-else />
                 </el-icon>
                 <span class="stage-item__name">{{ $t(`offsite.testStep.${stage.step}`) }}</span>
@@ -471,7 +471,7 @@
       </template>
     </el-card>
 
-    <!-- 佇列摘要。停用態隱藏上傳車道欄位（不再有新上傳），
+    <!-- 佇列摘要。停用態隱藏上傳佇列欄位（不再有新上傳），
          存量面照常曝光（停用態表） -->
     <el-card
       v-if="showLedgerPanels"
@@ -831,11 +831,11 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheck,
-  CircleClose,
+  CircleX,
   Minus,
-  Refresh,
-  WarningFilled,
-} from '@element-plus/icons-vue'
+  RefreshCw,
+  TriangleAlert,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PolicyPciBanner from '@/components/PolicyPciBanner.vue'
@@ -1038,7 +1038,7 @@ const showPolicySection = computed(() => loaded.value && configured.value)
 
 // ── 佇列摘要 ──────────────────────────────────────────────────────────────
 
-// 停用態隱藏上傳車道欄位（不再有新上傳），存量面照常曝光（停用態表）
+// 停用態隱藏上傳佇列欄位（不再有新上傳），存量面照常曝光（停用態表）
 const UPLOAD_LANE_KEYS = ['pending', 'uploading']
 const QUEUE_KEYS = [
   'pending',
@@ -1063,7 +1063,7 @@ const queueItems = computed(() => {
   return items
 })
 
-// 無待上傳件的車道**不出現在回應中**（缺席與 0 是兩件事）；停用態不顯示
+// 無待上傳件的佇列**不出現在回應中**（缺席與 0 是兩件事）；停用態不顯示
 const oldestPendingRows = computed(() => {
   if (disabled.value) return []
   return Object.entries(oldestPendingAges.value || {}).map(([origin, seconds]) => ({

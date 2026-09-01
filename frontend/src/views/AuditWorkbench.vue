@@ -17,7 +17,7 @@
               :title="$t('auditorWorkbench.headerHelpLabel')"
               data-test="header-help"
             >
-              <el-icon><QuestionFilled /></el-icon>
+              <el-icon><CircleQuestionMark /></el-icon>
             </el-button>
           </template>
           <p
@@ -39,7 +39,7 @@
           data-test="open-export"
           @click="openExport('event_report')"
         >
-          <el-icon><Document /></el-icon>
+          <el-icon><FileText /></el-icon>
           {{ $t('auditorWorkbench.export.buttonReport') }}
         </el-button>
         <el-button
@@ -64,7 +64,7 @@
           data-test="refresh"
           @click="load(true)"
         >
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -192,7 +192,7 @@
               size="small"
               data-test="ip-boundary"
             >
-              <el-icon><InfoFilled /></el-icon>
+              <el-icon><Info /></el-icon>
               {{ $t('auditorWorkbench.ipBoundary.label') }}
             </el-button>
           </template>
@@ -352,7 +352,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Document, Download, InfoFilled, QuestionFilled, Refresh } from '@element-plus/icons-vue'
+import { FileText, Download, Info, CircleQuestionMark, RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import CategoryChips from '@/components/audit/CategoryChips.vue'
 import ExportReportDialog from '@/components/audit/ExportReportDialog.vue'

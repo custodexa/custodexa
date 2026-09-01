@@ -14,7 +14,7 @@
           {{ $t('authorizations.batchAuthorize') }}
         </el-button>
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -94,7 +94,7 @@
                   :content="$t('authorizations.filterNodeHelp')"
                 >
                   <el-icon class="node-filter-help">
-                    <QuestionFilled />
+                    <CircleQuestionMark />
                   </el-icon>
                 </el-tooltip>
               </template>
@@ -120,7 +120,7 @@
                 {{ $t('common.search') }}
               </el-button>
               <el-button @click="handleResetFilter">
-                <el-icon><Refresh /></el-icon>
+                <el-icon><RefreshCw /></el-icon>
                 {{ $t('common.reset') }}
               </el-button>
             </el-form-item>
@@ -361,7 +361,7 @@
                   link
                   @click="handleRevoke(row)"
                 >
-                  <el-icon><CircleClose /></el-icon>
+                  <el-icon><CircleX /></el-icon>
                   {{ $t('authorizations.revoke') }}
                 </el-button>
                 <el-text
@@ -378,7 +378,7 @@
                   link
                   @click="handleDelete(row)"
                 >
-                  <el-icon><Delete /></el-icon>
+                  <el-icon><Trash2 /></el-icon>
                   {{ $t('common.delete') }}
                 </el-button>
               </template>
@@ -493,13 +493,13 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus,
-  Refresh,
+  RefreshCw,
   Search,
-  Delete,
-  CircleClose,
-  QuestionFilled,
+  Trash2,
+  CircleX,
+  CircleQuestionMark,
   Key,
-} from '@element-plus/icons-vue'
+} from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { getAuthorizations, deleteAuthorization } from '@/api/authorizations'
 import { revokeAccessRequest } from '@/api/accessRequests'

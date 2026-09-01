@@ -184,7 +184,7 @@ func TestOffsiteLedgerBackoffScheduleAndRetryCap(t *testing.T) {
 	}
 }
 
-// TestOffsiteLedgerListDueRespectsBackoffAndLane 取件面：退避未到不取、車道分立。
+// TestOffsiteLedgerListDueRespectsBackoffAndLane 取件面：退避未到不取、佇列分立。
 func TestOffsiteLedgerListDueRespectsBackoffAndLane(t *testing.T) {
 	rig, clk := newClockedRig(t)
 	mustSave(t, rig, s3Settings("evidence"))
@@ -192,10 +192,10 @@ func TestOffsiteLedgerListDueRespectsBackoffAndLane(t *testing.T) {
 	back, _ := enqueue(t, rig, KindRecording, 2, OriginBackfill)
 
 	if rows, _ := rig.ledger.ListDue(OriginLive, 10); len(rows) != 1 || rows[0].ID != live.ID {
-		t.Fatalf("live 車道應取到 1 件，實得 %v", rows)
+		t.Fatalf("live 佇列應取到 1 件，實得 %v", rows)
 	}
 	if rows, _ := rig.ledger.ListDue(OriginBackfill, 10); len(rows) != 1 || rows[0].ID != back.ID {
-		t.Fatalf("backfill 車道應取到 1 件，實得 %v", rows)
+		t.Fatalf("backfill 佇列應取到 1 件，實得 %v", rows)
 	}
 	// 退避中不取
 	if _, err := rig.ledger.MarkFailed(live.ID, 1, ErrCodeUploadFailed); err != nil {

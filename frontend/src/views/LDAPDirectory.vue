@@ -21,7 +21,7 @@
           :loading="loading"
           @click="refreshPage"
         >
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -392,7 +392,7 @@
           >
             <el-icon class="stage-item__icon">
               <CircleCheck v-if="stage.state === 'ok'" />
-              <CircleClose v-else-if="stage.state === 'fail'" />
+              <CircleX v-else-if="stage.state === 'fail'" />
               <Minus v-else />
             </el-icon>
             <span class="stage-item__name">{{ stageLabel(stage.stage) }}</span>
@@ -502,7 +502,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, CircleCheck, CircleClose, Minus } from '@element-plus/icons-vue'
+import { RefreshCw, CircleCheck, CircleX, Minus } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import i18n, { t } from '@/i18n'
 import { confirmDestructive } from '@/utils/confirm'

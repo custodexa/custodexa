@@ -166,7 +166,7 @@ describe('空狀態口徑＝帳冊零列', () => {
     expect(at(wrapper, 'offsite-status-tag').text()).toBe('尚未設定')
   })
 
-  it('帳冊非零而已停止上傳：不進空狀態，歷史面照常渲染，只收掉上傳車道', async () => {
+  it('帳冊非零而已停止上傳：不進空狀態，歷史面照常渲染，只收掉上傳佇列', async () => {
     statusMock.mockResolvedValue(
       configuredStatus({
         disabled: true,
@@ -183,7 +183,7 @@ describe('空狀態口徑＝帳冊零列', () => {
     expect(at(wrapper, 'offsite-profiles').exists()).toBe(true)
     expect(at(wrapper, 'offsite-status-tag').text()).toBe('已停止上傳')
     expect(at(wrapper, 'offsite-disabled-note').exists()).toBe(true)
-    // 上傳車道的兩個計數缺席，存量面照常
+    // 上傳佇列的兩個計數缺席，存量面照常
     expect(at(wrapper, 'offsite-count-pending').exists()).toBe(false)
     expect(at(wrapper, 'offsite-count-uploading').exists()).toBe(false)
     expect(at(wrapper, 'offsite-count-foreign').exists()).toBe(true)

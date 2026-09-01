@@ -227,7 +227,7 @@ describe('離機枚舉三語完備性（值域 × locale）', () => {
     }
   })
 
-  it('provider、憑證模式與車道三語皆有非空 key', () => {
+  it('provider、憑證模式與排入來源三語皆有非空 key', () => {
     for (const v of OFFSITE_PROVIDERS) {
       expectKeyInAllLocales(`offsite.provider.${v}`)
     }

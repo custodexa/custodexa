@@ -73,7 +73,7 @@ type Metrics struct {
 	// --- 離機儲存（註冊分兩面，見 RegisterOffsiteInventory） ---
 	//
 	// **兩面分開註冊**：停用態（有歷史世代、零現行世代）下 worker 不存在，
-	// 上傳車道的序列若還在，採集端看到的是「待上傳恆為 0、最後成功時刻永遠停在
+	// 上傳佇列的序列若還在，採集端看到的是「待上傳恆為 0、最後成功時刻永遠停在
 	// 某個過去」——那與「一切正常且無事可做」在 PromQL 上無從分辨。存量與失敗面
 	// 則必須照常曝光：停用不代表既有物件不見了，取回仍在服務（停用態表）。
 	offsitePending           *prometheus.GaugeVec
@@ -143,10 +143,10 @@ func New() *Metrics {
 			Buckets: prometheus.DefBuckets,
 		}, []string{"method", "path"}),
 
-		// --- 離機儲存：上傳車道 ---
+		// --- 離機儲存：上傳佇列 ---
 		offsitePending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "custodexa_offsite_pending",
-			Help: "等待離機上傳的物件數，依種類與車道分。",
+			Help: "等待離機上傳的物件數，依種類與排入來源分。",
 		}, []string{"kind", "origin"}),
 		offsiteUploading: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "custodexa_offsite_uploading",
@@ -156,7 +156,7 @@ func New() *Metrics {
 		// 副本，而件數在穩定積壓時是平的——只有年齡會漲
 		offsiteOldestPendingAge: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "custodexa_offsite_oldest_pending_age_seconds",
-			Help: "最老一件待上傳物件的等待秒數，依車道分；該車道無待上傳件時序列缺席。",
+			Help: "最老一件待上傳物件的等待秒數，依排入來源分；該排入來源無待上傳件時序列缺席。",
 		}, []string{"origin"}),
 		offsiteLastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "custodexa_offsite_last_success_timestamp_seconds",
@@ -396,7 +396,7 @@ func (m *Metrics) RegisterStage2() {
 
 // --- 離機儲存（停用態表） ---
 
-// OffsiteKindOrigin 「種類×車道」的標籤鍵（快照的 map 鍵，避免字串拼接）。
+// OffsiteKindOrigin 「種類×佇列」的標籤鍵（快照的 map 鍵，避免字串拼接）。
 type OffsiteKindOrigin struct {
 	Kind   string
 	Origin string
@@ -408,9 +408,9 @@ type OffsiteKindOrigin struct {
 // 帳冊的 `StateCount` 由組裝根轉成本結構後交進來。
 //
 // **缺席與 0 是兩件事**：map 內沒有的鍵不會被寫成 0——`Reset` 之後只寫有值的鍵，
-// 故「該車道目前沒有待上傳件」在採集端是序列消失而非值為 0。
+// 故「該佇列目前沒有待上傳件」在採集端是序列消失而非值為 0。
 type OffsiteQueueSnapshot struct {
-	// Pending 待上傳件數（種類×車道）
+	// Pending 待上傳件數（種類×佇列）
 	Pending map[OffsiteKindOrigin]float64
 	// Uploading 持有租約、上傳中的件數（依種類）
 	Uploading map[string]float64
@@ -420,7 +420,7 @@ type OffsiteQueueSnapshot struct {
 	IntegrityMismatch map[string]float64
 	// Foreign 屬已退役世代的件數（依種類）
 	Foreign map[string]float64
-	// OldestPendingAgeSeconds 各車道最老待上傳件的年齡；無待上傳件的車道**不出現**
+	// OldestPendingAgeSeconds 各佇列最老待上傳件的年齡；無待上傳件的佇列**不出現**
 	OldestPendingAgeSeconds map[string]float64
 	// Generations 設定世代總列數（含已退役者）
 	Generations float64
@@ -456,7 +456,7 @@ func (m *Metrics) RegisterOffsiteInventory() {
 	})
 }
 
-// RegisterOffsiteUploadLane 註冊上傳車道的離機序列（**僅在有現行世代時**）。
+// RegisterOffsiteUploadLane 註冊上傳佇列的離機序列（**僅在有現行世代時**）。
 //
 // 停用態下 worker 不存在，這些序列若還在，採集端讀到的是「待上傳恆為 0、
 // 最後成功時刻永遠停在某個過去」——與「一切正常且無事可做」無從分辨，

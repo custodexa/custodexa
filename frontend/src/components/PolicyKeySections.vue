@@ -88,7 +88,7 @@
           type="warning"
           size="small"
         >
-          <el-icon><Warning /></el-icon>
+          <el-icon><CircleAlert /></el-icon>
           {{ $t('policyKeySections.nonCompliant') }}
         </el-tag>
         <!-- 電支基準第二欄：與 PCI 並列而非取代，
@@ -104,7 +104,7 @@
           type="warning"
           size="small"
         >
-          <el-icon><Warning /></el-icon>
+          <el-icon><CircleAlert /></el-icon>
           {{ $t('policyKeySections.nonCompliantEPayment') }}
         </el-tag>
         <span
@@ -123,7 +123,7 @@
 </template>
 
 <script setup>
-import { Warning } from '@element-plus/icons-vue'
+import { CircleAlert } from 'lucide-vue-next'
 import {
   enumLabel,
   formatValue,

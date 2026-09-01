@@ -2501,7 +2501,7 @@ CREATE TABLE offsite_profiles (
 - **現行世代是「至多一列（0 或 1）」而不是「恰一列」**。零現行世代是合法終局態——管理介面的
   「停止離機」把現行列填上 `retired_at` 而**不建新列**。零列因此有兩種語義，由帳冊區分：
   `offsite_profiles` 完全零列＝**從未設定**（「未設定＝行為完全不變」的機械保證只綁這一格）；
-  有歷史世代而零現行世代＝**停用態**——不建上傳 worker、上傳車道指標缺席，但取回子系統照常組裝、
+  有歷史世代而零現行世代＝**停用態**——不建上傳 worker、上傳佇列指標缺席，但取回子系統照常組裝、
   歷史物件仍可取回。
 - **主鍵取 `generation_id` 而非指紋**：指紋是連線參數的函數，`s3 → gcs → 切回原 s3 參數`
   會算出與已退役列相同的值；以指紋為主鍵則第三個世代必然撞主鍵，改成「重啟舊列」
@@ -2571,7 +2571,7 @@ CREATE TABLE offsite_objects (
 | `ID` | uint | `primarykey;index:idx_offsite_objects_due,priority:3,where:state = 'pending'` | `-` | 主鍵 |
 | `Kind` | string | `size:16;not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:1` | `-` | 上傳目標種類：`recording`（擁有者＝`sessions.id`）／`export`（擁有者＝`audit_export_jobs.id`） |
 | `OwnerID` | uint | `not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:2` | `-` | 擁有者列的主鍵（依 `kind` 解讀；邏輯外鍵，不建 FK 約束） |
-| `Origin` | string | `size:8;not null;index:idx_offsite_objects_due,priority:1,where:state = 'pending'` | `-` | 排入來源：`live`（會話結束／打包完成當下即排入）／`backfill`（回填掃描排入）。雙車道配額的判準 |
+| `Origin` | string | `size:8;not null;index:idx_offsite_objects_due,priority:1,where:state = 'pending'` | `-` | 排入來源：`live`（會話結束／打包完成當下即排入）／`backfill`（回填掃描排入）。雙佇列配額的判準 |
 | `Provider` | string | `size:8;not null` | `-` | 上傳當時的 provider；**冗餘的明文身分欄**（對帳與管理介面顯示直讀，免 join） |
 | `StorageGenerationID` | uint | `not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:3` | `-` | 上傳當時的設定世代（→ `offsite_profiles.generation_id` 的邏輯外鍵，不建 FK 約束）。**取回一律以本欄取世代、用該世代自己的憑證與 driver**；對不到世代列時 fail-close 拒絕，不退回「用現行設定猜」 |
 | `Bucket` | string | `size:255;not null` | `-` | 上傳當時的 bucket（設定世代變更後仍可指認） |
@@ -2617,7 +2617,7 @@ pending → uploading → uploaded → local_purged
   ——同一擁有者在同一設定世代只追蹤一個物件，重傳更新同列；世代含在鍵內，故新世代可有新物件而舊世代的列不被覆蓋。
   排入帳冊時的冪等衝突目標。**不得以可重複的指紋取代世代識別**——「A→B→A」的第一與第三世代指紋相同，
   以它作鍵會把兩個世代的物件混為一談而在取回時拿到另一個世代的憑證。
-- `idx_offsite_objects_due`＝**部分索引** `(origin, next_attempt_at, id) WHERE (state = 'pending')`——雙車道取件。
+- `idx_offsite_objects_due`＝**部分索引** `(origin, next_attempt_at, id) WHERE (state = 'pending')`——雙佇列取件。
 - `idx_offsite_objects_lease`＝**部分索引** `(lease_until) WHERE (state = 'uploading')`——租約回收。
 - `idx_offsite_objects_state`＝`(state)`——各態計數與失敗清單。
 

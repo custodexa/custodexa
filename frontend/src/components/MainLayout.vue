@@ -28,8 +28,8 @@
           @click="toggleCollapse"
         >
           <el-icon>
-            <Expand v-if="isCollapsed" />
-            <Fold v-else />
+            <PanelLeftOpen v-if="isCollapsed" />
+            <PanelLeftClose v-else />
           </el-icon>
         </el-button>
       </div>
@@ -82,7 +82,7 @@
           <el-dropdown @command="setLanguage">
             <span class="lang-switch">
               {{ LOCALE_LABELS[locale] }}
-              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              <el-icon class="el-icon--right"><ChevronDown /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
@@ -99,9 +99,9 @@
           </el-dropdown>
           <el-dropdown @command="handleCommand">
             <span class="user-info">
-              <el-icon><User /></el-icon>
+              <el-icon><CircleUserRound /></el-icon>
               {{ userName }}
-              <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              <el-icon class="el-icon--right"><ChevronDown /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
@@ -138,28 +138,41 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+// 側欄選單 icon 一律取自 lucide-vue-next（ISC；已入第三方授權清單）：
+// 語彙比 Element Plus 內建集合寬，讓每個選單項有專屬 icon、同視角下不重複
 import {
-  Odometer,
-  Lock,
-  Monitor,
-  Connection,
-  Document,
-  User,
-  UserFilled,
-  ArrowDown,
-  Key,
-  Tickets,
-  Bell,
-  Expand,
-  Fold,
+  ChevronDown,
+  Gauge,
+  SquareTerminal,
+  Server,
+  TicketCheck,
+  RotateCcwKey,
+  MonitorPlay,
+  Cable,
+  ClipboardList,
   Stamp,
-  Finished,
-  Position,
-  OfficeBuilding,
-  Search,
-  Download,
-  Upload,
-} from '@element-plus/icons-vue'
+  TextSearch,
+  HardDriveDownload,
+  ScrollText,
+  Terminal,
+  BellRing,
+  ShieldCheck,
+  ListChecks,
+  User,
+  UserCog,
+  Users,
+  UserCheck,
+  IdCard,
+  FolderTree,
+  Shield,
+  SlidersHorizontal,
+  KeyRound,
+  Waypoints,
+  CloudUpload,
+  CircleUserRound,
+  PanelLeftOpen,
+  PanelLeftClose,
+} from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
@@ -187,10 +200,10 @@ const menuGroups = [
   {
     labelKey: 'menu.group.overview',
     items: [
-      { path: '/dashboard', titleKey: 'menu.dashboard', icon: Odometer },
+      { path: '/dashboard', titleKey: 'menu.dashboard', icon: Gauge },
       // 工作區入口：同分頁導航，工作區「◀」返回；
       // 工作區本體為純連線面，不因此新增任何門戶功能
-      { path: '/workspace', titleKey: 'menu.workspace', icon: Position },
+      { path: '/workspace', titleKey: 'menu.workspace', icon: SquareTerminal },
     ],
   },
   {
@@ -201,10 +214,10 @@ const menuGroups = [
         path: '/assets',
         titleKey: 'menu.assets',
         userTitleKey: 'menu.myAssets',
-        icon: Monitor,
+        icon: Server,
       },
-      { path: '/authorizations', titleKey: 'menu.authorizations', icon: Key, adminOnly: true },
-      { path: '/change-secret-plans', titleKey: 'menu.changeSecretPlans', icon: Lock, adminOnly: true },
+      { path: '/authorizations', titleKey: 'menu.authorizations', icon: TicketCheck, adminOnly: true },
+      { path: '/change-secret-plans', titleKey: 'menu.changeSecretPlans', icon: RotateCcwKey, adminOnly: true },
     ],
   },
   {
@@ -215,13 +228,13 @@ const menuGroups = [
       {
         path: '/sessions',
         titleKey: 'menu.sessions',
-        icon: Connection,
+        icon: MonitorPlay,
         roles: ['admin', 'auditor'],
       },
       {
         path: '/my-connections',
         titleKey: 'menu.myConnections',
-        icon: Connection,
+        icon: Cable,
         hideRoles: ['admin', 'auditor'],
       },
       {
@@ -229,7 +242,7 @@ const menuGroups = [
         // 與我的連線同屬一般 user 自助入口
         path: '/my-requests',
         titleKey: 'menu.myRequests',
-        icon: Tickets,
+        icon: ClipboardList,
         hideRoles: ['admin', 'auditor'],
       },
     ],
@@ -259,7 +272,7 @@ const menuGroups = [
         // 工作台與它們並存而非取代
         path: '/audit/workbench',
         titleKey: 'menu.auditWorkbench',
-        icon: Search,
+        icon: TextSearch,
         roles: ['admin', 'auditor'],
       },
       {
@@ -267,40 +280,40 @@ const menuGroups = [
         // 在這裡取件，兩者是同一條動線的前後兩段
         path: '/audit/exports',
         titleKey: 'menu.auditExports',
-        icon: Download,
+        icon: HardDriveDownload,
         roles: ['admin', 'auditor'],
       },
       // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
       {
         path: '/audit-logs',
         titleKey: 'menu.auditLogs',
-        icon: Document,
+        icon: ScrollText,
         roles: ['admin', 'auditor'],
       },
       {
         path: '/commands',
         titleKey: 'menu.commands',
-        icon: Tickets,
+        icon: Terminal,
         roles: ['admin', 'auditor'],
       },
       {
         path: '/alerts',
         titleKey: 'menu.alerts',
-        icon: Bell,
+        icon: BellRing,
         roles: ['admin', 'auditor'],
       },
       {
         // 檢查點驗證（audit-checkpoint-chain）：序列完整性證明，稽核職能
         path: '/checkpoint-verification',
         titleKey: 'menu.checkpointVerification',
-        icon: Finished,
+        icon: ShieldCheck,
         roles: ['admin', 'auditor'],
       },
       {
         // 存取複審：稽核職能歸審計區
         path: '/access-reviews',
         titleKey: 'menu.accessReviews',
-        icon: Finished,
+        icon: ListChecks,
         roles: ['admin', 'auditor'],
       },
     ],
@@ -311,14 +324,14 @@ const menuGroups = [
     adminOnly: true,
     items: [
       { path: '/users', titleKey: 'menu.users', icon: User, adminOnly: true },
-      { path: '/roles', titleKey: 'menu.roles', icon: UserFilled, adminOnly: true },
-      { path: '/user-groups', titleKey: 'menu.userGroups', icon: UserFilled, adminOnly: true },
-      { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: Stamp, adminOnly: true },
+      { path: '/roles', titleKey: 'menu.roles', icon: UserCog, adminOnly: true },
+      { path: '/user-groups', titleKey: 'menu.userGroups', icon: Users, adminOnly: true },
+      { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: UserCheck, adminOnly: true },
       {
         // OIDC 身分提供者
         path: '/oidc-providers',
         titleKey: 'menu.oidcProviders',
-        icon: Connection,
+        icon: IdCard,
         adminOnly: true,
       },
       {
@@ -327,7 +340,7 @@ const menuGroups = [
         // 與 OIDC/SAML2 這類瀏覽器重導式 SSO 不同層，混為一組會誤導設定者
         path: '/ldap-directory',
         titleKey: 'menu.ldapDirectory',
-        icon: OfficeBuilding,
+        icon: FolderTree,
         adminOnly: true,
       },
     ],
@@ -339,25 +352,25 @@ const menuGroups = [
       {
         path: '/security-policies',
         titleKey: 'menu.securityPolicies',
-        icon: Lock,
+        icon: Shield,
         adminOnly: true,
       },
       {
         path: '/access-control',
         titleKey: 'menu.accessControl',
-        icon: Stamp,
+        icon: SlidersHorizontal,
         adminOnly: true,
       },
       {
         path: '/key-management',
         titleKey: 'menu.keyManagement',
-        icon: Key,
+        icon: KeyRound,
         adminOnly: true,
       },
       {
         path: '/transmission-inventory',
         titleKey: 'menu.transmissionInventory',
-        icon: Connection,
+        icon: Waypoints,
         adminOnly: true,
       },
       {
@@ -365,7 +378,7 @@ const menuGroups = [
         // 緊接金鑰管理與傳輸清冊——三者同屬「證據放哪裡、怎麼過去、誰解得開」
         path: '/offsite-storage',
         titleKey: 'menu.offsiteStorage',
-        icon: Upload,
+        icon: CloudUpload,
         adminOnly: true,
       },
     ],

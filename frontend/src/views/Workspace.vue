@@ -140,7 +140,7 @@
               :aria-label="$t('workspace.shareSession')"
               @click="activeTermTab.shareVisible = true"
             >
-              <el-icon><Share /></el-icon>
+              <el-icon><Share2 /></el-icon>
             </button>
           </el-tooltip>
           <el-tooltip
@@ -153,7 +153,7 @@
               :aria-label="$t('workspace.fileManager')"
               @click="activeTermTab.fileVisible = true"
             >
-              <el-icon><FolderOpened /></el-icon>
+              <el-icon><FolderOpen /></el-icon>
             </button>
           </el-tooltip>
           <el-tooltip
@@ -166,7 +166,7 @@
               :aria-label="$t('workspace.systemMonitor')"
               @click="activeTermTab.statsVisible = true"
             >
-              <el-icon><DataLine /></el-icon>
+              <el-icon><Activity /></el-icon>
             </button>
           </el-tooltip>
           <el-tooltip :content="$t('workspace.commandSnippets')">
@@ -176,7 +176,7 @@
               :aria-label="$t('workspace.commandSnippets')"
               @click="activeTermTab.snippetVisible = true"
             >
-              <el-icon><Tickets /></el-icon>
+              <el-icon><FileCode /></el-icon>
             </button>
           </el-tooltip>
           <el-tooltip
@@ -334,7 +334,8 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage, t } from '@/i18n'
-import { Share, FolderOpened, DataLine, Tickets, Upload, Download } from '@element-plus/icons-vue'
+// 工具列 icon 與側欄同取 lucide-vue-next，維持全站 icon 體系一致
+import { Share2, FolderOpen, Activity, FileCode, Upload, Download } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import Sortable from 'sortablejs'

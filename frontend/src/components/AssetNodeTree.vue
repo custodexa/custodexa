@@ -49,7 +49,7 @@
               class="node-menu-trigger"
               @click.stop
             >
-              <MoreFilled />
+              <Ellipsis />
             </el-icon>
             <template #dropdown>
               <el-dropdown-menu>
@@ -178,7 +178,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, MoreFilled } from '@element-plus/icons-vue'
+import { Plus, Ellipsis } from 'lucide-vue-next'
 import { t } from '@/i18n'
 import {
   getAssetList,

@@ -115,7 +115,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Search } from 'lucide-vue-next'
 import { renameAssetTag, deleteAssetTag } from '@/api/assets'
 import { t } from '@/i18n'
 

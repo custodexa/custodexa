@@ -7,7 +7,7 @@
       <el-dropdown @command="setLanguage">
         <span class="lang-switch-label">
           {{ LOCALE_LABELS[locale] }}
-          <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          <el-icon class="el-icon--right"><ChevronDown /></el-icon>
         </span>
         <template #dropdown>
           <el-dropdown-menu>
@@ -45,7 +45,7 @@
         class="loss-callout"
       >
         <el-icon class="loss-icon">
-          <WarningFilled />
+          <TriangleAlert />
         </el-icon>
         <div>
           <p class="loss-title">
@@ -362,7 +362,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, WarningFilled } from '@element-plus/icons-vue'
+import { ChevronDown, TriangleAlert } from 'lucide-vue-next'
 import { getSealStatus, unseal } from '@/api/seal'
 import { resolveApiError } from '@/api/error'
 import { formatDateTime } from '@/utils/format'

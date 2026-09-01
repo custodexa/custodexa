@@ -6,7 +6,7 @@
     >
       <template #actions>
         <el-button @click="handleRefresh">
-          <el-icon><Refresh /></el-icon>
+          <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
@@ -312,7 +312,7 @@
           @click="$router.push('/workspace')"
         >
           <el-icon :size="22">
-            <Position />
+            <SquareTerminal />
           </el-icon>
           <div>
             <div class="action-title">
@@ -328,7 +328,7 @@
           @click="$router.push('/assets')"
         >
           <el-icon :size="22">
-            <Monitor />
+            <Server />
           </el-icon>
           <div>
             <div class="action-title">
@@ -345,7 +345,7 @@
           @click="$router.push('/sessions')"
         >
           <el-icon :size="22">
-            <Connection />
+            <MonitorPlay />
           </el-icon>
           <div>
             <div class="action-title">
@@ -362,7 +362,7 @@
           @click="$router.push('/my-connections')"
         >
           <el-icon :size="22">
-            <Connection />
+            <Cable />
           </el-icon>
           <div>
             <div class="action-title">
@@ -379,7 +379,7 @@
           @click="$router.push('/my-requests')"
         >
           <el-icon :size="22">
-            <Tickets />
+            <ClipboardList />
           </el-icon>
           <div>
             <div class="action-title">
@@ -396,7 +396,7 @@
           @click="$router.push('/audit-logs')"
         >
           <el-icon :size="22">
-            <Document />
+            <ScrollText />
           </el-icon>
           <div>
             <div class="action-title">
@@ -416,19 +416,21 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Monitor,
-  Connection,
-  Document,
+  Server,
+  Cable,
+  FileText,
   Timer,
   Bell,
-  Tickets,
+  ClipboardList,
   Stamp,
-  Finished,
-  VideoCamera,
-  FolderOpened,
-  Position,
-  Refresh,
-} from '@element-plus/icons-vue'
+  ClipboardCheck,
+  Video,
+  FolderOpen,
+  SquareTerminal,
+  MonitorPlay,
+  ScrollText,
+  RefreshCw,
+} from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import { BRAND } from '@/brand'
 import EmptyState from '@/components/EmptyState.vue'
@@ -472,7 +474,7 @@ const statCards = computed(() => {
       : t('dashboard.statConnectableAssets'),
     to: '/assets',
     value: assetTotal.value,
-    icon: Monitor,
+    icon: Server,
     color: 'var(--ot-primary)',
     bg: 'var(--ot-primary-dim)',
   }
@@ -484,7 +486,7 @@ const statCards = computed(() => {
         label: t('menu.myConnections'),
         to: '/my-connections',
         value: myConnectionTotal.value,
-        icon: Connection,
+        icon: Cable,
         color: 'var(--ot-success)',
         bg: 'rgba(78, 196, 122, 0.15)',
       },
@@ -492,7 +494,7 @@ const statCards = computed(() => {
         label: t('dashboard.statMyPendingRequests'),
         to: '/my-requests',
         value: myPendingRequests.value,
-        icon: Tickets,
+        icon: ClipboardList,
         color: 'var(--ot-warning)',
         bg: 'rgba(217, 169, 62, 0.15)',
       },
@@ -504,7 +506,7 @@ const statCards = computed(() => {
       label: t('sessions.tabActive'),
       to: '/sessions',
       value: activeSessions.value,
-      icon: Connection,
+      icon: Cable,
       color: 'var(--ot-success)',
       bg: 'rgba(78, 196, 122, 0.15)',
     },
@@ -520,7 +522,7 @@ const statCards = computed(() => {
       label: t('dashboard.statTotalSessions'),
       to: '/sessions',
       value: totalSessions.value,
-      icon: Document,
+      icon: FileText,
       color: 'var(--ot-info)',
       bg: 'rgba(139, 148, 158, 0.15)',
     },
@@ -539,7 +541,7 @@ const statCards = computed(() => {
       value: recordingStorageBytes.value === null
         ? '-'
         : formatBytes(recordingStorageBytes.value),
-      icon: FolderOpened,
+      icon: FolderOpen,
       color: 'var(--ot-info)',
       bg: 'rgba(139, 148, 158, 0.15)',
     },
@@ -580,7 +582,7 @@ const backlogCards = computed(() => {
         label: t('dashboard.backlogRecordingFailures'),
         to: '/sessions',
         value: recordingFailures.value,
-        icon: VideoCamera,
+        icon: Video,
         color: recordingFailures.value > 0 ? 'var(--ot-danger)' : 'var(--ot-info)',
         bg:
           recordingFailures.value > 0
@@ -593,7 +595,7 @@ const backlogCards = computed(() => {
           : t('dashboard.backlogLastReview'),
         to: '/access-reviews',
         value: reviewDaysAgo.value < 0 ? '—' : reviewDaysAgo.value,
-        icon: Finished,
+        icon: ClipboardCheck,
         color: reviewOverdue.value ? 'var(--ot-danger)' : 'var(--ot-info)',
         bg: reviewOverdue.value
           ? 'rgba(229, 96, 79, 0.15)'

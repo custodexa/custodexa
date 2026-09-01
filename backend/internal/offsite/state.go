@@ -14,7 +14,7 @@ const (
 	KindExport = "export"
 )
 
-// 排入來源（`offsite_objects.origin`）——雙車道配額的判準。
+// 排入來源（`offsite_objects.origin`）——雙佇列配額的判準。
 const (
 	// OriginLive 會話結束／打包完成當下即排入
 	OriginLive = "live"

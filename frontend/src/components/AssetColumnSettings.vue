@@ -9,7 +9,7 @@
         class="column-gear"
         :title="$t('columnSettings.gearTooltip')"
       >
-        <el-icon><Setting /></el-icon>
+        <el-icon><Settings /></el-icon>
         {{ $t('columnSettings.button') }}
       </el-button>
     </template>
@@ -38,7 +38,7 @@
 </template>
 
 <script setup>
-import { Setting } from '@element-plus/icons-vue'
+import { Settings } from 'lucide-vue-next'
 
 // 欄位自訂齒輪：池按角色由父層給定；
 // 持久化（localStorage 角色分域 key）由父層負責，本元件純呈現

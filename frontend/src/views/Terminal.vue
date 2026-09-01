@@ -12,7 +12,7 @@
         class="is-loading"
         :size="40"
       >
-        <Loading />
+        <LoaderCircle />
       </el-icon>
       <p>{{ $t('terminal.loading') }}</p>
     </div>
@@ -98,7 +98,7 @@ import { ref, computed, onMounted } from 'vue'
 import { BRAND } from '@/brand'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { LoaderCircle } from 'lucide-vue-next'
 import GuacamoleClient from '@/components/GuacamoleClient.vue'
 import SshTerminal from '@/components/SshTerminal.vue'
 import FileManager from '@/components/FileManager.vue'

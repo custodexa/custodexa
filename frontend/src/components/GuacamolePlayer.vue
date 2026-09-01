@@ -15,7 +15,7 @@
         data-test="guac-seek-pending"
       >
         <el-icon class="is-loading">
-          <Loading />
+          <LoaderCircle />
         </el-icon>
         <span>{{ $t('guacPlayer.seeking') }}</span>
       </div>
@@ -28,7 +28,7 @@
         <div class="control-row">
           <!-- Play/Pause Button -->
           <el-button
-            :icon="isPlaying ? VideoPause : VideoPlay"
+            :icon="isPlaying ? CirclePause : CirclePlay"
             size="small"
             @click="togglePlay"
           >
@@ -80,7 +80,7 @@
 
           <!-- Fullscreen Toggle -->
           <el-button
-            :icon="FullScreen"
+            :icon="Maximize"
             size="small"
             @click="toggleFullscreen"
           >
@@ -99,7 +99,7 @@
         class="is-loading"
         :size="40"
       >
-        <Loading />
+        <LoaderCircle />
       </el-icon>
       <p>{{ $t('guacPlayer.loading') }}</p>
     </div>
@@ -130,7 +130,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Loading, VideoPlay, VideoPause, FullScreen } from '@element-plus/icons-vue'
+import { LoaderCircle, CirclePlay, CirclePause, Maximize } from 'lucide-vue-next'
 import { t } from '@/i18n'
 
 // 使用全局 Guacamole 對象（由 index.html 中的 guacamole-1.5.5.min.js 提供）

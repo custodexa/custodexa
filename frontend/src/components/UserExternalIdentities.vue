@@ -161,7 +161,7 @@
               :aria-label="$t('externalIdentities.copy')"
               @click="copySubject(row.subject)"
             >
-              <el-icon><CopyDocument /></el-icon>
+              <el-icon><Copy /></el-icon>
             </el-button>
           </div>
         </template>
@@ -222,7 +222,7 @@
               :disabled="busy"
             >
               {{ $t('common.more') }}<el-icon class="more-caret">
-                <ArrowDown />
+                <ChevronDown />
               </el-icon>
             </el-button>
             <template #dropdown>
@@ -241,7 +241,7 @@
           v-if="loadError"
           :title="$t('externalIdentities.loadErrorTitle')"
           :hint="$t('externalIdentities.loadErrorHint')"
-          :icon="WarningFilled"
+          :icon="TriangleAlert"
         >
           <template #action>
             <el-button
@@ -396,7 +396,7 @@
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CopyDocument, ArrowDown, WarningFilled } from '@element-plus/icons-vue'
+import { Copy, ChevronDown, TriangleAlert } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'

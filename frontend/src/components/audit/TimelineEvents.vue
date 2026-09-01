@@ -38,7 +38,7 @@
         data-test="events-truncated"
       >
         <el-icon class="events-truncated-icon">
-          <WarningFilled />
+          <TriangleAlert />
         </el-icon>
         <span class="events-truncated-text">
           {{ $t('auditorWorkbench.events.truncatedBrief') }}
@@ -133,7 +133,7 @@
                 class="clipboard-note-hint"
                 data-test="clipboard-note-hint"
               >
-                <InfoFilled />
+                <Info />
               </el-icon>
             </el-tooltip>
             <router-link
@@ -261,7 +261,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { InfoFilled, WarningFilled } from '@element-plus/icons-vue'
+import { Info, TriangleAlert } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import SourceAddressCell from './SourceAddressCell.vue'
 import { buildAddressPivotLink } from './timelineQuery'

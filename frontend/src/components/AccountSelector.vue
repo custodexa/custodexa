@@ -34,7 +34,7 @@
             v-if="row.is_default"
             class="acct-sel__star"
           >
-            <StarFilled />
+            <Star fill="currentColor" />
           </el-icon>
           <span class="acct-sel__name">{{ row.username }}</span>
           <el-tag
@@ -91,7 +91,7 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
-import { StarFilled } from '@element-plus/icons-vue'
+import { Star } from 'lucide-vue-next'
 import { accountCredentialLabel, accountCredentialTagType } from '@/constants/assetAccounts'
 
 const props = defineProps({

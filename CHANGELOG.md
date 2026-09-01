@@ -2,6 +2,16 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.1.2 — a cleaner look across the interface (2026-09-02)
+
+No schema change. No migration runs.
+
+### Interface
+
+- Icons across the sidebar, the dashboard, and the workspace toolbar were
+  redrawn from a single open-source icon set. Entries that used to share an
+  icon now each carry their own, so pages are easier to tell apart at a glance.
+
 ## 1.1.1 — the upload worker starts when off-site storage is first configured (2026-09-01)
 
 No schema change. No migration runs.
