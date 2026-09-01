@@ -109,9 +109,9 @@ func main() {
 			log.Fatalf("建立段 1 router 失敗（拒絕開放監聽）: %v", err)
 		}
 		registerRoutes(r, sealedStageOneDeps(stageOneRouteConfig{
-			corsMiddleware:    s1.corsMiddleware,
-			metrics:           s1.metrics,
-			metricsToken:      s1.cfg.Server.MetricsToken,
+			corsMiddleware: s1.corsMiddleware,
+			metrics:        s1.metrics,
+			metricsToken:   s1.cfg.Server.MetricsToken,
 		}, w.main))
 		swap.Set(r)
 		if w.admin != nil {
@@ -120,10 +120,10 @@ func main() {
 				log.Fatalf("建立解封端點獨立監聽的 router 失敗（拒絕開放監聽）: %v", err)
 			}
 			registerRoutes(sr, sealedStageOneDeps(stageOneRouteConfig{
-				corsMiddleware:    s1.corsMiddleware,
-				metrics:           s1.metrics,
-				metricsToken:      s1.cfg.Server.MetricsToken,
-				sealOnly:          true,
+				corsMiddleware: s1.corsMiddleware,
+				metrics:        s1.metrics,
+				metricsToken:   s1.cfg.Server.MetricsToken,
+				sealOnly:       true,
 			}, w.admin))
 			sealOnlyHandler = sr
 		}
@@ -474,8 +474,8 @@ type routeDeps struct {
 	corsMiddleware gin.HandlerFunc
 	// sealGate 封印閘：註冊為**最外層**
 	// 全域中間件。非白名單路由於封印期一律 503＋機器碼。
-	sealGate          gin.HandlerFunc
-	auditLogEnabled   bool
+	sealGate        gin.HandlerFunc
+	auditLogEnabled bool
 	// metrics 營運指標集合。**段 1 與段 2 共用同一個實例**
 	// ——換 router 時若另建一份，封印期累計的計數會在解封當下歸零，
 	// 而 counter 回退在採集端會被讀成「行程重啟」。
@@ -513,26 +513,29 @@ type routeDeps struct {
 	notificationChannel   *api.NotificationChannelHandler
 	oidc                  *api.OIDCHandler
 	ldapDirectory         *api.LDAPDirectoryHandler
+	// offsiteStorage 離機儲存管理（evidence-offsite-storage）：admin 限定，
+	// 設定世代 CRUD＋佇列狀態＋失敗清單＋連線測試＋重試
+	offsiteStorage *api.OffsiteStorageHandler
 	// instanceGuard 單實例守衛全貌（admin 限定、唯讀；橫幅出現時管理者取一次的細節出口）
-	instanceGuard         *api.InstanceGuardHandler
-	keyManagement         *api.KeyManagementHandler
-	snippet               *api.SnippetHandler
-	assetGroup            *api.AssetGroupHandler
-	userGroup             *api.UserGroupHandler
-	user                  *api.UserHandler
-	role                  *api.RoleHandler
-	authorization         *api.AuthorizationHandler
-	recording             *api.RecordingHandler
-	auditLog              *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
-	exportSigning         *api.ExportSigningHandler
-	auditExport           *api.AuditExportHandler
-	accessReview          *api.AccessReviewHandler
-	hostKey               *api.HostKeyHandler
-	clipboard             *api.ClipboardEventHandler
-	auditTimeline         *api.AuditTimelineHandler
-	changeSecret          *api.ChangeSecretHandler
-	accessRequest         *api.AccessRequestHandler
-	sftp                  *api.SFTPHandler
+	instanceGuard *api.InstanceGuardHandler
+	keyManagement *api.KeyManagementHandler
+	snippet       *api.SnippetHandler
+	assetGroup    *api.AssetGroupHandler
+	userGroup     *api.UserGroupHandler
+	user          *api.UserHandler
+	role          *api.RoleHandler
+	authorization *api.AuthorizationHandler
+	recording     *api.RecordingHandler
+	auditLog      *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
+	exportSigning *api.ExportSigningHandler
+	auditExport   *api.AuditExportHandler
+	accessReview  *api.AccessReviewHandler
+	hostKey       *api.HostKeyHandler
+	clipboard     *api.ClipboardEventHandler
+	auditTimeline *api.AuditTimelineHandler
+	changeSecret  *api.ChangeSecretHandler
+	accessRequest *api.AccessRequestHandler
+	sftp          *api.SFTPHandler
 
 	// 連線層 handlers（WebSocket 與 token 簽發）
 	conn *proxy.ConnectionHandler
@@ -632,6 +635,9 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// LDAP 目錄設定：與 OIDC provider 同屬
 		// 身分管理面的 admin-only 設定；singleton 資源（無 :id、無集合式建立）
 		d.ldapDirectory.RegisterRoutes(v1, d.authService)
+		// 離機儲存：與 LDAP 目錄同屬 admin-only 的基礎設施設定面；
+		// **恆註冊**——未設定時各端點回空狀態，管理員才有入口把它設定起來
+		d.offsiteStorage.RegisterRoutes(v1, d.authService)
 		// 單實例守衛全貌：admin 限定、唯讀、每次呼叫
 		// 留一列審計讀取；介面只在橫幅出現時取一次，粗狀態的輪詢走 /seal/status
 		d.instanceGuard.RegisterRoutes(v1, d.authService)

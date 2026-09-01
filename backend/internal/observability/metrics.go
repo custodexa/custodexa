@@ -7,6 +7,7 @@ package observability
 
 import (
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -69,6 +70,29 @@ type Metrics struct {
 	httpRequests *prometheus.CounterVec
 	httpDuration *prometheus.HistogramVec
 
+	// --- 離機儲存（註冊分兩面，見 RegisterOffsiteInventory） ---
+	//
+	// **兩面分開註冊**：停用態（有歷史世代、零現行世代）下 worker 不存在，
+	// 上傳車道的序列若還在，採集端看到的是「待上傳恆為 0、最後成功時刻永遠停在
+	// 某個過去」——那與「一切正常且無事可做」在 PromQL 上無從分辨。存量與失敗面
+	// 則必須照常曝光：停用不代表既有物件不見了，取回仍在服務（停用態表）。
+	offsitePending           *prometheus.GaugeVec
+	offsiteUploading         *prometheus.GaugeVec
+	offsiteOldestPendingAge  *prometheus.GaugeVec
+	offsiteLastSuccess       prometheus.Gauge
+	offsiteUploads           *prometheus.CounterVec
+	offsiteUploadedBytes     *prometheus.CounterVec
+	offsiteLeaseExpired      *prometheus.CounterVec
+	offsiteFailed            *prometheus.GaugeVec
+	offsiteIntegrityMismatch *prometheus.GaugeVec
+	offsiteForeign           *prometheus.GaugeVec
+	offsiteGenerations       prometheus.Gauge
+	offsiteSpoolBytes        prometheus.Gauge
+	offsiteCredentialState   *prometheus.GaugeVec
+
+	offsiteInventoryOnce  sync.Once
+	offsiteUploadLaneOnce sync.Once
+
 	// --- 注入的資料源 ---
 	mu                  sync.RWMutex
 	sealStateSource     SealStateSource
@@ -118,6 +142,75 @@ func New() *Metrics {
 			Help:    "HTTP 請求處理耗時分佈。",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"method", "path"}),
+
+		// --- 離機儲存：上傳車道 ---
+		offsitePending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_pending",
+			Help: "等待離機上傳的物件數，依種類與車道分。",
+		}, []string{"kind", "origin"}),
+		offsiteUploading: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_uploading",
+			Help: "持有租約、上傳進行中的物件數，依種類分。",
+		}, []string{"kind"}),
+		// **回填積壓的年齡而非件數**：純「最新優先」下回填件可能長期停在本機唯一
+		// 副本，而件數在穩定積壓時是平的——只有年齡會漲
+		offsiteOldestPendingAge: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_oldest_pending_age_seconds",
+			Help: "最老一件待上傳物件的等待秒數，依車道分；該車道無待上傳件時序列缺席。",
+		}, []string{"origin"}),
+		offsiteLastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_last_success_timestamp_seconds",
+			Help: "最近一次離機上傳成功的 Unix 時刻。",
+		}),
+		// 每一次上傳**嘗試**的結果各計一次：同一件重試 N 次即計 N 次 failed。
+		// 若只計終態失敗，反覆重試但尚未到上限的積壓在此完全看不見
+		offsiteUploads: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "custodexa_offsite_uploads_total",
+			Help: "離機上傳嘗試的累計次數，依種類與結果分。",
+		}, []string{"kind", "result"}),
+		offsiteUploadedBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "custodexa_offsite_uploaded_bytes_total",
+			Help: "離機上傳成功的累計位元組數，依種類分。",
+		}, []string{"kind"}),
+		// 租約回收＝卡死訊號（行程被砍、deadline 被繞過）；它比「上傳失敗」更早
+		// 需要人看，故獨立成序列而不是併進 uploads_total 的 result
+		offsiteLeaseExpired: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "custodexa_offsite_lease_expired_total",
+			Help: "離機上傳租約到期被回收的累計次數，依種類分。",
+		}, []string{"kind"}),
+
+		// --- 離機儲存：存量與失敗面（停用態照常曝光） ---
+		offsiteFailed: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_failed",
+			Help: "離機上傳已達重試上限的物件數，依種類分。",
+		}, []string{"kind"}),
+		offsiteIntegrityMismatch: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_integrity_mismatch",
+			Help: "取回時內容與紀錄不符而遭拒付的物件數，依種類分。",
+		}, []string{"kind"}),
+		offsiteForeign: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_foreign",
+			Help: "屬於已退役儲存設定世代的物件數，依種類分。",
+		}, []string{"kind"}),
+		offsiteGenerations: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_generations",
+			Help: "離機儲存設定世代的總列數（含已退役者）。",
+		}),
+		offsiteSpoolBytes: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_spool_bytes",
+			Help: "取回暫存區佔用的位元組數。",
+		}),
+		// **enum 慣例（當前態 1、其餘 0）而非單一數值**，沿 custodexa_seal_state：
+		// 採集端可直接對「處於 failed」寫 PromQL，不必知道本系統有哪些態。
+		//
+		// **為何要有這一條**（指標清單原未列，接線時補上）：
+		// 紅線是「禁止把金鑰事故併吞成未設定」。少了它，「憑證解密失敗」
+		// 在指標面與「一切正常」只差在上傳失敗數會漲——而上傳失敗數在網路抖動時
+		// 也會漲，兩者無從分辨；金鑰事故需要的是立刻有人去看，不是等重試上限。
+		offsiteCredentialState: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "custodexa_offsite_credential_state",
+			Help: "離機儲存憑證的三態；目前所處的態為 1，其餘為 0。",
+		}, []string{"state"}),
 	}
 
 	// 行程執行期指標：封印期即成立（不依賴任何段 2 服務）
@@ -299,6 +392,155 @@ func (m *Metrics) RegisterStage2() {
 			return src()
 		}))
 	})
+}
+
+// --- 離機儲存（停用態表） ---
+
+// OffsiteKindOrigin 「種類×車道」的標籤鍵（快照的 map 鍵，避免字串拼接）。
+type OffsiteKindOrigin struct {
+	Kind   string
+	Origin string
+}
+
+// OffsiteQueueSnapshot 一次背景刷新讀到的離機帳冊切面。
+//
+// **純資料、不含業務型別**：本包不 import 任何業務模組（見套件註解），
+// 帳冊的 `StateCount` 由組裝根轉成本結構後交進來。
+//
+// **缺席與 0 是兩件事**：map 內沒有的鍵不會被寫成 0——`Reset` 之後只寫有值的鍵，
+// 故「該車道目前沒有待上傳件」在採集端是序列消失而非值為 0。
+type OffsiteQueueSnapshot struct {
+	// Pending 待上傳件數（種類×車道）
+	Pending map[OffsiteKindOrigin]float64
+	// Uploading 持有租約、上傳中的件數（依種類）
+	Uploading map[string]float64
+	// Failed 已達重試上限的件數（依種類）
+	Failed map[string]float64
+	// IntegrityMismatch 取回驗證不符的件數（依種類）
+	IntegrityMismatch map[string]float64
+	// Foreign 屬已退役世代的件數（依種類）
+	Foreign map[string]float64
+	// OldestPendingAgeSeconds 各車道最老待上傳件的年齡；無待上傳件的車道**不出現**
+	OldestPendingAgeSeconds map[string]float64
+	// Generations 設定世代總列數（含已退役者）
+	Generations float64
+	// SpoolBytes 取回暫存佔用
+	SpoolBytes float64
+	// CredentialState 憑證三態之一（unconfigured／ok／failed）；空字串＝視為 unconfigured
+	CredentialState string
+}
+
+// OffsiteCredentialStates 憑證三態的全集（enum 曝光需要全集才能讓採集端不必處理缺值）。
+//
+// **在此抄一份而非 import offsite**：本包不 import 業務模組（見套件註解）。
+// 兩處值不一致的風險由組裝根的接線測試承擔。
+var OffsiteCredentialStates = []string{"unconfigured", "ok", "failed"}
+
+// RegisterOffsiteInventory 註冊存量與失敗面的離機序列。
+//
+// **停用態（有歷史世代、零現行世代）也註冊**：停用不代表既有物件消失，
+// 失敗清單與取回仍在服務；把這一面一起藏起來，管理員在停用後就看不見
+// 「還有 12 件從未上傳成功」這種事實（停用態表）。
+//
+// 設定表零列（從未設定）時**兩面都不呼叫**，全部離機序列缺席。
+func (m *Metrics) RegisterOffsiteInventory() {
+	m.offsiteInventoryOnce.Do(func() {
+		m.registry.MustRegister(
+			m.offsiteFailed,
+			m.offsiteIntegrityMismatch,
+			m.offsiteForeign,
+			m.offsiteGenerations,
+			m.offsiteSpoolBytes,
+			m.offsiteCredentialState,
+		)
+	})
+}
+
+// RegisterOffsiteUploadLane 註冊上傳車道的離機序列（**僅在有現行世代時**）。
+//
+// 停用態下 worker 不存在，這些序列若還在，採集端讀到的是「待上傳恆為 0、
+// 最後成功時刻永遠停在某個過去」——與「一切正常且無事可做」無從分辨，
+// 而 `absent()` 能明確表達前者。
+func (m *Metrics) RegisterOffsiteUploadLane() {
+	m.offsiteUploadLaneOnce.Do(func() {
+		m.registry.MustRegister(
+			m.offsitePending,
+			m.offsiteUploading,
+			m.offsiteOldestPendingAge,
+			m.offsiteLastSuccess,
+			m.offsiteUploads,
+			m.offsiteUploadedBytes,
+			m.offsiteLeaseExpired,
+		)
+	})
+}
+
+// SetOffsiteQueue 由背景刷新任務寫入（單表 GROUP BY ＋暫存目錄統計，成本不對稱）。
+//
+// 未註冊的 collector 被寫入是無害的——曝光與否由註冊決定，故本方法在三種狀態
+// 下都可以照常呼叫，不必在呼叫端再判一次啟用。
+func (m *Metrics) SetOffsiteQueue(s OffsiteQueueSnapshot) {
+	setGaugeVec2(m.offsitePending, s.Pending)
+	setGaugeVec1(m.offsiteUploading, s.Uploading)
+	setGaugeVec1(m.offsiteFailed, s.Failed)
+	setGaugeVec1(m.offsiteIntegrityMismatch, s.IntegrityMismatch)
+	setGaugeVec1(m.offsiteForeign, s.Foreign)
+	setGaugeVec1(m.offsiteOldestPendingAge, s.OldestPendingAgeSeconds)
+	m.offsiteGenerations.Set(s.Generations)
+	m.offsiteSpoolBytes.Set(s.SpoolBytes)
+
+	current := s.CredentialState
+	if current == "" {
+		current = OffsiteCredentialStates[0]
+	}
+	for _, state := range OffsiteCredentialStates {
+		value := 0.0
+		if state == current {
+			value = 1
+		}
+		m.offsiteCredentialState.WithLabelValues(state).Set(value)
+	}
+}
+
+// setGaugeVec1／setGaugeVec2 `Reset` 後只寫有值的鍵：已歸零的標籤組因此**消失**
+// 而非停在最後一個非零值（後者會讓「已全部處理完畢」看起來像「還有一批沒動」）。
+func setGaugeVec1(v *prometheus.GaugeVec, values map[string]float64) {
+	v.Reset()
+	for label, n := range values {
+		v.WithLabelValues(label).Set(n)
+	}
+}
+
+func setGaugeVec2(v *prometheus.GaugeVec, values map[OffsiteKindOrigin]float64) {
+	v.Reset()
+	for k, n := range values {
+		v.WithLabelValues(k.Kind, k.Origin).Set(n)
+	}
+}
+
+// 離機上傳嘗試的結果標籤。
+const (
+	OffsiteUploadResultUploaded = "uploaded"
+	OffsiteUploadResultFailed   = "failed"
+)
+
+// ObserveOffsiteUpload 記錄一次上傳嘗試的結果（worker 直寫）。
+// 成功時 bytes 為送出的位元組數；失敗時忽略。
+func (m *Metrics) ObserveOffsiteUpload(kind, result string, bytes int64) {
+	m.offsiteUploads.WithLabelValues(kind, result).Inc()
+	if result == OffsiteUploadResultUploaded && bytes > 0 {
+		m.offsiteUploadedBytes.WithLabelValues(kind).Add(float64(bytes))
+	}
+}
+
+// ObserveOffsiteLeaseExpired 記錄一次租約回收（worker 直寫）。
+func (m *Metrics) ObserveOffsiteLeaseExpired(kind string) {
+	m.offsiteLeaseExpired.WithLabelValues(kind).Inc()
+}
+
+// SetOffsiteLastSuccess 記錄最近一次上傳成功的時刻（worker 直寫）。
+func (m *Metrics) SetOffsiteLastSuccess(ts time.Time) {
+	m.offsiteLastSuccess.Set(float64(ts.Unix()))
 }
 
 // --- 業務模組呼叫的觀測方法（不需知道 Prometheus 存在） ---

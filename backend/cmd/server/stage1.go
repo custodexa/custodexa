@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"github.com/custodexa/backend/internal/modules/identity"
 	"log"
+
+	"github.com/custodexa/backend/internal/modules/identity"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -120,6 +121,12 @@ func runStage1() *stage1 {
 	if err := config.ValidateDatabaseDriver(cfg.Database.Driver); err != nil {
 		log.Fatalf("資料庫驅動組態不合法（拒絕啟動）: %v", err)
 	}
+	// **離機儲存的組態驗證不在本段**：
+	// 設定與憑證的執行期承載已自 env 改為 `offsite_profiles` 專用表，`OFFSITE_*`
+	// 鍵組降為**初次 seed 專用**，其驗證隨 seed 走 post-unseal 佇列
+	// （矛盾時不寫設定列、不寫執行標記、**不拒啟**——seed 是便利功能，
+	// 不得把主服務綁死在它身上；管理介面的設定路徑恆可用）。
+	// 啟用判準與啟動日誌改由段 2 依現行世代決定。
 
 	// KEK 來源模式判定：**純組態段，DB-independent**，
 	// 一律在連 DB 之前完成——此段任一 fail-close 路徑不產生任何 DB 寫入。

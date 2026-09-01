@@ -2,6 +2,53 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.1.0 — off-site evidence storage (2026-09-01)
+
+**This release changes the database schema.** One migration runs when the backend
+starts: `20260825_evidence_offsite`. It creates two tables that track off-site
+storage and adds tracking columns to sessions and export jobs. It does not rewrite
+existing rows, so the first start after the upgrade takes about as long as usual.
+
+**Back up before you upgrade, and keep the images you are running now.** What to
+record before you stop the old version, and what to check afterwards, is section 2
+of `docs/ops/upgrade-sop.md`. Going back needs both the pre-upgrade backup and the
+previous images: the migration's `Down` removes the tracking tables and has no
+production entry point, so restoring the backup is the only supported way back.
+
+**A deployment that does not configure off-site storage behaves as before.** The
+feature stays off until a storage target is saved.
+
+### Off-site evidence storage
+
+- After a session ends, its recording uploads to object storage you configure:
+  an S3-compatible service (AWS S3, MinIO, and others) or Google Cloud Storage
+  through its native API. Evidence packages upload the same way once packing
+  finishes. Uploads retry with backoff, and failures are visible on the settings
+  page with a per-item retry.
+- Retrieval verifies before it serves. When the local copy is gone, playback and
+  downloads fetch the object, check its SHA-256 against the value recorded at
+  upload time, and refuse to serve content that does not match. Browsers never
+  receive storage URLs; the backend streams everything.
+- Configuration lives in the admin UI under system settings. Credentials are
+  envelope-encrypted with the platform key hierarchy and are write-only: once
+  saved they do not appear in any response, log, or audit entry. A connection
+  test runs against the values in the form before saving.
+- Changing the storage target is a confirmed switch. The previous configuration
+  is kept as a retired generation, objects uploaded under it stay readable
+  through their original provider and credentials, and credentials of a retired
+  generation can be revoked individually.
+- Environment variables can seed the initial configuration on the first start of
+  a new deployment. After that, management is in the UI.
+- Immutability, versioning, and expiry of remote objects belong to the bucket
+  settings of the deployment. The product never deletes remote objects; when the
+  recording retention policy expires a recording, it clears the local copy and
+  the database tracking only. Recommended bucket settings for both providers are
+  in `docs/ops/backup-and-restore.md`.
+- A local cache setting can clear local copies early once uploaded; playback then
+  streams from object storage. Uploads, retention expiry, integrity mismatches,
+  and configuration changes all write audit entries, and queue state is exposed
+  as metrics.
+
 ## 1.0.7 — how the frontend image installs its dependencies (2026-08-27)
 
 No schema change. No migration runs. A running deployment behaves the same as 1.0.6.

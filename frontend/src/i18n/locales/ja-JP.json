@@ -112,7 +112,8 @@
     "home": "ホーム",
     "oidcProviders": "OIDC プロバイダー",
     "ldapDirectory": "ディレクトリ設定（LDAP）",
-    "checkpointVerification": "チェックポイント検証"
+    "checkpointVerification": "チェックポイント検証",
+    "offsiteStorage": "オフサイト保管"
   },
   "login": {
     "usernamePlaceholder": "ユーザー名",
@@ -259,7 +260,12 @@
       "cancel": "申請取り下げ",
       "expire": "申請期限切れ",
       "revoke": "権限取り消し",
-      "review": "ブレークグラス事後審査"
+      "review": "ブレークグラス事後審査",
+      "offsite_upload": "オフサイトアップロード",
+      "offsite_retention": "オフサイト保存期限の削除",
+      "offsite_integrity": "オフサイト整合性の不一致",
+      "offsite_profile": "オフサイト設定世代の変更",
+      "offsite_cred_revoke": "オフサイト資格情報の失効"
     },
     "auditResource": {
       "asset": "資産",
@@ -297,6 +303,7 @@
       "snippet": "コマンドスニペット",
       "role": "ロール",
       "instance_guard": "単一インスタンスガード",
+      "offsite_storage": "オフサイト保管",
       "unclassified": "未分類"
     },
     "mechanism": {
@@ -312,7 +319,8 @@
       "audit_chain_structure": "監査チェーン構造検証",
       "audit_chain_content": "監査チェーン内容検証",
       "audit_chain_verify": "監査チェーン自動検証処理",
-      "source_policy": "送信元範囲ポリシー"
+      "source_policy": "送信元範囲ポリシー",
+      "offsite_upload": "オフサイト保管へのアップロード"
     },
     "cause": {
       "recording_probe_failed": "発行時の録画事前チェックに失敗",
@@ -339,7 +347,10 @@
       "audit_chain_content_extra_rows": "封印済み区間に行単位署名が有効な追加記録あり（人手確認要）",
       "audit_chain_verify_failed": "チェーン検証自体が完了不能（メカニズム状態は不明であり「異常なし」ではない）",
       "source_policy_unreadable": "判定点でユーザーの許可送信元範囲を読み取れない",
-      "source_policy_corrupt": "保存された許可送信元範囲の文字列を解析できない（DB 直接書き込みまたはプログラム欠陥）"
+      "source_policy_corrupt": "保存された許可送信元範囲の文字列を解析できない（DB 直接書き込みまたはプログラム欠陥）",
+      "offsite_upload_failed": "オフサイト保管へのアップロードが再試行上限に達しました（該当の控えは未だオフサイトにありません）",
+      "offsite_upload_stalled": "同一オブジェクトのアップロードリースが繰り返し失効し、処理が滞留しています",
+      "offsite_integrity_mismatch": "取得したオフサイトの控えがアップロード時と一致せず、引き渡しを拒否しました"
     },
     "endReason": {
       "normal": "正常終了",
@@ -495,8 +506,13 @@
       "cluster": {
         "title": "クラスター接続",
         "hint": "Kubernetes クラスターからデータを取得する際、最大何秒待つか。短すぎると正常なクラスターも接続不可と判定されます。待ち時間だけの設定で、アクセス権限には影響しません。"
+      },
+      "offsite": {
+        "title": "ローカル複製",
+        "hint": "オフサイト保管の有効時、ディスク節約のためローカルの録画複製を早期に削除できます。録画はオフサイト複製から再生できます。機能が無効の間、本設定は影響しません。"
       }
-    }
+    },
+    "offsite": "オフサイト保管"
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle}の概要",
@@ -806,7 +822,8 @@
     "clipboardContentError": "内容の読み込みに失敗しました。今回、内容は取得されていません",
     "clipboardDecryptButton": "復号して閲覧",
     "clipboardLockedHint": "内容は暗号化された状態で保存されています。「復号して閲覧」を押すと復号して表示され、閲覧記録が残ります。",
-    "clipboardAccessLogged": "この閲覧は記録されました（{time}）"
+    "clipboardAccessLogged": "この閲覧は記録されました（{time}）",
+    "offsiteStatus": "オフサイト保管"
   },
   "myConnections": {
     "headerDesc": "自分の接続記録を確認できます",
@@ -2263,6 +2280,15 @@
     "CONFLICT_LDAP_DIRECTORY_BUSY": "別の LDAP ディレクトリ設定の操作が進行中です。しばらくしてから再試行してください",
     "CONFLICT_LDAP_DIRECTORY_CONCURRENT": "LDAP ディレクトリ設定が同時に変更されました。再読み込みしてからやり直してください",
     "CONFLICT_MFA_ALREADY_ENROLLED": "このアカウントは既に MFA 登録を完了しています",
+    "CONFLICT_OFFSITE_CREDENTIALS_ALREADY_REVOKED": "その世代の資格情報は既に失効しています",
+    "CONFLICT_OFFSITE_CREDENTIALS_UNAVAILABLE": "オフサイトストレージの資格情報を現在使用できません。鍵の状態を確認してください",
+    "CONFLICT_OFFSITE_FOREIGN_CREDENTIALS_MISSING": "この証跡を保持するオフサイトストレージ世代の資格情報は失効しており、取得できません",
+    "CONFLICT_OFFSITE_INTEGRITY_MISMATCH": "オフサイト複製の内容がアップロード時と一致しないため、提供を拒否しました",
+    "CONFLICT_OFFSITE_NO_CURRENT_GENERATION": "現在有効なオフサイト保管設定がありません",
+    "CONFLICT_OFFSITE_PROFILE_BUSY": "別のオフサイト保管設定の操作が進行中です。しばらくしてからやり直してください",
+    "CONFLICT_OFFSITE_PROFILE_MISSING": "この証跡が属するオフサイトストレージ世代が見つからないため、取得できません",
+    "CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH": "確認内容と送信された設定が一致しません。もう一度確認してください",
+    "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "設定が他の操作により変更されました。再読み込みしてからやり直してください",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "同じ issuer と client_id のプロバイダーが既に存在します",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "このプロバイダーには外部 ID の関連付けが残っています。無効化してください",
     "CONFLICT_PLAN_NAME_EXISTS": "この計画名は既に存在します",
@@ -2386,6 +2412,12 @@
     "INTERNAL_MFA_VERIFY": "MFA 検証に失敗しました",
     "INTERNAL_MY_CONNECTION_QUERY": "接続履歴の取得に失敗しました",
     "INTERNAL_MY_CONNECTION_TERMINATE": "接続の終了に失敗しました",
+    "INTERNAL_OFFSITE_CREDENTIAL_DECRYPT": "オフサイト保管の資格情報の復号に失敗しました。鍵の状態を確認してください",
+    "INTERNAL_OFFSITE_CREDENTIAL_ENCRYPT": "オフサイト保管の資格情報の暗号化に失敗しました。鍵の状態を確認してください",
+    "INTERNAL_OFFSITE_RETRY": "オフサイトアップロードの再試行に失敗しました",
+    "INTERNAL_OFFSITE_SETTINGS_SAVE": "オフサイト保管設定の保存に失敗しました",
+    "INTERNAL_OFFSITE_STATUS": "オフサイト保管の状態取得に失敗しました",
+    "INTERNAL_OFFSITE_TEST": "オフサイト保管の接続テストの実行に失敗しました",
     "INTERNAL_OIDC_LOGIN": "OIDC ログイン処理に失敗しました",
     "INTERNAL_OIDC_PROVIDER_LIST": "OIDC プロバイダー一覧の読み込みに失敗しました",
     "INTERNAL_OIDC_PROVIDER_SAVE": "OIDC プロバイダー設定の保存に失敗しました",
@@ -2472,6 +2504,8 @@
     "NOTFOUND_LDAP_DIRECTORY": "LDAP ディレクトリ設定が存在しません",
     "NOTFOUND_MY_CONNECTION": "接続が存在しません",
     "NOTFOUND_NOTIFICATION_CHANNEL": "通知チャネルが見つかりません",
+    "NOTFOUND_OFFSITE_GENERATION": "指定されたオフサイト保管世代が見つかりません",
+    "NOTFOUND_OFFSITE_OBJECT": "指定されたオフサイトオブジェクトが見つかりません",
     "NOTFOUND_OIDC_PROVIDER": "OIDC プロバイダーが存在しません",
     "NOTFOUND_RECORDING_FILE": "録画ファイルが存在しません",
     "NOTFOUND_RECORDING_TIMING": "録画タイミングファイルが存在しません",
@@ -2544,6 +2578,8 @@
     "RULE_NODE_CYCLE": "自身または配下のノードへ移動することはできません",
     "RULE_NODE_DEPTH_EXCEEDED": "ノードの階層が上限を超えています（10 階層）",
     "RULE_NODE_NOT_EMPTY": "子ノードと直下の資産がない空のノードのみ削除できます",
+    "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "ストレージ種別・エンドポイント・バケットを変更する場合は資格情報を入力し直してください",
+    "RULE_OFFSITE_TEST_RATE_LIMITED": "接続テストの頻度が高すぎます。しばらくしてからやり直してください",
     "RULE_RECORDING_UNAVAILABLE": "録画ストレージに異常があるため新規接続を停止しています。管理者に連絡してください",
     "RULE_SESSION_CLOSED": "セッションはすでに終了しています",
     "RULE_SESSION_ENDED": "セッションは終了しました",
@@ -2688,6 +2724,13 @@
     "VALIDATION_LDAP_URL_SCHEME": "ディレクトリアドレスのスキームは ldap:// または ldaps:// のみ使用できます",
     "VALIDATION_LDAP_URL_TOO_LONG": "ディレクトリアドレスが長すぎます",
     "VALIDATION_LDAP_URL_USERINFO": "ディレクトリアドレスに認証情報を含めることはできません。bind DN と bind パスワードの項目に入力してください",
+    "VALIDATION_OFFSITE_BUCKET_REQUIRED": "バケット名は必須です",
+    "VALIDATION_OFFSITE_CREDENTIAL_CONFLICT": "新しい資格情報の入力と資格情報の消去は同時に指定できません",
+    "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "アクセスキーとシークレットキーは両方入力するか、両方空欄にして既定の資格情報チェーンを使用してください",
+    "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "エンドポイントに資格情報・クエリ文字列・フラグメントを含めることはできません。資格情報欄に入力してください",
+    "VALIDATION_OFFSITE_ENDPOINT_INVALID": "エンドポイントは http:// または https:// で始まり、ホスト名を含む必要があります",
+    "VALIDATION_OFFSITE_PROVIDER_INVALID": "ストレージ種別は s3 または gcs のみです",
+    "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "S3 を使用する場合、エンドポイントまたはリージョンのいずれかが必要です",
     "VALIDATION_OIDC_ADMISSION_RULES": "受け入れルールが不正です：ルールキーが有効かつ空でないこと、共有 ID プロバイダーにはテナントまたはドメイン条件が必要です",
     "VALIDATION_OIDC_BINDING_MISSING": "ブラウザーバインディング値がありません",
     "VALIDATION_OIDC_IMMUTABLE_FIELD": "issuer と client_id は作成後に変更できません。変更が必要な場合は新しいプロバイダーを作成してください",
@@ -2765,6 +2808,7 @@
     "lockout_duration_minutes": "ロックアウト期間",
     "lockout_max_attempts": "ログイン失敗ロックアウト回数上限",
     "mfa_required": "多要素認証の強制範囲",
+    "offsite_local_retention_days": "オフサイト保管後にローカル複製を保持する日数",
     "password_history_count": "パスワード再利用禁止履歴数",
     "password_max_age_days": "パスワード最長使用日数",
     "password_min_length": "パスワード最小長",
@@ -3547,7 +3591,12 @@
         "cancel": "申請を取り下げ",
         "expire": "申請が期限切れ",
         "revoke": "権限を取り消し",
-        "review": "緊急アクセスの事後審査"
+        "review": "緊急アクセスの事後審査",
+        "offsite_upload": "オフサイト保管：アップロード結果",
+        "offsite_retention": "オフサイト保管：保存期限到来によるローカル複製の削除",
+        "offsite_integrity": "オフサイト保管：取得した内容がアップロード時点と不一致",
+        "offsite_profile": "オフサイト保管：ストレージ設定世代の変更",
+        "offsite_cred_revoke": "オフサイト保管：世代の資格情報を失効"
       },
       "session": {
         "start": "{protocol} 接続を開始"
@@ -3646,5 +3695,258 @@
     "polling": "作成が進行中です。このページは {sec} 秒ごとに自動更新されます。",
     "pollingStopped": "自動更新を停止しました（このページの更新回数の上限に達しました）。最新の状態は「更新」で取得してください。",
     "shaTip": "成果物のフィンガープリント SHA-256：{sha}"
+  },
+  "offsite": {
+    "headerDesc": "証拠コピーのオフサイト保管先を設定し、アップロード待ち行列と取得状況を確認します。",
+    "loadFailedGuardTitle": "オフサイト保管の設定を読み取れません",
+    "loadFailedGuardDesc": "空のフォームでサーバー上の設定を上書きしないよう、保存を一時的に無効にしています。更新を押してからやり直してください。",
+    "credentialFailedTitle": "オフサイト保管の資格情報を復号できません",
+    "credentialFailedDesc": "設定内容ではなく鍵の状態の問題です。アップロードも取得も失敗状態で止まります。鍵管理で封印と KEK を確認してから、このページで接続テストをやり直してください。",
+    "statusTitle": "オフサイト保管",
+    "status": {
+      "loading": "読み込み中",
+      "load_failed": "読み取り失敗",
+      "unconfigured": "未設定",
+      "enabled": "有効",
+      "disabled": "アップロード停止中"
+    },
+    "statusHint": {
+      "loading": "サーバー上の設定を読み込んでいます。",
+      "load_failed": "サーバー上の設定内容を確認できません。",
+      "unconfigured": "新しい録画と証拠パッケージはこのホストにのみ保存されます。",
+      "enabled": "セッション終了時とパッケージ作成完了時に、コピーが保管先へアップロードされます。",
+      "disabled": "新しいアップロードは行われませんが、既存のオフサイトコピーは取得できます。"
+    },
+    "plaintextRisk": "現在のエンドポイントは http:// のため、資格情報と証拠が平文でネットワークを通ります。",
+    "emptyTitle": "オフサイト保管の記録はまだありません",
+    "emptyHint": "下の保管先と資格情報を入力して保存すると、以後に終了したセッションと証拠パッケージからアップロードが始まります。",
+    "summaryTitle": "現在の保管設定",
+    "summaryHint": "接続パラメータのみを表示します。鍵は一切表示しません。",
+    "endpointDefault": "サービス既定のエンドポイント",
+    "governanceVersioning": "バケットのバージョニング: {state}",
+    "sectionTarget": "保管先",
+    "sectionTargetHint": "どのサービスのどのバケットに置くかを決めます。",
+    "sectionCredentials": "アクセス資格情報",
+    "sectionCredentialsHint": "保存時にエンベロープ暗号化してデータベースへ書き込みます。以後どの読み取りでも元の値は返しません。",
+    "field": {
+      "provider": "保管サービス",
+      "endpoint": "エンドポイント",
+      "endpointOrigin": "エンドポイント",
+      "bucket": "バケット",
+      "prefix": "キーのプレフィックス",
+      "region": "リージョン",
+      "pathStyle": "path-style アドレスを使う",
+      "accessKeyId": "アクセスキー ID",
+      "secretAccessKey": "シークレットアクセスキー",
+      "serviceAccountJson": "サービスアカウント JSON",
+      "credentialMode": "資格情報の状態",
+      "fingerprint": "設定フィンガープリント",
+      "generationId": "設定世代"
+    },
+    "placeholder": {
+      "bucket": "例: custodexa-evidence",
+      "prefix": "例: prod（空欄ならバケット直下）",
+      "endpoint": "https://s3.example.com",
+      "region": "例: ap-northeast-1",
+      "credentialKeep": "空欄のままなら保存済みの資格情報を引き継ぎます",
+      "credentialNew": "保管サービスが発行した資格情報を入力してください",
+      "credentialCleared": "保存後はクラウド既定の資格情報チェーンを使います"
+    },
+    "hint": {
+      "prefix": "すべてのオブジェクトをこのプレフィックスの下に置き、他の用途のファイルと分けます。",
+      "endpointS3": "自前運用の S3 互換ストレージでは完全なアドレスを入力します。AWS S3 なら空欄にしてリージョンを指定できます。",
+      "endpointGcs": "Google Cloud Storage の公式エンドポイントを使う場合は空欄にします。",
+      "endpointPlaintext": "http:// では資格情報と証拠が平文で流れます。https:// を使ってください。",
+      "region": "エンドポイントとリージョンの少なくとも一方を入力してください。",
+      "pathStyle": "MinIO などの自前運用ストレージでは通常オンにします。",
+      "credentialWriteOnly": "資格情報は上書きのみ可能で読み出せません。空欄なら保存済みの値を引き継ぎ、クリアするとクラウド既定の資格情報チェーンに切り替わります。",
+      "moveNeedsCredentials": "保管サービス、エンドポイント、バケットのいずれかが変わったため、資格情報を入力し直す必要があります。"
+    },
+    "rule": {
+      "bucketRequired": "バケット名を入力してください",
+      "endpointInvalid": "エンドポイントは http:// または https:// で始まり、ホスト名を含む必要があります",
+      "endpointHasSecrets": "エンドポイントにユーザー名、パスワード、クエリ文字列、フラグメントは含められません。資格情報欄に入力してください",
+      "regionOrEndpoint": "S3 ではエンドポイントとリージョンの少なくとも一方が必要です"
+    },
+    "provider": {
+      "s3": "S3 互換ストレージ",
+      "gcs": "Google Cloud Storage"
+    },
+    "credentialMode": {
+      "stored": "設定済み",
+      "default_chain": "クラウド既定の資格情報チェーン",
+      "revoked": "失効済み",
+      "none": "未設定"
+    },
+    "credentialsClearedAt": "失効日時 {at}",
+    "clearCredentials": "保存済みの資格情報を消し、クラウド既定の資格情報チェーンを使う",
+    "clearCredentialsHint": "保存すると既存の資格情報は消去され、元に戻せません。",
+    "versioning": {
+      "enabled": "有効",
+      "disabled": "無効",
+      "unknown": "確認できません"
+    },
+    "test": "接続テスト",
+    "testHint": "テストはフォームの現在値を使います。先に保存する必要はありません。",
+    "unsavedChanges": "未保存の変更があります",
+    "testResultTitle": "接続テストの結果",
+    "testResultStale": "設定が変更されました。テストをやり直してください。",
+    "testPassed": "接続テストに成功しました",
+    "testPassedWithWarnings": "接続テストに成功しましたが、確認できない項目があります",
+    "testFailed": "接続テストに失敗しました",
+    "testFailedGeneric": "接続テストを実行できませんでした",
+    "testGroup": {
+      "disclosure": "バケットの現状",
+      "roundtrip": "書き込みと読み戻しの実測"
+    },
+    "testGroupHint": {
+      "disclosure": "バケットの現在の設定をそのまま示します。良し悪しの判定はしません。",
+      "roundtrip": "テストオブジェクトを書き込み、読み戻して照合し、削除します。"
+    },
+    "testStep": {
+      "probe_bucket": "バケットへの到達",
+      "versioning": "バージョニング",
+      "retention": "保持設定",
+      "write": "書き込み",
+      "read": "読み戻し照合",
+      "delete": "テストオブジェクトの削除"
+    },
+    "testOutcome": {
+      "ok": "成功",
+      "warn": "確認できません",
+      "fail": "失敗",
+      "skipped": "未実行"
+    },
+    "testCode": {
+      "test_bucket_unreachable": "バケットに接続できません。エンドポイント、資格情報、バケット名を確認してください。",
+      "test_governance_unknown": "現在の資格情報ではこの設定を読み取れません。アップロードには影響しません。",
+      "test_write_failed": "テストオブジェクトの書き込みに失敗しました。書き込み権限を確認してください。",
+      "test_read_failed": "テストオブジェクトの読み戻しに失敗しました。読み取り権限を確認してください。",
+      "test_read_mismatch": "読み戻した内容が書き込んだ内容と一致しません。",
+      "test_delete_denied": "テストオブジェクトを削除できません。バケットで保持ロックが有効な場合に起こります。"
+    },
+    "testCodeUnknown": "テストは成功しませんでした",
+    "errorCode": {
+      "upload_failed": "アップロードに失敗しました",
+      "file_changed_during_upload": "アップロード中にローカルファイルが変化しました",
+      "head_size_mismatch": "アップロード後のサイズ照合が一致しません",
+      "local_open_failed": "ローカルファイルを開けません",
+      "integrity_mismatch": "取得した内容がアップロード時と一致しません",
+      "profile_missing": "このオブジェクトが属する保管設定世代が見つかりません",
+      "foreign_credentials_missing": "その世代の資格情報は失効または不在です",
+      "credentials_unavailable": "資格情報を現在利用できません"
+    },
+    "errorCodeUnknown": "理由は記録されていません",
+    "queueTitle": "保管キュー",
+    "retryFailed": "失敗分を再試行",
+    "retryFailedConfirm": "失敗したすべての項目をキューへ戻して再アップロードします。続行しますか。",
+    "retryFailedConfirmTitle": "失敗分の再試行",
+    "retryQueued": "{count} 件をキューへ戻しました",
+    "retry": "再試行",
+    "retryNeedsLocalFile": "ローカルにファイルがないため再送できません。",
+    "disabledNote": "新しいアップロードは停止しています。以下は既存の保管在庫です。",
+    "count": {
+      "pending": "アップロード待ち",
+      "uploading": "アップロード中",
+      "uploaded": "アップロード済み",
+      "failed": "失敗",
+      "integrity_mismatch": "完全性の不一致",
+      "foreign": "旧保管設定",
+      "local_purged": "ローカル削除済み",
+      "total": "合計"
+    },
+    "origin": {
+      "live": "即時",
+      "backfill": "バックフィル"
+    },
+    "oldestPending": "{origin}レーンの最長待ち {age}",
+    "failuresTitle": "アップロード失敗一覧",
+    "failuresHint": "保持期限が近いものから並びます。残り日数はどのページでも表示されます。",
+    "column": {
+      "kind": "種別",
+      "owner": "対象",
+      "failedAt": "最終試行",
+      "reason": "理由",
+      "attempts": "試行回数",
+      "deadline": "保持期限まで",
+      "generationId": "世代",
+      "fingerprint": "フィンガープリント",
+      "provider": "保管サービス",
+      "location": "場所",
+      "lifecycle": "有効化と退役",
+      "objectCount": "オブジェクト数",
+      "credentialMode": "資格情報の状態"
+    },
+    "kind": {
+      "recording": "セッション録画",
+      "export": "証拠パッケージ"
+    },
+    "noDeadline": "保持期限なし",
+    "deadlinePassed": "保持期限超過",
+    "daysToDeadline": "{days} 日",
+    "noFailures": "失敗した項目はありません",
+    "noFailuresHint": "キューに入った証拠はすべてアップロード済みか、順番待ちです。",
+    "profilesTitle": "保管設定の世代",
+    "profilesHint": "保管先を変えるたびに新しい世代が作られます。旧世代の資格情報は、その世代のオブジェクトを取得するために残します。",
+    "retiredAt": "{at} に退役",
+    "currentGeneration": "現行世代",
+    "revokeCredentials": "資格情報を失効",
+    "revokeConfirmTitle": "世代の資格情報を失効",
+    "revokeConfirm": "第 {generation} 世代の資格情報を失効すると、その世代の {count} 件のオブジェクトは取得できなくなり、クラウド既定の資格情報チェーンにも切り替わりません。この操作は元に戻せません。",
+    "revokeConfirmButton": "資格情報を失効",
+    "revoked": "資格情報を失効しました",
+    "revokeFailed": "資格情報の失効に失敗しました",
+    "switchDialogTitle": "保管先の変更を確認",
+    "switchLead": "現在の設定のもとで {count} 件のオブジェクトを保管しています。",
+    "switchConsequence1": "現在の設定は履歴世代になり、新しいアップロードは新設定を使います。",
+    "switchConsequence2": "履歴世代の資格情報は残るため、既存のオブジェクトは引き続き取得できます。",
+    "switchConsequence3": "保管サービス上の既存オブジェクトは削除されません。整理はバケットのライフサイクル規則が担います。",
+    "switchConfirm": "変更を確定",
+    "switched": "保管先を変更しました",
+    "switchFailed": "保管先の変更に失敗しました",
+    "staleConfirmation": "設定が他の操作で変更されました。更新を押して最新の設定を読み込んでからやり直してください。",
+    "disable": "オフサイト保管を停止",
+    "disableConfirmTitle": "オフサイト保管の停止",
+    "disableConfirm": "以後アップロードは行われず、現在の設定は履歴世代になります。既存のオフサイトオブジェクトは引き続き取得でき、その資格情報は失効せず、保管サービス上のオブジェクトも削除されません。",
+    "disableConfirmButton": "オフサイト保管を停止",
+    "disabled": "オフサイト保管を停止しました",
+    "disableFailed": "オフサイト保管の停止に失敗しました",
+    "saved": "設定を保存しました",
+    "saveFailed": "設定の保存に失敗しました",
+    "discardChangesTitle": "未保存の変更を破棄",
+    "discardChangesConfirm": "更新するとサーバー上の設定でフォームが置き換わり、現在の変更は失われます。",
+    "discardChangesButton": "破棄して更新",
+    "state": {
+      "none": "キュー未登録",
+      "pending": "アップロード待ち",
+      "uploading": "アップロード中",
+      "uploaded": "オフサイト保管済み",
+      "failed": "アップロード失敗",
+      "integrity_mismatch": "完全性の不一致",
+      "foreign": "旧保管設定",
+      "local_purged": "ローカル削除済み",
+      "skipped_missing": "ローカルファイル欠落のため未登録",
+      "skipped_expired": "保持期限超過のため未登録"
+    },
+    "stateHint": {
+      "none": "このセッションには録画がないか、バックフィル走査がまだ届いていません。",
+      "pending": "キューに登録され、アップロードを待っています。",
+      "uploading": "オフサイト保管へアップロード中です。",
+      "uploaded": "コピーをアップロードしハッシュを記録しました。ローカルファイルが削除された後もオフサイトコピーから再生できます。",
+      "failed": "再試行の上限に達しました。管理者が再登録できます。",
+      "integrity_mismatch": "オフサイトコピーの内容がアップロード時と一致しないため、提供を拒否しました。",
+      "foreign": "所属する保管設定世代が退役しています。取得にはその世代自身の資格情報を使います。",
+      "local_purged": "保持設定に従いローカルコピーを削除しました。保管サービス上のオブジェクトの扱いはバケットのライフサイクル規則によります。",
+      "skipped_missing": "録画ファイルがこのホストにありません。次のバックフィル走査で再確認します。",
+      "skipped_expired": "録画は保持期限を過ぎており、保持クリーンアップに委ねます。"
+    },
+    "exportRow": {
+      "uploaded": "オフサイト保管済み",
+      "pending": "オフサイトアップロード待ち",
+      "uploading": "オフサイトアップロード待ち",
+      "failed": "オフサイトアップロード失敗",
+      "integrity_mismatch": "オフサイトコピーの完全性の不一致",
+      "foreign": "旧保管設定"
+    }
   }
 }

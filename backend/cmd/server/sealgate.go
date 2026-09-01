@@ -112,7 +112,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		metricsToken:   cfg.metricsToken,
 		// 審計中間件於段 1 關閉：其寫入鏈依賴段 2 才建構的蓋章服務與
 		// AuditLogService。封印期的留痕由 journal 承擔，不靠 DB 審計。
-		auditLogEnabled:   false,
+		auditLogEnabled: false,
 
 		auth:                  &api.AuthHandler{},
 		securityPolicy:        &api.SecurityPolicyHandler{},
@@ -132,6 +132,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		notificationChannel:   &api.NotificationChannelHandler{},
 		oidc:                  &api.OIDCHandler{},
 		ldapDirectory:         &api.LDAPDirectoryHandler{},
+		offsiteStorage:        &api.OffsiteStorageHandler{},
 		instanceGuard:         &api.InstanceGuardHandler{},
 		keyManagement:         &api.KeyManagementHandler{},
 		snippet:               &api.SnippetHandler{},
@@ -159,7 +160,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 
 // stageOneRouteConfig 是段 1 註冊路由所需的最小組態。
 type stageOneRouteConfig struct {
-	corsMiddleware    gin.HandlerFunc
+	corsMiddleware gin.HandlerFunc
 	// metrics 段 1／段 2 共用的指標實例。
 	// 共用而非各建一份：counter 在換 router 時歸零會被採集端讀成行程重啟。
 	metrics *observability.Metrics

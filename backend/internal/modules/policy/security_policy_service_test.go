@@ -256,6 +256,11 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicyRetentionMaxPerRun:    true,
 		PolicyKeyRotationMaxPerRun:  true,
 		PolicyK8sListTimeoutSeconds: true,
+		// 離機儲存的本機快取期（evidence-offsite-storage）：它是磁碟預算旋鈕，
+		// 不是保留期——到期只刪本機檔，錄影仍可自離機副本取回。PCI 10.5.1 管的是
+		// 「證據留多久」，而那由 retention_recording_days 承擔；掛 PCIValue 會使
+		// 「套用本頁建議值」替部署方決定本機要留幾天，並在偏離摘要中與真的保留鍵並列
+		PolicyOffsiteLocalRetentionDays: true,
 		// data-transfer-control：五鍵法源是電支基準 §16-6／§21-8(七) 而非 PCI 條文。
 		// 掛假 PCIValue 會讓它進「套用本頁建議值」並被標成 PCI 要求；電支基準值
 		// （皆為 false）由 G3 電支建議值雙軌承接

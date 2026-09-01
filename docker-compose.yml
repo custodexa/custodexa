@@ -73,6 +73,9 @@ services:
       GUACD_PORT: 4822
       AUDIT_LOG_PATH: /var/log/custodexa/audit
       RECORDING_PATH: /var/lib/custodexa/recordings
+      # 離機取回暫存根（容器本地快取、非 volume——刻意不掛出：內容是已驗證的
+      # 明文副本，容器重建即消失、不進備份範圍）
+      OFFSITE_SPOOL_PATH: /var/lib/custodexa/offsite-spool
     volumes:
       - ${DATA_PATH:-./data}/audit:/var/log/custodexa/audit
       - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings

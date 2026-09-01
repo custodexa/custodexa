@@ -77,6 +77,11 @@ const (
 	// 與通知通道看得見「政策壞了」。狀態可由謂詞（全部使用者清單可解析＋最近讀取成功）
 	// 重評估，恢復即結案
 	MechanismSourcePolicy = "source_policy"
+	// MechanismOffsiteUpload 離機儲存的上傳與取回完整性
+	// （evidence-offsite-storage）：上傳重試達上限、租約反覆到期而卡死、
+	// 取回時內容雜湊不符。**解除判準是「處於失敗態的件數歸零」而非「任一件成功」**
+	// ——後者會把其他仍失敗的證據在通知面誤報為恢復
+	MechanismOffsiteUpload = "offsite_upload"
 )
 
 // 失效原因機器碼。
@@ -155,6 +160,17 @@ const (
 	// CauseSourcePolicyCorrupt 儲存的允許網段清單字串無法解析：唯一寫入路徑是
 	// 驗證後寫入，損壞只可能來自資料庫直寫或程式缺陷
 	CauseSourcePolicyCorrupt = "source_policy_corrupt"
+	// CauseOffsiteUploadFailed 離機上傳重試達上限（bucket 不存在、憑證失效、
+	// 端點長期不可達等持久性錯誤）。**不自動每日重試**——那只是每天再產一次告警；
+	// 修復動作與重試綁在一起，經管理介面「重試失敗項」觸發
+	CauseOffsiteUploadFailed = "offsite_upload_failed"
+	// CauseOffsiteUploadStalled 同一物件的上傳租約反覆到期（≥2 次）：
+	// 行程被砍或傳輸期限被繞過。**不等到重試上限**——租約反覆到期比「上傳失敗」
+	// 更早需要人看
+	CauseOffsiteUploadStalled = "offsite_upload_stalled"
+	// CauseOffsiteIntegrityMismatch 取回離機副本時內容雜湊或大小與上傳當下不符：
+	// **零位元組交付**（先驗後送），該物件轉為不可信態
+	CauseOffsiteIntegrityMismatch = "offsite_integrity_mismatch"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。

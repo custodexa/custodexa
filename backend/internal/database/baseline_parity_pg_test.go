@@ -204,9 +204,20 @@ var baselineStructuralAssertions = map[string]string{
 	"idx_ldap_directories_singleton": "CREATE UNIQUE INDEX idx_ldap_directories_singleton ON %s.ldap_directories " +
 		"USING btree (singleton) WHERE (deleted_at IS NULL)",
 	"uniq_alert_rules_name": "CREATE UNIQUE INDEX uniq_alert_rules_name ON %s.alert_rules USING btree (name)",
+	// 離機儲存的現行世代唯一性。
+	// 語義是**至多一列（0 或 1）**而非「恰一列」：零現行世代＝已停用（歷史世代
+	// 仍可取回）。partial 條件被拿掉會讓已退役世代一併佔位而使停用後無法重新設定；
+	// UNIQUE 被拿掉則兩列現行世代並存，取回與上傳各自取到不同世代
+	"idx_offsite_profiles_current": "CREATE UNIQUE INDEX idx_offsite_profiles_current ON %s.offsite_profiles " +
+		"USING btree (singleton) WHERE (retired_at IS NULL)",
+	// 帳冊的冪等衝突目標：同一擁有者在同一設定世代只追蹤一個物件。
+	// **世代含在鍵內**——拿掉它，切換世代後 EnqueueTx 會撞既有列而不建新物件，
+	// 新世代的錄影永遠不會上傳
+	"uniq_offsite_objects_owner_generation": "CREATE UNIQUE INDEX uniq_offsite_objects_owner_generation " +
+		"ON %s.offsite_objects USING btree (kind, owner_id, storage_generation_id)",
 }
 
-// baselineCheckConstraints 13 條 CHECK 約束的具名清單與所在表。
+// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 15 條）。
 //
 // `ldap_directories_singleton_check` 是其中最需要具名的一條：壓縮前它由
 // migration 的 inline CHECK 建立，且靠一條 AST 守衛（TestLDAPDirectoryNotInAutoMigrateList）
@@ -233,6 +244,11 @@ var baselineCheckConstraints = map[string]string{
 	"ldap_directories_singleton_check":     "ldap_directories",
 	"notification_channels_language_check": "notification_channels",
 	"notification_channels_type_check":     "notification_channels",
+	// evidence-offsite-storage：現行世代唯一性的常數載體，
+	// 以及 credential_mode 三值與密文空否的等價約束。後者是安全審查的阻斷點——
+	// 「空密文」若同時代表「用預設鏈」與「已撤銷」，撤銷後仍可能靜默走預設鏈取回
+	"offsite_profiles_singleton_check":       "offsite_profiles",
+	"offsite_profiles_credential_mode_check": "offsite_profiles",
 }
 
 func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
@@ -315,6 +331,27 @@ func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
 		if !strings.Contains(strings.ToLower(c.Def), "singleton = 1") {
 			t.Errorf("ldap_directories_singleton_check 的定義不是 (singleton = 1)：%s\n"+
 				"CHECK 被放寬時 partial unique index 擋不住 singleton=2，單列保證即失效", c.Def)
+		}
+	}
+	// offsite_profiles 的兩條 CHECK 專屬斷言：只斷言「存在」擋不住被放寬。
+	// singleton＝1 被放寬時 partial unique index 擋不住 singleton=2，
+	// 「現行世代至多一列」即失效
+	if c, ok := actualCons["offsite_profiles_singleton_check"]; ok {
+		if !strings.Contains(strings.ToLower(c.Def), "singleton = 1") {
+			t.Errorf("offsite_profiles_singleton_check 的定義不是 (singleton = 1)：%s", c.Def)
+		}
+	}
+	// credential_mode ⇔ 密文非空的等價約束被放寬時，`revoked` 或 `default_chain`
+	// 可與非空密文並存（撤銷後密文仍在＝撤銷沒有真的發生），
+	// 或 `stored` 與空密文並存（取回時無憑證卻不呈現為撤銷）
+	if c, ok := actualCons["offsite_profiles_credential_mode_check"]; ok {
+		def := strings.ToLower(c.Def)
+		for _, frag := range []string{"'stored'", "credentials_enc", "<>"} {
+			if !strings.Contains(def, frag) {
+				t.Errorf("offsite_profiles_credential_mode_check 的定義缺 %q：%s\n"+
+					"該約束是「stored ⇔ credentials_enc 非空」的等價式，缺任一側即回到空密文歧義",
+					frag, c.Def)
+			}
 		}
 	}
 	// command_alerts.kind 值域專屬斷言：增量 migration 重建後必須含 new_source_ip，

@@ -46,6 +46,25 @@ const (
 	ActionExpire  AuditAction = "expire"
 	ActionRevoke  AuditAction = "revoke" // 臨時授權提前撤銷
 	ActionReview  AuditAction = "review" // 破窗事後補審
+
+	// 離機儲存的保管鏈事件。
+	// **帳冊是現在的狀態、審計列是發生過什麼**：稽核員要回答「某會話的錄影在哪個
+	// bucket、何時上傳、本機何時到期清除、結果如何」全部查這些列。
+	// 主體恆為系統（UserID=0／Username="system"）；Details 無端點、無憑證。
+	// 五個值皆在 varchar(20) 內。
+	//
+	// ActionOffsiteUpload 上傳成功；重試達上限失敗；租約回收 ≥2 次（卡死）
+	ActionOffsiteUpload AuditAction = "offsite_upload"
+	// ActionOffsiteRetention 保留政策到期、本機副本清除（**不發任何遠端呼叫**）。
+	// **短碼**：`offsite_retention_expired` 為 25 字元、超出本欄長度；
+	// 為一個機器碼加寬檢查點鏈覆蓋的熱表不划算
+	ActionOffsiteRetention AuditAction = "offsite_retention"
+	// ActionOffsiteIntegrity 取回驗證不符、拒絕交付（零位元組交付）
+	ActionOffsiteIntegrity AuditAction = "offsite_integrity"
+	// ActionOffsiteProfile 儲存設定世代切換確認生效、或停止離機
+	ActionOffsiteProfile AuditAction = "offsite_profile"
+	// ActionOffsiteCredRevoke 管理員撤銷某世代的物件儲存憑證
+	ActionOffsiteCredRevoke AuditAction = "offsite_cred_revoke"
 )
 
 // AuditResource 審計資源類型
@@ -176,6 +195,12 @@ const (
 	// ResourceLDAPDirectory LDAP 目錄設定（單例）：`/ldap-directory{,/test}` 無 `:id`，
 	// **resource_id 恆為 nil**
 	ResourceLDAPDirectory AuditResource = "ldap_directory"
+	// ResourceOffsiteStorage 離機儲存管理（evidence-offsite-storage）：設定世代、
+	// 佇列狀態、失敗清單、連線測試與重試。`:id` 在兩條路由上分別指向
+	// **帳冊列 id**（`/objects/:id/retry`）與**世代 id**
+	// （`/profiles/:id/revoke-credentials`）——**兩者都不是會話或資產 id**。
+	// 段名 `offsite-storage`（15 字元，在 resource 欄 varchar(20) 內）
+	ResourceOffsiteStorage AuditResource = "offsite_storage"
 	// ResourceAssetGroup 資產分組：`:id` 指向**分組列 id**，**不是資產 id**——
 	// 這正是兜底落 asset 時最危險的一族（分組 7 的改名會顯示成資產 7 的事件）
 	ResourceAssetGroup AuditResource = "asset_group"

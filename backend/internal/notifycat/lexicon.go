@@ -97,6 +97,9 @@ var causeEnum = []string{
 	model.CauseAuditChainVerifyFailed,
 	model.CauseSourcePolicyUnreadable,
 	model.CauseSourcePolicyCorrupt,
+	model.CauseOffsiteUploadFailed,
+	model.CauseOffsiteUploadStalled,
+	model.CauseOffsiteIntegrityMismatch,
 }
 
 //go:embed lexicons/*.json

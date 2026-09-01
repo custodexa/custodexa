@@ -206,6 +206,11 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/my_connection_handler.go", fn: "MyConnectionHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/notification_channel_handler.go", fn: "NotificationChannelHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/oidc_handler.go", fn: "OIDCHandler.RegisterRoutes", count: 1},
+	// 離機儲存設定：端點群組同時承載儲存目的地的讀取、連線測試與寫入。漏掛認證＝
+	// 匿名即可讀出備份落在哪個 bucket／endpoint（審計副本的存放位置本身就是攻擊
+	// 路線圖），並可改寫目的地把後續離機副本導向外部端點。鏈上另以
+	// RequireRole("admin") 疊加。
+	{symbol: "AuthMiddleware", file: "internal/api/offsite_storage_handler.go", fn: "OffsiteStorageHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/recording_handler.go", fn: "RecordingHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/role_handler.go", fn: "RoleHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/security_policy_handler.go", fn: "SecurityPolicyHandler.RegisterRoutes", count: 1},
@@ -314,6 +319,11 @@ var authContextHomonymDecls = map[string]string{
 	// 四個呼叫點（`Tick`／`runNow`／`syncAlerts`×2）傳的都是 `model.Mechanism*`
 	// 字串常數＝把某個審計失效機制標記為已恢復，不簽發、不驗證、不失效任何憑證
 	"github.com/custodexa/backend/internal/modules/audit.ChainVerifyAlerter.Resolve": "審計失敗復原標記（鏈驗證編排者側窄介面）",
+	// 離機上傳器以自宣告的 `FailureReporter`（offsite/uploader.go:109）消費同一個
+	// `AuditFailureService.Resolve`，是同一家族的第四個宣告位置。唯一呼叫點
+	// （`Uploader.resolve`）傳的是 `model.Mechanism*` 常數＝把某個離機失效機制
+	// 標記為已恢復，不簽發、不驗證、不失效任何憑證
+	"github.com/custodexa/backend/internal/offsite.FailureReporter.Resolve": "審計失敗復原標記（離機上傳側窄介面）",
 	// internal/seal 狀態機的套件級 Resolve(Situation)
 	"github.com/custodexa/backend/internal/seal..Resolve": "封印狀態機的情境解析",
 	// host key TOFU 驗證回呼（`hostKeys.Callback(assetID)` 回 ssh.HostKeyCallback），
@@ -327,7 +337,7 @@ var authContextHomonymDecls = map[string]string{
 	"github.com/custodexa/backend/internal/modules/identity.authorizationCascadeRevoker.RevokeByUser": "交易級聯撤銷授權資料（identity 側窄介面）",
 }
 
-// maxAuthContextHomonymDecls 同名例外的條數上限（現況 7）。
+// maxAuthContextHomonymDecls 同名例外的條數上限（現況 8）。
 //
 // **這個常數是本表的付費閘**：沒有它，允許清單可以無聲長大——每加一筆就有一個
 // 宣告自貫穿點掃描面消失，而消失本身不需要任何人簽字，也不會有任何數字在 PR diff
@@ -335,7 +345,7 @@ var authContextHomonymDecls = map[string]string{
 //
 // 上限是**收緊用的**：發現某個例外其實不該存在時刪掉它並調低此數，是正確方向；
 // 為了讓守衛變綠而調高它，等同於宣告「這一批認證脈絡不再有人看守」。
-const maxAuthContextHomonymDecls = 7
+const maxAuthContextHomonymDecls = 8
 
 // authContextWatchedSymbols 需要掃描呼叫點的符號集合。
 //

@@ -66,7 +66,7 @@ var tableOwner = map[string]string{
 	// **明示為營運狀態而非證據**：本表不在鏈的覆蓋範圍內（鏈只覆蓋 audit_logs）
 	"audit_chain_verify_states": "audit",
 	"syslog_settings":           "audit",
-	// source-ip-forensics：帳號 × 來源位址的已見基準。產生（建線點與登入點的
+	// 來源限定功能：帳號 × 來源位址的已見基準。產生（建線點與登入點的
 	// 交易內 upsert）與消費（位址候選查詢）皆在 audit 模組，故屬 audit；
 	// 它是告警的判定依據，與 command_alerts 同家
 	"user_source_ips": "audit",
@@ -83,6 +83,24 @@ var tableOwner = map[string]string{
 	"sessions":         "session",
 	"snippets":         "session",
 	"clipboard_events": "session",
+	// offsite（evidence-offsite-storage）：離機儲存的保管帳冊與設定世代表。
+	//
+	// **不是第八個模組**——`internal/offsite` 是基礎設施包（形態比照
+	// internal/recorder、pkg/crypto/kms），沒有自己的業務主體；它是其他模組
+	// 物件的保管帳冊。所有者標籤是自由字串、守衛只核對表存在，故此登記可過。
+	//
+	// 登記在此的**實質效果**正是要的方向：`session`／`audit` 模組若直接 gorm 或
+	// SQL 碰這兩張表，evaluateDataBoundary 立即判 NewCrossings 紅——模組只能經
+	// `offsite.Ledger` 的方法取物件，帳冊的不變式（狀態機、唯一鍵、租約、世代歸屬）
+	// 因此集中在一個包。
+	//
+	// **守衛看不見的那一半**：`internal/offsite` 本身不在資料邊界掃描面內，
+	// 它對這兩張表以外任何表的存取都不會被掃到。補償＝包內自守衛
+	// `internal/offsite/table_ownership_guard_test.go`（沿 keyvault 先例）：
+	// AST 斷言本包非測試檔的 gorm 鏈與 SQL 字面量只碰這兩張表，`audit_logs`
+	// 不直寫（走注入的 CustodyJournal）
+	"offsite_objects":  "offsite",
+	"offsite_profiles": "offsite",
 	// infra（不屬任何業務模組，見 infraTables）
 	"schema_migrations":  "infra",
 	"information_schema": "infra",

@@ -30,6 +30,12 @@ const (
 	EnvPGDSN = "TEST_PG_DSN"
 	// EnvKMSEndpoint KMS 模擬器（localstack）端點
 	EnvKMSEndpoint = "TEST_KMS_ENDPOINT"
+	// EnvS3Endpoint S3 模擬器（localstack，SERVICES 含 s3）端點——
+	// 離機儲存 s3 driver 的整合測試靶機（internal/offsite）
+	EnvS3Endpoint = "TEST_S3_ENDPOINT"
+	// EnvGCSEndpoint GCS 模擬器（fake-gcs-server）端點——
+	// 離機儲存 gcs driver 的整合測試靶機（internal/offsite）
+	EnvGCSEndpoint = "TEST_GCS_ENDPOINT"
 )
 
 // RequireIntegration 是否要求整合測試必須實際執行

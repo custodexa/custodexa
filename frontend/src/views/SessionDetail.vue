@@ -136,6 +136,47 @@
               {{ $t('sessionDetail.noRecording') }}
             </el-tag>
           </el-descriptions-item>
+          <!-- 離機保存（evidence-offsite-storage）：錄影狀態旁的第二個事實——
+               「這份證據有沒有離開這台機器」。
+               **不渲染的判準是帳冊零列**而非「有無現行世代」：
+               停止離機後仍有帳冊列的會話照常渲染，否則關閉後的取回失敗無處可見。
+               本頁拿不到全域帳冊列數（離機端點全為 admin），故判準收斂為
+               「這一列自己有帳冊態」或「admin 讀到設定表非空」——讀不到就不宣稱 -->
+          <el-descriptions-item
+            v-if="offsiteVisible"
+            :label="$t('sessionDetail.offsiteStatus')"
+          >
+            <el-tooltip
+              :content="offsiteTooltip"
+              placement="top"
+            >
+              <el-tag
+                :type="offsiteTagType"
+                data-test="offsite-status"
+              >
+                {{ $t(`offsite.state.${offsiteStatus || 'none'}`) }}
+              </el-tag>
+            </el-tooltip>
+            <!-- 重試是列內動作故走 link（C2）。integrity_mismatch 的重試語義＝
+                 以本機檔重傳，本機無檔時做不到，故停用並說明 -->
+            <el-button
+              v-if="offsiteRetryable"
+              type="primary"
+              link
+              size="small"
+              :disabled="!offsiteRetryEnabled"
+              :loading="offsiteRetrying"
+              data-test="offsite-retry"
+              @click="handleOffsiteRetry"
+            >
+              {{ $t('offsite.retry') }}
+            </el-button>
+            <span
+              v-if="offsiteRetryable && !offsiteRetryEnabled"
+              class="offsite-retry-hint"
+              data-test="offsite-retry-hint"
+            >{{ $t('offsite.retryNeedsLocalFile') }}</span>
+          </el-descriptions-item>
           <el-descriptions-item :label="$t('sessions.startTime')">
             {{ formatDateTime(session.start_time) }}
           </el-descriptions-item>
@@ -562,6 +603,9 @@ import { t, currentLocale } from '@/i18n'
 // recording_error 存機器碼（cause code），
 // 散文僅存量資料才有——auditCauseLabel 未知值原樣回傳，兩者共存不需分支
 import { auditCauseLabel } from '@/constants/audit-enums'
+import { isKnownOffsiteStatus, offsiteStatusTagType } from '@/constants/offsite'
+import { getOffsiteSettings, retryOffsiteObject } from '@/api/offsiteStorage'
+import { useRoles } from '@/composables/useRoles'
 
 const route = useRoute()
 const router = useRouter()
@@ -582,6 +626,73 @@ const showCommands = computed(
 
 // 無法還原的輪次數（degraded 列）。與指令總數分開呈現
 const degradedCount = computed(() => commands.value.filter(isDegradedRow).length)
+
+// ---------------------------------------------------------------------------
+// 離機保存狀態（evidence-offsite-storage）
+// ---------------------------------------------------------------------------
+
+const { isAdmin } = useRoles()
+const offsiteRetrying = ref(false)
+// 設定表是否非空（`configured`）。**三態**：null＝還沒讀到／讀不到（本頁不宣稱）、
+// true／false＝伺服端事實。只有 admin 讀得到離機端點，故非 admin 恆為 null。
+//
+// 為什麼用 `/offsite-storage/settings` 而不是 `/status`：後者會對現行世代發
+// `ProbeBucket` 遠端探測，把它掛在會話詳情的載入路徑上，成本與收益不相稱
+const offsiteConfigured = ref(null)
+
+const offsiteStatus = computed(() => {
+  const raw = session.value?.offsite_status ?? ''
+  // 未知值不顯示裸機器碼：值域是前端閉集（constants/offsite.js 硬拷後端）
+  return isKnownOffsiteStatus(raw) ? raw : ''
+})
+
+// 帳冊零列＝整項不渲染。這一列自己有帳冊態時恆渲染（含停用態的 foreign），
+// `''`（未排入）則要靠「設定表非空」才能斷言——讀不到就不渲染，
+// 不把「我不知道」呈現成「尚未排入」
+const offsiteVisible = computed(() => {
+  if (!session.value) return false
+  if (offsiteStatus.value !== '') return true
+  return offsiteConfigured.value === true
+})
+
+const offsiteTagType = computed(() => offsiteStatusTagType(offsiteStatus.value))
+
+const offsiteTooltip = computed(() => t(`offsite.stateHint.${offsiteStatus.value || 'none'}`))
+
+// 重試只對「卡住的兩態」開放，且只有 admin 打得通端點（後端才是強制點）
+const OFFSITE_RETRYABLE_STATES = ['failed', 'integrity_mismatch']
+const offsiteRetryable = computed(
+  () => isAdmin.value && OFFSITE_RETRYABLE_STATES.includes(offsiteStatus.value)
+)
+// 重試＝以**本機檔**重傳同一個 key；本機沒有檔就沒有可傳的東西
+const offsiteRetryEnabled = computed(() => session.value?.has_recording === true)
+
+const fetchOffsiteConfigured = async () => {
+  if (!isAdmin.value) return
+  try {
+    const res = await getOffsiteSettings({ skipErrorToast: true })
+    offsiteConfigured.value = res?.configured === true
+  } catch {
+    // 讀不到＝不知道，維持 null（fail-safe：不宣稱本頁驗證不了的事）
+    offsiteConfigured.value = null
+  }
+}
+
+const handleOffsiteRetry = async () => {
+  const objectId = session.value?.offsite_object_id
+  if (!objectId) return
+  offsiteRetrying.value = true
+  try {
+    await retryOffsiteObject(objectId)
+    ElMessage.success(t('offsite.retryQueued', { count: 1 }))
+    const response = await getSession(sessionId)
+    session.value = response
+  } catch (err) {
+    console.error('[SessionDetail] 離機重試失敗:', err?.message)
+  } finally {
+    offsiteRetrying.value = false
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 剪貼簿調閱面（按鍵才解密）
@@ -1082,6 +1193,8 @@ const getStatusText = (status) =>
 // Lifecycle
 onMounted(() => {
   fetchSessionDetail()
+  // 與會話讀取獨立：離機設定讀不到不得吞掉會話詳情
+  fetchOffsiteConfigured()
 })
 </script>
 
@@ -1098,6 +1211,13 @@ onMounted(() => {
 
 .account-cell {
   font-family: var(--ot-font-mono, monospace);
+}
+
+/* 重試不可用的理由必須與被停用的按鈕相鄰：只把按鈕變灰等於沒說 */
+.offsite-retry-hint {
+  margin-left: var(--ot-space-xs);
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-xs);
 }
 
 .state-container {

@@ -83,6 +83,7 @@ var mechanismEnum = []string{
 	model.MechanismAuditChainContent,
 	model.MechanismAuditChainVerify,
 	model.MechanismSourcePolicy,
+	model.MechanismOffsiteUpload,
 }
 
 // ---- 事件常數（值＝現行呼叫點字串，逐一與呼叫點實查對照）----

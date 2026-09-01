@@ -9,6 +9,7 @@ import (
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/offsite"
 	"gorm.io/gorm"
 )
 
@@ -22,6 +23,8 @@ var (
 // SessionService Session 管理服務
 type SessionService struct {
 	registry ConnectionRegistry // WebSocket 連線註冊表介面
+	// offsite 離機保管帳冊的排隊面；nil＝本部署未組裝離機子系統
+	offsite OffsiteEnqueuer
 }
 
 // ConnectionRegistry WebSocket 連線註冊表介面
@@ -414,7 +417,35 @@ func (s *SessionService) TerminateByAsset(assetID uint, reason string) (int, err
 	return terminated, nil
 }
 
-// UpdateRecording 更新錄製資訊
+// OffsiteEnqueuer 離機保管帳冊的排隊面（消費者側窄介面）。
+//
+// **tx-taking**：`EnqueueTx` 收本模組的交易句柄，使「錄影欄位落地」與「排入離機
+// 佇列」是同一筆交易——沒有「落地了但沒排隊」的窗口。呼叫點登記於
+// `internal/guards/txtaking`（那道守衛存在的理由：交易句柄交出去之後，
+// 編譯器與資料邊界閘門都看不見對方寫了哪張表）。
+//
+// 由 `offsite.Ledger` 滿足；nil＝本部署未組裝離機子系統，行為與功能不存在時逐字相同。
+type OffsiteEnqueuer interface {
+	// HasCurrentGeneration 開交易前的便宜預讀（零列時不開交易的機械保證）
+	HasCurrentGeneration() (bool, error)
+	// EnqueueTx 在呼叫方的交易內冪等排入；無現行世代時回 offsite.ErrNoCurrentGeneration
+	EnqueueTx(tx *gorm.DB, kind string, ownerID uint, origin string) (*model.OffsiteObject, bool, error)
+}
+
+// SetOffsiteEnqueuer 接上離機排隊面（組裝根；沿 SetWatermarks 的 Set 前綴慣例，
+// 生命週期 manifest 以該前綴辨識注入呼叫點）。
+func (s *SessionService) SetOffsiteEnqueuer(e OffsiteEnqueuer) { s.offsite = e }
+
+// UpdateRecording 更新錄製資訊。
+//
+// **未設定離機（`offsite_profiles` 零列）時逐字維持原路徑**：不開交易、
+// 欄位集合不變（`TestUpdateRecordingUnchangedWhenOffsiteUnconfigured` 釘住）。
+// 啟用時改為一筆交易：`UPDATE recording_*` → `EnqueueTx(recording, live)` →
+// `UPDATE offsite_object_id, offsite_status=row.State`；任一步失敗整筆回滾，
+// **不留半排入**。
+//
+// 快取寫的是 `row.State` 而非硬寫 `pending`：`EnqueueTx` 冪等，既有列可能已是
+// `uploaded`／`foreign`，硬寫會讓列表顯示倒退。
 func (s *SessionService) UpdateRecording(id uint, recordingPath string, recordingSize int64) error {
 	updates := map[string]interface{}{
 		"recording_path": recordingPath,
@@ -422,11 +453,45 @@ func (s *SessionService) UpdateRecording(id uint, recordingPath string, recordin
 		"has_recording":  true,
 	}
 
-	if err := database.DB.Model(&model.Session{}).Where("id = ?", id).Updates(updates).Error; err != nil {
-		return fmt.Errorf("更新錄製資訊失敗: %w", err)
+	if s.offsite == nil {
+		if err := database.DB.Model(&model.Session{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新錄製資訊失敗: %w", err)
+		}
+		return nil
+	}
+	// 預讀失敗時 active 為 true：由交易內的權威讀取決定，不靜默退回「當作沒啟用」
+	active, err := s.offsite.HasCurrentGeneration()
+	if err != nil {
+		log.Printf("[SessionService] 離機現行世代預讀失敗（改走交易路徑，SessionID=%d）: %v", id, err)
+	}
+	if !active {
+		if err := database.DB.Model(&model.Session{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新錄製資訊失敗: %w", err)
+		}
+		return nil
 	}
 
-	return nil
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Session{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			return fmt.Errorf("更新錄製資訊失敗: %w", err)
+		}
+		row, _, err := s.offsite.EnqueueTx(tx, offsite.KindRecording, id, offsite.OriginLive)
+		if err != nil {
+			if errors.Is(err, offsite.ErrNoCurrentGeneration) {
+				// 預讀與交易之間世代被停用：錄影欄位照常落地，不排隊
+				return nil
+			}
+			return fmt.Errorf("排入離機佇列失敗: %w", err)
+		}
+		if err := tx.Model(&model.Session{}).Where("id = ?", id).
+			Updates(map[string]interface{}{
+				"offsite_object_id": row.ID,
+				"offsite_status":    row.State,
+			}).Error; err != nil {
+			return fmt.Errorf("寫回會話離機快取失敗: %w", err)
+		}
+		return nil
+	})
 }
 
 // SetRecordingStartedAt 記錄「錄影的時間原點」。

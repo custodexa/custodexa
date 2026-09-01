@@ -149,6 +149,9 @@ services:
       GUACD_PORT: 4822
       AUDIT_LOG_PATH: /var/log/custodexa/audit
       RECORDING_PATH: /var/lib/custodexa/recordings
+      # 離機取回暫存根（容器本地快取、非 volume——刻意不掛出：內容是已驗證的
+      # 明文副本，容器重建即消失、不進備份範圍）
+      OFFSITE_SPOOL_PATH: /var/lib/custodexa/offsite-spool
       # apiError 完備性測試定位三語 locale（dev-only 唯讀掛載點）
       APIERROR_LOCALE_DIR: /app/testdata/locales
     depends_on:
@@ -181,6 +184,9 @@ services:
       # 來源網段共用測試向量唯讀掛載：前端格式提示不得拒絕任何後端判為合法的
       # 向量（sourcePolicyFormat.spec.js 的 /repo 路徑；無此掛載該案例 skip）
       - ./backend/internal/sourceip/testdata:/repo/backend/internal/sourceip/testdata:ro
+      # 離機保管的狀態值域唯讀掛載：前端十態對照表直讀 Go 常數雙向比對
+      # （offsite.spec.js 的 /repo 路徑；無此掛載該案例 skip）
+      - ./backend/internal/offsite:/repo/backend/internal/offsite:ro
     environment:
       NODE_ENV: development
     depends_on:
@@ -403,25 +409,52 @@ services:
           - dex.localhost
     restart: unless-stopped
 
-  # KMS 模擬器：C1 雲端 KMS 的整合測試靶機。
+  # AWS 模擬器：C1 雲端 KMS 與離機儲存 s3 driver 的整合測試靶機。
   #
-  # **僅啟用 kms 子集**：localstack 預設會拉起整套 AWS 模擬面，對本專案而言是
-  # 純粹的啟動成本與攻擊面；SERVICES 收斂到唯一真的會用到的服務。
+  # **只啟用真的會用到的子集（kms,s3）**：localstack 預設會拉起整套 AWS 模擬面，
+  # 對本專案而言是純粹的啟動成本與攻擊面。
   #
-  # **本服務只服務測試，不進任何產品路徑**：後端不讀 localstack 端點
-  # （產品刻意不提供端點覆寫的 env 鍵），測試以 TEST_KMS_ENDPOINT gating。
-  # 跑法見 pkg/crypto/kms/localstack_test.go 檔頭。
+  # **本服務只服務測試，不進任何產品路徑**。端點覆寫的界線分兩段：
+  #   - KMS 仍不提供任何端點覆寫 env 鍵（生產路徑 fail-close，pkg/crypto/kms）；
+  #   - S3（離機儲存）走本功能專屬鍵 OFFSITE_S3_ENDPOINT（自建 S3 相容儲存是
+  #     正當部署場景），且不讀 SDK 全域的 AWS_ENDPOINT_URL。
+  # 測試 gating：TEST_KMS_ENDPOINT（pkg/crypto/kms/localstack_test.go）、
+  # TEST_S3_ENDPOINT（internal/offsite/localstack_test.go），跑法見各檔頭。
   localstack:
     image: localstack/localstack:3
     container_name: custodexa-localstack-dev
     hostname: localstack
     environment:
-      SERVICES: kms
+      SERVICES: kms,s3
       DEBUG: "0"
-      # 資料留在容器內：測試每次自建金鑰，不需跨重啟保存（也避免測試金鑰累積）
+      # 資料留在容器內：測試每次自建金鑰與 bucket，不需跨重啟保存
       PERSISTENCE: "0"
     ports:
       - "4566:4566"
+    networks:
+      - custodexa-network
+    restart: unless-stopped
+
+  # GCS 模擬器：離機儲存 gcs driver 的整合測試靶機（fake-gcs-server）。
+  #
+  # 沿 localstack 先例常設於 dev compose（常設而非按需起停，
+  # 理由：contract test 三實作全綠是驗收條件，起停成本要低）。
+  # 只服務測試：產品側 gcs 端點走 OFFSITE_GCS_ENDPOINT 顯式注入，
+  # 不讀全域 STORAGE_EMULATOR_HOST。gating：TEST_GCS_ENDPOINT
+  # （internal/offsite/gcs_fakeserver_test.go 檔頭有跑法）。
+  #
+  # 誠實邊界：模擬器只驗欄位與 generation 行為，
+  # bucket 保留設定（retentionPolicy）不支援，不得據以宣稱驗過保護語義。
+  fake-gcs:
+    image: fsouza/fake-gcs-server:1.52.2
+    container_name: custodexa-fake-gcs-dev
+    hostname: fake-gcs
+    # memory backend：預設的 filesystem backend 不支援 bucket versioning
+    # （回 500 not implemented），而 ProbeBucket 的揭露測試要能造出兩態；
+    # 測試每次自建 bucket，不需跨重啟保存
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "fake-gcs:4443", "-backend", "memory"]
+    ports:
+      - "127.0.0.1:4443:4443"
     networks:
       - custodexa-network
     restart: unless-stopped

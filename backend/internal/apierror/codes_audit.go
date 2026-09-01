@@ -144,6 +144,8 @@ var policyKeyZhLabels = identityLabels(
 	"daily_review_enabled",
 	"failure_alert_enabled",
 	"recording_failclose_enabled",
+	// 離機儲存（evidence-offsite-storage）：本機副本的快取期，不是保留期
+	"offsite_local_retention_days",
 	// 金鑰管理
 	"key_cryptoperiod_reminder_days",
 	// 單輪換鑰重加密上限

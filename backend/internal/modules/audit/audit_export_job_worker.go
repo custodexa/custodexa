@@ -3,6 +3,7 @@ package audit
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/offsite"
 	"gorm.io/gorm"
 )
 
@@ -57,6 +59,9 @@ type AuditExportJobWorker struct {
 	dir      string        // 產物暫存根（已 Resolve）
 	interval time.Duration // 測試可縮短
 
+	// offsite 離機保管帳冊的排隊面；nil＝本部署未組裝離機子系統
+	offsite OffsiteEnqueuer
+
 	stopCh chan struct{}
 	doneCh chan struct{}
 }
@@ -70,6 +75,21 @@ func NewAuditExportJobWorker(db *gorm.DB, exporter jobBundleExporter,
 		interval: exportJobPollInterval,
 	}
 }
+
+// OffsiteEnqueuer 離機保管帳冊的排隊面（消費者側窄介面）。
+//
+// **tx-taking**：`EnqueueTx` 收本模組的交易句柄，使「產物落定」與「排入離機佇列」
+// 是同一筆交易。呼叫點登記於 `internal/guards/txtaking`。
+// 由 `offsite.Ledger` 滿足；nil＝未組裝，行為與功能不存在時逐字相同。
+type OffsiteEnqueuer interface {
+	// HasCurrentGeneration 開交易前的便宜預讀（零列時不開交易的機械保證）
+	HasCurrentGeneration() (bool, error)
+	// EnqueueTx 在呼叫方的交易內冪等排入
+	EnqueueTx(tx *gorm.DB, kind string, ownerID uint, origin string) (*model.OffsiteObject, bool, error)
+}
+
+// SetOffsiteEnqueuer 接上離機排隊面（組裝根）。
+func (w *AuditExportJobWorker) SetOffsiteEnqueuer(e OffsiteEnqueuer) { w.offsite = e }
 
 // jobArtifactPath／jobArtifactTempPath 產物落檔路徑（最終檔與打包中暫存檔）
 func (w *AuditExportJobWorker) jobArtifactPath(jobID uint) string {
@@ -278,16 +298,16 @@ func (w *AuditExportJobWorker) finishJob(job *model.AuditExportJob, tempPath str
 		return
 	}
 	expires := packagedAt.Add(exportJobArtifactRetention)
-	if err := w.db.Model(&model.AuditExportJob{}).Where("id = ?", job.ID).
-		Updates(map[string]any{
-			"status":          model.ExportJobDone,
-			"artifact_path":   finalPath,
-			"artifact_sha256": fmt.Sprintf("%x", hasher.Sum(nil)),
-			"artifact_size":   info.Size(),
-			"error_summary":   "",
-			"packaged_at":     packagedAt,
-			"expires_at":      expires,
-		}).Error; err != nil {
+	updates := map[string]any{
+		"status":          model.ExportJobDone,
+		"artifact_path":   finalPath,
+		"artifact_sha256": fmt.Sprintf("%x", hasher.Sum(nil)),
+		"artifact_size":   info.Size(),
+		"error_summary":   "",
+		"packaged_at":     packagedAt,
+		"expires_at":      expires,
+	}
+	if err := w.completeJob(job.ID, updates); err != nil {
 		// DB 更新失敗：檔案已落地但狀態未定，清檔回重試路徑——
 		// 「檔案在而狀態不是 done」的中間態不可下載，留著只是孤兒明文
 		_ = os.Remove(finalPath)
@@ -296,6 +316,44 @@ func (w *AuditExportJobWorker) finishJob(job *model.AuditExportJob, tempPath str
 	}
 	log.Printf("[AuditExportJob] job=%d 打包完成 size=%d expires=%s",
 		job.ID, info.Size(), expires.Format(time.RFC3339))
+}
+
+// completeJob 寫入完成態；離機啟用時**同一筆交易**排入上傳佇列並寫指標欄。
+//
+// **未設定離機（`offsite_profiles` 零列）時不開交易、欄位集合逐字不變**
+// （機械保證；沿 session 側 UpdateRecording 的同一形態）。
+// 啟用時任一步失敗整筆回滾——「產物已 done 而沒排隊」的窗口內，那份證據包只有
+// 本機唯一副本，而產物目錄未掛 volume，容器重建即消失。
+func (w *AuditExportJobWorker) completeJob(jobID uint, updates map[string]any) error {
+	if w.offsite == nil {
+		return w.db.Model(&model.AuditExportJob{}).Where("id = ?", jobID).Updates(updates).Error
+	}
+	active, err := w.offsite.HasCurrentGeneration()
+	if err != nil {
+		log.Printf("[AuditExportJob] 離機現行世代預讀失敗（改走交易路徑，job=%d）: %v", jobID, err)
+	}
+	if !active {
+		return w.db.Model(&model.AuditExportJob{}).Where("id = ?", jobID).Updates(updates).Error
+	}
+	return w.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.AuditExportJob{}).Where("id = ?", jobID).
+			Updates(updates).Error; err != nil {
+			return err
+		}
+		row, _, err := w.offsite.EnqueueTx(tx, offsite.KindExport, jobID, offsite.OriginLive)
+		if err != nil {
+			if errors.Is(err, offsite.ErrNoCurrentGeneration) {
+				// 預讀與交易之間世代被停用：產物照常落定，不排隊
+				return nil
+			}
+			return fmt.Errorf("排入離機佇列失敗: %w", err)
+		}
+		return tx.Model(&model.AuditExportJob{}).Where("id = ?", jobID).
+			Updates(map[string]any{
+				"offsite_object_id": row.ID,
+				"offsite_status":    row.State,
+			}).Error
+	})
 }
 
 // failOrRetry 失敗處置：未達重試上限回 pending（下輪重領、重驗、重打包），

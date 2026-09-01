@@ -20,6 +20,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/seal"
 	"github.com/custodexa/backend/pkg/crypto"
 )
@@ -45,6 +46,11 @@ func TestInstanceGuardLockKeyDistinct(t *testing.T) {
 		{"identity.LocalAdminLockKey", identity.LocalAdminLockKey},
 		{"identity.LDAPDirectoryLockKey", identity.LDAPDirectoryLockKey},
 		{"database.InstanceGuardLockKey", database.InstanceGuardLockKey},
+		// 離機儲存設定世代寫入互斥（evidence-offsite-storage）。
+		// **完整的兩兩比對只能在組裝根做**：`internal/offsite` 的包內測試無法
+		// import identity（identity → audit → offsite 會構成測試期的 import cycle），
+		// 故該包只比對得到 keyvault 與 database 兩把；缺的那兩把由本處補齊
+		{"offsite.OffsiteProfileLockKey", offsite.OffsiteProfileLockKey},
 	}
 	if database.InstanceGuardLockKey != 0x6F74_6B65_6B00_0004 {
 		t.Fatalf("InstanceGuardLockKey=%#x，登記值為 0x6F74_6B65_6B00_0004（keyspace 的 0x0004）", database.InstanceGuardLockKey)

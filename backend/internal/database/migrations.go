@@ -51,6 +51,15 @@ var migrations = []Migration{
 		Down:    rollbackAuditExportJobs,
 	},
 	{
+		// 離機儲存：offsite_profiles 設定世代表（含信封加密憑證）、
+		// offsite_objects 保管帳冊、兩張擁有表的指標與快取欄。
+		// **Down 為資料追蹤不可逆**（見 migration_evidence_offsite.go 檔頭）
+		Version: "20260825_evidence_offsite",
+		Name:    "evidence_offsite",
+		Up:      applyEvidenceOffsite,
+		Down:    rollbackEvidenceOffsite,
+	},
+	{
 		// 來源位址追查：users.allowed_cidrs、user_source_ips 基準表、兩條索引、
 		// command_alerts kind 值域擴充與冷啟動回填。**Down 銷毀資料、開發庫限定**
 		// （見 migration_source_ip_forensics.go 檔頭）
@@ -70,6 +79,7 @@ var migrations = []Migration{
 // 集合分別跑，兩者串接執行會在全新庫上重複建表。回填語句不在此列（不是 schema）。
 func schemaDDLStatements() []string {
 	out := append(baselineSchemaStatements(), auditExportJobsDDL()...)
+	out = append(out, evidenceOffsiteDDL()...)
 	return append(out, sourceIPForensicsDDL()...)
 }
 
@@ -104,8 +114,21 @@ const LDAPSeedMarkerVersion = "20260804_ldap_env_seeded"
 //
 // 新增執行期 marker 而未登記於此，即為上述形態的復發。守衛：
 // `runtime_marker_registry_test.go` 的 TestRuntimeMarkerVersionsCoverAllWriters。
+// OffsiteSeedMarkerVersion 離機儲存設定 env→DB seed 的執行標記。
+//
+// 定義於 repository 的理由同 LDAPSeedMarkerVersion（寫入端在 internal/offsite，
+// 而 repository 不得依賴上層，故常數落在兩端都可依賴的下層）。
+//
+// **語義是「已完成評估」而非「已建立資料」**：實際 seed、env 未設定而跳過、
+// 表非空而跳過三種**終局**皆寫入；只有基礎設施失敗與 env 組態矛盾不寫，
+// 留待下次啟動重試。marker 隨資料庫備份還原——「marker 在而 offsite_profiles
+// 零列」是真實可達的部署狀態，其終局＝未設定，只能經管理介面重新設定
+// （營運文件明載；env 不再回灌）。
+const OffsiteSeedMarkerVersion = "20260825_offsite_env_seeded"
+
 var runtimeMarkerVersions = []string{
 	LDAPSeedMarkerVersion,
+	OffsiteSeedMarkerVersion,
 }
 
 // schemaMigrationsBootstrapDDL 追蹤表自身的建立語句。

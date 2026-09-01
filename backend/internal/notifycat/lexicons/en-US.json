@@ -24,7 +24,10 @@
     "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
     "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")",
     "source_policy_unreadable": "Judgment point could not read the user's allowed source ranges",
-    "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)"
+    "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)",
+    "offsite_upload_failed": "Offsite upload has reached the retry limit (that evidence currently has only a local copy)",
+    "offsite_upload_stalled": "Offsite upload keeps being interrupted (the transfer lease for one object expired repeatedly)",
+    "offsite_integrity_mismatch": "A retrieved offsite copy did not match what was uploaded (delivery refused)"
   },
   "severity": {
     "high": "High",

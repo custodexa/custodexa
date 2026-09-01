@@ -52,3 +52,20 @@ type RecordingCleaner interface {
 	// CleanupOldRecordings 刪除超過保留天數的錄影檔，回傳刪除檔數。
 	CleanupOldRecordings(retentionDays int) (int, error)
 }
+
+// OffsiteRecordingRetention 離機啟用後的錄影保留補充面。
+//
+// **另立一個 port 而非擴充 RecordingCleaner**：兩者的觸發條件不同——
+// 既有那一個由錄影保留天數驅動且**恆存在**；本 port 的兩個方法只在離機子系統
+// 已組裝時才有意義，把它們併進去會逼每一個既有的 RecordingCleaner 實作
+// （含測試替身）為一件與它無關的功能長出兩個空方法。
+//
+// 同樣由 `*session.RecordingService` 滿足，故 audit → session 的零 import 不變。
+type OffsiteRecordingRetention interface {
+	// PurgeOffsiteLocalCache 快取清除段：刪已離機且超過快取期的本機檔，
+	// **不動錄影三欄、不推進水位**（錄影仍可自離機副本播放）
+	PurgeOffsiteLocalCache(cacheDays int) (int, error)
+	// PurgeExpiredOffsiteRecords 政策到期段的 DB 分支：本機已無檔但仍有帳冊列的
+	// 過期會話 → 帳冊標記到期＋擁有表清欄。**對遠端零呼叫**
+	PurgeExpiredOffsiteRecords(retentionDays, maxPerRun int) (int, error)
+}

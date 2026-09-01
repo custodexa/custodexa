@@ -24,7 +24,10 @@
     "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
     "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）",
     "source_policy_unreadable": "判定點讀不到使用者的允許來源網段清單",
-    "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）"
+    "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）",
+    "offsite_upload_failed": "離機儲存上傳重試已達上限（該證據目前只有本機副本）",
+    "offsite_upload_stalled": "離機儲存上傳反覆中斷（同一物件的傳輸租約已多次逾期）",
+    "offsite_integrity_mismatch": "離機副本取回時內容與上傳當下不符（已拒絕交付）"
   },
   "severity": {
     "high": "高風險",

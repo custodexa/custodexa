@@ -78,6 +78,22 @@ type Session struct {
 	// NULL＝無錄影或存量資料，此時前端退回未校正值並明示（見 SessionDetail 的降級文案）。
 	RecordingStartedAt *time.Time `json:"recording_started_at,omitempty"`
 
+	// 離機儲存（evidence-offsite-storage）：**指標＋顯示用快取兩欄**，
+	// 遠端物件的身分與狀態機在 `offsite_objects`（OffsiteObject），不在這裡。
+	//
+	// OffsiteObjectID 指向帳冊列；NULL＝本會話的錄影尚未（或不會）進入離機佇列。
+	// OffsiteStatus 是帳冊 `state` 的快取，值域另含回填掃描的兩個分類
+	// （`skipped_missing`／`skipped_expired`——那兩者**不建帳冊列**）與空字串。
+	// **所有決策邏輯只讀帳冊**：本欄只供會話列表與詳情頁免 join 顯示，
+	// 與帳冊短暫不一致不影響正確性。
+	//
+	// 兩條 partial index 只存在於 migration DDL（`idx_sessions_offsite_backfill`
+	// 的 WHERE 涉及 `has_recording`、`idx_sessions_offsite_retention` 涉及本欄的
+	// IS NOT NULL，gorm tag 表達得出但會使本 model 承載離機子系統的查詢面知識；
+	// 沿 audit_export_jobs 部分索引只留 DDL 的既有取捨）。
+	OffsiteObjectID *uint  `json:"offsite_object_id,omitempty"`
+	OffsiteStatus   string `gorm:"size:20;not null;default:''" json:"offsite_status"`
+
 	// 帳號雙快照：連線當下所用的資產帳號 ID 與 username
 	// 同時釘住——只存 FK 不足以保證不可否認性（帳號改名／刪除會洗掉歷史語義），
 	// 只存 username 又無法回指帳號物件。0／空＝該會話未帶帳號（歷史資料、

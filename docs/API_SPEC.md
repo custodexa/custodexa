@@ -34,6 +34,7 @@
 | 傳輸同意 | 1 | `/api/v1/transmission-consents` | 傳輸風險同意立據（warn 檔連線前） |
 | 通道清冊 | 2 | `/api/v1/transmission-inventory` | 全通道加密狀態清冊＋匯出快照（admin，PCI Req 4） |
 | 錄影 | 7 | `/api/v1/sessions`, `/api/v1/recordings` | 元數據/下載/串流/rtoken/刪除/統計 |
+| 離機儲存 | 11 | `/api/v1/offsite-storage` | 設定（讀/寫/世代切換確認/停止離機/歷史世代/撤銷憑證）＋狀態、失敗清單、測試連線、批次與單筆重試（全數 admin；憑證 write-only） |
 | 用戶 | 12 | `/api/v1/users` | CRUD + 角色/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 + 允許來源網段判定 |
 | 角色 | 1 | `/api/v1/roles` | 角色列表 |
 | 使用者群組 | 6 | `/api/v1/user-groups` | 群組 CRUD＋成員維護（授權主體，admin） |
@@ -51,7 +52,7 @@
 | 改密 | 9 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 153 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 164 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -204,6 +205,17 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/notification-channels/:id` | always |
 | PUT | `/api/v1/notification-channels/:id` | always |
 | POST | `/api/v1/notification-channels/:id/test` | always |
+| GET | `/api/v1/offsite-storage/failures` | always |
+| POST | `/api/v1/offsite-storage/objects/:id/retry` | always |
+| GET | `/api/v1/offsite-storage/profiles` | always |
+| POST | `/api/v1/offsite-storage/profiles/:id/revoke-credentials` | always |
+| POST | `/api/v1/offsite-storage/retry-failed` | always |
+| GET | `/api/v1/offsite-storage/settings` | always |
+| PUT | `/api/v1/offsite-storage/settings` | always |
+| POST | `/api/v1/offsite-storage/settings/confirm` | always |
+| POST | `/api/v1/offsite-storage/settings/disable` | always |
+| GET | `/api/v1/offsite-storage/status` | always |
+| POST | `/api/v1/offsite-storage/test` | always |
 | GET | `/api/v1/oidc-providers` | always |
 | POST | `/api/v1/oidc-providers` | always |
 | DELETE | `/api/v1/oidc-providers/:id` | always |
@@ -1421,6 +1433,8 @@ GET /api/v1/sessions
   "recording_size": 102400,
   "has_recording": true,
   "recording_error": "",
+  "offsite_object_id": 42,
+  "offsite_status": "uploaded",
   "k8s_namespace": "", "k8s_pod": "", "k8s_pod_uid": "",
   "k8s_container": "", "k8s_image": "", "k8s_node": ""
 }
@@ -1429,6 +1443,15 @@ GET /api/v1/sessions
 `end_reason`: `normal` / `idle_timeout` / `max_duration` / `admin_terminate` / `user_terminate`
 （自助終止）/ `backend_restart` / `orphaned`（啟動清掃孤兒）/ `revoked`（授權撤銷）。
 K8s 會話帶不可變 pod 快照（uid/image/node 於連線當下釘住）。
+
+**離機儲存兩欄**（`offsite_object_id`／`offsite_status`）:
+- `offsite_object_id`：保管帳冊列的識別；本會話的錄影尚未（或不會）進入離機佇列時**該鍵不出現**（`omitempty`）。
+- `offsite_status`：**恆出現**（未進佇列時為空字串）。值域＝帳冊七態
+  `pending`／`uploading`／`uploaded`／`failed`／`integrity_mismatch`／`foreign`／`local_purged`，
+  另加回填掃描的兩個分類 `skipped_missing`（本機檔讀不到）／`skipped_expired`（已逾錄影保留期）
+  ——後兩者**不建帳冊列**，故沒有對應的 `offsite_object_id`。
+- 兩欄皆為**顯示用快取**（權威在帳冊），供列表與詳情頁免 join；離機功能從未設定的部署，
+  存量與新建會話的 `offsite_status` 恆為空字串。逐態的語義見 [DB_SCHEMA.md](DB_SCHEMA.md) 第 45 節。
 
 ### 詳情 / 活動 / 統計 / 終止
 
@@ -1835,6 +1858,36 @@ GET /api/v1/sessions/:id/recording/stream     （audit:view；支援 HTTP Range�
 - 串流 Content-Type：`.cast` 為 `application/x-asciicast`、`.guac` 為 `application/octet-stream`
 - 下載一律標 `application/x-asciicast`（含 `.guac`，為現行程式碼行為）
 
+### 來源判定與離機退路
+
+下載、串流與 rtoken 串流三條路徑在交付位元組之前都會先做**來源判定**：本機副本可讀且大小不小於
+帳冊記載者，直接由本機交付（現況行為）；本機檔缺席、開不了或被截斷，而帳冊記載該錄影已離機時，
+才改由物件儲存取回。**下載走整檔路徑**，故順帶比對整檔雜湊——大小相同而內容已被改動的本機檔，
+在此也會退到離機來源。
+
+取回一律**先落暫存、驗過才交付**（含 Range 播放）：暫存檔的 SHA-256 與大小須與帳冊相符，
+不符即刪除暫存、拒絕交付並把該帳冊列標為完整性不符。收口不變——仍走既有的 rtoken 或 JWT 授權，
+**不簽發任何指向物件儲存的直連網址**。代價是首次播放的等待與暫存磁碟佔用（容器本地，有存活期與總量上限）。
+
+**離機取回失敗回 409 ＋機器碼**（零位元組交付，並留審計）:
+
+| 機器碼 | 狀態碼 | 情境 |
+|---|---|---|
+| `CONFLICT_OFFSITE_INTEGRITY_MISMATCH` | 409 | 取回內容的雜湊或大小與帳冊不符，已拒絕交付 |
+| `CONFLICT_OFFSITE_PROFILE_MISSING` | 409 | 帳冊列指向的設定世代不存在（多半是部分還原）；fail-close，不改用現行設定猜 |
+| `CONFLICT_OFFSITE_FOREIGN_CREDENTIALS_MISSING` | 409 | 該世代的憑證已撤銷或缺席；**不回退預設憑證鏈** |
+| `CONFLICT_OFFSITE_CREDENTIALS_UNAVAILABLE` | 409 | 憑證解密失敗（金鑰事故）。**不併吞為「功能未設定」** |
+
+**審計的 `source` 與 `fallback_reason`**：離機取回成功時，該次交付的審計列 `details` 會多帶
+`"source": "offsite"` 與 `"fallback_reason"`（值域 `local_missing`／`local_unreadable`／
+`local_truncated`／`local_divergent`），記「這一次交付的位元組來自哪裡、為何不是本機」。
+**只在離機來源時標記**——本機來源的審計列與離機功能上線前逐位元組相同，
+「未設定＝行為完全不變」在審計面沒有例外。
+
+> **`source` 不出現在錄影元數據回應內。** `GET /sessions/:id/recording` 的回應形狀未因離機功能改變
+> （欄位如上一節），它描述的是這個會話的錄影本身，而非某一次交付的來源。會話層的離機狀態
+> 請讀 Session 回應的 `offsite_status`（見 [Session API](#session-api)）。
+
 ### 錄影 token 串流（播放器建議路徑）
 
 ```
@@ -1858,6 +1911,182 @@ GET    /api/v1/recordings/stats         （audit:view）
 `total_size` 取自錄影目錄的實際檔案大小加總（`filepath.Walk`），非 `sessions.recording_size`
 欄位之和。**系統不設任何阻擋性儲存上限**：沒有任何建線或錄影路徑會因儲存量而被拒絕，
 磁碟容量本身由部署方的基礎設施監控承擔。
+
+---
+
+## 離機儲存 API
+
+> 把錄影與證據包的副本上傳到物件儲存，並在本機副本不可用時由該處取回。
+> **全部端點限 admin**（認證中介層＋角色檢查，無細分權限）。
+> 儲存桶本身的建立、版本化、保留與生命週期規則歸部署方，產品只上傳、記帳、取回時驗證，
+> 並在測試連線與狀態端點**中性揭露**儲存桶的現況（建議參數見 `docs/ops/`）。
+
+```
+GET    /api/v1/offsite-storage/settings                        讀取現行設定
+PUT    /api/v1/offsite-storage/settings                        寫入設定（可能回「需確認」）
+POST   /api/v1/offsite-storage/settings/confirm                確認世代切換
+POST   /api/v1/offsite-storage/settings/disable                停止離機（退役現行世代）
+GET    /api/v1/offsite-storage/profiles                        歷史世代清單
+POST   /api/v1/offsite-storage/profiles/:id/revoke-credentials 撤銷某世代的憑證
+GET    /api/v1/offsite-storage/status                          總覽（設定＋佇列＋治理揭露）
+GET    /api/v1/offsite-storage/failures                        失敗清單（分頁）
+POST   /api/v1/offsite-storage/test                            測試連線（以表單當下值，未儲存）
+POST   /api/v1/offsite-storage/retry-failed                    批次重試全部失敗件
+POST   /api/v1/offsite-storage/objects/:id/retry               單筆重試
+```
+
+### 設定的 write-only 語義
+
+**回應永不含憑證**。讀取投影（`ProfileView`，`GET /settings`、`PUT /settings`、
+`/settings/confirm`、`/settings/disable`、`GET /profiles` 共用）固定 17 欄：
+
+| 欄位 | 說明 |
+|---|---|
+| `configured` | 設定表是否有任何世代（`false`＝從未設定） |
+| `disabled` | 有歷史世代但無現行世代（＝已停止離機） |
+| `generation_id` | 世代識別（**不可重用**，識別一律用它） |
+| `profile_fingerprint` | 設定指紋；**可重複**，只作切換判準與顯示，不是識別 |
+| `provider` | `s3`／`gcs` |
+| `endpoint_origin` | 端點的**正規化 origin**。path、query 與 fragment 一律不回顯 |
+| `bucket`／`prefix`／`region`／`path_style` | 連線參數 |
+| `credential_mode` | `stored`／`default_chain`／`revoked` |
+| `has_credentials` | 是否存有本世代自己的憑證（布林，**不是遮罩值**） |
+| `credentials_cleared_at` | 憑證撤銷時刻（`revoked` 時非空） |
+| `created_at`／`activated_at`／`retired_at` | 世代的時刻軌跡；`retired_at` 為空即現行世代 |
+| `object_count` | 該世代的帳冊存量（清單端點填入） |
+
+**寫入請求**（`PUT /settings`、`/settings/confirm` 與 `/test` 共用形狀）：
+`provider`、`endpoint`、`bucket`、`prefix`、`region`、`path_style`，
+憑證欄依 provider 為 `access_key_id`＋`secret_access_key`（s3）或 `service_account_json`（gcs），
+另有 `clear_credentials` 布林旗標。憑證欄的三種意圖：
+
+- **填值**＝設定新憑證；
+- **`clear_credentials: true`**＝改走雲端 SDK 的預設憑證鏈；
+- **兩者皆無＝沿用既存憑證**，但**僅在落點未變時成立**——provider、端點或 bucket 任一改變時，
+  沿用既存憑證會被拒（`RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE`，409）。換落點必須重新輸入憑證，
+  這條規則恰與世代切換對齊：憑證不會跟著設定被送到另一個地方去。
+
+未設定時 `GET /settings` 回 **200 `configured:false`**，不是 404——「還沒設定」是本資源的正常狀態。
+
+### 世代切換的確認流程
+
+`PUT /settings` 算出的新指紋與現行世代不同、且帳冊已有存量物件時，**不逕行儲存**，
+改回 **200** ＋確認要求：
+
+```json
+{
+  "needs_confirmation": true,
+  "object_count": 128,
+  "expected_current_generation_id": 3,
+  "settings_digest": "<sha256>"
+}
+```
+
+前端據此顯示確認對話框（物件數、舊世代去向），並把後兩個值**原樣攜回** `POST /settings/confirm`。
+確認在鎖內依序做：以 `expected_current_generation_id` 對現行世代做 CAS（0＝預期目前無現行世代）→
+重算請求體摘要與 `settings_digest` 比對 → **以與 `PUT /settings` 完全相同的驗證核心重驗全部輸入**
+→ 重數存量 → 才寫入。同一交易內完成「舊世代退役、新世代建立並啟用、舊世代的帳冊列轉為只讀、審計」。
+
+CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`／
+`CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH`），訊息只說「設定已被其他操作變更，請重新讀取後再試」，
+**不回顯現行設定的任何細節**。兩名管理員並發確認時先到者成立，任何交錯都不會留下兩個現行世代。
+
+不需確認時（指紋相同，或帳冊零存量）直接回 `ProfileView` ＋ `"needs_confirmation": false`。
+
+**`POST /settings/disable`（停止離機）** 退役現行世代而**不建新列**，該世代的帳冊列一併轉為只讀，
+回 `ProfileView`（此時 `configured:true`、`disabled:true`）。**憑證不隨停用撤銷**——歷史取回還要用。
+無現行世代時回 409 `CONFLICT_OFFSITE_NO_CURRENT_GENERATION`。
+
+**`POST /profiles/:id/revoke-credentials`** 在單一交易內清除該世代的密文、置為 `revoked`、
+記錄撤銷時刻並使該世代的用戶端快取立即失效，回 **204**。撤銷後該世代的物件取回一律以
+`CONFLICT_OFFSITE_FOREIGN_CREDENTIALS_MISSING` 失敗，**不會回退到雲端預設憑證鏈**。
+世代不存在或識別非法收斂同一個 404（`NOTFOUND_OFFSITE_GENERATION`）；已撤銷者回 409。
+
+### 測試連線
+
+`POST /offsite-storage/test` 收**表單當下值**（尚未儲存）執行實測。憑證沿用的三條件與寫入相同
+（未帶憑證＋落點未變＋未帶 clear 旗標；**先證同落點才解密**）。**兩種失敗語義嚴格分立**：
+
+- **測試未能執行**（請求格式錯、限流、內部錯）→ 4xx／5xx ＋機器碼，回應無 `stages`。
+- **測試已執行但其中有失敗** → **200** ＋逐步結果陣列。
+
+```json
+{
+  "passed": false,
+  "stages": [
+    {"step": "probe_bucket", "outcome": "ok",   "code": "", "detail": "..."},
+    {"step": "versioning",   "outcome": "ok",   "code": "", "detail": "..."},
+    {"step": "retention",    "outcome": "warn", "code": "offsite.test_governance_unknown", "detail": "..."},
+    {"step": "write",        "outcome": "ok",   "code": "", "detail": ""},
+    {"step": "read",         "outcome": "ok",   "code": "", "detail": ""},
+    {"step": "delete",       "outcome": "warn", "code": "offsite.test_delete_denied", "detail": "..."}
+  ]
+}
+```
+
+- `step`：`probe_bucket`／`versioning`／`retention`／`write`／`read`／`delete`。
+  前三步是**只讀的資訊性揭露**（儲存桶可達性、版本化與保留設定的現況）——
+  **只回報現況、不判好壞**，開不開是部署方的決定；讀不到（權限不足）記 `warn`「無法確認，不影響上傳」。
+  後三步是寫入、讀回比對、刪除自己的探測物。
+- `outcome`：`ok`／`warn`／`fail`。
+- `code`：`offsite.test_*` 機器碼（`test_bucket_unreachable`／`test_governance_unknown`／
+  `test_write_failed`／`test_read_failed`／`test_read_mismatch`／`test_delete_denied`），成功步為空字串。
+  **刪除被拒收斂單一 `warn`、不細分原因**：儲存桶保留設定擋下與憑證缺刪除權限都只是 `warn`，
+  而產品的正式路徑對遠端零刪除，不依賴刪除能力；該探測物由部署方的生命週期規則或人工清除，不計入產品追蹤。
+- 回應**不含端點 origin 以外的任何連線資訊**，整體結果入審計。
+- **限流**：逐操作者權杖桶（穩態每分鐘 5 次）＋全域在途上限；超出回 **429 `RULE_OFFSITE_TEST_RATE_LIMITED`**，
+  且**不揭露命中哪一道界線、不回 `Retry-After`**。端點是管理員輸入的任意主機，此處防的是把服務當成對外探測器。
+
+### 狀態、失敗清單與重試
+
+**`GET /status`**：`ProfileView` 的全部欄位，另加
+
+- `credential_state`：`unconfigured`（無現行世代）／`ok`／`failed`（讀取或解密失敗）。
+  **`failed` 不得被讀成「功能未設定」**——那是金鑰事故，上傳與取回會停在失敗態。
+- `counts`：帳冊各狀態的計數；`total_objects`：帳冊總列數（管理介面的空狀態判準）。
+- `oldest_pending_age_seconds`：各狀態最老待處理件的年齡（秒）。
+- `governance`（**僅探測成功時出現**）：`versioning`（`enabled`／`disabled`／`unknown`）、
+  `retention`（`none`／`bucket_policy`／`per_object`／`unknown`）與 `retention_detail`（現況描述，無判斷語）。
+  探測失敗**不使本端點失敗**——遠端出事時管理員更需要看得到佇列。
+
+**`GET /failures`**：`page`／`size`（預設 1／20），回
+`{"data": [...], "total": N, "page": P, "page_size": S}`。每列：`object_id`、`kind`、`owner_id`、
+`origin`、`provider`、`bucket`、`attempts`、`error_code`、`generation_id`、`updated_at`；
+擁有者模組能描述時另有 `label`、`ended_at`、`retention_deadline`、`days_to_deadline`。
+**排序在頁內成立**：距保留到期近者在前、無到期日者殿後——到期日不在帳冊裡，跨頁的全域排序需要
+把全部失敗列取出並逐列點查詢。每一頁都看得見「距到期天數」，到期在即的件不會因為排在第二頁而被漏看。
+
+**`POST /retry-failed`** 與 **`POST /objects/:id/retry`** 都回 `{"retried": n}`（重新排入佇列的件數）。
+單筆重試在識別非法、帳冊列不存在或該列不可重試時，**一律收斂 404 `NOTFOUND_OFFSITE_OBJECT`**
+——三者的差異只對探測者有意義（帳冊列的存在性），對管理員則是同一個修正動作。
+
+### 機器碼
+
+設定與操作面（狀態碼由拒因決定，未列於下者為 400）:
+
+| 機器碼 | 狀態碼 | 情境 |
+|---|---|---|
+| `VALIDATION_OFFSITE_PROVIDER_INVALID` | 400 | provider 不在值域內 |
+| `VALIDATION_OFFSITE_BUCKET_REQUIRED` | 400 | 未填儲存桶 |
+| `VALIDATION_OFFSITE_ENDPOINT_INVALID` | 400 | 端點格式不合法 |
+| `VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS` | 400 | 端點帶了帳密、query 或 fragment（端點淨化拒收） |
+| `VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED` | 400 | region 與端點皆空 |
+| `VALIDATION_OFFSITE_CREDENTIAL_HALF_SET` | 400 | 憑證只填了一半 |
+| `VALIDATION_OFFSITE_CREDENTIAL_CONFLICT` | 400 | 同時帶新憑證與清除旗標，或帶了與 provider 不相稱的憑證欄 |
+| `RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE` | 409 | 落點已變更卻要沿用既存憑證 |
+| `CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION` | 409 | 確認所依據的現行世代已被其他操作變更 |
+| `CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH` | 409 | 確認攜回的設定摘要與請求體不符 |
+| `CONFLICT_OFFSITE_NO_CURRENT_GENERATION` | 409 | 該操作需要現行世代，但目前沒有 |
+| `CONFLICT_OFFSITE_CREDENTIALS_ALREADY_REVOKED` | 409 | 該世代憑證已撤銷 |
+| `CONFLICT_OFFSITE_PROFILE_BUSY` | 409 | 另一項設定變更正在進行（可重試，非內部錯誤） |
+| `NOTFOUND_OFFSITE_GENERATION` | 404 | 世代不存在或識別非法 |
+| `NOTFOUND_OFFSITE_OBJECT` | 404 | 帳冊列不存在、識別非法，或該列不可重試 |
+| `RULE_OFFSITE_TEST_RATE_LIMITED` | 429 | 測試連線超出資源上限 |
+| `INTERNAL_OFFSITE_CREDENTIAL_ENCRYPT` | 500 | 憑證加密失敗 |
+| `INTERNAL_OFFSITE_CREDENTIAL_DECRYPT` | 500 | 憑證解密失敗 |
+| `INTERNAL_OFFSITE_STATUS` / `INTERNAL_OFFSITE_SETTINGS_SAVE` / `INTERNAL_OFFSITE_TEST` / `INTERNAL_OFFSITE_RETRY` | 500 | 各端點的內部錯誤出口 |
+
+取回面的四個 409 見〈來源判定與離機退路〉。全部機器碼三語齊備（介面依碼查譯）。
 
 ---
 
@@ -2733,6 +2962,16 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
   （分成 404/403 會讓具權限的探測者以狀態碼枚舉 job 存在性；真實原因只進審計）。
 - 申請者本人但**不可下載態**（`pending`／`running`／`failed`／`expired`、或產物已清）：**410 `RULE_EXPORT_ARTIFACT_UNAVAILABLE`**。
 
+**離機退路**（本機產物不可讀時）：上述可下載性判定**先於**任何取回動作——逾期的 job 即使遠端副本仍在，
+一樣回 410。通過判定後，本機產物檔缺席或大小與紀錄不符，而該 job 有離機帳冊列時，改由物件儲存取回，
+**驗過 SHA-256 與大小才交付**；驗證不符或該世代不可用時回 **409 ＋離機機器碼**（四碼同錄影側，
+見〈來源判定與離機退路〉），零位元組交付並留審計。帳冊記載「從未上傳」而本機產物仍在者，
+照常交付本機那一份（既有行為不變）。
+
+**產品不代刪遠端**：產物到期（24h）只清本機產物檔並轉 `expired`，job 列的 30 天保存期到期只清 job 列
+——**兩者都不對物件儲存發出刪除**。已離機的證據包副本何時消失，取決於部署方在儲存桶上設定的
+生命週期規則；產品不偵測、不同步這兩個期限。
+
 **ExportJob 回應投影**（顯式 DTO；`artifact_path`／`filter_json` 為伺服器內部，不出站）:
 | 欄位 | 說明 |
 |---|---|
@@ -2745,6 +2984,10 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
 | `error_summary` | 失敗摘要機器碼（`export_job.pack_failed`／`export_job.requester_revoked`；`failed` 時出現） |
 | `packaged_at` | 實際打包完成時刻（done 後出現） |
 | `expires_at` | 產物過期時刻（done 後出現） |
+| `offsite_status` | 產物副本的離機狀態；**恆輸出**（未進佇列時為空字串），值域同 Session 的同名欄 |
+| `offsite_sha256` | 已離機副本的 SHA-256（僅 `uploaded` 態出現）。**與 `artifact_sha256` 不同源**：前者取自保管帳冊（上傳當下量得），後者是打包完成時記的產物雜湊 |
+
+> 投影**刻意不輸出帳冊識別碼**：那對申請者無用——重試離機上傳是管理員在離機儲存頁的動作。
 
 打包 worker 對申請者於**領件與每次重試時**重驗主體狀態與 `audit:view` 權限——已停用／刪除／失權者
 job 取消（落 `failed`＋`error_summary=export_job.requester_revoked`）並清除已產出的產物；worker 異常

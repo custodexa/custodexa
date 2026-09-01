@@ -49,7 +49,8 @@ type txTakingEntry struct {
 }
 
 // txTakingWhitelist 交易級聯類的原始寫入點收口後的呼叫點。
-// 原為五處寫入點／三個呼叫點；資產刪除新增一處。
+// 原為五處寫入點／三個呼叫點；資產刪除新增一處；
+// 離機排隊點兩處（session.UpdateRecording、audit.completeJob）。
 var txTakingWhitelist = []txTakingEntry{
 	{
 		CallerFile: "internal/modules/asset/asset_group_service.go",
@@ -101,6 +102,35 @@ var txTakingWhitelist = []txTakingEntry{
 			"的系統級鎖與使用者憑證鎖包住（取鎖順序 system → user）。" +
 			"authz 無法另開交易——那會落在鎖外，且帳號刪除回滾時範圍已被撤。",
 	},
+	{
+		CallerFile: "internal/modules/session/session_service.go",
+		Callee:     "EnqueueTx",
+		OriginalSites: []string{
+			"internal/modules/session/session_service.go:UpdateRecording（錄影欄位落地" +
+				"與排入離機佇列同一筆交易；**非收口前的舊寫入點**，" +
+				"evidence-offsite-storage 新增的排隊點）",
+		},
+		Reason: "「錄影檔已落地」與「已排入離機佇列」必須原子成立：分兩個交易寫會留下" +
+			"「落地了但沒排隊」的窗口，而那個窗口內的錄影只有本機唯一副本、" +
+			"且沒有任何佇列指標會顯示它缺席——回填掃描要到下一輪才可能補上，" +
+			"期間磁碟故障即證據永久遺失。反向（排了隊而錄影欄位回滾）則會讓 worker " +
+			"對著一個不存在的路徑重試到上限。session 不得擁有 offsite_objects" +
+			"（表所有權歸 internal/offsite，資料邊界閘門擋著），故只能交出交易句柄。",
+	},
+	{
+		CallerFile: "internal/modules/audit/audit_export_job_worker.go",
+		Callee:     "EnqueueTx",
+		OriginalSites: []string{
+			"internal/modules/audit/audit_export_job_worker.go:completeJob（產物落定" +
+				"與排入離機佇列同一筆交易；**非收口前的舊寫入點**，" +
+				"evidence-offsite-storage 新增的排隊點）",
+		},
+		Reason: "與 session 的排隊點同型、同理由，差別在證據包的本機副本更脆弱：" +
+			"產物目錄未掛 volume，容器重建即消失（離機動機本身）。" +
+			"「job 已 done 而沒排隊」的窗口內，那份證據包只有一個隨時會蒸發的副本，" +
+			"且下載窗口只有 24 小時、過後本機檔被清掃刪除——回填掃描補得回帳冊列，" +
+			"補不回已經不存在的檔案。audit 不得擁有 offsite_objects，故只能交出交易句柄。",
+	},
 }
 
 // txTakingReasonViolations 比對純函式（抽出來才能對「無理由登記」做突變自檢）：
@@ -121,18 +151,63 @@ func txTakingReasonViolations(entries []txTakingEntry) []string {
 	return out
 }
 
-// authzPkgPath authz 模組的 import path（tx-taking 方法的擁有者）。
+// authzPkgPath authz 模組的 import path（tx-taking 方法的擁有者之一）。
 const authzPkgPath = "github.com/custodexa/backend/internal/modules/authz"
 
 // authzModuleDir authz 模組相對 module 根的目錄（判「是不是 authz 自己」用）。
 const authzModuleDir = "internal/modules/authz/"
+
+// offsitePkgPath／offsiteModuleDir 離機儲存基礎設施包
+// （evidence-offsite-storage）。`Ledger.EnqueueTx` 收 `*gorm.DB`，使
+// 「錄影落地」與「排入離機佇列」同一交易——沒有「落地了但沒排隊」的窗口。
+//
+// **納入被呼叫方集合的理由與 authz 完全相同**：交易句柄一旦交出去，編譯器與
+// 資料邊界閘門都看不見對方寫了哪張表。offsite 擁有 offsite_objects 與
+// offsite_profiles 兩張表，session／audit 對 EnqueueTx 的呼叫因此必須被登記。
+const (
+	offsitePkgPath   = "github.com/custodexa/backend/internal/offsite"
+	offsiteModuleDir = "internal/offsite/"
+)
+
+// txTakingCalleePkgs 被呼叫方（tx-taking 方法的擁有者）：import path → 顯示標籤。
+var txTakingCalleePkgs = map[string]string{
+	authzPkgPath:   "authz",
+	offsitePkgPath: "offsite",
+}
+
+// txTakingCalleeDirs 被呼叫方自己的目錄（自己寫自己的表不算跨界）。
+var txTakingCalleeDirs = []string{authzModuleDir, offsiteModuleDir}
+
+// txTakingMethodsWithoutCallers **已宣告但目前無外部呼叫點**的 tx-taking 匯出方法。
+//
+// C 軸（偵測器健康）要求「被呼叫方的 tx-taking 匯出方法集合＝登記的被呼叫方集合」。
+// 呼叫點登記（txTakingWhitelist）只有在真的有人呼叫時才存在，故「方法已存在、
+// 呼叫點尚未落地」這一格需要另一張表——否則 C 軸會逼人為了讓測試綠而先寫一個假的
+// 呼叫點登記，那正好是 B 軸要擋的東西。
+//
+// **本表不是豁免**：登記在此的方法一旦真的被呼叫，A 軸仍要求該呼叫點進
+// txTakingWhitelist。本表只回答「這個方法為什麼可以把交易收進來」。
+var txTakingMethodsWithoutCallers = map[string]string{
+	"MarkForeign": "世代切換／停止離機時把舊世代的存量物件整批轉為 foreign。" +
+		"必須與「退役舊世代列、建立新世代列、寫審計」同一交易——" +
+		"否則會留下「世代已切換而舊物件仍宣稱屬現行世代」的中間態。" +
+		"現況呼叫者在 offsite 包內（設定服務），故無外部呼叫點。",
+	"CountByGeneration": "鎖內重數某世代的存量物件（世代切換確認的判定依據）。" +
+		"與 MarkForeign 同交易同理由；現況呼叫者在包內。",
+	"CurrentGeneration": "以呼叫方的 tx **重讀**現行設定世代（GenerationSource 契約）。" +
+		"帶 tx 是必要的：EnqueueTx 在呼叫方的交易內執行，世代若以交易外的預讀取得，" +
+		"兩者之間的世代切換會讓帳冊記到一個已退役的世代 id。**唯讀**——" +
+		"本方法不寫任何表，交易句柄只用於讀一致性。",
+}
 
 // minTxTakingScanPackages `packages.Load("./...")` 的載入下限（現況 32，取 24 為保守下界）。
 const minTxTakingScanPackages = 24
 
 // txTakingScan 一次掃描的產物
 type txTakingScan struct {
-	// Methods authz 對外的 tx-taking 匯出方法名集合
+	// Methods 被呼叫方對外的 tx-taking 匯出方法名集合（跨全部被呼叫方包的聯集；
+	// 方法名在兩個包內重名時仍只是一個鍵——A 軸的登記以 `pkgLabel.method` 表述，
+	// 故不會混淆歸屬）
 	Methods map[string]bool
 	// Calls 非 authz 非測試檔對這些方法的呼叫點：method → []file:line
 	Calls map[string][]string
@@ -214,9 +289,9 @@ func runTxTakingScan(root string) txTakingScan {
 		return filepath.ToSlash(r)
 	}
 
-	// (a) authz 的 tx-taking 匯出方法：接收者在 authz、首參數為 *gorm.DB
+	// (a) 被呼叫方的 tx-taking 匯出方法：接收者在被呼叫方包、任一參數為 *gorm.DB
 	for _, p := range pkgs {
-		if p.PkgPath != authzPkgPath || p.Types == nil {
+		if _, ok := txTakingCalleePkgs[p.PkgPath]; !ok || p.Types == nil {
 			continue
 		}
 		sc := p.Types.Scope()
@@ -248,8 +323,8 @@ func runTxTakingScan(root string) txTakingScan {
 		}
 	}
 	if len(scan.Methods) == 0 {
-		return fail("在 authz 找不到任何 tx-taking 匯出方法：偵測器已失明，" +
-			"「零未登記呼叫」不構成證據（比對本檔的 authzPkgPath 是否仍正確）")
+		return fail("在被呼叫方集合中找不到任何 tx-taking 匯出方法：偵測器已失明，" +
+			"「零未登記呼叫」不構成證據（比對本檔的 txTakingCalleePkgs 是否仍正確）")
 	}
 
 	// (b) 外部呼叫點
@@ -263,8 +338,8 @@ func runTxTakingScan(root string) txTakingScan {
 				continue
 			}
 			rf := rel(path)
-			if strings.HasPrefix(rf, authzModuleDir) {
-				continue // authz 自己在自己的表上寫，不是跨模組
+			if isTxTakingCalleeFile(rf) {
+				continue // 被呼叫方自己在自己的表上寫，不是跨模組
 			}
 			scan.Files++
 			ast.Inspect(f, func(n ast.Node) bool {
@@ -279,7 +354,7 @@ func runTxTakingScan(root string) txTakingScan {
 				// 以型別資訊確認被呼叫的真的是 authz 的方法：同名方法在別的型別上
 				// 很常見（例：api.RecordingTokenManager.RevokeByUser），
 				// 純名稱比對會誤報，而誤報會逼人把不相干的呼叫點寫進白名單
-				if !isAuthzMethodCall(p.TypesInfo, sel) {
+				if !isTxTakingCalleeMethodCall(p.TypesInfo, sel) {
 					return true
 				}
 				site := rf + ":" + itoa(fset.Position(call.Pos()).Line)
@@ -295,10 +370,20 @@ func runTxTakingScan(root string) txTakingScan {
 	return scan
 }
 
-// isAuthzMethodCall 判 selector 指向的是否為 authz 包內宣告的方法
+// isTxTakingCalleeFile 判檔案是否屬於某個被呼叫方包自己。
+func isTxTakingCalleeFile(rf string) bool {
+	for _, dir := range txTakingCalleeDirs {
+		if strings.HasPrefix(rf, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTxTakingCalleeMethodCall 判 selector 指向的是否為被呼叫方包內宣告的方法
 // （消費者側窄介面的呼叫同樣成立——介面方法的宣告包是消費者，
-// 故另判「介面方法名在 authz 的 tx-taking 集合內且首參數為 *gorm.DB」）。
-func isAuthzMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
+// 故另判「介面方法收 *gorm.DB 且接收者是介面」）。
+func isTxTakingCalleeMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 	obj := info.Uses[sel.Sel]
 	fn, ok := obj.(*types.Func)
 	if !ok {
@@ -308,11 +393,13 @@ func isAuthzMethodCall(info *types.Info, sel *ast.SelectorExpr) bool {
 	if !ok || !signatureTakesGormDB(sig) {
 		return false
 	}
-	if fn.Pkg() != nil && fn.Pkg().Path() == authzPkgPath {
-		return true
+	if fn.Pkg() != nil {
+		if _, ok := txTakingCalleePkgs[fn.Pkg().Path()]; ok {
+			return true
+		}
 	}
 	// 消費者側窄介面：方法宣告在呼叫方的包，但簽名收 *gorm.DB 且名字落在
-	// authz 的 tx-taking 集合內——那正是窄 port 的形狀
+	// 被呼叫方的 tx-taking 集合內——那正是窄 port 的形狀
 	recv := sig.Recv()
 	return recv != nil && recv.Type() != nil && types.IsInterface(recv.Type())
 }
@@ -366,13 +453,13 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	for file, methods := range scan.CallerFiles {
 		for m := range methods {
 			if !registered[file][m] {
-				unregistered = append(unregistered, file+" → authz."+m)
+				unregistered = append(unregistered, file+" → "+m)
 			}
 		}
 	}
 	sort.Strings(unregistered)
 	if len(unregistered) > 0 {
-		t.Errorf("以下呼叫點把交易句柄交給了 authz 卻未登記於 txTakingWhitelist：\n  %s\n"+
+		t.Errorf("以下呼叫點把交易句柄交給了他包卻未登記於 txTakingWhitelist：\n  %s\n"+
 			"tx-taking 不受編譯器保護，未登記＝無人審視過它寫了什麼",
 			strings.Join(unregistered, "\n  "))
 	}
@@ -381,7 +468,7 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	var stale []string
 	for _, e := range txTakingWhitelist {
 		if !scan.CallerFiles[e.CallerFile][e.Callee] {
-			stale = append(stale, e.CallerFile+" → authz."+e.Callee)
+			stale = append(stale, e.CallerFile+" → "+e.Callee)
 		}
 	}
 	sort.Strings(stale)
@@ -398,10 +485,10 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	// 具名白名單的每一處都必須有歸屬。
 	//
 	// **數量是契約**：原定五處（收口的既有寫入點）；
-	// 資產刪除新增一處＝六處。調整此數字必須連同
+	// 資產刪除新增一處＝六處；離機排隊點兩處（session／audit）＝八處。調整此數字必須連同
 	// 上方 txTakingWhitelist 的登記與其理由一起改——這正是「新增 tx-taking 呼叫點
 	// 要被看見」的機制，不是可以隨手放寬的門檻。
-	const expectedTxTakingSites = 6
+	const expectedTxTakingSites = 8
 	total := 0
 	for _, e := range txTakingWhitelist {
 		total += len(e.OriginalSites)
@@ -414,12 +501,13 @@ func TestTxTakingCrossModuleWritesAreWhitelisted(t *testing.T) {
 	if scan.Files < 250 {
 		t.Errorf("只掃了 %d 個非測試檔（下限 250）：掃描面已失真", scan.Files)
 	}
-	t.Logf("tx-taking 掃描：%d 包／%d 非測試檔／authz tx-taking 匯出方法 %d 個／外部呼叫點 %d 個",
+	t.Logf("tx-taking 掃描：%d 包／%d 非測試檔／被呼叫方 tx-taking 匯出方法 %d 個／外部呼叫點 %d 個",
 		scan.Packages, scan.Files, len(scan.Methods), len(scan.CallerFiles))
 }
 
 // TestTxTakingMethodSetMatchesWhitelist C 軸（偵測器健康）：
-// authz 的 tx-taking 匯出方法集合必須與白名單登記的被呼叫方集合逐字相同。
+// 被呼叫方的 tx-taking 匯出方法集合必須與登記的方法集合逐字相同
+// （＝呼叫點白名單的 Callee ∪ 尚無呼叫點的方法登記）。
 // 新增一個 tx-taking 匯出方法而無人呼叫時，A 軸抓不到，本軸抓得到。
 func TestTxTakingMethodSetMatchesWhitelist(t *testing.T) {
 	root := lifecycleModuleRoot(t)
@@ -428,6 +516,12 @@ func TestTxTakingMethodSetMatchesWhitelist(t *testing.T) {
 	declared := map[string]bool{}
 	for _, e := range txTakingWhitelist {
 		declared[e.Callee] = true
+	}
+	for m, reason := range txTakingMethodsWithoutCallers {
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("txTakingMethodsWithoutCallers 的 %s 缺理由：無理由的登記等於沒有審過", m)
+		}
+		declared[m] = true
 	}
 	var missing, extra []string
 	for m := range scan.Methods {
@@ -443,12 +537,12 @@ func TestTxTakingMethodSetMatchesWhitelist(t *testing.T) {
 	sort.Strings(extra)
 	sort.Strings(missing)
 	if len(extra) > 0 {
-		t.Errorf("authz 有未登記的 tx-taking 匯出方法：%s\n"+
+		t.Errorf("被呼叫方有未登記的 tx-taking 匯出方法：%s\n"+
 			"每一個把 *gorm.DB 收進來的匯出方法都是一條編譯器看不見的跨模組寫入通道，"+
-			"必須登記於 txTakingWhitelist 並附理由", strings.Join(extra, ", "))
+			"必須登記於 txTakingWhitelist（有呼叫點時）或 txTakingMethodsWithoutCallers（尚無呼叫點時）並附理由", strings.Join(extra, ", "))
 	}
 	if len(missing) > 0 {
-		t.Errorf("白名單登記了 authz 並不存在的 tx-taking 方法：%s（登記已過期）",
+		t.Errorf("登記了被呼叫方並不存在的 tx-taking 方法：%s（登記已過期）",
 			strings.Join(missing, ", "))
 	}
 }

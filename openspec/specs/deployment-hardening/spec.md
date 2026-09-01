@@ -25,7 +25,7 @@
 
 ### Requirement: DB-aware 分階段啟動序
 
-系統啟動 SHALL 依明確階段執行且任一階段失敗即 SHALL NOT 開始 serving：(1) 驗證無條件必備 secret（JWT／加密金鑰）；(2) 連線 DB 並完成 schema migration，但尚未 serving；(3) 以 user count 判定安裝狀態；(4) 空 DB → 驗證 `ADMIN_INITIAL_PASSWORD` 後才允許 seed；(5) 非空 DB → SHALL NOT 因 `ADMIN_INITIAL_PASSWORD` 缺失／為 placeholder 而阻擋啟動，並 SHALL 執行 legacy 預設憑證掃描（見對應 requirement）。schema migration 於 secret 驗證前寫入不構成缺陷；不可接受的是在驗證前 seed 安全資料或開始服務。
+系統啟動 SHALL 依明確階段執行且任一階段失敗即 SHALL NOT 開始 serving：(1) 驗證無條件必備 secret（JWT／加密金鑰）；(2) 連線 DB；(2a) 取得單實例互斥（見 `single-instance-guard`）——取不到且操作者未提供與本次持鎖者指紋相符的確認即不啟動；提供相符確認則記錄並繼續（其審計事件於審計服務建立後寫入）；此階段本身 SHALL NOT 產生任何資料庫寫入；(2b) 完成 schema migration，但尚未 serving；(3) 以 user count 判定安裝狀態；(4) 空 DB → 驗證 `ADMIN_INITIAL_PASSWORD` 後才允許 seed；(5) 非空 DB → SHALL NOT 因 `ADMIN_INITIAL_PASSWORD` 缺失／為 placeholder 而阻擋啟動，並 SHALL 執行 legacy 預設憑證掃描（見對應 requirement）。schema migration 於 secret 驗證前寫入不構成缺陷；不可接受的是在驗證前 seed 安全資料或開始服務，以及在單實例互斥判定完成前執行 migration。
 
 #### Scenario: 既有安裝未設初始密碼不被誤擋
 - **WHEN** release 模式、使用者表非空、未設 `ADMIN_INITIAL_PASSWORD`
@@ -34,6 +34,14 @@
 #### Scenario: 空 DB 的初始密碼驗證發生在 seed 之前
 - **WHEN** 使用者表為空、`ADMIN_INITIAL_PASSWORD` 不合格
 - **THEN** 系統在任何使用者／安全資料寫入前即 fail-close，不 serving
+
+#### Scenario: 單實例互斥判定先於 migration
+- **WHEN** 另一實例已持有單實例鎖，本實例未提供確認即對同一資料庫啟動
+- **THEN** 本實例於 migration 之前即停止啟動，`schema_migrations` 與所有資料表未被本實例寫入
+
+#### Scenario: 帶確認啟動仍依序執行後續階段
+- **WHEN** 另一實例已持有單實例鎖，本實例以相符的確認啟動
+- **THEN** 本實例依 (2b) 起的既有順序執行 migration、安裝狀態判定與 serving；守衛不再阻擋任何階段，確認事件於審計服務建立後可查得
 
 ### Requirement: 首登強制改密與初始管理員完成訊號
 

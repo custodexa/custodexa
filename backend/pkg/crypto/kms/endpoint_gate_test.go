@@ -41,7 +41,36 @@ const endpointFieldName = "Endpoint"
 // 改以「**誰宣告了 OAuth2Config**」這個跟著程式碼走的結構性錨點定位，
 // 由 `resolveOAuth2ConfigFile` 於掃描時解析；找不到或找到多個即 t.Fatal
 // ——豁免對象消失時守衛必須說話，不得默默放行或默默誤報。
-var endpointWriteAllowlist = map[string][]string{}
+var endpointWriteAllowlist = map[string][]string{
+	// 離機儲存：物件儲存端點是**功能的
+	// 輸入**，不是旁路——請求內容是錄影與證據包（本機磁碟上本就明文），
+	// 不含 DEK 材料；風險模型是「送錯地方」而非「洩露根材料」。防線＝
+	// 功能專屬鍵（不讀 SDK 全域 AWS_ENDPOINT_URL／STORAGE_EMULATOR_HOST）＋
+	// s3 側結果面核對（offsite.verifyS3ResolvedEndpoint fail-close）＋
+	// gcs 側恆顯式釘住端點＋組態段拒絕 userinfo／query／fragment。
+	// KMS 客戶端不受影響：兩者各自 LoadDefaultConfig、本閘射程不變。
+	// 設定全 UI 化後端點的來源是 `offsite_profiles` 的欄位，
+	// env 只在初次 seed 供給一次。放行的六個函式各自的角色：
+	//   DefaultClientFactory     依世代參數建 driver（Endpoint 來自該世代設定列）
+	//   ClientFor                組出建構參數（同上）
+	//   switchGenerationLocked   把已淨化的端點寫進新世代列
+	//   readOffsiteSeedEnv／RunOffsiteEnvSeed  初次 seed 的 env 讀取與正規化
+	//   toInput                  設定頁請求體→SettingsInput 的欄位搬運（尚未淨化，
+	//                            緊接著就進 validateAndNormalizeOffsiteSettings）
+	//   TestSettings             測試連線：把已淨化的端點放進本次建構參數
+	// 上述值一律先經 ValidateEndpoint（拒 userinfo／query／fragment，且訊息不回顯值），
+	// 且 s3 側另有結果面核對、gcs 側恆顯式釘住端點。
+	//
+	// **後兩者寫的是離機端點欄，不是 KMS 端點**（`offsite.SettingsInput.Endpoint`
+	// 與 `offsite.ClientBuildSpec.Endpoint`）：本掃描刻意涵蓋全樹任何名為
+	// Endpoint 的欄位寫入（寧可誤報不漏報），故同型的離機路徑須具名放行。
+	"internal/api/offsite_storage_handler.go": {"toInput"},
+	"internal/offsite/gcs_client.go":          {"resolveGCSBuildParams"},
+	"internal/offsite/profile_service.go": {
+		"DefaultClientFactory", "ClientFor", "switchGenerationLocked", "TestSettings",
+	},
+	"internal/offsite/seed_migration.go": {"readOffsiteSeedEnv", "RunOffsiteEnvSeed"},
+}
 
 // oauth2ConfigFuncName 豁免對象的錨點符號。
 //

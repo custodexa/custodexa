@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/converter"
 	"github.com/custodexa/backend/internal/middleware"
@@ -19,7 +18,9 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/session"
+	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // RecordingHandler 錄製 API handler
@@ -94,8 +95,9 @@ func (h *RecordingHandler) DownloadRecording(c *gin.Context) {
 		return
 	}
 
-	// 獲取錄製檔案路徑
-	filePath, err := h.recordingService.GetRecordingBySessionID(uint(id))
+	// 來源判定。**整檔路徑**：呼叫端會讀完整個檔案，
+	// 故順帶比對整檔雜湊——大小相同而內容被改的本機檔在此退到離機
+	res, err := h.recordingService.ResolveRecording(uint(id), true)
 	if err != nil {
 		if errors.Is(err, session.ErrSessionNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
@@ -109,13 +111,18 @@ func (h *RecordingHandler) DownloadRecording(c *gin.Context) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
 			return
 		}
+		if code := offsiteFailureCode(err); code != "" {
+			apierror.Respond(c, http.StatusConflict, code, nil)
+			return
+		}
 
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileQuery, err)
 		return
 	}
+	filePath := res.Path
 
-	// 設定檔案名稱
-	fileName := filepath.Base(filePath)
+	// 設定檔案名稱（**取會話的錄影檔名，不是暫存檔名**）
+	fileName := res.Name
 
 	// MIME 依副檔名分流：.cast 為 asciicast；.guac（RDP/VNC）等其餘格式回 octet-stream
 	contentType := "application/octet-stream"
@@ -250,15 +257,62 @@ func (h *RecordingHandler) auditRecordingRetrieval(c *gin.Context, rtoken string
 		Duration:   time.Since(start),
 		RequestID:  c.GetString("request_id"),
 		// via=rtoken 使這條「無認證中介層」的取證路徑在審計上可與
-		// /sessions/:id/recording/stream（走 JWT＋權限檢查）區分
-		Details: fmt.Sprintf(`{"session_id":"%d","via":"rtoken"}`, sessionID),
+		// /sessions/:id/recording/stream（走 JWT＋權限檢查）區分。
+		// source／fallback_reason 記「這一次交付的位元組來自哪裡、為何不是本機」
+		// ——本機檔被清除或被改動之後，稽核員要能回答
+		// 「我看到的這份是誰、什麼時候、從哪裡拿出來的」
+		Details: recordingRetrievalDetails(c, sessionID),
 	})
 }
 
+// recordingRetrievalDetails 取證審計列的 Details。
+//
+// **來源缺席時逐字維持原形狀**：離機未組裝的部署、以及在來源判定之前就失敗的
+// 請求（會話不存在等），其審計列與本功能上線前逐位元組相同。
+func recordingRetrievalDetails(c *gin.Context, sessionID uint) string {
+	source := c.GetString(ctxRecordingSource)
+	if source == "" {
+		return fmt.Sprintf(`{"session_id":"%d","via":"rtoken"}`, sessionID)
+	}
+	if fb := c.GetString(ctxRecordingFallback); fb != "" {
+		return fmt.Sprintf(`{"session_id":"%d","via":"rtoken","source":"%s","fallback_reason":"%s"}`,
+			sessionID, source, fb)
+	}
+	return fmt.Sprintf(`{"session_id":"%d","via":"rtoken","source":"%s"}`, sessionID, source)
+}
+
+// offsiteReasonToAPICode 離機側靜態拒因（小寫機器碼）→ HTTP 出口碼。
+//
+// **單一對照表**：取回路徑（本檔）與離機儲存管理端點（offsite_storage_handler.go）
+// 共用它，守衛 `TestOffsiteReasonCodeTablesExhaustive` 以它與服務層拒因集合雙向比對。
+var offsiteReasonToAPICode = map[string]apierror.ErrCode{
+	offsite.ErrCodeIntegrityMismatch:         apierror.CodeOffsiteIntegrityMismatch,
+	offsite.ErrCodeProfileMissing:            apierror.CodeOffsiteProfileMissing,
+	offsite.ErrCodeForeignCredentialsMissing: apierror.CodeOffsiteForeignCredentialsMissing,
+	offsite.ErrCodeCredentialsUnavailable:    apierror.CodeOffsiteCredentialsUnavailable,
+}
+
+// offsiteFailureCode 自錯誤鏈取出可對外的 HTTP 碼；無法辨識回空字串
+// （由呼叫端收斂為 500——**不猜**）。
+func offsiteFailureCode(err error) apierror.ErrCode {
+	return offsiteReasonToAPICode[offsite.MachineCodeOf(err)]
+}
+
+// ctxRecordingSource／ctxRecordingFallback 來源判定結果的 gin context 鍵。
+//
+// 取回發生在 serve 之內、審計寫在 serve 之後（需要 `c.Writer.Status()`），
+// 兩者之間只有 context 傳得了值；把判定結果再算一次會多打一次 DB 且可能得到
+// 不同答案（保留清理隨時可能刪掉本機檔）。
+const (
+	ctxRecordingSource   = "recording_source"
+	ctxRecordingFallback = "recording_fallback"
+)
+
 // serveRecordingForSession 依 sessionID 串流錄影檔（StreamRecording 與 by-token 共用）
 func (h *RecordingHandler) serveRecordingForSession(c *gin.Context, sessionID uint) {
-	// 獲取錄製檔案路徑
-	filePath, err := h.recordingService.GetRecordingBySessionID(sessionID)
+	// 來源判定：本機優先；本機缺檔／截斷／開不了則自離機取回並
+	// **驗過才交付**，回傳的是已驗證的暫存檔路徑
+	res, err := h.recordingService.ResolveRecording(sessionID, false)
 	if err != nil {
 		if errors.Is(err, session.ErrSessionNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
@@ -272,9 +326,25 @@ func (h *RecordingHandler) serveRecordingForSession(c *gin.Context, sessionID ui
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeRecordingFileNotFound, nil)
 			return
 		}
+		if code := offsiteFailureCode(err); code != "" {
+			// 離機側的可辨識失敗（完整性不符、世代查無、憑證已撤銷）：
+			// **零位元組交付**＋機器碼，不退回「盡力播本機」
+			apierror.Respond(c, http.StatusConflict, code, nil)
+			return
+		}
 
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRecordingFileQuery, err)
 		return
+	}
+	filePath := res.Path
+	// **只在離機來源時標記**（來源判定的要求即「Details 加 "source":"offsite" 與
+	// 退路原因」）：本機來源的審計列因此與本功能上線前逐位元組相同，
+	// 「未設定＝行為完全不變」在審計面沒有例外；`source` 缺席即代表本機來源
+	if res.Source == session.RecordingSourceOffsite {
+		c.Set(ctxRecordingSource, res.Source)
+		if res.Fallback != "" {
+			c.Set(ctxRecordingFallback, res.Fallback)
+		}
 	}
 
 	// Check if file is .cast format already (SSH asciinema)

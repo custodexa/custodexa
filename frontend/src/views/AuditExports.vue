@@ -125,6 +125,16 @@
             >
               {{ failureReason(row.error_summary) }}
             </div>
+            <!-- 離機保存狀態（evidence-offsite-storage）：只在這個包**確實有**
+                 帳冊態時加一行。帳冊零列或 `''`（未排入）不加——
+                 對「這個包還下不下得到」沒有增量資訊的狀態不佔一行 -->
+            <div
+              v-if="offsiteLine(row)"
+              class="status-hint status-offsite"
+              :data-test="`export-offsite-${row.id}`"
+            >
+              {{ offsiteLine(row) }}
+            </div>
           </template>
         </el-table-column>
 
@@ -223,6 +233,7 @@ import {
   listAuditExportJobs,
 } from '@/api/auditExport'
 import { TIMELINE_TYPES, typeLabel } from '@/components/audit/timelineSummary'
+import { OFFSITE_EXPORT_ROW_STATUSES } from '@/constants/offsite'
 import { formatBytes, formatDateTime, formatUptimeSeconds } from '@/utils/format'
 import { downloadBlob } from '@/utils/download'
 
@@ -322,6 +333,23 @@ const statusLabel = (status) =>
   KNOWN_STATES.includes(status) ? t(`auditExports.status.${status}`) : status || ''
 const statusHint = (status) =>
   KNOWN_STATES.includes(status) ? t(`auditExports.statusHint.${status}`) : ''
+
+// 離機保存狀態行（第三列）。
+//
+// **只呈現子集**：`local_purged`／`skipped_*`／`''` 對「這個包還下不下得到」
+// 沒有增量資訊（產物本來就有 30 天壽命，本機副本去留由保留清理承擔），
+// 加一行只會把真正要看的兩件事——已離機保存、離機取回出問題——擠淡。
+// 值域外的狀態同樣不加行：這一行是輔助說明，不是狀態的權威呈現面
+// **雜湊只在後端給了才附**（狀態行第三列「已離機保存 · <sha256 前 12>」）：
+// 那是帳冊列記下的整檔雜湊，與左欄的產物雜湊不同來源；取不到就只留狀態，
+// 不留一個後面空著的分隔點。截法與產物欄同一套（前 12＋省略號）
+const offsiteLine = (row) => {
+  const status = row?.offsite_status
+  if (!OFFSITE_EXPORT_ROW_STATUSES.includes(status)) return ''
+  const label = t(`offsite.exportRow.${status}`)
+  const sha = row?.offsite_sha256
+  return sha ? `${label} · ${String(sha).slice(0, 12)}…` : label
+}
 
 // 失敗摘要是後端的機器碼（`model/audit_export_job.go:26-30` 的 ExportJobErr*）：
 // 去前綴後查譯。**沒有紀錄**才說「原因未記錄」；有紀錄但查不到譯文時原樣附上代碼
@@ -460,6 +488,12 @@ const retry = async (row) => {
 
 .status-failure {
   color: var(--ot-danger);
+}
+
+/* 離機狀態是次要事實：與失敗原因同層級但不搶色——
+   它多數時候是好消息（已離機保存），走 hint 的中性色即可 */
+.status-offsite {
+  color: var(--ot-text-secondary);
 }
 
 .muted {

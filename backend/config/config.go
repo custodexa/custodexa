@@ -112,6 +112,10 @@ type Config struct {
 	OIDC OIDCConfig
 	// InstanceGuard 單實例守衛的操作者確認（對這一次衝突的確認碼，不是開關）。
 	InstanceGuard InstanceGuardConfig
+	// Offsite 離機儲存（evidence-offsite-storage）**僅存容器內路徑鍵**：
+	// 連線參數與憑證的執行期承載是 `offsite_profiles` 專用表，
+	// `OFFSITE_*` 的其餘鍵只在初次 seed 讀一次（internal/offsite/seed_migration.go）
+	Offsite OffsiteConfig
 }
 
 // InstanceGuardConfig 單實例守衛的啟動期確認值。
@@ -377,6 +381,7 @@ func Load() *Config {
 		InstanceGuard: InstanceGuardConfig{
 			Ack: getEnv("INSTANCE_GUARD_ACK", ""),
 		},
+		Offsite: LoadOffsite(),
 	}
 }
 

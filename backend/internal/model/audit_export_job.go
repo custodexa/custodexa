@@ -69,6 +69,13 @@ type AuditExportJob struct {
 	ExpiresAt *time.Time ``
 	CreatedAt time.Time  ``
 	UpdatedAt time.Time  ``
+
+	// 離機儲存（evidence-offsite-storage）：指標＋顯示用快取兩欄，語義與
+	// Session 的同名兩欄逐字相同（遠端物件的身分與狀態機在 offsite_objects）。
+	// 產物到期（30 天 purge）只清 job 列，**不動遠端物件**——遠端副本的清理
+	// 歸部署方的 bucket lifecycle
+	OffsiteObjectID *uint  ``
+	OffsiteStatus   string `gorm:"size:20;not null;default:''"`
 }
 
 // TableName 顯式表名（moduleboundary 掃描要求可靜態解析）

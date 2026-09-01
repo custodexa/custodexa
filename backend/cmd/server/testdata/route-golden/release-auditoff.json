@@ -383,6 +383,26 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/offsite-storage/failures",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Failures-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/profiles",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ListProfiles-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/settings",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).GetSettings-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/status",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Status-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/oidc-providers",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).List-fm"
     },
@@ -783,6 +803,36 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/offsite-storage/objects/:id/retry",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryObject-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/profiles/:id/revoke-credentials",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RevokeCredentials-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/retry-failed",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryFailed-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/settings/confirm",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ConfirmSettings-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/settings/disable",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).DisableSettings-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/test",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Test-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/oidc-providers",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).Create-fm"
     },
@@ -920,6 +970,11 @@
       "method": "PUT",
       "path": "/api/v1/notification-channels/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Update-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/offsite-storage/settings",
+      "handler": "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).SaveSettings-fm"
     },
     {
       "method": "PUT",
@@ -2507,6 +2562,62 @@
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/failures",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Failures-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/profiles",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ListProfiles-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/settings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).GetSettings-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/offsite-storage/status",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Status-fm"
       ]
     },
     {
@@ -4150,6 +4261,90 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/offsite-storage/objects/:id/retry",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryObject-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/profiles/:id/revoke-credentials",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RevokeCredentials-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/retry-failed",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RetryFailed-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/settings/confirm",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).ConfirmSettings-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/settings/disable",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).DisableSettings-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/offsite-storage/test",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).Test-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/oidc-providers",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -4697,6 +4892,20 @@
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*NotificationChannelHandler).Update-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/offsite-storage/settings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OffsiteStorageHandler).SaveSettings-fm"
       ]
     },
     {

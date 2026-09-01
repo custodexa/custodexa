@@ -52,6 +52,8 @@ var keysNotRequiringMin = map[string]string{
 	PolicyRetentionSessionCommandDays:     "同上",
 	PolicyRetentionAlertDays:              "同上",
 	PolicyRetentionRecordingDays:          "同上",
+	PolicyOffsiteLocalRetentionDays: "調小＝本機副本更早清除，而錄影仍可自離機副本取回" +
+		"；那是磁碟預算的誠實選擇，不是任何機制停擺。0＝不提前清（ZeroDisables）",
 	PolicyRetentionCheckpointDays:         "同上，另受跨鍵約束（不得低於四個資料保留鍵）",
 	PolicyAuditCheckpointIntervalSeconds:  "危險方向朝大（週期設成 24 小時＝實質不封存），Max=86400 ＋ 不可為 0 已蓋住",
 	PolicyAuditCheckpointRowThreshold:     "危險方向朝大（門檻設到極高＝實質不提前封存），Max=1000000 ＋ 不可為 0 已蓋住",

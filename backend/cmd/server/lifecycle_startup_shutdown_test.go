@@ -79,7 +79,10 @@ var expectedReleaseRegistration = []string{
 	"reconcileScheduler",         // 迴圈登記
 	"checkpointScheduler",        // 迴圈登記（audit-checkpoint-chain 第 4 組）
 	"chainVerifyScheduler",       // 迴圈登記
-	"auditExportJobWorker",       // 迴圈登記
+	// offsiteUploader 登記於 auditExportJobWorker **之前** ⇒ LIFO 下停在它之後：
+	// 上傳 worker 讀 export 產物，先停打包器才不會有「產物還在寫、上傳已停」以外的順序
+	"offsiteUploader",      // 迴圈登記（evidence-offsite-storage）
+	"auditExportJobWorker", // 迴圈登記
 	"metricsRefresher",           // R-13 段 2 最後登記（接替 perfMonitor）
 	"sealJournalReplay",          // R-1　publishStage2 內登記 ⇒ 最先被等待
 }

@@ -56,6 +56,15 @@ var (
 	// 落庫即密文（明文欄已於同一次改動移除），列表與匯出只回事實投影，
 	// 內容僅經單筆調閱端點（逐筆留痕）與證據包（匯出留痕）解密取得
 	RefClipboardContent = crypto.CipherRef{Table: "clipboard_events", Column: "content_enc"}
+
+	// offsite_profiles：離機儲存**該世代**的物件儲存憑證
+	// （依 provider 的 JSON：s3＝access key 兩欄、gcs＝service account JSON 原文）。
+	//
+	// **每列一個世代、每個世代自帶憑證**——切換儲存落點後，歷史物件仍以其世代
+	// 的憑證取回。故本欄的密文不是「一份現行憑證」，而是**與歷史證據一一對應的
+	// 取回能力**：漏登於 envelopeMigrationTargets 會使退役 DEK 誤判零引用而銷毀，
+	// 屆時該世代憑證永久不可解，那批已離機且本機已到期清除的錄影**永不可取回**
+	RefOffsiteCredentials = crypto.CipherRef{Table: "offsite_profiles", Column: "credentials_enc"}
 )
 
 // allCipherRefs 供守衛測試逐項比對登記表
@@ -68,4 +77,5 @@ var allCipherRefs = []crypto.CipherRef{
 	RefOIDCClientSecret,
 	RefLDAPBindPassword,
 	RefClipboardContent,
+	RefOffsiteCredentials,
 }
