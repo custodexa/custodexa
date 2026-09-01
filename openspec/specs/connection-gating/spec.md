@@ -68,7 +68,7 @@ connect-token 簽發 SHALL 依傳輸安全政策對 RDP／VNC／DB 連線加閘�
 - **THEN** 簽發流程與未套用傳輸安全閘時完全一致，無同意檢查
 
 ### Requirement: 簽發閘序
-connect-token 簽發 SHALL 依固定順序施行五道檢查：連線授權檢查 → 停用資產硬擋（見「停用資產連線硬擋」）→ 錄影前置檢查（見 session-recording「錄影前置檢查與 fail-close」，政策開啟時生效）→ 存取政策閘（見 access-policy）→ 傳輸安全閘；任一檢查攔截即不簽發、不觸發後續檢查。攔截回應 SHALL 機器可辨：停用硬擋、錄影前置檢查與政策閘同用 403 但 `reason` 值不重疊（`asset_disabled`／`recording_unavailable`／`approval_required`/`reason_required`），傳輸閘沿用 strict 400／warn 428；前端 SHALL 能僅憑狀態碼與 reason 欄位區分該顯示停用、錄影異常、彈申請框、同意框或顯示拒絕。
+connect-token 簽發 SHALL 依固定順序施行六道檢查：來源位址閘（申請者的允許來源網段清單非空時，請求來源位址須落於清單內；清單為空不限；判定只依主體，位於任何資產相關檢查之前）→ 連線授權檢查 → 停用資產硬擋（見「停用資產連線硬擋」）→ 錄影前置檢查（見 session-recording「錄影前置檢查與 fail-close」，政策開啟時生效）→ 存取政策閘（見 access-policy）→ 傳輸安全閘；任一檢查攔截即不簽發、不觸發後續檢查。攔截回應 SHALL 機器可辨：來源位址閘、停用硬擋、錄影前置檢查與政策閘同用 403 但 `reason` 值不重疊（`source_not_allowed`／`asset_disabled`／`recording_unavailable`／`approval_required`/`reason_required`），傳輸閘沿用 strict 400／warn 428；前端 SHALL 能僅憑狀態碼與 reason 欄位區分該顯示來源不允許、停用、錄影異常、彈申請框、同意框或顯示拒絕。來源位址閘的拒絕回應 SHALL NOT 回顯來源位址或清單內容；位址與判定依據只進審計。來源位址 SHALL 取自系統唯一的來源位址實作並於簽發當下現讀，清單 SHALL 於簽發當下現讀，票證 SHALL NOT 攜帶來源位址。清單不可讀或儲存字串無法解析時，來源位址閘 SHALL 攔截（同 403 `source_not_allowed`），SHALL NOT 視為空清單放行；審計以專屬原因碼（政策不可讀）區分，並經既有審計機制失效通道上報（見 auth-session「登入來源位址限定」）。
 
 #### Scenario: 停用攔截不觸發政策閘
 - **WHEN** 具授權的使用者對「停用且政策段位為 approval」的資產申請 connect-token
@@ -88,7 +88,19 @@ connect-token 簽發 SHALL 依固定順序施行五道檢查：連線授權檢�
 
 #### Scenario: 閘序不受旁路
 - **WHEN** 任何客戶端直呼 `POST /connect-tokens`（不經前端）
-- **THEN** 五道檢查依序全部生效，與 UI 路徑無差別
+- **THEN** 六道檢查依序全部生效，與 UI 路徑無差別
+
+#### Scenario: 來源攔截不觸發授權與資產檢查
+- **WHEN** 清單非空的使用者自清單外位址對一個不存在或無授權的資產申請 connect-token
+- **THEN** 回應為來源位址閘的 403（source_not_allowed），不出現資產不存在或無授權的回應；審計含來源位址與判定依據，回應不含
+
+#### Scenario: 清單為空簽發不變
+- **WHEN** 清單為空的使用者申請 connect-token
+- **THEN** 簽發流程與未套用來源位址閘時完全一致
+
+#### Scenario: 清單不可讀時簽發被攔截並上報
+- **WHEN** 使用者儲存的清單字串無法解析，該使用者申請 connect-token
+- **THEN** 回應為來源位址閘的 403（source_not_allowed），不進入後續檢查；審計列原因碼為政策不可讀；審計機制失效面出現 `source_policy` 事件
 
 ### Requirement: 停用資產連線硬擋
 連線 token 簽發點 SHALL 於既有權限與政策檢查外檢查資產啟用狀態：`active=false` 的資產一律拒發（403、機器可辨錯誤碼），涵蓋全部協議（SSH/RDP/VNC/DB/K8s）與 SFTP 檔案端點（同收口）。admin SHALL NOT 豁免——停用是資產狀態而非權限問題，admin 需先重新啟用資產（留審計軌跡）方可建線。拒發 SHALL 不受功能開關旁路。token 兌換點（文字終端與圖形 WS 端點）SHALL 於建線前重查資產啟用狀態：資產於簽發後、兌換前被停用者，兌換 SHALL 被拒（403、同一機器可辨錯誤碼）——與使用者側「消費時重載狀態」對稱，停用即時性殘窗以 token TTL 為上界、不因 token 尚在效期而放行。
@@ -125,7 +137,7 @@ connect-token 簽發 SHALL 依固定順序施行五道檢查：連線授權檢�
 - **THEN** 事件經非 DB 降級管道（fallback audit／告警機制族）記錄，不僅是應用 log
 
 ### Requirement: 連線 token 兌換點授權與政策重查
-connect token 兌換點（文字終端與圖形 WS 端點）於建線前，除既有 user active 與 asset active 重查外，SHALL 重跑連線授權檢查（`CheckPermission(Connect)`）與存取政策閘（`CheckConnect`），與簽發點對稱；grant 帶 `account_id` 時 SHALL 以 `(account_id, asset_id, 未刪除)` DB 現查客體綁定並重驗帳號授權範圍，失效一律 fail-close。簽發後、兌換前遭撤銷之授權 grant／ticket、收緊之存取政策、或被刪除／移出授權範圍之帳號 SHALL 於兌換即時生效（拒絕建線，403 機器可辨），撤權即時性殘窗 SHALL NOT 因 token 尚在效期而放行。存取政策重查 SHALL 為純判定（不建立 access_request）；admin 政策豁免於兌換點 SHALL NOT 重複記審計標記（簽發點已記）。
+connect token 兌換點（文字終端與圖形 WS 端點）於建線前，除既有 user active 與 asset active 重查外，SHALL 重跑連線授權檢查（`CheckPermission(Connect)`）與存取政策閘（`CheckConnect`），與簽發點對稱；並 SHALL 於角色現查之後、其餘資產相關檢查之前重跑來源位址閘：以兌換當下自系統唯一來源位址實作現讀的位址，對照兌換當下現讀的允許來源網段清單（清單為空不限），SHALL NOT 信任簽發時的判定結果，票證不攜帶位址。grant 帶 `account_id` 時 SHALL 以 `(account_id, asset_id, 未刪除)` DB 現查客體綁定並重驗帳號授權範圍，失效一律 fail-close。簽發後、兌換前遭撤銷之授權 grant／ticket、收緊之存取政策、被刪除／移出授權範圍之帳號、或來源位址變更為清單外者 SHALL 於兌換即時生效（拒絕建線，403 機器可辨；來源位址閘的 `reason` 為 `source_not_allowed`），撤權即時性殘窗 SHALL NOT 因 token 尚在效期而放行。來源位址閘的拒絕 SHALL 沿既有兌換拒絕留痕路徑入審計（含來源位址、入口與判定依據），對外回應 SHALL NOT 回顯位址或清單；清單不可讀或無法解析時兌換點 SHALL 同樣攔截並上報（同簽發閘序的規定）。存取政策重查 SHALL 為純判定（不建立 access_request）；admin 政策豁免於兌換點 SHALL NOT 重複記審計標記（簽發點已記）。
 
 #### Scenario: 授權撤銷兌換被拒
 - **WHEN** 使用者取得 connect token 後、兌換前，其對該資產的連線授權被撤銷
@@ -142,6 +154,14 @@ connect token 兌換點（文字終端與圖形 WS 端點）於建線前，除�
 #### Scenario: 帳號於簽發後被刪除
 - **WHEN** grant 所綁帳號於簽發後、兌換前被刪除
 - **THEN** 兌換被拒（fail-close），不以預設帳號靜默替代
+
+#### Scenario: 簽發合法但兌換來源變更被拒
+- **WHEN** 清單非空的使用者自清單內位址取得 connect token，於 60 秒內自清單外位址兌換（文字終端或圖形入口）
+- **THEN** 兌換被拒（403 `source_not_allowed`），不建線；audit_logs 新增含來源位址、入口與判定依據的拒絕列；票證不因簽發時合法而放行
+
+#### Scenario: 兩條兌換入口行為一致
+- **WHEN** 同一來源變更情境分別發生於文字終端與圖形 WS 端點
+- **THEN** 兩者皆被拒且皆留痕，狀態碼與 `reason` 一致
 
 ### Requirement: connect 角色特權判定以即時有效角色為準
 

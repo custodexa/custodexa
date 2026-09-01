@@ -124,7 +124,7 @@ var schemaParityModels = []interface{}{
 	// **由增量 migration 建表，不在 baseline 內**——parity 守衛的解析對象
 	// 已擴為 schemaDDLStatements()（baseline＋增量），本表因此同受兩層守衛
 	&model.AuditExportJob{},
-	// source-ip-forensics：帳號 × 來源位址的已見基準（判定依據，不受保留清除）。
+	// 來源限定功能：帳號 × 來源位址的已見基準（判定依據，不受保留清除）。
 	// 由增量 migration 建表，同 audit_export_jobs 走 schemaDDLStatements() 受兩層守衛
 	&model.UserSourceIP{},
 	// 兩層自動驗證的營運狀態（單列）。
@@ -139,6 +139,14 @@ var schemaParityModels = []interface{}{
 	// 原守衛（TestLDAPDirectoryNotInAutoMigrateList）的保護對象改由兩條承接——
 	// baseline 的 CHECK 專屬斷言（第 2 層 parity）與「產品程式碼零 AutoMigrate」的 AST 守衛。
 	&model.LDAPDirectory{},
+	// evidence-offsite-storage：離機儲存的設定世代表與保管帳冊。
+	// 兩者由增量 migration 20260825_evidence_offsite 同批建表，走
+	// schemaDDLStatements() 受兩層 parity 守衛。
+	// OffsiteProfile 的兩條具名 CHECK（singleton＝1、credential_mode ⇔ 密文非空）
+	// 就在建表語句裡，另由 baselineCheckConstraints 逐條比對；
+	// credentials_enc 另受 keyvault 的 *Enc 信封登記 AST 守衛管轄
+	&model.OffsiteProfile{},
+	&model.OffsiteObject{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

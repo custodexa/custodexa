@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { POLICY_DOMAINS, sectionKeys } from '../policyDomains'
 
 // 後端全鍵集對照組（backend/internal/modules/policy/security_policy_service.go）。
-// 一致性守護：四域鍵集互斥且聯集＝後端全鍵集——
+// 一致性守護：各域鍵集互斥且聯集＝後端全鍵集——
 // 後端新增政策鍵時必須在 policyDomains.js 歸域並同步本清單，否則此測試紅燈提醒。
 const BACKEND_POLICY_KEYS = [
   'lockout_max_attempts',
@@ -35,6 +35,8 @@ const BACKEND_POLICY_KEYS = [
   'daily_review_enabled',
   'failure_alert_enabled',
   'recording_failclose_enabled',
+  // 離機儲存（evidence-offsite-storage）：本機副本快取期
+  'offsite_local_retention_days',
   'key_cryptoperiod_reminder_days',
   'key_rotation_max_per_run',
   'k8s_list_timeout_seconds',
@@ -62,7 +64,7 @@ const BACKEND_POLICY_KEYS = [
 ]
 
 describe('policyDomains 鍵歸屬一致性', () => {
-  it('四域鍵集互斥（單一鍵不得重複歸域）', () => {
+  it('各域鍵集互斥（單一鍵不得重複歸域）', () => {
     const seen = new Map()
     POLICY_DOMAINS.forEach((domain) => {
       sectionKeys(domain.sections).forEach((key) => {
@@ -75,7 +77,7 @@ describe('policyDomains 鍵歸屬一致性', () => {
     })
   })
 
-  it('四域聯集＝後端全鍵集（新增鍵必須歸域）', () => {
+  it('各域聯集＝後端全鍵集（新增鍵必須歸域）', () => {
     const union = POLICY_DOMAINS.flatMap((d) => sectionKeys(d.sections)).sort()
     expect(union).toEqual([...BACKEND_POLICY_KEYS].sort())
   })

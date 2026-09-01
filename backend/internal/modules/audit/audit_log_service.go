@@ -263,7 +263,7 @@ func (s *AuditLogService) worker(id int) {
 // flushBatch 寫出一批審計列，回傳清空後的 slice（供 worker 續用同一段底層陣列）。
 //
 // **抽成方法而非留在 worker 的閉包裡**：批次失敗的隔離語義是安全契約
-//（見下方），必須能被測試直接驅動；留在閉包內只能靠啟動 worker、塞 channel、
+// （見下方），必須能被測試直接驅動；留在閉包內只能靠啟動 worker、塞 channel、
 // 等 ticker 這條間接路徑去逼近，而那種測試對時序敏感、驗不準確切筆數。
 func (s *AuditLogService) flushBatch(id int, batch []*model.AuditLog) []*model.AuditLog {
 	if len(batch) == 0 {
@@ -787,6 +787,35 @@ func safeAuditSubstanceFields() map[string]bool {
 		// 自己輸入的網段字面，不是機密；記下它的代價可接受，換到的是所有真正的
 		// 清單變更都答得出「變成什麼」
 		"allowed_cidrs": true,
+
+		// ── 離機儲存的落點 ─────────────────────────────────────────────
+		// 這五個欄位合起來就是「審計副本被送去哪裡」：改掉任一個都等於把後續的
+		// 離機副本導向另一個目的地，而該次變更在只剩憑證欄可見（全被遮）的審計列
+		// 上與「什麼都沒動」逐字同形。provider 是儲存後端枚舉、path_style 是布林、
+		// 其餘三個是位址／容器／路徑前綴的純量字串，皆非憑證、非自由文字。
+		//
+		// **endpoint 不適用 `url` 的全域語義條款**：該條款針對的是同一個鍵名在通知
+		// 通道上承載 webhook 位址（持有型權杖）的情形，而 `endpoint` 全庫僅綁定於
+		// 離機儲存，語義單一。憑證欄（access_key_id／secret_access_key／
+		// service_account_json）一律不登記——它們是 write-only 的憑證材料本體，
+		// 前三者中的兩個另命中 G3 的 key 片段。`clear_credentials` 雖只是布林意圖旗標，
+		// 但鍵名命中 G3 的 credential 片段，不為個案開例外
+		"provider":   true,
+		"endpoint":   true,
+		"bucket":     true,
+		"prefix":     true,
+		"path_style": true,
+		// region 兼具落點語義：換區等同把副本搬到另一個法域（資料落地要求）
+		"region": true,
+
+		// ── 落點變更的確認回帶 ─────────────────────────────────────────
+		// 兩者由「需確認」回應原樣攜回，是確認流程的課責本體：settings_digest 指出
+		// 操作者確認的是**哪一份**設定（與最終寫入的內容比對得出來），
+		// expected_current_generation_id 指出他當時以為要取代的是哪個現行世代
+		//（0＝預期目前無現行世代）。少了它們，審計列答不出「他確認的與寫進去的
+		// 是不是同一件事」。前者是內容指紋、後者是自增 id，皆非機密
+		"settings_digest":                true,
+		"expected_current_generation_id": true,
 	}
 }
 

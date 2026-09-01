@@ -112,7 +112,8 @@
     "home": "Home",
     "oidcProviders": "OIDC Providers",
     "ldapDirectory": "Directory (LDAP)",
-    "checkpointVerification": "Checkpoint Verification"
+    "checkpointVerification": "Checkpoint Verification",
+    "offsiteStorage": "Offsite storage"
   },
   "login": {
     "usernamePlaceholder": "Username",
@@ -259,7 +260,12 @@
       "cancel": "Withdraw Request",
       "expire": "Request Expired",
       "revoke": "Revoke Authorization",
-      "review": "Break-Glass Review"
+      "review": "Break-Glass Review",
+      "offsite_upload": "Offsite upload",
+      "offsite_retention": "Offsite retention cleanup",
+      "offsite_integrity": "Offsite integrity mismatch",
+      "offsite_profile": "Offsite settings generation change",
+      "offsite_cred_revoke": "Offsite credential revocation"
     },
     "auditResource": {
       "asset": "Asset",
@@ -297,6 +303,7 @@
       "snippet": "Command Snippet",
       "role": "Role",
       "instance_guard": "Instance Guard",
+      "offsite_storage": "Offsite Storage",
       "unclassified": "Unclassified"
     },
     "mechanism": {
@@ -312,7 +319,8 @@
       "audit_chain_structure": "Audit chain structure verification",
       "audit_chain_content": "Audit chain content verification",
       "audit_chain_verify": "Audit chain automatic verification",
-      "source_policy": "Source Range Policy"
+      "source_policy": "Source Range Policy",
+      "offsite_upload": "Offsite storage upload"
     },
     "cause": {
       "recording_probe_failed": "Recording pre-flight check failed at issuance",
@@ -339,7 +347,10 @@
       "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
       "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")",
       "source_policy_unreadable": "Judgment point could not read the user's allowed source ranges",
-      "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)"
+      "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)",
+      "offsite_upload_failed": "The offsite upload has reached the retry limit (that copy is still not offsite)",
+      "offsite_upload_stalled": "Upload leases for the same object keep expiring; the upload is stuck",
+      "offsite_integrity_mismatch": "The retrieved offsite copy does not match what was uploaded; delivery was refused"
     },
     "endReason": {
       "normal": "Ended Normally",
@@ -495,8 +506,13 @@
       "cluster": {
         "title": "Cluster access",
         "hint": "How many seconds to wait for data from a Kubernetes cluster. Set it too low and healthy clusters look unreachable. This is only a wait time — it does not affect who can access what."
+      },
+      "offsite": {
+        "title": "Local copies",
+        "hint": "Once offsite storage is on, local recording copies can be removed early to save disk; recordings still play back from the offsite copy. This setting has no effect while the feature is off."
       }
-    }
+    },
+    "offsite": "Offsite storage"
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle} overview",
@@ -806,7 +822,8 @@
     "clipboardContentError": "Failed to load the content; nothing was retrieved this time",
     "clipboardDecryptButton": "Decrypt and view",
     "clipboardLockedHint": "The content is stored encrypted. Select Decrypt and view to decrypt and display it; the access is recorded.",
-    "clipboardAccessLogged": "This access has been recorded ({time})"
+    "clipboardAccessLogged": "This access has been recorded ({time})",
+    "offsiteStatus": "Offsite copy"
   },
   "myConnections": {
     "headerDesc": "Review your own session records",
@@ -2263,6 +2280,15 @@
     "CONFLICT_LDAP_DIRECTORY_BUSY": "Another LDAP directory settings operation is in progress, please retry shortly",
     "CONFLICT_LDAP_DIRECTORY_CONCURRENT": "Concurrent change to the LDAP directory settings, please reload and try again",
     "CONFLICT_MFA_ALREADY_ENROLLED": "This account has already completed MFA enrollment",
+    "CONFLICT_OFFSITE_CREDENTIALS_ALREADY_REVOKED": "Credentials for that generation have already been revoked",
+    "CONFLICT_OFFSITE_CREDENTIALS_UNAVAILABLE": "Offsite storage credentials are currently unusable; check the key status",
+    "CONFLICT_OFFSITE_FOREIGN_CREDENTIALS_MISSING": "Credentials for the offsite storage generation holding this evidence have been revoked; it cannot be retrieved",
+    "CONFLICT_OFFSITE_INTEGRITY_MISMATCH": "The offsite copy does not match what was uploaded; delivery was refused",
+    "CONFLICT_OFFSITE_NO_CURRENT_GENERATION": "There is no active offsite storage configuration",
+    "CONFLICT_OFFSITE_PROFILE_BUSY": "Another offsite storage settings operation is in progress; try again shortly",
+    "CONFLICT_OFFSITE_PROFILE_MISSING": "The offsite storage generation this evidence belongs to no longer exists; it cannot be retrieved",
+    "CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH": "The confirmed settings do not match what was submitted; please confirm again",
+    "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "The settings were changed by another operation; reload and try again",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "A provider with the same issuer and client_id already exists",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "This provider still has linked external identities; disable it instead",
     "CONFLICT_PLAN_NAME_EXISTS": "A plan with this name already exists",
@@ -2386,6 +2412,12 @@
     "INTERNAL_MFA_VERIFY": "MFA verification failed",
     "INTERNAL_MY_CONNECTION_QUERY": "Failed to query connection history",
     "INTERNAL_MY_CONNECTION_TERMINATE": "Failed to terminate connection",
+    "INTERNAL_OFFSITE_CREDENTIAL_DECRYPT": "Failed to decrypt offsite storage credentials; check the key status",
+    "INTERNAL_OFFSITE_CREDENTIAL_ENCRYPT": "Failed to encrypt offsite storage credentials; check the key status",
+    "INTERNAL_OFFSITE_RETRY": "Failed to retry the offsite upload",
+    "INTERNAL_OFFSITE_SETTINGS_SAVE": "Failed to save offsite storage settings",
+    "INTERNAL_OFFSITE_STATUS": "Failed to query offsite storage status",
+    "INTERNAL_OFFSITE_TEST": "Failed to run the offsite storage connection test",
     "INTERNAL_OIDC_LOGIN": "OIDC sign-in processing failed",
     "INTERNAL_OIDC_PROVIDER_LIST": "Failed to load the OIDC provider list",
     "INTERNAL_OIDC_PROVIDER_SAVE": "Failed to save the OIDC provider configuration",
@@ -2472,6 +2504,8 @@
     "NOTFOUND_LDAP_DIRECTORY": "LDAP directory settings do not exist",
     "NOTFOUND_MY_CONNECTION": "Connection not found",
     "NOTFOUND_NOTIFICATION_CHANNEL": "Notification channel not found",
+    "NOTFOUND_OFFSITE_GENERATION": "The specified offsite storage generation was not found",
+    "NOTFOUND_OFFSITE_OBJECT": "The specified offsite object was not found",
     "NOTFOUND_OIDC_PROVIDER": "OIDC provider not found",
     "NOTFOUND_RECORDING_FILE": "Recording file not found",
     "NOTFOUND_RECORDING_TIMING": "Recording timing file not found",
@@ -2544,6 +2578,8 @@
     "RULE_NODE_CYCLE": "A node cannot be moved into itself or one of its descendants",
     "RULE_NODE_DEPTH_EXCEEDED": "Node depth exceeds the limit (10 levels)",
     "RULE_NODE_NOT_EMPTY": "Only an empty node (no child nodes and no directly attached assets) can be deleted",
+    "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "Re-enter credentials when changing the storage type, endpoint, or bucket",
+    "RULE_OFFSITE_TEST_RATE_LIMITED": "Connection tests are too frequent; try again later",
     "RULE_RECORDING_UNAVAILABLE": "Recording storage is unhealthy; new connections are suspended. Please contact an administrator",
     "RULE_SESSION_CLOSED": "Session is closed",
     "RULE_SESSION_ENDED": "The session has ended",
@@ -2688,6 +2724,13 @@
     "VALIDATION_LDAP_URL_SCHEME": "The directory URL scheme must be ldap:// or ldaps://",
     "VALIDATION_LDAP_URL_TOO_LONG": "The directory URL is too long",
     "VALIDATION_LDAP_URL_USERINFO": "The directory URL must not embed credentials; use the bind DN and bind password fields instead",
+    "VALIDATION_OFFSITE_BUCKET_REQUIRED": "Bucket name is required",
+    "VALIDATION_OFFSITE_CREDENTIAL_CONFLICT": "Cannot enter new credentials and select clear credentials at the same time",
+    "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "Provide both the access key and the secret key, or leave both blank to use the default credential chain",
+    "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "The endpoint must not contain credentials, a query string, or a fragment; enter credentials in their own fields",
+    "VALIDATION_OFFSITE_ENDPOINT_INVALID": "Endpoint must start with http:// or https:// and include a host name",
+    "VALIDATION_OFFSITE_PROVIDER_INVALID": "Storage type must be s3 or gcs",
+    "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "With S3, either the endpoint or the region must be provided",
     "VALIDATION_OIDC_ADMISSION_RULES": "Invalid admission rules: ensure rule keys are valid and non-empty; shared identity providers require a tenant or domain condition",
     "VALIDATION_OIDC_BINDING_MISSING": "Browser binding value is missing",
     "VALIDATION_OIDC_IMMUTABLE_FIELD": "The issuer and client_id cannot be changed after creation; create a new provider instead",
@@ -2765,6 +2808,7 @@
     "lockout_duration_minutes": "Lockout duration",
     "lockout_max_attempts": "Max failed login attempts",
     "mfa_required": "MFA enforcement scope",
+    "offsite_local_retention_days": "Days to keep local copies after offsite upload",
     "password_history_count": "Password reuse history count",
     "password_max_age_days": "Maximum password age (days)",
     "password_min_length": "Minimum password length",
@@ -3547,7 +3591,12 @@
         "cancel": "Withdrew request",
         "expire": "Request expired",
         "revoke": "Revoked authorization",
-        "review": "Post-review of emergency access"
+        "review": "Post-review of emergency access",
+        "offsite_upload": "Offsite custody: upload result",
+        "offsite_retention": "Offsite custody: local copy cleared at retention expiry",
+        "offsite_integrity": "Offsite custody: retrieved content did not match what was uploaded",
+        "offsite_profile": "Offsite custody: storage settings generation changed",
+        "offsite_cred_revoke": "Offsite custody: generation credentials revoked"
       },
       "session": {
         "start": "Started {protocol} session"
@@ -3646,5 +3695,258 @@
     "polling": "Packaging is in progress; this page refreshes every {sec} seconds.",
     "pollingStopped": "Automatic refresh stopped (this page reached its refresh limit). Use Refresh to get the latest status.",
     "shaTip": "Artifact fingerprint SHA-256: {sha}"
+  },
+  "offsite": {
+    "headerDesc": "Configure where evidence copies are stored offsite, and track the upload queue and retrieval status.",
+    "loadFailedGuardTitle": "Could not read the offsite storage settings",
+    "loadFailedGuardDesc": "Saving is disabled so a blank form cannot overwrite what is on the server. Press Refresh and try again.",
+    "credentialFailedTitle": "Offsite storage credentials cannot be decrypted",
+    "credentialFailedDesc": "This is a key problem, not a settings problem: uploads and retrievals both stop in a failed state. Check the seal and KEK under Key management, then test the connection again here.",
+    "statusTitle": "Offsite storage",
+    "status": {
+      "loading": "Loading",
+      "load_failed": "Read failed",
+      "unconfigured": "Not configured",
+      "enabled": "Enabled",
+      "disabled": "Uploads stopped"
+    },
+    "statusHint": {
+      "loading": "Reading the settings stored on the server.",
+      "load_failed": "The settings on the server cannot be confirmed right now.",
+      "unconfigured": "New recordings and evidence bundles stay on this host only.",
+      "enabled": "Copies are uploaded once a session ends or a bundle finishes packaging.",
+      "disabled": "No new uploads; existing offsite copies can still be retrieved."
+    },
+    "plaintextRisk": "The current endpoint uses http://, so credentials and evidence travel the network in the clear.",
+    "emptyTitle": "No offsite custody records yet",
+    "emptyHint": "Fill in the storage target and credentials below and save; sessions and bundles that finish afterwards start uploading.",
+    "summaryTitle": "Current storage settings",
+    "summaryHint": "Connection parameters only. No key material is shown.",
+    "endpointDefault": "Provider default endpoint",
+    "governanceVersioning": "Bucket versioning: {state}",
+    "sectionTarget": "Storage target",
+    "sectionTargetHint": "Which service and which bucket the copies go to.",
+    "sectionCredentials": "Access credentials",
+    "sectionCredentialsHint": "Saved with envelope encryption into the database; no read ever returns the original value.",
+    "field": {
+      "provider": "Storage service",
+      "endpoint": "Endpoint",
+      "endpointOrigin": "Endpoint",
+      "bucket": "Bucket",
+      "prefix": "Key prefix",
+      "region": "Region",
+      "pathStyle": "Use path-style addressing",
+      "accessKeyId": "Access key ID",
+      "secretAccessKey": "Secret access key",
+      "serviceAccountJson": "Service account JSON",
+      "credentialMode": "Credential status",
+      "fingerprint": "Settings fingerprint",
+      "generationId": "Settings generation"
+    },
+    "placeholder": {
+      "bucket": "for example custodexa-evidence",
+      "prefix": "for example prod (leave empty for the bucket root)",
+      "endpoint": "https://s3.example.com",
+      "region": "for example ap-northeast-1",
+      "credentialKeep": "Leave empty to keep the saved credentials",
+      "credentialNew": "Enter the credentials issued by the storage provider",
+      "credentialCleared": "The cloud default credential chain will be used after saving"
+    },
+    "hint": {
+      "prefix": "Every object is stored under this prefix, which keeps them apart from other files in the bucket.",
+      "endpointS3": "Enter the full address for self-hosted S3-compatible storage. For AWS S3 you can leave it empty and set the region instead.",
+      "endpointGcs": "Leave empty when using the official Google Cloud Storage endpoint.",
+      "endpointPlaintext": "http:// sends credentials and evidence over the network in the clear. Use https:// instead.",
+      "region": "Provide the endpoint, the region, or both.",
+      "pathStyle": "Self-hosted storage such as MinIO usually needs this on.",
+      "credentialWriteOnly": "Credentials can be overwritten but never read back. Leave the fields empty to keep the saved credentials; clear them to switch to the cloud default credential chain.",
+      "moveNeedsCredentials": "The storage service, endpoint or bucket changed, so the credentials have to be entered again before saving."
+    },
+    "rule": {
+      "bucketRequired": "Enter a bucket name",
+      "endpointInvalid": "The endpoint must start with http:// or https:// and include a host name",
+      "endpointHasSecrets": "The endpoint must not contain a user name, password, query string or fragment; put credentials in the credential fields",
+      "regionOrEndpoint": "With S3, provide the endpoint, the region, or both"
+    },
+    "provider": {
+      "s3": "S3-compatible storage",
+      "gcs": "Google Cloud Storage"
+    },
+    "credentialMode": {
+      "stored": "Set",
+      "default_chain": "Cloud default credential chain",
+      "revoked": "Revoked",
+      "none": "Not set"
+    },
+    "credentialsClearedAt": "Revoked at {at}",
+    "clearCredentials": "Clear the saved credentials and use the cloud default credential chain",
+    "clearCredentialsHint": "The saved credentials are removed on save and cannot be restored.",
+    "versioning": {
+      "enabled": "Enabled",
+      "disabled": "Not enabled",
+      "unknown": "Could not be determined"
+    },
+    "test": "Test connection",
+    "testHint": "The test uses the values currently in the form; saving first is not required.",
+    "unsavedChanges": "Unsaved changes",
+    "testResultTitle": "Connection test result",
+    "testResultStale": "The settings changed. Run the test again.",
+    "testPassed": "Connection test passed",
+    "testPassedWithWarnings": "Connection test passed, with items that could not be determined",
+    "testFailed": "Connection test failed",
+    "testFailedGeneric": "The connection test could not be run",
+    "testGroup": {
+      "disclosure": "Bucket state",
+      "roundtrip": "Write and read back"
+    },
+    "testGroupHint": {
+      "disclosure": "Reports the bucket settings as they are, without judging them.",
+      "roundtrip": "Writes a test object, reads it back for comparison, then deletes it."
+    },
+    "testStep": {
+      "probe_bucket": "Bucket reachable",
+      "versioning": "Versioning",
+      "retention": "Retention settings",
+      "write": "Write",
+      "read": "Read back",
+      "delete": "Delete test object"
+    },
+    "testOutcome": {
+      "ok": "Passed",
+      "warn": "Could not determine",
+      "fail": "Failed",
+      "skipped": "Not run"
+    },
+    "testCode": {
+      "test_bucket_unreachable": "The bucket could not be reached. Check the endpoint, credentials and bucket name.",
+      "test_governance_unknown": "The current credentials cannot read this setting. Uploads are unaffected.",
+      "test_write_failed": "Writing the test object failed. Check that the credentials allow writes.",
+      "test_read_failed": "Reading the test object back failed. Check that the credentials allow reads.",
+      "test_read_mismatch": "The content read back does not match what was written.",
+      "test_delete_denied": "The test object could not be deleted, which can happen when the bucket has a retention lock."
+    },
+    "testCodeUnknown": "The test did not pass",
+    "errorCode": {
+      "upload_failed": "Upload failed",
+      "file_changed_during_upload": "The local file was still changing during the upload",
+      "head_size_mismatch": "The size check after upload did not match",
+      "local_open_failed": "The local file could not be opened",
+      "integrity_mismatch": "Retrieved content does not match what was uploaded",
+      "profile_missing": "The storage settings generation for this object is missing",
+      "foreign_credentials_missing": "Credentials for that generation were revoked or are absent",
+      "credentials_unavailable": "Credentials are currently unusable"
+    },
+    "errorCodeUnknown": "Reason not recorded",
+    "queueTitle": "Custody queue",
+    "retryFailed": "Retry failed items",
+    "retryFailedConfirm": "All failed items go back into the queue for another upload attempt. Continue?",
+    "retryFailedConfirmTitle": "Retry failed items",
+    "retryQueued": "Queued for retry: {count}",
+    "retry": "Retry",
+    "retryNeedsLocalFile": "The local file is gone, so it cannot be uploaded again.",
+    "disabledNote": "Uploads are stopped. The counts below are the existing custody inventory.",
+    "count": {
+      "pending": "Pending",
+      "uploading": "Uploading",
+      "uploaded": "Uploaded",
+      "failed": "Failed",
+      "integrity_mismatch": "Integrity mismatch",
+      "foreign": "Previous settings",
+      "local_purged": "Local copy removed",
+      "total": "Total"
+    },
+    "origin": {
+      "live": "live",
+      "backfill": "backfill"
+    },
+    "oldestPending": "Oldest wait in the {origin} lane: {age}",
+    "failuresTitle": "Upload failures",
+    "failuresHint": "Items closest to their retention deadline come first, and the remaining days are shown on every page.",
+    "column": {
+      "kind": "Kind",
+      "owner": "Subject",
+      "failedAt": "Last attempt",
+      "reason": "Reason",
+      "attempts": "Attempts",
+      "deadline": "Retention deadline",
+      "generationId": "Generation",
+      "fingerprint": "Fingerprint",
+      "provider": "Storage service",
+      "location": "Location",
+      "lifecycle": "Activated and retired",
+      "objectCount": "Objects",
+      "credentialMode": "Credential status"
+    },
+    "kind": {
+      "recording": "Session recording",
+      "export": "Evidence bundle"
+    },
+    "noDeadline": "No retention deadline",
+    "deadlinePassed": "Past retention",
+    "daysToDeadline": "Days left: {days}",
+    "noFailures": "No failed items",
+    "noFailuresHint": "Everything queued has been uploaded or is still waiting its turn.",
+    "profilesTitle": "Storage settings generations",
+    "profilesHint": "Each change of target creates a new generation; the credentials of older generations are kept so their objects stay retrievable.",
+    "retiredAt": "Retired at {at}",
+    "currentGeneration": "Current generation",
+    "revokeCredentials": "Revoke credentials",
+    "revokeConfirmTitle": "Revoke generation credentials",
+    "revokeConfirm": "After revoking the credentials of generation {generation}, the objects it holds ({count}) can no longer be retrieved, and the cloud default credential chain will not be used instead. This cannot be undone.",
+    "revokeConfirmButton": "Revoke credentials",
+    "revoked": "Credentials revoked",
+    "revokeFailed": "Revoking the credentials failed",
+    "switchDialogTitle": "Confirm the change of storage target",
+    "switchLead": "Objects currently held under the present settings: {count}.",
+    "switchConsequence1": "The present settings become a historical generation, and new uploads use the new settings.",
+    "switchConsequence2": "The credentials of the historical generation are kept, so its objects stay retrievable.",
+    "switchConsequence3": "Objects already in storage are not deleted; cleanup is up to the bucket lifecycle rules.",
+    "switchConfirm": "Confirm change",
+    "switched": "Storage target changed",
+    "switchFailed": "Changing the storage target failed",
+    "staleConfirmation": "The settings were changed by another operation. Press Refresh to load the current settings and try again.",
+    "disable": "Stop offsite storage",
+    "disableConfirmTitle": "Stop offsite storage",
+    "disableConfirm": "No further uploads take place, and the present settings become a historical generation. Existing offsite objects stay retrievable, their credentials are not revoked, and nothing is deleted from storage.",
+    "disableConfirmButton": "Stop offsite storage",
+    "disabled": "Offsite storage stopped",
+    "disableFailed": "Stopping offsite storage failed",
+    "saved": "Settings saved",
+    "saveFailed": "Saving the settings failed",
+    "discardChangesTitle": "Discard unsaved changes",
+    "discardChangesConfirm": "Refreshing replaces the form with the settings on the server, and the current changes are lost.",
+    "discardChangesButton": "Discard and refresh",
+    "state": {
+      "none": "Not queued",
+      "pending": "Pending upload",
+      "uploading": "Uploading",
+      "uploaded": "Stored offsite",
+      "failed": "Upload failed",
+      "integrity_mismatch": "Integrity mismatch",
+      "foreign": "Previous storage settings",
+      "local_purged": "Local copy removed",
+      "skipped_missing": "Local file missing, not queued",
+      "skipped_expired": "Past retention, not queued"
+    },
+    "stateHint": {
+      "none": "This session has no recording, or the backfill scan has not reached it yet.",
+      "pending": "Queued and waiting to be uploaded.",
+      "uploading": "Being uploaded to offsite storage.",
+      "uploaded": "The copy was uploaded and its hash recorded; playback works from the offsite copy after the local file is removed.",
+      "failed": "The retry limit was reached. An administrator can queue it again.",
+      "integrity_mismatch": "The offsite copy does not match what was uploaded, so delivery was refused.",
+      "foreign": "Its storage settings generation was retired; retrieval uses that generation's own credentials.",
+      "local_purged": "The local copy was removed under the retention settings. What happens to the object in storage is up to the bucket lifecycle rules.",
+      "skipped_missing": "The recording file is not on this host; the next backfill scan looks again.",
+      "skipped_expired": "The recording is past its retention period and is left to retention cleanup."
+    },
+    "exportRow": {
+      "uploaded": "Stored offsite",
+      "pending": "Offsite upload pending",
+      "uploading": "Offsite upload pending",
+      "failed": "Offsite upload failed",
+      "integrity_mismatch": "Offsite copy integrity mismatch",
+      "foreign": "Previous storage settings"
+    }
   }
 }

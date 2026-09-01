@@ -6,6 +6,8 @@
 ### Requirement: 錄影存取收口（一次性 token）
 會話錄影回放 SHALL NOT 把長效登入 JWT 放入串流 URL query。系統 SHALL 提供短時效、不透明、僅授權讀取指定 session 錄影的一次性錄影 token：簽發端點 SHALL 經認證與審計權限檢查；串流端點 SHALL 以該 token 作為授權（無需 JWT），token SHALL 有 TTL（逾時失效）並綁定發放對象的 session。
 
+**錄影來源不改變收口**（自 `evidence-offsite-storage` 起）：錄影本機檔缺席而已離機保存者，串流端點 SHALL 由後端自物件儲存取回並轉發（含 HTTP Range），仍以同一 token 或 JWT＋稽核檢視權限為唯一授權；系統 SHALL NOT 向前端交付 presigned URL 或任何指向物件儲存端點的位址。經物件儲存取回的取流審計 SHALL 標示來源。
+
 #### Scenario: 播放 URL 不含 JWT
 - **WHEN** 使用者開啟 SSH 會話錄影回放
 - **THEN** 播放器抓取的串流 URL 形如 `/recordings/stream?rtoken=<不透明 token>`，URL 與 access log 皆不含登入 JWT
@@ -17,6 +19,10 @@
 #### Scenario: 圖形錄影走 header 授權
 - **WHEN** 回放 RDP/VNC 的 guacamole 錄影
 - **THEN** 以 Authorization header（Bearer）取流，URL 不帶 token
+
+#### Scenario: 離機來源仍經同一收口
+- **WHEN** 某會話錄影本機檔已清除、已離機保存，播放器持有效 rtoken 請求串流
+- **THEN** 後端自物件儲存取回並轉發（支援 Range），回應中無任何物件儲存位址；同一請求改持偽造或逾時 token 仍回 401
 
 ### Requirement: 錄影播放器空 URL 守衛
 錄影串流 URL 以非同步方式取得（簽發 token 後才有值）；播放器 SHALL 僅在 URL 就緒後初始化，SHALL NOT 對空 URL 初始化，且重建時 SHALL 先銷毀舊實例，避免殘留錯誤覆蓋層。
@@ -69,6 +75,8 @@
 ### Requirement: 錄影保留政策化
 錄影檔保留期 SHALL 由安全政策的錄影保留天數鍵驅動(0 = 永久保留,語義與其他保留鍵一致)。該鍵初始值 SHALL 由環境變數 RECORDING_RETENTION_DAYS 播種(env 未設時為 90),確保升級後行為與導入前一致;此後以政策值為準,env 變更不再覆蓋既有政策值。清理排程 SHALL 於政策變更後的下次執行採用新值,無需重啟。
 
+**離機保存下的兩層保留**（自 `evidence-offsite-storage` 起）：系統 SHALL 另提供政策鍵「本機副本保留天數」（0＝不提前清除），僅對已離機保存的錄影生效——本機檔於上傳後達該天數 SHALL 清除，會話仍標示有錄影、播放改自物件儲存取回。錄影保留天數到期 SHALL 同時作用於本機檔與遠端物件；遠端刪除受儲存端約束（Object Lock 鎖定期內不可刪）時 SHALL 標示待遠端刪除並於後續排程重試，SHALL NOT 因此延後本機清除，亦 SHALL NOT 回報為錯誤。離機功能未啟用時本機副本保留鍵 SHALL 無效並於介面明示。
+
 #### Scenario: 升級後行為不變
 - **WHEN** 既有部署(RECORDING_RETENTION_DAYS=90 或未設)升級至本版且未動政策
 - **THEN** 錄影保留政策鍵初始為 90,清理行為與導入前一致
@@ -80,6 +88,14 @@
 #### Scenario: 顯式永久保留
 - **WHEN** 管理員將錄影保留天數設為 0
 - **THEN** 清理排程不再刪除錄影檔,偏離摘要列出該項不符 PCI 建議
+
+#### Scenario: 本機副本提前清除但錄影仍在
+- **WHEN** 本機副本保留天數為 30、錄影保留天數為 365，某已離機會話上傳滿 30 天
+- **THEN** 本機檔被清除、會話仍為有錄影且可自物件儲存播放；滿 365 天時本機檔（若仍在）被清除且帳冊標記到期，遠端物件不由產品刪除、其清理由部署方的 bucket 生命週期承擔
+
+#### Scenario: 永久保留搭配本機快取
+- **WHEN** 錄影保留天數為 0 且本機副本保留天數為 30
+- **THEN** 本機檔於上傳滿 30 天後清除，遠端物件永不由產品刪除
 
 ### Requirement: 錄影失敗偵測與無錄影標示
 系統 SHALL 偵測兩路錄影失敗：文字路徑（backend 寫 `.cast`）於啟動失敗與會中寫入錯誤偵測（含 flush 錯誤浮出，不得因閒置而永久沉默）；圖形路徑（guacd 寫 `.guac`，其失敗不回傳 backend）於會話結束後以檔案存在性判定。偵測到失敗時該 session SHALL 標記無錄影，前端會話列表（含**活動連線列表**——不做自動斷線的人工處置前提）與回放入口 SHALL 額外標示（非僅播放入口消失）；SHALL 寫入 per-session 審計列（`audit_logs`，逐筆不去重）；SHALL 經審計失效告警機制以 `recording_*` 機制族通報（事件記錄恆開、通知受既有告警開關控制；機制族語義見 audit-failure-alerting）。錄影落地鏈失敗（重命名/確認/metadata 更新）SHALL 同樣通報，不得因檔案曾存在而沉默。
@@ -220,3 +236,4 @@ API 的檔案大小（每次呼叫即時量測）——該事實 SHALL 記載於
 
 - **WHEN** 查詢錄影儲存使用量
 - **THEN** 其值來自磁碟實測而非持久化欄位累加，故不受收尾差額影響
+

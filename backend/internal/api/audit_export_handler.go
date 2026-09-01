@@ -25,6 +25,8 @@ type AuditExportHandler struct {
 	// 端點本體在 audit_export_job_handler.go
 	jobs         *audit.AuditExportJobService
 	auditService *audit.AuditLogService
+	// offsite 證據包產物的離機取回面；nil＝未組裝（下載路徑逐字維持原行為）
+	offsite OffsiteArtifactRetriever
 }
 
 // NewAuditExportHandler 建立匯出 handler

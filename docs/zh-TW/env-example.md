@@ -507,6 +507,129 @@ LDAP_ALLOWED_LOOPBACK_ENDPOINTS=
 
 ---
 
+## 離機證據儲存（只是初次設定）
+
+**本節僅供初次設定**：下面這些鍵會在首次啟動時寫入資料庫，其後的變更請於管理介面的
+「系統設定 -> 離機儲存」頁面進行，改動這個檔案不再生效
+（系統會記下一個評估標記，所以把設定資料列清空也不會讓它重新種入；
+該標記存在資料庫裡，會隨備份一起還原）。
+
+預設為關閉：把你所用 provider 的 bucket 鍵留空，系統的行為就完全不變。
+填了之後，Custodexa 會在會話結束後把每一份錄影與證據包的副本上傳到你的物件儲存，
+並在本機副本不在時由那裡讀回。
+
+**打開這個功能等於選擇了以下這些**：
+
+- 物件在儲存端是**明文**，除非你的 bucket 自己做了靜態加密。
+  證據包裡含解密後的剪貼簿內容；本機的取回暫存區同樣是明文。
+- 遠端副本的保留期、版本歷史與防刪由**你在 bucket 上設定**。
+  Custodexa 只上傳、記下上傳當下的 SHA-256、取回時驗證；
+  它不送保留標頭，也永遠不刪遠端物件。建議參數見 `docs/ops/`。
+- 重試就是以同一個 key 重傳。遠端物件若被別的東西覆寫，取回會因為雜湊對不上而拒絕交付
+  ——**防護就到這裡為止**；能不能救回原來那一份，取決於你在 bucket 上開的版本化設定。
+- 之後要換 provider、端點或 bucket 屬於世代變更，在管理介面上確認；
+  先前的物件仍可經其所屬世代讀回。
+
+### `OFFSITE_PROVIDER`
+
+要用哪一個 driver：`s3`（AWS S3、MinIO 與其他 S3 相容端點）或 `gcs`
+（Google Cloud Storage，走原生 API——**不需要 HMAC key**）。留空＝`s3`。
+
+```env
+OFFSITE_PROVIDER=
+```
+
+### `OFFSITE_S3_BUCKET`
+
+s3 driver 的 bucket 名稱。留空＝s3 driver 這一側的離機儲存維持關閉。
+
+```env
+OFFSITE_S3_BUCKET=
+```
+
+### `OFFSITE_S3_ENDPOINT`
+
+MinIO 或其他 S3 相容服務的自訂端點，例如 `https://minio.example.com`。
+留空＝該 region 的 AWS 端點。這裡不接受帳密、query 與 fragment。
+
+```env
+OFFSITE_S3_ENDPOINT=
+```
+
+### `OFFSITE_S3_REGION`
+
+```env
+OFFSITE_S3_REGION=
+```
+
+### `OFFSITE_S3_PREFIX`
+
+bucket 內的 key 前綴；留空＝無前綴。
+
+```env
+OFFSITE_S3_PREFIX=
+```
+
+### `OFFSITE_S3_PATH_STYLE`
+
+MinIO 與多數 S3 相容服務要填 `true`；留空＝`false`。
+
+```env
+OFFSITE_S3_PATH_STYLE=
+```
+
+### `OFFSITE_S3_ACCESS_KEY_ID`
+
+`[secret]` 兩個鍵都留空＝改用 SDK 的預設憑證鏈（執行個體角色之類）。
+**要填就兩個都填**——只填一半會讓 seed 拒絕寫入。
+
+```env
+OFFSITE_S3_ACCESS_KEY_ID=
+```
+
+### `OFFSITE_S3_SECRET_ACCESS_KEY`
+
+`[secret]`
+
+```env
+OFFSITE_S3_SECRET_ACCESS_KEY=
+```
+
+### `OFFSITE_GCS_BUCKET`
+
+gcs driver 的 bucket 名稱。留空＝gcs driver 這一側的離機儲存維持關閉。
+
+```env
+OFFSITE_GCS_BUCKET=
+```
+
+### `OFFSITE_GCS_PREFIX`
+
+bucket 內的 key 前綴；留空＝無前綴。
+
+```env
+OFFSITE_GCS_PREFIX=
+```
+
+### `OFFSITE_GCS_CREDENTIALS_FILE`
+
+`[secret]` service account JSON 檔的路徑，需在容器內讀得到。留空＝用 application default credentials。
+該檔在 seed 當下讀一次、內容加密後入庫；**刻意不去讀全域的 `GOOGLE_APPLICATION_CREDENTIALS`**。
+
+```env
+OFFSITE_GCS_CREDENTIALS_FILE=
+```
+
+### `OFFSITE_GCS_ENDPOINT`
+
+模擬器或私有連接點的自訂端點；留空＝正式的 Google Cloud Storage。
+
+```env
+OFFSITE_GCS_ENDPOINT=
+```
+
+---
+
 ## 會話逾時（單位：分鐘）
 
 `[seed]` 首次啟動時種入；之後改由安全政策頁面管理。

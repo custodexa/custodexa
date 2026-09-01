@@ -53,6 +53,8 @@ var driftAllowlist = map[string]bool{
 	"REQUIRE_INTEGRATION": true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
 	"TEST_PG_DSN":         true, // postgres 靶機 DSN
 	"TEST_KMS_ENDPOINT":   true, // KMS 模擬器（localstack）端點
+	"TEST_S3_ENDPOINT":    true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
+	"TEST_GCS_ENDPOINT":   true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
 	// compose 拓撲/模式常數（由 compose environment: 提供，見 docker-compose.yml 與 docker-compose.dev.yml）
 	"PORT":     true,
 	"GIN_MODE": true,
@@ -74,6 +76,29 @@ var driftAllowlist = map[string]bool{
 	// 容器內匯出產物暫存路徑，同上兩者的
 	// 定位：非使用者面旋鈕，host 側落點屬 compose 拓撲
 	"EXPORT_ARTIFACT_PATH": true,
+	// 離機取回暫存根（容器本地快取，非 volume）。
+	// 同 EXPORT_ARTIFACT_PATH 的定位：容器內路徑非使用者旋鈕，不入 .env.example
+	"OFFSITE_SPOOL_PATH": true,
+	// ---- 離機儲存的**初次 seed** 鍵組 ----
+	// 設定與憑證的執行期承載是 `offsite_profiles` 專用表，由管理介面維護；
+	// 本組鍵只在 post-unseal 佇列的 seed 讀一次（internal/offsite/seed_migration.go），
+	// marker 寫入後不參與任何執行期判定。
+	// **暫列於此的理由是 `.env.example` 的段落尚未落地**（屬文件任務）：
+	// 該段寫入後本組登記 SHALL 移除，改由範本承擔同步保證。
+	// `OFFSITE_PROFILE_MIGRATION_ACK` 已隨世代切換改為管理介面確認流程而**刪除**，
+	// 不在本表亦不在任何讀取路徑。
+	"OFFSITE_PROVIDER":             true,
+	"OFFSITE_S3_BUCKET":            true,
+	"OFFSITE_S3_ENDPOINT":          true,
+	"OFFSITE_S3_REGION":            true,
+	"OFFSITE_S3_PREFIX":            true,
+	"OFFSITE_S3_PATH_STYLE":        true,
+	"OFFSITE_S3_ACCESS_KEY_ID":     true,
+	"OFFSITE_S3_SECRET_ACCESS_KEY": true,
+	"OFFSITE_GCS_BUCKET":           true,
+	"OFFSITE_GCS_PREFIX":           true,
+	"OFFSITE_GCS_CREDENTIALS_FILE": true,
+	"OFFSITE_GCS_ENDPOINT":         true,
 	// 單實例守衛的一次性衝突確認：綁定當次持鎖者指紋碼、
 	// 持鎖者變更即失效、每次生效留審計。**刻意不入範本**——範本裡出現它就會被當成
 	// 常設值，而它的語義是「對這一次衝突的確認」；攔下訊息會當場指示要設什麼值

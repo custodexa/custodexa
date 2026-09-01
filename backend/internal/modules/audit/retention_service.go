@@ -112,10 +112,19 @@ type RetentionService struct {
 	// auditLogMode audit_logs 走哪條路徑；checkpoints 為 nil 時本欄無作用
 	auditLogMode auditLogPurgeMode
 
+	// offsiteRecordings 離機啟用後的錄影保留補充面；nil＝未組裝離機子系統
+	// （此時本檔的行為與該功能不存在時逐字相同）
+	offsiteRecordings OffsiteRecordingRetention
+
 	// watermarks 保留期清除水位。nil＝不記水位
 	//（單元測試與 scripts/retention_smoke.go），此時工作台一律回 present——
 	// 那是冷啟動語義，不是錯誤
 	watermarks *RetentionWatermarkService
+}
+
+// SetOffsiteRecordingRetention 接上離機錄影保留補充面（組裝根）。
+func (s *RetentionService) SetOffsiteRecordingRetention(r OffsiteRecordingRetention) {
+	s.offsiteRecordings = r
 }
 
 // SetWatermarks 接上保留水位記錄器。
@@ -257,11 +266,38 @@ func (s *RetentionService) PurgeAll() []PurgeResult {
 			result.Error = err.Error()
 			log.Printf("[Retention] 錄影清除失敗（已刪 %d 檔）: %v", deleted, err)
 		}
+		// 政策到期段的 DB 分支：
+		// 本機已無檔（多半是被快取清除段刪掉）但仍有帳冊列的過期會話。
+		// Walk 只看得到磁碟上還在的檔案，這些列不補處置就會停在
+		// 「本機檔已刪卻仍被 worker 領取」的孤兒態
+		if s.offsiteRecordings != nil {
+			purged, perr := s.offsiteRecordings.PurgeExpiredOffsiteRecords(days, s.maxPerRunNow())
+			result.Deleted += int64(purged)
+			if perr != nil && result.Error == "" {
+				result.Error = perr.Error()
+				log.Printf("[Retention] 離機錄影到期處置失敗: %v", perr)
+			}
+		}
 		results = append(results, result)
 		s.logPurge(result, "會話錄影")
 		// 錄影與前三類同記水位：會話列的錄影三態（可回放／已清除／無錄影）
 		// 靠它區分「檔案被保留政策清掉」與「這場從未錄影」
 		s.recordWatermark("recordings", days, false, runAt)
+	}
+
+	// 離機本機副本的**快取清除段**：獨立於保留政策之後執行。
+	//
+	// **刻意不記水位、不進 results**：水位的語義是「這段區間的資料已被保留政策
+	// 清除」，而本段刪的是快取——錄影仍可自離機副本播放。記了水位，工作台會把
+	// 一段仍然調得出錄影的區間標成已清除。
+	if s.offsiteRecordings != nil {
+		if cacheDays := s.policy.GetInt(policy.PolicyOffsiteLocalRetentionDays); cacheDays > 0 {
+			if n, err := s.offsiteRecordings.PurgeOffsiteLocalCache(cacheDays); err != nil {
+				log.Printf("[Retention] 離機本機快取清除失敗: %v", err)
+			} else if n > 0 {
+				log.Printf("[Retention] 離機本機快取清除 %d 檔（快取期 %d 天）", n, cacheDays)
+			}
+		}
 	}
 	return results
 }

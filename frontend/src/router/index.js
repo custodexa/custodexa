@@ -202,6 +202,15 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {
+        // 離機儲存（evidence-offsite-storage）：儲存端連線設定、憑證世代、
+        // 上傳佇列與失敗清單。與金鑰管理同層——兩者都是「證據放哪裡、
+        // 誰解得開」的設定面，故並列於設定域
+        path: 'offsite-storage',
+        name: 'OffsiteStorage',
+        component: () => import('../views/OffsiteStorage.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] },
+      },
+      {
         path: 'change-secret-plans',
         name: 'ChangeSecretPlans',
         component: () => import('../views/ChangeSecretPlans.vue'),

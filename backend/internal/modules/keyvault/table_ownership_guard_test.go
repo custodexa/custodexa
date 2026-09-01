@@ -72,6 +72,8 @@ var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 		Reason: "**自有表**（CheckpointSigningService 的 Ed25519 私鑰，audit-checkpoint-chain），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 	{Table: "clipboard_events", OwnerModule: "session",
 		Reason: "剪貼簿留存內容欄 content_enc。session 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與 AAD 遷移必須涵蓋本欄，否則輪替後剪貼簿審計證據不可解。"},
+	{Table: "offsite_profiles", OwnerModule: "offsite",
+		Reason: "離機儲存逐世代的物件儲存憑證欄 credentials_enc。internal/offsite 擁有語義（世代生命週期、憑證模式三值），密文格式與金鑰版本由 keyvault 單方掌握；DEK 輪替與退役 DEK 引用掃描必須涵蓋本欄，否則輪替後歷史世代憑證不可解、其遠端物件永不可取回。**沒有 tx-taking 出路**：重加密橫跨全部模組的表，改呼叫擁有者會製造 keyvault→offsite 出向依賴。"},
 }
 
 // TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry 白名單與登記表雙向完備。
@@ -110,8 +112,9 @@ func TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry(t *testing.T) {
 				"keyvault 會就地 UPDATE 該表而無人審過", table)
 		}
 	}
-	// 他模組表的下界：現況 7 張（assets／asset_accounts／change_secret_candidates／
-	// users／oidc_providers／ldap_directories／notification_channels），
+	// 他模組表的下界：現況 9 張（assets／asset_accounts／change_secret_candidates／
+	// users／oidc_providers／ldap_directories／notification_channels／
+	// clipboard_events／offsite_profiles），
 	// export_signing_keys 與 checkpoint_signing_keys 為自有表。
 	foreign := 0
 	for _, e := range keyvaultCrossModuleWriteAllowlist {
@@ -119,7 +122,7 @@ func TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry(t *testing.T) {
 			foreign++
 		}
 	}
-	if foreign < 7 {
+	if foreign < 9 {
 		t.Fatalf("跨模組寫入例外只剩 %d 張表（下界 7）：白名單被縮減或登記表失真，"+
 			"就地重加密的涵蓋面已縮水", foreign)
 	}

@@ -75,6 +75,14 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	// 引用掃描來源，漏登會使該欄密文永久不可解（剪貼簿審計證據整批損毀）。
 	// 缺口紀錄（加密失敗）該欄為空字串，掃描的 `<> ''` 謂詞自然跳過
 	{table: "clipboard_events", column: "content_enc"},
+	// 離機儲存的**逐世代**物件儲存憑證。與 model 同批入冊——
+	// 本清單同時是 DEK 輪替重加密與退役 DEK 銷毀前的引用掃描來源。
+	// 漏登的後果比其他欄更遠：退役 DEK 誤判零引用而銷毀後，該世代憑證永久不可解，
+	// 而那批物件多半已因本機保留到期被清除，**遠端副本即成為無法取回的孤兒**
+	// ——證據還在 bucket 裡，產品卻永遠打不開它。
+	// **pkColumn 非預設**：本表的主鍵是 generation_id（世代識別，不可重用），
+	// 不是 id；keyset 分頁與 CAS 寫回都以它為座標（pk 不參與 AAD）
+	{table: "offsite_profiles", column: "credentials_enc", pkColumn: "generation_id"},
 }
 
 // EnvelopeMigrationResult 遷移結果（審計 Details 與清冊狀態用）

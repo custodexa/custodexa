@@ -344,7 +344,9 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// （新單位「筆/小時」＝速率，與批次大小的「筆」刻意分開）
 		// 再由 50 增為 51：refresh_cookie_secure
 		//（bool 鍵無單位，故 policyUnit 不變）
-		"policyLabel": 51, "policyUnit": 9, "riskLabel": 8,
+		// 再由 51 增為 52：evidence-offsite-storage 的 offsite_local_retention_days
+		//（單位沿用既有的「天」，故 policyUnit 不變）
+		"policyLabel": 52, "policyUnit": 9, "riskLabel": 8,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
 		"transportNote": 9, "transportPreflight": 4, "transportDetail": 1,

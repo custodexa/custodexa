@@ -112,7 +112,8 @@
     "home": "首頁",
     "oidcProviders": "OIDC 提供者",
     "ldapDirectory": "目錄設定（LDAP）",
-    "checkpointVerification": "檢查點驗證"
+    "checkpointVerification": "檢查點驗證",
+    "offsiteStorage": "離機儲存"
   },
   "login": {
     "usernamePlaceholder": "使用者名稱",
@@ -259,7 +260,12 @@
       "cancel": "撤回申請",
       "expire": "申請逾時",
       "revoke": "撤銷授權",
-      "review": "破窗補審"
+      "review": "破窗補審",
+      "offsite_upload": "離機上傳",
+      "offsite_retention": "離機到期清除",
+      "offsite_integrity": "離機完整性不符",
+      "offsite_profile": "離機設定世代變更",
+      "offsite_cred_revoke": "離機憑證撤銷"
     },
     "auditResource": {
       "asset": "資產",
@@ -297,6 +303,7 @@
       "snippet": "命令片段",
       "role": "角色",
       "instance_guard": "單實例守衛",
+      "offsite_storage": "離機儲存",
       "unclassified": "未分類"
     },
     "mechanism": {
@@ -312,7 +319,8 @@
       "audit_chain_structure": "審計鏈結構驗證",
       "audit_chain_content": "審計鏈內容驗證",
       "audit_chain_verify": "審計鏈自動驗證作業",
-      "source_policy": "來源網段限定政策"
+      "source_policy": "來源網段限定政策",
+      "offsite_upload": "離機儲存上傳"
     },
     "cause": {
       "recording_probe_failed": "簽發點錄影前置檢查失敗",
@@ -339,7 +347,10 @@
       "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
       "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）",
       "source_policy_unreadable": "判定點讀不到使用者的允許來源網段清單",
-      "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）"
+      "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）",
+      "offsite_upload_failed": "離機上傳重試已達上限（該副本仍未離機）",
+      "offsite_upload_stalled": "同一物件的上傳租約反覆到期，上傳卡住",
+      "offsite_integrity_mismatch": "取回的離機副本與上傳當下不符，已拒絕交付"
     },
     "endReason": {
       "normal": "正常結束",
@@ -495,8 +506,13 @@
       "cluster": {
         "title": "叢集存取",
         "hint": "向 Kubernetes 叢集要資料時最多等幾秒。設太短，正常的叢集也會被當成連不上。這只是等待時間，不影響誰能存取。"
+      },
+      "offsite": {
+        "title": "本機副本",
+        "hint": "離機儲存啟用後，本機錄影副本可提前清除以節省磁碟；錄影仍可自離機副本播放。功能未啟用時本設定無作用。"
       }
-    }
+    },
+    "offsite": "離機儲存"
   },
   "dashboard": {
     "headerDesc": "{name} {subtitle}總覽",
@@ -806,7 +822,8 @@
     "clipboardContentError": "內容載入失敗，這次沒有取得內容",
     "clipboardDecryptButton": "解密調閱",
     "clipboardLockedHint": "內容以加密方式留存。按「解密調閱」才會解密顯示，並留下一筆調閱紀錄。",
-    "clipboardAccessLogged": "本次調閱已留存紀錄（{time}）"
+    "clipboardAccessLogged": "本次調閱已留存紀錄（{time}）",
+    "offsiteStatus": "離機保存"
   },
   "myConnections": {
     "headerDesc": "檢視自己的連線紀錄",
@@ -2263,6 +2280,15 @@
     "CONFLICT_LDAP_DIRECTORY_BUSY": "另一項 LDAP 目錄設定操作進行中，請稍後重試",
     "CONFLICT_LDAP_DIRECTORY_CONCURRENT": "LDAP 目錄設定併發衝突，請重新讀取後再試",
     "CONFLICT_MFA_ALREADY_ENROLLED": "此帳號已完成 MFA 註冊",
+    "CONFLICT_OFFSITE_CREDENTIALS_ALREADY_REVOKED": "該世代的憑證已撤銷",
+    "CONFLICT_OFFSITE_CREDENTIALS_UNAVAILABLE": "離機儲存憑證目前無法使用，請檢查金鑰狀態",
+    "CONFLICT_OFFSITE_FOREIGN_CREDENTIALS_MISSING": "此證據所屬離機儲存世代的憑證已撤銷，無法取回",
+    "CONFLICT_OFFSITE_INTEGRITY_MISMATCH": "離機副本的內容與上傳當下不符，已拒絕交付",
+    "CONFLICT_OFFSITE_NO_CURRENT_GENERATION": "目前沒有啟用中的離機儲存設定",
+    "CONFLICT_OFFSITE_PROFILE_BUSY": "另一項離機儲存設定操作進行中，請稍後重試",
+    "CONFLICT_OFFSITE_PROFILE_MISSING": "找不到此證據所屬的離機儲存設定世代，無法取回",
+    "CONFLICT_OFFSITE_SETTINGS_DIGEST_MISMATCH": "確認內容與送出的設定不一致，請重新確認",
+    "CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION": "設定已被其他操作變更，請重新讀取後再試",
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "已存在相同 issuer 與 client_id 的 provider",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "此 provider 仍有使用者外部身分關聯，請改為停用",
     "CONFLICT_PLAN_NAME_EXISTS": "計劃名稱已存在",
@@ -2386,6 +2412,12 @@
     "INTERNAL_MFA_VERIFY": "MFA 驗證失敗",
     "INTERNAL_MY_CONNECTION_QUERY": "查詢連線紀錄失敗",
     "INTERNAL_MY_CONNECTION_TERMINATE": "終止連線失敗",
+    "INTERNAL_OFFSITE_CREDENTIAL_DECRYPT": "離機儲存憑證解密失敗，請檢查金鑰狀態",
+    "INTERNAL_OFFSITE_CREDENTIAL_ENCRYPT": "離機儲存憑證加密失敗，請檢查金鑰狀態",
+    "INTERNAL_OFFSITE_RETRY": "重試離機上傳失敗",
+    "INTERNAL_OFFSITE_SETTINGS_SAVE": "儲存離機設定失敗",
+    "INTERNAL_OFFSITE_STATUS": "查詢離機儲存狀態失敗",
+    "INTERNAL_OFFSITE_TEST": "離機儲存連線測試執行失敗",
     "INTERNAL_OIDC_LOGIN": "OIDC 登入處理失敗",
     "INTERNAL_OIDC_PROVIDER_LIST": "讀取 OIDC provider 清單失敗",
     "INTERNAL_OIDC_PROVIDER_SAVE": "儲存 OIDC provider 設定失敗",
@@ -2472,6 +2504,8 @@
     "NOTFOUND_LDAP_DIRECTORY": "LDAP 目錄設定不存在",
     "NOTFOUND_MY_CONNECTION": "連線不存在",
     "NOTFOUND_NOTIFICATION_CHANNEL": "通知通道不存在",
+    "NOTFOUND_OFFSITE_GENERATION": "找不到指定的離機儲存設定世代",
+    "NOTFOUND_OFFSITE_OBJECT": "找不到指定的離機物件",
     "NOTFOUND_OIDC_PROVIDER": "OIDC provider 不存在",
     "NOTFOUND_RECORDING_FILE": "錄製檔案不存在",
     "NOTFOUND_RECORDING_TIMING": "錄製時間檔案不存在",
@@ -2544,6 +2578,8 @@
     "RULE_NODE_CYCLE": "不可搬移到自身或其子孫節點",
     "RULE_NODE_DEPTH_EXCEEDED": "節點深度超過上限（10 層）",
     "RULE_NODE_NOT_EMPTY": "僅可刪除無子節點且無直掛資產的空節點",
+    "RULE_OFFSITE_CREDENTIAL_REUSE_ON_MOVE": "變更儲存類型、端點或 bucket 時必須重新輸入憑證",
+    "RULE_OFFSITE_TEST_RATE_LIMITED": "連線測試過於頻繁，請稍後再試",
     "RULE_RECORDING_UNAVAILABLE": "錄影儲存異常，暫停新連線，請聯繫管理員",
     "RULE_SESSION_CLOSED": "Session 已關閉",
     "RULE_SESSION_ENDED": "會話已結束",
@@ -2688,6 +2724,13 @@
     "VALIDATION_LDAP_URL_SCHEME": "目錄位址的通訊協定僅接受 ldap:// 或 ldaps://",
     "VALIDATION_LDAP_URL_TOO_LONG": "目錄位址過長",
     "VALIDATION_LDAP_URL_USERINFO": "目錄位址不可包含帳號密碼，請改填於 bind DN 與 bind 密碼欄位",
+    "VALIDATION_OFFSITE_BUCKET_REQUIRED": "bucket 名稱不可為空",
+    "VALIDATION_OFFSITE_CREDENTIAL_CONFLICT": "不可同時輸入新憑證與勾選清除憑證",
+    "VALIDATION_OFFSITE_CREDENTIAL_HALF_SET": "存取金鑰與私密金鑰須同時填寫，或同時留空以使用預設憑證鏈",
+    "VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS": "端點不可包含帳號密碼、查詢字串或片段，請改填於憑證欄位",
+    "VALIDATION_OFFSITE_ENDPOINT_INVALID": "端點格式不正確，須為 http:// 或 https:// 起始且含主機名稱",
+    "VALIDATION_OFFSITE_PROVIDER_INVALID": "儲存類型僅接受 s3 或 gcs",
+    "VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED": "使用 S3 時，端點與區域至少須填一項",
     "VALIDATION_OIDC_ADMISSION_RULES": "准入規則不合法：請確認規則鍵有效、非空，且共用身分提供者須包含租戶或網域歸屬條件",
     "VALIDATION_OIDC_BINDING_MISSING": "缺少瀏覽器綁定值",
     "VALIDATION_OIDC_IMMUTABLE_FIELD": "issuer 與 client_id 建立後不可變更；如需更換請建立新的 provider",
@@ -2765,6 +2808,7 @@
     "lockout_duration_minutes": "鎖定時長",
     "lockout_max_attempts": "登入失敗鎖定次數上限",
     "mfa_required": "多因子驗證強制範圍",
+    "offsite_local_retention_days": "離機後本機副本保留天數",
     "password_history_count": "禁止重用最近密碼筆數",
     "password_max_age_days": "密碼最長使用天數",
     "password_min_length": "密碼最小長度",
@@ -3547,7 +3591,12 @@
         "cancel": "撤回申請",
         "expire": "申請逾時",
         "revoke": "撤銷授權",
-        "review": "緊急存取事後複審"
+        "review": "緊急存取事後複審",
+        "offsite_upload": "離機保管：上傳結果",
+        "offsite_retention": "離機保管：本機副本到期清除",
+        "offsite_integrity": "離機保管：取回內容與上傳當下不符",
+        "offsite_profile": "離機保管：儲存設定世代變更",
+        "offsite_cred_revoke": "離機保管：撤銷世代憑證"
       },
       "session": {
         "start": "建立 {protocol} 連線"
@@ -3646,5 +3695,258 @@
     "polling": "有打包正在進行，本頁每 {sec} 秒自動更新一次。",
     "pollingStopped": "自動更新已停止（已達本頁的更新次數上限）。請按重新整理取得最新狀態。",
     "shaTip": "產物指紋 SHA-256：{sha}"
+  },
+  "offsite": {
+    "headerDesc": "設定證據副本的離機儲存位置，並追蹤上傳佇列與取回狀態。",
+    "loadFailedGuardTitle": "無法讀取離機儲存設定",
+    "loadFailedGuardDesc": "為避免以空白表單覆寫伺服器上的設定，儲存已暫時停用。請按重新整理再試一次。",
+    "credentialFailedTitle": "離機儲存憑證無法解密",
+    "credentialFailedDesc": "這是金鑰狀態的問題，不是設定內容的問題：上傳與取回都會停在失敗狀態。請先到金鑰管理確認封印與 KEK，再回到本頁重新測試連線。",
+    "statusTitle": "離機儲存",
+    "status": {
+      "loading": "讀取中",
+      "load_failed": "讀取失敗",
+      "unconfigured": "尚未設定",
+      "enabled": "已啟用",
+      "disabled": "已停止上傳"
+    },
+    "statusHint": {
+      "loading": "正在讀取伺服器上的設定。",
+      "load_failed": "目前無法確認伺服器上的設定內容。",
+      "unconfigured": "新的錄影與證據包只保存在本機。",
+      "enabled": "連線結束與證據包打包完成後，副本會上傳到指定的儲存位置。",
+      "disabled": "已停止新的上傳，既有的離機副本仍可取回。"
+    },
+    "plaintextRisk": "現行端點是 http://，憑證與證據內容會以明文經過網路。",
+    "emptyTitle": "尚無離機保管紀錄",
+    "emptyHint": "填好下方的儲存位置與憑證並儲存後，之後結束的連線與證據包就會開始上傳。",
+    "summaryTitle": "現行儲存設定",
+    "summaryHint": "只顯示連線參數，不顯示任何金鑰。",
+    "endpointDefault": "服務商預設端點",
+    "governanceVersioning": "儲存桶版本控制：{state}",
+    "sectionTarget": "儲存位置",
+    "sectionTargetHint": "決定副本要放到哪個服務與哪個儲存桶。",
+    "sectionCredentials": "存取憑證",
+    "sectionCredentialsHint": "儲存後即以信封加密寫入資料庫，之後任何讀取都不會回傳原值。",
+    "field": {
+      "provider": "儲存服務",
+      "endpoint": "端點位址",
+      "endpointOrigin": "端點位址",
+      "bucket": "儲存桶",
+      "prefix": "路徑前綴",
+      "region": "區域",
+      "pathStyle": "使用 path-style 位址",
+      "accessKeyId": "存取金鑰 ID",
+      "secretAccessKey": "私密存取金鑰",
+      "serviceAccountJson": "服務帳戶 JSON",
+      "credentialMode": "憑證狀態",
+      "fingerprint": "設定指紋",
+      "generationId": "設定世代"
+    },
+    "placeholder": {
+      "bucket": "例如 custodexa-evidence",
+      "prefix": "例如 prod（留空則放在儲存桶根目錄）",
+      "endpoint": "https://s3.example.com",
+      "region": "例如 ap-northeast-1",
+      "credentialKeep": "留空表示沿用已保存的憑證",
+      "credentialNew": "請輸入儲存端核發的憑證",
+      "credentialCleared": "儲存後將改用雲端預設憑證鏈"
+    },
+    "hint": {
+      "prefix": "所有物件都會放在這個前綴之下，方便與其他用途的檔案分開。",
+      "endpointS3": "相容 S3 的自架儲存請填完整位址；使用 AWS S3 時可留空並改填區域。",
+      "endpointGcs": "使用 Google Cloud Storage 官方端點時請留空。",
+      "endpointPlaintext": "http:// 會使憑證與證據內容以明文經過網路，建議改用 https://。",
+      "region": "端點與區域至少填一項。",
+      "pathStyle": "MinIO 等自架儲存通常需要開啟。",
+      "credentialWriteOnly": "憑證只能覆寫、不能讀出。留空表示沿用已保存的憑證；兩欄都留空並清除既有憑證則改用雲端預設憑證鏈。",
+      "moveNeedsCredentials": "儲存服務、端點或儲存桶已變更，必須重新輸入憑證才能儲存。"
+    },
+    "rule": {
+      "bucketRequired": "請填寫儲存桶名稱",
+      "endpointInvalid": "端點須為 http:// 或 https:// 起始且含主機名稱",
+      "endpointHasSecrets": "端點不可包含帳號密碼、查詢字串或片段，請改填於憑證欄位",
+      "regionOrEndpoint": "使用 S3 時，端點與區域至少須填一項"
+    },
+    "provider": {
+      "s3": "S3 相容儲存",
+      "gcs": "Google Cloud Storage"
+    },
+    "credentialMode": {
+      "stored": "已設定",
+      "default_chain": "使用雲端預設憑證鏈",
+      "revoked": "已撤銷",
+      "none": "尚未設定"
+    },
+    "credentialsClearedAt": "撤銷時間 {at}",
+    "clearCredentials": "清除已保存的憑證，改用雲端預設憑證鏈",
+    "clearCredentialsHint": "儲存後既有憑證即被清除且無法還原。",
+    "versioning": {
+      "enabled": "已啟用",
+      "disabled": "未啟用",
+      "unknown": "無法確認"
+    },
+    "test": "測試連線",
+    "testHint": "測試使用表單上的當下值，不需要先儲存。",
+    "unsavedChanges": "有尚未儲存的變更",
+    "testResultTitle": "連線測試結果",
+    "testResultStale": "設定已變更，請重新測試。",
+    "testPassed": "連線測試通過",
+    "testPassedWithWarnings": "連線測試通過，其中有項目無法確認",
+    "testFailed": "連線測試失敗",
+    "testFailedGeneric": "無法執行連線測試",
+    "testGroup": {
+      "disclosure": "儲存桶現況",
+      "roundtrip": "寫入與取回實測"
+    },
+    "testGroupHint": {
+      "disclosure": "讀取儲存桶目前的設定並如實呈現，不判斷好壞。",
+      "roundtrip": "實際寫入一個測試物件、讀回比對，再刪除。"
+    },
+    "testStep": {
+      "probe_bucket": "儲存桶可達",
+      "versioning": "版本控制",
+      "retention": "保留設定",
+      "write": "寫入",
+      "read": "讀回比對",
+      "delete": "刪除測試物件"
+    },
+    "testOutcome": {
+      "ok": "通過",
+      "warn": "無法確認",
+      "fail": "失敗",
+      "skipped": "未執行"
+    },
+    "testCode": {
+      "test_bucket_unreachable": "無法連線到儲存桶，請檢查端點、憑證與儲存桶名稱。",
+      "test_governance_unknown": "目前的憑證讀不到這項設定，不影響上傳。",
+      "test_write_failed": "寫入測試物件失敗，請確認憑證具備寫入權限。",
+      "test_read_failed": "讀回測試物件失敗，請確認憑證具備讀取權限。",
+      "test_read_mismatch": "讀回的內容與寫入的內容不符。",
+      "test_delete_denied": "測試物件無法刪除，可能是儲存桶啟用了保留鎖定。"
+    },
+    "testCodeUnknown": "測試未通過",
+    "errorCode": {
+      "upload_failed": "上傳失敗",
+      "file_changed_during_upload": "上傳期間本機檔案仍在變動",
+      "head_size_mismatch": "上傳後核對大小不符",
+      "local_open_failed": "無法開啟本機檔案",
+      "integrity_mismatch": "取回內容與上傳當下不符",
+      "profile_missing": "找不到所屬的儲存設定世代",
+      "foreign_credentials_missing": "該世代的憑證已撤銷或缺席",
+      "credentials_unavailable": "憑證目前無法使用"
+    },
+    "errorCodeUnknown": "原因未記錄",
+    "queueTitle": "保管佇列",
+    "retryFailed": "重試失敗項",
+    "retryFailedConfirm": "將所有失敗的項目放回佇列重新上傳。要繼續嗎？",
+    "retryFailedConfirmTitle": "重試失敗項",
+    "retryQueued": "已將 {count} 項放回佇列",
+    "retry": "重試",
+    "retryNeedsLocalFile": "本機已無檔案，無法重傳。",
+    "disabledNote": "已停止新的上傳，以下為既有的保管存量。",
+    "count": {
+      "pending": "待上傳",
+      "uploading": "上傳中",
+      "uploaded": "已上傳",
+      "failed": "失敗",
+      "integrity_mismatch": "完整性不符",
+      "foreign": "舊儲存設定",
+      "local_purged": "本機已清",
+      "total": "總計"
+    },
+    "origin": {
+      "live": "即時",
+      "backfill": "回填"
+    },
+    "oldestPending": "{origin}車道最久等待 {age}",
+    "failuresTitle": "上傳失敗清單",
+    "failuresHint": "距保留到期近者排在前面；到期天數每一頁都看得見。",
+    "column": {
+      "kind": "種類",
+      "owner": "對象",
+      "failedAt": "最後嘗試",
+      "reason": "原因",
+      "attempts": "嘗試次數",
+      "deadline": "距保留到期",
+      "generationId": "世代",
+      "fingerprint": "指紋",
+      "provider": "儲存服務",
+      "location": "位置",
+      "lifecycle": "啟用與退役",
+      "objectCount": "物件數",
+      "credentialMode": "憑證狀態"
+    },
+    "kind": {
+      "recording": "連線錄影",
+      "export": "證據包"
+    },
+    "noDeadline": "無保留期限",
+    "deadlinePassed": "已逾保留期",
+    "daysToDeadline": "{days} 天",
+    "noFailures": "沒有失敗的項目",
+    "noFailuresHint": "所有排入的證據都已上傳或仍在佇列中。",
+    "profilesTitle": "儲存設定世代",
+    "profilesHint": "每次變更落點都會建立新世代；舊世代的憑證保留下來供取回既有物件。",
+    "retiredAt": "已於 {at} 退役",
+    "currentGeneration": "現行世代",
+    "revokeCredentials": "撤銷憑證",
+    "revokeConfirmTitle": "撤銷世代憑證",
+    "revokeConfirm": "撤銷第 {generation} 代的憑證後，該世代的 {count} 個物件將無法取回，而且不會改用雲端預設憑證鏈。此動作無法還原。",
+    "revokeConfirmButton": "撤銷憑證",
+    "revoked": "憑證已撤銷",
+    "revokeFailed": "撤銷憑證失敗",
+    "switchDialogTitle": "確認變更儲存位置",
+    "switchLead": "目前已有 {count} 個物件保管在現行設定之下。",
+    "switchConsequence1": "現行設定會轉為歷史世代，新的上傳改走新設定。",
+    "switchConsequence2": "歷史世代的憑證會保留下來，既有物件仍可取回。",
+    "switchConsequence3": "儲存端的既有物件不會被刪除，清理由儲存桶的生命週期規則負責。",
+    "switchConfirm": "確認變更",
+    "switched": "儲存位置已變更",
+    "switchFailed": "變更儲存位置失敗",
+    "staleConfirmation": "設定已被其他操作變更，請按重新整理讀取最新設定後再試一次。",
+    "disable": "停止離機",
+    "disableConfirmTitle": "停止離機保存",
+    "disableConfirm": "停止後不再有新的上傳，現行設定會轉為歷史世代。既有的離機物件仍可取回，其憑證不會被撤銷，儲存端的物件也不會被刪除。",
+    "disableConfirmButton": "停止離機",
+    "disabled": "已停止離機保存",
+    "disableFailed": "停止離機失敗",
+    "saved": "設定已儲存",
+    "saveFailed": "儲存設定失敗",
+    "discardChangesTitle": "捨棄未儲存的變更",
+    "discardChangesConfirm": "重新整理會以伺服器上的設定覆蓋表單，目前的變更將會遺失。",
+    "discardChangesButton": "捨棄並重新整理",
+    "state": {
+      "none": "未排入",
+      "pending": "待上傳",
+      "uploading": "上傳中",
+      "uploaded": "已離機保存",
+      "failed": "上傳失敗",
+      "integrity_mismatch": "完整性不符",
+      "foreign": "舊儲存設定",
+      "local_purged": "本機已清",
+      "skipped_missing": "本機缺檔未回填",
+      "skipped_expired": "逾保留未回填"
+    },
+    "stateHint": {
+      "none": "這次連線沒有錄影，或回填掃描尚未處理到它。",
+      "pending": "已排入佇列，等待上傳。",
+      "uploading": "正在上傳到離機儲存。",
+      "uploaded": "副本已上傳並記下雜湊值；本機檔案到期清除後仍可自離機副本播放。",
+      "failed": "已達重試上限，可由管理者重新排入。",
+      "integrity_mismatch": "離機副本的內容與上傳當下不符，系統已拒絕交付。",
+      "foreign": "所屬的儲存設定世代已退役，取回時會使用該世代自己的憑證。",
+      "local_purged": "本機副本已依保留設定清除；儲存端的物件去留由儲存桶的生命週期規則決定。",
+      "skipped_missing": "本機找不到錄影檔，回填掃描下一輪會再看一次。",
+      "skipped_expired": "錄影已逾保留期，交由保留清理處理，不再上傳。"
+    },
+    "exportRow": {
+      "uploaded": "已離機保存",
+      "pending": "離機上傳待處理",
+      "uploading": "離機上傳待處理",
+      "failed": "離機上傳失敗",
+      "integrity_mismatch": "離機副本完整性不符",
+      "foreign": "舊儲存設定"
+    }
   }
 }

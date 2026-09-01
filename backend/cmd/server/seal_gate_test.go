@@ -204,6 +204,13 @@ var stage2ServiceProbe = map[string]string{
 	// chainVerifyScheduler：
 	// 純背景排程，自動驗證狀態經既有 ChainReport 揭露、不新增路由，故無對外面
 	"chainVerifyScheduler": "",
+	// 離機儲存三項（evidence-offsite-storage）：設定服務與帳冊的對外面即管理端點，
+	// 封印期須 503——那正是「服務尚未上線」的可觀察形式。
+	// **上傳 worker 填空字串**：它是純背景設施，且未設定時本來就不建 goroutine，
+	// 「它存不存在」無法由任何端點觀察；其設定面已由前兩項覆蓋
+	"offsiteProfiles": "/api/v1/offsite-storage/settings",
+	"offsiteLedger":   "/api/v1/offsite-storage/status",
+	"offsiteUploader": "",
 	// auditExportJobWorker：
 	// 打包 worker 本身是純背景設施，其對外面即 job 發起／清單端點——封印期須 503
 	"auditExportJobWorker": "/api/v1/audit-export/jobs",

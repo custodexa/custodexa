@@ -27,6 +27,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/observability"
+	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/internal/recorder"
 	"github.com/custodexa/backend/internal/scheduler"
@@ -76,6 +77,13 @@ var stage2ServiceInventory = []string{
 	"reconciliationService",
 	"recordingService",
 	"auditService",
+	// 離機儲存（evidence-offsite-storage）三項。落點在 auditService 之後是契約——
+	// 保管鏈事件的非同步落地面就是它，早於它建構只能拿到 nil。
+	// **三項恆建構、與是否啟用無關**：它們是被動物件（零 goroutine、零指標註冊），
+	// 而「設定表零列＝行為完全不變」的機械保證由 uploader 不啟動、指標不註冊、
+	// 排隊點自我早退三者承擔，不靠「不建物件」
+	"offsiteProfiles",
+	"offsiteLedger",
 	"dailyReviewService",
 	"connHandler",
 	"userService",
@@ -104,6 +112,9 @@ var stage2ServiceInventory = []string{
 	// chainVerifyScheduler：
 	// 必須晚於 checkpointScheduler——驗證的對象是封章產出的鏈
 	"chainVerifyScheduler",
+	// offsiteUploader：離機上傳 worker。
+	// **停在 auditExportJobWorker 之後**（它讀 export 產物；反序釋放故登記在前）
+	"offsiteUploader",
 	// auditExportJobWorker：證據包打包 worker。
 	// 晚於 apiHandlers——與 handler 共用的匯出服務在 buildRouteDeps 之前建構完成
 	"auditExportJobWorker",
@@ -332,6 +343,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	keyvault.RegisterPostUnsealBuiltin(identity.PostUnsealMigrationLDAPSeed, func() {
 		identity.RegisterLDAPSeedMigration(auditTxSink)
 	})
+	// 離機儲存設定的 env→DB **初次** seed：
+	// 需 codec 加密物件儲存憑證，故必登記於本佇列而非段 1 migration。
+	// marker 寫入後 env 不再參與任何執行期判定，設定變更改由管理介面進行。
+	// 保管鏈落地面在此縫合（不開 offsite→audit 的出向邊）
+	keyvault.RegisterPostUnsealBuiltin(offsite.PostUnsealMigrationOffsiteSeed, func() {
+		offsite.RegisterOffsiteSeedMigration(offsiteCustodyJournal{tx: auditTxSink, db: database.DB})
+	})
 	// 剪貼簿明文欄→信封加密欄的一次性轉換：
 	// 回填需要 codec 故走本佇列；全新庫由 baseline 直建終態形狀，此項為 no-op
 	keyvault.RegisterPostUnsealBuiltin(session.PostUnsealMigrationClipboardContent,
@@ -437,6 +455,47 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	g.auditService = auditService
 	g.bag.AddFunc("auditService", func(rctx context.Context) error { return auditService.Shutdown(rctx) })
 	mark("auditService")
+
+	// ── 離機儲存（evidence-offsite-storage） ────────────────────────────
+	//
+	// **保管鏈的非同步面在此才注入**：seed 的登記必須早於
+	// RunPostUnsealMigrations，而 auditService 到這一步才存在，故 seed 用的那一份
+	// 是「以根 DB 同步寫」的退路版；worker 與取回路徑用的是本份，帶真正的
+	// 非同步投遞面——否則每次上傳都會同步寫一列審計，把旁路功能的成本壓在熱路徑上。
+	offsiteJournal := offsiteCustodyJournal{tx: auditTxSink, db: database.DB, async: auditService}
+	offsiteProfiles := offsite.NewOffsiteProfileService(database.DB, keyManager, offsiteJournal)
+	offsiteLedger := offsite.NewLedger(database.DB, offsiteProfiles, offsiteJournal)
+	offsiteProfiles.SetLedger(offsiteLedger)
+	mark("offsiteProfiles")
+
+	// **健檢，不是世代拒啟**（降級語義）：帳冊出現的 storage_generation_id
+	// 必須都能在世代表找到（含已退役者——退役是合法歸屬）。違反＝資料損壞
+	// （部分還原、DB 手術），此時繼續啟動只會讓取回以「用現行設定猜」收場
+	if err := offsiteLedger.CheckProfileContinuity(); err != nil {
+		return fail("offsiteLedger", err)
+	}
+	mark("offsiteLedger")
+
+	// adapters 與取回器：**與是否啟用無關**（停用態的取回子系統照常組裝，
+	// 停用態表第二列）。保留天數以函式取得而非值——政策營運中會改
+	recordingOffsiteAdapter := session.NewRecordingOffsiteAdapter(database.DB, func() int {
+		return policyService.GetInt(policy.PolicyRetentionRecordingDays)
+	})
+	exportOffsiteAdapter := audit.NewExportOffsiteAdapter(database.DB)
+	offsiteFetcher := offsite.NewFetcher(cfg.Offsite.SpoolPath, offsiteLedger, offsiteProfiles,
+		offsiteJournal, auditFailureService, recordingOffsiteAdapter, exportOffsiteAdapter)
+
+	// 擁有表快取的批次寫回面：世代切換與停止離機時，帳冊轉 foreign 的**同一交易內**
+	// 把 sessions／audit_export_jobs 的 offsite_status 一併寫成 foreign。
+	// 不接線的後果不是壞掉而是**說謊**——世代已換，會話詳情仍顯示「已上傳到現行儲存」
+	offsiteProfiles.SetOwnerCacheMarkers(recordingOffsiteAdapter, exportOffsiteAdapter)
+
+	// 排隊點與取回點的接線。**未設定時這些注入不改變任何行為**：
+	// 排隊點自行以 HasCurrentGeneration 早退（零交易），取回點只在擁有表有
+	// offsite_object_id 時才會被走到，而那需要曾經排隊過
+	sessionService.SetOffsiteEnqueuer(offsiteLedger)
+	recordingService.SetOffsiteRetriever(offsiteFetcher)
+	recordingService.SetOffsiteRetentionLedger(offsiteLedger)
 
 	// 單實例守衛事件 sink：審計服務只在段 2 之後存在，
 	// 守衛在段 1 緩衝的事件（含 ack 啟動的 overridden）於此注入時依序補寫
@@ -727,18 +786,24 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	auditExportJobService := audit.NewAuditExportJobService(database.DB)
 
 	deps, err := buildRouteDeps(cfg, routeServices{
-		metrics:                    s1.metrics,
-		checkpointVerifier:         checkpointVerifier,
-		chainVerifyStatus:          chainVerifyService,
-		checkpointSigning:          checkpointSigning,
-		authService:                authService,
-		auditService:               auditService,
-		auditTxSink:                auditTxSink,
-		auditDirectSink:            auditDirectSink,
-		authorizationService:       authorizationService,
-		policyService:              policyService,
-		transmissionPolicy:         transmissionPolicy,
-		ldapDirectoryService:       ldapDirectoryService,
+		metrics:              s1.metrics,
+		checkpointVerifier:   checkpointVerifier,
+		chainVerifyStatus:    chainVerifyService,
+		checkpointSigning:    checkpointSigning,
+		authService:          authService,
+		auditService:         auditService,
+		auditTxSink:          auditTxSink,
+		auditDirectSink:      auditDirectSink,
+		authorizationService: authorizationService,
+		policyService:        policyService,
+		transmissionPolicy:   transmissionPolicy,
+		ldapDirectoryService: ldapDirectoryService,
+		offsiteProfiles:      offsiteProfiles,
+		offsiteLedger:        offsiteLedger,
+		offsiteDescribers: []api.OffsiteOwnerDescriber{
+			recordingOffsiteAdapter, exportOffsiteAdapter,
+		},
+		offsiteFetcher:             offsiteFetcher,
 		userService:                userService,
 		assetService:               assetService,
 		sessionService:             sessionService,
@@ -790,6 +855,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		{"reconcileScheduler", nil, nil},
 		{"checkpointScheduler", nil, nil},
 		{"chainVerifyScheduler", nil, nil},
+		// offsiteUploader 登記在 auditExportJobWorker **之前**＝停在它之後
+		// （ResourceBag 反序釋放）：上傳 worker 讀 export 產物，先停打包器再停它，
+		// 才不會出現「產物還在寫、上傳已停」以外的順序
+		{"offsiteUploader", nil, nil},
 		{"auditExportJobWorker", nil, nil},
 	}
 	retentionService := audit.NewRetentionService(database.DB, policyService, recordingService, auditService)
@@ -802,6 +871,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// **缺這一行，招牌能力會反向失效**——真的被清除過的區間在工作台回 present＋空白，
 	// 亦即把「已依政策清除」呈現成「本來就沒發生」，正是本能力要防止的誤報
 	retentionService.SetWatermarks(audit.NewRetentionWatermarkService(database.DB))
+	// 離機啟用後的錄影保留補充面：快取清除段與政策到期段的 DB 分支。
+	// **恆注入**——兩者各自以「政策值 0」與「帳冊無列」自我早退，
+	// 未啟用時一次查詢也不會發出
+	retentionService.SetOffsiteRecordingRetention(recordingService)
 	retentionScheduler := scheduler.NewRetentionScheduler(retentionService)
 	starts[0].start, starts[0].stop = retentionScheduler.Start, retentionScheduler.Stop
 	reviewReminderScheduler := scheduler.NewDailyReviewReminderScheduler(dailyReviewService)
@@ -868,9 +941,46 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		}
 		return false, nil
 	}
+	// 離機上傳 worker。**未啟用時不建 goroutine**：
+	// 啟動時無現行世代（設定表零列＝從未設定，或零現行世代＝已停用）即只記一行
+	// 日誌。首次於管理介面完成設定後，本輪次不會自行啟動——下次重啟時的回填掃描
+	// 會把期間累積的證據整批補上（回填掃描存在的理由之一），故不會遺漏，只是延後。
+	offsiteUploader := offsite.NewUploader(offsiteLedger, offsiteProfiles, auditFailureService,
+		recordingOffsiteAdapter, exportOffsiteAdapter)
+	offsiteWorkerCtx, stopOffsiteWorker := context.WithCancel(context.Background())
+	offsiteEnabled, offsiteErr := offsiteLedger.HasCurrentGeneration()
+	if offsiteErr != nil {
+		// 讀不到現行世代**不得靜默當成未設定**（三態 fail-close）：
+		// 那會讓一次 DB 故障看起來像「功能沒開」
+		stopOffsiteWorker()
+		return fail("offsiteUploader", offsiteErr)
+	}
+	// 設定世代總列數：零＝從未設定（全部離機序列缺席、不排背景刷新源），
+	// 非零而 offsiteEnabled 為 false＝停用態（存量與失敗面照常曝光）。
+	// **同樣不得把讀取失敗當成零**——那會讓一次 DB 故障靜默抹掉整組指標
+	offsiteGenerations, offsiteGenErr := offsiteProfiles.GenerationCount()
+	if offsiteGenErr != nil {
+		stopOffsiteWorker()
+		return fail("offsiteUploader", offsiteGenErr)
+	}
+	// 上傳車道的四項由 worker 直寫。`*observability.Metrics` 直接滿足
+	// `offsite.UploadMetrics`（方法名對齊），故此處零 adapter
+	offsiteUploader.SetMetrics(s1.metrics)
+	starts[7].start = func() error {
+		if !offsiteEnabled {
+			log.Printf("[OffsiteUploader] 目前無現行離機儲存設定世代，不啟動上傳 worker")
+			return nil
+		}
+		go offsiteUploader.Run(offsiteWorkerCtx)
+		return nil
+	}
+	starts[7].stop = stopOffsiteWorker
+
 	auditExportJobWorker := audit.NewAuditExportJobWorker(database.DB, auditExportService,
 		exportJobVerify, auditService, audit.ResolveExportArtifactDir(""))
-	starts[7].start, starts[7].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
+	// 產物落定與排入離機佇列同一筆交易
+	auditExportJobWorker.SetOffsiteEnqueuer(offsiteLedger)
+	starts[8].start, starts[8].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
 
 	for _, s := range starts {
 		if err := seal.CheckCancelStep(ctx, s.name); err != nil {
@@ -915,9 +1025,22 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		s1.metrics.ObserveAuditDropped(reason)
 	})
 
+	// 離機指標的兩面各自依狀態註冊（停用態表）：
+	//   設定表零列 → 兩面皆不註冊，全部離機序列缺席
+	//   有歷史世代、零現行世代（停用態）→ 只註冊存量與失敗面
+	//   有現行世代 → 兩面皆註冊
+	// **未註冊即缺席而非為 0**：0 會讓採集端把「worker 不存在」讀成「一切正常且無事可做」
+	if offsiteGenerations > 0 {
+		s1.metrics.RegisterOffsiteInventory()
+	}
+	if offsiteEnabled {
+		s1.metrics.RegisterOffsiteUploadLane()
+	}
+
 	stopRefresher := observability.StartRefresher(
 		s1.metrics,
-		newMetricsRefreshSources(database.DB, sessionService, recordingService),
+		newMetricsRefreshSources(database.DB, sessionService, recordingService,
+			offsiteQueueSource(offsiteGenerations > 0, offsiteLedger, offsiteProfiles, offsiteFetcher)),
 		observability.DefaultRefreshInterval)
 
 	// 停止＝送信號＋等待進行中的刷新結束（見 observability.StopWaitBudget）。
@@ -956,6 +1079,7 @@ func newMetricsRefreshSources(
 	metricsDB *gorm.DB,
 	sessionService *session.SessionService,
 	recordingService *session.RecordingService,
+	offsiteQueue func() (observability.OffsiteQueueSnapshot, error),
 ) observability.RefreshSources {
 	// 就地建構告警查詢服務：它只持有句柄、無狀態、無背景資源，與 handler 側那份
 	// 互不影響；建構時做掉是為了讓句柄的來源固定在此刻，而非每輪刷新重新決定
@@ -1010,6 +1134,75 @@ func newMetricsRefreshSources(
 			}
 			return bySeverity, nil
 		},
+		// nil＝設定表零列，`StartRefresher` 會整項跳過（連 DB 往返都不發生）
+		OffsiteQueue: offsiteQueue,
+	}
+}
+
+// offsiteQueueSource 離機帳冊切面的背景刷新源（「帳冊查詢」那一組）。
+//
+// `configured` 為 false（設定表零列）時回 nil——`RefreshSources` 對 nil 項整項跳過，
+// 「未設定＝行為完全不變」因此連一次 `GROUP BY` 都不發生，而不只是「查了但不曝光」。
+//
+// **停用態仍回非 nil**：存量、失敗、完整性不符、歷史世代數與暫存佔用在停用後
+// 照常曝光；缺席的是上傳車道，而那由「不註冊」承擔，不由「不查」承擔——
+// 兩者混為一談的話，日後把註冊打開就會得到一組永遠不更新的序列。
+func offsiteQueueSource(configured bool, ledger *offsite.Ledger,
+	profiles *offsite.OffsiteProfileService, fetcher *offsite.Fetcher,
+) func() (observability.OffsiteQueueSnapshot, error) {
+	if !configured {
+		return nil
+	}
+	return func() (observability.OffsiteQueueSnapshot, error) {
+		rows, err := ledger.CountsDetailed()
+		if err != nil {
+			return observability.OffsiteQueueSnapshot{}, err
+		}
+		snap := observability.OffsiteQueueSnapshot{
+			Pending:           map[observability.OffsiteKindOrigin]float64{},
+			Uploading:         map[string]float64{},
+			Failed:            map[string]float64{},
+			IntegrityMismatch: map[string]float64{},
+			Foreign:           map[string]float64{},
+		}
+		for _, r := range rows {
+			switch r.State {
+			case offsite.StatePending:
+				snap.Pending[observability.OffsiteKindOrigin{Kind: r.Kind, Origin: r.Origin}] += float64(r.N)
+			case offsite.StateUploading:
+				snap.Uploading[r.Kind] += float64(r.N)
+			case offsite.StateFailed:
+				snap.Failed[r.Kind] += float64(r.N)
+			case offsite.StateIntegrityMismatch:
+				snap.IntegrityMismatch[r.Kind] += float64(r.N)
+			case offsite.StateForeign:
+				snap.Foreign[r.Kind] += float64(r.N)
+			}
+			// uploaded／local_purged 不成序列：前者是「已完成」（累計量由
+			// uploads_total 承擔），後者是本機到期清除的終局，兩者都不是待處理積壓
+		}
+		ages, err := ledger.OldestPendingAges(time.Now())
+		if err != nil {
+			return observability.OffsiteQueueSnapshot{}, err
+		}
+		snap.OldestPendingAgeSeconds = ages
+		n, err := profiles.GenerationCount()
+		if err != nil {
+			return observability.OffsiteQueueSnapshot{}, err
+		}
+		snap.Generations = float64(n)
+		if fetcher != nil {
+			snap.SpoolBytes = float64(fetcher.SpoolBytes())
+		}
+		// **憑證三態每輪重讀**：金鑰事故（解密失敗）是執行期才會發生的事，
+		// 啟動當下讀一次寫死等於讓指標永遠停在「事故發生前」。
+		// 讀取失敗**不吞成 unconfigured**——那正是三態 fail-close 明令禁止的併吞
+		state, err := profiles.CredentialState(context.Background())
+		if err != nil {
+			return observability.OffsiteQueueSnapshot{}, err
+		}
+		snap.CredentialState = string(state)
+		return snap, nil
 	}
 }
 
@@ -1091,11 +1284,18 @@ type routeServices struct {
 	// 業務變更同交易，寫不進去即整筆回滾
 	auditTxSink port.TxSink
 	// auditDirectSink C-plain 兩點的直寫投遞面：不受 AuditLogEnabled 管制
-	auditDirectSink            gatewayapi.AsyncSink
-	authorizationService       *authz.AssetAuthorizationService
-	policyService              *policy.SecurityPolicyService
-	transmissionPolicy         *policy.TransmissionPolicyService
-	ldapDirectoryService       *identity.LDAPDirectoryService
+	auditDirectSink      gatewayapi.AsyncSink
+	authorizationService *authz.AssetAuthorizationService
+	policyService        *policy.SecurityPolicyService
+	transmissionPolicy   *policy.TransmissionPolicyService
+	ldapDirectoryService *identity.LDAPDirectoryService
+	// offsiteProfiles／offsiteLedger／offsiteDescribers 離機儲存管理端點的依賴
+	// （設定服務、帳冊讀取面、失敗清單的擁有者描述面）
+	offsiteProfiles   *offsite.OffsiteProfileService
+	offsiteLedger     *offsite.Ledger
+	offsiteDescribers []api.OffsiteOwnerDescriber
+	// offsiteFetcher 證據包下載的離機退路（本機產物隨容器重建消失時）
+	offsiteFetcher             *offsite.Fetcher
 	userService                *identity.UserService
 	assetService               *asset.AssetService
 	sessionService             *session.SessionService
@@ -1216,6 +1416,8 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
 	ldapDirectoryHandler := api.NewLDAPDirectoryHandler(s.ldapDirectoryService)
+	offsiteStorageHandler := api.NewOffsiteStorageHandler(s.offsiteProfiles, s.offsiteLedger,
+		s.offsiteDescribers...)
 	// 單實例守衛全貌（admin 限定、唯讀）：探針讀包級單例快照
 	instanceGuardHandler := api.NewInstanceGuardHandler(instanceGuardProbe)
 
@@ -1261,6 +1463,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// （與打包 worker 共用同一實例），此處只組 handler
 	exportSigningHandler := api.NewExportSigningHandler(s.exportSigning)
 	auditExportHandler := api.NewAuditExportHandler(s.auditExportService, s.auditExportJobs, s.auditService)
+	// 證據包下載的離機退路：本機產物缺檔或大小與帳冊不符時，
+	// 於下載窗口內自離機副本取回並驗過才交付
+	auditExportHandler.SetOffsiteRetriever(s.offsiteFetcher)
 
 	accessReviewHandler := api.NewAccessReviewHandler(authz.NewAccessReviewService(database.DB), s.auditService)
 	hostKeyHandler := api.NewHostKeyHandler(s.hostKeyService, s.authorizationService)
@@ -1313,6 +1518,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		notificationChannel:   notificationChannelHandler,
 		oidc:                  oidcHandler,
 		ldapDirectory:         ldapDirectoryHandler,
+		offsiteStorage:        offsiteStorageHandler,
 		instanceGuard:         instanceGuardHandler,
 		keyManagement:         keyManagementHandler,
 		snippet:               snippetHandler,

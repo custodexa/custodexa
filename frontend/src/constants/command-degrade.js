@@ -72,7 +72,7 @@ export const degradeRecordingHint = (code, recordingState = 'unknown') => {
 // ---------------------------------------------------------------------------
 export const ALERT_KIND_AUDIT_DEGRADED = 'audit_degraded'
 
-// 帳號首次自某來源位址建線（source-ip-forensics）。同樣不掛規則
+// 帳號首次自某來源位址建線（來源限定功能）。同樣不掛規則
 //（`rule_id` 為 NULL、`rule_name` 存機器碼），故列表對它的規則名欄與指令欄
 // 都要另行渲染——沿 `audit_degraded` 的既有形態，不新建第二套判斷方式
 export const ALERT_KIND_NEW_SOURCE_IP = 'new_source_ip'

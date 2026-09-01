@@ -34,6 +34,10 @@ import (
 //	       **session 級**、由一條終生不歸池的釘選連線持有、持鎖期＝行程生命期。
 //	       撞號守衛見 cmd/server 的 TestInstanceGuardLockKeyDistinct——infra 不得反向
 //	       import keyvault，故守衛置於組裝根，直接以四把匯出常數兩兩比對）
+//	0x0005 離機儲存設定世代寫入互斥（offsite.OffsiteProfileLockKey，
+//	       internal/offsite/profile_lock.go；**五個寫入者共用**——Save／
+//	       ConfirmGenerationSwitch／RevokeCredentials／Disable／env seed。
+//	       撞號守衛見 TestOffsiteProfileLockKeyDistinct）
 //
 // 新增 advisory lock 一律在此檔登記，防跨子系統撞號。
 //

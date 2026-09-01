@@ -158,6 +158,7 @@ import {
   OfficeBuilding,
   Search,
   Download,
+  Upload,
 } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
@@ -359,6 +360,14 @@ const menuGroups = [
         icon: Connection,
         adminOnly: true,
       },
+      {
+        // 離機儲存：證據副本的落點設定與上傳佇列。
+        // 緊接金鑰管理與傳輸清冊——三者同屬「證據放哪裡、怎麼過去、誰解得開」
+        path: '/offsite-storage',
+        titleKey: 'menu.offsiteStorage',
+        icon: Upload,
+        adminOnly: true,
+      },
     ],
   },
 ]
@@ -445,6 +454,7 @@ const pageTitleKeys = {
   '/access-control': 'menu.accessControl',
   '/key-management': 'menu.keyManagement',
   '/transmission-inventory': 'menu.transmissionInventory',
+  '/offsite-storage': 'menu.offsiteStorage',
 }
 
 const currentPageTitle = computed(() =>

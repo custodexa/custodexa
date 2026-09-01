@@ -478,6 +478,10 @@ func extractResource(path string) model.AuditResource {
 		// LDAP 目錄設定（單例）：無 `:id`
 		case "ldap-directory":
 			return model.ResourceLDAPDirectory
+		// 離機儲存管理（evidence-offsite-storage）：`:id` 分別指向帳冊列與世代列，
+		// **都不是會話或資產 id**；設定變更與運維動作皆歸此族
+		case "offsite-storage":
+			return model.ResourceOffsiteStorage
 		// 資產分組：`:id` 指向分組列，**不是資產 id**——本族是兜底落 asset 時
 		// 最容易被誤讀為真事件的一族（段名 `asset-groups` 與 `assets` 不同段）
 		case "asset-groups":

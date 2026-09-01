@@ -40,6 +40,9 @@ import (
 var schemaMigrationsRawWriters = map[string]string{
 	"internal/modules/identity/ldap_seed_migration.go": "LDAP env→DB seed 的冪等標記" +
 		"（LDAPSeedMarkerVersion，已登記於 runtimeMarkerVersions）",
+	"internal/offsite/seed_migration.go": "離機儲存設定 env→DB **初次** seed 的冪等標記" +
+		"（OffsiteSeedMarkerVersion，已登記於 runtimeMarkerVersions）。" +
+		"marker 寫入後 env 不再參與任何執行期判定，設定變更改由管理介面進行",
 }
 
 // minScannedProductionFiles 掃描檔數下限：掃描根失真時「零違規」不成立。

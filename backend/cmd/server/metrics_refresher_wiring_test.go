@@ -73,7 +73,7 @@ func TestMetricsRefreshSourcesGuardUnavailableDB(t *testing.T) {
 	recordingService := session.NewRecordingService(t.TempDir())
 
 	// 組裝時句柄即為空（例如在 DB 就緒前接線）
-	nilSrc := newMetricsRefreshSources(nil, sessionService, recordingService)
+	nilSrc := newMetricsRefreshSources(nil, sessionService, recordingService, nil)
 	_, err := nilSrc.PendingAlerts()
 	require.Error(t, err, "句柄為 nil 時 PendingAlerts 未回錯——它要嘛 panic 了，要嘛回了假數字")
 	_, err = nilSrc.ActiveSessions()
@@ -82,7 +82,7 @@ func TestMetricsRefreshSourcesGuardUnavailableDB(t *testing.T) {
 	// —— 正對照：句柄有效時資料源必須成功 ——
 	// 沒有這一段，上面的 Error 斷言可以由「這條路永遠回錯」滿足
 	db := newAlertMetricsDB(t)
-	src := newMetricsRefreshSources(db, sessionService, recordingService)
+	src := newMetricsRefreshSources(db, sessionService, recordingService, nil)
 	got, err := src.PendingAlerts()
 	require.NoError(t, err, "句柄有效時 PendingAlerts 竟失敗：守衛過嚴，指標將永遠不更新")
 	require.Equal(t, map[string]float64{"high": 2, "low": 1}, got,

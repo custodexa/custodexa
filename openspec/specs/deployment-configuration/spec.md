@@ -36,6 +36,10 @@
 ### Requirement: 應用資料落在可設定的資料夾根
 主體應用持久化資料（審計日誌、會話錄影、資料庫）SHALL 儲存於單一運維可設定的資料夾根 `DATA_PATH`，預設為專案內相對路徑 `./data`，透過 bind mount 映入容器；生產部署 SHALL 能將 `DATA_PATH` 覆寫為指定資料夾或磁碟路徑以集中管理。建置快取（go modules、前端 node_modules）與測試專用容器（k3s/ssh/vnc/rdp/mysql-test）不納入此資料夾。
 
+**物件儲存為資料根之外的可選落點**（自 `evidence-offsite-storage` 起）：離機儲存設定完成時（現行設定世代存在），會話錄影與證據包產物於落地後另上傳至部署方指定的物件儲存；該落點 SHALL NOT 取代 `DATA_PATH` 下的三個落點（錄影仍先寫本機、guacd 仍直寫本機目錄），SHALL 於範本與營運文件標示為資料根之外、由部署方承擔存取控管與靜態加密的落點。未設定時 SHALL 完全不影響上述三落點的行為。營運後果（物件儲存內為明文、同 key 覆寫的防護僅及於取回驗證拒付、遠端保留與防刪由部署方的 bucket 設定承擔、非 https 端點）SHALL 於管理介面的設定表單與營運文件揭露。
+
+`OFFSITE_*` 環境變數 SHALL 僅供首次啟動的一次性 seed（其後的變更經管理介面），範本 SHALL 明載此語義。
+
 #### Scenario: 預設落於專案內 data 目錄
 - **WHEN** 運維未設 `DATA_PATH` 直接啟動 compose
 - **THEN** 審計/錄影/資料庫資料落於專案內 `./data/{audit,recordings,postgres}`，可於主機檔案系統直接檢視
@@ -47,6 +51,14 @@
 #### Scenario: 資料於容器重建後留存
 - **WHEN** 執行 `docker compose down` 後 `docker compose up`（不刪除 bind mount 目錄）
 - **THEN** 先前寫入的審計/錄影/資料庫資料仍在
+
+#### Scenario: 離機未設定時三落點行為不變
+- **WHEN** 運維未設定任何離機儲存設定（設定表零列，亦未以 `OFFSITE_*` 鍵 seed）
+- **THEN** 錄影、審計與資料庫仍只落於 `DATA_PATH` 三落點，無任何對外上傳，範本守衛仍通過
+
+#### Scenario: 物件儲存落點於範本被標示為資料根之外且註明僅供初次設定
+- **WHEN** 運維檢視 `.env.example` 的離機儲存段
+- **THEN** 該段明示物件儲存不在 `DATA_PATH` 之下、備份與存取控管由部署方承擔，於選擇點列出明文與遠端保留歸屬的後果，並註明本段僅供初次設定、其後的變更於管理介面進行
 
 ### Requirement: 預設 compose 指令產出正式版部署
 
@@ -155,3 +167,4 @@ SHALL NOT 僅記載於數十行外之其他段落——讀者在選擇點看不�
 #### Scenario: 開發者路徑有指路
 - **WHEN** 檢視範本的參與開發指引
 - **THEN** 含「熱重載環境建議 `KEK_PROVIDER=env`」與取得材料的方式，無「照抄即可跑」宣稱
+

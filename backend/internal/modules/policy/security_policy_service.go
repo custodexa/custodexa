@@ -42,6 +42,19 @@ const (
 	PolicyRetentionSessionCommandDays = "retention_session_command_days"
 	PolicyRetentionAlertDays          = "retention_alert_days"
 	PolicyRetentionRecordingDays      = "retention_recording_days"
+	// PolicyOffsiteLocalRetentionDays 離機儲存啟用後，本機錄影副本的**快取期**。
+	//
+	// **不是保留期**：到期只刪本機檔，錄影仍可播（改自離機副本取回），
+	// `has_recording` 與清除水位皆不動。真正的保留期是
+	// `retention_recording_days`，兩者語義不同故**不納入跨鍵約束**
+	// （cross_key_retention.go 的四鍵集合不變）——把快取期算進「檢查點必須
+	// 活得比資料久」的關係裡，等於主張「本機檔清掉＝證據消失」，而那正好是
+	// 本功能要否定的前提。
+	//
+	// 出廠 0＝不提前清；**無 PCI 建議值**：它是磁碟預算旋鈕，不是合規基準線，
+	// 掛建議值會讓「套用本頁建議值」替部署方決定要留幾天本機副本。
+	// 功能未啟用時本鍵無作用（設定頁明示）
+	PolicyOffsiteLocalRetentionDays = "offsite_local_retention_days"
 	// PolicyRetentionCheckpointDays 檢查點鏈自身的保留天數（audit-checkpoint-chain）。
 	// 受跨鍵約束（cross_key_retention.go）：不得低於四個資料保留鍵的有效值
 	PolicyRetentionCheckpointDays = "retention_checkpoint_days"
@@ -411,6 +424,17 @@ var policyDefs = []PolicyDef{
 		Key: PolicyRetentionRecordingDays, Type: PolicyTypeInt, Default: "90",
 		PCIValue: "365", Direction: DirectionMin, ZeroDisables: true, Max: 3650,
 		Requirement: "10.5.1", Label: "連線錄影保留天數", Unit: "天",
+	},
+	{
+		// 離機儲存的本機快取期：
+		// 出廠 0＝不提前清（升級後行為不變）。上界沿其餘保留鍵的 3650。
+		//
+		// **ZeroDisables 為真**：0 在此確有「停用」語義（不做本機快取清除），
+		// 而非「無限大」。**無 PCIValue／Direction／Requirement**：它不是合規
+		// 基準線上的項，理由見鍵常數的註解。
+		Key: PolicyOffsiteLocalRetentionDays, Type: PolicyTypeInt, Default: "0",
+		ZeroDisables: true, Max: 3650,
+		Label: "離機後本機副本保留天數", Unit: "天",
 	},
 	{
 		// 檢查點鏈保留天數（audit-checkpoint-chain）：出廠 0＝永久。

@@ -39,6 +39,12 @@ type RefreshSources struct {
 	RecordingStorage func() (used float64, err error)
 	// PendingAlerts 回傳依嚴重度分的未審閱告警數（DB 聚合查詢）。
 	PendingAlerts func() (map[string]float64, error)
+	// OffsiteQueue 回傳離機保管帳冊的切面（單表 `GROUP BY state, kind, origin`
+	// ＋最老待上傳件查詢＋暫存目錄統計＋世代表計數）。
+	//
+	// **設定表零列時組裝根不注入本源**：「未設定＝行為完全不變」的機械保證之一
+	// 就是連這一次 DB 往返都不發生。
+	OffsiteQueue func() (OffsiteQueueSnapshot, error)
 }
 
 // StopRefresherFunc 停止背景刷新並等待進行中的刷新結束。
@@ -126,6 +132,21 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 				log.Printf("[Metrics] 未審閱告警數刷新失敗：%v", err)
 			} else {
 				m.SetPendingAlerts(bySeverity)
+			}
+		}
+		if stopping() {
+			return
+		}
+
+		if src.OffsiteQueue != nil {
+			var snap OffsiteQueueSnapshot
+			if err := callSource("離機佇列", func() (err error) {
+				snap, err = src.OffsiteQueue()
+				return err
+			}); err != nil {
+				log.Printf("[Metrics] 離機佇列刷新失敗：%v", err)
+			} else {
+				m.SetOffsiteQueue(snap)
 			}
 		}
 	}

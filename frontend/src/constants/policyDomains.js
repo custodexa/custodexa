@@ -121,6 +121,16 @@ export const KEY_SECTIONS = [
   ]),
 ]
 
+// 離機儲存（evidence-offsite-storage）：本機副本的快取期。
+//
+// **自成一域而非併進 log_retention**：它不是保留期而是磁碟預算旋鈕
+// （到期只刪本機檔，錄影仍可自離機副本取回），放進「日誌保留」區塊會讓
+// 那一區的語義從「資料留多久」滑成「檔案還在不在」。承載頁是離機儲存頁，
+// 形態沿 KEY_SECTIONS 由金鑰管理頁承載金鑰政策的先例。
+export const OFFSITE_SECTIONS = [
+  section('offsite', ['offsite_local_retention_days']),
+]
+
 // 母頁分域偏離列表用：label 顯示名、route 跳轉
 const domain = (id, route, sections) => ({
   id,
@@ -136,6 +146,7 @@ export const POLICY_DOMAINS = [
   domain('access', '/access-control', ACCESS_SECTIONS),
   domain('transport', '/transmission-inventory', TRANSPORT_SECTIONS),
   domain('key', '/key-management', KEY_SECTIONS),
+  domain('offsite', '/offsite-storage', OFFSITE_SECTIONS),
 ]
 
 export const sectionKeys = (sections) => sections.flatMap((s) => s.keys)

@@ -300,6 +300,17 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"DELETE", "/api/v1/keys/rewrap"}:                                                {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rewrap"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rotate"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
+	{"GET", "/api/v1/offsite-storage/status"}:                                        {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"GET", "/api/v1/offsite-storage/failures"}:                                      {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/test"}:                                         {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/retry-failed"}:                                 {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/objects/:id/retry"}:                            {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"GET", "/api/v1/offsite-storage/settings"}:                                      {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"PUT", "/api/v1/offsite-storage/settings"}:                                      {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/settings/confirm"}:                             {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/settings/disable"}:                             {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"GET", "/api/v1/offsite-storage/profiles"}:                                      {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
+	{"POST", "/api/v1/offsite-storage/profiles/:id/revoke-credentials"}:              {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
 	{"DELETE", "/api/v1/ldap-directory"}:                                             {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
 	{"GET", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
 	{"PUT", "/api/v1/ldap-directory"}:                                                {classResource, model.ResourceLDAPDirectory, "命中分類器段 `ldap-directory`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；單例，無 `:id`"},
@@ -370,7 +381,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"PUT", "/api/v1/users/:id/status"}:                                              {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users/:id/unlock"}:                                             {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"GET", "/api/v1/users/local-admin-count"}:                                       {classResource, model.ResourceUser, "命中分類器段 `users`"},
-	{"POST", "/api/v1/users/source-policy/check"}:                                     {classResource, model.ResourceUser, "命中分類器段 `users`（允許來源網段的純判定端點，靜態段與 `:id` 並存）"},
+	{"POST", "/api/v1/users/source-policy/check"}:                                    {classResource, model.ResourceUser, "命中分類器段 `users`（允許來源網段的純判定端點，靜態段與 `:id` 並存）"},
 
 	// ── classNoIdentity：鏈中無認證中介層 ⇒ 審計中介層必然早退（22 條）──
 	//

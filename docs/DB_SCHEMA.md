@@ -1,7 +1,9 @@
 # Custodexa - 資料庫規格文件
 
+> **最後更新**：2026-09-01（新增 `offsite_profiles`／`offsite_objects` 兩表與兩張擁有表的離機指標欄）
+
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_source_ip_forensics.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -73,6 +75,8 @@
 | AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；稽核工作台的 `present`／`purged` 三態來源） |
 | AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）** | 證據包非同步匯出 job 追蹤（純狀態表，非證據；申請者本人綁定、部分唯一索引去重） |
 | UserSourceIP | `user_source_ips` | **migration（增量 `20260826_source_ip_forensics`，非 baseline）** | 帳號×來源位址的「已見」基準（新來源位址告警的判定依據，**非證據**、不受保留政策清除；複合主鍵，刻意無 FK） |
+| OffsiteProfile | `offsite_profiles` | **migration（增量 `20260825_evidence_offsite`，非 baseline）**（CHECK `offsite_profiles_singleton_check`＋`offsite_profiles_credential_mode_check`；`idx_offsite_profiles_current` partial unique＝現行世代至多一列） | 離機儲存的設定世代目錄（每列一個世代，連線參數＋憑證模式）；`credentials_enc` 登記於 `envelopeMigrationTargets` |
+| OffsiteObject | `offsite_objects` | **migration（增量 `20260825_evidence_offsite`，非 baseline）**（`uniq_offsite_objects_owner_generation` 唯一索引＋兩條 partial index） | 離機保管帳冊（每個上傳目標一列，遠端物件的身分與狀態機；**帳冊即佇列**） |
 | DataKey | `data_keys` | baseline（`idx_data_keys_purpose_version_kek`＝同 slot 至多一列帶材料，partial unique） | 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）；`kek_id`／`kek_retired_by` 為 `varchar(255)` 以容納外部金鑰引用（KMS ARN） |
 | TransmissionConsent | `transmission_consents` | baseline | 傳輸風險同意記錄（per user×asset） |
 | OIDCProvider | `oidc_providers` | baseline（`idx_oidc_providers_identity_domain` partial unique） | OIDC 身分提供者設定（多實例並存）；`client_secret_enc` 登記於 `envelopeMigrationTargets` |
@@ -82,13 +86,16 @@
 | LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique） | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **46 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **2 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs` 與 `user_source_ips`）；
-連同 `schema_migrations` 共 49 張。baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
+應用資料表共 **48 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **4 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
+`offsite_objects` 與 `user_source_ips`）；連同 `schema_migrations` 共 51 張。
+baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **10 條 CHECK**——**上述三個數字皆只計 baseline，
-不含兩條增量 migration**：`20260824_audit_export_jobs` 另建 1 表 ＋ 3 索引（含 1 條部分唯一索引）；
+不含三條增量 migration**：`20260824_audit_export_jobs` 另建 1 表 ＋ 3 索引（含 1 條部分唯一索引）；
+`20260825_evidence_offsite` 另建 2 表 ＋ 7 索引（含 5 條部分索引，其一為部分唯一索引）
+＋ 4 欄（`sessions` 與 `audit_export_jobs` 各兩欄）＋ 2 條具名 CHECK；
 `20260826_source_ip_forensics` 另建 1 表 ＋ 2 索引 ＋ 1 欄（`users.allowed_cidrs`），並重建
-`command_alerts_kind_check`（CHECK 條數不變，值域擴充）。兩者皆見「Migration 版本一覽」。
+`command_alerts_kind_check`（CHECK 條數不變，值域擴充）。三者皆見「Migration 版本一覽」。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
 它有雞生蛋問題——必須先於「讀取已套用版本集合」而存在，故不能由 baseline 建立
@@ -104,7 +111,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
   ——AST 掃描產品程式碼，**零 `AutoMigrate`、無例外清單**。
 - `backend/internal/database/schema_parity_test.go`（第 1 層，離線、不需資料庫、不可被 skip）
-  ——`schemaParityModels` 的 **37 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
+  ——`schemaParityModels` 的 **40 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
   自 `20260824_audit_export_jobs` 起擴為 **baseline ＋ 全部增量**（`schemaDDLStatements()`），
   故增量建的 `audit_export_jobs` 同受此守衛，不因不在 baseline 而脫離 parity 檢查。
 - `backend/internal/database/baseline_parity_pg_test.go`、`index_declaration_parity_test.go`
@@ -842,6 +849,8 @@ GORM tag 既表達不了 `COALESCE` 也表達不了謂詞；拿掉它同層即�
 | `HasRecording` | bool | `default:false` | `has_recording` | 是否有錄製 |
 | `RecordingError` | string | `type:text` | `recording_error` | 錄影失敗原因：非空＝錄影缺失或不完整（只記首因），前端據此顯「無錄影」標示。** 起語義改為存 cause 機器碼**（與 `audit_failure_events.cause_code` 同一組 `model.Cause*` 常數）而非中文散文，前端 tooltip 按碼查譯；schema 未變（仍為 text，無 migration），dev 階段不轉存量——既有列殘留散文，新列一律存碼 |
 | `RecordingStartedAt` | *time.Time | - | `recording_started_at` | 錄影的時間原點：回放的 elapsed=0 對應的絕對時刻。**不等於 `start_time`**——文字終端的錄製器在會話建檔之後才啟動（認證＋PTY 就緒，差為正），圖形的 guacd 握手則在建檔之前完成（差為負）。缺這一欄，`/sessions/:id?t=` 深連結只能拿 `start_time` 當原點，文字終端偏早、圖形偏晚而**跳過目標事件**。NULL＝無錄影或存量會話，前端據此退回未校正值並在畫面明示。baseline 建欄（nullable；全新安裝無歷史列可回填） |
+| `OffsiteObjectID` | *uint | - | `offsite_object_id` | 離機保管帳冊列的指標（→ `offsite_objects.id`，邏輯外鍵，不建 FK 約束）。NULL＝本會話的錄影尚未（或不會）進入離機佇列。由增量 migration `20260825_evidence_offsite` 加欄 |
+| `OffsiteStatus` | string | `size:20;not null;default:''` | `offsite_status` | 帳冊 `state` 的**顯示用快取**，值域＝帳冊七態 ∪ 回填掃描的兩個分類（`skipped_missing`／`skipped_expired`，兩者**不建帳冊列**）∪ 空字串。**所有決策邏輯只讀帳冊**，本欄只供列表與詳情頁免 join；與帳冊短暫不一致不影響正確性。同一條 migration 加欄 |
 | `AccountID` | uint | `index` | `account_id` | 帳號雙快照：連線所用的 `asset_accounts.id`；0＝未帶帳號（歷史會話／零帳號路徑）。 |
 | `AccountUsername` | string | `size:100` | `account_username` | 帳號雙快照：**連線當下**的帳號 username。只存 FK 不足以保證不可否認性——帳號改名／刪除會洗掉「當時用哪個帳號連的」；寫入後永不隨帳號變動更新（沿 K8s 六欄不可變快照先例） |
 | `K8sNamespace` | string | `size:63` | `k8s_namespace` | K8s 快照：namespace。 |
@@ -882,6 +891,14 @@ const (
   皆以 `sessions.client_ip` 為鍵，時間窗 keyset 需第二鍵。**由增量 migration `20260826_source_ip_forensics`
   建立**（DDL 逐字：`CREATE INDEX idx_sessions_client_ip_start ON sessions USING btree (client_ip, start_time)`），
   非 baseline
+- `idx_sessions_offsite_backfill` - **部分索引** `(id) WHERE ((offsite_object_id IS NULL) AND has_recording)`
+  ——離機回填掃描的取件面（有錄影而尚未建帳冊列者）。由增量 migration `20260825_evidence_offsite` 建立，非 baseline
+- `idx_sessions_offsite_retention` - **部分索引** `(end_time) WHERE (offsite_object_id IS NOT NULL)`
+  ——保留清理段以會話結束時刻掃出已有帳冊物件的列。同一條 migration，非 baseline
+
+> 上述兩條部分索引**只存在於 migration DDL**，不在 model 的 GORM tag 上：其 `WHERE` 涉及
+> `has_recording` 與本欄的 `IS NOT NULL`，tag 表達得出但會使 `Session` model 承載離機子系統的查詢面知識
+> （沿 `audit_export_jobs` 部分索引只留 DDL 的既有取捨）。
 
 **關聯**:
 - `User *User` - 屬於（透過 `UserID`）
@@ -2059,19 +2076,20 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 有三條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
+**現行 migration 有四條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
 | `20260816_schema_baseline` | 建立整個 schema（46 張表、26 條外鍵、116 條索引，共 188 條無條件 DDL）＋種入 12 條內建告警規則。呼叫端把它與 `schema_migrations` 的版本記錄包在單一交易內，PostgreSQL 的 DDL 可交易，故全成或全不成，不會留下半套 schema | **一律回拒絕錯誤**（`refuseBaselineRollback`）。baseline 建的是整個 schema，「回滾」它等於刪掉全部使用者、資產、授權與審計證據——一個看起來像回滾入口、實際是資料庫毀滅按鈕的東西比沒有入口更危險。退路是還原備份 |
 | `20260824_audit_export_jobs` | 建 `audit_export_jobs` 表（1 建表 ＋ 3 索引，含 1 條部分唯一索引；見第 42 節）。**baseline 之後的首條增量 migration**——純新表、無加密欄、無回填，在全新庫（baseline → 本條）與既有庫（僅本條）上收斂同形。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `DROP TABLE audit_export_jobs`（`rollbackAuditExportJobs`）。純狀態表，證據不在其中，可棄可逆 |
+| `20260825_evidence_offsite` | 離機儲存：建 `offsite_profiles` 設定世代表（含信封加密憑證欄與兩條具名 CHECK；見第 44 節）與 `offsite_objects` 保管帳冊（見第 45 節），建 5 條索引，並對 `sessions` 與 `audit_export_jobs` 各加 `offsite_object_id`／`offsite_status` 兩欄、對 `sessions` 建 2 條部分索引。**兩張表同一條 migration**：帳冊的 `storage_generation_id` 是指向世代表的邏輯外鍵，分兩條會產生「帳冊已存在而世代表尚未存在」的中間形狀，該形狀下的世代連續性健檢無法判讀。**加密欄無資料回填**——`credentials_enc` 由管理介面寫入，或由 post-unseal 佇列的 env seed 寫入（見下），故 migration 本身不需要 codec。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackEvidenceOffsite`：反序 DROP 兩條 `sessions` 索引 → 四個加欄 → `DROP TABLE offsite_objects` → `DROP TABLE offsite_profiles`。**回退是資料追蹤不可逆**：drop 帳冊即失去「哪個錄影的遠端副本在哪個 bucket、哪個 key、上傳當下的 SHA-256 是多少」，drop 世代表更失去「哪個物件要用哪組憑證取回」的對應；**遠端物件不隨回退消失**（產品從不刪遠端），故回退後那些物件成為孤兒。回退前須 `pg_dump --data-only -t offsite_objects` 匯出清冊與備份集同保管，重新升級時先還原清冊即零重傳（程序見 `docs/ops/upgrade-sop.md` §4） |
 | `20260826_source_ip_forensics` | 來源位址追查：`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`、建 `user_source_ips` 表（見第 43 節）、建 `idx_sessions_client_ip_start` 與 `idx_user_source_ips_ip_seen` 兩索引、重建 `command_alerts_kind_check` 使 `kind` 值域含 `new_source_ip`，最後**冷啟動回填**（自 `sessions` 全史與 `audit_logs` 登入成功列合併，使部署當下已見的位址不觸發告警）。**Up 為純加法**：不刪不改任何既有資料列 | `rollbackSourceIPForensics`：反序 DROP 兩索引 → `DELETE FROM command_alerts WHERE kind = 'new_source_ip'` → 還原舊 CHECK → `DROP TABLE user_source_ips` → `DROP COLUMN allowed_cidrs`。**銷毀資料、開發庫限定**：丟掉整份已見位址基準與每位使用者的來源限定，再次 Up 後清單為空（來源限制靜默消失）、基準為空（全部位址重新判為新）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：`20260824_audit_export_jobs` 與 `20260826_source_ip_forensics` 於既有部署升級時
-> 自動套用（段 1，無 codec 依賴；後者含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
-> 升級程序見 `docs/ops/upgrade-sop.md`）；
+> **升級注意**：`20260824_audit_export_jobs`、`20260825_evidence_offsite` 與 `20260826_source_ip_forensics`
+> 於既有部署升級時自動套用（段 1，無 codec 依賴；最後一條含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
+> 升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
 > 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
 
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
@@ -2342,6 +2360,8 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 | `RequestedAt` | time.Time | `not null` | `requested_at` | 發起時刻 |
 | `PackagedAt` | *time.Time | - | `packaged_at` | 實際打包完成時刻（與 `RequestedAt` 一併寫入 manifest 的雙時戳） |
 | `ExpiresAt` | *time.Time | - | `expires_at` | 產物過期時刻（`done` 時＝`PackagedAt`＋保留期）；逾期由 worker 清檔並轉 `expired` |
+| `OffsiteObjectID` | *uint | - | `-` | 離機保管帳冊列的指標（→ `offsite_objects.id`，邏輯外鍵，不建 FK 約束）。NULL＝本 job 的產物尚未（或不會）進入離機佇列。由增量 migration `20260825_evidence_offsite` 加欄 |
+| `OffsiteStatus` | string | `size:20;not null;default:''` | `-` | 帳冊 `state` 的顯示用快取，語義與 `sessions` 的同名欄逐字相同；下載中心的離機狀態行讀本欄。回應層另以 `offsite_status` 投影（本 model 本身不帶 json tag）。同一條 migration 加欄 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
@@ -2358,6 +2378,12 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 - 欄位刻意不帶 `gorm default` tag：所有欄位由程式碼顯式賦值（避免 GORM 對零值交由 DB 填值）。
 - **產物暫存目錄不落資料庫**（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`）：
   屬暫存、限時清除，非備份對象（見 `docs/ops/backup-and-restore.md`）。
+- **離機兩欄不另建索引**：`20260825_evidence_offsite` 只對 `sessions` 建了兩條部分索引
+  （回填與保留清理的掃描面），本表沒有等價的掃描查詢——下載中心清單以既有的
+  `idx_audit_export_jobs_requester_status` 取件後直讀快取欄，離機側的查詢面則落在
+  `offsite_objects` 自己的四條索引上。
+- **產物到期只清本機側，不動遠端物件**（產物檔 24h、job 列 30 天，兩者不同源，見上）：產品對遠端不發刪除，
+  遠端副本的到期清理歸部署方的 bucket lifecycle（見第 45 節與 `docs/ops/backup-and-restore.md`）。
 
 ---
 
@@ -2408,6 +2434,216 @@ DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`，在已套用的庫�
 
 ---
 
+### 44. OffsiteProfile（離機儲存設定世代）
+
+**表名**: `offsite_profiles`
+**檔案**: `backend/internal/model/offsite_profile.go`
+**建表方式**: **增量 migration `20260825_evidence_offsite`（非 baseline）**，與 `offsite_objects` 同一條。
+單列不變式沿 `ldap_directories` 的既有形態，由**三者並用**承載：
+inline `CONSTRAINT offsite_profiles_singleton_check CHECK ((singleton = 1))` 鎖死值域，
+＋ `idx_offsite_profiles_current`＝`UNIQUE (singleton) WHERE retired_at IS NULL`（partial）。
+**CHECK 不可省**：單靠唯一索引只禁止相同值重複，`singleton=2` 仍可與 `singleton=1` 並存而使「至多一列」失效。
+另有 inline `CONSTRAINT offsite_profiles_credential_mode_check`，把 `credential_mode='stored'` 與
+「密文非空」釘成等價（見下）。兩條 CHECK 與該索引皆為具名斷言，登記於
+`baseline_parity_pg_test.go` 的 `baselineCheckConstraints` 與 `baselineStructuralAssertions`（`pg_get_indexdef` 逐字比對）。
+
+**建表 DDL（逐字，`backend/internal/database/migration_evidence_offsite.go`）**:
+
+```sql
+CREATE TABLE offsite_profiles (
+	generation_id bigserial,
+	profile_fingerprint character varying(16) NOT NULL,
+	singleton integer DEFAULT 1 NOT NULL,
+	provider character varying(8) NOT NULL,
+	endpoint text DEFAULT ''::text NOT NULL,
+	bucket character varying(255) NOT NULL,
+	prefix character varying(255) DEFAULT ''::character varying NOT NULL,
+	region character varying(64) DEFAULT ''::character varying NOT NULL,
+	path_style boolean DEFAULT false NOT NULL,
+	credential_mode character varying(16) NOT NULL,
+	credentials_enc text DEFAULT ''::text NOT NULL,
+	credential_revision bigint DEFAULT 0 NOT NULL,
+	created_at timestamp with time zone,
+	activated_at timestamp with time zone,
+	retired_at timestamp with time zone,
+	credentials_cleared_at timestamp with time zone,
+	CONSTRAINT offsite_profiles_singleton_check CHECK ((singleton = 1)),
+	CONSTRAINT offsite_profiles_credential_mode_check CHECK ((((credential_mode)::text = 'stored'::text) = (credentials_enc <> ''::text))),
+	CONSTRAINT offsite_profiles_pkey PRIMARY KEY (generation_id)
+)
+```
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `GenerationID` | uint | `column:generation_id;primarykey` | `generation_id` | **世代識別，不可重用**（`bigserial`，序列不回頭）。帳冊的 `storage_generation_id` 以它為邏輯外鍵 |
+| `ProfileFingerprint` | string | `size:16;not null` | `profile_fingerprint` | 儲存設定指紋（16 位十六進位；成分＝provider＋完整正規化 endpoint＋bucket＋prefix＋region）。**可重複**——它是連線參數的函數，「A→B→切回 A」會算出與第一世代相同的值。只作世代切換的觸發判準與顯示 |
+| `Singleton` | int32 | `not null;default:1` | `-` | 現行世代唯一性的常數載體；恆為 1，由 CHECK 與 partial unique index 保證。不對外暴露——schema 層的不變式載體，非業務欄位。型別取 `int32` 使 GORM 於 PostgreSQL 映射為 `integer`，與 DDL 逐欄一致 |
+| `Provider` | string | `size:8;not null` | `provider` | driver 選擇；值域同 `internal/offsite` 的 `ProviderS3`／`ProviderGCS` |
+| `Endpoint` | string | `type:text;not null;default:''` | `-` | 連線端點，**完整正規化含 path**。userinfo／query／fragment 於寫入時即被拒（端點淨化），故本欄不含機密；**顯示面只印 origin**，path 不回顯、不入日誌 |
+| `Bucket` | string | `size:255;not null` | `bucket` | 儲存桶名 |
+| `Prefix` | string | `size:255;not null;default:''` | `prefix` | 物件 key 前綴 |
+| `Region` | string | `size:64;not null;default:''` | `region` | 區域 |
+| `PathStyle` | bool | `not null;default:false` | `path_style` | S3 path-style 定址 |
+| `CredentialMode` | string | `size:16;not null` | `credential_mode` | 三值：`stored`（用本世代自己的憑證，密文非空）／`default_chain`（部署方**刻意**選 SDK 預設憑證鏈，密文必空）／`revoked`（曾有憑證、已由管理員撤銷，密文必空且 `credentials_cleared_at` 非空）。三值分立是為了消除「空密文」的歧義——若空密文同時代表「用預設鏈」與「已撤銷」，撤銷後仍可能靜默改走預設鏈繼續取回。`revoked` 一律不回退預設鏈 |
+| `CredentialsEnc` | string | `type:text;not null;default:''` | `-` | 該世代的憑證（信封加密；明文為依 provider 的 JSON）。**write-only**：任何讀取投影、API 回應與審計皆不含本欄與其遮罩值 |
+| `CredentialRevision` | int64 | `not null;default:0` | `-` | 每次憑證變更或撤銷 +1；per-generation client 快取的失效依據。跨程序與重啟的正確性不靠行程內事件——取用 client 前核對快取內記載的版號與該列現值，不等即丟棄重建 |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `ActivatedAt` | time.Time | - | `activated_at` | 成為現行世代的時刻 |
+| `RetiredAt` | *time.Time | - | `retired_at`（omitempty） | 退役時刻；**NULL＝現行世代** |
+| `CredentialsClearedAt` | *time.Time | - | `credentials_cleared_at`（omitempty） | 憑證撤銷時刻（`credential_mode='revoked'` 時非空） |
+
+**索引**（DDL 於 `backend/internal/database/migration_evidence_offsite.go`）:
+- `idx_offsite_profiles_current`＝**部分唯一索引**
+  `CREATE UNIQUE INDEX idx_offsite_profiles_current ON offsite_profiles USING btree (singleton) WHERE (retired_at IS NULL)`
+  ——現行世代至多一列。CHECK 把索引鍵釘成常數，故「未退役者至多一列」是**全域**保證。
+
+**設計說明**:
+- **現行世代是「至多一列（0 或 1）」而不是「恰一列」**。零現行世代是合法終局態——管理介面的
+  「停止離機」把現行列填上 `retired_at` 而**不建新列**。零列因此有兩種語義，由帳冊區分：
+  `offsite_profiles` 完全零列＝**從未設定**（「未設定＝行為完全不變」的機械保證只綁這一格）；
+  有歷史世代而零現行世代＝**停用態**——不建上傳 worker、上傳車道指標缺席，但取回子系統照常組裝、
+  歷史物件仍可取回。
+- **主鍵取 `generation_id` 而非指紋**：指紋是連線參數的函數，`s3 → gcs → 切回原 s3 參數`
+  會算出與已退役列相同的值；以指紋為主鍵則第三個世代必然撞主鍵，改成「重啟舊列」
+  又會把兩個時間世代及其**各自不同的憑證**合併成一列。取 `bigserial` 是沿本 repo 慣例
+  （baseline 每張表皆 `id bigserial`，無 ULID／UUID 主鍵先例）；序列不回頭即天然滿足「不可重用」。
+- **安全紅線**：`credentials_enc` 須登記於 `cipher_refs.go`（`RefOffsiteCredentials`）與
+  `envelopeMigrationTargets`（AST 守衛 `envelope_targets_guard_test.go` 強制）。該清單同時驅動
+  DEK 輪替重加密與退役 DEK 銷毀前的引用掃描——漏登會誤判零引用而銷毀仍在用的金鑰材料，
+  屆時該世代憑證永久不可解、其遠端物件永不可取回。
+- **env→DB 的一次性 seed 需要 codec**（段 2 才存在），故走 post-unseal 佇列；其執行期冪等標記
+  `20260825_offsite_env_seeded` 借用 `schema_migrations` 表存放，由 `runtimeMarkerVersions`
+  自 fail-close 判定中扣除（`migrations.go`）。標記語義為**「已完成評估」而非「已建立資料」**，
+  且**隨資料庫備份一起還原**——「標記在而本表零列」是真實可達的部署狀態，其終局為「未設定」，
+  只能經管理介面重新設定（見 `docs/ops/backup-and-restore.md` §4.4）。
+
+**不得作出的宣稱**（本節與引用本節的文件一律避免）:
+1. **世代表記的是連線參數，不是可用性**——bucket 被刪除、憑證在儲存端失效、網路不可達，取回一樣失敗；
+   本表只保證失敗訊息能指出「哪個世代、哪個 provider、缺什麼」，不宣稱歷史物件必然取得回。
+2. **指紋不是識別**——`profile_fingerprint` 可重複，任何「以指紋指認某個世代」的說法都是錯的；
+   識別一律用 `generation_id`。
+
+---
+
+### 45. OffsiteObject（離機保管帳冊）
+
+**表名**: `offsite_objects`
+**檔案**: `backend/internal/model/offsite_object.go`
+**建表方式**: **增量 migration `20260825_evidence_offsite`（非 baseline）**，與 `offsite_profiles` 同一條。
+DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。
+
+每個上傳目標一列，是遠端物件的**身分與狀態機**所在，同時**即是佇列**
+（`state='pending'` 的部分索引就是取件查詢面）。**表所有權歸 `internal/offsite`**：
+其他模組不得直接以 GORM 或 SQL 碰本表，只能經該包的帳冊方法取物件（資料邊界閘門盯著）。
+`kind`／`origin`／`state` 的值域走應用層常數、**不加 CHECK**（加 CHECK 會動 baseline 具名 CHECK 的總量斷言，
+而這三欄只由本包寫入）。
+
+**建表 DDL（逐字，`backend/internal/database/migration_evidence_offsite.go`）**:
+
+```sql
+CREATE TABLE offsite_objects (
+	id bigserial,
+	kind character varying(16) NOT NULL,
+	owner_id bigint NOT NULL,
+	origin character varying(8) NOT NULL,
+	provider character varying(8) NOT NULL,
+	storage_generation_id bigint NOT NULL,
+	bucket character varying(255) NOT NULL,
+	object_key character varying(1024) NOT NULL,
+	version_id character varying(255) NOT NULL,
+	sha256 character varying(64) NOT NULL,
+	size bigint NOT NULL,
+	state character varying(20) NOT NULL,
+	attempts bigint NOT NULL,
+	lease_expiries bigint NOT NULL,
+	next_attempt_at timestamp with time zone,
+	lease_until timestamp with time zone,
+	uploaded_at timestamp with time zone,
+	error_code character varying(64) NOT NULL,
+	created_at timestamp with time zone,
+	updated_at timestamp with time zone,
+	CONSTRAINT offsite_objects_pkey PRIMARY KEY (id)
+)
+```
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey;index:idx_offsite_objects_due,priority:3,where:state = 'pending'` | `-` | 主鍵 |
+| `Kind` | string | `size:16;not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:1` | `-` | 上傳目標種類：`recording`（擁有者＝`sessions.id`）／`export`（擁有者＝`audit_export_jobs.id`） |
+| `OwnerID` | uint | `not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:2` | `-` | 擁有者列的主鍵（依 `kind` 解讀；邏輯外鍵，不建 FK 約束） |
+| `Origin` | string | `size:8;not null;index:idx_offsite_objects_due,priority:1,where:state = 'pending'` | `-` | 排入來源：`live`（會話結束／打包完成當下即排入）／`backfill`（回填掃描排入）。雙車道配額的判準 |
+| `Provider` | string | `size:8;not null` | `-` | 上傳當時的 provider；**冗餘的明文身分欄**（對帳與管理介面顯示直讀，免 join） |
+| `StorageGenerationID` | uint | `not null;uniqueIndex:uniq_offsite_objects_owner_generation,priority:3` | `-` | 上傳當時的設定世代（→ `offsite_profiles.generation_id` 的邏輯外鍵，不建 FK 約束）。**取回一律以本欄取世代、用該世代自己的憑證與 driver**；對不到世代列時 fail-close 拒絕，不退回「用現行設定猜」 |
+| `Bucket` | string | `size:255;not null` | `-` | 上傳當時的 bucket（設定世代變更後仍可指認） |
+| `ObjectKey` | string | `size:1024;not null` | `-` | 物件 key |
+| `VersionID` | string | `size:255;not null` | `-` | 儲存端回的版本識別；**參考性記錄**——有帶就記，任何路徑不依賴；非版本化的儲存桶為空字串 |
+| `SHA256` | string | `column:sha256;size:64;not null` | `-` | **上傳當下**讀到的位元組的整檔 SHA-256。取回時以本值核對，不符即拒絕交付 |
+| `Size` | int64 | `not null` | `-` | 上傳當下讀到的位元組數 |
+| `State` | string | `size:20;not null;index:idx_offsite_objects_state` | `-` | 狀態機，七態（見下） |
+| `Attempts` | int | `not null` | `-` | 上傳嘗試次數；達上限（5）即轉 `failed` |
+| `LeaseExpiries` | int | `not null` | `-` | 租約到期回收次數；≥2 即卡死判準（不等到 `attempts` 上限） |
+| `NextAttemptAt` | *time.Time | `index:idx_offsite_objects_due,priority:2,where:state = 'pending'` | `-` | 退避時點（退避表 1m／5m／15m／1h／6h） |
+| `LeaseUntil` | *time.Time | `index:idx_offsite_objects_lease,where:state = 'uploading'` | `-` | 上傳中的租約；到期回收回 `pending` |
+| `UploadedAt` | *time.Time | - | `-` | 上傳成功時刻（本機快取清除的計時起點） |
+| `ErrorCode` | string | `size:64;not null` | `-` | 機器碼（`offsite.*`）。原始錯誤只進伺服器日誌——儲存端的錯誤字串可能夾帶端點、路徑甚至簽章材料 |
+| `CreatedAt` | time.Time | - | `-` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `-` | 更新時間 |
+
+**狀態機**（值域常數在 `backend/internal/offsite/state.go`，該檔是唯一事實源）:
+
+```
+pending → uploading → uploaded → local_purged
+         ↘ failed（達重試上限）
+           integrity_mismatch（取回驗證不符）
+           foreign（設定世代已退役；只讀）
+```
+
+| `state` | 語義 |
+|---|---|
+| `pending` | 待上傳（本態＋`next_attempt_at` 就是取件查詢面） |
+| `uploading` | 上傳中，持有租約 |
+| `uploaded` | 已上傳並記帳（`sha256`／`size`／`uploaded_at`） |
+| `failed` | 重試達上限；`error_code` 保留，可經管理介面手動重試 |
+| `integrity_mismatch` | 取回時 SHA-256 或大小不符，已拒絕交付 |
+| `foreign` | 所屬設定世代已退役（世代切換或停止離機）：**只讀**。不再上傳、不做本機快取清除（其遠端可達性已不由現行設定保證，本機副本可能是唯一可讀副本）；取回仍以該世代自己的憑證進行 |
+| `local_purged` | 本機副本已因保留政策到期而清除；**遠端物件未被刪除** |
+
+> 擁有表的 `offsite_status` 快取欄另含兩個**非帳冊態**的回填掃描分類——
+> `skipped_missing`（`recording_path` 非空但本機檔讀不到）與 `skipped_expired`（已逾錄影保留期）
+> ——這兩者**不建帳冊列**，故不出現在上表。快取欄的完整值域＝上表七態 ∪ 這兩者 ∪ 空字串。
+
+**索引**（DDL 於 `backend/internal/database/migration_evidence_offsite.go`，四條）:
+- `uniq_offsite_objects_owner_generation`＝**唯一索引** `(kind, owner_id, storage_generation_id)`
+  ——同一擁有者在同一設定世代只追蹤一個物件，重傳更新同列；世代含在鍵內，故新世代可有新物件而舊世代的列不被覆蓋。
+  排入帳冊時的冪等衝突目標。**不得以可重複的指紋取代世代識別**——「A→B→A」的第一與第三世代指紋相同，
+  以它作鍵會把兩個世代的物件混為一談而在取回時拿到另一個世代的憑證。
+- `idx_offsite_objects_due`＝**部分索引** `(origin, next_attempt_at, id) WHERE (state = 'pending')`——雙車道取件。
+- `idx_offsite_objects_lease`＝**部分索引** `(lease_until) WHERE (state = 'uploading')`——租約回收。
+- `idx_offsite_objects_state`＝`(state)`——各態計數與失敗清單。
+
+**設計說明**:
+- **擁有表只留指標與快取**：`sessions`／`audit_export_jobs` 各加 `offsite_object_id` 與 `offsite_status`
+  （見第 5、42 節）。所有決策邏輯只讀本表，快取只供列表與詳情頁免 join。
+- 欄位刻意不帶 `gorm default` tag（沿 `AuditExportJob` 的既有取捨）：所有欄位由程式碼顯式賦值。
+
+**不得作出的宣稱**（本節與引用本節的文件一律避免）:
+1. **`sha256` 不是錄製當下的完整性證明**——它是**上傳當下**讀到的位元組的雜湊。本機檔在錄製到上傳
+   之間的任何改動無從偵測（與審計檢查點鏈、會話錄影大小欄同一揭露）。
+2. **不得宣稱遠端物件等於磁碟最終內容**——上傳後的複驗只能偵測「上傳期間變了」；圖形錄影的收尾尾段
+   寫在量測之後，其長尾差額不在射程內。
+3. **儲存端的分段校驗值與本欄的整檔 SHA-256 不可比**——大檔走分段上傳時，儲存端計算的是分段雜湊的
+   組合值（用於驗證傳輸完整性），與整檔雜湊在數學上不同一個東西。對帳一律用本欄，不要拿儲存端的
+   校驗欄位去比。
+4. **只追蹤 key 的目前內容**——重傳即覆寫同 key。版本歷史的有無、累積與清理全由部署方的儲存桶
+   versioning 與 lifecycle 設定承擔（`version_id` 只是參考性記錄），產品不列舉、不清理、不依賴。
+   同 key 被外力覆寫時，產品的防護**只到拒絕交付**（雜湊不符即 `integrity_mismatch`）；能否救回原內容
+   取決於部署方的 versioning 與保留設定。
+5. **帳冊是現況，審計事件才是軌跡**——本表每列只保存目前狀態（狀態機是覆寫式的）；
+   「什麼時候上傳的、什麼時候判定不符、什麼時候本機到期」的時序在保管鏈審計事件裡。
+   反過來說，帳冊狀態是權威，審計列受審計佇列同樣的滿載降級與丟棄計數約束。
+
+---
+
 ## 已知 model 與 baseline 差異（維護注意）
 
 > 以下是 model 與 baseline 之間仍然成立的差異。
@@ -2420,9 +2656,9 @@ DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`，在已套用的庫�
 2. **partial unique index 在 model tag 上表達不出來**。`users.username`／`users.email`／
    `assets.name`／`asset_accounts` 兩條／`data_keys` 一條／`audit_failure_events` 一條等，
    實際約束皆為 partial（多數是 `WHERE deleted_at IS NULL`），而 model tag 只能寫
-   `uniqueIndex` 或 `index`。**權威定義在 baseline 的 DDL**；6 條核心不變式另以
+   `uniqueIndex` 或 `index`。**權威定義在 DDL（baseline 或增量 migration）**；8 條核心不變式（6 條 baseline＋2 條來自離機儲存增量 migration）另以
    `pg_get_indexdef` 逐字比對釘在 `baseline_parity_pg_test.go` 的 `baselineStructuralAssertions`。
-3. **CHECK 約束同樣只存在於 baseline**（10 條）。GORM 不產出 inline CHECK，故
+3. **CHECK 約束同樣只由建表語句承載**（15 條：13 條 baseline＋2 條來自離機儲存增量 migration）。GORM 不產出 inline CHECK，故
    `chk_auth_target`／`chk_authz_subject_xor`／`chk_approver_scope_*`／`singleton = 1`／
    三個枚舉 CHECK 全部由建表語句承載。放寬任何一條，不合法的列就寫得進去而無錯誤。
 4. **種子資料不在 schema 比對的射程內**。12 條內建告警規則由 `baseline_seed.go` 寫入；

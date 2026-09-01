@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/gin-gonic/gin"
 )
@@ -22,12 +26,16 @@ import (
 // audit:view 閘）；本檔只放 job 三端點：POST 發起、GET 清單、GET 下載。
 //
 // 下載授權綁**申請者本人**（使用者裁決，不得放寬）：非申請者（含其他具
-// audit:view 帳號）一律收斂 404，不洩 job 存在性；申請者本人的不可下載態
-// 收斂 410。細節只進審計。
+// audit:view 帳號）一律收斂 **403**（`CodeExportJobRequesterOnly`），不洩 job
+// 存在性；申請者本人的不可下載態收斂 410。細節只進審計。
+//
+// （本段原寫「收斂 404」，與 `DownloadJob` 的實作自始不符——實作回的是 403。
+// 檔頭與實碼不一致的註解比沒有註解更糟：讀者會據此推斷「不存在與無權限
+// 是否可分辨」，而那是本端點的安全性質。2026-08-31 順修，backlog #11。）
 
 // exportJobView job 的回應投影（顯式 DTO：ArtifactPath 是伺服器內部路徑、
 // FilterJSON 是內部快照格式，皆不出站；範圍摘要走與 manifest 同源的字串化）
-func exportJobView(j *model.AuditExportJob) gin.H {
+func exportJobView(j *model.AuditExportJob, offsiteSHA256 string) gin.H {
 	v := gin.H{
 		"id":            j.ID,
 		"status":        j.Status,
@@ -49,7 +57,37 @@ func exportJobView(j *model.AuditExportJob) gin.H {
 	if j.ExpiresAt != nil {
 		v["expires_at"] = j.ExpiresAt
 	}
+	// 離機保存狀態（evidence-offsite-storage）：下載中心的狀態欄要說得出
+	// 「這個包還在不在本機、離機副本取不取得回來」。**恆輸出（含空字串）**——
+	// 空字串是正常值（未排入），與「這個部署沒有這個欄位」是兩件事，
+	// 而前端的十態對照表把 `''` 當成其中一態處理。
+	// 不輸出 `offsite_object_id`：帳冊列的識別碼對申請者無用，
+	// 重試是 admin 在離機儲存頁的動作
+	v["offsite_status"] = j.OffsiteStatus
+	// 帳冊列的整檔雜湊（狀態行第三列「已離機保存 · <sha256 前 12>」）。
+	// 與 `artifact_sha256` **不同來源**：後者是打包當下對本機檔算的，這個是
+	// 上傳當下對送出去的位元組算的，回答的是「遠端那一份是什麼」。
+	// 取不到就不輸出（欄位缺席＝這一列沒有可呈現的離機雜湊）
+	if offsiteSHA256 != "" {
+		v["offsite_sha256"] = offsiteSHA256
+	}
 	return v
+}
+
+// offsiteSHA256 取帳冊列記下的整檔雜湊，供 exportJobView 的離機行使用。
+//
+// **只對 uploaded 態查**：其餘態的離機行不帶雜湊，查了也用不上，也就不必為
+// 每一列多付一次查詢。未組裝離機子系統或帳冊列讀不到時回空字串——這一行是
+// 輔助說明，取不到就少一段文字，不該讓整份清單變成錯誤。
+func (h *AuditExportHandler) offsiteSHA256(j *model.AuditExportJob) string {
+	if h.offsite == nil || j.OffsiteObjectID == nil || j.OffsiteStatus != offsite.StateUploaded {
+		return ""
+	}
+	row, err := h.offsite.Object(*j.OffsiteObjectID)
+	if err != nil || row == nil {
+		return ""
+	}
+	return row.SHA256
 }
 
 // CreateJob 發起證據包打包（POST /audit-export/jobs）。
@@ -83,7 +121,7 @@ func (h *AuditExportHandler) CreateJob(c *gin.Context) {
 	msg := fmt.Sprintf("job=%d created=%t %s", job.ID, created, exportFilterAuditSnapshot(filter))
 	h.auditJob(c, model.ActionCreate, model.StatusSuccess, &job.ID, msg)
 
-	c.JSON(http.StatusAccepted, gin.H{"data": exportJobView(job), "deduplicated": !created})
+	c.JSON(http.StatusAccepted, gin.H{"data": exportJobView(job, h.offsiteSHA256(job)), "deduplicated": !created})
 }
 
 // ListJobs 申請者本人的 job 清單（GET /audit-export/jobs，分頁、id 降冪穩定排序）。
@@ -104,7 +142,7 @@ func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 	}
 	views := make([]gin.H, 0, len(jobs))
 	for i := range jobs {
-		views = append(views, exportJobView(&jobs[i]))
+		views = append(views, exportJobView(&jobs[i], h.offsiteSHA256(&jobs[i])))
 	}
 	c.JSON(http.StatusOK, gin.H{"data": views, "total": total, "page": page, "page_size": pageSize})
 }
@@ -147,8 +185,23 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 		return
 	}
 
+	artifactPath, offsiteErr := h.resolveArtifact(c, job)
+	if offsiteErr != nil {
+		if code := offsiteFailureCode(offsiteErr); code != "" {
+			// 離機副本被判不可信／取不到：**零位元組交付**＋機器碼
+			h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
+				"download_failed reason=offsite_unavailable code="+string(code))
+			apierror.Respond(c, http.StatusConflict, code, nil)
+			return
+		}
+		h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
+			"download_failed reason=artifact_unreadable")
+		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
+		return
+	}
+
 	filename := fmt.Sprintf("audit-evidence-job-%d.zip", job.ID)
-	c.FileAttachment(job.ArtifactPath, filename)
+	c.FileAttachment(artifactPath, filename)
 	if c.Writer.Status() != http.StatusOK {
 		// 檔案缺失等交付失敗：對外已由 FileAttachment 寫出狀態，審計記實況
 		h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
@@ -157,6 +210,44 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	}
 	h.auditJob(c, model.ActionRead, model.StatusSuccess, &job.ID,
 		fmt.Sprintf("download job=%d sha256=%s size=%d", job.ID, job.ArtifactSHA256, job.ArtifactSize))
+}
+
+// OffsiteArtifactRetriever 證據包產物的離機取回面（消費者側窄介面）。
+//
+// 由 `offsite.Fetcher` 滿足；nil＝本部署未組裝離機子系統，下載路徑逐字維持原行為。
+type OffsiteArtifactRetriever interface {
+	Object(objectID uint) (*model.OffsiteObject, error)
+	Fetch(ctx context.Context, objectID uint) (*offsite.FetchedObject, error)
+}
+
+// SetOffsiteRetriever 接上離機取回面（組裝根）。
+func (h *AuditExportHandler) SetOffsiteRetriever(r OffsiteArtifactRetriever) { h.offsite = r }
+
+// resolveArtifact 產物的來源判定（來源判定判準套用於證據包）。
+//
+// **逾期語義不受影響**：本函式只在「已通過可下載判定」之後被呼叫——逾期者早已在
+// 上面回 410，即使遠端物件仍在。產品的下載窗口仍是 24 小時；遠端副本的角色是
+// 窗口內的耐久性（產物目錄未掛 volume，容器重建即消失）與組織的證據寄存。
+//
+// 回傳的 error 非 nil＝**不得交付**（不退回「盡力給本機那個壞掉的檔」）。
+func (h *AuditExportHandler) resolveArtifact(c *gin.Context, job *model.AuditExportJob) (string, error) {
+	info, statErr := os.Stat(job.ArtifactPath)
+	localOK := statErr == nil && (job.ArtifactSize == 0 || info.Size() == job.ArtifactSize)
+	if localOK || h.offsite == nil || job.OffsiteObjectID == nil {
+		return job.ArtifactPath, nil
+	}
+	fetched, err := h.offsite.Fetch(c.Request.Context(), *job.OffsiteObjectID)
+	if err != nil {
+		if errors.Is(err, offsite.ErrNoOffsiteCopy) && statErr == nil {
+			// 遠端沒有可取回的副本，但本機檔還在（只是大小對不上帳冊）：
+			// 交付本機那一份並在審計留痕——這是既有行為，不因離機而更差
+			log.Printf("[AuditExportJob] job=%d 本機產物大小與帳冊不符且無離機副本，仍以本機交付",
+				job.ID)
+			return job.ArtifactPath, nil
+		}
+		return "", err
+	}
+	return fetched.Path, nil
 }
 
 // auditJob job 端點的審計出口（發起／下載／拒絕共用同一字面量——

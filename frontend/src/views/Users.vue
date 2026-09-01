@@ -508,7 +508,7 @@
             :placeholder="$t('users.fullNamePlaceholder')"
           />
         </el-form-item>
-        <!-- 允許來源網段（source-ip-forensics）。
+        <!-- 允許來源網段（來源限定功能）。
              前端只做**格式層**的就近提示；正規化、有效涵蓋狀態與「你進不進得來」
              一律由判定端點回覆——前端自己解析 CIDR 必與強制點分歧，而分歧的那一側
              正是自鎖警告會說錯話的地方。
@@ -1038,7 +1038,7 @@ const menuPopperOptions = {
   ],
 }
 
-// —— 允許來源網段（source-ip-forensics）——
+// —— 允許來源網段（來源限定功能）——
 //
 // **判定權在後端**：本頁只做格式層的就近提示，`normalized`／`status`／`allowed`
 // 一律取自 `POST /users/source-policy/check`。自己解析 CIDR 的版本在

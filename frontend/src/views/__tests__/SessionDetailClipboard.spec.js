@@ -54,6 +54,13 @@ vi.mock('@/api/clipboardEvents', () => ({
   getClipboardEventContent: (...a) => getClipboardContentMock(...a),
 }))
 
+// 離機保管設定：本檔不驗離機面，mock 成「未設定」保持密封
+// （SessionDetail 於 admin 身分下會讀一次設定表以判斷 `''` 態要不要渲染）
+vi.mock('@/api/offsiteStorage', () => ({
+  getOffsiteSettings: vi.fn().mockResolvedValue({ configured: false }),
+  retryOffsiteObject: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({
     params: { id: 's-1' },

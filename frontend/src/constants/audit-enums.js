@@ -35,6 +35,14 @@ const ACTION_TAG_TYPES = {
   expire: 'info',
   revoke: 'danger',
   review: 'warning',
+  // 離機儲存的保管鏈事件（主體恆為系統）。upload／retention 是例行保管軌跡；
+  // integrity 是取回驗證不符、已拒絕交付（該物件轉不可信態）；profile 是設定世代
+  // 切換或停止離機（＝關掉一道證據外送機制）；cred_revoke 與其他 revoke 同色
+  offsite_upload: 'info',
+  offsite_retention: 'info',
+  offsite_integrity: 'danger',
+  offsite_profile: 'warning',
+  offsite_cred_revoke: 'danger',
 }
 
 export const AUDIT_ACTION_VALUES = Object.keys(ACTION_TAG_TYPES)
@@ -85,6 +93,9 @@ export const AUDIT_RESOURCE_VALUES = [
   // 單實例守衛（single-instance-guard）：系統主體寫入的守衛事件
   //（overridden／lost／regained）與管理者對快照端點的讀取列
   'instance_guard',
+  // 離機儲存：保管鏈事件（上傳、保留到期、取回驗證、設定世代、憑證撤銷）
+  // 與管理者對設定／佇列端點的操作列同歸此族
+  'offsite_storage',
   // 兜底哨兵：後端 `extractResource` 對未分類路徑的回傳值。**它會出現在審計列表
   // 與篩選下拉裡，且那是刻意的**——漏分類從此可計數、可篩選、可告警，
   // 而不是靜默冒充資產。此處若不補，介面會對這批列顯示裸機器碼
@@ -117,6 +128,8 @@ export const AUDIT_MECHANISM_VALUES = [
   // 無法解析。每個判定點遇此一律拒絕（不當成空清單放行），拒絕對外看起來
   // 與「來源不允許」相同——經本機制上報，營運端才在失效面板上看得見「政策壞了」
   'source_policy',
+  // 離機儲存的上傳與取回完整性：解除判準是「失敗態件數歸零」而非任一件成功
+  'offsite_upload',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -187,6 +200,11 @@ export const AUDIT_CAUSE_VALUES = [
   // 兩者對外同樣只回「來源不允許」，歸因只在此處與審計列
   'source_policy_unreadable',
   'source_policy_corrupt',
+  // 離機儲存三碼：上傳持久性失敗（重試達上限）、租約反覆到期（比失敗更早需要人看）、
+  // 取回時內容雜湊或大小不符（先驗後送，該物件轉不可信態）
+  'offsite_upload_failed',
+  'offsite_upload_stalled',
+  'offsite_integrity_mismatch',
 ]
 
 export const AUDIT_CAUSES = {}

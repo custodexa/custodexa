@@ -1,9 +1,13 @@
 package session
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +16,7 @@ import (
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/recorder"
 	"gorm.io/gorm"
 )
@@ -23,11 +28,65 @@ var (
 	ErrSessionHasNoRecording = errors.New("Session 沒有錄製檔案")
 )
 
+// OffsiteRetriever 離機取回面（消費者側窄介面）。
+//
+// 由 `offsite.Fetcher` 滿足；nil＝本部署未組裝離機子系統，來源判定退回
+// 「本機有就播、沒有就是既有錯誤」的原行為（零改動）。
+type OffsiteRetriever interface {
+	// Object 帳冊列（size／sha256／state 是來源判定的權威事實）
+	Object(objectID uint) (*model.OffsiteObject, error)
+	// Fetch 取回並驗證離機副本；驗證不符回 offsite.ErrIntegrityMismatch（零位元組交付）
+	Fetch(ctx context.Context, objectID uint) (*offsite.FetchedObject, error)
+}
+
+// RecordingSourceLocal／Offsite 錄影本體的來源（`RecordingMetadata.source`
+// 與審計 Details 的 `source`）。
+const (
+	RecordingSourceLocal   = "local"
+	RecordingSourceOffsite = "offsite"
+)
+
+// 退路原因（進審計 Details，不對外分類）。
+const (
+	// FallbackLocalMissing 本機 stat 失敗（檔案不在）
+	FallbackLocalMissing = "local_missing"
+	// FallbackLocalUnreadable 本機檔在但開不了（權限、I/O 錯）
+	FallbackLocalUnreadable = "local_unreadable"
+	// FallbackLocalTruncated 本機檔比帳冊記載的短＝截斷
+	FallbackLocalTruncated = "local_truncated"
+	// FallbackLocalDivergent 大小相同而整檔雜湊不符＝本機被改動
+	FallbackLocalDivergent = "local_divergent"
+)
+
+// ResolvedRecording 來源判定的結果。
+type ResolvedRecording struct {
+	// Path 可供交付的檔案路徑：本機錄影檔，或**已驗證**的離機暫存檔
+	Path string
+	// Source local／offsite
+	Source string
+	// Fallback 走離機的原因（空＝本機來源）
+	Fallback string
+	// Size 交付內容的大小（離機時取帳冊 size）
+	Size int64
+	// Name 對外的檔名（恆取自會話的 recording_path）。**不得用 Path 的 basename**：
+	// 離機來源時那是暫存檔名（物件 id），下載下來的檔案會失去可辨識性
+	Name string
+	// ModTime 供 ServeContent 的 Last-Modified
+	ModTime time.Time
+}
+
 // RecordingService 錄製檔案管理服務
 type RecordingService struct {
 	basePath string       // 錄製檔案基礎路徑
 	mu       sync.RWMutex // 保護並發存取
+	// offsite 離機取回面；nil＝未組裝
+	offsite OffsiteRetriever
+	// ledger 保留清理用的帳冊面；nil＝未組裝
+	ledger OffsiteRetentionLedger
 }
+
+// SetOffsiteRetriever 接上離機取回面（組裝根）。
+func (s *RecordingService) SetOffsiteRetriever(r OffsiteRetriever) { s.offsite = r }
 
 // NewRecordingService 創建錄製服務
 // NewRecordingService 創建錄製服務。
@@ -42,43 +101,146 @@ func NewRecordingService(basePath string) *RecordingService {
 	}
 }
 
-// GetRecordingBySessionID 根據 SessionID 獲取錄製檔案路徑
+// GetRecordingBySessionID 根據 SessionID 獲取可交付的錄製檔案路徑
+// （離機來源時為已驗證的暫存檔；來源與退路原因見 ResolveRecording）。
 func (s *RecordingService) GetRecordingBySessionID(sessionID uint) (filePath string, err error) {
+	res, err := s.ResolveRecording(sessionID, false)
+	if err != nil {
+		return "", err
+	}
+	return res.Path, nil
+}
+
+// ResolveRecording 來源判定。
+//
+// # 判準
+//
+//	本機 stat＋open 成功 ∧ 大小 ≥ 帳冊 size            → 本機
+//	  （圖形錄影的尾段使本機**合法地**比上傳版長，不是異常）
+//	本機大小 < 帳冊 size                                 → 離機，退路 local_truncated
+//	本機 stat 失敗／open 失敗                            → 離機，退路 local_missing／local_unreadable
+//	整檔路徑（verifyHash）大小相等而雜湊不符             → 離機，退路 local_divergent
+//	未離機且本機缺檔                                     → 既有錯誤（零改動）
+//
+// verifyHash 只在**整檔路徑**（證據包裝入、下載）為真：那些路徑本就逐位元組讀完
+// 整個檔案，順手算雜湊幾乎免費；串流播放不算——為了播一個 Range 去讀完整檔
+// 是把首位元組延遲換成一個不對稱的保證。
+func (s *RecordingService) ResolveRecording(sessionID uint, verifyHash bool) (ResolvedRecording, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// 查詢 Session
-	var session model.Session
-	result := database.DB.First(&session, sessionID)
+	var sess model.Session
+	result := database.DB.First(&sess, sessionID)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return "", ErrSessionNotFound
+			return ResolvedRecording{}, ErrSessionNotFound
 		}
-		return "", fmt.Errorf("查詢 Session 失敗: %w", result.Error)
+		return ResolvedRecording{}, fmt.Errorf("查詢 Session 失敗: %w", result.Error)
 	}
-
-	// 檢查是否有錄製檔案
-	if session.RecordingPath == "" {
-		return "", ErrSessionHasNoRecording
-	}
-
-	// 檢查檔案是否存在
-	if _, err := os.Stat(session.RecordingPath); os.IsNotExist(err) {
-		return "", ErrRecordingNotFound
-	}
-
-	return session.RecordingPath, nil
+	return s.resolveFor(&sess, verifyHash)
 }
 
-// GetRecordingStream 獲取錄製檔案的 Reader（用於串流播放）
+// resolveFor 對**已讀出的**會話列做來源判定。
+//
+// **不自己取鎖也不自己查庫**：GetRecordingMetadata 需要帶關聯的同一列，
+// 讓它把那一列傳進來即可——否則同一次呼叫要打兩趟一模一樣的查詢，
+// 而 RWMutex 的遞迴 RLock 在有寫者排隊時還會死鎖。呼叫端持鎖。
+func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (ResolvedRecording, error) {
+	if sess.RecordingPath == "" {
+		return ResolvedRecording{}, ErrSessionHasNoRecording
+	}
+
+	info, statErr := os.Stat(sess.RecordingPath)
+
+	// 未組裝離機子系統或本會話從未排入：逐字維持既有行為
+	// （錯誤映射沿 GetRecordingMetadata 的既有形態：不存在→ErrRecordingNotFound，
+	// 其餘 stat 錯誤→包裝上拋）
+	if s.offsite == nil || sess.OffsiteObjectID == nil {
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				return ResolvedRecording{}, ErrRecordingNotFound
+			}
+			return ResolvedRecording{}, fmt.Errorf("獲取檔案資訊失敗: %w", statErr)
+		}
+		return ResolvedRecording{Path: sess.RecordingPath, Source: RecordingSourceLocal,
+			Size: info.Size(), ModTime: info.ModTime(),
+			Name: filepath.Base(sess.RecordingPath)}, nil
+	}
+
+	fallback := ""
+	switch {
+	case statErr != nil:
+		fallback = FallbackLocalMissing
+		if !os.IsNotExist(statErr) {
+			fallback = FallbackLocalUnreadable
+		}
+	default:
+		if f, openErr := os.Open(sess.RecordingPath); openErr != nil {
+			fallback = FallbackLocalUnreadable
+		} else {
+			fallback = s.localAnomaly(f, info, *sess.OffsiteObjectID, verifyHash)
+			f.Close()
+		}
+	}
+	if fallback == "" {
+		return ResolvedRecording{Path: sess.RecordingPath, Source: RecordingSourceLocal,
+			Size: info.Size(), ModTime: info.ModTime(),
+			Name: filepath.Base(sess.RecordingPath)}, nil
+	}
+
+	fetched, err := s.offsite.Fetch(context.Background(), *sess.OffsiteObjectID)
+	if err != nil {
+		// 帳冊沒有可取回的副本時，對外仍收斂為既有的「錄影檔不存在」——
+		// 離機側的失敗細分只進審計與帳冊
+		if errors.Is(err, offsite.ErrNoOffsiteCopy) {
+			return ResolvedRecording{}, ErrRecordingNotFound
+		}
+		return ResolvedRecording{}, err
+	}
+	return ResolvedRecording{Path: fetched.Path, Source: RecordingSourceOffsite,
+		Fallback: fallback, Size: fetched.Size, ModTime: fetched.UploadedAt,
+		Name: filepath.Base(sess.RecordingPath)}, nil
+}
+
+// localAnomaly 本機檔異常的判定（回空字串＝本機可用）。
+func (s *RecordingService) localAnomaly(f *os.File, info os.FileInfo, objectID uint, verifyHash bool) string {
+	row, err := s.offsite.Object(objectID)
+	if err != nil {
+		// 帳冊讀不到：本機檔在且開得了就用本機——沒有理由因為旁路子系統的
+		// 讀取失敗而拒絕交付一個存在的錄影
+		log.Printf("[RecordingService] 讀取離機帳冊列失敗（object=%d，改用本機來源）: %v", objectID, err)
+		return ""
+	}
+	if row.SHA256 == "" || row.Size == 0 {
+		return "" // 尚未上傳成功：離機側沒有可比對的事實
+	}
+	if info.Size() < row.Size {
+		return FallbackLocalTruncated
+	}
+	if verifyHash && info.Size() == row.Size {
+		sum := sha256.New()
+		if _, err := io.Copy(sum, f); err != nil {
+			return FallbackLocalUnreadable
+		}
+		if hex.EncodeToString(sum.Sum(nil)) != row.SHA256 {
+			return FallbackLocalDivergent
+		}
+	}
+	return ""
+}
+
+// GetRecordingStream 獲取錄製檔案的 Reader（用於串流播放與證據包裝入）。
+//
+// **整檔路徑**：呼叫端逐位元組讀完，故來源判定順帶比對整檔雜湊
+// （大小相同而內容被改的本機檔會退到離機）。
 func (s *RecordingService) GetRecordingStream(sessionID uint) (io.ReadCloser, error) {
-	filePath, err := s.GetRecordingBySessionID(sessionID)
+	res, err := s.ResolveRecording(sessionID, true)
 	if err != nil {
 		return nil, err
 	}
 
 	// 開啟檔案
-	file, err := os.Open(filePath)
+	file, err := os.Open(res.Path)
 	if err != nil {
 		return nil, fmt.Errorf("開啟錄製檔案失敗: %w", err)
 	}
@@ -301,8 +463,27 @@ func (s *RecordingService) CleanupOldRecordings(retentionDays int) (deletedCount
 	return deletedCount, nil
 }
 
-// clearRecordingInDB 清空資料庫中的錄製資訊
+// clearRecordingInDB 清空資料庫中的錄製資訊。
+//
+// **已離機者另走帳冊到期處置**：本機檔剛被保留政策刪除，帳冊必須
+// 一併標記 `local_purged`（或 foreign 維持 foreign）並發保管鏈事件，否則會留下
+// 「本機檔已刪卻仍被 worker 領取」的孤兒列，且離機狀態欄永遠停在 uploaded。
+// **對遠端零呼叫**——遠端到期清理由部署方的 bucket lifecycle 承擔。
 func (s *RecordingService) clearRecordingInDB(filePath string) error {
+	if s.ledger != nil {
+		var sessions []model.Session
+		if err := database.DB.Where("recording_path = ? AND offsite_object_id IS NOT NULL",
+			filePath).Find(&sessions).Error; err != nil {
+			log.Printf("[RecordingRetention] 查詢已離機的過期會話失敗（%s）: %v", filePath, err)
+		}
+		for i := range sessions {
+			// markOffsitePurged 內含擁有表清欄（含離機狀態），成立即不必再走下面那句
+			if s.markOffsitePurged(&sessions[i]) {
+				continue
+			}
+		}
+	}
+
 	updates := map[string]interface{}{
 		"recording_path": "",
 		"recording_size": 0,
@@ -342,6 +523,9 @@ type RecordingMetadata struct {
 	Protocol  string    `json:"protocol"`
 	Username  string    `json:"username"`
 	AssetName string    `json:"asset_name,omitempty"`
+	// Source 本體來源 local／offsite。離機時 FileSize 取帳冊記載的
+	// 大小——本機檔可能已因保留政策清除或截斷，回報磁碟上那個數字會說謊
+	Source string `json:"source"`
 }
 
 // GetRecordingMetadata 獲取錄製元數據（含檔案資訊）
@@ -363,28 +547,22 @@ func (s *RecordingService) GetRecordingMetadata(sessionID uint) (*RecordingMetad
 		return nil, fmt.Errorf("查詢 Session 失敗: %w", result.Error)
 	}
 
-	// 檢查是否有錄製檔案
-	if session.RecordingPath == "" {
-		return nil, ErrSessionHasNoRecording
-	}
-
-	// 檢查檔案是否存在並獲取檔案資訊
-	fileInfo, err := os.Stat(session.RecordingPath)
+	// 來源判定共用同一列（不另打一趟查詢）
+	res, err := s.resolveFor(&session, false)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, ErrRecordingNotFound
-		}
-		return nil, fmt.Errorf("獲取檔案資訊失敗: %w", err)
+		return nil, err
 	}
 
-	// 組裝元數據
+	// 組裝元數據。**FilePath／FileSize 取來源判定的結果**：離機來源時磁碟上
+	// 那個檔案可能已被保留政策清除或截斷，回報它會說謊
 	metadata := &RecordingMetadata{
 		SessionID: session.ID,
-		FilePath:  session.RecordingPath,
-		FileSize:  fileInfo.Size(),
+		FilePath:  res.Path,
+		FileSize:  res.Size,
 		Duration:  session.Duration,
 		CreatedAt: session.StartTime,
 		Protocol:  string(session.Protocol),
+		Source:    res.Source,
 	}
 
 	// 添加用戶資訊

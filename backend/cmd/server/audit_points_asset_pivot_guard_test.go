@@ -152,6 +152,9 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-76": {pivotNotAsset, false, "worker 失權取消留痕：主體是匯出作業與申請者（details），與任何單一資產無關"},
 	"AP-77": {pivotNotAsset, false, "單實例守衛事件：主體是本實例與持鎖工作階段（details），系統列，與任何資產無關"},
 	"AP-78": {pivotNotAsset, false, "帳號自新來源位址登入的標記：主體是帳號與來源位址，登入本身不涉任何資產（建線點的同族告警才有資產，那一筆走 command_alerts 不走本表）"},
+	"AP-79": {pivotNotAsset, false, "離機保管鏈事件的交易內落地點：主體是儲存設定世代與帳冊物件（resource=offsite_storage／session／audit_export），" +
+		"擁有者是會話或匯出作業而非資產；錄影的資產維度由該會話列自身承擔，不在保管鏈事件上冒充主體鍵"},
+	"AP-80": {pivotNotAsset, false, "離機保管鏈事件的非交易落地點：與 AP-79 同判——上傳結果、租約回收、保留到期與完整性拒付的主體都是帳冊物件與其擁有者"},
 	"AP-06": {pivotNotAsset, false, "登入時偵測密碼不符政策，主體是使用者"},
 	"AP-07": {pivotNotAsset, false, "登入留痕"},
 	"AP-08": {pivotNotAsset, false, "token 更新留痕"},

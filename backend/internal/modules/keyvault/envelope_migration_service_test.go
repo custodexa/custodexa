@@ -31,7 +31,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}); err != nil {
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立

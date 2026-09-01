@@ -109,6 +109,8 @@ func TestCreateSession(t *testing.T) {
 			false,            // has_recording
 			"",               // recording_error
 			sqlmock.AnyArg(), // recording_started_at（回放時間原點；建檔時為 NULL）
+			sqlmock.AnyArg(), // offsite_object_id（離機帳冊指標；建檔時為 NULL）
+			"",               // offsite_status（離機狀態的顯示用快取；建檔時為空）
 			uint(0),          // account_id（帳號雙快照）
 			"",               // account_username
 			sqlmock.AnyArg(), // auth_provider_id（認證溯源；本地登入為 NULL）
