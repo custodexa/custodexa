@@ -27,7 +27,7 @@ import (
 type Lexicon string
 
 const (
-	// LexiconCause 審計失效原因碼（值域＝model.Cause* 常數，守衛比對）
+	// LexiconCause 稽核失效原因碼（值域＝model.Cause* 常數，守衛比對）
 	LexiconCause Lexicon = "cause"
 	// LexiconSeverity 告警等級（值域＝model.AlertSeverity* 常數，守衛比對）
 	LexiconSeverity Lexicon = "severity"

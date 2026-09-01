@@ -2,6 +2,25 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.1.1 — the upload worker starts when off-site storage is first configured (2026-09-01)
+
+No schema change. No migration runs.
+
+### Off-site storage
+
+- On a deployment that started without off-site storage configured, saving the
+  configuration for the first time now starts the upload worker immediately.
+  Before this fix the worker only started with the backend, so recordings queued
+  after the first save waited until the next restart. Confirming a storage
+  switch starts it the same way.
+- One follow-up is recorded: upload queue metrics registered at startup appear
+  after the next restart when the worker was started this way. Queue state on
+  the settings page is not affected.
+
+### Copy
+
+- Traditional Chinese wording pass across the interface.
+
 ## 1.1.0 — off-site evidence storage (2026-09-01)
 
 **This release changes the database schema.** One migration runs when the backend

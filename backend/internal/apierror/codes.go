@@ -17,7 +17,7 @@ var resourceZhLabels = map[string]string{
 	"user_group":         "使用者群組",
 	"session":            "Session",
 	"recording":          "錄製",
-	"audit_log":          "審計日誌",
+	"audit_log":          "稽核日誌",
 }
 
 // roleZhLabels is the allowlist + zh label for the {role} param of AUTH_ROLE_REQUIRED
@@ -222,14 +222,14 @@ var (
 // --- INTERNAL_* (generalized 5xx / service-unavailable; cause logged server-side) ---
 var (
 	CodeInternalLogin                    = register("INTERNAL_LOGIN", Descriptor{ZhFallback: "登入失敗"})
-	CodeInternalRefresh                  = register("INTERNAL_REFRESH", Descriptor{ZhFallback: "刷新失敗"})
+	CodeInternalRefresh                  = register("INTERNAL_REFRESH", Descriptor{ZhFallback: "重新整理失敗"})
 	CodeInternalUserInfoQuery            = register("INTERNAL_USER_INFO_QUERY", Descriptor{ZhFallback: "無法取得使用者資訊"})
 	CodeInternalChangePasswordTokenIssue = register("INTERNAL_CHANGE_PASSWORD_TOKEN_ISSUE", Descriptor{ZhFallback: "改密成功但換發 token 失敗，請重新登入"})
 	CodeInternalChangePassword           = register("INTERNAL_CHANGE_PASSWORD", Descriptor{ZhFallback: "修改密碼失敗"})
 	CodeChangePasswordUnavailable        = register("INTERNAL_CHANGE_PASSWORD_UNAVAILABLE", Descriptor{ZhFallback: "改密服務未啟用"})
 
 	CodeInternalUserQuery        = register("INTERNAL_USER_QUERY", Descriptor{ZhFallback: "查詢用戶失敗"})
-	CodeInternalUserCreate       = register("INTERNAL_USER_CREATE", Descriptor{ZhFallback: "創建用戶失敗"})
+	CodeInternalUserCreate       = register("INTERNAL_USER_CREATE", Descriptor{ZhFallback: "建立使用者失敗"})
 	CodeInternalUserUpdate       = register("INTERNAL_USER_UPDATE", Descriptor{ZhFallback: "更新用戶失敗"})
 	CodeInternalUserDelete       = register("INTERNAL_USER_DELETE", Descriptor{ZhFallback: "刪除用戶失敗"})
 	CodeInternalRoleAssign       = register("INTERNAL_ROLE_ASSIGN", Descriptor{ZhFallback: "分配角色失敗"})

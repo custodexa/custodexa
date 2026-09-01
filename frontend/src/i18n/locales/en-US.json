@@ -3856,10 +3856,10 @@
       "total": "Total"
     },
     "origin": {
-      "live": "live",
-      "backfill": "backfill"
+      "live": "New uploads",
+      "backfill": "Backfill"
     },
-    "oldestPending": "Oldest wait in the {origin} lane: {age}",
+    "oldestPending": "{origin}: oldest waiting {age}",
     "failuresTitle": "Upload failures",
     "failuresHint": "Items closest to their retention deadline come first, and the remaining days are shown on every page.",
     "column": {

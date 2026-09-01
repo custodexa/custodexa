@@ -3856,10 +3856,10 @@
       "total": "合計"
     },
     "origin": {
-      "live": "即時",
-      "backfill": "バックフィル"
+      "live": "新規アップロード",
+      "backfill": "補完アップロード"
     },
-    "oldestPending": "{origin}レーンの最長待ち {age}",
+    "oldestPending": "{origin}の最長待ち {age}",
     "failuresTitle": "アップロード失敗一覧",
     "failuresHint": "保持期限が近いものから並びます。残り日数はどのページでも表示されます。",
     "column": {

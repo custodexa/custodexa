@@ -55,7 +55,7 @@ var (
 		Descriptor{ZhFallback: "bucket 名稱不可為空"})
 	CodeValidationOffsiteEndpointInvalid = register("VALIDATION_OFFSITE_ENDPOINT_INVALID",
 		Descriptor{ZhFallback: "端點格式不正確，須為 http:// 或 https:// 起始且含主機名稱"})
-	// 端點內嵌的帳密／查詢字串會流入顯示、錯誤訊息與審計，故直接拒絕而非清洗
+	// 端點內嵌的帳密／查詢字串會流入顯示、錯誤訊息與稽核，故直接拒絕而非清洗
 	CodeValidationOffsiteEndpointHasSecrets = register("VALIDATION_OFFSITE_ENDPOINT_HAS_SECRETS",
 		Descriptor{ZhFallback: "端點不可包含帳號密碼、查詢字串或片段，請改填於憑證欄位"})
 	CodeValidationOffsiteRegionOrEndpointRequired = register("VALIDATION_OFFSITE_REGION_OR_ENDPOINT_REQUIRED",

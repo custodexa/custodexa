@@ -196,6 +196,9 @@ type OffsiteProfileService struct {
 	// ownerCaches 擁有表快取的批次寫回面（世代退役時與帳冊轉移同交易）。
 	// 空切片＝無擁有者模組接線（單測建構路徑），此時帳冊仍照常轉 foreign
 	ownerCaches []OwnerCacheMarker
+	// uploaderStarter 上傳 worker 的啟動回呼（組裝根注入，冪等）。
+	// nil＝未接線（單測建構路徑）＝寫入後不做任何額外動作
+	uploaderStarter func()
 
 	mu      sync.Mutex
 	clients map[uint]cachedClient
@@ -262,6 +265,29 @@ func (s *OffsiteProfileService) markOwnerCachesForeign(tx *gorm.DB, generationID
 		}
 	}
 	return nil
+}
+
+// SetUploaderStarter 注入上傳 worker 的啟動回呼（組裝時，worker 建構之後）。
+//
+// **存在的理由**：服務啟動時若沒有現行世代，上傳 worker 不會建 goroutine
+// （「未設定＝零 goroutine」的機械保證）。管理員其後於管理介面完成首次設定時，
+// 若沒有本回呼，新排入的證據會一路停在待上傳直到下次重啟才被撿走——
+// 而設定改由管理介面進行的前提正是「不需要重啟」。
+//
+// **回呼 SHALL 冪等**：worker 已在跑時為 no-op。每一次成功寫入都會呼叫它
+// （包含就地更新與世代切換），呼叫端不必先判斷「這次是不是從零到有」——
+// 那個判斷寫錯的形態是安靜的，而冪等的重複呼叫沒有代價。
+func (s *OffsiteProfileService) SetUploaderStarter(start func()) { s.uploaderStarter = start }
+
+// ensureUploaderRunning 於寫入**提交之後**確保上傳 worker 在跑。
+//
+// **必在鎖與交易之外呼叫**：worker 起手就去讀現行世代與帳冊，在交易提交前叫醒它，
+// 它讀到的仍是寫入前的狀態，而下一次喚醒要等到下一輪輪詢。
+func (s *OffsiteProfileService) ensureUploaderRunning() {
+	if s.uploaderStarter == nil {
+		return
+	}
+	s.uploaderStarter()
 }
 
 // SetClientFactoryForTest 覆寫 driver factory（僅測試）。
@@ -497,6 +523,10 @@ func (s *OffsiteProfileService) Save(ctx context.Context, in SettingsInput, acto
 	if err != nil {
 		return SaveResult{}, offsiteProfileWriteError(err)
 	}
+	// 「需確認」分支**什麼也沒寫**（現行世代原封不動），故不叫醒 worker
+	if !out.NeedsConfirmation {
+		s.ensureUploaderRunning()
+	}
 	return out, nil
 }
 
@@ -560,6 +590,7 @@ func (s *OffsiteProfileService) ConfirmGenerationSwitch(ctx context.Context, req
 	if err != nil {
 		return ProfileView{}, offsiteProfileWriteError(err)
 	}
+	s.ensureUploaderRunning()
 	return view, nil
 }
 

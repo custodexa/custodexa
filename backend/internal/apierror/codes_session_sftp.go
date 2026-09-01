@@ -96,7 +96,7 @@ var (
 	CodeInternalSessionTerminate   = register("INTERNAL_SESSION_TERMINATE", Descriptor{ZhFallback: "終止 Session 失敗"})
 	CodeInternalSessionStatistics  = register("INTERNAL_SESSION_STATISTICS", Descriptor{ZhFallback: "查詢統計資訊失敗"})
 
-	// --- session command（指令審計）---
+	// --- session command（指令稽核）---
 
 	CodeInternalSessionCommandQuery  = register("INTERNAL_SESSION_COMMAND_QUERY", Descriptor{ZhFallback: "查詢會話指令失敗"})
 	CodeInternalSessionCommandSearch = register("INTERNAL_SESSION_COMMAND_SEARCH", Descriptor{ZhFallback: "查詢指令記錄失敗"})
