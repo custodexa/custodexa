@@ -63,6 +63,10 @@ var sensitiveQueryFragments = []string{
 	"privatekey",
 	"secret",
 	"token",
+	// jwt 是憑證專屬語彙：沒有非憑證的參數名會含這三個字母，故用片段而非
+	// exact key——`jwt_assertion` 這類命名也一併涵蓋。`token` 片段涵蓋不到它，
+	// 而它承載的是與 `?token=` 同一張長效登入憑證
+	"jwt",
 	"credential",
 	"apikey",
 	"otp",

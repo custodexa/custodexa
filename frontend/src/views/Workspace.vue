@@ -66,9 +66,52 @@
               v-for="item in section.assets"
               :key="item.id"
               class="asset-item"
-              @click="openTab(item)"
+              :class="{ 'is-gated': entryState(item) !== 'open' }"
+              :data-access-state="entryState(item)"
+              @click="onAssetClick(item)"
             >
-              <span class="asset-item-name">{{ item.name }}</span>
+              <!-- 名稱是選錯資產的唯一防線：截斷時仍要能以滑鼠取得全名 -->
+              <span
+                class="asset-item-name"
+                :title="item.name"
+              >{{ item.name }}</span>
+              <!-- 需申請／審核中：整列與主控台鈕都不發簽發，指引回資產頁；
+                   本頁是純連線面，不內嵌申請流 -->
+              <el-tooltip
+                v-if="entryState(item) !== 'open'"
+                :content="entryTooltip(item)"
+                placement="top"
+              >
+                <el-icon class="asset-item-gate">
+                  <Lock v-if="entryState(item) === 'locked'" />
+                  <Clock v-else />
+                </el-icon>
+              </el-tooltip>
+              <!-- 查詢主控台入口：只對三種 SQL 方言出現，
+                   與同列的命令列入口同一組存取狀態判準。
+                   側欄只有 220 px，入口用文字會把資產名擠到剩兩三個字元
+                   （日文最甚），所以走與分頁型別同一顆圖示，名稱由 tooltip 給 -->
+              <el-tooltip
+                v-if="isDBConsoleProtocol(item.protocol)"
+                :content="entryState(item) === 'open'
+                  ? $t('workspace.openConsole')
+                  : entryTooltip(item)"
+                placement="top"
+                :enterable="false"
+              >
+                <span class="asset-item-console">
+                  <el-link
+                    type="primary"
+                    :underline="false"
+                    :disabled="entryState(item) !== 'open'"
+                    :aria-label="$t('workspace.console')"
+                    data-test="console-entry"
+                    @click.stop="openConsoleTab(item)"
+                  >
+                    <el-icon><Database /></el-icon>
+                  </el-link>
+                </span>
+              </el-tooltip>
               <el-tag
                 size="small"
                 :type="protocolTagType(item.protocol)"
@@ -105,6 +148,16 @@
                 :class="{ 'tab-disconnected': isDisconnected(tab) }"
                 @contextmenu.prevent="openTabMenu($event, tab.key)"
               >
+                <!-- 同一個資產可同時開命令列與主控台，標題文字相同：
+                     分頁型別要靠圖示分辨 -->
+                <el-tooltip
+                  v-if="tab.kind === 'console'"
+                  :content="$t('workspace.consoleTabTip')"
+                  placement="bottom"
+                  :enterable="false"
+                >
+                  <el-icon class="tab-kind-icon"><Database /></el-icon>
+                </el-tooltip>
                 {{ isDisconnected(tab) ? $t('workspace.tabDisconnected', { label: tabLabel(tab) }) : tabLabel(tab) }}
               </span>
             </template>
@@ -222,9 +275,26 @@
             class="tab-panel"
           >
             <TerminalWatermark />
+            <!-- 查詢主控台：與同資產的命令列分頁是兩種載體，先於協議判斷分流 -->
+            <DbConsole
+              v-if="tab.kind === 'console'"
+              :asset-id="tab.assetId"
+              :account-id="tab.accountId"
+              :asset-name="tab.name"
+              :allowed-databases="tab.allowedDatabases"
+              :previous-session-id="tab.previousSessionId"
+              :pending-event-id="tab.pendingEventId"
+              :pending-sql="tab.pendingSql"
+              :initial-sql="tab.sql"
+              @status-change="tab.status = $event"
+              @session-id="tab.sessionId = $event"
+              @sql-change="tab.sql = $event"
+              @pending-change="onConsolePending(tab, $event)"
+              @unsettled-change="tab.unsettled = $event"
+            />
             <!-- 文字終端類（SSH 與資料庫 CLI，database-protocol）共用 xterm 終端與審計鏈；
                  檔案管理/系統監控為 SSH 專屬（SFTP 與 /proc 指標） -->
-            <template v-if="isTextTerminal(tab.protocol)">
+            <template v-else-if="isTextTerminal(tab.protocol)">
               <SshTerminal
                 :ref="(el) => setTerminalRef(tab.key, el)"
                 :asset-id="tab.assetId"
@@ -335,11 +405,12 @@ import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage, t } from '@/i18n'
 // 工具列 icon 與側欄同取 lucide-vue-next，維持全站 icon 體系一致
-import { Share2, FolderOpen, Activity, FileCode, Upload, Download } from 'lucide-vue-next'
+import { Share2, FolderOpen, Activity, FileCode, Upload, Download, Database, Lock, Clock } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import Sortable from 'sortablejs'
 import SshTerminal from '@/components/SshTerminal.vue'
+import DbConsole from '@/components/DbConsole/DbConsole.vue'
 import K8sPodSelector from '@/components/K8sPodSelector.vue'
 import AccountSelector from '@/components/AccountSelector.vue'
 import GuacamoleClient from '@/components/GuacamoleClient.vue'
@@ -352,8 +423,11 @@ import { getAssetList, getAsset, uploadK8sFile, downloadK8sFile } from '@/api/as
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { resolveApiError } from '@/api/error'
 import { moveItem } from '@/utils/move-item'
-import { isTextTerminal, protocolTagType } from '@/utils/protocol'
+import { isTextTerminal, isDBConsoleProtocol, protocolTagType } from '@/utils/protocol'
 import { closeOthers, closeLeft, closeRight, closeAll } from '@/utils/tab-close'
+import { assetEntryState } from '@/utils/asset-access'
+import { confirmDestructive } from '@/utils/confirm'
+import { useRoles } from '@/composables/useRoles'
 
 const SIDEBAR_COLLAPSED_KEY = 'workspace-sidebar-collapsed'
 
@@ -369,10 +443,24 @@ const tabs = ref([])
 const activeKey = ref('')
 let tabSeq = 0
 
-// 目前啟用的文字終端會話籤（頁籤列工具操作對象）
+// 目前啟用的文字終端會話籤（頁籤列工具操作對象）。
+// 主控台分頁的協議雖同屬文字終端類，但它沒有 xterm 載體，
+// 分享／片段／檔案／指標四個工具對它一律不適用——排除即自然隱藏
 const activeTermTab = computed(() =>
-  tabs.value.find((t) => t.key === activeKey.value && isTextTerminal(t.protocol)) || null
+  tabs.value.find(
+    (t) => t.key === activeKey.value && t.kind !== 'console' && isTextTerminal(t.protocol)
+  ) || null
 )
+
+// 側欄的存取狀態分化：命令列與主控台兩個入口共用同一判準，不單做一邊
+const { isPrivileged } = useRoles()
+
+const entryState = (asset) => assetEntryState(asset, { isPrivileged: isPrivileged.value })
+
+const entryTooltip = (asset) =>
+  entryState(asset) === 'pending'
+    ? t('workspace.accessPendingTip')
+    : t('workspace.accessLockedTip')
 
 const filteredAssets = computed(() => {
   const term = assetFilter.value.trim().toLowerCase()
@@ -433,9 +521,17 @@ function onGlobalKeydown(e) {
 function menuReconnect() {
   const tab = tabs.value.find((t) => t.key === tabMenu.value.key)
   if (tab) {
-    // epoch 遞增強制面板 remount 重新撥接
+    // epoch 遞增強制面板 remount 重新撥接。
+    // 主控台另交還上一場會話：新面板首則要帶著它去問未收束單位的下場
     tabs.value = tabs.value.map((t) =>
-      t.key === tab.key ? { ...t, epoch: (t.epoch || 0) + 1, status: 'connecting' } : t
+      t.key === tab.key
+        ? {
+          ...t,
+          epoch: (t.epoch || 0) + 1,
+          status: 'connecting',
+          previousSessionId: t.kind === 'console' ? t.sessionId : t.previousSessionId
+        }
+        : t
     )
   }
   hideTabMenu()
@@ -451,10 +547,11 @@ function menuDuplicate() {
     } else {
       // 沿用原分頁的帳號：再問一次帳號等於把「複製分頁」降級成「重新開啟」
       createTab(
-        asset,
+        { ...asset, allowed_databases: tab.allowedDatabases },
         null,
         tab.accountId ? { id: tab.accountId, username: tab.accountUsername } : null,
-        tab.accountPicked
+        tab.accountPicked,
+        tab.kind
       )
     }
   }
@@ -466,10 +563,36 @@ function menuClose() {
   hideTabMenu()
 }
 
+// 關閉會結束會話。主控台分頁若有語句還在跑、或交易開著沒收束，
+// 直接關掉就把「這筆到底生效了沒」丟給使用者自己猜——先問，並把找回路徑講明
+function needsCloseConfirm(tab) {
+  return tab.kind === 'console' && tab.unsettled === true
+}
+
+function confirmClosing(closing, commit) {
+  const unsettled = closing.filter(needsCloseConfirm)
+  if (!unsettled.length) {
+    // 無未收束狀態：維持既有的「關即關」，不多一道確認
+    commit()
+    return
+  }
+  confirmDestructive(
+    t('workspace.closeUnsettledMessage', { n: unsettled.length }),
+    t('workspace.closeUnsettledTitle'),
+    { confirmButtonText: t('workspace.closeUnsettledConfirm') }
+  )
+    .then(commit)
+    .catch(() => { /* 取消：分頁與會話原樣保留 */ })
+}
+
 function applyCloseResult({ tabs: nextTabs, activeKey: nextActive }) {
-  tabs.value = nextTabs
-  activeKey.value = nextActive
+  const keep = new Set(nextTabs.map((t) => t.key))
+  const closing = tabs.value.filter((t) => !keep.has(t.key))
   hideTabMenu()
+  confirmClosing(closing, () => {
+    tabs.value = nextTabs
+    activeKey.value = nextActive
+  })
 }
 
 function menuCloseOthers() {
@@ -568,18 +691,33 @@ const pendingK8sAsset = ref(null)
 const accountSelectorVisible = ref(false)
 const pendingAccountAsset = ref(null)
 const pendingAccounts = ref([])
+// 選擇器是全域單例，開哪一種分頁的意圖必須跟著 pending 槽位一起保存
+const pendingAccountKind = ref('terminal')
 // latest-request-wins（專案慣例）**只套在選擇器的單一 pending 槽位**：
 // 連點兩個多帳號資產時，先到者若補寫 pendingAccountAsset/pendingAccounts，
 // 而 AccountSelector 僅在 modelValue false→true 才預選，就會拿 A 的帳號
 // 對 B 發簽發。開籤本身不受此限——連開三個分頁是正常操作，不是競態
 let accountSelectorSeq = 0
 
-async function openTab(asset) {
+// 側欄整列 click：受存取狀態分化約束，鎖定／審核中一律不發簽發
+function onAssetClick(asset) {
+  if (entryState(asset) !== 'open') return
+  openTab(asset)
+}
+
+// 主控台入口：與整列 click 同判準，帳號分流也走同一條路
+function openConsoleTab(asset) {
+  if (entryState(asset) !== 'open') return
+  openTab(asset, 'console')
+}
+
+async function openTab(asset, kind = 'terminal') {
   if (asset.protocol === 'k8s') {
     pendingK8sAsset.value = asset
     podSelectorVisible.value = true
     return
   }
+  pendingAccountKind.value = kind
   const seq = ++accountSelectorSeq
   let accounts = []
   try {
@@ -591,7 +729,7 @@ async function openTab(asset) {
     // 自己是以預設帳號（通常是特權帳號）連上的，故明示後照常建線
     console.warn('[Workspace] 載入資產帳號失敗，改以預設帳號連線:', err)
     ElMessage.warning(t('accountSelector.fallbackDefault'))
-    createTab(asset)
+    createTab(asset, null, null, false, kind)
     return
   }
   if (accounts.length > 1) {
@@ -603,13 +741,13 @@ async function openTab(asset) {
     return
   }
   // 零帳號（原本即無憑證的資產）或單一有效帳號：直連不打擾
-  createTab(asset, null, accounts[0] || null)
+  createTab(asset, null, accounts[0] || null, false, kind)
 }
 
 // picked＝使用者實際在選擇器裡挑過帳號（僅影響分頁標題是否附 @帳號：
 // migration 後幾乎每個資產都有 default account，無條件附加會讓所有標題
 // 變成 `web-01@root`，反而稀釋了「這個分頁用的不是預設身分」的訊號）
-function createTab(asset, k8s, account, picked = false) {
+function createTab(asset, k8s, account, picked = false, kind = 'terminal') {
   tabSeq += 1
   const key = `tab-${tabSeq}`
   // 同 pod 重複開：計序號以區分分頁
@@ -642,7 +780,18 @@ function createTab(asset, k8s, account, picked = false) {
       k8sPod: k8s ? k8s.pod : '',
       k8sContainer: k8s ? k8s.container : '',
       k8sMode: k8s ? k8s.mode : '',
-      k8sDupIdx: dupIdx
+      k8sDupIdx: dupIdx,
+      // 分頁型別：'terminal'（xterm 載體）或 'console'（查詢主控台）
+      kind,
+      // 允許清單隨資產列一起帶進來——主控台靠它分辨「目標端沒有庫」
+      // 與「清單與目標端無交集」兩種空樹
+      allowedDatabases: [...(asset.allowed_databases || [])],
+      // 主控台分頁狀態：編輯器文字、未收束的單位、上一場會話（重連時交還）
+      sql: '',
+      pendingEventId: '',
+      pendingSql: '',
+      previousSessionId: null,
+      unsettled: false
     }
   ]
   activeKey.value = key
@@ -675,7 +824,7 @@ function onPodSelected(sel) {
 
 function onAccountSelected(account) {
   if (pendingAccountAsset.value) {
-    createTab(pendingAccountAsset.value, null, account, true)
+    createTab(pendingAccountAsset.value, null, account, true, pendingAccountKind.value)
     pendingAccountAsset.value = null
     pendingAccounts.value = []
   }
@@ -781,13 +930,23 @@ async function triggerK8sDownload() {
 
 function closeTab(key) {
   const index = tabs.value.findIndex((t) => t.key === key)
-  tabs.value = tabs.value.filter((t) => t.key !== key)
+  if (index < 0) return
+  const target = tabs.value[index]
+  confirmClosing([target], () => {
+    tabs.value = tabs.value.filter((t) => t.key !== key)
 
-  // 關閉目前頁籤：切到鄰近頁籤
-  if (activeKey.value === key && tabs.value.length) {
-    const next = tabs.value[Math.min(index, tabs.value.length - 1)]
-    activeKey.value = next.key
-  }
+    // 關閉目前頁籤：切到鄰近頁籤
+    if (activeKey.value === key && tabs.value.length) {
+      const next = tabs.value[Math.min(index, tabs.value.length - 1)]
+      activeKey.value = next.key
+    }
+  })
+}
+
+// 未收束的單位存回分頁狀態：面板 remount（重連）後要靠它回頭問結果
+function onConsolePending(tab, payload) {
+  tab.pendingEventId = payload?.eventId || ''
+  tab.pendingSql = payload?.sql || ''
 }
 
 // 斷線/錯誤的籤標灰但保留：頁內重連，不自動關籤——自動關籤會一併帶走重連入口與錯誤訊息
@@ -805,7 +964,7 @@ function openSystem() {
 }
 
 // 測試掛點：頁籤邏輯不依賴 DOM 互動即可驅動
-defineExpose({ openTab, closeTab, tabs, activeKey })
+defineExpose({ openTab, openConsoleTab, closeTab, tabs, activeKey, entryState })
 </script>
 
 <style scoped>
@@ -871,7 +1030,9 @@ defineExpose({ openTab, closeTab, tabs, activeKey })
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 220px;
+  /* 名稱、狀態圖示、主控台入口、協議 chip 四段共用同一列；
+     220 px 在日文下連 6 個字元的資產名都留不住 */
+  width: 240px;
   flex-shrink: 0;
   padding: 10px;
   background: var(--ot-bg-surface);
@@ -899,10 +1060,36 @@ defineExpose({ openTab, closeTab, tabs, activeKey })
 }
 
 .asset-item-name {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 需申請／審核中：整列不是連線入口，游標不得暗示可點 */
+.asset-item.is-gated {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.asset-item-gate {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.asset-item-console {
+  flex-shrink: 0;
+  display: inline-flex;
+  font-size: 13px;
+}
+
+/* 分頁型別圖示：與標題同列，不佔第二行 */
+.tab-kind-icon {
+  margin-right: 4px;
+  vertical-align: -2px;
 }
 
 .asset-empty {

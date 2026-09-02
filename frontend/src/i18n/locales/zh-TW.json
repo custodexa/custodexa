@@ -116,6 +116,7 @@
     "offsiteStorage": "離機儲存"
   },
   "login": {
+    "bannerRegionLabel": "登入告示",
     "usernamePlaceholder": "使用者名稱",
     "passwordPlaceholder": "密碼",
     "loginButton": "登入",
@@ -175,8 +176,8 @@
       "oidc_provider_error": "您可能取消了授權，或提供者拒絕了這次登入。可重新發起再試一次。",
       "oidc_flow_invalid": "登入連結只能使用一次且有時效，請重新發起登入。"
     },
-    "insecureTransportTitle": "登入狀態沒有保存下來",
-    "insecureTransportBody": "這個網站目前用 http 開啟，系統設定卻是只在 https 連線保存登入狀態，所以每隔約 15 分鐘就得重新登入。請把這件事告訴系統管理員，管理員登入後會在「安全政策」頁看到處理方式。"
+    "insecureTransportTitle": "安全提示：登入狀態不會保存",
+    "insecureTransportBody": "使用 http 連線，將不保存登入狀態（15 分鐘需重新登入）"
   },
   "api": {
     "requestFailed": "請求失敗",
@@ -313,6 +314,7 @@
       "recording_text": "文字錄影",
       "recording_graphics": "圖形錄影",
       "session_record": "會話記錄",
+      "command_blocking": "指令阻斷比對器",
       "kek_retirement": "金鑰退役收斂",
       "aad_residue": "AAD 密文殘餘",
       "checkpoint_anchor": "檢查點離機備份",
@@ -337,6 +339,8 @@
       "audit_write_fallback_file": "稽核批次寫入失敗，已降級至檔案",
       "audit_write_batch_dropped": "稽核批次寫入失敗，檔案降級已關閉、批次丟棄",
       "audit_write_sync_refused": "同步稽核寫入失敗，該次調閱已拒絕（內容未交付）",
+      "command_audit_write_refused": "同步語句紀錄寫入失敗，該語句已拒絕執行",
+      "command_blocker_unavailable": "指令阻斷比對器不可用，該語句已拒絕執行",
       "syslog_connect_failed": "syslog 轉發連線失敗",
       "syslog_buffer_overflow": "syslog 轉發緩衝溢出",
       "kek_retirement_backlog": "KEK 退役收尾未收斂",
@@ -443,6 +447,34 @@
     },
     "commandAlertReason": {
       "audit_degraded_span": "這段連線出現連續無法還原的輪次（降級區間）。"
+    },
+    "resultStatus": {
+      "running": "進行中",
+      "ok": "成功",
+      "error": "失敗",
+      "partial": "部分生效",
+      "blocked": "已阻斷",
+      "cancelled": "已取消",
+      "timeout": "逾時",
+      "effect_unknown": "結果未知"
+    },
+    "resultReason": {
+      "matcher_hit": "命中阻斷規則",
+      "matcher_unavailable": "阻斷比對器不可用",
+      "error_after_results": "已有語句完成後才發生錯誤",
+      "cancel_confirmed": "目標端確認取消",
+      "batch_stopped": "前一批次失敗，本批次未送出",
+      "timeout_confirmed": "逾時且目標端確認取消",
+      "cancel_unconfirmed": "取消未獲目標端確認",
+      "timeout_unconfirmed": "逾時未獲目標端確認",
+      "connection_lost": "送出後連線中斷",
+      "cell_truncated": "欄位內容超過上限而截斷"
+    },
+    "txState": {
+      "none": "不在交易內",
+      "active": "交易進行中",
+      "failed": "交易失敗",
+      "unknown": "無法判定"
     }
   },
   "policyValue": {
@@ -462,6 +494,10 @@
       "login_lock": {
         "title": "登入與鎖定",
         "hint": "連續登入失敗的帳號鎖定（PCI 8.3.4）"
+      },
+      "login_banner": {
+        "title": "登入告示",
+        "hint": "登入頁在輸入帳號密碼前顯示的文字"
       },
       "password": {
         "title": "密碼政策",
@@ -731,7 +767,18 @@
     "pendingInfoTitle": "申請審核中",
     "viewMyRequests": "檢視我的申請",
     "inheritPolicy": "跟隨全域設定",
-    "inheritPolicyWithCurrent": "跟隨全域設定（目前：{value}）"
+    "inheritPolicyWithCurrent": "跟隨全域設定（目前：{value}）",
+    "allowedDatabases": "允許的資料庫",
+    "allowedDatabasesPlaceholder": "留空＝不限制",
+    "allowedDatabasesScopeHint": "只限制查詢主控台的執行目標；命令列連線不受此欄影響。",
+    "allowedDatabasesCaseHint": {
+      "mysql": "名稱以目標端目錄顯示的為準；MySQL 是否區分大小寫取決於伺服器設定。",
+      "postgres": "名稱以目標端目錄顯示的為準；PostgreSQL 未加引號建立的識別字會折為小寫。",
+      "mssql": "名稱以目標端目錄顯示的為準；SQL Server 的比對依伺服器定序，目錄保留建立時的大小寫。"
+    },
+    "allowedDatabasesClearTitle": "切換協議將清空允許清單",
+    "allowedDatabasesClearConfirm": "此資產目前設有 {n} 項允許的資料庫。改為其他協議後這份清單會被清空，改回資料庫協議時不會恢復。",
+    "allowedDatabasesClearOk": "清空並儲存"
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄",
@@ -760,7 +807,8 @@
     "emptyActiveHint": "所有使用者均已離線",
     "emptyHistoryTitle": "沒有符合的歷史記錄",
     "emptyHistoryHint": "請調整篩選條件或等待有連線關閉後再查詢",
-    "accountColumn": "帳號"
+    "accountColumn": "帳號",
+    "consoleBadge": "主控台"
   },
   "sessionDetail": {
     "title": "連線詳情",
@@ -783,6 +831,7 @@
     "unsupportedSubtitle": "{protocol} 協議暫不支援線上回放",
     "commandsTitle": "指令記錄",
     "commandsNote": "重組自按鍵流，以錄影回放為準",
+    "consoleCommandsNote": "語句於送出時登記，非重組自按鍵流",
     "commandCount": "共 {n} 條",
     "seqColumn": "序號",
     "noRecordingContent": "此連線沒有錄影內容",
@@ -823,7 +872,17 @@
     "clipboardDecryptButton": "解密調閱",
     "clipboardLockedHint": "內容以加密方式留存。按「解密調閱」才會解密顯示，並留下一筆調閱紀錄。",
     "clipboardAccessLogged": "本次調閱已留存紀錄（{time}）",
-    "offsiteStatus": "離機保存"
+    "offsiteStatus": "離機保存",
+    "consoleRecordingNote": "本錄影為語句轉錄，不含結果資料；錯誤訊息可能含資料片段。",
+    "targetDatabaseColumn": "目標資料庫",
+    "resultStatusColumn": "結果狀態",
+    "resultReasonColumn": "原因",
+    "resultRowsColumn": "列數",
+    "durationColumn": "耗時",
+    "durationMs": "{n} 毫秒",
+    "eventIdColumn": "事件識別",
+    "resultUnsettled": "結果未知（未回填）",
+    "rowsAffected": "影響 {n} 列"
   },
   "myConnections": {
     "headerDesc": "檢視自己的連線紀錄",
@@ -897,7 +956,7 @@
     "integrityRangeRequired": "請選擇驗證日期範圍"
   },
   "commands": {
-    "headerDesc": "跨連線搜尋 SSH 指令記錄（重組自按鍵流，以錄影回放為準）",
+    "headerDesc": "跨連線搜尋指令與語句記錄。命令列的內容重組自按鍵流，以錄影回放為準；查詢主控台的語句於送出時登記。",
     "keyword": "關鍵字",
     "keywordPlaceholder": "搜尋指令內容",
     "commandColumn": "指令",
@@ -917,7 +976,20 @@
       "bannerAtLeast": "此區間至少有 {n} 筆無法還原的輪次（已清點最近 {limit} 筆）：它們沒有指令文字，關鍵字搜尋不會涵蓋它們。",
       "bannerUnknown": "此區間可能有無法還原的輪次：那些輪次沒有指令文字，關鍵字搜尋一律不會涵蓋。",
       "bannerClear": "清除關鍵字，檢視全部輪次"
-    }
+    },
+    "sourceFilter": "來源",
+    "source": {
+      "console": "查詢主控台",
+      "cli": "命令列"
+    },
+    "targetDatabaseFilter": "目標資料庫",
+    "targetDatabasePlaceholder": "資料庫名稱",
+    "targetDatabaseColumn": "目標資料庫",
+    "resultStatusColumn": "結果狀態",
+    "resultStatusFilter": "結果狀態",
+    "errorCodeFilter": "錯誤碼",
+    "errorCodePlaceholder": "目標端錯誤碼",
+    "errorCodeColumn": "錯誤碼"
   },
   "alerts": {
     "title": "指令告警",
@@ -1068,7 +1140,124 @@
     "downloadPrompt": "要從 {pod}/{container} 下載哪個檔案?",
     "downloadTitle": "下載檔案",
     "downloaded": "已下載 {name}",
-    "downloadFailed": "下載失敗（檔案不存在或無權限）"
+    "downloadFailed": "下載失敗（檔案不存在或無權限）",
+    "console": "主控台",
+    "openConsole": "開啟查詢主控台",
+    "consoleTabTip": "查詢主控台連線",
+    "accessLockedTip": "這台主機需要申請後才能連線，請至「我的資產」提出申請",
+    "accessPendingTip": "連線申請審核中，核准後即可在此連線",
+    "closeUnsettledTitle": "關閉分頁將結束連線",
+    "closeUnsettledMessage": "有 {n} 個主控台分頁存在結果未知的語句或未提交的交易。關閉即結束連線；已送出的語句都已留下稽核紀錄。",
+    "closeUnsettledConfirm": "關閉分頁"
+  },
+  "dbConsole": {
+    "connecting": "正在建立連線...",
+    "errorTitle": "連線失敗",
+    "disconnectedTitle": "連線已中斷",
+    "reconnect": "重新連線",
+    "reconnectedTitle": "已重新連線為新會話",
+    "reconnectedHint": "先前結果已清空，編輯器內容保留。",
+    "disconnected": "與資料庫的連線已結束",
+    "tokenFailed": "無法取得連線授權",
+    "connectFailed": "無法建立連線，請確認資產設定與您的權限",
+    "databasePlaceholder": "選擇資料庫",
+    "closed": {
+      "target_closed": "目標資料庫關閉了這條連線",
+      "slow_consumer": "畫面接收結果的速度跟不上，連線已結束",
+      "idle_timeout": "閒置過久，連線已結束",
+      "max_duration": "已達連線時長上限，連線已結束",
+      "terminated": "這條連線已被終止（可能來自管理端、授權撤銷或資產停用）",
+      "client_gone": "連線已關閉"
+    },
+    "export": "匯出 CSV",
+    "exportTip": "匯出目前檢視的結果集。內容即畫面所見的結果（受回傳列數上限），不會重新執行查詢。",
+    "exportEscapeNote": "以 = + - {'@'} Tab 或 CR 開頭的文字欄位，匯出時會前置單引號以防試算表公式注入；純數值不受影響。",
+    "exportDisabled": {
+      "noResult": "目前沒有可匯出的結果",
+      "sessionEnded": "連線已結束，結果快取已釋放",
+      "notLatest": "只有最近一次執行的結果可匯出",
+      "policy": "目前政策不允許匯出。管理者可於「存取管控」的「檔案自資產下載」開啟。"
+    },
+    "exportFailed": "匯出失敗",
+    "restricted": {
+      "database_not_allowed": "目前的資料庫不在此資產的允許清單內",
+      "database_drift_denied": "語句把連線切到了允許清單外的資料庫"
+    },
+    "restrictedHint": "在此狀態下送出的語句一律會被拒絕。請自上方下拉選擇允許清單內的資料庫。",
+    "tx": {
+      "active": "交易進行中（尚未提交）",
+      "failed": "交易處於失敗狀態",
+      "failedMssql": "交易已不可提交",
+      "failedHint": "請自行執行 ROLLBACK 後再繼續；系統不會替您送出這條語句。"
+    },
+    "resendConfirmTitle": "確認重新送出",
+    "resendConfirmMessage": "上一筆相同原文的執行結果未知，重送可能讓同一個效果發生兩次。該筆的結果已留在稽核紀錄。",
+    "resendConfirmOk": "仍要送出",
+    "switchConfirmTitle": "確認切換資料庫",
+    "switchConfirmMessage": "切換到 {database} 會以新的連線重新建立，目前的連線將關閉。",
+    "switchConfirmMessageTx": "切換到 {database} 會以新的連線重新建立，尚未提交的交易將隨舊連線消失。",
+    "switchConfirmOk": "切換",
+    "editor": {
+      "run": "執行",
+      "runSelection": "執行選取",
+      "runCursor": "執行游標語句",
+      "cancel": "取消執行",
+      "shortcutHint": "Ctrl / Cmd + Enter 執行全部",
+      "placeholder": "在此輸入 SQL",
+      "batchHint": "要分批執行，請把 GO 單獨放一行；GO 之前的語句是一個批次。分號不會分批。",
+      "targetCode": "目標端錯誤碼：{code}",
+      "statementFailed": "這筆語句沒有執行成功"
+    },
+    "tree": {
+      "filterPlaceholder": "篩選已載入的節點",
+      "unconnectableTip": "目錄看得到這個資料庫，但此帳號目前連不上",
+      "switchTo": "切換",
+      "truncated": "節點過多，只顯示前 {limit} 筆",
+      "view": "檢視表",
+      "emptyCatalogTitle": "此帳號在目標端看不到任何資料庫",
+      "emptyCatalogHint": "請確認目標端帳號的權限，或聯繫管理員。",
+      "emptyAllowListTitle": "允許清單與目標端可見的資料庫沒有交集",
+      "emptyAllowListHint": "請管理員核對資產上的允許清單名稱（含大小寫）是否與目標端顯示的一致。"
+    },
+    "results": {
+      "emptyTitle": "尚未執行任何語句",
+      "emptyHint": "在上方編輯器輸入 SQL，按執行或 Ctrl / Cmd + Enter。",
+      "unitLabel": "第 {seq} 筆",
+      "unitLabelPending": "未收束的語句",
+      "unknownTitle": "這筆的執行結果未知",
+      "unknownHint": "語句已送出，但連線中斷前沒有收到結果。不可假設它沒有生效。",
+      "copyEventId": "複製事件識別",
+      "viewAudit": "查看稽核紀錄",
+      "copied": "已複製",
+      "copyFailed": "瀏覽器不允許複製，請手動選取",
+      "alert": {
+        "partial": "部分語句已完成後才發生錯誤",
+        "effect_unknown": "伺服器無法確認這筆是否生效"
+      },
+      "truncatedTitle": "結果已截至 {rows} 列回傳",
+      "truncatedHint": "這是回傳上限，不代表目標端只算了這些列。如需後續資料，請在查詢中加入 LIMIT／OFFSET（MSSQL 為 OFFSET ... FETCH）縮小範圍。",
+      "cellTruncatedHint": "另有欄位的內容超過單欄上限而被截斷。",
+      "statusLabel": "狀態",
+      "reasonLabel": "原因",
+      "rowsAffected": "影響 {n} 列",
+      "rowCount": "{n} 列",
+      "duration": "耗時 {ms} 毫秒",
+      "setLabel": "結果集 {n}",
+      "noRowsTitle": "這筆沒有回傳資料列",
+      "noRowsHint": "非查詢語句不會有結果集；若預期有資料，請確認查詢條件。",
+      "runningTitle": "執行中",
+      "runningHint": "目標端回應後即顯示結果。",
+      "failedTitle": "沒有結果集",
+      "failedHint": "錯誤原文顯示在編輯器下方的錯誤面板。"
+    },
+    "boundary": {
+      "title": "使用前先知道",
+      "item1": "結果最多回傳 1,000 列，畫面與匯出都是截斷後的內容。要看更多，請在查詢加 LIMIT/OFFSET。",
+      "item2": "「成功」不代表已提交。交易內的語句要等 COMMIT 才生效，關閉會話會被回滾。",
+      "item3": "MySQL 取消執行會關閉這條連線；PostgreSQL 切換資料庫會重新連線，未提交的交易會消失。",
+      "item4": "資產設有允許資料庫清單時，只能對清單內的資料庫執行。",
+      "item5": "這裡送出的每一句語句、結果摘要與匯出下載都會記入稽核紀錄。"
+    }
   },
   "shareView": {
     "header": "連線分享觀看（唯讀）"
@@ -1138,13 +1327,18 @@
     "item2": "剪貼簿的強制在 guacd 內部完成，本產品看不到被擋下的嘗試，故剪貼簿拒絕不產生稽核事件；檔案傳輸的拒絕則有 denied 稽核可查。",
     "item3": "會話分享的觀看者繼承會話當下的連線參數，不另判其個人授權——被允許貼上者把會話分享出去，觀看端同樣能貼上。",
     "item4": "K8s 檔案端點目前只檢核資產更新權限，不經連線授權與存取政策段位；本區塊只補資料傳輸判定。",
-    "item5": "使用者在終端內以 scp、curl、base64 等指令帶走資料不在本區塊範圍，那是指令阻斷的職責——關閉檔案下載不等於資料出不去。"
+    "item5": "使用者在終端內以 scp、curl、base64 等指令帶走資料不在本區塊範圍，那是指令阻斷的職責——關閉檔案下載不等於資料出不去。",
+    "item6": "圖形通道的下載被擋時是靜默丟棄，客戶端不會收到任何錯誤回應，畫面上只會像是沒有反應；上傳被擋則會回一則明確的拒絕。",
+    "item7": "資料庫查詢主控台的結果表呈現在瀏覽器畫面上，可被選取複製或以開發者工具讀取，伺服端無強制點；本區塊管得到的只有匯出端點——它是結果離開系統的唯一受控出口。"
+  },
+  "bannerText": {
+    "counter": "{count} / {max}"
   },
   "policyNote": {
     "clipboard_send_enabled": "適用 RDP／VNC；改動需重新連線才生效",
     "clipboard_recv_enabled": "適用 RDP／VNC；改動需重新連線才生效",
     "file_upload_enabled": "適用 SFTP、圖形通道與 K8s；含建立目錄；即時生效",
-    "file_download_enabled": "適用 SFTP、圖形通道與 K8s；即時生效",
+    "file_download_enabled": "適用 SFTP、圖形通道、K8s 與查詢主控台的結果匯出；即時生效",
     "file_delete_enabled": "適用 SFTP 檔案管理；即時生效",
     "audit_checkpoint_interval_seconds": "兩項門檻先到先觸發。封存之後的紀錄才受鏈保護：最近一次封存到下一次之間的紀錄若被整筆刪除，封存時記錄的就是刪除後的狀態，事後無法由本機資料發現。調短週期＝縮小這個窗口，調長則相反；整筆刪除須由離機備份（外部日誌收集器）承擔。上限 86400 秒（24 小時），且不可設為 0——封存不得被實質關閉。",
     "audit_checkpoint_row_threshold": "兩項門檻先到先觸發。封存之後的紀錄才受鏈保護：累積達此筆數即提前封存，忙碌時段不必等滿一個週期，尖峰時窗口不致被拉大。調小＝縮小尚未受鏈保護的窗口，調大則相反；該窗口內若有紀錄被整筆刪除，封存時記錄的就是刪除後的狀態，事後無法由本機資料發現，此風險由離機備份（外部日誌收集器）承擔。上限 1000000 筆，且不可設為 0——封存不得被實質關閉。",
@@ -1153,7 +1347,8 @@
     "audit_chain_verify_rows_per_hour": "內容層逐段重讀已封存區間的紀錄，與封存當時記錄的內容比對，並以此速率推進：每輪實際掃描的筆數＝本速率 × 全鏈驗證週期，故調整驗證週期不會改變繞行全歷史一輪所需的時間，改變的只是每輪耗時。本內容驗證只涵蓋已封存的區間，尚未封存的紀錄不在其中，那段窗口由檢查點封存週期承擔。調快＝繞行一輪更快、資料庫負擔上升；調慢＝繞行更慢，慢到超過資料保留期時，舊區間會在被清除前始終輪不到重驗，那段歷史的內容驗證形同未執行——下限 10000 筆/小時正取在這一點（滿載十年的鏈約需十年才繞完一輪）。下限只擋住「調到極小＝實質關閉」，不替管理員決定節流偏好：10000 到 5000000 之間仍是他自己的權衡。上限 5000000 筆/小時（再高即超出生產資料庫可承受的佔用），且不可設為 0——掃描不得被實質關閉。變更本值即變更本系統對稽核的陳述（「全歷史約每 Y 天重驗一輪」）。",
     "retention_max_per_run": "保留政策每日清除超過保留天數的資料，本值是每次執行、每一類資料最多刪除的筆數，用來避免一次刪太多而拖住資料庫。調大＝每次清得更多，資料量大或剛縮短保留天數時才追得上；調小＝每次清得少，資料庫負擔輕但到期資料會越積越多。若新增速度長期超過清除速度，到期資料會一直留著，畫面上卻仍顯示每日在清除。下限 5000 筆的意義是：低於一次分批處理的量，等於每次執行連一批都清不完，清除速率必然低於任何實際部署的新增速率——低於此值本機制即失去意義，而非只是變慢。清不完的部分會標示為未完成並於次日續清。",
     "key_rotation_max_per_run": "更換資料加密金鑰時，既有的加密資料需要逐筆改用新金鑰重新加密。本值是每次執行最多處理的筆數，用來控制單次操作的耗時。未處理完的部分會保留進度，再次執行即接著做。調大＝一次處理更多、整體更早換完，但單次操作耗時更長；調小＝單次較快結束，但需要更多次操作。設得太小會讓換金鑰實際上永遠做不完，而金鑰清冊上仍顯示可以更換。下限 500 筆的意義是：低於一次讀取的資料量，等於一次操作推不動任何進度——低於此值本機制即失去意義。換金鑰全程不影響既有資料的讀取。",
-    "k8s_list_timeout_seconds": "挑選容器時，向叢集要一份執行中項目清單，最多等這麼久。等不到就顯示錯誤。調大：忙碌或距離遠的叢集有更多時間，但真的故障時要等更久才看到錯誤。調小：故障更快浮現，但正常叢集可能被誤判。下限 3 秒——一次查詢光是建立加密連線就可能花上一兩秒；低於這個值，連正常的叢集也會全部連不上，而資產列表上仍看得到它們。"
+    "k8s_list_timeout_seconds": "挑選容器時，向叢集要一份執行中項目清單，最多等這麼久。等不到就顯示錯誤。調大：忙碌或距離遠的叢集有更多時間，但真的故障時要等更久才看到錯誤。調小：故障更快浮現，但正常叢集可能被誤判。下限 3 秒——一次查詢光是建立加密連線就可能花上一兩秒；低於這個值，連正常的叢集也會全部連不上，而資產列表上仍看得到它們。",
+    "login_banner_body": "純文字顯示，不支援 HTML 與連結；換行會保留。內文留空即不顯示告示，標題也不會單獨出現。登入前任何人都讀得到，勿寫入內部資訊。"
   },
   "fileManager": {
     "mkdir": "新增目錄",
@@ -2496,6 +2691,7 @@
     "NOTFOUND_CHANGE_SECRET_PLAN": "改密計劃不存在",
     "NOTFOUND_CLIPBOARD_EVENT": "剪貼簿記錄不存在",
     "NOTFOUND_COMMAND_ALERT": "告警不存在",
+    "NOTFOUND_DB_CONSOLE_RESULT": "找不到指定的查詢結果",
     "NOTFOUND_EXTERNAL_IDENTITY": "外部身分不存在或不屬於此帳號",
     "NOTFOUND_GRANT_REFERENCE": "{entity}不存在",
     "NOTFOUND_HOST_KEY": "尚無 host key 記錄（首次連線時記錄）",
@@ -2560,6 +2756,16 @@
     "RULE_CONSENT_RISKS_CHANGED": "風險項已變更，請重新確認",
     "RULE_DAILY_REVIEW_DISABLED": "每日審閱功能未啟用",
     "RULE_DB_CLIENT_START_FAILED": "資料庫客戶端啟動失敗",
+    "RULE_DB_CONSOLE_AUDIT_UNAVAILABLE": "語句紀錄無法寫入，已拒絕執行",
+    "RULE_DB_CONSOLE_BLOCKER_UNAVAILABLE": "指令阻斷比對器不可用，已拒絕執行",
+    "RULE_DB_CONSOLE_BUSY": "上一次送出尚未完成",
+    "RULE_DB_CONSOLE_CONNECTION_LOST": "與目標資料庫的連線已中斷",
+    "RULE_DB_CONSOLE_CONNECT_FAILED": "無法建立資料庫連線",
+    "RULE_DB_CONSOLE_DATABASE_NOT_ALLOWED": "目標資料庫不在此資產的允許清單內",
+    "RULE_DB_CONSOLE_DATABASE_UNAVAILABLE": "目標資料庫目前不可用",
+    "RULE_DB_CONSOLE_LIMIT_REACHED": "查詢主控台的同時連線數已達上限。若您另有開啟中的主控台，關閉後即可再試；否則請稍後再試或聯繫管理員",
+    "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "語句命中阻斷規則，未送往目標資料庫",
+    "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "查詢主控台僅支援 mysql、postgres、mssql 資產",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "匯出產物目前不可下載",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "匯出 job 僅受理證據包，事件報告請走同步匯出端點",
     "RULE_K8S_FORBIDDEN": "無權限（403）：Token 缺少該 namespace 的 list pods 權限",
@@ -2645,6 +2851,7 @@
     "VALIDATION_APPROVER_SCOPE_ACTOR": "審核方必須恰一（approver_id/approver_group_id 二擇一）",
     "VALIDATION_APPROVER_SCOPE_TARGET": "審核範圍客體必須恰一（asset_id/asset_group_id/subject_user_id/subject_group_id 四擇一）",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy 僅允許空值（跟隨全域預設）、open、reason 或 approval",
+    "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases 僅資料庫協議（mysql、postgres、mssql）可為非空；每項須為 1 至 128 字元、不含控制字元且不重複，至多 64 項",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql 主機不得含逗號（與連線字串的埠分隔語義衝突）",
     "VALIDATION_ASSET_PROTOCOL": "無效的協議，僅支援 ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s",
@@ -2666,6 +2873,8 @@
     "VALIDATION_CHANNEL_URL": "URL 必須為 http 或 https",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "範圍參數格式不正確（seq 為正整數、日期為 YYYY-MM-DD）",
     "VALIDATION_CHECKPOINT_RANGE_REQUIRED": "內容層驗證須指定 seq 或日期範圍",
+    "VALIDATION_DB_CONSOLE_GO_COUNT_UNSUPPORTED": "不支援 GO 後接重複次數",
+    "VALIDATION_DB_CONSOLE_STATEMENT_TOO_LARGE": "語句長度超過上限（256 KiB）",
     "VALIDATION_DECISION_NOTE_REQUIRED": "拒絕申請必須填寫事由",
     "VALIDATION_DISPLAY_NAME": "顯示名稱格式不正確：長度上限 100，且不可含控制字元或換行",
     "VALIDATION_EXEMPT_REQUIRED": "請求參數錯誤：需提供 exempt",
@@ -2807,6 +3016,8 @@
     "key_rotation_max_per_run": "單次換鑰重加密上限",
     "lockout_duration_minutes": "鎖定時長",
     "lockout_max_attempts": "登入失敗鎖定次數上限",
+    "login_banner_body": "登入告示內文",
+    "login_banner_title": "登入告示標題",
     "mfa_required": "多因子驗證強制範圍",
     "offsite_local_retention_days": "離機後本機副本保留天數",
     "password_history_count": "禁止重用最近密碼筆數",

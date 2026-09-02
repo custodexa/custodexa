@@ -24,6 +24,12 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      // 查詢主控台 WS（泛用的 /api 規則不帶 ws，升級請求須由此條轉發）
+      '/api/v1/db-console': {
+        target: 'ws://backend:8080',
+        ws: true,
+        changeOrigin: true,
+      },
       // 會話即時監看 WS（一般 /sessions REST 請求同樣由此轉發到 backend）
       '/api/v1/sessions': {
         target: 'http://backend:8080',

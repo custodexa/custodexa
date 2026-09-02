@@ -18,7 +18,7 @@
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
 | OIDC provider | 4 | `/api/v1/oidc-providers` | 身分提供者 CRUD（admin；secret write-only，身分域建後不可變） |
 | LDAP 目錄 | 4 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試（admin；bind 密碼 write-only，設定自 env 遷入 DB） |
-| 安全政策 | 2 | `/api/v1/security-policies` | PCI 安全政策查詢/批次更新（admin） |
+| 安全政策 | 3 | `/api/v1/security-policies`, `/api/v1/auth/banner` | PCI 安全政策查詢/批次更新（admin）＋登入前告示讀取（公開） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（admin） |
 | 資產 | 17 | `/api/v1/assets` | CRUD、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
 | Host Key | 2 | `/api/v1/assets/:id/host-key` | TOFU host key 檢視/重置 |
@@ -148,6 +148,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/audit-logs/resource/:resource/:id` | FEATURE_AUDIT_LOG_ENABLED |
 | GET | `/api/v1/audit/subjects` | always |
 | GET | `/api/v1/audit/timeline` | always |
+| GET | `/api/v1/auth/banner` | always |
 | POST | `/api/v1/auth/change-password` | always |
 | POST | `/api/v1/auth/login` | always |
 | POST | `/api/v1/auth/logout` | always |
@@ -188,6 +189,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/daily-reviews` | always |
 | POST | `/api/v1/daily-reviews` | always |
 | GET | `/api/v1/daily-reviews/status` | always |
+| GET | `/api/v1/db-console` | always |
+| GET | `/api/v1/db-console/sessions/:id/results/:event_id/export` | always |
 | GET | `/api/v1/instance-guard` | always |
 | GET | `/api/v1/keys` | always |
 | DELETE | `/api/v1/keys/retired-material` | always |
@@ -824,6 +827,35 @@ GET /api/v1/auth/methods
 未設 `PUBLIC_BASE_URL` 時 `oidc` 恆為空陣列（fail-close）。
 清單讀取失敗**不阻斷登入頁**：回 `{"local": true, "oidc": []}`，前端降級為只顯示本地表單。
 
+### 登入前告示
+
+```
+GET /api/v1/auth/banner
+```
+
+未認證可讀（登入頁需在登入前取得要顯示的告示）。它與 SSO 無關，列於此段是因為
+兩者同為登入頁在登入前呼叫的公開端點。內容取自安全政策的
+`login_banner_title` 與 `login_banner_body` 兩鍵（見下方安全政策 API）。
+
+**回應** (200，未設定):
+```json
+{"enabled": false}
+```
+
+**回應** (200，已設定):
+```json
+{"enabled": true, "title": "授權使用者專用", "body": "本系統僅供獲授權之使用者存取。\n所有連線與操作將被記錄並錄影。"}
+```
+
+`enabled` 只由內文決定：內文為空即回前一種形狀，**標題單獨有值不成其為告示**；
+`title` 可能是空字串（只填了內文）。回應**只含上述鍵**——不含其他政策鍵、
+修改者、修改時間、基準建議值或符合性。這條路由沒有認證中介層，回應內容即等同對匿名者公開。
+
+回應帶 `Cache-Control: no-store`：告示改完之後，下一個開啟登入頁的人就該看到新的。
+封印期回 **503** `SEAL_SERVICE_SEALED`（與登入方法清單一致）。
+**不寫審計列、不寫資料庫**——一次登入頁載入不該在稽核軌跡上留下一列。
+兩個鍵分兩次讀取，管理員儲存的那一瞬間可能一鍵新一鍵舊，於政策快取效期內收斂。
+
 ### SSO 三段流程
 
 ```
@@ -1137,6 +1169,7 @@ POST /api/v1/assets/tags/delete   全面刪除（僅 admin；auditor 403）
   "last_test_latency_ms": 12,
   "db_name": "",
   "db_tls_mode": "",
+  "allowed_databases": [],
   "k8s_namespace": "",
   "k8s_insecure_skip_tls": false,
   "sftp_enabled": false,
@@ -1175,6 +1208,7 @@ POST /api/v1/assets
   "db_name": "",
   "db_tls_mode": "",
   "db_ca_cert": "",
+  "allowed_databases": [],
   "k8s_namespace": "",
   "k8s_pod": "",
   "k8s_container": "",
@@ -1193,6 +1227,12 @@ POST /api/v1/assets
 - `protocol=k8s` 時 `k8s_namespace` 必填（連線時選 pod；`k8s_pod`/`k8s_container` 為相容舊資料的選填）
 - `db_name` 僅 mysql/postgres/redis/mssql 有意義（空＝連預設庫）；`db_tls_mode`: `''`/`disable`/`require`/`verify-ca`/`verify-full`
 - `db_ca_cert` 對 mysql/postgres/redis 為 **CA bundle**；對 **mssql 為伺服器憑證釘選**（sqlcmd `-J`），語義不同，UI 另有說明文字
+- `allowed_databases`: 查詢主控台的執行目標限制清單（字串陣列，選填，空＝不限制）；僅
+  mysql/postgres/mssql 可為非空，其餘協議帶非空值 400；每項 1–128 字元、不含控制字元、
+  不重複，至多 64 項；違反任一條回 `VALIDATION_ASSET_ALLOWED_DATABASES`。**不做正規化**
+  （不 trim、不折大小寫），寫入什麼即比對什麼。Update 為指標欄位：省略＝不動、空陣列＝
+  清空；**協議由三者之一改為其他協議時，伺服端一律清空本欄**（不論該次請求是否帶
+  `allowed_databases`），並將清空事實與清空前的項數記入該次更新審計
 - `sftp_*` 僅 vnc 有意義（SFTP 側車檔案傳輸，選配）：`sftp_enabled=true` 時 `sftp_username` 必填、`sftp_port` 預設 22；`sftp_password` 後端 AES-256-GCM 加密存放，回應僅 `has_sftp_password` 布林；Update 時 `sftp_password` 空字串＝沿用既有
 - `access_policy`: `open`（不需申請）/ `reason`（填理由即連）/ `approval`（需核准）；非法值 400。Create 空字串或省略＝NULL（繼承全域預設鍵 `access_policy_default`）；Update 為指標欄位——省略＝不動、空字串＝清除覆寫回 NULL（非沿用既有）；變更經 asset hooks 入審計
 - `node_ids`: 掛載節點 id 集（多歸屬；節點須存在否則 400）。Create 空/省略＝未分組；Update 省略（null）＝不動、空陣列＝清空全部掛載；成員變更以 `node_ids` 舊→新入審計。回應恆帶 `node_ids`＋`node_paths`（全路徑顯示）
@@ -1525,6 +1565,8 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
 
 指令由 SSH 按鍵流重組（Backspace 修正、keypad/Unicode keysym 映射）；
 資料庫 CLI（mysql/postgres）以多行語句累積為單一 SQL；K8s logs 唯讀模態不產生指令。
+**查詢主控台的每個執行單位同樣寫在本表**，並額外帶結果事實欄（狀態、目標庫、列數、耗時等）；
+兩種來源以 `result_status` 是否為空字串區分（空＝文字終端列）。
 
 | 方法 | 路徑 | 說明 | 權限 |
 |---|---|---|---|
@@ -1534,6 +1576,23 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
 **`/commands` Query 參數**: `keyword`（ILIKE 子字串）、`user_id`、`asset_id`、
 `start_time`/`end_time`（RFC3339）、`page`/`page_size`、
 `degraded`（`true`＝只要降級列／`false`＝只要有文字的列／未帶＝不過濾；無法解析時不套用）。
+
+**結果事實篩選**（查詢主控台）:
+
+| 參數 | 說明 |
+|---|---|
+| `source` | `console`＝主控台列／`cli`＝文字終端列／未帶＝不過濾。判別鍵是 `result_status` 是否為空 |
+| `target_database` | 送出當下的目標資料庫名（完整比對） |
+| `result_status` | 終態，**可重複帶**（`?result_status=ok&result_status=partial` ＝聯集）。值域＝八個非空狀態值 |
+| `error_code` | 目標端錯誤碼（完整比對） |
+
+**四者的值域外輸入一律 400 `VALIDATION_BAD_PARAMS`，不套用亦不靜默忽略**——
+與上列 `user_id` 之類的寬鬆解析刻意不同紀律：那些解析失敗時得到的是超集（多給，呼叫端立刻看得出來），
+而值域外的狀態若照樣送進查詢，得到的是空集，那看起來與「範圍內真的沒有這種列」完全一樣。
+
+四者**只影響結果列，不影響 `degraded_total`**：後者回答的是「這個時間窗／人／資產範圍內
+有幾輪沒有文字可搜」，跟著結果事實條件走會讓它在 `source=console` 的查詢下歸零，
+而那個事實與主控台無關。
 
 **`degraded_total`**：本次查詢的**時間窗／人／資產範圍內**，
 指令文字無法可信重組的輪數。**刻意不套用 `keyword` 與 `degraded` 兩個條件**——
@@ -1550,9 +1609,23 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
   "executed_at": "2026-07-01T10:00:05Z",
   "degraded": false, "degrade_reason": "",
   "k8s_pod": "", "k8s_container": "",
+  "result_truncated": false,
   "username": "admin", "asset_name": "Server1"
 }
 ```
+
+主控台列另帶結果事實欄（文字終端列一律留在預設值，故序列化時缺席）:
+```json
+{
+  "event_id": "01JB7Q9K2M4N6P8R0S2T4V6W8X", "target_database": "app",
+  "result_status": "partial", "result_reason": "error_after_results",
+  "result_rows": 12, "rows_affected": 3, "result_sets": 1,
+  "error_code": "23505", "duration_ms": 148,
+  "result_truncated": false, "tx_state_after": "active"
+}
+```
+`result_rows`／`rows_affected`／`result_sets`／`duration_ms` 為 null 時代表不適用或未回填。
+`running` 停在已結束的會話上＝結果未回填，**不得呈現為「執行中」**。
 
 ---
 
@@ -2282,6 +2355,8 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
 | GET | `/security-policies` | 取全部政策項（現值＋兩基準建議值＋各自符合性）→ `{data: [PolicyView], deviation_count: N, epayment_deviation_count: M}` |
 | PUT | `/security-policies` | 批次更新，body `{"policies": {"key": "value", ...}}`（僅送有變更的鍵）；成功回同 GET 格式 |
 
+同一組政策另有一個公開讀取端點 `GET /api/v1/auth/banner`，只回登入前告示的兩個鍵，見上方「登入前告示」。
+
 **PolicyView 欄位**（每項政策）:
 ```json
 {
@@ -2319,6 +2394,24 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
 
 `label`／`unit` 為繁中顯示 fallback；前端 i18n 以穩定 `key` 查 `policyLabel.<key>`、以語義 `unit_key`（值域 `count`／`minutes`／`chars`／`records`／`hours`／`days`／`persons`）查 `policyUnit.<unit_key>`——切語言顯示對應譯文，漏譯降級回 `label`／`unit`。
 
+**文字型政策鍵**（`type: "text"`）另有兩個欄位，只在該型別的項目上出現
+（其餘型別不帶這兩欄，`multiline` 為 false 時亦省略）：
+
+- `max_length`：字元數上限，**以 Unicode code point 計**（非位元組、非 UTF-16 單位）。
+- `multiline`：值是否允許換行。false 時值內含換行即拒絕。
+
+寫入時先正規化再驗證，落庫的是正規化後的值：`\r\n` 與單獨的 `\r` 統一為 `\n`、
+去除首尾空白；非合法 UTF-8、控制字元（僅放行 TAB，以及 `multiline` 為 true 時的換行）、
+超過 `max_length` 一律拒絕，回 400 `VALIDATION_POLICY_INVALID_VALUE` 並以 `params.key` 指名該鍵
+（**拒絕原因不進回應**）。正規化後為空字串等同未設定，是合法值。
+值存的是純文字，不做 HTML 轉義也不剝除標記——不把它渲染成標記是呈現層的責任。
+文字鍵無基準建議值，`compliant` 與 `epayment_compliant` 皆為 null，不計入兩個偏離數。
+
+文字型鍵的**變更審計**改用結構化欄位：詳情欄為
+`{"changes":[{"field":"<鍵名>","old":"<舊值全文>","new":"<新值全文>"}]}`（單行 JSON，
+換行以逸出序列表示，故 CSV 匯出不會多出實體換行），訊息欄只留 `policy=<鍵名>`。
+非文字鍵維持既有的單行 `policy=<鍵> old=<舊> new=<新>` 且詳情欄為空。
+
 **政策鍵值域**（型別/出廠預設/PCI 建議值見 [DB_SCHEMA.md](DB_SCHEMA.md) security_policies 一節）:
 `lockout_max_attempts`、`lockout_duration_minutes`、`password_min_length`、`password_require_alnum`、
 `password_history_count`、`force_change_on_reset`、`mfa_required`（enum: off/admin_only/all）、
@@ -2342,7 +2435,10 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
 `break_glass_duration_minutes`（預設 60）、`break_glass_review_timeout_hours`（預設 24）、
 `access_revoke_disconnect`（bool，預設 false——撤銷預設只擋新連線不硬斷）；
 金鑰管理（PCI Req 3）: `key_cryptoperiod_reminder_days`（int，預設 0＝不提醒，
-PCI 建議 365——金鑰超齡提醒天數，反映於金鑰清冊的 `reminder_days`）。
+PCI 建議 365——金鑰超齡提醒天數，反映於金鑰清冊的 `reminder_days`）；
+登入前告示（`text` 型，無基準建議值）: `login_banner_title`（`max_length` 120、單行）、
+`login_banner_body`（`max_length` 2000、`multiline`；內文為空即登入頁不顯示告示，
+標題不會單獨顯示。兩鍵的內容於登入前對任何人可讀，見上方登入前告示段）。
 
 另有兩組政策鍵於他處詳述而不重複列於此：錄影 fail-close（`recording_failclose_enabled`，見連線簽發段）
 與傳輸風險（7 個 `transport_*`，見傳輸安全段）。
@@ -2886,7 +2982,14 @@ GET /api/v1/audit-export
 **ZIP 內容（證據包模式，經 job 產出）**：**未被選取的類別段整段不入包**（其 `counts`／`truncated`
 鍵一併缺席——寫個 0 會讓「沒選」與「選了但範圍內沒有」看起來是同一回事）。`types` 缺席＝六類全收。
 - `audit_logs.json` — 操作日誌（`asset_id` 篩選已套用，manifest 標明該關聯的歷史起始邊界）〔類別 `audit_log`〕
-- `commands.csv` — 指令流〔類別 `command`〕
+- `commands.csv` — 指令流，**十七欄**〔類別 `command`〕：前六欄
+  `session_id`／`user_id`／`asset_id`／`seq`／`command`／`executed_at`，
+  其後十一欄為查詢主控台的結果事實
+  `event_id`／`target_database`／`result_status`／`result_reason`／`result_rows`／
+  `rows_affected`／`result_sets`／`error_code`／`duration_ms`／`result_truncated`／`tx_state_after`。
+  文字終端列的後十一欄為空（`result_status` 空即代表這不是主控台列）。
+  稽核據 `result_status`＋`result_reason` 判讀「這句到底生效了沒有」：
+  `partial` 與 `effect_unknown` 都不得讀成成功或未發生
 - `clipboard_contents.json` — 剪貼簿**解密全文**，逐筆含 `record_ref`／`id`／`session_id`／`occurred_at`／`direction`／`content_status`／`content_length`／`content`（缺口列 `content_status=failed`、`content` 鍵缺席）〔類別 `clipboard`〕
 - `recordings/session-<id>.<ext>` — 有錄影的會話本體（`.cast`/`.guac`；逐檔跳過缺失，不阻斷整包）〔類別 `session`〕
 - `alerts.csv`／`file_transfers.csv` — 無本體之類別以**事件事實**列入（重用事件報告的寫入器）〔類別 `alert`／`file_transfer`〕
@@ -3288,6 +3391,166 @@ Upgrade: websocket
 {"type": "data|resize|ping|pong|connected|error", "data": "...", "code": "..."}
 ```
 `resize` 的 data 為 `{"cols": N, "rows": N}` JSON 字串；`code` 僅 `error` 訊息使用（機器可讀錯誤碼，可缺省）。
+
+### 資料庫查詢主控台連線（mysql / postgres / mssql）
+
+```
+GET /api/v1/db-console?connect_token=<token>
+Upgrade: websocket
+```
+
+**認證與連線收口**: 與 `/ssh` 同一條兌換路徑——同一支 `POST /api/v1/connect-tokens` 簽發的
+一次性 `connect_token`（綁 user+asset+account、兌換即焚）、同一張閘序表、同一個憑證解封點、
+同樣的會話記錄 fail-close（無會話主鍵即無錄影、語句審計與監看，一律拒連）。
+前端與 URL 全程不出現主機、帳號或密碼。缺 token 401，無效 token 401。
+
+比文字終端入口多兩道閘：
+
+| 閘 | 條件 | 回應 |
+|---|---|---|
+| 協議 | 資產協議不是 mysql／postgres／mssql | 400 `RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL`。redis 是資料庫協議但沒有 SQL 執行單位、結果集與交易態，請改用文字終端入口 |
+| admission | 同時進行的主控台會話數達上限（每人 4、全域 64） | 429 `RULE_DB_CONSOLE_LIMIT_REACHED`。計數口徑是**運行時的連線註冊表**，不是會話表的 active 列——等待收斂的孤兒列不佔名額 |
+
+**執行形態**:
+- 後端以資料庫 driver 直連目標，**不啟動命令列子程序**；單一連線、無連線池、**不自動重連**
+- 會話記入 `sessions`（`db_console=true`），出現在會話列表、即時監看與稽核工作台，
+  有開始、結束與時長；伺服端另寫一份純文字**轉錄**錄影（`.cast`，每行帶事件 ID）——
+  轉錄**不含結果資料列**（體積無上界且含敏感資料），結構化語句紀錄才是真相來源
+- 每個執行單位一筆語句紀錄；紀錄寫入失敗即不執行（`RULE_DB_CONSOLE_AUDIT_UNAVAILABLE`）
+- 指令阻斷規則同樣套用；比對器不可用即拒絕執行（`RULE_DB_CONSOLE_BLOCKER_UNAVAILABLE`）
+- 閒置／最大時長沿安全政策 `session_idle_minutes`／`session_max_minutes`（與文字終端同源）
+
+**客→服訊息**（JSON）:
+
+| type | 欄位 | 說明 |
+|---|---|---|
+| `hello` | `previous_session_id?`、`pending_event_id?` | 選填首則。重連時由客戶端自報上一場會話與未收到結果的事件；**伺服端只記錄不信任**——僅用來查本人的既有列，不做任何授權推導 |
+| `query` | `sql` | 執行單位原文（編輯器全文或選取範圍）。目標＝當前資料庫，不帶 database 參數。**每會話同時只允許一個進行中的送出**，第二個回 `RULE_DB_CONSOLE_BUSY` |
+| `cancel` | `event_id` | 取消指定事件 |
+| `tree` | `level`（`databases`／`tables`／`columns`）、`schema?`、`table?` | 目錄樹一層；只對當前庫 |
+| `switch` | `database` | 切換目標資料庫；值須為伺服器目錄剛回傳的名稱 |
+
+**服→客訊息**:
+
+| type | 主要欄位 |
+|---|---|
+| `ready` | `session_id`、`dialect`、`database`、`database_allowed`、`databases[{name, connectable}]`、`capabilities{file_download}`、`tx_state`、`limits`、`pending_result?{event_id, status, result_reason}` |
+| `unit_started` | `event_id`、`seq`、`batch_index`、`batch_count`。**先於執行送出**，使畫面在多批次時能逐批對應 |
+| `result` | `event_id`、`seq`、`status`、`result_reason?`、`sets[{set_index, columns[{name, type_name, kind}], rows, row_count, truncated}]`、`rows_affected`、`duration_ms`、`truncated`、`tx_state?`、`db_error?` |
+| `error` | `event_id?`、`code`（機器碼）、`params?`、`db_error?{code, message?}` |
+| `notice` | `code`（`database_not_allowed`／`database_drift_denied`／`database_switched`）、`params?`。非錯誤，是「狀態變了，畫面該跟著變」 |
+| `closed` | `reason`（`target_closed`／`slow_consumer`／`idle_timeout`／`max_duration`／`terminated`／`client_gone`） |
+| `tree_result` | `level`、`database`、`schema?`、`table?`、`databases?`／`tables?`／`columns?`、`truncated` |
+
+`databases[].connectable` 是**預檢不是保證**：它答的是「目錄說這個庫上線且此帳號有連線權」，
+真連下去仍可能因主機端規則或連線數上限而失敗。MySQL 恆為 true（`SHOW DATABASES` 本身已依權限過濾）。
+
+**結果值一律以字串傳輸**，`null` 代表 SQL NULL：2^53 以上的整數與 decimal 尾數若走 JSON number
+會在瀏覽器端靜默失真——對金額與識別碼，那是資料錯誤而不是顯示問題。
+
+**事件識別**: 每個執行單位在阻斷比對之前配發一個 26 字元 ULID。同一個值出現於
+語句紀錄的 `event_id`、`unit_started`／`result`／`error` 訊息、轉錄的每一行、
+結果匯出 URL 與會話詳情錨點。
+
+**執行單位狀態**（`result.status`，與語句紀錄 `result_status` 同一組值）:
+`running`／`ok`／`error`／`partial`／`blocked`／`cancelled`／`timeout`／`effect_unknown`。
+`ok` **不等於已提交**——單位落在使用者開啟的交易內時，最終命運由後續的
+COMMIT／ROLLBACK／會話結束回滾決定。`cancelled` ＝確認未生效；`effect_unknown` ＝已送出而
+目標端既未回報完成也未確認取消——**兩者都不得讀成「未生效」**。原因碼在 `result_reason`
+（`matcher_hit`／`matcher_unavailable`／`error_after_results`／`cancel_confirmed`／`batch_stopped`／
+`timeout_confirmed`／`cancel_unconfirmed`／`timeout_unconfirmed`／`connection_lost`／`cell_truncated`）。
+
+**交易態**（`ready.tx_state`／`result.tx_state`）: `none`／`active`／`failed`／`unknown`，
+取自逐單位本就會做的一次探詢。稽核據此能判讀「這筆 `ok` 落在未提交的交易內」。
+**MySQL 恆為 `unknown`**（無失敗交易態，且探詢進行中交易需要額外權限）。
+
+**機器碼**:
+
+| 碼 | 時機 |
+|---|---|
+| `RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL` | 協議閘 |
+| `RULE_DB_CONSOLE_LIMIT_REACHED` | admission 閘 |
+| `RULE_DB_CONSOLE_BUSY` | 上一次送出尚未完成 |
+| `RULE_DB_CONSOLE_AUDIT_UNAVAILABLE` | 語句紀錄寫入失敗（fail-close，不執行） |
+| `RULE_DB_CONSOLE_BLOCKER_UNAVAILABLE` | 阻斷比對器不可用（fail-close，不執行） |
+| `RULE_DB_CONSOLE_STATEMENT_BLOCKED` | 阻斷規則命中；規則名以 `params.rule` 單獨傳遞 |
+| `RULE_DB_CONSOLE_DATABASE_NOT_ALLOWED` | 目標庫不在資產的允許清單內 |
+| `RULE_DB_CONSOLE_CONNECT_FAILED` | 起始連線失敗（認證／TLS／網路三類共用一碼，**不帶 `db_error`**） |
+| `RULE_DB_CONSOLE_DATABASE_UNAVAILABLE` | 目標庫不可用（拓撲／伺服器狀態類，含切庫失敗）；帶 `db_error.code`，**不帶訊息** |
+| `RULE_DB_CONSOLE_CONNECTION_LOST` | 送出後目標連線中斷；該單位結果為未知，且不自動重連 |
+| `VALIDATION_DB_CONSOLE_STATEMENT_TOO_LARGE` | 語句文字逾上限；於訊息層拒絕，**不產生語句紀錄列** |
+| `VALIDATION_DB_CONSOLE_GO_COUNT_UNSUPPORTED` | MSSQL 的 `GO n` 重複執行語法；拒絕而非忽略（忽略會讓使用者以為執行了 n 次） |
+| `NOTFOUND_DB_CONSOLE_RESULT` | 結果匯出的六種不成立情形共用（見下節） |
+
+**錯誤訊息的邊界**: 連線階段（起始連線、PostgreSQL 切庫）**永不回目標端訊息原文**；
+切庫回應永不帶訊息（只帶 `db_error.code`）；只有「已建連線上、使用者自己語句的 SQL 層錯誤」
+才回原文——那是他自己的產品內容，而連線與拓撲層的錯誤字串常含主機、埠、憑證主體與主機端規則。
+語句紀錄一律**只記錯誤碼不記訊息**（錯誤文本可能夾帶資料片段，而審計列是長期保存的）。
+
+**上限**（伺服端常數，本版不提供設定面；`ready.limits` 為其投影）:
+
+| 項 | 值 | `limits` 鍵 |
+|---|---|---|
+| 單次送出的語句文字 | 256 KiB | `statement_bytes` |
+| 單一執行單位回傳的資料列（跨結果集合計） | 1000 | `rows_per_unit` |
+| 單次送出序列化後的位元組（跨單位合計） | 8 MiB | `bytes_per_submission` |
+| 單一欄位原始值 | 64 KiB | `cell_bytes` |
+| 目錄樹每層節點 | 2000 | `tree_nodes_per_level` |
+| 單一執行單位逾時 | 60 秒 | `statement_timeout_seconds` |
+
+列數與位元組是**回傳**上限，不是查詢上限：目標端仍會算完整個結果，只是不搬回來；
+截斷即於該單位標記 `truncated`。單欄逾限者截斷該欄並於值內附標記，
+使畫面與 CSV 都看得出是哪一欄被砍。
+
+**允許資料庫清單**: 資產的 `allowed_databases` 為空即不限制；非空時目錄樹只列交集，
+`switch` 與每個執行單位之前都**重讀**該欄並確認目標庫落在清單內（否則
+`RULE_DB_CONSOLE_DATABASE_NOT_ALLOWED` 並留痕）。
+**限制的是執行目標，不解析 SQL**——單位內的 `USE`、跨庫限定名都不在辨識範圍，
+真正的資料庫級存取控制在目標端的帳號權限上。**文字終端會話不受本欄影響。**
+
+**誠實邊界**（全文見 `openspec/specs/db-query-console/spec.md` 的「主控台的誠實邊界」）:
+該節逐條列出本能力管得到與管不到什麼，其中阻斷比對的可規避性、畫面結果表無伺服端強制點、
+驅動程式內部可能保留認證材料等屬稽核與管理視角。**主控台介面只呈現與連線者操作直接相關的
+五項**（結果上限與匯出範圍、成功不等於已提交、取消與切庫對連線的影響、允許清單、操作留痕），
+其餘不呈現給連線者。
+
+### 查詢主控台結果匯出
+
+```
+GET /api/v1/db-console/sessions/:id/results/:event_id/export?set=<n>&format=csv
+Authorization: Bearer <token>
+```
+
+**Query 參數**: `set`（結果集索引，非負整數，預設 0；MSSQL 多批次時每批次各自可匯出）、
+`format`（僅接受 `csv`，缺省即 csv；其他值視為識別不成立）。
+
+**匯出範圍＝伺服端快取中「最近一次送出」的結果，不重新執行查詢。**
+匯出內容即畫面所見（受列數與位元組上限截斷）——重跑會讓非冪等語句生效兩次，
+且在審計上那是一次新的執行。此差異於介面 tooltip 同步揭露。
+
+**權限**: JWT ＋ 會話本人 ＋ 會話為進行中 ＋ `event_id` 在當前快取內；
+另受既有傳輸政策 `file_download_enabled` 強制（`ready.capabilities.file_download` 只是投影，
+會過期，**端點每次重驗**）。
+
+**存在性收斂**: 會話不存在、非本人、非進行中、事件識別非當前快取、結果集索引逾界、
+識別格式非法——**六者一律回同一則 404 `NOTFOUND_DB_CONSOLE_RESULT`，回應逐位元組相同**
+（狀態碼、內容、標頭集合皆同）；分述即開出會話存在性的探測面，真實原因只進審計。
+政策拒絕的判定排在身分之後，對**本人**回 403 `RULE_TRANSFER_DENIED`（帶受控的 `action`／`reason`）
+——對非本人回同一則 403 就等於確認了「這個結果存在」。
+
+**Produce**: `text/csv; charset=utf-8`，
+`Content-Disposition: attachment; filename="<資產名>-<seq>-<UTC 時戳>.csv"`。
+
+**CSV 形態**: UTF-8 **無 BOM**（BOM 會讓非試算表的消費端多讀到三個位元組）、RFC 4180 引用、
+首列為欄名、NULL 為空欄。
+**防公式注入**：儲存格首字元為 `=`、`+`、`-`、`@`、Tab、CR 之一的**文字**欄位會前置單引號 `'`；
+**純數值字面豁免**（`^-?\d+(\.\d+)?([eE][+-]?\d+)?$`）——負號開頭的數字不是公式，
+而把 `-5` 寫成 `'-5` 會讓數值欄在試算表裡變成文字，
+「數值在畫面與 CSV 逐字元相同」這條保證就在 CSV 這一側失效了。
+
+**留痕**: 成功、政策拒絕、存在性拒絕與串流中止一律寫審計（`action=file_download`、`resource=file`）。
+成功記列數、位元組與 SHA-256；中止記**我方寫入 socket 的**位元組與其摘要，
+不是客戶端實收的量。
 
 ### 一次性連線 token 簽發
 

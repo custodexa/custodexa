@@ -167,3 +167,43 @@ describe('Sessions 連線帳號欄', () => {
     wrapper.unmount()
   }, 15000)
 })
+
+// 主控台會話的錄影是轉錄、指令列另有結果欄位：協議 chip 旁必須看得出是哪一種載體
+describe('Sessions 主控台小標', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getActiveSessionsMock.mockResolvedValue([])
+  })
+
+  it('db_console 為真的列顯示主控台小標，命令列會話不顯示', async () => {
+    getSessionListMock.mockResolvedValue({
+      data: [
+        row({ id: 1, protocol: 'mysql', db_console: true }),
+        row({ id: 2, protocol: 'mysql', db_console: false }),
+      ],
+      total: 2,
+    })
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    wrapper.vm.activeTab = 'history'
+    wrapper.vm.handleTabChange('history')
+    await flushPromises()
+
+    const badges = wrapper.findAll('[data-test="console-badge"]')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].text()).toBe('主控台')
+    wrapper.unmount()
+  }, 15000)
+
+  it('活動連線分頁同樣標示（監看要先知道自己要看的是哪一種）', async () => {
+    getActiveSessionsMock.mockResolvedValue([
+      row({ id: 9, status: 'active', protocol: 'postgres', db_console: true }),
+    ])
+    getSessionListMock.mockResolvedValue({ data: [], total: 0 })
+    const wrapper = mount(Sessions, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="console-badge"]').length).toBe(1)
+    wrapper.unmount()
+  }, 15000)
+})

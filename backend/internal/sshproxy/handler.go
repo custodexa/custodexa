@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"gorm.io/gorm"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
@@ -179,8 +180,38 @@ type Handler struct {
 	// 一律記 log，且交易失敗即整筆回滾，下次自同位址建線會補發。
 	// nil 僅限既有測試路徑，該情形下不觀察、不告警
 	SourceIPBaseline *audit.SourceIPBaseline
+	// DataTransfer 資料傳輸政策：查詢主控台的結果匯出走 `file_download`
+	// 這一條既有判定鍵（第四個強制點）。nil 僅限既有測試路徑，
+	// 該情形下等同全通道未設限
+	DataTransfer *policy.DataTransferService
+	// DB 查詢主控台自寫的語句紀錄與 pending 事件回查的資料庫控制代碼。
+	// 命令列那一側走 CommandStore 的非同步佇列，主控台則是同步 fail-close，
+	// 兩者的落地面因此不同源
+	DB *gorm.DB
 	// statsClients 活躍會話的 ssh.Client（session-stats）：sessionID -> *ssh.Client
 	statsClients sync.Map
+	// consoleAdmissionOnce/consoleAdmissionReg 主控台名額登記表（運行時計數）。
+	// 惰性建立是因為既有測試以裸結構建 Handler（不走 NewHandler），
+	// 而少一個名額登記表就等於 admission 閘靜默失效
+	consoleAdmissionOnce sync.Once
+	consoleAdmissionReg  *consoleAdmission
+	// consoleSessions 活躍主控台會話：sessionID -> *consoleSession。
+	// 結果匯出端點靠它找到快取——快取只存在於行程記憶體，
+	// 會話結束即釋放，那正是匯出鈕在會話結束後停用的原因
+	consoleSessions sync.Map
+}
+
+// consoleAdmission 名額登記表（惰性建立）
+func (h *Handler) consoleAdmission() *consoleAdmission {
+	h.consoleAdmissionOnce.Do(func() {
+		h.consoleAdmissionReg = newConsoleAdmission()
+	})
+	return h.consoleAdmissionReg
+}
+
+// consoleSessionsRef 活躍主控台會話表
+func (h *Handler) consoleSessionsRef() *sync.Map {
+	return &h.consoleSessions
 }
 
 // NewHandler 建立 SSH 終端處理器。
@@ -226,7 +257,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		// 兌換拒絕留痕（connection-gating spec）：
 		// 與 `/connect` 共用 `proxy.AuditConnectDenied` 這一個寫入點
 		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(proxy.RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized})
+			Reason: string(proxy.RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized}, proxy.ViaSSH)
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenMissing, nil)
 		return
 	}
@@ -235,7 +266,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	grant, denyReason := h.ConnectTokens.RedeemConnectTokenWithReason(c.Request.Context(), ct)
 	if denyReason != proxy.RedeemDenyNone {
 		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(denyReason), HTTPStatus: http.StatusUnauthorized})
+			Reason: string(denyReason), HTTPStatus: http.StatusUnauthorized}, proxy.ViaSSH)
 		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenInvalid, nil)
 		return
 	}
@@ -256,7 +287,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	)
 	reqCtx := c.Request.Context()
 	if out := gate.AuthorizePreResolve(reqCtx, subj, gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st)
+		h.writeRedeemOutcome(c, out, st, proxy.ViaSSH)
 		return
 	}
 	userID, assetID := grant.UserID, grant.AssetID
@@ -282,7 +313,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	resolved := st.contractObject()
 	if out := gate.AuthorizeResolvedAccount(reqCtx, subj, resolved,
 		gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st)
+		h.writeRedeemOutcome(c, out, st, proxy.ViaSSH)
 		return
 	}
 	assetRow, password, privateKey := creds.Asset, creds.Password, creds.PrivateKey
@@ -387,7 +418,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	sess := h.createSession(userID, assetID, assetRow.Protocol, sourceip.Of(c), k8sSnapshot,
 		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
 		authProvenance{ProviderID: grant.ProviderID, AuthEpoch: grant.AuthEpoch,
-			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch})
+			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, false)
 	if sess == nil {
 		conn.Close()
 		log.Printf("[SSHProxy] session 記錄建立失敗，連線已拒 (userID=%d assetID=%d)", userID, assetID)
@@ -810,22 +841,29 @@ func (h *Handler) writeOutcome(c *gin.Context, out *connectgate.Outcome) {
 // 往後只會增列，若留痕散在各閘的 Eval 裡，新增一道閘忘了寫審計不會有任何東西轉紅。
 // st 提供主體與客體（票證所帶的 userID／assetID）；前置階段的閘拒絕時 st.creds
 // 尚未解封，grant 的兩個鍵仍成立。
-func (h *Handler) writeRedeemOutcome(c *gin.Context, out *connectgate.Outcome, st *redeemState) {
+// via＝呼叫端所屬的兌換入口（`proxy.Via*`）。由呼叫端給值而不在此推斷：
+// 這裡看不到請求是從哪一支路由進來的，猜錯的後果是一整條入口的拒絕被算進另一條。
+func (h *Handler) writeRedeemOutcome(c *gin.Context, out *connectgate.Outcome,
+	st *redeemState, via string) {
 	h.auditRedeemDenied(c, proxy.ConnectDenial{
 		UserID: st.grant.UserID, AssetID: st.grant.AssetID,
 		Reason: out.Decision.Code, HTTPStatus: out.Status, Cause: st.sourceDenyCause,
-	})
+	}, via)
 	h.writeOutcome(c, out)
 }
 
-// auditRedeemDenied `GET /api/v1/ssh` 的兌換拒絕留痕，入口標記釘死為 `ViaSSH`。
+// auditRedeemDenied 本包各兌換入口的拒絕留痕，入口標記由呼叫端指定。
 //
 // 寫入實作與 `/connect` 共用（`proxy.AuditConnectDenied`，manifest AP-69）——
 // spec 的「兌換拒絕留痕」沒有端點限定，兩包各寫一份就會各自演化欄位集，而
 // 「某一側少填來源位址」不會讓任何測試轉紅。狀態值的 401→failure／其餘→denied
 // 分流、asset_id 的 NULL 語義、來源位址取法全在該函式，見其檔頭。
-func (h *Handler) auditRedeemDenied(c *gin.Context, ev proxy.ConnectDenial) {
-	ev.Via = proxy.ViaSSH
+//
+// **入口標記不寫死**：本包現在有兩支路由（`GET /api/v1/ssh` 與
+// `GET /api/v1/db-console`），沿用同一個值會讓稽核以 `via` 分流時，
+// 其中一支的拒絕全部落到另一支名下。
+func (h *Handler) auditRedeemDenied(c *gin.Context, ev proxy.ConnectDenial, via string) {
+	ev.Via = via
 	proxy.AuditConnectDenied(h.AuditService, c, ev)
 }
 
@@ -851,9 +889,13 @@ type authProvenance struct {
 }
 
 // createSession 建立會話記錄；失敗回傳 nil，由呼叫點 fail-close 拒連
-func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolType, clientIP string, k8sSnap *k8sproxy.PodSnapshot, acct accountSnapshot, prov authProvenance) *model.Session {
+// dbConsole 為真時於同一次 INSERT 標記本會話為查詢主控台會話——
+// 事後 UPDATE 會產生一段「已建立但未標記」的窗口，而會話列表與監看在那段時間
+// 會把它呈現成命令列會話
+func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolType, clientIP string, k8sSnap *k8sproxy.PodSnapshot, acct accountSnapshot, prov authProvenance, dbConsole bool) *model.Session {
 	id := assetID
 	sess := &model.Session{
+		DBConsole: dbConsole,
 		UserID:   userID,
 		AssetID:  &id,
 		Protocol: protocol,

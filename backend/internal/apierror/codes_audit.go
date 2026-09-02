@@ -176,6 +176,9 @@ var policyKeyZhLabels = identityLabels(
 	"file_upload_enabled",
 	"file_download_enabled",
 	"file_delete_enabled",
+	// 登入前告示：標題與內文
+	"login_banner_title",
+	"login_banner_body",
 )
 
 // identityLabels 建立「值即標籤」的 ZhLabels（機器名枚舉專用：需要允許清單的

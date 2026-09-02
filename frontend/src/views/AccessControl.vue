@@ -27,7 +27,7 @@
     >
       <template #section-extra="{ section }">
         <!-- 資料傳輸管控的邊界說明（data-transfer-control 7.2）：
-             五項邊界必須可查閱，否則「開了 file_download_enabled=false 就等於
+             七項邊界必須可查閱，否則「開了 file_download_enabled=false 就等於
              資料出不去」的誤解會直接變成稽核事故。折疊呈現＝不擋日常操作，
              但任何時候點得開 -->
         <el-collapse
@@ -37,7 +37,7 @@
           <el-collapse-item :title="$t('transferBoundary.title')">
             <ol class="boundary-list">
               <li
-                v-for="i in 5"
+                v-for="i in TRANSFER_BOUNDARY_COUNT"
                 :key="i"
               >
                 {{ $t(`transferBoundary.item${i}`) }}
@@ -68,6 +68,9 @@ import PolicyKeySections from '@/components/PolicyKeySections.vue'
 import AssetPolicyTable from '@/components/AssetPolicyTable.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import { ACCESS_SECTIONS } from '@/constants/policyDomains'
+
+// 條目數與規格條列一致；增刪條目時三語 key 必須同步
+const TRANSFER_BOUNDARY_COUNT = 7
 
 const {
   loading,

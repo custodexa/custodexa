@@ -26,6 +26,13 @@ const (
 	// EndReasonAssetDisabled 資產被停用而收線：
 	// 與帳號停用收線（走 admin_terminate）分開記，使審計能區分「人被停」與「機器被停」
 	EndReasonAssetDisabled = "asset_disabled"
+	// EndReasonTargetClosed 查詢主控台的目標資料庫連線關閉（目標端踢線、網路中斷、
+	// 或取消語句時 driver 選擇關閉連線）。系統不在會話內重撥——重新連線一律是
+	// 新的票、完整閘序、新的會話——故目標連線終止即本會話終止
+	EndReasonTargetClosed = "target_closed"
+	// EndReasonSlowConsumer 客戶端消費不及：單則寫入逾期或外送佇列滿。
+	// 背壓的選擇是關閉連線而非無界緩衝——無界緩衝把一個慢客戶端變成整個行程的記憶體風險
+	EndReasonSlowConsumer = "slow_consumer"
 )
 
 // Session 連線 session 模型
@@ -57,8 +64,13 @@ type Session struct {
 	// 斷線原因（session-timeout/session-reconciliation）：normal/idle_timeout/
 	// max_duration/admin_terminate/user_terminate/backend_restart/orphaned/
 	// revoked/block_clear_failed（阻斷後清行失敗的 fail-close 收線，
-	// 值定義於 sshproxy.bridge）
+	// 值定義於 sshproxy.bridge）/target_closed/slow_consumer（查詢主控台，
+	// 值定義於本檔上方常數）
 	EndReason string `gorm:"size:20;default:normal" json:"end_reason,omitempty"`
+
+	// DBConsole 本會話是否為查詢主控台會話（否＝命令列或圖形會話）。
+	// 會話列表的標記、詳情頁的指令卡欄位、監看頁的呈現皆以本欄分流
+	DBConsole bool `gorm:"not null;default:false" json:"db_console"`
 
 	// 錄製資訊
 	RecordingPath string `gorm:"size:500" json:"recording_path,omitempty"`

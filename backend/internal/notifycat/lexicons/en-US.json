@@ -14,6 +14,8 @@
     "audit_write_fallback_file": "Audit batch write failed; fell back to file",
     "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
     "audit_write_sync_refused": "Synchronous audit write failed; the operation was refused",
+    "command_audit_write_refused": "Synchronous statement record write failed; the statement was refused",
+    "command_blocker_unavailable": "The command blocking matcher is unavailable; the statement was refused",
     "syslog_connect_failed": "Syslog forwarding connection failed",
     "syslog_buffer_overflow": "Syslog forwarding buffer overflow",
     "kek_retirement_backlog": "KEK retirement backlog not converged",

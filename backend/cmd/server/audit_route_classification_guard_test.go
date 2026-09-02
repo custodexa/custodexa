@@ -143,13 +143,13 @@ const maxUnclassifiedRoutes = 0
 
 // minAuditRoutesScanned 防假綠下界：`buildRouter` 若失效（回空 map／註冊中斷），
 // 逐路由迴圈會零迭代而全綠。低於此數即 `Fatal` 而非 skip——掃不到東西的守衛
-// 不是「沒發現問題」，是「沒在看」。現況 193 條。
+// 不是「沒發現問題」，是「沒在看」。現況 194 條。
 const minAuditRoutesScanned = 150
 
 // minAuthenticatedRoutes 方向 5 的防假綠下界：認證中介層若改名，
 // `authMiddlewareMarker` 會一條都認不出來，於是**全部**路由看起來都「無認證」，
 // 方向 5 反而要求把它們全登記成 classNoIdentity——那是最糟的假綠。
-// 現況 171 條（193 − 22）。
+// 現況 171 條（194 − 23）。
 const minAuthenticatedRoutes = 150
 
 // authMiddlewareMarker 認證中介層在鏈指紋中的識別片段。
@@ -383,7 +383,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/users/local-admin-count"}:                                       {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users/source-policy/check"}:                                    {classResource, model.ResourceUser, "命中分類器段 `users`（允許來源網段的純判定端點，靜態段與 `:id` 並存）"},
 
-	// ── classNoIdentity：鏈中無認證中介層 ⇒ 審計中介層必然早退（22 條）──
+	// ── classNoIdentity：鏈中無認證中介層 ⇒ 審計中介層必然早退（23 條）──
 	//
 	// **理由欄的「[歸屬：…]」前綴＝留痕歸屬**。
 	// 加註的動機：`classNoIdentity` 只說「審計**中介層**不為它寫列」，讀者極易把它
@@ -410,6 +410,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/auth/login"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] 登入時尚無身分；留痕＝AP-07 `auditLogin`（來源位址取自連線對端，" +
 			"修前可由 `X-Forwarded-For` 指定）"},
+	{"GET", "/api/v1/auth/banner"}: {classNoIdentity, "",
+		"[歸屬：無留痕] 登入前告示讀取（`security_policy_handler.go` `LoginBanner`），" +
+			"登入前可達的唯讀查詢，無身分亦無變更語義，故不產生審計列"},
 	{"GET", "/api/v1/auth/methods"}: {classNoIdentity, "",
 		"[歸屬：無留痕] 登入方式探詢（`oidc_handler.go` `LoginMethods`），登入前可達的唯讀查詢，" +
 			"無身分亦無變更語義，故不產生審計列"},
@@ -467,6 +470,17 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 			"同一個寫入點，`details.via=ssh`；缺票／偽票／過期票／閘序拒絕四路皆留痕）；" +
 			"**成功建線**由 sessions 表承擔（`sshproxy/handler.go` 的 `createSession`，涵蓋" +
 			"使用者／資產／來源位址／登入帳號；spec「他體系留痕的明載定調」）"},
+	{"GET", "/api/v1/db-console/sessions/:id/results/:event_id/export"}: {classResource, model.ResourceSession,
+		"命中分類器段 `sessions`（`db-console` 段在其前，分類器逐段掃描故不影響）；" +
+			"中介層本列為請求層留痕，handler 另寫 `file_download`／`file` 的成敗與中止列" +
+			"（含 event_id、set_index、size、sha256；中止列另記 bytes_sent 與 sha256_sent），兩者並存"},
+	{"GET", "/api/v1/db-console"}: {classNoIdentity, "",
+		"[歸屬：handler 自寫＋他體系] 查詢主控台 WebSocket 閘，connect token 於 handler 內自解析。" +
+			"兌換**拒絕**＝AP-69 `proxy.AuditConnectDenied`（與 `/ssh` 共用同一個寫入點）；" +
+			"**成功建線**由 sessions 表承擔（`sshproxy/dbconsole_handler.go` 的 `createSession`，" +
+			"`db_console=true`）；會話期間的操作事件另以 `audit_logs` 結構化留痕" +
+			"（`RequestBody.kind` 區分連線失敗、admission、樹瀏覽、切庫、目標受限、取消、" +
+			"連線關閉、重連自報、結束時交易未提交）"},
 	{"GET", "/health"}: {classNoIdentity, "",
 		"[歸屬：無留痕] 存活探針，不掛認證，無稽核語義（豁免表 `exemptProbe`）"},
 	{"POST", "/health"}: {classNoIdentity, "",

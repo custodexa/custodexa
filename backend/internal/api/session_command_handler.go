@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // SessionCommandServiceInterface 指令審計服務接口（用於測試注入）
@@ -91,6 +91,13 @@ func (h *SessionCommandHandler) Search(c *gin.Context) {
 		}
 	}
 
+	// 結果事實篩選（主控台列）。**值域外的值一律 400，不套用亦不忽略**：
+	// 忽略會讓打錯字的查詢回傳全集，而稽核讀到的是「這個狀態底下有這些列」——
+	// 那與事實相反，且沒有任何訊號提示他條件沒生效。
+	if !applyCommandResultFilters(c, filter) {
+		return
+	}
+
 	if page, err := strconv.Atoi(c.Query("page")); err == nil && page > 0 {
 		filter.Page = page
 	}
@@ -105,6 +112,45 @@ func (h *SessionCommandHandler) Search(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// commandResultStatuses 結果終態的值域（與 DB CHECK 同一份值）。
+// 空字串不在內：它是「非主控台列」的標記，要那一側請用 `source=cli`
+var commandResultStatuses = map[string]bool{
+	model.ResultStatusRunning: true, model.ResultStatusOK: true,
+	model.ResultStatusError: true, model.ResultStatusPartial: true,
+	model.ResultStatusBlocked: true, model.ResultStatusCancelled: true,
+	model.ResultStatusTimeout: true, model.ResultStatusEffectUnknown: true,
+}
+
+// applyCommandResultFilters 解析 source／target_database／result_status／error_code
+// 四個參數。回傳 false 代表已寫出 400 回應，呼叫端應直接返回。
+//
+// `result_status` 可重複帶（`?result_status=ok&result_status=partial`＝聯集）。
+// **與其餘篩選參數的寬鬆解析刻意不同紀律**：user_id 之類解析失敗時不套用，
+// 得到的是超集（多給，呼叫端立刻看得出來）；值域外的狀態若照樣送進查詢，
+// 得到的是空集，那看起來與「範圍內真的沒有這種列」完全一樣。
+func applyCommandResultFilters(c *gin.Context, filter *audit.SessionCommandFilter) bool {
+	switch source := c.Query("source"); source {
+	case "":
+	case audit.SourceConsole, audit.SourceCLI:
+		filter.Source = source
+	default:
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return false
+	}
+
+	for _, status := range c.QueryArray("result_status") {
+		if !commandResultStatuses[status] {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return false
+		}
+		filter.ResultStatuses = append(filter.ResultStatuses, status)
+	}
+
+	filter.TargetDatabase = c.Query("target_database")
+	filter.ErrorCode = c.Query("error_code")
+	return true
 }
 
 // RegisterRoutes 註冊指令審計路由：

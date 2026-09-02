@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AccessControl from '../AccessControl.vue'
+import { t } from '@/i18n'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
@@ -173,6 +174,30 @@ describe('AccessControl', () => {
     expect(wrapper.text()).toContain('本頁與 PCI 建議偏離 1 項')
     // 雙向導覽：橫幅附全系統總數回母頁總覽連結（deviation_count=2）
     expect(wrapper.text()).toContain('全系統偏離 2 項 · 安全政策總覽')
+  })
+
+  // 誠實邊界的條目數是規格條列，不是排版細節：少一項即為介面對外少講一件事
+  it('資料傳輸區塊列出七項控制邊界', async () => {
+    getPoliciesMock.mockResolvedValue({
+      data: [
+        ...policyFixture().data,
+        {
+          key: 'clipboard_send_enabled',
+          type: 'bool',
+          label: '允許貼入受管資產',
+          value: 'true',
+          compliant: true,
+        },
+      ],
+      total: 3,
+    })
+    const wrapper = await mountPage()
+
+    expect(wrapper.text()).toContain(t('transferBoundary.title'))
+    const items = wrapper.findAll('.transfer-boundary .boundary-list li')
+    expect(items).toHaveLength(7)
+    expect(items[5].text()).toBe(t('transferBoundary.item6'))
+    expect(items[6].text()).toBe(t('transferBoundary.item7'))
   })
 
   it('lists only overridden assets with dynamic clear-option label', async () => {

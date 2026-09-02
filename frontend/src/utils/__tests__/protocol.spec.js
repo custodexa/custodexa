@@ -2,6 +2,7 @@ import { describe, test, it, expect } from 'vitest'
 import {
   isTextTerminal,
   isDatabaseProtocol,
+  isDBConsoleProtocol,
   isPasswordOnlyProtocol,
   PROTOCOL_DEFAULT_PORTS,
   protocolTagType,
@@ -77,5 +78,25 @@ describe('protocolTagType（全站唯一色映射）', () => {
     expect(protocolTagType('telnet')).toBe('info')
     expect(protocolTagType('')).toBe('info')
     expect(protocolTagType(undefined)).toBe('info')
+  })
+})
+
+describe('isDBConsoleProtocol（查詢主控台的協議閘）', () => {
+  test.each(['mysql', 'postgres', 'mssql'])('%s 支援主控台', (p) => {
+    expect(isDBConsoleProtocol(p)).toBe(true)
+  })
+
+  test.each(['redis', 'ssh', 'rdp', 'vnc', 'k8s', '', undefined])(
+    '%s 不支援主控台',
+    (p) => {
+      expect(isDBConsoleProtocol(p)).toBe(false)
+    }
+  )
+
+  it('是 isDatabaseProtocol 的真子集（redis 為差集）', () => {
+    const dbOnly = ['mysql', 'postgres', 'redis', 'mssql'].filter(
+      (p) => isDatabaseProtocol(p) && !isDBConsoleProtocol(p)
+    )
+    expect(dbOnly).toEqual(['redis'])
   })
 })

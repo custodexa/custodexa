@@ -6,7 +6,7 @@ vi.mock('../request', () => ({
   default: (...args) => requestMock(...args),
 }))
 
-import { getSessionCommands, searchCommands } from '../commands'
+import { getSessionCommands, searchCommands, serializeCommandParams } from '../commands'
 
 describe('commands API methods', () => {
   beforeEach(() => {
@@ -41,6 +41,44 @@ describe('commands API methods', () => {
       url: '/commands',
       method: 'get',
       params,
+      paramsSerializer: serializeCommandParams,
     })
+  })
+
+  it('searchCommands 帶結果事實篩選四參數', () => {
+    const params = {
+      source: 'console',
+      target_database: 'payments',
+      result_status: ['partial', 'effect_unknown'],
+      error_code: '42601',
+    }
+    searchCommands(params)
+    expect(requestMock).toHaveBeenCalledWith({
+      url: '/commands',
+      method: 'get',
+      params,
+      paramsSerializer: serializeCommandParams,
+    })
+  })
+
+  it('serializeCommandParams 多選以重複鍵序列化（非 [] 形式）', () => {
+    const qs = serializeCommandParams({
+      source: 'console',
+      result_status: ['ok', 'partial'],
+    })
+    expect(qs).toBe('source=console&result_status=ok&result_status=partial')
+    expect(qs).not.toContain('%5B%5D')
+    expect(qs).not.toContain('[]')
+  })
+
+  it('serializeCommandParams 略去空值，不把空字串當篩選條件', () => {
+    const qs = serializeCommandParams({
+      keyword: '',
+      target_database: undefined,
+      error_code: null,
+      result_status: ['', 'blocked'],
+      page: 1,
+    })
+    expect(qs).toBe('result_status=blocked&page=1')
   })
 })

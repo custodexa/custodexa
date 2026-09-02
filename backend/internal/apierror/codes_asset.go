@@ -31,6 +31,10 @@ var (
 	CodeInvalidRDPSecurity  = register("VALIDATION_ASSET_RDP_SECURITY", Descriptor{ZhFallback: "rdp_security 僅允許空值（沿現狀）、nla 或 tls"})
 	CodeInvalidDBTLSMode    = register("VALIDATION_ASSET_DB_TLS_MODE", Descriptor{ZhFallback: "db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full"})
 	CodeInvalidAccessPolicy = register("VALIDATION_ASSET_ACCESS_POLICY", Descriptor{ZhFallback: "access_policy 僅允許空值（跟隨全域預設）、open、reason 或 approval"})
+	// 允許資料庫清單的格式與適用協議。五種違規（協議不符、逾長、空項、
+	// 含控制字元、重複、超過項數上限）共用一碼：它們都是「這份清單不合格式」，
+	// 逐項分碼會讓前端多五個鍵而使用者拿到的指引沒有更精確
+	CodeInvalidAllowedDatabases = register("VALIDATION_ASSET_ALLOWED_DATABASES", Descriptor{ZhFallback: "allowed_databases 僅資料庫協議（mysql、postgres、mssql）可為非空；每項須為 1 至 128 字元、不含控制字元且不重複，至多 64 項"})
 
 	// MSSQL 資產主機欄：sqlcmd 的 -S host,port 以逗號分隔埠，
 	// host 內含逗號會被解讀成埠。只擋 mssql，不動 SafeArg 的通用語義

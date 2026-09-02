@@ -68,6 +68,25 @@ var migrations = []Migration{
 		Up:      applySourceIPForensics,
 		Down:    rollbackSourceIPForensics,
 	},
+	{
+		// 查詢主控台：assets.allowed_databases、sessions.db_console、
+		// session_commands 十一個結果事實欄、三條 CHECK、三個索引。
+		// **Down 有損**（刪政策欄與稽核證據欄，生產無回滾入口；
+		// 見 migration_db_query_console.go 檔頭的 Down 契約）
+		Version: "20260826_db_query_console",
+		Name:    "db_query_console",
+		Up:      applyDBQueryConsole,
+		Down:    rollbackDBQueryConsole,
+	},
+	{
+		// 政策值欄位放寬為 text，容納文字型政策鍵。純型別擴張、無資料回填；
+		// Down 收窄回 varchar(128)，存量超長時由資料庫報錯並回滾整個交易
+		//（見 migration_security_policies_value_text.go 檔頭的 Down 契約）
+		Version: "20260903_security_policies_value_text",
+		Name:    "security_policies_value_text",
+		Up:      applySecurityPoliciesValueText,
+		Down:    rollbackSecurityPoliciesValueText,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
@@ -80,7 +99,8 @@ var migrations = []Migration{
 func schemaDDLStatements() []string {
 	out := append(baselineSchemaStatements(), auditExportJobsDDL()...)
 	out = append(out, evidenceOffsiteDDL()...)
-	return append(out, sourceIPForensicsDDL()...)
+	out = append(out, sourceIPForensicsDDL()...)
+	return append(out, dbQueryConsoleDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

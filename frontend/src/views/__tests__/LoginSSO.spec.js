@@ -42,6 +42,12 @@ vi.mock('@/api/oidc', () => ({
   exchangeSSOTicket: (...args) => exchangeSSOTicketMock(...args),
 }))
 
+// 登入前告示端點：本檔不驗告示，一律走「未設定」以免掛載時打真的網路請求
+const getLoginBannerMock = vi.fn()
+vi.mock('@/api/loginBanner', () => ({
+  getLoginBanner: (...args) => getLoginBannerMock(...args),
+}))
+
 vi.mock('qrcode', () => ({ default: { toCanvas: vi.fn().mockResolvedValue(undefined) } }))
 
 const PROVIDERS = [
@@ -67,6 +73,7 @@ describe('Login SSO 區塊', () => {
     sessionStorage.clear()
     vi.clearAllMocks()
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: PROVIDERS })
+    getLoginBannerMock.mockResolvedValue({ enabled: false })
     window.history.replaceState({}, '', '/login')
     assignSpy = vi.spyOn(window.location, 'assign').mockImplementation(() => {})
     replaceStateSpy = vi.spyOn(window.history, 'replaceState')

@@ -2,6 +2,62 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.2.0 — a query console for database assets, and a sign-in notice (2026-09-02)
+
+**This release changes the database schema.** Two migrations run when the backend
+starts. `20260826_db_query_console` adds columns to three existing tables for the
+query console; it does not rewrite existing rows. `20260903_security_policies_value_text`
+widens the column that stores policy values so a sign-in notice fits. The first start
+after the upgrade takes about as long as usual.
+
+**Back up before you upgrade, and keep the images you are running now.** What to
+record before you stop the old version, and what to check afterwards, is section 2
+of `docs/ops/upgrade-sop.md`. Going back means restoring the pre-upgrade backup
+with the previous images: neither migration has a production rollback path. A
+sign-in notice written after the upgrade is not in that backup, so copy the text
+from the security policy page before going back.
+
+### Query console
+
+- Database assets on MySQL, PostgreSQL, and SQL Server open in a query console, a
+  workspace tab beside the terminal. The backend connects with its own database
+  driver using the credentials it holds for the asset; no client program runs, and
+  the browser never receives the credentials.
+- Every statement is written to the audit trail before it executes. Each entry
+  records the target database, the outcome (completed, error, blocked, cancelled,
+  timed out, partial, or unknown effect), row counts, and the transaction state
+  afterwards. If the audit entry cannot be written, the statement does not run.
+  Command blocking and alert rules apply to console statements the same way they
+  apply to terminal sessions.
+- Console sessions are transcribed and play back in the session viewer. The
+  transcript carries statements and result summaries, not result rows. Error
+  messages returned by the database are kept as received and may contain data
+  fragments.
+- An asset can carry a list of allowed databases. The object tree then shows only
+  those, and a statement aimed elsewhere is refused and recorded. Changing the
+  list takes effect on the next statement.
+- Result sets export as CSV when the file download policy allows it. The backend
+  streams the file, records every export with its size and checksum, and rewrites
+  cell values that a spreadsheet would run as formulas.
+- The command audit page filters by outcome, target database, and error code.
+  Session detail lists the facts recorded for each statement.
+- A user can hold up to four console sessions at once, and a deployment up to
+  sixty-four. Capacity notes are in `docs/ops/deployment-topology-limits.md`.
+
+### Sign-in notice
+
+- Administrators can set a title and a text under security policies. The sign-in
+  page shows them above the credential form, as plain text, on every step of
+  signing in. Leave the text empty and nothing is shown. Anyone who reaches the
+  sign-in page can read the notice, so keep internal details out of it. Changes
+  are audited with the full text before and after.
+
+### Interface
+
+- The message shown when the site is opened over plain HTTP is now two short lines.
+- The sign-in page scrolls when its content is taller than the window, so small
+  screens reach the form.
+
 ## 1.1.2 — a cleaner look across the interface (2026-09-02)
 
 No schema change. No migration runs.

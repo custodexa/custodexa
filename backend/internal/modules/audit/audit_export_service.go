@@ -500,7 +500,10 @@ func (s *AuditExportService) writeAuditLogs(zw *zip.Writer, filter *ExportFilter
 // writeCommands 撈指令流寫 CSV（session 指定用 ListBySession，否則 Search 分頁）
 func (s *AuditExportService) writeCommands(zw *zip.Writer, filter *ExportFilter, manifest *ExportManifest) error {
 	var rows [][]string
-	header := []string{"session_id", "user_id", "asset_id", "seq", "command", "executed_at"}
+	header := []string{"session_id", "user_id", "asset_id", "seq", "command", "executed_at",
+		"event_id", "target_database", "result_status", "result_reason",
+		"result_rows", "rows_affected", "result_sets", "error_code",
+		"duration_ms", "result_truncated", "tx_state_after"}
 	truncated := false
 
 	appendCmd := func(c *model.SessionCommand) {
@@ -508,14 +511,15 @@ func (s *AuditExportService) writeCommands(zw *zip.Writer, filter *ExportFilter,
 		if c.AssetID != nil {
 			assetID = strconv.FormatUint(uint64(*c.AssetID), 10)
 		}
-		rows = append(rows, []string{
+		row := []string{
 			strconv.FormatUint(uint64(c.SessionID), 10),
 			strconv.FormatUint(uint64(c.UserID), 10),
 			assetID,
 			strconv.Itoa(c.Seq),
 			c.Command,
 			c.ExecutedAt.Format(time.RFC3339),
-		})
+		}
+		rows = append(rows, append(row, commandResultFacts(c)...))
 	}
 
 	if filter.SessionID != nil {
@@ -565,6 +569,44 @@ func (s *AuditExportService) writeCommands(zw *zip.Writer, filter *ExportFilter,
 		cw.Flush()
 		return cw.Error()
 	})
+}
+
+// commandResultFacts 查詢主控台的結果事實欄（十一欄，順序同表頭尾段）。
+//
+// **文字終端的列一律留空**，判別鍵是 `ResultStatus`——空字串在該欄的語義就是
+// 「這不是主控台列」。留空而非填 `0`／`false`：稽核讀到 0 影響列與讀到空白
+// 是兩件事，前者宣稱「查過、是零」，後者才是「這一欄對這種列不適用」。
+//
+// 可空的數值欄同理：NULL 表示不適用或未回填，寫成空白，不折成 0。
+func commandResultFacts(c *model.SessionCommand) []string {
+	if c.ResultStatus == "" {
+		return make([]string, 11)
+	}
+	i64 := func(v *int64) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.FormatInt(*v, 10)
+	}
+	i32 := func(v *int32) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.FormatInt(int64(*v), 10)
+	}
+	return []string{
+		c.EventID,
+		c.TargetDatabase,
+		c.ResultStatus,
+		c.ResultReason,
+		i64(c.ResultRows),
+		i64(c.RowsAffected),
+		i32(c.ResultSets),
+		c.ErrorCode,
+		i32(c.DurationMS),
+		strconv.FormatBool(c.ResultTruncated),
+		c.TxStateAfter,
+	}
 }
 
 // writeRecordings 解析範圍內有錄影的 session，逐檔塞入 recordings/

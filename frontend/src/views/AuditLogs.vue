@@ -1144,14 +1144,18 @@ onMounted(() => {
   color: var(--ot-text-primary);
 }
 
+/* 舊值與新值可能是多行文字（政策的文字型鍵存的是使用者自填的內容）：
+   pre-wrap 讓換行照原樣顯示，否則多行值會被折成一行而看不出實際存了什麼 */
 .old-value {
   color: var(--ot-danger);
   text-decoration: line-through;
+  white-space: pre-wrap;
 }
 
 .new-value {
   color: var(--ot-success);
   font-weight: 500;
+  white-space: pre-wrap;
 }
 
 .inline-code {

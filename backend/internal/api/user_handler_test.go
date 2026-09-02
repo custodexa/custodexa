@@ -442,7 +442,7 @@ func TestUserHandler_Create(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "創建用戶失敗")
+		assert.Contains(t, response["error"], "建立使用者失敗")
 
 		mockUserService.AssertExpectations(t)
 	})

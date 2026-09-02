@@ -30,6 +30,15 @@ func (p ProtocolType) IsDatabase() bool {
 	return p == ProtocolMySQL || p == ProtocolPostgres || p == ProtocolRedis || p == ProtocolMSSQL
 }
 
+// SupportsQueryConsole 是否為查詢主控台支援的協議。
+//
+// **與 IsDatabase 刻意不同**：redis 是資料庫協議但沒有 SQL 執行單位、
+// 沒有結果集、沒有交易態，主控台的整套模型對它不成立。
+// 允許資料庫清單、主控台入口與協議閘一律以本判定為準。
+func (p ProtocolType) SupportsQueryConsole() bool {
+	return p == ProtocolMySQL || p == ProtocolPostgres || p == ProtocolMSSQL
+}
+
 // IsTextTerminal 是否為文字終端類協議（SSH、資料庫 CLI 與 K8s exec）：
 // 此類會話走 sshproxy bridge，指令審計/錄製/監看/阻斷全沿用
 func (p ProtocolType) IsTextTerminal() bool {
@@ -90,6 +99,19 @@ type Asset struct {
 	// DB TLS 模式（per-asset 可選）：''＝client 預設(不破壞既有) / disable / require / verify-ca / verify-full
 	DBTLSMode string `gorm:"size:20" json:"db_tls_mode,omitempty"`
 	DBCACert  string `gorm:"type:text" json:"db_ca_cert,omitempty"` // verify-ca/verify-full 用 CA（PEM，選填）
+
+	// AllowedDatabases 查詢主控台的執行目標限制（僅 mysql/postgres/mssql 可非空）。
+	//
+	// 空清單＝不限制。非空時主控台只列本清單與目標端可見清單的交集，並在每個
+	// 執行單位之前確認當前目標庫落在清單內。
+	//
+	// **射程只到主控台的執行目標**：它不是資料庫級的存取控制（那由目標端帳號權限
+	// 承擔），也不解析 SQL——單位內的 `USE`、跨庫限定名都不在它的辨識範圍；
+	// 命令列會話完全不受本欄影響。
+	//
+	// 協議自上述三者改為其他協議時本欄由伺服端自動清空並留痕：留下不套用的殘值，
+	// 會在協議改回時靜默恢復一份沒人記得設過的限制。
+	AllowedDatabases StringList `gorm:"type:text;not null;default:'[]'" json:"allowed_databases"`
 
 	// K8s exec 目標（k8s-exec；僅 protocol=k8s 使用，Token 沿用 PasswordEnc）
 	// 設計改為「綁 namespace、連線時選 pod」：K8sNamespace 必填；K8sPod/K8sContainer
@@ -196,4 +218,15 @@ type AssetChange struct {
 // AssetChangeDetails 資產變更詳情
 type AssetChangeDetails struct {
 	Changes []AssetChange `json:"changes"`
+
+	// AllowedDatabasesCleared 本次更新因協議改離查詢主控台支援的協議，
+	// 由伺服端自動清空允許資料庫清單。
+	//
+	// **與 Changes 內的同名 diff 並存而不重複**：diff 記的是「值從 A 變成 B」，
+	// 這一對欄位記的是「這不是管理者送的值，是伺服端替他清的」——
+	// 兩者在稽核上是不同的問題，靠 diff 反推清空原因會把使用者的顯式清空
+	// 與伺服端的自動清空混為一談
+	AllowedDatabasesCleared bool `json:"allowed_databases_cleared,omitempty"`
+	// PreviousAllowedDatabaseCount 清空前的項數（僅 AllowedDatabasesCleared 為真時出現）
+	PreviousAllowedDatabaseCount int `json:"previous_count,omitempty"`
 }

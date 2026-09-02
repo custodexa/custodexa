@@ -725,6 +725,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	connHandler.AccessPolicy = accessPolicyService // 兌換點政策重查（與 SSH 對稱）
 	// 資料傳輸管控（data-transfer-control）：guacd 連線參數＋FileTap 逐次判定
 	connHandler.SetDataTransfer(dataTransferService)
+	// 查詢主控台的結果匯出走同一份判定實例（第四個強制點）：
+	// 兩套解析遲早分岔，而分岔的那一側就是越權面
+	sshHandler.DataTransfer = dataTransferService
+	sshHandler.DB = database.DB
 
 	// 申請核准流
 	accessRequestService := authz.NewAccessRequestService(

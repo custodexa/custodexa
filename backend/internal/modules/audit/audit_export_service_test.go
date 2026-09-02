@@ -34,7 +34,13 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 	if err := db.Exec(`CREATE TABLE session_commands (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
 		asset_id INTEGER, command TEXT NOT NULL, seq INTEGER NOT NULL, executed_at DATETIME NOT NULL,
-		degraded BOOLEAN NOT NULL DEFAULT 0, degrade_reason TEXT NOT NULL DEFAULT '')`).Error; err != nil {
+		degraded BOOLEAN NOT NULL DEFAULT 0, degrade_reason TEXT NOT NULL DEFAULT '',
+		event_id TEXT NOT NULL DEFAULT '', target_database TEXT NOT NULL DEFAULT '',
+		result_status TEXT NOT NULL DEFAULT '', result_reason TEXT NOT NULL DEFAULT '',
+		result_rows BIGINT, rows_affected BIGINT, result_sets INTEGER,
+		error_code TEXT NOT NULL DEFAULT '', duration_ms INTEGER,
+		result_truncated BOOLEAN NOT NULL DEFAULT 0,
+		tx_state_after TEXT NOT NULL DEFAULT '')`).Error; err != nil {
 		t.Fatalf("create session_commands: %v", err)
 	}
 	// Session/AuditLog 用一般 time.Time，AutoMigrate 成 sqlite datetime 可掃描。

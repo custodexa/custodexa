@@ -679,6 +679,30 @@
             :placeholder="form.protocol === 'mssql' ? $t('assets.mssqlCaCertHint') : $t('assets.dbCaPlaceholder')"
           />
         </el-form-item>
+        <!-- 查詢主控台的執行目標限制。射程只到主控台，命令列會話不受影響——
+             helper 必須把這件事寫出來，否則管理者會以為填了就等於資料庫級存取控制 -->
+        <el-form-item
+          v-if="isDBConsoleProtocol(form.protocol)"
+          :label="$t('assets.allowedDatabases')"
+        >
+          <el-select
+            v-model="form.allowed_databases"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            style="width: 100%"
+            :reserve-keyword="false"
+            :placeholder="$t('assets.allowedDatabasesPlaceholder')"
+            data-test="allowed-databases"
+          />
+          <div class="form-tip">
+            {{ $t('assets.allowedDatabasesScopeHint') }}
+          </div>
+          <div class="form-tip">
+            {{ $t(`assets.allowedDatabasesCaseHint.${form.protocol}`) }}
+          </div>
+        </el-form-item>
         <!-- RDP 傳輸安全：預設沿現狀，
              strict 檔的修復路徑＝調 NLA＋開啟憑證驗證 -->
         <template v-if="form.protocol === 'rdp'">
@@ -1117,7 +1141,9 @@ import { createAccessRequest, breakGlassConnect } from '@/api/accessRequests'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
 import { riskLabel } from '@/utils/transportDisplay'
 import { getSecurityPolicies } from '@/api/securityPolicies'
-import { isDatabaseProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS, protocolTagType } from '@/utils/protocol'
+import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS, protocolTagType } from '@/utils/protocol'
+import { needsAccessRequest, isAccessPending } from '@/utils/asset-access'
+import { confirmDestructive } from '@/utils/confirm'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
 import { useRoles } from '@/composables/useRoles'
@@ -1342,6 +1368,7 @@ const form = reactive({
   db_name: '',
   db_tls_mode: '',
   db_ca_cert: '',
+  allowed_databases: [],
   rdp_security: '',
   rdp_verify_cert: false,
   k8s_namespace: '',
@@ -1511,15 +1538,14 @@ const canConnect = (asset) => {
 }
 
 // 連線入口三態：需要申請／申請中——
-// 停用資產一併封（申請/pending 入口不得引導向已停用資產）
+// 停用資產一併封（申請/pending 入口不得引導向已停用資產）。
+// 判準本體住 utils/asset-access.js：工作區側欄消費同一組狀態，
+// 兩處各寫一份遲早會分歧
 const needsRequest = (asset) =>
-  asset.active !== false &&
-  !isAdminOrAuditor.value &&
-  (asset.access_state === 'reason_required' || asset.access_state === 'approval_required')
+  needsAccessRequest(asset, { isPrivileged: isAdminOrAuditor.value })
 
 const isPendingRequest = (asset) =>
-  asset.active !== false &&
-  !isAdminOrAuditor.value && asset.access_state === 'pending'
+  isAccessPending(asset, { isPrivileged: isAdminOrAuditor.value })
 
 // 連線入口提示三態：停用 > 可連 > 無權限。
 // 停用優先——canConnect 對停用資產無條件早退，若先判權限，admin 會看到
@@ -1550,6 +1576,7 @@ const resetForm = () => {
   form.db_name = ''
   form.db_tls_mode = ''
   form.db_ca_cert = ''
+  form.allowed_databases = []
   form.rdp_security = ''
   form.rdp_verify_cert = false
   form.k8s_namespace = ''
@@ -1736,6 +1763,7 @@ const handleEdit = (row) => {
   form.db_name = row.db_name || ''
   form.db_tls_mode = row.db_tls_mode || ''
   form.db_ca_cert = row.db_ca_cert || ''
+  form.allowed_databases = [...(row.allowed_databases || [])]
   form.rdp_security = row.rdp_security || ''
   form.rdp_verify_cert = row.rdp_verify_cert || false
   form.k8s_namespace = row.k8s_namespace || ''
@@ -1754,6 +1782,22 @@ const handleEdit = (row) => {
 const handleSubmit = async () => {
   try {
     await formRef.value.validate()
+
+    // 協議改離查詢主控台支援的三種方言時，伺服端會清空允許清單。
+    // 清單是管理者逐項填出來的，靜默清掉等於讓下一次改回協議時
+    // 出現無從解釋的空樹——儲存前先把後果講明
+    if (!isDBConsoleProtocol(form.protocol) && form.allowed_databases.length) {
+      try {
+        await confirmDestructive(
+          t('assets.allowedDatabasesClearConfirm', { n: form.allowed_databases.length }),
+          t('assets.allowedDatabasesClearTitle'),
+          { confirmButtonText: t('assets.allowedDatabasesClearOk') }
+        )
+      } catch {
+        return
+      }
+    }
+
     submitting.value = true
 
     const data = {
@@ -1774,6 +1818,12 @@ const handleSubmit = async () => {
       data.db_ca_cert = ['verify-ca', 'verify-full'].includes(form.db_tls_mode)
         ? form.db_ca_cert
         : ''
+    }
+
+    // 允許清單只對三種 SQL 方言送出；其餘協議連空陣列都不送，
+    // 交由伺服端的清空規則處理殘值
+    if (isDBConsoleProtocol(form.protocol)) {
+      data.allowed_databases = [...form.allowed_databases]
     }
 
     // RDP 傳輸安全
@@ -2159,6 +2209,16 @@ async function openEditFromQuery() {
 
 .apply-hint {
   margin-bottom: var(--ot-space-md);
+}
+
+/* 表單欄位下方的說明句：兩句都是判讀該欄位所必需，
+   不塞進 placeholder（placeholder 一輸入就消失） */
+.form-tip {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
 
 .break-glass-entry {

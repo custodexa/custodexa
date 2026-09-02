@@ -24,6 +24,9 @@ const section = (id, keys) => ({
 
 export const SECURITY_SECTIONS = [
   section('login_lock', ['lockout_max_attempts', 'lockout_duration_minutes']),
+  // 登入前告示：緊接登入與鎖定之後——兩者管的都是登入頁本身，
+  // 一個是進不去時的行為、一個是進去之前看到的文字
+  section('login_banner', ['login_banner_title', 'login_banner_body']),
   section('password', [
     'password_min_length',
     'password_require_alnum',

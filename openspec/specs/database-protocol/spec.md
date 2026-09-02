@@ -266,7 +266,9 @@ CLI 子程序 SHALL NOT 繼承後端程序的機密環境變數（加密金鑰�
 - **THEN** 該提案不完整，SHALL NOT 進入實作
 
 ### Requirement: 審計鏈沿用
-資料庫會話 SHALL 走 sshproxy bridge 的 TerminalConn 介面，指令審計、asciicast 錄製、即時監看、指令阻斷 SHALL 對資料庫會話自動生效，無需另行配置。
+資料庫**命令列**會話 SHALL 走 sshproxy bridge 的 TerminalConn 介面，指令審計、asciicast 錄製、即時監看、指令阻斷 SHALL 對資料庫會話自動生效，無需另行配置。
+
+資料庫**查詢主控台**會話不經 bridge：其語句紀錄為結構化執行來源、錄影為伺服端轉錄、監看與阻斷沿同一落地面，規範見 `db-query-console`；本要求的射程 SHALL 限於命令列會話，SHALL NOT 被讀成主控台會話亦經 TerminalConn。
 
 #### Scenario: SQL 指令入審計
 - **WHEN** 使用者在 psql 會話執行 SQL
@@ -276,8 +278,14 @@ CLI 子程序 SHALL NOT 繼承後端程序的機密環境變數（加密金鑰�
 - **WHEN** 資料庫會話結束
 - **THEN** asciicast 錄製落盤且會話詳情頁可回放
 
+#### Scenario: 主控台會話不經 bridge 仍全審計
+- **WHEN** 使用者以查詢主控台對同一資產執行 SQL
+- **THEN** 該語句出現於 session_commands（帶結果事實欄）、轉錄錄影落盤可回放、會話可被監看，且無 CLI 子程序被啟動
+
 ### Requirement: 協議感知的能力門檻
-SSH 專屬能力（SFTP 檔案管理、/proc 系統指標）SHALL 對資料庫會話隱藏；文字終端共通能力（片段、分享、監看）SHALL 對資料庫會話開放；Redis 資產 SHALL 免使用者名稱（僅密碼認證）；**MSSQL 資產 SHALL 要求使用者名稱**（SQL 認證的 login 名稱，沒有它 sqlcmd 不會索取密碼、注入無從觸發）。
+SSH 專屬能力（SFTP 檔案管理、/proc 系統指標）SHALL 對資料庫會話隱藏；文字終端共通能力（片段、分享、監看）SHALL 對資料庫**命令列**會話開放；Redis 資產 SHALL 免使用者名稱（僅密碼認證）；**MSSQL 資產 SHALL 要求使用者名稱**（SQL 認證的 login 名稱，沒有它 sqlcmd 不會索取密碼、注入無從觸發）。
+
+本要求的「資料庫會話」指命令列分頁；查詢主控台分頁的工具列門檻另見 `session-workspace` 的「資料庫查詢主控台分頁」（不提供分享與片段，監看由既有入口承擔）。
 
 #### Scenario: 工具列門檻
 - **WHEN** 當前啟用頁籤為資料庫會話
@@ -286,6 +294,10 @@ SSH 專屬能力（SFTP 檔案管理、/proc 系統指標）SHALL 對資料庫�
 #### Scenario: mssql 資產缺使用者名稱即拒絕建立
 - **WHEN** 建立 mssql 資產或其帳號而未填使用者名稱
 - **THEN** 系統拒絕並回機器碼，SHALL NOT 建立一個必然連不上的資產
+
+#### Scenario: 主控台分頁不顯示終端工具列
+- **WHEN** 當前啟用頁籤為資料庫查詢主控台分頁
+- **THEN** 工具列不顯示分享、片段、檔案管理與系統監控
 
 ### Requirement: DB 目標資料庫
 資料庫資產 SHALL 可選地指定連線目標資料庫（`db_name`）；指定時 dbproxy SHALL 將其帶入 client 連線（postgres positional dbname、mysql positional database、redis `-n`、**mssql `-d`**）；未指定 SHALL 連 client 預設庫。

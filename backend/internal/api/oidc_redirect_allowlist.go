@@ -42,6 +42,7 @@ var frontendRouteSegments = map[string]bool{
 	"access-control":          true,
 	"key-management":          true,
 	"transmission-inventory":  true,
+	"offsite-storage":         true,
 	"change-secret-plans":     true,
 	// audit：稽核調查工作台 `/audit/workbench`（auditor-workbench）。
 	// 這是全站第一個帶第二段的稽核路由；既有稽核頁一律是平坦第一段

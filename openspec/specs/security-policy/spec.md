@@ -714,3 +714,43 @@ SHALL NOT 寫入政策列（出廠預設生效）。播種 SHALL NOT 覆蓋管�
 - **WHEN** 管理員於安全政策頁執行「套用本頁建議值」（任一基準）
 - **THEN** 本鍵的值不變，且不出現在任何基準的偏離摘要中
 
+### Requirement: 登入告示政策鍵
+安全政策 SHALL 提供文字型（`text`）政策鍵兩個：`login_banner_title`（登入告示標題，單行，上限 120 個 Unicode 字元）與 `login_banner_body`（登入告示內文，多行，上限 2000 個 Unicode 字元）。兩鍵出廠預設 SHALL 為空字串（＝未設定），SHALL NOT 附任何合規基準建議值（符合性欄位為 nil、不計入任一基準的偏離數）。政策值儲存欄位 SHALL 容納至少 2000 個 Unicode 字元。「字元」一律指 Unicode code point：後端計數、API 回的 `max_length`、前端字數顯示 SHALL 採同一口徑。
+
+**伺服端正規化與驗證**（寫入時，權威在後端；所有寫入與重驗路徑共用同一入口）：值 SHALL 為合法 UTF-8；CRLF 與孤立 CR SHALL 統一為 LF；首尾空白 SHALL 移除；控制字元（Unicode 一般類別 `Cc`，含 C0、DEL 與 C1）SHALL 拒絕，僅豁免 LF（限多行鍵）與 TAB；單行鍵含換行 SHALL 拒絕；正規化後字元數超過上限 SHALL 拒絕。拒絕 SHALL 使整批更新不生效（沿批次原子），並以既有的政策值不合法錯誤碼指名該鍵；拒絕原因 SHALL NOT 進入對外回應。儲存 SHALL NOT 對內容做 HTML 轉義或剝除標記。正規化後為空字串 SHALL 視為未設定且為合法值。
+
+政策讀取 API 對此兩鍵 SHALL 回 `type: "text"` 與 `max_length`；多行鍵 SHALL 回 `multiline: true`，單行鍵 SHALL NOT 帶 `multiline` 欄（省略即單行）。
+
+**設定 UI**：安全政策頁 SHALL 以獨立區塊「登入告示」承載兩鍵：標題為單行輸入、內文為多行輸入，皆顯示以 code point 計的字數與上限，SHALL NOT 以 UTF-16 計的原生 `maxlength` 截斷輸入。後端拒絕時沿既有政策儲存錯誤提示。區塊附註 SHALL 揭露：純文字、不支援 HTML 或連結、內文為空即不顯示、標題不單獨顯示、登入前任何人皆可讀。儲存與還原 SHALL 沿既有政策機制。
+
+**變更審計**：兩鍵的變更 SHALL 沿既有政策變更審計列（who／what／when），舊值與新值全文 SHALL 保存於審計列的變更詳情欄位，形狀沿既有 `changes[]` 慣例；審計列的訊息欄位 SHALL NOT 內嵌含換行的全文。全文 SHALL NOT 截斷。審計列詳情檢視 SHALL 以純文字展開舊值與新值並保留換行。非文字型政策鍵的審計格式不變。變更歷史受審計保留期限制；現行告示的內容以政策現值為準。
+
+告示內容為部署方自填的單一文字，SHALL NOT 進入介面多語資源、SHALL NOT 隨介面語言切換；區塊標題、欄位標籤、附註等 UI 文字 SHALL 三語齊備。
+
+#### Scenario: 儲存標題與內文並入審計
+- **WHEN** 管理員於安全政策頁的「登入告示」區塊輸入標題與含 CRLF 換行、尾端帶空白的內文並儲存
+- **THEN** 儲存成功；讀回的內文換行為 LF、尾端空白已移除；審計列的變更詳情含 `login_banner_body` 的舊值（空）與新值全文；訊息欄位不含換行
+
+#### Scenario: 審計列詳情可展開多行舊值與新值
+- **WHEN** 管理員於審計日誌開啟該筆政策變更的詳情
+- **THEN** 舊值與新值以純文字逐行顯示（換行保留、標記原字）
+
+#### Scenario: 超過長度上限整批拒絕
+- **WHEN** 一次批次更新同時送出合法的 `lockout_max_attempts` 與 2001 個字元的 `login_banner_body`
+- **THEN** 回政策值不合法錯誤並指名 `login_banner_body`，兩鍵皆未落庫
+
+#### Scenario: 字數以 code point 計
+- **WHEN** 管理員輸入由 2000 個補充平面字元（每個佔兩個 UTF-16 單位）組成的內文
+- **THEN** 前端字數顯示 2000 / 2000，後端接受並落庫；2001 個字元則被後端拒絕
+
+#### Scenario: 控制字元與標題換行被拒絕
+- **WHEN** 以 JSON 跳脫形式送出含 U+0000 的內文、含 U+0085（C1 控制字元）的內文、或含換行的標題
+- **THEN** 三者皆以政策值不合法錯誤拒絕並指名該鍵，回應不含拒絕原因文字
+
+#### Scenario: 清空即未設定
+- **WHEN** 管理員將內文清為空字串（或只剩空白）並儲存
+- **THEN** 儲存成功，該鍵值為空字串；登入前告示端點回未設定
+
+#### Scenario: 政策清單標示文字型別與上限
+- **WHEN** 管理員讀取政策清單
+- **THEN** 兩鍵項目含 `type: "text"`、`max_length`（120／2000）；內文鍵含 `multiline: true`，標題鍵無 `multiline` 欄，`compliant` 與 `epayment_compliant` 為 null，且不計入 `deviation_count` 與 `epayment_deviation_count`

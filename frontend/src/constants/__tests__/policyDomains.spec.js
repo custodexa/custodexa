@@ -7,6 +7,9 @@ import { POLICY_DOMAINS, sectionKeys } from '../policyDomains'
 const BACKEND_POLICY_KEYS = [
   'lockout_max_attempts',
   'lockout_duration_minutes',
+  // 登入前告示（文字型兩鍵）
+  'login_banner_title',
+  'login_banner_body',
   'password_min_length',
   'password_require_alnum',
   'password_history_count',

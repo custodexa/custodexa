@@ -77,6 +77,12 @@ const (
 	// 與通知通道看得見「政策壞了」。狀態可由謂詞（全部使用者清單可解析＋最近讀取成功）
 	// 重評估，恢復即結案
 	MechanismSourcePolicy = "source_policy"
+	// MechanismCommandBlocking 指令阻斷比對器不可用（查詢主控台的 fail-close）。
+	//
+	// **與 audit_write 分開**：規則比對器壞掉與審計寫不進去是兩個不同的持有物
+	// ——前者要去看規則載入與比對器本身，後者要去看資料庫。合併會讓兩種故障
+	// 共用一個未結案區間，先發生的那個一結案就把另一個也結掉
+	MechanismCommandBlocking = "command_blocking"
 	// MechanismOffsiteUpload 離機儲存的上傳與取回完整性
 	// （evidence-offsite-storage）：上傳重試達上限、租約反覆到期而卡死、
 	// 取回時內容雜湊不符。**解除判準是「處於失敗態的件數歸零」而非「任一件成功」**
@@ -160,6 +166,13 @@ const (
 	// CauseSourcePolicyCorrupt 儲存的允許網段清單字串無法解析：唯一寫入路徑是
 	// 驗證後寫入，損壞只可能來自資料庫直寫或程式缺陷
 	CauseSourcePolicyCorrupt = "source_policy_corrupt"
+	// CauseCommandAuditWriteRefused 同步（fail-close）語句紀錄寫入失敗，該語句
+	// 已拒絕執行。與 CauseAuditWriteSyncRefused 分碼是因為兩者的「已拒絕」
+	// 指的是不同的東西：那一支是明文未交付，本支是語句未送往目標端
+	CauseCommandAuditWriteRefused = "command_audit_write_refused"
+	// CauseCommandBlockerUnavailable 指令阻斷比對器不可用，語句已拒絕執行。
+	// 規則集為空與比對器壞掉是兩件事：前者比對正常回未命中，後者必須 fail-close
+	CauseCommandBlockerUnavailable = "command_blocker_unavailable"
 	// CauseOffsiteUploadFailed 離機上傳重試達上限（bucket 不存在、憑證失效、
 	// 端點長期不可達等持久性錯誤）。**不自動每日重試**——那只是每天再產一次告警；
 	// 修復動作與重試綁在一起，經管理介面「重試失敗項」觸發

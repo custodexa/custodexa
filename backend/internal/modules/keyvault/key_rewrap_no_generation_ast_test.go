@@ -618,6 +618,9 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 		Reason: "終端分享連結的一次性 token，非加密材料。"},
 	{File: "pkg/crypto/aes.go", Func: "EncryptBytesAAD",
 		Reason: "AES-GCM 的 12-byte nonce（每次加密必須唯一），非金鑰材料。"},
+	{File: "internal/dbconsole/ulid.go", Func: "next",
+		Reason: "事件 ID（ULID）的 80 位隨機尾碼，長度 10 位元組，純識別字；" +
+			"只用於審計列、轉錄與匯出 URL 的定址排序，不進 KEK/DEK/HMAC 任何金鑰路徑，非金鑰材料。"},
 }
 
 // TestBackendHasNoKEKMaterialGenerator 安全紅線的**模組級**機械把關：

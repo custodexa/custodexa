@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus, { ElMessage } from 'element-plus'
+import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import Workspace from '../Workspace.vue'
-import { getAsset } from '@/api/assets'
+import { getAsset, getAssetList } from '@/api/assets'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { listAssetAccounts } from '@/api/assetAccounts'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
@@ -35,6 +37,19 @@ vi.mock('@/components/ShareDialog.vue', () => ({
 }))
 vi.mock('@/components/TerminalWatermark.vue', () => ({
   default: { name: 'TerminalWatermark', template: '<div />' },
+}))
+// 主控台面板以 stub 取代：本檔驗的是工作區這一側（入口、分頁型別、
+// 狀態承接、關閉確認），面板內部行為有 DbConsole.spec.js
+vi.mock('@/components/DbConsole/DbConsole.vue', () => ({
+  default: {
+    name: 'DbConsole',
+    props: [
+      'assetId', 'accountId', 'assetName', 'allowedDatabases',
+      'previousSessionId', 'pendingEventId', 'pendingSql', 'initialSql',
+    ],
+    emits: ['status-change', 'session-id', 'sql-change', 'pending-change', 'unsettled-change'],
+    template: '<div class="stub-console" />',
+  },
 }))
 // 兩個連線前選擇器各有專屬 spec；此處以 stub 取代——真 el-table 在
 // happy-dom 下的 MutationObserver 會拋未捕捉例外污染同檔後續案例
@@ -421,5 +436,219 @@ describe('Workspace 多帳號連線', () => {
     expect(wrapper.vm.tabs).toHaveLength(2)
     expect(wrapper.vm.tabs[1].accountId).toBe(4)
     expect(listAssetAccounts).not.toHaveBeenCalled()
+  })
+})
+
+// 查詢主控台入口：側欄兩個入口（整列＝命令列、link 鈕＝主控台）共用同一組
+// 存取狀態判準；主控台分頁是另一種載體，狀態承接與關閉語義都與終端籤不同
+describe('Workspace 查詢主控台入口', () => {
+  const DB_ASSETS = [
+    { id: 1, name: 'ssh-a', protocol: 'ssh', active: true },
+    {
+      id: 20,
+      name: 'mysql-a',
+      protocol: 'mysql',
+      active: true,
+      access_state: 'connectable',
+      allowed_databases: ['app', 'report'],
+    },
+    { id: 21, name: 'pg-locked', protocol: 'postgres', active: true, access_state: 'approval_required' },
+    { id: 22, name: 'mssql-pending', protocol: 'mssql', active: true, access_state: 'pending' },
+    // access_state 缺席（僅具檢視授權或舊回應）：入口照常，拒絕交給簽發點
+    { id: 23, name: 'mysql-nostate', protocol: 'mysql', active: true },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    routeQuery.asset = undefined
+    localStorage.clear()
+    listAssetAccounts.mockResolvedValue({ data: [], total: 0 })
+    getAssetList.mockResolvedValue({ data: DB_ASSETS, total: DB_ASSETS.length })
+  })
+
+  const dbAsset = (id) => DB_ASSETS.find((a) => a.id === id)
+
+  it('主控台入口開出 console 分頁並帶入資產的允許清單', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    await wrapper.vm.openConsoleTab(dbAsset(20))
+    await flushPromises()
+
+    expect(wrapper.vm.tabs).toHaveLength(1)
+    expect(wrapper.vm.tabs[0].kind).toBe('console')
+    const panel = wrapper.findComponent({ name: 'DbConsole' })
+    expect(panel.exists()).toBe(true)
+    // 空樹的兩種文案靠這個欄位分辨，漏傳就永遠只出一種
+    expect(panel.props('allowedDatabases')).toEqual(['app', 'report'])
+    // 主控台沒有 xterm 載體：分享/片段/檔案/指標工具列不得出現
+    expect(wrapper.find('.tabbar-tools').exists()).toBe(false)
+  })
+
+  it('整列 click 仍開命令列分頁（同一資產兩種載體並存）', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    await wrapper.vm.openTab(dbAsset(20))
+    await flushPromises()
+    await wrapper.vm.openConsoleTab(dbAsset(20))
+    await flushPromises()
+
+    expect(wrapper.vm.tabs.map((t) => t.kind)).toEqual(['terminal', 'console'])
+    expect(wrapper.find('.stub-ssh').exists()).toBe(true)
+    expect(wrapper.find('.stub-console').exists()).toBe(true)
+  })
+
+  it('重新連線保留編輯器文字與未收束單位，並交還上一場會話', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.vm.openConsoleTab(dbAsset(20))
+    await flushPromises()
+
+    const panel = wrapper.findComponent({ name: 'DbConsole' })
+    panel.vm.$emit('session-id', 501)
+    panel.vm.$emit('sql-change', 'SELECT 1;')
+    panel.vm.$emit('pending-change', { eventId: '01J0EVENT', sql: 'UPDATE t SET a=1;' })
+    await flushPromises()
+
+    wrapper.vm.openTabMenu({ clientX: 0, clientY: 0 }, wrapper.vm.tabs[0].key)
+    wrapper.vm.menuReconnect()
+    await flushPromises()
+
+    const tab = wrapper.vm.tabs[0]
+    expect(tab.epoch).toBe(1)
+    expect(tab.sql).toBe('SELECT 1;')
+    expect(tab.pendingEventId).toBe('01J0EVENT')
+    expect(tab.previousSessionId).toBe(501)
+    const next = wrapper.findComponent({ name: 'DbConsole' })
+    expect(next.props('initialSql')).toBe('SELECT 1;')
+    expect(next.props('pendingEventId')).toBe('01J0EVENT')
+    expect(next.props('previousSessionId')).toBe(501)
+  })
+
+  it('access_state 缺席時入口照常，拒絕發生在簽發點（面板回報錯誤即標灰）', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    // 前端不另創可見性判準：欄位缺席一律回退既有行為
+    expect(wrapper.vm.entryState(dbAsset(23))).toBe('open')
+    const links = wrapper.findAll('[data-test="console-entry"]')
+    const nostate = links.find((l) => l.element.closest('.asset-item').textContent.includes('mysql-nostate'))
+    expect(nostate.classes()).not.toContain('is-disabled')
+
+    await wrapper.vm.openConsoleTab(dbAsset(23))
+    await flushPromises()
+    expect(listAssetAccounts).toHaveBeenCalledWith(23, { skipErrorToast: true })
+
+    // 簽發點回 403 時面板回報 error；工作區只負責承接成錯誤態、保留重連入口
+    wrapper.findComponent({ name: 'DbConsole' }).vm.$emit('status-change', 'error')
+    await flushPromises()
+    expect(wrapper.vm.tabs[0].status).toBe('error')
+    expect(wrapper.find('.tab-disconnected').exists()).toBe(true)
+    expect(wrapper.vm.tabs).toHaveLength(1)
+  })
+
+  it('三種存取狀態各自呈現；鎖定與審核中一律不發簽發', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    expect(wrapper.vm.entryState(dbAsset(20))).toBe('open')
+    expect(wrapper.vm.entryState(dbAsset(21))).toBe('locked')
+    expect(wrapper.vm.entryState(dbAsset(22))).toBe('pending')
+
+    const rows = wrapper.findAll('.asset-item')
+    const stateOf = (name) =>
+      rows.find((r) => r.text().includes(name)).attributes('data-access-state')
+    expect(stateOf('mysql-a')).toBe('open')
+    expect(stateOf('pg-locked')).toBe('locked')
+    expect(stateOf('mssql-pending')).toBe('pending')
+
+    // 兩個入口一起分化：整列與主控台鈕都不得發起簽發
+    wrapper.vm.onAssetClick(dbAsset(21))
+    wrapper.vm.openConsoleTab(dbAsset(21))
+    wrapper.vm.onAssetClick(dbAsset(22))
+    wrapper.vm.openConsoleTab(dbAsset(22))
+    await flushPromises()
+    expect(listAssetAccounts).not.toHaveBeenCalled()
+    expect(wrapper.vm.tabs).toHaveLength(0)
+  })
+
+  // 側欄只有一列的寬度：名稱、狀態圖示、主控台入口、協議 chip 共用它。
+  // 名稱被擠掉時，同前綴的兩個資產在畫面上就分不出來
+  it('側欄資產名截斷時仍給得出全名，主控台入口不佔用名稱的橫向空間', async () => {
+    const wrapper = mountWorkspace()
+    await flushPromises()
+
+    const row = wrapper.findAll('.asset-item')
+      .find((r) => r.text().includes('mysql-a'))
+    const name = row.find('.asset-item-name')
+    expect(name.attributes('title')).toBe('mysql-a')
+
+    // 入口不得再是隨語言變長的文字（日文的「コンソール」會吃掉半個名稱欄）
+    const entry = row.find('[data-test="console-entry"]')
+    expect(entry.exists()).toBe(true)
+    expect(entry.text().trim()).toBe('')
+    expect(entry.attributes('aria-label')).toBeTruthy()
+  })
+
+  it('有未收束狀態才問；取消即保留分頁與會話', async () => {
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm')
+    const wrapper = mountWorkspace()
+    await flushPromises()
+    await wrapper.vm.openConsoleTab(dbAsset(20))
+    await flushPromises()
+    const key = wrapper.vm.tabs[0].key
+
+    // 已收束：維持「關即關」，不多一道確認
+    confirmSpy.mockResolvedValue('confirm')
+    wrapper.vm.closeTab(key)
+    await flushPromises()
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(wrapper.vm.tabs).toHaveLength(0)
+
+    await wrapper.vm.openConsoleTab(dbAsset(20))
+    await flushPromises()
+    wrapper.findComponent({ name: 'DbConsole' }).vm.$emit('unsettled-change', true)
+    await flushPromises()
+
+    confirmSpy.mockRejectedValue('cancel')
+    wrapper.vm.closeTab(wrapper.vm.tabs[0].key)
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    // Enter 不得直接執行破壞性動作
+    expect(confirmSpy.mock.calls[0][2].autofocus).toBe(false)
+    expect(wrapper.vm.tabs).toHaveLength(1)
+
+    // 關閉其他／關閉全部走同一道確認
+    confirmSpy.mockResolvedValue('confirm')
+    wrapper.vm.openTabMenu({ clientX: 0, clientY: 0 }, wrapper.vm.tabs[0].key)
+    wrapper.vm.menuCloseAll()
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalledTimes(2)
+    expect(wrapper.vm.tabs).toHaveLength(0)
+    confirmSpy.mockRestore()
+  })
+
+  it('新增的工作區文案三語齊備', () => {
+    const load = (name) =>
+      JSON.parse(readFileSync(join(process.cwd(), 'src/i18n/locales', `${name}.json`), 'utf8'))
+    const keys = [
+      'console',
+      'openConsole',
+      'consoleTabTip',
+      'accessLockedTip',
+      'accessPendingTip',
+      'closeUnsettledTitle',
+      'closeUnsettledMessage',
+      'closeUnsettledConfirm',
+    ]
+    for (const locale of ['zh-TW', 'en-US', 'ja-JP']) {
+      const workspace = load(locale).workspace
+      for (const key of keys) {
+        expect(workspace[key], `${locale} 缺 workspace.${key}`).toBeTruthy()
+      }
+    }
+    // 未收束確認必須帶得出筆數（少了佔位符就只剩一句空話）
+    expect(load('zh-TW').workspace.closeUnsettledMessage).toContain('{n}')
   })
 })

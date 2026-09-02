@@ -94,6 +94,17 @@ func writeAssetChangeAudit(sink port.TxSink, tx *gorm.DB, old, new *model.Asset,
 	}
 
 	details := model.AssetChangeDetails{Changes: changes}
+	// 伺服端自動清空允許資料庫清單的留痕。
+	//
+	// **判定自 old／new 推得而非由呼叫端傳入**：Update 的驗證保證了「非主控台協議
+	// 的清單一律不得為非空」，故「新協議不支援主控台、舊清單非空、新清單空」
+	// 這個形狀只可能來自伺服端的自動清空——顯式送非空的請求在更早就被擋掉了。
+	// 讓判定與被判定的事實同源，勝過在服務層多傳一個會與實際行為漂移的旗標。
+	if !new.Protocol.SupportsQueryConsole() &&
+		len(old.AllowedDatabases) > 0 && len(new.AllowedDatabases) == 0 {
+		details.AllowedDatabasesCleared = true
+		details.PreviousAllowedDatabaseCount = len(old.AllowedDatabases)
+	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {
 		log.Printf("序列化變更詳情失敗: %v", err)

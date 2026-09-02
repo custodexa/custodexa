@@ -13,11 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/dbconsole"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/proxy"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +28,7 @@ import (
 // `Stage × 各閘通過/失敗 × 帳號解析成敗`，每一格斷言三件事——
 // (Allowed, 拒絕碼, 副作用)。收斂前先跑一次把現況固定下來，收斂後必須逐格相同。
 //
-// 格名以閘編號（G-I*／G-S*）標註。**編號的定義在 `internal/sshproxy/connect_gates.go`**
+// 格名以閘編號（G-I*／G-S*／G-C*）標註。**編號的定義在 `internal/sshproxy/connect_gates.go`**
 // ——每個 `{Name: "G-…"}` 之後緊接該閘的實作與理由；本檔的 `TestMatrixCoverageIsDeclared`
 // 則是編號的完整登記表（含刻意不涵蓋者與其逐條理由）。
 //
@@ -683,15 +684,17 @@ func TestCharacterizationMatrixRedeemTerminal(t *testing.T) {
 // 少一道閘（格被刪／閘號改錯）與多一道閘（新增格卻沒更新登記表、或某閘被移出不涵蓋
 // 卻沒補理由）**兩個方向都紅**。
 func TestMatrixCoverageIsDeclared(t *testing.T) {
-	// 基準表 §1.1／§1.2 的全部閘編號
+	// 基準表 §1.1／§1.2 的全部閘編號，加上主控台入口的兩道專屬閘
 	// G-I15／G-S14＝來源限定閘（G1）。編號接在末尾而位置在閘序前段是本套編號的
 	// 既有慣例：編號是穩定識別碼，不是序號（見 internal/connectgate 檔頭）
 	issueGates := []string{"G-I1", "G-I2", "G-I3", "G-I4", "G-I5", "G-I6", "G-I7",
 		"G-I8", "G-I9", "G-I10", "G-I11", "G-I12", "G-I13", "G-I14", "G-I15"}
 	redeemGates := []string{"G-S1", "G-S2", "G-S3", "G-S4", "G-S5", "G-S6", "G-S7",
 		"G-S8", "G-S9", "G-S10", "G-S11", "G-S12", "G-S13", "G-S14"}
+	// 查詢主控台兌換入口的兩道專屬閘（插在 G-S8 之後、G-S9 之前）
+	consoleGates := []string{"G-C1", "G-C2"}
 	baseline := map[string]bool{}
-	for _, g := range append(append([]string{}, issueGates...), redeemGates...) {
+	for _, g := range append(append(append([]string{}, issueGates...), redeemGates...), consoleGates...) {
 		baseline[g] = true
 	}
 
@@ -702,9 +705,9 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 		"G-I14": "簽發容量拒絕需灌滿 token 池，已由 proxy/connect_token_capacity_test.go 專測覆蓋",
 	}
 
-	total := len(issueGates) + len(redeemGates)
-	if total != 29 {
-		t.Fatalf("基準表閘數與矩陣宣稱不符: got=%d want=29（改動基準表時必須同步本測試）", total)
+	total := len(issueGates) + len(redeemGates) + len(consoleGates)
+	if total != 31 {
+		t.Fatalf("基準表閘數與矩陣宣稱不符: got=%d want=31（改動基準表時必須同步本測試）", total)
 	}
 
 	// 從實際矩陣格擷取涵蓋的閘號；gate=="—" 者是全閘通過格，不宣稱涵蓋任何單一閘。
@@ -725,7 +728,7 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 				"否則從子測試名擷取涵蓋面會與資料欄分家）", kind, name, gate)
 		}
 		if !baseline[gate] {
-			t.Errorf("%s 格 %q 宣稱涵蓋 %s，但該閘不在基準表 §1.1／§1.2 內", kind, name, gate)
+			t.Errorf("%s 格 %q 宣稱涵蓋 %s，但該閘不在基準表內", kind, name, gate)
 			return
 		}
 		covered[gate] = true
@@ -736,8 +739,11 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 	for _, c := range gateRedeemCells() {
 		collect("SSH 兌換", c.name, c.gate)
 	}
-	if cellCount < 27 {
-		t.Fatalf("矩陣格數 %d 低於下限 24：抽取器或矩陣疑似被削", cellCount)
+	for _, c := range gateConsoleCells() {
+		collect("主控台兌換", c.name, c.gate)
+	}
+	if cellCount < 30 {
+		t.Fatalf("矩陣格數 %d 低於下限 30：抽取器或矩陣疑似被削", cellCount)
 	}
 
 	// 三方比對：covered ∪ uncovered == baseline，且 covered ∩ uncovered == ∅
@@ -764,5 +770,102 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 	if want := total - len(uncovered); len(covered) != want {
 		t.Fatalf("實跑涵蓋閘數與登記表不符: covered=%d want=%d（基準表 %d − 不涵蓋 %d）",
 			len(covered), want, total, len(uncovered))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// StageRedeemConsole：查詢主控台兌換入口的矩陣格
+//
+// 第三條兌換入口共用同一張閘序表，另插兩道專屬閘（協議 G-C1、名額 G-C2）。
+// 本段只釘「多出來的那兩道閘」與「全閘通過」——共用閘的逐格特徵化已在
+// StageRedeemTerminal 完成，同表同碼，不重複跑一次
+// ---------------------------------------------------------------------------
+
+type gateConsoleCell struct {
+	name       string
+	gate       string
+	protocol   string                              // 資產協議（決定 G-C1 的判定）
+	setup      func(t *testing.T, env *consoleEnv) // 發票之前
+	wantStatus int
+	wantCode   apierror.ErrCode
+}
+
+// gateConsoleCells StageRedeemConsole 矩陣的全部格（涵蓋面自證的資料來源，同前兩段）
+func gateConsoleCells() []gateConsoleCell {
+	return []gateConsoleCell{
+		{
+			// 撥號目標埠 1 無人在聽 ⇒ 502＋連線階段泛化碼＝所有閘皆已通過的機器證據。
+			// 對外碼不帶目標端訊息：連線階段的錯誤字串含主機、埠與憑證主體
+			name: "全閘通過（帳號解析＝預設帳號）抵達撥號", gate: "—",
+			protocol: "mysql",
+			setup: func(t *testing.T, env *consoleEnv) {
+				env.seedAccount(t)
+				if err := env.db.Model(&model.Asset{}).Where("id = ?", 1).
+					Updates(map[string]any{"host": "127.0.0.1", "port": 1}).Error; err != nil {
+					t.Fatalf("set dial target: %v", err)
+				}
+			},
+			wantStatus: http.StatusBadGateway, wantCode: apierror.CodeDBConsoleConnectFailed,
+		},
+		{
+			// 非三方言的資產走不了這個入口；正確指引是改用命令列入口，故與
+			// 「資產非文字終端」分碼
+			name: "G-C1 資產協議非 SQL 方言", gate: "G-C1",
+			protocol:   "redis",
+			setup:      func(t *testing.T, env *consoleEnv) { env.seedAccount(t) },
+			wantStatus: http.StatusBadRequest,
+			wantCode:   apierror.CodeDBConsoleUnsupportedProtocol,
+		},
+		{
+			// 名額佔滿後的兌換：計數口徑是運行時註冊表，不是會話表的 active 列
+			name: "G-C2 同時進行的主控台會話達上限", gate: "G-C2",
+			protocol: "mysql",
+			setup: func(t *testing.T, env *consoleEnv) {
+				env.seedAccount(t)
+				for i := 0; i < dbconsole.MaxConcurrentSessionsPerUser; i++ {
+					rel, denial := env.h.consoleAdmission().acquire(1)
+					if denial != nil || rel == nil {
+						t.Fatalf("第 %d 個名額佔用失敗: %+v", i+1, denial)
+					}
+				}
+			},
+			wantStatus: http.StatusTooManyRequests,
+			wantCode:   apierror.CodeDBConsoleLimitReached,
+		},
+	}
+}
+
+// TestCharacterizationMatrixRedeemConsole StageRedeemConsole 逐格特徵化。
+//
+// 三項斷言與前兩段同構：狀態碼、拒絕碼、副作用（無 session 列、票已焚）。
+// 「全閘通過」格的副作用同樣是零 session 列——起始連線失敗不建列，
+// 該次嘗試的唯一痕跡在審計
+func TestCharacterizationMatrixRedeemConsole(t *testing.T) {
+	for _, cell := range gateConsoleCells() {
+		t.Run(cell.name, func(t *testing.T) {
+			env := setupConsoleEnv(t, cell.protocol)
+			if cell.setup != nil {
+				cell.setup(t, env)
+			}
+			tok := env.issueTicket(t)
+
+			resp := env.redeem("?connect_token=" + tok)
+
+			if resp.code != cell.wantStatus {
+				t.Fatalf("[%s] HTTP 狀態不符: got=%d want=%d body=%s",
+					cell.name, resp.code, cell.wantStatus, resp.body)
+			}
+			if !strings.Contains(resp.body, string(cell.wantCode)) {
+				t.Fatalf("[%s] 拒絕碼不符: want=%q body=%s", cell.name, cell.wantCode, resp.body)
+			}
+			gateAssertNoSession(t, env.db, cell.name)
+
+			replay := env.redeem("?connect_token=" + tok)
+			if replay.code != http.StatusUnauthorized ||
+				!strings.Contains(replay.body, string(apierror.CodeConnectTokenInvalid)) {
+				t.Fatalf("[%s] token 於兌換後必須已焚: status=%d body=%s",
+					cell.name, replay.code, replay.body)
+			}
+		})
 	}
 }

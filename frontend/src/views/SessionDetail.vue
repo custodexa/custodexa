@@ -235,6 +235,18 @@
           </el-tag>
         </div>
 
+        <!-- 主控台的錄影是轉錄而非畫面重播：稽核員若以為看到的是全部，
+             會把「錄影裡沒有」讀成「沒發生」 -->
+        <el-alert
+          v-if="session.db_console"
+          class="recording-note"
+          type="info"
+          show-icon
+          :closable="false"
+          data-test="console-recording-note"
+          :title="$t('sessionDetail.consoleRecordingNote')"
+        />
+
         <!-- 文字終端錄製回放（SSH 與資料庫 CLI，asciicast 格式） -->
         <div
           v-if="isTextTerminal(session.protocol)"
@@ -300,7 +312,11 @@
         <div class="card-header">
           <div class="card-title-group">
             <span class="card-title">{{ $t('sessionDetail.commandsTitle') }}</span>
-            <span class="card-note">{{ $t('sessionDetail.commandsNote') }}</span>
+            <!-- 兩種載體的來源不同：命令列的文字重組自按鍵流，主控台的列是
+                 語句送出時登記的原文。同一句話對兩邊都說即有一邊是假的 -->
+            <span class="card-note">{{ isConsoleSession
+              ? $t('sessionDetail.consoleCommandsNote')
+              : $t('sessionDetail.commandsNote') }}</span>
           </div>
           <div class="card-tag-group">
             <el-tag type="info">
@@ -325,7 +341,7 @@
           <el-table-column
             prop="seq"
             :label="$t('sessionDetail.seqColumn')"
-            width="80"
+            width="70"
           />
           <el-table-column
             prop="executed_at"
@@ -339,7 +355,7 @@
           <el-table-column
             prop="command"
             :label="$t('commands.commandColumn')"
-            min-width="300"
+            min-width="220"
             show-overflow-tooltip
           >
             <template #default="{ row }">
@@ -350,6 +366,78 @@
               />
             </template>
           </el-table-column>
+          <!-- 主控台會話才有的結果事實。命令列會話這幾欄恆空，
+               整組不渲染比逐格顯示 '-' 誠實 -->
+          <template v-if="isConsoleSession">
+            <el-table-column
+              :label="$t('sessionDetail.targetDatabaseColumn')"
+              width="130"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                {{ row.target_database || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('sessionDetail.resultStatusColumn')"
+              width="130"
+            >
+              <template #default="{ row }">
+                <el-tag
+                  v-if="row.result_status"
+                  :type="consoleStatusTagType(row)"
+                  data-test="result-status"
+                >
+                  {{ consoleStatusLabel(row) }}
+                </el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('sessionDetail.resultReasonColumn')"
+              width="130"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                {{ row.result_reason ? resultReasonLabel(row.result_reason) : '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('sessionDetail.resultRowsColumn')"
+              width="90"
+            >
+              <template #default="{ row }">
+                {{ consoleRowsText(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('sessionDetail.durationColumn')"
+              width="90"
+            >
+              <template #default="{ row }">
+                {{ row.duration_ms === null || row.duration_ms === undefined
+                  ? '-' : $t('sessionDetail.durationMs', { n: row.duration_ms }) }}
+              </template>
+            </el-table-column>
+            <!-- 事件識別是主控台的深連結錨點：結果未知橫幅指回這一格 -->
+            <el-table-column
+              :label="$t('sessionDetail.eventIdColumn')"
+              width="230"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                <span
+                  v-if="row.event_id"
+                  :id="`cmd-${row.event_id}`"
+                  :title="row.event_id"
+                  class="event-id-cell"
+                  :class="{ 'is-anchored': anchoredEventId === row.event_id }"
+                  data-test="event-id"
+                >{{ row.event_id }}</span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </template>
         </el-table>
       </div>
 
@@ -603,6 +691,11 @@ import { t, currentLocale } from '@/i18n'
 // recording_error 存機器碼（cause code），
 // 散文僅存量資料才有——auditCauseLabel 未知值原樣回傳，兩者共存不需分支
 import { auditCauseLabel } from '@/constants/audit-enums'
+import {
+  resultStatusLabel,
+  resultStatusTagType,
+  resultReasonLabel,
+} from '@/constants/db-console'
 import { isKnownOffsiteStatus, offsiteStatusTagType } from '@/constants/offsite'
 import { getOffsiteSettings, retryOffsiteObject } from '@/api/offsiteStorage'
 import { useRoles } from '@/composables/useRoles'
@@ -626,6 +719,57 @@ const showCommands = computed(
 
 // 無法還原的輪次數（degraded 列）。與指令總數分開呈現
 const degradedCount = computed(() => commands.value.filter(isDegradedRow).length)
+
+// ---------------------------------------------------------------------------
+// 查詢主控台會話的結果事實（db-query-console）
+// ---------------------------------------------------------------------------
+
+const isConsoleSession = computed(() => session.value?.db_console === true)
+
+// 會話已經結束，列卻還停在 running：那不是「執行中」，是結果沒有回填。
+// 照字面顯示會讓稽核員把「不知道」讀成「還在跑」
+const isUnsettledRow = (row) =>
+  row.result_status === 'running' && session.value?.status !== 'active'
+
+const consoleStatusLabel = (row) =>
+  isUnsettledRow(row)
+    ? t('sessionDetail.resultUnsettled')
+    : resultStatusLabel(row.result_status)
+
+const consoleStatusTagType = (row) =>
+  isUnsettledRow(row) ? 'warning' : resultStatusTagType(row.result_status)
+
+// 查詢回列數、寫入回影響列數，兩者互斥出現；都沒有＝不適用或未回填
+const consoleRowsText = (row) => {
+  if (row.result_rows !== null && row.result_rows !== undefined) return String(row.result_rows)
+  if (row.rows_affected !== null && row.rows_affected !== undefined) {
+    return t('sessionDetail.rowsAffected', { n: row.rows_affected })
+  }
+  return '-'
+}
+
+// `#cmd-<event_id>` 深連結：主控台的「結果未知」橫幅指回這一列
+const anchoredEventId = ref('')
+const ANCHOR_TICK_BUDGET = 4
+
+const anchorConsoleEvent = async () => {
+  const hash = route.hash || ''
+  if (!hash.startsWith('#cmd-')) return
+  const eventId = hash.slice('#cmd-'.length)
+  if (!commands.value.some((c) => c.event_id === eventId)) return
+  anchoredEventId.value = eventId
+  // 自頁面根節點查起而非 document：詳情頁可能掛在未接上 document 的容器裡，
+  // 那時 getElementById 會回 null、定位靜默落空。
+  // 表格的列渲染不在同一個 tick 完成，單次 nextTick 會撲空——多等幾拍再放棄
+  let el = null
+  for (let i = 0; i < ANCHOR_TICK_BUDGET && !el; i += 1) {
+    await nextTick()
+    el = pageRef.value?.querySelector(`[id="cmd-${eventId}"]`)
+  }
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'center' })
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 離機保存狀態（evidence-offsite-storage）
@@ -1129,6 +1273,7 @@ const fetchCommands = async () => {
     console.error('[SessionDetail] 載入指令記錄失敗:', err)
     commands.value = []
   }
+  await anchorConsoleEvent()
 }
 
 // Handle download recording
@@ -1211,6 +1356,23 @@ onMounted(() => {
 
 .account-cell {
   font-family: var(--ot-font-mono, monospace);
+}
+
+.recording-note {
+  margin-bottom: var(--ot-space-md);
+}
+
+/* 事件識別要能被選取複製；深連結落點另加底色，否則捲到了也看不出是哪一列 */
+.event-id-cell {
+  font-family: var(--ot-font-mono, monospace);
+  font-size: 12px;
+  user-select: all;
+}
+
+.event-id-cell.is-anchored {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--el-color-warning-light-8);
 }
 
 /* 重試不可用的理由必須與被停用的按鈕相鄰：只把按鈕變灰等於沒說 */

@@ -21,6 +21,7 @@
       v-for="policy in section.policies"
       :key="policy.key"
       class="policy-row"
+      :class="{ 'policy-row-text': policy.type === 'text' }"
     >
       <div class="policy-label">
         <span>{{ policyLabel(policy) }}</span>
@@ -66,13 +67,48 @@
             {{ enumLabel(policy, option) }}
           </el-radio-button>
         </el-radio-group>
+        <!-- 文字型：多行鍵給可長高的輸入框，單行鍵給一般輸入框。
+             刻意不綁原生 maxlength——它以 UTF-16 單位計，補充平面字元每個算兩格，
+             會在後端仍接受的長度就把使用者的輸入截掉。字數改以下方計數呈現 -->
+        <div
+          v-else-if="policy.type === 'text'"
+          class="policy-text"
+        >
+          <el-input
+            v-if="policy.multiline"
+            type="textarea"
+            :autosize="{ minRows: 5, maxRows: 12 }"
+            :model-value="formValues[policy.key]"
+            :aria-label="policyLabel(policy)"
+            @update:model-value="$emit('update:value', policy.key, $event)"
+          />
+          <el-input
+            v-else
+            :model-value="formValues[policy.key]"
+            :aria-label="policyLabel(policy)"
+            @update:model-value="$emit('update:value', policy.key, $event)"
+          />
+          <!-- 超出上限只變色不擋輸入：擋輸入等於在使用者貼上長文時靜默丟字，
+               長度的權威判定在後端，這裡只把「會被退回」先講出來 -->
+          <span
+            class="policy-counter"
+            :class="{ 'policy-counter-over': textLength(formValues[policy.key]) > policy.max_length }"
+          >{{ $t('bannerText.counter', {
+            count: textLength(formValues[policy.key]),
+            max: policy.max_length,
+          }) }}</span>
+        </div>
         <span
           v-if="policyUnit(policy)"
           class="policy-unit"
         >{{ policyUnit(policy) }}</span>
       </div>
 
-      <div class="policy-meta">
+      <!-- 文字型鍵沒有合規基準建議值，整欄對它只剩「無建議值」這句噪音 -->
+      <div
+        v-if="policy.type !== 'text'"
+        class="policy-meta"
+      >
         <span
           v-if="policy.pci_value"
           class="policy-pci"
@@ -136,6 +172,10 @@ import {
   zeroHelperText,
 } from '@/utils/policyFormat'
 
+// 字數以 Unicode code point 計，與後端上限同一口徑；
+// String.length 是 UTF-16 單位，補充平面字元會被算成兩個
+const textLength = (value) => Array.from(value || '').length
+
 defineProps({
   // visibleSections 產物：[{ title, hint, policies: [policy] }]
   sections: { type: Array, required: true },
@@ -184,6 +224,13 @@ defineEmits(['update:value'])
   padding: var(--ot-space-sm) 0;
 }
 
+/* 文字型鍵沒有 meta 欄，輸入框吃掉整條剩餘寬度——
+   2000 字的內文擠在 220px 的數值欄寬裡是讀不動的 */
+.policy-row-text {
+  grid-template-columns: 240px 1fr;
+  align-items: start;
+}
+
 .policy-row + .policy-row {
   border-top: 1px solid var(--ot-border-subtle);
 }
@@ -210,6 +257,23 @@ defineEmits(['update:value'])
   display: flex;
   align-items: center;
   gap: var(--ot-space-sm);
+}
+
+.policy-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-xs);
+  width: 100%;
+}
+
+.policy-counter {
+  align-self: flex-end;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+
+.policy-counter-over {
+  color: var(--ot-danger);
 }
 
 .policy-unit {

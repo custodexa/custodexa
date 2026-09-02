@@ -269,6 +269,10 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicyFileUploadEnabled:    true,
 		PolicyFileDownloadEnabled:  true,
 		PolicyFileDeleteEnabled:    true,
+		// 登入前告示：內容由部署方自填，沒有一個通用的正確字串可以拿來比對；
+		// 掛建議值會讓「套用本頁建議值」替部署方寫他們的告示
+		PolicyLoginBannerTitle: true,
+		PolicyLoginBannerBody:  true,
 	}
 	for _, v := range svc.List() {
 		if factoryDeviations[v.Key] {
