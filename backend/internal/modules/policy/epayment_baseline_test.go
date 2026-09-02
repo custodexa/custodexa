@@ -125,7 +125,7 @@ func TestEPaymentCompliance_NilWhenNoBaseline(t *testing.T) {
 	require.NotNil(t, evaluateCompliance(&def, "8"), "PCI 側評估不受影響")
 }
 
-// 五個有電支值的政策項與其條號。**本表即為機器可檢的權威副本**——值與條號直接寫在
+// 有電支值的政策項與其條號。**本表即為機器可檢的權威副本**——值與條號直接寫在
 // 這裡並被逐一斷言，改動任何一格都會紅。
 // **釘住值本身**：這些數字來自法規，被誤改時應該紅
 func TestPolicyDefs_EPaymentBaselineValues(t *testing.T) {
@@ -134,6 +134,7 @@ func TestPolicyDefs_EPaymentBaselineValues(t *testing.T) {
 		PolicyPasswordMinLength:     {"6", "4-7(一)"},
 		PolicyWebIdleMinutes:        {"10", "15-5"},
 		PolicyPasswordMaxAgeDays:    {"90", "15-8"},
+		PolicyAssetSecretMaxAgeDays: {"90", "15-8"},
 		PolicyRetentionAuditLogDays: {"730", "19-4"},
 	}
 
@@ -157,6 +158,7 @@ func TestPolicyDefs_EPaymentDoesNotChangeFactoryDefaults(t *testing.T) {
 		PolicyPasswordMinLength:     "12",
 		PolicyWebIdleMinutes:        "60",
 		PolicyPasswordMaxAgeDays:    "0",
+		PolicyAssetSecretMaxAgeDays: "0",
 		PolicyRetentionAuditLogDays: "0",
 	}
 	for _, def := range policyDefs {

@@ -2,12 +2,12 @@ package audit
 
 import (
 	"archive/zip"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"strconv"
 	"time"
 
+	"github.com/custodexa/backend/internal/csvsafe"
 	"github.com/custodexa/backend/internal/model"
 	"gorm.io/gorm"
 )
@@ -204,7 +204,10 @@ func (s *AuditExportService) writeReportCSV(zw *zip.Writer, t TimelineEventType,
 	var count int
 	var truncated bool
 	err := s.writeEntry(zw, reportFileName(t), m, func(out io.Writer) error {
-		cw := csv.NewWriter(out)
+		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{})
+		if cerr != nil {
+			return cerr
+		}
 		if err := cw.Write(header); err != nil {
 			return err
 		}

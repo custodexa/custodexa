@@ -43,6 +43,21 @@ type jobBundleExporter interface {
 		exporterName string, requestedAt time.Time) (*ExportManifest, error)
 }
 
+// ReportPackager 報告類產物的打包者。
+//
+// **本模組不認識任何一種報告**：報告的資料來源、版面與檔案配置都屬產生它的模組，
+// 這裡只要求「把一份產物寫進 w，並回一份清單檔內容」。實作者於組裝根以
+// RegisterPackager 掛上，種類字串即分派鍵（值域見 model.ExportJobKind* 常數）。
+//
+// filterJSON 是工作單受理時存下的原樣快照，格式由該種類的發起方定義；
+// requestedAt 是工作單的發起時刻（與實際打包時刻並列寫入清單檔）；
+// jobID 是工作單識別碼，打包者須把它寫進產物本體（清單檔與報告版面），
+// 產物才在離開下載檔名之後仍對得回系統紀錄。
+type ReportPackager interface {
+	Kind() string
+	Package(w io.Writer, filterJSON string, requestedAt time.Time, jobID uint) (*ExportManifest, error)
+}
+
 // ExportRequesterVerifier 申請者主體重驗：allowed=false＝已停用、刪除或失去
 // 稽核檢視權限（job 取消）；err＝驗證基礎設施失敗（不取消，走重試路徑——
 // 查不到不等於失權，誤取消會把暫時性故障放大成申請者的損失）。
@@ -62,6 +77,10 @@ type AuditExportJobWorker struct {
 	// offsite 離機保管帳冊的排隊面；nil＝本部署未組裝離機子系統
 	offsite OffsiteEnqueuer
 
+	// packagers 報告類種類 → 打包者。證據包不在此表（它走 exporter），
+	// 表內查不到的種類即為組裝缺漏，走失敗路徑而非靜默產出空包
+	packagers map[string]ReportPackager
+
 	stopCh chan struct{}
 	doneCh chan struct{}
 }
@@ -71,9 +90,21 @@ func NewAuditExportJobWorker(db *gorm.DB, exporter jobBundleExporter,
 	verify ExportRequesterVerifier, auditLogs *AuditLogService, dir string) *AuditExportJobWorker {
 	return &AuditExportJobWorker{
 		db: db, exporter: exporter, verify: verify, auditLogs: auditLogs,
-		dir:      ResolveExportArtifactDir(dir),
-		interval: exportJobPollInterval,
+		dir:       ResolveExportArtifactDir(dir),
+		interval:  exportJobPollInterval,
+		packagers: map[string]ReportPackager{},
 	}
+}
+
+// RegisterPackager 掛上一個報告種類的打包者（組裝根呼叫；同種類後者覆蓋前者）。
+func (w *AuditExportJobWorker) RegisterPackager(p ReportPackager) {
+	if p == nil {
+		return
+	}
+	if w.packagers == nil {
+		w.packagers = map[string]ReportPackager{}
+	}
+	w.packagers[p.Kind()] = p
 }
 
 // OffsiteEnqueuer 離機保管帳冊的排隊面（消費者側窄介面）。
@@ -239,18 +270,24 @@ func (w *AuditExportJobWorker) runJob(job *model.AuditExportJob, now time.Time) 
 		}
 	}()
 
-	// 領件重驗申請者：主體已失效即取消並清產物（每次重試回到這裡再驗一次）
-	allowed, err := w.verify(job.RequesterID)
-	if err != nil {
-		w.failOrRetry(job, fmt.Errorf("申請者重驗失敗: %w", err))
-		return
-	}
-	if !allowed {
-		w.cancelRevoked(job)
-		return
+	// 領件重驗申請者：主體已失效即取消並清產物（每次重試回到這裡再驗一次）。
+	//
+	// **系統發起者（RequesterID 0）免重驗**：排程產出的工作單沒有可失效的主體，
+	// 拿 0 去問身分服務只會得到「查無此人」，把每一份排程報告都取消掉。
+	if job.RequesterID != 0 {
+		allowed, err := w.verify(job.RequesterID)
+		if err != nil {
+			w.failOrRetry(job, fmt.Errorf("申請者重驗失敗: %w", err))
+			return
+		}
+		if !allowed {
+			w.cancelRevoked(job)
+			return
+		}
 	}
 
-	filter, err := ParseExportFilterSnapshot(job.FilterJSON)
+	// 打包前先取得該種類的產出方式：組裝缺漏要在開檔之前就走失敗路徑
+	pack, err := w.packFuncFor(job)
 	if err != nil {
 		w.failOrRetry(job, err)
 		return
@@ -268,8 +305,7 @@ func (w *AuditExportJobWorker) runJob(job *model.AuditExportJob, now time.Time) 
 	}
 
 	hasher := sha256.New()
-	_, exportErr := w.exporter.ExportForJob(io.MultiWriter(f, hasher), filter,
-		job.RequesterID, job.RequesterName, job.RequestedAt)
+	exportErr := pack(io.MultiWriter(f, hasher))
 	closeErr := f.Close()
 	if exportErr == nil {
 		exportErr = closeErr
@@ -281,6 +317,38 @@ func (w *AuditExportJobWorker) runJob(job *model.AuditExportJob, now time.Time) 
 	}
 
 	w.finishJob(job, tempPath, hasher, time.Now())
+}
+
+// packFuncFor 依工作單種類取產出方式：證據包走既有打包者，其餘查註冊表。
+//
+// 種類為空的列視同證據包——存量列的回填語義（見 model.AuditExportJob.Kind）。
+func (w *AuditExportJobWorker) packFuncFor(job *model.AuditExportJob) (func(io.Writer) error, error) {
+	kind := job.Kind
+	if kind == "" {
+		kind = model.ExportJobKindEvidenceBundle
+	}
+	if kind == model.ExportJobKindEvidenceBundle {
+		filter, err := ParseExportFilterSnapshot(job.FilterJSON)
+		if err != nil {
+			return nil, err
+		}
+		return func(dst io.Writer) error {
+			_, err := w.exporter.ExportForJob(dst, filter, job.RequesterID,
+				job.RequesterName, job.RequestedAt)
+			return err
+		}, nil
+	}
+	packager, ok := w.packagers[kind]
+	if !ok {
+		return nil, fmt.Errorf("工作單種類 %q 無對應打包者", kind)
+	}
+	filterJSON := job.FilterJSON
+	requestedAt := job.RequestedAt
+	jobID := job.ID
+	return func(dst io.Writer) error {
+		_, err := packager.Package(dst, filterJSON, requestedAt, jobID)
+		return err
+	}, nil
 }
 
 // finishJob 產物落定：rename 暫存檔→最終檔，job 轉 done（雙時刻、SHA-256、
@@ -297,7 +365,7 @@ func (w *AuditExportJobWorker) finishJob(job *model.AuditExportJob, tempPath str
 		w.failOrRetry(job, fmt.Errorf("產物落定失敗: %w", err))
 		return
 	}
-	expires := packagedAt.Add(exportJobArtifactRetention)
+	expires := packagedAt.Add(artifactRetentionOf(job))
 	updates := map[string]any{
 		"status":          model.ExportJobDone,
 		"artifact_path":   finalPath,
@@ -354,6 +422,23 @@ func (w *AuditExportJobWorker) completeJob(jobID uint, updates map[string]any) e
 				"offsite_status":    row.State,
 			}).Error
 	})
+}
+
+// artifactRetentionOf 產物保留期。
+//
+// 受理時寫下的 ExpiresAt 是**預定**到期時刻（以發起時刻為基準），排程報告據此
+// 帶著自己的留存天數走完排隊；真正的到期時刻要自**實際打包完成**時刻起算，
+// 否則排隊愈久的報告可下載的時間愈短。未帶預定到期（證據包與手動報告）即沿
+// 既有保留期。
+func artifactRetentionOf(job *model.AuditExportJob) time.Duration {
+	if job.ExpiresAt == nil {
+		return exportJobArtifactRetention
+	}
+	planned := job.ExpiresAt.Sub(job.RequestedAt)
+	if planned <= 0 {
+		return exportJobArtifactRetention
+	}
+	return planned
 }
 
 // failOrRetry 失敗處置：未達重試上限回 pending（下輪重領、重驗、重打包），

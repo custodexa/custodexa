@@ -34,6 +34,10 @@ export const SECURITY_SECTIONS = [
     'password_max_age_days',
     'force_change_on_reset',
   ]),
+  // 資產帳號憑證：緊接密碼政策之後且**獨立一區**——上一區管的是平台使用者的
+  // 密碼，這一鍵管的是被納管主機上的帳號憑證，兩者互不作用。混進密碼政策區
+  // 會讓管理者以為調它會影響自己的登入
+  section('asset_secret', ['asset_secret_max_age_days']),
   section('mfa', ['mfa_required']),
   section('session_account', [
     'web_idle_minutes',

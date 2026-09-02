@@ -122,8 +122,9 @@ func (s *AuditExportJobService) CreateJob(requesterID uint, requesterName string
 
 		// 去重：同申請者、同篩選、pending/running
 		var existing model.AuditExportJob
-		findErr := tx.Where("requester_id = ? AND filter_hash = ? AND status IN ?",
-			requesterID, hash, []string{model.ExportJobPending, model.ExportJobRunning}).
+		findErr := tx.Where("kind = ? AND requester_id = ? AND filter_hash = ? AND status IN ?",
+			model.ExportJobKindEvidenceBundle, requesterID, hash,
+			[]string{model.ExportJobPending, model.ExportJobRunning}).
 			First(&existing).Error
 		if findErr == nil {
 			job = &existing
@@ -155,6 +156,7 @@ func (s *AuditExportJobService) CreateJob(requesterID uint, requesterName string
 		j := &model.AuditExportJob{
 			RequesterID:   requesterID,
 			RequesterName: requesterName,
+			Kind:          model.ExportJobKindEvidenceBundle,
 			FilterJSON:    snapshot,
 			FilterHash:    hash,
 			Status:        model.ExportJobPending,
@@ -173,16 +175,128 @@ func (s *AuditExportJobService) CreateJob(requesterID uint, requesterName string
 	return job, created, nil
 }
 
-// ListByRequester 申請者本人的 job 清單，id 降冪（穩定排序：id 唯一單調）。
-// page 自 1 起；pageSize 收斂於 [1,100]，預設 20。
-func (s *AuditExportJobService) ListByRequester(requesterID uint, page, pageSize int) ([]model.AuditExportJob, int64, error) {
+// ReportJobGuard 報告工作單受理時的額外約束，於受理交易內對「同種類進行中的
+// 工作單」施加。inflight 為該種類目前 pending＋running 的全部工作單。
+//
+// **判準留在發起方**：進行中上限對報告是「同一排程至多一張」，而排程的識別在
+// 工作單的篩選快照裡，那是發起方的格式。回非 nil 即拒絕受理（錯誤原樣上拋）。
+type ReportJobGuard func(inflight []model.AuditExportJob) error
+
+// CreateReportJob 報告類工作單的受理（種類非 evidence_bundle）。
+//
+// 與 CreateJob 的三處差異，都源於「報告是共用產物、且可能由系統發起」：
+//   - 去重鍵＝種類＋篩選快照，**不含申請者**：同一份報告已在排隊時，另一個人
+//     再按一次要拿到的就是那一張。
+//   - 每申請者上限只對人類申請者施加（RequesterID 非 0）；排程發起沒有配額可扣，
+//     它的節流是 guard 給的「同一排程至多一張」。全域上限一律施加。
+//   - dedupeKey 為去重用的正規化篩選字串（空＝以 filterJSON 為準）：發起者名稱
+//     一類「不影響產物內容」的欄位留在 filterJSON、不進去重鍵，兩個人同時要
+//     同一份報告時拿到的才會是同一張工作單。
+//   - expiresAt 為**預定**到期時刻（以發起時刻為基準），worker 打包完成時以
+//     「預定到期 − 發起時刻」的長度自實際打包時刻重新起算；nil＝沿既有保留期。
+func (s *AuditExportJobService) CreateReportJob(kind, filterJSON, dedupeKey, requesterName string,
+	requesterID uint, expiresAt *time.Time, guard ReportJobGuard) (*model.AuditExportJob, bool, error) {
+	if kind == "" || kind == model.ExportJobKindEvidenceBundle {
+		return nil, false, fmt.Errorf("報告工作單的種類不得為 %q", kind)
+	}
+	if dedupeKey == "" {
+		dedupeKey = filterJSON
+	}
+	sum := sha256.Sum256([]byte(dedupeKey))
+	hash := fmt.Sprintf("%x", sum)
+
+	var job *model.AuditExportJob
+	created := false
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec(`LOCK TABLE audit_export_jobs IN SHARE ROW EXCLUSIVE MODE`).Error; err != nil {
+				return fmt.Errorf("受理鎖取得失敗: %w", err)
+			}
+		}
+		active := []string{model.ExportJobPending, model.ExportJobRunning}
+
+		var inflight []model.AuditExportJob
+		if err := tx.Where("kind = ? AND status IN ?", kind, active).
+			Order("id ASC").Find(&inflight).Error; err != nil {
+			return fmt.Errorf("進行中工作單查詢失敗: %w", err)
+		}
+		for i := range inflight {
+			if inflight[i].FilterHash == hash {
+				job = &inflight[i]
+				return nil
+			}
+		}
+		if guard != nil {
+			if err := guard(inflight); err != nil {
+				return err
+			}
+		}
+
+		if requesterID != 0 {
+			var mine int64
+			if err := tx.Model(&model.AuditExportJob{}).
+				Where("requester_id = ? AND status IN ?", requesterID, active).
+				Count(&mine).Error; err != nil {
+				return fmt.Errorf("進行中計數失敗: %w", err)
+			}
+			if mine >= exportJobPerRequesterLimit {
+				return ErrExportJobLimitExceeded
+			}
+		}
+		var global int64
+		if err := tx.Model(&model.AuditExportJob{}).
+			Where("status IN ?", active).Count(&global).Error; err != nil {
+			return fmt.Errorf("全域計數失敗: %w", err)
+		}
+		if global >= exportJobGlobalLimit {
+			return ErrExportJobLimitExceeded
+		}
+
+		now := time.Now()
+		j := &model.AuditExportJob{
+			RequesterID:   requesterID,
+			RequesterName: requesterName,
+			Kind:          kind,
+			FilterJSON:    filterJSON,
+			FilterHash:    hash,
+			Status:        model.ExportJobPending,
+			RequestedAt:   now,
+			ExpiresAt:     expiresAt,
+		}
+		if err := tx.Create(j).Error; err != nil {
+			return fmt.Errorf("建立報告工作單失敗: %w", err)
+		}
+		job = j
+		created = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return job, created, nil
+}
+
+// List 下載中心的清單查詢：種類分支決定要不要綁申請者。
+//
+// `evidence_bundle`（含缺省）維持「只列本人」——證據包含解密後的錄影與剪貼簿
+// 明文，清單範圍與下載授權同判準。`rotation_report` 不加申請者條件：報告是共用
+// 產物（無秘密材料），排程產出的那些根本沒有人類申請者，綁本人等於誰都看不到。
+//
+// id 降冪（穩定排序：id 唯一單調）。page 自 1 起；pageSize 收斂於 [1,100]，預設 20。
+func (s *AuditExportJobService) List(requesterID uint, kind string, page, pageSize int) ([]model.AuditExportJob, int64, error) {
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	q := s.db.Model(&model.AuditExportJob{}).Where("requester_id = ?", requesterID)
+	if kind == "" {
+		kind = model.ExportJobKindEvidenceBundle
+	}
+	q := s.db.Model(&model.AuditExportJob{}).Where("kind = ?", kind)
+	if bindsRequester(kind) {
+		q = q.Where("requester_id = ?", requesterID)
+	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("job 清單計數失敗: %w", err)
@@ -194,16 +308,29 @@ func (s *AuditExportJobService) ListByRequester(requesterID uint, page, pageSize
 	return jobs, total, nil
 }
 
-// GetForRequester 以 (jobID, requesterID) 單一受權查詢取 job：
-// 不存在與非申請者收斂為同一個 ErrExportJobNotFound——存在性細節不對外
-// （audit-detail-not-outward；與剪貼簿單筆調閱的跨會話約束同形）。
-func (s *AuditExportJobService) GetForRequester(jobID, requesterID uint) (*model.AuditExportJob, error) {
+// bindsRequester 該種類的清單與下載是否綁申請者本人。
+//
+// **白名單反向寫**：只有明列為共用的種類才放寬，其餘（含未知值）一律綁本人。
+// 新增一個種類而忘了想清楚授權，落點是「較嚴」那一邊。
+func bindsRequester(kind string) bool {
+	return kind != model.ExportJobKindRotationReport
+}
+
+// GetForDownload 下載目標解析：種類決定是否要求申請者本人。
+//
+// 證據包：以 (jobID, requesterID) 單一受權查詢，不存在與非申請者收斂為同一個
+// ErrExportJobNotFound——存在性細節不對外。
+// 輪替報告：只以 jobID 取件（呼叫端的稽核檢視權限閘已是全部的授權判準）。
+func (s *AuditExportJobService) GetForDownload(jobID, requesterID uint) (*model.AuditExportJob, error) {
 	var job model.AuditExportJob
-	if err := s.db.Where("id = ? AND requester_id = ?", jobID, requesterID).First(&job).Error; err != nil {
+	if err := s.db.Where("id = ?", jobID).First(&job).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrExportJobNotFound
 		}
 		return nil, fmt.Errorf("查詢匯出 job 失敗: %w", err)
+	}
+	if bindsRequester(job.Kind) && job.RequesterID != requesterID {
+		return nil, ErrExportJobNotFound
 	}
 	return &job, nil
 }

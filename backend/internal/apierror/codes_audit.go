@@ -125,6 +125,8 @@ var policyKeyZhLabels = identityLabels(
 	"session_idle_minutes",
 	"session_max_minutes",
 	"inactive_disable_days",
+	// 資產帳號憑證的最長使用天數（輪替證據報告的全域適用天數）
+	"asset_secret_max_age_days",
 	// 日誌保留與審閱（PCI Req 10）
 	"retention_audit_log_days",
 	"retention_session_command_days",

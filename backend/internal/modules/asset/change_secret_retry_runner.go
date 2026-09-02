@@ -94,6 +94,7 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 		r.noteFailure(cand, model.ChangeSecretReasonPromoteFailed, err)
 		return false
 	}
+	noteCredentialGroupLeft(r.db, cand.AccountID)
 	r.recordPromotion(cand)
 	return true
 }

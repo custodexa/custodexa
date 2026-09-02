@@ -53,6 +53,14 @@ type ChangeSecretPlan struct {
 	PasswordIncludeSymbol    bool `gorm:"default:true" json:"password_include_symbol"`
 	PasswordExcludeAmbiguous bool `gorm:"default:true" json:"password_exclude_ambiguous"`
 
+	// MaxAgeDays 憑證最長使用天數的計劃層覆蓋：0＝沿用全域安全政策鍵，
+	// 大於 0 時覆蓋全域值，值域與該政策鍵相同（1–3650）。
+	//
+	// **只影響輪替證據報告的適用天數計算**，不改變本計劃的執行時機或改密行為
+	// ——排程仍由 Cron 決定。一個帳號被多個已啟用計劃涵蓋時，報告取最嚴者
+	// （天數最小），來源記於報告的「天數來源」欄。
+	MaxAgeDays int `gorm:"not null;default:0" json:"max_age_days"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

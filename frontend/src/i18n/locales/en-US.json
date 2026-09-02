@@ -96,6 +96,7 @@
     "approvals": "Approval Center",
     "auditWorkbench": "Investigation Workbench",
     "auditExports": "Downloads",
+    "rotationEvidence": "Rotation Evidence",
     "auditLogs": "Operation Logs",
     "commands": "Command Audit",
     "alerts": "Alerts",
@@ -290,6 +291,7 @@
       "access_request": "Access Request",
       "approver_scope": "Approver Scope",
       "change_secret_plan": "Secret Rotation Plan",
+      "rotation_report": "Rotation evidence report",
       "authorization": "Asset Authorization",
       "audit_timeline": "Investigation Workbench Query",
       "clipboard_event": "Clipboard Content Retrieval",
@@ -502,6 +504,10 @@
       "password": {
         "title": "Password Policy",
         "hint": "Password strength, history, and forced change (PCI 8.3.5–8.3.7)"
+      },
+      "asset_secret": {
+        "title": "Asset account credentials",
+        "hint": "How often credentials on managed hosts should be rotated; does not affect platform user passwords"
       },
       "mfa": {
         "title": "MFA",
@@ -1348,7 +1354,8 @@
     "retention_max_per_run": "The retention policy removes data past its retention period daily. This value caps how many records each run may delete per data class, so no single run overloads the database. Raise it to clear more per run, which is what lets cleanup catch up when data volume is high or a retention period was just shortened; lower it to ease database load, at the cost of expired data accumulating. If data arrives faster than it is cleared, expired data stays indefinitely while the screen still reports daily cleanup. A 5,000-record floor applies because that is one batch: below it a run cannot finish even a single batch, so the clearing rate falls below the arrival rate of any real deployment — under this value the mechanism stops working rather than merely running slower. Whatever is left is marked incomplete and resumes the next day.",
     "key_rotation_max_per_run": "When the data encryption key is replaced, existing encrypted data must be re-encrypted record by record. This value caps how many records each run processes, controlling how long one operation takes. Unprocessed records keep their progress, and running again resumes from there. Raise it to process more per run and finish sooner overall, at the cost of longer individual runs; lower it for shorter runs that need more repetitions. Set too low, key replacement can never actually finish, while the key inventory still offers replacement. A 500-record floor applies because that is one read unit: below it a single operation makes no progress at all — under this value the mechanism stops working. Reading existing data is unaffected throughout.",
     "k8s_list_timeout_seconds": "When picking a container, this is how long to wait for the cluster's list of running items. Time out and you get an error. Higher: busy or distant clusters get more time, but a real outage takes longer to surface. Lower: outages surface faster, but healthy clusters may be misjudged. Floor is 3s — a single query can spend a second or two just setting up the encrypted connection; below that even healthy clusters all become unreachable while still listed among your assets.",
-    "login_banner_body": "Shown as plain text: HTML and links are not rendered; line breaks are kept. Leave the text empty and no notice appears; the heading never shows on its own. Anyone can read it before signing in, so keep internal information out of it."
+    "login_banner_body": "Shown as plain text: HTML and links are not rendered; line breaks are kept. Leave the text empty and no notice appears; the heading never shows on its own. Anyone can read it before signing in, so keep internal information out of it.",
+    "asset_secret_max_age_days": "Global maximum age used by the rotation evidence report; each rotation plan may override it. 0 means unset, and the report lists such accounts as having no policy."
   },
   "fileManager": {
     "mkdir": "New Directory",
@@ -2256,7 +2263,9 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "System retry verified the credential; it has been committed",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "The pending credential content could not be read; see the server log for details",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "Failed to log in to the target host with the pending credential; see the server log for the detailed remote message"
-    }
+    },
+    "maxAgeDays": "Maximum credential age override",
+    "maxAgeDaysHint": "0 keeps the global security policy value. Affects only the maximum age used by the rotation evidence report, not this plan’s schedule or rotation behaviour."
   },
   "notFound": {
     "title": "Page not found",
@@ -2398,7 +2407,9 @@
     "noPciValue": "No PCI recommendation",
     "nonCompliant": "Doesn't meet PCI recommendation",
     "epaymentRecommend": "E-payment baseline: {value}",
-    "nonCompliantEPayment": "Below e-payment baseline"
+    "nonCompliantEPayment": "Below e-payment baseline",
+    "pciReference": "Reference value",
+    "pciReferenceNote": "Requirement {requirement} has the frequency determined by the entity’s targeted risk analysis and sets no fixed number of days; this figure is the product’s default starting point, borrowed from the 8.3.9 threshold for user accounts."
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "Too many attempts; the account is temporarily locked. Please try again later or contact an administrator",
@@ -2487,6 +2498,8 @@
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "A provider with the same issuer and client_id already exists",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "This provider still has linked external identities; disable it instead",
     "CONFLICT_PLAN_NAME_EXISTS": "A plan with this name already exists",
+    "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "This schedule already has a report job in progress",
+    "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "Schedule name already exists",
     "CONFLICT_TICKET_ACCOUNT_SCOPE_IMMUTABLE": "The account scope of a temporary authorization is determined by its access request and cannot be changed directly",
     "CONFLICT_TICKET_REVOCATION_REQUIRED": "This is a ticket-based temporary authorization; it must be revoked through the ticket revocation flow and cannot be deleted directly",
     "CONFLICT_USERNAME_EXISTS": "Username already exists",
@@ -2630,6 +2643,12 @@
     "INTERNAL_ROLE_ADD": "Failed to add role",
     "INTERNAL_ROLE_ASSIGN": "Failed to assign roles",
     "INTERNAL_ROLE_QUERY": "Failed to query roles",
+    "INTERNAL_ROTATION_REPORT_BUILD": "Failed to generate the rotation evidence report",
+    "INTERNAL_ROTATION_REPORT_JOB": "Failed to create the report job",
+    "INTERNAL_ROTATION_SCHEDULE_CREATE": "Failed to create the report schedule",
+    "INTERNAL_ROTATION_SCHEDULE_DELETE": "Failed to delete the report schedule",
+    "INTERNAL_ROTATION_SCHEDULE_QUERY": "Failed to query report schedules",
+    "INTERNAL_ROTATION_SCHEDULE_UPDATE": "Failed to update the report schedule",
     "INTERNAL_SESSION_ACTIVE_QUERY": "Failed to query active sessions",
     "INTERNAL_SESSION_ADMIN_QUERY": "Failed to query session",
     "INTERNAL_SESSION_COMMAND_QUERY": "Failed to query session commands",
@@ -2705,6 +2724,7 @@
     "NOTFOUND_OIDC_PROVIDER": "OIDC provider not found",
     "NOTFOUND_RECORDING_FILE": "Recording file not found",
     "NOTFOUND_RECORDING_TIMING": "Recording timing file not found",
+    "NOTFOUND_ROTATION_SCHEDULE": "Report schedule not found",
     "NOTFOUND_SESSION": "Session not found",
     "NOTFOUND_SESSION_RECORDING": "This session has no recording",
     "NOTFOUND_SESSION_SHARE": "The share does not exist or has expired",
@@ -2952,6 +2972,7 @@
     "VALIDATION_PASSWORD_FIELD_MISSING": "Invalid request parameters: the password field is missing",
     "VALIDATION_PLAN_BAD_CRON": "Invalid schedule format (standard 5-field cron)",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "Key strategy must be either append_replace or exclusive",
+    "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "Credential max age override must be 0 (use global policy) or between 1 and 3650",
     "VALIDATION_PLAN_BAD_PASSWORD_LENGTH": "Password length must be between 12 and 64",
     "VALIDATION_PLAN_BAD_SECRET_TYPE": "Secret type must be either password or ssh_key",
     "VALIDATION_PLAN_NO_ASSETS": "The plan must include at least one asset",
@@ -2963,6 +2984,13 @@
     "VALIDATION_REVIEW_DISPOSITION_REQUIRED": "A disposition must be specified for the post-review",
     "VALIDATION_REVOKE_NOTE_REQUIRED": "A reason is required when revoking",
     "VALIDATION_ROLE_NOT_FOUND": "The specified role does not exist",
+    "VALIDATION_ROTATION_REPORT_BAD_LANGUAGE": "Report language is not supported",
+    "VALIDATION_ROTATION_REPORT_BAD_PERIOD": "Record period start must be earlier than its end",
+    "VALIDATION_ROTATION_REPORT_BAD_SCOPE": "Report scope is invalid or does not exist",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_CRON": "Invalid schedule format (standard 5-field cron)",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "Retention days must be between 1 and 3650",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "Schedule name cannot be empty",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "Schedule name exceeds the 128-character limit",
     "VALIDATION_SFTP_FILE_MISSING": "Missing upload file",
     "VALIDATION_SFTP_INVALID_PATH": "The remote path must be an absolute path and must not contain \"..\"",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "Missing path",
@@ -3022,6 +3050,7 @@
     "offsite_local_retention_days": "Days to keep local copies after offsite upload",
     "password_history_count": "Password reuse history count",
     "password_max_age_days": "Maximum password age (days)",
+    "asset_secret_max_age_days": "Maximum asset account credential age (days)",
     "password_min_length": "Minimum password length",
     "password_require_alnum": "Password must contain letters and digits",
     "recording_failclose_enabled": "Block new connections on recording failure",
@@ -3860,7 +3889,9 @@
       "status": "Status",
       "size": "Size",
       "expires": "Retention",
-      "actions": "Actions"
+      "actions": "Actions",
+      "reportSource": "Source",
+      "reportScope": "Scope and period"
     },
     "kind": {
       "auditExport": "Audit evidence bundle"
@@ -3905,7 +3936,150 @@
     "empty": "No exports yet. Finish an investigation in the workbench, choose \"Evidence bundle\" when exporting, and the artifact will show up here.",
     "polling": "Packaging is in progress; this page refreshes every {sec} seconds.",
     "pollingStopped": "Automatic refresh stopped (this page reached its refresh limit). Use Refresh to get the latest status.",
-    "shaTip": "Artifact fingerprint SHA-256: {sha}"
+    "shaTip": "Artifact fingerprint SHA-256: {sha}",
+    "tab": {
+      "mine": "My exports",
+      "reports": "Rotation reports"
+    },
+    "reportsSharedNote": "Rotation reports contain no recordings, clipboard content or secret material, so every account with audit view permission sees the same list, not only the requester.",
+    "reportsEmpty": "No rotation reports yet. Use \"Generate report\" on the rotation evidence page, or have an administrator set up a schedule; artifacts appear here.",
+    "reportManual": "Manual",
+    "reportManualBy": "Manual ({user})",
+    "reportScope": {
+      "all": "Entire system",
+      "node": "Node (including subtree)",
+      "plan": "Rotation plan"
+    }
+  },
+  "rotationEvidence": {
+    "headerDesc": "Credential rotation status for every asset account in scope, plus report generation for auditors.",
+    "basis": "Calculated as of {asOf}; global maximum age {days}; due-soon window {window} days. The population is the asset accounts registered in this system, not accounts discovered on the target hosts.",
+    "globalDays": "{days} days",
+    "globalUnset": "not set",
+    "globalUnsetNote": "The global maximum age for asset account credentials is not set. Reports are still produced; accounts not covered by a plan override fall into \"No policy\".",
+    "rowsTruncated": "The number of accounts exceeds the per-run cap of {cap} rows, so this is only part of the result. Narrow the scope to see everything.",
+    "loadFailed": "Failed to load the dataset.",
+    "empty": "No asset accounts in scope.",
+    "notApplicable": "Not applicable",
+    "filterAll": "All ({count})",
+    "generate": "Generate report",
+    "generateTitle": "Generate rotation evidence report",
+    "generateSubmit": "Generate",
+    "generateAccepted": "Accepted. Collect the report from the \"Rotation reports\" tab of the download center.",
+    "bucket": {
+      "compliant": "Compliant",
+      "overdue": "Overdue",
+      "due_soon": "Due soon",
+      "no_record": "No record",
+      "unverified": "Unverified",
+      "no_policy": "No policy"
+    },
+    "rate": {
+      "rate_excluding_no_record": "Compliance rate (excluding no record)",
+      "rate_counting_no_record": "Compliance rate (no record counts as non-compliant)"
+    },
+    "rateShort": {
+      "rate_excluding_no_record": "Excluding no record",
+      "rate_counting_no_record": "No record counts as non-compliant"
+    },
+    "rateBasis": {
+      "rate_excluding_no_record": "Numerator: compliant accounts. Denominator: total accounts minus those with no policy, unverified candidates and no record. Shows \"Not applicable\" when the denominator is zero.",
+      "rate_counting_no_record": "Numerator: compliant accounts. Denominator: total accounts minus those with no policy and unverified candidates; accounts with no record stay in the denominator. Shows \"Not applicable\" when the denominator is zero."
+    },
+    "column": {
+      "asset": "Asset",
+      "account": "Account",
+      "policy": "Maximum age",
+      "lastSuccess": "Last successful rotation",
+      "nextSchedule": "Next scheduled run",
+      "bucket": "Status",
+      "executedAt": "Executed at",
+      "plan": "Plan",
+      "target": "Asset / account",
+      "result": "Result",
+      "reason": "Reason",
+      "scheduleName": "Schedule",
+      "cron": "Cron",
+      "periodAnchor": "Start of the next report period",
+      "retention": "Retention",
+      "language": "Language"
+    },
+    "tag": {
+      "privileged": "Privileged",
+      "shared": "Shared credential",
+      "sharedHint": "This account shares one set of credentials with other accounts, as derived from account copying and rotation results. Credentials entered by hand are outside this determination.",
+      "multiPlan": "Multiple plans"
+    },
+    "credentialType": {
+      "password": "Password",
+      "ssh_key": "SSH key",
+      "none": "None"
+    },
+    "maxAgeValue": "{days} days",
+    "maxAgeUnset": "Not set",
+    "sourceGlobal": "Source: global policy",
+    "sourcePlan": "Source: plan \"{plan}\"",
+    "planList": "Plans: {plans}",
+    "noPlan": "No plan covers this account",
+    "noRecordValue": "No successful record",
+    "noSchedule": "No schedule",
+    "remainingDays": "{days} days left",
+    "overdueDays": "Overdue by {days} days",
+    "remainingUnknown": "Cannot be calculated",
+    "recordsTitle": "Rotation records in period",
+    "recordsEmpty": "No rotation records in this period.",
+    "recordsTruncated": "The record count reached the per-run cap, so this is only part of the result.",
+    "periodRange": "{from} to {to}",
+    "accountDeleted": "Account deleted",
+    "schedulesTitle": "Report schedules",
+    "schedulesEmpty": "No schedule yet. A schedule generates reports on its cron and delivers them to the download center.",
+    "scheduleCreate": "Add schedule",
+    "scheduleCreateTitle": "Add report schedule",
+    "scheduleEditTitle": "Edit report schedule",
+    "scheduleName": "Schedule name",
+    "cron": "Cron",
+    "cronPlaceholder": "Five-field cron, e.g. 0 1 1 * * (01:00 on the first of each month)",
+    "retentionDays": "Artifact retention (days)",
+    "retentionHint": "1 to 3650 days. Artifacts are removed once they expire.",
+    "retentionDaysValue": "{days} days",
+    "periodAnchorHint": "Advanced by the system; not editable",
+    "scheduleRun": "Run now",
+    "scheduleRunAccepted": "Accepted. This produces the next period early and advances the period start.",
+    "scheduleSaved": "Schedule saved.",
+    "scheduleDeleteConfirm": "Deleting schedule \"{name}\" stops future automatic reports. Reports already produced stay in the download center.",
+    "scheduleDeleteTitle": "Confirm schedule deletion",
+    "scheduleDeleted": "Schedule deleted.",
+    "scope": {
+      "all": "Entire system",
+      "node": "Node (including subtree)",
+      "plan": "Rotation plan"
+    },
+    "scopeLabel": "Scope",
+    "scopeNode": "Node",
+    "scopeNodePlaceholder": "Pick a node; the report covers assets mounted in its subtree",
+    "scopePlan": "Plan",
+    "scopePlanPlaceholder": "Pick a rotation plan",
+    "period": "Report period",
+    "periodStart": "From",
+    "periodEnd": "To",
+    "language": "Report language",
+    "aside": {
+      "rateTitle": "Compliance rate",
+      "barSegment": "{bucket}: {count} ({percent}%)",
+      "basisTitle": "How these are counted",
+      "basisRemainingA": "Days remaining by policy = maximum age - days since the last successful change.",
+      "basisRemainingB": "Days remaining by schedule = next scheduled run - today.",
+      "basisNoRecord": "No record does not mean the credential was never changed; it means this system holds no record of it.",
+      "scheduleTitle": "Schedule",
+      "scheduleManage": "Manage",
+      "scheduleManageClose": "Collapse",
+      "scheduleAdminOnly": "Report schedules are set by an administrator. Reports already produced are listed under Recent output below.",
+      "scheduleAnchor": "Next period starts {time}",
+      "scheduleMore": "{count} more schedule(s)",
+      "recentTitle": "Recent output",
+      "recentEmpty": "No reports have been produced yet.",
+      "recentAll": "View all in Downloads"
+    }
   },
   "offsite": {
     "headerDesc": "Configure where evidence copies are stored offsite, and track the upload queue and retrieval status.",
@@ -4157,7 +4331,8 @@
       "uploading": "Offsite upload pending",
       "failed": "Offsite upload failed",
       "integrity_mismatch": "Offsite copy integrity mismatch",
-      "foreign": "Previous storage settings"
+      "foreign": "Previous storage settings",
+      "retentionNote": "The remote copy is kept under the storage retention policy; the product does not delete it"
     }
   }
 }

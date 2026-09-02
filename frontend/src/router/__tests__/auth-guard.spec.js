@@ -57,6 +57,23 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith()
   })
 
+  // 輪替證據以註冊的 route meta 驅動（不是硬編路徑）：一般 user 直打網址也進不去
+  it('一般 user 直接開輪替證據網址被導走（registered route meta）', () => {
+    localStorage.setItem('token', 'abc')
+    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
+    const resolved = router.resolve('/rotation-evidence')
+    guard(route('/rotation-evidence', resolved.meta), route('/'), next)
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('auditor 可進輪替證據（registered route meta）', () => {
+    localStorage.setItem('token', 'abc')
+    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['auditor'] }))
+    const resolved = router.resolve('/rotation-evidence')
+    guard(route('/rotation-evidence', resolved.meta), route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
   it('redirects to /login when token exists but user data is absent (fail-closed)', () => {
     // 原實作在 roles 路由上 token 在、user 缺時跳過角色檢查放行，此處釘死 fail-closed
     localStorage.setItem('token', 'abc')

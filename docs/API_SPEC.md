@@ -227,6 +227,14 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/recordings/stats` | always |
 | GET | `/api/v1/recordings/stream` | always |
 | GET | `/api/v1/roles` | always |
+| GET | `/api/v1/rotation-report` | always |
+| POST | `/api/v1/rotation-report/jobs` | always |
+| GET | `/api/v1/rotation-report/records` | always |
+| GET | `/api/v1/rotation-report/schedules` | always |
+| POST | `/api/v1/rotation-report/schedules` | always |
+| DELETE | `/api/v1/rotation-report/schedules/:id` | always |
+| PUT | `/api/v1/rotation-report/schedules/:id` | always |
+| POST | `/api/v1/rotation-report/schedules/:id/run` | always |
 | GET | `/api/v1/seal/status` | always |
 | POST | `/api/v1/seal/unseal` | always |
 | GET | `/api/v1/security-policies` | always |
@@ -3002,6 +3010,8 @@ GET /api/v1/audit-export
 | `exported_by`／`exported_by_id`／`exported_at` | 保管鏈（`exported_at`＝實際打包執行時刻） |
 | `job_requested_at` | 證據包專屬：job 發起時刻。與 `exported_at` 併為**雙時戳**，使收包方能判斷內容對應的資料時點 |
 | `filter` | 原始查詢條件字串化 |
+| `job_id` | 非同步工作單編號（證據包與報告皆有；報告 PDF 頁尾的報告識別即 `job-<id>`） |
+| `filter.csv_as_of_prefix` | 報告專屬：兩個 CSV 首行註解列的前綴（`# as_of=`），其後為截止時點 RFC3339 帶時區位移 |
 | `scope` | 事件報告專屬：樞紐、樞紐 id 與名稱、時間區間、類別 |
 | `selected_types` | 證據包專屬：本包實際收錄的類別清單（缺席＝展開為全部六類） |
 | `files[]` | 各檔 `name`／`size`／`sha256` |
@@ -3058,6 +3068,9 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
 
 **GET `/audit-export/jobs`**（清單）：`page`（預設 1）／`page_size`（預設 20），id 降冪穩定排序。
 **僅列申請者本人**的 job（與下載授權同判準）。回應 `{"data": [ExportJob], "total": N, "page": P, "page_size": S}`。
+另接受 `kind`（`evidence_bundle`｜`rotation_report`），**缺省 `evidence_bundle`**，故既有呼叫端行為不變；
+閉集外的值回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field=kind`）。`kind=rotation_report`
+不加申請者條件——該種類的判定與例外的成立條件見〈輪替證據報告 API〉的產物與下載段。
 
 **GET `/audit-export/jobs/:id/download`**（下載）：認證＋`audit:view` 由路由群承擔，本端點另加**申請者本人**。
 - 成功回產物 ZIP（`attachment; filename="audit-evidence-job-<id>.zip"`），下載入審計（誰、何時、哪個包＋SHA-256）。
@@ -3079,10 +3092,12 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
 | 欄位 | 說明 |
 |---|---|
 | `id` | job 識別 |
+| `kind` | `evidence_bundle`｜`rotation_report`；**恆輸出**。決定清單範圍與下載授權走哪一支判準 |
 | `status` | `pending`／`running`／`done`／`failed`／`expired` |
 | `requested_at` | 發起時刻 |
 | `artifact_size` | 產物位元組大小 |
-| `filter` | 篩選條件的顯示投影（`DisplayMap`；id 字串化，不含名稱） |
+| `filter` | 篩選條件的顯示投影（`DisplayMap`；id 字串化，不含名稱）。**僅證據包種類** |
+| `report` | 報告參數的顯示投影（範圍、區間、語言、排程名、發起者）。**僅報告種類**——兩種快照格式不同，故以種類分流而非共用一個鍵 |
 | `artifact_sha256` | 產物 SHA-256（done 後出現） |
 | `error_summary` | 失敗摘要機器碼（`export_job.pack_failed`／`export_job.requester_revoked`；`failed` 時出現） |
 | `packaged_at` | 實際打包完成時刻（done 後出現） |
@@ -3095,6 +3110,257 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
 打包 worker 對申請者於**領件與每次重試時**重驗主體狀態與 `audit:view` 權限——已停用／刪除／失權者
 job 取消（落 `failed`＋`error_summary=export_job.requester_revoked`）並清除已產出的產物；worker 異常
 不終止服務行程，重試上限 3，服務重啟時遺留的進行中 job 可恢復或重排。
+
+---
+
+## 輪替證據報告 API
+
+> 資產帳號的憑證輪替證據：以登記於系統內的資產帳號為母體，陳述每個帳號的適用天數、
+> 最後成功改密事實、剩餘天數與狀態桶，供稽核核對。
+> **畫面表格、CSV 與 PDF 出自同一次建構的資料集**，三者的數字必然一致。
+> 讀取面權限 `audit:view`（admin 與 auditor 皆具備），排程管理面限 admin。
+> 產出為非同步：發起後建立一張**種類為 `rotation_report`** 的匯出工作單，
+> 產物於下載中心取得（端點與判定見〈稽核證據匯出 API〉的 job 端點）。
+
+```
+GET    /api/v1/rotation-report                     資料集（摘要＋帳號列）
+GET    /api/v1/rotation-report/records             區間改密記錄明細（分頁）
+POST   /api/v1/rotation-report/jobs                手動產出（建立工作單）
+GET    /api/v1/rotation-report/schedules           排程列表（admin）
+POST   /api/v1/rotation-report/schedules           建立排程（admin）
+PUT    /api/v1/rotation-report/schedules/:id       修改排程（admin）
+DELETE /api/v1/rotation-report/schedules/:id       刪除排程（admin）
+POST   /api/v1/rotation-report/schedules/:id/run   立即產出（admin）
+```
+
+### 母體、範圍與已知邊界
+
+母體是範圍內**登記於系統且未刪除**的資產帳號。系統不探勘目標主機上的帳號，
+故報告陳述的是系統管理中的帳號；主機上另行存在而未登記者不在報告內。此口徑寫在每一種輸出上。
+
+**範圍三選一**（`scope_kind`，缺省 `all`）：
+
+| 值 | `scope_id` | 母體 |
+|---|---|---|
+| `all` | 須為 0 | 全系統 |
+| `node` | 資產節點 id | 該節點與其全部子孫節點所掛載的資產（同一資產多處掛載只計一次） |
+| `plan` | 改密計劃 id | 該計劃的資產集合與其帳號範圍的交集 |
+
+未知的 `scope_kind`、`all` 帶非零 id、`node`／`plan` 帶 0，一律回 400：
+查詢參數形式（兩支 GET）回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field=scope_kind`），
+請求體形式（產出與排程）回 `VALIDATION_ROTATION_REPORT_BAD_SCOPE`（範圍指向的節點或計劃不存在時同碼）。
+
+另有兩處邊界，報告本身也明載：
+
+- **共用憑證標記只反映系統知道的事。** 以「從其他資產帳號複製」建立的帳號會與來源歸為同一組，
+  該組任一帳號經系統改密成功即脫離（組內只剩一員時該員一併脫離）。
+  **管理者手動編輯憑證不改變標記**——手動輸入的密碼是否仍與他人相同，系統無從判定。
+  本能力引入前既有的複製關係亦不回溯補登。標記只以布林呈現，群組識別本身不出 API。
+- **`no_record` 不等於逾期。** 系統無該帳號成功改密記錄時狀態為 `no_record`，不計入逾期數、
+  不列入 PDF 例外清單，明細仍在附表與帳號 CSV 內；它在兩種合規率上的處置由口徑決定（見下）。
+
+### 狀態桶與合規率口徑
+
+**狀態桶**（`bucket`）互斥，依序判定，第一個成立者即為該帳號的狀態：
+
+| 桶 | 條件 |
+|---|---|
+| `unverified` | 存在未驗證候選憑證 |
+| `no_policy` | 適用天數未設定（全域政策鍵為 0 且涵蓋計劃皆未覆蓋） |
+| `no_record` | 系統無該帳號的成功改密記錄 |
+| `overdue` | 剩餘天數 A 小於 0 |
+| `due_soon` | 剩餘天數 A 介於 0 與 30（含兩端） |
+| `compliant` | 其餘 |
+
+到期預警窗為 30 日固定值（`meta.due_soon_window_days`）。
+**適用天數**取涵蓋該帳號的已啟用計劃中天數覆蓋大於 0 者的最小值，無者取全域政策鍵；
+`max_age_source` 記出處（`global`、`plan:<計劃名>`，未設定時為空字串）。
+**剩餘天數 A** ＝適用天數減去截止時點距最後成功改密時刻的整日數；
+**剩餘天數 B** ＝下次排程時刻距截止時點的整日數。兩者無從計算時為 `null`。
+最後成功改密時刻一律以帳號識別碼比對，**不以帳號名比對**，故帳號改名後仍對得上舊記錄。
+
+**兩種合規率並列**，各自的分母基數 X ＝總帳號數 −`no_policy` −`unverified`：
+
+| 欄位 | 口徑 |
+|---|---|
+| `rate_excluding_no_record` | `compliant ÷ (X − no_record)`。排除無記錄者，回答「有記錄可看的帳號裡合規比例多少」 |
+| `rate_counting_no_record` | `compliant ÷ X`。無記錄計為不合規，回答「以稽核最嚴的看法合規比例多少」 |
+
+**分母為 0 時該欄為 `null`**，呼叫端須顯示「不適用」，不得顯示 0%——兩者的意思不同。
+全域政策鍵為 0 時報告照常產出，帳號落在 `no_policy` 並於摘要載明全域未設定；
+未設定本身就是稽核要看的發現，不因此擋下產出。
+
+### 資料集
+
+```
+GET /api/v1/rotation-report
+```
+
+**權限**: `audit:view`
+
+**Query 參數**: `scope_kind`／`scope_id`（見上）；`as_of`（RFC3339 截止時點，缺省為現在：
+天數與狀態等派生值以此為基準；改密記錄以此為上界，晚於它的成功記錄不計入最後成功時刻與區間明細；
+母體（帳號清冊）、改密計劃與政策值取產出當下的值，本端點不做全庫時光回溯）；`language`（`zh-TW`／`en-US`／`ja-JP`，缺省 `zh-TW`，影響狀態桶名與口徑文字）。
+
+**回應** (200)：
+
+```json
+{"data": {
+  "meta": {"scope_kind": "all", "scope_id": 0, "scope_label": "",
+           "period_start": "2026-09-02T15:04:10Z", "period_end": "2026-09-02T15:04:14Z",
+           "as_of": "2026-09-02T15:04:14Z", "generated_at": "2026-09-02T15:04:14Z",
+           "global_max_age_days": 90, "due_soon_window_days": 30,
+           "language": "zh-TW", "generated_by": ""},
+  "summary": {"total_accounts": 80, "compliant": 3, "overdue": 5, "due_within_30": 3,
+              "no_record": 68, "unverified": 1, "no_policy": 0,
+              "shared_credential": 2, "multi_plan": 1,
+              "rate_excluding_no_record": 0.273, "rate_counting_no_record": 0.038},
+  "rows": [{"account_id": 1, "asset_id": 1, "asset_name": "…", "asset_address": "…",
+            "protocol": "ssh", "username": "root", "credential_type": "password",
+            "privileged": true, "shared_credential": false,
+            "plans": ["週度改密-核心主機"], "multi_plan": false,
+            "max_age_days": 60, "max_age_source": "plan:週度改密-核心主機",
+            "last_success_at": "2026-08-21T02:00:00Z", "last_record_status": "success",
+            "remaining_days_a": 12, "next_schedule_at": "2026-09-05T02:00:00Z",
+            "remaining_days_b": 3, "candidate_state": "none", "bucket": "compliant"}],
+  "records": null,
+  "truncation": {"rows_cap": 20000, "rows_truncated": false,
+                 "records_cap": 50000, "records_truncated": false}
+}}
+```
+
+- `records` 於本端點**恆為 `null`**：記錄明細另有端點，資料集不夾帶。
+- `max_age_days` 為 0 代表未設定；`plans` 為空陣列代表無計劃涵蓋。
+- `credential_type`: `password`／`ssh_key`／`none`；`candidate_state`: `none`／`pending`／`abandoned`。
+- `multi_plan` 為真時 `plans` 列出全部計劃，天數與排程取最嚴（天數最小、排程最近）。
+- 帳號列上限 20,000；超過即截斷並以 `truncation` 標明，**不靜默截斷**。
+- 回應**不含**改密計劃的密碼策略欄，亦不含任何憑證欄位。
+- 本端點對整個母體一次算完。呼叫端的狀態桶篩選應在既有資料上進行，不必為每次篩選重打
+  ——「同源」指的正是這件事。
+
+### 記錄明細
+
+```
+GET /api/v1/rotation-report/records
+```
+
+**權限**: `audit:view`
+
+**Query 參數**: 範圍與語言同上；`period_start`／`period_end`（RFC3339，**兩者必填**且起須早於迄
+——沒有起訖的區間就是全庫掃描）；`page`（≥1，預設 1）、`page_size`（預設 20，上限 100）。
+
+**回應** (200)：
+
+```json
+{"data": [{"record_id": 12, "executed_at": "2026-08-14T02:00:03Z", "plan_name": "…",
+           "asset_name": "…", "account_username": "root", "account_deleted": false,
+           "secret_type": "password", "status": "failed",
+           "reason_code": "remote_exit_nonzero"}],
+ "total": 16, "page": 1, "page_size": 20, "truncated": false}
+```
+
+明細含 `failed`／`skipped` 等非成功結果。`reason_code` **只有機器碼，不含目標主機回傳的原文**
+（對外回應收斂的一貫作法；可讀說明由介面依碼提供）。帳號已刪除者以當時的帳號名快照列出並標示。
+記錄上限 50,000，達上限時 `truncated` 為真。
+
+### 手動產出
+
+```
+POST /api/v1/rotation-report/jobs
+```
+
+**權限**: `audit:view`
+
+```json
+{"scope_kind": "all", "scope_id": 0,
+ "period_start": "2026-07-01T00:00:00Z", "period_end": "2026-09-30T00:00:00Z",
+ "language": "zh-TW"}
+```
+
+**回應** (202): `{"data": {"id": 18, "status": "pending"}}`。
+產出是非同步的，回應不含任何檔案；完成後於下載中心的報告分頁下載。
+申請者為發起人，產物保留期沿既有證據包保留期。發起入審計。
+範圍、語言或區間不合法時回 400（`VALIDATION_ROTATION_REPORT_BAD_SCOPE`／`_BAD_LANGUAGE`／`_BAD_PERIOD`）。
+`language` 缺省 `zh-TW`；帶值時須落在 `zh-TW`／`en-US`／`ja-JP` 三語閉集，閉集外的值回 400
+`VALIDATION_ROTATION_REPORT_BAD_LANGUAGE`，不收斂為預設值。
+
+### 排程
+
+```
+GET    /api/v1/rotation-report/schedules
+POST   /api/v1/rotation-report/schedules
+PUT    /api/v1/rotation-report/schedules/:id
+DELETE /api/v1/rotation-report/schedules/:id
+POST   /api/v1/rotation-report/schedules/:id/run
+```
+
+**權限**: admin。建立、修改與刪除各入審計。
+
+請求與回應同一形狀：
+
+```json
+{"id": 1, "name": "月報", "cron": "0 1 1 * *", "enabled": true,
+ "scope_kind": "all", "scope_id": 0, "retention_days": 400, "language": "zh-TW",
+ "period_anchor": "2026-09-02T15:04:10Z",
+ "created_at": "2026-09-02T15:04:10Z", "updated_at": "2026-09-02T15:04:10Z"}
+```
+
+| 欄位 | 值域 |
+|---|---|
+| `name` | 1–128 字（空名回 400 `VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY`，超過 128 字回 400 `VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG`），**全系統唯一**（重名回 409 `CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS`）。它是報告封面上的人可讀識別 |
+| `cron` | 標準五欄；不合法回 400 `VALIDATION_ROTATION_SCHEDULE_BAD_CRON` |
+| `retention_days` | 1–3650；產物到期時刻＝**打包完成時刻**加此天數 |
+| `language` | 三語閉集 |
+| `period_anchor` | **唯讀**（送上來不採用）：下一份報告的記錄區間起點 |
+
+**記錄區間 ＝ [`period_anchor`, 觸發時刻)**，且觸發成功建單後錨點推進為該次觸發時刻，
+故連續兩期首尾相接、不重疊也不漏。錨點於排程建立時為建立時刻，於 cron 被修改時重設為修改時刻
+（修改當期以修改時刻切）。`/run` 是**提前的一期**，同樣推進錨點；手動產出不影響任何排程的錨點。
+
+同一排程至多一張進行中的工作單，已有進行中者回 **409 `CONFLICT_ROTATION_SCHEDULE_INFLIGHT`**。
+`/run` 成功回 **202** `{"data": {"id": <工作單 id>, "status": "pending"}}`。
+排程觸發產生的工作單，申請者記為系統。
+
+### 產物與下載
+
+產物是單一 ZIP：`report.pdf`、`accounts.csv`、`records.csv`、`manifest.json`、`manifest.sig`。
+**`manifest.json` 最後寫入**——包內若無清單檔即代表打包中途失敗、此包不完整，判準與證據包相同。
+清單檔載明種類、範圍、記錄區間、截止時點、發起與打包雙時戳、發起者（使用者或排程名）、
+逐檔 SHA-256、各段筆數與截斷標示、簽章狀態。SHA-256、簽章、離機上傳、到期清理與下載端點
+全部沿用既有匯出工作單機制，離線驗簽的公鑰端點亦同。
+CSV 為 UTF-8 帶 BOM、CRLF，首行為 `# as_of=<RFC3339 帶時區位移>` 註解列（載明截止時點，使單獨抽出的 CSV 仍可重算剩餘天數），第二行起為表頭與資料；欄名依報告語言，儲存格套用公式注入轉義。PDF 每頁頁尾的報告識別為 `job-<工作單編號>`，與 manifest 的 `job_id` 同源。
+PDF 內嵌可正確呈現繁體中文與日文的字型，圖表以繪圖原語繪製。
+帳號 CSV 是 PDF 附表 A 的欄位超集：附表省略位址、協定、天數來源與最近記錄狀態四欄以維持可讀。
+
+**下載中心的種類參數**：
+
+```
+GET /api/v1/audit-export/jobs?kind=rotation_report&page=1&page_size=20
+```
+
+`kind` **缺省為 `evidence_bundle`**，故既有呼叫端行為逐位不變；閉集外的值回 400
+`VALIDATION_INVALID_QUERY_PARAM`（`params.field=kind`）。
+報告種類的工作單，其回應以 `report` 段取代證據包的 `filter` 段：
+
+```json
+{"id": 18, "kind": "rotation_report", "status": "done", "requester": "system",
+ "requested_at": "…", "packaged_at": "…", "expires_at": "2027-10-07T15:04:14Z",
+ "artifact_size": 75905, "artifact_sha256": "5e0e…", "offsite_status": "uploaded",
+ "report": {"scope_kind": "all", "period_start": "…", "period_end": "…",
+            "language": "zh-TW", "schedule_name": "月報", "generated_by": "月報"}}
+```
+
+`report.schedule_name` 缺席即為手動產出，此時 `generated_by` 與 `requester` 皆為發起者帳號名。
+`expires_at` 在 `done` 之前是預定值，`done` 之後才是實際值（保留期自打包完成起算）。
+
+**報告種類不綁申請者——這是對證據包「綁本人」規則的顯式例外。**
+`rotation_report` 的工作單，任一具 `audit:view` 的帳號都可列出與下載；下載端點與證據包同一支。
+成立條件是**報告不含錄影、剪貼簿內容或任何秘密材料**，其內容全是本已對稽核開放的事實投影，
+且排程產出的工作單沒有自然人申請者可綁。此例外**只適用於這一個種類**：
+證據包的申請者本人判準一字不動，並有雙向守衛（證據包不因種類欄新增而放寬、報告不因證據包規則而誤拒）。
+每次下載照常入審計（誰、哪份報告、SHA-256）。
+排程產出的工作單申請者為系統，打包時**跳過申請者重驗**（無自然人主體可失效）；
+由人發起的工作單不論種類皆照常重驗。
 
 ---
 

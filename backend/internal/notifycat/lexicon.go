@@ -50,6 +50,13 @@ const (
 	// **只收標籤，不收主體名稱**：使用者名與資產名是使用者資料，翻譯目錄不碰
 	// （既有慣例，見 buildSlackText 檔頭）。
 	LexiconEntity Lexicon = "entity"
+	// LexiconRotationReport 資產帳號輪替證據報告的版面文案（標題、表頭、狀態桶名、
+	// 口徑說明）。
+	//
+	// 為何走詞庫而非事件目錄：這些字不屬於任何一則通知，它們印在會離開系統的
+	// 產物上——報告的語言由排程或請求指定，而三語齊備由既有守衛保證。
+	// 後端零散文出站的原則在此同樣適用：Go 檔內不得出現這些字面。
+	LexiconRotationReport Lexicon = "rotation_report"
 )
 
 // 實體標籤的詞庫鍵（值域即 lexicons/*.json 的 entity 區塊鍵集，受守衛比對）。
@@ -141,7 +148,8 @@ func Phrase(lang string, lex Lexicon, key string) string {
 
 // Lexicons 已宣告的詞庫清單（守衛與診斷用）。
 func Lexicons() []Lexicon {
-	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded, LexiconEntity}
+	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
+		LexiconEntity, LexiconRotationReport}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

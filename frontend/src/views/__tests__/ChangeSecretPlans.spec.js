@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import ChangeSecretPlans from '../ChangeSecretPlans.vue'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // 改密計劃頁（第 8 組）。
 //
@@ -226,5 +228,45 @@ describe('未驗證憑證面板', () => {
     await flushPromises()
     expect(discardCandidateMock).toHaveBeenCalledWith(9)
     spy.mockRestore()
+  })
+})
+
+// 憑證最長使用天數覆蓋。
+//
+// 這個欄位只影響輪替證據報告的適用天數，不改變計劃的執行時機——但它會被送進
+// 同一份 payload，漏送或漏還原都會讓報告用錯天數而沒有任何人看得出來。
+describe('憑證最長使用天數覆蓋', () => {
+  it('新建預設 0（沿用全域），且會進 payload', async () => {
+    const wrapper = await mountPage()
+    wrapper.vm.openCreate()
+    expect(wrapper.vm.buildPayload().max_age_days).toBe(0)
+
+    wrapper.vm.form.max_age_days = 60
+    expect(wrapper.vm.buildPayload().max_age_days).toBe(60)
+  })
+
+  it('編輯既有計劃時還原後端的覆蓋值', async () => {
+    const wrapper = await mountPage()
+    wrapper.vm.openEdit(planFixture({ max_age_days: 45 }))
+    expect(wrapper.vm.form.max_age_days).toBe(45)
+    expect(wrapper.vm.buildPayload().max_age_days).toBe(45)
+  })
+
+  it('越界由後端拒絕：對話框留在原地讓人改，且該機器碼有對應提示', async () => {
+    const wrapper = await mountPage()
+    wrapper.vm.openCreate()
+    wrapper.vm.form.name = 'p-bad'
+    wrapper.vm.form.asset_ids = [1]
+    wrapper.vm.form.max_age_days = 4000
+    createPlanMock.mockRejectedValue(new Error('VALIDATION_PLAN_BAD_MAX_AGE_DAYS'))
+    await wrapper.vm.submit()
+    await flushPromises()
+    expect(wrapper.vm.dialogVisible).toBe(true)
+
+    // 提示文案走既有的機器碼對照表：沒有譯文時使用者只會看到一串代碼
+    const zh = JSON.parse(
+      readFileSync(join(process.cwd(), 'src/i18n/locales/zh-TW.json'), 'utf8')
+    )
+    expect(zh.apiError.VALIDATION_PLAN_BAD_MAX_AGE_DAYS).toBeTruthy()
   })
 })

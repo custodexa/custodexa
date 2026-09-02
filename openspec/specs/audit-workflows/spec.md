@@ -220,17 +220,17 @@
 
 證據包（evidence_bundle）匯出 SHALL 為非同步：發起後進入打包排程，產物完成後落於系統指定位置，由系統提供限時下載。事件報告（event_report）不含任何本體、體積可控，SHALL 維持既有同步匯出，既有呼叫端行為不變。
 
-發起 SHALL 記錄申請者與完整篩選條件快照並入審計。job 狀態 SHALL 可查（至少 pending／running／done／failed／expired），失敗 SHALL 呈現可理解的失敗態並可重新發起，SHALL NOT 靜默消失。防重複打包的去重 SHALL 僅適用 pending／running 態，SHALL NOT 使 failed 態阻擋重新發起，亦 SHALL NOT 把 done 舊包當成新申請復用。系統 SHALL 對每申請者的進行中（pending＋running）job 數與全域同時打包數分別設上限，上限檢查與 job 建立 SHALL 為原子（並行發起不得同時穿透），超額發起回收斂錯誤。worker 於領件與每次重試時 SHALL 重驗申請者的主體狀態與稽核檢視權限——申請者已停用、刪除或失去權限者，job SHALL 取消並清除已產出的產物。
+發起 SHALL 記錄申請者與完整篩選條件快照並入審計。job 狀態 SHALL 可查（至少 pending／running／done／failed／expired），失敗 SHALL 呈現可理解的失敗態並可重新發起，SHALL NOT 靜默消失。防重複打包的去重 SHALL 僅適用 pending／running 態，SHALL NOT 使 failed 態阻擋重新發起，亦 SHALL NOT 把 done 舊包當成新申請復用。去重鍵對證據包 SHALL 為申請者加篩選快照；對 `rotation_report` SHALL 為種類加篩選快照（不含申請者），且同一排程 SHALL 至多一張進行中的 job。系統 SHALL 對每申請者的進行中（pending＋running）job 數與全域同時打包數分別設上限，上限檢查與 job 建立 SHALL 為原子（並行發起不得同時穿透），超額發起回收斂錯誤。worker 於領件與每次重試時 SHALL 重驗申請者的主體狀態與稽核檢視權限——申請者已停用、刪除或失去權限者，job SHALL 取消並清除已產出的產物。**由排程產生、申請者記為系統的 job SHALL 免除此重驗**（無主體可失效）；由人發起的 job 不論種類皆 SHALL 重驗。
 
 **非同步化後，既有同步匯出端點對證據包模式 SHALL 一律以機器碼拒絕**（SHALL NOT 轉為 job 發起——安全方法 GET 不得產生建立副作用，否則快取、預取與重試會誤觸發起），SHALL NOT 同步回傳證據包——否則同步路徑即繞過申請者綁定與限時下載鏈；此關閉 SHALL 有負向守衛（測試斷言同步路徑不再交付 bundle 位元組）。job 僅由專屬發起端點建立。事件報告的同步行為不變。
 
 產物 manifest SHALL 同時載明 job 發起時刻與實際打包執行時刻，使收包方能判斷內容對應的資料時點。
 
-**下載授權 SHALL 綁申請者本人**：下載端點 SHALL 要求認證與稽核檢視權限，且 SHALL 僅允許該 job 的申請者下載——其他帳號（含同樣具稽核檢視權限者）SHALL 被拒，需要同一份資料者 SHALL 自行發起匯出。下載連結 SHALL NOT 內嵌可繞過上述檢查的憑證。每次下載 SHALL 入審計（誰、何時、哪個包）。拒絕與過期的對外回應 SHALL 收斂，SHALL NOT 洩漏 job 存在性細節；細節只進審計。
+**證據包的下載授權 SHALL 綁申請者本人**：下載端點 SHALL 要求認證與稽核檢視權限，且對 `evidence_bundle` 種類 SHALL 僅允許該 job 的申請者下載——其他帳號（含同樣具稽核檢視權限者）SHALL 被拒，需要同一份資料者 SHALL 自行發起匯出。**工作單 SHALL 帶種類欄**（閉集，至少 `evidence_bundle` 與 `rotation_report`；存量列為 `evidence_bundle`）；`rotation_report` 種類的下載 SHALL NOT 綁申請者，具稽核檢視權限即可（例外的成立條件與守衛見 `rotation-evidence-report`）。種類分支 SHALL 有雙向守衛：證據包不因種類欄新增而放寬，報告不因證據包規則而誤拒。下載連結 SHALL NOT 內嵌可繞過上述檢查的憑證。每次下載 SHALL 入審計（誰、何時、哪個包）。拒絕與過期的對外回應 SHALL 收斂，SHALL NOT 洩漏 job 存在性細節；細節只進審計。
 
 產物 SHALL 限時保留：逾期 SHALL 自動清除且下載失效。打包 worker 的異常 SHALL NOT 終止服務行程；服務重啟時遺留的進行中 job SHALL 可恢復或重新排入，SHALL NOT 永久懸置，且重試 SHALL 有上限。
 
-系統 SHALL 提供**下載中心頁**：申請者於單一頁面檢視自己全部匯出 job 的狀態、範圍摘要、大小與過期時刻，並於此下載已完成的產物或重新發起失敗者；該頁 SHALL 僅列申請者本人的 job（與下載授權同判準），清單 SHALL 可分頁且排序穩定。終態（done／failed／expired）的 job 紀錄 SHALL 有保存期並於逾期清理，SHALL NOT 無界增長；產物檔案的清除仍依產物保留期，兩者分別計。發起入口 SHALL 於發起成功後導引申請者至該頁。SHALL NOT 以散落各功能的臨時進度介面取代之。
+系統 SHALL 提供**下載中心頁**，分兩個分頁：「我的匯出」列申請者本人的證據包 job（狀態、範圍摘要、大小與過期時刻；下載已完成者或重新發起失敗者），SHALL 僅列申請者本人的 job（與下載授權同判準）；「輪替報告」列全部 `rotation_report` 種類的 job（排程名或手動、範圍、區間、產出時刻、狀態、大小、到期、離機狀態），對所有具稽核檢視權限之帳號可見。兩個分頁的清單 SHALL 皆可分頁且排序穩定。列表端點 SHALL 接受種類參數，缺省為 `evidence_bundle` 以維持既有呼叫端行為。終態（done／failed／expired）的 job 紀錄 SHALL 有保存期並於逾期清理，SHALL NOT 無界增長；產物檔案的清除仍依產物保留期，兩者分別計。發起入口 SHALL 於發起成功後導引申請者至該頁。SHALL NOT 以散落各功能的臨時進度介面取代之。
 
 **產物的離機保存**（自 `evidence-offsite-storage` 起，功能啟用時）：打包完成的產物 SHALL 於完成的同一筆交易內排入離機上傳，其遠端身分（bucket、object key、版本識別、SHA-256、大小、上傳時刻）記於離機保管帳冊，job 紀錄持有指標與狀態快取；本機產物缺失或不可讀而離機副本存在且未逾期時，下載端點 SHALL 由後端自物件儲存綁版本取回、驗證 SHA-256 與大小相符後才交付，不符 SHALL 拒絕交付並留痕；申請者本人判準、逐次含 SHA-256 的審計與拒絕收斂 SHALL 全數維持，SHALL NOT 對前端交付 presigned URL。產物逾期語義不變：逾期即下載失效，SHALL NOT 因遠端副本存在而延長。產品 SHALL NOT 刪除遠端的證據包物件，其生命週期由 bucket 政策承擔；下載中心 SHALL 呈現每個產物的離機狀態並明示此點。證據包含解密後內容，啟用離機即使明文副本進入物件儲存，該代價 SHALL 於設定頁與營運文件揭露。
 
@@ -274,3 +274,17 @@
 - **WHEN** 產物已逾保留期而遠端物件仍在
 - **THEN** 下載回既有的失效回應，遠端物件不被產品刪除，下載中心標示其離機狀態與「由 bucket 政策保留」
 
+#### Scenario: 報告分頁對稽核檢視權限共用
+
+- **WHEN** 排程產出的 `rotation_report` job 完成，另一具稽核檢視權限的帳號開啟下載中心「輪替報告」分頁
+- **THEN** 該 job 列於分頁且可下載；「我的匯出」分頁不列它
+
+#### Scenario: 種類欄不放寬證據包
+
+- **WHEN** 種類欄新增後，另一具稽核檢視權限的帳號請求下載他人的 `evidence_bundle`
+- **THEN** 仍被拒且回應收斂
+
+#### Scenario: 系統申請者免重驗
+
+- **WHEN** 排程產生的 job 進入打包
+- **THEN** worker 不因申請者為系統而取消該 job

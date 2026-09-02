@@ -534,6 +534,8 @@ type routeDeps struct {
 	clipboard     *api.ClipboardEventHandler
 	auditTimeline *api.AuditTimelineHandler
 	changeSecret  *api.ChangeSecretHandler
+	// rotationReport 資產帳號輪替證據報告：讀取面 audit:view、排程面 admin
+	rotationReport *api.RotationReportHandler
 	accessRequest *api.AccessRequestHandler
 	sftp          *api.SFTPHandler
 
@@ -670,6 +672,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// 關閉操作日誌不代表會話、指令、告警的調查面也該消失
 		d.auditTimeline.RegisterRoutes(v1, d.authService)
 		d.changeSecret.RegisterRoutes(v1, d.authService)
+		// 輪替證據報告：資料集與手動產出（audit:view）＋排程管理（admin）
+		d.rotationReport.RegisterRoutes(v1, d.authService)
 
 		// 原生 SSH 終端：只收 token + asset_id，憑證後端注入
 		v1.GET("/ssh", d.ssh.HandleSSH)

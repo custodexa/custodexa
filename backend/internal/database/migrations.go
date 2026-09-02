@@ -87,6 +87,17 @@ var migrations = []Migration{
 		Up:      applySecurityPoliciesValueText,
 		Down:    rollbackSecurityPoliciesValueText,
 	},
+	{
+		// 輪替證據報告的資料層：asset_accounts.credential_group、
+		// change_secret_plans.max_age_days、audit_export_jobs.kind 三個加欄
+		// 與新表 rotation_report_schedules。**Down 有損**（刪政策設定、
+		// 共用憑證標示與全部排程定義，生產無回滾入口；
+		// 見 migration_rotation_evidence_report.go 檔頭的 Down 契約）
+		Version: "20260903_rotation_evidence_report",
+		Name:    "rotation_evidence_report",
+		Up:      applyRotationEvidenceReport,
+		Down:    rollbackRotationEvidenceReport,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
@@ -100,7 +111,8 @@ func schemaDDLStatements() []string {
 	out := append(baselineSchemaStatements(), auditExportJobsDDL()...)
 	out = append(out, evidenceOffsiteDDL()...)
 	out = append(out, sourceIPForensicsDDL()...)
-	return append(out, dbQueryConsoleDDL()...)
+	out = append(out, dbQueryConsoleDDL()...)
+	return append(out, rotationEvidenceReportDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

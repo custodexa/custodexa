@@ -3,7 +3,6 @@ package audit
 import (
 	"archive/zip"
 	"crypto/sha256"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/custodexa/backend/internal/csvsafe"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
@@ -123,7 +123,14 @@ type ExportedFile struct {
 type ExportManifest struct {
 	// Mode 包裡有什麼（evidence_bundle｜event_report）。**放在最前面**：
 	// 讀者判讀任何一段之前，得先知道自己拿到的是哪一種包
-	Mode         string    `json:"mode"`
+	Mode string `json:"mode"`
+	// Kind 產生本包的工作單種類（model.ExportJobKind* 常數）；同步匯出無工作單，
+	// 此欄缺席。收包方據此知道自己拿到的是哪一類產物的清單檔，不必自 Mode 反推
+	Kind string `json:"kind,omitempty"`
+	// JobID 產生本包的工作單識別碼；同步匯出無工作單，此欄缺席。
+	// 產物一旦解包或轉寄，檔名帶的 job id 即消失——包內要自帶一份，
+	// 收包方才能把手上這一份對回系統紀錄
+	JobID        uint      `json:"job_id,omitempty"`
 	ExportedBy   string    `json:"exported_by"`
 	ExportedByID uint      `json:"exported_by_id"`
 	ExportedAt   time.Time `json:"exported_at"`
@@ -234,7 +241,11 @@ func (s *AuditExportService) ExportForJob(w io.Writer, filter *ExportFilter,
 	if filter.IsEventReport() {
 		return nil, fmt.Errorf("非同步匯出僅接受證據包模式，事件報告走既有同步端點")
 	}
-	return s.exportBundle(w, filter, exporterID, exporterName, &requestedAt)
+	m, err := s.exportBundle(w, filter, exporterID, exporterName, &requestedAt)
+	if m != nil {
+		m.Kind = model.ExportJobKindEvidenceBundle
+	}
+	return m, err
 }
 
 // exportBundle 證據包本體（同步與 job 共用；jobRequestedAt 非 nil 時為 job 打包）
@@ -559,7 +570,10 @@ func (s *AuditExportService) writeCommands(zw *zip.Writer, filter *ExportFilter,
 	manifest.Counts["commands"] = len(rows)
 	manifest.Truncated["commands"] = truncated
 	return s.writeEntry(zw, "commands.csv", manifest, func(out io.Writer) error {
-		cw := csv.NewWriter(out)
+		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{})
+		if cerr != nil {
+			return cerr
+		}
 		if err := cw.Write(header); err != nil {
 			return err
 		}
@@ -673,8 +687,24 @@ func (s *AuditExportService) resolveRecordingSessions(filter *ExportFilter) ([]u
 }
 
 func (s *AuditExportService) writeManifest(zw *zip.Writer, manifest *ExportManifest) error {
-	// 先 marshal 成固定位元組：manifest.json 檔案內容與簽章對象必須是同一份
-	// bytes，驗證者才能對「ZIP 內的 manifest.json 檔案」直接驗簽
+	var signer ManifestSigner
+	if s.signing != nil {
+		signer = s.signing
+	}
+	return WriteManifest(zw, manifest, signer)
+}
+
+// ManifestSigner 清單檔的簽章器（keyvault.ExportSigningService 滿足）。
+type ManifestSigner interface {
+	Sign(data []byte) string
+}
+
+// WriteManifest 把清單檔與簽章檔寫入 ZIP。**所有種類的產物共用這一段**：
+// 清單檔的位元組與簽章對象必須是同一份，各寫一份遲早在序列化細節上分家，
+// 而驗證者是拿公鑰對 ZIP 內的 manifest.json 位元組直接驗簽的。
+//
+// 呼叫者須保證這是**最後寫入**的兩個檔（清單檔含前面各檔的雜湊）。
+func WriteManifest(zw *zip.Writer, manifest *ExportManifest, signer ManifestSigner) error {
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化 manifest 失敗: %w", err)
@@ -691,12 +721,12 @@ func (s *AuditExportService) writeManifest(zw *zip.Writer, manifest *ExportManif
 
 	// manifest.sig：Ed25519 簽章（base64）。
 	// 驗證：以公鑰對 manifest.json 檔案位元組驗 base64 簽章
-	if s.signing != nil {
+	if signer != nil {
 		sigEntry, err := zw.Create("manifest.sig")
 		if err != nil {
 			return fmt.Errorf("建立 manifest.sig 失敗: %w", err)
 		}
-		if _, err := sigEntry.Write([]byte(s.signing.Sign(data))); err != nil {
+		if _, err := sigEntry.Write([]byte(signer.Sign(data))); err != nil {
 			return fmt.Errorf("寫入 manifest.sig 失敗: %w", err)
 		}
 	}

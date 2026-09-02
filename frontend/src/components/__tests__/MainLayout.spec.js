@@ -185,6 +185,32 @@ describe('MainLayout sidebar', () => {
     expect(text).not.toContain('系統設定')
   })
 
+  // 輪替證據：admin 與 auditor 可見，一般 user 連入口都不該有
+  it('shows rotation evidence entry to admin and auditor only', async () => {
+    for (const roles of [['admin'], ['auditor']]) {
+      localStorage.clear()
+      setUser(roles)
+      const wrapper = mountLayout()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain('輪替證據')
+      wrapper.unmount()
+    }
+    localStorage.clear()
+    setUser(['user'])
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).not.toContain('輪替證據')
+  })
+
+  // 排程管理留在頁內（admin 專屬區塊），側欄不另開一項——
+  // 多一個入口就多一條要各自維權限的路
+  it('does not add a separate schedule entry to the sidebar', async () => {
+    setUser(['admin'])
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).not.toContain('報告排程')
+  })
+
   // —— 人設矩陣新增斷言 ——
 
   it('workspace entry visible to every persona', async () => {

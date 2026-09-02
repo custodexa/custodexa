@@ -119,6 +119,9 @@ var stage2ServiceInventory = []string{
 	// auditExportJobWorker：證據包打包 worker。
 	// 晚於 apiHandlers——與 handler 共用的匯出服務在 buildRouteDeps 之前建構完成
 	"auditExportJobWorker",
+	// rotationReportScheduler：輪替證據報告排程。
+	// **登記在打包 worker 之後＝停在它之前**：先停止建新工作單，再停打包器
+	"rotationReportScheduler",
 	// metricsRefresher：接替原 perfMonitor 的段 2 末步位置。
 	// 刷新的是查詢成本不對稱的指標（DB 查詢、檔案系統遍歷），故定期刷新而非
 	// 於每次採集時同步查詢——後者會讓外部採集頻率直接放大成本系統的負載
@@ -790,6 +793,15 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	auditExportService.SetClipboardCodec(keyManager)
 	auditExportJobService := audit.NewAuditExportJobService(database.DB)
 
+	// 輪替證據報告：資料集建構者與排程服務。
+	// 全域「憑證最長使用天數」以取值函式注入——報告模組為了一個純數字建立一條
+	// 對政策模組的相依邊不划算，且測試要能窮舉「未設定」
+	rotationReportBuilder := asset.NewRotationReportBuilder(database.DB, changeSecretPlanService,
+		func() int { return policyService.GetInt(policy.PolicyAssetSecretMaxAgeDays) })
+	rotationReportSchedules := asset.NewRotationReportScheduleService(database.DB,
+		auditExportJobService, rotationReportBuilder)
+
+
 	deps, err := buildRouteDeps(cfg, routeServices{
 		metrics:              s1.metrics,
 		checkpointVerifier:   checkpointVerifier,
@@ -836,6 +848,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		sourceIPBaseline:           sourceIPBaseline,
 		auditExportService:         auditExportService,
 		auditExportJobs:            auditExportJobService,
+		rotationReportBuilder:      rotationReportBuilder,
+		rotationReportSchedules:    rotationReportSchedules,
 		connHandler:                connHandler,
 		sshHandler:                 sshHandler,
 		corsMiddleware:             s1.corsMiddleware,
@@ -865,6 +879,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		// 才不會出現「產物還在寫、上傳已停」以外的順序
 		{"offsiteUploader", nil, nil},
 		{"auditExportJobWorker", nil, nil},
+		// rotationReportScheduler 登記在 auditExportJobWorker **之後**＝停在它之前：
+		// 先讓建單那一側停下來，打包器才不會在收束途中又領到新件
+		{"rotationReportScheduler", nil, nil},
 	}
 	retentionService := audit.NewRetentionService(database.DB, policyService, recordingService, auditService)
 	// audit_logs 改走檢查點區間清除（本行是唯一切換點）：
@@ -1011,7 +1028,19 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		exportJobVerify, auditService, audit.ResolveExportArtifactDir(""))
 	// 產物落定與排入離機佇列同一筆交易
 	auditExportJobWorker.SetOffsiteEnqueuer(offsiteLedger)
+	// 輪替證據報告的打包者：種類分派在 worker，報告的資料與版面在 asset 模組，
+	// 兩者只以介面相接，audit 不因此認識任何一種報告
+	auditExportJobWorker.RegisterPackager(asset.NewRotationReportPackager(
+		rotationReportBuilder, exportSigning, Version))
 	starts[8].start, starts[8].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
+
+	rotationReportScheduler := scheduler.NewRotationReportScheduler(rotationReportSchedules)
+	rotationReportSchedules.SetReloader(rotationReportScheduler)
+	starts[9].start = func() error {
+		rotationReportScheduler.Start()
+		return nil
+	}
+	starts[9].stop = rotationReportScheduler.Stop
 
 	for _, s := range starts {
 		if err := seal.CheckCancelStep(ctx, s.name); err != nil {
@@ -1359,6 +1388,9 @@ type routeServices struct {
 	// buildRouteDeps 只組 handler
 	auditExportService *audit.AuditExportService
 	auditExportJobs    *audit.AuditExportJobService
+	// 輪替證據報告：資料集建構者與排程服務（與排程器、打包者共用同一組實例）
+	rotationReportBuilder   *asset.RotationReportBuilder
+	rotationReportSchedules *asset.RotationReportScheduleService
 	connHandler        *proxy.ConnectionHandler
 	sshHandler         *sshproxy.Handler
 	// sourceIPBaseline 與兩條建線路徑共用同一份（見 sshHandler.SourceIPBaseline
@@ -1511,6 +1543,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
 		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretScheduler)
 
+	rotationReportHandler := api.NewRotationReportHandler(s.rotationReportBuilder,
+		s.rotationReportSchedules, s.auditService)
+
 	accessRequestHandler := api.NewAccessRequestHandler(
 		s.accessRequestService, authz.NewApproverScopeService(database.DB), database.DB)
 
@@ -1569,6 +1604,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		clipboard:             clipboardHandler,
 		auditTimeline:         auditTimelineHandler,
 		changeSecret:          changeSecretHandler,
+		rotationReport:        rotationReportHandler,
 		accessRequest:         accessRequestHandler,
 		sftp:                  sftpHandler,
 

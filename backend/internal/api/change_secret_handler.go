@@ -144,6 +144,8 @@ func respondPlanError(c *gin.Context, internalCode apierror.ErrCode, err error) 
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadSecretType, nil)
 	case errors.Is(err, asset.ErrPlanBadKeyStrategy):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadKeyStrategy, nil)
+	case errors.Is(err, asset.ErrPlanBadMaxAgeDays):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadMaxAgeDays, nil)
 	case errors.Is(err, asset.ErrPasswordLengthOutOfRange):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadPasswordLen, nil)
 	case errors.Is(err, asset.ErrPlanNameExists):

@@ -143,6 +143,9 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 
 	// ── 非資產類 ──
 	"AP-01": {pivotNotAsset, false, "封印狀態機留痕，主體是系統"},
+	"AP-83": {pivotNotAsset, false, "輪替證據報告的產出與排程管理：主體是工作單與排程列。" +
+		"報告的範圍可以是全系統或一整個節點子樹，沒有單一資產可歸屬——" +
+		"填任何一台機器的 id 都會在該資產的時間軸上長出一則它沒參與過的事件"},
 	"AP-71": {pivotNotAsset, false, "認證中介層拒絕的匿名列與其聚合列：主體是來源位址與被拒的請求，" +
 		"與任何資產無關——拒絕發生在認證階段，此時連「他想連哪一台」都尚未成立"},
 	"AP-72": {pivotNotAsset, false, "OIDC 登入流程留痕（成功交換／MFA 待驗證／JIT 建帳號／各階段失敗）：" +

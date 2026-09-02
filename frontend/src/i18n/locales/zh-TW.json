@@ -96,6 +96,7 @@
     "approvals": "審核中心",
     "auditWorkbench": "調查工作台",
     "auditExports": "下載中心",
+    "rotationEvidence": "輪替證據",
     "auditLogs": "操作日誌",
     "commands": "指令稽核",
     "alerts": "告警",
@@ -290,6 +291,7 @@
       "access_request": "連線申請",
       "approver_scope": "審核範圍",
       "change_secret_plan": "改密計劃",
+      "rotation_report": "輪替證據報告",
       "authorization": "資產授權",
       "audit_timeline": "調查工作台查詢",
       "clipboard_event": "剪貼簿內容調閱",
@@ -502,6 +504,10 @@
       "password": {
         "title": "密碼政策",
         "hint": "密碼強度、歷史與強制改密（PCI 8.3.5–8.3.7）"
+      },
+      "asset_secret": {
+        "title": "資產帳號憑證",
+        "hint": "被納管主機上的帳號憑證多久該換一次；不影響平台使用者的登入密碼"
       },
       "mfa": {
         "title": "MFA",
@@ -1348,7 +1354,8 @@
     "retention_max_per_run": "保留政策每日清除超過保留天數的資料，本值是每次執行、每一類資料最多刪除的筆數，用來避免一次刪太多而拖住資料庫。調大＝每次清得更多，資料量大或剛縮短保留天數時才追得上；調小＝每次清得少，資料庫負擔輕但到期資料會越積越多。若新增速度長期超過清除速度，到期資料會一直留著，畫面上卻仍顯示每日在清除。下限 5000 筆的意義是：低於一次分批處理的量，等於每次執行連一批都清不完，清除速率必然低於任何實際部署的新增速率——低於此值本機制即失去意義，而非只是變慢。清不完的部分會標示為未完成並於次日續清。",
     "key_rotation_max_per_run": "更換資料加密金鑰時，既有的加密資料需要逐筆改用新金鑰重新加密。本值是每次執行最多處理的筆數，用來控制單次操作的耗時。未處理完的部分會保留進度，再次執行即接著做。調大＝一次處理更多、整體更早換完，但單次操作耗時更長；調小＝單次較快結束，但需要更多次操作。設得太小會讓換金鑰實際上永遠做不完，而金鑰清冊上仍顯示可以更換。下限 500 筆的意義是：低於一次讀取的資料量，等於一次操作推不動任何進度——低於此值本機制即失去意義。換金鑰全程不影響既有資料的讀取。",
     "k8s_list_timeout_seconds": "挑選容器時，向叢集要一份執行中項目清單，最多等這麼久。等不到就顯示錯誤。調大：忙碌或距離遠的叢集有更多時間，但真的故障時要等更久才看到錯誤。調小：故障更快浮現，但正常叢集可能被誤判。下限 3 秒——一次查詢光是建立加密連線就可能花上一兩秒；低於這個值，連正常的叢集也會全部連不上，而資產列表上仍看得到它們。",
-    "login_banner_body": "純文字顯示，不支援 HTML 與連結；換行會保留。內文留空即不顯示告示，標題也不會單獨出現。登入前任何人都讀得到，勿寫入內部資訊。"
+    "login_banner_body": "純文字顯示，不支援 HTML 與連結；換行會保留。內文留空即不顯示告示，標題也不會單獨出現。登入前任何人都讀得到，勿寫入內部資訊。",
+    "asset_secret_max_age_days": "輪替證據報告的全域適用天數；改密計劃可各自覆蓋。0＝不設定，報告會把該帳號列為無政策。"
   },
   "fileManager": {
     "mkdir": "新增目錄",
@@ -2256,7 +2263,9 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "系統重試驗證成功，憑證已轉正",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "無法取用候選憑證內容；詳細訊息見伺服器日誌",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "以候選憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌"
-    }
+    },
+    "maxAgeDays": "憑證最長使用天數覆蓋",
+    "maxAgeDaysHint": "0＝沿用全域安全政策的天數。只影響輪替證據報告的適用天數，不改變本計劃的執行時機或改密行為。"
   },
   "notFound": {
     "title": "找不到您要的頁面",
@@ -2398,7 +2407,9 @@
     "noPciValue": "無 PCI 建議值",
     "nonCompliant": "不符 PCI 建議",
     "epaymentRecommend": "電支基準：{value}",
-    "nonCompliantEPayment": "不符電支基準"
+    "nonCompliantEPayment": "不符電支基準",
+    "pciReference": "參考值",
+    "pciReferenceNote": "Requirement {requirement} 要求此頻率由機構的目標風險分析決定，未定固定天數；此數字為本產品的預設起始值，借自 8.3.9 對使用者帳號的門檻。"
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員",
@@ -2487,6 +2498,8 @@
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "已存在相同 issuer 與 client_id 的 provider",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "此 provider 仍有使用者外部身分關聯，請改為停用",
     "CONFLICT_PLAN_NAME_EXISTS": "計劃名稱已存在",
+    "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "該排程已有一張進行中的報告工作單",
+    "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "排程名稱已存在",
     "CONFLICT_TICKET_ACCOUNT_SCOPE_IMMUTABLE": "臨時授權的帳號範圍由申請單決定，不可直接調整",
     "CONFLICT_TICKET_REVOCATION_REQUIRED": "臨時授權須經申請單撤銷流處理，不可直接刪除",
     "CONFLICT_USERNAME_EXISTS": "使用者名稱已存在",
@@ -2630,6 +2643,12 @@
     "INTERNAL_ROLE_ADD": "追加角色失敗",
     "INTERNAL_ROLE_ASSIGN": "分配角色失敗",
     "INTERNAL_ROLE_QUERY": "查詢角色失敗",
+    "INTERNAL_ROTATION_REPORT_BUILD": "產生輪替證據報告失敗",
+    "INTERNAL_ROTATION_REPORT_JOB": "建立報告工作單失敗",
+    "INTERNAL_ROTATION_SCHEDULE_CREATE": "建立報告排程失敗",
+    "INTERNAL_ROTATION_SCHEDULE_DELETE": "刪除報告排程失敗",
+    "INTERNAL_ROTATION_SCHEDULE_QUERY": "查詢報告排程失敗",
+    "INTERNAL_ROTATION_SCHEDULE_UPDATE": "更新報告排程失敗",
     "INTERNAL_SESSION_ACTIVE_QUERY": "查詢活動 Session 失敗",
     "INTERNAL_SESSION_ADMIN_QUERY": "查詢 Session 失敗",
     "INTERNAL_SESSION_COMMAND_QUERY": "查詢會話指令失敗",
@@ -2705,6 +2724,7 @@
     "NOTFOUND_OIDC_PROVIDER": "OIDC provider 不存在",
     "NOTFOUND_RECORDING_FILE": "錄製檔案不存在",
     "NOTFOUND_RECORDING_TIMING": "錄製時間檔案不存在",
+    "NOTFOUND_ROTATION_SCHEDULE": "報告排程不存在",
     "NOTFOUND_SESSION": "Session 不存在",
     "NOTFOUND_SESSION_RECORDING": "此 Session 沒有錄製檔案",
     "NOTFOUND_SESSION_SHARE": "分享不存在或已過期",
@@ -2952,6 +2972,7 @@
     "VALIDATION_PASSWORD_FIELD_MISSING": "請求參數錯誤，缺少密碼欄位",
     "VALIDATION_PLAN_BAD_CRON": "排程格式錯誤（標準 5 欄 cron）",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "金鑰策略僅支援 append_replace 或 exclusive",
+    "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "憑證最長使用天數覆蓋須為 0（沿用全域）或 1 至 3650",
     "VALIDATION_PLAN_BAD_PASSWORD_LENGTH": "密碼長度須介於 12 與 64 之間",
     "VALIDATION_PLAN_BAD_SECRET_TYPE": "秘密型別僅支援 password 或 ssh_key",
     "VALIDATION_PLAN_NO_ASSETS": "計劃必須包含至少一個資產",
@@ -2963,6 +2984,13 @@
     "VALIDATION_REVIEW_DISPOSITION_REQUIRED": "補審必須指定處置",
     "VALIDATION_REVOKE_NOTE_REQUIRED": "撤銷必須填寫事由",
     "VALIDATION_ROLE_NOT_FOUND": "指定的角色不存在",
+    "VALIDATION_ROTATION_REPORT_BAD_LANGUAGE": "報告語言不在支援清單內",
+    "VALIDATION_ROTATION_REPORT_BAD_PERIOD": "記錄區間的起點須早於迄點",
+    "VALIDATION_ROTATION_REPORT_BAD_SCOPE": "報告範圍不合法或不存在",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_CRON": "排程格式錯誤（標準 5 欄 cron）",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "留存天數須介於 1 與 3650 之間",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "排程名稱不可為空",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "排程名稱長度上限 128 字",
     "VALIDATION_SFTP_FILE_MISSING": "缺少上傳檔案",
     "VALIDATION_SFTP_INVALID_PATH": "遠端路徑必須為絕對路徑且不得包含 ..",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "缺少 path",
@@ -3022,6 +3050,7 @@
     "offsite_local_retention_days": "離機後本機副本保留天數",
     "password_history_count": "禁止重用最近密碼筆數",
     "password_max_age_days": "密碼最長使用天數",
+    "asset_secret_max_age_days": "資產帳號憑證最長使用天數",
     "password_min_length": "密碼最小長度",
     "password_require_alnum": "密碼須含字母與數字",
     "recording_failclose_enabled": "錄影失敗擋新連線",
@@ -3860,7 +3889,9 @@
       "status": "狀態",
       "size": "大小",
       "expires": "保留期限",
-      "actions": "操作"
+      "actions": "操作",
+      "reportSource": "產出來源",
+      "reportScope": "範圍與區間"
     },
     "kind": {
       "auditExport": "稽核證據包"
@@ -3905,7 +3936,150 @@
     "empty": "目前沒有匯出產物。到調查工作台完成調查後選「證據包」發起匯出，產物會出現在這裡。",
     "polling": "有打包正在進行，本頁每 {sec} 秒自動更新一次。",
     "pollingStopped": "自動更新已停止（已達本頁的更新次數上限）。請按重新整理取得最新狀態。",
-    "shaTip": "產物指紋 SHA-256：{sha}"
+    "shaTip": "產物指紋 SHA-256：{sha}",
+    "tab": {
+      "mine": "我的匯出",
+      "reports": "輪替報告"
+    },
+    "reportsSharedNote": "輪替報告不含錄影、剪貼簿內容或任何秘密材料，因此對所有具稽核檢視權限的帳號是同一份清單，不限發起者本人。",
+    "reportsEmpty": "目前沒有輪替報告。到輪替證據頁按「產出報告」，或由管理員設定排程，產物會出現在這裡。",
+    "reportManual": "手動產出",
+    "reportManualBy": "手動產出（{user}）",
+    "reportScope": {
+      "all": "全系統",
+      "node": "節點（含子樹）",
+      "plan": "改密計劃"
+    }
+  },
+  "rotationEvidence": {
+    "headerDesc": "範圍內每個資產帳號的憑證輪替現況，與可交付稽核的報告產出。",
+    "basis": "以 {asOf} 為截止時點計算；全域適用天數 {days}；到期預警窗 {window} 天。母體為登記於本系統的資產帳號，不含目標主機上未登記的帳號。",
+    "globalDays": "{days} 天",
+    "globalUnset": "未設定",
+    "globalUnsetNote": "全域的資產帳號憑證最長使用天數尚未設定。報告照常產出，未被任何計劃覆蓋的帳號會落在「無政策」。",
+    "rowsTruncated": "帳號數超過單次計算上限 {cap} 列，以下只是其中一部分。縮小範圍可看到完整結果。",
+    "loadFailed": "資料集載入失敗。",
+    "empty": "範圍內沒有資產帳號。",
+    "notApplicable": "不適用",
+    "filterAll": "全部（{count}）",
+    "generate": "產出報告",
+    "generateTitle": "產出輪替證據報告",
+    "generateSubmit": "產出",
+    "generateAccepted": "已受理，報告會在下載中心的「輪替報告」分頁取件。",
+    "bucket": {
+      "compliant": "合規",
+      "overdue": "逾期",
+      "due_soon": "即將到期",
+      "no_record": "無記錄",
+      "unverified": "未驗證",
+      "no_policy": "無政策"
+    },
+    "rate": {
+      "rate_excluding_no_record": "合規率（排除無記錄）",
+      "rate_counting_no_record": "合規率（無記錄計不合規）"
+    },
+    "rateShort": {
+      "rate_excluding_no_record": "排除無記錄",
+      "rate_counting_no_record": "無記錄計不合規"
+    },
+    "rateBasis": {
+      "rate_excluding_no_record": "分子為合規帳號數；分母為總數扣除無政策、未驗證與無記錄之後的帳號數。分母為零時顯示「不適用」。",
+      "rate_counting_no_record": "分子為合規帳號數；分母為總數扣除無政策與未驗證之後的帳號數，無記錄的帳號計入分母。分母為零時顯示「不適用」。"
+    },
+    "column": {
+      "asset": "資產",
+      "account": "帳號",
+      "policy": "適用天數",
+      "lastSuccess": "最後成功改密",
+      "nextSchedule": "下次排程",
+      "bucket": "狀態",
+      "executedAt": "執行時刻",
+      "plan": "計劃",
+      "target": "資產／帳號",
+      "result": "結果",
+      "reason": "原因",
+      "scheduleName": "排程",
+      "cron": "排程時刻表",
+      "periodAnchor": "下一份報告的區間起點",
+      "retention": "留存",
+      "language": "語言"
+    },
+    "tag": {
+      "privileged": "特權",
+      "shared": "共用憑證",
+      "sharedHint": "此帳號與其他帳號共用同一組憑證（由系統的複製建號與改密結果推得）。人工輸入的憑證不在判定範圍內。",
+      "multiPlan": "多計劃"
+    },
+    "credentialType": {
+      "password": "密碼",
+      "ssh_key": "SSH 金鑰",
+      "none": "未設定"
+    },
+    "maxAgeValue": "{days} 天",
+    "maxAgeUnset": "未設定",
+    "sourceGlobal": "來源：全域政策",
+    "sourcePlan": "來源：計劃「{plan}」",
+    "planList": "涵蓋計劃：{plans}",
+    "noPlan": "無計劃涵蓋",
+    "noRecordValue": "無成功記錄",
+    "noSchedule": "無排程",
+    "remainingDays": "剩餘 {days} 天",
+    "overdueDays": "已逾期 {days} 天",
+    "remainingUnknown": "無法計算",
+    "recordsTitle": "區間改密記錄",
+    "recordsEmpty": "此區間內沒有改密記錄。",
+    "recordsTruncated": "記錄筆數已達單次計算上限，以下只是其中一部分。",
+    "periodRange": "{from} 至 {to}",
+    "accountDeleted": "帳號已刪除",
+    "schedulesTitle": "報告排程",
+    "schedulesEmpty": "尚未設定排程。排程會依時刻表自動產出報告並送進下載中心。",
+    "scheduleCreate": "新增排程",
+    "scheduleCreateTitle": "新增報告排程",
+    "scheduleEditTitle": "編輯報告排程",
+    "scheduleName": "排程名稱",
+    "cron": "時刻表",
+    "cronPlaceholder": "五欄 cron，例如 0 1 1 * *（每月一日 01:00）",
+    "retentionDays": "產物留存天數",
+    "retentionHint": "1 至 3650 天。逾期後產物自動清除。",
+    "retentionDaysValue": "{days} 天",
+    "periodAnchorHint": "由系統推進，不可編輯",
+    "scheduleRun": "立即產出",
+    "scheduleRunAccepted": "已受理，這會產出提前的一期並推進區間起點。",
+    "scheduleSaved": "排程已儲存。",
+    "scheduleDeleteConfirm": "刪除排程「{name}」後不再自動產出報告。已經產出的報告仍留在下載中心，不受影響。",
+    "scheduleDeleteTitle": "確認刪除排程",
+    "scheduleDeleted": "排程已刪除。",
+    "scope": {
+      "all": "全系統",
+      "node": "節點（含子樹）",
+      "plan": "改密計劃"
+    },
+    "scopeLabel": "範圍",
+    "scopeNode": "節點",
+    "scopeNodePlaceholder": "選擇節點，報告涵蓋其子樹掛載的資產",
+    "scopePlan": "計劃",
+    "scopePlanPlaceholder": "選擇改密計劃",
+    "period": "報告區間",
+    "periodStart": "起",
+    "periodEnd": "迄",
+    "language": "報告語言",
+    "aside": {
+      "rateTitle": "合規率",
+      "barSegment": "{bucket} {count} 個（{percent}%）",
+      "basisTitle": "口徑",
+      "basisRemainingA": "依適用天數的剩餘天數 ＝ 適用天數 − 距最後成功改密的天數。",
+      "basisRemainingB": "依排程的剩餘天數 ＝ 下次排程時刻 − 今天。",
+      "basisNoRecord": "無記錄不代表未曾改密，只代表本系統沒有記錄。",
+      "scheduleTitle": "排程",
+      "scheduleManage": "管理",
+      "scheduleManageClose": "收起",
+      "scheduleAdminOnly": "報告排程由系統管理員設定。已產出的報告見下方「最近產出」。",
+      "scheduleAnchor": "下一份區間起點 {time}",
+      "scheduleMore": "另有 {count} 個排程",
+      "recentTitle": "最近產出",
+      "recentEmpty": "尚無已產出的報告。",
+      "recentAll": "到下載中心查看全部"
+    }
   },
   "offsite": {
     "headerDesc": "設定證據副本的離機儲存位置，並追蹤上傳佇列與取回狀態。",
@@ -4157,7 +4331,8 @@
       "uploading": "離機上傳待處理",
       "failed": "離機上傳失敗",
       "integrity_mismatch": "離機副本完整性不符",
-      "foreign": "舊儲存設定"
+      "foreign": "舊儲存設定",
+      "retentionNote": "遠端副本由儲存端的保留政策決定，產品不會刪除"
     }
   }
 }

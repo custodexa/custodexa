@@ -43,6 +43,9 @@ var keysNotRequiringMin = map[string]string{
 	PolicyPasswordMinLength:               "危險方向朝小但為誠實可見的政策選擇：Direction=min ＋ PCI 偏離摘要即時顯示，非偽裝成還開著",
 	PolicyPasswordHistoryCount:            "同上，調小＝歷史比對筆數變少，PCI 偏離會顯示",
 	PolicyPasswordMaxAgeDays:              "危險方向朝大（密碼可用更久），Direction=max 已蓋住",
+	PolicyAssetSecretMaxAgeDays: "危險方向朝大（資產帳號憑證可用更久），Direction=max ＋ PCI／電支偏離摘要已蓋住；" +
+		"調小是更嚴格，且本鍵不驅動任何機制——它只是報告判定逾期的基準線，" +
+		"不存在「調小即機制停擺而畫面上仍在跑」的形態",
 	PolicyWebIdleMinutes:                  "危險方向朝大（閒置更久才登出），Direction=max 已蓋住；調小是更嚴格",
 	PolicyWebMaxSessionHours:              "危險方向朝大，調小是更嚴格",
 	PolicySessionIdleMinutes:              "危險方向朝大，調小是更嚴格",

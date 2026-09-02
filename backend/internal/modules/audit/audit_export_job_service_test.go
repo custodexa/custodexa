@@ -18,7 +18,7 @@ import (
 //  1. 去重僅及 pending/running；failed 不阻擋重新發起、done 舊包不復用。
 //  2. 每申請者與全域進行中上限；上限檢查與建立在同一交易內，並行發起不穿透。
 //  3. 清單只含本人、id 降冪穩定排序、分頁正確。
-//  4. GetForRequester 對「不存在」與「非申請者」收斂同一哨兵。
+//  4. GetForDownload 對「不存在」與「非申請者」收斂同一哨兵。
 //  5. 篩選快照可往返（worker 重建打包範圍的前提）。
 //
 // 邊界明載：sqlite 單寫者使交易天然序列化，postgres 的表鎖分支
@@ -205,7 +205,7 @@ func TestExportJobListOnlyOwnStableOrder(t *testing.T) {
 		t.Fatalf("other: %v", err)
 	}
 
-	jobs, total, err := svc.ListByRequester(1, 1, 2)
+	jobs, total, err := svc.List(1, model.ExportJobKindEvidenceBundle, 1, 2)
 	if err != nil {
 		t.Fatalf("list p1: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestExportJobListOnlyOwnStableOrder(t *testing.T) {
 	if jobs[0].ID != mineIDs[2] || jobs[1].ID != mineIDs[1] {
 		t.Fatalf("排序不穩定: got [%d %d] want [%d %d]", jobs[0].ID, jobs[1].ID, mineIDs[2], mineIDs[1])
 	}
-	jobs, _, err = svc.ListByRequester(1, 2, 2)
+	jobs, _, err = svc.List(1, model.ExportJobKindEvidenceBundle, 2, 2)
 	if err != nil || len(jobs) != 1 || jobs[0].ID != mineIDs[0] {
 		t.Fatalf("分頁二: err=%v", err)
 	}
@@ -228,20 +228,20 @@ func TestExportJobListOnlyOwnStableOrder(t *testing.T) {
 	}
 }
 
-func TestExportJobGetForRequesterConverges(t *testing.T) {
+func TestExportJobGetForDownloadConverges(t *testing.T) {
 	svc := NewAuditExportJobService(newJobServiceDB(t))
 	j, _, err := svc.CreateJob(1, "mine", jobFilterForSession(5))
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := svc.GetForRequester(j.ID, 1); err != nil {
+	if _, err := svc.GetForDownload(j.ID, 1); err != nil {
 		t.Fatalf("本人取件: %v", err)
 	}
 	// 非申請者與不存在收斂同一哨兵（不洩存在性）
-	if _, err := svc.GetForRequester(j.ID, 2); !errors.Is(err, ErrExportJobNotFound) {
+	if _, err := svc.GetForDownload(j.ID, 2); !errors.Is(err, ErrExportJobNotFound) {
 		t.Fatalf("他人取件未收斂: %v", err)
 	}
-	if _, err := svc.GetForRequester(99999, 1); !errors.Is(err, ErrExportJobNotFound) {
+	if _, err := svc.GetForDownload(99999, 1); !errors.Is(err, ErrExportJobNotFound) {
 		t.Fatalf("不存在未收斂: %v", err)
 	}
 }

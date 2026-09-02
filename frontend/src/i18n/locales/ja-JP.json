@@ -96,6 +96,7 @@
     "approvals": "承認センター",
     "auditWorkbench": "監査調査ビュー",
     "auditExports": "ダウンロードセンター",
+    "rotationEvidence": "ローテーション証跡",
     "auditLogs": "操作ログ",
     "commands": "コマンド監査",
     "alerts": "アラート",
@@ -290,6 +291,7 @@
       "access_request": "接続申請",
       "approver_scope": "承認範囲",
       "change_secret_plan": "パスワード変更計画",
+      "rotation_report": "ローテーション証跡レポート",
       "authorization": "資産権限",
       "audit_timeline": "監査調査ビューの照会",
       "clipboard_event": "クリップボード内容の取得",
@@ -502,6 +504,10 @@
       "password": {
         "title": "パスワードポリシー",
         "hint": "パスワード強度、履歴、強制変更（PCI 8.3.5–8.3.7）"
+      },
+      "asset_secret": {
+        "title": "資産アカウント認証情報",
+        "hint": "管理対象ホスト上のアカウント認証情報を変更する間隔。プラットフォーム利用者のログインパスワードには影響しません"
       },
       "mfa": {
         "title": "MFA",
@@ -1348,7 +1354,8 @@
     "retention_max_per_run": "保持ポリシーは保持日数を超えたデータを毎日削除します。本値は 1 回の実行で、データ種別ごとに削除できる最大件数であり、一度に削除しすぎてデータベースに負荷がかかるのを防ぎます。大きくすると 1 回あたりの削除量が増え、データ量が多い場合や保持日数を短縮した直後でも追いつけます。小さくするとデータベースの負荷は軽くなりますが、期限切れデータが蓄積します。増加の速さが削除の速さを上回り続けると、期限切れデータは残り続けるのに、画面上は毎日削除中と表示されたままになります。下限 5000 件の意味は、1 回分の処理量を下回ると 1 回の実行で 1 回分すら処理できず、削除の速さが実運用のどの増加の速さよりも遅くなるためです。この値を下回ると本機能は単に遅くなるのではなく、意味を失います。処理しきれなかった分は未完了として表示され、翌日に続けて処理されます。",
     "key_rotation_max_per_run": "データ暗号鍵を交換する際、既存の暗号化データは 1 件ずつ新しい鍵で暗号化し直す必要があります。本値は 1 回の実行で処理する最大件数で、1 回の操作にかかる時間を調整します。未処理分は進捗が保持され、再実行すると続きから処理されます。大きくすると 1 回の処理量が増えて全体が早く終わりますが、1 回の操作時間は長くなります。小さくすると 1 回は早く終わりますが、完了までの実行回数が増えます。小さすぎると鍵の交換が実際には永久に完了しないのに、鍵台帳では交換可能と表示されたままになります。下限 500 件の意味は、1 回の読み取り単位を下回ると 1 回の操作で進捗がまったく進まないためです。この値を下回ると本機能は意味を失います。交換中も既存データの読み取りには影響しません。",
     "k8s_list_timeout_seconds": "コンテナを選ぶ際、実行中の項目一覧をクラスターに要求してから最大どれだけ待つか。超えるとエラーを表示します。大きく：混雑や遠距離のクラスターに余裕ができますが、実際の障害は表示までより長くかかります。小さく：障害は早く表れますが、正常なクラスターが誤判定されることがあります。下限は 3 秒——一度の問い合わせは暗号化接続の確立だけで 1〜2 秒かかることがあり、これを下回ると正常なクラスターまで一斉に接続不可となる一方、資産一覧には表示され続けます。",
-    "login_banner_body": "プレーンテキストとして表示します。HTML やリンクは反映されず、改行はそのまま保たれます。本文を空にすると告知は表示されず、見出しだけが出ることもありません。サインイン前に誰でも読めるため、社内情報は記載しないでください。"
+    "login_banner_body": "プレーンテキストとして表示します。HTML やリンクは反映されず、改行はそのまま保たれます。本文を空にすると告知は表示されず、見出しだけが出ることもありません。サインイン前に誰でも読めるため、社内情報は記載しないでください。",
+    "asset_secret_max_age_days": "ローテーション証跡レポートで用いる全体の適用日数。各パスワード変更計画で上書きできます。0 は未設定で、レポートでは「ポリシーなし」として扱われます。"
   },
   "fileManager": {
     "mkdir": "ディレクトリを作成",
@@ -2256,7 +2263,9 @@
       "CHANGE_SECRET_RETRY_PROMOTED": "システム再試行で検証に成功し、資格情報を確定しました",
       "CHANGE_SECRET_RETRY_SECRET_UNAVAILABLE": "未検証資格情報の内容を読み取れませんでした。詳細はサーバーログをご確認ください",
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "未検証資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください"
-    }
+    },
+    "maxAgeDays": "認証情報の最長使用日数の上書き",
+    "maxAgeDaysHint": "0 の場合は全体のセキュリティポリシーの日数を使用します。ローテーション証跡レポートの適用日数にのみ影響し、本計画の実行タイミングや変更動作は変わりません。"
   },
   "notFound": {
     "title": "ページが見つかりません",
@@ -2398,7 +2407,9 @@
     "noPciValue": "PCI 推奨値なし",
     "nonCompliant": "PCI 推奨に非準拠",
     "epaymentRecommend": "電子決済基準：{value}",
-    "nonCompliantEPayment": "電子決済基準を下回る"
+    "nonCompliantEPayment": "電子決済基準を下回る",
+    "pciReference": "参考値",
+    "pciReferenceNote": "Requirement {requirement} では、この頻度は事業体の目標リスク分析によって決定され、固定の日数は定められていません。この数値は本製品の既定の初期値で、利用者アカウントに対する 8.3.9 のしきい値を援用しています。"
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "試行回数が多すぎるため、アカウントが一時的にロックされました。しばらくしてから再試行するか、管理者にお問い合わせください",
@@ -2487,6 +2498,8 @@
     "CONFLICT_OIDC_IDENTITY_DOMAIN": "同じ issuer と client_id のプロバイダーが既に存在します",
     "CONFLICT_OIDC_PROVIDER_IN_USE": "このプロバイダーには外部 ID の関連付けが残っています。無効化してください",
     "CONFLICT_PLAN_NAME_EXISTS": "この計画名は既に存在します",
+    "CONFLICT_ROTATION_SCHEDULE_INFLIGHT": "このスケジュールには進行中のレポートジョブが既にあります",
+    "CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS": "スケジュール名は既に存在します",
     "CONFLICT_TICKET_ACCOUNT_SCOPE_IMMUTABLE": "一時権限のアカウント範囲は申請内容で決まるため、直接変更できません",
     "CONFLICT_TICKET_REVOCATION_REQUIRED": "このチケットによる一時権限は申請の取消フローで処理する必要があり、直接削除できません",
     "CONFLICT_USERNAME_EXISTS": "ユーザー名は既に存在します",
@@ -2630,6 +2643,12 @@
     "INTERNAL_ROLE_ADD": "ロールの追加に失敗しました",
     "INTERNAL_ROLE_ASSIGN": "ロールの割り当てに失敗しました",
     "INTERNAL_ROLE_QUERY": "ロールの照会に失敗しました",
+    "INTERNAL_ROTATION_REPORT_BUILD": "ローテーション証跡レポートの生成に失敗しました",
+    "INTERNAL_ROTATION_REPORT_JOB": "レポートジョブの作成に失敗しました",
+    "INTERNAL_ROTATION_SCHEDULE_CREATE": "レポートスケジュールの作成に失敗しました",
+    "INTERNAL_ROTATION_SCHEDULE_DELETE": "レポートスケジュールの削除に失敗しました",
+    "INTERNAL_ROTATION_SCHEDULE_QUERY": "レポートスケジュールの取得に失敗しました",
+    "INTERNAL_ROTATION_SCHEDULE_UPDATE": "レポートスケジュールの更新に失敗しました",
     "INTERNAL_SESSION_ACTIVE_QUERY": "アクティブセッションの取得に失敗しました",
     "INTERNAL_SESSION_ADMIN_QUERY": "セッションの取得に失敗しました",
     "INTERNAL_SESSION_COMMAND_QUERY": "セッションコマンドの取得に失敗しました",
@@ -2705,6 +2724,7 @@
     "NOTFOUND_OIDC_PROVIDER": "OIDC プロバイダーが存在しません",
     "NOTFOUND_RECORDING_FILE": "録画ファイルが存在しません",
     "NOTFOUND_RECORDING_TIMING": "録画タイミングファイルが存在しません",
+    "NOTFOUND_ROTATION_SCHEDULE": "レポートスケジュールが見つかりません",
     "NOTFOUND_SESSION": "セッションが存在しません",
     "NOTFOUND_SESSION_RECORDING": "このセッションには録画がありません",
     "NOTFOUND_SESSION_SHARE": "共有が存在しないか、有効期限が切れています",
@@ -2952,6 +2972,7 @@
     "VALIDATION_PASSWORD_FIELD_MISSING": "リクエストパラメータが正しくありません：パスワードフィールドがありません",
     "VALIDATION_PLAN_BAD_CRON": "スケジュール形式が不正です（標準5項目のcron）",
     "VALIDATION_PLAN_BAD_KEY_STRATEGY": "鍵ストラテジは append_replace または exclusive のみ指定できます",
+    "VALIDATION_PLAN_BAD_MAX_AGE_DAYS": "資格情報の最長使用日数の上書きは 0（グローバル設定を使用）または 1 から 3650 で指定してください",
     "VALIDATION_PLAN_BAD_PASSWORD_LENGTH": "パスワード長は 12 から 64 の範囲で指定してください",
     "VALIDATION_PLAN_BAD_SECRET_TYPE": "シークレット種別は password または ssh_key のみ指定できます",
     "VALIDATION_PLAN_NO_ASSETS": "計画には少なくとも1つの資産を含める必要があります",
@@ -2963,6 +2984,13 @@
     "VALIDATION_REVIEW_DISPOSITION_REQUIRED": "事後レビューには処置の指定が必要です",
     "VALIDATION_REVOKE_NOTE_REQUIRED": "取り消しには理由の入力が必要です",
     "VALIDATION_ROLE_NOT_FOUND": "指定されたロールが存在しません",
+    "VALIDATION_ROTATION_REPORT_BAD_LANGUAGE": "レポート言語はサポート対象外です",
+    "VALIDATION_ROTATION_REPORT_BAD_PERIOD": "記録期間の開始は終了より前である必要があります",
+    "VALIDATION_ROTATION_REPORT_BAD_SCOPE": "レポート範囲が不正、または存在しません",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_CRON": "スケジュール形式が不正です（標準5項目のcron）",
+    "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "保存日数は 1 から 3650 の範囲で指定してください",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "スケジュール名は空にできません",
+    "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "スケジュール名は128文字以内で入力してください",
     "VALIDATION_SFTP_FILE_MISSING": "アップロードファイルがありません",
     "VALIDATION_SFTP_INVALID_PATH": "リモートパスは絶対パスである必要があり、「..」を含めることはできません",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "path がありません",
@@ -3022,6 +3050,7 @@
     "offsite_local_retention_days": "オフサイト保管後にローカル複製を保持する日数",
     "password_history_count": "パスワード再利用禁止履歴数",
     "password_max_age_days": "パスワード最長使用日数",
+    "asset_secret_max_age_days": "資産アカウント認証情報の最長使用日数",
     "password_min_length": "パスワード最小長",
     "password_require_alnum": "パスワードに英字と数字を含める",
     "recording_failclose_enabled": "録画失敗時に新規接続をブロック",
@@ -3860,7 +3889,9 @@
       "status": "状態",
       "size": "サイズ",
       "expires": "保存期限",
-      "actions": "操作"
+      "actions": "操作",
+      "reportSource": "生成元",
+      "reportScope": "範囲と期間"
     },
     "kind": {
       "auditExport": "監査証拠パッケージ"
@@ -3905,7 +3936,150 @@
     "empty": "まだ書き出しはありません。調査ワークベンチで調査を終えたあと「証拠パッケージ」を選んで書き出すと、成果物がここに表示されます。",
     "polling": "作成が進行中です。このページは {sec} 秒ごとに自動更新されます。",
     "pollingStopped": "自動更新を停止しました（このページの更新回数の上限に達しました）。最新の状態は「更新」で取得してください。",
-    "shaTip": "成果物のフィンガープリント SHA-256：{sha}"
+    "shaTip": "成果物のフィンガープリント SHA-256：{sha}",
+    "tab": {
+      "mine": "自分のエクスポート",
+      "reports": "ローテーションレポート"
+    },
+    "reportsSharedNote": "ローテーションレポートには録画、クリップボード内容、秘密情報が含まれないため、監査閲覧権限を持つすべてのアカウントが同じ一覧を参照します（申請者本人に限りません）。",
+    "reportsEmpty": "ローテーションレポートはまだありません。ローテーション証跡ページの「レポート生成」を使うか、管理者にスケジュール設定を依頼してください。生成物はここに表示されます。",
+    "reportManual": "手動生成",
+    "reportManualBy": "手動生成（{user}）",
+    "reportScope": {
+      "all": "システム全体",
+      "node": "ノード（サブツリーを含む）",
+      "plan": "パスワード変更計画"
+    }
+  },
+  "rotationEvidence": {
+    "headerDesc": "範囲内の各資産アカウントにおける認証情報ローテーションの状況と、監査に提出できるレポートの生成。",
+    "basis": "{asOf} を基準時点として計算しています。全体の適用日数は {days}、期限前警告の幅は {window} 日です。母集団は本システムに登録された資産アカウントで、対象ホスト上の未登録アカウントは含みません。",
+    "globalDays": "{days} 日",
+    "globalUnset": "未設定",
+    "globalUnsetNote": "資産アカウント認証情報の最長使用日数（全体）が未設定です。レポートは通常どおり生成され、計画で上書きされていないアカウントは「ポリシーなし」に分類されます。",
+    "rowsTruncated": "アカウント数が 1 回あたりの上限 {cap} 行を超えたため、以下は一部です。範囲を絞ると全体を確認できます。",
+    "loadFailed": "データセットの読み込みに失敗しました。",
+    "empty": "範囲内に資産アカウントがありません。",
+    "notApplicable": "該当なし",
+    "filterAll": "すべて（{count}）",
+    "generate": "レポート生成",
+    "generateTitle": "ローテーション証跡レポートの生成",
+    "generateSubmit": "生成",
+    "generateAccepted": "受け付けました。ダウンロードセンターの「ローテーションレポート」タブから取得してください。",
+    "bucket": {
+      "compliant": "適合",
+      "overdue": "期限超過",
+      "due_soon": "期限間近",
+      "no_record": "記録なし",
+      "unverified": "未検証",
+      "no_policy": "ポリシーなし"
+    },
+    "rate": {
+      "rate_excluding_no_record": "適合率（記録なしを除外）",
+      "rate_counting_no_record": "適合率（記録なしを不適合に算入）"
+    },
+    "rateShort": {
+      "rate_excluding_no_record": "記録なしを除外",
+      "rate_counting_no_record": "記録なしを不適合に算入"
+    },
+    "rateBasis": {
+      "rate_excluding_no_record": "分子は適合アカウント数、分母は総数からポリシーなし・未検証・記録なしを除いた数です。分母が 0 の場合は「該当なし」と表示します。",
+      "rate_counting_no_record": "分子は適合アカウント数、分母は総数からポリシーなしと未検証を除いた数で、記録なしのアカウントは分母に含みます。分母が 0 の場合は「該当なし」と表示します。"
+    },
+    "column": {
+      "asset": "資産",
+      "account": "アカウント",
+      "policy": "適用日数",
+      "lastSuccess": "最終成功日時",
+      "nextSchedule": "次回実行予定",
+      "bucket": "状態",
+      "executedAt": "実行日時",
+      "plan": "計画",
+      "target": "資産／アカウント",
+      "result": "結果",
+      "reason": "理由",
+      "scheduleName": "スケジュール",
+      "cron": "実行スケジュール",
+      "periodAnchor": "次回レポートの期間開始",
+      "retention": "保存期間",
+      "language": "言語"
+    },
+    "tag": {
+      "privileged": "特権",
+      "shared": "共有認証情報",
+      "sharedHint": "このアカウントは他のアカウントと同じ認証情報を共有しています（アカウント複製とローテーション結果から導出）。手入力された認証情報は判定の対象外です。",
+      "multiPlan": "複数計画"
+    },
+    "credentialType": {
+      "password": "パスワード",
+      "ssh_key": "SSH 鍵",
+      "none": "未設定"
+    },
+    "maxAgeValue": "{days} 日",
+    "maxAgeUnset": "未設定",
+    "sourceGlobal": "出所：全体ポリシー",
+    "sourcePlan": "出所：計画「{plan}」",
+    "planList": "対象計画：{plans}",
+    "noPlan": "対象の計画なし",
+    "noRecordValue": "成功記録なし",
+    "noSchedule": "スケジュールなし",
+    "remainingDays": "残り {days} 日",
+    "overdueDays": "{days} 日超過",
+    "remainingUnknown": "算出できません",
+    "recordsTitle": "期間内のパスワード変更記録",
+    "recordsEmpty": "この期間に記録はありません。",
+    "recordsTruncated": "記録件数が 1 回あたりの上限に達したため、以下は一部です。",
+    "periodRange": "{from} から {to}",
+    "accountDeleted": "アカウント削除済み",
+    "schedulesTitle": "レポートスケジュール",
+    "schedulesEmpty": "スケジュールはまだありません。スケジュールは指定時刻にレポートを生成し、ダウンロードセンターへ送ります。",
+    "scheduleCreate": "スケジュール追加",
+    "scheduleCreateTitle": "レポートスケジュールの追加",
+    "scheduleEditTitle": "レポートスケジュールの編集",
+    "scheduleName": "スケジュール名",
+    "cron": "実行スケジュール",
+    "cronPlaceholder": "5 項目の cron。例：0 1 1 * *（毎月 1 日 01:00）",
+    "retentionDays": "生成物の保存日数",
+    "retentionHint": "1 〜 3650 日。期限を過ぎた生成物は自動的に削除されます。",
+    "retentionDaysValue": "{days} 日",
+    "periodAnchorHint": "システムが進めます（編集不可）",
+    "scheduleRun": "今すぐ生成",
+    "scheduleRunAccepted": "受け付けました。次の期間を前倒しで生成し、期間開始を進めます。",
+    "scheduleSaved": "スケジュールを保存しました。",
+    "scheduleDeleteConfirm": "スケジュール「{name}」を削除すると、以後の自動生成は行われません。生成済みのレポートはダウンロードセンターに残ります。",
+    "scheduleDeleteTitle": "スケジュール削除の確認",
+    "scheduleDeleted": "スケジュールを削除しました。",
+    "scope": {
+      "all": "システム全体",
+      "node": "ノード（サブツリーを含む）",
+      "plan": "パスワード変更計画"
+    },
+    "scopeLabel": "範囲",
+    "scopeNode": "ノード",
+    "scopeNodePlaceholder": "ノードを選択すると、そのサブツリーの資産が対象になります",
+    "scopePlan": "計画",
+    "scopePlanPlaceholder": "パスワード変更計画を選択",
+    "period": "レポート期間",
+    "periodStart": "開始",
+    "periodEnd": "終了",
+    "language": "レポート言語",
+    "aside": {
+      "rateTitle": "適合率",
+      "barSegment": "{bucket} {count} 件（{percent}%）",
+      "basisTitle": "算定基準",
+      "basisRemainingA": "適用日数による残日数 ＝ 適用日数 − 最終成功変更からの経過日数。",
+      "basisRemainingB": "スケジュールによる残日数 ＝ 次回スケジュール時刻 − 本日。",
+      "basisNoRecord": "記録なしは変更されなかったことを意味せず、本システムに記録がないことを示します。",
+      "scheduleTitle": "スケジュール",
+      "scheduleManage": "管理",
+      "scheduleManageClose": "閉じる",
+      "scheduleAdminOnly": "レポートのスケジュールは管理者が設定します。生成済みのレポートは下の「最近の生成」に表示されます。",
+      "scheduleAnchor": "次回の対象期間開始 {time}",
+      "scheduleMore": "他に {count} 件のスケジュール",
+      "recentTitle": "最近の生成",
+      "recentEmpty": "生成済みのレポートはまだありません。",
+      "recentAll": "ダウンロードセンターですべて表示"
+    }
   },
   "offsite": {
     "headerDesc": "証拠コピーのオフサイト保管先を設定し、アップロード待ち行列と取得状況を確認します。",
@@ -4157,7 +4331,8 @@
       "uploading": "オフサイトアップロード待ち",
       "failed": "オフサイトアップロード失敗",
       "integrity_mismatch": "オフサイトコピーの完全性の不一致",
-      "foreign": "旧保管設定"
+      "foreign": "旧保管設定",
+      "retentionNote": "リモートコピーはストレージ側の保持ポリシーに従い、製品では削除しません"
     }
   }
 }

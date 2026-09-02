@@ -554,3 +554,35 @@ func TestCreateJobRejectsUnknownType(t *testing.T) {
 		t.Fatalf("被拒仍建列: %d", n)
 	}
 }
+
+// 閉集外的 kind 值：錯誤回應須指得出是哪個參數。
+//
+// 沿既有 apierror 參數慣例（field 為受控 enum）——欄名不在允許清單時整組參數
+// 會被丟掉，使用者拿到的是一句斷掉的「無效的 」，前端也標不出錯在哪一欄。
+func TestExportJobListRejectsUnknownKindWithField(t *testing.T) {
+	env := newExportJobTestEnv(t)
+	w := env.do("GET", "/api/v1/audit-export/jobs?kind=bogus", "9", "auditor")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code   string            `json:"code"`
+		Error  string            `json:"error"`
+		Params map[string]string `json:"params"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("回應非 JSON: %q (%v)", w.Body.String(), err)
+	}
+	if body.Code != "VALIDATION_INVALID_QUERY_PARAM" {
+		t.Fatalf("code=%s", body.Code)
+	}
+	if body.Params["field"] != "kind" {
+		t.Fatalf("params.field 應為 kind，實得 %#v", body.Params)
+	}
+	if strings.TrimSpace(body.Error) == "無效的" || strings.HasSuffix(body.Error, "無效的 ") {
+		t.Fatalf("訊息缺欄名（句子沒寫完）: %q", body.Error)
+	}
+	if !strings.Contains(body.Error, "工作單種類") {
+		t.Fatalf("訊息未帶欄位顯示名: %q", body.Error)
+	}
+}

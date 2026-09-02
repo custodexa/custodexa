@@ -121,3 +121,23 @@ The workbench route SHALL accept its full investigation state (pivot, subject, t
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the workbench entry is added
 
+### Requirement: Rotation evidence navigation entry
+
+The sidebar 審計 group SHALL contain a rotation evidence entry that navigates to the rotation evidence page. The entry SHALL be visible to admin and auditor roles only (`roles: ['admin','auditor']`), and the route guard SHALL reject direct URL access for other roles. Schedule management SHALL live inside that page as an admin-only region rather than as a separate sidebar entry.
+
+The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb mapping table SHALL be updated for the new path. Adding this entry SHALL NOT change any existing route path, label or group membership; the download center entry keeps its path and label while gaining a second tab.
+
+#### Scenario: Auditor sees rotation evidence entry
+
+- **WHEN** an auditor logs in and the main layout renders
+- **THEN** the 審計 group lists the rotation evidence entry and navigating to it succeeds
+
+#### Scenario: General user cannot reach the page
+
+- **WHEN** a user with only the user role attempts to open the rotation evidence URL directly
+- **THEN** the entry is absent from the sidebar and the route guard rejects the navigation
+
+#### Scenario: Existing navigation unchanged
+
+- **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
+- **THEN** all pre-existing entries keep their group, label and path; only the rotation evidence entry is added

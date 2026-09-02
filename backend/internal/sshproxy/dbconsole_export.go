@@ -2,7 +2,6 @@ package sshproxy
 
 import (
 	"crypto/sha256"
-	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/custodexa/backend/internal/apierror"
+	"github.com/custodexa/backend/internal/csvsafe"
 	"github.com/custodexa/backend/internal/dbconsole"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
@@ -41,17 +40,6 @@ const (
 const (
 	consoleAbortClientOrEncode = "write_error"
 )
-
-// consoleNumericLiteral 純數值字面。
-//
-// 它是防公式注入轉義的**豁免**：負號開頭的數字不是公式，而把 `-5` 寫成 `'-5`
-// 會讓匯出的數值欄在試算表裡變成文字——那會讓「數值無損往返」這條保證
-// 在 CSV 這一側失效
-var consoleNumericLiteral = regexp.MustCompile(`^-?\d+(\.\d+)?([eE][+-]?\d+)?$`)
-
-// consoleFormulaLead 會被試算表當成公式起頭的字元。
-// 收到這些開頭的**文字**欄位一律前置單引號，並於介面與 API 文件揭露
-const consoleFormulaLead = "=+-@\t\r"
 
 // HandleDBConsoleExport 結果匯出
 // （`GET /api/v1/db-console/sessions/:id/results/:event_id/export`）。
@@ -222,7 +210,13 @@ func (h *Handler) streamConsoleCSV(c *gin.Context, userID uint, req consoleExpor
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 
 	counter := &consoleCountingWriter{w: c.Writer, hash: sha256.New()}
-	writer := csv.NewWriter(counter)
+	// 預設形態（無 BOM、LF）：與此端點原本的輸出逐位元組相同；
+	// BOM 留給以試算表為讀者的匯出開啟
+	writer, werr := csvsafe.NewWriter(counter, csvsafe.Options{})
+	if werr != nil {
+		log.Printf("[DBConsole] CSV 寫入器建立失敗: %v", werr)
+		return
+	}
 
 	err := writeConsoleCSV(writer, req.set)
 	writer.Flush()
@@ -252,7 +246,7 @@ func (h *Handler) streamConsoleCSV(c *gin.Context, userID uint, req consoleExpor
 }
 
 // writeConsoleCSV RFC 4180 形態：首列欄名，NULL 為空欄，二進位佔位原樣
-func writeConsoleCSV(w *csv.Writer, set dbconsole.ResultSet) error {
+func writeConsoleCSV(w *csvsafe.Writer, set dbconsole.ResultSet) error {
 	header := make([]string, len(set.Columns))
 	for i, col := range set.Columns {
 		header[i] = consoleCSVCell(col.Name)
@@ -275,22 +269,10 @@ func writeConsoleCSV(w *csv.Writer, set dbconsole.ResultSet) error {
 	return nil
 }
 
-// consoleCSVCell 防公式注入：以 `=`、`+`、`-`、`@`、tab、CR 開頭的儲存格
-// 前置單引號，**純數值字面豁免**。
-//
-// 豁免不是便利性讓步：沒有它，每一個負數與科學記號都會變成文字欄，
-// 而「數值在畫面與 CSV 逐字元相同」是這個產品對稽核的承諾之一
+// consoleCSVCell 防公式注入：規則與轉義的豁免由共用的 CSV 寫入層定義
+// （internal/csvsafe），本處只是取用點——同一條規則散在各匯出點即會漂移
 func consoleCSVCell(v string) string {
-	if v == "" {
-		return v
-	}
-	if !strings.ContainsRune(consoleFormulaLead, rune(v[0])) {
-		return v
-	}
-	if consoleNumericLiteral.MatchString(v) {
-		return v
-	}
-	return "'" + v
+	return csvsafe.Cell(v)
 }
 
 // consoleExportFilename 檔名以資產名、單位序號與 UTC 時戳組成。

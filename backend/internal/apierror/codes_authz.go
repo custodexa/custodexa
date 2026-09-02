@@ -39,6 +39,8 @@ var queryFieldZhLabels = map[string]string{
 	// 匯出包型：證據包也吃樞紐後，
 	// subject 不再分辨得出包型，故包型改由 pack 明示；打錯字不得被當成缺席
 	"pack": "匯出包型",
+	// 工作單清單的種類欄：閉集外的值不得被當成缺席，且錯誤訊息要指得出是哪個參數
+	"kind": "工作單種類",
 }
 
 // --- authorization_handler.go: Create ---
