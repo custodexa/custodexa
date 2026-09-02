@@ -6,9 +6,12 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
 	"gorm.io/gorm"
@@ -135,6 +138,15 @@ const (
 	PolicyFileUploadEnabled    = "file_upload_enabled"
 	PolicyFileDownloadEnabled  = "file_download_enabled"
 	PolicyFileDeleteEnabled    = "file_delete_enabled"
+
+	// 登入前告示兩鍵：登入頁在使用者通過認證之前顯示的常設文字。
+	//
+	// 兩鍵**無任何合規基準建議值**：內容由部署方自填，沒有一個放諸四海的正確
+	// 字串可以拿來比對；掛建議值會讓「套用本頁建議值」替部署方寫他們的告示。
+	// 出廠皆為空＝未設定，升級後登入頁零變化。
+	// 標題單獨有值不會顯示——呈現與否只看內文（見公開讀取端點）。
+	PolicyLoginBannerTitle = "login_banner_title"
+	PolicyLoginBannerBody  = "login_banner_body"
 )
 
 // 傳輸強制等級三段枚舉值（弱→強；符合性 = 現值序位 >= PCI 值序位）
@@ -156,6 +168,10 @@ const (
 	PolicyTypeInt  = "int"
 	PolicyTypeBool = "bool"
 	PolicyTypeEnum = "enum"
+	// PolicyTypeText 自由文字。與前三者的差別是它有**正規化**：
+	// 寫入路徑會統一換行、去首尾空白後才落庫，故驗證入口回傳的是終值而非原值。
+	// 長度以 Unicode code point 計，上限由 PolicyDef.MaxLength 逐鍵指定
+	PolicyTypeText = "text"
 )
 
 // 比較方向（int 型）：min=值須 >= PCI 建議、max=值須 <= PCI 建議
@@ -271,6 +287,16 @@ type PolicyDef struct {
 	// 下界的意義是「低於此值該機制即失去意義」，取值須有結構性理由（如低於單一
 	// 批次／掃描頁大小），不是隨手取整數
 	Min int `json:"min,omitempty"`
+	// MaxLength text 型的字元數上限，以 Unicode code point 計。
+	//
+	// **與 Max 分開一欄是刻意的**：Max 的語義是 int 值的上界，int 型鍵的窮舉
+	// 守衛都以「Max 是一個數值上界」為前提。讓它兼差當字串長度上限，會讓那些
+	// 守衛的前提變成兩種互斥的意思，而它們讀不出差別。
+	// text 型必有正值；非 text 型必為零（validatePolicyDefs 雙向釘住）
+	MaxLength int `json:"max_length,omitempty"`
+	// Multiline text 型是否允許換行。false 時值內含 LF 即拒絕。
+	// 非 text 型必為 false（validatePolicyDefs 釘住）
+	Multiline bool `json:"multiline,omitempty"`
 	// EnumOrder 枚舉序（弱→強）；enum 型符合性 = 現值序位 >= PCI 值序位
 	EnumOrder []string `json:"enum_order,omitempty"`
 	// Requirement PCI 條號（如 8.3.4）
@@ -558,10 +584,10 @@ var policyDefs = []PolicyDef{
 		Requirement: "10.4.1", Label: "每日審閱簽核",
 	},
 	{
-		// 審計失效告警通知（10.7.2）：失效事件記錄恆開，此鍵僅控制通知發送
+		// 稽核失效告警通知（10.7.2）：失效事件記錄恆開，此鍵僅控制通知發送
 		Key: PolicyFailureAlertEnabled, Type: PolicyTypeBool, Default: "false",
 		PCIValue:    "true",
-		Requirement: "10.7.2", Label: "審計失效告警通知",
+		Requirement: "10.7.2", Label: "稽核失效告警通知",
 	},
 	{
 		// 錄影 fail-close：出廠關（升級不改變
@@ -741,6 +767,17 @@ var policyDefs = []PolicyDef{
 		Key: PolicyFileDeleteEnabled, Type: PolicyTypeBool, Default: "true",
 		Label: "刪除資產上的檔案",
 	},
+	// 登入前告示兩鍵。出廠空＝未設定；無任一基準建議值（見鍵常數處的理由）。
+	// 上限 120／2000 取的是「一行標題」與「一段可讀完的告示」，
+	// 不是儲存能力的極限——欄位本身放得下更多，限制在於登入頁的可讀性
+	{
+		Key: PolicyLoginBannerTitle, Type: PolicyTypeText, Default: "",
+		MaxLength: 120, Label: "登入告示標題",
+	},
+	{
+		Key: PolicyLoginBannerBody, Type: PolicyTypeText, Default: "",
+		MaxLength: 2000, Multiline: true, Label: "登入告示內文",
+	},
 }
 
 // unitKeyByZh 政策單位的 zh→語義鍵 canonical 映射（unit 閉集）。
@@ -850,6 +887,21 @@ func validatePolicyDefs() error {
 				return fmt.Errorf("%s Default=%q 不在 EnumOrder", def.Key, def.Default)
 			}
 		}
+		// text 的結構自檢：上限缺漏會讓「以 code point 計長度」退化成沒有上限
+		//（RuneCountInString > 0 恆成立時任何長度都收），而 MaxLength／Multiline
+		// 掛在非 text 型上會被靜默忽略——兩個方向都得擋，否則守衛只看得到一半
+		if def.Type == PolicyTypeText {
+			if def.MaxLength <= 0 {
+				return fmt.Errorf("%s Type=text 須設正的 MaxLength（否則長度上限形同不存在）", def.Key)
+			}
+		} else {
+			if def.MaxLength != 0 {
+				return fmt.Errorf("%s Type=%s 不得設 MaxLength（僅 text 型有字元上限）", def.Key, def.Type)
+			}
+			if def.Multiline {
+				return fmt.Errorf("%s Type=%s 不得設 Multiline（僅 text 型有換行語義）", def.Key, def.Type)
+			}
+		}
 		// Min 的結構自檢：非 int 型不得設 Min（無意義且會被靜默忽略）；
 		// Min 須落在有效上界之內，否則該鍵的值域為空、任何值都存不進去
 		if def.Min != 0 {
@@ -878,6 +930,12 @@ func validatePolicyDefs() error {
 	}
 	return nil
 }
+
+// FindPolicyDef 查政策定義供本包外讀取型別與 metadata；不存在回 nil。
+//
+// 回的是常數表元素的指標（表在 init 之後即唯讀），呼叫端只讀不寫。
+// 存在的理由是審計層需要依鍵的**型別**決定變更詳情怎麼記，而它拿到的只有鍵名。
+func FindPolicyDef(key string) *PolicyDef { return findDef(key) }
 
 // findDef 查政策定義；不存在回 nil
 func findDef(key string) *PolicyDef {
@@ -912,8 +970,10 @@ func (s *SecurityPolicyService) Get(key string) string {
 	err := s.db.Where("key = ?", key).First(&row).Error
 	switch {
 	case err == nil:
-		if validatePolicyValue(def, row.Value) == nil {
-			value = row.Value
+		// 存量列走同一個正規化入口：手動改庫寫進來的 CRLF 或首尾空白，
+		// 讀出來時與寫入路徑收斂到同一個終值
+		if normalized, verr := normalizePolicyValue(def, row.Value); verr == nil {
+			value = normalized
 			s.mu.Lock()
 			s.lastGood[key] = value
 			s.mu.Unlock()
@@ -1085,16 +1145,22 @@ func (s *SecurityPolicyService) UpdateBatch(updates map[string]string, updatedBy
 // 路徑，保住既有部署的行為優先於新約束；由此產生的違規狀態不會造成證據損失，
 // retention 執行期偵測到違規即保守跳過鏈修剪
 func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy string, crossKey bool) ([]PolicyChange, error) {
-	// 先整批驗證鍵與值（任何一項不合法即整批拒絕）
+	// 先整批驗證鍵與值（任何一項不合法即整批拒絕）。
+	// 驗證回傳的終值取代原值進入後續流程——落庫、審計 old→new 與跨鍵驗證讀到的
+	// 必須是同一個字串，否則管理員存的與系統存的會在文字型鍵上分岔
+	normalized := make(map[string]string, len(updates))
 	for key, value := range updates {
 		def := findDef(key)
 		if def == nil {
 			return nil, &PolicyUnknownKeyError{Key: key}
 		}
-		if err := validatePolicyValue(def, value); err != nil {
+		final, err := normalizePolicyValue(def, value)
+		if err != nil {
 			return nil, err
 		}
+		normalized[key] = final
 	}
+	updates = normalized
 	// 單鍵驗證通過後才做跨鍵驗證（它讀的是「已知型別合法」的終值）
 	if crossKey {
 		if err := s.validateCrossKeyRetention(updates); err != nil {
@@ -1158,8 +1224,10 @@ func (s *SecurityPolicyService) List() []PolicyView {
 	for _, def := range policyDefs {
 		value := def.Default
 		view := PolicyView{PolicyDef: def, Value: value}
-		if row, ok := rowByKey[def.Key]; ok && validatePolicyValue(&def, row.Value) == nil {
-			view.Value = row.Value
+		row, hasRow := rowByKey[def.Key]
+		normalized, verr := normalizePolicyValue(&def, row.Value)
+		if hasRow && verr == nil {
+			view.Value = normalized
 			view.UpdatedBy = row.UpdatedBy
 			updatedAt := row.UpdatedAt
 			view.UpdatedAt = &updatedAt
@@ -1198,8 +1266,66 @@ func (s *SecurityPolicyService) EPaymentDeviationCount() int {
 	return count
 }
 
-// validatePolicyValue 驗證政策值的型別與範圍
+// validatePolicyValue 驗證政策值的型別與範圍（不需要終值的呼叫端用這支）
 func validatePolicyValue(def *PolicyDef, value string) error {
+	_, err := normalizePolicyValue(def, value)
+	return err
+}
+
+// normalizePolicyValue 驗證政策值並回傳可落庫的終值。
+//
+// **正規化與驗證同一個入口**：文字型政策值會被統一換行、去首尾空白，若兩件事
+// 分成兩支函式，任何一條寫入路徑只呼叫其中一支就會讓「驗過的東西」與
+// 「存進去的東西」不是同一個字串。除文字型外，終值恆等於原值。
+func normalizePolicyValue(def *PolicyDef, value string) (string, error) {
+	switch def.Type {
+	case PolicyTypeText:
+		return normalizeTextPolicyValue(def, value)
+	}
+	return value, validateScalarPolicyValue(def, value)
+}
+
+// normalizeTextPolicyValue 文字型政策值的正規化與驗證。
+//
+// 順序有意義：先確認是合法 UTF-8，再統一換行與去空白，最後才逐字元檢查與計長
+// ——反過來做的話，長度會把稍後要被剝掉的空白算進去，而管理員看到的字數與
+// 伺服器算的不一致。
+//
+// 不做 HTML 轉義、不剝除標記：存的是資料，「不渲染成標記」是呈現層的責任。
+// 零寬與雙向控制字元（Cf）不擋——內容由管理員撰寫且舊值新值全文入審計。
+func normalizeTextPolicyValue(def *PolicyDef, value string) (string, error) {
+	if !utf8.ValidString(value) {
+		return "", &PolicyInvalidValueError{Key: def.Key, Reason: "須為合法 UTF-8"}
+	}
+	v := strings.ReplaceAll(value, "\r\n", "\n")
+	v = strings.ReplaceAll(v, "\r", "\n")
+	v = strings.TrimSpace(v)
+	for _, r := range v {
+		switch {
+		case r == '\t':
+			// TAB 是排版字元，不是控制序列的一部分，一律放行
+		case r == '\n':
+			if !def.Multiline {
+				return "", &PolicyInvalidValueError{Key: def.Key, Reason: "不可含換行"}
+			}
+		case unicode.IsControl(r):
+			// Cc（C0、DEL、C1）：終端逸出序列與畫面控制的載體。
+			// C1 也擋——U+0085 在若干解碼路徑上等同換行，放行等於讓單行鍵換行
+			return "", &PolicyInvalidValueError{Key: def.Key, Reason: "不可含控制字元"}
+		}
+	}
+	if n := utf8.RuneCountInString(v); n > def.MaxLength {
+		return "", &PolicyInvalidValueError{
+			Key:    def.Key,
+			Reason: fmt.Sprintf("字元數 %d 超過上限 %d", n, def.MaxLength),
+		}
+	}
+	// 正規化後為空＝未設定，是合法值
+	return v, nil
+}
+
+// validateScalarPolicyValue 非文字型（int／bool／enum）政策值的型別與範圍驗證
+func validateScalarPolicyValue(def *PolicyDef, value string) error {
 	switch def.Type {
 	case PolicyTypeInt:
 		n, err := strconv.Atoi(value)

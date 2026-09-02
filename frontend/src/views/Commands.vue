@@ -43,6 +43,73 @@
           />
         </el-form-item>
 
+        <!-- 結果事實篩選（查詢主控台）：命令列列的這幾欄恆空，
+             選了任一項即等同只看主控台列 -->
+        <el-form-item :label="$t('commands.sourceFilter')">
+          <el-select
+            v-model="filters.source"
+            clearable
+            :empty-values="[null, undefined]"
+            :placeholder="$t('common.all')"
+            style="width: 130px"
+            data-test="source-filter"
+            @change="handleSearch"
+          >
+            <el-option
+              :label="$t('commands.source.console')"
+              value="console"
+            />
+            <el-option
+              :label="$t('commands.source.cli')"
+              value="cli"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item :label="$t('commands.targetDatabaseFilter')">
+          <el-input
+            v-model="filters.target_database"
+            clearable
+            :placeholder="$t('commands.targetDatabasePlaceholder')"
+            style="width: 160px"
+            data-test="target-database-filter"
+            @keyup.enter="handleSearch"
+          />
+        </el-form-item>
+
+        <el-form-item :label="$t('commands.resultStatusFilter')">
+          <el-select
+            v-model="filters.result_status"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            clearable
+            :empty-values="[null, undefined]"
+            :placeholder="$t('common.all')"
+            style="width: 220px"
+            data-test="result-status-filter"
+            @change="handleSearch"
+          >
+            <el-option
+              v-for="value in RESULT_STATUS_VALUES"
+              :key="value"
+              :label="resultStatusLabel(value)"
+              :value="value"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item :label="$t('commands.errorCodeFilter')">
+          <el-input
+            v-model="filters.error_code"
+            clearable
+            :placeholder="$t('commands.errorCodePlaceholder')"
+            style="width: 140px"
+            data-test="error-code-filter"
+            @keyup.enter="handleSearch"
+          />
+        </el-form-item>
+
         <el-form-item>
           <el-button
             type="primary"
@@ -134,6 +201,45 @@
           </template>
         </el-table-column>
 
+        <!-- 可篩就要看得見：結果狀態／目標庫／錯誤碼三欄是主控台列才有的事實，
+             命令列列恆空。篩了卻看不到自己篩的是什麼，等於要人憑記憶核對 -->
+        <el-table-column
+          :label="$t('commands.targetDatabaseColumn')"
+          width="140"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <span :title="row.target_database || ''">{{ row.target_database || '-' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="$t('commands.resultStatusColumn')"
+          width="130"
+        >
+          <template #default="{ row }">
+            <el-tag
+              v-if="row.result_status"
+              size="small"
+              :type="resultStatusTagType(row.result_status)"
+              data-test="result-status"
+            >
+              {{ resultStatusLabel(row.result_status) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          :label="$t('commands.errorCodeColumn')"
+          width="130"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <span :title="row.error_code || ''">{{ row.error_code || '-' }}</span>
+          </template>
+        </el-table-column>
+
         <el-table-column
           :label="$t('common.actions')"
           width="120"
@@ -183,6 +289,11 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import CommandCell from '@/components/audit/CommandCell.vue'
 import { isDegradedRow } from '@/constants/command-degrade'
+import {
+  RESULT_STATUS_VALUES,
+  resultStatusLabel,
+  resultStatusTagType,
+} from '@/constants/db-console'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
 
@@ -194,6 +305,10 @@ const timeRange = ref([])
 
 const filters = ref({
   keyword: '',
+  source: '',
+  target_database: '',
+  result_status: [],
+  error_code: '',
 })
 
 // 已套用到目前這份結果的關鍵字（**不是輸入框的即時值**）：橫幅描述的是
@@ -266,8 +381,13 @@ const degradeNotice = computed(() => {
     : { show: true, text: t('commands.degrade.bannerUnknown') }
 })
 
+// 伺服端篩選的 latest-request-wins：篩選控件變更會連發查詢，
+// 慢的先發者回來後若照樣寫入，畫面上的結果就與篩選列不符
+let searchSeq = 0
+
 // 查詢指令記錄
 const fetchCommands = async () => {
+  const seq = ++searchSeq
   loading.value = true
   try {
     const params = {
@@ -276,6 +396,10 @@ const fetchCommands = async () => {
     }
 
     if (filters.value.keyword) params.keyword = filters.value.keyword
+    if (filters.value.source) params.source = filters.value.source
+    if (filters.value.target_database) params.target_database = filters.value.target_database
+    if (filters.value.result_status.length) params.result_status = [...filters.value.result_status]
+    if (filters.value.error_code) params.error_code = filters.value.error_code
 
     if (timeRange.value && timeRange.value.length === 2) {
       params.start_time = timeRange.value[0]
@@ -283,6 +407,7 @@ const fetchCommands = async () => {
     }
 
     const response = await searchCommands(params)
+    if (seq !== searchSeq) return
     commands.value = response.data || []
     pagination.value.total = response.total || 0
     appliedKeyword.value = params.keyword || ''
@@ -292,7 +417,7 @@ const fetchCommands = async () => {
   } catch (error) {
     console.error('查詢指令記錄失敗:', error)
   } finally {
-    loading.value = false
+    if (seq === searchSeq) loading.value = false
   }
 }
 
@@ -310,7 +435,13 @@ const handleSizeChange = () => {
 
 // 重置過濾器
 const handleReset = () => {
-  filters.value = { keyword: '' }
+  filters.value = {
+    keyword: '',
+    source: '',
+    target_database: '',
+    result_status: [],
+    error_code: '',
+  }
   timeRange.value = []
   handleSearch()
 }
@@ -336,6 +467,8 @@ const clearKeyword = () => {
   filters.value.keyword = ''
   handleSearch()
 }
+
+defineExpose({ filters, timeRange, handleSearch, handleReset })
 
 
 onMounted(() => {

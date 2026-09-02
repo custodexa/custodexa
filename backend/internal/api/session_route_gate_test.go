@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,9 @@ func setupSessionGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager) {
 
 	commandMock := new(MockSessionCommandService)
 	commandMock.On("ListBySession", mock.Anything).Return([]model.SessionCommand{}, nil).Maybe()
+	// 跨會話搜尋掛 audit:view（與 per-session 清單的 session:view 是不同的閘）
+	commandMock.On("Search", mock.Anything).
+		Return(&audit.SessionCommandListResponse{}, nil).Maybe()
 
 	r := gin.New()
 	group := r.Group("/api/v1")

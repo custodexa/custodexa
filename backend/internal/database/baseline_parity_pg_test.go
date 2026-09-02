@@ -215,9 +215,14 @@ var baselineStructuralAssertions = map[string]string{
 	// 新世代的錄影永遠不會上傳
 	"uniq_offsite_objects_owner_generation": "CREATE UNIQUE INDEX uniq_offsite_objects_owner_generation " +
 		"ON %s.offsite_objects USING btree (kind, owner_id, storage_generation_id)",
+	// 查詢主控台的事件 ID 唯一性。partial 條件承載的是「只有主控台列有事件 ID」
+	// 這件事：拿掉 WHERE，第二筆命令列的空 ID 就撞唯一衝突而寫不進去；
+	// 拿掉 UNIQUE 則兩筆列可共用同一個 ID，而匯出、轉錄、詳情錨點全部以它定址
+	"idx_session_commands_event_id": "CREATE UNIQUE INDEX idx_session_commands_event_id " +
+		"ON %s.session_commands USING btree (event_id) WHERE ((event_id)::text <> ''::text)",
 }
 
-// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 15 條）。
+// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 18 條）。
 //
 // `ldap_directories_singleton_check` 是其中最需要具名的一條：壓縮前它由
 // migration 的 inline CHECK 建立，且靠一條 AST 守衛（TestLDAPDirectoryNotInAutoMigrateList）
@@ -249,6 +254,13 @@ var baselineCheckConstraints = map[string]string{
 	// 「空密文」若同時代表「用預設鏈」與「已撤銷」，撤銷後仍可能靜默走預設鏈取回
 	"offsite_profiles_singleton_check":       "offsite_profiles",
 	"offsite_profiles_credential_mode_check": "offsite_profiles",
+	// 查詢主控台：結果狀態與交易態的值域，以及事件 ID 的長度形狀。
+	// 前兩者擋的是值域漂移（新增狀態卻沒同步匯出與呈現，症狀是稽核報表出現
+	// 無人認得的字串）；後者擋的是 ID 產生器換實作而長度變了，
+	// 而匯出 URL、轉錄行與詳情錨點都假設同一形狀
+	"session_commands_result_status_domain": "session_commands",
+	"session_commands_tx_state_domain":      "session_commands",
+	"session_commands_event_id_shape":       "session_commands",
 }
 
 func TestBaselineStructuralInvariantsPostgres(t *testing.T) {

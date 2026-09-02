@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import i18n from '@/i18n'
-import { policyLabel, policyMin, policyUnit, formatValue } from '@/utils/policyFormat'
+import {
+  policyLabel,
+  policyMin,
+  policyUnit,
+  formatValue,
+  isNonCompliantEPayment,
+  isNonCompliantValue,
+} from '@/utils/policyFormat'
 
 function setLocale(l) {
   i18n.global.locale.value = l
@@ -86,5 +93,33 @@ describe('policyMin — 數值輸入框下界', () => {
 
   it('無 policy → 回 1，不回 undefined', () => {
     expect(policyMin(null)).toBe(1)
+  })
+})
+
+// 文字型鍵沒有合規基準建議值：符合性比對必須短路回 false，
+// 不得落到 enum 分支（那裡以 enum_order 的索引比大小，對自由文字沒有意義）
+describe('符合性比對 — 文字型鍵短路', () => {
+  const textPolicy = {
+    key: 'login_banner_body',
+    type: 'text',
+    max_length: 2000,
+    multiline: true,
+    compliant: null,
+    epayment_compliant: null,
+  }
+
+  it('值未改動時不因缺基準而判為偏離', () => {
+    expect(isNonCompliantValue(textPolicy, '告示', '告示')).toBe(false)
+    expect(isNonCompliantEPayment(textPolicy, '告示', '告示')).toBe(false)
+  })
+
+  it('編輯中的值也一律回 false（無基準可比）', () => {
+    expect(isNonCompliantValue(textPolicy, '新內文', '舊內文')).toBe(false)
+    expect(isNonCompliantEPayment(textPolicy, '新內文', '舊內文')).toBe(false)
+  })
+
+  it('清空與含換行的長文同樣不判偏離', () => {
+    expect(isNonCompliantValue(textPolicy, '', '舊內文')).toBe(false)
+    expect(isNonCompliantValue(textPolicy, '第一行\n第二行', '')).toBe(false)
   })
 })

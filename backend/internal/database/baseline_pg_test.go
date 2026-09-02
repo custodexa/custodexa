@@ -106,14 +106,16 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// evidence-offsite-storage 再增 2 表（offsite_profiles、offsite_objects）、
 	// 9 索引（兩張 pkey ＋ 現行世代 partial unique ＋ 帳冊三條 ＋ 帳冊唯一鍵 ＋
 	// sessions 的回填與保留兩條）與 2 條 CHECK（singleton、credential_mode）。
+	// 查詢主控台 純加欄，不增表；增 3 條 partial 索引（事件 ID 唯一、結果狀態、
+	// 目標資料庫）與 3 條 CHECK（結果狀態值域、交易態值域、事件 ID 長度形狀）。
 	if got.Tables != 51 {
 		t.Errorf("表數 = %d, want 51（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表）", got.Tables)
 	}
-	if got.Indexes != 179 {
-		t.Errorf("索引數 = %d, want 179（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條）", got.Indexes)
+	if got.Indexes != 182 {
+		t.Errorf("索引數 = %d, want 182（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條）", got.Indexes)
 	}
-	if got.Checks != 15 {
-		t.Errorf("CHECK 約束數 = %d, want 15（13 ＋ offsite_profiles 的兩條）", got.Checks)
+	if got.Checks != 18 {
+		t.Errorf("CHECK 約束數 = %d, want 18（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。

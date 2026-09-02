@@ -184,6 +184,8 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidRDPSecurity, nil)
 	case errors.Is(err, asset.ErrInvalidDBTLSMode):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidDBTLSMode, nil)
+	case errors.Is(err, asset.ErrInvalidAllowedDatabases):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAllowedDatabases, nil)
 	case errors.Is(err, asset.ErrMSSQLHostComma):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeMSSQLHostComma, nil)
 	case errors.Is(err, asset.ErrInvalidAccessPolicy):

@@ -104,6 +104,7 @@ func TestCreateSession(t *testing.T) {
 			sqlmock.AnyArg(), // end_time
 			0,                // duration
 			"normal",         // end_reason
+			false,            // db_console（查詢主控台會話標記；命令列會話為 false）
 			"",               // recording_path
 			int64(0),         // recording_size
 			false,            // has_recording

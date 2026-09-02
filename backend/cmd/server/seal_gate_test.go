@@ -103,6 +103,26 @@ func TestSealGateBlocksEveryNonWhitelistedRoute(t *testing.T) {
 	}
 }
 
+// TestSealGateSealsPublicPreAuthReads 登入前可讀的公開端點於封印期一律 503。
+//
+// 逐路由掃描（上一支）已涵蓋這兩條，這裡再具名釘一次的理由是**失敗訊息**：
+// 掃描紅的時候只說「某條路由洩漏了」，而這兩條是使用者在還沒登入時就會打到的
+// 面，封印期它們若回 200，前端會把一個空的登入頁當成正常服務渲染出來。
+func TestSealGateSealsPublicPreAuthReads(t *testing.T) {
+	r := stageOneRouter(t)
+	for _, path := range []string{"/api/v1/auth/banner", "/api/v1/auth/methods"} {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s 於封印期回 %d，期望 503", path, w.Code)
+			continue
+		}
+		if got := bodyCode(t, w.Body.Bytes()); got != string(apierror.CodeSealServiceSealed) {
+			t.Errorf("%s 於封印期的機器碼 = %q, want %q", path, got, apierror.CodeSealServiceSealed)
+		}
+	}
+}
+
 // TestSealGateSealsUnknownPaths 封印期不對外透露路由是否存在：未匹配路徑同樣 503。
 func TestSealGateSealsUnknownPaths(t *testing.T) {
 	r := stageOneRouter(t)

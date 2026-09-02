@@ -111,6 +111,9 @@ export const AUDIT_MECHANISM_VALUES = [
   'recording_text',
   'recording_graphics',
   'session_record',
+  // 指令阻斷比對器不可用（查詢主控台的 fail-close）：與 audit_write 分開，
+  // 前者要去看規則載入與比對器本身，後者要去看資料庫
+  'command_blocking',
   'kek_retirement',
   // AAD 無 AAD 密文殘餘（顯式遷移的 push 面）
   'aad_residue',
@@ -185,6 +188,10 @@ export const AUDIT_CAUSE_VALUES = [
   // 同步（fail-close）審計寫入失敗：逐筆留痕是交付明文的前置條件
   //（剪貼簿單筆調閱），留痕寫不進去即拒絕交付——證據未損、機制失效須揭露
   'audit_write_sync_refused',
+  // 查詢主控台的兩條 fail-close：語句紀錄寫不進去、阻斷比對器不可用，
+  // 兩者都使該語句未送往目標端
+  'command_audit_write_refused',
+  'command_blocker_unavailable',
   'syslog_connect_failed',
   'syslog_buffer_overflow',
   'kek_retirement_backlog',

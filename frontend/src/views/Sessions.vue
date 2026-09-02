@@ -80,11 +80,22 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.protocol')"
-              width="80"
+              width="140"
             >
               <template #default="{ row }">
                 <el-tag :type="protocolTagType(row.protocol)">
                   {{ row.protocol.toUpperCase() }}
+                </el-tag>
+                <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
+                     指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
+                <el-tag
+                  v-if="row.db_console"
+                  class="console-badge"
+                  type="warning"
+                  effect="plain"
+                  data-test="console-badge"
+                >
+                  {{ $t('sessions.consoleBadge') }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -295,11 +306,22 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.protocol')"
-              width="80"
+              width="140"
             >
               <template #default="{ row }">
                 <el-tag :type="protocolTagType(row.protocol)">
                   {{ row.protocol.toUpperCase() }}
+                </el-tag>
+                <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
+                     指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
+                <el-tag
+                  v-if="row.db_console"
+                  class="console-badge"
+                  type="warning"
+                  effect="plain"
+                  data-test="console-badge"
+                >
+                  {{ $t('sessions.consoleBadge') }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -684,6 +706,11 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+
+.console-badge {
+  margin-left: 4px;
+}
+
 .sessions {
   /* MainLayout already provides padding via --ot-space-lg */
 }

@@ -675,6 +675,11 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		v1.GET("/ssh", d.ssh.HandleSSH)
 		// SSH 會話即時監看：限 admin/auditor，唯讀
 		v1.GET("/sessions/:id/monitor", d.ssh.HandleMonitor)
+		// 查詢主控台：與 /ssh 同一種一次性票、同一張閘序表，多兩道主控台專屬閘
+		v1.GET("/db-console", d.ssh.HandleDBConsole)
+		// 查詢主控台的結果匯出（JWT middleware 認證；二進位下載走不了 WS 訊息）
+		v1.GET("/db-console/sessions/:id/results/:event_id/export",
+			middleware.AuthMiddleware(d.authService), d.ssh.HandleDBConsoleExport)
 		// session-stats: SSH 會話即時指標（JWT middleware 認證）
 		v1.GET("/ssh/sessions/:id/stats", middleware.AuthMiddleware(d.authService), d.ssh.HandleStats)
 		// session-share: 會話分享（建立/撤銷需登入；加入走 WS query token）

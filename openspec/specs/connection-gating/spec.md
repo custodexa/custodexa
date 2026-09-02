@@ -34,7 +34,7 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 - **THEN** the route no longer exists, and asset connectivity can only be verified through the server-side asset test action
 
 ### Requirement: 一次性連線 token
-系統 SHALL 提供 `POST /api/v1/connect-tokens`：經 JWT 認證與資產連線授權檢查後簽發一次性 token（60 秒有效）；請求 MAY 指定 `account_id`（省略＝預設帳號），簽發 SHALL 驗證該帳號隸屬該資產且在請求者有效授權帳號範圍內；SSH 與 guacd（RDP/VNC）WS 端點 SHALL 接受 `connect_token` 並於使用後即刻失效；過期或已用 token SHALL 被拒絕；前端兩類 WS URL SHALL NOT 攜帶 JWT。
+系統 SHALL 提供 `POST /api/v1/connect-tokens`：經 JWT 認證與資產連線授權檢查後簽發一次性 token（60 秒有效）；請求 MAY 指定 `account_id`（省略＝預設帳號），簽發 SHALL 驗證該帳號隸屬該資產且在請求者有效授權帳號範圍內；SSH、guacd（RDP/VNC）與資料庫查詢主控台三類 WS 端點 SHALL 接受 `connect_token` 並於使用後即刻失效；過期或已用 token SHALL 被拒絕；前端三類 WS URL SHALL NOT 攜帶 JWT。同一張票 SHALL 只能於其中一個入口兌換一次，簽發側 SHALL NOT 因入口不同而分化。
 
 #### Scenario: 正常兩段式連線
 - **WHEN** 前端以 JWT 換取 connect token 後開啟 WS（SSH 或 guacd）
@@ -55,6 +55,10 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 #### Scenario: 跨資產帳號注入被拒
 - **WHEN** 請求 token 時指定隸屬其他資產的 account_id
 - **THEN** 簽發被拒（fail-close），不洩漏該帳號存在性
+
+#### Scenario: 主控台路徑持 token 連線
+- **WHEN** 前端以 connect token 開啟資料庫查詢主控台 WS
+- **THEN** 連線建立且 URL 不含 JWT 與任何憑證，token 即焚；同一票再於 SSH 入口兌換被拒
 
 ### Requirement: 不安全通道連線前同意閘
 connect-token 簽發 SHALL 依傳輸安全政策對 RDP／VNC／DB 連線加閘：該通道為 warn 且申請者對該資產無有效同意記憶時，簽發 SHALL 被拒並回須同意之風險項；該通道為 strict 且資產命中風險判定時，簽發 SHALL 無條件拒絕。off 檔 SHALL 完全不影響簽發。閘檢查 SHALL 位於簽發端點（授權檢查之後），確保所有連線入口（含直呼 API）一致受閘。
@@ -191,7 +195,7 @@ connect token 的**簽發點**與**兩個兌換點**（文字終端與圖形 WS�
 
 連線票證兌換遭拒時，系統 SHALL 寫入審計列，涵蓋票證缺漏、票證無效、票證過期、閘序拒絕等各類拒絕原因，記錄來源位址與拒絕原因。
 
-此要求 SHALL 涵蓋**全部**兌換入口——圖形協議與文字終端兩條入口皆然。任一入口未留痕，「反覆嘗試兌換偽造票證」的探測只要換一條入口就重新不可見。
+此要求 SHALL 涵蓋**全部**兌換入口——圖形協議、文字終端與資料庫查詢主控台三條入口皆然。任一入口未留痕，「反覆嘗試兌換偽造票證」的探測只要換一條入口就重新不可見。
 
 拒絕原因的分流 SHALL 只存在於審計。對外回應 SHALL 收斂：票證不存在、已被兌換、已過期三者的回應 SHALL 逐字相同（狀態碼、內容、標頭），否則即開出票證存在性探測面。
 
@@ -219,3 +223,26 @@ connect token 的**簽發點**與**兩個兌換點**（文字終端與圖形 WS�
 - **WHEN** 攻擊者分別以偽造票與過期票兌換
 - **THEN** 兩次的狀態碼、回應內容與標頭逐字相同，內部拒絕原因 SHALL NOT 出現在回應中
 
+#### Scenario: 主控台入口的兌換拒絕同樣留痕
+
+- **WHEN** 對主控台兌換入口分別以缺票、偽造票、過期票與協議不支援的有效票發起請求
+- **THEN** 四者各留一筆審計列，含來源位址、路徑、方法與可區分的拒絕原因；對外回應與文字終端入口同型收斂
+
+### Requirement: 資料庫主控台兌換點沿用閘序
+
+資料庫查詢主控台的 WebSocket 入口 SHALL 為連線 token 的第三個兌換點，與文字終端兌換點共用**同一份**閘序表（角色即時有效判定、憑證世代複查、停用資產硬擋、授權與存取政策重查、零帳號 fail-close、帳號範圍複查），SHALL NOT 另寫一份判定；本 capability 中凡約束文字終端兌換點的要求，SHALL 同等約束主控台兌換點。主控台專屬的協議閘（僅 `mysql`／`postgres`／`mssql`）與 admission 閘（每人與全域同時主控台會話數上限）SHALL 位於協議判定之後、授權重查之前，拒絕以機器碼回應並留痕。主控台會話內唯一的重撥（PostgreSQL 使用者切換資料庫）SHALL 於重新解封前重跑同一閘序表（不含票的兌換），任一閘拒即拒絕重撥並留痕。閘序矩陣守衛 SHALL 將主控台入口納入射程。
+
+#### Scenario: 主控台兌換點降權即擋
+
+- **WHEN** connect token 於簽發後、兌換前，其持有者資料庫有效角色被降為一般 user（帳號仍 active、對目標資產無 connect 授權），持票開啟主控台 WebSocket
+- **THEN** 兌換回 403、拒絕建線，與文字終端路徑行為一致
+
+#### Scenario: 主控台兌換點停用即擋
+
+- **WHEN** 使用者取得連線 token 後、兌換前，admin 將該資產停用，持票開啟主控台 WebSocket
+- **THEN** 兌換於建線前拒絕（403、同一機器可辨錯誤碼），token 效期未到不構成放行理由
+
+#### Scenario: 會話內重撥重過閘
+
+- **WHEN** 使用者的 PostgreSQL 主控台會話進行中，admin 撤銷其對該資產的授權，隨後使用者切換資料庫
+- **THEN** 重撥前的閘序拒絕切換、留痕，會話維持原庫（既有收線機制另行終斷會話）

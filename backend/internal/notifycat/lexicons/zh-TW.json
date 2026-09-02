@@ -14,6 +14,8 @@
     "audit_write_fallback_file": "審計批次寫入失敗，已降級至檔案",
     "audit_write_batch_dropped": "審計批次寫入失敗，檔案降級已關閉、批次丟棄",
     "audit_write_sync_refused": "同步審計寫入失敗，該次操作已拒絕",
+    "command_audit_write_refused": "同步語句紀錄寫入失敗，該語句已拒絕執行",
+    "command_blocker_unavailable": "指令阻斷比對器不可用，該語句已拒絕執行",
     "syslog_connect_failed": "syslog 轉發連線失敗",
     "syslog_buffer_overflow": "syslog 轉發緩衝溢出",
     "kek_retirement_backlog": "KEK 退役收尾未收斂",

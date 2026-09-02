@@ -259,16 +259,19 @@ type ConnectDenial struct {
 	// 「被哪一道閘擋的」，Cause 是「那道閘為什麼判不出來」。
 	// 空值時審計輸出逐字不變，既有各閘的列因此零變動
 	Cause string
-	// Via 兌換入口（`ViaConnect`／`ViaSSH`）：兩條入口的拒絕列在同一張表裡，
-	// 沒有這個欄位就分不出「有人在探測圖形入口」與「有人在探測終端入口」
+	// Via 兌換入口（`ViaConnect`／`ViaSSH`／`ViaDBConsole`）：各入口的拒絕列
+	// 在同一張表裡，沒有這個欄位就分不出「有人在探測圖形入口」與
+	// 「有人在探測終端入口」。入口增加時本欄的值域要跟著增加——沿用別的入口的值，
+	// 稽核以它分流時那一條入口的拒絕會被算進另一條
 	Via string
 }
 
-// 兌換入口標記（`details.via`）。兩側各寫字面量就會出現 `ssh` 與 `SSH` 這種
+// 兌換入口標記（`details.via`）。各側各寫字面量就會出現 `ssh` 與 `SSH` 這種
 // 分家，稽核的分組查詢當場漏一半。
 const (
-	ViaConnect = "connect"
-	ViaSSH     = "ssh"
+	ViaConnect   = "connect"
+	ViaSSH       = "ssh"
+	ViaDBConsole = "db_console"
 )
 
 // viaUnknown 呼叫端漏填 Via 時的落地值。**不留空**：空字串在 details 裡與

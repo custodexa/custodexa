@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import Login from '../Login.vue'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
 
@@ -37,6 +37,13 @@ vi.mock('@/api/oidc', () => ({
   exchangeSSOTicket: vi.fn(),
 }))
 
+// 登入前告示端點：本檔既有案例一律走「未設定」情境，
+// 告示專屬行為見檔尾的 describe
+const getLoginBannerMock = vi.fn()
+vi.mock('@/api/loginBanner', () => ({
+  getLoginBanner: (...args) => getLoginBannerMock(...args),
+}))
+
 // happy-dom 無 canvas 2d context——mock qrcode 讓強制註冊步驟的 QR 可測
 const toCanvasMock = vi.fn().mockResolvedValue(undefined)
 vi.mock('qrcode', () => ({
@@ -51,6 +58,7 @@ describe('Login', () => {
     localStorage.clear()
     vi.clearAllMocks()
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
+    getLoginBannerMock.mockResolvedValue({ enabled: false })
   })
 
   it('blocks submission when fields are empty', async () => {
@@ -410,6 +418,7 @@ describe('Login — 明文連線的登入說明', () => {
     vi.clearAllMocks()
     window.location.href = 'http://localhost:3000/login'
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
+    getLoginBannerMock.mockResolvedValue({ enabled: false })
   })
 
   it('刷新終敗留下脈絡時，卡片內顯示可理解的說明', async () => {
@@ -419,8 +428,8 @@ describe('Login — 明文連線的登入說明', () => {
     await flushPromises()
 
     expect(wrapper.find('.insecure-transport-alert').exists()).toBe(true)
-    expect(wrapper.text()).toContain('登入狀態沒有保存下來')
-    expect(wrapper.text()).toContain('請把這件事告訴系統管理員')
+    expect(wrapper.text()).toContain('登入狀態不會保存')
+    expect(wrapper.text()).toContain('15 分鐘需重新登入')
   })
 
   // 寫給被登出的人看，不是寫給讀組態的人看：cookie／Secure／環境變數／政策鍵名
@@ -482,5 +491,139 @@ describe('Login — 明文連線的登入說明', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
+  })
+})
+
+// 登入前告示：部署方自填的常設文字。
+// 守的是四件會靜默壞掉的事：
+//   1. 未設定時完全不佔位（不能留一塊空框）；
+//   2. 端點失敗只降級為不顯示，不彈錯誤、不影響登入；
+//   3. 告示未回應期間登入控制項照常可用（顯示型內容不得擋登入）；
+//   4. 內容不隨介面語言切換（那是部署方寫的字，不是介面文案）。
+describe('Login — 登入前告示', () => {
+  const BANNER = {
+    enabled: true,
+    title: '授權使用者專用',
+    body: '本系統僅供獲授權之使用者存取。\n所有連線與操作將被記錄並錄影。',
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    window.sessionStorage.clear()
+    vi.clearAllMocks()
+    getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
+    getLoginBannerMock.mockResolvedValue({ enabled: false })
+  })
+
+  it('已設定時顯示於帳密表單之前', async () => {
+    getLoginBannerMock.mockResolvedValue(BANNER)
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    const banner = wrapper.find('.login-banner')
+    expect(banner.exists()).toBe(true)
+    expect(banner.text()).toContain('授權使用者專用')
+    expect(banner.find('.login-banner-body').text()).toBe(BANNER.body)
+
+    // 位置：DOM 順序上早於第一個輸入框與第一個 alert
+    const html = wrapper.html()
+    expect(html.indexOf('login-banner')).toBeLessThan(html.indexOf('<input'))
+    expect(wrapper.find('.login-btn').exists()).toBe(true)
+  })
+
+  it('未設定時頁面無任何告示節點', async () => {
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.find('.login-banner').exists()).toBe(false)
+    expect(wrapper.find('.login-banner-body').exists()).toBe(false)
+  })
+
+  it('端點失敗時不顯示告示、不彈錯誤，登入照常可用', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const messageSpy = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    getLoginBannerMock.mockRejectedValue({ response: { status: 503 } })
+    loginMock.mockResolvedValue({
+      token: 'jwt-token',
+      user: { username: 'admin', full_name: 'Admin', roles: ['admin'] },
+    })
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.find('.login-banner').exists()).toBe(false)
+    expect(messageSpy).not.toHaveBeenCalled()
+
+    const inputs = wrapper.findAll('input')
+    await inputs[0].setValue('admin')
+    await inputs[1].setValue('admin123')
+    await wrapper.find('.login-btn').trigger('click')
+    await flushPromises()
+
+    expect(localStorage.getItem('token')).toBe('jwt-token')
+    expect(pushMock).toHaveBeenCalledWith('/dashboard')
+
+    errorSpy.mockRestore()
+    messageSpy.mockRestore()
+  })
+
+  it('告示請求未回應期間，登入鈕未被停用', async () => {
+    getLoginBannerMock.mockReturnValue(new Promise(() => {}))
+
+    const wrapper = mountLogin()
+    await wrapper.vm.$nextTick()
+
+    const button = wrapper.findComponent({ name: 'ElButton' })
+    expect(wrapper.find('.login-btn').attributes('disabled')).toBeUndefined()
+    expect(button.props('loading')).toBe(false)
+  })
+
+  it('進入改密與第二因素步驟後告示仍在', async () => {
+    getLoginBannerMock.mockResolvedValue(BANNER)
+    loginMock.mockResolvedValue({
+      password_change_required: true,
+      change_token: 'change-jwt',
+      policy_hint: '新密碼至少 12 字元',
+    })
+
+    const changeWrapper = mountLogin()
+    let inputs = changeWrapper.findAll('input')
+    await inputs[0].setValue('admin')
+    await inputs[1].setValue('admin123')
+    await changeWrapper.find('.login-btn').trigger('click')
+    await flushPromises()
+    expect(changeWrapper.text()).toContain('設定新密碼')
+    expect(changeWrapper.find('.login-banner').text()).toContain('授權使用者專用')
+
+    loginMock.mockResolvedValue({ mfa_required: true, pending_token: 'pending-jwt' })
+    const mfaWrapper = mountLogin()
+    inputs = mfaWrapper.findAll('input')
+    await inputs[0].setValue('admin')
+    await inputs[1].setValue('admin123')
+    await mfaWrapper.find('.login-btn').trigger('click')
+    await flushPromises()
+    expect(mfaWrapper.find('.mfa-panel').exists()).toBe(true)
+    expect(mfaWrapper.find('.login-banner').text()).toContain('授權使用者專用')
+  })
+
+  it('切換介面語言時告示文字不變', async () => {
+    getLoginBannerMock.mockResolvedValue(BANNER)
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    const before = wrapper.find('.login-banner-body').text()
+    const langDropdown = wrapper
+      .findAllComponents({ name: 'ElDropdown' })
+      .find((d) => d.find('.lang-switch-label').exists())
+    langDropdown.vm.$emit('command', 'en-US')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.login-btn').text()).toBe('Sign In')
+    expect(wrapper.find('.login-banner-body').text()).toBe(before)
+    expect(wrapper.find('.login-banner-title').text()).toBe('授權使用者專用')
+    // 無障礙標籤是介面文案，隨語言變更
+    expect(wrapper.find('.login-banner').attributes('aria-label')).toBe('Login notice')
   })
 })

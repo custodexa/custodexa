@@ -110,6 +110,7 @@ var sourceGateNotJudged = map[string]string{
 		"——範圍止於認證因子，擴到一般寫入等於每請求判一次（規格明列的非目標）",
 	"POST /api/v1/auth/logout": "撤銷自己的憑證。擋掉它只會讓清單外的人**無法登出**，" +
 		"安全方向相反",
+	"GET /api/v1/auth/banner": "登入前告示讀取，使用者尚未解析（與登入方式列舉同理：無身分可判、亦不寫任何認證狀態）",
 	"GET /api/v1/auth/methods": "登入方式列舉，使用者尚未解析（盤點表 #21，明列不判）",
 	"GET /api/v1/auth/oidc/:id/begin": "OIDC 授權起點，使用者尚未解析" +
 		"（判定在 exchange；盤點表 #21，明列不判）",

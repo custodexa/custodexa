@@ -76,6 +76,7 @@ var mechanismEnum = []string{
 	model.MechanismRecordingText,
 	model.MechanismRecordingGraphics,
 	model.MechanismSessionRecord,
+	model.MechanismCommandBlocking,
 	model.MechanismKEKRetirement,
 	model.MechanismAADResidue,
 	model.MechanismCheckpointAnchor,

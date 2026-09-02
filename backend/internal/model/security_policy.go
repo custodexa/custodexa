@@ -7,7 +7,7 @@ import "time"
 // 無對應列時以常數表出廠預設值生效，故 seed 不需預先物化政策列
 type SecurityPolicy struct {
 	Key       string    `gorm:"primaryKey;size:64" json:"key"`
-	Value     string    `gorm:"size:128;not null" json:"value"`
+	Value     string    `gorm:"type:text;not null" json:"value"`
 	UpdatedBy string    `gorm:"size:100" json:"updated_by"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -298,6 +298,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/auth/banner",
+      "handler": "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).LoginBanner-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/auth/me",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthHandler).Me-fm"
     },
@@ -370,6 +375,16 @@
       "method": "GET",
       "path": "/api/v1/daily-reviews/status",
       "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/db-console",
+      "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleDBConsole-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/db-console/sessions/:id/results/:event_id/export",
+      "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleDBConsoleExport-fm"
     },
     {
       "method": "GET",
@@ -2361,6 +2376,19 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/auth/banner",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*SecurityPolicyHandler).LoginBanner-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/auth/me",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2680,6 +2708,33 @@
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.RequirePermission.func2",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/db-console",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleDBConsole-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/db-console/sessions/:id/results/:event_id/export",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AuthMiddleware",
+        "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleDBConsoleExport-fm"
       ]
     },
     {

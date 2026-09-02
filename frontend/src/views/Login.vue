@@ -34,6 +34,14 @@
         </p>
       </div>
 
+      <!-- 部署方自填的登入前告示：常設內容，排在所有 alert 之前
+           （alert 是這次送出的結果，離表單近一點比較好讀）。
+           不依步驟隱藏——SSO 回跳直接落在改密或第二因素的路徑一併涵蓋 -->
+      <LoginBanner
+        :title="bannerTitle"
+        :body="bannerBody"
+      />
+
       <!-- 明文連線下登入狀態無法保存：
            使用者被反覆踢回登入頁時，這裡回答「為什麼又要我登入」。
            排在其他 alert 之前——它是「你為什麼會在這一頁」的脈絡，
@@ -346,6 +354,7 @@ import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
 import MfaQrCode from '@/components/MfaQrCode.vue'
+import LoginBanner from '@/components/LoginBanner.vue'
 import {
   login,
   verifyMFA,
@@ -354,6 +363,7 @@ import {
   mfaEnrollConfirm,
 } from '@/api/auth'
 import { getAuthMethods, buildOIDCBeginURL, exchangeSSOTicket } from '@/api/oidc'
+import { getLoginBanner } from '@/api/loginBanner'
 import {
   consumeSSOHandoff,
   consumeBrowserSecret,
@@ -394,6 +404,10 @@ const verifying = ref(false)
 
 // 帳號鎖定明示訊息（後端 423 回應）
 const lockedMessage = ref('')
+
+// 登入前告示（部署方自填的純文字，不隨介面語言切換）
+const bannerTitle = ref('')
+const bannerBody = ref('')
 
 // 明文連線下登入狀態無法保存的說明（決策 3）：由 api/request 的刷新終敗路徑
 // 留下脈絡，本頁 onMounted 讀後即清
@@ -744,6 +758,20 @@ const loadAuthMethods = async () => {
   }
 }
 
+// 登入前告示。**失敗即不顯示**——告示是顯示型內容，封印期的 503 與網路錯誤
+// 都不該讓登入頁看起來壞掉，也不該擋住任何控制項；載入後不再重抓
+const loadLoginBanner = async () => {
+  try {
+    const res = await getLoginBanner()
+    if (res?.enabled) {
+      bannerTitle.value = typeof res.title === 'string' ? res.title : ''
+      bannerBody.value = typeof res.body === 'string' ? res.body : ''
+    }
+  } catch (error) {
+    console.error('取得登入告示失敗（不顯示告示）:', error?.response?.status || error?.message)
+  }
+}
+
 // 發起 SSO：先在本分頁備妥綁定原值，只把雜湊送出，再整頁導向後端 begin
 const handleSSOLogin = async (provider) => {
   clearSSOError()
@@ -839,7 +867,9 @@ onMounted(() => {
   insecureTransportNotice.value =
     consumeReloginContext() === RELOGIN_INSECURE_TRANSPORT
 
+  // 兩個登入前讀取彼此不阻塞：任一失敗不影響另一個，也不影響登入表單
   loadAuthMethods()
+  loadLoginBanner()
 
   if (handoff.error) {
     clearBrowserSecret()
@@ -858,7 +888,10 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  /* min-height 而非 height：卡片內容高於視窗時（長告示、改密步驟）
+     仍能捲到頂端與登入鈕，固定高度會把超出的部分裁掉且捲不到 */
+  min-height: 100vh;
+  overflow-y: auto;
   background-color: var(--ot-bg-page);
   background-image: radial-gradient(
     ellipse at 50% -20%,

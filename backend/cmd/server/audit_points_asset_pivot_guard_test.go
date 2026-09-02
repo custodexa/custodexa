@@ -111,6 +111,11 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 		"剪貼簿事件不帶資產欄，主體經所屬會話解析後填入——「這台資產的剪貼簿內容被誰調閱過」" +
 		"必須出現在資產樞紐上，缺鍵時與「沒有人調閱過」不可分辨（同 AP-70 的論證）"},
 	"AP-62": {pivotFilled, false, "AsyncSink.Submit 的 event→entry 轉換：gateway 側產生點的主體鍵入口"},
+	"AP-81": {pivotFilled, false, "資料庫查詢主控台會話事件的唯一寫入點：連線失敗／admission 拒絕／樹瀏覽／切庫／" +
+		"目標受限拒絕等事件共用此字面量，「誰在這台機器的資料庫上做了什麼」必須出現在資產樞紐上。" +
+		"會話未綁定資產時（assetID==0）寫 NULL 而非 0，同 AP-69 的取值紀律"},
+	"AP-82": {pivotFilled, false, "資料庫查詢結果匯出（CSV）的唯一寫入點：「這台機器的查詢結果被誰帶走」屬檔案傳輸類，" +
+		"資產樞紐的檔案傳輸類只讀 asset_id（同 AP-14／AP-28 的論證）。資產未知時寫 NULL 而非 0"},
 
 	// ── 資產類：委由 helper ──（helper 內的產生點即 AP-22／26／27）
 	"AP-30": {pivotDelegated, false, "帳號建立 → writeAssetAccountAudit"},
@@ -194,6 +199,8 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 
 // maxAssetPivotGaps 已知缺口的條數上限。**要新增一個缺口就必須在 diff 裡把這個
 // 數字調高**——缺口從此是需要有人簽字的動作，而不是安靜多一列登記。
+//
+// 2：AP-66／AP-67，皆屬 data-transfer-control 期 1 職權。
 const maxAssetPivotGaps = 2
 
 // minAssetPivotFilled／minAssetPivotDelegated 下限：整批分類被翻成「非資產類」

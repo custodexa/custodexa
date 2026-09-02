@@ -100,7 +100,30 @@ func DiffAsset(old, new *Asset) []AssetChange {
 		})
 	}
 
+	// 允許資料庫清單：以項數與逐項內容比對（清單是有序的字串集，
+	// 順序變動也算變動——管理者看到的表單順序就是儲存順序）。
+	// 值直接進 Old/New：名稱是管理者自己輸入的設定，不是憑證也不是資料內容
+	if !stringListEqual(old.AllowedDatabases, new.AllowedDatabases) {
+		changes = append(changes, AssetChange{
+			Field: "allowed_databases",
+			Old:   []string(old.AllowedDatabases),
+			New:   []string(new.AllowedDatabases),
+		})
+	}
+
 	return changes
+}
+
+func stringListEqual(a, b StringList) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // getUserFromContext 從 context 提取用戶資訊

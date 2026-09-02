@@ -94,10 +94,10 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 | 類別 | 現況筆數 | 守衛下限 |
 |---|---|---|
-| 個別登記的包級全域（`var:`） | 185 | 110 |
+| 個別登記的包級全域（`var:`） | 195 | 110 |
 | `init()`（`init:`） | 5 | —（雙向等值） |
 | 組裝根注入／註冊呼叫點（`hook:`） | 93 | 35 |
-| 組裝根裸欄位注入（`inject:`） | 15（納管判準見 §4.4／§4.5） | 8 |
+| 組裝根裸欄位注入（`inject:`） | 17（納管判準見 §4.4／§4.5） | 8 |
 | 單例式 `Init`／`Reset`／`Zeroize` 宣告（`singleton:`） | 16 | —（雙向等值） |
 | 段 2 啟動步驟（`step:`） | 44（36 字面量＋8 迴圈） | 25（字面量） |
 | 釋放登記（`release:`） | 16 | —（有序等值） |
@@ -120,7 +120,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 2. 包級全域（`var:`，185 筆）
+## 2. 包級全域（`var:`，195 筆）
 
 ### 2.1 組裝根（`cmd/server`，5 筆）
 
@@ -391,6 +391,24 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-140 | var:pkg/crypto/password_hasher.go:defaultHasher | defaultHasher | pkg/crypto/password_hasher.go:168 | 包級全域／不可變單例（產線密碼雜湊實作） | 不搬（crypto） | —（password-hasher-interface） | **無序但不可有第二份**。以 `NewBcryptHasher(BcryptDefaultCost)` 在包初始化時建構，常數參數故不依賴任何其他初始化，順序上無前置需求。**若被改成各處自建或允許執行期置換會發生什麼**：「當前演算法／參數」會散成多份，`Verifier.NeedsRehash` 的判定依呼叫端而異——同一個雜湊在登入路徑判定要升級、在改密路徑判定不用，漸進遷移於是變成不確定行為，且可能反覆重雜湊。故 `DefaultPasswordHasher()`／`DefaultPasswordVerifier()` 是唯一取得入口，產品碼不得自行 `NewBcryptHasher`（`internal/guards/passwordhash` 守衛禁止直接 import 演算法庫，但自建 Hasher 不在其射程，此處以單一入口的慣例承擔）。 |
 | G-141 | var:internal/modules/audit/audit_log_service.go:auditSortableColumns | auditSortableColumns | internal/modules/audit/audit_log_service.go:407 | 包級全域／不可變白名單（審計日誌排序欄位收斂表） | audit | —（CodeQL go/sql-injection 修復新增） | 無序（載入期定值後只讀），但**成員即安全邊界**：這是 `List` 對使用者可控 `sort_by` 的唯一收斂依據——ORDER BY 的識別字位置無法參數化，只能列舉，不在表內者一律落回 `created_at`。**增刪的後果不對稱**：漏列一個合法欄位只是該欄排序被靜默降級（使用者點了沒反應、無錯誤）；而把表清空、或改成黑名單／正則放行形態，等於把 SQL 注入原樣打開——`fmt.Sprintf` 拼出的子句會逐字進 SQL（GORM 對 string 型 `.Order()` 以 Raw 寫入，不參數化）。故拆包時此表不得離開 `List` 的可視範圍，亦不得由呼叫端覆寫。守衛見 `internal/modules/audit/audit_log_sort_injection_test.go`。 |
 
+### 2.13 查詢主控台的方言查表與事件識別產生器（`internal/dbconsole`／`internal/sshproxy`／`internal/api`，10 筆）
+
+> 主控台是第三條連線入口，其套件不 import 任何業務模組（守衛擋著），故這幾個全域
+> 是該套件內判定的唯一事實源；一併納管以維持反向斷言的完整涵蓋。
+
+| ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
+|---|---|---|---|---|---|---|---|
+| G-156 | var:internal/dbconsole/errclass.go:pgAuthStates | pgAuthStates | internal/dbconsole/errclass.go:57 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 無序（載入期定值後只讀），但**成員即分類邊界**：起始連線失敗的類別（認證／拓撲／網路／未知）由這幾張表決定，而類別是審計列上「為什麼連不上」的唯一機器欄——對外一律回泛化碼，連線階段的錯誤原文不出門。漏一碼的症狀是該失敗被歸入 `unknown`：稽核看到的是「我們沒看懂」，而真相是「密碼錯了」。以錯誤碼而非訊息字串比對，是因為訊息文字隨版本與語系變動。 |
+| G-157 | var:internal/dbconsole/errclass.go:pgTopologyStates | pgTopologyStates | internal/dbconsole/errclass.go:59 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 同 G-156 的拓撲側。**與認證表分兩張而非合併帶標籤**：兩者的判定順序在 `ClassifyConnect` 內是實質的（認證與拓撲要在網路之前判，driver 常把它們包在同時滿足 `net.Error` 的錯誤裡），合併後順序資訊會落到單一表的列序上而無人看守。 |
+| G-158 | var:internal/dbconsole/errclass.go:mysqlAuthErrs | mysqlAuthErrs | internal/dbconsole/errclass.go:62 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 同 G-156 的 MySQL 側（碼型為 `uint16`，各方言的碼型不同故不共用一張表）。 |
+| G-159 | var:internal/dbconsole/errclass.go:mysqlTopologyErrs | mysqlTopologyErrs | internal/dbconsole/errclass.go:64 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 同 G-157 的 MySQL 側。 |
+| G-160 | var:internal/dbconsole/errclass.go:mssqlAuthNumbers | mssqlAuthNumbers | internal/dbconsole/errclass.go:67 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 同 G-156 的 MSSQL 側（碼型為 `int32`）。 |
+| G-161 | var:internal/dbconsole/errclass.go:mssqlTopologyNumbers | mssqlTopologyNumbers | internal/dbconsole/errclass.go:69 | 包級全域／不可變錯誤碼查表 | 不搬（接入層 dbconsole） | —（查詢主控台新增） | 同 G-157 的 MSSQL 側。 |
+| G-162 | var:internal/dbconsole/ulid.go:defaultULIDState | defaultULIDState | internal/dbconsole/ulid.go:40 | 包級全域／有狀態單調計數器（含鎖） | 不搬（接入層 dbconsole） | —（查詢主控台新增） | **唯一具執行期狀態的一筆**：事件識別的同毫秒單調性由它承擔（上次毫秒＋上次亂數，鎖保護）。**必須是包級單一份**——改成每會話一份或每次呼叫重建，同毫秒內產出的識別就只剩唯一性、失去遞增保證，而畫面、轉錄與稽核三面都以識別排序呈現先後，讀的人會看到後執行的排在前面。鎖與狀態是同一份東西的兩半，拆包時不得分離。 |
+| G-165 | var:internal/api/session_command_handler.go:commandResultStatuses | commandResultStatuses | internal/api/session_command_handler.go:119 | 包級全域／不可變值域白名單 | 不搬（接入層 api） | —（查詢主控台新增） | 無序（載入期定值後只讀），但**成員即 API 的收斂邊界**：跨會話搜尋的 `result_status` 參數以本表判定值域，表外一律 400。**漏列一個合法狀態**的症狀是稽核用得好好的篩選突然被拒（吵鬧，看得見）；**把表放寬或清空**的症狀相反——打錯字的狀態照樣送進查詢，回來的空集與「範圍內真的沒有這種列」在畫面上完全一樣。與 DB 的結果狀態 CHECK 是同一份值域的兩個落點，改值域時兩處都要動。 |
+| G-164 | var:internal/sshproxy/dbconsole_session.go:consoleTimeoutTick | consoleTimeoutTick | internal/sshproxy/dbconsole_session.go:253 | 包級全域／可置換取樣間隔 | 不搬（接入層 sshproxy） | —（查詢主控台新增） | 無序；`var` 而非 `const` 僅為測試以極短間隔走真實的計時路徑（同 G-110 的形態）。**產品路徑永不改寫**——被執行期調大即閒置與最大時長的收斂延後，政策上已到期的會話仍可繼續操作一段時間。 |
+| G-163 | var:internal/sshproxy/dbconsole_export.go:consoleNumericLiteral | consoleNumericLiteral | internal/sshproxy/dbconsole_export.go:50 | 包級全域／不可變 regexp（轉義豁免判準） | 不搬（接入層 sshproxy） | —（查詢主控台新增） | 無序（載入期編譯後只讀），但**它是防公式注入轉義的唯一豁免口**：匯出時以公式起頭字元開頭的文字欄一律前置單引號，本式命中者例外。**放寬到能匹配非數值內容＝把豁免變成繞道**（試算表開啟即執行的內容原樣落地）；反向收窄則讓負數與科學記號被寫成文字，數值無損往返在 CSV 這一側失效。以包級預編譯而非逐儲存格 `MustCompile`，是因為它落在每列每欄的熱路徑上。 |
+
 ## 3. `init()` 函式（`init:`，5 筆）
 
 | ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
@@ -403,7 +421,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 4. 組裝根注入／註冊呼叫點（`hook:` 93 筆＋`inject:` 15 筆）
+## 4. 組裝根注入／註冊呼叫點（`hook:` 93 筆＋`inject:` 17 筆）
 
 > 依注入發生的位置分節（段 1、段 2 主序、封印接線、裸欄位注入）。**列序即程式碼中的出現序**（同一檔內）。
 
@@ -521,9 +539,9 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-73 | hook:cmd/server/stage2.go:oidcHandler.SetSourcePolicyReader | `oidcHandler.SetSourcePolicyReader(s.authService)` | cmd/server/stage2.go:1166 | setter 後綁定 | api ← identity | —（來源限定功能） | 同 H-72 的 OIDC 交換流（交換點的判定）。 |
 | H-74 | hook:cmd/server/stage2.go:userHandler.SetSourcePolicyReader | `userHandler.SetSourcePolicyReader(s.authService)` | cmd/server/stage2.go:1239 | setter 後綁定 | api ← identity | —（來源限定功能） | 同 H-72 的使用者管理流（管理者對他人認證因子的三個端點：改密、解鎖、MFA 重設，依**操作者本人**的清單判定）。 |
 
-### 4.4 段 2 裸欄位注入（`inject:`，`cmd/server/stage2.go`，11 筆）
+### 4.4 段 2 裸欄位注入（`inject:`，`cmd/server/stage2.go`，13 筆）
 
-> **為什麼另立一節**：這 11 筆不經任何函式呼叫（`handler.Field = service`），
+> **為什麼另立一節**：這 13 筆不經任何函式呼叫（`handler.Field = service`），
 > 守衛原本只走 `*ast.CallExpr`，**整類在射程外**——拆掉其中任何一行，`./cmd/server`
 > 全綠（`sshHandler.AccessPolicy` 為實證案例）。2026-08-12 擴充
 > `scanAssemblyFieldInjections` 後納入，判準見該函式檔頭（`=` ／ 匯出欄位 ／
@@ -547,6 +565,9 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | J-9 | inject:cmd/server/stage2.go:sshHandler.TransmissionConsent | `sshHandler.TransmissionConsent = transmissionConsent` | cmd/server/stage2.go:601 | 裸欄位注入（連線層 ← policy） | 接入層 ← policy | transmission-security-policy | **[紅線]** 傳輸安全閘：strict＝400 拒絕、warn＝428 要求同意、off＝零影響。消費端 `sshproxy/connect_gates.go:243` 與 `handler.go:1126` 都是 **`== nil` 即 `return nil`（＝放行）**——漏注入＝strict 政策靜默失效、明文風險連線直接建立，且不再彈同意對話框，等於「使用者從未被告知風險、也從未同意」卻留下連線成功的紀錄。後端強制閘，繞前端直呼 API 同受此閘，故這是唯一的攔截點。 |
 | J-10 | inject:cmd/server/stage2.go:sshHandler.AccessPolicy | `sshHandler.AccessPolicy = accessPolicyService` | cmd/server/stage2.go:611 | 裸欄位注入（連線層 ← policy） | 接入層 ← policy | access-policy-approval | **[紅線／本次缺口的實證案例]** 存取政策閘（授權檢查之後、傳輸閘之前）：非 open 段位蓋過常設 connect，僅時窗內核准流的臨時授權放行。**兩個消費點（`connect_gates.go:212` 建線閘、`:375` 兌換點重查）都是 `== nil` 即 `return nil`＝放行**。獨立複驗者把本行換成 `_ = accessPolicyService` 後 `./cmd/server` **全綠**——即「SSH 路徑的存取政策整段失效」不會被任何測試察覺，且對外表現與「政策設為 open」完全相同。**無條件注入、不掛功能開關**，任何條件化都等於製造一個關掉紅線的開關。 |
 | J-11 | inject:cmd/server/stage2.go:connHandler.AccessPolicy | `connHandler.AccessPolicy = accessPolicyService` | cmd/server/stage2.go:612 | 裸欄位注入（連線層 ← policy） | 接入層 ← policy | access-policy-approval | **[紅線]** 同 J-10 的圖形協議側（兌換點政策重查，與 SSH 對稱；消費端 `proxy/connect_gates.go:137` 同樣 nil 即放行）。**兩側必須注入同一實例**：分岔的那一側就是越權面（同 H-41c 對 `dataTransferService` 的論述）。缺任一側不會讓另一側轉紅，故兩列各自登記。 |
+
+| J-16 | inject:cmd/server/stage2.go:sshHandler.DataTransfer | `sshHandler.DataTransfer = dataTransferService` | cmd/server/stage2.go:730 | 裸欄位注入（連線層 ← policy） | 接入層 ← policy | 查詢主控台 | **[紅線]** 查詢結果匯出的傳輸政策判定（走 `file_download` 這條既有判定鍵，是該政策的第四個強制點）。兩個消費點（匯出端點的 `consoleExportAllowed`、會話能力投影的 `capabilities`）**都是 `== nil` 即視為未設限**，故漏注入＝「禁止下載」政策在主控台匯出這條路徑靜默失效，而對外表現與「政策設為允許」完全相同。**必須與 `connHandler.SetDataTransfer` 注入同一實例**：兩套解析遲早分岔，分岔的那一側就是越權面。 |
+| J-17 | inject:cmd/server/stage2.go:sshHandler.DB | `sshHandler.DB = database.DB` | cmd/server/stage2.go:731 | 裸欄位注入（連線層 ← 資料庫控制代碼） | 接入層 | 查詢主控台 | 主控台語句紀錄的同步落地面與待決事件的回查來源。**與命令列那一側不同源是刻意的**：命令列走非同步佇列，主控台是同步 fail-close（紀錄寫不進去就不執行）。消費點 `dbconsole_session.go:431` 為 `== nil` 即跳過回查，故漏注入的症狀是「重新整理後拿不回上一則結果」而非崩潰——症狀輕但成因不可見。**必須晚於 `database.DB` 初始化**。 |
 
 ### 4.5 段 1 engine 組態的裸欄位注入（`inject:`，`cmd/server/main.go`，2 筆）
 

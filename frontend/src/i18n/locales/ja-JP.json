@@ -116,6 +116,7 @@
     "offsiteStorage": "オフサイト保管"
   },
   "login": {
+    "bannerRegionLabel": "ログイン告知",
     "usernamePlaceholder": "ユーザー名",
     "passwordPlaceholder": "パスワード",
     "loginButton": "ログイン",
@@ -175,8 +176,8 @@
       "oidc_provider_error": "認可をキャンセルしたか、プロバイダーがこのログインを拒否した可能性があります。やり直せます。",
       "oidc_flow_invalid": "ログインリンクは一度きり、かつ有効期限があります。ログインをやり直してください。"
     },
-    "insecureTransportTitle": "ログイン状態が保存されませんでした",
-    "insecureTransportBody": "このサイトは http で開いていますが、システムはログイン状態を https 接続でのみ保持する設定です。そのため約 15 分ごとに再ログインが必要になります。この内容をシステム管理者にお伝えください。管理者がログインすると、「セキュリティポリシー」ページで対処方法を確認できます。"
+    "insecureTransportTitle": "セキュリティ通知：ログイン状態は保持されません",
+    "insecureTransportBody": "http 接続のためログイン状態は保持されません（15 分ごとに再ログインが必要です）"
   },
   "api": {
     "requestFailed": "リクエストに失敗しました",
@@ -313,6 +314,7 @@
       "recording_text": "テキスト録画",
       "recording_graphics": "グラフィック録画",
       "session_record": "セッション記録",
+      "command_blocking": "コマンドブロック照合器",
       "kek_retirement": "KEK 退役収束",
       "aad_residue": "AAD 暗号文の残存",
       "checkpoint_anchor": "チェックポイントの外部保管",
@@ -337,6 +339,8 @@
       "audit_write_fallback_file": "監査バッチ書き込みに失敗し、ファイルへ退避",
       "audit_write_batch_dropped": "監査バッチ書き込みに失敗し、ファイル退避が無効のためバッチを破棄",
       "audit_write_sync_refused": "同期監査書き込みに失敗し、当該閲覧を拒否（内容は未交付）",
+      "command_audit_write_refused": "同期のステートメント記録の書き込みに失敗し、当該ステートメントを拒否しました",
+      "command_blocker_unavailable": "コマンドブロック照合器が利用できないため、当該ステートメントを拒否しました",
       "syslog_connect_failed": "syslog 転送の接続に失敗",
       "syslog_buffer_overflow": "syslog 転送バッファのオーバーフロー",
       "kek_retirement_backlog": "KEK 退役処理が未収束",
@@ -443,6 +447,34 @@
     },
     "commandAlertReason": {
       "audit_degraded_span": "この接続で復元できない回が連続しました（劣化区間）。"
+    },
+    "resultStatus": {
+      "running": "実行中",
+      "ok": "成功",
+      "error": "失敗",
+      "partial": "一部反映",
+      "blocked": "ブロック",
+      "cancelled": "キャンセル済み",
+      "timeout": "タイムアウト",
+      "effect_unknown": "結果不明"
+    },
+    "resultReason": {
+      "matcher_hit": "ブロックルールに一致",
+      "matcher_unavailable": "ブロック照合器が利用不可",
+      "error_after_results": "一部の文が完了した後にエラーが発生",
+      "cancel_confirmed": "対象側がキャンセルを確認",
+      "batch_stopped": "前のバッチが失敗したため未送信",
+      "timeout_confirmed": "タイムアウトし、対象側がキャンセルを確認",
+      "cancel_unconfirmed": "キャンセルが対象側で未確認",
+      "timeout_unconfirmed": "タイムアウトが対象側で未確認",
+      "connection_lost": "送信後に接続が切断",
+      "cell_truncated": "セル値が上限を超えて切り詰め"
+    },
+    "txState": {
+      "none": "トランザクションなし",
+      "active": "トランザクション実行中",
+      "failed": "トランザクション失敗",
+      "unknown": "判定不能"
     }
   },
   "policyValue": {
@@ -462,6 +494,10 @@
       "login_lock": {
         "title": "ログインとロック",
         "hint": "連続ログイン失敗によるアカウントロック（PCI 8.3.4）"
+      },
+      "login_banner": {
+        "title": "ログイン告知",
+        "hint": "サインイン画面で認証情報を入力する前に表示する文言"
       },
       "password": {
         "title": "パスワードポリシー",
@@ -731,7 +767,18 @@
     "pendingInfoTitle": "申請は審査中です",
     "viewMyRequests": "マイ申請を表示",
     "inheritPolicy": "グローバル設定に従う",
-    "inheritPolicyWithCurrent": "グローバル設定に従う（現在：{value}）"
+    "inheritPolicyWithCurrent": "グローバル設定に従う（現在：{value}）",
+    "allowedDatabases": "許可するデータベース",
+    "allowedDatabasesPlaceholder": "空欄＝制限なし",
+    "allowedDatabasesScopeHint": "クエリコンソールの実行対象のみを制限します。コマンドラインセッションはこの項目の影響を受けません。",
+    "allowedDatabasesCaseHint": {
+      "mysql": "名称は対象側のカタログ表示どおりに入力してください。MySQL の大文字小文字の区別はサーバー設定に依存します。",
+      "postgres": "名称は対象側のカタログ表示どおりに入力してください。PostgreSQL は引用符なしの識別子を小文字に畳み込みます。",
+      "mssql": "名称は対象側のカタログ表示どおりに入力してください。SQL Server の比較はサーバー照合順序に従い、カタログは作成時の大文字小文字を保持します。"
+    },
+    "allowedDatabasesClearTitle": "プロトコルの変更で許可リストが消去されます",
+    "allowedDatabasesClearConfirm": "この資産には許可するデータベースが {n} 件設定されています。他のプロトコルに変更するとリストは消去され、戻しても復元されません。",
+    "allowedDatabasesClearOk": "消去して保存"
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認",
@@ -760,7 +807,8 @@
     "emptyActiveHint": "すべてのユーザーがオフラインです",
     "emptyHistoryTitle": "一致する履歴がありません",
     "emptyHistoryHint": "フィルター条件を調整するか、接続の終了後に再度確認してください",
-    "accountColumn": "アカウント"
+    "accountColumn": "アカウント",
+    "consoleBadge": "コンソール"
   },
   "sessionDetail": {
     "title": "接続の詳細",
@@ -783,6 +831,7 @@
     "unsupportedSubtitle": "{protocol} プロトコルのオンライン再生には未対応です",
     "commandsTitle": "コマンド記録",
     "commandsNote": "キー入力から再構成。正確な内容は録画再生を参照",
+    "consoleCommandsNote": "文は送信時に記録されます（キー入力からの再構成ではありません）",
     "commandCount": "全{n}件",
     "seqColumn": "番号",
     "noRecordingContent": "この接続には録画がありません",
@@ -823,7 +872,17 @@
     "clipboardDecryptButton": "復号して閲覧",
     "clipboardLockedHint": "内容は暗号化された状態で保存されています。「復号して閲覧」を押すと復号して表示され、閲覧記録が残ります。",
     "clipboardAccessLogged": "この閲覧は記録されました（{time}）",
-    "offsiteStatus": "オフサイト保管"
+    "offsiteStatus": "オフサイト保管",
+    "consoleRecordingNote": "この録画は文のトランスクリプトであり、結果データは含みません。エラーメッセージにはデータ断片が含まれる場合があります。",
+    "targetDatabaseColumn": "対象データベース",
+    "resultStatusColumn": "結果ステータス",
+    "resultReasonColumn": "理由",
+    "resultRowsColumn": "行数",
+    "durationColumn": "所要時間",
+    "durationMs": "{n} ミリ秒",
+    "eventIdColumn": "イベント識別子",
+    "resultUnsettled": "結果不明（未記録）",
+    "rowsAffected": "{n} 行に影響"
   },
   "myConnections": {
     "headerDesc": "自分の接続記録を確認できます",
@@ -897,7 +956,7 @@
     "integrityRangeRequired": "検証する日付範囲を選択してください"
   },
   "commands": {
-    "headerDesc": "接続をまたいで SSH コマンド記録を検索します（キー入力から再構成。正確な内容は録画再生を参照）",
+    "headerDesc": "接続をまたいでコマンドと文の記録を検索します。コマンドラインの内容はキー入力から再構成され、正確な内容は録画再生を参照します。クエリコンソールの文は送信時に記録されます。",
     "keyword": "キーワード",
     "keywordPlaceholder": "コマンド内容を検索",
     "commandColumn": "コマンド",
@@ -917,7 +976,20 @@
       "bannerAtLeast": "この期間には復元できない回が少なくとも {n} 件あります（直近 {limit} 件を集計）。コマンド文字列を持たないため、キーワード検索では出てきません。",
       "bannerUnknown": "この期間には復元できない回が含まれている可能性があります。そうした回はコマンド文字列を持たないため、キーワード検索では出てきません。",
       "bannerClear": "キーワードを消してすべての回を表示"
-    }
+    },
+    "sourceFilter": "ソース",
+    "source": {
+      "console": "クエリコンソール",
+      "cli": "コマンドライン"
+    },
+    "targetDatabaseFilter": "対象データベース",
+    "targetDatabasePlaceholder": "データベース名",
+    "targetDatabaseColumn": "対象データベース",
+    "resultStatusColumn": "結果ステータス",
+    "resultStatusFilter": "結果ステータス",
+    "errorCodeFilter": "エラーコード",
+    "errorCodePlaceholder": "対象側エラーコード",
+    "errorCodeColumn": "エラーコード"
   },
   "alerts": {
     "title": "コマンドアラート",
@@ -1068,7 +1140,124 @@
     "downloadPrompt": "{pod}/{container}からどのファイルをダウンロードしますか？",
     "downloadTitle": "ファイルのダウンロード",
     "downloaded": "{name}をダウンロードしました",
-    "downloadFailed": "ダウンロードに失敗しました（ファイルが存在しないか権限がありません）"
+    "downloadFailed": "ダウンロードに失敗しました（ファイルが存在しないか権限がありません）",
+    "console": "コンソール",
+    "openConsole": "クエリコンソールを開く",
+    "consoleTabTip": "クエリコンソール接続",
+    "accessLockedTip": "このホストは申請後に接続できます。「マイ資産」から申請してください",
+    "accessPendingTip": "接続申請は審査中です。承認されるとここから接続できます",
+    "closeUnsettledTitle": "タブを閉じると接続が終了します",
+    "closeUnsettledMessage": "結果が不明な文、または未コミットのトランザクションを持つコンソールタブが {n} 件あります。閉じると接続が終了します。送信済みの文はすべて監査記録に残っています。",
+    "closeUnsettledConfirm": "タブを閉じる"
+  },
+  "dbConsole": {
+    "connecting": "接続しています...",
+    "errorTitle": "接続に失敗しました",
+    "disconnectedTitle": "接続が切断されました",
+    "reconnect": "再接続",
+    "reconnectedTitle": "新しいセッションとして再接続しました",
+    "reconnectedHint": "以前の結果は消去され、エディタの内容は保持されます。",
+    "disconnected": "データベースへの接続が終了しました",
+    "tokenFailed": "接続の認可を取得できませんでした",
+    "connectFailed": "接続できませんでした。資産の設定と権限をご確認ください",
+    "databasePlaceholder": "データベースを選択",
+    "closed": {
+      "target_closed": "対象データベースがこの接続を閉じました",
+      "slow_consumer": "結果の受信が追いつかず、接続を終了しました",
+      "idle_timeout": "アイドル状態が続いたため接続を終了しました",
+      "max_duration": "接続時間の上限に達したため終了しました",
+      "terminated": "この接続は終了させられました（管理操作、権限の取り消し、資産の無効化のいずれか）",
+      "client_gone": "接続を閉じました"
+    },
+    "export": "CSV エクスポート",
+    "exportTip": "表示中の結果セットを書き出します。内容は画面に見えている結果（返却行数の上限つき）で、クエリは再実行しません。",
+    "exportEscapeNote": "= + - {'@'} Tab または CR で始まるテキスト列は、表計算ソフトでの数式インジェクションを防ぐため書き出し時に単一引用符を前置します。純粋な数値は影響を受けません。",
+    "exportDisabled": {
+      "noResult": "エクスポートできる結果がありません",
+      "sessionEnded": "接続が終了し、結果のキャッシュは解放されました",
+      "notLatest": "直近の実行結果のみエクスポートできます",
+      "policy": "現在のポリシーではエクスポートできません。管理者が「アクセス制御」の「資産からのファイルダウンロード」で有効にできます。"
+    },
+    "exportFailed": "エクスポートに失敗しました",
+    "restricted": {
+      "database_not_allowed": "現在のデータベースはこの資産の許可リストに含まれていません",
+      "database_drift_denied": "文により接続先が許可リスト外のデータベースへ切り替わりました"
+    },
+    "restrictedHint": "この状態で送信した文はすべて拒否されます。上のドロップダウンから許可リスト内のデータベースを選んでください。",
+    "tx": {
+      "active": "トランザクション実行中（未コミット）",
+      "failed": "トランザクションが失敗状態です",
+      "failedMssql": "トランザクションはコミットできません",
+      "failedHint": "続行するにはご自身で ROLLBACK を実行してください。システムが代わりに送信することはありません。"
+    },
+    "resendConfirmTitle": "同じ文を再送しますか",
+    "resendConfirmMessage": "直前の同一の文は結果が不明です。再送すると同じ効果が二度発生する可能性があります。その結果は監査記録に残っています。",
+    "resendConfirmOk": "再送する",
+    "switchConfirmTitle": "データベースを切り替えますか",
+    "switchConfirmMessage": "{database} への切り替えは新しい接続で行われ、現在の接続は閉じられます。",
+    "switchConfirmMessageTx": "{database} への切り替えは新しい接続で行われ、未コミットのトランザクションは旧接続とともに失われます。",
+    "switchConfirmOk": "切り替える",
+    "editor": {
+      "run": "実行",
+      "runSelection": "選択範囲を実行",
+      "runCursor": "カーソル位置の文を実行",
+      "cancel": "実行を取り消す",
+      "shortcutHint": "Ctrl / Cmd + Enter で全体を実行",
+      "placeholder": "ここに SQL を入力",
+      "batchHint": "バッチに分けて実行するには、GO だけを 1 行に置いてください。GO より前の文が 1 つのバッチの対象になります。セミコロンではバッチは分かれません。",
+      "targetCode": "対象側エラーコード: {code}",
+      "statementFailed": "この文は実行に失敗しました"
+    },
+    "tree": {
+      "filterPlaceholder": "読み込み済みノードを絞り込む",
+      "unconnectableTip": "カタログには表示されますが、このアカウントでは現在接続できません",
+      "switchTo": "切り替え",
+      "truncated": "ノードが多いため先頭 {limit} 件のみ表示しています",
+      "view": "ビュー",
+      "emptyCatalogTitle": "このアカウントからは対象のデータベースが見えません",
+      "emptyCatalogHint": "対象側アカウントの権限をご確認いただくか、管理者へご連絡ください。",
+      "emptyAllowListTitle": "許可リストと参照可能なデータベースに重なりがありません",
+      "emptyAllowListHint": "資産の許可リストの名称（大文字小文字を含む）が対象側の表示と一致しているか、管理者にご確認ください。"
+    },
+    "results": {
+      "emptyTitle": "まだ実行していません",
+      "emptyHint": "上のエディタに SQL を入力し、実行または Ctrl / Cmd + Enter を押してください。",
+      "unitLabel": "{seq} 件目",
+      "unitLabelPending": "未収束の文",
+      "unknownTitle": "この文の実行結果は不明です",
+      "unknownHint": "送信済みですが、接続が切れる前に結果が届きませんでした。効果がなかったとは判断できません。",
+      "copyEventId": "イベント識別子をコピー",
+      "viewAudit": "監査記録を見る",
+      "copied": "コピーしました",
+      "copyFailed": "ブラウザがコピーを許可しません。手動で選択してください",
+      "alert": {
+        "partial": "一部の文が完了した後にエラーが発生しました",
+        "effect_unknown": "この文が反映されたかをサーバーは確認できません"
+      },
+      "truncatedTitle": "結果は {rows} 行で打ち切られました",
+      "truncatedHint": "これは返却上限であり、対象側が計算した行数ではありません。続きを見るにはクエリに LIMIT／OFFSET（MSSQL では OFFSET ... FETCH）を加えて範囲を絞ってください。",
+      "cellTruncatedHint": "列の値が単一列の上限を超えて切り詰められています。",
+      "statusLabel": "ステータス",
+      "reasonLabel": "理由",
+      "rowsAffected": "{n} 行に影響",
+      "rowCount": "{n} 行",
+      "duration": "{ms} ミリ秒",
+      "setLabel": "結果セット {n}",
+      "noRowsTitle": "この文は行を返しませんでした",
+      "noRowsHint": "クエリ以外の文に結果セットはありません。データを期待していた場合は条件をご確認ください。",
+      "runningTitle": "実行中",
+      "runningHint": "対象側の応答が返り次第、結果を表示します。",
+      "failedTitle": "結果セットはありません",
+      "failedHint": "エラー原文はエディタ下のパネルに表示しています。"
+    },
+    "boundary": {
+      "title": "使う前に知っておくこと",
+      "item1": "結果の返却は最大 1,000 行です。画面も書き出しも切り詰めた後の内容です。続きを見るにはクエリに LIMIT/OFFSET を付けてください。",
+      "item2": "「成功」はコミット済みという意味ではありません。トランザクション内の文は COMMIT で有効になり、セッションを閉じるとロールバックされます。",
+      "item3": "MySQL でキャンセルするとこの接続は閉じます。PostgreSQL でデータベースを切り替えると再接続になり、未コミットのトランザクションは失われます。",
+      "item4": "資産に許可データベース一覧が設定されている場合、その一覧にあるデータベースにしか実行できません。",
+      "item5": "ここで送信した文、結果の要約、書き出しのダウンロードはすべて監査記録に残ります。"
+    }
   },
   "shareView": {
     "header": "共有接続の閲覧（読み取り専用）"
@@ -1138,13 +1327,18 @@
     "item2": "クリップボードの強制は guacd 内部で行われるため、本製品はブロックされた試行を観測できず、クリップボード拒否の監査イベントは残りません。ファイル転送の拒否は denied として監査に残ります。",
     "item3": "セッション共有の閲覧者は接続時の接続パラメータを継承し、閲覧者個人の権限は再判定されません。貼り付けを許可された利用者がセッションを共有すると、閲覧者も貼り付けできます。",
     "item4": "K8s ファイルエンドポイントは現在、資産更新権限のみを検証し、接続認可とアクセスポリシー段位を経由しません。本セクションが追加するのはデータ転送判定のみです。",
-    "item5": "端末内で scp、curl、base64 などのコマンドによりデータを持ち出す行為は本セクションの範囲外で、コマンドブロックの責務です。ファイルダウンロードを禁止してもデータが出ていかないことにはなりません。"
+    "item5": "端末内で scp、curl、base64 などのコマンドによりデータを持ち出す行為は本セクションの範囲外で、コマンドブロックの責務です。ファイルダウンロードを禁止してもデータが出ていかないことにはなりません。",
+    "item6": "グラフィカルチャネルでダウンロードが遮断された場合は無言で破棄され、クライアントにはエラー応答が返らず、画面上は反応がないように見えます。アップロードの遮断には明確な拒否が返ります。",
+    "item7": "データベースクエリコンソールの結果表はブラウザ画面に描画されるため、選択してコピーしたり開発者ツールで読み取ったりでき、サーバー側の強制点はありません。本セクションのキーが管理するのはエクスポートのエンドポイントのみで、それが結果の唯一の制御された出口です。"
+  },
+  "bannerText": {
+    "counter": "{count} / {max}"
   },
   "policyNote": {
     "clipboard_send_enabled": "RDP／VNC のみ適用、変更は再接続後に有効",
     "clipboard_recv_enabled": "RDP／VNC のみ適用、変更は再接続後に有効",
     "file_upload_enabled": "SFTP、グラフィカル通信、K8s に適用、ディレクトリ作成を含む、即時有効",
-    "file_download_enabled": "SFTP、グラフィカル通信、K8s に適用、即時有効",
+    "file_download_enabled": "SFTP、グラフィカル通信、K8s、DB コンソールの結果エクスポートに適用、即時有効",
     "file_delete_enabled": "SFTP ファイル管理に適用、即時有効",
     "audit_checkpoint_interval_seconds": "2 つのしきい値は、先に達した方で封印が起きます。連鎖に守られるのは封印された記録だけです。直近の封印から次の封印までのあいだの記録が丸ごと削除された場合、封印が捉えるのは削除後の状態であり、後から手元のデータで気づくことはできません。周期を短くすればこの窓は狭まり、長くすれば広がります。丸ごとの削除は外部ログ収集サーバーに置く外部保管が補います。上限は 86400 秒（24 時間）で、0 は設定できません（封印を実質的に無効化することは認められません）。",
     "audit_checkpoint_row_threshold": "2 つのしきい値は、先に達した方で封印が起きます。連鎖に守られるのは封印された記録だけです。この件数に達した時点で周期を待たずに封印するため、繁忙時間帯でも窓が広がりません。小さくすればこの窓は狭まり、大きくすれば広がります。この窓の記録が丸ごと削除された場合、封印が捉えるのは削除後の状態であり、後から手元のデータで気づくことはできません。この危険は外部ログ収集サーバーに置く外部保管が補います。上限は 1000000 件で、0 は設定できません（封印を実質的に無効化することは認められません）。",
@@ -1153,7 +1347,8 @@
     "audit_chain_verify_rows_per_hour": "内容層は封印済み区間の記録を区間ごとに読み直し、封印された時点で記録された内容と突き合わせながら、この速度で進みます。1 回あたりに実際に走査する件数は、本速度 × 全チェーン検証の周期です。したがって検証周期を変えても全履歴を一巡するのに必要な時間は変わらず、変わるのは 1 回あたりの所要時間だけです。この内容検証が対象とするのは封印済みの区間のみで、未封印の記録は含まれません。その区間はチェックポイントの封印周期が補います。速くすれば一巡は早く終わりますがデータベースの負荷は上がります。遅くすれば一巡は延び、保持期間を超えるほど遅くすると、古い区間は順番が来る前に削除され、その範囲の内容検証は実質的に一度も行われません。下限の 10000 件/時はまさにその点にあたります（十年分が満載の連鎖では一巡におよそ十年かかります）。下限が防ぐのは「極端に小さくして実質的に無効化すること」だけで、絞り方の好みまで決めるものではありません。10000 から 5000000 のあいだは管理者の判断に委ねられます。上限は 5000000 件/時（これ以上は本番データベースが負担しきれません）で、0 は設定できません（スキャンを実質的に無効化することは認められません）。本値の変更は、本システムが監査に対して行う説明（「全履歴をおよそ Y 日ごとに再検証する」）そのものの変更です。",
     "retention_max_per_run": "保持ポリシーは保持日数を超えたデータを毎日削除します。本値は 1 回の実行で、データ種別ごとに削除できる最大件数であり、一度に削除しすぎてデータベースに負荷がかかるのを防ぎます。大きくすると 1 回あたりの削除量が増え、データ量が多い場合や保持日数を短縮した直後でも追いつけます。小さくするとデータベースの負荷は軽くなりますが、期限切れデータが蓄積します。増加の速さが削除の速さを上回り続けると、期限切れデータは残り続けるのに、画面上は毎日削除中と表示されたままになります。下限 5000 件の意味は、1 回分の処理量を下回ると 1 回の実行で 1 回分すら処理できず、削除の速さが実運用のどの増加の速さよりも遅くなるためです。この値を下回ると本機能は単に遅くなるのではなく、意味を失います。処理しきれなかった分は未完了として表示され、翌日に続けて処理されます。",
     "key_rotation_max_per_run": "データ暗号鍵を交換する際、既存の暗号化データは 1 件ずつ新しい鍵で暗号化し直す必要があります。本値は 1 回の実行で処理する最大件数で、1 回の操作にかかる時間を調整します。未処理分は進捗が保持され、再実行すると続きから処理されます。大きくすると 1 回の処理量が増えて全体が早く終わりますが、1 回の操作時間は長くなります。小さくすると 1 回は早く終わりますが、完了までの実行回数が増えます。小さすぎると鍵の交換が実際には永久に完了しないのに、鍵台帳では交換可能と表示されたままになります。下限 500 件の意味は、1 回の読み取り単位を下回ると 1 回の操作で進捗がまったく進まないためです。この値を下回ると本機能は意味を失います。交換中も既存データの読み取りには影響しません。",
-    "k8s_list_timeout_seconds": "コンテナを選ぶ際、実行中の項目一覧をクラスターに要求してから最大どれだけ待つか。超えるとエラーを表示します。大きく：混雑や遠距離のクラスターに余裕ができますが、実際の障害は表示までより長くかかります。小さく：障害は早く表れますが、正常なクラスターが誤判定されることがあります。下限は 3 秒——一度の問い合わせは暗号化接続の確立だけで 1〜2 秒かかることがあり、これを下回ると正常なクラスターまで一斉に接続不可となる一方、資産一覧には表示され続けます。"
+    "k8s_list_timeout_seconds": "コンテナを選ぶ際、実行中の項目一覧をクラスターに要求してから最大どれだけ待つか。超えるとエラーを表示します。大きく：混雑や遠距離のクラスターに余裕ができますが、実際の障害は表示までより長くかかります。小さく：障害は早く表れますが、正常なクラスターが誤判定されることがあります。下限は 3 秒——一度の問い合わせは暗号化接続の確立だけで 1〜2 秒かかることがあり、これを下回ると正常なクラスターまで一斉に接続不可となる一方、資産一覧には表示され続けます。",
+    "login_banner_body": "プレーンテキストとして表示します。HTML やリンクは反映されず、改行はそのまま保たれます。本文を空にすると告知は表示されず、見出しだけが出ることもありません。サインイン前に誰でも読めるため、社内情報は記載しないでください。"
   },
   "fileManager": {
     "mkdir": "ディレクトリを作成",
@@ -2496,6 +2691,7 @@
     "NOTFOUND_CHANGE_SECRET_PLAN": "パスワード変更計画が存在しません",
     "NOTFOUND_CLIPBOARD_EVENT": "クリップボード記録が存在しません",
     "NOTFOUND_COMMAND_ALERT": "アラートが見つかりません",
+    "NOTFOUND_DB_CONSOLE_RESULT": "指定されたクエリ結果が見つかりません",
     "NOTFOUND_EXTERNAL_IDENTITY": "外部 ID が存在しないか、このアカウントに属していません",
     "NOTFOUND_GRANT_REFERENCE": "{entity}が存在しません",
     "NOTFOUND_HOST_KEY": "ホストキーの記録がまだありません（初回接続時に記録されます）",
@@ -2560,6 +2756,16 @@
     "RULE_CONSENT_RISKS_CHANGED": "リスク項目が変更されました。再度ご確認ください",
     "RULE_DAILY_REVIEW_DISABLED": "日次レビュー機能は有効ではありません",
     "RULE_DB_CLIENT_START_FAILED": "データベースクライアントの起動に失敗しました",
+    "RULE_DB_CONSOLE_AUDIT_UNAVAILABLE": "ステートメント記録を書き込めなかったため、実行を拒否しました",
+    "RULE_DB_CONSOLE_BLOCKER_UNAVAILABLE": "コマンドブロック照合器が利用できないため、実行を拒否しました",
+    "RULE_DB_CONSOLE_BUSY": "前回の送信がまだ完了していません",
+    "RULE_DB_CONSOLE_CONNECTION_LOST": "対象データベースとの接続が切断されました",
+    "RULE_DB_CONSOLE_CONNECT_FAILED": "データベース接続を確立できません",
+    "RULE_DB_CONSOLE_DATABASE_NOT_ALLOWED": "対象データベースはこの資産の許可リストにありません",
+    "RULE_DB_CONSOLE_DATABASE_UNAVAILABLE": "対象データベースは現在利用できません",
+    "RULE_DB_CONSOLE_LIMIT_REACHED": "クエリコンソールの同時接続数が上限に達しました。ご自身のコンソールが開いていれば閉じて再試行、なければ時間をおくか管理者へご連絡ください",
+    "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "ステートメントがブロックルールに一致したため、対象データベースへ送信されませんでした",
+    "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "クエリコンソールは mysql、postgres、mssql の資産のみ対応しています",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "エクスポート成果物は現在ダウンロードできません",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "エクスポートジョブは証拠パッケージのみ受け付けます。イベントレポートは同期エクスポートをご利用ください",
     "RULE_K8S_FORBIDDEN": "権限がありません（403）：トークンに当該 namespace の list pods 権限がありません",
@@ -2645,6 +2851,7 @@
     "VALIDATION_APPROVER_SCOPE_ACTOR": "承認者はちょうど 1 つ必要です（approver_id または approver_group_id のいずれか）",
     "VALIDATION_APPROVER_SCOPE_TARGET": "承認範囲の対象はちょうど 1 つ必要です（asset_id / asset_group_id / subject_user_id / subject_group_id のいずれか）",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy は空値（グローバル既定に従う）、open、reason、approval のみ指定できます",
+    "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases はデータベースプロトコル（mysql、postgres、mssql）のみ空以外にできます。各項目は 1〜128 文字、制御文字を含まず重複なし、最大 64 項目です",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode は空値（現状維持）、disable、require、verify-ca、verify-full のみ指定できます",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql のホストにカンマを含めることはできません（接続文字列のポート区切りと競合します）",
     "VALIDATION_ASSET_PROTOCOL": "無効なプロトコルです。ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s のみ対応しています",
@@ -2666,6 +2873,8 @@
     "VALIDATION_CHANNEL_URL": "URL は http または https を指定してください",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "範囲パラメータの形式が不正です（seq は正の整数、日付は YYYY-MM-DD）",
     "VALIDATION_CHECKPOINT_RANGE_REQUIRED": "コンテンツ検証には seq または日付範囲の指定が必要です",
+    "VALIDATION_DB_CONSOLE_GO_COUNT_UNSUPPORTED": "GO の後の繰り返し回数はサポートされていません",
+    "VALIDATION_DB_CONSOLE_STATEMENT_TOO_LARGE": "ステートメントの長さが上限（256 KiB）を超えています",
     "VALIDATION_DECISION_NOTE_REQUIRED": "申請を却下するには理由の入力が必要です",
     "VALIDATION_DISPLAY_NAME": "表示名の形式が正しくありません：最大長は 100 文字で、制御文字や改行は使用できません",
     "VALIDATION_EXEMPT_REQUIRED": "リクエストパラメータが正しくありません：exempt を指定してください",
@@ -2807,6 +3016,8 @@
     "key_rotation_max_per_run": "1 回の再暗号化上限",
     "lockout_duration_minutes": "ロックアウト期間",
     "lockout_max_attempts": "ログイン失敗ロックアウト回数上限",
+    "login_banner_body": "ログイン告知の本文",
+    "login_banner_title": "ログイン告知の見出し",
     "mfa_required": "多要素認証の強制範囲",
     "offsite_local_retention_days": "オフサイト保管後にローカル複製を保持する日数",
     "password_history_count": "パスワード再利用禁止履歴数",

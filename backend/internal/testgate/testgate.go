@@ -36,6 +36,13 @@ const (
 	// EnvGCSEndpoint GCS 模擬器（fake-gcs-server）端點——
 	// 離機儲存 gcs driver 的整合測試靶機（internal/offsite）
 	EnvGCSEndpoint = "TEST_GCS_ENDPOINT"
+	// 查詢主控台的三個資料庫靶機座標（internal/dbconsole 的整合測試）。
+	// 值的形態是 `host|port|user|password|database` 的五段式，**刻意不是連線字串**：
+	// 主控台路徑的紀律是逐欄位組裝設定物件，測試的入口若收一條字串，
+	// 就會有人為了方便把它直接餵進 driver，而那正是該路徑不做的事。
+	EnvDBConsoleMySQL    = "TEST_DBCONSOLE_MYSQL"
+	EnvDBConsolePostgres = "TEST_DBCONSOLE_POSTGRES"
+	EnvDBConsoleMSSQL    = "TEST_DBCONSOLE_MSSQL"
 )
 
 // RequireIntegration 是否要求整合測試必須實際執行

@@ -55,6 +55,10 @@ var driftAllowlist = map[string]bool{
 	"TEST_KMS_ENDPOINT":   true, // KMS 模擬器（localstack）端點
 	"TEST_S3_ENDPOINT":    true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
 	"TEST_GCS_ENDPOINT":   true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
+	// 查詢主控台的三個資料庫靶機座標（五段式 host|port|user|password|database）
+	"TEST_DBCONSOLE_MYSQL":    true,
+	"TEST_DBCONSOLE_POSTGRES": true,
+	"TEST_DBCONSOLE_MSSQL":    true,
 	// compose 拓撲/模式常數（由 compose environment: 提供，見 docker-compose.yml 與 docker-compose.dev.yml）
 	"PORT":     true,
 	"GIN_MODE": true,

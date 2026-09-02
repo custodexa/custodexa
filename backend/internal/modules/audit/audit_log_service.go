@@ -774,6 +774,11 @@ func safeAuditSubstanceFields() map[string]bool {
 		"rdp_security":          true,
 		"access_policy":         true,
 		"sftp_enabled":          true,
+		// 允許資料庫清單同屬存取限制，形態與下方的 allowed_cidrs 逐點相同：
+		// 清空＝查詢主控台的執行目標不再受限，換一組＝把原本可用的庫關在外面。
+		// 少了它，「把限制拿掉」與「改個顯示名稱」在 request_body 面寫出同一列。
+		// 值為資料庫名稱的字串列表——非機密、非自由文字、單層列表
+		"allowed_databases": true,
 
 		// ── 帳號的允許來源網段 ─────────────────────────────────────────
 		// 清單本身就是一道存取控制：清空＝任何位址都進得來，換一組＝把原本的人

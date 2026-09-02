@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -32,6 +33,12 @@ type AlertMatcher struct {
 
 	mu    sync.RWMutex
 	rules []compiledRule
+	// loaded 快取是否反映過一次成功的規則載入。
+	//
+	// **零值為假是這個欄位的重點**：載入失敗時 setRules 不會被呼叫，比對器帶著
+	// 空快取留在原位，而空快取與「一條規則都沒有」在比對結果上完全同形——
+	// 沒有這個欄位，「規則讀不到」就會被讀成「沒有規則要擋」
+	loaded bool
 }
 
 // 套件級單例：比對掛在 proxy.CommandRecorder 的寫入路徑，
@@ -104,8 +111,41 @@ func (m *AlertMatcher) setRules(rules []model.AlertRule) int {
 	compiled := compileRules(rules)
 	m.mu.Lock()
 	m.rules = compiled
+	m.loaded = true
 	m.mu.Unlock()
 	return len(compiled)
+}
+
+// rulesLoaded 快取是否反映過一次成功的載入
+func (m *AlertMatcher) rulesLoaded() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.loaded
+}
+
+// BlockerHealth 阻斷比對面的可用性。
+//
+// 阻斷路徑（查詢主控台）在此回錯時 fail-close：語句不送出、以阻斷態留痕。
+// 告警路徑不看這支——漏一則告警與放行一句該擋的語句不是同一個量級。
+//
+// **「規則載入失敗」與「一條規則都沒有」必須分得開**：兩者的比對結果都是未命中，
+// 差別只在我們知不知道自己在拿一份空的快取。分不開的話，讓規則讀不到就等於
+// 關掉阻斷。
+//
+// 未載入成功過時就地補一次：規則來源恢復後，下一個執行單位即自行復原，
+// 不必等到有人去改規則才觸發刷新。重新載入失敗即回錯，那是誠實的答案。
+// 已成功載入過而後續刷新失敗者視為可用——快取仍是一份完整的規則集，
+// 只是可能不含最近一次變更（該情形另由 ReloadAlertMatcher 記錄）
+func (m *AlertMatcher) BlockerHealth() error {
+	if m.rulesLoaded() {
+		return nil
+	}
+	if m.db == nil {
+		// 規則來源沒接上就是不可用。**不得往下走**：這支的呼叫端在會話的
+		// goroutine 上，一次 nil 解引用會帶走整個行程
+		return errors.New("告警規則來源未設定")
+	}
+	return m.LoadRules()
 }
 
 // LoadRules 從 DB 全量載入規則並重建快取

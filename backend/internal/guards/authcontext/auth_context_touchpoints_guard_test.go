@@ -149,6 +149,10 @@ var authContextTouchpoints = []authContextTouchpoint{
 			"取出 grant 後須複查 provider 啟用與世代。此處呼叫帶原因的版本——" +
 			"**判定本體逐字不變**（RedeemConnectToken 即以本方法實作），多回傳的原因只供審計分辨" +
 			"票證無效／過期；對外回應仍收斂為同一則「token 無效」，不給票證存在性探測面"},
+	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/dbconsole_handler.go", fn: "Handler.HandleDBConsole", count: 1,
+		source: "查詢主控台兌換（與 HandleSSH 同一份判定、同一張閘序表）：取出 grant 後" +
+			"由 G-S3／G-S4 複查角色與憑證世代。原因只供審計分辨票證無效／過期，" +
+			"對外仍收斂為同一則「token 無效」"},
 	{symbol: "RedeemConnectTokenWithReason", file: "internal/proxy/connect_token.go", fn: "ConnectTokenManager.RedeemConnectToken", count: 1,
 		source: "**同一份判定的唯一實作**：RedeemConnectToken 即以本方法實作，故兩條兌換路徑" +
 			"不可能分化成「回應說無效、審計說過期」。本列釘住那個委派仍在——被拆成兩份實作時轉紅"},
@@ -173,7 +177,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// 以下每項皆為「該路由群組經 AuthMiddleware 驗證 access token 與世代」；
 	// 脈絡來源一律為 JWT claims，由中介層寫入 gin context 供下游簽發點取用。
 	// 新增路由群組時須在此登記——登記動作本身即是「這組路由要不要掛認證」的覆核點。
-	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 5},
+	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 6},
 	{symbol: "AuthMiddleware", file: "internal/api/access_request_handler.go", fn: "AccessRequestHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/access_review_handler.go", fn: "AccessReviewHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/alert_rule_handler.go", fn: "AlertRuleHandler.RegisterRoutes", count: 1},

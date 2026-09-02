@@ -81,6 +81,11 @@ func TestAccessLogNeverContainsCredentialPlaintext(t *testing.T) {
 			masked: "token=" + QueryValueMask,
 		},
 		{
+			name:   "以 jwt 命名的長效登入憑證",
+			target: "/api/v1/db-console?jwt=" + secretSentinel,
+			masked: "jwt=" + QueryValueMask,
+		},
+		{
 			name:   "OIDC 授權碼",
 			target: "/api/v1/auth/oidc/callback?code=" + secretSentinel + "&state=x",
 			masked: "code=" + QueryValueMask,

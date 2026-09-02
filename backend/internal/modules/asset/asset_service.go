@@ -8,6 +8,8 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
@@ -39,6 +41,10 @@ var (
 	ErrInvalidDBTLSMode = errors.New("db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full")
 	// ErrInvalidProtocol 無效的協議
 	ErrInvalidProtocol = errors.New("無效的協議，僅支援 ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s")
+	// ErrInvalidAllowedDatabases 允許資料庫清單的格式或適用協議不合。
+	// 儲存時**不連線目標端驗證名稱是否存在**——那會開出一條非會話的憑證解封路徑，
+	// 與唯一解封點的紀律衝突；名稱寫錯的後果是主控台樹呈現交集為空的專屬空態
+	ErrInvalidAllowedDatabases = errors.New("allowed_databases 僅資料庫協議（mysql、postgres、mssql）可為非空；每項須為 1 至 128 字元、不含控制字元且不重複，至多 64 項")
 	// ErrMSSQLHostComma mssql 主機含逗號：sqlcmd 的 -S host,port
 	// 以逗號分隔埠，host 內含逗號會被解讀成埠。只擋 mssql，不動 localpty.SafeArg
 	// 的通用語義（逗號對其餘協議合法）
@@ -207,6 +213,9 @@ type CreateAssetRequest struct {
 	DBTLSMode string `json:"db_tls_mode"` // ''/disable/require/verify-ca
 	DBCACert  string `json:"db_ca_cert"`  // verify-ca 用 CA（PEM，選填）
 
+	// AllowedDatabases 查詢主控台的執行目標限制（空＝不限制；僅三個 SQL 協議可非空）
+	AllowedDatabases model.StringList `json:"allowed_databases"`
+
 	// K8s exec 目標（k8s-exec；僅 protocol=k8s，Token 走 Password 欄加密儲存）
 	// 連線時選 pod：namespace 必填，pod/container 選填（保留以相容舊資料）
 	K8sNamespace       string `json:"k8s_namespace"`
@@ -251,6 +260,10 @@ type UpdateAssetRequest struct {
 	DBName    *string `json:"db_name"`
 	DBTLSMode *string `json:"db_tls_mode"`
 	DBCACert  *string `json:"db_ca_cert"`
+
+	// AllowedDatabases nil＝不動、空陣列＝清空。
+	// **協議改離三個 SQL 協議時本欄不論給不給，伺服端一律清空**（見 Update）
+	AllowedDatabases *model.StringList `json:"allowed_databases"`
 
 	// K8s exec 目標（k8s-exec）
 	K8sNamespace       *string `json:"k8s_namespace"`
@@ -299,6 +312,51 @@ func validateDBTLSMode(v string) error {
 	}
 }
 
+// 允許資料庫清單的上限（單一定義點；DB 欄為 text 無長度約束，
+// 上限的目的是讓管理面與查詢主控台的交集運算有可預期的規模）。
+const (
+	// maxAllowedDatabases 清單項數上限
+	maxAllowedDatabases = 64
+	// maxAllowedDatabaseNameLen 單項字元數上限，取資產 db_name 欄的同一寬度
+	maxAllowedDatabaseNameLen = 128
+)
+
+// validateAllowedDatabases 允許資料庫清單的格式與適用協議。
+//
+// **不做任何正規化**（不 trim、不折大小寫、不排序）：本清單的比對對象是目標端
+// 目錄回傳的名稱，而資料庫名稱在各方言的大小寫語義不同，也允許前後空白。
+// 在我方任一側動手都會製造只在某些方言上出現的誤判——寫進去什麼就存什麼，
+// 不符的後果由主控台的空態文案負責解釋。
+func validateAllowedDatabases(protocol model.ProtocolType, list model.StringList) error {
+	if len(list) == 0 {
+		return nil
+	}
+	if !protocol.SupportsQueryConsole() {
+		return ErrInvalidAllowedDatabases
+	}
+	if len(list) > maxAllowedDatabases {
+		return ErrInvalidAllowedDatabases
+	}
+	seen := make(map[string]bool, len(list))
+	for _, name := range list {
+		if name == "" || utf8.RuneCountInString(name) > maxAllowedDatabaseNameLen {
+			return ErrInvalidAllowedDatabases
+		}
+		for _, r := range name {
+			// 控制字元進了清單就只能靠 DB 直查才看得出來，而它永遠比對不上任何
+			// 目標端回傳的名稱——症狀是一個看起來設好了卻永遠空的樹
+			if unicode.IsControl(r) {
+				return ErrInvalidAllowedDatabases
+			}
+		}
+		if seen[name] {
+			return ErrInvalidAllowedDatabases
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
 // validateMSSQLHost mssql 資產主機欄的協議專屬驗證。非 mssql 一律放行。
 func validateMSSQLHost(protocol model.ProtocolType, host string) error {
 	if protocol == model.ProtocolMSSQL && strings.Contains(host, ",") {
@@ -321,6 +379,9 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		return nil, err
 	}
 	if err := validateDBTLSMode(req.DBTLSMode); err != nil {
+		return nil, err
+	}
+	if err := validateAllowedDatabases(req.Protocol, req.AllowedDatabases); err != nil {
 		return nil, err
 	}
 	if err := validateMSSQLHost(req.Protocol, req.Host); err != nil {
@@ -373,6 +434,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		DBName:             req.DBName,
 		DBTLSMode:          req.DBTLSMode,
 		DBCACert:           req.DBCACert,
+		AllowedDatabases:   req.AllowedDatabases,
 		K8sNamespace:       req.K8sNamespace,
 		K8sPod:             req.K8sPod,
 		K8sContainer:       req.K8sContainer,
@@ -962,6 +1024,24 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	}
 	if req.DBCACert != nil {
 		asset.DBCACert = *req.DBCACert
+	}
+
+	// 允許資料庫清單。**顯式提供的值以套用後的最終協議驗證**：協議與清單可能在
+	// 同一次更新中一起變動，各自在自己的分支內驗會放行「協議改成 ssh、清單照樣送
+	// 非空」這種組合。驗不過即整筆更新失敗，資產不動
+	if req.AllowedDatabases != nil {
+		if err := validateAllowedDatabases(asset.Protocol, *req.AllowedDatabases); err != nil {
+			return nil, err
+		}
+		asset.AllowedDatabases = *req.AllowedDatabases
+	}
+	// **協議改離三個 SQL 協議時清空殘值**，不論本次請求有沒有帶這個欄位。
+	// 保留休眠態是把缺口制度化：殘值在協議改回時靜默恢復一份沒人記得設過的限制，
+	// 症狀是使用者只看到空樹而無從解釋。清單重建成本至多 64 個名稱，
+	// 靜默恢復的排查成本沒有上界。清空是事實，故寫進該次更新的審計
+	// （判定與留痕同在 writeAssetChangeAudit，見該函式）
+	if !asset.Protocol.SupportsQueryConsole() && len(asset.AllowedDatabases) > 0 {
+		asset.AllowedDatabases = model.StringList{}
 	}
 
 	if req.K8sNamespace != nil {

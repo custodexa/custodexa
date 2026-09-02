@@ -55,6 +55,11 @@ var gateJudgmentCalls = map[string]bool{
 // 完整答案，沒有第二份。
 var gateUnsealAllowlist = map[string]string{
 	"internal/sshproxy/handler.go#HandleSSH": "SSH 兌換入口的固定解封點；另受 betweenStages 位置斷言約束",
+	"internal/sshproxy/dbconsole_handler.go#HandleDBConsole": "查詢主控台兌換入口的固定解封點，" +
+		"位置與 HandleSSH 同構（兩階段之間）；閘序表逐字共用，只多兩道主控台專屬閘",
+	"internal/sshproxy/dbconsole_handler.go#switchByReconnect": "PostgreSQL 切庫＝關閉並重連，" +
+		"而重連是一次新的連線建立：**重跑整段閘序後**才解封。不重跑等於以一張已兌換的票" +
+		"再開一條連線，授權在這段期間可能已被撤銷。解封位置同樣夾在兩階段之間",
 	"internal/proxy/handler.go#HandleConnect": "guacd 兌換入口的固定解封點（GetWithCredentialsForAccount）；" +
 		"同函式另有 GetSftpPassword＝VNC SFTP 側車憑證，位置在 AuthorizeResolvedAccount 之後" +
 		"（授權已完成才解封，不違反收口方向）",

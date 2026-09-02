@@ -54,6 +54,8 @@ const BACKEND_MECHANISMS = [
   'audit_write', 'syslog_forward',
   'recording_probe', 'recording_text', 'recording_graphics',
   'session_record', 'kek_retirement', 'aad_residue',
+  // 指令阻斷比對器不可用（查詢主控台的 fail-close）
+  'command_blocking',
   // audit-checkpoint-chain：檢查點離機錨定失效（不與 syslog_forward 合併——
   // 前者的證據缺口不可回溯，後者恢復即補回）
   'checkpoint_anchor',
@@ -133,6 +135,8 @@ const BACKEND_CAUSES = [
   'recording_metadata_update_failed',
   'recording_file_missing',
   'session_record_create_failed',
+  'command_audit_write_refused',
+  'command_blocker_unavailable',
   'audit_write_fallback_file',
   'audit_write_batch_dropped',
   'audit_write_sync_refused',
@@ -199,9 +203,9 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   )
 
-  it('AUDIT_CAUSES 與後端 27 失效原因互為全集', () => {
+  it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(28)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(30)
   })
 
   it.skipIf(!backendSourcePath)(

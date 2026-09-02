@@ -116,6 +116,7 @@
     "offsiteStorage": "Offsite storage"
   },
   "login": {
+    "bannerRegionLabel": "Login notice",
     "usernamePlaceholder": "Username",
     "passwordPlaceholder": "Password",
     "loginButton": "Sign In",
@@ -175,8 +176,8 @@
       "oidc_provider_error": "You may have cancelled the authorization, or the provider rejected this sign-in. You can start again.",
       "oidc_flow_invalid": "Sign-in links are single-use and time-limited. Please start the sign-in again."
     },
-    "insecureTransportTitle": "Your sign-in was not saved",
-    "insecureTransportBody": "This site is open over http, while the system is set to keep sign-in only on https connections, so you have to sign in again about every 15 minutes. Please pass this on to your system administrator; once signed in, they will see how to handle it on the Security Policies page."
+    "insecureTransportTitle": "Security notice: sign-in will not be kept",
+    "insecureTransportBody": "This site is opened over http, so sign-in state is not kept (re-login every 15 minutes)."
   },
   "api": {
     "requestFailed": "Request failed",
@@ -313,6 +314,7 @@
       "recording_text": "Text Recording",
       "recording_graphics": "Graphics Recording",
       "session_record": "Session Record",
+      "command_blocking": "Command blocking matcher",
       "kek_retirement": "KEK Retirement Convergence",
       "aad_residue": "AAD ciphertext residue",
       "checkpoint_anchor": "Checkpoint off-box copy",
@@ -337,6 +339,8 @@
       "audit_write_fallback_file": "Audit batch write failed; fell back to file",
       "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
       "audit_write_sync_refused": "Synchronous audit write failed; the access was refused (content not delivered)",
+      "command_audit_write_refused": "Synchronous statement record write failed; the statement was refused",
+      "command_blocker_unavailable": "The command blocking matcher is unavailable; the statement was refused",
       "syslog_connect_failed": "Syslog forwarding connection failed",
       "syslog_buffer_overflow": "Syslog forwarding buffer overflow",
       "kek_retirement_backlog": "KEK retirement backlog not converged",
@@ -443,6 +447,34 @@
     },
     "commandAlertReason": {
       "audit_degraded_span": "A stretch of rounds in this session could not be reconstructed (degraded span)."
+    },
+    "resultStatus": {
+      "running": "Running",
+      "ok": "Succeeded",
+      "error": "Failed",
+      "partial": "Partially applied",
+      "blocked": "Blocked",
+      "cancelled": "Cancelled",
+      "timeout": "Timed out",
+      "effect_unknown": "Outcome unknown"
+    },
+    "resultReason": {
+      "matcher_hit": "Matched a blocking rule",
+      "matcher_unavailable": "Blocking matcher unavailable",
+      "error_after_results": "Failed after some statements had completed",
+      "cancel_confirmed": "Cancellation confirmed by the target",
+      "batch_stopped": "Previous batch failed; this batch was never sent",
+      "timeout_confirmed": "Timed out, cancellation confirmed by the target",
+      "cancel_unconfirmed": "Cancellation not confirmed by the target",
+      "timeout_unconfirmed": "Timed out without confirmation from the target",
+      "connection_lost": "Connection lost after the statement was sent",
+      "cell_truncated": "A cell exceeded the size limit and was truncated"
+    },
+    "txState": {
+      "none": "No transaction",
+      "active": "Transaction open",
+      "failed": "Transaction failed",
+      "unknown": "Unknown"
     }
   },
   "policyValue": {
@@ -462,6 +494,10 @@
       "login_lock": {
         "title": "Sign-In and Lockout",
         "hint": "Account lockout after consecutive failed sign-ins (PCI 8.3.4)"
+      },
+      "login_banner": {
+        "title": "Login Notice",
+        "hint": "Text shown on the sign-in page before credentials are entered"
       },
       "password": {
         "title": "Password Policy",
@@ -731,7 +767,18 @@
     "pendingInfoTitle": "Request Under Review",
     "viewMyRequests": "View My Requests",
     "inheritPolicy": "Follow global setting",
-    "inheritPolicyWithCurrent": "Follow global setting (currently: {value})"
+    "inheritPolicyWithCurrent": "Follow global setting (currently: {value})",
+    "allowedDatabases": "Allowed databases",
+    "allowedDatabasesPlaceholder": "Leave empty for no restriction",
+    "allowedDatabasesScopeHint": "Restricts query console targets only; command-line sessions are unaffected by this field.",
+    "allowedDatabasesCaseHint": {
+      "mysql": "Enter names exactly as the target catalog shows them; whether MySQL is case-sensitive depends on the server setting.",
+      "postgres": "Enter names exactly as the target catalog shows them; PostgreSQL folds unquoted identifiers to lower case.",
+      "mssql": "Enter names exactly as the target catalog shows them; SQL Server compares by server collation while the catalog keeps the original casing."
+    },
+    "allowedDatabasesClearTitle": "Switching protocol clears the allowed list",
+    "allowedDatabasesClearConfirm": "This asset has {n} allowed database(s). Switching to another protocol clears the list, and switching back does not restore it.",
+    "allowedDatabasesClearOk": "Clear and save"
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history",
@@ -760,7 +807,8 @@
     "emptyActiveHint": "All users are offline",
     "emptyHistoryTitle": "No matching history",
     "emptyHistoryHint": "Adjust the filters or check again after a session has closed",
-    "accountColumn": "Account"
+    "accountColumn": "Account",
+    "consoleBadge": "Console"
   },
   "sessionDetail": {
     "title": "Session Details",
@@ -783,6 +831,7 @@
     "unsupportedSubtitle": "Online playback is not yet supported for the {protocol} protocol",
     "commandsTitle": "Command Records",
     "commandsNote": "Reconstructed from keystrokes; recordings are authoritative",
+    "consoleCommandsNote": "Recorded when each statement is submitted, not reconstructed from keystrokes",
     "commandCount": "{n} total",
     "seqColumn": "Seq",
     "noRecordingContent": "This session has no recording",
@@ -823,7 +872,17 @@
     "clipboardDecryptButton": "Decrypt and view",
     "clipboardLockedHint": "The content is stored encrypted. Select Decrypt and view to decrypt and display it; the access is recorded.",
     "clipboardAccessLogged": "This access has been recorded ({time})",
-    "offsiteStatus": "Offsite copy"
+    "offsiteStatus": "Offsite copy",
+    "consoleRecordingNote": "This recording is a statement transcript and contains no result data; error messages may include data fragments.",
+    "targetDatabaseColumn": "Target database",
+    "resultStatusColumn": "Result status",
+    "resultReasonColumn": "Reason",
+    "resultRowsColumn": "Rows",
+    "durationColumn": "Duration",
+    "durationMs": "{n} ms",
+    "eventIdColumn": "Event ID",
+    "resultUnsettled": "Result unknown (not recorded)",
+    "rowsAffected": "{n} row(s) affected"
   },
   "myConnections": {
     "headerDesc": "Review your own session records",
@@ -897,7 +956,7 @@
     "integrityRangeRequired": "Select a verification date range"
   },
   "commands": {
-    "headerDesc": "Search SSH command records across sessions (reconstructed from keystrokes; recordings are authoritative)",
+    "headerDesc": "Search command and statement records across connections. Command-line entries are reconstructed from keystrokes and recordings are authoritative; query console statements are recorded when submitted.",
     "keyword": "Keyword",
     "keywordPlaceholder": "Search command content",
     "commandColumn": "Command",
@@ -917,7 +976,20 @@
       "bannerAtLeast": "This range holds at least {n} round(s) that could not be reconstructed (counted over the {limit} most recent records). They carry no command text, so keyword search never covers them.",
       "bannerUnknown": "This range may hold rounds that could not be reconstructed. Such rounds carry no command text, so keyword search never covers them.",
       "bannerClear": "Clear the keyword and show every round"
-    }
+    },
+    "sourceFilter": "Source",
+    "source": {
+      "console": "Query console",
+      "cli": "Command line"
+    },
+    "targetDatabaseFilter": "Target database",
+    "targetDatabasePlaceholder": "Database name",
+    "targetDatabaseColumn": "Target database",
+    "resultStatusColumn": "Result status",
+    "resultStatusFilter": "Result status",
+    "errorCodeFilter": "Error code",
+    "errorCodePlaceholder": "Target error code",
+    "errorCodeColumn": "Error code"
   },
   "alerts": {
     "title": "Command Alerts",
@@ -1068,7 +1140,124 @@
     "downloadPrompt": "Which file should be downloaded from {pod}/{container}?",
     "downloadTitle": "Download File",
     "downloaded": "Downloaded {name}",
-    "downloadFailed": "Failed to download (file missing or permission denied)"
+    "downloadFailed": "Failed to download (file missing or permission denied)",
+    "console": "Console",
+    "openConsole": "Open query console",
+    "consoleTabTip": "Query console connection",
+    "accessLockedTip": "This host requires an access request before you can connect. Submit one from the assets page.",
+    "accessPendingTip": "Your access request is under review. You can connect here once it is approved.",
+    "closeUnsettledTitle": "Closing the tab ends the connection",
+    "closeUnsettledMessage": "{n} console tab(s) have statements with unknown results or uncommitted transactions. Closing ends the connection; every submitted statement has already been written to the audit record.",
+    "closeUnsettledConfirm": "Close tab"
+  },
+  "dbConsole": {
+    "connecting": "Connecting...",
+    "errorTitle": "Connection failed",
+    "disconnectedTitle": "Connection closed",
+    "reconnect": "Reconnect",
+    "reconnectedTitle": "Reconnected as a new session",
+    "reconnectedHint": "Previous results have been cleared; the editor content is kept.",
+    "disconnected": "The database connection has ended",
+    "tokenFailed": "Could not obtain connection authorization",
+    "connectFailed": "Could not connect. Check the asset settings and your permissions",
+    "databasePlaceholder": "Select a database",
+    "closed": {
+      "target_closed": "The target database closed this connection",
+      "slow_consumer": "Results could not be delivered fast enough, so the connection ended",
+      "idle_timeout": "The connection ended after being idle too long",
+      "max_duration": "The connection reached its maximum duration and ended",
+      "terminated": "This connection was terminated (by an administrator, a revoked grant, or the asset being disabled)",
+      "client_gone": "The connection was closed"
+    },
+    "export": "Export CSV",
+    "exportTip": "Exports the result set on screen (subject to the row limit). The query is not run again.",
+    "exportEscapeNote": "Text cells beginning with =, +, -, {'@'}, Tab or CR are prefixed with a single quote on export to prevent spreadsheet formula injection; plain numeric values are unaffected.",
+    "exportDisabled": {
+      "noResult": "There is no result to export",
+      "sessionEnded": "The connection has ended and the cached result was released",
+      "notLatest": "Only the most recent execution can be exported",
+      "policy": "The current policy does not allow exporting. An administrator can enable it under Access Control > Download files from asset."
+    },
+    "exportFailed": "Export failed",
+    "restricted": {
+      "database_not_allowed": "The current database is not on this asset's allow list",
+      "database_drift_denied": "A statement switched the connection to a database outside the allow list"
+    },
+    "restrictedHint": "Statements sent in this state are rejected. Pick a database from the allow list above.",
+    "tx": {
+      "active": "Transaction open (not committed)",
+      "failed": "The transaction is in a failed state",
+      "failedMssql": "The transaction can no longer be committed",
+      "failedHint": "Run ROLLBACK yourself before continuing; the system will not send that statement for you."
+    },
+    "resendConfirmTitle": "Send this statement again?",
+    "resendConfirmMessage": "The outcome of the previous identical statement is unknown, so sending it again may apply the same effect twice. Its outcome is kept in the audit record.",
+    "resendConfirmOk": "Send anyway",
+    "switchConfirmTitle": "Switch database?",
+    "switchConfirmMessage": "Switching to {database} opens a new connection and closes the current one.",
+    "switchConfirmMessageTx": "Switching to {database} opens a new connection; the uncommitted transaction goes away with the old one.",
+    "switchConfirmOk": "Switch",
+    "editor": {
+      "run": "Run",
+      "runSelection": "Run selection",
+      "runCursor": "Run statement at cursor",
+      "cancel": "Cancel",
+      "shortcutHint": "Ctrl / Cmd + Enter runs everything",
+      "placeholder": "Type SQL here",
+      "batchHint": "To run in batches, put GO alone on its own line; the statements before it form one batch. Semicolons do not split batches.",
+      "targetCode": "Target error code: {code}",
+      "statementFailed": "The statement did not run successfully"
+    },
+    "tree": {
+      "filterPlaceholder": "Filter loaded nodes",
+      "unconnectableTip": "The catalog lists this database, but this account cannot connect to it right now",
+      "switchTo": "Switch",
+      "truncated": "Too many nodes; showing the first {limit}",
+      "view": "view",
+      "emptyCatalogTitle": "This account sees no databases on the target",
+      "emptyCatalogHint": "Check the target account permissions, or contact an administrator.",
+      "emptyAllowListTitle": "The allow list and the visible databases do not overlap",
+      "emptyAllowListHint": "Ask an administrator to check the allow list names on the asset, including letter case, against what the target shows."
+    },
+    "results": {
+      "emptyTitle": "Nothing has been run yet",
+      "emptyHint": "Type SQL in the editor above, then press Run or Ctrl / Cmd + Enter.",
+      "unitLabel": "Statement {seq}",
+      "unitLabelPending": "Unsettled statement",
+      "unknownTitle": "The outcome of this statement is unknown",
+      "unknownHint": "It was sent, but no result arrived before the connection dropped. Do not assume it had no effect.",
+      "copyEventId": "Copy event ID",
+      "viewAudit": "View audit record",
+      "copied": "Copied",
+      "copyFailed": "The browser blocked copying; select the text manually",
+      "alert": {
+        "partial": "The error happened after some statements had already completed",
+        "effect_unknown": "The server cannot confirm whether this took effect"
+      },
+      "truncatedTitle": "Results were truncated at {rows} rows",
+      "truncatedHint": "That is a delivery limit, not the number of rows the target computed. To see more, narrow the query with LIMIT/OFFSET (OFFSET ... FETCH on MSSQL).",
+      "cellTruncatedHint": "A cell also exceeded the per-cell limit and was truncated.",
+      "statusLabel": "Status",
+      "reasonLabel": "Reason",
+      "rowsAffected": "{n} row(s) affected",
+      "rowCount": "{n} rows",
+      "duration": "{ms} ms",
+      "setLabel": "Result set {n}",
+      "noRowsTitle": "This statement returned no rows",
+      "noRowsHint": "Non-query statements have no result set; if you expected data, check the query conditions.",
+      "runningTitle": "Running",
+      "runningHint": "Results appear once the target responds.",
+      "failedTitle": "No result set",
+      "failedHint": "The error text is shown in the panel below the editor."
+    },
+    "boundary": {
+      "title": "Before you start",
+      "item1": "Results return at most 1,000 rows. Both the screen and the export show the truncated content. Add LIMIT/OFFSET to your query to see more.",
+      "item2": "\"Succeeded\" does not mean committed. A statement inside a transaction takes effect at COMMIT, and closing the session rolls it back.",
+      "item3": "Cancelling on MySQL closes this connection. Switching database on PostgreSQL reconnects, and an uncommitted transaction is gone.",
+      "item4": "When the asset has an allowed database list, you can only run against the databases on that list.",
+      "item5": "Every statement sent here, every result summary and every export download goes into the audit record."
+    }
   },
   "shareView": {
     "header": "Shared Session Viewing (Read-Only)"
@@ -1138,13 +1327,18 @@
     "item2": "Clipboard enforcement happens inside guacd, so this product never sees the blocked attempt and clipboard denials produce no audit event. File transfer denials do produce a denied audit record.",
     "item3": "Session share viewers inherit the connection parameters of the session and are not evaluated against their own grants: a user allowed to paste who shares the session lets the viewer paste too.",
     "item4": "K8s file endpoints currently check only the asset update permission, bypassing connect authorization and access policy tiers. This section adds only the data transfer check.",
-    "item5": "Data taken out from inside a terminal via scp, curl or base64 is out of scope here and belongs to command blocking: disabling file download does not mean data cannot leave."
+    "item5": "Data taken out from inside a terminal via scp, curl or base64 is out of scope here and belongs to command blocking: disabling file download does not mean data cannot leave.",
+    "item6": "A blocked download on the graphical channel is discarded silently: the client receives no error response and simply sees nothing happen. A blocked upload does get an explicit rejection.",
+    "item7": "The result grid of the database query console is rendered in the browser and can be selected, copied or read with developer tools; there is no server-side enforcement point. The only thing these keys govern is the export endpoint, the single controlled exit for results."
+  },
+  "bannerText": {
+    "counter": "{count} / {max}"
   },
   "policyNote": {
     "clipboard_send_enabled": "RDP/VNC only; takes effect on reconnect",
     "clipboard_recv_enabled": "RDP/VNC only; takes effect on reconnect",
     "file_upload_enabled": "SFTP, graphical channels and K8s; includes create directory; takes effect immediately",
-    "file_download_enabled": "SFTP, graphical channels and K8s; takes effect immediately",
+    "file_download_enabled": "SFTP, graphical channels, K8s and DB console result exports; takes effect immediately",
     "file_delete_enabled": "SFTP file manager; takes effect immediately",
     "audit_checkpoint_interval_seconds": "Whichever of the two thresholds is reached first triggers sealing. Only records that have been sealed are protected by the chain: if a record created between the last sealing and the next is deleted outright, sealing captures the state after the deletion and it cannot be discovered afterwards from local data. A shorter interval narrows that window, a longer one widens it; outright deletion has to be carried by the off-box copy held on the external log collector. The maximum is 86400 seconds (24 hours), and it cannot be set to 0, because sealing must not be effectively turned off.",
     "audit_checkpoint_row_threshold": "Whichever of the two thresholds is reached first triggers sealing. Only records that have been sealed are protected by the chain: once this many records have accumulated, sealing happens early rather than waiting out the full interval, so the window does not widen during busy periods. A lower value narrows that window, a higher one widens it; if a record in the window is deleted outright, sealing captures the state after the deletion and it cannot be discovered afterwards from local data, so that risk is carried by the off-box copy held on the external log collector. The maximum is 1000000 records, and it cannot be set to 0, because sealing must not be effectively turned off.",
@@ -1153,7 +1347,8 @@
     "audit_chain_verify_rows_per_hour": "The content layer re-reads the records in sealed intervals and checks them against what was recorded when the interval was sealed, advancing at this rate: the entries actually scanned per run are this rate multiplied by the full-chain verification interval, so changing that interval does not change how long it takes to work through all history — only how long each run takes. This content verification covers sealed intervals only — records not yet sealed are not included, and that window is carried by the checkpoint sealing interval. A higher rate completes a pass sooner at a higher load on the database; a lower one takes longer, and once a pass takes longer than the retention period, old intervals are removed before their turn ever comes and content verification of that stretch of history effectively never runs. The minimum of 10000 entries/hour sits exactly at that point (on a fully loaded ten-year chain a pass takes about ten years). The minimum only blocks \"turned down so far it is effectively off\"; it does not decide the throttling preference for the administrator, who still chooses freely between 10000 and 5000000. The maximum is 5000000 entries/hour (beyond that the load on a production database is more than it can carry), and it cannot be set to 0, because scanning must not be effectively turned off. Changing this value changes what this system states to auditors (\"all history is re-verified roughly every Y days\").",
     "retention_max_per_run": "The retention policy removes data past its retention period daily. This value caps how many records each run may delete per data class, so no single run overloads the database. Raise it to clear more per run, which is what lets cleanup catch up when data volume is high or a retention period was just shortened; lower it to ease database load, at the cost of expired data accumulating. If data arrives faster than it is cleared, expired data stays indefinitely while the screen still reports daily cleanup. A 5,000-record floor applies because that is one batch: below it a run cannot finish even a single batch, so the clearing rate falls below the arrival rate of any real deployment — under this value the mechanism stops working rather than merely running slower. Whatever is left is marked incomplete and resumes the next day.",
     "key_rotation_max_per_run": "When the data encryption key is replaced, existing encrypted data must be re-encrypted record by record. This value caps how many records each run processes, controlling how long one operation takes. Unprocessed records keep their progress, and running again resumes from there. Raise it to process more per run and finish sooner overall, at the cost of longer individual runs; lower it for shorter runs that need more repetitions. Set too low, key replacement can never actually finish, while the key inventory still offers replacement. A 500-record floor applies because that is one read unit: below it a single operation makes no progress at all — under this value the mechanism stops working. Reading existing data is unaffected throughout.",
-    "k8s_list_timeout_seconds": "When picking a container, this is how long to wait for the cluster's list of running items. Time out and you get an error. Higher: busy or distant clusters get more time, but a real outage takes longer to surface. Lower: outages surface faster, but healthy clusters may be misjudged. Floor is 3s — a single query can spend a second or two just setting up the encrypted connection; below that even healthy clusters all become unreachable while still listed among your assets."
+    "k8s_list_timeout_seconds": "When picking a container, this is how long to wait for the cluster's list of running items. Time out and you get an error. Higher: busy or distant clusters get more time, but a real outage takes longer to surface. Lower: outages surface faster, but healthy clusters may be misjudged. Floor is 3s — a single query can spend a second or two just setting up the encrypted connection; below that even healthy clusters all become unreachable while still listed among your assets.",
+    "login_banner_body": "Shown as plain text: HTML and links are not rendered; line breaks are kept. Leave the text empty and no notice appears; the heading never shows on its own. Anyone can read it before signing in, so keep internal information out of it."
   },
   "fileManager": {
     "mkdir": "New Directory",
@@ -2496,6 +2691,7 @@
     "NOTFOUND_CHANGE_SECRET_PLAN": "Change-secret plan not found",
     "NOTFOUND_CLIPBOARD_EVENT": "Clipboard record not found",
     "NOTFOUND_COMMAND_ALERT": "Alert not found",
+    "NOTFOUND_DB_CONSOLE_RESULT": "The requested query result was not found",
     "NOTFOUND_EXTERNAL_IDENTITY": "The external identity does not exist or does not belong to this account",
     "NOTFOUND_GRANT_REFERENCE": "{entity} does not exist",
     "NOTFOUND_HOST_KEY": "No host key recorded yet (recorded on first connection)",
@@ -2560,6 +2756,16 @@
     "RULE_CONSENT_RISKS_CHANGED": "The risk items have changed; please confirm again",
     "RULE_DAILY_REVIEW_DISABLED": "The daily review feature is not enabled",
     "RULE_DB_CLIENT_START_FAILED": "Failed to start the database client",
+    "RULE_DB_CONSOLE_AUDIT_UNAVAILABLE": "The statement record could not be written, so execution was refused",
+    "RULE_DB_CONSOLE_BLOCKER_UNAVAILABLE": "The command blocking matcher is unavailable, so execution was refused",
+    "RULE_DB_CONSOLE_BUSY": "The previous submission has not finished",
+    "RULE_DB_CONSOLE_CONNECTION_LOST": "The connection to the target database was lost",
+    "RULE_DB_CONSOLE_CONNECT_FAILED": "The database connection could not be established",
+    "RULE_DB_CONSOLE_DATABASE_NOT_ALLOWED": "The target database is not on this asset's allow list",
+    "RULE_DB_CONSOLE_DATABASE_UNAVAILABLE": "The target database is currently unavailable",
+    "RULE_DB_CONSOLE_LIMIT_REACHED": "Query console connections have reached the concurrent limit. Close one of your own consoles to try again, or wait and retry, or contact an administrator",
+    "RULE_DB_CONSOLE_STATEMENT_BLOCKED": "The statement matched a blocking rule and was not sent to the target database",
+    "RULE_DB_CONSOLE_UNSUPPORTED_PROTOCOL": "The query console supports only mysql, postgres and mssql assets",
     "RULE_EXPORT_ARTIFACT_UNAVAILABLE": "The export artifact is not currently downloadable",
     "RULE_EXPORT_JOB_BUNDLE_ONLY": "Export jobs accept evidence bundles only; use the synchronous export endpoint for event reports",
     "RULE_K8S_FORBIDDEN": "Forbidden (403): the token lacks the list pods permission for this namespace",
@@ -2645,6 +2851,7 @@
     "VALIDATION_APPROVER_SCOPE_ACTOR": "Exactly one approver is required (either approver_id or approver_group_id)",
     "VALIDATION_APPROVER_SCOPE_TARGET": "Exactly one approver scope target is required (one of asset_id / asset_group_id / subject_user_id / subject_group_id)",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy accepts only an empty value (follow the global default), open, reason or approval",
+    "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases may be non-empty only for database protocols (mysql, postgres, mssql); each entry must be 1 to 128 characters, free of control characters and unique, up to 64 entries",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode accepts only an empty value (keep current), disable, require, verify-ca or verify-full",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "An mssql host must not contain a comma (it conflicts with the port separator in the connection string)",
     "VALIDATION_ASSET_PROTOCOL": "Invalid protocol; only ssh, rdp, vnc, mysql, postgres, redis, mssql and k8s are supported",
@@ -2666,6 +2873,8 @@
     "VALIDATION_CHANNEL_URL": "URL must be http or https",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "Invalid range parameters (seq must be a positive integer, dates must be YYYY-MM-DD)",
     "VALIDATION_CHECKPOINT_RANGE_REQUIRED": "Content verification requires a seq or date range",
+    "VALIDATION_DB_CONSOLE_GO_COUNT_UNSUPPORTED": "A repeat count after GO is not supported",
+    "VALIDATION_DB_CONSOLE_STATEMENT_TOO_LARGE": "The statement exceeds the size limit (256 KiB)",
     "VALIDATION_DECISION_NOTE_REQUIRED": "A reason is required when rejecting a request",
     "VALIDATION_DISPLAY_NAME": "Invalid display name: max length 100, and no control characters or line breaks allowed",
     "VALIDATION_EXEMPT_REQUIRED": "Invalid request parameters: exempt is required",
@@ -2807,6 +3016,8 @@
     "key_rotation_max_per_run": "Re-encryption limit per rotation run",
     "lockout_duration_minutes": "Lockout duration",
     "lockout_max_attempts": "Max failed login attempts",
+    "login_banner_body": "Login notice text",
+    "login_banner_title": "Login notice heading",
     "mfa_required": "MFA enforcement scope",
     "offsite_local_retention_days": "Days to keep local copies after offsite upload",
     "password_history_count": "Password reuse history count",

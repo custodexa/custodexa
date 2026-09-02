@@ -9,6 +9,12 @@ export const isTextTerminal = (protocol) =>
 export const isDatabaseProtocol = (protocol) =>
   ['mysql', 'postgres', 'redis', 'mssql'].includes(protocol)
 
+// 支援查詢主控台的協議（對齊後端主控台兌換點的協議閘）。
+// 刻意是 isDatabaseProtocol 的真子集：redis 是 DB 協議但非 SQL 方言，
+// 沒有語句／結果集／交易態的語義，主控台不收
+export const isDBConsoleProtocol = (protocol) =>
+  ['mysql', 'postgres', 'mssql'].includes(protocol)
+
 // 僅密碼認證的協議（無使用者名稱欄位；k8s 以 Token 走密碼欄）。
 // mssql 刻意不在此列：sqlcmd 未帶 -U 時不會索取密碼，後端的 PTY 密碼注入
 // 因而永不觸發、連線會無聲斷掉，故 mssql 必須有使用者名稱欄位

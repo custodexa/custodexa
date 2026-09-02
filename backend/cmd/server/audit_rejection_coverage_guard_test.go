@@ -148,6 +148,7 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 	{"GET", "/metrics"}: exemptProbe,
 
 	{"POST", "/api/v1/auth/login"}:         exemptPreAuth,
+	{"GET", "/api/v1/auth/banner"}:         exemptPreAuth,
 	{"GET", "/api/v1/auth/methods"}:        exemptPreAuth,
 	{"GET", "/api/v1/auth/oidc/:id/begin"}: exemptPreAuth,
 	{"GET", "/api/v1/auth/oidc/callback"}:  exemptPreAuth,
@@ -170,6 +171,10 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 	// 行為由 `internal/sshproxy/ssh_redeem_deny_audit_test.go` 承擔。
 	// 同 `/recordings/stream` 的形態——豁免的是**本守衛的機打判定**，不是留痕義務。
 	{"GET", "/api/v1/ssh"}: exemptHandlerSelfAuth,
+	// `/api/v1/db-console` 同 `/ssh` 的形態：同一種一次性票、同一個
+	// `auditRedeemDenied` 寫入點（缺票／偽票／過期票／閘序拒絕四路皆寫列），
+	// 路由刻意不掛認證中介層。豁免的是本守衛的機打判定，不是留痕義務
+	{"GET", "/api/v1/db-console"}: exemptHandlerSelfAuth,
 
 	{"GET", "/api/v1/seal/status"}:  exemptSealEpoch,
 	{"POST", "/api/v1/seal/unseal"}: exemptSealEpoch,
