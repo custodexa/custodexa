@@ -97,6 +97,10 @@ const (
 	ResourceCommandAlert AuditResource = "command_alert"
 	// ResourceAuditExport 稽核證據匯出（audit-workflows，PCI 10.5.1）
 	ResourceAuditExport AuditResource = "audit_export"
+	// ResourceRotationReport 資產帳號輪替證據報告：手動產出與排程管理。
+	// **不與 audit_export 共用**——匯出的 resource_id 是工作單 id，而排程動作的
+	// resource_id 是排程列 id，混在一起會讓同號的兩個實體在查詢上長成同一件事
+	ResourceRotationReport AuditResource = "rotation_report"
 	// ResourceAccessReview 週期性存取複審（audit-workflows，PCI 7.2.4）
 	ResourceAccessReview AuditResource = "access_review"
 	// ResourceRetention 保留政策到期清除（PCI 10.5.1；

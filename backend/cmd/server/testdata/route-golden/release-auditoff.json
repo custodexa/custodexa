@@ -78,6 +78,11 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/rotation-report/schedules/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).DeleteSchedule-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/sessions/:id/recording",
       "handler": "github.com/custodexa/backend/internal/api.(*RecordingHandler).DeleteRecording-fm"
     },
@@ -440,6 +445,21 @@
       "method": "GET",
       "path": "/api/v1/roles",
       "handler": "github.com/custodexa/backend/internal/api.(*RoleHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Dataset-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report/records",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Records-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report/schedules",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).ListSchedules-fm"
     },
     {
       "method": "GET",
@@ -853,6 +873,21 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/rotation-report/jobs",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateJob-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rotation-report/schedules",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateSchedule-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rotation-report/schedules/:id/run",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RunSchedule-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/seal/unseal",
       "handler": "github.com/custodexa/backend/internal/api.(*SealHandler).Unseal-fm"
     },
@@ -995,6 +1030,11 @@
       "method": "PUT",
       "path": "/api/v1/oidc-providers/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).Update-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/rotation-report/schedules/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*RotationReportHandler).UpdateSchedule-fm"
     },
     {
       "method": "PUT",
@@ -1344,6 +1384,20 @@
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Delete-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/rotation-report/schedules/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).DeleteSchedule-fm"
       ]
     },
     {
@@ -2768,6 +2822,48 @@
         "github.com/custodexa/backend/internal/api.(*RoleHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*RoleHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*RoleHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Dataset-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report/records",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).Records-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/rotation-report/schedules",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).ListSchedules-fm"
       ]
     },
     {
@@ -4411,6 +4507,48 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/rotation-report/jobs",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateJob-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rotation-report/schedules",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).CreateSchedule-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/rotation-report/schedules/:id/run",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RunSchedule-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/seal/unseal",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -4972,6 +5110,20 @@
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Update-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/rotation-report/schedules/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*RotationReportHandler).UpdateSchedule-fm"
       ]
     },
     {

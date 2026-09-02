@@ -108,11 +108,13 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// sessions 的回填與保留兩條）與 2 條 CHECK（singleton、credential_mode）。
 	// 查詢主控台 純加欄，不增表；增 3 條 partial 索引（事件 ID 唯一、結果狀態、
 	// 目標資料庫）與 3 條 CHECK（結果狀態值域、交易態值域、事件 ID 長度形狀）。
-	if got.Tables != 51 {
-		t.Errorf("表數 = %d, want 51（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表）", got.Tables)
+	// 輪替證據報告 增 1 表（rotation_report_schedules）、4 索引（該表 pkey 與名稱
+	// 唯一索引、asset_accounts 的憑證群組、audit_export_jobs 的種類＋狀態），無 CHECK。
+	if got.Tables != 52 {
+		t.Errorf("表數 = %d, want 52（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules）", got.Tables)
 	}
-	if got.Indexes != 182 {
-		t.Errorf("索引數 = %d, want 182（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條）", got.Indexes)
+	if got.Indexes != 186 {
+		t.Errorf("索引數 = %d, want 186（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條）", got.Indexes)
 	}
 	if got.Checks != 18 {
 		t.Errorf("CHECK 約束數 = %d, want 18（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條）", got.Checks)

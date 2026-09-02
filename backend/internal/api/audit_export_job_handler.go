@@ -14,6 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/sourceip"
@@ -25,7 +26,7 @@ import (
 // 與同步匯出同屬 AuditExportHandler（同一 /audit-export 路由群、同一
 // audit:view 閘）；本檔只放 job 三端點：POST 發起、GET 清單、GET 下載。
 //
-// 下載授權綁**申請者本人**（使用者裁決，不得放寬）：非申請者（含其他具
+// 證據包的下載授權綁**申請者本人**（使用者裁決，不得放寬）：非申請者（含其他具
 // audit:view 帳號）一律收斂 **403**（`CodeExportJobRequesterOnly`），不洩 job
 // 存在性；申請者本人的不可下載態收斂 410。細節只進審計。
 //
@@ -39,10 +40,16 @@ func exportJobView(j *model.AuditExportJob, offsiteSHA256 string) gin.H {
 	v := gin.H{
 		"id":            j.ID,
 		"status":        j.Status,
+		"kind":          j.Kind,
 		"requested_at":  j.RequestedAt,
 		"artifact_size": j.ArtifactSize,
+		"requester":     j.RequesterName,
 	}
-	if filter, err := audit.ParseExportFilterSnapshot(j.FilterJSON); err == nil {
+	// 範圍摘要的字串化依種類分流：證據包走篩選快照的顯示投影，報告走報告參數。
+	// **兩者的快照格式不同**，用錯一方會靜默少一個欄位而不是報錯
+	if j.Kind == model.ExportJobKindRotationReport {
+		v["report"] = asset.ReportJobDisplay(j.FilterJSON)
+	} else if filter, err := audit.ParseExportFilterSnapshot(j.FilterJSON); err == nil {
 		v["filter"] = filter.DisplayMap()
 	}
 	if j.ArtifactSHA256 != "" {
@@ -124,8 +131,11 @@ func (h *AuditExportHandler) CreateJob(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"data": exportJobView(job, h.offsiteSHA256(job)), "deduplicated": !created})
 }
 
-// ListJobs 申請者本人的 job 清單（GET /audit-export/jobs，分頁、id 降冪穩定排序）。
-// 清單範圍與下載授權同判準：只列本人，无跨帳號檢視面。
+// ListJobs 下載中心的清單（GET /audit-export/jobs，分頁、id 降冪穩定排序）。
+//
+// `kind` 缺省為證據包，此時清單範圍與下載授權同判準：只列本人，無跨帳號檢視面。
+// `kind=rotation_report` 列全部報告工作單——報告是共用產物，且排程產出的沒有
+// 人類申請者。種類值域為閉集，其餘值回 400。
 func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 	page, ok := parsePositiveIntQuery(c, "page", 1)
 	if !ok {
@@ -135,7 +145,16 @@ func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 	if !ok {
 		return
 	}
-	jobs, total, err := h.jobs.ListByRequester(currentRequester(c), page, pageSize)
+	kind := c.Query("kind")
+	if kind == "" {
+		// 缺省維持既有呼叫端行為：這個端點在種類欄出現之前只有證據包
+		kind = model.ExportJobKindEvidenceBundle
+	}
+	if kind != model.ExportJobKindEvidenceBundle && kind != model.ExportJobKindRotationReport {
+		respondInvalidQueryParam(c, "kind")
+		return
+	}
+	jobs, total, err := h.jobs.List(currentRequester(c), kind, page, pageSize)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalExportJob, err)
 		return
@@ -162,7 +181,7 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 		return
 	}
 
-	job, getErr := h.jobs.GetForRequester(uint(jobID), currentRequester(c))
+	job, getErr := h.jobs.GetForDownload(uint(jobID), currentRequester(c))
 	if getErr != nil {
 		if errors.Is(getErr, audit.ErrExportJobNotFound) {
 			// 不存在或非申請者本人：對外同一 403；真實原因只進審計
@@ -201,6 +220,9 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	}
 
 	filename := fmt.Sprintf("audit-evidence-job-%d.zip", job.ID)
+	if job.Kind == model.ExportJobKindRotationReport {
+		filename = fmt.Sprintf("rotation-report-job-%d.zip", job.ID)
+	}
 	c.FileAttachment(artifactPath, filename)
 	if c.Writer.Status() != http.StatusOK {
 		// 檔案缺失等交付失敗：對外已由 FileAttachment 寫出狀態，審計記實況
@@ -226,7 +248,8 @@ func (h *AuditExportHandler) SetOffsiteRetriever(r OffsiteArtifactRetriever) { h
 // resolveArtifact 產物的來源判定（來源判定判準套用於證據包）。
 //
 // **逾期語義不受影響**：本函式只在「已通過可下載判定」之後被呼叫——逾期者早已在
-// 上面回 410，即使遠端物件仍在。產品的下載窗口仍是 24 小時；遠端副本的角色是
+// 上面回 410，即使遠端物件仍在。下載窗口＝該工作單自身的保留期（證據包 24 小時，
+// 報告依排程設定的天數）；遠端副本的角色是
 // 窗口內的耐久性（產物目錄未掛 volume，容器重建即消失）與組織的證據寄存。
 //
 // 回傳的 error 非 nil＝**不得交付**（不退回「盡力給本機那個壞掉的檔」）。

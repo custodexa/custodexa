@@ -673,6 +673,13 @@ func safeAuditIdentityFields() map[string]bool {
 		// ── 金鑰營運 ───────────────────────────────────────────────────
 		// purpose 是輪替目標的用途枚舉（非金鑰材料本身）
 		"purpose": true,
+
+		// ── 證據報告的取樣範圍 ─────────────────────────────────────────
+		// scope_kind 是範圍種類枚舉（全系統／資產節點／群組）、scope_id 是該種類下
+		// 的目標 id：兩者合起來回答「這份輪替證據涵蓋的是哪一批帳號」。
+		// 枚舉字串與自增 id，非憑證、非自由文字
+		"scope_kind": true,
+		"scope_id":   true,
 	}
 }
 
@@ -821,6 +828,16 @@ func safeAuditSubstanceFields() map[string]bool {
 		// 是不是同一件事」。前者是內容指紋、後者是自增 id，皆非機密
 		"settings_digest":                true,
 		"expected_current_generation_id": true,
+
+		// ── 證據報告的涵蓋期間與產出語言 ───────────────────────────────
+		// 這三個與 scope_kind／scope_id 合起來完全決定產出的那一份證據檔：
+		// 期間換一段，同一個範圍會得出完全不同的合規率；語言決定交到稽核手上的
+		// 那份檔案的內容本身（報告以 PDF 落檔留存於下載中心，不是畫面上的顯示偏好）。
+		// 少了它們，「調閱上一季」與「調閱本季」在 request_body 面寫出同一列，
+		// 且無法從審計列重製當時交出去的那份檔案。時間戳與語言代碼皆為純量
+		"period_start": true,
+		"period_end":   true,
+		"language":     true,
 	}
 }
 

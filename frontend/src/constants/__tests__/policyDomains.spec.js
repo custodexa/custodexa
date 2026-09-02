@@ -15,6 +15,8 @@ const BACKEND_POLICY_KEYS = [
   'password_history_count',
   'password_max_age_days',
   'force_change_on_reset',
+  // 資產帳號憑證最長使用天數（輪替證據報告的全域適用天數）
+  'asset_secret_max_age_days',
   'mfa_required',
   'web_idle_minutes',
   'web_max_session_hours',

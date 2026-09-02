@@ -92,24 +92,32 @@ type AssetAccountDTO struct {
 	Note          string `json:"note"`
 	HasPassword   bool   `json:"has_password"`
 	HasPrivateKey bool   `json:"has_private_key"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	// SharedCredential 系統已知本帳號與其他帳號共用同一組憑證（由複製建號產生
+	// 且尚未各自改密）。**只投影布林**：群組識別本身是一張「哪些帳號共用憑證」
+	// 的拓撲圖，出站等於免費提供橫向移動的路線。
+	//
+	// 為偽時只代表系統不知道有共用關係，不代表憑證必然獨立——手動輸入的密碼
+	// 與本能力引入前的複製關係都無從判定。此邊界於對外文件明載。
+	SharedCredential bool   `json:"shared_credential"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 // NewAssetAccountDTO 由 model 轉出對外表示（密文只轉成布林）
 func NewAssetAccountDTO(a *model.AssetAccount) *AssetAccountDTO {
 	return &AssetAccountDTO{
-		ID:            a.ID,
-		AssetID:       a.AssetID,
-		Username:      a.Username,
-		IsDefault:     a.IsDefault,
-		Privileged:    a.Privileged,
-		AuthMethod:    a.AuthMethod,
-		Note:          a.Note,
-		HasPassword:   a.PasswordEnc != "",
-		HasPrivateKey: a.PrivateKeyEnc != "",
-		CreatedAt:     a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:     a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ID:               a.ID,
+		AssetID:          a.AssetID,
+		Username:         a.Username,
+		IsDefault:        a.IsDefault,
+		Privileged:       a.Privileged,
+		AuthMethod:       a.AuthMethod,
+		Note:             a.Note,
+		HasPassword:      a.PasswordEnc != "",
+		HasPrivateKey:    a.PrivateKeyEnc != "",
+		SharedCredential: a.CredentialGroup != "",
+		CreatedAt:        a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:        a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
@@ -505,6 +513,15 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 				return err
 			}
 		}
+		// 複製建號＝兩個帳號自此共用同一組憑證。同交易歸組，否則建號成功而歸組
+		// 失敗會留下一個系統知道卻沒記下來的共用關係，報告永遠標不出它
+		if req.CopyFromAccountID != 0 {
+			group, err := joinCredentialGroup(tx, req.CopyFromAccountID, account.ID)
+			if err != nil {
+				return err
+			}
+			account.CredentialGroup = group
+		}
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
 			AssetID:         assetID,
 			AccountID:       account.ID,
@@ -801,6 +818,9 @@ func applyAccountUpdates(account *model.AssetAccount, updates map[string]interfa
 		IsDefault:     account.IsDefault,
 		Privileged:    privileged,
 		Note:          pick("note", account.Note),
+		// 憑證群組沿用交易內重讀到的值：手動編輯不動群組，而回應要據此投影
+		// 「共用憑證」——不帶過來會讓編輯備註這種無關操作在回應上把標示抹掉
+		CredentialGroup: account.CredentialGroup,
 	}
 }
 

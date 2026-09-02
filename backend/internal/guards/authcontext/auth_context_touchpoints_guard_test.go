@@ -217,6 +217,11 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/offsite_storage_handler.go", fn: "OffsiteStorageHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/recording_handler.go", fn: "RecordingHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/role_handler.go", fn: "RoleHandler.RegisterRoutes", count: 1},
+	// 輪替證據報告：2 處為兩個權限層級各自的群組——讀取面（資料集／逐列／手動產出）
+	// 掛 audit:view，排程面另疊 RequireRole("admin")。兩群都必須各自掛認證：
+	// 中介層是群組級的，漏掛任一群即等於該群匿名可達（讀取面會洩出全庫帳號的
+	// 憑證年齡與逾期狀態，排程面則可匿名改動報告的產出範圍、週期與保留天數）。
+	{symbol: "AuthMiddleware", file: "internal/api/rotation_report_handler.go", fn: "RotationReportHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/security_policy_handler.go", fn: "SecurityPolicyHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/session_command_handler.go", fn: "SessionCommandHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/session_handler.go", fn: "SessionHandler.RegisterRoutes", count: 1},

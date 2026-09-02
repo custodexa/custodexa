@@ -364,6 +364,21 @@
             :placeholder="$t('changeSecretPlans.cronPlaceholder')"
           />
         </el-form-item>
+        <!-- 憑證最長使用天數覆蓋：只影響輪替證據報告的適用天數，
+             不改變本計劃的執行時機或改密行為。0＝沿用全域政策鍵 -->
+        <el-form-item :label="$t('changeSecretPlans.maxAgeDays')">
+          <el-input-number
+            v-model="form.max_age_days"
+            :min="0"
+            :max="3650"
+            :step="1"
+            step-strictly
+            data-test="plan-max-age-days"
+          />
+          <div class="muted">
+            {{ $t('changeSecretPlans.maxAgeDaysHint') }}
+          </div>
+        </el-form-item>
         <el-form-item :label="$t('common.enabled')">
           <el-switch v-model="form.enabled" />
         </el-form-item>
@@ -483,6 +498,7 @@ function emptyForm() {
     password_include_symbol: true,
     password_exclude_ambiguous: true,
     cron: '',
+    max_age_days: 0,
     enabled: true,
   }
 }
@@ -604,6 +620,7 @@ function openEdit(row) {
     password_include_symbol: row.password_include_symbol !== false,
     password_exclude_ambiguous: row.password_exclude_ambiguous !== false,
     cron: row.cron,
+    max_age_days: row.max_age_days || 0,
     enabled: row.enabled,
   }
   dialogVisible.value = true
@@ -623,6 +640,7 @@ function buildPayload() {
     password_include_symbol: f.password_include_symbol,
     password_exclude_ambiguous: f.password_exclude_ambiguous,
     cron: f.cron,
+    max_age_days: f.max_age_days,
     enabled: f.enabled,
   }
 }

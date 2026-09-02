@@ -6,225 +6,421 @@
     >
       <template #actions>
         <el-button
-          :loading="loading"
+          :loading="loading || reportLoading"
           data-test="exports-refresh"
-          @click="fetchJobs()"
+          @click="refreshActive()"
         >
           {{ $t('common.refresh') }}
         </el-button>
       </template>
     </PageHeader>
 
-    <!-- 只列本人：與下載授權同判準。不寫出來，使用者會把「這裡沒有」
-         誤讀成「系統沒產出」，而不是「那不是你發起的」 -->
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      data-test="exports-requester-only"
-      :title="$t('auditExports.requesterOnlyNote')"
-    />
-
-    <el-alert
-      v-if="hasActive && !autoRefreshStopped"
-      type="info"
-      :closable="false"
-      data-test="exports-polling"
-      :title="$t('auditExports.polling', { sec: POLL_SECONDS })"
-    />
-    <el-alert
-      v-else-if="autoRefreshStopped"
-      type="warning"
-      :closable="false"
-      data-test="exports-polling-stopped"
-      :title="$t('auditExports.pollingStopped')"
-    />
-    <el-alert
-      v-if="loadFailed"
-      type="error"
-      :closable="false"
-      show-icon
-      data-test="exports-load-failed"
-      :title="$t('auditExports.loadFailed')"
-    />
-
-    <el-card v-loading="loading">
-      <el-empty
-        v-if="!jobs.length && !loading"
-        data-test="exports-empty"
-        :description="$t('auditExports.empty')"
-      />
-      <el-table
-        v-else
-        :data="jobs"
-        style="width: 100%"
-        stripe
-        row-key="id"
+    <!-- 兩種產物分頁並列：兩者的清單規則不同（證據包只列本人、報告對所有
+         具稽核檢視權限者是同一份），混在一張表裡就說不清楚哪一列適用哪一條 -->
+    <el-tabs
+      v-model="activeTab"
+      data-test="exports-tabs"
+      @tab-change="onTabChange"
+    >
+      <el-tab-pane
+        :label="$t('auditExports.tab.mine')"
+        name="mine"
       >
-        <!-- 欄位語義刻意**與來源無關**（產物／範圍／狀態／大小／保留期限／操作）：
+        <!-- 只列本人：與下載授權同判準。不寫出來，使用者會把「這裡沒有」
+             誤讀成「系統沒產出」，而不是「那不是你發起的」 -->
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          data-test="exports-requester-only"
+          :title="$t('auditExports.requesterOnlyNote')"
+        />
+
+        <el-alert
+          v-if="hasActive && !autoRefreshStopped"
+          type="info"
+          :closable="false"
+          data-test="exports-polling"
+          :title="$t('auditExports.polling', { sec: POLL_SECONDS })"
+        />
+        <el-alert
+          v-else-if="autoRefreshStopped"
+          type="warning"
+          :closable="false"
+          data-test="exports-polling-stopped"
+          :title="$t('auditExports.pollingStopped')"
+        />
+        <el-alert
+          v-if="loadFailed"
+          type="error"
+          :closable="false"
+          show-icon
+          data-test="exports-load-failed"
+          :title="$t('auditExports.loadFailed')"
+        />
+
+        <el-card v-loading="loading">
+          <el-empty
+            v-if="!jobs.length && !loading"
+            data-test="exports-empty"
+            :description="$t('auditExports.empty')"
+          />
+          <el-table
+            v-else
+            :data="jobs"
+            style="width: 100%"
+            stripe
+            row-key="id"
+          >
+            <!-- 欄位語義刻意**與來源無關**（產物／範圍／狀態／大小／保留期限／操作）：
              目前唯一來源是稽核匯出 job，未來其他非同步產物掛進來時只多一種
              kind，不必重畫一張表（後端不預建通用框架，前端也只到這個程度） -->
-        <el-table-column
-          :label="$t('auditExports.column.artifact')"
-          width="180"
-        >
-          <template #default="{ row }">
-            <div
-              class="artifact-kind"
-              :data-test="`export-kind-${row.id}`"
+            <el-table-column
+              :label="$t('auditExports.column.artifact')"
+              width="180"
             >
-              {{ $t('auditExports.kind.auditExport') }}
-            </div>
-            <div class="artifact-sub">
-              {{ $t('auditExports.requestedAt', { time: formatDateTime(row.requested_at) }) }}
-            </div>
-            <div
-              v-if="row.artifact_sha256"
-              class="artifact-sub artifact-sha"
-              :title="$t('auditExports.shaTip', { sha: row.artifact_sha256 })"
-            >
-              {{ row.artifact_sha256.slice(0, 12) }}…
-            </div>
-          </template>
-        </el-table-column>
+              <template #default="{ row }">
+                <div
+                  class="artifact-kind"
+                  :data-test="`export-kind-${row.id}`"
+                >
+                  {{ $t('auditExports.kind.auditExport') }}
+                </div>
+                <div class="artifact-sub">
+                  {{ $t('auditExports.requestedAt', { time: formatDateTime(row.requested_at) }) }}
+                </div>
+                <div
+                  v-if="row.artifact_sha256"
+                  class="artifact-sub artifact-sha"
+                  :title="$t('auditExports.shaTip', { sha: row.artifact_sha256 })"
+                >
+                  {{ row.artifact_sha256.slice(0, 12) }}…
+                </div>
+              </template>
+            </el-table-column>
 
-        <el-table-column :label="$t('auditExports.column.scope')">
-          <template #default="{ row }">
-            <div :data-test="`export-scope-${row.id}`">
-              <div
-                v-for="line in scopeLines(row)"
-                :key="line"
-                class="scope-line"
-              >
-                {{ line }}
-              </div>
-            </div>
-          </template>
-        </el-table-column>
+            <el-table-column :label="$t('auditExports.column.scope')">
+              <template #default="{ row }">
+                <div :data-test="`export-scope-${row.id}`">
+                  <div
+                    v-for="line in scopeLines(row)"
+                    :key="line"
+                    class="scope-line"
+                  >
+                    {{ line }}
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
 
-        <el-table-column
-          :label="$t('auditExports.column.status')"
-          width="150"
-        >
-          <template #default="{ row }">
-            <el-tag
-              :type="statusTagType(row.status)"
-              effect="plain"
-              :data-test="`export-status-${row.id}`"
+            <el-table-column
+              :label="$t('auditExports.column.status')"
+              width="150"
             >
-              {{ statusLabel(row.status) }}
-            </el-tag>
-            <div class="status-hint">
-              {{ statusHint(row.status) }}
-            </div>
-            <!-- 失敗要說得出原因：只說「失敗」，使用者不知道該重試還是該找管理員 -->
-            <div
-              v-if="row.status === 'failed'"
-              class="status-hint status-failure"
-              :data-test="`export-failure-${row.id}`"
-            >
-              {{ failureReason(row.error_summary) }}
-            </div>
-            <!-- 離機保存狀態（evidence-offsite-storage）：只在這個包**確實有**
+              <template #default="{ row }">
+                <el-tag
+                  :type="statusTagType(row.status)"
+                  effect="plain"
+                  :data-test="`export-status-${row.id}`"
+                >
+                  {{ statusLabel(row.status) }}
+                </el-tag>
+                <div class="status-hint">
+                  {{ statusHint(row.status) }}
+                </div>
+                <!-- 失敗要說得出原因：只說「失敗」，使用者不知道該重試還是該找管理員 -->
+                <div
+                  v-if="row.status === 'failed'"
+                  class="status-hint status-failure"
+                  :data-test="`export-failure-${row.id}`"
+                >
+                  {{ failureReason(row.error_summary) }}
+                </div>
+                <!-- 離機保存狀態（evidence-offsite-storage）：只在這個包**確實有**
                  帳冊態時加一行。帳冊零列或 `''`（未排入）不加——
                  對「這個包還下不下得到」沒有增量資訊的狀態不佔一行 -->
-            <div
-              v-if="offsiteLine(row)"
-              class="status-hint status-offsite"
-              :data-test="`export-offsite-${row.id}`"
+                <div
+                  v-if="offsiteLine(row)"
+                  class="status-hint status-offsite"
+                  :data-test="`export-offsite-${row.id}`"
+                >
+                  {{ offsiteLine(row) }}
+                </div>
+                <!-- 遠端副本的去留不由產品決定：只印「已離機保存」＋「已過期」，
+                 讀者會合理誤以為遠端那一份也一併沒了，或反過來以為產品會去清它 -->
+                <div
+                  v-if="offsiteRetentionNote(row)"
+                  class="status-hint status-offsite-note"
+                  :data-test="`export-offsite-retention-${row.id}`"
+                >
+                  {{ offsiteRetentionNote(row) }}
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              :label="$t('auditExports.column.size')"
+              width="100"
             >
-              {{ offsiteLine(row) }}
-            </div>
-          </template>
-        </el-table-column>
+              <template #default="{ row }">
+                <span v-if="row.artifact_size > 0">{{ formatBytes(row.artifact_size) }}</span>
+                <span
+                  v-else
+                  class="muted"
+                >—</span>
+              </template>
+            </el-table-column>
 
-        <el-table-column
-          :label="$t('auditExports.column.size')"
-          width="100"
-        >
-          <template #default="{ row }">
-            <span v-if="row.artifact_size > 0">{{ formatBytes(row.artifact_size) }}</span>
-            <span
-              v-else
-              class="muted"
-            >—</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column
-          :label="$t('auditExports.column.expires')"
-          width="170"
-        >
-          <template #default="{ row }">
-            <div :data-test="`export-expiry-${row.id}`">
-              {{ expiryText(row) }}
-            </div>
-            <div
-              v-if="row.expires_at"
-              class="artifact-sub"
+            <el-table-column
+              :label="$t('auditExports.column.expires')"
+              width="170"
             >
-              {{ $t('auditExports.expiresAt', { time: formatDateTime(row.expires_at) }) }}
-            </div>
-          </template>
-        </el-table-column>
+              <template #default="{ row }">
+                <div :data-test="`export-expiry-${row.id}`">
+                  {{ expiryText(row) }}
+                </div>
+                <div
+                  v-if="row.expires_at"
+                  class="artifact-sub"
+                >
+                  {{ $t('auditExports.expiresAt', { time: formatDateTime(row.expires_at) }) }}
+                </div>
+              </template>
+            </el-table-column>
 
-        <el-table-column
-          :label="$t('auditExports.column.actions')"
-          width="150"
-        >
-          <template #default="{ row }">
-            <!-- 下載鈕只在**真的拿得到**時出現：done 且未逾期。
+            <el-table-column
+              :label="$t('auditExports.column.actions')"
+              width="150"
+            >
+              <template #default="{ row }">
+                <!-- 下載鈕只在**真的拿得到**時出現：done 且未逾期。
                  對 pending/running/failed/expired 掛一顆按下去必然失敗的鈕，
                  等於把後端的收斂錯誤變成使用者的困惑 -->
-            <el-button
-              v-if="canDownload(row)"
-              type="primary"
-              link
-              :loading="busyId === row.id"
-              :data-test="`export-download-${row.id}`"
-              @click="download(row)"
-            >
-              {{ $t('auditExports.download') }}
-            </el-button>
-            <el-button
-              v-else-if="row.status === 'failed'"
-              link
-              :loading="busyId === row.id"
-              :disabled="!row.filter"
-              :data-test="`export-retry-${row.id}`"
-              @click="retry(row)"
-            >
-              {{ $t('auditExports.retry') }}
-            </el-button>
-            <span
-              v-else
-              class="muted"
-            >—</span>
-          </template>
-        </el-table-column>
-      </el-table>
+                <el-button
+                  v-if="canDownload(row)"
+                  type="primary"
+                  link
+                  :loading="busyId === row.id"
+                  :data-test="`export-download-${row.id}`"
+                  @click="download(row)"
+                >
+                  {{ $t('auditExports.download') }}
+                </el-button>
+                <el-button
+                  v-else-if="row.status === 'failed'"
+                  link
+                  :loading="busyId === row.id"
+                  :disabled="!row.filter"
+                  :data-test="`export-retry-${row.id}`"
+                  @click="retry(row)"
+                >
+                  {{ $t('auditExports.retry') }}
+                </el-button>
+                <span
+                  v-else
+                  class="muted"
+                >—</span>
+              </template>
+            </el-table-column>
+          </el-table>
 
-      <div
-        v-if="total > 0"
-        class="pagination"
+          <div
+            v-if="total > 0"
+            class="pagination"
+          >
+            <el-pagination
+              v-model:current-page="page"
+              v-model:page-size="pageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="total"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchJobs()"
+              @current-change="fetchJobs()"
+            />
+          </div>
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane
+        :label="$t('auditExports.tab.reports')"
+        name="reports"
       >
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50]"
-          :total="total"
-          layout="total, sizes, prev, pager, next"
-          @size-change="fetchJobs()"
-          @current-change="fetchJobs()"
+        <!-- 報告不綁申請者：任一具稽核檢視權限者看到的是同一份清單。
+             這與左邊那一頁的規則相反，故必須寫出來——否則使用者會拿
+             「我沒發起過卻看得到」當成權限出錯 -->
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          data-test="reports-shared-note"
+          :title="$t('auditExports.reportsSharedNote')"
         />
-      </div>
-    </el-card>
+
+        <el-alert
+          v-if="reportLoadFailed"
+          type="error"
+          :closable="false"
+          show-icon
+          data-test="reports-load-failed"
+          :title="$t('auditExports.loadFailed')"
+        />
+
+        <el-card v-loading="reportLoading">
+          <el-empty
+            v-if="!reportJobs.length && !reportLoading"
+            data-test="reports-empty"
+            :description="$t('auditExports.reportsEmpty')"
+          />
+          <el-table
+            v-else
+            :data="reportJobs"
+            style="width: 100%"
+            stripe
+            row-key="id"
+          >
+            <!-- 來源欄同時承載「誰產的」與「什麼時候產的」：排程名缺席即手動產出。
+                 兩件事併一欄是為了讓整表在 1280 內收得下，不必橫捲 -->
+            <el-table-column
+              :label="$t('auditExports.column.reportSource')"
+              width="200"
+            >
+              <template #default="{ row }">
+                <div :data-test="`report-source-${row.id}`">
+                  {{ reportSource(row) }}
+                </div>
+                <div class="artifact-sub">
+                  {{ $t('auditExports.requestedAt', { time: formatDateTime(row.requested_at) }) }}
+                </div>
+                <div
+                  v-if="row.artifact_sha256"
+                  class="artifact-sub artifact-sha"
+                  :title="$t('auditExports.shaTip', { sha: row.artifact_sha256 })"
+                >
+                  {{ row.artifact_sha256.slice(0, 12) }}…
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column :label="$t('auditExports.column.reportScope')">
+              <template #default="{ row }">
+                <div :data-test="`report-scope-${row.id}`">
+                  {{ reportScopeText(row) }}
+                </div>
+                <div class="artifact-sub">
+                  {{ reportPeriodText(row) }}
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              :label="$t('auditExports.column.status')"
+              width="150"
+            >
+              <template #default="{ row }">
+                <el-tag
+                  :type="statusTagType(row.status)"
+                  effect="plain"
+                  :data-test="`report-status-${row.id}`"
+                >
+                  {{ statusLabel(row.status) }}
+                </el-tag>
+                <div class="status-hint">
+                  {{ statusHint(row.status) }}
+                </div>
+                <div
+                  v-if="offsiteLine(row)"
+                  class="status-hint status-offsite"
+                  :data-test="`report-offsite-${row.id}`"
+                >
+                  {{ offsiteLine(row) }}
+                </div>
+                <div
+                  v-if="offsiteRetentionNote(row)"
+                  class="status-hint status-offsite-note"
+                  :data-test="`report-offsite-retention-${row.id}`"
+                >
+                  {{ offsiteRetentionNote(row) }}
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              :label="$t('auditExports.column.size')"
+              width="100"
+            >
+              <template #default="{ row }">
+                <span v-if="row.artifact_size > 0">{{ formatBytes(row.artifact_size) }}</span>
+                <span
+                  v-else
+                  class="muted"
+                >—</span>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              :label="$t('auditExports.column.expires')"
+              width="170"
+            >
+              <template #default="{ row }">
+                <div :data-test="`report-expiry-${row.id}`">
+                  {{ expiryText(row) }}
+                </div>
+                <div
+                  v-if="row.expires_at"
+                  class="artifact-sub"
+                >
+                  {{ $t('auditExports.expiresAt', { time: formatDateTime(row.expires_at) }) }}
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              :label="$t('auditExports.column.actions')"
+              width="120"
+            >
+              <template #default="{ row }">
+                <el-button
+                  v-if="canDownload(row)"
+                  type="primary"
+                  link
+                  :loading="busyId === row.id"
+                  :data-test="`report-download-${row.id}`"
+                  @click="downloadReport(row)"
+                >
+                  {{ $t('auditExports.download') }}
+                </el-button>
+                <span
+                  v-else
+                  class="muted"
+                >—</span>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div
+            v-if="reportTotal > 0"
+            class="pagination"
+          >
+            <el-pagination
+              v-model:current-page="reportPage"
+              v-model:page-size="reportPageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="reportTotal"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchReportJobs()"
+              @current-change="fetchReportJobs()"
+            />
+          </div>
+        </el-card>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import {
@@ -248,6 +444,9 @@ import { downloadBlob } from '@/utils/download'
 // 通用 downloads 框架（框架化門檻未到），前端也只做到欄位語義這一層。
 
 const { t } = useI18n()
+// 本頁不導航，只讀落地時的分頁指定；沒有 router 的掛載情境（單元測試）
+// 讀不到即維持預設分頁，不因此中斷渲染
+const route = useRoute()
 
 // 自動更新：**只在有打包進行中時才發請求**（pending／running），且整頁的
 // 自動更新有硬上限——長迴圈必須有上限，否則忘了關的分頁會整天打後端。
@@ -270,6 +469,47 @@ const ticks = ref(0)
 const autoRefreshStopped = computed(() => ticks.value >= MAX_TICKS)
 
 const hasActive = computed(() => jobs.value.some((j) => ACTIVE_STATES.includes(j.status)))
+
+// 「輪替報告」分頁。**清單規則與證據包相反**（不綁申請者），故自成一組狀態，
+// 不與上面的 jobs 共用——共用會讓「這一列適用哪一條規則」在程式碼裡也講不清楚。
+// 種類參數只有這一頁帶：缺省種類的查詢一字未動
+const REPORT_KIND = 'rotation_report'
+const activeTab = ref('mine')
+const reportJobs = ref([])
+const reportTotal = ref(0)
+const reportPage = ref(1)
+const reportPageSize = ref(20)
+const reportLoading = ref(false)
+const reportLoadFailed = ref(false)
+const reportLoaded = ref(false)
+
+const fetchReportJobs = async () => {
+  reportLoading.value = true
+  try {
+    const res = await listAuditExportJobs({
+      kind: REPORT_KIND,
+      page: reportPage.value,
+      page_size: reportPageSize.value,
+    })
+    reportJobs.value = res?.data || []
+    reportTotal.value = Number(res?.total) || 0
+    now.value = Date.now()
+    reportLoadFailed.value = false
+  } catch (_e) {
+    reportLoadFailed.value = true
+  } finally {
+    reportLoading.value = false
+    reportLoaded.value = true
+  }
+}
+
+// 報告清單**只在使用者真的切過去時才載**：多數進到本頁的人是來取自己剛發起的
+// 證據包，替他先打一支他不會看的查詢沒有意義
+const onTabChange = (name) => {
+  if (name === 'reports' && !reportLoaded.value) fetchReportJobs()
+}
+
+const refreshActive = () => (activeTab.value === 'reports' ? fetchReportJobs() : fetchJobs())
 
 const fetchJobs = async ({ silent = false } = {}) => {
   if (!silent) loading.value = true
@@ -309,6 +549,12 @@ const onTick = () => {
 
 onMounted(() => {
   fetchJobs()
+  // 深連結 ?tab=reports：輪替證據頁發起產出後把人帶到取件的地方，
+  // 落地即在報告分頁上，而不是讓他自己再點一次
+  if (route?.query?.tab === 'reports') {
+    activeTab.value = 'reports'
+    fetchReportJobs()
+  }
   timer = setInterval(onTick, POLL_MS)
 })
 
@@ -350,6 +596,16 @@ const offsiteLine = (row) => {
   const sha = row?.offsite_sha256
   return sha ? `${label} · ${String(sha).slice(0, 12)}…` : label
 }
+
+// 遠端副本存在的狀態：帳冊上真的有一份在儲存端（上傳完成、完整性不符、
+// 舊儲存設定留下的）。上傳中或失敗的沒有那一份，不該對讀者暗示有。
+const OFFSITE_RETAINED_STATUSES = ['uploaded', 'integrity_mismatch', 'foreign']
+
+// 遠端副本的保留說明：離機那一份的存續由儲存端的保留政策決定，產品不會刪除它。
+const offsiteRetentionNote = (row) =>
+  OFFSITE_RETAINED_STATUSES.includes(row?.offsite_status)
+    ? t('offsite.exportRow.retentionNote')
+    : ''
 
 // 失敗摘要是後端的機器碼（`model/audit_export_job.go:26-30` 的 ExportJobErr*）：
 // 去前綴後查譯。**沒有紀錄**才說「原因未記錄」；有紀錄但查不到譯文時原樣附上代碼
@@ -434,6 +690,51 @@ const download = async (row) => {
   }
 }
 
+// —— 輪替報告列的呈現 ——
+//
+// 報告列以 `report` 段取代證據包的 `filter` 段。**排程名缺席＝手動產出**：
+// 這兩者的差別是稽核讀者第一個要問的事（例行產出還是有人臨時要的），
+// 不能只留一個空白讓人自己猜
+const reportSource = (row) => {
+  const name = row?.report?.schedule_name
+  if (name) return name
+  const by = row?.report?.generated_by || row?.requester
+  return by
+    ? t('auditExports.reportManualBy', { user: by })
+    : t('auditExports.reportManual')
+}
+
+const REPORT_SCOPE_KINDS = ['all', 'node', 'plan']
+const reportScopeText = (row) => {
+  const kind = row?.report?.scope_kind
+  return REPORT_SCOPE_KINDS.includes(kind)
+    ? t(`auditExports.reportScope.${kind}`)
+    : t('auditExports.scopeUnknown')
+}
+
+const reportPeriodText = (row) => {
+  const from = row?.report?.period_start
+  const to = row?.report?.period_end
+  if (!from || !to) return t('auditExports.scopeUnknown')
+  return t('auditExports.scopeRange', {
+    from: formatDateTime(from),
+    to: formatDateTime(to),
+  })
+}
+
+const downloadReport = async (row) => {
+  if (busyId.value) return
+  busyId.value = row.id
+  try {
+    const blob = await downloadAuditExportJob(row.id)
+    downloadBlob(blob, `rotation-report-job-${row.id}.zip`)
+  } catch (_e) {
+    ElMessage.error(t('auditExports.downloadFailed'))
+  } finally {
+    busyId.value = 0
+  }
+}
+
 // 重新發起：以該 job 的**篩選快照原樣**再發一次，不重組條件——
 // 重組就有機會發出一個與原本不同的範圍，而使用者以為是同一份
 const retry = async (row) => {
@@ -494,6 +795,11 @@ const retry = async (row) => {
    它多數時候是好消息（已離機保存），走 hint 的中性色即可 */
 .status-offsite {
   color: var(--ot-text-secondary);
+}
+
+/* 保留說明是背景知識而非狀態：比狀態行再淡一階，不與它爭同一眼 */
+.status-offsite-note {
+  color: var(--ot-text-disabled);
 }
 
 .muted {

@@ -213,16 +213,10 @@ func (s *AssetGroupService) Tree(parentID *uint, vis *TreeVisibility) ([]TreeNod
 			return nil, err
 		}
 
+		// 子樹的定義只有一份（asset_subtree.go）：計數與報告母體共用同一段遞迴
 		subtreeSQL := `SELECT COUNT(DISTINCT an.asset_id) FROM asset_nodes an
 			JOIN assets a ON a.id = an.asset_id AND a.deleted_at IS NULL
-			WHERE an.node_id IN (
-				WITH RECURSIVE sub(id) AS (
-					SELECT id FROM asset_groups WHERE id = ? AND deleted_at IS NULL
-					UNION
-					SELECT g.id FROM asset_groups g JOIN sub ON g.parent_id = sub.id
-					WHERE g.deleted_at IS NULL
-				) SELECT id FROM sub
-			)`
+			WHERE an.node_id IN (` + subtreeNodeIDsSQL + `)`
 		var subtreeErr error
 		if vis != nil {
 			subtreeErr = s.db.Raw(subtreeSQL+" AND an.asset_id IN ?", n.ID, emptySafeIDs(visibleAssetIDs)).

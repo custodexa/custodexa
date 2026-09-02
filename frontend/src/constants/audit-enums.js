@@ -72,6 +72,7 @@ export const AUDIT_RESOURCE_VALUES = [
   // 的 default asset 分支（resource_id 卻是計畫／授權列／查詢的 id），
   // 後端已分家，前端值域補齊才不會在介面上顯示機器碼
   'change_secret_plan',
+  'rotation_report',
   'authorization',
   'audit_timeline',
   // 取走剪貼簿明文內容的動作，與一般連線讀取

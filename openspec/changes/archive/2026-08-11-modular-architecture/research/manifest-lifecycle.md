@@ -94,13 +94,13 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 | 類別 | 現況筆數 | 守衛下限 |
 |---|---|---|
-| 個別登記的包級全域（`var:`） | 195 | 110 |
+| 個別登記的包級全域（`var:`） | 208 | 110 |
 | `init()`（`init:`） | 5 | —（雙向等值） |
-| 組裝根注入／註冊呼叫點（`hook:`） | 93 | 35 |
+| 組裝根注入／註冊呼叫點（`hook:`） | 95 | 35 |
 | 組裝根裸欄位注入（`inject:`） | 17（納管判準見 §4.4／§4.5） | 8 |
 | 單例式 `Init`／`Reset`／`Zeroize` 宣告（`singleton:`） | 16 | —（雙向等值） |
-| 段 2 啟動步驟（`step:`） | 44（36 字面量＋8 迴圈） | 25（字面量） |
-| 釋放登記（`release:`） | 16 | —（有序等值） |
+| 段 2 啟動步驟（`step:`） | 45（36 字面量＋9 迴圈） | 25（字面量） |
+| 釋放登記（`release:`） | 17 | —（有序等值） |
 | 行程收尾步驟（`shutdown:`） | 3 | —（有序等值） |
 | 摺疊類別（`class:`） | 3 類／898 筆（sentinel 313／apierror-code 572／blank 13） | 各類分別設限（200／480／4） |
 | 載入包數 | 50 | 24 |
@@ -120,7 +120,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 2. 包級全域（`var:`，195 筆）
+## 2. 包級全域（`var:`，208 筆）
 
 ### 2.1 組裝根（`cmd/server`，5 筆）
 
@@ -407,7 +407,30 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-162 | var:internal/dbconsole/ulid.go:defaultULIDState | defaultULIDState | internal/dbconsole/ulid.go:40 | 包級全域／有狀態單調計數器（含鎖） | 不搬（接入層 dbconsole） | —（查詢主控台新增） | **唯一具執行期狀態的一筆**：事件識別的同毫秒單調性由它承擔（上次毫秒＋上次亂數，鎖保護）。**必須是包級單一份**——改成每會話一份或每次呼叫重建，同毫秒內產出的識別就只剩唯一性、失去遞增保證，而畫面、轉錄與稽核三面都以識別排序呈現先後，讀的人會看到後執行的排在前面。鎖與狀態是同一份東西的兩半，拆包時不得分離。 |
 | G-165 | var:internal/api/session_command_handler.go:commandResultStatuses | commandResultStatuses | internal/api/session_command_handler.go:119 | 包級全域／不可變值域白名單 | 不搬（接入層 api） | —（查詢主控台新增） | 無序（載入期定值後只讀），但**成員即 API 的收斂邊界**：跨會話搜尋的 `result_status` 參數以本表判定值域，表外一律 400。**漏列一個合法狀態**的症狀是稽核用得好好的篩選突然被拒（吵鬧，看得見）；**把表放寬或清空**的症狀相反——打錯字的狀態照樣送進查詢，回來的空集與「範圍內真的沒有這種列」在畫面上完全一樣。與 DB 的結果狀態 CHECK 是同一份值域的兩個落點，改值域時兩處都要動。 |
 | G-164 | var:internal/sshproxy/dbconsole_session.go:consoleTimeoutTick | consoleTimeoutTick | internal/sshproxy/dbconsole_session.go:253 | 包級全域／可置換取樣間隔 | 不搬（接入層 sshproxy） | —（查詢主控台新增） | 無序；`var` 而非 `const` 僅為測試以極短間隔走真實的計時路徑（同 G-110 的形態）。**產品路徑永不改寫**——被執行期調大即閒置與最大時長的收斂延後，政策上已到期的會話仍可繼續操作一段時間。 |
-| G-163 | var:internal/sshproxy/dbconsole_export.go:consoleNumericLiteral | consoleNumericLiteral | internal/sshproxy/dbconsole_export.go:50 | 包級全域／不可變 regexp（轉義豁免判準） | 不搬（接入層 sshproxy） | —（查詢主控台新增） | 無序（載入期編譯後只讀），但**它是防公式注入轉義的唯一豁免口**：匯出時以公式起頭字元開頭的文字欄一律前置單引號，本式命中者例外。**放寬到能匹配非數值內容＝把豁免變成繞道**（試算表開啟即執行的內容原樣落地）；反向收窄則讓負數與科學記號被寫成文字，數值無損往返在 CSV 這一側失效。以包級預編譯而非逐儲存格 `MustCompile`，是因為它落在每列每欄的熱路徑上。 |
+| G-163 | var:internal/csvsafe/csvsafe.go:numericLiteral | numericLiteral | internal/csvsafe/csvsafe.go:33 | 包級全域／不可變 regexp（轉義豁免判準） | 不搬（橫切 csvsafe） | —（查詢主控台新增；rotation-evidence-report 期把公式注入轉義自 `internal/sshproxy/dbconsole_export.go` 抽到共用包，本列隨之改指新位置——三處匯出端共用同一個判準，複製第三份即等於允許它們各自漂移） | 無序（載入期定值後只讀）；**它是「哪些儲存格不必轉義」的唯一判準**，放寬即等於在試算表裡放行公式。 |
+
+### 2.14 報告輸出層的版面常數與欄序（`internal/pdfdoc`／`internal/modules/asset`／`assets`，13 筆）
+
+> 報告的 PDF 與 CSV 於 rotation-evidence-report 新增。這幾個全域全是**載入期定值後只讀**的
+> 版面與欄序常數，無執行期狀態；納管的理由與 §2.13 相同——反向斷言要涵蓋全部，
+> 未登記者即使無序也會讓守衛失明。
+
+| ID | 錨點鍵 | 項目 | file:line | 類別 | 所屬模組 | 落地階段 | 順序敏感理由 |
+|---|---|---|---|---|---|---|---|
+| G-166 | var:assets/assets.go:NotoSansCJKTC | NotoSansCJKTC | assets/assets.go:16 | 包級全域／`go:embed` 內嵌字型位元組 | 不搬（資產包 assets） | —（rotation-evidence-report 新增） | 無序（編譯期定值）；正式版 image 只 COPY 二進位，字型必須內嵌，否則 PDF 的繁中與日文整片缺字。 |
+| G-167 | var:internal/pdfdoc/doc.go:colorInk | colorInk | internal/pdfdoc/doc.go:49 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 無序（載入期定值後只讀）。 |
+| G-168 | var:internal/pdfdoc/doc.go:colorMuted | colorMuted | internal/pdfdoc/doc.go:50 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-169 | var:internal/pdfdoc/doc.go:colorRule | colorRule | internal/pdfdoc/doc.go:51 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-170 | var:internal/pdfdoc/doc.go:colorHeaderBg | colorHeaderBg | internal/pdfdoc/doc.go:52 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-171 | var:internal/pdfdoc/doc.go:colorZebraBg | colorZebraBg | internal/pdfdoc/doc.go:53 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-172 | var:internal/pdfdoc/doc.go:colorAccent | colorAccent | internal/pdfdoc/doc.go:54 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-173 | var:internal/pdfdoc/doc.go:colorEmptyPart | colorEmptyPart | internal/pdfdoc/doc.go:55 | 包級全域／不可變版面色 | 不搬（橫切 pdfdoc） | —（rotation-evidence-report 新增） | 同 G-167。 |
+| G-174 | var:internal/modules/asset/rotation_report_csv.go:accountColumnKeys | accountColumnKeys | internal/modules/asset/rotation_report_csv.go:31 | 包級全域／不可變欄序 | asset | —（rotation-evidence-report 新增） | 無序；**它同時是 CSV 與 PDF 附表的欄序來源**，兩處各寫一份即允許「同一欄放的不是同一件事」。 |
+| G-175 | var:internal/modules/asset/rotation_report_csv.go:recordColumnKeys | recordColumnKeys | internal/modules/asset/rotation_report_csv.go:40 | 包級全域／不可變欄序 | asset | —（rotation-evidence-report 新增） | 同 G-174 的記錄檔側。 |
+| G-176 | var:internal/modules/asset/rotation_report_pdf.go:exceptionBuckets | exceptionBuckets | internal/modules/asset/rotation_report_pdf.go:144 | 包級全域／不可變分組序 | asset | —（rotation-evidence-report 新增） | 無序；成員即「例外清單列哪幾桶」，加入 `no_record` 會讓上線初期的例外清單被無記錄淹沒。 |
+| G-177 | var:internal/modules/asset/rotation_report_pdf.go:appendixAColumns | appendixAColumns | internal/modules/asset/rotation_report_pdf.go:197 | 包級全域／不可變欄索引投影 | asset | —（rotation-evidence-report 新增） | 無序；它是「附表 A 少哪幾欄」的唯一事實源，欄值仍取自與 CSV 同一支轉換，故索引錯位會讓兩份輸出的同一欄放的不是同一件事。 |
+| G-178 | var:internal/modules/asset/rotation_report_pdf.go:appendixAWidths | appendixAWidths | internal/modules/asset/rotation_report_pdf.go:200 | 包級全域／不可變欄寬 | asset | —（rotation-evidence-report 新增） | 無序；與 G-177 等長（測試釘住），長度不符即欄與寬錯位。 |
+
 
 ## 3. `init()` 函式（`init:`，5 筆）
 
@@ -421,7 +444,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 4. 組裝根注入／註冊呼叫點（`hook:` 93 筆＋`inject:` 17 筆）
+## 4. 組裝根注入／註冊呼叫點（`hook:` 95 筆＋`inject:` 17 筆）
 
 > 依注入發生的位置分節（段 1、段 2 主序、封印接線、裸欄位注入）。**列序即程式碼中的出現序**（同一檔內）。
 
@@ -509,6 +532,8 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | H-80 | hook:cmd/server/stage2.go:recordingService.SetOffsiteRetentionLedger | `recordingService.SetOffsiteRetentionLedger(offsiteLedger)` | cmd/server/stage2.go:498 | setter 後綁定 | assembly ← session／offsite | —（evidence-offsite-storage 1.10） | 保留清理的帳冊面。**漏注入使兩段保留邏輯同時失效**：快取清除段整段不執行（磁碟不再回收），且 Walk 段刪本機檔後帳冊不做到期處置——留下「本機檔已刪卻仍被 worker 領取」的孤兒列，離機狀態欄永遠停在 uploaded。 |
 | H-81 | hook:cmd/server/stage2.go:retentionService.SetOffsiteRecordingRetention | `retentionService.SetOffsiteRecordingRetention(recordingService)` | cmd/server/stage2.go:877 | setter 後綁定 | assembly ← audit／session | —（evidence-offsite-storage 1.8） | 每日保留排程對離機兩段的呼叫面。**必須早於 `retentionScheduler.Start`**（下方數行），晚了即首輪不執行。漏注入不報錯：保留照跑、只是離機的快取段與 DB 分支從未被呼叫，症狀同 H-80 的後半。 |
 | H-82 | hook:cmd/server/stage2.go:auditExportJobWorker.SetOffsiteEnqueuer | `auditExportJobWorker.SetOffsiteEnqueuer(offsiteLedger)` | cmd/server/stage2.go:982 | setter 後綁定 | assembly ← audit／offsite | —（evidence-offsite-storage 1.10） | 證據包產物落定與排隊同一筆交易的接線點。**必須早於 `auditExportJobWorker.Start`**（下一行）。漏注入的代價比 H-78 高：產物目錄未掛 volume，容器重建即消失，而回填掃描只補得回帳冊列、補不回已經不存在的檔案。 |
+| H-94 | hook:cmd/server/stage2.go:auditExportJobWorker.RegisterPackager | `auditExportJobWorker.RegisterPackager(asset.NewRotationReportPackager(...))` | cmd/server/stage2.go:1033 | setter 後綁定（種類分派表登記） | assembly ← audit／asset | —（rotation-evidence-report） | 報告種類與其打包者的接線點。**必須早於 `auditExportJobWorker.Start`**（下一行）——漏注入時，報告工作單會領件、查不到打包者、重試三次後轉失敗，而排程仍會照常一期一期地建單，於是「每期都失敗」看起來像資料問題而不是接線問題。 |
+| H-95 | hook:cmd/server/stage2.go:rotationReportSchedules.SetReloader | `rotationReportSchedules.SetReloader(rotationReportScheduler)` | cmd/server/stage2.go:1038 | setter 後綁定（雙向回指） | assembly ← asset／scheduler | —（rotation-evidence-report） | 排程 CRUD 後重建 cron 註冊的回呼。**必須早於排程器 `Start`**；漏注入時新建的排程要等下一次行程重啟才會被載入，而畫面上它看起來是啟用的。 |
 | H-83 | hook:cmd/server/stage2.go:auditExportHandler.SetOffsiteRetriever | `auditExportHandler.SetOffsiteRetriever(s.offsiteFetcher)` | cmd/server/stage2.go:1460 | setter 後綁定 | api ← offsite | —（evidence-offsite-storage 1.7） | 證據包下載的離機退路。漏注入＝容器重建後、下載窗口內的申請者得到 410，而遠端副本仍在——本功能對「窗口內的耐久性」的承諾就此落空，且與「產物真的過期了」不可分辨。 |
 | H-84 | hook:cmd/server/stage2.go:offsiteProfiles.SetOwnerCacheMarkers | `offsiteProfiles.SetOwnerCacheMarkers(recordingOffsiteAdapter, exportOffsiteAdapter)` | cmd/server/stage2.go:491 | setter 後綁定 | assembly ← session／audit／offsite | —（evidence-offsite-storage 1.10） | 世代退役時把擁有表的 `offsite_status` 快取與帳冊在**同一交易內**一起轉 `foreign`。**須早於任何設定寫入路徑被呼叫**（本行在段 2 建構期，早於路由掛載，故成立）。漏注入不是壞掉而是**說謊**：世代已換，會話詳情仍顯示「已上傳到現行儲存」，而取回其實要用舊世代的憑證；且該狀態不會自我修復——帳冊的世代欄已經換人，之後沒有任何一輪迴圈會回頭修這些列。 |
 | H-85 | hook:cmd/server/stage2.go:offsiteUploader.SetMetrics | `offsiteUploader.SetMetrics(s1.metrics)` | cmd/server/stage2.go:968 | setter 後綁定 | assembly ← offsite／observability | —（evidence-offsite-storage 1.10） | 上傳車道四項指標的直寫面。**須早於 `starts[7].start` 啟動 goroutine**（本行在其上方）；反了則 worker 已在跑而 metrics 仍是 no-op，那段窗口的上傳與失敗永久不計入累計數，且採集端無從得知有一段空窗。未注入時走 no-op，不 panic——指標是旁路，不得有能力殺掉 worker。 |
@@ -610,7 +635,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 
 ---
 
-## 6. 段 2 啟動步驟（`step:`，44 項；列序＝執行序）
+## 6. 段 2 啟動步驟（`step:`，45 項；列序＝執行序）
 
 > 守衛以兩條斷言釘住：① 本節列序逐位等於 `stage2ServiceInventory`（`stage2.go:48`）；
 > ② 程式碼中 34 個字面量 `mark("…")` 的出現序是本節列序的**有序子序列**（告警 sink 收口新增 `alertSink`、audit-checkpoint-chain 新增 `checkpointSigning`）（其餘 8 項由排程器迴圈 `mark(s.name)` 產生，audit-chain-scheduled-verification 新增 `chainVerifyScheduler`、workbench-clipboard-and-layout B2 新增 `auditExportJobWorker`）。
@@ -662,6 +687,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | ST-34c | step:chainVerifyScheduler | `NewChainVerifyService` ＋ `NewChainVerifyPolicyTuning` ＋ `NewChainVerifyScheduler` ＋ `Start` | cmd/server/stage2.go:776（迴圈） | 啟動步驟 | audit ← policy／keyvault | —（audit-chain-scheduled-verification 新增） | 同 ST-30 的迴圈約束。**必須晚於 ST-34b**：驗證的對象是封章產出的鏈，且兩者共用同一組 `checkpointVerifier`／`checkpointService` 實例——另建一份即等於拿另一套聚合算法驗封章的產物。依賴 ST-24b（簽章鑰，供依賴自檢）、ST-5（失效上報出口）、政策服務（三顆旋鈕現讀、不快取）。**與 ST-34b 相反，`Start` 不做任何前置建立**：鏈為空是驗證要回報的結論而非啟動失敗，在此建立或修補鏈上物件會讓驗證者同時成為被驗者的作者。**漏登記不產生任何錯誤**：鏈仍在、驗證頁的人工按鈕仍在，只是竄改再也不會有人被通知——證據存在卻無人知曉的靜默狀態，正是本 change 要消滅的形態。 |
 | ST-34c2 | step:offsiteUploader | `NewUploader` ＋ 條件式 `startOffsiteUploader()` | cmd/server/stage2.go:940（迴圈） | 啟動步驟 | offsite | —（evidence-offsite-storage 1.10） | 同 ST-30 的迴圈約束。**登記在 ST-34d 之前 ⇒ 停在它之後**（ResourceBag 反序釋放）：上傳 worker 讀 export 產物。**start 是條件式的**——無現行世代（設定表零列＝從未設定，或零現行世代＝已停用）時只記一行日誌、不建 goroutine，那正是「未設定＝行為完全不變」的機械保證所在；讀取現行世代失敗則 `return fail(...)`，**不得靜默當成未設定**（一次 DB 故障看起來像功能沒開，是三態 fail-close 要防的形態）。**首次於管理介面完成設定後即時啟動**：設定服務於寫入提交後呼叫 H-88 注入的回呼把 worker 拉起來，不需重啟。 |
 | ST-34d | step:auditExportJobWorker | `NewAuditExportJobWorker` ＋ `Start` | cmd/server/stage2.go:838（迴圈） | 啟動步驟 | audit ← identity/authz（申請者重驗閉包） | —（workbench-clipboard-and-layout B2 新增） | 同 ST-30 的迴圈約束。**必須晚於 ST-33（apiHandlers）所依賴的匯出服務組裝**——worker 與 handler 共用同一個 `auditExportService` 實例（H-40/H-65 注入完成後才可啟動，否則打包出未簽章或缺剪貼簿內容的包）。`Start` 內含產物目錄建立（0700）與懸置 job 恢復（running→pending），恢復必須先於首輪領件。停止走資源袋（釋放序見 §7 摺疊註記）：**必須在 DB 關閉前停**，否則收尾週期對已關的 DB 寫狀態。**漏登記不產生任何錯誤**：job 永遠停在 pending、無人打包，發起端點照常受理——申請者看到的是永不完成的排隊，與「打包很慢」不可分辨。 |
+| ST-34e | step:rotationReportScheduler | `NewRotationReportScheduler` ＋ `SetReloader` ＋ `Start` | cmd/server/stage2.go:1036（迴圈） | 啟動步驟 | scheduler ← asset | —（rotation-evidence-report） | 登記在 ST-34d **之後**＝停在它之前：先讓建單那一側停下來，打包器才不會在收束途中又領到新件。 |
 | ST-35 | step:metricsRefresher | `observability.StartRefresher(...)` | cmd/server/stage2.go:826 | 啟動步驟 | assembly ← observability | observability-lite（**取代 perfMonitor**） | **段 2 最後一步**，本步驟前有 `CheckCancelStep`；沿用原 `perfMonitor` 的位置與形態（可停止的背景任務），使啟停順序的變動面最小。刷新的是**查詢成本不對稱**的指標（活躍會話走 DB、錄影儲存量走檔案系統遍歷、未審閱告警走 DB 聚合）——**不可改為採集當下同步查詢**：採集間隔由外部 Prometheus 決定（可低至 15s），同步查詢等於讓外部設定直接放大本系統的 DB 與磁碟負載。停止函式以 `sync.Once` 保證冪等（B 模式每次解封建立新任務）。**前身 perfMonitor 連同 `internal/middleware/metrics.go` 整組退場**：其行程內延遲統計與新的 Prometheus middleware 落在同一個全域位置，留著即每個請求統計兩次；其「效能退化偵測」只 `log.Printf`（無人消費、容器重啟即失），正解是採集端對 histogram 設 alerting rule。 |
 
 ---

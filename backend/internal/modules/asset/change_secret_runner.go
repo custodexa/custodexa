@@ -237,6 +237,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonPromoteFailed)
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonPromoteFailed)
 	}
+	noteCredentialGroupLeft(r.db, tgt.accountID)
 	return finish(model.ChangeSecretSuccess, "")
 }
 
@@ -345,6 +346,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonPromoteFailed)
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonPromoteFailed)
 	}
+	noteCredentialGroupLeft(r.db, tgt.accountID)
 	return finish(model.ChangeSecretSuccess, "")
 }
 

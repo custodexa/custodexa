@@ -320,3 +320,91 @@ describe('自動更新', () => {
     vi.useRealTimers()
   })
 })
+
+// 「輪替報告」分頁。
+//
+// 兩件事必須釘住：報告清單以種類參數查詢（缺省種類的「我的匯出」一字未動），
+// 以及報告列的下載走的是報告自己的檔名與那一列的 id。
+describe('輪替報告分頁', () => {
+  const reportJob = (over = {}) => ({
+    id: 18,
+    kind: 'rotation_report',
+    status: 'done',
+    requester: 'system',
+    requested_at: '2026-09-01T01:00:00+08:00',
+    packaged_at: '2026-09-01T01:02:00+08:00',
+    expires_at: future(48 * HOUR),
+    artifact_size: 75905,
+    artifact_sha256: 'b'.repeat(64),
+    offsite_status: 'uploaded',
+    report: {
+      scope_kind: 'all',
+      period_start: '2026-08-01T00:00:00+08:00',
+      period_end: '2026-09-01T00:00:00+08:00',
+      language: 'zh-TW',
+      schedule_name: '驗收月報',
+      generated_by: '驗收月報',
+    },
+    ...over,
+  })
+
+  const openReportsTab = async (wrapper) => {
+    const tabs = wrapper.findAll('.el-tabs__item')
+    await tabs[tabs.length - 1].trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  it('報告分頁以 kind=rotation_report 查詢；我的匯出維持缺省種類（一字未動）', async () => {
+    listMock.mockImplementation((params) =>
+      Promise.resolve(
+        params?.kind === 'rotation_report'
+          ? { data: [reportJob()], total: 1 }
+          : { data: [job({ id: 11 })], total: 1 }
+      )
+    )
+    const wrapper = mount(AuditExports, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    expect(listMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
+    // 我的匯出不列報告：那是另一種產物、另一套清單規則
+    expect(wrapper.find('[data-test="export-status-11"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="report-status-18"]').exists()).toBe(false)
+
+    await openReportsTab(wrapper)
+    expect(listMock).toHaveBeenCalledWith({ kind: 'rotation_report', page: 1, page_size: 20 })
+    expect(wrapper.find('[data-test="report-status-18"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="report-source-18"]').text()).toContain('驗收月報')
+    expect(wrapper.find('[data-test="reports-shared-note"]').exists()).toBe(true)
+  })
+
+  it('報告列可下載，取的是該列的產物；手動產出標為手動', async () => {
+    listMock.mockImplementation((params) =>
+      Promise.resolve(
+        params?.kind === 'rotation_report'
+          ? {
+            data: [reportJob({ id: 19, requester: 'admin', report: { scope_kind: 'node', period_start: '2026-08-01T00:00:00+08:00', period_end: '2026-09-01T00:00:00+08:00', language: 'zh-TW', generated_by: 'admin' } })],
+            total: 1,
+          }
+          : { data: [], total: 0 }
+      )
+    )
+    const wrapper = mount(AuditExports, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    await openReportsTab(wrapper)
+
+    expect(wrapper.find('[data-test="report-source-19"]').text()).toContain('手動')
+    const btn = wrapper.find('[data-test="report-download-19"]')
+    expect(btn.exists()).toBe(true)
+    await btn.trigger('click')
+    await flushPromises()
+    expect(downloadMock).toHaveBeenCalledWith(19)
+  })
+
+  it('沒有報告時說得出下一步在哪，而不是一片空白', async () => {
+    listMock.mockResolvedValue({ data: [], total: 0 })
+    const wrapper = mount(AuditExports, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    await openReportsTab(wrapper)
+    expect(wrapper.find('[data-test="reports-empty"]').exists()).toBe(true)
+  })
+})

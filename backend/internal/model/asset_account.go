@@ -47,6 +47,19 @@ type AssetAccount struct {
 	AuthMethod string `gorm:"size:20;default:sql" json:"auth_method"`
 
 	Note string `gorm:"size:255" json:"note"`
+
+	// CredentialGroup 憑證群組識別（UUID）：同值＝系統已知這些帳號共用同一組
+	// 憑證。空＝不屬於任何群組。
+	//
+	// **只由兩條路徑寫入**：以「從其他帳號複製」建號時，來源與新帳號同交易歸入
+	// 同一群組；帳號經系統改密成功並提交新憑證時脫離群組（脫離後群組只剩一員時
+	// 該員一併脫離）。管理者手動編輯憑證**不動**此欄——手動輸入的憑證是否仍與
+	// 他人共用，系統無從判定，改動它等於宣稱一件不知道的事。
+	//
+	// **不出站**：對外只投影成「共用憑證」布林（見 asset 模組的帳號 DTO）。
+	// 群組識別本身是一組帳號之間的連結關係，揭露它等於免費提供「哪些帳號共用
+	// 憑證」的完整拓撲，而那正是橫向移動最想要的那張圖。
+	CredentialGroup string `gorm:"size:36;index" json:"-"`
 }
 
 // TableName 指定表名

@@ -112,9 +112,25 @@
         <span
           v-if="policy.pci_value"
           class="policy-pci"
+          :data-test="`policy-pci-${policy.key}`"
         >
           {{ $t('policyKeySections.pciRecommend', { value: formatValue(policy, policy.pci_value) }) }}
         </span>
+        <!-- 參考值：該條文以機構的目標風險分析定頻率，未定固定天數，數字是
+             本產品的預設起始值。標籤與附註一起出現才說得完整——只有數字的話，
+             讀者會把它當成條文明定的門檻 -->
+        <template v-if="policy.pci_reference">
+          <el-tag
+            size="small"
+            type="info"
+            :data-test="`policy-pci-reference-${policy.key}`"
+          >
+            {{ $t('policyKeySections.pciReference') }}
+          </el-tag>
+          <span class="policy-helper">
+            {{ $t('policyKeySections.pciReferenceNote', { requirement: policy.requirement }) }}
+          </span>
+        </template>
         <span
           v-else
           class="policy-pci"

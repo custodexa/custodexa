@@ -754,3 +754,34 @@ SHALL NOT 寫入政策列（出廠預設生效）。播種 SHALL NOT 覆蓋管�
 #### Scenario: 政策清單標示文字型別與上限
 - **WHEN** 管理員讀取政策清單
 - **THEN** 兩鍵項目含 `type: "text"`、`max_length`（120／2000）；內文鍵含 `multiline: true`，標題鍵無 `multiline` 欄，`compliant` 與 `epayment_compliant` 為 null，且不計入 `deviation_count` 與 `epayment_deviation_count`
+
+### Requirement: 資產帳號憑證最長使用天數政策鍵
+
+系統 SHALL 提供 `asset_secret_max_age_days` 安全政策鍵（int、單位天）：出廠預設 0＝關閉（升級零行為變更）、方向為不大於、值域 1 至 3650。
+電支基準建議值 90（§15-8，系統連線帳號至少每三個月）。PCI 建議值 90 並 SHALL 標示為**參考值**（Requirement 8.6.3：條文以機構的目標風險分析定頻率，未定固定天數；90 為常見實務值）；
+參考值 SHALL 於政策頁以標籤與附註揭露其性質，符合性評估與一鍵套用 SHALL 對參考值照常作用。
+
+該鍵 SHALL 作用於資產帳號的輪替證據報告（適用天數的全域預設），SHALL NOT 作用於平台使用者密碼；SHALL 於安全政策設定頁獨立區塊曝光，
+label 與單位納入政策 i18n 與鍵歸屬單一事實源，由既有完備性測試把關。
+
+政策定義 SHALL 支援「PCI 參考值」屬性；標示為參考值的鍵 SHALL 必有 PCI 建議值，由定義自檢強制。
+
+#### Scenario: 設定頁曝光與生效
+
+- **WHEN** 管理員於安全政策頁將資產帳號憑證最長使用天數設為 90
+- **THEN** 儲存成功、變更入審計，其後產出的輪替證據報告以 90 為全域適用天數
+
+#### Scenario: 參考值標示
+
+- **WHEN** 管理員檢視該鍵的 PCI 建議值
+- **THEN** 數字旁顯示「參考值」標籤與附註說明條文不定天數
+
+#### Scenario: 一鍵套用作用於參考值
+
+- **WHEN** 管理員執行一鍵套用 PCI 建議值
+- **THEN** 該鍵設為 90
+
+#### Scenario: 不影響平台使用者
+
+- **WHEN** 該鍵設為 30 而平台使用者密碼最長使用天數為 0
+- **THEN** 平台使用者登入不因該鍵而被要求改密

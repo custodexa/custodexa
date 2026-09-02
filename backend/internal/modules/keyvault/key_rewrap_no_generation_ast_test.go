@@ -277,6 +277,9 @@ var kekGeneratorAllowlist = []kekGeneratorException{
 // .go 檔數低於登記值即紅，新增檔案不受影響。**任何減少都須顯式更新本表並在
 // commit 中寫明理由**——那正是「一整塊掃描面消失」的唯一入口。
 var backendScanFloors = map[string]int{
+	// assets（2026-09-03，rotation-evidence-report）：報告 PDF 的內嵌字型資產目錄，
+	// 僅 assets.go 一支 embed 宣告。下界＝現況檔數 1
+	"assets":   1,
 	"cmd":      8,
 	"config":   5,
 	"internal": 263,
@@ -288,7 +291,7 @@ var backendScanFloors = map[string]int{
 }
 
 // minBackendScannedFiles 總量下界（＝各目錄下界之和，保留為單一數字以利訊息可讀）。
-const minBackendScannedFiles = 303
+const minBackendScannedFiles = 304
 
 // ---- K1：隨機來源的別名解析與跨函式傳遞閉包----
 

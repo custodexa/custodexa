@@ -27,6 +27,9 @@ var (
 	CodePlanBadKeyStrategy = register("VALIDATION_PLAN_BAD_KEY_STRATEGY", Descriptor{ZhFallback: "金鑰策略僅支援 append_replace 或 exclusive"})
 	CodePlanBadPasswordLen = register("VALIDATION_PLAN_BAD_PASSWORD_LENGTH", Descriptor{ZhFallback: "密碼長度須介於 12 與 64 之間"})
 
+	// CodePlanBadMaxAgeDays 計劃層的憑證最長使用天數覆蓋越界（0＝沿用全域，否則 1–3650）
+	CodePlanBadMaxAgeDays = register("VALIDATION_PLAN_BAD_MAX_AGE_DAYS", Descriptor{ZhFallback: "憑證最長使用天數覆蓋須為 0（沿用全域）或 1 至 3650"})
+
 	CodeCandidateNotFound = register("NOTFOUND_CHANGE_SECRET_CANDIDATE", Descriptor{ZhFallback: "候選憑證不存在"})
 
 	CodeInternalChangeSecretCandidateQuery   = register("INTERNAL_CHANGE_SECRET_CANDIDATE_QUERY", Descriptor{ZhFallback: "查詢候選憑證失敗"})
@@ -55,4 +58,25 @@ var (
 
 	CodeInternalHostKeyQuery = register("INTERNAL_HOST_KEY_QUERY", Descriptor{ZhFallback: "查詢 host key失敗"})
 	CodeInternalHostKeyReset = register("INTERNAL_HOST_KEY_RESET", Descriptor{ZhFallback: "重置 host key失敗"})
+)
+
+// --- 輪替證據報告（rotation_report_handler.go）---
+var (
+	CodeReportBadScope         = register("VALIDATION_ROTATION_REPORT_BAD_SCOPE", Descriptor{ZhFallback: "報告範圍不合法或不存在"})
+	CodeReportBadLanguage      = register("VALIDATION_ROTATION_REPORT_BAD_LANGUAGE", Descriptor{ZhFallback: "報告語言不在支援清單內"})
+	CodeReportBadPeriod        = register("VALIDATION_ROTATION_REPORT_BAD_PERIOD", Descriptor{ZhFallback: "記錄區間的起點須早於迄點"})
+	CodeReportBadCron          = register("VALIDATION_ROTATION_SCHEDULE_BAD_CRON", Descriptor{ZhFallback: "排程格式錯誤（標準 5 欄 cron）"})
+	CodeReportBadRetention     = register("VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION", Descriptor{ZhFallback: "留存天數須介於 1 與 3650 之間"})
+	CodeReportNameEmpty        = register("VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY", Descriptor{ZhFallback: "排程名稱不可為空"})
+	CodeReportNameTooLong      = register("VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG", Descriptor{ZhFallback: "排程名稱長度上限 128 字"})
+	CodeReportNameExists       = register("CONFLICT_ROTATION_SCHEDULE_NAME_EXISTS", Descriptor{ZhFallback: "排程名稱已存在"})
+	CodeReportScheduleBusy     = register("CONFLICT_ROTATION_SCHEDULE_INFLIGHT", Descriptor{ZhFallback: "該排程已有一張進行中的報告工作單"})
+	CodeReportScheduleNotFound = register("NOTFOUND_ROTATION_SCHEDULE", Descriptor{ZhFallback: "報告排程不存在"})
+
+	CodeInternalRotationReportBuild    = register("INTERNAL_ROTATION_REPORT_BUILD", Descriptor{ZhFallback: "產生輪替證據報告失敗"})
+	CodeInternalRotationScheduleQuery  = register("INTERNAL_ROTATION_SCHEDULE_QUERY", Descriptor{ZhFallback: "查詢報告排程失敗"})
+	CodeInternalRotationScheduleCreate = register("INTERNAL_ROTATION_SCHEDULE_CREATE", Descriptor{ZhFallback: "建立報告排程失敗"})
+	CodeInternalRotationScheduleUpdate = register("INTERNAL_ROTATION_SCHEDULE_UPDATE", Descriptor{ZhFallback: "更新報告排程失敗"})
+	CodeInternalRotationScheduleDelete = register("INTERNAL_ROTATION_SCHEDULE_DELETE", Descriptor{ZhFallback: "刪除報告排程失敗"})
+	CodeInternalRotationReportJob      = register("INTERNAL_ROTATION_REPORT_JOB", Descriptor{ZhFallback: "建立報告工作單失敗"})
 )

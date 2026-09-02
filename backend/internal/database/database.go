@@ -147,6 +147,9 @@ var schemaParityModels = []interface{}{
 	// credentials_enc 另受 keyvault 的 *Enc 信封登記 AST 守衛管轄
 	&model.OffsiteProfile{},
 	&model.OffsiteObject{},
+	// 輪替證據報告的排程表。由增量 migration 20260903_rotation_evidence_report
+	// 建表，走 schemaDDLStatements() 受兩層 parity 守衛
+	&model.RotationReportSchedule{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

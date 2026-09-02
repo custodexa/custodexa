@@ -1,9 +1,9 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-02（登入前告示：`security_policies.value` 放寬為 `text`、兩個文字型政策鍵）
+> **最後更新**：2026-09-03（輪替證據報告：`asset_accounts.credential_group`、`change_secret_plans.max_age_days`、`audit_export_jobs.kind` 與新表 `rotation_report_schedules`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -40,7 +40,7 @@
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
 | - | `user_group_members` | baseline | 用戶-群組關聯表（一人可屬多群；同上，現由 baseline 顯式建表） |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
-| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique） | 資產系統帳號（一資產多帳號、各自信封加密憑證、至多一 default） |
+| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引 | 資產系統帳號（一資產多帳號、各自信封加密憑證、至多一 default） |
 | AssetGroup | `asset_groups` | baseline（`idx_asset_groups_sibling_name` 同層唯一，partial unique 表達式索引） | 資產節點樹（parent_id 自參照、同層唯一） |
 | AssetNode | `asset_nodes` | baseline | 資產×節點成員（多歸屬 M2M） |
 | Session | `sessions` | baseline＋增量 `20260825_evidence_offsite`（離機指標欄與兩條部分索引）、`20260826_source_ip_forensics`（`idx_sessions_client_ip_start`）、`20260826_db_query_console`（`db_console` 欄） | 連線會話（含 K8s 快照、斷線原因、帳號快照、主控台標記） |
@@ -56,7 +56,7 @@
 | ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
 | AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
-| ChangeSecretPlan | `change_secret_plans` | baseline | 改密計劃 |
+| ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄 | 改密計劃 |
 | ChangeSecretRecord | `change_secret_records` | baseline | 改密執行記錄 |
 | ChangeSecretCandidate | `change_secret_candidates` | baseline | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
@@ -73,10 +73,11 @@
 | AuditCheckpointTrim | `audit_checkpoint_trims` | baseline | 檢查點鏈修剪記錄（殘鏈的新起點錨定，不可變；刻意獨立於 audit_logs——留痕會過期，錨定不會） |
 | AuditChainVerifyState | `audit_chain_verify_states` | baseline | 檢查點鏈兩層自動驗證的營運狀態（單列，ID 恆為 1；兩層各記最近執行時點、滾動重驗位置、未結案失敗區間集合）。**營運狀態非證明**：不在鏈的覆蓋範圍內，具 DB 寫入權者可改 |
 | AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；稽核工作台的 `present`／`purged` 三態來源） |
-| AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）** | 證據包非同步匯出 job 追蹤（純狀態表，非證據；申請者本人綁定、部分唯一索引去重） |
+| AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）**＋增量 `20260903_rotation_evidence_report` 加 `kind` 欄與 `(kind, status)` 索引 | 匯出工作單追蹤（純狀態表，非證據；種類分流：證據包綁申請者本人並以部分唯一索引去重，輪替證據報告為共用產物） |
 | UserSourceIP | `user_source_ips` | **migration（增量 `20260826_source_ip_forensics`，非 baseline）** | 帳號×來源位址的「已見」基準（新來源位址告警的判定依據，**非證據**、不受保留政策清除；複合主鍵，刻意無 FK） |
 | OffsiteProfile | `offsite_profiles` | **migration（增量 `20260825_evidence_offsite`，非 baseline）**（CHECK `offsite_profiles_singleton_check`＋`offsite_profiles_credential_mode_check`；`idx_offsite_profiles_current` partial unique＝現行世代至多一列） | 離機儲存的設定世代目錄（每列一個世代，連線參數＋憑證模式）；`credentials_enc` 登記於 `envelopeMigrationTargets` |
 | OffsiteObject | `offsite_objects` | **migration（增量 `20260825_evidence_offsite`，非 baseline）**（`uniq_offsite_objects_owner_generation` 唯一索引＋兩條 partial index） | 離機保管帳冊（每個上傳目標一列，遠端物件的身分與狀態機；**帳冊即佇列**） |
+| RotationReportSchedule | `rotation_report_schedules` | **migration（增量 `20260903_rotation_evidence_report`，非 baseline）**（`idx_rotation_report_schedules_name` 唯一索引） | 輪替證據報告排程（一列一排程；`period_anchor` 使連續兩期的記錄區間首尾相接） |
 | DataKey | `data_keys` | baseline（`idx_data_keys_purpose_version_kek`＝同 slot 至多一列帶材料，partial unique） | 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）；`kek_id`／`kek_retired_by` 為 `varchar(255)` 以容納外部金鑰引用（KMS ARN） |
 | TransmissionConsent | `transmission_consents` | baseline | 傳輸風險同意記錄（per user×asset） |
 | OIDCProvider | `oidc_providers` | baseline（`idx_oidc_providers_identity_domain` partial unique） | OIDC 身分提供者設定（多實例並存）；`client_secret_enc` 登記於 `envelopeMigrationTargets` |
@@ -755,6 +756,7 @@ const (
 | `IsDefault` | bool | `default:false;index` | `is_default` | 預設帳號：系統路徑（改密 runner、k8s、SFTP 獨立入口）與未指定 `account_id` 的連線一律走此帳號 |
 | `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與審計辨識，不改變授權判定 |
 | `AuthMethod` | string | `size:20;default:sql` | `auth_method` | 認證類型。值域 `sql`｜`domain`；**1.0 只接受 `sql`**，`domain` 由驗證層明確拒絕（`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`，不靜默降級）。刻意放帳號而非資產：同一台 MSSQL 可同時掛 SQL login 與域帳號，放資產上兩者無法並存。非 mssql 協議的帳號一律留在預設 `sql` 且不參與連線組裝。 |
+| `CredentialGroup` | string | `size:36;index` | `-` | 憑證群組識別（UUID）：同值＝系統已知這些帳號共用同一組憑證，空字串＝無群組。以「從其他資產帳號複製」建號時來源與新帳號同交易歸組；任一成員經系統改密成功即脫組，脫組後只剩一員時該員一併脫組。**手動編輯憑證不改變本欄**（系統無從判定手動輸入的憑證是否仍共用）。**識別本身絕不出站**（JSON `-`），對外只投影為 DTO 的 `shared_credential` 布林 |
 | `Note` | string | `size:255` | `note` | 備註 |
 
 **索引與 default 語義**:
@@ -766,6 +768,7 @@ const (
   刪除 default 時若資產尚有其他帳號則拒絕（`RULE_ACCOUNT_DEFAULT_REQUIRED`）；
   set-default 於同一交易內先清舊 default 再設新 default（不讓 partial unique index 中途看到兩筆）。
 - **零帳號資產合法**（原本即無憑證的資產；刪除唯一帳號時同步清空 `assets` 的顯示欄）。
+- `idx_asset_accounts_credential_group` - `(credential_group)`，由增量 `20260903_rotation_evidence_report` 建立——報告要對範圍內每個帳號判定共用憑證，脫組後還要數「群組是否只剩一員」，兩者都以群組值為軸。**本欄可空且不設預設**：絕大多數帳號不屬於任何群組，空字串與 NULL 並存會多出一個沒有意義的第三態。
 
 **安全紅線**: `password_enc`／`private_key_enc` 必須與 model **同版**登記於
 `service.envelopeMigrationTargets`——該清單同時驅動 DEK 輪替重加密、legacy pending 判定與
@@ -1412,6 +1415,7 @@ const (
 | `PasswordLength` | int | `default:16` | `password_length` | 產生密碼長度（邊界 12–64） |
 | `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 是否含符號 |
 | `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 是否排除易混淆字元 |
+| `MaxAgeDays` | int | `not null;default:0` | `max_age_days` | 憑證最長使用天數的計劃層覆蓋（天）：0＝沿用全域政策鍵 `asset_secret_max_age_days`，大於 0 即覆蓋，值域與該鍵相同（1–3650），越界於儲存時被拒。**只影響輪替證據報告的適用天數計算**，不改變計劃的執行時機或改密行為。由增量 `20260903_rotation_evidence_report` 加欄 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
@@ -2161,7 +2165,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 有六條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
+**現行 migration 有七條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
@@ -2171,14 +2175,16 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260826_source_ip_forensics` | 來源位址追查：`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`、建 `user_source_ips` 表（見第 43 節）、建 `idx_sessions_client_ip_start` 與 `idx_user_source_ips_ip_seen` 兩索引、重建 `command_alerts_kind_check` 使 `kind` 值域含 `new_source_ip`，最後**冷啟動回填**（自 `sessions` 全史與 `audit_logs` 登入成功列合併，使部署當下已見的位址不觸發告警）。**Up 為純加法**：不刪不改任何既有資料列 | `rollbackSourceIPForensics`：反序 DROP 兩索引 → `DELETE FROM command_alerts WHERE kind = 'new_source_ip'` → 還原舊 CHECK → `DROP TABLE user_source_ips` → `DROP COLUMN allowed_cidrs`。**銷毀資料、開發庫限定**：丟掉整份已見位址基準與每位使用者的來源限定，再次 Up 後清單為空（來源限制靜默消失）、基準為空（全部位址重新判為新）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260826_db_query_console` | 查詢主控台：`assets.allowed_databases`（見第 3 節）、`sessions.db_console`（第 5 節）、`session_commands` 十一個結果事實欄＋三條 CHECK＋三個部分索引（第 8 節），共 19 條 DDL。`sessions.end_reason` 增列兩個值（`target_closed`／`slow_consumer`）——該欄無 CHECK，**故無 DDL**。**Up 為純加法**：全部加欄都帶 DEFAULT，無資料轉換、無回填，耗時與存量無關。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDBQueryConsole`：反序 DROP 三索引 → 三條 CHECK → 十一欄 → `sessions.db_console` → `assets.allowed_databases`。**Down 有損、開發庫限定**：刪掉的兩類東西性質不同——`allowed_databases` 是**政策**（管理者設定的執行目標限制，刪了即靜默解除，再次 Up 之後全部資產回到不限制）；十一欄是**稽核證據**（每個執行單位的終態、目標庫、事件識別），刪了沒有第二個來源可補，轉錄錄影是自同一事件派生的閱讀面而不是事實來源。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4），而該備份必須含 `session_commands` 全表 |
 | `20260903_security_policies_value_text` | 登入前告示的前置：`ALTER TABLE security_policies ALTER COLUMN value TYPE text`（見第 17 節），共 1 條 DDL，不建表、不加欄、不加索引或約束。政策值一律以字串存放，既有鍵全是整數、布林與短枚舉，128 位元組夠用；文字型政策鍵（上限二千個 Unicode 字元、可含換行）放不進去。**放寬欄位而非另立一張表**，是為了讓文字鍵直接沿用政策機制既有的批次原子、變更審計、快取與錯誤碼。**Up 為純型別放寬、無資料回填**：`varchar(128)` → `text` 在 PostgreSQL 是相容擴張，存量列原值不動，耗時與存量無關。本語句**不列入** `schemaDDLStatements()`——該清單的解析器只認 CREATE TABLE 與 ADD COLUMN（欄名層級的比對），型別改動屬第 2 層 parity 的射程，而第 2 層以「baseline ＋依序跑完全部增量」建庫，本條自然涵蓋其中 | `rollbackSecurityPoliciesValueText`：收窄回 `character varying(128)`。**開發庫限定**：存量值若已超過 128 位元組，資料庫直接報錯並使整個交易回滾，故不另寫前置檢查。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
 > **升級注意**：`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
-> `20260826_db_query_console` 與 `20260903_security_policies_value_text` 於既有部署升級時自動套用
+> `20260826_db_query_console`、`20260903_security_policies_value_text` 與 `20260903_rotation_evidence_report`
+> 於既有部署升級時自動套用
 > （段 1，無 codec 依賴；`20260826_source_ip_forensics`
 > 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
-> `20260826_db_query_console` 為純加欄、`20260903_security_policies_value_text` 為純型別放寬，兩者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
+> `20260826_db_query_console` 與 `20260903_rotation_evidence_report` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，三者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
 > 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
 
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
@@ -2442,7 +2448,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 
 ---
 
-### 42. AuditExportJob（證據包非同步匯出 job）
+### 42. AuditExportJob（非同步匯出工作單）
 
 **表名**: `audit_export_jobs`
 **檔案**: `backend/internal/model/audit_export_job.go`
@@ -2450,7 +2456,8 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 無資料回填，增量 DDL 在全新資料庫（baseline → 本條）與既有資料庫（僅本條）上收斂到同一形狀，
 不需要剪貼簿轉換那種「baseline 終態＋post-unseal 回填」雙軌。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。
 
-證據包（`evidence_bundle`）匯出改為**非同步**後的 job 追蹤表。**只有證據包走 job；事件報告維持同步匯出**。
+非同步產物的工作單追蹤表。`kind` 欄出現之後它承載兩個種類：證據包（`evidence_bundle`）與
+輪替證據報告（`rotation_report`）。**事件報告維持同步匯出，不走工作單**。
 本表是**純狀態表、非證據**：job 列是申請者的追蹤憑據，證據義務落在 `audit_logs`（發起與下載均留痕）
 與產物檔本身；drop 本表僅失去追蹤面，不觸及任何證據（故 Down 為可逆 `DROP TABLE`）。
 
@@ -2458,10 +2465,11 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `RequesterID` | uint | `not null;index:idx_audit_export_jobs_requester_status,priority:1` | `-` | 申請者（下載授權與清單範圍的判準；回應層另走 DisplayMap 投影） |
+| `Kind` | string | `size:32;not null;default:evidence_bundle;index:idx_audit_export_jobs_kind_status,priority:1` | `kind` | 工作單種類（閉集：`evidence_bundle`／`rotation_report`）。決定由哪個打包者產出、清單走哪一種範圍、下載走哪一種授權判準。存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。model 本身不帶 json tag，`kind` 由回應層投影輸出。由增量 `20260903_rotation_evidence_report` 加欄 |
 | `RequesterName` | string | `size:50;not null` | `-` | 申請者名稱（發起當下快照，供 manifest `exported_by` 與審計列） |
 | `FilterJSON` | string | `type:text;not null` | `-` | 完整篩選條件快照（`ExportFilter` 的 JSON 序列化；供 worker 重建篩選，不出站） |
 | `FilterHash` | string | `size:64;not null` | `-` | 篩選正規化 SHA-256；`pending`／`running` 去重鍵 |
-| `Status` | string | `size:16;not null;index:idx_audit_export_jobs_requester_status,priority:2;index:idx_audit_export_jobs_status` | `status` | 狀態五態：`pending`／`running`／`done`／`failed`／`expired`（**無獨立「取消」態**——失權取消落 `failed` 並以 `ErrorSummary` 標因） |
+| `Status` | string | `size:16;not null;index:idx_audit_export_jobs_requester_status,priority:2;index:idx_audit_export_jobs_status;index:idx_audit_export_jobs_kind_status,priority:2` | `status` | 狀態五態：`pending`／`running`／`done`／`failed`／`expired`（**無獨立「取消」態**——失權取消落 `failed` 並以 `ErrorSummary` 標因） |
 | `Attempts` | int | `not null` | `-` | 打包嘗試次數（含首次）；達上限（3）即轉 `failed` |
 | `ArtifactPath` | string | `size:500;not null` | `-` | 產物檔伺服器內部路徑（不出站；過期清除後清空） |
 | `ArtifactSHA256` | string | `size:64;not null` | `artifact_sha256` | 產物 SHA-256（過期後仍保留供紀錄比對） |
@@ -2478,13 +2486,25 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 **索引**（DDL 於 `backend/internal/database/migration_audit_export_jobs.go`）:
 - `idx_audit_export_jobs_requester_status`＝`(requester_id, status)`——下載中心清單與每申請者進行中計數的查詢面。
 - `idx_audit_export_jobs_status`＝`(status)`——worker 領件（`pending` 最舊優先）與過期清掃的查詢面。
+- `idx_audit_export_jobs_kind_status`＝`(kind, status)`，由增量 `20260903_rotation_evidence_report` 建立——下載中心兩個分頁的列表與 worker 領件都先以種類分流、再看狀態。
 - `uniq_audit_export_jobs_active_filter`＝**部分唯一索引** `(requester_id, filter_hash) WHERE status IN ('pending','running')`
   ——`pending`／`running` 去重的資料庫層防線（admission 交易是第一道，本索引擋住繞過服務層的寫入路徑）；
   `failed`／`done` 不在 `WHERE` 內，故不阻擋重新發起、也不使舊包被復用。
 
 **設計說明**:
-- **產物與 job 列的保留期分別計**：產物檔 24h 後由 worker 清除並轉 `expired`；job 列（含終態）
-  另有紀錄保存期（30 天）後清理，兩者不同源。
+- **產物與 job 列的保留期分別計**：產物檔到期後由 worker 清除並轉 `expired`——證據包產物固定 24h，
+  報告產物依排程設定的保留天數（見下）；job 列（含終態）另有紀錄保存期（30 天）後清理，兩者不同源。
+- **種類決定授權判準，不是只決定內容**：`evidence_bundle` 的清單與下載綁申請者本人；
+  `rotation_report` 為共用產物，具 `audit:view` 即可列出與下載，且排程產出的列 `RequesterID` 為 0、
+  `RequesterName` 為 `system`，打包時跳過申請者重驗（無自然人主體可失效）。
+  去重鍵亦隨種類分流：報告以種類加篩選雜湊去重（不含申請者），同一排程至多一張進行中的工作單。
+  `uniq_audit_export_jobs_active_filter` 是證據包側的資料庫層防線，其 `(requester_id, filter_hash)` 對
+  `RequesterID=0` 的報告列仍成立，故不必為新種類改寫該索引。
+- **報告產物的保留期由排程決定**：`ExpiresAt`＝`PackagedAt` 加排程的 `retention_days`（1–3650 天），
+  手動產出的報告沿既有證據包保留期。到期清理與下載失效走同一套流程。
+  保留期只描述資料庫記載的到期時刻：產物本身存於後端容器的匯出暫存目錄，
+  未掛載 volume 時容器重建即消失，要留到保留期須掛載該目錄或啟用離機儲存
+  （見 `docs/ops/backup-and-restore.md`）。
 - 欄位刻意不帶 `gorm default` tag：所有欄位由程式碼顯式賦值（避免 GORM 對零值交由 DB 填值）。
 - **產物暫存目錄不落資料庫**（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`）：
   屬暫存、限時清除，非備份對象（見 `docs/ops/backup-and-restore.md`）。
@@ -2492,7 +2512,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
   （回填與保留清理的掃描面），本表沒有等價的掃描查詢——下載中心清單以既有的
   `idx_audit_export_jobs_requester_status` 取件後直讀快取欄，離機側的查詢面則落在
   `offsite_objects` 自己的四條索引上。
-- **產物到期只清本機側，不動遠端物件**（產物檔 24h、job 列 30 天，兩者不同源，見上）：產品對遠端不發刪除，
+- **產物到期只清本機側，不動遠端物件**（產物檔依種類的保留期、job 列 30 天，兩者不同源，見上）：產品對遠端不發刪除，
   遠端副本的到期清理歸部署方的 bucket lifecycle（見第 45 節與 `docs/ops/backup-and-restore.md`）。
 
 ---
@@ -2751,6 +2771,49 @@ pending → uploading → uploaded → local_purged
 5. **帳冊是現況，審計事件才是軌跡**——本表每列只保存目前狀態（狀態機是覆寫式的）；
    「什麼時候上傳的、什麼時候判定不符、什麼時候本機到期」的時序在保管鏈審計事件裡。
    反過來說，帳冊狀態是權威，審計列受審計佇列同樣的滿載降級與丟棄計數約束。
+
+---
+
+### 46. RotationReportSchedule（輪替證據報告排程）
+
+**表名**: `rotation_report_schedules`
+**檔案**: `backend/internal/model/rotation_report_schedule.go`
+**建表方式**: **增量 migration `20260903_rotation_evidence_report`（非 baseline）**——純新表、無加密欄、
+無資料回填，DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。
+
+一列一排程。排程觸發時建立一張種類為 `rotation_report` 的匯出工作單（第 42 節），
+記錄區間為 `[period_anchor, 觸發時刻)`，申請者記為系統。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `Name` | string | `size:128;not null;uniqueIndex` | `name` | 排程名。**全庫唯一**——它是報告封面與下載中心列上的人可讀識別，重名會使「這份報告是哪個排程產的」無法回答 |
+| `Cron` | string | `size:64;not null` | `cron` | 標準 5 欄 cron，與改密計劃共用同一個解析器 |
+| `Enabled` | bool | `default:true` | `enabled` | 啟用狀態 |
+| `ScopeKind` | string | `size:16;not null` | `scope_kind` | 報告範圍種類：`all`／`node`／`plan` |
+| `ScopeID` | uint | `not null` | `scope_id` | 範圍識別：`all` 時恆為 0，`node` 為資產節點 id，`plan` 為改密計劃 id。**與 `ScopeKind` 成對讀**，單看本欄無語義 |
+| `RetentionDays` | int | `not null` | `retention_days` | 產物保留天數（1–3650）：打包完成時刻加本值即為工作單的到期時刻，逾期由既有的匯出產物清掃流程清除 |
+| `Language` | string | `size:8;not null` | `language` | 報告語言（一份報告一種語言），值域同產品既有的伺服端文案語言 |
+| `PeriodAnchor` | time.Time | `not null` | `period_anchor` | **下一份報告的記錄區間起點**。唯讀欄（API 送上來不採用）：建立排程時＝建立時刻，每次成功建單後＝該次觸發時刻，`cron` 被修改時＝修改時刻 |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+
+**索引**（DDL 於 `backend/internal/database/migration_rotation_evidence_report.go`）:
+- `idx_rotation_report_schedules_name`＝**唯一索引** `(name)`（非 partial：本表無 `deleted_at`，排程為硬刪）。
+
+**設計說明**:
+- **`PeriodAnchor` 為什麼是持久欄位而非自 cron 推導**：cron 只說「何時觸發」，不說「上一次是什麼時候」。
+  以「觸發時刻往回推一個週期」計算，任何一次錯過的觸發（服務重啟、主機停機）都會在區間上留下
+  一段沒有任何報告涵蓋的空白，而**空白在報告上看不出來**。以錨點記起點，連續兩期必然首尾相接、
+  不重疊也不漏。修改 `cron` 會使當期區間以修改時刻切開，這是刻意的：週期換了之後，舊週期的區間
+  對讀報告的人已經沒有意義。「立即產出」視為提前的一期，同樣推進錨點；手動產出不碰任何排程的錨點。
+- **本表是設定，不是證據**：它記的是「要產什麼報告」，產出的事實落在工作單與審計日誌。
+  排程的建立、修改與刪除各入審計。
+- **同一排程至多一張進行中的工作單**：建單時掃過該種類所有進行中的工作單，其篩選快照帶同一個
+  排程識別即拒絕，回收斂錯誤。這道判定在服務層，不另設資料庫層約束。
+  報告種類的去重鍵是種類加篩選雜湊（**不含申請者**），與證據包的每申請者去重是兩套判準。
+- 範圍指向的節點或計劃被刪除時，本表不做級聯（無 FK 約束）：排程仍在，其產出的報告母體為空。
+  這是刻意的——靜默刪掉一個排程比產出一份空報告更難察覺。
 
 ---
 

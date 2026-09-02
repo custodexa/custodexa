@@ -2,6 +2,95 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.2.5 — evidence that credentials are being rotated (2026-09-03)
+
+**This release changes the database schema.** One migration,
+`20260903_rotation_evidence_report`, runs when the backend starts. It adds columns to
+three existing tables and creates one table. Existing rows are not rewritten, so the
+first start after the upgrade takes about as long as usual.
+
+**The backend image is about 21 MB larger.** Reports are rendered as PDF with a font
+that covers Traditional Chinese and Japanese, and that font is compiled into the
+backend binary. Allow for it when you pull images.
+
+**Back up before you upgrade, and keep the images you are running now.** What to
+record before you stop the old version, and what to check afterwards, is section 2 of
+`docs/ops/upgrade-sop.md`. Going back means restoring the pre-upgrade backup with the
+previous images. Report schedules and policy values set after the upgrade are not in
+that backup, so write them down before going back.
+
+**Nothing changes until you set it up.** The new policy value ships as zero, which
+means off; plans carry no override; with no schedule defined, no report is produced.
+
+### Rotation evidence
+
+- A rotation evidence page lists every asset account the system holds, with the
+  maximum credential age that applies to it, where that number comes from, when it was
+  last rotated successfully, how many days are left, and a status. Administrators and
+  auditors reach it from the audit group in the sidebar.
+- Each account carries one status: unverified candidate, no policy set, no rotation
+  record, overdue, due within thirty days, or compliant. An account the system holds no
+  successful rotation for is reported under its own count rather than as overdue.
+- Two compliance rates sit side by side. One leaves accounts without a record out of
+  the calculation; the other counts them as not compliant. Each carries the sentence
+  that defines it, and when there is nothing to divide by, the page says the rate does
+  not apply instead of showing zero percent.
+- The population is the asset accounts registered in the system. The product reads its
+  own records rather than scanning target hosts, and every output states that.
+- A report covers the whole system, one asset node together with everything below it,
+  or the accounts one rotation plan reaches.
+- A report is delivered as a package: a PDF to read, two CSV files to work with, a manifest
+  listing every file with its checksum, and a signature over the manifest. The manifest
+  is written last, so a package without one is incomplete and is not evidence. CSV files
+  open in a spreadsheet with the right encoding, and cells a spreadsheet would run as a
+  formula are rewritten.
+- Reports are written in Traditional Chinese, English, or Japanese. Dates carry their
+  time zone offset in every language.
+
+### Scheduling and delivery
+
+- Administrators can define report schedules, each with its own timetable, scope,
+  retention period, and language. Consecutive reports from one schedule cover
+  consecutive periods that meet end to end, across restarts and missed runs alike. A
+  schedule can also produce a report immediately, which counts as that period arriving
+  early.
+- Any account holding audit view permission can produce a report on demand for a period
+  it chooses.
+- The downloads page now has two tabs. My exports holds the evidence packages the
+  account requested itself and behaves as before. Rotation reports lists report
+  packages and is shared: any account with audit view permission can list and download
+  them, because a report carries no recordings, no clipboard text and no credential
+  material, and because a scheduled report has no requester to bind to. Evidence
+  packages stay bound to the account that asked for them, and every download is audited
+  with the file checksum.
+- Report packages are written to the same directory as evidence packages and are kept
+  for the retention period their schedule sets, which can be much longer than the 24
+  hours an evidence package lives. That directory is still not a backup target: a
+  report restates facts held in the database, and producing one again after a restore
+  gives a fresh package with its own generation time and signature. Size the disk for
+  the reports you schedule.
+- The export directory sits inside the backend container and starts empty every time
+  the container is rebuilt. Mount it as a volume, or turn on offsite storage, to hold
+  report packages for the whole retention period their schedule sets.
+
+### Credential policy
+
+- A security policy sets the maximum age for asset account credentials, in days. It
+  ships as zero, which means off, and it feeds the rotation evidence report. Platform
+  user passwords keep their own separate settings. The PCI DSS figure is shown on the
+  policy page as a reference value, because requirement 8.6.3 asks each organization to
+  set this frequency from its own targeted risk analysis instead of naming a number.
+- A rotation plan can override that figure for the accounts it covers. Where several
+  plans cover one account, the report takes the strictest and names all of them.
+
+### Shared credentials
+
+- Creating an asset account by copying another marks both as sharing one credential,
+  and the report shows the mark. A successful rotation clears it for that account, and
+  once a single account is left holding the mark, it clears there too. The mark states
+  what the system observed: a credential edited by hand keeps whatever mark it had, and
+  accounts copied before this release carry none.
+
 ## 1.2.0 — a query console for database assets, and a sign-in notice (2026-09-02)
 
 **This release changes the database schema.** Two migrations run when the backend

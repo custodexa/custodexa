@@ -21,6 +21,9 @@ var tableOwner = map[string]string{
 	"change_secret_plans":      "asset",
 	"change_secret_records":    "asset",
 	"change_secret_candidates": "asset",
+	// 輪替證據報告的排程（rotation-evidence-report）：排程的業務語義
+	// （範圍、區間錨點、留存）與其產出的資料同屬 asset
+	"rotation_report_schedules": "asset",
 	// identity
 	"users":                    "identity",
 	"roles":                    "identity",

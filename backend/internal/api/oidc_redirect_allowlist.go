@@ -44,6 +44,7 @@ var frontendRouteSegments = map[string]bool{
 	"transmission-inventory":  true,
 	"offsite-storage":         true,
 	"change-secret-plans":     true,
+	"rotation-evidence":       true,
 	// audit：稽核調查工作台 `/audit/workbench`（auditor-workbench）。
 	// 這是全站第一個帶第二段的稽核路由；既有稽核頁一律是平坦第一段
 	// （audit-logs／alerts／commands），故此段是新開的命名空間而非改名

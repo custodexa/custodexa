@@ -195,6 +195,9 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicyInactiveDisableDays: true, // 出廠 0=關閉，偏離 PCI 90（易用取向）
 		// 出廠 0=關閉，偏離 PCI 8.3.9 的 90 天
 		PolicyPasswordMaxAgeDays: true,
+		// 出廠 0=關閉，偏離 PCI 8.6.3 的參考值 90 天。**參考值照常參與符合性
+		// 評估**：值是給了的，只是出處性質是常見實務而非條文明定
+		PolicyAssetSecretMaxAgeDays: true,
 		// 稽核紀錄合規六鍵出廠全偏離（日常模式）：保留 0=永久視為未定義
 		// 保留政策、錄影 90 < 365、簽核與失效告警預設關
 		PolicyRetentionAuditLogDays:       true,
@@ -291,8 +294,8 @@ func TestPolicyComplianceComparator(t *testing.T) {
 			t.Errorf("出廠預設 %s 應符合 PCI 建議", v.Key)
 		}
 	}
-	if svc.DeviationCount() != 21 {
-		t.Errorf("出廠偏離數 = %d, want 21（mfa_required＋web_idle＋session_idle＋inactive_days＋password_max_age＋審計合規六鍵＋金鑰提醒＋傳輸六通道＋存取政策段位＋撤銷即斷線＋錄影 fail-close）", svc.DeviationCount())
+	if svc.DeviationCount() != 22 {
+		t.Errorf("出廠偏離數 = %d, want 22（mfa_required＋web_idle＋session_idle＋inactive_days＋password_max_age＋asset_secret_max_age＋審計合規六鍵＋金鑰提醒＋傳輸六通道＋存取政策段位＋撤銷即斷線＋錄影 fail-close）", svc.DeviationCount())
 	}
 
 	// 0=停用：即使 0 <= 10 也必須判不符（sentinel 先判）
@@ -327,9 +330,9 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		t.Error("關閉字母數字要求應不符")
 	}
 
-	// 偏離：lockout=15（放寬）＋require_alnum=false＋21 項出廠偏離
-	if svc.DeviationCount() != 23 {
-		t.Errorf("偏離數 = %d, want 23（lockout 放寬＋alnum 關＋21 項出廠偏離）", svc.DeviationCount())
+	// 偏離：lockout=15（放寬）＋require_alnum=false＋22 項出廠偏離
+	if svc.DeviationCount() != 24 {
+		t.Errorf("偏離數 = %d, want 24（lockout 放寬＋alnum 關＋22 項出廠偏離）", svc.DeviationCount())
 	}
 }
 

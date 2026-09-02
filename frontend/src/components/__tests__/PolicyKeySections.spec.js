@@ -117,3 +117,40 @@ describe('PolicyKeySections — 文字型政策鍵', () => {
     ])
   })
 })
+
+// 參考值：條文未定固定天數，數字是本產品的預設起始值。
+// 標籤與附註缺一，讀者就會把它當成條文明定的門檻。
+describe('PolicyKeySections — PCI 參考值', () => {
+  const REFERENCE_POLICY = {
+    key: 'asset_secret_max_age_days',
+    type: 'int',
+    label: '資產帳號憑證最長使用天數',
+    min: 1,
+    max: 3650,
+    zero_disables: true,
+    pci_value: '90',
+    pci_reference: true,
+    requirement: '8.6.3',
+    compliant: true,
+  }
+
+  it('標為參考值的鍵在建議值旁顯示標籤與附註，且附註說明條文不定天數', () => {
+    const wrapper = mountSections([REFERENCE_POLICY], { asset_secret_max_age_days: 90 })
+
+    const tag = wrapper.find('[data-test="policy-pci-reference-asset_secret_max_age_days"]')
+    expect(tag.exists()).toBe(true)
+    expect(tag.text()).toContain('參考值')
+
+    const meta = wrapper.find('.policy-meta').text()
+    expect(meta).toContain('8.6.3')
+    expect(meta).toContain('未定固定天數')
+    // 這個數字不是條文給的，不得寫成「PCI 建議 90 天」以外的更強主張
+    expect(meta).toContain('預設起始值')
+  })
+
+  it('未標參考值的鍵不長出標籤（一般建議值照舊）', () => {
+    const wrapper = mountSections([INT_POLICY], { lockout_max_attempts: 5 })
+    expect(wrapper.find('[data-test="policy-pci-reference-lockout_max_attempts"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('參考值')
+  })
+})

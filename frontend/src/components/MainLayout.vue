@@ -152,6 +152,7 @@ import {
   ClipboardList,
   Stamp,
   TextSearch,
+  FileClock,
   HardDriveDownload,
   ScrollText,
   Terminal,
@@ -273,6 +274,14 @@ const menuGroups = [
         path: '/audit/workbench',
         titleKey: 'menu.auditWorkbench',
         icon: TextSearch,
+        roles: ['admin', 'auditor'],
+      },
+      {
+        // 輪替證據：緊接工作台——它是稽核季度最常被要的那一份東西，
+        // 且排程管理就在頁內（不另立側欄項目，離開這一頁看排程沒有上下文）
+        path: '/rotation-evidence',
+        titleKey: 'menu.rotationEvidence',
+        icon: FileClock,
         roles: ['admin', 'auditor'],
       },
       {
@@ -449,6 +458,7 @@ const pageTitleKeys = {
   '/my-requests': 'menu.myRequests',
   '/approvals': 'menu.approvals',
   '/audit/workbench': 'menu.auditWorkbench',
+  '/rotation-evidence': 'menu.rotationEvidence',
   '/audit/exports': 'menu.auditExports',
   '/audit-logs': 'menu.auditLogs',
   '/commands': 'menu.commands',

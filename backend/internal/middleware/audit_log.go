@@ -390,6 +390,11 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceSecurityPolicy
 		case "audit-export":
 			return model.ResourceAuditExport
+		// 輪替證據報告：`:id` 指向**排程列**，不是資產或工作單。
+		// 段名 `rotation-report` 與 `audit-export` 不同段，兩者的 resource_id
+		// 語義不同，故不共用分類
+		case "rotation-report":
+			return model.ResourceRotationReport
 		case "daily-reviews":
 			return model.ResourceDailyReview
 		case "syslog-settings":

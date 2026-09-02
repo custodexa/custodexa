@@ -40,6 +40,17 @@ const (
 	PolicySessionMaxMinutes   = "session_max_minutes"
 	PolicyInactiveDisableDays = "inactive_disable_days"
 
+	// PolicyAssetSecretMaxAgeDays 資產帳號憑證的最長使用天數（全域預設）。
+	//
+	// **作用對象是資產帳號，不是平台使用者**——後者由
+	// PolicyPasswordMaxAgeDays 管，兩者互不影響。本鍵不會使任何人被要求改密：
+	// 它只是輪替證據報告判定「逾期」的基準線，改密的實際執行仍由改密計劃負責。
+	// 改密計劃可逐一覆蓋此天數（計劃層 0＝沿用本鍵）。
+	//
+	// 出廠 0＝關閉（升級零行為變更）。關閉時報告照常產出，適用天數欄顯示
+	// 未設定、逾期無從判定——那本身就是稽核要看見的發現，不該以擋住報告代替。
+	PolicyAssetSecretMaxAgeDays = "asset_secret_max_age_days"
+
 	// 日誌保留與審閱政策鍵（PCI Req 10）
 	PolicyRetentionAuditLogDays       = "retention_audit_log_days"
 	PolicyRetentionSessionCommandDays = "retention_session_command_days"
@@ -266,6 +277,16 @@ type PolicyDef struct {
 	EPaymentValue string `json:"epayment_value,omitempty"`
 	// EPaymentRequirement 電支基準條號（如 15-8）
 	EPaymentRequirement string `json:"epayment_requirement,omitempty"`
+	// PCIReference PCIValue 是**參考值**而非條文明定值。
+	//
+	// 為真時，該條文以機構自行的目標風險分析決定頻率／門檻，未給固定數字，
+	// PCIValue 是本產品採用的常見實務起始值。設定頁必須把這個性質標示出來
+	// ——把參考值印成條文要求，會讓稽核以為那個數字有法源，而它沒有。
+	//
+	// 符合性評估與一鍵套用**照常作用**：值是給了的，只是出處性質不同。
+	// 為真時 PCIValue 必非空（validatePolicyDefs 釘住）——沒有值的參考值
+	// 不是一個有意義的宣告。
+	PCIReference bool `json:"pci_reference,omitempty"`
 	// Direction int 型比較方向（min/max）
 	Direction string `json:"direction,omitempty"`
 	// ZeroDisables 0=停用 sentinel：先判「不符建議」再比數值
@@ -355,6 +376,19 @@ var policyDefs = []PolicyDef{
 		PCIValue: "90", Direction: DirectionMax, ZeroDisables: true, Max: 3650, // 上界 10 年
 		Requirement: "8.3.9", Label: "密碼最長使用天數", Unit: "天",
 		// 電支 §15-8：人員／系統連線帳號至少每三個月變更一次
+		EPaymentValue: "90", EPaymentRequirement: "15-8",
+	},
+	{
+		// 資產帳號憑證最長使用天數：輪替證據報告據此判定逾期，計劃可覆蓋。
+		// 出廠 0＝關閉（升級零行為變更）。
+		//
+		// **PCI 值標為參考值**：Requirement 8.6.3 要求此頻率由機構的目標風險
+		// 分析決定，未定固定天數；90 借自 8.3.9 對使用者帳號的門檻，是本產品
+		// 的預設起始值。電支 §15-8 則明定至少每三個月，故該側非參考值。
+		Key: PolicyAssetSecretMaxAgeDays, Type: PolicyTypeInt, Default: "0",
+		PCIValue: "90", PCIReference: true, Direction: DirectionMax,
+		ZeroDisables: true, Max: 3650, // 上界 10 年，與平台使用者密碼同
+		Requirement: "8.6.3", Label: "資產帳號憑證最長使用天數", Unit: "天",
 		EPaymentValue: "90", EPaymentRequirement: "15-8",
 	},
 	{
@@ -878,6 +912,11 @@ func validatePolicyDefs() error {
 			if err := validatePolicyValue(def, def.PCIValue); err != nil {
 				return fmt.Errorf("%s PCIValue=%q 非法: %w", def.Key, def.PCIValue, err)
 			}
+		}
+		// 參考值必有值：標了性質卻沒有數字，等於在設定頁上掛一個空標籤，
+		// 而符合性評估與一鍵套用都會靜默略過該鍵
+		if def.PCIReference && def.PCIValue == "" {
+			return fmt.Errorf("%s 標為 PCI 參考值但無 PCIValue（參考值必有值）", def.Key)
 		}
 		if def.Type == PolicyTypeEnum {
 			if def.PCIValue != "" && enumRank(def.EnumOrder, def.PCIValue) < 0 {

@@ -35,7 +35,7 @@ const BACKEND_RESOURCES = [
   'retention', 'daily_review', 'syslog_setting', 'audit_log', 'user_group',
   'command', 'key_management', 'transmission', 'access_request', 'approver_scope',
   // auditor-workbench 訂正的三個獨立分類（原落 default asset 分支）
-  'change_secret_plan', 'authorization', 'audit_timeline',
+  'change_secret_plan', 'rotation_report', 'authorization', 'audit_timeline',
   // 取走剪貼簿明文的動作獨立分類
   'clipboard_event',
   // A 類新分類十族＋兜底哨兵
@@ -165,7 +165,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   })
 
-  it('AUDIT_RESOURCES 與後端 37 資源互為全集（無殭屍 alert 條目）', () => {
+  it('AUDIT_RESOURCES 與後端 38 資源互為全集（無殭屍 alert 條目）', () => {
     expect(Object.keys(AUDIT_RESOURCES).sort()).toEqual([...BACKEND_RESOURCES].sort())
     expect(AUDIT_RESOURCES.alert).toBeUndefined()
   })
@@ -178,7 +178,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
       expect(
         parsed.length,
         '未從後端原始碼抽到 Resource 常數（正則失效？）'
-      ).toBeGreaterThanOrEqual(37)
+      ).toBeGreaterThanOrEqual(38)
       // 雙向：後端多值（前端漏補）與前端多值（殭屍條目）皆紅
       expect(parsed.sort()).toEqual([...AUDIT_RESOURCE_VALUES].sort())
       // 硬拷對照組亦須與原始碼同步，避免對照組本身漂移（本族的既有缺口正是此點）

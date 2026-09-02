@@ -234,6 +234,11 @@ var stage2ServiceProbe = map[string]string{
 	// auditExportJobWorker：
 	// 打包 worker 本身是純背景設施，其對外面即 job 發起／清單端點——封印期須 503
 	"auditExportJobWorker": "/api/v1/audit-export/jobs",
+	// rotationReportScheduler：輪替證據報告的排程迴圈，純內部設施。
+	// **填空字串是刻意的**——它只負責到點建立報告工作單，不註冊任何路由；
+	// 報告與排程的對外面（/api/v1/rotation-report/...）由 apiHandlers 那條涵蓋，
+	// 與本排程器存不存在無關，拿它當 probe 會讓斷言與被測對象脫鉤
+	"rotationReportScheduler": "",
 	// metricsRefresher（接替 perfMonitor）：純背景刷新任務。
 	// **對外面填空字串是刻意的**——`/metrics` 端點本身於段 1 即存在且刻意可達
 	// （封印期須能區分「封印中」與「當機」），它不隨本服務出現或消失；
