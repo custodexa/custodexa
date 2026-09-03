@@ -288,3 +288,25 @@
 
 - **WHEN** 排程產生的 job 進入打包
 - **THEN** worker 不因申請者為系統而取消該 job
+
+### Requirement: 匯出 CSV 的公式注入轉義
+
+事件報告與證據包內的每一個 CSV 檔，其儲存格 SHALL 套用試算表公式注入轉義：首字元為 `=`、`+`、`-`、`@`、Tab、CR 之一的儲存格 SHALL 前置單引號，純數值字面（可帶負號、小數與指數）SHALL 豁免；規則 SHALL 只有一份且與系統內其他 CSV 匯出共用，SHALL NOT 在個別匯出點另寫。
+此轉義為檔案內容與原始事實之間的一處改寫，SHALL 於清單檔 `disclosures[]` 以機器碼 `export.limit.csv_formula_escape` 揭露（兩種模式皆無條件揭露），並 SHALL 於匯出介面的「不能證明什麼」段與對外 API 文件載明；讀者需要逐字原文時 SHALL 以 `record_ref` 回系統查對原始紀錄。
+包內 JSON 檔不套用此規則。
+
+#### Scenario: 事件報告的指令欄被轉義
+
+- **WHEN** 範圍內有一筆指令原文為 `=HYPERLINK("http://x")`、一筆為 `-rf /tmp`、一筆告警規則名為 `@sum`
+- **THEN** `commands.csv` 與 `alerts.csv` 中該三格分別為 `'=HYPERLINK("http://x")`、`'-rf /tmp`、`'@sum`，其餘欄位逐字不變，清單檔 `disclosures[]` 含 `export.limit.csv_formula_escape`
+
+#### Scenario: 證據包的指令欄被轉義且數值欄豁免
+
+- **WHEN** 證據包範圍內有一筆指令原文為 `+x`、另一筆主控台列的 `rows_affected` 為 `-1`
+- **THEN** `commands.csv` 中前者為 `'+x`、後者維持 `-1`，清單檔 `disclosures[]` 含 `export.limit.csv_formula_escape`
+
+#### Scenario: 介面揭露
+
+- **WHEN** 稽核員開啟匯出對話框並切換事件報告與證據包兩種包型
+- **THEN** 兩種包型的「不能證明什麼」段各列出一條 CSV 轉義說明
+

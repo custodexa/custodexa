@@ -3049,6 +3049,8 @@ GET /api/v1/audit-export
 - `alerts.csv`／`file_transfers.csv` — 無本體之類別以**事件事實**列入（重用事件報告的寫入器）〔類別 `alert`／`file_transfer`〕
 - `manifest.json`（＋ `manifest.sig`）
 
+**CSV 儲存格轉義（兩種模式的每一個 CSV）**：首字元為 `=`、`+`、`-`、`@`、Tab、CR 之一的儲存格前置單引號，以防試算表公式注入；純數值字面（可帶負號、小數、指數）豁免。這是檔案內容與原始事實之間的一處改寫，manifest `disclosures[]` 以 `export.limit.csv_formula_escape` 揭露；需要逐字原文時以 `record_ref` 回系統查對原始紀錄。JSON 檔不套用。形態維持 UTF-8 無 BOM、LF。
+
 **manifest.json 欄位**:
 | 欄位 | 說明 |
 |---|---|
@@ -3067,7 +3069,7 @@ GET /api/v1/audit-export
 | `clipboard` | 證據包剪貼簿段三數：`events`（事件總數）／`content_available`（內容可用）／`content_failed`（留存失敗） |
 | `coverage[]` | 逐類別保留覆蓋三態（`present`／`purged`／`not_retained`）＋保留天數、清除截止與最近清除時刻、`archive_unit_range`（封存單位編號區間）、`note_code`＋`note_params` |
 | `signed`／`signed_reason` | 是否已簽章；未簽時給機器碼原因（**不靜默省略**） |
-| `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前）。證據包含明文剪貼簿內容時，**明載本包含明文內容**（僅 `content_available>0` 時寫入——全缺口包不宣告，宣告即假警報） |
+| `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前）；兩種模式恆含 `export.limit.csv_formula_escape`（CSV 儲存格已轉義）。證據包含明文剪貼簿內容時，**明載本包含明文內容**（僅 `content_available>0` 時寫入——全缺口包不宣告，宣告即假警報） |
 | `note_codes` | 各段的範圍說明機器碼（如資產關聯的歷史邊界） |
 
 **manifest 內零散文**：`coverage[].note_code`、`disclosures[].code`、`note_codes`

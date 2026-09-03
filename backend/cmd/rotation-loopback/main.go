@@ -21,6 +21,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -388,7 +389,9 @@ func runDisconnect(ctx context.Context, o options, t asset.LoopbackTarget, sec s
 		done <- asset.LoopbackWinRMScript(ctx, t, sec.password, "Start-Sleep -Seconds 40; exit 0", o.commandTimeout)
 	}()
 	time.Sleep(8 * time.Second)
-	restart := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "Restart-Service WinRM -Force")
+	// 以絕對路徑呼叫，不經 PATH 搜尋（回歸工具只跑在 Windows runner，SystemRoot 必存在）
+	ps := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	restart := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", "Restart-Service WinRM -Force")
 	if rerr := restart.Run(); rerr != nil {
 		fmt.Fprintf(os.Stderr, "restart winrm service: %v\n", rerr)
 	}

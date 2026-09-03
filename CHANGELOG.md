@@ -2,6 +2,21 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.3.1 — spreadsheet-safe CSV files in audit exports (2026-09-04)
+
+No schema change. No migration runs.
+
+### Event reports and evidence bundles
+
+- Every CSV file inside an event report or an evidence bundle now applies the same
+  formula-escaping rule as the query console export and the rotation evidence report.
+  A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a
+  leading apostrophe, so a spreadsheet shows it as text instead of running it as a
+  formula. Plain numbers, including negative ones, are written as they are.
+- The manifest of each package records that this rule was applied, and the export
+  dialog says so before you download. For the exact original text of a command, use
+  the record reference in the file to look the record up in the system.
+
 ## 1.3.0 — password rotation for Windows local accounts (2026-09-03)
 
 **This release changes the database schema.** The migration

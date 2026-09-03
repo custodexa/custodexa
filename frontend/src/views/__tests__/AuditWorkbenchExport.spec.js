@@ -354,6 +354,7 @@ describe('誠實邊界在按下之前呈現', () => {
       'coverage_states',
       'coverage_states_detail',
       'recording_state',
+      'csv_formula_escape',
       'manifest_required',
       'no_offline_tool',
     ]) {

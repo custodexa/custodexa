@@ -285,6 +285,7 @@ describe('聲明段隨包型換掉（報告那組對證據包逐句為假）', (
       'bundle_requester_only',
       'bundle_category_scope',
       'bundle_clipboard_gap',
+      'csv_formula_escape',
       'bundle_manifest_required',
     ]) {
       expect(

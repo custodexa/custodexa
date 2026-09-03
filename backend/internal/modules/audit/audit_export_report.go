@@ -44,6 +44,10 @@ const (
 	CoverageNoteCodeNotRetained = "export.coverage.not_retained"
 	// NoteCodeAuditLogAssetBoundary 資產維度的歷史邊界
 	NoteCodeAuditLogAssetBoundary = "export.limit.asset_scope"
+	// DisclosureCSVFormulaEscape 包內 CSV 儲存格套用了試算表公式注入轉義：
+	// 這是檔案內容與原始事實之間的一處改寫，讀者需要逐字原文時回系統查對。
+	// 兩種模式無條件揭露——規則對整包生效，不看有沒有格子實際被改寫
+	DisclosureCSVFormulaEscape = "export.limit.csv_formula_escape"
 )
 
 // ExportScope 報告涵蓋範圍。
@@ -204,7 +208,9 @@ func (s *AuditExportService) writeReportCSV(zw *zip.Writer, t TimelineEventType,
 	var count int
 	var truncated bool
 	err := s.writeEntry(zw, reportFileName(t), m, func(out io.Writer) error {
-		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{})
+		// 轉義開在寫入器而非個別欄：規則名、檔名、資產名與指令原文同樣使用者可控，
+		// 逐欄挑選會留下第二個漏洞面。形態維持無 BOM、LF（既有程式化消費端）
+		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{Escape: true})
 		if cerr != nil {
 			return cerr
 		}
@@ -639,6 +645,7 @@ func reportDisclosures(m *ExportManifest) []ExportDisclosure {
 		ExportDisclosure{Code: "export.limit.recording_state"},
 		ExportDisclosure{Code: "export.limit.manifest_required"},
 		ExportDisclosure{Code: "export.limit.no_offline_tool"},
+		ExportDisclosure{Code: DisclosureCSVFormulaEscape},
 	)
 	if !m.Signed {
 		// 未簽章的原因一併帶出：讀者要能分辨「未啟用」與「簽章被移除」

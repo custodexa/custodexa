@@ -288,7 +288,8 @@ const limitCodes = computed(() => {
       'bundle_scope_is_query_range',
     ]
     if (props.truncated) codes.push('bundle_truncated_differs')
-    codes.push('bundle_manifest_required', 'bundle_no_offline_tool')
+    // CSV 轉義對兩種包型文意相同，共用一個鍵，不另立 bundle_ 版本
+    codes.push('csv_formula_escape', 'bundle_manifest_required', 'bundle_no_offline_tool')
     if (props.subject === 'asset') codes.push('asset_scope')
     return codes
   }
@@ -299,6 +300,7 @@ const limitCodes = computed(() => {
     'coverage_states',
     'coverage_states_detail',
     'recording_state',
+    'csv_formula_escape',
     'manifest_required',
     'no_offline_tool'
   )

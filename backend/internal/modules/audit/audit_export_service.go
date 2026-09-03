@@ -295,6 +295,10 @@ func (s *AuditExportService) exportBundle(w io.Writer, filter *ExportFilter,
 	if err := s.fillBundleCoverageAndTotals(filter, manifest); err != nil {
 		return nil, err
 	}
+	// 包內 CSV 儲存格套用公式注入轉義，無條件揭露：規則對整包生效，
+	// 「有沒有格子被改寫」讀者無法自行判斷，規則本身才是他要知道的事。
+	// 放在各段之後：`export.limit.*` 要排在任何段落日後可能加入的 `export.proves.*` 之後
+	manifest.Disclosures = append(manifest.Disclosures, ExportDisclosure{Code: DisclosureCSVFormulaEscape})
 	// 7. manifest.json（最後寫，內含前面各檔雜湊）
 	if err := s.writeManifest(zw, manifest); err != nil {
 		return nil, err
@@ -570,7 +574,8 @@ func (s *AuditExportService) writeCommands(zw *zip.Writer, filter *ExportFilter,
 	manifest.Counts["commands"] = len(rows)
 	manifest.Truncated["commands"] = truncated
 	return s.writeEntry(zw, "commands.csv", manifest, func(out io.Writer) error {
-		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{})
+		// 儲存格套公式注入轉義（規則與豁免在共用寫入層）；形態維持無 BOM、LF
+		cw, cerr := csvsafe.NewWriter(out, csvsafe.Options{Escape: true})
 		if cerr != nil {
 			return cerr
 		}
