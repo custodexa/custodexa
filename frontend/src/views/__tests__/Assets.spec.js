@@ -730,3 +730,282 @@ describe('Assets 資訊分層', () => {
     expect(wrapper.findAll('.asset-desc').length).toBe(1)
   }, 15000)
 })
+
+// 改密通道側車（資產表單）。
+//
+// 斷言重心：子欄的顯隱鏈（通道 → 連線方式 → 憑證驗證 → PEM）、編輯回填不逼人重貼
+// CA、切協議清欄，以及送出 payload 的清空語義——WinRM 子欄在通道改離時必須送空值，
+// 否則伺服端不會清殘值（它只在協議不相容時清空）。
+describe('Assets 改密通道側車', () => {
+  const dialogStub = {
+    props: ['modelValue'],
+    template: '<div v-if="modelValue" class="dialog-stub"><slot /></div>',
+  }
+  const treeSelectStub = {
+    name: 'ElTreeSelect',
+    props: ['modelValue', 'data'],
+    template: '<div class="tree-select-stub" />',
+  }
+  const selectStub = {
+    name: 'ElSelect',
+    props: ['modelValue'],
+    template: '<div class="select-stub"><slot /></div>',
+  }
+  const optionStub = {
+    name: 'ElOption',
+    props: ['label', 'value'],
+    template: '<div class="option-stub">{{ label }}</div>',
+  }
+
+  const mountForm = async () => {
+    const wrapper = mountView({
+      'el-dialog': dialogStub,
+      'el-tree-select': treeSelectStub,
+      'el-select': selectStub,
+      'el-option': optionStub,
+      RouterLink: { template: '<a><slot /></a>' },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    setUserRoles(['admin'])
+    getAssetListMock.mockResolvedValue(sampleAssets)
+    getAssetGroups.mockResolvedValue({ data: [], total: 0 })
+    getSecurityPoliciesMock.mockResolvedValue({
+      data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
+      deviation_count: 0,
+    })
+  })
+
+  it('rdp 選 WinRM 才展開子欄；HTTPS 才顯示憑證驗證；指定 CA 才顯示 PEM', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+    await flushPromises()
+
+    // rdp 預設「未設定」：入口在、子欄不在
+    expect(wrapper.find('[data-test="rotation-channel-item"]').exists()).toBe(true)
+    expect(wrapper.vm.form.rotation_channel).toBe('none')
+    expect(wrapper.find('[data-test="winrm-scheme-item"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="rotation-ssh-port-item"]').exists()).toBe(false)
+
+    wrapper.vm.form.rotation_channel = 'windows_winrm'
+    await flushPromises()
+    expect(wrapper.find('[data-test="winrm-scheme-item"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="winrm-target-requirements"]').text()).toContain('AllowUnencrypted=false')
+    // 預設 HTTPS＋系統信任：憑證驗證在、PEM 不在
+    expect(wrapper.vm.form.winrm_scheme).toBe('https')
+    expect(wrapper.find('[data-test="winrm-tls-mode-item"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="winrm-ca-cert-item"]').exists()).toBe(false)
+
+    wrapper.vm.form.winrm_tls_mode = 'ca'
+    await flushPromises()
+    expect(wrapper.find('[data-test="winrm-ca-cert-item"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('只信任此 CA 簽發的伺服器憑證')
+
+    // 切到 HTTP：憑證驗證與 PEM 一起收起，埠跟著換成 5985
+    wrapper.vm.form.winrm_scheme = 'http'
+    wrapper.vm.handleWinrmSchemeChange('http')
+    await flushPromises()
+    expect(wrapper.find('[data-test="winrm-tls-mode-item"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="winrm-ca-cert-item"]').exists()).toBe(false)
+    expect(wrapper.vm.form.winrm_port).toBe(5985)
+
+    // 改成 SSH → PowerShell：WinRM 子欄收起、改密 SSH 埠出現
+    wrapper.vm.form.rotation_channel = 'windows_ssh'
+    await flushPromises()
+    expect(wrapper.find('[data-test="winrm-scheme-item"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="rotation-ssh-port-item"]').exists()).toBe(true)
+  })
+
+  it('連線方式切換只在埠仍是預設值時推導；使用者自填的埠不動', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+    wrapper.vm.form.rotation_channel = 'windows_winrm'
+    wrapper.vm.form.winrm_port = 15986
+    wrapper.vm.form.winrm_scheme = 'http'
+    wrapper.vm.handleWinrmSchemeChange('http')
+    expect(wrapper.vm.form.winrm_port).toBe(15986)
+
+    wrapper.vm.form.winrm_port = 0
+    wrapper.vm.form.winrm_scheme = 'https'
+    wrapper.vm.handleWinrmSchemeChange('https')
+    expect(wrapper.vm.form.winrm_port).toBe(5986)
+  })
+
+  it('編輯回填：has_winrm_ca_cert 時 PEM 欄顯示「已設定」且留空不擋送出', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleEdit({
+      id: 9,
+      name: 'win-app-01',
+      protocol: 'rdp',
+      host: '192.0.2.17',
+      port: 3389,
+      username: 'Administrator',
+      active: true,
+      rotation_channel: 'windows_winrm',
+      effective_rotation_channel: 'windows_winrm',
+      winrm_scheme: 'https',
+      winrm_port: 5986,
+      winrm_tls_mode: 'ca',
+      has_winrm_ca_cert: true,
+    })
+    await flushPromises()
+
+    expect(wrapper.vm.form.rotation_channel).toBe('windows_winrm')
+    expect(wrapper.vm.form.winrm_tls_mode).toBe('ca')
+    // 本體不回顯，只提示已設定
+    expect(wrapper.vm.form.winrm_ca_cert).toBe('')
+    expect(wrapper.find('[data-test="winrm-ca-cert-item"]').text()).toContain('已設定')
+    expect(wrapper.find('[data-test="winrm-ca-cert-item"]').text()).toContain('留空')
+    // 留空＝維持既有：payload 不帶 winrm_ca_cert 鍵（伺服端視為不動）
+    const payload = wrapper.vm.buildRotationChannelPayload()
+    expect(payload.rotation_channel).toBe('windows_winrm')
+    expect(payload.winrm_tls_mode).toBe('ca')
+    expect('winrm_ca_cert' in payload).toBe(false)
+    // 貼入新內容即替換
+    wrapper.vm.form.winrm_ca_cert = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----'
+    expect(wrapper.vm.buildRotationChannelPayload().winrm_ca_cert).toContain('BEGIN CERTIFICATE')
+  })
+
+  it('新建時指定 CA 而 PEM 留空：表單驗證擋下（編輯態已有憑證不擋）', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+    wrapper.vm.form.rotation_channel = 'windows_winrm'
+    wrapper.vm.form.winrm_tls_mode = 'ca'
+    await flushPromises()
+
+    const rule = wrapper.vm.formRules.winrm_ca_cert[0]
+    const errors = []
+    rule.validator({}, '', (e) => e && errors.push(e.message))
+    expect(errors).toEqual(['指定 CA 時須提供 CA 憑證（PEM）'])
+
+    // 編輯態已有憑證：留空放行
+    wrapper.vm.isEdit = true
+    wrapper.vm.form.has_winrm_ca_cert = true
+    const errors2 = []
+    rule.validator({}, '', (e) => e && errors2.push(e.message))
+    expect(errors2).toEqual([])
+  })
+
+  it('切協定清欄：WinRM 設定在改離 rdp 時回出廠值，回到 rdp 是「未設定」而非殘值', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+    wrapper.vm.form.rotation_channel = 'windows_winrm'
+    wrapper.vm.form.winrm_scheme = 'http'
+    wrapper.vm.form.winrm_port = 15985
+    wrapper.vm.form.winrm_ca_cert = 'PEM'
+    wrapper.vm.form.rotation_ssh_port = 2222
+
+    wrapper.vm.form.protocol = 'vnc'
+    wrapper.vm.handleProtocolChange('vnc')
+    await flushPromises()
+    expect(wrapper.vm.form.rotation_channel).toBe('')
+    expect(wrapper.vm.form.winrm_scheme).toBe('https')
+    expect(wrapper.vm.form.winrm_port).toBe(5986)
+    expect(wrapper.vm.form.winrm_ca_cert).toBe('')
+    expect(wrapper.vm.form.rotation_ssh_port).toBe(22)
+    expect(wrapper.find('[data-test="rotation-channel-item"]').exists()).toBe(false)
+
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+    await flushPromises()
+    expect(wrapper.vm.form.rotation_channel).toBe('none')
+    expect(wrapper.find('[data-test="winrm-scheme-item"]').exists()).toBe(false)
+  })
+
+  it('送出 payload：通道非 WinRM 時 WinRM 子欄送空值；http 不送 TLS 模式；非 ca 不送 PEM', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    wrapper.vm.form.protocol = 'rdp'
+    wrapper.vm.handleProtocolChange('rdp')
+
+    // http：TLS 模式與 PEM 送空
+    wrapper.vm.form.rotation_channel = 'windows_winrm'
+    wrapper.vm.form.winrm_scheme = 'http'
+    wrapper.vm.form.winrm_port = 5985
+    wrapper.vm.form.winrm_tls_mode = 'ca'
+    wrapper.vm.form.winrm_ca_cert = 'PEM'
+    expect(wrapper.vm.buildRotationChannelPayload()).toEqual({
+      rotation_channel: 'windows_winrm',
+      winrm_scheme: 'http',
+      winrm_port: 5985,
+      winrm_tls_mode: '',
+      winrm_ca_cert: '',
+      rotation_ssh_port: 0,
+    })
+
+    // https＋ca：PEM 照送
+    wrapper.vm.form.winrm_scheme = 'https'
+    wrapper.vm.form.winrm_port = 5986
+    expect(wrapper.vm.buildRotationChannelPayload()).toMatchObject({
+      winrm_tls_mode: 'ca',
+      winrm_ca_cert: 'PEM',
+    })
+
+    // 改成 SSH → PowerShell：WinRM 四欄全送空值（讓伺服端清殘值），改密 SSH 埠照送
+    wrapper.vm.form.rotation_channel = 'windows_ssh'
+    wrapper.vm.form.rotation_ssh_port = 2222
+    expect(wrapper.vm.buildRotationChannelPayload()).toEqual({
+      rotation_channel: 'windows_ssh',
+      winrm_scheme: '',
+      winrm_port: 0,
+      winrm_tls_mode: '',
+      winrm_ca_cert: '',
+      rotation_ssh_port: 2222,
+    })
+
+    // 未設定：全部清空
+    wrapper.vm.form.rotation_channel = 'none'
+    expect(wrapper.vm.buildRotationChannelPayload()).toEqual({
+      rotation_channel: 'none',
+      winrm_scheme: '',
+      winrm_port: 0,
+      winrm_tls_mode: '',
+      winrm_ca_cert: '',
+      rotation_ssh_port: 0,
+    })
+  })
+
+  it('ssh 資產：Windows 開關＝通道 windows_ssh，關閉送空字串（依協議推導 POSIX）', async () => {
+    const wrapper = await mountForm()
+    wrapper.vm.handleCreate()
+    await flushPromises()
+    expect(wrapper.find('[data-test="windows-ssh-item"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="rotation-channel-item"]').exists()).toBe(false)
+    expect(wrapper.vm.windowsSshEnabled).toBe(false)
+    expect(wrapper.vm.buildRotationChannelPayload().rotation_channel).toBe('')
+
+    wrapper.vm.windowsSshEnabled = true
+    expect(wrapper.vm.form.rotation_channel).toBe('windows_ssh')
+    expect(wrapper.vm.buildRotationChannelPayload()).toMatchObject({
+      rotation_channel: 'windows_ssh',
+      // ssh 資產沿主埠，不送改密 SSH 埠
+      rotation_ssh_port: 0,
+    })
+
+    // 編輯回填：有效通道 windows_ssh 的 ssh 資產開關為開
+    wrapper.vm.handleEdit({
+      id: 3, name: 'win-jump', protocol: 'ssh', host: 'h', port: 22, username: 'ops', active: true,
+      effective_rotation_channel: 'windows_ssh',
+    })
+    await flushPromises()
+    expect(wrapper.vm.windowsSshEnabled).toBe(true)
+    wrapper.vm.handleEdit({
+      id: 1, name: 'ssh-server', protocol: 'ssh', host: 'h', port: 22, username: 'u', active: true,
+      effective_rotation_channel: 'posix_ssh',
+    })
+    expect(wrapper.vm.windowsSshEnabled).toBe(false)
+  })
+})

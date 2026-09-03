@@ -182,6 +182,7 @@ import { getCurrentUser } from '@/api/auth'
 import { logout } from '@/api/auth'
 import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
+import { clearSession } from '@/utils/session'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -509,8 +510,8 @@ const handleLogout = async () => {
   } catch (error) {
     console.error('登出撤銷失敗:', error)
   }
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
+  // 廣播登出：同瀏覽器的其他分頁一併清除記憶體憑證並回到登入頁
+  clearSession({ broadcast: true })
   router.push('/login')
   ElMessage.success(t('common.loggedOut'))
 }

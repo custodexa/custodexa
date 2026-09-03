@@ -662,7 +662,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		d.auditExport.RegisterRoutes(v1, d.authService)
 		d.accessReview.RegisterRoutes(v1, d.authService)
 
-		// 連線路由（手動處理認證，支援 WebSocket query token）
+		// 連線路由（手動處理認證：WebSocket 一律以一次性票認證）
 		v1.GET("/connect", d.conn.HandleConnect)
 
 		d.hostKey.RegisterRoutes(v1, d.authService)
@@ -677,7 +677,10 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 
 		// 原生 SSH 終端：只收 token + asset_id，憑證後端注入
 		v1.GET("/ssh", d.ssh.HandleSSH)
-		// SSH 會話即時監看：限 admin/auditor，唯讀
+		// SSH 會話即時監看：限 admin/auditor，唯讀。
+		// 觀看票簽發掛認證中介層，WS 端只兌換即焚的票
+		v1.POST("/sessions/:id/monitor-token",
+			middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateMonitorTicket)
 		v1.GET("/sessions/:id/monitor", d.ssh.HandleMonitor)
 		// 查詢主控台：與 /ssh 同一種一次性票、同一張閘序表，多兩道主控台專屬閘
 		v1.GET("/db-console", d.ssh.HandleDBConsole)
@@ -686,9 +689,13 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 			middleware.AuthMiddleware(d.authService), d.ssh.HandleDBConsoleExport)
 		// session-stats: SSH 會話即時指標（JWT middleware 認證）
 		v1.GET("/ssh/sessions/:id/stats", middleware.AuthMiddleware(d.authService), d.ssh.HandleStats)
-		// session-share: 會話分享（建立/撤銷需登入；加入走 WS query token）
+		// session-share: 會話分享（建立/撤銷需登入；加入走一次性觀看票）
 		v1.POST("/sessions/:id/share", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateShare)
 		v1.DELETE("/sessions/:id/share", middleware.AuthMiddleware(d.authService), d.ssh.HandleRevokeShare)
+		// 分享碼走請求本體：本端點掛審計中介層，而中介層以原始路徑留痕，
+		// 碼放在路徑上會逐字落進長期保存的審計表
+		v1.POST("/sessions/share/token",
+			middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateShareTicket)
 		v1.GET("/sessions/share/:code/ws", d.ssh.HandleShareJoin)
 		// connect-token: 一次性連線 token（P2，取代 WS query JWT）
 		v1.POST("/connect-tokens", middleware.AuthMiddleware(d.authService), d.ssh.HandleCreateConnectToken)

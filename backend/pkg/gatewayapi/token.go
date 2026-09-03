@@ -5,30 +5,6 @@ import (
 	"time"
 )
 
-// Principal 已驗證的身分（VerifySession 的回傳快照）。
-type Principal struct {
-	UserID   uint
-	Username string
-
-	// Role 登入當下的角色快照。
-	//
-	// **SHALL NOT 作為授權判定依據**：僅供溯源與顯示。連線閘序的角色
-	// 一律由政策閘實作現查並回填 Decision.ResolvedRole。保留本欄是因為 VerifySession
-	// 本就回傳此快照（現況行為，移除即行為變更），不是因為它可信。
-	Role string
-
-	// Scope 空字串＝正式 session token。
-	Scope string
-
-	AuthMethod string
-	ProviderID uint
-
-	// AuthEpoch／CredEpoch 認證世代快照。判定世代是否仍有效 SHALL 現查，
-	// 不得只比對本快照。
-	AuthEpoch int
-	CredEpoch int
-}
-
 // ConnectGrant connect-token 所攜帶的授權脈絡。
 // 欄位對齊 internal/proxy/connect_token.go:11-33。
 //
@@ -75,20 +51,10 @@ type ConnectGrant struct {
 	ExpiresAt time.Time
 }
 
-// SessionVerifier web session 驗證面。
-//
-// # 為何與 TokenService 分立（訂正原先的單一 TokenService）
-//
-// 三個方法在現實中分屬兩個型別、兩個模組：session JWT 驗證是身分模組的職責
-// （`internal/modules/identity.AuthService`，含 scope deny-by-default、重載用戶、
-// 認證世代閘），connect-token 簽發／兌換是連線模組的一次性記憶體票券
-// （`internal/proxy.ConnectTokenManager`，純 map＋mutex、無 DB）。
-// **沒有任何型別同時擔任這兩件事**，合成單一介面就只能靠一層為了滿足介面而生的
-// 合成器——那正是 export budget 紀律要防的間接層。分立後兩個介面各有真實實作。
-type SessionVerifier interface {
-	// VerifySession 驗 web session JWT，並套用認證世代閘（auth_epoch／credential_epoch）。
-	VerifySession(ctx context.Context, rawJWT string) (Principal, error)
-}
+// **SessionVerifier 與 Principal 已移除**：唯讀觀看的兩條 WebSocket 改以一次性
+// 觀看票認證後，session JWT 驗證面的生產消費者歸零。契約包只描述有實作、有消費者
+// 的能力——留著一個沒人用的「以 session JWT 換身分快照」介面，等於在公開契約上
+// 保留一條看起來還活著的認證面。
 
 // TokenService 一次性連線票的簽發與兌換面。
 type TokenService interface {

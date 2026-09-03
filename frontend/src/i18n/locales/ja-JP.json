@@ -397,7 +397,8 @@
       "ldap": "LDAP",
       "syslog": "syslog",
       "notify": "通知",
-      "nginx": "nginx / HTTPS"
+      "nginx": "nginx / HTTPS",
+      "winrm": "WinRM パスワード変更"
     },
     "scopeType": {
       "asset": "資産",
@@ -477,6 +478,21 @@
       "active": "トランザクション実行中",
       "failed": "トランザクション失敗",
       "unknown": "判定不能"
+    },
+    "rotationChannel": {
+      "posix_ssh": "POSIX SSH",
+      "windows_winrm": "WinRM",
+      "windows_ssh": "SSH → PowerShell",
+      "none": "未設定"
+    },
+    "winrmScheme": {
+      "http": "HTTP",
+      "https": "HTTPS"
+    },
+    "winrmTlsMode": {
+      "system": "システム信頼",
+      "ca": "指定 CA",
+      "insecure": "検証しない"
     }
   },
   "policyValue": {
@@ -784,7 +800,27 @@
     },
     "allowedDatabasesClearTitle": "プロトコルの変更で許可リストが消去されます",
     "allowedDatabasesClearConfirm": "この資産には許可するデータベースが {n} 件設定されています。他のプロトコルに変更するとリストは消去され、戻しても復元されません。",
-    "allowedDatabasesClearOk": "消去して保存"
+    "allowedDatabasesClearOk": "消去して保存",
+    "rotationChannel": "パスワード変更チャネル",
+    "rotationChannelHint": "パスワード変更計画が Windows ローカルアカウントを変更する際に使うチャネル。未設定＝この資産は変更対象外。",
+    "rotationChannelNone": "未設定（変更対象外）",
+    "rotationChannelWinrm": "WinRM（NTLM、メッセージ層暗号化）",
+    "rotationChannelWindowsSsh": "Windows OpenSSH（PowerShell）",
+    "winrmScheme": "接続方式",
+    "winrmPort": "ポート",
+    "winrmPortHint": "0＝接続方式の既定値",
+    "winrmTlsMode": "サーバー証明書の検証",
+    "winrmTlsHint": "HTTPS 時に有効。「検証しない」は送信セキュリティ一覧でリスクとして表示されます。",
+    "winrmCaCert": "CA 証明書（PEM）",
+    "winrmCaCertPlaceholder": "-----BEGIN CERTIFICATE-----",
+    "winrmCaCertHint": "この CA が発行したサーバー証明書のみ信頼します。保存後は本文を再表示しません",
+    "winrmCaCertKeep": "CA 証明書は設定済み。空欄＝既存を維持、新しい内容を貼り付けると置換",
+    "winrmCaCertRequired": "CA を指定する場合は CA 証明書（PEM）が必要です",
+    "winrmTargetRequirements": "対象機の要件：WinRM サービス有効、LocalAccountTokenFilterPolicy=1、AllowUnencrypted=false を維持、Basic 認証は無効のまま。本製品は常に NTLM メッセージ層暗号化で接続し、平文には対応しません。",
+    "rotationSshPort": "変更用 SSH ポート",
+    "rotationSshPortHint": "このホストの OpenSSH 経由で PowerShell によるパスワード変更を行う際の接続ポート（既定 22）",
+    "windowsSsh": "Windows OpenSSH（PowerShell）",
+    "windowsSshNote": "このホストは Windows：パスワード変更は OpenSSH 経由で PowerShell を実行します。オフ＝POSIX コマンドで変更"
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認",
@@ -2176,7 +2212,6 @@
     "records": "記録",
     "emptyTitle": "パスワード変更計画がまだありません",
     "emptyHint": "計画を作成して資産パスワードを定期的に変更します",
-    "selectSshAsset": "SSH 資産を選択",
     "scheduleCron": "スケジュール cron",
     "cronPlaceholder": "例：0 3 * * 0（空欄＝手動トリガーのみ）",
     "recordsTitle": "実行記録：{name}",
@@ -2236,9 +2271,11 @@
     "discarded": "候補資格情報を削除しました",
     "reason": {
       "CHANGE_SECRET_ASSET_LOOKUP_FAILED": "資産の取得に失敗しました",
-      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "SSH 資産のみ対応しています",
+      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "このプロトコルの資産はパスワード変更に対応していないため、今回はスキップしました",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "資産アカウントの取得に失敗しました",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "アカウント範囲に一致するアカウントがありません",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資産にパスワード変更チャネルが設定されていないため、スキップしました",
+      "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "このパスワード変更チャネルは計画で指定された秘密の種別に対応していないため、スキップしました",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "未検証資格情報の照会に失敗しました",
       "CHANGE_SECRET_CANDIDATE_PENDING": "未検証の資格情報が残っています。システム再試行の完了をお待ちください",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "未検証資格情報の保存に失敗しました",
@@ -2250,10 +2287,17 @@
       "CHANGE_SECRET_KEYPAIR_GENERATE_FAILED": "鍵ペアの生成に失敗しました",
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "アカウント名に不正な文字が含まれています。リモートへはコマンドを送信していません",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "生成されたパスワードに不正な文字が含まれています。リモートへはコマンドを送信していません",
+      "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "アカウント名が対象システムの文字種または長さの制限を満たしていません。リモートへはコマンドを送信していません",
       "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "現行の資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_REMOTE_REJECTED": "リモートがパスワード変更コマンドを拒否しました。ホストの資格情報は変更されていません。詳細なリモートメッセージはサーバーログをご確認ください",
-      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "コマンドが中断され、リモートの状態が不明です。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "コマンド送信後に接続が切断またはタイムアウトし、リモートの状態が不明です。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_REMOTE_UNREACHABLE": "対象との変更セッションを確立できませんでした（接続拒否または無応答、タイムアウト、証明書検証の失敗）。コマンドは送信されておらず、リモートは変更されていません。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_VERIFY_FAILED": "新しい資格情報での検証ログインに失敗しました。未検証資格情報を保持し再試行します。詳細なリモートメッセージはサーバーログをご確認ください",
+      "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "対象と暗号化された管理接続を確立できないため、接続を拒否し資格情報を送信していません",
+      "CHANGE_SECRET_STDIN_NOT_DELIVERED": "新しいパスワードが対象のスクリプトに届いていません。リモートは変更されていません",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "対象は新しいパスワードを設定しましたがローカル検証で認証できず、その場で旧パスワードに戻しました。リモートは変更されていません",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "対象は新しいパスワードで認証できず、旧パスワードへの復元にも失敗しました。リモートの状態は不明で、未検証資格情報を保持し再試行します",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "現在のパスワードに標準入力で渡せない文字が含まれるため、ローカルで拒否しました。リモートには接触していません",
       "CHANGE_SECRET_PROMOTE_FAILED": "資格情報の確定に失敗しました。未検証資格情報を保持し再試行します。詳細はサーバーログをご確認ください",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "対象ホストの SFTP を開けませんでした。詳細なリモートメッセージはサーバーログをご確認ください",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "authorized_keys の読み取りに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください",
@@ -2265,7 +2309,13 @@
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "未検証資格情報での対象ホストへのログインに失敗しました。詳細なリモートメッセージはサーバーログをご確認ください"
     },
     "maxAgeDays": "認証情報の最長使用日数の上書き",
-    "maxAgeDaysHint": "0 の場合は全体のセキュリティポリシーの日数を使用します。ローテーション証跡レポートの適用日数にのみ影響し、本計画の実行タイミングや変更動作は変わりません。"
+    "maxAgeDaysHint": "0 の場合は全体のセキュリティポリシーの日数を使用します。ローテーション証跡レポートの適用日数にのみ影響し、本計画の実行タイミングや変更動作は変わりません。",
+    "selectAsset": "資産を選択（パスワード変更チャネル設定済みのみ）",
+    "assetPickerHint": "パスワード変更チャネル設定済みの資産のみ表示。RDP 資産は先に資産フォームでチャネルを設定してください",
+    "colChannel": "チャネル",
+    "secretTypeWindowsHint": "Windows チャネルはパスワードのみ対応。鍵種別は Windows 資産ではスキップとして記録されます",
+    "recordsSummary": "全 {total} 件：成功 {success}、失敗 {failed}、未検証 {unverified}、スキップ {skipped}",
+    "recordsNote": "メッセージはシステムコードのローカライズ文です。リモートからの原文はサーバーログにのみ残ります。"
   },
   "notFound": {
     "title": "ページが見つかりません",
@@ -2874,6 +2924,8 @@
     "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases はデータベースプロトコル（mysql、postgres、mssql）のみ空以外にできます。各項目は 1〜128 文字、制御文字を含まず重複なし、最大 64 項目です",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode は空値（現状維持）、disable、require、verify-ca、verify-full のみ指定できます",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql のホストにカンマを含めることはできません（接続文字列のポート区切りと競合します）",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel は空値（プロトコルから導出）、posix_ssh、windows_winrm、windows_ssh、none のみ指定できます。posix_ssh は ssh プロトコル、windows_winrm と windows_ssh は rdp または ssh プロトコルに限ります",
+    "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "パスワード変更チャネルの設定が不完全または不正です。windows_winrm は接続方式（http／https）、https は証明書検証モード（system／ca／insecure）、ca モードは解析可能な CA 証明書（PEM）が必要です。ポートは 0（既定値を使用）または 1〜65535 である必要があります",
     "VALIDATION_ASSET_PROTOCOL": "無効なプロトコルです。ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s のみ対応しています",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security は空値（現状維持）、nla、tls のみ指定できます",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "少なくとも 1 つの絞り込み条件が必要です（session_id/user_id/asset_id/期間）",
@@ -3105,7 +3157,9 @@
     "rdp_ignore_cert": "RDP サーバー証明書が未検証",
     "rdp_security_below_nla": "RDP セキュリティモードが NLA 未満",
     "syslog_non_tls": "syslog 転送が未暗号化（{protocol}）",
-    "vnc_unencrypted": "VNC プロトコルが未暗号化"
+    "vnc_unencrypted": "VNC プロトコルが未暗号化",
+    "winrm_http_ntlm": "WinRM パスワード変更チャネルが http（NTLM メッセージ層暗号化のみ、TLS なし）",
+    "winrm_tls_insecure": "WinRM パスワード変更チャネルがサーバー証明書を未検証"
   },
   "transportNote": {
     "ldap_ui_managed": "設定は ID 管理のディレクトリ設定ページで管理",
@@ -3116,7 +3170,8 @@
     "syslog_disabled": "syslog 転送は無効",
     "syslog_protocol": "転送プロトコル：{protocol}",
     "syslog_unset": "syslog 転送は未設定",
-    "vnc_no_encryption": "VNC/RFB プロトコルに暗号化オプションはなく、全資産が常に平文チャネル"
+    "vnc_no_encryption": "VNC/RFB プロトコルに暗号化オプションはなく、全資産が常に平文チャネル",
+    "winrm_rotation_channel": "パスワード変更チャネル（システム経路、ユーザー接続ではない）：NTLM メッセージ層暗号化は常時有効。http は TLS なしの転送、insecure は証明書未検証で、いずれも逸脱として計上"
   },
   "transportPreflight": {
     "db_reject": "strict に切り替えると TLS 未使用のデータベース資産 {n} 台の接続を拒否します",

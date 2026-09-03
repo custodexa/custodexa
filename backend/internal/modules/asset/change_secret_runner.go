@@ -34,6 +34,10 @@ type ChangeSecretRunner struct {
 	// accountLocks per-account 行程內互斥。本產品現為單實例部署，
 	// 候選表的 account_id 唯一索引是最終防線，此鎖只是避免無謂的遠端往返
 	accountLocks sync.Map
+
+	// executors 依通道取執行器。**可換**是為了讓狀態機的測試不必真的連上任何
+	// 目標機——選路與三態處理是本結構的責任，遠端協定不是
+	executors func(channel string) rotationExecutor
 }
 
 // NewChangeSecretRunner 建立執行器
@@ -42,6 +46,7 @@ func NewChangeSecretRunner(db *gorm.DB, assetService *AssetService,
 	return &ChangeSecretRunner{
 		db: db, assetService: assetService,
 		candidates: candidates, hostKeys: hostKeys, notifier: notifier,
+		executors: rotationExecutorFor,
 	}
 }
 
@@ -50,6 +55,9 @@ type changeSecretTarget struct {
 	assetID   uint
 	accountID uint
 	username  string
+	// channel 推導後的有效改密通道；在 resolveTargets 一次算定，
+	// 其後全程沿用同一個值（執行中途重算會讓選路與記錄不同源）
+	channel string
 }
 
 // RunPlan 執行計劃：逐帳號隔離錯誤，單一失敗不中斷批次
@@ -85,9 +93,28 @@ func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetI
 		base.Error = model.ChangeSecretReasonAssetLookupFailed
 		return nil, &base
 	}
-	if asset.Protocol != model.ProtocolSSH {
+	// 改密通道決定「這台機器改不改得了密、怎麼改」。
+	//
+	// 兩種跳過刻意分碼：協定本身不在改密射程內（資料庫、VNC、K8s——沒有作業系統
+	// 帳號可換）回 PROTOCOL_UNSUPPORTED；協定改得了密但這台沒設定通道
+	//（rdp 資產預設如此）回 CHANNEL_NOT_CONFIGURED。前者無事可做，
+	// 後者是一個設定動作就能解決的狀態，混為一碼會讓管理員看不出差別。
+	channel := asset.EffectiveRotationChannel()
+	if channel == model.RotationChannelNone {
 		base.Status = model.ChangeSecretSkipped
-		base.Error = model.ChangeSecretReasonProtocolUnsupported
+		if asset.Protocol == model.ProtocolSSH || asset.Protocol == model.ProtocolRDP {
+			base.Error = model.ChangeSecretReasonChannelNotConfigured
+		} else {
+			base.Error = model.ChangeSecretReasonProtocolUnsupported
+		}
+		return nil, &base
+	}
+	// Windows 通道沒有等價於 authorized_keys 的金鑰模型（其 ACL 與檔案位置另成一套），
+	// 本版不做。誠實跳過勝過以密碼路徑冒充成功
+	if model.IsWindowsRotationChannel(channel) &&
+		normalizeSecretType(plan.SecretType) == model.ChangeSecretTypeSSHKey {
+		base.Status = model.ChangeSecretSkipped
+		base.Error = model.ChangeSecretReasonSecretTypeUnsupported
 		return nil, &base
 	}
 	var accounts []model.AssetAccount
@@ -103,7 +130,9 @@ func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetI
 		if !scope.Contains(acc.Username) {
 			continue
 		}
-		targets = append(targets, changeSecretTarget{assetID: assetID, accountID: acc.ID, username: acc.Username})
+		targets = append(targets, changeSecretTarget{
+			assetID: assetID, accountID: acc.ID, username: acc.Username, channel: channel,
+		})
 	}
 	if len(targets) == 0 {
 		base.Status = model.ChangeSecretSkipped
@@ -156,18 +185,25 @@ func (r *ChangeSecretRunner) runTarget(plan *model.ChangeSecretPlan, tgt changeS
 		return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonNoCredential)
 	}
 
-	addr := fmt.Sprintf("%s:%d", creds.Asset.Host, creds.Asset.Port)
-	hostKeyCB := r.hostKeys.Callback(tgt.assetID)
+	rt := rotationTarget{
+		asset:      creds.Asset,
+		channel:    tgt.channel,
+		username:   tgt.username,
+		secretType: normalizeSecretType(plan.SecretType),
+		addr:       rotationAddr(creds.Asset, tgt.channel),
+		hostKeyCB:  r.hostKeys.Callback(tgt.assetID),
+	}
+	exec := r.executors(tgt.channel)
 
 	if normalizeSecretType(plan.SecretType) == model.ChangeSecretTypeSSHKey {
-		return r.rotateKey(plan, tgt, creds, addr, hostKeyCB, finish)
+		return r.rotateKey(plan, tgt, creds, rt, exec, finish)
 	}
-	return r.rotatePassword(plan, tgt, creds, addr, hostKeyCB, finish)
+	return r.rotatePassword(plan, tgt, creds, rt, exec, finish)
 }
 
 // rotatePassword 密碼輪替：chpasswd（憑證經 stdin，不進 argv）
 func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt changeSecretTarget,
-	creds *AssetCredentials, addr string, hostKeyCB ssh.HostKeyCallback,
+	creds *AssetCredentials, rt rotationTarget, exec rotationExecutor,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
 
 	if creds.Password == "" {
@@ -192,17 +228,8 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidatePersistFailed)
 	}
 
-	client, err := dialSSHPassword(addr, tgt.username, creds.Password, hostKeyCB)
-	if err != nil {
-		// 尚未動遠端，候選可安全清除
-		_ = r.candidates.Discard(cand.ID)
-		logRemoteCause(tgt, "舊憑證登入失敗", err)
-		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonOldCredentialLoginFailed)
-	}
-	err = runChpasswd(client, tgt.username, creds.Password, newPassword)
-	client.Close()
-	if err != nil {
-		logRemoteCause(tgt, "改密指令失敗", err)
+	if err := exec.Rotate(ctx, rt, creds.Password, newPassword); err != nil {
+		logRemoteCause(tgt, "改密失敗", err)
 		// 本地前置驗證失敗＝完全未接觸遠端，遠端狀態並非不可知：清候選走乾淨失敗。
 		// 若誤歸為 unverified，候選會一直卡著並擋住該帳號後續全部改密
 		var localErr *localPreconditionError
@@ -210,26 +237,29 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 			_ = r.candidates.Discard(cand.ID)
 			return finish(model.ChangeSecretFailed, localErr.reason)
 		}
-		// 指令跑完但非零退出＝遠端確定未變更，清候選走乾淨失敗；
+		// 遠端確定未變更（登入被拒、指令非零退出）＝清候選走乾淨失敗；
 		// 其他錯誤（連線中斷／逾時）＝遠端狀態不可知，保留候選交給重試
-		var exitErr *ssh.ExitError
-		if errors.As(err, &exitErr) {
+		var rejected *remoteRejectedError
+		if errors.As(err, &rejected) {
 			_ = r.candidates.Discard(cand.ID)
-			return finish(model.ChangeSecretFailed, model.ChangeSecretReasonRemoteRejected)
+			return finish(model.ChangeSecretFailed, rejected.reason)
+		}
+		// 狀態不可知但成因已知（目標自驗失敗且回滾也失敗）：原因碼換成專屬碼，處置不變
+		var unknown *remoteStateUnknownError
+		if errors.As(err, &unknown) {
+			return finish(model.ChangeSecretUnverified, unknown.reason)
 		}
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonRemoteStateUnknown)
 	}
 	_ = r.candidates.MarkApplied(cand.ID)
 
-	verify, err := dialSSHPassword(addr, tgt.username, newPassword, hostKeyCB)
-	if err != nil {
+	if err := exec.Verify(ctx, rt, newPassword); err != nil {
 		// 本地憑證**不動**，候選保留待重試。硬提交是在猜遠端狀態，
 		// 猜錯就把還能用的憑證改壞
 		logRemoteCause(tgt, "新密驗證失敗", err)
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonVerifyFailed)
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonVerifyFailed)
 	}
-	verify.Close()
 
 	cand.Applied = true
 	if err := r.candidates.Promote(ctx, cand); err != nil {
@@ -241,9 +271,15 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 	return finish(model.ChangeSecretSuccess, "")
 }
 
-// rotateKey SSH 金鑰輪替：加新 → 驗新 → 刪舊
+// rotateKey SSH 金鑰輪替：加新 → 驗新 → 刪舊。
+//
+// **本流程留在 POSIX 側而未收進 rotationExecutor**：它的三段式需要在**同一條
+// 已認證的 SFTP 連線**上回寫還原（重新撥號的還原會與舊憑證是否仍有效綁在一起），
+// 這條連線的生命週期跨越「動遠端」與「驗證」兩步，無法以 Rotate／Verify 兩次
+// 獨立呼叫表達。金鑰輪替也只有 POSIX 通道支援——Windows 通道在 resolveTargets
+// 就已跳過，故這裡不會遇到別種執行器。驗證步驟仍走介面，使重試路徑同源。
 func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeSecretTarget,
-	creds *AssetCredentials, addr string, hostKeyCB ssh.HostKeyCallback,
+	creds *AssetCredentials, rt rotationTarget, exec rotationExecutor,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
 
 	comment := fmt.Sprintf(branding.Slug + "-change-secret-%d-%d", tgt.assetID, tgt.accountID)
@@ -272,7 +308,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidatePersistFailed)
 	}
 
-	client, err := dialSSHCredentials(addr, tgt.username, creds, hostKeyCB)
+	client, err := dialSSHCredentials(rt.addr, tgt.username, creds, rt.hostKeyCB)
 	if err != nil {
 		_ = r.candidates.Discard(cand.ID)
 		logRemoteCause(tgt, "舊憑證登入失敗", err)
@@ -309,8 +345,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 
 	// 驗新：以新私鑰對同一目標實連。此步同時是 AuthorizedKeysFile 指向他處、
 	// 檔案唯讀等狀況的偵測手段——加了鑰卻登不進去即代表該檔未被 sshd 採用
-	verifyClient, err := dialSSHPrivateKey(addr, tgt.username, newPrivate, hostKeyCB)
-	if err != nil {
+	if err := exec.Verify(ctx, rt, newPrivate); err != nil {
 		logRemoteCause(tgt, "新鑰驗證失敗", err)
 		// 還原：在**同一條已認證的 SFTP 連線**上回寫（不重新撥號，故與舊憑證是否
 		// 仍有效無關）；移除剛加入的那一行，exclusive 則回填原始內容
@@ -326,7 +361,6 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 		_ = r.candidates.Discard(cand.ID)
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonKeyVerifyFailedRestored)
 	}
-	verifyClient.Close()
 
 	// 刪舊：只刪本系統先前推送的那一行，使用者自放的鑰一律不動
 	if previousLine != "" && plan.KeyStrategy != model.KeyStrategyExclusive {
@@ -477,9 +511,20 @@ func sanitizeRemoteMessage(msg string) string {
 
 // localPreconditionError 本地前置驗證失敗（完全未接觸遠端）。
 // reason 為 model 的原因碼常數，直接落 record.error
-type localPreconditionError struct{ reason string }
+// cause 只進後端 log，SHALL NOT 落庫或外送（同 remoteRejectedError 的理由）
+type localPreconditionError struct {
+	reason string
+	cause  error
+}
 
-func (e *localPreconditionError) Error() string { return e.reason }
+func (e *localPreconditionError) Error() string {
+	if e.cause != nil {
+		return fmt.Sprintf("%s: %v", e.reason, e.cause)
+	}
+	return e.reason
+}
+
+func (e *localPreconditionError) Unwrap() error { return e.cause }
 
 // logRemoteCause 遠端／庫原文的**唯一**出口：只進後端 log，不落庫、不外送。
 //

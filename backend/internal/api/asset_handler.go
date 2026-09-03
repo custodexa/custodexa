@@ -190,6 +190,10 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeMSSQLHostComma, nil)
 	case errors.Is(err, asset.ErrInvalidAccessPolicy):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAccessPolicy, nil)
+	case errors.Is(err, asset.ErrInvalidRotationChannel):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidRotationChannel, nil)
+	case errors.Is(err, asset.ErrInvalidRotationChannelParams):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidRotationChannelParams, nil)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, internalCode, err)
 	}

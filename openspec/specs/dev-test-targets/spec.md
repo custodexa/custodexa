@@ -60,3 +60,20 @@ e2e 煙霧腳本 SHALL 含 OIDC 場景：以靶機帳號完成授權碼流程取
 #### Scenario: 煙霧驗證 OIDC 登入
 - **WHEN** 執行 e2e 煙霧腳本的 OIDC 場景
 - **THEN** 完成 SSO 登入取得會話、成功建立協議連線，拒絕路徑回預期的拒絕結果，臨時資料於場景後清除
+
+### Requirement: Windows 單機回歸
+
+開發環境的容器靶機 SHALL NOT 假裝提供 Windows 目標（Linux 主機無法執行 Windows 容器）；Windows 改密的機器驗證 SHALL 以持續整合環境的 Windows 單機回歸承擔：
+該主機同時作為客戶端與目標，啟用 WinRM 與 OpenSSH 服務、建立臨時本機管理員帳號，以產品的 WinRM 與 SSH 到 PowerShell 執行器對回送位址完成改密與新密碼驗證。
+回歸 SHALL 為手動觸發，SHALL NOT 把測試帳號密碼寫入日誌或產物；驗收報告 SHALL 附該次執行記錄的連結。
+文件 SHALL 明載此驗證面的限制：只涵蓋該主機當下的單一 Windows Server 版本、回送網路不涵蓋跨機與憑證鏈情境。
+
+#### Scenario: 單機回歸涵蓋兩通道
+
+- **WHEN** 手動觸發 Windows 單機回歸
+- **THEN** WinRM 通道與 SSH 到 PowerShell 通道各完成一次改密與驗證，結果以結構化行輸出，密碼不出現於日誌
+
+#### Scenario: 本機開發環境誠實無靶機
+
+- **WHEN** 開發者於開發版 compose 尋找 Windows 靶機
+- **THEN** 文件說明無此靶機並指向 Windows 單機回歸，不存在假冒 Windows 的服務

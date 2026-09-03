@@ -465,8 +465,11 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	}
 	// 排序參數收斂必須在此處（而非 handler）：AuditExportService 也經本方法查詢，
 	// 收在唯一的 choke point 才不會漏掉任何呼叫端
-	filter.SortBy = normalizeAuditSortBy(filter.SortBy)
-	filter.SortOrder = normalizeAuditSortOrder(filter.SortOrder)
+	// 收斂結果以區域變數承接後餵給 ORDER BY：兩個函式只回傳本檔字面量，區域變數
+	// 讓「值來自白名單」在資料流上可直接看見；同時寫回 filter 供呼叫端讀取正規化後的值
+	sortBy := normalizeAuditSortBy(filter.SortBy)
+	sortOrder := normalizeAuditSortOrder(filter.SortOrder)
+	filter.SortBy, filter.SortOrder = sortBy, sortOrder
 
 	// 構建查詢
 	query := database.DB.Model(&model.AuditLog{})
@@ -505,7 +508,7 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 
 	// 應用分頁和排序
 	offset := (filter.Page - 1) * filter.PageSize
-	orderClause := fmt.Sprintf("%s %s", filter.SortBy, filter.SortOrder)
+	orderClause := fmt.Sprintf("%s %s", sortBy, sortOrder)
 
 	var logs []*model.AuditLog
 	if err := query.Order(orderClause).Offset(offset).Limit(filter.PageSize).Find(&logs).Error; err != nil {

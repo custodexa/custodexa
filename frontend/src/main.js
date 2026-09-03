@@ -11,17 +11,22 @@ import router from './router'
 import { BRAND } from './brand'
 import i18n, { setupDocumentMetadata } from './i18n'
 import { epGlobalConfig } from './i18n/element-plus'
+import { installCrossTabSync } from './utils/session'
 
 // 品牌樣板：favicon 由 brand.js 驅動，index.html 不含品牌字；
 // title 由 setupDocumentMetadata 隨語言切換更新，不在此一次性賦值
 const favicon = document.querySelector('link[rel="icon"]')
 if (favicon) favicon.href = BRAND.icon
 
-// refresh 憑證的歷史殘值清理：憑證已遷入
-// httpOnly cookie，localStorage 不再是它的載體。舊版登入過的瀏覽器仍留著一份
+// 登入憑證的歷史殘值清理：續期憑證已遷入 httpOnly cookie、access token 已改為
+// 只存頁面記憶體，localStorage 不再是任何一者的載體。舊版登入過的瀏覽器仍留著
 // 明文，對任何在頁面上執行的 script 完全可讀——**無條件移除**，不先判斷有沒有：
 // 判斷式本身就是一次讀取，而這裡要的只是「確保它不在」
 localStorage.removeItem('refresh_token')
+localStorage.removeItem('token')
+
+// 跨分頁會話同步：任一分頁登出時其他分頁一併清除記憶體憑證並回到登入頁
+installCrossTabSync()
 
 const app = createApp(App)
 

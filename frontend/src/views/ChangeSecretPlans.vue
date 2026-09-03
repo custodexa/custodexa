@@ -155,6 +155,25 @@
           min-width="110"
         />
         <el-table-column
+          :label="$t('changeSecretPlans.colChannel')"
+          width="150"
+        >
+          <template #default="{ row }">
+            <el-tag
+              v-if="assetChannelText(row.asset_id)"
+              size="small"
+              :type="assetChannelTagType(row.asset_id)"
+              effect="plain"
+            >
+              {{ assetChannelText(row.asset_id) }}
+            </el-tag>
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </el-table-column>
+        <el-table-column
           :label="$t('changeSecretPlans.colSecretType')"
           width="100"
         >
@@ -255,16 +274,38 @@
             v-model="form.asset_ids"
             multiple
             filterable
-            :placeholder="$t('changeSecretPlans.selectSshAsset')"
+            :placeholder="$t('changeSecretPlans.selectAsset')"
             style="width: 100%"
+            data-test="plan-assets"
           >
+            <!-- 只列有效通道非 none 的資產；通道 tag 讓管理者在選的當下就看到
+                 這台會走哪條路（http 的 WinRM 走 warning 色，與傳輸階梯同向） -->
             <el-option
-              v-for="a in sshAssets"
+              v-for="a in rotatableAssets"
               :key="a.id"
               :label="`${a.name} (${a.host})`"
               :value="a.id"
-            />
+            >
+              <span class="asset-option">
+                <span class="asset-option__name">{{ a.name }}</span>
+                <span class="asset-option__host muted">{{ a.host }}:{{ a.port }}</span>
+                <el-tag
+                  size="small"
+                  :type="rotationChannelTagType(a)"
+                  effect="plain"
+                  class="asset-option__channel"
+                >
+                  {{ rotationChannelText(a) }}
+                </el-tag>
+              </span>
+            </el-option>
           </el-select>
+          <div
+            class="muted"
+            data-test="plan-assets-hint"
+          >
+            {{ $t('changeSecretPlans.assetPickerHint') }}
+          </div>
         </el-form-item>
         <el-form-item :label="$t('changeSecretPlans.accountScope')">
           <el-radio-group v-model="form.accountScopeMode">
@@ -309,6 +350,13 @@
               {{ $t('changeSecretPlans.secretTypeSshKey') }}
             </el-radio-button>
           </el-radio-group>
+          <div
+            v-if="form.secret_type === 'ssh_key' && selectedWindowsAssets.length"
+            class="muted"
+            data-test="secret-type-windows-hint"
+          >
+            {{ $t('changeSecretPlans.secretTypeWindowsHint') }}
+          </div>
         </el-form-item>
         <template v-if="form.secret_type === 'ssh_key'">
           <el-form-item :label="$t('changeSecretPlans.keyStrategy')">
@@ -402,8 +450,14 @@
     <el-dialog
       v-model="recordsVisible"
       :title="$t('changeSecretPlans.recordsTitle', { name: recordsPlanName })"
-      width="680px"
+      width="960px"
     >
+      <p
+        class="muted"
+        data-test="records-summary"
+      >
+        {{ $t('changeSecretPlans.recordsSummary', recordsSummary) }}
+      </p>
       <el-table
         :data="records"
         size="small"
@@ -422,6 +476,27 @@
           :label="$t('changeSecretPlans.colAccount')"
           min-width="110"
         />
+        <!-- 通道由資產現況推得（記錄本身不存通道）：資產已改通道或已刪時顯示佔位 -->
+        <el-table-column
+          :label="$t('changeSecretPlans.colChannel')"
+          width="150"
+          class-name="col-channel"
+        >
+          <template #default="{ row }">
+            <el-tag
+              v-if="assetChannelText(row.asset_id)"
+              size="small"
+              :type="assetChannelTagType(row.asset_id)"
+              effect="plain"
+            >
+              {{ assetChannelText(row.asset_id) }}
+            </el-tag>
+            <span
+              v-else
+              class="muted"
+            >—</span>
+          </template>
+        </el-table-column>
         <el-table-column
           :label="$t('common.status')"
           width="120"
@@ -451,6 +526,12 @@
           </template>
         </el-table-column>
       </el-table>
+      <p
+        class="muted"
+        data-test="records-note"
+      >
+        {{ $t('changeSecretPlans.recordsNote') }}
+      </p>
     </el-dialog>
   </div>
 </template>
@@ -464,6 +545,12 @@ import { formatDateTime } from '@/utils/format'
 import { t, te } from '@/i18n'
 import { getAssetList } from '@/api/assets'
 import {
+  effectiveRotationChannel,
+  isRotatableAsset,
+  rotationChannelText,
+  rotationChannelTagType,
+} from '@/constants/rotationChannel'
+import {
   getChangeSecretPlans,
   createChangeSecretPlan,
   updateChangeSecretPlan,
@@ -476,7 +563,33 @@ import {
 } from '@/api/changeSecret'
 
 const plans = ref([])
-const sshAssets = ref([])
+// 全部資產供名稱與通道查表（記錄可能指向已不參與改密的資產）；
+// 下拉只列有效通道非 none 者——未設通道的 rdp 資產在這裡就選不到，
+// 而不是選了才在執行期被記為略過
+const assets = ref([])
+const rotatableAssets = computed(() => assets.value.filter(isRotatableAsset))
+
+function assetById(assetId) {
+  return assets.value.find((a) => a.id === assetId)
+}
+
+// 記錄與候選的通道欄由資產現況推得（兩者本身不存通道）；查無資產或通道為 none 回空字串
+function assetChannelText(assetId) {
+  const asset = assetById(assetId)
+  return asset ? rotationChannelText(asset) : ''
+}
+
+function assetChannelTagType(assetId) {
+  const asset = assetById(assetId)
+  return asset ? rotationChannelTagType(asset) : 'info'
+}
+
+// 已選資產中走 Windows 通道者：金鑰型別對它們只會記為略過，選型時就提示
+const selectedWindowsAssets = computed(() =>
+  (form.value.asset_ids || [])
+    .map(assetById)
+    .filter((a) => a && effectiveRotationChannel(a).startsWith('windows_'))
+)
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
@@ -519,9 +632,18 @@ const recordsVisible = ref(false)
 const records = ref([])
 const recordsPlanName = ref('')
 
+// 記錄對話框的結果統計（四態計數，與 recordStatusText 的狀態集一致）
+const recordsSummary = computed(() => {
+  const counts = { total: records.value.length, success: 0, failed: 0, unverified: 0, skipped: 0 }
+  records.value.forEach((r) => {
+    if (r.status in counts) counts[r.status] += 1
+  })
+  return counts
+})
+
 // 執行記錄以資產名稱呈現（查無對照時退回 ID）
 function assetName(assetId) {
-  const asset = sshAssets.value.find((a) => a.id === assetId)
+  const asset = assetById(assetId)
   return asset ? asset.name : t('changeSecretPlans.assetFallback', { id: assetId })
 }
 
@@ -594,7 +716,7 @@ async function load() {
 async function loadAssets() {
   try {
     const res = await getAssetList({ page: 1, page_size: 100 })
-    sshAssets.value = (res.data || []).filter((a) => a.protocol === 'ssh')
+    assets.value = res.data || []
   } catch (err) {
     console.error('[ChangeSecret] 載入資產失敗:', err)
   }
@@ -843,5 +965,24 @@ onMounted(() => {
 .policy-label {
   font-size: 13px;
   color: var(--el-text-color-regular);
+}
+
+.asset-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.asset-option__host {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-option__channel {
+  flex: none;
 }
 </style>

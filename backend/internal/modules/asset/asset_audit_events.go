@@ -105,6 +105,14 @@ func writeAssetChangeAudit(sink port.TxSink, tx *gorm.DB, old, new *model.Asset,
 		details.AllowedDatabasesCleared = true
 		details.PreviousAllowedDatabaseCount = len(old.AllowedDatabases)
 	}
+	// 伺服端自動清空改密通道的留痕。判定同樣自 old／new 推得：Update 的驗證保證了
+	// 「顯式送來的不相容組合一律被拒」，故「舊通道與新協定不相容、新通道為空」
+	// 這個形狀只可能來自伺服端的自動清空
+	if old.RotationChannel != "" && new.RotationChannel == "" &&
+		!model.RotationChannelCompatibleWith(new.Protocol, old.RotationChannel) {
+		details.RotationChannelCleared = true
+		details.PreviousRotationChannel = old.RotationChannel
+	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {
 		log.Printf("序列化變更詳情失敗: %v", err)

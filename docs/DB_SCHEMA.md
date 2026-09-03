@@ -1,9 +1,10 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-03（輪替證據報告：`asset_accounts.credential_group`、`change_secret_plans.max_age_days`、`audit_export_jobs.kind` 與新表 `rotation_report_schedules`）
+> **最後更新**：2026-09-03（Windows 本機帳號改密：`assets` 加改密通道六欄 `rotation_channel`／`winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`winrm_ca_cert`／`rotation_ssh_port`，migration `20260904_windows_local_account_rotation`；`AssetChangeDetails` 加通道清空留痕兩欄）
+> 前次更新：2026-09-03（輪替證據報告：`asset_accounts.credential_group`、`change_secret_plans.max_age_days`、`audit_export_jobs.kind` 與新表 `rotation_report_schedules`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_windows_local_account_rotation.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -39,7 +40,7 @@
 | - | `user_roles` | baseline | 用戶-角色關聯表（M2M，由 baseline 顯式建表） |
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
 | - | `user_group_members` | baseline | 用戶-群組關聯表（一人可屬多群；同上，現由 baseline 顯式建表） |
-| Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
+| Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
 | AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引 | 資產系統帳號（一資產多帳號、各自信封加密憑證、至多一 default） |
 | AssetGroup | `asset_groups` | baseline（`idx_asset_groups_sibling_name` 同層唯一，partial unique 表達式索引） | 資產節點樹（parent_id 自參照、同層唯一） |
 | AssetNode | `asset_nodes` | baseline | 資產×節點成員（多歸屬 M2M） |
@@ -694,6 +695,15 @@ const (
 | `SftpUsername` | string | `size:100` | `sftp_username` | 目標主機 SSH 帳號（與 VNC 密碼分離） |
 | `SftpPasswordEnc` | string | `type:text` | `sftp_password_enc` | SFTP 密碼（AES-256-GCM 加密；API 不回明文） |
 | `HasSftpPassword` | bool | `default:false` | `has_sftp_password` | 是否已設 SFTP 密碼 |
+| `RotationChannel` | string | `size:16;not null;default:''` | `rotation_channel` | 改密通道：`posix_ssh`／`windows_winrm`／`windows_ssh`／`none`；**空字串＝未設定，由 `EffectiveRotationChannel()` 依協定推導**（ssh→`posix_ssh`，其餘→`none`），migration 不回填實值，故升級後既有列的改密行為與升級前逐項相同（回填會讓「管理者設的」與「當初回填的」永遠分不出來）。值域與協定相容性（`windows_*` 限 rdp／ssh、`posix_ssh` 限 ssh）由 service 層驗證；協定改為不相容時伺服端清空本欄與下列五欄並留痕。由增量 migration `20260904_windows_local_account_rotation` 加欄（`character varying(16) NOT NULL DEFAULT ''`） |
+| `WinrmScheme` | string | `size:8` | `winrm_scheme,omitempty` | WinRM 連線方式 `http`／`https`（僅 `windows_winrm`，必填）。可空：只在該通道下有意義，對其餘資產強制預設值等於宣稱設定過了。同 migration（`character varying(8)`） |
+| `WinrmPort` | int | - | `winrm_port,omitempty` | WinRM 埠；0＝依 scheme 取預設（http 5985／https 5986，`EffectiveWinrmPort()`）。同 migration（`bigint`，可空） |
+| `WinrmTLSMode` | string | `size:16` | `winrm_tls_mode,omitempty` | https 的憑證驗證模式 `system`（作業系統信任錨）／`ca`（只信任本資產上傳的 CA）／`insecure`（不驗證，傳輸階梯標風險）；https 必填、http 不得帶值。同 migration（`character varying(16)`） |
+| `WinrmCACert` | string | `type:text` | `winrm_ca_cert,omitempty` | `ca` 模式的信任錨（PEM，儲存時驗可解析）。**不加密**：CA 憑證是公開資料，與 `db_ca_cert`、`k8s_ca_cert` 同性質。**列表投影不回本欄**（`fillRotationProjection` 抹去本體、以 `HasWinrmCACert` 代之），只有單筆讀取回傳供編輯回填；理由是傳輸量而非機密。同 migration（`text`） |
+| `RotationSSHPort` | int | - | `rotation_ssh_port,omitempty` | `windows_ssh` 通道在 rdp 資產上的目標 SSH 埠，0＝22（`EffectiveRotationSSHPort()`）；ssh 協定資產沿用 `Port`，本欄不參與推導（另設一個埠只會製造兩個可能不一致的事實）。同 migration（`bigint`，可空） |
+| `EffectiveChannel` | string | `-`（非 DB 欄） | `effective_rotation_channel,omitempty` | 推導後的有效改密通道，讀取端填入 |
+| `HasWinrmCACert` | bool | `-`（非 DB 欄） | `has_winrm_ca_cert` | 是否已設 CA 憑證；列表投影以它取代 PEM 本體 |
+| `TransmissionRisks` | []TransmissionRisk | `-`（非 DB 欄） | `transmission_risks,omitempty` | 傳輸風險項（連線通道與改密通道兩者的風險鍵），列表讀取端填入 |
 
 **協議類型常數**:
 ```go
@@ -2165,7 +2175,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 有七條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
+**現行 migration 有八條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
@@ -2176,15 +2186,16 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260826_db_query_console` | 查詢主控台：`assets.allowed_databases`（見第 3 節）、`sessions.db_console`（第 5 節）、`session_commands` 十一個結果事實欄＋三條 CHECK＋三個部分索引（第 8 節），共 19 條 DDL。`sessions.end_reason` 增列兩個值（`target_closed`／`slow_consumer`）——該欄無 CHECK，**故無 DDL**。**Up 為純加法**：全部加欄都帶 DEFAULT，無資料轉換、無回填，耗時與存量無關。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDBQueryConsole`：反序 DROP 三索引 → 三條 CHECK → 十一欄 → `sessions.db_console` → `assets.allowed_databases`。**Down 有損、開發庫限定**：刪掉的兩類東西性質不同——`allowed_databases` 是**政策**（管理者設定的執行目標限制，刪了即靜默解除，再次 Up 之後全部資產回到不限制）；十一欄是**稽核證據**（每個執行單位的終態、目標庫、事件識別），刪了沒有第二個來源可補，轉錄錄影是自同一事件派生的閱讀面而不是事實來源。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4），而該備份必須含 `session_commands` 全表 |
 | `20260903_security_policies_value_text` | 登入前告示的前置：`ALTER TABLE security_policies ALTER COLUMN value TYPE text`（見第 17 節），共 1 條 DDL，不建表、不加欄、不加索引或約束。政策值一律以字串存放，既有鍵全是整數、布林與短枚舉，128 位元組夠用；文字型政策鍵（上限二千個 Unicode 字元、可含換行）放不進去。**放寬欄位而非另立一張表**，是為了讓文字鍵直接沿用政策機制既有的批次原子、變更審計、快取與錯誤碼。**Up 為純型別放寬、無資料回填**：`varchar(128)` → `text` 在 PostgreSQL 是相容擴張，存量列原值不動，耗時與存量無關。本語句**不列入** `schemaDDLStatements()`——該清單的解析器只認 CREATE TABLE 與 ADD COLUMN（欄名層級的比對），型別改動屬第 2 層 parity 的射程，而第 2 層以「baseline ＋依序跑完全部增量」建庫，本條自然涵蓋其中 | `rollbackSecurityPoliciesValueText`：收窄回 `character varying(128)`。**開發庫限定**：存量值若已超過 128 位元組，資料庫直接報錯並使整個交易回滾，故不另寫前置檢查。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260904_windows_local_account_rotation` | Windows 本機帳號改密的資料層：`assets` 加六個改密通道側車欄（`rotation_channel varchar(16) NOT NULL DEFAULT ''`、`winrm_scheme varchar(8)`、`winrm_port bigint`、`winrm_tls_mode varchar(16)`、`winrm_ca_cert text`、`rotation_ssh_port bigint`；見第 3 節），共 6 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：`rotation_channel` 預設空字串而非回填實值（空＝依協定推導，升級後既有列行為與升級前逐項相同），其餘五欄可空，無資料轉換、無回填，耗時與存量無關。**六個具名欄而不是一個 JSON 設定欄**：既有 per-protocol 側車（RDP 傳輸安全、DB TLS、VNC SFTP）全是具名欄，值域受控、SQL 層可查、schema parity 守衛看得見；它承載的是「憑證要送到哪裡、用不用 TLS」，正是最不該只有應用層知道形狀的值。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackWindowsLocalAccountRotation`：反序 DROP 六欄。**Down 有損、開發庫限定**：六欄刪除即失去全部改密通道設定（含上傳的 CA 憑證），再次 Up 之後所有資產回到「未設定」而由協定推導——**rdp 資產從此不再改密且不會有任何提示**。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
 > **升級注意**：`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
-> `20260826_db_query_console`、`20260903_security_policies_value_text` 與 `20260903_rotation_evidence_report`
-> 於既有部署升級時自動套用
+> `20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`
+> 與 `20260904_windows_local_account_rotation` 於既有部署升級時自動套用
 > （段 1，無 codec 依賴；`20260826_source_ip_forensics`
 > 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
-> `20260826_db_query_console` 與 `20260903_rotation_evidence_report` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，三者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
+> `20260826_db_query_console`、`20260903_rotation_evidence_report` 與 `20260904_windows_local_account_rotation` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，四者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
 > 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
 
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
@@ -2217,10 +2228,14 @@ type AssetChangeDetails struct {
     // 本次更新因協議改離查詢主控台支援的協議，由伺服端自動清空允許資料庫清單
     AllowedDatabasesCleared      bool `json:"allowed_databases_cleared,omitempty"`
     PreviousAllowedDatabaseCount int  `json:"previous_count,omitempty"`
+
+    // 本次更新因協定改為與改密通道不相容，由伺服端自動清空通道與其附屬欄位
+    RotationChannelCleared  bool   `json:"rotation_channel_cleared,omitempty"`
+    PreviousRotationChannel string `json:"previous_rotation_channel,omitempty"`
 }
 ```
 
-後兩欄與 `Changes` 內的同名 diff **並存而不重複**：diff 記的是「值從 A 變成 B」，
+後兩對欄位與 `Changes` 內的同名 diff **並存而不重複**：diff 記的是「值從 A 變成 B」，
 這一對記的是「這不是管理者送的值，是伺服端替他清的」——兩者在稽核上是不同的問題，
 靠 diff 反推清空原因會把使用者的顯式清空與伺服端的自動清空混為一談。
 

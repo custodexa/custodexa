@@ -132,6 +132,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { LoaderCircle, CirclePlay, CirclePause, Maximize } from 'lucide-vue-next'
 import { t } from '@/i18n'
+import { getAccessToken } from '@/utils/session'
 
 // 使用全局 Guacamole 對象（由 index.html 中的 guacamole-1.5.5.min.js 提供）
 const Guacamole = window.Guacamole
@@ -277,7 +278,7 @@ const initPlayer = async () => {
     console.log('[GuacamolePlayer] 正在獲取錄製檔案...')
     const response = await fetch(props.recordingUrl, {
       headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Authorization': `Bearer ${getAccessToken()}`,
       },
     })
 

@@ -270,3 +270,162 @@ describe('憑證最長使用天數覆蓋', () => {
     expect(zh.apiError.VALIDATION_PLAN_BAD_MAX_AGE_DAYS).toBeTruthy()
   })
 })
+
+// Windows 改密通道（第 3 段前端）。
+//
+// 資產下拉改列「有效通道非 none」的資產：未設通道的 rdp 在這裡就選不到，而不是
+// 選了才在執行期被記為略過；記錄與候選多一欄「通道」，由資產現況推得。
+describe('改密通道：資產下拉、記錄通道欄、機器碼文案', () => {
+  const dialogStub = {
+    props: ['modelValue'],
+    template: '<div v-if="modelValue" class="dialog-stub"><slot /></div>',
+  }
+  const selectStub = {
+    name: 'ElSelect',
+    props: ['modelValue'],
+    template: '<div class="select-stub"><slot /></div>',
+  }
+  const optionStub = {
+    name: 'ElOption',
+    props: ['label', 'value'],
+    template: '<div class="option-stub" :data-value="value"><slot>{{ label }}</slot></div>',
+  }
+
+  const assetsFixture = () => [
+    { id: 1, name: 'srv-1', host: '10.0.0.1', port: 22, protocol: 'ssh', effective_rotation_channel: 'posix_ssh' },
+    {
+      id: 2, name: 'win-app-01', host: '192.0.2.17', port: 3389, protocol: 'rdp',
+      rotation_channel: 'windows_winrm', effective_rotation_channel: 'windows_winrm',
+      winrm_scheme: 'http', has_winrm_ca_cert: false,
+    },
+    {
+      id: 3, name: 'win-app-02', host: '192.0.2.18', port: 3389, protocol: 'rdp',
+      rotation_channel: 'windows_winrm', effective_rotation_channel: 'windows_winrm',
+      winrm_scheme: 'https', winrm_tls_mode: 'system',
+    },
+    { id: 4, name: 'win-file-04', host: '192.0.2.20', port: 3389, protocol: 'rdp', effective_rotation_channel: 'none' },
+    { id: 5, name: 'win-jump-03', host: '192.0.2.21', port: 3389, protocol: 'rdp', effective_rotation_channel: 'windows_ssh' },
+  ]
+
+  const mountWithStubs = async () => {
+    const { getAssetList } = await import('@/api/assets')
+    getAssetList.mockResolvedValueOnce({ data: assetsFixture() })
+    const wrapper = mount(ChangeSecretPlans, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { 'el-dialog': dialogStub, 'el-select': selectStub, 'el-option': optionStub },
+      },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('下拉含 rdp＋WinRM 與 SSH → PowerShell 資產、不含 rdp＋none；通道 tag 文字與色', async () => {
+    const wrapper = await mountWithStubs()
+    wrapper.vm.openCreate()
+    await flushPromises()
+
+    expect(wrapper.vm.rotatableAssets.map((a) => a.id)).toEqual([1, 2, 3, 5])
+
+    const options = wrapper.find('[data-test="plan-assets"]').findAll('.option-stub')
+    expect(options.map((o) => o.attributes('data-value'))).toEqual(['1', '2', '3', '5'])
+    const text = wrapper.find('[data-test="plan-assets"]').text()
+    expect(text).toContain('win-app-01')
+    expect(text).toContain('WinRM · HTTP')
+    expect(text).toContain('WinRM · HTTPS')
+    expect(text).toContain('SSH → PowerShell')
+    expect(text).toContain('POSIX SSH')
+    expect(text).not.toContain('win-file-04')
+    // http 的 WinRM 走 warning 色，https＋系統信任走 info
+    const httpTag = options[1].findComponent({ name: 'ElTag' })
+    const httpsTag = options[2].findComponent({ name: 'ElTag' })
+    expect(httpTag.props('type')).toBe('warning')
+    expect(httpsTag.props('type')).toBe('info')
+    // 底部指引
+    expect(wrapper.find('[data-test="plan-assets-hint"]').text()).toContain('只列已設定改密通道的資產')
+  })
+
+  it('選了 Windows 資產再選金鑰型別：提示會記為略過；純 POSIX 不提示', async () => {
+    const wrapper = await mountWithStubs()
+    wrapper.vm.openCreate()
+    wrapper.vm.form.secret_type = 'ssh_key'
+    wrapper.vm.form.asset_ids = [1]
+    await flushPromises()
+    expect(wrapper.find('[data-test="secret-type-windows-hint"]').exists()).toBe(false)
+
+    wrapper.vm.form.asset_ids = [1, 2]
+    await flushPromises()
+    expect(wrapper.find('[data-test="secret-type-windows-hint"]').text()).toContain('Windows 通道只支援密碼')
+  })
+
+  it('記錄對話框有「通道」欄：由資產現況推得，未設通道的資產顯示佔位', async () => {
+    const wrapper = await mountWithStubs()
+    const { getChangeSecretRecords } = await import('@/api/changeSecret')
+    getChangeSecretRecords.mockResolvedValueOnce({
+      data: [
+        { id: 1, asset_id: 2, account_username: 'Administrator', status: 'success', error: '', executed_at: '2026-09-03T03:00:12Z' },
+        { id: 2, asset_id: 3, account_username: 'svc_backup', status: 'failed', error: 'CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE', executed_at: '2026-09-03T03:00:09Z' },
+        { id: 3, asset_id: 4, account_username: '', status: 'skipped', error: 'CHANGE_SECRET_CHANNEL_NOT_CONFIGURED', executed_at: '2026-09-03T03:00:00Z' },
+      ],
+    })
+    await wrapper.vm.openRecords(planFixture())
+    await flushPromises()
+
+    const dialog = wrapper.findAll('.dialog-stub').at(-1)
+    const text = dialog.text()
+    expect(text).toContain('通道')
+    expect(text).toContain('WinRM · HTTP')
+    expect(text).toContain('WinRM · HTTPS')
+    // 訊息欄是機器碼的文案，不是碼本身
+    expect(text).not.toContain('CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE')
+    expect(text).toContain('已拒絕連線且未送出任何憑證')
+    expect(text).toContain('資產未設定改密通道')
+    // 未設通道的資產：通道欄佔位
+    expect(wrapper.vm.assetChannelText(4)).toBe('')
+    expect(wrapper.vm.assetChannelText(999)).toBe('')
+    // 結果統計與說明句
+    expect(wrapper.find('[data-test="records-summary"]').text()).toContain('共 3 筆')
+    expect(wrapper.find('[data-test="records-summary"]').text()).toContain('成功 1')
+    expect(wrapper.find('[data-test="records-note"]').text()).toContain('伺服器日誌')
+  })
+
+  it('候選表也有通道欄', async () => {
+    listCandidatesMock.mockResolvedValue({ data: [candidateFixture({ asset_id: 2 })] })
+    const wrapper = await mountWithStubs()
+    const html = wrapper.html()
+    expect(html).toContain('WinRM · HTTP')
+    expect(wrapper.vm.assetChannelTagType(2)).toBe('warning')
+  })
+
+  it('五個新原因碼皆有文案；協議不支援的文案不再說「僅支援 SSH」', async () => {
+    const wrapper = await mountPage()
+    const codes = [
+      'CHANGE_SECRET_CHANNEL_NOT_CONFIGURED',
+      'CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED',
+      'CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE',
+      'CHANGE_SECRET_STDIN_NOT_DELIVERED',
+      'CHANGE_SECRET_ACCOUNT_NAME_INVALID',
+    ]
+    for (const code of codes) {
+      const text = wrapper.vm.reasonText(code)
+      expect(text, code).not.toBe(code)
+      expect(text.length, code).toBeGreaterThan(0)
+    }
+    const unsupported = wrapper.vm.reasonText('CHANGE_SECRET_PROTOCOL_UNSUPPORTED')
+    expect(unsupported).not.toContain('僅支援 SSH')
+    expect(unsupported).toContain('不支援改密')
+
+    // 三語都不得殘留「只支援 SSH」的說法
+    const locales = ['zh-TW', 'en-US', 'ja-JP'].map((l) =>
+      JSON.parse(readFileSync(join(process.cwd(), `src/i18n/locales/${l}.json`), 'utf8'))
+    )
+    for (const messages of locales) {
+      const v = messages.changeSecretPlans.reason.CHANGE_SECRET_PROTOCOL_UNSUPPORTED
+      expect(v).toBeTruthy()
+      expect(v).not.toMatch(/only ssh|ssh 資產のみ|僅支援 ssh/i)
+      for (const code of codes) {
+        expect(messages.changeSecretPlans.reason[code], code).toBeTruthy()
+      }
+    }
+  })
+})

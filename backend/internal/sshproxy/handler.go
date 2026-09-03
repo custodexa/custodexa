@@ -167,8 +167,8 @@ type Handler struct {
 	//與 `GET /api/v1/ssh` 的**兌換拒絕**。
 	//
 	// **為何非有不可**：`/ssh`、`/sessions/:id/monitor`、`/sessions/share/:code/ws`
-	// 三條路由都不掛 AuthMiddleware（WebSocket 只能以 query token／connect_token
-	// 認證，見 `authenticate` 檔頭），身分於 handler 內自解析；`AuditLogMiddleware`
+	// 三條路由都不掛 AuthMiddleware（WebSocket 一律以一次性票認證，
+	// 見 `authenticate` 檔頭），身分於 handler 內自解析；`AuditLogMiddleware`
 	// 缺 userID／username 時整筆跳過，故這些路徑在中介層永遠是零列。組裝端一律注入；
 	// nil 僅限既有測試路徑，該情形下 `auditObserverJoin`／`auditRedeemDenied` 記 log，
 	// SHALL NOT 靜默略過
@@ -199,6 +199,19 @@ type Handler struct {
 	// 結果匯出端點靠它找到快取——快取只存在於行程記憶體，
 	// 會話結束即釋放，那正是匯出鈕在會話結束後停用的原因
 	consoleSessions sync.Map
+	// observerTicketsOnce/observerTicketsReg 一次性觀看票登記表（惰性建立）。
+	// 惰性是因為既有測試以裸結構建 Handler（不走 NewHandler），
+	// 而少一張表就等於監看與分享加入永遠兌換不到票——不是拒絕，是整條路徑壞掉
+	observerTicketsOnce sync.Once
+	observerTicketsReg  *proxy.ObserverTicketManager
+}
+
+// observerTickets 一次性觀看票登記表（惰性建立）
+func (h *Handler) observerTickets() *proxy.ObserverTicketManager {
+	h.observerTicketsOnce.Do(func() {
+		h.observerTicketsReg = proxy.NewObserverTicketManager()
+	})
+	return h.observerTicketsReg
 }
 
 // consoleAdmission 名額登記表（惰性建立）
@@ -611,22 +624,24 @@ func sessionTimeoutsFromEnv() (idle, max time.Duration) {
 //
 // 監看是稽核職能：僅 admin/auditor 角色，不走資產授權。
 // 觀察者輸入一律忽略（僅回應 ping），斷線不影響被監看會話。
+//
+// **認證走一次性觀看票**（`POST /sessions/:id/monitor-token` 簽發）：角色與目標
+// 會話的准入判定在簽發端完成，本處只兌換票並複查客體相符。
 func (h *Handler) HandleMonitor(c *gin.Context) {
-	observerID, role, ok := h.authenticate(c)
+	sessionID, parsed := parseMonitorSessionID(c)
+	if !parsed {
+		return
+	}
+	grant, ok := h.redeemObserverTicket(c, proxy.ObserverPurposeMonitor, proxy.ViaMonitor)
 	if !ok {
 		return
 	}
-	if role != model.RoleAdmin && role != model.RoleAuditor {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeMonitorRoleRequired, nil)
+	// 客體複查：票只能開它被簽出來要開的那一場會話
+	if grant.SessionID != sessionID {
+		h.denyObserverTicketObject(c, proxy.ViaMonitor)
 		return
 	}
-
-	sessionIDU64, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil || sessionIDU64 == 0 {
-		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidSessionID, nil)
-		return
-	}
-	sessionID := uint(sessionIDU64)
+	observerID := grant.UserID
 
 	sess, err := h.SessionService.GetByID(sessionID)
 	if err != nil {
@@ -700,57 +715,22 @@ func (h *Handler) HandleMonitor(c *gin.Context) {
 
 // authenticate 解析使用者身分與角色；失敗時已寫入 HTTP 回應。
 //
-// **同時把認證脈絡寫入 gin context**：
-// /monitor、/share/:code/ws、/ssh、/connect 四條路由都不掛 AuthMiddleware
-// （手動處理認證以支援 WebSocket query token），故 `?token=` 分支上**本函式是
-// authContext 的唯一寫入者**。不寫則下游的 middleware.GetAuthContext(c) 恆回零值，
-// 造成兩個後果：ObserverContext.ProviderID=0 使 provider 停用收線一筆都匹配不到
-// （OIDC 使用者的監看／分享訂閱在其 IdP 已停用後仍讀得到他人終端內容），
-// 且 CredEpoch=0 會讓 JoinWithGenerationGuard 對 credential_epoch > 0 的使用者恆拒。
+// **只認中介層**：本函式的呼叫端全數掛 `AuthMiddleware`。
+// query 參數上的 session JWT 曾是 WebSocket 路由的認證方式，現已全面收口為
+// 一次性票——終端與查詢主控台走 connect token，監看與分享觀看走觀看票
+// （`redeemObserverTicket`）。收口的理由：query 值逐字進入 URL、瀏覽器歷程與各層
+// 存取日誌，而 session JWT 的射程是整個 API；一次性票只能開一條連線、用過即失效。
+//
+// 認證脈絡（authContext）在此不寫：中介層已寫，覆蓋會把它自 claims 解出的脈絡蓋掉。
+// 走票證的兩條 WS 路由由兌換點寫入，見 `redeemObserverTicket`。
 func (h *Handler) authenticate(c *gin.Context) (uint, string, bool) {
 	if id, exists := middleware.GetCurrentUserID(c); exists {
 		role, _ := c.Get("role")
 		roleStr, _ := role.(string)
-		// AuthMiddleware 已跑過（它同時寫入 userID 與 authContext）：
-		// 此處不得再寫，否則會把中介層自 claims 解出的脈絡覆蓋掉
 		return id, roleStr, true
 	}
-
-	tokenStr := c.Query("token")
-	if tokenStr == "" {
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
-		return 0, "", false
-	}
-
-	// 連線端點統一認證：scoped token deny-by-default、
-	// 重載用戶拒停用/鎖定中——與一般 API middleware 同一邊界，堵 ?token= 旁路。
-	// **只經 gatewayapi.SessionVerifier 介面消費**：判定本體不變
-	// （VerifySession 即 ValidateConnectionToken ＋欄位對映，不新增亦不放寬判定）
-	var verifier gatewayapi.SessionVerifier = h.AuthService
-	p, err := verifier.VerifySession(c.Request.Context(), tokenStr)
-	if err != nil {
-		log.Printf("[SSHProxy] 連線 token 驗證失敗: %v", err)
-		respondConnectionAuthError(c, err)
-		return 0, "", false
-	}
-	// 認證脈絡與 AuthMiddleware 寫入的是同一型別、同一 key，下游 GetAuthContext
-	// 的呼叫點不必分辨自己走的是哪條認證路徑。四欄逐欄取自 Principal，
-	// 與收口前的 claims.AuthContext 逐位相同
-	c.Set("authContext", crypto.AuthContext{
-		AuthMethod: p.AuthMethod, ProviderID: p.ProviderID,
-		AuthEpoch: p.AuthEpoch, CredEpoch: p.CredEpoch,
-	})
-	// username 供 handler 自寫的審計列填實：
-	// 審計表的 username 是稽核第一眼要看的欄，只有 user_id 得再查一次使用者表，
-	// 且帳號刪除後就查不回來了。
-	//
-	// **只寫 username、刻意不寫 userID**：`AuditLogMiddleware` 以兩鍵皆存在為
-	// 記錄條件，補上 userID 會讓這幾條 WebSocket 路由同時由中介層與 handler
-	// 各寫一列（重複計數），而中介層那一列反而缺少會話與資產脈絡
-	c.Set("username", p.Username)
-	// **Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**：
-	// 連線閘序的角色一律由 CurrentConnectRole 現查（G-I2／G-S3／G-G4）
-	return p.UserID, p.Role, true
+	apierror.Respond(c, http.StatusUnauthorized, apierror.CodeUnauthenticated, nil)
+	return 0, "", false
 }
 
 // connectionAuthError 連線認證錯誤映射：僅 sentinel 各配一碼，其餘泛化
@@ -1064,25 +1044,32 @@ func (h *Handler) HandleRevokeShare(c *gin.Context) {
 //
 // **加入由本 handler 自寫審計，成功與拒絕兩路皆然**（AP-70）。
 // 中介層在此路徑幫不上忙：本路由註冊於 `v1`
-// 群組且不掛 AuthMiddleware（理由見 `authenticate` 檔頭：WebSocket 只能以 query
-// token 認證），而 `authenticate` 的 `?token=` 分支只寫 `authContext`，不寫
-// `userID`／`username`；`AuditLogMiddleware` 缺這兩個鍵時整筆跳過
-//（`middleware/audit_log.go`），故中介層側恆為零列。
+// 群組且不掛 AuthMiddleware（理由見 `authenticate` 檔頭：WebSocket 一律以一次性票
+// 認證），而票證兌換只寫 `authContext` 與 `username`，不寫 `userID`；
+// `AuditLogMiddleware` 缺這兩個鍵時整筆跳過（`middleware/audit_log.go`），
+// 故中介層側恆為零列。
 //
-// 修法與 `/recordings/stream` 同型（handler 自寫，身分取自 `authenticate` 的回傳）：
-// 成功加入走 `auditObserverJoin`（`via=share`），無效／失效分享碼走同一個寫入點
-// 並記 `status=denied`。
+// 修法與 `/recordings/stream` 同型（handler 自寫，身分取自票證脈絡）：
+// 成功加入走 `auditObserverJoin`（`via=share`），失效分享碼走同一個寫入點
+// 並記 `status=denied`；碼從未成立者於簽票端即被擋下並同點留痕。
 //
 // **註解曾與實況相反**：留痕補上之後，這裡仍留著「加入不入審計＝已知缺口」的
 // 舊文字。註解不是判準（沒有測試會因它轉紅），但它是下一輪稽核的起點——寫錯會讓
 // 人去補一個已經存在的東西，或反過來相信一個已消失的缺口還在。
 func (h *Handler) HandleShareJoin(c *gin.Context) {
-	userID, _, ok := h.authenticate(c)
+	code := c.Param("code")
+	grant, ok := h.redeemObserverTicket(c, proxy.ObserverPurposeShare, proxy.ViaShare)
 	if !ok {
 		return
 	}
+	// 客體複查：票只能開它被簽出來要開的那一個分享碼
+	if grant.ShareCode != code {
+		h.denyObserverTicketObject(c, proxy.ViaShare)
+		return
+	}
+	userID := grant.UserID
 
-	code := c.Param("code")
+	// 分享碼在簽票與加入之間可能已被撤銷：此處重解一次，不採信簽發時的結果
 	sessionID, valid := h.Shares.Resolve(code)
 	if !valid {
 		// 無效／失效分享碼的拒絕亦留痕（session-share spec 第二個 scenario）：
@@ -1157,9 +1144,11 @@ func (h *Handler) HandleShareJoin(c *gin.Context) {
 }
 
 // 唯讀觀看的兩條入口（審計 Details 的 `via` 值，機器可篩）
+// **取自 proxy 的入口常數**，不另寫字面量：同一條入口的「被擋下」（兌換拒絕列）
+// 與「加入了」（本檔的加入列）必須落在同一個 `via` 桶裡，稽核才分得出全貌
 const (
-	observerViaMonitor = "monitor"
-	observerViaShare   = "share"
+	observerViaMonitor = proxy.ViaMonitor
+	observerViaShare   = proxy.ViaShare
 )
 
 // observerJoinAudit 唯讀觀看加入事件的審計輸入
@@ -1182,8 +1171,8 @@ type observerJoinAudit struct {
 // # 為何由 handler 自寫
 //
 // `/sessions/:id/monitor` 與 `/sessions/share/:code/ws` 兩條路由不掛
-// AuthMiddleware（WebSocket 只能以 query token 認證，見 `authenticate` 檔頭），
-// `authenticate` 的 `?token=` 分支只寫 `authContext` 與 `username`、不寫 `userID`，
+// AuthMiddleware（WebSocket 一律以一次性票認證，見 `authenticate` 檔頭），
+// 票證兌換只寫 `authContext` 與 `username`、不寫 `userID`，
 // 而 `AuditLogMiddleware` 缺 `userID` 即整筆跳過。故中介層在這兩條路徑上恆為零列，
 // 身分只在 handler 手上。
 //

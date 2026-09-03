@@ -6,6 +6,7 @@ import {
   UNSEAL_PATH,
   ensureSealPhase,
 } from '../utils/sealPhase'
+import { ensureSession } from '../utils/session'
 
 const routes = [
   {
@@ -306,13 +307,16 @@ export function createSealGuard() {
 }
 
 // Navigation guard for authentication (exported for unit testing)
+// 守衛是非同步的：access token 只存頁面記憶體，重新載入或開新分頁時記憶體是空的，
+// 必須先以續期憑證換發一次才知道使用者到底登入了沒有。這一步發生在放行受保護
+// 路由**之前**——放行後才發現沒憑證，等於讓頁面先閃一次再被踢走。
 export function createAuthGuard() {
-  return (to, from, next) => {
-    const token = localStorage.getItem('token')
+  return async (to, from, next) => {
+    const authed = await ensureSession()
 
-    if (to.meta.requiresAuth && !token) {
+    if (to.meta.requiresAuth && !authed) {
       next('/login')
-    } else if (to.path === '/login' && token) {
+    } else if (to.path === '/login' && authed) {
       next('/dashboard')
     } else if (to.meta.roles) {
       // Check role-based access（fail-closed：user 資料缺失視同未登入，

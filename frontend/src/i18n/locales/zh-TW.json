@@ -397,7 +397,8 @@
       "ldap": "LDAP",
       "syslog": "syslog",
       "notify": "通知",
-      "nginx": "nginx / HTTPS"
+      "nginx": "nginx / HTTPS",
+      "winrm": "WinRM 改密"
     },
     "scopeType": {
       "asset": "資產",
@@ -477,6 +478,21 @@
       "active": "交易進行中",
       "failed": "交易失敗",
       "unknown": "無法判定"
+    },
+    "rotationChannel": {
+      "posix_ssh": "POSIX SSH",
+      "windows_winrm": "WinRM",
+      "windows_ssh": "SSH → PowerShell",
+      "none": "未設定"
+    },
+    "winrmScheme": {
+      "http": "HTTP",
+      "https": "HTTPS"
+    },
+    "winrmTlsMode": {
+      "system": "系統信任",
+      "ca": "指定 CA",
+      "insecure": "不驗證"
     }
   },
   "policyValue": {
@@ -784,7 +800,27 @@
     },
     "allowedDatabasesClearTitle": "切換協議將清空允許清單",
     "allowedDatabasesClearConfirm": "此資產目前設有 {n} 項允許的資料庫。改為其他協議後這份清單會被清空，改回資料庫協議時不會恢復。",
-    "allowedDatabasesClearOk": "清空並儲存"
+    "allowedDatabasesClearOk": "清空並儲存",
+    "rotationChannel": "改密通道",
+    "rotationChannelHint": "Windows 本機帳號由改密計劃改密時使用的通道。未設定＝此資產不參與改密。",
+    "rotationChannelNone": "未設定（不參與改密）",
+    "rotationChannelWinrm": "WinRM（NTLM，訊息層加密）",
+    "rotationChannelWindowsSsh": "Windows OpenSSH（PowerShell）",
+    "winrmScheme": "連線方式",
+    "winrmPort": "埠",
+    "winrmPortHint": "0＝依連線方式預設",
+    "winrmTlsMode": "伺服器憑證驗證",
+    "winrmTlsHint": "HTTPS 時有效。「不驗證」會在傳輸安全清冊標示風險。",
+    "winrmCaCert": "CA 憑證（PEM）",
+    "winrmCaCertPlaceholder": "-----BEGIN CERTIFICATE-----",
+    "winrmCaCertHint": "只信任此 CA 簽發的伺服器憑證；儲存後不回顯本體",
+    "winrmCaCertKeep": "CA 憑證已設定；留空＝維持既有，貼入新內容即替換",
+    "winrmCaCertRequired": "指定 CA 時須提供 CA 憑證（PEM）",
+    "winrmTargetRequirements": "目標機需求：WinRM 服務已啟用、LocalAccountTokenFilterPolicy=1、保持 AllowUnencrypted=false、Basic 認證維持關閉。本產品一律以 NTLM 訊息層加密連線，不支援明文。",
+    "rotationSshPort": "改密 SSH 埠",
+    "rotationSshPortHint": "經此主機的 OpenSSH 執行 PowerShell 改密時的連線埠（預設 22）",
+    "windowsSsh": "Windows OpenSSH（PowerShell）",
+    "windowsSshNote": "此主機為 Windows：改密經 OpenSSH 執行 PowerShell。關閉＝以 POSIX 指令改密"
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄",
@@ -2176,7 +2212,6 @@
     "records": "記錄",
     "emptyTitle": "尚無改密計劃",
     "emptyHint": "建立計劃以定期輪換資產密碼",
-    "selectSshAsset": "選擇 SSH 資產",
     "scheduleCron": "排程 cron",
     "cronPlaceholder": "如 0 3 * * 0（留空＝僅手動觸發）",
     "recordsTitle": "執行記錄：{name}",
@@ -2236,9 +2271,11 @@
     "discarded": "已清除候選憑證",
     "reason": {
       "CHANGE_SECRET_ASSET_LOOKUP_FAILED": "取得資產失敗",
-      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "僅支援 SSH 資產",
+      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "此協議的資產不支援改密，本次跳過",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "取得資產帳號失敗",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "資產無符合帳號範圍的帳號",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "資產未設定改密通道，本次跳過",
+      "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "此改密通道不支援計劃指定的秘密型別，本次跳過",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "查詢候選憑證失敗",
       "CHANGE_SECRET_CANDIDATE_PENDING": "帳號有未驗證的候選憑證，待系統重試完成",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "候選憑證落庫失敗",
@@ -2250,10 +2287,17 @@
       "CHANGE_SECRET_KEYPAIR_GENERATE_FAILED": "產生金鑰對失敗",
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "帳號名稱含非法字元，未對遠端下達任何指令",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "產生的新密碼含非法字元，未對遠端下達任何指令",
+      "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "帳號名不符目標系統的字元集或長度限制，未對遠端下達任何指令",
       "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "以舊憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_REMOTE_REJECTED": "遠端拒絕改密指令，主機憑證未變更；詳細遠端訊息見伺服器日誌",
-      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "改密指令中斷、遠端狀態未知，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "改密指令送出後連線中斷或逾時，遠端狀態未知，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_REMOTE_UNREACHABLE": "無法與目標建立改密工作階段（連線被拒或未回應、逾時、憑證驗證失敗），改密指令未送出，遠端未變更；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_VERIFY_FAILED": "新憑證驗證登入失敗，已保留候選待系統重試；詳細遠端訊息見伺服器日誌",
+      "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "目標無法建立加密的管理連線，已拒絕連線且未送出任何憑證",
+      "CHANGE_SECRET_STDIN_NOT_DELIVERED": "新密碼未送達目標的改密腳本，遠端未變更",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "目標設定新密碼後在本機驗證無法登入，已當場改回舊密碼，遠端維持原樣",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "目標以新密碼驗證無法登入，改回舊密碼也失敗，遠端狀態不可知；已保留候選待系統重試",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "現行密碼含無法經標準輸入投遞的字元，已在本地攔下，遠端未被觸碰",
       "CHANGE_SECRET_PROMOTE_FAILED": "憑證提交失敗，已保留候選待系統重試；詳細訊息見伺服器日誌",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "開啟目標主機 SFTP 失敗；詳細遠端訊息見伺服器日誌",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "讀取 authorized_keys 失敗；詳細遠端訊息見伺服器日誌",
@@ -2265,7 +2309,13 @@
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "以候選憑證登入目標主機失敗；詳細遠端訊息見伺服器日誌"
     },
     "maxAgeDays": "憑證最長使用天數覆蓋",
-    "maxAgeDaysHint": "0＝沿用全域安全政策的天數。只影響輪替證據報告的適用天數，不改變本計劃的執行時機或改密行為。"
+    "maxAgeDaysHint": "0＝沿用全域安全政策的天數。只影響輪替證據報告的適用天數，不改變本計劃的執行時機或改密行為。",
+    "selectAsset": "選擇資產（僅列已設定改密通道者）",
+    "assetPickerHint": "只列已設定改密通道的資產；rdp 資產請先在資產表單設定通道",
+    "colChannel": "通道",
+    "secretTypeWindowsHint": "Windows 通道只支援密碼；金鑰型別對 Windows 資產會記為略過",
+    "recordsSummary": "共 {total} 筆：成功 {success}、失敗 {failed}、未驗證 {unverified}、略過 {skipped}",
+    "recordsNote": "訊息為系統機器碼的文案；遠端回傳的原文只在伺服器日誌。"
   },
   "notFound": {
     "title": "找不到您要的頁面",
@@ -2874,6 +2924,8 @@
     "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases 僅資料庫協議（mysql、postgres、mssql）可為非空；每項須為 1 至 128 字元、不含控制字元且不重複，至多 64 項",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode 僅允許空值（沿現狀）、disable、require、verify-ca 或 verify-full",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "mssql 主機不得含逗號（與連線字串的埠分隔語義衝突）",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel 僅允許空值（依協定推導）、posix_ssh、windows_winrm、windows_ssh 或 none；posix_ssh 限 ssh 協議，windows_winrm 與 windows_ssh 限 rdp 或 ssh 協議",
+    "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "改密通道設定不完整或不合格式：windows_winrm 須指定連線方式（http／https），https 須指定憑證驗證模式（system／ca／insecure），ca 模式須提供可解析的 CA 憑證（PEM），埠須為 0（取預設）或 1 至 65535",
     "VALIDATION_ASSET_PROTOCOL": "無效的協議，僅支援 ssh, rdp, vnc, mysql, postgres, redis, mssql, k8s",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security 僅允許空值（沿現狀）、nla 或 tls",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "至少需指定一個篩選條件（session_id/user_id/asset_id/時段）",
@@ -3105,7 +3157,9 @@
     "rdp_ignore_cert": "RDP 未驗證伺服器憑證",
     "rdp_security_below_nla": "RDP 安全模式未達 NLA",
     "syslog_non_tls": "syslog 轉發未加密（{protocol}）",
-    "vnc_unencrypted": "VNC 協議未加密"
+    "vnc_unencrypted": "VNC 協議未加密",
+    "winrm_http_ntlm": "WinRM 改密通道走 http（僅 NTLM 訊息層加密，無 TLS）",
+    "winrm_tls_insecure": "WinRM 改密通道未驗證伺服器憑證"
   },
   "transportNote": {
     "ldap_ui_managed": "設定於身分管理的目錄設定頁維護",
@@ -3116,7 +3170,8 @@
     "syslog_disabled": "syslog 轉發未啟用",
     "syslog_protocol": "轉發協議：{protocol}",
     "syslog_unset": "syslog 轉發未設定",
-    "vnc_no_encryption": "VNC/RFB 協議無加密選項，全部資產恆為明文通道"
+    "vnc_no_encryption": "VNC/RFB 協議無加密選項，全部資產恆為明文通道",
+    "winrm_rotation_channel": "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離"
   },
   "transportPreflight": {
     "db_reject": "若切 strict 將拒絕 {n} 台未啟 TLS 的資料庫資產連線",

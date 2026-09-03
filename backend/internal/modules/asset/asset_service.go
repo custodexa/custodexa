@@ -229,6 +229,14 @@ type CreateAssetRequest struct {
 	SftpPort     int    `json:"sftp_port"`
 	SftpUsername string `json:"sftp_username"`
 	SftpPassword string `json:"sftp_password"` // 選填；僅後端加密存放
+
+	// 改密通道側車（windows-account-rotation）：''＝依協定推導
+	RotationChannel string `json:"rotation_channel"`
+	WinrmScheme     string `json:"winrm_scheme"`
+	WinrmPort       int    `json:"winrm_port"`
+	WinrmTLSMode    string `json:"winrm_tls_mode"`
+	WinrmCACert     string `json:"winrm_ca_cert"`
+	RotationSSHPort int    `json:"rotation_ssh_port"`
 }
 
 // UpdateAssetRequest 更新資產請求
@@ -277,6 +285,15 @@ type UpdateAssetRequest struct {
 	SftpPort     *int    `json:"sftp_port"`
 	SftpUsername *string `json:"sftp_username"`
 	SftpPassword *string `json:"sftp_password"`
+
+	// 改密通道側車：nil＝不動、''＝清回依協定推導。
+	// 指標語義同其餘列舉欄——omitempty 不放行顯式空字串，白名單在 service 驗
+	RotationChannel *string `json:"rotation_channel"`
+	WinrmScheme     *string `json:"winrm_scheme"`
+	WinrmPort       *int    `json:"winrm_port"`
+	WinrmTLSMode    *string `json:"winrm_tls_mode"`
+	WinrmCACert     *string `json:"winrm_ca_cert"`
+	RotationSSHPort *int    `json:"rotation_ssh_port"`
 }
 
 // validateRDPSecurity RDP 安全模式白名單：
@@ -440,6 +457,16 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		K8sContainer:       req.K8sContainer,
 		K8sCACert:          req.K8sCACert,
 		K8sInsecureSkipTLS: req.K8sInsecureSkipTLS,
+		RotationChannel:    req.RotationChannel,
+		WinrmScheme:        req.WinrmScheme,
+		WinrmPort:          req.WinrmPort,
+		WinrmTLSMode:       req.WinrmTLSMode,
+		WinrmCACert:        req.WinrmCACert,
+		RotationSSHPort:    req.RotationSSHPort,
+	}
+	// 改密通道以組裝後的資產驗證：通道與協定的相容性、附屬欄位的必填與值域
+	if err := validateRotationChannel(asset); err != nil {
+		return nil, err
 	}
 
 	// 憑證加密：密文只落 asset_accounts 的
@@ -541,6 +568,9 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		return nil, err
 	}
 	asset.NodeIDs = nodeIDs
+	// 回應與列表同形：帶推導欄位、抹去 CA 憑證本體。建立方剛送出 PEM，回聲沒有用處；
+	// 本體只在編輯回填（單筆讀取）時回傳
+	fillRotationProjection(asset, true)
 
 	return asset, nil
 }
@@ -621,11 +651,20 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 		return nil, err
 	}
 
+	// 改密通道推導欄位；列表不回 CA 憑證本體（見 fillRotationProjection）
+	for i := range assets {
+		fillRotationProjection(&assets[i], true)
+	}
+
 	// 傳輸風險徽章：不分政策等級恆填——
-	// 政策管「攔不攔」，徽章管「看不看得見」；未注入（既有測試路徑）不填
+	// 政策管「攔不攔」，徽章管「看不看得見」；未注入（既有測試路徑）不填。
+	// 改密通道的風險併入徽章（管理員在同一列看到這台機器全部的傳輸偏離），
+	// 但不進 AssetRisks——那是連線前同意閘的依據，改密屬系統路徑
 	if s.transmission != nil {
 		for i := range assets {
-			assets[i].TransmissionRisks = s.transmission.AssetRisks(&assets[i])
+			assets[i].TransmissionRisks = append(
+				s.transmission.AssetRisks(&assets[i]),
+				s.transmission.AssetRotationRisks(&assets[i])...)
 		}
 	}
 
@@ -769,6 +808,8 @@ func (s *AssetService) GetByID(id uint) (*model.Asset, error) {
 	if err := FillNodeInfo(database.DB, single); err != nil {
 		return nil, err
 	}
+	// 單筆讀取是編輯路徑，CA 憑證本體保留供表單回填
+	fillRotationProjection(&single[0], false)
 
 	return &single[0], nil
 }
@@ -1082,6 +1123,41 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 		return nil, ErrSftpUsernameRequired
 	}
 
+	// 改密通道側車。顯式提供的值以**套用後的最終協定**驗證（協定與通道可能在同一次
+	// 更新中一起變動），驗不過即整筆更新失敗、資產不動
+	rotationTouched := req.RotationChannel != nil || req.WinrmScheme != nil ||
+		req.WinrmPort != nil || req.WinrmTLSMode != nil || req.WinrmCACert != nil ||
+		req.RotationSSHPort != nil
+	if req.RotationChannel != nil {
+		asset.RotationChannel = *req.RotationChannel
+	}
+	if req.WinrmScheme != nil {
+		asset.WinrmScheme = *req.WinrmScheme
+	}
+	if req.WinrmPort != nil {
+		asset.WinrmPort = *req.WinrmPort
+	}
+	if req.WinrmTLSMode != nil {
+		asset.WinrmTLSMode = *req.WinrmTLSMode
+	}
+	if req.WinrmCACert != nil {
+		asset.WinrmCACert = *req.WinrmCACert
+	}
+	if req.RotationSSHPort != nil {
+		asset.RotationSSHPort = *req.RotationSSHPort
+	}
+	if rotationTouched {
+		if err := validateRotationChannel(asset); err != nil {
+			return nil, err
+		}
+	}
+	// **協定改為與通道不相容時清空殘值**，不論本次請求有沒有帶這些欄位。
+	// 顯式送來的不相容組合在上一段就被擋掉了，故走到這裡的必然是留在庫裡的舊值。
+	// 清空是事實，寫進該次更新的審計（判定與留痕同在 writeAssetChangeAudit）
+	if !model.RotationChannelCompatibleWith(asset.Protocol, asset.RotationChannel) {
+		clearRotationChannel(asset)
+	}
+
 	// 提取用戶資訊並儲存到 context（供 GORM Hooks 使用）
 	userID, _ := ctx.Value("userID").(uint)
 	username, _ := ctx.Value("username").(string)
@@ -1154,6 +1230,10 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 			log.Printf("[AssetService] 資產停用收線 %d 個會話 (asset=%d)", n, id)
 		}
 	}
+
+	// 推導欄位以套用後的值重算：asset 是從 GetByID 複製來的，帶的是更新前的投影，
+	// 清了 CA 憑證仍會回「持有」。與建立回應同形，抹去 CA 憑證本體
+	fillRotationProjection(asset, true)
 
 	// 回應帶最新節點資訊（掛載於交易內同步，
 	// 回傳物件須重填避免舊值誤導前端）

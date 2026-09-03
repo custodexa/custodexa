@@ -20,8 +20,8 @@
 //
 // # 兩條 SHALL NOT
 //
-//  1. `ConnectSubject.ClaimedRole`／`AuthEpoch`／`CredEpoch` 與 `Principal.Role`
-//     皆為 caller-asserted，SHALL NOT 作為授權判定依據。判定一律由實作現查。
+//  1. `ConnectSubject.ClaimedRole`／`AuthEpoch`／`CredEpoch` 皆為 caller-asserted，
+//     SHALL NOT 作為授權判定依據。判定一律由實作現查。
 //  2. 審計脈絡只採信 `Decision.ResolvedRole`（服務端現查值）。把 caller 提供的角色
 //     寫進審計，等於讓 caller 決定稽核紀錄怎麼寫。
 //

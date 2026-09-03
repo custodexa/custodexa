@@ -18,15 +18,30 @@ The frontend SHALL provide `npm run test` (single run) and `npm run test:coverag
 - **THEN** a coverage summary is produced for the tested modules
 
 ### Requirement: HTTP interceptor behavior is tested
-The request interceptor module SHALL have tests covering: Authorization header injection when a token exists, no header when absent, 401 response clearing stored credentials and redirecting to login, and error message mapping for 400/403/404/500 responses.
+The request interceptor module SHALL have tests covering: Authorization header injection when the in-memory session holds a token, no header when it is empty, 401 response clearing the in-memory token and the stored user entry and redirecting to login, and error message mapping for 400/403/404/500 responses.
 
 #### Scenario: Token injection
-- **WHEN** a token exists in localStorage and a request is dispatched
+- **WHEN** the in-memory session holds a token and a request is dispatched
 - **THEN** the request config carries `Authorization: Bearer <token>`
 
 #### Scenario: 401 handling
-- **WHEN** a response returns status 401
-- **THEN** token and user entries are removed from localStorage and the browser is directed to /login
+- **WHEN** a response returns status 401 and the refresh attempt fails
+- **THEN** the in-memory token is cleared, the user entry is removed from localStorage, and the browser is directed to /login
+
+### Requirement: Session module and storage guard are tested
+The in-memory session module SHALL have tests covering: page-load restore performing no network call without a login hint, restore succeeding via the refresh endpoint and storing the token in memory only, restore failure clearing the login hint, concurrent restore calls sharing one refresh request, and cross-tab signals carrying no credential while a logout signal clears the in-memory token. A source-level guard test SHALL scan all frontend sources (tests excluded) and fail on any read or write of an access token in localStorage or sessionStorage, and SHALL fail if the application entry point stops clearing the legacy stored token.
+
+#### Scenario: Restore without hint
+- **WHEN** the session module restores on page load and no login hint exists
+- **THEN** no refresh request is issued and the caller is told the session is absent
+
+#### Scenario: Restore success
+- **WHEN** a login hint exists and the refresh endpoint returns a token
+- **THEN** the token is held in memory, localStorage and sessionStorage contain no token, and concurrent restore calls observe a single refresh request
+
+#### Scenario: Storage guard turns red
+- **WHEN** any source file gains `localStorage.setItem('token', …)` or the entry point loses the legacy cleanup
+- **THEN** the guard test fails and names the offending file
 
 ### Requirement: Router guards are tested
 The router navigation guards SHALL have tests covering: unauthenticated access to a protected route redirects to /login, authenticated access to /login redirects to /dashboard, and role-restricted routes redirect non-matching users to /dashboard.

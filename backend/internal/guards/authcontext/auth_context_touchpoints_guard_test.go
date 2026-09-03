@@ -132,14 +132,12 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "MFA pending scoped token 的世代對剛載入的 user 比對（2.8：轉為僅外部登入後不得完成驗證）"},
 	{symbol: "VerifyCredentialGenerationByUserID", file: "internal/modules/identity/auth_mfa_service.go", fn: "AuthService.CompleteEnrollment", count: 1,
 		source: "enrollment scoped token 的世代現查；置於 EnableMFA 之前，失效憑證不得寫入 TOTP 因子"},
-	{symbol: "ValidateConnectionToken", file: "internal/modules/identity/auth_service.go", fn: "AuthService.VerifySession", count: 1,
-		source: "gatewayapi.SessionVerifier 的實作出口（閘道接線）：判定本體即 ValidateConnectionToken，" +
-			"本方法只做 claims → gatewayapi.Principal 的欄位對映，不新增亦不放寬任何判定"},
-	{symbol: "VerifySession", file: "internal/sshproxy/handler.go", fn: "Handler.authenticate", count: 1,
-		source: "WS 連線認證出口（只經 gatewayapi.SessionVerifier 介面消費，" +
-			"判定本體仍是 ValidateConnectionToken）；驗過的認證脈絡由本函式 c.Set(\"authContext\", …) " +
-			"寫入 gin context——`?token=` 分支上它是唯一寫入者，下游 HandleMonitor／HandleShareJoin " +
-			"的 middleware.GetAuthContext(c) 全靠這一步（方向性由 authContextWriterSites 斷言）"},
+	// **已刪除的兩列**：原有 {ValidateConnectionToken, auth_service.go, AuthService.VerifySession}
+	// 與 {VerifySession, sshproxy/handler.go, Handler.authenticate}。唯讀觀看的兩條 WS
+	// 改以一次性觀看票認證後，`authenticate` 不再自 query 取 JWT，`VerifySession`
+	// （`gatewayapi.SessionVerifier` 的實作）生產呼叫端歸零，介面與實作一併移除。
+	// 唯讀觀看那兩條路徑的脈絡貫穿點改由下方「一次性能力兌換」段的
+	// IssueObserverTicket／RedeemObserverTicketWithReason 兩列承擔。
 	{symbol: "RefreshSession", file: "internal/api/auth_handler.go", fn: "AuthHandler.Refresh", count: 1,
 		source: "refresh 換發入口；脈絡自 refresh 列讀出、世代現查"},
 
@@ -164,6 +162,16 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "RecordingTokenManager 兌換：失效採直接撤銷（RevokeByUser／RevokeByProvider），非世代比對"},
 	{symbol: "Resolve", file: "internal/sshproxy/handler.go", fn: "Handler.HandleShareJoin", count: 1,
 		source: "分享碼兌換：兌換後的訂閱脈絡取自 GetAuthContext，非分享碼本身"},
+	{symbol: "IssueObserverTicket", file: "internal/sshproxy/observer_ticket_handler.go", fn: "Handler.issueObserverTicket", count: 1,
+		source: "ObserverTicketManager 簽發（監看與分享兩支端點共用此末段）：脈絡取自" +
+			"middleware.GetAuthContext(c)，即 AuthMiddleware 自 access token claims 寫入的那一份。" +
+			"**必須在簽發階段取**——兌換點只剩票證，屆時已無從得知當初經哪個 provider 認證，" +
+			"而那正是 provider 停用時按 provider 收線的依據"},
+	{symbol: "RedeemObserverTicketWithReason", file: "internal/sshproxy/observer_ticket_handler.go", fn: "Handler.redeemObserverTicket", count: 1,
+		source: "ObserverTicketManager 兌換即焚（兩條唯讀觀看 WS 共用）：票證所帶的四欄脈絡" +
+			"由本函式寫回 gin context 供下游訂閱使用（方向性由 authContextWriterSites 斷言）。" +
+			"多回傳的原因只供審計分辨缺票／偽票／過期／用途錯置，對外一律收斂為同一則" +
+			"「token 無效」，不給票證存在性與用途探測面"},
 
 	// ── 驗證側：OIDC 流程出入口 ──────────────────────────────────
 	{symbol: "Callback", file: "internal/api/oidc_handler.go", fn: "OIDCHandler.Callback", count: 1,
@@ -177,7 +185,11 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// 以下每項皆為「該路由群組經 AuthMiddleware 驗證 access token 與世代」；
 	// 脈絡來源一律為 JWT claims，由中介層寫入 gin context 供下游簽發點取用。
 	// 新增路由群組時須在此登記——登記動作本身即是「這組路由要不要掛認證」的覆核點。
-	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 6},
+	// 8 處：既有 6 處，加上唯讀觀看的兩支觀看票簽發端點
+	// （`POST /sessions/:id/monitor-token`、`POST /sessions/share/token`）。
+	// 這兩支承接了原先掛在 WS 路由上的認證面——WS 端改收一次性票後，
+	// 全部准入判定移到簽發端，而簽發端的認證脈絡即由本中介層寫入
+	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 8},
 	{symbol: "AuthMiddleware", file: "internal/api/access_request_handler.go", fn: "AccessRequestHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/access_review_handler.go", fn: "AccessReviewHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/alert_rule_handler.go", fn: "AlertRuleHandler.RegisterRoutes", count: 1},
@@ -368,9 +380,12 @@ var authContextWatchedSymbols = []string{
 	"buildLoginResponse", "IssueSessionResponse", "buildAuthContext", "finishLogin",
 	"Issue", "IssueConnectToken", "Join", "issueTicket", "Begin",
 	// 驗證側
-	"AuthMiddleware", "ValidateConnectionToken", "VerifySession", "RefreshSession",
+	// "VerifySession" 已移出：唯讀觀看改以觀看票認證後生產呼叫端歸零，
+	// `gatewayapi.SessionVerifier` 與其實作一併移除，本清單保留即恆解析不到宣告
+	"AuthMiddleware", "ValidateConnectionToken", "RefreshSession",
 	"Callback", "Exchange", "consumeFlowState", "Resolve", "RedeemConnectToken",
 	"RedeemConnectTokenWithReason",
+	"IssueObserverTicket", "RedeemObserverTicketWithReason",
 	"VerifyCredentialGeneration", "VerifyCredentialGenerationByUserID",
 	"VerifyCredentialGenerationTx",
 	// 序列化側（3.8b 通則：以既有身分或憑證產生新長效能力的位置）
@@ -727,8 +742,14 @@ func assertAuthContextHomonymsAreBounded(t *testing.T, scan authContextScan) {
 // （新增寫入點必須經覆核，避免第三處以不同語義覆蓋脈絡）。
 var authContextWriterSites = map[string]string{
 	"internal/middleware/auth.go|AuthMiddleware": "一般 API 路徑：自 access token 的 claims 解出後寫入",
-	"internal/sshproxy/handler.go|Handler.authenticate": "WS `?token=` 旁路（/monitor、/share/:code/ws、" +
-		"/ssh、/connect 四條路由不掛 AuthMiddleware）：ValidateConnectionToken 驗過的 claims.AuthContext",
+	// 原有一列 `internal/sshproxy/handler.go|Handler.authenticate`（WS `?token=` 旁路）。
+	// 唯讀觀看的兩條 WS 改收一次性觀看票後，`authenticate` 不再自 query 取 JWT，
+	// 該處已無寫入——雙向判定當場打出「登記了但程式碼找不到」，故下架。
+	"internal/sshproxy/observer_ticket_handler.go|Handler.redeemObserverTicket": "唯讀觀看的兩條 WS" +
+		"（/sessions/:id/monitor、/sessions/share/:code/ws 皆不掛 AuthMiddleware）：" +
+		"觀看票兌換成功後寫入票證所帶的四欄脈絡，該脈絡於簽發階段取自 AuthMiddleware 驗過的 " +
+		"claims.AuthContext。不寫則下游 GetAuthContext 恆回零值——ProviderID=0 使 provider " +
+		"停用收線一筆都匹配不到，CredEpoch=0 使世代閘對 credential_epoch>0 的使用者恆拒",
 }
 
 // TestAuthContextWriterSitesGuard 斷言 authContext 的寫入點與清冊完全一致。

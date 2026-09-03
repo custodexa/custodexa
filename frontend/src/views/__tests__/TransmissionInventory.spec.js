@@ -214,3 +214,48 @@ describe('TransmissionInventory 通道加密清冊', () => {
     clickSpy.mockRestore()
   })
 })
+
+// WinRM 改密通道列（Windows 本機帳號改密）：清冊多一列 channel=winrm，
+// 通道名走 enum.transmissionChannel.winrm 而非原字串；風險鍵有三語 label。
+describe('TransmissionInventory WinRM 改密通道列', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    getInventoryMock.mockResolvedValue({
+      data: {
+        generated_at: '2026-09-03T00:00:00Z',
+        channels: [
+          { channel: 'ssh', total_count: 2, at_risk_count: 0, note_code: 'ssh_encrypted' },
+          {
+            channel: 'winrm', total_count: 2, at_risk_count: 1,
+            detail_codes: { 'scheme=http': 1, 'scheme=https,tls=ca': 1 },
+            risks: [{ key: 'winrm_http_ntlm', label: 'WinRM 改密通道走 http' }],
+            note_code: 'winrm_rotation_channel',
+          },
+        ],
+      },
+    })
+  })
+
+  it('通道名譯為「WinRM 改密」、風險與說明走機器碼查譯，明細鍵原樣', async () => {
+    const wrapper = mount(TransmissionInventory, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: {
+          ElTable: cellTableStub,
+          ElTableColumn: cellColumnStub,
+          RouterLink: { template: '<a class="router-link-stub"><slot /></a>' },
+        },
+      },
+    })
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('WinRM 改密')
+    expect(wrapper.vm.channelLabel('winrm')).toBe('WinRM 改密')
+    expect(text).toContain('WinRM 改密通道走 http（僅 NTLM 訊息層加密，無 TLS）')
+    expect(text).toContain('NTLM 訊息層加密恆啟用')
+    expect(text).toContain('scheme=http: 1')
+    expect(text).toContain('scheme=https,tls=ca: 1')
+  })
+})

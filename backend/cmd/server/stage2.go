@@ -801,7 +801,6 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	rotationReportSchedules := asset.NewRotationReportScheduleService(database.DB,
 		auditExportJobService, rotationReportBuilder)
 
-
 	deps, err := buildRouteDeps(cfg, routeServices{
 		metrics:              s1.metrics,
 		checkpointVerifier:   checkpointVerifier,
@@ -972,6 +971,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 兩者的先後由服務清單的順序釘住。
 	offsiteUploader := offsite.NewUploader(offsiteLedger, offsiteProfiles, auditFailureService,
 		recordingOffsiteAdapter, exportOffsiteAdapter)
+	// 刻意不從 ctx 衍生：ctx 在解封路徑是該次解封操作的 context，操作結束即取消，
+	// 而上傳 worker 要活到行程關閉；停止由 starts[7].stop 統一收口
 	offsiteWorkerCtx, stopOffsiteWorker := context.WithCancel(context.Background())
 	offsiteEnabled, offsiteErr := offsiteLedger.HasCurrentGeneration()
 	if offsiteErr != nil {
@@ -1391,8 +1392,8 @@ type routeServices struct {
 	// 輪替證據報告：資料集建構者與排程服務（與排程器、打包者共用同一組實例）
 	rotationReportBuilder   *asset.RotationReportBuilder
 	rotationReportSchedules *asset.RotationReportScheduleService
-	connHandler        *proxy.ConnectionHandler
-	sshHandler         *sshproxy.Handler
+	connHandler             *proxy.ConnectionHandler
+	sshHandler              *sshproxy.Handler
 	// sourceIPBaseline 與兩條建線路徑共用同一份（見 sshHandler.SourceIPBaseline
 	// 的注入處）：登入點與建線點寫的是同一張基準表，服務分裂即判定分裂
 	sourceIPBaseline *audit.SourceIPBaseline

@@ -1,7 +1,6 @@
 package identity
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +19,6 @@ import (
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
-	"github.com/custodexa/backend/pkg/gatewayapi"
 	"gorm.io/gorm"
 )
 
@@ -1008,37 +1006,11 @@ func (s *AuthService) ValidateConnectionToken(tokenString string) (*crypto.Claim
 	return claims, nil
 }
 
-var _ gatewayapi.SessionVerifier = (*AuthService)(nil)
-
-// VerifySession 驗 web session JWT 並套用認證世代閘，回傳已驗證身分快照。
-// **`gatewayapi.SessionVerifier` 的實作**。
-//
-// 判定本體即 ValidateConnectionToken——本方法只做 claims → Principal 的欄位對映，
-// **不新增、不放寬任何判定**：scope deny-by-default、重載用戶拒停用/鎖定、
-// 憑證世代閘三者逐字沿用。分成兩個方法而非改 ValidateConnectionToken 的回傳型別，
-// 是因為後者仍被 identity 內部與其既有測試以 *crypto.Claims 消費。
-//
-// ctx 未被使用（下游以 database.DB 直查，不吃 ctx）：刻意保留參數而不改契約，
-// 同 gatewayapi.AsyncSink.Submit 的既定紀律。
-//
-// **Principal.Role 是登入當下的角色快照，SHALL NOT 作為授權判定依據**：
-// 連線閘序的角色一律由 CurrentConnectRole 現查。
-func (s *AuthService) VerifySession(_ context.Context, rawJWT string) (gatewayapi.Principal, error) {
-	claims, err := s.ValidateConnectionToken(rawJWT)
-	if err != nil {
-		return gatewayapi.Principal{}, err
-	}
-	return gatewayapi.Principal{
-		UserID:     claims.UserID,
-		Username:   claims.Username,
-		Role:       claims.Role,
-		Scope:      claims.Scope,
-		AuthMethod: claims.AuthMethod,
-		ProviderID: claims.ProviderID,
-		AuthEpoch:  claims.AuthEpoch,
-		CredEpoch:  claims.CredEpoch,
-	}, nil
-}
+// **`gatewayapi.SessionVerifier` 與 `AuthService.VerifySession` 已移除**：
+// 唯讀觀看的兩條 WebSocket 改以一次性觀看票認證後，該介面的生產呼叫端歸零。
+// 留著等於在契約包上掛一條「還能用 session JWT 換出身分快照」的認證面，
+// 而沒有任何生產路徑在用它——契約描述未使用的能力，下一輪稽核會把它讀成活的。
+// session JWT 的驗證面現由 `ValidateConnectionToken` 與 `middleware.AuthMiddleware` 承擔。
 
 // CheckUserConnectable 重載用戶並拒 inactive 與鎖定中（即時撤權）。
 // 抽出共用是因為連線經兩階段入口：connect-token 簽發（HandleCreateConnectToken，

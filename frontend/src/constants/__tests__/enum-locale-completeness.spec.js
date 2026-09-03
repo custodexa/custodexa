@@ -17,6 +17,11 @@ import {
   KEY_SECTIONS,
 } from '../policyDomains'
 import { ACCOUNT_CREDENTIAL_VALUES } from '../assetAccounts'
+import {
+  ROTATION_CHANNEL_VALUES,
+  WINRM_SCHEME_VALUES,
+  WINRM_TLS_MODE_VALUES,
+} from '../rotationChannel'
 import { END_REASON_VALUES } from '@/utils/end-reason'
 import zhTW from '@/i18n/locales/zh-TW.json'
 import enUS from '@/i18n/locales/en-US.json'
@@ -70,6 +75,26 @@ describe('枚舉三語完備性（值域 × locale）', () => {
     for (const v of ACCOUNT_CREDENTIAL_VALUES) {
       expectKeyInAllLocales(`enum.accountCredential.${v}`)
     }
+  })
+
+  it('rotationChannel／winrmScheme／winrmTlsMode：改密通道三組值域三語皆有非空 key', () => {
+    for (const v of ROTATION_CHANNEL_VALUES) {
+      expectKeyInAllLocales(`enum.rotationChannel.${v}`)
+    }
+    for (const v of WINRM_SCHEME_VALUES) {
+      expectKeyInAllLocales(`enum.winrmScheme.${v}`)
+    }
+    for (const v of WINRM_TLS_MODE_VALUES) {
+      expectKeyInAllLocales(`enum.winrmTlsMode.${v}`)
+    }
+  })
+
+  it('transmissionChannel：清冊的 winrm 通道與兩個 WinRM 風險鍵三語皆有非空 key', () => {
+    expectKeyInAllLocales('enum.transmissionChannel.winrm')
+    for (const k of ['winrm_http_ntlm', 'winrm_tls_insecure']) {
+      expectKeyInAllLocales(`riskLabel.${k}`)
+    }
+    expectKeyInAllLocales('transportNote.winrm_rotation_channel')
   })
 
   it('role：seeded 四角色三語皆有 label 與 description（roles 為開放集僅鎖 seeded）', () => {

@@ -376,6 +376,7 @@ import {
   RELOGIN_INSECURE_TRANSPORT,
   consumeReloginContext,
 } from '@/utils/reloginContext'
+import { setAccessToken, announceLogin } from '@/utils/session'
 
 const MFA_CODE_LENGTH = 6
 
@@ -664,10 +665,12 @@ const handleChangePassword = async () => {
 // 儲存 token 和使用者資訊並導向儀表板（SSO 帶 redirect_next 時導向該站內路徑；
 // next 已由後端白名單化為同源相對路徑，前端不再自行解析外部 URL）
 const completeLogin = (response, next) => {
-  localStorage.setItem('token', response.token)
-  // refresh 憑證不落 localStorage：後端以 httpOnly cookie 下發，瀏覽器自動收存，
-  // script 讀不到也就帶不走
+  // access token 只存頁面記憶體；續期憑證由後端以 httpOnly cookie 下發，
+  // 瀏覽器自動收存，script 讀不到也就帶不走。兩者都不落瀏覽器持久儲存
+  setAccessToken(response.token)
   localStorage.setItem('user', JSON.stringify(response.user))
+  // 通知停在登入頁的其他分頁可以自行前進
+  announceLogin()
   ElMessage.success(
     t('login.welcomeBack', {
       // 歡迎訊息走後端 resolved display_name（單一事實源：前端不重寫 fallback 鏈；

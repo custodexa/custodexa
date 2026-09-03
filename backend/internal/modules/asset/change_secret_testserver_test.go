@@ -9,10 +9,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -48,6 +50,20 @@ type testSSHServer struct {
 	// 這是「遠端訊息是攻擊者可控輸入」的最小重現：目標機（被入侵或只是行為異常）
 	// 藉此把本輪產生的新密碼塞進我方的錯誤訊息
 	chpasswdEchoStdinToStderr bool
+	// --- Windows 改密腳本契約（exec 命令列以 powershell.exe 前綴開頭時）---
+	// windowsOmitResultMarker true＝stdout 不印結果標記（模擬標準輸出遺失）；預設印 `ROTATION_RESULT=<碼>`
+	windowsOmitResultMarker bool
+	// windowsResultMarkerCode 非 0 即以此碼印結果標記、退出碼仍為 chpasswdExitCode
+	// （模擬目標預設 shell 把退出碼改寫、標記卻完好）
+	windowsResultMarkerCode int
+	// windowsApplyStdinPassword true＝結局碼 0／6 時把標準輸入第一行當新密碼真的換掉
+	windowsApplyStdinPassword bool
+	// windowsExitCodeFirstExecOnly true＝chpasswdExitCode 與 windowsResultMarkerCode 只套在第一個 exec（改密）上，
+	// 之後的 exec（驗證指令）退出 0
+	windowsExitCodeFirstExecOnly bool
+	// windowsExecStall 非 0 即在讀完標準輸入後停住這麼久才回應（模擬目標端腳本掛住）；
+	// 停住期間若客戶端先關閉連線即放棄回應（windowsStallReleasedByPeer 計數）
+	windowsExecStall time.Duration
 
 	// --- 注入器自證計數（故障注入必須證明真的觸發過）---
 	chpasswdCalls     atomic.Int32
@@ -56,7 +72,10 @@ type testSSHServer struct {
 	verifyRejectFired atomic.Int32
 	sftpRejectFired   atomic.Int32
 	chpasswdEchoFired atomic.Int32
-	passwordAuthCalls atomic.Int32
+	// windowsStallFired 停住注入觸發次數；windowsStallReleasedByPeer 停住期間被客戶端關線的次數
+	windowsStallFired          atomic.Int32
+	windowsStallReleasedByPeer atomic.Int32
+	passwordAuthCalls          atomic.Int32
 	publicKeyAuthOK   atomic.Int32
 	// lastChpasswdStdin 最近一次 chpasswd 收到的 stdin（斷言憑證確實走 stdin）
 	lastChpasswdStdin atomic.Value
@@ -165,6 +184,9 @@ func (s *testSSHServer) handleConn(nConn net.Conn, username string) {
 	}
 	defer sconn.Close()
 	go ssh.DiscardRequests(reqs)
+	// connClosed 於整條連線結束時關閉：停住中的 exec 靠它得知客戶端已放棄
+	connClosed := make(chan struct{})
+	go func() { _ = sconn.Wait(); close(connClosed) }()
 
 	for newCh := range chans {
 		if newCh.ChannelType() != "session" {
@@ -175,18 +197,18 @@ func (s *testSSHServer) handleConn(nConn net.Conn, username string) {
 		if err != nil {
 			return
 		}
-		go s.handleSession(ch, chReqs, nConn)
+		go s.handleSession(ch, chReqs, nConn, connClosed)
 	}
 }
 
-func (s *testSSHServer) handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, raw net.Conn) {
+func (s *testSSHServer) handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, raw net.Conn, connClosed <-chan struct{}) {
 	for req := range reqs {
 		switch req.Type {
 		case "exec":
 			cmd := parsePayloadString(req.Payload)
 			s.lastExecCommand.Store(cmd)
 			_ = req.Reply(true, nil)
-			s.runExec(ch, cmd, raw)
+			s.runExec(ch, cmd, raw, connClosed)
 			return
 		case "subsystem":
 			name := parsePayloadString(req.Payload)
@@ -216,7 +238,7 @@ func (s *testSSHServer) handleSession(ch ssh.Channel, reqs <-chan *ssh.Request, 
 }
 
 // runExec 模擬 chpasswd：自 stdin 讀 user:password（非 root 時第一行為 sudo 密碼）
-func (s *testSSHServer) runExec(ch ssh.Channel, cmd string, raw net.Conn) {
+func (s *testSSHServer) runExec(ch ssh.Channel, cmd string, raw net.Conn, connClosed <-chan struct{}) {
 	s.chpasswdCalls.Add(1)
 	data, _ := io.ReadAll(ch)
 	s.lastChpasswdStdin.Store(string(data))
@@ -225,7 +247,42 @@ func (s *testSSHServer) runExec(ch ssh.Channel, cmd string, raw net.Conn) {
 	exitCode := s.chpasswdExitCode
 	drop := s.chpasswdDropConn
 	echo := s.chpasswdEchoStdinToStderr
+	omitMarker := s.windowsOmitResultMarker
+	markerCode := s.windowsResultMarkerCode
+	applyStdin := s.windowsApplyStdinPassword
+	stall := s.windowsExecStall
+	if s.windowsExitCodeFirstExecOnly && s.chpasswdCalls.Load() > 1 {
+		exitCode, markerCode = 0, 0
+	}
 	s.mu.Unlock()
+
+	// 目標端腳本掛住：停住期間客戶端若關線即放棄，不再印任何東西
+	if stall > 0 {
+		s.windowsStallFired.Add(1)
+		select {
+		case <-time.After(stall):
+		case <-connClosed:
+			s.windowsStallReleasedByPeer.Add(1)
+			return
+		}
+	}
+
+	// Windows 改密腳本契約：每個結束點先在 stdout 印結果標記（CRLF）再退出；
+	// 結局碼 0／6 代表新密碼已設定
+	if strings.HasPrefix(cmd, windowsPowerShellPrefix) && !drop {
+		code := exitCode
+		if markerCode != 0 {
+			code = markerCode
+		}
+		if !omitMarker {
+			_, _ = ch.Write([]byte(windowsResultMarkerPrefix + strconv.Itoa(code) + "\r\n"))
+		}
+		if applyStdin && (code == 0 || code == windowsExitSelfVerifyUnavailable) {
+			if first, _, _ := strings.Cut(string(data), "\n"); first != "" {
+				s.setPassword(first)
+			}
+		}
+	}
 
 	// 惡意／異常目標機：把收到的 stdin（含新密碼）當作錯誤訊息回吐。
 	// 刻意不含 ": "——修補前的 sanitizeSSHErr 只截到第一個 ": " 前，整段原文會被保留

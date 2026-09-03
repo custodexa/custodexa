@@ -350,10 +350,12 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		//（文字型鍵無單位，故 policyUnit 不變）
 		// 再由 54 增為 55：資產帳號憑證最長使用天數
 		//（單位沿用既有的「天」，故 policyUnit 不變）
-		"policyLabel": 55, "policyUnit": 9, "riskLabel": 8,
+		// riskLabel 由 8 增為 10：改密通道的兩個風險碼（winrm_http_ntlm／winrm_tls_insecure）
+		"policyLabel": 55, "policyUnit": 9, "riskLabel": 10,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
-		"transportNote": 9, "transportPreflight": 4, "transportDetail": 1,
+		// 再由 9 增為 10：改密通道列的說明碼 winrm_rotation_channel
+		"transportNote": 10, "transportPreflight": 4, "transportDetail": 1,
 	}
 	for ns, n := range want {
 		if got := len(exp[ns]); got != n {

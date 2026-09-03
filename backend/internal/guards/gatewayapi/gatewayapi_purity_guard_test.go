@@ -88,12 +88,10 @@ var gwRequiredTypes = map[string][]string{
 		"Risks", "MaxDurationMinutes", "PendingRequestID", "Limits", "ResolvedRole", "Hints"},
 	"RiskDetail":    {"Key", "Label"},
 	"SessionLimits": {"IdleTimeout", "MaxDuration"},
-	// 閘道接線時拆分：VerifySession 歸 SessionVerifier（identity.AuthService 實作），
-	// 簽發／兌換歸 TokenService（proxy.ConnectTokenManager 實作）——現實中沒有任何
-	// 型別同時擔任兩者，合成單一介面只能靠一層為滿足介面而生的合成器。
-	"SessionVerifier": {"VerifySession"},
-	"TokenService":    {"IssueConnectToken", "RedeemConnectToken"},
-	"Principal":       {"UserID", "Username", "Role", "Scope", "AuthMethod", "ProviderID", "AuthEpoch", "CredEpoch"},
+	// SessionVerifier／Principal 已自契約包移除：唯讀觀看的兩條 WebSocket 改以
+	// 一次性觀看票認證後，session JWT 驗證面的生產消費者歸零。登記留著就是要求
+	// 契約包持續提供一條沒人用的認證面。
+	"TokenService": {"IssueConnectToken", "RedeemConnectToken"},
 	// ConnectGrant 客體改平鋪：現行票證只帶 asset_id／account_id 兩個選擇器，
 	// 嵌 ConnectObjectRef 等於宣稱票證帶著 Protocol／Channel 而實作永遠填不了。
 	// Limits 一併移除（零生產者零消費者，未拍板）。

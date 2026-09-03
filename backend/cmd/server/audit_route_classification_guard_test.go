@@ -349,6 +349,8 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/sessions/:id/recording/download"}:                               {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證"},
 	{"GET", "/api/v1/sessions/:id/recording/stream"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；取走終端畫面錄影本體＝取證"},
 	{"POST", "/api/v1/sessions/:id/recording/token"}:                                 {classResource, model.ResourceRecording, "命中前置特判段 `recording`；簽發取流票證是取證動作的起點"},
+	{"POST", "/api/v1/sessions/:id/monitor-token"}:                                   {classResource, model.ResourceSession, "命中分類器段 `sessions`；簽發即時監看的一次性觀看票，中介層留痕即「誰要求旁觀哪一場連線」，與加入留痕（handler 自寫）語義並存"},
+	{"POST", "/api/v1/sessions/share/token"}:                                         {classResource, model.ResourceSession, "命中分類器段 `sessions`；簽發分享觀看票。分享碼走請求本體（非白名單欄，中介層遮蔽），不落審計表"},
 	{"DELETE", "/api/v1/sessions/:id/share"}:                                         {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"POST", "/api/v1/sessions/:id/share"}:                                           {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"POST", "/api/v1/sessions/:id/terminate"}:                                       {classResource, model.ResourceSession, "命中分類器段 `sessions`"},

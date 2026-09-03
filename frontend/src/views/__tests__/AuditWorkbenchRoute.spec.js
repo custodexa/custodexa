@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import router, { createAuthGuard } from '@/router'
 import { WORKBENCH_PATH, buildAddressPivotLink } from '@/components/audit/timelineQuery'
+import { resetSessionForTests, setAccessToken } from '@/utils/session'
 
 // 工作台路由與角色閘（auditor-workbench 6.1）。
 // 本檔不 mock vue-router——要驗的正是真實路由表與真實守衛的裁決。
@@ -40,29 +41,31 @@ describe('位址深連結的目的地', () => {
 describe('角色閘', () => {
   beforeEach(() => {
     localStorage.clear()
-    localStorage.setItem('token', 'fake-token')
+    resetSessionForTests()
+    setAccessToken('fake-token')
   })
 
-  const enter = (roles) => {
+  const enter = async (roles) => {
     localStorage.setItem('user', JSON.stringify({ username: 'u', roles }))
     const next = vi.fn()
-    createAuthGuard()({ path: '/audit/workbench', meta: workbenchRoute().meta }, {}, next)
+    await createAuthGuard()({ path: '/audit/workbench', meta: workbenchRoute().meta }, {}, next)
     return next
   }
 
-  it('auditor 與 admin 放行', () => {
-    expect(enter(['auditor'])).toHaveBeenCalledWith()
-    expect(enter(['admin'])).toHaveBeenCalledWith()
+  it('auditor 與 admin 放行', async () => {
+    expect(await enter(['auditor'])).toHaveBeenCalledWith()
+    expect(await enter(['admin'])).toHaveBeenCalledWith()
   })
 
-  it('一般使用者直接輸網址被擋回總覽', () => {
-    expect(enter(['user'])).toHaveBeenCalledWith('/dashboard')
+  it('一般使用者直接輸網址被擋回總覽', async () => {
+    expect(await enter(['user'])).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('未登入導向登入頁', () => {
+  it('未登入導向登入頁', async () => {
     localStorage.clear()
+    resetSessionForTests()
     const next = vi.fn()
-    createAuthGuard()({ path: '/audit/workbench', meta: workbenchRoute().meta }, {}, next)
+    await createAuthGuard()({ path: '/audit/workbench', meta: workbenchRoute().meta }, {}, next)
     expect(next).toHaveBeenCalledWith('/login')
   })
 })

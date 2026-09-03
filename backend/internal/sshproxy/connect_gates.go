@@ -478,3 +478,47 @@ func assetDisabledOutcome() *connectgate.Outcome {
 	return connectgate.Deny(http.StatusForbidden, string(apierror.CodeAssetDisabled),
 		map[string]any{"reason": "asset_disabled"})
 }
+
+// ---------------------------------------------------------------------------
+// 監看票簽發入口的閘序（G-M1）
+//
+// 唯讀監看的准入判定全部在簽發端完成，WS 端只兌換即焚的票。判定寫成閘序而非
+// handler 內的 if，理由與三處連線入口相同：閘序的唯一事實來源是本檔的 []Gate
+// 順序，散在 handler 裡的判定既不進等價表，也不受閘序守衛約束。
+//
+// **只有前置階段**：監看的客體是會話而非資產帳號，沒有「帳號身分解析」這一步，
+// 故 `AuthorizeResolvedAccount` 階段為零閘（NewSequence 第二參數傳 nil）。
+// 會話存在性與狀態的判定留在 handler：它們產生的是**客體本身**（要監看哪一場），
+// 與骨架涵蓋的授權面分屬兩件事，同 `authenticate` 不在骨架內的既有紀律。
+// ---------------------------------------------------------------------------
+
+// observerIssueState 監看票簽發閘序的共享中間狀態
+type observerIssueState struct {
+	// role 由 G-M1 現查後寫入，供閘序內部判定（不採信 JWT 快照）
+	role string
+}
+
+// monitorTicketPreResolveGates 監看票簽發側的閘序。
+// s＝`gatewayapi.PolicyGate` 的主體入參；**s.ClaimedRole 在本階段零讀取**
+// ——角色一律由 G-M1 現查後寫入 st.role
+func (h *Handler) monitorTicketPreResolveGates(s gatewayapi.ConnectSubject,
+	st *observerIssueState) []connectgate.Gate {
+	return []connectgate.Gate{
+		{Name: "G-M1", Eval: func() *connectgate.Outcome {
+			// 稽核職能現查：JWT 的角色快照壽命以分鐘計，降權者持降權前的正式
+			// token 仍會走到此處。不現查則降權後仍簽得出監看票，而票一旦簽出，
+			// 兌換端只驗票不驗人——降權要到 token 自然過期才生效
+			role, connErr := h.AuthService.CurrentConnectRole(s.UserID)
+			if connErr != nil {
+				status, code := connectionAuthError(connErr)
+				return connectgate.Deny(status, string(code), nil)
+			}
+			st.role = role
+			if role != model.RoleAdmin && role != model.RoleAuditor {
+				return connectgate.Deny(http.StatusForbidden,
+					string(apierror.CodeMonitorRoleRequired), nil)
+			}
+			return nil
+		}},
+	}
+}

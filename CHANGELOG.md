@@ -2,6 +2,85 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.3.0 — password rotation for Windows local accounts (2026-09-03)
+
+**This release changes the database schema.** The migration
+`20260904_windows_local_account_rotation` runs when the backend starts and adds six
+columns to the assets table. Existing rows are not touched.
+
+**Back up before you upgrade and keep your current images.** Section 2 of
+`docs/ops/upgrade-sop.md` lists what to record before stopping the old version and
+what to check afterwards. To go back, restore that backup with the previous images.
+Rotation channel settings made after the upgrade, including uploaded CA
+certificates, are not in it, so note them down first.
+
+**Nothing changes until you set it up.** SSH assets keep rotating as before. RDP
+assets start rotating once an administrator gives them a rotation channel.
+
+### Windows hosts join password rotation
+
+- Rotation plans now cover Windows local accounts. Pick the Windows assets in a plan
+  and the product rotates each account over the channel set on the asset, on the same
+  schedule and with the same records as your Linux hosts.
+- Two ways to reach a Windows host. WinRM, for hosts that already have remote
+  management on. SSH to PowerShell, for hosts that run OpenSSH Server. Both use one
+  script, so the outcome looks the same whichever you choose.
+- WinRM traffic is always NTLM with message level encryption, over http and https
+  alike. Https adds server certificate verification with your choice of trust: the
+  operating system store, a CA certificate uploaded on the asset, or none for lab
+  hosts.
+- Each account rotates itself. It logs in with its own credentials, sets the new
+  password, then confirms on the host that the new password works before the product
+  commits it. If that confirmation fails, the script restores the old password on the
+  spot, so the host is never left with a password nobody knows.
+- Passwords travel on standard input only. They never appear on a command line, in
+  the script text, in logs, or in records.
+- Execution records show which channel was used and, when something goes wrong, a
+  reason you can act on in all three languages.
+
+### Setting it up
+
+- Asset form: RDP assets get a rotation channel section with the WinRM transport,
+  port and certificate options, or the SSH port for PowerShell. SSH assets get a
+  switch that marks the host as Windows OpenSSH.
+- Plan form: the asset list shows each asset's channel, so you can see at a glance
+  which hosts a plan will reach.
+- Transmission inventory: assets rotating over WinRM appear as their own row, and the
+  asset risk badge shows when a channel runs over http or skips certificate
+  verification.
+
+### Target host requirements
+
+- Enable the WinRM service and listener, set `LocalAccountTokenFilterPolicy` to 1,
+  leave `AllowUnencrypted` at false and Basic authentication off, and provide a server
+  certificate for https. For the SSH channel install OpenSSH Server; cmd or PowerShell
+  as the default shell both work. Account names follow the Windows rules for local
+  accounts, so a name with spaces, non-ASCII characters or `@` rotates like any other.
+  The full checklist is in `docs/ops/upgrade-sop.md`.
+
+### Login credentials stay out of browser storage
+
+- The credential a browser uses to call the API now lives only in the memory of the
+  open page. Closing the tab discards it, and nothing is left behind on disk.
+- Reloading a page or opening a new tab restores the session from the session cookie,
+  so the page you were on is the page you come back to.
+- Logging out in one tab logs out every tab of that browser.
+- Watching a live session and joining a shared session now open the same way a
+  terminal does: the page asks for a single-use ticket first, so no login credential
+  ever appears in a WebSocket address.
+- One thing to check before you upgrade: if your deployment is reached over plain
+  http, turn off the "mark the session cookie as Secure" policy on the security
+  policy page. On an existing deployment the environment variable no longer changes
+  it, because that value only seeds the policy on the very first start. A browser
+  will not keep that cookie over http, and without it a reload sends the user back to
+  the login page. The login page explains this when it happens, and
+  `docs/ops/deployment-topology-limits.md` covers the two ways to resolve it.
+
+### Dependencies
+
+- New backend dependencies: `github.com/masterzen/winrm` for WS-Management messages
+  and `github.com/bodgit/ntlmssp` for NTLM.
+
 ## 1.2.5 — evidence that credentials are being rotated (2026-09-03)
 
 **This release changes the database schema.** One migration,

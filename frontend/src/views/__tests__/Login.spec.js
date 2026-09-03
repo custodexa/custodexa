@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage } from 'element-plus'
 import Login from '../Login.vue'
+import { getAccessToken, resetSessionForTests } from '@/utils/session'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
@@ -56,6 +57,7 @@ const mountLogin = () =>
 describe('Login', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     vi.clearAllMocks()
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
     getLoginBannerMock.mockResolvedValue({ enabled: false })
@@ -103,7 +105,7 @@ describe('Login', () => {
       username: 'admin',
       password: 'admin123',
     })
-    expect(localStorage.getItem('token')).toBe('jwt-token')
+    expect(getAccessToken()).toBe('jwt-token')
     // refresh 憑證不落 localStorage：後端以 httpOnly cookie 下發，script 讀不到
     expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(JSON.parse(localStorage.getItem('user')).username).toBe('admin')
@@ -120,7 +122,7 @@ describe('Login', () => {
     await wrapper.find('.login-btn').trigger('click')
     await flushPromises()
 
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
   })
 
@@ -145,7 +147,7 @@ describe('Login', () => {
     expect(wrapper.find('.mfa-panel').exists()).toBe(true)
     expect(wrapper.find('.mfa-verify-btn').exists()).toBe(true)
     // 第一階段不得儲存 token 或導向
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
   })
 
@@ -164,7 +166,7 @@ describe('Login', () => {
       pending_token: 'pending-jwt',
       code: '123456',
     })
-    expect(localStorage.getItem('token')).toBe('final-jwt')
+    expect(getAccessToken()).toBe('final-jwt')
     expect(JSON.parse(localStorage.getItem('user')).username).toBe('admin')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
   })
@@ -177,7 +179,7 @@ describe('Login', () => {
     await wrapper.find('.mfa-verify-btn').trigger('click')
     await flushPromises()
 
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
     // 失敗後清空驗證碼供重試
     expect(wrapper.find('.mfa-input input').element.value).toBe('')
@@ -216,7 +218,7 @@ describe('Login', () => {
     // 進入改密步驟：政策提示可見、不得儲存 token
     expect(wrapper.text()).toContain('設定新密碼')
     expect(wrapper.text()).toContain('新密碼至少 12 字元')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
     // 目前密碼預填剛輸入的登入密碼
     const pwInputs = wrapper.findAll('input[type="password"]')
@@ -295,7 +297,7 @@ describe('Login', () => {
       'change-jwt'
     )
     // 改密成功直接換發正式 token，不重走登入
-    expect(localStorage.getItem('token')).toBe('fresh-jwt')
+    expect(getAccessToken()).toBe('fresh-jwt')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
   })
 
@@ -319,7 +321,7 @@ describe('Login', () => {
     await wrapper.find('.login-btn').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('密碼長度至少需 12 字元')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
   })
 
   // MFA 強制註冊步驟（8.4.2）
@@ -348,7 +350,7 @@ describe('Login', () => {
     expect(enrollSetupMock).toHaveBeenCalledWith('enroll-jwt')
     expect(wrapper.text()).toContain('啟用兩步驟驗證')
     expect(wrapper.text()).toContain('JBSWY3DPEHPK3PXP')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     // QR code 以 otpauth URL 渲染（文案「掃描或手動輸入」自此為真）
     expect(wrapper.find('.mfa-qr').exists()).toBe(true)
     expect(toCanvasMock.mock.calls[0][1]).toBe('otpauth://totp/x')
@@ -359,7 +361,7 @@ describe('Login', () => {
     await flushPromises()
 
     expect(enrollConfirmMock).toHaveBeenCalledWith('123456', 'enroll-jwt')
-    expect(localStorage.getItem('token')).toBe('final-jwt')
+    expect(getAccessToken()).toBe('final-jwt')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
   })
 
@@ -385,7 +387,7 @@ describe('Login', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('MFA 驗證碼錯誤')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
   })
 
   it('shows lockout alert inside the card on 423', async () => {
@@ -404,7 +406,7 @@ describe('Login', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('帳號已暫時鎖定')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
   })
 })
 
@@ -414,6 +416,7 @@ describe('Login', () => {
 describe('Login — 明文連線的登入說明', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     window.sessionStorage.clear()
     vi.clearAllMocks()
     window.location.href = 'http://localhost:3000/login'
@@ -509,6 +512,7 @@ describe('Login — 登入前告示', () => {
 
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     window.sessionStorage.clear()
     vi.clearAllMocks()
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: [] })
@@ -561,7 +565,7 @@ describe('Login — 登入前告示', () => {
     await wrapper.find('.login-btn').trigger('click')
     await flushPromises()
 
-    expect(localStorage.getItem('token')).toBe('jwt-token')
+    expect(getAccessToken()).toBe('jwt-token')
     expect(pushMock).toHaveBeenCalledWith('/dashboard')
 
     errorSpy.mockRestore()

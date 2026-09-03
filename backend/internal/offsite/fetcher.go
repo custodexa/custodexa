@@ -319,7 +319,7 @@ func (f *Fetcher) listSpool() ([]spoolEntry, int64, error) {
 		}
 		name := e.Name()
 		base := strings.TrimSuffix(name, filepath.Ext(name))
-		id64, err := strconv.ParseUint(base, 10, 64)
+		id64, err := strconv.ParseUint(base, 10, strconv.IntSize)
 		if err != nil {
 			continue
 		}

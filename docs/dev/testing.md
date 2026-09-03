@@ -571,3 +571,102 @@ ADMIN_PASS='<現行 admin 密碼>' bash scripts/e2e_smoke.sh
   既有匯出符號的簽名加寬。
 - 量級供校準：一次搬包新增 12 個匯出，回溯發現 **3 個只被測試消費、1 個零消費者**；
   套上這條紀律後的下一次降為 5 個，且其中 3 個是介面／消費者側形式。
+
+## 12. Windows loopback 真機回歸（改密執行器）
+
+Windows 本機帳號改密的 WinRM 傳輸層是自建的 NTLM 訊息層加密路徑，本地假端點
+（`winrm_fake_test.go`）不實作 NTLM 伺服端，驗不到真的交握與封裝。
+**唯一的真機證據是持續整合環境的 Windows loopback 回歸**：在 Windows Server runner 上
+把 runner 自己同時當客戶端與目標機（`127.0.0.1`），以**產品的**執行器跑完整 Rotate＋Verify。
+發版驗收附該次執行記錄的連結。
+開發版編排檔不提供 Windows 靶機（Linux 主機跑不了 Windows 容器，§3 列的十個協議靶機沒有一個是 Windows），
+Windows 路徑的自動化證據只來自這個持續整合的單機回歸，本機只能建置、不能跑。
+
+### 怎麼跑
+
+- 在持續整合環境手動觸發，全程約 5 分鐘（含 T9 兩步各 20 秒的逾時等待；慢 runner 上 T1 的首次 NTLM 交握可到 20 秒以上）。
+- 本機只能建置、不能跑（需要 Windows 目標）：
+  ```bash
+  docker compose exec -T backend sh -c 'cd /app && go vet -tags loopback ./cmd/rotation-loopback/... ./internal/modules/asset/...'
+  docker compose exec -T backend sh -c 'cd /app && go run -tags loopback ./cmd/rotation-loopback/overlaygen -out /tmp/ov \
+    && GOOS=windows go build -tags loopback -overlay /tmp/ov/overlay.json -o /tmp/rl.exe ./cmd/rotation-loopback'
+  ```
+
+### 它是什麼、不是什麼
+
+- 入口：`internal/modules/asset/rotation_loopback.go` 與 `cmd/rotation-loopback/`，都掛
+  `//go:build loopback`。正式建置（無 tag）這些符號不存在；`docker/backend/Dockerfile`
+  只建 `./cmd/server`，loopback 二進位不進出貨映像。正式碼零引用這些檔（`grep -rn loopback
+  internal/modules/asset/*.go | grep -v _loopback.go` 應為空）。
+- 驅動程式每次跑一個案例，`-expect`／`-expect-reason`／`-expect-error-contains` 宣告期望，
+  不符即非零退出；回歸每個矩陣項一個步驟，任一紅即整體紅。輸出是每步一行 JSON
+  （三態、原因碼、耗時）加一行 `LOOPBACK_RESULT case=… verdict=…`，在執行記錄逐項可指認。
+- **後端 module 只在 Linux 建置**：`internal/localpty` 以 `syscall.Credential` 降權，該型別在
+  windows 目標上不存在，而 asset 模組經 k8sproxy 間接依賴它。`cmd/rotation-loopback/overlaygen`
+  只在建置時以 `go build -overlay` 換掉那一處（loopback 二進位從不呼叫 localpty），
+  工作樹不動；替換逐行精確比對，`conn.go` 那段改了就在 overlaygen 紅，不會靜默建出別的東西。
+- 密碼：runner 上隨機生成、登記為記錄遮罩值、只經環境變數傳遞；驅動程式只從
+  `LOOPBACK_PASSWORD`／`LOOPBACK_NEW_PASSWORD`（第二帳號加 `_2`）讀，永不進命令列，
+  印出前把已知秘密替換為 `[redacted]`。錯密案例的密碼由驅動程式自己隨機產生。
+- 靶機組態中，`DisableLoopbackCheck=1`、自簽憑證的 HTTPS listener、三個「自己改自己」的
+  本機管理員帳號（其中帳號 C 的名字含非 ASCII 字元與 `@`）是 loopback 專用權宜，**不是產品要求**（產品路徑就是帳號以自身憑證登入改密，
+  沒有獨立操作方帳號）。`LocalAccountTokenFilterPolicy=1` 則是目標機前置條件
+  （見 `docs/ops/upgrade-sop.md` 的 Windows 目標機前置條件表）；回歸一律以 `=1` 跑，
+  未設時的結局沒有真機證據。
+
+### 矩陣
+
+| step | 通道 | 驗什麼 | 期望 |
+|---|---|---|---|
+| T1 | WinRM http | 加密路徑驗證（`AllowUnencrypted=false`、Basic 關閉） | success |
+| T6 | WinRM http | 舊密碼錯誤 | failed，`CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED` |
+| T2 | WinRM http | 改密（腳本在目標端以新密碼自驗通過才退出 0）→ 新密驗證 → 舊密單次登入被拒 | success |
+| T10 | WinRM http | 帳號 C（名字含非 ASCII 字元與 `@`）改密 → 新密驗證 → 舊密單次登入被拒：帳號名經標準輸入第三行以 UTF-8 送達 | success |
+| T7 | WinRM http | 正式腳本、正式工作階段、兩行標準輸入，只把目標端自驗強制為不通過：改回舊密碼 → 舊密碼仍能登入 → 新密碼單次登入被拒 | failed，`CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED`（候選清除）；後兩步 success |
+| T8 | WinRM http | 同 T7 的注入法，只把校準驗證器那一句換成「不可用」：改密後不自驗、不回滾（結局碼 6）→ 新密碼驗證 → 舊密碼單次登入被拒 | success（候選於重連驗證後提交）；後兩步 success |
+| T4 | WinRM http | 兩帳號一個接一個改密＋驗證（產品逐目標序列執行的模型） | success |
+| T5 | WinRM http | 正式改密腳本、標準輸入為空 → 現行密碼仍能登入 | failed，`CHANGE_SECRET_STDIN_NOT_DELIVERED`（候選清除）；第二步 success |
+| T6D | WinRM http | 指令執行中重啟 WinRM 服務 | unverified，`CHANGE_SECRET_REMOTE_STATE_UNKNOWN` |
+| SSH ps | windows_ssh | OpenSSH 預設 shell＝PowerShell，改密＋驗證 | success |
+| SSH ps T10 | windows_ssh | 同 T10，走 SSH 通道 | success |
+| SSH ps T5／T7／T8 | windows_ssh | 同 T5／T7／T8，走 SSH 通道、預設 shell＝PowerShell（此設定下目標把非零退出碼一律改寫成 1；分流以結果標記為準） | 與 WinRM 的 T5／T7／T8 相同，原因碼嚴格 |
+| SSH ps T9 | windows_ssh | 正式腳本、正式連線、兩行標準輸入，只把校準驗證器那一句換成長時間停住：指令逾時（CLI 縮短為 20 秒，產品 90 秒）→ 舊密碼仍能登入 → 新密碼單次登入被拒 | unverified，`CHANGE_SECRET_REMOTE_STATE_UNKNOWN`（候選保留），耗時落在逾時附近；後兩步 success |
+| SSH cmd | windows_ssh | OpenSSH 預設 shell＝cmd，改密＋驗證 | success |
+| SSH cmd T5／T7／T8／T9 | windows_ssh | 同上，預設 shell＝cmd | 同上 |
+| probe | WinRM http＋https | **資訊性**：逐段記錄 NTLM 交握寫出的標頭與回應狀態碼 | 記錄用 |
+| TLS insecure | WinRM https | `tls_mode=insecure`，5986 自簽 listener，改密＋驗證 | success |
+| TLS ca | WinRM https | `tls_mode=ca`、上傳自簽憑證 PEM，改密＋驗證 | success |
+| TLS system | WinRM https | **資訊性**：`tls_mode=system` 對自簽 listener 做驗證 | 記錄用：驗證因憑證不受信任而失敗、不降級 |
+| T4C | WinRM http | **資訊性**：兩帳號並行改密 | 記錄用 |
+
+「資訊性」＝失敗不擋整體結果，每輪照記在執行記錄，但不構成驗收。
+
+### 限制（未涵蓋，別拿它當證據）
+
+- https 5986 只驗自簽 listener：`insecure` 與 `ca` 兩模式跑完整改密＋驗證，`system` 模式只能觀察它拒絕自簽憑證。
+  `system` 模式對機構 CA 簽發的憑證能否通過驗證需要真實憑證鏈，不在射程；probe step 逐段記錄兩個埠的交握狀態碼，
+  供 https 路徑再出問題時對照。
+- 只測 loopback：跨機網路行為（防火牆、代理、DNS、真實憑證鏈）不在射程；機構內的 Windows 測試主機
+  的 5985／5986 放行與憑證仍是人工驗收項。
+- 結局碼 3／4／6 在 WinRM、SSH＋PowerShell 預設 shell、SSH＋cmd 預設 shell 三種環境各有真機案例，每個案例
+  斷言記錄狀態、原因碼、候選處置（由三態推得：failed 清除、unverified 保留、success 於重連驗證後提交）與目標上
+  此刻哪個密碼能登入。SSH＋PowerShell 預設 shell 下目標把腳本的非零退出碼一律改寫成 1（執行記錄可見
+  「結果標記 N 與退出碼 1 不一致」的 log 行），分流以腳本印在標準輸出的結果標記為準，故三種環境的原因碼相同。
+  回滾也失敗（結局碼 5，unverified）的極窄窗在單機上做不出來——它需要同一腳本內第二次 `Set-LocalUser` 才失敗——
+  只有單元測試以假端點覆蓋分流。「標記缺失且退出碼非零 → unverified」同樣只有假端點覆蓋：真機上三種環境都收得到標記。
+- 靶機是 runner 當下的 Windows Server 版本（執行記錄的 `--- os ---` 段有記）；`Set-LocalUser`
+  不存在的舊版（2012 R2 以下）測不到。
+- T5 把命令逾時放寬到 150 秒只為量到真實耗時：log 的 `elapsed_ms` 低於產品的 90 秒，
+  才代表產品路徑也會得到同一結果；高於 90 秒則產品會記 unverified 而非該原因碼。
+- 指令逾時（兩通道同一個 90 秒常數）只有 SSH 通道有真機案例（T9，逾時由 CLI 縮短、逾時機制本身是正式碼）；
+  WinRM 的指令逾時只有假端點覆蓋（T6D 驗的是指令執行中服務重啟，屬中斷不是逾時）。
+- WinRM 偶發 `authentication rejected`（Create Shell 之後、指令送出前後，記 unverified）：出現在 T1 耗時
+  超過 20 秒的慢 runner 上（往常 9 至 14 秒），已見兩次，都在 T2；與受測改動無關，重跑即過。看到它先對照 T1 的
+  `elapsed_ms` 再決定要不要追。
+- 只驗 `LocalAccountTokenFilterPolicy=1` 的目標；未設時 WinRM 在建立工作階段階段拒絕，記錄一律落 failed，
+  原因碼依拒絕形式為憑證被拒（401）或無法建立工作階段（其他狀態碼），實際是哪一種沒有真機證據。
+- **並行改密不在產品的執行模型內**（改密計劃逐目標序列執行），T4C 只是觀察：兩個工作階段
+  交錯時，全行程鎖只序列化到單則請求，其中一條可能在 Create Shell 之後收到 `authentication rejected`
+  而記 unverified。若日後要讓改密並行，這是第一個要解的問題，T4C 的 log 是起點。
+- 帳號名規則的完整矩陣、i18n 文案、狀態機落庫與候選處理不在此測（單元測試已涵蓋）；真機只驗一個含非 ASCII 字元與 `@` 的名字能走完兩通道；
+  本回歸只到執行器的三態與原因碼為止。

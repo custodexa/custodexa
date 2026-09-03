@@ -134,3 +134,28 @@ export function createSessionShare(sessionId, data) {
 export function revokeSessionShare(sessionId) {
   return request({ url: `/sessions/${sessionId}/share`, method: 'delete' })
 }
+
+/**
+ * 簽發即時監看的一次性觀看票（限 admin／auditor）。
+ * WebSocket 只收這張票，登入憑證不進 URL
+ */
+export function createMonitorTicket(sessionId) {
+  return request({
+    url: `/sessions/${sessionId}/monitor-token`,
+    method: 'post',
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 簽發分享觀看的一次性觀看票（任何已登入者）。
+ * 分享碼走請求本體：本端點的請求路徑會進入操作日誌，碼是短期憑證，不該留在那裡
+ */
+export function createShareTicket(code) {
+  return request({
+    url: '/sessions/share/token',
+    method: 'post',
+    data: { code },
+    skipErrorToast: true,
+  })
+}

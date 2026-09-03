@@ -323,3 +323,26 @@
 
 - **WHEN** 管理者於表單填入目標端不存在的資料庫名並儲存
 - **THEN** 儲存成功、不對目標端撥號；主控台開啟時樹呈現交集為空的專屬空態並提示核對名稱
+
+### Requirement: 改密通道設定
+
+資產 SHALL 持有改密通道與其附屬欄位：`rotation_channel`、`winrm_scheme`、`winrm_port`、`winrm_tls_mode`、`winrm_ca_cert`、`rotation_ssh_port`；
+未設定的通道 SHALL 依協定推導（ssh→`posix_ssh`，其餘→`none`），升級 SHALL 零行為變更。
+伺服端 SHALL 驗證：通道與協定的相容性（`windows_*` 限 rdp／ssh；`posix_ssh` 限 ssh）、`windows_winrm` 必填 scheme、https 必填 TLS 模式、`ca` 模式必填可解析的 PEM、埠值域 0 或 1–65535；違者 SHALL 回機器可讀錯誤碼。
+協定改為與通道不相容時，SHALL 清空通道與附屬欄位並於資產變更審計留痕。
+資產列表與詳情 SHALL 回傳有效通道（推導後）與是否持有 CA 憑證，SHALL NOT 回傳 CA 憑證本體以外的任何秘密；CA 憑證本體只於編輯時回傳。
+
+#### Scenario: 建立 WinRM 通道資產
+
+- **WHEN** admin 對 rdp 資產設定通道 `windows_winrm`、scheme https、TLS 模式 `ca` 並上傳 PEM
+- **THEN** 儲存成功，列表顯示有效通道與持有 CA 標記
+
+#### Scenario: 不相容組合被拒
+
+- **WHEN** admin 對 mysql 資產設定通道 `windows_winrm`
+- **THEN** 儲存被拒並回機器可讀錯誤碼
+
+#### Scenario: 協定切換清空並留痕
+
+- **WHEN** 已設 WinRM 通道的 rdp 資產改為 vnc
+- **THEN** 通道與附屬欄位清空，資產變更審計含清空事實

@@ -5,7 +5,7 @@
     </div>
     <MonitorTerminal
       :session-id="0"
-      :ws-path="`/api/v1/sessions/share/${code}/ws`"
+      :share-code="code"
     />
     <TerminalWatermark />
   </div>

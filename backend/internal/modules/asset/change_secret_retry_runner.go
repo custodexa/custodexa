@@ -8,7 +8,6 @@ import (
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
-	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +27,10 @@ type ChangeSecretRetryRunner struct {
 
 	// batchSize 單輪上界；重試會對外建線，無界批次會讓一輪跑到下一輪還沒結束
 	batchSize int
+
+	// executors 依通道取執行器（與改密執行器同一組工廠）。
+	// **重試必須走同一條驗證路徑**：兩邊分岔即會出現「手動能過、自動不能」
+	executors func(channel string) rotationExecutor
 }
 
 // NewChangeSecretRetryRunner 建立重試執行器
@@ -36,6 +39,7 @@ func NewChangeSecretRetryRunner(db *gorm.DB, candidates *ChangeSecretCandidateSe
 	return &ChangeSecretRetryRunner{
 		db: db, candidates: candidates, assets: assets,
 		hostKeys: hostKeys, notifier: notifier, batchSize: 25,
+		executors: rotationExecutorFor,
 	}
 }
 
@@ -75,20 +79,25 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 		r.noteFailure(cand, model.ChangeSecretReasonAssetLookupFailed, err)
 		return false
 	}
-	addr := fmt.Sprintf("%s:%d", asset.Host, asset.Port)
-	hostKeyCB := r.hostKeys.Callback(cand.AssetID)
-
-	var client *ssh.Client
-	if cand.SecretType == model.ChangeSecretTypeSSHKey {
-		client, err = dialSSHPrivateKey(addr, cand.AccountUsername, secret.PrivateKey, hostKeyCB)
-	} else {
-		client, err = dialSSHPassword(addr, cand.AccountUsername, secret.Password, hostKeyCB)
+	// 通道在此重新推導而非存在候選列上：候選是「這個秘密可能已經在遠端了」的
+	// 待辦，不是連線設定的快照。管理員在等待期間修好通道設定，下一輪就該用新的
+	channel := asset.EffectiveRotationChannel()
+	rt := rotationTarget{
+		asset:      asset,
+		channel:    channel,
+		username:   cand.AccountUsername,
+		secretType: cand.SecretType,
+		addr:       rotationAddr(asset, channel),
+		hostKeyCB:  r.hostKeys.Callback(cand.AssetID),
 	}
-	if err != nil {
+	newSecret := secret.Password
+	if cand.SecretType == model.ChangeSecretTypeSSHKey {
+		newSecret = secret.PrivateKey
+	}
+	if err := r.executors(channel).Verify(ctx, rt, newSecret); err != nil {
 		r.noteFailure(cand, model.ChangeSecretReasonRetryLoginFailed, err)
 		return false
 	}
-	client.Close()
 
 	if err := r.candidates.Promote(ctx, cand); err != nil {
 		r.noteFailure(cand, model.ChangeSecretReasonPromoteFailed, err)

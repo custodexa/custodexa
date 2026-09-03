@@ -33,6 +33,45 @@ When the monitored session ends, observers SHALL be notified and the monitor str
 - **WHEN** the monitored session disconnects
 - **THEN** the observer sees an end-of-session notice and the monitor WebSocket closes
 
+### Requirement: 監看以一次性觀看票認證
+
+即時監看的 WebSocket SHALL 只接受一次性觀看票，SHALL NOT 自 query 參數接受登入憑證。
+票由掛認證 middleware 的簽發端點發出，其准入判定（角色、目標會話存在且為進行中的文字
+終端）SHALL 於簽發時完成，角色 SHALL 以現時有效角色判定，SHALL NOT 採信憑證所攜帶的
+角色快照。
+
+票 SHALL 為短效且單次：兌換成功即失效，SHALL 綁定簽票者身分與目標會話。缺票、無效票、
+過期票、重放票，以及用途或客體不符的票，對外 SHALL 收斂為同一則憑證無效回應（不提供
+票證存在性的探測面），審計 SHALL 分得出其成因。
+
+兌換 SHALL 把簽票當下的認證脈絡帶入觀察者訂閱，使身分來源停用與憑證世代推進的收線判定
+對監看連線同樣有效。
+
+#### Scenario: 監看須先取票
+
+- **WHEN** 稽核者開啟某進行中會話的監看
+- **THEN** 前端先向簽發端點取得一次性觀看票，WebSocket 網址只帶該票、不含登入憑證
+
+#### Scenario: 非稽核職能取不到票
+
+- **WHEN** 一般使用者向監看票簽發端點請求票證
+- **THEN** 回權限錯誤且不產生任何票證
+
+#### Scenario: 現時角色為準
+
+- **WHEN** 憑證所攜角色為管理員，但該帳號的現時有效角色已被降權
+- **THEN** 簽發被拒（角色以現時查得者為準）
+
+#### Scenario: 票不得重放
+
+- **WHEN** 同一張觀看票被使用第二次
+- **THEN** 該次連線被拒，且拒絕留痕註明成因
+
+#### Scenario: 票不得換用途或換客體
+
+- **WHEN** 以分享觀看票、終端連線票，或為另一場會話簽出的監看票開啟監看
+- **THEN** 連線被拒，對外回應與無效票相同，審計註明為用途或客體不符
+
 ### Requirement: 監看加入留痕
 
 即時監看他人會話 SHALL 寫入審計列，記錄監看者身分、被監看的會話與資產、來源位址與加入時間。

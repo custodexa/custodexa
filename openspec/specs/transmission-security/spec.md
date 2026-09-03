@@ -97,3 +97,18 @@ syslog／通知通道／LDAP 目錄設定在 warn 檔下，存檔含不安全傳
 - **WHEN** admin 匯出通道清冊快照
 - **THEN** 產物含全通道狀態、時間戳、產生者；審計出現匯出事件（僅記 event 碼，未含 note/preflight 譯文或中文）
 
+### Requirement: WinRM 改密通道的傳輸等級與風險鍵
+
+傳輸安全階梯 SHALL 認識 `winrm` 通道：資產改密通道為 `windows_winrm` 時，該資產 SHALL 同時受其連線協定通道與 `winrm` 通道管轄，清冊 SHALL 分列。
+風險鍵 SHALL 含：`winrm_http_ntlm`（scheme 為 http：NTLM 訊息層加密但非 TLS）與 `winrm_tls_insecure`（https 且 TLS 模式為 `insecure`）；https 配 `system` 或 `ca` SHALL 無風險。兩鍵為常駐警示（資產風險徽章與通道加密清冊），`winrm` 通道 SHALL NOT 設 off／warn／strict 強制等級：改密是系統路徑而非使用者連線，等級政策與同意閘的語義不成立。
+風險鍵 SHALL 納入既有三語文案完備性守衛、資產風險徽章與通道加密清冊；改密屬系統路徑而非使用者連線，SHALL NOT 觸發連線前風險同意閘。
+
+#### Scenario: http 通道標示訊息層加密風險
+
+- **WHEN** rdp 資產設定 `windows_winrm`、scheme http
+- **THEN** 資產列表徽章與清冊顯示 `winrm_http_ntlm` 風險；清冊的 winrm 列無強制等級欄，不觸發同意閘
+
+#### Scenario: https 加 CA 無風險
+
+- **WHEN** 資產設定 https 且 TLS 模式 `ca`
+- **THEN** 清冊對 winrm 通道顯示已加密且無風險鍵

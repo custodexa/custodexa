@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Profile from '../Profile.vue'
+import { getAccessToken, resetSessionForTests } from '@/utils/session'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
 // 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
@@ -47,6 +48,7 @@ describe('Profile 個人資料頁', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    resetSessionForTests()
     getCurrentUserMock.mockResolvedValue(accountInfo)
   })
 
@@ -84,7 +86,7 @@ describe('Profile 個人資料頁', () => {
     })
     // 改密撤銷舊 refresh：以新 access token 續存不中斷會話；
     // 新的 refresh 憑證由後端以 httpOnly cookie 換發，前端不經手
-    expect(localStorage.getItem('token')).toBe('new-token')
+    expect(getAccessToken()).toBe('new-token')
     expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 
@@ -104,7 +106,7 @@ describe('Profile 個人資料頁', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('新密碼不符合密碼政策：至少 12 碼')
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
   })
 
   it('兩次新密碼不一致：表單驗證擋下不打 API', async () => {

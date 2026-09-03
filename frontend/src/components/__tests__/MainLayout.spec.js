@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MainLayout from '../MainLayout.vue'
+import { getAccessToken, resetSessionForTests, setAccessToken } from '@/utils/session'
 
 // 本檔掛載 21 次、原僅 2 處顯式卸載，殘留元件在 document 上累積使單測耗時
 // 隨測試序上升——全量並行時「側欄摺疊」兩格逼近 5s 上限而轉紅（單跑 1.7s／2.7s）。
@@ -82,6 +83,7 @@ const langDropdown = (wrapper) =>
 describe('MainLayout sidebar', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     vi.clearAllMocks()
     getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
   })
@@ -143,6 +145,7 @@ describe('MainLayout sidebar', () => {
   it('admin and auditor keep full session management without self-service entry', async () => {
     for (const roles of [['admin'], ['auditor']]) {
       localStorage.clear()
+      resetSessionForTests()
       setUser(roles)
       const wrapper = mountLayout()
       await wrapper.vm.$nextTick()
@@ -189,6 +192,7 @@ describe('MainLayout sidebar', () => {
   it('shows rotation evidence entry to admin and auditor only', async () => {
     for (const roles of [['admin'], ['auditor']]) {
       localStorage.clear()
+      resetSessionForTests()
       setUser(roles)
       const wrapper = mountLayout()
       await wrapper.vm.$nextTick()
@@ -196,6 +200,7 @@ describe('MainLayout sidebar', () => {
       wrapper.unmount()
     }
     localStorage.clear()
+    resetSessionForTests()
     setUser(['user'])
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
@@ -216,6 +221,7 @@ describe('MainLayout sidebar', () => {
   it('workspace entry visible to every persona', async () => {
     for (const roles of [['admin'], ['auditor'], ['user'], ['user', 'approver']]) {
       localStorage.clear()
+      resetSessionForTests()
       setUser(roles)
       const wrapper = mountLayout()
       await wrapper.vm.$nextTick()
@@ -344,7 +350,7 @@ describe('MainLayout sidebar', () => {
 
   it('revokes refresh token, clears credentials and navigates to /login on logout', async () => {
     setUser(['admin'])
-    localStorage.setItem('token', 'abc')
+    setAccessToken('abc')
     logoutMock.mockResolvedValue({})
     const wrapper = mountLayout()
 
@@ -355,21 +361,21 @@ describe('MainLayout sidebar', () => {
     // 登出先請後端撤銷 refresh 憑證。憑證由瀏覽器以 httpOnly cookie 自動附帶，
     // 前端不再持有也就不再傳參——傳參版本等於憑證仍存在於 script 可讀的地方
     expect(logoutMock).toHaveBeenCalledWith()
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(localStorage.getItem('user')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/login')
   })
 
   it('still clears credentials when logout revocation fails', async () => {
     setUser(['admin'])
-    localStorage.setItem('token', 'abc')
+    setAccessToken('abc')
     logoutMock.mockRejectedValue(new Error('network down'))
     const wrapper = mountLayout()
 
     userDropdown(wrapper).vm.$emit('command', 'logout')
     await flushPromises()
 
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(localStorage.getItem('user')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/login')
   })
@@ -381,6 +387,7 @@ describe('MainLayout sidebar', () => {
 describe('MainLayout 單實例守衛橫幅輪詢', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     vi.clearAllMocks()
     getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
     // 只假 interval：flushPromises 依賴的 setImmediate／setTimeout 維持真實，

@@ -130,6 +130,8 @@ func (e *observerAuditEnv) seedObserver(t *testing.T, username string) *model.Us
 	if err := e.db.Create(u).Error; err != nil {
 		t.Fatalf("seed user %s: %v", username, err)
 	}
+	// 監看票的角色現查讀 DB 角色列；分享路徑不限角色，多這一列無影響
+	grantDBRole(t, e.db, u.ID, model.RoleAdmin)
 	return u
 }
 
@@ -159,6 +161,27 @@ func (e *observerAuditEnv) router() *gin.Engine {
 	r.GET("/api/v1/sessions/:id/monitor", e.h.HandleMonitor)
 	r.GET("/api/v1/sessions/share/:code/ws", e.h.HandleShareJoin)
 	return r
+}
+
+// ticketRouter 觀看票簽發端點**另建 engine、不掛審計中介層**：
+// 本檔要證明的是「WS 路由上中介層恆零列，加入留痕全由 handler 自寫」，
+// 而簽發端點掛的是認證中介層、其留痕本來就由審計中介層承擔——放進同一個 engine
+// 會讓取票這一個動作也寫進 audit_logs，把「加入恰好一列」的斷言變成計數噪音
+func (e *observerAuditEnv) ticketRouter() *gin.Engine {
+	return observerTicketEngine(e.h, e.h.AuthService)
+}
+
+// monitorTicket／shareTicket 走生產路徑取票
+func (e *observerAuditEnv) monitorTicket(t *testing.T, u *model.User, role string) string {
+	t.Helper()
+	return mustObserverTicket(t, e.ticketRouter(),
+		monitorTicketPath(observerAuditSession), e.token(t, u, role))
+}
+
+func (e *observerAuditEnv) shareTicket(t *testing.T, u *model.User, code string) string {
+	t.Helper()
+	return mustObserverTicket(t, e.ticketRouter(), shareTicketPath,
+		e.token(t, u, model.RoleUser), shareTicketBody(code))
 }
 
 // waitAuditRows 等到審計列達到期望筆數並回傳；逾時即視為未寫入。
@@ -266,7 +289,8 @@ func TestMonitorJoinWritesAuditRow(t *testing.T) {
 	e := setupObserverAuditEnv(t)
 	obs := e.seedObserver(t, "monitor-observer")
 
-	ws := dialWS(t, e.router(), "/api/v1/sessions/1/monitor?token="+e.token(t, obs, model.RoleAdmin))
+	ws := dialWS(t, e.router(),
+		monitorWSPath(observerAuditSession, e.monitorTicket(t, obs, model.RoleAdmin)))
 	waitRegistered(t, e.tap, ws, "監看訂閱")
 
 	rows := e.waitAuditRows(t, 1, "監看加入")
@@ -293,8 +317,7 @@ func TestShareJoinWritesAuditRow(t *testing.T) {
 		t.Fatalf("建立分享碼: %v", err)
 	}
 
-	ws := dialWS(t, e.router(),
-		"/api/v1/sessions/share/"+code+"/ws?token="+e.token(t, obs, model.RoleUser))
+	ws := dialWS(t, e.router(), shareWSPath(code, e.shareTicket(t, obs, code)))
 	waitRegistered(t, e.tap, ws, "分享訂閱")
 
 	rows := e.waitAuditRows(t, 1, "分享加入")
@@ -323,7 +346,7 @@ func TestInvalidShareCodeRejectionWritesAuditRow(t *testing.T) {
 
 	srv := httptest.NewServer(e.router())
 	defer srv.Close()
-	url := srv.URL + "/api/v1/sessions/share/not-a-real-code/ws?token=" + e.token(t, obs, model.RoleUser)
+	url := srv.URL + shareWSPath("not-a-real-code", e.shareTicket(t, obs, "not-a-real-code"))
 	resp, err := http.Get(url) //nolint:gosec // 測試伺服器位址
 	if err != nil {
 		t.Fatalf("請求失效分享碼: %v", err)
@@ -358,7 +381,8 @@ func TestMonitorJoinAuditSurvivesObserverDisconnect(t *testing.T) {
 	e := setupObserverAuditEnv(t)
 	obs := e.seedObserver(t, "drive-by-observer")
 
-	ws := dialWS(t, e.router(), "/api/v1/sessions/1/monitor?token="+e.token(t, obs, model.RoleAuditor))
+	ws := dialWS(t, e.router(),
+		monitorWSPath(observerAuditSession, e.monitorTicket(t, obs, model.RoleAuditor)))
 	waitRegistered(t, e.tap, ws, "監看訂閱")
 	_ = ws.Close()
 

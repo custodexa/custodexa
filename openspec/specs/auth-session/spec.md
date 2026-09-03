@@ -63,7 +63,12 @@ Web 會話 SHALL 採固定短效 access token（15 分，撤銷殘窗上限，�
 
 ### Requirement: JWT 僅經 Authorization header 接受
 
-認證 middleware SHALL 僅從 `Authorization: Bearer` header 接受 JWT，SHALL NOT 接受 URL query 參數傳遞的 JWT——長效權杖入 query 會被 access log 與 proxy 日誌完整記錄。認證 middleware SHALL NOT 自 cookie 接受 JWT——refresh 憑證遷入 cookie 後，系統存在瀏覽器自動附帶的憑證載體，但 access token 的傳輸通道 SHALL 維持唯一（Authorization header）；任何 cookie（含 refresh cookie 本身）對認證 middleware SHALL NOT 構成憑證。專用短效機制不受影響：錄影播放 rtoken（不透明、120s TTL）與一次性 connect-token 維持既有 query／訊息傳遞方式。
+認證 middleware SHALL 僅從 `Authorization: Bearer` header 接受 JWT，SHALL NOT 接受 URL query 參數傳遞的 JWT——長效權杖入 query 會被 access log 與 proxy 日誌完整記錄。認證 middleware SHALL NOT 自 cookie 接受 JWT——refresh 憑證遷入 cookie 後，系統存在瀏覽器自動附帶的憑證載體，但 access token 的傳輸通道 SHALL 維持唯一（Authorization header）；任何 cookie（含 refresh cookie 本身）對認證 middleware SHALL NOT 構成憑證。
+
+**本規則對 WebSocket 路徑同樣適用，無例外**：不掛認證 middleware 的 WebSocket 端點
+SHALL NOT 自 query 參數接受 session JWT，其認證一律以短效一次性票為之——票由掛認證
+middleware 的簽發端點發出，只能開一條連線，兌換即失效。專用短效機制不受影響：錄影播放
+rtoken（不透明、120s TTL）與一次性連線／觀看票維持既有 query 傳遞方式。
 
 #### Scenario: query 傳遞 JWT 被拒
 
@@ -79,6 +84,11 @@ Web 會話 SHALL 採固定短效 access token（15 分，撤銷殘窗上限，�
 
 - **WHEN** 前端以 rtoken 播放文字錄影（`?rtoken=`）
 - **THEN** 播放正常（rtoken 走專用驗證路徑，非 JWT middleware fallback）
+
+#### Scenario: WebSocket 端點不接受 query 上的 session JWT
+
+- **WHEN** client 以 `?token=<有效JWT>` 呼叫任一 WebSocket 端點（終端、查詢主控台、監看、分享觀看）
+- **THEN** 連線被拒，且該次拒絕留痕；建立連線的唯一途徑是先向簽發端點取得一次性票
 
 ### Requirement: 會話換發不得遺失認證脈絡
 任何換發正式會話的路徑（含登入後段、多因素完成、強制改密完成）SHALL 沿用該次認證的脈絡（認證方式與 provider）。SHALL NOT 因換發而使脈絡歸零——否則經該路徑取得的憑證將對 provider 停用免疫，且與其原始認證方式脫節。
@@ -232,6 +242,75 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
 
 - **WHEN** 曾以舊版（localStorage 存放 refresh 憑證）登入的瀏覽器載入新版前端
 - **THEN** 應用啟動即移除 localStorage 中的 refresh_token 殘值，不留明文
+
+### Requirement: access token 僅存於頁面記憶體
+
+瀏覽器端的 access token SHALL 只保存於頁面執行期記憶體，由單一前端模組持有：
+
+- 前端 SHALL NOT 將 access token 寫入 localStorage、sessionStorage、IndexedDB、cookie 或任何跨頁面載入
+  存續的儲存；應用啟動 SHALL 無條件清除歷史殘值（舊版寫入的 `token` 鍵）。
+- 頁面載入（重新載入、新分頁、外部連結進站）時，前端 SHALL 於導覽守衛放行受保護路由**之前**以 refresh
+  cookie 換發一次 access token 恢復登入態；同一頁面內的多次觸發 SHALL 共用同一次換發。
+  無登入跡象（前端可觀察的「曾登入且未登出」訊號）時 SHALL NOT 呼叫刷新端點。恢復失敗 SHALL 清除登入跡象
+  並導向登入頁；「非安全傳輸下的續期降級須可理解」的成因說明 SHALL 對此路徑原樣適用。
+- 同一頁面內併發的 access token 失效回應 SHALL 共用一次換發；跨分頁的換發 SHALL 於瀏覽器支援時序列化，
+  SHALL NOT 以同一 refresh 憑證併發輪替。
+- 跨分頁同步 SHALL 只傳遞事件（登出、登入），SHALL NOT 傳遞任何憑證本體；任一分頁登出後，同瀏覽器的其他
+  分頁 SHALL 清除記憶體中的 access token 並導向登入頁。換發終敗 SHALL NOT 廣播（已建立的終端連線不因他分頁
+  的會話結束而被整頁導向中斷）。
+- 不經 HTTP 攔截器的路徑（監看與分享 WebSocket、圖形錄影取流）SHALL 自同一記憶體持有者取得 access token，
+  SHALL NOT 另設儲存；一次性 connect token 與錄影 rtoken 的既有機制不受影響。
+
+#### Scenario: 登入後瀏覽器儲存無憑證
+
+- **WHEN** 使用者經任一登入流取得正式會話
+- **THEN** localStorage 與 sessionStorage 皆無 access token；後續 API 請求仍帶 `Authorization: Bearer`
+
+#### Scenario: 重新載入恢復登入態
+
+- **WHEN** 已登入使用者於受保護頁面重新載入
+- **THEN** 頁面停留於原路由、不閃現登入頁；恰有一次刷新請求成功並輪替 refresh 憑證；
+  記憶體持有新 access token
+
+#### Scenario: 新分頁恢復登入態
+
+- **WHEN** 已登入使用者以新分頁開啟站內受保護路由
+- **THEN** 新分頁以 refresh cookie 換發後直接呈現該頁；原分頁不受影響
+
+#### Scenario: 未登入訪客不觸發刷新
+
+- **WHEN** 無登入跡象的瀏覽器開啟登入頁或受保護路由
+- **THEN** 前端不呼叫刷新端點（審計中不出現對應的刷新拒絕事件），受保護路由導向登入頁
+
+#### Scenario: 恢復失敗導向登入
+
+- **WHEN** 有登入跡象的分頁重新載入，但 refresh 憑證已到期、已撤銷或未被瀏覽器保存
+- **THEN** 導向登入頁、登入跡象被清除；再次重新載入不再呼叫刷新端點
+
+#### Scenario: 一個分頁登出、全部分頁登出
+
+- **WHEN** 使用者於分頁 A 登出
+- **THEN** 同瀏覽器的分頁 B 於數秒內清除記憶體憑證並到達登入頁；跨分頁訊號的內容不含任何憑證
+
+#### Scenario: 併發失效共用一次換發
+
+- **WHEN** 同一頁面同時有多個請求收到 access token 失效回應
+- **THEN** 只發生一次刷新，各請求以同一枚新 access token 重試成功
+
+#### Scenario: 兩個分頁同時重新載入
+
+- **WHEN** 兩個已登入分頁同時重新載入
+- **THEN** 兩次換發序列化完成、皆成功，不觸發家族撤銷
+
+#### Scenario: 監看連線自記憶體取憑證
+
+- **WHEN** 稽核者於新分頁開啟進行中連線的監看頁
+- **THEN** 監看 WebSocket 建線成功，其憑證來自恢復後的記憶體持有者，localStorage 中無 access token
+
+#### Scenario: 純 HTTP 降級形態下重新載入即須重登
+
+- **WHEN** 部署對外為純 HTTP 且 refresh cookie 帶 `Secure`（瀏覽器不保存），使用者登入後重新載入
+- **THEN** 恢復失敗、導向登入頁，登入頁依既有降級說明呈現成因與處置方向
 
 ### Requirement: 非安全傳輸下的續期降級須可理解
 

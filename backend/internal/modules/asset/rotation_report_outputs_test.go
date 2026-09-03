@@ -188,7 +188,7 @@ func TestRotationReportPdfNoPolicySection(t *testing.T) {
 
 	rows := noPolicyRows(rep, ph)
 	require.Len(t, rows, 1)
-	assert.Equal(t, "orphan", rows[1-1][1])
+	assert.Equal(t, "orphan", rows[0][1])
 
 	// 段首說明三語齊備且非空
 	for _, lang := range []string{"zh-TW", "en-US", "ja-JP"} {

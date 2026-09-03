@@ -4,10 +4,12 @@ import { t } from '@/i18n'
 import { resolveApiError } from './error'
 import { redactAxiosError } from './redact'
 import { SEAL_GATE_CODE, UNSEAL_PATH, markSealed } from '@/utils/sealPhase'
+import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
 import {
-  markRefreshSucceeded,
-  recordInsecureTransportRelogin,
-} from '@/utils/reloginContext'
+  clearSession,
+  getAccessToken,
+  refreshAccessToken,
+} from '@/utils/session'
 
 // 建立 axios 實例
 const request = axios.create({
@@ -18,9 +20,9 @@ const request = axios.create({
 // 請求攔截器
 request.interceptors.request.use(
   (config) => {
-    // 從 localStorage 取得 token；呼叫端已顯式帶 Authorization 時不覆蓋
-    //（強制改密流程以 change_token 呼叫，此時 localStorage 尚無正式 token）
-    const token = localStorage.getItem('token')
+    // 自記憶體持有者取得 token；呼叫端已顯式帶 Authorization 時不覆蓋
+    //（強制改密流程以 change_token 呼叫，此時尚無正式 token）
+    const token = getAccessToken()
     if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -53,51 +55,8 @@ const shouldRefresh401 = (data, url) => {
   return code ? REFRESHABLE_401_CODES.has(code) : !isAuthPath(url)
 }
 
-// single-flight：同一 JS context 併發 401 共用一次刷新，避免同 refresh 憑證
-// 併發輪替誤觸後端 reuse detection（家族撤銷）
-let refreshInFlight = null
-
-// 刷新走裸 axios：不經本攔截器，refresh 自身的 401 不會遞迴觸發刷新。
-// 本文為空：refresh 憑證由瀏覽器以 httpOnly cookie 自動附帶（同源部署，
-// 無需 withCredentials）；憑證不可讀也就無從由 JS 帶入請求本文
-const postRefresh = () => axios.post('/api/v1/auth/refresh', {}, { timeout: 10000 })
-
-const doRefresh = async (staleToken) => {
-  // 跨 tab：他分頁可能已刷新並寫回 localStorage（rotation 後舊憑證已作廢），
-  // 先比對 access token 是否已更新，避免以已輪替的 refresh 憑證重放。
-  // staleToken 取不到（原請求無 Authorization header）時不可短路，否則
-  // 會誤判「已更新」而拿同一個失效 token 重試
-  const current = localStorage.getItem('token')
-  if (staleToken && current && current !== staleToken) {
-    // 他分頁換到了新的 access token＝refresh cookie 確實被瀏覽器保存著，
-    // 本分頁沿用即算一次成功續期（decision 3 的抑制器要的正是這個事實）
-    markRefreshSucceeded()
-    return current
-  }
-  // 無「本地有沒有憑證」的前置檢查：cookie 對 script 不可見，有無一律交給
-  // 後端回答——沒帶 cookie 時後端回 401，攔截器據以導向登入
-  const { data } = await postRefresh()
-  localStorage.setItem('token', data.token)
-  markRefreshSucceeded()
-  return data.token
-}
-
-const refreshAccessToken = (staleToken) => {
-  if (!refreshInFlight) {
-    // Web Locks 可用時跨分頁序列化刷新（localStorage 為分頁共享，
-    // 兩個分頁同時刷新同一憑證會觸發 reuse detection 全登出）；不支援則退回單頁去重
-    const run =
-      typeof navigator !== 'undefined' && navigator.locks?.request
-        ? navigator.locks.request('custodexa-token-refresh', () =>
-            doRefresh(staleToken)
-          )
-        : doRefresh(staleToken)
-    refreshInFlight = run.finally(() => {
-      refreshInFlight = null
-    })
-  }
-  return refreshInFlight
-}
+// 續期的 single-flight、跨分頁序列化與 token 持有全部收斂於會話模組；
+// 本檔只負責「什麼樣的 401 值得續期」與續期後重試原請求。
 
 // 封印的執行期訊號（第 3 個相位來源）：
 // 使用者停留在頁面上時後端行程重啟而重新封印，導覽守衛不會再跑一次——
@@ -114,10 +73,11 @@ const redirectToUnsealIfSealed = (data) => {
 }
 
 const clearSessionAndRedirect = () => {
-  localStorage.removeItem('token')
-  // refresh 憑證是 httpOnly cookie，本地清不到；它由登出回應清除，
+  // 不廣播：他分頁可能正開著連線終端，而已建立的連線本來就不隨 access token
+  // 到期而中斷，整頁導向會把它殺掉。他分頁下一次 API 呼叫自然走到同一結論。
+  // 續期憑證是 httpOnly cookie，本地清不到；它由登出回應清除，
   // 而過期／被撤銷的憑證在伺服器端已不具授權——cookie 存在不等於授權
-  localStorage.removeItem('user')
+  clearSession()
   if (window.location.pathname !== '/login') {
     window.location.href = '/login'
   }

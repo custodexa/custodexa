@@ -98,6 +98,17 @@ var migrations = []Migration{
 		Up:      applyRotationEvidenceReport,
 		Down:    rollbackRotationEvidenceReport,
 	},
+	{
+		// Windows 本機帳號改密的資料層：assets 六個改密通道側車欄
+		// （rotation_channel 與 WinRM／SSH 的附屬設定）。全部純加法，
+		// rotation_channel 預設空字串＝依協定推導，升級零行為變更。
+		// **Down 有損**（刪除全部改密通道設定，生產無回滾入口；
+		// 見 migration_windows_local_account_rotation.go 檔頭的 Down 契約）
+		Version: "20260904_windows_local_account_rotation",
+		Name:    "windows_local_account_rotation",
+		Up:      applyWindowsLocalAccountRotation,
+		Down:    rollbackWindowsLocalAccountRotation,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
@@ -112,7 +123,8 @@ func schemaDDLStatements() []string {
 	out = append(out, evidenceOffsiteDDL()...)
 	out = append(out, sourceIPForensicsDDL()...)
 	out = append(out, dbQueryConsoleDDL()...)
-	return append(out, rotationEvidenceReportDDL()...)
+	out = append(out, rotationEvidenceReportDDL()...)
+	return append(out, windowsLocalAccountRotationDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

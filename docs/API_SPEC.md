@@ -245,6 +245,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/sessions/:id/clipboard-events/:eventID/content` | always |
 | GET | `/api/v1/sessions/:id/commands` | always |
 | GET | `/api/v1/sessions/:id/monitor` | always |
+| POST | `/api/v1/sessions/:id/monitor-token` | always |
 | DELETE | `/api/v1/sessions/:id/recording` | always |
 | GET | `/api/v1/sessions/:id/recording` | always |
 | GET | `/api/v1/sessions/:id/recording/download` | always |
@@ -255,6 +256,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/sessions/:id/terminate` | always |
 | GET | `/api/v1/sessions/active` | always |
 | GET | `/api/v1/sessions/share/:code/ws` | always |
+| POST | `/api/v1/sessions/share/token` | always |
 | GET | `/api/v1/sessions/statistics` | always |
 | GET | `/api/v1/snippets` | always |
 | POST | `/api/v1/snippets` | always |
@@ -334,6 +336,17 @@ DB 僅存 SHA-256。**瀏覽器端的唯一載體是 `HttpOnly` cookie `custodex
 刷新時輪替（舊憑證即刻作廢），已輪替憑證再被提交視為洩漏訊號 → 撤銷該使用者全部
 refresh（家族撤銷，RFC 9700）。壽命受安全政策控制：sliding 閒置窗（`web_idle_minutes`）
 ＋絕對壽命（`web_max_session_hours`）。詳見 `POST /auth/refresh`。
+
+**access token 的瀏覽器端載體＝頁面記憶體**：前端不把 access token 寫入 localStorage、
+sessionStorage 或任何跨頁面載入存續的儲存；應用啟動時會無條件清除舊版留下的殘值。
+因此每次重新載入或開新分頁時記憶體是空的，前端在呈現受保護頁面之前先以 refresh cookie
+呼叫 `POST /auth/refresh` 換發一枚新的 access token 恢復登入態（該次輪替照常留下審計）；
+瀏覽器不曾登入過時不呼叫此端點。任一分頁登出後，同瀏覽器的其他分頁會清除記憶體中的
+憑證並回到登入頁。
+
+此舉對純 HTTP 部署有一個直接後果：`refresh_cookie_secure` 為 true 時瀏覽器根本不保存
+refresh cookie，重新載入即無從恢復，使用者每次重新載入都要重新登入。對外仍為 http 的
+部署應將該政策鍵關閉（或改上 https）；登入頁在偵測到此情形時會呈現成因說明。
 
 ### 權限層級（RBAC）
 
@@ -1184,10 +1197,17 @@ POST /api/v1/assets/tags/delete   全面刪除（僅 admin；auditor 403）
   "sftp_port": 22,
   "sftp_username": "",
   "has_sftp_password": false,
+  "rotation_channel": "",
+  "effective_rotation_channel": "posix_ssh",
+  "has_winrm_ca_cert": false,
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
+
+`winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`rotation_ssh_port` 為 omitempty，設了才出現；`winrm_ca_cert` 只在
+`GET /assets/:id` 出現（供編輯表單回填），列表與建立／更新的回應一律抹去本體、以 `has_winrm_ca_cert` 代之。列表每筆另帶 `transmission_risks`
+（omitempty，`[{key, label}]`）＝該資產的傳輸風險項，含連線通道與改密通道兩者的風險鍵（見傳輸安全 API）。
 
 ### 創建
 
@@ -1225,7 +1245,13 @@ POST /api/v1/assets
   "sftp_enabled": false,
   "sftp_port": 22,
   "sftp_username": "",
-  "sftp_password": ""
+  "sftp_password": "",
+  "rotation_channel": "",
+  "winrm_scheme": "",
+  "winrm_port": 0,
+  "winrm_tls_mode": "",
+  "winrm_ca_cert": "",
+  "rotation_ssh_port": 0
 }
 ```
 
@@ -1244,6 +1270,19 @@ POST /api/v1/assets
 - `sftp_*` 僅 vnc 有意義（SFTP 側車檔案傳輸，選配）：`sftp_enabled=true` 時 `sftp_username` 必填、`sftp_port` 預設 22；`sftp_password` 後端 AES-256-GCM 加密存放，回應僅 `has_sftp_password` 布林；Update 時 `sftp_password` 空字串＝沿用既有
 - `access_policy`: `open`（不需申請）/ `reason`（填理由即連）/ `approval`（需核准）；非法值 400。Create 空字串或省略＝NULL（繼承全域預設鍵 `access_policy_default`）；Update 為指標欄位——省略＝不動、空字串＝清除覆寫回 NULL（非沿用既有）；變更經 asset hooks 入審計
 - `node_ids`: 掛載節點 id 集（多歸屬；節點須存在否則 400）。Create 空/省略＝未分組；Update 省略（null）＝不動、空陣列＝清空全部掛載；成員變更以 `node_ids` 舊→新入審計。回應恆帶 `node_ids`＋`node_paths`（全路徑顯示）
+- `rotation_channel`：改密通道（僅 ssh／rdp 資產有意義）。值域：`''`（未設定，依協定推導：ssh→`posix_ssh`，其餘→`none`）／
+  `posix_ssh`（限 ssh）／`windows_winrm`（限 rdp 或 ssh）／`windows_ssh`（限 rdp 或 ssh）／`none`（顯式不改密）；
+  值域外或與協定不相容回 400 `VALIDATION_ASSET_ROTATION_CHANNEL`。
+  `windows_winrm` 的附屬欄：`winrm_scheme`（`http`／`https`，必填）、`winrm_port`（0＝依 scheme 取 5985／5986）、
+  `winrm_tls_mode`（僅 https：`system`＝作業系統信任錨／`ca`＝只信任上傳的 CA／`insecure`＝不驗證；https 必填，http 不得帶值）、
+  `winrm_ca_cert`（僅 `ca` 模式，須為可解析的 PEM 憑證，儲存時即驗）。`windows_ssh` 的附屬欄：`rotation_ssh_port`
+  （rdp 資產的目標 SSH 埠，0＝22；ssh 資產沿資產 `port`，本欄不參與）。兩個埠須為 0 或 1–65535。
+  附屬欄不合回 400 `VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS`。驗證以套用後的最終資產為準（協定與通道同次變動時一併檢查）。
+  Update 為指標欄位：省略＝不動、`""`／0＝清回推導；**協定改為與通道不相容時，伺服端一律清空通道與全部附屬欄**
+  （不論該次請求是否帶這些欄），並將清空事實與清空前的通道值記入該次更新審計
+  （`rotation_channel_cleared`、`previous_rotation_channel`）。
+  回應恆帶 `effective_rotation_channel`（推導後的有效通道）與 `has_winrm_ca_cert`，兩者以該次請求套用後的值計算；
+  **列表、建立與更新的回應都不回 `winrm_ca_cert` 本體**，只有 `GET /assets/:id` 回傳（供編輯表單回填）。改密的執行語義見改密 API。
 
 **回應** (201): Asset JSON。**錯誤**: 400 協議無效、409 名稱重複。
 
@@ -1824,6 +1863,13 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
 nginx 標「部署方管理」）＋各通道政策等級＋「若切 strict 將被拒資產數／將拒絕 LDAP 登入」預檢。
 
 **通道欄位 i18n**：每個 channel 除繁中 fallback `note`／`strict_preflight`／`detail`（`(未設定)` 等）外，另附機器碼供前端查譯——`note_code`＋`note_params`（查 `transportNote.<code>`，如 `syslog_protocol` 帶 `{protocol}`）、`preflight_code`＋`preflight_params`（查 `transportPreflight.<code>`，`rdp/vnc/db_reject` 帶整數 `{n}` 走 count plural）、`detail_codes`（完整 machine-keyed 明細，技術複合鍵原樣＋`(未設定)`→`unset`，新前端整份取代 `detail`）、`display_params`（供清冊 risk label 查譯，如 syslog `{protocol}`）；風險項 `risks` 沿既有 `{key,label}`，前端以 `key` 查 `riskLabel.<key>`。所有碼欄位 additive omitempty、向後相容；審計僅記 event 碼、不含中文。
+
+**改密通道（`winrm`）**：資產的改密通道設為 `windows_winrm` 時，該資產同時受其連線協議通道與 `winrm` 通道管轄，
+清冊分列一列 `channel: "winrm"`。此通道**無政策鍵、無等級**：改密是系統路徑，不經使用者連線，
+不觸發 `/connect-tokens` 的同意閘，也不接受同意立據。`detail_codes` 依 `scheme=http`、`scheme=https,tls=<system|ca|insecure>`
+計數，`note_code` 為 `winrm_rotation_channel`；只列設定了該通道的資產（rdp 資產未設通道即不改密，不在此列）。
+風險鍵：`winrm_http_ntlm`（scheme 為 http：載荷有 NTLM 訊息層加密但無 TLS）、`winrm_tls_insecure`（https 且 TLS 模式為 `insecure`）；
+https 配 `system` 或 `ca` 無風險。兩鍵同時進資產列表的 `transmission_risks`（徽章）與三語 `riskLabel.<key>`。
 
 ---
 
@@ -3477,7 +3523,8 @@ POST /api/v1/access-reviews
 
 ## 改密 API（admin only）
 
-輪換 SSH 資產憑證：**帳號級**密碼改密與 SSH 金鑰輪替。執行記錄與任何回應皆不含秘密材料。
+輪換納管資產的帳號憑證：**帳號級**密碼改密（POSIX SSH 與 Windows 本機帳號）與 SSH 金鑰輪替（POSIX SSH）。
+執行記錄與任何回應皆不含秘密材料。改密走哪條路由資產的改密通道決定（資產 API 的 `rotation_channel`），見下「改密通道」。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
@@ -3504,7 +3551,8 @@ POST /api/v1/access-reviews
 
 - `accounts`：帳號範圍。`["@ALL"]`（預設）＝該資產全部帳號；否則為帳號 username 明列集合。
   空值一律讀成 `@ALL`。
-- `secret_type`：`password`（chpasswd）或 `ssh_key`（authorized_keys 輪替）；其他值回 400
+- `secret_type`：`password`（POSIX 通道走 chpasswd；Windows 通道走 PowerShell `Set-LocalUser`）或 `ssh_key`
+  （authorized_keys 輪替，僅 `posix_ssh` 通道；Windows 通道遇之記 skipped）；其他值回 400
   `VALIDATION_PLAN_BAD_SECRET_TYPE`。
 - `key_strategy`（僅 `ssh_key`）：`append_replace`（預設，加新 → 驗新 → 刪舊，零鎖死）或
   `exclusive`（清空重寫，高風險）；其他值回 400 `VALIDATION_PLAN_BAD_KEY_STRATEGY`。
@@ -3518,9 +3566,55 @@ POST /api/v1/access-reviews
 | 值 | 語義 |
 |---|---|
 | `success` | 已驗證並提交為帳號憑證 |
-| `failed` | 遠端**確定未變更**（指令非零退出／登入失敗）；帳號憑證原樣，無殘留候選 |
+| `failed` | 遠端**確定未變更**（指令非零退出／登入失敗／指令送出前無法建立工作階段）；帳號憑證原樣，無殘留候選 |
 | `unverified` | 遠端狀態**不可知**或驗證未通過；帳號憑證維持舊值，候選保留待系統重試 |
-| `skipped` | 非 SSH 資產、無可用憑證、或該帳號已有未驗證候選 |
+| `skipped` | 無改密通道（`CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`：通道為 `none`，含未設定通道的 rdp 資產）、通道不支援計劃的秘密型別（`CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED`：Windows 通道遇 `ssh_key`）、協定不在改密射程（`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`：vnc／資料庫／k8s）、無可用憑證、或該帳號已有未驗證候選 |
+
+`error` 欄存機器碼（`CHANGE_SECRET_*`，前端按碼查譯三語文案），不存遠端原文。
+
+**改密通道**：
+
+| 通道 | 適用協定 | 連線 | 改密方式 | 秘密型別 |
+|---|---|---|---|---|
+| `posix_ssh` | ssh（未設定時的預設） | SSH（沿資產埠與 host key TOFU） | `chpasswd`／`authorized_keys` | `password`、`ssh_key` |
+| `windows_winrm` | rdp、ssh | WinRM：NTLM 認證，訊息層加密恆啟用；http（預設埠 5985）或 https（預設埠 5986，TLS 模式 `system`／`ca`／`insecure`） | PowerShell `Set-LocalUser` | `password` |
+| `windows_ssh` | rdp、ssh | SSH 到 Windows OpenSSH（rdp 資產用 `rotation_ssh_port`，0＝22；沿 host key TOFU） | 同上；指令顯式以 `powershell.exe -NoProfile -NonInteractive -EncodedCommand` 執行，不依賴目標預設 shell（cmd 亦可） | `password` |
+| `none` | 任一 | 不連線 | 記 skipped | 不適用 |
+
+Windows 兩通道的共同契約：
+
+- 新密碼與舊密碼只經標準輸入投遞（第一行新密碼、第二行舊密碼）；指令字串（含編碼後的腳本）不含密碼。標準輸入缺任一行時腳本在觸碰帳號前以結局碼 3 結束，
+  記 failed 帶 `CHANGE_SECRET_STDIN_NOT_DELIVERED`。誠實邊界：新舊密碼在目標 PowerShell 行程記憶體中會短暫以明文存在，
+  這是 `Set-LocalUser` 介面所致。
+- 目標端自驗與回滾：腳本在 `Set-LocalUser` 之後於目標本機驗證新密碼可登入，不通過即當場以舊密碼改回。目標機離開腳本時只會是「已驗證的新密碼」或「舊密碼」。
+  腳本改密前先以舊密碼校準本機驗證器；驗證器連舊密碼都驗不過或拋出例外時視為不可用，改密後不自驗、不回滾，交系統的重連驗證判定。
+  腳本每個結束點先在標準輸出印一行 `ROTATION_RESULT=<結局碼>` 再以同一碼退出；系統以標記為準、退出碼為輔（目標的預設 shell 可能改寫退出碼，例如 Windows OpenSSH 預設 shell 為 PowerShell 時非零一律成 1）。結局碼契約：
+
+  | 結局碼 | 目標狀態 | 記錄 | 原因碼 | 候選 |
+  |---|---|---|---|---|
+  | 0 | 新密碼（目標已自驗） | 重連驗證通過即 success | 無 | 提交後刪除 |
+  | 1 | 舊密碼（`Set-LocalUser` 失敗） | failed | `CHANGE_SECRET_REMOTE_REJECTED` | 清除 |
+  | 3 | 舊密碼（未觸碰） | failed | `CHANGE_SECRET_STDIN_NOT_DELIVERED` | 清除 |
+  | 4 | 舊密碼（自驗不通過，已改回） | failed | `CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED` | 清除 |
+  | 5 | 不可知（自驗不通過，改回也失敗） | unverified | `CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED` | 保留，交系統重試 |
+  | 6 | 新密碼（驗證器不可用，未自驗） | 同 0 | 無 | 同 0 |
+  | 標記缺失、退出碼非零 | 不可知 | unverified | `CHANGE_SECRET_REMOTE_STATE_UNKNOWN` | 保留，交系統重試 |
+  | 標記缺失、退出碼 0 | 依重連驗證 | 同 0 | 無 | 同 0 |
+  | 標記值不在上表內 | 不可知 | unverified | `CHANGE_SECRET_REMOTE_STATE_UNKNOWN` | 保留，交系統重試 |
+
+  兩通道的分流相同；標記存在時，退出碼與標記不一致只在伺服端 log 記一行。
+- 帳號名於送出前依 Windows 本機帳號的規則本地驗證：長度 1 至 20（UTF-16 碼元）、不含 `" / \ [ ] : ; | = , + * ? < >` 與控制字元、不可全為點或空白、首尾非空白；
+  其餘字元（含非 ASCII 字元、`@`、`$`、單引號）皆可。帳號名與密碼一樣只經標準輸入投遞（第三行，UTF-8），不進腳本文字。
+  違者記 failed 帶 `CHANGE_SECRET_ACCOUNT_NAME_INVALID`，遠端未被觸碰；反斜線被拒即不支援 `DOMAIN\user` 形態，本版只做本機帳號。含 `\r`／`\n`／NUL 或為空的新密碼同樣在本地擋下（`CHANGE_SECRET_INVALID_NEW_SECRET`）；
+  舊密碼同一條行協定（`CHANGE_SECRET_INVALID_OLD_SECRET`）：截斷的舊密碼會讓目標端回滾把帳號改到錯的值，故不送出。
+- 驗證＝以新密碼另建連線（WinRM 新工作階段或 SSH 新連線）跑無副作用指令，固定序列重試三次（立即、2 秒後、再 5 秒後）；
+  用盡仍失敗記 unverified、候選保留交系統重試。
+- 失敗分流以「改密指令是否已送出」為閘。指令送出前（WinRM 建立工作階段階段、SSH 舊憑證登入階段）的失敗＝failed、候選清除：
+  WinRM 目標無法建立訊息層加密的安全工作階段帶 `CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE`（**拒連，不回退明文**）、憑證被拒帶 `CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED`、
+  其餘連線層錯誤（連線被拒或未回應、建立工作階段逾時 30 秒、TLS 憑證不受信任、交握回非預期狀態碼）帶 `CHANGE_SECRET_REMOTE_UNREACHABLE`；SSH 通道的登入階段失敗一律帶 `CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED`。
+  指令送出後：回報完成即依上表的結局碼分流（stderr 只進伺服端 log）；未回報完成（連線中斷、指令逾時 90 秒，兩通道同值；逾時即關閉連線不再等目標）＝unverified（`CHANGE_SECRET_REMOTE_STATE_UNKNOWN`，候選保留）。
+- WinRM 不支援 Basic 認證，沒有關閉加密的設定；系統對 WinRM 請求全行程序列化（同一時刻只有一則請求在飛），批次改密不並行。
+- 目標機前置條件與 TLS 三模式的部署說明見 `docs/ops/upgrade-sop.md`。
 
 **未驗證憑證（候選）**：新秘密於動遠端**之前**即加密落庫，驗證成功才提交為帳號憑證並立即刪除候選。
 候選內容**不出現於任何 API 回應、UI、日誌或審計欄位**，只供系統重試登入。清單欄位為
@@ -3852,12 +3946,21 @@ K8s 資產固定單一預設帳號，帶 `account_id`→**400 `RULE_ACCOUNT_K8S_
 
 ### 會話即時監看（admin/auditor）
 
+兩段式：先以登入憑證換一張一次性觀看票，WebSocket 只收該票。
+
 ```
-GET /api/v1/sessions/:id/monitor?token=<jwt>
+POST /api/v1/sessions/:id/monitor-token        # Authorization: Bearer <jwt>
+→ {"connect_token": "...", "expires_in": 60}
+
+GET /api/v1/sessions/:id/monitor?connect_token=<觀看票>
 Upgrade: websocket
 ```
 
-- 僅 admin/auditor（403 否則）；僅進行中的文字終端會話可監看（400 否則）
+- 准入判定在簽發端：僅 admin/auditor（403 否則，角色以現時有效角色判定，不採信憑證內的角色
+  快照）；僅進行中的文字終端會話可監看（400 否則）；目標不存在回 404
+- 觀看票短效、單次、綁定簽票者與目標會話；兌換即失效。缺票、無效票、過期票、重放票，
+  以及用途或客體不符的票一律回 **401 `AUTH_CONNECT_TOKEN_INVALID`**（缺票為
+  `AUTH_CONNECT_TOKEN_MISSING`），拒絕原因只進審計、不對外分流
 - 唯讀：觀察者輸入一律忽略；斷線不影響被監看會話
 - 會話剛結束的競態：回 `{"type": "error", "data": "會話已結束"}` 後關閉
 
@@ -3867,7 +3970,11 @@ Upgrade: websocket
 |---|---|---|
 | POST | `/sessions/:id/share` | 會話本人建立分享碼（JWT）；body: `{"ttl_minutes": 10}`（1-60，預設 10；再建立即覆蓋舊碼）→ `{"code": "...", "share_path": "/share/<code>", "expires_at": "..."}` |
 | DELETE | `/sessions/:id/share` | 撤銷分享（JWT；無有效分享回 404） |
-| GET | `/sessions/share/:code/ws?token=<jwt>` | 任何已登入用戶持有效碼加入唯讀觀看（WS）；加入由全局審計中間件記錄 |
+| POST | `/sessions/share/token` | 任何已登入用戶以分享碼換一次性觀看票（JWT）；body: `{"code": "..."}` → `{"connect_token": "...", "expires_in": 60}`。碼走請求本體而非路徑——請求路徑會進入操作日誌，而分享碼是短期憑證 |
+| GET | `/sessions/share/:code/ws?connect_token=<觀看票>` | 持票加入唯讀觀看（WS）；加入與拒絕皆留痕 |
+
+觀看票綁定簽票者與該分享碼，短效且單次；分享碼的有效性於加入時判定，簽票後才失效或
+被撤銷者加入回 404。票證相關的拒絕與監看同形（401，成因只進審計）。
 
 會話結束時分享自動撤銷。
 

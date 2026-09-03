@@ -397,7 +397,8 @@
       "ldap": "LDAP",
       "syslog": "syslog",
       "notify": "Notification",
-      "nginx": "nginx / HTTPS"
+      "nginx": "nginx / HTTPS",
+      "winrm": "WinRM rotation"
     },
     "scopeType": {
       "asset": "Asset",
@@ -477,6 +478,21 @@
       "active": "Transaction open",
       "failed": "Transaction failed",
       "unknown": "Unknown"
+    },
+    "rotationChannel": {
+      "posix_ssh": "POSIX SSH",
+      "windows_winrm": "WinRM",
+      "windows_ssh": "SSH → PowerShell",
+      "none": "Not set"
+    },
+    "winrmScheme": {
+      "http": "HTTP",
+      "https": "HTTPS"
+    },
+    "winrmTlsMode": {
+      "system": "System trust",
+      "ca": "Specified CA",
+      "insecure": "Do not verify"
     }
   },
   "policyValue": {
@@ -784,7 +800,27 @@
     },
     "allowedDatabasesClearTitle": "Switching protocol clears the allowed list",
     "allowedDatabasesClearConfirm": "This asset has {n} allowed database(s). Switching to another protocol clears the list, and switching back does not restore it.",
-    "allowedDatabasesClearOk": "Clear and save"
+    "allowedDatabasesClearOk": "Clear and save",
+    "rotationChannel": "Rotation channel",
+    "rotationChannelHint": "Channel used by rotation plans to change Windows local account passwords. Unset = this asset does not take part in rotation.",
+    "rotationChannelNone": "Not set (excluded from rotation)",
+    "rotationChannelWinrm": "WinRM (NTLM, message-level encryption)",
+    "rotationChannelWindowsSsh": "Windows OpenSSH (PowerShell)",
+    "winrmScheme": "Transport",
+    "winrmPort": "Port",
+    "winrmPortHint": "0 = default for the selected transport",
+    "winrmTlsMode": "Server certificate verification",
+    "winrmTlsHint": "Applies to HTTPS. \"Do not verify\" is flagged as a risk in the transmission inventory.",
+    "winrmCaCert": "CA certificate (PEM)",
+    "winrmCaCertPlaceholder": "-----BEGIN CERTIFICATE-----",
+    "winrmCaCertHint": "Only server certificates issued by this CA are trusted; the body is not shown again after saving",
+    "winrmCaCertKeep": "CA certificate is set; leave empty to keep it, paste new content to replace it",
+    "winrmCaCertRequired": "A CA certificate (PEM) is required when a CA is specified",
+    "winrmTargetRequirements": "Target requirements: WinRM service enabled, LocalAccountTokenFilterPolicy=1, AllowUnencrypted kept false, Basic authentication kept off. This product always connects with NTLM message-level encryption and does not support plaintext.",
+    "rotationSshPort": "Rotation SSH port",
+    "rotationSshPortHint": "Port used when rotating through this host's OpenSSH with PowerShell (default 22)",
+    "windowsSsh": "Windows OpenSSH (PowerShell)",
+    "windowsSshNote": "This host is Windows: rotation runs PowerShell over OpenSSH. Off = rotate with POSIX commands"
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history",
@@ -2176,7 +2212,6 @@
     "records": "Records",
     "emptyTitle": "No secret rotation plans yet",
     "emptyHint": "Create a plan to rotate asset passwords periodically",
-    "selectSshAsset": "Select SSH assets",
     "scheduleCron": "Schedule (cron)",
     "cronPlaceholder": "e.g. 0 3 * * 0 (leave empty for manual trigger only)",
     "recordsTitle": "Execution Records: {name}",
@@ -2236,9 +2271,11 @@
     "discarded": "Pending credential discarded",
     "reason": {
       "CHANGE_SECRET_ASSET_LOOKUP_FAILED": "Failed to load the asset",
-      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "Only SSH assets are supported",
+      "CHANGE_SECRET_PROTOCOL_UNSUPPORTED": "Assets with this protocol cannot be rotated; skipped this run",
       "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED": "Failed to load the asset accounts",
       "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE": "The asset has no account matching the account scope",
+      "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED": "The asset has no rotation channel configured; skipped",
+      "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED": "This rotation channel does not support the secret type of the plan; skipped",
       "CHANGE_SECRET_CANDIDATE_QUERY_FAILED": "Failed to query pending credentials",
       "CHANGE_SECRET_CANDIDATE_PENDING": "The account has an unverified pending credential; waiting for the system retry to finish",
       "CHANGE_SECRET_CANDIDATE_PERSIST_FAILED": "Failed to persist the pending credential",
@@ -2250,10 +2287,17 @@
       "CHANGE_SECRET_KEYPAIR_GENERATE_FAILED": "Failed to generate the key pair",
       "CHANGE_SECRET_INVALID_ACCOUNT_NAME": "The account name contains illegal characters; no command was sent to the remote host",
       "CHANGE_SECRET_INVALID_NEW_SECRET": "The generated password contains illegal characters; no command was sent to the remote host",
+      "CHANGE_SECRET_ACCOUNT_NAME_INVALID": "The account name does not meet the character set or length limit of the target system; no command was sent to the remote host",
       "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED": "Failed to log in to the target host with the current credential; see the server log for the detailed remote message",
       "CHANGE_SECRET_REMOTE_REJECTED": "The remote host rejected the rotation command; the host credential is unchanged. See the server log for the detailed remote message",
-      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "The rotation command was interrupted and the remote state is unknown; the pending credential is kept for system retry. See the server log for the detailed remote message",
+      "CHANGE_SECRET_REMOTE_STATE_UNKNOWN": "The connection dropped or timed out after the rotation command was sent, so the remote state is unknown; the pending credential is kept for system retry. See the server log for the detailed remote message",
+      "CHANGE_SECRET_REMOTE_UNREACHABLE": "Could not establish a rotation session with the target (connection refused or unanswered, timed out, or certificate verification failed); no command was sent and the remote host is unchanged. See the server log for the detailed remote message",
       "CHANGE_SECRET_VERIFY_FAILED": "Verification login with the new credential failed; the pending credential is kept for system retry. See the server log for the detailed remote message",
+      "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE": "The target could not establish an encrypted management connection; the connection was refused and no credential was sent",
+      "CHANGE_SECRET_STDIN_NOT_DELIVERED": "The new password never reached the rotation script on the target; the remote host is unchanged",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED": "The target set the new password but could not authenticate with it and restored the old password on the spot; the remote host is unchanged",
+      "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED": "The target could not authenticate with the new password and also failed to restore the old one; the remote state is unknown and the pending credential is kept for system retry",
+      "CHANGE_SECRET_INVALID_OLD_SECRET": "The current password contains characters that cannot be delivered on standard input; refused locally, the remote host was not touched",
       "CHANGE_SECRET_PROMOTE_FAILED": "Failed to commit the credential; the pending credential is kept for system retry. See the server log for details",
       "CHANGE_SECRET_SFTP_OPEN_FAILED": "Failed to open SFTP on the target host; see the server log for the detailed remote message",
       "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED": "Failed to read authorized_keys; see the server log for the detailed remote message",
@@ -2265,7 +2309,13 @@
       "CHANGE_SECRET_RETRY_LOGIN_FAILED": "Failed to log in to the target host with the pending credential; see the server log for the detailed remote message"
     },
     "maxAgeDays": "Maximum credential age override",
-    "maxAgeDaysHint": "0 keeps the global security policy value. Affects only the maximum age used by the rotation evidence report, not this plan’s schedule or rotation behaviour."
+    "maxAgeDaysHint": "0 keeps the global security policy value. Affects only the maximum age used by the rotation evidence report, not this plan’s schedule or rotation behaviour.",
+    "selectAsset": "Select assets (only those with a rotation channel)",
+    "assetPickerHint": "Only assets with a rotation channel are listed; set the channel on RDP assets in the asset form first",
+    "colChannel": "Channel",
+    "secretTypeWindowsHint": "Windows channels support passwords only; SSH key rotation is recorded as skipped for Windows assets",
+    "recordsSummary": "{total} records: {success} succeeded, {failed} failed, {unverified} unverified, {skipped} skipped",
+    "recordsNote": "Messages are the localized text of system codes; text returned by the remote host stays in the server log only."
   },
   "notFound": {
     "title": "Page not found",
@@ -2874,6 +2924,8 @@
     "VALIDATION_ASSET_ALLOWED_DATABASES": "allowed_databases may be non-empty only for database protocols (mysql, postgres, mssql); each entry must be 1 to 128 characters, free of control characters and unique, up to 64 entries",
     "VALIDATION_ASSET_DB_TLS_MODE": "db_tls_mode accepts only an empty value (keep current), disable, require, verify-ca or verify-full",
     "VALIDATION_ASSET_MSSQL_HOST_COMMA": "An mssql host must not contain a comma (it conflicts with the port separator in the connection string)",
+    "VALIDATION_ASSET_ROTATION_CHANNEL": "rotation_channel accepts only an empty value (derived from the protocol), posix_ssh, windows_winrm, windows_ssh or none; posix_ssh requires the ssh protocol, windows_winrm and windows_ssh require the rdp or ssh protocol",
+    "VALIDATION_ASSET_ROTATION_CHANNEL_PARAMS": "The rotation channel settings are incomplete or malformed: windows_winrm requires a connection scheme (http or https), https requires a certificate verification mode (system, ca or insecure), the ca mode requires a parsable CA certificate in PEM form, and a port must be 0 (use the default) or between 1 and 65535",
     "VALIDATION_ASSET_PROTOCOL": "Invalid protocol; only ssh, rdp, vnc, mysql, postgres, redis, mssql and k8s are supported",
     "VALIDATION_ASSET_RDP_SECURITY": "rdp_security accepts only an empty value (keep current), nla or tls",
     "VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED": "At least one filter is required (session_id/user_id/asset_id/time range)",
@@ -3105,7 +3157,9 @@
     "rdp_ignore_cert": "RDP server certificate not verified",
     "rdp_security_below_nla": "RDP security mode below NLA",
     "syslog_non_tls": "Syslog forwarding unencrypted ({protocol})",
-    "vnc_unencrypted": "VNC protocol unencrypted"
+    "vnc_unencrypted": "VNC protocol unencrypted",
+    "winrm_http_ntlm": "WinRM rotation channel over http (NTLM message-level encryption only, no TLS)",
+    "winrm_tls_insecure": "WinRM rotation channel does not verify the server certificate"
   },
   "transportNote": {
     "ldap_ui_managed": "Maintained on the directory settings page under Identity Management",
@@ -3116,7 +3170,8 @@
     "syslog_disabled": "Syslog forwarding disabled",
     "syslog_protocol": "Forwarding protocol: {protocol}",
     "syslog_unset": "Syslog forwarding not configured",
-    "vnc_no_encryption": "VNC/RFB protocol has no encryption option; all assets are always plaintext channels"
+    "vnc_no_encryption": "VNC/RFB protocol has no encryption option; all assets are always plaintext channels",
+    "winrm_rotation_channel": "Rotation channel (system path, not a user connection): NTLM message-level encryption is always on; http means no TLS transport and insecure means an unverified certificate, both counted as deviations"
   },
   "transportPreflight": {
     "db_reject": "Switching to strict will reject {n} database asset without TLS | Switching to strict will reject {n} database assets without TLS",

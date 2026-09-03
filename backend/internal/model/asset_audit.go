@@ -111,6 +111,17 @@ func DiffAsset(old, new *Asset) []AssetChange {
 		})
 	}
 
+	// 改密通道：憑證與埠的投遞目標由它決定，值域受控且非機密，直接進 Old/New。
+	// 附屬欄位（scheme、埠、TLS 模式、CA）不逐欄 diff——通道值變了就代表整組設定
+	// 換了一套，逐欄展開只會讓稽核列充滿彼此連動的雜訊
+	if old.RotationChannel != new.RotationChannel {
+		changes = append(changes, AssetChange{
+			Field: "rotation_channel",
+			Old:   old.RotationChannel,
+			New:   new.RotationChannel,
+		})
+	}
+
 	return changes
 }
 

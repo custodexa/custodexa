@@ -2,6 +2,7 @@ package identity
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	"gorm.io/gorm"
@@ -81,6 +82,12 @@ func WithUserCredentialLock(db *gorm.DB, userID uint, fn func(tx *gorm.DB) error
 // 改為僅外部登入兩者同時受兩個不變式約束，須在同一交易內依 system → user 的
 // 固定順序疊加，不得各開一個交易（那會使兩段寫入不再原子）。
 func withUserCredentialLockTx(tx *gorm.DB, userID uint, fn func(tx *gorm.DB) error) error {
+	// postgres 分支把 userID 折成 int32 當 advisory lock 的 objid；折疊只在 32 位元值域內是雙射。
+	// 呼叫端的 userID 來自 ParseUint(bitSize 32) 或 users.id（32 位元內），但這個不變式不在型別上，
+	// 在此以入口檢查把它落成程式碼（兩種 dialect 一致，測試才打得到）
+	if userID > math.MaxUint32 {
+		return fmt.Errorf("使用者 ID %d 超出互斥鎖鍵值域（上限 %d）", userID, uint(math.MaxUint32))
+	}
 	switch tx.Dialector.Name() {
 	case "postgres":
 		// xact lock：隨交易結束自動釋放，無持有者崩潰殘留問題

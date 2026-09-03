@@ -131,6 +131,32 @@ type Asset struct {
 	SftpPasswordEnc string `gorm:"type:text" json:"-"` // AES-256-GCM 加密
 	HasSftpPassword bool   `json:"has_sftp_password"`
 
+	// 改密通道側車（windows-account-rotation）：本組欄位描述「改密要怎麼連上這台
+	// 機器」，與會話用的協定欄位分開——Windows 主機以 rdp 登記卻要走 WinRM 或
+	// PowerShell over SSH 改密，兩者的目標埠、傳輸與指令集都不同。
+	//
+	// RotationChannel 空字串＝未設定，由 EffectiveRotationChannel() 依協定推導
+	//（ssh→posix_ssh，其餘→none）。**推導而非回填**：升級後既有列一律留空，
+	// 行為與升級前逐項相同，而管理員之後顯式設定的值不會與推導值混淆。
+	RotationChannel string `gorm:"size:16;not null;default:''" json:"rotation_channel"`
+	// WinrmScheme http／https（僅 windows_winrm）
+	WinrmScheme string `gorm:"size:8" json:"winrm_scheme,omitempty"`
+	// WinrmPort 0＝依 scheme 取預設（http 5985／https 5986）
+	WinrmPort int `json:"winrm_port,omitempty"`
+	// WinrmTLSMode system／ca／insecure（僅 https）
+	WinrmTLSMode string `gorm:"size:16" json:"winrm_tls_mode,omitempty"`
+	// WinrmCACert ca 模式的信任錨（PEM）。**列表投影不回本欄**（見 HasWinrmCACert）
+	WinrmCACert string `gorm:"type:text" json:"winrm_ca_cert,omitempty"`
+	// RotationSSHPort windows_ssh 走 SSH 改密的目標埠，0＝22。
+	// 協定為 ssh 的資產沿用 Port（同一條 SSH 服務），本欄不參與推導
+	RotationSSHPort int `json:"rotation_ssh_port,omitempty"`
+
+	// EffectiveChannel 推導後的有效改密通道；非 DB 欄，讀取端填入。
+	// 前端的資產選擇以它為準——把推導邏輯留在前端會讓兩側的預設漂移
+	EffectiveChannel string `gorm:"-" json:"effective_rotation_channel,omitempty"`
+	// HasWinrmCACert 是否已設定 CA 憑證；非 DB 欄，列表投影以它取代 PEM 本體
+	HasWinrmCACert bool `gorm:"-" json:"has_winrm_ca_cert"`
+
 	// TransmissionRisks 傳輸風險項（徽章恆顯示，
 	// 判定在後端單一所在、前端純呈現）；非 DB 欄位，列表讀取時由 service 填入
 	TransmissionRisks []TransmissionRisk `gorm:"-" json:"transmission_risks,omitempty"`
@@ -229,4 +255,11 @@ type AssetChangeDetails struct {
 	AllowedDatabasesCleared bool `json:"allowed_databases_cleared,omitempty"`
 	// PreviousAllowedDatabaseCount 清空前的項數（僅 AllowedDatabasesCleared 為真時出現）
 	PreviousAllowedDatabaseCount int `json:"previous_count,omitempty"`
+
+	// RotationChannelCleared 本次更新因協定改為與改密通道不相容，
+	// 由伺服端自動清空通道與其附屬欄位。理由同 AllowedDatabasesCleared：
+	// 稽核要分得出「管理者自己關掉的」與「伺服端替他清掉的」
+	RotationChannelCleared bool `json:"rotation_channel_cleared,omitempty"`
+	// PreviousRotationChannel 清空前的通道值（僅 RotationChannelCleared 為真時出現）
+	PreviousRotationChannel string `json:"previous_rotation_channel,omitempty"`
 }

@@ -83,10 +83,12 @@ func setupShareParity(t *testing.T) *shareParityEnv {
 
 	// 觀察者三人皆 admin：monitor 需 admin/auditor，share 不限角色；
 	// 兩條路徑用同一組身分，矩陣才真的是「同一份」
-	for _, name := range []string{"obs-a", "obs-b", "obs-local"} {
+	for i, name := range []string{"obs-a", "obs-b", "obs-local"} {
 		if err := db.Create(&model.User{Username: name, Password: "x", Active: true}).Error; err != nil {
 			t.Fatalf("seed user %s: %v", name, err)
 		}
+		// 監看票的角色現查讀的是 DB 角色列，不是 JWT 快照
+		grantDBRole(t, db, uint(i+1), model.RoleAdmin)
 	}
 	if err := db.Create(&model.Asset{Name: "a1", Protocol: "ssh", Host: "h", Port: 22}).Error; err != nil {
 		t.Fatalf("seed asset: %v", err)
@@ -169,37 +171,56 @@ func (e *shareParityEnv) disableProvider(t *testing.T, providerID uint) {
 // 其餘（身分、脈絡、被觀察的會話）完全相同——差異一旦出現即是治理不一致
 type joinPath struct {
 	name string
-	// dial 生產路徑：脈絡經真 `?token=` 由 Handler.authenticate 解出
-	dial func(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn
-	// dialPreAuthed 已通過認證的等價入口（AuthMiddleware 已跑的形狀）。
-	// **僅供 TestSubscriptionJoinGuardParity 使用**，見該處說明
-	dialPreAuthed func(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn
+	// prepare 走生產路徑取得一張一次性觀看票（含建路由與分享碼），
+	// **尚未建立 WS 連線**——取票與建線之間的窗口是訂閱建立點世代閘的射程
+	prepare func(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) joinAttempt
+}
+
+// joinAttempt 已取得票證、尚未建線的一次觀看嘗試
+type joinAttempt struct {
+	r     *gin.Engine
+	wsURL string
+}
+
+// dial 以既有票證建立 WS 連線
+func (a joinAttempt) dial(t *testing.T) *websocket.Conn {
+	t.Helper()
+	return dialWS(t, a.r, a.wsURL)
+}
+
+// dial 取票並建線（成功路徑的常用組合）
+func (p joinPath) dial(t *testing.T, e *shareParityEnv, userID uint,
+	authCtx crypto.AuthContext) *websocket.Conn {
+	t.Helper()
+	return p.prepare(t, e, userID, authCtx).dial(t)
 }
 
 func allJoinPaths() []joinPath {
 	return []joinPath{
-		{name: "monitor", dial: dialMonitorPath, dialPreAuthed: dialMonitorPreAuthed},
-		{name: "share", dial: dialSharePath, dialPreAuthed: dialSharePreAuthed},
+		{name: "monitor", prepare: prepareMonitorPath},
+		{name: "share", prepare: prepareSharePath},
 	}
 }
 
-func dialMonitorPath(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn {
+func prepareMonitorPath(t *testing.T, e *shareParityEnv, userID uint,
+	authCtx crypto.AuthContext) joinAttempt {
 	t.Helper()
-	r := gin.New()
-	// 與 main.go 完全一致：不掛 AuthMiddleware，認證與脈絡全由 handler 自理
-	r.GET("/api/v1/sessions/:id/monitor", e.h.HandleMonitor)
-	return dialWS(t, r, "/api/v1/sessions/1/monitor?token="+
+	// 與 main.go 完全一致：簽發掛 AuthMiddleware、WS 不掛
+	r := observerTicketEngine(e.h, e.h.AuthService)
+	ticket := mustObserverTicket(t, r, monitorTicketPath(parityMonitoredSession),
 		e.signParityToken(t, userID, model.RoleAdmin, authCtx))
+	return joinAttempt{r: r, wsURL: monitorWSPath(parityMonitoredSession, ticket)}
 }
 
-func dialSharePath(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn {
+func prepareSharePath(t *testing.T, e *shareParityEnv, userID uint,
+	authCtx crypto.AuthContext) joinAttempt {
 	t.Helper()
 	code := newParityShareCode(t, e)
-	r := gin.New()
-	r.GET("/api/v1/sessions/share/:code/ws", e.h.HandleShareJoin)
+	r := observerTicketEngine(e.h, e.h.AuthService)
 	// 分享觀看不限角色，刻意用非 admin
-	return dialWS(t, r, "/api/v1/sessions/share/"+code+"/ws?token="+
-		e.signParityToken(t, userID, model.RoleUser, authCtx))
+	ticket := mustObserverTicket(t, r, shareTicketPath,
+		e.signParityToken(t, userID, model.RoleUser, authCtx), shareTicketBody(code))
+	return joinAttempt{r: r, wsURL: shareWSPath(code, ticket)}
 }
 
 // newParityShareCode 分享碼由會話擁有者建立；加入者是另一個已登入使用者（產品語義）
@@ -210,31 +231,6 @@ func newParityShareCode(t *testing.T, e *shareParityEnv) string {
 		t.Fatalf("建立分享碼: %v", err)
 	}
 	return code
-}
-
-func dialMonitorPreAuthed(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn {
-	t.Helper()
-	r := gin.New()
-	r.GET("/api/v1/sessions/:id/monitor", func(c *gin.Context) {
-		c.Set("userID", userID)
-		c.Set("role", model.RoleAdmin)
-		c.Set("authContext", authCtx)
-		e.h.HandleMonitor(c)
-	})
-	return dialWS(t, r, "/api/v1/sessions/1/monitor")
-}
-
-func dialSharePreAuthed(t *testing.T, e *shareParityEnv, userID uint, authCtx crypto.AuthContext) *websocket.Conn {
-	t.Helper()
-	code := newParityShareCode(t, e)
-	r := gin.New()
-	r.GET("/api/v1/sessions/share/:code/ws", func(c *gin.Context) {
-		c.Set("userID", userID)
-		c.Set("role", model.RoleUser)
-		c.Set("authContext", authCtx)
-		e.h.HandleShareJoin(c)
-	})
-	return dialWS(t, r, "/api/v1/sessions/share/"+code+"/ws")
 }
 
 func dialWS(t *testing.T, r *gin.Engine, path string) *websocket.Conn {
@@ -355,20 +351,19 @@ func TestSubscriptionRevocationParityLocalObserverNotWildcard(t *testing.T) {
 // 收線只處理「已建立」的訂閱；provider 已停用之後才送達的 Join 請求，
 // 若某條路徑沒過閘，就會建立出一個永遠掃不到（因為掃描已跑完）的長效訂閱。
 //
-// **本格刻意走 dialPreAuthed（唯一的例外）**：走真 `?token=` 時，
-// ValidateConnectionToken 的世代閘會在 WS 升級**之前**就把請求擋掉（該格由
-// ws_query_token_context_test.go 的 handshake 401 斷言涵蓋），於是永遠走不到
-// Join 建立點——而建立點的閘要擋的正是「認證已通過、Join 尚未完成」那段窗口內
-// 發生的停用。以已認證入口進入才測得到它
+// **本格刻意把停用夾在取票與建線之間**：那正是「認證已通過、Join 尚未完成」
+// 那段窗口——票在 provider 仍啟用時簽出，停用發生於建線之前。簽發端的世代閘
+// 在此擋不到（票已經在手上），能擋的只剩訂閱建立點的閘
 func TestSubscriptionJoinGuardParity(t *testing.T) {
 	for _, p := range allJoinPaths() {
 		t.Run(p.name, func(t *testing.T) {
 			e := setupShareParity(t)
-			// 先取得停用前的脈絡（等同認證當下讀到的世代），再停用
+			// 先取得停用前的脈絡（等同認證當下讀到的世代）
 			authCtx := e.oidcCtx(t, e.pid)
-			e.disableProvider(t, e.pid)
 
-			ws := p.dialPreAuthed(t, e, 1, authCtx)
+			attempt := p.prepare(t, e, 1, authCtx)
+			e.disableProvider(t, e.pid)
+			ws := attempt.dial(t)
 			expectClosed(t, ws, p.name+"：provider 已停用後的訂閱建立")
 
 			// 且不得留下任何存活的訂閱（掃描已跑完，留下即是永久旁路）
@@ -387,7 +382,7 @@ func TestSubscriptionJoinGuardParity(t *testing.T) {
 func TestShareJoinCarriesObserverContext(t *testing.T) {
 	e := setupShareParity(t)
 	authCtx := e.oidcCtx(t, e.pid)
-	e.join(t, joinPath{name: "share", dial: dialSharePath}, 1, authCtx)
+	e.join(t, joinPath{name: "share", prepare: prepareSharePath}, 1, authCtx)
 
 	// 以「只有正確的 (user, provider) 組合才收得到」反推脈絡欄位確實填入
 	if n := e.h.Monitor.DisconnectByUserAndProvider(1, e.oth); n != 0 {

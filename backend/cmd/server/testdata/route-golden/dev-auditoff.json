@@ -893,6 +893,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/sessions/:id/monitor-token",
+      "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateMonitorTicket-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/sessions/:id/recording/token",
       "handler": "github.com/custodexa/backend/internal/api.(*RecordingHandler).IssueRecordingToken-fm"
     },
@@ -905,6 +910,11 @@
       "method": "POST",
       "path": "/api/v1/sessions/:id/terminate",
       "handler": "github.com/custodexa/backend/internal/api.(*SessionHandler).Terminate-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/share/token",
+      "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateShareTicket-fm"
     },
     {
       "method": "POST",
@@ -4561,6 +4571,19 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/sessions/:id/monitor-token",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AuthMiddleware",
+        "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateMonitorTicket-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/sessions/:id/recording/token",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -4624,6 +4647,19 @@
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).RegisterRoutes.RequirePermission.func6",
         "github.com/custodexa/backend/internal/api.(*SessionHandler).Terminate-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/share/token",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AuthMiddleware",
+        "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateShareTicket-fm"
       ]
     },
     {

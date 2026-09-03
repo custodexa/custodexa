@@ -3,8 +3,6 @@ package sshproxy
 import (
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,12 +22,12 @@ import (
 // 與 share_revoke_parity_test.go 的分工：該檔以 `c.Set("authContext", …)` 注入脈絡，
 // 等於替 handler 把它最該做的那件事先做完了——脈絡從哪來、有沒有來，那檔完全測不到。
 // 而 `/sessions/:id/monitor` 與 `/sessions/share/:code/ws` **兩條路由都不掛
-// AuthMiddleware**（main.go：手動處理認證，支援 WebSocket query token），故生產路徑上
-// 唯一可能寫入 authContext 的位置是 Handler.authenticate；它若不寫，
+// AuthMiddleware**（main.go：WebSocket 一律以一次性票認證），故生產路徑上
+// 唯一可能寫入 authContext 的位置是票證兌換點；它若不寫，
 // middleware.GetAuthContext(c) 恆回零值，而所有既有測試依然全綠。
 //
-// 本檔一律走**真** `?token=` 路徑（簽一張帶 AuthContext 的 connection token，
-// 經 handler 的 authenticate 進入），不碰 gin context 的任何注入。
+// 本檔一律走**真**生產路徑：簽一張帶 AuthContext 的 session token → 呼叫掛認證
+// 中介層的觀看票簽發端點 → 以回傳的一次性票建立 WS，不碰 gin context 的任何注入。
 //
 // 兩個後果各有一格：
 //
@@ -38,10 +36,10 @@ import (
 //	功能   CredEpoch 恆 0 → 對 credential_epoch > 0 的使用者（凡改過密、解過綁的）
 //	       JoinWithGenerationGuard 恆拒，監看與分享對這些人直接壞掉。
 //
-// 突變自檢：把 authenticate 內的 `c.Set("authContext", claims.AuthContext)` 刪掉，
+// 突變自檢：把 `redeemObserverTicket` 內的 `c.Set("authContext", …)` 刪掉，
 // 本檔兩個測試的四格全紅（既有測試無一轉紅）。
 
-const wsTokenSecret = "ws-query-token-test-secret"
+const wsTokenSecret = "ws-observer-ticket-test-secret"
 
 // wsTokenMonitoredSession 被監看／被分享的會話（seed 後 ID 恆為 1）
 const wsTokenMonitoredSession = uint(1)
@@ -92,7 +90,7 @@ func setupWSTokenEnv(t *testing.T) *wsTokenEnv {
 		t.Fatalf("seed session: %v", err)
 	}
 
-	// AuthService 與測試簽章共用同一把 secret：ValidateConnectionToken 才驗得過
+	// AuthService 與測試簽章共用同一把 secret：認證中介層才驗得過
 	auth := identity.NewAuthService(wsTokenSecret, 15*time.Minute)
 	env.h = NewHandler(nil, auth, nil, session.NewSessionService(nil), nil, "", nil)
 	env.tap = env.h.Monitor.OpenRoom(wsTokenMonitoredSession, 80, 24)
@@ -128,6 +126,8 @@ func (e *wsTokenEnv) seedUser(t *testing.T, username string, credEpoch int) *mod
 		t.Fatalf("set credential_epoch: %v", err)
 	}
 	u.CredentialEpoch = credEpoch
+	// 監看票的角色現查讀 DB 角色列，不採信 JWT 快照
+	grantDBRole(t, e.db, u.ID, model.RoleAdmin)
 	return u
 }
 
@@ -150,76 +150,76 @@ func (e *wsTokenEnv) signConnectionToken(t *testing.T, u *model.User, role strin
 	return tok
 }
 
-// --- 兩條「不掛 AuthMiddleware、走 ?token=」的生產路徑 ---
+// --- 兩條「簽發掛中介層、WS 不掛」的生產路徑 ---
 
 type wsTokenPath struct {
 	name string
-	// route 組出該路徑的 gin engine 與帶 token 的 URL（皆不掛 AuthMiddleware，與 main.go 一致）
-	route func(t *testing.T, e *wsTokenEnv, token string) (*gin.Engine, string)
+	// route 組出該路徑的 gin engine（形狀與 main.go 一致）、簽發端點路徑，
+	// 與一個「以票組出 WS URL」的函式
+	route func(t *testing.T, e *wsTokenEnv) (*gin.Engine, ticketRequest, func(ticket string) string)
 }
 
 func allWSTokenPaths() []wsTokenPath {
 	return []wsTokenPath{
-		{name: "monitor", route: routeMonitorWithQueryToken},
-		{name: "share", route: routeShareWithQueryToken},
+		{name: "monitor", route: routeMonitorObserverTicket},
+		{name: "share", route: routeShareObserverTicket},
 	}
 }
 
-func routeMonitorWithQueryToken(t *testing.T, e *wsTokenEnv, token string) (*gin.Engine, string) {
-	t.Helper()
-	r := gin.New()
-	// 與 main.go 完全一致：不掛 AuthMiddleware
-	r.GET("/api/v1/sessions/:id/monitor", e.h.HandleMonitor)
-	return r, "/api/v1/sessions/1/monitor?token=" + token
+// ticketRequest 一次簽發呼叫（路徑＋請求本體；監看票無本體）
+type ticketRequest struct {
+	path string
+	body string
 }
 
-func routeShareWithQueryToken(t *testing.T, e *wsTokenEnv, token string) (*gin.Engine, string) {
+func routeMonitorObserverTicket(t *testing.T, e *wsTokenEnv) (*gin.Engine, ticketRequest, func(string) string) {
+	t.Helper()
+	r := observerTicketEngine(e.h, e.h.AuthService)
+	return r, ticketRequest{path: monitorTicketPath(wsTokenMonitoredSession)}, func(ticket string) string {
+		return monitorWSPath(wsTokenMonitoredSession, ticket)
+	}
+}
+
+func routeShareObserverTicket(t *testing.T, e *wsTokenEnv) (*gin.Engine, ticketRequest, func(string) string) {
 	t.Helper()
 	code, _, err := e.h.Shares.Create(wsTokenMonitoredSession, 999, time.Minute)
 	if err != nil {
 		t.Fatalf("建立分享碼: %v", err)
 	}
-	r := gin.New()
-	r.GET("/api/v1/sessions/share/:code/ws", e.h.HandleShareJoin)
-	return r, "/api/v1/sessions/share/" + code + "/ws?token=" + token
+	r := observerTicketEngine(e.h, e.h.AuthService)
+	return r, ticketRequest{path: shareTicketPath, body: shareTicketBody(code)}, func(ticket string) string {
+		return shareWSPath(code, ticket)
+	}
 }
 
-// dial 走該路徑建立連線（握手須成功；Join 被拒是升級**之後**的事，仍握手成功）
+// dial 取票後建立連線（握手須成功；Join 被拒是升級**之後**的事，仍握手成功）
 func (p wsTokenPath) dial(t *testing.T, e *wsTokenEnv, token string) *websocket.Conn {
 	t.Helper()
-	r, url := p.route(t, e, token)
-	return dialWS(t, r, url)
+	r, issue, wsURL := p.route(t, e)
+	return dialWS(t, r, wsURL(mustObserverTicket(t, r, issue.path, token, issue.body)))
 }
 
-// dialExpectHandshakeRejected 期待連線在 WS 升級**之前**即被 authenticate 擋下
+// dialExpectHandshakeRejected 期待請求在取得觀看票**之前**即被擋下——
+// 世代閘在認證中介層內，故連簽發端點都過不了，WS 升級自然到不了
 func (p wsTokenPath) dialExpectHandshakeRejected(t *testing.T, e *wsTokenEnv, token, why string) {
 	t.Helper()
-	r, url := p.route(t, e, token)
-	srv := httptest.NewServer(r)
-	defer srv.Close()
-	ws, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+url, nil)
-	if err == nil {
-		ws.Close()
-		t.Fatalf("%s：%s 不應握手成功", p.name, why)
-	}
-	if resp == nil {
-		t.Fatalf("%s：%s 無 HTTP 回應（err=%v）", p.name, why, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("%s：%s 狀態碼 = %d, want %d", p.name, why, resp.StatusCode, http.StatusUnauthorized)
+	r, issue, _ := p.route(t, e)
+	code, body := postObserverTicket(r, issue.path, token, issue.body)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("%s：%s 狀態碼 = %d, want %d（body=%v）", p.name, why, code,
+			http.StatusUnauthorized, body)
 	}
 }
 
 // --- 第一格：脈絡真的抵達 ObserverContext（安全） ---
 
-// TestQueryTokenObserverCarriesProviderContext 經 `?token=` 進入的觀察者，
-// 其 ObserverContext SHALL 帶 token 內的 providerID——否則 provider 停用時
+// TestObserverTicketCarriesProviderContext 持一次性觀看票進入的觀察者，
+// 其 ObserverContext SHALL 帶票證內的 providerID——否則 provider 停用時
 // DisconnectByProvider 一筆都匹配不到，該訂閱在 IdP 已停用後仍持續讀終端內容。
 //
-// 三條斷言合起來才鎖得住「providerID 確實是 token 那一個」：錯的 provider 不命中、
+// 三條斷言合起來才鎖得住「providerID 確實是票證那一個」：錯的 provider 不命中、
 // 錯的 user 不命中、對的組合命中；最後以 DisconnectByProvider 端到端收線收尾。
-func TestQueryTokenObserverCarriesProviderContext(t *testing.T) {
+func TestObserverTicketCarriesProviderContext(t *testing.T) {
 	for _, p := range allWSTokenPaths() {
 		t.Run(p.name, func(t *testing.T) {
 			e := setupWSTokenEnv(t)
@@ -244,13 +244,13 @@ func TestQueryTokenObserverCarriesProviderContext(t *testing.T) {
 
 // --- 第二格：credential_epoch > 0 的使用者仍可訂閱（功能迴歸） ---
 
-// TestQueryTokenObserverWithAdvancedCredentialEpochCanJoin 凡改過密、解過綁的
+// TestObserverTicketWithAdvancedCredentialEpochCanJoin 凡改過密、解過綁的
 // 使用者其 credential_epoch > 0；脈絡若在 handler 內遺失，JoinWithGenerationGuard
 // 會拿零值世代去比對而**恆拒**，監看與分享對這群人直接壞掉。
 //
 // 對照組（epoch=0 的使用者可加入）不可省：少了它，「epoch>0 也能加入」無法排除
 // 「這條路徑根本沒有世代閘」。
-func TestQueryTokenObserverWithAdvancedCredentialEpochCanJoin(t *testing.T) {
+func TestObserverTicketWithAdvancedCredentialEpochCanJoin(t *testing.T) {
 	for _, p := range allWSTokenPaths() {
 		t.Run(p.name, func(t *testing.T) {
 			e := setupWSTokenEnv(t)
@@ -264,7 +264,7 @@ func TestQueryTokenObserverWithAdvancedCredentialEpochCanJoin(t *testing.T) {
 			waitRegistered(t, e.tap, rws, p.name+" 訂閱（credential_epoch=3）")
 
 			// 世代閘仍在：拿舊世代的 token 必須被拒（不是把閘拆了才變綠）。
-			// 該判定在 ValidateConnectionToken 內，故連 WS 升級都到不了
+			// 該判定在認證中介層內，故連票都領不到
 			stale, err := crypto.NewJWTManager(wsTokenSecret, 15*time.Minute).GenerateToken(
 				rotated.ID, rotated.Username, "", model.RoleAdmin, crypto.AuthContext{
 					AuthMethod: crypto.AuthMethodOIDC, ProviderID: e.pid,

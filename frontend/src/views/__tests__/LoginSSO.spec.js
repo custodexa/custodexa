@@ -10,6 +10,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import { createHash } from 'node:crypto'
 import Login from '../Login.vue'
+import { getAccessToken, resetSessionForTests } from '@/utils/session'
 import { SSO_SECRET_KEY } from '@/utils/sso'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
@@ -70,6 +71,7 @@ let replaceStateSpy
 describe('Login SSO 區塊', () => {
   beforeEach(() => {
     localStorage.clear()
+    resetSessionForTests()
     sessionStorage.clear()
     vi.clearAllMocks()
     getAuthMethodsMock.mockResolvedValue({ local: true, oidc: PROVIDERS })
@@ -187,7 +189,7 @@ describe('Login SSO 區塊', () => {
     expect(exchangeSSOTicketMock).toHaveBeenCalledWith('ticket-abc', 'browser-secret-1')
     // 綁定原值一次性：兌換後即清除
     expect(sessionStorage.getItem(SSO_SECRET_KEY)).toBeNull()
-    expect(localStorage.getItem('token')).toBe('sso-jwt')
+    expect(getAccessToken()).toBe('sso-jwt')
     // SSO 的巢狀回應同樣不帶憑證明文：refresh 憑證走 httpOnly cookie
     expect(localStorage.getItem('refresh_token')).toBeNull()
     expect(pushMock).toHaveBeenCalledWith('/assets')
@@ -215,7 +217,7 @@ describe('Login SSO 區塊', () => {
     const wrapper = mountLogin()
     await vi.waitFor(() => expect(wrapper.find('.mfa-panel').exists()).toBe(true))
 
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
   })
 
@@ -284,7 +286,7 @@ describe('Login SSO 區塊', () => {
 
     const wrapper = mountLogin()
     await vi.waitFor(() => expect(wrapper.text()).toContain('登入流程已失效，請重新登入'))
-    expect(localStorage.getItem('token')).toBeNull()
+    expect(getAccessToken()).toBe('')
     expect(pushMock).not.toHaveBeenCalled()
   })
 

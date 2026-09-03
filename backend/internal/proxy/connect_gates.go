@@ -272,6 +272,11 @@ const (
 	ViaConnect   = "connect"
 	ViaSSH       = "ssh"
 	ViaDBConsole = "db_console"
+	// ViaMonitor／ViaShare 唯讀觀看的兩條入口。**與觀看加入留痕的 `via` 值
+	// 逐字相同**（`internal/sshproxy` 的 observerVia* 即取自此處）：稽核以
+	// `via` 分組時，同一條入口的「被擋下」與「加入了」必須落在同一個桶裡
+	ViaMonitor = "monitor"
+	ViaShare   = "share"
 )
 
 // viaUnknown 呼叫端漏填 Via 時的落地值。**不留空**：空字串在 details 裡與

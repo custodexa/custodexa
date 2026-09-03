@@ -732,6 +732,123 @@
               style="margin-left: 10px; color: var(--el-color-warning); font-size: 12px"
             >{{ $t('assets.rdpVerifyWarning') }}</span>
           </el-form-item>
+          <!-- 改密通道側車（沿 VNC SFTP 側車形狀：下拉為入口、子欄整組顯隱、各自具名）。
+               通道與連線路徑無關：這裡設定的只有改密計劃會用到 -->
+          <el-form-item
+            :label="$t('assets.rotationChannel')"
+            data-test="rotation-channel-item"
+          >
+            <el-select
+              v-model="form.rotation_channel"
+              style="width: 100%"
+              data-test="rotation-channel"
+              @change="handleRotationChannelChange"
+            >
+              <el-option
+                :label="$t('assets.rotationChannelNone')"
+                value="none"
+              />
+              <el-option
+                :label="$t('assets.rotationChannelWinrm')"
+                value="windows_winrm"
+              />
+              <el-option
+                :label="$t('assets.rotationChannelWindowsSsh')"
+                value="windows_ssh"
+              />
+            </el-select>
+            <div class="form-tip">
+              {{ $t('assets.rotationChannelHint') }}
+            </div>
+          </el-form-item>
+          <template v-if="form.rotation_channel === 'windows_winrm'">
+            <el-form-item
+              :label="$t('assets.winrmScheme')"
+              data-test="winrm-scheme-item"
+            >
+              <el-radio-group
+                v-model="form.winrm_scheme"
+                data-test="winrm-scheme"
+                @change="handleWinrmSchemeChange"
+              >
+                <el-radio-button
+                  v-for="scheme in WINRM_SCHEME_VALUES"
+                  :key="scheme"
+                  :value="scheme"
+                >
+                  {{ $t(`enum.winrmScheme.${scheme}`) }} {{ WINRM_DEFAULT_PORTS[scheme] }}
+                </el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item :label="$t('assets.winrmPort')">
+              <el-input-number
+                v-model="form.winrm_port"
+                :min="0"
+                :max="65535"
+                data-test="winrm-port"
+              />
+              <span class="form-tip form-tip--inline">{{ $t('assets.winrmPortHint') }}</span>
+            </el-form-item>
+            <el-form-item
+              v-if="form.winrm_scheme === 'https'"
+              :label="$t('assets.winrmTlsMode')"
+              data-test="winrm-tls-mode-item"
+            >
+              <el-radio-group
+                v-model="form.winrm_tls_mode"
+                data-test="winrm-tls-mode"
+              >
+                <el-radio-button
+                  v-for="mode in WINRM_TLS_MODE_VALUES"
+                  :key="mode"
+                  :value="mode"
+                >
+                  {{ $t(`enum.winrmTlsMode.${mode}`) }}
+                </el-radio-button>
+              </el-radio-group>
+              <div class="form-tip">
+                {{ $t('assets.winrmTlsHint') }}
+              </div>
+            </el-form-item>
+            <el-form-item
+              v-if="form.winrm_scheme === 'https' && form.winrm_tls_mode === 'ca'"
+              :label="$t('assets.winrmCaCert')"
+              prop="winrm_ca_cert"
+              data-test="winrm-ca-cert-item"
+            >
+              <el-input
+                v-model="form.winrm_ca_cert"
+                type="textarea"
+                :rows="3"
+                :placeholder="$t('assets.winrmCaCertPlaceholder')"
+                data-test="winrm-ca-cert"
+              />
+              <div class="form-tip">
+                {{ isEdit && form.has_winrm_ca_cert ? $t('assets.winrmCaCertKeep') : $t('assets.winrmCaCertHint') }}
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <div
+                class="form-tip"
+                data-test="winrm-target-requirements"
+              >
+                {{ $t('assets.winrmTargetRequirements') }}
+              </div>
+            </el-form-item>
+          </template>
+          <el-form-item
+            v-if="form.rotation_channel === 'windows_ssh'"
+            :label="$t('assets.rotationSshPort')"
+            data-test="rotation-ssh-port-item"
+          >
+            <el-input-number
+              v-model="form.rotation_ssh_port"
+              :min="1"
+              :max="65535"
+              data-test="rotation-ssh-port"
+            />
+            <span class="form-tip form-tip--inline">{{ $t('assets.rotationSshPortHint') }}</span>
+          </el-form-item>
         </template>
         <template v-if="form.protocol === 'k8s'">
           <el-form-item
@@ -770,6 +887,18 @@
             :rows="4"
             :placeholder="$t('assets.privateKeyPlaceholder')"
           />
+        </el-form-item>
+        <!-- ssh 資產的 Windows 開關＝通道 windows_ssh；關閉即回到依協議推導的 POSIX 通道 -->
+        <el-form-item
+          v-if="form.protocol === 'ssh'"
+          :label="$t('assets.windowsSsh')"
+          data-test="windows-ssh-item"
+        >
+          <el-switch
+            v-model="windowsSshEnabled"
+            data-test="windows-ssh-switch"
+          />
+          <span class="form-tip form-tip--inline">{{ $t('assets.windowsSshNote') }}</span>
         </el-form-item>
         <template v-if="form.protocol === 'vnc'">
           <el-form-item :label="$t('assets.sftpTransfer')">
@@ -1142,6 +1271,13 @@ import { accessPolicyEnumLabels } from '@/utils/policyFormat'
 import { riskLabel } from '@/utils/transportDisplay'
 import { getSecurityPolicies } from '@/api/securityPolicies'
 import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS, protocolTagType } from '@/utils/protocol'
+import {
+  WINRM_SCHEME_VALUES,
+  WINRM_TLS_MODE_VALUES,
+  WINRM_DEFAULT_PORTS,
+  ROTATION_SSH_DEFAULT_PORT,
+  effectiveRotationChannel,
+} from '@/constants/rotationChannel'
 import { needsAccessRequest, isAccessPending } from '@/utils/asset-access'
 import { confirmDestructive } from '@/utils/confirm'
 import { formatDateTime } from '@/utils/format'
@@ -1381,7 +1517,77 @@ const form = reactive({
   sftp_username: '',
   sftp_password: '',
   has_sftp_password: false,
+  // 改密通道側車：rdp 資產顯式選 none／windows_winrm／windows_ssh；
+  // ssh 資產空字串＝依協議推導 posix_ssh，開關開啟＝windows_ssh
+  rotation_channel: '',
+  winrm_scheme: 'https',
+  winrm_port: WINRM_DEFAULT_PORTS.https,
+  winrm_tls_mode: 'system',
+  winrm_ca_cert: '',
+  has_winrm_ca_cert: false,
+  rotation_ssh_port: ROTATION_SSH_DEFAULT_PORT,
 })
+
+// ssh 資產的 Windows 開關與通道欄位互為表裡
+const windowsSshEnabled = computed({
+  get: () => form.rotation_channel === 'windows_ssh',
+  set: (on) => {
+    form.rotation_channel = on ? 'windows_ssh' : ''
+  },
+})
+
+// 側車回到出廠值：協議切換與通道切換都由此收口，殘值不跟著送出
+const resetRotationChannel = (protocol) => {
+  form.rotation_channel = protocol === 'rdp' ? 'none' : ''
+  form.winrm_scheme = 'https'
+  form.winrm_port = WINRM_DEFAULT_PORTS.https
+  form.winrm_tls_mode = 'system'
+  form.winrm_ca_cert = ''
+  form.has_winrm_ca_cert = false
+  form.rotation_ssh_port = ROTATION_SSH_DEFAULT_PORT
+}
+
+const handleRotationChannelChange = () => {
+  formRef.value?.clearValidate('winrm_ca_cert')
+}
+
+// 連線方式切換時，埠仍是另一方式的預設值（或 0）才跟著換；使用者自填的埠不動
+const handleWinrmSchemeChange = (scheme) => {
+  const defaults = Object.values(WINRM_DEFAULT_PORTS)
+  if (form.winrm_port === 0 || defaults.includes(form.winrm_port)) {
+    form.winrm_port = WINRM_DEFAULT_PORTS[scheme]
+  }
+  if (scheme !== 'https') {
+    formRef.value?.clearValidate('winrm_ca_cert')
+  }
+}
+
+// 側車欄位以整份送出：通道不是 WinRM 時把 WinRM 子欄送空值，讓伺服端清空殘值；
+// 編輯態的 CA 憑證留空＝維持既有（不送該鍵，伺服端視為不動）
+const buildRotationChannelPayload = () => {
+  const payload = {}
+  if (form.protocol === 'rdp') {
+    payload.rotation_channel = form.rotation_channel || 'none'
+  } else {
+    payload.rotation_channel = form.rotation_channel === 'windows_ssh' ? 'windows_ssh' : ''
+  }
+  const isWinrm = payload.rotation_channel === 'windows_winrm'
+  const isHttps = isWinrm && form.winrm_scheme === 'https'
+  const usesCa = isHttps && form.winrm_tls_mode === 'ca'
+  payload.winrm_scheme = isWinrm ? form.winrm_scheme : ''
+  payload.winrm_port = isWinrm ? form.winrm_port || 0 : 0
+  payload.winrm_tls_mode = isHttps ? form.winrm_tls_mode : ''
+  if (!usesCa) {
+    payload.winrm_ca_cert = ''
+  } else if (form.winrm_ca_cert) {
+    payload.winrm_ca_cert = form.winrm_ca_cert
+  }
+  payload.rotation_ssh_port =
+    payload.rotation_channel === 'windows_ssh' && form.protocol === 'rdp'
+      ? form.rotation_ssh_port || 0
+      : 0
+  return payload
+}
 
 // 對話框標題
 const dialogTitle = computed(() => {
@@ -1428,6 +1634,24 @@ const formRules = computed(() => ({
       trigger: 'blur',
     },
   ],
+  // 指定 CA 時 PEM 必填；編輯態已有憑證則留空＝維持，不強迫重貼
+  winrm_ca_cert: [
+    {
+      validator: (rule, value, callback) => {
+        const usesCa =
+          form.protocol === 'rdp' &&
+          form.rotation_channel === 'windows_winrm' &&
+          form.winrm_scheme === 'https' &&
+          form.winrm_tls_mode === 'ca'
+        if (usesCa && !value && !(isEdit.value && form.has_winrm_ca_cert)) {
+          callback(new Error(t('assets.winrmCaCertRequired')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
 }))
 
 // 各協議預設埠號自 utils/protocol 共用（含資料庫協議 database-protocol）
@@ -1438,6 +1662,8 @@ const handleProtocolChange = (protocol) => {
   if (defaults.includes(form.port)) {
     form.port = PROTOCOL_DEFAULT_PORTS[protocol] || form.port
   }
+  // 改密通道綁協議：切協議即回出廠值（伺服端在協議不相容時也會清空並留痕）
+  resetRotationChannel(protocol)
 }
 
 // 取得資產列表
@@ -1587,6 +1813,7 @@ const resetForm = () => {
   form.sftp_username = ''
   form.sftp_password = ''
   form.has_sftp_password = false
+  resetRotationChannel('ssh')
   formRef.value?.clearValidate()
 }
 
@@ -1773,6 +2000,24 @@ const handleEdit = (row) => {
   form.sftp_port = row.sftp_port || 22
   form.sftp_username = row.sftp_username || ''
   form.has_sftp_password = row.has_sftp_password || false
+  // 改密通道回填：以有效通道收口（列表投影帶 effective_rotation_channel）；
+  // CA 憑證本體不回顯，只以 has_winrm_ca_cert 決定「已設定，留空維持」的提示
+  resetRotationChannel(row.protocol)
+  const channel = effectiveRotationChannel(row)
+  if (row.protocol === 'rdp') {
+    form.rotation_channel = channel
+  } else if (row.protocol === 'ssh') {
+    form.rotation_channel = channel === 'windows_ssh' ? 'windows_ssh' : ''
+  }
+  if (channel === 'windows_winrm') {
+    form.winrm_scheme = row.winrm_scheme || 'http'
+    form.winrm_port = row.winrm_port || WINRM_DEFAULT_PORTS[form.winrm_scheme]
+    form.winrm_tls_mode = row.winrm_tls_mode || 'system'
+    form.has_winrm_ca_cert = row.has_winrm_ca_cert || false
+  }
+  if (channel === 'windows_ssh' && row.protocol === 'rdp') {
+    form.rotation_ssh_port = row.rotation_ssh_port || ROTATION_SSH_DEFAULT_PORT
+  }
   if (row.protocol === 'ssh') loadHostKey(row.id)
   // 注意：不填充密碼和私鑰（安全考量）
   dialogVisible.value = true
@@ -1830,6 +2075,11 @@ const handleSubmit = async () => {
     if (form.protocol === 'rdp') {
       data.rdp_security = form.rdp_security
       data.rdp_verify_cert = form.rdp_verify_cert
+    }
+
+    // 改密通道側車：只有 rdp／ssh 可設，整份送出（含清空用的空值）
+    if (form.protocol === 'rdp' || form.protocol === 'ssh') {
+      Object.assign(data, buildRotationChannelPayload())
     }
 
     if (form.protocol === 'k8s') {
@@ -2219,6 +2469,13 @@ async function openEditFromQuery() {
   font-size: 12px;
   line-height: 1.5;
   color: var(--el-text-color-secondary);
+}
+
+/* 與數字輸入或開關同列的短說明 */
+.form-tip--inline {
+  width: auto;
+  margin-top: 0;
+  margin-left: 10px;
 }
 
 .break-glass-entry {

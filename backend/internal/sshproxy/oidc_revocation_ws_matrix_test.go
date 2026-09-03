@@ -2,7 +2,6 @@ package sshproxy
 
 import (
 	"errors"
-	"fmt"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"testing"
@@ -115,6 +114,8 @@ func wsMatrixUser(t *testing.T, db *gorm.DB, username string) *model.User {
 	if err := db.Create(u).Error; err != nil {
 		t.Fatalf("seed user %s: %v", username, err)
 	}
+	// 監看票的角色現查讀 DB 角色列，不採信 JWT 快照
+	grantDBRole(t, db, u.ID, model.RoleAdmin)
 	return u
 }
 
@@ -147,21 +148,21 @@ func wsMatrixToken(t *testing.T, db *gorm.DB, u *model.User, providerID uint) st
 	return tok
 }
 
-// dialMonitorObserver 走**真** `/sessions/:id/monitor?token=`（不掛 AuthMiddleware，
-// 與 main.go 一致）建立監看訂閱，並等到它確實進入 room.observers
+// dialMonitorObserver 走**真**生產路徑（簽發端點取一次性觀看票 → WS 兌換，
+// 路由形狀與 main.go 一致）建立監看訂閱，並等到它確實進入 room.observers
 func dialMonitorObserver(t *testing.T, db *gorm.DB, h *Handler, tap *monitorTap,
 	sessionID uint, username string, providerID uint) *websocket.Conn {
 	t.Helper()
 	u := wsMatrixUser(t, db, username)
-	r := gin.New()
-	r.GET("/api/v1/sessions/:id/monitor", h.HandleMonitor)
-	ws := dialWS(t, r, fmt.Sprintf("/api/v1/sessions/%d/monitor?token=%s",
-		sessionID, wsMatrixToken(t, db, u, providerID)))
+	r := observerTicketEngine(h, h.AuthService)
+	ticket := mustObserverTicket(t, r, monitorTicketPath(sessionID),
+		wsMatrixToken(t, db, u, providerID))
+	ws := dialWS(t, r, monitorWSPath(sessionID, ticket))
 	waitRegistered(t, tap, ws, "監看訂閱 "+username)
 	return ws
 }
 
-// dialShareObserver 同上，但走 `/sessions/share/:code/ws?token=`
+// dialShareObserver 同上，但走分享碼的簽發端點與 WS
 func dialShareObserver(t *testing.T, db *gorm.DB, h *Handler, tap *monitorTap,
 	sessionID uint, username string, providerID uint) *websocket.Conn {
 	t.Helper()
@@ -170,10 +171,10 @@ func dialShareObserver(t *testing.T, db *gorm.DB, h *Handler, tap *monitorTap,
 	if err != nil {
 		t.Fatalf("建立分享碼: %v", err)
 	}
-	r := gin.New()
-	r.GET("/api/v1/sessions/share/:code/ws", h.HandleShareJoin)
-	ws := dialWS(t, r, "/api/v1/sessions/share/"+code+"/ws?token="+
-		wsMatrixToken(t, db, u, providerID))
+	r := observerTicketEngine(h, h.AuthService)
+	ticket := mustObserverTicket(t, r, shareTicketPath,
+		wsMatrixToken(t, db, u, providerID), shareTicketBody(code))
+	ws := dialWS(t, r, shareWSPath(code, ticket))
 	waitRegistered(t, tap, ws, "分享訂閱 "+username)
 	return ws
 }
@@ -209,8 +210,8 @@ func TestProviderDisableCutsMonitorOfLocalSession(t *testing.T) {
 	localSession := wsMatrixSession(t, db, 100, 0, "sess-local")
 	tap := h.Monitor.OpenRoom(localSession.ID, 80, 24)
 
-	// 三位觀察者一律走真 `?token=`：脈絡由 Handler.authenticate
-	// 自 claims 解出，而非測試手工塞進 ObserverContext——後者測不到「脈絡有沒有真的來」
+	// 三位觀察者一律走真生產路徑：脈絡由簽發端自認證脈絡取得、經票證帶到兌換點，
+	// 而非測試手工塞進 ObserverContext——後者測不到「脈絡有沒有真的來」
 	viaA := dialMonitorObserver(t, db, h, tap, localSession.ID, "obs-via-a", providerA.ID)
 	viaB := dialMonitorObserver(t, db, h, tap, localSession.ID, "obs-via-b", providerB.ID)
 	localObs := dialMonitorObserver(t, db, h, tap, localSession.ID, "obs-local", 0)

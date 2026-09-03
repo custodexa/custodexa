@@ -17,6 +17,13 @@ const (
 	ChangeSecretReasonProtocolUnsupported = "CHANGE_SECRET_PROTOCOL_UNSUPPORTED"
 	ChangeSecretReasonAccountLookupFailed = "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED"
 	ChangeSecretReasonNoAccountInScope    = "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE"
+	// ChangeSecretReasonChannelNotConfigured 資產沒有可用的改密通道。
+	// 與 PROTOCOL_UNSUPPORTED 分開：後者是「這個協定本系統改不了密」，
+	// 前者是「改得了，但這台還沒設定要怎麼連進去」——處置方式不同
+	ChangeSecretReasonChannelNotConfigured = "CHANGE_SECRET_CHANNEL_NOT_CONFIGURED"
+	// ChangeSecretReasonSecretTypeUnsupported 通道不支援計劃的秘密型別
+	//（例：Windows 通道的 SSH 金鑰輪替）
+	ChangeSecretReasonSecretTypeUnsupported = "CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED"
 
 	// --- 候選與憑證前置 ---
 	ChangeSecretReasonCandidateQueryFailed   = "CHANGE_SECRET_CANDIDATE_QUERY_FAILED"
@@ -34,18 +41,40 @@ const (
 	// --- 本地前置驗證（完全未接觸遠端；乾淨失敗，不留候選）---
 	ChangeSecretReasonInvalidAccountName = "CHANGE_SECRET_INVALID_ACCOUNT_NAME"
 	ChangeSecretReasonInvalidNewSecret   = "CHANGE_SECRET_INVALID_NEW_SECRET"
+	// ChangeSecretReasonAccountNameInvalid 帳號名不符 Windows 本機帳號的命名規則
+	// （禁用字元、長度上限、首尾空白）。與 INVALID_ACCOUNT_NAME 分開：後者擋的是
+	// POSIX 逐行協定的注入字元，本碼依的是 Windows 自己的規則，兩者的允許集合不同
+	ChangeSecretReasonAccountNameInvalid = "CHANGE_SECRET_ACCOUNT_NAME_INVALID"
+	// ChangeSecretReasonInvalidOldSecret 現行密碼含無法經標準輸入投遞的字元（換行、NUL）。
+	// Windows 腳本靠這一行回滾，截斷的舊密碼會把帳號改到一個誰都不知道的值，故本地攔下
+	ChangeSecretReasonInvalidOldSecret = "CHANGE_SECRET_INVALID_OLD_SECRET"
 
 	// --- 遠端互動 ---
 	ChangeSecretReasonOldCredentialLoginFailed = "CHANGE_SECRET_OLD_CREDENTIAL_LOGIN_FAILED"
 	// ChangeSecretReasonRemoteRejected 指令跑完但非零退出＝遠端確定未變更
 	ChangeSecretReasonRemoteRejected = "CHANGE_SECRET_REMOTE_REJECTED"
-	// ChangeSecretReasonRemoteStateUnknown 連線中斷／逾時＝遠端狀態不可知
-	ChangeSecretReasonRemoteStateUnknown        = "CHANGE_SECRET_REMOTE_STATE_UNKNOWN"
-	ChangeSecretReasonVerifyFailed              = "CHANGE_SECRET_VERIFY_FAILED"
-	ChangeSecretReasonPromoteFailed             = "CHANGE_SECRET_PROMOTE_FAILED"
-	ChangeSecretReasonSFTPOpenFailed            = "CHANGE_SECRET_SFTP_OPEN_FAILED"
-	ChangeSecretReasonAuthorizedKeysReadFailed  = "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED"
-	ChangeSecretReasonAuthorizedKeysWriteFailed = "CHANGE_SECRET_AUTHORIZED_KEYS_WRITE_FAILED"
+	// ChangeSecretReasonRemoteStateUnknown 指令送出後連線中斷／逾時＝遠端狀態不可知
+	ChangeSecretReasonRemoteStateUnknown = "CHANGE_SECRET_REMOTE_STATE_UNKNOWN"
+	// ChangeSecretReasonRemoteUnreachable 指令送出前就無法建立工作階段（連線被拒或
+	// 未回應、撥號逾時、TLS 憑證驗證失敗、目標未提供可用的交握）＝遠端確定未變更
+	ChangeSecretReasonRemoteUnreachable = "CHANGE_SECRET_REMOTE_UNREACHABLE"
+	ChangeSecretReasonVerifyFailed      = "CHANGE_SECRET_VERIFY_FAILED"
+	// ChangeSecretReasonWinRMEncryptionUnavailable 目標無法以訊息層加密交握。
+	// 這是拒連而非降級：明文送出的下一個封包就是新密碼
+	ChangeSecretReasonWinRMEncryptionUnavailable = "CHANGE_SECRET_WINRM_ENCRYPTION_UNAVAILABLE"
+	// ChangeSecretReasonStdinNotDelivered 遠端腳本回報未收到 stdin 的密碼行
+	//（退出碼 3）。目標未改密，且不會靜默成功
+	ChangeSecretReasonStdinNotDelivered = "CHANGE_SECRET_STDIN_NOT_DELIVERED"
+	// ChangeSecretReasonRemoteSelfVerifyFailed 目標設定新密碼後在本機驗證不通過，已當場改回舊密碼
+	//（退出碼 4）。遠端確定是舊密碼
+	ChangeSecretReasonRemoteSelfVerifyFailed = "CHANGE_SECRET_REMOTE_SELF_VERIFY_FAILED"
+	// ChangeSecretReasonRemoteSelfVerifyRollbackFailed 目標驗證新密碼不通過、改回舊密碼也失敗
+	//（退出碼 5）。遠端狀態不可知，候選保留
+	ChangeSecretReasonRemoteSelfVerifyRollbackFailed = "CHANGE_SECRET_REMOTE_SELF_VERIFY_ROLLBACK_FAILED"
+	ChangeSecretReasonPromoteFailed                  = "CHANGE_SECRET_PROMOTE_FAILED"
+	ChangeSecretReasonSFTPOpenFailed                 = "CHANGE_SECRET_SFTP_OPEN_FAILED"
+	ChangeSecretReasonAuthorizedKeysReadFailed       = "CHANGE_SECRET_AUTHORIZED_KEYS_READ_FAILED"
+	ChangeSecretReasonAuthorizedKeysWriteFailed      = "CHANGE_SECRET_AUTHORIZED_KEYS_WRITE_FAILED"
 	// ChangeSecretReasonKeyVerifyFailedRestored 新鑰驗證失敗且 authorized_keys 已還原
 	ChangeSecretReasonKeyVerifyFailedRestored = "CHANGE_SECRET_KEY_VERIFY_FAILED_RESTORED"
 	// ChangeSecretReasonKeyVerifyFailedRestoreFailed 新鑰驗證失敗且還原也失敗（狀態不可知）
@@ -68,6 +97,8 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonProtocolUnsupported,
 		ChangeSecretReasonAccountLookupFailed,
 		ChangeSecretReasonNoAccountInScope,
+		ChangeSecretReasonChannelNotConfigured,
+		ChangeSecretReasonSecretTypeUnsupported,
 		ChangeSecretReasonCandidateQueryFailed,
 		ChangeSecretReasonCandidatePending,
 		ChangeSecretReasonCandidatePersistFailed,
@@ -79,10 +110,17 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonKeypairGenerateFailed,
 		ChangeSecretReasonInvalidAccountName,
 		ChangeSecretReasonInvalidNewSecret,
+		ChangeSecretReasonAccountNameInvalid,
+		ChangeSecretReasonInvalidOldSecret,
 		ChangeSecretReasonOldCredentialLoginFailed,
 		ChangeSecretReasonRemoteRejected,
 		ChangeSecretReasonRemoteStateUnknown,
+		ChangeSecretReasonRemoteUnreachable,
 		ChangeSecretReasonVerifyFailed,
+		ChangeSecretReasonWinRMEncryptionUnavailable,
+		ChangeSecretReasonStdinNotDelivered,
+		ChangeSecretReasonRemoteSelfVerifyFailed,
+		ChangeSecretReasonRemoteSelfVerifyRollbackFailed,
 		ChangeSecretReasonPromoteFailed,
 		ChangeSecretReasonSFTPOpenFailed,
 		ChangeSecretReasonAuthorizedKeysReadFailed,

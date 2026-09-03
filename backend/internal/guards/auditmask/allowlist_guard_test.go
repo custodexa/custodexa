@@ -114,6 +114,16 @@ var knownAccountabilityVoids = map[string]string{
 	// MFA 狀態都由登入專屬審計列承擔
 	"api.(*AuthHandler).Login": "password 為密碼本體；登入事實、結果與來源位址由登入審計列本身課責",
 
+	// 分享碼是短期一次性憑證（持有即可加入他人會話）。放行等於把憑證逐字寫進
+	// audit_logs——該表受檢查點鏈保護，寫進去刪不掉，而碼的壽命遠短於審計保存期，
+	// 留下的只會是一份永久可讀的失效憑證清單。
+	// **替代證據在加入端**：`Handler.auditObserverJoin`（`internal/sshproxy/handler.go`）
+	// 為每一次加入寫一列 `observerJoinAudit`，成功與拒絕皆有（`status=denied` 是
+	// 「反覆試碼」這個猜測攻擊訊號的唯一證據），含會話、加入者與來源位址。
+	// 簽票本身不構成存取，「誰在什麼時候讀了誰的終端」由那一列課責。
+	"sshproxy.(*Handler).HandleCreateShareTicket": "code 為一次性分享碼（持有型憑證）；" +
+		"讀取事實與對象由加入端 auditObserverJoin 寫入的 observerJoinAudit 列課責",
+
 	// ── 課責由他體系承擔 ──────────────────────────────────────────
 	"api.(*SecurityPolicyHandler).Update": "policies 為巢狀 map（違反登記判準 3）；" +
 		"handler 逐鍵寫 old→new 專屬審計列（PCI 10.2.2），課責不靠 request_body",

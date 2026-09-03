@@ -586,6 +586,10 @@ type randomnessSourceException struct {
 // 清單同時做反向完備性檢查（登記了但現實中已不取用＝陳舊登記，會在下一個
 // 同名函式出現時無聲放行）。
 var randomnessSourceAllowlist = []randomnessSourceException{
+	{File: "internal/proxy/observer_ticket.go", Func: "IssueObserverTicket",
+		Reason: "監看／分享加入的一次性觀看票（記憶體內、短 TTL、即焚），與終端 connect token 同型，非加密材料。"},
+	{File: "cmd/rotation-loopback/main.go", Func: "randomSecret",
+		Reason: "loopback 回歸 CLI 的錯密案例用隨機字串（build tag loopback，不進正式映像），非加密材料。"},
 	{File: "internal/api/recording_token.go", Func: "Issue",
 		Reason: "錄影播放的一次性短期 token（記憶體內、短 TTL、不參與加密），與 KEK 無關。"},
 	{File: "internal/modules/keyvault/export_signing_service.go", Func: "NewExportSigningService",

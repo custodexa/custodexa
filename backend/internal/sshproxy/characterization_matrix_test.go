@@ -700,7 +700,7 @@ func TestMatrixCoverageIsDeclared(t *testing.T) {
 
 	// 刻意不涵蓋（逐條附理由）
 	uncovered := map[string]string{
-		"G-I1":  "authenticate：本矩陣一律經 middleware 分支（c.Set(\"userID\")）進入；?token= 分支是另一套認證面，由 ws_query_token_context_test.go 覆蓋",
+		"G-I1":  "authenticate：本矩陣一律經 middleware 分支（c.Set(\"userID\")）進入；一次性觀看票是另一套認證面，由 ws_observer_ticket_context_test.go 覆蓋",
 		"G-I9":  "ResolveAccountIdentity 的失敗態在 G-I8 通過後不可達（同一解析條件、同一 sentinel），構造不出獨立格",
 		"G-I14": "簽發容量拒絕需灌滿 token 池，已由 proxy/connect_token_capacity_test.go 專測覆蓋",
 	}

@@ -44,6 +44,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { xtermTheme } from '@/styles/terminal-theme'
 import { t } from '@/i18n'
+import { createMonitorTicket, createShareTicket } from '@/api/sessions'
+import { resolveApiError } from '@/api/error'
 
 const PING_INTERVAL_MS = 10000
 
@@ -52,8 +54,8 @@ const props = defineProps({
     type: [Number, String],
     required: true
   },
-  // 覆寫 WS 路徑（session-share）：分享頁傳 /api/v1/sessions/share/<code>/ws
-  wsPath: {
+  // 分享觀看（session-share）：帶分享碼即走分享路徑，否則走即時監看
+  shareCode: {
     type: String,
     default: ''
   }
@@ -69,6 +71,9 @@ let terminal = null
 let fitAddon = null
 let socket = null
 let pingTimer = null
+// disposed 取票是非同步的：期間元件可能已卸載，此時不得再建線
+// （建了就沒有人會關它，而它仍持續接收他人的終端畫面）
+let disposed = false
 
 onMounted(() => {
   // 唯讀終端：尺寸跟隨會話端（後端 resize 訊息驅動 terminal.resize），
@@ -89,15 +94,40 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   cleanup()
 })
 
-function connect() {
-  const params = new URLSearchParams({
-    token: localStorage.getItem('token') || ''
-  })
+async function connect() {
+  // 兩段式建線：先以登入憑證換一張一次性觀看票，WS URL 只帶票。
+  // 登入憑證的壽命以分鐘計、射程是整個 API，放進 URL 會進入瀏覽器歷程與各層存取
+  // 日誌；票只能開這一條連線、用過即失效
+  const isShare = Boolean(props.shareCode)
+  let ticket
+  try {
+    const resp = isShare
+      ? await createShareTicket(props.shareCode)
+      : await createMonitorTicket(props.sessionId)
+    ticket = resp.connect_token
+  } catch (err) {
+    if (disposed) return
+    console.error('[MonitorTerminal] 取得觀看票失敗:', err)
+    errorText.value = resolveApiError(
+      err.response?.data,
+      err.response?.status,
+      t('monitorTerminal.disconnected')
+    )
+    ended.value = true
+    return
+  }
+
+  if (disposed) return
+
+  const params = new URLSearchParams({ connect_token: ticket })
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const path = props.wsPath || `/api/v1/sessions/${props.sessionId}/monitor`
+  const path = isShare
+    ? `/api/v1/sessions/share/${encodeURIComponent(props.shareCode)}/ws`
+    : `/api/v1/sessions/${props.sessionId}/monitor`
   const wsUrl = `${wsProtocol}//${window.location.host}${path}?${params.toString()}`
 
   socket = new WebSocket(wsUrl)

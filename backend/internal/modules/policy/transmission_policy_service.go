@@ -19,6 +19,10 @@ const (
 	TransportChannelLDAP   = "ldap"
 	TransportChannelSyslog = "syslog"
 	TransportChannelNotify = "notify"
+	// TransportChannelWinRM 改密通道（系統路徑，不經使用者連線）：資產改密通道設為
+	// WinRM 時，該資產同時受其連線協議通道與本通道管轄，清冊分列。無政策鍵——
+	// 改密不走 connect-token 閘，等級對它沒有可作用的攔截點
+	TransportChannelWinRM = "winrm"
 )
 
 // 風險項鍵（穩定識別，供 fingerprint 與前端呈現；label 變動不影響既有同意）
@@ -31,6 +35,10 @@ const (
 	RiskLDAPSkipVerify      = "ldap_skip_verify"
 	RiskSyslogNonTLS        = "syslog_non_tls"
 	RiskNotifyHTTP          = "notify_http"
+	// RiskWinRMHTTPNTLM WinRM 改密通道走 http：載荷有 NTLM 訊息層加密，但沒有 TLS
+	RiskWinRMHTTPNTLM = "winrm_http_ntlm"
+	// RiskWinRMTLSInsecure WinRM 改密通道走 https 但不驗證伺服器憑證
+	RiskWinRMTLSInsecure = "winrm_tls_insecure"
 )
 
 // RiskItem 一項傳輸風險（型別定義在 model.TransmissionRisk——資產列表
@@ -121,6 +129,8 @@ func init() {
 	registerRisk(RiskLDAPSkipVerify, RiskDescriptor{ZhTemplate: "目錄連線跳過憑證驗證"})
 	registerRisk(RiskSyslogNonTLS, RiskDescriptor{ZhTemplate: "syslog 轉發未加密（{protocol}）", RequiredParams: []string{"protocol"}})
 	registerRisk(RiskNotifyHTTP, RiskDescriptor{ZhTemplate: "通知投遞使用 http 明文"})
+	registerRisk(RiskWinRMHTTPNTLM, RiskDescriptor{ZhTemplate: "WinRM 改密通道走 http（僅 NTLM 訊息層加密，無 TLS）"})
+	registerRisk(RiskWinRMTLSInsecure, RiskDescriptor{ZhTemplate: "WinRM 改密通道未驗證伺服器憑證"})
 }
 
 // AllRiskDescriptors 回傳 registry 副本（完備性測試枚舉用）
@@ -248,6 +258,32 @@ func (s *TransmissionPolicyService) AssetRisks(asset *model.Asset) []RiskItem {
 	default:
 		return nil
 	}
+}
+
+// AssetRotationChannel 資產的改密通道在傳輸階梯上的通道名；非 WinRM 回空。
+//
+// 與 AssetChannel 分開：AssetChannel 是 connect-token 閘的依據，改密屬系統路徑，
+// 不得觸發連線前的風險同意閘；合併會讓 rdp 資產因改密設定而在使用者連線時被攔。
+func (s *TransmissionPolicyService) AssetRotationChannel(asset *model.Asset) string {
+	if asset.EffectiveRotationChannel() == model.RotationChannelWindowsWinRM {
+		return TransportChannelWinRM
+	}
+	return ""
+}
+
+// AssetRotationRisks 改密通道的風險判定：http → 僅訊息層加密；https＋insecure → 未驗證憑證；
+// https 配 system／ca 無風險。scheme 為空或未知一律計為 http 檔（fail-closed）。
+func (s *TransmissionPolicyService) AssetRotationRisks(asset *model.Asset) []RiskItem {
+	if s.AssetRotationChannel(asset) != TransportChannelWinRM {
+		return nil
+	}
+	if asset.WinrmScheme != model.WinrmSchemeHTTPS {
+		return []RiskItem{newRisk(RiskWinRMHTTPNTLM, nil)}
+	}
+	if asset.WinrmTLSMode == model.WinrmTLSModeInsecure {
+		return []RiskItem{newRisk(RiskWinRMTLSInsecure, nil)}
+	}
+	return nil
 }
 
 // ldapView 取現行 LDAP 設定視圖（nil-safe）。

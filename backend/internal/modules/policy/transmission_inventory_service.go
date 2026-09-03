@@ -103,6 +103,10 @@ func (s *TransmissionInventoryService) Build() (*TransmissionInventory, error) {
 	if err != nil {
 		return nil, err
 	}
+	winrm, err := s.buildWinRM()
+	if err != nil {
+		return nil, err
+	}
 	syslog, err := s.buildSyslog()
 	if err != nil {
 		return nil, err
@@ -111,8 +115,42 @@ func (s *TransmissionInventoryService) Build() (*TransmissionInventory, error) {
 	if err != nil {
 		return nil, err
 	}
-	inv.Channels = []InventoryChannel{ssh, rdp, vnc, db, s.buildLDAP(), syslog, notify, buildNginx()}
+	inv.Channels = []InventoryChannel{ssh, rdp, vnc, db, winrm, s.buildLDAP(), syslog, notify, buildNginx()}
 	return inv, nil
+}
+
+// buildWinRM 改密通道設為 WinRM 的資產，依 scheme 與 TLS 模式分布。
+//
+// 只列設定了該通道的資產（rdp 資產預設不改密，不在此通道內）；無政策等級。
+func (s *TransmissionInventoryService) buildWinRM() (InventoryChannel, error) {
+	ch := InventoryChannel{Channel: TransportChannelWinRM, DetailCodes: map[string]int64{}}
+	var rows []struct {
+		WinrmScheme  string
+		WinrmTLSMode string
+		N            int64
+	}
+	err := s.db.Model(&model.Asset{}).
+		Select("winrm_scheme, winrm_tls_mode, COUNT(*) AS n").
+		Where("rotation_channel = ?", model.RotationChannelWindowsWinRM).
+		Group("winrm_scheme, winrm_tls_mode").Scan(&rows).Error
+	if err != nil {
+		return ch, err
+	}
+	for _, r := range rows {
+		rep := model.Asset{RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: r.WinrmScheme, WinrmTLSMode: r.WinrmTLSMode}
+		key := "scheme=" + r.WinrmScheme
+		if r.WinrmScheme == model.WinrmSchemeHTTPS {
+			key += ",tls=" + r.WinrmTLSMode
+		}
+		ch.DetailCodes[key] += r.N
+		ch.TotalCount += r.N
+		if len(s.policy.AssetRotationRisks(&rep)) > 0 {
+			ch.AtRiskCount += r.N
+		}
+	}
+	ch.Detail = legacyDetailFromCodes(ch.DetailCodes)
+	setNote(&ch, "winrm_rotation_channel", nil)
+	return ch, nil
 }
 
 // ── inventory note/preflight registry ─────────
@@ -168,6 +206,7 @@ func init() {
 	registerInventory(invKindNote, "syslog_unset", "syslog 轉發未設定")
 	registerInventory(invKindNote, "syslog_disabled", "syslog 轉發未啟用")
 	registerInventory(invKindNote, "syslog_protocol", "轉發協議：{protocol}", "protocol")
+	registerInventory(invKindNote, "winrm_rotation_channel", "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離")
 	registerInventory(invKindNote, "nginx_deploy_managed", "前端對外 HTTPS 屬部署層：本服務不自帶 TLS，須由前置的 TLS-terminating 反向代理/ingress 提供 443 ssl＋80→443 redirect＋HSTS＋wss（範例見 docker/reverse-proxy/）；容器內 nginx 僅 listen 80；部署方管理")
 	// preflight（4）：rdp/vnc/db 帶 {n}（vue-i18n 隱式 plural 參數，對齊 codebase 慣例
 	// 如 riskCount "{n} risk | {n} risks"）、ldap 無參

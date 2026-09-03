@@ -21,7 +21,8 @@ admin SHALL 能建立改密計劃並手動觸發。計劃 SHALL 指定：名稱�
 獨立記錄成敗，單一失敗 SHALL NOT 中斷批次。執行記錄 SHALL 帶 `account_id` 與執行當下的
 `account_username` 雙快照（帳號可能隨後改名或刪除，快照才問責得到人）。
 
-非 SSH 協定的資產 SHALL 記為 skipped。
+有效通道為 `none` 的資產 SHALL 記為 skipped，機器碼依協定分流：協定可改密（ssh／rdp）但未設定通道者帶「未設定改密通道」，
+協定不在改密射程（資料庫、VNC、K8s）者帶「協定不支援改密」；通道不支援計劃秘密型別者 SHALL 記為 skipped 並帶「秘密型別不支援」機器碼。改密通道的值域與推導見 `windows-account-rotation`。
 
 #### Scenario: 手動觸發批次
 
@@ -42,6 +43,11 @@ admin SHALL 能建立改密計劃並手動觸發。計劃 SHALL 指定：名稱�
 
 - **WHEN** 改密完成後管理員把該帳號改名
 - **THEN** 既有記錄的 account_username 快照維持執行當下的值
+
+#### Scenario: 無通道資產記為 skipped
+
+- **WHEN** 計劃涵蓋一台未設定改密通道的 rdp 資產
+- **THEN** 該資產記為 skipped、原因為未設定改密通道，其餘資產照常執行
 
 ### Requirement: 安全改密流程
 
@@ -316,3 +322,19 @@ SHALL 由驗證步驟自然揭露並記錄可讀原因，SHALL NOT 靜默視為�
 
 - **WHEN** 帳號改名後查詢其記錄
 - **THEN** 改名前的記錄仍被查到，且其帳號名快照維持舊名
+
+### Requirement: 改密執行器介面
+
+系統 SHALL 把「遠端改密」與「以新秘密驗證」抽為執行器介面，候選憑證落庫、失敗三態、提交、脫組、記錄與告警的狀態機 SHALL 與執行器無關；
+執行器 SHALL 依資產的改密通道選取。POSIX SSH 執行器 SHALL 保留本能力引入前的全部行為，既有紅線守衛 SHALL 維持綠且斷言不變。
+執行器回傳的錯誤 SHALL 可分流為：遠端確定未變更（failed，清候選）、本地前置失敗（failed，未觸碰遠端）、遠端狀態不可知（unverified，保留候選）。
+
+#### Scenario: POSIX 路徑行為零變更
+
+- **WHEN** 以既有 SSH 靶機執行密碼改密與金鑰輪替
+- **THEN** 記錄、候選、憑證投遞方式與本能力引入前逐項相同
+
+#### Scenario: 執行器依通道選取
+
+- **WHEN** 同一計劃涵蓋 ssh 資產與設為 `windows_winrm` 的 rdp 資產
+- **THEN** 前者走 POSIX SSH 執行器、後者走 WinRM 執行器，各自產生記錄

@@ -150,6 +150,12 @@ const (
 	RedeemDenyInvalid RedeemDenyReason = "ticket_invalid"
 	// RedeemDenyExpired 票存在但已逾 TTL
 	RedeemDenyExpired RedeemDenyReason = "ticket_expired"
+	// RedeemDenyPurpose 票本身有效，但用途或客體與本次兌換的入口不符
+	// （拿分享票開監看、拿為 A 碼簽的票加入 B 碼）。**不由兌換方法產生**——
+	// 用途比對在 handler 手上（兌換側才知道自己是哪一支路由）。與
+	// RedeemDenyInvalid 分成兩個值是因為兩者答的是不同問題：後者是「這張票不存在」
+	// （多半是探測），前者是「票是真的、但被拿到別的門口用」（越權嘗試）
+	RedeemDenyPurpose RedeemDenyReason = "ticket_purpose_mismatch"
 )
 
 // RedeemConnectTokenWithReason 同 RedeemConnectToken，另回傳拒絕原因供審計。

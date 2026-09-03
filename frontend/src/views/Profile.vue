@@ -323,6 +323,7 @@ import MfaQrCode from '@/components/MfaQrCode.vue'
 import { roleLabel } from '@/constants/roles'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
+import { setAccessToken } from '@/utils/session'
 import {
   getCurrentUser,
   getMFASetup,
@@ -470,7 +471,7 @@ const handleChangePassword = async () => {
       })
       // 改密撤銷舊 refresh 憑證：以回應的新 access token 續存，不中斷會話。
       // 新的 refresh 憑證由後端以 httpOnly cookie 換發，前端不經手
-      if (response?.token) localStorage.setItem('token', response.token)
+      if (response?.token) setAccessToken(response.token)
       if (response?.user) {
         localStorage.setItem('user', JSON.stringify(response.user))
       }

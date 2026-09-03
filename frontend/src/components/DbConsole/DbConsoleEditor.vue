@@ -53,6 +53,7 @@
       class="editor-area"
       :value="modelValue"
       :placeholder="t('dbConsole.editor.placeholder')"
+      :aria-label="t('dbConsole.editor.placeholder')"
       spellcheck="false"
       @input="onInput"
       @keyup="syncSelection"

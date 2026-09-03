@@ -50,11 +50,15 @@ var driftAllowlist = map[string]bool{
 	// 整合測試 gating（internal/testgate；非部署契約，故不入 .env.example）。
 	// testgate 是**非測試套件**（三個測試套件共用同一份 gating 語義），
 	// 故其 os.Getenv 會被本守衛掃到——列此為刻意登記，不是漏網。
-	"REQUIRE_INTEGRATION": true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
-	"TEST_PG_DSN":         true, // postgres 靶機 DSN
-	"TEST_KMS_ENDPOINT":   true, // KMS 模擬器（localstack）端點
-	"TEST_S3_ENDPOINT":    true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
-	"TEST_GCS_ENDPOINT":   true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
+	"REQUIRE_INTEGRATION":     true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
+	"TEST_PG_DSN":             true, // postgres 靶機 DSN
+	"LOOPBACK_PASSWORD":       true, // loopback 回歸 CLI 專用（build tag loopback，不進正式映像）
+	"LOOPBACK_PASSWORD_2":     true,
+	"LOOPBACK_NEW_PASSWORD":   true,
+	"LOOPBACK_NEW_PASSWORD_2": true,
+	"TEST_KMS_ENDPOINT":       true, // KMS 模擬器（localstack）端點
+	"TEST_S3_ENDPOINT":        true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
+	"TEST_GCS_ENDPOINT":       true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
 	// 查詢主控台的三個資料庫靶機座標（五段式 host|port|user|password|database）
 	"TEST_DBCONSOLE_MYSQL":    true,
 	"TEST_DBCONSOLE_POSTGRES": true,
