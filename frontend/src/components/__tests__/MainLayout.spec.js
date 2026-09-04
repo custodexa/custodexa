@@ -28,8 +28,11 @@ vi.mock('@/api/auth', () => ({
 
 // 待審 badge 輪詢：approver 人設的既有測試若不 mock 會打真網路，晚到的 401 回應
 // 被 vitest 歸到後面的測試名下變成 stderr 噪音。只擋噪音、回 0 筆，不改任何斷言
+const getPendingAccessRequestCountMock = vi.fn(() =>
+  Promise.resolve({ count: 0, review_count: 0 })
+)
 vi.mock('@/api/accessRequests', () => ({
-  getPendingAccessRequestCount: () => Promise.resolve({ count: 0, review_count: 0 }),
+  getPendingAccessRequestCount: (...args) => getPendingAccessRequestCountMock(...args),
 }))
 
 // 單實例守衛橫幅：粗狀態走 seal/status（不寫審計列、可輪詢），細節走 /instance-guard
@@ -272,6 +275,60 @@ describe('MainLayout sidebar', () => {
     const wrapper = mountLayout()
     await wrapper.vm.$nextTick()
     expect(wrapper.text()).toContain('審核中心')
+  })
+
+  // 快取回寫後必須廣播：同分頁的其他元件（儀表板待審卡）沒有別的管道知道資格變了，
+  // storage 事件不在同分頁觸發。少了這一則，回寫看似正確而下游永遠收不到。
+  it('/auth/me 改變審核資格時回寫快取並廣播 ot-user-updated', async () => {
+    const { getCurrentUser } = await import('@/api/auth')
+    setUser(['user'], false)
+    getCurrentUser.mockResolvedValue({ is_approver: true })
+    const heard = vi.fn()
+    window.addEventListener('ot-user-updated', heard)
+
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('user')).is_approver).toBe(true)
+    expect(heard).toHaveBeenCalled()
+    window.removeEventListener('ot-user-updated', heard)
+    wrapper.unmount()
+  })
+
+  it('/auth/me 未改變審核資格時不廣播（避免無謂喚醒下游）', async () => {
+    const { getCurrentUser } = await import('@/api/auth')
+    setUser(['user'], false)
+    getCurrentUser.mockResolvedValue({ is_approver: false })
+    const heard = vi.fn()
+    window.addEventListener('ot-user-updated', heard)
+
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    expect(heard).not.toHaveBeenCalled()
+    window.removeEventListener('ot-user-updated', heard)
+    wrapper.unmount()
+  })
+
+  // 快取說有資格、/auth/me 說沒有（撤角色或移出審核方群組後的第一次載入）：
+  // 掛載時已起的輪詢必須停掉，否則它每 30 秒對必敗端點打一次直到整個 layout 卸載。
+  it('/auth/me 判定失去審核資格時停止待審輪詢', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { getCurrentUser } = await import('@/api/auth')
+      setUser(['user'], true)
+      getCurrentUser.mockResolvedValue({ is_approver: false })
+
+      const wrapper = mountLayout()
+      await flushPromises()
+      const callsAfterMount = getPendingAccessRequestCountMock.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(90000)
+      expect(getPendingAccessRequestCountMock.mock.calls.length).toBe(callsAfterMount)
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // —— 語言切換 ——

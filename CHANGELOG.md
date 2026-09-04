@@ -2,6 +2,20 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.4.1 — the approvals card follows approval rights (2026-09-04)
+
+No schema change. No migration runs.
+
+- The pending-approvals card on the dashboard and the badge in the sidebar now follow the
+  same rule the server applies to the approval endpoints: holding the approver role, or
+  belonging to an approver group. An account with neither no longer sees the card, so a
+  count it could never read no longer appears as a zero.
+- Members of an approver group who do not hold the approver role see the card and its
+  count, matching what the approvals page already let them do.
+- Gaining or losing approval rights takes effect on the page that is open: the card
+  appears or disappears with it, and the sidebar stops asking for a count once the rights
+  are gone.
+
 ## 1.4.0 — https out of the box (2026-09-04)
 
 No schema change. No migration runs.

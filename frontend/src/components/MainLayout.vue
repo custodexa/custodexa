@@ -575,6 +575,15 @@ const refreshEffectiveApprover = async () => {
     if (effectiveApprover.value && !wasApprover && !badgeTimer) {
       startApprovalBadgePolling()
     }
+    // 資格由真轉假（撤角色／移出審核方群組）：停掉輪詢並清零。
+    // 不停的話 timer 會每 30 秒對必敗端點打一次，直到整個 layout 卸載為止。
+    if (!effectiveApprover.value && wasApprover) {
+      if (badgeTimer) {
+        clearInterval(badgeTimer)
+        badgeTimer = null
+      }
+      approvalPendingCount.value = 0
+    }
   } catch {
     // 靜默：入口顯示性判定失敗不打擾使用者
   }
@@ -589,6 +598,9 @@ const persistApproverFlag = (value) => {
     if (userData.is_approver === value) return
     userData.is_approver = value
     localStorage.setItem('user', JSON.stringify(userData))
+    // 同分頁的其他元件（儀表板待審卡）沒有別的管道知道資格變了：
+    // storage 事件不在同分頁觸發，故沿用自助更新那條自訂事件。
+    window.dispatchEvent(new Event('ot-user-updated'))
   } catch {
     // 快取毀損時不覆寫：守衛自身對毀損快取已 fail-closed 導向登入
   }

@@ -51,7 +51,12 @@ Every management page SHALL follow a consistent scaffold: page header (title + p
 - **THEN** the header, toolbar, table, and pagination occupy consistent positions and spacing across all pages
 
 ### Requirement: Persona-aware navigation and dashboard
+
 Sidebar composition, landing content, and dashboard cards SHALL follow the persona matrix: general users see self-service entries (我的資產/我的連線/我的申請) with connection-oriented dashboard cards; approver-overlaid users additionally see 審核中心 with a pending-count card; auditors see audit-oriented entries with an audit-backlog card group (unreviewed alerts, active connections, recording-failure sessions, pending review sign-offs); admins see the full navigation with system overview plus aggregated backlog cards. Multi-role users SHALL see the union of their personas' entries and cards without duplication. Card counts SHALL be sourced from existing list/count endpoints.
+
+審核相關的入口、badge 與卡片 SHALL 以「後端有效審核者」為唯一述詞（具 approver 角色 OR 屬任一審核方群組），
+與該端點的守衛判準逐字相同；admin 角色 SHALL NOT 作為該述詞的兜底。述詞不成立時，前端 SHALL NOT 呼叫僅審核者可用的端點，
+且 SHALL NOT 渲染依賴該端點的卡片或 badge——取不到數而顯示 0 會讓使用者把「無資格」讀成「無待辦」。
 
 #### Scenario: General user persona
 - **WHEN** a user with only the user role logs in
@@ -64,6 +69,14 @@ Sidebar composition, landing content, and dashboard cards SHALL follow the perso
 #### Scenario: Approver overlay
 - **WHEN** a user holding both user and approver roles logs in
 - **THEN** the sidebar additionally shows 審核中心 with the pending badge and the dashboard additionally shows the pending-approvals card
+
+#### Scenario: admin 無審核資格時不出現待審入口
+- **WHEN** 僅具 admin 角色（未持 approver 角色、不屬任何審核方群組）的使用者開啟儀表板
+- **THEN** 待審申請卡不渲染，且該頁不對僅審核者可用的待審件數端點發出請求（主控台無該端點的 403）
+
+#### Scenario: 群組審核方看得到待審入口
+- **WHEN** 未持 approver 角色但屬於某審核方群組的使用者開啟儀表板
+- **THEN** 待審申請卡渲染並顯示件數，與側邊欄 badge 的數字一致
 
 ### Requirement: Workspace entry in sidebar
 The sidebar 總覽 group SHALL contain a 工作區 entry that navigates to the workspace in the same tab; the workspace itself SHALL remain a pure connection surface with no additional navigation, badges, or self-service features.
@@ -141,3 +154,4 @@ The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb
 
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the rotation evidence entry is added
+

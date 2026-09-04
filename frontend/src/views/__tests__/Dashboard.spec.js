@@ -53,8 +53,12 @@ vi.mock('@/api/access-reviews', () => ({
   getAccessReviews: (...args) => getAccessReviewsMock(...args),
 }))
 
-const setUserRoles = (roles) => {
-  localStorage.setItem('user', JSON.stringify({ username: 'tester', roles }))
+// 第二參數＝登入回應的 is_approver（後端有效審核資格：approver 角色 OR 審核方群組）。
+// 群組審核方的 roles 不含 approver，只能靠這個欄位認出來，故測試必須能單獨設定它。
+const setUserRoles = (roles, isApprover) => {
+  const user = { username: 'tester', roles }
+  if (isApprover !== undefined) user.is_approver = isApprover
+  localStorage.setItem('user', JSON.stringify(user))
 }
 
 const enabledStatus = {
@@ -303,6 +307,79 @@ describe('Dashboard', () => {
     // 仍不呼叫稽核端點
     expect(getSessionStatisticsMock).not.toHaveBeenCalled()
     expect(searchAlertsMock).not.toHaveBeenCalled()
+  })
+
+  it('admin 無審核資格：不打待審端點、不渲染待審卡（守衛端不認 admin 兜底）', async () => {
+    // 後端 RequireApproverRole 走 evaluateEffectiveApprover，只認 approver 角色或
+    // 審核方群組。以 isAdmin 決定要不要打，請求必 403 且失敗被靜默吞掉，
+    // 卡片顯示 0——使用者會把「無資格」讀成「無待辦」。
+    setUserRoles(['admin'], false)
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('待審申請')
+  })
+
+  it('群組審核方（roles 不含 approver、is_approver 為真）：打端點且渲染待審卡', async () => {
+    setUserRoles(['user'], true)
+    getPendingAccessRequestCountMock.mockResolvedValue({ count: 2, review_count: 3 })
+    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+    const text = wrapper.text()
+    expect(text).toContain('待審申請')
+    expect(text).toContain('5') // count 2 + review_count 3
+  })
+
+  it('掛載後資格由假轉真（/auth/me 回寫快取並發事件）：補打端點並補上卡片', async () => {
+    setUserRoles(['user'], false)
+    getPendingAccessRequestCountMock.mockResolvedValue({ count: 1, review_count: 0 })
+    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('待審申請')
+
+    setUserRoles(['user'], true)
+    window.dispatchEvent(new Event('ot-user-updated'))
+    await flushPromises()
+
+    expect(getPendingAccessRequestCountMock).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('待審申請')
+  })
+
+  it('掛載後資格由真轉假：卡片消失且不再取數', async () => {
+    setUserRoles(['user'], true)
+    getPendingAccessRequestCountMock.mockResolvedValue({ count: 6, review_count: 0 })
+    getMyAccessRequestsMock.mockResolvedValue({ data: [] })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+    expect(wrapper.text()).toContain('待審申請')
+    const callsBefore = getPendingAccessRequestCountMock.mock.calls.length
+
+    setUserRoles(['user'], false)
+    window.dispatchEvent(new Event('ot-user-updated'))
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('待審申請')
+    expect(getPendingAccessRequestCountMock.mock.calls.length).toBe(callsBefore)
+  })
+
+  it('矛盾快取（is_approver false ＋ 殘留 approver 角色）：不打端點、不出現卡片', async () => {
+    setUserRoles(['user', 'approver'], false)
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(getPendingAccessRequestCountMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('待審申請')
   })
 
   it('plain user sees my pending requests count card', async () => {

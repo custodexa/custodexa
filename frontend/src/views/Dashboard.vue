@@ -413,7 +413,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Server,
@@ -435,7 +435,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { BRAND } from '@/brand'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime, formatRelativeTime, formatBytes } from '@/utils/format'
-import { useRoles } from '@/composables/useRoles'
+import { useRoles, readEffectiveApprover } from '@/composables/useRoles'
 import { getAssetList } from '@/api/assets'
 import { getSessionStatistics, getActiveSessions, getRecordingStats } from '@/api/sessions'
 import { getMyConnections } from '@/api/myConnections'
@@ -465,7 +465,7 @@ const recordingStorageBytes = ref(null)
 // 人設判定：以「不具 admin/auditor」認定一般 user
 //（與後端 admin > auditor > user 優先序一致）；approver 為疊加角色獨立判定。
 // 一般 user 的儀表板不呼叫需 session:view / alert:view 的端點（避免 403）
-const { isAdmin, isAuditor, isApprover, isPrivileged } = useRoles()
+const { isAdmin, isAuditor, isEffectiveApprover, isPrivileged } = useRoles()
 
 const statCards = computed(() => {
   const assetCard = {
@@ -558,7 +558,9 @@ const reviewOverdue = ref(false)
 
 const backlogCards = computed(() => {
   const cards = []
-  if (isAdmin.value || isApprover.value) {
+  // 待審卡與其取數共用「有效審核資格」述詞（見 useRoles.isEffectiveApprover）：
+  // admin 不兜底。述詞不成立就連卡片一起不出現——取不到數而顯示 0 會被讀成「無待辦」。
+  if (isEffectiveApprover.value) {
     cards.push({
       label: t('dashboard.backlogPendingApprovals'),
       to: '/approvals',
@@ -619,8 +621,8 @@ const loadBacklog = async () => {
       console.error('載入我的申請計數失敗:', err)
     }
   }
-  if (isAdmin.value || isApprover.value) {
-    // 審核人設（approver 疊加或 admin 兜底）：待審件數，與選單 badge 同端點同容錯
+  if (isEffectiveApprover.value) {
+    // 待審件數：端點、述詞與容錯都與側邊欄 badge 相同（MainLayout 的 effectiveApprover）
     try {
       const res = await getPendingAccessRequestCount({ skipErrorToast: true })
       approvalPendingTotal.value = (res.count ?? 0) + (res.review_count ?? 0)
@@ -808,8 +810,27 @@ const handleRefresh = () => {
   loadRecordingStorage()
 }
 
+// 審核資格是掛載當下的快照，而 /auth/me 在側欄掛載後才回來並回寫快取。
+// 不接這個事件的話：剛被授予資格的人要重整才看得到待審卡，剛被撤銷的人
+// 會繼續看得到、並在下次取數時打出一則必敗請求。
+const syncApproverEligibility = async () => {
+  const next = readEffectiveApprover()
+  if (next === isEffectiveApprover.value) return
+  isEffectiveApprover.value = next
+  if (next) {
+    await loadBacklog()
+  } else {
+    approvalPendingTotal.value = 0
+  }
+}
+
 onMounted(() => {
   handleRefresh()
+  window.addEventListener('ot-user-updated', syncApproverEligibility)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('ot-user-updated', syncApproverEligibility)
 })
 </script>
 
