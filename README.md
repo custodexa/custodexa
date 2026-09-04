@@ -14,8 +14,12 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
 </p>
 
-An open-source bastion host: funnel every privileged connection to your servers
-and databases through a single gateway — every session recorded, every command logged.
+**Who connected to what, and what they did. The recording decides.**
+
+An open-source privileged access gateway. The browser is the entrance, target hosts
+install nothing, and every connection passes policy before it opens. What comes back is
+a recording and a trail of commands, packaged with a signature an auditor can verify
+offline.
 
 <p align="center">
   <picture>
@@ -36,24 +40,38 @@ problems:
 - **Auditors want evidence.** "We have controls" doesn't pass an audit. You need
   complete operation logs and session recordings you can actually produce.
 
-## Features
+## One connection, five gates
 
-- **Truly open source, single edition.** No enterprise tier, no paywalled features.
-  What you see is all there is (AGPL-3.0).
-- Eight protocols, one experience: SSH, RDP, VNC, MySQL, PostgreSQL, SQL Server,
-  Redis, and Kubernetes exec, each just a browser tab away.
-- **Audit first.** Full-session recording with replay (seek, speed control) for every
-  protocol. Command-level audit handles full-screen programs like vim correctly;
-  clipboard and file-transfer content is captured; dangerous commands can alert or be
-  blocked in real time, with webhook notifications.
-- Credentials never leave the backend: connections are initiated by the backend
-  proxy, with one-time connect tokens, host key verification, and credential rotation
-  plans. By default even the platform's own master key lives only in memory, unsealed
-  from the browser (switchable to env/KMS modes for unattended operation).
-- Fits your environment: LDAP login, MFA (TOTP), and role-based access control down
-  to "who may use which account on which machine".
-- **Simple to deploy.** One docker compose command, four containers in production,
-  no outbound network needed once running.
+Every session takes the same path, and the evidence is made along the way.
+
+| | What it does |
+|---|---|
+| **01 Authentication gate** | Local accounts, LDAP and Active Directory, OIDC single sign-on, MFA by TOTP, and a break-glass path for the day the directory is down. |
+| **02 Policy engine** | Each asset is set to direct connection, reason required, or approval required. An approval and the time-limited authorization it grants land together, so "why was this person allowed in" always has an answer. Role-based access control goes down to which account on which machine a person may use. |
+| **03 Protocol proxy** | SSH, RDP, VNC, MySQL, PostgreSQL, SQL Server, Redis and Kubernetes exec, each a browser tab away. Credentials terminate here and never reach the browser, with one-time connect tokens and host key verification. Dangerous commands and database statements can alert or be stopped where they stand, and clipboard and file transfer content is captured. |
+| **04 Credential rotation** | Scheduled password changes for Linux and Windows local accounts, verified on the target and rolled back there on failure. The rotation evidence report says, per account, how long it has gone without a change. |
+| **05 Recording and audit** | Full-session recording with replay (seek, speed control) for every protocol, a command and statement trail that handles full-screen programs like vim correctly, webhook alerts, a checkpoint chain that seals intervals, and evidence bundles carrying a manifest and a signature, with offsite copies to object storage. |
+
+**Truly open source, single edition.** No enterprise tier and no paywalled features.
+What you see is all there is, under AGPL-3.0.
+
+**Simple to deploy.** One docker compose command, four containers in production, https
+served out of the box, and no outbound network needed once running.
+
+## How this compares
+
+Approaches, not brands. Each column describes a common shape and your environment may
+differ. The reading criteria and the verification date for every cell are on the
+[comparison page](https://custodexa.org/en/docs/compare/).
+
+| | SSH jump host | VPN | Open source bastion | Commercial PAM | Custodexa |
+|---|---|---|---|---|---|
+| **Access boundary** | Usually the whole login host | Usually a whole network segment | Mostly per single target | Mostly per target or account | Per asset: direct, reason required, or approval required |
+| **Approval before connecting** | Usually none | Authorized once, when the tunnel is built | Mostly none per connection | Mostly a request and approval flow | Approval and time-limited authorization land together |
+| **Database statement auditing** | Mostly out of reach | No parsing above the network layer | Mostly some protocols | Depends on the edition | Recorded before execution, dangerous ones blocked live |
+| **Evidence packaging** | Assembled from logs by hand | Connection logs by hand | Mostly record and recording export | Mostly reports and exports | One ZIP with a manifest and a signature, verifiable offline |
+| **Credential rotation** | Mostly by hand | Mostly a directory service | Mostly by hand | Mostly scheduled rotation | Scheduled for Linux and Windows, with a rotation report |
+| **License** | Follows the operating system components | Open source and commercial both exist | Mostly open source | Commercial subscription or perpetual | AGPL-3.0, source you can review yourself |
 
 ## Screenshots
 
