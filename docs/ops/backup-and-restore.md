@@ -1,210 +1,161 @@
-# 備份與還原
+# Backup and Restore
 
-> 適用版本：Custodexa 1.0。
+**English** | [繁體中文](../zh-TW/ops/backup-and-restore.md) | [日本語](../ja/ops/backup-and-restore.md) | [More languages →](../README.md)
+
+> Applies to: Custodexa 1.0.
 >
-> **本程序的驗證狀態**：以下步驟由實際的資料落點設定與程式行為推導撰寫。
-> **但完整的「備份 → 乾淨環境還原 → 服務起得來」
-> 實走測試尚未執行**，故本文不宣稱該程序已被驗證過。部署方在正式倚賴本程序前，
-> 應自行在一台乾淨環境完整走過一次，並保留該次演練紀錄。
+> **Verification status of this procedure**: the steps below were written by deriving them from the actual data location settings and program behavior.
+> **A full walk-through test of backup, restore into a clean environment, and the service coming up
+> has not been run**, so this document does not claim the procedure has been verified. Before relying on it in earnest, a deployment should walk through it once in a clean environment and keep the record of that rehearsal.
 >
-> 相關文件：[升級 SOP](./upgrade-sop.md)、[部署形態限制](./deployment-topology-limits.md)、
-> [平台自身特權憑證輪替](./privileged-credential-rotation.md)。
+> Related documents: [Upgrade SOP](./upgrade-sop.md), [Deployment Topology Limits](./deployment-topology-limits.md),
+> [Rotating the Platform's Own Privileged Credentials](./privileged-credential-rotation.md).
 
 ---
 
-## 1. 備份由部署方以標準工具執行
+## 1. Backups are performed by the deployment using standard tools
 
-備份與還原走 `pg_dump`、`pg_restore` 與 `tar`，本文提供完整程序，產品不隨附腳本。
-備份的保存位置、保留週期、加密與異地複製屬部署方的資料治理範圍。
+Backup and restore use `pg_dump`, `pg_restore`, and `tar`. This document gives the full procedure; no script ships with the product. Where backups are kept, for how long, and how they are encrypted and replicated off site all belong to the deployment's data governance.
 
 ---
 
-## 2. 持久化資料的落點
+## 2. Where persistent data lives
 
-以 `docker compose` 部署時，全部持久化資料都落在**單一資料根** `DATA_PATH`
-（`.env` 設定，預設 `./data`）之下，以 bind mount 掛入容器：
+In a `docker compose` deployment, all persistent data lives under a **single data root**, `DATA_PATH`
+(set in `.env`, default `./data`), bind-mounted into the containers:
 
-| 落點 | 容器內路徑 | 內容 | 掛載者 |
+| Location | Path in the container | Content | Mounted by |
 |---|---|---|---|
-| `${DATA_PATH}/postgres` | `/var/lib/postgresql/data` | PostgreSQL 資料目錄（全部業務資料、審計紀錄、加密後的憑證與金鑰包裹） | postgres |
-| `${DATA_PATH}/recordings` | `/var/lib/custodexa/recordings` | 會話錄影檔 | backend、guacd（共掛） |
-| `${DATA_PATH}/audit` | `/var/log/custodexa/audit` | 審計降級檔案、封印期留痕 journal | backend |
-| **物件儲存**（可選） | 不在容器檔案系統內 | **離機證據副本**：錄影與證據包的上傳副本 | 由離機儲存功能上傳；**落在資料根之外** |
+| `${DATA_PATH}/postgres` | `/var/lib/postgresql/data` | The PostgreSQL data directory (all business data, audit records, encrypted credentials, and wrapped keys) | postgres |
+| `${DATA_PATH}/recordings` | `/var/lib/custodexa/recordings` | Session recording files | backend, guacd (shared mount) |
+| `${DATA_PATH}/audit` | `/var/log/custodexa/audit` | Audit fallback files, the seal-period journal | backend |
+| **Object storage** (optional) | Not in a container filesystem | **Offsite evidence copies**: uploaded copies of recordings and evidence packages | Uploaded by the offsite storage feature; **lives outside the data root** |
 
-> **最後一列不是資料根的一部分，備份程序也不涵蓋它。** 離機儲存功能一旦啟用，
-> 錄影與證據包的副本會被上傳到部署方自己的物件儲存桶——那份副本的備份、保留與復原
-> **全歸部署方的儲存治理**，`tar` 與 `pg_dump` 都拿不到它。反過來也要記住：
-> **離機不等於已備份**——它是縮短暴露窗口的第二份副本，不是備份程序的替代品（見 §3.3）。
-> 資料庫裡的保管帳冊（哪一份錄影的副本在哪個儲存桶、哪個 key、上傳當下的雜湊）
-> **隨資料庫備份一起走**，所以帳冊與遠端物件的對應，取決於兩者的時點是否對得上（見 §3.1）。
+> **The last row is not part of the data root, and the backup procedure does not cover it.** Once offsite storage is enabled, copies of recordings and evidence packages are uploaded to the deployment's own object storage bucket, and the backup, retention, and recovery of that copy **belong entirely to the deployment's storage governance**; neither `tar` nor `pg_dump` can reach it. The converse is worth remembering too: **offsite is not the same as backed up.** It is a second copy that shortens the exposure window, not a replacement for the backup procedure (see §3.3).
+> The custody ledger in the database (which copy of which recording is in which bucket, under which key, with what hash at upload time) **travels with the database backup**, so whether the ledger matches the remote objects depends on whether the two points in time line up (see §3.1).
 
-**上表前三列全部為 bind mount，無 named volume**。兩個直接後果：
+**The first three rows above are all bind mounts; there are no named volumes.** Two direct consequences:
 
-- `docker compose down -v` **不會**清掉資料（`-v` 只清 named volume）。
-- 反過來說，刪除或覆蓋 `DATA_PATH` 目錄本身，就是刪除全部資料，沒有第二份。
+- `docker compose down -v` **does not** clear the data (`-v` only clears named volumes).
+- Conversely, deleting or overwriting the `DATA_PATH` directory itself deletes all the data, with no second copy.
 
-資產的改密通道設定（含 WinRM 通道上傳的 CA 憑證）存在資料庫的資產表內，隨上表第一列一起備份，沒有另外的落點。
+An asset's credential change channel settings (including the CA certificate uploaded for a WinRM channel) live in the asset table in the database and are backed up with the first row above; there is no separate location for them.
 
-**不屬備份對象的暫存目錄**：非同步匯出的產物落於 `/var/lib/custodexa/exports`
-（`EXPORT_ARTIFACT_PATH`，容器內路徑），證據包與輪替證據報告共用這一個目錄。
-**它是暫存、非備份對象**，但兩種產物的保留期與取回方式不同：
+**A temporary directory that is not a backup target**: the artifacts of asynchronous exports land in `/var/lib/custodexa/exports`
+(`EXPORT_ARTIFACT_PATH`, the path inside the container), which evidence packages and rotation evidence reports share.
+**It is temporary and not a backup target**, but the retention period and the way to retrieve the artifact differ between the two kinds:
 
-- **證據包**：產物於保留期（24h）後由系統自動清除，過期即下載失效。備份它沒有意義，
-  其內容可由申請者重新發起匯出取回。
-- **輪替證據報告**：產物的保留期由排程設定（1 至 3650 天），到期同樣清除、下載失效。
-  排程產出的報告沒有自然人申請者，沒有「由申請者重新發起」這條路；具稽核檢視權限者可以再產一份，
-  但重產的是新的一份報告，帶新的產出時刻與新的簽章，不是同一份已交付的文件。
-  報告所陳述的事實來自資料庫（帳號、改密記錄、政策設定），備份含這些事實。
+- **Evidence packages**: the artifact is cleared automatically by the system after its retention period (24h), and the download stops working once it expires. Backing it up serves no purpose; its content can be retrieved by the requester starting a new export.
+- **Rotation evidence reports**: the artifact's retention period comes from the schedule settings (1 to 3650 days), and it is likewise cleared on expiry with the download no longer working. A scheduled report has no natural person as its requester, so there is no "the requester starts it again" path; anyone with audit view permission can produce another one, but that is a new report, with a new production time and a new signature, not the same delivered document. The facts stated in a report come from the database (accounts, credential change records, policy settings), and the backup contains those facts.
 
-本目錄**預設不掛 bind mount**（不在上表三個 bind mount 落點內），隨容器生命週期存放；不要為它另設定備份，
-也不要期待它跨容器重建後仍在。**這一點對報告特別要緊**：排程可以設出長達數年的保留期，
-但該目錄未掛載為 volume 或 bind mount 時，那個保留期只在容器存活期間有效，
-任何一次容器重建（含版本升級）都會清空目錄內的產物。要讓報告留到保留期，
-請把該目錄掛載為 volume 或 bind mount，或啟用離機儲存，或於保留期內自行下載取走。
-**注意其敏感度**：證據包產物含**解密後的剪貼簿明文**與錄影本體
-（見 §4 與匯出說明），故該目錄的檔案權限為 `0700`／`0600`，且不應被納入一般備份流而擴散明文副本。
+This directory **has no bind mount by default** (it is not one of the three bind-mounted locations in the table above) and is stored for the lifetime of the container. Do not set up a separate backup for it, and do not expect it to survive a container rebuild. **This matters especially for reports**: a schedule can set a retention period of years, but while that directory is not mounted as a volume or bind mount, the retention period only holds while the container lives, and any container rebuild (including a version upgrade) empties the artifacts in it. To have reports survive their retention period, mount that directory as a volume or a bind mount, enable offsite storage, or download them within the retention period yourself.
+**Mind its sensitivity**: evidence package artifacts contain **decrypted clipboard plaintext** and the recordings themselves
+(see §4 and the export documentation), so files in that directory have `0700` and `0600` permissions and should not be pulled into a general backup flow that would spread plaintext copies around.
 
-啟用離機儲存後，這一段多一條路徑：**產物的副本也會被上傳**（證據包與報告皆然），
-本機產物不在時（已清除，或因容器重建而消失），只要該產物在完成當下已上傳過副本，
-在**產物保留期內**仍可由物件儲存取回（取回時驗過雜湊才交付）；逾期則一律拒絕下載，
-遠端副本仍在也一樣。**產品不代刪遠端**——本機產物清除與 job 列清理都不對物件儲存發出刪除，
-那份副本何時消失取決於部署方在儲存桶上設定的生命週期規則。這也意味著：**明文的證據包副本會留在你的
-物件儲存裡**，其存取控管與加密須與生產資料庫同級看待。
+With offsite storage enabled, this section gains one more path: **copies of the artifacts are uploaded too** (both evidence packages and reports). When the local artifact is gone (cleared, or lost to a container rebuild), as long as a copy of that artifact was uploaded when it completed, it can still be retrieved from object storage **within the artifact's retention period** (the hash is verified before delivery); past the retention period the download is refused regardless, even with the remote copy still there. **The product does not delete remote copies for you**: neither clearing the local artifact nor cleaning up the job row issues a delete against object storage, and when that copy disappears depends on the lifecycle rules the deployment set on the bucket. That also means **plaintext copies of evidence packages will sit in your object storage**, and their access control and encryption have to be treated as being on par with the production database.
 
-**離機取回暫存**（`OFFSITE_SPOOL_PATH`，容器內路徑）是取回時落地驗證用的**容器本地快取**，
-同樣預設不掛 bind mount、非備份對象；它有存活期與總量上限，內容為**明文**，語義是快取不是副本。
+**The offsite retrieval staging area** (`OFFSITE_SPOOL_PATH`, the path inside the container) is **a container-local cache** where a retrieved file lands for verification. It likewise has no bind mount by default and is not a backup target; it has a lifetime and a total size cap, its content is **plaintext**, and its meaning is a cache, not a copy.
 
-### 2.1 落在資料根之外的落點（備份最容易漏的一格）
+### 2.1 Locations outside the data root (the easiest square to miss in a backup)
 
-審計降級檔案與封印期 journal 的實際落點由環境變數 `AUDIT_LOG_PATH` 決定，
-**未設定時退回相對路徑 `logs/audit_fallback`**，該路徑相對於行程的工作目錄，不在
-`DATA_PATH` 之下。
+Where audit fallback files and the seal-period journal actually land is decided by the environment variable `AUDIT_LOG_PATH`,
+which **falls back to the relative path `logs/audit_fallback` when not set**. That path is relative to the process's working directory and is not under `DATA_PATH`.
 
-- **compose 部署**：兩份 compose 檔都在 `environment:` 中明設
-  `AUDIT_LOG_PATH=/var/log/custodexa/audit`，該路徑已掛到 `${DATA_PATH}/audit`，
-  故落在資料根內，備份 `DATA_PATH` 即涵蓋。
-- **獨立二進位部署（不經 compose）**：若未自行設定 `AUDIT_LOG_PATH`，這兩類檔案會
-  落在**啟動行程時的工作目錄**下的 `logs/audit_fallback/`。備份 `DATA_PATH` 不會涵蓋它。
+- **compose deployments**: both compose files set `AUDIT_LOG_PATH=/var/log/custodexa/audit` explicitly in `environment:`, and that path is already mounted to `${DATA_PATH}/audit`, so it lands inside the data root and backing up `DATA_PATH` covers it.
+- **Standalone binary deployments (not through compose)**: if you do not set `AUDIT_LOG_PATH` yourself, these two kinds of files land under `logs/audit_fallback/` in **the working directory the process was started from**. Backing up `DATA_PATH` does not cover it.
 
-> **部署前必做**：非 compose 部署一律顯式設定 `AUDIT_LOG_PATH`，並確認該路徑在備份範圍內。
+> **Do this before deployment**: for any non-compose deployment, always set `AUDIT_LOG_PATH` explicitly and confirm that path is within the backup scope.
 
-這兩類檔案的重要性不對稱，須分別理解：
+The importance of these two kinds of files is not symmetric, and they should be understood separately:
 
-- **審計降級檔案**：資料庫寫入失敗、或審計佇列滿載時，審計列改寫入此處
-  （**僅在檔案降級開關啟用時**；關閉時該批紀錄直接丟棄、永久遺失）。
-  它承載的是「資料庫當時寫不進去的那批審計紀錄」，正是事故期間最需要的紀錄。
-  **這些檔案本身沒有任何完整性保護**，可被修改或刪除而不留痕跡；它們是降級期間的
-  線索，不能當作證據。備份它們的目的是事後回收資料，不是取得證明。
-- **封印期留痕 journal**（見下節）。
+- **Audit fallback files**: when database writes fail, or when the audit queue is saturated, audit rows are written here instead
+  (**only while the file fallback switch is enabled**; when it is off, that batch of records is discarded outright and lost permanently).
+  What they carry is the batch of audit records that could not be written to the database at the time, which is exactly the record you need most during an incident.
+  **These files have no integrity protection of their own** and can be modified or deleted without a trace; they are a lead from the degraded period, not evidence. The point of backing them up is to recover data afterwards, not to obtain proof.
+- **The seal-period journal** (see the next section).
 
-**資料根之外的第二格：物件儲存。** 啟用離機儲存後，錄影與證據包會有一份副本落在部署方自己的
-物件儲存桶，那同樣在資料根之外，而且**不在任何 compose 掛載內**——`tar -C "$DATA_PATH"` 拿不到它。
-責任歸屬要一次講清楚：
+**The second square outside the data root: object storage.** With offsite storage enabled, recordings and evidence packages have a copy in the deployment's own object storage bucket, which is likewise outside the data root and **is not inside any compose mount**, so `tar -C "$DATA_PATH"` cannot reach it. The division of responsibility should be stated once and clearly:
 
-- **產品負責**：上傳、在資料庫的保管帳冊裡記下儲存桶、key 與上傳當下的 SHA-256，取回時驗證。
-- **部署方負責**：儲存桶本身的備份或跨區複製、版本化、保留期與到期清理、存取控管與靜態加密。
-  產品從不刪遠端物件，也不主張遠端副本受任何保護——那些保護全部來自儲存桶上的設定
-  （建議參數見 §3.7）。
+- **The product is responsible for**: the upload, recording the bucket, key, and the SHA-256 at upload time in the custody ledger in the database, and verifying on retrieval.
+- **The deployment is responsible for**: backup or cross-region replication of the bucket itself, versioning, retention and expiry cleanup, access control, and encryption at rest. The product never deletes remote objects, and claims no protection for the remote copy; all of that protection comes from the settings on the bucket (suggested parameters in §3.7).
 
-規劃備份範圍時把它當成**一個獨立的資料落點**：要不要備份、備到哪裡、保留多久，都是儲存治理的決定。
+When planning backup scope, treat it as **a separate data location**: whether to back it up, to where, and for how long are all storage governance decisions.
 
-### 2.2 封印期留痕 journal
+**The third square outside the data root: `tls/`.** The certificates for the built-in TLS proxy land in `tls/` under the project directory, not under `DATA_PATH`: `fullchain.pem` and `privkey.pem` are the external certificate, and self-signed mode (`TLS_MODE=selfsigned`) additionally holds the local CA that issued them (`ca-private/custodexa-ca.key` and `ca-public/custodexa-ca.crt`). **Lose that CA private key and the original CA cannot be kept**; the only way on is to reissue under a new CA, and changing the CA means distributing the new CA certificate to every client machine again. So `tls/` must be inside the backup scope, and kept encrypted the same way `.env` is (it likewise contains private keys).
 
-檔名固定為 `seal_journal.bin`，落在 `AUDIT_LOG_PATH` 所指目錄，**不另設環境變數鍵**。
-內容為封印期（KEK 介面填鑰模式尚未解封時）的解封嘗試紀錄，定長環狀、永不成長。
+### 2.2 The seal-period journal
 
-**它可以安全納入備份，也可以安全地隨備份一起還原**：解封後 journal 會自動回灌審計，
-每則事件的冪等鍵 `IdempotencyUUID` 是由 journal UUID、序號、事件種類與槽位確定性導出的值，
-且在 `audit_logs` 上有唯一索引。**同一份 journal 被重放多次不會產生重複的審計列。**
+The file name is fixed as `seal_journal.bin`, it lands in the directory `AUDIT_LOG_PATH` points at, and **there is no separate environment variable key for it**. Its content is the record of unseal attempts during the seal period (while the KEK is in interface-entry mode and not yet unsealed), in a fixed-length ring that never grows.
 
-### 2.3 本文 shell 指令如何取得部署變數（動手前先讀）
+**It can safely be included in a backup, and safely restored along with one**: after unseal the journal is replayed back into the audit record automatically, and each event's idempotency key `IdempotencyUUID` is derived deterministically from the journal UUID, the sequence number, the event kind, and the slot, with a unique index on it in `audit_logs`. **Replaying the same journal several times produces no duplicate audit rows.**
 
-第 3 節與第 5 節的指令要用到三個部署層變數：`DATA_PATH`、`DB_USER`、`DB_NAME`。
-**它們不會自己出現在你的 shell 裡。** `docker compose` 讀 `.env` 只是為了做它自己的
-`${...}` 代換，**不會把任何值匯出給呼叫端 shell**。
+### 2.3 How the shell commands in this document obtain deployment variables (read before you start)
 
-所以在指令裡寫 `"${DATA_PATH:-./data}"` 這種帶預設值的形態是危險的：`DATA_PATH` 在
-你的 shell 中幾乎必然是未設定的，於是一律落回 `./data`。**最壞的一次落回發生在還原：**
-`tar -xzf ... -C "${DATA_PATH:-./data}"` 會把備份解到 `./data`，而該目錄通常存在，
-於是 **tar 成功、沒有任何錯誤訊息**；接著服務起來，掛的是空的真資料根。
-錄影與審計就這樣消失，而這發生在災難復原的當下。
+The commands in sections 3 and 5 need three deployment-layer variables: `DATA_PATH`, `DB_USER`, and `DB_NAME`.
+**They do not appear in your shell on their own.** `docker compose` reads `.env` only to do its own `${...}` substitution, and **exports no value to the calling shell**.
 
-因此本文的程序照兩條規則寫：
+Writing a form with a default value in a command, such as `"${DATA_PATH:-./data}"`, is therefore dangerous: `DATA_PATH` is almost certainly unset in your shell, so it always falls back to `./data`. **The worst such fallback happens during a restore:**
+`tar -xzf ... -C "${DATA_PATH:-./data}"` extracts the backup into `./data`, and that directory usually exists, so **tar succeeds with no error message at all**; then the service comes up with the real, empty data root mounted. Recordings and audit records disappear just like that, and it happens in the middle of a disaster recovery.
 
-1. **顯式從 `.env` 讀值，且是字面讀取，不用 `source .env`。**
-   `.env` 是 `docker compose` 的 env_file 格式，不是 shell 腳本。本產品的 `.env` 範本
-   含有 `LDAP_USER_FILTER=(uid=%s)`：交給 POSIX sh（Debian／Ubuntu 的 `/bin/sh` 即 dash）
-   會得到 `Syntax error: "(" unexpected` 而整個中止，交給 bash 則被當成陣列賦值。
-   下方的 `env_get` 只取字面值、不對 `.env` 做任何 shell 求值，引號、空白、`#` 與括號
-   都原樣取回。
-2. **取不到就大聲失敗。** 指令中一律用 `"${VAR:?說明}"` 而非 `"${VAR:-預設值}"`。
-   備份與還原是在壓力下照著抄的程序，「要記得先做某件事」的前提一定會被跳過；
-   所以就算你跳過了取值那一步，指令本身也只會中止並印出原因，不會拿預設值把事情
-   「做成功」。**災難復原時，一道用錯目錄卻回報成功的指令，比一道直接中止的指令糟得多。**
+The procedures in this document are therefore written to two rules:
 
-下面這段是第 3.2 節與第 5 節的第一步，兩處各自重複一份，**不需要你記得回頭看這裡**：
+1. **Read the values from `.env` explicitly, and read them literally, without `source .env`.**
+   `.env` is in `docker compose` env_file format, not a shell script. This product's `.env` template contains `LDAP_USER_FILTER=(uid=%s)`: handing it to POSIX sh (`/bin/sh` on Debian and Ubuntu is dash) gives `Syntax error: "(" unexpected` and aborts everything, while bash treats it as an array assignment.
+   The `env_get` below takes only the literal value and performs no shell evaluation on `.env`, so quotes, whitespace, `#`, and parentheses all come back as they are.
+2. **Fail loudly when a value cannot be obtained.** The commands always use `"${VAR:?explanation}"` rather than `"${VAR:-default}"`.
+   Backup and restore are procedures people copy under pressure, and a prerequisite of the form "remember to do something first" will certainly be skipped; so even if you skip the step that obtains the values, the command itself only aborts and prints why, rather than using a default and "succeeding" at the wrong thing. **In a disaster recovery, a command that used the wrong directory and reported success is far worse than one that simply aborted.**
+
+The block below is the first step of both §3.2 and §5, repeated separately in each, so **you do not have to remember to come back here**:
 
 ```bash
-# ---- 取得本部署的變數值 ----
-# ENV_FILE 指向本部署 docker compose 專案目錄下的 .env。
-# 操作位置不在該目錄時，改成絕對路徑，例如 ENV_FILE=/opt/custodexa/.env
+# ---- Obtain this deployment's variable values ----
+# ENV_FILE points at the .env in this deployment's docker compose project directory.
+# If you are not working in that directory, use an absolute path, e.g. ENV_FILE=/opt/custodexa/.env
 ENV_FILE="${ENV_FILE:-./.env}"
 
-# 自 .env 取單一鍵的字面值；同鍵重複時取最後一筆（與 compose 的後者覆蓋前者一致）
+# Take the literal value of one key from .env; on duplicate keys take the last (matching compose, where later wins)
 env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
 
-# 已在 shell 環境中設定者優先——這與 docker compose 的優先序一致（環境變數 > .env）
+# A value already set in the shell environment wins, matching docker compose's precedence (environment variable > .env)
 DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
 DB_USER="${DB_USER:-$(env_get DB_USER)}"
 DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
 
-# 用眼睛看一次：這三個值必須就是本部署實際在用的值
+# Look at these with your own eyes: all three must be the values this deployment actually uses
 printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
   "$ENV_FILE" "$DATA_PATH" "$DB_USER" "$DB_NAME"
 ```
 
-> - `DATA_PATH` 印出來若是相對路徑（例如 `./data`），代表**後續每一道指令都必須在同一個
->   工作目錄下執行**。要更保險就當場換成絕對路徑：
->   `DATA_PATH="$(cd "${DATA_PATH:?}" && pwd)"`。目錄不存在時 `cd` 會印出錯誤且
->   `DATA_PATH` 變成空字串——這不會靜默通過，因為後續指令的 `${DATA_PATH:?...}`
->   對空值同樣會中止（實測：`tar` 不執行）。
-> - 三個值有任何一個印出來是空的，就是 `ENV_FILE` 指錯了檔，**不要往下做**。
-> - 本文的 `docker compose` 指令都假定在部署專案目錄下執行（正式部署即
->   `docker-compose.yml`）。在同時放有開發版 compose 的機器上驗證時，一律加顯式
->   `-f docker-compose.yml`。
+> - If `DATA_PATH` prints as a relative path (`./data`, say), **every following command has to run from the same working directory**. To be safer, convert it to an absolute path on the spot:
+>   `DATA_PATH="$(cd "${DATA_PATH:?}" && pwd)"`. If the directory does not exist, `cd` prints an error and `DATA_PATH` becomes an empty string, which does not pass silently, because the `${DATA_PATH:?...}` in the later commands aborts on an empty value just the same (verified: `tar` does not run).
+> - If any of the three prints empty, `ENV_FILE` points at the wrong file. **Do not continue.**
+> - The `docker compose` commands in this document all assume they run in the deployment project directory (for a production deployment, `docker-compose.yml`). On a machine that also has the development compose file, always add an explicit `-f docker-compose.yml`.
+> - For a deployment where your own ingress terminates TLS (`docker-compose.external-ingress.yml`): every `docker compose` command in this document needs both `-f` flags (`-f docker-compose.yml -f docker-compose.external-ingress.yml`), or set `COMPOSE_FILE` in `.env` so that becomes the default. With only one of them the stack starts in the built-in TLS proxy shape.
 
 ---
 
-## 3. 備份程序
+## 3. Backup procedure
 
-### 3.1 一致性要求（三個落點須取自同一時點）
+### 3.1 Consistency requirement (the three locations must come from the same point in time)
 
-三個落點彼此有引用關係，最重要的一條是：`sessions` 表的 `recording_path` 欄位指向
-錄影目錄中的檔案。
+The three locations reference one another, and the most important such reference is that the `recording_path` column of the `sessions` table points at a file in the recordings directory.
 
-- **資料庫較新、錄影目錄較舊** → 資料庫中較新的會話紀錄會指向不存在的錄影檔，
-  該會話在播放時取不到檔案。
-- **錄影目錄較新、資料庫較舊** → 產生無主的錄影檔，不影響服務運作，但這些檔案
-  不會出現在任何清單中，也不會被保留政策清除。
+- **Database newer, recordings directory older** → the newer session records in the database point at recording files that do not exist, and those sessions cannot fetch a file on playback.
+- **Recordings directory newer, database older** → orphaned recording files appear. Service operation is unaffected, but those files appear in no list and are not cleared by the retention policy.
 
-因此**寧可錄影目錄比資料庫新，不要反過來**。下方程序的順序即依此安排。
+So **prefer the recordings directory being newer than the database, not the other way round**. The order of the procedure below follows from that.
 
-**啟用離機儲存後多一條引用鏈**：會話經指標對應到資料庫裡的保管帳冊，帳冊列再指向物件儲存中的
-某個儲存桶與 key。**帳冊隨資料庫備份一起走**，於是：
+**Offsite storage adds one more reference chain**: a session maps through an indicator to the custody ledger in the database, and a ledger row points at a bucket and key in object storage. **The ledger travels with the database backup**, so:
 
-- **還原到帳冊建立之前的備份**，其後上傳的遠端物件就成了**孤兒**——遠端還在（產品不刪），
-  但資料庫裡沒有任何一列指得到它。要對帳時以審計中的保管鏈事件（上傳、完整性判定、本機到期）
-  比對儲存桶內的物件清單。
-- **本機快取清除之後，`recording_path` 仍在但檔案不在，是正常態**，不是備份漏了東西：
-  該錄影的本機副本已按保留設定清除，播放時會自動改由物件儲存取回。
-  把它誤判為「錄影遺失」會導致不必要的還原動作。
+- **Restoring to a backup taken before a ledger row was created** leaves the remote objects uploaded after that as **orphans**: they are still remote (the product does not delete them), but no row in the database can reach them. To reconcile, compare the custody chain events in the audit record (upload, integrity decision, local expiry) against the object listing in the bucket.
+- **After the local cache is cleared, `recording_path` still being there while the file is not is the normal state**, not something the backup missed: that recording's local copy was cleared per the retention settings, and playback automatically fetches it from object storage instead. Reading that as a lost recording leads to unnecessary restore work.
 
-### 3.2 建議程序（服務停機，一致性最佳）
+### 3.2 Recommended procedure (service stopped, best consistency)
 
-停機備份是唯一能取得三落點嚴格同一時點的做法。停機視窗依資料量而定。
+A stopped backup is the only way to get all three locations from strictly the same point in time. The downtime window depends on the amount of data.
 
 ```bash
-# 0. 取得本部署的變數值（原理見 §2.3）。跳過這步，後面的指令會中止而不是用預設值。
+# 0. Obtain this deployment's variable values (rationale in §2.3). Skip this and the later commands abort rather than use defaults.
 ENV_FILE="${ENV_FILE:-./.env}"
 env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
 DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
@@ -213,302 +164,215 @@ DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
 printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
   "$ENV_FILE" "$DATA_PATH" "$DB_USER" "$DB_NAME"
 
-# 這次備份共用的時間戳（後續各步都引用它，避免各步各自取時間而對不起來）
+# The timestamp shared by this backup (every later step references it, so the steps do not each take their own time and disagree)
 STAMP="$(date +%Y%m%d-%H%M)"
 
-# 1. 停止會產生新資料的服務（保留 postgres 以便邏輯備份）
+# 1. Stop the services that produce new data (keep postgres up for the logical backup)
 docker compose stop backend guacd frontend
 
-# 2. 資料庫邏輯備份（自訂格式，便於選擇性還原）
+# 2. Logical database backup (custom format, which makes selective restore possible)
 docker compose exec -T postgres \
-  pg_dump -U "${DB_USER:?未取得 DB_USER，請先執行步驟 0}" \
-          -d "${DB_NAME:?未取得 DB_NAME，請先執行步驟 0}" -Fc \
+  pg_dump -U "${DB_USER:?DB_USER not obtained, run step 0 first}" \
+          -d "${DB_NAME:?DB_NAME not obtained, run step 0 first}" -Fc \
   > "custodexa-db-${STAMP}.dump"
 
-# 3. 檔案落點複製（錄影與審計）
-#    **只涵蓋本機副本**：啟用離機儲存時，物件儲存桶內的那份副本不在此列，
-#    其備份歸部署方的儲存治理（見 §2.1）。已被快取清除的錄影，本機沒有檔案可打包。
+# 3. Copy the file locations (recordings and audit)
+#    **Local copies only**: with offsite storage enabled, the copy inside the object storage bucket is not included here, and backing it up belongs to the deployment's storage governance (see §2.1).
+#    For a recording already cleared from the cache, there is no local file to pack.
 tar -czf "custodexa-files-${STAMP}.tar.gz" \
-  -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 0；切勿以預設值繼續}" recordings audit
+  -C "${DATA_PATH:?DATA_PATH not obtained, run step 0 first; do not continue with a default}" recordings audit
 
-# 4. 部署層設定檔（含 KEK 材料，見第 4 節；務必加密保管）
+# 4. The deployment-layer settings file (contains KEK material, see section 4; keep it encrypted) and the TLS certificate directory
 cp "$ENV_FILE" "custodexa-env-${STAMP}.bak"
+#    tls/ contains the private key of the external certificate and, in self-signed mode, the local CA private key (see §2.1); keep it encrypted the same way as .env
+tar -czf "custodexa-tls-${STAMP}.tar.gz" tls
 
-# 5. 恢復服務
-#    KEK 模式 B（KEK_PROVIDER=ui）：backend 一重啟就回到**封印狀態**，
-#    業務路由一律回 503，直到有人在介面重新輸入解封材料。這一步只是把容器叫起來，
-#    不等於服務恢復——排程備份請把「誰來解封」一起排進去（見本節末）。
+# 5. Bring the service back
+#    KEK mode B (KEK_PROVIDER=ui): as soon as backend restarts it returns to the **sealed state**,
+#    all business routes return 503 until someone enters the unseal material in the interface again.
+#    This step only brings the containers up; it is not the service being back. For a scheduled backup, schedule who does the unseal along with it (see the end of this section).
 docker compose start backend guacd frontend
 
-# 6. 當場確認兩份備份讀得出來（不做這步，等於不知道自己備到了什麼）
-#    走容器內的 pg_restore，不要求操作機安裝 PostgreSQL 用戶端
+# 6. Confirm on the spot that both backups can be read (skip this and you do not know what you backed up)
+#    Uses pg_restore inside the container, so the machine you operate from needs no PostgreSQL client
 docker compose exec -T postgres pg_restore --list < "custodexa-db-${STAMP}.dump" | head
 tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 ```
 
-> **模式 B（`KEK_PROVIDER=ui`）：這趟備份把系統打回封印狀態。**
-> 步驟 1 停了 backend，步驟 5 起回來的是一個**封印中**的實例——KEK 材料不落地，
-> 每次啟動都要有人重新解封。備份本身不受影響（`pg_dump` 走 postgres，與封印無關），
-> 受影響的是備份**之後**：在有人解封之前，登入與連線一律回 503。
+> **Mode B (`KEK_PROVIDER=ui`): this backup puts the system back into the sealed state.**
+> Step 1 stopped backend, and what step 5 brings back is a **sealed** instance, because KEK material is never written to disk and someone has to unseal at every start. The backup itself is unaffected (`pg_dump` goes through postgres and has nothing to do with sealing); what is affected is what comes **after** the backup: until someone unseals, sign-in and connections all return 503.
 >
-> 兩個跟著來的後果，排例行備份時要一起想：
+> Two consequences follow, and belong in the planning of a routine backup:
 >
-> - **排程備份等於排程一次服務中斷**，長度是「從步驟 5 到有人去解封」。半夜跑的備份多半沒人守著。
->   要嘛把備份排在有人在的時段，要嘛接受這段中斷並讓監控在封印狀態時告警。
-> - 封印期間 `/metrics` **沒有** `custodexa_audit_queue_depth`（非同步審計屬解封後才裝配的段 2），
->   [升級 SOP §2.4](./upgrade-sop.md#24-停機前確認審計佇列已排空) 的「值為 0 再停機」在此狀態下取不到值。
->   那不是指標壞了；先解封，再做那項確認。
+> - **Scheduling a backup means scheduling a service interruption**, lasting from step 5 until someone goes and unseals. A backup that runs in the middle of the night usually has nobody watching. Either schedule the backup for a time when someone is around, or accept that interruption and have monitoring alert on the sealed state.
+> - During the seal period `/metrics` **does not carry** `custodexa_audit_queue_depth` (asynchronous audit belongs to stage 2, which is assembled only after unseal), so the "wait for the value to be 0 before stopping" step in [Upgrade SOP §2.4](./upgrade-sop.md#24-confirm-the-audit-queue-has-drained-before-stopping) has no value to read in this state. That is not a broken metric; unseal first, then do that check.
 >
-> 模式 A（`KEK_PROVIDER=env`）與模式 C（`KEK_PROVIDER=kms`）不受影響：材料由部署層或 KMS 供給，
-> 重啟即自行取得，服務隨步驟 5 恢復。判斷本部署是哪一種，見第 4 節。
+> Mode A (`KEK_PROVIDER=env`) and mode C (`KEK_PROVIDER=kms`) are unaffected: the material is supplied by the deployment layer or by KMS and is obtained on its own at restart, so the service comes back with step 5. To determine which one this deployment uses, see section 4.
 
-### 3.3 不停機備份（可接受有界不一致時）
+### 3.3 Backup without downtime (when bounded inconsistency is acceptable)
 
-執行上列的步驟 0（取值，同樣不可略）與步驟 2 至 4，跳過 1 與 5（不停服務），
-步驟 6 的備份可讀性確認照做。`pg_dump` 取的是啟動當下的一致性快照，資料庫本身
-沒有問題；不一致只發生在「資料庫快照時點」與「檔案複製時點」之間新產生的會話。
-為把不一致方向控制在安全的一邊（錄影較新），請**先做資料庫備份、再複製錄影目錄**。
+Run step 0 above (obtaining the values, equally not optional) and steps 2 through 4, skipping 1 and 5 (the service keeps running), and do the readability confirmation in step 6 as written. `pg_dump` takes a consistent snapshot as of when it starts, so the database itself is fine; the inconsistency only affects sessions newly created between the database snapshot and the file copy. To keep the direction of inconsistency on the safe side (recordings newer), **do the database backup first and copy the recordings directory after**.
 
-**離機儲存不改變這個順序，也不縮小備份範圍**：上傳是**事後、非同步**的——會話結束到副本落地
-之間有一段窗口（文字錄影秒級、圖形錄影至少一分鐘；端點不可達時直到恢復），這段時間本機是唯一副本。
-不停機備份取到的那個時點，可能有一批錄影**尚未離機**。
+**Offsite storage does not change that order and does not narrow the backup scope**: the upload is asynchronous and happens afterwards. Between the end of a session and the copy landing there is a window (seconds for text recordings, at least a minute for graphical ones; until recovery if the endpoint is unreachable), and during it the local copy is the only one. The point in time a no-downtime backup captures may have a batch of recordings **not yet offsite**.
 
-### 3.4 不要做的事
+### 3.4 What not to do
 
-- **不要在服務執行中，以檔案層複製 `${DATA_PATH}/postgres` 目錄**。
-  執行中的 PostgreSQL 資料目錄不是可安全複製的檔案集合，複製出來的副本可能無法啟動。
-  要做檔案層備份就必須先把 postgres 容器停掉。
-- **不要只備份資料庫**。KEK 材料（第 4 節）、錄影檔與審計降級檔案都不在資料庫裡。
-- **不要把「已離機」當成「已備份」。** 兩件事各自成立，也各有缺口：
-  - **暴露窗口**：離機上傳是會話結束之後才發生的，那段時間內本機是唯一副本；
-    機器在窗口內毀損，該錄影就沒有第二份。離機**縮短**這個窗口，不消除它。
-  - **孤兒物件**：還原到較舊的資料庫時點，其後上傳的遠端物件會失去帳冊對應（見 §3.1）；
-    遠端仍在但系統認不得它。
-  - 反向的缺口也存在：從未上傳成功（重試耗盡）的錄影只有本機一份，
-    而管理介面的離機儲存頁與失敗清單就是為了讓這件事被看見。
+- **Do not copy the `${DATA_PATH}/postgres` directory at the file layer while the service is running.**
+  A running PostgreSQL data directory is not a set of files that can be copied safely, and the copy may not start. A file-layer backup requires stopping the postgres container first.
+- **Do not back up only the database.** The KEK material (section 4), the recording files, and the audit fallback files are all outside the database.
+- **Do not treat "already offsite" as "already backed up."** They hold independently, and each has its own gap:
+  - **Exposure window**: the offsite upload happens only after a session ends, and during that time the local copy is the only one; if the machine is destroyed inside the window, that recording has no second copy. Going offsite **shortens** that window; it does not remove it.
+  - **Orphaned objects**: restoring to an older database point in time leaves the remote objects uploaded after it without a ledger entry (see §3.1); they are still remote, but the system does not recognize them.
+  - The reverse gap exists too: a recording that never uploaded successfully (retries exhausted) has only the local copy, and the offsite storage page and failure list in the admin interface exist precisely so that this is seen.
 
-### 3.5 備份檔案本身的保護
+### 3.5 Protecting the backup files themselves
 
-備份內容含加密後的資產憑證、加密後的金鑰包裹、以及全部審計紀錄，其敏感度不低於
-生產系統。`.env` 備份更直接含有 KEK 材料與 `JWT_SECRET` 的明文。
-備份檔一律加密後保管，且**不得與 KEK 材料存放在同一處**；把兩者放在一起，等於把
-信封加密降級成沒有加密。
+Backup content includes encrypted asset credentials, wrapped keys, and all audit records, and is no less sensitive than the production system. The `.env` backup contains the KEK material and `JWT_SECRET` in plaintext outright. Always keep backup files encrypted, and **never store them in the same place as the KEK material**; putting the two together downgrades envelope encryption to no encryption.
 
-### 3.6 `DATA_PATH` 的檔案權限（部署方責任）
+### 3.6 File permissions on `DATA_PATH` (the deployment's responsibility)
 
-**bind mount 情境下，映像內設定的目錄權限不會生效**，實際權限由主機端目錄決定。
-部署方須自行確保 `DATA_PATH` 及其下三個子目錄**不是世界可讀**。
+**Under a bind mount, directory permissions set inside the image do not apply**; the actual permissions come from the host-side directory. The deployment has to ensure that `DATA_PATH` and its three subdirectories are **not world-readable**.
 
-錄影檔中含使用者在目標主機上鍵入的完整內容（包含他們在目標端輸入的密碼）。
-錄影檔權限為 `0600`；但檔案權限只是其中一層，目錄權限是必要的第二層。
+Recording files contain everything the user typed on the target host, including passwords they entered on the target side. Recording files have `0600` permissions, but file permissions are only one layer, and directory permissions are the necessary second one.
 
-建議：`DATA_PATH` 目錄權限設為 `0750` 或更嚴，擁有者為執行容器的使用者。
+Suggested: set the `DATA_PATH` directory to `0750` or stricter, owned by the user the containers run as.
 
-**物件儲存端的等價保護由部署方承擔。** 上傳到儲存桶裡的錄影與證據包，其內容敏感度與 `DATA_PATH`
-下的原件相同，但那裡的權限模型不在產品手上：儲存桶的存取控管（誰能列出、誰能讀、誰能刪）與
-靜態加密都要由部署方在儲存桶上設定。產品**不加密物件內容**——除非儲存桶自己做了靜態加密，
-物件在儲存端就是明文。建議至少做到：專用的最小權限身分（能寫、能讀，**不需要刪除權限**，
-產品用不到）、封鎖公開存取、開啟靜態加密，並依保留要求設定版本化與保留規則。
+**The equivalent protection on the object storage side is the deployment's to carry.** The recordings and evidence packages uploaded into the bucket are as sensitive as the originals under `DATA_PATH`, but the permission model there is not in the product's hands: bucket access control (who can list, who can read, who can delete) and encryption at rest both have to be configured by the deployment on the bucket. The product **does not encrypt object content**, so unless the bucket does encryption at rest itself, objects are plaintext on the storage side. Suggested minimum: a dedicated least-privilege identity (able to write and read, with **no need for delete permission**, which the product does not use), public access blocked, encryption at rest on, and versioning and retention rules set according to your retention requirements.
 
-**離機取回暫存目錄是容器本地的明文快取**（`OFFSITE_SPOOL_PATH`）：取回的位元組先落在那裡驗證，
-驗過才交付。它有存活期與總量上限、隨容器生命週期存放、非備份對象；但在它存在的期間，
-內容是明文的錄影或證據包，故不要把該路徑掛到共用或世界可讀的位置。
+**The offsite retrieval staging directory is a container-local plaintext cache** (`OFFSITE_SPOOL_PATH`): retrieved bytes land there for verification and are only delivered once verified. It has a lifetime and a total size cap, is stored for the lifetime of the container, and is not a backup target; but while it exists its content is a plaintext recording or evidence package, so do not mount that path somewhere shared or world-readable.
 
-### 3.7 物件儲存桶的建議設定（部署方責任）
+### 3.7 Suggested settings for the object storage bucket (the deployment's responsibility)
 
-> **本節全部是建議值，不是產品能力。** 產品對遠端物件只做三件事：上傳、記帳（桶、key、
-> 上傳當下的 SHA-256 與大小）、取回時驗證。**不設任何保留欄位、不追蹤版本歷史、不刪遠端物件。**
-> 因此「遠端副本不會被覆寫或誤刪」與「遠端副本到期會被清掉」這兩件事，**只能由儲存桶上的設定提供**。
-> 產品在測試連線與離機儲存頁**探測並如實呈現**你設了什麼，但只回報現況、不判好壞，也不代為修復。
+> **Everything in this section is a suggestion, not a product capability.** The product does exactly three things with remote objects: upload, bookkeeping (bucket, key, the SHA-256 and size at upload time), and verify on retrieval. **It sets no retention field, tracks no version history, and deletes no remote object.**
+> So "the remote copy will not be overwritten or deleted by mistake" and "the remote copy will be cleared when it expires" **can only be provided by the settings on the bucket**.
+> On the connection test and the offsite storage page the product **probes and reports faithfully** what you have set, but it only reports the current state; it does not judge it good or bad, and it does not fix anything on your behalf.
 
-依保留要求決定要不要開，以及開多久——這些數字是你的證據保留政策的一部分，產品不替你決定。
+Decide whether to turn these on, and for how long, according to your retention requirements. Those numbers are part of your evidence retention policy, and the product does not decide them for you.
 
-#### S3／MinIO
+#### S3 and MinIO
 
-- **版本化（versioning）**：建議啟用。它是「同一個 key 的舊內容還留著」的前提，
-  也是證據被覆寫之後還救得回來的唯一途徑。不啟用時，被覆寫的內容就是沒了——
-  產品只能在取回時因為雜湊對不上而拒絕交付，救不回原件。
-- **物件鎖定（Object Lock）**：要有防刪保護就得在**建立儲存桶時**啟用（AWS 於建桶時勾選；
-  MinIO 為 `mc mb --with-lock`）——**既有的桶無法事後啟用**。啟用後再設一條 default retention rule，
-  模式（governance／compliance）與天數依你的保留要求決定。**產品不送任何保留標頭**，
-  保護完全來自這條規則。
-- **生命週期規則（lifecycle）**：遠端物件的到期清理靠它。兩條建議：
-  - **到期天數對齊你的錄影保留政策**。產品的保留政策與這條規則是**兩個各自運行的期限**：
-    不設規則＝遠端永遠留著；設得比保留政策短＝遠端先消失，本機副本又已被快取清除時就播不出來了。
-    產品不偵測、不同步這兩個期限。
-  - **加一條 `NoncurrentVersionExpiration`** 清理重傳累積的歷史版本（重試就是重傳同一個 key，
-    開了版本化就會累積舊版本）。
-  - 兩個必然的例外要先知道：**物件鎖定期內的物件清不掉**（生命週期規則會略過它們，
-    這是預期行為，不是規則失效）；**測試連線留下的探測物件**在保留規則涵蓋範圍內時也刪不掉，
-    產品把它記為警告、不再追蹤，交由生命週期規則或人工清除。
-- **最小權限**：給產品一個專用身分，權限只要「在你指定的前綴下寫入物件」與「讀取物件與其
-  metadata」，外加「讀取儲存桶組態」（供測試連線揭露版本化與保留現況；讀不到只會顯示為警告，
-  不影響上傳）。**不需要保留欄位的寫入權限，也不需要刪除權限**——產品的正式路徑對遠端零刪除。
-  唯一會用到刪除的是測試連線清除自己留下的探測物件，那一步失敗只是警告。
+- **Versioning**: suggested on. It is the prerequisite for the old content under the same key still being there, and the only way evidence can be recovered after being overwritten. Without it, overwritten content is simply gone; all the product can do is refuse delivery on retrieval because the hash does not match, and it cannot recover the original.
+- **Object Lock**: protection against deletion has to be enabled **when the bucket is created** (checked at bucket creation on AWS; `mc mb --with-lock` on MinIO). **An existing bucket cannot have it enabled afterwards.** Once on, add a default retention rule, with the mode (governance or compliance) and the number of days set according to your retention requirements. **The product sends no retention header**, so the protection comes entirely from that rule.
+- **Lifecycle rules**: expiry cleanup of remote objects depends on them. Two suggestions:
+  - **Align the expiry days with your recording retention policy.** The product's retention policy and this rule are **two independently running deadlines**: no rule means the remote copy stays forever; a rule shorter than the retention policy means the remote copy disappears first, and once the local copy has also been cleared from the cache there is nothing to play back. The product neither detects nor synchronizes these two deadlines.
+  - **Add a `NoncurrentVersionExpiration`** to clean up the historical versions accumulated by re-uploads (a retry re-uploads the same key, and with versioning on that accumulates old versions).
+  - Two inevitable exceptions to know about first: **objects within an object lock retention period cannot be cleared** (lifecycle rules skip them, which is expected behavior rather than a broken rule), and **the probe object left by a connection test** also cannot be deleted when it falls within a retention rule, in which case the product records it as a warning, stops tracking it, and leaves it to a lifecycle rule or manual cleanup.
+- **Least privilege**: give the product a dedicated identity whose permissions are just writing objects under the prefix you specified and reading objects and their metadata, plus reading the bucket configuration (so the connection test can reveal the current versioning and retention state; if it cannot be read, that only shows as a warning and does not affect uploads). **No write permission on retention fields is needed, and no delete permission is needed**, because the product's normal paths never delete remotely. The only place delete is used is the connection test clearing the probe object it left behind, and a failure there is only a warning.
 
 #### Google Cloud Storage
 
-- **基準建議＝儲存桶保留政策（bucket retention policy，可再加鎖）**。它自動作用於桶內**全部**物件、
-  不需要對每個物件做任何動作，是本產品這種「只上傳、不設保留」的寫入端最合適的形態。
-- **逐物件保留（`--enable-object-retention`）要看清楚再走**：
-  `gcloud storage buckets create --enable-object-retention` 只是**啟用這個能力**
-  （既有的桶只能從主控台啟用）。**本產品不會為任何物件設定保留期**，
-  所以單獨啟用它**不會保護本產品上傳的任何一個物件**。要走這條路線，你必須自行以外部自動化
-  逐物件設定保留期——否則你會得到一個「以為開了保護、實際上沒有」的部署。
-- **兩者並存時取較晚到期者**。另外，event-based hold 與保留設定互斥；**產品不處理這種並存衝突**，
-  由你在儲存桶上決定用哪一種。
-- **版本化（object versioning）**：建議啟用，理由與 S3 段相同。
-- **生命週期規則**：對應 S3 段的兩條（到期天數對齊保留政策、清理非現行版本）；
-  在有保留政策的桶上，鎖定期內的物件同樣清不掉。
-- **服務帳號最小角色**：能建立物件與讀取物件即足（`objectCreator` ＋ `objectViewer` 這個量級），
-  外加讀取儲存桶組態的權限供揭露之用。**不需要刪除權限。**
-- **不需要 HMAC key**：本產品走 GCS 原生 API，以服務帳號 JSON 或應用預設憑證連線。
-  組織政策限制 HMAC 的環境不受影響。
+- **The baseline suggestion is a bucket retention policy (which can additionally be locked).** It applies automatically to **every** object in the bucket and requires nothing to be done per object, which suits a writer like this product that only uploads and sets no retention.
+- **Per-object retention (`--enable-object-retention`) needs a careful look before you take it**:
+  `gcloud storage buckets create --enable-object-retention` only **enables the capability** (an existing bucket can only have it enabled from the console). **This product sets no retention period on any object**, so enabling it alone **protects none of the objects this product uploads**. To take that route you have to set the retention period per object with your own external automation; otherwise you end up with a deployment where protection looks enabled but is not.
+- **Where both are present, the later expiry wins.** Also, an event-based hold and a retention setting are mutually exclusive; **the product does not handle that conflict**, and you decide on the bucket which one to use.
+- **Object versioning**: suggested on, for the same reason as in the S3 section.
+- **Lifecycle rules**: the same two as in the S3 section (align expiry days with the retention policy, clean up noncurrent versions); on a bucket with a retention policy, objects inside the lock period likewise cannot be cleared.
+- **Least-privilege service account role**: being able to create and read objects is enough (the `objectCreator` plus `objectViewer` level), plus permission to read the bucket configuration for the disclosure. **No delete permission is needed.**
+- **No HMAC key is needed**: this product uses the native GCS API and connects with a service account JSON or application default credentials. Environments where organization policy restricts HMAC are unaffected.
 
 ---
 
-## 4. 加密金鑰的災難復原前提（部署前必讀）
+## 4. Disaster recovery prerequisites for encryption keys (read before deployment)
 
-系統以信封加密保護資產憑證、目錄整合的 bind 密碼、通知通道 URL 與密鑰、簽章私鑰、
-**剪貼簿審計內容**、**物件儲存憑證**等欄位。**資料庫備份還原後能不能解開，完全取決於 KEK（金鑰加密金鑰）能不能取回。**
-**KEK 遺失＝上列全部欄位不可解**，物件儲存憑證也在其中——每一個歷史儲存世代的憑證都是這一批的一員，
-解不開就取不回那個世代的離機副本。這不是離機功能帶來的新風險面，而是與剪貼簿內容、目錄整合密碼同一個命運。
+The system protects asset credentials, the bind password for the directory integration, notification channel URLs and secrets, signing private keys, **clipboard audit content**, **object storage credentials**, and other fields with envelope encryption. **Whether they can be decrypted after a database backup is restored depends entirely on whether the KEK (key encryption key) can be recovered.**
+**Losing the KEK means none of the fields above can be decrypted**, object storage credentials included: the credentials of every historical storage generation are one of that batch, and if they cannot be decrypted the offsite copies of that generation cannot be retrieved. This is not a new risk surface introduced by the offsite feature; it shares its fate with clipboard content and the directory integration password.
 
-> **剪貼簿審計內容同樣依賴 KEK**：剪貼簿內容以信封加密落庫
-> （`clipboard_events.content_enc`），**遺失金鑰即無法讀取剪貼簿審計內容**——與資產憑證等其他信封加密
-> 欄位同一前提，不因它是「審計資料」而有例外。剪貼簿事件的**事實面**（時間、方向、內容長度、狀態）
-> 不加密，還原後仍可讀；但**內容全文**在無 KEK 時解不開。災難復原規劃須把剪貼簿內容納入「取決於 KEK」
-> 的那一類，不得假設它在缺金鑰時仍可調閱。
+> **Clipboard audit content depends on the KEK just the same**: clipboard content is stored envelope encrypted
+> (`clipboard_events.content_enc`), so **losing the key means clipboard audit content cannot be read**, on the same terms as every other envelope-encrypted field such as asset credentials, with no exception for being audit data. The **factual side** of a clipboard event (time, direction, content length, status) is not encrypted and remains readable after a restore, but the **full content** cannot be decrypted without the KEK. Disaster recovery planning has to put clipboard content in the "depends on the KEK" category and must not assume it can still be reviewed without the key.
 >
-> **證據包產物含明文**：證據包匯出會把剪貼簿內容**解密**、連同錄影本體打包成 ZIP，落於暫存匯出目錄
->（`/var/lib/custodexa/exports`，非備份對象，見 §2）。這是系統內少數存在明文機密的落點之一，其資料外洩面
-> 須與生產資料庫同級看待：目錄權限 `0700`／`0600`、下載綁申請者本人、產物 24h 後自動清除。**切勿**把該目錄
-> 納入一般備份或複製到金鑰保管處以外的位置——那等於把明文機密散佈到未受同級保護的地方。
+> **Evidence package artifacts contain plaintext**: an evidence package export **decrypts** the clipboard content and packs it, together with the recordings themselves, into a ZIP that lands in the temporary export directory
+> (`/var/lib/custodexa/exports`, not a backup target, see §2). This is one of the few places in the system where plaintext secrets exist, and its data exposure surface has to be treated as being on par with the production database: directory and file permissions `0700` and `0600`, downloads bound to the requester in person, and the artifact cleared automatically after 24h. **Never** pull that directory into a general backup or copy it anywhere outside key custody; doing so scatters plaintext secrets into places without equivalent protection.
 
-KEK 有三種保管模式，由環境變數 `KEK_PROVIDER` 宣告。**三種模式的災難復原前提完全不同，
-必須在部署前就選定並理解。**
+The KEK has three custody modes, declared by the environment variable `KEK_PROVIDER`. **The disaster recovery prerequisites of the three modes are completely different, and the mode has to be chosen and understood before deployment.**
 
-### 4.1 模式 A：`KEK_PROVIDER=env`（本機環境變數）
+### 4.1 Mode A: `KEK_PROVIDER=env` (local environment variable)
 
-- **材料位置**：`.env` 的 `ENCRYPTION_KEY`。它是一把 **32 位元組**的金鑰，
-  三種寫法皆可：32 個字元（A-Z a-z 0-9）、64 個十六進位字元、
-  或解碼後恰 32 位元組的 base64。**三種寫法是同一把鑰**：備份的材料換另一種寫法
-  填回去，解得開同一批資料，故復原時不需要記得當初用的是哪一種寫法。
-- **復原前提**：`.env` 本身必須離機備份。**只還原資料庫、沒有 `ENCRYPTION_KEY`，
-  全部信封加密欄位都解不開**，服務也會拒絕啟動。
-- **保管責任**：部署方。
-- **注意**：本模式的 KEK 材料鍵只有 `ENCRYPTION_KEY` 一個，系統不讀取其他任何鍵名。
+- **Where the material lives**: `ENCRYPTION_KEY` in `.env`. It is a **32-byte** key and can be written three ways: 32 characters (A-Z a-z 0-9), 64 hexadecimal characters, or base64 that decodes to exactly 32 bytes. **The three forms are the same key**: material from a backup entered in a different form decrypts the same data, so on recovery you do not need to remember which form was used originally.
+- **Recovery prerequisite**: `.env` itself must be backed up off the machine. **Restoring only the database, without `ENCRYPTION_KEY`, leaves every envelope-encrypted field undecryptable**, and the service also refuses to start.
+- **Custody responsibility**: the deployment's.
+- **Note**: this mode has exactly one KEK material key, `ENCRYPTION_KEY`; the system reads no other key name.
 
-### 4.2 模式 B：`KEK_PROVIDER=ui`（介面填鑰，不落地）
+### 4.2 Mode B: `KEK_PROVIDER=ui` (key entered in the interface, never written to disk)
 
-- **材料位置**：**只在記憶體中，從不寫入磁碟**。系統啟動後處於封印狀態，
-  除健康檢查與封印端點外全部路由回 503，須由人在 `/unseal` 頁輸入材料才解封。
-- **啟動前置**：宣告 `ui` 模式時 `ENCRYPTION_KEY` **不得有值**。宣告材料不落地卻在環境中
-  留著材料是組態矛盾，系統會拒絕啟動。
-- **保管責任：客戶自己。**
+- **Where the material lives**: **in memory only, never written to disk.** After startup the system is in the sealed state, with every route apart from the health check and the seal endpoints returning 503, and a person has to enter the material on the `/unseal` page to unseal it.
+- **Startup prerequisite**: when `ui` mode is declared, `ENCRYPTION_KEY` **must have no value**. Declaring that the material is not written to disk while leaving the material in the environment is a configuration contradiction, and the system refuses to start.
+- **Custody responsibility: the customer's own.**
 
-> ### 必須於部署前知悉的事實
+> ### Facts you must know before deployment
 >
-> **在此模式下，解封材料一旦遺失，全部加密資料永久不可解。產品不提供任何救回途徑：
-> 沒有備援金鑰、沒有託管副本、沒有廠商後門，技術支援也無法救回。**
+> **In this mode, once the unseal material is lost, all encrypted data is permanently undecryptable. The product offers no way to recover it: there is no backup key, no escrowed copy, and no vendor backdoor, and technical support cannot recover it either.**
 >
-> 選擇此模式，即是選擇由貴方獨力承擔材料保管。請在送出初始化之前，先把材料
-> 保存到離線的安全位置（例如密碼保險庫或實體保管），並確認至少有一位以上的
-> 人員可以取得。
+> Choosing this mode is choosing to carry custody of the material on your own. Before submitting the initialization, save the material to a secure offline location (a password vault or physical custody, for instance) and confirm that at least one other person can obtain it.
 
-- **初始化的陷阱（極重要）**：若初始化過程逾時，畫面會要你**用第一次輸入的那把金鑰重試，
-  不要換新的**。**務必照做。** 逾時不代表初始化失敗：內部**可能已經完成**，
-  第一把金鑰已固化為本部署的主金鑰。此時改用新金鑰會**永遠失敗**，且無法補救。
-- **一般解封**（既有部署，非初始化）：只需材料，不需帳號憑證，也不驗證材料格式
-  （既有部署的 KEK 可能早於現行格式規則）。連續失敗會觸發指數退避，達門檻後進入
-  有時限的冷卻；**冷卻期滿自動恢復，任何情況下都不需要重啟行程**。冷卻期間的嘗試
-  會被直接拒絕，且不會延長冷卻。
-- **建議啟用的收斂**：設定 `SEAL_UNSEAL_BIND_ADDR` 後，解封端點改由該位址的獨立監聽
-  提供，且該監聽只暴露封印相關端點（解封後不會轉為完整業務介面），主監聽對解封請求
-  硬拒並指引改打管理埠。**繫結失敗即拒絕啟動**，不會靜默降級成「以為隔離了、其實沒有」。
-  未設定可信代理（`TRUSTED_PROXIES`）時，來源判定只採信傳輸層對端位址，
-  per-IP 退避保守降級為全域退避。
+- **The initialization trap (very important)**: if the initialization times out, the screen tells you to **retry with the key you entered the first time, not a new one**. **Do exactly that.** A timeout does not mean initialization failed: internally it **may already have completed**, and the first key is already fixed as this deployment's master key. Using a new key at that point **fails forever**, and there is no remedy.
+- **An ordinary unseal** (an existing deployment, not initialization): it needs only the material, no account credentials, and it does not validate the material's format (an existing deployment's KEK may predate the current format rules). Repeated failures trigger exponential backoff, and past a threshold a time-limited cooldown; **the cooldown ends on its own and the process never has to be restarted for any reason**. Attempts during the cooldown are refused outright and do not extend it.
+- **A convergence worth enabling**: with `SEAL_UNSEAL_BIND_ADDR` set, the unseal endpoint is served by a separate listener on that address, and that listener exposes only the seal-related endpoints (it does not turn into the full business interface after unseal), while the main listener refuses unseal requests outright and points them at the management port. **Failing to bind means refusing to start**, so it does not silently degrade into looking isolated while not being so.
+  When trusted proxies (`TRUSTED_PROXIES`) are not configured, the source is determined from the transport-layer peer address only, and per-IP backoff conservatively degrades to global backoff.
 
-### 4.3 模式 C：`KEK_PROVIDER=kms`（雲端 KMS 委託）
+### 4.3 Mode C: `KEK_PROVIDER=kms` (delegated to a cloud KMS)
 
 ```
 KEK_PROVIDER=kms
 KEK_KMS_PROVIDER=aws
 KEK_KMS_REGION=<region>
-KEK_KMS_KEY_ID=<alias／key-id／ARN 皆可>
+KEK_KMS_KEY_ID=<alias, key-id, or ARN>
 ```
 
-- **復原前提**：KMS 中的金鑰與 AWS 帳號必須存活，且還原後的環境具備存取該金鑰的 IAM 權限。
-  金鑰被排定刪除或帳號關閉，等同材料遺失。
-- **所需 IAM 權限**：`kms:Encrypt`、`kms:Decrypt`、`kms:DescribeKey`；
-  若使用原生重加密，另需 `kms:ReEncryptFrom` 與 `kms:ReEncryptTo` 兩個 action。
-- **憑證**：走 AWS SDK 預設鏈（IRSA／instance profile／`AWS_*`），產品不代管。
-- **信任邊界**：`KEK_KMS_KEY_ID` 同時是信任帳號範圍的唯一來源，委託重包的目標金鑰
-  必須與它屬於同一 AWS 帳號與 partition，否則拒絕。
-- **多區金鑰（MRK）**：落庫識別含 region，**切換到 replica 等同換鑰，必須先重包**。
-  災難復原計畫若涵蓋跨區切換，要把這道重包排進程序，直接切過去解不開既有資料。
-- **端點覆寫一律拒絕**：偵測到 `AWS_ENDPOINT_URL_KMS` 或 `AWS_ENDPOINT_URL` 有值即拒絕啟動。
-  該變數由 SDK 直接解析，會把含明文資料金鑰的 `kms:Encrypt` 請求導向該位址（可為 HTTP 明文）。
+- **Recovery prerequisite**: the key in KMS and the AWS account must still exist, and the restored environment must have IAM permission to access that key. A key scheduled for deletion or a closed account amounts to losing the material.
+- **IAM permissions needed**: `kms:Encrypt`, `kms:Decrypt`, `kms:DescribeKey`; if native re-encryption is used, also the two actions `kms:ReEncryptFrom` and `kms:ReEncryptTo`.
+- **Credentials**: the AWS SDK default chain (IRSA, instance profile, `AWS_*`); the product does not manage them.
+- **Trust boundary**: `KEK_KMS_KEY_ID` is also the only source of the trusted account scope, and the target key of a delegated rewrap must be in the same AWS account and partition as it, or it is refused.
+- **Multi-region keys (MRK)**: the stored identifier includes the region, so **switching to a replica amounts to changing the key and requires a rewrap first**. If your disaster recovery plan covers a cross-region switch, put that rewrap into the procedure; switching straight over leaves the existing data undecryptable.
+- **Endpoint overrides are always refused**: detecting a value in `AWS_ENDPOINT_URL_KMS` or `AWS_ENDPOINT_URL` means refusing to start. Those variables are parsed by the SDK directly and would direct `kms:Encrypt` requests, which contain the plaintext data key, at that address (which may be plaintext HTTP).
 
-### 4.4 物件儲存憑證的災難復原前提
+### 4.4 Disaster recovery prerequisites for object storage credentials
 
-離機儲存的連線參數與**憑證**都存在資料庫裡，憑證以信封加密保存（每個儲存世代各自一份）。
-災難復原的前提因此很簡單：**還原資料庫＋取得同一把 KEK，取回能力就恢復了**——不需要另外保管
-一份物件儲存的金鑰，也不需要在 `.env` 裡留著它。
+Both the connection parameters and the **credentials** for offsite storage live in the database, with the credentials envelope encrypted (one set per storage generation). The disaster recovery prerequisite is therefore simple: **restore the database and obtain the same KEK, and the ability to retrieve is back**. There is no separate object storage key to keep, and nothing to leave in `.env` for it.
 
-> **這一項的 `.env` 明文負擔就此消失。** 物件儲存憑證不再走 `.env`，故不必為了它把設定檔
-> 當成機密保管。**其他鍵仍然是機密**：`.env` 依然含 `DB_PASSWORD`、`JWT_SECRET`，
-> 模式 A 還含 `ENCRYPTION_KEY`——§3.5 對 `.env` 備份的加密保管要求不變。
+> **The plaintext burden this item placed on `.env` is gone.** Object storage credentials no longer go through `.env`, so the settings file does not have to be kept as a secret for their sake. **The other keys are still secrets**: `.env` still contains `DB_PASSWORD` and `JWT_SECRET`, and in mode A also `ENCRYPTION_KEY`, so §3.5's requirement to keep the `.env` backup encrypted is unchanged.
 
-- **KEK 遺失的後果**：全部世代的物件儲存憑證都不可解，那些世代的離機副本即無從取回
-  （物件仍在儲存桶裡，但系統拿不到憑證去讀它）。這與剪貼簿內容、目錄整合密碼同屬第 4 節開頭那一類，
-  不是額外的風險面。**繞道**只有一條：由部署方在儲存端另行取用那些物件，那是儲存治理的事，不是產品路徑。
-- **儲存設定的世代變更**：換 provider、端點或儲存桶都在管理介面上確認後生效，舊世代**轉為歷史世代**，
-  其憑證**隨世代保留**以便繼續取回歷史物件。不再需要某個歷史世代時，可對該世代**單獨撤銷憑證**；
-  撤銷後該世代的物件不可取回，訊息會明確指出是哪一個世代缺什麼，**不會退回去用雲端的預設憑證鏈**。
-- **停止離機也在管理介面進行**：停止之後不再有新的上傳，但**歷史物件的取回不受影響**——
-  憑證不隨停用撤銷，要撤得逐世代明示。
-- **初次設定的執行標記隨資料庫備份還原**。`.env` 的離機鍵只在首次啟動時讀一次並寫入資料庫，
-  同時記下一個執行標記。標記存在資料庫裡，於是還原可能落在兩種不對齊的時點上：
+- **Consequence of losing the KEK**: object storage credentials of every generation become undecryptable, and the offsite copies of those generations cannot be retrieved (the objects are still in the bucket, but the system cannot get the credentials to read them). This belongs to the same category as clipboard content and the directory integration password at the start of section 4; it is not an additional risk surface. There is exactly one **way around it**: the deployment reaches those objects on the storage side by other means, which is a matter of storage governance, not a product path.
+- **Generation changes in the storage settings**: changing the provider, endpoint, or bucket all take effect after confirmation in the admin interface, and the old generation **becomes a historical generation**, whose credentials are **kept with the generation** so historical objects can still be retrieved. When a historical generation is no longer needed, its credentials can be **revoked for that generation alone**; afterwards the objects of that generation cannot be retrieved, the message states plainly which generation is missing what, and **there is no fallback to the cloud provider's default credential chain**.
+- **Stopping offsite storage is also done in the admin interface**: after stopping there are no new uploads, but **retrieval of historical objects is unaffected**, because credentials are not revoked by stopping. Revoking has to be stated explicitly, generation by generation.
+- **The execution marker for the first-time configuration is restored with the database backup.** The offsite keys in `.env` are read once at first startup and written into the database, and an execution marker is recorded at the same time. The marker lives in the database, so a restore may land on two kinds of misalignment:
 
-  | 還原後的狀態 | 結果 | 處置 |
+  | State after the restore | Result | What to do |
   |---|---|---|
-  | **標記在、設定表零列** | 系統視為「已完成評估」，`.env` **不再回灌**，該部署即為「未設定」 | **只能經管理介面重新設定**。不要去改資料庫、也不要試圖刪掉標記——改 `.env` 再重啟不會有任何效果 |
-  | **設定表非空、標記缺席** | 下次啟動只補寫標記，**不覆蓋**資料庫裡的設定 | 無須處置；執行期沿用資料庫中的設定 |
-  | 完整時間點還原 | 兩者一致，行為與還原前相同 | 憑證的可解性繫於同一把 KEK（見上） |
+  | **Marker present, settings table empty** | The system considers the assessment done, `.env` **is not seeded again**, and this deployment counts as not configured | **It can only be configured again through the admin interface.** Do not modify the database, and do not try to delete the marker; changing `.env` and restarting has no effect at all |
+  | **Settings table non-empty, marker absent** | The next startup only writes the marker, and **does not overwrite** the settings in the database | Nothing to do; the runtime uses the settings in the database |
+  | A complete point-in-time restore | The two agree, and behavior is the same as before the restore | Whether the credentials can be decrypted rests on the same KEK (see above) |
 
 ---
 
-## 5. 還原程序
+## 5. Restore procedure
 
-**步驟順序與 §3.2 不同的一點**：`.env` 先還原、變數後取值。理由見步驟 2 的說明。
+**One point where the order differs from §3.2**: `.env` is restored first, and the variables are obtained after. The reason is in the note on step 2.
 
-下方以 `STAMP` 承接要還原的那一組備份檔的時間戳（即 §3.2 產出的檔名後綴），
-**執行前先把它設成實際值**：
+Below, `STAMP` carries the timestamp of the set of backup files to restore (the file name suffix produced in §3.2). **Set it to the actual value before running anything**:
 
 ```bash
-# 0. 目標環境須先備妥：與備份同版本的程式碼／映像、以及對應的 KEK（見第 4 節）
-#    版本不一致時，先確認升級 SOP 的相容性界定
+# 0. The target environment has to be prepared first: code and images of the same version as the backup, and the corresponding KEK (see section 4)
+#    If the versions differ, check the compatibility statement in the upgrade SOP first.
 #
-#    要還原的那一組備份檔的時間戳。**下面這行的值必須改成實際檔名的後綴**；
-#    忘了改的話，後續三道指令會因為檔案不存在而失敗（不會還原到錯的東西）
+#    The timestamp of the set of backup files to restore. **The value on the line below must be changed to the actual file name suffix**;
+#    if you forget, the three commands after it fail because the files do not exist (they will not restore the wrong thing).
 STAMP=YYYYMMDD-HHMM
 
-# 1. 停掉全部服務。目標環境的 ${DATA_PATH}/postgres 必須為空目錄
-#    （postgres 容器只有在資料目錄為空時才會初始化出乾淨的資料庫）；
-#    確認這台是還原用的環境，再清空該目錄
+# 1. Stop all services. ${DATA_PATH}/postgres in the target environment must be an empty directory
+#    (the postgres container only initializes a clean database when the data directory is empty);
+#    confirm this machine is the one meant for the restore, then empty that directory
 docker compose down
 
-# 2. 先還原部署層設定（KEK 模式 A 必要；模式 B 不含材料，模式 C 不含 KMS 憑證）。
-#    這一步排在取值之前，是因為它會整份覆蓋 .env——若先取值再覆蓋，
-#    手上的 DATA_PATH／DB_USER／DB_NAME 會是被覆蓋前的舊值，與服務實際會用的不一致。
+# 2. Restore the deployment-layer settings first (required for KEK mode A; mode B contains no material, mode C contains no KMS credentials).
+#    This comes before obtaining the values because it overwrites .env entirely. If you obtained the values first and overwrote afterwards,
+#    the DATA_PATH, DB_USER, and DB_NAME you hold would be the old pre-overwrite values, inconsistent with what the service actually uses.
 ENV_FILE="${ENV_FILE:-./.env}"
 cp "custodexa-env-${STAMP}.bak" "$ENV_FILE"
-#    注意：還原進來的是「來源機」的 .env。若這台的資料根與來源機不同，
-#    請現在就把 .env 裡的 DATA_PATH 改成本機的實際路徑，再往下做。
+#    Note: what you restored is the .env of the *source* machine. If this machine's data root differs from
+#    the source machine's, change DATA_PATH in .env to this machine's actual path now, before going on.
 
-# 3. 取得本部署的變數值（原理見 §2.3）。**這是本程序最關鍵的一步**——
-#    DATA_PATH 若沒取到而落回預設值，下一步會把備份解到錯的目錄，且不會報錯。
+# 3. Obtain this deployment's variable values (rationale in §2.3). **This is the most critical step of the procedure**:
+#    if DATA_PATH is not obtained and falls back to a default, the next step extracts the backup into the wrong directory, and reports no error.
 env_get() { sed -n "s/^[[:space:]]*$1=//p" "$ENV_FILE" | tail -n 1; }
 DATA_PATH="${DATA_PATH:-$(env_get DATA_PATH)}"
 DB_USER="${DB_USER:-$(env_get DB_USER)}"
@@ -516,104 +380,96 @@ DB_NAME="${DB_NAME:-$(env_get DB_NAME)}"
 printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
   "$ENV_FILE" "$DATA_PATH" "$DB_USER" "$DB_NAME"
 
-# 4. 還原檔案落點。解壓前先把解壓目標的絕對路徑印出來核對一次
-#    （目錄不存在或 DATA_PATH 沒取到，這行就會失敗，不會走到 tar）
-( cd "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}" && pwd )
+# 4. Restore the file locations. Before extracting, print the absolute path of the extraction target and check it once
+#    (if the directory does not exist, or DATA_PATH was not obtained, this line fails and tar is never reached)
+( cd "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}" && pwd )
 tar -xzf "custodexa-files-${STAMP}.tar.gz" \
-  -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}"
+  -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
+#    Restore the TLS certificate directory into the project directory (without it, self-signed mode generates a new CA and certificate at startup,
+#    and the CA has to be distributed to every client machine again)
+tar -xzf "custodexa-tls-${STAMP}.tar.gz"
 
-# 5. 只起 postgres，**等它真的可以接受連線之後**再灌入邏輯備份。
-#    `up -d` 只保證容器起了，不保證 postgres 已就緒；而且首次啟動（資料目錄為空）時，
-#    postgres 映像會先跑一個「只監聽 unix socket」的暫時服務端做初始化——
-#    這段期間 `pg_isready` 走 socket 會回報就緒，但目標資料庫**還不存在**，
-#    此時灌備份會得到 `database "..." does not exist` 而整份還原落空。
-#    故這裡以 **TCP**（`-h 127.0.0.1`，初始化期間不監聽）＋**實際連上目標資料庫**兩個條件同時成立為準。
+# 5. Start postgres only, and load the logical backup **after it can really accept connections**.
+#    `up -d` only guarantees the container started, not that postgres is ready; and on first startup (empty data directory),
+#    the postgres image first runs a temporary server that listens on the unix socket only, to do the initialization.
+#    During that period `pg_isready` over the socket reports ready, but the target database **does not exist yet**,
+#    and loading the backup then gives `database "..." does not exist`, so the whole restore comes to nothing.
+#    So the criterion here is both **TCP** (`-h 127.0.0.1`, not listened on during initialization) and **actually connecting to the target database** holding at the same time.
 docker compose up -d postgres
 for _ in $(seq 1 60); do
   docker compose exec -T postgres \
-    pg_isready -h 127.0.0.1 -U "${DB_USER:?未取得 DB_USER，請先執行步驟 3}" >/dev/null 2>&1 \
+    pg_isready -h 127.0.0.1 -U "${DB_USER:?DB_USER not obtained, run step 3 first}" >/dev/null 2>&1 \
   && docker compose exec -T postgres \
-    psql -U "${DB_USER:?}" -d "${DB_NAME:?未取得 DB_NAME，請先執行步驟 3}" -c 'select 1' >/dev/null 2>&1 \
+    psql -U "${DB_USER:?}" -d "${DB_NAME:?DB_NAME not obtained, run step 3 first}" -c 'select 1' >/dev/null 2>&1 \
   && break
   sleep 2
 done
-# 最後再明確確認一次；這行非 0 就不要往下做（灌進半就緒的服務端只會得到一份殘缺的資料庫）
+# Confirm explicitly one more time; if this line is non-zero do not go on (loading into a half-ready server only produces an incomplete database)
 docker compose exec -T postgres psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c 'select 1'
 
 docker compose exec -T postgres \
-  pg_restore -U "${DB_USER:?未取得 DB_USER，請先執行步驟 3}" \
-             -d "${DB_NAME:?未取得 DB_NAME，請先執行步驟 3}" --clean --if-exists \
+  pg_restore -U "${DB_USER:?DB_USER not obtained, run step 3 first}" \
+             -d "${DB_NAME:?DB_NAME not obtained, run step 3 first}" --clean --if-exists \
   < "custodexa-db-${STAMP}.dump"
 
-# 6. 起其餘服務
+# 6. Start the remaining services
 docker compose up -d
 ```
 
-KEK 模式 B 的部署在步驟 6 之後仍處於封印狀態，須到 `/unseal` 輸入材料才會開始服務。
+A KEK mode B deployment is still sealed after step 6, and only starts serving once the material is entered at `/unseal`.
 
 ---
 
-## 6. 還原後的驗證清單
+## 6. Post-restore verification checklist
 
-**逐項確認，任一項失敗就不要把系統交回線上使用。**
+**Confirm every item; if any of them fails, do not hand the system back into service.**
 
-| # | 檢查 | 做法 | 通過判準 |
+| # | Check | How | Pass criterion |
 |---|---|---|---|
-| 1 | 全部服務起來 | `docker compose ps` | 各服務為執行中，postgres 為 healthy |
-| 2 | 後端健康檢查 | `docker compose exec backend wget -qO- http://localhost:8080/health` | 回應正常（backend 不對外開埠，須自容器內打） |
-| 3 | 啟動日誌無 fatal | `docker compose logs backend \| tail -50` | 無拒絕啟動訊息。**KEK 不符會在這裡明白說出來** |
-| 4 | 前端可達 | `curl -I http://localhost/` | 回應 200 |
-| 5 | 登入鏈路通 | 以既有管理員帳號登入 | 取得 token；能進入主控台 |
-| 6 | **金鑰清冊指紋比對** | 管理端「金鑰管理」頁 | env 側四項——`ENCRYPTION_KEY (KEK)`、`JWT_SECRET`、`匯出簽章鑰 (Ed25519)`、`檢查點簽章鑰 (Ed25519)`——的指紋**與備份前記錄的值相同** |
-| 7 | 加密欄位可解 | 開啟任一具憑證的資產、或觸發一次 LDAP 登入 | 不出現解密失敗 |
-| 8 | 錄影可播 | 開啟一筆備份前既有的會話錄影 | 能播放。**本機來源與離機來源皆算通過**——本機檔已被快取清除者會改由物件儲存取回（首次播放有下載等待），該路徑一樣要驗過雜湊才交付 |
-| 9 | 審計鏈驗證 | 稽核端的完整性驗證頁 | 驗證結果與備份前一致 |
-| 10 | **帳冊與儲存桶內物件對得上**（僅啟用離機儲存時） | 管理端「離機儲存」頁：確認設定摘要與世代狀態如預期、失敗清單無異常堆積；抽驗一筆已離機的錄影可播 | 帳冊的狀態與遠端實況一致。**對不上的兩個方向要分開判讀**：帳冊有列而儲存桶內沒有＝還原到較新的資料庫時點（或遠端已被生命週期規則清掉）；儲存桶內有而帳冊沒有＝孤兒物件，多半是還原到較舊的時點（見 §3.1），以審計中的保管鏈事件對帳 |
+| 1 | All services are up | `docker compose ps` | Each service is running, postgres is healthy |
+| 2 | Backend health check | `docker compose exec backend wget -qO- http://localhost:8080/health` | A normal response (backend publishes no port, so it has to be called from inside the container) |
+| 3 | No fatal in the startup log | `docker compose logs backend \| tail -50` | No refusal-to-start message. **A KEK mismatch says so plainly here** |
+| 4 | The frontend is reachable | `curl -I http://localhost/` | Responds 200 |
+| 5 | The sign-in path works | Sign in with an existing administrator account | A token is obtained; the console can be entered |
+| 6 | **Compare the fingerprints in the key inventory** | The "Key Management" page on the admin side | The fingerprints of the four env-side items, `ENCRYPTION_KEY (KEK)`, `JWT_SECRET`, the export signing key (Ed25519), and the checkpoint signing key (Ed25519), **are the same as the values recorded before the backup** |
+| 7 | Encrypted fields decrypt | Open any asset that has credentials, or trigger one LDAP sign-in | No decryption failure appears |
+| 8 | Recordings play back | Open a session recording that existed before the backup | It plays. **Both a local source and an offsite source count as a pass**: where the local file has been cleared from the cache it is fetched from object storage instead (with a download wait on first playback), and that path likewise verifies the hash before delivery |
+| 9 | Audit chain verification | The integrity verification page on the audit side | The verification result matches the one before the backup |
+| 10 | **The ledger and the objects in the bucket agree** (only with offsite storage enabled) | The "Offsite Storage" page on the admin side: confirm the settings summary and generation state are as expected and that the failure list has no abnormal buildup; spot-check that a recording already offsite plays back | The ledger state matches the remote reality. **The two directions of disagreement read differently**: a ledger row with nothing in the bucket means a restore to a newer database point in time (or the remote copy was cleared by a lifecycle rule); something in the bucket with no ledger row is an orphaned object, usually a restore to an older point in time (see §3.1), to be reconciled against the custody chain events in the audit record |
 
-> 第 6 項是最有價值的一項：**指紋是單向摘要，比對相同即可確認還原後用的是同一把金鑰**，
-> 而不必接觸任何金鑰材料。請在每次備份時一併記錄這**四個**指紋，隨備份保存。
-> 備份時只記三個，還原後就有一項無從比對——漏掉的那項是檢查點簽章鑰。
+> Item 6 is the most valuable one: **a fingerprint is a one-way digest, and matching fingerprints confirm that the same key is in use after the restore**, without touching any key material. Record these **four** fingerprints with every backup and keep them with it.
+> Record only three at backup time and one of them has nothing to compare against after the restore; the one usually missed is the checkpoint signing key.
 >
-> 金鑰管理頁要在**解封之後**才進得去（模式 B），故這一項排在服務已恢復之後做。
+> The Key Management page can only be entered **after unseal** (mode B), so this item comes after the service is back.
 
 ---
 
-## 7. 例外情況的人工處置
+## 7. Manual handling of exceptional cases
 
-### 7.1 封印期 journal 的雙 header 皆無效
+### 7.1 Both headers of the seal-period journal are invalid
 
-**現象**：服務拒絕開放監聽，且**不會改寫該 journal 檔**。
+**Symptom**: the service refuses to open its listener, and **does not rewrite that journal file**.
 
-系統刻意不自動重建這個檔案。自動「修復」一個記載著解封嘗試次數的檔案，等於提供
-一條把歷史歸零的合法途徑。
+The system deliberately does not rebuild this file automatically. Automatically "repairing" a file that records the number of unseal attempts would amount to providing a legitimate way to zero out that history.
 
-**處置（四步，逐步執行）**：
+**Handling (four steps, done in order)**:
 
-1. 離線複製該檔留存（`seal_journal.bin`），**不要原地修改**。
-2. 以外部工具檢視是否仍可判讀，判斷是儲存媒體損壞、還是人為改動。
-3. 由人工決定是否以新檔重新起算，**並把該決定記錄下來**：誰決定的、何時、為什麼。
-   這份紀錄是日後說明「這段留痕為何從零開始」的唯一依據。
-4. 移除損壞檔後重啟服務。
+1. Copy the file (`seal_journal.bin`) offline and keep it. **Do not modify it in place.**
+2. Inspect it with external tools to see whether it can still be read, and judge whether this is damaged storage media or human modification.
+3. Have a person decide whether to start over with a new file, **and record that decision**: who decided, when, and why. That record is the only basis for later explaining why this trail starts from zero.
+4. Remove the damaged file and restart the service.
 
-### 7.2 以已退役但材料尚未清理的 KEK 開機
+### 7.2 Booting with a retired KEK whose material has not been cleared
 
-**現象**：服務 fail-close 拒絕啟動，錯誤訊息會直接指出這是退役 KEK，並依退役原因給出
-不同指引：
+**Symptom**: the service fails closed and refuses to start, and the error message states plainly that this is a retired KEK, with different guidance depending on the retirement reason:
 
-- **原因為「已切換」**：訊息指引「若確要回退至此 KEK，依 runbook 手動復原其退役列後重啟；
-  若為誤設請將 `ENCRYPTION_KEY` 改回現行 KEK」。
-- **原因為「已放棄」**（該 KEK 從未在役）：訊息指引改回現行 KEK，或以現行 KEK 啟動後重新執行重包。
+- **Reason "switched over"**: the message directs you to recover its retirement row manually per the runbook and restart if you really intend to roll back to this KEK, or to change `ENCRYPTION_KEY` back to the current KEK if it was set by mistake.
+- **Reason "abandoned"** (that KEK was never in service): the message directs you to change back to the current KEK, or to start with the current KEK and run the rewrap again.
 
-系統**不會自動反轉退役**。切換完成後誤設舊 KEK 幾乎必為操作失誤，自動反轉會靜默撤銷
-一次刻意的金鑰儀式。
+The system **does not reverse retirement automatically**. Setting an old KEK after the switchover has completed is almost always an operator mistake, and reversing it automatically would silently undo a deliberate key ceremony.
 
-**「手動復原退役列」的可行性**：KEK 退役是軟退役，僅變更狀態欄位，**包裹材料保留至
-顯式清理**。因此在執行「清理退役資料」之前，於資料層回退到舊 KEK 始終是可行的。
-一旦執行了顯式清理，該材料即被清空且不可回復，此時舊 KEK 開機只會得到一般性的不符錯誤。
-詳見[平台自身特權憑證輪替](./privileged-credential-rotation.md)的 KEK 段。
+**Whether "recovering the retirement row manually" is possible**: KEK retirement is a soft retirement that changes only the status column, and **the wrapping material is kept until it is cleared explicitly**. So until "clear retired data" is run, rolling back to an old KEK at the data layer is always possible. Once the explicit clear has run, that material is emptied and unrecoverable, and booting with the old KEK then gives only a generic mismatch error. For details, see the KEK sections of [Rotating the Platform's Own Privileged Credentials](./privileged-credential-rotation.md).
 
-### 7.3 還原後審計降級檔案的回收
+### 7.3 Recovering audit fallback files after a restore
 
-還原出來的 `${DATA_PATH}/audit` 下若有降級檔案，代表備份時點之前曾發生過審計寫入失敗。
-這些紀錄**不會**因為還原而自動入庫，處置方式是保留檔案作為事後追查依據。
-
+If there are fallback files under the restored `${DATA_PATH}/audit`, audit writes failed at some point before the backup. Those records are **not** loaded into the database by the restore; the handling is to keep the files as a basis for later investigation.

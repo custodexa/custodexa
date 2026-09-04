@@ -207,7 +207,7 @@ func init() {
 	registerInventory(invKindNote, "syslog_disabled", "syslog 轉發未啟用")
 	registerInventory(invKindNote, "syslog_protocol", "轉發協議：{protocol}", "protocol")
 	registerInventory(invKindNote, "winrm_rotation_channel", "改密通道（系統路徑，不經使用者連線）：NTLM 訊息層加密恆啟用；http 為無 TLS 傳輸、insecure 為未驗證憑證，皆列為偏離")
-	registerInventory(invKindNote, "nginx_deploy_managed", "前端對外 HTTPS 屬部署層：本服務不自帶 TLS，須由前置的 TLS-terminating 反向代理/ingress 提供 443 ssl＋80→443 redirect＋HSTS＋wss（範例見 docker/reverse-proxy/）；容器內 nginx 僅 listen 80；部署方管理")
+	registerInventory(invKindNote, "nginx_deploy_managed", "前端對外 HTTPS 屬部署層：對外 TLS 由內建代理或部署方 ingress 終止（443 ssl＋80→443 redirect＋HSTS＋wss，設定見 docker/reverse-proxy/）；後端與前端容器間為單主機內網明文；部署方管理")
 	// preflight（4）：rdp/vnc/db 帶 {n}（vue-i18n 隱式 plural 參數，對齊 codebase 慣例
 	// 如 riskCount "{n} risk | {n} risks"）、ldap 無參
 	registerInventory(invKindPreflight, "rdp_reject", "若切 strict 將拒絕 {n} 台 RDP 資產連線", "n")

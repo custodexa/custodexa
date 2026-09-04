@@ -1,6 +1,6 @@
 # 貢獻指南
 
-<p><a href="../../CONTRIBUTING.md">English</a> | <b>繁體中文</b></p>
+<p><a href="../../CONTRIBUTING.md">English</a> | <b>繁體中文</b> | <a href="../ja/CONTRIBUTING.md">日本語</a> | <a href="../README.md">其他語言 →</a></p>
 
 感謝你願意貢獻 Custodexa。這份文件告訴你怎麼把貢獻送進來；
 環境架設見 [`QUICKSTART.md`](../QUICKSTART.md)。

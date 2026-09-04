@@ -1,6 +1,6 @@
 # Custodexa 環境變數範本（參考譯本）
 
-<p align="center"><a href="../../.env.example">English</a> | <b>繁體中文</b> | <a href="../ja-JP/env-example.md">日本語</a></p>
+<p align="center"><a href="../../.env.example">English</a> | <b>繁體中文</b> | <a href="../ja/env-example.md">日本語</a> | <a href="../README.md">其他語言 →</a></p>
 
 > **本檔是參考譯本，不是可以拿來用的範本——請不要複製本檔。**
 >
@@ -18,7 +18,7 @@
 譯本的存在只是讓你能用另一種語言讀說明，而你複製與編輯的檔案永遠是英文主檔，絕不是譯本：
 
 - 繁體中文：`docs/zh-TW/env-example.md`
-- 日本語：`docs/ja-JP/env-example.md`
+- 日本語：`docs/ja/env-example.md`
 
 ### 安裝步驟（維運者與開發者相同）
 
@@ -302,6 +302,97 @@ CORS_ALLOWED_ORIGINS=
 
 ```env
 METRICS_TOKEN=
+```
+
+---
+
+## TLS 與對外埠
+
+正式版堆疊自己終結 TLS：內建的反向代理提供 https，並把明文 http 導向它，
+前端只能經由它連到。`docker compose up -d` 起來就是 https。
+
+### `TLS_HTTPS_PORT`、`TLS_HTTP_PORT`
+
+對外埠。https 發布在 443、http 在 80，也就是瀏覽器預設會用的埠，人家打的網址因此不必帶埠號。
+主機上這兩個埠已經跑著別的服務時，這裡改成另一組——8443 與 8088 是常見的選擇——
+網址就要跟著帶埠，像 `https://bastion.example.com:8443`。
+
+```env
+TLS_HTTPS_PORT=443
+TLS_HTTP_PORT=80
+```
+
+### `DOCKER_SUBNET`
+
+容器之間互相通訊用的位址範圍。之所以固定下來而不交給 Docker 決定，是因為 quickstart 會把它
+寫進下面的 `TRUSTED_PROXIES`，內建代理靠這件事才會被認成代理而不是使用者端。
+這個範圍與你主機上已有的路由衝突時就改掉它；compose 檔與 `TRUSTED_PROXIES` 都跟著這個鍵走。
+
+```env
+DOCKER_SUBNET=172.28.100.0/24
+```
+
+### `TLS_DOMAIN`
+
+這套部署對外的主機名，例如 `bastion.example.com`。它會寫進憑證，也會展開進代理的設定，
+所以設定檔不需要動手改。與本檔後面的 `PUBLIC_BASE_URL` 用同一個主機名。
+內網 DNS 解析得到的名字就夠，不必是公開註冊的網域。留空等同 `localhost`。
+
+```env
+TLS_DOMAIN=
+```
+
+### `TLS_MODE`
+
+伺服器憑證的來源。
+
+- **`selfsigned`（預設）** — 首次啟動產生一組本地 CA 與伺服器憑證，留在 `tls/`。
+  代理把 CA 憑證開在 `/custodexa-ca.crt`，把它派發到會連進來的機器
+  （群組原則、MDM，或手動匯入）之後，瀏覽器就不再警告。派發之前瀏覽器會警告，
+  外部識別提供者也會拒絕回呼。
+- **`provided`** — 用你自己的 `tls/fullchain.pem` 與 `tls/privkey.pem`，
+  公開 CA 或機構 CA 簽的都可以。缺檔時啟動會停下並指名缺哪一個。
+
+`tls/` 內已有的憑證一律沿用，不會被重新產生。要換就把檔案刪掉再啟動。
+
+```env
+TLS_MODE=selfsigned
+```
+
+### `TLS_IP_SAN`
+
+要一併寫進憑證的 IP 位址，逗號分隔，讓別人用位址連也能通過驗證。
+留空 = 只有主機名。
+
+```env
+TLS_IP_SAN=
+```
+
+### `TLS_NGINX_TEMPLATE`
+
+指向你自己那份代理設定範本，供內建範本涵蓋不到的需求使用：
+複製 `docker/reverse-proxy/nginx-tls.conf.template`、改你的副本、把這個值指過去。
+留空 = 用內建的範本。
+
+```env
+# TLS_NGINX_TEMPLATE=
+```
+
+### 自帶 ingress 的部署
+
+前面已經有負載平衡器或反向代理時，取消 `COMPOSE_FILE` 那行的註解，內建代理就會讓開，
+改由前端發布明文 http 給你的 ingress 連。同時只能有一行 `COMPOSE_FILE` 生效，
+所以用這個形態時，請讓檔案開頭那行開發版的維持註解。
+`HTTP_PORT` 決定該形態下前端發布的埠。
+
+TLS 由你的 ingress 終結，瀏覽器看到什麼因此也由它決定。轉發的 Host 標頭要帶上使用者實際
+連的那個埠（不是 443 就要帶）：後端以 Origin 對 Host 判定同源請求，`Host` 少了埠，
+已認證的請求就會被當成跨來源。另外把本檔後面的 `TRUSTED_PROXIES` 設成你的 ingress 位址，
+請求才會算在使用者端而不是 ingress 頭上。
+
+```env
+# COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml
+# HTTP_PORT=80
 ```
 
 ---
@@ -788,6 +879,8 @@ SEAL_UNSEAL_COOLDOWN_MAX_SECONDS=
 在它未設定期間，per-IP 退避會降級為全域退避：
 沒有一個約定好的代理鏈，限速鍵就可能被轉送標頭污染，
 而一道可被繞過的防線比一道笨拙的防線更糟。
+預設形態下這套堆疊自帶代理，quickstart 會把上面 `DOCKER_SUBNET` 指定的 Docker 子網填進來。
+自己跑 ingress 時（`docker-compose.external-ingress.yml`），改填你自己的 ingress 位址。
 
 ```env
 TRUSTED_PROXIES=

@@ -2,7 +2,7 @@
   <img src="../assets/brand/logo.png" alt="Custodexa — Guard Access. Preserve Evidence." width="440">
 </div>
 
-<p align="center"><a href="../../README.md">English</a> | <b>繁體中文</b></p>
+<p align="center"><a href="../../README.md">English</a> | <b>繁體中文</b> | <a href="../ja/README.md">日本語</a> | <a href="../README.md">其他語言 →</a></p>
 <p align="center"><a href="https://custodexa.org/">官方網站</a> · <a href="https://custodexa.org/docs/quickstart/">線上文件</a></p>
 <p align="center">
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=alert_status" alt="Quality Gate"></a>
@@ -71,8 +71,14 @@ bash scripts/quickstart.sh --up
 `.env.example` 內的逐項說明複製編輯後 `docker compose up -d` 即可。
 Windows 請在 WSL 內執行腳本。
 
-啟動後開 `http://localhost/`，以 `admin` 加上你設定的初始密碼登入，
-首次登入會先引導你改密，之後就能開始加資產、發起連線。
+服務對外走 https，埠為 443（80 會導向它），網址不必帶埠號；主機上這兩個埠已經有別的
+服務時，在 `.env` 以 `TLS_HTTPS_PORT` 與 `TLS_HTTP_PORT` 改成另一組。出貨預設用產品自己產生的憑證，
+故在你安裝隨附的憑證授權單位之前，瀏覽器會顯示警告：從 `/custodexa-ca.crt` 下載它，
+派發到會連進來的機器即可。要換成自己的憑證，或把 TLS 交給既有的負載平衡器，
+各只需改一個設定，做法見 [docs/QUICKSTART.md](../QUICKSTART.md)。
+
+以 `admin` 加上你設定的初始密碼登入，首次登入會先引導你改密，
+之後就能開始加資產、發起連線。
 
 沒有出廠預設密碼。四項機密都要你自己設，這是刻意的：堡壘機不該帶著預設憑證上線。
 完整設定選項、開發模式與故障排除見 [docs/QUICKSTART.md](../QUICKSTART.md)。
@@ -94,9 +100,11 @@ Windows 請在 WSL 內執行腳本。
 
 ## 文檔地圖
 
+三語文件索引在[文件索引](../README.md)。
+
 | 你想做什麼 | 讀這些 |
 |------|------|
-| 部署與日常維運 | [docs/QUICKSTART.md](../QUICKSTART.md)（啟動、設定、故障排除）；[docs/ops/](../ops/)（備份還原、升級、部署形態、平台憑證輪替） |
+| 部署與日常維運 | [QUICKSTART.md](QUICKSTART.md)（啟動、設定、故障排除）；[ops/](ops/)（備份還原、升級、部署形態、平台憑證輪替）；英文正本在 [docs/](../) |
 | 參與開發 | [CONTRIBUTING.md](../../CONTRIBUTING.md)（DCO、工作流程）；[docs/dev/](../dev/)（架構與測試紀律）；[openspec/specs/](../../openspec/specs/)（行為規格，細節以此為準） |
 | 查 API 與資料庫 | [docs/API_SPEC.md](../API_SPEC.md)、[docs/DB_SCHEMA.md](../DB_SCHEMA.md) |
 | 回報安全問題 | [SECURITY.md](SECURITY.md)（私密回報管道與處置方式；英文版在[repo 根目錄](../../SECURITY.md)） |

@@ -2,7 +2,7 @@
   <img src="docs/assets/brand/logo.png" alt="Custodexa — Guard Access. Preserve Evidence." width="440">
 </div>
 
-<p align="center"><b>English</b> | <a href="docs/zh-TW/README.md">繁體中文</a></p>
+<p align="center"><b>English</b> | <a href="docs/zh-TW/README.md">繁體中文</a> | <a href="docs/ja/README.md">日本語</a> | <a href="docs/README.md">More languages →</a></p>
 <p align="center"><a href="https://custodexa.org/en/">Website</a> · <a href="https://custodexa.org/en/docs/quickstart/">Documentation</a></p>
 <p align="center">
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=alert_status" alt="Quality Gate"></a>
@@ -85,9 +85,18 @@ can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
 `.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
 On Windows, run the script inside WSL.
 
-Then open `http://localhost/` and log in as `admin` with the initial password you set.
-The first login walks you through a mandatory password change, after which you can start
-adding assets and opening connections.
+The stack serves https on port 443, with 80 redirecting to it, so the address carries no
+port number; a host already running something there takes a different pair through
+`TLS_HTTPS_PORT` and `TLS_HTTP_PORT` in `.env`. Out of the box it uses
+a certificate it generated itself, so the address the script prints opens with a browser
+warning until you install the accompanying certificate authority: download it from
+`/custodexa-ca.crt` and hand it to the machines that connect. Bringing your own
+certificate, or leaving TLS to a load balancer you already run, takes one setting each
+and is covered in [docs/QUICKSTART.md](docs/QUICKSTART.md).
+
+Log in as `admin` with the initial password you set. The first login walks you through a
+mandatory password change, after which you can start adding assets and opening
+connections.
 
 There are no factory-default passwords; all four secrets must be set by you. This is
 deliberate: a bastion host should never go live with default credentials.
@@ -115,9 +124,9 @@ Two decisions that shape the whole system:
 
 ## Documentation
 
-> Full documentation (quick start, operations guides, API reference) is currently written
-> in **Traditional Chinese**; the product UI itself supports English. Translation
-> contributions are very welcome.
+The quick start, the operations guides, and the security and contributing notes are
+available in English, Traditional Chinese, and Japanese; the API and database references
+are kept in one language. The index of all documents is [docs/README.md](docs/README.md).
 
 | What you want to do | Read this |
 |------|------|

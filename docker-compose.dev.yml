@@ -125,6 +125,10 @@ services:
       # 容器仍讀舊 inode，dev 需 recreate backend 才反映（同 .env.example，理由見上）。
       # 掛載點在 /app（module 根）內：go test 的結果快取只追蹤 module 內被開啟的檔案，
       # 掛在外面會讓「只改 VERSION、不動 Go 碼」回報 (cached) 綠而根本不執行守衛。
+      # 唯讀掛入 docker/ 供 nginx_proxy_host_guard_test.go 比對兩份 nginx 設定
+      #（代理鏈轉給後端的 Host 必須保有對外埠，否則同源判斷失敗）。
+      # 目錄掛載＋掛在 /app 內，理由同上兩則（inode 假綠、go test 快取追蹤）。
+      - ./docker:/app/cmd/server/testdata/deploy:ro
       - ./VERSION:/app/cmd/server/testdata/release/VERSION:ro
       - ./CHANGELOG.md:/app/cmd/server/testdata/release/CHANGELOG.md:ro
       #

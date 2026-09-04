@@ -1,7 +1,7 @@
 # Custodexa 對外 TLS termination 反向代理範例（Caddy，選配）
 # 對應 openspec/specs/deployment-hardening 的 external-ingress TLS 契約。
 #
-# 與 nginx-tls.conf.example 等效的最小契約示範。Caddy 對公開網域可自動取得/續期 ACME 憑證；
+# 與 nginx-tls.conf.template 等效的最小契約示範。Caddy 對公開網域可自動取得/續期 ACME 憑證；
 # 內網/私有 CA 場景請改用明確 tls 指令指向你的憑證。
 # 注意：Caddy 的自動 HTTPS 需公開可達的 80/443 與 DNS——若你的部署不符，請沿用 nginx 範例並手動掛憑證。
 #

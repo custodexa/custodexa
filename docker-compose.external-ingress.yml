@@ -1,0 +1,29 @@
+# Custodexa external ingress overlay：關掉內建的 TLS 反向代理，把 HTTP 埠還給前端。
+#
+# 給已經有自家 ingress 的部署用（雲端 LB、既有 nginx／Traefik、Kubernetes 之外的自管代理）。
+# 啟動：
+#   docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d
+# 或在 .env 設 COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml，之後
+# `docker compose up -d` / `ps` / `down` 都會走這個形態。
+#
+# 疊上本檔之後，對外 TLS 由你的 ingress 承載：它須提供 TLS 1.2 以上、可信憑證、
+# HTTP→HTTPS 導向、HSTS，以及 WebSocket upgrade 轉發（終端與圖形串流走 wss）；
+# ingress 到本主機的 hop 若跨不可信網段，該段也要加密。契約與範例設定見 docs/QUICKSTART.md
+# 與 docker/reverse-proxy/nginx-tls.conf.template。
+services:
+  # 內建代理與憑證初始化移進一個未啟用的 profile，於是兩者都不會啟動。
+  # 要臨時把它們叫回來（例如比對行為），加 --profile builtin-tls 即可。
+  tls-init:
+    profiles: ["builtin-tls"]
+  tls-proxy:
+    profiles: ["builtin-tls"]
+
+  frontend:
+    # 前端自己發布 HTTP 埠，供你的 ingress 連上來。預設 80，改埠設 .env 的 HTTP_PORT；
+    # 只讓本機的 ingress 連時建議綁 loopback（HTTP_PORT 改不了介面，直接寫 127.0.0.1:8088:80）。
+    #
+    # 你的 ingress 轉過來的 Host 標頭要帶上使用者實際連的對外埠（不是 443 時就要有埠號）：
+    # 後端以 Origin 對 Host 判同源，Host 少了埠會讓帶憑證的請求被判成跨源。
+    # 另外把 .env 的 TRUSTED_PROXIES 設成你的 ingress 位址，來源位址才會歸因到客戶端。
+    ports:
+      - "${HTTP_PORT:-80}:80"

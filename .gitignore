@@ -58,6 +58,9 @@ logs/
 # 應用資料夾（DATA_PATH 預設；審計 / 錄影 / 資料庫 bind mount 落地）
 /data/
 
+# TLS overlay 的憑證與私鑰（docker-compose.tls.yml；自簽模式產生的本地 CA 也在此）
+/tls/
+
 # Docker volumes（歷史 named volume 目錄殘留，保留避免誤加）
 postgres_data/
 audit_logs/
@@ -120,6 +123,11 @@ backend/config/testdata/.env.example
 # 逐檔掛的理由與置於 module 內的理由同上：repo 根不得整個掛進容器，而 module 外的
 # 路徑不被 go test 結果快取追蹤，只改 VERSION 會拿到 (cached) 假綠。
 backend/cmd/server/testdata/release/
+
+# 代理鏈 Host 標頭守衛的 docker/ 唯讀掛載點（容器建立的空目錄副產物）。
+# 目錄掛載而非單檔：單檔 bind mount 綁 inode，編輯器 atomic rename 後容器仍讀舊 inode，
+# 可能讓 host 檔已壞而容器讀到舊的正確版本＝假綠。置於 module 內的理由同上各則。
+backend/cmd/server/testdata/deploy/
 
 # 驗證截圖統一收納處（本機保留供官網素材用，不入版控；README 例外入版控說明用途）
 /screenshots/*

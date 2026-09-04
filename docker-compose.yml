@@ -96,14 +96,67 @@ services:
       dockerfile: docker/frontend/Dockerfile
       target: production
     container_name: custodexa-frontend
-    # 只映射 80/HTTP：本專案採 external-ingress TLS 契約，不自帶 TLS termination。
-    # 不映射 443——宣告一個不存在的 TLS 端點，等於給部署方一個假的安全訊號。
-    # 對外 TLS 由部署方的反向代理/ingress 承載，見部署指南 docs/QUICKSTART.md 與
-    # docker/reverse-proxy/nginx-tls.conf.example。
-    ports:
-      - "80:80"
+    # 不發布 host 埠：對外由下面的 tls-proxy 持有 80 與 443，前端只在內部網路上聽 80。
+    # 自帶 ingress 的部署疊上 docker-compose.external-ingress.yml，該檔會關掉內建代理
+    # 並把 80 還給前端；見 docs/QUICKSTART.md。
     depends_on:
       - backend
+    networks:
+      - custodexa-network
+    restart: always
+
+  # 憑證前置步驟：檢查（TLS_MODE=provided）或產生（selfsigned）憑證後結束，代理才啟動。
+  # 這一步也保證代理啟動時憑證檔已經在，bind mount 不會把缺檔變成一個空目錄。
+  tls-init:
+    image: alpine/openssl:3.5.4
+    container_name: custodexa-tls-init
+    entrypoint: ["/bin/sh", "/tls-init.sh"]
+    environment:
+      TLS_MODE: ${TLS_MODE:-selfsigned}
+      TLS_DOMAIN: ${TLS_DOMAIN:-localhost}
+      TLS_IP_SAN: ${TLS_IP_SAN:-}
+      # 只用來把 CA 下載網址印完整
+      TLS_HTTPS_PORT: ${TLS_HTTPS_PORT:-443}
+    volumes:
+      - ./docker/reverse-proxy/tls-init.sh:/tls-init.sh:ro
+      - ./tls:/tls
+    # 產憑證不需要網路，也不必掛進應用網路
+    network_mode: "none"
+    restart: "no"
+
+  # 對外的 TLS 終止點：443 走 TLS、80 一律 301 導向 https。
+  # 網域取自 .env 的 TLS_DOMAIN，啟動時以 envsubst 展開範本，設定檔不必動手改。
+  tls-proxy:
+    # 需要可指名的版本時，把 tag 換成具體版本（例：nginx:1.29.1-alpine）。
+    image: nginx:stable-alpine
+    container_name: custodexa-tls-proxy
+    depends_on:
+      frontend:
+        condition: service_started
+      tls-init:
+        condition: service_completed_successfully
+    # 對外埠預設 443／80，網址不必帶埠號。這台機器上已有服務占用它們時，
+    # 在 .env 改 TLS_HTTPS_PORT／TLS_HTTP_PORT（例如 8443／8088），網址就要帶埠。
+    ports:
+      - "${TLS_HTTP_PORT:-80}:80"
+      - "${TLS_HTTPS_PORT:-443}:443"
+    environment:
+      TLS_DOMAIN: ${TLS_DOMAIN:-localhost}
+      # 導向網址要帶對外埠，故範本裡也用得到它
+      TLS_HTTPS_PORT: ${TLS_HTTPS_PORT:-443}
+      # 只展開這兩個變數：nginx 設定自己就用 $host、$http_upgrade 等變數，
+      # 不設過濾器會把它們一起替換成空字串。
+      NGINX_ENVSUBST_FILTER: TLS_DOMAIN|TLS_HTTPS_PORT
+    volumes:
+      # 範本掛進 /etc/nginx/templates/，官方映像啟動時展開成 conf.d/default.conf，
+      # 同時蓋掉映像內建的 default.conf（它會以 welcome 頁兜底吃掉請求）。
+      # 要自訂設定就複製一份範本，並在 .env 以 TLS_NGINX_TEMPLATE 指向你的檔案。
+      - ${TLS_NGINX_TEMPLATE:-./docker/reverse-proxy/nginx-tls.conf.template}:/etc/nginx/templates/default.conf.template:ro
+      - ./tls/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro
+      - ./tls/privkey.pem:/etc/nginx/certs/privkey.pem:ro
+      # 只有 CA 憑證進得了代理容器；CA 私鑰留在主機的 tls/ca-private/ 下，故意不掛。
+      # 目錄在 provided 模式是空的，/custodexa-ca.crt 於是回 404。
+      - ./tls/ca-public:/etc/nginx/ca-public:ro
     networks:
       - custodexa-network
     restart: always
@@ -112,3 +165,10 @@ services:
 networks:
   custodexa-network:
     driver: bridge
+    # 固定子網：quickstart 以這個網段填 .env 的 TRUSTED_PROXIES，讓內建代理轉過來的
+    # 來源位址標頭被採信（否則後端看到的來源一律是代理容器，審計紀錄與登入限速都跟著失準）。
+    # 網段要能事先寫進 .env，Docker 自動配發的位址做不到這件事。
+    # 與主機既有網段衝突時改 .env 的 DOCKER_SUBNET，兩處會一起跟著換。
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.28.100.0/24}

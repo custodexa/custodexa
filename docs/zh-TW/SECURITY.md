@@ -1,6 +1,6 @@
 # 安全問題回報
 
-[English](../../SECURITY.md) | **繁體中文**
+[English](../../SECURITY.md) | **繁體中文** | [日本語](../ja/SECURITY.md) | [其他語言 →](../README.md)
 
 > 本檔為英文版 [SECURITY.md](../../SECURITY.md) 的中文對照。若有歧異，以英文版為準（它是對外回報管道的權威文本）。
 

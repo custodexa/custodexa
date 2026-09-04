@@ -1,378 +1,303 @@
-# 平台自身特權憑證輪替
+# Rotating the Platform's Own Privileged Credentials
 
-> 適用版本：Custodexa 1.0。
+**English** | [繁體中文](../zh-TW/ops/privileged-credential-rotation.md) | [日本語](../ja/ops/privileged-credential-rotation.md) | [More languages →](../README.md)
+
+> Applies to: Custodexa 1.0.
 >
-> **本頁的範圍是「系統自己持有的憑證」**：平台為了運作而必須握有的服務帳號密碼、
-> 加密金鑰與簽章金鑰。被納管資產上的帳號憑證輪替（改密）不在本頁，那是產品功能而非
-> 營運程序；Windows 目標機的前置條件見[部署與升級 SOP](./upgrade-sop.md) §2.5 的 Windows 本機帳號改密段。
+> **The scope of this page is the credentials the system itself holds**: the service account passwords, encryption keys, and signing keys the platform must hold in order to operate. Rotating account credentials on managed assets (credential change) is not covered here; that is a product feature rather than an operational procedure. For Windows target prerequisites, see the Windows local account credential change section of §2.5 in the [Deployment and Upgrade SOP](./upgrade-sop.md).
 >
-> 相關文件：[備份與還原](./backup-and-restore.md)、[部署與升級 SOP](./upgrade-sop.md)。
+> Related documents: [Backup and Restore](./backup-and-restore.md), [Deployment and Upgrade SOP](./upgrade-sop.md).
 
 ---
 
-## 1. 總表
+## 1. Summary table
 
-| 憑證 | 存放 | 輪替入口 | 生效時機 | 是否中斷既有連線／登入 | 需外部配合 |
+| Credential | Stored in | Rotation entry point | When it takes effect | Interrupts existing connections or sign-ins | External coordination needed |
 |---|---|---|---|---|---|
-| LDAP bind 密碼 | 資料庫（信封加密） | 身分管理 → LDAP 目錄（UI） | 即時 | 否 | 目錄伺服器端須先改 |
-| 通知通道 secret | 資料庫（信封加密） | 通知通道（UI） | 即時（同進程） | 不適用 | 接收端須同步更新 |
-| 通知通道 URL | 資料庫（信封加密） | 通知通道（UI） | 即時（同進程） | 不適用 | — |
-| 物件儲存憑證（離機證據儲存） | 資料庫（信封加密，逐設定世代各一份） | 系統設定 → 離機儲存（UI） | 儲存成功即刻 | 否 | 儲存端須先建新憑證、事後撤舊 |
-| KEK（金鑰加密金鑰） | 依模式：env／記憶體／KMS | 金鑰管理 → KEK 重包精靈 | 重包完成後 | 否 | 模式 C 需 KMS 側金鑰 |
-| DEK（資料金鑰） | 資料庫（KEK 包裹） | 金鑰管理（`POST /keys/rotate`） | 即時 | 否 | — |
-| 審計蓋章鑰 | 資料庫（KEK 包裹） | 金鑰管理（`POST /keys/rotate`） | 即時 | 否 | — |
-| `ENCRYPTION_KEY`（KEK 材料，模式 A） | `.env` | 走 KEK 重包精靈，非直接改 env | 重包＋重啟後 | 是（重啟） | — |
-| KEK 材料（模式 B，`KEK_PROVIDER=ui`） | 僅記憶體（解封時輸入） | 走 KEK 重包精靈 | 重包＋重啟＋解封後 | 是（重啟，且須有人解封才恢復服務） | — |
-| `JWT_SECRET` | `.env` | 改 env 後重啟 | 重啟後 | **是，全員被登出** | — |
-| Ed25519 匯出簽章鑰 | 資料庫（信封加密私鑰） | 系統管理；必要時走資料層（見 §8） | — | — | **是，須重發公鑰** |
-| Ed25519 檢查點簽章鑰 | 資料庫（信封加密私鑰） | 系統管理；相關端點唯讀（見 §9） | — | — | **是，須重發公鑰** |
-| `METRICS_TOKEN` | `.env` | 改 env 後重啟 | 重啟後 | 否（採集端須同步改） | 採集端須同步更新 |
+| LDAP bind password | Database (envelope encrypted) | Identity & Access → LDAP Directory (UI) | Immediately | No | Must be changed on the directory server first |
+| Notification channel secret | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | The receiving end must be updated in step |
+| Notification channel URL | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | — |
+| Offsite storage credentials (offsite evidence storage) | Database (envelope encrypted, one set per settings generation) | System Settings → Offsite Storage (UI) | As soon as the save succeeds | No | The storage side must create the new credentials first and revoke the old ones afterwards |
+| KEK (key encryption key) | Depends on mode: env / memory / KMS | Key Management → KEK rewrap wizard | After the rewrap completes | No | Mode C needs a key on the KMS side |
+| DEK (data key) | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
+| Audit stamping key | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
+| `ENCRYPTION_KEY` (KEK material, mode A) | `.env` | Through the KEK rewrap wizard, not by editing env directly | After the rewrap and a restart | Yes (restart) | — |
+| KEK material (mode B, `KEK_PROVIDER=ui`) | Memory only (entered at unseal) | Through the KEK rewrap wizard | After the rewrap, a restart, and an unseal | Yes (restart, and service resumes only once someone unseals) | — |
+| `JWT_SECRET` | `.env` | Edit env, then restart | After the restart | **Yes, everyone is signed out** | — |
+| Ed25519 export signing key | Database (envelope encrypted private key) | System-managed; through the data layer if required (see §8) | — | — | **Yes, the public key must be redistributed** |
+| Ed25519 checkpoint signing key | Database (envelope encrypted private key) | System-managed; the related endpoints are read-only (see §9) | — | — | **Yes, the public key must be redistributed** |
+| `METRICS_TOKEN` | `.env` | Edit env, then restart | After the restart | No (the collector must be updated in step) | The collector must be updated in step |
 
-「需外部配合」欄非空者，**輪替後若未完成該配合，失效是靜默的**；請特別注意 §8、§9 與 §3。
-
----
-
-## 2. LDAP bind 密碼
-
-**存放**：資料庫 `ldap_directories` 表的 `bind_password_enc` 欄（信封加密）。
-該表為單列設定表，一個部署只有一份 LDAP 目錄設定。此欄為 write-only：
-任何 API 回應都不會回傳它，編輯表單也無從回填。
-
-**輪替程序**：
-
-1. 先在目錄伺服器（AD／LDAP）端更改該 service account 的密碼。
-2. 管理端 → 身分管理 → LDAP 目錄 → 填入新密碼。
-3. 按「測試連線」確認 bind 成功——**該測試以目前表單的值執行（含未儲存的變更）**，
-   故可在儲存前先驗證新密碼是對的，最長約 15 秒。
-4. 儲存。
-
-**生效時機：即時。** bind 密碼**不快取**：每次 LDAP 登入觸發時讀一次設定並解密一次，
-明文只存活於該次登入的呼叫堆疊。因此：
-
-- **不需要重啟服務。**
-- **不會中斷既有登入**：已登入使用者持有的是本系統簽發的 token，與 LDAP bind 無關。
-- 步驟 1 與 2 之間的空窗期內，**新的 LDAP 登入會失敗**（本地帳號登入不受影響）。
-  空窗越短越好，或選在低流量時段進行。
-
-**失敗行為**：bind 密碼解密失敗時，系統採 fail-close：對外收斂為憑證錯誤，
-**不會偽裝成「LDAP 未啟用」而放行**；內部日誌則明確指出是金鑰事故而非帳密錯誤。
-
-**`.env` 中的 `LDAP_*` 變數**：僅在**首次啟動時**用於把設定播種進資料庫。
-播種完成後改動這些變數**不會生效**。輪替一律走 UI。
+Where the "external coordination needed" column is not empty, **if that coordination is not completed after the rotation the failure is silent**. Pay particular attention to §8, §9, and §3.
 
 ---
 
-## 3. 通知通道 secret 與 URL
+## 2. LDAP bind password
 
-**存放**：`notification_channels` 表的 `secret` 與 `url` 欄（皆信封加密）。
+**Stored in**: the `bind_password_enc` column of the `ldap_directories` table (envelope encrypted). That table is a single-row settings table; a deployment has exactly one LDAP directory configuration. The column is write-only: no API response returns it, and the edit form cannot prefill it.
 
-**secret 的用途**：對 webhook 投遞的請求本文計算 HMAC 簽章，放在 `X-OT-Signature`
-標頭供接收端驗證來源。**secret 為空即不簽名。**
+**Rotation procedure**:
 
-- **Slack 類型通道恆無 secret**：Slack 不驗自訂標頭，附上只會誤導；
-  由 webhook 轉為 slack 類型時，殘留的 secret 會被清掉。
-- **webhook 類型**：編輯時留空代表沿用既有（secret 不回傳，避免任何編輯操作靜默清空），
-  須顯式選擇「清除」才會清空。
+1. Change the service account's password on the directory server (AD or LDAP) first.
+2. Admin side → Identity & Access → LDAP Directory → enter the new password.
+3. Press "Test Connection" to confirm the bind succeeds. **That test runs against the current form values, including unsaved changes**, so you can verify the new password before saving. It takes up to about 15 seconds.
+4. Save.
 
-**輪替程序**：
+**When it takes effect: immediately.** The bind password is **not cached**: each LDAP sign-in reads the configuration and decrypts once, and the plaintext lives only in the call stack of that sign-in. Therefore:
 
-1. 通知通道 UI → 編輯該通道 → 填入新 secret → 儲存。
-2. **同步更新接收端的驗證密鑰**。
-3. 以「測試發送」確認接收端收到且驗章通過。
+- **No service restart is needed.**
+- **Existing sign-ins are not interrupted**: signed-in users hold a token issued by this system, which has nothing to do with the LDAP bind.
+- During the gap between steps 1 and 2, **new LDAP sign-ins fail** (local account sign-ins are unaffected). Keep the gap as short as possible, or do this during a low-traffic period.
 
-**生效時機：即時**（同進程直接刷新通道快取，不需重啟）。
+**Failure behavior**: when decryption of the bind password fails the system fails closed. Outwardly it converges on a credential error and **does not pretend LDAP is disabled and let the request through**; the internal log states plainly that this was a key incident rather than a wrong password.
 
-> ### 必須知道的靜默降級路徑
->
-> 通道快取刷新時會把 URL 與 secret 解密為投遞用明文。**任一項解密失敗，該通道會被
-> 直接跳過、不投遞，且只寫一行日誌；不會產生告警，UI 上該通道看起來仍然正常。**
->
-> 這是刻意的取捨（寧缺勿以密文當 URL 送出），但代價是：**「介面看起來正常」不等於
-> 「正在投遞」**。
->
-> 什麼情況會踩到：KEK 或加密設定變更後，舊的加密欄位解不開。
->
-> **確認方式**：改動任何與加密相關的設定之後，對每個啟用中的通道按一次「測試發送」，
-> 並確認接收端**真的收到**。不要只看 UI 上通道是否為啟用狀態。
->
-> 另一條相關路徑：快取刷新本身失敗時會沿用舊快取並只記日誌，下次刷新才補上。
-> 故改完設定看不到預期行為時，日誌是唯一線索。
+**The `LDAP_*` variables in `.env`**: they are used **only on first startup**, to seed the configuration into the database. Changing them after seeding **has no effect**. Rotation always goes through the UI.
 
 ---
 
-## 3b. 物件儲存憑證（離機證據儲存）
+## 3. Notification channel secret and URL
 
-**存放**：資料庫的離機儲存設定表，信封加密，**每一個設定世代各自持有一份**
-（換過儲存落點的部署會有多份，各自對應當時上傳的那批物件）。此欄為 write-only：
-任何 API 回應、管理介面與審計紀錄都不會回傳它，**連遮罩過的值都不會出現**；
-編輯表單也無從回填，要改就是重輸。
+**Stored in**: the `secret` and `url` columns of the `notification_channels` table (both envelope encrypted).
 
-**輪替程序**：
+**What the secret is for**: computing an HMAC signature over the body of the webhook delivery request, carried in the `X-OT-Signature` header so the receiving end can verify the origin. **An empty secret means no signature.**
 
-1. 先在儲存端（S3／MinIO／GCS）建立新憑證。
-2. 管理端 → 系統設定 → 離機儲存 → 填入新憑證。
-3. 按「測試連線」——**該測試以目前表單的值執行（含未儲存的變更）**，可在儲存前先確認新憑證是對的。
-4. 儲存。
-5. 回儲存端撤銷舊憑證。
+- **Slack-type channels never hold a secret**: Slack does not verify custom headers, and attaching one would only mislead. When a channel is converted from webhook type to slack type, any leftover secret is cleared.
+- **Webhook type**: leaving the field empty on edit means keep the existing value (the secret is not returned, so that no edit silently clears it); you have to choose "clear" explicitly for it to be emptied.
 
-**生效時機：儲存成功即刻。不需要重啟服務，也不需要改 `.env`。**
+**Rotation procedure**:
 
-- **不觸發世代切換、不改變設定指紋**：憑證不是連線落點的一部分。只換憑證＝就地更新現行世代，
-  歷史物件的歸屬與取回路徑都不受影響。
-- **反過來，換了落點就必須重輸憑證**：provider、端點或儲存桶任一改變時，系統會拒絕沿用既存憑證
-  （憑證不會跟著設定被送到另一個地方去）。那條路徑同時是世代切換，會在管理介面上要求確認。
+1. Notification Channels UI → edit the channel → enter the new secret → save.
+2. **Update the verification key on the receiving end in step.**
+3. Use "Test send" to confirm the receiving end got it and the signature verified.
 
-**失敗行為：不靜默。** 新憑證在儲存端無效時，上傳會轉為失敗態，管理介面的離機儲存頁與失敗清單
-看得到，指標也反映得出來。**憑證解密失敗（金鑰事故）是獨立的一態**，不會被當成「功能未設定」
-而靜默停擺。
+**When it takes effect: immediately** (the channel cache is refreshed in-process; no restart needed).
 
-**歷史世代憑證的撤銷**：換過落點之後，舊世代的憑證會**隨該世代保留**，因為歷史物件的取回要用它。
-確定不再需要取回某個歷史世代時，可在該世代上單獨撤銷憑證：撤銷後那個世代的物件不可取回，
-畫面與 API 都會明確指出是哪個世代缺什麼，**而且不會回退去用雲端的預設憑證鏈**——
-「撤銷了卻還連得上」不會發生。撤銷是不可逆的：現行世代可於設定頁重新輸入憑證恢復；**歷史（已退役）世代撤銷後沒有恢復途徑**——設定頁只能對現行世代寫入憑證，該世代的遠端物件自此不可再由系統取回。撤銷歷史世代前請確認其物件已無取回需求。
-
-**停止離機不撤銷憑證**：在管理介面上「停止離機」只是不再產生新的上傳，歷史物件的取回照常，
-憑證仍在。要撤得逐世代明示。
-
-**`.env` 中的 `OFFSITE_*` 變數**：僅在**首次啟動時**用於把設定播種進資料庫。
-播種完成後改動這些變數**不會生效**，輪替一律走 UI。憑證因此不需要留在部署層設定檔裡，
-其災難復原前提改為「還原資料庫＋取得同一把 KEK」，見
-[備份與還原 §4.4](./backup-and-restore.md#44-物件儲存憑證的災難復原前提)。
+> ### A silent degradation path you have to know about
+>
+> When the channel cache is refreshed, the URL and secret are decrypted into the plaintext used for delivery. **If either fails to decrypt, that channel is skipped outright with no delivery, and only a single log line is written; no alert is produced, and the channel still looks normal in the UI.**
+>
+> This is a deliberate trade-off (better nothing than sending ciphertext as a URL), but the price is that **"looks fine in the interface" does not mean "is delivering."**
+>
+> When you can hit it: after a KEK change or a change to encryption settings, when the old encrypted columns no longer decrypt.
+>
+> **How to confirm**: after changing anything related to encryption, press "Test send" once for each enabled channel and confirm the receiving end **actually received** it. Do not rely on whether the channel shows as enabled in the UI.
+>
+> A related path: if the cache refresh itself fails, the old cache is kept and only a log entry is written, with the next refresh catching up. So when you change settings and do not see the behavior you expected, the log is the only clue.
 
 ---
 
-## 4. KEK（金鑰加密金鑰）
+## 3b. Offsite storage credentials (offsite evidence storage)
 
-KEK 是整個信封加密體系的根。它的「輪替」在本產品中稱為**重包（rewrap）**：
-以新 KEK 重新包裹既有的資料金鑰，資料本身不重新加密。
+**Stored in**: the offsite storage settings table in the database, envelope encrypted, **with one set held by each settings generation** (a deployment that has changed storage locations holds several, each matching the objects uploaded at the time). The column is write-only: no API response, admin interface, or audit record returns it, and **not even a masked value appears**; the edit form cannot prefill it either, so changing it means entering it again.
 
-**入口**：金鑰管理頁 → KEK 重包精靈（admin 限定）。相關 API 皆為 admin 限定：
+**Rotation procedure**:
 
-| 端點 | 用途 |
+1. Create the new credentials on the storage side (S3, MinIO, or GCS) first.
+2. Admin side → System Settings → Offsite Storage → enter the new credentials.
+3. Press "Test Connection". **That test runs against the current form values, including unsaved changes**, so you can confirm the new credentials before saving.
+4. Save.
+5. Go back to the storage side and revoke the old credentials.
+
+**When it takes effect: as soon as the save succeeds. No service restart is needed, and `.env` does not have to change.**
+
+- **It does not trigger a generation change and does not change the settings fingerprint**: credentials are not part of the connection location. Changing only the credentials updates the current generation in place, and neither the ownership nor the retrieval path of historical objects is affected.
+- **Conversely, changing the location requires entering the credentials again**: when the provider, endpoint, or bucket changes, the system refuses to reuse the existing credentials (credentials are not carried along with the settings to somewhere else). That path is also a generation change, and the admin interface asks for confirmation.
+
+**Failure behavior: not silent.** When new credentials are invalid on the storage side, uploads move to a failed state, which is visible on the offsite storage page and the failure list in the admin interface and is reflected in the metrics. **Failure to decrypt the credentials (a key incident) is a separate state of its own** and is not treated as "the feature is not configured" and quietly stalled.
+
+**Revoking credentials of historical generations**: after a location change, the old generation's credentials are **kept with that generation**, because retrieving historical objects needs them. When you are sure a historical generation no longer needs to be retrieved from, you can revoke the credentials on that generation alone: afterwards the objects of that generation cannot be retrieved, both the screen and the API state plainly which generation is missing what, **and there is no fallback to the cloud provider's default credential chain**, so "revoked yet still able to connect" does not happen. Revocation is irreversible: the current generation can be restored by entering credentials again on the settings page, but **a historical (retired) generation has no way back after revocation**, because the settings page can only write credentials for the current generation, and that generation's remote objects can never again be retrieved by the system. Before revoking a historical generation, confirm its objects are no longer needed.
+
+**Turning offsite storage off does not revoke credentials**: "stop offsite" in the admin interface only stops new uploads from being produced; retrieval of historical objects continues as before, and the credentials remain. Revoking has to be stated explicitly, generation by generation.
+
+**The `OFFSITE_*` variables in `.env`**: they are used **only on first startup**, to seed the configuration into the database. Changing them after seeding **has no effect**, and rotation always goes through the UI. Credentials therefore do not need to stay in the deployment-layer settings file, and their disaster recovery prerequisite becomes "restore the database and obtain the same KEK." See [Backup and Restore §4.4](./backup-and-restore.md#44-disaster-recovery-prerequisites-for-object-storage-credentials).
+
+---
+
+## 4. KEK (key encryption key)
+
+The KEK is the root of the whole envelope encryption scheme. Rotating it is called a **rewrap** in this product: the existing data keys are wrapped again with a new KEK, and the data itself is not re-encrypted.
+
+**Entry point**: the Key Management page → KEK rewrap wizard (admin only). The related APIs are all admin only:
+
+| Endpoint | Purpose |
 |---|---|
-| `POST /api/v1/keys/rewrap` | 執行重包 |
-| `DELETE /api/v1/keys/rewrap` | 放棄尚未切換的重包 |
-| `DELETE /api/v1/keys/retired-material` | 清理退役 KEK 的材料——**唯一的材料銷毀點** |
+| `POST /api/v1/keys/rewrap` | Perform a rewrap |
+| `DELETE /api/v1/keys/rewrap` | Abandon a rewrap that has not switched over |
+| `DELETE /api/v1/keys/retired-material` | Clear the material of retired KEKs, **the only place material is destroyed** |
 
-**重要性質：退役後材料保留至顯式清理。**
-KEK 退役是軟退役：只變更狀態欄位，包裹材料不清空。因此**在執行「清理退役資料」之前，
-於資料層回退到舊 KEK 始終是可行的**（最後手段，須依 §10.4 手動處理）。
-執行清理後材料被清空且不可回復；退役軌跡（來源、目標、時間戳）與指紋則永久保留。
+**An important property: material is kept after retirement until it is cleared explicitly.**
+KEK retirement is a soft retirement: only the status column changes, and the wrapping material is not cleared. So **until "clear retired data" is run, rolling back to an old KEK at the data layer is always possible** (a last resort, handled manually per §10.4). After the clear runs the material is emptied and unrecoverable; the retirement trail (source, target, timestamps) and the fingerprints are kept permanently.
 
-**放棄重包**：放棄的目標會被標記為退役（原因記為「已放棄」）而非刪除。
-之後再次重包時，系統會拒絕重複使用曾出現過的金鑰引用（含已退役紀錄），
-須改用一把全新的金鑰。
+**Abandoning a rewrap**: the abandoned target is marked retired (with the reason recorded as abandoned) rather than deleted. On a later rewrap the system refuses to reuse any key reference that has appeared before (including retired records), so a brand-new key must be used.
 
-**完成切換的步驟依 KEK 模式而異。** 重包本身與切換機制在各模式相同，切換一律由**開機流程**
-完成（系統以新 KEK 驗證可解包全部金鑰後，把舊包裹列標記退役），差別只在「新 KEK 從哪裡
-進入行程」，以及該開機流程**何時才跑得起來**：模式 A／C 於重啟當下，模式 B 因啟動後停在
-封印狀態，要到有人於解封頁提交材料之後才執行，故其切換是在解封時完成：
+**The steps that complete the switchover differ by KEK mode.** The rewrap itself and the switchover mechanism are the same in every mode, and the switchover is always completed by the **boot sequence** (once the system has verified that the new KEK can unwrap every key, it marks the old wrapped rows retired). What differs is where the new KEK enters the process, and **when that boot sequence can run at all**: in modes A and C at the moment of the restart, while in mode B the system stops in the sealed state after startup and only runs it once someone submits the material on the unseal page, so its switchover completes at unseal:
 
-| 模式 | 重包完成後要做的事 |
+| Mode | What to do after the rewrap completes |
 |---|---|
-| `env`（模式 A） | 把新 KEK 寫入 `.env` 的 `ENCRYPTION_KEY`（或 compose 檔）→ 重啟後端服務 → 開機時完成切換 |
-| `ui`（模式 B） | 重啟後端服務（重啟後回到封印狀態）→ **在解封頁輸入新的那把 KEK** → 解封時完成切換。**不要把新 KEK 寫入 `.env` 或任何環境變數**：模式 B 的材料只存在於記憶體，寫上磁碟等同放棄本模式唯一的保護 |
-| `kms`（模式 C） | 見下方「跨模式遷移」。切換須改 `KEK_PROVIDER` 宣告與對應組態後重啟，屬部署層變更 |
+| `env` (mode A) | Write the new KEK into `ENCRYPTION_KEY` in `.env` (or the compose file) → restart the backend service → the switchover completes at boot |
+| `ui` (mode B) | Restart the backend service (it comes back sealed) → **enter the new KEK on the unseal page** → the switchover completes at unseal. **Do not write the new KEK into `.env` or any environment variable**: in mode B the material exists only in memory, and writing it to disk gives up the only protection this mode offers |
+| `kms` (mode C) | See "Cross-mode migration" below. The switchover requires changing the `KEK_PROVIDER` declaration and the corresponding configuration and then restarting, which is a deployment-layer change |
 
-模式 B 的完整路徑是：重包 → 重啟 → 於解封頁輸入新一代 KEK → 解封成功並可正常登入。
+The full path for mode B is: rewrap → restart → enter the new-generation KEK on the unseal page → unseal succeeds and sign-in works normally.
 
-金鑰管理頁與換鑰精靈的畫面指示會依**執行期 provider** 顯示對應版本；讀不到 provider 時
-會列出各模式做法並要求操作者自行辨識，**不會預設顯示 `env` 版本**。
+The on-screen instructions on the Key Management page and in the key change wizard show the version matching the **runtime provider**; when the provider cannot be read they list the approach for each mode and ask the operator to identify their own, and **do not default to showing the `env` version**.
 
-**跨模式遷移（本機 → 雲端 KMS）**：
+**Cross-mode migration (local → cloud KMS)**:
 
-1. 先補齊 KMS 組態鍵（`KEK_KMS_PROVIDER`／`KEK_KMS_REGION`／`KEK_KMS_KEY_ID`）並重啟
-   （此時仍以本地 KEK 運行）。
-2. 金鑰管理頁 → KEK 重包精靈 → 選委託目標 → 填目標金鑰 ARN。
-   預檢會實際呼叫 KMS 驗證連通性、金鑰可用性與權限。
-3. 重包完成後，把 `KEK_PROVIDER` 改為 `kms`、移除本地 `ENCRYPTION_KEY`，重啟。
-4. 確認金鑰清冊顯示 `provider=kms`、`key_ref` 為正規 ARN。
+1. Fill in the KMS configuration keys first (`KEK_KMS_PROVIDER`, `KEK_KMS_REGION`, `KEK_KMS_KEY_ID`) and restart (still running on the local KEK at this point).
+2. Key Management page → KEK rewrap wizard → choose the delegation target → enter the target key ARN. The preflight actually calls KMS to verify connectivity, key availability, and permissions.
+3. After the rewrap completes, change `KEK_PROVIDER` to `kms`, remove the local `ENCRYPTION_KEY`, and restart.
+4. Confirm the key inventory shows `provider=kms` and a canonical ARN for `key_ref`.
 
-**反向遷移（雲端 → 本機）**同樣經重包精靈，選本地目標即可。
+**Migrating back (cloud → local)** also goes through the rewrap wizard; just choose a local target.
 
 ---
 
-## 5. DEK 與審計蓋章鑰
+## 5. DEK and the audit stamping key
 
-**入口**：金鑰管理頁，或 `POST /api/v1/keys/rotate`（admin 限定），
-以 `purpose` 指定輪替對象：
+**Entry point**: the Key Management page, or `POST /api/v1/keys/rotate` (admin only), with `purpose` naming what to rotate:
 
-- 資料金鑰（保護資產憑證等加密欄位）。
-- 審計完整性蓋章鑰。
+- The data key (which protects encrypted columns such as asset credentials).
+- The audit integrity stamping key.
 
-**生效時機：即時，不需重啟，不中斷既有連線。** 新版本啟用後，新寫入使用新版本；
-既有密文仍由其對應版本解開，版本鏈保留。
+**When it takes effect: immediately, no restart, no interruption to existing connections.** Once the new version is active, new writes use it; existing ciphertext is still opened by its own version, and the version chain is kept.
 
-**可能的拒絕回應**（皆為正常的把關，不是錯誤）：
+**Responses that may refuse the request** (all normal gatekeeping, not errors):
 
-- 金鑰操作進行中（其他金鑰操作持鎖）→ 409。
-- 有尚未切換的重包在途 → 409；請先完成或放棄該重包。
-- 行程內金鑰快取過期 → 409。
+- A key operation is in progress (another key operation holds the lock) → 409.
+- A rewrap is in flight and has not switched over → 409; complete or abandon that rewrap first.
+- The in-process key cache has expired → 409.
 
-**輪替頻率**：金鑰管理頁承載 `key_cryptoperiod_reminder_days` 政策鍵。
-設為大於 0 時，金鑰超齡會在清冊顯示提醒。提醒只出現在清冊上，實際輪替須由人執行。
+**Rotation frequency**: the Key Management page carries the `key_cryptoperiod_reminder_days` policy key. When set greater than 0, keys past that age show a reminder in the inventory. The reminder appears only in the inventory; the rotation itself has to be performed by a person.
 
 ---
 
-## 6. `ENCRYPTION_KEY`（KEK 模式 A 的材料）
+## 6. `ENCRYPTION_KEY` (the material for KEK mode A)
 
-**不要用「直接改 `.env` 的值再重啟」來輪替這把鑰。** 那不是輪替，那是把系統變成
-起不來：啟動時 KEK 與資料庫中的包裹不符即 fail-close 拒絕啟動。
+**Do not rotate this key by editing the value in `.env` and restarting.** That is not a rotation; that turns the system into one that will not start: if at startup the KEK does not match the wrapping in the database, it fails closed and refuses to start.
 
-正確做法是走 §4 的**重包精靈**：以新材料重包，系統完成切換後才更新 `.env`。
+The correct approach is the **rewrap wizard** in §4: rewrap with the new material, and update `.env` only after the system has completed the switchover.
 
-金鑰清冊會顯示這把鑰的**指紋**（材料的 SHA-256 前 8 bytes）。環境變數不帶輪替紀錄，
-清冊因此只有指紋，沒有年齡或上次輪替時間；若需要輪替時間紀錄，請自行在營運文件中維護。
+The key inventory shows this key's **fingerprint** (the first 8 bytes of the SHA-256 of the material). Environment variables carry no rotation record, so the inventory has only a fingerprint, without an age or a last-rotated time; if you need a record of rotation times, maintain it in your own operational documentation.
 
-誤設為已退役 KEK 時的錯誤指引，見[備份與還原 §7.2](./backup-and-restore.md#72-以已退役但材料尚未清理的-kek-開機)。
+For the error guidance when a retired KEK is set by mistake, see [Backup and Restore §7.2](./backup-and-restore.md#72-booting-with-a-retired-kek-whose-material-has-not-been-cleared).
 
-**模式 B（`KEK_PROVIDER=ui`）沒有這把 env 鍵**，材料只在解封時輸入、不落磁碟。
-該模式的重包切換步驟見 §4 的模式對照表：重啟後於解封頁輸入新 KEK，**不要**寫入 `.env`。
+**Mode B (`KEK_PROVIDER=ui`) has no such env key**; the material is entered at unseal and never written to disk. For the rewrap switchover steps in that mode, see the mode table in §4: after the restart, enter the new KEK on the unseal page, and **do not** write it into `.env`.
 
 ---
 
 ## 7. `JWT_SECRET`
 
-**存放**：`.env`。這是登入 token 的 HS256 簽章信任根，長度須至少 32 bytes。
+**Stored in**: `.env`. This is the HS256 signing trust root for sign-in tokens, and must be at least 32 bytes long.
 
-**輪替程序**：改 `.env` 的值 → 重啟服務。
+**Rotation procedure**: change the value in `.env` → restart the service.
 
-**生效時機：重啟後。**
+**When it takes effect: after the restart.**
 
-> **會中斷全部使用者：所有既有 token 立即失效，全員必須重新登入。**
-> 舊 token 以舊密鑰簽出，換鑰後驗不過，輪替簽章鑰必然如此。
-> 請安排維護視窗，並事先通知使用者。
+> **It interrupts every user: all existing tokens become invalid immediately and everyone has to sign in again.**
+> Old tokens were signed with the old key and no longer verify after the change, which is inherent to rotating a signing key.
+> Schedule a maintenance window and notify users in advance.
 
-系統在 release 模式下會偵測 `JWT_SECRET` 是否仍為出廠佔位值，未更改即拒絕啟動。
+In release mode the system detects whether `JWT_SECRET` is still the factory placeholder value and refuses to start if it has not been changed.
 
 ---
 
-## 8. Ed25519 匯出簽章鑰（稽核證據匯出）
+## 8. Ed25519 export signing key (audit evidence export)
 
-**用途**：對稽核證據匯出的 manifest 簽章。驗證者（例如外部稽核人員、QSA）在組織之外，
-以**公鑰離線驗證**。這正是選 Ed25519 而非 HMAC 的原因：共享密鑰對組織外的驗證者不可行。
+**Purpose**: signing the manifest of an audit evidence export. The verifiers (external auditors, a QSA) are outside the organization and verify **offline with the public key**. This is exactly why Ed25519 was chosen over HMAC: a shared secret is not workable for verifiers outside the organization.
 
-**存放**：`export_signing_keys` 表的**單列**（私鑰信封加密，公鑰以明文存放供下載）。
-首次啟動時自動生成。**此表沒有版本欄。**
+**Stored in**: a **single row** of the `export_signing_keys` table (private key envelope encrypted, public key stored in plaintext for download). It is generated automatically on first startup. **This table has no version column.**
 
-**公鑰取得**：`GET /api/v1/audit-export/public-key`（需 `audit:view` 權限），
-或金鑰管理頁的公鑰複製／下載
-（清冊顯示的是**公鑰指紋**，非材料指紋）。此鑰在清冊中標示為「系統管理」，
-**沒有輪替按鈕**。
+**Getting the public key**: `GET /api/v1/audit-export/public-key` (requires the `audit:view` permission), or copy/download the public key on the Key Management page (the inventory shows the **public key fingerprint**, not a material fingerprint). This key is marked system-managed in the inventory and **has no rotate button**.
 
-### 若必須更換：資料層程序
+### If it has to be replaced: the data-layer procedure
 
-更換這把鑰是資料層操作：刪除 `export_signing_keys` 的該列後重啟，服務會在下次啟動時
-生成新的一把。這條路徑**未經產品驗證**，執行前務必先備份，並理解下列後果：
+Replacing this key is a data-layer operation: delete that row of `export_signing_keys` and restart, and the service generates a new one at the next startup. This path **has not been verified by the product**; back up before running it, and understand the following consequences:
 
-> ### 換鑰後必須重發公鑰，否則外部驗證會靜默失敗
+> ### After a key change the public key must be redistributed, or external verification fails silently
 >
-> - **全部外部驗證者手上的舊公鑰立即失效。** 他們拿舊公鑰驗新匯出的證據會得到
->   「驗章不通過」，而那個結果與「證據被竄改」在外觀上**完全相同**。
-> - **既有的、已經交付出去的匯出證據，將無法以新公鑰驗證。** 舊簽章對應舊私鑰，
->   私鑰已不存在，那些證據從此無法再被驗證。
+> - **Every external verifier's old public key becomes invalid immediately.** Verifying newly exported evidence with the old public key gives "signature does not verify," and that outcome looks **exactly the same** as "the evidence was tampered with."
+> - **Existing evidence exports that have already been delivered cannot be verified with the new public key.** The old signatures correspond to the old private key, which no longer exists, so that evidence can never be verified again.
 >
-> **因此換鑰前必須先確認**：所有已交付證據的驗證窗口是否已經關閉？
-> 換鑰後必須主動把新公鑰重新分發給每一位外部驗證者，並書面告知換鑰時間點，
-> 讓他們知道哪些證據要用哪把公鑰驗。
+> **So before changing the key, confirm**: has the verification window closed for all evidence already delivered? After the change you must actively redistribute the new public key to every external verifier and tell them in writing when the change took place, so they know which evidence to verify with which public key.
 >
-> 這件事沒有任何機制會替你做，也不會有任何錯誤訊息提醒你漏做了。
+> No mechanism does this for you, and no error message will remind you that you skipped it.
 
 ---
 
-## 9. Ed25519 檢查點簽章鑰（審計檢查點鏈）
+## 9. Ed25519 checkpoint signing key (the audit checkpoint chain)
 
-**用途**：對審計檢查點鏈的檢查點簽章，供離線複驗。與匯出簽章鑰**刻意分立**，
-不共用同一把。首次啟動時自動生成，資料表自始帶版本欄（`checkpoint_signing_keys`）。
+**Purpose**: signing the checkpoints of the audit checkpoint chain, for offline re-verification. It is **deliberately separate** from the export signing key and is not shared with it. It is generated automatically on first startup, and its table (`checkpoint_signing_keys`) has had a version column from the beginning.
 
-**公鑰取得**：`GET /api/v1/audit-checkpoints/public-key`（回傳公鑰、版本與指紋）。
+**Getting the public key**: `GET /api/v1/audit-checkpoints/public-key` (returns the public key, the version, and the fingerprint).
 
-### 這把鑰的生命週期
+### The lifecycle of this key
 
-這把鑰生成之後就一直沿用同一把，`/api/v1/audit-checkpoints` 之下的三個端點
-（列表、公鑰、驗證）全部唯讀。資料表帶版本欄、驗證邏輯也接受指定版本驗章，
-是為多版本共存預留的空間。
+Once generated, this key stays the same one, and the three endpoints under `/api/v1/audit-checkpoints` (list, public key, verify) are all read-only. The version column on the table, and the verification logic accepting a version to verify against, are room reserved for several versions coexisting.
 
-日後若開放輪替，§8 的外部配合要求同樣成立：**新公鑰須重發給離線複驗者**，
-且舊版本的檢查點仍須以舊公鑰驗證。
+If rotation is opened up later, the external coordination requirement in §8 applies just the same: **the new public key has to be redistributed to offline re-verifiers**, and checkpoints of the old version still have to be verified with the old public key.
 
 ---
 
-## 10. KEK 相關的例外處置
+## 10. Exception handling around the KEK
 
-以下四項是「做錯會造成資料不可解」的操作，請逐步執行，不要跳步。
+The four items below are operations where a mistake leaves data undecryptable. Work through them step by step and do not skip steps.
 
-### 10.1 `kek_id` 為非正規形式時的逐列處置
+### 10.1 Row-by-row handling when `kek_id` is not in canonical form
 
-**現象**：啟動時偵測到委託模式（`wk:2:kms:`）的列，其 `kek_id` 不符 KMS key ARN 語法，
-系統 fail-close 拒絕啟動。
+**Symptom**: at startup the system detects rows in delegated mode (`wk:2:kms:`) whose `kek_id` does not match KMS key ARN syntax, and fails closed, refusing to start.
 
-> **處置必須逐列進行，嚴禁一次性全表 `UPDATE`。**
+> **Handling must be done row by row; a single table-wide `UPDATE` is strictly forbidden.**
 
-1. 匯出該列的 `purpose`／`version`／`kek_id`／`wrapped_key`。
-2. 對**每一列**，以明確的 KeyId 加上正確的 AAD 嘗試解包，確認材料確實屬於該金鑰。
-3. **只有解包成功的列**才可改標為正規 ARN。
-4. 解包失敗者**不得改標**。解包失敗表示標籤與材料的對應關係本身有問題；
-   裸 `UPDATE` 只會把一個「可診斷的錯誤」變成「不可逆的標籤污染」。
+1. Export `purpose`, `version`, `kek_id`, and `wrapped_key` for those rows.
+2. For **each row**, try to unwrap with an explicit KeyId and the correct AAD, confirming that the material really does belong to that key.
+3. **Only rows that unwrap successfully** may be relabeled with a canonical ARN.
+4. Rows that fail to unwrap **must not be relabeled**. A failed unwrap means the correspondence between the label and the material is itself in question, and a bare `UPDATE` only turns a diagnosable error into irreversible label contamination.
 
-### 10.2 AAD 重算（雲端 KMS 稽核比對用）
+### 10.2 Recomputing the AAD (for cloud KMS audit comparison)
 
-委託模式下，送往 KMS 的 `EncryptionContext` 是單鍵不透明映射
-`{"aad": base64(aadBytes)}`。
+In delegated mode, the `EncryptionContext` sent to KMS is a single-key opaque mapping, `{"aad": base64(aadBytes)}`.
 
-**這使 CloudTrail 的稽核力由「可直讀」轉為「可比對」**：CloudTrail 記錄中看到的
-base64 值不可直接讀懂，必須在本地重算後比對。
+**This changes the audit power of CloudTrail from directly readable to comparable**: the base64 value seen in CloudTrail records cannot be read directly and has to be recomputed locally and compared.
 
-重算方式：資料金鑰層的 AAD 由該金鑰的 `purpose` 與 `version` 經長度前綴的 canonical
-編碼後取 base64。重算結果與 CloudTrail 記錄比對相符，即可確認該次 KMS 操作對應的是
-哪個金鑰用途與版本。
+How to recompute: the AAD at the data key layer is the base64 of the length-prefixed canonical encoding of that key's `purpose` and `version`. When the recomputed result matches the CloudTrail record, you have confirmed which key purpose and version that KMS operation corresponds to.
 
-### 10.3 退版順序
+### 10.3 Order for reverting
 
-反向重包（委託 → 本地）本身經重包精靈執行，見 §4。
+The reverse rewrap (delegated → local) is itself performed through the rewrap wizard; see §4.
 
-> **退版只有反向重包這一步。** 包裹前綴的合法值恆為單一形式、無回退分支，
-> 重包完成即結束，沒有第二步。
+> **Reverting is only that one reverse rewrap.** The legal value of the wrapping prefix is always a single form, with no fallback branch, so the rewrap completing is the end of it. There is no second step.
 
-### 10.4 手動復原退役的 KEK 列（最後手段）
+### 10.4 Manually recovering a retired KEK row (last resort)
 
-僅在「必須回退到某把已退役的 KEK」時使用，且**只有在該 KEK 的材料尚未經顯式清理時
-才可行**（見 §4）。
+Use this only when you must roll back to a KEK that has been retired, and **it is only possible while that KEK's material has not been cleared explicitly** (see §4).
 
-前提與注意：
+Prerequisites and cautions:
 
-- 這是資料層操作，產品不提供 UI 或 API 入口。
-- 執行前完整備份資料庫。
-- 系統**不會自動反轉退役**：切換完成後誤設舊 KEK 幾乎必為操作失誤，
-  自動反轉會靜默撤銷一次刻意的金鑰儀式。
-- 若退役原因是「已放棄」（該 KEK 從未在役），復原它等於靜默撤銷一次刻意的放棄決策。
-  這種情況的正確做法是**以現行 KEK 啟動後重新執行重包**，而不是復原退役列。
+- This is a data-layer operation; the product offers no UI or API entry point for it.
+- Take a full database backup before running it.
+- The system **does not reverse retirement automatically**: setting an old KEK after the switchover has completed is almost always an operator mistake, and reversing it automatically would silently undo a deliberate key ceremony.
+- If the reason for retirement was that the KEK was abandoned (it was never in service), recovering it amounts to silently undoing a deliberate decision to abandon. The right approach in that case is to **start with the current KEK and run the rewrap again**, not to recover the retired row.
 
-系統在誤設退役 KEK 開機時，會依退役原因給出對應指引，見
-[備份與還原 §7.2](./backup-and-restore.md#72-以已退役但材料尚未清理的-kek-開機)。
+When the system boots with a retired KEK set by mistake, it gives guidance matching the retirement reason; see [Backup and Restore §7.2](./backup-and-restore.md#72-booting-with-a-retired-kek-whose-material-has-not-been-cleared).
 
 ---
 
-## 11. 郵件（SMTP）憑證
+## 11. Email (SMTP) credentials
 
-稽核與採購評估常問「你們的郵件服務帳號誰輪替」。**本產品不含郵件寄送元件**，
-沒有 SMTP 用戶端、寄件帳號或郵件伺服器設定，因此沒有 SMTP 憑證需要輪替。
+Audits and procurement assessments often ask who rotates your email service account. **This product contains no email sending component**: there is no SMTP client, no sending account, and no mail server configuration, so there are no SMTP credentials to rotate.
 
-告警的外送路徑是 webhook 與 Slack（見 §3），兩者皆為 HTTP POST，憑證形式是通道 URL
-與 HMAC secret，輪替程序如 §3 所述。
+Alerts go out over webhooks and Slack (see §3). Both are HTTP POST, the credentials take the form of a channel URL and an HMAC secret, and the rotation procedure is the one in §3.
 
-若貴方需要以電子郵件接收告警，做法是在 webhook 接收端自行轉發，
-該段的郵件憑證由貴方管理，不在本產品範圍內。
+If you need to receive alerts by email, do it by forwarding from your own webhook receiver; the email credentials on that leg are managed by you and are outside the scope of this product.
 
 ---
 
-## 12. 輪替後的共同確認項
+## 12. Checks common to every rotation
 
-無論輪替哪一項，完成後請確認：
+Whatever you rotated, confirm the following afterwards:
 
-1. **金鑰清冊的指紋已如預期變化**（該變的變了、不該變的沒變），並更新隨備份保存的指紋紀錄。
-2. **對每個啟用中的通知通道按一次「測試發送」**，且接收端真的收到（§3 的靜默降級路徑）。
-3. **審計紀錄中有這次輪替的紀錄**。金鑰操作皆為 admin 限定且入審計；
-   材料清理另會記錄清理列數與各金鑰版本指紋。
-4. 若動到 env 側的鑰，確認服務重啟後啟動日誌無 fail-close 訊息。
-
+1. **The fingerprints in the key inventory changed as expected** (what should have changed did, and what should not have did not), and update the fingerprint record kept with your backups.
+2. **Press "Test send" once for each enabled notification channel**, and confirm the receiving end actually received it (the silent degradation path in §3).
+3. **The audit record contains a record of this rotation.** Key operations are all admin only and are audited; clearing material additionally records the number of rows cleared and the fingerprint of each key version.
+4. If you touched a key on the env side, confirm the startup log after the restart has no fail-closed message.

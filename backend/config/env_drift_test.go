@@ -50,9 +50,12 @@ var driftAllowlist = map[string]bool{
 	// 整合測試 gating（internal/testgate；非部署契約，故不入 .env.example）。
 	// testgate 是**非測試套件**（三個測試套件共用同一份 gating 語義），
 	// 故其 os.Getenv 會被本守衛掃到——列此為刻意登記，不是漏網。
-	"REQUIRE_INTEGRATION":     true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
-	"TEST_PG_DSN":             true, // postgres 靶機 DSN
-	"LOOPBACK_PASSWORD":       true, // loopback 回歸 CLI 專用（build tag loopback，不進正式映像）
+	"REQUIRE_INTEGRATION": true, // 設 1 時整合測試的 skip 轉 fail（CI 開啟，消滅假綠）
+	"TEST_PG_DSN":         true, // postgres 靶機 DSN
+	"LOOPBACK_PASSWORD":   true, // loopback 回歸 CLI 專用（build tag loopback，不進正式映像）
+	// 同一支回歸 CLI 以絕對路徑呼叫 powershell.exe 時讀的 Windows 系統變數；
+	// 由 Windows runner 自身提供，不是部署旋鈕，故不入範本
+	"SystemRoot":              true,
 	"LOOPBACK_PASSWORD_2":     true,
 	"LOOPBACK_NEW_PASSWORD":   true,
 	"LOOPBACK_NEW_PASSWORD_2": true,

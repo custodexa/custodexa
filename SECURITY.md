@@ -1,8 +1,8 @@
 # Reporting Security Issues
 
-**English** | [繁體中文](docs/zh-TW/SECURITY.md)
+**English** | [繁體中文](docs/zh-TW/SECURITY.md) | [日本語](docs/ja/SECURITY.md) | [More languages →](docs/README.md)
 
-> If the two language versions ever diverge, this English text governs.
+> If the language versions ever diverge, this English text governs.
 
 ## Please do not open a public issue
 

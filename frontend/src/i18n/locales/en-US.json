@@ -3165,7 +3165,7 @@
     "ldap_ui_managed": "Maintained on the directory settings page under Identity Management",
     "ldap_disabled_ui_managed": "LDAP disabled; maintained on the directory settings page under Identity Management",
     "ldap_resolve_failed": "Failed to read the LDAP settings (database or key issue); the current encryption status cannot be determined. Check the server logs",
-    "nginx_deploy_managed": "Frontend external HTTPS is a deployment-layer concern: this service does not provide TLS itself; a front TLS-terminating reverse proxy/ingress must provide 443 ssl + 80→443 redirect + HSTS + wss (sample: docker/reverse-proxy/); the in-container nginx listens on 80 only; managed by the deployer",
+    "nginx_deploy_managed": "Frontend external HTTPS is a deployment-layer concern: external TLS is terminated by the built-in proxy or the deployer's ingress (443 ssl + 80→443 redirect + HSTS + wss, config under docker/reverse-proxy/); traffic between the backend and frontend containers is plaintext on the single-host internal network; managed by the deployer",
     "ssh_encrypted": "SSH is encrypted by protocol, outside policy scope",
     "syslog_disabled": "Syslog forwarding disabled",
     "syslog_protocol": "Forwarding protocol: {protocol}",

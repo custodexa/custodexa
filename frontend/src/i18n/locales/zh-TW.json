@@ -3165,7 +3165,7 @@
     "ldap_ui_managed": "設定於身分管理的目錄設定頁維護",
     "ldap_disabled_ui_managed": "LDAP 未啟用；設定於身分管理的目錄設定頁維護",
     "ldap_resolve_failed": "LDAP 設定讀取失敗（資料庫或金鑰問題），現行加密狀態無法判定；請檢查伺服器日誌",
-    "nginx_deploy_managed": "前端對外 HTTPS 屬部署層：本服務不自帶 TLS，須由前置的 TLS-terminating 反向代理/ingress 提供 443 ssl＋80→443 redirect＋HSTS＋wss（範例見 docker/reverse-proxy/）；容器內 nginx 僅 listen 80；部署方管理",
+    "nginx_deploy_managed": "前端對外 HTTPS 屬部署層：對外 TLS 由內建代理或部署方 ingress 終止（443 ssl＋80→443 redirect＋HSTS＋wss，設定見 docker/reverse-proxy/）；後端與前端容器間為單主機內網明文；部署方管理",
     "ssh_encrypted": "SSH 協議本身加密，不在政策範疇",
     "syslog_disabled": "syslog 轉發未啟用",
     "syslog_protocol": "轉發協議：{protocol}",

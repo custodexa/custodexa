@@ -2,6 +2,70 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.4.0 — https out of the box (2026-09-04)
+
+No schema change. No migration runs.
+
+**The published ports change.** The stack now serves https on 443 and redirects plain
+http on 80 to it, where it previously served http on 80 only. A host already running
+something on 443 takes a different pair through `TLS_HTTPS_PORT` and `TLS_HTTP_PORT` in
+`.env`, and the address then carries that port. If you started a reverse proxy container
+of your own alongside a previous version, stop it before upgrading so it does not hold
+the ports the built-in one now publishes.
+
+### The production stack terminates TLS itself
+
+- `docker compose up -d` brings up a reverse proxy in front of the frontend: 443 inside
+  the network with TLS 1.2 and above, HSTS, WebSocket forwarding for terminal and
+  graphical sessions, and a redirect from http. The proxy is a service like any other, so
+  `ps`, `up -d`, `down` and the upgrade procedure all cover it.
+- The host name comes from `TLS_DOMAIN` in `.env` and is substituted into the proxy
+  configuration at startup, so the configuration file itself needs no editing. Point
+  `PUBLIC_BASE_URL` at the same host over https.
+- `bash scripts/quickstart.sh` fills in the host name, the addresses of the machine and
+  the https base URL when they are missing, and prints the address to open along with the
+  link to download the certificate authority. With `--up` it also names whatever already
+  holds the http or https port, before it starts anything.
+- The built-in proxy is trusted for source addresses out of the box: quickstart sets
+  `TRUSTED_PROXIES` to the Docker subnet the stack runs on, so the audit log and the
+  sign-in rate limit see the address of the client rather than the address of the proxy.
+
+### Certificates: generated for you, or your own
+
+- `TLS_MODE=selfsigned`, the default, generates a local certificate authority and a
+  server certificate on the first start and keeps them in `tls/`. The certificate covers
+  the host name in `TLS_DOMAIN` plus any addresses listed in `TLS_IP_SAN`. The proxy
+  publishes the CA certificate at `/custodexa-ca.crt`: install it on the machines that
+  connect, through group policy, MDM or by hand, and browsers show the site as trusted.
+  The CA private key stays on the host and never enters the proxy container.
+- `TLS_MODE=provided` takes `tls/fullchain.pem` and `tls/privkey.pem` from your own CA. A
+  missing file stops the start with a message naming it, and the rest of the system is
+  untouched.
+- Certificates already in `tls/` are kept as they are on every later start. Replacing them
+  means deleting the files and starting again.
+- Need settings the shipped proxy configuration does not cover? Copy
+  `docker/reverse-proxy/nginx-tls.conf.template`, edit the copy, and point
+  `TLS_NGINX_TEMPLATE` at it.
+
+### Deployments with their own ingress
+
+- Already running a load balancer or reverse proxy in front? Start with
+  `docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d` and
+  the built-in proxy stays out of the way while the frontend publishes plain http on 80
+  for your ingress. Setting `COMPOSE_FILE` in `.env` makes that the default for every
+  later command. The contract for such an ingress is unchanged and is written out in
+  `docs/QUICKSTART.md`.
+- Two settings belong to that ingress: forward the Host header with the port people
+  connect to, which is what lets the backend recognise a same-origin request, and set
+  `TRUSTED_PROXIES` to the ingress address so requests are attributed to the client.
+
+### Documentation in three languages
+
+- The README, the quickstart, the security policy, the contribution guide, the settings
+  reference and the four operations procedures now read in English at the top level, with
+  Traditional Chinese under `docs/zh-TW/` and Japanese under `docs/ja/`. Each file links
+  to its counterparts, and `docs/README.md` indexes all three.
+
 ## 1.3.1 — spreadsheet-safe CSV files in audit exports (2026-09-04)
 
 No schema change. No migration runs.

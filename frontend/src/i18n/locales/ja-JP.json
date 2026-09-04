@@ -3165,7 +3165,7 @@
     "ldap_ui_managed": "設定は ID 管理のディレクトリ設定ページで管理",
     "ldap_disabled_ui_managed": "LDAP は無効；設定は ID 管理のディレクトリ設定ページで管理",
     "ldap_resolve_failed": "LDAP 設定の読み取りに失敗しました（データベースまたは鍵の問題）。現在の暗号化状態は判定できません；サーバーログを確認してください",
-    "nginx_deploy_managed": "フロントエンドの外部 HTTPS はデプロイ層：本サービス自体は TLS を提供しません。前段の TLS 終端リバースプロキシ/ingress が 443 ssl＋80→443 リダイレクト＋HSTS＋wss を提供する必要があります（例：docker/reverse-proxy/）；コンテナ内 nginx は 80 のみ listen；デプロイ側が管理",
+    "nginx_deploy_managed": "フロントエンドの外部 HTTPS はデプロイ層：外部 TLS は内蔵プロキシまたはデプロイ側の ingress で終端します（443 ssl＋80→443 リダイレクト＋HSTS＋wss、設定は docker/reverse-proxy/）；バックエンドとフロントエンドのコンテナ間は単一ホスト内部ネットワークの平文；デプロイ側が管理",
     "ssh_encrypted": "SSH はプロトコル自体が暗号化されており、ポリシー対象外",
     "syslog_disabled": "syslog 転送は無効",
     "syslog_protocol": "転送プロトコル：{protocol}",

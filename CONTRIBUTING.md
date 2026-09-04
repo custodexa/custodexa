@@ -1,6 +1,6 @@
 # Contributing
 
-<p><b>English</b> | <a href="docs/zh-TW/CONTRIBUTING.md">繁體中文</a></p>
+<p><b>English</b> | <a href="docs/zh-TW/CONTRIBUTING.md">繁體中文</a> | <a href="docs/ja/CONTRIBUTING.md">日本語</a> | <a href="docs/README.md">More languages →</a></p>
 
 Thanks for contributing to Custodexa. This document tells you how to get a
 contribution in; for environment setup, see [`docs/QUICKSTART.md`](docs/QUICKSTART.md).

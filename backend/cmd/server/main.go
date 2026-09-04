@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -214,11 +215,14 @@ func main() {
 	log.Printf("==================================")
 
 	// 明文傳輸告警（deployment-hardening）：後端以明文 HTTP 提供服務（設計為置於反向代理之後）。
-	// 本專案採 external-ingress TLS 契約——TLS termination 為部署方職責。release 模式提醒務必以具
-	// TLS termination 的 ingress/反代承載對外流量（TLS 1.2+、HTTP→HTTPS redirect、HSTS、WSS）。
+	// 對外 TLS 由預設 compose 內建的代理終止；停用它而改走自家 ingress 時，那一段是部署方職責。
+	// release 模式提醒務必以具 TLS termination 的 ingress/反代承載對外流量
+	// （TLS 1.2+、HTTP→HTTPS redirect、HSTS、WSS）。
 	// 此為告警非 fail-close（不改變預設綁定），詳見部署指南。
-	if s1.cfg.IsReleaseMode() {
-		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後；stock 部署本身不提供 TLS")
+	// 只在對外入口可能是明文時才印：`PUBLIC_BASE_URL` 是 https 就表示對外那一段已終止 TLS
+	// （內建代理形態的 quickstart 會把它填成 https），此時後端與代理之間的明文屬單主機內網，不必告警。
+	if s1.cfg.IsReleaseMode() && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(s1.cfg.OIDC.PublicBaseURL)), "https://") {
+		log.Println("release：後端以明文 HTTP 提供服務，須置於具 TLS termination 的反向代理/ingress 之後；預設 compose 內建的 TLS 代理已停用（external-ingress 形態）時，請確認前置 ingress 已終止 TLS")
 	}
 
 	// refresh cookie 的 Secure 歸因日誌**已移入段 2**：生效值住在安全政策服務裡，

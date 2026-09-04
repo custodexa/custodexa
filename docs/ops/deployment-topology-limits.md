@@ -1,228 +1,149 @@
-# 部署形態限制
+# Deployment Topology Limits
 
-> 適用版本：Custodexa 1.0。
+**English** | [繁體中文](../zh-TW/ops/deployment-topology-limits.md) | [日本語](../ja/ops/deployment-topology-limits.md) | [More languages →](../README.md)
 
-## 本版支援的部署形態
+> Applies to: Custodexa 1.0.
 
-**本版為單實例部署：整套系統只能有一個應用實例在執行。**
+## Topologies supported in this release
 
-同時執行兩個以上的應用實例會造成資料問題。該形態未經設計、未經驗證，不得用於生產。
+**This release is a single-instance deployment: the whole system runs exactly one application instance.**
 
-**本版起，對同一資料庫啟動的第二個應用實例會被攔下並要求確認。** 它在任何寫入之前停住：
-印出持鎖者指紋與兩條救援指令，未確認即不開放監聽、不執行 migration、不寫入資料庫。
-操作者以訊息中的確認碼設定 `INSTANCE_GUARD_ACK` 後可以啟動，但每一次確認啟動都留下
-`audit_logs` 事件、指標與管理介面常駐橫幅——**確認後的執行有審計證據**。
+Running two or more application instances at the same time causes data problems. That topology is neither designed for nor verified, and must not be used in production.
 
-**守衛防的是不知情，不是不發生。** 確認後兩個實例並存造成的資料問題不由守衛防止，
-由確認者承擔；守衛保證的是攔下、告知，以及事後可由 `audit_logs` 證明「哪個實例、何時、
-對著哪個持鎖者確認」。訊息判讀與救援程序見
-[部署與升級 SOP §2.6b](./upgrade-sop.md#26b-若後端被攔下並指出單實例鎖由另一個資料庫工作階段持有)。
+**As of this release, a second application instance started against the same database is stopped and asked to confirm.** It halts before any write: it prints the lock holder's fingerprint and two recovery commands, and until it is acknowledged it does not open its listener, does not run migrations, and does not write to the database. An operator can start it by setting `INSTANCE_GUARD_ACK` to the confirmation code from the message, but every acknowledged start leaves an `audit_logs` event, a metric, and a persistent banner in the admin interface. **A start after acknowledgement leaves audit evidence.**
 
-具體排除下列三種架構：
+**The guard protects against acting unaware, not against the situation occurring.** Data problems caused by two instances coexisting after an acknowledgement are not prevented by the guard; they are owned by whoever acknowledged. What the guard guarantees is the halt, the notification, and the ability to prove afterwards from `audit_logs` which instance acknowledged, when, and against which lock holder. For reading the message and the recovery procedure, see [Deployment and Upgrade SOP §2.6b](./upgrade-sop.md#26b-if-the-backend-is-stopped-and-reports-that-the-single-instance-lock-is-held-by-another-database-session).
 
-- 負載平衡後方掛兩個以上的應用實例。
-- 高可用（HA）或 active-active／active-standby 的多副本部署。
-- 以滾動更新（rolling update）方式升級；切換過程中必然出現新舊兩個實例並存。
-  **守衛版之間的滾動更新會在新實例端被攔下**（新實例取鎖時看到舊實例持鎖，停在確認關卡）。
-  自無守衛的舊版本升級到本版的那一次不會被攔（舊版不持鎖），須靠升級 SOP 的檢核。
+The following three architectures are specifically excluded:
 
-> 此限制針對的是**應用實例**。資料庫、guacd 與前端 nginx 各自作為獨立容器執行是正常
-> 部署形態，不在此限。
+- Two or more application instances behind a load balancer.
+- High-availability (HA), active-active, or active-standby multi-replica deployments.
+- Upgrading by rolling update; the switchover necessarily has the old and new instances coexisting.
+  **A rolling update between guard-bearing releases is stopped on the new instance** (when the new instance takes the lock it sees the old instance holding it, and halts at the acknowledgement gate). The one upgrade from a release without the guard to this release is not stopped (the old release holds no lock), and depends on the checks in the upgrade SOP.
 
-> **守衛只認得守衛版。** 不含守衛的舊版本不持鎖：首次自無守衛版升級到本版、或自本版回滾到
-> 無守衛版時，新舊實例並存不會被攔下。這兩個窗口由升級 SOP 的「先確認舊實例已停」檢核承擔。
+> This limit applies to the **application instance**. Running the database, guacd, and the frontend nginx as separate containers is the normal deployment shape and is not affected.
 
-> **連線池模式。** 應用須直連 postgres，或經 session pooling 模式的連線池。transaction pooling
-> 會讓鎖在工作階段間漂移，守衛會反覆回報失鎖再重取——該拓撲不受支援。
+> **The guard only recognizes guard-bearing releases.** Older releases without the guard hold no lock: on the first upgrade from a release without the guard to this one, and on a rollback from this release to one without the guard, coexisting old and new instances are not stopped. Those two windows are covered by the "confirm the old instance has stopped" check in the upgrade SOP.
 
-## 對外走純 HTTP 時的登入狀態保存
+> **Connection pool mode.** The application must connect to postgres directly, or through a pool in session pooling mode. Transaction pooling lets the lock drift between sessions, and the guard will repeatedly report losing and retaking it. That topology is not supported.
 
-**對外仍為 http 的部署，須把安全政策的「refresh cookie 標記 Secure」關閉。**
-登入狀態由一枚 HttpOnly cookie 保存，該政策鍵為預設值（開啟）時瀏覽器只在 https 連線下
-保存與回送它；純 http 之下它根本不會被保存。使用者仍可登入，但重新載入頁面、開新分頁
-或關掉分頁再回來都會回到登入頁——瀏覽器端沒有留下任何可用來恢復登入的東西
-（access token 只存在頁面執行期記憶體，不落瀏覽器儲存）。
+## Keeping sign-in state when the service is exposed over plain HTTP
 
-判讀方式：登入後按重新整理即被要求重新登入，而登入頁本身會說明成因。
-處置有兩條，正解是為對外入口配置 https；在此之前於安全政策關閉該鍵即可恢復正常的
-登入保存，代價是登入狀態的憑證會在未加密的連線上傳輸——那與整個部署走 http 的
-風險同級，不是額外新增的風險，但也不該當成長期狀態。
+**A deployment still exposed over http must turn off the security policy "mark the refresh cookie Secure."** Sign-in state is kept in a single HttpOnly cookie, and while that policy key is at its default (on), the browser only stores and returns it over an https connection; over plain http it is never stored at all. Users can still sign in, but reloading the page, opening a new tab, or closing a tab and coming back all return to the sign-in page; nothing usable for restoring the session was left on the browser side (the access token exists only in the page's runtime memory and is never written to browser storage).
 
-## 改密通道的出站連線需求
+How to recognize it: pressing reload after signing in asks for sign-in again, and the sign-in page itself explains why. There are two responses. The correct one is to configure https on the public entry point; until then, turning that key off in the security policy restores normal sign-in persistence, at the cost of the credential for the sign-in state travelling over an unencrypted connection. That is the same order of risk as running the whole deployment over http, not an additional risk, but it should not become a long-term state either.
 
-改密由後端容器主動連向目標主機，不經前端 nginx、也不經使用者的瀏覽器。Linux 主機走目標的 SSH 埠；
-Windows 主機依資產上設定的改密通道，走目標的 WinRM 埠（http 5985 或 https 5986，可另設）或 SSH 埠（預設 22，可另設）。
-WinRM 的傳輸層**不讀取 proxy 環境變數、不跟隨 HTTP 轉址**，只走 HTTP/1.1；後端與目標之間若必須經代理或轉址，
-該主機的 WinRM 改密連不上。https 的憑證驗證模式選 `system` 時，信任錨是後端容器作業系統的憑證庫，
-內部 CA 簽發的監聽器憑證請改用 `ca` 模式在資產上傳該 CA。目標機前置條件見
-[部署與升級 SOP](./upgrade-sop.md) §2.5 的 Windows 本機帳號改密段。
+## Outbound connection requirements for the credential change channel
 
-## 元件基礎系統的狀態（影響漏洞管理規劃）
+Credential changes are initiated by the backend container towards the target host; they pass through neither the frontend nginx nor the user's browser. Linux hosts use the target's SSH port; Windows hosts use whichever change channel is configured on the asset, either the target's WinRM port (http 5985 or https 5986, configurable) or its SSH port (22 by default, configurable). The WinRM transport **does not read proxy environment variables and does not follow HTTP redirects**, and speaks only HTTP/1.1; if traffic between the backend and the target must pass through a proxy or a redirect, WinRM credential changes for that host cannot connect. When the https certificate verification mode is `system`, the trust anchor is the certificate store of the backend container's operating system; for a listener certificate issued by an internal CA, use `ca` mode instead and upload that CA on the asset. For target-side prerequisites, see the Windows local account credential change section of §2.5 in the [Deployment and Upgrade SOP](./upgrade-sop.md).
 
-**RDP／VNC 用的 guacd 容器，其基礎系統已停止安全更新。**
+## State of the base systems of components (affects vulnerability management planning)
 
-本專案的 guacd 映像以 Apache Guacamole 官方映像為基底，該基底為 Alpine 3.18，
-已過官方支援期。**這不是本專案的選擇**：官方的 `latest` 與 `1.6.0`
-是同一顆 `alpine-minirootfs-3.18.12`，上游尚未提供較新的基底。
+**The base system of the guacd container used for RDP and VNC no longer receives security updates.**
 
-對你的部署規劃有兩點實質影響：
+This project's guacd image is built on the official Apache Guacamole image, whose base is Alpine 3.18, past its official support period. **This is not a choice made by this project**: the official `latest` and `1.6.0` are the same `alpine-minirootfs-3.18.12`, and upstream has not yet provided a newer base.
 
-- **該容器的作業系統層不會再收到安全修補**，直到上游更新基底為止。
-- **漏洞掃描對該映像的結果不可作為安全依據。** 掃描它會得到「零發現」，
-  正確的判讀是「沒有資料」：已過支援期的系統不再有漏洞資料庫更新，
-  且 guacd 本體是編譯後的二進位、不在套件清單內，掃描器看不到它。
+Two consequences matter for your deployment planning:
 
-現有的結構性緩解（隨預設部署即生效，非需另行設定）：
+- **The operating system layer of that container will receive no further security patches** until upstream updates the base.
+- **Vulnerability scan results for that image cannot be used as a security basis.** Scanning it yields "zero findings," which correctly reads as "no data": a system past its support period no longer receives vulnerability database updates, and guacd itself is a compiled binary that is not in the package list, so the scanner cannot see it.
 
-- guacd **不對外暴露任何連接埠**，僅存在於 compose 的內部網路；
-  唯一能連上它的是本系統的後端服務。
-- 錄影目錄是它唯一的共享掛載點。**啟用離機儲存不改變這一點**：guacd 仍然直接寫入本機錄影目錄，
-  上傳是**會話結束之後**由後端另行進行的，guacd 不接觸物件儲存、也不持有任何儲存憑證。
-  也因此，**崩潰路徑遺留的錄影檔不進離機**：會話異常中斷而未完成落地確認的檔案，系統不會為它建立上傳追蹤，
-  由既有的本機清理機制處置——離機保存的涵蓋範圍是「正常結束並確認落地」的錄影。
-  取回時落地的暫存區是**後端容器本地的快取**（有存活期與總量上限），同樣不與 guacd 共享。
+Structural mitigations already in place (in effect with the default deployment, no extra configuration needed):
 
-**緩解不等於沒有風險**：若後端遭攻破，或被納管的遠端桌面主機透過協議回攻，
-該路徑仍然存在。**漏洞管理政策若要求所有元件的基礎系統都在支援期內，
-請在部署前就把這顆映像列入例外評估。**
+- guacd **exposes no port at all**; it exists only on the compose internal network, and the only thing that can reach it is this system's backend service.
+- The recording directory is its only shared mount point. **Enabling offsite storage does not change this**: guacd still writes directly into the local recording directory, and the upload is performed separately by the backend **after the session ends**. guacd never touches object storage and holds no storage credentials. For the same reason, **recordings left behind on a crash path do not go offsite**: for a file whose session ended abnormally without a completed write confirmation, the system creates no upload tracking, and the existing local cleanup mechanism handles it. Offsite retention covers recordings that ended normally and were confirmed written. On retrieval, the staging area the file lands in is **a cache local to the backend container** (with a lifetime and a total size cap), which likewise is not shared with guacd.
 
-## 允許來源網段對部署的影響
+**Mitigation is not the absence of risk**: if the backend is compromised, or a managed remote desktop host attacks back through the protocol, that path still exists. **If your vulnerability management policy requires every component's base system to be within its support period, put this image into an exception assessment before deployment.**
 
-**允許來源網段（`allowed_cidrs`）限制某個帳號可以從哪些來源位址使用系統。**
-清單為空＝不限來源，那是預設值。它限制的是**可用來源**，不取代密碼政策、帳號鎖定或多因素。
+## How allowed source ranges affect the deployment
 
-### 先決定「來源位址」怎麼認定
+**Allowed source ranges (`allowed_cidrs`) restrict which source addresses an account may use the system from.** An empty list means no source restriction, which is the default. It restricts the **usable sources**; it does not replace the password policy, account lockout, or multi-factor.
 
-本系統對「請求從哪裡來」只有一種取法，全部路徑共用：
+### First decide how the "source address" is determined
 
-- **未設定 `TRUSTED_PROXIES` 時，只採信 socket peer**——也就是 TCP 連線的對端位址。
-  `X-Forwarded-For`、`X-Real-IP`、`Forwarded` 等轉送標頭**一律不採信**。
-- 設定 `TRUSTED_PROXIES` 之後，轉送標頭才依你宣告的可信代理鏈解讀。
-  **設定值非法時後端拒絕啟動**，不會退回預設值繼續跑。
+This system has exactly one way of determining where a request came from, shared by every path:
 
-預設不採信標頭是刻意的：那些標頭由呼叫端控制。採信它們，任何能發出請求的人都能為自己
-那筆審計列指定任意位址，也能靠每次換一個標頭繞開以位址為鍵的限制。
+- **When `TRUSTED_PROXIES` is not set, only the socket peer is trusted**, meaning the far end of the TCP connection. Forwarding headers such as `X-Forwarded-For`, `X-Real-IP`, and `Forwarded` **are never trusted**.
+- Once `TRUSTED_PROXIES` is set, forwarding headers are interpreted according to the trusted proxy chain you declared. **If the value is invalid the backend refuses to start**; it does not fall back to the default and keep running.
 
-**把應用放在反向代理、負載平衡器或 CDN 後方而沒有設 `TRUSTED_PROXIES` 時，
-系統看到的來源一律是那台代理的位址。** 三個後果：
+Not trusting headers by default is deliberate: those headers are controlled by the caller. Trusting them lets anyone who can send a request set an arbitrary address on their own audit row, and lets them bypass any address-keyed restriction by using a different header each time.
 
-- 允許來源網段判的是代理位址。填使用者的網段會把**所有人**擋掉；填代理位址則等於
-  對所有經過該代理的人放行。
-- 稽核工作台的來源位址樞紐、審計列與會話列的來源位址欄，全部記成代理位址。
-- 新來源位址告警只在代理位址改變時才會響。
+**When the application sits behind a reverse proxy, load balancer, or CDN and `TRUSTED_PROXIES` is not set, the source the system sees is always that proxy's address.** Three consequences:
 
-**要按真實來源判定與留痕，就得先設 `TRUSTED_PROXIES` 把代理鏈顯式列出來。**
-這個決定要在啟用來源限定**之前**做：先設好清單再去改代理設定，會讓已經生效的清單
-一夕之間對到另一組位址。
+- Allowed source ranges are evaluated against the proxy address. Entering your users' ranges blocks **everyone**; entering the proxy address permits everyone who goes through that proxy.
+- The source address pivot in the audit workbench, and the source address column on audit rows and session rows, all record the proxy address.
+- The new source address alert only fires when the proxy address changes.
 
-### 哪些入口會被擋，擋下來長什麼樣
+**The default deployment brings its own proxy, and `bash scripts/quickstart.sh` fills `TRUSTED_PROXIES` in with the Docker subnet that proxy runs on.** Run an ingress of your own and the list is yours to write: put the ingress address, or the range it connects from, there.
 
-清單非空而來源不落在其中時，下列動作一律被拒：
+**To evaluate and record the real source, you must first set `TRUSTED_PROXIES` and list the proxy chain explicitly.** Make this decision **before** enabling source restrictions: setting up the list first and then changing the proxy configuration makes an already-effective list suddenly apply to a different set of addresses.
 
-- 登入（含多因素完成、OIDC 交換）與強制註冊／強制改密的受限票證發放與消費。
-- 網頁會話續期（refresh）。
-- 連線簽發，以及文字終端與圖形兩條兌換入口——**兌換時各自現讀清單再判一次**，
-  不沿用簽發當下的結論。
-- 三個管理者端點——**替他人重設密碼**、**解鎖他人帳號**、**解除他人的多因素**
-  ——依**操作者本人**的清單判定。
+### Which entry points are blocked, and what a block looks like
 
-擋下來的回應**只說「此來源不允許」，不回顯位址，也不列出清單**。位址與命中的清單快照
-只寫進審計。連線類的拒絕另帶機器欄 `reason=source_not_allowed`，介面據此顯示
-「目前來源不在允許範圍」而不彈出申請框。
+When the list is non-empty and the source does not fall within it, the following actions are all denied:
 
-**清單讀不到或內容損壞時一律拒絕**（不當成空清單放行），對外回應與「來源不對」
-完全相同——分岔等於告訴呼叫端「這個帳號的政策壞了」。這種情況會在管理介面的
-審計失效面板開一個 `source_policy` 事件，成因分「讀不到」與「字串損壞」兩類；
-資料修好之後由系統自行結案。
+- Sign-in (including multi-factor completion and the OIDC exchange), and the issuance and consumption of the restricted tickets for forced enrollment and forced password change.
+- Web session refresh.
+- Connection issuance, and both redemption entry points, text terminal and graphical. **Each redemption reads the current list and evaluates again**, rather than reusing the conclusion from the moment of issuance.
+- Three administrator endpoints (**resetting another user's password**, **unlocking another user's account**, and **clearing another user's multi-factor**), evaluated against **the operator's own** list.
 
-### 收緊清單之前：先通知會被擋到的人
+A blocked response **says only "this source is not allowed"; it does not echo the address and does not list the ranges**. The address and a snapshot of the matched list are written only to the audit record. Connection-type denials additionally carry the machine field `reason=source_not_allowed`, from which the interface shows "your current source is outside the allowed range" instead of opening a request dialog.
 
-**收緊清單不會切斷已經在線上的人。** 具體是：
+**When the list cannot be read or its content is corrupt the action is always denied** (it is not treated as an empty list and permitted), and the outward response is exactly the same as for a source mismatch; diverging would tell the caller "this account's policy is broken." Such a case opens a `source_policy` event in the audit failure panel of the admin interface, with the cause classified as either unreadable or a corrupt string; the system closes it out by itself once the data is fixed.
 
-- 已發出的網頁存取權杖在其壽命內仍然可用，**殘窗上限是 15 分鐘**；之後的每一次
-  `refresh` 續期都會被拒，使用者被導回登入頁，再次登入時就擋在來源判定。
-- **已經建立的協議連線不會因為清單收緊而被主動切斷**，它會照常走到自己結束為止。
-  下一次建線才會被擋。
-- 「發出正式會話或受限票證」「寫入認證狀態」這一類動作，判定都在動作生效之前，
-  所以收緊之後不會再有新的會話從清單外的位址長出來。
+### Before tightening the list: notify the people it will block
 
-因此收緊清單的正確作法是**先通知**：告知受影響的人新的可用來源、生效時點，
-以及被擋時該找誰。沒有通知就收緊，症狀會以「續期失敗、被踢回登入頁」的形式出現，
-使用者無從分辨那是被限制還是系統故障。
+**Tightening the list does not cut off people already online.** Specifically:
 
-### 管理者把自己鎖在外面時怎麼救
+- Web access tokens already issued remain usable for their lifetime, with **a residual window of at most 15 minutes**; after that every `refresh` is denied, the user is returned to the sign-in page, and the source evaluation blocks the next sign-in.
+- **Protocol connections already established are not actively cut when the list is tightened**; they run to their normal end. Only the next connection is blocked.
+- Actions such as issuing a full session or a restricted ticket, and writing authentication state, are all evaluated before the action takes effect, so after tightening no new session can grow from an address outside the list.
 
-**系統不阻擋這種儲存**——管理者可能刻意設定一個尚未切換過去的網段。
-介面只在儲存前就近顯示警告，不擋送出。
+The right way to tighten the list is therefore to **notify first**: tell the affected people the new usable sources, when the change takes effect, and who to contact if they are blocked. Tightening without notification shows up as failed refreshes and being kicked back to the sign-in page, and users cannot tell that apart from a system fault.
 
-真的鎖住時，依序：
+### How to recover when an administrator locks themselves out
 
-1. **還有其他管理者**：請對方在管理介面把清單改回來。這條路徑會留下欄位級的審計差異
-   （清單的前值與後值），是首選。
-2. **沒有其他管理者可用**：走既有的離線重設路徑，以資料庫直連把該帳號的清單清成空字串。
-   逐字步驟與 SQL 見
-   [快速開始 — admin 密碼遺失、啟動被弱憑證掃描擋下，或管理者被來源限定鎖在外（離線重設）](../QUICKSTART.md#admin-密碼遺失啟動被弱憑證掃描擋下或管理者被來源限定鎖在外離線重設)。
-   這一條**只需清清單，不必動密碼**。
+**The system does not block such a save**, because an administrator may deliberately configure a range they have not yet moved to. The interface only shows a warning next to the field before saving; it does not block submission.
 
-離線重設**不經產品審計**：它繞過應用程式直接寫資料庫，`audit_logs` 不會有對應的列。
-**該次操作的留痕由部署方自己的變更管理承擔**（誰在什麼時候、依什麼授權動了資料庫）。
-產品側事後看得到的，是復原之後的登入審計列（含來源位址），以及回到介面重新設定清單時
-留下的欄位級差異。清完之後不必重啟服務；**但也別停在清空狀態**——那等於任何位址都進得來。
+If you really are locked out, in order:
 
-### 新來源位址告警對營運的意義
+1. **Another administrator is available**: ask them to change the list back in the admin interface. This path leaves a field-level audit diff (the list's before and after values), and is the preferred one.
+2. **No other administrator is available**: use the existing offline reset path, connecting to the database directly to clear that account's list to an empty string. For the literal steps and the SQL, see [Quick Start — Lost admin password, a startup blocked by the weak-credential scan, or an administrator locked out by source restrictions (offline reset)](../QUICKSTART.md#lost-admin-password-a-startup-blocked-by-the-weak-credential-scan-or-an-administrator-locked-out-by-source-restrictions-offline-reset). This one **only needs the list cleared; the password does not have to be touched**.
 
-某個帳號**首次**自某個來源位址建立協議連線時，系統產生一筆
-`new_source_ip` 告警，並照既有的通知通道推送。同一組（帳號、位址）只響一次。
+An offline reset **does not go through product audit**: it bypasses the application and writes to the database directly, so `audit_logs` has no corresponding row. **The record of that operation is owned by the deployment's own change management** (who touched the database, when, under what authorization). What the product side can show afterwards is the sign-in audit rows after recovery (including the source address), and the field-level diff left when the list is configured again through the interface. No service restart is needed after clearing. **But do not stop at the cleared state**, because that means every address can get in.
 
-判讀時請注意三件事：
+### What the new source address alert means for operations
 
-- **它是「以前沒從這裡連過」，不是「這次被擋下來」。** 是否放行由允許來源網段決定，
-  兩者互不影響：清單為空時每一個新位址都會響，而清單擋掉的連線根本走不到建線那一步。
-- **只登入不建線不會響**，只會把該位址納入基準；先登入再建線的典型流程仍會在建線時響一次。
-- **升級當下已經看得到的位址不會響**：升級時系統自既有的會話全史與登入成功紀錄
-  回填一份基準。全新安裝沒有歷史可回填，因此第一批連線都會各響一次，這是預期行為。
+The first time an account establishes a protocol connection from a given source address, the system produces a `new_source_ip` alert and pushes it through the existing notification channels. Each (account, address) pair fires once.
 
-若你的使用者是浮動位址（家用寬頻、行動網路、VPN 出口輪替），這類告警會相當頻繁。
-它適合當作「值得看一眼」的訊號，不適合當作阻斷條件——阻斷請用允許來源網段。
+Three things to keep in mind when reading it:
 
-### 對備份與還原的影響
+- **It means "this account has not connected from here before," not "this attempt was blocked."** Whether the attempt is permitted is decided by allowed source ranges, and the two do not affect each other: with an empty list every new address fires, while a connection the list blocks never reaches the point of establishing a connection at all.
+- **Signing in without connecting does not fire it**; it only adds that address to the baseline. The typical flow of signing in and then connecting still fires once at connection time.
+- **Addresses already visible at the time of the upgrade do not fire**: on upgrade the system backfills a baseline from the full session history and successful sign-in records. A fresh installation has no history to backfill, so the first batch of connections each fire once, which is expected.
 
-沒有新的落點。允許來源網段與來源位址基準都存在 PostgreSQL 裡，隨資料庫一起備份，
-既有的[備份與還原](./backup-and-restore.md)程序不變、不需要額外步驟。
+If your users are on floating addresses (home broadband, mobile networks, rotating VPN egress), these alerts will be quite frequent. They suit being a "worth a look" signal, not a blocking condition; use allowed source ranges to block.
 
-## 對升級的影響
+### Effect on backup and restore
 
-升級必須停機進行，不得滾動更新。程序見[部署與升級 SOP](./upgrade-sop.md)。
+Nothing new to store. Allowed source ranges and the source address baseline both live in PostgreSQL and are backed up along with the database; the existing [backup and restore](./backup-and-restore.md) procedure is unchanged and needs no extra steps.
 
-本版起，**新實例起不來的原因多一項：舊實例仍在執行，或它的資料庫工作階段殘留**。
-殘留只發生在持鎖主機當機或網路分割造成的 TCP 半開；postgres 依作業系統的 TCP keepalive
-回收該工作階段（postgres 容器未另行設定，走 Linux 預設約 2 小時）。啟動日誌會印出持鎖者
-指紋與確認碼，救援程序見
-[部署與升級 SOP §2.6b](./upgrade-sop.md#26b-若後端被攔下並指出單實例鎖由另一個資料庫工作階段持有)。
-**救援不需要對資料庫做任何操作。**
+## Effect on upgrades
 
-互斥保證只在守衛版之間成立。首次自無守衛版升級時，新版取得鎖**不代表**舊版已停；
-升級 SOP §2.3 的首次升級檢核是唯一的證據來源。
+Upgrades must be performed with downtime; rolling updates are not permitted. For the procedure, see the [Deployment and Upgrade SOP](./upgrade-sop.md).
 
-執行期若失去鎖（postgres 重啟、工作階段被終止、網路事件），本實例**繼續服務**並每個週期重取。
-期間管理介面顯示常駐橫幅、指標 `custodexa_instance_guard_held` 為 0、`audit_logs` 留有
-`instance_guard` 事件；判讀見
-[部署與升級 SOP §3.4](./upgrade-sop.md#34-執行期失去單實例鎖日誌橫幅與稽核事件的判讀)。
+As of this release, **there is one more reason a new instance may fail to come up: the old instance is still running, or its database session is left over**. A leftover only happens when the lock holder's host crashes or a network partition leaves the TCP connection half open; postgres reclaims that session according to the operating system's TCP keepalive (the postgres container sets nothing of its own, so the Linux default of roughly 2 hours applies). The startup log prints the lock holder's fingerprint and the confirmation code; for the recovery procedure, see [Deployment and Upgrade SOP §2.6b](./upgrade-sop.md#26b-if-the-backend-is-stopped-and-reports-that-the-single-instance-lock-is-held-by-another-database-session). **Recovery requires no operation on the database.**
 
-## 對可用性規劃的影響
+The mutual exclusion guarantee only holds between guard-bearing releases. On the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped; the first-upgrade check in §2.3 of the upgrade SOP is the only source of evidence.
 
-單實例形態沒有自動故障接管，可用性規劃的著力點是縮短還原時間：讓備份與 KEK 材料
-隨時就緒，回存程序事先演練過。見[備份與還原](./backup-and-restore.md)。
+If the lock is lost at runtime (postgres restart, the session being terminated, a network event), this instance **keeps serving** and retakes it each cycle. During that time the admin interface shows a persistent banner, the metric `custodexa_instance_guard_held` is 0, and `audit_logs` holds an `instance_guard` event; for how to read them, see [Deployment and Upgrade SOP §3.4](./upgrade-sop.md#34-losing-the-single-instance-lock-at-runtime-reading-the-log-the-banner-and-the-audit-event).
 
-**離機證據儲存改變的是「證據會不會丟」，不是「服務多快回來」。** 規劃時請把兩件事分開：
+## Effect on availability planning
 
-- **它縮短證據的暴露窗口，不消除。** 上傳是會話結束之後才發生的：文字錄影在秒級內排入，
-  圖形錄影至少要等一分鐘（等檔案不再變動）；儲存端不可達時則一路等到恢復。
-  **在那段窗口內，本機仍是唯一副本**——機器在此時毀損，該筆錄影就沒有第二份。
-- **它不改變還原時間目標。** 遠端副本讓已離機的證據在機器毀損後仍取得回，但要讓系統重新
-  提供服務，還是得走還原程序（資料庫、KEK、部署層設定）。**離機儲存不是備份的替代品**，
-  兩者要一起規劃。
-- **首次播放離機錄影有下載等待。** 本機副本已被清除的錄影，播放時要先由物件儲存取回、
-  落地驗證雜湊之後才開始送出，等待時間隨檔案大小與頻寬而定。這是可預期的行為，不是故障；
-  只在該錄影的第一次播放發生（暫存快取在存活期內可重用）。稽核作業若對回應時間有要求，
-  請把這段等待算進去。
+The single-instance shape has no automatic failover, so availability planning works on shortening the time to restore: keep backups and KEK material ready at all times, and rehearse the restore procedure in advance. See [backup and restore](./backup-and-restore.md).
+
+**Offsite evidence storage changes whether evidence can be lost, not how fast the service comes back.** Keep the two apart when planning:
+
+- **It shortens the exposure window for evidence; it does not remove it.** The upload happens only after the session ends: text recordings are queued within seconds, graphical recordings wait at least a minute (until the file stops changing), and if the storage endpoint is unreachable they wait until it recovers. **Within that window the local copy is still the only copy.** If the machine is destroyed then, that recording has no second copy.
+- **It does not change the recovery time objective.** A remote copy means evidence already offsite can still be retrieved after the machine is destroyed, but bringing the system back into service still requires the restore procedure (database, KEK, deployment-layer configuration). **Offsite storage is not a substitute for backups**; plan for both together.
+- **The first playback of an offsite recording involves a download wait.** For a recording whose local copy has been cleared, playback first retrieves it from object storage, writes it locally, and verifies the hash before streaming begins; the wait depends on file size and bandwidth. This is expected behavior, not a fault, and it happens only on that recording's first playback (the staged cache is reusable within its lifetime). If your audit work has response time requirements, count this wait in.

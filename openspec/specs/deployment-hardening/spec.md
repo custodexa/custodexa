@@ -93,25 +93,11 @@ release 模式下、開始 serving 之前，系統 SHALL 掃描所有可登入�
 - **WHEN** 唯一管理員尚未首登、`ADMIN_INITIAL_PASSWORD` 遺失、無第二管理員
 - **THEN** 依文件化離線 DB remediation 程序，於單一交易重設密碼／`must_change_password`／PasswordHistory 後可恢復接管；無線上救援 API 被新增
 
-### Requirement: stock production edge 移除假 TLS 訊號並於明文時告警
-
-stock production compose SHALL NOT 對外映射一個未實際提供 TLS 服務的埠（移除 `443:443` 假映射）；預設對外 edge 以 HTTP 提供。backend SHALL NOT 發布 host port，僅存在於單主機專用 bridge。release 模式下以明文 HTTP 提供服務時，系統 SHALL 於啟動發出告警，指引於前端部署 TLS-terminating ingress。
-
-stock production compose 的檔名為 `docker-compose.yml`——正式版即專案預設 compose 定義。
-
-#### Scenario: prod compose 無假 TLS 埠映射且 backend 不對外
-- **WHEN** 檢視 `docker-compose.yml`（正式版）
-- **THEN** frontend 不映射 443（除非同時提供實際 TLS 服務）；backend 無 `ports:` host 映射
-
-#### Scenario: release 明文提供服務時告警
-- **WHEN** release 模式、對外以明文 HTTP 提供服務
-- **THEN** 啟動 log 出現明文傳輸告警，指引前置 TLS ingress（不 fail-close）
-
 ### Requirement: 外部 ingress TLS termination 契約與可用範例
 
-專案 SHALL 提供反向代理 TLS termination 的部署指南與可運作範例反向代理 config（nginx 為必交，Caddy 選配）。契約 SHALL 要求外部 edge 提供 TLS 1.2 以上、可信憑證、HTTP→HTTPS redirect、HSTS，以及 WebSocket `Upgrade`/`Connection` 轉發（使 wss 可達）；並 SHALL 明示 LB／ingress 到主機的 hop 若跨不可信網段須 re-encrypt。文件 SHALL 誠實載明 stock 部署本身不提供 TLS、關閉明文暴露為部署方 edge 職責，SHALL NOT 將傳輸層加密表述為由應用強制的控制。
+專案 SHALL 提供反向代理 TLS termination 的部署指南與可運作範例反向代理 config（nginx 為必交，Caddy 選配）。契約 SHALL 要求外部 edge 提供 TLS 1.2 以上、可信憑證、HTTP→HTTPS redirect、HSTS，以及 WebSocket `Upgrade`/`Connection` 轉發（使 wss 可達）；SHALL 要求 ingress 轉發給應用的 `Host` 標頭保留使用者實際連上的主機名與對外埠（對外埠為 443 時可省略埠），因為應用在未設定允許來源清單時以 `Origin` 對 `Host` 判定同源；SHALL 要求部署方把 ingress 位址列入 `TRUSTED_PROXIES`，來源位址才會歸因到客戶端；並 SHALL 明示 LB／ingress 到主機的 hop 若跨不可信網段須 re-encrypt。文件 SHALL 誠實載明：內建代理停用（外部 ingress 形態）時，關閉明文暴露為部署方 edge 職責，SHALL NOT 將傳輸層加密表述為由應用強制的控制。
 
-部署指南 SHALL 進一步提供逐步可操作的最小範例（容器形態 nginx 反代為主線）：涵蓋憑證放置、範例 config 的掛載方式、反代與應用的網路連通、stock HTTP 埠映射的處置，以及部署後驗證步驟（redirect 生效、HTTPS 可達、WebSocket upgrade 轉發生效）；範例步驟 SHALL 與實測行為一致（含 docker 網路名的實際形態）。主機安裝 nginx 的形態 SHALL 以變體註記涵蓋（含舊版 nginx 對 `http2` 指令寫法差異）。自簽憑證 SHALL 僅以測試用途註記（含其限制），SHALL NOT 呈現為正式部署路徑。
+容器形態的最小範例主線即 stock compose 本身：`docker compose up -d` 一條指令啟動內建反向代理，部署者 SHALL 只需提供憑證檔與網域（網域以環境變數 `TLS_DOMAIN` 帶入範本，SHALL NOT 需要手動編輯反向代理設定檔），SHALL NOT 需要修改 compose 檔、查詢 docker 網路名或以 `docker run` 手動啟動代理；快速安裝腳本 SHALL 在 `.env` 缺值時自動補齊主機名、IP SAN、https 基準網址，並在內建代理形態下把 compose 網路的固定子網（`DOCKER_SUBNET`）填入 `TRUSTED_PROXIES`。代理服務 SHALL 納入 compose 生命週期（`ps`／`up -d`／`down`／升級與回退程序皆涵蓋）。內建代理 SHALL 以「主機名＋對外 https 埠」（443 時省略埠）作為轉發給應用的 `Host` 與 http→https 導向的目標；frontend 服務 SHALL 原樣傳遞收到的 `Host`。指南 SHALL 涵蓋憑證放置、環境變數設定、需自訂反向代理設定者的範本複製與可改位置（`server_name`、憑證路徑、額外標頭、upstream），以及部署後驗證步驟（redirect 生效、HTTPS 可達、WebSocket upgrade 轉發生效）；範例步驟 SHALL 與實測行為一致。主機安裝 nginx 的形態 SHALL 以變體註記涵蓋（含舊版 nginx 對 `http2` 指令寫法差異）。專案 SHALL 提供自簽模式（`TLS_MODE=selfsigned`）：首次啟動時產生本地 CA 與伺服器憑證（SAN SHALL 含 `TLS_DOMAIN`，並可經 `TLS_IP_SAN` 加入 IP），憑證存在即不重生，CA 憑證 SHALL 經代理以固定路徑提供下載以便派發至使用者端；CA 私鑰 SHALL NOT 掛入代理容器。指南 SHALL 將自簽模式定位為「內部部署、無機構 PKI 時的正式路徑，連線全程加密、信任鏈由部署方派發 CA 建立」，並 SHALL 載明未派發 CA 前瀏覽器會警告且 SSO 回呼會拒絕；未派發 CA 的自簽葉憑證 SHALL 僅以測試用途註記。
 
 #### Scenario: 範例反代 config 終結 TLS 並轉發 wss
 - **WHEN** 依範例反代 config 於應用前部署
@@ -119,11 +105,31 @@ stock production compose 的檔名為 `docker-compose.yml`——正式版即專�
 
 #### Scenario: 契約明示不可信 hop 須 re-encrypt 且責任歸屬部署方
 - **WHEN** 部署指南描述外部 TLS 委外
-- **THEN** 指南要求不可信 hop 亦須加密，且明載 stock 部署不自帶 TLS、關閉明文為部署方職責
+- **THEN** 指南要求不可信 hop 亦須加密，且明載內建代理停用（外部 ingress 形態）時，關閉明文暴露為部署方 edge 職責
 
 #### Scenario: 逐步範例照做即通
 - **WHEN** 部署者依指南的最小範例逐步操作（憑證就位、掛載 config、反代接上應用網路、讓出對外埠）
 - **THEN** 每一步的指令與實際環境行為一致（網路名可查證、掛載後無設定衝突），且驗證步驟能確認 redirect、HTTPS 與 WebSocket upgrade 三者生效
+
+#### Scenario: 自備憑證一條指令啟動
+- **WHEN** 部署者在 `.env` 設定 `TLS_MODE=provided`、`TLS_DOMAIN`，放好 `tls/fullchain.pem` 與 `tls/privkey.pem` 後執行 `docker compose up -d`
+- **THEN** frontend 無 host 埠映射、代理服務映射預設 80 與 443（可由組態改為其他埠）並與應用同網路；`docker compose ps` 列出代理服務；`down` 會一併停止代理；不需修改任何 compose 檔
+
+#### Scenario: 自簽模式首次啟動產生本地 CA 並提供下載
+- **WHEN** `.env` 設 `TLS_MODE=selfsigned`（或留空）、`TLS_DOMAIN=jumper.internal`、`TLS_IP_SAN=10.0.0.5`，`tls/` 為空，執行 `docker compose up -d`
+- **THEN** `tls/` 產生 CA 與伺服器憑證，伺服器憑證 SAN 含 `DNS:jumper.internal` 與 `IP:10.0.0.5`；`https://jumper.internal/`（預設 https 埠 443，可由組態改為其他埠，改後網址帶埠）以該憑證提供服務；`GET /custodexa-ca.crt` 回傳 CA 憑證；再次啟動不重生憑證；代理容器內不存在 CA 私鑰
+
+#### Scenario: provided 模式缺憑證時明確失敗
+- **WHEN** `TLS_MODE=provided` 而 `tls/` 缺 `fullchain.pem` 或 `privkey.pem`
+- **THEN** 啟動以可讀訊息失敗於初始化步驟，代理服務不啟動，主應用不受影響
+
+#### Scenario: 外部 ingress 的 Host 未保留對外埠時同源判定失敗
+- **WHEN** 外部 ingress 於非 443 對外埠提供服務，轉發給應用的 `Host` 只含主機名
+- **THEN** 指南載明帶憑證的請求會被判為跨源而遭拒，並給出保留對外埠的設定寫法與驗證方式
+
+#### Scenario: 快速安裝腳本自動填入可信代理
+- **WHEN** 以快速安裝腳本在 stock（內建代理）形態啟動且 `.env` 的 `TRUSTED_PROXIES` 為空
+- **THEN** 腳本把 `DOCKER_SUBNET` 的網段寫入 `TRUSTED_PROXIES` 並回報；經內建代理的請求在稽核與速率限制中歸因到真實客戶端位址，偽造的轉發標頭不被採信
 
 ### Requirement: 應用對外 TLS-ready 不變式
 
@@ -278,4 +284,28 @@ release 模式下，屬於安全紅線的 feature flag SHALL 由系統於啟動�
 - **WHEN** `GIN_MODE=debug` 且 `FEATURE_AUDIT_LOG_ENABLED=false`
 - **THEN** 審計旗標維持停用，條件註冊與旗標關閉語義照常生效（強制 SHALL NOT 擴大
   到全模式）
+
+### Requirement: stock production edge 內建真實 TLS 並於明文時告警
+
+stock production compose（`docker-compose.yml`，正式版即專案預設 compose 定義）SHALL 內建 TLS 終止的反向代理：對外 https 埠 SHALL 提供 TLS 1.2 以上、對外 http 埠 SHALL 以 301 導向 https（對外 https 埠非 443 時導向目標含埠）；兩個對外埠 SHALL 可由部署組態設定，預設為 443 與 80，使預設安裝的網址不必帶埠；快速安裝腳本 SHALL 在啟動前檢查兩個對外埠是否已被占用，占用時指名占用程序並停止，SHALL NOT 進入 `docker compose up`。frontend 與 backend SHALL NOT 發布 host port，僅存在於單主機專用 bridge；該 bridge SHALL 使用固定子網（`DOCKER_SUBNET`，預設 `172.28.100.0/24`），供 `TRUSTED_PROXIES` 引用。內建代理轉發給應用的 `Host` SHALL 保留對外 https 埠（443 時省略），使應用的同源判定在任何對外埠下皆成立；此不變式 SHALL 由正式版建置檢查與測試守衛。憑證來源由 `TLS_MODE` 決定，預設 `selfsigned`（本地 CA，見「外部 ingress TLS termination 契約與可用範例」的自簽模式條文），`provided` 為部署方自備。stock SHALL NOT 對外映射一個未實際提供 TLS 服務的埠。自帶 ingress 的部署 SHALL 經 `docker-compose.external-ingress.yml` overlay 停用內建代理並恢復 frontend 的 HTTP 對外埠；該形態下 release 模式以明文 HTTP 提供服務時，系統 SHALL 於啟動發出告警，指引於前端部署 TLS-terminating ingress。
+
+#### Scenario: 預設啟動即為 https
+- **WHEN** 部署者以 `docker compose up -d` 啟動 stock 正式版且未提供憑證
+- **THEN** 443 以本地 CA 簽發的憑證提供 TLS 服務、80 回 301 至 `https://<host>/`；frontend 與 backend 無 host 埠映射；改 `.env` 兩個埠值即可換到其他埠，此時 301 目標與網址帶埠
+
+#### Scenario: 對外埠被占用時安裝腳本停止
+- **WHEN** 以快速安裝腳本啟動，而 443 或 80 已被其他程序監聽
+- **THEN** 腳本指名占用的程序與埠並退出，未執行 `docker compose up`；訊息指引改 `.env` 的兩個埠值後重跑
+
+#### Scenario: 非 443 對外埠下同源請求仍被接受
+- **WHEN** `.env` 把 https 埠改為 8443，使用者經內建代理以 HTTP/1.1 或 HTTP/2 送出帶憑證的同源請求
+- **THEN** 應用收到的 `Host` 為 `<host>:8443`，請求依業務規則處理而非以跨源拒絕；來自其他來源的請求仍被拒
+
+#### Scenario: 外部 ingress 形態停用內建代理
+- **WHEN** 以 `docker-compose.external-ingress.yml` overlay 啟動
+- **THEN** 內建代理與憑證初始化服務不啟動、frontend 映射預設 80（可由組態改為其他埠）；backend 仍無 host 映射
+
+#### Scenario: release 明文提供服務時告警
+- **WHEN** 外部 ingress 形態、release 模式、`PUBLIC_BASE_URL` 為 http
+- **THEN** 啟動 log 出現明文傳輸告警，指引前置 TLS ingress（不 fail-close）
 

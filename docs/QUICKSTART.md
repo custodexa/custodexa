@@ -1,615 +1,840 @@
-# 快速開始指南
+# Quickstart Guide
 
-> 相關文件：API 參考見 [API_SPEC.md](API_SPEC.md)、資料庫參考見 [DB_SCHEMA.md](DB_SCHEMA.md)、專案總覽見 [zh-TW/README.md](zh-TW/README.md)（英文版在[repo 根目錄](../README.md)）、貢獻與開發流程見 [zh-TW/CONTRIBUTING.md](zh-TW/CONTRIBUTING.md)。
+**English** | [繁體中文](zh-TW/QUICKSTART.md) | [日本語](ja/QUICKSTART.md) | [More languages →](README.md)
 
-## 前置需求
+> Related documents: the API reference is [API_SPEC.md](API_SPEC.md), the database reference is [DB_SCHEMA.md](DB_SCHEMA.md), the project overview is [README.md](../README.md) (Traditional Chinese in [zh-TW/README.md](zh-TW/README.md)), and contribution and development workflow is [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+## Prerequisites
 
 - Docker 20.10+
 - Docker Compose 2.0+
 - Git
 
-驗證安裝：
+Verify the installation:
 ```bash
 docker --version
 docker compose version
 ```
 
-## 啟動步驟
+## Startup steps
 
-部署自用與參與開發走**同一條流程**；預設的 `docker-compose.yml` 即正式版
-（nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者只多一步：
-在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解，之後所有 `docker compose`
-指令自動指向開發版（前端 Vite HMR、後端 Air 熱重載，並帶起各協議的測試靶機），無須每次打 `-f`。
+Deploying for your own use and joining development follow the **same path**; the default
+`docker-compose.yml` is the production stack (nginx serves the compiled frontend, the backend
+is a slim binary, no test targets). Developers take one extra step: uncomment
+`COMPOSE_FILE=docker-compose.dev.yml` in `.env`, and every later `docker compose` command
+targets the development stack (Vite HMR for the frontend, Air hot reload for the backend, plus
+test targets for each protocol) without `-f`.
 
-### 1. 取得原始碼
+### 1. Get the source
 
 ```bash
 git clone https://github.com/custodexa/custodexa.git
 cd custodexa
 ```
 
-### 2. 設定環境變數（必需）
+### 2. Set environment variables (required)
 
-> **快速路徑**：`bash scripts/quickstart.sh` 會自動完成本節：檢查 `.env`（沒有就從
-> 範本建立）、缺的機密用 CSPRNG 生成；已填的值一律不動，重跑安全。加 `--up` 連啟動
-> 一起做：分階段回報進度、等後端健康，最後輸出連線網址與 admin 登入資訊
-> （輸出為英文）。Windows 請在 WSL 內執行。
-> 想了解各值的語義或手動設定，繼續往下讀。
+> **Fast path**: `bash scripts/quickstart.sh` does this whole section for you. It checks for
+> `.env` (creating it from the template when absent) and generates the missing secrets with a
+> CSPRNG; values you already filled in are never touched, so re-running is safe. Add `--up` to
+> start the stack as well: it reports progress by stage, waits for the backend to become
+> healthy, and prints the address to open along with the admin sign-in details.
+> On Windows, run it inside WSL.
+> To understand what each value means, or to set them by hand, read on.
 
-先複製範本再依環境編輯。
+Copy the template first, then edit it for your environment.
 
 ```bash
 cp .env.example .env
-# 所有全新（空 DB）部署：務必設 ADMIN_INITIAL_PASSWORD（初始 admin 密碼，已無公開預設）
-# 正式部署：務必改 JWT_SECRET（release 未改即拒啟動）＋ DB_PASSWORD，並依需求設 DB_SSLMODE / LDAP / DATA_PATH
-#   （ENCRYPTION_KEY 僅 KEK_PROVIDER=env 需要；出貨預設 ui＝金鑰不落地，見範本 KEK 段）
-# 參與開發：取消 COMPOSE_FILE=docker-compose.dev.yml 的註解，並建議改 KEK_PROVIDER=env＋
-#   填 ENCRYPTION_KEY——熱重載每次重編譯即重啟行程，ui 模式會每次要求重新解封
+# Every fresh (empty database) deployment: set ADMIN_INITIAL_PASSWORD (the initial admin password; there is no published default)
+# Production: change JWT_SECRET (release refuses to start while it is unchanged) and DB_PASSWORD, and set DB_SSLMODE / LDAP / DATA_PATH as needed
+#   (ENCRYPTION_KEY is only for KEK_PROVIDER=env; the shipped default is ui, meaning the key never lands on disk -- see the KEK section of the template)
+# Development: uncomment COMPOSE_FILE=docker-compose.dev.yml, and set KEK_PROVIDER=env with
+#   an ENCRYPTION_KEY -- hot reload restarts the process on every rebuild, and ui asks you to unseal each time
 ```
 
-> **初始管理員密碼（`ADMIN_INITIAL_PASSWORD`）**：沒有出廠預設密碼。全新（空 DB）部署都要自己設一個
-> 合格值：至少 12 字元、前後不帶空白、不能照抄範本的佔位字串，否則服務會拒絕啟動並在日誌說明原因。
-> 建議用 `openssl rand -base64 24` 產生（去掉尾端的換行）。
-> 這個值只會用一次：首次登入會強制改密，之後請把它從 `.env` 移除或輪替。
-> 既有資料庫（非空 DB）不需要此值。
+> **Initial administrator password (`ADMIN_INITIAL_PASSWORD`)**: there is no factory default.
+> Every fresh (empty database) deployment has to set an acceptable value of its own: at least
+> 12 characters, no leading or trailing whitespace, and not the placeholder string copied from
+> the template. Anything else and the service refuses to start and says why in the log.
+> Generate one with `openssl rand -base64 24` (drop the trailing newline).
+> The value is used once: the first sign-in forces a password change, after which you should
+> remove it from `.env` or rotate it. An existing (non-empty) database does not need this value.
 
-> **離機證據儲存（`OFFSITE_*`）是初次設定**：這一組鍵在**首次啟動時**寫入資料庫，
-> 其後改由管理端「系統設定 → 離機儲存」頁管理，改 `.env` 不再生效
-> （目錄整合的 `LDAP_*` 是同一形態）。自動化部署因此不打折：`.env` 填好、首次啟動即生效。
-> 預設留空＝不啟用，系統行為完全不變。
+> **Off-site evidence storage (`OFFSITE_*`) is first-run setup only**: these keys are written to
+> the database **at the first startup**, and from then on the administration page
+> (System Settings → Offsite storage) manages them; editing `.env` has no further effect
+> (the `LDAP_*` keys for directory integration work the same way). Automated deployment loses
+> nothing: fill in `.env` and the first startup applies it.
+> Left empty (the default) the feature stays off and system behavior is unchanged.
 
-`.env.example` 為**唯一環境變數範本**（dev 與 prod 的 compose 皆以 `env_file` 消費它）。
-後端消費變數的完備性由 `backend/config/env_drift_test.go` 守衛：掃描程式碼實際消費的變數，
-對照本範本 ＋ compose 提供的拓撲變數，漂移即測試失敗。
-拓撲/模式常數（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`GIN_MODE` 等）由 compose 檔提供，不在範本內。
+`.env.example` is the **only environment template** (both the dev and prod compose files consume
+it through `env_file`). Its completeness against what the backend consumes is guarded by
+`backend/config/env_drift_test.go`: it scans the variables the code actually consumes and compares
+them with this template plus the topology variables compose supplies, and drift fails the test.
+Topology and mode constants (`DB_HOST=postgres`, `GUACD_HOST=guacd`, `GIN_MODE` and so on) come
+from the compose files and are not in the template.
 
-> **注意**：`env_file` 對「空值」的行內 `#` 註解不剝除（`KEY=  # 說明` 的值會變成 `# 說明`），
-> 而範本多數旋鈕預設為空值，故 `.env`（與範本）的說明一律置於獨立行、值行不帶行內註解，
-> 否則值會含註解導致服務啟動失敗。
+> **Note**: `env_file` does not strip an inline `#` comment from an empty value (the line
+> `KEY=  # note` yields the literal value `# note`), and most knobs in the template default to
+> empty. So every explanation in `.env` (and in the template) sits on its own line and no value
+> line carries a trailing comment; otherwise the value picks up the comment and the service
+> fails to start.
 
-**資料存放位置（`DATA_PATH`）**：主體應用資料（審計 / 錄影 / 資料庫）落在單一資料夾根，
-由 `DATA_PATH` 決定，預設為專案內 `./data`（開發可直接檢視）。生產部署可覆寫為指定資料夾或磁碟：
+**Where data lives (`DATA_PATH`)**: the main application data (audit logs, recordings, database)
+sits under a single root folder chosen by `DATA_PATH`, which defaults to `./data` inside the
+project (easy to inspect during development). Production deployments can point it at a dedicated
+folder or disk:
 
 ```bash
-# 生產：將資料集中到指定路徑
+# Production: put the data on a dedicated path
 DATA_PATH=/opt/custodexa/data
 ```
 
-> **資料持久化與重置**：資料以 bind mount 落在 `${DATA_PATH}` 目錄，`docker compose down -v`
-> **不會**清除（`-v` 僅清 named volume）；如需完全重置資料，停服務後刪除 `DATA_PATH` 指向的目錄
-> 內容（預設 `./data`，自訂路徑則改為該路徑；`.env` 內的 `DATA_PATH` 不會自動帶入手動 shell 指令）：
-> `rm -rf ./data/*`。`./data/` 已列入 `.gitignore`，不會誤入版控。
+> **Persistence and reset**: data lands in the `${DATA_PATH}` directory as a bind mount, and
+> `docker compose down -v` does **not** clear it (`-v` only removes named volumes). To reset the
+> data completely, stop the services and delete the contents of the directory `DATA_PATH` points
+> at (`./data` by default, or your own path; `DATA_PATH` from `.env` is not carried into a manual
+> shell command): `rm -rf ./data/*`. `./data/` is listed in `.gitignore` and will not slip into
+> version control.
 
-### 3. 啟動服務
+### 3. Start the services
 
 ```bash
-# 背景執行（無既存映像時會先自動建置——正式版建置就是部署流程的第一步）
+# In the background (with no existing images it builds first -- building the production images is step one of deployment)
 docker compose up -d
 
-# 前台執行（可看到日誌）
+# In the foreground (logs on screen)
 docker compose up
 ```
 
-首次啟動需建置映像與下載依賴，約需 5-10 分鐘。
+The first startup builds the images and downloads dependencies, which takes about 5-10 minutes.
 
-### 4. 驗證服務
+### 4. Verify the services
 
-**檢查容器狀態**：
+**Check container status**:
 ```bash
 docker compose ps
-# 正式版（預設）：backend, frontend, postgres, guacd
-# 開發版（已啟用 COMPOSE_FILE）另有測試靶機：
+# Production (default): backend, frontend, postgres, guacd, tls-proxy
+#   (tls-init exits once the certificates are ready; a status of exited(0) is normal)
+# Development (COMPOSE_FILE enabled) also brings up test targets:
 #   ssh-test, ssh-multi-test, mssql-test, mysql-test, rdp-test, vnc-test, k3s-test
-#   （另有 ldap-test / dex / localstack 三個服務供 LDAP、OIDC、S3 相關功能使用）
+#   (plus ldap-test / dex / localstack for the LDAP, OIDC and S3 features)
 ```
 
-**存取入口（兩版不同）**：
+**Entry points (they differ between the two stacks)**:
 
-| | 正式版（預設） | 開發版 |
+| | Production (default) | Development |
 |---|---|---|
-| 前端 | http://localhost （nginx，80） | http://localhost:3000 （Vite dev server） |
-| 後端 | 不對外開埠（經 nginx 代理 `/api`） | http://localhost:8080 |
+| Frontend | https://localhost (TLS proxy; http://localhost returns a 301 to it) | http://localhost:3000 (Vite dev server) |
+| Backend | No published port (the proxy and nginx forward `/api`) | http://localhost:8080 |
 
-**測試後端 API**：
+The production stack publishes only the two ports of the TLS proxy, `443` (https) and `80`
+(http, redirect only), so the address people type carries no port number. A host that already
+runs something on those ports needs a different pair -- set `TLS_HTTPS_PORT=8443` and
+`TLS_HTTP_PORT=8088` in `.env` -- and the address then carries the port, as in
+`https://localhost:8443`. Everything below uses the default ports.
+The certificate comes from a local CA the product generates itself by default
+(`TLS_MODE=selfsigned`), so browsers show a warning until you distribute the CA to the machines
+that connect; bringing your own certificate and distributing the CA are covered in
+"Transport encryption for external traffic (TLS)".
+
+**Test the backend API**:
 ```bash
-# 正式版：backend 不對外開埠，且 /health 不在 nginx 代理路徑內，走容器內
+# Production: the backend publishes no port, and /health is not on the nginx proxy path, so go through the container
 docker compose exec backend wget -qO- http://localhost:8080/health
-# 開發版：直連
+# Development: connect directly
 curl http://localhost:8080/health
 # {"status":"ok","service":"custodexa-backend"}
 ```
 
-**封印狀態（出貨預設 `KEK_PROVIDER=ui`）**：全新安裝啟動後系統處於**封印待初始化**態，
-`/health` 正常但業務端點尚未開放，首次造訪前端會進入初始化解封頁。查詢狀態：
+**Seal state (the shipped default is `KEK_PROVIDER=ui`)**: after a fresh installation starts, the
+system is **sealed and awaiting initialization**. `/health` answers normally but the business
+endpoints are not open yet, and the first visit to the frontend lands on the initialization
+unseal page. To query the state:
 
 ```bash
-curl http://localhost/api/v1/seal/status
+curl -k https://localhost/api/v1/seal/status
 ```
 
-- 初始帳號: `admin`；初始密碼為你在 `.env` 設定的 `ADMIN_INITIAL_PASSWORD`
+- Initial account: `admin`; the initial password is the `ADMIN_INITIAL_PASSWORD` you set in `.env`
 
-> **首次登入須改密**：初始 admin 首次登入後會被導向強制改密頁，設定新密碼
-> （依畫面顯示的政策：長度、字母＋數字、不可重用近幾筆）後直接進入系統，不需重新登入。
-> 改密後 `ADMIN_INITIAL_PASSWORD` 即退役，請自 `.env` 移除或輪替。
+> **The first sign-in requires a password change**: after the initial admin signs in, the system
+> sends them to a forced password change page. Set a new password (following the policy shown on
+> screen: length, letters plus digits, no reuse of the last few) and you go straight into the
+> system, with no second sign-in. Once changed, `ADMIN_INITIAL_PASSWORD` is retired; remove it
+> from `.env` or rotate it.
 
-登入之後怎麼建第一筆資產、發起第一條連線，見下方「首次使用」一節。
-生產環境的必設項集中在「正式部署補充」；對外 TLS、時間同步、審計完整性邊界與日誌保留
-這些部署方責任與行為說明，見「生產環境的部署方責任與行為邊界」；admin 密碼遺失、
-啟動被弱憑證掃描擋下，或管理者被來源限定鎖在外時的離線重設，見「故障排除」。
+Creating your first asset and starting your first connection are covered in "First use" below.
+The settings production deployments must get right are collected in "Production deployment
+notes"; external TLS, time synchronization, the limits of audit integrity and log retention --
+the deployer's responsibilities and the behavior that goes with them -- are in "Deployer
+responsibilities and behavioral limits in production". Offline recovery for a lost admin
+password, a startup blocked by the weak-credential scan, or an administrator locked out by
+source restrictions is in "Troubleshooting".
 
-### 5. 查看日誌
+### 5. Read the logs
 
 ```bash
-# 所有服務
+# All services
 docker compose logs -f
 
-# 特定服務
+# One service
 docker compose logs -f backend
 docker compose logs -f frontend
 ```
 
-## 首次使用：從登入到第一條連線
+## First use: from sign-in to the first connection
 
-以下流程正式版與開發版通用。開發版可以拿內建的測試靶機當連線目標（見「測試連線功能」）；
-正式版請換成你自己要納管的主機。
+The following applies to both stacks. The development stack has built-in test targets you can
+connect to (see "Testing the connection features"); on production, use the hosts you actually
+want to manage.
 
-### 1. 初始化解封、登入與改密
+### 1. Initialization unseal, sign-in and password change
 
-開 `http://localhost/`（開發版為 `http://localhost:3000`）。
+Open `https://localhost/` (`http://localhost:3000` on the development stack).
 
-**出貨預設（`KEK_PROVIDER=ui`）第一次會先進入初始化解封頁**：主金鑰在你的瀏覽器
-**本地生成、只存在伺服器記憶體**，頁面會要求你確認已妥善保存（之後每一次行程重啟
-都停在封印狀態，需要用它解封）；以 `admin`＋`ADMIN_INITIAL_PASSWORD` 授權初始化。
-（env／kms 模式沒有這一步，直接到登入頁。）
+**With the shipped default (`KEK_PROVIDER=ui`) the first stop is the initialization unseal
+page**: the master key is generated **locally in your browser and lives only in the server's
+memory**, and the page asks you to confirm you have stored it safely (every later process
+restart stops at the sealed state and needs that key to unseal). Authorize the initialization
+with `admin` and `ADMIN_INITIAL_PASSWORD`.
+(The env and kms modes have no such step and go straight to the sign-in page.)
 
-接著登入：帳號 `admin`、密碼為 `.env` 的 `ADMIN_INITIAL_PASSWORD`。首次登入會先進
-強制改密頁，設定新密碼後直接進入儀表板。
+Then sign in: account `admin`, password the `ADMIN_INITIAL_PASSWORD` from `.env`. The first
+sign-in goes to the forced password change page; set a new password and you land on the
+dashboard.
 
-### 2. 建立第一筆資產
+### 2. Create your first asset
 
-「資產管理」→「新增資產」。欄位說明：
+Assets → New Asset. The fields:
 
-| 欄位 | 說明 |
+| Field | Meaning |
 |---|---|
-| 名稱、協議、主機、埠號 | 必填。主機填 IP 或主機名（容器化部署要連宿主機上的服務時，可用 `host.docker.internal`） |
-| 使用者名稱、密碼、SSH 私鑰 | 連線用憑證，儲存時可留空。實際連線時**私鑰優先、密碼次之**；兩者皆空的資產可以存檔，但發起連線會失敗（「資產未設定可用憑證」） |
-| 掛載節點 | 資產在資產樹上的歸屬節點，可多選（一筆資產可同時掛在多個節點下）；留空則列於「未分組」 |
-| 連線政策 | 逐資產的連線管控。預設「跟隨全域設定」並回顯目前的全域值，需要對這筆資產特別放寬或收緊時才改 |
-| 描述 | 選填，供列表辨識 |
+| Name, Protocol, Host, Port | Required. Host takes an IP or a host name (a containerized deployment reaching a service on the Docker host can use `host.docker.internal`) |
+| Username, Password, SSH Private Key | The credentials used to connect; they may be left empty when saving. On an actual connection the **private key wins over the password**; an asset with neither can be saved, but starting a connection fails ("the asset has no usable credentials") |
+| Attach to Nodes | Where the asset sits in the asset tree; several may be picked (one asset can hang under several nodes). Left empty it is listed under "Ungrouped" |
+| Connection Policy | Per-asset connection control. It defaults to following the global setting and shows the current global value; change it only when this asset needs to be looser or tighter |
+| Description | Optional, to help identify the asset in the list |
 
-資產列表的「狀態」欄是連通性撥測資訊（新建資產尚未撥測時顯示「-」）；
-撥測目前只驗密碼認證，僅設私鑰的資產撥測會失敗，但不代表實際連線不可用；
-能不能連，以下一步的「連線」為準。
+The "Status" column in the asset list carries reachability probe information (an asset that has
+not been probed yet shows "-"). The probe currently only tests password authentication, so it
+fails for an asset that has only a private key, which does not mean the real connection is
+unavailable; whether it connects is settled by "Connect" in the next step.
 
-### 3. 發起連線
+### 3. Start a connection
 
-在資產列表找到該筆資產，點該列的「**連線**」，會開啟工作區分頁；
-網頁終端出現遠端主機的提示符即代表連上了。試跑幾個指令（`whoami`、`ls`），
-輸入 `exit` 或關閉分頁即結束會話。
+Find the asset in the list and click **Connect** on its row, which opens a workspace tab. The
+remote host's prompt appearing in the web terminal means you are connected. Run a couple of
+commands (`whoami`, `ls`); typing `exit` or closing the tab ends the session.
 
-### 4. 回看審計
+### 4. Look back at the audit trail
 
-會話結束後，到「連線管理」可看到這筆歷史會話，點進詳情就有**錄影回放**
-（可拖進度、調倍速）與該次會話的**指令記錄**；要跨會話搜尋指令，用「指令審計」頁。
-這條「操作必留痕」的鏈路就是本產品的核心，首次部署建議實際走一遍確認錄影可回放。
+Once the session ends, Sessions shows the historical session, and opening its detail gives you
+the **recording playback** (with a scrubber and speed control) along with the **command log**
+for that session. To search commands across sessions, use the Command Audit page.
+This "every operation leaves a trail" chain is the core of the product, and a first deployment
+should walk through it once to confirm that recordings play back.
 
-## 正式部署補充
+## Production deployment notes
 
-正式版就是預設 compose（見上方啟動步驟），本節補充 release 特有的必設項與部署驗證。
-正式版特性：不對外開放 DB／guacd 埠、`restart: always`、後端走編譯後的二進位（無原始碼掛載、
-`GIN_MODE=release`），對外只有 frontend 的 `80`。
+The production stack is the default compose file (see the startup steps above); this section adds
+the settings release mode requires and the deployment verification that goes with it.
+What the production stack does: no published DB or guacd ports, `restart: always`, a compiled
+binary for the backend (no source mount, `GIN_MODE=release`), and only the TLS proxy's `443`
+(https) and `80` (http redirect) exposed.
 
-### 1. `.env` 的 release 必設項
+### 1. Settings release mode requires in `.env`
 
-release 模式對這些值 **fail-close**（不合格即拒絕啟動，非警告）：
+Release mode is **fail-close** on these values: it refuses to start rather than warning.
 
-| 變數 | 要求 |
+| Variable | Requirement |
 |---|---|
-| `JWT_SECRET` | 必須改掉出廠預設值（PCI 2.2.2） |
-| `ENCRYPTION_KEY` | 僅 `KEK_PROVIDER=env` 需要；出貨預設 `ui`（金鑰不落地）下必須維持註解，有值即組態矛盾拒啟動 |
-| `DB_PASSWORD` | 必填——prod compose 未給預設值 |
-| `ADMIN_INITIAL_PASSWORD` | 全新空 DB 必填（>=12 bytes、非 placeholder、無前後空白／換行）；既有 DB 不需要 |
-| `CORS_ALLOWED_ORIGINS` | 跨來源部署必設；未設時僅允許同源 |
-| `DATA_PATH` | 建議指向專用資料夾或磁碟（預設 `./data`） |
+| `JWT_SECRET` | Must be changed from the shipped default (PCI 2.2.2) |
+| `ENCRYPTION_KEY` | Only for `KEK_PROVIDER=env`; under the shipped default `ui` (where the key never lands on disk) it must stay commented out, and a value there is a contradictory configuration that refuses startup |
+| `DB_PASSWORD` | Required -- the prod compose file supplies no default |
+| `ADMIN_INITIAL_PASSWORD` | Required for a fresh empty database (>=12 bytes, not the placeholder, no leading or trailing whitespace or newline); an existing database does not need it |
+| `CORS_ALLOWED_ORIGINS` | Required for a cross-origin deployment; while unset, only same-origin is allowed |
+| `DATA_PATH` | Best pointed at a dedicated folder or disk (`./data` by default) |
+| `TLS_DOMAIN` | The external host name, written into the certificate; empty is the same as `localhost` |
+| `PUBLIC_BASE_URL` | The external https address (the OIDC `redirect_uri` is built from it), on the same domain as `TLS_DOMAIN` |
 
-### 2. 啟動
+### 2. Start
 
 ```bash
-# 無既存映像時 up 會先建置正式版映像（建置就是部署流程的第一步）。
+# With no existing images, up builds the production images first (building is step one of deployment).
 docker compose up -d
 ```
 
-> 正式版與開發版 image 已分離命名（`custodexa/*:latest` 與 `custodexa/*:dev`），
-> 同一台機器可同時保有兩者，建置任一方都不會覆蓋另一方。
+> The production and development images have separate names (`custodexa/*:latest` and
+> `custodexa/*:dev`), so one machine can hold both and building either never overwrites the other.
 
-### 3. 部署驗證（每次正式部署都應跑過）
+### 3. Deployment verification (run this on every production deployment)
 
 ```bash
-# (1) 全部服務起來且 postgres healthy
+# (1) All services up and postgres healthy
 docker compose ps
 
-# (2) 後端健康檢查——backend 不對外開埠，且 /health 不在 nginx 代理路徑內，故走容器內
+# (2) Backend health check -- the backend publishes no port and /health is not on the nginx proxy path, so go through the container
 docker compose exec backend wget -qO- http://localhost:8080/health
 
-# (3) 前端可達（nginx 代理 /api 與 /ws 至 backend）
-curl -I http://localhost/
+# (3) The frontend is reachable and http redirects to https (add -k to curl for a self-signed certificate)
+curl -skI https://localhost/
+curl -sI http://localhost/ | head -1     # 301
 
-# (4) 登入鏈路通（帳號 admin，密碼為 .env 的 ADMIN_INITIAL_PASSWORD）
-curl -s -X POST http://localhost/api/v1/auth/login \
+# (4) The sign-in chain works (account admin, password the ADMIN_INITIAL_PASSWORD from .env)
+curl -sk -X POST https://localhost/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<ADMIN_INITIAL_PASSWORD>"}'
 
-# (5) 啟動日誌無 fatal（release 的 fail-close 都會出現在這裡）
+# (5) No fatal in the startup log (release fail-close messages all show up here)
 docker compose logs backend | tail -30
 ```
 
-> 開發機驗證正式版時，上列指令一律加顯式 `-f docker-compose.yml`（覆蓋 `.env` 的 `COMPOSE_FILE`）。
+> Verifying the production stack from a development machine means adding an explicit
+> `-f docker-compose.yml` to every command above (which overrides `COMPOSE_FILE` from `.env`).
 
-出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封印閘擋下；先於瀏覽器完成
-初始化（見「首次使用」），或以 `curl http://localhost/api/v1/seal/status` 確認狀態。
+Under the shipped `ui` mode, (4) is stopped by the seal gate **until the initialization unseal is
+done**; complete the initialization in the browser first (see "First use"), or check the state
+with `curl -k https://localhost/api/v1/seal/status`.
 
-(4) 於**全新部署**回傳的是 `{"change_token": "...", "password_change_required": true, "policy_hint": {...}}`
-而非一般 token；這是首登強制改密流程（PCI 8.3.5），拿到它就代表認證鏈路正常。改密後才換發正式會話。
+On a **fresh deployment**, (4) returns
+`{"change_token": "...", "password_change_required": true, "policy_hint": {...}}` rather than a
+normal token; that is the forced password change on first sign-in (PCI 8.3.5), and receiving it
+means the authentication chain is working. A real session is issued after the change.
 
-若任一步失敗，先看 (5) 的日誌：release 的拒絕啟動一律有明確訊息（哪個變數、為什麼不合格）。
+If any step fails, start with the log from (5): a release refusing to start always says which
+variable is at fault and why.
 
-> **對外 TLS 仍是部署方職責**：stock 部署只映射 `80`/HTTP。正式對外前須在前面架 TLS-terminating
-> 反向代理／ingress（含 WebSocket upgrade 轉發），詳見下方「生產環境的部署方責任與行為邊界」。
+> **External connections are TLS by default**: the production stack ships a reverse proxy,
+> `443` serves https and `80` always redirects to it. The certificate is signed by the product
+> itself (a local CA) by default; distribute the CA to the machines that connect and browsers
+> show the site as trusted. Deployments with an institutional certificate or their own ingress
+> take one of two other paths, all three of which are in "Transport encryption for external
+> traffic (TLS)" below.
 
-### 4. OIDC／SSO 部署注意
+### 4. OIDC / SSO deployment notes
 
-provider 本身的設定（issuer／client_id／secret／准入規則）由管理端存入資料庫；
-部署層只決定下列三個環境變數，以及一項**必須在啟用 SSO 前就確認的運維前提**。
+The provider's own settings (issuer, client_id, secret, admission rules) are stored in the
+database from the administration pages; the deployment layer decides only the three environment
+variables below, plus one **operational prerequisite you have to settle before enabling SSO**.
 
-| 變數 | 說明 |
+| Variable | Meaning |
 |---|---|
-| `PUBLIC_BASE_URL` | 對外基準網址，用於組出交給 IdP 的 `redirect_uri`（`${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback`）與 callback 導回位址。**不從請求 Host 推導**：反向代理多層轉發下推導必然出錯，而該值會被寫進 `redirect_uri`，錯誤時使用者會被導向錯誤主機。未設定時已啟用的 provider 會被標記「設定不完整」並自登入頁隱藏（fail-close）。正式環境須為 https。 |
-| `OIDC_DEDICATED_ISSUERS` | 專屬 issuer 宣告（逗號分隔）。系統對「未知 issuer」一律 fail-close 視為**共用身分域**，並要求其准入規則包含組織歸屬條件（租戶識別或 hosted domain）；但 Okta、自架 IdP 等**不發**這類 claim，若無本宣告，它們的自動供應將無法組態。宣告的語義是「此 issuer 只服務本組織」，該判斷只有部署方能做，故置於部署層而非管理端 API（admin 帳號自身不得放寬安全規則）。內建共用清單（Google、Microsoft 多租戶端點等）優先，不可經此宣告推翻。**變更後須滾動重啟全部副本才算生效**（宣告在啟動時載入；只重啟一個副本會使各副本判定分歧，管理端 provider 詳情顯示的是「本副本」的判定來源）。 |
-| `OIDC_ALLOWED_INTERNAL_HOSTS` | 允許出站的內部主機名（逗號分隔）。對 IdP 的出站預設拒絕解析至 loopback／link-local（含雲端 metadata 位址）／私有網段，**內網 IdP 須於此顯式放行**；不提供「關閉位址檢查」的布林開關。非 release 模式下，列於此的主機名同時允許 http（供 dev IdP 靶機使用）。內網 IdP 若用自簽憑證，須把 CA 加進容器的信任存放區；系統**不提供跳過 TLS 驗證的開關**。 |
+| `PUBLIC_BASE_URL` | The external base address, used to build the `redirect_uri` handed to the IdP (`${PUBLIC_BASE_URL}/api/v1/auth/oidc/callback`) and the callback return address. **It is not derived from the request Host**: derivation is bound to be wrong behind several layers of reverse proxy, and the value goes into the `redirect_uri`, so getting it wrong sends users to the wrong host. While it is unset, an enabled provider is marked "incompletely configured" and hidden from the sign-in page (fail-close). It must be https in production. |
+| `OIDC_DEDICATED_ISSUERS` | A declaration of dedicated issuers (comma-separated). The system treats an unknown issuer as a **shared identity domain** fail-close and requires its admission rules to include an organizational condition (a tenant identifier or a hosted domain); but Okta, self-hosted IdPs and the like **do not issue** such a claim, and without this declaration their automatic provisioning cannot be configured. The declaration means "this issuer serves only our organization", a judgment only the deployer can make, which is why it sits at the deployment layer rather than in an administration API (an admin account must not be able to loosen a security rule for itself). The built-in shared list (Google, Microsoft multi-tenant endpoints and so on) takes precedence and cannot be overruled here. **A change takes effect only after every replica has been restarted** (the declaration is loaded at startup; restarting one replica leaves the replicas disagreeing, and the provider detail page in the administration UI shows the decision source of **this** replica). |
+| `OIDC_ALLOWED_INTERNAL_HOSTS` | Internal host names allowed for outbound requests (comma-separated). Outbound requests to an IdP refuse by default to resolve to loopback, link-local (including cloud metadata addresses) or private ranges, so an **internal IdP has to be listed here explicitly**; there is no boolean switch that turns the address check off. Outside release mode, host names listed here are also allowed over http (for the dev IdP target). An internal IdP with a self-signed certificate needs its CA added to the container's trust store; the system offers **no switch to skip TLS verification**. |
 
-**必須保留至少一個本地 admin 帳號**（啟用 SSO 前先確認）：
+**At least one local admin account has to remain** (confirm this before enabling SSO):
 
-- 系統維持不變式「本地 admin 數量不得自一以上降為零」：把最後一個本地 admin 改為僅外部登入、
-  停用、移除 admin 角色或刪除，皆會被拒絕。
-- 理由不只是「IdP 掛了就進不去」：**封印解封（`KEK_PROVIDER=ui`）與初始管理員驗證只認本地憑證**，
-  該路徑發生在系統尚未完全啟動的階段，不可能經由外部 IdP 完成。全體 admin 都外部化＝
-  一旦進入封印狀態即無人能解封。
-- 該本地 admin 應設強密碼並啟用 MFA，作為 break-glass 帳號使用。
+- The system maintains the invariant that the number of local admins never falls from one or more
+  to zero: turning the last local admin into external-login-only, disabling it, removing its admin
+  role or deleting it are all rejected.
+- The reason is not just "you cannot get in when the IdP is down": **unsealing
+  (`KEK_PROVIDER=ui`) and initial-administrator verification only accept local credentials**,
+  because that path runs while the system is not fully started and cannot possibly go through an
+  external IdP. Externalizing every admin means nobody can unseal once the system is sealed.
+- That local admin should have a strong password and MFA, and serve as the break-glass account.
 
-**IdP 端停權不會自動終斷進行中的協議連線**：
+**Deactivation at the IdP does not terminate protocol connections already in progress**:
 
-- 使用者於 IdP 端被停權／刪除，本系統**不會**即時得知（OIDC 無反向通知，除非另接
-  back-channel logout，本版未實作）。既有的 SSH／RDP／VNC 等協議連線建立後不再使用憑證，
-  因此會**繼續存活**，由閒置逾時（`SSH_IDLE_TIMEOUT_MINUTES`）與最大連線時長治理；
-  已簽發的 access token 亦會存活至到期（固定 15 分鐘）。IdP 端停權的實際效果是「下次登入被拒」。
+- When a user is deactivated or deleted at the IdP, this system **is not** told in real time
+  (OIDC has no reverse notification unless back-channel logout is wired up, which this version
+  does not implement). An established SSH, RDP or VNC connection no longer uses the credentials,
+  so it **stays alive**, governed by the idle timeout (`SSH_IDLE_TIMEOUT_MINUTES`) and the maximum
+  session lifetime; an access token already issued also lives until it expires (a fixed 15
+  minutes). What deactivation at the IdP actually does is reject the next sign-in.
 
-**多副本部署的已知邊界**（單實例部署不受影響）：
+**Known limits of a multi-replica deployment** (single-instance deployments are unaffected):
 
-- 本版起，對同一資料庫啟動的第二個應用實例會被守衛**攔下並要求確認**；守衛防的是不知情的
-  並存，不是並存本身——確認後的執行留有審計證據，其資料後果由確認者承擔
-  （見 [部署形態限制](ops/deployment-topology-limits.md)）。
-- 錄影播放存取憑證（recording token）的授權為 **per-process**：token 由哪個後端副本簽發，
-  就只有該副本能兌換與撤銷。多副本下若停用帳號／provider 的請求落在其他副本，
-  簽發副本上既有的 token 會存活至 TTL 到期；殘窗 **≤120 秒、唯讀能力**（只能取得
-  已錄製內容，不能建立新連線）。此邊界屬多副本部署的前置缺口（見
-  [部署形態限制](ops/deployment-topology-limits.md)），上 HA 前須以跨副本通知機制一併解決。
-- **需要即時切斷者，必須在本系統的管理端操作**：停用該使用者帳號（推進使用者憑證世代）
-  或停用整個 provider（推進 provider 世代）。兩者皆會撤銷 refresh、拒絕既簽 access、
-  終斷該範圍的協議連線並收線監看／分享訂閱。
-- **離機證據儲存的上傳 worker 沒有跨副本互斥**：多副本下同一份錄影或證據包會被重複領件並
-  **重傳同一個 key**。內容相同，覆寫無害、記帳結果也一致，所以這不是正確性問題；
-  代價是白白多花的頻寬與競態重傳。單實例部署不會發生。
-- provider 的 **secret 輪替與刪除比照停用**走同一套完整失效流程；`auth_epoch` 只增不減，
-  故「停用後短時間重新啟用」不會復活攻擊者手上的既簽憑證。副作用是該 provider 的全體使用者
-  被強制重新登入；這是刻意取捨（輪替動機通常是舊 secret 可能已洩漏）。
+- From this version on, a second application instance started against the same database is
+  **stopped by a guard that asks for confirmation**. The guard is aimed at unknowing coexistence,
+  not coexistence itself: a confirmed run leaves audit evidence, and its data consequences are
+  the confirmer's to carry (see [Deployment topology limits](ops/deployment-topology-limits.md)).
+- Authorization for a recording playback token is **per-process**: only the backend replica that
+  issued a token can redeem or revoke it. Across replicas, if a request to disable an account or
+  a provider lands on a different replica, the tokens already issued on the issuing replica live
+  until their TTL expires; the residual window is **120 seconds or less and read-only** (it can
+  fetch already recorded content, not open a new connection). This limit belongs to the gaps that
+  precede multi-replica deployment (see
+  [Deployment topology limits](ops/deployment-topology-limits.md)) and has to be closed together
+  with a cross-replica notification mechanism before going HA.
+- **Anyone who needs an immediate cutoff has to act in this system's administration pages**:
+  disable the user account (which advances that user's credential generation) or disable the whole
+  provider (which advances the provider generation). Either revokes refresh tokens, rejects access
+  tokens already issued, terminates protocol connections in that scope and drops session
+  monitoring and sharing subscriptions.
+- **The upload worker for off-site evidence storage has no cross-replica mutual exclusion**:
+  across replicas the same recording or evidence bundle is picked up more than once and
+  **re-uploaded under the same key**. The content is identical, the overwrite is harmless and the
+  accounting comes out the same, so this is not a correctness problem; the cost is wasted bandwidth
+  and a racing re-upload. It does not happen on a single instance.
+- **Rotating or deleting a provider secret follows the same full invalidation flow as disabling
+  it**; `auth_epoch` only ever increases, so "disable and re-enable shortly after" does not revive
+  credentials already in an attacker's hands. The side effect is that every user of that provider
+  is forced to sign in again, which is a deliberate trade-off (the reason to rotate is usually that
+  the old secret may have leaked).
 
-**可信代理設定的重要性**：SSO 的 callback 與 exchange 端點為公開端點並掛 per-IP 限流；
-未設定 `TRUSTED_PROXIES` 時，限速鍵一律採 socket peer IP 並忽略轉送標頭
-（無可信代理鏈約定時，標頭可被任意偽造，寧可影響可用性也不提供可繞過的假防線）。
-於反向代理後方部署時務必正確設定 `TRUSTED_PROXIES`，否則全部請求會被視為來自代理的同一個 IP。
+**Why trusted proxy settings matter**: the SSO callback and exchange endpoints are public and
+carry per-IP rate limiting. While `TRUSTED_PROXIES` is unset, the rate-limit key is always the
+socket peer IP and forwarding headers are ignored (with no agreed chain of trusted proxies the
+headers can be forged at will, and losing some availability beats offering a defense that can be
+walked around). Behind a reverse proxy, set `TRUSTED_PROXIES` correctly or every request looks
+like it comes from the proxy's single IP.
 
-### 5. LDAP 目錄設定
+### 5. LDAP directory settings
 
-LDAP 目錄設定（位址／bind 帳密／搜尋參數／屬性映射）由管理端存入資料庫，
-於「身分管理 → LDAP 目錄」頁維護；**資料庫是唯一事實源**，
-`.env` 的 `LDAP_*` 九個鍵只是**首次啟動的 seed 來源**。
+The LDAP directory settings (address, bind credentials, search parameters, attribute mapping) are
+stored in the database from the administration pages, maintained under
+Identity & Access → Directory (LDAP); **the database is the single source of truth**, and the nine
+`LDAP_*` keys in `.env` are only a **seed source for the first startup**.
 
-| 情境 | 行為 |
+| Situation | Behavior |
 |---|---|
-| 首次啟動時 `.env` 已設 `LDAP_ENABLED=true` | 解封後將 env 值一次性寫入資料庫，之後一律以資料庫為準 |
-| 首次啟動時未啟用（範本預設 `LDAP_ENABLED=false`） | 不 seed，資料表維持空白；於管理端 UI 建立設定即可 |
-| seed 完成後修改 `.env` 的 `LDAP_*` | **不生效**——改設定請走 UI |
-| 於 UI 刪除設定後重啟 | 不會被 env 重新灌回（系統記錄「已完成評估」標記，不因資料列消失而重跑） |
+| `.env` has `LDAP_ENABLED=true` at the first startup | After unsealing, the env values are written to the database once, and the database governs from then on |
+| Not enabled at the first startup (the template default is `LDAP_ENABLED=false`) | Nothing is seeded and the table stays empty; create the settings in the administration UI |
+| `LDAP_*` in `.env` is edited after seeding | **No effect** -- change settings in the UI |
+| The settings are deleted in the UI and the service restarts | They are not re-seeded from env (the system records an "evaluation complete" marker and does not re-run because a row disappeared) |
 
-出站限制：對目錄的連線一律拒絕解析至 loopback／link-local（含雲端 metadata 位址）／未指定位址／
-multicast；**私有網段預設放行**（目錄服務的常態位置即內網，此處與 OIDC 的公網 IdP 前提相反）。
-需要以 loopback 位址連線的特殊場景，於 `LDAP_ALLOWED_LOOPBACK_ENDPOINTS` 以 `host:port`
-精確列舉放行，不支援萬用字元，亦不提供關閉檢查的開關。
+Outbound restrictions: a connection to the directory always refuses to resolve to loopback,
+link-local (including cloud metadata addresses), the unspecified address or multicast;
+**private ranges are allowed by default** (a directory service normally lives on the internal
+network, the opposite of the public-IdP assumption behind OIDC).
+For the special case of connecting over a loopback address, list exact `host:port` entries in
+`LDAP_ALLOWED_LOOPBACK_ENDPOINTS`; wildcards are not supported, and there is no switch to turn the
+check off.
 
-**`.env` 不會被回寫**：seed 之後於管理端所做的任何變更都不會反映到 `.env`；
-產品不修改部署方管理的檔案。故 `.env` 內的 `LDAP_*` 值只是首次啟動當下的快照，
-不可當作現行設定的參考來源；要看現行值請開管理端頁面。
+**`.env` is never written back**: nothing changed in the administration pages after seeding is
+reflected in `.env`, because the product does not modify files the deployer manages. So the
+`LDAP_*` values in `.env` are only a snapshot of the first startup and are not a reference for the
+current settings; open the administration page to see those.
 
-### 6. 容量與儲存規劃
+### 6. Capacity and storage planning
 
-容量規劃的主軸是**錄影儲存增長**；後端行程本身不會是先飽和的資源（見文末）。
-下列數字是開發環境的參考觀測、非承諾值，對你的硬體沒有預測力；能跨環境轉移的是**換算方法**。
+Capacity planning turns on **recording storage growth**; the backend process itself is not the
+resource that saturates first (see the end of this section).
+The numbers below are reference observations from a development environment, not commitments, and
+they predict nothing about your hardware; what transfers across environments is the **conversion
+method**.
 
-#### 錄影儲存增長率（文字與圖形分開，差約兩個數量級，不可平均）
+#### Recording storage growth rate (text and graphical differ by about two orders of magnitude and must not be averaged)
 
-| 協議 | 觀測 | 性質 |
+| Protocol | Observed | Kind |
 |---|---|---|
-| 文字終端 SSH（`.cast`） | 閒置約 30 B/s ≈ 105 KB/會話小時；滿載放大係數約 1.32x | 文字 |
-| 圖形 RDP／VNC（`.guac`） | 靜態桌面約 10.4 MB/會話小時起算 | 圖形 |
+| Text terminal SSH (`.cast`) | About 30 B/s idle, roughly 105 KB per session-hour; a full-load multiplier of about 1.32x | Text |
+| Graphical RDP / VNC (`.guac`) | From about 10.4 MB per session-hour for a static desktop | Graphical |
 
-> 兩筆都是**閒置下界**（量自無輸入的終端／無畫面變化的靜態桌面）。真實操作（捲動輸出、
-> 拖曳視窗、切換畫面）會高出數倍到一個數量級；下界只能確認「至少要準備這麼多」，不可當規劃值。
+> Both are **idle lower bounds** (measured on a terminal with no input and a static desktop with
+> no screen change). Real work -- scrolling output, dragging windows, switching screens -- runs
+> several times to an order of magnitude higher. A lower bound only establishes "you need at least
+> this much" and must not be used as a planning figure.
 
-**換算方法（可跨硬體轉移的部分）**
+**The conversion method (the part that transfers across hardware)**
 
-- **文字**：錄影磁碟 ≈ 終端輸出位元組 × 1.32（asciicast 的 JSON 框架與時戳開銷），
-  用你自己環境的「每人每日終端輸出量」代入。
-- **圖形**：以 10.4 MB/會話小時**起算**，依實際操作強度往上乘；磁碟需求 ≈
-  同時圖形會話數 × 平均會話時長 × 增長率 × 保留天數，並保留餘裕。
-- 保留期由安全政策頁管理（見下方「生產環境的部署方責任與行為邊界 → 日誌與錄影保留」），
-  磁碟需求 ≈ 每日增長量 × 保留天數。
+- **Text**: recording disk usage is roughly terminal output bytes x 1.32 (the JSON framing and
+  timestamp overhead of asciicast); substitute the terminal output per person per day from your
+  own environment.
+- **Graphical**: start from 10.4 MB per session-hour and multiply up by how heavy the real work is.
+  Disk demand is roughly concurrent graphical sessions x average session length x growth rate x
+  retention days, plus headroom.
+- The retention window is managed on the security policy page (see "Deployer responsibilities and
+  behavioral limits in production → Log and recording retention" below), and disk demand is roughly
+  daily growth x retention days.
 
-#### 並發容量
+#### Concurrency capacity
 
-**Custodexa 不設並發會話上限，也不會因為會話數而拒絕建線。**實際會先飽和的資源，依應檢查的順序：
+**Custodexa sets no cap on concurrent sessions and never refuses a connection because of the
+session count.** The resources that saturate first, in the order you should check them:
 
-1. **guacd 容器（圖形協議）**：每條 RDP/VNC 會話對應一條 guacd 連線，CPU 與記憶體都由它承擔，
-   是圖形場景的真正上限，須依你的圖形會話比例單獨壓測。
-2. **錄影磁碟的寫入頻寬與容量**：以上表圖形增長率 × 同時圖形會話數估算。
-3. **資料庫連線池上限**。
-4. **目標主機自身的限制**：例如 sshd 的 `MaxSessions`／`MaxStartups`，與本系統無關但會先擋住你。
+1. **The guacd container (graphical protocols)**: every RDP/VNC session maps to one guacd
+   connection, which carries both the CPU and the memory, and it is the real ceiling in graphical
+   scenarios. Load-test it separately against your own share of graphical sessions.
+2. **Write bandwidth and capacity of the recording disk**: estimate from the graphical growth rate
+   above x concurrent graphical sessions.
+3. **The database connection pool limit.**
+4. **Limits on the target hosts themselves**: sshd's `MaxSessions` and `MaxStartups`, for example,
+   which have nothing to do with this system but will stop you first.
 
-後端 Go 行程本身不是瓶頸：每會話約 +16 goroutine、記憶體增量小到量測雜訊底之下
-（上界約 148 KB/會話），1 GB 可用記憶體約當數千條文字會話。
-**文字會話的容量幾乎只受磁碟限制，圖形會話的容量由 guacd 決定。**
+The backend Go process is not the bottleneck: about +16 goroutines per session, and a memory
+increment below the noise floor of the measurement (an upper bound of about 148 KB per session),
+so 1 GB of available memory is worth several thousand text sessions.
+**Text session capacity is limited almost entirely by disk, and graphical session capacity is
+decided by guacd.**
 
-#### 儲存監控
+#### Storage monitoring
 
-- 錄影佔用量在產品內可見（具稽核檢視權限者的主控頁「錄影佔用」卡）；採集端可讀
-  `custodexa_recording_storage_bytes`（`/metrics`，每 30 秒刷新，其值最多落後一個刷新週期）。
-- **系統不設儲存上限**：稽核系統的可用性不應被儲存量挾持，而「照常建線但不錄影」會產生
-  無錄影的特權會話，兩者都不可接受。故磁碟總容量與耗盡風險由你的基礎設施監控承擔；
-  請對 `custodexa_recording_storage_bytes` 設成長率或容量門檻告警。
-- 需要縮減佔用時走**保留期**（系統設定→安全政策），依時間刪除過期錄影。
+- Recording usage is visible in the product (the "Recording Storage Used" card on the dashboard,
+  for anyone with audit view permission); collectors can read
+  `custodexa_recording_storage_bytes` (on `/metrics`, refreshed every 30 seconds, so the value
+  lags by at most one refresh period).
+- **The system sets no storage cap**: the availability of an audit system should not be held
+  hostage by storage volume, and "keep connecting but stop recording" would produce unrecorded
+  privileged sessions, neither of which is acceptable. Total disk capacity and the risk of running
+  out are therefore carried by your infrastructure monitoring; set a growth-rate or capacity
+  threshold alert on `custodexa_recording_storage_bytes`.
+- To reduce usage, use the **retention window** (System Settings → Security Policies) and delete
+  expired recordings by age.
 
-## 生產環境的部署方責任與行為邊界
+## Deployer responsibilities and behavioral limits in production
 
-正式對外服務前，下列事項屬於**部署方責任**，本產品刻意不代勞，也不假裝有做；
-連同兩項行為說明一併集中在此，部署上線前逐項過一遍。
+Before serving external traffic, the items below are **the deployer's responsibility**. The
+product deliberately does not do them for you and does not pretend it does. Two behavioral notes
+are collected here as well; go through the whole section before going live.
 
-### 對外傳輸加密（TLS）
+### Transport encryption for external traffic (TLS)
 
-stock 部署**本身不提供 TLS**：frontend 只映射 `80`/HTTP，
-backend 為內網明文、不對外。對外 TLS termination 為**部署方職責**：須於本服務前置一個
-TLS-terminating 反向代理／ingress，提供 TLS 1.2+、可信憑證、HTTP→HTTPS redirect、HSTS 與
-**WebSocket upgrade 轉發（wss）**；若 LB／ingress 到主機的 hop 跨越不可信網段，該 hop 亦須加密
-（re-encrypt）。應用已 TLS-ready：前端依頁面協定自動 `ws`↔`wss`、access token 走
-Authorization header，故置於 HTTPS edge 後**幾乎**無需改應用——唯一要對齊的一項是
-`PUBLIC_BASE_URL`（見下方步驟 5 與「會話刷新 cookie 的 Secure 旗標」）。此為部署契約，
-非應用強制控制，請據實驗證你的 edge。
+External connections to the production stack terminate TLS at the built-in reverse proxy: `443`
+serves https, `80` always returns a 301 to it, and neither the frontend nor the backend
+publishes a host port. The proxy provides TLS 1.2+, HSTS and **WebSocket upgrade forwarding
+(wss)**, and its configuration file needs no editing -- the domain comes from `TLS_DOMAIN` in
+`.env` and is substituted into the configuration at startup. `bash scripts/quickstart.sh` also
+fills in `TRUSTED_PROXIES` with the Docker subnet this stack runs on, which is what lets the
+backend read the client address the proxy forwards instead of attributing every request to the
+proxy itself.
 
-**會話刷新 cookie 的 Secure 旗標**：Web 會話刷新憑證以 `HttpOnly` cookie
-（`custodexa_refresh`）下發，其 `Secure` 旗標由安全政策
-**「登入狀態僅在 https 連線保存」**決定（系統設定 → 安全政策 →「連線與帳號」）。
-在該頁改值並儲存後，下一次發放的 cookie 就採用新值，不需重啟。
+Where the certificate comes from is decided by `TLS_MODE` in `.env`, whose two values match the
+first two subsections below: `selfsigned` (the default, a local CA the product signs itself) and
+`provided` (your own certificate). Deployments that already have an ingress of their own take a
+third path and switch the built-in proxy off with an overlay.
 
-首次啟動時，這個政策的初值取自 `.env`：
+Whichever path you take, two things hold. The external edge has to provide TLS 1.2+, an
+HTTP-to-HTTPS redirect, HSTS and WebSocket upgrade forwarding; and if the hop from the edge to
+this host crosses an untrusted segment, that hop has to be encrypted too (re-encrypt).
+The application itself is TLS-ready: the frontend switches `ws` and `wss` with the page protocol
+and the access token travels in the Authorization header. The one thing to line up is
+`PUBLIC_BASE_URL` (see "The Secure flag on the session refresh cookie").
 
-| 首次啟動時的設定 | 播種的初值 |
+**The Secure flag on the session refresh cookie**: the web session refresh credential is issued as
+an `HttpOnly` cookie (`custodexa_refresh`), and its `Secure` flag is decided by the security
+policy **"keep sign-in state only over https"** (System Settings → Security Policies → Sessions
+and Accounts). Change the value on that page and save, and the next cookie issued uses the new
+value; no restart needed.
+
+At the first startup, the initial value of this policy comes from `.env`:
+
+| Setting at the first startup | Seeded value |
 |---|---|
-| `AUTH_REFRESH_COOKIE_SECURE=true` 或 `false` | 直接採用（最高優先） |
-| 未設，`PUBLIC_BASE_URL` 為 `https://…` | 開啟 |
-| 未設，`PUBLIC_BASE_URL` 為 `http://…` | 關閉 |
-| 未設，`PUBLIC_BASE_URL` 也留空 | 開啟（出廠預設） |
+| `AUTH_REFRESH_COOKIE_SECURE=true` or `false` | Used as given (highest precedence) |
+| Unset, `PUBLIC_BASE_URL` is `https://…` | On |
+| Unset, `PUBLIC_BASE_URL` is `http://…` | Off |
+| Unset, `PUBLIC_BASE_URL` also empty | On (factory default) |
 
-這兩個環境變數只在政策還沒有值的時候起作用。政策一旦有值（首啟播種過，或有人在
-安全政策頁存過），之後改 `.env` 不會有任何效果，要調整請回到那一頁。
+These two environment variables act only while the policy has no value. Once it has one (seeded at
+the first startup, or saved by someone on the security policy page), editing `.env` has no effect
+at all; go back to that page to adjust it.
 
-**HTTPS 對外部署請把 `PUBLIC_BASE_URL` 設成 https 位址**（即使沒用 OIDC）；
-TLS 在更前面的一層終結而 `PUBLIC_BASE_URL` 無法反映對外位址時，
-以 `AUTH_REFRESH_COOKIE_SECURE=true` 播種。
+**An HTTPS deployment should set `PUBLIC_BASE_URL` to the https address** (even without OIDC).
+When TLS terminates further out and `PUBLIC_BASE_URL` cannot reflect the external address, seed
+with `AUTH_REFRESH_COOKIE_SECURE=true`.
 
-**走明文 HTTP 對外的部署**，請在首次啟動前把 `AUTH_REFRESH_COOKIE_SECURE` 設成 `false`，
-或啟動後到安全政策頁把該項關掉。政策開著的話系統仍然可用，代價是瀏覽器不保存這個
-cookie，每個人隔約 15 分鐘（存取權杖的壽命）就要重新登入一次。這件事使用者看得到：
-被登出時登入頁會說明現況並請他找管理員，管理員以同一個 http 位址登入後，安全政策頁
-上方也會出現對應的提示與兩條處理路徑。**系統不會自行改動這個設定。**
+**A deployment served over plain HTTP** should set `AUTH_REFRESH_COOKIE_SECURE` to `false` before
+the first startup, or turn the policy off on the security policy page afterwards. With the policy
+on, the system still works; the cost is that browsers do not keep the cookie, so everyone signs in
+again about every 15 minutes (the lifetime of the access token). Users see this: the sign-in page
+explains the situation when they are signed out and asks them to contact an administrator, and an
+administrator signing in over the same http address sees a matching notice at the top of the
+security policy page with two ways to resolve it. **The system never changes this setting on its
+own.**
 
-本機開發用 `http://localhost` 不受影響：Chromium 145 與 Firefox 146 實測都接受來自
-這個位址的 Secure cookie；Safari 一系的 WebKit 會丟棄，拿 Safari 開發時把該政策關掉即可。
+Local development on `http://localhost` is unaffected: Chromium 145 and Firefox 146 both accept a
+Secure cookie from that address in our testing; WebKit in the Safari family drops it, so turn the
+policy off when developing with Safari.
 
-啟動日誌一律印出目前生效值與其來源（安全政策頁設定／env 播種／出廠預設），
-**上線後請先看一眼**：
+The startup log always prints the value in effect and where it came from (the security policy page,
+env seeding, or the factory default). **Take a look at it after going live**:
 
 ```bash
 docker compose logs backend | grep "refresh cookie"
 ```
 
-值為關閉時，日誌會提醒「refresh 憑證將經明文 HTTP 傳輸」——若本站其實走 https，
-那就是設定該收緊了，到安全政策頁把它開啟。
+When the value is off, the log points out that the refresh credential will travel over plain HTTP
+-- and if this site does in fact serve https, that setting wants tightening, so go to the security
+policy page and turn it on.
 
-**最小可用範例（docker 跑 nginx 反代 + 你的憑證）**：
+#### The default: a local CA the product signs itself (`TLS_MODE=selfsigned`)
 
-1. 準備憑證：把憑證鏈與私鑰放到 `./tls/fullchain.pem`、`./tls/privkey.pem`。
-   來源用 Let's Encrypt 或企業 CA 皆可；自簽憑證僅供測試（瀏覽器會警告，且 OIDC 等
-   外部整合可能拒絕）。
-2. 取範例設定，換上你的網域：
+You get https in one command without an institutional PKI. At the first startup the system
+generates a local CA and a server certificate in `tls/` (825 days for the certificate, 10 years
+for the CA) and reuses them on every later start. The connection is encrypted end to end, and the
+chain of trust is established by you distributing the CA to the machines that connect.
 
-   ```bash
-   mkdir -p tls
-   cp docker/reverse-proxy/nginx-tls.conf.example tls/custodexa.conf
-   # 編輯 tls/custodexa.conf：兩處 server_name your.domain.example 換成你的網域
-   ```
-
-   範例已含 TLS 1.2+、HTTP→HTTPS redirect、HSTS 與 WebSocket upgrade 轉發；
-   upstream 指向 compose 服務名 `frontend:80`，反代加入同一 docker 網路即可解析。
-3. 讓出對外埠：把 `docker-compose.yml` 中 frontend 的 `ports:` 兩行註解掉
-   （反代經 docker 網路直達 frontend，stock 的 `80:80` 映射不再需要，
-   留著會與反代搶 80 埠），然後 `docker compose up -d frontend` 套用。
-4. 啟動反代。compose 定義的是具名網路 `custodexa-network`，docker 實際網路名會帶
-   專案目錄前綴（例如目錄叫 `custodexa` 時為 `custodexa_custodexa-network`），
-   先以 `docker network ls` 確認再帶入。conf 掛載路徑刻意蓋掉 image 內建的
-   `default.conf`——內建檔會與你的設定衝突（同名 server_name），或以 welcome 頁
-   兜底吃掉不匹配網域的請求：
+1. Set the external host name and base address in `.env` (`bash scripts/quickstart.sh` fills these
+   in from the machine's host name and addresses):
 
    ```bash
-   docker run -d --name custodexa-tls --restart unless-stopped \
-     --network custodexa_custodexa-network \
-     -p 80:80 -p 443:443 \
-     -v "$PWD/tls/custodexa.conf:/etc/nginx/conf.d/default.conf:ro" \
-     -v "$PWD/tls/fullchain.pem:/etc/nginx/certs/fullchain.pem:ro" \
-     -v "$PWD/tls/privkey.pem:/etc/nginx/certs/privkey.pem:ro" \
-     nginx:stable-alpine
+   TLS_DOMAIN=jumper.example.internal
+   TLS_IP_SAN=10.0.0.5            # Fill in when connecting by IP has to work too, comma-separated; leave empty if not
+   PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
-5. 驗證三件事：
+2. `docker compose up -d`. The certificates are generated on the first start.
+
+3. Download the CA certificate and distribute it to the machines that will connect:
 
    ```bash
-   curl -sI http://your.domain.example/ | head -1    # 應為 301（導向 https）
-   curl -sI https://your.domain.example/ | head -1   # 應為 200（自簽測試加 -k）
-   # 登入後開一條 SSH 連線，瀏覽器 DevTools 的 Network 應看到 wss:// 串流——
-   # 若終端開不起來而頁面正常，多半是 WebSocket upgrade 轉發沒生效
+   curl -sk https://jumper.example.internal/custodexa-ca.crt -o custodexa-ca.crt
    ```
 
-   `PUBLIC_BASE_URL` 須同步改為 `https://your.domain.example`（OIDC 的 `redirect_uri`
-   吃這個值，見上節），改完重啟 backend。
+   In a Windows domain, distribute it through group policy (Computer Configuration → Windows
+   Settings → Security Settings → Public Key Policies → Trusted Root Certification Authorities);
+   on macOS and mobile devices use an MDM configuration profile; on a standalone machine, import
+   it into the system's trusted root store by hand. Once distributed, browsers show the connection
+   as trusted. The CA certificate is public data; the CA private key stays on the host under
+   `tls/ca-private/` and never enters the proxy container.
 
-   刷新 cookie 的 `Secure` 旗標則要另外看一眼：這套系統若曾以 http 位址啟動過，
-   政策已經播種為關閉，改 `PUBLIC_BASE_URL` 不會把它翻回來（見本節開頭）。
-   到系統設定 → 安全政策把「登入狀態僅在 https 連線保存」開啟並儲存，
-   下一次發放的 cookie 就會帶上 `Secure`。
+4. To move to a certificate from an institutional or public CA later: delete the files in `tls/`,
+   set `TLS_MODE=provided`, put the new certificate in place (see the next subsection) and restart.
 
-   改用主機安裝的 nginx（不跑容器）時，設定同一份：upstream 改指
-   `127.0.0.1:<frontend 對外埠>`，並保留 frontend 的 ports 映射但建議綁 loopback
-   （`127.0.0.1:8080:80`）；nginx 低於 1.25.1 不支援 `http2 on;` 指令，
-   改寫成 `listen 443 ssl http2;` 即可。其他反代（Caddy、Traefik、雲端 LB）
-   滿足同一組契約即可。
+Until the CA is distributed, browsers show a certificate warning and an external identity provider
+used for OIDC refuses the callback -- a self-signed leaf certificate at that point suits testing
+only.
 
-### 時間同步（PCI 10.6）
+#### Internal domains and an institutional CA
 
-容器時鐘繼承宿主，本產品不內建 NTP client。生產宿主必須啟用時間同步
-（chrony / systemd-timesyncd / 雲平台預設 NTP），時間源採 UTC 並指向業界公認的時間伺服器（10.6.2）；
-宿主系統時間變更的存取控制與稽核屬 OS 層責任（10.6.3）。
-審計日誌時戳的可比性完全依賴宿主時鐘正確。
+`TLS_DOMAIN` is just this system's external host name. Being resolvable by internal DNS or a hosts
+file on the client is enough; it does not have to be a publicly registered domain (something like
+`jumper.bnc.prod` is fine), and `PUBLIC_BASE_URL` is the https address of that same host name.
 
-### 審計完整性的能力邊界（PCI 10.3.4）
+When the organization has its own CA, generate the private key and a certificate signing request
+locally (the SAN has to include that host name) and submit it for signing:
 
-audit_logs 逐列 HMAC＋匯出 manifest Ed25519 簽章＋syslog 即時離機轉發三者合為補償控制，
-可偵測「既有列被修改」與「基準時間後被竄改並清空 HMAC」（首次啟動記錄啟用基準，
-之後所有**入庫**路徑經 `BeforeCreate` 蓋章，基準後仍空 HMAC 即判不符；檔案降級與
-佇列滿載丟棄的事件不入庫、不經蓋章，故措辭為「入庫路徑」而非「寫入路徑」）；
-「整列連同 HMAC 一併刪除」**由檢查點鏈偵測**（區間聚合＋鏈接＋Ed25519 簽章，
-合法清除以簽章 tombstone 與竊取區分），其證明力邊界 R0-R6 見驗證頁與
-`openspec/specs/audit-checkpoint-chain/spec.md`。
-完整性蓋章鑰為系統生成之版本化鑰（KEK 包裹落庫，自 v1 起），與 `JWT_SECRET` 無派生關係、不需任何環境變數設定。
+```bash
+openssl req -newkey rsa:2048 -nodes -keyout tls/privkey.pem \
+  -out custodexa.csr -subj "/CN=jumper.bnc.prod" \
+  -addext "subjectAltName=DNS:jumper.bnc.prod"
+```
 
-### 登入前告示
+Once it comes back, concatenate the server certificate and the intermediates in order into
+`tls/fullchain.pem` (leaf first), keep the private key at `tls/privkey.pem`, set `TLS_MODE` to
+`provided` and restart. Clients have to trust that CA, which is usually handled by AD group policy
+or MDM. If the identity provider used for SSO is also internal, served over https and signed by the
+same CA, add the CA certificate to the backend container's trust store (see the
+`OIDC_ALLOWED_INTERNAL_HOSTS` part of "OIDC / SSO deployment notes").
 
-登入頁可在使用者輸入帳號密碼之前顯示一段存取聲明（系統設定 → 安全政策 → 登入告示）。
-**出廠是空的，空的就不顯示**——聲明的措辭屬部署方的法務範疇，產品不預設任何內容。
-新裝交付時請照[部署與升級 SOP §1.7](ops/upgrade-sop.md#17-設定登入告示) 設定，該節寫明做法與不設定的後果。
+#### Bring your own certificate (`TLS_MODE=provided`)
 
-### 日誌與錄影保留
+When you already have a certificate from a public or institutional CA:
 
-保留天數由安全政策頁管理，`0 = 永久保留`。`RECORDING_RETENTION_DAYS` 僅在**首次啟動**
-（政策表無此列時）播種，之後改 env 重啟不再生效，一律以政策頁為準。
-到期清除為每日 02:00 硬刪且不可還原，縮短保留期限時 UI 會先確認。
-單次執行刪除上限預設 10 萬筆／表，高流量部署可用 `RETENTION_MAX_PER_RUN` 調高以免每日到期量追不上。
+1. Put the certificate chain and the private key at `tls/fullchain.pem` and `tls/privkey.pem`.
+2. Set `TLS_MODE=provided`, `TLS_DOMAIN` (matching the host name on the certificate) and
+   `PUBLIC_BASE_URL=https://<host name>` in `.env`.
+3. `docker compose up -d`.
 
-## 常用命令
+With any file missing, the start stops at the certificate preparation step and names the missing
+one; the proxy does not come up with half a configuration:
 
-### 重啟服務
+```bash
+docker compose logs tls-init
+```
+
+#### Leaving it to your own ingress (external ingress overlay)
+
+When a cloud load balancer or an existing nginx or Traefik ingress already sits in front, use the
+overlay to switch the built-in proxy off and let the frontend publish an HTTP port for your ingress
+to reach:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.external-ingress.yml up -d
+```
+
+Once you uncomment `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml` in
+`.env`, the everyday `docker compose up -d`, `ps` and `down` no longer need `-f`.
+In this shape the frontend publishes `80` (changeable through `HTTP_PORT` in `.env`), external
+TLS is carried by your ingress under the contract listed at the start of this section, and
+`PUBLIC_BASE_URL` takes the https address your users actually see.
+
+Two settings belong to your ingress rather than to this stack. **Forward the Host header with the
+port people actually connect to** -- add the port whenever it is not `443`: the backend compares
+`Origin` against `Host` to recognise a same-origin request, so a `Host` that has lost the port
+makes an authenticated request look cross-origin and it is answered with a 403 and an empty body
+(sign-in and unseal are where this shows up first). In nginx that is `proxy_set_header Host
+$http_host;` over HTTP/1.1, and a value assembled from `$host` and the public port when the
+listener speaks HTTP/2, which has no Host header at all. **Set `TRUSTED_PROXIES` in `.env` to your
+ingress address or its subnet** as well; it decides which address every request is attributed to,
+and therefore what the audit log records and what the sign-in rate limit counts against.
+
+#### Customizing the reverse proxy configuration
+
+The bundled template covers ordinary needs. To change it, copy the file, point at the copy, and
+leave the original alone:
+
+```bash
+cp docker/reverse-proxy/nginx-tls.conf.template tls/custodexa.conf.template
+# .env
+TLS_NGINX_TEMPLATE=./tls/custodexa.conf.template
+```
+
+What that file has to change: `server_name` (filled from `TLS_DOMAIN` by default), the certificate
+paths, extra headers (the HSTS `max-age` and `includeSubDomains` / `preload` according to your
+domain strategy), and the upstream (the service name `frontend:80` on the same docker network).
+Apply the change with `docker compose up -d tls-proxy`.
+
+#### The variant with nginx installed on the host
+
+To skip the proxy container and use the nginx already on the host: use the external ingress overlay
+so the frontend publishes an HTTP port (binding it to loopback is a good idea, changing the mapping
+in the overlay to `127.0.0.1:8088:80`), reuse the same template for the configuration, point the
+upstream at `127.0.0.1:8088`, and replace `server_name` and the certificate paths with yours.
+nginx below 1.25.1 does not support the `http2 on;` directive; write it as `listen 443 ssl http2;`
+instead. Any other reverse proxy (Caddy, Traefik, a cloud load balancer) works as long as it meets
+the contract at the start of this section, and `docker/reverse-proxy/Caddyfile.example` is the
+equivalent Caddy version.
+
+#### Verifying that TLS works
+
+```bash
+docker compose ps                                  # tls-proxy is Up (tls-init is exited(0))
+curl -sI http://localhost/ | head -1          # 301, redirecting to https
+curl -skI https://localhost/ | head -1        # 200
+curl --cacert tls/ca-public/custodexa-ca.crt -sI https://<TLS_DOMAIN>/ | head -1   # self-signed mode: 200
+```
+
+Then sign in and open an SSH connection: the Network tab of the browser's DevTools should show a
+`wss://` stream. A terminal that will not open while the page itself is fine usually means the
+WebSocket upgrade forwarding is not in effect.
+
+### Time synchronization (PCI 10.6)
+
+Container clocks inherit the host's, and the product ships no NTP client. A production host has to
+have time synchronization enabled (chrony, systemd-timesyncd, or the cloud platform's default NTP),
+with the time source in UTC and pointed at a time server the industry accepts (10.6.2); access
+control and auditing for changes to the host's system time belong to the OS layer (10.6.3).
+Whether audit log timestamps can be compared depends entirely on the host clock being right.
+
+### The limits of audit integrity (PCI 10.3.4)
+
+A per-row HMAC on audit_logs, an Ed25519 signature over the export manifest, and real-time
+off-site forwarding to syslog together form a compensating control that can detect "an existing row
+was modified" and "a row was tampered with after the baseline time and its HMAC cleared" (the first
+startup records the baseline for the control, after which every path that **enters storage** is
+stamped through `BeforeCreate`, and an empty HMAC after the baseline is judged non-compliant;
+events lost to file degradation or a full queue never enter storage and are never stamped, hence
+"paths that enter storage" rather than "write paths"). "A whole row deleted along with its HMAC"
+is **detected by the checkpoint chain** (interval aggregation, chaining and an Ed25519 signature,
+with a legitimate purge distinguished from theft by a signed tombstone), and the limits of what it
+proves, R0-R6, are on the verification page and in the checkpoint chain specification.
+The integrity stamping key is a versioned key the system generates (KEK-wrapped in storage since
+v1); it is not derived from `JWT_SECRET` and needs no environment variable at all.
+
+### The login notice
+
+The sign-in page can show an access statement before the user types a username and password
+(System Settings → Security Policies → Login Notice).
+**It ships empty, and an empty one is not shown** -- the wording of such a statement is the
+deployer's legal business, and the product presumes no content.
+When delivering a new installation, set it according to
+[Deployment and Upgrade SOP §1.7](ops/upgrade-sop.md), which spells out how to do it and what
+happens if you do not.
+
+### Log and recording retention
+
+The retention period in days is managed on the security policy page, where `0 = keep forever`.
+`RECORDING_RETENTION_DAYS` seeds it only at the **first startup** (while the policy table has no
+such row); editing env and restarting afterwards has no effect, and the policy page governs.
+Expiry deletion is a hard delete at 02:00 daily and cannot be undone, and the UI asks for
+confirmation before a retention period is shortened.
+A single run deletes at most 100,000 rows per table by default; a high-volume deployment can raise
+`RETENTION_MAX_PER_RUN` so that daily expiry does not fall behind.
+
+## Common commands
+
+### Restart a service
 ```bash
 docker compose restart backend
 ```
 
-### 重新建置（修改 Dockerfile 或依賴後）
+### Rebuild (after changing a Dockerfile or dependencies)
 ```bash
 docker compose up --build
 ```
 
-### 停止服務
+### Stop the services
 ```bash
-# 停止服務（應用資料保留於 ${DATA_PATH:-./data}）
+# Stop the services (application data stays in ${DATA_PATH:-./data})
 docker compose down
 
-# 停止並清除 named volume（go_modules / k3s 等）
-# 注意：audit / recordings / postgres 為 bind mount，不受 -v 影響，仍留在 ${DATA_PATH:-./data}
+# Stop and remove named volumes (go_modules / k3s and so on)
+# Note: audit / recordings / postgres are bind mounts, unaffected by -v, and stay in ${DATA_PATH:-./data}
 docker compose down -v
 
-# 完全清除應用資料（審計 / 錄影 / 資料庫）：停止後手動刪除 DATA_PATH 目錄內容
-# 預設 ./data；若已自訂 DATA_PATH，改刪該實際路徑（.env 的值不會帶入此手動指令）
+# Erase the application data completely (audit / recordings / database): stop, then delete the contents of DATA_PATH by hand
+# ./data by default; with a custom DATA_PATH, delete that path instead (the value in .env is not carried into this manual command)
 docker compose down && rm -rf ./data/*
 ```
 
-## 開發工作流程
+## Development workflow
 
-> 本節與以下測試段落皆需**開發版**（`.env` 已啟用 `COMPOSE_FILE=docker-compose.dev.yml`）：
-> 熱重載、8080/3000 直連埠與測試靶機皆為開發版特性。
+> This section and the test sections below need the **development stack** (`.env` with
+> `COMPOSE_FILE=docker-compose.dev.yml` enabled): hot reload, the direct 8080/3000 ports and the
+> test targets are all development-stack features.
 
-### 後端開發
-1. 修改 `backend/` 下的程式碼
-2. Air 自動重新編譯（熱重載）
-3. 查看日誌確認變更生效
+### Backend development
+1. Change the code under `backend/`
+2. Air recompiles automatically (hot reload)
+3. Check the logs to confirm the change took effect
 
-### 前端開發
-1. 修改 `frontend/` 下的程式碼
-2. Vite 自動重新載入（HMR）
-3. 瀏覽器自動更新
+### Frontend development
+1. Change the code under `frontend/`
+2. Vite reloads automatically (HMR)
+3. The browser updates itself
 
-### 資料庫管理
+### Database administration
 ```bash
-# 連線至 PostgreSQL
+# Connect to PostgreSQL
 docker compose exec postgres psql -U postgres -d custodexa
 
-# 常用 SQL 命令
-\dt          # 列出所有表
-\d users     # 查看 users 表結構
+# Common SQL commands
+\dt          # List all tables
+\d users     # Show the structure of the users table
 SELECT * FROM users;
-\q           # 退出
+\q           # Quit
 ```
 
-## 故障排除
+## Troubleshooting
 
-### 埠號被佔用
+### A port is already in use
 ```bash
-lsof -i :80    # 正式版前端
-lsof -i :3000  # 開發版前端
-lsof -i :8080  # 開發版後端
-# 停止佔用的程序或修改 docker-compose.yml 埠號
+lsof -i :443   # production https (TLS proxy)
+lsof -i :80    # production http redirect
+lsof -i :3000  # development frontend
+lsof -i :8080  # development backend
+# Stop the process holding it, or set TLS_HTTPS_PORT and TLS_HTTP_PORT in .env to a free pair
+# (8443 and 8088 are the usual choice); `bash scripts/quickstart.sh --up` names the program in
+# the way before it starts anything
 ```
 
-### 容器無法啟動
+### A container will not start
 ```bash
-# 查看錯誤訊息
+# Read the error
 docker compose logs backend
 
-# 重新建置
+# Rebuild
 docker compose up --build
 ```
 
-### admin 密碼遺失、啟動被弱憑證掃描擋下，或管理者被來源限定鎖在外（離線重設）
+### Lost admin password, a startup blocked by the weak-credential scan, or an administrator locked out by source restrictions (offline reset)
 
-三種情況走同一條離線重設路徑，共通點是人已經進不了系統，只能從資料庫改：
+All three take the same offline reset path, because they share one thing: the person can no longer
+get into the system and can only work from the database.
 
-- **唯一 admin 尚未首登且初始密碼遺失**（進不了系統）。
-- **啟動被弱憑證掃描擋下**：release 啟動時會掃描所有具 admin 角色的帳號，若任一仍在使用
-  公開已知的弱憑證（例如 `admin123`），服務會**拒絕啟動**，要求先重設。
-- **管理者把自己鎖在允許來源網段外**：帳號設了允許來源網段（`users.allowed_cidrs`）之後，
-  從清單外的位址登入、續期與建立連線都會被擋。**還有其他管理者時不要走這條路**——請對方
-  在介面上把清單改回來就好，那條路徑會留下欄位級的審計差異。系統沒有其他管理者時，才用
-  下面的離線清除。
+- **The only admin has not signed in yet and the initial password is lost** (no way in).
+- **The startup is blocked by the weak-credential scan**: at release startup the system scans every
+  account holding the admin role, and if any of them still uses a publicly known weak credential
+  (`admin123`, for example), the service **refuses to start** and asks for a reset first.
+- **An administrator locked themselves out of the allowed source ranges**: once an account has
+  allowed source ranges set (`users.allowed_cidrs`), signing in, renewing and starting connections
+  from an address outside the list are all blocked. **Do not take this path while another
+  administrator exists** -- have them change the list back in the UI, since that path leaves a
+  field-level audit difference. Use the offline clearing below only when the system has no other
+  administrator.
 
-密碼遺失與弱憑證掃描這兩類，要換掉的是密碼。做法是以 DB 直連在**單一交易**內同時更新
-密碼雜湊、`must_change_password=true` 與寫入 `password_histories`
-（三者同一交易，避免留下不一致狀態）。
-範例（PostgreSQL，`$1`＝新 bcrypt 雜湊、`$2`＝admin 使用者 id）。
-**`$1`／`$2` 是佔位符，直接貼進 `psql` 會回 `ERROR: there is no parameter $1`——請先手動代換成實際值**：
+For the lost password and the weak-credential scan, what has to change is the password. The way to
+do it is a direct database connection that updates the password hash, `must_change_password=true`
+and a row in `password_histories` **in a single transaction** (all three together, so no
+inconsistent state is left behind).
+Example (PostgreSQL, where `$1` is the new bcrypt hash and `$2` is the admin user id).
+**`$1` and `$2` are placeholders -- pasting this straight into `psql` returns
+`ERROR: there is no parameter $1`, so substitute the real values by hand first**:
 
 ```sql
 BEGIN;
@@ -618,182 +843,205 @@ INSERT INTO password_histories (user_id, password_hash, created_at) VALUES ($2, 
 COMMIT;
 ```
 
-bcrypt 雜湊須以**外部工具**產生，例如：
+The bcrypt hash has to be produced with an **external tool**, for example:
 
 ```bash
-htpasswd -bnBC 10 "" '你的新密碼' | tr -d ':\n'
+htpasswd -bnBC 10 "" 'your-new-password' | tr -d ':\n'
 ```
 
-或任一語言的 bcrypt 函式庫（cost 取 10，與產品預設一致）。
+Or a bcrypt library in any language (use cost 10, matching the product default).
 
-**正式版映像內沒有產生雜湊的工具，也沒有 Go 工具鏈**，請在你自己的機器上產生後貼進 SQL。
-（`backend/scripts/generate_hash.go` 帶 `//go:build ignore`，不編入任何二進位，
-只能在有 Go 環境的開發機上以 `go run` 執行。）
+**The production image contains no tool for generating a hash and no Go toolchain**, so generate it
+on your own machine and paste it into the SQL.
+(`backend/scripts/generate_hash.go` carries `//go:build ignore`, is compiled into no binary, and
+can only be run with `go run` on a development machine that has Go.)
 
-**第三種情況（被來源限定鎖在外）不要動密碼**：密碼本身沒有問題，換掉它只會讓自己多走一次
-強制改密，`password_histories` 也不必寫。只要把該帳號的允許來源網段清成空字串——空字串就是
-不限來源。範例（PostgreSQL）：
+**In the third case (locked out by source restrictions) leave the password alone**: there is nothing
+wrong with the password, and replacing it only puts you through a forced change, with no need to
+write `password_histories` either. All you have to do is clear that account's allowed source ranges
+to an empty string -- an empty string means no source restriction. Example (PostgreSQL):
 
 ```sql
--- 先確認要清哪一列（allowed_cidrs 為空字串即代表不限來源）
+-- Confirm which row to clear first (an empty allowed_cidrs means no source restriction)
 SELECT id, username, allowed_cidrs FROM users WHERE username = 'admin';
--- 清除該帳號的允許來源網段（$1＝上一行查到的 id）
+-- Clear the allowed source ranges for that account ($1 is the id found above)
 UPDATE users SET allowed_cidrs = '' WHERE id = $1;
 ```
 
-清完不必重啟服務：登入、續期與建立連線每次都是現讀這一欄，下一次登入就不再受來源限定。
-登入之後請立刻在介面把清單設回你要的範圍——停在清空狀態，等於這個帳號從任何位址都進得來。
+No restart is needed afterwards: signing in, renewing and starting connections read this column
+fresh every time, so the next sign-in is no longer subject to the source restriction.
+Set the list back to the range you want in the UI immediately after signing in -- leaving it
+cleared means this account can get in from anywhere.
 
-本產品**不提供**線上救援 API（具 DB 寫入權者本可直接重設，不另開遠端權限面）。
+The product offers **no** online recovery API (anyone with database write access can already reset
+this, and there is no reason to open a remote privilege surface for it).
 
-上面三種情況的離線重設都**不經產品審計**：這條路徑繞過應用程式，`audit_logs` 不會有對應的列。
-該次改動由部署方自己的變更管理留痕（誰、什麼時候、為什麼連進資料庫）。產品側事後看得到的，
-是復原之後的登入審計列（含來源位址），以及回到介面重設清單時的欄位級差異。
+The offline reset in all three cases **is not audited by the product**: the path goes around the
+application, and `audit_logs` gets no row for it. The change is on the deployer's own change
+management to record (who connected to the database, when, and why). What the product can show
+afterwards is the sign-in audit row from the recovery (including the source address) and the
+field-level difference from setting the list again in the UI.
 
-### 清除並重新開始
+### Wipe and start over
 ```bash
 docker compose down -v
-rm -rf ./data/*          # bind mount 資料 down -v 不清，須手動刪（預設 ./data；自訂 DATA_PATH 改該路徑）
+rm -rf ./data/*          # down -v does not clear bind-mounted data, so delete it by hand (./data by default; with a custom DATA_PATH, that path)
 docker image prune -a
 docker compose up --build
 ```
 
-### macOS：改前端後畫面沒更新（HMR 未觸發）
-macOS Docker volume 的 fsnotify 不可靠，Vite 可能沒偵測到檔案變更。
-不要用 `docker compose restart frontend`（會撞 bind-mount race 導致 ENOENT 崩潰），改用：
+### macOS: the frontend does not update after a change (HMR did not fire)
+fsnotify on a macOS Docker volume is unreliable, and Vite may not notice the file change.
+Do not use `docker compose restart frontend` (it hits a bind-mount race and crashes with ENOENT).
+Use this instead:
 ```bash
 docker compose up -d --force-recreate frontend
 ```
 
-### 後端改動疑似沒生效（Air 熱重載跑舊二進位）
-多檔交叉編輯的中途破碎狀態會讓 Air build 失敗並繼續跑舊二進位。改完後：
+### A backend change seems to have no effect (Air hot reload is running the old binary)
+A half-finished state in the middle of editing several files makes the Air build fail while the old
+binary keeps running. After the edits:
 ```bash
 docker compose restart backend
-# 驗證運行中的二進位含新符號
-docker compose exec -T backend sh -c "strings /app/tmp/main | grep <新函式名>"
+# Confirm the running binary contains the new symbol
+docker compose exec -T backend sh -c "strings /app/tmp/main | grep <new function name>"
 ```
 
-## 測試連線功能
+## Testing the connection features
 
-> 流程與上方「首次使用」相同；本節的測試靶機只存在於**開發版**
-> （正式版請把主機換成你自己的目標機）。
+> The flow is the same as "First use" above; the test targets in this section exist only on the
+> **development stack** (on production, point at your own target hosts).
 
-### SSH 連線測試
+### SSH connection test
 
-1. 登入系統（帳號 admin；首次以 .env 的 ADMIN_INITIAL_PASSWORD 登入並改密，其後用新密碼）
-2. 前往「資產管理」頁面，以「新增資產」建立 SSH 資產（欄位說明見「首次使用」）
-3. 在資產列表點該列的「連線」
-4. 工作區開啟網頁終端、出現遠端主機的提示符即成功
-5. 執行命令測試：`ls`, `pwd`, `whoami`
+1. Sign in (account admin; the first time with ADMIN_INITIAL_PASSWORD from .env, changing the password, and with the new one after that)
+2. Go to Assets and create an SSH asset with New Asset (the fields are explained under "First use")
+3. Click Connect on that row in the asset list
+4. The workspace opens a web terminal, and the remote host's prompt means success
+5. Run some commands: `ls`, `pwd`, `whoami`
 
-**測試容器資訊**：
-- 主機: ssh-test
-- 埠號: 2222
-- 帳號: testuser / testpass123
+**Test container details**:
+- Host: ssh-test
+- Port: 2222
+- Account: testuser / testpass123
 
-### RDP 連線測試
+### RDP connection test
 
-1. 登入系統（帳號 admin；首次以 .env 的 ADMIN_INITIAL_PASSWORD 登入並改密，其後用新密碼）
-2. 前往「資產管理」頁面
-3. 創建 RDP 資產
-4. 點擊「連線」按鈕
-5. 應看到 Xfce 桌面環境
+1. Sign in (account admin; the first time with ADMIN_INITIAL_PASSWORD from .env, changing the password, and with the new one after that)
+2. Go to Assets
+3. Create an RDP asset
+4. Click the Connect button
+5. You should see an Xfce desktop
 
-**測試容器資訊**：
-- 主機: rdp-test
-- 埠號: 3389
-- 帳號: testuser / testpass123
+**Test container details**:
+- Host: rdp-test
+- Port: 3389
+- Account: testuser / testpass123
 
-### SSO（OIDC）登入測試——dex 靶機（僅開發版）
+### SSO (OIDC) sign-in test -- the dex target (development stack only)
 
-開發版內建 dex（CNCF 輕量 OIDC provider）作為 IdP 靶機，組態見 `docker/dex/config.yaml`。
+The development stack ships dex (a lightweight CNCF OIDC provider) as an IdP target, configured in
+`docker/dex/config.yaml`.
 
-**靶機資訊**：
-- issuer: `http://dex.localhost:5556/dex`（**後端容器內與瀏覽器共用同一字串**，見下方說明）
+**Target details**:
+- issuer: `http://dex.localhost:5556/dex` (**the same string inside the backend container and in the
+  browser**, as explained below)
 - client_id / client_secret: `custodexa-dev` / `custodexa-dev-secret`
 - redirect URI: `http://localhost:3000/api/v1/auth/oidc/callback`
-- 測試帳號：`oidcuser@dex.localhost` / `oidcpass123`（一般使用者）；
-  `conflict@dex.localhost` / `conflictpass123`（`preferred_username` 刻意為 `admin`，測同名衝突拒絕）
+- Test accounts: `oidcuser@dex.localhost` / `oidcpass123` (an ordinary user);
+  `conflict@dex.localhost` / `conflictpass123` (whose `preferred_username` is deliberately `admin`,
+  to test rejection on a name conflict)
 
-**設定步驟**：
-1. `.env` 設 `PUBLIC_BASE_URL=http://localhost:3000`、
-   `OIDC_ALLOWED_INTERNAL_HOSTS=dex.localhost`（非 release 模式下，列於此的主機名同時允許 http），
-   並視需要把 `http://dex.localhost:5556/dex` 加入 `OIDC_DEDICATED_ISSUERS`（否則視為共用身分域，
-   准入規則必須帶組織歸屬條件）。改後 `docker compose up -d --force-recreate backend`。
-2. 以 admin 登入 → OIDC provider 管理頁建立 provider（issuer / client_id / secret 如上）。
-3. 登出後登入頁應出現該 provider 的 SSO 按鈕。
+**Setup steps**:
+1. Set `PUBLIC_BASE_URL=http://localhost:3000` and
+   `OIDC_ALLOWED_INTERNAL_HOSTS=dex.localhost` in `.env` (outside release mode, host names listed
+   there are also allowed over http), and add `http://dex.localhost:5556/dex` to
+   `OIDC_DEDICATED_ISSUERS` if you need to (otherwise it counts as a shared identity domain and its
+   admission rules have to carry an organizational condition). Then run
+   `docker compose up -d --force-recreate backend`.
+2. Sign in as admin and create the provider on the OIDC provider administration page (issuer,
+   client_id and secret as above).
+3. Sign out, and the sign-in page should show an SSO button for that provider.
 
-**驗證 discovery（設定 provider 前先做，可省下大量誤判）**：
+**Verify discovery (do this before configuring the provider; it saves a lot of misdiagnosis)**:
 ```bash
-# 後端容器內（go-oidc 實際走的路徑）——回應的 issuer 必須與設定值逐字相同
+# Inside the backend container (the path go-oidc actually takes) -- the issuer in the response has to match the configured value character for character
 docker compose exec backend wget -qO- http://dex.localhost:5556/dex/.well-known/openid-configuration
-# 瀏覽器側（host 端）
+# From the browser's side (the host)
 curl -s http://dex.localhost:5556/dex/.well-known/openid-configuration
 ```
 
-> **為什麼 hostname 必須是 `dex.localhost`**：go-oidc 對 discovery 回應的 issuer 做**完整字串比對**，
-> 故後端（容器內解析）與瀏覽器（host 端解析）必須用同一個字串。IP 字面值不可行：backend 容器內的
-> `127.0.0.1` 指向 backend 自己，而 `extra_hosts` 只能改 hostname 解析、改不了 IP 字面值的 loopback 語義。
-> `dex.localhost` 則兩端皆可達：compose 的 network alias 使容器內 DNS 解析至 dex 容器，
-> 瀏覽器端依 RFC 6761 解析至 loopback 再經 `127.0.0.1:5556` port mapping 到同一個 dex。
-> 改 alias、改埠或改 `docker/dex/config.yaml` 的 issuer，三者必須同步。
+> **Why the host name has to be `dex.localhost`**: go-oidc compares the issuer in the discovery
+> response as a **complete string**, so the backend (resolving inside the container) and the
+> browser (resolving on the host) have to use the same string. An IP literal will not do: inside
+> the backend container `127.0.0.1` points at the backend itself, and `extra_hosts` can only change
+> host name resolution, not the loopback meaning of an IP literal.
+> `dex.localhost` is reachable from both: a compose network alias makes DNS inside the containers
+> resolve it to the dex container, and the browser resolves it to loopback per RFC 6761 and reaches
+> the same dex through the `127.0.0.1:5556` port mapping.
+> Changing the alias, the port or the issuer in `docker/dex/config.yaml` means changing all three.
 
-> dex 只存在於 `docker-compose.dev.yml`，正式版不含此服務；埠綁 `127.0.0.1` 不暴露到 LAN。
+> dex exists only in `docker-compose.dev.yml` and is not part of the production stack; its port is
+> bound to `127.0.0.1` and not exposed to the LAN.
 
-## 測試錄製與回放功能
+## Testing recording and playback
 
-### SSH 錄製回放
+### SSH recording playback
 
-1. 建立 SSH 連線並執行一些命令
-2. 斷開連線
-3. 前往「連線管理」的歷史會話列表
-4. 點該筆會話查看詳情
-5. 應看到 asciinema 播放器，可播放終端操作
+1. Open an SSH connection and run some commands
+2. Disconnect
+3. Go to the session history list under Sessions
+4. Click that session to see its detail
+5. You should see the asciinema player, which replays the terminal work
 
-### RDP 錄製回放
+### RDP recording playback
 
-1. 建立 RDP 連線並操作桌面
-2. 斷開連線
-3. 前往「連線管理」的歷史會話列表
-4. 點該筆會話查看詳情
-5. 應看到 Guacamole 播放器，可回放圖形操作
+1. Open an RDP connection and work on the desktop
+2. Disconnect
+3. Go to the session history list under Sessions
+4. Click that session to see its detail
+5. You should see the Guacamole player, which replays the graphical work
 
-## 營運程序
+## Operating procedures
 
-本文件涵蓋的是**把系統跑起來**。實際營運需要的程序另見 `docs/ops/`：
+This document covers **getting the system running**. The procedures real operation needs are in
+`docs/ops/`:
 
-| 文件 | 何時需要 |
+| Document | When you need it |
 |---|---|
-| [備份與還原](ops/backup-and-restore.md) | 部署完成後立即建立備份機制；**KEK 材料的保管前提務必在部署前讀過**，某些模式下材料遺失即資料永久不可解 |
-| [部署與升級 SOP](ops/upgrade-sop.md) | 每次版本升級前。**本版不提供 migration 回滾**，升級失敗時唯一退路是還原備份，故備份時點須先決定 |
-| [部署形態限制](ops/deployment-topology-limits.md) | 規劃架構時。1.0 為單實例部署，多副本與滾動更新皆不支援 |
-| [平台自身特權憑證輪替](ops/privileged-credential-rotation.md) | 定期輪替，或人員異動時。含 LDAP bind、通知通道 secret、KEK／DEK 與 env 側鑰 |
+| [Backup and restore](ops/backup-and-restore.md) | Set up backups as soon as the deployment is done; **read the custody prerequisites for the KEK material before deploying**, since in some modes losing the material makes the data permanently unreadable |
+| [Deployment and upgrade SOP](ops/upgrade-sop.md) | Before every version upgrade. **This version provides no migration rollback**, so the only way back from a failed upgrade is restoring a backup, which means deciding the backup point first |
+| [Deployment topology limits](ops/deployment-topology-limits.md) | While planning the architecture. 1.0 is a single-instance deployment; multiple replicas and rolling updates are not supported |
+| [Platform privileged credential rotation](ops/privileged-credential-rotation.md) | For scheduled rotation, or when staff change. Covers the LDAP bind, notification channel secrets, the KEK and DEK, and the env-side key |
 
-## 下一步
+## Next steps
 
-- 查看 [zh-TW/README.md](zh-TW/README.md)（繁中）或 [README.md](../README.md)（英文）了解專案架構與文檔地圖
-- 開發流程（OpenSpec、commit 規範、驗證慣例）見 [zh-TW/CONTRIBUTING.md](zh-TW/CONTRIBUTING.md)
-- 架構不變式與測試紀律見 [dev/conventions.md](dev/conventions.md)、[dev/testing.md](dev/testing.md)
+- Read [README.md](../README.md) (English) or [zh-TW/README.md](zh-TW/README.md) (Traditional Chinese) for the project architecture and the documentation map
+- The development workflow (OpenSpec, commit conventions, verification practice) is in [CONTRIBUTING.md](../CONTRIBUTING.md)
+- Architectural invariants and testing discipline are in [dev/conventions.md](dev/conventions.md) and [dev/testing.md](dev/testing.md)
 
-## API 文檔
+## API documentation
 
-API 文檔的唯一事實源是 [API_SPEC.md](API_SPEC.md)；本專案不維護由註解生成的第二份
-API 產物。
+The single source of truth for the API is [API_SPEC.md](API_SPEC.md); this project keeps no second
+API artifact generated from comments.
 
-其中的**端點索引**由測試自實際路由註冊生成，並由 `TestAPIIndex` 守衛雙向相等：
-索引缺路由或含幽靈條目都會使測試變紅。動到路由後重新生成（在**開發版**下執行；
-`.env` 已啟用 `COMPOSE_FILE=docker-compose.dev.yml` 時不需帶 `-f`）：
+Its **endpoint index** is generated by a test from the routes actually registered, and `TestAPIIndex`
+guards equality in both directions: a route missing from the index and a phantom entry in it both
+turn the test red. Regenerate it after touching the routes (on the **development stack**; with
+`COMPOSE_FILE=docker-compose.dev.yml` enabled in `.env` no `-f` is needed):
 
 ```bash
 docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw backend \
   go test ./cmd/server -run '^TestAPIIndex$' -update
 ```
 
-平時執行測試的容器只有唯讀的 `docs/` 掛載（守衛不得竄改其驗證對象），故重新生成
-必須用上述額外加掛可寫點的一次性容器。索引以外的散文章節仍為人工維護。
+The container that runs the tests normally mounts `docs/` read-only (a guard must not be able to
+alter what it verifies), which is why regeneration takes the one-off container above with a
+writable mount added. The prose sections outside the index are still maintained by hand.
 
-路由本身另有 golden baseline 保護（`cmd/server/testdata/route-golden`）。刻意變更
-路由後同樣需重新生成，且**其 diff 須在 commit 中逐條審視**：
+The routes themselves have a golden baseline as well (`cmd/server/testdata/route-golden`). A
+deliberate route change means regenerating it too, and **its diff has to be reviewed line by line in
+the commit**:
 
 ```bash
 docker compose exec backend go test ./cmd/server -run '^TestRoutesMatchGolden$' -update
