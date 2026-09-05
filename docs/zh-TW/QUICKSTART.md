@@ -391,6 +391,29 @@ multicast；**私有網段預設放行**（目錄服務的常態位置即內網�
   請對 `custodexa_recording_storage_bytes` 設成長率或容量門檻告警。
 - 需要縮減佔用時走**保留期**（系統設定→安全政策），依時間刪除過期錄影。
 
+### 7. 資料庫放在另一台伺服器（external database overlay）
+
+預設的堆疊自帶 postgres，與應用跑在同一台主機。要把 PostgreSQL 放到別處（機構既有的
+資料庫伺服器、代管服務，或你自己的第二台機器），用 external database overlay 讓堆疊不起
+自帶的 postgres，改讓後端連向那台伺服器：
+
+```bash
+# .env：把「自備資料庫的部署」一段的三行取消註解並填值
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+#   EXTERNAL_DB_HOST=db.example.internal
+#   EXTERNAL_DB_PORT=5432
+# DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE 此時描述的是那台伺服器（跨網路請用 require 或 verify-full）
+docker compose up -d
+docker compose ps        # backend、frontend、guacd、tls-proxy；沒有 postgres
+```
+
+執行 `scripts/quickstart.sh` 之前先自己填好 `DB_PASSWORD`：設了 `EXTERNAL_DB_HOST` 之後，腳本不會生成這個值，缺值時會停下來要求填入。
+那台伺服器上的資料庫與帳號要在首次啟動前建好；schema 由後端建立。
+
+這個形態換到的是一台可替換的應用主機：以同一套檔案準備、指向同一個資料庫的第二台主機，
+在第一台停機時接手。接手程序、備援主機事先要備妥的東西、接手保不住的東西、以及此形態下備份對象的變化，
+見[應用主機備援接手](ops/standby-takeover.md)。
+
 ## 生產環境的部署方責任與行為邊界
 
 正式對外服務前，下列事項屬於**部署方責任**，本產品刻意不代勞，也不假裝有做；

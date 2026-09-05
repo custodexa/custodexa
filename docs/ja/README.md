@@ -144,7 +144,7 @@ Apache Guacamole（guacd。RDP/VNC のみ）
 
 | やりたいこと | 読むもの |
 |------|------|
-| 導入して運用する | [QUICKSTART.md](QUICKSTART.md)（セットアップ、設定、トラブルシューティング）、[ops/](ops/)（バックアップと復旧、アップグレード、デプロイ構成、プラットフォーム資格情報のローテーション） |
+| 導入して運用する | [QUICKSTART.md](QUICKSTART.md)（セットアップ、設定、トラブルシューティング）、[ops/](ops/)（バックアップと復旧、アップグレード、デプロイ構成、プラットフォーム資格情報のローテーション、スタンバイ切り替え） |
 | 開発に参加する | [CONTRIBUTING.md](CONTRIBUTING.md)（DCO、作業の流れ）、[docs/dev/](../dev/)（アーキテクチャとテストの規律）、[openspec/specs/](../../openspec/specs/)（振る舞いの仕様。細部はこれが正となります） |
 | API やスキーマを調べる | [docs/API_SPEC.md](../API_SPEC.md)、[docs/DB_SCHEMA.md](../DB_SCHEMA.md) |
 | セキュリティ問題を報告する | [SECURITY.md](SECURITY.md)（非公開の報告窓口と対応方針） |

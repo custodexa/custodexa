@@ -800,6 +800,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		func() int { return policyService.GetInt(policy.PolicyAssetSecretMaxAgeDays) })
 	rotationReportSchedules := asset.NewRotationReportScheduleService(database.DB,
 		auditExportJobService, rotationReportBuilder)
+	// 以帳號為主軸的批次改密：目標清單取自報告建構者的同一份資料集，
+	// 故在建構者之後建構
+	changeSecretBatchService := asset.NewChangeSecretBatchService(database.DB, rotationReportBuilder)
 
 	deps, err := buildRouteDeps(cfg, routeServices{
 		metrics:              s1.metrics,
@@ -844,6 +847,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		changeSecretCandidates:     changeSecretCandidates,
 		changeSecretRetryRunner:    changeSecretRetryRunner,
 		changeSecretScheduler:      changeSecretScheduler,
+		changeSecretBatches:        changeSecretBatchService,
 		sourceIPBaseline:           sourceIPBaseline,
 		auditExportService:         auditExportService,
 		auditExportJobs:            auditExportJobService,
@@ -1385,6 +1389,7 @@ type routeServices struct {
 	changeSecretCandidates  *asset.ChangeSecretCandidateService
 	changeSecretRetryRunner *asset.ChangeSecretRetryRunner
 	changeSecretScheduler   *scheduler.ChangeSecretScheduler
+	changeSecretBatches     *asset.ChangeSecretBatchService
 	// auditExportService／auditExportJobs 段 2 建構（與打包 worker 共用實例），
 	// buildRouteDeps 只組 handler
 	auditExportService *audit.AuditExportService
@@ -1542,7 +1547,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// 稽核調查工作台（auditor-workbench）：六來源聚合＋主體目錄，唯讀
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
-		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretScheduler)
+		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretBatches, s.changeSecretScheduler)
 
 	rotationReportHandler := api.NewRotationReportHandler(s.rotationReportBuilder,
 		s.rotationReportSchedules, s.auditService)

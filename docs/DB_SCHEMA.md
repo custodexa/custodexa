@@ -1,7 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-03（Windows 本機帳號改密：`assets` 加改密通道六欄 `rotation_channel`／`winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`winrm_ca_cert`／`rotation_ssh_port`，migration `20260904_windows_local_account_rotation`；`AssetChangeDetails` 加通道清空留痕兩欄）
-> 前次更新：2026-09-03（輪替證據報告：`asset_accounts.credential_group`、`change_secret_plans.max_age_days`、`audit_export_jobs.kind` 與新表 `rotation_report_schedules`）
+> **最後更新**：2026-09-05（以帳號為主軸的批次改密：新表 `change_secret_batches`、`change_secret_records.batch_id`、`change_secret_candidates.batch_id`／`shared_group`，migration `20260905_account_batch_rotation`）
+> 前次更新：2026-09-03（Windows 本機帳號改密：`assets` 加改密通道六欄 `rotation_channel`／`winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`winrm_ca_cert`／`rotation_ssh_port`，migration `20260904_windows_local_account_rotation`；`AssetChangeDetails` 加通道清空留痕兩欄）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
 > **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_windows_local_account_rotation.go`）——
@@ -58,8 +58,9 @@
 | AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
 | ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄 | 改密計劃 |
-| ChangeSecretRecord | `change_secret_records` | baseline | 改密執行記錄 |
-| ChangeSecretCandidate | `change_secret_candidates` | baseline | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
+| ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引 | 改密執行記錄 |
+| ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄 | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
+| ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
@@ -162,6 +163,7 @@ erDiagram
 
     asset_groups ||--o{ asset_authorizations : authorized
     change_secret_plans ||--o{ change_secret_records : executes
+    change_secret_batches ||--o{ change_secret_records : executes
 
     users ||--o{ access_requests : requests
     assets ||--o{ access_requests : requested
@@ -421,10 +423,21 @@ erDiagram
     change_secret_records {
         uint id PK
         uint plan_id FK
+        uint batch_id FK
         uint asset_id FK
         string status
         string error
         time executed_at
+    }
+
+    change_secret_batches {
+        uint id PK
+        string username
+        string password_mode
+        int target_count
+        string status
+        time started_at
+        time finished_at
     }
 
     refresh_tokens {
@@ -1440,12 +1453,14 @@ const (
 **表名**: `change_secret_records`
 **檔案**: `backend/internal/model/change_secret.go`
 **建表方式**: baseline（`baseline_schema_asset.go`），含 `plan_id`／`asset_id`／`account_id` 三條一般索引；
+增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與 `idx_change_secret_records_batch_id` 索引。
 無唯一索引、無外鍵、無 `deleted_at`（`account_username` 與 `account_id` 並存，記錄執行當下的帳號名）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
-| `PlanID` | uint | `index;not null` | `plan_id` | 所屬計劃 ID |
+| `PlanID` | uint | `index;not null` | `plan_id` | 所屬計劃 ID；`0`＝來自批次改密（此時 `batch_id` 非 0） |
+| `BatchID` | uint | `index;not null;default:0` | `batch_id` | 來源批次 ID；`0`＝來自計劃。存量列由 migration 以 default 回填為 0，即其實際語義 |
 | `AssetID` | uint | `index;not null` | `asset_id` | 目標資產 ID |
 | `AccountID` | uint | `index` | `account_id` | 執行時釘住的帳號；`0`＝尚未解析到帳號即失敗（如資產無帳號） |
 | `AccountUsername` | string | `size:100` | `account_username` | 執行當下的帳號名快照 |
@@ -1487,7 +1502,9 @@ const (
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `AccountID` | uint | `uniqueIndex;not null` | `account_id` | 所屬資產帳號；唯一——同一帳號不疊加第二個未知狀態 |
 | `AssetID` | uint | `index;not null` | `asset_id` | 目標資產 |
-| `PlanID` | uint | - | `plan_id` | 來源改密計劃（0＝手動觸發） |
+| `PlanID` | uint | - | `plan_id` | 來源改密計劃（0＝手動觸發或來自批次） |
+| `BatchID` | uint | `not null;default:0` | `batch_id` | 來源批次（0＝來自計劃或手動觸發）；增量 `20260905_account_batch_rotation` |
+| `SharedGroup` | string | `size:36` | `-` | 轉正後要歸入的憑證群組識別（批次「整批同一組」模式）；空＝沿既有規則脫組。放在候選上而非回查批次：重試轉正時批次可能早已完成。**不出站**；增量 `20260905_account_batch_rotation` |
 | `AccountUsername` | string | `size:100` | `account_username` | 執行當下的帳號名快照 |
 | `SecretType` | string | `size:16;not null` | `secret_type` | 秘密類型（`password`／SSH 金鑰） |
 | `PasswordEnc` | string | `type:text` | `-` | 候選密碼（信封加密），**絕不出站** |
@@ -2188,14 +2205,16 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260904_windows_local_account_rotation` | Windows 本機帳號改密的資料層：`assets` 加六個改密通道側車欄（`rotation_channel varchar(16) NOT NULL DEFAULT ''`、`winrm_scheme varchar(8)`、`winrm_port bigint`、`winrm_tls_mode varchar(16)`、`winrm_ca_cert text`、`rotation_ssh_port bigint`；見第 3 節），共 6 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：`rotation_channel` 預設空字串而非回填實值（空＝依協定推導，升級後既有列行為與升級前逐項相同），其餘五欄可空，無資料轉換、無回填，耗時與存量無關。**六個具名欄而不是一個 JSON 設定欄**：既有 per-protocol 側車（RDP 傳輸安全、DB TLS、VNC SFTP）全是具名欄，值域受控、SQL 層可查、schema parity 守衛看得見；它承載的是「憑證要送到哪裡、用不用 TLS」，正是最不該只有應用層知道形狀的值。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackWindowsLocalAccountRotation`：反序 DROP 六欄。**Down 有損、開發庫限定**：六欄刪除即失去全部改密通道設定（含上傳的 CA 憑證），再次 Up 之後所有資產回到「未設定」而由協定推導——**rdp 資產從此不再改密且不會有任何提示**。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
+| `20260905_account_batch_rotation` | 以帳號為主軸的批次改密的資料層：建新表 `change_secret_batches` 與其 `(username)` 索引（第 47 節）、`change_secret_records.batch_id`（`bigint NOT NULL DEFAULT 0`，加 `(batch_id)` 索引；第 16 節）、`change_secret_candidates.batch_id`（同型）與 `shared_group`（`varchar(36)` 可空；第 16b 節），共 6 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`batch_id` 的存量列以 default 回填為 0——本欄出現之前這兩張表只承載計劃的記錄與候選，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackAccountBatchRotation`：反序 DROP `shared_group` → 候選的 `batch_id` → 記錄的 `(batch_id)` 索引與欄 → 批次表的索引 → `DROP TABLE change_secret_batches`。**Down 有損、開發庫限定**：刪表即失去全部批次的彙總計數與發起者；刪欄即失去記錄與候選的來源辨識（再次 Up 之後全部回到「來自計劃」）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
 > **升級注意**：`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
-> `20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`
-> 與 `20260904_windows_local_account_rotation` 於既有部署升級時自動套用
+> `20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、
+> `20260904_windows_local_account_rotation` 與 `20260905_account_batch_rotation` 於既有部署升級時自動套用
 > （段 1，無 codec 依賴；`20260826_source_ip_forensics`
 > 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
-> `20260826_db_query_console`、`20260903_rotation_evidence_report` 與 `20260904_windows_local_account_rotation` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，四者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
+> `20260826_db_query_console`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation` 與 `20260905_account_batch_rotation` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，五者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
 > 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
 
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
@@ -2829,6 +2848,56 @@ pending → uploading → uploaded → local_purged
   報告種類的去重鍵是種類加篩選雜湊（**不含申請者**），與證據包的每申請者去重是兩套判準。
 - 範圍指向的節點或計劃被刪除時，本表不做級聯（無 FK 約束）：排程仍在，其產出的報告母體為空。
   這是刻意的——靜默刪掉一個排程比產出一份空報告更難察覺。
+
+---
+
+### 47. ChangeSecretBatch（以帳號為主軸的批次改密）
+
+**表名**: `change_secret_batches`
+**檔案**: `backend/internal/model/change_secret_batch.go`
+**建表方式**: **增量 migration `20260905_account_batch_rotation`（非 baseline）**——純新表、無加密欄、
+無資料回填，DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。同一條 migration 對
+`change_secret_records` 加 `batch_id`（第 16 節）、對 `change_secret_candidates` 加 `batch_id`／`shared_group`（第 16b 節）。
+
+一列一次批次：管理員選一個帳號名、勾選多台資產或全部符合者，一次對它們改密。
+與計劃並列而非隱藏的計劃——批次沒有排程、跑完即結束；記錄與候選以 `batch_id` 指回本列（`plan_id` 為 0）。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `Username` | string | `size:100;not null;index` | `username` | 帳號名：目標集合＝掛在未刪除資產上、名為此值的未刪除帳號 |
+| `PasswordMode` | string | `size:16;not null` | `password_mode` | `per_target`＝每個目標各自隨機；`shared`＝全部目標同一組新密碼 |
+| `SharedGroup` | string | `size:36` | `-` | `shared` 模式下成功帳號歸入的憑證群組識別；`per_target` 為空。**不出站**（同 `asset_accounts.credential_group` 的理由） |
+| `PasswordLength` | int | `default:16` | `password_length` | 密碼策略：長度（語義與計劃相同） |
+| `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 密碼策略：是否含符號 |
+| `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 密碼策略：是否排除易混淆字元 |
+| `TargetCount` | int | `not null;default:0` | `target_count` | 建立時解析到的目標數 |
+| `SuccessCount` | int | `not null;default:0` | `success_count` | 結果計數：成功 |
+| `FailedCount` | int | `not null;default:0` | `failed_count` | 結果計數：失敗 |
+| `UnverifiedCount` | int | `not null;default:0` | `unverified_count` | 結果計數：未驗證 |
+| `SkippedCount` | int | `not null;default:0` | `skipped_count` | 結果計數：略過 |
+| `Status` | string | `size:16;not null` | `status` | `running`／`completed` |
+| `RequestedBy` | uint | - | `requested_by` | 發起者 id |
+| `RequestedByName` | string | `size:100` | `requested_by_name` | 發起者名字快照（使用者可能隨後改名或刪除） |
+| `StartedAt` | time.Time | - | `started_at` | 開始時刻 |
+| `FinishedAt` | *time.Time | - | `finished_at` | 完成時刻；執行中為空 |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+
+**索引**（DDL 於 `backend/internal/database/migration_account_batch_rotation.go`）:
+- `idx_change_secret_batches_username`＝`(username)`：看板與最近批次列表都以帳號名為軸。
+- `idx_change_secret_records_batch_id`＝`change_secret_records (batch_id)`：單一批次的逐目標記錄查詢。
+
+**設計說明**:
+- **不存任何密碼**：`shared` 模式的那組密碼只存在於執行期記憶體與各目標的候選列（信封加密），
+  批次結束後系統內不再有它的第二份副本。四種計數於全部目標處理完後一次寫入。
+- **為什麼是獨立實體而非臨時計劃**：臨時計劃會在計劃列表閃現、報告的「涵蓋計劃」必須排除它、
+  刪除後記錄的 `plan_id` 指向不存在的計劃；每一處都要加特判。獨立一張表的代價是兩欄與一張表。
+- **共用群組的歸組與解散**：`shared` 模式成功提交的帳號先脫離原群組（沿既有規則）再歸入
+  `shared_group`；候選經重試轉正者同樣歸入。批次結束時與候選轉正時，群組成員少於 2 且該批次
+  已無待驗證候選者解散。候選被清除而非轉正時，群組可能只剩一員而不再有解散的觸發點，
+  此時報告會多標一個共用憑證：偏向多警告的一側。
+- 本表是處置動作的彙總，不是證據：逐台的事實落在改密記錄與帳號變更審計。
 
 ---
 

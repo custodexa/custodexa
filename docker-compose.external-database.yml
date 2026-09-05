@@ -1,0 +1,34 @@
+# Custodexa external database overlay：不啟動自帶的 postgres，後端改連你自己運行的 PostgreSQL。
+#
+# 給「資料庫不放在應用主機上」的部署用：機構既有的資料庫伺服器、代管服務，或另一台專門
+# 跑資料庫的主機。應用主機於是成為可替換的：另一台備援主機指向同一個資料庫，就能在這台
+# 停機時接手（程序見 docs/ops/standby-takeover.md）。
+# 啟動：
+#   docker compose -f docker-compose.yml -f docker-compose.external-database.yml up -d
+# 或在 .env 設 COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml，之後
+# `docker compose up -d` / `ps` / `down` 都會走這個形態。與 external ingress overlay 併用時
+# 把兩個檔都列進去（順序不拘）。
+#
+# 本檔要求 .env 提供 EXTERNAL_DB_HOST（資料庫伺服器位址；缺值即拒絕啟動）與選填的
+# EXTERNAL_DB_PORT（預設 5432）；DB_NAME／DB_USER／DB_PASSWORD／DB_SSLMODE 沿用，
+# 在此形態下描述的是那台伺服器上的資料庫與帳號。跨網路連線請把 DB_SSLMODE 設為
+# require 或 verify-full；資料庫伺服器須事先建好該資料庫與帳號，schema 由後端首次啟動建立。
+services:
+  # 自帶的 postgres 移進一個未啟用的 profile，於是不會啟動，也不再是 backend 的啟動前提。
+  # 要臨時把它叫回來（例如在同一台機器上比對行為），加 --profile bundled-db 即可。
+  postgres:
+    profiles: ["bundled-db"]
+
+  backend:
+    environment:
+      # 主檔把 DB_HOST 寫死為服務名 postgres；這裡改指向 .env 宣告的外部伺服器。
+      # 不直接讀 .env 的 DB_HOST：主檔的 environment: 優先於 env_file，那個鍵在主檔形態下
+      # 填了也不生效，範本因此刻意不列它；改用只在本形態生效的獨立鍵，不留假旋鈕。
+      DB_HOST: ${EXTERNAL_DB_HOST:?set EXTERNAL_DB_HOST in .env to the address of your PostgreSQL server}
+      DB_PORT: ${EXTERNAL_DB_PORT:-5432}
+    # 啟動前提只剩 guacd，且與主檔一樣等它通過健康檢查；整塊取代拿掉的是資料庫那一條——
+    # 資料庫不在這套堆疊裡，沒有 healthcheck 可等。
+    # 後端連不上資料庫會以錯誤結束，restart: always 使它持續重試，直到資料庫可達為止。
+    depends_on: !override
+      guacd:
+        condition: service_healthy

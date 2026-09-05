@@ -2,6 +2,77 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.5.0 — batch password rotation by account name, and a standby application host (2026-09-06)
+
+**This release changes the database schema.** The migration
+`20260905_account_batch_rotation` runs when the backend starts. It adds one table for
+batch rotations and a batch reference to the rotation record and candidate tables. Nothing
+is rewritten, so the first start after the upgrade takes about as long as usual, and the
+rotation records you already have stay marked as coming from a plan.
+
+**Back up before you upgrade and keep your current images.** Section 2 of
+`docs/ops/upgrade-sop.md` lists what to record before stopping the old version and what
+to check afterwards. To go back, restore that backup with the previous images. That does
+not undo a batch you ran after the upgrade: the hosts keep the passwords it set, and the
+record of which of them share one is gone. Export the batch list before rolling back.
+
+### Rotate one account name across many hosts
+
+- A new page under Assets lists every asset that has an account with the name you pick,
+  grouped by rotation state. Tick the ones you want, or a whole group at once, and start
+  the rotation from there. Each host is rotated and recorded on its own, so one that fails
+  or cannot be verified does not hold up the rest.
+- Two password modes. By default every host gets its own random password. You can instead
+  give the whole batch one shared password, in which case the hosts that succeed end up in
+  a single credential group and the rotation evidence report marks that credential as
+  shared. The dialog states this before the batch starts.
+- The rotation evidence report now shows which records came from a batch and which from a
+  scheduled plan.
+- A batch rotates a host the same way a scheduled plan does, verification included, on
+  Linux and on Windows local accounts. Plans you already have are untouched.
+
+### A standby application host
+
+- A new compose overlay, `docker-compose.external-database.yml`, runs the stack against a
+  PostgreSQL server you operate elsewhere. With the database off the application host, a
+  second prepared host pointed at the same database can take over while the first one is
+  down.
+- `docs/ops/standby-takeover.md`, in English, Traditional Chinese and Japanese, covers what
+  the standby needs in advance and how the takeover runs, including the way the
+  single-instance guard behaves while the old host still holds its lock. It also states the
+  boundary: an unplanned takeover leaves behind the recordings on the failed host's disk
+  and the audit rows that had fallen back to files there.
+- The quick start script leaves `DB_PASSWORD` alone when an external database is
+  configured, and stops with a message when the value is missing instead of generating one.
+
+### The audit queue is drained at shutdown
+
+- Audit rows still waiting in the in-memory queue when the service is asked to stop are
+  now written out before it exits. If the database does not answer within the shutdown
+  budget, the rows go to the audit fallback file where that is enabled and are counted as
+  lost where it is not, the number not confirmed written is logged, and the process exits
+  with a non-zero code.
+- Keep the container stop grace period at ten seconds or more, since the drain runs inside
+  it. `docs/ops/upgrade-sop.md` gives the shutdown budget and the two log lines to look for
+  when stopping the backend.
+
+### The graphical protocol daemon runs with fewer privileges
+
+- The guacd container now drops every Linux capability, refuses privilege escalation, and
+  runs on a read-only root filesystem, with two writable areas in memory that RDP drive
+  redirection and the RDP library need. The compose file sets this, so it applies to any
+  image you put in that slot.
+- The backend waits for guacd to pass its health check before starting, so the first
+  graphical connection after a cold start no longer races the daemon coming up.
+- `docker/guacd/Dockerfile` and `docs/ops/deployment-topology-limits.md` state the three
+  things an image in that slot has to provide, so you can build or choose your own.
+
+### Fixes
+
+- Reloading the browser on the Assets page no longer returns the web server's own 403
+  page. That address collided with a directory in the built frontend; it now falls through
+  to the application like every other page.
+
 ## 1.4.1 — the approvals card follows approval rights (2026-09-04)
 
 No schema change. No migration runs.

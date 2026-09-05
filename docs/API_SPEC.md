@@ -49,7 +49,7 @@
 | 告警查詢 / 審閱 | 2 | `/api/v1/command-alerts` | 告警記錄查詢 + 審閱處置（PCI 10.4.1） |
 | 通知通道 | 5 | `/api/v1/notification-channels` | webhook 通道 CRUD + 測試 |
 | 命令片段 | 4 | `/api/v1/snippets` | user-scoped 片段 CRUD |
-| 改密 | 9 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除 |
+| 改密 | 14 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
 **總計**: 164 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
@@ -172,6 +172,11 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/authorizations/batch` | always |
 | GET | `/api/v1/authorizations/effective-assets` | always |
 | GET | `/api/v1/authorizations/effective-users` | always |
+| GET | `/api/v1/change-secret-batches` | always |
+| POST | `/api/v1/change-secret-batches` | always |
+| GET | `/api/v1/change-secret-batches/:id` | always |
+| GET | `/api/v1/change-secret-batches/targets` | always |
+| GET | `/api/v1/change-secret-batches/usernames` | always |
 | GET | `/api/v1/change-secret-candidates` | always |
 | DELETE | `/api/v1/change-secret-candidates/:id` | always |
 | POST | `/api/v1/change-secret-candidates/:id/retry` | always |
@@ -3626,6 +3631,52 @@ last_attempt_at, next_attempt_at, last_error, created_at}`。
 系統以指數退避重試（上限 1 小時、總期限 24 小時），逾期標 `abandoned` 並告警；**已放棄的候選不會被
 系統自動刪除**——它是那把可能已在遠端生效的秘密的唯一副本。`DELETE` 為 admin 的顯式逃生口，
 會產生審計記錄；清除後若遠端確實已改密，只能以主機 console 等帶外途徑重設救回。
+
+### 帳號批次改密（change-secret-batches）
+
+以**帳號名**為軸的一次性改密：選一個帳號名（例如各台主機都有的 `ops`），勾選多台資產或全部符合者，
+一次對它們改密。與計劃並列而非隱藏的計劃——批次沒有排程、跑完即結束，記錄以 `batch_id` 指回批次
+（此時 `plan_id` 為 0）。只支援密碼型別；SSH 金鑰輪替仍走計劃。
+
+| 方法 | 路徑 | 說明 |
+|---|---|---|
+| GET | `/change-secret-batches/usernames` | 登記於系統的帳號名清單 → `{data: [{username, asset_count}], total}` |
+| GET | `/change-secret-batches/targets?username=` | 該帳號名的全部目標 → `{data: [目標], total, as_of}` |
+| POST | `/change-secret-batches` | 建立並非同步執行 → 202 `{data: 批次}` |
+| GET | `/change-secret-batches` | 最近批次（新到舊，最多 50 筆）→ `{data, total}` |
+| GET | `/change-secret-batches/:id` | 單一批次含逐目標記錄 → `{data: {batch, records}}` |
+
+**目標**：集合＝掛在**未刪除資產**上、名為該帳號名的未刪除帳號，不探勘目標機。每個目標是輪替證據報告
+資料集的同一列（狀態桶、剩餘天數、共用憑證與特權標記等欄位同 `GET /rotation-report`），外加兩欄：
+`rotation_channel`（推導後的有效改密通道）與 `ineligible_reason`（執行前即可判定的不可改密原因碼，
+空＝可改密；值域為 `CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`、`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`、
+`CHANGE_SECRET_NO_CREDENTIAL`、`CHANGE_SECRET_NO_PASSWORD_CREDENTIAL`、`CHANGE_SECRET_CANDIDATE_PENDING`）。
+不可改密的目標仍列出，由前端停用勾選。
+
+**請求**（`POST`）:
+```json
+{
+  "username": "ops", "account_ids": [12, 34], "all": false,
+  "password_mode": "per_target",
+  "password_length": 16, "password_include_symbol": true, "password_exclude_ambiguous": true
+}
+```
+
+- 目標選擇二擇一：`all: true`＝全部符合者；否則 `account_ids` 明列，每個都必須是該帳號名的目標，
+  任一不符回 400 `VALIDATION_BATCH_TARGET_MISMATCH`；零目標回 400 `VALIDATION_BATCH_NO_TARGETS`；
+  缺帳號名回 400 `VALIDATION_BATCH_USERNAME_REQUIRED`。
+- `password_mode`：`per_target`＝每個目標各自隨機；`shared`＝批次開始時產生一組密碼供全部目標使用。
+  其他值回 400 `VALIDATION_BATCH_BAD_PASSWORD_MODE`。**`shared` 模式下成功提交的帳號歸入同一個憑證群組**，
+  輪替證據報告與帳號列表據此標示「共用憑證」——同一組密碼在多台生效，任一台外洩即全部外洩，這個事實
+  必須在報告上看得見。那組密碼不存於批次列，只經各目標的候選憑證信封加密保存。
+- 密碼策略三欄與計劃同語義、同預設（16、含符號、排除易混淆），長度越界回 400 `VALIDATION_PLAN_BAD_PASSWORD_LENGTH`。
+
+**執行**逐目標沿用計劃的狀態機與執行器（候選先落庫、動遠端、驗證、提交、群組處置、記錄、告警）；
+單一目標的失敗不中斷批次，每個目標的 `success`／`failed`／`unverified`／`skipped` 各自獨立落記錄。
+批次列欄位：`{id, username, password_mode, password_length, password_include_symbol, password_exclude_ambiguous,
+target_count, success_count, failed_count, unverified_count, skipped_count, status, requested_by, requested_by_name,
+started_at, finished_at, created_at}`；`status` 為 `running`／`completed`，四種計數於全部目標處理完後一次寫入。
+記錄欄位同計劃的執行記錄，另帶 `batch_id`。批次不可中止；重跑＝再建一個批次。不存在的批次回 404 `NOTFOUND_CHANGE_SECRET_BATCH`。
 
 ---
 

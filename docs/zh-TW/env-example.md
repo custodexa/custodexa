@@ -60,6 +60,8 @@
 
 拓撲與模式常數（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`DB_DRIVER`、`GIN_MODE`、容器內路徑）
 來自 compose 的 `environment:` 區塊，該區塊的優先序高於 `env_file`；在這裡設定它們不會有任何作用。
+唯一會改動 `DB_HOST` 的形態是 external database overlay，它取的是本檔後面自己的鍵 `EXTERNAL_DB_HOST`，
+不是這裡的某一行 `DB_HOST`。
 
 `DB_DRIVER` 沒有出廠預設值，後端缺了它就拒絕啟動：兩份 compose 檔都會提供它，
 但裸二進位或自建的部署形態（k8s manifest、systemd unit）必須自行在那邊提供。
@@ -94,7 +96,8 @@ DATA_PATH=./data
 
 ## 資料庫
 
-本節是 compose 的 postgres 服務的名稱與憑證，開發版與正式版皆同。
+本節是後端所連 PostgreSQL 的名稱與憑證。預設就是 compose 自帶的 postgres 服務，開發版與正式版皆同；
+要改把 PostgreSQL 放在另一台伺服器，見後面的「自備資料庫的部署」一節，屆時這四個鍵描述的是那台伺服器上的資料庫與帳號。
 
 ### `DB_NAME`
 
@@ -393,6 +396,23 @@ TLS 由你的 ingress 終結，瀏覽器看到什麼因此也由它決定。轉�
 ```env
 # COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml
 # HTTP_PORT=80
+```
+
+### 自備資料庫的部署（external database overlay）
+
+把 PostgreSQL 放在這台主機以外的地方，不論是機構既有的資料庫伺服器、代管服務，還是你自己的第二台機器，
+這台應用主機就不再是資料唯一所在：事先準備好、指向同一個資料庫的備援主機，可以在這台停機時接手。
+這個 overlay 讓堆疊不起自帶的 postgres，改讓後端連向下面指定的伺服器；此時上面的
+`DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE` 描述的是那台伺服器上的資料庫與帳號
+（跨網路請用 `require` 或 `verify-full`），`${DATA_PATH}/postgres` 不再使用。資料庫與帳號要在首次啟動前建好；
+schema 由後端建立。執行 `scripts/quickstart.sh` 之前先自己填好 `DB_PASSWORD`：設了 `EXTERNAL_DB_HOST` 之後，腳本不會生成這個值，缺值時會停下來要求填入。
+把下面三行取消註解；要與 ingress overlay 併用，把兩個檔案列在同一個 `COMPOSE_FILE` 值裡。
+接手程序、備援主機事先要備妥的東西、接手保不住的東西，見 `docs/zh-TW/ops/standby-takeover.md`。
+
+```env
+# COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+# EXTERNAL_DB_HOST=
+# EXTERNAL_DB_PORT=5432
 ```
 
 ---

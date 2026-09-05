@@ -149,8 +149,11 @@ type AccountRow struct {
 type RecordRow struct {
 	RecordID   uint      `json:"record_id"`
 	ExecutedAt time.Time `json:"executed_at"`
-	PlanName   string    `json:"plan_name"`
-	AssetName  string    `json:"asset_name"`
+	// PlanName 來源計劃名；來自批次改密的記錄為空，此時 BatchID 非 0
+	PlanName string `json:"plan_name"`
+	// BatchID 來源批次；0＝來自計劃
+	BatchID   uint   `json:"batch_id"`
+	AssetName string `json:"asset_name"`
 	// AccountUsername 執行當下的帳號名快照；帳號已刪除時這是唯一還讀得出的名字
 	AccountUsername string `json:"account_username"`
 	AccountDeleted  bool   `json:"account_deleted"`

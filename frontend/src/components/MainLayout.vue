@@ -147,6 +147,7 @@ import {
   Server,
   TicketCheck,
   RotateCcwKey,
+  Layers,
   MonitorPlay,
   Cable,
   ClipboardList,
@@ -220,6 +221,7 @@ const menuGroups = [
       },
       { path: '/authorizations', titleKey: 'menu.authorizations', icon: TicketCheck, adminOnly: true },
       { path: '/change-secret-plans', titleKey: 'menu.changeSecretPlans', icon: RotateCcwKey, adminOnly: true },
+      { path: '/change-secret-batches', titleKey: 'menu.changeSecretBatches', icon: Layers, adminOnly: true },
     ],
   },
   {
@@ -468,6 +470,7 @@ const pageTitleKeys = {
   '/checkpoint-verification': 'menu.checkpointVerification',
   '/authorizations': 'menu.authorizations',
   '/change-secret-plans': 'menu.changeSecretPlans',
+  '/change-secret-batches': 'menu.changeSecretBatches',
   '/users': 'menu.users',
   '/profile': 'menu.profile',
   '/user-groups': 'menu.userGroups',

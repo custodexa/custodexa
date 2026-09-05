@@ -396,6 +396,29 @@ loopback アドレスで接続する必要がある特殊な場面では、`LDAP
   `custodexa_recording_storage_bytes` に増加率か容量のしきい値でアラートを設定してください。
 - 使用量を減らす必要があるときは**保持期間**（システム設定 → セキュリティポリシー）で行い、期限切れの録画を時間に基づいて削除します。
 
+### 7. データベースを別のサーバーに置く（external database overlay）
+
+既定のスタックは postgres を同梱し、アプリケーションと同じホストで動かします。PostgreSQL を別の場所
+（組織が既に運用しているデータベースサーバー、マネージドサービス、または自前の 2 台目のマシン）に置くには、
+external database overlay を使います。同梱の postgres は起動せず、バックエンドはそのサーバーへ接続します：
+
+```bash
+# .env：「自前のデータベースがある配備」の節にある 3 行のコメントを外して値を記入します
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+#   EXTERNAL_DB_HOST=db.example.internal
+#   EXTERNAL_DB_PORT=5432
+# DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE はそのサーバーの値になります（ネットワーク越しなら require か verify-full）
+docker compose up -d
+docker compose ps        # backend、frontend、guacd、tls-proxy。postgres はありません
+```
+
+`scripts/quickstart.sh` を実行する前に `DB_PASSWORD` を自分で記入してください。`EXTERNAL_DB_HOST` を設定した場合、
+スクリプトはこの値を生成せず、未記入なら停止して記入を求めます。そのサーバー上のデータベースとアカウントは初回起動の前に作成しておきます。スキーマはバックエンドが作成します。
+
+この形態で得られるのは、置き換え可能なアプリケーションホストです。同じファイルから用意し、同じデータベースへ向けた 2 台目のホストが、
+1 台目の停止時に引き継ぎます。その手順、スタンバイホストに事前に必要なもの、切り替えで保たれないもの、この形態でバックアップの対象がどう変わるかは
+[アプリケーションホストのスタンバイ切り替え](ops/standby-takeover.md)を参照してください。
+
 ## 本番環境における配備者の責任と挙動の境界
 
 外部に向けてサービスを提供する前に、次の事項は**配備者の責任**です。本製品は意図的に肩代わりせず、やっているふりもしません。

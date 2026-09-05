@@ -116,3 +116,77 @@ func noteCredentialGroupLeft(db *gorm.DB, accountID uint) {
 		log.Printf("[ChangeSecret] 憑證群組脫組失敗（改密已成功提交）account=%d err=%v", accountID, err)
 	}
 }
+
+// noteCredentialGroupCommitted 改密成功提交後的群組處置：兩條提交路徑（改密執行器與
+// 重試轉正）的唯一入口。
+//
+// 新憑證是各自隨機的（sharedGroup 為空）即脫組；是批次整批同一組的（sharedGroup 非空）
+// 即先脫離原群組、再歸入該批次的群組——同一組密碼此刻在多台生效，報告必須看得見。
+// 兩種情形的失敗都只留 log，理由同 noteCredentialGroupLeft。
+func noteCredentialGroupCommitted(db *gorm.DB, accountID uint, sharedGroup string) {
+	if sharedGroup == "" {
+		noteCredentialGroupLeft(db, accountID)
+		return
+	}
+	if err := joinSharedCredentialGroup(db, accountID, sharedGroup); err != nil {
+		log.Printf("[ChangeSecret] 歸入共用憑證群組失敗（改密已成功提交）account=%d err=%v", accountID, err)
+	}
+}
+
+// joinSharedCredentialGroup 使帳號歸入指定群組。
+//
+// 先沿既有規則脫離原群組（含「只剩一員即解散」），再寫入新值：帳號從此持有的是
+// 批次的那組密碼，與原群組的其他成員不再共用。
+func joinSharedCredentialGroup(db *gorm.DB, accountID uint, group string) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := leaveCredentialGroup(tx, accountID); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.AssetAccount{}).
+			Where("id = ?", accountID).
+			Update("credential_group", group).Error; err != nil {
+			return fmt.Errorf("歸入共用憑證群組失敗: %w", err)
+		}
+		return nil
+	})
+}
+
+// settleSharedGroup 批次群組的解散判定：成員少於 2 且該批次已無待驗證候選時解散。
+//
+// 「已無待驗證候選」是必要條件——三台裡一台成功、兩台暫時連不上時，若在批次結束就
+// 解散，稍後兩台轉正各自歸入一個已空的群組、各自又被解散，三台實際共用同一組密碼
+// 卻沒有一台被標示。候選被清除而非轉正時群組可能只剩一員而不再有解散的觸發點，
+// 此時報告會多標一個共用憑證：偏向多警告的一側，不是漏警告。
+func settleSharedGroup(db *gorm.DB, batchID uint, group string) error {
+	if group == "" {
+		return nil
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var members int64
+		if err := tx.Model(&model.AssetAccount{}).
+			Where("credential_group = ?", group).Count(&members).Error; err != nil {
+			return fmt.Errorf("計算批次群組成員失敗: %w", err)
+		}
+		if members == 0 || members >= 2 {
+			return nil
+		}
+		var pending int64
+		if err := tx.Model(&model.ChangeSecretCandidate{}).
+			Where("batch_id = ?", batchID).Count(&pending).Error; err != nil {
+			return fmt.Errorf("計算批次待驗證候選失敗: %w", err)
+		}
+		if pending > 0 {
+			return nil
+		}
+		return tx.Model(&model.AssetAccount{}).
+			Where("credential_group = ?", group).
+			Update("credential_group", nil).Error
+	})
+}
+
+// noteSharedGroupSettled 解散判定的失敗只留 log（理由同 noteCredentialGroupLeft）
+func noteSharedGroupSettled(db *gorm.DB, batchID uint, group string) {
+	if err := settleSharedGroup(db, batchID, group); err != nil {
+		log.Printf("[ChangeSecret] 批次群組解散判定失敗 batch=%d err=%v", batchID, err)
+	}
+}

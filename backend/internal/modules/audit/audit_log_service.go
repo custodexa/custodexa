@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/custodexa/backend/config"
@@ -79,7 +80,25 @@ type AuditLogService struct {
 	wg          sync.WaitGroup
 	fallbackDir string
 
-	// dropObserver 佇列滿載致本筆未能直接入庫時的觀測掛勾。
+	// drainAbort 關機排空的中止訊號：收束期限已到時關閉，正在排空的 worker
+	// 不再嘗試寫庫、手上的批次改走降級處置。
+	//
+	// 與 stopChan 分開：stopChan 是「開始排空」，drainAbort 是「排空時間用盡」，
+	// 兩者之間正是佇列殘留得以落地的窗口。
+	drainAbort chan struct{}
+
+	// inFlight worker 已自佇列取走、尚未回報處置結果的列數。
+	//
+	// 期限到時佇列長度只答得出「還有幾列沒人取」，答不出「取走的那些寫進去了沒」；
+	// 少了這個數，卡在 sink 內的批次會從關機報告裡消失。
+	// 正常路徑的成本是每列兩次原子加減。
+	inFlight atomic.Int64
+
+	// writeBatch 批次落地的 sink；nil 時走 writeToDatabase。
+	// 唯一的注入者是測試（模擬 sink 停滯），生產組裝不設定。
+	writeBatch func([]*model.AuditLog) error
+
+	// dropObserver 本筆未能直接入庫時的觀測掛勾：佇列滿載，或關機排空逾時後的殘留處置。
 	//
 	// **以函式注入而非直接呼叫指標包**：本模組不因監控需求而新增依賴，
 	// 語義（降級寫檔 vs 直接丟棄）的字串映射留在組裝根。
@@ -91,7 +110,7 @@ type AuditLogService struct {
 	dropObserver   func(fellBackToFile bool)
 }
 
-// SetDropObserver 注入佇列滿載時的觀測掛勾。未注入時不影響任何行為。
+// SetDropObserver 注入未能直接入庫（佇列滿載、關機排空逾時）時的觀測掛勾。未注入時不影響任何行為。
 func (s *AuditLogService) SetDropObserver(f func(fellBackToFile bool)) {
 	s.dropObserverMu.Lock()
 	defer s.dropObserverMu.Unlock()
@@ -133,6 +152,7 @@ func NewAuditLogService(cfg *config.FeatureFlags) *AuditLogService {
 		batchSize:   10,                               // 批次寫入大小（降低以便測試）
 		flushTicker: time.NewTicker(2 * time.Second),  // 2 秒自動 flush（加快測試）
 		stopChan:    make(chan struct{}),
+		drainAbort:  make(chan struct{}),
 		fallbackDir: resolveFallbackDir(),
 	}
 
@@ -242,6 +262,7 @@ func (s *AuditLogService) worker(id int) {
 		select {
 		case auditLog := <-s.logChan:
 			log.Printf("[Audit] Worker %d 接收日誌：%s %s", id, auditLog.Username, auditLog.Path)
+			s.inFlight.Add(1)
 			batch = append(batch, auditLog)
 			if len(batch) >= s.batchSize {
 				flushBatch()
@@ -252,10 +273,81 @@ func (s *AuditLogService) worker(id int) {
 			flushBatch()
 
 		case <-s.stopChan:
-			// 優雅關閉：flush 剩餘日誌
-			log.Printf("Worker %d: 收到關閉信號，flush 剩餘日誌...", id)
-			flushBatch()
+			// 優雅關閉：先把佇列內尚未被取走的列排空，再 flush 手上的批次
+			log.Printf("Worker %d: 收到關閉信號，排空佇列...", id)
+			s.drainOnShutdown(id, batch)
 			return
+		}
+	}
+}
+
+// drainOnShutdown 收到關閉訊號後，把佇列內尚未被取走的列全部寫出，
+// 直到佇列為空或排空期限已到。
+//
+// **只在關閉訊號之後執行**；正常路徑的差別僅在每列進出 worker 時多了
+// inFlight 的一加一減（見該欄位）。少了這一步，worker 收到關閉訊號只 flush
+// 自己手上的批次就返回，佇列裡沒被取走的列（容量 1000）隨行程一起消失——
+// 而那些列的請求早已回應完成，呼叫端以為已留痕。
+//
+// 期限到時不再嘗試寫庫：sink 若已停滯，再送一批只是把 worker 一起困住；
+// 手上的批次改走降級處置並計數，由 Shutdown 統一報出。
+func (s *AuditLogService) drainOnShutdown(id int, batch []*model.AuditLog) {
+	drained := 0
+	for {
+		select {
+		case <-s.drainAbort:
+			filed := s.abandonRows(batch)
+			s.inFlight.Add(-int64(len(batch)))
+			log.Printf("Worker %d: 排空期限已到，停止取列（本輪已排空 %d 列；手上 %d 列未寫庫，其中 %d 列已降級寫檔）",
+				id, drained, len(batch), filed)
+			return
+		default:
+		}
+		select {
+		case auditLog := <-s.logChan:
+			s.inFlight.Add(1)
+			batch = append(batch, auditLog)
+			drained++
+			if len(batch) >= s.batchSize {
+				batch = s.flushBatch(id, batch)
+			}
+		default:
+			s.flushBatch(id, batch)
+			log.Printf("Worker %d: 佇列已排空（本輪 %d 列），結束", id, drained)
+			return
+		}
+	}
+}
+
+// abandonRows 期限到時對尚未落地的列做最後處置：能寫檔就寫檔（可事後回收），
+// 否則只能計數。兩者都通知觀測掛勾，使遺失成為可查證的事實而非靜默。
+// 回傳其中已寫檔的列數。
+//
+// 不記 audit_failure_events：失效事件本身要寫庫，而走到這裡多半正是因為
+// 資料庫寫不進去；與佇列滿載的丟棄分支同一條界線（見 logAt）。
+func (s *AuditLogService) abandonRows(rows []*model.AuditLog) int {
+	if len(rows) == 0 {
+		return 0
+	}
+	filed := 0
+	if s.cfg.AuditFallbackToFile {
+		filed = s.writeRowsToFile(rows)
+	}
+	for i := range rows {
+		s.notifyDrop(i < filed)
+	}
+	return filed
+}
+
+// takeQueued 非阻塞取走佇列內目前全部的列。
+func (s *AuditLogService) takeQueued() []*model.AuditLog {
+	var rows []*model.AuditLog
+	for {
+		select {
+		case auditLog := <-s.logChan:
+			rows = append(rows, auditLog)
+		default:
+			return rows
 		}
 	}
 }
@@ -270,8 +362,11 @@ func (s *AuditLogService) flushBatch(id int, batch []*model.AuditLog) []*model.A
 		return batch
 	}
 
+	// 無論成敗，這一批的處置到本函式結束即有定論（入庫、逐列隔離、降級寫檔或計入遺失）
+	defer s.inFlight.Add(-int64(len(batch)))
+
 	dropped := batch
-	err := s.writeToDatabase(batch)
+	err := s.persist(batch)
 	if err == nil {
 		dropped = nil
 	} else {
@@ -334,13 +429,21 @@ func (s *AuditLogService) flushBatch(id int, batch []*model.AuditLog) []*model.A
 func (s *AuditLogService) retryRowsIndividually(logs []*model.AuditLog) []*model.AuditLog {
 	var failed []*model.AuditLog
 	for _, l := range logs {
-		if err := s.writeToDatabase([]*model.AuditLog{l}); err != nil {
+		if err := s.persist([]*model.AuditLog{l}); err != nil {
 			log.Printf("錯誤: 審計列逐列重試仍失敗（%s %s，status=%d）: %v",
 				l.Method, l.Path, l.StatusCode, err)
 			failed = append(failed, l)
 		}
 	}
 	return failed
+}
+
+// persist 批次落地的唯一入口：測試注入的 sink 優先，否則寫資料庫。
+func (s *AuditLogService) persist(logs []*model.AuditLog) error {
+	if s.writeBatch != nil {
+		return s.writeBatch(logs)
+	}
+	return s.writeToDatabase(logs)
 }
 
 // writeToDatabase 批次寫入資料庫
@@ -364,6 +467,14 @@ func (s *AuditLogService) writeToDatabase(logs []*model.AuditLog) error {
 
 // writeToFile 降級至檔案備份
 func (s *AuditLogService) writeToFile(auditLog *model.AuditLog) {
+	s.writeRowsToFile([]*model.AuditLog{auditLog})
+}
+
+// writeRowsToFile 把多列降級寫進同一個檔案（開檔一次），回傳成功寫入的列數。
+//
+// 關機排空逾時可能一次交來上千列，逐列開關檔會把已經超時的收束再拖長；
+// 開檔一次使成本與列數成正比而非與開檔次數成正比。
+func (s *AuditLogService) writeRowsToFile(rows []*model.AuditLog) int {
 	// 按日期分檔
 	filename := fmt.Sprintf("audit_%s.log", time.Now().Format("2006-01-02"))
 	filepath := filepath.Join(s.fallbackDir, filename)
@@ -371,21 +482,27 @@ func (s *AuditLogService) writeToFile(auditLog *model.AuditLog) {
 	file, err := os.OpenFile(filepath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Printf("錯誤: 打開 fallback 檔案失敗: %v", err)
-		return
+		return 0
 	}
 	defer file.Close()
 
-	// 序列化為 JSON
-	data, err := json.Marshal(auditLog)
-	if err != nil {
-		log.Printf("錯誤: 序列化審計日誌失敗: %v", err)
-		return
-	}
+	written := 0
+	for _, auditLog := range rows {
+		// 序列化為 JSON
+		data, err := json.Marshal(auditLog)
+		if err != nil {
+			log.Printf("錯誤: 序列化審計日誌失敗: %v", err)
+			return written
+		}
 
-	// 寫入檔案（每行一條 JSON）
-	if _, err := file.Write(append(data, '\n')); err != nil {
-		log.Printf("錯誤: 寫入 fallback 檔案失敗: %v", err)
+		// 寫入檔案（每行一條 JSON）
+		if _, err := file.Write(append(data, '\n')); err != nil {
+			log.Printf("錯誤: 寫入 fallback 檔案失敗: %v", err)
+			return written
+		}
+		written++
 	}
+	return written
 }
 
 // 審計日誌列表的排序預設值。SortBy／SortOrder 收斂失敗時一律退回這組。
@@ -543,18 +660,50 @@ func (s *AuditLogService) GetByResourceID(resource model.AuditResource, resource
 	return logs, nil
 }
 
-// Shutdown 優雅關閉（flush 剩餘日誌）
+// drainAbortGrace 期限到、發出中止訊號後，留給尚未停滯的 worker 處置手上批次的窗口。
+//
+// 沒有這個窗口，正在正常寫庫、只差幾毫秒就回報的 worker 也會被記成「持有中未回報」；
+// 有了它，報告裡的「持有中」只剩真正卡在 sink 內的那些。窗口刻意極短：它延長的是
+// 已經超時的收束。
+const drainAbortGrace = 200 * time.Millisecond
+
+// ShutdownDrainError 關機排空未在期限內完成的結果。
+//
+// 三個數字各答一個營運問題：Unflushed＝一共有幾列沒確認落地；FallbackFiled＝其中
+// 幾列已寫進降級檔（可事後回收）；InFlight＝其中幾列已被 worker 取走卻等不到 sink
+// 回報（多半卡在資料庫寫入；行程結束後是否已提交無從得知，不可當作已落地）。
+// 其餘即永久遺失。
+type ShutdownDrainError struct {
+	Unflushed     int
+	FallbackFiled int
+	InFlight      int
+}
+
+// Lost 既未寫檔、也不在任何 worker 手上的列數——確定遺失的部分。
+func (e *ShutdownDrainError) Lost() int { return e.Unflushed - e.FallbackFiled - e.InFlight }
+
+func (e *ShutdownDrainError) Error() string {
+	return fmt.Sprintf("審計佇列排空逾時：%d 列未確認落地（已降級寫檔 %d 列、worker 持有中未回報 %d 列、確定遺失 %d 列）",
+		e.Unflushed, e.FallbackFiled, e.InFlight, e.Lost())
+}
+
+// Shutdown 優雅關閉：排空佇列並 flush 全部批次。
+//
+// 期限內排完即回 nil。期限到時**不靜默**：發出中止訊號、把佇列殘留做最後處置
+// （能寫檔就寫檔）、以 ShutdownDrainError 報出未確認落地的筆數——這個錯誤沿收束
+// 步驟一路回到行程離開碼，supervisor 看得見。回傳的時間上界＝ctx 期限＋
+// drainAbortGrace＋處置殘留所需（與列數成正比、有容量上界），不依賴 sink 回應。
 func (s *AuditLogService) Shutdown(ctx context.Context) error {
 	if !s.cfg.AsyncAuditEnabled {
 		return nil
 	}
 
-	log.Println("審計日誌服務正在關閉，flush 剩餘日誌...")
+	log.Printf("審計日誌服務正在關閉，排空佇列（目前深度 %d）...", len(s.logChan))
 
 	// 停止 ticker
 	s.flushTicker.Stop()
 
-	// 發送關閉信號給所有 workers
+	// 發送關閉信號給所有 workers：各自排空佇列後結束
 	close(s.stopChan)
 
 	// 等待所有 workers 完成（帶超時）
@@ -566,12 +715,33 @@ func (s *AuditLogService) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
-		log.Println("審計日誌服務已優雅關閉")
+		log.Println("審計日誌服務已優雅關閉，佇列已排空")
 		return nil
 	case <-ctx.Done():
-		log.Println("警告: 審計日誌服務關閉超時")
-		return ctx.Err()
+		close(s.drainAbort)
+		select {
+		case <-done:
+		case <-time.After(drainAbortGrace):
+		}
+		return s.reportDrainTimeout()
 	}
+}
+
+// reportDrainTimeout 期限到時把佇列殘留做最後處置，並產出可查證的計數。
+//
+// 佇列殘留由本函式取走處置，不計入 inFlight（那是 worker 手上的數）；
+// 兩者相加即「未確認落地」的總數。
+func (s *AuditLogService) reportDrainTimeout() error {
+	residual := s.takeQueued()
+	filed := s.abandonRows(residual)
+	inFlight := int(s.inFlight.Load())
+	err := &ShutdownDrainError{
+		Unflushed:     len(residual) + inFlight,
+		FallbackFiled: filed,
+		InFlight:      inFlight,
+	}
+	log.Printf("警告: %v", err)
+	return err
 }
 
 // safeAuditFieldSet 請求本文的**放行**清單（default-deny：清單外一律遮罩）。
@@ -616,7 +786,7 @@ func (s *AuditLogService) Shutdown(ctx context.Context) error {
 //     `base_dn`／`user_filter`／`skip_tls_verify`／`enabled` 課責，伺服器位址的
 //     可見性須待端點感知遮罩（列入 backlog）。
 //   - `tls_ca`／`db_ca_cert`／`k8s_ca_cert`／`rdp_verify_cert`／`risk_keys`／
-//     `key_strategy`／`secret_type`／`password_length` 等：鍵名命中 auditmask G3
+//     `key_strategy`／`secret_type`／`password_length`／`password_mode` 等：鍵名命中 auditmask G3
 //     的機密語義片段（cert／key／secret／password）。**不為個案開名稱例外**——
 //     G3 的過度攔截是刻意的安全側，代價由對應端點的其他實質欄位吸收。
 func safeAuditFieldSet() map[string]bool {
@@ -666,6 +836,8 @@ func safeAuditIdentityFields() map[string]bool {
 		"user_group_ids":  true,
 		"asset_ids":       true,
 		"asset_group_ids": true,
+		// 批次改密明列的目標帳號 id 清單（與 asset_ids 同類：回答「這一批動到哪幾個帳號」）
+		"account_ids": true,
 
 		// ── 核准路由設定：誰有權核准誰的什麼 ───────────────────────────
 		"approver_id":       true,
@@ -773,6 +945,13 @@ func safeAuditSubstanceFields() map[string]bool {
 		// ── 改密計畫的排程 ─────────────────────────────────────────────
 		// 停掉輪替不必改 enabled——把 cron 改成永不觸發即可，兩者同屬「關掉輪替」
 		"cron": true,
+
+		// ── 批次改密的目標選擇 ─────────────────────────────────────────
+		// all=true 是「對持有該帳號名的全部資產改密」，false 則以 account_ids 明列；
+		// 少了它，「一次改遍全部」與「只改勾選的幾台」在 request_body 面寫出同一列。
+		// 布林，不可能承載機密。密碼模式（每台各自隨機／整批同一組）的鍵名命中
+		// G3 的 password 片段，不為個案開例外——該事實由批次列本身持久保存
+		"all": true,
 
 		// ── 資產側的傳輸安全與存取策略 ─────────────────────────────────
 		// 與 LDAP 的 skip_tls_verify 同型：k8s_insecure_skip_tls／db_tls_mode／

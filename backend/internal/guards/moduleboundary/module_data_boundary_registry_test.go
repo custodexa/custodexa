@@ -24,6 +24,9 @@ var tableOwner = map[string]string{
 	// 輪替證據報告的排程（rotation-evidence-report）：排程的業務語義
 	// （範圍、區間錨點、留存）與其產出的資料同屬 asset
 	"rotation_report_schedules": "asset",
+	// 以帳號為主軸的批次改密：批次的業務語義（目標解析、密碼模式、
+	// 共用群組）與其產生的記錄同屬 asset
+	"change_secret_batches": "asset",
 	// identity
 	"users":                    "identity",
 	"roles":                    "identity",

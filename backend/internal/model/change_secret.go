@@ -81,8 +81,11 @@ const (
 // AccountID ＋ AccountUsername 雙快照沿 session 的不可否認性慣例——帳號可能隨後
 // 改名或刪除，只留 ID 則事後回答不了「當時改的是哪個帳號」。
 type ChangeSecretRecord struct {
-	ID      uint `gorm:"primarykey" json:"id"`
-	PlanID  uint `gorm:"index;not null" json:"plan_id"`
+	ID uint `gorm:"primarykey" json:"id"`
+	// PlanID 來源計劃；0＝來自批次改密（此時 BatchID 非 0）
+	PlanID uint `gorm:"index;not null" json:"plan_id"`
+	// BatchID 來源批次；0＝來自計劃
+	BatchID uint `gorm:"index;not null;default:0" json:"batch_id"`
 	AssetID uint `gorm:"index;not null" json:"asset_id"`
 	// AccountID 執行時釘住的帳號；0 表示尚未解析到帳號即失敗（如資產無帳號）
 	AccountID       uint   `gorm:"index" json:"account_id"`
@@ -112,6 +115,11 @@ type ChangeSecretCandidate struct {
 	AccountID uint `gorm:"uniqueIndex;not null" json:"account_id"`
 	AssetID   uint `gorm:"index;not null" json:"asset_id"`
 	PlanID    uint `json:"plan_id"`
+	// BatchID 來源批次；0＝來自計劃或手動觸發
+	BatchID uint `gorm:"not null;default:0" json:"batch_id"`
+	// SharedGroup 轉正後要歸入的憑證群組（整批同一組模式）；空＝沿既有規則脫組。
+	// 放在候選上而非回查批次：重試轉正時批次可能早已完成，候選必須自帶處置
+	SharedGroup string `gorm:"size:36" json:"-"`
 	// AccountUsername 執行當下的快照（同 record 的理由）
 	AccountUsername string `json:"account_username" gorm:"size:100"`
 	SecretType      string `gorm:"size:16;not null" json:"secret_type"`

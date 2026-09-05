@@ -726,7 +726,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 |---|---|---|---|---|---|---|---|
 | SD-1 | shutdown:解封端點獨立監聽 | `sealSrv.Shutdown` | cmd/server/main.go:218 | 停止步驟 | assembly（不搬） | —（不動） | 僅 B 模式且設 `SEAL_UNSEAL_BIND_ADDR` 時存在。先關隔離監聽再關主監聽。 |
 | SD-2 | shutdown:主監聽 | `srv.Shutdown` | cmd/server/main.go:221 | 停止步驟 | assembly（不搬） | —（不動） | **順序不可倒**（`main.go:212` 明文）：仍在處理中的請求可能還會產生審計列，故 HTTP 必須先關、再收束段 2 資源。 |
-| SD-3 | shutdown:段 2 資源 | `shutdown(ctx)` → `graph.Release(ctx)`／B 模式另含 `machine.WaitCleanup()` ＋ `journal.Close()` | cmd/server/main.go:222 | 停止步驟 | assembly（不搬） | —（不動） | 觸發 §7 的 LIFO 釋放。**單步失敗不中斷後續**（跳過剩下的收束會讓資源永久洩漏），但失敗不得被吞掉——回傳非零碼供 supervisor／CI 觀察（`runShutdown`，`main.go:284`）。B 模式的 `journal.Close()` 必須最後：封印期留痕在服務圖收束期間仍可能寫入。整個收尾有 **5 秒逾時**（`main.go:209`）。 |
+| SD-3 | shutdown:段 2 資源 | `shutdown(ctx)` → `graph.Release(ctx)`／B 模式另含 `machine.WaitCleanup()` ＋ `journal.Close()` | cmd/server/main.go:282 | 停止步驟 | assembly（不搬） | —（不動） | 觸發 §7 的 LIFO 釋放。**單步失敗不中斷後續**（跳過剩下的收束會讓資源永久洩漏），但失敗不得被吞掉——回傳非零碼供 supervisor／CI 觀察（`runShutdown`，`main.go:373`）。B 模式的 `journal.Close()` 必須最後：封印期留痕在服務圖收束期間仍可能寫入。收尾預算分兩段：前兩步的監聽收束共用 **5 秒**（`listenerShutdownTimeout`，`main.go:343`）；本步另有 **保底 4 秒**（`resourceShutdownFloor`，`main.go:347`），期限取「監聽段原期限」與「now＋保底」的較晚者、從 Background 派生而非從監聽段 ctx 派生（`resourceShutdownContext`，`main.go:355`）——監聽段吃光預算時，本步（含審計佇列排空）仍有時間；最壞總時長約 9 秒。 |
 
 ---
 

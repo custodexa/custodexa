@@ -122,8 +122,15 @@ fi
 # ---------- DB_PASSWORD ----------
 data_path=$(current DATA_PATH); data_path=${data_path:-./data}
 v=$(current DB_PASSWORD)
+external_db=$(current EXTERNAL_DB_HOST)
 if [ -d "${data_path}/postgres" ] && [ -n "$(ls -A "${data_path}/postgres" 2>/dev/null)" ]; then
   report DB_PASSWORD "left as is (${data_path}/postgres is already initialized; changing it would lock the backend out)"
+elif [ -n "${external_db}" ]; then
+  # An external database decides its own password; a value generated here would never match it.
+  if [ -z "${v}" ] || [ "${v}" = "postgres" ]; then
+    fail "DB_PASSWORD is empty or still the template value while EXTERNAL_DB_HOST=${external_db} is set: put the password of the database account on that server into ${ENV_FILE} and run this again (nothing was generated)"
+  fi
+  report DB_PASSWORD "left as is (EXTERNAL_DB_HOST is set; the password belongs to that server)"
 elif [ -z "${v}" ] || [ "${v}" = "postgres" ]; then
   set_kv DB_PASSWORD "$(gen_alnum 32)"
   report DB_PASSWORD "generated"

@@ -15,6 +15,7 @@ Custodexa's main documents are available in three languages. Pick a language bel
 | [Upgrade SOP](ops/upgrade-sop.md) | Version upgrade procedure |
 | [Deployment topology limits](ops/deployment-topology-limits.md) | Supported topologies and their constraints |
 | [Privileged credential rotation](ops/privileged-credential-rotation.md) | Rotating the platform's own credentials |
+| [Application host standby takeover](ops/standby-takeover.md) | External database, a prepared standby host, and the takeover procedure |
 
 ## 繁體中文
 
@@ -29,6 +30,7 @@ Custodexa's main documents are available in three languages. Pick a language bel
 | [升級 SOP](zh-TW/ops/upgrade-sop.md) | 版本升級程序 |
 | [部署形態限制](zh-TW/ops/deployment-topology-limits.md) | 支援的部署形態與其限制 |
 | [平台憑證輪替](zh-TW/ops/privileged-credential-rotation.md) | 平台自身憑證的輪替 |
+| [應用主機備援接手](zh-TW/ops/standby-takeover.md) | 外接資料庫、事先準備的備援主機與接手程序 |
 
 ## 日本語
 
@@ -43,6 +45,7 @@ Custodexa's main documents are available in three languages. Pick a language bel
 | [アップグレード SOP](ja/ops/upgrade-sop.md) | バージョンアップグレードの手順 |
 | [デプロイ構成の制約](ja/ops/deployment-topology-limits.md) | サポートする構成とその制約 |
 | [プラットフォーム資格情報のローテーション](ja/ops/privileged-credential-rotation.md) | プラットフォーム自身の資格情報の入れ替え |
+| [アプリケーションホストのスタンバイ切り替え](ja/ops/standby-takeover.md) | 外部データベース、事前に用意するスタンバイホスト、切り替えの手順 |
 
 ## Reference (single language)
 

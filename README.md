@@ -148,7 +148,7 @@ are kept in one language. The index of all documents is [docs/README.md](docs/RE
 
 | What you want to do | Read this |
 |------|------|
-| Deploy and operate | [docs/QUICKSTART.md](docs/QUICKSTART.md) (setup, configuration, troubleshooting); [docs/ops/](docs/ops/) (backup & restore, upgrades, deployment topology, platform credential rotation) |
+| Deploy and operate | [docs/QUICKSTART.md](docs/QUICKSTART.md) (setup, configuration, troubleshooting); [docs/ops/](docs/ops/) (backup & restore, upgrades, deployment topology, platform credential rotation, standby takeover) |
 | Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) (DCO, workflow); [docs/dev/](docs/dev/) (architecture and testing discipline); [openspec/specs/](openspec/specs/) (behavioral specs, the source of truth for details) |
 | Look up the API or schema | [docs/API_SPEC.md](docs/API_SPEC.md), [docs/DB_SCHEMA.md](docs/DB_SCHEMA.md) |
 | Report a security issue | [SECURITY.md](SECURITY.md) (private reporting channel and handling policy) |

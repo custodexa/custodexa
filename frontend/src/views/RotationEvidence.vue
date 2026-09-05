@@ -273,10 +273,13 @@
               </template>
             </el-table-column>
             <el-table-column
-              :label="$t('rotationEvidence.column.plan')"
+              :label="$t('rotationEvidence.column.source')"
               min-width="150"
-              prop="plan_name"
-            />
+            >
+              <template #default="{ row }">
+                {{ recordSourceText(row) }}
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('rotationEvidence.column.target')"
               min-width="180"
@@ -1055,6 +1058,13 @@ const credentialTypeText = (type) =>
 
 const scopeText = (kind) =>
   ROTATION_SCOPE_KINDS.includes(kind) ? t(`rotationEvidence.scope.${kind}`) : kind || ''
+
+// 區間記錄的來源：計劃名，或以批次識別表示來自一次批次改密。
+// 兩者都留白會讓讀者分不出「計劃已刪」與「來自批次」——CSV 與 PDF 的同一欄同樣處理
+const recordSourceText = (row) => {
+  if (row.plan_name) return row.plan_name
+  return row.batch_id ? t('rotationEvidence.sourceBatch', { id: row.batch_id }) : ''
+}
 
 const recordTagType = (status) =>
   ({ success: 'success', failed: 'danger', unverified: 'warning', skipped: 'info' })[status] || 'info'

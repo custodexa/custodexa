@@ -125,7 +125,7 @@ Windows 請在 WSL 內執行腳本。
 
 | 你想做什麼 | 讀這些 |
 |------|------|
-| 部署與日常維運 | [QUICKSTART.md](QUICKSTART.md)（啟動、設定、故障排除）；[ops/](ops/)（備份還原、升級、部署形態、平台憑證輪替）；英文正本在 [docs/](../) |
+| 部署與日常維運 | [QUICKSTART.md](QUICKSTART.md)（啟動、設定、故障排除）；[ops/](ops/)（備份還原、升級、部署形態、平台憑證輪替、備援接手）；英文正本在 [docs/](../) |
 | 參與開發 | [CONTRIBUTING.md](../../CONTRIBUTING.md)（DCO、工作流程）；[docs/dev/](../dev/)（架構與測試紀律）；[openspec/specs/](../../openspec/specs/)（行為規格，細節以此為準） |
 | 查 API 與資料庫 | [docs/API_SPEC.md](../API_SPEC.md)、[docs/DB_SCHEMA.md](../DB_SCHEMA.md) |
 | 回報安全問題 | [SECURITY.md](SECURITY.md)（私密回報管道與處置方式；英文版在[repo 根目錄](../../SECURITY.md)） |

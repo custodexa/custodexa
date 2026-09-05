@@ -475,6 +475,32 @@ decided by guacd.**
 - To reduce usage, use the **retention window** (System Settings → Security Policies) and delete
   expired recordings by age.
 
+### 7. The database on a separate server (external database overlay)
+
+By default the stack brings its own postgres, on the same host as the application. To run
+PostgreSQL elsewhere (a database server the institution already operates, a managed service, or a
+second machine of your own), the external database overlay leaves the bundled postgres out and
+points the backend at that server:
+
+```bash
+# .env: uncomment the three lines of the "Deployments with their own database" section and fill them in
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+#   EXTERNAL_DB_HOST=db.example.internal
+#   EXTERNAL_DB_PORT=5432
+# DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE now describe that server (use require or verify-full across a network)
+docker compose up -d
+docker compose ps        # backend, frontend, guacd, tls-proxy; no postgres
+```
+
+Fill `DB_PASSWORD` in by hand before running `scripts/quickstart.sh`: with `EXTERNAL_DB_HOST` set,
+the script never generates it and stops when it is missing. The database and the account must exist on that server
+before the first start; the backend creates the schema.
+
+What this shape buys is a replaceable application host: a second host prepared from the same
+files and pointed at the same database takes over when the first one is down. That procedure,
+what the standby host needs in advance, what a takeover does not preserve, and what changes for
+backups in this shape are in [Application Host Standby Takeover](ops/standby-takeover.md).
+
 ## Deployer responsibilities and behavioral limits in production
 
 Before serving external traffic, the items below are **the deployer's responsibility**. The

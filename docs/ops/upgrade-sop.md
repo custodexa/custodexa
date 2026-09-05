@@ -123,7 +123,7 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
 If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the seven in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the eight in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
@@ -308,13 +308,13 @@ docker compose exec -T backend \
   **It is deliberately not under `/api`**: the production edge proxies only `location /api` and `/ws`. Together with the production compose file publishing only nginx's port 80 and not the backend's 8080, this endpoint is reachable only inside the compose network in a default deployment and cannot be reached from outside.
   If you attach the backend to a directly reachable internal network of your own (for Prometheus scraping), reading it from there with `curl -s http://<backend>:8080/metrics` works too.
 - **Authentication**: when the `METRICS_TOKEN` environment variable is non-empty, `Authorization: Bearer <token>` is required; when it is empty the endpoint is exposed without authentication (the security of which rests on the edge not proxying it).
-- **Criterion**: stop only once the value is `0`.
+- **Criterion**: prefer to stop once the value is `0`. Since this release the shutdown path drains the queue itself (see §3.1), so a non-zero value at the moment of SIGTERM no longer means those rows are lost; it means the shutdown will spend part of its budget writing them. Waiting for `0` keeps the shutdown short and avoids the fallback file.
 - **This metric exists only once the system is unsealed.** In the sealed state `/metrics` still answers, but it carries only the seal state and single-instance guard groups, and `grep` finds no `custodexa_audit_queue_depth`. **That is not a broken metric; it is asynchronous audit not being up yet** (it belongs, with the other business components, to stage 2, which is assembled only after unseal).
   Deployments using `KEK_PROVIDER=ui` (mode B) hit this in particular: backend returns to the sealed state on every restart, including after the routine backup in [Backup and Restore §3.2](./backup-and-restore.md#32-recommended-procedure-service-stopped-best-consistency).
   **In the sealed state there is no audit queue to drain**; unseal first, then do this check.
 
 > **The boundary of this metric**: it reads the length of the queue itself, meaning how many rows have not yet been taken by a worker.
-> **A value of 0 does not mean every audit row has been written to the database**: a worker may still hold a batch that has not been flushed. What it rules out is a pile of rows sitting in the queue that nobody has touched, which is the case that clearly loses data, and that is exactly what you confirm when stopping during a low-traffic period.
+> **A value of 0 does not mean every audit row has been written to the database**: a worker may still hold a batch that has not been flushed. The shutdown path flushes those batches and drains whatever is still queued (§3.1); what this check buys you is a shutdown that finishes quickly and cleanly, without touching the fallback file.
 >
 > Also: the queue exists only while asynchronous audit is enabled. In synchronous mode writes block until they complete, and this metric is always 0.
 
@@ -337,7 +337,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's seven increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's eight increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -347,6 +347,7 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260903_security_policies_value_text (security_policies_value_text)
   執行 migration: 20260903_rotation_evidence_report (rotation_evidence_report)
   執行 migration: 20260904_windows_local_account_rotation (windows_local_account_rotation)
+  執行 migration: 20260905_account_batch_rotation (account_batch_rotation)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -363,6 +364,8 @@ When upgrading to a version that **introduces no new migration** (the database h
 `20260903_rotation_evidence_report` creates the data layer for rotation evidence reports: one column added to each of three existing tables (asset accounts, credential change plans, and export jobs, plus two indexes), and one new report schedule table. **It is purely additive with no data backfill**, and the added columns are all defaulted or nullable, so its duration is independent of the volume held. **Its `Down` is lossy**; read §4.1 before a rollback.
 
 `20260904_windows_local_account_rotation` adds six credential change channel columns to the asset table (channel, WinRM connection method, port, certificate verification mode, CA certificate, and the SSH port used for credential changes), and creates no table, index, or constraint. **It only adds columns, with no data backfill**: after the upgrade the channel column is empty (meaning derived from the protocol, so ssh assets keep their existing credential change path and the rest keep not changing credentials), and the other five are nullable, so its duration is independent of the volume held. **Its `Down` is lossy**; read §4.1 before a rollback.
+
+`20260905_account_batch_rotation` creates the data layer for account-centric batch credential changes: one new batch table (with an index on the account name), a batch reference column on the credential change record table (with an index), and two columns on the pending credential table (the batch reference and the shared credential group the pending credential joins once it is verified). **It is purely additive with no data backfill**: every added column carries a default or is nullable, existing records and pending credentials are marked as coming from a plan (which is what they are), and its duration is independent of the volume held. The batch table stores no password. **Its `Down` is lossy**; read §4.1 before a rollback.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -702,25 +705,30 @@ That much holds; it is not an empty statement.
 
 But there are **two residual gaps** the operator has to know about:
 
-### 3.1 The worker returns without draining the queue
+### 3.1 The queue is drained at shutdown, with a time limit
 
-When the worker receives the shutdown signal, what it flushes is **the batch it has already accumulated**, and then it returns.
-**It does not read the rest of the queue before leaving.** Audit rows still in the queue when the service stops are lost.
+When the worker receives the shutdown signal it first drains **the rows still waiting in the queue**, flushing them in batches, and then flushes the batch it holds. Rows that were queued when SIGTERM arrived are written before the process exits.
 
-That is exactly why §2.4 requires confirming `custodexa_audit_queue_depth` is 0 before stopping.
+The drain runs inside the shutdown budget (§3.2). If the database does not respond in time, shutdown does **not** wait indefinitely: it stops taking rows, writes whatever is still queued to the audit fallback file when file fallback is enabled (otherwise those rows are counted as lost), increments `custodexa_audit_dropped_total` by that count (label `fallback_file` or `discarded`), logs the exact number of rows that were not confirmed written, and exits with a non-zero code. Rows that a worker had already handed to the database when the limit hit are reported separately as "not confirmed"; whether the database committed them cannot be known from the outside, so treat them as unwritten unless you verify.
 
-### 3.2 All the wind-down steps share a single 5-second timeout
+What to do with that log line: when file fallback is enabled, the rows are in the fallback file under the audit fallback path and can be reconciled after the upgrade; when it is disabled, the count in the log is the number of audit rows lost, and the upgrade record should say so.
 
-The steps taken at shutdown (the separate unseal listener, the main listener, and the stage 2 resources including the audit service) **share one 5-second context**. If the earlier steps consume most of it, there is little left for the audit flush.
+The check in §2.4 remains the way to make this a non-event: a queue that reads `0` at SIGTERM has nothing to drain.
 
-The behavior on timeout is **to record a message and exit with a non-zero exit code** (the remaining resource wind-down is not skipped, and the non-zero code takes effect only at the very end).
+### 3.2 Shutdown budget: 5 seconds for listeners, at least 4 seconds for the rest
+
+Shutdown runs in two stages with separate budgets. The HTTP listeners (the separate unseal listener, if any, and the main listener) get up to 5 seconds to finish in-flight requests. The stage 2 resources, including the audit drain described in §3.1, then get **whatever remains of that 5 seconds or 4 seconds, whichever is longer**. A listener that uses up its whole budget therefore cannot starve the audit drain.
+
+The worst case is about 9 seconds in total. Keep the container stop grace period at the default 10 seconds or higher; a shorter grace period cuts into the audit drain first.
+
+When a stage runs out of its budget the service **records a message and exits with a non-zero exit code** (the remaining resource wind-down is not skipped, and the non-zero code takes effect only at the very end).
 A non-zero exit code is a fact supervisors and CI need to know, **and a fact the operator needs to see** as well:
 
 ```bash
-docker compose logs backend | tail -20   # look for 「關閉過程有未完成項目」
+docker compose logs backend | tail -20   # look for 「關閉過程有未完成項目」 and 「審計佇列排空逾時」
 ```
 
-Seeing that line means some audit rows did not finish being written during this stop.
+「關閉過程有未完成項目」 means some step did not finish within its budget; it appears for a listener that timed out as well as for the audit drain. 「審計佇列排空逾時」 is the line that concerns audit rows: it carries the counts described in §3.1 (rows not confirmed written, rows written to the fallback file, rows a worker still held, rows lost). If only the first line appears, the audit drain finished and what ran out of time was a listener.
 
 ### 3.2b The effect of stopping on offsite uploads (with offsite storage enabled)
 
@@ -789,10 +797,10 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the seven increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the eight increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
-`20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`).
+`20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -858,6 +866,8 @@ The report artifacts themselves need no special preservation: they are derivativ
 
 **The `Down` of `20260904_windows_local_account_rotation` is lossy and is for development databases only.** It drops the six credential change channel columns on the asset table, that is, each Windows host's credential change channel, WinRM connection method, port, certificate verification mode, uploaded CA certificate, and SSH port for credential changes.
 After a later upgrade those columns reappear empty and every asset is back to "not configured" and derived from the protocol: **rdp assets stop having their credentials changed, with no signal on screen that a channel was ever configured on them.** Its production rollback method is likewise deploying the old version's images and restoring the pre-upgrade backup (§4.2).
+
+**The `Down` of `20260905_account_batch_rotation` is lossy and is for development databases only.** It drops the batch table (every batch's summary counts and who started it, with no second source once dropped) and the batch reference columns on credential change records and pending credentials: after a later upgrade every record and pending credential is back to "from a plan," and **the shared credential group a pending credential was meant to join is gone**, so a credential verified after the restore is no longer marked as shared even though the same password is in effect on the other hosts of that batch. Its production rollback method is likewise deploying the old version's images and restoring the pre-upgrade backup (§4.2). Batches run after the upgrade are lost when the backup is restored; the credentials they set on the target hosts are not, so **export the batch list (account name, mode, per-host results) before rolling back** if you need to know which hosts share a password.
 
 **A login banner configured after the upgrade is lost when the backup is restored**: that text was written after the upgrade, and the pre-upgrade backup does not contain it. **If you are going to roll back, copy the banner's title and body off the security policy page first** (plain text, into a ticket or a handover document), and put them back after a later upgrade.
 

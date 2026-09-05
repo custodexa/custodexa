@@ -38,7 +38,7 @@ var accountColumnKeys = []string{
 
 // recordColumnKeys 記錄檔的欄名鍵，順序即欄序。
 var recordColumnKeys = []string{
-	"col_record_id", "col_executed_at", "col_plan", "col_asset", "col_account",
+	"col_record_id", "col_executed_at", "col_source", "col_asset", "col_account",
 	"col_account_deleted", "col_secret_type", "col_result", "col_reason_code",
 }
 
@@ -137,7 +137,7 @@ func recordValues(rec *RecordRow, ph phraseFn, tf timeFmt) []string {
 	return []string{
 		strconv.FormatUint(uint64(rec.RecordID), 10),
 		tf(&rec.ExecutedAt),
-		rec.PlanName,
+		recordSourceLabel(rec, ph),
 		rec.AssetName,
 		rec.AccountUsername,
 		boolPhrase(rec.AccountDeleted, ph),
@@ -145,6 +145,18 @@ func recordValues(rec *RecordRow, ph phraseFn, tf timeFmt) []string {
 		statusLabel(rec.Status, ph),
 		rec.ReasonCode,
 	}
+}
+
+// recordSourceLabel 記錄的來源：計劃名，或批次改密的識別。
+// 兩者都空（計劃已刪除且非批次）時留白——不猜。
+func recordSourceLabel(rec *RecordRow, ph phraseFn) string {
+	if rec.PlanName != "" {
+		return rec.PlanName
+	}
+	if rec.BatchID > 0 {
+		return ph("source_batch") + " #" + strconv.FormatUint(uint64(rec.BatchID), 10)
+	}
+	return ""
 }
 
 func boolPhrase(v bool, ph phraseFn) string {

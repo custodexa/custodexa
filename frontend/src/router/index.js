@@ -226,6 +226,12 @@ const routes = [
         component: () => import('../views/ChangeSecretPlans.vue'),
         meta: { requiresAuth: true, roles: ['admin'] },
       },
+      {
+        path: 'change-secret-batches',
+        name: 'AccountBatchRotation',
+        component: () => import('../views/AccountBatchRotation.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] },
+      },
       // （TestConnection 手動連線頁已隨連線收口移除：手動輸入任意主機帳密屬繞過資產管理的旁路；
       //  RDPRecordingTest POC 頁已隨 JWT query fallback 移除，
       //  正式回放走 rtoken／Bearer blob）

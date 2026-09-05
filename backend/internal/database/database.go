@@ -150,6 +150,9 @@ var schemaParityModels = []interface{}{
 	// 輪替證據報告的排程表。由增量 migration 20260903_rotation_evidence_report
 	// 建表，走 schemaDDLStatements() 受兩層 parity 守衛
 	&model.RotationReportSchedule{},
+	// 以帳號為主軸的批次改密。由增量 migration 20260905_account_batch_rotation
+	// 建表，走 schemaDDLStatements() 受兩層 parity 守衛
+	&model.ChangeSecretBatch{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

@@ -186,15 +186,27 @@ func TestAssetAccountDTOHidesCredentialGroup(t *testing.T) {
 // 存在與每條路徑有沒有接上它是兩個問題——接線被拿掉時上面那些測試全部照樣綠，
 // 而報告會持續把已各自改密的帳號標成共用憑證。
 func TestCredentialGroupLeaveIsWiredIntoBothCommitPaths(t *testing.T) {
+	// 兩條提交路徑都必須經過同一個群組處置入口；入口內部才決定脫組或歸組
 	for _, path := range []string{
 		"change_secret_runner.go",
 		"change_secret_retry_runner.go",
 	} {
 		src, err := os.ReadFile(path)
 		require.NoError(t, err, "讀不到被驗證對象即等於沒有守衛")
-		if !strings.Contains(string(src), "noteCredentialGroupLeft(") {
-			t.Errorf("%s 的提交成功路徑未呼叫 noteCredentialGroupLeft："+
-				"改密成功卻不脫組，報告會持續把已各自改密的帳號標成共用憑證", path)
+		if !strings.Contains(string(src), "noteCredentialGroupCommitted(") {
+			t.Errorf("%s 的提交成功路徑未呼叫 noteCredentialGroupCommitted："+
+				"改密成功卻不做群組處置，報告會持續把已各自改密的帳號標成共用憑證", path)
 		}
+	}
+	// 入口本身必須接到脫組：入口存在但不脫組，上面兩條斷言照樣綠
+	src, err := os.ReadFile("credential_group.go")
+	require.NoError(t, err, "讀不到被驗證對象即等於沒有守衛")
+	body := string(src)
+	start := strings.Index(body, "func noteCredentialGroupCommitted(")
+	require.NotEqual(t, -1, start, "群組處置入口不存在")
+	end := strings.Index(body[start:], "\n}\n")
+	require.NotEqual(t, -1, end, "群組處置入口的函式體讀不到結尾")
+	if !strings.Contains(body[start:start+end], "noteCredentialGroupLeft(") {
+		t.Error("noteCredentialGroupCommitted 內未呼叫 noteCredentialGroupLeft：各自隨機的改密成功後不會脫組")
 	}
 }

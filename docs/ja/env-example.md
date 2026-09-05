@@ -65,7 +65,8 @@ docker compose CLI が解釈するため、env ドリフトガードのキー集
 
 トポロジとモードの定数（`DB_HOST=postgres`、`GUACD_HOST=guacd`、`DB_DRIVER`、`GIN_MODE`、コンテナ内のパス）は
 compose の `environment:` ブロックから与えられます。このブロックは `env_file` より優先されるため、本ファイルで
-設定しても効果はありません。`DB_DRIVER` には出荷時の既定値がなく、値がなければバックエンドは起動を拒否します。
+設定しても効果はありません。`DB_HOST` を変える唯一の形態である external database overlay は、本ファイルの後半にある
+専用のキー `EXTERNAL_DB_HOST` から値を取り、ここに `DB_HOST` の行を書いても読みません。`DB_DRIVER` には出荷時の既定値がなく、値がなければバックエンドは起動を拒否します。
 両方の compose ファイルはこれを供給しますが、バイナリ単体または自前ビルドによるデプロイ（k8s マニフェスト、
 systemd ユニットなど）では、その側で供給する必要があります。サポート対象は PostgreSQL のみです。sqlite の分岐は
 単体テスト用であり、バージョン管理されたマイグレーションは PostgreSQL の SQL です。
@@ -99,7 +100,8 @@ DATA_PATH=./data
 
 ## データベース
 
-以下は compose の postgres サービスの名前と資格情報で、開発・本番のいずれでも同じです。
+以下はバックエンドが接続する PostgreSQL の名前と資格情報です。既定では compose 同梱の postgres サービスであり、開発・本番のいずれでも同じです。
+PostgreSQL を別のサーバーに置く場合は、後述の「自前のデータベースがある配備」を参照してください。そのときこの 4 つのキーは、そのサーバー上のデータベースとアカウントを表します。
 
 ### `DB_NAME` / `DB_USER`
 
@@ -401,6 +403,25 @@ Host ヘッダーは、利用者が実際に接続するポートを含めて転
 ```env
 # COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml
 # HTTP_PORT=80
+```
+
+### 自前のデータベースがある配備（external database overlay）
+
+PostgreSQL をこのホスト以外の場所（組織が既に運用しているデータベースサーバー、マネージドサービス、
+または自前の 2 台目のマシン）に置くと、このアプリケーションホストはデータの唯一の置き場ではなくなります。
+事前に用意し、同じデータベースへ向けたスタンバイホストが、このホストの停止中に引き継げます。
+この overlay は同梱の postgres をスタックから外し、バックエンドを下で指定するサーバーへ向けます。そのとき上の
+`DB_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_SSLMODE` はそのサーバー上のデータベースとアカウントを表し
+（ネットワーク越しなら `require` か `verify-full`）、`${DATA_PATH}/postgres` は使われなくなります。
+データベースとアカウントは初回起動の前に作成しておきます。スキーマはバックエンドが作成します。
+`scripts/quickstart.sh` を実行する前に `DB_PASSWORD` を自分で記入してください。`EXTERNAL_DB_HOST` を設定した場合、スクリプトはこの値を生成せず、未記入なら停止して記入を求めます。
+下の 3 行のコメントを外します。ingress overlay と組み合わせるには、2 つのファイルを 1 つの `COMPOSE_FILE` の値に並べます。
+切り替えの手順、スタンバイホストに事前に必要なもの、切り替えで保たれないものは `docs/ja/ops/standby-takeover.md` を参照してください。
+
+```env
+# COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml
+# EXTERNAL_DB_HOST=
+# EXTERNAL_DB_PORT=5432
 ```
 
 ---

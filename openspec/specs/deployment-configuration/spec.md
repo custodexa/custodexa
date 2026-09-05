@@ -168,3 +168,33 @@ SHALL NOT 僅記載於數十行外之其他段落——讀者在選擇點看不�
 - **WHEN** 檢視範本的參與開發指引
 - **THEN** 含「熱重載環境建議 `KEK_PROVIDER=env`」與取得材料的方式，無「照抄即可跑」宣稱
 
+### Requirement: 外接資料庫部署形態
+
+專案 SHALL 提供 compose overlay `docker-compose.external-database.yml`，使正式版堆疊不啟動自帶的 postgres 服務、
+後端改連部署方指定的外部 PostgreSQL 伺服器。overlay SHALL 以未啟用的 profile 關閉自帶 postgres（`config` 輸出不含該服務），
+SHALL 將 backend 的啟動依賴收斂為不含 postgres，並 SHALL 以 `.env` 的 `EXTERNAL_DB_HOST`（缺值即拒絕啟動，訊息指名該鍵）
+與 `EXTERNAL_DB_PORT`（預設 5432）供給 backend 的 `DB_HOST`／`DB_PORT`。`DB_NAME`／`DB_USER`／`DB_PASSWORD`／`DB_SSLMODE`
+在此形態下 SHALL 沿用既有鍵，描述外部伺服器上的資料庫與帳號。overlay SHALL 可與 `docker-compose.external-ingress.yml` 併用。
+
+`.env.example` SHALL 以註解形式提供該形態的 `COMPOSE_FILE`、`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 三鍵並說明其用途、
+`${DATA_PATH}/postgres` 於此形態不再使用、跨網路連線應設 `DB_SSLMODE=require` 或 `verify-full`，以及快速安裝腳本會替換
+仍為範本值的 `DB_PASSWORD` 故須先自行填入。`DB_HOST` SHALL 維持不入範本（見「拓撲綁定值不入範本」）：外接位址由獨立鍵承載，
+不在主檔形態下製造填了不生效的鍵。
+
+#### Scenario: overlay 下堆疊不含 postgres 且後端指向外部伺服器
+- **WHEN** `.env` 設 `EXTERNAL_DB_HOST=db.example.internal` 並執行 `docker compose -f docker-compose.yml -f docker-compose.external-database.yml config`
+- **THEN** 輸出的服務集合不含 `postgres`；backend 的 `depends_on` 不含 `postgres`；backend 的 `DB_HOST` 為 `db.example.internal`、`DB_PORT` 為 `5432`
+
+#### Scenario: 缺外部位址時拒絕啟動
+- **WHEN** `.env` 未設 `EXTERNAL_DB_HOST` 而套用 overlay
+- **THEN** compose 以非零狀態結束，訊息指名 `EXTERNAL_DB_HOST` 須設為 PostgreSQL 伺服器位址；不以任何預設位址啟動
+
+#### Scenario: 與外部 ingress overlay 併用
+- **WHEN** `COMPOSE_FILE` 同時列出主檔、外接資料庫 overlay 與外部 ingress overlay
+- **THEN** `config` 成功：無 `postgres`、內建代理不啟動、frontend 發布 HTTP 埠、backend 指向外部資料庫
+
+#### Scenario: 範本記載外接資料庫鍵而漂移守衛仍綠
+- **WHEN** 檢視 `.env.example` 並執行環境變數守衛測試
+- **THEN** 範本含註解狀態的 `COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml`、`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 與上述說明；
+  範本不含 `DB_HOST` 行；`TestEnvExampleNoDrift` 等守衛通過
+

@@ -422,6 +422,11 @@ func extractResource(path string) model.AuditResource {
 		// 只有 varchar(20)，"change_secret_candidate" 放不下
 		case "change-secret-candidates":
 			return model.ResourceChangeSecretPlan
+		// 批次改密：同理併入改密分類（批次是改密流程的一環；varchar(20) 放不下
+		// 獨立常數）。POST 不注入資產主體——一次批次作用於多台，逐台的事實由
+		// 執行時的帳號變更審計各自承載
+		case "change-secret-batches":
+			return model.ResourceChangeSecretPlan
 		// 稽核工作台的聚合讀取（同 PCI 10.2.1.3：對審計資料的讀取須可辨識）
 		case "timeline", "subjects":
 			return model.ResourceAuditTimeline

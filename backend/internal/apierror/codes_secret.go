@@ -36,6 +36,18 @@ var (
 	CodeInternalChangeSecretCandidateDiscard = register("INTERNAL_CHANGE_SECRET_CANDIDATE_DISCARD", Descriptor{ZhFallback: "清除候選憑證失敗"})
 )
 
+// --- 以帳號為主軸的批次改密（change_secret_batch_handler.go）---
+var (
+	CodeBatchUsernameRequired = register("VALIDATION_BATCH_USERNAME_REQUIRED", Descriptor{ZhFallback: "批次改密須指定帳號名"})
+	CodeBatchBadPasswordMode  = register("VALIDATION_BATCH_BAD_PASSWORD_MODE", Descriptor{ZhFallback: "密碼模式僅支援 per_target 或 shared"})
+	CodeBatchNoTargets        = register("VALIDATION_BATCH_NO_TARGETS", Descriptor{ZhFallback: "批次改密沒有可執行的目標"})
+	CodeBatchTargetMismatch   = register("VALIDATION_BATCH_TARGET_MISMATCH", Descriptor{ZhFallback: "選定的帳號不屬於指定的帳號名"})
+	CodeBatchNotFound         = register("NOTFOUND_CHANGE_SECRET_BATCH", Descriptor{ZhFallback: "批次改密不存在"})
+
+	CodeInternalChangeSecretBatchQuery  = register("INTERNAL_CHANGE_SECRET_BATCH_QUERY", Descriptor{ZhFallback: "查詢批次改密失敗"})
+	CodeInternalChangeSecretBatchCreate = register("INTERNAL_CHANGE_SECRET_BATCH_CREATE", Descriptor{ZhFallback: "建立批次改密失敗"})
+)
+
 // --- 命令片段（snippet_handler.go）---
 var (
 	CodeSnippetNameEmpty = register("VALIDATION_SNIPPET_NAME_EMPTY", Descriptor{ZhFallback: "片段名稱不可為空"})

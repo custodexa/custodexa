@@ -60,20 +60,113 @@ type changeSecretTarget struct {
 	channel string
 }
 
+// rotationJob 一次執行的設定來源。
+//
+// 計劃與批次改密走同一條狀態機，差別只在「設定從哪裡來」：計劃帶排程與資產集合，
+// 批次帶帳號名與一次性的目標選擇。把兩者翻成同一個純值再交給狀態機，
+// resolveTargets／runTarget 就不必認識任何一種來源。
+type rotationJob struct {
+	// planID／batchID 記錄與候選的來源；恰一個非 0
+	planID  uint
+	batchID uint
+	// source 告警內容裡的來源識別（計劃名或批次識別）
+	source string
+	// scope 帳號範圍：計劃沿其設定，批次為單一帳號名
+	scope       model.AccountScope
+	secretType  string
+	keyStrategy string
+	policy      PasswordPolicy
+	// fixedPassword 非空＝所有目標使用同一組新密碼（批次的整批同一組模式），
+	// 空＝每個目標各自隨機
+	fixedPassword string
+	// sharedGroup 非空＝成功提交的帳號歸入此憑證群組；空＝沿既有規則脫組
+	sharedGroup string
+}
+
+// jobFromPlan 把計劃翻成執行設定；行為與直接讀計劃逐項相同
+func jobFromPlan(plan *model.ChangeSecretPlan) rotationJob {
+	return rotationJob{
+		planID:      plan.ID,
+		source:      "plan=" + plan.Name,
+		scope:       model.AccountScope(PlanAccountScope(plan)),
+		secretType:  normalizeSecretType(plan.SecretType),
+		keyStrategy: plan.KeyStrategy,
+		policy:      PolicyFromPlan(plan),
+	}
+}
+
 // RunPlan 執行計劃：逐帳號隔離錯誤，單一失敗不中斷批次
 func (r *ChangeSecretRunner) RunPlan(plan *model.ChangeSecretPlan) []model.ChangeSecretRecord {
+	return r.run(jobFromPlan(plan), AssetIDList(plan))
+}
+
+// jobFromBatch 把批次翻成執行設定；整批同一組模式在此產生那一組密碼。
+//
+// 密碼只活在回傳值裡：批次列不存它，各目標的候選列以信封加密各自持有一份。
+func jobFromBatch(batch *model.ChangeSecretBatch) (rotationJob, error) {
+	job := rotationJob{
+		batchID:    batch.ID,
+		source:     batchSource(batch),
+		scope:      model.AccountScope{batch.Username},
+		secretType: model.ChangeSecretTypePassword,
+		policy: PasswordPolicy{
+			Length:           batch.PasswordLength,
+			IncludeSymbol:    batch.PasswordIncludeSymbol,
+			ExcludeAmbiguous: batch.PasswordExcludeAmbiguous,
+		},
+	}
+	if job.policy.Length == 0 {
+		job.policy.Length = model.PasswordLengthDefault
+	}
+	if batch.PasswordMode == model.BatchPasswordShared {
+		password, err := GeneratePassword(job.policy)
+		if err != nil {
+			return job, err
+		}
+		job.fixedPassword = password
+		job.sharedGroup = batch.SharedGroup
+	}
+	return job, nil
+}
+
+// RunBatch 執行批次：對每台目標資產以批次的帳號名解析帳號，逐目標沿計劃的
+// 狀態機執行；全部處理完後寫回計數並做共用群組的解散判定。
+func (r *ChangeSecretRunner) RunBatch(batch *model.ChangeSecretBatch, assetIDs []uint) []model.ChangeSecretRecord {
+	job, err := jobFromBatch(batch)
+	if err != nil {
+		// 整批同一組的密碼產生失敗：沒有任何遠端被觸碰，每台各記一筆乾淨失敗
+		log.Printf("[ChangeSecret] 批次密碼產生失敗 batch=%d err=%v", batch.ID, err)
+		var records []model.ChangeSecretRecord
+		for _, assetID := range assetIDs {
+			records = append(records, r.save(model.ChangeSecretRecord{
+				BatchID: batch.ID, AssetID: assetID, SecretType: model.ChangeSecretTypePassword,
+				Status: model.ChangeSecretFailed, Error: model.ChangeSecretReasonPasswordGenerateFailed,
+				ExecutedAt: time.Now(),
+			}))
+		}
+		completeBatch(r.db, batch.ID, records)
+		return records
+	}
+	records := r.run(job, assetIDs)
+	completeBatch(r.db, batch.ID, records)
+	noteSharedGroupSettled(r.db, batch.ID, job.sharedGroup)
+	return records
+}
+
+// run 對資產集合逐台、逐帳號執行；任何錯誤只入記錄
+func (r *ChangeSecretRunner) run(job rotationJob, assetIDs []uint) []model.ChangeSecretRecord {
 	var records []model.ChangeSecretRecord
-	for _, assetID := range AssetIDList(plan) {
-		targets, skipRec := r.resolveTargets(plan, assetID)
+	for _, assetID := range assetIDs {
+		targets, skipRec := r.resolveTargets(job, assetID)
 		if skipRec != nil {
 			records = append(records, r.save(*skipRec))
 			continue
 		}
 		for _, tgt := range targets {
-			rec := r.runTarget(plan, tgt)
+			rec := r.runTarget(job, tgt)
 			records = append(records, rec)
 			if rec.Status == model.ChangeSecretFailed || rec.Status == model.ChangeSecretUnverified {
-				r.alertFailure(plan, rec)
+				r.alertFailure(job, rec)
 			}
 		}
 	}
@@ -82,10 +175,10 @@ func (r *ChangeSecretRunner) RunPlan(plan *model.ChangeSecretPlan) []model.Chang
 
 // resolveTargets 把（資產 × 帳號範圍）展開為帳號清單。
 // 回傳非 nil 的 record 代表整台資產層級即被跳過（非 SSH、無帳號、讀取失敗）
-func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetID uint) ([]changeSecretTarget, *model.ChangeSecretRecord) {
+func (r *ChangeSecretRunner) resolveTargets(job rotationJob, assetID uint) ([]changeSecretTarget, *model.ChangeSecretRecord) {
 	base := model.ChangeSecretRecord{
-		PlanID: plan.ID, AssetID: assetID,
-		SecretType: normalizeSecretType(plan.SecretType), ExecutedAt: time.Now(),
+		PlanID: job.planID, BatchID: job.batchID, AssetID: assetID,
+		SecretType: job.secretType, ExecutedAt: time.Now(),
 	}
 	asset, err := r.assetService.GetByID(assetID)
 	if err != nil {
@@ -111,8 +204,7 @@ func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetI
 	}
 	// Windows 通道沒有等價於 authorized_keys 的金鑰模型（其 ACL 與檔案位置另成一套），
 	// 本版不做。誠實跳過勝過以密碼路徑冒充成功
-	if model.IsWindowsRotationChannel(channel) &&
-		normalizeSecretType(plan.SecretType) == model.ChangeSecretTypeSSHKey {
+	if model.IsWindowsRotationChannel(channel) && job.secretType == model.ChangeSecretTypeSSHKey {
 		base.Status = model.ChangeSecretSkipped
 		base.Error = model.ChangeSecretReasonSecretTypeUnsupported
 		return nil, &base
@@ -124,7 +216,7 @@ func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetI
 		base.Error = model.ChangeSecretReasonAccountLookupFailed
 		return nil, &base
 	}
-	scope := model.AccountScope(PlanAccountScope(plan))
+	scope := job.scope
 	var targets []changeSecretTarget
 	for _, acc := range accounts {
 		if !scope.Contains(acc.Username) {
@@ -143,7 +235,7 @@ func (r *ChangeSecretRunner) resolveTargets(plan *model.ChangeSecretPlan, assetI
 }
 
 // runTarget 單帳號改密；任何錯誤僅入 record 不上拋
-func (r *ChangeSecretRunner) runTarget(plan *model.ChangeSecretPlan, tgt changeSecretTarget) model.ChangeSecretRecord {
+func (r *ChangeSecretRunner) runTarget(job rotationJob, tgt changeSecretTarget) model.ChangeSecretRecord {
 	// per-account 互斥：同一帳號的兩次改密同時跑，會有兩個候選互相覆蓋遠端狀態
 	lockAny, _ := r.accountLocks.LoadOrStore(tgt.accountID, &sync.Mutex{})
 	lock := lockAny.(*sync.Mutex)
@@ -151,9 +243,9 @@ func (r *ChangeSecretRunner) runTarget(plan *model.ChangeSecretPlan, tgt changeS
 	defer lock.Unlock()
 
 	rec := model.ChangeSecretRecord{
-		PlanID: plan.ID, AssetID: tgt.assetID,
+		PlanID: job.planID, BatchID: job.batchID, AssetID: tgt.assetID,
 		AccountID: tgt.accountID, AccountUsername: tgt.username,
-		SecretType: normalizeSecretType(plan.SecretType), ExecutedAt: time.Now(),
+		SecretType: job.secretType, ExecutedAt: time.Now(),
 	}
 	finish := func(status, errMsg string) model.ChangeSecretRecord {
 		rec.Status = status
@@ -189,37 +281,43 @@ func (r *ChangeSecretRunner) runTarget(plan *model.ChangeSecretPlan, tgt changeS
 		asset:      creds.Asset,
 		channel:    tgt.channel,
 		username:   tgt.username,
-		secretType: normalizeSecretType(plan.SecretType),
+		secretType: job.secretType,
 		addr:       rotationAddr(creds.Asset, tgt.channel),
 		hostKeyCB:  r.hostKeys.Callback(tgt.assetID),
 	}
 	exec := r.executors(tgt.channel)
 
-	if normalizeSecretType(plan.SecretType) == model.ChangeSecretTypeSSHKey {
-		return r.rotateKey(plan, tgt, creds, rt, exec, finish)
+	if job.secretType == model.ChangeSecretTypeSSHKey {
+		return r.rotateKey(job, tgt, creds, rt, exec, finish)
 	}
-	return r.rotatePassword(plan, tgt, creds, rt, exec, finish)
+	return r.rotatePassword(job, tgt, creds, rt, exec, finish)
 }
 
 // rotatePassword 密碼輪替：chpasswd（憑證經 stdin，不進 argv）
-func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt changeSecretTarget,
+func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTarget,
 	creds *AssetCredentials, rt rotationTarget, exec rotationExecutor,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
 
 	if creds.Password == "" {
 		return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonNoPasswordCredential)
 	}
-	newPassword, err := GeneratePassword(PolicyFromPlan(plan))
-	if err != nil {
-		log.Printf("[ChangeSecret] 產生新密碼失敗 asset=%d account=%d err=%v", tgt.assetID, tgt.accountID, err)
-		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonPasswordGenerateFailed)
+	// 整批同一組模式已在批次開頭產生密碼；其餘每個目標各自隨機
+	newPassword := job.fixedPassword
+	if newPassword == "" {
+		generated, err := GeneratePassword(job.policy)
+		if err != nil {
+			log.Printf("[ChangeSecret] 產生新密碼失敗 asset=%d account=%d err=%v", tgt.assetID, tgt.accountID, err)
+			return finish(model.ChangeSecretFailed, model.ChangeSecretReasonPasswordGenerateFailed)
+		}
+		newPassword = generated
 	}
 
 	ctx := context.Background()
 	// 候選先於遠端落庫
 	cand, err := r.candidates.Create(ctx, CandidateInput{
 		AssetID: tgt.assetID, AccountID: tgt.accountID, AccountUsername: tgt.username,
-		PlanID: plan.ID, SecretType: model.ChangeSecretTypePassword, Password: newPassword,
+		PlanID: job.planID, BatchID: job.batchID, SharedGroup: job.sharedGroup,
+		SecretType: model.ChangeSecretTypePassword, Password: newPassword,
 	})
 	if err != nil {
 		if errors.Is(err, ErrCandidateExists) {
@@ -267,7 +365,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonPromoteFailed)
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonPromoteFailed)
 	}
-	noteCredentialGroupLeft(r.db, tgt.accountID)
+	noteCredentialGroupCommitted(r.db, tgt.accountID, job.sharedGroup)
 	return finish(model.ChangeSecretSuccess, "")
 }
 
@@ -278,7 +376,7 @@ func (r *ChangeSecretRunner) rotatePassword(plan *model.ChangeSecretPlan, tgt ch
 // 這條連線的生命週期跨越「動遠端」與「驗證」兩步，無法以 Rotate／Verify 兩次
 // 獨立呼叫表達。金鑰輪替也只有 POSIX 通道支援——Windows 通道在 resolveTargets
 // 就已跳過，故這裡不會遇到別種執行器。驗證步驟仍走介面，使重試路徑同源。
-func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeSecretTarget,
+func (r *ChangeSecretRunner) rotateKey(job rotationJob, tgt changeSecretTarget,
 	creds *AssetCredentials, rt rotationTarget, exec rotationExecutor,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
 
@@ -298,7 +396,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 	ctx := context.Background()
 	cand, err := r.candidates.Create(ctx, CandidateInput{
 		AssetID: tgt.assetID, AccountID: tgt.accountID, AccountUsername: tgt.username,
-		PlanID: plan.ID, SecretType: model.ChangeSecretTypeSSHKey,
+		PlanID: job.planID, BatchID: job.batchID, SecretType: model.ChangeSecretTypeSSHKey,
 		PrivateKey: newPrivate, PublicKey: newLine, PreviousPublicKey: previousLine,
 	})
 	if err != nil {
@@ -333,7 +431,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 
 	// 加新：預設策略下既有金鑰（含使用者自放的）全部保留
 	next := AppendKeyLine(current.Original, newLine)
-	if plan.KeyStrategy == model.KeyStrategyExclusive {
+	if job.keyStrategy == model.KeyStrategyExclusive {
 		next = newLine + "\n"
 	}
 	if err := WriteAuthorizedKeys(sc, next); err != nil {
@@ -350,7 +448,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 		// 還原：在**同一條已認證的 SFTP 連線**上回寫（不重新撥號，故與舊憑證是否
 		// 仍有效無關）；移除剛加入的那一行，exclusive 則回填原始內容
 		restore := RemoveKeyLine(next, newLine)
-		if plan.KeyStrategy == model.KeyStrategyExclusive {
+		if job.keyStrategy == model.KeyStrategyExclusive {
 			restore = current.Original
 		}
 		if rErr := WriteAuthorizedKeys(sc, restore); rErr != nil {
@@ -363,7 +461,7 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 	}
 
 	// 刪舊：只刪本系統先前推送的那一行，使用者自放的鑰一律不動
-	if previousLine != "" && plan.KeyStrategy != model.KeyStrategyExclusive {
+	if previousLine != "" && job.keyStrategy != model.KeyStrategyExclusive {
 		pruned := RemoveKeyLine(next, previousLine)
 		if pruned != next {
 			if err := WriteAuthorizedKeys(sc, pruned); err != nil {
@@ -380,7 +478,8 @@ func (r *ChangeSecretRunner) rotateKey(plan *model.ChangeSecretPlan, tgt changeS
 		_, _ = r.candidates.RecordFailure(cand, model.ChangeSecretReasonPromoteFailed)
 		return finish(model.ChangeSecretUnverified, model.ChangeSecretReasonPromoteFailed)
 	}
-	noteCredentialGroupLeft(r.db, tgt.accountID)
+	// 金鑰輪替每帳號各自生成金鑰對，不存在整批同一組，故一律走脫組
+	noteCredentialGroupCommitted(r.db, tgt.accountID, "")
 	return finish(model.ChangeSecretSuccess, "")
 }
 
@@ -540,14 +639,14 @@ func logRemoteCause(tgt changeSecretTarget, stage string, err error) {
 //
 // 告警離開產品邊界（webhook／Slack），故內容一律是機器碼＋固定文案；
 // 遠端原文只留在後端 log
-func (r *ChangeSecretRunner) alertFailure(plan *model.ChangeSecretPlan, rec model.ChangeSecretRecord) {
+func (r *ChangeSecretRunner) alertFailure(job rotationJob, rec model.ChangeSecretRecord) {
 	if r.notifier == nil {
 		return
 	}
 	r.notifier.Enqueue(model.CommandAlert{
 		RuleName: "改密計劃失敗",
-		Command: fmt.Sprintf("plan=%s asset_id=%d account=%s reason=%s（詳細遠端訊息見伺服器日誌）",
-			plan.Name, rec.AssetID, rec.AccountUsername, rec.Error),
+		Command: fmt.Sprintf("%s asset_id=%d account=%s reason=%s（詳細遠端訊息見伺服器日誌）",
+			job.source, rec.AssetID, rec.AccountUsername, rec.Error),
 		Severity: "high",
 	})
 }

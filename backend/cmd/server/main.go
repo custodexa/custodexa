@@ -88,7 +88,7 @@ func main() {
 		graph   *appGraph
 		// sealOnlyHandler 為獨立解封監聽的 handler；nil 代表不另開監聽。
 		sealOnlyHandler http.Handler
-		shutdown        func(context.Context)
+		shutdown        func(context.Context) error
 	)
 
 	// 來源網段組態在**任何模式下都要解析**：A／C 模式過去一律傳 nil，
@@ -128,15 +128,17 @@ func main() {
 			}, w.admin))
 			sealOnlyHandler = sr
 		}
-		shutdown = func(ctx context.Context) {
+		shutdown = func(ctx context.Context) error {
 			// 解封後才有服務圖可收；未解封時只需關 journal。
+			var err error
 			if snap := machine.Snapshot(); snap.Services != nil {
-				_ = snap.Services.Release(ctx)
+				err = snap.Services.Release(ctx)
 			}
 			machine.WaitCleanup()
 			if s1.journal != nil {
 				_ = s1.journal.Close()
 			}
+			return err
 		}
 		log.Println("[Seal] KEK_PROVIDER=ui：已封印啟動，段 2 延後至解封成功後執行")
 	} else {
@@ -178,7 +180,7 @@ func main() {
 		})
 		registerRoutes(r, deps)
 		swap.Set(r)
-		shutdown = func(ctx context.Context) { _ = graph.Release(ctx) }
+		shutdown = func(ctx context.Context) error { return graph.Release(ctx) }
 	}
 
 	// 封印狀態指標的資料源。
@@ -258,21 +260,31 @@ func main() {
 
 	log.Println("收到關閉信號，開始優雅關閉...")
 
-	// 設定 5 秒超時
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	// 關閉 HTTP Server（含解封端點的獨立監聽）→ 再收束段 2 資源。
 	// 順序不可倒：仍在處理中的請求可能還會產生審計列。
-	steps := []shutdownStep{}
-	if sealSrv != nil {
-		steps = append(steps, shutdownStep{"解封端點獨立監聽", sealSrv.Shutdown})
-	}
-	steps = append(steps,
-		shutdownStep{"主監聽", srv.Shutdown},
-		shutdownStep{"段 2 資源", func(c context.Context) error { shutdown(c); return nil }})
+	//
+	// 兩段各有預算：監聽收束等的是進行中的請求；段 2 資源收束（含審計佇列排空）
+	// 另有保底——監聽收束若吃光整段預算，審計佇列一列都排不了。
+	ctx, cancel := context.WithTimeout(context.Background(), listenerShutdownTimeout)
+	defer cancel()
 
-	if code := runShutdown(ctx, steps); code != 0 {
+	listenerSteps := []shutdownStep{}
+	if sealSrv != nil {
+		listenerSteps = append(listenerSteps, shutdownStep{"解封端點獨立監聽", sealSrv.Shutdown})
+	}
+	listenerSteps = append(listenerSteps, shutdownStep{"主監聽", srv.Shutdown})
+	code := runShutdown(ctx, listenerSteps)
+
+	rctx, rcancel := resourceShutdownContext(ctx, time.Now())
+	defer rcancel()
+	// 型別寫明：生命週期守衛以 shutdownStep 字面量辨識收束步驟，
+	// 省略型別的元素字面量不會被計入序列。
+	resourceStep := shutdownStep{"段 2 資源", shutdown}
+	if c := runShutdown(rctx, []shutdownStep{resourceStep}); c != 0 {
+		code = c
+	}
+
+	if code != 0 {
 		// **離開碼保留**：關閉逾時（仍有連線未收完、審計未 flush 完）是 supervisor
 		// 與 CI 需要知道的事實。改用 Fatalf 會跳過後續資源收束，故錯誤只記錄、
 		// 收束照跑，非零碼留到全部收束完成的最末端才生效。
@@ -322,6 +334,30 @@ func serveAll(listeners []serverListener) {
 			}
 		}()
 	}
+}
+
+// 收束預算。兩者相加須留在容器編排預設的強制終止期限（10 秒）之內，
+// 否則保底只是紙上的數字。
+const (
+	// listenerShutdownTimeout HTTP 監聽收束的預算：等待進行中的請求完成。
+	listenerShutdownTimeout = 5 * time.Second
+	// resourceShutdownFloor 段 2 資源收束的保底預算。監聽收束用盡整段預算時，
+	// 資源收束（含審計佇列排空）仍至少有這麼多時間；監聽提早收完則沿用原期限，
+	// 正常路徑的總時長不變。
+	resourceShutdownFloor = 4 * time.Second
+)
+
+// resourceShutdownContext 段 2 資源收束的 context：期限取「監聽收束的原期限」與
+// 「now＋保底」的較晚者。
+//
+// **從 Background 派生而非從 listenerCtx**：子 context 活不過父 context，
+// 從父派生時保底寫了等於沒寫。
+func resourceShutdownContext(listenerCtx context.Context, now time.Time) (context.Context, context.CancelFunc) {
+	deadline := now.Add(resourceShutdownFloor)
+	if d, ok := listenerCtx.Deadline(); ok && d.After(deadline) {
+		deadline = d
+	}
+	return context.WithDeadline(context.Background(), deadline)
 }
 
 // shutdownStep 是一個具名的收束步驟。

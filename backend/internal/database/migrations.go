@@ -109,6 +109,16 @@ var migrations = []Migration{
 		Up:      applyWindowsLocalAccountRotation,
 		Down:    rollbackWindowsLocalAccountRotation,
 	},
+	{
+		// 以帳號為主軸的批次改密的資料層：新表 change_secret_batches、
+		// change_secret_records.batch_id、change_secret_candidates.batch_id／shared_group。
+		// 純加法、存量列以 default 回填為「來自計劃」。**Down 有損**（刪批次彙總
+		// 與來源辨識，生產無回滾入口；見 migration_account_batch_rotation.go 檔頭的 Down 契約）
+		Version: "20260905_account_batch_rotation",
+		Name:    "account_batch_rotation",
+		Up:      applyAccountBatchRotation,
+		Down:    rollbackAccountBatchRotation,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
@@ -124,7 +134,8 @@ func schemaDDLStatements() []string {
 	out = append(out, sourceIPForensicsDDL()...)
 	out = append(out, dbQueryConsoleDDL()...)
 	out = append(out, rotationEvidenceReportDDL()...)
-	return append(out, windowsLocalAccountRotationDDL()...)
+	out = append(out, windowsLocalAccountRotationDDL()...)
+	return append(out, accountBatchRotationDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

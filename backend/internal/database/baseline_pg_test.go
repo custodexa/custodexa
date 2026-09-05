@@ -110,11 +110,13 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 目標資料庫）與 3 條 CHECK（結果狀態值域、交易態值域、事件 ID 長度形狀）。
 	// 輪替證據報告 增 1 表（rotation_report_schedules）、4 索引（該表 pkey 與名稱
 	// 唯一索引、asset_accounts 的憑證群組、audit_export_jobs 的種類＋狀態），無 CHECK。
-	if got.Tables != 52 {
-		t.Errorf("表數 = %d, want 52（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules）", got.Tables)
+	// 批次改密 增 1 表（change_secret_batches）、3 索引（該表 pkey 與帳號名、
+	// change_secret_records 的批次），無 CHECK。
+	if got.Tables != 53 {
+		t.Errorf("表數 = %d, want 53（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches）", got.Tables)
 	}
-	if got.Indexes != 186 {
-		t.Errorf("索引數 = %d, want 186（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條）", got.Indexes)
+	if got.Indexes != 189 {
+		t.Errorf("索引數 = %d, want 189（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條）", got.Indexes)
 	}
 	if got.Checks != 18 {
 		t.Errorf("CHECK 約束數 = %d, want 18（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條）", got.Checks)

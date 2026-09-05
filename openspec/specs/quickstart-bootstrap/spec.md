@@ -6,9 +6,7 @@ CSPRNG 生成、冪等性、KEK 模式尊重、破壞性操作護欄、機密回
 的進度回報與登入資訊輸出。腳本是既有部署驗證規則（deployment-hardening／
 deployment-configuration）的消費者：生成值必須通過既有 fail-close 驗證，
 不修改任何產品行為。
-
 ## Requirements
-
 ### Requirement: 機密缺項判定與生成
 `scripts/quickstart.sh` SHALL 對四項機密逐一檢查：值為空、或等於範本出貨值
 （`JWT_SECRET=change-me-in-production-dev-secret`、
@@ -45,14 +43,6 @@ deployment-configuration）的消費者：生成值必須通過既有 fail-close
 - **WHEN** `.env` 內 `KEK_PROVIDER=ui`，執行腳本
 - **THEN** `.env` 內不出現未註解的 `ENCRYPTION_KEY=` 行，並回報略過理由
 
-### Requirement: 資料庫已初始化護欄
-`${DATA_PATH:-./data}/postgres` 目錄存在且非空時，腳本 SHALL NOT 變更 `DB_PASSWORD`
-（即使其值仍為範本出貨值），並 SHALL 說明理由；不提供強制覆寫旗標。
-
-#### Scenario: 既有資料庫不被鎖死
-- **WHEN** `./data/postgres` 已含初始化後的資料庫檔案且 `DB_PASSWORD=postgres`，執行腳本
-- **THEN** `DB_PASSWORD` 維持原值，輸出含「已初始化」護欄說明
-
 ### Requirement: 機密回顯與檔案權限
 腳本 SHALL 僅回顯**本次生成**的 `ADMIN_INITIAL_PASSWORD`（使用者登入所需）；
 既有機密 SHALL NOT 回顯。執行後 `.env` 權限 SHALL 收斂為 600（不支援的檔案系統上失敗不阻斷）。
@@ -85,3 +75,23 @@ deployment-configuration）的消費者：生成值必須通過既有 fail-close
 - **WHEN** `.env` 為範本出貨預設（`KEK_PROVIDER=ui`），執行 `bash scripts/quickstart.sh --up` 且後端健康
 - **THEN** 收尾區塊為初始化解封指引（首次造訪進初始化頁、主金鑰瀏覽器本地生成須保存、
   以 admin 帳密授權），含 URL 與 admin 帳密，且輸出不含任何 KEK 材料
+
+### Requirement: 資料庫密碼護欄
+`${DATA_PATH:-./data}/postgres` 目錄存在且非空時，腳本 SHALL NOT 變更 `DB_PASSWORD`
+（即使其值仍為範本出貨值），並 SHALL 說明理由；不提供強制覆寫旗標。
+外接資料庫形態（`EXTERNAL_DB_HOST` 有值）下，腳本 SHALL NOT 生成 `DB_PASSWORD`：該密碼由外部伺服器決定，
+不是本機可以決定的值。此形態下值已設時 SHALL 維持原值並回報；值為空或仍為範本出貨值時 SHALL 以非零狀態失敗，
+訊息 SHALL 指名要填的鍵與原因，不得改用生成值。
+
+#### Scenario: 既有資料庫不被鎖死
+- **WHEN** `./data/postgres` 已含初始化後的資料庫檔案且 `DB_PASSWORD=postgres`，執行腳本
+- **THEN** `DB_PASSWORD` 維持原值，輸出含「已初始化」護欄說明
+
+#### Scenario: 外接資料庫的自訂密碼不被改
+- **WHEN** `.env` 內 `EXTERNAL_DB_HOST` 有值且 `DB_PASSWORD` 為使用者自訂值，本機無 postgres 資料目錄，執行腳本
+- **THEN** `DB_PASSWORD` 維持原值，輸出回報維持不變
+
+#### Scenario: 外接資料庫缺密碼時停下
+- **WHEN** `.env` 內 `EXTERNAL_DB_HOST` 有值且 `DB_PASSWORD` 為空或仍為範本出貨值，執行腳本
+- **THEN** 腳本以非零狀態結束，訊息指名 `DB_PASSWORD` 須填入外部伺服器的密碼；`.env` 未被改寫
+

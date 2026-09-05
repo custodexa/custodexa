@@ -103,7 +103,12 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 		r.noteFailure(cand, model.ChangeSecretReasonPromoteFailed, err)
 		return false
 	}
-	noteCredentialGroupLeft(r.db, cand.AccountID)
+	noteCredentialGroupCommitted(r.db, cand.AccountID, cand.SharedGroup)
+	if cand.SharedGroup != "" {
+		// 批次可能早已結束、當時因仍有待驗證候選而未解散群組；本候選轉正後
+		// 若群組仍只有一員且再無待驗證候選，該解散就在此刻
+		noteSharedGroupSettled(r.db, cand.BatchID, cand.SharedGroup)
+	}
 	r.recordPromotion(cand)
 	return true
 }
@@ -132,6 +137,7 @@ func (r *ChangeSecretRetryRunner) noteFailure(cand *model.ChangeSecretCandidate,
 func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandidate) {
 	rec := model.ChangeSecretRecord{
 		PlanID:          cand.PlanID,
+		BatchID:         cand.BatchID,
 		AssetID:         cand.AssetID,
 		AccountID:       cand.AccountID,
 		AccountUsername: cand.AccountUsername,

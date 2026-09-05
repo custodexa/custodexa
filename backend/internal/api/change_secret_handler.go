@@ -25,16 +25,17 @@ type ChangeSecretHandler struct {
 	runner      *asset.ChangeSecretRunner
 	candidates  *asset.ChangeSecretCandidateService
 	retry       *asset.ChangeSecretRetryRunner
+	batches     *asset.ChangeSecretBatchService
 	reloader    ChangeSecretReloader
 }
 
 // NewChangeSecretHandler 建立 handler
 func NewChangeSecretHandler(planService *asset.ChangeSecretPlanService, runner *asset.ChangeSecretRunner,
 	candidates *asset.ChangeSecretCandidateService, retry *asset.ChangeSecretRetryRunner,
-	reloader ChangeSecretReloader) *ChangeSecretHandler {
+	batches *asset.ChangeSecretBatchService, reloader ChangeSecretReloader) *ChangeSecretHandler {
 	return &ChangeSecretHandler{
 		planService: planService, runner: runner,
-		candidates: candidates, retry: retry, reloader: reloader,
+		candidates: candidates, retry: retry, batches: batches, reloader: reloader,
 	}
 }
 
@@ -287,5 +288,18 @@ func (h *ChangeSecretHandler) RegisterRoutes(r *gin.RouterGroup, authService *id
 		cg.GET("", h.ListCandidates)
 		cg.POST("/:id/retry", h.RetryCandidate)
 		cg.DELETE("/:id", h.DiscardCandidate)
+	}
+
+	// 批次改密：以帳號名為軸的一次性處置，與計劃並列而非掛在計劃下
+	//（批次沒有排程、跑完即結束，它的記錄不屬於任何計劃）
+	bg := r.Group("/change-secret-batches")
+	bg.Use(middleware.AuthMiddleware(authService))
+	bg.Use(middleware.RequireRole("admin"))
+	{
+		bg.GET("/usernames", h.BatchUsernames)
+		bg.GET("/targets", h.BatchTargets)
+		bg.GET("", h.ListBatches)
+		bg.POST("", h.CreateBatch)
+		bg.GET("/:id", h.GetBatch)
 	}
 }

@@ -207,7 +207,8 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/audit_timeline_handler.go", fn: "AuditTimelineHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/auth_handler.go", fn: "AuthHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/authorization_handler.go", fn: "AuthorizationHandler.RegisterRoutes", count: 1},
-	{symbol: "AuthMiddleware", file: "internal/api/change_secret_handler.go", fn: "ChangeSecretHandler.RegisterRoutes", count: 2},
+	// 計劃、候選、批次三個路由群組各掛一次（批次改密隨帳號批次改密加入）
+	{symbol: "AuthMiddleware", file: "internal/api/change_secret_handler.go", fn: "ChangeSecretHandler.RegisterRoutes", count: 3},
 	{symbol: "AuthMiddleware", file: "internal/api/clipboard_event_handler.go", fn: "ClipboardEventHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/command_alert_handler.go", fn: "CommandAlertHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/daily_review_handler.go", fn: "DailyReviewHandler.RegisterRoutes", count: 1},

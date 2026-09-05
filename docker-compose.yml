@@ -32,17 +32,51 @@ services:
       retries: 5
 
   # Guacamole Daemon
+  #
+  # 最小權限執行：guacd 解析的是被納管主機送回的 RDP／VNC 協議資料，而那一端在
+  # 威脅模型裡就假設可能已被入侵，故這顆容器不保留任何非必要的能力。下列設定
+  # 都是**執行期屬性**，與映像內容物無關——部署方把 FROM 換成自建或自選映像後
+  # 仍然生效（見 docker/guacd/Dockerfile 檔首）。
   guacd:
     image: custodexa/guacd:latest
     build:
       context: .
       dockerfile: docker/guacd/Dockerfile
     container_name: custodexa-guacd
+    # guacd 主程序以映像內的非特權身分執行，只需 bind/connect 與讀寫既有掛載點，
+    # 不需任何 Linux capability。
+    cap_drop:
+      - ALL
+    # 禁止子程序經 setuid／檔案 capability 取得比父程序更高的權限。
+    security_opt:
+      - no-new-privileges:true
+    # 根檔案系統唯讀：協議解析被打穿時無法在容器內落下可執行檔或改寫設定。
+    read_only: true
+    tmpfs:
+      # 唯讀根之下保留的兩塊可寫區，兩塊都是實測出來的，不是預防性給的：
+      # (1) /tmp——RDP 磁碟重導的每連線暫存目錄由 backend 以 drive-path 指定在
+      #     此之下（見 backend/internal/proxy/handler.go），少了它檔案傳輸建不起來。
+      # (2) /home/guacd——FreeRDP 啟動時要求執行身分的家目錄可寫，唯讀根之下它會
+      #     在安全協商階段就失敗（實測：RDP 連線回「Security negotiation failed」，
+      #     VNC 不受影響）。內容只有 FreeRDP 自己的組態，本來就隨容器生滅，故以
+      #     記憶體檔案系統供給即可，uid/gid 對到映像內的 guacd 身分。
+      # 兩塊的掛載選項皆含 noexec／nosuid／nodev。
+      - /tmp
+      - /home/guacd:uid=1000,gid=1000,mode=0700
     volumes:
       # 與 backend 共享錄影目錄，讓 guacd 寫出的 RDP/VNC 錄影持久且 backend 可讀
       - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
     networks:
       - custodexa-network
+    healthcheck:
+      # 覆寫官方映像自帶的 HEALTHCHECK：其 interval 為 5 分鐘，backend 若以
+      # service_healthy 等待，冷啟動最長要空等一整個週期。判定指令沿用官方的
+      # 監聽埠檢查，只把節奏改成適合啟動序的長度。
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 4822 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: always
 
   # Go 後端服務（生產模式）
@@ -83,7 +117,7 @@ services:
       postgres:
         condition: service_healthy
       guacd:
-        condition: service_started
+        condition: service_healthy
     networks:
       - custodexa-network
     restart: always

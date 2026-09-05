@@ -129,7 +129,7 @@ func New() *Metrics {
 		// 而那正是本指標存在的唯一理由
 		auditDropped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "custodexa_audit_dropped_total",
-			Help: "審計佇列滿載時未能直接入庫的審計列數，依處置方式分。",
+			Help: "未能直接入庫的審計列數（佇列滿載，或關機排空逾時），依處置方式分。",
 		}, []string{"reason"}),
 
 		httpRequests: prometheus.NewCounterVec(prometheus.CounterOpts{

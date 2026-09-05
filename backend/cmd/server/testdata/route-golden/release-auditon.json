@@ -343,6 +343,26 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/change-secret-batches",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).ListBatches-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).GetBatch-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/targets",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchTargets-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/usernames",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchUsernames-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/change-secret-candidates",
       "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).ListCandidates-fm"
     },
@@ -790,6 +810,11 @@
       "method": "POST",
       "path": "/api/v1/authorizations/batch",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).BatchCreate-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/change-secret-batches",
+      "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).CreateBatch-fm"
     },
     {
       "method": "POST",
@@ -2587,6 +2612,66 @@
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).EffectiveUsers-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).ListBatches-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).GetBatch-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/targets",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchTargets-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/change-secret-batches/usernames",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).BatchUsernames-fm"
       ]
     },
     {
@@ -4518,6 +4603,21 @@
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).BatchCreate-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/change-secret-batches",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func6",
+        "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).CreateBatch-fm"
       ]
     },
     {

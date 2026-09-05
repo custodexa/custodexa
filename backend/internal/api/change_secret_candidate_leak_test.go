@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -46,7 +47,8 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *gorm.DB, *model
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
-		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{}); err != nil {
+		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
+		&model.ChangeSecretBatch{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -123,11 +125,28 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *gorm.DB, *model
 		t.Fatal("runner 未產生任何記錄：反射面斷言將由空資料假綠")
 	}
 
-	handler := NewChangeSecretHandler(planSvc, runner, candidates, retry, nil)
+	// 批次側同樣走真的 runner：整批同一組模式對同一台連不上的目標跑一次，
+	// 產生批次列（帶群組識別）與批次記錄——批次端點的反射面才有東西可比
+	batches := asset.NewChangeSecretBatchService(db,
+		asset.NewRotationReportBuilder(db, planSvc, func() int { return 0 }))
+	batch, assetIDs, err := batches.Create(&asset.ChangeSecretBatchRequest{
+		Username: "root", All: true, PasswordMode: model.BatchPasswordShared,
+	}, 1, "admin")
+	if err != nil {
+		t.Fatalf("seed batch: %v", err)
+	}
+	if batch.SharedGroup == "" {
+		t.Fatal("整批同一組模式未產生群組識別：群組識別不出站的斷言將由空值假綠")
+	}
+	if len(runner.RunBatch(batch, assetIDs)) == 0 {
+		t.Fatal("批次未產生任何記錄：批次端點的反射面斷言將由空資料假綠")
+	}
+
+	handler := NewChangeSecretHandler(planSvc, runner, candidates, retry, batches, nil)
 	return handler, db, &stored
 }
 
-// candidateRouter 掛上改密的全部端點（計劃側 6 支＋候選側 3 支），
+// candidateRouter 掛上改密的全部讀取與反射端點（計劃側、候選側、批次側），
 // 與 RegisterRoutes 的清單逐支對齊——漏掛任何一支即等於該端點未被守衛
 func candidateRouter(h *ChangeSecretHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -142,21 +161,61 @@ func candidateRouter(h *ChangeSecretHandler) *gin.Engine {
 	r.DELETE("/change-secret-candidates/:id", h.DiscardCandidate)
 	r.GET("/change-secret-plans", h.List)
 	r.GET("/change-secret-plans/:id/records", h.Records)
+	r.GET("/change-secret-batches/usernames", h.BatchUsernames)
+	r.GET("/change-secret-batches/targets", h.BatchTargets)
+	r.GET("/change-secret-batches", h.ListBatches)
+	r.POST("/change-secret-batches", h.CreateBatch)
+	r.GET("/change-secret-batches/:id", h.GetBatch)
 	return r
 }
 
-// reasonValues 取出回應 data 陣列中每個項目的 error／last_error 值。
-// 這兩欄是 runner 唯一能把字串送到 API 的通道，故守衛須逐值檢查其形狀
+// sharedGroupOfBatches 直讀批次列的群組識別（不經 DTO——DTO 刻意不揭露它）
+func sharedGroupOfBatches(t *testing.T, db *gorm.DB) []string {
+	t.Helper()
+	var batches []model.ChangeSecretBatch
+	if err := db.Find(&batches).Error; err != nil {
+		t.Fatalf("read batches: %v", err)
+	}
+	var out []string
+	for i := range batches {
+		if batches[i].SharedGroup != "" {
+			out = append(out, batches[i].SharedGroup)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatal("沒有任何批次帶群組識別：群組識別不出站的斷言將由空值假綠")
+	}
+	return out
+}
+
+// reasonValues 取出回應 data 中每個項目的 error／last_error 值。
+// 這兩欄是 runner 唯一能把字串送到 API 的通道，故守衛須逐值檢查其形狀。
+// data 可能是陣列（清單端點）或物件（單一批次：{batch, records}），
+// 後者的記錄陣列同樣要檢查
 func reasonValues(t *testing.T, body, field string) []string {
 	t.Helper()
 	var payload struct {
-		Data []map[string]any `json:"data"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(body), &payload); err != nil {
 		t.Fatalf("回應非預期 JSON 形狀（%s）: %v", field, err)
 	}
+	var items []map[string]any
+	if len(payload.Data) > 0 && payload.Data[0] == '{' {
+		var obj struct {
+			Records []map[string]any `json:"records"`
+		}
+		if err := json.Unmarshal(payload.Data, &obj); err != nil {
+			t.Fatalf("回應 data 物件非預期形狀（%s）: %v", field, err)
+		}
+		items = obj.Records
+	} else if len(payload.Data) > 0 {
+		if err := json.Unmarshal(payload.Data, &items); err != nil {
+			t.Fatalf("回應 data 陣列非預期形狀（%s）: %v", field, err)
+		}
+	}
 	var out []string
-	for _, item := range payload.Data {
+	for _, item := range items {
 		if v, ok := item[field].(string); ok {
 			out = append(out, v)
 		}
@@ -165,18 +224,24 @@ func reasonValues(t *testing.T, body, field string) []string {
 }
 
 func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
-	h, _, stored := setupCandidateLeakEnv(t)
+	h, db, stored := setupCandidateLeakEnv(t)
 	r := candidateRouter(h)
 
-	// DELETE 排在最後：它會刪掉候選列，先跑會讓其後端點的比對面變空
-	type call struct{ method, path string }
+	// DELETE 排在最後：它會刪掉候選列，先跑會讓其後端點的比對面變空。
+	// 批次的 POST 不在清單內：它非同步啟動 runner，回應體與單一批次端點的 batch
+	// 投影是同一個 DTO，而測試結束後仍在跑的 runner 會撞上已還原的全域 DB
+	type call struct{ method, path, body string }
 	calls := []call{
-		{"GET", "/change-secret-candidates"},
-		{"POST", "/change-secret-candidates/1/retry"},
-		{"GET", "/change-secret-plans"},
-		{"GET", "/change-secret-plans/1/records"},
-		{"GET", "/change-secret-plans/2/records"},
-		{"DELETE", "/change-secret-candidates/1"},
+		{"GET", "/change-secret-candidates", ""},
+		{"POST", "/change-secret-candidates/1/retry", ""},
+		{"GET", "/change-secret-plans", ""},
+		{"GET", "/change-secret-plans/1/records", ""},
+		{"GET", "/change-secret-plans/2/records", ""},
+		{"GET", "/change-secret-batches/usernames", ""},
+		{"GET", "/change-secret-batches/targets?username=root", ""},
+		{"GET", "/change-secret-batches", ""},
+		{"GET", "/change-secret-batches/1", ""},
+		{"DELETE", "/change-secret-candidates/1", ""},
 	}
 	forbidden := []struct{ name, value string }{
 		{"候選密碼明文", leakProbePassword},
@@ -186,13 +251,26 @@ func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
 		{"加密欄位名 password_enc", "password_enc"},
 		{"加密欄位名 private_key_enc", "private_key_enc"},
 		{"runner 目標資產的舊憑證明文", leakProbeAssetPassword},
+		{"憑證群組識別欄位名 shared_group", "shared_group"},
+		{"憑證群組識別欄位名 credential_group", "credential_group"},
+	}
+	for _, g := range sharedGroupOfBatches(t, db) {
+		forbidden = append(forbidden, struct{ name, value string }{"批次的憑證群組識別", g})
 	}
 
 	hitBodies := 0
 	seenReasons := 0
 	for _, c := range calls {
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(c.method, c.path, nil))
+		var reqBody io.Reader
+		if c.body != "" {
+			reqBody = strings.NewReader(c.body)
+		}
+		req := httptest.NewRequest(c.method, c.path, reqBody)
+		if c.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		r.ServeHTTP(w, req)
 		if w.Code >= http.StatusInternalServerError {
 			t.Fatalf("%s %s 回 %d：端點未被真正執行，洩漏斷言將由錯誤回應假綠（body=%s）",
 				c.method, c.path, w.Code, w.Body.String())

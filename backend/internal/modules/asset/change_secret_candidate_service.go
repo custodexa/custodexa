@@ -52,10 +52,13 @@ func NewChangeSecretCandidateService(db *gorm.DB, codec crypto.ColumnCodec,
 
 // CandidateInput 建立候選的輸入（明文秘密只在此結構內短暫存在）
 type CandidateInput struct {
-	AssetID           uint
-	AccountID         uint
-	AccountUsername   string
-	PlanID            uint
+	AssetID         uint
+	AccountID       uint
+	AccountUsername string
+	PlanID          uint
+	// BatchID 來源批次（0＝來自計劃）；SharedGroup 轉正後要歸入的憑證群組（空＝脫組）
+	BatchID           uint
+	SharedGroup       string
 	SecretType        string
 	Password          string
 	PrivateKey        string
@@ -79,6 +82,8 @@ func (s *ChangeSecretCandidateService) Create(ctx context.Context, in CandidateI
 		AccountID:         in.AccountID,
 		AccountUsername:   in.AccountUsername,
 		PlanID:            in.PlanID,
+		BatchID:           in.BatchID,
+		SharedGroup:       in.SharedGroup,
 		SecretType:        in.SecretType,
 		PublicKey:         in.PublicKey,
 		PreviousPublicKey: in.PreviousPublicKey,

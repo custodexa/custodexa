@@ -45,9 +45,9 @@ func (b *RotationReportBuilder) Build(scope ReportScope, periodStart, periodEnd,
 		return nil, err
 	}
 
-	global := 0
-	if b.maxAge != nil {
-		global = b.maxAge()
+	rows, err := b.accountRows(assetFilter, planFilter, asOf)
+	if err != nil {
+		return nil, err
 	}
 
 	rep := &RotationReport{
@@ -55,24 +55,67 @@ func (b *RotationReportBuilder) Build(scope ReportScope, periodStart, periodEnd,
 			ScopeKind: scope.Kind, ScopeID: scope.ID, ScopeLabel: label,
 			PeriodStart: periodStart, PeriodEnd: periodEnd, AsOf: asOf,
 			GeneratedAt:      time.Now(),
-			GlobalMaxAgeDays: global, DueSoonWindowDays: dueSoonWindowDays, Language: lang,
+			GlobalMaxAgeDays: rows.global, DueSoonWindowDays: dueSoonWindowDays, Language: lang,
 		},
-		Truncation: ReportTruncation{RowsCap: ReportRowsCap, RecordsCap: ReportRecordsCap},
+		Truncation: ReportTruncation{
+			RowsCap: ReportRowsCap, RowsTruncated: rows.truncated, RecordsCap: ReportRecordsCap,
+		},
+		Rows:    rows.rows,
+		Summary: summarize(rows.rows),
+	}
+
+	records, recTruncated, err := b.periodRecords(assetFilter, planFilter, rows.plans,
+		periodStart, periodEnd, asOf)
+	if err != nil {
+		return nil, err
+	}
+	rep.Records = records
+	rep.Truncation.RecordsTruncated = recTruncated
+	return rep, nil
+}
+
+// AccountRows 依帳號名篩選、不限資產的報告列。
+//
+// 批次改密的目標清單走這裡：目標的狀態桶、剩餘天數與共用標記必須與輪替證據頁
+// 逐字相同，而「逐字相同」只有一種做法——同一段推導。
+func (b *RotationReportBuilder) AccountRows(names model.AccountScope, asOf time.Time) ([]AccountRow, error) {
+	rows, err := b.accountRows(nil, names, asOf)
+	if err != nil {
+		return nil, err
+	}
+	return rows.rows, nil
+}
+
+// accountRowsResult 逐列推導的中間結果；Build 另需其中的計劃清單與全域天數
+type accountRowsResult struct {
+	rows      []AccountRow
+	truncated bool
+	global    int
+	plans     []model.ChangeSecretPlan
+}
+
+// accountRows 母體 → 資產 → 計劃涵蓋 → 最後成功 → 最近記錄 → 候選 → 逐列推導。
+func (b *RotationReportBuilder) accountRows(assetFilter []uint, planFilter model.AccountScope,
+	asOf time.Time) (accountRowsResult, error) {
+
+	out := accountRowsResult{}
+	if b.maxAge != nil {
+		out.global = b.maxAge()
 	}
 
 	accounts, truncated, err := b.scopedAccounts(assetFilter, planFilter)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	rep.Truncation.RowsTruncated = truncated
+	out.truncated = truncated
 
 	assets, err := b.assetsByID(accountAssetIDs(accounts))
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	plans, err := b.plans.List()
+	out.plans, err = b.plans.List()
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 
 	accountIDs := make([]uint, 0, len(accounts))
@@ -81,34 +124,25 @@ func (b *RotationReportBuilder) Build(scope ReportScope, periodStart, periodEnd,
 	}
 	lastSuccess, err := b.plans.LastSuccessByAccount(accountIDs, asOf)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	lastRecord, err := b.latestRecordStatus(accountIDs)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	candidates, err := b.candidateStates(accountIDs)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 
-	cov := newPlanCoverage(plans, asOf)
-	rep.Rows = make([]AccountRow, 0, len(accounts))
+	cov := newPlanCoverage(out.plans, asOf)
+	out.rows = make([]AccountRow, 0, len(accounts))
 	for i := range accounts {
-		row := b.buildRow(&accounts[i], assets[accounts[i].AssetID], cov, global,
+		row := b.buildRow(&accounts[i], assets[accounts[i].AssetID], cov, out.global,
 			lastSuccess, lastRecord, candidates, asOf)
-		rep.Rows = append(rep.Rows, row)
+		out.rows = append(out.rows, row)
 	}
-	rep.Summary = summarize(rep.Rows)
-
-	records, recTruncated, err := b.periodRecords(assetFilter, planFilter, plans,
-		periodStart, periodEnd, asOf)
-	if err != nil {
-		return nil, err
-	}
-	rep.Records = records
-	rep.Truncation.RecordsTruncated = recTruncated
-	return rep, nil
+	return out, nil
 }
 
 // resolveScope 把範圍解析成「資產集合」與「帳號名集合」兩個篩選面。
@@ -365,7 +399,7 @@ func (b *RotationReportBuilder) periodRecords(assetFilter []uint, planFilter mod
 		}
 		out = append(out, RecordRow{
 			RecordID: r.ID, ExecutedAt: r.ExecutedAt.In(from.Location()), PlanName: planNames[r.PlanID],
-			AssetName: assetName, AccountUsername: r.AccountUsername,
+			BatchID: r.BatchID, AssetName: assetName, AccountUsername: r.AccountUsername,
 			AccountDeleted: deleted[r.AccountID], SecretType: r.SecretType,
 			Status: r.Status, ReasonCode: r.Error,
 		})

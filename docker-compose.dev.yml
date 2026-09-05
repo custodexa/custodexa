@@ -26,12 +26,26 @@ services:
       retries: 5
 
   # Guacamole Daemon
+  #
+  # 硬化設定與正式版逐字相同（`docker-compose.yml` 的 guacd 段有完整理由）。
+  # 兩邊維持一致是刻意的：唯讀根與 cap_drop 造成的失敗要在開發環境就看得到，
+  # 只硬化正式版會讓「本機好好的、上線才壞」變成常態。
   guacd:
     image: custodexa/guacd:dev
     build:
       context: .
       dockerfile: docker/guacd/Dockerfile
     container_name: custodexa-guacd-dev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      # 兩塊可寫區的理由與正式版逐字相同（見 `docker-compose.yml`）：
+      # /tmp 供 RDP 磁碟重導的每連線暫存目錄，/home/guacd 供 FreeRDP 的家目錄
+      - /tmp
+      - /home/guacd:uid=1000,gid=1000,mode=0700
     environment:
       LOG_LEVEL: debug
     ports:
@@ -41,6 +55,14 @@ services:
       - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
     networks:
       - custodexa-network
+    healthcheck:
+      # 覆寫官方映像自帶的 HEALTHCHECK（interval 5 分鐘），使 backend 的
+      # service_healthy 等待不必空等一整個週期
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 4822 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # Go 後端服務（開發模式，支援熱重載）
@@ -162,7 +184,7 @@ services:
       postgres:
         condition: service_healthy
       guacd:
-        condition: service_started
+        condition: service_healthy
     networks:
       - custodexa-network
     restart: unless-stopped
