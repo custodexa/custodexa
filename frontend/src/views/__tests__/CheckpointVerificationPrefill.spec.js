@@ -40,6 +40,8 @@ vi.mock('@/api/auditCheckpoints', () => ({
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: routeQuery.value }),
+  // 頁面自 1.7.0 起以 useRouter 連到失效事件清單；此處只需存在，不驗導覽
+  useRouter: () => ({ push: vi.fn() }),
 }))
 
 import CheckpointVerification from '../CheckpointVerification.vue'

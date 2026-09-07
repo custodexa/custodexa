@@ -26,7 +26,18 @@ const (
 func (g *InstanceGuard) startWatchdog() {
 	g.mu.Lock()
 	backend := g.backend
-	if backend == nil || !backend.runsWatchdog() || g.wdCancel != nil {
+	if g.wdCancel != nil {
+		g.mu.Unlock()
+		return
+	}
+	if backend == nil {
+		// 釘選連線建不起來，只有攔下模式會走到這裡（其餘路徑在建不起來時即 fail-close）。
+		// **仍要啟動**：這一輪的工作是重試重建，不啟動就沒有任何機制把行程帶出攔下模式。
+		if g.state != GuardStateHalted {
+			g.mu.Unlock()
+			return
+		}
+	} else if !backend.runsWatchdog() {
 		g.mu.Unlock()
 		return
 	}
@@ -71,17 +82,45 @@ func (g *InstanceGuard) runCycle(ctx context.Context) {
 	backend := g.backend
 	g.mu.Unlock()
 	if backend == nil {
-		return
+		// 攔下模式的釘選連線重建失敗：本輪的工作就是重試重建（有界退避）。
+		// 其餘狀態下 nil backend 代表守衛已收束，維持既有的「整輪返回」。
+		if state != GuardStateHalted {
+			return
+		}
+		if backend = g.ensureBackend(ctx, true); backend == nil {
+			return
+		}
+		g.refreshHolderAfterRebuild(ctx, backend)
 	}
 	switch state {
 	case GuardStateHeld:
 		g.verifyHeld(ctx, backend)
-	case GuardStateLost, GuardStateOverridden:
+	case GuardStateLost, GuardStateOverridden, GuardStateHalted:
 		g.retake(ctx, backend, state)
 	default:
 		return
 	}
 	g.countPeers(ctx, backend)
+}
+
+// refreshHolderAfterRebuild 重建釘選連線後補查持鎖者指紋。
+//
+// enterHalted 在重建失敗時查不到指紋，攔下頁於是沒有確認碼可顯示（該頁的唯一動作
+// 就是重打那個碼）。重建成功的這一刻是補上它的第一個機會，不補的話要等到下一輪
+// retake 走到競爭分支才會有。
+func (g *InstanceGuard) refreshHolderAfterRebuild(ctx context.Context, backend lockBackend) {
+	fctx, fcancel := g.queryCtx(ctx)
+	fp, found := backend.holderFingerprint(fctx)
+	fcancel()
+	if !found || g.stoppingOrReleased() {
+		return
+	}
+	h := fp
+	g.mu.Lock()
+	if g.state == GuardStateHalted {
+		g.holder = &h
+	}
+	g.mu.Unlock()
 }
 
 // stoppingOrReleased 關閉序已開始（此後任何 watchdog 結果一律丟棄）。
@@ -219,6 +258,10 @@ func (g *InstanceGuard) retake(ctx context.Context, backend lockBackend, state G
 		log.Printf("[InstanceGuard] CRITICAL：重取單實例鎖失敗（reason=contention）：鎖由另一個工作階段持有 [%s]；本實例繼續服務、下一週期再試", fp.readable())
 		return
 	}
+	if state == GuardStateHalted {
+		log.Printf("[InstanceGuard] 攔下模式：單實例鎖仍由 [%s] 持有；每週期重取中（攔下頁可達，未執行任何寫入）", fp.readable())
+		return
+	}
 	log.Printf("[InstanceGuard] 以 INSTANCE_GUARD_ACK 啟動的實例仍未取得單實例鎖：鎖由 [%s] 持有；每週期重取中", fp.readable())
 }
 
@@ -268,6 +311,16 @@ func (g *InstanceGuard) enterHeldAfterRetake(prev GuardState) {
 	g.holder = nil
 	g.lastRetryableLog = time.Time{}
 	g.lastOverriddenLog = time.Time{}
+	// **攔下模式不發 regained**：本實例從未持有過鎖，「重新取得」對它不成立，
+	// 而 regained 的 details 帶「未持鎖時長」會被讀成「曾經持有後失守」。
+	// 攔下解除改以 resume 訊號放行啟動（instance_guard_halt.go）。
+	if prev == GuardStateHalted {
+		g.unheldSince = time.Time{}
+		g.mu.Unlock()
+		log.Println("[InstanceGuard] 攔下期間已取得單實例鎖：不需重啟，繼續啟動（未寫入 overridden 事件）")
+		g.signalResume()
+		return
+	}
 	ev := g.eventLocked(GuardEventRegained, prevReason, now)
 	g.unheldSince = time.Time{}
 	g.mu.Unlock()

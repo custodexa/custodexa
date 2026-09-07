@@ -2,7 +2,9 @@
 
 ## Purpose
 TBD - created by archiving change single-instance-guard. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: 啟動期單實例互斥
 
 系統 SHALL 於啟動序列中、資料庫連線建立之後且任何資料庫寫入（含 schema migration）之前，
@@ -13,16 +15,19 @@ TBD - created by archiving change single-instance-guard. Update Purpose after ar
 
 取鎖 SHALL 採非阻塞（try）語義並配合**有界重試**（總等待上限約 10 秒）以吸收前一實例工作階段的
 收尾延遲。重試耗盡仍未取得時，系統 SHALL 依「確認啟動與留痕」requirement 判定操作者是否已提供
-與本次持鎖者指紋相符的確認；**未提供或不相符即 SHALL NOT 啟動服務**：不開放任何監聽、不執行 migration、
-不產生任何資料庫寫入，並印出「攔下訊息」requirement 規定的警告。系統 SHALL NOT 以阻塞式等待取代攔下——
-操作者看到的必須是明確的警告與救援指令，不是停在「啟動中」。
+與本次持鎖者指紋相符的確認；**未提供或不相符即 SHALL NOT 啟動服務**：不執行 migration、
+不產生任何資料庫寫入，並印出「攔下訊息」requirement 規定的警告。此時系統 SHALL 進入**攔下模式**：
+行程不退出、保留釘選連線並依 watchdog 週期重試取鎖，且 SHALL 只開放 `preservice-pages` 所定義的
+守衛攔下頁所需的最小監聽（攔下狀態查詢、確認送出、健康檢查、封印狀態），SHALL NOT 開放任何業務路由。
+系統 SHALL NOT 以阻塞式等待取代攔下——操作者看到的必須是明確的警告與救援指令（日誌與攔下頁），
+不是停在「啟動中」。攔下模式中鎖被釋放時系統 SHALL 自動取得並繼續啟動，不需重啟。
 
 取鎖回應失敗（連線中斷、回應解析失敗）時，該連線 SHALL 被丟棄而非歸池（鎖可能已在資料庫端授予）。
 
 #### Scenario: 第二實例未經確認即被攔在任何寫入之前
 - **WHEN** 一個實例已持有單實例鎖，另一個實例未設定確認值即對同一資料庫啟動
-- **THEN** 第二實例於重試上限內停止啟動、未開放監聽、未執行 migration；資料庫的資料表數、索引數與
-  `schema_migrations` 列數於其啟動前後完全相同；啟動日誌含警告與救援指令
+- **THEN** 第二實例於重試上限內停止啟動服務、未執行 migration；資料庫的資料表數、索引數與
+  `schema_migrations` 列數於其啟動前後完全相同；啟動日誌含警告與救援指令；除攔下頁所需的最小監聽外無任何路由可達
 
 #### Scenario: 前一實例退出後新實例無需確認即可起
 - **WHEN** 持鎖實例以任何方式退出（優雅關閉、收束逾時 `os.Exit`、`log.Fatalf`、SIGKILL），隨後啟動新實例且未設定確認值
@@ -35,6 +40,10 @@ TBD - created by archiving change single-instance-guard. Update Purpose after ar
 #### Scenario: 取鎖回應失敗不留殘鎖
 - **WHEN** `pg_try_advisory_lock` 已於資料庫端授予，但回應在客戶端失敗
 - **THEN** 該連線被丟棄（不歸池），資料庫隨連線結束釋放該鎖，`pg_locks` 無殘留
+
+#### Scenario: 攔下模式中鎖釋放即自動啟動
+- **WHEN** 第二實例停在攔下模式，原持鎖工作階段結束
+- **THEN** 第二實例於一個 watchdog 週期內取得鎖並繼續啟動（migration、服務、背景工作照常），不需重啟，不寫入 `overridden` 事件
 
 ### Requirement: 攔下訊息的內容、持鎖者指紋與救援指令
 
@@ -74,16 +83,19 @@ SHALL NOT 寫成「另一個實例持鎖」，殘留工作階段時該說法不�
 
 ### Requirement: 確認啟動與留痕
 
-系統 SHALL 提供環境變數 `INSTANCE_GUARD_ACK` 作為操作者對**本次偵測到的衝突**的確認。其值 SHALL 與本次
-啟動查得的持鎖者確認碼精確比對：相符即 SHALL 允許啟動（狀態為「已確認、未持鎖」），保留釘選連線並於
-背景每週期嘗試取鎖，取得後轉為持鎖狀態；不相符 SHALL 視同未設定（攔下，並於訊息加註「持鎖者已變更，
-請以新確認碼重新確認」）；設定但本次未偵測到衝突時 SHALL 正常啟動、不使用該值，並以資訊日誌建議移除。
+系統 SHALL 提供兩條確認路徑，皆為操作者對**本次偵測到的衝突**的確認：環境變數 `INSTANCE_GUARD_ACK`，
+以及攔下模式下由守衛攔下頁送出的確認（`preservice-pages`）。確認值 SHALL 與**當下**查得的持鎖者確認碼精確比對：
+相符即 SHALL 允許啟動（狀態為「已確認、未持鎖」），保留釘選連線並於背景每週期嘗試取鎖，取得後轉為持鎖狀態；
+不相符 SHALL 視同未設定（攔下，並於訊息與攔下頁回應加註「持鎖者已變更，請以新確認碼重新確認」）；
+環境變數設定但本次未偵測到衝突時 SHALL 正常啟動、不使用該值，並以資訊日誌建議移除。頁面路徑另 SHALL 要求
+管理員帳密驗證與操作者的承擔勾選，缺一不接受。
 
 **每一次**以確認啟動，系統 SHALL：(1) 寫入一筆 `audit_logs` 系統事件（事件名 `overridden`），details 含確認碼、
 持鎖者指紋（`application_name`、pid、`backend_start`、確認碼、指紋來源）、本實例識別（主機名、行程 id、
-啟動時間）、本實例的資料庫工作階段 id，以及確認者標示 `operator via env`（環境變數無法識別自然人，
-SHALL NOT 假造身分）；(2) 使營運指標 `custodexa_instance_guard_overridden` 為 1、`custodexa_instance_guard_held` 為 0；
-(3) 使管理介面常駐橫幅顯示（見對應 requirement）。三者於鎖由本實例取得時解除，並寫入一筆 `regained` 事件。
+啟動時間）、本實例的資料庫工作階段 id，以及確認者標示：環境變數路徑為 `operator via env`（環境變數無法識別自然人，
+SHALL NOT 假造身分），頁面路徑為通過驗證的管理員帳號與來源 `page`；(2) 使營運指標 `custodexa_instance_guard_overridden` 為 1、
+`custodexa_instance_guard_held` 為 0；(3) 使管理介面常駐橫幅顯示（見對應 requirement），橫幅 SHALL 顯示確認者。
+三者於鎖由本實例取得時解除，並寫入一筆 `regained` 事件。
 
 確認後系統 SHALL NOT 再做任何攔阻：migration、服務與背景工作照常執行。
 
@@ -95,9 +107,14 @@ SHALL NOT 假造身分）；(2) 使營運指標 `custodexa_instance_guard_overri
   details 含確認碼、持鎖者指紋、本實例主機名／行程 id／啟動時間與 `operator via env`；`/metrics` 含
   `custodexa_instance_guard_overridden 1` 與 `custodexa_instance_guard_held 0`；啟動日誌含 CRITICAL 等級的確認啟動警告
 
+#### Scenario: 頁面確認啟動並記真實帳號
+- **WHEN** 第二實例停在攔下模式，管理員於攔下頁勾選承擔、重打相符的確認碼並以正確帳密送出
+- **THEN** 第二實例繼續執行 migration 並開放服務；`overridden` 事件 details 的確認者為該管理員帳號、來源為 `page`；
+  橫幅次行顯示該帳號
+
 #### Scenario: 確認碼不符視同未帶
-- **WHEN** 操作者以先前衝突的確認碼啟動，而當前持鎖者已是另一個工作階段
-- **THEN** 系統攔下，訊息含新的持鎖者指紋與確認碼，並加註持鎖者已變更；不寫入 `overridden` 事件
+- **WHEN** 操作者以先前衝突的確認碼啟動或送出，而當前持鎖者已是另一個工作階段
+- **THEN** 系統攔下，訊息與攔下頁回應含新的持鎖者指紋與確認碼，並加註持鎖者已變更；不寫入 `overridden` 事件
 
 #### Scenario: 無衝突時確認值不被使用
 - **WHEN** 環境中設有 `INSTANCE_GUARD_ACK`，且本次取鎖成功
@@ -314,4 +331,3 @@ transaction pooling 模式的連線池會使鎖在工作階段間漂移，守衛
 #### Scenario: 確認值不能常設關掉守衛
 - **WHEN** 操作者把一次衝突的確認碼長期留在環境中，其後發生持鎖者不同的新衝突
 - **THEN** 新衝突仍被攔下並要求新的確認碼；舊值未使任何啟動繞過攔下
-

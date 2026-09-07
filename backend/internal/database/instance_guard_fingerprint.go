@@ -138,8 +138,9 @@ func blockedMessage(fp HolderFingerprint, verdict ackVerdict) string {
 	}
 	b.WriteString("  風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。\n")
 	b.WriteString("  處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。\n")
-	b.WriteString("  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：設定環境變數 INSTANCE_GUARD_ACK=" + fp.Code +
-		" 後重啟。本次啟動會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。\n")
+	b.WriteString("  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，" +
+		"以管理員帳密重打確認碼 " + fp.Code + " 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=" + fp.Code +
+		" 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。\n")
 	b.WriteString("  澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；" +
 		"INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；" +
 		"確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。")

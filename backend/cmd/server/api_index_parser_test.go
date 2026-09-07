@@ -293,7 +293,12 @@ func TestRouteDepsFlagsCoveredByMatrix(t *testing.T) {
 	//
 	// 這個豁免不是口頭承諾：TestSealOnlyRoutesAreStrictSubset 以機器檢查
 	// 「子集」性質，豁免的前提一旦被打破，那個測試就會紅。
-	subtractive := map[string]string{"sealOnly": "TestSealOnlyRoutesAreStrictSubset"}
+	subtractive := map[string]string{
+		"sealOnly": "TestSealOnlyRoutesAreStrictSubset",
+		// haltOnly 同 sealOnly 的形態：為真時註冊的是完整路由表的真子集
+		// （健康檢查、封印狀態與兩條守衛攔下端點），不可能引入未被索引的端點。
+		"haltOnly": "TestHaltOnlyRoutesAreStrictSubset",
+	}
 	kept := flags[:0]
 	for _, f := range flags {
 		if _, ok := subtractive[f]; !ok {

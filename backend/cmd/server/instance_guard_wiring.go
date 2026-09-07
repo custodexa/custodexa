@@ -25,6 +25,8 @@ func instanceGuardView(snap database.GuardSnapshot) api.InstanceGuardView {
 		Ack:          snap.Ack,
 		LostTotal:    snap.LostTotal,
 		Peers:        snap.Peers,
+		Actor:        snap.Actor,
+		ActorSource:  snap.ActorSource,
 		Instance: api.InstanceGuardInstance{
 			Hostname:  snap.Instance.Hostname,
 			PID:       snap.Instance.PID,
@@ -97,8 +99,16 @@ func instanceGuardEventDetails(ev database.GuardEvent) map[string]any {
 	switch ev.Event {
 	case database.GuardEventOverridden:
 		details["ack"] = ev.Ack
-		// 環境變數無法識別自然人：不假造身分，由部署方的變更管理承擔
-		details["actor"] = "operator via env"
+		// 確認者與來源由守衛在確認當下決定，此處不判斷：
+		// 環境變數路徑為 `operator via env`／`env`（環境變數無法識別自然人，
+		// 不假造身分，由部署方的變更管理承擔）；頁面路徑為通過驗證的管理員帳號／`page`。
+		details["actor"] = ev.Actor
+		details["actor_source"] = ev.ActorSource
+		// 頁面確認前的憑證失敗次數：攔下模式寫不了審計列，
+		// 那些失敗只進 log，此欄是它們唯一進到審計的出口。
+		if ev.ActorSource == database.GuardActorSourcePage {
+			details["page_failed_attempts"] = ev.PageFailedAttempts
+		}
 	case database.GuardEventRegained:
 		details["unheld_for_ms"] = ev.UnheldForMS
 	}

@@ -49,7 +49,7 @@ var (
 	// CodeSealMaterialInvalid 材料驗證失敗（格 4）。對外 400，計入退避。
 	// **唯一的材料類失敗碼**：格式／解包／paste-back／初始管理員憑證皆共用本碼。
 	CodeSealMaterialInvalid = register("SEAL_MATERIAL_INVALID",
-		Descriptor{ZhFallback: "解封失敗，送出的內容沒有通過驗證。"})
+		Descriptor{ZhFallback: "解封失敗，送出的內容沒有通過驗證。請確認貼上的主金鑰與原本的逐字相同（含大小寫）後再試一次。"})
 
 	// CodeSealAborted 解封嘗試被主動中止（格 3b／4b）：請求取消、panic 或
 	// PREPARE 寫入逾時。不計入材料失敗計數。

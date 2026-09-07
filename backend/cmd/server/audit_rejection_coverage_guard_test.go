@@ -137,10 +137,10 @@ var coverageExemptReasons = map[coverageExemptReason]bool{
 //
 // 鍵＝`{method, path}`，與路由 golden 同鍵。
 var coverageExemptRoutes = map[[2]string]coverageExemptReason{
-	{"GET", "/health"}:                  exemptProbe,
-	{"POST", "/health"}:                 exemptProbe,
-	{"GET", "/healthz"}:                 exemptProbe,
-	{"GET", "/api/v1/ping"}:             exemptProbe,
+	{"GET", "/health"}:      exemptProbe,
+	{"POST", "/health"}:     exemptProbe,
+	{"GET", "/healthz"}:     exemptProbe,
+	{"GET", "/api/v1/ping"}: exemptProbe,
 	// 營運指標曝光：監控採集端無使用者身分，
 	// 且封印期即須可採（否則「封印中」與「當機」在監控上不可區分）。
 	// 保護不靠認證中介層而靠拓撲——它不在 `/api` 之下，正式版 edge 只代理
@@ -178,6 +178,13 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 
 	{"GET", "/api/v1/seal/status"}:  exemptSealEpoch,
 	{"POST", "/api/v1/seal/unseal"}: exemptSealEpoch,
+
+	// 守衛攔下頁的兩條端點：同 seal 端點群的理由——攔下模式下段 2 未起、
+	// 認證系統不存在，且該模式**不得產生任何資料庫寫入**，寫不了審計列。
+	// 拒絕路徑的留痕由日誌承擔，成功確認的留痕由守衛的 `overridden` 事件承擔
+	// （details 帶確認者、來源與確認前的失敗次數）。
+	{"GET", "/api/v1/instance-guard/halt"}: exemptSealEpoch,
+	{"POST", "/api/v1/instance-guard/ack"}: exemptSealEpoch,
 }
 
 // rejectionAuditGapBaseline 拒絕路徑無留痕的**路由**條數上限（單調下降的儀表）。

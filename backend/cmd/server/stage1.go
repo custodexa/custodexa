@@ -183,11 +183,23 @@ func runStage1() *stage1 {
 	}
 
 	// 單實例守衛的掛點：**DB 已可用、尚未發生任何寫入的唯一窗口**。
-	// 鎖由他人持有且未經確認即在此攔下——不 migration、不 seed、不開監聽；
+	// 鎖由他人持有且未經確認即在此攔下——不 migration、不 seed、不開放任何業務路由；
 	// 訊息本體由 database 包產生（單一事實源），此處不加工。
 	// 帶相符確認碼時允許啟動（狀態 overridden），留痕由段 2 注入的事件 sink 承擔。
-	if err := database.AcquireInstanceLock(context.Background(), database.DB, cfg.InstanceGuard.Ack); err != nil {
-		log.Fatalf("%v", err)
+	//
+	// **攔下不再退出行程**：退出等於沒有頁面，操作者只能上主機讀 log、抄碼、改
+	// 環境變數、重啟；容器的 restart 迴圈本身就是在等人，改成在行程內等。
+	// 攔下期間開放守衛攔下頁所需的最小監聽（serveHaltedUntilResumed），
+	// 直到 watchdog 取得鎖或攔下頁的確認相符為止；本函式在那之前不返回。
+	halted, blockErr := database.AcquireInstanceLockOrHalt(context.Background(), database.DB,
+		database.InstanceGuardOptions{Ack: cfg.InstanceGuard.Ack})
+	switch {
+	case halted:
+		log.Printf("%v", blockErr)
+		serveHaltedUntilResumed(cfg)
+	case blockErr != nil:
+		// 取鎖回應失敗、dialect 不支援、啟動被取消：攔下頁對這些無能為力，維持 fail-close。
+		log.Fatalf("%v", blockErr)
 	}
 	logInstanceGuardAcquired()
 

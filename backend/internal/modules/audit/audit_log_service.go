@@ -1043,6 +1043,19 @@ func safeAuditSubstanceFields() map[string]bool {
 		"period_start": true,
 		"period_end":   true,
 		"language":     true,
+
+		// ── 守衛攔下模式的風險承擔聲明 ─────────────────────────────────
+		// 攔下頁的確認送出（POST /instance-guard/ack）在「另一個實例仍持有單實例鎖」
+		// 的前提下讓本實例照常執行 migration 與服務——那是本產品最重的一個人為決定。
+		// 這個布林就是操作者顯式簽下的那句「我已確認主實例已停」，與
+		// `risk_acknowledged` 同型（誰在什麼時候簽了這個風險，本身就是課責內容）。
+		// 布林，不可能承載機密。
+		//
+		// **持鎖者確認碼 `code` 刻意不登記**：它在本端點確實只是持鎖者指紋碼（非機密），
+		// 但遮罩按鍵名全域比對、分不出端點（同 `url` 的全域語義條款），而同一個鍵名
+		// 在 MFA 驗證、MFA 啟用與會話分享票上承載的是**一次性憑證**——放行等於把它們
+		// 逐字寫進受檢查點鏈保護、刪不掉的 audit_logs。取嚴的一側，代價由本欄吸收。
+		"confirmed_primary_down": true,
 	}
 }
 

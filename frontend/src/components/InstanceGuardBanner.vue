@@ -9,7 +9,24 @@
        守衛防的是「不知情」，不是「不發生」：文案只陳述偵測到什麼與該做什麼，
        不主張系統會阻止並存造成的資料問題 -->
   <div
-    v-if="visible"
+    v-if="recovered"
+    class="instance-guard-banner is-recovered"
+    role="status"
+    data-test="guard-recovered"
+  >
+    <div class="banner-main">
+      <el-icon class="banner-icon is-success">
+        <CircleCheck />
+      </el-icon>
+      <div class="banner-text">
+        <p class="banner-headline">
+          {{ t('instanceGuard.recovered') }}
+        </p>
+      </div>
+    </div>
+  </div>
+  <div
+    v-else-if="visible"
     class="instance-guard-banner"
     role="alert"
     :aria-label="t('instanceGuard.ariaLabel')"
@@ -20,13 +37,21 @@
       </el-icon>
       <div class="banner-text">
         <p class="banner-headline">
-          <span>{{ headline }}</span>
-          <span
-            v-if="status.since"
-            class="banner-since"
-          >{{ t(sinceKey, { time: formatDateTime(status.since) }) }}</span>
+          {{ headline }}
         </p>
+        <!-- 次行：起算時間 · 確認者 · 何時消失。三段以中點串成一行，
+             讀者掃一眼就知道「什麼時候開始的、誰按的、要等什麼」 -->
         <p
+          class="banner-secondary"
+          data-test="banner-secondary"
+        >
+          {{ secondaryLine }}
+        </p>
+        <!-- 摘要句對**沒有展開區的讀者**（非管理者）內聯呈現。
+             管理者的那一份收進「顯示細節」——常駐橫幅的高度是所有人每頁都要付的成本，
+             而細節本來就只給管理者。兩邊讀到的事實相同，只是版位不同 -->
+        <p
+          v-if="!isAdmin"
           class="banner-summary"
           data-test="banner-summary"
         >
@@ -130,7 +155,7 @@
               </div>
             </dl>
             <p class="detail-note">
-              {{ t('instanceGuard.detail.ackActor') }}
+              {{ actorSource === 'page' ? t('instanceGuard.detail.ackActorPage', { actor: actorName }) : t('instanceGuard.detail.ackActor') }}
             </p>
           </template>
         </section>
@@ -170,6 +195,12 @@
           </dl>
         </section>
         <section class="detail-section detail-guidance">
+          <p
+            class="detail-summary"
+            data-test="banner-summary"
+          >
+            {{ t(summaryKey) }}
+          </p>
           <template v-if="nextStepKey">
             <h4>{{ t('instanceGuard.detail.nextStep') }}</h4>
             <p>{{ t(nextStepKey) }}</p>
@@ -186,7 +217,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleAlert } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck } from 'lucide-vue-next'
 import { getInstanceGuard } from '@/api/instanceGuard'
 import { formatDateTime } from '@/utils/format'
 
@@ -206,6 +237,49 @@ const visible = computed(() => {
   const s = props.status
   if (!s || !s.state) return false
   return s.state !== 'held' || (s.peers ?? 0) > 0
+})
+
+// 取回鎖的一次性成功提示：**只在本次載入中由警示轉為正常時出現**，
+// 重新整理即消失（`wasVisible` 是元件狀態，不持久化）。
+// 一開始就是 held＋peers=0 的正常情形不顯示任何東西——那是絕大多數的載入，
+// 對它們貼一則「已取回」只是噪音。
+// 用 `role="status"` 而非 `role="alert"`：狀態回復是報平安，不是需要打斷的警示
+const wasVisible = ref(false)
+const recovered = ref(false)
+
+// `immediate` 是必要的：橫幅在**掛載當下**就已經是可見的（守衛狀態早於本元件），
+// 少了它 `wasVisible` 永遠不會被設起來，鎖取回時就什麼都不顯示
+watch(
+  visible,
+  (now) => {
+    if (now) {
+      wasVisible.value = true
+      recovered.value = false
+      return
+    }
+    if (wasVisible.value) recovered.value = true
+  },
+  { immediate: true }
+)
+
+// 確認者（`actor`／`actor_source` 來自細節端點）。橫幅次行要回答「誰按的」——
+// 環境變數路徑本來就識別不了自然人，故顯示「環境變數」而不是捏造一個名字
+const actorSource = computed(() => detail.value?.actor_source || '')
+const actorName = computed(() => detail.value?.actor || '')
+const actorText = computed(() => {
+  if (actorSource.value === 'env') return t('instanceGuard.actorEnv')
+  return actorName.value
+})
+
+// 次行＝起算時間 · 確認者（有才顯示）· 取回鎖後自動消失
+const secondaryLine = computed(() => {
+  const parts = []
+  if (props.status?.since) {
+    parts.push(t(sinceKey.value, { time: formatDateTime(props.status.since) }))
+  }
+  if (actorText.value) parts.push(t('instanceGuard.actorLabel', { actor: actorText.value }))
+  parts.push(t('instanceGuard.clearsOnRetake'))
+  return parts.join(' · ')
 })
 
 // reason 走 locale 查表；後端若送出未知碼則原樣顯示（不吞資訊）
@@ -268,7 +342,11 @@ const nextStepKey = computed(() => {
 const detail = ref(null)
 const detailLoading = ref(false)
 const detailError = ref(false)
-const detailOpen = ref(true)
+// **預設收合**（設計裁決：細節收進展開區）：常駐橫幅的高度是每個人每一頁都要付的
+// 成本，而指紋、確認碼、本實例識別是「決定要不要動手時才去讀」的資料，不是每頁都要看的。
+// 管理者亦同——預設展開會讓一句標題的橫幅長成半個畫面高。細節仍在橫幅出現時取一次
+//（次行的確認者來自同一份資料），只是不攤開
+const detailOpen = ref(false)
 
 const loadDetail = async () => {
   detailLoading.value = true
@@ -331,15 +409,26 @@ watch(
 }
 
 .banner-headline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--ot-space-sm);
   margin: 0;
   font-weight: 600;
 }
 
-.banner-since {
+/* 取回鎖的一次性提示：正常語意，不套警示色 */
+.instance-guard-banner.is-recovered {
+  background-color: var(--ot-bg-surface);
+  border-bottom: 1px solid var(--ot-border-subtle);
+}
+
+.banner-icon.is-success {
+  color: var(--el-color-success);
+}
+
+.detail-summary {
+  margin: 0 0 var(--ot-space-xs);
+}
+
+.banner-secondary {
+  margin: 2px 0 0;
   font-size: var(--ot-font-size-sm);
   font-weight: 400;
   color: var(--ot-text-secondary);

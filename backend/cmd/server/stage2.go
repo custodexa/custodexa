@@ -1544,6 +1544,16 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		s.offsiteDescribers...)
 	// 單實例守衛全貌（admin 限定、唯讀）：探針讀包級單例快照
 	instanceGuardHandler := api.NewInstanceGuardHandler(instanceGuardProbe)
+	// 守衛攔下頁的兩條未認證端點：完整路由樹上恆註冊（理由見 routeDeps.instanceGuardHalt）。
+	// 正常服務期本實例必然已持鎖或已 overridden，兩者都不是攔下狀態，
+	// 故 GET 回 running、POST 在觸碰任何憑證之前回 409。來源限制與解封端點同一份組態。
+	instanceGuardHaltHandler := api.NewInstanceGuardHaltHandler(instanceGuardHaltProbe,
+		func(req api.InstanceGuardAckRequest) api.InstanceGuardAckResult {
+			return instanceGuardHaltConfirm(database.DB, req)
+		})
+	if allowed, err := cfg.Seal.ParseAllowedCIDRs(); err == nil {
+		instanceGuardHaltHandler.SetSourceControls(cfg.Seal.TrustedProxyConfigured(), allowed)
+	}
 
 	// 金鑰清冊與換鑰精靈（admin only）。
 	// JWT 指紋於此算好注入（handler 不接觸 secret 材料）
@@ -1653,6 +1663,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		ldapDirectory:         ldapDirectoryHandler,
 		offsiteStorage:        offsiteStorageHandler,
 		instanceGuard:         instanceGuardHandler,
+		instanceGuardHalt:     instanceGuardHaltHandler,
 		keyManagement:         keyManagementHandler,
 		snippet:               snippetHandler,
 		assetGroup:            assetGroupHandler,

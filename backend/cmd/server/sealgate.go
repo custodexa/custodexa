@@ -41,6 +41,56 @@ var sealGateWhitelist = map[[2]string]bool{
 	{http.MethodOptions, "/api/v1/seal/unseal"}: true,
 }
 
+// haltGateWhitelist 是守衛攔下模式唯一可達的端點集合。
+//
+// 比封印白名單更小：健康檢查（監控必須能探測到「行程在跑但未啟動服務」）、
+// 封印狀態（其 instance_guard 欄是前端相位判定的探測來源）、攔下狀態與確認送出。
+// **不含 /metrics**：攔下期段 2 的指標尚未註冊，而「攔下中」與「當機」的可分辨性
+// 已由 /health 與 seal/status 承擔，多開一條不增加運維能力。
+// **不含 /seal/unseal**：攔下期解封無從進行（鎖未取得、段 2 未起）。
+var haltGateWhitelist = map[[2]string]bool{
+	{http.MethodGet, "/health"}:                         true,
+	{http.MethodPost, "/health"}:                        true,
+	{http.MethodGet, "/healthz"}:                        true,
+	{http.MethodGet, "/api/v1/seal/status"}:             true,
+	{http.MethodGet, "/api/v1/instance-guard/halt"}:     true,
+	{http.MethodPost, "/api/v1/instance-guard/ack"}:     true,
+	{http.MethodOptions, "/api/v1/seal/status"}:         true,
+	{http.MethodOptions, "/api/v1/instance-guard/halt"}: true,
+	{http.MethodOptions, "/api/v1/instance-guard/ack"}:  true,
+}
+
+// haltGateMiddleware 是攔下模式 router 的最外層閘。
+//
+// 與封印閘同型（具名承載體、非白名單一律 503＋機器碼、未匹配路由亦然），
+// 只是白名單不同。**不與封印閘共用一份白名單**：兩個模式可達的面本來就不同，
+// 共用一份會使任一側的擴充自動擴大另一側——而那正是白名單要防的事。
+func haltGateMiddleware() gin.HandlerFunc {
+	return (&haltGate{}).Handle
+}
+
+// haltGate 是攔下閘的具名承載體（不具名的理由見 sealGate）。
+type haltGate struct{}
+
+// Handle 是攔下閘的中間件本體。
+func (g *haltGate) Handle(c *gin.Context) {
+	if haltGateAllows(c) {
+		c.Next()
+		return
+	}
+	c.Abort()
+	apierror.Respond(c, http.StatusServiceUnavailable, apierror.CodeSealServiceSealed, nil)
+}
+
+// haltGateAllows 判定本請求是否落在攔下白名單內（CORS 預檢的處理同封印閘）。
+func haltGateAllows(c *gin.Context) bool {
+	if haltGateWhitelist[[2]string{c.Request.Method, c.FullPath()}] {
+		return true
+	}
+	return c.Request.Method == http.MethodOptions &&
+		haltGateWhitelist[[2]string{http.MethodOptions, c.Request.URL.Path}]
+}
+
 // sealGateMiddleware 是 registerRoutes 的最外層閘。
 //
 // live 回報「本 router 的完整服務圖是否已就緒」。**不是直接讀狀態機**，
@@ -134,6 +184,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		ldapDirectory:         &api.LDAPDirectoryHandler{},
 		offsiteStorage:        &api.OffsiteStorageHandler{},
 		instanceGuard:         &api.InstanceGuardHandler{},
+		instanceGuardHalt:     &api.InstanceGuardHaltHandler{},
 		keyManagement:         &api.KeyManagementHandler{},
 		snippet:               &api.SnippetHandler{},
 		assetGroup:            &api.AssetGroupHandler{},

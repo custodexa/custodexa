@@ -141,3 +141,7 @@ backend/cmd/server/testdata/deploy/
 # 知識圖譜產出（可由 code-review-graph / graphify 重建，不入版控）
 # code-review-graph 的 .code-review-graph/ 由工具自帶 .gitignore 自我忽略，無須在此列
 graphify-out/
+
+# 設計畫布的發佈打包檔（內含編輯器、2MB 級；來源 .dc.html 與 canvas.json 才入版控）
+openspec/changes/**/research/design/*.html
+!openspec/changes/**/research/design/*.dc.html

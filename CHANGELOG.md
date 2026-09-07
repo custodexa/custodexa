@@ -2,6 +2,40 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.7.1 — the standby takes over from a page (2026-09-08)
+
+### The pages you see before the service is up
+
+- The unseal page is now two columns: the left column holds what you need to know (seal state, the
+  warning that a lost master key cannot be recovered, and any condition that applies right now), the
+  right column holds the one thing to do, as numbered steps. Conditions such as a cooldown or a
+  failed previous unseal appear in a fixed place and no longer push the form down the page.
+- The text on these pages is written for someone handling an outage: one sentence per element, the
+  action first, and reference material (key formats, generator commands) folded away until opened.
+  Nothing an operator needs to decide is removed.
+
+### Taking over on the standby without editing files
+
+- When a second application instance starts against a database whose single-instance lock is held,
+  it no longer exits. It stays up in a halted state, serves the guard page, and retries the lock
+  every 15 seconds. Nothing is migrated or written while halted.
+- The guard page shows who holds the lock, when that session started, and the acknowledgement code.
+  To take over, an administrator confirms on the page that the other host is down, retypes the code,
+  and signs in with their credentials. The code is checked against the lock holder at the moment of
+  submission, so a code copied from an earlier holder is refused with the current one. Repeated wrong
+  credentials are throttled.
+- After a successful acknowledgement the same process continues its startup; no restart is needed.
+  The audit event records the administrator's account. If the lock is released while the page is
+  open, the instance starts on its own and the page says so.
+- The in-app banner shown while the lock is still held elsewhere is now one line with the time and
+  who acknowledged, with the details behind a control. Starting with `INSTANCE_GUARD_ACK` in the
+  environment still works and is recorded as before.
+
+### Upgrading
+
+No schema change. The standby procedure in `docs/ops/standby-takeover.md` now describes the page;
+the environment-variable path remains for scripted takeovers.
+
 ## 1.7.0 — role assignments join the checkpoint chain (2026-09-07)
 
 ### Who holds which role is now part of the evidence

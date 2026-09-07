@@ -487,6 +487,13 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/seal/unseal"}: {classNoIdentity, "",
 		"[歸屬：他體系] 封印期解封端點，須早於認證系統可用；留痕由 seal journal 承擔" +
 			"（spec「他體系留痕的明載定調」），`audit_logs` 無列不計為缺口"},
+	{"GET", "/api/v1/instance-guard/halt"}: {classNoIdentity, "",
+		"[歸屬：他體系] 守衛攔下頁的狀態查詢，須早於認證系統可用（攔下模式下段 2 未起、" +
+			"JWT 不存在）；唯讀、無副作用、不觸及任何資料庫寫入，`audit_logs` 無列不計為缺口"},
+	{"POST", "/api/v1/instance-guard/ack"}: {classNoIdentity, "",
+		"[歸屬：他體系] 守衛攔下頁的確認送出，須早於認證系統可用；攔下模式寫不了審計列" +
+			"（段 2 未起且該模式不得產生任何資料庫寫入），失敗嘗試進 log、" +
+			"成功後的留痕由守衛的 `overridden` 事件承擔（details 帶確認者與確認前失敗次數）"},
 	{"GET", "/api/v1/sessions/:id/monitor"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] 監控 WebSocket，token 於 handler 內自解析；" +
 			"留痕＝AP-70 `sshproxy/handler.go` `auditObserverJoin`（**本 change 新增**，" +

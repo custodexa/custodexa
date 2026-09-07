@@ -3,7 +3,9 @@
 ## Purpose
 
 前端國際化基礎能力：三語支援（zh-TW 事實源／en-US／ja-JP）、語言切換與偏好、Element Plus 連動、日期時長本地化、locale 完備性防護與技術識別字紅線。後端錯誤訊息的 error code 體系屬另一規格範圍。
+
 ## Requirements
+
 ### Requirement: Supported languages with zh-TW as source of truth
 The frontend SHALL support three display languages — zh-TW (source of truth), en-US, and ja-JP — via vue-i18n in Composition API mode, with locale resources stored as one JSON file per language under a single frontend i18n module. The zh-TW resource SHALL be the authoring source; en-US and ja-JP SHALL maintain an identical key set. Missing translations SHALL resolve through the fallback chain (ja-JP → en-US → zh-TW; en-US → zh-TW) and MUST NOT render bare key paths or break layout.
 
@@ -262,78 +264,67 @@ Localizing these display strings SHALL NOT change any persistence or audit JSON 
 
 ### Requirement: 解封頁文案的操作者可讀性與其守衛
 
-解封頁的對外文案（`unseal.*` 與同頁渲染的 `apiError.SEAL_*`）SHALL 以**疲勞狀態下的維運
-人員**為讀者撰寫。該讀者具備維運領域知識（環境變數、重啟服務、十六進位、base64），
-但工作記憶已耗盡且會跳著看畫面——解封頁被讀到的時點，正是服務中斷處理中。
+服務前頁面（解封頁、單實例守衛攔下頁、守衛橫幅）的對外文案（`unseal.*`、`instanceGuard.*` 與同頁渲染的
+`apiError.SEAL_*`、`apiError.INSTANCE_GUARD_*`）SHALL 以**疲勞狀態下的維運人員**為讀者撰寫。該讀者具備維運領域知識
+（環境變數、重啟服務、十六進位、base64），但工作記憶已耗盡且會跳著看畫面——這些頁被讀到的時點，正是服務中斷處理中。
 判準為讀者能回答一個問題：**我下一步要做什麼**。
 
 五條規範：
 
 1. **動作在前**：凡述及需要人為處置之處，SHALL 先呈現要做的事，理由 SHALL 置後或省略。
-2. **一句一事**：單句 SHALL NOT 串接三個以上子句。多重處置 SHALL 拆為編號步驟或並列
-   選項，SHALL NOT 寫成散文。
-3. **不得陳述內部設計理由**：對外文案 SHALL NOT 說明後端為何如此設計（失敗回應為何
-   不可區分、某驗證走哪條路徑、某頁為何不需登入、狀態回應含哪些欄位）。
-   對應之安全行為本身不因此改變。
-4. **不得裸露實作術語**：SHALL NOT 包含內部函式名、狀態機器碼，或未經替換的工程行話
-   （信封密文、解包／unwrap、收束、留痕、材料、fail-close 一類）。技術識別字
-   （環境變數名、檔名、`base64`、路徑）SHALL NOT 視為行話，SHALL 原樣保留。
-5. **三語同標準**：en-US 與 ja-JP SHALL 各自符合上列四條，SHALL NOT 因翻譯而回復長句
-   或補回被刪除的設計理由。否定句與警告之強度 SHALL 三語一致——弱化即為缺陷。
+2. **一句一事**：單句 SHALL NOT 串接三個以上子句。多重處置 SHALL 拆為編號步驟或並列選項，SHALL NOT 寫成散文。
+   每個元件（標題、警語、提示）的內文 SHALL NOT 超過兩句；參考資料 SHALL 收進預設收合的展開區。
+3. **不得陳述內部設計理由**：對外文案 SHALL NOT 說明後端為何如此設計（失敗回應為何不可區分、某驗證走哪條路徑、
+   某頁為何不需登入、狀態回應含哪些欄位）。對應之安全行為本身不因此改變。
+4. **不得裸露實作術語**：SHALL NOT 包含內部函式名、狀態機器碼，或未經替換的工程行話（信封密文、解包／unwrap、收束、留痕、
+   材料、fail-close 一類）。技術識別字（環境變數名、檔名、`base64`、路徑、`application_name`、pid、`backend_start`）
+   SHALL NOT 視為行話，SHALL 原樣保留。
+5. **三語同標準**：en-US 與 ja-JP SHALL 各自符合上列四條，SHALL NOT 因翻譯而回復長句或補回被刪除的設計理由。
+   否定句與警告之強度 SHALL 三語一致——弱化即為缺陷。
 
-上述規範 SHALL NOT 被用來刪除或弱化任何事實：改寫前後**操作者做決定所需的事實條數
-SHALL NOT 減少**（含「一般解封不需要帳號密碼」「主金鑰的三種輸入寫法」「冷卻會自動
-恢復、不需重啟」一類），任何「會發生 X」SHALL NOT 被改寫為「不會發生 X」。
+上述規範 SHALL NOT 被用來刪除或弱化任何事實：改寫前後**操作者做決定所需的事實條數 SHALL NOT 減少**（含「一般解封不需要帳號密碼」
+「主金鑰的三種輸入寫法」「冷卻會自動恢復、不需重啟」「另一實例仍在執行時停止它即可、不需確認」「確認後兩實例並存的後果由確認者承擔」一類），
+任何「會發生 X」SHALL NOT 被改寫為「不會發生 X」。收進展開區的事實 SHALL 於展開後完整可讀。
 
-**遺失警語之版面優先度**：`key-management` 已要求「KEK 遺失導致全部資料永久不可解、
-系統不提供任何救援」以不可略過的措辭陳述於解封介面。解封頁 SHALL 進一步使該陳述在
-**版面上優先於同頁其他說明**——SHALL 具獨立標題、SHALL 位於任何解封表單之前、
-其正文 SHALL NOT 以次要文字樣式呈現。該區塊 SHALL 於系統**未解封時**恆常顯示，
-SHALL NOT 僅於初始化解封路徑顯示（一般解封的操作者同樣可能是該金鑰的唯一持有者）；
-已解封時 SHALL NOT 顯示——該狀態下此陳述不可行動，恆常出現只會訓練使用者忽略它。
+**遺失警語之版面優先度**：`key-management` 已要求「KEK 遺失導致全部資料永久不可解、系統不提供任何救援」以不可略過的措辭陳述於解封介面。
+解封頁 SHALL 進一步使該陳述在**版面上優先於同頁其他說明**——SHALL 具獨立標題、SHALL 在文件順序上位於任何解封表單之前、
+其正文 SHALL NOT 以次要文字樣式呈現。該區塊 SHALL 於系統**未解封時**恆常顯示，SHALL NOT 僅於初始化解封路徑顯示
+（一般解封的操作者同樣可能是該金鑰的唯一持有者）；已解封時 SHALL NOT 顯示——該狀態下此陳述不可行動，恆常出現只會訓練使用者忽略它。
 
-**跨頁用語一致性**（既有規範之延伸）：解封頁承載之錯誤訊息與該頁自身文案 SHALL 使用
-同一用語。同一概念出現兩種說法 SHALL 視為缺陷。
+**跨頁用語一致性**（既有規範之延伸）：服務前頁面承載之錯誤訊息與該頁自身文案 SHALL 使用同一用語。同一概念出現兩種說法 SHALL 視為缺陷。
 
-**機械守衛**（規範 3、4 可機器驗證的部分）SHALL 存在，其掃描對象為**三份 locale 檔的
-`unseal.*` 全部葉鍵**，SHALL NOT 為原始碼。守衛 SHALL 涵蓋行話黑名單與狀態機器碼形態，
-且 SHALL 在選取集合為空或顯著縮小時失敗（鍵改名或 namespace 調整導致掃空時
-SHALL NOT 靜默通過）。
+**機械守衛**（規範 3、4 可機器驗證的部分）SHALL 存在，其掃描對象為**三份 locale 檔的 `unseal.*` 與 `instanceGuard.*` 全部葉鍵**，
+SHALL NOT 為原始碼。守衛 SHALL 涵蓋行話黑名單與狀態機器碼形態，且 SHALL 在選取集合為空或顯著縮小時失敗
+（鍵改名或 namespace 調整導致掃空時 SHALL NOT 靜默通過）。
 
-**機械守衛之誠實界線**：守衛擋得住行話回流與鍵消失，**擋不住「這句話人看不看得懂」**。
-後者 SHALL 以人工驗收承擔，且該驗收 SHALL 由未參與該文案撰寫者執行——
-系統 SHALL NOT 宣稱文案可讀性已被自動化驗證。
+**機械守衛之誠實界線**：守衛擋得住行話回流與鍵消失，**擋不住「這句話人看不看得懂」**。後者 SHALL 以人工驗收承擔，
+且該驗收 SHALL 由未參與該文案撰寫者執行——系統 SHALL NOT 宣稱文案可讀性已被自動化驗證。
 
 #### Scenario: 解封頁文案不含內部設計理由與行話
-
-- **WHEN** 掃描三份 locale 的 `unseal.*` 全部葉鍵
+- **WHEN** 掃描三份 locale 的 `unseal.*` 與 `instanceGuard.*` 全部葉鍵
 - **THEN** 無任一值含狀態機器碼、內部函式名或行話黑名單詞，且葉鍵數未低於釘定下限
 
 #### Scenario: 遺失警語先於解封表單且非次要樣式
-
 - **WHEN** 系統未解封，解封頁渲染完成
-- **THEN** 遺失警語區塊 MUST 出現於任何解封表單之前，MUST 具獨立標題，
-  其正文 MUST NOT 套用次要文字樣式
+- **THEN** 遺失警語區塊 MUST 在文件順序上出現於任何解封表單之前，MUST 具獨立標題，其正文 MUST NOT 套用次要文字樣式
 
 #### Scenario: 已解封時不再顯示遺失警語
-
 - **WHEN** 系統已解封，解封頁渲染完成
 - **THEN** 遺失警語區塊 MUST NOT 出現
 
 #### Scenario: 一般解封路徑同樣顯示遺失警語
-
 - **WHEN** 系統未解封且狀態為既有部署（非初始化解封）
 - **THEN** 遺失警語區塊 MUST 出現
 
 #### Scenario: 操作者所需事實未因改寫而減少
-
-- **WHEN** 檢視一般解封與初始化解封兩條路徑的文案
-- **THEN** 「一般解封不需要帳號密碼」「主金鑰的三種輸入寫法」「初始管理員帳密的來源」
-  MUST 各自仍可自畫面讀到
+- **WHEN** 檢視一般解封、初始化解封與守衛攔下三條路徑的文案（含展開區展開後）
+- **THEN** 「一般解封不需要帳號密碼」「主金鑰的三種輸入寫法」「初始管理員帳密的來源」「另一實例仍在執行時停止它即可」
+  「確認的後果由確認者承擔」MUST 各自仍可自畫面讀到
 
 #### Scenario: 三語警告強度一致
+- **WHEN** 以三語檢視遺失警語、保存確認勾選項與守衛攔下頁的承擔勾選項
+- **THEN** 各語言 MUST 同為無條件、無例外、涵蓋全部資料的措辭，MUST NOT 出現「可能」「大部分」一類在其他語言不存在的弱化限定
 
-- **WHEN** 以三語檢視遺失警語與保存確認勾選項
-- **THEN** 各語言 MUST 同為無條件、無例外、涵蓋全部資料的措辭，
-  MUST NOT 出現「可能」「大部分」一類在其他語言不存在的弱化限定
-
+#### Scenario: 守衛攔下頁文案每元件不逾兩句
+- **WHEN** 檢視 `instanceGuard.halt.*` 三語的每個標題、警語與提示
+- **THEN** 內文 MUST NOT 超過兩句，且處置類文案 MUST 以要做的事開頭

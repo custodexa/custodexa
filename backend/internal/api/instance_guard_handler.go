@@ -59,6 +59,11 @@ type InstanceGuardView struct {
 	Ack          string                `json:"ack"`
 	LostTotal    uint64                `json:"lost_total"`
 	Peers        int                   `json:"peers"`
+	// Actor 確認啟動的確認者：頁面路徑為管理員帳號，環境變數路徑為 `operator via env`；
+	// 未經確認啟動（held）時為空字串。橫幅的次行由此欄與 ActorSource 組成。
+	Actor string `json:"actor"`
+	// ActorSource 確認者來源：`page`／`env`；未經確認啟動時為空字串。
+	ActorSource string `json:"actor_source"`
 }
 
 // Coarse 由全貌取粗狀態：只留不含識別資訊的四欄。

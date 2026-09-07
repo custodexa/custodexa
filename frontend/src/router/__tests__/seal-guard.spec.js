@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios from 'axios'
 import { createSealGuard } from '../index'
 import {
+  SEAL_PHASE_HALTED,
   SEAL_PHASE_SEALED,
   SEAL_PHASE_UNKNOWN,
   SEAL_PHASE_UNSEALED,
   getSealPhase,
   markSealed,
+  publishHaltStatus,
   publishSealStatus,
   resetSealPhase,
 } from '@/utils/sealPhase'
@@ -27,6 +29,12 @@ let getSpy
 const route = (path) => ({ path })
 
 const statusResponse = (state) => ({ data: { state, generation: 0 } })
+
+// 攔下期的封印狀態回應：`state` 仍是 sealed（服務確實未上線），
+// 相位判定看 `instance_guard.state`
+const haltedResponse = () => ({
+  data: { state: 'sealed', generation: 0, instance_guard: { state: 'halted', peers: 0 } },
+})
 
 describe('封印導覽守衛', () => {
   let guard
@@ -139,5 +147,88 @@ describe('封印導覽守衛', () => {
       guard(route('/login'), route('/'), next),
     ])
     expect(getSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+// 守衛攔下相位（服務前頁面的路由相位新增 halted）。
+//
+// 攔下期後端只開 /health、/seal/status 與兩條 instance-guard 端點，`seal/status`
+// 的 `state` 仍是 sealed——照封印那一列處理會把人送去一個同樣打不通的解封頁，
+// 正是本相位要修的東西。故 halted **先於** sealed 判定。
+describe('守衛攔下相位', () => {
+  let guard
+  let next
+
+  beforeEach(() => {
+    resetSealPhase()
+    getSpy = vi.spyOn(axios, 'get')
+    guard = createSealGuard()
+    next = vi.fn()
+  })
+
+  afterEach(() => {
+    getSpy.mockRestore()
+  })
+
+  it('探測到 instance_guard.state=halted 即進入攔下相位', async () => {
+    getSpy.mockResolvedValue(haltedResponse())
+    await guard(route('/dashboard'), route('/'), next)
+    expect(getSealPhase()).toBe(SEAL_PHASE_HALTED)
+  })
+
+  it('攔下期自任一路徑進站皆被導向 /instance-guard（含 /unseal）', async () => {
+    for (const path of ['/', '/dashboard', '/login', '/unseal', '/workspace', '/key-management']) {
+      next.mockClear()
+      resetSealPhase()
+      getSpy.mockResolvedValue(haltedResponse())
+      await guard(route(path), route('/'), next)
+      expect(next, `${path} 未被導向攔下頁`).toHaveBeenCalledWith('/instance-guard')
+    }
+  })
+
+  it('攔下期在 /instance-guard 上放行（否則永遠到不了確認表單）', async () => {
+    getSpy.mockResolvedValue(haltedResponse())
+    await guard(route('/instance-guard'), route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('非攔下相位時 /instance-guard 導離（不留一個服務已上線仍可互動的接手表單）', async () => {
+    for (const state of ['sealed', 'unsealed', 'sealed-faulted']) {
+      next.mockClear()
+      resetSealPhase()
+      getSpy.mockResolvedValue(statusResponse(state))
+      await guard(route('/instance-guard'), route('/'), next)
+      expect(next, `${state} 相位下 /instance-guard 未被導離`).toHaveBeenCalledWith('/')
+    }
+  })
+
+  it('探測失敗（未知相位）對 /instance-guard 放行——不猜、不阻擋', async () => {
+    getSpy.mockRejectedValue(new Error('network down'))
+    await guard(route('/instance-guard'), route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+    expect(getSealPhase()).toBe(SEAL_PHASE_UNKNOWN)
+  })
+
+  it('確認接手後不把人留在攔下頁：running 清掉攔下相位，離開時不被彈回', async () => {
+    getSpy.mockResolvedValue(haltedResponse())
+    await guard(route('/instance-guard'), route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+
+    // 攔下頁沒有導覽即完成確認，由頁面把新狀態發佈進相位模組
+    publishHaltStatus({ state: 'running' })
+    expect(getSealPhase()).toBe(SEAL_PHASE_UNKNOWN)
+
+    // 服務起來後的第一次導覽重新探測：已解封即照常放行
+    next.mockClear()
+    getSpy.mockResolvedValue(statusResponse('unsealed'))
+    await guard(route('/login'), route('/instance-guard'), next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('攔下期由封印狀態發佈：sealed 那一列不得搶先（否則被送去打不通的解封頁）', () => {
+    publishSealStatus({ state: 'sealed', instance_guard: { state: 'halted' } })
+    expect(getSealPhase()).toBe(SEAL_PHASE_HALTED)
+    publishSealStatus({ state: 'sealed', instance_guard: { state: 'held' } })
+    expect(getSealPhase()).toBe(SEAL_PHASE_SEALED)
   })
 })

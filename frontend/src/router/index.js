@@ -1,7 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '../components/MainLayout.vue'
 import {
+  INSTANCE_GUARD_PATH,
+  SEAL_PHASE_HALTED,
   SEAL_PHASE_SEALED,
+  SEAL_PHASE_UNKNOWN,
   SEAL_PHASE_UNSEALED,
   UNSEAL_PATH,
   ensureSealPhase,
@@ -25,6 +28,14 @@ const routes = [
     path: '/unseal',
     name: 'Unseal',
     component: () => import('../views/Unseal.vue'),
+  },
+  {
+    // 守衛攔下頁：**攔下期可達且不要求登入**，理由同解封頁——
+    // 攔下模式只開 /health、/seal/status 與兩條 instance-guard 端點，
+    // 登入端點根本不存在於那份路由樹上。
+    path: '/instance-guard',
+    name: 'InstanceGuardHalted',
+    component: () => import('../views/InstanceGuardHalted.vue'),
   },
   {
     path: '/',
@@ -296,11 +307,17 @@ const router = createRouter({
 // 「已解封仍可開解封頁」則平白留一個對外的可互動表單。兩者是同一條規則的兩端，
 // 拆成兩套判斷必然互相打架（例如各自快取相位而在解封成功當下互踢）。
 //
-// | 相位 | 目標 /unseal | 目標其他任何路徑 |
-// |---|---|---|
-// | sealed   | 放行 | 導向 /unseal |
-// | unsealed | 導向 /（再由 auth guard 決定 /dashboard 或 /login） | 放行 |
-// | unknown  | 放行 | 探測後依上兩列決定；探測失敗即放行 |
+// | 相位 | 目標 /unseal | 目標 /instance-guard | 目標其他任何路徑 |
+// |---|---|---|---|
+// | halted   | 導向 /instance-guard | 放行 | 導向 /instance-guard |
+// | sealed   | 放行 | 導向 / | 導向 /unseal |
+// | unsealed | 導向 /（再由 auth guard 決定 /dashboard 或 /login） | 導向 / | 放行 |
+// | unknown  | 放行 | 放行 | 探測後依上三列決定；探測失敗即放行 |
+//
+// **halted 先判**：攔下期 `/seal/status` 的 `state` 仍是 sealed（服務確實未上線），
+// 若照 sealed 那列處理，人會被送去一個同樣打不通的解封頁——那正是本相位要修的東西。
+// 未知相位（探測失敗）對 `/instance-guard` 放行而非導離：與 `/unseal` 同一條
+// 「不猜、不阻擋」，且後端不在攔下模式時該頁自己會顯示「已啟動」。
 //
 // **解封成功當下不會踢人**：守衛只在導覽時執行，而解封是在 `/unseal` 頁內
 // 完成的（無導覽）。使用者停在成功畫面，由「前往登入」自行離開——那一次導覽
@@ -308,7 +325,19 @@ const router = createRouter({
 export function createSealGuard() {
   return async (to, from, next) => {
     const target = to.path === UNSEAL_PATH
+    const haltTarget = to.path === INSTANCE_GUARD_PATH
     const phase = await ensureSealPhase()
+    if (phase === SEAL_PHASE_HALTED) {
+      if (haltTarget) next()
+      else next(INSTANCE_GUARD_PATH)
+      return
+    }
+    // 已知非攔下相位下的攔下頁：導離（同 unsealed 對 /unseal 的處理，
+    // 不留一個服務已上線卻仍可互動的接手表單）
+    if (haltTarget && phase !== SEAL_PHASE_UNKNOWN) {
+      next('/')
+      return
+    }
     if (phase === SEAL_PHASE_SEALED && !target) {
       next(UNSEAL_PATH)
       return

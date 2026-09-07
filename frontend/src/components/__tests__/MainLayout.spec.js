@@ -513,7 +513,10 @@ describe('MainLayout 單實例守衛橫幅輪詢', () => {
     await flushPromises()
     const alert = wrapper.find('[role="alert"]')
     expect(alert.exists()).toBe(true)
-    expect(alert.text()).toContain('ab12cd34ef56')
+    // 細節預設收合（設計裁決）：取回來了但不攤開，展開才看得到指紋
+    expect(alert.text()).not.toContain('ab12cd34ef56')
+    await wrapper.find('.detail-toggle').trigger('click')
+    expect(wrapper.find('[role="alert"]').text()).toContain('ab12cd34ef56')
     expect(getInstanceGuardMock).toHaveBeenCalledTimes(1)
 
     vi.advanceTimersByTime(60000)

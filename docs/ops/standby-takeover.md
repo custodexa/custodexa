@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/standby-takeover.md) | [日本語](../ja/ops/standby-takeover.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.5.0.
+> Applies to: Custodexa 1.7.1.
 >
 > **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
 >
@@ -109,7 +109,7 @@ The standby is a second application host prepared from the same files, kept **do
    | `DATA_PATH` | This host's own data root; create `${DATA_PATH}/recordings` and `${DATA_PATH}/audit` with the permissions in SOP §1.3 |
    | `TLS_DOMAIN`, `TLS_IP_SAN`, `PUBLIC_BASE_URL` | Unchanged when users reach the service through a name or a virtual address that you re-point at takeover (the arrangement this procedure assumes); this host's own values when users will reach it under a different address |
    | `TRUSTED_PROXIES` | The built-in proxy's subnet is the same on both hosts; with your own ingress, its address as seen from this host |
-   | `INSTANCE_GUARD_ACK` | Absent. It is set only during a takeover after a failure (§4.3) and removed afterwards |
+   | `INSTANCE_GUARD_ACK` | Absent. A takeover after a failure is confirmed on the halt page (§4.3); this variable is the scripted alternative, set only for that takeover and removed afterwards |
 
    ```bash
    # on the primary: the deployment files the standby needs, .env and tls/ included
@@ -195,22 +195,50 @@ docker compose logs -f backend
 Two outcomes:
 
 - **The backend starts normally**, with the database connection line and no `[InstanceGuard]` warning. The primary's database session was already gone (the host was stopped cleanly, or the database's keepalive had already reclaimed it). Go to §5.
-- **The backend stops and reports that the lock is held by another database session.** With `restart: always` the container comes back every few seconds and prints the same passage again; that is queuing, not a fault. The passage looks like this (`pid`, the times and `code` differ every time):
+- **The backend reports that the lock is held by another database session and does not open the service.** The process stays up in the guard's halted mode instead of exiting: it keeps retrying the lock every 15 seconds and opens one page for you to act on. The passage looks like this (`pid`, the times and `code` differ every time):
 
   ```
   CRITICAL：單實例鎖由另一個資料庫工作階段持有。本版不支援多實例部署，本實例未啟動服務。
     持鎖者：application_name=custodexa-instance-guard pid=268 backend_start=2026-09-05T13:50:58.116184Z code=2936aed7c309
     風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
     處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。
-    處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：設定環境變數 INSTANCE_GUARD_ACK=2936aed7c309 後重啟。本次啟動會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
+    處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 2936aed7c309 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=2936aed7c309 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
     澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。
   ```
 
-  The holder is the failed primary's database session, kept open on the server until its TCP keepalive gives up on it (§2.1). The standby has written nothing and opened no listener. `backend_start` is when that session was created, that is, roughly when the primary last started; a value that matches your primary's last start, with the primary confirmed down, is the picture of a leftover session. How to read every field, and the optional diagnostic query that joins `pg_locks` with `pg_stat_activity`, is in SOP §2.6b. Do not terminate the session on the database server; the guard's recovery does not need it, and the procedure below is the one this document rehearsed.
+  followed by a line saying that the halted mode is open on the backend's port, that it serves only the health check, the seal status and the halt confirmation, and that it has run no migration and written nothing to the database.
+
+**Open the halt page**: `https://<address>/instance-guard` on the standby, where `<address>` is the standby's own address (the address users connect to may still point at the primary). It needs no sign-in, and it is reachable under the same source restriction as the unseal page, that is the network ranges in `SEAL_UNSEAL_ALLOWED_CIDRS` when that variable is set. Every other path on a halted instance answers 503.
+
+The page shows the same facts as the log: the holder's `application_name`, `pid` and `backend_start`, the confirmation code for this conflict, that two instances running at once damage data, and that this instance has written nothing, so this is not database corruption. It re-reads the guard's state every retry interval, so it follows the situation without being reloaded.
+
+The holder is the failed primary's database session, kept open on the server until its TCP keepalive gives up on it (§2.1). The standby has run no migration and has written nothing; the only listener it has open is the one serving that page. `backend_start` is when that session was created, that is, roughly when the primary last started; a value that matches your primary's last start, with the primary confirmed down, is the picture of a leftover session. How to read every field, and the optional diagnostic query that joins `pg_locks` with `pg_stat_activity`, is in SOP §2.6b. Do not terminate the session on the database server; the guard's recovery does not need it, and the procedure below is the one this document rehearsed.
+
+**If the other instance turns out to be running**, stop it and do nothing else: the standby acquires the lock at its next retry and starts on its own, with no confirmation and no restart, and the page turns to "started".
 
 ### 4.3 Confirm with the code and let the standby take over
 
-Only after §4.1 is settled. Put the code from the most recent message into the standby's `.env` and start the backend again:
+Only after §4.1 is settled. On the halt page:
+
+1. **Tick the confirmation** that you have checked on the host itself that the other instance is not running and will not restart by itself.
+2. **Retype the confirmation code** shown next to the holder's fingerprint.
+3. **Enter an administrator's account and password**, and submit.
+
+All three are required; a submission missing any of them is refused. The code is checked against the holder **at the moment you submit**, not against the one the page displayed: if the holder changed while you were filling the form, the submission is refused and the page shows the new fingerprint and the new code for you to retype. Wrong administrator credentials are refused too, and the confirmation is not accepted; after five credential failures the page stops accepting submissions for five minutes. That waiting period is kept inside the halted process and is gone when the process ends, and no part of it is written to the database, because a halted instance writes nothing there. It is there to stop automated guessing, not someone with access to the host. If the page answers that the credentials cannot be verified here, the instance could not read the user table (a schema from a different version, or a database problem); take the scripted path at the end of this section instead.
+
+Once the submission is accepted the page shows **starting**: the instance closes the halt-page listener, runs the migrations and the rest of its startup, and opens the service port again. **The port does not answer during that window, which is expected**; the page keeps asking until it does, then turns to "started" and offers the way to sign in. Nothing has to be restarted and nothing has to be edited in `.env`.
+
+From here the standby serves fully: sign-in, connections, audit, schedules. What you see until the leftover session is gone:
+
+- A persistent banner for every signed-in user, "this instance started with an acknowledgement code; another database session still holds the single-instance lock"; administrators additionally see the confirming account, the holder fingerprint and the code in it.
+- `GET /api/v1/seal/status` reports `instance_guard.state = overridden`, `reason = ack_page`; the metric `custodexa_instance_guard_overridden` is 1.
+- An `audit_logs` row, `resource=instance_guard`, `event=overridden`, whose `actor` is the administrator account that confirmed, with the source recorded as the page and the number of credential failures that preceded the accepted submission. The account is what the product records; **why** the confirmation was made is not, so put the evidence from §4.1 on your incident ticket.
+
+When the database reclaims the leftover session, the standby takes the lock on its own at its next retry (every 15 seconds): the log prints `[InstanceGuard] 已重新取得單實例鎖（自 overridden 起未持鎖 … ms，reason=…）；告知解除`, the banner disappears at the interface's next poll, `state` becomes `held`, and `audit_logs` gains an `event=regained` row. **No restart is needed.** How long that takes is the keepalive setting on the database server (§2.1), about 2 hours at the operating system default.
+
+What confirming means, in full, is in SOP §2.6b; the one sentence that matters here: **if the primary was in fact alive, two instances are now writing the same database, and the data problems that causes are not prevented by the guard; they belong to whoever confirmed.** §4.1 is what stands between you and that.
+
+**The scripted alternative**: `INSTANCE_GUARD_ACK`. The same confirmation can be given without the page, for a takeover driven by a script or on a host where the page is not reachable. Put the code from the most recent message into the standby's `.env` and start the backend again:
 
 ```bash
 # on the standby: the value is code= from the most recent message, valid for this conflict only
@@ -219,24 +247,14 @@ docker compose up -d backend
 docker compose logs backend | grep InstanceGuard
 ```
 
-The log should now show `CRITICAL：以 INSTANCE_GUARD_ACK 啟動：單實例鎖仍由 … 持有；本實例將照常執行 migration 與服務；此確認已記錄（actor=operator via env）`, followed by the normal startup. From here the standby serves fully: sign-in, connections, audit, schedules. What you see until the leftover session is gone:
-
-- A persistent banner for every signed-in user, "this instance started with an acknowledgement code; another database session still holds the single-instance lock"; administrators also see the holder fingerprint and the code in it.
-- `GET /api/v1/seal/status` reports `instance_guard.state = overridden`, `reason = ack_startup`; the metric `custodexa_instance_guard_overridden` is 1.
-- An `audit_logs` row, `resource=instance_guard`, `event=overridden`, with `actor="operator via env"`. **The system does not know who set the code**; record the confirmation, and the evidence from §4.1, on your incident ticket.
-
-When the database reclaims the leftover session, the standby takes the lock on its own at its next retry (every 15 seconds): the log prints `[InstanceGuard] 已重新取得單實例鎖（自 overridden 起未持鎖 … ms，reason=ack_startup）；告知解除`, the banner disappears at the interface's next poll, `state` becomes `held`, and `audit_logs` gains an `event=regained` row. **No restart is needed.** How long that takes is the keepalive setting on the database server (§2.1), about 2 hours at the operating system default.
-
-Afterwards remove the `INSTANCE_GUARD_ACK` line from `.env`, without restarting anything. The value is bound to that one leftover session and is inert once the holder changed, but a stale line in `.env` invites the next operator to reuse it.
-
-What confirming means, in full, is in SOP §2.6b; the one sentence that matters here: **if the primary was in fact alive, two instances are now writing the same database, and the data problems that causes are not prevented by the guard; they belong to whoever confirmed.** §4.1 is what stands between you and that.
+The log then shows `CRITICAL：以 INSTANCE_GUARD_ACK 啟動：單實例鎖仍由 … 持有；本實例將照常執行 migration 與服務；此確認已記錄（actor=operator via env）`, followed by the normal startup, and `reason` is `ack_startup` instead of `ack_page`. **This path cannot record who confirmed**: the audit row's `actor` is `operator via env`, an environment variable cannot identify a person, so the person belongs on your ticket. Afterwards remove the `INSTANCE_GUARD_ACK` line from `.env`, without restarting anything: the value is bound to that one leftover session and is inert once the holder changed, but a stale line in `.env` invites the next operator to reuse it.
 
 ### 4.4 When the failed host comes back
 
 The primary's host may come back later, repaired or rebooted. Its stack is still in `.env` and, unless you took it down, in the container list with `restart: always`. Three situations:
 
-- **The standby holds the lock (`state = held`)**: the primary's backend is stopped by the guard at startup and prints the same passage as in §4.2, with the standby as the holder. That is the guard working as intended, and it is why §4.1 does not rely on it: it only holds once the standby actually has the lock.
-- **The standby is still in `overridden`** (the leftover session has not been reclaimed yet): the primary's new backend is stopped by the leftover session too. When the leftover is reclaimed, **both are retrying and whichever gets there first wins the lock**. If that is the primary, it starts normally, with no `[InstanceGuard]` warning in its log, and both serve; the standby stays in `overridden` with `reason` still `ack_startup`, so its state alone does not show what happened. What shows it is the holder: in `GET /api/v1/instance-guard`, and in the administrators' banner once its detail is refreshed, the holder's `backend_start` is no longer the failed primary's last start but the time its new backend came up (the standby's log prints the new holder too, at most once every 10 minutes). This is the window §4.1 closes by keeping the primary from starting until the standby reports `held`.
+- **The standby holds the lock (`state = held`)**: the primary's backend is halted by the guard at startup and prints the same passage as in §4.2, with the standby as the holder, and offers the same halt page. That is the guard working as intended, and it is why §4.1 does not rely on it: it only holds once the standby actually has the lock. Confirming on the primary's halt page while the standby is serving would be the excluded topology; leave it halted, or take it down.
+- **The standby is still in `overridden`** (the leftover session has not been reclaimed yet): the primary's new backend is halted by the leftover session too. When the leftover is reclaimed, **both are retrying and whichever gets there first wins the lock**. If that is the primary, it starts normally, with no `[InstanceGuard]` warning in its log, and both serve; the standby stays in `overridden` with `reason` still the one recorded at acknowledgement (`ack_page` from the guard page, `ack_startup` from the environment variable), so its state alone does not show what happened. What shows it is the holder: in `GET /api/v1/instance-guard`, and in the administrators' banner once its detail is refreshed, the holder's `backend_start` is no longer the failed primary's last start but the time its new backend came up (the standby's log prints the new holder too, at most once every 10 minutes). This is the window §4.1 closes by keeping the primary from starting until the standby reports `held`.
 - **The primary's disk is recoverable**: the recordings and audit files it holds (§2.3) can be moved to the standby. The database refers to a recording by its path inside the container, which is the same on both hosts, so files copied under the standby's `${DATA_PATH}` with the same relative layout are found by playback.
 
   ```bash
@@ -259,7 +277,7 @@ Run on the standby after §3 or §4; every row has to hold before the takeover i
 |---|---|---|---|
 | 1 | Services up | `docker compose ps` | backend, frontend, guacd, tls-proxy running; no postgres (it is not part of this shape) |
 | 2 | Backend healthy | `docker compose exec backend wget -qO- http://localhost:8080/health` | A normal response |
-| 3 | Lock state | `curl -sk https://<address>/api/v1/seal/status`; while `overridden`, also `GET /api/v1/instance-guard` as an administrator, or the holder in the banner | `instance_guard.state` is `held` after §3; after §4.3, `held`, or `overridden` with `reason=ack_startup` and the holder's `backend_start` unchanged from the §4.2 message. A holder with a newer `backend_start` means another backend took the lock (§4.4) |
+| 3 | Lock state | `curl -sk https://<address>/api/v1/seal/status`; while `overridden`, also `GET /api/v1/instance-guard` as an administrator, or the holder in the banner | `instance_guard.state` is `held` after §3; after §4.3, `held`, or `overridden` with the holder's `backend_start` unchanged from the §4.2 message. `reason` is `ack_page` when the confirmation was made on the halt page and `ack_startup` when it came from `INSTANCE_GUARD_ACK`; the `overridden` audit row carries the confirming account for the first and `operator via env` for the second. A holder with a newer `backend_start` means another backend took the lock (§4.4) |
 | 4 | Sign-in works | Sign in with an account whose password you know | The sign-in succeeds; users' accounts, roles and assets are all there, since they are in the database |
 | 5 | The data is the primary's | Open the asset list and the audit page | Assets created on the primary are listed; the last audit rows written on the primary are there, followed by the sign-in you just made on the standby |
 | 6 | Unsealed | With `KEK_PROVIDER=ui`: the unseal page | Completed; with `env` or `kms`, the backend log shows no seal-related refusal |
@@ -295,7 +313,7 @@ This is the boundary of the procedure, stated so that it can go into a recovery 
 - **Audit rows that had fallen back to files** on the failed host (written while the database was unreachable) are not in the database and not on the standby until the files are recovered and replayed.
 - **Export artifacts** that were being produced or had not been downloaded are gone from their download links; they are re-exportable on the standby, and completed ones may still be retrievable from offsite storage within their retention period.
 - **Browser sign-ins are kept, not lost**: the two hosts share `JWT_SECRET`, so in the project's rehearsal an access token issued by the primary was accepted by the standby as it was. What users lose is the protocol session, not the sign-in.
-- **The confirmation, when used, is attributed to `operator via env`**, not to a person. The person is on your ticket, not in the product.
+- **The confirmation, when it was made on the halt page, is attributed to the administrator account that made it; when it came from `INSTANCE_GUARD_ACK`, it is attributed to `operator via env`**, not to a person. Either way, what led to the decision is on your ticket, not in the product.
 
 Nothing in the list above is recovered by the product on its own. What the database holds, that is accounts, assets, credentials, policies, audit rows, session records, schedules and the offsite custody ledger, is intact, because it was never on the host.
 

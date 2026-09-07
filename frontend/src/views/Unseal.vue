@@ -1,32 +1,37 @@
 <template>
-  <div class="unseal-page">
+  <PreservicePage
+    :messages="statusMessages"
+    :tone="showInitializationForm ? 'danger' : 'default'"
+    :right-class="['unseal-card', { 'is-initialization': showInitializationForm }]"
+  >
     <!-- 封印期語言切換（i18n「Language switching」）：封印時本頁是唯一可達頁面，
          沒有切換入口＝看不懂預設語言的操作者被卡在一個擋住全部服務的頁面上。
          純前端（setLanguage 只寫 i18n locale 與 localStorage），故後端 503 不影響它 -->
-    <div class="lang-switch">
-      <el-dropdown @command="setLanguage">
-        <span class="lang-switch-label">
-          {{ LOCALE_LABELS[locale] }}
-          <el-icon class="el-icon--right"><ChevronDown /></el-icon>
-        </span>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item
-              v-for="l in SUPPORTED_LOCALES"
-              :key="l"
-              :command="l"
-              :disabled="l === locale"
-            >
-              {{ LOCALE_LABELS[l] }}
-            </el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-    </div>
-    <div
-      class="unseal-card"
-      :class="{ 'is-initialization': showInitializationForm }"
-    >
+    <template #lang>
+      <div class="lang-switch">
+        <el-dropdown @command="setLanguage">
+          <span class="lang-switch-label">
+            {{ LOCALE_LABELS[locale] }}
+            <el-icon class="el-icon--right"><ChevronDown /></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="l in SUPPORTED_LOCALES"
+                :key="l"
+                :command="l"
+                :disabled="l === locale"
+              >
+                {{ LOCALE_LABELS[l] }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
+    </template>
+
+    <!-- 左欄：現在是什麼狀態、什麼不能弄丟。此欄的內容增減不影響右欄版位 -->
+    <template #left>
       <header class="unseal-header">
         <h1 class="unseal-title">
           {{ $t('unseal.title') }}
@@ -35,27 +40,6 @@
           {{ $t('unseal.subtitle') }}
         </p>
       </header>
-
-      <!-- 遺失警語（i18n「遺失警語之版面優先度」）：標題正下方、任何解封表單之前。
-           版位刻意不隨狀態浮動——故障／冷卻／待釋放三種警示都排在表單之上，
-           把它放表單旁會在有警示時被推到半頁以下，而讀者是跳著看的。
-           已解封時不顯示：該狀態下這句不可行動，恆掛只會訓練使用者忽略它 -->
-      <div
-        v-if="!isUnsealed"
-        class="loss-callout"
-      >
-        <el-icon class="loss-icon">
-          <TriangleAlert />
-        </el-icon>
-        <div>
-          <p class="loss-title">
-            {{ $t('unseal.lossTitle') }}
-          </p>
-          <p class="loss-body">
-            {{ $t('unseal.lossBody') }}
-          </p>
-        </div>
-      </div>
 
       <!-- 狀態區：四態徽章＋generation＋手動重整（unsealing 期間自動輪詢） -->
       <div
@@ -79,103 +63,45 @@
         </el-button>
       </div>
 
-      <el-alert
-        v-if="statusError"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.statusErrorTitle')"
-        :description="statusError"
-      />
-
-      <!-- 故障機器碼（sealed-faulted）：查譯 apierror 碼，前端不自行詮釋成因 -->
-      <el-alert
-        v-if="status.fault_code"
-        type="error"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.faultTitle')"
-        :description="faultText"
-      />
-      <!-- 動作在前、理由在後（i18n「解封頁文案的操作者可讀性」規範 1、2）：
-           三個處置拆成編號步驟，疲勞時掃得到；fail-close 的語義降為尾註 -->
-      <el-alert
-        v-if="status.journal_faulted"
-        type="error"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.journalFaultedTitle')"
-      >
-        <p class="alert-lead">
-          {{ $t('unseal.journalFaultedDesc') }}
-        </p>
-        <ol class="alert-steps">
-          <li>{{ $t('unseal.journalFaultedStep1') }}</li>
-          <li>{{ $t('unseal.journalFaultedStep2') }}</li>
-          <li>{{ $t('unseal.journalFaultedStep3') }}</li>
-        </ol>
-        <p class="alert-note">
-          {{ $t('unseal.journalFaultedWhy') }}
-        </p>
-      </el-alert>
-      <!-- 待收束：前代解封持有者尚未釋放資源，此期間任何解封嘗試都會被拒 -->
-      <el-alert
-        v-if="status.cleanup_pending"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.cleanupPendingTitle')"
-        :description="cleanupText"
-      />
-      <!-- 冷卻倒數：限速類刻意可區分於材料類失敗，管理員必須能分辨「被限速」與「輸錯」 -->
-      <el-alert
-        v-if="cooldownRemainingMs > 0"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.cooldownTitle')"
-        :description="$t('unseal.cooldownDesc', {
-          remaining: cooldownRemainingText,
-          until: formatDateTime(status.cooldown_until),
-        })"
-      />
-      <!-- 逾時 × 初始化的重試指引：逾時後 bootstrap 可能已完成，
-           改用新材料會使第一把材料成為無人知曉的主 KEK -->
-      <el-alert
-        v-if="status.timeout_retry_hint_code"
-        type="warning"
-        :closable="false"
-        show-icon
-        class="unseal-alert"
-        :title="$t('unseal.timeoutHintTitle')"
-        :description="timeoutHintText"
-      />
-
-      <!-- 已解封：不再提供解封表單（再送只會拿到 409） -->
+      <!-- 遺失警語（i18n「遺失警語之版面優先度」）：左欄在文件順序上先於右欄，
+           故它恆在任何解封表單之前，且不隨狀態訊息增減而被推走。
+           已解封時不顯示：該狀態下這句不可行動，恆掛只會訓練使用者忽略它 -->
       <div
-        v-if="isUnsealed"
-        class="unseal-done"
+        v-if="!isUnsealed"
+        class="loss-callout"
       >
-        <el-alert
-          type="success"
-          :closable="false"
-          show-icon
-          :title="$t('unseal.unsealedTitle')"
-          :description="$t('unseal.unsealedDesc')"
-        />
+        <el-icon class="loss-icon">
+          <TriangleAlert />
+        </el-icon>
+        <div>
+          <p class="loss-title">
+            {{ $t('unseal.lossTitle') }}
+          </p>
+          <p class="loss-body">
+            {{ $t('unseal.lossBody') }}
+          </p>
+        </div>
+      </div>
+    </template>
+
+    <!-- 右欄：唯一要做的那件事 -->
+    <template #right>
+      <!-- 已解封：不再提供解封表單（再送只會拿到 409） -->
+      <template v-if="isUnsealed">
+        <h2 class="section-title is-success">
+          {{ $t('unseal.unsealedTitle') }}
+        </h2>
+        <p class="section-desc">
+          {{ $t('unseal.unsealedDesc') }}
+        </p>
         <el-button
           type="primary"
-          class="goto-login"
+          class="submit-btn goto-login"
           @click="goLogin"
         >
           {{ $t('unseal.goLogin') }}
         </el-button>
-      </div>
+      </template>
 
       <template v-else>
         <!-- 路徑未知（狀態未帶 initialization_required）：不猜，讓管理員顯式指定。
@@ -186,7 +112,6 @@
           type="info"
           :closable="false"
           show-icon
-          class="unseal-alert"
           :title="$t('unseal.pathUnknownTitle')"
         >
           <p class="alert-lead">
@@ -205,7 +130,7 @@
           </el-button>
         </el-alert>
 
-        <!-- 初始化解封：與一般解封視覺明確區分（紅框、專屬標題、不可略過的警語） -->
+        <!-- 初始化解封：與一般解封視覺明確區分（右欄危險外框、專屬標題、專屬警語） -->
         <section
           v-if="showInitializationForm"
           class="form-section init-section"
@@ -213,20 +138,21 @@
           <h2 class="section-title init-title">
             {{ $t('unseal.initTitle') }}
           </h2>
-          <el-alert
-            type="error"
-            :closable="false"
-            show-icon
-            class="unseal-alert init-warning"
-            :title="$t('unseal.initWarningTitle')"
-            :description="$t('unseal.initWarningDesc')"
-          />
+          <p class="section-desc init-desc">
+            {{ $t('unseal.initWarningTitle') }}
+          </p>
+          <p class="field-hint">
+            {{ $t('unseal.initWarningDesc') }}
+          </p>
 
-          <div class="field">
-            <span
-              id="unseal-init-material-label"
-              class="field-label"
-            >{{ $t('unseal.materialLabel') }}</span>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">1</span>
+              <span
+                id="unseal-init-material-label"
+                class="step-label"
+              >{{ $t('unseal.materialLabel') }}</span>
+            </div>
             <div class="field-row">
               <el-input
                 v-model="material"
@@ -246,21 +172,9 @@
             >
               {{ materialFormatMessage }}
             </p>
-            <p class="field-hint">
-              {{ $t('unseal.materialFormatIntro') }}
-            </p>
-            <ul class="format-list">
-              <li>{{ $t('unseal.materialFormatPlain') }}</li>
-              <li>{{ $t('unseal.materialFormatHex') }}</li>
-              <li>{{ $t('unseal.materialFormatBase64') }}</li>
-            </ul>
-            <GenerateCommands />
-          </div>
-
-          <div class="field">
             <span
               id="unseal-init-confirm-label"
-              class="field-label"
+              class="field-sublabel"
             >{{ $t('unseal.materialConfirmLabel') }}</span>
             <el-input
               v-model="materialConfirm"
@@ -276,44 +190,60 @@
             >
               {{ $t('unseal.materialConfirmMismatch') }}
             </p>
+            <p class="field-hint">
+              {{ $t('unseal.materialSizeHint') }}
+            </p>
+
+            <UnsealFormatDetails />
           </div>
 
           <!-- 這個標題描述的是「帳號＋密碼」兩個欄位構成的一組，不是單一控制項，
                故用 role="group" 加 aria-labelledby，而非 label。兩個輸入框各自帶
                aria-label：placeholder 不是可及名稱（輸入後即消失，且部分輔助技術不讀）。 -->
           <div
-            class="field"
+            class="step"
             role="group"
             aria-labelledby="unseal-admin-label"
           >
-            <span
-              id="unseal-admin-label"
-              class="field-label"
-            >{{ $t('unseal.adminLabel') }}</span>
+            <div class="step-head">
+              <span class="step-num">2</span>
+              <span
+                id="unseal-admin-label"
+                class="step-label"
+              >{{ $t('unseal.adminLabel') }}</span>
+            </div>
+            <div class="field-row">
+              <el-input
+                v-model="username"
+                class="admin-input"
+                autocomplete="off"
+                :aria-label="$t('unseal.usernamePlaceholder')"
+                :placeholder="$t('unseal.usernamePlaceholder')"
+              />
+              <el-input
+                v-model="password"
+                class="admin-input"
+                type="password"
+                show-password
+                autocomplete="off"
+                :aria-label="$t('unseal.passwordPlaceholder')"
+                :placeholder="$t('unseal.passwordPlaceholder')"
+              />
+            </div>
             <p class="field-hint">
               {{ $t('unseal.adminHint') }}
             </p>
-            <el-input
-              v-model="username"
-              class="admin-input"
-              autocomplete="off"
-              :aria-label="$t('unseal.usernamePlaceholder')"
-              :placeholder="$t('unseal.usernamePlaceholder')"
-            />
-            <el-input
-              v-model="password"
-              class="admin-input"
-              type="password"
-              show-password
-              autocomplete="off"
-              :aria-label="$t('unseal.passwordPlaceholder')"
-              :placeholder="$t('unseal.passwordPlaceholder')"
-            />
           </div>
 
-          <el-checkbox v-model="confirmSaved">
-            {{ $t('unseal.confirmSavedCheckbox') }}
-          </el-checkbox>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">3</span>
+              <span class="step-label">{{ $t('unseal.stepConfirmLabel') }}</span>
+            </div>
+            <el-checkbox v-model="confirmSaved">
+              {{ $t('unseal.confirmSavedCheckbox') }}
+            </el-checkbox>
+          </div>
         </section>
 
         <!-- 一般解封：既有部署，只需材料（能解開代表列本身即授權證明） -->
@@ -327,11 +257,14 @@
           <p class="section-desc">
             {{ $t('unseal.normalDesc') }}
           </p>
-          <div class="field">
-            <span
-              id="unseal-material-label"
-              class="field-label"
-            >{{ $t('unseal.materialLabel') }}</span>
+          <div class="step">
+            <div class="step-head">
+              <span class="step-num">1</span>
+              <span
+                id="unseal-material-label"
+                class="step-label"
+              >{{ $t('unseal.materialLabel') }}</span>
+            </div>
             <el-input
               v-model="material"
               aria-labelledby="unseal-material-label"
@@ -340,6 +273,14 @@
               autocomplete="off"
               :placeholder="$t('unseal.materialPlaceholder')"
             />
+            <!-- 事實不減少（i18n spec）：「32 位元組」與「三種寫法」原本只寫在初始化區塊，
+                 一般解封的操作者完全讀不到。此處只是**呈現**同一組參考資料，
+                 格式檢查仍不套用於一般解封（既有金鑰可能早於格式規則，見下方 computed） -->
+            <p class="field-hint">
+              {{ $t('unseal.materialSizeHint') }}
+            </p>
+
+            <UnsealFormatDetails />
           </div>
         </section>
 
@@ -353,8 +294,8 @@
           {{ $t('unseal.submit') }}
         </el-button>
       </template>
-    </div>
-  </div>
+    </template>
+  </PreservicePage>
 </template>
 
 <script setup>
@@ -368,7 +309,8 @@ import { resolveApiError } from '@/api/error'
 import { formatDateTime } from '@/utils/format'
 import { generateKEKMaterial, validateKEKMaterialFormat } from '@/utils/kek'
 import { publishSealStatus } from '@/utils/sealPhase'
-import GenerateCommands from '@/components/KEKGenerateCommands.vue'
+import PreservicePage from '@/components/PreservicePage.vue'
+import UnsealFormatDetails from '@/components/UnsealFormatDetails.vue'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage, t } from '@/i18n'
 
 // 解封頁。**封印期可達且不需登入**——
@@ -435,8 +377,10 @@ const timeoutHintText = computed(() =>
     ? resolveApiError({ code: status.value.timeout_retry_hint_code })
     : ''
 )
-const cleanupText = computed(() =>
-  t('unseal.cleanupPendingDesc', {
+// 處置與資料分開兩行：正文只留兩句處置，代次／時點／原因是查修用的參考資料，
+// 走 message.note 的次行版位（i18n「一句一事、每元件不逾兩句」）
+const cleanupMetaText = computed(() =>
+  t('unseal.cleanupPendingMeta', {
     generation: status.value.cleanup_generation ?? '—',
     reason: status.value.cleanup_reason || '—',
     since: status.value.cleanup_started_at
@@ -456,6 +400,76 @@ const cooldownRemainingText = computed(() => {
   const minutes = Math.floor(total / 60)
   const seconds = total % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
+
+// 左欄的狀態訊息：成立的才進清單。順序固定（讀不到狀態 → 故障 → 稽核不可寫 →
+// 待釋放 → 冷卻 → 逾時指引），故同一情境每次看到的排列相同
+const statusMessages = computed(() => {
+  const list = []
+  if (statusError.value) {
+    list.push({
+      key: 'statusError',
+      tone: 'warning',
+      title: t('unseal.statusErrorTitle'),
+      text: statusError.value,
+    })
+  }
+  if (status.value.fault_code) {
+    // 故障機器碼查譯 apierror，前端不自行詮釋成因
+    list.push({
+      key: 'fault',
+      tone: 'danger',
+      title: t('unseal.faultTitle'),
+      text: faultText.value,
+    })
+  }
+  if (status.value.journal_faulted) {
+    // 動作在前、理由在後：三個處置拆成編號步驟，疲勞時掃得到
+    list.push({
+      key: 'journalFaulted',
+      tone: 'danger',
+      title: t('unseal.journalFaultedTitle'),
+      text: t('unseal.journalFaultedDesc'),
+      steps: [
+        t('unseal.journalFaultedStep1'),
+        t('unseal.journalFaultedStep2'),
+        t('unseal.journalFaultedStep3'),
+      ],
+      note: t('unseal.journalFaultedWhy'),
+    })
+  }
+  if (status.value.cleanup_pending) {
+    // 前代解封持有者尚未釋放資源，此期間任何解封嘗試都會被拒
+    list.push({
+      key: 'cleanupPending',
+      tone: 'warning',
+      title: t('unseal.cleanupPendingTitle'),
+      text: t('unseal.cleanupPendingDesc'),
+      note: cleanupMetaText.value,
+    })
+  }
+  if (cooldownRemainingMs.value > 0) {
+    // 限速類刻意可區分於材料類失敗：管理員必須能分辨「被限速」與「輸錯」
+    list.push({
+      key: 'cooldown',
+      tone: 'warning',
+      title: t('unseal.cooldownTitle'),
+      text: t('unseal.cooldownDesc', {
+        remaining: cooldownRemainingText.value,
+        until: formatDateTime(status.value.cooldown_until),
+      }),
+    })
+  }
+  if (status.value.timeout_retry_hint_code) {
+    // 逾時後 bootstrap 可能已完成，改用新材料會使第一把材料成為無人知曉的主 KEK
+    list.push({
+      key: 'timeoutHint',
+      tone: 'warning',
+      title: t('unseal.timeoutHintTitle'),
+      text: timeoutHintText.value,
+    })
+  }
+  return list
 })
 
 const MATERIAL_FORMAT_TEXT_KEYS = {
@@ -590,23 +604,7 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
 </script>
 
 <style scoped>
-.unseal-page {
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-  background: var(--el-bg-color-page);
-}
-
-/* 語言切換：版位與類名沿用 Login.vue（同為未登入的整頁置中卡片） */
-.lang-switch {
-  position: absolute;
-  top: var(--ot-space-lg);
-  right: var(--ot-space-lg);
-}
-
+/* 語言切換：版位與類名沿用 Login.vue（同為未登入的整頁畫面） */
 .lang-switch-label {
   cursor: pointer;
   display: inline-flex;
@@ -620,32 +618,16 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
   color: var(--ot-primary);
 }
 
-.unseal-card {
-  width: 100%;
-  max-width: 640px;
-  padding: 28px 32px 32px;
-  border-radius: 10px;
-  background: var(--el-bg-color);
-  border: 1px solid var(--el-border-color);
-  box-shadow: var(--el-box-shadow-light);
-}
-
-/* 初始化解封與一般解封的視覺區分：此畫面的輸入會固化為部署主金鑰 */
-.unseal-card.is-initialization {
-  border: 2px solid var(--el-color-danger);
-  box-shadow: 0 0 0 4px var(--el-color-danger-light-9);
-}
-
 .unseal-title {
   margin: 0 0 6px;
-  font-size: 20px;
+  font-size: var(--ot-font-size-xl);
   font-weight: 600;
 }
 
 .unseal-subtitle {
-  margin: 0 0 20px;
+  margin: 0;
   color: var(--el-text-color-secondary);
-  font-size: 13px;
+  font-size: var(--ot-font-size-sm);
   line-height: 1.6;
 }
 
@@ -653,94 +635,12 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
 .status-meta {
-  font-size: 13px;
+  font-size: var(--ot-font-size-sm);
   color: var(--el-text-color-secondary);
-}
-
-.unseal-alert {
-  margin-bottom: 12px;
-}
-
-.form-section {
-  margin: 20px 0 8px;
-}
-
-.init-section {
-  padding: 16px;
-  border-radius: 8px;
-  background: var(--el-color-danger-light-9);
-}
-
-.section-title {
-  margin: 0 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.init-title {
-  color: var(--el-color-danger);
-}
-
-.section-desc {
-  margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
-}
-
-.field {
-  margin-bottom: 16px;
-}
-
-.field-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.field-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.material-input {
-  flex: 1;
-}
-
-.material-input :deep(.el-input__inner) {
-  font-family: var(--ot-font-mono, monospace);
-}
-
-.admin-input {
-  margin-top: 8px;
-}
-
-.field-error {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--el-color-danger);
-}
-
-.field-hint {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
-}
-
-.submit-btn {
-  margin-top: 12px;
-  width: 100%;
-}
-
-.goto-login {
-  margin-top: 12px;
 }
 
 /* 遺失警語：版面上必須壓過同頁其他說明。標題 15px/700，正文用 primary 文字色
@@ -748,11 +648,10 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
 .loss-callout {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  margin: 0 0 20px;
-  padding: 14px 16px;
-  border: 2px solid var(--el-color-danger);
-  border-radius: 8px;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--el-color-danger);
+  border-radius: var(--ot-radius-md);
   background: var(--el-color-danger-light-9);
 }
 
@@ -773,9 +672,116 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
 
 .loss-body {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--ot-font-size-sm);
   line-height: 1.7;
   color: var(--el-text-color-primary);
+}
+
+/* 右欄：唯一動作 */
+.section-title {
+  margin: 0;
+  font-size: var(--ot-font-size-lg);
+  font-weight: 600;
+}
+
+.init-title {
+  color: var(--el-color-danger);
+}
+
+.section-title.is-success {
+  color: var(--el-color-success);
+}
+
+.section-desc {
+  margin: 0;
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.init-desc {
+  color: var(--el-color-danger);
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-sm);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--ot-primary);
+  color: var(--ot-primary);
+  font-size: var(--ot-font-size-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.step-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.field-sublabel {
+  font-size: var(--ot-font-size-xs);
+  color: var(--el-text-color-secondary);
+}
+
+.field-row {
+  display: flex;
+  gap: var(--ot-space-sm);
+  align-items: center;
+}
+
+.material-input {
+  flex: 1;
+}
+
+.material-input :deep(.el-input__inner) {
+  font-family: var(--ot-font-mono, monospace);
+}
+
+.admin-input {
+  flex: 1;
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--ot-font-size-xs);
+  color: var(--el-color-danger);
+}
+
+.field-hint {
+  margin: 0;
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
+.submit-btn {
+  width: 100%;
+  margin-top: var(--ot-space-xs);
+}
+
+.goto-login {
+  margin-left: 0;
 }
 
 /* 警示區內的步驟／選項清單：疲勞時掃列表遠比讀段落容易 */
@@ -783,26 +789,12 @@ defineExpose({ loadStatus, submit, status, material, materialConfirm, confirmSav
   margin: 0;
 }
 
-.alert-steps,
 .alert-options {
   margin: 6px 0 0;
   padding-left: 20px;
 }
 
-.alert-steps li,
 .alert-options li {
   margin-bottom: 2px;
-}
-
-.alert-note {
-  margin: 8px 0 0;
-}
-
-.format-list {
-  margin: 4px 0 0;
-  padding-left: 20px;
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--el-text-color-secondary);
 }
 </style>

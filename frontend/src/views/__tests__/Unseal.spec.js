@@ -114,7 +114,9 @@ describe('Unseal 狀態呈現（四態）', () => {
     // 故障碼一律查譯 apierror，前端不自行詮釋成因
     expect(wrapper.text()).toContain('金鑰是對的，但服務初始化失敗')
     expect(wrapper.text()).toContain('無法寫入稽核紀錄，已暫停受理解封')
-    expect(wrapper.text()).toContain('第 4 代')
+    // 代次／時點／原因移到訊息的次行（message.note），用語與「解封世代」一致
+    const notes = wrapper.findAll('.status-message-note').map((n) => n.text())
+    expect(notes.some((n) => n.includes('第 4 世代'))).toBe(true)
     expect(wrapper.text()).toContain('stage2-timeout')
   })
 
@@ -134,7 +136,7 @@ describe('Unseal 狀態呈現（四態）', () => {
     )
     const wrapper = await mountPage()
 
-    expect(wrapper.text()).toContain('之前發生過服務初始化逾時')
+    expect(wrapper.text()).toContain('上一次解封時，服務初始化逾時')
     expect(wrapper.text()).toContain('請用第一次輸入的那把金鑰重試')
   })
 
@@ -298,7 +300,9 @@ describe('Unseal 送出', () => {
     await findButton(wrapper, '送出解封').trigger('click')
     await flushPromises()
 
-    expect(errorSpy.mock.calls[0][0]).toBe('解封失敗，送出的內容沒有通過驗證。')
+    expect(errorSpy.mock.calls[0][0]).toBe(
+      '解封失敗，送出的內容沒有通過驗證。請確認貼上的主金鑰與原本的逐字相同（含大小寫）後再試一次。'
+    )
     expect(errorSpy.mock.calls[0][0]).not.toContain('raw backend message')
     // 失敗後重讀狀態：冷卻／退避等限速資訊才會即時反映
     expect(getSealStatusMock).toHaveBeenCalledTimes(2)
@@ -488,6 +492,139 @@ describe('Unseal 遺失警語', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.find('.loss-notice').exists()).toBe(false)
+  })
+})
+
+// —— 兩欄版面（preservice-pages「服務前頁面的共同版面」）——
+//
+// 改版前的痛點：狀態訊息與表單同欄，訊息一多就把表單推到半頁以下。
+// 兩欄之後，訊息的出現與消失 SHALL NOT 改變右欄表單的版位——這條打在
+// 右欄的**完整 HTML** 上，不只是「表單還在」：位置沒動但結構被改寫同樣是缺陷。
+describe('Unseal 兩欄版面', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('狀態訊息落在左欄，右欄只有動作', async () => {
+    getSealStatusMock.mockResolvedValue(
+      statusFixture({ state: 'sealed-faulted', fault_code: 'SEAL_INIT_FAILED' })
+    )
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.preservice-left .status-messages').exists()).toBe(true)
+    expect(wrapper.find('.preservice-right .status-messages').exists()).toBe(false)
+    expect(wrapper.find('.preservice-left .loss-callout').exists()).toBe(true)
+    expect(wrapper.find('.preservice-right .form-section').exists()).toBe(true)
+  })
+
+  it('兩則狀態訊息同時成立時，右欄表單的版位與結構不變', async () => {
+    // 元件庫自動生成的 id 靠跨掛載遞增的計數器，兩次掛載必然不同——
+    // 那不是版面差異，比對前剝除（保留其餘全部屬性，否則這條會鬆到抓不到東西）
+    const structure = (wrapper) =>
+      wrapper.find('.preservice-right').html().replace(/id="el-id-[\d-]+"/g, 'id="el-id"')
+
+    getSealStatusMock.mockResolvedValue(statusFixture())
+    const quiet = await mountPage()
+    const quietRight = structure(quiet)
+    const quietIndex = quiet
+      .find('.preservice-grid')
+      .element.children.length
+
+    getSealStatusMock.mockResolvedValue(
+      statusFixture({
+        state: 'sealed-faulted',
+        fault_code: 'SEAL_INIT_FAILED',
+        cooldown_until: new Date(Date.now() + 90_000).toISOString(),
+      })
+    )
+    const noisy = await mountPage()
+
+    // 前置確認：兩則訊息真的都成立（否則下面的「不變」是空的先綠）
+    expect(noisy.findAll('.status-message')).toHaveLength(2)
+    expect(structure(noisy)).toBe(quietRight)
+    expect(noisy.find('.preservice-grid').element.children.length).toBe(quietIndex)
+    // 右欄仍是格線的第二個子元素（左欄在前）
+    const children = [...noisy.find('.preservice-grid').element.children]
+    expect(children[0].className).toContain('preservice-left')
+    expect(children[1].className).toContain('preservice-right')
+  })
+
+  it('遺失警語在文件順序上先於任何輸入框', async () => {
+    getSealStatusMock.mockResolvedValue(statusFixture({ initialization_required: true }))
+    const html = (await mountPage()).html()
+
+    expect(html.indexOf('loss-callout')).toBeGreaterThan(-1)
+    expect(html.indexOf('loss-callout')).toBeLessThan(html.indexOf('<input'))
+  })
+})
+
+// —— 參考資料收合（preservice-pages「服務前頁面的文案密度」）——
+//
+// 收合 SHALL NOT 減少事實：展開後三種寫法與三條生成指令必須完整可讀。
+describe('Unseal 格式與生成指令展開區', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(statusFixture({ initialization_required: true }))
+  })
+
+  it('預設收合，展開後三種寫法與三條生成指令完整出現', async () => {
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.format-details-body').exists(), '參考資料預設應收合').toBe(
+      false
+    )
+
+    const toggle = wrapper.find('.format-details-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+
+    const body = wrapper.find('.format-details-body')
+    expect(body.exists()).toBe(true)
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    // 三種寫法
+    expect(body.text()).toContain('32 個字元')
+    expect(body.text()).toContain('64 個十六進位字元')
+    expect(body.text()).toContain('base64')
+    // 三條生成指令（逐條比對，不以「有 code 元素」為通過依據）
+    const commands = body.findAll('.kek-command').map((c) => c.text())
+    expect(commands).toEqual([
+      'openssl rand -hex 32',
+      'openssl rand -base64 32',
+      "LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32",
+    ])
+  })
+
+  // 事實不減少（i18n spec「操作者所需事實未因改寫而減少」）：
+  // 「三種寫法」與「32 位元組」原本只掛在初始化區塊，一般解封的操作者讀不到。
+  // 這裡驗的是**呈現**——格式檢查是否套用於一般解封由另一組測試盯著（刻意不套）。
+  it('一般解封同樣可展開參考資料，三種寫法與三條生成指令完整出現', async () => {
+    getSealStatusMock.mockResolvedValue(statusFixture({ initialization_required: false }))
+    const wrapper = await mountPage()
+
+    const toggle = wrapper.find('.format-details-toggle')
+    expect(toggle.exists(), '一般解封應有格式與生成指令展開區').toBe(true)
+    expect(wrapper.find('.format-details-body').exists(), '參考資料預設應收合').toBe(false)
+
+    await toggle.trigger('click')
+
+    const body = wrapper.find('.format-details-body')
+    expect(body.exists()).toBe(true)
+    expect(body.text()).toContain('32 個字元')
+    expect(body.text()).toContain('64 個十六進位字元')
+    expect(body.text()).toContain('base64')
+    const commands = body.findAll('.kek-command').map((c) => c.text())
+    expect(commands).toEqual([
+      'openssl rand -hex 32',
+      'openssl rand -base64 32',
+      "LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32",
+    ])
+  })
+
+  it('一般解封可讀到「主金鑰是 32 位元組」', async () => {
+    getSealStatusMock.mockResolvedValue(statusFixture({ initialization_required: false }))
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.normal-section').text()).toContain('主金鑰是 32 位元組')
   })
 })
 

@@ -79,8 +79,8 @@ func testDeps(isRelease, auditLogEnabled bool) routeDeps {
 		corsMiddleware: cors.New(buildCORSConfig(nil, isRelease)),
 		// 封印閘以「已解封」形態注入：golden 記錄的是正常服務期的路由面。
 		// 封印期的行為（非白名單一律 503）由 seal_gate_test.go 的逐路由掃描守衛。
-		sealGate:          sealGateMiddleware(func() bool { return true }),
-		auditLogEnabled:   auditLogEnabled,
+		sealGate:        sealGateMiddleware(func() bool { return true }),
+		auditLogEnabled: auditLogEnabled,
 
 		seal:                  &api.SealHandler{},
 		auth:                  &api.AuthHandler{},
@@ -101,6 +101,7 @@ func testDeps(isRelease, auditLogEnabled bool) routeDeps {
 		notificationChannel:   &api.NotificationChannelHandler{},
 		ldapDirectory:         &api.LDAPDirectoryHandler{},
 		instanceGuard:         &api.InstanceGuardHandler{},
+		instanceGuardHalt:     &api.InstanceGuardHaltHandler{},
 		keyManagement:         &api.KeyManagementHandler{},
 		snippet:               &api.SnippetHandler{},
 		assetGroup:            &api.AssetGroupHandler{},
@@ -111,16 +112,16 @@ func testDeps(isRelease, auditLogEnabled bool) routeDeps {
 		recording:             &api.RecordingHandler{},
 		// 指標實例不可為 nil：registerRoutes 以 d.metrics 掛全域 middleware
 		// 並註冊曝光端點，零值指標會在建構路由時 panic
-		metrics:  observability.New(),
-		auditLog: &api.AuditLogHandler{},
-		exportSigning:         &api.ExportSigningHandler{},
-		auditExport:           &api.AuditExportHandler{},
-		accessReview:          &api.AccessReviewHandler{},
-		hostKey:               &api.HostKeyHandler{},
-		clipboard:             &api.ClipboardEventHandler{},
-		changeSecret:          &api.ChangeSecretHandler{},
-		accessRequest:         &api.AccessRequestHandler{},
-		sftp:                  &api.SFTPHandler{},
+		metrics:       observability.New(),
+		auditLog:      &api.AuditLogHandler{},
+		exportSigning: &api.ExportSigningHandler{},
+		auditExport:   &api.AuditExportHandler{},
+		accessReview:  &api.AccessReviewHandler{},
+		hostKey:       &api.HostKeyHandler{},
+		clipboard:     &api.ClipboardEventHandler{},
+		changeSecret:  &api.ChangeSecretHandler{},
+		accessRequest: &api.AccessRequestHandler{},
+		sftp:          &api.SFTPHandler{},
 
 		conn: &proxy.ConnectionHandler{},
 		ssh:  &sshproxy.Handler{},
@@ -475,4 +476,3 @@ func TestRoutesMatchGolden(t *testing.T) {
 		})
 	}
 }
-

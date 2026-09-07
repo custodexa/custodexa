@@ -48,6 +48,13 @@ const mountBanner = (props) =>
 
 const alertOf = (wrapper) => wrapper.find('[role="alert"]')
 
+// 細節區**預設收合**（設計裁決：細節收進展開區），管理者亦同：
+// 要驗細節內容的測試一律先按「顯示細節」
+const openDetail = async (wrapper) => {
+  await wrapper.find('.detail-toggle').trigger('click')
+  await flushPromises()
+}
+
 describe('InstanceGuardBanner 顯示條件', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -169,6 +176,7 @@ describe('InstanceGuardBanner 管理者細節', () => {
     // 失敗不走全域 toast（橫幅內誠實呈現）
     expect(getInstanceGuardMock).toHaveBeenCalledWith({ skipErrorToast: true })
 
+    await openDetail(wrapper)
     const text = alertOf(wrapper).text()
     // 持鎖者指紋可讀形式：application_name／pid／backend_start（原樣，供與日誌逐字比對）＋確認碼
     expect(text).toContain('custodexa-instance-guard')
@@ -207,12 +215,29 @@ describe('InstanceGuardBanner 管理者細節', () => {
     expect(getInstanceGuardMock).not.toHaveBeenCalled()
   })
 
-  it('「重新整理」手動再取一次；「隱藏細節」只收合細節，橫幅本體仍在', async () => {
+  // 設計裁決：常駐橫幅預設只有一句標題＋次行，指紋這類「動手前才讀」的資料收在展開區。
+  // 管理者沒有例外——預設展開會讓每一頁都背著半個畫面高的細節
+  it('細節區預設收合（管理者亦同），一句標題與次行仍在', async () => {
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    expect(wrapper.find('.banner-detail').exists()).toBe(false)
+    expect(wrapper.find('.detail-toggle').text()).toBe('顯示細節')
+    expect(alertOf(wrapper).text()).toContain('本實例以確認碼啟動')
+    expect(wrapper.find('[data-test="banner-secondary"]').exists()).toBe(true)
+    // 指紋不在預設高度內
+    expect(alertOf(wrapper).text()).not.toContain('custodexa-instance-guard')
+  })
+
+  it('「重新整理」手動再取一次；展開後可再收合，橫幅本體仍在', async () => {
     const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
     await flushPromises()
     await wrapper.find('.detail-refresh').trigger('click')
     await flushPromises()
     expect(getInstanceGuardMock).toHaveBeenCalledTimes(2)
+
+    await openDetail(wrapper)
+    expect(wrapper.find('.banner-detail').exists()).toBe(true)
+    expect(wrapper.find('.detail-toggle').text()).toBe('隱藏細節')
 
     await wrapper.find('.detail-toggle').trigger('click')
     expect(wrapper.find('.banner-detail').exists()).toBe(false)
@@ -225,6 +250,7 @@ describe('InstanceGuardBanner 管理者細節', () => {
     const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
     await flushPromises()
     expect(alertOf(wrapper).exists()).toBe(true)
+    await openDetail(wrapper)
     expect(alertOf(wrapper).text()).toContain('無法取得守衛細節')
   })
 
@@ -235,6 +261,7 @@ describe('InstanceGuardBanner 管理者細節', () => {
     })
     const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
     await flushPromises()
+    await openDetail(wrapper)
     expect(alertOf(wrapper).text()).toContain('降級碼')
   })
 
@@ -242,6 +269,7 @@ describe('InstanceGuardBanner 管理者細節', () => {
     getInstanceGuardMock.mockResolvedValue({ ...VIEW, state: 'held', reason: '', holder: null, ack: '', peers: 1 })
     const wrapper = mountBanner({ status: HELD_WITH_PEER, isAdmin: true })
     await flushPromises()
+    await openDetail(wrapper)
     const text = alertOf(wrapper).text()
     expect(text).toContain('目前沒有其他工作階段持有鎖')
     expect(text).toContain('確認是否有另一個實例正在執行')
@@ -254,6 +282,7 @@ describe('InstanceGuardBanner 管理者細節', () => {
   it('三語切換不留裸 key', async () => {
     const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
     await flushPromises()
+    await openDetail(wrapper)
 
     setLanguage('en-US')
     await wrapper.vm.$nextTick()
@@ -268,5 +297,149 @@ describe('InstanceGuardBanner 管理者細節', () => {
     expect(alertOf(wrapper).text()).toContain('ロック保持者')
     expect(alertOf(wrapper).text()).toContain('他のガード対応インスタンス数')
     expect(alertOf(wrapper).text()).not.toContain('instanceGuard.')
+  })
+})
+
+// 橫幅精簡（preservice-pages「守衛橫幅的精簡呈現」）：
+// 一句標題＋一行「自 … 起 · 確認者 … · 取回鎖後自動消失」，細節收進展開區；
+// 鎖取回後改為一次性的成功提示。
+describe('InstanceGuardBanner 次行與確認者', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getInstanceGuardMock.mockResolvedValue(VIEW)
+  })
+
+  const secondaryOf = (wrapper) => wrapper.find('[data-test="banner-secondary"]').text()
+
+  it('頁面確認：次行顯示管理員帳號，並說明取回鎖後自動消失', async () => {
+    getInstanceGuardMock.mockResolvedValue({ ...VIEW, actor: 'alice', actor_source: 'page' })
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    const line = secondaryOf(wrapper)
+    expect(line).toContain('自 2026')
+    expect(line).toContain('確認者 alice')
+    expect(line).toContain('取回鎖後自動消失')
+    // 展開區的確認來源同步改口：頁面路徑記的是真實帳號，不再說系統識別不了確認者
+    await openDetail(wrapper)
+    expect(alertOf(wrapper).text()).toContain('管理員 alice')
+    expect(alertOf(wrapper).text()).not.toContain('系統無法識別確認者是誰')
+  })
+
+  it('環境變數確認：次行顯示「環境變數」而不是捏造一個名字', async () => {
+    getInstanceGuardMock.mockResolvedValue({
+      ...VIEW,
+      actor: 'operator via env',
+      actor_source: 'env',
+    })
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    expect(secondaryOf(wrapper)).toContain('確認者 環境變數')
+    expect(secondaryOf(wrapper)).not.toContain('operator via env')
+    await openDetail(wrapper)
+    expect(alertOf(wrapper).text()).toContain('系統無法識別確認者是誰')
+  })
+
+  it('確認者未知（held＋peers、或細節未取得）時次行不留一個空的確認者欄位', async () => {
+    getInstanceGuardMock.mockResolvedValue({ ...VIEW, state: 'held', holder: null, ack: '', peers: 1 })
+    const wrapper = mountBanner({ status: HELD_WITH_PEER, isAdmin: true })
+    await flushPromises()
+    const line = secondaryOf(wrapper)
+    expect(line).not.toContain('確認者')
+    expect(line).toContain('本實例持鎖自')
+    expect(line).toContain('取回鎖後自動消失')
+  })
+
+  it('非管理者也有次行（不因取不到細節而少一行時間）', () => {
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: false })
+    expect(secondaryOf(wrapper)).toContain('自 2026')
+    expect(secondaryOf(wrapper)).not.toContain('確認者')
+  })
+
+  // 常駐橫幅的高度是每個人每一頁都要付的成本：摘要句對有展開區的管理者收進細節，
+  // 對沒有展開區的一般使用者維持內聯。兩邊讀到的事實相同
+  it('管理者的摘要句收進展開區：預設收合時不佔常駐高度，展開才出現', async () => {
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    expect(wrapper.find('[data-test="banner-summary"]').exists()).toBe(false)
+    // 標題與次行仍在
+    expect(alertOf(wrapper).text()).toContain('本實例以確認碼啟動')
+    expect(wrapper.find('[data-test="banner-secondary"]').exists()).toBe(true)
+
+    await openDetail(wrapper)
+    expect(wrapper.find('[data-test="banner-summary"]').exists()).toBe(true)
+    // 兩邊讀到的事實相同：一般使用者內聯的那一句，管理者在展開區讀到
+    expect(wrapper.find('[data-test="banner-summary"]').text()).toContain(
+      '可能有另一個應用實例'
+    )
+  })
+})
+
+describe('InstanceGuardBanner 取回鎖的一次性提示', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getInstanceGuardMock.mockResolvedValue(VIEW)
+  })
+
+  it('由警示轉為正常時顯示成功提示；它是 status 而非 alert', async () => {
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    expect(wrapper.find('[data-test="guard-recovered"]').exists()).toBe(false)
+
+    await wrapper.setProps({ status: HELD })
+    const recovered = wrapper.find('[data-test="guard-recovered"]')
+    expect(recovered.exists()).toBe(true)
+    expect(recovered.text()).toContain('已取回單實例鎖')
+    // 警示橫幅本身已消失（狀態回復是報平安，不是需要打斷的警示）
+    expect(alertOf(wrapper).exists()).toBe(false)
+    expect(recovered.attributes('role')).toBe('status')
+  })
+
+  it('一開始就正常的載入不顯示任何東西（下次重新整理即消失的語義）', async () => {
+    const wrapper = mountBanner({ status: HELD, isAdmin: true })
+    await flushPromises()
+    expect(wrapper.find('[data-test="guard-recovered"]').exists()).toBe(false)
+    expect(alertOf(wrapper).exists()).toBe(false)
+  })
+
+  it('再次失鎖時成功提示讓位給警示橫幅', async () => {
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    await wrapper.setProps({ status: HELD })
+    expect(wrapper.find('[data-test="guard-recovered"]').exists()).toBe(true)
+
+    await wrapper.setProps({ status: LOST_CONTENTION })
+    await flushPromises()
+    expect(wrapper.find('[data-test="guard-recovered"]').exists()).toBe(false)
+    expect(alertOf(wrapper).exists()).toBe(true)
+  })
+
+  it('三語的成功提示與次行都有譯文', async () => {
+    getInstanceGuardMock.mockResolvedValue({ ...VIEW, actor: 'alice', actor_source: 'page' })
+    const wrapper = mountBanner({ status: OVERRIDDEN, isAdmin: true })
+    await flushPromises()
+    try {
+      setLanguage('en-US')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-test="banner-secondary"]').text()).toContain(
+        'acknowledged by alice'
+      )
+      expect(wrapper.find('[data-test="banner-secondary"]').text()).toContain(
+        'clears once the lock is reacquired'
+      )
+
+      setLanguage('ja-JP')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-test="banner-secondary"]').text()).toContain('確認者 alice')
+      await wrapper.setProps({ status: HELD })
+      expect(wrapper.find('[data-test="guard-recovered"]').text()).toContain(
+        '単一インスタンスロックを取り戻しました'
+      )
+      expect(wrapper.find('[data-test="guard-recovered"]').text()).not.toContain(
+        'instanceGuard.'
+      )
+    } finally {
+      setLanguage('zh-TW')
+      localStorage.removeItem('ot-lang')
+    }
   })
 })

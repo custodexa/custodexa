@@ -13,7 +13,7 @@
 | 模組 | 端點數 | 基礎路徑 | 說明 |
 |------|--------|----------|------|
 | 系統 | 3 | `/health`, `/api/v1/ping` | 健康檢查（GET/POST）與 ping |
-| 單實例守衛 | 1 | `/api/v1/instance-guard` | 守衛全貌快照（admin；每次呼叫留一筆讀取審計，介面不輪詢；粗狀態另隨 `/api/v1/seal/status` 出） |
+| 單實例守衛 | 3 | `/api/v1/instance-guard` | 守衛全貌快照（admin；每次呼叫留一筆讀取審計，介面不輪詢；粗狀態另隨 `/api/v1/seal/status` 出）＋攔下頁的狀態查詢與確認送出（不需 JWT，受來源網段限制） |
 | 認證 / MFA | 12 | `/api/v1/auth`, `/api/v1/users` | 登入（本地/LDAP）、MFA 兩階段、強制註冊、自助改密、會話刷新、管理員救援 |
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
 | OIDC provider | 4 | `/api/v1/oidc-providers` | 身分提供者 CRUD（admin；secret write-only，身分域建後不可變） |
@@ -213,6 +213,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/db-console` | always |
 | GET | `/api/v1/db-console/sessions/:id/results/:event_id/export` | always |
 | GET | `/api/v1/instance-guard` | always |
+| POST | `/api/v1/instance-guard/ack` | always |
+| GET | `/api/v1/instance-guard/halt` | always |
 | GET | `/api/v1/keys` | always |
 | DELETE | `/api/v1/keys/retired-material` | always |
 | DELETE | `/api/v1/keys/rewrap` | always |
@@ -494,7 +496,7 @@ POST /api/v1/seal/unseal
 | `timeout_retry_hint_code` | 發生過逾時時出現，值為 `SEAL_STAGE2_TIMEOUT`：**初始化可能已完成，請以第一次輸入的材料重試，切勿改用新材料** |
 | `initialization_required` | 金鑰表為空（走初始化解封路徑）；判定失敗時回 500 而非以 `false` 頂替 |
 | `trusted_proxy` / `source_restricted` / `bind_addr` | 可信代理、來源網段限制與獨立監聽位址的組態現況 |
-| `instance_guard` | 單實例守衛的粗狀態 `{state, since, reason, peers}`：`state` 為 `held`／`overridden`／`lost`（關閉中短暫為 `stopping`／`released`）、`since` 狀態起始時間（RFC3339）、`reason` 為 `""`／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown`、`peers` 偵測到的其他守衛版實例連線數。**不含識別資訊**（無持鎖者指紋、確認碼、主機名、pid）；供管理介面橫幅每 60 秒輪詢，本端點不寫審計列。全貌走 `GET /api/v1/instance-guard`（下段） |
+| `instance_guard` | 單實例守衛的粗狀態 `{state, since, reason, peers}`：`state` 為 `held`／`overridden`／`lost`／`halted`（關閉中短暫為 `stopping`／`released`）、`since` 狀態起始時間（RFC3339）、`reason` 為 `""`／`ack_page`／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown`、`peers` 偵測到的其他守衛版實例連線數。攔下模式下本端點的 `state` 恆為 `sealed`，**相位判定看 `instance_guard.state = halted`**。**不含識別資訊**（無持鎖者指紋、確認碼、主機名、pid）；供管理介面橫幅每 60 秒輪詢，本端點不寫審計列。全貌走 `GET /api/v1/instance-guard`（下段） |
 
 **`POST /seal/unseal` 請求體**：
 
@@ -552,7 +554,8 @@ GET /api/v1/instance-guard
 **認證**: JWT ＋ `admin` 角色（`RequireRole("admin")`）；未登入 401、非 admin 403。
 
 單實例守衛在段 1 以 postgres session 級 advisory lock 保證「第二個應用實例不會在操作者不知情下運作」：
-第二實例啟動即被攔下並印出持鎖者指紋與確認碼，以 `INSTANCE_GUARD_ACK` 確認後可啟動但留審計事件；
+第二實例啟動即被攔下並印出持鎖者指紋與確認碼，行程停在攔下模式並提供攔下頁（下段）；
+於頁面完成三要件確認、或以 `INSTANCE_GUARD_ACK` 確認後可啟動，但留審計事件；
 執行期失鎖只告知不退出。守衛防的是不知情，不是不發生——確認後的並存不由守衛阻擋。營運面判讀見
 `docs/ops/upgrade-sop.md` §2.6b／§3.4。
 
@@ -577,6 +580,8 @@ GET /api/v1/instance-guard
     "fingerprint_source": "pg_stat_activity"
   },
   "ack": "55bd875b8d97",
+  "actor": "operator via env",
+  "actor_source": "env",
   "lost_total": 0,
   "peers": 0
 }
@@ -584,18 +589,89 @@ GET /api/v1/instance-guard
 
 | 欄位 | 說明 |
 |---|---|
-| `state` | `held`（持鎖）／`overridden`（以確認碼啟動、尚未取得鎖）／`lost`（執行期失鎖，每週期重取中）；關閉中短暫為 `stopping`／`released` |
+| `state` | `held`（持鎖）／`overridden`（以確認啟動、尚未取得鎖）／`lost`（執行期失鎖，每週期重取中）；關閉中短暫為 `stopping`／`released`。攔下模式的 `halted` 不會出現在本端點——本端點要求 JWT，攔下模式未註冊它（見下段） |
 | `since` | 目前狀態的起始時間（RFC3339） |
-| `reason` | 進入目前狀態的原因：`""`（held）／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown` |
+| `reason` | 進入目前狀態的原因：`""`（held）／`ack_page`（攔下頁確認）／`ack_startup`（環境變數確認）／`contention`／`db_unreachable`／`permanent`／`unknown` |
 | `instance` | 本實例識別：`hostname`（容器主機名）、`pid`（應用行程 id）、`started_at`（守衛**開始**取鎖的時刻；實際持鎖時刻是 `since`，兩者可差數秒） |
 | `db_session_pid` | 本實例釘選連線在 postgres 內的 `pg_backend_pid()` |
 | `holder` | 持鎖者指紋（`overridden` 與 `lost{contention}` 時有值，否則 `null`）：`application_name`／`pid`（postgres 工作階段 id）／`backend_start`；`code` 為三欄正規化字串 sha256 前 12 碼＝確認碼；`fingerprint_source` 為 `pg_stat_activity`，查不到持鎖者細節時為 `unavailable`（此時 `code` 為降級碼，不綁定特定工作階段） |
+| `actor`／`actor_source` | 確認啟動的確認者與來源：攔下頁路徑為通過驗證的管理員帳號＋`page`，環境變數路徑為 `operator via env`＋`env`；未經確認啟動（`held`）時皆為空字串。管理介面橫幅的次行由這兩欄組成 |
 | `ack` | 本行程環境中的 `INSTANCE_GUARD_ACK` 值（去除前後空白），未設時為空字串。只有 `state=overridden` 代表它被用上；`state=held` 時它是留在環境裡的惰性值（啟動日誌會提示移除） |
 | `lost_total` | 本行程累計失鎖次數 |
 | `peers` | 偵測到的其他守衛版實例連線數（同一資料庫、同 `application_name`，每個驗證週期更新） |
 
 回應**不含**連線字串、密碼、主機位址、資料庫名、任何工作階段的 `client_addr`。守衛狀態是**行程本地的**：
 多個實例並存時，每個實例回的是自己的快照。
+
+### 守衛攔下頁端點（不需 JWT）
+
+```
+GET  /api/v1/instance-guard/halt
+POST /api/v1/instance-guard/ack
+```
+
+取鎖失敗且無相符確認時，本實例不退出行程，改停在**攔下模式**：保留釘選連線、每個 watchdog 週期重取，
+並只開放 `/health`、`/healthz`、`/api/v1/seal/status`（`state` 恆 `sealed`、`instance_guard.state` 為
+`halted`）與下列兩條端點；其餘路由一律 503（含未匹配的路徑，不對外透露路由是否存在）。
+
+**可達條件**：兩條端點在完整路由樹上**恆註冊**，攔下模式與正常服務期皆可呼叫——只在攔下模式註冊
+會讓監控分不出 503 與 404。非攔下狀態下 `GET` 回 `state=running`、`POST` 回 409＋
+`INSTANCE_GUARD_NOT_HALTED`，兩者都在觸碰任何憑證之前返回。**皆不要求 JWT**：攔下期段 2 未建構、
+服務未上線，JWT 不可能存在，把救援路徑擋在登入後等於讓它永遠用不到；授權改由確認送出的三要件承擔。
+來源限制與解封端點**共用同一份組態**（`SEAL_UNSEAL_ALLOWED_CIDRS`，未設即不限制），
+不在清單內回 403＋`SEAL_SOURCE_NOT_ALLOWED`。兩條端點在主服務埠上，不套用 `SEAL_UNSEAL_BIND_ADDR`。
+
+**零寫入邊界**：攔下期間**不執行 migration、不產生任何資料庫寫入**。此模式的三個資料庫接觸點
+（持鎖者指紋查詢、advisory lock 重取、管理員憑證讀取）全部唯讀；憑證讀取只依賴使用者表的既有欄位
+（schema 版本未知），讀取失敗回 503 並指向環境變數路徑，**不猜測、不以憑證錯誤頂替未知狀態**。
+
+**`GET /instance-guard/halt` 回應** (200)：唯讀、無副作用、不寫審計列。
+
+| 欄位 | 說明 |
+|---|---|
+| `state` | `halted`（停在攔下模式）／`running`（已取得鎖或已以確認啟動） |
+| `since` | 進入攔下的時刻（RFC3339）；`running` 時為空字串 |
+| `holder` | 持鎖者指紋，與 `GET /api/v1/instance-guard` 的 `holder` **同型**（`application_name`／`pid`／`backend_start`／`code`／`fingerprint_source`）；`running` 時為 `null` |
+| `retry_interval_seconds` | watchdog 的重取週期（預設 15）：攔下頁據此輪詢，並據此告知「鎖被釋放後多久自動接手」 |
+
+**`POST /instance-guard/ack` 請求體**：
+
+```json
+{
+  "confirmed_primary_down": true,
+  "code": "<重打頁面顯示的確認碼>",
+  "username": "<管理員帳號>",
+  "password": "<管理員密碼>"
+}
+```
+
+三要件（承擔勾選、確認碼、管理員帳密）**缺一即 400**，且在觸碰資料庫之前返回；請求體不可解析同碼。
+判定順序為「來源 → 攔下狀態 → 三要件齊備 → 退避 → 委派驗證」，由便宜到昂貴；委派內**先驗憑證再比對
+確認碼**——碼先驗等於對未認證的呼叫者提供一台確認碼的線上校驗機。`code` 與**送出當下重查的持鎖者**
+比對，不與頁面先前顯示的指紋比對：持鎖者在填表期間換人時舊碼必須失效。
+
+成功 200 回 `{"state":"running","retry_interval_seconds":N}`，本實例即以確認啟動路徑繼續段 1 其餘步驟
+與段 2（同一行程，**不需重啟**）；此期間服務埠短暫無回應，之後於同一埠重新開放。審計事件 `overridden`
+的 `actor` 為通過驗證的管理員帳號、`actor_source` 為 `page`、`reason` 為 `ack_page`，並帶確認前的憑證
+失敗次數；環境變數路徑維持 `actor="operator via env"`、`actor_source=env`、`reason=ack_startup`。
+
+| 機器碼 | 狀態碼 | 情境 |
+|---|---|---|
+| `INSTANCE_GUARD_ACK_INCOMPLETE` | 400 | 三要件缺一或請求體不可解析（不逐項回報缺哪一項） |
+| `INSTANCE_GUARD_ACK_UNAUTHORIZED` | 401 | 管理員憑證驗證失敗（**不區分**帳號不存在／密碼錯／非管理員／已停用，避免帳號列舉） |
+| `INSTANCE_GUARD_HOLDER_CHANGED` | 409 | 重打的碼不等於**當下**持鎖者的碼；回應體另平鋪 `state`／`holder`／`retry_interval_seconds`，操作者才有新碼可重打 |
+| `INSTANCE_GUARD_NOT_HALTED` | 409 | 本實例不在攔下模式（鎖已取得或服務已上線） |
+| `INSTANCE_GUARD_ACK_LOCKED` | 429 | 憑證失敗達上限，冷卻期內暫不受理 |
+| `INSTANCE_GUARD_ACK_UNAVAILABLE` | 503 | 讀取使用者表失敗（schema 不相容或連線異常）；改走 `INSTANCE_GUARD_ACK` 環境變數路徑 |
+| `SEAL_SOURCE_NOT_ALLOWED` | 403 | 來源不在允許網段內（兩條端點共用） |
+
+**退避**：憑證失敗累計 5 次即暫拒 5 分鐘；到期即受理且計數歸零，鎖定期內的請求在計數之前就被擋下，
+故**時窗不會被後續嘗試延長**；成功確認清空計數。這是**行程內**計數，隨行程結束歸零，且
+**不寫入 `users` 的失敗次數與鎖定欄位**（零寫入邊界優先於既有帳號鎖定閘）——它擋的是自動化爆破，
+不是有主機存取權的人，界線在此明說以免被誤讀為已享有帳號鎖定保護。未約定可信代理（`TRUSTED_PROXIES`）
+時分組鍵**保守降級為全域**，與解封端點同一語義：轉送標頭不可信時 per-source 分組可被偽造繞過。
+
+營運面的操作程序見 `docs/ops/standby-takeover.md` §4.2／§4.3 與 `docs/ops/upgrade-sop.md` §2.6b。
 
 ---
 

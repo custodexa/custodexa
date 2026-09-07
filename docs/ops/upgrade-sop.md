@@ -618,13 +618,15 @@ CRITICAL：單實例鎖由另一個資料庫工作階段持有。本版不支援
   持鎖者：application_name=custodexa-instance-guard pid=8510 backend_start=2026-08-25T10:04:22.2442Z code=55bd875b8d97
   風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
   處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。
-  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：設定環境變數 INSTANCE_GUARD_ACK=55bd875b8d97 後重啟。本次啟動會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
+  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 55bd875b8d97 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=55bd875b8d97 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
   澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。
 ```
 
 **What it means**: there is another session in the database holding this system's single-instance lock. The guard cannot tell a live instance from a leftover session, so it hands the judgment to you. The waiting lines before it are deliberate: when a previous process has just exited, the database takes a few milliseconds to reclaim its session, so the guard waits 5 times at 2 seconds each (about 10 seconds), and prints this passage only if the lock is still held afterwards.
 
-**The decision happens before any write**: this instance ran no migration, wrote no data, and opened no listener. The process ends with exit code 1, the same as other startup fatals; the guard has no exit code of its own.
+**The decision happens before any write**: this instance ran no migration and wrote nothing to the database. It does not exit; it stays in the guard's halted mode, retries the lock every 15 seconds, and opens a listener that serves only the health check, the seal status and the halt page's two endpoints. Every other path answers 503 while it is halted.
+
+**Where to act: `https://<address>/instance-guard` on that host.** The halt page needs no sign-in and is reachable under the same source restriction as the unseal page (`SEAL_UNSEAL_ALLOWED_CIDRS`, when set). It shows the lock holder's fingerprint, the confirmation code for this conflict, and the two choices below, and it follows the guard's state on its own: when the lock is released, the instance takes it at the next retry and the page turns to "started", with no restart.
 
 **How to read the lock holder line**:
 
@@ -640,7 +642,13 @@ If that line instead says the holder's details could not be obtained (`無法取
 **What to do (choose one; nothing in either requires any operation on the database)**:
 
 1. **Another instance is still running**: stop it, then restart this one. Nothing has to be set, because the lock is released as soon as the previous instance stops. Check every host this system could have been started on and every compose project pointing at the same database (the development and production compose files are each a project, and starting both means two instances).
-2. **You have confirmed no other instance is running** (you looked in all the places above, and the holder is a leftover session): put the code from the message into `.env` and restart.
+2. **You have confirmed no other instance is running** (you looked in all the places above, and the holder is a leftover session): confirm on the halt page. Tick the statement that you have checked on the host itself that the other instance is not running and will not restart by itself, retype the confirmation code the page shows, enter an administrator's account and password, and submit. All three are required. The code is checked against the holder at the moment you submit, so a holder that changed while you were filling the form makes the submission fail and the page offers the new code. Wrong administrator credentials are refused as well, and after five credential failures the page stops accepting submissions for five minutes; that count lives in the halted process only and nothing about it is written to the database. Once the submission is accepted the page shows "starting", the service port is briefly unresponsive while the migrations and the rest of the startup run, and the page then turns to "started" and offers the way to sign in. No restart, and nothing to edit in `.env`.
+
+   The startup log shows
+   `CRITICAL：以守衛攔下頁的確認啟動：單實例鎖仍由 … 持有；本實例將照常執行 migration 與服務；此確認已記錄（actor=… actor_source=page）`,
+   followed by the normal migration and listener lines. The `overridden` audit row carries that administrator account, and the guard's `reason` is `ack_page`.
+
+   **The scripted alternative**, for a recovery driven by a script or on a host where the page is not reachable: put the code from the message into `.env` and restart.
 
    ```bash
    # add one line to .env; the value comes from code= in the message and is valid for this conflict only
@@ -651,17 +659,17 @@ If that line instead says the holder's details could not be obtained (`無法取
    docker compose -f docker-compose.yml up -d backend
    ```
 
-   The startup log should show
+   The startup log should then show
    `CRITICAL：以 INSTANCE_GUARD_ACK 啟動：單實例鎖仍由 … 持有；本實例將照常執行 migration 與服務；此確認已記錄（actor=operator via env）`,
-   followed by the normal migration and listener lines. **Once the start succeeds, the line can be removed from `.env`** with no further restart: it is valid for that one conflict only, and leaving it is inert (a later conflict-free start just prints one line, `INSTANCE_GUARD_ACK 已設定但本次未偵測到衝突，未使用；建議自環境移除`).
+   followed by the normal migration and listener lines, with `reason=ack_startup`. **Once the start succeeds, the line can be removed from `.env`** with no further restart: it is valid for that one conflict only, and leaving it is inert (a later conflict-free start just prints one line, `INSTANCE_GUARD_ACK 已設定但本次未偵測到衝突，未使用；建議自環境移除`).
 
-**What confirming means (read this through before setting `INSTANCE_GUARD_ACK`)**:
+**What confirming means (read this through before you confirm, on either path)**:
 
-- It is bound to the holder fingerprint in that message. As soon as the holder changes (another instance came up, or the leftover was reclaimed and a new holder appeared), the code stops being valid, and the guard stops the start again and prints a new code. A wrong code counts as none: the message gains a line, `提供的 INSTANCE_GUARD_ACK 與當前持鎖者指紋不符（持鎖者已變更），請以上列 code 重新確認`, and no audit event is written. So it cannot be left set permanently to turn the guard off.
-- Every start with it writes an `audit_logs` row: `resource=instance_guard`, `status=failure`, with details containing `event=overridden`, `ack`, the holder fingerprint (`holder.*`), this instance's `instance.hostname`, `pid`, and `started_at`, and `actor="operator via env"`. With interface-entry mode (mode B) this row reaches the database only after unseal, though its timestamp is still the moment of the start.
-- `actor="operator via env"` means **the system does not know who set it**. An environment variable cannot identify a natural person; who set it and when is owned by your change management, so record this confirmation on the change ticket.
+- The confirmation is bound to the holder fingerprint in that message. As soon as the holder changes (another instance came up, or the leftover was reclaimed and a new holder appeared), the code stops being valid. On the page the submission is refused and a new code is offered; with the environment variable the guard halts the start again and prints a new code, the message gains a line, `提供的 INSTANCE_GUARD_ACK 與當前持鎖者指紋不符（持鎖者已變更），請以上列 code 重新確認`, and no audit event is written. So neither path can be left set permanently to turn the guard off.
+- Every confirmed start writes an `audit_logs` row: `resource=instance_guard`, `status=failure`, with details containing `event=overridden`, `ack`, the holder fingerprint (`holder.*`), this instance's `instance.hostname`, `pid`, and `started_at`, and the confirmer. With interface-entry mode (mode B) this row reaches the database only after unseal, though its timestamp is still the moment of the start.
+- **Who the row names depends on the path.** A confirmation on the halt page names the administrator account that was verified, records the page as the source, and carries the number of credential failures that preceded it. `actor="operator via env"` means **the system does not know who set it**: an environment variable cannot identify a natural person, so on that path who set it and when is owned by your change management, and belongs on the change ticket.
 - After a confirmation the guard **stops nothing at all**: migrations run, the service opens, background jobs run. If your judgment was wrong and the other instance really is alive, two instances write the same database at the same time, and the data problems listed on the message's risk line **will occur; the guard does not prevent them**, and they are owned by whoever confirmed.
-- An instance started with a confirmation code retries acquiring the lock every cycle (15 seconds). Until it succeeds, the admin interface shows every signed-in user a persistent banner, "This instance started with an acknowledgement code; another database session still holds the single-instance lock" (administrators additionally see the fingerprint and the confirmation code), and the metric `custodexa_instance_guard_overridden` is 1. The leftover session is reclaimed by postgres according to the operating system's TCP keepalive (the postgres container sets nothing of its own, so the Linux default of roughly 2 hours applies); after that the guard acquires the lock on its own, the banner disappears, and `audit_logs` gains an `event=regained` row (`reason=ack_startup`). **No restart is needed.**
+- An instance started with a confirmation retries acquiring the lock every cycle (15 seconds). Until it succeeds, the admin interface shows every signed-in user a persistent banner, "This instance started with an acknowledgement code; another database session still holds the single-instance lock", with the confirmer on its second line (administrators additionally see the fingerprint and the confirmation code), and the metric `custodexa_instance_guard_overridden` is 1. The leftover session is reclaimed by postgres according to the operating system's TCP keepalive (the postgres container sets nothing of its own, so the Linux default of roughly 2 hours applies); after that the guard acquires the lock on its own, the banner disappears, and `audit_logs` gains an `event=regained` row carrying the same `reason` as the acknowledgement (`ack_page` from the guard page, `ack_startup` from the environment variable). **No restart is needed.**
 - If another instance really is running and you chose option 2, that instance's banner shows "Detected 1 other instance connected to the same database." That is how it comes to know, and it is not an error.
 
 **An optional diagnostic: is the holder a live instance or a leftover?** (not required for recovery; neither option above needs it)
@@ -688,7 +696,7 @@ WHERE l.locktype = 'advisory'
 - Permissions: `pg_locks` is readable by every role; `pg_stat_activity` shows every column for sessions of your own role, and only existence and general attributes for other roles. If the query is refused (`permission denied`) or the columns are all empty, run it with an operations account or hand it to the database administrator. **Do not widen permissions for this**: **`pg_signal_backend`, `pg_read_all_stats`, and superuser must not be granted to the application account.**
 - This passage is a diagnostic, not a remedy. When you are done, go back to the two options above. **Do not terminate database sessions**: the guard's recovery path does not need it, and what you terminate may be a live instance on another host.
 
-> **A normal situation that is easy to misread**: the backend in the production compose file sets `restart: always`. A container that was stopped by the guard is pulled back up after each exit, waits about 10 seconds again, and is stopped again, so the same passage appears over and over in the log. That is not a fault; it is queuing. As soon as the previous instance stops, or you set the confirmation code, the next round gets in. When you see the repeated message, read the `code=` from the most recent one (the code does not change while the holder does not).
+> **A normal situation that is easy to misread**: a halted container stays up, and `docker compose ps` shows the backend running while no service answers. That is the halted mode, not a half-started service: business paths answer 503 and only the halt page works. It is also why the passage is printed once instead of over and over.
 
 ### 2.7 Post-upgrade verification
 
@@ -830,13 +838,13 @@ Every 15 seconds the guard queries `pg_locks` on its own pinned connection to co
 | `permanent` | The database returned a permission or object error (the application account's permission on `pg_locks` or `pg_stat_activity` was withdrawn, SQLSTATE `42501`, for instance). One CRITICAL line per cycle, not throttled | This instance has lost the single-instance lock: the guard cannot verify the lock (permission or object error) | Check whether the application account's permissions on the database were changed, and look at the SQLSTATE at the end of the log line. Once fixed the guard reacquires automatically |
 | `unknown` | An error that cannot be classified; handled as for `permanent` | This instance has lost the single-instance lock: reason unknown | Read the error text at the end of the log line, and hand it to the database administrator or report it. The guard keeps retrying |
 
-`reason=ack_startup` is not a lost lock; it is the state of option 2 in §2.6b, started with a confirmation code and not yet holding the lock. Its `regained` event carries this reason too.
+`reason=ack_page` and `reason=ack_startup` are not a lost lock; they are the state of option 2 in §2.6b, started with a confirmation and not yet holding the lock, on the halt page and through the environment variable respectively. The `regained` event carries the same reason.
 
 **How to query `audit_logs`**: on the audit page, filter the resource by "Instance Guard", or query `resource = 'instance_guard'` directly. Three events:
 
 | `details.event` | `status` | When | Fields of its own |
 |---|---|---|---|
-| `overridden` | `failure` | At the moment of a start with a confirmation code | `ack`, `actor="operator via env"`, `holder.*` |
+| `overridden` | `failure` | At the moment of a start with a confirmation | `ack`, `holder.*`, and the confirmer: the verified administrator account with the page as its source (plus the credential failures that preceded it), or `actor="operator via env"` on the environment-variable path |
 | `lost` | `failure` | On entering `lost` at runtime | `reason`; with `contention`, also `holder.*` |
 | `regained` | `success` | On returning to `held` from `lost` or `overridden` | `unheld_for_ms`, `reason` (the reason before the loss) |
 

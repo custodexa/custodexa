@@ -282,9 +282,13 @@ func TestInstanceGuardEventDetails(t *testing.T) {
 	t.Run("overridden 含 ack、持鎖者指紋與 actor", func(t *testing.T) {
 		ev := base
 		ev.Event, ev.Reason, ev.Ack, ev.Holder = database.GuardEventOverridden, database.GuardReasonAckStartup, "ab12cd34ef56", holder
+		ev.Actor, ev.ActorSource = database.GuardActorEnv, database.GuardActorSourceEnv
 		d := instanceGuardEventDetails(ev)
-		if d["actor"] != "operator via env" || d["ack"] != "ab12cd34ef56" || d["reason"] != "ack_startup" {
+		if d["actor"] != "operator via env" || d["actor_source"] != "env" || d["ack"] != "ab12cd34ef56" || d["reason"] != "ack_startup" {
 			t.Fatalf("overridden details 不齊：%v", d)
+		}
+		if _, ok := d["page_failed_attempts"]; ok {
+			t.Fatalf("環境變數路徑不得帶 page_failed_attempts：%v", d)
 		}
 		h := d["holder"].(map[string]any)
 		if h["code"] != "ab12cd34ef56" || h["fingerprint_source"] != "pg_stat_activity" || h["pid"] != int64(777) {
@@ -319,6 +323,19 @@ func TestInstanceGuardEventDetails(t *testing.T) {
 		}
 	})
 
+	t.Run("頁面確認的 overridden 記真實帳號、來源 page 與確認前失敗次數", func(t *testing.T) {
+		ev := base
+		ev.Event, ev.Reason, ev.Ack, ev.Holder = database.GuardEventOverridden, database.GuardReasonAckPage, "ab12cd34ef56", holder
+		ev.Actor, ev.ActorSource, ev.PageFailedAttempts = "alice", database.GuardActorSourcePage, 3
+		d := instanceGuardEventDetails(ev)
+		if d["actor"] != "alice" || d["actor_source"] != "page" || d["reason"] != "ack_page" {
+			t.Fatalf("頁面路徑的 overridden details 不齊：%v", d)
+		}
+		if d["page_failed_attempts"] != 3 {
+			t.Fatalf("頁面路徑應帶確認前失敗次數 3（攔下模式寫不了審計列，這是它們唯一的出口）：%v", d)
+		}
+	})
+
 	t.Run("regained 含 unheld_for_ms", func(t *testing.T) {
 		ev := base
 		ev.Event, ev.Reason, ev.UnheldForMS = database.GuardEventRegained, database.GuardReasonAckStartup, 1234
@@ -337,7 +354,8 @@ func TestInstanceGuardAuditSinkWritesSystemRows(t *testing.T) {
 
 	at := time.Date(2026, 8, 25, 7, 12, 3, 0, time.UTC)
 	for _, ev := range []database.GuardEvent{
-		{Event: database.GuardEventOverridden, Reason: database.GuardReasonAckStartup, At: at, Ack: "ab12cd34ef56"},
+		{Event: database.GuardEventOverridden, Reason: database.GuardReasonAckStartup, At: at, Ack: "ab12cd34ef56",
+			Actor: database.GuardActorEnv, ActorSource: database.GuardActorSourceEnv},
 		{Event: database.GuardEventLost, Reason: database.GuardReasonContention, At: at.Add(time.Minute)},
 		{Event: database.GuardEventRegained, Reason: database.GuardReasonContention, At: at.Add(2 * time.Minute), UnheldForMS: 60000},
 	} {

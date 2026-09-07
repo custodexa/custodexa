@@ -18,10 +18,19 @@ import axios from 'axios'
 
 // 解封頁的路徑（單一事實源：導覽守衛、攔截器與文案都指向同一個字面）
 export const UNSEAL_PATH = '/unseal'
+// 守衛攔下頁的路徑（同上，單一事實源）
+export const INSTANCE_GUARD_PATH = '/instance-guard'
 
 export const SEAL_PHASE_UNKNOWN = 'unknown'
 export const SEAL_PHASE_SEALED = 'sealed'
 export const SEAL_PHASE_UNSEALED = 'unsealed'
+// 單實例守衛攔下：段 1 取鎖失敗，行程停在只開最小監聽的攔下模式。
+// **與封印相位共用這一份快取**——兩者都由 `/seal/status` 一次回答，各自建一套
+// 快取必然在同一次探測後得出不同結論並互踢（封印守衛的既有教訓）。
+// 攔下期 `state` 仍是 `sealed`（服務確實未上線），故 halted 的判定看
+// `instance_guard.state`，且**先於** sealed 判定——否則人會被送去一個
+// 同樣打不通的解封頁。
+export const SEAL_PHASE_HALTED = 'halted'
 
 // 後端封印閘對非白名單路由回的機器碼；見到它即代表「現在是封印狀態」，
 // 且此訊號**恆為最終權威**（涵蓋「使用者停留在頁面上時後端重啟而重新封印」）
@@ -46,7 +55,30 @@ export function getSealPhase() {
 export function publishSealStatus(status) {
   const state = status?.state
   if (!state) return
+  if (status?.instance_guard?.state === 'halted') {
+    phase = SEAL_PHASE_HALTED
+    return
+  }
   phase = state === 'unsealed' ? SEAL_PHASE_UNSEALED : SEAL_PHASE_SEALED
+}
+
+/**
+ * 由攔下端點的回應更新相位。
+ *
+ * 確認送出成功（或鎖自行釋放）後，本實例會接著跑完段 1 與段 2；此刻的封印相位
+ * 是 sealed 或 unsealed 尚未可知，故 running 只**清掉** halted 而不猜測後續相位，
+ * 由下一次導覽重新探測。少了這一步，攔下頁上的「前往登入」會被守衛以陳舊的
+ * halted 相位彈回本頁——與解封頁修過的鎖死同型。
+ * @param {{state?: string}} halt
+ */
+export function publishHaltStatus(halt) {
+  const state = halt?.state
+  if (!state) return
+  if (state === 'halted') {
+    phase = SEAL_PHASE_HALTED
+    return
+  }
+  if (phase === SEAL_PHASE_HALTED) phase = SEAL_PHASE_UNKNOWN
 }
 
 /** 執行期訊號：收到封印機器碼即回到封印相位。 */

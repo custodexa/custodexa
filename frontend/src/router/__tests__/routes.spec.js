@@ -51,3 +51,20 @@ describe('帳號憑證庫的路由註冊', () => {
     expect(router.resolve('/change-secret-batches').name).toBe('AccountBatchRotation')
   })
 })
+
+// 守衛攔下頁：**不得帶 requiresAuth**。攔下模式的路由樹上沒有登入端點，
+// 帶了就是把唯一的救援路徑導去一個不存在的頁面（解封頁踩過同一個坑）
+describe('守衛攔下頁的路由註冊', () => {
+  it('/instance-guard 已註冊且不要求登入、不限角色', () => {
+    const resolved = router.resolve('/instance-guard')
+    expect(resolved.name).toBe('InstanceGuardHalted')
+    expect(resolved.meta.requiresAuth).toBeUndefined()
+    expect(resolved.meta.roles).toBeUndefined()
+  })
+
+  it('解封頁的路徑與名稱不因新增本頁而改變', () => {
+    const resolved = router.resolve('/unseal')
+    expect(resolved.name).toBe('Unseal')
+    expect(resolved.meta.requiresAuth).toBeUndefined()
+  })
+})

@@ -16,6 +16,7 @@ var frontendRouteSegments = map[string]bool{
 	"":                        true, // 根路徑（預設落點）
 	"login":                   true,
 	"unseal":                  true,
+	"instance-guard":          true, // 單實例守衛攔下頁（服務前頁面；非攔下態由前端導回 /）
 	"workspace":               true,
 	"terminal":                true,
 	"share":                   true,

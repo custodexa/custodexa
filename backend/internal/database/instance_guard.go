@@ -58,9 +58,12 @@ const (
 	GuardStateAcquiring  GuardState = "acquiring"
 	GuardStateHeld       GuardState = "held"
 	GuardStateOverridden GuardState = "overridden"
-	GuardStateLost       GuardState = "lost"
-	GuardStateStopping   GuardState = "stopping"
-	GuardStateReleased   GuardState = "released"
+	// GuardStateHalted 取鎖失敗且無相符確認：行程不退出，保留釘選連線、
+	// 每週期重取，只開放守衛攔下頁所需的最小監聽（見 preservice-pages spec）。
+	GuardStateHalted   GuardState = "halted"
+	GuardStateLost     GuardState = "lost"
+	GuardStateStopping GuardState = "stopping"
+	GuardStateReleased GuardState = "released"
 )
 
 // GuardReason 失鎖／未持鎖的原因，進日誌、事件、Snapshot 與 seal status 欄位。
@@ -73,6 +76,8 @@ const (
 	GuardReasonDBUnreachable GuardReason = "db_unreachable"
 	GuardReasonPermanent     GuardReason = "permanent"
 	GuardReasonUnknown       GuardReason = "unknown"
+	// GuardReasonAckPage 由守衛攔下頁送出的確認（環境變數路徑為 GuardReasonAckStartup）
+	GuardReasonAckPage GuardReason = "ack_page"
 )
 
 // GuardEvent 的事件名。
@@ -80,6 +85,16 @@ const (
 	GuardEventOverridden = "overridden"
 	GuardEventLost       = "lost"
 	GuardEventRegained   = "regained"
+)
+
+// 確認者來源標示（進 overridden 事件的 details）。
+const (
+	// GuardActorSourceEnv 環境變數路徑：無法識別自然人，actor 恆為 GuardActorEnv。
+	GuardActorSourceEnv = "env"
+	// GuardActorSourcePage 守衛攔下頁路徑：actor 為通過驗證的管理員帳號。
+	GuardActorSourcePage = "page"
+	// GuardActorEnv 環境變數路徑的確認者標示（SHALL NOT 假造身分）。
+	GuardActorEnv = "operator via env"
 )
 
 // GuardInstance 本實例識別（進審計事件的 details）。
@@ -124,6 +139,10 @@ type GuardSnapshot struct {
 	Ack          string
 	LostTotal    uint64
 	Peers        int
+	// Actor 確認啟動的確認者；環境變數路徑為 GuardActorEnv，頁面路徑為管理員帳號。
+	Actor string
+	// ActorSource 確認者來源：GuardActorSourceEnv／GuardActorSourcePage。
+	ActorSource string
 }
 
 // GuardEvent 守衛事件：overridden／lost／regained。
@@ -137,6 +156,12 @@ type GuardEvent struct {
 	Ack          string
 	UnheldForMS  int64
 	LostTotal    uint64
+	// Actor／ActorSource 只在 overridden 事件有值（見 GuardSnapshot 同名欄）。
+	Actor       string
+	ActorSource string
+	// PageFailedAttempts 頁面確認成功前，本攔下期累計的憑證失敗次數。
+	// 攔下模式寫不了審計列（段 2 未起），失敗嘗試只進 log，此欄是它們唯一的留痕出口。
+	PageFailedAttempts int
 }
 
 // InstanceGuardOptions 守衛物件的建構參數。零值＝生產預設。
@@ -155,6 +180,12 @@ type InstanceGuardOptions struct {
 	EventBufferLimit int
 	// backend 覆寫鎖後端（**僅測試**）：nil＝依 dialect 建構。
 	backend lockBackend
+	// backendFactory 覆寫「建構鎖後端」這個動作本身（**僅測試**）。
+	//
+	// 與 backend 的差別是它可以**失敗**，且每次呼叫可回不同結果——攔下模式的
+	// 連線重建重試（見 ensureBackend）唯有這樣才測得到：預置一個現成的 backend
+	// 等於假設重建永遠成功，正是先前那個永久攔下缺陷成立的前提。
+	backendFactory func(ctx context.Context) (lockBackend, error)
 }
 
 func (o InstanceGuardOptions) withDefaults() InstanceGuardOptions {
@@ -224,6 +255,19 @@ type InstanceGuard struct {
 	peers       int
 	unheldSince time.Time
 	backend     lockBackend
+	actor       string
+	actorSource string
+
+	// 攔下模式：resume 於離開 halted（取得鎖或頁面確認相符）時關閉，
+	// 供組裝根阻塞等待；pageFailed 為本攔下期的憑證失敗計數（只在記憶體）。
+	resume     chan struct{}
+	resumeOnce sync.Once
+	pageFailed int
+
+	// 釘選連線重建的有界退避（攔下模式；只在 mu 內存取）。
+	// rebuildFails 為連續失敗次數，rebuildSkips 為尚需略過的 watchdog 週期數。
+	rebuildFails int
+	rebuildSkips int
 
 	wdCancel context.CancelFunc
 	wg       sync.WaitGroup
@@ -242,9 +286,10 @@ type InstanceGuard struct {
 func NewInstanceGuard(db *gorm.DB, opts InstanceGuardOptions) *InstanceGuard {
 	o := opts.withDefaults()
 	g := &InstanceGuard{
-		db:    db,
-		opts:  o,
-		state: GuardStateAcquiring,
+		db:     db,
+		opts:   o,
+		state:  GuardStateAcquiring,
+		resume: make(chan struct{}),
 	}
 	g.events.limit = o.EventBufferLimit
 	return g
@@ -344,6 +389,8 @@ func (g *InstanceGuard) enterOverriddenAtStartup(fp HolderFingerprint) {
 	g.unheldSince = now
 	g.reason = GuardReasonAckStartup
 	g.holder = &holder
+	g.actor = GuardActorEnv
+	g.actorSource = GuardActorSourceEnv
 	ev := g.eventLocked(GuardEventOverridden, GuardReasonAckStartup, now)
 	g.mu.Unlock()
 	log.Printf("[InstanceGuard] CRITICAL：以 INSTANCE_GUARD_ACK 啟動：單實例鎖仍由 %s 持有；本實例將照常執行 migration 與服務；此確認已記錄（actor=operator via env）",
@@ -354,6 +401,9 @@ func (g *InstanceGuard) enterOverriddenAtStartup(fp HolderFingerprint) {
 
 // newBackend 依 dialect 建構鎖後端；未知 dialect fail-close。
 func (g *InstanceGuard) newBackend(ctx context.Context) (lockBackend, error) {
+	if g.opts.backendFactory != nil {
+		return g.opts.backendFactory(ctx)
+	}
 	if g.opts.backend != nil {
 		return g.opts.backend, nil
 	}
@@ -428,6 +478,9 @@ func (g *InstanceGuard) snapshotLocked() GuardSnapshot {
 		Ack:       g.opts.Ack,
 		LostTotal: g.lostTotal,
 		Peers:     g.peers,
+
+		Actor:       g.actor,
+		ActorSource: g.actorSource,
 	}
 	if g.backend != nil {
 		s.DBSessionPID = g.backend.sessionPID()
@@ -454,6 +507,9 @@ func (g *InstanceGuard) eventLocked(name string, reason GuardReason, at time.Tim
 	switch name {
 	case GuardEventOverridden:
 		ev.Ack = g.opts.Ack
+		ev.Actor = g.actor
+		ev.ActorSource = g.actorSource
+		ev.PageFailedAttempts = g.pageFailed
 		if g.holder != nil {
 			h := *g.holder
 			ev.Holder = &h

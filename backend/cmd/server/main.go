@@ -526,6 +526,10 @@ type routeDeps struct {
 	// （解封端點的獨立監聽）。業務路由**完全不存在**於該 router，
 	// 而不是「存在但被閘擋住」——後者在解封後就會全部活過來。
 	sealOnly bool
+	// haltOnly 為真時只註冊守衛攔下頁所需的最小面：健康檢查、封印狀態、
+	// 攔下狀態與確認送出。與 sealOnly 同一理由——攔下模式下業務路由
+	// **不存在**於該 router，而不是存在但被閘擋住。
+	haltOnly bool
 
 	// 共用服務
 	authService  *identity.AuthService
@@ -558,28 +562,32 @@ type routeDeps struct {
 	offsiteStorage *api.OffsiteStorageHandler
 	// instanceGuard 單實例守衛全貌（admin 限定、唯讀；橫幅出現時管理者取一次的細節出口）
 	instanceGuard *api.InstanceGuardHandler
-	keyManagement *api.KeyManagementHandler
-	snippet       *api.SnippetHandler
-	assetGroup    *api.AssetGroupHandler
-	userGroup     *api.UserGroupHandler
-	user          *api.UserHandler
-	role          *api.RoleHandler
-	authorization *api.AuthorizationHandler
-	recording     *api.RecordingHandler
-	auditLog      *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
-	exportSigning *api.ExportSigningHandler
-	auditExport   *api.AuditExportHandler
-	accessReview  *api.AccessReviewHandler
-	hostKey       *api.HostKeyHandler
-	clipboard     *api.ClipboardEventHandler
-	auditTimeline *api.AuditTimelineHandler
-	changeSecret  *api.ChangeSecretHandler
+	// instanceGuardHalt 守衛攔下頁的兩個未認證端點（狀態查詢與確認送出）。
+	// **恆註冊**：只在攔下模式註冊會使路由 golden、審計分類守衛與 API 索引
+	// 都看不見它們，而非攔下狀態下兩者在觸碰任何憑證之前即返回。
+	instanceGuardHalt *api.InstanceGuardHaltHandler
+	keyManagement     *api.KeyManagementHandler
+	snippet           *api.SnippetHandler
+	assetGroup        *api.AssetGroupHandler
+	userGroup         *api.UserGroupHandler
+	user              *api.UserHandler
+	role              *api.RoleHandler
+	authorization     *api.AuthorizationHandler
+	recording         *api.RecordingHandler
+	auditLog          *api.AuditLogHandler // 僅 auditLogEnabled 時註冊
+	exportSigning     *api.ExportSigningHandler
+	auditExport       *api.AuditExportHandler
+	accessReview      *api.AccessReviewHandler
+	hostKey           *api.HostKeyHandler
+	clipboard         *api.ClipboardEventHandler
+	auditTimeline     *api.AuditTimelineHandler
+	changeSecret      *api.ChangeSecretHandler
 	// credential 帳號憑證庫：憑證 CRUD、掛載／卸載、範圍轉換、改密與脫離共用
 	credential *api.CredentialHandler
 	// rotationReport 資產帳號輪替證據報告：讀取面 audit:view、排程面 admin
 	rotationReport *api.RotationReportHandler
-	accessRequest *api.AccessRequestHandler
-	sftp          *api.SFTPHandler
+	accessRequest  *api.AccessRequestHandler
+	sftp           *api.SFTPHandler
 
 	// 連線層 handlers（WebSocket 與 token 簽發）
 	conn *proxy.ConnectionHandler
@@ -629,6 +637,17 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 	if d.sealOnly {
 		sealOnlyV1 := r.Group("/api/v1")
 		d.seal.RegisterRoutes(sealOnlyV1)
+		return
+	}
+
+	// 攔下模式的最小面：段 1 的守衛把本實例攔在任何寫入之前，服務未起。
+	// 只註冊「監控要探測到什麼」與「操作者要做的那一件事」，其餘一律由閘回 503。
+	// **不註冊 /seal/unseal**：攔下模式下解封無從進行（段 2 未起、鎖未取得），
+	// 開著只是多一個未認證的入口。
+	if d.haltOnly {
+		haltV1 := r.Group("/api/v1")
+		haltV1.GET("/seal/status", d.seal.Status)
+		d.instanceGuardHalt.RegisterRoutes(haltV1)
 		return
 	}
 
@@ -685,6 +704,9 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// 單實例守衛全貌：admin 限定、唯讀、每次呼叫
 		// 留一列審計讀取；介面只在橫幅出現時取一次，粗狀態的輪詢走 /seal/status
 		d.instanceGuard.RegisterRoutes(v1, d.authService)
+		// 守衛攔下頁：未認證（服務未起時 JWT 不存在），受解封端點同一份來源網段限制。
+		// 恆註冊的理由見 routeDeps.instanceGuardHalt。
+		d.instanceGuardHalt.RegisterRoutes(v1)
 		d.keyManagement.RegisterRoutes(v1, d.authService)
 		d.snippet.RegisterRoutes(v1, d.authService)
 		d.assetGroup.RegisterRoutes(v1, d.authService)
