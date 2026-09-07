@@ -136,6 +136,7 @@ var nonTableModelStructs = map[string]bool{
 	"asset_change_details":        true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
 	"transmission_risks":          true, // TransmissionRisk：傳輸風險值物件
 	"asset_account_audit_details": true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
+	"user_role_audit_details":     true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

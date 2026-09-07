@@ -790,6 +790,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// **建在 buildRouteDeps 之前**：驗證端點需要與封章、清除**同一份**實作
 	// ——聚合若在 API 側另寫一套，驗證就會永遠自洽（拿自己的算法驗自己的資料）。
 	// 封章排程與 retention 於下方沿用同一組實例
+	// 狀態表快照的 `user_roles` 讀取來源（role-assignment-integrity）：表歸 identity，
+	// audit 只拿「現有 (user_id, role_id)」。**必須早於封章與對帳的任何一次執行**——
+	// 未注入時 SnapshotUserRoles 以錯誤停下（fail-close），不會拿空集合封進鏈裡
+	audit.SetUserRolesSource(identity.SnapshotUserRolePairs)
 	checkpointPurger := audit.NewCheckpointPurger(database.DB, checkpointSigning)
 	checkpointService := audit.NewCheckpointService(database.DB, checkpointSigning, syslogForwarder,
 		func(mechanism, causeCode string, params map[string]string, recovered bool) {
@@ -803,6 +807,16 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	checkpointService.SetPolicySource(policyService)
 	checkpointVerifier := audit.NewCheckpointVerifier(database.DB, checkpointService,
 		checkpointPurger, auditIntegrity, policyService)
+
+	// 角色指派對帳器（role-assignment-integrity）。
+	//
+	// **三個比對時機共用同一個實例**：封章前、驗證（端點與排程自動驗證共走
+	// VerifyChain）、以及 admin／auditor 簽發權杖前。冪等鍵存在實例上，
+	// 各建一份會讓同一筆不符在三個時機各開一張單
+	roleStateReconciler := audit.NewRoleStateReconciler(database.DB, auditFailureService)
+	checkpointService.SetRoleStateReconciler(roleStateReconciler)
+	checkpointVerifier.SetRoleStateReconciler(roleStateReconciler)
+	authService.SetRoleStateProbe(roleStateReconciler)
 
 	// 檢查點鏈兩層自動驗證的編排者。
 	//
@@ -1489,6 +1503,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	if s.chainVerifyStatus != nil {
 		auditCheckpointHandler.SetAutoVerifyStatus(s.chainVerifyStatus)
 	}
+	// 角色指派差集的名稱換算（role-assignment-integrity）：對帳結果只帶識別，
+	// 帳號名與角色名在這條已守門的回應上才補齊
+	auditCheckpointHandler.SetRoleStateNames(s.userService, s.auditFailureService)
 
 	// 註冊資產管理路由（注入授權服務）
 	assetHandler := api.NewAssetHandler(s.assetService, s.authorizationService, s.auditDirectSink)

@@ -67,7 +67,9 @@ func matrixMigrate(t *testing.T, db *gorm.DB) {
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
 		&model.OIDCLoginTicket{}, &model.OIDCFlowState{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}); err != nil {
+		&model.PasswordHistory{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 }

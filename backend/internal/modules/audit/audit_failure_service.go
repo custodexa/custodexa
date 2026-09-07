@@ -397,6 +397,26 @@ func (s *AuditFailureService) ReconcileOnStartup() {
 	}
 }
 
+// LatestByMechanism 指定機制最近一筆失效事件；無則回 (nil, nil)。
+//
+// 供驗證端點在回應上掛出「這次不符對應到哪一筆失效事件」的連結
+// 。原本這支查詢寫在
+// `internal/api/checkpoint_role_state.go` 內、由 handler 自持 `*gorm.DB` 直查
+// `audit_failure_events`——那張表屬 audit 域，查詢逐字搬回擁有它的模組。
+// **唯讀**：讀事件不得建立、更新或結案任何列
+func (s *AuditFailureService) LatestByMechanism(mechanism string) (*model.AuditFailureEvent, error) {
+	var ev model.AuditFailureEvent
+	err := s.db.Where("mechanism = ?", mechanism).Order("id DESC").First(&ev).Error
+	switch {
+	case err == nil:
+		return &ev, nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return nil, nil
+	default:
+		return nil, err
+	}
+}
+
 // List 失效事件（新到舊，前端失效事件列表）
 func (s *AuditFailureService) List(page, pageSize int) ([]model.AuditFailureEvent, int64, error) {
 	if page < 1 {

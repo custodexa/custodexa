@@ -441,6 +441,8 @@ A KEK mode B deployment is still sealed after step 6, and only starts serving on
 > Record only three at backup time and one of them has nothing to compare against after the restore; the one usually missed is the checkpoint signing key.
 >
 > The Key Management page can only be entered **after unseal** (mode B), so this item comes after the service is back.
+>
+> After a restore, the role assignment comparison on the checkpoint verification page runs against the newest checkpoint in the backup whose sealing-time comparison matched (a checkpoint sealed while a mismatch was open is never used as the starting point), and the first sealing on the restored system whose comparison matches becomes the new starting point.
 
 ---
 

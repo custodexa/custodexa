@@ -29,6 +29,8 @@ const BACKEND_ACTIONS = [
   'offsite_profile', 'offsite_cred_revoke',
   // 升級時一次性轉換留下的標記列
   'migration',
+  // 角色指派授予（撤銷沿用 revoke）
+  'assign',
 ]
 // AuditResource: backend/internal/model/audit_log.go 的 Resource* 常數區
 const BACKEND_RESOURCES = [
@@ -44,6 +46,8 @@ const BACKEND_RESOURCES = [
   'audit_checkpoint', 'audit_failure', 'audit_integrity', 'alert_rule',
   'notify_channel', 'oidc_provider', 'ldap_directory', 'asset_group',
   'snippet', 'role',
+  // 角色指派關聯（role-assignment-integrity；與 user、role 皆分開）
+  'user_role',
   // 單實例守衛（single-instance-guard）
   'instance_guard',
   // 離機儲存的保管鏈事件與設定／佇列操作列（evidence-offsite-storage）
@@ -72,6 +76,8 @@ const BACKEND_MECHANISMS = [
   'source_policy',
   // 離機儲存的上傳與取回完整性（evidence-offsite-storage）
   'offsite_upload',
+  // 角色指派與檢查點鏈不符（role-assignment-integrity）
+  'role_state_integrity',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -158,10 +164,11 @@ const BACKEND_CAUSES = [
   'offsite_upload_failed',
   'offsite_upload_stalled',
   'offsite_integrity_mismatch',
+  'role_state_mismatch',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
-  it('AUDIT_ACTIONS 與後端 27 動作互為全集', () => {
+  it('AUDIT_ACTIONS 與後端 28 動作互為全集', () => {
     expect(Object.keys(AUDIT_ACTIONS).sort()).toEqual([...BACKEND_ACTIONS].sort())
     for (const a of BACKEND_ACTIONS) {
       expect(AUDIT_ACTIONS[a]?.label, `${a} 缺 label`).toBeTruthy()
@@ -209,7 +216,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(30)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(31)
   })
 
   it.skipIf(!backendSourcePath)(

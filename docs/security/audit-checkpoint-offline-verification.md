@@ -1,7 +1,7 @@
 # 審計檢查點鏈：離線驗章規格與外部驗證指南
 
 > 對象：稽核單位、QSA、客戶方安全團隊——**不需要信任本系統、也不需要取得產品原始碼**的第三方。
-> 版本：canonical 編碼 v1（`agg_scheme = cp-agg-v1`，簽章 payload 形態一經釘定不再變更）。
+> 版本：canonical 編碼 v1 與 v2（見下方「載荷版本」；新封檢查點為 `cp-agg-v2`，各版本的位元組一經釘定不再變更）。
 > 本文件所載的每一條規格都經實測，證據見文末「規格的實測驗證」。
 >
 > 若您是稽核方或客戶安全團隊，需要控制項對照表或其他評鑑材料，
@@ -79,6 +79,21 @@
    `\u003c`、`\u003e`、`\u0026` 這類六字元跳脫序列；其餘控制字元依 JSON 規範跳脫）。
 5. 時間欄一律轉為 **Unix 微秒整數**（見第 3 節），欄名帶 `_us` 後綴。
 
+### 載荷版本
+
+被簽欄位的組成**隨載荷版本而異**，版本值即檢查點自身的 `agg_scheme` 欄。
+驗章者一律**先讀該欄再決定重建哪一組鍵**，不可假設全鏈同版本——升級後的鏈
+必然是混版本的（舊點以其原版本重建，新點以新版本重建）。
+
+| 版本值 | 被簽的鍵 | 出現時機 |
+|---|---|---|
+| `cp-agg-v1` | 下表第 1–8、11–13 鍵（無 `state`、無 `role_state_reconciled`） | 角色指派納入鏈之前封的檢查點 |
+| `cp-agg-v2` | 下表全部 13 鍵 | 角色指派納入鏈之後封的檢查點 |
+
+兩版本的 `agg_hash` 計算方式**完全相同**（第 6 節未變）；v2 的差別只在載荷多兩個鍵。
+遇到不認識的版本值時應**停止並回報**，不可猜一組鍵去驗——猜錯的結果會是
+「簽章驗不過」，把版本不相容偽裝成竄改。
+
 | # | 鍵 | 型別 | 來源欄位 | 說明 |
 |---|---|---|---|---|
 | 1 | `seq` | 非負整數 | `seq` | 檢查點序號，自 1 起連續 |
@@ -86,12 +101,53 @@
 | 3 | `id_to` | 非負整數 | `id_to` | 區間結束 `audit_logs.id`（含）；空區間時 `id_to = id_from - 1` |
 | 4 | `row_count` | 整數 | `row_count` | 區間內列數 |
 | 5 | `agg_hash` | 字串 | `agg_hash` | 聚合雜湊，64 字元小寫 hex（空區間為空輸入的 SHA-256：`e3b0c442…b855`） |
-| 6 | `agg_scheme` | 字串 | `agg_scheme` | 聚合編碼版本標識，現值 `cp-agg-v1` |
+| 6 | `agg_scheme` | 字串 | `agg_scheme` | 聚合／載荷版本標識，值域 `cp-agg-v1`／`cp-agg-v2`；先讀本欄再決定重建哪一組欄位（見載荷版本表） |
 | 7 | `prev_checkpoint_hash` | 字串 | `prev_checkpoint_hash` | 前一檢查點的鏈接雜湊，64 字元小寫 hex |
 | 8 | `min_created_at_us` | 整數或 `null` | `min_created_at` | 區間內最早 `created_at`；空區間為 `null` |
-| 9 | `max_created_at_us` | 整數或 `null` | `max_created_at` | 區間內最晚 `created_at`；空區間為 `null` |
-| 10 | `sealed_at_us` | 整數 | `sealed_at` | 封章時間，**不可為 null** |
-| 11 | `signing_key_version` | 整數 | `signing_key_version` | 簽章鑰版本 |
+| 9 | `state` | 陣列（**僅 v2**） | `role_state_snapshot` | 隨檢查點簽入的權限狀態摘要，見下節 |
+| 10 | `role_state_reconciled` | 布林或 `null`（**僅 v2**） | `role_state_reconciled` | 封章當下的權限狀態核對結果；`null`＝該次封章未做核對 |
+| 11 | `max_created_at_us` | 整數或 `null` | `max_created_at` | 區間內最晚 `created_at`；空區間為 `null` |
+| 12 | `sealed_at_us` | 整數 | `sealed_at` | 封章時間，**不可為 null** |
+| 13 | `signing_key_version` | 整數 | `signing_key_version` | 簽章鑰版本 |
+
+> `state` 與 `role_state_reconciled` 兩鍵夾在 `min_created_at_us` 與
+> `max_created_at_us` 之間，**不在結尾**。鍵順序是規格的一部分，請照本表由上而下輸出。
+
+### `state`：權限狀態摘要（v2 起）
+
+每個檢查點另簽入封章當下的權限狀態指紋，使「直接改資料庫把某個帳號變成管理者」
+無法在不被察覺的情況下發生。被簽的是摘要，不是狀態本身：
+
+```
+"state":[{"table":"user_roles","hash":"<64 字元小寫 hex>","count":<非負整數>}]
+```
+
+- 陣列元素依 `table` 升冪排序；每個物件的鍵順序固定為 `table`、`hash`、`count`。
+- 現行版本恰有一個元素（`user_roles`，即帳號與角色的對應）。
+- **`hash` 由快照本體現算，不可直接取 `role_state_hash` 欄**：產品端簽的就是現算值。
+  取欄位會使「本體被改、摘要欄未改」的檢查點在您的實作驗過、在系統內驗不過。
+
+快照本體來自檢查點的 `role_state_snapshot` 欄，形狀為以表名為鍵的緊湊 JSON 物件：
+
+```
+{"user_roles":[[1,1],[2,2],[10,2]]}
+```
+
+其中每個元素是 `[帳號識別碼, 角色識別碼]`，依帳號識別碼、角色識別碼升冪排序。
+**本體只有整數，不含帳號名、電子郵件或任何個人資料**；呈現時才由現行資料換算。
+
+`hash` 的計算＝對該表的本體位元組（如上例的 `[[1,1],[2,2],[10,2]]`，不含表名與外層大括號）：
+
+```
+hash = SHA-256( 本體長度的 8 位元組大端無號整數 ‖ 本體位元組 )
+```
+
+長度前綴不可省：少了它，不同的本體切法可以湊出相同的雜湊輸入。
+`count` ＝本體陣列的元素個數（同樣由本體現算，不取 `role_state_count` 欄）。
+
+若您取得的資料不含 `role_state_snapshot`（部署可能不將其對外投影），
+仍可改以 `role_state_hash` 與 `role_state_count` 兩欄組出 `state` 完成驗章，
+但此時驗到的是「摘要未被改」而非「快照本體未被改」，報表上應明確標示。
 
 **不納入簽章的欄位**（列出以杜絕誤解）：`id`、`created_at`、`anchor_status`、
 `purged_at`、`purge_signature` 及其鑰版本欄。前二者是資料庫列的自身屬性，
@@ -253,5 +309,6 @@ openssl pkeyutl -verify -pubin -inkey pub.pem -rawin -in payload.bin -sigfile si
 ## 10. 相容性紀律
 
 canonical 編碼**一經釘定不再變更**。任何編碼演進一律以新的 `agg_scheme` 值表示，
-舊檢查點續以其原 scheme 重算驗證。產品端有 golden 測試逐位元組釘住兩種編碼，
+舊檢查點續以其原 scheme 重算驗證（`cp-agg-v1` 的位元組與本文件初版完全相同，
+角色指派納入鏈並未改動任何既有檢查點）。產品端有 golden 測試逐位元組釘住兩種編碼，
 本文件與該測試同源；若兩者出現分歧，以本文件所載的實測位元組為準並視為缺陷回報。

@@ -3,9 +3,7 @@
 ## Purpose
 
 審計序列的完整性證明：以 audit_logs 的 id 閉區間為單位週期性封章，聚合區間內列的完整性指紋、鏈接前一檢查點、以 Ed25519 簽章並向 syslog 離機錨定，使「中段列被抽走」「整段被刪除並偽裝成無事發生」成為可偵測事件，並使合法的保留政策清除與惡意抽列在驗證結果中可區分。列級 HMAC 證明內容真偽、本能力證明序列完整，兩者職責不互相取代。
-
 ## Requirements
-
 ### Requirement: 檢查點以 audit_logs 的 id 區間為覆蓋主軸
 
 檢查點 SHALL 以 audit_logs 的自增 **id 區間**為覆蓋單位：第 n 個檢查點覆蓋閉區間 `[id_from, id_to]`，其中 `id_from = 前一檢查點 id_to + 1`、`id_to` 為封章觸發時刻觀測到的 `MAX(id)`。相鄰檢查點的區間 SHALL 無縫鄰接且不重疊，全鏈自 genesis 起 SHALL 完整覆蓋 `[genesis id_from, 最新 id_to]` 而無空隙。
@@ -79,7 +77,7 @@
 
 ### Requirement: 區間聚合雜湊與其覆蓋範圍
 
-區間聚合雜湊 SHALL 為：對區間內全部列依 id 升冪排序，取每列的 `(id, key_version, integrity_hmac)` 三元組以固定 canonical 編碼串接後計算 SHA-256。掃描 SHALL 使用不排除軟刪列的查詢（與列級驗證一致）。檢查點 SHALL 另存 `row_count` 與 `agg_scheme`（聚合演算法版本標識），使日後演算法演進可辨識而不破壞舊檢查點的可重算性。
+區間聚合雜湊 SHALL 為：對區間內全部列依 id 升冪排序，取每列的 `(id, key_version, integrity_hmac)` 三元組以固定 canonical 編碼串接後計算 SHA-256。掃描 SHALL 使用不排除軟刪列的查詢（與列級驗證一致）。封章時 SHALL 另對狀態表登記清單（`role-assignment-integrity`）中每張表取一份正規化快照與其雜湊，一併存入檢查點並納入簽章；本期登記清單只含 `user_roles`。檢查點 SHALL 另存 `row_count` 與 `agg_scheme`（聚合演算法版本標識），使日後演算法演進可辨識而不破壞舊檢查點的可重算性。
 
 canonical 編碼一經測試釘定 SHALL NOT 再變更（比照列級 `integrityPayload` 的相容性紀律）——任何編碼變動 SHALL 以新的 `agg_scheme` 值表示，舊檢查點 SHALL 續以其原 scheme 重算驗證。
 
@@ -100,9 +98,14 @@ canonical 編碼一經測試釘定 SHALL NOT 再變更（比照列級 `integrity
 - **WHEN** 列級蓋章鑰輪替至新版本後，對輪替前封章的區間執行內容層驗證
 - **THEN** 驗證通過（歷史列的 HMAC 與 key_version 未變，聚合結果不變）
 
+#### Scenario: 封章附帶角色指派快照
+
+- **WHEN** 封章時 `user_roles` 有 N 筆指派
+- **THEN** 該檢查點存有排序後的快照、`role_state_count = N` 與快照雜湊，三者皆在簽章載荷內；任一筆指派被直接寫資料庫改動後，重算雜湊與載荷不符
+
 ### Requirement: 檢查點鏈接、簽章與 genesis 錨定
 
-每個檢查點 SHALL 以 Ed25519 私鑰簽章，簽章涵蓋固定 canonical 編碼的 `seq`、`id_from`、`id_to`、`row_count`、`agg_hash`、`agg_scheme`、`prev_checkpoint_hash`、`min_created_at_us`、`max_created_at_us`、`sealed_at_us`、`signing_key_version`（時間欄一律以 Unix 微秒整數表示，空區間之最早／最晚時間 SHALL 明確寫出 `null` 而非省略鍵）。檢查點 SHALL 記錄所用簽章鑰版本，驗證 SHALL 依該版本取鑰；版本對應之鑰不存在 SHALL 計為 `signature_invalid`，SHALL NOT 靜默略過。
+每個檢查點 SHALL 以 Ed25519 私鑰簽章，簽章涵蓋固定 canonical 編碼的 `seq`、`id_from`、`id_to`、`row_count`、`agg_hash`、`agg_scheme`、`prev_checkpoint_hash`、`min_created_at_us`、`state`（狀態表登記清單各表的 `table`、`hash`、`count`，見 `role-assignment-integrity`）、`max_created_at_us`、`sealed_at_us`、`signing_key_version`（時間欄一律以 Unix 微秒整數表示，空區間之最早／最晚時間 SHALL 明確寫出 `null` 而非省略鍵）。檢查點 SHALL 記錄所用簽章鑰版本，驗證 SHALL 依該版本取鑰；版本對應之鑰不存在 SHALL 計為 `signature_invalid`，SHALL NOT 靜默略過。
 
 `prev_checkpoint_hash` SHALL 為前一檢查點「全部被簽章欄位＋其 signature」之 canonical 序列化的 SHA-256。genesis（`seq = 1`）的 `prev_checkpoint_hash` SHALL 錨定既有完整性基準（`integrity_baselines` 的 `max_log_id` 與 `baseline_at`）之雜湊，其 `id_from` SHALL 為啟用當下的 `MAX(id) + 1`。
 
@@ -131,6 +134,11 @@ canonical 編碼 SHALL 以對外文件公開至「外部工程師可用任意語
 
 - **WHEN** 對 `seq = 1` 的檢查點執行結構層驗證
 - **THEN** 其 `prev_checkpoint_hash` 等於以當前 `integrity_baselines` 的 `max_log_id` 與 `baseline_at` 重算之雜湊；不符時回報 `chain_broken`
+
+#### Scenario: 載荷版本遞增且舊檢查點續驗
+
+- **WHEN** 狀態快照欄加入簽章載荷後，對加入前封章的檢查點執行結構層驗證
+- **THEN** 舊載荷版本不要求 `state` 欄而驗簽通過；新載荷版本缺 `state` 欄者回報 `payload_invalid`；離線驗證器對兩種版本皆能重建位元組驗簽
 
 ### Requirement: 檢查點記錄的不可變守衛
 
@@ -283,6 +291,7 @@ auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保�
 - **涵蓋範圍限於操作日誌（`audit_logs`）**：指令流、告警紀錄、連線錄影與審計失效事件等其他來源不在本機制之內（封章聚合只掃 `audit_logs`，逐列完整性欄位亦只此表有）。
 - **已封存的操作日誌若遭修改、刪除或插入，驗證時可指出發生在哪一段**，而非只回報「有問題」。
 - **僅持有資料庫權限者造不出通過驗證的紀錄**：簽章金鑰與資料庫分離保管，故只能寫入或改動資料庫的人（例如資料庫管理員，或僅攻入資料庫者）無法產生通過驗證的紀錄。此條的成立範圍 SHALL 限於此——同時掌握簽章金鑰與資料庫的人不在其中（見 R0，本機制防不了），SHALL NOT 被表述為對全部管理員或全部內部人皆成立。
+- **管理者與稽核者的角色指派受同一鏈保護**：每個檢查點簽入當時的角色指派快照，直接寫資料庫改動角色指派者無法造出通過驗證的檢查點；差異自哪一個檢查點起、差在哪些帳號，驗證頁與驗證端點皆能指出（對帳與登入時比對見 `role-assignment-integrity`）。本條不改變 R0。
 - **外部查核方可用公鑰獨立驗證**，不必信任本系統或本公司提供的工具（編碼規格與獨立驗證工具對外公開）。
 
 #### 邊界與承擔（逐條）
@@ -325,6 +334,11 @@ auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保�
 
 - **WHEN** 使用者檢視鏈健康總覽
 - **THEN** 頁面呈現最新檢查點之後尚未封存的紀錄筆數或時間跨度，明示該段為未受鏈保護的窗口
+
+#### Scenario: 邊界聲明含角色指派
+
+- **WHEN** 稽核人員開啟驗證頁的「本機制保護什麼」或閱讀對外文件
+- **THEN** 讀到角色指派受保護的條目與「本條不改變 R0」的說明，且 R0 至 R6 原文未被移除
 
 ### Requirement: 單一封章者假設
 
@@ -535,3 +549,4 @@ auditor 於檢查點相關介面 SHALL 無任何寫操作：封章參數、保�
 
 - **WHEN** 稽核人員閱讀自動驗證狀態區塊
 - **THEN** 該區塊明示其為營運狀態而非完整性證明，並指向失效事件記錄與離機錨定作為真正的證據
+

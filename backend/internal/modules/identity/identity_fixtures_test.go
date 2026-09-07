@@ -219,8 +219,10 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 	}
 	sqlDB.SetMaxOpenConns(1)
 
+	// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity），
+	// 缺表即整筆回滾——生產序由 migration 先建全部表
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
-		&model.PasswordHistory{}, &model.RefreshToken{},
+		&model.PasswordHistory{}, &model.RefreshToken{}, &model.AuditLog{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}); err != nil {
 		t.Fatalf("migrate: %v", err)

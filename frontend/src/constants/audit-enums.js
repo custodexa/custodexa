@@ -45,6 +45,10 @@ const ACTION_TAG_TYPES = {
   offsite_cred_revoke: 'danger',
   // 升級時的一次性轉換留下的標記列（主體為系統）：無法證明同一組秘密的群組
   migration: 'warning',
+  // 角色指派授予（resource=user_role）。與 create 分開：對帳以
+  // (resource, action) 精確重放角色狀態，而重放的正確性依賴授予與撤銷是兩個
+  // 互不重疊的閉集合。撤銷沿用既有的 revoke
+  assign: 'warning',
 }
 
 export const AUDIT_ACTION_VALUES = Object.keys(ACTION_TAG_TYPES)
@@ -93,6 +97,9 @@ export const AUDIT_RESOURCE_VALUES = [
   'asset_group',
   'snippet',
   'role',
+  // 角色指派關聯（`user_roles` 的單筆 user_id/role_id）：與 user、role 都分開
+  //（前者是帳號實體、後者是角色定義本身）。resource_id 指向被指派的帳號
+  'user_role',
   // 單實例守衛（single-instance-guard）：系統主體寫入的守衛事件
   //（overridden／lost／regained）與管理者對快照端點的讀取列
   'instance_guard',
@@ -139,6 +146,9 @@ export const AUDIT_MECHANISM_VALUES = [
   'source_policy',
   // 離機儲存的上傳與取回完整性：解除判準是「失敗態件數歸零」而非任一件成功
   'offsite_upload',
+  // 角色指派與檢查點鏈不符：與 audit_chain_content 分開——那一支說的是
+  // 已封區間的審計紀錄被動過，本支說的是權限本身被動過而無留痕，處置不同
+  'role_state_integrity',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -218,6 +228,9 @@ export const AUDIT_CAUSE_VALUES = [
   'offsite_upload_failed',
   'offsite_upload_stalled',
   'offsite_integrity_mismatch',
+  // 角色指派對帳不符：最近一個含快照的檢查點加上其後的角色指派紀錄
+  // 推不出現行狀態
+  'role_state_mismatch',
 ]
 
 export const AUDIT_CAUSES = {}

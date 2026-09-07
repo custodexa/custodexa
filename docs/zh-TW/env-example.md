@@ -31,7 +31,8 @@
 
 ### 正式版堆疊與開發版堆疊
 
-預設的 `docker-compose.yml` 就是正式版堆疊：nginx 供應編譯好的前端、後端是精簡二進位、沒有測試靶機。
+預設的 `docker-compose.yml` 就是正式版堆疊：nginx 供應編譯好的前端、後端是精簡二進位、
+由一層 TLS 代理在 443 埠對外提供 https、沒有測試靶機。
 只是要把 Custodexa 部署起來自己用？看到這裡就夠了。
 
 開發者：把下面的 `COMPOSE_FILE` 取消註解，之後每一條 `docker compose` 指令
@@ -289,7 +290,9 @@ ADMIN_INITIAL_PASSWORD=change-me-admin-initial-password-in-env
 
 ### `CORS_ALLOWED_ORIGINS`
 
-`[PCI 7.3]` 以逗號分隔的允許清單；在 release 下留空 = 僅限同源（same origin）。
+`[PCI 7.3]` 以逗號分隔的允許清單，列出允許**從瀏覽器**呼叫本 API 的來源。
+在 release 下，這份清單會照字面強制執行，其他來源的請求一律拒絕；
+留空則收斂成只允許供應本站的那一個來源（same origin）。
 
 ```env
 CORS_ALLOWED_ORIGINS=
@@ -438,7 +441,8 @@ TLS 若是在本系統前面一層終結，而 `PUBLIC_BASE_URL` 沒有寫上對
 登入頁會說明現況，安全政策頁也會給管理員同一則提示，在那裡把政策關掉即刻解除。
 
 本機開發用 `http://localhost` 會不會受影響，看瀏覽器：Chromium 與 Firefox 接受來自這個位址的
-Secure cookie；Safari 一系的 WebKit 會丟棄，拿 Safari 開發時把該政策關掉即可。
+Secure cookie；Safari 一系的 WebKit 會丟棄，在那些瀏覽器上，政策關掉之前每隔 15 分鐘就會被登出一次，
+拿 Safari 開發時把該政策關掉即可。
 
 生效的值與它的來源，都會寫在啟動日誌裡。
 
@@ -472,7 +476,7 @@ FEATURE_ALERTING_ENABLED=false
 提供者本身（issuer、client id、secret、准入規則）是在管理介面中設定、儲存於資料庫；
 這裡只有那三項必須由部署層決定的設定。
 
-啟用 SSO 之前有兩個維運上的前提條件（全文見 `docs/QUICKSTART.md`）：
+啟用 SSO 之前有兩個維運上的前提條件（全文見 `docs/zh-TW/QUICKSTART.md`）：
 
 1. **至少保留一個本地管理員帳號。**
    解封（`KEK_PROVIDER=ui`）與初始管理員授權**只接受本地憑證**：
@@ -538,7 +542,7 @@ OIDC_ALLOWED_INTERNAL_HOSTS=
 本節最後一把鍵 `LDAP_ALLOWED_LOOPBACK_ENDPOINTS` 不屬於這一組：
 它是執行期的對外連線政策，會持續從這個檔案讀取。
 
-在降版到舊版本之前，請把目前管理介面上的設定抄回這個檔案，**含 bind 密碼**；見 `docs/QUICKSTART.md`。
+在降版到舊版本之前，請把目前管理介面上的設定抄回這個檔案，**含 bind 密碼**；見 `docs/zh-TW/QUICKSTART.md`。
 
 預設為停用。要在開發環境測試 LDAP，把 `LDAP_ENABLED=true`——
 下面的值對應的正是內建的 `ldap-test` 服務。
@@ -574,11 +578,15 @@ LDAP_BIND_PASSWORD=adminpass
 
 ### `LDAP_BASE_DN`
 
+搜尋的基準 DN；這裡的值對應的是內建的開發用測試服務。
+
 ```env
 LDAP_BASE_DN=ou=users,dc=example,dc=org
 ```
 
 ### `LDAP_USER_FILTER`
+
+使用者搜尋過濾條件；這裡的值對應的是內建的開發用測試服務。
 
 ```env
 LDAP_USER_FILTER=(uid=%s)
@@ -586,11 +594,15 @@ LDAP_USER_FILTER=(uid=%s)
 
 ### `LDAP_ATTR_EMAIL`
 
+承載電子郵件位址的屬性；這裡的值對應的是內建的開發用測試服務。
+
 ```env
 LDAP_ATTR_EMAIL=mail
 ```
 
 ### `LDAP_ATTR_FULLNAME`
+
+承載姓名的屬性；這裡的值對應的是內建的開發用測試服務。
 
 ```env
 LDAP_ATTR_FULLNAME=cn
@@ -635,7 +647,7 @@ LDAP_ALLOWED_LOOPBACK_ENDPOINTS=
   證據包裡含解密後的剪貼簿內容；本機的取回暫存區同樣是明文。
 - 遠端副本的保留期、版本歷史與防刪由**你在 bucket 上設定**。
   Custodexa 只上傳、記下上傳當下的 SHA-256、取回時驗證；
-  它不送保留標頭，也永遠不刪遠端物件。建議參數見 `docs/ops/`。
+  它不送保留標頭，也永遠不刪遠端物件。建議參數見 `docs/zh-TW/ops/`。
 - 重試就是以同一個 key 重傳。遠端物件若被別的東西覆寫，取回會因為雜湊對不上而拒絕交付
   ——**防護就到這裡為止**；能不能救回原來那一份，取決於你在 bucket 上開的版本化設定。
 - 之後要換 provider、端點或 bucket 屬於世代變更，在管理介面上確認；
@@ -838,9 +850,6 @@ KEK 材料只會經由解封 API 進入記憶體，所以整個這一節都是�
 因為一個默默忽略掉你設定值的速率限制，比完全沒有速率限制更糟。
 同樣地，當封頂低於其基準時也會拒絕啟動。
 
-> 注意：緊接在這四個之後的 `SEAL_UNSEAL_COOLDOWN_THRESHOLD` **不適用**上面這條規則，
-> 它有自己的一條，寫在該鍵的說明裡。
-
 ### `SEAL_UNSEAL_BACKOFF_BASE_SECONDS`
 
 per-source（依來源）退避基準，單位為秒；留空或非數字 = 2。
@@ -870,7 +879,6 @@ SEAL_UNSEAL_BACKOFF_MAX_SECONDS=
 
 留空 = 20。**與上面那四個 `*_SECONDS` 旋鈕不同**：任何其他不是 1..1048576 範圍內整數的值
 ——**包含非數字文字**——都會**拒絕啟動**，而不是退回預設值。
-（也就是說，這把鍵只有「留空」才會退回預設值。）
 
 ```env
 SEAL_UNSEAL_COOLDOWN_THRESHOLD=
@@ -896,6 +904,9 @@ SEAL_UNSEAL_COOLDOWN_MAX_SECONDS=
 ### `TRUSTED_PROXIES`
 
 可信代理清單（IP 或 CIDR，逗號分隔）。
+這把鍵的作用範圍超出解封端點：它決定每一筆請求的客戶端 IP 要歸屬給誰，
+因此也決定了審計日誌裡記下的位址，以及登入限速用來計數的那把鍵。
+只要 Custodexa 跑在反向代理後面就要設定它，不論你選的是哪一種 `KEK_PROVIDER`。
 在它未設定期間，per-IP 退避會降級為全域退避：
 沒有一個約定好的代理鏈，限速鍵就可能被轉送標頭污染，
 而一道可被繞過的防線比一道笨拙的防線更糟。

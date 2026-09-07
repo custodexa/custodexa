@@ -418,11 +418,15 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 			return nil, ErrRoleNotFound
 		}
 
-		// 分配角色
-		if err := tx.Model(user).Association("Roles").Append(roles); err != nil {
-			tx.Rollback()
-			log.Printf("[UserService] Create: Assign roles error: %v", err)
-			return nil, fmt.Errorf("分配角色失敗: %w", err)
+		// 分配角色。走 model 的唯一寫入面（role-assignment-integrity）：
+		// 每一筆指派同交易留一筆 `user_role` 審計列，否則對帳會把本地建帳號
+		// 這條合法路徑報成資料庫直寫
+		for _, r := range roles {
+			if err := model.AssignUserRole(tx, user.ID, r.ID, model.RoleOriginRegister); err != nil {
+				tx.Rollback()
+				log.Printf("[UserService] Create: Assign roles error: %v", err)
+				return nil, fmt.Errorf("分配角色失敗: %w", err)
+			}
 		}
 	}
 
@@ -646,12 +650,15 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 		}
 		return fmt.Errorf("查詢角色失敗: %w", err)
 	}
-	// 原子冪等追加：ON CONFLICT DO NOTHING 讓兩 admin
+	// 原子冪等追加：model.AssignUserRole 內為 ON CONFLICT DO NOTHING，讓兩 admin
 	// 併發代配同一人時，敗方 no-op 而非撞 user_roles 複合主鍵回 500——先查後寫有
-	// TOCTOU 窗會退化 idempotent 端點。單條 upsert 不觸碰其他角色列，Postgres/SQLite 皆支援
-	if err := s.db.Exec(
-		"INSERT INTO user_roles (user_id, role_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-		userID, role.ID).Error; err != nil {
+	// TOCTOU 窗會退化 idempotent 端點。單條 upsert 不觸碰其他角色列，Postgres/SQLite 皆支援。
+	//
+	// **改為交易**（role-assignment-integrity）：指派與其審計列必須同生共死，
+	// 審計寫不進去就不許掛上角色。已存在時寫入面回 no-op、不留痕，冪等語義不變
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		return model.AssignUserRole(tx, userID, role.ID, model.RoleOriginAPI)
+	}); err != nil {
 		return fmt.Errorf("追加角色失敗: %w", err)
 	}
 	return nil
@@ -667,24 +674,42 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 // 而該欄位隨後即被 Replace 使用，避免任何隱性耦合。
 // 重複角色名不需在此處理——AssignRoles 前段已以 len(roles) != len(roleNames) 擋下
 func roleSetDiffers(tx *gorm.DB, userID uint, want []model.Role) (bool, error) {
+	added, removed, err := roleSetDelta(tx, userID, want)
+	if err != nil {
+		return false, err
+	}
+	return len(added) > 0 || len(removed) > 0, nil
+}
+
+// roleSetDelta 現行角色集到目標角色集的差量（added＝要授予的、removed＝要移除的）。
+//
+// **替換必須拆成差量**（role-assignment-integrity）：留痕的單位是一筆指派的
+// 授予或撤銷，而 `Association("Roles").Replace` 是一個黑箱——它刪了什麼、加了
+// 什麼，呼叫端看不到，也就寫不出對帳重放得回來的事件流。
+// 讀取與寫入同交易、同鎖內：鎖外預讀會讓兩個並發替換各自看見舊集合
+func roleSetDelta(tx *gorm.DB, userID uint, want []model.Role) (added, removed []uint, err error) {
 	var currentIDs []uint
 	if err := tx.Table("user_roles").Where("user_id = ?", userID).
 		Pluck("role_id", &currentIDs).Error; err != nil {
-		return false, fmt.Errorf("讀取現行角色失敗: %w", err)
-	}
-	if len(currentIDs) != len(want) {
-		return true, nil
+		return nil, nil, fmt.Errorf("讀取現行角色失敗: %w", err)
 	}
 	current := make(map[uint]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
 		current[id] = struct{}{}
 	}
+	target := make(map[uint]struct{}, len(want))
 	for _, r := range want {
+		target[r.ID] = struct{}{}
 		if _, ok := current[r.ID]; !ok {
-			return true, nil
+			added = append(added, r.ID)
 		}
 	}
-	return false, nil
+	for _, id := range currentIDs {
+		if _, ok := target[id]; !ok {
+			removed = append(removed, id)
+		}
+	}
+	return added, removed, nil
 }
 
 // AssignRoles 分配角色（替換現有角色）。
@@ -747,14 +772,23 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	// 已另行記錄，非本函式邏輯需處理範圍。
 	// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下
 	applyRoles := func(tx *gorm.DB) error {
-		changed, err := roleSetDiffers(tx, userID, roles)
+		added, removed, err := roleSetDelta(tx, userID, roles)
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(&user).Association("Roles").Replace(roles); err != nil {
-			return err
+		// 差量寫入取代 Association("Roles").Replace：每一筆授予與撤銷同交易留痕，
+		// 留痕失敗即整筆回滾（role-assignment-integrity）
+		for _, roleID := range removed {
+			if err := model.RevokeUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
+				return err
+			}
 		}
-		if !changed {
+		for _, roleID := range added {
+			if err := model.AssignUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
+				return err
+			}
+		}
+		if len(added) == 0 && len(removed) == 0 {
 			return nil
 		}
 		if err := BumpCredentialEpoch(tx, userID, "roles_changed"); err != nil {

@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
+	"sort"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -96,12 +98,15 @@ func ComputeAggHash(entries []checkpointAggEntry) (string, int64) {
 	return w.Sum()
 }
 
-// checkpointSignPayload 檢查點簽章涵蓋欄位的 canonical 序列化（固定 struct＝固定鍵序）。
+// checkpointSignPayloadV1 檢查點簽章涵蓋欄位的 canonical 序列化（固定 struct＝固定鍵序）。
+//
+// **v1 的位元組永遠不再變**：本能力之前封的檢查點全部以此形狀重建驗證，
+// 動它一個鍵就是讓全部歷史檢查點驗不過。新欄位一律進 v2（見下）。
 //
 // 涵蓋範圍**不含** anchor_status／purged_at／
 // purge_signature／purge_signing_key_version——皆為封章後才發生的狀態，
 // 蓋進簽章就永遠簽不了；purge 的真實性由獨立的 purge 簽章承擔。
-type checkpointSignPayload struct {
+type checkpointSignPayloadV1 struct {
 	Seq                uint   `json:"seq"`
 	IDFrom             uint   `json:"id_from"`
 	IDTo               uint   `json:"id_to"`
@@ -113,6 +118,90 @@ type checkpointSignPayload struct {
 	MaxCreatedAtUs     *int64 `json:"max_created_at_us"`
 	SealedAtUs         int64  `json:"sealed_at_us"`
 	SigningKeyVersion  int    `json:"signing_key_version"`
+}
+
+// checkpointStateEntry 單一登記狀態表在簽章載荷內的摘要
+// （載荷形狀：`state: [{table, hash, count}]`）。
+//
+// **只放摘要不放快照本體**：本體可達數十 KB，簽章載荷是離線驗證者要逐位元組
+// 重建的東西，塞進去會讓「以任何語言重建」的承諾變得昂貴。本體的真偽由
+// hash 承擔——而 hash 是**由本體現算**的（見 checkpointStateEntries），
+// 故改寫快照本體欄會使簽章驗不過，不會只是「欄位與雜湊對不上」
+type checkpointStateEntry struct {
+	Table string `json:"table"`
+	Hash  string `json:"hash"`
+	Count int64  `json:"count"`
+}
+
+// checkpointSignPayloadV2 第二版載荷：v1 的全部欄位＋狀態表摘要。
+//
+// **欄位順序依 spec 條文**（`…、min_created_at_us、state、max_created_at_us、…`）：
+// 順序是規格的一部分，離線驗證者照文件手寫重建，故此處以 spec 的列舉為準
+// 而非「新欄位排在最後」的直覺。`role_state_reconciled` 緊接 state
+// ——它是封章當下對帳結果的主張，與 state 同屬一組事實。
+//
+// 兩個版本各為一個獨立 struct 而非「一個 struct 加 omitempty」：後者要靠
+// 「nil 時省略、非 nil 時寫出」的耦合來維持 v1 位元組不變，而 v2 的
+// role_state_reconciled 恰恰必須在 nil 時寫出 null——同一個 tag 做不到兩件事
+type checkpointSignPayloadV2 struct {
+	Seq                 uint                   `json:"seq"`
+	IDFrom              uint                   `json:"id_from"`
+	IDTo                uint                   `json:"id_to"`
+	RowCount            int64                  `json:"row_count"`
+	AggHash             string                 `json:"agg_hash"`
+	AggScheme           string                 `json:"agg_scheme"`
+	PrevCheckpointHash  string                 `json:"prev_checkpoint_hash"`
+	MinCreatedAtUs      *int64                 `json:"min_created_at_us"`
+	State               []checkpointStateEntry `json:"state"`
+	RoleStateReconciled *bool                  `json:"role_state_reconciled"`
+	MaxCreatedAtUs      *int64                 `json:"max_created_at_us"`
+	SealedAtUs          int64                  `json:"sealed_at_us"`
+	SigningKeyVersion   int                    `json:"signing_key_version"`
+}
+
+// ErrCheckpointPayloadInvalid 檢查點欄位組合建不出合法載荷
+// （未知的 agg_scheme、v2 缺快照欄、快照欄不是合法 canonical JSON）。
+//
+// **與「簽章驗不過」分開**：載荷建不出來時根本沒有東西可以拿去驗簽，
+// 把它報成 signature_invalid 會讓「欄位被清空」與「簽章被換掉」在報表上
+// 同形，而兩者的處置不同
+var ErrCheckpointPayloadInvalid = errors.New("檢查點載荷不合法")
+
+// checkpointStateEntries 由檢查點的快照本體欄推導簽章載荷的 state 陣列。
+//
+// **hash 現算而非取 role_state_hash 欄**：若簽的是那個欄位，攻擊者改寫
+// role_state_snapshot（對帳唯一的輸入）卻不動 hash 欄，簽章照樣通過——
+// 而對帳讀的正是被改過的本體。現算使「快照本體」整個落在簽章涵蓋內。
+//
+// count 取本體陣列的元素數，同樣不取 role_state_count 欄（同一個理由）
+func checkpointStateEntries(cp *model.AuditCheckpoint) ([]checkpointStateEntry, error) {
+	if cp.RoleStateSnapshot == nil || *cp.RoleStateSnapshot == "" {
+		return nil, fmt.Errorf("%w: agg_scheme=%s 但無狀態快照欄", ErrCheckpointPayloadInvalid, cp.AggScheme)
+	}
+	tables, err := DecodeStateSnapshotColumn(*cp.RoleStateSnapshot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCheckpointPayloadInvalid, err)
+	}
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	entries := make([]checkpointStateEntry, 0, len(names))
+	for _, name := range names {
+		body := []byte(tables[name])
+		var elems []json.RawMessage
+		if err := json.Unmarshal(body, &elems); err != nil {
+			return nil, fmt.Errorf("%w: 表 %s 的快照本體不是陣列: %v",
+				ErrCheckpointPayloadInvalid, name, err)
+		}
+		entries = append(entries, checkpointStateEntry{
+			Table: name,
+			Hash:  stateHash(body),
+			Count: int64(len(elems)),
+		})
+	}
+	return entries, nil
 }
 
 // checkpointLinkPayload 鏈接雜湊的輸入：「被簽章欄位＋其 signature」。
@@ -150,7 +239,20 @@ func timePtrToUnixMicro(t *time.Time) *int64 {
 // 取 *model.AuditCheckpoint 而非個別參數：封章與驗證兩側必須吃同一個
 // 建構函式，否則「封章時多帶一欄、驗證時少帶一欄」的漂移不會被任何測試看見
 func CheckpointSignBytes(cp *model.AuditCheckpoint) ([]byte, error) {
-	payload := checkpointSignPayload{
+	switch cp.AggScheme {
+	case model.AggSchemeV1:
+		return checkpointSignBytesV1(cp)
+	case model.AggSchemeV2:
+		return checkpointSignBytesV2(cp)
+	default:
+		// 未知版本不猜：拿 v1 的形狀去驗一個未知版本的檢查點，
+		// 結果會是「簽章驗不過」而掩蓋掉真正的原因（版本無法辨識）
+		return nil, fmt.Errorf("%w: 未知的 agg_scheme %q", ErrCheckpointPayloadInvalid, cp.AggScheme)
+	}
+}
+
+func checkpointSignBytesV1(cp *model.AuditCheckpoint) ([]byte, error) {
+	payload := checkpointSignPayloadV1{
 		Seq:                cp.Seq,
 		IDFrom:             cp.IDFrom,
 		IDTo:               cp.IDTo,
@@ -162,6 +264,33 @@ func CheckpointSignBytes(cp *model.AuditCheckpoint) ([]byte, error) {
 		MaxCreatedAtUs:     timePtrToUnixMicro(cp.MaxCreatedAt),
 		SealedAtUs:         cp.SealedAt.UnixMicro(),
 		SigningKeyVersion:  cp.SigningKeyVersion,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("序列化檢查點簽章 payload 失敗: %w", err)
+	}
+	return raw, nil
+}
+
+func checkpointSignBytesV2(cp *model.AuditCheckpoint) ([]byte, error) {
+	state, err := checkpointStateEntries(cp)
+	if err != nil {
+		return nil, err
+	}
+	payload := checkpointSignPayloadV2{
+		Seq:                 cp.Seq,
+		IDFrom:              cp.IDFrom,
+		IDTo:                cp.IDTo,
+		RowCount:            cp.RowCount,
+		AggHash:             cp.AggHash,
+		AggScheme:           cp.AggScheme,
+		PrevCheckpointHash:  cp.PrevCheckpointHash,
+		MinCreatedAtUs:      timePtrToUnixMicro(cp.MinCreatedAt),
+		State:               state,
+		RoleStateReconciled: cp.RoleStateReconciled,
+		MaxCreatedAtUs:      timePtrToUnixMicro(cp.MaxCreatedAt),
+		SealedAtUs:          cp.SealedAt.UnixMicro(),
+		SigningKeyVersion:   cp.SigningKeyVersion,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -191,7 +320,7 @@ func CheckpointLinkHash(cp *model.AuditCheckpoint) (string, error) {
 //
 // **不可省**：三種 payload 都是固定 struct JSON 且都以同一把 Ed25519 私鑰簽，
 // 少了域標識，一個結構相容的 payload 就可能被當成另一種用途的有效簽章
-//（跨用途重放）。kind 使三個輸入域互不相交
+// （跨用途重放）。kind 使三個輸入域互不相交
 const (
 	checkpointPurgeKind = "checkpoint_purge"
 	checkpointTrimKind  = "checkpoint_trim"
@@ -231,7 +360,7 @@ func CheckpointPurgeSignBytes(seq uint, purgedAt time.Time, rowCount int64, poli
 // checkpointTrimPayload 鏈修剪記錄的簽章涵蓋欄位。
 //
 // LastTrimmedLinkHash 是關鍵欄：它使修剪記錄成為殘鏈的**可驗錨點**
-//（殘鏈鏈頭的 prev_checkpoint_hash 必須等於它），否則「合法修剪」與
+// （殘鏈鏈頭的 prev_checkpoint_hash 必須等於它），否則「合法修剪」與
 // 「鏈頭被挖」在驗證端無法區分
 type checkpointTrimPayload struct {
 	Kind                string `json:"kind"`

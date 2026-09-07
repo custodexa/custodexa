@@ -22,8 +22,10 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	// ApproverScope／UserGroup／RefreshToken 為 Delete／UpdateStatus 的連動清理與
 	// 撤銷路徑所需——缺表會讓「應允許」的情境敗在無關的 SQL 錯誤上
+	// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity），
+	// 缺表即整筆回滾——生產序由 migration 先建全部表
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.ApproverScope{}, &model.RefreshToken{}); err != nil {
+		&model.ApproverScope{}, &model.RefreshToken{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, "user"} {

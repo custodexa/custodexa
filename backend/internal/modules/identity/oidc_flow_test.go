@@ -37,7 +37,9 @@ func setupOIDCEnv(t *testing.T) (*OIDCLoginService, *OIDCProviderService, *gorm.
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.RefreshToken{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{},
-		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}); err != nil {
+		&model.OIDCFlowState{}, &model.OIDCLoginTicket{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Exec(`CREATE TABLE IF NOT EXISTS user_roles (

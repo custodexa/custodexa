@@ -75,6 +75,8 @@ func baselineSchemaDB(t *testing.T, schema string) *gorm.DB {
 	// PurgeAll 逐一走三個目標表：另兩張以最小結構建起來（本測不 seed，刪 0 筆）
 	for _, stmt := range []string{
 		"CREATE TABLE session_commands (id BIGSERIAL PRIMARY KEY, executed_at TIMESTAMPTZ NOT NULL)",
+		// 封章會取 user_roles 快照（role-assignment-integrity）：裸 join 表無 model，故手建
+		"CREATE TABLE user_roles (role_id BIGINT NOT NULL, user_id BIGINT NOT NULL, PRIMARY KEY (role_id, user_id))",
 		"CREATE TABLE command_alerts (id BIGSERIAL PRIMARY KEY, triggered_at TIMESTAMPTZ NOT NULL)",
 	} {
 		if err := db.Exec(stmt).Error; err != nil {

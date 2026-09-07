@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/custodexa/backend/internal/model"
@@ -37,6 +38,13 @@ const (
 	IntervalStatusExtraRowsValidHMAC = "extra_rows_valid_hmac"
 	// IntervalStatusSignatureInvalid 檢查點自身簽章驗不過（其一切主張不可信）
 	IntervalStatusSignatureInvalid = "signature_invalid"
+	// IntervalStatusPayloadInvalid 檢查點的欄位組合建不出合法簽章載荷：
+	// 未知的 agg_scheme、宣稱含狀態快照卻無快照欄、快照欄不是合法 canonical JSON。
+	//
+	// **與 signature_invalid 分開的理由**：載荷建不出來時根本沒有位元組可以拿去
+	// 驗簽，兩者在報表上同形會讓「欄位被清空」與「簽章被換掉」無法分辨，
+	// 而前者往往是升級或回滾出了錯、後者是竄改
+	IntervalStatusPayloadInvalid = "payload_invalid"
 )
 
 // IntervalVerifyDeps 內容層驗證的兩個外部能力。
@@ -73,6 +81,10 @@ func (p *CheckpointPurger) VerifyIntervalContent(cp *model.AuditCheckpoint,
 			deps.Aggregate != nil, deps.RowHMAC != nil)
 	}
 	payload, err := CheckpointSignBytes(cp)
+	if errors.Is(err, ErrCheckpointPayloadInvalid) {
+		res.Status = IntervalStatusPayloadInvalid
+		return res, nil
+	}
 	if err != nil {
 		return res, err
 	}

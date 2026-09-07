@@ -2953,7 +2953,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/audit-checkpoints?page=&page_size=` | 檢查點列表（seq 倒序）→ `{data: {items: [...], total}}`；每筆含 `seq`／`id_from`／`id_to`／`row_count`／`agg_hash`／`agg_scheme`／`prev_checkpoint_hash`／`sealed_at`／`signing_key_version`／`signature`／`anchor_status`／`purged_at` |
-| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled}}}` |
+| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled, role_state}}}` |
 | GET | `/audit-checkpoints/verify?content=true&seq_from=&seq_to=` | 加驗**內容層**（亦支援 `from=`／`to=` 日期映射）→ 另回 `content.intervals[]`，逐區間帶 `status` 與 `remain_rows` |
 | GET | `/audit-checkpoints/public-key` | 鏈簽章公鑰 → `{data: {algorithm: "Ed25519", public_key, fingerprint, version}}`，供離線驗章 |
 
@@ -2976,6 +2976,16 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | `signature_invalid` | 檢查點自身簽章驗不過 |
 | `chain_broken` | `prev_checkpoint_hash` 與前一點重算值不符 |
 | `seq_gap` | seq 斷洞，且無修剪記錄可解釋 |
+
+**角色指派維度**（`chain.role_state`）：每個檢查點另簽入封章當下的角色指派，
+結構層驗證因此順帶回報一份對帳結果——把現況與最近一個含快照的檢查點加上其後
+每一筆有留痕的授予與撤銷相比。欄位為 `covered`（是否已有可比對的基準）、
+`state`（`match`／`mismatch`／`not_covered`）、`since_seq`（作為基準的檢查點序號）、
+`missing`／`extra`（差集，逐筆帶 `user_id`／`role_id` 與對應的 `username`／`role_name`）、
+`last_event`（不符時附最近一筆相關的審計失效事件，供前端連結）。
+`not_covered` 出現在尚未封出任何含快照的檢查點時（升級後首個封章之前），
+**它不是相符**；欄位整段缺席表示本次未附帶對帳結果，同樣不得讀成相符。
+帳號名與角色名只在本端點的回應內出現：快照與失效事件一律只帶識別。
 
 **寫入面刻意不存在**：本組端點無任何 POST/PUT/DELETE——「可以被系統改的檢查點」
 在稽核面前一文不值。到期修剪只由 retention 排程依 `retention_checkpoint_days` 執行。

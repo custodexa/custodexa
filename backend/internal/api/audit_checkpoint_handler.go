@@ -7,13 +7,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/gin-gonic/gin"
 )
 
 // checkpointListMaxPageSize 列表單頁上限（鏈長可達萬級，不接受無界請求）
@@ -38,6 +38,8 @@ type AuditCheckpointHandler struct {
 	signing  checkpointSigningPublicKeyProvider
 	// autoVerify 自動驗證的營運狀態讀取端；nil＝不附帶該區塊
 	autoVerify chainAutoVerifyStatusReader
+	// roleNames 角色指派差集的名稱換算面；nil＝差集只出識別、不出名稱
+	roleNames roleStateNameLookup
 }
 
 // chainAutoVerifyStatusReader 自動驗證營運狀態的窄介面
@@ -64,6 +66,18 @@ func NewAuditCheckpointHandler(verifier *audit.CheckpointVerifier,
 // 那比顯示一個取不到值的區塊更糟
 func (h *AuditCheckpointHandler) SetAutoVerifyStatus(r chainAutoVerifyStatusReader) {
 	h.autoVerify = r
+}
+
+// SetRoleStateNames 注入角色指派差集的名稱換算面（role-assignment-integrity）。
+//
+// **唯讀且只在本端點內生效**：帳號名與角色名不進快照、不進失效事件、不外送，
+// 只在這條已由 admin／auditor 守門的回應上出現
+func (h *AuditCheckpointHandler) SetRoleStateNames(names roleStateNameSource,
+	events roleStateEventSource) {
+	if names == nil && events == nil {
+		return
+	}
+	h.roleNames = &roleStateLookup{names: names, events: events}
 }
 
 // checkpointItem 列表項：只曝露已在 DB 且非機密的欄位（簽章本身是公開可驗的）
@@ -114,7 +128,12 @@ func (h *AuditCheckpointHandler) Verify(c *gin.Context) {
 			chain.AutoVerify = st
 		}
 	}
-	resp := gin.H{"chain": chain}
+	// 角色指派維度：差集自識別換算為帳號名與角色名。
+	// **不新增路由**——讀者與鏈健康總覽完全相同，而新端點要動兩份機器產物
+	resp := gin.H{"chain": &checkpointVerifyResponse{
+		ChainReport: chain,
+		RoleState:   projectRoleState(chain.RoleState, h.roleNames),
+	}}
 
 	wantContent := c.Query("content") == "true" || c.Query("seq_from") != "" ||
 		c.Query("seq_to") != "" || c.Query("from") != "" || c.Query("to") != ""

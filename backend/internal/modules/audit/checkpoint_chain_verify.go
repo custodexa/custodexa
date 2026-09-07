@@ -1,8 +1,10 @@
 package audit
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -45,6 +47,17 @@ type CheckpointVerifier struct {
 	// integrity 列級 HMAC 驗證來源；nil＝無法判定多出列的真偽
 	integrity *AuditIntegrityService
 	policy    checkpointPolicyReader
+	// roleState 角色指派對帳器（nil＝不附帶對帳結果）。
+	// 驗證端點與排程自動驗證都經 VerifyChain，故接在這裡即兩個時機同時生效
+	roleState *RoleStateReconciler
+}
+
+// SetRoleStateReconciler 接上驗證時的角色指派對帳（role-assignment-integrity）。
+//
+// **接在驗證器而非各呼叫端**：spec 的三個比對時機裡有兩個（驗證端點、
+// 排程自動驗證）都經 VerifyChain，分別接會讓其中一個先漏掉而沒有任何測試轉紅
+func (v *CheckpointVerifier) SetRoleStateReconciler(r *RoleStateReconciler) {
+	v.roleState = r
 }
 
 // NewCheckpointVerifier 建立驗證服務
@@ -102,6 +115,13 @@ type ChainReport struct {
 	// （驗證器本身不讀狀態表——填值由 handler 以獨立的狀態讀取端注入，
 	// 使既有驗證路徑不因一張營運狀態表而多一個失敗成因）
 	AutoVerify *ChainAutoVerifyStatus `json:"auto_verify,omitempty"`
+	// RoleState 角色指派的對帳結果（role-assignment-integrity）。
+	//
+	// **與鏈的狀態分開**：鏈證明的是「封章當下的狀態沒被改過」，對帳問的是
+	// 「封章之後的每一筆變動有沒有留痕」。直寫 `user_roles` 提權時鏈仍然
+	// 100% 通過（檢查點一個字都沒動），把它併進 Status 會讓兩種完全不同的
+	// 持有物共用一個結論。nil＝本次未附帶（未接對帳器）
+	RoleState *RoleStateReport `json:"role_state,omitempty"`
 }
 
 // VerifyChain 結構層全鏈驗證：逐點驗簽章、驗 prev hash 鏈接、驗 seq 連續與區間鄰接。
@@ -165,7 +185,25 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 		return nil, fmt.Errorf("計數未封尾段失敗: %w", err)
 	}
 	report.UnsealedRows = unsealed
+	report.RoleState = v.reconcileRoleState()
 	return report, nil
+}
+
+// reconcileRoleState 驗證時對帳一次（驗證端點與排程自動驗證共用此路徑）。
+//
+// **對帳失敗不讓整份報告失敗**：鏈的結論已經算完，因為對帳讀不到基準就把
+// 驗證頁整頁變成錯誤，會讓一個旁支問題掩蓋掉主結論。留 nil＝本次沒有對帳結果，
+// 呈現層據此顯示「未附帶」而非「相符」
+func (v *CheckpointVerifier) reconcileRoleState() *RoleStateReport {
+	if v.roleState == nil {
+		return nil
+	}
+	report, err := v.roleState.Reconcile(context.Background())
+	if err != nil {
+		log.Printf("[Checkpoint] 驗證時角色指派對帳未能完成: %v", err)
+		return nil
+	}
+	return report
 }
 
 // verifyChainPoint 單點的結構層判定。
@@ -182,7 +220,12 @@ func (v *CheckpointVerifier) verifyChainPoint(chain []model.AuditCheckpoint, i i
 	}
 	payload, err := CheckpointSignBytes(&cp)
 	if err != nil {
+		// 載荷建不出來與簽章驗不過是兩件事（見 IntervalStatusPayloadInvalid）：
+		// 結構層與內容層對同一個檢查點必須給同一個答案，否則兩份報表互相矛盾
 		res.Status = IntervalStatusSignatureInvalid
+		if errors.Is(err, ErrCheckpointPayloadInvalid) {
+			res.Status = IntervalStatusPayloadInvalid
+		}
 		res.Detail = err.Error()
 		return res
 	}

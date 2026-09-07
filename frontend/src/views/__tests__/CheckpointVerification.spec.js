@@ -15,9 +15,9 @@ import jaJP from '@/i18n/locales/ja-JP.json'
 enableAutoUnmount(afterEach)
 
 const LIMIT_CODES = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']
-// P4 為自動驗證那條：保護範圍的條數
+// P4 為自動驗證那條、P5 為角色指派那條：保護範圍的條數
 // 只增不減，少一條即為事實被砍掉
-const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4']
+const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4', 'P5']
 
 class MutationObserverStub {
   observe() {}
@@ -355,6 +355,145 @@ describe('對外文案的可讀性（無內部函式名與狀態機器碼）', (
       }
     })
   }
+
+  // —— 角色指派對帳（role-assignment-integrity task 4.2）——
+  //
+  // 這一列的失敗方向是不對稱的：漏顯示差集只是少講一件事，把未知或未涵蓋
+  // 顯示成相符則是對稽核的假陳述。四種狀態因此逐一測，且都測到「文案說了什麼」
+  // 而非只測元素存在。
+
+  it('角色指派相符時說出涵蓋到哪個檢查點', async () => {
+    verifyChainMock.mockResolvedValue(
+      chainFixture({
+        role_state: { covered: true, state: 'match', since_seq: 12 },
+      })
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="role-state-status"]').text()).toBe(
+      zhTW.checkpointVerification.roleState.match.replace('{seq}', '12')
+    )
+    expect(wrapper.find('[data-test="role-state-extra"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="role-state-missing"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="role-state-event"]').exists()).toBe(false)
+  })
+
+  it('不符時列出帳號名與角色名，並連結失效事件', async () => {
+    verifyChainMock.mockResolvedValue(
+      chainFixture({
+        role_state: {
+          covered: true,
+          state: 'mismatch',
+          since_seq: 9,
+          extra: [
+            { user_id: 7, role_id: 1, username: 'zhangsan', role_name: 'admin' },
+          ],
+          missing: [
+            { user_id: 8, role_id: 3, username: 'liauditor', role_name: 'auditor' },
+          ],
+          last_event: {
+            id: 42,
+            mechanism: 'role_state_integrity',
+            cause_code: 'role_state_mismatch',
+            started_at: '2026-09-07T02:00:00Z',
+          },
+        },
+      })
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="role-state-status"]').text()).toBe(
+      zhTW.checkpointVerification.roleState.mismatch.replace('{seq}', '9')
+    )
+    // 差集要讀得出「誰多了什麼」，只有 (7, 1) 這種識別稽核推不出結論
+    const extra = wrapper.find('[data-test="role-state-extra"]')
+    expect(extra.text()).toContain('zhangsan')
+    expect(extra.text()).toContain('admin')
+    const missing = wrapper.find('[data-test="role-state-missing"]')
+    expect(missing.text()).toContain('liauditor')
+    expect(missing.text()).toContain('auditor')
+    // 事件連結帶事件編號：連過去之後還要找得到是哪一筆
+    const link = wrapper.find('[data-test="role-state-event"]')
+    expect(link.exists()).toBe(true)
+    expect(link.text()).toBe(
+      zhTW.checkpointVerification.roleState.eventLink.replace('{id}', '42')
+    )
+  })
+
+  it('帳號或角色已被刪除時顯示識別，不以識別冒充名稱', async () => {
+    verifyChainMock.mockResolvedValue(
+      chainFixture({
+        role_state: {
+          covered: true,
+          state: 'mismatch',
+          since_seq: 9,
+          extra: [{ user_id: 7, role_id: 1, username: '', role_name: '' }],
+        },
+      })
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+    const extra = wrapper.find('[data-test="role-state-extra"]')
+    expect(extra.text()).toContain(
+      zhTW.checkpointVerification.roleState.unknownUser.replace('{id}', '7')
+    )
+    expect(extra.text()).toContain(
+      zhTW.checkpointVerification.roleState.unknownRole.replace('{id}', '1')
+    )
+  })
+
+  it('尚未涵蓋時說明在等什麼，且不呈現為相符', async () => {
+    verifyChainMock.mockResolvedValue(
+      chainFixture({ role_state: { covered: false, state: 'not_covered' } })
+    )
+    const wrapper = mountPage()
+    await flushPromises()
+    const status = wrapper.find('[data-test="role-state-status"]')
+    expect(status.text()).toBe(
+      zhTW.checkpointVerification.roleState.notCovered
+    )
+    expect(status.text()).not.toBe(
+      zhTW.checkpointVerification.roleState.match.replace('{seq}', '')
+    )
+    expect(wrapper.find('[data-test="role-state-hint"]').text()).toBe(
+      zhTW.checkpointVerification.roleState.notCoveredHint
+    )
+  })
+
+  it('後端未附帶比對結果時明說取不到（未知不得顯示成相符）', async () => {
+    // chainFixture 預設不含 role_state，即「本次沒有比對結果」
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="role-state-status"]').text()).toBe(
+      zhTW.checkpointVerification.roleState.unavailable
+    )
+    expect(wrapper.find('[data-test="role-state-hint"]').text()).toBe(
+      zhTW.checkpointVerification.roleState.unavailableHint
+    )
+  })
+
+  it('角色指派文案三語齊備', () => {
+    const keys = [
+      'title', 'desc', 'match', 'mismatch', 'notCovered', 'notCoveredHint',
+      'unavailable', 'unavailableHint', 'missingTitle', 'extraTitle',
+      'colUser', 'colRole', 'unknownUser', 'unknownRole', 'eventLink',
+      'eventPending',
+    ]
+    for (const [name, locale] of [
+      ['zh-TW', zhTW],
+      ['en-US', enUS],
+      ['ja-JP', jaJP],
+    ]) {
+      const rs = locale.checkpointVerification.roleState
+      for (const k of keys) {
+        expect(rs?.[k], `${name} 缺 roleState.${k}`).toBeTruthy()
+      }
+      // 插值占位不得在翻譯時被吃掉，否則稽核讀到的是沒有序號的句子
+      expect(rs.match, `${name} match 缺 {seq}`).toContain('{seq}')
+      expect(rs.mismatch, `${name} mismatch 缺 {seq}`).toContain('{seq}')
+      expect(rs.eventLink, `${name} eventLink 缺 {id}`).toContain('{id}')
+    }
+  })
 
   it('保護範圍與七條邊界的兩部分在三語皆齊備', () => {
     for (const [name, locale] of [

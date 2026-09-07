@@ -173,7 +173,9 @@ func TestSourcePolicyDegradationReportsAndResolves(t *testing.T) {
 	resetSourcePolicyState(t)
 	auth, policies, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
-	if err := db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditFailureEvent{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate failure events: %v", err)
 	}
 	audit.InitAuditFailure(db, policies)
@@ -210,7 +212,9 @@ func TestSourcePolicyReadErrorFailsClosed(t *testing.T) {
 	resetSourcePolicyState(t)
 	auth, policies, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
-	if err := db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditFailureEvent{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate failure events: %v", err)
 	}
 	audit.InitAuditFailure(db, policies)
@@ -252,7 +256,9 @@ func TestSourcePolicyStartupScanOpensEventForCorruptRow(t *testing.T) {
 	resetSourcePolicyState(t)
 	_, policies, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
-	if err := db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditFailureEvent{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate failure events: %v", err)
 	}
 	audit.InitAuditFailure(db, policies)
@@ -272,7 +278,9 @@ func TestSourcePolicyEmptyListIsNotDegradation(t *testing.T) {
 	resetSourcePolicyState(t)
 	_, policies, db := setupLockoutEnv(t)
 	seedLockoutUser(t, db, "right-pass-1")
-	if err := db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditFailureEvent{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate failure events: %v", err)
 	}
 	audit.InitAuditFailure(db, policies)
@@ -292,7 +300,9 @@ func TestUserServiceWriteReevaluatesSourcePolicy(t *testing.T) {
 	resetSourcePolicyState(t)
 	_, policies, db := setupLockoutEnv(t)
 	user := seedLockoutUser(t, db, "right-pass-1")
-	if err := db.AutoMigrate(&model.AuditFailureEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditFailureEvent{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate failure events: %v", err)
 	}
 	audit.InitAuditFailure(db, policies)

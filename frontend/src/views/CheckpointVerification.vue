@@ -93,6 +93,115 @@
         </el-descriptions-item>
       </el-descriptions>
 
+      <!--
+        角色指派對帳。
+
+        **與鏈的狀態分開呈現，且必為常駐一列**：鏈證明的是「封存當下的狀態沒被
+        改過」，這一列問的是「封存之後的每一筆角色變動有沒有留下紀錄」。直接
+        改資料庫提權時，鏈本身 100% 通過（檢查點一個字都沒動），把兩者併成一個
+        結論會讓稽核讀到「全數通過」而錯過真正發生的事。
+
+        三態各有各的句子，**沒有一個是留白**：尚未涵蓋要說得出「在等什麼」，
+        取不到結果要明說取不到——留白會被讀成相符，那是這一列最糟的失敗方向。
+      -->
+      <div class="section-title">
+        {{ $t('checkpointVerification.roleState.title') }}
+      </div>
+      <p class="muted block">
+        {{ $t('checkpointVerification.roleState.desc') }}
+      </p>
+      <el-descriptions
+        :column="1"
+        border
+      >
+        <el-descriptions-item :label="$t('checkpointVerification.roleState.title')">
+          <el-tag
+            :type="roleStateTagType"
+            data-test="role-state-status"
+          >
+            {{ roleStateLabel }}
+          </el-tag>
+          <span
+            v-if="roleStateHint"
+            class="muted"
+            data-test="role-state-hint"
+          >{{ roleStateHint }}</span>
+          <el-link
+            v-if="roleStateEventId"
+            type="primary"
+            class="role-state-event"
+            data-test="role-state-event"
+            @click="goToFailureEvents"
+          >
+            {{ $t('checkpointVerification.roleState.eventLink', { id: roleStateEventId }) }}
+          </el-link>
+          <span
+            v-else-if="roleStateMismatch"
+            class="muted"
+            data-test="role-state-event-pending"
+          >{{ $t('checkpointVerification.roleState.eventPending') }}</span>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <!--
+        差集兩張表分開列：「有紀錄卻不在現況」與「在現況卻沒有紀錄」是兩種
+        不同的事件（前者是被拿掉的權限，後者是憑空多出來的權限），合成一張
+        表加一個方向欄，讀的人得多做一次翻譯才知道自己在看什麼
+      -->
+      <template v-if="roleStateMismatch">
+        <div
+          v-if="roleState?.extra?.length"
+          class="section-title"
+        >
+          {{ $t('checkpointVerification.roleState.extraTitle') }}
+        </div>
+        <el-table
+          v-if="roleState?.extra?.length"
+          :data="roleState.extra"
+          class="role-state-table"
+          data-test="role-state-extra"
+          size="small"
+          stripe
+        >
+          <el-table-column :label="$t('checkpointVerification.roleState.colUser')">
+            <template #default="{ row }">
+              {{ userLabel(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('checkpointVerification.roleState.colRole')">
+            <template #default="{ row }">
+              {{ roleLabel(row) }}
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div
+          v-if="roleState?.missing?.length"
+          class="section-title"
+        >
+          {{ $t('checkpointVerification.roleState.missingTitle') }}
+        </div>
+        <el-table
+          v-if="roleState?.missing?.length"
+          :data="roleState.missing"
+          class="role-state-table"
+          data-test="role-state-missing"
+          size="small"
+          stripe
+        >
+          <el-table-column :label="$t('checkpointVerification.roleState.colUser')">
+            <template #default="{ row }">
+              {{ userLabel(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column :label="$t('checkpointVerification.roleState.colRole')">
+            <template #default="{ row }">
+              {{ roleLabel(row) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
       <el-table
         v-if="chain?.failures?.length"
         :data="chain.failures"
@@ -517,7 +626,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import { formatDateTime } from '@/utils/format'
@@ -532,7 +641,7 @@ import {
 
 // 保護範圍三點與邊界 R0-R6：以固定清單驅動渲染，缺任一條會在 i18n 完備性
 // 守衛與頁面守衛測試同時現形（spec 要求「涵蓋 R0 至 R6」且保護範圍在前）
-const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4']
+const PROTECTION_CODES = ['P1', 'P2', 'P3', 'P4', 'P5']
 const LIMIT_CODES = ['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6']
 
 // 九態的視覺分級。**purged_legal 不得為錯誤色**：它是系統依保留政策的
@@ -589,6 +698,58 @@ const sealWindow = computed(() => {
 // 「顯示值 ≠ 生效值」。取不到就顯示取不到。
 // ---------------------------------------------------------------------------
 const autoVerify = computed(() => chain.value?.auto_verify || null)
+
+// ---------------------------------------------------------------------------
+// 角色指派對帳（role-assignment-integrity）
+//
+// 三態＋「本次未取得」共四種顯示，**沒有預設成相符的那一種**：後端未附帶
+// 結果時 `chain.role_state` 缺席，此處回 null 而文案明說取不到。把未知顯示成
+// 相符，是這一列唯一不可接受的失敗方向。
+// ---------------------------------------------------------------------------
+const roleState = computed(() => chain.value?.role_state || null)
+const roleStateMismatch = computed(() => roleState.value?.state === 'mismatch')
+
+// 不符為錯誤色、未涵蓋與取不到為中性色。**未涵蓋不是警告**：升級後尚未封出
+// 第一個檢查點是正常的過渡狀態，染黃等於對自己發假警報
+const ROLE_STATE_TAG = { match: 'success', mismatch: 'danger', not_covered: 'info' }
+const roleStateTagType = computed(() => ROLE_STATE_TAG[roleState.value?.state] || 'info')
+
+const roleStateLabel = computed(() => {
+  const rs = roleState.value
+  if (!rs) return t('checkpointVerification.roleState.unavailable')
+  if (rs.state === 'match') {
+    return t('checkpointVerification.roleState.match', { seq: rs.since_seq ?? '-' })
+  }
+  if (rs.state === 'mismatch') {
+    return t('checkpointVerification.roleState.mismatch', { seq: rs.since_seq ?? '-' })
+  }
+  return t('checkpointVerification.roleState.notCovered')
+})
+
+// 提示句只在需要解釋的兩態出現：相符與不符的標籤本身已經說完了，
+// 再補一句是雜訊；未涵蓋與取不到則必須說出「在等什麼」與「這不等於相符」
+const roleStateHint = computed(() => {
+  const rs = roleState.value
+  if (!rs) return t('checkpointVerification.roleState.unavailableHint')
+  if (rs.state === 'not_covered') return t('checkpointVerification.roleState.notCoveredHint')
+  return ''
+})
+
+const roleStateEventId = computed(() => roleState.value?.last_event?.id || null)
+
+// 帳號名或角色名查無對應列（已被刪除）時顯示識別而非留白：
+// **不以識別冒充名稱**——「已不存在的帳號 #7」與「帳號名就叫 7」是兩件事
+const userLabel = (row) =>
+  row?.username || t('checkpointVerification.roleState.unknownUser', { id: row?.user_id })
+const roleLabel = (row) =>
+  row?.role_name || t('checkpointVerification.roleState.unknownRole', { id: row?.role_id })
+
+// 連到失效事件清單。router 取不到（如單元測試未掛 router）時靜默略過——
+// 連結不是這一列的正確性所在，狀態與差集才是
+const router = useRouter()
+const goToFailureEvents = () => {
+  router?.push({ path: '/audit-logs', query: { tab: 'failures' } })
+}
 
 // 兩層各自的結果分級：未跑過（空字串）不是「通過」，故為中性色
 const RESULT_TAG = { passed: 'success', failed: 'danger', error: 'warning' }
@@ -791,6 +952,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.role-state-event {
+  margin-left: var(--ot-space-sm);
+}
+
+.role-state-table {
+  margin-top: var(--ot-space-xs);
+}
+
 .panel {
   padding: var(--ot-space-md);
   background-color: var(--ot-bg-surface);

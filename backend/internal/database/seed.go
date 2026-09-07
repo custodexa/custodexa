@@ -177,7 +177,12 @@ func seedAdmin(adminInitialPassword string) error {
 		if err := tx.Where("name = ?", model.RoleAdmin).First(&adminRole).Error; err != nil {
 			return err
 		}
-		return tx.Model(&admin).Association("Roles").Append(&adminRole)
+		// 經 model 的播種專用寫入面：**不留痕**。播種在段 1、解封之前，
+		// 審計蓋章鑰尚不存在，此處寫出的審計列必然不帶章——那不是留痕，
+		// 是一個假的「未蓋章」訊號。對帳也不需要它：基準是第一個含快照的檢查點，
+		// 而播種的指派早在那之前，本來就在快照裡。
+		// 射程僅此一處，由 AST 守衛 `TestRoleAuditWriteSitesGuard` 釘住
+		return model.AssignUserRoleAtSeed(tx, admin.ID, adminRole.ID)
 	}); err != nil {
 		return err
 	}

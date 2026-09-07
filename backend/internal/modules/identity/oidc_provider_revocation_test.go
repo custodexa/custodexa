@@ -31,7 +31,9 @@ import (
 func revocationMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
-		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{}); err != nil {
+		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 }

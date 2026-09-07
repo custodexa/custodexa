@@ -91,6 +91,16 @@ type CheckpointService struct {
 	anchorFailing atomic.Bool
 	// mu 保護 EnsureGenesis 與 SealUpTo 的「讀 last → 寫新點」臨界區（單行程內）
 	mu sync.Mutex
+
+	// roleState 封章前的角色指派對帳器（nil＝未接，`role_state_reconciled` 留 nil）。
+	// 三個比對時機共用同一個實例，事件冪等鍵因此跨時機生效
+	roleState *RoleStateReconciler
+}
+
+// SetRoleStateReconciler 接上封章前的對帳（role-assignment-integrity）。
+// 未接時封章照常進行、`role_state_reconciled` 為 nil＝「該次封章未做對帳」
+func (s *CheckpointService) SetRoleStateReconciler(r *RoleStateReconciler) {
+	s.roleState = r
 }
 
 // NewCheckpointService 建立封章器。門檻與 grace 自 env 讀取（非法值退回預設）。
@@ -257,9 +267,13 @@ func (s *CheckpointService) EnsureGenesis() error {
 		IDTo:               maxID,
 		RowCount:           emptyCount,
 		AggHash:            emptyHash,
-		AggScheme:          model.AggSchemeV1,
 		PrevCheckpointHash: prevHash,
 		SealedAt:           s.now().UTC(),
+	}
+	// genesis 也帶快照：全新安裝的第一個檢查點就是角色指派的涵蓋起點，
+	// 少了它，「裝好之後、第一次封章之前」會有一段沒有任何基準的空窗
+	if err := s.applyStateSnapshot(&cp); err != nil {
+		return err
 	}
 	if err := s.signAndPersist(&cp); err != nil {
 		return err
@@ -363,17 +377,78 @@ func (s *CheckpointService) SealUpTo(idHi uint) (*model.AuditCheckpoint, error) 
 		IDTo:               idTo,
 		RowCount:           rowCount,
 		AggHash:            aggHash,
-		AggScheme:          model.AggSchemeV1,
 		PrevCheckpointHash: prevHash,
 		MinCreatedAt:       minAt,
 		MaxCreatedAt:       maxAt,
 		SealedAt:           s.now().UTC(),
+	}
+	if err := s.applyStateSnapshot(&cp); err != nil {
+		return nil, err
 	}
 	if err := s.signAndPersist(&cp); err != nil {
 		return nil, err
 	}
 	s.anchorCheckpoint(&cp)
 	return &cp, nil
+}
+
+// applyStateSnapshot 取狀態表登記清單的快照，填入檢查點的四個狀態欄並把
+// 載荷版本推進到 v2。
+//
+// **快照失敗即整輪封章失敗**（不退回 v1 靜默落一個不涵蓋角色指派的檢查點）：
+// 退回等於在資料庫異常的當下把完整性機制自己關掉，而那正是攻擊者製造的條件。
+// 封章本來就是可重試的旁路工作——本輪不封，下一輪 Tick 自上次 id_to 續接，
+// 審計寫入完全不受影響（見型別註解）。
+//
+// RoleStateReconciled 三態：true＝封章當下對帳相符、false＝不符（檢查點仍照現況
+// 封章，不符的事實進簽章載荷）、**nil＝該次封章沒有做對帳**（未接對帳器，或
+// 這是第一個含快照的檢查點、沒有基準可比）。nil 是三態中誠實的那一個，
+// 不可先以 true 佔位——對帳沒做與對帳通過在稽核上是兩件事
+func (s *CheckpointService) applyStateSnapshot(cp *model.AuditCheckpoint) error {
+	body, snaps, err := SnapshotStateTables(context.Background(), s.db)
+	if err != nil {
+		return fmt.Errorf("封章前取狀態表快照失敗（本輪不封章）: %w", err)
+	}
+	cp.AggScheme = model.AggSchemeV2
+	cp.RoleStateSnapshot = &body
+	cp.RoleStateReconciled = s.reconcileForSeal()
+	for i := range snaps {
+		if snaps[i].Table != StateTableUserRoles {
+			continue
+		}
+		h, c := snaps[i].Hash, snaps[i].Count
+		cp.RoleStateHash = &h
+		cp.RoleStateCount = &c
+	}
+	if cp.RoleStateHash == nil {
+		return fmt.Errorf("登記清單缺 %s 的快照：檢查點不得宣稱涵蓋一張沒有快照的表",
+			StateTableUserRoles)
+	}
+	return nil
+}
+
+// reconcileForSeal 封章前對帳一次，回傳可空的結果。
+//
+// **必須在新檢查點落庫之前呼叫**：基準是「最近一個封章時對帳相符的含快照檢查點」（升級後首批無對帳結果者作涵蓋起點），
+// 本次的點一旦寫進去就成了自己的基準，對帳將恆為相符而毫無意義。
+//
+// 對帳失敗（讀不到基準、快照解不開）**不阻止封章**：那與快照本身取不到不同，
+// 快照是本次檢查點的內容、缺了就不該落點；對帳只是對過去的一個判讀，
+// 判讀做不成時如實留 nil。不符則照常封章並由對帳器開事件（spec 明文）
+func (s *CheckpointService) reconcileForSeal() *bool {
+	if s.roleState == nil {
+		return nil
+	}
+	report, err := s.roleState.Reconcile(context.Background())
+	if err != nil {
+		log.Printf("[Checkpoint] 封章前角色指派對帳未能完成（本次不記結果）: %v", err)
+		return nil
+	}
+	if !report.Covered {
+		return nil
+	}
+	matched := report.Matched()
+	return &matched
 }
 
 // signAndPersist 簽章並落庫。

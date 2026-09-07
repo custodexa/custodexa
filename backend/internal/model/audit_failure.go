@@ -88,6 +88,19 @@ const (
 	// 取回時內容雜湊不符。**解除判準是「處於失敗態的件數歸零」而非「任一件成功」**
 	// ——後者會把其他仍失敗的證據在通知面誤報為恢復
 	MechanismOffsiteUpload = "offsite_upload"
+	// MechanismRoleStateIntegrity 角色指派狀態與檢查點鏈不符
+	// （role-assignment-integrity）：最近一個含快照的檢查點加上其後的
+	// `user_role` 審計列推不出現行的角色指派集合＝有人繞過應用程式改了資料庫。
+	//
+	// **獨立機制碼，不併入 audit_chain_content**：那一支說的是「已封區間的審計列
+	// 被動過」，處置是追查審計庫的寫入權；本支說的是「權限本身被動過而無留痕」，
+	// 處置是追查提權與立即複核現行管理者名單。合併會讓兩者共用一個未結案區間，
+	// 先發生的那個一結案就把另一個也結掉（同 checkpoint_anchor 與 syslog_forward
+	// 分碼的理由）。
+	//
+	// 解除判準＝下一次對帳回報相符（合法移除該指派、或補上其應有的變更），
+	// 由對帳器在三個比對時機任一處呼叫 Resolve
+	MechanismRoleStateIntegrity = "role_state_integrity"
 )
 
 // 失效原因機器碼。
@@ -184,6 +197,11 @@ const (
 	// CauseOffsiteIntegrityMismatch 取回離機副本時內容雜湊或大小與上傳當下不符：
 	// **零位元組交付**（先驗後送），該物件轉為不可信態
 	CauseOffsiteIntegrityMismatch = "offsite_integrity_mismatch"
+	// CauseRoleStateMismatch 角色指派與檢查點鏈不符：最近一個含快照的檢查點
+	// 加上其後的 `user_role` 審計列推不出現行狀態。**唯一可能的來源是繞過
+	// 應用程式的資料庫寫入**——五條合法路徑全部同交易留痕，審計寫不進去角色
+	// 就掛不上。cause_params 帶起算的檢查點序號與差集的識別（不出站）
+	CauseRoleStateMismatch = "role_state_mismatch"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。

@@ -89,6 +89,10 @@ func TestLoginLDAP_FirstLoginProvisionsShadowUser(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
 	mock.ExpectExec(`INSERT INTO user_roles`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	// 角色指派的同交易留痕（role-assignment-integrity）：影子供應的角色
+	// 與其審計列同生共死，故本交易多一筆 audit_logs 寫入
+	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)

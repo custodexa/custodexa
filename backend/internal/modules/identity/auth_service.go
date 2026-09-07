@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -78,6 +79,42 @@ type AuthService struct {
 	// 全域 database.DB）。nil＝未注入，回退全域，
 	// 見 auth_epoch_gate.go 的 epochDB() 註解
 	epochGateDB *gorm.DB
+	// roleState 特權登入時的角色指派比對面（role-assignment-integrity）。
+	// nil＝未接，登入路徑完全不變
+	roleState RoleStateProbe
+}
+
+// RoleStateProbe 特權帳號簽發權杖前的角色指派比對面。
+//
+// **無回傳值是契約的一部分**：比對不得阻斷登入、不得改變權杖內容
+// （spec 明文）。有回傳值的簽名遲早會被某個呼叫端拿去當拒絕的依據，
+// 而擋掉管理者登入的代價是「正在發生提權時沒有人進得來處理」。
+// 實作為 audit 模組的 RoleStateReconciler
+type RoleStateProbe interface {
+	ReconcileOnPrivilegedLogin(ctx context.Context)
+}
+
+// SetRoleStateProbe 接上特權登入時的角色指派比對。
+// 未接時 Login 的行為與接上前逐字相同
+func (s *AuthService) SetRoleStateProbe(p RoleStateProbe) {
+	s.roleState = p
+}
+
+// checkRoleStateOnLogin 身分驗證（密碼、目錄或外部身分）通過後、簽發任何權杖之前比對一次。
+//
+// **只對 admin 與 auditor**（spec 明文）：一般使用者登入不執行對帳，
+// 登入路徑因此不多任何一次查詢——比對的動機是「提權者以特權身分進來的那一刻
+// 就要留下事件」，而一般使用者的登入不是那一刻。
+// 有效角色取 primaryRoleOf（admin > auditor > user 的固定優先序），
+// 不看 Roles[0]——那是綁定順序，不是有效角色
+func (s *AuthService) checkRoleStateOnLogin(user *model.User) {
+	if s.roleState == nil {
+		return
+	}
+	switch primaryRoleOf(user) {
+	case model.RoleAdmin, model.RoleAuditor:
+		s.roleState.ReconcileOnPrivilegedLogin(context.Background())
+	}
 }
 
 // SetTransmissionPolicy 注入傳輸政策服務（LDAP 登入閘，main 組裝時）
@@ -246,6 +283,13 @@ func (s *AuthService) Login(req *LoginRequest) (*LoginResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// 角色指派比對（role-assignment-integrity）：密碼／目錄驗證已通過、
+	// 尚未簽發任何權杖。放在這裡而非 finishLogin，是因為 MFA 待驗與強制綁定
+	// 兩條分支同樣會發出權杖（pending／enrollment），而「即將簽發權杖」
+	// 是 spec 對這個時機的定義；放在 finishLogin 會讓開啟 MFA 的部署漏掉
+	// 第一階段的那一刻
+	s.checkRoleStateOnLogin(user)
 
 	// 本次認證脈絡：本地與 LDAP 路徑皆無 provider，
 	// providerID 留 0 表「不受任何 provider 停用影響」。世代現查（buildAuthContext）
@@ -836,8 +880,9 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 		return nil, fmt.Errorf("查詢預設角色失敗: %w", err)
 	}
 
-	// 顯式寫入關聯表而非 GORM Association：影子供應固定單一角色，顯式 SQL 行為最可預期
-	if err := tx.Exec("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", user.ID, role.ID).Error; err != nil {
+	// 經 model 的唯一寫入面：影子帳號的角色同交易留一筆 `user_role` 審計列
+	// （origin=ldap），否則對帳會把首次目錄登入的自動供應報成資料庫直寫
+	if err := model.AssignUserRole(tx, user.ID, role.ID, model.RoleOriginLDAP); err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("綁定預設角色失敗: %w", err)
 	}
@@ -1091,6 +1136,11 @@ func (s *AuthService) LoginWithExternalIdentity(user *model.User, authCtx crypto
 	if err := s.gateLockout(user); err != nil {
 		return nil, err
 	}
+
+	// 角色指派比對（role-assignment-integrity）：外部身分已由 IdP 驗證、
+	// 尚未簽發任何權杖。與 Login 同一時機、同一探針——提權者走 SSO 進來
+	// 與走密碼進來，稽核面看到的必須是同一件事
+	s.checkRoleStateOnLogin(user)
 
 	// MFA 疊加：已註冊 TOTP 者不直接發正式會話，進入既有兩階段流程；
 	// scoped token 攜帶本次認證脈絡，使 MFA 完成點能複查 provider 與世代

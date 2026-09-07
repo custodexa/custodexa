@@ -29,7 +29,8 @@
     "source_policy_corrupt": "保存された許可送信元範囲の文字列を解析できない（DB 直接書き込みまたはプログラム欠陥）",
     "offsite_upload_failed": "オフサイト保管へのアップロードが再試行上限に達した（当該証跡は現在ローカル複製のみ）",
     "offsite_upload_stalled": "オフサイト保管へのアップロードが繰り返し中断している（同一オブジェクトの転送リースが複数回失効）",
-    "offsite_integrity_mismatch": "取得したオフサイト複製がアップロード時点と一致しない（配信を拒否）"
+    "offsite_integrity_mismatch": "取得したオフサイト複製がアップロード時点と一致しない（配信を拒否）",
+    "role_state_mismatch": "ロール割り当てがチェックポイントチェーンと一致しない（監査記録のない変更がある）"
   },
   "severity": {
     "high": "高",

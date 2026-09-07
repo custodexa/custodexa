@@ -219,7 +219,9 @@ func setupEnvelopeChannelSvcForAAD(t *testing.T) (*audit.NotificationChannelServ
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.NotificationChannel{}, &model.DataKey{}); err != nil {
+	if err := db.AutoMigrate(&model.NotificationChannel{}, &model.DataKey{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	km := newTestKeyManager(t, db, 1)

@@ -44,8 +44,18 @@ const (
 	ActionReject  AuditAction = "reject"
 	ActionCancel  AuditAction = "cancel"
 	ActionExpire  AuditAction = "expire"
-	ActionRevoke  AuditAction = "revoke" // 臨時授權提前撤銷
-	ActionReview  AuditAction = "review" // 破窗事後補審
+	// ActionRevoke 臨時授權提前撤銷；**role-assignment-integrity 起亦承載角色指派的移除**
+	// （resource=user_role）。沿用同一個值而非另立 `role_revoke`：撤銷的語義相同，
+	// 分辨靠 resource 欄，而對帳讀的正是 (resource, action) 這一對
+	ActionRevoke AuditAction = "revoke"
+	ActionReview AuditAction = "review" // 破窗事後補審
+
+	// ActionAssign 角色指派授予（resource=user_role）。
+	//
+	// **不沿用 ActionCreate**：`create` 在本系統遍布各資源的建立事件，角色指派的
+	// 對帳要能以 (resource=user_role, action) 精確重放狀態變更，而重放的正確性
+	// 依賴「授予」與「撤銷」是兩個互不重疊的閉集合。6 字元，在 varchar(20) 內
+	ActionAssign AuditAction = "assign"
 
 	// 離機儲存的保管鏈事件。
 	// **帳冊是現在的狀態、審計列是發生過什麼**：稽核員要回答「某會話的錄影在哪個
@@ -122,6 +132,14 @@ const (
 	// ResourceUserGroup 使用者群組（授權主體分組；
 	// 刪群組連動撤授權時 Details 記 group_name 與 revoked_authorizations 筆數）
 	ResourceUserGroup AuditResource = "user_group"
+	// ResourceUserRole 角色指派關聯（`user_roles` 的單筆 (user_id, role_id)）。
+	//
+	// **與 ResourceUser 分開**：對帳把本資源的列當作狀態機的事件流重放，
+	// 混進帳號的建立、改名、停用等列會讓重放讀到不是狀態變更的東西。
+	// **與 ResourceRole 也分開**：那是角色定義本身的讀取，不是誰被掛上什麼。
+	// `resource_id` 指向**被指派的帳號 id**（差集與事件皆以帳號為主體）；
+	// 角色識別在 details。值長 9（varchar(20) 內）
+	ResourceUserRole AuditResource = "user_role"
 	// ResourceCommand 指令流查詢（同 10.2.1.3）。
 	//
 	// **resource_id 語義分裂**：

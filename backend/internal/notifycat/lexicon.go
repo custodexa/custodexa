@@ -109,6 +109,7 @@ var causeEnum = []string{
 	model.CauseOffsiteUploadFailed,
 	model.CauseOffsiteUploadStalled,
 	model.CauseOffsiteIntegrityMismatch,
+	model.CauseRoleStateMismatch,
 }
 
 //go:embed lexicons/*.json

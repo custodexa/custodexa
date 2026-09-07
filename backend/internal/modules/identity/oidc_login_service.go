@@ -595,7 +595,9 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 		if err := tx.Where("name = ?", model.RoleUser).First(&role).Error; err != nil {
 			return err
 		}
-		if err := tx.Exec("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", user.ID, role.ID).Error; err != nil {
+		// 經 model 的唯一寫入面：首登供應的角色同交易留一筆 `user_role` 審計列
+		// （origin=oidc），對帳據此不把 JIT 建帳號判為繞過應用程式的變更
+		if err := model.AssignUserRole(tx, user.ID, role.ID, model.RoleOriginOIDC); err != nil {
 			return err
 		}
 		now := time.Now()

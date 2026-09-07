@@ -1,10 +1,10 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
-> 前次更新：2026-09-05（以帳號為主軸的批次改密：新表 `change_secret_batches`、`change_secret_records.batch_id`、`change_secret_candidates.batch_id`／`shared_group`，migration `20260905_account_batch_rotation`）
+> **最後更新**：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
+> 前次更新：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -2310,14 +2310,15 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260905_account_batch_rotation` | 以帳號為主軸的批次改密的資料層：建新表 `change_secret_batches` 與其 `(username)` 索引（第 47 節）、`change_secret_records.batch_id`（`bigint NOT NULL DEFAULT 0`，加 `(batch_id)` 索引；第 16 節）、`change_secret_candidates.batch_id`（同型）與 `shared_group`（`varchar(36)` 可空；第 16b 節），共 6 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`batch_id` 的存量列以 default 回填為 0——本欄出現之前這兩張表只承載計劃的記錄與候選，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackAccountBatchRotation`：反序 DROP `shared_group` → 候選的 `batch_id` → 記錄的 `(batch_id)` 索引與欄 → 批次表的索引 → `DROP TABLE change_secret_batches`。**Down 有損、開發庫限定**：刪表即失去全部批次的彙總計數與發起者；刪欄即失去記錄與候選的來源辨識（再次 Up 之後全部回到「來自計劃」）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260906_credential_library` | 帳號憑證庫的資料層：建四張新表（`credentials`、`credential_secret_versions`、`credential_rotations`、`credential_rotation_members`）與其索引、`asset_accounts` 加 `credential_id`／`effective_version_id`、`change_secret_plans` 加 `target_kind`／`target_credential_id`、`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄，並在同一交易內把既有帳號列的內嵌密文**轉為專用憑證**（每筆存活帳號各得一筆專用憑證，持有密文者另建其第 1 版；密文原樣搬、不解密重加密。所屬資產已軟刪的遺留帳號列同樣建憑證與第 1 版，再於同一交易把帳號列與憑證一併軟刪，憑證庫不顯示、密文版本保留；日誌分項報存活與隨已移除資產一併移除的筆數）。次序寫死：存量搬移之後才卸除 `credential_id` 的暫時 DEFAULT 並建 `(asset_id, credential_id)` partial unique——回填前全部存量列的 `credential_id` 都是 0，先建索引必然撞鍵。**重跑語義是失敗即整交易回滾、修正後可再跑一次**，不是冪等。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibrary`：反序 DROP 掛載唯一索引 → 三張改密表的加欄 → `asset_accounts` 兩欄 → 四張新表與其索引。**Down 有損、開發庫限定**：刪四張表即失去全部共用憑證關係與密文版本歷史，`asset_accounts` 兩欄刪除後「這台用哪筆憑證、就位在哪一版」無來源可還原，存量搬移沒有反向。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260906_credential_library_contract` | 收縮：卸下已無讀寫面的過渡欄與索引——`asset_accounts.password_enc`／`private_key_enc`（登入秘密的落點已改為 `credential_secret_versions`，兩欄自存量搬移之後零讀者，**同時自 `envelopeMigrationTargets` 除名**）、`change_secret_candidates.shared_group`、`change_secret_batches.shared_group`（共用關係的真相已是憑證本體）、`idx_asset_accounts_credential_group`，共 5 條 DDL。**自成一條版本而非併入前一條**：前一條已套用於開發庫，同檔追加語句不會再執行，會留下「程式碼宣告已收縮、資料庫仍有舊欄」的落差。**`asset_accounts.credential_group` 刻意留著**（見第 3b 節）。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibraryContract`：反序把四欄的空殼與群組索引加回來。**Down 有損、開發庫限定**：**不還原任何資料**，卸下的四欄在卸下當下即失去內容，再次 Up 之後全部回到空值。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260908_role_state_checkpoint` | 角色指派納入檢查點的資料層：`audit_checkpoints` 加四個可空欄（`role_state_hash varchar(64)`、`role_state_snapshot text`、`role_state_count bigint`、`role_state_reconciled boolean`；見第 37 節），共 4 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：四欄皆可空、無資料轉換、無回填，耗時與存量無關。**既有檢查點留空即代表「該段不涵蓋角色指派」**，這是誠實的表述而非缺漏——回填一份「現在的」快照到過去的檢查點，等於替歷史簽下一個當時沒簽過的主張。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRoleStateCheckpoint`：反序 DROP 四欄。**Down 有損、開發庫限定**：四欄刪除即失去全部檢查點的角色指派快照，其後所有檢查點回到不涵蓋角色指派，再次 Up 之後要等下一次封章才重新有基準。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的十條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的十一條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
 > `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
 > `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長
-> （帳號數通常遠小於會話與審計的存量）；其餘八條為純加法、純型別放寬或純卸欄，耗時與存量無關。
+> （帳號數通常遠小於會話與審計的存量）；其餘九條為純加法、純型別放寬或純卸欄，耗時與存量無關。
 > 升級程序見 `docs/ops/upgrade-sop.md`。
 >
 > **`20260906_credential_library` 之後還有一段解封後才跑的轉換**：憑證密文的欄位身分改綁與既有
@@ -2444,7 +2445,9 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 
 列級 HMAC 偵測得了「列被改」、偵測不了「列被刪」。檢查點以 audit_logs 的 **id 閉區間 `[id_from, id_to]`** 為覆蓋單位，
 把區間內每列的 `(id, key_version, integrity_hmac)` 依 id 升冪聚合成一個雜湊，鏈接前一檢查點並以 Ed25519 簽章，
-使「少了列」成為可偵測事件。**區間主軸是 id 不是 created_at**：封印期回灌列的 `created_at` 是過去事件時刻而 id 是新取號，
+使「少了列」成為可偵測事件。封章時另取一份當下的角色指派快照一併簽入（見四個 `role_state_*` 欄），
+使「管理者與稽核者的角色被直接改資料庫掛上或拿掉」同樣落在鏈的保護範圍內。
+**區間主軸是 id 不是 created_at**：封印期回灌列的 `created_at` 是過去事件時刻而 id 是新取號，
 時間區間必然被後來長出的列打破。空區間（`row_count=0`、`id_from = id_to + 1`）照樣蓋章並簽名。
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -2467,10 +2470,14 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 | `PurgeSignature` | *string | `type:varchar(128)` | `purge_signature` | 清除 tombstone 簽章（簽 `(seq, purged_at, row_count, policy_days)`）；列不存在且無有效 tombstone 即為竄改告警 |
 | `PurgeSigningKeyVersion` | *int | 無 | `purge_signing_key_version` | tombstone 所用簽章鑰版本（無此欄則簽章鑰輪替後 tombstone 不可驗） |
 | `PurgePolicyDays` | *int | 無 | `purge_policy_days` | 清除當下的 `retention_audit_log_days` 值；tombstone 驗證以**本欄**重算而非現行政策值——不存則 admin 一改保留天數，全部歷史 tombstone 會同時驗不過而發出大規模假告警。本欄自身在 tombstone 簽章涵蓋內，直改仍驗不過 |
+| `RoleStateHash` | *string | `type:varchar(64)` | `role_state_hash` | 封章當下角色指派快照的雜湊（長度前綴 SHA-256）；NULL＝本檢查點封於本能力上線之前，該段不涵蓋角色指派。由增量 `20260908_role_state_checkpoint` 加欄 |
+| `RoleStateSnapshot` | *string | `type:text` | `role_state_snapshot` | 快照本體（正規化編碼，只含識別、不含帳號名或任何個資），使外部驗證者能自行重算雜湊而不必信任摘要欄。在簽章涵蓋內 |
+| `RoleStateCount` | *int64 | 無 | `role_state_count` | 快照筆數，為本體的投影、供呈現與快路徑使用；簽章載荷內的筆數由本體現算，本欄本身不在簽章涵蓋內 |
+| `RoleStateReconciled` | *bool | 無 | `role_state_reconciled` | 封章當下對帳的結論（三態：相符／不符／無基準可比而為 NULL）。不符不阻止封章——檢查點記的是現況，把現況擋下來只會讓證據缺一段 |
 | `CreatedAt` | time.Time | - | `created_at` | 落庫時間 |
 
 **ORM 守衛**：`BeforeDelete` 全拒；`BeforeUpdate` **僅**放行 `anchor_status`／`purged_at`／`purge_signature`／
-`purge_signing_key_version`／`purge_policy_days` 五欄（皆為封章之後才發生、且不在檢查點簽章涵蓋內的狀態欄）
+`purge_signing_key_version`／`purge_policy_days` 五欄（**四個 `role_state_*` 欄不在其中**：快照本體與對帳結果在簽章涵蓋內，另兩欄是本體的投影，同樣不留事後改寫的入口）（皆為封章之後才發生、且不在檢查點簽章涵蓋內的狀態欄）
 且只認 map 形式的 `Updates`（結構體形式一律拒絕，否則全欄位更新會從 `Save` 路徑溜過白名單）。
 守衛由 `internal/model/audit_checkpoint_guard_test.go` 雙向釘住（拿掉守衛要紅、放寬白名單也要紅）。
 

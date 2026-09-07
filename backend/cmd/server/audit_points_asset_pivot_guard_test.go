@@ -149,6 +149,8 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 
 	// ── 非資產類 ──
 	"AP-01": {pivotNotAsset, false, "封印狀態機留痕，主體是系統"},
+	"AP-87": {pivotNotAsset, false, "角色指派變更的唯一產生點：主體是帳號與角色的關聯，與任何資產無關。" +
+		"填任一台資產的 id 都會在該資產的時間軸上長出一則與它無關的權限事件"},
 	"AP-86": {pivotNotAsset, false, "存量轉換失敗的留痕（交易外）：主體是轉換工作本身，details 只記階段與待處理筆數，無任何資產可指"},
 	"AP-84": {pivotNotAsset, false, "存量轉換判定某組隱性共用關係不一致而拆開的留痕：主體是那一組憑證，" +
 		"而一組可以橫跨任意多台資產——填其中任一台的 id 都會在該資產的時間軸上長出一則\n" +

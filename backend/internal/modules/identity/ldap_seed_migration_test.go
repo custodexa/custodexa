@@ -52,7 +52,9 @@ func newLDAPSeedDB(t *testing.T) *gorm.DB {
 // newLDAPSeedCodec 真 keyvault.KeyManagerService（密文須真的可解，才測得到「非明文」那一格）
 func newLDAPSeedCodec(t *testing.T, db *gorm.DB) *keyvault.KeyManagerService {
 	t.Helper()
-	if err := db.AutoMigrate(&model.DataKey{}); err != nil {
+	if err := db.AutoMigrate(&model.DataKey{},
+		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
+		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate data_keys: %v", err)
 	}
 	key := kmTestKey(0x31)

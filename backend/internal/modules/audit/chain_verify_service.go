@@ -98,8 +98,14 @@ type ChainVerifyTuning interface {
 	RowsPerHour() int64
 }
 
-// ChainVerifyAlerter 告警出口（實作為 *AuditFailureService）
-type ChainVerifyAlerter interface {
+// AuditFailureAlerter 審計失效告警出口（實作為 *AuditFailureService）。
+//
+// **audit 模組內共用的單一宣告**：鏈驗證編排者與角色指派對帳器都經此上報與結案。
+// 各自宣告一份同形介面會讓 `TestAuthContextTouchpointsGuard` 的同名例外表
+// （`Resolve` 與認證脈絡的 `Resolve` 同名）多長一筆——那張表的條數上限是
+// 「新增例外必須被質問」的付費閘，而兩個消費者要的是同一個出口，
+// 本來就不需要兩個宣告
+type AuditFailureAlerter interface {
 	// ReportWithCounts 上報失效；counts 為受控整數計數（出站只帶碼與計數）
 	ReportWithCounts(mechanism, causeCode string, params map[string]string, counts map[string]int)
 	// Resolve 結案並發恢復通知
@@ -123,7 +129,7 @@ type ChainVerifyService struct {
 	signing  chainVerifySigningProbe
 	policies checkpointPolicyReader
 	tuning   ChainVerifyTuning
-	alerts   ChainVerifyAlerter
+	alerts   AuditFailureAlerter
 
 	// now 時鐘（測試注入；nil 走 time.Now）
 	now func() time.Time
@@ -135,7 +141,7 @@ type ChainVerifyService struct {
 // 全部沿用，本服務是它們的第二個呼叫端而非替代品
 func NewChainVerifyService(db *gorm.DB, verifier *CheckpointVerifier, seal *CheckpointService,
 	signing chainVerifySigningProbe, policies checkpointPolicyReader,
-	tuning ChainVerifyTuning, alerts ChainVerifyAlerter) *ChainVerifyService {
+	tuning ChainVerifyTuning, alerts AuditFailureAlerter) *ChainVerifyService {
 	return &ChainVerifyService{db: db, verifier: verifier, seal: seal, signing: signing,
 		policies: policies, tuning: tuning, alerts: alerts}
 }

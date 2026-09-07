@@ -143,6 +143,17 @@ var migrations = []Migration{
 		Up:      applyCredentialLibraryContract,
 		Down:    rollbackCredentialLibraryContract,
 	},
+	{
+		// 角色指派納入檢查點鏈的資料層：audit_checkpoints 四個可空欄
+		// （role_state_hash／role_state_snapshot／role_state_count／
+		// role_state_reconciled）。純加欄、無回填、無索引；既有列留空即
+		// 「該檢查點不涵蓋角色指派」。**Down 純刪欄**，但須連同產品版本一起
+		// 回退（見 migration_role_state_checkpoint.go 檔頭的 Down 契約）
+		Version: "20260908_role_state_checkpoint",
+		Name:    "role_state_checkpoint",
+		Up:      applyRoleStateCheckpoint,
+		Down:    rollbackRoleStateCheckpoint,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -161,7 +172,8 @@ func schemaDDLStatements() []string {
 	out = append(out, windowsLocalAccountRotationDDL()...)
 	out = append(out, accountBatchRotationDDL()...)
 	out = append(out, credentialLibraryDDL()...)
-	return append(out, credentialLibraryContractDDL()...)
+	out = append(out, credentialLibraryContractDDL()...)
+	return append(out, roleStateCheckpointDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

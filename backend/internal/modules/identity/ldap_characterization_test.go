@@ -95,6 +95,9 @@ func TestCharacterization_CaseVariantUsernameGetsIndependentShadowAccount(t *tes
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
 	mock.ExpectExec(`INSERT INTO user_roles`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	// 角色指派的同交易留痕（role-assignment-integrity）
+	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)
@@ -160,6 +163,9 @@ func TestCharacterization_ShadowUsernameComesFromRequestInputNotDirectoryAttribu
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
 	mock.ExpectExec(`INSERT INTO user_roles`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	// 角色指派的同交易留痕（role-assignment-integrity）
+	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectCommit()
 
 	expectFinishLoginUpdate(mock)

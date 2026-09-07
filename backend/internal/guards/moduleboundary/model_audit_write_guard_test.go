@@ -32,12 +32,25 @@ import (
 // modelAuditWriteAllowlist `internal/model` 中允許建構 AuditLog 的函式。
 //
 // 三個 T-3 GORM hook（維持現況直寫：
-// model 不可 import 模組，改走 sink 需再造一個可漏接的包級全域）。
+// model 不可 import 模組，改走 sink 需再造一個可漏接的包級全域）
+// ＋角色指派變更的唯一產生點（理由見該列）。
 // **新增一列 SHALL 附理由並經審查**——這份清單是「model 層審計入口」的全集。
 var modelAuditWriteAllowlist = map[string]string{
 	"(*Asset).AfterCreate": "T-3：資產建立 hook，刻意脫離呼叫方交易",
 	"(*Asset).AfterUpdate": "T-3：資產更新 hook，同上",
 	"(*Asset).AfterDelete": "T-3：資產刪除 hook，同上",
+	// 角色指派留痕（AP-87，manifest 有登記落地階段）：
+	// `user_roles` 的寫入路徑橫跨 identity（管理面／LDAP／OIDC）與
+	// database（初始管理員播種）兩個包，而 `internal/database` 不能 import
+	// identity（成環）。放在兩者都依賴的最底層，是「寫入面零例外」的前提——
+	// 落在 identity 就得為播種開一條豁免，而那條豁免正是同型守衛最先失守的地方。
+	// 落地形態為 `tx.Create(&model.AuditLog{})`，與 `RecordAsset*Change` 的落地
+	// 本體（AP-22／26／27）同型，隨它們一起下沉到 port.WriteInTx。
+	// **本列不放寬本守衛的射程**：仍只准這一個函式，且它是 `user_role` 審計列的
+	// 唯一產生點（`internal/modules/identity/role_write_guard_test.go` 正反雙向釘住）
+	"recordUserRoleChange": "role-assignment-integrity：角色指派變更的唯一產生點，" +
+		"database 不能 import identity 故落在兩者共同的最底層；" +
+		"AP-87 已登記於 manifest，隨 RecordAsset*Change 一同下沉",
 }
 
 // minModelScannedFiles `internal/model` 非測試檔數下限（現況 37，取 30 為下界）。

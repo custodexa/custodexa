@@ -339,12 +339,13 @@ var authContextHomonymDecls = map[string]string{
 	// 呼叫點解析到的是各自的介面方法而非實作
 	"github.com/custodexa/backend/internal/modules/audit.AuditFailureService.Resolve":     "審計失敗復原標記（實作）",
 	"github.com/custodexa/backend/internal/modules/keyvault.AuditFailureReporter.Resolve": "審計失敗復原標記（keyvault 側窄介面）",
-	// `ChainVerifyService` 以自宣告的
-	// `ChainVerifyAlerter`（chain_verify_service.go:102）消費同一個
-	// `AuditFailureService.Resolve`，故是第三個需列管的宣告位置。
-	// 四個呼叫點（`Tick`／`runNow`／`syncAlerts`×2）傳的都是 `model.Mechanism*`
-	// 字串常數＝把某個審計失效機制標記為已恢復，不簽發、不驗證、不失效任何憑證
-	"github.com/custodexa/backend/internal/modules/audit.ChainVerifyAlerter.Resolve": "審計失敗復原標記（鏈驗證編排者側窄介面）",
+	// audit 模組內的消費者以自宣告的 `AuditFailureAlerter`
+	// （chain_verify_service.go:101）消費同一個 `AuditFailureService.Resolve`，
+	// 故是第三個需列管的宣告位置。呼叫點（鏈驗證編排者的 `Tick`／`runNow`／
+	// `syncAlerts`×2，角色指派對帳器的 `settle`）傳的都是 `model.Mechanism*`
+	// 字串常數＝把某個審計失效機制標記為已恢復，不簽發、不驗證、不失效任何憑證。
+	// **對帳器刻意共用這一個宣告而非另立一份同形介面**：另立即是本表多一筆
+	"github.com/custodexa/backend/internal/modules/audit.AuditFailureAlerter.Resolve": "審計失敗復原標記（audit 模組內共用的窄介面）",
 	// 離機上傳器以自宣告的 `FailureReporter`（offsite/uploader.go:109）消費同一個
 	// `AuditFailureService.Resolve`，是同一家族的第四個宣告位置。唯一呼叫點
 	// （`Uploader.resolve`）傳的是 `model.Mechanism*` 常數＝把某個離機失效機制

@@ -2,6 +2,42 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.7.0 — role assignments join the checkpoint chain (2026-09-07)
+
+### Who holds which role is now part of the evidence
+
+- Every audit checkpoint now carries a signed snapshot of the role assignments in force at the
+  moment it was sealed. A checkpoint signed by the system attests not only to the operation log
+  but also to who was an administrator or an auditor at that time.
+- The checkpoint verification page gains a "role assignments" line. It states whether the current
+  assignments match what the signed record and the audited changes since then add up to, and when
+  they do not, it names the accounts and roles that differ and links to the failure event.
+- Every change to a role assignment, whether made by an administrator, at sign-up, or on a first
+  single sign-on login, leaves an audit record in the same transaction as the change itself.
+
+### Escalation shows up at the first sign-in
+
+- When an account signs in as an administrator or an auditor, the system compares the live role
+  assignments with the signed record before issuing the session. A difference that no audit
+  record explains opens a failure event on the spot and, where failure alerting is enabled, sends
+  the alert through the configured channel. Sign-in itself is not blocked, so an incorrect alarm
+  never locks an administrator out.
+- The same comparison runs at every seal and at every verification, so a change made outside the
+  application is reported within one checkpoint interval even if nobody signs in.
+
+### Verification tools
+
+- The offline verifier accepts both the previous and the new checkpoint payload versions, so a
+  chain that spans this upgrade verifies end to end with the public key alone.
+
+### Upgrading
+
+This release changes the database schema. One migration adds the snapshot columns to the checkpoint
+table when the backend starts; existing checkpoints are untouched and keep verifying. Role
+assignments are covered from the first checkpoint sealed after the upgrade; the verification page
+names the checkpoint the comparison currently starts from. Back up before you upgrade; section 2 of `docs/ops/upgrade-sop.md`
+walks through the steps.
+
 ## 1.6.0 — a credential library for login secrets (2026-09-07)
 
 ### Every login secret in one place

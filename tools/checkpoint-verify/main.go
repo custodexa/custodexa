@@ -59,6 +59,80 @@ type checkpoint struct {
 	SealedAt           string  `json:"sealed_at"`
 	SigningKeyVersion  int     `json:"signing_key_version"`
 	Signature          string  `json:"signature"`
+
+	// 以下四欄自載荷版本 cp-agg-v2 起存在（角色指派納入鏈）。
+	// v1 的檢查點沒有這些欄位，API 亦不回傳——**缺席即代表 v1**，
+	// 不可視為「v2 但欄位遺失」而放行
+	RoleStateSnapshot   *string `json:"role_state_snapshot"`
+	RoleStateHash       *string `json:"role_state_hash"`
+	RoleStateCount      *int64  `json:"role_state_count"`
+	RoleStateReconciled *bool   `json:"role_state_reconciled"`
+}
+
+// 載荷版本標識（欄位 agg_scheme）。
+//
+// v1：不含 state。v2：加 state 與 role_state_reconciled 兩鍵。
+// 未知版本一律拒驗——猜一個形狀去驗，結果會是「簽章驗不過」而掩蓋真正的原因
+const (
+	schemeV1 = "cp-agg-v1"
+	schemeV2 = "cp-agg-v2"
+)
+
+// stateEntry 載荷內單一狀態表的摘要
+type stateEntry struct {
+	table string
+	hash  string
+	count int64
+}
+
+// stateHash 狀態表快照本體的長度前綴 SHA-256（hex）：
+// SHA-256( 大端 8 bytes 的本體長度 ‖ 本體位元組 )
+func stateHash(body []byte) string {
+	var prefix [8]byte
+	n := uint64(len(body))
+	for i := 7; i >= 0; i-- {
+		prefix[i] = byte(n)
+		n >>= 8
+	}
+	h := sha256.New()
+	h.Write(prefix[:])
+	h.Write(body)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// stateEntries 由 role_state_snapshot 重建載荷的 state 陣列。
+//
+// 摘要**由快照本體現算**（不取 role_state_hash 欄）：產品端簽的就是現算值，
+// 取欄位會讓「本體被改、摘要欄沒改」的檢查點在本工具這裡驗過而在系統內驗不過。
+// 快照本體不可得時（部署把該欄自 API 投影拿掉）退回摘要欄，並在報表上標明——
+// 那時本工具驗的是「摘要未被改」，不是「快照未被改」
+func stateEntries(cp checkpoint) ([]stateEntry, bool, error) {
+	if cp.RoleStateSnapshot == nil || *cp.RoleStateSnapshot == "" {
+		if cp.RoleStateHash == nil || cp.RoleStateCount == nil {
+			return nil, false, fmt.Errorf("seq=%d 宣稱載荷版本 %s 卻無 role_state_snapshot／role_state_hash：無從重建 state",
+				cp.Seq, cp.AggScheme)
+		}
+		return []stateEntry{{table: "user_roles", hash: *cp.RoleStateHash, count: *cp.RoleStateCount}}, true, nil
+	}
+	var tables map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(*cp.RoleStateSnapshot), &tables); err != nil {
+		return nil, false, fmt.Errorf("seq=%d 的 role_state_snapshot 不是以表名為鍵的 JSON 物件: %w", cp.Seq, err)
+	}
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]stateEntry, 0, len(names))
+	for _, name := range names {
+		body := []byte(tables[name])
+		var elems []json.RawMessage
+		if err := json.Unmarshal(body, &elems); err != nil {
+			return nil, false, fmt.Errorf("seq=%d 表 %s 的快照本體不是陣列: %w", cp.Seq, name, err)
+		}
+		out = append(out, stateEntry{table: name, hash: stateHash(body), count: int64(len(elems))})
+	}
+	return out, false, nil
 }
 
 // ── canonical 位元組重建（本檔的核心；規格見 docs/security/…-offline-verification.md）──
@@ -95,6 +169,11 @@ func unixMicro(s string) (int64, error) {
 // 欄位順序與型別為規格的一部分，逐欄手寫而非仰賴 struct tag 順序：
 // 手寫使「順序」成為本檔可被審視的明文事實
 func signBytes(cp checkpoint) ([]byte, error) {
+	if cp.AggScheme != schemeV1 && cp.AggScheme != schemeV2 {
+		return nil, fmt.Errorf("seq=%d 的 agg_scheme %q 非本工具已知的載荷版本（%s／%s）："+
+			"請改用與該版本相符的驗證器，猜一個形狀去驗只會產出誤導的失敗",
+			cp.Seq, cp.AggScheme, schemeV1, schemeV2)
+	}
 	var b bytes.Buffer
 	b.WriteByte('{')
 
@@ -130,6 +209,41 @@ func signBytes(cp checkpoint) ([]byte, error) {
 	if err := writeMicroOrNull(&b, cp.MinCreatedAt); err != nil {
 		return nil, err
 	}
+
+	// v2 起：state 與 role_state_reconciled 插在兩個時間欄之間（規格所定的欄位順序）
+	if cp.AggScheme == schemeV2 {
+		entries, _, err := stateEntries(cp)
+		if err != nil {
+			return nil, err
+		}
+		b.WriteString(`,"state":[`)
+		for i, e := range entries {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(`{"table":`)
+			if err := jsonString(&b, e.table); err != nil {
+				return nil, err
+			}
+			b.WriteString(`,"hash":`)
+			if err := jsonString(&b, e.hash); err != nil {
+				return nil, err
+			}
+			b.WriteString(`,"count":`)
+			b.WriteString(strconv.FormatInt(e.count, 10))
+			b.WriteByte('}')
+		}
+		b.WriteString(`],"role_state_reconciled":`)
+		switch {
+		case cp.RoleStateReconciled == nil:
+			b.WriteString("null")
+		case *cp.RoleStateReconciled:
+			b.WriteString("true")
+		default:
+			b.WriteString("false")
+		}
+	}
+
 	b.WriteString(`,"max_created_at_us":`)
 	if err := writeMicroOrNull(&b, cp.MaxCreatedAt); err != nil {
 		return nil, err
@@ -351,7 +465,7 @@ func main() {
 	}
 	fmt.Printf("檢查點 %d 筆，seq %d..%d\n\n", len(cps), cps[0].Seq, cps[len(cps)-1].Seq)
 
-	var okSig, badSig, okLink, badLink int
+	var okSig, badSig, okLink, badLink, v2Count, stateFallback int
 	prevLink := ""
 	prevIDTo := uint64(0)
 	failed := false
@@ -365,6 +479,12 @@ func main() {
 		signed, berr := signBytes(mutated)
 		if berr != nil {
 			fail(berr)
+		}
+		if cp.AggScheme == schemeV2 {
+			v2Count++
+			if _, fellBack, serr := stateEntries(cp); serr == nil && fellBack {
+				stateFallback++
+			}
 		}
 		if *tamper == "payload-bit" && shouldTamper(cp.Seq, *onlySeq) {
 			signed[len(signed)-3] ^= 0x01
@@ -431,6 +551,12 @@ func main() {
 	}
 
 	fmt.Printf("\n總計：簽章 PASS=%d FAIL=%d；鏈接 PASS=%d FAIL=%d\n", okSig, badSig, okLink, badLink)
+	fmt.Printf("載荷版本：%s %d 筆（含角色指派快照）、%s %d 筆\n",
+		schemeV2, v2Count, schemeV1, len(cps)-v2Count)
+	if stateFallback > 0 {
+		fmt.Printf("註：其中 %d 筆未取得 role_state_snapshot，改以 role_state_hash 欄重建 state。\n"+
+			"    此時驗到的是「摘要欄未被改」，不是「快照本體未被改」。\n", stateFallback)
+	}
 	fmt.Println("註：鏈頭（最小 seq）的 prev_checkpoint_hash 錨定 integrity_baselines，")
 	fmt.Println("    該錨定值需要基準記錄才能重算，不在本工具的外部可驗範圍內（見規格文件「誠實邊界」）。")
 	if failed {

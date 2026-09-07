@@ -23,6 +23,19 @@ const (
 // 舊檢查點續以其原 scheme 重算驗證
 const AggSchemeV1 = "cp-agg-v1"
 
+// AggSchemeV2 第二版載荷：簽章涵蓋範圍加入狀態表登記清單的快照摘要
+// （`state` 與 `role_state_reconciled`，見 role-assignment-integrity）。
+//
+// **為何沿用 agg_scheme 而不另立 payload_version 欄**：本欄的既有語義已是
+// 「這個檢查點的 canonical 編碼版本」（spec 明文「任何編碼變動 SHALL 以新的
+// agg_scheme 值表示，舊檢查點 SHALL 續以其原 scheme 重算驗證」），另立一欄
+// 會出現兩個版本座標而必須定義兩者的交互，且舊檢查點無值可填。
+// 區間聚合演算法本身**未變**：v1 與 v2 的 agg_hash 計算完全相同。
+//
+// v2 的登記清單恰為 `user_roles` 一張表——離線驗證器據此由
+// role_state_snapshot 重建 `state` 陣列（見 docs/security/audit-checkpoint-offline-verification.md）
+const AggSchemeV2 = "cp-agg-v2"
+
 // ErrCheckpointImmutable 檢查點守衛的統一錯誤（改／刪皆回此值）
 var ErrCheckpointImmutable = errors.New("audit_checkpoints 為不可變證據：不得經 ORM 刪除，且僅允許更新錨定與清除狀態欄")
 
@@ -94,6 +107,26 @@ type AuditCheckpoint struct {
 	// purged_invalid——系統對自己的合法清除發出大規模竄改告警。
 	// 與 PurgeSigningKeyVersion 是同一種錯誤的兩個面（簽章的輸入必須隨簽章保存）
 	PurgePolicyDays *int `json:"purge_policy_days,omitempty"`
+
+	// RoleStateHash／RoleStateSnapshot／RoleStateCount 狀態表登記清單的快照
+	// （role-assignment-integrity）。**皆可空**：v1 時期封章的檢查點無此三欄，
+	// 空值＝該檢查點不涵蓋角色指派（驗證頁顯示「尚未涵蓋」而非「不符」）。
+	//
+	// RoleStateSnapshot 是快照本體（canonical JSON，以表名為鍵），**入庫是為了
+	// 對帳能重放上一狀態**——只存雜湊推不回集合，差集就算不出來。
+	// RoleStateHash 為 user_roles 快照本體的長度前綴 SHA-256（hex），
+	// RoleStateCount 為其筆數；兩者是快照本體的投影，供呈現與對帳快路徑使用。
+	//
+	// **簽章涵蓋的是由 RoleStateSnapshot 現算的摘要**（見 CheckpointSignBytes）：
+	// 若簽的是 RoleStateHash 欄，改寫快照本體欄就不會使簽章失效，
+	// 而快照本體正是對帳的輸入
+	RoleStateHash     *string `gorm:"type:varchar(64)" json:"role_state_hash,omitempty"`
+	RoleStateSnapshot *string `gorm:"type:text" json:"role_state_snapshot,omitempty"`
+	RoleStateCount    *int64  `json:"role_state_count,omitempty"`
+
+	// RoleStateReconciled 封章當下的對帳結果（true＝現況與預期相符）。
+	// **在簽章涵蓋內**，故不可事後更新；nil＝該次封章未做對帳
+	RoleStateReconciled *bool `json:"role_state_reconciled,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 }

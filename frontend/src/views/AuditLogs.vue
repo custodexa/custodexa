@@ -727,6 +727,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
 import { getAuditLogs } from '@/api/audit'
@@ -749,6 +750,7 @@ import {
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
 
+const route = useRoute()
 const activeTab = ref('logs')
 
 // 完整性驗證僅 admin（後端 admin only）
@@ -1038,9 +1040,18 @@ const handleTabChange = (tab) => {
   else fetchLogs()
 }
 
-// 初始化
+// 初始化。
+//
+// `?tab=failures` 讓別的頁面連得進失效事件頁籤（檢查點驗證頁的角色指派
+// 差異即由此連入）。**只認白名單內的值**：未知的 tab 一律落回操作日誌，
+// 不讓網址上的字串決定要打哪一支 API
+const TAB_FROM_QUERY = ['logs', 'reviews', 'failures']
 onMounted(() => {
-  fetchLogs()
+  const tab = route?.query?.tab
+  if (typeof tab === 'string' && TAB_FROM_QUERY.includes(tab)) {
+    activeTab.value = tab
+  }
+  handleTabChange(activeTab.value)
 })
 </script>
 

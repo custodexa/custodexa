@@ -243,6 +243,7 @@
       }
     },
     "auditAction": {
+      "assign": "Assign Role",
       "migration": "Migration",
       "create": "Create",
       "read": "Read",
@@ -273,6 +274,7 @@
       "offsite_cred_revoke": "Offsite credential revocation"
     },
     "auditResource": {
+      "user_role": "Role Assignment",
       "asset": "Asset",
       "session": "Session",
       "recording": "Recording",
@@ -328,7 +330,8 @@
       "audit_chain_content": "Audit chain content verification",
       "audit_chain_verify": "Audit chain automatic verification",
       "source_policy": "Source Range Policy",
-      "offsite_upload": "Offsite storage upload"
+      "offsite_upload": "Offsite storage upload",
+      "role_state_integrity": "Role assignment consistency with the audit chain"
     },
     "cause": {
       "recording_probe_failed": "Recording pre-flight check failed at issuance",
@@ -360,7 +363,8 @@
       "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)",
       "offsite_upload_failed": "The offsite upload has reached the retry limit (that copy is still not offsite)",
       "offsite_upload_stalled": "Upload leases for the same object keep expiring; the upload is stuck",
-      "offsite_integrity_mismatch": "The retrieved offsite copy does not match what was uploaded; delivery was refused"
+      "offsite_integrity_mismatch": "The retrieved offsite copy does not match what was uploaded; delivery was refused",
+      "role_state_mismatch": "Role assignments do not match the audit chain (a change was made without an audit record)"
     },
     "endReason": {
       "normal": "Ended Normally",
@@ -3855,6 +3859,24 @@
       "unsealed": "Records not yet sealed",
       "unsealedHint": "(from record {id}; this stretch is not yet covered by the chain, see boundary R5 below)"
     },
+    "roleState": {
+      "title": "Role assignments",
+      "desc": "Compares the roles held right now against what was signed into the most recent checkpoint, plus every recorded grant and revocation since. A difference means a role was added or removed by editing the database directly, bypassing this system.",
+      "match": "Matches (covered through checkpoint #{seq})",
+      "mismatch": "Differs from checkpoint #{seq} onwards",
+      "notCovered": "Not yet covered — awaiting the first sealing",
+      "notCoveredHint": "No sealing has recorded the role assignments yet, so there is no baseline to compare against. This row starts comparing once the next sealing completes.",
+      "unavailable": "No comparison result this time",
+      "unavailableHint": "This verification returned no role assignment comparison. That is not the same as a match; refresh and check again.",
+      "missingTitle": "Recorded but not present now",
+      "extraTitle": "Present now but not recorded",
+      "colUser": "Account",
+      "colRole": "Role",
+      "unknownUser": "Deleted account #{id}",
+      "unknownRole": "Deleted role #{id}",
+      "eventLink": "View failure event #{id}",
+      "eventPending": "No matching failure event retrieved yet"
+    },
     "autoVerify": {
       "title": "Automatic checking: how it is running",
       "notEvidence": "What follows is how the automatic checking is currently running; it is not proof of integrity. It states which ranges the system checked at a given time and what came back, which is not the same as saying the record chain is intact right now. These values are themselves outside the protection of the record chain and can be altered by anyone with write access to the database (see boundary R0 below). For evidence, use the Failure Events entries on the Operation Logs page, the copies retained off-box, and an external reviewer's own verification with the public key on this page.",
@@ -3948,7 +3970,8 @@
         "P1": "At regular intervals the system seals the existing operation log records and signs them, producing a checkpoint. If sealed records are later modified, deleted or inserted, verification can point to the stretch where it happened, rather than only reporting that something is wrong. This mechanism covers the operation logs, and the file transfer records that the Investigation Workbench lists separately are held in the operation logs too, so they are covered as well. Other sources such as command streams, alert records and connection recordings are not included.",
         "P2": "The signing key is held separately from the database, so someone who holds database access alone — a database administrator, say, or an intruder who gets no further than the database — cannot produce records that pass verification, even with the ability to write or alter rows. That is the whole of this claim: it does not extend to anyone who holds the signing key and the database together. That case is boundary R0 below, and this mechanism does not prevent it.",
         "P3": "An external reviewer can verify independently with the public key shown on this page, without trusting this system or any tool we supply. The encoding specification and a standalone verification tool are published.",
-        "P4": "Nobody has to remember to run these checks. After every sealing the system re-checks the stretches sealed within a recent period, and on a configured interval it works through the whole history in turn, opening a Failure Events entry and sending an alert if a notification channel is configured. What the automatic checking can detect is exactly what you get by running the checks on this page by hand: what it shortens is the time between tampering and discovery, not the range of what can be detected. How it is currently running is shown near the top of this page."
+        "P4": "Nobody has to remember to run these checks. After every sealing the system re-checks the stretches sealed within a recent period, and on a configured interval it works through the whole history in turn, opening a Failure Events entry and sending an alert if a notification channel is configured. What the automatic checking can detect is exactly what you get by running the checks on this page by hand: what it shortens is the time between tampering and discovery, not the range of what can be detected. How it is currently running is shown near the top of this page.",
+        "P5": "The roles held by administrators and auditors are protected by the same chain. Each time records are sealed, the system signs the current set of role assignments into the checkpoint, and every later grant or revocation is recorded in the same transaction that changes it. Someone who edits the database directly to give an account the administrator role therefore cannot produce a checkpoint that passes verification, and the Role assignments row on this page shows which checkpoint the difference starts from and which accounts and roles differ. This does not change boundary R0 below."
       },
       "boundaryTitle": "Boundaries, and what carries each risk",
       "scenarioLabel": "Situation:",
@@ -4247,7 +4270,8 @@
         "offsite_integrity": "Offsite custody: retrieved content did not match what was uploaded",
         "offsite_profile": "Offsite custody: storage settings generation changed",
         "offsite_cred_revoke": "Offsite custody: generation credentials revoked",
-        "migration": "Converted {resource} during upgrade"
+        "migration": "Converted {resource} during upgrade",
+        "assign": "Assigned {resource}"
       },
       "session": {
         "start": "Started {protocol} session"
