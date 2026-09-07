@@ -6,11 +6,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/internal/testgate"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -104,7 +104,7 @@ func newAADTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// aadFixture 建一張最小的登記表存量（assets 與 asset_accounts），回傳 id
+// aadFixture 建一張最小的登記表存量（assets、asset_accounts 與 credential_secret_versions），回傳 id
 func aadFixture(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (assetID, accountID uint) {
 	t.Helper()
 	for _, ddl := range []string{
@@ -121,6 +121,9 @@ func aadFixture(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (asse
 		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE change_secret_candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
+		// 憑證密文版本：登入秘密的現行落點，同樣登記於 envelopeMigrationTargets
+		`CREATE TABLE credential_secret_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
+			private_key_enc TEXT NOT NULL DEFAULT '')`,
 	} {
 		if err := db.Exec(ddl).Error; err != nil {
 			t.Fatalf("建表失敗: %v", err)
@@ -134,8 +137,13 @@ func aadFixture(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) (asse
 	if err := db.Exec("INSERT INTO assets (password_enc) VALUES (?)", assetPwd).Error; err != nil {
 		t.Fatalf("insert asset: %v", err)
 	}
-	if err := db.Exec("INSERT INTO asset_accounts (password_enc, private_key_enc) VALUES (?, ?)",
+	// 登入秘密的殘值落在版本表：掛載列的兩個密文欄已自登記表除名，
+	// 播在那裡的值不再被任何掃描看見，等於白播
+	if err := db.Exec("INSERT INTO credential_secret_versions (password_enc, private_key_enc) VALUES (?, ?)",
 		acctPwd, acctKey).Error; err != nil {
+		t.Fatalf("insert credential version: %v", err)
+	}
+	if err := db.Exec("INSERT INTO asset_accounts DEFAULT VALUES").Error; err != nil {
 		t.Fatalf("insert account: %v", err)
 	}
 	return 1, 1
@@ -149,7 +157,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	}
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池會讓「寫在 A 連線、
 	// 讀在 B 連線」偶發查無資料（本專案既有 flaky 真因，ff51836）。
-	// TestRetiredKeyNotPurgedWhileAssetAccountReferences 在整包跑時穩定紅——
+	// TestRetiredKeyNotPurgedWhileCredentialVersionReferences 在整包跑時穩定紅——
 	// 引用掃描落到空表而誤判零引用——即此類，非受測邏輯問題
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -162,7 +170,10 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}); err != nil {
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{},
+		// 憑證密文版本亦為信封目標表（登入秘密的現行落點），空表即 pending 0；
+		// 缺表會讓逐表掃描整個 error 而擋住 KEK 輪替
+		&model.CredentialSecretVersion{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立

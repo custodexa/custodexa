@@ -100,7 +100,7 @@ func reuseNTLMChallenge() []byte {
 	flags := uint32(0x1 | 0x200 | 0x10 | 0x20 | 0x8000 | 0x80000 | 0x40000000 | 0x20000000 | 0x80000000)
 	_ = binary.Write(&b, binary.LittleEndian, flags)
 	b.Write([]byte{1, 2, 3, 4, 5, 6, 7, 8}) // ServerChallenge
-	b.Write(make([]byte, 8))                 // Reserved
+	b.Write(make([]byte, 8))                // Reserved
 	_ = binary.Write(&b, binary.LittleEndian, [3]uint16{0, 0, 48})
 	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
 	return b.Bytes()

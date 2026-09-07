@@ -475,9 +475,6 @@
                   <el-dropdown-menu>
                     <!-- 測試中態逐列獨立（4.3）：只禁用該列自己的入口，
                        其他列的測試入口仍可點擊並各自進入測試中態 -->
-                    <el-dropdown-item command="accounts">
-                      {{ $t('assetAccounts.manage') }}
-                    </el-dropdown-item>
                     <el-dropdown-item
                       command="test"
                       :disabled="isTesting(row.id)"
@@ -520,10 +517,10 @@
       </div>
     </div>
 
-    <!-- 新增/編輯對話框 -->
+    <!-- 新增資產：一份表單只問一次登入憑證，其餘設定收在進階選項 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogTitle"
+      :title="$t('assets.create')"
       width="560px"
       :close-on-click-modal="false"
     >
@@ -533,542 +530,31 @@
         :rules="formRules"
         label-position="top"
       >
-        <el-form-item
-          :label="$t('common.name')"
-          prop="name"
-        >
-          <el-input
-            v-model="form.name"
-            :placeholder="$t('assets.namePlaceholder')"
-          />
-        </el-form-item>
-        <el-form-item
-          :label="$t('common.protocol')"
-          prop="protocol"
-        >
-          <el-select
-            v-model="form.protocol"
-            :placeholder="$t('assets.protocolPlaceholder')"
-            style="width: 100%"
-            @change="handleProtocolChange"
-          >
-            <el-option
-              label="SSH"
-              value="ssh"
-            />
-            <el-option
-              label="RDP"
-              value="rdp"
-            />
-            <el-option
-              label="VNC"
-              value="vnc"
-            />
-            <el-option
-              label="MySQL"
-              value="mysql"
-            />
-            <el-option
-              label="PostgreSQL"
-              value="postgres"
-            />
-            <el-option
-              label="Redis"
-              value="redis"
-            />
-            <el-option
-              label="SQL Server"
-              value="mssql"
-            />
-            <el-option
-              label="K8s"
-              value="k8s"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item
-          :label="$t('assets.host')"
-          prop="host"
-        >
-          <el-input
-            v-model="form.host"
-            :placeholder="$t('assets.hostPlaceholder')"
-          />
-        </el-form-item>
-        <el-form-item
-          :label="$t('assets.port')"
-          prop="port"
-        >
-          <el-input-number
-            v-model="form.port"
-            :min="1"
-            :max="65535"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="!isPasswordOnlyProtocol(form.protocol)"
-          :label="$t('common.username')"
-          prop="username"
-        >
-          <el-input
-            v-model="form.username"
-            :placeholder="$t('assets.usernamePlaceholder')"
-          />
-        </el-form-item>
-        <el-form-item
-          :label="form.protocol === 'k8s' ? 'Token' : $t('common.password')"
-          prop="password"
-        >
-          <el-input
-            v-model="form.password"
-            type="password"
-            :placeholder="form.protocol === 'k8s' ? $t('assets.tokenPlaceholder') : $t('assets.passwordPlaceholder')"
-            show-password
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="['mysql', 'postgres', 'redis', 'mssql'].includes(form.protocol)"
-          :label="$t('assets.dbName')"
-        >
-          <el-input
-            v-model="form.db_name"
-            :placeholder="$t('assets.dbNamePlaceholder')"
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="['mysql', 'postgres', 'redis', 'mssql'].includes(form.protocol)"
-          :label="$t('assets.tlsMode')"
-        >
-          <el-select
-            v-model="form.db_tls_mode"
-            style="width: 100%"
-          >
-            <el-option
-              :label="$t('assets.tlsDefault')"
-              value=""
-            />
-            <el-option
-              :label="$t('assets.tlsDisable')"
-              value="disable"
-            />
-            <el-option
-              :label="$t('assets.tlsRequire')"
-              value="require"
-            />
-            <el-option
-              :label="$t('assets.tlsVerifyCa')"
-              value="verify-ca"
-            />
-            <el-option
-              :label="$t('assets.tlsVerifyFull')"
-              value="verify-full"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item
-          v-if="['mysql', 'postgres', 'redis', 'mssql'].includes(form.protocol) && ['verify-ca', 'verify-full'].includes(form.db_tls_mode)"
-          :label="$t('assets.caCert')"
-        >
-          <!-- mssql 的語義是「伺服器憑證釘選」（sqlcmd -J 收單張伺服器憑證），
-               不是 CA bundle，故說明文字與其他三協議不共用 -->
-          <el-input
-            v-model="form.db_ca_cert"
-            type="textarea"
-            :rows="3"
-            :placeholder="form.protocol === 'mssql' ? $t('assets.mssqlCaCertHint') : $t('assets.dbCaPlaceholder')"
-          />
-        </el-form-item>
-        <!-- 查詢主控台的執行目標限制。射程只到主控台，命令列會話不受影響——
-             helper 必須把這件事寫出來，否則管理者會以為填了就等於資料庫級存取控制 -->
-        <el-form-item
-          v-if="isDBConsoleProtocol(form.protocol)"
-          :label="$t('assets.allowedDatabases')"
-        >
-          <el-select
-            v-model="form.allowed_databases"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            style="width: 100%"
-            :reserve-keyword="false"
-            :placeholder="$t('assets.allowedDatabasesPlaceholder')"
-            data-test="allowed-databases"
-          />
-          <div class="form-tip">
-            {{ $t('assets.allowedDatabasesScopeHint') }}
-          </div>
-          <div class="form-tip">
-            {{ $t(`assets.allowedDatabasesCaseHint.${form.protocol}`) }}
-          </div>
-        </el-form-item>
-        <!-- RDP 傳輸安全：預設沿現狀，
-             strict 檔的修復路徑＝調 NLA＋開啟憑證驗證 -->
-        <template v-if="form.protocol === 'rdp'">
-          <el-form-item :label="$t('assets.rdpSecurity')">
-            <el-select
-              v-model="form.rdp_security"
-              style="width: 100%"
-            >
-              <el-option
-                :label="$t('assets.rdpAuto')"
-                value=""
-              />
-              <el-option
-                :label="$t('assets.rdpNla')"
-                value="nla"
-              />
-              <el-option
-                label="TLS"
-                value="tls"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item :label="$t('assets.rdpVerifyCert')">
-            <el-switch v-model="form.rdp_verify_cert" />
-            <span
-              v-if="!form.rdp_verify_cert"
-              style="margin-left: 10px; color: var(--el-color-warning); font-size: 12px"
-            >{{ $t('assets.rdpVerifyWarning') }}</span>
-          </el-form-item>
-          <!-- 改密通道側車（沿 VNC SFTP 側車形狀：下拉為入口、子欄整組顯隱、各自具名）。
-               通道與連線路徑無關：這裡設定的只有改密計劃會用到 -->
-          <el-form-item
-            :label="$t('assets.rotationChannel')"
-            data-test="rotation-channel-item"
-          >
-            <el-select
-              v-model="form.rotation_channel"
-              style="width: 100%"
-              data-test="rotation-channel"
-              @change="handleRotationChannelChange"
-            >
-              <el-option
-                :label="$t('assets.rotationChannelNone')"
-                value="none"
-              />
-              <el-option
-                :label="$t('assets.rotationChannelWinrm')"
-                value="windows_winrm"
-              />
-              <el-option
-                :label="$t('assets.rotationChannelWindowsSsh')"
-                value="windows_ssh"
-              />
-            </el-select>
-            <div class="form-tip">
-              {{ $t('assets.rotationChannelHint') }}
-            </div>
-          </el-form-item>
-          <template v-if="form.rotation_channel === 'windows_winrm'">
-            <el-form-item
-              :label="$t('assets.winrmScheme')"
-              data-test="winrm-scheme-item"
-            >
-              <el-radio-group
-                v-model="form.winrm_scheme"
-                data-test="winrm-scheme"
-                @change="handleWinrmSchemeChange"
-              >
-                <el-radio-button
-                  v-for="scheme in WINRM_SCHEME_VALUES"
-                  :key="scheme"
-                  :value="scheme"
-                >
-                  {{ $t(`enum.winrmScheme.${scheme}`) }} {{ WINRM_DEFAULT_PORTS[scheme] }}
-                </el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item :label="$t('assets.winrmPort')">
-              <el-input-number
-                v-model="form.winrm_port"
-                :min="0"
-                :max="65535"
-                data-test="winrm-port"
-              />
-              <span class="form-tip form-tip--inline">{{ $t('assets.winrmPortHint') }}</span>
-            </el-form-item>
-            <el-form-item
-              v-if="form.winrm_scheme === 'https'"
-              :label="$t('assets.winrmTlsMode')"
-              data-test="winrm-tls-mode-item"
-            >
-              <el-radio-group
-                v-model="form.winrm_tls_mode"
-                data-test="winrm-tls-mode"
-              >
-                <el-radio-button
-                  v-for="mode in WINRM_TLS_MODE_VALUES"
-                  :key="mode"
-                  :value="mode"
-                >
-                  {{ $t(`enum.winrmTlsMode.${mode}`) }}
-                </el-radio-button>
-              </el-radio-group>
-              <div class="form-tip">
-                {{ $t('assets.winrmTlsHint') }}
-              </div>
-            </el-form-item>
-            <el-form-item
-              v-if="form.winrm_scheme === 'https' && form.winrm_tls_mode === 'ca'"
-              :label="$t('assets.winrmCaCert')"
-              prop="winrm_ca_cert"
-              data-test="winrm-ca-cert-item"
-            >
-              <el-input
-                v-model="form.winrm_ca_cert"
-                type="textarea"
-                :rows="3"
-                :placeholder="$t('assets.winrmCaCertPlaceholder')"
-                data-test="winrm-ca-cert"
-              />
-              <div class="form-tip">
-                {{ isEdit && form.has_winrm_ca_cert ? $t('assets.winrmCaCertKeep') : $t('assets.winrmCaCertHint') }}
-              </div>
-            </el-form-item>
-            <el-form-item>
-              <div
-                class="form-tip"
-                data-test="winrm-target-requirements"
-              >
-                {{ $t('assets.winrmTargetRequirements') }}
-              </div>
-            </el-form-item>
-          </template>
-          <el-form-item
-            v-if="form.rotation_channel === 'windows_ssh'"
-            :label="$t('assets.rotationSshPort')"
-            data-test="rotation-ssh-port-item"
-          >
-            <el-input-number
-              v-model="form.rotation_ssh_port"
-              :min="1"
-              :max="65535"
-              data-test="rotation-ssh-port"
-            />
-            <span class="form-tip form-tip--inline">{{ $t('assets.rotationSshPortHint') }}</span>
-          </el-form-item>
-        </template>
-        <template v-if="form.protocol === 'k8s'">
-          <el-form-item
-            label="Namespace"
-            prop="k8s_namespace"
-          >
-            <el-input
-              v-model="form.k8s_namespace"
-              :placeholder="$t('assets.k8sNamespacePlaceholder')"
-            />
-          </el-form-item>
-          <el-form-item :label="$t('assets.caCert')">
-            <el-input
-              v-model="form.k8s_ca_cert"
-              type="textarea"
-              :rows="3"
-              :placeholder="$t('assets.k8sCaPlaceholder')"
-            />
-          </el-form-item>
-          <el-form-item :label="$t('assets.k8sSkipTls')">
-            <el-switch v-model="form.k8s_insecure_skip_tls" />
-            <span
-              v-if="form.k8s_insecure_skip_tls"
-              style="margin-left: 10px; color: var(--el-color-danger); font-size: 12px"
-            >{{ $t('assets.k8sSkipTlsWarning') }}</span>
-          </el-form-item>
-        </template>
-        <el-form-item
-          v-if="form.protocol === 'ssh'"
-          :label="$t('assets.privateKey')"
-          prop="private_key"
-        >
-          <el-input
-            v-model="form.private_key"
-            type="textarea"
-            :rows="4"
-            :placeholder="$t('assets.privateKeyPlaceholder')"
-          />
-        </el-form-item>
-        <!-- ssh 資產的 Windows 開關＝通道 windows_ssh；關閉即回到依協議推導的 POSIX 通道 -->
-        <el-form-item
-          v-if="form.protocol === 'ssh'"
-          :label="$t('assets.windowsSsh')"
-          data-test="windows-ssh-item"
-        >
-          <el-switch
-            v-model="windowsSshEnabled"
-            data-test="windows-ssh-switch"
-          />
-          <span class="form-tip form-tip--inline">{{ $t('assets.windowsSshNote') }}</span>
-        </el-form-item>
-        <template v-if="form.protocol === 'vnc'">
-          <el-form-item :label="$t('assets.sftpTransfer')">
-            <el-switch v-model="form.sftp_enabled" />
-            <span style="margin-left: 10px; color: var(--el-text-color-secondary); font-size: 12px">
-              {{ $t('assets.sftpNote') }}
-            </span>
-          </el-form-item>
-          <template v-if="form.sftp_enabled">
-            <el-form-item :label="$t('assets.sftpPort')">
-              <el-input-number
-                v-model="form.sftp_port"
-                :min="1"
-                :max="65535"
-              />
-            </el-form-item>
-            <el-form-item
-              :label="$t('assets.sftpUsername')"
-              prop="sftp_username"
-            >
-              <el-input
-                v-model="form.sftp_username"
-                :placeholder="$t('assets.sftpUsernamePlaceholder')"
-              />
-            </el-form-item>
-            <el-form-item :label="$t('assets.sftpPassword')">
-              <el-input
-                v-model="form.sftp_password"
-                type="password"
-                show-password
-                :placeholder="isEdit && form.has_sftp_password ? $t('assets.sftpPasswordKeep') : $t('assets.sftpPasswordPlaceholder')"
-              />
-            </el-form-item>
-          </template>
-        </template>
-        <!-- 帳號區塊：建立時上方憑證欄位透明成為預設帳號，
-            建立後才有 assetID 可掛子資源，故僅編輯態提供帳號管理入口 -->
-        <el-form-item
-          v-if="isEdit"
-          :label="$t('assetAccounts.sectionLabel')"
-        >
-          <div class="asset-accounts-entry">
-            <span class="asset-accounts-entry__hint">{{ $t('assetAccounts.sectionHint') }}</span>
-            <el-button
-              size="small"
-              @click="openAccountsDialog(form)"
-            >
-              <el-icon><Key /></el-icon>
-              {{ $t('assetAccounts.manage') }}
-            </el-button>
-          </div>
-        </el-form-item>
-        <el-form-item :label="$t('common.description')">
-          <el-input
-            v-model="form.description"
-            type="textarea"
-            :rows="3"
-            :placeholder="$t('assets.descPlaceholder')"
-          />
-        </el-form-item>
-        <!-- 標籤輸入輔助：既有標籤自動完成
-            （大小寫不敏感）＋自由建立（建立前相似確認、拒逗號） -->
-        <el-form-item :label="$t('common.tags')">
-          <el-select
-            v-model="form.tagList"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            :placeholder="$t('assets.tagPlaceholder')"
-            class="tag-form-select"
-            :filter-method="formTagMethod"
-            @change="handleFormTagChange"
-            @visible-change="resetFormTagOptions"
-          >
-            <el-option
-              v-for="name in visibleFormTags"
-              :key="name"
-              :label="name"
-              :value="name"
-            />
-          </el-select>
-        </el-form-item>
-        <!-- 掛載節點（多歸屬）：樹狀多選、全路徑顯示；
-             空＝未分組。節點 CRUD 在資產頁左樹 -->
-        <el-form-item :label="$t('assets.mountNodes')">
-          <el-tree-select
-            v-model="form.node_ids"
-            :data="nodeSelectOptions"
-            :props="{ label: 'name', children: 'children' }"
-            node-key="id"
-            multiple
-            check-strictly
-            show-checkbox
-            clearable
-            :placeholder="$t('assets.mountNodesPlaceholder')"
-            style="width: 360px"
-          />
-        </el-form-item>
-        <!-- 連線政策：政策掛資產本身，主要設定入口 -->
-        <el-form-item :label="$t('assets.accessPolicy')">
-          <!-- empty-values 排除 ''：繼承選項 value 為空字串，
-               預設會被 el-select 當空值而顯示 placeholder -->
-          <el-select
-            v-model="form.access_policy"
-            :empty-values="[null, undefined]"
-            style="width: 240px"
-          >
-            <el-option
-              :label="inheritPolicyLabel"
-              value=""
-            />
-            <el-option
-              v-for="(label, value) in accessPolicyEnumLabels"
-              :key="value"
-              :label="label"
-              :value="value"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item
-          v-if="isEdit"
-          :label="$t('common.status')"
-        >
-          <el-switch
-            v-model="form.active"
-            :active-text="$t('common.enabled')"
-            :inactive-text="$t('common.disabled')"
-          />
-        </el-form-item>
-
-        <!-- 主機金鑰：TOFU 指紋檢視與重置，僅編輯模式 SSH 資產 -->
-        <el-form-item
-          v-if="isEdit && form.protocol === 'ssh'"
-          class="host-key-item"
-          :label="$t('assets.hostKey')"
-        >
-          <div
-            v-if="hostKey"
-            class="host-key-box"
-          >
-            <div class="host-key-line">
-              <span class="host-key-algo">{{ hostKey.algorithm }}</span>
-              <code class="host-key-fp">{{ hostKey.fingerprint }}</code>
-              <el-button
-                size="small"
-                link
-                @click="copyFingerprint"
-              >
-                {{ $t('common.copy') }}
-              </el-button>
-            </div>
-            <div class="host-key-meta">
-              {{ $t('assets.hostKeyMeta', { time: formatDateTime(hostKey.created_at) }) }}
-              <el-button
-                size="small"
-                type="danger"
-                link
-                @click="resetHostKey"
-              >
-                {{ $t('assets.resetKey') }}
-              </el-button>
-            </div>
-          </div>
-          <span
-            v-else
-            class="host-key-empty"
-          >{{ $t('assets.hostKeyEmpty') }}</span>
-        </el-form-item>
+        <AssetBasicFields
+          :form="form"
+          @update:form="Object.assign(form, $event)"
+          @protocol-change="handleProtocolChange"
+        />
+        <AssetCredentialSection
+          :model="form"
+          :protocol="form.protocol"
+          :windows-openssh="windowsSshEnabled"
+          :asset-name="form.name"
+          @update:model="Object.assign(form, $event)"
+        />
+        <AssetAdvancedFields
+          ref="advancedRef"
+          :form="form"
+          :node-options="nodeSelectOptions"
+          :tag-names="visibleFormTags"
+          :inherit-policy-label="inheritPolicyLabel"
+          @update:form="Object.assign(form, $event)"
+          @tag-change="handleFormTagChange"
+          @tag-filter="formTagMethod"
+          @tag-visible-change="resetFormTagOptions"
+          @rotation-channel-change="handleRotationChannelChange"
+          @winrm-scheme-change="handleWinrmSchemeChange"
+        />
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">
@@ -1083,6 +569,41 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 編輯資產：右側抽屜，帳號表內嵌（帳號與憑證都在同一個畫面上處理完） -->
+    <el-drawer
+      v-model="drawerVisible"
+      :title="$t('assets.editTitle')"
+      size="760px"
+      :close-on-click-modal="false"
+      class="asset-edit-drawer"
+    >
+      <template #header>
+        <div class="drawer-title">
+          <h2>{{ $t('assets.editTitle') }}</h2>
+          <span class="drawer-subtitle">{{ editSubtitle }}</span>
+        </div>
+      </template>
+      <AssetEditDrawerContent
+        ref="drawerContentRef"
+        :form="form"
+        :rules="formRules"
+        :submitting="submitting"
+        :node-options="nodeSelectOptions"
+        :tag-names="visibleFormTags"
+        :inherit-policy-label="inheritPolicyLabel"
+        @update:form="Object.assign(form, $event)"
+        @submit="handleSubmit"
+        @cancel="drawerVisible = false"
+        @changed="fetchAssetList"
+        @protocol-change="handleProtocolChange"
+        @tag-change="handleFormTagChange"
+        @tag-filter="formTagMethod"
+        @tag-visible-change="resetFormTagOptions"
+        @rotation-channel-change="handleRotationChannelChange"
+        @winrm-scheme-change="handleWinrmSchemeChange"
+      />
+    </el-drawer>
 
     <!-- 申請連線：填理由段送出即連；需核准段送出後等審核 -->
     <el-dialog
@@ -1222,14 +743,6 @@
       :tags="tagOptions"
       @changed="handleTagsChanged"
     />
-
-    <!-- 資產帳號管理 -->
-    <AssetAccountsDialog
-      v-model="accountsDialogVisible"
-      :asset-id="accountsTarget ? accountsTarget.id : null"
-      :asset-name="accountsTarget ? accountsTarget.name : ''"
-      :protocol="accountsTarget ? accountsTarget.protocol : ''"
-    />
   </div>
 </template>
 
@@ -1248,7 +761,6 @@ import {
   CircleAlert,
   Tag,
   LoaderCircle,
-  Key,
 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -1257,23 +769,22 @@ import {
   createAsset,
   updateAsset,
   deleteAsset,
-  getAssetHostKey,
-  resetAssetHostKey,
   testAssetConnection,
   getAssetGroups,
   getAssetTags,
 } from '@/api/assets'
 import AssetTagManager from '@/components/AssetTagManager.vue'
 import AssetColumnSettings from '@/components/AssetColumnSettings.vue'
-import AssetAccountsDialog from '@/components/AssetAccountsDialog.vue'
+import AssetBasicFields from '@/components/asset/AssetBasicFields.vue'
+import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vue'
+import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
+import AssetEditDrawerContent from '@/components/asset/AssetEditDrawerContent.vue'
 import { createAccessRequest, breakGlassConnect } from '@/api/accessRequests'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
 import { riskLabel } from '@/utils/transportDisplay'
 import { getSecurityPolicies } from '@/api/securityPolicies'
 import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS, protocolTagType } from '@/utils/protocol'
 import {
-  WINRM_SCHEME_VALUES,
-  WINRM_TLS_MODE_VALUES,
   WINRM_DEFAULT_PORTS,
   ROTATION_SSH_DEFAULT_PORT,
   effectiveRotationChannel,
@@ -1479,11 +990,20 @@ const handleAuthorizeNode = (node) => {
 // 使用者角色狀態（isAdminOrAuditor＝isPrivileged 口徑）
 const { isPrivileged: isAdminOrAuditor, isAdmin } = useRoles()
 
-// 對話框狀態
+// 新增走對話框、編輯走右側抽屜：編輯要同時處理資產與其帳號，一個對話框裝不下
 const dialogVisible = ref(false)
+const drawerVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const formRef = ref(null)
+const advancedRef = ref(null)
+const drawerContentRef = ref(null)
+
+// 兩個容器各有自己的 el-form；開著的那一個才是要驗證的那一個
+const activeFormRef = () =>
+  (drawerVisible.value ? drawerContentRef.value?.formRef : formRef.value)
+const activeAdvancedRef = () =>
+  (drawerVisible.value ? drawerContentRef.value?.advancedRef : advancedRef.value)
 
 // 表單資料
 const form = reactive({
@@ -1492,6 +1012,10 @@ const form = reactive({
   protocol: 'ssh',
   host: '',
   port: 22,
+  // 登入憑證來源二擇一：dedicated＝這台自己一組、shared＝挑一筆共用憑證。
+  // 出廠值是 dedicated——全新環境還沒有任何共用憑證可挑
+  credential_mode: 'dedicated',
+  credential_id: null,
   username: '',
   password: '',
   private_key: '',
@@ -1548,7 +1072,7 @@ const resetRotationChannel = (protocol) => {
 }
 
 const handleRotationChannelChange = () => {
-  formRef.value?.clearValidate('winrm_ca_cert')
+  activeFormRef()?.clearValidate('winrm_ca_cert')
 }
 
 // 連線方式切換時，埠仍是另一方式的預設值（或 0）才跟著換；使用者自填的埠不動
@@ -1558,7 +1082,7 @@ const handleWinrmSchemeChange = (scheme) => {
     form.winrm_port = WINRM_DEFAULT_PORTS[scheme]
   }
   if (scheme !== 'https') {
-    formRef.value?.clearValidate('winrm_ca_cert')
+    activeFormRef()?.clearValidate('winrm_ca_cert')
   }
 }
 
@@ -1589,10 +1113,12 @@ const buildRotationChannelPayload = () => {
   return payload
 }
 
-// 對話框標題
-const dialogTitle = computed(() => {
-  return isEdit.value ? t('assets.editTitle') : t('assets.create')
-})
+// 抽屜標題列的副標：這台是誰，一眼要看得到
+const editSubtitle = computed(() =>
+  [form.name, (form.protocol || '').toUpperCase(), `${form.host}:${form.port}`]
+    .filter(Boolean)
+    .join(' · ')
+)
 
 // 表單驗證規則（computed：切語言時錯誤訊息隨當下語言）
 const formRules = computed(() => ({
@@ -1611,15 +1137,30 @@ const formRules = computed(() => ({
   ],
   username: [
     {
-      // 僅密碼認證的協議不需使用者名稱（見 isPasswordOnlyProtocol）
+      // 僅密碼認證的協議不需使用者名稱（見 isPasswordOnlyProtocol）；
+      // 挑共用憑證時帳號名來自該筆憑證，表單上根本沒有這一欄
       validator: (rule, value, callback) => {
-        if (!isPasswordOnlyProtocol(form.protocol) && !value) {
+        if (form.credential_mode === 'shared') {
+          callback()
+        } else if (!isPasswordOnlyProtocol(form.protocol) && !value) {
           callback(new Error(t('assets.usernamePlaceholder')))
         } else {
           callback()
         }
       },
       trigger: 'blur',
+    },
+  ],
+  credential_id: [
+    {
+      validator: (rule, value, callback) => {
+        if (form.credential_mode === 'shared' && !value) {
+          callback(new Error(t('assets.credentialSection.sharedRequired')))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change',
     },
   ],
   k8s_namespace: [
@@ -1790,6 +1331,8 @@ const resetForm = () => {
   form.protocol = 'ssh'
   form.host = ''
   form.port = 22
+  form.credential_mode = 'dedicated'
+  form.credential_id = null
   form.username = ''
   form.password = ''
   form.private_key = ''
@@ -1814,7 +1357,8 @@ const resetForm = () => {
   form.sftp_password = ''
   form.has_sftp_password = false
   resetRotationChannel('ssh')
-  formRef.value?.clearValidate()
+  activeFormRef()?.clearValidate()
+  activeAdvancedRef()?.clearServerError()
 }
 
 // 處理創建
@@ -1915,60 +1459,8 @@ function connBadgeTooltip(row) {
 function handleRowCommand(command, row) {
   if (command === 'test') {
     handleTest(row)
-  } else if (command === 'accounts') {
-    openAccountsDialog(row)
   } else if (command === 'delete') {
     handleDelete(row)
-  }
-}
-
-// 資產帳號管理：資產列與編輯對話框共用同一入口
-const accountsDialogVisible = ref(false)
-const accountsTarget = ref(null)
-
-function openAccountsDialog(row) {
-  accountsTarget.value = { id: row.id, name: row.name, protocol: row.protocol }
-  accountsDialogVisible.value = true
-}
-
-// 主機金鑰
-const hostKey = ref(null)
-
-async function loadHostKey(assetId) {
-  hostKey.value = null
-  try {
-    hostKey.value = await getAssetHostKey(assetId)
-  } catch {
-    // 404＝尚無記錄，顯示空態即可
-  }
-}
-
-async function copyFingerprint() {
-  try {
-    await navigator.clipboard.writeText(hostKey.value.fingerprint)
-    ElMessage.success(t('assets.fingerprintCopied'))
-  } catch {
-    ElMessage.error(t('common.copyFailed'))
-  }
-}
-
-async function resetHostKey() {
-  try {
-    await ElMessageBox.confirm(
-      t('assets.hostKeyResetConfirm'),
-      t('assets.hostKeyResetTitle'),
-      { type: 'warning', confirmButtonText: t('assets.hostKeyResetButton') }
-    )
-  } catch {
-    return // 使用者取消
-  }
-
-  try {
-    await resetAssetHostKey(form.id)
-    hostKey.value = null
-    ElMessage.success(t('assets.hostKeyResetDone'))
-  } catch (error) {
-    console.error('重置主機金鑰失敗:', error)
   }
 }
 
@@ -2018,15 +1510,14 @@ const handleEdit = (row) => {
   if (channel === 'windows_ssh' && row.protocol === 'rdp') {
     form.rotation_ssh_port = row.rotation_ssh_port || ROTATION_SSH_DEFAULT_PORT
   }
-  if (row.protocol === 'ssh') loadHostKey(row.id)
-  // 注意：不填充密碼和私鑰（安全考量）
-  dialogVisible.value = true
+  // 注意：不填充密碼和私鑰（安全考量）；帳號與憑證在抽屜的帳號表內處理
+  drawerVisible.value = true
 }
 
 // 處理提交
 const handleSubmit = async () => {
   try {
-    await formRef.value.validate()
+    await activeFormRef()?.validate()
 
     // 協議改離查詢主控台支援的三種方言時，伺服端會清空允許清單。
     // 清單是管理者逐項填出來的，靜默清掉等於讓下一次改回協議時
@@ -2050,11 +1541,18 @@ const handleSubmit = async () => {
       protocol: form.protocol,
       host: form.host,
       port: form.port,
-      username: form.username,
       description: form.description,
       tags: form.tagList.join(','),
       node_ids: form.node_ids,
       access_policy: form.access_policy,
+    }
+
+    // 登入憑證來源二擇一：挑了共用憑證就只送識別，帳號名與秘密都在那一筆憑證上；
+    // 兩種來源同時出現會被伺服端判為意圖不明而整筆拒絕
+    if (!isEdit.value && form.credential_mode === 'shared') {
+      data.credential_id = form.credential_id
+    } else {
+      data.username = form.username
     }
 
     if (['mysql', 'postgres', 'redis', 'mssql'].includes(form.protocol)) {
@@ -2102,12 +1600,15 @@ const handleSubmit = async () => {
       }
     }
 
-    // 只在有值時才傳送密碼和私鑰
-    if (form.password) {
-      data.password = form.password
-    }
-    if (form.private_key) {
-      data.private_key = form.private_key
+    // 秘密只在「這台專用」時隨新增資產送出；編輯態的憑證一律走帳號表，
+    // 不從資產表單改（共用憑證的秘密改動會影響其他台，那件事屬於憑證庫）
+    if (!isEdit.value && form.credential_mode === 'dedicated') {
+      if (form.password) {
+        data.password = form.password
+      }
+      if (form.private_key) {
+        data.private_key = form.private_key
+      }
     }
     if (isEdit.value) {
       data.active = form.active
@@ -2123,6 +1624,7 @@ const handleSubmit = async () => {
     }
 
     dialogVisible.value = false
+    drawerVisible.value = false
     fetchAssetList()
     nodeTreeRef.value?.reloadTree()
     // 儲存可能引入新標籤：刷新清單供下拉/治理即時取用
@@ -2132,10 +1634,26 @@ const handleSubmit = async () => {
       // 驗證錯誤，不需要處理
       return
     }
+    // 伺服端把錯誤指到收合起來的欄位時要展開：紅字掛在看不見的欄位上，
+    // 使用者只會看到一個沒有理由的失敗
+    if (isAdvancedFieldError(error)) {
+      activeAdvancedRef()?.markServerError()
+    }
     console.error('提交失敗:', error)
   } finally {
     submitting.value = false
   }
+}
+
+// 基本資料四欄以外的驗證錯誤都當作收合區的事：欄位名對得上就照它，
+// 對不上時寧可展開（多展開一次的代價，遠小於讓人對著看不見的欄位重試）
+const BASIC_FIELDS = ['name', 'protocol', 'host', 'port']
+
+function isAdvancedFieldError(error) {
+  const status = error?.response?.status
+  if (status !== 400 && status !== 409 && status !== 422) return false
+  const field = error?.response?.data?.params?.field
+  return !field || !BASIC_FIELDS.includes(field)
 }
 
 // 處理刪除
@@ -2313,8 +1831,8 @@ const loadGlobalAccessPolicy = async () => {
     globalAccessPolicy.value = ''
   }
 }
-watch(dialogVisible, (visible) => {
-  if (visible) loadGlobalAccessPolicy()
+watch([dialogVisible, drawerVisible], ([dialogOpen, drawerOpen]) => {
+  if (dialogOpen || drawerOpen) loadGlobalAccessPolicy()
 })
 
 const inheritPolicyLabel = computed(() => {
@@ -2347,6 +1865,9 @@ async function openEditFromQuery() {
   try {
     const asset = await getAsset(id)
     handleEdit(asset)
+    // 抽屜的內容在開啟動畫之後才進 DOM，故多等一拍再捲；
+    // 找不到就不捲（非 SSH 資產本來就沒有主機金鑰區塊）
+    await nextTick()
     await nextTick()
     document.querySelector('.host-key-item')?.scrollIntoView({ block: 'center' })
   } catch (err) {
@@ -2429,54 +1950,30 @@ async function openEditFromQuery() {
   justify-content: flex-end;
 }
 
-.host-key-box {
-  width: 100%;
-  font-size: 12px;
-}
 
-.host-key-line {
+/* 抽屜標題列：資產名與連線位址並列，關掉抽屜前都看得到自己在改哪一台 */
+.drawer-title {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: var(--ot-space-sm);
 }
 
-.host-key-algo {
-  color: var(--el-text-color-secondary);
+.drawer-title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
 }
 
-.host-key-fp {
-  word-break: break-all;
-  background: var(--el-fill-color);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-
-.host-key-meta,
-.host-key-empty {
-  color: var(--el-text-color-secondary);
+.drawer-subtitle {
+  font-family: var(--ot-font-mono, monospace);
   font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .apply-hint {
   margin-bottom: var(--ot-space-md);
 }
 
-/* 表單欄位下方的說明句：兩句都是判讀該欄位所必需，
-   不塞進 placeholder（placeholder 一輸入就消失） */
-.form-tip {
-  width: 100%;
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--el-text-color-secondary);
-}
-
-/* 與數字輸入或開關同列的短說明 */
-.form-tip--inline {
-  width: auto;
-  margin-top: 0;
-  margin-left: 10px;
-}
 
 .break-glass-entry {
   text-align: center;
@@ -2598,23 +2095,7 @@ async function openEditFromQuery() {
   min-width: 180px;
 }
 
-.tag-form-select {
-  width: 100%;
-}
 
-.asset-accounts-entry {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.asset-accounts-entry__hint {
-  flex: 1;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.5;
-}
 
 </style>
 

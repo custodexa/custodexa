@@ -65,6 +65,12 @@ const (
 	ActionOffsiteProfile AuditAction = "offsite_profile"
 	// ActionOffsiteCredRevoke 管理員撤銷某世代的物件儲存憑證
 	ActionOffsiteCredRevoke AuditAction = "offsite_cred_revoke"
+
+	// ActionMigration 存量資料轉換留下的證據列（主體恆為系統）。
+	// 轉換本身沒有 HTTP 請求，中介層蓋不到，故由轉換自己於同一交易內寫入；
+	// Details 只記機器可讀的原因與受影響的實體識別，不含任何秘密材料。9 字元，
+	// 在 varchar(20) 內
+	ActionMigration AuditAction = "migration"
 )
 
 // AuditResource 審計資源類型
@@ -218,6 +224,12 @@ const (
 	// 管理者限定端點 `GET /instance-guard` 的讀取列。無 `:id`，resource_id 恆 nil。
 	// 值長 14（varchar(20) 內）
 	ResourceInstanceGuard AuditResource = "instance_guard"
+
+	// ResourceCredential 帳號憑證（登入秘密的本體與其掛載關係）。
+	// `resource_id` 指向**憑證列 id**，不是資產或帳號 id——同一筆憑證可掛在多台
+	// 資產上，用資產 id 表達會使「動到的是哪一組秘密」在拆分或改綁之後無從回溯。
+	// 值長 10（varchar(20) 內）
+	ResourceCredential AuditResource = "credential"
 
 	// ResourceUnclassified 分類器的**兜底哨兵**。
 	//

@@ -32,10 +32,17 @@ import (
 //
 // **燒盡制**：每一列都是「baseline 為某個 model 的表多建了一欄」的宣告，
 // 新增一列必須說明那一欄由誰使用。空著才是正常狀態。
-// 目前為空：唯一曾登記的 `assets.db_ca_cert`（壓縮前既有的死欄，`model.Asset.DBCACert`
+// 曾登記的 `assets.db_ca_cert`（壓縮前既有的死欄，`model.Asset.DBCACert`
 // 的 GORM 欄名其實是 `dbca_cert`）已隨刻意變更清單第 2 項自 baseline 移除，
 // 例外條目同步刪除以免留下殭屍豁免。
-var baselineColumnExceptions = map[string]string{}
+var baselineColumnExceptions = map[string]string{
+	"asset_accounts.credential_group": "唯一讀者是解封後的存量轉換" +
+		"（internal/database/credential_secret_conversion.go 的既有隱性共用關係合併），" +
+		"零寫入者，故 model 不再宣告它。**不能由段 1 的收縮 migration 卸下**：" +
+		"解封後佇列必然晚於段 1 的全部 migration，先卸欄會讓該轉換在「欄位不存在」上失敗，" +
+		"而合併與密文欄位身分改綁同交易——一起回滾的後果是搬移進來的密文永遠停在舊身分上、" +
+		"取密路徑全面失敗。",
+}
 
 var createTableRe = regexp.MustCompile(`(?s)^CREATE TABLE (\w+) \((.*)\)$`)
 
@@ -46,6 +53,18 @@ var createTableRe = regexp.MustCompile(`(?s)^CREATE TABLE (\w+) \((.*)\)$`)
 // migration 也加了」被誤判為漂移，而「model 加了欄、增量 migration 忘了加」則
 // 與前者不可分辨。射程只擴不縮；ALTER 條數另設下界防「正則失效即靜默零命中」。
 var alterAddColumnRe = regexp.MustCompile(`^ALTER TABLE (\w+) ADD COLUMN (\w+) `)
+
+// alterDropColumnRe 增量 migration 卸下既有欄位的語句。
+//
+// 解析到的欄位自該表的欄位集合移除：收縮階段的 migration 一旦刪欄，只認
+// CREATE TABLE 與 ADD COLUMN 會讓「欄位已卸下、model 也已移除」被誤判為
+// 「baseline 多建了一欄」。
+//
+// **本層不另設條數下界**（與 ADD COLUMN 不同）：DROP 的解析失效是**大聲的**
+// ——沒解析到就代表該欄留在集合裡而 model 已無對應欄位，反向比對立刻報「沒有
+// 對應的 model 欄位」；反之若誤刪一個 model 仍宣告的欄位，正向比對報「baseline
+// 沒有這一欄」。兩個方向都會紅，不存在靜默放行的形態。
+var alterDropColumnRe = regexp.MustCompile(`^ALTER TABLE (\w+) DROP COLUMN (\w+)$`)
 
 // minAlterAddColumnStatements 增量 DDL 內 ADD COLUMN 語句的下界（現況 1）。
 // 正則壞掉時本層會退化成「只看 CREATE TABLE」，而那正是加欄漂移的盲區。
@@ -107,6 +126,24 @@ func baselineTableColumns(t *testing.T) map[string]map[string]bool {
 	if altered < minAlterAddColumnStatements {
 		t.Fatalf("增量 DDL 只解析到 %d 條 ADD COLUMN（下界 %d）：ALTER 解析已失真，加欄漂移將脫離射程",
 			altered, minAlterAddColumnStatements)
+	}
+	// 第三遍卸下 DROP COLUMN：收縮 migration 必然晚於建表與加欄，
+	// 三遍掃描使語句順序不影響結果
+	for _, stmt := range stmts {
+		s := strings.Join(strings.Fields(stmt), " ")
+		m := alterDropColumnRe.FindStringSubmatch(s)
+		if m == nil {
+			continue
+		}
+		table, col := m[1], m[2]
+		cols, ok := out[table]
+		if !ok {
+			t.Fatalf("增量 DDL 自不存在於 CREATE TABLE 集合的表 %s 卸下欄位 %s：表名打錯", table, col)
+		}
+		if !cols[col] {
+			t.Fatalf("增量 DDL 自 %s 卸下不存在的欄位 %s：無條件 DDL 之下該語句必然執行失敗", table, col)
+		}
+		delete(cols, col)
 	}
 	return out
 }

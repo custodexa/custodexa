@@ -135,8 +135,17 @@ func TestCreate(t *testing.T) {
 	// AfterCreate hook 會在新的 session 中插入 audit log
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// 資產多帳號階段 2：憑證與 username 同交易寫入 default 帳號，
-	// 並留帳號建立審計
+	// 憑證庫化：同交易先建專用憑證與其 v1 密文版本、把憑證的現行版本指向 v1，
+	// 再寫 default 掛載（掛載列帶 credential_id 與就位版本），最後留帳號建立審計。
+	// 次序寫死在期望裡——掛載列的 credential_id 是 NOT NULL，順序顛倒即寫不進去
+	mock.ExpectQuery(`INSERT INTO "credentials"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT COALESCE\(MAX\(version_no\), 0\) FROM "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0))
+	mock.ExpectQuery(`INSERT INTO "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectExec(`UPDATE "credentials" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -182,7 +191,15 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// default 帳號 INSERT ＋ 帳號審計
+	// 專用憑證＋v1 密文版本＋現行版本回填，再 default 掛載 INSERT ＋ 帳號審計
+	mock.ExpectQuery(`INSERT INTO "credentials"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT COALESCE\(MAX\(version_no\), 0\) FROM "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0))
+	mock.ExpectQuery(`INSERT INTO "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectExec(`UPDATE "credentials" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -226,7 +243,15 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// default 帳號 INSERT ＋ 帳號審計
+	// 專用憑證＋v1 密文版本＋現行版本回填，再 default 掛載 INSERT ＋ 帳號審計
+	mock.ExpectQuery(`INSERT INTO "credentials"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT COALESCE\(MAX\(version_no\), 0\) FROM "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(0))
+	mock.ExpectQuery(`INSERT INTO "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectExec(`UPDATE "credentials" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`INSERT INTO "asset_accounts"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -361,11 +386,12 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 	key := make([]byte, 32)
 	service, _ := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 
-	// 先加密密碼和私鑰（密文須以落點欄位的列身分綁定 AAD，否則讀端解不開）
+	// 先加密密碼和私鑰（密文須以落點欄位的列身分綁定 AAD，否則讀端解不開）。
+	// 落點自憑證庫化之後是憑證的密文版本列，AAD 身分隨之改為該表該欄
 	password := "myPassword123"
 	privateKey := "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----"
-	encryptedPassword, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefAccountPassword, password)
-	encryptedPrivateKey, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefAccountPrivateKey, privateKey)
+	encryptedPassword, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefCredentialVersionPassword, password)
+	encryptedPrivateKey, _ := service.crypto.EncryptFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, privateKey)
 
 	// Mock 查詢：資產本體不再帶憑證（內嵌欄位凍結）
 	rows := sqlmock.NewRows([]string{"id", "name", "username"}).
@@ -377,10 +403,18 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
 
-	// 預設帳號：憑證與 username 的權威來源
+	// 預設掛載：只帶所引用的憑證與**就位版本**，本身零密文欄
 	mock.ExpectQuery(`SELECT .+ FROM "asset_accounts"`).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "username", "password_enc", "private_key_enc", "is_default"}).
-			AddRow(7, 1, "svc-account", encryptedPassword, encryptedPrivateKey, true))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "username", "credential_id", "effective_version_id", "is_default"}).
+			AddRow(7, 1, "svc-account", 3, 11, true))
+	// 就位版本列：密文的唯一落點
+	mock.ExpectQuery(`SELECT .+ FROM "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "credential_id", "version_no", "secret_type", "password_enc", "private_key_enc"}).
+			AddRow(11, 3, 1, "password", encryptedPassword, encryptedPrivateKey))
+	// 憑證本體：帳號名的真相
+	mock.ExpectQuery(`SELECT .+ FROM "credentials"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "scope", "username", "secret_type"}).
+			AddRow(3, "dedicated", "svc-account", "password"))
 
 	creds, err := service.GetWithCredentialsDefault(1)
 	assert.NoError(t, err)
@@ -495,13 +529,29 @@ func TestUpdate_PasswordReEncrypted(t *testing.T) {
 	// AfterUpdate hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
-	// 透明轉寫：鎖資產列（與帳號 CRUD 同一互斥點）→ 查 default 帳號 →
-	// 更新密文 → 帳號審計
+	// 透明轉寫：鎖資產列（與帳號 CRUD 同一互斥點）→ 查 default 掛載 →
+	// 鎖該掛載所引用的憑證 → 追加密文版本 → 憑證現行版本回填 →
+	// 掛載就位版本更新 → 帳號審計
 	mock.ExpectQuery(`SELECT id FROM assets WHERE id = .+ FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`SELECT .+ FROM "asset_accounts"`).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "username", "is_default"}).
-			AddRow(5, 1, "", true))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "username", "credential_id", "is_default"}).
+			AddRow(5, 1, "", 9, true))
+	mock.ExpectQuery(`SELECT id FROM credentials WHERE id = .+ FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectQuery(`SELECT .+ FROM "credentials"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "scope", "username", "secret_type"}).
+			AddRow(9, "dedicated", "", "password"))
+	mock.ExpectQuery(`SELECT COALESCE\(MAX\(version_no\), 0\) FROM "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"coalesce"}).AddRow(1))
+	mock.ExpectQuery(`INSERT INTO "credential_secret_versions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(12))
+	mock.ExpectExec(`UPDATE "credentials" SET`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// 操作者宣告的密文對該憑證的**全部掛載**一併就位（共用憑證掛 N 台時，
+	// 只改其中一台會讓其餘各台停在舊版而畫面上看不出差別）
+	mock.ExpectExec(`UPDATE "asset_accounts" SET`).
+		WillReturnResult(sqlmock.NewResult(5, 1))
 	mock.ExpectExec(`UPDATE "asset_accounts" SET`).
 		WillReturnResult(sqlmock.NewResult(5, 1))
 	mock.ExpectQuery(`INSERT INTO "audit_logs"`).
@@ -545,6 +595,12 @@ func TestDelete(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec(`DELETE FROM "asset_nodes"`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	// 掛載與其專用憑證同交易回收：先取資產列鎖（帳號集合的互斥點），再查掛載。
+	// 本例零掛載，故不下移除掛載的語句
+	mock.ExpectQuery(`SELECT id FROM assets WHERE id = .+ FOR UPDATE`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT .+ FROM "asset_accounts"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "credential_id"}))
 	mock.ExpectExec(`UPDATE "assets" SET "deleted_at"`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	// AfterDelete hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）

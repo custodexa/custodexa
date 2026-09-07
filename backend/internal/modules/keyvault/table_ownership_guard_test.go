@@ -54,8 +54,6 @@ type crossModuleWriteException struct {
 var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 	{Table: "assets", OwnerModule: "asset",
 		Reason: "資產密碼／私鑰／SFTP 密碼三欄的信封重加密。DEK 輪替與 AAD 遷移必須橫跨全部密文欄，改呼叫 asset 的方法會產生 keyvault→asset 出向依賴，摧毀 keyvault 零出向前提。"},
-	{Table: "asset_accounts", OwnerModule: "asset",
-		Reason: "帳號密碼／私鑰兩欄。同 assets。"},
 	{Table: "users", OwnerModule: "identity",
 		Reason: "MFA TOTP secret 欄。identity 只擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
 	{Table: "oidc_providers", OwnerModule: "identity",
@@ -66,6 +64,8 @@ var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
 		Reason: "通知通道的 url／secret 兩欄。audit 側只讀寫明文語義，密文由 keyvault 的 codec 產生與重包。"},
 	{Table: "change_secret_candidates", OwnerModule: "asset",
 		Reason: "改密未驗證候選憑證的 password_enc／private_key_enc 兩欄。同 asset_accounts：asset 擁有語義，密文格式與金鑰版本由 keyvault 單方掌握。"},
+	{Table: "credential_secret_versions", OwnerModule: "asset",
+		Reason: "憑證密文版本的 password_enc／private_key_enc 兩欄，登入秘密的現行落點。同 asset_accounts：asset 擁有語義（版本不可變、就位指標），密文格式與金鑰版本由 keyvault 單方掌握。**漏掉的代價比帳號表更大**：一筆憑證可掛在多台主機上，該欄不被重加密或被誤判零引用時，失去的是全部掛載主機的登入能力。"},
 	{Table: "export_signing_keys", OwnerModule: "keyvault",
 		Reason: "**自有表**（ExportSigningService 的 Ed25519 私鑰），不構成跨模組寫入；列此以維持與登記表的雙向完備性。"},
 	{Table: "checkpoint_signing_keys", OwnerModule: "keyvault",
@@ -112,10 +112,11 @@ func TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry(t *testing.T) {
 				"keyvault 會就地 UPDATE 該表而無人審過", table)
 		}
 	}
-	// 他模組表的下界：現況 9 張（assets／asset_accounts／change_secret_candidates／
-	// users／oidc_providers／ldap_directories／notification_channels／
-	// clipboard_events／offsite_profiles），
+	// 他模組表的下界：現況 9 張（assets／change_secret_candidates／
+	// credential_secret_versions／users／oidc_providers／ldap_directories／
+	// notification_channels／clipboard_events／offsite_profiles），
 	// export_signing_keys 與 checkpoint_signing_keys 為自有表。
+	// asset_accounts 已隨其兩個密文欄卸下而自登記表與本白名單一併除名。
 	foreign := 0
 	for _, e := range keyvaultCrossModuleWriteAllowlist {
 		if e.OwnerModule != "keyvault" {

@@ -56,14 +56,20 @@ type CandidateInput struct {
 	AccountID       uint
 	AccountUsername string
 	PlanID          uint
-	// BatchID 來源批次（0＝來自計劃）；SharedGroup 轉正後要歸入的憑證群組（空＝脫組）
+	// BatchID 來源批次（0＝來自計劃）
 	BatchID           uint
-	SharedGroup       string
 	SecretType        string
 	Password          string
 	PrivateKey        string
 	PublicKey         string
 	PreviousPublicKey string
+	// CredentialID／TargetVersionID 建立當下該掛載引用的憑證與轉正後要就位的版本。
+	// 0＝呼叫端尚未解析到憑證（既有的計劃與批次路徑）；輪替路徑一律帶上，
+	// 使補跑時「這把秘密是哪一輪、要就位成哪一版」不必回頭猜
+	CredentialID uint
+	// CredentialName 憑證名稱快照（同 record 的理由：憑證可能改名或被回收）
+	CredentialName  string
+	TargetVersionID uint
 }
 
 // CandidateSecret 解密後的候選秘密（僅 runner 與重試排程使用，不出服務層邊界）
@@ -77,13 +83,25 @@ type CandidateSecret struct {
 //
 // AccountID 唯一鍵衝突回 ErrCandidateExists——同一帳號不疊加第二個未知狀態。
 func (s *ChangeSecretCandidateService) Create(ctx context.Context, in CandidateInput) (*model.ChangeSecretCandidate, error) {
+	return s.CreateInTx(ctx, s.db, in)
+}
+
+// CreateInTx 於呼叫端的交易內建立候選列。
+//
+// 起始交易要同時鎖住憑證、快照成員並為每台備妥候選；候選若落在交易外，
+// 交易回滾後會留下一批沒有主人的候選，而它們會擋住該掛載後續全部的改密。
+func (s *ChangeSecretCandidateService) CreateInTx(ctx context.Context, tx *gorm.DB,
+	in CandidateInput) (*model.ChangeSecretCandidate, error) {
+
 	cand := &model.ChangeSecretCandidate{
 		AssetID:           in.AssetID,
 		AccountID:         in.AccountID,
 		AccountUsername:   in.AccountUsername,
 		PlanID:            in.PlanID,
 		BatchID:           in.BatchID,
-		SharedGroup:       in.SharedGroup,
+		CredentialID:      in.CredentialID,
+		CredentialName:    in.CredentialName,
+		TargetVersionID:   in.TargetVersionID,
 		SecretType:        in.SecretType,
 		PublicKey:         in.PublicKey,
 		PreviousPublicKey: in.PreviousPublicKey,
@@ -103,7 +121,7 @@ func (s *ChangeSecretCandidateService) Create(ctx context.Context, in CandidateI
 		}
 		cand.PrivateKeyEnc = enc
 	}
-	if err := s.db.Create(cand).Error; err != nil {
+	if err := tx.Create(cand).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || dberr.IsUniqueViolation(err) {
 			return nil, ErrCandidateExists
 		}
@@ -192,6 +210,12 @@ func (s *ChangeSecretCandidateService) DueForRetry(limit int) ([]model.ChangeSec
 // **順序是「先提交、後刪列」**：提交後刪列失敗只會讓重試再提交一次同一個值
 // （冪等、無害）；反過來先刪列則在提交失敗時失去唯一副本，帳號永久鎖死。
 func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.ChangeSecretCandidate) error {
+	// 候選自帶憑證與目標版本＝那組秘密的落點已經先建好了（整批同一組的具名共用憑證）：
+	// 此時要做的是把掛載改綁過去並設就位版本，而不是在原憑證上再開一版——
+	// 後者會把同一組密文複製到多筆專用憑證，共用關係在憑證庫上就看不見了
+	if cand.CredentialID != 0 && cand.TargetVersionID != 0 {
+		return s.promoteToCredential(ctx, cand)
+	}
 	secret, err := s.Secret(ctx, cand)
 	if err != nil {
 		return err
@@ -212,6 +236,99 @@ func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.
 		return err
 	}
 	return s.db.Delete(&model.ChangeSecretCandidate{}, cand.ID).Error
+}
+
+// promoteToCredential 把掛載改綁到候選所帶的憑證並設就位版本（同一交易內刪候選）。
+//
+// **改綁與就位必須同交易**：掛載的就位版本一定要屬於它引用的憑證，兩步分開做
+// 會在中間留下一個「指向別筆憑證的版本」的窗口，而取密會照著它去解一組不屬於
+// 這台的秘密。舊憑證若因此成為零掛載的專用憑證，同交易回收。
+func (s *ChangeSecretCandidateService) promoteToCredential(ctx context.Context,
+	cand *model.ChangeSecretCandidate) error {
+
+	userID, operator := model.UserFromContext(ctx)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockAssetForAccountMutation(tx, cand.AssetID); err != nil {
+			return err
+		}
+		account, err := resolveAssetAccount(tx, cand.AssetID, cand.AccountID)
+		if err != nil {
+			return err
+		}
+		// 釘住帳號名：執行期間改名即代表這一列已是另一個系統身分，不得把新秘密算到它頭上
+		if account == nil || account.Username != cand.AccountUsername {
+			return ErrAssetAccountNotFound
+		}
+		// 舊憑證與目標憑證一併依識別升冪取鎖：改綁同時動兩列，兩條方向相反的
+		// 改綁若各按自己的順序取，會各持對方要的那一列
+		// （rebindBindingToCredential 稍後重取的舊憑證列鎖已在此持有）
+		locked, err := lockCredentialRowsOrdered(tx, account.CredentialID, cand.CredentialID)
+		if err != nil {
+			return err
+		}
+		target := locked[cand.CredentialID]
+		if err := assertNoActiveRotation(target); err != nil {
+			return err
+		}
+		if account.CredentialID == target.ID {
+			if err := setBindingEffectiveVersion(tx, account, cand.TargetVersionID); err != nil {
+				return err
+			}
+		} else if err := rebindBindingToCredential(tx, account, target, cand); err != nil {
+			return err
+		}
+		if err := writeCredentialAudit(s.auditTx, tx, credentialAudit{
+			CredentialID: target.ID,
+			Operation:    credentialOpRebind,
+			Scope:        target.Scope,
+			Fields:       []string{"credential_id", "effective_version_id"},
+			AssetID:      account.AssetID,
+			AccountID:    account.ID,
+		}, userID, operator); err != nil {
+			return err
+		}
+		return tx.Delete(&model.ChangeSecretCandidate{}, cand.ID).Error
+	})
+}
+
+// rebindBindingToCredential 把掛載自舊憑證改綁到目標憑證並設就位版本。
+func rebindBindingToCredential(tx *gorm.DB, account *model.AssetAccount,
+	target *model.Credential, cand *model.ChangeSecretCandidate) error {
+
+	oldCred, err := lockCredentialRow(tx, account.CredentialID)
+	if err != nil {
+		return err
+	}
+	if err := assertNoActiveRotation(oldCred); err != nil {
+		return err
+	}
+	res := tx.Model(&model.AssetAccount{}).
+		Where("id = ? AND credential_id = ? AND username = ?",
+			account.ID, oldCred.ID, cand.AccountUsername).
+		Updates(map[string]any{
+			"credential_id":        target.ID,
+			"username":             target.Username,
+			"auth_method":          target.AuthMethod,
+			"effective_version_id": cand.TargetVersionID,
+		})
+	if res.Error != nil {
+		return accountUniqueViolation(res.Error, "改綁掛載憑證失敗")
+	}
+	// 零列＝掛載於本交易可見範圍內被移除、改名或已被改綁；絕不記成功
+	if res.RowsAffected == 0 {
+		return ErrAssetAccountNotFound
+	}
+	versionID := cand.TargetVersionID
+	account.CredentialID = target.ID
+	account.Username = target.Username
+	account.AuthMethod = target.AuthMethod
+	account.EffectiveVersionID = &versionID
+	if account.IsDefault {
+		if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
+			return err
+		}
+	}
+	return deleteDedicatedIfOrphaned(tx, oldCred)
 }
 
 // Discard 刪除候選列（遠端確定未變更時由 runner 呼叫；無審計——那條路徑
@@ -284,12 +401,15 @@ func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, oper
 		if res.RowsAffected == 0 {
 			return ErrCandidateNotFound
 		}
+		credID, credScope := credentialAuditRef(tx, cand.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   cand.AssetID,
-			AccountID: cand.AccountID,
-			Username:  cand.AccountUsername,
-			Operation: model.AccountOpDiscardCandidate,
-			Fields:    []string{"change_secret_candidate"},
+			AssetID:         cand.AssetID,
+			AccountID:       cand.AccountID,
+			Username:        cand.AccountUsername,
+			Operation:       model.AccountOpDiscardCandidate,
+			Fields:          []string{"change_secret_candidate"},
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
 	})
 }

@@ -72,7 +72,7 @@ func setupConnectDenyEnv(t *testing.T, protocol string) *connectDenyEnv {
 	// 單連線：ff51836 的「單獨跑綠、整包跑紅」防護
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetAccount{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
+		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

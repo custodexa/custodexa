@@ -108,7 +108,14 @@ var knownAccountabilityVoids = map[string]string{
 	"api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",
 	"api.(*AuthHandler).MFAVerify":        "code 為一次性碼、pending_token 為持有型憑證",
 	"api.(*UserHandler).ChangePassword":   "password 為密碼本體；改密事實由路徑與 resource_id 課責",
-	"api.(*OIDCHandler).Exchange":         "browser_secret／ticket 為一次性兌換憑證",
+	"api.(*CredentialHandler).RebindAccount": "credential_id 命中 G3 機密語義片段（credential）故不放行，" +
+		"且 G3 的過度攔截是刻意的安全側，不為個案開名稱例外；" +
+		"「哪一台的哪一個掛載改用了哪一筆憑證」由憑證服務自寫的專屬審計列課責" +
+		"（resource=credential、operation=rebind，另帶受影響資產識別）",
+	"api.(*CredentialHandler).SetSecret": "password／private_key 皆為秘密本體（放行任一即外洩）；" +
+		"「誰在什麼時候替哪一筆憑證補登了新秘密」由憑證服務自寫的專屬審計列課責" +
+		"（resource=credential、operation=set_secret、fields 只記欄位名不記材料）",
+	"api.(*OIDCHandler).Exchange": "browser_secret／ticket 為一次性兌換憑證",
 	// Login 的隱藏欄位只有 password（判準 1 永不放行），可見的 username 屬識別角色。
 	// 登入的課責不靠 request_body：成功／失敗、來源位址（已改為不可偽造）、
 	// MFA 狀態都由登入專屬審計列承擔

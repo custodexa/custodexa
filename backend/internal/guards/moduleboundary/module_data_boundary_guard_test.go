@@ -866,6 +866,17 @@ func TestTableOwnerRegistryMatchesSchema(t *testing.T) {
 		t.Fatalf("tableOwner 只登記 %d 張表（現況 45）：登記表縮水後未登記的表會直接失去守衛",
 			len(tableOwner))
 	}
+	// [現實→登記] 反向：每張 model 表都必須有所有者。只驗「登記→現實」時，
+	// 拿掉一筆登記不會轉紅——它的失效方向是靜默的，唯有反向比對才守得住。
+	for _, tb := range modelTables {
+		if _, ok := tableOwner[tb]; ok {
+			continue
+		}
+		if infraTables[tb] || nonModelTables[tb] || nonTableModelStructs[tb] {
+			continue
+		}
+		t.Errorf("[現實→登記] model 表 %q 未在 tableOwner 登記所屬模組：跨模組判定對它整個失效", tb)
+	}
 }
 
 // TestDataBoundaryVerdictMutation 判定側的突變自檢：三個方向各自要抓得到。

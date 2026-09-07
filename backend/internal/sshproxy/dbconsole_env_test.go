@@ -55,7 +55,7 @@ func setupConsoleEnv(t *testing.T, protocol string) *consoleEnv {
 	// 單連線：`:memory:` 配連線池時每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetAccount{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
+		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{},
 		&model.SessionCommand{}, &model.AlertRule{}); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -120,9 +120,19 @@ func setupConsoleEnv(t *testing.T, protocol string) *consoleEnv {
 // seedAccount 補一個預設帳號（G-S11 的零帳號 fail-close 要它）
 func (e *consoleEnv) seedAccount(t *testing.T) {
 	t.Helper()
+	// 掛載列自憑證庫化之後必引用一筆憑證（credential_id NOT NULL），
+	// 故先建憑證再建掛載。本組測試驗的是閘序，秘密留空即可
+	cred := model.Credential{
+		Scope: model.CredentialScopeDedicated, Username: "app",
+		SecretType: model.ChangeSecretTypePassword, AuthMethod: "sql",
+		ProtocolFamily: model.ProtocolFamilyDatabase,
+	}
+	if err := e.db.Create(&cred).Error; err != nil {
+		t.Fatalf("seed credential: %v", err)
+	}
 	if err := e.db.Exec(
-		`INSERT INTO asset_accounts (asset_id, username, password_enc, is_default, auth_method, created_at, updated_at)
-		 VALUES (1, 'app', '', 1, 'sql', ?, ?)`, time.Now(), time.Now()).Error; err != nil {
+		`INSERT INTO asset_accounts (asset_id, username, credential_id, is_default, auth_method, created_at, updated_at)
+		 VALUES (1, 'app', ?, 1, 'sql', ?, ?)`, cred.ID, time.Now(), time.Now()).Error; err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
 }

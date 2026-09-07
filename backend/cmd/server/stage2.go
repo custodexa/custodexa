@@ -358,6 +358,15 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 回填需要 codec 故走本佇列；全新庫由 baseline 直建終態形狀，此項為 no-op
 	keyvault.RegisterPostUnsealBuiltin(session.PostUnsealMigrationClipboardContent,
 		session.RegisterClipboardContentMigration)
+	// 憑證密文轉換：段 1 原樣搬進密文版本表的值仍帶帳號表的欄位身分，需以 codec
+	// 逐筆改綁；既有隱性共用關係能否合併也只能靠解密後比對明文。兩者同交易，
+	// 故一併走本佇列；結構與不需金鑰的存量搬移留在段 1 的 20260906_credential_library
+	keyvault.RegisterPostUnsealBuiltin(database.PostUnsealMigrationCredentialSecretConversion, func() {
+		keyvault.RegisterPostUnsealMigration(keyvault.PostUnsealMigration{
+			Name: database.PostUnsealMigrationCredentialSecretConversion,
+			Run:  database.RunCredentialSecretConversion,
+		})
+	})
 	keyvault.RunPostUnsealMigrations(database.DB, keyManager)
 	mark("postUnsealMigrations")
 
@@ -683,8 +692,27 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	if err != nil {
 		return fail("changeSecretCandidateService", err)
 	}
+	// 帳號憑證庫：管理面服務與輪替引擎。
+	//
+	// **codec 三處同一個實例**（assetService／credentialService／credentialRotations
+	// 都吃 keyManager）：兩份 codec 會讓待生效版本寫得進去卻讀不回來，而症狀出現的
+	// 時機是改密收斂之後、那台機器下一次連線的時候。
+	//
+	// authz 注入使掛載、卸載、範圍轉換、刪除與發起改密逐台驗操作者對受影響資產的
+	// 權限——這些動作的射程是憑證的全部掛載，只驗其中一台等於讓權限最寬的那一台
+	// 替其餘各台決定。輪替引擎的 authz 是**建構期必填的位置參數**：可選欄位會留下
+	// 一個「忘記注入就退回無驗權」的開關。
+	credentialService := asset.NewCredentialService(assetService, keyManager, auditTxSink).
+		WithAuthorization(authorizationService)
+	credentialRotations := asset.NewCredentialRotationService(
+		database.DB, assetService, changeSecretCandidates, hostKeyService,
+		keyManager, auditTxSink, authorizationService)
+
+	// 改密執行器接上輪替引擎：**不接的後果是功能缺一角而非壞掉**——批次
+	// per_target 對共用憑證成員一律記 skipped，計劃的憑證目標完全不執行
 	changeSecretRunner := asset.NewChangeSecretRunner(
-		database.DB, assetService, changeSecretCandidates, hostKeyService, alertNotifier)
+		database.DB, assetService, changeSecretCandidates, hostKeyService, alertNotifier).
+		WithRotationService(credentialRotations)
 	changeSecretScheduler := scheduler.NewChangeSecretScheduler(changeSecretPlanService, changeSecretRunner)
 	if err := seal.CheckCancelStep(ctx, "changeSecretScheduler.Start"); err != nil {
 		return fail("changeSecretScheduler.Start", err)
@@ -699,8 +727,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 
 	// 未驗證候選憑證的重試排程。與改密排程分立——
 	// 改密是使用者定義的 cron，重試是系統自身的可靠性機制，兩者的節奏與失效語義不同
+	//
+	// **輪替引擎在此是硬前提**：不接的話，輪替建立的候選到期時歸屬判準仍會擋下
+	// 單帳號轉正（fail-close，資料不會壞），但成員永遠不會被推進——停在
+	// 「已下達、尚未驗證」的機器就此無人管，而畫面上看不出任何異常
 	changeSecretRetryRunner := asset.NewChangeSecretRetryRunner(
-		database.DB, changeSecretCandidates, assetService, hostKeyService, alertNotifier)
+		database.DB, changeSecretCandidates, assetService, hostKeyService, alertNotifier).
+		WithRotationService(credentialRotations)
 	changeSecretRetryScheduler := scheduler.NewChangeSecretRetryScheduler(changeSecretRetryRunner)
 	if err := seal.CheckCancelStep(ctx, "changeSecretRetryScheduler.Start"); err != nil {
 		return fail("changeSecretRetryScheduler.Start", err)
@@ -719,7 +752,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 存取政策閘——無條件注入，不掛功能開關
 	// sources 為 policy 自宣告的窄介面（拆環）：authz 的
 	// AssetAuthorizationService 實作，policy 不再持有 authz 的 repository
-	// 資料傳輸有效能力解析（data-transfer-control 第 2 組）：SFTP／K8s 端點閘、
+	// 資料傳輸有效能力解析：SFTP／K8s 端點閘、
 	// guacd 連線參數與 FileTap 逐次判定共用同一實例——兩套解析遲早分岔，
 	// 而分岔的那一側就是越權面
 	dataTransferService := policy.NewDataTransferService(policyService)
@@ -848,6 +881,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		changeSecretRetryRunner:    changeSecretRetryRunner,
 		changeSecretScheduler:      changeSecretScheduler,
 		changeSecretBatches:        changeSecretBatchService,
+		credentialService:          credentialService,
+		credentialRotations:        credentialRotations,
 		sourceIPBaseline:           sourceIPBaseline,
 		auditExportService:         auditExportService,
 		auditExportJobs:            auditExportJobService,
@@ -1376,7 +1411,7 @@ type routeServices struct {
 	hostKeyService             *asset.HostKeyService
 	syslogForwarder            *audit.SyslogForwarder
 	auditIntegrity             *audit.AuditIntegrityService
-	checkpointVerifier         *audit.CheckpointVerifier // 檢查點驗證服務（第 8 組）
+	checkpointVerifier         *audit.CheckpointVerifier // 檢查點驗證服務
 	// chainVerifyStatus 兩層自動驗證的營運狀態來源（與排程器同一實例）
 	chainVerifyStatus       *audit.ChainVerifyService
 	checkpointSigning       *keyvault.CheckpointSigningService
@@ -1390,6 +1425,9 @@ type routeServices struct {
 	changeSecretRetryRunner *asset.ChangeSecretRetryRunner
 	changeSecretScheduler   *scheduler.ChangeSecretScheduler
 	changeSecretBatches     *asset.ChangeSecretBatchService
+	// 帳號憑證庫：管理面與輪替引擎（codec 與 assetService 同一實例）
+	credentialService   *asset.CredentialService
+	credentialRotations *asset.CredentialRotationService
 	// auditExportService／auditExportJobs 段 2 建構（與打包 worker 共用實例），
 	// buildRouteDeps 只組 handler
 	auditExportService *audit.AuditExportService
@@ -1549,6 +1587,12 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	changeSecretHandler := api.NewChangeSecretHandler(s.changeSecretPlanService, s.changeSecretRunner,
 		s.changeSecretCandidates, s.changeSecretRetryRunner, s.changeSecretBatches, s.changeSecretScheduler)
 
+	// 帳號憑證庫（admin ＋ credential:manage）：服務層於段 2 建構並注入 authz 與
+	// codec，handler 只是轉接層。輪替狀態的判定沿用報告建構者——列表左欄與證據
+	// 報告若各有一套嚴重度口徑，同一組秘密會在兩個畫面上顯示成兩種合規狀態
+	credentialHandler := api.NewCredentialHandler(s.credentialService, s.credentialRotations,
+		s.rotationReportBuilder)
+
 	rotationReportHandler := api.NewRotationReportHandler(s.rotationReportBuilder,
 		s.rotationReportSchedules, s.auditService)
 
@@ -1610,6 +1654,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		clipboard:             clipboardHandler,
 		auditTimeline:         auditTimelineHandler,
 		changeSecret:          changeSecretHandler,
+		credential:            credentialHandler,
 		rotationReport:        rotationReportHandler,
 		accessRequest:         accessRequestHandler,
 		sftp:                  sftpHandler,

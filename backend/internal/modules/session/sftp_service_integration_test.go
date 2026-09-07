@@ -39,14 +39,13 @@ func newSFTPServiceForTest(t *testing.T) *SFTPService {
 	assetService, err := asset.NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
 	require.NoError(t, err)
 
-	// 密文落點為 asset_accounts.password_enc，AAD 須綁該欄位身分。
+	// 密文落點為 credential_secret_versions.password_enc，AAD 須綁該欄位身分。
 	// 原本走 `assetService.crypto`（asset 的未匯出欄），搬包後跨包取不到；
 	// 改用**同一個** codec 實例——加密結果逐位元組相同，非放寬。
-	encrypted, _ := codec.EncryptFor(context.Background(), keyvault.RefAccountPassword, "testpass123")
+	encrypted, _ := codec.EncryptFor(context.Background(), keyvault.RefCredentialVersionPassword, "testpass123")
 
-	// 每次 GetWithCredentialsDefault 查一次資產＋一次 default 帳號
-	//（階段 2：username 與憑證皆自帳號取得）；
-	// 預期足夠多次供整連串操作使用
+	// 每次 GetWithCredentialsDefault 查一次資產、一次 default 掛載、
+	// 一次該掛載的就位版本、一次憑證本體；預期足夠多次供整連串操作使用
 	for i := 0; i < 12; i++ {
 		rows := mock.NewRows([]string{"id", "name", "protocol", "host", "port", "username"}).
 			AddRow(1, "ssh-test", model.ProtocolSSH, "ssh-test", 2222, "testuser")
@@ -55,8 +54,14 @@ func newSFTPServiceForTest(t *testing.T) *SFTPService {
 		mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 			WillReturnRows(mock.NewRows([]string{"id", "asset_id", "node_id"}))
 		mock.ExpectQuery(`SELECT .+ FROM "asset_accounts"`).
-			WillReturnRows(mock.NewRows([]string{"id", "asset_id", "username", "password_enc", "is_default"}).
-				AddRow(1, 1, "testuser", encrypted, true))
+			WillReturnRows(mock.NewRows([]string{"id", "asset_id", "username", "credential_id", "effective_version_id", "is_default"}).
+				AddRow(1, 1, "testuser", 4, 8, true))
+		mock.ExpectQuery(`SELECT .+ FROM "credential_secret_versions"`).
+			WillReturnRows(mock.NewRows([]string{"id", "credential_id", "version_no", "secret_type", "password_enc"}).
+				AddRow(8, 4, 1, "password", encrypted))
+		mock.ExpectQuery(`SELECT .+ FROM "credentials"`).
+			WillReturnRows(mock.NewRows([]string{"id", "scope", "username", "secret_type"}).
+				AddRow(4, "dedicated", "testuser", "password"))
 	}
 
 	return NewSFTPService(assetService, asset.NewHostKeyService(setupHostKeyDB(t)))

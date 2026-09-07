@@ -155,3 +155,35 @@ The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the rotation evidence entry is added
 
+### Requirement: Credential library navigation entry
+
+The sidebar 資產 group SHALL contain a credential library entry (「帳號憑證庫」) that navigates to the credential
+library page. The entry SHALL be visible to admin only, and the route guard SHALL reject direct URL access for
+every other role — including auditor, whose read access to credential names is confined to the rotation evidence
+report. Credential rotation SHALL live inside that page as an action on a credential rather than as a separate
+sidebar entry.
+
+The entry label SHALL be localized in zh-TW, en-US and ja-JP, and the breadcrumb mapping table SHALL be updated
+for the new path. Adding this entry SHALL NOT change any existing route path, label or group membership; the
+change secret plans entry keeps its path and label.
+
+#### Scenario: Admin sees credential library entry
+
+- **WHEN** an admin logs in and the main layout renders
+- **THEN** the 資產 group lists the credential library entry and navigating to it succeeds
+
+#### Scenario: Auditor cannot reach the page
+
+- **WHEN** an auditor attempts to open the credential library URL directly
+- **THEN** the entry is absent from the sidebar and the route guard rejects the navigation
+
+#### Scenario: General user cannot reach the page
+
+- **WHEN** a user with only the user role attempts to open the credential library URL directly
+- **THEN** the entry is absent from the sidebar and the route guard rejects the navigation
+
+#### Scenario: Existing navigation unchanged
+
+- **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
+- **THEN** all pre-existing entries keep their group, label and path; only the credential library entry is added
+

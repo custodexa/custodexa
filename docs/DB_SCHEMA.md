@@ -1,10 +1,10 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-05（以帳號為主軸的批次改密：新表 `change_secret_batches`、`change_secret_records.batch_id`、`change_secret_candidates.batch_id`／`shared_group`，migration `20260905_account_batch_rotation`）
-> 前次更新：2026-09-03（Windows 本機帳號改密：`assets` 加改密通道六欄 `rotation_channel`／`winrm_scheme`／`winrm_port`／`winrm_tls_mode`／`winrm_ca_cert`／`rotation_ssh_port`，migration `20260904_windows_local_account_rotation`；`AssetChangeDetails` 加通道清空留痕兩欄）
+> **最後更新**：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
+> 前次更新：2026-09-05（以帳號為主軸的批次改密：新表 `change_secret_batches`、`change_secret_records.batch_id`、`change_secret_candidates.batch_id`／`shared_group`，migration `20260905_account_batch_rotation`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_windows_local_account_rotation.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -41,7 +41,11 @@
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
 | - | `user_group_members` | baseline | 用戶-群組關聯表（一人可屬多群；同上，現由 baseline 顯式建表） |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
-| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引 | 資產系統帳號（一資產多帳號、各自信封加密憑證、至多一 default） |
+| AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引＋增量 `20260906_credential_library` 加 `credential_id`／`effective_version_id` 與 `idx_asset_accounts_credential` partial unique＋增量 `20260906_credential_library_contract` 卸下兩個密文欄與群組索引 | 憑證掛載列（這台以哪筆憑證登入、就位在哪一版；本表不再持有密文，至多一 default） |
+| Credential | `credentials` | **增量 `20260906_credential_library`（非 baseline）**（`idx_credentials_shared_name` partial unique＝共用名稱唯一且軟刪後可重用） | 登入秘密的唯一真相（範圍、帳號名、秘密型別、協定族、輪替指標） |
+| CredentialSecretVersion | `credential_secret_versions` | **增量 `20260906_credential_library`（非 baseline）**（`(credential_id, version_no)` 唯一） | 憑證的**不可變**密文版本；`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
+| CredentialRotation | `credential_rotations` | **增量 `20260906_credential_library`（非 baseline）** | 一次輪替（整組或拆分）的狀態與密碼策略 |
+| CredentialRotationMember | `credential_rotation_members` | **增量 `20260906_credential_library`（非 baseline）**（`(rotation_id, account_id)` 唯一） | 輪替的逐掛載成員（七態狀態機＋四個快照欄） |
 | AssetGroup | `asset_groups` | baseline（`idx_asset_groups_sibling_name` 同層唯一，partial unique 表達式索引） | 資產節點樹（parent_id 自參照、同層唯一） |
 | AssetNode | `asset_nodes` | baseline | 資產×節點成員（多歸屬 M2M） |
 | Session | `sessions` | baseline＋增量 `20260825_evidence_offsite`（離機指標欄與兩條部分索引）、`20260826_source_ip_forensics`（`idx_sessions_client_ip_start`）、`20260826_db_query_console`（`db_console` 欄） | 連線會話（含 K8s 快照、斷線原因、帳號快照、主控台標記） |
@@ -57,10 +61,10 @@
 | ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
 | AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
-| ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄 | 改密計劃 |
-| ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引 | 改密執行記錄 |
-| ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄 | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
-| ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
+| ChangeSecretPlan | `change_secret_plans` | baseline＋增量 `20260903_rotation_evidence_report` 加 `max_age_days` 欄＋增量 `20260906_credential_library` 加 `target_kind`／`target_credential_id` | 改密計劃（目標為資產集×帳號範圍，或一筆憑證的全部掛載） |
+| ChangeSecretRecord | `change_secret_records` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與索引＋增量 `20260906_credential_library` 加三個憑證快照欄 | 改密執行記錄 |
+| ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
+| ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation`＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
@@ -89,16 +93,16 @@
 | LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique） | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **48 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **4 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
-`offsite_objects` 與 `user_source_ips`）；連同 `schema_migrations` 共 51 張。
+應用資料表共 **54 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **10 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
+`offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
+與憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **57 張**表
+（守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`：57 表／200 索引／18 條 CHECK）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
-另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **10 條 CHECK**——**上述三個數字皆只計 baseline，
-不含三條增量 migration**：`20260824_audit_export_jobs` 另建 1 表 ＋ 3 索引（含 1 條部分唯一索引）；
-`20260825_evidence_offsite` 另建 2 表 ＋ 7 索引（含 5 條部分索引，其一為部分唯一索引）
-＋ 4 欄（`sessions` 與 `audit_export_jobs` 各兩欄）＋ 2 條具名 CHECK；
-`20260826_source_ip_forensics` 另建 1 表 ＋ 2 索引 ＋ 1 欄（`users.allowed_cidrs`），並重建
-`command_alerts_kind_check`（CHECK 條數不變，值域擴充）。三者皆見「Migration 版本一覽」。
+另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
+不含十條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+全新安裝的最終形狀（57 表／200 索引／18 條 CHECK）以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
 它有雞生蛋問題——必須先於「讀取已套用版本集合」而存在，故不能由 baseline 建立
@@ -108,13 +112,13 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況只有 baseline 一條）。
+→ 套用未執行的 migration（現況共十一條：baseline 加十條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
   ——AST 掃描產品程式碼，**零 `AutoMigrate`、無例外清單**。
 - `backend/internal/database/schema_parity_test.go`（第 1 層，離線、不需資料庫、不可被 skip）
-  ——`schemaParityModels` 的 **40 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
+  ——`schemaParityModels` 的 **46 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
   自 `20260824_audit_export_jobs` 起擴為 **baseline ＋ 全部增量**（`schemaDDLStatements()`），
   故增量建的 `audit_export_jobs` 同受此守衛，不因不在 baseline 而脫離 parity 檢查。
 - `backend/internal/database/baseline_parity_pg_test.go`、`index_declaration_parity_test.go`
@@ -123,9 +127,10 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 
 **fail-close（既有資料庫拒絕啟動）**：`schema_migrations` 內若出現本版程式碼不認識的版本、
 且 baseline 尚未套用，`RunMigrations` 會**在任何寫入之前**拒絕啟動
-（`migrations.go:157`，錯誤文案在 `legacySchemaError`，`:108`）。
-判定會先扣掉 `runtimeMarkerVersions`（`:66`）——那些是模組借用本表做的執行期冪等標記
-（現況唯一成員為 LDAP env seed 的 `20260804_ldap_env_seeded`），不是 migration。
+（判定在 `migrations.go` 的 `RunMigrations`，錯誤文案在同檔的 `legacySchemaError`）。
+判定會先扣掉 `runtimeMarkerVersions`——那些是模組借用本表做的執行期冪等標記，不是 migration
+（現況三個成員：LDAP env seed 的 `20260804_ldap_env_seeded`、離機儲存 env seed 的
+`20260825_offsite_env_seeded`、憑證密文轉換的 `20260906_credential_secrets_converted`）。
 **本版不提供既有資料庫的就地升級路徑**；維運面的處置見
 [docs/ops/upgrade-sop.md](./ops/upgrade-sop.md)。
 
@@ -154,6 +159,11 @@ erDiagram
 
     assets ||--o{ sessions : connects
     assets ||--o{ asset_accounts : owns
+    credentials ||--o{ asset_accounts : bound_to
+    credentials ||--o{ credential_secret_versions : versions
+    credentials ||--o{ credential_rotations : rotates
+    credential_rotations ||--o{ credential_rotation_members : targets
+    asset_accounts ||--o{ credential_rotation_members : member_of
     assets ||--o{ asset_nodes : mounted
     asset_groups ||--o{ asset_nodes : contains
     asset_groups |o--o{ asset_groups : parent_of
@@ -235,13 +245,61 @@ erDiagram
     asset_accounts {
         uint id PK
         uint asset_id FK
+        uint credential_id FK
+        uint effective_version_id FK
         string username
-        string password_enc
-        string private_key_enc
         bool is_default
         bool privileged
         string auth_method
         string note
+    }
+
+    credentials {
+        uint id PK
+        string name UK
+        string scope
+        string username
+        string secret_type
+        string auth_method
+        string protocol_family
+        uint current_version_id FK
+        uint pending_version_id FK
+        uint active_rotation_id FK
+        int rotation_epoch
+    }
+
+    credential_secret_versions {
+        uint id PK
+        uint credential_id FK
+        int version_no
+        string secret_type
+        string password_enc
+        string private_key_enc
+        string public_key
+        string created_reason
+    }
+
+    credential_rotations {
+        uint id PK
+        uint credential_id FK
+        int epoch
+        string mode
+        uint target_version_id FK
+        string status
+        uint requested_by FK
+    }
+
+    credential_rotation_members {
+        uint id PK
+        uint rotation_id FK
+        uint account_id FK
+        uint credential_id FK
+        uint asset_id FK
+        uint from_version_id FK
+        uint target_version_id FK
+        string state
+        int attempt_count
+        string last_error
     }
 
     asset_groups {
@@ -416,6 +474,8 @@ erDiagram
         uint id PK
         string name UK
         string asset_ids
+        string target_kind
+        uint target_credential_id FK
         string cron
         bool enabled
     }
@@ -425,6 +485,8 @@ erDiagram
         uint plan_id FK
         uint batch_id FK
         uint asset_id FK
+        uint credential_id FK
+        uint target_version_id FK
         string status
         string error
         time executed_at
@@ -680,11 +742,11 @@ const (
 | `Description` | string | `size:500` | `description` | 描述 |
 | `Active` | bool | `default:true;index` | `active` | 啟用狀態 |
 | `CreatedBy` | uint | `not null;index` | `created_by` | 創建者 ID |
-| `Username` | string | `size:100` | `username` | 連線帳號 |
-| `PasswordEnc` | string | `type:text` | `-` | AES-256-GCM 加密密碼（K8s 資產以此欄存 Token） |
-| `PrivateKeyEnc` | string | `type:text` | `-` | 加密的 SSH 私鑰 |
-| `HasPassword` | bool | - | `has_password` | 是否有密碼 |
-| `HasPrivateKey` | bool | - | `has_private_key` | 是否有私鑰 |
+| `Username` | string | `size:100` | `username` | 連線帳號；顯示鏡射欄，由服務層自預設帳號同步（見第 3b 節） |
+| `PasswordEnc` | string | `type:text` | `-` | 凍結欄：自單向切換起不再寫入的歷史殘值，取密一律走憑證的密文版本（K8s Token 亦同） |
+| `PrivateKeyEnc` | string | `type:text` | `-` | 凍結欄，同上 |
+| `HasPassword` | bool | - | `has_password` | 是否有密碼；顯示鏡射欄，由服務層自預設帳號同步 |
+| `HasPrivateKey` | bool | - | `has_private_key` | 是否有私鑰；顯示鏡射欄，由服務層自預設帳號同步 |
 | `AccessPolicy` | *string | `type:varchar(20)` | `access_policy,omitempty` | 存取政策段位 `open`/`reason`/`approval`；NULL＝繼承全域預設鍵 `access_policy_default`（政策掛資產本身，不掛節點） |
 | `NodeIDs` | []uint | `-`（非 DB 欄） | `node_ids,omitempty` | 掛載節點 id 集（多歸屬；成員在 `asset_nodes` 表，service 層組裝——**assets 上沒有單欄外鍵**） |
 | `NodePaths` | []string | `-`（非 DB 欄） | `node_paths,omitempty` | 掛載節點全路徑顯示（如 `prod / kafka`） |
@@ -755,56 +817,75 @@ const (
 
 ---
 
-### 3b. AssetAccount（資產帳號）
+### 3b. AssetAccount（資產帳號／憑證掛載列）
 
 **表名**: `asset_accounts`
 **檔案**: `backend/internal/model/asset_account.go`（審計結構 `asset_account_audit.go`）
-**建表方式**: baseline（`baseline_schema_asset.go`）。兩條 partial unique index 承載本表的資料層不變式：
+**建表方式**: baseline（`baseline_schema_asset.go`）＋增量 `20260906_credential_library`
+（加 `credential_id`／`effective_version_id` 兩欄與 `idx_asset_accounts_credential`）
+＋增量 `20260906_credential_library_contract`（卸下 `password_enc`／`private_key_enc` 與
+`idx_asset_accounts_credential_group`）。兩條 partial unique index 承載本表的資料層不變式：
 `idx_asset_accounts_default`（一資產至多一預設帳號）與 `idx_asset_accounts_username`（同資產內帳號名唯一、軟刪列不佔名）；
 兩者以 `pg_get_indexdef` 逐字比對釘在 `baselineStructuralAssertions`
 
 一資產多系統帳號。適用 ssh/rdp/vnc/mysql/postgres/redis/mssql；
 **k8s 固定單一預設帳號**（token 即身分，連線帶非預設 `account_id` 於連線側回 400）。
 
+**本表不再持有任何密文**：登入秘密的落點是 `credential_secret_versions`（見「48. Credential」起的
+四張表），本表退化為**掛載列**——回答「這台主機以哪一筆憑證登入、當下就位在哪一個密文版本」。
+共用關係由憑證的 `scope` 與掛載列直接表達，不再有任何隱性的群組識別。
+
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
-| `DeletedAt` | gorm.DeletedAt | `index` | `-` | 軟刪除（密文留存供退役 DEK 引用掃描） |
-| `AssetID` | uint | `not null;index` | `asset_id` | 所屬資產（嚴格 per-asset，不跨資產共用——同一組帳密用在不同資產上就是不同列） |
-| `Username` | string | `size:100` | `username` | 系統帳號名。空字串合法（無身分僅憑證的資產）；`@` 前綴為保留字（授權別名 `@ALL` 命名空間），冒號與 C0/C1 控制字元拒收 |
-| `PasswordEnc` | string | `type:text` | `-` | 信封加密密碼，**絕不出站**（JSON `-`、審計 Details 只記欄位名） |
-| `PrivateKeyEnc` | string | `type:text` | `-` | 信封加密 SSH 私鑰，同上 |
+| `DeletedAt` | gorm.DeletedAt | `index` | `-` | 軟刪除 |
+| `AssetID` | uint | `not null;index` | `asset_id` | 所屬資產 |
+| `CredentialID` | uint | `not null` | `credential_id` | 本掛載所引用的憑證（`credentials.id`）。登入帳號名與密文一律屬憑證，本列只回答「這台以哪筆憑證登入」 |
+| `EffectiveVersionID` | *uint | - | `effective_version_id` | 該台當下用以連線的密文版本，**必須屬於 `CredentialID` 那筆憑證**；NULL＝尚未取得任何密文。**連線一律只取本欄**：不依憑證的現行或待生效版本推測、不自動試兩個版本（自動試兩版會製造鎖帳與秘密探測面） |
+| `Username` | string | `size:100` | `username` | 登入帳號名的**顯示副本**。真相在 `credentials.username`，連線與改密以憑證上的名字為準；本欄由帳號服務同步維護，供尚未切換的讀取面與唯一索引 `(asset_id, username)` 沿用 |
 | `IsDefault` | bool | `default:false;index` | `is_default` | 預設帳號：系統路徑（改密 runner、k8s、SFTP 獨立入口）與未指定 `account_id` 的連線一律走此帳號 |
-| `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與審計辨識，不改變授權判定 |
-| `AuthMethod` | string | `size:20;default:sql` | `auth_method` | 認證類型。值域 `sql`｜`domain`；**1.0 只接受 `sql`**，`domain` 由驗證層明確拒絕（`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`，不靜默降級）。刻意放帳號而非資產：同一台 MSSQL 可同時掛 SQL login 與域帳號，放資產上兩者無法並存。非 mssql 協議的帳號一律留在預設 `sql` 且不參與連線組裝。 |
-| `CredentialGroup` | string | `size:36;index` | `-` | 憑證群組識別（UUID）：同值＝系統已知這些帳號共用同一組憑證，空字串＝無群組。以「從其他資產帳號複製」建號時來源與新帳號同交易歸組；任一成員經系統改密成功即脫組，脫組後只剩一員時該員一併脫組。**手動編輯憑證不改變本欄**（系統無從判定手動輸入的憑證是否仍共用）。**識別本身絕不出站**（JSON `-`），對外只投影為 DTO 的 `shared_credential` 布林 |
+| `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與審計辨識，不改變授權判定。逐掛載獨立：同一組秘密在不同主機上的特權性可以不同 |
+| `AuthMethod` | string | `size:20;default:sql` | `auth_method` | 認證類型的**同步副本**（真相在 `credentials.auth_method`）。值域 `sql`｜`domain`；**1.0 只接受 `sql`**，`domain` 由驗證層明確拒絕（`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`，不靜默降級）。刻意放帳號而非資產：同一台 MSSQL 可同時掛 SQL login 與域帳號，放資產上兩者無法並存 |
 | `Note` | string | `size:255` | `note` | 備註 |
+
+**`username` 與 `auth_method` 是同步副本，不是唯讀欄**：兩者仍由帳號服務寫入（帳號更新、
+資產表單對預設帳號的追趕同步），並由連線解析在憑證讀不到名字時回退讀取、由釘住名比對、
+審計列與唯一索引 `idx_asset_accounts_username` 讀取。把它們卸下要跨五個套件改讀取面與唯一索引，
+是獨立的一件事，不在本次收縮的範圍內。
+
+**`credential_group` 這一欄在資料庫裡還在，model 已不再宣告它**。它由增量
+`20260903_rotation_evidence_report` 建立，本版起零寫入者，**唯一讀者是解封後的存量轉換**
+（`credential_secret_conversion.go` 的既有隱性共用關係合併）。它不能由段 1 的收縮 migration
+卸下——解封後佇列必然晚於段 1 的全部 migration，先卸欄會讓該轉換在「欄位不存在」上失敗，
+而合併與密文欄位身分改綁同一個交易，一起回滾的後果是搬移進來的密文永遠停在舊的欄位身分上、
+取密路徑全面失敗。該欄於 `schema_parity_test.go` 的 `baselineColumnExceptions` 具名登記唯一讀者，
+留待下一版在轉換退場之後移除。其索引 `idx_asset_accounts_credential_group` 已隨收縮卸下。
 
 **索引與 default 語義**:
 - Partial unique index `idx_asset_accounts_default` - `(asset_id) WHERE is_default AND deleted_at IS NULL`
   ——DB 層只保證「**至多一個** default」。
 - Partial unique index `idx_asset_accounts_username` - `(asset_id, username) WHERE deleted_at IS NULL`
   ——同資產同名歧義防護（授權綁 username 字串，重名會使授權指向不唯一）。
+- Partial unique index `idx_asset_accounts_credential` - `(asset_id, credential_id) WHERE deleted_at IS NULL`
+  ——同一筆憑證不重複掛同一資產。由 `20260906_credential_library` 於**存量搬移之後**建立：
+  回填前全部存量列的 `credential_id` 都是 0，同一資產有兩個帳號時先建索引必然撞鍵。
 - 「**有帳號必有 default**」不在 DB 層，由服務層交易維護：建立首個帳號強制 `IsDefault=true`；
   刪除 default 時若資產尚有其他帳號則拒絕（`RULE_ACCOUNT_DEFAULT_REQUIRED`）；
   set-default 於同一交易內先清舊 default 再設新 default（不讓 partial unique index 中途看到兩筆）。
 - **零帳號資產合法**（原本即無憑證的資產；刪除唯一帳號時同步清空 `assets` 的顯示欄）。
-- `idx_asset_accounts_credential_group` - `(credential_group)`，由增量 `20260903_rotation_evidence_report` 建立——報告要對範圍內每個帳號判定共用憑證，脫組後還要數「群組是否只剩一員」，兩者都以群組值為軸。**本欄可空且不設預設**：絕大多數帳號不屬於任何群組，空字串與 NULL 並存會多出一個沒有意義的第三態。
 
-**安全紅線**: `password_enc`／`private_key_enc` 必須與 model **同版**登記於
-`service.envelopeMigrationTargets`——該清單同時驅動 DEK 輪替重加密、legacy pending 判定與
-退役 DEK 銷毀前的引用掃描；漏登會使銷毀前掃描看不見本表密文而誤判零引用、銷毀仍在用的金鑰材料。
-AST 守衛 `envelope_targets_guard_test.go` 強制此約束。
+**刪除一筆掛載不更動目標主機上的密碼**：`DELETE` 只軟刪本列，憑證的密文版本列不刪。被刪的若是某筆
+專用憑證的唯一掛載，該憑證於同一交易一併刪除；共用憑證留著，只是少一個掛載。
 
 **與 `assets` 內嵌憑證的關係（單向切換）**: 服務層把資產上的內嵌憑證**原樣複製**為
-一筆 IsDefault 帳號（信封密文自帶 DEK 版本前綴、無 AAD 列綁定，跨表可解）。此後讀寫一律走
-本表，`assets.username/password_enc/private_key_enc/has_*` 降為**顯示鏡射欄**（服務層以
-`UpdateColumns` 同步 default 帳號，不動 `assets.updated_at`），保留一個版本後移除。
-`PUT /assets/:id` 的憑證欄位透明轉寫 default 帳號（舊前端／腳本不壞）。
-**回滾邊界**：`RollbackAssetAccounts` 為資料保全會拒滾（存在非遷移形態帳號或已顯式刪除帳號時），
-緊急回退需人工反向同步。
+一筆 IsDefault 帳號。此後讀寫一律走本表與其憑證，
+`assets.username` 與 `assets.has_password`／`has_private_key` 降為**顯示鏡射欄**（服務層以
+`UpdateColumns` 自 default 帳號同步這三欄，不動 `assets.updated_at`）。
+`assets.password_enc` 與 `private_key_enc` 則自單向切換起**凍結、不再寫入**：秘密的來源改為
+該掛載就位版本上的密文，兩欄留在表上的是切換當時的歷史殘值，不是現行憑證的鏡射。
+`PUT /assets/:id` 的憑證欄位透明轉寫 default 帳號所引用的憑證。
 
 **審計**: 不掛 GORM hook（hook 拿不到 diff），由 service 顯式呼叫
 `RecordAssetAccountAudit`；操作類型 `create`/`update`/`delete`/`set_default`，
@@ -1423,7 +1504,8 @@ const (
 **表名**: `change_secret_plans`
 **檔案**: `backend/internal/model/change_secret.go`
 **建表方式**: baseline（`baseline_schema_asset.go`），含 `idx_change_secret_plans_name`＝`UNIQUE (name)`
-（**非** partial：本表無 `deleted_at`，計劃為硬刪）
+（**非** partial：本表無 `deleted_at`，計劃為硬刪）；增量 `20260906_credential_library` 加
+`target_kind`／`target_credential_id` 兩欄
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1439,12 +1521,19 @@ const (
 | `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 是否含符號 |
 | `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 是否排除易混淆字元 |
 | `MaxAgeDays` | int | `not null;default:0` | `max_age_days` | 憑證最長使用天數的計劃層覆蓋（天）：0＝沿用全域政策鍵 `asset_secret_max_age_days`，大於 0 即覆蓋，值域與該鍵相同（1–3650），越界於儲存時被拒。**只影響輪替證據報告的適用天數計算**，不改變計劃的執行時機或改密行為。由增量 `20260903_rotation_evidence_report` 加欄 |
+| `TargetKind` | string | `size:16;not null;default:account` | `target_kind` | 目標種類：`account`＝資產集 × 帳號範圍（既有語義）；`credential`＝一筆憑證的全部掛載，走整組輪替。存量列由 migration 以 default 回填為 `account`，即其實際語義。由增量 `20260906_credential_library` 加欄 |
+| `TargetCredentialID` | *uint | - | `target_credential_id` | `TargetKind=credential` 時的目標憑證（`credentials.id`）；其餘種類為 NULL。同上增量 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
 **設計說明**:
 - 密碼策略為 **per-plan**，不進全域安全政策鍵——那域管的是平台使用者密碼。
   大小寫與數字恆為必要字類、shell 敏感字元與控制字元為系統級硬排除，皆不開放設定。
+- **目標種類不另造排程器**：`cron`、`Enabled`、`MaxAgeDays` 與密碼策略全部沿用，
+  `TargetKind` 只決定「要改的是哪一組東西」。
+- **以帳號為目標的計劃不得命中共用憑證的成員**：只改其中一員會讓同組其餘主機失去可用秘密，
+  自動擴張到其餘掛載則是去改操作者沒有選取的機器。儲存時掃描選取範圍，命中即整筆拒絕；
+  執行時再判一次，仍命中的目標記 `skipped`。
 
 ---
 
@@ -1453,7 +1542,8 @@ const (
 **表名**: `change_secret_records`
 **檔案**: `backend/internal/model/change_secret.go`
 **建表方式**: baseline（`baseline_schema_asset.go`），含 `plan_id`／`asset_id`／`account_id` 三條一般索引；
-增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與 `idx_change_secret_records_batch_id` 索引。
+增量 `20260905_account_batch_rotation` 加 `batch_id` 欄與 `idx_change_secret_records_batch_id` 索引；
+增量 `20260906_credential_library` 加 `credential_id`／`credential_name`／`target_version_id` 三個快照欄。
 無唯一索引、無外鍵、無 `deleted_at`（`account_username` 與 `account_id` 並存，記錄執行當下的帳號名）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1464,9 +1554,12 @@ const (
 | `AssetID` | uint | `index;not null` | `asset_id` | 目標資產 ID |
 | `AccountID` | uint | `index` | `account_id` | 執行時釘住的帳號；`0`＝尚未解析到帳號即失敗（如資產無帳號） |
 | `AccountUsername` | string | `size:100` | `account_username` | 執行當下的帳號名快照 |
+| `CredentialID` | uint | `not null;default:0` | `credential_id` | 執行當下該掛載引用的憑證；`0`＝尚未解析到憑證即失敗 |
+| `CredentialName` | string | `size:128` | `credential_name` | 執行當下的憑證顯示名快照（共用＝落庫名稱；專用＝「資產名 / 帳號名」計算值） |
+| `TargetVersionID` | uint | `not null;default:0` | `target_version_id` | 本次要就位的密文版本；`0`＝尚未產生 |
 | `SecretType` | string | `size:16` | `secret_type` | 秘密類型（`password`／`ssh_key`） |
 | `Status` | string | `size:16;not null` | `status` | 執行狀態 |
-| `Error` | string | `size:512` | `error` | 錯誤訊息 |
+| `Error` | string | `size:512` | `error` | 錯誤訊息（機器碼） |
 | `ExecutedAt` | time.Time | - | `executed_at` | 執行時間 |
 
 **狀態常數**:
@@ -1486,6 +1579,8 @@ const (
 - 不存任何密碼
 - `AccountID` ＋ `AccountUsername` 雙快照沿 session 的不可否認性慣例——帳號可能隨後
   改名或刪除，只留 ID 則事後回答不了「當時改的是哪個帳號」
+- **憑證三欄同樣是快照**：帳號快照回答不了「當時動的是哪一組秘密」——拆分收斂後掛載會改指
+  另一筆憑證，事後回頭 join 讀到的是現況而不是當時
 
 ---
 
@@ -1495,7 +1590,9 @@ const (
 **檔案**: `backend/internal/model/change_secret.go`
 **建表方式**: baseline（`baseline_schema_asset.go`），含 `idx_change_secret_candidates_account_id`＝`UNIQUE (account_id)`
 ——「一帳號至多一筆未驗證候選」即由這條唯一索引承載（**非** partial：本表無 `deleted_at`）；
-另有 `asset_id`／`abandoned`／`next_attempt_at` 三條一般索引（重試排程掃描依賴之）；無外鍵
+另有 `asset_id`／`abandoned`／`next_attempt_at` 三條一般索引（重試排程掃描依賴之）；無外鍵。
+增量 `20260906_credential_library` 加 `credential_id`／`credential_name`／`target_version_id` 三個快照欄；
+增量 `20260906_credential_library_contract` 卸下 `shared_group`
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1504,7 +1601,9 @@ const (
 | `AssetID` | uint | `index;not null` | `asset_id` | 目標資產 |
 | `PlanID` | uint | - | `plan_id` | 來源改密計劃（0＝手動觸發或來自批次） |
 | `BatchID` | uint | `not null;default:0` | `batch_id` | 來源批次（0＝來自計劃或手動觸發）；增量 `20260905_account_batch_rotation` |
-| `SharedGroup` | string | `size:36` | `-` | 轉正後要歸入的憑證群組識別（批次「整批同一組」模式）；空＝沿既有規則脫組。放在候選上而非回查批次：重試轉正時批次可能早已完成。**不出站**；增量 `20260905_account_batch_rotation` |
+| `CredentialID` | uint | `not null;default:0` | `credential_id` | 這把候選秘密要落到哪一筆憑證；`0`＝來自單帳號路徑。放在候選上而非回查批次或輪替：重試轉正時來源可能早已結束 |
+| `CredentialName` | string | `size:128` | `credential_name` | 憑證顯示名快照 |
+| `TargetVersionID` | uint | `not null;default:0` | `target_version_id` | 轉正後要就位的密文版本；`0`＝來自單帳號路徑 |
 | `AccountUsername` | string | `size:100` | `account_username` | 執行當下的帳號名快照 |
 | `SecretType` | string | `size:16;not null` | `secret_type` | 秘密類型（`password`／SSH 金鑰） |
 | `PasswordEnc` | string | `type:text` | `-` | 候選密碼（信封加密），**絕不出站** |
@@ -1523,7 +1622,10 @@ const (
 **設計說明**:
 - 秘密於**動遠端之前**落庫：後端在「已下達改密、尚未驗證」的窗口被砍時，
   候選若只在記憶體即永久遺失，帳號直接鎖死。
-- 候選列的存在**即代表**該帳號憑證處於「未驗證」狀態，不另設會與之漂移的狀態欄位。
+- 候選列的存在**即代表**該掛載的秘密處於「未驗證」狀態，不另設會與之漂移的狀態欄位。
+- **憑證快照三欄同時是重試排程的分流依據**：帶憑證識別與目標版本者屬某一輪輪替的成員，
+  一律交回成員路徑推進。走錯路徑會在共用憑證上多開一個版本、在成員轉移之外改寫就位版本，
+  拆分模式下更會把那台唯一的新秘密寫回原本要脫離的共用憑證。
 - **安全紅線**: `password_enc`／`private_key_enc` 須登記於 `envelopeMigrationTargets`
   （AST 守衛 `envelope_targets_guard_test.go` 強制），漏登會使退役 DEK 銷毀前的引用掃描誤判零引用。
 
@@ -2186,13 +2288,14 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
   （AST 守衛 `envelope_targets_guard_test.go` 強制）。
 - env→DB 的一次性 seed 需要 codec（段 2 才存在），故走 post-unseal 佇列；
   其執行期冪等標記 `20260804_ldap_env_seeded` 借用 `schema_migrations` 表存放，
-  由 `runtimeMarkerVersions` 自 fail-close 判定中扣除（`migrations.go:66`）。
+  由 `runtimeMarkerVersions`（`migrations.go` 的宣告處）自 fail-close 判定中扣除。
 
 ---
 
 ## Migration 版本一覽
 
-**現行 migration 有八條**（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
+**現行 migration 共十一條**——baseline 一條，其後的增量十條
+（`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
@@ -2204,27 +2307,49 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260903_security_policies_value_text` | 登入前告示的前置：`ALTER TABLE security_policies ALTER COLUMN value TYPE text`（見第 17 節），共 1 條 DDL，不建表、不加欄、不加索引或約束。政策值一律以字串存放，既有鍵全是整數、布林與短枚舉，128 位元組夠用；文字型政策鍵（上限二千個 Unicode 字元、可含換行）放不進去。**放寬欄位而非另立一張表**，是為了讓文字鍵直接沿用政策機制既有的批次原子、變更審計、快取與錯誤碼。**Up 為純型別放寬、無資料回填**：`varchar(128)` → `text` 在 PostgreSQL 是相容擴張，存量列原值不動，耗時與存量無關。本語句**不列入** `schemaDDLStatements()`——該清單的解析器只認 CREATE TABLE 與 ADD COLUMN（欄名層級的比對），型別改動屬第 2 層 parity 的射程，而第 2 層以「baseline ＋依序跑完全部增量」建庫，本條自然涵蓋其中 | `rollbackSecurityPoliciesValueText`：收窄回 `character varying(128)`。**開發庫限定**：存量值若已超過 128 位元組，資料庫直接報錯並使整個交易回滾，故不另寫前置檢查。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260904_windows_local_account_rotation` | Windows 本機帳號改密的資料層：`assets` 加六個改密通道側車欄（`rotation_channel varchar(16) NOT NULL DEFAULT ''`、`winrm_scheme varchar(8)`、`winrm_port bigint`、`winrm_tls_mode varchar(16)`、`winrm_ca_cert text`、`rotation_ssh_port bigint`；見第 3 節），共 6 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：`rotation_channel` 預設空字串而非回填實值（空＝依協定推導，升級後既有列行為與升級前逐項相同），其餘五欄可空，無資料轉換、無回填，耗時與存量無關。**六個具名欄而不是一個 JSON 設定欄**：既有 per-protocol 側車（RDP 傳輸安全、DB TLS、VNC SFTP）全是具名欄，值域受控、SQL 層可查、schema parity 守衛看得見；它承載的是「憑證要送到哪裡、用不用 TLS」，正是最不該只有應用層知道形狀的值。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackWindowsLocalAccountRotation`：反序 DROP 六欄。**Down 有損、開發庫限定**：六欄刪除即失去全部改密通道設定（含上傳的 CA 憑證），再次 Up 之後所有資產回到「未設定」而由協定推導——**rdp 資產從此不再改密且不會有任何提示**。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-
 | `20260905_account_batch_rotation` | 以帳號為主軸的批次改密的資料層：建新表 `change_secret_batches` 與其 `(username)` 索引（第 47 節）、`change_secret_records.batch_id`（`bigint NOT NULL DEFAULT 0`，加 `(batch_id)` 索引；第 16 節）、`change_secret_candidates.batch_id`（同型）與 `shared_group`（`varchar(36)` 可空；第 16b 節），共 6 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`batch_id` 的存量列以 default 回填為 0——本欄出現之前這兩張表只承載計劃的記錄與候選，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackAccountBatchRotation`：反序 DROP `shared_group` → 候選的 `batch_id` → 記錄的 `(batch_id)` 索引與欄 → 批次表的索引 → `DROP TABLE change_secret_batches`。**Down 有損、開發庫限定**：刪表即失去全部批次的彙總計數與發起者；刪欄即失去記錄與候選的來源辨識（再次 Up 之後全部回到「來自計劃」）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260906_credential_library` | 帳號憑證庫的資料層：建四張新表（`credentials`、`credential_secret_versions`、`credential_rotations`、`credential_rotation_members`）與其索引、`asset_accounts` 加 `credential_id`／`effective_version_id`、`change_secret_plans` 加 `target_kind`／`target_credential_id`、`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄，並在同一交易內把既有帳號列的內嵌密文**轉為專用憑證**（每筆存活帳號各得一筆專用憑證，持有密文者另建其第 1 版；密文原樣搬、不解密重加密。所屬資產已軟刪的遺留帳號列同樣建憑證與第 1 版，再於同一交易把帳號列與憑證一併軟刪，憑證庫不顯示、密文版本保留；日誌分項報存活與隨已移除資產一併移除的筆數）。次序寫死：存量搬移之後才卸除 `credential_id` 的暫時 DEFAULT 並建 `(asset_id, credential_id)` partial unique——回填前全部存量列的 `credential_id` 都是 0，先建索引必然撞鍵。**重跑語義是失敗即整交易回滾、修正後可再跑一次**，不是冪等。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibrary`：反序 DROP 掛載唯一索引 → 三張改密表的加欄 → `asset_accounts` 兩欄 → 四張新表與其索引。**Down 有損、開發庫限定**：刪四張表即失去全部共用憑證關係與密文版本歷史，`asset_accounts` 兩欄刪除後「這台用哪筆憑證、就位在哪一版」無來源可還原，存量搬移沒有反向。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260906_credential_library_contract` | 收縮：卸下已無讀寫面的過渡欄與索引——`asset_accounts.password_enc`／`private_key_enc`（登入秘密的落點已改為 `credential_secret_versions`，兩欄自存量搬移之後零讀者，**同時自 `envelopeMigrationTargets` 除名**）、`change_secret_candidates.shared_group`、`change_secret_batches.shared_group`（共用關係的真相已是憑證本體）、`idx_asset_accounts_credential_group`，共 5 條 DDL。**自成一條版本而非併入前一條**：前一條已套用於開發庫，同檔追加語句不會再執行，會留下「程式碼宣告已收縮、資料庫仍有舊欄」的落差。**`asset_accounts.credential_group` 刻意留著**（見第 3b 節）。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibraryContract`：反序把四欄的空殼與群組索引加回來。**Down 有損、開發庫限定**：**不還原任何資料**，卸下的四欄在卸下當下即失去內容，再次 Up 之後全部回到空值。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
-> `20260826_db_query_console`、`20260903_security_policies_value_text`、`20260903_rotation_evidence_report`、
-> `20260904_windows_local_account_rotation` 與 `20260905_account_batch_rotation` 於既有部署升級時自動套用
-> （段 1，無 codec 依賴；`20260826_source_ip_forensics`
-> 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長，
-> `20260826_db_query_console`、`20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation` 與 `20260905_account_batch_rotation` 為純加法、`20260903_security_policies_value_text` 為純型別放寬，五者耗時與存量無關；升級程序見 `docs/ops/upgrade-sop.md`）；離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
+> **升級注意**：baseline 之後的十條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
+> `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
+> `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長
+> （帳號數通常遠小於會話與審計的存量）；其餘八條為純加法、純型別放寬或純卸欄，耗時與存量無關。
+> 升級程序見 `docs/ops/upgrade-sop.md`。
+>
+> **`20260906_credential_library` 之後還有一段解封後才跑的轉換**：憑證密文的欄位身分改綁與既有
+> 隱性共用關係的合併需要 codec，故走 post-unseal 佇列（見下）。段 1 的兩條 migration 先讓每個
+> 帳號各得一筆專用憑證，合併在段 2 才發生。
+>
+> 離機儲存**設定面**的 env→DB seed 需要 codec，另走 post-unseal 佇列（見下）；
 > 剪貼簿 `content`→`content_enc` 轉換則走 **post-unseal 佇列**（段 2，需 codec，見下）。
 
 **post-unseal 資料 migration**：需要 codec（信封加解密）的資料遷移不得在段 1 執行，
-改登記於 post-unseal 佇列、由段 2 於 `InitKeyManager` 成功後執行。此類含兩項：
-剪貼簿 `content`→`content_enc` 的加密回填（加欄→逐筆加密→刪 `content`，以「`content` 欄是否存在」判冪等，
-整段單一交易、回填失敗即 rollback 不刪欄；見第 12 節），以及
-LDAP 的 env→DB seed（標記 `20260804_ldap_env_seeded`）——後者標記語義為
-**「已完成評估」而非「已建立資料」**——實際 seed、env 未啟用、資料表非空三種終局皆寫入標記，
-僅基礎設施失敗不寫（留待下次啟動重試）。此語義使「資料列被硬刪後 env 仍為啟用」
-不會靜默重建一個外部認證來源。
+改登記於 post-unseal 佇列、由段 2 於 `InitKeyManager` 成功後執行。現有四項：
+
+1. 剪貼簿 `content`→`content_enc` 的加密回填（加欄→逐筆加密→刪 `content`，以「`content` 欄是否存在」
+   判冪等，整段單一交易、回填失敗即 rollback 不刪欄；見第 12 節）。
+2. **憑證密文轉換**（標記 `20260906_credential_secrets_converted`）：兩步包在單一交易內——
+   先把段 1 原樣搬進 `credential_secret_versions` 的密文**改綁欄位身分**（信封密文的 AAD 綁
+   表｜欄，那批值的 AAD 仍是帳號表的身分，以新表的身分解不開；不改綁的話 DEK 輪替與退役金鑰的
+   引用掃描會逐筆失敗），再**以解密後的明文判定既有隱性共用關係能否合併**（判定涵蓋三面：明文、秘密的有無、合併後由共用憑證單一持有的四個屬性，即帳號名、秘密型別、認證方式、協定族，任一面不一致即不合併；審計列的 reason 分 `group_secrets_mismatch` 與 `group_metadata_mismatch`，並以 `mismatch_fields` 列出不一致項目）（同一組明文的兩份
+   信封密文帶各自的隨機 nonce，密文層永遠不相等，故只能比對明文）。一致者合併為一筆自動命名的
+   共用憑證，成員掛載全改指、段 1 為它們建的專用憑證一併刪除；不一致者各留專用，於憑證的備註
+   前置機器碼標記並每組寫一筆審計列。任一步失敗即整段 rollback、**不寫標記**，佇列記一筆失敗並另在交易之外寫一筆 status=failure 的審計列（details 記失敗階段與待處理筆數，不含密文或明文），
+   下次啟動重試；**不得降級**為「解不開就全部各留專用」——那會靜默丟掉全部共用關係，
+   而管理者從畫面上看不出差別。冪等以標記而非欄位形狀判定：本轉換不刪任何欄，
+   且不一致的群組每次都會再度符合「未合併」的形狀。
+3. LDAP 的 env→DB seed（標記 `20260804_ldap_env_seeded`）。
+4. 離機儲存設定的 env→DB seed（標記 `20260825_offsite_env_seeded`）。
+
+第 2 至 4 項的標記寫入 `schema_migrations` 但**不是 migration**，故一律登記於
+`runtimeMarkerVersions`——漏登會讓每個跑過該項的安裝在下次啟動被自己的 fail-close 擋住。
+兩項 env seed 的標記語義為**「已完成評估」而非「已建立資料」**——實際 seed、env 未啟用、
+資料表非空三種終局皆寫入標記，僅基礎設施失敗不寫（留待下次啟動重試）。
+此語義使「資料列被硬刪後 env 仍為啟用」不會靜默重建一個外部認證來源。
 
 ---
 
@@ -2858,6 +2983,7 @@ pending → uploading → uploaded → local_purged
 **建表方式**: **增量 migration `20260905_account_batch_rotation`（非 baseline）**——純新表、無加密欄、
 無資料回填，DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。同一條 migration 對
 `change_secret_records` 加 `batch_id`（第 16 節）、對 `change_secret_candidates` 加 `batch_id`／`shared_group`（第 16b 節）。
+增量 `20260906_credential_library_contract` 卸下本表的 `shared_group` 欄（共用關係的真相已是憑證本體）。
 
 一列一次批次：管理員選一個帳號名、勾選多台資產或全部符合者，一次對它們改密。
 與計劃並列而非隱藏的計劃——批次沒有排程、跑完即結束；記錄與候選以 `batch_id` 指回本列（`plan_id` 為 0）。
@@ -2867,7 +2993,6 @@ pending → uploading → uploaded → local_purged
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `Username` | string | `size:100;not null;index` | `username` | 帳號名：目標集合＝掛在未刪除資產上、名為此值的未刪除帳號 |
 | `PasswordMode` | string | `size:16;not null` | `password_mode` | `per_target`＝每個目標各自隨機；`shared`＝全部目標同一組新密碼 |
-| `SharedGroup` | string | `size:36` | `-` | `shared` 模式下成功帳號歸入的憑證群組識別；`per_target` 為空。**不出站**（同 `asset_accounts.credential_group` 的理由） |
 | `PasswordLength` | int | `default:16` | `password_length` | 密碼策略：長度（語義與計劃相同） |
 | `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 密碼策略：是否含符號 |
 | `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 密碼策略：是否排除易混淆字元 |
@@ -2893,11 +3018,163 @@ pending → uploading → uploaded → local_purged
   批次結束後系統內不再有它的第二份副本。四種計數於全部目標處理完後一次寫入。
 - **為什麼是獨立實體而非臨時計劃**：臨時計劃會在計劃列表閃現、報告的「涵蓋計劃」必須排除它、
   刪除後記錄的 `plan_id` 指向不存在的計劃；每一處都要加特判。獨立一張表的代價是兩欄與一張表。
-- **共用群組的歸組與解散**：`shared` 模式成功提交的帳號先脫離原群組（沿既有規則）再歸入
-  `shared_group`；候選經重試轉正者同樣歸入。批次結束時與候選轉正時，群組成員少於 2 且該批次
-  已無待驗證候選者解散。候選被清除而非轉正時，群組可能只剩一員而不再有解散的觸發點，
-  此時報告會多標一個共用憑證：偏向多警告的一側。
+- **`shared` 模式會建立一筆具名共用憑證**（名稱由操作者於送出前提供，沿共用憑證的唯一性檢核）：
+  成功提交的目標改綁到它並就位同一個密文版本，於是憑證庫、帳號列表與輪替證據報告的共用標記
+  同出一源。**憑證名稱不落在本表**——名稱只在「建立批次 → 執行批次」這一次呼叫之間需要，
+  批次列不是憑證關係的真相來源；行程中途被砍後的承接（重試轉正、掛載數重估）由候選列上的
+  憑證快照承擔。批次在行程中途被砍時會留下一筆零掛載的共用憑證，那是合法的待用狀態。
 - 本表是處置動作的彙總，不是證據：逐台的事實落在改密記錄與帳號變更審計。
+
+---
+
+### 48. Credential（憑證本體）
+
+**表名**: `credentials`
+**檔案**: `backend/internal/model/credential.go`
+**建表方式**: **增量 migration `20260906_credential_library`（非 baseline）**——建表、四條索引，
+並於同一交易把既有帳號列上的內嵌密文轉為專用憑證。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`。
+
+登入秘密的唯一真相。資產帳號列只以外鍵引用之（見第 3b 節）。
+
+**為什麼憑證要自成一張表**：登入秘密原本內嵌在資產帳號列上，同一組秘密掛在多台主機時系統只能
+各存一份副本，於是「這組秘密被哪些主機使用」無從回答，整組改密也無從表達。憑證獨立成表之後，
+帳號列退化為掛載列，共用關係由 `scope` 與掛載列直接表達，可命名、可檢視、可整組輪替。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+| `DeletedAt` | gorm.DeletedAt | `index` | `-` | 軟刪除 |
+| `Name` | *string | `size:128` | `name` | 共用憑證的名稱，必填且唯一；**專用為 NULL**（不是空字串）。專用的顯示名由「資產名 / 帳號名」計算，不落庫 |
+| `Scope` | string | `size:16;not null` | `scope` | `dedicated`＝恰一掛載、隨掛載建立與刪除；`shared`＝具名、可掛多台、整組輪替的對象 |
+| `Username` | string | `size:100;not null;index` | `username` | 登入帳號名，沿用既有的帳號名驗證規則。共用憑證建立後不可改（改名等於讓每一台掛載的登入身分同時變動，而遠端主機上的帳號並不會跟著改） |
+| `SecretType` | string | `size:16;not null` | `secret_type` | `password`／`ssh_key`。**不新增 token 值域**：K8s 的 token 存密碼欄，顯示層依協定族呈現即可；多一個值域會讓改密引擎多一條永遠走不到的分支 |
+| `AuthMethod` | string | `size:20;not null;default:sql` | `auth_method` | 認證類型：`sql`｜`domain`。1.0 只接受 `sql`，`domain` 由驗證層明確拒絕 |
+| `ProtocolFamily` | string | `size:16;not null` | `protocol_family` | `ssh`／`windows`／`vnc`／`database`／`k8s`：掛載時與資產協定比對相容性。**憑證自持而非由成員推導**——零掛載的新建共用憑證無成員可推導，而資產表單的「只列此協定可用的憑證」正需要在那個時候就能過濾。`windows` 涵蓋 RDP 資產與走 Windows OpenSSH 改密的 SSH 資產 |
+| `Note` | string | `size:255` | `note` | 備註。存量轉換判定為不一致的隱性群組，其成員憑證的本欄前置固定機器碼標記 `[MIGRATION_GROUP_MISMATCH:<群組值>]`（可搜尋，admin 可自行清除） |
+| `CurrentVersionID` | *uint | - | `current_version_id` | 現行版本：最後一次全組收斂完成的版本，或操作者宣告密文時直接指向的版本。NULL＝尚無任何密文 |
+| `PendingVersionID` | *uint | - | `pending_version_id` | 本次整組輪替的目標版本；同一憑證同時至多一個 |
+| `ActiveRotationID` | *uint | - | `active_rotation_id` | 非空＝輪替進行中。列鎖之外的第二道判定：掛載、卸載、直接寫入密文、範圍轉換、刪除與再輪替一律先取列鎖再讀本欄 |
+| `RotationEpoch` | int64 | `not null;default:0` | `rotation_epoch` | 每次啟動輪替遞增；成員列快照此值——同一憑證的兩輪輪替若只靠輪替識別區分，事後查詢分不出成員列屬於哪一代 |
+
+**索引**（DDL 於 `backend/internal/database/migration_credential_library.go`）:
+- `credentials_pkey`＝`(id)`。
+- `idx_credentials_deleted_at`＝`(deleted_at)`：軟刪欄沿既有慣例掛索引。
+- `idx_credentials_username`＝`(username)`：清單以帳號名完全相等比對。
+- `idx_credentials_scope_deleted_at`＝`(scope, deleted_at)`：清單過濾以範圍為軸，且一律排除軟刪列。
+- Partial unique index `idx_credentials_shared_name`＝`(name) WHERE scope = 'shared' AND deleted_at IS NULL`
+  ——專用的 NULL 名稱不入索引故不互撞；排除軟刪列使名稱在刪除後可立即重用。
+
+**無外鍵、無 CHECK**：值域由服務層與 model 常數承擔，沿本庫既有慣例。
+
+---
+
+### 49. CredentialSecretVersion（憑證的密文版本）
+
+**表名**: `credential_secret_versions`
+**檔案**: `backend/internal/model/credential.go`
+**建表方式**: 同上，增量 `20260906_credential_library`
+
+**已建立的列不得 UPDATE**：變更秘密一律新增版本。掛載的就位版本之所以能表達「這台用舊版、
+那台用新版」，前提正是舊版列的密文原封不動；就地覆寫會讓尚未就位的主機失去可用的秘密。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `CredentialID` | uint | `not null;uniqueIndex:idx_credential_secret_versions_no,priority:1` | `credential_id` | 所屬憑證 |
+| `VersionNo` | int | `not null;uniqueIndex:…,priority:2` | `version_no` | 該憑證內遞增的版本序號（自 1 起） |
+| `SecretType` | string | `size:16;not null` | `secret_type` | `password`／`ssh_key` |
+| `PasswordEnc` | string | `type:text` | `-` | 信封加密密碼，**絕不出站** |
+| `PrivateKeyEnc` | string | `type:text` | `-` | 信封加密 SSH 私鑰，同上 |
+| `PublicKey` | string | `type:text` | `public_key` | 新公鑰的 authorized_keys 行（公鑰非機密，明文保存供刪舊／還原比對） |
+| `PreviousPublicKey` | string | `type:text` | `previous_public_key` | 本系統先前推送的公鑰行；空值＝先前無系統推送鑰 |
+| `CreatedReason` | string | `size:16;not null` | `created_reason` | 這一版從哪來：`manual`（操作者宣告）／`rotation`（系統改密產生）／`migration`（既有帳號資料轉換時原樣搬入）／`detach`（單台脫離共用時產生） |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+
+**索引**:
+- `credential_secret_versions_pkey`＝`(id)`。
+- Unique index `idx_credential_secret_versions_no`＝`(credential_id, version_no)`。
+
+**安全紅線**: `password_enc`／`private_key_enc` 必須與 model **同版**登記於
+`envelopeMigrationTargets`（`backend/internal/modules/keyvault/envelope_migration_service.go`）——
+該清單同時驅動 DEK 輪替重加密與退役金鑰銷毀前的引用掃描，漏登會使銷毀前掃描看不見本表密文而
+誤判零引用，該欄資料即永久不可解。AST 守衛 `envelope_targets_guard_test.go` 強制此約束。
+
+---
+
+### 50. CredentialRotation（一次輪替）
+
+**表名**: `credential_rotations`
+**檔案**: `backend/internal/model/credential.go`
+**建表方式**: 同上，增量 `20260906_credential_library`
+
+一列一次輪替（整組或拆分）。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `CredentialID` | uint | `not null;index` | `credential_id` | 目標憑證 |
+| `Epoch` | int64 | `not null` | `epoch` | 啟動當下憑證的 `rotation_epoch` 快照 |
+| `Mode` | string | `size:16;not null` | `mode` | `group`＝整組換到同一組新秘密；`split`＝各掛載各自產生新秘密，收斂後各自成為專用憑證 |
+| `TargetVersionID` | *uint | - | `target_version_id` | 整組模式的目標版本；拆分模式為 NULL（每台目標不同） |
+| `Status` | string | `size:16;not null` | `status` | `running`／`completed`／`abandoned` |
+| `RequestedBy` | uint | - | `requested_by` | 發起者 id |
+| `RequestedByName` | string | `size:100` | `requested_by_name` | 發起者名字快照（使用者可能隨後改名或刪除） |
+| `PasswordLength` | int | `default:16` | `password_length` | 密碼策略：長度（語義與改密計劃相同） |
+| `PasswordIncludeSymbol` | bool | `default:true` | `password_include_symbol` | 密碼策略：是否含符號 |
+| `PasswordExcludeAmbiguous` | bool | `default:true` | `password_exclude_ambiguous` | 密碼策略：是否排除易混淆字元 |
+| `StartedAt` | time.Time | - | `started_at` | 開始時刻 |
+| `FinishedAt` | *time.Time | - | `finished_at` | 結束時刻；進行中為 NULL |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+
+**索引**: `credential_rotations_pkey`＝`(id)`；`idx_credential_rotations_credential_id`＝`(credential_id)`
+（輪替史以憑證為軸查詢）。
+
+**放棄不回滾**：`abandoned` 只表示停止自動化——已就位者不改回舊密、不刪候選、對遠端零額外操作。
+回滾要先登入那台機器，而「放棄」這個動作的意思正是不再對它下手。未就位的成員以逐台補跑收斂。
+
+---
+
+### 51. CredentialRotationMember（輪替的逐掛載成員）
+
+**表名**: `credential_rotation_members`
+**檔案**: `backend/internal/model/credential.go`
+**建表方式**: 同上，增量 `20260906_credential_library`
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `RotationID` | uint | `not null;uniqueIndex:idx_credential_rotation_members_target,priority:1` | `rotation_id` | 所屬輪替 |
+| `AccountID` | uint | `not null;uniqueIndex:…,priority:2` | `account_id` | 掛載列 id |
+| `CredentialID` | uint | `not null` | `credential_id` | 快照欄：本輪執行當下的憑證 |
+| `Username` | string | `size:100` | `username` | 快照欄：當下的登入帳號名 |
+| `AssetID` | uint | `not null` | `asset_id` | 快照欄：當下的資產 |
+| `AssetName` | string | `size:128` | `asset_name` | 快照欄：當下的資產名 |
+| `FromVersionID` | *uint | - | `from_version_id` | 本輪開始時該掛載的就位版本；NULL＝當時尚無就位版本 |
+| `TargetVersionID` | *uint | - | `target_version_id` | 本成員要就位的版本 |
+| `State` | string | `size:24;not null` | `state` | 七值：`queued`／`changing`／`changed_unverified`／`applied`／`retry_wait`／`terminal_failed`／`abandoned` |
+| `AttemptCount` | int | `default:0` | `attempt_count` | 嘗試次數 |
+| `NextAttemptAt` | *time.Time | - | `next_attempt_at` | 下次嘗試時刻（重試排程掃描鍵） |
+| `LastError` | string | `size:64` | `last_error` | 機器可讀的失敗原因碼；**不落任何秘密材料或主機回應原文** |
+| `AppliedAt` | *time.Time | - | `applied_at` | 就位時刻 |
+| `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
+| `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
+
+**索引**: `credential_rotation_members_pkey`＝`(id)`；Unique index
+`idx_credential_rotation_members_target`＝`(rotation_id, account_id)`——一次輪替內一個掛載只有一列成員，
+逐台補跑重用同一列而不疊加第二筆。
+
+**設計說明**:
+- **四個快照欄（憑證、帳號名、資產、資產名）是刻意的冗餘**：拆分收斂後掛載列會改指向別的憑證，
+  歷史查詢若只靠 `account_id` 回頭 join，讀到的是「現在」的憑證與帳號名，而不是那一輪動的是誰。
+- **只有轉入 `applied` 會改寫掛載的就位版本**，其餘六個狀態一律不動。遠端是否收下新秘密未知時，
+  提前改指等於謊稱新版已生效：該台既連不上，畫面上也看不出原因。這條不變式由狀態機的
+  單一轉移入口承擔。
+- **重試排程只推進「進行中」那一輪**裡處於 `retry_wait` 或 `changed_unverified` 且已到嘗試時刻的成員。
+  `terminal_failed` 與 `abandoned` 要由操作者顯式補跑——自動重排會讓一台確定改不動的機器被
+  無限期反覆嘗試。
 
 ---
 
@@ -2905,7 +3182,7 @@ pending → uploading → uploaded → local_purged
 
 > 以下是 model 與 baseline 之間仍然成立的差異。
 
-1. **GORM tag 只是文件，不再建立任何東西**。全部 46 張表由 baseline 的 `CREATE TABLE` 建出，
+1. **GORM tag 只是文件，不再建立任何東西**。46 張表由 baseline 的 `CREATE TABLE` 建出，其餘由增量 migration 建出，
    `AutoMigrate` 已自產品程式碼移除（AST 守衛 `TestNoAutoMigrateInProductionCode` 釘住零命中）。
    **改 model 的欄位必須同步改 `baseline_schema_*.go`**——沒有任何東西會依 tag 補欄，
    缺欄的症狀要到執行期第一次查詢才以 `column does not exist` 出現在生產。

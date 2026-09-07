@@ -21,6 +21,7 @@
 | 安全政策 | 3 | `/api/v1/security-policies`, `/api/v1/auth/banner` | PCI 安全政策查詢/批次更新（admin）＋登入前告示讀取（公開） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（admin） |
 | 資產 | 17 | `/api/v1/assets` | CRUD、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
+| 帳號憑證庫 | 15 | `/api/v1/credentials`、`/api/v1/assets/:id/accounts/:accountId/credential` | 憑證 CRUD、範圍轉換、直接寫入密文、掛載與卸載、更換掛載憑證、整組改密與逐台補跑、單台脫離共用（全數 admin＋`credential:manage`） |
 | Host Key | 2 | `/api/v1/assets/:id/host-key` | TOFU host key 檢視/重置 |
 | 檔案管理（SFTP） | 5 | `/api/v1/assets/:id/files` | SSH 資產檔案列表/上下傳/建目錄/刪除 |
 | 資產節點 | 6 | `/api/v1/asset-groups` | 節點樹 CRUD＋樹導覽＋搬移 |
@@ -52,7 +53,7 @@
 | 改密 | 14 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 164 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 207 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -117,6 +118,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/assets/:id/accounts` | always |
 | DELETE | `/api/v1/assets/:id/accounts/:accountId` | always |
 | PUT | `/api/v1/assets/:id/accounts/:accountId` | always |
+| PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | always |
 | POST | `/api/v1/assets/:id/accounts/:accountId/set-default` | always |
 | DELETE | `/api/v1/assets/:id/files` | always |
 | GET | `/api/v1/assets/:id/files` | always |
@@ -191,6 +193,20 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/commands` | always |
 | GET | `/api/v1/connect` | always |
 | POST | `/api/v1/connect-tokens` | always |
+| GET | `/api/v1/credentials` | always |
+| POST | `/api/v1/credentials` | always |
+| DELETE | `/api/v1/credentials/:id` | always |
+| GET | `/api/v1/credentials/:id` | always |
+| PUT | `/api/v1/credentials/:id` | always |
+| POST | `/api/v1/credentials/:id/bindings` | always |
+| DELETE | `/api/v1/credentials/:id/bindings/:accountId` | always |
+| POST | `/api/v1/credentials/:id/bindings/:accountId/detach` | always |
+| POST | `/api/v1/credentials/:id/rotations` | always |
+| GET | `/api/v1/credentials/:id/rotations/:rid` | always |
+| POST | `/api/v1/credentials/:id/rotations/:rid/abandon` | always |
+| POST | `/api/v1/credentials/:id/rotations/:rid/members/:mid/retry` | always |
+| POST | `/api/v1/credentials/:id/scope` | always |
+| POST | `/api/v1/credentials/:id/secret` | always |
 | GET | `/api/v1/daily-reviews` | always |
 | POST | `/api/v1/daily-reviews` | always |
 | GET | `/api/v1/daily-reviews/status` | always |
@@ -1260,8 +1276,18 @@ POST /api/v1/assets
 }
 ```
 
+**登入憑證來源二擇一**（**BREAKING**）：頂層的 `username`／`password`／`private_key`
+是「這台專用」的簡寫形式，等價的完整寫法是內嵌 `"credential": {…}` 物件；要改掛既有共用憑證
+則改帶 `"credential_id": <憑證識別>`，此時建出來的預設掛載指向該憑證、就位版本為它當下的現行版本，
+**建資產不對目標主機寫入任何秘密**。兩種來源同時出現回 400 `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`；
+指定的憑證不是共用範圍回 409 `RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`；改密進行中回 409
+`RULE_CREDENTIAL_ROTATION_ACTIVE`；帶已移除的 `copy_from_account_id` 回 400
+`VALIDATION_ACCOUNT_COPY_FROM_REMOVED`。認證類型 `auth_method` **不在本端點的請求上**，
+要設定它請走資產帳號端點 `POST /assets/:id/accounts`。掛載列的語義見「資產帳號（憑證掛載列）」。
+
 **協議別驗證**:
-- `username` 必填於 ssh/rdp/mysql/postgres/mssql；vnc/redis/k8s 僅密碼（K8s 為 Bearer Token，走 `password` 欄加密儲存）
+- `username` 必填於 ssh/rdp/mysql/postgres/mssql；vnc/redis/k8s 僅密碼（K8s 為 Bearer Token，走 `password` 欄加密儲存）。
+  掛既有共用憑證時，帳號名取自該憑證，不必也不得在頂層另給
 - mssql 的 `host` **不得含逗號**（`-S host,port` 的分隔語義），違反回 `VALIDATION_ASSET_MSSQL_HOST_COMMA`
 - `protocol=k8s` 時 `k8s_namespace` 必填（連線時選 pod；`k8s_pod`/`k8s_container` 為相容舊資料的選填）
 - `db_name` 僅 mysql/postgres/redis/mssql 有意義（空＝連預設庫）；`db_tls_mode`: `''`/`disable`/`require`/`verify-ca`/`verify-full`
@@ -1303,10 +1329,14 @@ DELETE /api/v1/assets/:id     （asset:delete；軟刪除）
 
 **逐資產可視守門**: `GET /assets/:id`、`GET /assets/:id/k8s/pods`、`GET /assets/:id/host-key` 統一掛 `RequireAssetVisible` 中介層——非 admin/auditor 須對該資產有 view（或更高）授權，未授權回 404「資產不存在」（不洩漏存在性）；守門無條件生效。
 
-### 資產帳號
+### 資產帳號（憑證掛載列）
 
-一資產多系統帳號，各自持有信封加密憑證；未指定帳號的連線與系統路徑（改密 runner、k8s、
-SFTP 獨立入口）一律走**預設帳號**。適用 ssh/rdp/vnc/mysql/postgres/redis/mssql；k8s 固定單一預設帳號。
+一資產多系統帳號；未指定帳號的連線與系統路徑（改密 runner、k8s、SFTP 獨立入口）一律走
+**預設帳號**。適用 ssh/rdp/vnc/mysql/postgres/redis/mssql；k8s 固定單一預設帳號。
+
+**帳號列本身不持有登入秘密**。登入帳號名與密文的落點是憑證（見「帳號憑證庫 API」），
+帳號列回答的是「這台主機以哪一筆憑證登入、當下就位在哪一個密文版本」——即**掛載列**。
+一筆憑證掛在多台主機上時，那幾台共用同一組秘密，關係由憑證的範圍與掛載清單直接表達。
 
 ```
 GET    /api/v1/assets/:id/accounts                         （asset:view＋逐資產可視守門）
@@ -1316,48 +1346,104 @@ DELETE /api/v1/assets/:id/accounts/:accountId              （asset:update；204
 POST   /api/v1/assets/:id/accounts/:accountId/set-default  （asset:update）
 ```
 
-**回應 DTO**（`AssetAccountDTO`，列表為 `{"data":[...],"total":N}`、建立回 201、更新與 set-default 回 200）:
+更換某一掛載所引用的憑證另有一支端點，掛在同一路徑下但授權點不同（admin＋`credential:manage`）：
+`PUT /api/v1/assets/:id/accounts/:accountId/credential`，形狀見「帳號憑證庫 API」。
+
+**回應 DTO 依請求者的授權點分兩種投影**。同一支列表端點，具 `credential:manage` 者拿到
+完整版，其餘角色拿到精簡版。**投影只發生在列表端點**：建立、更新與設預設一律回完整版
+（這三支的授權點是 `asset:update`）。
+
 ```json
+// 具 credential:manage（admin）：完整版 AssetAccountDTO
 {
   "id": 3, "asset_id": 1, "username": "app",
   "is_default": false, "privileged": false, "auth_method": "sql", "note": "",
   "has_password": true, "has_private_key": false,
+  "shared_credential": false,
+  "credential_id": 106, "credential_name": "prod-01 / app",
+  "credential_scope": "dedicated", "effective_version_no": 4, "binding_count": 1,
   "created_at": "2026-08-02T00:00:00Z", "updated_at": "2026-08-02T00:00:00Z"
 }
 ```
-**憑證絕不出站**：`password_enc`/`private_key_enc` 於 model 標 `json:"-"`，DTO 只降為
-`has_password`/`has_private_key` 布林。列表排序 `is_default DESC, username ASC, id ASC`。
+```json
+// 不具該授權點（user／auditor）：精簡版，只有這五個鍵
+{"id": 3, "username": "app", "is_default": false, "has_password": true, "has_private_key": false}
+```
+
+**為什麼要分兩種**：憑證識別、名稱、範圍與掛載數合起來就是一張「哪些主機共用同一組秘密」
+的地圖。對只需要挑一個帳號連線的人而言那是多餘的資訊，而知道甲台與乙台是同一組秘密，
+等於知道拿下其中一台就等於拿下另一台。連線選帳號、工作區與帳號選單一律吃精簡版形狀，**不得**假設有
+`privileged`／`asset_id`／`note`／任何 `credential_*` 欄位。
+
+**憑證絕不出站**：密文欄於 model 標 `json:"-"`，兩種投影都只降為 `has_password`／
+`has_private_key` 布林。列表為 `{"data":[...],"total":N}`，排序 `is_default DESC, username ASC, id ASC`；
+建立回 201，更新與 set-default 回 200。
 
 **列表的帳號範圍過濾**: 依請求者有效授權帳號集合逐筆過濾——範圍外的帳號**直接不出現**
 （不回 403，不成為帳號探測器）；admin 全量，auditor 於非 connect 權限時全量。
 
-**建立請求**（全欄位選填）:
-```json
-{"username": "app", "password": "...", "private_key": "", "is_default": false, "privileged": false, "auth_method": "sql", "note": "", "copy_from_account_id": 0}
+**建立請求：登入憑證來源二擇一**（**BREAKING**）。掛既有共用憑證，或這台自己一組：
+
+```jsonc
+{ "credential_id": 110, "is_default": false, "privileged": false, "note": "" }
+
+{ "credential": { "username": "app", "password": "…", "private_key": "", "auth_method": "" },
+  "is_default": false, "privileged": false, "note": "" }
 ```
-- `copy_from_account_id`＝**從其他資產帳號複製建號**：密文**原樣搬移**（不解密重加密），
-  `username` 僅在請求未帶時沿用來源，顯式帶 `password`/`private_key` 則覆蓋複製值。
-  跨資產複製需操作者對來源資產有 view 權；來源不存在與無權限**共用同一碼**（不洩漏存在性）。
+
+- 頂層的 `username`／`password`／`private_key`／`auth_method` 是內嵌 `credential` 物件的
+  簡寫形式，語義完全相同；`credential` 與頂層簡寫同時出現亦視為矛盾。
+- `credential_id` 與內嵌形式**同時給** → 400 `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`。
+  兩者表達的意圖相反（跟其他主機共用 vs 這台自己一組），靜默擇一會讓操作者以為建出來的
+  是另一種。
+- 掛既有共用憑證時**不建立任何密文版本**，就位版本設為該憑證當下的現行版本，
+  且**對目標主機零寫入**——掛載只是宣告「這台用這組秘密登入」，秘密是否真的在那台機器上
+  有效，由後續連線或改密揭露。
+- 內嵌形式在同一交易建立一筆專用憑證與其第 1 版密文；該憑證隨這個掛載存在，
+  掛載被刪時同交易刪除。
+- `copy_from_account_id`（從其他資產帳號複製建號）**已移除**：帶值 → 400
+  `VALIDATION_ACCOUNT_COPY_FROM_REMOVED`。複製出來的兩份密文是同一組秘密的兩個副本，
+  系統事後無從得知它們是否還一樣，於是「這組秘密被哪些主機使用」永遠回答不了。
+  共用意圖一律以共用憑證表達。
 - 資產的第一個帳號強制成為預設（`is_default` 傳 false 亦然）。
 - `auth_method`: 認證類型，值域 `sql`｜`domain`，未帶＝`sql`。**1.0 只接受 `sql`**——
   帶 `domain` 明確回 `VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`（**不靜默降級**），
   值域外回 `VALIDATION_ACCOUNT_AUTH_METHOD`。非 mssql 協議的帳號留在預設值且不參與連線組裝。
 
+`POST /api/v1/assets` 的登入憑證欄位同一套二擇一規則與同一組錯誤碼（見「創建」段）。
+
 **更新請求**（欄位皆為指標，未帶＝不動）: `username`/`password`/`private_key`/`privileged`/`auth_method`/`note`；
 密碼與私鑰**空字串＝沿用既有**。**無 `is_default` 欄位**——切換預設帳號只能走 set-default 端點。
+`username` 與密文的更新作用在該掛載所引用的憑證上：前者改憑證的登入帳號名，後者在憑證上
+追加一個新版本並讓這個掛載就位到它。
+
+**掛在共用憑證上的帳號不接受由本端點寫入新密文** → 409 `RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET`。
+那組秘密同時是其他主機的登入身分，由單台表單改寫會讓其餘掛載當場失去登入身分，而操作者
+在那個畫面上看得見的只有這一台。出口有二：由憑證層整組寫入（`POST /api/v1/credentials/:id/secret`），
+或先讓這台脫離共用。專用憑證維持既有行為。改密進行中的憑證一律拒絕寫入
+（409 `RULE_CREDENTIAL_ROTATION_ACTIVE`）。
 
 **default 語義**: 「至多一個」由 partial unique index 強制，「有帳號必有 default」由服務層
 交易維護。刪除預設帳號時若資產尚有其他帳號 → 400 `RULE_ACCOUNT_DEFAULT_REQUIRED`；
 資產僅剩該帳號時允許刪除（零帳號資產合法，同步清空資產顯示欄）。set-default 對已是預設者為
 no-op（不寫審計），否則在同一交易內先清舊預設再設新預設。
 
+**刪除的語義是卸下掛載，不是改主機密碼**：`DELETE` 只移除掛載列與其就位版本，**目標主機上的
+密碼原封不動**。被刪的若是某筆專用憑證的唯一掛載，該憑證於同一交易一併刪除；共用憑證則
+留著，只是少一個掛載。要讓一台主機換掉自己的密碼並脫離共用，走的是脫離端點而非刪除。
+
 **錯誤碼**（apierror 機器碼，前端查譯）:
 `VALIDATION_INVALID_ACCOUNT_ID`(400)、`VALIDATION_ACCOUNT_USERNAME_INVALID`(400，含冒號或控制字元)、
 `VALIDATION_ACCOUNT_USERNAME_RESERVED`(400，`@` 前綴為授權別名保留命名空間)、
 `VALIDATION_ACCOUNT_USERNAME_TOO_LONG`(400)、`VALIDATION_ACCOUNT_NOTE_TOO_LONG`(400)、
+`VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`(400)、`VALIDATION_ACCOUNT_COPY_FROM_REMOVED`(400)、
+`VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE`(400，共用憑證的登入帳號名不可改)、
 `CONFLICT_ACCOUNT_USERNAME`(409，同資產同名)、`CONFLICT_ACCOUNT_DEFAULT`(409，併發撞 partial unique index)、
-`RULE_ACCOUNT_DEFAULT_REQUIRED`(400)、`NOTFOUND_ASSET`(404)、`NOTFOUND_ASSET_ACCOUNT`(404)、
-`NOTFOUND_ASSET_ACCOUNT_SOURCE`(404，複製來源不存在或無權)、`INTERNAL_ASSET_ACCOUNT_*`(500)。
+`RULE_ACCOUNT_DEFAULT_REQUIRED`(400)、`RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET`(409)、
+`RULE_CREDENTIAL_ROTATION_ACTIVE`(409)、`RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`(409，
+指定的憑證是專用憑證，不可掛到第二台)、`RULE_CREDENTIAL_PROTOCOL_MISMATCH`(409，憑證協定族與
+資產協定不相容)、`NOTFOUND_ASSET`(404)、`NOTFOUND_ASSET_ACCOUNT`(404)、
+`NOTFOUND_CREDENTIAL`(404)、`INTERNAL_ASSET_ACCOUNT_*`(500)。
 
 **審計**: 建立/更新/刪除/切換預設各記一筆專屬審計，Details **只記被變更的欄位名稱**，
 絕不含密文或明文憑證。
@@ -1425,6 +1511,285 @@ GET  /api/v1/assets/:id/k8s/download    （asset:update；query: pod, container,
 - 檔案進出視為寫級操作，需 `asset:update` 而非僅讀
 - 每次操作直接落審計日誌（resource=file，含方向/pod/container/路徑/大小）
 - 下載對「容器內不存在的來源」回 404（以本地是否產出檔案判斷）；目錄回 400
+
+---
+
+## 帳號憑證庫 API（admin only）
+
+登入秘密的唯一真相。一筆**憑證**持有登入帳號名、秘密型別、協定族與一串**不可變的密文版本**；
+資產帳號列只以外鍵引用它（見「資產帳號（憑證掛載列）」）。
+
+- **範圍**：`dedicated`（專用）恰有一個掛載，隨掛載建立與刪除，名稱為空、顯示名由
+  「資產名 / 帳號名」計算而不落庫；`shared`（共用）具名、可掛多台，是整組改密的對象。
+- **版本**：已建立的密文版本不再改寫，變更秘密一律新增一版。每個掛載各自記著**就位版本**
+  ——「這台用舊版、那台用新版」得以成立的前提，正是舊版密文原封不動。
+- **就位版本是連線的唯一依據**：連線只取掛載的就位版本，不依憑證的現行或待生效版本推測、
+  不自動試兩個版本。就位版本為空即該掛載尚無可用秘密，連線一律 fail-close。
+
+**權限**：全部端點 admin ＋ `credential:manage`。憑證是登入身分的本體，其管理面的權限不低於改資產。
+列表、詳情與改密進度三支讀取端點每次呼叫各留一筆審計（掛載清單隨詳情回，無獨立端點）。
+
+**「不存在」與「不可見」共用同一碼**（`NOTFOUND_CREDENTIAL`）：憑證不存在、已軟刪、
+操作者對受影響資產無權限三者回位元相同的回應。分流即成為存在性探測器，而憑證識別是連號的。
+錯誤回應同樣不回填憑證名、帳號名與資產名——那些是請求方可控的自由字串。
+
+| 方法 | 路徑 | 說明 | 回應 |
+|---|---|---|---|
+| GET | `/api/v1/credentials` | 清單（篩選＋選用分頁） | 200 `{data, total}` |
+| POST | `/api/v1/credentials` | 建立**共用**憑證 | 201 ＋ `CredentialDTO` |
+| GET | `/api/v1/credentials/:id` | 詳情（含掛載清單） | 200 `{data, aggregate_state}` |
+| PUT | `/api/v1/credentials/:id` | 改名稱、備註；專用另可改帳號名 | 200 ＋ `CredentialDTO` |
+| DELETE | `/api/v1/credentials/:id` | 刪除（仍有掛載即拒） | 204 |
+| POST | `/api/v1/credentials/:id/scope` | 專用⇄共用範圍轉換 | 200 ＋ `CredentialDTO` |
+| POST | `/api/v1/credentials/:id/secret` | 直接寫入新密文（不動遠端） | 200 ＋ `CredentialDTO` |
+| POST | `/api/v1/credentials/:id/bindings` | 掛到一台資產 | 201 ＋ `AssetAccountDTO`（完整版） |
+| DELETE | `/api/v1/credentials/:id/bindings/:accountId` | 卸載（不動遠端） | 204 |
+| POST | `/api/v1/credentials/:id/bindings/:accountId/detach` | 單台脫離共用（**同步**，會動遠端） | 200 `{data: RotationDTO}` |
+| POST | `/api/v1/credentials/:id/rotations` | 發起改密（整組或拆分，**非同步**） | 202 `{data: RotationDTO}` |
+| GET | `/api/v1/credentials/:id/rotations/:rid` | 改密進度（聚合態＋逐台成員） | 200 `{data: RotationDTO}` |
+| POST | `/api/v1/credentials/:id/rotations/:rid/members/:mid/retry` | 逐台補跑（**同步**） | 200 `{data: RotationDTO}` |
+| POST | `/api/v1/credentials/:id/rotations/:rid/abandon` | 放棄本輪（不回滾遠端） | 200 `{data: RotationDTO}` |
+| PUT | `/api/v1/assets/:id/accounts/:accountId/credential` | 更換此掛載使用的憑證 | 200 ＋ `AssetAccountDTO`（完整版） |
+
+最後一支掛在資產帳號路徑下：它改的是**那一台**的登入身分，路徑上的主體是資產。
+單台脫離共用只有 `/bindings/:accountId/detach` 這一支端點，資產編輯與憑證庫兩個介面入口都打它。
+
+### 清單的查詢參數
+
+全部選用，值域外一律回錯而非靜默不篩：
+
+| 參數 | 值域 | 語義 |
+|---|---|---|
+| `scope` | `dedicated`｜`shared` | 值域外回 `VALIDATION_CREDENTIAL_SCOPE_INVALID` |
+| `secret_type` | `password`｜`ssh_key` | 值域外回 `VALIDATION_CREDENTIAL_SECRET_TYPE_INVALID` |
+| `protocol` | 資產協定（`ssh`／`rdp`／`vnc`／`mysql`／`postgres`／`redis`／`mssql`／`k8s`） | 只留掛得上該協定資產的憑證。伺服端以資產協定與改密通道推導協定族後比對，**呼叫端不自行推導**——那份判準會在通道規則改變時開始說謊。值域外回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="protocol"`） |
+| `windows_openssh` | 布林 | 該台的改密走 Windows OpenSSH，於是 `ssh` 協定推導為 `windows` 族。**與 `protocol` 缺一不擋**：只帶協定＝開關視為 false；只帶開關而無協定不構成篩選條件。非布林或與協定不相容（僅 `ssh`／`rdp` 相容）回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="windows_openssh"`） |
+| `rotation_state` | `overdue`｜`due_soon`｜`unverified`｜`no_record`｜`no_policy`｜`compliant` | 該憑證全部掛載的狀態桶**取最嚴**；零掛載的憑證不屬於任何桶，不會出現在任何一次篩選裡。值域外回 `VALIDATION_INVALID_QUERY_PARAM`（`params.field="rotation_state"`） |
+| `username` | 任意 | 帳號名**完全相等**比對，非模糊 |
+| `search` | 任意 | 模糊比對三個面：共用憑證的名稱、憑證的帳號名，以及**專用憑證所掛資產的名稱**——專用的顯示名是計算值，搜資產名要找得到它 |
+| `page` | ≥1 | **不帶＝回全部**（既有呼叫端行為不變）；帶了才切頁 |
+| `page_size` | ≥1 | 預設 20、上限 200；只在帶 `page` 時生效 |
+
+`page`／`page_size` 非正整數回 400 `VALIDATION_INVALID_QUERY_PARAM` 並以 `params.field` 指出是哪一個。
+翻到超出範圍的頁碼回**空陣列**而非錯誤——那是正常操作。
+**`total` 恆為套用全部篩選後的總筆數**，不是本頁筆數；未帶分頁時即 `data` 的長度。
+
+輪替狀態的篩選在取回清單後於 API 層計算，不下推成 SQL：狀態是逐掛載狀態桶取最嚴的計算值，
+沒有可篩的欄位，下推等於在資料庫裡再實作一次那套優先序，兩份口徑分岔出來的就是同一筆憑證
+在兩個畫面上顯示成兩種合規狀態。
+
+### 憑證的形狀
+
+```jsonc
+// CredentialDTO
+{
+  "id": 110,
+  "name": "共用維運帳號",        // 共用＝落庫名稱；專用＝「資產名 / 帳號名」計算值（不可編輯）
+  "scope": "shared",             // dedicated | shared
+  "username": "ops",
+  "secret_type": "password",     // password | ssh_key
+  "auth_method": "sql",
+  "protocol_family": "ssh",      // ssh | windows | vnc | database | k8s
+  "note": "",
+  "has_password": true,          // 密文本體永不出站，只投影布林
+  "has_private_key": false,
+  "binding_count": 2,            // 掛在幾台資產上
+  "current_version_no": 1,       // 0＝尚無任何密文
+  "rotation_active": false,
+  "active_rotation_id": 0,       // 進行中那一輪的識別；0＝沒有進行中的輪替
+  "created_at": "2026-09-06T16:29:00Z",
+  "updated_at": "2026-09-06T16:29:00Z"
+}
+```
+
+`active_rotation_id` 的用途是定址：進度端點以輪替識別查詢，少了這一欄，逐台進度就只有發起
+那一次操作的呼叫端看得到，重新整理或換一台電腦打開只剩「輪替中」而看不出還差哪幾台。
+
+`GET /api/v1/credentials/:id` 回 `CredentialDetailDTO`＝上表加一個 `bindings` 陣列，
+頂層另帶 `aggregate_state`（值域見「改密的非同步語義」）。聚合態取不到時整個鍵不出現
+——那是進度的補充資訊，缺它仍答得出這筆憑證是誰。
+
+```jsonc
+// bindings[]：掛載列
+{
+  "account_id": 20113, "asset_id": 2, "asset_name": "ssh-multi-test",
+  "username": "ops", "is_default": true,
+  "privileged": false,        // 逐掛載獨立：同一組秘密在不同主機上的特權性可以不同
+  "note": "",
+  "effective_version_no": 1,  // 該台當下用以連線的版本序號；0＝尚未取得任何密文
+  "up_to_date": true          // 就位版本即憑證的現行版本
+}
+```
+
+**協定族是憑證自持的欄位，不由成員推導**：零掛載的新建共用憑證沒有成員可推導，而資產表單的
+「只列此協定可用的憑證」正需要在那個時候就能過濾。`windows` 族涵蓋 RDP 資產與走 Windows
+OpenSSH 改密的 SSH 資產——族別回答的是「這組秘密拿去登入什麼樣的系統」。
+
+### 建立、更新與範圍轉換
+
+```jsonc
+// POST /api/v1/credentials（本端點只建共用憑證）
+{
+  "name":            "必填、≤128、不得含控制字元、共用範圍內唯一",
+  "username":        "可空；非空時沿用帳號名規則（不得含換行／冒號／控制字元、不得以 @ 開頭、≤100）。vnc／redis／k8s 等無帳號名的協定族留空",
+  "secret_type":     "password｜ssh_key，可省略（由給了哪一種秘密推導）",
+  "auth_method":     "sql｜domain，可省略（空＝sql）",
+  "protocol_family": "ssh｜windows｜vnc｜database｜k8s",
+  "note":            "≤255",
+  "password":        "與 private_key 二擇一（至少其一）",
+  "private_key":     ""
+}
+```
+
+名稱撞名回 409 `CONFLICT_CREDENTIAL_NAME`；名稱唯一性只在共用範圍且未軟刪的列之間成立，
+故軟刪之後同名可立即重用。缺秘密回 400 `VALIDATION_CREDENTIAL_SECRET_REQUIRED`
+——一筆沒有秘密的共用憑證掛上去只會讓那台機器連不上。
+
+`auth_method` 是**認證類型**（資料庫協定族登入目標的方式），與 `secret_type`（秘密是密碼還是
+SSH 金鑰）是兩件事。值域 `sql`｜`domain`，未帶＝`sql`；**1.0 只接受 `sql`**——帶 `domain`
+回 400 `VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`（**不靜默降級**：靜默接受一個做不到的設定，
+會讓管理員以為域認證已生效），值域外回 400 `VALIDATION_ACCOUNT_AUTH_METHOD`。
+非資料庫協定族的憑證留在預設值，該欄不參與連線組裝。
+
+`PUT /api/v1/credentials/:id` 的三個欄位皆為指標語義（省略＝不動）：`name`、`note`、`username`。
+**共用憑證的登入帳號名不可改** → 400 `VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE`：改名等於讓
+每一台掛載的登入身分同時變動，而遠端主機上的帳號並不會跟著改。專用憑證可改，改後於其唯一
+掛載所屬資產內重驗不撞名。
+
+`POST /api/v1/credentials/:id/scope` 帶 `{"scope": "dedicated｜shared", "name": "…"}`：
+轉共用必須命名（否則 400 `RULE_CREDENTIAL_SHARED_REQUIRES_NAME`），並解除「恰一掛載」的限制；
+轉專用只在剩下恰一個掛載時允許（多掛載回 409 `RULE_CREDENTIAL_TO_DEDICATED_MULTI_BINDING`、
+零掛載回 409 `RULE_CREDENTIAL_TO_DEDICATED_NO_BINDING`），同交易清空名稱。
+**兩個方向都不動密文版本、不動就位版本、不動遠端主機**：範圍是這組秘密的管理形態，不是它的內容。
+
+`POST /api/v1/credentials/:id/secret` 帶 `{"password": "…", "private_key": "…"}`，
+用於把遠端現況補登進系統：建立一筆新版本並讓**全部掛載**同時就位。操作者說的是「這組秘密現在
+長這樣」，那句話的射程是整組；只改其中一台會讓其餘各台停在舊版而畫面上看不出差別。
+本次未給的那一欄自現行版本原樣帶過（只補登密碼不會順手清掉私鑰）。**本端點不觸碰任何遠端主機**。
+
+### 掛載與卸載
+
+```jsonc
+// POST /api/v1/credentials/:id/bindings
+{ "asset_id": 2, "is_default": false, "privileged": false, "note": "" }
+
+// PUT /api/v1/assets/:id/accounts/:accountId/credential
+{ "credential_id": 110 }
+```
+
+- **掛載對目標主機零寫入**：新掛載的就位版本於同一交易設為該憑證當下的現行版本。
+  這不宣稱該秘密在那台機器上必定有效——有效與否由後續連線或改密揭露。
+- 掛載會檢核協定族相容（不符回 409 `RULE_CREDENTIAL_PROTOCOL_MISMATCH`）、同一資產不重複掛
+  同一憑證（409 `CONFLICT_CREDENTIAL_BINDING`）、同資產同帳號名只掛一次（409 `CONFLICT_ACCOUNT_USERNAME`）；
+  專用憑證不可掛第二台（409 `RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`）。
+- **卸載只移除掛載列，不更動主機上的密碼**。介面必須就地說明這一點，與「脫離共用」（會改遠端）
+  明確分開。卸載專用憑證的唯一掛載時，該憑證於同一交易被刪。
+- 掛載與卸載的審計列除憑證外另帶受影響的資產識別，使同一個動作在資產樞紐上也查得到——
+  改變的是秘密在哪些主機上生效，只掛在憑證下會讓「這台機器的登入身分被誰換掉」查不出來。
+- 憑證仍有掛載時刪除回 409，並於回應 body 帶受影響的資產名單：
+  `{"code": "RULE_CREDENTIAL_IN_USE", "assets": ["ssh-multi-test", "web-01"]}`。
+  名單走 body 而非錯誤 `params`（後者只收受控值域），且本端點已在憑證管理授權點之後。
+- 仍有未決候選秘密時刪除回 409 `RULE_CREDENTIAL_PENDING_CANDIDATE`：那台機器現在吃哪一組秘密
+  尚未確定，刪掉憑證即失去追回的依據。與前一碼分流，因為操作者的下一步不同——
+  一個要先卸載，一個要等收斂。
+
+### 改密的非同步語義
+
+```jsonc
+// POST /api/v1/credentials/:id/rotations
+{ "mode": "group｜split", "policy": { "length": 16, "include_symbol": true, "exclude_ambiguous": true } }
+```
+
+`policy` 物件內用短名。改密計劃與批次改密另有各自的扁平欄位
+（`password_length`／`password_include_symbol`／`password_exclude_ambiguous`），兩者不共用。
+`mode` 省略＝`group`；值域外回 400 `VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID`。
+`group`＝全部掛載換到同一組新秘密；`split`＝每台各自隨機，收斂後各自成為專用憑證，共用關係解除。
+
+```jsonc
+// RotationDTO
+{
+  "id": 7, "credential_id": 110, "epoch": 1,
+  "mode": "group", "status": "running",        // running | completed | abandoned
+  "requested_by": 1, "requested_by_name": "admin",
+  "started_at": "…", "finished_at": "…（未結束時整個鍵不出現）",
+  "aggregate_state": "changing",
+  "members": [{
+    "id": 31, "account_id": 20113, "asset_id": 2, "asset_name": "ssh-multi-test",
+    "username": "ops", "state": "changing", "attempt_count": 1,
+    "next_attempt_at": "…（無則不出現）",
+    "last_error": "…（機器碼，無則不出現）",
+    "applied_at": "…（無則不出現）"
+  }]
+}
+```
+
+**成員狀態七值**：`queued`（已排入本輪）／`changing`（正在對遠端下達）／`changed_unverified`
+（遠端已下達但尚未以新值驗證成功，含遠端狀態不可知）／`applied`（已驗證並就位，本輪終態）／
+`retry_wait`（可重試的失敗且未達上限，帶下次嘗試時刻）／`terminal_failed`（達上限或確定失敗，
+待逐台補跑）／`abandoned`（本輪被放棄，且該成員從未動過遠端）。
+**只有 `applied` 會改寫該掛載的就位版本**，其餘六個狀態一律不動——遠端是否收下新秘密未知時，
+謊稱新版已生效會使該台連不上且看不出原因。
+
+**聚合態五值**：`idle`／`queued`／`changing`／`partial`／`out_of_sync`。
+`partial` **先於** `changing`：一旦出現「有的已就位、有的還沒」，那就是要被看見的事實。
+`out_of_sync` 有兩種來源——本輪已結束而待生效版本仍在且成員未全部就位，或全部成員都停在
+終局失敗與收束（沒有一台還在動，也沒有一台就位）。憑證處於 `out_of_sync` 時不接受發起新一輪
+（409 `RULE_CREDENTIAL_OUT_OF_SYNC`），出口是逐台補跑至收斂。
+
+- `POST /rotations` 回 **202** 與剛建立的輪替（此時成員多為 `queued`）。推進在背景進行，
+  **回應不代表任何一台已改完**。
+- 前端輪詢 `GET /api/v1/credentials/:id/rotations/:rid`。建議節奏：前 2 分鐘每 3 秒、其後每 10 秒；
+  `status` 轉 `completed`／`abandoned`，或全部成員落在 `applied`／`terminal_failed`／`abandoned`
+  時停止輪詢。**不要顯示預估剩餘時間**：整輪的背景推進沒有整體上限，沒有可據以估算的來源。
+- **成員補跑與單台脫離是同步的**（只動一台，操作者要當下的結果）：請求可能耗時數十秒，
+  介面要有等待態與逾時提示。
+- 成員狀態、聚合態與 `last_error` 都是機器碼，介面文案三語齊備，回應不含遠端回應原文。
+- `POST /rotations/:rid/abandon` **只表示停止自動化，不回滾**：已就位者不改回舊密、對遠端零額外
+  操作。全部成員都不曾動過遠端時，待生效版本直接丟棄、憑證回到 `idle`；否則憑證進入
+  `out_of_sync`，後續只能逐台補跑至收斂。輪替已結束時再呼叫回 409 `RULE_CREDENTIAL_ROTATION_NOT_RUNNING`。
+- **補跑對已就位的成員不動作**：狀態為 `applied` 時直接回 200 與當下進度，不再往遠端跑一趟。
+  `terminal_failed` 與 `abandoned` 的成員**可以補跑**，會被轉回 `queued` 重新執行，
+  那正是未收斂狀態的出口。補跑期間該成員的狀態已被其他路徑推進時（並發），回 409
+  `RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE`。
+- 零掛載的具名共用憑證是合法的待用狀態，對它發起改密沒有任何遠端可動 → 409 `RULE_CREDENTIAL_ROTATION_NO_BINDING`。
+
+### 單台脫離共用
+
+```jsonc
+// POST /api/v1/credentials/:id/bindings/:accountId/detach
+{ "source": "random｜custom", "policy": { … }, "password": "…", "private_key": "…" }
+```
+
+以舊憑證登入該台、套用新秘密、再以新值驗證登入；驗證通過才改綁到一筆新的專用憑證。
+`source` 為 `random` 時依 `policy` 產生，`custom` 時取請求帶的新秘密；**空值一律拒絕**
+（400 `VALIDATION_CREDENTIAL_DETACH_SOURCE_INVALID`，二擇一不是三選一）。本操作僅適用共用憑證
+（否則 409 `RULE_CREDENTIAL_NOT_SHARED`）。
+
+脫離未完成時的回應**不是普通錯誤信封**，另帶終態與原因碼：
+
+```jsonc
+409 { "code": "RULE_CREDENTIAL_DETACH_FAILED", "state": "changed_unverified", "reason": "…" }
+```
+
+`state` 與 `reason` 皆為機器碼的封閉集合，**不含遠端回應原文**（那可能含主機名、路徑與帳號枚舉）。
+兩者分開的理由是操作者的下一步不同：確定失敗可以直接再試，遠端結果不明則要先確認那台機器
+現在到底吃哪一組秘密。
+
+### 錯誤碼
+
+| 家族 | 碼 |
+|---|---|
+| 路徑參數 | `VALIDATION_INVALID_CREDENTIAL_ID`、`VALIDATION_INVALID_ROTATION_ID`、`VALIDATION_INVALID_ROTATION_MEMBER_ID` |
+| 名稱 | `VALIDATION_CREDENTIAL_NAME_REQUIRED`／`_TOO_LONG`／`_INVALID`、`CONFLICT_CREDENTIAL_NAME` |
+| 範圍與型別 | `VALIDATION_CREDENTIAL_SCOPE_INVALID`、`VALIDATION_CREDENTIAL_SECRET_TYPE_INVALID`、`VALIDATION_CREDENTIAL_SECRET_REQUIRED`、`VALIDATION_CREDENTIAL_PROTOCOL_FAMILY_INVALID` |
+| 帳號名與認證類型 | `VALIDATION_CREDENTIAL_USERNAME_IMMUTABLE`；帳號名本身的檢核沿用既有的 `VALIDATION_ACCOUNT_USERNAME_*` 三碼與 `VALIDATION_ACCOUNT_NOTE_TOO_LONG`；認證類型沿用 `VALIDATION_ACCOUNT_AUTH_METHOD`／`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED` |
+| 來源二擇一 | `VALIDATION_CREDENTIAL_SOURCE_AMBIGUOUS`、`VALIDATION_ACCOUNT_COPY_FROM_REMOVED` |
+| 改密請求 | `VALIDATION_CREDENTIAL_ROTATION_MODE_INVALID`、`VALIDATION_CREDENTIAL_DETACH_SOURCE_INVALID` |
+| 計劃／批次 | `VALIDATION_PLAN_TARGET_KIND`、`VALIDATION_PLAN_TARGET_CREDENTIAL_REQUIRED`、`VALIDATION_PLAN_SHARED_CREDENTIAL_TARGET`、`VALIDATION_BATCH_CREDENTIAL_NAME_REQUIRED` |
+| 找不到 | `NOTFOUND_CREDENTIAL`、`NOTFOUND_CREDENTIAL_BINDING`、`NOTFOUND_CREDENTIAL_ROTATION`、`NOTFOUND_CREDENTIAL_ROTATION_MEMBER` |
+| 衝突 | `CONFLICT_CREDENTIAL_BINDING`、`CONFLICT_ACCOUNT_USERNAME` |
+| 業務規則 | `RULE_CREDENTIAL_IN_USE`、`RULE_CREDENTIAL_PENDING_CANDIDATE`、`RULE_CREDENTIAL_ROTATION_ACTIVE`、`RULE_CREDENTIAL_OUT_OF_SYNC`、`RULE_CREDENTIAL_SHARED_REQUIRES_NAME`、`RULE_CREDENTIAL_TO_DEDICATED_MULTI_BINDING`、`RULE_CREDENTIAL_TO_DEDICATED_NO_BINDING`、`RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`、`RULE_CREDENTIAL_PROTOCOL_MISMATCH`、`RULE_CREDENTIAL_NOT_SHARED`、`RULE_CREDENTIAL_ROTATION_NOT_RUNNING`、`RULE_CREDENTIAL_ROTATION_NO_BINDING`、`RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE`、`RULE_CREDENTIAL_DETACH_FAILED`、`RULE_ACCOUNT_SHARED_CREDENTIAL_SECRET` |
+| 5xx | `INTERNAL_CREDENTIAL_{LIST,GET,CREATE,UPDATE,DELETE,BIND,UNBIND,REBIND,SCOPE,SECRET,DETACH}`、`INTERNAL_CREDENTIAL_ROTATION_{START_FAILED,GET,RETRY,ABANDON}` |
 
 ---
 
@@ -3205,10 +3570,12 @@ POST   /api/v1/rotation-report/schedules/:id/run   立即產出（admin）
 
 另有兩處邊界，報告本身也明載：
 
-- **共用憑證標記只反映系統知道的事。** 以「從其他資產帳號複製」建立的帳號會與來源歸為同一組，
-  該組任一帳號經系統改密成功即脫離（組內只剩一員時該員一併脫離）。
-  **管理者手動編輯憑證不改變標記**——手動輸入的密碼是否仍與他人相同，系統無從判定。
-  本能力引入前既有的複製關係亦不回溯補登。標記只以布林呈現，群組識別本身不出 API。
+- **共用憑證標記讀的是憑證範圍。** 該帳號掛的憑證範圍為共用時標記為真，掛專用憑證時為假；
+  真相在憑證本體，標記只是它的投影。一台脫離共用之後即改綁到自己的專用憑證，標記隨之為假。
+  **管理者在系統外自行把兩台主機設成同一組密碼，系統無從判定**——那組秘密沒有經過憑證庫，
+  不會有任何一筆共用憑證指向它。標記本身只以布林呈現；**憑證名稱與該台的就位版本序號隨列出站**
+  （`credential_name`／`effective_version_no`），供稽核對照當下用的是哪一組秘密。
+  憑證識別與密文一律不出本端點。
 - **`no_record` 不等於逾期。** 系統無該帳號成功改密記錄時狀態為 `no_record`，不計入逾期數、
   不列入 PDF 例外清單，明細仍在附表與帳號 CSV 內；它在兩種合規率上的處置由口徑決定（見下）。
 
@@ -3271,6 +3638,7 @@ GET /api/v1/rotation-report
   "rows": [{"account_id": 1, "asset_id": 1, "asset_name": "…", "asset_address": "…",
             "protocol": "ssh", "username": "root", "credential_type": "password",
             "privileged": true, "shared_credential": false,
+            "credential_name": "prod-01 / root", "effective_version_no": 3,
             "plans": ["週度改密-核心主機"], "multi_plan": false,
             "max_age_days": 60, "max_age_source": "plan:週度改密-核心主機",
             "last_success_at": "2026-08-21T02:00:00Z", "last_record_status": "success",
@@ -3287,7 +3655,8 @@ GET /api/v1/rotation-report
 - `credential_type`: `password`／`ssh_key`／`none`；`candidate_state`: `none`／`pending`／`abandoned`。
 - `multi_plan` 為真時 `plans` 列出全部計劃，天數與排程取最嚴（天數最小、排程最近）。
 - 帳號列上限 20,000；超過即截斷並以 `truncation` 標明，**不靜默截斷**。
-- 回應**不含**改密計劃的密碼策略欄，亦不含任何憑證欄位。
+- 回應**不含**改密計劃的密碼策略欄，亦不含任何密文或候選秘密。憑證面只出
+  型別（`credential_type`）與 `shared_credential`／`credential_name`／`effective_version_no`。
 - 本端點對整個母體一次算完。呼叫端的狀態桶篩選應在既有資料上進行，不必為每次篩選重打
   ——「同源」指的正是這件事。
 
@@ -3306,7 +3675,8 @@ GET /api/v1/rotation-report/records
 
 ```json
 {"data": [{"record_id": 12, "executed_at": "2026-08-14T02:00:03Z", "plan_name": "…",
-           "asset_name": "…", "account_username": "root", "account_deleted": false,
+           "batch_id": 0, "asset_name": "…", "account_username": "root", "account_deleted": false,
+           "credential_name": "共用維運帳號", "version_no": 4,
            "secret_type": "password", "status": "failed",
            "reason_code": "remote_exit_nonzero"}],
  "total": 16, "page": 1, "page_size": 20, "truncated": false}
@@ -3314,6 +3684,8 @@ GET /api/v1/rotation-report/records
 
 明細含 `failed`／`skipped` 等非成功結果。`reason_code` **只有機器碼，不含目標主機回傳的原文**
 （對外回應收斂的一貫作法；可讀說明由介面依碼提供）。帳號已刪除者以當時的帳號名快照列出並標示。
+`credential_name` 與 `version_no` 是執行當下的快照，掛載事後改綁到別的憑證也不會被覆蓋
+——稽核問的是「當時動的是哪一組秘密」。`plan_name` 為空且 `batch_id` 非 0 者來自批次改密。
 記錄上限 50,000，達上限時 `truncated` 為真。
 
 ### 手動產出
@@ -3549,6 +3921,7 @@ POST /api/v1/access-reviews
 ```json
 {
   "name": "每月輪換", "asset_ids": [1, 3], "accounts": ["@ALL"],
+  "target_kind": "account", "target_credential_id": 0,
   "secret_type": "password", "key_strategy": "append_replace",
   "password_length": 16, "password_include_symbol": true,
   "password_exclude_ambiguous": true,
@@ -3556,8 +3929,19 @@ POST /api/v1/access-reviews
 }
 ```
 
+- `target_kind`：目標種類，`account`（預設，空值讀成它）或 `credential`。值域外回 400
+  `VALIDATION_PLAN_TARGET_KIND`。`credential` 時 `target_credential_id` 必填（缺回 400
+  `VALIDATION_PLAN_TARGET_CREDENTIAL_REQUIRED`），該憑證須存在（不存在回 404
+  `NOTFOUND_CREDENTIAL`）。**不另造排程器**：cron、
+  啟用旗標、密碼策略與適用天數全部沿用計劃既有欄位，本欄只決定「要改的是哪一組東西」。
+  `credential` 目標的執行走整組改密，成員集合＝該憑證當下的全部掛載，逐台結果落在同一組執行記錄上。
 - `accounts`：帳號範圍。`["@ALL"]`（預設）＝該資產全部帳號；否則為帳號 username 明列集合。
-  空值一律讀成 `@ALL`。
+  空值一律讀成 `@ALL`。**以帳號為目標的計劃不得命中共用憑證的成員**，兩層各擋一次：
+  儲存計劃時掃描選取範圍，命中即整筆回 400 `VALIDATION_PLAN_SHARED_CREDENTIAL_TARGET`
+  （命中一個就拒絕整筆——靜默跳過那幾台會讓管理員以為它們也被涵蓋了）；執行時再判一次，
+  仍命中的目標記 skipped 帶原因碼 `SHARED_CREDENTIAL_TARGET_REQUIRED`。
+  只改共用的其中一員會讓同組其餘主機失去可用秘密，自動擴張到其餘掛載則是去改操作者沒有選取的
+  機器；兩條都不走，要改整組請以憑證為目標。
 - `secret_type`：`password`（POSIX 通道走 chpasswd；Windows 通道走 PowerShell `Set-LocalUser`）或 `ssh_key`
   （authorized_keys 輪替，僅 `posix_ssh` 通道；Windows 通道遇之記 skipped）；其他值回 400
   `VALIDATION_PLAN_BAD_SECRET_TYPE`。
@@ -3567,17 +3951,22 @@ POST /api/v1/access-reviews
   是否排除易混淆字元。**shell 敏感字元與控制字元為系統級硬排除，無任何設定可放寬**。
 - `cron` 空值＝僅手動觸發；非法 cron 回 400；名稱重複 409。
 
-**執行記錄欄位**: `{id, plan_id, asset_id, account_id, account_username, secret_type, status, error, executed_at}`；
+**執行記錄欄位**: `{id, plan_id, asset_id, account_id, account_username, credential_id,
+credential_name, target_version_id, secret_type, status, error, executed_at}`；
 `status`:
 
 | 值 | 語義 |
 |---|---|
-| `success` | 已驗證並提交為帳號憑證 |
-| `failed` | 遠端**確定未變更**（指令非零退出／登入失敗／指令送出前無法建立工作階段）；帳號憑證原樣，無殘留候選 |
-| `unverified` | 遠端狀態**不可知**或驗證未通過；帳號憑證維持舊值，候選保留待系統重試 |
-| `skipped` | 無改密通道（`CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`：通道為 `none`，含未設定通道的 rdp 資產）、通道不支援計劃的秘密型別（`CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED`：Windows 通道遇 `ssh_key`）、協定不在改密射程（`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`：vnc／資料庫／k8s）、無可用憑證、或該帳號已有未驗證候選 |
+| `success` | 已驗證並就位為該掛載使用的密文版本 |
+| `failed` | 遠端**確定未變更**（指令非零退出／登入失敗／指令送出前無法建立工作階段）；就位版本原樣，無殘留候選 |
+| `unverified` | 遠端狀態**不可知**或驗證未通過；就位版本維持舊值，候選保留待系統重試 |
+| `skipped` | 無改密通道（`CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`：通道為 `none`，含未設定通道的 rdp 資產）、通道不支援計劃的秘密型別（`CHANGE_SECRET_SECRET_TYPE_UNSUPPORTED`：Windows 通道遇 `ssh_key`）、協定不在改密射程（`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`：vnc／資料庫／k8s）、目標掛的是共用憑證而計劃以帳號為目標（`SHARED_CREDENTIAL_TARGET_REQUIRED`）、無可用憑證、或該帳號已有未驗證候選 |
 
-`error` 欄存機器碼（`CHANGE_SECRET_*`，前端按碼查譯三語文案），不存遠端原文。
+`credential_id`／`credential_name`／`target_version_id` 是執行當下的**快照**：掛載事後可能改指
+別的憑證，回頭 join 讀到的會是現況而不是那一次動的是誰。
+
+`error` 欄存機器碼（前端按碼查譯三語文案），不存遠端原文。多數碼帶 `CHANGE_SECRET_` 前綴；
+`SHARED_CREDENTIAL_TARGET_REQUIRED` 刻意不帶，因為它描述的是目標種類選錯，不是改密過程的失敗。
 
 **改密通道**：
 
@@ -3623,14 +4012,18 @@ Windows 兩通道的共同契約：
 - WinRM 不支援 Basic 認證，沒有關閉加密的設定；系統對 WinRM 請求全行程序列化（同一時刻只有一則請求在飛），批次改密不並行。
 - 目標機前置條件與 TLS 三模式的部署說明見 `docs/ops/upgrade-sop.md`。
 
-**未驗證憑證（候選）**：新秘密於動遠端**之前**即加密落庫，驗證成功才提交為帳號憑證並立即刪除候選。
-候選內容**不出現於任何 API 回應、UI、日誌或審計欄位**，只供系統重試登入。清單欄位為
-`{id, asset_id, account_id, account_username, plan_id, secret_type, applied, abandoned, attempt_count,
-last_attempt_at, next_attempt_at, last_error, created_at}`。
+**未驗證憑證（候選）**：新秘密於動遠端**之前**即加密落庫，驗證成功才成為該掛載就位的密文版本
+並立即刪除候選。候選內容**不出現於任何 API 回應、UI、日誌或審計欄位**，只供系統重試登入。清單欄位為
+`{id, asset_id, account_id, account_username, plan_id, secret_type, applied, abandoned,
+attempt_count, last_attempt_at, next_attempt_at, last_error, created_at}`。
 
 系統以指數退避重試（上限 1 小時、總期限 24 小時），逾期標 `abandoned` 並告警；**已放棄的候選不會被
 系統自動刪除**——它是那把可能已在遠端生效的秘密的唯一副本。`DELETE` 為 admin 的顯式逃生口，
 會產生審計記錄；清除後若遠端確實已改密，只能以主機 console 等帶外途徑重設救回。
+
+**帶憑證快照的候選由輪替引擎推進，不走單帳號轉正**：整組改密與拆分建立的候選屬於某一輪的成員，
+重試排程一律把它們交回成員路徑。走錯路徑的後果是在共用憑證上多開一個版本、在成員轉移之外
+改寫就位版本，拆分模式下更會把那台唯一的新秘密寫回原本要脫離的共用憑證。
 
 ### 帳號批次改密（change-secret-batches）
 
@@ -3650,14 +4043,15 @@ last_attempt_at, next_attempt_at, last_error, created_at}`。
 資料集的同一列（狀態桶、剩餘天數、共用憑證與特權標記等欄位同 `GET /rotation-report`），外加兩欄：
 `rotation_channel`（推導後的有效改密通道）與 `ineligible_reason`（執行前即可判定的不可改密原因碼，
 空＝可改密；值域為 `CHANGE_SECRET_CHANNEL_NOT_CONFIGURED`、`CHANGE_SECRET_PROTOCOL_UNSUPPORTED`、
-`CHANGE_SECRET_NO_CREDENTIAL`、`CHANGE_SECRET_NO_PASSWORD_CREDENTIAL`、`CHANGE_SECRET_CANDIDATE_PENDING`）。
+`CHANGE_SECRET_NO_CREDENTIAL`、`CHANGE_SECRET_NO_PASSWORD_CREDENTIAL`、`CHANGE_SECRET_CANDIDATE_PENDING`、
+`CHANGE_SECRET_ASSET_LOOKUP_FAILED`）。
 不可改密的目標仍列出，由前端停用勾選。
 
 **請求**（`POST`）:
 ```json
 {
   "username": "ops", "account_ids": [12, 34], "all": false,
-  "password_mode": "per_target",
+  "password_mode": "per_target", "credential_name": "",
   "password_length": 16, "password_include_symbol": true, "password_exclude_ambiguous": true
 }
 ```
@@ -3666,12 +4060,16 @@ last_attempt_at, next_attempt_at, last_error, created_at}`。
   任一不符回 400 `VALIDATION_BATCH_TARGET_MISMATCH`；零目標回 400 `VALIDATION_BATCH_NO_TARGETS`；
   缺帳號名回 400 `VALIDATION_BATCH_USERNAME_REQUIRED`。
 - `password_mode`：`per_target`＝每個目標各自隨機；`shared`＝批次開始時產生一組密碼供全部目標使用。
-  其他值回 400 `VALIDATION_BATCH_BAD_PASSWORD_MODE`。**`shared` 模式下成功提交的帳號歸入同一個憑證群組**，
-  輪替證據報告與帳號列表據此標示「共用憑證」——同一組密碼在多台生效，任一台外洩即全部外洩，這個事實
-  必須在報告上看得見。那組密碼不存於批次列，只經各目標的候選憑證信封加密保存。
+  其他值回 400 `VALIDATION_BATCH_BAD_PASSWORD_MODE`。
+- `credential_name`：`shared` 模式**必填**（缺回 400 `VALIDATION_BATCH_CREDENTIAL_NAME_REQUIRED`），
+  其他模式忽略。**`shared` 模式會建立一筆以此為名的共用憑證**，成功提交的目標改綁到它並就位同一個
+  密文版本，於是憑證庫、帳號列表與輪替證據報告據同一個來源標示共用關係——同一組密碼在多台生效，
+  任一台外洩即全部外洩，這個事實必須看得見。名稱沿共用憑證的檢核（≤128、不含控制字元、
+  共用範圍內唯一；撞名回 409 `CONFLICT_CREDENTIAL_NAME`），且在**送出前**即檢核，
+  不讓操作者改完一批機器才被撞名擋下。那組密碼不存於批次列，只經各目標的候選憑證信封加密保存。
 - 密碼策略三欄與計劃同語義、同預設（16、含符號、排除易混淆），長度越界回 400 `VALIDATION_PLAN_BAD_PASSWORD_LENGTH`。
 
-**執行**逐目標沿用計劃的狀態機與執行器（候選先落庫、動遠端、驗證、提交、群組處置、記錄、告警）；
+**執行**逐目標沿用計劃的狀態機與執行器（候選先落庫、動遠端、驗證、就位、憑證改綁、記錄、告警）；
 單一目標的失敗不中斷批次，每個目標的 `success`／`failed`／`unverified`／`skipped` 各自獨立落記錄。
 批次列欄位：`{id, username, password_mode, password_length, password_include_symbol, password_exclude_ambiguous,
 target_count, success_count, failed_count, unverified_count, skipped_count, status, requested_by, requested_by_name,

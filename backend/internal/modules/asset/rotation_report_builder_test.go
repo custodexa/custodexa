@@ -32,7 +32,7 @@ func newReportFixture(t *testing.T) *reportFixture {
 	require.NoError(t, err)
 	// 單連線：`:memory:` 每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.Asset{}, &model.AssetAccount{},
+	require.NoError(t, db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{},
 		&model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{}))
 
@@ -50,7 +50,7 @@ func (f *reportFixture) asset(t *testing.T, name string) *model.Asset {
 
 func (f *reportFixture) account(t *testing.T, assetID uint, username string) *model.AssetAccount {
 	t.Helper()
-	acc := &model.AssetAccount{AssetID: assetID, Username: username, PasswordEnc: "enc"}
+	acc := &model.AssetAccount{AssetID: assetID, Username: username}
 	require.NoError(t, f.db.Create(acc).Error)
 	return acc
 }
@@ -312,7 +312,7 @@ func TestRotationReportTruncation(t *testing.T) {
 	accounts := make([]model.AssetAccount, 0, ReportRowsCap+5)
 	for i := 0; i < ReportRowsCap+5; i++ {
 		accounts = append(accounts, model.AssetAccount{
-			AssetID: a.ID, Username: "u" + itoaTest(i), PasswordEnc: "enc",
+			AssetID: a.ID, Username: "u" + itoaTest(i),
 		})
 	}
 	require.NoError(t, f.db.CreateInBatches(accounts, 1000).Error)

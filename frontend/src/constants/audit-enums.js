@@ -43,6 +43,8 @@ const ACTION_TAG_TYPES = {
   offsite_integrity: 'danger',
   offsite_profile: 'warning',
   offsite_cred_revoke: 'danger',
+  // 升級時的一次性轉換留下的標記列（主體為系統）：無法證明同一組秘密的群組
+  migration: 'warning',
 }
 
 export const AUDIT_ACTION_VALUES = Object.keys(ACTION_TAG_TYPES)
@@ -97,6 +99,9 @@ export const AUDIT_RESOURCE_VALUES = [
   // 離機儲存：保管鏈事件（上傳、保留到期、取回驗證、設定世代、憑證撤銷）
   // 與管理者對設定／佇列端點的操作列同歸此族
   'offsite_storage',
+  // 帳號憑證：resource_id 指向憑證列本身而非資產或帳號——同一筆憑證掛在多台
+  // 資產上，用資產識別會讓「動到的是哪一組秘密」在拆分或改綁之後無從回溯
+  'credential',
   // 兜底哨兵：後端 `extractResource` 對未分類路徑的回傳值。**它會出現在審計列表
   // 與篩選下拉裡，且那是刻意的**——漏分類從此可計數、可篩選、可告警，
   // 而不是靜默冒充資產。此處若不補，介面會對這批列顯示裸機器碼

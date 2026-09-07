@@ -17,6 +17,11 @@ const (
 	ChangeSecretReasonProtocolUnsupported = "CHANGE_SECRET_PROTOCOL_UNSUPPORTED"
 	ChangeSecretReasonAccountLookupFailed = "CHANGE_SECRET_ACCOUNT_LOOKUP_FAILED"
 	ChangeSecretReasonNoAccountInScope    = "CHANGE_SECRET_NO_ACCOUNT_IN_SCOPE"
+	// ChangeSecretReasonSharedCredentialTargetRequired 目標掛的是共用憑證。
+	// 以帳號為目標的計劃不得只改共用憑證的其中一員（其餘成員會失去可用秘密），
+	// 也不得自動擴張到未被選取的掛載——要改整組請以憑證為目標。
+	// 本碼刻意不帶 CHANGE_SECRET_ 前綴：它描述的是目標種類選錯，不是改密過程的失敗
+	ChangeSecretReasonSharedCredentialTargetRequired = "SHARED_CREDENTIAL_TARGET_REQUIRED"
 	// ChangeSecretReasonChannelNotConfigured 資產沒有可用的改密通道。
 	// 與 PROTOCOL_UNSUPPORTED 分開：後者是「這個協定本系統改不了密」，
 	// 前者是「改得了，但這台還沒設定要怎麼連進去」——處置方式不同
@@ -97,6 +102,7 @@ func ChangeSecretReasons() []string {
 		ChangeSecretReasonProtocolUnsupported,
 		ChangeSecretReasonAccountLookupFailed,
 		ChangeSecretReasonNoAccountInScope,
+		ChangeSecretReasonSharedCredentialTargetRequired,
 		ChangeSecretReasonChannelNotConfigured,
 		ChangeSecretReasonSecretTypeUnsupported,
 		ChangeSecretReasonCandidateQueryFailed,

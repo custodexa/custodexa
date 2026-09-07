@@ -91,7 +91,7 @@ func (p *RotationReportPackager) Package(w io.Writer, filterJSON string,
 			"records":  rep.Truncation.RecordsTruncated,
 		},
 		NoteCodes: truncationNoteCodes(rep),
-		Signed: p.signer != nil,
+		Signed:    p.signer != nil,
 	}
 	if p.signer == nil {
 		manifest.SignedReason = audit.SignedReasonServiceUnavailable

@@ -16,14 +16,26 @@ var (
 	// assets
 	RefAssetsSftpPassword = crypto.CipherRef{Table: "assets", Column: "sftp_password_enc"}
 	// assets 的 password_enc／private_key_enc 自資產多帳號階段 2 起
-	// **凍結不再寫入**（密文只落 asset_accounts），此處僅供遷移登記對應與
+	// **凍結不再寫入**（登入密文只落 credential_secret_versions），此處僅供遷移登記對應與
 	// 潛在的歷史讀取路徑
 	RefAssetsPassword   = crypto.CipherRef{Table: "assets", Column: "password_enc"}
 	RefAssetsPrivateKey = crypto.CipherRef{Table: "assets", Column: "private_key_enc"}
 
-	// asset_accounts（憑證本體的現行落點）
+	// asset_accounts（**已退場的落點**：憑證化之前帳號列自持密文的兩欄，
+	// 欄位本身已於收縮階段卸下）。
+	//
+	// **常數留著、但不在 allCipherRefs 內**：存量搬移把那批密文原樣搬進
+	// credential_secret_versions，值仍帶著這裡的欄位身分，解封後的一次性轉換
+	// 必須以它為「舊身分」才解得開並改綁。既無欄位可掃描、亦無欄位可重加密，
+	// 故不登記於 envelopeMigrationTargets——登記一個不存在的欄位會讓 DEK 輪替逐欄失敗
 	RefAccountPassword   = crypto.CipherRef{Table: "asset_accounts", Column: "password_enc"}
 	RefAccountPrivateKey = crypto.CipherRef{Table: "asset_accounts", Column: "private_key_enc"}
+
+	// credential_secret_versions（憑證秘密的現行落點）。
+	// 與帳號兩欄刻意分立而非沿用：AAD 綁 表|欄，換表即換身分，
+	// 沿用舊 ref 會讓兩個生命週期不同的落點在密文層無從區分
+	RefCredentialVersionPassword   = crypto.CipherRef{Table: "credential_secret_versions", Column: "password_enc"}
+	RefCredentialVersionPrivateKey = crypto.CipherRef{Table: "credential_secret_versions", Column: "private_key_enc"}
 
 	// change_secret_candidates：未驗證的候選憑證。
 	// 與 asset_accounts 的兩欄刻意分立——候選是短命的「可能已在遠端生效」副本，
@@ -67,10 +79,14 @@ var (
 	RefOffsiteCredentials = crypto.CipherRef{Table: "offsite_profiles", Column: "credentials_enc"}
 )
 
-// allCipherRefs 供守衛測試逐項比對登記表
+// allCipherRefs 供守衛測試逐項比對登記表。
+//
+// **RefAccountPassword／RefAccountPrivateKey 刻意不在此列**：那兩欄已自資料庫
+// 卸下，只作為存量轉換解密舊身分密文的常數存在。列入會使雙向守衛要求它們
+// 出現在 envelopeMigrationTargets，而那等於要求 DEK 輪替去掃一個不存在的欄位。
 var allCipherRefs = []crypto.CipherRef{
 	RefAssetsPassword, RefAssetsPrivateKey, RefAssetsSftpPassword,
-	RefAccountPassword, RefAccountPrivateKey,
+	RefCredentialVersionPassword, RefCredentialVersionPrivateKey,
 	RefChangeSecretCandidatePassword, RefChangeSecretCandidatePrivateKey,
 	RefUserTOTPSecret, RefExportSigningPrivateKey, RefCheckpointSigningPrivateKey,
 	RefChannelSecret, RefChannelURL,

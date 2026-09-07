@@ -194,6 +194,23 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidRotationChannel, nil)
 	case errors.Is(err, asset.ErrInvalidRotationChannelParams):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidRotationChannelParams, nil)
+	// 建資產的登入憑證區：來源二擇一、已退場的複製參數，與所選共用憑證本身的狀態
+	case errors.Is(err, asset.ErrCredentialSourceAmbiguous):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialSourceAmbiguous, nil)
+	case errors.Is(err, asset.ErrAccountCopyFromRemoved):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountCopyFromRemoved, nil)
+	case errors.Is(err, asset.ErrAccountSharedCredentialSecret):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountSharedCredentialSecret, nil)
+	case errors.Is(err, asset.ErrCredentialNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeCredentialNotFound, nil)
+	case errors.Is(err, asset.ErrCredentialDedicatedSingleBinding):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialDedicatedSingle, nil)
+	case errors.Is(err, asset.ErrCredentialProtocolMismatch):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialProtocolMismatch, nil)
+	case errors.Is(err, asset.ErrCredentialRotationActive):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
+	case errors.Is(err, asset.ErrCredentialUsernameImmutable):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialUsernameImmutable, nil)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, internalCode, err)
 	}

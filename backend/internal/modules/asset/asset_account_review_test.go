@@ -2,7 +2,6 @@ package asset
 
 import (
 	"context"
-	"strconv"
 	"sync"
 	"testing"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/keyvault"
 )
 
 // 資產多帳號階段 2 安全審查所列問題的
@@ -65,10 +63,8 @@ func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	err = assets.UpdatePassword(asset.ID, pinned.AccountID, pinned.Username, "new-pw")
 	assert.ErrorIs(t, err, ErrAssetAccountNotFound, "帳號改名後不得把新密寫進已代表他人的列")
 
-	var account model.AssetAccount
-	require.NoError(t, db.First(&account, pinned.AccountID).Error)
-	plain, err := assets.crypto.DecryptFor(context.Background(), keyvault.RefAccountPassword, account.PasswordEnc)
-	require.NoError(t, err)
+	// 秘密的落點是憑證的密文版本列（掛載列不再持有密文欄），斷言隨之改讀就位版本
+	plain, _ := effectiveSecretPlain(t, db, assets, pinned.AccountID)
 	assert.Equal(t, "old", plain, "改名的帳號憑證必須維持原值")
 }
 
@@ -216,10 +212,7 @@ func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	}()
 	wg.Wait()
 
-	var account model.AssetAccount
-	require.NoError(t, db.First(&account, accountID).Error)
-	plain, err := assets.crypto.DecryptFor(context.Background(), keyvault.RefAccountPassword, account.PasswordEnc)
-	require.NoError(t, err)
+	plain, _ := effectiveSecretPlain(t, db, assets, accountID)
 	assert.Equal(t, rotated, plain, "備註更新不得覆寫已輪換的憑證")
 }
 
@@ -241,37 +234,6 @@ func TestDeleteLastAccountClearsAssetIdentityMirror(t *testing.T) {
 	require.NoError(t, db.First(&stored, asset.ID).Error)
 	assert.Empty(t, stored.Username, "刪掉唯一帳號後不得殘留已不存在的身分")
 	assert.False(t, stored.HasPassword)
-}
-
-// 複製建號的來源出處入審計：憑證跨資產複製必須留軌跡
-func TestCopyAccountAuditRecordsSource(t *testing.T) {
-	db := setupAccountDB(t)
-	assets, accounts := newAccountServices(t)
-
-	src, err := assets.Create(&CreateAssetRequest{
-		Name: "copy-src", Protocol: model.ProtocolSSH, Host: "10.0.1.9", Port: 22,
-		Username: "ops", Password: "pw", CreatedBy: 1,
-	})
-	require.NoError(t, err)
-	dst, err := assets.Create(&CreateAssetRequest{
-		Name: "copy-dst", Protocol: model.ProtocolSSH, Host: "10.0.1.10", Port: 22,
-		Username: "root", Password: "pw2", CreatedBy: 1,
-	})
-	require.NoError(t, err)
-	srcList, err := accounts.List(src.ID)
-	require.NoError(t, err)
-
-	copied, err := accounts.Create(adminCtx(), dst.ID, &CreateAssetAccountRequest{
-		Username: "copied", CopyFromAccountID: srcList[0].ID,
-	})
-	require.NoError(t, err)
-
-	var logs []model.AuditLog
-	require.NoError(t, db.Where("details LIKE ?", "%copy_from_account_id%").Find(&logs).Error)
-	require.Len(t, logs, 1, "複製建號必須留下帶來源的審計")
-	assert.Contains(t, logs[0].Details, "\"copy_from_asset_id\":"+strconv.Itoa(int(src.ID)))
-	assert.Contains(t, logs[0].Details, "\"copy_from_account_id\":"+strconv.Itoa(int(srcList[0].ID)))
-	assert.Contains(t, logs[0].Details, "\"account_id\":"+strconv.Itoa(int(copied.ID)))
 }
 
 // 帳號名稱拒全部 C0/C1 控制字元與 DEL：

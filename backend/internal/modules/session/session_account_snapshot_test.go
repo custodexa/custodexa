@@ -108,7 +108,7 @@ func setupAccountDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
-		&model.Asset{}, &model.AssetAccount{}, &model.AuditLog{},
+		&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{},
 	))
 	oldDB := database.DB

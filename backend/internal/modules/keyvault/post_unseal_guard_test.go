@@ -162,6 +162,9 @@ var postUnsealAssemblyBuiltins = []string{
 	"PostUnsealMigrationLDAPSeed",
 	// 剪貼簿明文欄 → 信封加密欄的一次性轉換
 	"PostUnsealMigrationClipboardContent",
+	// 憑證密文的欄位身分改綁與隱性共用關係合併：兩者都需要 codec，
+	// 故不得留在段 1 的 versioned migration
+	"PostUnsealMigrationCredentialSecretConversion",
 }
 
 // TestAssemblyRegistersPostUnsealBuiltins 組裝根登記守衛（拆 4.9 環的配套）。

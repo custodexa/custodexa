@@ -76,6 +76,32 @@ describe('auth guard', () => {
     expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
+  // 憑證庫是 admin-only：auditor 與一般 user 直打網址都要被導走，
+  // 且 meta 取自註冊的路由而非硬編，改了路由設定這裡才跟著動
+  it('auditor 直接開憑證庫網址被導走（registered route meta）', async () => {
+    setAccessToken('abc')
+    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['auditor'] }))
+    const resolved = router.resolve('/credentials')
+    await guard(route('/credentials', resolved.meta), route('/'), next)
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('一般 user 直接開憑證庫網址被導走（registered route meta）', async () => {
+    setAccessToken('abc')
+    localStorage.setItem('user', JSON.stringify({ username: 'u', roles: ['user'] }))
+    const resolved = router.resolve('/credentials')
+    await guard(route('/credentials', resolved.meta), route('/'), next)
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('admin 可進憑證庫（registered route meta）', async () => {
+    setAccessToken('abc')
+    localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['admin'] }))
+    const resolved = router.resolve('/credentials')
+    await guard(route('/credentials', resolved.meta), route('/'), next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
   it('auditor 可進輪替證據（registered route meta）', async () => {
     setAccessToken('abc')
     localStorage.setItem('user', JSON.stringify({ username: 'a', roles: ['auditor'] }))

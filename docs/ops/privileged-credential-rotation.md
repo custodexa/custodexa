@@ -4,7 +4,7 @@
 
 > Applies to: Custodexa 1.0.
 >
-> **The scope of this page is the credentials the system itself holds**: the service account passwords, encryption keys, and signing keys the platform must hold in order to operate. Rotating account credentials on managed assets (credential change) is not covered here; that is a product feature rather than an operational procedure. For Windows target prerequisites, see the Windows local account credential change section of §2.5 in the [Deployment and Upgrade SOP](./upgrade-sop.md).
+> **The scope of this page is the credentials the system itself holds**: the service account passwords, encryption keys, and signing keys the platform must hold in order to operate. Rotating account credentials on managed assets (credential change) is a product feature rather than an operational procedure, and the day-to-day use of it is not covered here. **One part of it is operational and is covered, in §13**: what to do when one set of credentials is shared by several hosts and a rotation of that set does not finish on every host. For Windows target prerequisites, see the Windows local account credential change section of §2.5 in the [Deployment and Upgrade SOP](./upgrade-sop.md).
 >
 > Related documents: [Backup and Restore](./backup-and-restore.md), [Deployment and Upgrade SOP](./upgrade-sop.md).
 
@@ -301,3 +301,116 @@ Whatever you rotated, confirm the following afterwards:
 2. **Press "Test send" once for each enabled notification channel**, and confirm the receiving end actually received it (the silent degradation path in §3).
 3. **The audit record contains a record of this rotation.** Key operations are all admin only and are audited; clearing material additionally records the number of rows cleared and the fingerprint of each key version.
 4. If you touched a key on the env side, confirm the startup log after the restart has no fail-closed message.
+
+---
+
+## 13. Shared credentials on managed assets
+
+**Applies to**: one set of login credentials used by several managed hosts. In the credential library
+such a set is one named credential with several bindings, and the binding list is the answer to
+"which hosts use this secret". This section is the recovery procedure for the case where changing
+that secret does not finish on every host.
+
+### 13.1 Changing the whole group
+
+Starting a group change returns straight away; the hosts are worked through in the background,
+one at a time. **A host only moves to the new secret once the system has logged in with that new
+secret and the login succeeded.** Until then that host keeps using the version it already had.
+
+**So a partial result is a normal state, not a fault.** Each binding records the version it is
+actually using, and connections keep going through with whichever version that is: hosts that
+verified use the new secret, hosts that did not keep using the old one. Nothing on either side is
+left without a usable secret.
+
+The credential's state is one of five values, and the page shows it:
+
+| State | What it means |
+|---|---|
+| `idle` | No change in progress and no version waiting to take effect |
+| `queued` | A change has started and every host is still waiting its turn |
+| `changing` | Hosts are being worked through |
+| `partial` | Some hosts are on the new secret and some are not |
+| `out_of_sync` | The round has ended with hosts still not on the new secret |
+
+`partial` is shown ahead of `changing` on purpose: once "some done, some not" is true, that is the
+thing you need to see.
+
+**What advances by itself, and what does not.** Within a round that is still running, hosts that hit
+a retryable failure, and hosts whose remote result is not yet known, are picked up again by the
+retry schedule (the same backoff as the credential change retries). Hosts that ended in a final
+failure, hosts closed out with the round, and **every host in a round you abandoned** are never
+advanced automatically. Those need you to retry them one at a time — a host that certainly cannot
+be changed should not be hammered indefinitely.
+
+**Retrying one host** acts on that host only and answers synchronously; it can take tens of seconds,
+because it opens a real connection and verifies the login.
+
+### 13.2 Abandoning a round
+
+Abandoning **stops the automation; it does not roll anything back**. Hosts already on the new secret
+are not put back, pending secrets that have already been sent to a host are not deleted, and nothing
+further is sent to any host.
+Rolling back would mean logging in to those machines again, and "abandon" is precisely the decision
+not to touch them any more.
+
+There are two outcomes:
+
+- **No host had been touched** (every one still queued or waiting to retry, with nothing delivered):
+  the round is discarded and the credential returns to `idle`.
+- **Otherwise**: the credential goes to `out_of_sync` and stays there. **The only way out is to
+  retry the remaining hosts one at a time until every host is on the same version.** While the
+  credential is `out_of_sync` the system refuses to start a new round on it — starting one would
+  make "which secret is actually on which host" unanswerable.
+
+**Do not clear a pending secret to tidy the state up.** That record may be the only copy of a secret
+that is already live on the host; once it is gone, the way back is the host's own console.
+
+### 13.3 Giving each host its own secret
+
+The other mode gives every host a different new secret and ends the sharing: as each host verifies,
+it is moved onto a credential of its own. When the original credential is left with one host it
+becomes that host's own credential; left with none and with nothing pending, it is removed.
+
+**There is no undo.** The system does not offer a way to put those hosts back on one shared set —
+the secrets are now genuinely different on each machine. Sharing them again means creating a new
+shared credential, binding the hosts to it, and then starting a whole-group change on that
+credential: binding by itself changes nothing on any host, and it is that change that sets one new
+secret on every host.
+
+### 13.4 Taking one host out of the group
+
+Detaching one host logs in with the secret that host is currently using, applies the new one, and
+verifies it by logging in again. **Only if that verification succeeds** does the host move onto a
+credential of its own. If it fails, or if the remote result cannot be determined, the host stays on
+the shared credential and the response says which of the two it was — the difference matters,
+because a plain failure can simply be retried, while an unknown result means you first have to
+find out which secret that machine is now taking.
+
+**Detaching is not the same as removing a binding.** Removing a binding takes the host off the
+credential and **does not touch the password on the host**; detaching changes the password on the host.
+The screen says which is which at the point of the action.
+
+### 13.5 A scheduled plan that covers a shared host
+
+A credential change plan whose target is accounts **will not save** if its selection covers a host
+that uses a shared credential, and any such host reached at run time is recorded as skipped.
+Neither alternative is acceptable: changing one member alone leaves the other hosts of that set
+without a usable secret, and quietly extending the change to the rest means changing machines the
+operator did not select.
+
+Two ways forward, both supported:
+
+- **Point the plan at the credential instead of at accounts.** The plan then changes that credential
+  as a group, on the same schedule, with the same password policy.
+- **Take that host out of the group first** (§13.4), after which an account-targeted plan covers it
+  like any other host.
+
+### 13.6 What to confirm afterwards
+
+1. **The credential's state is `idle`** and every binding shows the same version. A credential left
+   at `partial` or `out_of_sync` is a change that has not finished.
+2. **The audit record contains this change.** Every action on the credential library is admin only
+   and audited; binding and unbinding additionally record which host was affected, so the change is
+   findable from the host as well as from the credential.
+3. **The rotation evidence report marks the hosts as expected.** A host that has been detached is no
+   longer marked as sharing; the report reads the credential's scope.

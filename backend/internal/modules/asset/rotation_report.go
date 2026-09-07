@@ -45,6 +45,52 @@ const (
 	MaxAgeSourcePlanPrefix = "plan:"
 )
 
+// bucketSeverity 狀態桶的嚴重度優先序（最嚴在前）。
+//
+// **單一來源**：憑證庫左表要把一筆憑證全部掛載的桶壓成一格，那個「取最嚴」的口徑
+// 必須與報告同源。另抄一份會在有人調整報告優先序時安靜地分岔，而兩處各說一套的
+// 合規狀態正是稽核最不能接受的東西。
+var bucketSeverity = []string{
+	BucketOverdue,
+	BucketDueSoon,
+	BucketUnverified,
+	BucketNoRecord,
+	BucketNoPolicy,
+	BucketCompliant,
+}
+
+// IsRotationBucket 回報字串是否為合法的狀態桶。
+//
+// 值域取自 bucketSeverity 而非另抄一份：另抄的那份會在有人新增一個桶時
+// 安靜地把它判成非法，而症狀是「篩選那一項永遠回空」。
+func IsRotationBucket(s string) bool {
+	for _, b := range bucketSeverity {
+		if s == b {
+			return true
+		}
+	}
+	return false
+}
+
+// strictestBucket 取一組狀態桶中最嚴的一個；空集合回空字串。
+func strictestBucket(buckets []string) string {
+	best := -1
+	for _, b := range buckets {
+		for i, want := range bucketSeverity {
+			if b == want {
+				if best == -1 || i < best {
+					best = i
+				}
+				break
+			}
+		}
+	}
+	if best == -1 {
+		return ""
+	}
+	return bucketSeverity[best]
+}
+
 // dueSoonWindowDays 到期預警窗（日）。
 //
 // 固定值而非設定項：它是稽核閱讀慣例的一部分，可設定會讓兩份報告的
@@ -117,9 +163,16 @@ type AccountRow struct {
 	Protocol     string `json:"protocol"`
 	Username     string `json:"username"`
 	// CredentialType 見 CredentialType* 常數（只說型別，不透露任何憑證內容）
-	CredentialType   string `json:"credential_type"`
-	Privileged       bool   `json:"privileged"`
-	SharedCredential bool   `json:"shared_credential"`
+	CredentialType string `json:"credential_type"`
+	Privileged     bool   `json:"privileged"`
+	// SharedCredential 該掛載引用的憑證範圍為共用。**取自憑證範圍**，
+	// 不由任何隱性群組識別推導——共用關係的真相在憑證本身
+	SharedCredential bool `json:"shared_credential"`
+	// CredentialName 共用＝憑證名稱；專用＝「資產名 / 帳號名」計算顯示名。
+	// 稽核據此核對共用關係，故隨報告出站；憑證識別與密文欄位一律不出站
+	CredentialName string `json:"credential_name"`
+	// EffectiveVersionNo 該台當下用以連線的密文版本序號；0＝尚未取得任何密文
+	EffectiveVersionNo int `json:"effective_version_no"`
 
 	// Plans 涵蓋本帳號的已啟用計劃名稱
 	Plans     []string `json:"plans"`
@@ -157,8 +210,12 @@ type RecordRow struct {
 	// AccountUsername 執行當下的帳號名快照；帳號已刪除時這是唯一還讀得出的名字
 	AccountUsername string `json:"account_username"`
 	AccountDeleted  bool   `json:"account_deleted"`
-	SecretType      string `json:"secret_type"`
-	Status          string `json:"status"`
+	// CredentialName／VersionNo 執行當下的憑證與目標版本快照。
+	// **不於掛載改綁後被改綁後的憑證覆蓋**：稽核問的是「當時動的是哪一組秘密」
+	CredentialName string `json:"credential_name"`
+	VersionNo      int    `json:"version_no"`
+	SecretType     string `json:"secret_type"`
+	Status         string `json:"status"`
 	// ReasonCode 只有系統列舉的機器碼，不含遠端回傳的任何字串
 	ReasonCode string `json:"reason_code"`
 }

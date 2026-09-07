@@ -27,6 +27,15 @@ var tableOwner = map[string]string{
 	// 以帳號為主軸的批次改密：批次的業務語義（目標解析、密碼模式、
 	// 共用群組）與其產生的記錄同屬 asset
 	"change_secret_batches": "asset",
+	// 帳號憑證庫四表：憑證是登入秘密的本體，其不變式（範圍、掛載、
+	// 版本不可變、輪替狀態機）全部由 asset 模組定義與維護；
+	// 掛載列（asset_accounts）本來就歸 asset，憑證與它是同一組語義的兩半。
+	// **登記的實質效果**：其他模組直接以 gorm 或 SQL 碰這四張表即判跨界紅，
+	// 取密一律得經 asset 的具名出口（見 asset_credential_exit_guard_test.go）
+	"credentials":                 "asset",
+	"credential_secret_versions":  "asset",
+	"credential_rotations":        "asset",
+	"credential_rotation_members": "asset",
 	// identity
 	"users":                    "identity",
 	"roles":                    "identity",
@@ -47,7 +56,7 @@ var tableOwner = map[string]string{
 	"access_reviews":           "authz",
 	"approver_scopes":          "authz",
 	// audit
-	"audit_logs":            "audit",
+	"audit_logs": "audit",
 	// 證據包非同步匯出 job（受理、打包、
 	// 下載授權皆在 audit 模組）
 	"audit_export_jobs":     "audit",
@@ -118,6 +127,15 @@ var tableOwner = map[string]string{
 var nonModelTables = map[string]bool{
 	"user_roles":         true,
 	"user_group_members": true,
+}
+
+// nonTableModelStructs `internal/model` 內不是資料表的型別（JSON 詳情形狀、值物件），
+// 會被 modelTableNames 的命名推導誤列為表；「現實→登記」反向核對時排除。
+// 新增此類型別 SHALL 在此具名登記，否則反向核對轉紅——這是刻意的：讓「它是不是表」成為顯式決定。
+var nonTableModelStructs = map[string]bool{
+	"asset_change_details":        true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
+	"transmission_risks":          true, // TransmissionRisk：傳輸風險值物件
+	"asset_account_audit_details": true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。
@@ -256,8 +274,8 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 	// ---- keyvault 的信封重加密：掃描器看不見的動態表名（由 keyvault 自己的守衛承擔）----
 	{Module: "keyvault", Table: "assets", Kind: "write", Invisible: true,
 		Reason: "信封重加密／AAD 遷移的動態 UPDATE。表名一律取自 envelopeMigrationTargets，由 internal/modules/keyvault/table_ownership_guard_test.go 的 TestKeyvaultDynamicTableNamesComeFromRegistry 與 TestKeyvaultCrossModuleWriteAllowlistMatchesRegistry 雙向守衛。"},
-	{Module: "keyvault", Table: "asset_accounts", Kind: "write", Invisible: true,
-		Reason: "同上（帳號密碼／私鑰兩欄）。"},
+	{Module: "keyvault", Table: "credential_secret_versions", Kind: "write", Invisible: true,
+		Reason: "同上（憑證密文版本的密碼／私鑰兩欄，登入秘密的現行落點）。"},
 	{Module: "keyvault", Table: "change_secret_candidates", Kind: "write", Invisible: true,
 		Reason: "同上（未驗證候選憑證的密碼／私鑰兩欄）。"},
 	{Module: "keyvault", Table: "users", Kind: "write", Invisible: true,
@@ -272,7 +290,7 @@ var crossModuleDataAccessBaseline = []crossModuleAccess{
 		Reason: "同上（剪貼簿留存內容欄 content_enc）。"},
 	{Module: "keyvault", Table: "assets", Kind: "read", Invisible: true,
 		Reason: "AAD 殘留哨兵與重加密前的掃描讀取，來源同上。"},
-	{Module: "keyvault", Table: "asset_accounts", Kind: "read", Invisible: true,
+	{Module: "keyvault", Table: "credential_secret_versions", Kind: "read", Invisible: true,
 		Reason: "同上。"},
 	{Module: "keyvault", Table: "change_secret_candidates", Kind: "read", Invisible: true,
 		Reason: "同上。"},

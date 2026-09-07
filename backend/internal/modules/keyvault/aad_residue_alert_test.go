@@ -71,6 +71,7 @@ func TestAADResidueAlertSilentWhenClean(t *testing.T) {
 	for _, stmt := range []string{
 		"UPDATE assets SET password_enc = 'enc:a1:v1:AAAA'",
 		"UPDATE asset_accounts SET password_enc = 'enc:a1:v1:AAAA', private_key_enc = 'enc:a1:v1:AAAA'",
+		"UPDATE credential_secret_versions SET password_enc = 'enc:a1:v1:AAAA', private_key_enc = 'enc:a1:v1:AAAA'",
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			t.Fatalf("清理殘值失敗: %v", err)

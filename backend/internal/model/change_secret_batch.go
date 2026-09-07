@@ -6,8 +6,8 @@ import "time"
 const (
 	// BatchPasswordPerTarget 每個目標各自隨機產生新密碼（與計劃相同的行為）
 	BatchPasswordPerTarget = "per_target"
-	// BatchPasswordShared 全部目標使用同一組新密碼。成功提交的帳號歸入同一個
-	// 憑證群組，報告與帳號列表據此標示「共用憑證」——同一組密碼在多台生效，
+	// BatchPasswordShared 全部目標使用同一組新密碼。系統為本批次建立一筆具名共用憑證，
+	// 成功提交的目標改綁至它並就位同一密文版本——同一組密碼在多台生效，
 	// 任一台外洩即全部外洩，這個事實必須在報告上看得見
 	BatchPasswordShared = "shared"
 )
@@ -31,9 +31,14 @@ type ChangeSecretBatch struct {
 	Username string `gorm:"size:100;not null;index" json:"username"`
 	// PasswordMode 見 BatchPassword* 常數
 	PasswordMode string `gorm:"size:16;not null" json:"password_mode"`
-	// SharedGroup 整批同一組模式下成功帳號歸入的憑證群組識別；每台各自隨機時為空。
-	// 群組識別本身不出站（同 AssetAccount.CredentialGroup 的理由）
-	SharedGroup string `gorm:"size:36" json:"-"`
+	// SharedCredentialName 整批同一組模式下要建立的具名共用憑證名稱；由操作者於送出前提供。
+	//
+	// **不落庫**：名稱只在「建立批次 → 執行批次」這一次呼叫之間需要，而批次列不是
+	// 憑證關係的真相來源——執行開始後，真相在憑證列、掛載列與候選列的憑證快照上，
+	// 行程中斷後的承接（重試轉正、掛載數重估）全部由候選列的憑證快照承擔
+	SharedCredentialName string `gorm:"-" json:"-"`
+	// SharedCredentialID 執行時建立的具名共用憑證識別（同 SharedCredentialName，不落庫）
+	SharedCredentialID uint `gorm:"-" json:"-"`
 
 	// 密碼策略：語義與計劃相同
 	PasswordLength           int  `gorm:"default:16" json:"password_length"`

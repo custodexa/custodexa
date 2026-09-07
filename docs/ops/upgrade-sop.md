@@ -123,7 +123,7 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
 If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the eight in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the ten in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
@@ -337,7 +337,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's eight increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's ten increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -348,6 +348,8 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260903_rotation_evidence_report (rotation_evidence_report)
   執行 migration: 20260904_windows_local_account_rotation (windows_local_account_rotation)
   執行 migration: 20260905_account_batch_rotation (account_batch_rotation)
+  執行 migration: 20260906_credential_library (credential_library)
+  執行 migration: 20260906_credential_library_contract (credential_library_contract)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -367,6 +369,34 @@ When upgrading to a version that **introduces no new migration** (the database h
 
 `20260905_account_batch_rotation` creates the data layer for account-centric batch credential changes: one new batch table (with an index on the account name), a batch reference column on the credential change record table (with an index), and two columns on the pending credential table (the batch reference and the shared credential group the pending credential joins once it is verified). **It is purely additive with no data backfill**: every added column carries a default or is nullable, existing records and pending credentials are marked as coming from a plan (which is what they are), and its duration is independent of the volume held. The batch table stores no password. **Its `Down` is lossy**; read §4.1 before a rollback.
 
+`20260906_credential_library` moves login secrets out of the account rows and into a credential of
+their own: it creates four tables (the credential, its immutable secret versions, one rotation, and
+that rotation's per-host members) with their indexes, adds two columns to asset accounts (which
+credential this host logs in with, and which version it is currently using), two to credential
+change plans (the target kind and the target credential), and three snapshot columns each to the
+change records and the pending credentials. **In the same transaction it converts the existing
+rows**: every surviving asset account gets a credential of its own, and those that held a secret
+also get version 1 of it. Accounts left behind by assets removed before the upgrade are converted the
+same way and then retired together with their credential in the same transaction, so they do not appear
+in the credential library; their ciphertext is kept. The ciphertext is moved as it is, not decrypted and re-encrypted, so no
+key is needed at this point. Its duration grows with the number of asset accounts, which in a
+typical deployment is far smaller than the session and audit volume. **It is not idempotent**: if
+any step fails the whole transaction is rolled back and the database is exactly as it was before,
+and it can be run again once the cause is fixed — **that rollback is the migration's own
+transaction, not a way back from the upgrade**; the product has no rollback entry point, and going
+back means deploying the old version's images and restoring the pre-upgrade backup. **Its `Down` is
+lossy**; read §4.1 before planning any way back.
+
+`20260906_credential_library_contract` takes down what no longer has a reader: the two ciphertext
+columns on asset accounts (login secrets now live in the credential's secret versions), the shared
+group column on the pending credentials and on the batches (sharing is now expressed by the
+credential itself), and the index on the account group column. **It is a separate version rather
+than an addition to the previous one**, because the previous one has already been applied on
+databases that carry it, and appending statements to an applied migration would leave the code
+declaring a shape the database does not have. It drops columns only, with no data conversion, so
+its duration is independent of the volume held. **Its `Down` is lossy**; read §4.1 before planning
+any way back.
+
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
 This release opens one more **entry point** for existing mysql, postgres, and mssql assets: alongside the original command line connection, a query console can be opened to write statements on screen, see the result table, and export the result as CSV. Six things to know when planning the upgrade:
@@ -382,6 +412,35 @@ This release opens one more **entry point** for existing mysql, postgres, and ms
 `[ClipboardMigration] 剪貼簿內容加密轉換完成：<N> 筆既有列已回填，明文欄已移除`.
 The conversion uses "does the `content` column exist" for idempotency (a restart after the upgrade does not rerun it), and a failed backfill rolls the whole segment back and keeps the plaintext column (fail closed). **It does not run before the KEK is unsealed**, so with interface-entry mode (mode B) it is only reached once the unseal is done.
 
+**This release also carries a one-time credential secret conversion**, and it runs **after the KEK
+is unsealed (stage 2)**, not with the stage 1 migrations above. It does two things in one
+transaction: it re-binds the column identity of the ciphertext that stage 1 moved into the secret
+version table, and it then decides, by comparing the decrypted values, which of the existing
+implicit sharing relationships are genuinely the same secret. Both need a key, which is why neither
+can be in stage 1. On completion the log prints
+`[CredentialSecretConversion] 完成：改綁密文 <N> 筆、合併共用 <M> 組、標記待處理 <K> 組`
+followed by `[PostUnsealMigration] credential_secret_conversion 完成`.
+
+**Confirm those two lines before declaring the upgrade complete.** A failure rolls the whole segment
+back, writes no completion marker, and is retried on the next start — but **it does not stop the
+service from coming up**. Each failed attempt also writes an audit row (resource `credential`, action
+`migration`, status failure) naming the stage it stopped at and how much is left to convert, so a failed
+upgrade is still discoverable afterwards; the error text itself stays in the startup log. Until it has succeeded, the moved ciphertext is still bound to its old
+column identity, so connections to managed assets fail to obtain their credentials, loudly and
+visibly. The usual cause is the key not being available; fix that and restart, and the conversion
+runs again. Its idempotency is a marker row in `schema_migrations`
+(`20260906_credential_secrets_converted`), not a column shape, so a restart after a successful run
+does not repeat it.
+
+Credentials whose group could not be proven identical are left as they were and marked for
+attention: their note is prefixed with `[MIGRATION_GROUP_MISMATCH:<group>]`, which shows on the credential's
+detail and can be cleared by an administrator, and one audit row is written per group (resource
+`credential`, action `migration`) listing the credential ids and why the group was left alone, whether
+the secrets themselves differ or only the credential's attributes do (account name, secret type,
+authentication method, protocol family), which is how to find them: the
+credential library's search box matches names and account names, not notes. Those hosts keep working; the mark says that the system could not confirm they share one
+secret, not that anything is broken.
+
 #### Rotation evidence reports (a feature new in this release, the parts that affect upgrade decisions)
 
 This release adds a report that can be produced on a schedule: taking the asset accounts registered in the system as its population, it states each account's applicable number of days, the last successful credential change, the days remaining, and the status, for auditors to check against. Seven things to know when planning the upgrade.
@@ -393,7 +452,7 @@ This release adds a report that can be produced on a schedule: taking the asset 
 - **Report artifacts and evidence package artifacts land in the same directory** (`EXPORT_ARTIFACT_PATH`, default `/var/lib/custodexa/exports`), and **the backup scope is unchanged**: that directory is still temporary and not a backup target. The facts a report states all come from the database (accounts, credential change records, policy settings), and the backup contains those facts; producing it again gives a new report, with a new production time and a new signature, not the same document.
   What differs is the retention period: evidence packages are fixed at 24 hours, while a report's retention period comes from the schedule (1 to 3650 days), so peak usage of that directory is higher than before the upgrade. Count it into your disk planning.
 - **Report artifacts live in the backend container's export staging directory, and disappear on a container rebuild while no volume is mounted.** The default compose configuration mounts neither a volume nor a bind mount for that directory, and a container rebuild (including the upgrade steps in this SOP) clears the artifacts in it. To have reports actually last for the retention period set on the schedule, mount that directory as a volume or a bind mount, or enable offsite storage; with neither, the retention period only holds while the container lives.
-- **The report has two boundaries in what it states, and auditors should know them before reading it.** First, the population contains only asset accounts **registered in the system**; the system does not probe target hosts. Second, the "shared credential" marker reflects only the copy-on-creation relationships the system knows about; an administrator editing credentials by hand does not change it, and copy relationships that existed before this release are not registered retroactively. Both points are written on the report's own scope note.
+- **The report has two boundaries in what it states, and auditors should know them before reading it.** First, the population contains only asset accounts **registered in the system**; the system does not probe target hosts. Second, the "shared credential" marker comes from the credential library: an account is marked shared when it logs in with a shared credential, whether that credential was created by an administrator, produced by a batch change, or merged by this release's one-time conversion from accounts proven to hold the same secret; accounts whose grouping could not be proven are not marked (§2.5). Both points are written on the report's own scope note.
 
 #### Windows local account credential change (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -515,7 +574,7 @@ docker compose -f docker-compose.yml exec -T postgres \
    UNION ALL SELECT 'audit_logs', count(*) FROM audit_logs"
 ```
 
-How to read it: **the second is decisive**: one user, zero sessions, and a handful of audit rows means an empty database. The first supports it: a deployment that has been unsealed at least once has, besides the migration versions, **runtime marker rows** in `schema_migrations` (two in this release: `20260804_ldap_env_seeded` and `20260825_offsite_env_seeded`, the idempotency markers for the env-to-database first-time configuration of the directory integration and of offsite storage, **not migrations**), which a brand-new database does not have before its first unseal.
+How to read it: **the second is decisive**: one user, zero sessions, and a handful of audit rows means an empty database. The first supports it: a deployment that has been unsealed at least once has, besides the migration versions, **runtime marker rows** in `schema_migrations` (three in this release: `20260804_ldap_env_seeded` and `20260825_offsite_env_seeded`, the idempotency markers for the env-to-database first-time configuration of the directory integration and of offsite storage, and `20260906_credential_secrets_converted`, the marker for the one-time credential secret conversion in §2.5, **none of them migrations**), which a brand-new database does not have before its first unseal.
 
 > The order here cannot be reversed: **confirm you got the right data first, then do the rest of the verification in §2.7.**
 > §2.7 verifies whether the new version runs correctly; it will not tell you whether what it runs on is your data.
@@ -797,10 +856,11 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the eight increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the ten increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
-`20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`).
+`20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
+`20260906_credential_library_contract`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -857,7 +917,7 @@ If any stored value already exceeds that length, the database errors outright an
 **The `Down` of `20260903_rotation_evidence_report` is lossy and is for development databases only.** It drops four things:
 
 - **The report schedule definitions** (the whole table): name, schedule, scope, retention days, and language, with no second source once dropped.
-- **The shared credential marker**: the grouping the system derives from "created by copying from another account." Dropping it makes it disappear, after a later upgrade every account is back to ungrouped, and **it is not registered retroactively**, because that relationship is only recorded at the moment of creation.
+- **The account group column**: in this release it is transitional, read only by the one-time conversion in §2.5; the shared credential marker now comes from the credential itself (see the `Down` of `20260906_credential_library` above). Dropping it loses the record of which accounts were created by copying from another, and **it is not registered retroactively**, because that relationship was only recorded at the moment of creation.
 - **The day overrides on credential change plans**: dropping them silently lifts the overrides, every plan goes back to the global value, and there is no signal on screen that those overrides ever existed.
 - **The kind column on export jobs**: once dropped, the two kinds of artifact are mixed in one list with no way to tell them apart, and the kind branch of the download authorization stops working too.
 
@@ -868,6 +928,23 @@ The report artifacts themselves need no special preservation: they are derivativ
 After a later upgrade those columns reappear empty and every asset is back to "not configured" and derived from the protocol: **rdp assets stop having their credentials changed, with no signal on screen that a channel was ever configured on them.** Its production rollback method is likewise deploying the old version's images and restoring the pre-upgrade backup (§4.2).
 
 **The `Down` of `20260905_account_batch_rotation` is lossy and is for development databases only.** It drops the batch table (every batch's summary counts and who started it, with no second source once dropped) and the batch reference columns on credential change records and pending credentials: after a later upgrade every record and pending credential is back to "from a plan," and **the shared credential group a pending credential was meant to join is gone**, so a credential verified after the restore is no longer marked as shared even though the same password is in effect on the other hosts of that batch. Its production rollback method is likewise deploying the old version's images and restoring the pre-upgrade backup (§4.2). Batches run after the upgrade are lost when the backup is restored; the credentials they set on the target hosts are not, so **export the batch list (account name, mode, per-host results) before rolling back** if you need to know which hosts share a password.
+
+**The `Down` of `20260906_credential_library` is lossy and is for development databases only.** It
+drops the four credential tables and the two columns on asset accounts. With the tables go every
+shared-credential relationship and the whole history of secret versions; with the columns goes the
+answer to "which credential does this host log in with, and which version is it on", and that answer
+has no second source. The conversion the `Up` performed has no reverse. **The production way back is
+deploying the old version's images and restoring the pre-upgrade backup** (§4.2), not running this
+`Down`. Credentials created and shared-credential changes made after the upgrade are lost when the
+backup is restored; **the secrets those changes set on the target hosts are not**, so if you need to
+know which hosts were sharing one secret at that point, export the credential list and its bindings
+before rolling back.
+
+**The `Down` of `20260906_credential_library_contract` is lossy and is for development databases
+only.** It puts the four dropped columns back as empty shells and recreates the group index, and
+**restores no data**: what those columns held was gone the moment they were dropped, so after a later
+upgrade they come back empty. Its production way back is likewise deploying the old version's images
+and restoring the pre-upgrade backup (§4.2).
 
 **A login banner configured after the upgrade is lost when the backup is restored**: that text was written after the upgrade, and the pre-upgrade backup does not contain it. **If you are going to roll back, copy the banner's title and body off the security policy page first** (plain text, into a ticket or a handover document), and put them back after a later upgrade.
 

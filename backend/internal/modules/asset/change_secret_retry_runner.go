@@ -31,6 +31,19 @@ type ChangeSecretRetryRunner struct {
 	// executors 依通道取執行器（與改密執行器同一組工廠）。
 	// **重試必須走同一條驗證路徑**：兩邊分岔即會出現「手動能過、自動不能」
 	executors func(channel string) rotationExecutor
+
+	// rotations 輪替引擎；nil＝尚未接線。
+	//
+	// **本欄決定候選的歸屬分流**：屬於某個輪替成員的候選一律交回成員路徑，
+	// 未接線時寧可略過也不走單帳號轉正——後者會在共用憑證上多開版本、
+	// 繞過成員轉移表改寫就位版本，拆分模式下還會把唯一的新秘密寫回原共用憑證
+	rotations *CredentialRotationService
+}
+
+// WithRotationService 接上輪替引擎（組裝根注入）。
+func (r *ChangeSecretRetryRunner) WithRotationService(rotations *CredentialRotationService) *ChangeSecretRetryRunner {
+	r.rotations = rotations
+	return r
 }
 
 // NewChangeSecretRetryRunner 建立重試執行器
@@ -43,8 +56,14 @@ func NewChangeSecretRetryRunner(db *gorm.DB, candidates *ChangeSecretCandidateSe
 	}
 }
 
-// RunDue 處理本輪到期的候選，回傳（轉正筆數, 仍失敗筆數）
+// RunDue 處理本輪到期的候選與到期的輪替成員，回傳（轉正筆數, 仍失敗筆數）。
+//
+// **兩種來源、一套節奏**：候選列與輪替成員列各自帶著下次嘗試時刻，但退避與期限
+// 沿用同一組常數，且同一個掛載只會被其中一條路徑推進——兩套排程對同一台目標機
+// 下手就是兩套帳號鎖定風險。
 func (r *ChangeSecretRetryRunner) RunDue() (int, int) {
+	handled := r.advanceRotationMembers()
+
 	due, err := r.candidates.DueForRetry(r.batchSize)
 	if err != nil {
 		log.Printf("[ChangeSecretRetry] 取候選清單失敗: %v", err)
@@ -53,6 +72,20 @@ func (r *ChangeSecretRetryRunner) RunDue() (int, int) {
 	var promoted, failed int
 	for i := range due {
 		cand := due[i]
+		if handled[cand.AccountID] {
+			continue
+		}
+		member, merr := rotationMemberForAccount(r.db, cand.AccountID)
+		if merr != nil {
+			// 查不出歸屬時一律不走單帳號轉正：誤把輪替候選轉正的代價是共用憑證
+			// 多開版本、就位版本繞過轉移表被改寫；少推進一輪只是晚一個退避週期
+			log.Printf("[ChangeSecretRetry] 查詢候選歸屬失敗 id=%d err=%v", cand.ID, merr)
+			continue
+		}
+		if member != nil {
+			r.advanceMember(member)
+			continue
+		}
 		if r.RetryOne(&cand) {
 			promoted++
 			continue
@@ -65,9 +98,44 @@ func (r *ChangeSecretRetryRunner) RunDue() (int, int) {
 	return promoted, failed
 }
 
+// advanceRotationMembers 推進到期的輪替成員，回傳本輪已處理的掛載集合。
+//
+// 先於候選掃描執行：乾淨失敗的成員已無候選列，只掃候選會讓它永遠等不到下一次。
+func (r *ChangeSecretRetryRunner) advanceRotationMembers() map[uint]bool {
+	handled := map[uint]bool{}
+	if r.rotations == nil {
+		return handled
+	}
+	members, err := r.rotations.DueMembers(r.batchSize)
+	if err != nil {
+		log.Printf("[ChangeSecretRetry] 取到期輪替成員失敗: %v", err)
+		return handled
+	}
+	for i := range members {
+		handled[members[i].AccountID] = true
+		r.advanceMember(&members[i])
+	}
+	return handled
+}
+
+// advanceMember 把一個成員交回輪替引擎推進（失敗只留 log：狀態與原因碼由引擎自己落庫）。
+func (r *ChangeSecretRetryRunner) advanceMember(member *DueRotationMember) {
+	if err := r.rotations.RunMember(context.Background(), member.RotationID, member.MemberID); err != nil {
+		log.Printf("[ChangeSecretRetry] 輪替成員推進失敗 rotation=%d member=%d err=%v",
+			member.RotationID, member.MemberID, err)
+	}
+}
+
 // RetryOne 單筆重試；true＝已轉正。管理員手動觸發與排程共用同一路徑——
 // 兩條路徑分岔即會出現「手動能過、自動不能」的行為差異
 func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bool {
+	// 屬於輪替成員的候選不走本路徑（含 admin 手動觸發）：單帳號轉正會繞過成員
+	// 轉移表這個就位版本的唯一寫入點
+	if member, merr := rotationMemberForAccount(r.db, cand.AccountID); merr != nil || member != nil {
+		log.Printf("[ChangeSecretRetry] 候選屬於輪替成員，不走單帳號轉正 id=%d account=%d",
+			cand.ID, cand.AccountID)
+		return false
+	}
 	ctx := context.Background()
 	secret, err := r.candidates.Secret(ctx, cand)
 	if err != nil {
@@ -103,11 +171,10 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 		r.noteFailure(cand, model.ChangeSecretReasonPromoteFailed, err)
 		return false
 	}
-	noteCredentialGroupCommitted(r.db, cand.AccountID, cand.SharedGroup)
-	if cand.SharedGroup != "" {
-		// 批次可能早已結束、當時因仍有待驗證候選而未解散群組；本候選轉正後
-		// 若群組仍只有一員且再無待驗證候選，該解散就在此刻
-		noteSharedGroupSettled(r.db, cand.BatchID, cand.SharedGroup)
+	if cand.CredentialID != 0 && cand.TargetVersionID != 0 {
+		// 批次可能早已結束、當時因仍有待驗證候選而未評估；本候選轉正後掛載數若
+		// 仍少於 2 且再無待驗證候選，該轉回專用就在此刻
+		settleBatchSharedCredential(r.db, cand.CredentialID)
 	}
 	r.recordPromotion(cand)
 	return true
@@ -142,6 +209,9 @@ func (r *ChangeSecretRetryRunner) recordPromotion(cand *model.ChangeSecretCandid
 		AccountID:       cand.AccountID,
 		AccountUsername: cand.AccountUsername,
 		SecretType:      cand.SecretType,
+		CredentialID:    cand.CredentialID,
+		CredentialName:  cand.CredentialName,
+		TargetVersionID: committedVersionID(r.db, cand.AccountID, cand.TargetVersionID),
 		Status:          model.ChangeSecretSuccess,
 		Error:           model.ChangeSecretReasonRetryPromoted,
 		ExecutedAt:      time.Now(),

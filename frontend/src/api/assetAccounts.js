@@ -20,9 +20,12 @@ export function listAssetAccounts(assetId, options = {}) {
 
 /**
  * 建立資產帳號。
+ *
+ * 登入憑證的來源二擇一：`credential_id`（掛既有共用憑證）或這台專用的
+ * `username`／`password`／`private_key`。兩者同時給會被伺服端判為意圖不明而整筆拒絕。
  * @param {number|string} assetId - 資產 ID
- * @param {Object} data - { username, password, private_key, is_default,
- *   privileged, note, copy_from_account_id }
+ * @param {Object} data - { credential_id } 或
+ *   { username, password, private_key, auth_method }，另可帶 is_default、privileged、note
  * @returns {Promise} AssetAccount
  */
 export function createAssetAccount(assetId, data) {
@@ -35,6 +38,9 @@ export function createAssetAccount(assetId, data) {
 
 /**
  * 更新資產帳號（憑證空字串＝沿用既有，比照資產更新語義）。
+ *
+ * 掛在共用憑證上的帳號帶密碼／私鑰會被拒絕：那組秘密同時掛在別台上，
+ * 要改就整組改（憑證庫）或先讓這台脫離共用。回應的部分欄位不完整，存檔後重新取回再渲染。
  * @param {number|string} assetId - 資產 ID
  * @param {number|string} accountId - 帳號 ID
  * @param {Object} data - { username, password, private_key, privileged, note }

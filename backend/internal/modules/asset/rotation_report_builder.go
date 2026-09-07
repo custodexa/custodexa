@@ -97,13 +97,19 @@ type accountRowsResult struct {
 // accountRows 母體 → 資產 → 計劃涵蓋 → 最後成功 → 最近記錄 → 候選 → 逐列推導。
 func (b *RotationReportBuilder) accountRows(assetFilter []uint, planFilter model.AccountScope,
 	asOf time.Time) (accountRowsResult, error) {
+	return b.accountRowsFiltered(assetFilter, planFilter, nil, asOf)
+}
+
+// accountRowsFiltered 同上，另可只取指定的幾個掛載（憑證庫左表的逐憑證投影用）。
+func (b *RotationReportBuilder) accountRowsFiltered(assetFilter []uint, planFilter model.AccountScope,
+	accountFilter []uint, asOf time.Time) (accountRowsResult, error) {
 
 	out := accountRowsResult{}
 	if b.maxAge != nil {
 		out.global = b.maxAge()
 	}
 
-	accounts, truncated, err := b.scopedAccounts(assetFilter, planFilter)
+	accounts, truncated, err := b.scopedAccounts(assetFilter, planFilter, accountFilter)
 	if err != nil {
 		return out, err
 	}
@@ -135,11 +141,23 @@ func (b *RotationReportBuilder) accountRows(assetFilter []uint, planFilter model
 		return out, err
 	}
 
+	// 憑證型別（密碼／私鑰／無）自掛載的就位版本推導：掛載列自憑證庫化之後
+	// 不再持有密文欄，逐帳號查會讓一份全系統報告打上萬次查詢，故批次一次取
+	secretFlags, err := accountsSecretFlags(b.db, accounts)
+	if err != nil {
+		return out, err
+	}
+	// 共用標記、憑證名與就位版本序號同樣一次批次取回（理由同上）
+	credSnapshots, err := accountsCredentialSnapshots(b.db, accounts)
+	if err != nil {
+		return out, err
+	}
+
 	cov := newPlanCoverage(out.plans, asOf)
 	out.rows = make([]AccountRow, 0, len(accounts))
 	for i := range accounts {
 		row := b.buildRow(&accounts[i], assets[accounts[i].AssetID], cov, out.global,
-			lastSuccess, lastRecord, candidates, asOf)
+			lastSuccess, lastRecord, candidates, secretFlags, credSnapshots, asOf)
 		out.rows = append(out.rows, row)
 	}
 	return out, nil
@@ -196,12 +214,18 @@ func (b *RotationReportBuilder) resolveScope(scope ReportScope) (label string,
 // 少了這個 join 就會把已刪資產的帳號一併判桶、計入合規率、印進例外清單
 // ——那些機器在資產管理頁看不到、連不上，也沒人能去改它的密碼。
 func (b *RotationReportBuilder) scopedAccounts(assetFilter []uint,
-	planFilter model.AccountScope) ([]model.AssetAccount, bool, error) {
+	planFilter model.AccountScope, accountFilter []uint) ([]model.AssetAccount, bool, error) {
 
 	q := b.db.Model(&model.AssetAccount{}).
 		Select("asset_accounts.*").
 		Joins("JOIN assets ON assets.id = asset_accounts.asset_id AND assets.deleted_at IS NULL").
 		Order("asset_accounts.asset_id asc, asset_accounts.id asc")
+	if accountFilter != nil {
+		if len(accountFilter) == 0 {
+			return nil, false, nil
+		}
+		q = q.Where("asset_accounts.id IN ?", accountFilter)
+	}
 	if assetFilter != nil {
 		if len(assetFilter) == 0 {
 			return nil, false, nil
@@ -385,6 +409,10 @@ func (b *RotationReportBuilder) periodRecords(assetFilter []uint, planFilter mod
 	if err != nil {
 		return nil, false, err
 	}
+	versionNos, err := recordVersionNumbers(b.db, records)
+	if err != nil {
+		return nil, false, err
+	}
 	truncated := false
 	if len(records) > ReportRecordsCap {
 		records = records[:ReportRecordsCap]
@@ -400,11 +428,57 @@ func (b *RotationReportBuilder) periodRecords(assetFilter []uint, planFilter mod
 		out = append(out, RecordRow{
 			RecordID: r.ID, ExecutedAt: r.ExecutedAt.In(from.Location()), PlanName: planNames[r.PlanID],
 			BatchID: r.BatchID, AssetName: assetName, AccountUsername: r.AccountUsername,
-			AccountDeleted: deleted[r.AccountID], SecretType: r.SecretType,
-			Status: r.Status, ReasonCode: r.Error,
+			AccountDeleted: deleted[r.AccountID],
+			CredentialName: r.CredentialName, VersionNo: versionNos[r.TargetVersionID],
+			SecretType: r.SecretType,
+			Status:     r.Status, ReasonCode: r.Error,
 		})
 	}
 	return out, truncated, nil
+}
+
+// recordVersionNumbers 記錄所帶目標版本的序號（版本列不可變，序號即當時的序號）。
+func recordVersionNumbers(db *gorm.DB, records []model.ChangeSecretRecord) (map[uint]int, error) {
+	ids := make([]uint, 0, len(records))
+	seen := map[uint]bool{}
+	for i := range records {
+		if id := records[i].TargetVersionID; id != 0 && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return versionNumbers(db, ids)
+}
+
+// CredentialRotationStatus 一筆憑證的輪替狀態＝其全部掛載的狀態桶**取最嚴**。
+//
+// 優先序取自報告的同一份常數（bucketSeverity），不另立第二套口徑：憑證庫左表與
+// 輪替證據報告若各有一套嚴重度排序，同一組秘密在兩個畫面上會顯示成兩種合規狀態。
+// 零掛載回空字串——沒有主機在用它，任何合規判定都是編造。
+func (b *RotationReportBuilder) CredentialRotationStatus(credentialID uint, asOf time.Time) (string, error) {
+	if credentialID == 0 {
+		return "", nil
+	}
+	bindings, err := credentialBindingRows(b.db, credentialID)
+	if err != nil {
+		return "", err
+	}
+	if len(bindings) == 0 {
+		return "", nil
+	}
+	ids := make([]uint, 0, len(bindings))
+	for i := range bindings {
+		ids = append(ids, bindings[i].ID)
+	}
+	rows, err := b.accountRowsFiltered(nil, nil, ids, asOf)
+	if err != nil {
+		return "", err
+	}
+	buckets := make([]string, 0, len(rows.rows))
+	for i := range rows.rows {
+		buckets = append(buckets, rows.rows[i].Bucket)
+	}
+	return strictestBucket(buckets), nil
 }
 
 // summarize 由已產出的列算摘要。

@@ -27,6 +27,8 @@ const BACKEND_ACTIONS = [
   // evidence-offsite-storage：離機保管鏈的五個事件（主體恆為系統）
   'offsite_upload', 'offsite_retention', 'offsite_integrity',
   'offsite_profile', 'offsite_cred_revoke',
+  // 升級時一次性轉換留下的標記列
+  'migration',
 ]
 // AuditResource: backend/internal/model/audit_log.go 的 Resource* 常數區
 const BACKEND_RESOURCES = [
@@ -46,6 +48,8 @@ const BACKEND_RESOURCES = [
   'instance_guard',
   // 離機儲存的保管鏈事件與設定／佇列操作列（evidence-offsite-storage）
   'offsite_storage',
+  // 帳號憑證（resource_id 指向憑證列本身，不是資產或帳號）
+  'credential',
   // 兜底哨兵（`extractResource` 對未分類路徑的回傳值，取代舊兜底 asset）
   'unclassified',
 ]
@@ -165,7 +169,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   })
 
-  it('AUDIT_RESOURCES 與後端 38 資源互為全集（無殭屍 alert 條目）', () => {
+  it('AUDIT_RESOURCES 與後端 39 資源互為全集（無殭屍 alert 條目）', () => {
     expect(Object.keys(AUDIT_RESOURCES).sort()).toEqual([...BACKEND_RESOURCES].sort())
     expect(AUDIT_RESOURCES.alert).toBeUndefined()
   })

@@ -76,7 +76,10 @@ type AssetService struct {
 	// enc:v 密文——「cutover 後只產 enc:a1」是結構保證而非執行期政策判斷。
 	// 建構時注入（三職拆解）：不再於建構期由 env 材料自建 codec、
 	// 也不再有 SetCodec 事後覆寫，使無本地 KEK 材料的模式（ui／kms／hsm）可建構
-	crypto    crypto.ColumnCodec
+	crypto crypto.ColumnCodec
+	// resolver 憑證取密的單一入口（見 credential_resolver.go）。與 crypto 同一個
+	// codec 實例：兩份 codec 會讓寫入與讀取走不同的加密路徑而無人察覺
+	resolver  *CredentialResolver
 	guacdHost string
 	guacdPort int
 	// hostKeys SSH 直連測試的 host key 驗證（setter 注入避免改建構簽名）
@@ -144,6 +147,7 @@ func NewAssetService(codec crypto.ColumnCodec, guacdHost string, guacdPort int, 
 	}
 	return &AssetService{
 		crypto:    codec,
+		resolver:  NewCredentialResolver(codec),
 		guacdHost: guacdHost,
 		guacdPort: guacdPort,
 		auditTx:   auditTx,
@@ -179,7 +183,7 @@ type AssetListResponse struct {
 
 // CreateAssetRequest 創建資產請求
 type CreateAssetRequest struct {
-	Name        string             `json:"name" binding:"required"`
+	Name string `json:"name" binding:"required"`
 	// binding 的 oneof 清單必須與 assetProtocols 逐項對齊（順序無關）——
 	// gin 的 binding 在 service 的 validateProtocol 之前先擋，清單漏一項就等於該協議
 	// 整條建資產路徑不可用（mssql 曾漏在此處，服務層清單有但 API 回 VALIDATION_BAD_REQUEST）。
@@ -237,6 +241,18 @@ type CreateAssetRequest struct {
 	WinrmTLSMode    string `json:"winrm_tls_mode"`
 	WinrmCACert     string `json:"winrm_ca_cert"`
 	RotationSSHPort int    `json:"rotation_ssh_port"`
+
+	// CredentialID 掛既有共用憑證：與頂層的 Username／Password／PrivateKey、
+	// 與 Credential 內嵌物件皆二擇一。建資產時同一交易產生指向該憑證的預設掛載，
+	// 其就位版本為該憑證當下的現行版本
+	CredentialID uint `json:"credential_id"`
+	// Credential 這台專用：內嵌物件，同一交易建立一筆專用憑證與其 v1 版本。
+	// 頂層的 Username／Password／PrivateKey 是它的簡寫形式，語義相同
+	Credential *InlineCredential `json:"credential"`
+
+	// RetiredCopyFromAccountID 已退場的「從其他資產帳號複製憑證」參數；
+	// 帶值即拒絕（理由見 CreateAssetAccountRequest 的同名欄位）
+	RetiredCopyFromAccountID uint `json:"copy_from_account_id"`
 }
 
 // UpdateAssetRequest 更新資產請求
@@ -409,9 +425,43 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 	}
 	nodeIDs := kernel.DedupeUint(req.NodeIDs)
 
+	// 登入憑證來源二擇一：既有共用憑證，或這台專用（內嵌物件／頂層簡寫）。
+	// 兩者同時出現一律拒絕——它們表達的意圖相反，靜默擇一會讓操作者以為建出來的
+	// 是另一種，而共用關係正是憑證庫要回答的問題
+	if req.RetiredCopyFromAccountID != 0 {
+		return nil, ErrAccountCopyFromRemoved
+	}
+	username, password, privateKey := req.Username, req.Password, req.PrivateKey
+	if req.Credential != nil {
+		if req.CredentialID != 0 || username != "" || password != "" || privateKey != "" {
+			return nil, ErrCredentialSourceAmbiguous
+		}
+		username = req.Credential.Username
+		password = req.Credential.Password
+		privateKey = req.Credential.PrivateKey
+	}
+	var sharedCredential *model.Credential
+	if req.CredentialID != 0 {
+		if username != "" || password != "" || privateKey != "" {
+			return nil, ErrCredentialSourceAmbiguous
+		}
+		cred, cerr := loadCredential(database.DB, req.CredentialID)
+		if cerr != nil {
+			return nil, cerr
+		}
+		if cred.Scope != model.CredentialScopeShared {
+			return nil, ErrCredentialDedicatedSingleBinding
+		}
+		if aerr := assertNoActiveRotation(cred); aerr != nil {
+			return nil, aerr
+		}
+		sharedCredential = cred
+		username = cred.Username
+	}
+
 	// SSH/RDP/MySQL/Postgres 需要 username；VNC/Redis/K8s 僅密碼（Token）認證
 	if req.Protocol != model.ProtocolVNC && req.Protocol != model.ProtocolRedis &&
-		req.Protocol != model.ProtocolK8s && req.Username == "" {
+		req.Protocol != model.ProtocolK8s && username == "" {
 		return nil, ErrUsernameRequired
 	}
 
@@ -440,7 +490,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		Protocol:           req.Protocol,
 		Host:               req.Host,
 		Port:               req.Port,
-		Username:           req.Username,
+		Username:           username,
 		Description:        req.Description,
 		Tags:               normalizedTags,
 		Active:             true,
@@ -469,13 +519,13 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		return nil, err
 	}
 
-	// 憑證加密：密文只落 asset_accounts 的
-	// default 帳號，assets 內嵌憑證欄位自本階段起凍結不再寫入（單向切換）。
-	// assets 上仍維護 HasPassword/HasPrivateKey 顯示旗標——它們不是憑證本體，
-	// 而是列表與表單的「已設定憑證」標記，不同步會讓既有畫面說謊。
+	// 憑證加密：密文只落**憑證的密文版本列**，掛載列（asset_accounts）與 assets
+	// 的內嵌憑證欄位都不再寫入。assets 上仍維護 HasPassword/HasPrivateKey 顯示
+	// 旗標——它們不是憑證本體，而是列表與表單的「已設定憑證」標記，不同步會讓
+	// 既有畫面說謊。
 	var passwordEnc, privateKeyEnc string
-	if req.Password != "" {
-		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPassword, req.Password)
+	if password != "" {
+		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, password)
 		if err != nil {
 			return nil, fmt.Errorf("加密密碼失敗: %w", err)
 		}
@@ -484,13 +534,28 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 	}
 
 	// 加密私鑰（SSH only）
-	if req.PrivateKey != "" && req.Protocol == model.ProtocolSSH {
-		encryptedKey, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPrivateKey, req.PrivateKey)
+	if privateKey != "" && req.Protocol == model.ProtocolSSH {
+		encryptedKey, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, privateKey)
 		if err != nil {
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
 		privateKeyEnc = encryptedKey
 		asset.HasPrivateKey = true
+	}
+
+	// 掛既有共用憑證：協定族相容性以組裝後的資產判定，顯示旗標取自該憑證的現行版本
+	if sharedCredential != nil {
+		if err := assertProtocolFamilyMatch(sharedCredential, asset); err != nil {
+			return nil, err
+		}
+		if sharedCredential.CurrentVersionID != nil {
+			flags, ferr := versionSecretFlags(database.DB, []uint{*sharedCredential.CurrentVersionID})
+			if ferr != nil {
+				return nil, ferr
+			}
+			f := flags[*sharedCredential.CurrentVersionID]
+			asset.HasPassword, asset.HasPrivateKey = f.HasPassword, f.HasPrivateKey
+		}
 	}
 
 	// VNC SFTP 側車（vnc-file-transfer；僅 protocol=vnc 生效）
@@ -529,23 +594,50 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		// 建了資產卻沒建帳號，該資產自階段 2 起即為「無身分可連」的死資產。
 		// 建帳判準與階段 1 migration 一致：username／密碼／私鑰三者全空才算
 		// 零帳號資產（靠 SSH agent 等免密路徑者仍需帳號承載 username）
-		if asset.Username != "" || passwordEnc != "" || privateKeyEnc != "" {
+		if sharedCredential != nil || asset.Username != "" || passwordEnc != "" || privateKeyEnc != "" {
+			// 直填的登入憑證＝操作者宣告的密文：同一交易建專用憑證與其 v1 版本，
+			// 並把憑證的現行版本與該掛載的就位版本一併指向它。
+			// 少了這一步，掛載建得起來卻連不上——就位版本為空即無密文可取
 			account := &model.AssetAccount{
-				AssetID:       asset.ID,
-				Username:      asset.Username,
-				PasswordEnc:   passwordEnc,
-				PrivateKeyEnc: privateKeyEnc,
-				IsDefault:     true,
+				AssetID:   asset.ID,
+				Username:  asset.Username,
+				IsDefault: true,
+			}
+			if sharedCredential != nil {
+				// 掛既有共用憑證：不建新密文版本，就位版本設為該憑證當下的現行版本。
+				// 交易內重取憑證列鎖，使「選定當下」與「寫入當下」之間的改密無從交錯
+				cred, cerr := lockCredentialRow(tx, sharedCredential.ID)
+				if cerr != nil {
+					return cerr
+				}
+				if aerr := assertNoActiveRotation(cred); aerr != nil {
+					return aerr
+				}
+				// 上一輪未收斂時同樣不得掛上（判準與 CredentialService.Bind 一致）：
+				// 此刻掛上去的新機器會取到現行版本，而那正是上一輪沒換成功的舊秘密，
+				// 且它不在任何一輪的成員清單裡——補跑補不到它
+				if cerr := assertCredentialConverged(tx, cred); cerr != nil {
+					return cerr
+				}
+				account.AuthMethod = cred.AuthMethod
+				account.CredentialID = cred.ID
+				account.EffectiveVersionID = cred.CurrentVersionID
+			} else if err := bindNewDedicatedCredential(tx, account, asset, "",
+				passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+				return err
 			}
 			if err := tx.Create(account).Error; err != nil {
 				return fmt.Errorf("建立預設帳號失敗: %w", err)
 			}
+			credID, credScope := credentialAuditRef(tx, account.CredentialID)
 			if err := writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-				AssetID:   asset.ID,
-				AccountID: account.ID,
-				Username:  account.Username,
-				Operation: model.AccountOpCreate,
-				Fields:    changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
+				AssetID:         asset.ID,
+				AccountID:       account.ID,
+				Username:        account.Username,
+				Operation:       model.AccountOpCreate,
+				Fields:          changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
+				CredentialID:    credID,
+				CredentialScope: credScope,
 			}, req.CreatedBy, req.CreatedByName); err != nil {
 				return fmt.Errorf("記錄預設帳號建立審計失敗: %w", err)
 			}
@@ -697,10 +789,67 @@ func (s *AssetService) UpdatePassword(assetID, accountID uint, pinnedUsername, n
 	if accountID == 0 {
 		return ErrAssetAccountNotFound
 	}
-	encrypted, err := s.crypto.EncryptFor(context.Background(), keyvault.RefAccountPassword, newPassword)
+	encrypted, err := s.crypto.EncryptFor(context.Background(), keyvault.RefCredentialVersionPassword, newPassword)
 	if err != nil {
 		return fmt.Errorf("加密密碼失敗: %w", err)
 	}
+	return s.commitBindingSecret(assetID, accountID, pinnedUsername,
+		model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+}
+
+// UpdatePrivateKey 系統路徑更新帳號私鑰（金鑰輪替）。
+//
+// 不變式與 UpdatePassword 逐條相同：釘住的 accountID ＋ pinnedUsername 為 WHERE
+// 條件（執行期間改名即零列＝失敗，不改錯對象）、驗證與寫入同一交易、RowsAffected
+// 零列一律回錯（遠端已換鑰而庫內沒存新私鑰＝該機器鎖死，絕不記成功）。
+//
+// 新版本只帶新私鑰，密碼欄自就位版本原樣帶過來（見 carryOverVersionCiphertext）：
+// 密碼不在金鑰輪替的範圍內，順手清掉它會讓原本密碼可登入的帳號在金鑰失效時
+// 失去唯一的備援入口。
+func (s *AssetService) UpdatePrivateKey(assetID, accountID uint, pinnedUsername, newPrivateKey string) error {
+	if accountID == 0 {
+		return ErrAssetAccountNotFound
+	}
+	encrypted, err := s.crypto.EncryptFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, newPrivateKey)
+	if err != nil {
+		return fmt.Errorf("加密私鑰失敗: %w", err)
+	}
+	return s.commitBindingSecret(assetID, accountID, pinnedUsername,
+		model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
+}
+
+// commitBindingSecret 系統路徑寫入面的共同實作：建新版本 → 就位。
+//
+// 兩支公開方法（密碼與私鑰）逐條共用同一組不變式，故實作收在這裡，
+// 差異只有加密用的 CipherRef、秘密型別與審計欄位名。
+//
+// # 五條不變式（逐條對應，改動時逐條看）
+//
+//  1. **釘住 accountID**：以呼叫端在執行開頭釘住的帳號為目標，
+//     絕不在寫入時重新解析預設帳號——執行期間管理員切換 default 就會把新密
+//     寫進另一個帳號（遠端已改密的那台反而留著舊密＝鎖死）。
+//  2. **交易內取列鎖**：資產列鎖（帳號集合的互斥點）＋憑證列鎖（同一組秘密
+//     可能同時被另一次輪替動到）。次序固定「先資產、後憑證」，避免交錯死鎖。
+//  3. **RowsAffected 零列一律回錯**：驗證與寫入同一交易，就位指標的 UPDATE
+//     影響零列即代表該掛載在本交易可見範圍內已消失或已改綁（由
+//     setBindingEffectiveVersion 承擔）。零列回 nil 的舊形態會讓 runner 記
+//     success，而遠端密碼已經改掉、庫內沒有新密＝永久鎖死。
+//  4. **pinnedUsername 在鎖內比對**：帳號在執行期間被改名時該列已代表另一個
+//     系統身分。比對對象是**憑證**的帳號名（帳號名的真相在憑證），掛載列的
+//     同名欄位一併比對，兩者任一不符即失敗。比對讀的是不變式 2 的資產列鎖之後
+//     重讀到的值，而全部改名路徑都取同一把鎖（asset_account_service.go 的
+//     Update 與追趕同步），故它與把名字寫進 UPDATE 的 WHERE 等效。
+//  5. **審計不落密文**：只記被更動的欄位名，操作者記為系統身分。
+//
+// 就位版本的寫入本身**不在本函式內下 UPDATE**：它走
+// setBindingEffectiveVersion 這個單一掛載的既有入口，使全庫的就位版本寫入
+// 收斂在具名入口上（整組宣告走 setAllBindingsEffectiveVersion，逐台走這一支）。
+//
+// 秘密本體以**新增一筆密文版本**落地，既有版本列不被就地覆寫——就位指標之所
+// 以能表達「這台用舊版、那台用新版」，前提正是舊版列的密文原封不動。
+func (s *AssetService) commitBindingSecret(assetID, accountID uint, pinnedUsername,
+	secretType, passwordEnc, privateKeyEnc, auditField, failMsg string) error {
+
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 			return err
@@ -713,80 +862,63 @@ func (s *AssetService) UpdatePassword(assetID, accountID uint, pinnedUsername, n
 		if account == nil || account.Username != pinnedUsername {
 			return ErrAssetAccountNotFound
 		}
-		res := tx.Model(&model.AssetAccount{}).
-			Where("id = ? AND asset_id = ? AND username = ?", account.ID, assetID, pinnedUsername).
-			Update("password_enc", encrypted)
-		if res.Error != nil {
-			return fmt.Errorf("更新帳號密碼失敗: %w", res.Error)
-		}
-		if res.RowsAffected == 0 {
-			// 零列＝帳號於本交易內被移除或改名；絕不記成功審計
-			return ErrAssetAccountNotFound
-		}
-		if account.IsDefault {
-			account.PasswordEnc = encrypted
-			if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
-				return err
-			}
-		}
-		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   assetID,
-			AccountID: account.ID,
-			Username:  account.Username,
-			Operation: model.AccountOpUpdate,
-			Fields:    []string{"password"},
-		}, 0, "system")
-	})
-}
-
-// UpdatePrivateKey 系統路徑更新帳號私鑰（金鑰輪替）。
-//
-// 不變式與 UpdatePassword 逐條相同：釘住的 accountID ＋ pinnedUsername 為 WHERE
-// 條件（執行期間改名即零列＝失敗，不改錯對象）、驗證與寫入同一交易、RowsAffected
-// 零列一律回錯（遠端已換鑰而庫內沒存新私鑰＝該機器鎖死，絕不記成功）。
-//
-// 只動 private_key_enc：帳號的密碼欄位不在金鑰輪替的範圍內，清掉它會讓原本
-// 密碼可登入的帳號在金鑰失效時失去唯一的備援入口。
-func (s *AssetService) UpdatePrivateKey(assetID, accountID uint, pinnedUsername, newPrivateKey string) error {
-	if accountID == 0 {
-		return ErrAssetAccountNotFound
-	}
-	encrypted, err := s.crypto.EncryptFor(context.Background(), keyvault.RefAccountPrivateKey, newPrivateKey)
-	if err != nil {
-		return fmt.Errorf("加密私鑰失敗: %w", err)
-	}
-	return database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
-			return err
-		}
-		account, err := resolveAssetAccount(tx, assetID, accountID)
+		cred, err := lockCredentialRow(tx, account.CredentialID)
 		if err != nil {
+			if errors.Is(err, ErrCredentialNotFound) {
+				return ErrAssetAccountNotFound
+			}
 			return err
 		}
-		if account == nil || account.Username != pinnedUsername {
+		if cred.Username != pinnedUsername {
 			return ErrAssetAccountNotFound
 		}
-		res := tx.Model(&model.AssetAccount{}).
-			Where("id = ? AND asset_id = ? AND username = ?", account.ID, assetID, pinnedUsername).
-			Update("private_key_enc", encrypted)
-		if res.Error != nil {
-			return fmt.Errorf("更新帳號私鑰失敗: %w", res.Error)
+
+		// 未被本次更動的那一欄自就位版本原樣帶過來（密文原樣搬、不解密）：
+		// 金鑰輪替只動私鑰，把密碼一併清掉會讓原本密碼可登入的帳號在金鑰失效時
+		// 失去唯一的備援入口；密碼輪替對私鑰同理
+		if account.EffectiveVersionID != nil {
+			var cerr error
+			passwordEnc, privateKeyEnc, cerr = carryOverVersionCiphertext(tx, cred.ID,
+				*account.EffectiveVersionID, passwordEnc, privateKeyEnc)
+			if cerr != nil {
+				return cerr
+			}
 		}
-		if res.RowsAffected == 0 {
-			return ErrAssetAccountNotFound
+
+		version, err := appendCredentialVersion(tx, cred.ID, secretType,
+			passwordEnc, privateKeyEnc, model.CredentialVersionReasonRotation)
+		if err != nil {
+			return fmt.Errorf("%s: %w", failMsg, err)
+		}
+		// 就位：系統路徑呼叫本函式的時機已在遠端驗證通過之後，故同交易改寫。
+		// **走單一掛載的既有入口**，不自己下 UPDATE——該入口另外強制「版本必須
+		// 屬於本掛載的憑證」，且零列一律回 ErrAssetAccountNotFound（掛載於本交易
+		// 可見範圍內被移除或改綁），絕不記成功審計。
+		// **不得改走整組入口**：本函式的密文是系統產生的，遠端是否收下只有這一台
+		// 驗證過；把全部掛載一併推到新版會讓其他主機拿著沒換過的舊密去連新版
+		if err := setBindingEffectiveVersion(tx, account, version.ID); err != nil {
+			if errors.Is(err, ErrCredentialVersionNotFound) {
+				return fmt.Errorf("%s: %w", failMsg, err)
+			}
+			return err
+		}
+		if err := setCredentialCurrentVersion(tx, cred.ID, version.ID); err != nil {
+			return err
 		}
 		if account.IsDefault {
-			account.PrivateKeyEnc = encrypted
 			if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
 				return err
 			}
 		}
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   assetID,
-			AccountID: account.ID,
-			Username:  account.Username,
-			Operation: model.AccountOpUpdate,
-			Fields:    []string{"private_key"},
+			AssetID:         assetID,
+			AccountID:       account.ID,
+			Username:        account.Username,
+			Operation:       model.AccountOpUpdate,
+			Fields:          []string{auditField},
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, 0, "system")
 	})
 }
@@ -822,6 +954,14 @@ func (s *AssetService) GetByID(id uint) (*model.Asset, error) {
 //
 // 階段 2 起 username 與憑證皆自帳號取得（兩者必須同帳號），Asset 內嵌憑證
 // 欄位不再被讀取。零帳號資產（原本即無 username 與憑證者）回空憑證束，合法。
+//
+// 憑證庫化之後本函式是**薄殼**：帳號歸屬的 fail-close 判定留在這裡（它是連線
+// 入口的客體綁定，與取密是兩件事），取密整段委派 CredentialResolver——
+// 掛載的就位版本是唯一來源，不退回憑證的現行版本、不試兩個版本。
+//
+// 掛載存在但尚無就位版本時回**空憑證束而非錯誤**：這與憑證化之前
+// 「帳號有 username、密文欄為空」的既有語義逐字相同，零帳號 fail-close
+// 由各連線入口自己的閘負責（它們判的是 AccountID 與空憑證，不是本函式的錯誤）。
 func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*AssetCredentials, error) {
 	// ctx 僅供 codec 的取消／逾時語義：AAD 綁定維度為 (table, column)（不綁自增主鍵），
 	// 不需由 ctx 攜帶列身分，故此處不為加密而擾動 13 個呼叫端簽名。
@@ -831,29 +971,31 @@ func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*A
 	if err != nil {
 		return nil, err
 	}
-	account, err := resolveAssetAccount(database.DB, assetID, accountID)
-	if err != nil {
-		return nil, err
-	}
 	creds := &AssetCredentials{Asset: asset}
-	if account == nil {
+
+	// 解析器內部即以 resolveAssetAccount 作帳號歸屬的 fail-close 判定
+	// （與本函式同源），故一般路徑一次解析即完成歸屬判定與取密。
+	// 只有「掛載存在但尚無就位版本」與「零帳號資產」兩種情形才回頭再查一次
+	// ——它們要回的是帶帳號身分的空憑證束，而那需要掛載列本身
+	resolved, rerr := s.resolver.ResolveForBinding(ctx, assetID, accountID)
+	if rerr == nil {
+		creds.AccountID = resolved.AccountID
+		creds.Username = resolved.Username
+		creds.Password = resolved.Password
+		creds.PrivateKey = resolved.PrivateKey
 		return creds, nil
 	}
-	creds.AccountID = account.ID
-	creds.Username = account.Username
-
-	if account.PasswordEnc != "" {
-		creds.Password, err = s.crypto.DecryptFor(ctx, keyvault.RefAccountPassword, account.PasswordEnc)
-		if err != nil {
-			return nil, fmt.Errorf("解密密碼失敗: %w", err)
-		}
+	if !errors.Is(rerr, ErrAssetNoUsableAccount) {
+		return nil, rerr
 	}
-	if account.PrivateKeyEnc != "" {
-		creds.PrivateKey, err = s.crypto.DecryptFor(ctx, keyvault.RefAccountPrivateKey, account.PrivateKeyEnc)
-		if err != nil {
-			return nil, fmt.Errorf("解密私鑰失敗: %w", err)
-		}
+	var noSecret *BindingWithoutSecretError
+	if errors.As(rerr, &noSecret) {
+		// 掛載在、尚無就位版本：回帶帳號身分的空憑證束（憑證化之前
+		// 「帳號有 username、密文欄為空」的語義逐字相同）
+		creds.AccountID = noSecret.AccountID
+		creds.Username = noSecret.Username
 	}
+	// 其餘＝零帳號資產（原本即無 username 與憑證者），回空憑證束，合法
 	return creds, nil
 }
 
@@ -994,10 +1136,11 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	}
 
 	// 憑證欄位透明轉寫 default 帳號：舊前端／腳本仍打 PUT /assets/:id 帶
-	// password/private_key，語義不變，但密文只落帳號表，assets 內嵌憑證欄位凍結。
+	// password/private_key，語義不變，但密文只落**憑證的密文版本列**，
+	// assets 與掛載列的內嵌憑證欄位都不再寫入。
 	var passwordEnc, privateKeyEnc string
 	if req.Password != nil && *req.Password != "" {
-		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPassword, *req.Password)
+		encryptedPassword, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, *req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("加密密碼失敗: %w", err)
 		}
@@ -1006,7 +1149,7 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	}
 
 	if req.PrivateKey != nil && *req.PrivateKey != "" {
-		encryptedKey, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPrivateKey, *req.PrivateKey)
+		encryptedKey, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, *req.PrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
@@ -1249,6 +1392,9 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 // Delete 刪除資產（軟刪除）；節點成員同交易硬刪（
 // 成員殘留會讓「空節點」永遠數到幽靈成員而不可刪）。treeStructMu 與節點
 // Delete 的空節點判定互斥
+//
+// 掛載與其專用憑證同交易一併移除（removeAssetBindings）：這台機器不在了，
+// 以它為唯一掛載的專用憑證就沒有主體，留著只會在憑證庫裡累積刪不掉的無主列。
 func (s *AssetService) Delete(id uint) error {
 	treeStructMu.Lock()
 	defer treeStructMu.Unlock()
@@ -1272,6 +1418,10 @@ func (s *AssetService) Delete(id uint) error {
 			return fmt.Errorf("authz 級聯撤銷面未注入：資產刪除不得在不撤銷授權的情況下完成")
 		}
 		if _, _, err := s.authzRevoker.RevokeByAsset(tx, id); err != nil {
+			return err
+		}
+		// 掛載與隨之孤兒的專用憑證：先於資產列軟刪，資產列鎖此時還鎖得到
+		if err := removeAssetBindings(tx, id); err != nil {
 			return err
 		}
 		if err := tx.Delete(&model.Asset{}, id).Error; err != nil {
@@ -1500,12 +1650,23 @@ var assetProtocols = []model.ProtocolType{
 
 // validateProtocol 驗證協議類型（查 assetProtocols 清單）
 func (s *AssetService) validateProtocol(protocol model.ProtocolType) error {
+	if !IsAssetProtocol(protocol) {
+		return ErrInvalidProtocol
+	}
+	return nil
+}
+
+// IsAssetProtocol 回報字串是否為可建立資產的協議。
+//
+// 供不持有服務實例的呼叫端（查詢參數驗證）取用同一份清單：另抄一份值域的那一刻，
+// 新增協議就會變成「資產建得起來、但用它篩不到東西」，而篩不到不會有錯誤。
+func IsAssetProtocol(protocol model.ProtocolType) bool {
 	for _, p := range assetProtocols {
 		if p == protocol {
-			return nil
+			return true
 		}
 	}
-	return ErrInvalidProtocol
+	return false
 }
 
 // ConnectionTestResult 連線測試結果。

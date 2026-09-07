@@ -112,11 +112,22 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 唯一索引、asset_accounts 的憑證群組、audit_export_jobs 的種類＋狀態），無 CHECK。
 	// 批次改密 增 1 表（change_secret_batches）、3 索引（該表 pkey 與帳號名、
 	// change_secret_records 的批次），無 CHECK。
-	if got.Tables != 53 {
-		t.Errorf("表數 = %d, want 53（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches）", got.Tables)
+	// 帳號憑證庫 增 4 表（credentials、credential_secret_versions、
+	// credential_rotations、credential_rotation_members）、12 索引：四張 pkey ＋
+	// credentials 的三條（deleted_at 單欄、username 單欄、(scope, deleted_at) 複合）
+	// ＋ 共用名 partial unique ＋ 版本 (credential_id, version_no) 唯一 ＋
+	// credential_rotations 的 credential_id ＋ 成員 (rotation_id, account_id) 唯一 ＋
+	// asset_accounts 的 (asset_id, credential_id) partial unique，無 CHECK。
+	// **credentials.deleted_at 與 credential_rotations.credential_id 兩條**是實作時
+	// 依既有慣例補上的（軟刪欄一律有索引；輪替史以憑證為軸查詢），
+	// 故本 change 的索引增量是 12 而非提案列舉的 10。
+	// 憑證庫收縮 純刪欄，不減表；卸下 idx_asset_accounts_credential_group 一條索引
+	// （群組機制退場，該欄只剩存量轉換一個讀者，已無查詢走索引）→ 淨增 11。
+	if got.Tables != 57 {
+		t.Errorf("表數 = %d, want 57（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表）", got.Tables)
 	}
-	if got.Indexes != 189 {
-		t.Errorf("索引數 = %d, want 189（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條）", got.Indexes)
+	if got.Indexes != 200 {
+		t.Errorf("索引數 = %d, want 200（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條）", got.Indexes)
 	}
 	if got.Checks != 18 {
 		t.Errorf("CHECK 約束數 = %d, want 18（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條）", got.Checks)

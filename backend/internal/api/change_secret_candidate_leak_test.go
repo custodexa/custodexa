@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -34,7 +34,18 @@ const (
 	leakProbeAssetPassword = "PROBE-asset-oldpw-5Kd3"
 )
 
-func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *gorm.DB, *model.ChangeSecretCandidate) {
+// allowAllAssetPermissions 資產權限判定的全放行樁。
+//
+// 本檔驗的是回應體的洩漏面，不是授權面：判定器是輪替引擎的建構期必填相依，
+// 此處只需要它有值。授權面的行為鎖定在憑證服務與輪替引擎自己的測試裡
+type allowAllAssetPermissions struct{}
+
+func (allowAllAssetPermissions) CheckPermission(context.Context, uint, uint,
+	model.PermissionType) (bool, error) {
+	return true, nil
+}
+
+func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandler, *gorm.DB, *model.ChangeSecretCandidate) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
@@ -45,10 +56,11 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *gorm.DB, *model
 		t.Fatalf("sql db: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.AuditLog{},
+	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
 		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
-		&model.ChangeSecretBatch{}); err != nil {
+		&model.ChangeSecretBatch{},
+		&model.CredentialRotation{}, &model.CredentialRotationMember{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB
@@ -126,29 +138,33 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *gorm.DB, *model
 	}
 
 	// 批次側同樣走真的 runner：整批同一組模式對同一台連不上的目標跑一次，
-	// 產生批次列（帶群組識別）與批次記錄——批次端點的反射面才有東西可比
-	batches := asset.NewChangeSecretBatchService(db,
-		asset.NewRotationReportBuilder(db, planSvc, func() int { return 0 }))
+	// 產生批次列與批次記錄——批次端點的反射面才有東西可比
+	reports := asset.NewRotationReportBuilder(db, planSvc, func() int { return 0 })
+	batches := asset.NewChangeSecretBatchService(db, reports)
 	batch, assetIDs, err := batches.Create(&asset.ChangeSecretBatchRequest{
 		Username: "root", All: true, PasswordMode: model.BatchPasswordShared,
+		CredentialName: "洩漏面探針批次",
 	}, 1, "admin")
 	if err != nil {
 		t.Fatalf("seed batch: %v", err)
-	}
-	if batch.SharedGroup == "" {
-		t.Fatal("整批同一組模式未產生群組識別：群組識別不出站的斷言將由空值假綠")
 	}
 	if len(runner.RunBatch(batch, assetIDs)) == 0 {
 		t.Fatal("批次未產生任何記錄：批次端點的反射面斷言將由空資料假綠")
 	}
 
+	// 憑證庫端點同樣是候選與憑證密文的反射面：憑證詳情帶掛載清單與版本序號，
+	// 改密進度帶逐成員的失敗原因——兩者都是「把字串送到 API」的通道
+	creds := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink())
+	rotations := asset.NewCredentialRotationService(db, assetSvc, candidates, hostKeys,
+		codec, audit.NewTxSink(), allowAllAssetPermissions{})
+
 	handler := NewChangeSecretHandler(planSvc, runner, candidates, retry, batches, nil)
-	return handler, db, &stored
+	return handler, NewCredentialHandler(creds, rotations, reports), db, &stored
 }
 
 // candidateRouter 掛上改密的全部讀取與反射端點（計劃側、候選側、批次側），
 // 與 RegisterRoutes 的清單逐支對齊——漏掛任何一支即等於該端點未被守衛
-func candidateRouter(h *ChangeSecretHandler) *gin.Engine {
+func candidateRouter(h *ChangeSecretHandler, c *CredentialHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
@@ -166,26 +182,64 @@ func candidateRouter(h *ChangeSecretHandler) *gin.Engine {
 	r.GET("/change-secret-batches", h.ListBatches)
 	r.POST("/change-secret-batches", h.CreateBatch)
 	r.GET("/change-secret-batches/:id", h.GetBatch)
+	// 憑證庫：**全部**端點（讀取面逐支、寫入面取會回投影的那幾支）。
+	// 與 CredentialHandler.RegisterRoutes 的清單逐支對齊——漏掛任何一支
+	// 即等於該端點未被本守衛涵蓋
+	r.GET("/credentials", c.List)
+	r.POST("/credentials", c.Create)
+	r.GET("/credentials/:id", c.Get)
+	r.PUT("/credentials/:id", c.Update)
+	r.DELETE("/credentials/:id", c.Delete)
+	r.POST("/credentials/:id/bindings", c.Bind)
+	r.DELETE("/credentials/:id/bindings/:accountId", c.Unbind)
+	r.POST("/credentials/:id/bindings/:accountId/detach", c.Detach)
+	r.POST("/credentials/:id/scope", c.ConvertScope)
+	r.POST("/credentials/:id/secret", c.SetSecret)
+	r.POST("/credentials/:id/rotations", c.StartRotation)
+	r.GET("/credentials/:id/rotations/:rid", c.GetRotation)
+	r.POST("/credentials/:id/rotations/:rid/members/:mid/retry", c.RetryMember)
+	r.POST("/credentials/:id/rotations/:rid/abandon", c.AbandonRotation)
+	r.PUT("/assets/:id/accounts/:accountId/credential", c.RebindAccount)
 	return r
 }
 
-// sharedGroupOfBatches 直讀批次列的群組識別（不經 DTO——DTO 刻意不揭露它）
-func sharedGroupOfBatches(t *testing.T, db *gorm.DB) []string {
-	t.Helper()
-	var batches []model.ChangeSecretBatch
-	if err := db.Find(&batches).Error; err != nil {
-		t.Fatalf("read batches: %v", err)
-	}
-	var out []string
-	for i := range batches {
-		if batches[i].SharedGroup != "" {
-			out = append(out, batches[i].SharedGroup)
-		}
-	}
-	if len(out) == 0 {
-		t.Fatal("沒有任何批次帶群組識別：群組識別不出站的斷言將由空值假綠")
+// credentialRoutesFromRegistrar 由 CredentialHandler.RegisterRoutes 推導出的憑證端點集合。
+//
+// **不手抄**：手抄的清單與真實註冊之間會靜默分岔，而分岔的失敗方向是低報——
+// 漏抄一支的症狀是那支端點的回應從未被掃過，而本守衛照樣全綠。
+// 探針引擎只用來讀路由表，不服務任何請求，故認證服務傳 nil 無妨。
+func credentialRoutesFromRegistrar() map[string]bool {
+	gin.SetMode(gin.TestMode)
+	probe := gin.New()
+	(&CredentialHandler{}).RegisterRoutes(probe.Group(""), nil)
+	out := map[string]bool{}
+	for _, route := range probe.Routes() {
+		out[route.Method+" "+route.Path] = true
 	}
 	return out
+}
+
+// assertCredentialRoutesFullyMounted 守衛掛入的憑證端點與註冊器逐支相等。
+func assertCredentialRoutesFullyMounted(t *testing.T, r *gin.Engine) {
+	t.Helper()
+	want := credentialRoutesFromRegistrar()
+	got := map[string]bool{}
+	for _, route := range r.Routes() {
+		if strings.Contains(route.Path, "credential") {
+			got[route.Method+" "+route.Path] = true
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("註冊器推導出零支憑證端點：本比對將在空集合上假綠")
+	}
+	for k := range want {
+		if !got[k] {
+			t.Fatalf("憑證端點 %s 未掛入本守衛：該端點的回應從未被掃過", k)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("守衛掛入 %d 支憑證端點、註冊器有 %d 支：兩份清單已分岔", len(got), len(want))
+	}
 }
 
 // reasonValues 取出回應 data 中每個項目的 error／last_error 值。
@@ -224,8 +278,18 @@ func reasonValues(t *testing.T, body, field string) []string {
 }
 
 func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
-	h, db, stored := setupCandidateLeakEnv(t)
-	r := candidateRouter(h)
+	h, credHandler, db, stored := setupCandidateLeakEnv(t)
+	r := candidateRouter(h, credHandler)
+	assertCredentialRoutesFullyMounted(t, r)
+
+	// 憑證密文版本的密文本體：憑證庫端點的比對面（候選密文之外的第二組秘密落點）
+	var versions []model.CredentialSecretVersion
+	if err := db.Find(&versions).Error; err != nil {
+		t.Fatalf("read credential versions: %v", err)
+	}
+	if len(versions) == 0 {
+		t.Fatal("零筆密文版本：憑證庫端點的洩漏斷言將由空資料假綠")
+	}
 
 	// DELETE 排在最後：它會刪掉候選列，先跑會讓其後端點的比對面變空。
 	// 批次的 POST 不在清單內：它非同步啟動 runner，回應體與單一批次端點的 batch
@@ -241,6 +305,23 @@ func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
 		{"GET", "/change-secret-batches/targets?username=root", ""},
 		{"GET", "/change-secret-batches", ""},
 		{"GET", "/change-secret-batches/1", ""},
+		{"GET", "/credentials", ""},
+		{"GET", "/credentials?scope=shared", ""},
+		{"GET", "/credentials/1", ""},
+		{"GET", "/credentials/2", ""},
+		{"GET", "/credentials/1/rotations/1", ""},
+		{"POST", "/credentials", `{"name":"洩漏面探針憑證","username":"probe","protocol_family":"ssh","password":"` + leakProbeAssetPassword + `"}`},
+		{"PUT", "/credentials/1", `{"note":"probe"}`},
+		{"POST", "/credentials/1/scope", `{"scope":"shared","name":"探針轉共用"}`},
+		{"POST", "/credentials/1/secret", `{"password":"` + leakProbeAssetPassword + `"}`},
+		{"POST", "/credentials/1/bindings", `{"asset_id":1}`},
+		{"POST", "/credentials/1/rotations", `{"mode":"nope"}`},
+		{"POST", "/credentials/1/rotations/1/members/1/retry", ""},
+		{"POST", "/credentials/1/rotations/1/abandon", ""},
+		{"POST", "/credentials/1/bindings/1/detach", `{"source":"bogus"}`},
+		{"PUT", "/assets/1/accounts/1/credential", `{"credential_id":1}`},
+		{"DELETE", "/credentials/1/bindings/1", ""},
+		{"DELETE", "/credentials/1", ""},
 		{"DELETE", "/change-secret-candidates/1", ""},
 	}
 	forbidden := []struct{ name, value string }{
@@ -254,10 +335,16 @@ func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
 		{"憑證群組識別欄位名 shared_group", "shared_group"},
 		{"憑證群組識別欄位名 credential_group", "credential_group"},
 	}
-	for _, g := range sharedGroupOfBatches(t, db) {
-		forbidden = append(forbidden, struct{ name, value string }{"批次的憑證群組識別", g})
+	for i := range versions {
+		if versions[i].PasswordEnc != "" {
+			forbidden = append(forbidden, struct{ name, value string }{
+				"憑證密文版本的密碼密文", versions[i].PasswordEnc})
+		}
+		if versions[i].PrivateKeyEnc != "" {
+			forbidden = append(forbidden, struct{ name, value string }{
+				"憑證密文版本的私鑰密文", versions[i].PrivateKeyEnc})
+		}
 	}
-
 	hitBodies := 0
 	seenReasons := 0
 	for _, c := range calls {
@@ -326,7 +413,7 @@ func TestChangeSecretCandidateSecretsNeverLeakThroughAPI(t *testing.T) {
 // TestChangeSecretCandidateModelIsNotSerializedDirectly 型別層的第二道：
 // 即使有人把 model 直接 JSON 化，兩個密文欄位也不得出現。
 func TestChangeSecretCandidateModelIsNotSerializedDirectly(t *testing.T) {
-	_, _, stored := setupCandidateLeakEnv(t)
+	_, _, _, stored := setupCandidateLeakEnv(t)
 	w := httptest.NewRecorder()
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

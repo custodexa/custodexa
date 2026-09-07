@@ -24,6 +24,17 @@ var (
 	ErrPlanBadKeyStrategy = errors.New("金鑰策略僅支援 append_replace 或 exclusive")
 	// ErrPlanBadMaxAgeDays 憑證最長使用天數覆蓋越界（0＝沿用全域，否則 1–3650）
 	ErrPlanBadMaxAgeDays = errors.New("憑證最長使用天數覆蓋須為 0（沿用全域）或 1 至 3650")
+	// ErrPlanBadTargetKind 目標種類不在值域內
+	ErrPlanBadTargetKind = errors.New("目標種類僅支援 account 或 credential")
+	// ErrPlanTargetCredentialRequired 以憑證為目標卻沒指定憑證
+	ErrPlanTargetCredentialRequired = errors.New("以憑證為目標的計劃必須指定憑證")
+	// ErrPlanTargetCredentialNotFound 指定的目標憑證不存在
+	ErrPlanTargetCredentialNotFound = errors.New("指定的目標憑證不存在")
+	// ErrPlanSharedCredentialTarget 以帳號為目標的計劃選到了共用憑證的成員。
+	//
+	// 兩害相權都不可接受：只改其中一員會讓其餘成員失去可用秘密；自動擴張到
+	// 其餘掛載則是去改操作者沒有選取的機器。兩條都不走，改要求以憑證為目標
+	ErrPlanSharedCredentialTarget = errors.New("計劃選到了共用憑證的成員，請改以憑證為目標")
 )
 
 // planMaxAgeDaysUpper 計劃層天數覆蓋的上界，與全域安全政策鍵同值（10 年）。
@@ -51,6 +62,11 @@ type ChangeSecretPlanRequest struct {
 	// MaxAgeDays 憑證最長使用天數覆蓋：0＝沿用全域安全政策鍵。
 	// 只影響輪替證據報告的適用天數計算，不改變本計劃的執行時機
 	MaxAgeDays int `json:"max_age_days"`
+
+	// TargetKind 目標種類，見 model.PlanTarget* 常數；空值＝account（既有計劃）
+	TargetKind string `json:"target_kind"`
+	// TargetCredentialID TargetKind=credential 時的目標憑證
+	TargetCredentialID uint `json:"target_credential_id"`
 }
 
 // ChangeSecretPlanService 改密計劃 CRUD（change-secret 階段 1）
@@ -73,6 +89,12 @@ type planFields struct {
 
 func validatePlan(req *ChangeSecretPlanRequest) (planFields, error) {
 	var out planFields
+	if req.TargetKind != "" && !model.IsPlanTargetKind(req.TargetKind) {
+		return out, ErrPlanBadTargetKind
+	}
+	if req.TargetKind == model.PlanTargetCredential && req.TargetCredentialID == 0 {
+		return out, ErrPlanTargetCredentialRequired
+	}
 	if len(req.AssetIDs) == 0 {
 		return out, ErrPlanNoAssets
 	}
@@ -146,6 +168,15 @@ func applyPlanFields(plan *model.ChangeSecretPlan, req *ChangeSecretPlanRequest,
 		plan.PasswordExcludeAmbiguous = *req.PasswordExcludeAmbiguous
 	}
 	plan.MaxAgeDays = req.MaxAgeDays
+	plan.TargetKind = req.TargetKind
+	if plan.TargetKind == "" {
+		plan.TargetKind = model.PlanTargetAccount
+	}
+	plan.TargetCredentialID = nil
+	if plan.TargetKind == model.PlanTargetCredential && req.TargetCredentialID != 0 {
+		id := req.TargetCredentialID
+		plan.TargetCredentialID = &id
+	}
 }
 
 // PlanAccountScope 解析計劃的帳號範圍。空值一律讀成 @ALL（回歸安全方向：
@@ -182,10 +213,67 @@ func (s *ChangeSecretPlanService) Get(id uint) (*model.ChangeSecretPlan, error) 
 	return &plan, nil
 }
 
+// assertTargetResolvable 目標的儲存時前置驗證。
+//
+// 以憑證為目標者只需確認該憑證存在；以帳號為目標者要擋下共用憑證的成員——
+// **這是兩層擋的第一層**，第二層在執行時（掛載會在計劃存檔之後改變，
+// 只有儲存時擋會漏掉「存檔後才被改綁到共用憑證」的那些）。
+func (s *ChangeSecretPlanService) assertTargetResolvable(req *ChangeSecretPlanRequest) error {
+	if req.TargetKind == model.PlanTargetCredential {
+		var cred model.Credential
+		if err := s.db.Where("id = ?", req.TargetCredentialID).First(&cred).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPlanTargetCredentialNotFound
+			}
+			return fmt.Errorf("查詢目標憑證失敗: %w", err)
+		}
+		return nil
+	}
+	return s.assertNoSharedCredentialTarget(req)
+}
+
+// assertNoSharedCredentialTarget 以帳號為目標的計劃不得命中共用憑證的成員。
+//
+// 只改其中一員會讓同組其餘主機失去可用秘密；自動擴張到其餘掛載則是去改操作者
+// 沒有選取的機器。兩條都不可接受，故在儲存時就要求改以憑證為目標。
+//
+// **命中一個就拒絕整筆**：靜默跳過那幾台會讓管理員以為它們也被涵蓋了。
+func (s *ChangeSecretPlanService) assertNoSharedCredentialTarget(req *ChangeSecretPlanRequest) error {
+	if s.db.Migrator() != nil && !s.db.Migrator().HasTable(&model.Credential{}) {
+		return nil
+	}
+	scope := model.NormalizeAccountScope(req.Accounts)
+	if len(scope) == 0 {
+		scope = model.AccountScope{model.AccountScopeAll}
+	}
+	q := s.db.Model(&model.AssetAccount{}).
+		Joins("JOIN credentials ON credentials.id = asset_accounts.credential_id"+
+			" AND credentials.deleted_at IS NULL").
+		Where("asset_accounts.asset_id IN ?", req.AssetIDs).
+		Where("credentials.scope = ?", model.CredentialScopeShared)
+	if names := explicitAccountNames(scope); names != nil {
+		if len(names) == 0 {
+			return nil
+		}
+		q = q.Where("asset_accounts.username IN ?", names)
+	}
+	var count int64
+	if err := q.Count(&count).Error; err != nil {
+		return fmt.Errorf("查詢計劃涵蓋的共用憑證成員失敗: %w", err)
+	}
+	if count > 0 {
+		return ErrPlanSharedCredentialTarget
+	}
+	return nil
+}
+
 // Create 建立計劃
 func (s *ChangeSecretPlanService) Create(req *ChangeSecretPlanRequest) (*model.ChangeSecretPlan, error) {
 	fields, err := validatePlan(req)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.assertTargetResolvable(req); err != nil {
 		return nil, err
 	}
 	enabled := true
@@ -211,6 +299,9 @@ func (s *ChangeSecretPlanService) Update(id uint, req *ChangeSecretPlanRequest) 
 	}
 	fields, err := validatePlan(req)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.assertTargetResolvable(req); err != nil {
 		return nil, err
 	}
 	applyPlanFields(plan, req, fields)
@@ -305,6 +396,26 @@ func (s *ChangeSecretPlanService) RecordsByAccounts(accountIDs []uint, from, to 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out, nil
+}
+
+// RecordsByCredential 依憑證識別查改密記錄（新到舊，有界）。
+//
+// **與依帳號查詢並存而非取代**：掛載可被改綁到另一筆憑證，兩個軸回答的是不同的問題
+// ——「這台機器被改過幾次」問掛載，「這一組秘密被換過幾次」問憑證。記錄上的憑證
+// 快照是執行當下的值，故本查詢不受事後改綁影響。
+func (s *ChangeSecretPlanService) RecordsByCredential(credentialID uint, limit int) ([]model.ChangeSecretRecord, error) {
+	if credentialID == 0 {
+		return nil, nil
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	var records []model.ChangeSecretRecord
+	if err := s.db.Where("credential_id = ?", credentialID).
+		Order("id desc").Limit(limit).Find(&records).Error; err != nil {
+		return nil, err
+	}
+	return records, nil
 }
 
 // LastSuccessByAccount 每個帳號在 asOf（含）之前最後一次改密成功的執行時刻。

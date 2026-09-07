@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/custodexa/backend/internal/database"
@@ -36,7 +35,9 @@ var (
 	// 兩個交易同時為零帳號資產建首筆（皆判定為 default），或 default 切換交錯。
 	// 與「同名帳號」分流，否則回應會誤導成使用者根本沒犯的錯
 	ErrAssetAccountDefaultConflict = errors.New("預設帳號同時被其他操作變更，請重試")
-	// ErrAssetAccountSourceNotFound 複製來源帳號不存在（「從其他資產帳號複製」）
+	// ErrAssetAccountSourceNotFound 建號來源帳號不存在。
+	// **服務層已無產生點**：建號不再接受「取用另一筆帳號的密文」這種形式，共用意圖
+	// 一律以共用憑證表達。哨兵與其對外碼映射保留，見 ErrAssetAccountSourceForbidden
 	ErrAssetAccountSourceNotFound = errors.New("複製來源帳號不存在")
 	// ErrAssetNoUsableAccount 資產無可用帳號（零帳號）卻要建線／取憑證。
 	// 連線入口一律 fail-close：空 username＋空密碼送進 guacd／dbproxy／k8s client
@@ -81,7 +82,18 @@ type AssetCredentials struct {
 	PrivateKey string
 }
 
-// AssetAccountDTO 帳號的對外表示：密文欄位絕不出站，僅以布林標記是否已設定。
+// AssetAccountDTO 帳號的**完整版**對外表示（管理視圖）：密文欄位絕不出站，
+// 僅以布林標記是否已設定；憑證身分只給具憑證管理權限者。
+//
+// # 為什麼要分成兩個投影
+//
+// 憑證識別、名稱、範圍與掛載數合起來就是一張「哪些主機共用同一組秘密」的地圖。
+// 對只需要挑一個帳號連線的人而言，那是免費的橫向移動路線：知道甲台的 ops 與
+// 乙台的 ops 是同一組秘密，等於知道拿到甲台就等於拿到乙台。
+//
+// 故對外有兩個型別而不是「同一個結構視角色清欄位」——清欄位的做法要在每一條
+// 回應路徑上各記得清一次，漏掉的那一條在型別上看不出來；而精簡版
+// （AssetAccountSlimDTO）根本沒有那些欄位可以填。
 type AssetAccountDTO struct {
 	ID            uint   `json:"id"`
 	AssetID       uint   `json:"asset_id"`
@@ -92,36 +104,112 @@ type AssetAccountDTO struct {
 	Note          string `json:"note"`
 	HasPassword   bool   `json:"has_password"`
 	HasPrivateKey bool   `json:"has_private_key"`
-	// SharedCredential 系統已知本帳號與其他帳號共用同一組憑證（由複製建號產生
-	// 且尚未各自改密）。**只投影布林**：群組識別本身是一張「哪些帳號共用憑證」
-	// 的拓撲圖，出站等於免費提供橫向移動的路線。
-	//
-	// 為偽時只代表系統不知道有共用關係，不代表憑證必然獨立——手動輸入的密碼
-	// 與本能力引入前的複製關係都無從判定。此邊界於對外文件明載。
-	SharedCredential bool   `json:"shared_credential"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
+	// SharedCredential 本掛載引用的憑證範圍為共用（即 CredentialScope == shared）。
+	// 保留布林形式供管理視圖直接判斷，真相與 CredentialScope 同一個來源
+	SharedCredential bool `json:"shared_credential"`
+
+	// CredentialID 本掛載引用的憑證識別
+	CredentialID uint `json:"credential_id"`
+	// CredentialName 共用＝落庫名稱；專用＝「資產名 / 帳號名」計算值
+	CredentialName string `json:"credential_name"`
+	// CredentialScope 見 model.CredentialScope* 常數
+	CredentialScope string `json:"credential_scope"`
+	// EffectiveVersionNo 該台當下用以連線的版本序號；0＝尚未取得任何密文
+	EffectiveVersionNo int `json:"effective_version_no"`
+	// BindingCount 該憑證掛在幾台上（專用恆為 1）
+	BindingCount int `json:"binding_count"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
-// NewAssetAccountDTO 由 model 轉出對外表示（密文只轉成布林）
-func NewAssetAccountDTO(a *model.AssetAccount) *AssetAccountDTO {
-	return &AssetAccountDTO{
-		ID:               a.ID,
-		AssetID:          a.AssetID,
-		Username:         a.Username,
-		IsDefault:        a.IsDefault,
-		Privileged:       a.Privileged,
-		AuthMethod:       a.AuthMethod,
-		Note:             a.Note,
-		HasPassword:      a.PasswordEnc != "",
-		HasPrivateKey:    a.PrivateKeyEnc != "",
-		SharedCredential: a.CredentialGroup != "",
-		CreatedAt:        a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:        a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+// AssetAccountSlimDTO 帳號的**精簡版**對外表示：連線選帳號需要的最小集合。
+//
+// 欄位集合即契約：只有識別、顯示用的登入帳號名、是否預設，與兩個持有布林。
+// 憑證識別、名稱、範圍與共用標記一個都不在——共用關係本身即是攻擊面資訊
+// （見 AssetAccountDTO 的說明）。新增欄位到這個結構等於擴大該邊界，
+// 守衛 `TestNonAdminDTOOmitsCredentialFields` 逐鍵盯著它。
+type AssetAccountSlimDTO struct {
+	ID            uint   `json:"id"`
+	Username      string `json:"username"`
+	IsDefault     bool   `json:"is_default"`
+	HasPassword   bool   `json:"has_password"`
+	HasPrivateKey bool   `json:"has_private_key"`
+}
+
+// SlimAssetAccountDTO 由完整版收窄為精簡版。
+//
+// 收窄而非各自從 model 建：兩條建構路徑會在其中一條加欄位時分歧，
+// 而分歧的方向正好是精簡版多回了不該回的東西。
+func SlimAssetAccountDTO(d *AssetAccountDTO) *AssetAccountSlimDTO {
+	if d == nil {
+		return nil
+	}
+	return &AssetAccountSlimDTO{
+		ID:            d.ID,
+		Username:      d.Username,
+		IsDefault:     d.IsDefault,
+		HasPassword:   d.HasPassword,
+		HasPrivateKey: d.HasPrivateKey,
 	}
 }
 
-// CreateAssetAccountRequest 建立帳號請求
+// NewAssetAccountDTO 由 model 轉出完整版對外表示（密文只轉成布林）。
+//
+// secrets 由呼叫端自掛載的憑證與就位版本算出（見 credential_resolver.go 的
+// bindingSecretFlags／accountsSecretFlags）：掛載列自憑證庫化之後不再持有密文，
+// 「有沒有密碼／私鑰」與「引用的是哪一筆憑證」的答案都在憑證那一側，
+// 不在這個結構的輸入裡。
+func NewAssetAccountDTO(a *model.AssetAccount, secrets accountSecretFlags) *AssetAccountDTO {
+	return &AssetAccountDTO{
+		ID:                 a.ID,
+		AssetID:            a.AssetID,
+		Username:           a.Username,
+		IsDefault:          a.IsDefault,
+		Privileged:         a.Privileged,
+		AuthMethod:         a.AuthMethod,
+		Note:               a.Note,
+		HasPassword:        secrets.HasPassword,
+		HasPrivateKey:      secrets.HasPrivateKey,
+		SharedCredential:   secrets.Shared,
+		CredentialID:       secrets.CredentialID,
+		CredentialName:     secrets.CredentialName,
+		CredentialScope:    secrets.CredentialScope,
+		EffectiveVersionNo: secrets.EffectiveVersionNo,
+		BindingCount:       secrets.BindingCount,
+		CreatedAt:          a.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:          a.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}
+
+// newAccountDTO 單筆轉出：持有布林就地自就位版本查出。
+func newAccountDTO(db *gorm.DB, a *model.AssetAccount) (*AssetAccountDTO, error) {
+	flags, err := bindingSecretFlags(db, a)
+	if err != nil {
+		return nil, err
+	}
+	return NewAssetAccountDTO(a, flags), nil
+}
+
+// InlineCredential 內嵌的專用憑證來源（「這台專用」）。
+//
+// 與 CredentialID 二擇一：前者說「這台自己一組秘密」，後者說「這台跟其他機器共用
+// 那一組」。共用意圖一律以共用憑證表達，不再有「從其他資產帳號複製一份密文過來」
+// 這種形式——複製出來的兩份密文是同一組秘密的兩個副本，而系統事後無從得知它們
+// 是不是還一樣，於是「這組秘密被哪些主機使用」永遠回答不了。
+type InlineCredential struct {
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	PrivateKey string `json:"private_key"`
+	// AuthMethod 認證類型（空＝sql）
+	AuthMethod string `json:"auth_method"`
+}
+
+// CreateAssetAccountRequest 建立帳號（掛載）請求。
+//
+// 登入憑證的來源二擇一：CredentialID（掛既有共用憑證）或 Credential（內嵌物件，
+// 同交易建專用憑證與其 v1 版本）。頂層的 Username／Password／PrivateKey／AuthMethod
+// 是內嵌物件的簡寫形式，語義完全相同。
 type CreateAssetAccountRequest struct {
 	Username   string `json:"username"`
 	Password   string `json:"password"`
@@ -132,10 +220,17 @@ type CreateAssetAccountRequest struct {
 	AuthMethod string `json:"auth_method"`
 	Note       string `json:"note"`
 
-	// CopyFromAccountID 從其他資產的帳號複製 username 與憑證（建號快捷）。
-	// **密文原樣複製**、不解密重加密：信封密文自帶 DEK 版本前綴、無 AAD 列綁定，
-	// 跨列可解。顯式帶入的 username/password/private_key 覆蓋複製值。
-	CopyFromAccountID uint `json:"copy_from_account_id"`
+	// CredentialID 掛既有共用憑證：不建立任何密文版本，就位版本設為該憑證當下的現行版本
+	CredentialID uint `json:"credential_id"`
+	// Credential 這台專用：同一交易建立一筆專用憑證與其 v1 版本
+	Credential *InlineCredential `json:"credential"`
+
+	// RetiredCopyFromAccountID 已退場的「從其他資產帳號複製憑證」參數。
+	//
+	// **保留欄位只為擋下帶著它的舊呼叫端**：靜默忽略會讓送出者以為複製成立，
+	// 而實際建出來的是一筆沒有秘密的掛載——那台機器連不上，且畫面上看不出原因。
+	// 帶值即回機器可讀錯誤碼，指向共用憑證這個正確的表達方式
+	RetiredCopyFromAccountID uint `json:"copy_from_account_id"`
 }
 
 // UpdateAssetAccountRequest 更新帳號請求（nil＝不動；密碼／私鑰空字串＝沿用既有，
@@ -155,9 +250,9 @@ type AssetAccountService struct {
 	// codec：main 以 SetCodec 把資產服務升級為信封 key manager，另持一份 codec
 	// 會讓帳號憑證在管理員沒察覺時走 legacy AES 加密
 	assets *AssetService
-	// authz 跨資產複製建號的來源可見性判定（階段 2 列為待辦，
-	// 階段 4 補上）。nil＝不判定，僅供未涉及複製路徑的既有單測建構；
-	// 生產組裝一律注入（main.go）
+	// authz 資產可見性判定的注入點。**本服務目前沒有讀取它的路徑**：需要逐台驗權
+	// 的動作已收攏到憑證服務（見 credential_binding.go 的 assertAssetPermission），
+	// 此欄與 WithAuthorization 保留為組裝根既有的注入形狀。
 	//
 	// **型別由 `*AssetAuthorizationService` 改為消費者側宣告的窄介面**
 	// （K6 偏好的形式）。asset 只需要「這個人看得見那台資產嗎」這一個問句；
@@ -176,7 +271,8 @@ type AssetAccountService struct {
 	auditTx port.TxSink
 }
 
-// assetViewPermissionChecker 複製來源可見性判定（消費者側窄介面，見 authz 欄註解）。
+// assetViewPermissionChecker 資產可見性判定（消費者側窄介面，見 authz 欄註解）。
+// 現行消費者是憑證服務的受影響資產權限檢核。
 type assetViewPermissionChecker interface {
 	CheckPermission(ctx context.Context, userID, assetID uint, perm model.PermissionType) (bool, error)
 }
@@ -187,23 +283,23 @@ func NewAssetAccountService(assets *AssetService, codec crypto.ColumnCodec, audi
 	return &AssetAccountService{assets: assets, crypto: codec, auditTx: auditTx}
 }
 
-// WithAuthorization 注入授權服務（跨資產複製來源可見性判定用）。
+// WithAuthorization 注入授權服務（資產可見性判定，見 authz 欄註解）。
 // 回傳自身供組裝端串接
 func (s *AssetAccountService) WithAuthorization(authz assetViewPermissionChecker) *AssetAccountService {
 	s.authz = authz
 	return s
 }
 
-// ErrAssetAccountSourceForbidden 複製來源帳號所屬資產對操作者不可見。
+// ErrAssetAccountSourceForbidden 建號來源對操作者不可見。
 //
-// 為何需要這道檢查：`copy_from_account_id` 只需對**目標**資產有 asset:update，
-// 來源帳號卻可以是任何資產的——沒有這道判定，一個只管得到自己那台的管理員
-// 可以把生產核心機的 root 密文複製到自己的資產上，然後從自己的資產連上去。
-// 密文原樣搬運不需解密即可用，這是完整的憑證竊取路徑。
+// **這道判定的職責已移交掛載端點**（見 credential_binding.go 的 assertAssetPermission）：
+// 建號不再接受「從其他資產帳號取一份密文」的形式，共用意圖一律以共用憑證表達，
+// 而掛載共用憑證時服務層另驗操作者對受影響資產皆有權限。哨兵本身保留——
+// 對外碼與其映射仍在，掛載端點的拒絕沿用同一條收斂回應。
 //
 // 對外映射與「來源不存在」**共用同一碼**（NOTFOUND_ASSET_ACCOUNT_SOURCE）：
 // 分流回應等於讓此欄成為「哪些 account id 存在」的探測器
-var ErrAssetAccountSourceForbidden = errors.New("複製來源帳號所屬資產不可見")
+var ErrAssetAccountSourceForbidden = errors.New("建號來源所屬資產不可見")
 
 // resolveAssetAccount 取指定帳號（accountID=0＝取預設）。回傳 (nil, nil) 僅代表
 // 「該資產零帳號」——原本即無憑證的資產，屬合法狀態（spec「零憑證資產零帳號」）。
@@ -354,9 +450,14 @@ func (s *AssetAccountService) List(assetID uint) ([]*AssetAccountDTO, error) {
 		Order("is_default DESC, username ASC, id ASC").Find(&accounts).Error; err != nil {
 		return nil, fmt.Errorf("查詢資產帳號失敗: %w", err)
 	}
+	// 持有布林批次取（逐帳號查會讓一台十個帳號的資產打十一次查詢）
+	flags, err := accountsSecretFlags(database.DB, accounts)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]*AssetAccountDTO, 0, len(accounts))
 	for i := range accounts {
-		out = append(out, NewAssetAccountDTO(&accounts[i]))
+		out = append(out, NewAssetAccountDTO(&accounts[i], flags[accounts[i].ID]))
 	}
 	return out, nil
 }
@@ -370,7 +471,7 @@ func (s *AssetAccountService) Get(assetID, accountID uint) (*AssetAccountDTO, er
 	if account == nil {
 		return nil, ErrAssetAccountNotFound
 	}
-	return NewAssetAccountDTO(account), nil
+	return newAccountDTO(database.DB, account)
 }
 
 // lockAssetForAccountMutation 以資產列為互斥點序列化該資產的全部帳號變更。
@@ -408,83 +509,89 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 	if _, err := s.assets.GetByID(assetID); err != nil {
 		return nil, err
 	}
-	if err := ValidateAccountUsername(req.Username); err != nil {
+	source, err := normalizeCredentialSource(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateAccountUsername(source.Username); err != nil {
 		return nil, err
 	}
 	if err := validateAccountNote(req.Note); err != nil {
 		return nil, err
 	}
-	authMethod, authErr := normalizeAccountAuthMethod(req.AuthMethod)
+	authMethod, authErr := normalizeAccountAuthMethod(source.AuthMethod)
 	if authErr != nil {
 		return nil, authErr
 	}
 
 	account := &model.AssetAccount{
 		AssetID:    assetID,
-		Username:   req.Username,
+		Username:   source.Username,
 		Privileged: req.Privileged,
 		AuthMethod: authMethod,
 		Note:       req.Note,
 	}
 
-	// 從其他帳號複製（密文原樣搬，不解密）。來源出處入審計：
-	// 憑證跨資產複製若零軌跡，事後無從回答「這台的 root 密碼是從哪來的」
-	var copyFromAssetID uint
-	if req.CopyFromAccountID != 0 {
-		var source model.AssetAccount
-		if err := database.DB.First(&source, req.CopyFromAccountID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, ErrAssetAccountSourceNotFound
-			}
-			return nil, fmt.Errorf("查詢來源帳號失敗: %w", err)
-		}
-		copyFromAssetID = source.AssetID
-		// 來源可見性（階段 2 backlog）：跨資產複製時操作者須對來源資產
-		// 至少可視。同資產內複製免判——對目標資產的 asset:update 已涵蓋
-		if s.authz != nil && source.AssetID != assetID {
-			operatorID, _ := model.UserFromContext(ctx)
-			visible, verr := s.authz.CheckPermission(ctx, operatorID, source.AssetID, model.PermissionView)
-			if verr != nil {
-				return nil, fmt.Errorf("判定複製來源可見性失敗: %w", verr)
-			}
-			if !visible {
-				log.Printf("[AssetAccount] 複製來源資產不可見，拒絕建號: operator=%d sourceAssetID=%d",
-					operatorID, source.AssetID)
-				return nil, ErrAssetAccountSourceForbidden
-			}
-		}
-		if account.Username == "" {
-			account.Username = source.Username
-			if err := ValidateAccountUsername(account.Username); err != nil {
-				return nil, err
-			}
-		}
-		account.PasswordEnc = source.PasswordEnc
-		account.PrivateKeyEnc = source.PrivateKeyEnc
-	}
-
-	// 顯式憑證覆蓋複製值
-	if req.Password != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPassword, req.Password)
+	// 憑證密文一律落憑證的密文版本列，掛載列不再持有密文欄。
+	// 加密在交易外先做（純 CPU／可能觸及 KMS，不佔 DB 交易與資產鎖）
+	var passwordEnc, privateKeyEnc string
+	if source.Password != "" {
+		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, source.Password)
 		if err != nil {
 			return nil, fmt.Errorf("加密密碼失敗: %w", err)
 		}
-		account.PasswordEnc = enc
+		passwordEnc = enc
 	}
-	if req.PrivateKey != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPrivateKey, req.PrivateKey)
+	if source.PrivateKey != "" {
+		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, source.PrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
-		account.PrivateKeyEnc = enc
+		privateKeyEnc = enc
 	}
 
 	userID, operator := model.UserFromContext(ctx)
 
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
+	txErr := database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockAssetForAccountMutation(tx, assetID); err != nil {
 			return err
 		}
+		// **資產列以 tx 讀**：交易外的 database.DB 在單連線的測試庫上會等一條
+		// 永遠不會釋出的連線（本交易正持著它），直接死鎖
+		var assetRow model.Asset
+		if err := tx.Where("id = ?", assetID).First(&assetRow).Error; err != nil {
+			return fmt.Errorf("查詢資產失敗: %w", err)
+		}
+
+		// 掛既有共用憑證時，帳號名與認證方式取自憑證——憑證是這兩者的真相
+		var shared *model.Credential
+		if source.CredentialID != 0 {
+			cred, err := lockCredentialRow(tx, source.CredentialID)
+			if err != nil {
+				return err
+			}
+			if err := assertNoActiveRotation(cred); err != nil {
+				return err
+			}
+			if cred.Scope != model.CredentialScopeShared {
+				return ErrCredentialDedicatedSingleBinding
+			}
+			if err := assertProtocolFamilyMatch(cred, &assetRow); err != nil {
+				return err
+			}
+			if err := assertCredentialNotBound(tx, assetID, cred.ID); err != nil {
+				return err
+			}
+			account.Username = cred.Username
+			account.AuthMethod = cred.AuthMethod
+			shared = cred
+		}
+
+		// 同一資產上同一登入帳號名只掛一次（帳號名的真相在憑證，故以憑證表判定）
+		if err := assertUsernameFreeOnAsset(tx, assetID, account.Username, 0); err != nil {
+			return err
+		}
+		// 過渡期掛載列仍持有帳號名副本，其 partial unique index 同樣要先判一次
 		var dup int64
 		if err := tx.Model(&model.AssetAccount{}).
 			Where("asset_id = ? AND username = ?", assetID, account.Username).
@@ -505,6 +612,17 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 				return err
 			}
 		}
+		if shared != nil {
+			// 掛載本身不建新密文版本：就位版本設為該憑證當下的現行版本（操作者宣告）
+			account.CredentialID = shared.ID
+			account.EffectiveVersionID = shared.CurrentVersionID
+		} else {
+			// 這台專用：同交易建專用憑證與 v1，就位版本立即指向它
+			if err := bindNewDedicatedCredential(tx, account, &assetRow, authMethod,
+				passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+				return err
+			}
+		}
 		if err := tx.Create(account).Error; err != nil {
 			return accountUniqueViolation(err, "建立資產帳號失敗")
 		}
@@ -513,29 +631,76 @@ func (s *AssetAccountService) Create(ctx context.Context, assetID uint, req *Cre
 				return err
 			}
 		}
-		// 複製建號＝兩個帳號自此共用同一組憑證。同交易歸組，否則建號成功而歸組
-		// 失敗會留下一個系統知道卻沒記下來的共用關係，報告永遠標不出它
-		if req.CopyFromAccountID != 0 {
-			group, err := joinCredentialGroup(tx, req.CopyFromAccountID, account.ID)
-			if err != nil {
-				return err
-			}
-			account.CredentialGroup = group
+		flags, ferr := bindingSecretFlags(tx, account)
+		if ferr != nil {
+			return ferr
 		}
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
 			AssetID:         assetID,
 			AccountID:       account.ID,
 			Username:        account.Username,
 			Operation:       model.AccountOpCreate,
-			Fields:          changedSecretFields(account.PasswordEnc != "", account.PrivateKeyEnc != "", account.IsDefault),
-			CopyFromAssetID: copyFromAssetID,
-			CopyFromAccount: req.CopyFromAccountID,
+			Fields:          changedSecretFields(flags.HasPassword, flags.HasPrivateKey, account.IsDefault),
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
 	})
-	if err != nil {
-		return nil, err
+	if txErr != nil {
+		return nil, txErr
 	}
-	return NewAssetAccountDTO(account), nil
+	return newAccountDTO(database.DB, account)
+}
+
+// credentialSource 建號的憑證來源（二擇一正規化後的形狀）。
+type credentialSource struct {
+	CredentialID uint
+	Username     string
+	Password     string
+	PrivateKey   string
+	AuthMethod   string
+}
+
+// ErrCredentialSourceAmbiguous 同時給了共用憑證與專用憑證兩種來源。
+//
+// **不挑一個沿用**：兩者表達的意圖相反（跟別人共用 vs 這台自己一組），
+// 靜默擇一會讓操作者以為建出來的是另一種，而共用關係正是這個功能要回答的問題。
+var ErrCredentialSourceAmbiguous = errors.New("登入憑證來源只能二擇一：既有共用憑證或這台專用")
+
+// ErrAccountCopyFromRemoved 請求帶了已退場的複製來源參數
+// （VALIDATION_ACCOUNT_COPY_FROM_REMOVED）。理由見該欄位註解。
+var ErrAccountCopyFromRemoved = errors.New("已不支援從其他資產帳號複製憑證，請改為選取共用憑證")
+
+// normalizeCredentialSource 把「頂層簡寫」與「內嵌物件」兩種寫法收斂成同一形狀。
+func normalizeCredentialSource(req *CreateAssetAccountRequest) (credentialSource, error) {
+	if req.RetiredCopyFromAccountID != 0 {
+		return credentialSource{}, ErrAccountCopyFromRemoved
+	}
+	inlineGiven := req.Credential != nil
+	topLevelGiven := req.Username != "" || req.Password != "" || req.PrivateKey != "" || req.AuthMethod != ""
+	if req.CredentialID != 0 && (inlineGiven || topLevelGiven) {
+		return credentialSource{}, ErrCredentialSourceAmbiguous
+	}
+	if inlineGiven && topLevelGiven {
+		return credentialSource{}, ErrCredentialSourceAmbiguous
+	}
+	if req.CredentialID != 0 {
+		return credentialSource{CredentialID: req.CredentialID}, nil
+	}
+	if inlineGiven {
+		return credentialSource{
+			Username:   req.Credential.Username,
+			Password:   req.Credential.Password,
+			PrivateKey: req.Credential.PrivateKey,
+			AuthMethod: req.Credential.AuthMethod,
+		}, nil
+	}
+	return credentialSource{
+		Username:   req.Username,
+		Password:   req.Password,
+		PrivateKey: req.PrivateKey,
+		AuthMethod: req.AuthMethod,
+	}, nil
 }
 
 // Update 更新帳號（含憑證輪換）。default 切換不走本方法，見 SetDefault。
@@ -554,14 +719,14 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 	// 加密在交易外先做（純 CPU／可能觸及 KMS，不佔 DB 交易與資產鎖）
 	var passwordEnc, privateKeyEnc string
 	if req.Password != nil && *req.Password != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPassword, *req.Password)
+		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, *req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("加密密碼失敗: %w", err)
 		}
 		passwordEnc = enc
 	}
 	if req.PrivateKey != nil && *req.PrivateKey != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefAccountPrivateKey, *req.PrivateKey)
+		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, *req.PrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("加密私鑰失敗: %w", err)
 		}
@@ -601,6 +766,10 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		if account == nil {
 			return ErrAssetAccountNotFound
 		}
+		// 掛載必有憑證：存量轉換已保證此事，殘態一律大聲失敗而不就地補一筆
+		if err := requireBindingCredential(account); err != nil {
+			return err
+		}
 
 		updates := map[string]interface{}{}
 		fields := make([]string, 0, 5)
@@ -620,20 +789,34 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 			updates["auth_method"] = authMethod
 			fields = append(fields, "auth_method")
 		}
+		// 秘密改為「憑證追加新版本＋掛載就位」，掛載列不再持有密文欄。
+		// 兩者仍在同一交易：憑證換了而就位沒跟上，這台會停在舊版而無人知道
+		secretChanged := passwordEnc != "" || privateKeyEnc != ""
 		if passwordEnc != "" {
-			updates["password_enc"] = passwordEnc
 			fields = append(fields, "password")
 		}
 		if privateKeyEnc != "" {
-			updates["private_key_enc"] = privateKeyEnc
 			fields = append(fields, "private_key")
 		}
-		if len(updates) == 0 {
+		if len(updates) == 0 && !secretChanged {
 			result = account
 			return nil
 		}
 
 		if newName, ok := updates["username"].(string); ok {
+			// 共用憑證的帳號名建立後不可改：它掛在 N 台上，改名要在每一台各自重驗
+			// 不撞名，任一台撞名時要嘛整筆失敗（管理者拿到一個沒指出是哪台的錯），
+			// 要嘛部分成立（同一組秘密在不同機器上叫不同名字，那已不是同一個身分）
+			cred, cerr := loadCredential(tx, account.CredentialID)
+			if cerr != nil {
+				return cerr
+			}
+			if cred.Scope == model.CredentialScopeShared {
+				return ErrCredentialUsernameImmutable
+			}
+			if err := assertUsernameFreeOnAsset(tx, assetID, newName, account.ID); err != nil {
+				return err
+			}
 			var dup int64
 			if err := tx.Model(&model.AssetAccount{}).
 				Where("asset_id = ? AND username = ? AND id <> ?", assetID, newName, account.ID).
@@ -645,6 +828,17 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 			}
 		}
 
+		if secretChanged {
+			// 操作者宣告的密文：憑證追加版本、憑證的現行版本與本掛載的就位版本
+			// 同交易指向它。未被本次更動的那一欄自就位版本原樣帶過來，
+			// 只改密碼不得順手清掉私鑰（反之亦然）
+			versionID, serr := appendDeclaredSecret(tx, account, passwordEnc, privateKeyEnc)
+			if serr != nil {
+				return serr
+			}
+			updates["effective_version_id"] = versionID
+		}
+
 		res := tx.Model(&model.AssetAccount{}).Where("id = ?", account.ID).Updates(updates)
 		if res.Error != nil {
 			return accountUniqueViolation(res.Error, "更新資產帳號失敗")
@@ -652,6 +846,15 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 		if res.RowsAffected == 0 {
 			// 交易內重讀後仍零列＝該列於本交易可見範圍外被移除，寧可回錯不假成功
 			return ErrAssetAccountNotFound
+		}
+		// 帳號名的真相自憑證庫化之後在憑證上：專用憑證的掛載改名時憑證同步改名，
+		// 否則連線會沿用憑證上的舊名（過渡期兩處並存，收縮階段掛載列的名字退場）。
+		// 共用憑證在上方已被擋下，走不到這裡
+		if newName, ok := updates["username"].(string); ok {
+			if err := tx.Model(&model.Credential{}).Where("id = ?", account.CredentialID).
+				Update("username", newName).Error; err != nil {
+				return fmt.Errorf("同步憑證帳號名失敗: %w", err)
+			}
 		}
 
 		// 回填變更後的值（不對 .Note 選擇器賦值：套件層 AST 守衛以欄位名比對）
@@ -662,23 +865,31 @@ func (s *AssetAccountService) Update(ctx context.Context, assetID, accountID uin
 			}
 		}
 		result = updatedAccount
+		credID, credScope := credentialAuditRef(tx, updatedAccount.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   assetID,
-			AccountID: updatedAccount.ID,
-			Username:  updatedAccount.Username,
-			Operation: model.AccountOpUpdate,
-			Fields:    fields,
+			AssetID:         assetID,
+			AccountID:       updatedAccount.ID,
+			Username:        updatedAccount.Username,
+			Operation:       model.AccountOpUpdate,
+			Fields:          fields,
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return NewAssetAccountDTO(result), nil
+	return newAccountDTO(database.DB, result)
 }
 
 // Delete 刪除帳號（軟刪）。禁刪最後一個 default：資產仍有其他帳號時必須
 // 先指定新的預設，否則會留下「有帳號無預設」的狀態，系統路徑（改密／k8s／SFTP）
 // 將無帳號可用。資產僅剩這一個帳號時允許刪——零帳號資產合法。
+//
+// **掛載消失就是專用憑證的生滅點**：被刪的掛載若引用專用憑證，該憑證於同一交易
+// 一併軟刪（專用憑證恰有一個掛載，零掛載的它沒有顯示名也沒有人能用）；共用憑證
+// 零掛載是合法的待用狀態，不動。憑證的改密進行中時整筆拒絕，理由見
+// lockCredentialsForBindingRemoval。
 //
 // IsDefault 與帳號數皆在交易內、鎖後重讀：交易外快取的 IsDefault
 // 會讓「讀到 B 非 default」與「另一交易把 B 設為 default」交錯，刪掉的其實是
@@ -710,6 +921,11 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 		if account.IsDefault && count > 1 {
 			return ErrAssetAccountDefaultRequired
 		}
+		// 鎖在刪除之前取：回收要先數過掛載才算得出來，屆時掛載列已經不在了
+		creds, err := lockCredentialsForBindingRemoval(tx, []model.AssetAccount{*account})
+		if err != nil {
+			return err
+		}
 		res := tx.Delete(&model.AssetAccount{}, account.ID)
 		if res.Error != nil {
 			return fmt.Errorf("刪除資產帳號失敗: %w", res.Error)
@@ -729,11 +945,17 @@ func (s *AssetAccountService) Delete(ctx context.Context, assetID, accountID uin
 				return fmt.Errorf("同步資產顯示欄失敗: %w", err)
 			}
 		}
+		if err := reclaimDedicatedCredentials(tx, creds); err != nil {
+			return err
+		}
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   assetID,
-			AccountID: account.ID,
-			Username:  account.Username,
-			Operation: model.AccountOpDelete,
+			AssetID:         assetID,
+			AccountID:       account.ID,
+			Username:        account.Username,
+			Operation:       model.AccountOpDelete,
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
 	})
 }
@@ -780,17 +1002,20 @@ func (s *AssetAccountService) SetDefault(ctx context.Context, assetID, accountID
 		if err := mirrorDefaultAccountToAsset(tx, account); err != nil {
 			return err
 		}
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
 		return writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-			AssetID:   assetID,
-			AccountID: account.ID,
-			Username:  account.Username,
-			Operation: model.AccountOpSetDefault,
+			AssetID:         assetID,
+			AccountID:       account.ID,
+			Username:        account.Username,
+			Operation:       model.AccountOpSetDefault,
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return NewAssetAccountDTO(result), nil
+	return newAccountDTO(database.DB, result)
 }
 
 // applyAccountUpdates 依 updates map 產生更新後的帳號副本。以複合字面量組出
@@ -807,20 +1032,27 @@ func applyAccountUpdates(account *model.AssetAccount, updates map[string]interfa
 	if v, ok := updates["privileged"].(bool); ok {
 		privileged = v
 	}
+	// 就位版本改指新版本時一併帶過來：鏡射與回應的持有布林都讀它，
+	// 沿用交易前的舊值會讓剛設好的密碼在同一次回應裡顯示成「未設定」
+	effective := account.EffectiveVersionID
+	if v, ok := updates["effective_version_id"].(uint); ok {
+		id := v
+		effective = &id
+	}
 	return &model.AssetAccount{
-		ID:            account.ID,
-		CreatedAt:     account.CreatedAt,
-		UpdatedAt:     account.UpdatedAt,
-		AssetID:       account.AssetID,
-		Username:      pick("username", account.Username),
-		PasswordEnc:   pick("password_enc", account.PasswordEnc),
-		PrivateKeyEnc: pick("private_key_enc", account.PrivateKeyEnc),
-		IsDefault:     account.IsDefault,
-		Privileged:    privileged,
-		Note:          pick("note", account.Note),
-		// 憑證群組沿用交易內重讀到的值：手動編輯不動群組，而回應要據此投影
-		// 「共用憑證」——不帶過來會讓編輯備註這種無關操作在回應上把標示抹掉
-		CredentialGroup: account.CredentialGroup,
+		ID:                 account.ID,
+		CreatedAt:          account.CreatedAt,
+		UpdatedAt:          account.UpdatedAt,
+		AssetID:            account.AssetID,
+		Username:           pick("username", account.Username),
+		CredentialID:       account.CredentialID,
+		EffectiveVersionID: effective,
+		IsDefault:          account.IsDefault,
+		Privileged:         privileged,
+		// 未被本次更動的欄位一律自交易前的列帶過來：漏帶一欄的症狀是回應把它報成
+		// 空值，而 DB 裡好端端的。呼叫端拿回應回填表單時，那一欄就此被清空
+		AuthMethod: pick("auth_method", account.AuthMethod),
+		Note:       pick("note", account.Note),
 	}
 }
 
@@ -847,11 +1079,16 @@ func clearDefaultAccounts(tx *gorm.DB, assetID, exceptID uint) error {
 // 的既有裁決）；二是追趕同步 migration 以「帳號列較新即跳過」判斷倒灌，鏡射若
 // 把 assets.updated_at 推到帳號之後，判準會反向失效。
 func mirrorDefaultAccountToAsset(tx *gorm.DB, account *model.AssetAccount) error {
+	// 持有布林取自該掛載的就位版本（掛載列自憑證庫化之後不再持有密文欄）
+	flags, err := bindingSecretFlags(tx, account)
+	if err != nil {
+		return err
+	}
 	if err := tx.Model(&model.Asset{}).Where("id = ?", account.AssetID).
 		UpdateColumns(map[string]interface{}{
 			"username":        account.Username,
-			"has_password":    account.PasswordEnc != "",
-			"has_private_key": account.PrivateKeyEnc != "",
+			"has_password":    flags.HasPassword,
+			"has_private_key": flags.HasPrivateKey,
 		}).Error; err != nil {
 		return fmt.Errorf("同步資產顯示欄失敗: %w", err)
 	}
@@ -887,22 +1124,32 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 			return nil
 		}
 		account = &model.AssetAccount{
-			AssetID:       asset.ID,
-			Username:      asset.Username,
-			PasswordEnc:   passwordEnc,
-			PrivateKeyEnc: privateKeyEnc,
-			IsDefault:     true,
+			AssetID:   asset.ID,
+			Username:  asset.Username,
+			IsDefault: true,
+		}
+		if err := bindNewDedicatedCredential(tx, account, asset, "",
+			passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+			return err
 		}
 		if err := tx.Create(account).Error; err != nil {
 			return accountUniqueViolation(err, "建立預設帳號失敗")
 		}
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
 		return writeAssetAccountAudit(auditTx, tx, model.AssetAccountAudit{
-			AssetID:   asset.ID,
-			AccountID: account.ID,
-			Username:  account.Username,
-			Operation: model.AccountOpCreate,
-			Fields:    changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
+			AssetID:         asset.ID,
+			AccountID:       account.ID,
+			Username:        account.Username,
+			Operation:       model.AccountOpCreate,
+			Fields:          changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
+			CredentialID:    credID,
+			CredentialScope: credScope,
 		}, userID, operator)
+	}
+
+	// 掛載必有憑證：存量轉換已保證此事，殘態一律大聲失敗而不就地補一筆
+	if err := requireBindingCredential(account); err != nil {
+		return err
 	}
 
 	updates := map[string]interface{}{}
@@ -912,17 +1159,35 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 		fields = append(fields, "username")
 	}
 	if passwordEnc != "" {
-		updates["password_enc"] = passwordEnc
 		fields = append(fields, "password")
 	}
 	if privateKeyEnc != "" {
-		updates["private_key_enc"] = privateKeyEnc
 		fields = append(fields, "private_key")
 	}
-	if len(updates) == 0 {
+	secretChanged := passwordEnc != "" || privateKeyEnc != ""
+	if len(updates) == 0 && !secretChanged {
 		return nil
 	}
+	if secretChanged {
+		versionID, serr := appendDeclaredSecret(tx, account, passwordEnc, privateKeyEnc)
+		if serr != nil {
+			return serr
+		}
+		updates["effective_version_id"] = versionID
+	}
 	if updates["username"] != nil {
+		// 共用憑證的帳號名不可改（理由同 AssetAccountService.Update）：舊表單透過
+		// 資產的 username 欄改名同樣要被擋下，否則它會成為繞過該規則的側門
+		cred, cerr := loadCredential(tx, account.CredentialID)
+		if cerr != nil {
+			return cerr
+		}
+		if cred.Scope == model.CredentialScopeShared {
+			return ErrCredentialUsernameImmutable
+		}
+		if err := assertUsernameFreeOnAsset(tx, asset.ID, asset.Username, account.ID); err != nil {
+			return err
+		}
 		var dup int64
 		if err := tx.Model(&model.AssetAccount{}).
 			Where("asset_id = ? AND username = ? AND id <> ?", asset.ID, asset.Username, account.ID).
@@ -937,13 +1202,40 @@ func syncDefaultAccountFromAsset(auditTx port.TxSink, tx *gorm.DB, asset *model.
 		Updates(updates).Error; err != nil {
 		return accountUniqueViolation(err, "更新預設帳號失敗")
 	}
+	// 帳號名的真相在憑證，專用憑證的掛載改名時同步（理由同 AssetAccountService.Update）
+	if updates["username"] != nil {
+		if err := tx.Model(&model.Credential{}).Where("id = ?", account.CredentialID).
+			Update("username", asset.Username).Error; err != nil {
+			return fmt.Errorf("同步憑證帳號名失敗: %w", err)
+		}
+	}
+	credID, credScope := credentialAuditRef(tx, account.CredentialID)
 	return writeAssetAccountAudit(auditTx, tx, model.AssetAccountAudit{
-		AssetID:   asset.ID,
-		AccountID: account.ID,
-		Username:  asset.Username,
-		Operation: model.AccountOpUpdate,
-		Fields:    fields,
+		AssetID:         asset.ID,
+		AccountID:       account.ID,
+		Username:        asset.Username,
+		Operation:       model.AccountOpUpdate,
+		Fields:          fields,
+		CredentialID:    credID,
+		CredentialScope: credScope,
 	}, userID, operator)
+}
+
+// credentialAuditRef 取審計要記的憑證識別與範圍。
+//
+// **Unscoped 讀**：專用憑證在刪除路徑上已於同一交易被回收（軟刪），照常規查詢
+// 會查無列而讓範圍欄靜默留空——那正是最需要它的那一種事件。
+// 讀不到時仍回傳識別：識別本身是呼叫端已知的事實，不因查詢失敗而消失。
+func credentialAuditRef(tx *gorm.DB, credentialID uint) (uint, string) {
+	if credentialID == 0 {
+		return 0, ""
+	}
+	var row model.Credential
+	if err := tx.Unscoped().Select("id", "scope").
+		Where("id = ?", credentialID).First(&row).Error; err != nil {
+		return credentialID, ""
+	}
+	return credentialID, row.Scope
 }
 
 // changedSecretFields 建立事件的欄位清單（僅欄位名，永不含值）

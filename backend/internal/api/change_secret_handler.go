@@ -149,10 +149,20 @@ func respondPlanError(c *gin.Context, internalCode apierror.ErrCode, err error) 
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadMaxAgeDays, nil)
 	case errors.Is(err, asset.ErrPasswordLengthOutOfRange):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadPasswordLen, nil)
+	case errors.Is(err, asset.ErrPlanBadTargetKind):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanTargetKind, nil)
+	case errors.Is(err, asset.ErrPlanTargetCredentialRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanTargetCredentialRequire, nil)
+	case errors.Is(err, asset.ErrPlanSharedCredentialTarget):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanSharedCredentialTarget, nil)
 	case errors.Is(err, asset.ErrPlanNameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodePlanNameExists, nil)
 	case errors.Is(err, asset.ErrPlanNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodePlanNotFound, nil)
+	// 目標憑證不存在與憑證庫端點同碼：「不存在／已刪除／對操作者不可見」在憑證
+	// 這個資源上是同一個出口，分流即成為存在性探測器
+	case errors.Is(err, asset.ErrPlanTargetCredentialNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeCredentialNotFound, nil)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, internalCode, err)
 	}

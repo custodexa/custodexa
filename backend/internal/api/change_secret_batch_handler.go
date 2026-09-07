@@ -145,6 +145,19 @@ func respondBatchError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBatchTargetMismatch, nil)
 	case errors.Is(err, asset.ErrPasswordLengthOutOfRange):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodePlanBadPasswordLen, nil)
+	// 「整批同一組」模式會建立一筆共用憑證，故名稱走與憑證庫端點同一套規則
+	// 與同一組出口碼——同一個輸入錯誤在兩條路徑上必須得到同一個碼，
+	// 否則前端要為批次另寫一份文案對照
+	case errors.Is(err, asset.ErrBatchCredentialNameRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBatchCredentialNameRequired, nil)
+	case errors.Is(err, asset.ErrCredentialNameTooLong):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialNameTooLong, nil)
+	case errors.Is(err, asset.ErrCredentialNameInvalid):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialNameInvalid, nil)
+	case errors.Is(err, asset.ErrCredentialNameRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialNameRequired, nil)
+	case errors.Is(err, asset.ErrCredentialNameExists):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialNameExists, nil)
 	case errors.Is(err, asset.ErrBatchNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeBatchNotFound, nil)
 	default:

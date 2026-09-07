@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

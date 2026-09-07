@@ -44,10 +44,11 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	{table: "assets", column: "password_enc"},
 	{table: "assets", column: "private_key_enc"},
 	{table: "assets", column: "sftp_password_enc"},
-	// 帳號表密文與 model 同版入冊——本清單同時是退役 DEK
-	// 銷毀前的引用掃描來源，漏登會誤判零引用而銷毀仍在用的金鑰材料
-	{table: "asset_accounts", column: "password_enc"},
-	{table: "asset_accounts", column: "private_key_enc"},
+	// 憑證的不可變密文版本：登入秘密的現行落點。與 model 同版入冊——
+	// 一筆憑證可掛在多台主機上，漏登使退役 DEK 誤判零引用而被銷毀時，
+	// 失去的不是一台的登入能力，而是全部掛載主機的登入能力，且無法救回
+	{table: "credential_secret_versions", column: "password_enc"},
+	{table: "credential_secret_versions", column: "private_key_enc"},
 	// 未驗證的候選憑證。與 model 同版入冊——
 	// 候選是「可能已在遠端生效」的秘密的唯一副本，漏登會使退役 DEK 誤判零引用而
 	// 被銷毀，該候選即永久不可解：其對應帳號在遠端已改密的情形下直接永久鎖死

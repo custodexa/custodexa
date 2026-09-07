@@ -72,14 +72,20 @@ func (c *coveringPlan) covers(acc *model.AssetAccount) bool {
 // buildRow 單一帳號的完整推導。
 func (b *RotationReportBuilder) buildRow(acc *model.AssetAccount, asset *model.Asset,
 	cov *planCoverage, globalMaxAge int, lastSuccess map[uint]time.Time,
-	lastRecord map[uint]string, candidates map[uint]string, asOf time.Time) AccountRow {
+	lastRecord map[uint]string, candidates map[uint]string,
+	secretFlags map[uint]accountSecretFlags, creds map[uint]credentialSnapshot,
+	asOf time.Time) AccountRow {
 
+	snap := creds[acc.ID]
 	row := AccountRow{
 		AccountID: acc.ID, AssetID: acc.AssetID, Username: acc.Username,
-		CredentialType: credentialType(acc), Privileged: acc.Privileged,
-		SharedCredential: acc.CredentialGroup != "",
-		LastRecordStatus: lastRecord[acc.ID],
-		CandidateState:   CandidateNone,
+		CredentialType: credentialType(secretFlags[acc.ID]), Privileged: acc.Privileged,
+		// 共用標記取自憑證範圍：共用關係的真相在憑證本身，不由任何隱性群組識別推導
+		SharedCredential:   snap.Shared,
+		CredentialName:     snap.Name,
+		EffectiveVersionNo: snap.EffectiveVersionNo,
+		LastRecordStatus:   lastRecord[acc.ID],
+		CandidateState:     CandidateNone,
 	}
 	if asset != nil {
 		row.AssetName = asset.Name
@@ -170,12 +176,15 @@ func wholeDaysBetween(from, to time.Time) int {
 	return days
 }
 
-// credentialType 帳號持有的憑證型別。只說型別，不透露任何憑證內容。
-func credentialType(acc *model.AssetAccount) string {
+// credentialType 掛載持有的憑證型別。只說型別，不透露任何憑證內容。
+//
+// 判定對象是**該掛載就位版本**的持有布林：型別要跟著這台當下實際在用的那一版走，
+// 讀憑證的現行版本會讓輪替中途尚未就位的主機被報成新型別。
+func credentialType(flags accountSecretFlags) string {
 	switch {
-	case acc.PasswordEnc != "":
+	case flags.HasPassword:
 		return CredentialTypePassword
-	case acc.PrivateKeyEnc != "":
+	case flags.HasPrivateKey:
 		return CredentialTypeSSHKey
 	default:
 		return CredentialTypeNone

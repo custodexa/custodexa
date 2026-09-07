@@ -61,8 +61,29 @@ type ChangeSecretPlan struct {
 	// （天數最小），來源記於報告的「天數來源」欄。
 	MaxAgeDays int `gorm:"not null;default:0" json:"max_age_days"`
 
+	// TargetKind 目標種類，見 PlanTarget* 常數。
+	// **不另造排程器**：cron、Enabled、MaxAgeDays 與密碼策略全部沿用，
+	// 本欄只決定「要改的是哪一組東西」
+	TargetKind string `gorm:"size:16;not null;default:account" json:"target_kind"`
+	// TargetCredentialID TargetKind=credential 時的目標憑證；其餘種類為空
+	TargetCredentialID *uint `json:"target_credential_id"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// 改密計劃的目標種類。
+const (
+	// PlanTargetAccount 資產集 × 帳號範圍（既有語義）。解析到共用憑證的成員時擋下
+	// ——不得自動擴張到未被計劃選取的資產，也不得只改共用的其中一員
+	PlanTargetAccount = "account"
+	// PlanTargetCredential 目標為一筆憑證的全部掛載，走整組輪替
+	PlanTargetCredential = "credential"
+)
+
+// IsPlanTargetKind 回報字串是否為合法的計劃目標種類
+func IsPlanTargetKind(s string) bool {
+	return s == PlanTargetAccount || s == PlanTargetCredential
 }
 
 // 改密記錄狀態
@@ -92,6 +113,13 @@ type ChangeSecretRecord struct {
 	AccountUsername string `gorm:"size:100" json:"account_username"`
 	SecretType      string `gorm:"size:16" json:"secret_type"`
 
+	// 憑證快照：執行當下該掛載引用的憑證與本次的目標版本。0／空＝尚未解析到憑證。
+	// **AccountID 快照不足以回答「當時改的是哪一組秘密」**——拆分收斂後掛載會改指
+	// 另一筆憑證，事後回頭 join 讀到的是現況而不是當時
+	CredentialID    uint   `gorm:"not null;default:0" json:"credential_id"`
+	CredentialName  string `gorm:"size:128" json:"credential_name"`
+	TargetVersionID uint   `gorm:"not null;default:0" json:"target_version_id"`
+
 	Status     string    `gorm:"size:16;not null" json:"status"`
 	Error      string    `gorm:"size:512" json:"error"`
 	ExecutedAt time.Time `json:"executed_at"`
@@ -117,12 +145,15 @@ type ChangeSecretCandidate struct {
 	PlanID    uint `json:"plan_id"`
 	// BatchID 來源批次；0＝來自計劃或手動觸發
 	BatchID uint `gorm:"not null;default:0" json:"batch_id"`
-	// SharedGroup 轉正後要歸入的憑證群組（整批同一組模式）；空＝沿既有規則脫組。
-	// 放在候選上而非回查批次：重試轉正時批次可能早已完成，候選必須自帶處置
-	SharedGroup string `gorm:"size:36" json:"-"`
 	// AccountUsername 執行當下的快照（同 record 的理由）
 	AccountUsername string `json:"account_username" gorm:"size:100"`
 	SecretType      string `gorm:"size:16;not null" json:"secret_type"`
+
+	// 憑證快照：候選建立當下該掛載引用的憑證與轉正後要就位的版本。
+	// 0／空＝尚未解析到憑證（理由同 record 的同名三欄）
+	CredentialID    uint   `gorm:"not null;default:0" json:"credential_id"`
+	CredentialName  string `gorm:"size:128" json:"credential_name"`
+	TargetVersionID uint   `gorm:"not null;default:0" json:"target_version_id"`
 
 	// 候選秘密（信封加密；絕不出現於 JSON、日誌與審計）
 	PasswordEnc   string `gorm:"type:text" json:"-"`

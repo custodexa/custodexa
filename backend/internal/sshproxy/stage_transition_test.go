@@ -267,20 +267,34 @@ func gateCountingFixture(t *testing.T) (*Handler, *gorm.DB, *gateCountingCodec) 
 }
 
 func TestNoEarlyCredentialUnseal(t *testing.T) {
-	// 前置：帳號帶真實密文，否則「零解密」可能只是因為沒有東西可解
+	// 前置：掛載指向一筆帶真實密文的憑證版本，否則「零解密」可能只是因為沒有
+	// 東西可解。密文的落點是憑證的密文版本列，AAD 身分即該表該欄
 	seedEncrypted := func(t *testing.T, db *gorm.DB, codec crypto.ColumnCodec) {
 		t.Helper()
-		acct := model.AssetAccount{AssetID: 1, Username: "root", IsDefault: true}
-		if err := db.Create(&acct).Error; err != nil {
-			t.Fatalf("seed account: %v", err)
-		}
-		enc, err := codec.EncryptFor(context.Background(), keyvault.RefAccountPassword, "s3cret")
+		enc, err := codec.EncryptFor(context.Background(), keyvault.RefCredentialVersionPassword, "s3cret")
 		if err != nil {
 			t.Fatalf("encrypt seed password: %v", err)
 		}
-		if err := db.Model(&model.AssetAccount{}).Where("id = ?", acct.ID).
-			Update("password_enc", enc).Error; err != nil {
-			t.Fatalf("seed password_enc: %v", err)
+		cred := model.Credential{
+			Scope: model.CredentialScopeDedicated, Username: "root",
+			SecretType: model.ChangeSecretTypePassword, AuthMethod: "sql",
+			ProtocolFamily: model.ProtocolFamilySSH,
+		}
+		if err := db.Create(&cred).Error; err != nil {
+			t.Fatalf("seed credential: %v", err)
+		}
+		ver := model.CredentialSecretVersion{
+			CredentialID: cred.ID, VersionNo: 1,
+			SecretType: model.ChangeSecretTypePassword, PasswordEnc: enc,
+			CreatedReason: model.CredentialVersionReasonManual,
+		}
+		if err := db.Create(&ver).Error; err != nil {
+			t.Fatalf("seed credential version: %v", err)
+		}
+		acct := model.AssetAccount{AssetID: 1, Username: "root", IsDefault: true,
+			CredentialID: cred.ID, EffectiveVersionID: &ver.ID}
+		if err := db.Create(&acct).Error; err != nil {
+			t.Fatalf("seed account: %v", err)
 		}
 	}
 

@@ -136,6 +136,16 @@
                   {{ row.username }}
                   <span class="sub">（{{ credentialTypeText(row.credential_type) }}）</span>
                 </div>
+                <!-- 憑證名與共用標記同一個來源（憑證本身）：稽核據此核對
+                     「這台跟哪些主機用的是同一組秘密」 -->
+                <div
+                  v-if="row.credential_name"
+                  class="sub"
+                  :data-test="`rotation-credential-${row.account_id}`"
+                >
+                  {{ row.credential_name }}
+                  <span v-if="row.effective_version_no">· {{ $t('credentials.versionNo', { no: row.effective_version_no }) }}</span>
+                </div>
                 <div class="tag-row">
                   <el-tag
                     v-if="row.privileged"
@@ -294,6 +304,16 @@
                 >
                   {{ $t('rotationEvidence.accountDeleted') }}
                 </el-tag>
+                <!-- 執行當下的憑證與目標版本快照：掛載事後被改綁也不會被覆寫，
+                     稽核問的是「當時動的是哪一組秘密」 -->
+                <div
+                  v-if="row.credential_name"
+                  class="sub"
+                  :data-test="`rotation-record-credential-${row.record_id}`"
+                >
+                  {{ row.credential_name }}
+                  <span v-if="row.version_no">· {{ $t('rotationEvidence.credentialVersion', { no: row.version_no }) }}</span>
+                </div>
               </template>
             </el-table-column>
             <el-table-column

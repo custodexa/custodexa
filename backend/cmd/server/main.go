@@ -574,6 +574,8 @@ type routeDeps struct {
 	clipboard     *api.ClipboardEventHandler
 	auditTimeline *api.AuditTimelineHandler
 	changeSecret  *api.ChangeSecretHandler
+	// credential 帳號憑證庫：憑證 CRUD、掛載／卸載、範圍轉換、改密與脫離共用
+	credential *api.CredentialHandler
 	// rotationReport 資產帳號輪替證據報告：讀取面 audit:view、排程面 admin
 	rotationReport *api.RotationReportHandler
 	accessRequest *api.AccessRequestHandler
@@ -712,6 +714,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// 關閉操作日誌不代表會話、指令、告警的調查面也該消失
 		d.auditTimeline.RegisterRoutes(v1, d.authService)
 		d.changeSecret.RegisterRoutes(v1, d.authService)
+		d.credential.RegisterRoutes(v1, d.authService)
 		// 輪替證據報告：資料集與手動產出（audit:view）＋排程管理（admin）
 		d.rotationReport.RegisterRoutes(v1, d.authService)
 

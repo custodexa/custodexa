@@ -60,6 +60,24 @@ func respondAccountError(c *gin.Context, internalCode apierror.ErrCode, err erro
 		// 來源不可見與來源不存在共用一碼：分流即成為「哪些 account id 存在」的探測器
 		errors.Is(err, asset.ErrAssetAccountSourceForbidden):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetAccountSourceNotFound, nil)
+	// 憑證來源二擇一、已退場的複製參數、共用憑證的單台寫密：三者都是請求形狀
+	// 或規則層的攔截，回機器碼而非讓它落 500
+	case errors.Is(err, asset.ErrCredentialSourceAmbiguous):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialSourceAmbiguous, nil)
+	case errors.Is(err, asset.ErrAccountCopyFromRemoved):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountCopyFromRemoved, nil)
+	case errors.Is(err, asset.ErrAccountSharedCredentialSecret):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountSharedCredentialSecret, nil)
+	case errors.Is(err, asset.ErrCredentialUsernameImmutable):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialUsernameImmutable, nil)
+	case errors.Is(err, asset.ErrCredentialNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeCredentialNotFound, nil)
+	case errors.Is(err, asset.ErrCredentialDedicatedSingleBinding):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialDedicatedSingle, nil)
+	case errors.Is(err, asset.ErrCredentialProtocolMismatch):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialProtocolMismatch, nil)
+	case errors.Is(err, asset.ErrCredentialRotationActive):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
 	case errors.Is(err, asset.ErrAssetAccountUsernameExists):
 		apierror.Respond(c, http.StatusConflict, apierror.CodeAccountUsernameExists, nil)
 	case errors.Is(err, asset.ErrAssetAccountDefaultConflict):
@@ -159,7 +177,34 @@ func (h *AssetAccountHandler) List(c *gin.Context) {
 			filtered = append(filtered, a)
 		}
 	}
+	// 憑證身分只給具憑證管理權限者：本端點同時服務管理視圖（帳號表格）與連線
+	// 選帳號，而後者只需要挑一個名字。回精簡版而非「回完整版但前端不顯示」——
+	// 出站了就是出站了，畫面不顯示不改變回應內容
+	if !credentialFieldsVisible(c) {
+		slim := make([]*asset.AssetAccountSlimDTO, 0, len(filtered))
+		for _, a := range filtered {
+			slim = append(slim, asset.SlimAssetAccountDTO(a))
+		}
+		c.JSON(http.StatusOK, gin.H{"data": slim, "total": len(slim)})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": filtered, "total": len(filtered)})
+}
+
+// credentialFieldsVisible 請求者是否可見憑證身分欄位。
+//
+// 判準是憑證管理授權點本身，不是「角色是不是 admin」：授權點日後若授予其他角色，
+// 這裡不必跟著改；而以角色字面比對的版本會在那一天靜默地繼續收窄。
+func credentialFieldsVisible(c *gin.Context) bool {
+	role, ok := c.Get("role")
+	if !ok {
+		return false
+	}
+	name, ok := role.(string)
+	if !ok {
+		return false
+	}
+	return authz.RoutePermissions(name, authz.PermCredentialManage)
 }
 
 // accountAuthzContext 帶角色的授權判定 context（沿用既有 role string key 慣例）

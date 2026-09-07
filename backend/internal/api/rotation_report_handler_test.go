@@ -51,6 +51,7 @@ func newRotationTestEnv(t *testing.T) *rotationTestEnv {
 	// `:memory:` 每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.AssetGroup{},
+		&model.Credential{}, &model.CredentialSecretVersion{},
 		&model.AssetNode{}, &model.AuditLog{}, &model.ChangeSecretPlan{},
 		&model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
 		&model.RotationReportSchedule{}, &model.AuditExportJob{}); err != nil {
@@ -121,7 +122,25 @@ func (e *rotationTestEnv) seedAccount(t *testing.T) {
 	if err := e.db.Create(a).Error; err != nil {
 		t.Fatalf("建立資產: %v", err)
 	}
-	acc := &model.AssetAccount{AssetID: a.ID, Username: "root", PasswordEnc: "enc-secret"}
+	// 秘密落憑證的密文版本列，掛載列只引用之（報告的憑證型別即由就位版本推導）
+	cred := &model.Credential{
+		Scope: model.CredentialScopeDedicated, Username: "root",
+		SecretType: model.ChangeSecretTypePassword, AuthMethod: "sql",
+		ProtocolFamily: model.ProtocolFamilySSH,
+	}
+	if err := e.db.Create(cred).Error; err != nil {
+		t.Fatalf("建立憑證: %v", err)
+	}
+	ver := &model.CredentialSecretVersion{
+		CredentialID: cred.ID, VersionNo: 1,
+		SecretType: model.ChangeSecretTypePassword, PasswordEnc: "enc-secret",
+		CreatedReason: model.CredentialVersionReasonManual,
+	}
+	if err := e.db.Create(ver).Error; err != nil {
+		t.Fatalf("建立密文版本: %v", err)
+	}
+	acc := &model.AssetAccount{AssetID: a.ID, Username: "root",
+		CredentialID: cred.ID, EffectiveVersionID: &ver.ID}
 	if err := e.db.Create(acc).Error; err != nil {
 		t.Fatalf("建立帳號: %v", err)
 	}

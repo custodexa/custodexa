@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -48,7 +48,7 @@ func setupChangeSecretFixture(t *testing.T, username, password string) *csFixtur
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
-		&model.Asset{}, &model.AssetAccount{}, &model.AuditLog{},
+		&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetHostKey{},
 		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{}, &model.ChangeSecretCandidate{},
 	))
@@ -311,7 +311,7 @@ func TestChangeSecretAccountScopeResolution(t *testing.T) {
 	f := setupChangeSecretFixture(t, "root", "oldpass123")
 	// 加第二個帳號（不同 username）
 	require.NoError(t, f.db.Create(&model.AssetAccount{
-		AssetID: f.assetID, Username: "deploy", PasswordEnc: "", IsDefault: false,
+		AssetID: f.assetID, Username: "deploy", IsDefault: false,
 	}).Error)
 
 	all := f.plan(t, func(p *model.ChangeSecretPlan) {

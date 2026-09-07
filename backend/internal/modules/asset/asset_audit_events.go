@@ -55,8 +55,8 @@ func writeAssetAccountAudit(sink port.TxSink, tx *gorm.DB, a model.AssetAccountA
 		Username:        a.Username,
 		Operation:       a.Operation,
 		Fields:          a.Fields,
-		CopyFromAssetID: a.CopyFromAssetID,
-		CopyFromAccount: a.CopyFromAccount,
+		CredentialID:    a.CredentialID,
+		CredentialScope: a.CredentialScope,
 	}
 	detailsJSON, err := json.Marshal(details)
 	if err != nil {

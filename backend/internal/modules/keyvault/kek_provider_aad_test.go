@@ -312,6 +312,9 @@ func aadFixture(t *testing.T, db *gorm.DB, km *KeyManagerService) (assetID, acco
 		// 登記於 envelopeMigrationTargets，缺表即整個殘值掃描失敗
 		`CREATE TABLE change_secret_candidates (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
 			private_key_enc TEXT NOT NULL DEFAULT '')`,
+		// 憑證密文版本：登入秘密的現行落點，同樣登記於 envelopeMigrationTargets
+		`CREATE TABLE credential_secret_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, password_enc TEXT NOT NULL DEFAULT '',
+			private_key_enc TEXT NOT NULL DEFAULT '')`,
 	} {
 		if err := db.Exec(ddl).Error; err != nil {
 			t.Fatalf("建表失敗: %v", err)
@@ -320,45 +323,21 @@ func aadFixture(t *testing.T, db *gorm.DB, km *KeyManagerService) (assetID, acco
 	// 以**發佈前過渡格式**播種：本 fixture 的用途是餵殘值偵測（哨兵與清理閘），
 	// 那正是終態下不應存在、但必須被看見的一類值
 	assetPwd := preReleaseEnvelope(t, km, "asset-secret")
-	acctPwd := preReleaseEnvelope(t, km, "account-secret")
-	acctKey := preReleaseEnvelope(t, km, "account-privkey")
+	credPwd := preReleaseEnvelope(t, km, "credential-secret")
+	credKey := preReleaseEnvelope(t, km, "credential-privkey")
 	if err := db.Exec("INSERT INTO assets (password_enc) VALUES (?)", assetPwd).Error; err != nil {
 		t.Fatalf("insert asset: %v", err)
 	}
-	if err := db.Exec("INSERT INTO asset_accounts (password_enc, private_key_enc) VALUES (?, ?)",
-		acctPwd, acctKey).Error; err != nil {
+	// 登入秘密的殘值落在版本表：掛載列的兩個密文欄已自登記表除名，
+	// 播在那裡的值不再被任何掃描看見，等於白播
+	if err := db.Exec("INSERT INTO credential_secret_versions (password_enc, private_key_enc) VALUES (?, ?)",
+		credPwd, credKey).Error; err != nil {
+		t.Fatalf("insert credential version: %v", err)
+	}
+	if err := db.Exec("INSERT INTO asset_accounts DEFAULT VALUES").Error; err != nil {
 		t.Fatalf("insert account: %v", err)
 	}
 	return 1, 1
-}
-
-// TestEnvelopeTargetsCoverAssetAccounts 跨 change 契約的證據（交叉相容）：
-// 登記集合**必須涵蓋** asset_accounts.password_enc 與 private_key_enc。
-// 兩欄以 {table, column} 形式登記（未帶 pk 欄名），
-// 正是**零改動契約**（契約 2）的情形——pkColumn 省略時等同 id。
-//
-// 註：原「AAD 全存量遷移涵蓋兩欄」的斷言隨遷移機制拆除；
-// 登記集合本身仍是退役 DEK 引用掃描與
-// 啟動哨兵的掃描範圍，漏登會誤判零引用而銷毀仍在用的金鑰材料，故守衛保留。
-func TestEnvelopeTargetsCoverAssetAccounts(t *testing.T) {
-	found := map[string]bool{}
-	for _, tgt := range envelopeMigrationTargets {
-		if tgt.table == "asset_accounts" {
-			found[tgt.column] = true
-			if tgt.pkColumn != "" {
-				t.Errorf("asset_accounts.%s 登記帶了 pkColumn=%q：契約 2 要求零改動（省略即 id）",
-					tgt.column, tgt.pkColumn)
-			}
-			if tgt.pk() != "id" {
-				t.Errorf("pkColumn 省略時 pk() 應為 id, got %q", tgt.pk())
-			}
-		}
-	}
-	for _, col := range []string{"password_enc", "private_key_enc"} {
-		if !found[col] {
-			t.Fatalf("envelopeMigrationTargets 未涵蓋 asset_accounts.%s（跨 change 契約）", col)
-		}
-	}
 }
 
 // ---- 1.8 解封後遷移佇列與重加密入口 ----

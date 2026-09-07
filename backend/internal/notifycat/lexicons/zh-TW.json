@@ -65,7 +65,7 @@
     "caliber_due_soon": "即將到期＝剩餘天數 A 介於 0 與預警窗（日）之間",
     "caliber_no_record": "無記錄＝本系統無成功改密記錄，不代表該帳號未曾改密",
     "caliber_population": "母體為登記於本系統的資產帳號，不含目標機上未登記的帳號",
-    "caliber_shared": "共用憑證＝系統已知由複製建號產生且尚未各自改密者",
+    "caliber_shared": "共用憑證＝該帳號以憑證庫中範圍為共用的憑證登入，該憑證的密文由掛載它的各台主機共同使用",
     "candidate_abandoned": "已放棄",
     "candidate_none": "無",
     "candidate_pending": "重試中",

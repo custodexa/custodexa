@@ -45,7 +45,7 @@ func TestSSHRedeemWithAccountPassesGate(t *testing.T) {
 	setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
 
 	if err := db.Create(&model.AssetAccount{
-		AssetID: 1, Username: "root", PasswordEnc: "", IsDefault: true,
+		AssetID: 1, Username: "root", IsDefault: true,
 	}).Error; err != nil {
 		t.Fatalf("seed account: %v", err)
 	}

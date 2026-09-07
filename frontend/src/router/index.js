@@ -232,6 +232,15 @@ const routes = [
         component: () => import('../views/AccountBatchRotation.vue'),
         meta: { requiresAuth: true, roles: ['admin'] },
       },
+      {
+        // 帳號憑證庫：登入憑證的單一管理面（範圍、掛載、整組改密）。
+        // 第一段 `credentials` 須與後端的前端路由段枚舉同步登記，
+        // 否則 SSO 登入後會被丟回首頁（雙向守衛盯著這件事）
+        path: 'credentials',
+        name: 'CredentialLibrary',
+        component: () => import('../views/CredentialLibrary.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] },
+      },
       // （TestConnection 手動連線頁已隨連線收口移除：手動輸入任意主機帳密屬繞過資產管理的旁路；
       //  RDPRecordingTest POC 頁已隨 JWT query fallback 移除，
       //  正式回放走 rtoken／Bearer blob）

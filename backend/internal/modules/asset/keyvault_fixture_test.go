@@ -6,11 +6,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/internal/testgate"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -146,7 +146,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	}
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池會讓「寫在 A 連線、
 	// 讀在 B 連線」偶發查無資料（本專案既有 flaky 真因，ff51836）。
-	// TestRetiredKeyNotPurgedWhileAssetAccountReferences 在整包跑時穩定紅——
+	// TestRetiredKeyNotPurgedWhileCredentialVersionReferences 在整包跑時穩定紅——
 	// 引用掃描落到空表而誤判零引用——即此類，非受測邏輯問題
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -157,7 +157,8 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	// ldap_directories 同理——**測試庫例外**：生產
 	// 由 versioned migration 建表（CHECK 約束需求），此處僅需一張形狀等價的空表
 	// 供 EnvelopePendingCount 逐表掃描，缺表即整個掃描 error 並擋住 KEK 輪替
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
+	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
+		&model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
 		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}); err != nil {
 		t.Fatalf("migrate: %v", err)

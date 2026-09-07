@@ -153,6 +153,14 @@ var schemaParityModels = []interface{}{
 	// 以帳號為主軸的批次改密。由增量 migration 20260905_account_batch_rotation
 	// 建表，走 schemaDDLStatements() 受兩層 parity 守衛
 	&model.ChangeSecretBatch{},
+	// 帳號憑證庫的四張表。由增量 migration 20260906_credential_library 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛。
+	// credential_secret_versions 的兩個密文欄另受 keyvault 的 *Enc 信封登記
+	// AST 守衛管轄（漏登會使退役 DEK 誤判零引用而銷毀仍在用的金鑰材料）
+	&model.Credential{},
+	&model.CredentialSecretVersion{},
+	&model.CredentialRotation{},
+	&model.CredentialRotationMember{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

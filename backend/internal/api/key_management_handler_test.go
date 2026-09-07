@@ -42,7 +42,7 @@ func newKeyMgmtTestHandlerWithKey(t *testing.T, key []byte) *KeyManagementHandle
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.DataKey{}, &model.Asset{}, &model.AssetAccount{}, &model.User{},
+	if err := db.AutoMigrate(&model.DataKey{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.User{},
 		&model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{},
 		&model.NotificationChannel{}); err != nil {
 		t.Fatalf("migrate: %v", err)

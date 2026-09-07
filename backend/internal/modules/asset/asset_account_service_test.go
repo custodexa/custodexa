@@ -13,7 +13,6 @@ import (
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/modules/keyvault"
 
 	"github.com/custodexa/backend/internal/modules/audit"
 )
@@ -30,7 +29,7 @@ func setupAccountDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(
-		&model.Asset{}, &model.AssetAccount{}, &model.AuditLog{},
+		&model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AuditLog{},
 		&model.AssetGroup{}, &model.AssetNode{},
 	))
 	oldDB := database.DB
@@ -73,9 +72,10 @@ func TestCreateAssetWritesDefaultAccountOnly(t *testing.T) {
 	require.NoError(t, db.Where("asset_id = ?", asset.ID).First(&account).Error)
 	assert.True(t, account.IsDefault)
 	assert.Equal(t, "root", account.Username)
-	require.NotEmpty(t, account.PasswordEnc)
-	plain, err := assets.crypto.DecryptFor(context.Background(), keyvault.RefAccountPassword, account.PasswordEnc)
-	require.NoError(t, err)
+	// 密文落在該掛載所引用憑證的就位版本上；斷的仍是「這台建完就有可用的秘密」
+	require.NotZero(t, account.CredentialID)
+	require.NotNil(t, account.EffectiveVersionID)
+	plain, _ := effectiveSecretPlain(t, db, assets, account.ID)
 	assert.Equal(t, "s3cret", plain)
 
 	// 連線路徑取到的 username／憑證同出一帳號
@@ -216,43 +216,6 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	assert.Zero(t, creds.AccountID)
 }
 
-// 從其他資產的帳號複製建號：密文原樣搬，複製後可正常解密
-func TestCreateAccountCopyFromOtherAsset(t *testing.T) {
-	_ = setupAccountDB(t)
-	assets, accounts := newAccountServices(t)
-
-	src, err := assets.Create(&CreateAssetRequest{
-		Name: "src", Protocol: model.ProtocolSSH, Host: "10.0.0.6", Port: 22,
-		Username: "ops", Password: "shared-pw", CreatedBy: 1,
-	})
-	require.NoError(t, err)
-	dst, err := assets.Create(&CreateAssetRequest{
-		Name: "dst", Protocol: model.ProtocolSSH, Host: "10.0.0.7", Port: 22,
-		Username: "root", Password: "rootpw", CreatedBy: 1,
-	})
-	require.NoError(t, err)
-
-	srcList, err := accounts.List(src.ID)
-	require.NoError(t, err)
-	require.Len(t, srcList, 1)
-
-	copied, err := accounts.Create(adminCtx(), dst.ID, &CreateAssetAccountRequest{
-		CopyFromAccountID: srcList[0].ID,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "ops", copied.Username)
-	assert.True(t, copied.HasPassword)
-
-	creds, err := assets.GetWithCredentialsForAccount(dst.ID, copied.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "ops", creds.Username)
-	assert.Equal(t, "shared-pw", creds.Password)
-
-	// 來源不存在＝明確錯誤
-	_, err = accounts.Create(adminCtx(), dst.ID, &CreateAssetAccountRequest{CopyFromAccountID: 9999})
-	assert.ErrorIs(t, err, ErrAssetAccountSourceNotFound)
-}
-
 // 跨資產 account id 注入 fail-close：不得靜默退回 default
 func TestGetCredentialsRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
@@ -344,11 +307,10 @@ func TestAccountAuditNeverContainsSecrets(t *testing.T) {
 	assert.GreaterOrEqual(t, accountEvents, 3, "建立／更新／切換預設各應留痕")
 
 	// 密文亦不得出現在審計
-	var account model.AssetAccount
-	require.NoError(t, db.First(&account, created.ID).Error)
-	require.NotEmpty(t, account.PasswordEnc)
+	cipher := effectiveCipher(t, db, created.ID)
+	require.NotEmpty(t, cipher)
 	for _, l := range logs {
-		assert.NotContains(t, l.Details, account.PasswordEnc, "審計不得含密文")
+		assert.NotContains(t, l.Details, cipher, "審計不得含密文")
 	}
 }
 
@@ -388,13 +350,13 @@ func TestUpdatePasswordPinsAccountAcrossDefaultSwitch(t *testing.T) {
 	require.NoError(t, db.First(&pinnedAccount, pinnedID).Error)
 	require.NoError(t, db.First(&otherAccount, other.ID).Error)
 
-	pinnedPlain, err := assets.crypto.DecryptFor(context.Background(), keyvault.RefAccountPassword, pinnedAccount.PasswordEnc)
-	require.NoError(t, err)
+	pinnedPlain, _ := effectiveSecretPlain(t, db, assets, pinnedID)
 	assert.Equal(t, "new-root-pw", pinnedPlain, "新密必須寫回釘住的帳號")
 
-	otherPlain, err := assets.crypto.DecryptFor(context.Background(), keyvault.RefAccountPassword, otherAccount.PasswordEnc)
-	require.NoError(t, err)
+	otherPlain, _ := effectiveSecretPlain(t, db, assets, other.ID)
 	assert.Equal(t, "backup-pw", otherPlain, "執行中被切為 default 的帳號憑證不得受影響")
+	assert.NotEqual(t, pinnedAccount.CredentialID, otherAccount.CredentialID,
+		"兩個掛載各自一筆專用憑證，寫錯對象會在這裡現形")
 
 	// 釘住的帳號已非 default，UpdatePassword 仍須寫得進去（不重解析 default）
 	assert.False(t, pinnedAccount.IsDefault)

@@ -36,11 +36,20 @@ const (
 // 任何時候都不得出現於生成的密碼中。
 const shellSensitiveChars = "'\"`\\$"
 
-// PasswordPolicy 改密的密碼生成策略（per-plan）
+// PasswordPolicy 改密的密碼生成策略（per-plan）。
+//
+// **三個 tag 是必要的，不是裝飾**：本型別會以 policy 物件的形態被請求體解出
+// （輪替與單台脫離兩支端點），而底線命名的鍵對不上駝峰欄位名——
+// include_symbol 與 exclude_ambiguous 會靜默讀成 false，畫面上勾了與沒勾
+// 生出同一種密碼，且沒有任何錯誤看得見。length 因為只差大小寫而剛好對得上，
+// 補 tag 後三欄的行為才一致。
+//
+// 計劃與批次請求另有各自的扁平欄位（password_* 一族，見各自的請求結構），
+// 與本型別不共用，故此處採 policy 物件內的短名。
 type PasswordPolicy struct {
-	Length           int
-	IncludeSymbol    bool
-	ExcludeAmbiguous bool
+	Length           int  `json:"length"`
+	IncludeSymbol    bool `json:"include_symbol"`
+	ExcludeAmbiguous bool `json:"exclude_ambiguous"`
 }
 
 // ErrPasswordLengthOutOfRange 長度越界（handler 映射 400）

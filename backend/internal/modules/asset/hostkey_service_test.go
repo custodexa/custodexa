@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

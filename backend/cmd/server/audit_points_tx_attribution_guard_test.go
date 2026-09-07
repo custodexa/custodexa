@@ -108,6 +108,8 @@ const maxTxMachineUndeterminable = 4
 var auditPointTxHumanQualified = map[string]string{
 	"AP-50": "ldapDirectoryAuditLog 六條呼叫路徑二分：三條在 WithLDAPDirectoryLock 交易閉包內（fail-close）、" +
 		"三條傳 s.db（fail-open）。機器只能判到 TxBound（理由類別為 sink-tx-arg），路徑二分屬人工權威",
+	"AP-86": "recordConversionFailure(db *gorm.DB …) 唯一呼叫路徑傳的是根 db（解封後轉換的交易已回滾，" +
+		"留痕刻意落在交易外）。機器因參數判 TxBound，實際歸屬屬人工權威",
 }
 
 // minTxBoundSites 機器判為 TxBound 的產生點數量下限（現況 19，取 15）。

@@ -3,10 +3,10 @@ package asset
 import (
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 

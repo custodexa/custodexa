@@ -76,7 +76,7 @@ type testSSHServer struct {
 	windowsStallFired          atomic.Int32
 	windowsStallReleasedByPeer atomic.Int32
 	passwordAuthCalls          atomic.Int32
-	publicKeyAuthOK   atomic.Int32
+	publicKeyAuthOK            atomic.Int32
 	// lastChpasswdStdin 最近一次 chpasswd 收到的 stdin（斷言憑證確實走 stdin）
 	lastChpasswdStdin atomic.Value
 	// lastExecCommand 最近一次 exec 的命令列（斷言憑證不進 argv）

@@ -455,3 +455,68 @@ describe('前提與邊界要說出來', () => {
     expect(wrapper.find('[data-test="rotation-load-failed"]').exists()).toBe(true)
   })
 })
+
+// 共用標記與憑證名同源（憑證本身）：讀者要能從這一列直接回答
+// 「這台跟哪些主機用的是同一組秘密、當時動的是哪一個版本」。
+describe('憑證來源與版本快照', () => {
+  it('帳號列顯示憑證名與就位版本，共用標記與憑證名出自同一筆憑證', async () => {
+    reportMock.mockResolvedValue(
+      dataset({
+        rows: [
+          account({
+            account_id: 1, bucket: 'compliant', shared_credential: true,
+            credential_name: '正式區 root', effective_version_no: 4,
+          }),
+          account({
+            account_id: 2, bucket: 'compliant', shared_credential: false,
+            credential_name: 'db-01 / app', effective_version_no: 1,
+          }),
+        ],
+      })
+    )
+    setRoles(['auditor'])
+    const wrapper = await mountPage()
+
+    const shared = wrapper.find('[data-test="rotation-credential-1"]')
+    expect(shared.text()).toContain('正式區 root')
+    expect(shared.text()).toContain('v4')
+    expect(wrapper.find('[data-test="rotation-shared-1"]').exists()).toBe(true)
+
+    const dedicated = wrapper.find('[data-test="rotation-credential-2"]')
+    expect(dedicated.text()).toContain('db-01 / app')
+    expect(dedicated.text()).toContain('v1')
+    expect(wrapper.find('[data-test="rotation-shared-2"]').exists()).toBe(false)
+  })
+
+  it('記錄明細帶執行當下的憑證名與目標版本（掛載事後改綁也不覆寫這一筆）', async () => {
+    recordsMock.mockResolvedValue({
+      data: [
+        {
+          record_id: 501,
+          executed_at: '2026-09-01T02:00:00Z',
+          plan_name: '週度改密',
+          batch_id: 0,
+          asset_name: 'db-01',
+          account_username: 'root',
+          account_deleted: false,
+          credential_name: '正式區 root',
+          version_no: 5,
+          secret_type: 'password',
+          status: 'success',
+          reason_code: '',
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      truncated: false,
+    })
+    setRoles(['auditor'])
+    const wrapper = await mountPage()
+
+    const cell = wrapper.find('[data-test="rotation-record-credential-501"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).toContain('正式區 root')
+    expect(cell.text()).toContain('v5')
+  })
+})

@@ -65,7 +65,7 @@
     "caliber_due_soon": "Due soon means remaining days A falls between zero and the warning window",
     "caliber_no_record": "No record means this system holds no successful rotation record; it does not mean the account was never rotated",
     "caliber_population": "The population is the asset accounts registered in this system; accounts existing only on the target host are not included",
-    "caliber_shared": "Shared credential means the system knows the account was created by copying another and neither has been rotated since",
+    "caliber_shared": "Shared credential means the account logs in with a credential whose scope is shared in the credential library; every host attached to that credential logs in with its secret versions",
     "candidate_abandoned": "Abandoned",
     "candidate_none": "None",
     "candidate_pending": "Retrying",

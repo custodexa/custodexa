@@ -25,7 +25,7 @@ func setupAllowedDBTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.Asset{}, &model.AuditLog{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAccount{},
+		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{},
 	))
 	oldDB := database.DB
 	database.DB = db

@@ -185,7 +185,7 @@ func TestRotationChannelClearedOnProtocolChange(t *testing.T) {
 
 	created, err := svc.Create(&CreateAssetRequest{
 		Name: "win-1", Protocol: model.ProtocolRDP, Host: "10.0.0.11", Port: 3389,
-		Username: "Administrator",
+		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
 		WinrmPort: 5986, WinrmTLSMode: model.WinrmTLSModeCA, WinrmCACert: ca,
 	})
@@ -255,7 +255,7 @@ func TestRotationChannelExplicitClearIsNotReportedAsServerCleared(t *testing.T) 
 
 	created, err := svc.Create(&CreateAssetRequest{
 		Name: "win-2", Protocol: model.ProtocolRDP, Host: "10.0.0.12", Port: 3389,
-		Username: "Administrator",
+		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTP,
 	})
 	require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestAssetListNeverExposesWinrmCA(t *testing.T) {
 
 	created, err := svc.Create(&CreateAssetRequest{
 		Name: "win-3", Protocol: model.ProtocolRDP, Host: "10.0.0.13", Port: 3389,
-		Username: "Administrator",
+		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
 		WinrmTLSMode: model.WinrmTLSModeCA, WinrmCACert: ca,
 	})
@@ -370,7 +370,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 
 	created, err := svc.Create(&CreateAssetRequest{
 		Name: "win-proj", Protocol: model.ProtocolRDP, Host: "10.0.0.21", Port: 3389,
-		Username: "Administrator",
+		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
 		WinrmTLSMode: model.WinrmTLSModeCA, WinrmCACert: ca,
 	})

@@ -87,6 +87,28 @@ vi.mock('@/api/assets', () => ({
   deleteAssetTag: vi.fn(),
 }))
 
+// 編輯抽屜內嵌帳號表：它會自己去問帳號與憑證狀態。
+// 不替身就會在單測裡打真 API（回 401 並拖慢每一案），且斷言與這些資料無關
+vi.mock('@/api/assetAccounts', () => ({
+  listAssetAccounts: vi.fn().mockResolvedValue({ data: [] }),
+  createAssetAccount: vi.fn(),
+  updateAssetAccount: vi.fn(),
+  deleteAssetAccount: vi.fn(),
+  setDefaultAssetAccount: vi.fn(),
+}))
+
+vi.mock('@/api/credentials', () => ({
+  listCredentials: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  rebindAccountCredential: vi.fn(),
+  detachCredentialBinding: vi.fn(),
+  createCredential: vi.fn(),
+  updateCredential: vi.fn(),
+}))
+
+vi.mock('@/api/authorizations', () => ({
+  getEffectiveUsers: vi.fn().mockResolvedValue({ users: [] }),
+}))
+
 // 分組對話框開啟時查全域預設段位（唯讀回顯帶「目前：X」文案）
 const getSecurityPoliciesMock = vi.fn()
 vi.mock('@/api/securityPolicies', () => ({

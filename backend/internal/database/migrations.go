@@ -119,9 +119,33 @@ var migrations = []Migration{
 		Up:      applyAccountBatchRotation,
 		Down:    rollbackAccountBatchRotation,
 	},
+	{
+		// 帳號憑證庫的資料層：四張新表（credentials、credential_secret_versions、
+		// credential_rotations、credential_rotation_members）、asset_accounts 的
+		// 兩個掛載欄與其唯一鍵、三張改密表的目標與快照欄，以及既有帳號轉專用憑證
+		// 的存量搬移。**需要金鑰的兩步不在此**（段 1 無 codec）：密文的欄位身分
+		// 改綁與隱性共用合併走解封後佇列的 credential_secret_conversion。
+		// **Down 有損**（刪除全部共用憑證關係與版本歷史，生產無回滾入口；
+		// 見 migration_credential_library.go 檔頭的 Down 契約）
+		Version: "20260906_credential_library",
+		Name:    "credential_library",
+		Up:      applyCredentialLibrary,
+		Down:    rollbackCredentialLibrary,
+	},
+	{
+		// 帳號憑證庫的收縮：卸下 asset_accounts 的兩個密文欄、兩張改密表的
+		// 群組識別欄與群組索引。**asset_accounts.credential_group 刻意留著**
+		// ——它的唯一讀者是解封後的存量轉換，而解封後佇列必然晚於段 1 的全部
+		// migration（見 migration_credential_library_contract.go 檔頭）。
+		// **Down 有損**（只還原空殼、不還原資料，生產無回滾入口）
+		Version: "20260906_credential_library_contract",
+		Name:    "credential_library_contract",
+		Up:      applyCredentialLibraryContract,
+		Down:    rollbackCredentialLibraryContract,
+	},
 }
 
-// schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄。
+// schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
 //
 // **parity 守衛的解析對象**（schema_parity_test.go 第 1 層；pg 兩層測試以
 // applyBaseline＋applyMigrationsAfterBaseline 建出同一形狀）：schema 事實源自
@@ -135,7 +159,9 @@ func schemaDDLStatements() []string {
 	out = append(out, dbQueryConsoleDDL()...)
 	out = append(out, rotationEvidenceReportDDL()...)
 	out = append(out, windowsLocalAccountRotationDDL()...)
-	return append(out, accountBatchRotationDDL()...)
+	out = append(out, accountBatchRotationDDL()...)
+	out = append(out, credentialLibraryDDL()...)
+	return append(out, credentialLibraryContractDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity
@@ -184,6 +210,10 @@ const OffsiteSeedMarkerVersion = "20260825_offsite_env_seeded"
 var runtimeMarkerVersions = []string{
 	LDAPSeedMarkerVersion,
 	OffsiteSeedMarkerVersion,
+	// 憑證密文的欄位身分改綁與既有隱性共用關係的合併：兩者都需要 codec，
+	// 故走解封後佇列而非 versioned migration，以本標記記錄「已評估完畢」
+	//（見 credential_secret_conversion.go 檔頭）
+	CredentialSecretConversionMarkerVersion,
 }
 
 // schemaMigrationsBootstrapDDL 追蹤表自身的建立語句。

@@ -290,3 +290,65 @@ describe('不可改密的目標', () => {
     expect(wrapper.vm.selected).toEqual([])
   })
 })
+
+// 整批同一組會建出一筆具名共用憑證：名字是之後在憑證庫指認這組秘密的唯一依據。
+// 沒有名字的批次改密會在伺服端被拒，而使用者在畫面上看不出少了什麼——故此處必填。
+describe('整批同一組的共用憑證名稱', () => {
+  it('選整批同一組時名稱欄出現且必填，預填「帳號名 批次 日期」', async () => {
+    const wrapper = await mountWithTargets()
+    wrapper.vm.toggleTarget(targetsFixture()[0])
+    wrapper.vm.openBatch()
+    await flushPromises()
+
+    // 每台各自隨機：不會建共用憑證，故沒有名稱欄
+    expect(wrapper.find('[data-test="credential-name-row"]').exists()).toBe(false)
+
+    wrapper.vm.form.password_mode = 'shared'
+    await flushPromises()
+    expect(wrapper.find('[data-test="credential-name-row"]').exists()).toBe(true)
+
+    const today = new Date()
+    const date = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-')
+    expect(wrapper.vm.form.credential_name).toBe(`ops 批次 ${date}`)
+
+    // 清空即擋下送出，並就近說明原因
+    wrapper.vm.form.credential_name = '   '
+    await flushPromises()
+    expect(wrapper.find('[data-test="credential-name-error"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="submit-batch"]').attributes('disabled')).toBeDefined()
+    await wrapper.vm.submit()
+    expect(createMock).not.toHaveBeenCalled()
+  })
+
+  it('每台各自隨機時不出現名稱欄，送出載荷也不帶名稱', async () => {
+    const wrapper = await mountWithTargets()
+    wrapper.vm.toggleTarget(targetsFixture()[0])
+    wrapper.vm.openBatch()
+    await flushPromises()
+
+    await wrapper.vm.submit()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="credential-name-row"]').exists()).toBe(false)
+    expect('credential_name' in createMock.mock.calls[0][0]).toBe(false)
+  })
+
+  it('送出載荷帶名稱（前後空白去掉）', async () => {
+    const wrapper = await mountWithTargets()
+    wrapper.vm.toggleTarget(targetsFixture()[0])
+    wrapper.vm.openBatch()
+    await flushPromises()
+    wrapper.vm.form.password_mode = 'shared'
+    await flushPromises()
+    wrapper.vm.form.credential_name = '  資料庫維運 2026-09  '
+
+    await wrapper.vm.submit()
+    await flushPromises()
+
+    expect(createMock.mock.calls[0][0].credential_name).toBe('資料庫維運 2026-09')
+  })
+})

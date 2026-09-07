@@ -35,7 +35,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	}
 	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池會讓「寫在 A 連線、
 	// 讀在 B 連線」偶發查無資料（本專案既有 flaky 真因，ff51836）。
-	// TestRetiredKeyNotPurgedWhileAssetAccountReferences 在整包跑時穩定紅——
+	// TestRetiredKeyNotPurgedWhileCredentialVersionReferences 在整包跑時穩定紅——
 	// 引用掃描落到空表而誤判零引用——即此類，非受測邏輯問題
 	sqlDB, err := db.DB()
 	if err != nil {

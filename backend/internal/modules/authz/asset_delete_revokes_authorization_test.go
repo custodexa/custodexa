@@ -63,10 +63,12 @@ func setupDeleteRevokeDB(t *testing.T) (*gorm.DB, *asset.AssetService) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
+	// 掛載與憑證兩張表：資產刪除同交易移除其掛載並回收隨之孤兒的專用憑證，
+	// 缺表會讓本測試死在與撤銷無關的地方
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
 		&model.AssetNode{}, &model.AssetAuthorization{}, &model.ApproverScope{},
-		&model.AuditLog{},
+		&model.AssetAccount{}, &model.Credential{}, &model.AuditLog{},
 	))
 	oldDB := database.DB
 	database.DB = db

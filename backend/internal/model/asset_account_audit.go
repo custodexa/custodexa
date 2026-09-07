@@ -37,11 +37,14 @@ type AssetAccountAudit struct {
 	Operation string
 	// Fields 被變更的欄位名稱清單（password/private_key 只記名稱，不記值）
 	Fields []string
-	// CopyFromAssetID／CopyFromAccount 建號時「從其他資產帳號複製」的來源出處。
-	// 憑證跨資產複製若零軌跡，事後無從回答「這台的 root 密碼哪來的」；
-	// 記的是 id 不是值，不觸及密文
-	CopyFromAssetID uint
-	CopyFromAccount uint
+	// CredentialID／CredentialScope 該掛載當時引用的憑證識別與範圍
+	// （dedicated／shared）。**只記識別與範圍，永不含憑證內容**。
+	//
+	// 為何範圍要與識別一起記：專用憑證隨掛載回收，事後拿識別回查已無列可查；
+	// 而「這次動到的是一組只在這台生效的秘密，還是一組同時掛在 N 台上的秘密」
+	// 正是帳號事件的影響面本身，事後推不回來
+	CredentialID    uint
+	CredentialScope string
 }
 
 // AssetAccountAuditDetails 審計 Details 的 JSON 形狀（與 AssetChangeDetails 平行，
@@ -52,9 +55,9 @@ type AssetAccountAuditDetails struct {
 	Username  string   `json:"account_username"`
 	Operation string   `json:"operation"`
 	Fields    []string `json:"fields,omitempty"`
-	// 複製建號的來源出處（僅 create 且走複製時出現）
-	CopyFromAssetID uint `json:"copy_from_asset_id,omitempty"`
-	CopyFromAccount uint `json:"copy_from_account_id,omitempty"`
+	// 本次操作所涉憑證的識別與範圍（見 AssetAccountAudit 的同名欄位）
+	CredentialID    uint   `json:"credential_id,omitempty"`
+	CredentialScope string `json:"credential_scope,omitempty"`
 }
 
 // `RecordAssetAccountChange` 與其私有的 `auditActionForAccountOp`

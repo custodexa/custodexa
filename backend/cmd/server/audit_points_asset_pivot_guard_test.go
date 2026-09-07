@@ -126,11 +126,17 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-35": {pivotDelegated, false, "同上（更新分支）→ writeAssetAccountAudit"},
 	"AP-38": {pivotDelegated, false, "資產建立時的預設帳號留痕 → writeAssetAccountAudit"},
 	"AP-39": {pivotDelegated, false, "資產建立時的節點掛載留痕 → writeAssetNodeChangeAudit"},
-	"AP-40": {pivotDelegated, false, "資產改密（密碼）→ writeAssetAccountAudit"},
+	"AP-40": {pivotDelegated, false, "系統路徑寫入帳號秘密（密碼與私鑰共用同一段實作）" +
+		" → writeAssetAccountAudit"},
 	"AP-41": {pivotDelegated, false, "資產更新時的節點掛載變更 → writeAssetNodeChangeAudit"},
 	"AP-42": {pivotDelegated, false, "資產欄位更新 → writeAssetChangeAudit"},
-	"AP-63": {pivotDelegated, false, "資產改密（私鑰輪替）→ writeAssetAccountAudit"},
 	"AP-64": {pivotDelegated, false, "admin 清除候選憑證 → writeAssetAccountAudit"},
+	// 憑證庫：resource=credential、resource_id=憑證識別，
+	// 掛載類動作另在字面量內填受影響資產，使同一個動作在資產樞紐上也查得到
+	"AP-85": {pivotFilled, true, "憑證庫全部管理動作的唯一產生點：掛載、卸載、改綁與單台脫離" +
+		"改變的是「秘密在哪些主機上生效」，不填主體鍵時「這台機器的登入身分被誰換掉」" +
+		"在資產樞紐上查不出來。與單一資產無關的動作（建立、更名、刪除）由產生點傳 0，" +
+		"落地時不賦值——主體只有產生點知道，落地器不得推導"},
 
 	// ── 已知缺口（受 maxAssetPivotGaps 節制；歸屬另案，見各列理由）──
 	"AP-66": {pivotGap, true, "SFTP 被全域政策擋下的 denied 留痕未填 asset_id，與同檔成功路徑 AP-14 不對稱：" +
@@ -143,6 +149,10 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 
 	// ── 非資產類 ──
 	"AP-01": {pivotNotAsset, false, "封印狀態機留痕，主體是系統"},
+	"AP-86": {pivotNotAsset, false, "存量轉換失敗的留痕（交易外）：主體是轉換工作本身，details 只記階段與待處理筆數，無任何資產可指"},
+	"AP-84": {pivotNotAsset, false, "存量轉換判定某組隱性共用關係不一致而拆開的留痕：主體是那一組憑證，" +
+		"而一組可以橫跨任意多台資產——填其中任一台的 id 都會在該資產的時間軸上長出一則\n" +
+		"「別台也一起發生」的事件。受影響的主機由 details 的憑證識別清單回推"},
 	"AP-83": {pivotNotAsset, false, "輪替證據報告的產出與排程管理：主體是工作單與排程列。" +
 		"報告的範圍可以是全系統或一整個節點子樹，沒有單一資產可歸屬——" +
 		"填任何一台機器的 id 都會在該資產的時間軸上長出一則它沒參與過的事件"},
@@ -485,6 +495,9 @@ var assetSubjectInjectionSites = map[string]int{
 	"(AuthorizationHandler).Create":          1, // 授權客體在 body
 	"(AuthorizationHandler).UpdateAccounts":  1, // :id 是授權列 id
 	"(AuthorizationHandler).Delete":          1, // 撤銷：:id 是授權列 id
+	"(CredentialHandler).Bind":               1, // 路徑上只有憑證 id，受影響資產在 body
+	"(CredentialHandler).Unbind":             1, // :accountId 是掛載列 id；主體須在卸載前取（卸後查不回）
+	"(CredentialHandler).Detach":             1, // 同上；脫離會改掉那台主機的秘密，樞紐上必須看得到
 	"setAuditAssetIDValue":                   1, // 值型入口轉呼叫指標型入口（本身即實作）
 }
 

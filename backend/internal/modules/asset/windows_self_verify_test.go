@@ -127,7 +127,10 @@ func TestWinRMExecutorSelfVerifyExitCodes(t *testing.T) {
 
 	t.Run("exit 6 驗證器不可用 交重連驗證", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
-		f.set(func(f *fakeWinRMServer) { f.exitCode = windowsExitSelfVerifyUnavailable; f.exitCodeFirstCommandOnly = true })
+		f.set(func(f *fakeWinRMServer) {
+			f.exitCode = windowsExitSelfVerifyUnavailable
+			f.exitCodeFirstCommandOnly = true
+		})
 		e := testWinRMExecutor(f, nil)
 		require.NoError(t, e.Rotate(context.Background(), winrmTarget(f), "old", newPassword))
 		assert.Equal(t, newPassword, f.snapshot().password, "端點已是新密碼")

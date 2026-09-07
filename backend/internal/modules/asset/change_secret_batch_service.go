@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +19,11 @@ var (
 	ErrBatchNoTargets        = errors.New("批次改密沒有可執行的目標")
 	ErrBatchTargetMismatch   = errors.New("選定的帳號不屬於指定的帳號名")
 	ErrBatchNotFound         = errors.New("批次改密不存在")
+	// ErrBatchCredentialNameRequired 整批同一組模式沒給共用憑證名稱。
+	//
+	// 名稱必填而非自動產生：這一批改完之後，那組密碼會以一筆具名共用憑證的形式
+	// 長期留在憑證庫裡，沒有名字的共用憑證在清單上無從辨認是哪一次批次留下的
+	ErrBatchCredentialNameRequired = errors.New("整批同一組模式須指定共用憑證名稱")
 )
 
 // batchListLimit 最近批次列表的上界
@@ -35,6 +39,9 @@ type ChangeSecretBatchRequest struct {
 	AccountIDs   []uint `json:"account_ids"`
 	All          bool   `json:"all"`
 	PasswordMode string `json:"password_mode"`
+	// CredentialName 整批同一組模式下要建立的共用憑證名稱（必填，依共用唯一性檢核）；
+	// 每台各自隨機時忽略
+	CredentialName string `json:"credential_name"`
 
 	PasswordLength           int   `json:"password_length"`
 	PasswordIncludeSymbol    *bool `json:"password_include_symbol"`
@@ -201,6 +208,10 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 	if err := ValidatePasswordLength(req.PasswordLength); err != nil {
 		return nil, nil, err
 	}
+	credentialName, err := s.validateSharedCredentialName(req)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	accounts, err := s.matchingAccounts(username)
 	if err != nil {
@@ -222,9 +233,7 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 		RequestedBy:  requesterID, RequestedByName: requesterName,
 		StartedAt: time.Now(),
 	}
-	if req.PasswordMode == model.BatchPasswordShared {
-		batch.SharedGroup = uuid.New().String()
-	}
+	batch.SharedCredentialName = credentialName
 	applyBatchPasswordPolicy(batch, req)
 	if err := s.db.Create(batch).Error; err != nil {
 		return nil, nil, err
@@ -235,6 +244,25 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 		assetIDs = append(assetIDs, targets[i].AssetID)
 	}
 	return batch, assetIDs, nil
+}
+
+// validateSharedCredentialName 整批同一組模式的憑證名稱檢核（送出前先擋，
+// 不讓操作者改完一批機器才被名稱撞名擋下來）。回傳正規化後的名稱；其他模式回空字串。
+func (s *ChangeSecretBatchService) validateSharedCredentialName(req *ChangeSecretBatchRequest) (string, error) {
+	if req.PasswordMode != model.BatchPasswordShared {
+		return "", nil
+	}
+	name := strings.TrimSpace(req.CredentialName)
+	if name == "" {
+		return "", ErrBatchCredentialNameRequired
+	}
+	if err := ValidateCredentialName(name); err != nil {
+		return "", err
+	}
+	if err := assertSharedNameFree(s.db, name, 0); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 // selectTargets 依請求挑出目標；明列的帳號必須全部屬於該帳號名
@@ -311,7 +339,7 @@ func (s *ChangeSecretBatchService) Records(batchID uint) ([]model.ChangeSecretRe
 }
 
 // completeBatch 全部目標處理完後一次寫入四種計數與完成狀態；失敗只留 log
-//（計數寫不進去不改變每個目標已各自落庫的結果）
+// （計數寫不進去不改變每個目標已各自落庫的結果）
 func completeBatch(db *gorm.DB, batchID uint, records []model.ChangeSecretRecord) {
 	var success, failed, unverified, skipped int
 	for i := range records {

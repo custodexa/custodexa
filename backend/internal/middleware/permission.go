@@ -34,6 +34,9 @@ const (
 	// Alert 權限
 	PermAlertView   = authz.PermAlertView
 	PermAlertManage = authz.PermAlertManage
+
+	// Credential 權限（憑證庫的建立、掛載、卸載、改密、範圍轉換與脫離共用）
+	PermCredentialManage = authz.PermCredentialManage
 )
 
 // RequirePermission 要求特定權限的中間件

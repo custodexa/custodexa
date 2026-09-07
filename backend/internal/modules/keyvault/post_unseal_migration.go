@@ -196,7 +196,19 @@ func RunPostUnsealMigrations(db *gorm.DB, codec crypto.ColumnCodec) int {
 // 這種操作必然發生在明確知道兩端身分的地方，讓呼叫端顯式提供 codec 才能在
 // B 模式（段 1 無 codec）下被正確排程進解封後佇列。
 //
-// 冪等：已綁 newRef 的值重跑會先解成功再重加密，結果等價。
+// # 冪等
+//
+// **先以 newRef 探測**：解得開即代表這個值已經在目標身分上，原樣返回。
+// 呼叫端的重試閘（存量搬移是 schema_migrations 的執行期 marker）一旦不在
+// ——結構回退後重跑、或庫被還原到寫 marker 之前的時點——同一批值會被改綁第二次；
+// 恆以 oldRef 解密時那批值一律解不開、整段回滾，於是每次啟動都失敗一次而服務照常起來。
+//
+// 探測失敗即照常走 oldRef → newRef，**fail-close 未被放寬**：兩個身分都解不開的值
+// 仍然回錯（回報的是 oldRef 那一路的錯誤，過渡格式的 ErrNonFinalCiphertext 因此
+// 仍可由呼叫端辨識）。
+//
+// 已在目標身分上的值**不重新加密**：換一次密文買不到任何東西，卻會讓
+// 「這次改綁動了幾筆」不再可信。DEK 版本的收斂是信封重加密路徑的職責，不在本入口。
 func RecryptForNewRef(ctx context.Context, codec crypto.ColumnCodec,
 	oldRef, newRef crypto.CipherRef, ciphertext string) (string, error) {
 	if codec == nil {
@@ -204,6 +216,9 @@ func RecryptForNewRef(ctx context.Context, codec crypto.ColumnCodec,
 	}
 	if ciphertext == "" {
 		return "", nil
+	}
+	if _, err := codec.DecryptFor(ctx, newRef, ciphertext); err == nil {
+		return ciphertext, nil
 	}
 	plain, err := codec.DecryptFor(ctx, oldRef, ciphertext)
 	if err != nil {

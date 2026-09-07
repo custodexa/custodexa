@@ -428,4 +428,29 @@ describe('改密通道：資產下拉、記錄通道欄、機器碼文案', () =
       }
     }
   })
+
+  it('共用憑證目標的略過原因說的是「這個目標」，不是「整張計劃」', async () => {
+    const wrapper = await mountPage()
+
+    // 實碼只略過該目標（其餘目標照跑），文案升格成「本計劃已略過」會讓值班人員
+    // 以為整張計劃沒跑
+    const text = wrapper.vm.reasonText('SHARED_CREDENTIAL_TARGET_REQUIRED')
+    expect(text).not.toBe('SHARED_CREDENTIAL_TARGET_REQUIRED')
+    expect(text).toContain('此目標')
+    expect(text).not.toContain('本計劃')
+
+    const expectations = {
+      'zh-TW': /此目標/,
+      'en-US': /this target/i,
+      'ja-JP': /この対象/,
+    }
+    for (const [locale, pattern] of Object.entries(expectations)) {
+      const messages = JSON.parse(
+        readFileSync(join(process.cwd(), `src/i18n/locales/${locale}.json`), 'utf8')
+      )
+      const value = messages.changeSecretPlans.reason.SHARED_CREDENTIAL_TARGET_REQUIRED
+      expect(value, locale).toMatch(pattern)
+      expect(value, locale).not.toMatch(/本計劃|the plan was skipped|計画をスキップ/)
+    }
+  })
 })

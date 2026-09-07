@@ -12,7 +12,7 @@ SSH 連線（含 SFTP）SHALL 驗證目標主機金鑰：資產首次連線 SHAL
 - **THEN** 該資產的 host key 指紋被記錄，後續相同金鑰連線放行
 
 ### Requirement: 金鑰變更拒線
-記錄存在但指紋不符時，連線 SHALL 被拒絕並回覆可讀錯誤（提示可能的中間人攻擊與重置途徑）；SHALL NOT 自動覆蓋舊指紋。拒線原因 SHALL 以機器可讀 code（`RULE_SSH_HOST_KEY_CHANGED`）送達前端終端 UI 並以當前語言顯示；終端錯誤畫面 SHALL 依角色引導重置途徑——admin SHALL 獲得直達該資產編輯框主機金鑰區塊的入口，非 admin SHALL 獲得聯繫管理員的提示。
+記錄存在但指紋不符時，連線 SHALL 被拒絕並回覆可讀錯誤（提示可能的中間人攻擊與重置途徑）；SHALL NOT 自動覆蓋舊指紋。拒線原因 SHALL 以機器可讀 code（`RULE_SSH_HOST_KEY_CHANGED`）送達前端終端 UI 並以當前語言顯示；終端錯誤畫面 SHALL 依角色引導重置途徑——admin SHALL 獲得直達該資產主機金鑰區塊的入口，非 admin SHALL 獲得聯繫管理員的提示。
 
 #### Scenario: 指紋不符
 - **WHEN** 目標主機金鑰與記錄不符
@@ -20,7 +20,7 @@ SSH 連線（含 SFTP）SHALL 驗證目標主機金鑰：資產首次連線 SHAL
 
 #### Scenario: admin 獲得重置入口引導
 - **WHEN** admin 使用者的終端連線因 host key 變更被拒
-- **THEN** 終端錯誤畫面顯示當前語言的原因說明與「前往資產設定重置主機金鑰」入口，點擊後到達該資產的編輯框主機金鑰區塊
+- **THEN** 終端錯誤畫面顯示當前語言的原因說明與「前往資產設定重置主機金鑰」入口，點擊後到達該資產的主機金鑰區塊
 
 #### Scenario: 非 admin 獲得聯繫管理員提示
 - **WHEN** 非 admin 使用者的終端連線因 host key 變更被拒

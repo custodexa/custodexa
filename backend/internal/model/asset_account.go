@@ -15,23 +15,35 @@ import (
 // 20260802_asset_accounts）；「有帳號必有 default」屬服務層交易式維護，不在 DB 層。
 // 零帳號資產合法（原本即無憑證的資產）。
 //
-// 安全紅線：PasswordEnc/PrivateKeyEnc 必須登記於 keyvault 的
-// envelopeMigrationTargets（internal/modules/keyvault/envelope_migration_service.go）
-// ——該清單同時驅動 DEK 輪替重加密與退役金鑰
-// 銷毀前的引用掃描，漏登會使銷毀前掃描看不見本表密文而誤判零引用。
-// AST 守衛 envelope_targets_guard_test.go 會強制此約束。
+// 本表**不再持有任何密文**：登入秘密的落點是 credential_secret_versions，
+// 掛載列只以 CredentialID／EffectiveVersionID 指向它。密文欄與其
+// envelopeMigrationTargets 登記已於收縮階段一併卸下。
 type AssetAccount struct {
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
-	AssetID  uint   `gorm:"not null;index" json:"asset_id"`
-	Username string `gorm:"size:100" json:"username"`
+	AssetID uint `gorm:"not null;index" json:"asset_id"`
 
-	// 認證資訊（信封加密儲存，絕不出現於 JSON 與審計 Details）
-	PasswordEnc   string `gorm:"type:text" json:"-"`
-	PrivateKeyEnc string `gorm:"type:text" json:"-"`
+	// CredentialID 本掛載所引用的憑證（見 credential.go）。
+	// 登入帳號名與密文一律屬憑證，掛載列只回答「這台以哪筆憑證登入」。
+	// 唯一鍵 (asset_id, credential_id) WHERE deleted_at IS NULL 於 DB 層強制
+	// 「同一憑證不重複掛同一資產」
+	CredentialID uint `gorm:"not null" json:"credential_id"`
+	// EffectiveVersionID 該台當下用以連線的密文版本，**必須屬於 CredentialID 那筆憑證**。
+	// 空＝該掛載尚未取得任何密文。
+	//
+	// **連線一律只取本欄**：不依憑證的現行或待生效版本推測、不自動試兩個版本
+	// ——自動試兩版會製造鎖帳與秘密探測面。寫入時機依密文來源分流：操作者宣告的
+	// 密文（建立、直接寫入、掛載、改綁）於同一交易立即設定；系統產生的密文
+	// （改密輪替）只有在該台驗證成功的那一筆交易才改寫
+	EffectiveVersionID *uint `json:"effective_version_id"`
+
+	// Username 登入帳號名的顯示副本。
+	// **真相在憑證**（credentials.username）：連線與改密一律以憑證上的名字為準，
+	// 本欄由帳號服務同步維護，供尚未切換的讀取面與唯一索引 (asset_id, username) 沿用
+	Username string `gorm:"size:100" json:"username"`
 
 	// IsDefault 預設帳號：系統路徑（改密 runner、k8s、SFTP 側車）與未指定帳號的
 	// 連線一律走此帳號；每資產至多一個（DB partial unique index）
@@ -40,6 +52,7 @@ type AssetAccount struct {
 	Privileged bool `gorm:"default:false" json:"privileged"`
 
 	// AuthMethod 認證類型：sql｜domain。
+	// **真相在憑證**（credentials.auth_method）；本欄為同步維護的顯示副本。
 	// **放帳號而非資產**——憑證屬帳號，且同一台 MSSQL 可同時掛 SQL login 與域帳號。
 	// 1.0 只接受 sql；domain 為 schema 與連線層的預留，由驗證層明確拒絕
 	// （回 VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED，不靜默降級為 sql——
@@ -47,19 +60,6 @@ type AssetAccount struct {
 	AuthMethod string `gorm:"size:20;default:sql" json:"auth_method"`
 
 	Note string `gorm:"size:255" json:"note"`
-
-	// CredentialGroup 憑證群組識別（UUID）：同值＝系統已知這些帳號共用同一組
-	// 憑證。空＝不屬於任何群組。
-	//
-	// **只由兩條路徑寫入**：以「從其他帳號複製」建號時，來源與新帳號同交易歸入
-	// 同一群組；帳號經系統改密成功並提交新憑證時脫離群組（脫離後群組只剩一員時
-	// 該員一併脫離）。管理者手動編輯憑證**不動**此欄——手動輸入的憑證是否仍與
-	// 他人共用，系統無從判定，改動它等於宣稱一件不知道的事。
-	//
-	// **不出站**：對外只投影成「共用憑證」布林（見 asset 模組的帳號 DTO）。
-	// 群組識別本身是一組帳號之間的連結關係，揭露它等於免費提供「哪些帳號共用
-	// 憑證」的完整拓撲，而那正是橫向移動最想要的那張圖。
-	CredentialGroup string `gorm:"size:36;index" json:"-"`
 }
 
 // TableName 指定表名

@@ -41,6 +41,17 @@ var queryFieldZhLabels = map[string]string{
 	"pack": "匯出包型",
 	// 工作單清單的種類欄：閉集外的值不得被當成缺席，且錯誤訊息要指得出是哪個參數
 	"kind": "工作單種類",
+	// 憑證清單的選用分頁與輪替狀態篩選：同樣復用本泛用碼。
+	// 未登記的 field 值會被 validateParams 擋下，回應因而少掉 params——
+	// 前端只知道「某個查詢參數不合法」，指不出是哪一個
+	"page":           "頁碼",
+	"page_size":      "每頁筆數",
+	"rotation_state": "輪替狀態",
+	// 憑證清單的協定相容性篩選：協定值域外、或 Windows OpenSSH 開關不是布林／
+	// 與協定不相容時，同樣不得被當成缺席——挑憑證的畫面若靜默回一份族別不對的
+	// 清單，選到的憑證要到掛載送出時才被擋，而使用者看不出是哪個條件造成的
+	"protocol":        "協定",
+	"windows_openssh": "Windows OpenSSH",
 }
 
 // --- authorization_handler.go: Create ---

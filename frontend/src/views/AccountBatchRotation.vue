@@ -398,6 +398,30 @@
         :description="$t('changeSecretBatches.sharedRisk')"
       />
 
+      <!-- 整批同一組會建出一筆具名共用憑證：名字是之後在憑證庫指認這組秘密的唯一依據，
+           故此處必填而非可省略的備註 -->
+      <div
+        v-if="form.password_mode === 'shared'"
+        class="policy-row"
+        data-test="credential-name-row"
+      >
+        <span class="policy-label required">{{ $t('changeSecretBatches.credentialName') }}</span>
+        <el-input
+          v-model="form.credential_name"
+          maxlength="128"
+          class="credential-name-input"
+          data-test="credential-name"
+          :placeholder="$t('changeSecretBatches.credentialNamePlaceholder')"
+        />
+      </div>
+      <div
+        v-if="form.password_mode === 'shared' && !form.credential_name.trim()"
+        class="field-error"
+        data-test="credential-name-error"
+      >
+        {{ $t('changeSecretBatches.credentialNameRequired') }}
+      </div>
+
       <div class="policy-row">
         <span class="policy-label">{{ $t('changeSecretPlans.passwordLength') }}</span>
         <el-input-number
@@ -425,7 +449,7 @@
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!selectedCount"
+          :disabled="!selectedCount || missingCredentialName"
           data-test="submit-batch"
           @click="submit"
         >
@@ -437,7 +461,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -502,11 +526,37 @@ const form = ref(emptyForm())
 function emptyForm() {
   return {
     password_mode: 'per_target',
+    credential_name: '',
     password_length: 16,
     password_include_symbol: true,
     password_exclude_ambiguous: true,
   }
 }
+
+// 整批同一組模式的預填名稱：帳號名＋今天，讓多次批次在憑證庫裡分得出來。
+// 使用者改過的名字不覆寫——只在還沒有名字時填
+const defaultCredentialName = () => {
+  const now = new Date()
+  const date = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-')
+  return t('changeSecretBatches.credentialNameDefault', { username: username.value, date })
+}
+
+const missingCredentialName = computed(
+  () => form.value.password_mode === 'shared' && !form.value.credential_name.trim()
+)
+
+watch(
+  () => form.value.password_mode,
+  (mode) => {
+    if (mode === 'shared' && !form.value.credential_name.trim()) {
+      form.value.credential_name = defaultCredentialName()
+    }
+  }
+)
 
 const eligible = (row) => !row.ineligible_reason
 const eligibleTargets = computed(() => targets.value.filter(eligible))
@@ -713,10 +763,10 @@ async function openHistory(row) {
 // 一律明列已勾選的帳號識別，不用「全部符合者」：
 // 管理員看到的清單與送出的集合必須是同一份，清單載入之後才出現的帳號不該被默默納入
 async function submit() {
-  if (!selectedCount.value) return
+  if (!selectedCount.value || missingCredentialName.value) return
   submitting.value = true
   try {
-    const res = await createChangeSecretBatch({
+    const payload = {
       username: username.value,
       account_ids: [...selected.value],
       all: false,
@@ -724,7 +774,11 @@ async function submit() {
       password_length: form.value.password_length,
       password_include_symbol: form.value.password_include_symbol,
       password_exclude_ambiguous: form.value.password_exclude_ambiguous,
-    })
+    }
+    if (form.value.password_mode === 'shared') {
+      payload.credential_name = form.value.credential_name.trim()
+    }
+    const res = await createChangeSecretBatch(payload)
     dialogVisible.value = false
     ElMessage.success(t('changeSecretBatches.accepted'))
     selected.value = []
@@ -753,6 +807,24 @@ onUnmounted(stopPolling)
 </script>
 
 <style scoped>
+.credential-name-input {
+  width: 320px;
+}
+
+/* 必填標記與就近錯誤：名稱空著時送出鈕是停用的，理由要寫在旁邊 */
+.policy-label.required::before {
+  content: '*';
+  color: var(--el-color-danger);
+  margin-right: 4px;
+}
+
+.field-error {
+  margin-top: -4px;
+  margin-bottom: var(--ot-space-sm);
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+
 .toolbar {
   display: flex;
   align-items: center;

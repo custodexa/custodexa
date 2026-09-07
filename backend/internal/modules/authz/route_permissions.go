@@ -33,6 +33,14 @@ const (
 	// Alert 權限
 	PermAlertView   Permission = "alert:view"
 	PermAlertManage Permission = "alert:manage"
+
+	// Credential 權限：憑證庫的建立、掛載、卸載、改密、範圍轉換與脫離共用。
+	//
+	// **不列入 user 與 auditor**：憑證識別、名稱與掛載拓撲合起來就是一張
+	// 「哪些主機共用同一組秘密」的地圖，對非管理者而言那是免費的橫向移動路線。
+	// 稽核角色要核對共用關係走輪替證據報告（只投影名稱與共用標記，不含識別與密文），
+	// 那是刻意的顯式例外，不以本授權點承載。
+	PermCredentialManage Permission = "credential:manage"
 )
 
 // RoutePermissions 檢查角色是否有指定權限（原 `middleware.hasPermission`）。

@@ -9,11 +9,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/audit/port"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -782,13 +782,23 @@ func TestFailCloseAssetUpdatePasswordRollsBackOnAuditFailure(t *testing.T) {
 	})
 	inj.attach(db)
 
+	// 密文的落點是該掛載**就位版本**的密文欄（掛載列自憑證庫化之後零密文欄），
+	// 對照組與回滾斷言隨之改讀那裡——斷的仍是同一件事：密碼有沒有被改寫
 	encOf := func() string {
 		t.Helper()
 		var row model.AssetAccount
 		if err := db.Where("id = ?", acct.ID).First(&row).Error; err != nil {
 			t.Fatalf("讀取帳號: %v", err)
 		}
-		return row.PasswordEnc
+		if row.EffectiveVersionID == nil {
+			return ""
+		}
+		var ver model.CredentialSecretVersion
+		if err := db.Where("id = ? AND credential_id = ?", *row.EffectiveVersionID, row.CredentialID).
+			First(&ver).Error; err != nil {
+			t.Fatalf("讀取就位版本: %v", err)
+		}
+		return ver.PasswordEnc
 	}
 	original := encOf()
 	inj.control("改密", func() error {

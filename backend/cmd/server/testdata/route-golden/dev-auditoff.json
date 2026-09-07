@@ -53,6 +53,16 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/credentials/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Delete-fm"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/credentials/:id/bindings/:accountId",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Unbind-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/keys/retired-material",
       "handler": "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).CleanupRetired-fm"
     },
@@ -375,6 +385,21 @@
       "method": "GET",
       "path": "/api/v1/connect",
       "handler": "github.com/custodexa/backend/internal/proxy.(*ConnectionHandler).HandleConnect-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials/:id/rotations/:rid",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).GetRotation-fm"
     },
     {
       "method": "GET",
@@ -828,6 +853,46 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/credentials",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Create-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/bindings",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Bind-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/bindings/:accountId/detach",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Detach-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).StartRotation-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations/:rid/abandon",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).AbandonRotation-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations/:rid/members/:mid/retry",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).RetryMember-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/scope",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).ConvertScope-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/secret",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).SetSecret-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/daily-reviews",
       "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Sign-fm"
     },
@@ -1038,6 +1103,11 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/assets/:id/accounts/:accountId/credential",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).RebindAccount-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/authorizations/:id/accounts",
       "handler": "github.com/custodexa/backend/internal/api.(*AuthorizationHandler).UpdateAccounts-fm"
     },
@@ -1045,6 +1115,11 @@
       "method": "PUT",
       "path": "/api/v1/change-secret-plans/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Update-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/credentials/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Update-fm"
     },
     {
       "method": "PUT",
@@ -1331,6 +1406,36 @@
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Delete-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/credentials/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Delete-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/credentials/:id/bindings/:accountId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Unbind-fm"
       ]
     },
     {
@@ -2593,6 +2698,51 @@
         "main.(*Metrics).HTTPMiddleware",
         "github.com/gin-contrib/cors.New.func1",
         "github.com/custodexa/backend/internal/proxy.(*ConnectionHandler).HandleConnect-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/credentials/:id/rotations/:rid",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).GetRotation-fm"
       ]
     },
     {
@@ -4364,6 +4514,126 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/credentials",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Create-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/bindings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Bind-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/bindings/:accountId/detach",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Detach-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).StartRotation-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations/:rid/abandon",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).AbandonRotation-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/rotations/:rid/members/:mid/retry",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RetryMember-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/scope",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).ConvertScope-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/credentials/:id/secret",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).SetSecret-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/daily-reviews",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -5143,6 +5413,21 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/assets/:id/accounts/:accountId/credential",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func4",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func5",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RebindAccount-fm"
+      ]
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/authorizations/:id/accounts",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -5176,6 +5461,21 @@
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*ChangeSecretHandler).Update-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/credentials/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*CredentialHandler).Update-fm"
       ]
     },
     {

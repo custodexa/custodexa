@@ -195,6 +195,13 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 				if sessionID := c.Param("id"); sessionID != "" {
 					summary["session_id"] = sessionID
 				}
+			// 憑證庫的詳情與改密進度同理：查詢條件在**路徑**而非 query string，
+			// 只讀 RawQuery 會讓「他看的是哪一筆憑證的分布」在摘要上恆為空。
+			// 列表端點無 `:id`，`c.Param` 回空字串而不寫鍵——摘要退化為只有 query 一鍵
+			case model.ResourceCredential:
+				if credentialID := c.Param("id"); credentialID != "" {
+					summary["credential_id"] = credentialID
+				}
 			}
 			if len(summary) > 0 {
 				if data, err := json.Marshal(summary); err == nil {
@@ -507,6 +514,16 @@ func extractResource(path string) model.AuditResource {
 		// 每次呼叫一列讀取留痕是刻意的——它只在橫幅出現時由管理者取一次，不輪詢
 		case "instance-guard":
 			return model.ResourceInstanceGuard
+		// 帳號憑證庫：`:id` 指向憑證列，`:accountId`／`:rid`／`:mid` 分別指向掛載列、
+		// 改密輪次與其成員，**都不是資產 id**。落 default asset 的年代會把憑證 id
+		// 寫進 asset_id，在同號資產的時間軸上長出假事件。
+		//
+		// 另入 auditSensitiveResources：憑證庫的讀取回的是「哪些主機共用同一組
+		// 秘密」，那是受保護材料的分布圖而非設定值，「誰以什麼條件查過」須留痕。
+		// 掛載與卸載的受影響資產由 handler 顯式注入主體鍵（見 credential_handler.go），
+		// 使同一個動作在資產樞紐上也查得到——路由層推導不出那台機器是誰
+		case "credentials":
+			return model.ResourceCredential
 		}
 	}
 
@@ -556,6 +573,13 @@ var auditSensitiveResources = map[model.AuditResource]bool{
 	model.ResourceAuditCheckpoint: true,
 	model.ResourceAuditFailure:    true,
 	model.ResourceAuditIntegrity:  true,
+	// 憑證庫讀取：回的是「哪些主機共用同一組秘密」——受保護材料的分布圖，
+	// 不是設定值。誰以什麼條件查過憑證庫是可課責事實，故列表、詳情與改密進度
+	// 三支讀取各記一筆帶查詢條件摘要的審計列（掛載清單隨詳情一併回）。
+	//
+	// 與同批新增的設定面分類（alert_rule／oidc_provider 等）不同的正是這一點：
+	// 那些的稽核價值在「改了什麼」，本族的稽核價值在「誰看過這張圖」
+	model.ResourceCredential: true,
 }
 
 // determineStatus 根據 HTTP 狀態碼確定審計狀態

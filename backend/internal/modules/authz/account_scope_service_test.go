@@ -36,7 +36,7 @@ func setupScopeEnv(t *testing.T) (*AssetAuthorizationService, *gorm.DB) {
 	// asset_account_audit.go），缺表會讓 seed 直接失敗
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{},
 		&model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAccount{}, &model.AssetAuthorization{}, &model.AuditLog{}); err != nil {
+		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewAssetAuthorizationService(db), db

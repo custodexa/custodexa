@@ -3,10 +3,12 @@ package moduleboundary
 // 資產憑證的**解封出口清單**（Phase B 任務 6.3）。
 //
 // **安全紅線**：資產憑證的明文只在「連線收口」的那一刻出現，前端零接觸。
-// 現況全庫只有兩個出口——`AssetService.GetWithCredentialsForAccount`（連線用）
-// 與 `AssetService.GetSftpPassword`（SFTP 用）。清單最初只列了前者，後者是後來
-// 查出來補上的：一份不完整的出口清單比沒有清單更危險，因為它會讓人以為
-// 「都在這裡了」。
+// 出口清單最初只列了連線那一個，SFTP 那個是後來查出來補上的：一份不完整的
+// 出口清單比沒有清單更危險，因為它會讓人以為「都在這裡了」。
+//
+// 憑證庫化之後，連線與改密的取密收斂到 `CredentialResolver` 的兩支方法，
+// 連線入口（`AssetService.GetWithCredentialsForAccount`）已無解封動作而自清單移除
+// ——登記一個不再解封的出口會讓偵測器健康檢查失效，屆時「零違規」只代表沒掃到。
 //
 // **本守衛擋的是**：任何人在 asset 模組**之外**、或在 asset 內的**第三個函式**
 // 解封資產類密文欄。這正是「正常開發會意外發生」的形態——handler 想直接拿明文
@@ -34,8 +36,19 @@ import (
 //
 // key＝`相對路徑#函式`，value＝理由。**新增一列＝新增一個明文出口，SHALL 經安全審查**。
 var assetCredentialExits = map[string]string{
-	"internal/modules/asset/asset_service.go#(*AssetService).GetWithCredentialsForAccount": "連線收口：SSH／RDP／VNC 撥線時把帳號憑證交給接入層，明文不出行程邊界。",
-	"internal/modules/asset/asset_service.go#(*AssetService).GetSftpPassword":              "SFTP 收口：獨立的 sftp_password_enc 欄，同上（後續補列的第二出口）。",
+	"internal/modules/asset/credential_resolver.go#(*CredentialResolver).ResolveForBinding": "連線收口：SSH／RDP／VNC 撥線時把該掛載**就位版本**的秘密交給接入層，" +
+		"明文不出行程邊界。取密的唯一入口——連線、檔案管理、DB 主控台與改密登入全部經此。",
+	"internal/modules/asset/credential_resolver.go#(*CredentialResolver).ResolveVersion": "輪替內部以**指定版本**取密（驗證步驟：以新秘密登入目標機確認它真的生效）。" +
+		"與上一支刻意各自解封而不抽共用函式：把解封收進一個吃 ref 參數的函式，" +
+		"會讓兩個出口同時自本守衛的掃描面消失，而清單看起來仍然完整。",
+	"internal/modules/asset/asset_service.go#(*AssetService).GetSftpPassword": "SFTP 收口：獨立的 sftp_password_enc 欄，同上（後續補列的第二出口）。",
+	"internal/database/credential_secret_conversion.go#decryptCredentialPassword": "既有隱性共用關係的一次性合併：" +
+		"判定「這些帳號是不是真的共用同一組秘密」只能比對**明文**——同一組明文的兩份信封密文帶各自的" +
+		"隨機 nonce，密文層永遠不相等。明文只在呼叫端以常數時間比較後即丟棄，" +
+		"SHALL NOT 進入任何回應、日誌、審計欄位或新的密文欄（合併時的密文一律原樣搬）。" +
+		"本出口隨存量轉換一次性存在，以 schema_migrations 的執行期 marker 擋下第二次執行。",
+	"internal/database/credential_secret_conversion.go#decryptCredentialPrivateKey": "同上，私鑰欄。" +
+		"兩欄都要比：只比密碼會把「密碼相同但金鑰不同」誤判為同一組秘密而合併。",
 	"internal/modules/asset/change_secret_candidate_service.go#(*ChangeSecretCandidateService).Secret": "改密未驗證候選憑證的解封。" +
 		"**新出口的正當性**：候選是尚未成為帳號憑證的秘密，不在 asset_accounts 的兩個既定出口涵蓋範圍內；" +
 		"其明文只在同一行程內交給兩個用途——以候選登入目標機驗證、驗證成功後提交為帳號憑證，" +
@@ -98,7 +111,8 @@ func assetClassCipherRefs(t *testing.T, root string) map[string]string {
 		t.Fatalf("只自 cipher_refs.go 推導出 %d 個 CipherRef（現況 11）：來源失真", total)
 	}
 	if len(out) < 3 {
-		t.Fatalf("只推導出 %d 個資產類 CipherRef（現況 5：assets 3＋asset_accounts 2）："+
+		t.Fatalf("只推導出 %d 個資產類 CipherRef（現況 9：assets 3＋asset_accounts 2＋"+
+			"credential_secret_versions 2＋change_secret_candidates 2）："+
 			"tableOwner 或 cipher_refs.go 已變動，本守衛的射程已失真", len(out))
 	}
 	return out

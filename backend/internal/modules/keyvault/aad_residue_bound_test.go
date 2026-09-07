@@ -25,7 +25,7 @@ func TestAADResidueLowerBoundIsLowerBound(t *testing.T) {
 	// 全部登記欄位先清成合法終態，再種入唯一一筆 malformed 前綴值
 	for _, stmt := range []string{
 		"UPDATE assets SET password_enc = 'enc:a1:v1:AAAA'",
-		"UPDATE asset_accounts SET password_enc = 'enc:a1:v1:AAAA', private_key_enc = 'enc:a1:v1:AAAA'",
+		"UPDATE credential_secret_versions SET password_enc = 'enc:a1:v1:AAAA', private_key_enc = 'enc:a1:v1:AAAA'",
 		"UPDATE assets SET password_enc = 'enc:a1:broken' WHERE id = 1",
 	} {
 		if err := db.Exec(stmt).Error; err != nil {

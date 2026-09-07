@@ -37,7 +37,7 @@ func setupAccountListEnv(t *testing.T) (*AssetAccountHandler, *gorm.DB) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
-		&model.AssetNode{}, &model.AssetAccount{}, &model.AssetAuthorization{},
+		&model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
 		&model.ApproverScope{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -153,20 +153,33 @@ func TestAccountListNoGrantEmpty(t *testing.T) {
 	}
 }
 
-// TestAccountCopyCrossAssetVisibilityGuard 跨資產複製建號的來源可見性
-// （階段 2 backlog）：沒有這道判定，只管得到自己那台的管理員可以把
-// 生產核心機的 root 密文複製到自己的資產上，再從自己的資產連上去——
-// 密文原樣搬運不需解密即可用，是完整的憑證竊取路徑
+// TestAccountCopyCrossAssetVisibilityGuard 掛載端點的跨資產權限守衛。
+//
+// 憑證庫化之前，這條攻擊路徑是「從其他資產帳號複製密文」；該參數已隨憑證庫移除，
+// 但**後果沒有消失**——把一組已經用在生產核心機上的共用憑證掛到自己的資產上，
+// 就取得了以該秘密登入的能力。故職責由掛載端點承接：除路由級授權點外，
+// 服務層另驗操作者對受影響資產有權限。
+//
+// 只驗目標資產的權限不足以涵蓋跨資產後果，這正是本守衛存在的理由。
 func TestAccountCopyCrossAssetVisibilityGuard(t *testing.T) {
 	_, db := setupAccountListEnv(t)
-	// 另一台資產（user 1 對它無任何授權）與其 root 帳號
+	// 另一台資產（user 1 對它無任何授權）與一筆掛在它上面的共用憑證
 	if err := db.Create(&model.Asset{Name: "secret", Protocol: "ssh", Host: "h2", Port: 22,
 		CreatedBy: 2, Active: true}).Error; err != nil {
 		t.Fatalf("seed asset2: %v", err)
 	}
-	foreign := model.AssetAccount{AssetID: 2, Username: "root", Privileged: true, IsDefault: true}
-	if err := db.Create(&foreign).Error; err != nil {
-		t.Fatalf("seed foreign account: %v", err)
+	sharedName := "prod-root"
+	shared := model.Credential{
+		Name: &sharedName, Scope: model.CredentialScopeShared, Username: "root",
+		SecretType: model.ChangeSecretTypePassword, AuthMethod: "sql",
+		ProtocolFamily: model.ProtocolFamilySSH,
+	}
+	if err := db.Create(&shared).Error; err != nil {
+		t.Fatalf("seed shared credential: %v", err)
+	}
+	if err := db.Create(&model.AssetAccount{AssetID: 2, Username: "root", Privileged: true,
+		IsDefault: true, CredentialID: shared.ID}).Error; err != nil {
+		t.Fatalf("seed foreign binding: %v", err)
 	}
 
 	codec := aesColumnCodec(t, make([]byte, 32))
@@ -174,25 +187,26 @@ func TestAccountCopyCrossAssetVisibilityGuard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("asset service: %v", err)
 	}
-	accountSvc := asset.NewAssetAccountService(assetSvc, codec, audit.NewTxSink()).
+	credSvc := asset.NewCredentialService(assetSvc, codec, audit.NewTxSink()).
 		WithAuthorization(authz.NewAssetAuthorizationService(db))
 
+	// user 1 對資產 1 無 connect 授權：掛載被拒
 	ctx := context.WithValue(context.Background(), "userID", uint(1)) //nolint:staticcheck
 	ctx = context.WithValue(ctx, "role", model.RoleUser)              //nolint:staticcheck
 
-	_, err = accountSvc.Create(ctx, 1, &asset.CreateAssetAccountRequest{
-		Username: "stolen", CopyFromAccountID: foreign.ID,
-	})
-	if err == nil {
-		t.Fatal("不可見來源資產的帳號不得被複製")
+	if _, err := credSvc.Bind(ctx, shared.ID, &asset.BindCredentialRequest{AssetID: 1}); err == nil {
+		t.Fatal("對受影響資產無權限者不得掛載共用憑證")
+	}
+	var bound int64
+	db.Model(&model.AssetAccount{}).Where("asset_id = ? AND credential_id = ?", 1, shared.ID).Count(&bound)
+	if bound != 0 {
+		t.Fatalf("被拒的掛載不得留下掛載列: %d", bound)
 	}
 
-	// admin 短路：管理員複製不受限（既有能力不被收窄）
+	// admin 短路：管理員可掛載（既有能力不被收窄）
 	adminCtx := context.WithValue(context.Background(), "userID", uint(2)) //nolint:staticcheck
 	adminCtx = context.WithValue(adminCtx, "role", model.RoleAdmin)        //nolint:staticcheck
-	if _, err := accountSvc.Create(adminCtx, 1, &asset.CreateAssetAccountRequest{
-		Username: "copied", CopyFromAccountID: foreign.ID,
-	}); err != nil {
-		t.Fatalf("admin 應可複製: %v", err)
+	if _, err := credSvc.Bind(adminCtx, shared.ID, &asset.BindCredentialRequest{AssetID: 1}); err != nil {
+		t.Fatalf("admin 應可掛載: %v", err)
 	}
 }

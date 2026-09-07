@@ -273,13 +273,31 @@ func prepareRedeemableAsset(t *testing.T, h *Handler, db *gorm.DB) {
 		Updates(map[string]interface{}{"host": "127.0.0.1", "port": port}).Error; err != nil {
 		t.Fatalf("point asset at test server: %v", err)
 	}
-	// 帳號密碼須以與 AssetService 同一把測試金鑰＋同一 AAD 欄位身分加密
+	// 帳號密碼須以與 AssetService 同一把測試金鑰＋同一 AAD 欄位身分加密。
+	// 秘密的落點自憑證庫化之後是憑證的密文版本列，AAD 身分隨之改為該表該欄
 	enc, err := aesColumnCodec(t, make([]byte, 32)).EncryptFor(context.Background(),
-		crypto.CipherRef{Table: "asset_accounts", Column: "password_enc"}, "testpass123")
+		crypto.CipherRef{Table: "credential_secret_versions", Column: "password_enc"}, "testpass123")
 	if err != nil {
 		t.Fatalf("encrypt account password: %v", err)
 	}
-	acct := model.AssetAccount{AssetID: 1, Username: "testuser", PasswordEnc: enc, IsDefault: true}
+	cred := model.Credential{
+		Scope: model.CredentialScopeDedicated, Username: "testuser",
+		SecretType: model.ChangeSecretTypePassword, AuthMethod: "sql",
+		ProtocolFamily: model.ProtocolFamilySSH,
+	}
+	if err := db.Create(&cred).Error; err != nil {
+		t.Fatalf("seed credential: %v", err)
+	}
+	ver := model.CredentialSecretVersion{
+		CredentialID: cred.ID, VersionNo: 1,
+		SecretType: model.ChangeSecretTypePassword, PasswordEnc: enc,
+		CreatedReason: model.CredentialVersionReasonManual,
+	}
+	if err := db.Create(&ver).Error; err != nil {
+		t.Fatalf("seed credential version: %v", err)
+	}
+	acct := model.AssetAccount{AssetID: 1, Username: "testuser", IsDefault: true,
+		CredentialID: cred.ID, EffectiveVersionID: &ver.ID}
 	if err := db.Create(&acct).Error; err != nil {
 		t.Fatalf("seed account: %v", err)
 	}
