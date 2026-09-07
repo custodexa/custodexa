@@ -4,113 +4,54 @@ All notable changes to Custodexa will be documented in this file.
 
 ## 1.6.0 — a credential library for login secrets (2026-09-07)
 
-**This release changes the database schema.** Two migrations run when the backend starts,
-`20260906_credential_library` and `20260906_credential_library_contract`. The first moves login
-secrets out of the account rows and into a credential of their own: four new tables, and new
-columns on the accounts, on the credential change plans, on the change records and on the pending
-credentials. In the same transaction it converts what you already hold, so every surviving asset
-account gets a credential of its own, and those that held a secret also get version 1 of it. The
-ciphertext is moved as it is, so no key is needed at that point. This migration works through the
-asset accounts one at a time, so its duration grows with how many of them you have, which in a
-typical deployment is far smaller than the session and audit volume. It is not idempotent: if any
-step fails, the whole transaction rolls back, the database is left exactly as it was, and it can be
-run again once the cause is fixed. The second migration takes down the storage the account rows
-used for their own secrets, along with two places that recorded sharing, since sharing is now
-expressed by the credential itself.
+### Every login secret in one place
 
-**Back up before you upgrade and keep your current images.** The `Down` of both migrations is
-lossy, and there is no rollback entry point in the product: going back means deploying the previous
-version's images and restoring the backup you took before the upgrade. Section 2 of
-`docs/ops/upgrade-sop.md` lists what to record beforehand and what to check afterwards.
-
-**One more conversion runs after the KEK is unsealed.** It re-binds the moved ciphertext to its new
-home and then compares the decrypted values to decide which of the existing implicit sharing
-relationships are genuinely the same secret. Both steps need a key, which is why they run at that
-point rather than with the migrations above. Confirm these two log lines before declaring the
-upgrade complete:
-
-```
-[CredentialSecretConversion] 完成：改綁密文 <N> 筆、合併共用 <M> 組、標記待處理 <K> 組
-[PostUnsealMigration] credential_secret_conversion 完成
-```
-
-A failure rolls the segment back, writes no completion marker, and is retried on the next start,
-while the service still comes up. Each failed attempt also writes an audit row naming the stage it
-stopped at and how much is left. Until the conversion succeeds, connections to managed assets fail
-to obtain their credentials, loudly and visibly; the usual cause is the key being unavailable, so
-fix that and restart. Groups whose members could not be proven identical are left as they are and
-marked for attention: the note on each such credential is prefixed with
-`[MIGRATION_GROUP_MISMATCH:<group>]`, which shows on the credential's detail and can be cleared by
-an administrator, and one audit row per group records whether the secrets themselves differ or
-only the credential's attributes do. Those hosts keep working.
-
-Accounts left behind by assets removed before the upgrade are converted the same way and then
-retired together with their credential in the same transaction, so they stay out of the credential
-library while their ciphertext is kept.
-
-### Every login secret lives in one place
-
-- A new Credentials page, for administrators holding credential management rights, lists every
-  login secret the system holds. A credential is either dedicated, meaning it comes and goes with
-  the account on one asset, or shared, meaning it is named here and attached to several assets. The
-  page filters by scope, secret type, protocol, rotation state and account name, and searches by
-  name, account name and the asset name behind a dedicated credential.
-- A credential keeps its secret as immutable versions, and every asset it is attached to records
-  the version it is currently using. A connection uses that version and nothing else.
-- From the page you can create a shared credential, attach it to an asset, remove it from an asset,
-  rename it, write in the secret a host already has, and convert a credential between dedicated and
-  shared. Attaching, removing and converting leave the password on the host as it is, and the
-  screen says so at the point of the action.
-- Selecting a credential shows the assets attached to it, which of them are on the current version,
-  and which of them are marked privileged.
+- A new Credentials page lists every login secret the system holds. A credential is either
+  dedicated, so it comes and goes with the account on one asset, or shared, so it is named once
+  and attached to as many assets as use it. Filter by scope, secret type, protocol, rotation state
+  or account name; search by name, account name or asset.
+- Each credential keeps its secret as versions, and every asset attached to it shows the version
+  it is on. Selecting a credential shows the assets attached to it, which are on the current
+  version, and which are marked privileged.
+- Create a shared credential, attach it to an asset, detach it, rename it, record the secret a host
+  already has, or convert a credential between dedicated and shared, all from the same page. The
+  page says at each action whether the host itself is touched.
 
 ### Adding and editing an asset
 
-- The asset form now asks which of the two you want: a credential dedicated to this asset, or one
-  of the shared credentials already in the library. The list offers only credentials usable with
-  that asset's protocol, and states how many hosts a shared one already covers. A dedicated
-  credential appears in the library under "asset / account".
-- Editing an asset opens a drawer on the right of the list with its accounts inline, each showing
-  the credential it uses and the version in place.
+- The asset form offers two ways to log in: a credential dedicated to this asset, or one of the
+  shared credentials already in the library. The list shows only credentials that fit the asset's
+  protocol and says how many hosts a shared one already covers.
+- Editing an asset opens a drawer beside the list with its accounts inline, each showing the
+  credential it uses and the version in place.
 
 ### Changing a shared secret on every host that uses it
 
-- Starting a group change returns straight away and the hosts are worked through in the background,
-  one at a time. A host moves to the new secret only once the system has signed in with it and that
-  sign-in succeeded, so a partial result is a normal state: verified hosts use the new secret,
-  the rest keep using the one they had. The credential's state appears on the page as idle,
-  queued, changing, partial or out of sync.
-- The other mode gives every host its own new password and ends the sharing: as each host verifies,
-  it moves onto a credential of its own. Sharing those hosts again means creating a shared
-  credential, attaching them, and changing the whole group on it.
-- Hosts that ended in a final failure, and every host in a round you abandoned, are retried one at a
-  time from the page. A single retry answers synchronously and can take tens of seconds, because it
-  opens a real connection and verifies the sign-in.
-- Abandoning a round stops the automation and leaves every host as it stands, including any host
-  already carrying the new secret. If nothing had been delivered anywhere the round is discarded and
-  the credential returns to idle; otherwise the credential goes to out of sync and stays there until
-  every host is back on one version, and a new round on it is refused meanwhile.
-- One host can also be taken out of a shared credential on its own. That signs in with the secret it
-  currently uses, applies a new one, and verifies it by signing in again; only then does that host
-  move onto a credential of its own. If the change fails, or if the remote result stays unknown,
-  the host stays on the shared credential and the response says which of the two it was.
+- Start the change and the hosts are worked through in the background, one at a time. Each host
+  moves to the new secret once a sign-in with it has succeeded, so hosts already verified use the
+  new secret while the rest keep working on the one they had; any host can be retried on its own
+  from the page.
+- The other mode gives every host its own new password and ends the sharing, moving each host onto
+  a credential of its own as it verifies. One host can also be taken out of a shared secret on its
+  own, with a random or a chosen new password, verified by signing in before the switch.
 
 ### Batch rotation, reports and audit
 
-- The batch rotation mode that gives the whole batch one password now asks for a name, and the
-  hosts that succeed end up on a named shared credential, which can then be changed as a group from
-  the credential library.
-- The rotation evidence report takes its shared marking from the credential itself, and its data
-  states, for each account, the credential name it signs in with and the version that host has in
-  place.
-- Audit records gain a credential category, so creating, attaching, detaching, changing and
-  deleting a credential are all queryable as one kind of event.
+- The batch rotation mode that gives a whole batch one password now names the resulting shared
+  credential, so the hosts that succeed can be changed as a group from the library afterwards.
+- The rotation evidence report takes its shared marking from the credential itself and states, for
+  each account, the credential it signs in with and the version that host has in place.
+- Audit records gain a credential category, so everything done to a credential is queryable as one
+  kind of event.
 
-### Removed
+### Upgrading
 
-- Creating an account by copying the credentials of another asset account is replaced by shared
-  credentials. A request that still carries the old parameter is refused with 400 and a message
-  pointing at the replacement.
+This release changes the database schema. Two migrations run when the backend starts and move
+existing login secrets into the credential library, and a one-time conversion after the KEK is
+unsealed merges accounts that already shared one secret into a shared credential. Back up before
+you upgrade and keep your current images; section 2 of `docs/ops/upgrade-sop.md` walks through the
+steps and the two log lines that confirm the conversion is complete. Creating an account by copying
+another asset's credentials is replaced by attaching a shared credential.
 
 ## 1.5.0 — batch password rotation by account name, and a standby application host (2026-09-06)
 
