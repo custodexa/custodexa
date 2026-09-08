@@ -2,6 +2,16 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.8.1 — role-mapping channel identifiers (2026-09-09)
+
+No schema change. No migration runs.
+
+### Roles that come from an external group
+
+- Reads the numeric source identifier inside a role-mapping channel value at the integer width of
+  the platform the backend was built for. A value that does not fit is rejected as malformed on every
+  build, and the parser is covered by tests for round trips, malformed values and the upper bound.
+
 ## 1.8.0 — directory groups decide roles (2026-09-09)
 
 ### Roles that come from an external group

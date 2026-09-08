@@ -67,7 +67,8 @@ func ParseRoleMappingChannel(channel string) (kind string, sourceID uint, err er
 		if kind != RoleMappingChannelKindDirectory && kind != RoleMappingChannelKindProvider {
 			return "", 0, fmt.Errorf("未知的途徑種類: %q", kind)
 		}
-		id, convErr := strconv.ParseUint(channel[i+1:], 10, 64)
+		// bitSize 取平台字長：uint 在 32 位元平台只有 32 位，直接以 64 解析再轉型會靜默截斷
+		id, convErr := strconv.ParseUint(channel[i+1:], 10, strconv.IntSize)
 		if convErr != nil {
 			return "", 0, fmt.Errorf("通道的來源識別無法解析: %w", convErr)
 		}
