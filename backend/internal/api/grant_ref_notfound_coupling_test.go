@@ -32,7 +32,7 @@ func setupGrantRefDB(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetGroup{}, &model.AssetAuthorization{}); err != nil {
+		&model.AssetGroup{}, &model.AssetAuthorization{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 各建一筆存在的實體，讓「不存在」只可能來自刻意指定的 999

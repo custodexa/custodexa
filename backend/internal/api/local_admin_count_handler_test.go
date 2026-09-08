@@ -33,7 +33,7 @@ func setupLocalAdminCountEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *go
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	assert.NoError(t, err)
-	assert.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}))
+	assert.NoError(t, db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}, &model.UserRole{}))
 
 	// AuthMiddleware 的憑證世代閘現查 database.DB（未注入即全數 401）
 	oldDB := database.DB

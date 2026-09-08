@@ -16,8 +16,9 @@
 | 單實例守衛 | 3 | `/api/v1/instance-guard` | 守衛全貌快照（admin；每次呼叫留一筆讀取審計，介面不輪詢；粗狀態另隨 `/api/v1/seal/status` 出）＋攔下頁的狀態查詢與確認送出（不需 JWT，受來源網段限制） |
 | 認證 / MFA | 12 | `/api/v1/auth`, `/api/v1/users` | 登入（本地/LDAP）、MFA 兩階段、強制註冊、自助改密、會話刷新、管理員救援 |
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
-| OIDC provider | 4 | `/api/v1/oidc-providers` | 身分提供者 CRUD（admin；secret write-only，身分域建後不可變） |
-| LDAP 目錄 | 4 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試（admin；bind 密碼 write-only，設定自 env 遷入 DB） |
+| OIDC provider | 7 | `/api/v1/oidc-providers` | 身分提供者 CRUD＋單筆詳情＋狀態彙總＋探索預覽（admin；secret write-only，身分域建後不可變） |
+| LDAP 目錄 | 5 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試＋狀態彙總（admin；bind 密碼 write-only，設定自 env 遷入 DB） |
+| 身分來源與群組映射 | 5 | `/api/v1/identity-sources` | 目錄與提供者的合併列表＋各來源的群組對角色映射規則 CRUD（admin） |
 | 安全政策 | 3 | `/api/v1/security-policies`, `/api/v1/auth/banner` | PCI 安全政策查詢/批次更新（admin）＋登入前告示讀取（公開） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（admin） |
 | 資產 | 17 | `/api/v1/assets` | CRUD、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
@@ -36,7 +37,7 @@
 | 通道清冊 | 2 | `/api/v1/transmission-inventory` | 全通道加密狀態清冊＋匯出快照（admin，PCI Req 4） |
 | 錄影 | 7 | `/api/v1/sessions`, `/api/v1/recordings` | 元數據/下載/串流/rtoken/刪除/統計 |
 | 離機儲存 | 11 | `/api/v1/offsite-storage` | 設定（讀/寫/世代切換確認/停止離機/歷史世代/撤銷憑證）＋狀態、失敗清單、測試連線、批次與單筆重試（全數 admin；憑證 write-only） |
-| 用戶 | 12 | `/api/v1/users` | CRUD + 角色/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 + 允許來源網段判定 |
+| 用戶 | 13 | `/api/v1/users` | CRUD + 角色（替換管理者指派集／冪等追加／釘住）/狀態/密碼 + 解鎖/閒置停用豁免 + 本地管理員計數 + 允許來源網段判定 |
 | 角色 | 1 | `/api/v1/roles` | 角色列表 |
 | 使用者群組 | 6 | `/api/v1/user-groups` | 群組 CRUD＋成員維護（授權主體，admin） |
 | 授權 | 7 | `/api/v1/authorizations` | 資產/節點授權（主體 user/群組二擇一）＋多主體批量＋有效權限雙視角＋帳號範圍更新 |
@@ -53,7 +54,7 @@
 | 改密 | 14 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 207 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 217 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -212,6 +213,11 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/daily-reviews/status` | always |
 | GET | `/api/v1/db-console` | always |
 | GET | `/api/v1/db-console/sessions/:id/results/:event_id/export` | always |
+| GET | `/api/v1/identity-sources` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/mappings` | always |
+| POST | `/api/v1/identity-sources/:type/:sourceId/mappings` | always |
+| DELETE | `/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId` | always |
+| PUT | `/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId` | always |
 | GET | `/api/v1/instance-guard` | always |
 | POST | `/api/v1/instance-guard/ack` | always |
 | GET | `/api/v1/instance-guard/halt` | always |
@@ -223,6 +229,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/ldap-directory` | always |
 | GET | `/api/v1/ldap-directory` | always |
 | PUT | `/api/v1/ldap-directory` | always |
+| GET | `/api/v1/ldap-directory/status` | always |
 | POST | `/api/v1/ldap-directory/test` | always |
 | GET | `/api/v1/my/connections` | always |
 | POST | `/api/v1/my/connections/:id/terminate` | always |
@@ -245,7 +252,10 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/oidc-providers` | always |
 | POST | `/api/v1/oidc-providers` | always |
 | DELETE | `/api/v1/oidc-providers/:id` | always |
+| GET | `/api/v1/oidc-providers/:id` | always |
 | PUT | `/api/v1/oidc-providers/:id` | always |
+| GET | `/api/v1/oidc-providers/:id/status` | always |
+| POST | `/api/v1/oidc-providers/discovery-preview` | always |
 | GET | `/api/v1/ping` | always |
 | GET | `/api/v1/recordings/stats` | always |
 | GET | `/api/v1/recordings/stream` | always |
@@ -314,6 +324,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | PUT | `/api/v1/users/:id/password` | always |
 | PUT | `/api/v1/users/:id/roles` | always |
 | POST | `/api/v1/users/:id/roles/:role` | always |
+| POST | `/api/v1/users/:id/roles/pin` | always |
 | PUT | `/api/v1/users/:id/status` | always |
 | POST | `/api/v1/users/:id/unlock` | always |
 | GET | `/api/v1/users/local-admin-count` | always |
@@ -1049,8 +1060,11 @@ POST /api/v1/auth/oidc/exchange
 ```
 GET    /api/v1/oidc-providers
 POST   /api/v1/oidc-providers
+GET    /api/v1/oidc-providers/:id
 PUT    /api/v1/oidc-providers/:id
 DELETE /api/v1/oidc-providers/:id
+GET    /api/v1/oidc-providers/:id/status
+POST   /api/v1/oidc-providers/discovery-preview
 ```
 
 **請求**（POST／PUT 同形）:
@@ -1064,9 +1078,19 @@ DELETE /api/v1/oidc-providers/:id
   "admission_mode": "jit_with_rules",
   "admission_rules": "{…JSON…}",
   "force_shared": null,
-  "enabled": true
+  "enabled": true,
+  "groups_claim": "groups",
+  "username_claim": "",
+  "email_claim": "",
+  "display_name_claim": "",
+  "risk_acknowledged": false
 }
 ```
+
+**宣告對應四鍵的三態**（`groups_claim`／`username_claim`／`email_claim`／`display_name_claim`）：
+**未帶該鍵＝本次不動這一欄；帶空字串＝清回未設定**。要關掉一條設過的群組映射就送空字串。
+四鍵各自去頭尾空白、長度上限 64、不得含空白、**不折疊大小寫**；違反回 400
+`VALIDATION_OIDC_PROVIDER_PAYLOAD`。
 
 **回應**（列表為 `{"data": [...]}`；單筆 201／200）:
 ```json
@@ -1077,7 +1101,10 @@ DELETE /api/v1/oidc-providers/:id
   "admission_mode": "jit_with_rules", "admission_rules": "{…}",
   "enabled": true, "has_secret": true,
   "issuer_kind": "dedicated", "issuer_kind_source": "deploy_declared",
-  "config_complete": true, "identity_count": 12
+  "config_complete": true, "identity_count": 12,
+  "groups_claim": "groups", "username_claim": "", "email_claim": "", "display_name_claim": "",
+  "redirect_uri": "https://pam.example.com/api/v1/auth/oidc/callback",
+  "redirect_uri_state": "ready"
 }
 ```
 
@@ -1094,6 +1121,14 @@ DELETE /api/v1/oidc-providers/:id
   以及刪除被拒時「請先解綁 N 個身分」——只說「有既有身分」無從判斷影響面。
 - `config_complete=false`＋`incomplete_hint`：設定不完整（如未設 `PUBLIC_BASE_URL`），
   該 provider 不會出現在 `/auth/methods`。
+- **宣告對應四欄恆出現**（未設定即空字串）。空值語義：`groups_claim` 空＝此 provider 的
+  群組映射關閉（登入時不解析群組、不重算角色）；其餘三欄空＝沿用系統預設
+  `preferred_username`／`email`／`name`。**`groups_claim` 刻意沒有預設值**——各家的鍵名由
+  設定決定，猜一個的失敗方向是拿別的宣告當群組看待。
+- `redirect_uri` 是**要登記到提供者端的回呼位址**，由對外基準網址算出、不落庫；
+  `redirect_uri_state` 值域 `ready`｜`base_url_unset`，後者表示尚未設定對外基準網址、
+  回呼網址無從算出（介面應據此指出要先設什麼，而不是顯示一個空字串）。
+  兩欄一併出現在列表回應上（**不只詳情**）。
 
 **約束與錯誤**:
 - `issuer` 與 `client_id` 組成身分域，**建後不可變**（PUT 送出不同值回 400
@@ -1105,6 +1140,54 @@ DELETE /api/v1/oidc-providers/:id
   未帶組織歸屬規則／消費者租戶值入清單一律回 400 `VALIDATION_OIDC_ADMISSION_RULES`。
 - issuer 格式與 scheme 不合（release 拒 http）回 400 `VALIDATION_OIDC_ISSUER`。
 - 404 `NOTFOUND_OIDC_PROVIDER`；`:id` 非正整數回 400 `VALIDATION_OIDC_PROVIDER_ID`。
+- **設了 `groups_claim` 但 `scopes` 不含 `groups` 時回 422 `MAPPING_ACK_REQUIRED`**，
+  主體帶 `warnings: [{"code": "MAPPING_GROUPS_SCOPE_MISSING"}]`。這是**警告加確認、不阻擋**：
+  帶 `risk_acknowledged: true` 重送即存下，確認一併留痕。理由是多數提供者要在授權請求帶
+  `groups` scope 才發出群組宣告，而宣告缺席會被判為空集合——症狀是規則列在頁上、狀態是啟用、
+  卻沒有人拿到角色。有些提供者改由權杖設定發出群組而不需該 scope，故不能一律擋。
+  附加 scope 允許清單為 `profile`／`email`／`groups`（`offline_access` 仍不在清單）。
+
+**單筆詳情** `GET /oidc-providers/:id`：回單一 provider 的完整形狀（同上，含 `redirect_uri`
+與 `redirect_uri_state`），供設定頁載入。
+
+**狀態彙總** `GET /oidc-providers/:id/status`：檢核面板的一次性燈號查詢。
+
+```json
+{
+  "discovery_reachable": true,
+  "credential_set": true,
+  "last_login_at": "2026-09-08T08:47:03Z",
+  "last_login_groups_seen": true,
+  "last_login_groups_count": 5,
+  "rule_count": 3, "enabled_rule_count": 2,
+  "last_recompute_matched_users": 12,
+  "warnings": [{"code": "MAPPING_SOURCE_ATTR_UNSET_WITH_RULES"}]
+}
+```
+
+- **本端點一律不對外撥號**：只回報系統已經觀測到的事實（設定值、規則數、映射事實、
+  登入時的群組觀測快照、探索文件的快取新鮮度）。頁面載入即撥號會把一支唯讀查詢
+  變成可被反覆觸發的出站探測，也會與連線測試的資源上限互相干擾。**主動測試是介面上的
+  獨立動作**（重新探索、測試連線），由操作者按下去才發生。
+- **無從觀測的燈號回 `null`**（介面呈現為「尚無資料」）——不知道不得畫成綠色。
+  `last_login_groups_seen` 為 null 即代表此來源尚無登入紀錄可判讀。
+- `discovery_reachable` 取自探索文件的快取，快取為空時為 null。
+
+**探索預覽** `POST /oidc-providers/discovery-preview`，主體 `{"issuer": "https://…"}`：
+以填在表單裡、**尚未儲存**的 issuer 取一次探索文件，回其端點與宣告／scope 清單，供設定頁
+在存檔前確認鍵名。**不落庫、不建立任何 provider**；呼叫留痕。
+
+```json
+{"issuer": "…", "authorization_endpoint": "…", "token_endpoint": "…", "jwks_uri": "…",
+ "userinfo_endpoint": "…",
+ "claims_supported": ["sub", "email", "name", "groups"],
+ "scopes_supported": ["openid", "profile", "email", "groups"]}
+```
+
+取不到或不是合法探索文件時回 502 `OIDC_DISCOVERY_PREVIEW_FAILED`；issuer 不合信任邊界時
+沿用既有的 issuer 驗證錯誤碼。**`claims_supported` 與 `scopes_supported` 是提供者自報的**，
+不是本系統的保證：清單裡有 `groups` 不等於該帳號的權杖一定帶得到群組，仍以實際登入時的
+群組觀測為準。
 
 **停用／刪除／secret 輪替的失效語義**（安全紅線）：三者皆先推進該 provider 的 `auth_epoch`，
 再撤銷 refresh、拒絕既簽 access、終斷該 provider 建立的協議連線、收線其監看與分享訂閱。
@@ -1119,6 +1202,7 @@ GET    /api/v1/ldap-directory
 PUT    /api/v1/ldap-directory
 DELETE /api/v1/ldap-directory
 POST   /api/v1/ldap-directory/test
+GET    /api/v1/ldap-directory/status
 ```
 
 **singleton 資源**：無集合式建立端點、無資源 id。`PUT` 為 upsert（無列即建、有列即改），
@@ -1138,6 +1222,7 @@ partial unique index），不依賴服務層計數；並發寫入以交易範圍
   "user_filter": "(&(objectClass=user)(sAMAccountName=%s))",
   "attr_email": "mail",
   "attr_fullname": "displayName",
+  "attr_group": "memberOf",
   "skip_tls_verify": false,
   "enabled": true,
   "risk_acknowledged": false
@@ -1153,10 +1238,16 @@ partial unique index），不依賴服務層計數；並發寫入以交易範圍
   "has_bind_password": true,
   "base_dn": "ou=users,dc=example,dc=com",
   "user_filter": "(&(objectClass=user)(sAMAccountName=%s))",
-  "attr_email": "mail", "attr_fullname": "displayName",
+  "attr_email": "mail", "attr_fullname": "displayName", "attr_group": "memberOf",
   "skip_tls_verify": false, "enabled": true
 }
 ```
+
+**`attr_group`（群組成員資格屬性名）**：**空字串＝本部署不依外部群組決定角色**——登入路徑
+不向目錄索取這個屬性，也不動任何角色列，未設定的部署行為與這一欄出現之前逐字相同。
+它**不列入啟用態的必填集**：既有部署升級後這一欄必然是空的，變成必填等於讓一次升級
+把所有目錄使用者擋在門外。屬性名與既有的 `attr_email`／`attr_fullname` 在同一次搜尋裡
+一併索取（同名不重複列入）。
 
 未設定時回 `{"configured": false}`。**bind 密碼永不回讀**，僅以 `has_bind_password` 表達有無。
 
@@ -1186,13 +1277,27 @@ warn 檔位缺 `risk_acknowledged` 拒存（400，碼與 syslog／通知通道�
   "success": true, "target": "ldaps://dir.example.com:636",
   "stages": [{"stage": "dial", "ok": true}, {"stage": "bind", "ok": true}, {"stage": "search", "ok": true}],
   "matched_count": 42, "matched_at_least": false,
-  "attr_sample": {"sampled": true, "email_present": true, "fullname_present": true},
+  "attr_sample": {"sampled": true, "email_present": true, "fullname_present": true,
+                  "group_configured": true, "group_present": true},
   "reused_stored_password": false
 }
 ```
 
 搜尋以未轉義 `*` 展開 `%s`（**全系統唯一不經 `EscapeFilter` 的例外**，登入路徑不受影響），
 `SizeLimit` 1000（達上限時 `matched_at_least: true`，UI 顯示「至少 N 筆」）。
+
+`attr_sample` 的 `group_configured` 與 `group_present` **刻意是兩欄不是一欄**：「沒設定屬性名」
+與「設了卻在抽樣項目上讀不到」的處置完全不同，壓成一欄的話管理者看到的是同一種紅。
+抽樣一律**只回布林、不回值**。
+
+**狀態彙總** `GET /ldap-directory/status`：與 `GET /oidc-providers/:id/status` **共用同一組鍵**，
+不適用於該型別的鍵回 `null` 而非不出現——目錄這一端讀的是 `connection_ok` 與
+`group_attr_readable`（連線測試的群組屬性抽樣結果），`discovery_reachable` 恆為 `null`；
+提供者那一端反過來。同樣**一律不對外撥號**。**目前 `connection_ok` 與 `group_attr_readable`
+兩欄也恆為 `null`**：
+連線測試的結果不落庫，本端點沒有可讀的來源，介面呈現為「尚無資料」。要判讀連線與群組屬性
+是否可讀，用 `POST /ldap-directory/test`（那是操作者按下去才發生的主動動作）。
+目錄尚未設定時回 404 `NOTFOUND_LDAP_DIRECTORY`。
 
 **錯誤揭露的收斂**：撥號失敗一律回單一 `connect_failed`，**不細分** DNS／逾時／拒絕／TLS——
 階梯本身已是 open/closed 訊號，再細分等於提供內網埠掃描解析度。失敗回應附 `diagnostic_id`
@@ -1211,6 +1316,81 @@ operational log，需主機營運權限才能對照。出站政策拒絕另立 `
 
 **設定來源與降版**：`.env` 的 `LDAP_*` 九鍵僅供首次啟動 seed，之後以本 API 為唯一事實源；
 降版至舊版本前須將現行設定回填 `.env`，見 QUICKSTART.md。
+
+### 身分來源與群組映射（admin only）
+
+把目錄與身分提供者合併成一份列表，並在各來源底下維護「外部群組 → 本系統角色」的映射規則。
+
+```
+GET    /api/v1/identity-sources
+GET    /api/v1/identity-sources/:type/:sourceId/mappings
+POST   /api/v1/identity-sources/:type/:sourceId/mappings
+PUT    /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId
+DELETE /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId
+```
+
+`:type` 值域 `ldap`｜`oidc`；目錄為單例，其 `:sourceId` 即該單列的 id。
+**路徑參數刻意不叫 `:id`**——審計中介層以名為 `id` 的路徑參數填稽核列的資源欄位，
+沿用該名會在稽核列上長出一個指向別種資源的錨點。
+
+**合併列表** `GET /identity-sources` → `{"data": [SourceRow]}`：
+
+```json
+{"type": "oidc", "id": 2, "name": "公司 Entra ID",
+ "address": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+ "enabled": true, "last_login_at": "2026-09-08T08:47:03Z", "mapping_rule_count": 3}
+```
+
+`address` 是目錄的位址或提供者的 issuer；`last_login_at` 可為 null（該來源尚無成功登入）；
+`mapping_rule_count` 含停用中的規則。目錄至多一列；兩者皆未設定時回空陣列。
+
+**規則的形狀**：
+
+```json
+RuleInput: {"match_value": "cn=PAM-Admins,ou=groups,dc=example,dc=com",
+            "role": "admin", "enabled": true, "risk_acknowledged": false}
+Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
+            "created_by": "admin", "created_at": "…", "updated_at": "…"}
+```
+
+- `role` 用角色**名**（非 id）。未知角色回 400 `VALIDATION_MAPPING_ROLE_UNKNOWN`。
+- `match_value` **原樣存、不做正規化**。目錄側須逐字照目錄回傳的辨識名稱填：比對時兩邊
+  各自解析成結構再比，**屬性型別不分大小寫、屬性值分大小寫**；解析不了的值回 400
+  `VALIDATION_MAPPING_MATCH_VALUE_DN`。提供者側非空即可，比對是**逐字**的、不做任何正規化
+  （兩家提供者的官方文件皆未定義比對規則，故取嚴）。
+- `enabled: false` 的規則在登入重算時**視同不存在**，用來暫停一條映射而不必刪掉它。
+- 建立成功回 201，更新回 200，刪除回 204。規則不存在回 `MAPPING_RULE_NOT_FOUND`。
+
+**警告加確認，不阻擋**：以下情形且 `risk_acknowledged` 為 false 時回 **422**
+`MAPPING_ACK_REQUIRED`，主體帶命中的警告清單：
+
+```json
+{"error": "…",
+ "code": "MAPPING_ACK_REQUIRED",
+ "warnings": [{"code": "MAPPING_TARGETS_ADMIN_ROLE"},
+              {"code": "MAPPING_SOURCE_ATTR_UNSET"}]}
+```
+
+- `MAPPING_TARGETS_ADMIN_ROLE`：這條規則會把管理員角色交給一個外部群組決定。
+- `MAPPING_SOURCE_ATTR_UNSET`：來源尚未設定要從哪裡讀群組（目錄的群組屬性名或提供者的
+  群組宣告名為空），故這條規則存下去也永遠不會命中。
+
+帶 `risk_acknowledged: true` 重送即存下，**確認一併留痕**。這裡不採直接拒絕：規則本身是
+管理者的意圖，擋下來只會把人推去改別的地方；要防的是「不知情」而不是「不發生」。
+
+**來源刪除的相依**：仍有規則掛著的目錄或提供者不可刪除，回 409
+`LDAP_DIRECTORY_HAS_MAPPINGS`／`OIDC_PROVIDER_HAS_MAPPINGS`；先移除規則再刪來源。
+
+**規則怎麼變成角色**：規則不會即時改動任何人的角色。**每次登入時對該條途徑重算一次**——
+命中就取得對應角色，不再命中就收回。故改規則的生效時點是當事人的下一次登入，
+而收回會使有效角色集縮減、推進該帳號的憑證世代（既有會話因此失效）。
+群組資料的三種狀態各有不同處置：來源未設定要從哪裡讀群組時**完全不重算**；
+設定了卻這次讀不到時**保留現狀並留痕**（不當成「沒有群組」而把角色全撤）；
+讀到了（**空集合也算讀到**）才依規則重算。
+
+**審計**：映射造成的角色異動逐次留痕，可回答「誰、經哪條途徑、命中哪些群組、動了哪些角色、
+憑證世代是否推進」；跳過重算的兩種情形（來源未設定屬性／宣告名、群組讀不到）各有自己的
+機器碼。留痕失敗即整筆回滾——角色改了而稽核沒記下來，是本系統不接受的結果。
 
 ---
 
@@ -2674,8 +2854,9 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 | GET | `/users/:id` | 詳情 → `{data: User}` |
 | PUT | `/users/:id` | 更新基本資訊（不含密碼/角色） |
 | DELETE | `/users/:id` | 軟刪除；不能刪除最後一個管理員（400） |
-| PUT | `/users/:id/roles` | body: `{"roles": ["admin", "auditor"]}`（替換現有角色） |
-| POST | `/users/:id/roles/:role` | 冪等追加單一角色（不觸碰其他角色，重複追加 no-op）→ `{}`；未知角色 400。一站式代配（審核範圍表單）用此端點避免整包替換的 lost-update |
+| PUT | `/users/:id/roles` | body: `{"manual_roles": ["admin", "auditor"]}`（**替換管理者指派集**，不是有效角色集；見下段） |
+| POST | `/users/:id/roles/:role` | 冪等追加單一角色（不觸碰其他角色，重複追加 no-op）→ `{}`；未知角色 400。一站式代配（審核範圍表單）用此端點避免整包替換的 lost-update。**副作用**：目標角色若目前只由外部群組映射賦予，本端點會把它釘成管理者指派（見下段） |
+| POST | `/users/:id/roles/pin` | body: `{"role": "auditor"}` → `{"role_sets": {…}}`；把一個由外部群組映射賦予的角色**釘住**（改記為管理者一併指派），使它不再隨群組異動消失。該角色不是映射賦予時回 400 `VALIDATION_ROLE_NOT_MAPPED` |
 | PUT | `/users/:id/status` | body: `{"active": false}`；不能停用最後一個管理員（400） |
 | PUT | `/users/:id/password` | body: `{"password": "..."}`；長度/組成/歷史重用由密碼政策 validator 統一判定（單一事實源；預設最小長度 12、須含字母與數字、禁重用近 N 筆），違規回 400 附可讀原因；LDAP 用戶回 400 |
 | POST | `/users/:id/unlock` | 管理員手動解鎖帳號（PCI 8.3.4）：清零 `failed_login_attempts` 與 `locked_until` → `{}`；顯式審計 action=`unlock` |
@@ -2722,6 +2903,52 @@ display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_
 `VALIDATION_USER_ORIGIN_FILTER`** 而非靜默忽略）與 `auth_provider_id`（依 provider 實例篩選）。
 兩者皆為伺服端篩選：列表是分頁的，在前端篩當頁會讓使用者看到「第 2 頁明明有 oidc 帳號，
 篩選後卻說沒有」。依 provider 篩選以子查詢實作，綁多個身分的帳號不會重複出現。
+
+### 角色的兩份集合（管理者指派與外部群組映射）
+
+一個帳號的角色可能來自兩處：管理者的指派，與外部群組映射在登入時的重算結果。
+**有效角色集是兩者的聯集**，而管理端點操作的一律是**管理者指派集**那一半。
+
+**讀取** `GET /users/:id` 的回應多一個頂層鍵 `role_sets`；`data.roles`（有效角色集）保留不動
+——拆分是**增加一種讀法，不是換掉原本那一種**。
+
+```json
+{"role_sets": {"manual": ["admin"], "mapped": ["auditor"]}}
+```
+
+`manual` 是帶有管理者指派成分的角色，`mapped` 是帶有映射成分的角色。**兩者並存的角色會同時
+出現在兩份裡**，那是實情不是重複。
+
+**替換** `PUT /users/:id/roles`，主體鍵名是 `manual_roles`：
+
+```json
+{"manual_roles": ["admin", "user"]}
+```
+
+- 主體描述的是**管理者指派集的完整內容**。**舊鍵名 `roles` 一出現即回 400**
+  `VALIDATION_ROLES_LEGACY_FIELD`（兩鍵同時出現也拒絕），不會有一半生效的中間態。
+- 主體含「目前只由映射賦予」的角色時，該角色**被忽略**：不建列、不改來源、不報錯。
+  要把它固定下來請用釘住端點——在替換的語義下把它寫成管理者指派，會讓一次例行的
+  角色整理靜默改變它的來源。
+
+成功回應（200）：
+
+```json
+{"role_sets": {"manual": ["admin"], "mapped": ["auditor"]},
+ "disclosures": [{"code": "role.mapped_ignored", "params": {"roles": "auditor"}}]}
+```
+
+`disclosures` 這個鍵一定存在，沒有東西被忽略時為 `null`；`params.roles` 是逗號分隔的角色名字串。
+**後端不回散文**，對外文字一律由介面依機器碼決定。
+
+**釘住** `POST /users/:id/roles/pin`（主體 `{"role": "auditor"}`）把一個由映射賦予的角色
+改記為「管理者一併指派」。**有效角色集不變**，故不推進憑證世代、不改變任何人當下能做的事；
+變的是它不再隨群組異動消失。舊的 `POST /users/:id/roles/:role`（冪等追加）對映射角色
+有同樣的副作用——一站式代配審核範圍時順帶追加角色，會把該角色釘成管理者指派。
+
+**本地管理員計數只認管理者指派的成分**（`GET /users/local-admin-count` 與
+「不得自一以上降為零」的不變式同一定義）：只由映射賦予的管理員角色會隨群組異動在下一次
+登入消失，撐不住遇 KEK 重啟時的解封能力。
 
 ### 允許來源網段（`allowed_cidrs`）
 

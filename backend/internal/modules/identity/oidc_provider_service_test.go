@@ -316,8 +316,10 @@ func TestOIDCProviderUnknownIDIsNotFound(t *testing.T) {
 func TestOIDCProviderRejectsUnknownScope(t *testing.T) {
 	_, providers, db := setupOIDCEnv(t)
 
-	// offline_access 刻意不在允許清單：v1 不保存 IdP refresh token，索取它只擴大暴露面
-	for _, scope := range []string{"offline_access", "groups", "profile offline_access"} {
+	// offline_access 刻意不在允許清單：v1 不保存 IdP refresh token，索取它只擴大暴露面。
+	// **groups 已改為放行**（多數提供者只在請求它時才發群組宣告，不放行等於
+	// 群組映射在那些部署上永遠零命中），故不再列於此處的被拒集合
+	for _, scope := range []string{"offline_access", "profile offline_access"} {
 		if _, err := providers.Create(providerReq(func(r *OIDCProviderRequest) {
 			r.Scopes = scope
 		})); !errors.Is(err, ErrOIDCUnknownScope) {

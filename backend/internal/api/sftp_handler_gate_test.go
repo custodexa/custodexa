@@ -25,7 +25,7 @@ func TestSFTPUnauthorizedReturns404(t *testing.T) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}); err != nil {
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})
@@ -62,7 +62,7 @@ func TestSFTPPolicyGateBlocksStandingConnect(t *testing.T) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AccessRequest{},
-		&model.SecurityPolicy{}, &model.AuditLog{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})
@@ -104,7 +104,7 @@ func TestSFTPPolicyGateAllowsTicket(t *testing.T) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AccessRequest{},
-		&model.SecurityPolicy{}, &model.AuditLog{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	db.Create(&model.User{Username: "u1", Email: emailPtr("u@x"), Active: true})

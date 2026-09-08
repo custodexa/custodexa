@@ -260,7 +260,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			code = apierror.CodeLDAPTransportRejected
 		default:
 			status = http.StatusInternalServerError
-			log.Printf("[ERROR] login failed: user=%s err=%v", req.Username, err)
+			log.Printf("[ERROR] login failed: user=%q err=%v", req.Username, err)
 		}
 
 		// 審計 middleware 在登入前無用戶 context 會跳過，

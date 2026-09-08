@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/standby-takeover.md) | [日本語](../ja/ops/standby-takeover.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.7.1.
+> Applies to: Custodexa 1.8.0.
 >
 > **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
 >

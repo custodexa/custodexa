@@ -123,14 +123,17 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 故本 change 的索引增量是 12 而非提案列舉的 10。
 	// 憑證庫收縮 純刪欄，不減表；卸下 idx_asset_accounts_credential_group 一條索引
 	// （群組機制退場，該欄只剩存量轉換一個讀者，已無查詢走索引）→ 淨增 11。
-	if got.Tables != 57 {
-		t.Errorf("表數 = %d, want 57（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表）", got.Tables)
+	// 外部群組對角色映射 增 2 表（group_role_mappings、user_role_mappings）、
+	// 5 索引（兩張 pkey ＋ 規則表的 deleted_at 單欄 ＋ 兩條來源別的部分唯一索引）
+	// 與 1 條 CHECK（規則的來源恰一）。角色指派關聯表與提供者設定表為純加欄。
+	if got.Tables != 59 {
+		t.Errorf("表數 = %d, want 59（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表）", got.Tables)
 	}
-	if got.Indexes != 200 {
-		t.Errorf("索引數 = %d, want 200（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條）", got.Indexes)
+	if got.Indexes != 205 {
+		t.Errorf("索引數 = %d, want 205（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條）", got.Indexes)
 	}
-	if got.Checks != 18 {
-		t.Errorf("CHECK 約束數 = %d, want 18（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條）", got.Checks)
+	if got.Checks != 19 {
+		t.Errorf("CHECK 約束數 = %d, want 19（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。

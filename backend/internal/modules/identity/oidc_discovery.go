@@ -278,19 +278,40 @@ func (s *OIDCDiscoveryService) VerifyIDToken(ctx context.Context, p *model.OIDCP
 	}
 
 	vc := &VerifiedClaims{Subject: sub, Raw: raw}
-	if v, ok := raw["preferred_username"].(string); ok {
-		vc.PreferredUsername = strings.TrimSpace(v)
-	}
-	if v, ok := raw["email"].(string); ok {
-		vc.Email = strings.TrimSpace(v)
-	}
+	vc.PreferredUsername = claimString(raw, p.UsernameClaim, defaultUsernameClaim)
+	vc.Email = claimString(raw, p.EmailClaim, defaultEmailClaim)
+	vc.Name = claimString(raw, p.DisplayNameClaim, defaultDisplayNameClaim)
+	// **email_verified 不隨電郵宣告改名**：它是提供者對「這個位址已被驗證」的
+	// 斷言，鍵名由規格定死。跟著改名的話，換一個電郵宣告會連帶把驗證旗標
+	// 指到一個不存在的鍵，而未驗證電郵不得用於帳號名映射——症狀是使用者
+	// 突然被以 subject 建成新帳號
 	if v, ok := raw["email_verified"].(bool); ok {
 		vc.EmailVerified = v
 	}
-	if v, ok := raw["name"].(string); ok {
-		vc.Name = strings.TrimSpace(v)
-	}
 	return vc, nil
+}
+
+// 身分屬性的預設宣告。provider 未設定對應時逐字沿用這三個鍵——
+// 加設定不是改預設，未設定的部署解析結果必須與加這三欄之前完全相同。
+const (
+	defaultUsernameClaim    = "preferred_username"
+	defaultEmailClaim       = "email"
+	defaultDisplayNameClaim = "name"
+)
+
+// claimString 依設定的宣告名取字串值，未設定時取預設鍵。
+//
+// **設定值只換鍵名，不換回退鏈**：取不到值時的處置（帳號名映射的
+// preferred_username → 已驗證電郵本地部分 → subject）由呼叫端維持不變。
+// 這裡若順手加一層「設定的鍵取不到就回頭讀預設鍵」，管理者明確指定的宣告
+// 就會在缺值時被另一個宣告悄悄頂替，而那個值可能來自完全不同的語義。
+func claimString(raw map[string]any, configured, fallbackKey string) string {
+	key := strings.TrimSpace(configured)
+	if key == "" {
+		key = fallbackKey
+	}
+	v, _ := raw[key].(string)
+	return strings.TrimSpace(v)
 }
 
 // verifyTimeClaims 時間判定（SkipExpiryCheck 的配套）。

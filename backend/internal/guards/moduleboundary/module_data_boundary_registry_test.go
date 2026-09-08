@@ -49,6 +49,12 @@ var tableOwner = map[string]string{
 	"oidc_login_tickets":       "identity",
 	"user_external_identities": "identity",
 	"ldap_directories":         "identity",
+	// 外部群組對角色映射兩表：規則的業務語義（來源恰一、比對值、啟用）與
+	// 映射事實的不變式（通道分域、重算只動本通道）都由 identity 定義與維護，
+	// 與 user_roles 是同一組語義的兩半。**登記的實質效果**：其他模組直接以
+	// gorm 或 SQL 碰這兩張表即判跨界紅
+	"group_role_mappings": "identity",
+	"user_role_mappings":  "identity",
 	// authz
 	"asset_authorizations":     "authz",
 	"access_requests":          "authz",

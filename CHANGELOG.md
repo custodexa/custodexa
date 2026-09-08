@@ -2,6 +2,72 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.8.0 — directory groups decide roles (2026-09-09)
+
+### Roles that come from an external group
+
+- Maps a group in your directory or identity provider onto a role in this system. Each rule belongs
+  to one source, names the group value and the target role, and can be paused without being deleted.
+- Recomputes those roles at every sign-in, from the group information that sign-in carried. An
+  account added to a mapped group holds the role from its next sign-in, and an account taken out of
+  the group loses it the same way.
+- Leaves the roles an administrator assigned alone; mapping only adds. An administrator can also pin
+  a role a group granted, after which it no longer follows the group.
+- Advances the account's credential generation and ends its other open sessions when a sign-in takes
+  a role away. A sign-in that only adds roles leaves open sessions as they are.
+- Applies to accounts that sign in through an external source. An account that also has a local
+  password keeps only the roles an administrator gave it.
+
+### Sign-ins that carry no group data
+
+- Keeps the roles already granted, and records a recognizable event, when a source is set up to read
+  groups but this sign-in could not read them.
+- Treats an account the source reports with no groups as a member of none, and withdraws its mapped
+  roles.
+- Records a skip event on every sign-in through a source that has enabled rules but has not been
+  told where to read groups from.
+- Asks the administrator to confirm a rule that targets the administrator role, or one on a source
+  with no group attribute set yet. The confirmation is recorded with the rule.
+- Picks up a right withdrawn at the source at the earlier of two moments: the person's next sign-in,
+  or the end of their current web session under the "Web session max hours" policy.
+
+### One page for identity sources
+
+- Merges the identity provider and directory pages into one Identity Sources entry, with the mapping
+  rules of each source as a section of its detail page. The two former addresses still resolve.
+- Shows each source's address, whether it is enabled, how many rules it has, and when someone last
+  signed in through it. The rule section filters by target role.
+- Refuses to delete a source that still has mapping rules, and says to remove the rules first.
+- States on screen that a mapping takes effect at the person's next sign-in. The user list shows
+  whether a role came from an administrator or from a group, and when that account last signed in.
+- Keeps the group values observed at each account's last sign-in through an external source,
+  presented as reported by that source, for answering "I am in the group but did not get the role".
+
+### Provider settings that explain themselves
+
+- Sets which claim the username, email, and display name are read from, each one blank meaning the
+  default already in use. Changing them does not re-identify existing accounts.
+- Sets the group claim by name, blank meaning this provider does not let groups decide roles.
+- Previews an issuer's discovery document before anything is saved, listing its endpoints and the
+  claims it advertises, so key names can be confirmed against the provider.
+- Shows the callback address to register at the provider, computed from the deployment's public base
+  URL, and says when that base URL has not been set.
+- Reports a provider's state on one panel from facts the system has already observed, without dialing
+  out when the page loads; re-running discovery and testing the connection are separate actions. The
+  directory connection test now also reports whether the group attribute has a value on the sampled
+  entries, without returning the values themselves.
+
+### Upgrading
+
+- Adds one incremental migration that runs when the backend starts; it only adds structure, and
+  every new setting means "not configured, behavior unchanged" while it is empty, so a deployment
+  that configures no source behaves exactly as it did before. Section 2 of
+  `docs/ops/upgrade-sop.md` walks through the upgrade steps.
+- Back up before you upgrade, and export your mapping rules before any rollback.
+- Set the group attribute name on the directory, or the group claim on the provider, before you
+  create the first rule. Then add the rules and use the source's status panel and connection test to
+  confirm the groups are being read.
+
 ## 1.7.1 — the standby takes over from a page (2026-09-08)
 
 ### The pages you see before the service is up

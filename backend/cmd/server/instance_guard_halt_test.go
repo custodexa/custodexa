@@ -45,7 +45,7 @@ func installHaltAdminDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	hashed, err := crypto.DefaultPasswordHasher().Hash([]byte(haltAdminPassword))

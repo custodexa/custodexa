@@ -34,6 +34,10 @@ var (
 	// 症狀表現為「規則設定莫名被拒」而非「你的專用宣告無效」——這正是
 	// issuer_kind_source 要避免的那種難查故障
 	ErrOIDCSharedCannotWiden = errors.New("此 issuer 由系統判定為共用身分域，不可標記為專用；如為企業專屬 IdP 請於部署層宣告")
+	// ErrOIDCInvalidClaimName 宣告名稱不合法（過長或含空白）
+	ErrOIDCInvalidClaimName = errors.New("宣告名稱不合法")
+	// ErrOIDCProviderHasMappings provider 仍有群組映射規則，不可刪除
+	ErrOIDCProviderHasMappings = errors.New("此 provider 仍有群組映射規則，請先移除規則")
 )
 
 // oidcAllowedExtraScopes 附加 scope 允許清單。
@@ -41,9 +45,69 @@ var (
 // openid 由伺服端強制注入，不需列入。**offline_access 刻意不在清單**：
 // v1 明訂不保存 IdP 的 refresh token（會話生命週期不依賴 IdP token），
 // 索取它只會擴大同意畫面與 token 暴露面而無任何用途。
+//
+// **groups 在清單內**：多數提供者只有在授權請求帶這個 scope 時才發出群組宣告，
+// 不放行等於群組映射在那些部署上不論怎麼設定都零命中，且沒有任何訊號。
+// 它與 offline_access 的差別在於用途明確且只影響本次身分權杖的內容。
 var oidcAllowedExtraScopes = map[string]bool{
 	"profile": true,
 	"email":   true,
+	"groups":  true,
+}
+
+// oidcClaimNameMaxLen 宣告名稱長度上限（與欄位寬度一致）
+const oidcClaimNameMaxLen = 64
+
+// oidcClaimNames 一次請求帶來的四個宣告名稱（皆已驗證）
+type oidcClaimNames struct {
+	groups      string
+	username    string
+	email       string
+	displayName string
+}
+
+// claimNamesFrom 自建立請求取四個宣告名稱（未給即空）
+func claimNamesFrom(req *OIDCProviderRequest) (oidcClaimNames, error) {
+	var out oidcClaimNames
+	fields := []struct {
+		src *string
+		dst *string
+	}{
+		{req.GroupsClaim, &out.groups},
+		{req.UsernameClaim, &out.username},
+		{req.EmailClaim, &out.email},
+		{req.DisplayNameClaim, &out.displayName},
+	}
+	for _, f := range fields {
+		if f.src == nil {
+			continue
+		}
+		v, err := normalizeClaimName(*f.src)
+		if err != nil {
+			return oidcClaimNames{}, err
+		}
+		*f.dst = v
+	}
+	return out, nil
+}
+
+// normalizeClaimName 宣告名稱的驗證與正規化。
+//
+// 只去頭尾空白、不折疊大小寫——宣告鍵在 JSON 物件裡是逐字的，折疊會使
+// 設定看起來被接受而實際永遠取不到值。含空白者直接拒絕：那必定是誤填
+// （例如把兩個候選鍵寫在一起），靜默接受的症狀是「設定存好了但沒作用」。
+func normalizeClaimName(raw string) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", nil
+	}
+	if len(v) > oidcClaimNameMaxLen {
+		return "", fmt.Errorf("%w: 長度上限 %d", ErrOIDCInvalidClaimName, oidcClaimNameMaxLen)
+	}
+	if strings.ContainsAny(v, " \t\r\n") {
+		return "", fmt.Errorf("%w: 不得含空白", ErrOIDCInvalidClaimName)
+	}
+	return v, nil
 }
 
 // OIDCProviderService OIDC provider 設定管理。
@@ -98,6 +162,22 @@ type OIDCProviderRequest struct {
 	AdmissionRules string `json:"admission_rules"`
 	ForceShared    *bool  `json:"force_shared"`
 	Enabled        *bool  `json:"enabled"`
+
+	// 宣告名稱四欄一律用指標：nil＝本次請求不動這一欄，空字串＝清回未設定。
+	// 用值型別的話「清回未設定」與「沒送這一欄」同形，管理者就再也關不掉
+	// 一條已經設過的群組映射
+	GroupsClaim      *string `json:"groups_claim"`
+	UsernameClaim    *string `json:"username_claim"`
+	EmailClaim       *string `json:"email_claim"`
+	DisplayNameClaim *string `json:"display_name_claim"`
+
+	// RiskAcknowledged 風險確認聲明（欄名與目錄設定、通知通道一致）。
+	//
+	// 目前唯一要求它的情形：設了群組宣告名卻沒帶 groups 授權範圍。
+	// **警告加確認、不阻擋**——Entra 走權杖設定不需要這個範圍，逕行阻擋會把
+	// 一個合法組態鎖在門外；而多數提供者缺了它就不發群組宣告，
+	// 症狀是全體映射角色被撤且沒有任何訊號，所以也不能靜默放過
+	RiskAcknowledged bool `json:"risk_acknowledged"`
 }
 
 // OIDCProviderDTO provider 對外呈現（**不含 client_secret 的任何形式**）
@@ -110,8 +190,20 @@ type OIDCProviderDTO struct {
 	AdmissionMode  string `json:"admission_mode"`
 	AdmissionRules string `json:"admission_rules"`
 	Enabled        bool   `json:"enabled"`
+	// GroupsClaim 群組資訊取自哪個宣告；空＝此 provider 的群組映射關閉
+	GroupsClaim string `json:"groups_claim"`
+	// 宣告對應三欄；空＝沿用系統既有的預設宣告與回退規則
+	UsernameClaim    string `json:"username_claim"`
+	EmailClaim       string `json:"email_claim"`
+	DisplayNameClaim string `json:"display_name_claim"`
 	// HasSecret 是否已設定密鑰（供 UI 顯示「留空沿用」的提示，不洩漏值本身）
 	HasSecret bool `json:"has_secret"`
+	// RedirectURI 本系統的固定回呼位址（要登記到提供者端的值）。
+	// 未設定對外基準網址時為空字串，並由 RedirectURIState 說明原因——
+	// 現況是按下登入才失敗，管理端在設定階段看不出缺了什麼
+	RedirectURI string `json:"redirect_uri"`
+	// RedirectURIState ready 或 base_url_unset
+	RedirectURIState string `json:"redirect_uri_state"`
 	// IssuerKind effective 判定結果（現算，不持久化）
 	IssuerKind string `json:"issuer_kind"`
 	// IssuerKindSource 判定來源，使「部署宣告打錯字而未生效」可被立即看出，
@@ -159,7 +251,17 @@ func (s *OIDCProviderService) toDTO(p *model.OIDCProvider) OIDCProviderDTO {
 		Scopes: p.Scopes, AdmissionMode: string(p.AdmissionMode),
 		AdmissionRules: p.AdmissionRules, Enabled: p.Enabled,
 		HasSecret: p.ClientSecretEnc != "", IssuerKind: kind, IssuerKindSource: source,
-		ConfigComplete: true,
+		ConfigComplete:   true,
+		GroupsClaim:      p.GroupsClaim,
+		UsernameClaim:    p.UsernameClaim,
+		EmailClaim:       p.EmailClaim,
+		DisplayNameClaim: p.DisplayNameClaim,
+	}
+	if uri, err := s.RedirectURI(); err == nil {
+		dto.RedirectURI = uri
+		dto.RedirectURIState = RedirectURIStateReady
+	} else {
+		dto.RedirectURIState = RedirectURIStateBaseURLUnset
 	}
 	if s.baseURL == "" {
 		dto.ConfigComplete = false
@@ -210,6 +312,61 @@ func admissionIssueCode(err error) string {
 func (s *OIDCProviderService) isBuiltinShared(issuer string) bool {
 	// 以「未提供任何覆寫來源」重算：若此時仍為 shared，即來自內建清單
 	return EffectiveIssuerKind(issuer, nil, []string{issuer})
+}
+
+// 回呼網址的兩種狀態（機器碼；對外文案由用戶端依碼決定）
+const (
+	// RedirectURIStateReady 已由對外基準網址算出
+	RedirectURIStateReady = "ready"
+	// RedirectURIStateBaseURLUnset 尚未設定對外基準網址，回呼網址無從算出。
+	// **回可辨識的狀態而非空字串**：空字串與「算出來是空的」同形，
+	// 而管理者要知道的是「去把基準網址設起來」
+	RedirectURIStateBaseURLUnset = "base_url_unset"
+)
+
+// scopesContainGroups 授權範圍是否含 groups。
+//
+// 設了群組宣告名卻沒帶這個範圍時，多數提供者不發群組宣告；判定的是
+// 已正規化的範圍字串，故逐欄位比對即可（不做前綴或子字串匹配——
+// 那會讓 `groups_extra` 之類的自訂範圍被誤判為已具備）
+func scopesContainGroups(scopes string) bool {
+	for _, f := range strings.Fields(scopes) {
+		if strings.EqualFold(f, "groups") {
+			return true
+		}
+	}
+	return false
+}
+
+// requireGroupsScopeAck 設了群組宣告名卻沒帶 groups 授權範圍時要求確認。
+//
+// 不阻擋（確認即放行）：Entra 走權杖設定，不需要這個範圍，逕行阻擋會把一個
+// 合法組態鎖在門外。但也不能靜默——多數提供者缺了它就不發群組宣告，
+// 而鍵缺席依既有判準是「空集合」，於是全體映射角色被撤，且沒有任何訊號。
+func requireGroupsScopeAck(groupsClaim, scopes string, acknowledged bool) error {
+	if groupsClaim == "" || scopesContainGroups(scopes) || acknowledged {
+		return nil
+	}
+	return &MappingAckRequiredError{Warnings: []string{mappingWarningGroupsScopeMissing}}
+}
+
+// Egress 對外出站政策（探索預覽沿用同一份信任邊界，不另建撥號路徑）
+func (s *OIDCProviderService) Egress() *OIDCEgressPolicy {
+	return s.egress
+}
+
+// Get 單筆 provider 詳情（含回呼網址與宣告對應四欄）
+func (s *OIDCProviderService) Get(id uint) (*OIDCProviderDTO, error) {
+	var p model.OIDCProvider
+	if err := s.db.First(&p, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrOIDCProviderNotFound
+		}
+		return nil, err
+	}
+	dto := s.toDTO(&p)
+	dto.IdentityCount = s.identityCounts()[p.ID]
+	return &dto, nil
 }
 
 // RedirectURI 組出固定的 callback 位址（單一 URI，provider 由 state 關聯）
@@ -287,10 +444,22 @@ func (s *OIDCProviderService) Create(req *OIDCProviderRequest) (*OIDCProviderDTO
 		return nil, ErrOIDCDuplicateIdentityDomain
 	}
 
+	claims, err := claimNamesFrom(req)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireGroupsScopeAck(claims.groups, scopes, req.RiskAcknowledged); err != nil {
+		return nil, err
+	}
+
 	p := model.OIDCProvider{
 		Name: strings.TrimSpace(req.Name), Issuer: issuer, ClientID: clientID,
 		Scopes: scopes, AdmissionMode: model.AdmissionMode(mode),
 		AdmissionRules: req.AdmissionRules, ForceShared: req.ForceShared,
+		GroupsClaim:      claims.groups,
+		UsernameClaim:    claims.username,
+		EmailClaim:       claims.email,
+		DisplayNameClaim: claims.displayName,
 	}
 	if req.Enabled != nil {
 		p.Enabled = *req.Enabled
@@ -340,6 +509,40 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 			return nil, err
 		}
 		updates["scopes"] = scopes
+	}
+
+	// 宣告名稱四欄：nil＝不動，空字串＝清回未設定（見請求結構的註解）
+	for _, f := range []struct {
+		src    *string
+		column string
+	}{
+		{req.GroupsClaim, "groups_claim"},
+		{req.UsernameClaim, "username_claim"},
+		{req.EmailClaim, "email_claim"},
+		{req.DisplayNameClaim, "display_name_claim"},
+	} {
+		if f.src == nil {
+			continue
+		}
+		v, err := normalizeClaimName(*f.src)
+		if err != nil {
+			return nil, err
+		}
+		updates[f.column] = v
+	}
+
+	// 群組宣告名與 groups 授權範圍是一組，判定吃的是**套用之後**的值：
+	// 只改其中一欄的請求也必須以合併後的結果判斷，否則分兩次送就繞過了確認
+	effScopes := p.Scopes
+	if v, ok := updates["scopes"].(string); ok {
+		effScopes = v
+	}
+	effGroupsClaim := p.GroupsClaim
+	if v, ok := updates["groups_claim"].(string); ok {
+		effGroupsClaim = v
+	}
+	if err := requireGroupsScopeAck(effGroupsClaim, effScopes, req.RiskAcknowledged); err != nil {
+		return nil, err
 	}
 
 	mode := string(p.AdmissionMode)
@@ -488,6 +691,15 @@ func (s *OIDCProviderService) Delete(id uint) error {
 	if linked > 0 {
 		return ErrOIDCProviderInUse
 	}
+	// 仍有映射規則者拒刪：不擋的話「刪掉重設」之後全部規則變孤兒，
+	// 而來源詳情頁的映射區段看不出異常（同目錄側的裁決）
+	total, _, err := CountMappings(s.db, model.RoleMappingChannelKindProvider, id)
+	if err != nil {
+		return err
+	}
+	if total > 0 {
+		return ErrOIDCProviderHasMappings
+	}
 	// 刪除亦走**完整**失效流程（design 行 64）：推進世代 → 撤 refresh → 終斷協議
 	// 連線 → 收線監看訂閱 → 撤銷錄影 token，與停用同一套。
 	// 只推進世代不夠：「外部身分已全數解綁、但先前建立的協議連線仍在」的狀態下
@@ -496,7 +708,7 @@ func (s *OIDCProviderService) Delete(id uint) error {
 	// 軟刪與失效同鎖同交易：分開做會留下「已刪除但尚未收線」的中間態，
 	// 而該態下任何殘留的兌換都不再有 provider 列可鎖
 	var plan *providerRevocationPlan
-	err := WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+	err = WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
 		var perr error
 		plan, perr = s.invalidateProviderLocked(tx, id, "provider_deleted")
 		if perr != nil {

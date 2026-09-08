@@ -19,6 +19,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
@@ -82,6 +83,17 @@ type AuthService struct {
 	// roleState 特權登入時的角色指派比對面（role-assignment-integrity）。
 	// nil＝未接，登入路徑完全不變
 	roleState RoleStateProbe
+	// mappingAudit 角色映射事件的交易內審計落地面。
+	//
+	// **未接時映射重算會失敗、登入被拒**，不是靜默不留痕：角色因外部群組而
+	// 變動卻沒有任何紀錄，正是這個功能最不能出的錯。未設群組屬性名的部署
+	// 根本走不到這裡（完全短路），故未接線不影響任何既有部署
+	mappingAudit port.TxSink
+}
+
+// SetRoleMappingAuditSink 接上角色映射事件的交易內審計落地面。
+func (s *AuthService) SetRoleMappingAuditSink(sink port.TxSink) {
+	s.mappingAudit = sink
 }
 
 // RoleStateProbe 特權帳號簽發權杖前的角色指派比對面。
@@ -769,7 +781,69 @@ func (s *AuthService) authenticateLDAP(
 		s.transmission.ChannelLevel(policy.TransportChannelLDAP) == policy.TransportLevelWarn {
 		s.auditLDAPTransport(resolved.ID, resolved.Username, risks, model.StatusSuccess, "ldap_transport_deviation")
 	}
+
+	// 角色映射重算。**接在兩條路徑匯流之後**（供應與既存帳號都要重算），
+	// 且在任何權杖被簽發之前——多因子強制判定與認證脈絡都讀下面重載回來的
+	// 那個物件，早一步或晚一步都會讓這次登入用到錯的角色集
+	if err := s.recomputeLDAPRoleMapping(resolved, info, resolution); err != nil {
+		return nil, err
+	}
 	return resolved, nil
+}
+
+// recomputeLDAPRoleMapping 目錄途徑的映射重算，並在有變動時重載角色集。
+//
+// **有變動才重載**：重載是一次帶關聯的查詢，而絕大多數登入什麼都沒變。
+// 沒變的時候呼叫端手上的物件本來就是對的。
+//
+// 錯誤一律上拋（fail-close）：映射管線壞掉時讓目錄使用者鎖在門外，是刻意選的
+// 方向——反面是「權限算錯了但還是放你進來」。逃生口寫在營運程序：
+// 停用該來源的映射規則，或以本地管理員帳號進入修正。
+func (s *AuthService) recomputeLDAPRoleMapping(user *model.User, info *LDAPUserInfo,
+	resolution LDAPLoginResolution) error {
+	outcome, err := RecomputeMappedRoles(database.DB, s.mappingAudit, user,
+		ldapGroupObservation(resolution, info))
+	if err != nil {
+		log.Printf("[AuthService] 目錄群組映射重算失敗（fail-close）: userID=%d err=%v", user.ID, err)
+		return err
+	}
+	if !outcome.Changed() {
+		return nil
+	}
+	var reloaded model.User
+	if err := database.DB.Preload("Roles").First(&reloaded, user.ID).Error; err != nil {
+		return fmt.Errorf("重算後重載使用者角色失敗: %w", err)
+	}
+	*user = reloaded
+	log.Printf("[AuthService] 目錄群組映射已套用: userID=%d added=%v removed=%v epoch_bumped=%v",
+		user.ID, outcome.Added, outcome.Removed, outcome.EpochBumped)
+	return nil
+}
+
+// ldapGroupObservation 由本次解析結果與認證結果組出群組觀測。
+//
+// 三態的來源各不相同，寫在一起才看得出它們互斥：
+//
+//	屬性名沒設      來源根本不依群組決定角色（有無啟用規則決定要不要留痕）
+//	認證結果帶群組  已知（空集合也是已知）
+//	其餘            未知——設定了卻沒拿到，既有映射一律保留
+func ldapGroupObservation(resolution LDAPLoginResolution, info *LDAPUserInfo) GroupObservation {
+	obs := GroupObservation{
+		Kind:     model.RoleMappingChannelKindDirectory,
+		SourceID: resolution.DirectoryID,
+	}
+	if strings.TrimSpace(resolution.GroupAttr) == "" {
+		obs.State = GroupObservationUnconfigured
+		obs.HasActiveRules = resolution.HasActiveRoleMappings
+		return obs
+	}
+	if info == nil || !info.GroupsKnown {
+		obs.State = GroupObservationUnknown
+		return obs
+	}
+	obs.State = GroupObservationKnown
+	obs.Groups = info.Groups
+	return obs
 }
 
 // auditLDAPResolveFailure 設定解析失敗的 fail-close 審計。

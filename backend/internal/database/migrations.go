@@ -154,6 +154,17 @@ var migrations = []Migration{
 		Up:      applyRoleStateCheckpoint,
 		Down:    rollbackRoleStateCheckpoint,
 	},
+	{
+		// 外部群組對角色映射的資料層：user_roles.source（來源三態）、
+		// 新表 group_role_mappings（映射規則）與 user_role_mappings（映射事實）、
+		// oidc_providers 的宣告對應三欄。存量列一律落在「管理者指派」，
+		// 未設定映射規則的部署行為不變。**Down 有損**（來源標記與映射規則
+		// 不可還原，生產無回滾入口；見 migration_group_role_mapping.go 檔頭的 Down 契約）
+		Version: "20260908_group_role_mapping",
+		Name:    "group_role_mapping",
+		Up:      applyGroupRoleMapping,
+		Down:    rollbackGroupRoleMapping,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -173,7 +184,8 @@ func schemaDDLStatements() []string {
 	out = append(out, accountBatchRotationDDL()...)
 	out = append(out, credentialLibraryDDL()...)
 	out = append(out, credentialLibraryContractDDL()...)
-	return append(out, roleStateCheckpointDDL()...)
+	out = append(out, roleStateCheckpointDDL()...)
+	return append(out, groupRoleMappingDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

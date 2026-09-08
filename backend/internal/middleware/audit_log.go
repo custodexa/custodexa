@@ -495,6 +495,14 @@ func extractResource(path string) model.AuditResource {
 		// LDAP 目錄設定（單例）：無 `:id`
 		case "ldap-directory":
 			return model.ResourceLDAPDirectory
+		// 身分來源的合併管理面（目錄與提供者同列）與其下的群組映射規則。
+		//
+		// **沿用既有的 auth 分類，不新增資源常數**：這一段的兩種資源已各自有
+		// 分類（`ldap-directory`／`oidc-providers`），而合併視圖與映射規則的
+		// 服務層留痕本就寫在 auth 之下（同目錄設定服務的裁決）。路徑上的
+		// `:sourceId`／`:ruleId` 刻意不叫 `:id`，故不會被填成本分類的 resource_id
+		case "identity-sources":
+			return model.ResourceAuth
 		// 離機儲存管理（evidence-offsite-storage）：`:id` 分別指向帳冊列與世代列，
 		// **都不是會話或資產 id**；設定變更與運維動作皆歸此族
 		case "offsite-storage":

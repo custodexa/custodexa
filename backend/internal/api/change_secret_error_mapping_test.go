@@ -56,7 +56,7 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 		&model.CredentialRotation{}, &model.CredentialRotationMember{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.ChangeSecretPlan{}, &model.ChangeSecretRecord{},
-		&model.ChangeSecretCandidate{}, &model.ChangeSecretBatch{}))
+		&model.ChangeSecretCandidate{}, &model.ChangeSecretBatch{}, &model.UserRole{}))
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })

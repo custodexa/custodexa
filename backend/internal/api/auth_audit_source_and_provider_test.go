@@ -98,7 +98,7 @@ func setupAuthSourceEnv(t *testing.T) *authSrcEnv {
 	sqlDB.SetMaxOpenConns(1) // ff51836 的「單獨跑綠、整包跑紅」防護
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.AuditLog{}); err != nil {
+		&model.UserExternalIdentity{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

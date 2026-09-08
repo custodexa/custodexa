@@ -20,7 +20,7 @@ func setupAccessReviewDB(t *testing.T) (*AccessReviewService, *gorm.DB) {
 	// AuditLog 必須一併建：Asset 的 AfterCreate hook 會寫 audit_logs，缺表則 hook
 	// 報錯回滾 asset 建立，導致矩陣 join 找不到資產。UserGroup：群組主體 join
 	if err := db.AutoMigrate(&model.AssetAuthorization{}, &model.User{}, &model.UserGroup{},
-		&model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AccessReview{}, &model.AuditLog{}); err != nil {
+		&model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AccessReview{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewAccessReviewService(db), db

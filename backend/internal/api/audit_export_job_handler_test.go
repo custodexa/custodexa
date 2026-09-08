@@ -64,7 +64,7 @@ func newExportJobTestEnv(t *testing.T) *exportJobTestEnv {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AuditExportJob{}, &model.AuditLog{},
 		&model.User{}, &model.Asset{}, &model.Session{}, &model.ClipboardEvent{},
-		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}); err != nil {
+		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 報告模式的兩張 timestamptz 表（沿 audit 模組 fixture 的原生 DDL 作法）

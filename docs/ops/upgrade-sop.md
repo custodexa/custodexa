@@ -123,7 +123,7 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
 If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the ten in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the twelve in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
@@ -203,6 +203,14 @@ Confirm at the same time:
 > **What to do**: before the upgrade, change `DATA_PATH` in `.env` to an **absolute path** (`DATA_PATH=/opt/custodexa/data`, for instance), or confirm it still points back at the original data directory from the new one. Check every other path setting in `.env` that starts with `./` or `../` the same way. Updating source and images in place in the original directory is unaffected.
 >
 > `COMPOSE_PROJECT_NAME` offers no protection: what it isolates is the naming of containers and networks, not where bind mounts land. If you do attach the wrong one, see "the first thing to do after the upgrade" in §2.5 for how to notice before any damage is done.
+>
+> **Carry `tls/` over to the new directory as well**: the built-in TLS proxy keeps its certificate material in `tls/` under the project directory, not under `DATA_PATH`, and a new directory without it makes `TLS_MODE=selfsigned` issue a fresh self-signed CA on startup, so every client that trusted the old CA loses that trust at the moment of the upgrade. Copy the directory across, or unpack the `tls` archive from the §2.1 backup into the new tree:
+>
+> ```bash
+> cp -a /opt/custodexa/tls /opt/custodexa-new/
+> # or, from the pre-upgrade backup:
+> tar -xzf "custodexa-tls-${STAMP}.tar.gz" -C /opt/custodexa-new
+> ```
 
 > **A build overwrites the tag of the same name: save the current images aside first, or there will be nothing to roll back to.**
 > All three images are referenced as `:latest` (`custodexa/backend:latest`, `custodexa/frontend:latest`, `custodexa/guacd:latest`), so as soon as the new build runs, the three currently running images have no name to reach them by. The rollback procedure (§4.2 step 2) needs exactly those. Run this **before the `build` below**:
@@ -337,7 +345,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's ten increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's twelve increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -350,6 +358,8 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260905_account_batch_rotation (account_batch_rotation)
   執行 migration: 20260906_credential_library (credential_library)
   執行 migration: 20260906_credential_library_contract (credential_library_contract)
+  執行 migration: 20260908_role_state_checkpoint (role_state_checkpoint)
+  執行 migration: 20260908_group_role_mapping (group_role_mapping)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -396,6 +406,31 @@ databases that carry it, and appending statements to an applied migration would 
 declaring a shape the database does not have. It drops columns only, with no data conversion, so
 its duration is independent of the volume held. **Its `Down` is lossy**; read §4.1 before planning
 any way back.
+
+`20260908_role_state_checkpoint` adds four nullable columns to the audit checkpoint table, so that a
+checkpoint also seals the role assignments in force at that moment (a hash of the snapshot, the
+snapshot, a count, and whether it reconciled). It creates no table, index, or constraint. **It only
+adds columns, with no data conversion and no backfill**, so its duration is independent of the volume
+held. **Checkpoints sealed before the upgrade stay empty**, which is the honest statement that those
+periods do not cover role assignments; they are not backfilled, because writing today's snapshot into
+a past checkpoint would sign, on history's behalf, a claim history never made. **Its `Down` is
+lossy**; read §4.1 before planning any way back.
+
+`20260908_group_role_mapping` adds the data layer for mapping external directory or identity provider
+groups onto roles in this system: a source column on the user-role association (whether a role was
+assigned by an administrator, granted by a group mapping, or both), two new tables (the mapping rules
+an administrator maintains, and the mapping facts each login path recomputes), a group membership
+attribute name on the directory settings, three group observation snapshot columns on the account
+table, and a group claim name plus three claim mapping columns on the identity provider settings,
+together with six foreign keys and three indexes. **It is purely additive with no data backfill**:
+every added column is nullable or carries a default, so its duration is independent of the volume
+held. **Existing rows on the user-role association are all defaulted to "assigned by an
+administrator"**, which is what they are — before this column existed there was no other way for a
+role to be granted. **Every one of the new configuration columns means "not configured, behaviour
+unchanged" while it is empty**: an empty group attribute name or group claim name means this
+deployment does not let external groups decide roles, and the three claim mapping columns fall back
+to the parsing already in use. A deployment that configures none of them behaves exactly as it did
+before the upgrade. **Its `Down` is lossy**; read §4.1 before planning any way back.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -864,11 +899,12 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the ten increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the twelve increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
-`20260906_credential_library_contract`).
+`20260906_credential_library_contract`, `20260908_role_state_checkpoint`,
+`20260908_group_role_mapping`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -953,6 +989,43 @@ only.** It puts the four dropped columns back as empty shells and recreates the 
 **restores no data**: what those columns held was gone the moment they were dropped, so after a later
 upgrade they come back empty. Its production way back is likewise deploying the old version's images
 and restoring the pre-upgrade backup (§4.2).
+
+**The `Down` of `20260908_role_state_checkpoint` is lossy and is for development databases only.** It
+drops the four columns, and with them the role assignment snapshot on every checkpoint; afterwards
+all checkpoints are back to not covering role assignments, and a later upgrade gives you no baseline
+again until the next seal. Its production way back is likewise deploying the old version's images and
+restoring the pre-upgrade backup (§4.2).
+
+**The `Down` of `20260908_group_role_mapping` is lossy and part of that loss cannot be restored, and
+it is for development databases only.** Three things go with it, and they are not equivalent:
+
+- **The mapping rules an administrator entered have no second source.** They are typed in one at a
+  time on the identity source pages, and nothing else in the system holds a copy. **Export them
+  before any rollback** and keep the export with the backup set:
+
+  ```bash
+  docker compose -f docker-compose.yml exec -T postgres \
+    pg_dump --data-only -t group_role_mappings -U "${DB_USER:?}" -d "${DB_NAME:?}" \
+    > "custodexa-group-role-mappings-$(date +%Y%m%d-%H%M).sql"
+  ```
+
+- **The source column on the user-role association is dropped**, so which roles an administrator
+  assigned and which ones only an external group granted stops being recorded. All role rows go back
+  to the older, source-blind meaning, and **the local administrator count starts counting accounts
+  again whose administrator role came only from a group mapping** — an account whose administrator
+  role disappears at its next sign-in, if the group changes.
+- **The mapping facts go too**, but those are rebuildable: each account's next sign-in recomputes
+  them. What Down removes is structure — the source column, the mapping facts and the rules — not
+  the role rows themselves. A role an account obtained through a mapping stays with it after the
+  downgrade as an ordinary assignment; it does not lapse on its own. To take such a role back, an
+  administrator has to remove it by hand.
+
+The group observation snapshot columns and the directory and provider configuration columns simply
+return to "not configured", which loses nothing that matters — the snapshots are diagnostic data
+rewritten at the next sign-in. Its production way back is likewise deploying the old version's images
+and restoring the pre-upgrade backup (§4.2). **Mapping rules created after the upgrade are lost when
+the backup is restored**, so if you have added any, export them as above before rolling back and enter
+them again after a later upgrade.
 
 **A login banner configured after the upgrade is lost when the backup is restored**: that text was written after the upgrade, and the pre-upgrade backup does not contain it. **If you are going to roll back, copy the banner's title and body off the security policy page first** (plain text, into a ticket or a handover document), and put them back after a later upgrade.
 

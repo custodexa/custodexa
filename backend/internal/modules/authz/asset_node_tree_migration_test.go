@@ -28,7 +28,7 @@ func TestAssetNodeTreeMigrationEquivalence(t *testing.T) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
-		&model.AssetNode{}, &model.AssetAuthorization{}, &model.AuditLog{}); err != nil {
+		&model.AssetNode{}, &model.AssetAuthorization{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 舊 schema：assets 帶 group_id（新 model 已無，手動補）

@@ -123,6 +123,8 @@ type LDAPDirectoryTestRequest struct {
 	UserFilter   string `json:"user_filter"`
 	AttrEmail    string `json:"attr_email"`
 	AttrFullName string `json:"attr_fullname"`
+	// AttrGroup 群組成員資格屬性名；空＝不抽樣群組
+	AttrGroup string `json:"attr_group"`
 
 	// BindPassword 空＝在三條件全數成立時沿用既存（見 resolveTestBindPassword）
 	BindPassword string `json:"bind_password"`
@@ -158,6 +160,16 @@ type LDAPDirectoryTestAttrSample struct {
 	Sampled         bool `json:"sampled"`
 	EmailPresent    bool `json:"email_present"`
 	FullNamePresent bool `json:"fullname_present"`
+
+	// GroupConfigured 本次測試有沒有填群組屬性名。
+	//
+	// **與 GroupPresent 分成兩欄**：沒填與填了卻讀不到是兩種完全不同的處置
+	//（前者是「這個部署不用群組」，後者是「設定錯了，啟用之後沒有人會拿到
+	// 角色」），壓成一個布林就分不出來，而管理者需要的正是這個分辨
+	GroupConfigured bool `json:"group_configured"`
+	// GroupPresent 抽樣的那一筆有沒有群組屬性值。**只回布林不回值**：
+	// 回值等於讓連線測試變成免認證的目錄內容讀取管道
+	GroupPresent bool `json:"group_present"`
 }
 
 // LDAPDirectoryTestResult 階梯測試結果。
@@ -296,6 +308,7 @@ func (s *LDAPDirectoryService) TestConnection(ctx context.Context, req LDAPDirec
 		UserFilter:      req.UserFilter,
 		AttrEmail:       req.AttrEmail,
 		AttrFullName:    req.AttrFullName,
+		AttrGroup:       req.AttrGroup,
 		SkipTLSVerify:   req.SkipTLSVerify,
 		Enabled:         true,
 		HasBindPassword: true,
@@ -469,7 +482,7 @@ func (rt *ldapProbeRuntime) probeLadder(
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
 		ldapProbeSizeLimit, int(ldapProbeStageTimeout.Seconds()), false,
 		fmt.Sprintf(input.UserFilter, "*"),
-		[]string{input.AttrEmail, input.AttrFullName},
+		ldapSearchAttributes(input.AttrEmail, input.AttrFullName, input.AttrGroup),
 		nil,
 	)
 	// EnforceSizeLimit：由客戶端自行封頂，不倚賴目錄是否遵守 SizeLimit——
@@ -511,6 +524,10 @@ func (rt *ldapProbeRuntime) probeLadder(
 			Sampled:         true,
 			EmailPresent:    first.GetAttributeValue(input.AttrEmail) != "",
 			FullNamePresent: first.GetAttributeValue(input.AttrFullName) != "",
+			GroupConfigured: input.AttrGroup != "",
+		}
+		if input.AttrGroup != "" {
+			result.AttrSample.GroupPresent = len(first.GetAttributeValues(input.AttrGroup)) > 0
 		}
 	}
 	result.Success = true

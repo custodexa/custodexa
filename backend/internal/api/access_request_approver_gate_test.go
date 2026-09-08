@@ -53,8 +53,7 @@ func setupApproverGateEnv(t *testing.T) approverGateEnv {
 	assert.NoError(t, err)
 	assert.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.ApproverScope{}, &model.AuditLog{},
-	))
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}))
 
 	// AuthMiddleware 的憑證世代閘走 database.DB（fail-close：未注入即一律拒）
 	oldDB := database.DB

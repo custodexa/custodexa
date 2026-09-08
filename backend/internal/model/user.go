@@ -124,6 +124,23 @@ type User struct {
 	// （v4／v6），供介面指出「含全域前綴的是哪一族」。非持久化。
 	AllowedCIDRFamilies []string `gorm:"-" json:"allowed_cidrs_families,omitempty"`
 
+	// 群組觀測快照：最近一次登入時，外部來源就「這個人屬於哪些群組」回答了什麼。
+	//
+	// 用途只有一個——回答「我明明在群組裡卻沒拿到角色」。沒有它，管理者面對
+	// 這個問題只能去外部來源那一端翻設定，而兩邊看到的未必是同一個時點。
+	//
+	// **外部自報值，不是判定依據**：值由外部來源完全控制，任何授權判定一律
+	// 走映射事實表，不得讀這三欄。呈現時須標示來源並與本系統自有的識別值分欄。
+	// 快照是欄位不是新表——它跟著帳號生滅，另立一張指向帳號的表只是多一次
+	// 外鍵與清理的稅。
+
+	// GroupSnapshotChannel 快照取自哪一條登入途徑（形如 `provider:3`）
+	GroupSnapshotChannel string `gorm:"size:64" json:"group_snapshot_channel,omitempty"`
+	// GroupSnapshotGroups 觀測到的群組原始值（JSON 陣列，不做任何正規化）
+	GroupSnapshotGroups string `gorm:"type:text" json:"group_snapshot_groups,omitempty"`
+	// GroupSnapshotAt 觀測時間
+	GroupSnapshotAt *time.Time `json:"group_snapshot_at,omitempty"`
+
 	// 關聯
 	Roles []Role `gorm:"many2many:user_roles;" json:"roles,omitempty"`
 	// 授權分組成員資格（與 Roles 正交，不影響端點權限）

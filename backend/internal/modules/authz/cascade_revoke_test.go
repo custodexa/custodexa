@@ -17,7 +17,7 @@ func setupCascadeDB(t *testing.T) (*AssetAuthorizationService, *gorm.DB) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
-		&model.AssetNode{}, &model.AssetAuthorization{}, &model.ApproverScope{}); err != nil {
+		&model.AssetNode{}, &model.AssetAuthorization{}, &model.ApproverScope{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewAssetAuthorizationService(db), db

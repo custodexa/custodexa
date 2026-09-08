@@ -325,6 +325,9 @@ type LDAPDirectoryInput struct {
 	UserFilter   string
 	AttrEmail    string
 	AttrFullName string
+	// AttrGroup 群組成員資格屬性名。**啟用態下仍非必填**——未填即本部署不依
+	// 外部群組決定角色，把它列入必填集會讓既有部署一升級就存不了檔
+	AttrGroup string
 
 	SkipTLSVerify bool
 	Enabled       bool
@@ -346,6 +349,7 @@ func (in LDAPDirectoryInput) Normalized() LDAPDirectoryInput {
 	out.UserFilter = strings.TrimSpace(in.UserFilter)
 	out.AttrEmail = strings.TrimSpace(in.AttrEmail)
 	out.AttrFullName = strings.TrimSpace(in.AttrFullName)
+	out.AttrGroup = strings.TrimSpace(in.AttrGroup)
 	return out
 }
 
@@ -384,7 +388,11 @@ func ValidateLDAPDirectoryInput(in LDAPDirectoryInput) (LDAPDirectoryValidation,
 	if len(norm.BaseDN) > ldapDNMaxLen {
 		return result, newLDAPFieldError("base_dn", LDAPFieldReasonTooLong)
 	}
-	for field, value := range map[string]string{"attr_email": norm.AttrEmail, "attr_fullname": norm.AttrFullName} {
+	for field, value := range map[string]string{
+		"attr_email":    norm.AttrEmail,
+		"attr_fullname": norm.AttrFullName,
+		"attr_group":    norm.AttrGroup,
+	} {
 		if value == "" {
 			continue
 		}

@@ -30,6 +30,10 @@ type OIDCHandler struct {
 	// nil 時不留痕（與 AuthHandler 的 auditService 同慣例）
 	audit *audit.AuditLogService
 
+	// sources 身分來源管理面服務（探索預覽與狀態彙總）。
+	// nil 時兩支端點各自回可辨識的失敗，不影響既有四支
+	sources *identity.IdentitySourceService
+
 	// 三個公開端點各持一組限流器（3.7a）。**不共用**：共用時 callback 的洪水
 	// 會連帶用光 exchange 的全域額度，使正在登入的正當使用者卡在最後一步——
 	// 攻擊者因此得到一個比「打爆 DB」更廉價的可用性攻擊
@@ -127,8 +131,14 @@ func (h *OIDCHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 	{
 		admin.GET("", h.List)
 		admin.POST("", h.Create)
+		// 探索預覽是靜態段，與 `/:id` 同層並存（gin 支援同層 static/param 兄弟節點，
+		// 同 /users 的 local-admin-count）。命名帶連字號，不與任何數字 id 形式衝突
+		admin.POST("/discovery-preview", h.DiscoveryPreview)
+		admin.GET("/:id", h.Get)
 		admin.PUT("/:id", h.Update)
 		admin.DELETE("/:id", h.Delete)
+		// 檢核面板的燈號：一支端點回齊，不由前端拼多支
+		admin.GET("/:id/status", h.Status)
 	}
 
 	// 登入流程：公開端點（未認證可達）
@@ -146,6 +156,75 @@ func (h *OIDCHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
+// Get 單筆 provider 詳情（回呼網址與宣告對應四欄隨它回）
+func (h *OIDCHandler) Get(c *gin.Context) {
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	dto, err := h.providers.Get(id)
+	if err != nil {
+		h.respondProviderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
+}
+
+// DiscoveryPreview 探索預覽（唯讀、不落庫）。
+//
+// 失敗一律 502＋單一機器碼：成因（DNS、逾時、非 2xx、文件不合法）只落伺服端
+// log——逐因回報會讓這支端點變成一支可讀出內網探測結果的工具
+func (h *OIDCHandler) DiscoveryPreview(c *gin.Context) {
+	var req struct {
+		Issuer string `json:"issuer"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	if h.sources == nil {
+		apierror.Respond(c, http.StatusBadGateway, apierror.CodeOIDCDiscoveryPreviewFailed, nil)
+		return
+	}
+	out, err := h.sources.PreviewDiscovery(c.Request.Context(), h.providers.Egress(),
+		req.Issuer, currentMappingActor(c))
+	if err != nil {
+		// issuer 形狀與出站政策的拒絕是**輸入錯誤**（400），與「連不上」分開：
+		// 前者要管理者改位址，後者要他去查網路
+		if errors.Is(err, identity.ErrOIDCIssuerScheme) || errors.Is(err, identity.ErrOIDCIssuerShape) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCIssuer, nil)
+			return
+		}
+		apierror.Respond(c, http.StatusBadGateway, apierror.CodeOIDCDiscoveryPreviewFailed, nil)
+		return
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// Status 提供者的狀態彙總（檢核面板第二塊）
+func (h *OIDCHandler) Status(c *gin.Context) {
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	if h.sources == nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError,
+			apierror.CodeInternalOIDCProviderList, identity.ErrMappingServiceUnavailable)
+		return
+	}
+	status, err := h.sources.ProviderStatus(id)
+	if err != nil {
+		if errors.Is(err, identity.ErrMappingSourceNotFound) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeNotFoundOIDCProvider, nil)
+			return
+		}
+		apierror.RespondInternal(c, http.StatusInternalServerError,
+			apierror.CodeInternalOIDCProviderList, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
 }
 
 // Create 建立 provider
@@ -507,8 +586,28 @@ func sanitizeRedirectNext(raw string) string {
 	return s
 }
 
+// SetIdentitySources 注入身分來源管理面服務（探索預覽與狀態彙總）
+func (h *OIDCHandler) SetIdentitySources(s *identity.IdentitySourceService) {
+	h.sources = s
+}
+
 func (h *OIDCHandler) respondProviderError(c *gin.Context, err error) {
+	// 需要確認先於哨兵比對：它帶著命中的警告碼，先比哨兵會把那份清單吃掉
+	var ackErr *identity.MappingAckRequiredError
+	if errors.As(err, &ackErr) {
+		warnings := make([]map[string]string, 0, len(ackErr.Warnings))
+		for _, w := range ackErr.Warnings {
+			warnings = append(warnings, map[string]string{"code": w})
+		}
+		apierror.Write(c, http.StatusUnprocessableEntity, apierror.ErrorResponse{
+			Code: apierror.CodeMappingAckRequired,
+			Meta: map[string]any{"warnings": warnings},
+		})
+		return
+	}
 	switch {
+	case errors.Is(err, identity.ErrOIDCProviderHasMappings):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeOIDCProviderHasMappings, nil)
 	case errors.Is(err, identity.ErrOIDCProviderNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeNotFoundOIDCProvider, nil)
 	case errors.Is(err, identity.ErrOIDCImmutableField):
@@ -519,6 +618,11 @@ func (h *OIDCHandler) respondProviderError(c *gin.Context, err error) {
 		apierror.Respond(c, http.StatusConflict, apierror.CodeConflictOIDCIdentityDomain, nil)
 	case errors.Is(err, identity.ErrOIDCUnknownScope):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCScope, nil)
+	case errors.Is(err, identity.ErrOIDCInvalidClaimName):
+		// 沿用設定內容不合法的既有出口碼：宣告名稱的限制（長度、不得含空白）
+		// 在介面上即可先擋，另立一個碼只會多一組三語文案而不多給管理者任何資訊。
+		// **不可落到 default**——那會把一個純粹的輸入錯誤回成 500
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCProviderPayload, nil)
 	case errors.Is(err, identity.ErrOIDCIssuerScheme), errors.Is(err, identity.ErrOIDCIssuerShape):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationOIDCIssuer, nil)
 	case errors.Is(err, identity.ErrOIDCSharedCannotWiden):

@@ -174,6 +174,12 @@ var (
 	CodeActiveRequired       = register("VALIDATION_ACTIVE_REQUIRED", Descriptor{ZhFallback: "active 參數不能為空"})
 	CodeExemptRequired       = register("VALIDATION_EXEMPT_REQUIRED", Descriptor{ZhFallback: "請求參數錯誤：需提供 exempt"})
 	CodeRoleNotFound         = register("VALIDATION_ROLE_NOT_FOUND", Descriptor{ZhFallback: "指定的角色不存在"})
+	// 角色替換端點的舊請求形狀（以單一鍵描述整組有效角色）。
+	//
+	// **不做靜默相容**：舊形狀送來的是有效角色集，而端點的作用範圍已收斂為
+	// 管理者指派集。把它當成管理者指派集會把外部群組賦予的角色一次刪光，
+	// 且刪除發生在用戶端毫不知情的情況下——拒絕才有訊號。
+	CodeRolesLegacyField = register("VALIDATION_ROLES_LEGACY_FIELD", Descriptor{ZhFallback: "請改以 manual_roles 描述管理者指派的角色；roles 為舊請求形狀，已不再受理"})
 	// 自助顯示名格式驗證：長度上限 100、不可含控制字元或換行
 	CodeInvalidDisplayName = register("VALIDATION_DISPLAY_NAME", Descriptor{ZhFallback: "顯示名稱格式不正確：長度上限 100，且不可含控制字元或換行"})
 )

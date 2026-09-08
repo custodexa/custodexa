@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/pkg/crypto"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
@@ -208,6 +209,17 @@ type OIDCLoginService struct {
 	// flowCapacity flow state 全表容量上限（0＝用預設常數）。可注入使測試不必
 	// 真的塞兩萬列
 	flowCapacity int64
+	// mappingAudit 角色映射事件的交易內審計落地面。
+	//
+	// **未接時映射重算會失敗、登入被拒**，不是靜默不留痕：角色因外部群組而
+	// 變動卻沒有紀錄，是這個功能最不能出的錯。未設群組宣告名的 provider
+	// 根本走不到寫入面（完全短路），故未接線不影響任何既有部署
+	mappingAudit port.TxSink
+}
+
+// SetRoleMappingAuditSink 接上角色映射事件的交易內審計落地面。
+func (s *OIDCLoginService) SetRoleMappingAuditSink(sink port.TxSink) {
+	s.mappingAudit = sink
 }
 
 // NewOIDCLoginService 建立登入流程服務
@@ -413,11 +425,71 @@ func (s *OIDCLoginService) callback(ctx context.Context, state, code string,
 		return nil, err
 	}
 
+	// 角色映射重算。**接在既存身分與供應兩條路徑匯流之後、簽出交棒憑證之前**：
+	// 憑證於鎖內重讀使用者世代，重算若晚一步，被降權的那次登入會拿到帶舊世代
+	// 的票，兌換時比對不過——每一次降權都會把當事人鎖死在門外
+	if err := s.recomputeMappedRoles(p, user, claims); err != nil {
+		return nil, err
+	}
+
 	ticket, err := s.issueTicket(user, p, flow.BindingHash, flow.RedirectNext)
 	if err != nil {
 		return nil, err
 	}
 	return &CallbackResult{Ticket: ticket, RedirectNext: flow.RedirectNext}, nil
+}
+
+// recomputeMappedRoles 提供者途徑的映射重算，並在有變動時重載角色集。
+//
+// 錯誤一律上拋（fail-close）：映射管線壞掉時讓外部使用者鎖在門外，是刻意選的
+// 方向——反面是「權限算錯了但還是放你進來」。逃生口寫在營運程序：停用該來源的
+// 映射規則，或以本地管理員帳號進入修正。
+//
+// 停用帳號與混合帳號的跳過由重算服務自己判定，此處不重複那條線——兩份判定
+// 遲早會分岔，而分岔的那一側正是「不該吃映射的帳號吃到了」。
+func (s *OIDCLoginService) recomputeMappedRoles(p *model.OIDCProvider, user *model.User,
+	claims *VerifiedClaims) error {
+	obs, err := s.groupObservationFor(p, claims)
+	if err != nil {
+		return err
+	}
+	outcome, err := RecomputeMappedRoles(s.db, s.mappingAudit, user, obs)
+	if err != nil {
+		log.Printf("[OIDC] 群組映射重算失敗（fail-close）: userID=%d provider=%d err=%v",
+			user.ID, p.ID, err)
+		return err
+	}
+	if !outcome.Changed() {
+		return nil
+	}
+	// **有變動才重載**：重載是一次帶關聯的查詢，而絕大多數登入什麼都沒變。
+	// 有變動時則非重載不可——兌換階段組出的登入回應讀的是這個物件
+	var reloaded model.User
+	if err := s.db.Preload("Roles").First(&reloaded, user.ID).Error; err != nil {
+		return fmt.Errorf("重算後重載使用者角色失敗: %w", err)
+	}
+	*user = reloaded
+	log.Printf("[OIDC] 群組映射已套用: userID=%d provider=%d added=%v removed=%v epoch_bumped=%v",
+		user.ID, p.ID, outcome.Added, outcome.Removed, outcome.EpochBumped)
+	return nil
+}
+
+// groupObservationFor 組出本次登入的群組觀測。
+//
+// 「本來源有無啟用中的規則」只在宣告名未設定時才查——設定好的部署零額外查詢，
+// 未設定時多一次索引計數。這一句是「規則設好了但宣告名沒設」那種部署唯一的
+// 訊號來源：沒有它，管理者看到規則列在頁上、狀態是啟用，卻沒有一個人拿到角色。
+func (s *OIDCLoginService) groupObservationFor(p *model.OIDCProvider,
+	claims *VerifiedClaims) (GroupObservation, error) {
+	hasRules := false
+	if strings.TrimSpace(p.GroupsClaim) == "" {
+		var err error
+		hasRules, err = hasActiveGroupRoleMappings(s.db, model.RoleMappingChannelKindProvider, p.ID)
+		if err != nil {
+			return GroupObservation{}, err
+		}
+	}
+	return oidcGroupObservation(p, claims.Raw, hasRules), nil
 }
 
 // consumeFlowState 原子消費流程狀態：**僅在未過期時取用並失效**。

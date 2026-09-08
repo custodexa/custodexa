@@ -62,7 +62,7 @@ func setupPasswordContextEnv(t *testing.T) *pwCtxEnv {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.AuditLog{}); err != nil {
+		&model.UserExternalIdentity{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

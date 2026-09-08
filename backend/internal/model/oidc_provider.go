@@ -74,6 +74,27 @@ type OIDCProvider struct {
 
 	// Enabled 啟用狀態；停用即觸發全面失效流程（推進世代→撤憑證→終斷連線與訂閱）
 	Enabled bool `gorm:"not null;default:false" json:"enabled"`
+
+	// GroupsClaim 群組資訊取自哪個宣告。
+	//
+	// **空值＝此 provider 的群組映射關閉**：登入路徑不做任何群組解析、不重算角色。
+	// 沒有共通預設可用——各家提供者的鍵名由設定決定，猜一個預設值的失敗方向是
+	// 拿別的宣告當群組看待，那會憑一個不相干的字串陣列決定授權。
+	GroupsClaim string `gorm:"size:64" json:"groups_claim"`
+
+	// 宣告對應：帳號的三個屬性各取自哪一個宣告。三欄皆可空，**空值走現行解析**
+	// ——未設定的部署行為與加這三欄之前逐字相同，這是加設定不是改預設。
+	//
+	// 需要它們的理由是提供者之間對「使用者名稱」該放哪個宣告沒有共識：
+	// 有的發 preferred_username、有的只發 email、有的把它放在自訂宣告裡。
+	// 沒有這三欄時，對不上的部署只能改後端。
+
+	// UsernameClaim 帳號名取自哪個宣告
+	UsernameClaim string `gorm:"size:64" json:"username_claim"`
+	// EmailClaim 電子郵件取自哪個宣告
+	EmailClaim string `gorm:"size:64" json:"email_claim"`
+	// DisplayNameClaim 顯示名稱取自哪個宣告
+	DisplayNameClaim string `gorm:"size:64" json:"display_name_claim"`
 }
 
 // TableName 指定資料表名

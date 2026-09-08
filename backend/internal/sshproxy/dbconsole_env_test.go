@@ -57,7 +57,7 @@ func setupConsoleEnv(t *testing.T, protocol string) *consoleEnv {
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
 		&model.AccessRequest{}, &model.SecurityPolicy{}, &model.AuditLog{}, &model.Session{},
-		&model.SessionCommand{}, &model.AlertRule{}); err != nil {
+		&model.SessionCommand{}, &model.AlertRule{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

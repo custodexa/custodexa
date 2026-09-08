@@ -182,6 +182,7 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 		notificationChannel:   &api.NotificationChannelHandler{},
 		oidc:                  &api.OIDCHandler{},
 		ldapDirectory:         &api.LDAPDirectoryHandler{},
+		identitySource:        &api.IdentitySourceHandler{},
 		offsiteStorage:        &api.OffsiteStorageHandler{},
 		instanceGuard:         &api.InstanceGuardHandler{},
 		instanceGuardHalt:     &api.InstanceGuardHaltHandler{},

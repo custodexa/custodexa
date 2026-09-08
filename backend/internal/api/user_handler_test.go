@@ -62,9 +62,28 @@ func (m *MockUserService) Delete(id uint) error {
 	return args.Error(0)
 }
 
-func (m *MockUserService) AssignRoles(userID uint, roleNames []string) error {
+func (m *MockUserService) AssignRoles(userID uint, roleNames []string) (*identity.RoleAssignResult, error) {
 	args := m.Called(userID, roleNames)
-	return args.Error(0)
+	if r := args.Get(0); r != nil {
+		return r.(*identity.RoleAssignResult), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *MockUserService) PinMappedRole(userID uint, roleName string) (*identity.RoleSets, error) {
+	args := m.Called(userID, roleName)
+	if r := args.Get(0); r != nil {
+		return r.(*identity.RoleSets), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *MockUserService) RoleSetsOf(userID uint) (*identity.RoleSets, error) {
+	args := m.Called(userID)
+	if r := args.Get(0); r != nil {
+		return r.(*identity.RoleSets), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 func (m *MockUserService) AddRole(userID uint, roleName string) error {
@@ -462,6 +481,10 @@ func TestUserHandler_Get(t *testing.T) {
 			Active:   activeTrue,
 		}
 		mockUserService.On("GetByID", uint(1)).Return(user, nil)
+		// 讀取端把角色拆成管理者指派集與映射集一併回
+		mockUserService.On("RoleSetsOf", uint(1)).Return(&identity.RoleSets{
+			Manual: []string{"admin"}, Mapped: []string{},
+		}, nil)
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
@@ -479,6 +502,9 @@ func TestUserHandler_Get(t *testing.T) {
 
 		data := response["data"].(map[string]interface{})
 		assert.Equal(t, "admin", data["username"])
+		sets := response["role_sets"].(map[string]interface{})
+		assert.Equal(t, []interface{}{"admin"}, sets["manual"])
+		assert.Equal(t, []interface{}{}, sets["mapped"])
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -822,14 +848,17 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 	t.Run("成功分配角色", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
-		mockUserService.On("AssignRoles", uint(1), []string{"admin", "user"}).Return(nil)
+		mockUserService.On("AssignRoles", uint(1), []string{"admin", "user"}).
+			Return(&identity.RoleAssignResult{
+				Sets: identity.RoleSets{Manual: []string{"admin", "user"}, Mapped: []string{}},
+			}, nil)
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
 		requestBody := map[string]interface{}{
-			"roles": []string{"admin", "user"},
+			"manual_roles": []string{"admin", "user"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 		req := httptest.NewRequest("PUT", "/users/1/roles", bytes.NewBuffer(jsonBody))
@@ -857,7 +886,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
 		requestBody := map[string]interface{}{
-			"roles": []string{"admin"},
+			"manual_roles": []string{"admin"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 		req := httptest.NewRequest("PUT", "/users/invalid/roles", bytes.NewBuffer(jsonBody))
@@ -875,7 +904,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		assert.Contains(t, response["error"], "無效的用戶 ID")
 	})
 
-	t.Run("請求格式錯誤（缺少 roles）", func(t *testing.T) {
+	t.Run("請求格式錯誤（缺少 manual_roles）", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -902,14 +931,14 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("AssignRoles", uint(999), []string{"admin"}).
-			Return(identity.ErrUserNotFound)
+			Return(nil, identity.ErrUserNotFound)
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
 		requestBody := map[string]interface{}{
-			"roles": []string{"admin"},
+			"manual_roles": []string{"admin"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 		req := httptest.NewRequest("PUT", "/users/999/roles", bytes.NewBuffer(jsonBody))
@@ -932,14 +961,14 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("AssignRoles", uint(1), []string{"invalid_role"}).
-			Return(identity.ErrRoleNotFound)
+			Return(nil, identity.ErrRoleNotFound)
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
 		requestBody := map[string]interface{}{
-			"roles": []string{"invalid_role"},
+			"manual_roles": []string{"invalid_role"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 		req := httptest.NewRequest("PUT", "/users/1/roles", bytes.NewBuffer(jsonBody))
@@ -962,14 +991,14 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("AssignRoles", uint(1), []string{"admin"}).
-			Return(errors.New("database error"))
+			Return(nil, errors.New("database error"))
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
 		requestBody := map[string]interface{}{
-			"roles": []string{"admin"},
+			"manual_roles": []string{"admin"},
 		}
 		jsonBody, _ := json.Marshal(requestBody)
 		req := httptest.NewRequest("PUT", "/users/1/roles", bytes.NewBuffer(jsonBody))

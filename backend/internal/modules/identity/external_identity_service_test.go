@@ -31,7 +31,10 @@ func extIdentityMigrate(t *testing.T, db *gorm.DB) {
 		&model.ApproverScope{}, &model.RefreshToken{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{},
+		// model.UserRole：本地管理員計數讀 user_roles.source，而 many2many
+		// 標籤自動建出的關聯表只有兩欄
+		&model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 身分域唯一索引：production 由 migration 建（partial，排除軟刪），AutoMigrate 不產生。

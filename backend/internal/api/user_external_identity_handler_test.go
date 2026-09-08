@@ -193,13 +193,14 @@ func TestLastLocalAdminMapsToPreciseCode(t *testing.T) {
 
 	t.Run("移除 admin 角色", func(t *testing.T) {
 		mockUserService := new(MockUserService)
-		mockUserService.On("AssignRoles", uint(7), []string{"user"}).Return(identity.ErrLastLocalAdmin)
+		mockUserService.On("AssignRoles", uint(7), []string{"user"}).
+			Return(nil, identity.ErrLastLocalAdmin)
 
 		handler := newTestUserHandler(mockUserService)
 		router := setupTestRouter()
 		router.PUT("/users/:id/roles", handler.AssignRoles)
 
-		body, _ := json.Marshal(map[string]any{"roles": []string{"user"}})
+		body, _ := json.Marshal(map[string]any{"manual_roles": []string{"user"}})
 		req := httptest.NewRequest("PUT", "/users/7/roles", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

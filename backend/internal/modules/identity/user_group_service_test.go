@@ -28,7 +28,7 @@ func setupUserGroupDB(t *testing.T) (*UserGroupService, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.AuditLog{}); err != nil {
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewUserGroupService(db, audit.NewTxSink(), authz.NewAssetAuthorizationService(db)), db

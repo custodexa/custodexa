@@ -86,7 +86,9 @@ func newLDAPDirectoryDB(t *testing.T) *gorm.DB {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{}); err != nil {
+	// group_role_mappings：撥號快照要回答「本來源有沒有啟用中的映射規則」
+	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
+		&model.GroupRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -721,7 +723,9 @@ func TestLDAPDirectoryConcurrentUpsert(t *testing.T) {
 		t.Fatalf("sql.DB: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(2)
-	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{}); err != nil {
+	// group_role_mappings：撥號快照要回答「本來源有沒有啟用中的映射規則」
+	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
+		&model.GroupRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())

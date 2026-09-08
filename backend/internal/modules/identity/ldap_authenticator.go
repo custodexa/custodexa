@@ -22,6 +22,16 @@ type LDAPUserInfo struct {
 	Username string
 	Email    string
 	FullName string
+
+	// Groups 目錄回傳的群組成員資格原始值。**原樣保留**——比對在後續步驟以
+	// 辨識名稱解析後進行，在這裡先改寫等於在比對規則之外再造一套
+	Groups []string
+	// GroupsKnown 本次是否真的取得了群組資料。
+	//
+	// **與「Groups 是空的」是兩件事**：目錄協定不回傳零值屬性，
+	// 「不屬於任何群組」與「這次沒去問」在資料上同形。前者該收回映射角色，
+	// 後者必須保留既有映射；分不出來就只能二選一，而兩個方向都會錯。
+	GroupsKnown bool
 }
 
 // LDAPAuthenticator LDAP 認證介面。
@@ -73,11 +83,72 @@ func (a *ldapAuthenticator) Authenticate(username, password string) (*LDAPUserIn
 		return nil, ErrLDAPAuthFailed
 	}
 
-	return &LDAPUserInfo{
+	info := &LDAPUserInfo{
 		Username: username,
 		Email:    entry.GetAttributeValue(a.cfg.AttrEmail),
 		FullName: entry.GetAttributeValue(a.cfg.AttrFullName),
-	}, nil
+	}
+	info.Groups, info.GroupsKnown = ldapGroupsOf(entry, a.cfg.AttrGroup)
+	return info, nil
+}
+
+// ldapGroupsOf 由搜尋回來的項目取群組值。
+//
+// **項目上沒有這個屬性＝空集合，不是未知**：目錄協定不回傳零值屬性，
+// 「不屬於任何群組」與「這一筆恰好沒帶」在項目上同形，判不出來。
+// 若照「未知即保留」處置，被移出最後一個群組的人就永遠撤不掉——
+// 而誤清的代價是使用者暫時降回基本角色、看得見、改好設定重登即復原。
+// 失敗方向不對稱，選看得見的那一側。
+//
+// 屬性名沒設就不是「空集合」而是「沒問過」，故 known 回 false：
+// 那條路徑上呼叫端根本不會走到重算。
+func ldapGroupsOf(entry *ldap.Entry, attrGroup string) (groups []string, known bool) {
+	attr := strings.TrimSpace(attrGroup)
+	if attr == "" || entry == nil {
+		return nil, false
+	}
+	return ldapAttributeValues(entry, attr), true
+}
+
+// ldapAttributeValues 以不分大小寫的屬性名自項目取值。
+//
+// **屬性描述在目錄協定上不分大小寫**：管理者填 memberof、目錄回 memberOf 是
+// 正常設定下就會出現的組合。逐字比對會取不到值，而上游把「取不到」與「這個人
+// 不屬於任何群組」視為同一件事——結果是誤撤該通道的映射角色。索取清單那邊
+// 本來就以不分大小寫判同名，取值這側必須用同一把尺，兩邊才對得起來。
+func ldapAttributeValues(entry *ldap.Entry, attr string) []string {
+	for _, a := range entry.Attributes {
+		if a == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(a.Name), attr) {
+			return a.Values
+		}
+	}
+	return nil
+}
+
+// ldapSearchAttributes 一次搜尋要索取的屬性清單。
+//
+// **群組屬性搭同一次搜尋回來，不另發一次**：另發一次要嘛重複整條搜尋成本，
+// 要嘛在兩次之間讀到不一致的目錄狀態。屬性名未設定時清單逐字不變——
+// 未啟用群組映射的部署，送出去的搜尋請求與加這個功能之前一模一樣。
+func ldapSearchAttributes(attrEmail, attrFullName, attrGroup string) []string {
+	attrs := []string{attrEmail, attrFullName}
+	group := strings.TrimSpace(attrGroup)
+	if group == "" {
+		return attrs
+	}
+	// 群組屬性與既有兩欄同名時不重複列入：重複的屬性描述會讓部分目錄
+	// 伺服器回傳重複的屬性項，而屬性值的筆數正是我們拿來當群組集合的東西
+	for _, existing := range attrs {
+		// 同名判定不分大小寫，取值那側（ldapAttributeValues）用的是同一把尺；
+		// 兩邊尺不同就會出現「清單留了既有拼法、取值卻照設定拼法找」的落差
+		if strings.EqualFold(strings.TrimSpace(existing), group) {
+			return attrs
+		}
+	}
+	return append(attrs, group)
 }
 
 // dial 建立 LDAP 連線；統一 5 秒逾時避免目錄無回應拖垮登入。
@@ -99,7 +170,7 @@ func (a *ldapAuthenticator) searchUser(conn *ldap.Conn, username string) (*ldap.
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
 		0, int(ldapDialTimeout.Seconds()), false,
 		filter,
-		[]string{a.cfg.AttrEmail, a.cfg.AttrFullName},
+		ldapSearchAttributes(a.cfg.AttrEmail, a.cfg.AttrFullName, a.cfg.AttrGroup),
 		nil,
 	)
 

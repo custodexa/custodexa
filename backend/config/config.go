@@ -295,6 +295,7 @@ type LDAPConfig struct {
 	UserFilter   string // 搜尋過濾器模板，%s 代入（已轉義的）登入帳號
 	AttrEmail    string // 對應 email 的目錄屬性
 	AttrFullName string // 對應全名的目錄屬性
+	AttrGroup    string // 對應群組成員資格的目錄屬性；空＝不索取
 	// SkipTLSVerify 僅供測試環境（自簽憑證）；生產環境必須保持 false
 	SkipTLSVerify bool
 }

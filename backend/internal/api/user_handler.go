@@ -22,8 +22,12 @@ type UserServiceInterface interface {
 	Create(req *identity.CreateUserRequest) (*model.User, error)
 	Update(id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error)
 	Delete(id uint) error
-	AssignRoles(userID uint, roleNames []string) error
+	AssignRoles(userID uint, roleNames []string) (*identity.RoleAssignResult, error)
 	AddRole(userID uint, roleName string) error
+	// RoleSetsOf 讀取端：管理者指派集與映射集分開回
+	RoleSetsOf(userID uint) (*identity.RoleSets, error)
+	// PinMappedRole 釘住：把僅由映射賦予的角色升為並存態
+	PinMappedRole(userID uint, roleName string) (*identity.RoleSets, error)
 	UpdateStatus(userID uint, active bool) error
 	ChangePassword(userID uint, newPassword string) error
 	Unlock(userID uint) error
@@ -175,8 +179,17 @@ func (h *UserHandler) Get(c *gin.Context) {
 		return
 	}
 
+	// role_sets 與 data.roles 並存：後者是有效角色集（既有用戶端沿用），
+	// 前者把它拆成管理者指派集與映射集。替換端點的主體只描述前者的 manual 部分
+	sets, err := h.userService.RoleSetsOf(uint(id))
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalUserQuery, err)
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"data": user,
+		"data":      user,
+		"role_sets": sets,
 	})
 }
 
@@ -278,17 +291,31 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 		return
 	}
 
-	// 解析請求
+	// 解析請求。
+	//
+	// **舊請求形狀一律拒絕**：`roles` 描述的是整組**有效**角色集，而本端點的
+	// 作用範圍已收斂為管理者指派集。靜默把它當成管理者指派集，會讓未更新的
+	// 用戶端一次刪光該使用者由外部群組賦予的角色，而且沒有任何訊號。
+	// 指標型別即 presence 語義——鍵在不在，與值是不是空陣列是兩件事
 	var req struct {
-		Roles []string `json:"roles" binding:"required"`
+		ManualRoles *[]string `json:"manual_roles"`
+		Roles       *[]string `json:"roles"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
+	if req.Roles != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeRolesLegacyField, nil)
+		return
+	}
+	if req.ManualRoles == nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
 
 	// 調用服務
-	err = h.userService.AssignRoles(uint(id), req.Roles)
+	result, err := h.userService.AssignRoles(uint(id), *req.ManualRoles)
 	if err != nil {
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
@@ -309,8 +336,46 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 		return
 	}
 
+	// 回應帶套用後的兩份集合與揭露欄（被忽略的映射角色以機器碼回，文案由前端依碼決定）。
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
-	c.JSON(http.StatusOK, gin.H{})
+	c.JSON(http.StatusOK, gin.H{
+		"role_sets":   result.Sets,
+		"disclosures": result.Disclosures,
+	})
+}
+
+// PinRole 釘住：把僅由映射賦予的角色升為並存。
+//
+// 已是並存態即為 no-op（冪等）；目標角色沒有映射成分時回 400——
+// 靜默當成一般追加會讓「釘住」與「指派」在同一支端點上得到兩種語義
+func (h *UserHandler) PinRole(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, map[string]any{"resource": "user"})
+		return
+	}
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
+	sets, err := h.userService.PinMappedRole(uint(id), req.Role)
+	if err != nil {
+		switch {
+		case errors.Is(err, identity.ErrUserNotFound):
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
+		case errors.Is(err, identity.ErrRoleNotFound):
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeRoleNotFound, nil)
+		case errors.Is(err, identity.ErrRoleNotMapped):
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationRoleNotMapped, nil)
+		default:
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleAdd, err)
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"role_sets": sets})
 }
 
 // AddRole 冪等追加單一角色（一站式代配用）
@@ -727,6 +792,10 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		users.PUT("/:id", h.Update)
 		users.DELETE("/:id", h.Delete)
 		users.PUT("/:id/roles", h.AssignRoles)
+		// 釘住：把外部群組賦予的角色固定為管理者指派。靜態段與 `/:role` 同層並存
+		// （gin 支援同層 static/param 兄弟節點）。**獨立端點而非替換端點的副作用**
+		// ——升格之後那個角色不再隨外部群組異動消失，那是一個顯式決定
+		users.POST("/:id/roles/pin", h.PinRole)
 		users.POST("/:id/roles/:role", h.AddRole)
 		users.PUT("/:id/status", h.UpdateStatus)
 		users.PUT("/:id/password", h.ChangePassword)

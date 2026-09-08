@@ -89,11 +89,20 @@ var ErrLastLocalAdmin error = &LastLocalAdminError{Code: apierror.CodeLastLocalA
 // 計數而把「2→1」誤判成安全的變動，實際上是「1→0」：最後一個能登入的 admin
 // 被移除後無人可登入，遇 KEK 重啟即永久鎖死。判準與 hasLoginPathAfterUnbind
 // 的 TrimSpace 同寬嚴度（僅含空白同樣不可用）
+//
+// **角色列的來源是第五個必要條件**：僅由外部群組映射取得管理員角色的帳號
+// 不計入。那條角色列的壽命只到「下一次登入重算」——群組管理員把人移出群組
+// 之後它就沒了，而本計數的用途是判斷「遇金鑰重啟時還有沒有人能解封」。
+// 把它計入的後果具體如下：計數被墊高，assertLocalAdminInvariant 據此放行移除
+// 真正的本地 admin；映射列於下次登入掉，總數歸零，遇 KEK 重啟時無人能解封。
+// 這與密碼非空那一條是同一個判準的兩面——能不能撐住解封，不是名義上有沒有
+// admin 角色。
 func localAdminScope(tx *gorm.DB) *gorm.DB {
 	return tx.Model(&model.User{}).
 		Joins("JOIN user_roles ON user_roles.user_id = users.id").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
 		Where("roles.name = ?", model.RoleAdmin).
+		Where("user_roles.source IN ?", []string{model.RoleSourceManual, model.RoleSourceBoth}).
 		Where("users.active = ?", true).
 		Where("users.deleted_at IS NULL").
 		Where("users.external_credential = ?", false).

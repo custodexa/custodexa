@@ -44,7 +44,7 @@ func newLoginRouterWithGuard(t *testing.T, guard *sourceAbuseGuard) *gin.Engine 
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

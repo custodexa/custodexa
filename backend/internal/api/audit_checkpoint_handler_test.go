@@ -83,7 +83,7 @@ func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.AuditLog{}, &model.AuditCheckpoint{},
-		&model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.SecurityPolicy{}); err != nil {
+		&model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{
@@ -408,7 +408,7 @@ func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

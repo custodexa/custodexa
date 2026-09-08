@@ -224,11 +224,15 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.RefreshToken{}, &model.AuditLog{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{},
-		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}); err != nil {
+		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.UserRole{},
+		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
+		// 索引計數（缺表即 fail-close）
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE IF NOT EXISTS user_roles (
-		user_id INTEGER NOT NULL, role_id INTEGER NOT NULL)`).Error; err != nil {
+	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
+	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
+	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	// 身分域三元組的唯一索引：production 由 migration 建（partial，排除軟刪），
@@ -252,6 +256,8 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 	// discovery 於本檔不參與（測試直接呼叫流程狀態與憑證層，不經 IdP 往返）
 	login := identity.NewOIDCLoginService(db, providers, identity.NewOIDCDiscoveryService(testEgress()), auth, nil)
 	login.SetAuditSinkForTest(newRecordingAudit())
+	// 映射事件的交易內審計落地面：未接＝重算失敗＝登入被拒（fail-close）
+	login.SetRoleMappingAuditSink(audit.NewTxSink())
 	return login, providers, db
 }
 

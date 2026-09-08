@@ -176,21 +176,36 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {
-        // OIDC 身分提供者：身分域設定屬身分管理，
-        // 與使用者/角色同組；admin only（後端 RequireRole 才是強制點）
-        path: 'oidc-providers',
-        name: 'OIDCProviders',
-        component: () => import('../views/OIDCProviders.vue'),
+        // 身分來源：目錄與身分提供者合併為一份清單，映射規則成為各來源詳情頁
+        // 內的區段。admin only（後端 RequireRole 才是強制點）
+        path: 'identity-sources',
+        name: 'IdentitySources',
+        component: () => import('../views/identity-sources/IdentitySources.vue'),
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {
-        // LDAP 目錄設定：與 OIDC 同層的身分來源，
-        // 兩者並列於身分管理群（分類語彙不是 SSO——LDAP 是 search-then-bind，
-        // 實現差異屬內部細節）。singleton 資源，故路由無 :id
-        path: 'ldap-directory',
-        name: 'LDAPDirectory',
-        component: () => import('../views/LDAPDirectory.vue'),
+        // 新增流程只問型別，選定即進詳情頁；靜態段 `new` 的比對分數高於
+        // 下方的 `:type`，故不會被詳情路由吃掉
+        path: 'identity-sources/new/:type',
+        name: 'IdentitySourceCreate',
+        component: () => import('../views/identity-sources/SourceDetail.vue'),
         meta: { requiresAuth: true, roles: ['admin'] },
+      },
+      {
+        path: 'identity-sources/:type/:id',
+        name: 'IdentitySourceDetail',
+        component: () => import('../views/identity-sources/SourceDetail.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] },
+      },
+      {
+        // 兩個前身頁的深連結仍須可用（沿「改名後深連結仍可用」的既有立場）：
+        // 書籤、文件與外部連結都指向舊路徑，直接移除等於製造 404
+        path: 'oidc-providers',
+        redirect: '/identity-sources',
+      },
+      {
+        path: 'ldap-directory',
+        redirect: '/identity-sources',
       },
       {
         path: 'approver-scopes',

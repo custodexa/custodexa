@@ -37,7 +37,7 @@ func setupCascadeFailCloseDB(t *testing.T) *gorm.DB {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.RefreshToken{}, &model.UserExternalIdentity{}, &model.Session{}); err != nil {
+		&model.RefreshToken{}, &model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

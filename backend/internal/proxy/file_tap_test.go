@@ -18,7 +18,7 @@ func setupFileTapDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

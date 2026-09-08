@@ -11,7 +11,7 @@ import (
 func setupTransfer(t *testing.T) (*DataTransferService, *SecurityPolicyService) {
 	t.Helper()
 	svc, db := setupPolicyDB(t)
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate users: %v", err)
 	}
 	return NewDataTransferService(svc), svc

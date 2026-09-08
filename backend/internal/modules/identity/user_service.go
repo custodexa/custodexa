@@ -650,14 +650,20 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 		}
 		return fmt.Errorf("查詢角色失敗: %w", err)
 	}
-	// 原子冪等追加：model.AssignUserRole 內為 ON CONFLICT DO NOTHING，讓兩 admin
-	// 併發代配同一人時，敗方 no-op 而非撞 user_roles 複合主鍵回 500——先查後寫有
-	// TOCTOU 窗會退化 idempotent 端點。單條 upsert 不觸碰其他角色列，Postgres/SQLite 皆支援。
+	// 原子冪等追加：底層建列為 ON CONFLICT DO NOTHING，讓兩 admin 併發代配同一人時，
+	// 敗方 no-op 而非撞 user_roles 複合主鍵回 500——先查後寫有 TOCTOU 窗會退化
+	// idempotent 端點。單條 upsert 不觸碰其他角色列，Postgres/SQLite 皆支援。
 	//
-	// **改為交易**（role-assignment-integrity）：指派與其審計列必須同生共死，
-	// 審計寫不進去就不許掛上角色。已存在時寫入面回 no-op、不留痕，冪等語義不變
+	// **交易**：指派與其審計列必須同生共死，審計寫不進去就不許掛上角色。
+	// 已存在時寫入面回 no-op、不留痕，冪等語義不變。
+	//
+	// **對既有的映射列升為並存態**：這是把外部群組賦予的角色固定下來的原語
+	// （固定之後不再隨群組異動消失）。副作用要寫進文件——一站式代配審核範圍時
+	// 若順帶追加角色，會把該映射列釘成管理者指派。純追加不縮減有效集，
+	// 故本端點一如既往不推進憑證世代。
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		return model.AssignUserRole(tx, userID, role.ID, model.RoleOriginAPI)
+		_, err := AddManualRole(tx, userID, role.ID)
+		return err
 	}); err != nil {
 		return fmt.Errorf("追加角色失敗: %w", err)
 	}
@@ -681,15 +687,20 @@ func roleSetDiffers(tx *gorm.DB, userID uint, want []model.Role) (bool, error) {
 	return len(added) > 0 || len(removed) > 0, nil
 }
 
-// roleSetDelta 現行角色集到目標角色集的差量（added＝要授予的、removed＝要移除的）。
+// roleSetDelta 現行**管理者指派集**到目標角色集的差量（added＝要授予的、removed＝要移除的）。
 //
-// **替換必須拆成差量**（role-assignment-integrity）：留痕的單位是一筆指派的
-// 授予或撤銷，而 `Association("Roles").Replace` 是一個黑箱——它刪了什麼、加了
-// 什麼，呼叫端看不到，也就寫不出對帳重放得回來的事件流。
-// 讀取與寫入同交易、同鎖內：鎖外預讀會讓兩個並發替換各自看見舊集合
+// **替換必須拆成差量**（留痕的單位是一筆指派的授予或撤銷）：整組覆寫是一個黑箱
+// ——它刪了什麼、加了什麼，呼叫端看不到，也就寫不出對帳重放得回來的事件流。
+// 讀取與寫入同交易、同鎖內：鎖外預讀會讓兩個並發替換各自看見舊集合。
+//
+// **只看管理者指派的列**（來源為 manual 或 both）：替換端點的作用範圍限於管理者
+// 指派集。把僅由外部群組賦予的列算進現行集，會讓一次「以有效集重送」把那些列
+// 判成要保留的手動列（升格）或要移除的列（刪光），兩種都是靜默的權限改動。
 func roleSetDelta(tx *gorm.DB, userID uint, want []model.Role) (added, removed []uint, err error) {
 	var currentIDs []uint
-	if err := tx.Table("user_roles").Where("user_id = ?", userID).
+	if err := tx.Table("user_roles").
+		Where("user_id = ? AND source IN ?", userID,
+			[]string{model.RoleSourceManual, model.RoleSourceBoth}).
 		Pluck("role_id", &currentIDs).Error; err != nil {
 		return nil, nil, fmt.Errorf("讀取現行角色失敗: %w", err)
 	}
@@ -712,17 +723,122 @@ func roleSetDelta(tx *gorm.DB, userID uint, want []model.Role) (added, removed [
 	return added, removed, nil
 }
 
-// AssignRoles 分配角色（替換現有角色）。
-// 角色集實際變動時 SHALL 於同一交易內推進 credential_epoch 並撤銷 refresh（C-1，見下方註解）
-func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
+// RoleSets 一個帳號的角色兩份集合。
+//
+// 讀取端必須拆開回傳：合成一份「有效角色集」的話，用戶端無從分辨哪些角色是
+// 管理者指派的、哪些來自外部群組，於是「讀出來整包回寫」就成了預設操作，
+// 而那正是把映射角色靜默升格為管理者指派的路徑。
+//
+// 兩者並存的角色**同時出現在兩份集合裡**——那是它的實情，不是重複。
+type RoleSets struct {
+	// Manual 管理者指派的成分存在的角色（來源 manual 或 both）
+	Manual []string `json:"manual"`
+	// Mapped 外部群組映射賦予的成分存在的角色（來源 mapped 或 both）
+	Mapped []string `json:"mapped"`
+}
+
+// RoleAssignDisclosure 回應的揭露欄一項：機器碼＋參數，對外文字由用戶端依碼決定。
+// 形態與證據包的揭露欄一致（後端硬編文案會把語言釘死在後端）。
+type RoleAssignDisclosure struct {
+	Code   string            `json:"code"`
+	Params map[string]string `json:"params,omitempty"`
+}
+
+// DisclosureRoleMappedIgnored 請求主體含目前僅由映射賦予的角色，該角色已被忽略。
+// 參數 roles 以逗號分隔列出被忽略者，供介面提示「要固定下來請用釘住」。
+const DisclosureRoleMappedIgnored = "role.mapped_ignored"
+
+// RoleAssignResult 替換端點的結果：套用之後的兩份集合，以及本次的揭露。
+type RoleAssignResult struct {
+	Sets        RoleSets               `json:"role_sets"`
+	Disclosures []RoleAssignDisclosure `json:"disclosures,omitempty"`
+}
+
+// roleSetsOf 讀一個帳號的兩份角色集合（依角色名排序，供回應與比對穩定）。
+func roleSetsOf(tx *gorm.DB, userID uint) (RoleSets, error) {
+	type roleSourceRow struct {
+		Name   string
+		Source string
+	}
+	var rows []roleSourceRow
+	if err := tx.Table("user_roles").
+		Select("roles.name AS name, user_roles.source AS source").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ?", userID).
+		Order("roles.name").
+		Scan(&rows).Error; err != nil {
+		return RoleSets{}, fmt.Errorf("讀取角色來源分集失敗: %w", err)
+	}
+	sets := RoleSets{Manual: []string{}, Mapped: []string{}}
+	for _, r := range rows {
+		if model.IsManualSource(r.Source) {
+			sets.Manual = append(sets.Manual, r.Name)
+		}
+		if r.Source == model.RoleSourceMapped || r.Source == model.RoleSourceBoth {
+			sets.Mapped = append(sets.Mapped, r.Name)
+		}
+	}
+	return sets, nil
+}
+
+// mappedOnlyRoleIDs 目前**僅**由映射賦予的角色（來源 mapped）。
+// 這些角色出現在替換端點的主體裡時被忽略——見 AssignRoles 的說明。
+func mappedOnlyRoleIDs(tx *gorm.DB, userID uint) (map[uint]struct{}, error) {
+	var ids []uint
+	if err := tx.Table("user_roles").
+		Where("user_id = ? AND source = ?", userID, model.RoleSourceMapped).
+		Pluck("role_id", &ids).Error; err != nil {
+		return nil, fmt.Errorf("讀取僅由映射賦予的角色失敗: %w", err)
+	}
+	out := make(map[uint]struct{}, len(ids))
+	for _, id := range ids {
+		out[id] = struct{}{}
+	}
+	return out, nil
+}
+
+// RoleSetsOf 讀取端：回一個帳號的兩份角色集合。
+func (s *UserService) RoleSetsOf(userID uint) (*RoleSets, error) {
+	var user model.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("查詢使用者失敗: %w", err)
+	}
+	sets, err := roleSetsOf(s.db, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &sets, nil
+}
+
+// AssignRoles 替換**管理者指派集**（不動外部群組映射賦予的部分）。
+//
+// # 作用範圍
+//
+// 主體描述的是管理者指派集的完整內容。目前僅由映射賦予的角色出現在主體裡時
+// **被忽略**：不建立管理者指派、不報錯，改以回應的揭露欄告知。理由是讀取端
+// 回的是兩份集合，用戶端把兩份併起來回送是最容易犯的錯——報錯會讓既有用法
+// 全數壞掉，而升為並存態則是把「讀出來整包回寫」靜默轉成釘住，
+// 審計上與管理者主動指派無從區分。釘住是獨立的顯式動作。
+//
+// # 世代推進的判準
+//
+// 判準是**有效角色集（管理者指派集聯集映射集）是否有列被移除**，
+// 不是集合是否相等。純追加不撤走任何憑證已賦予的能力，推進世代只是把人無故
+// 踢下線；而角色從一個特權角色換成另一個時數量不變、確有撤除，必須推進。
+// 冪等追加端點本就不推進，兩條路徑於此不再不對稱——同一件事在兩條路徑上得到
+// 相反的結果，會讓「我的會話為什麼斷了」無法回答。
+func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignResult, error) {
 	// 檢查使用者是否存在
 	var user model.User
 	if err := s.db.First(&user, userID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrUserNotFound
+			return nil, ErrUserNotFound
 		}
 		log.Printf("[UserService] AssignRoles: Query user error: %v", err)
-		return fmt.Errorf("查詢使用者失敗: %w", err)
+		return nil, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
 	// 查詢角色
@@ -731,16 +847,16 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 		result := s.db.Where("name IN ?", roleNames).Find(&roles)
 		if result.Error != nil {
 			log.Printf("[UserService] AssignRoles: Query roles error: %v", result.Error)
-			return fmt.Errorf("查詢角色失敗: %w", result.Error)
+			return nil, fmt.Errorf("查詢角色失敗: %w", result.Error)
 		}
 
 		// 檢查是否所有角色都存在
 		if len(roles) != len(roleNames) {
-			return ErrRoleNotFound
+			return nil, ErrRoleNotFound
 		}
 	}
 
-	// 替換角色（使用 GORM Association Replace）。
+	// 替換管理者指派集。
 	// 新角色集不含 admin ＝ 本操作會移除該帳號的 admin 資格，須受「本地 admin 不變式」
 	// 約束（2.7）：判定於系統級鎖內重讀且與 Replace 同交易。保留 admin 的角色重設
 	// 不減少本地 admin 數，不取系統級鎖（避免無謂爭用）——但**兩條分支都要取使用者級
@@ -771,24 +887,63 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	// 兩者威脅模型不等價。進行中唯讀監看訂閱的殘留（monitor 不受 -01 約束）
 	// 已另行記錄，非本函式邏輯需處理範圍。
 	// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下
+	var result RoleAssignResult
 	applyRoles := func(tx *gorm.DB) error {
-		added, removed, err := roleSetDelta(tx, userID, roles)
+		result = RoleAssignResult{}
+		// 主體內目前僅由映射賦予的角色一律忽略：不建管理者指派、不報錯，
+		// 改以揭露欄告知。判定要在鎖內重讀——鎖外預讀會讓一次併發的登入重算
+		// 把角色的來源改掉，而本次仍以舊來源決定忽略與否
+		mappedOnly, err := mappedOnlyRoleIDs(tx, userID)
 		if err != nil {
 			return err
 		}
-		// 差量寫入取代 Association("Roles").Replace：每一筆授予與撤銷同交易留痕，
-		// 留痕失敗即整筆回滾（role-assignment-integrity）
+		manualTarget := make([]model.Role, 0, len(roles))
+		var ignored []string
+		for _, r := range roles {
+			if _, only := mappedOnly[r.ID]; only {
+				ignored = append(ignored, r.Name)
+				continue
+			}
+			manualTarget = append(manualTarget, r)
+		}
+
+		added, removed, err := roleSetDelta(tx, userID, manualTarget)
+		if err != nil {
+			return err
+		}
+		// 差量寫入取代整組覆寫：每一筆授予與撤銷同交易留痕，留痕失敗即整筆回滾。
+		// 經狀態轉移函式而非直接寫入面——移出手動集時，兩者並存的列只降回映射態
+		// 而不刪列（外部群組給的那一半不因管理者收回自己那一半而消失）
+		effectiveShrunk := false
 		for _, roleID := range removed {
-			if err := model.RevokeUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
+			gone, err := RemoveManualRole(tx, userID, roleID)
+			if err != nil {
 				return err
+			}
+			if gone {
+				effectiveShrunk = true
 			}
 		}
 		for _, roleID := range added {
-			if err := model.AssignUserRole(tx, userID, roleID, model.RoleOriginAPI); err != nil {
+			if _, err := AddManualRole(tx, userID, roleID); err != nil {
 				return err
 			}
 		}
-		if len(added) == 0 && len(removed) == 0 {
+
+		sets, err := roleSetsOf(tx, userID)
+		if err != nil {
+			return err
+		}
+		result.Sets = sets
+		if len(ignored) > 0 {
+			result.Disclosures = append(result.Disclosures, RoleAssignDisclosure{
+				Code:   DisclosureRoleMappedIgnored,
+				Params: map[string]string{"roles": strings.Join(ignored, ",")},
+			})
+		}
+
+		// 有效角色集沒有列被移除即不推進：純追加不撤走任何憑證已賦予的能力
+		if !effectiveShrunk {
 			return nil
 		}
 		if err := BumpCredentialEpoch(tx, userID, "roles_changed"); err != nil {
@@ -812,14 +967,14 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) error {
 	}
 	if assignErr != nil {
 		if errors.Is(assignErr, ErrLastAdmin) {
-			return assignErr
+			return nil, assignErr
 		}
 		log.Printf("[UserService] AssignRoles: Replace roles error: %v", assignErr)
-		return fmt.Errorf("分配角色失敗: %w", assignErr)
+		return nil, fmt.Errorf("分配角色失敗: %w", assignErr)
 	}
 
 	log.Printf("[UserService] AssignRoles: Roles assigned successfully, UserID: %d, Roles: %v", userID, roleNames)
-	return nil
+	return &result, nil
 }
 
 // UpdateStatus 更新使用者狀態（啟用/禁用）

@@ -29,8 +29,7 @@ func setupUpdateMeEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.DB) 
 	assert.NoError(t, err)
 	assert.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
-		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
-	))
+		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}))
 	oldDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = oldDB })

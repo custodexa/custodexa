@@ -20,7 +20,7 @@ func setupAccessPolicyDB(t *testing.T) (*AccessPolicyService, *SecurityPolicySer
 	}
 	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.AuditLog{},
-		&model.User{}, &model.UserGroup{}); err != nil {
+		&model.User{}, &model.UserGroup{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	policies := NewSecurityPolicyService(db)

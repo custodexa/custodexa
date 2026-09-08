@@ -494,6 +494,65 @@ ADMIN_PASS='<現行 admin 密碼>' bash scripts/e2e_smoke.sh
   shell 引用類 bug（如舊版 bash 對 `$$` 的 ANSI-C 誤讀）的症狀離根因極遠，
   審計庫的 `request_body` 是唯一直接證據。
 
+### 目錄與身分提供者的群組測試資料
+
+開發目錄以 Compose inline configs 掛載自訂 LDIF，先載入 OpenLDAP `memberof`
+overlay，再建立使用者與群組；`LDAP_GROUP` 只能建立單一共用群組，無法區分以下成員。
+修改資料後使用 `docker compose up -d --force-recreate ldap-test`，不要只 restart。
+
+| 靶機 | 帳號 | 開發密碼 | 群組屬性／宣告與預期值 |
+| --- | --- | --- | --- |
+| ldap-test | testldap | ldappass123 | `memberOf: cn=inner,ou=groups,dc=example,dc=org`，受映射群組 |
+| ldap-test | testldapplain | ldappass123 | `memberOf: cn=outside,ou=groups,dc=example,dc=org`，不屬於 inner |
+| dex | oidcuser@dex.localhost | oidcpass123 | ID token 的 `groups` 字串陣列，值為 `pam-auditors` |
+| dex | oidcnogroups@dex.localhost | oidcpass123 | ID token 的 `groups` 鍵缺席，不是空陣列 |
+
+LDAP 使用者位於 `ou=users,dc=example,dc=org`；另有
+`cn=outer,ou=groups,dc=example,dc=org` 包含 inner 群組，用於驗證巢狀行為。
+OpenLDAP 2.6.10 實測 testldap 的 memberOf 只有 inner，不展開 outer。
+搜尋 bind 帳號為 `cn=admin,dc=example,dc=org`，密碼 adminpass（僅限本地靶機）。
+
+```bash
+docker compose exec -T ldap-test ldapsearch -LLL -x -H ldap://localhost:1389 \
+  -D cn=admin,dc=example,dc=org -w adminpass -b dc=example,dc=org \
+  '(uid=testldap)' uid memberOf
+```
+
+Dex v2.45.1 的上述 payload 以授權碼流程、scope `openid profile email groups` 實測。
+修改 `docker/dex/config.yaml` 後用 `docker compose up -d --force-recreate dex`。
+宣告是否出現在本系統登入流程，還取決於本系統要求的 scope；直接向靶機兌換成功
+只證明靶機會發出該宣告。煙霧場景 12／13 的群組相關斷言在條件不具備時一律印出跳過原因
+且不計入 PASS——同場景其他斷言通過，不足以證明群組相關的行為已驗。
+
+#### 驗證配方：群組宣告的鍵名、型別、缺席語義
+
+三件事要各自驗到，不能互相代替：**鍵名是 `groups`**、**型別是字串陣列**、
+**帳號無群組時該鍵整個缺席（不是空陣列、也不是空字串）**。
+
+先確認靶機支援該 scope（不需認證，可直接跑）：
+
+```bash
+curl -s --resolve dex.localhost:5556:127.0.0.1 \
+  http://dex.localhost:5556/dex/.well-known/openid-configuration \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['scopes_supported'])"
+# 預期輸出含 'groups'：['openid', 'email', 'groups', 'profile', 'offline_access']
+```
+
+再取 ID token 看實際形狀。dex 的 `grant_types_supported` 沒有密碼授權，
+只能走授權碼流程：以 client `custodexa-dev`、scope `openid profile email groups`
+向 `/dex/auth` 取碼，再向 `/dex/token` 兌換；主機端跑腳本時 issuer 主機名要靠
+`--resolve dex.localhost:5556:127.0.0.1` 指到本機。拿到 ID token 後**只看 payload 的
+鍵集合與型別，不要把 token 本身寫進任何檔案或報告**，逐項對照：
+
+- `oidcuser@dex.localhost`：`groups` 存在，型別為 list、元素為 str，值 `["pam-auditors"]`。
+- `oidcnogroups@dex.localhost`：鍵集合裡**沒有** `groups`。看到 `[]` 或 `""` 都表示
+  靶機行為已變，測試對「缺席＝空集合」的判定要重新確認。
+- 對照組：同一帳號改請求 `openid profile email`（不帶 `groups`），`groups` 鍵不出現
+  ——這條證明「必須請求該 scope」，缺了它就分不清是帳號沒群組還是沒要到 scope。
+
+目錄側的對應驗證即上面的 `ldapsearch`：`testldap` 只回一筆 `memberOf`（inner），
+沒有 outer；沒有「屬性缺席」與「空值」的區別問題，屬性不存在即該使用者無群組資料。
+
 ## 10. 覆蓋率與結果導向
 
 - 產品程式碼以 80% 覆蓋率為目標；實驗腳本、文檔、一次性工具不受此限。

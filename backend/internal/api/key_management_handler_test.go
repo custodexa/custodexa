@@ -44,7 +44,7 @@ func newKeyMgmtTestHandlerWithKey(t *testing.T, key []byte) *KeyManagementHandle
 	}
 	if err := db.AutoMigrate(&model.DataKey{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.User{},
 		&model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{},
-		&model.NotificationChannel{}); err != nil {
+		&model.NotificationChannel{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	kek, err := crypto.NewEnvKEKProvider(key)

@@ -75,6 +75,19 @@
       @update:value="(key, value) => (formValues[key] = value)"
     >
       <template #section-extra="{ section }">
+        <!-- 網頁會話絕對壽命設 0：會話沒有時間上界。角色由外部身分來源的群組
+             成員資格決定時，來源側撤權要等到下次登入才生效，0 值等於把那個
+             時效拉到無限長。語氣是警語不是阻擋——單機或不接外部來源的部署
+             設 0 沒有這個問題，決定權在部署者 -->
+        <el-alert
+          v-if="section.keys?.includes('web_max_session_hours') && webSessionCapRisk"
+          class="section-risk"
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          {{ $t('securityPolicies.webSessionCapRiskAlert') }}
+        </el-alert>
         <!-- 跨欄位風險（TIMEOUT-1 方案 B）：設了協議閒置逾時但未設最長時長封頂時，
              tail -f/top 等監看類長連線因伺服器持續輸出而不受閒置逾時治理，須以
              最長時長作絕對上限中斷 -->
@@ -161,6 +174,15 @@ const insecureTransportHint = computed(
     window.location.protocol === 'http:' &&
     savedValues.value[POLICY_REFRESH_COOKIE_SECURE] === true
 )
+
+// 網頁會話絕對壽命為 0（無上界）。用 formValues 即時反映未儲存編輯——
+// 這一句要在按下儲存之前就出現，讓改成 0 的人當下就讀到後果；
+// 後端未提供本鍵時值為 undefined → 不提示、不報錯
+const webSessionCapRisk = computed(() => {
+  const hours = formValues.value['web_max_session_hours']
+  if (hours == null) return false
+  return Number(hours) === 0
+})
 
 // 跨欄位風險（TIMEOUT-1 方案 B）：協議閒置逾時已啟用（>0）但最長時長未封頂（=0）。
 // 用 formValues 即時反映未儲存編輯；缺任一鍵（後端未提供）時不提示

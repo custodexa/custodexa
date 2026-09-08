@@ -76,16 +76,40 @@ export function deleteUser(id) {
 }
 
 /**
- * 分配角色
+ * 替換**管理者指派集**（不是有效角色集）。
+ *
+ * 主體鍵名為 `manual_roles`；舊鍵名 `roles` 一出現即被拒（400），
+ * 服務層一次都不會被呼叫。主體描述的是管理者指派集的完整內容，
+ * 目前僅由外部群組映射賦予的角色出現在主體裡時會被忽略（不建列、不報錯），
+ * 改由回應的 `disclosures` 告知——要把映射角色固定成管理者指派得走 pinUserRole。
+ *
  * @param {number} id - 用戶 ID
- * @param {Array<string>} roles - 角色列表
- * @returns {Promise}
+ * @param {Array<string>} manualRoles - 管理者指派的角色名稱
+ * @returns {Promise<{role_sets: {manual: string[], mapped: string[]}, disclosures?: Array}>}
  */
-export function assignRoles(id, roles) {
+export function assignRoles(id, manualRoles) {
   return request({
     url: `/users/${id}/roles`,
     method: 'put',
-    data: { roles },
+    data: { manual_roles: manualRoles },
+  })
+}
+
+/**
+ * 釘住一個由外部群組映射賦予的角色（把來源升為並存態）。
+ *
+ * 與 assignRoles 分開的理由：釘住是顯式動作。把映射角色併進替換主體會被忽略，
+ * 而若改成靜默升格，稽核上就與管理者主動指派無從區分。
+ *
+ * @param {number} id - 用戶 ID
+ * @param {string} role - 角色名稱（非映射賦予時回 400 VALIDATION_ROLE_NOT_MAPPED）
+ * @returns {Promise<{role_sets: {manual: string[], mapped: string[]}}>}
+ */
+export function pinUserRole(id, role) {
+  return request({
+    url: `/users/${id}/roles/pin`,
+    method: 'post',
+    data: { role },
   })
 }
 

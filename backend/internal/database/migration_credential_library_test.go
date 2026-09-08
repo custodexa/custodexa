@@ -44,7 +44,7 @@ func newCredentialLibraryDB(t *testing.T) *gorm.DB {
 		&model.DataKey{}, &model.ChangeSecretCandidate{}, &model.ClipboardEvent{},
 		&model.OffsiteProfile{},
 		&model.Credential{}, &model.CredentialSecretVersion{},
-		&model.CredentialRotation{}, &model.CredentialRotationMember{}); err != nil {
+		&model.CredentialRotation{}, &model.CredentialRotationMember{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立（marker 的落點）

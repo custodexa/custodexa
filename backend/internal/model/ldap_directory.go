@@ -73,6 +73,12 @@ type LDAPDirectory struct {
 	// AttrFullName 顯示名屬性名（欄名刻意為 attr_fullname，與 env 鍵
 	// LDAP_ATTR_FULLNAME 同形，非 GORM 預設的 attr_full_name）
 	AttrFullName string `gorm:"column:attr_fullname;size:100;not null;default:''" json:"attr_fullname"`
+	// AttrGroup 群組成員資格屬性名（例：memberOf）。**可空**——未填即代表本部署
+	// 不依外部群組決定角色：登入路徑不向目錄索取這個屬性，也不動任何角色列。
+	//
+	// 不列入啟用態的必填集是刻意的：既有部署升級後這一欄必然是空的，
+	// 把它變成必填等於讓一次升級把所有目錄使用者擋在門外。
+	AttrGroup string `gorm:"column:attr_group;size:100;not null;default:''" json:"attr_group"`
 
 	// SkipTLSVerify 跳過 TLS 憑證驗證；傳輸安全框架將其視為一級風險項
 	// （RiskLDAPSkipVerify），存檔閘與清冊皆會浮現

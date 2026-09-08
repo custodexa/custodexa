@@ -224,6 +224,10 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/instance_guard_handler.go", fn: "InstanceGuardHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/key_management_handler.go", fn: "KeyManagementHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/ldap_directory_handler.go", fn: "LDAPDirectoryHandler.RegisterRoutes", count: 1},
+	// 身分來源管理面：合併列表回的是本部署接了哪些外部身分來源與其位址，
+	// 映射規則 CRUD 則是「哪個外部群組給哪個角色」的寫入面——漏掛認證等於
+	// 讓匿名請求把自己所屬的群組映射成管理員。鏈上另以 RequireRole("admin") 疊加。
+	{symbol: "AuthMiddleware", file: "internal/api/identity_source_handler.go", fn: "IdentitySourceHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/my_connection_handler.go", fn: "MyConnectionHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/notification_channel_handler.go", fn: "NotificationChannelHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/oidc_handler.go", fn: "OIDCHandler.RegisterRoutes", count: 1},

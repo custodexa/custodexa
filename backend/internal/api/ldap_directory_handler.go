@@ -35,6 +35,13 @@ import (
 // 成功**的階梯結果——而分階段定位正是這個端點存在的理由。
 type LDAPDirectoryHandler struct {
 	directories *identity.LDAPDirectoryService
+	// sources 身分來源管理面服務（狀態彙總）。nil 時該支端點回可辨識的失敗
+	sources *identity.IdentitySourceService
+}
+
+// SetIdentitySources 注入身分來源管理面服務（狀態彙總）
+func (h *LDAPDirectoryHandler) SetIdentitySources(s *identity.IdentitySourceService) {
+	h.sources = s
 }
 
 // NewLDAPDirectoryHandler 建立 LDAP 目錄設定 handler
@@ -52,6 +59,8 @@ func (h *LDAPDirectoryHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		dir.PUT("", h.Update)
 		dir.DELETE("", h.Delete)
 		dir.POST("/test", h.Test)
+		// 檢核面板的燈號：一支端點回齊，不由前端拼多支
+		dir.GET("/status", h.Status)
 	}
 }
 
@@ -102,6 +111,29 @@ func (h *LDAPDirectoryHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// Status 目錄的狀態彙總（檢核面板第二塊）。
+//
+// **不撥號**：連線與群組屬性抽樣兩盞燈取自主動的連線測試，本端點只回報
+// 系統已觀測到的事實，未觀測即 null（介面呈現為「尚無資料」）
+func (h *LDAPDirectoryHandler) Status(c *gin.Context) {
+	if h.sources == nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError,
+			apierror.CodeInternalLDAPDirectoryQuery, identity.ErrMappingServiceUnavailable)
+		return
+	}
+	status, err := h.sources.DirectoryStatus()
+	if err != nil {
+		if errors.Is(err, identity.ErrMappingSourceNotFound) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeNotFoundLDAPDirectory, nil)
+			return
+		}
+		apierror.RespondInternal(c, http.StatusInternalServerError,
+			apierror.CodeInternalLDAPDirectoryQuery, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
 }
 
 // Test 以表單當下值執行分階段連線測試（先測後存）。
@@ -201,6 +233,8 @@ func respondLDAPDirectoryError(c *gin.Context, err error, fallback apierror.ErrC
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationLDAPBindPasswordConflict, nil)
 	case errors.Is(err, identity.ErrLDAPBindPasswordRequired):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationLDAPBindPasswordRequired, nil)
+	case errors.Is(err, identity.ErrLDAPDirectoryHasMappings):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeLDAPDirectoryHasMappings, nil)
 	case errors.Is(err, identity.ErrLDAPDirectoryNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeNotFoundLDAPDirectory, nil)
 	// 取鎖忙碌與唯一鍵衝突皆為**可重試**語義：回 409 而非 500，前端可據以提示

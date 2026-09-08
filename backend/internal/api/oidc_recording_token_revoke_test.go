@@ -59,7 +59,9 @@ func setupRecordingTokenEnv(t *testing.T) *recTokenEnv {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.UserRole{},
+		// provider 刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
+		&model.GroupRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

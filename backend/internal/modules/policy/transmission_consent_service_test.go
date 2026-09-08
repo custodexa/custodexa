@@ -18,7 +18,7 @@ func setupConsentSvc(t *testing.T) (*TransmissionConsentService, *SecurityPolicy
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.TransmissionConsent{},
-		&model.AuditLog{}, &model.User{}, &model.Asset{}); err != nil {
+		&model.AuditLog{}, &model.User{}, &model.Asset{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	policy := NewSecurityPolicyService(db)

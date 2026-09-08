@@ -46,7 +46,7 @@ func wsMatrixDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.RefreshToken{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.Session{}); err != nil {
+		&model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

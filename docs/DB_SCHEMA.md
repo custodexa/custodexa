@@ -1,10 +1,11 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
-> 前次更新：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
+> **最後更新**：2026-09-08（外部群組對角色映射：新表 `group_role_mappings`／`user_role_mappings`，`user_roles` 加 `source` 欄，`ldap_directories` 加 `attr_group`，`oidc_providers` 加 `groups_claim` 與宣告對應三欄，`users` 加群組觀測快照三欄，migration `20260908_group_role_mapping`）
+> 前次更新：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
+> 再前次更新：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`、`migration_group_role_mapping.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -35,9 +36,9 @@
 
 | 模型 | 表名 | 建表來源 | 說明 |
 |------|------|----------|------|
-| User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique）＋增量 `20260826_source_ip_forensics` 加 `allowed_cidrs` 欄 | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免、允許來源網段） |
+| User | `users` | baseline（`idx_users_username`／`idx_users_email` 兩條 partial unique）＋增量 `20260826_source_ip_forensics` 加 `allowed_cidrs` 欄＋增量 `20260908_group_role_mapping` 加群組觀測快照三欄 | 系統用戶（含 LDAP 標記、MFA/TOTP、帳號鎖定/強制改密/閒置停用豁免、允許來源網段、群組觀測快照） |
 | Role | `roles` | baseline | 角色定義 |
-| - | `user_roles` | baseline | 用戶-角色關聯表（M2M，由 baseline 顯式建表） |
+| UserRole | `user_roles` | baseline＋增量 `20260908_group_role_mapping` 加 `source` 欄 | 用戶-角色關聯表（M2M，由 baseline 顯式建表；`source` 記這一列是管理者指派、外部群組映射賦予，還是兩者並存） |
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
 | - | `user_group_members` | baseline | 用戶-群組關聯表（一人可屬多群；同上，現由 baseline 顯式建表） |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
@@ -86,23 +87,26 @@
 | RotationReportSchedule | `rotation_report_schedules` | **migration（增量 `20260903_rotation_evidence_report`，非 baseline）**（`idx_rotation_report_schedules_name` 唯一索引） | 輪替證據報告排程（一列一排程；`period_anchor` 使連續兩期的記錄區間首尾相接） |
 | DataKey | `data_keys` | baseline（`idx_data_keys_purpose_version_kek`＝同 slot 至多一列帶材料，partial unique） | 信封加密金鑰表（KEK 包裹的 DEK/HMAC 鑰）；`kek_id`／`kek_retired_by` 為 `varchar(255)` 以容納外部金鑰引用（KMS ARN） |
 | TransmissionConsent | `transmission_consents` | baseline | 傳輸風險同意記錄（per user×asset） |
-| OIDCProvider | `oidc_providers` | baseline（`idx_oidc_providers_identity_domain` partial unique） | OIDC 身分提供者設定（多實例並存）；`client_secret_enc` 登記於 `envelopeMigrationTargets` |
+| OIDCProvider | `oidc_providers` | baseline（`idx_oidc_providers_identity_domain` partial unique）＋增量 `20260908_group_role_mapping` 加 `groups_claim` 與宣告對應三欄 | OIDC 身分提供者設定（多實例並存）；`client_secret_enc` 登記於 `envelopeMigrationTargets` |
 | UserExternalIdentity | `user_external_identities` | baseline（`idx_user_external_identities_domain` partial unique） | 使用者的外部身分關聯，鍵為 `(issuer, client_id, subject)` |
 | OIDCFlowState | `oidc_flow_states` | baseline（`expires_at` 索引） | OIDC 登入流程的伺服端狀態（state/nonce/PKCE/瀏覽器綁定，一次性消費） |
 | OIDCLoginTicket | `oidc_login_tickets` | baseline（`expires_at` 索引） | callback → SPA 的一次性交棒憑證（僅存雜湊） |
-| LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique） | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
+| LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique）＋增量 `20260908_group_role_mapping` 加 `attr_group` 欄 | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
+| GroupRoleMapping | `group_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（CHECK `chk_group_role_mapping_source`＝來源恰一；`idx_group_role_mappings_ldap`／`idx_group_role_mappings_oidc` 兩條 partial unique） | 外部群組對角色的映射規則（管理者維護；規則掛在目錄 XOR 身分提供者上） |
+| UserRoleMapping | `user_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（複合主鍵 `(user_id, role_id, channel)`，除主鍵外不另建索引） | 某條登入途徑於最近一次重算後認定的映射事實（每次登入重算，通道進主鍵故兩條途徑各自成列） |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **54 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **10 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **56 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **12 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
-與憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **57 張**表
-（守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`：57 表／200 索引／18 條 CHECK）。
+憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
+與群組映射兩表 `group_role_mappings`／`user_role_mappings`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **59 張**表
+（守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`：59 表／205 索引／19 條 CHECK）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含十條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
-全新安裝的最終形狀（57 表／200 索引／18 條 CHECK）以守衛基準為準。
+不含十二條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+全新安裝的最終形狀（59 表／205 索引／19 條 CHECK）以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
 它有雞生蛋問題——必須先於「讀取已套用版本集合」而存在，故不能由 baseline 建立
@@ -112,13 +116,13 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共十一條：baseline 加十條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共十三條：baseline 加十二條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
   ——AST 掃描產品程式碼，**零 `AutoMigrate`、無例外清單**。
 - `backend/internal/database/schema_parity_test.go`（第 1 層，離線、不需資料庫、不可被 skip）
-  ——`schemaParityModels` 的 **46 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
+  ——`schemaParityModels` 的 **49 個 model** 與 schema DDL 逐欄位名雙向比對；比對的 DDL 來源
   自 `20260824_audit_export_jobs` 起擴為 **baseline ＋ 全部增量**（`schemaDDLStatements()`），
   故增量建的 `audit_export_jobs` 同受此守衛，不因不在 baseline 而脫離 parity 檢查。
 - `backend/internal/database/baseline_parity_pg_test.go`、`index_declaration_parity_test.go`
@@ -593,7 +597,8 @@ erDiagram
 **表名**: `users`
 **檔案**: `backend/internal/model/user.go`
 **建表方式**: baseline（`baseline_schema_identity.go`）＋增量 migration `20260826_source_ip_forensics`
-（`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`，見下欄位表末列與「Migration 版本一覽」）。
+（`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`，見下欄位表末列與「Migration 版本一覽」）
+＋增量 migration `20260908_group_role_mapping`（群組觀測快照三欄，皆可空）。
 兩條 partial unique index 承載帳號名的資料層不變式：
 `idx_users_username`＝`(username) WHERE deleted_at IS NULL`、`idx_users_email`＝`(email) WHERE email IS NOT NULL AND deleted_at IS NULL`
 ——謂詞 GORM tag 表達不了，只能由顯式 DDL 承載
@@ -626,6 +631,15 @@ erDiagram
 | `AllowedCIDRList` | []string | `-`（非持久化） | `allowed_cidrs` | 清單的 API 形狀（字串陣列），由 service 層自 `AllowedCIDRs` 拆出。**衍生欄、不入庫**；未經 service 裝飾的 `User` 值此欄為 nil（序列化為 `null`） |
 | `AllowedCIDRsStatus` | string | `-`（非持久化） | `allowed_cidrs_status,omitempty` | 有效涵蓋狀態：`unrestricted`（清單空）／`effectively_unrestricted`（清單非空但含全域前綴，實際等於不限）／`restricted`。由伺服端單一實作依**實際放行的範圍**計算，介面不自行推算。**衍生欄、不入庫** |
 | `AllowedCIDRFamilies` | []string | `-`（非持久化） | `allowed_cidrs_families,omitempty` | 狀態為 `effectively_unrestricted` 時被全放行的位址家族（`v4`／`v6`），供介面指出「含全域前綴的是哪一族」。**衍生欄、不入庫**。注意判定端點 `POST /api/v1/users/source-policy/check` 的回應把同一份資料放在 `families` 鍵（非 `allowed_cidrs_families`），兩處不同名，見 [API_SPEC.md](API_SPEC.md) |
+| `GroupSnapshotChannel` | string | `size:64` | `group_snapshot_channel,omitempty` | 群組觀測快照：最近一次成功讀到群組的登入途徑，形如 `directory:1`／`provider:3`。由增量 `20260908_group_role_mapping` 加欄 |
+| `GroupSnapshotGroups` | string | `type:text` | `group_snapshot_groups,omitempty` | 群組觀測快照：當次觀測到的群組原始值（JSON 陣列，**不做任何正規化**；空集合存 `[]`）。同 migration |
+| `GroupSnapshotAt` | *time.Time | - | `group_snapshot_at,omitempty` | 群組觀測快照：觀測時間。同 migration |
+
+**群組觀測快照三欄的紀律**：三欄**只供診斷**（回答「上一次登入時，這個來源說這個人在哪些群組」），
+**不作為任何授權判定的依據**——授權讀的是角色指派關聯表與映射事實表。寫入點單一
+（`modules/identity/role_mapping_recompute.go` 的 `storeGroupObservationSnapshot`，在重算的同一交易內），
+且**只在群組已知時寫**：讀不到群組時覆蓋，會抹掉「上次成功讀到什麼」這個唯一的診斷線索。
+值是外部來源自報的，介面呈現時標示為外部自報、不與本系統自有的識別值混排。
 
 **認證來源常數**（登入審計標註用，同時作為 `users.provisioning_origin` 的值域）:
 ```go
@@ -704,21 +718,47 @@ const (
 ### 2b. user_roles（用戶×角色關聯表）
 
 **表名**: `user_roles`
-**檔案**: **無 model 檔**——僅由 `model.User.Roles` 與 `model.Role.Users` 的
-`gorm:"many2many:user_roles;"` tag 隱含（`user.go:111`、`role.go:20`）
-**建表方式**: baseline（`baseline_schema_identity.go`），複合主鍵 `(role_id, user_id)`，
-兩條外鍵 `fk_user_roles_role`→`roles(id)`、`fk_user_roles_user`→`users(id)`；無其他索引
-**維護陷阱（沒有守衛會提醒你）**: 本表沒有 model 結構，故**不在 `schemaParityModels` 的射程內**
-——`schema_parity_test.go`（第 1 層）與 `index_declaration_parity_test.go`（第 2 層）都不會檢查它。
-壓縮前它由 GORM many2many 自動建立；`AutoMigrate` 移除後，**改 model 既不會動到本表、也不會有任何測試變紅**。
-要改關聯表的形狀，唯一途徑是直接改 `baseline_schema_identity.go`。
+**檔案**: `backend/internal/model/user_role.go`（`model.UserRole`）。關聯讀取仍走
+`model.User.Roles` 與 `model.Role.Users` 的 `gorm:"many2many:user_roles;"` tag（`user.go`、`role.go`）
+——本結構是這張表的形狀宣告，**不是**以 `SetupJoinTable` 掛上去的自訂關聯結構，故預載入路徑
+只讀角色本體、忽略額外欄（由 `internal/database/user_role_join_model_test.go` 的
+`TestUserRoleJoinModelPreloadIgnoresExtraColumns` 釘住）
+**建表方式**: baseline（`baseline_schema_identity.go`）建 `(role_id, user_id)` 複合主鍵與
+兩條外鍵 `fk_user_roles_role`→`roles(id)`、`fk_user_roles_user`→`users(id)`；
+＋增量 `20260908_group_role_mapping` 加 `source` 欄。無其他索引
 
-| 欄位（baseline） | 類型 | 說明 |
+**維護紀律（本表曾經沒有守衛，現在有了）**: 加上 `source` 欄之前，本表沒有 model 結構，
+故不在 `schemaParityModels` 的射程內——改 model 既不會動到本表、也不會有任何測試變紅。
+`model.UserRole` 出現之後這一點已反轉：本表**已列入 `schemaParityModels`**
+（`internal/database/database.go`），`schema_parity_test.go`（第 1 層，欄位名雙向比對）
+會檢查它。故現在改本表的形狀是**兩處同步**：`model.UserRole` 加欄，並在 DDL（baseline
+或新的增量 migration）加對應語句；只改一邊，第 1 層 parity 守衛就會紅。
+**姊妹表 `user_group_members` 仍無 model 結構，其陷阱仍成立**（見 29b）。
+
+| 欄位（DDL） | 類型 | 說明 |
 |------------------|------|------|
 | `role_id` | bigint NOT NULL | 角色；複合主鍵之一 |
 | `user_id` | bigint NOT NULL | 使用者；複合主鍵之一 |
+| `source` | varchar(16) NOT NULL DEFAULT `'manual'` | 這一列的來源三態：`manual`（只由管理者指派）／`mapped`（只由外部群組映射賦予）／`both`（兩者並存）。由增量 `20260908_group_role_mapping` 加欄 |
 
 無 `created_at`／`deleted_at`：關聯為硬刪（增刪列即掛/摘）。
+
+**`source` 是投影，不是事實源**：它由「這一列有沒有管理者指派的成分」與「映射事實表
+`user_role_mappings` 有沒有對應的列」推導，於同一交易內更新；兩者不一致時以映射事實表為準。
+存在的理由是讓本地管理員計數與列表查詢不必每次去 join 映射事實表。
+
+- **三態而不是兩態**：兩態下「把一個由外部群組賦予的角色固定下來」只能靠刪列或加列表達，
+  而刪列等於有效角色集縮減、縮減會推進憑證世代把人踢下線，下一次登入重算又把列長回來。
+  三態下固定與解除固定都是單條更新，不動有效角色集。
+- **本地管理員計數只認管理者指派的成分**（`model.IsManualSource`＝`manual` 或 `both`）：
+  只由映射賦予的管理員角色會隨群組異動在下一次登入消失，撐不住封印解封的能力。
+- **存量列與既有的角色寫入路徑一律落在 `manual`**：那些路徑寫的都是兩欄 INSERT、吃欄位預設。
+  語義是「認證通過即基本存取，外部群組只管升權」，基本角色永不受映射控制。
+- **寫入面收口**：`UPDATE`／`INSERT INTO`／`DELETE FROM user_roles` 的 SQL 只准出現在
+  `backend/internal/model/user_role_write.go`，GORM 的 `Association("Roles")` 增刪介面
+  在產品程式碼全樹禁用（測試檔不在守衛射程）；
+  由 `internal/modules/identity/role_write_guard_test.go` 的 `TestRoleAuditWriteSitesGuard`
+  雙向釘住（未登記的呼叫點紅、登記的呼叫點消失也紅）。新增一條角色寫入路徑就要一併登記。
 
 ---
 
@@ -1991,9 +2031,11 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 `gorm:"many2many:user_group_members;"` tag 隱含（`user.go:113`、`user_group.go:22`）
 **建表方式**: baseline（`baseline_schema_identity.go`），複合主鍵 `(user_group_id, user_id)`，
 兩條外鍵 `fk_user_group_members_user`→`users(id)`、`fk_user_group_members_user_group`→`user_groups(id)`；無其他索引
-**維護陷阱（沒有守衛會提醒你）**: 同 [2b](#2b-user_roles用戶角色關聯表)——本表無 model 結構，
-**不在 `schemaParityModels` 的射程內**，兩層 parity 守衛都不檢查它；改 model 不會動到它，也不會有測試變紅。
-要改形狀只能直接改 `baseline_schema_identity.go`。
+**維護陷阱（沒有守衛會提醒你）**: 本表無 model 結構，**不在 `schemaParityModels` 的射程內**，
+兩層 parity 守衛都不檢查它；改 model 不會動到它，也不會有測試變紅。
+要改形狀只能直接改 `baseline_schema_identity.go`（或新增一條增量 migration）。
+**姊妹表 `user_roles` 已不再如此**——它在加欄時一併有了 `model.UserRole`、已進 parity 射程（見 [2b](#2b-user_roles用戶角色關聯表)）；
+本表要加欄時走同一條路，先補 model 結構再動 DDL，才不會落在守衛射程外。
 
 | 欄位（baseline） | 類型 | 說明 |
 |------------------|------|------|
@@ -2113,6 +2155,7 @@ CAS 轉 approved（`AccessRequest.ApproverID`＝補齊門檻的最終核准人�
 **檔案**: `backend/internal/model/oidc_provider.go`
 **建表方式**: baseline（`baseline_schema_identity.go`），含 `idx_oidc_providers_identity_domain`
 ＝`(issuer, client_id) WHERE deleted_at IS NULL`（partial 為必要——身分域建後不可變，但軟刪後須允許同 tuple 重建）
+＋增量 `20260908_group_role_mapping` 加 `groups_claim` 與宣告對應三欄（四欄皆 `varchar(64)` 可空、無預設）
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -2129,6 +2172,20 @@ CAS 轉 approved（`AccessRequest.ApproverID`＝補齊門檻的最終核准人�
 | `ForceShared` | *bool | `column:force_shared` | `force_shared,omitempty` | 管理者的收緊意圖（三值：nil＝未表態、true＝強制視為共用身分域）。**刻意用 `*bool` 且不加 `default` tag**——帶 default tag 的 bool 欄位顯式寫 false 會被 DB default 覆寫，三值語義必須用指標表達 |
 | `AuthEpoch` | int | `not null;default:0` | `auth_epoch` | **provider 級**憑證世代（單調遞增）。停用與 secret 輪替時推進，**重新啟用不回退**（使「停用後短時間重新啟用」不會復活攻擊者手上的既簽憑證） |
 | `Enabled` | bool | `not null;default:false` | `enabled` | 啟用狀態；停用即觸發全面失效流程（推進世代 → 撤 refresh → 拒既簽 access → 終斷協議連線與唯讀訂閱） |
+| `GroupsClaim` | string | `size:64` | `groups_claim` | 群組資訊取自哪個宣告。**空值＝此 provider 的群組映射關閉**（登入路徑不做群組解析、不重算角色）。**刻意無預設值**——各家的鍵名由設定決定，猜一個的失敗方向是拿別的宣告當群組看待。由增量 `20260908_group_role_mapping` 加欄 |
+| `UsernameClaim` | string | `size:64` | `username_claim` | 帳號名取自哪個宣告；空值沿用系統預設 `preferred_username`。同 migration |
+| `EmailClaim` | string | `size:64` | `email_claim` | 電子郵件取自哪個宣告；空值沿用系統預設 `email`。同 migration |
+| `DisplayNameClaim` | string | `size:64` | `display_name_claim` | 顯示名取自哪個宣告；空值沿用系統預設 `name`。同 migration |
+
+**宣告對應四欄的空值語義**：四欄可空且**空值即現行行為**——未設定的部署與這四欄出現之前逐字相同，
+這是加設定而不是改預設。請求端一律以指標型別表達三態：未帶該鍵＝本次不動這一欄，
+帶空字串＝清回未設定；用值型別的話「清回未設定」與「沒送這一欄」同形，管理者就再也關不掉
+一條設過的映射。宣告名的驗證在服務層（去頭尾空白、長度上限 64、不得含空白、**不折疊大小寫**）。
+
+**群組宣告名與 `groups` scope 是一組**：多數提供者要在授權請求帶 `groups` scope 才會發出群組宣告
+（附加 scope 允許清單因此含 `groups`）。設了宣告名卻沒帶該 scope 時，宣告缺席會被判為空集合，
+症狀是規則列在頁上、狀態是啟用、卻沒有人拿到角色。系統對這一格的處置是**警告加確認、不阻擋**：
+儲存時未確認即以機器碼回拒，確認後放行並留痕，狀態彙總亦回同一個警告。
 
 **准入模式常數**:
 ```go
@@ -2257,7 +2314,7 @@ const (
 
 **表名**: `ldap_directories`
 **檔案**: `backend/internal/model/ldap_directory.go`
-**建表方式**: baseline（`baseline_schema_identity.go`）。單列不變式由**兩者並用**承載：
+**建表方式**: baseline（`baseline_schema_identity.go`）＋增量 `20260908_group_role_mapping` 加 `attr_group` 欄。單列不變式由**兩者並用**承載：
 inline `CONSTRAINT ldap_directories_singleton_check CHECK (singleton = 1)` 鎖死值域，
 ＋ `idx_ldap_directories_singleton`＝`UNIQUE (singleton) WHERE deleted_at IS NULL`（partial，軟刪列不佔位、刪除後可重建）。
 **CHECK 不可省**：單靠唯一索引只禁止相同值重複，`singleton=1` 與 `singleton=2` 仍可並存。
@@ -2279,6 +2336,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `UserFilter` | string | `size:500;not null;default:''` | `user_filter` | 使用者搜尋 filter；`%s` 佔位恰一次且不得位於 OR／NOT 之下 |
 | `AttrEmail` | string | `size:100;not null;default:''` | `attr_email` | 電子郵件屬性名 |
 | `AttrFullName` | string | `column:attr_fullname;size:100;not null;default:''` | `attr_fullname` | 顯示名屬性名。**DB 欄名刻意為 `attr_fullname`**（與 env 鍵 `LDAP_ATTR_FULLNAME` 同形），非 GORM 預設的 `attr_full_name` |
+| `AttrGroup` | string | `column:attr_group;size:100;not null;default:''` | `attr_group` | 群組成員資格屬性名（例：`memberOf`）。**空字串＝本部署不依外部群組決定角色**：登入路徑不向目錄索取這個屬性，也不動任何角色列。**不列入啟用態必填集**——既有部署升級後這一欄必然是空的，變成必填等於讓一次升級把所有目錄使用者擋在門外。由增量 `20260908_group_role_mapping` 加欄，DB 側為 `varchar(100) NOT NULL DEFAULT ''` |
 | `SkipTLSVerify` | bool | `not null;default:false` | `skip_tls_verify` | 跳過 TLS 憑證驗證；傳輸安全框架視為一級風險項（`RiskLDAPSkipVerify`） |
 | `Enabled` | bool | `not null;default:false` | `enabled` | 啟用狀態；停用即等同「LDAP 未設定」語義（登入路徑不撥號） |
 
@@ -2294,7 +2352,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共十一條**——baseline 一條，其後的增量十條
+**現行 migration 共十三條**——baseline 一條，其後的增量十二條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2311,14 +2369,15 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260906_credential_library` | 帳號憑證庫的資料層：建四張新表（`credentials`、`credential_secret_versions`、`credential_rotations`、`credential_rotation_members`）與其索引、`asset_accounts` 加 `credential_id`／`effective_version_id`、`change_secret_plans` 加 `target_kind`／`target_credential_id`、`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄，並在同一交易內把既有帳號列的內嵌密文**轉為專用憑證**（每筆存活帳號各得一筆專用憑證，持有密文者另建其第 1 版；密文原樣搬、不解密重加密。所屬資產已軟刪的遺留帳號列同樣建憑證與第 1 版，再於同一交易把帳號列與憑證一併軟刪，憑證庫不顯示、密文版本保留；日誌分項報存活與隨已移除資產一併移除的筆數）。次序寫死：存量搬移之後才卸除 `credential_id` 的暫時 DEFAULT 並建 `(asset_id, credential_id)` partial unique——回填前全部存量列的 `credential_id` 都是 0，先建索引必然撞鍵。**重跑語義是失敗即整交易回滾、修正後可再跑一次**，不是冪等。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibrary`：反序 DROP 掛載唯一索引 → 三張改密表的加欄 → `asset_accounts` 兩欄 → 四張新表與其索引。**Down 有損、開發庫限定**：刪四張表即失去全部共用憑證關係與密文版本歷史，`asset_accounts` 兩欄刪除後「這台用哪筆憑證、就位在哪一版」無來源可還原，存量搬移沒有反向。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260906_credential_library_contract` | 收縮：卸下已無讀寫面的過渡欄與索引——`asset_accounts.password_enc`／`private_key_enc`（登入秘密的落點已改為 `credential_secret_versions`，兩欄自存量搬移之後零讀者，**同時自 `envelopeMigrationTargets` 除名**）、`change_secret_candidates.shared_group`、`change_secret_batches.shared_group`（共用關係的真相已是憑證本體）、`idx_asset_accounts_credential_group`，共 5 條 DDL。**自成一條版本而非併入前一條**：前一條已套用於開發庫，同檔追加語句不會再執行，會留下「程式碼宣告已收縮、資料庫仍有舊欄」的落差。**`asset_accounts.credential_group` 刻意留著**（見第 3b 節）。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibraryContract`：反序把四欄的空殼與群組索引加回來。**Down 有損、開發庫限定**：**不還原任何資料**，卸下的四欄在卸下當下即失去內容，再次 Up 之後全部回到空值。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260908_role_state_checkpoint` | 角色指派納入檢查點的資料層：`audit_checkpoints` 加四個可空欄（`role_state_hash varchar(64)`、`role_state_snapshot text`、`role_state_count bigint`、`role_state_reconciled boolean`；見第 37 節），共 4 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：四欄皆可空、無資料轉換、無回填，耗時與存量無關。**既有檢查點留空即代表「該段不涵蓋角色指派」**，這是誠實的表述而非缺漏——回填一份「現在的」快照到過去的檢查點，等於替歷史簽下一個當時沒簽過的主張。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRoleStateCheckpoint`：反序 DROP 四欄。**Down 有損、開發庫限定**：四欄刪除即失去全部檢查點的角色指派快照，其後所有檢查點回到不涵蓋角色指派，再次 Up 之後要等下一次封章才重新有基準。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260908_group_role_mapping` | 外部群組對角色映射的資料層，共 **20 條 DDL**：`user_roles` 加 `source`（`varchar(16) NOT NULL DEFAULT 'manual'`；見第 2b 節）、建 `group_role_mappings`（含來源恰一的 CHECK `chk_group_role_mapping_source`；第 52 節）與 `user_role_mappings`（複合主鍵含通道；第 53 節）兩張表、`ldap_directories` 加 `attr_group`、`users` 加群組觀測快照三欄、`oidc_providers` 加 `groups_claim` 與宣告對應三欄，再加 6 條外鍵與 3 條索引（1 條軟刪索引 ＋ 2 條排除軟刪列的部分唯一索引）。**Up 為純加法**：加欄皆帶預設或可空，無資料轉換、無回填，耗時與存量無關；`source` 的存量列以 default 回填為 `manual`——本欄出現之前全部角色列都是管理者指派的，回填值即其實際語義。**四個空值欄一律代表「未設定＝行為不變」**（`attr_group` 與 `groups_claim` 空＝不依外部群組決定角色，宣告對應三欄空＝走現行解析），故既有部署升級後行為逐字不變。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackGroupRoleMapping`：反序 DROP 快照三欄 → 宣告四欄 → `DROP TABLE user_role_mappings` → `DROP TABLE group_role_mappings` → `attr_group` → `user_roles.source`。**Down 有損，且部分損失不可還原**：（一）`group_role_mappings` 的規則是管理者逐條設定的，系統沒有第二個地方存著它們，**回退前須自行備份**；（二）`user_roles.source` 卸下後「哪些角色是管理者指派的、哪些只是外部群組給的」永久消失，全部角色列回到不分來源的舊語義，本地管理員計數會重新把僅由映射取得管理員角色的帳號計入；（三）`user_role_mappings` 的列一併消失，可由下一次登入重算重建，但要等到當事人下一次登入；（四）快照三欄與四個宣告／屬性欄還原為未設定，無損。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的十一條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的十二條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
 > `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
 > `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長
-> （帳號數通常遠小於會話與審計的存量）；其餘九條為純加法、純型別放寬或純卸欄，耗時與存量無關。
+> （帳號數通常遠小於會話與審計的存量）；其餘十條為純加法、純型別放寬或純卸欄，耗時與存量無關。
 > 升級程序見 `docs/ops/upgrade-sop.md`。
 >
 > **`20260906_credential_library` 之後還有一段解封後才跑的轉換**：憑證密文的欄位身分改綁與既有
@@ -3185,6 +3244,83 @@ pending → uploading → uploaded → local_purged
 
 ---
 
+### 52. GroupRoleMapping（外部群組對角色的映射規則）
+
+**表名**: `group_role_mappings`
+**檔案**: `backend/internal/model/group_role_mapping.go`
+**建表方式**: **增量 `20260908_group_role_mapping`（非 baseline）**，含 CHECK
+`chk_group_role_mapping_source`（兩條來源外鍵恰一非空）與兩條排除軟刪列的部分唯一索引
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+| `DeletedAt` | gorm.DeletedAt | `index` | `-` | 軟刪除 |
+| `LDAPDirectoryID` | *uint | `uniqueIndex:idx_group_role_mappings_ldap,where:deleted_at IS NULL` | `ldap_directory_id,omitempty` | 目錄來源（外鍵 → `ldap_directories`）；與 `OIDCProviderID` 恰一非空 |
+| `OIDCProviderID` | *uint | `column:oidc_provider_id;uniqueIndex:idx_group_role_mappings_oidc,where:deleted_at IS NULL` | `oidc_provider_id,omitempty` | 身分提供者來源（外鍵 → `oidc_providers`）；同上 |
+| `MatchValue` | string | `size:500;not null;uniqueIndex:…（兩條）` | `match_value` | 群組的比對值，**原樣存、不做正規化**，亦不另存正規化欄 |
+| `RoleID` | uint | `not null;uniqueIndex:…（兩條）` | `role_id` | 命中該群組時賦予的角色（外鍵 → `roles`） |
+| `Enabled` | bool | `not null;default:true` | `enabled` | 停用的規則於重算時視同不存在（不刪規則即可暫停一條映射） |
+| `CreatedBy` | uint | `not null` | `created_by` | 建立這條規則的管理者（外鍵 → `users`） |
+| `Role` | *Role | `foreignKey:RoleID` | `role,omitempty` | 關聯（Preload 用；管理端列表要顯示角色名） |
+
+**索引與約束**:
+- `group_role_mappings_pkey`＝`(id)`；`idx_group_role_mappings_deleted_at`＝`(deleted_at)`。
+- `idx_group_role_mappings_ldap`＝`UNIQUE (ldap_directory_id, match_value, role_id) WHERE deleted_at IS NULL`、
+  `idx_group_role_mappings_oidc`＝同形但以 `oidc_provider_id` 為首欄。同一來源的同一比對值不得
+  重複映射到同一角色；排除軟刪列使刪掉的規則不佔位、同一條可以再建回來。
+- CHECK `chk_group_role_mapping_source`：兩條來源外鍵的非空個數等於 1。
+
+**設計說明**:
+- **兩條可空外鍵加 CHECK，而不是「來源種類欄＋通用識別欄」的多型鍵**：多型鍵掛不上真外鍵，
+  來源被刪除之後規則會指向一個不存在的識別，而沒有任何東西會發現。來源種類由哪一欄非空推導，不另存。
+- **CHECK 只在 PostgreSQL 生效**（單元測試的 sqlite 建表走 GORM 標籤，不含 inline CHECK），
+  故來源互斥**同時在服務層驗證**一次。
+- **比對值原樣存**：目錄側是群組的辨識名稱，比對時兩邊各自解析成結構再比（屬性型別不分大小寫、
+  屬性值分大小寫）；提供者側是該提供者宣告裡的字面值，逐字比對。另存一份正規化值等於在兩種
+  比對規則之外再造一套，而它必然與其中一種不一致。
+- **`created_by` 進資料而不是只留審計列**：映射到管理員角色是特權賦予路徑，「誰開的」必須
+  在規則本身回答得出來。
+- **來源刪除的相依**：仍有規則掛著的目錄或提供者不可刪除（服務層回衝突），先移除規則再刪來源。
+
+---
+
+### 53. UserRoleMapping（映射事實）
+
+**表名**: `user_role_mappings`
+**檔案**: `backend/internal/model/user_role_mapping.go`
+**建表方式**: **增量 `20260908_group_role_mapping`（非 baseline）**，複合主鍵
+`(user_id, role_id, channel)`，兩條外鍵 → `users(id)`／`roles(id)`；**除主鍵外不另建索引**
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `UserID` | uint | `primaryKey;autoIncrement:false` | `user_id` | 帳號；複合主鍵之一 |
+| `RoleID` | uint | `primaryKey;autoIncrement:false` | `role_id` | 角色；複合主鍵之一 |
+| `Channel` | string | `primaryKey;size:64` | `channel` | 登入途徑，形如「種類:來源識別」（`directory:1`／`provider:3`）；複合主鍵之一 |
+| `MatchedAt` | time.Time | `not null` | `matched_at` | 最近一次重算認定這筆映射的時間 |
+
+無 `created_at`／`deleted_at`：本表是「最近一次重算後的認定」，不是歷史帳；歷史在審計列裡。
+
+**設計說明**:
+- **本表是映射的事實源**。有效角色集＝角色指派關聯表的手動列，聯集本表去重後的角色；
+  `user_roles.source` 是由兩者推導的投影，不一致時以本表為準。
+- **通道必須進主鍵**。關聯表的主鍵是（角色，帳號），同一個角色被兩條途徑同時命中時，
+  單一個通道欄只表達得了其中一條。不分通道的後果是具體的：同一人交替經兩條途徑登入時，
+  每次登入都會清掉對方認定的列、每次都被判為有效角色集縮減，於是每次都推進憑證世代把
+  對方的會話踢下線。分通道之後，某通道的重算只動 `channel` 等於該值的列。
+- **通道值只由單一產生點組出**（`model.RoleMappingChannel(kind, sourceID)`，反向解析
+  `model.ParseRoleMappingChannel`）。兩處各自拼字串而其中一處少了前綴時，重算會把另一條
+  途徑的列當成自己的而清掉，症狀是「登入之後角色莫名消失」，且只在同時用了兩條途徑的帳號上出現。
+- **除主鍵外不另建索引**：兩種讀法都是主鍵前綴查詢（取某帳號某通道的全部列、取某帳號的全部列）。
+  以角色反查帳號不是本表的用途——那是角色指派關聯表的工作。
+- **一次重算收回的判準**：某通道重算後不再命中的角色要收回；本次命中集為空時，該通道的列
+  **全數刪除**，不以「不在清單內」的條件表達——兩種方言都不接受空的清單條件，而 ORM 對空清單
+  產生的形式不報錯也不匹配任何列，於是「全部撤除」會靜默變成「什麼都沒做」。
+- **有效角色集真的變小才推進憑證世代**：純追加不推進；把一個並存態的角色解除一半（例如管理者
+  收回手動指派，但映射仍命中）也不推進，因為那個角色本來就還在有效集裡。
+
+---
+
 ## 已知 model 與 baseline 差異（維護注意）
 
 > 以下是 model 與 baseline 之間仍然成立的差異。
@@ -3201,8 +3337,9 @@ pending → uploading → uploaded → local_purged
    （6 條 baseline＋2 條來自離機儲存增量 migration＋1 條來自查詢主控台增量 migration 的
    `idx_session_commands_event_id`）另以 `pg_get_indexdef` 逐字比對釘在
    `baseline_parity_pg_test.go` 的 `baselineStructuralAssertions`。
-3. **CHECK 約束同樣只由建表語句承載**（18 條：13 條 baseline＋2 條來自離機儲存增量 migration
-   ＋3 條來自查詢主控台增量 migration）。GORM 不產出 inline CHECK，故
+3. **CHECK 約束同樣只由建表語句承載**（19 條：13 條 baseline＋2 條來自離機儲存增量 migration
+   ＋3 條來自查詢主控台增量 migration＋1 條來自群組映射增量 migration 的
+   `chk_group_role_mapping_source`）。GORM 不產出 inline CHECK，故
    `chk_auth_target`／`chk_authz_subject_xor`／`chk_approver_scope_*`／`singleton = 1`／
    三個枚舉 CHECK 全部由建表語句承載。放寬任何一條，不合法的列就寫得進去而無錯誤。
 4. **種子資料不在 schema 比對的射程內**。12 條內建告警規則由 `baseline_seed.go` 寫入；

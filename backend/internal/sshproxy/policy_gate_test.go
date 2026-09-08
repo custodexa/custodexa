@@ -32,7 +32,7 @@ func setupPolicyGateTest(t *testing.T) (*Handler, *gorm.DB, *policy.SecurityPoli
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.SecurityPolicy{},
-		&model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}); err != nil {
+		&model.TransmissionConsent{}, &model.AuditLog{}, &model.AuditFailureEvent{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

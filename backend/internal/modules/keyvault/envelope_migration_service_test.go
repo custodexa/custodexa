@@ -34,7 +34,7 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{},
 		// 憑證密文版本亦為信封目標表（登入秘密的現行落點），空表即 pending 0；
 		// 缺表會讓逐表掃描整個 error 而擋住 KEK 輪替
-		&model.CredentialSecretVersion{}); err != nil {
+		&model.CredentialSecretVersion{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立

@@ -22,7 +22,7 @@ func TestReportSessionRecordingFailure(t *testing.T) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Session{}, &model.AuditLog{},
-		&model.AuditFailureEvent{}, &model.SecurityPolicy{}); err != nil {
+		&model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

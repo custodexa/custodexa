@@ -276,7 +276,7 @@ services:
       - custodexa-network
     restart: unless-stopped
 
-  # LDAP 測試容器（用於開發和測試；bitnami 映像以環境變數直接種測試帳號）
+  # LDAP 測試容器：自訂 LDIF 種帳號與群組，memberof overlay 維護反向成員屬性。
   # 為什麼用 bitnamilegacy：Bitnami 已將免費映像遷移至 bitnamilegacy 倉庫，
   # docker.io/bitnami/openldap 不再提供 latest 標籤
   ldap-test:
@@ -286,9 +286,17 @@ services:
     environment:
       - LDAP_ADMIN_USERNAME=admin
       - LDAP_ADMIN_PASSWORD=adminpass
-      - LDAP_USERS=testldap
-      - LDAP_PASSWORDS=ldappass123
       - LDAP_ROOT=dc=example,dc=org
+      - LDAP_CUSTOM_SCHEMA_FILE=/schema/memberof.ldif
+      - LDAP_CUSTOM_LDIF_DIR=/ldifs
+      - LDAP_CONFIG_ADMIN_ENABLED=yes
+      - LDAP_CONFIG_ADMIN_PASSWORD=configpass
+    # Inline configs 避免額外種子檔；環境變數的 LDAP_GROUP 只能建一個共用群組。
+    configs:
+      - source: ldap_memberof_config
+        target: /schema/memberof.ldif
+      - source: ldap_test_entries
+        target: /ldifs/10-entries.ldif
     ports:
       - "1389:1389"
     networks:
@@ -484,6 +492,82 @@ services:
     networks:
       - custodexa-network
     restart: unless-stopped
+
+# 開發靶機專用。設定 LDIF 先載 overlay，資料 LDIF 隨後新增群組，才能產生 memberOf。
+configs:
+  ldap_memberof_config:
+    content: |
+      dn: cn=module{1},cn=config
+      objectClass: olcModuleList
+      cn: module{1}
+      olcModulePath: /opt/bitnami/openldap/lib/openldap
+      olcModuleLoad: memberof.so
+
+      dn: olcOverlay=memberof,olcDatabase={2}mdb,cn=config
+      objectClass: olcOverlayConfig
+      objectClass: olcMemberOf
+      olcOverlay: memberof
+      olcMemberOfGroupOC: groupOfNames
+      olcMemberOfMemberAD: member
+      olcMemberOfMemberOfAD: memberOf
+      olcMemberOfRefInt: TRUE
+
+  ldap_test_entries:
+    content: |
+      dn: dc=example,dc=org
+      objectClass: dcObject
+      objectClass: organization
+      dc: example
+      o: example
+
+      dn: ou=users,dc=example,dc=org
+      objectClass: organizationalUnit
+      ou: users
+
+      dn: ou=groups,dc=example,dc=org
+      objectClass: organizationalUnit
+      ou: groups
+
+      dn: cn=testldap,ou=users,dc=example,dc=org
+      objectClass: inetOrgPerson
+      objectClass: posixAccount
+      objectClass: shadowAccount
+      cn: testldap
+      sn: Mapped
+      uid: testldap
+      uidNumber: 1000
+      gidNumber: 1000
+      homeDirectory: /home/testldap
+      mail: testldap@example.org
+      userPassword: ldappass123
+
+      dn: cn=testldapplain,ou=users,dc=example,dc=org
+      objectClass: inetOrgPerson
+      objectClass: posixAccount
+      objectClass: shadowAccount
+      cn: testldapplain
+      sn: Unmapped
+      uid: testldapplain
+      uidNumber: 1001
+      gidNumber: 1001
+      homeDirectory: /home/testldapplain
+      mail: testldapplain@example.org
+      userPassword: ldappass123
+
+      dn: cn=inner,ou=groups,dc=example,dc=org
+      objectClass: groupOfNames
+      cn: inner
+      member: cn=testldap,ou=users,dc=example,dc=org
+
+      dn: cn=outside,ou=groups,dc=example,dc=org
+      objectClass: groupOfNames
+      cn: outside
+      member: cn=testldapplain,ou=users,dc=example,dc=org
+
+      dn: cn=outer,ou=groups,dc=example,dc=org
+      objectClass: groupOfNames
+      cn: outer
+      member: cn=inner,ou=groups,dc=example,dc=org
 
 volumes:
   # audit/recordings/postgres 已改 ${DATA_PATH:-./data} bind mount（見各服務 volumes）

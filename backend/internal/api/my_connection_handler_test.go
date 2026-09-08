@@ -36,7 +36,7 @@ func setupMyConnectionEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm.
 		t.Fatalf("sqlite: %v", err)
 	}
 	// AuditLog 一併遷移：Asset 的 AfterCreate 審計 hook 會寫 audit_logs
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

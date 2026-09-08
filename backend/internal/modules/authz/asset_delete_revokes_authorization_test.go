@@ -68,8 +68,7 @@ func setupDeleteRevokeDB(t *testing.T) (*gorm.DB, *asset.AssetService) {
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
 		&model.AssetNode{}, &model.AssetAuthorization{}, &model.ApproverScope{},
-		&model.AssetAccount{}, &model.Credential{}, &model.AuditLog{},
-	))
+		&model.AssetAccount{}, &model.Credential{}, &model.AuditLog{}, &model.UserRole{}))
 	oldDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = oldDB })

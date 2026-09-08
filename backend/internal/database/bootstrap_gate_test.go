@@ -22,7 +22,7 @@ func setupBootstrapDB(t *testing.T) func() {
 	// 角色指派與其審計列同交易寫入，缺表即整筆回滾。生產序同樣如此——
 	// RunMigrations（建全部表）在 SeedDatabase 之前（cmd/server/stage1.go:197,226）
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.PasswordHistory{},
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	prev := DB

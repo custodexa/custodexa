@@ -29,7 +29,7 @@ func TestGuacRedeemDisabledAsset(t *testing.T) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{},
-		&model.AssetNode{}, &model.AuditLog{}); err != nil {
+		&model.AssetNode{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

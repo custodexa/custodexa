@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
-	"github.com/custodexa/backend/internal/notifycat"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -67,7 +68,7 @@ func setupRoleStateAPIFixture(t *testing.T) *roleStateAPIFixture {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{},
 		&model.AuditCheckpoint{}, &model.AuditCheckpointTrim{},
-		&model.IntegrityBaseline{}, &model.AuditFailureEvent{}); err != nil {
+		&model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{
@@ -99,7 +100,11 @@ func setupRoleStateAPIFixture(t *testing.T) *roleStateAPIFixture {
 
 	h := &AuditCheckpointHandler{verifier: verifier, signing: signer}
 	// 名稱換算與事件查詢都走真的模組服務（下沉後接入層不再自持 DB）
-	h.SetRoleStateNames(identity.NewUserService(db, nil), audit.InitAuditFailure(db, nil))
+	// 單例必須帶真的政策服務：nil 政策會讓同套件後續走到 Report 的測試踩 nil deref，
+	// 且單例跨測試存活，故測完還原（backlog 78 的根因）
+	failures := audit.InitAuditFailure(db, policy.NewSecurityPolicyService(db))
+	t.Cleanup(audit.ResetAuditFailureSingleton)
+	h.SetRoleStateNames(identity.NewUserService(db, nil), failures)
 	r := gin.New()
 	r.GET("/verify", h.Verify)
 	return &roleStateAPIFixture{db: db, seal: seal, r: r}

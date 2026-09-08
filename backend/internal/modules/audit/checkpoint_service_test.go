@@ -123,11 +123,11 @@ func setupCheckpointDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	// user_roles 是裸 join 表（無 model），但封章會取它的快照——
-	// 少了它，本套件的每一次封章都會在「取狀態表快照失敗」上停住
-	if err := db.Exec(`CREATE TABLE IF NOT EXISTS user_roles (
-		role_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
-		PRIMARY KEY (role_id, user_id))`).Error; err != nil {
+	// 封章會取角色指派關聯表的快照——少了它，本套件的每一次封章都會在
+	// 「取狀態表快照失敗」上停住。
+	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
+	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
+	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{

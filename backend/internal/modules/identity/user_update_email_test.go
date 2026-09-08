@@ -18,7 +18,7 @@ func setupUserSvc(t *testing.T) (*UserService, *gorm.DB) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewUserService(db, authz.NewAssetAuthorizationService(db)), db

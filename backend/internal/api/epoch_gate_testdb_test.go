@@ -26,7 +26,7 @@ func installEpochGateDB(t *testing.T, userIDs ...uint) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate users: %v", err)
 	}
 	for i, id := range userIDs {

@@ -33,7 +33,7 @@ func seedApproverEligibilityFixtures(t *testing.T) approverEligibilityFixtures {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{}); err != nil {
+		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色主檔：admin／approver／user 三筆

@@ -126,12 +126,7 @@
                 <span class="row-detail__label">{{ $t('users.fullName') }}</span>
                 <span class="row-detail__value">{{ row.full_name || '—' }}</span>
               </div>
-              <div class="row-detail__item">
-                <span class="row-detail__label">{{ $t('users.lastLogin') }}</span>
-                <span class="row-detail__value">
-                  {{ row.last_login_at ? formatDateTime(row.last_login_at) : $t('users.neverLoggedIn') }}
-                </span>
-              </div>
+              <!-- 最近登入已移到主表的狀態欄第二行，此處不重複 -->
               <div class="row-detail__item">
                 <span class="row-detail__label">{{ $t('common.createdAt') }}</span>
                 <span class="row-detail__value">{{ formatDateTime(row.created_at) }}</span>
@@ -232,20 +227,38 @@
             </el-tag>
           </template>
         </el-table-column>
+        <!-- 角色欄同時回答「有哪些角色」與「這個角色是誰給的」。
+             後者不可省：撤走一個角色的方法依來源而不同——管理者指派的在本頁改，
+             映射賦予的要改目錄側的群組或映射規則，只顯示角色名會讓人在本頁
+             反覆嘗試一個不會生效的操作 -->
         <el-table-column
           :label="$t('common.role')"
-          min-width="130"
+          min-width="150"
         >
           <template #default="{ row }">
             <el-space wrap>
-              <el-tag
+              <span
                 v-for="role in (row.roles || [])"
                 :key="role.id || role.name || role"
-                :type="roleTagType(role.name || role)"
-                size="small"
+                class="role-cell"
               >
-                {{ roleLabel(role.name || role) }}
-              </el-tag>
+                <el-tag
+                  :type="roleTagType(role.name || role)"
+                  size="small"
+                >
+                  {{ roleLabel(role.name || role) }}
+                </el-tag>
+                <el-tag
+                  v-if="roleSourceOf(row, role.name || role)"
+                  size="small"
+                  type="info"
+                  effect="plain"
+                  class="role-source-tag"
+                  :data-test="`role-source-${role.name || role}`"
+                >
+                  {{ $t(`users.roleSource.${roleSourceOf(row, role.name || role)}`) }}
+                </el-tag>
+              </span>
               <el-tag
                 v-if="!row.roles || row.roles.length === 0"
                 type="info"
@@ -253,6 +266,22 @@
               >
                 {{ $t('users.noRole') }}
               </el-tag>
+              <!-- 映射賦予的審核者角色不會連帶產生審核範圍：沒有範圍的審核者
+                   在申請流程上收不到任何案件，而畫面上看起來一切正常 -->
+              <el-tooltip
+                v-if="needsApproverScope(row)"
+                :content="$t('users.mappedApproverNeedsScopeTooltip')"
+                placement="top"
+              >
+                <el-tag
+                  type="warning"
+                  size="small"
+                  effect="plain"
+                  data-test="mapped-approver-needs-scope"
+                >
+                  {{ $t('users.mappedApproverNeedsScope') }}
+                </el-tag>
+              </el-tooltip>
             </el-space>
           </template>
         </el-table-column>
@@ -317,6 +346,17 @@
                 </el-tag>
               </el-tooltip>
             </el-space>
+            <!-- 最近登入放在狀態欄第二行而非另立一欄：欄寬預算在 1280 下已無餘裕。
+                 它進主表的理由是撤權時效——映射角色要到下次登入才重算，
+                 「這個人上次什麼時候登入」是判斷一條映射改動生效與否的第一個線索 -->
+            <div
+              class="cell-subline"
+              data-test="last-login-line"
+            >
+              {{ row.last_login_at
+                ? $t('users.lastLoginAt', { time: formatDateTime(row.last_login_at) })
+                : $t('users.neverLoggedIn') }}
+            </div>
           </template>
         </el-table-column>
         <!-- 操作欄**不再 fixed**：fixed 欄是浮在內容上的浮層，
@@ -759,10 +799,16 @@
         :closable="false"
         style="margin-bottom: 20px"
       />
-      <!-- 可指派清單由 /roles API 拉取：
-           後端新增角色自動出現，勿硬編碼 checkbox -->
+      <!-- 對話框只編輯**管理者指派集**。
+           預填與送出都用這一份，不用有效角色集：把兩份併起來回寫是最容易犯的錯，
+           而後端會把其中僅由映射賦予的角色忽略掉，畫面上看起來像存進去了 -->
       <el-form label-position="top">
-        <el-form-item :label="$t('common.role')">
+        <el-form-item :label="$t('users.manualRolesLabel')">
+          <div class="dialog-hint">
+            {{ $t('users.manualRolesHint') }}
+          </div>
+          <!-- 可指派清單由 /roles API 拉取：
+               後端新增角色自動出現，勿硬編碼 checkbox -->
           <el-checkbox-group v-model="selectedRoles">
             <el-checkbox
               v-for="role in assignableRoles"
@@ -774,6 +820,121 @@
           </el-checkbox-group>
         </el-form-item>
       </el-form>
+
+      <!-- 映射賦予的角色**唯讀**：它們不由本頁維護，改的地方在目錄側的群組或
+           映射規則。要把其中一個固定成管理者指派得走釘住，那是獨立的顯式動作，
+           不能靠把它勾進上面的清單再整包送出 -->
+      <div
+        v-if="mappedRolesLoaded"
+        class="mapped-roles-block"
+        data-test="mapped-roles-block"
+      >
+        <div class="mapped-roles-block__title">
+          {{ $t('users.mappedRolesLabel') }}
+        </div>
+        <div
+          v-if="!mappedRoles.length"
+          class="dialog-hint"
+        >
+          {{ $t('users.mappedRolesEmpty') }}
+        </div>
+        <template v-else>
+          <div class="dialog-hint">
+            {{ $t('users.mappedRolesHint') }}
+          </div>
+          <div
+            v-for="name in mappedRoles"
+            :key="name"
+            class="mapped-role-row"
+          >
+            <el-checkbox
+              :model-value="manualRoleSet.has(name)"
+              :disabled="manualRoleSet.has(name) || pinningRole === name"
+              :data-test="`pin-${name}`"
+              @change="handlePinMappedRole(name)"
+            >
+              <el-tag
+                :type="roleTagType(name)"
+                size="small"
+              >
+                {{ roleLabel(name) }}
+              </el-tag>
+              <span class="mapped-role-row__note">
+                {{ manualRoleSet.has(name)
+                  ? $t('users.mappedRolePinned')
+                  : $t('users.mappedRoleFromMapping') }}
+              </span>
+            </el-checkbox>
+          </div>
+          <div class="dialog-hint">
+            {{ $t('users.mappedRoleEffectiveAt') }}
+          </div>
+          <el-alert
+            v-if="mappedRoles.includes('approver')"
+            :title="$t('users.mappedApproverNeedsScope')"
+            :description="$t('users.mappedApproverNeedsScopeTooltip')"
+            type="warning"
+            :closable="false"
+            class="mapped-roles-block__alert"
+          />
+        </template>
+      </div>
+      <!-- 群組觀測快照：唯讀。「我在群組裡卻沒拿到角色」的唯一診斷線索，
+           存的是外部來源自報的原始值。**單獨成塊、逐字照列**——與本系統自有的
+           識別值混排會讓人把它讀成已驗證的身分資料，而它不是任何授權判定的依據 -->
+      <div
+        v-if="mappedRolesLoaded"
+        class="group-snapshot-block"
+        data-test="group-snapshot-block"
+      >
+        <div class="group-snapshot-block__title">
+          {{ $t('users.groupSnapshotLabel') }}
+        </div>
+        <div
+          v-if="!groupSnapshot"
+          class="dialog-hint"
+          data-test="group-snapshot-empty"
+        >
+          {{ $t('users.groupSnapshotEmpty') }}
+        </div>
+        <template v-else>
+          <div class="dialog-hint">
+            {{ $t('users.groupSnapshotHint') }}
+          </div>
+          <div class="group-snapshot-block__meta">
+            {{ $t('users.groupSnapshotChannel', { channel: groupSnapshot.channel || '—' }) }}
+          </div>
+          <div class="group-snapshot-block__meta">
+            {{ $t('users.groupSnapshotAt', { time: formatDateTime(groupSnapshot.at) }) }}
+          </div>
+          <ul
+            v-if="groupSnapshot.groups.length"
+            class="group-snapshot-block__list"
+            data-test="group-snapshot-list"
+          >
+            <li
+              v-for="(value, index) in groupSnapshot.groups"
+              :key="index"
+            >
+              {{ value }}
+            </li>
+          </ul>
+          <div
+            v-else
+            class="dialog-hint"
+            data-test="group-snapshot-no-groups"
+          >
+            {{ $t('users.groupSnapshotNoGroups') }}
+          </div>
+        </template>
+      </div>
+      <div
+        v-else-if="roleSetsFailed"
+        class="dialog-hint dialog-hint--warning"
+        data-test="role-sets-failed"
+      >
+        {{ $t('users.roleSetsUnavailable') }}
+      </div>
       <template #footer>
         <el-button @click="roleDialogVisible = false">
           {{ $t('common.cancel') }}
@@ -908,10 +1069,12 @@ import {
 import {
   getRoleList,
   getUserList,
+  getUserDetail,
   createUser,
   updateUser,
   deleteUser,
   assignRoles,
+  pinUserRole,
   updateUserStatus,
   changePassword,
   adminDisableMFA,
@@ -1302,6 +1465,9 @@ const fetchUserList = async () => {
       _exemptLoading: false,
     }))
     pagination.total = response.total || 0
+    // 角色來源另讀（列表端點不帶 role_sets）。不擋列表顯示：
+    // 讀不到只是少了來源標示，把整頁卡在這裡是拿次要資訊換主要資訊
+    loadRoleSetsForRows(userList.value)
     return true
   } catch (error) {
     logFailure('user_list_failed', error)
@@ -1585,24 +1751,186 @@ const loadAssignableRoles = async () => {
   }
 }
 
+// —— 角色來源（管理者指派集／外部群組映射集）——
+//
+// 有效角色集（`row.roles`）分不出一個角色是誰給的，而撤走它的方法依來源不同。
+// 兩份集合的事實源是 `GET /users/:id` 的 `role_sets`，列表端點不帶這個欄位。
+//
+// **不逐列去讀**：每一次讀取都是一列稽核記錄，一頁 20 列就是 20 列「讀取使用者」，
+// 每次刷新再來一輪。故只在**可能**有映射成分的列上讀：映射角色與群組觀測快照
+// 在同一個交易裡寫入，沒有快照時間的帳號從未有過一次成功的群組觀測，
+// 也就不可能有映射賦予的角色——那些列的角色全部是管理者指派，零請求即可斷定。
+const roleSetsById = reactive({})
+const roleSetsUnknownIds = reactive(new Set())
+let roleSetsSeq = 0
+
+const couldHaveMappedRoles = (row) => Boolean(row?.group_snapshot_at)
+
+const loadRoleSetsForRows = async (rows) => {
+  const seq = ++roleSetsSeq
+  const targets = rows.filter(couldHaveMappedRoles)
+  roleSetsUnknownIds.clear()
+  // 併發上限：管理面的列表刷新不該一次打出整頁的請求
+  const queue = [...targets]
+  const worker = async () => {
+    while (queue.length) {
+      const row = queue.shift()
+      try {
+        const res = await getUserDetail(row.id)
+        if (seq !== roleSetsSeq) return
+        if (res?.role_sets) {
+          roleSetsById[row.id] = res.role_sets
+        } else {
+          roleSetsUnknownIds.add(row.id)
+        }
+      } catch (error) {
+        if (seq !== roleSetsSeq) return
+        // 讀不到就不標來源。猜一個是把「不知道」呈現成「管理者指派」，
+        // 而那正是這一欄要防的誤讀
+        roleSetsUnknownIds.add(row.id)
+        logFailure('user_role_sets_failed', error)
+      }
+    }
+  }
+  await Promise.all([worker(), worker(), worker()])
+}
+
+// 一個角色在該帳號上的來源：manual／mapped／both；不確定時回空字串（不標示）
+const roleSourceOf = (row, name) => {
+  const sets = roleSetsById[row.id]
+  if (sets) {
+    const manual = (sets.manual || []).includes(name)
+    const mapped = (sets.mapped || []).includes(name)
+    if (manual && mapped) return 'both'
+    if (mapped) return 'mapped'
+    if (manual) return 'manual'
+    return ''
+  }
+  if (roleSetsUnknownIds.has(row.id)) return ''
+  return couldHaveMappedRoles(row) ? '' : 'manual'
+}
+
+// 映射賦予審核者角色的帳號：映射只給角色，不會連帶產生審核範圍
+const needsApproverScope = (row) => {
+  const sets = roleSetsById[row.id]
+  return Boolean(sets && (sets.mapped || []).includes('approver'))
+}
+
+// 對話框內的兩份集合
+const mappedRoles = ref([])
+const manualRoleSet = ref(new Set())
+const mappedRolesLoaded = ref(false)
+const roleSetsFailed = ref(false)
+const pinningRole = ref('')
+// 最近一次登入觀測到的群組快照（null＝尚無觀測）
+const groupSnapshot = ref(null)
+
+// 快照的群組原始值以 JSON 陣列存放。**解析失敗不吞掉**：原字串照樣列出來，
+// 診斷要的是「來源實際回了什麼」，把它變成空清單等於把線索藏起來
+const parseSnapshotGroups = (raw) => {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)) : [String(raw)]
+  } catch {
+    return [String(raw)]
+  }
+}
+
+const applyGroupSnapshot = (detail) => {
+  if (!detail?.group_snapshot_at) {
+    groupSnapshot.value = null
+    return
+  }
+  groupSnapshot.value = {
+    channel: detail.group_snapshot_channel || '',
+    groups: parseSnapshotGroups(detail.group_snapshot_groups),
+    at: detail.group_snapshot_at,
+  }
+}
+
+const applyRoleSets = (sets) => {
+  manualRoleSet.value = new Set(sets.manual || [])
+  mappedRoles.value = [...(sets.mapped || [])]
+  selectedRoles.value = [...(sets.manual || [])]
+  mappedRolesLoaded.value = true
+  roleSetsFailed.value = false
+  if (currentUser.id != null) roleSetsById[currentUser.id] = sets
+}
+
 // 處理分配角色
-const handleAssignRoles = (row) => {
+const handleAssignRoles = async (row) => {
   currentUser.id = row.id
   currentUser.username = row.username
-  // 提取角色名稱（處理物件陣列和字串陣列兩種情況）
+  // 開窗時先以有效角色集墊底，讀到兩份集合後改以管理者指派集為準。
+  // 墊底值只影響讀不到 role_sets 的那一瞬間的顯示，送出以 role_sets 為準
   selectedRoles.value = (row.roles || []).map(role =>
     typeof role === 'object' ? role.name : role
   )
+  mappedRoles.value = []
+  manualRoleSet.value = new Set(selectedRoles.value)
+  mappedRolesLoaded.value = false
+  roleSetsFailed.value = false
+  pinningRole.value = ''
+  groupSnapshot.value = null
   loadAssignableRoles()
   roleDialogVisible.value = true
+  await refreshRoleSetsForDialog(row.id)
+}
+
+// 重讀對話框的兩份集合。**送出用的是這一份**：以列表的有效角色集送出等於
+// 把映射角色併進替換主體，後端會忽略它們，畫面卻顯示成功
+const refreshRoleSetsForDialog = async (userId) => {
+  try {
+    const res = await getUserDetail(userId)
+    if (currentUser.id !== userId) return
+    if (!res?.role_sets) {
+      roleSetsFailed.value = true
+      return
+    }
+    applyGroupSnapshot(res.data)
+    applyRoleSets(res.role_sets)
+  } catch (error) {
+    if (currentUser.id !== userId) return
+    roleSetsFailed.value = true
+    logFailure('user_role_sets_failed', error)
+  }
+}
+
+// 釘住一個映射賦予的角色：走專用端點，不併進替換主體
+const handlePinMappedRole = async (name) => {
+  if (manualRoleSet.value.has(name) || pinningRole.value) return
+  pinningRole.value = name
+  try {
+    const res = await pinUserRole(currentUser.id, name)
+    if (res?.role_sets) applyRoleSets(res.role_sets)
+    ElMessage.success(t('users.rolePinned', { role: roleLabel(name) }))
+    fetchUserList()
+  } catch (error) {
+    logFailure('user_role_pin_failed', error)
+  } finally {
+    pinningRole.value = ''
+  }
 }
 
 // 處理角色提交
 const handleRoleSubmit = async () => {
   submitting.value = true
   try {
-    await assignRoles(currentUser.id, selectedRoles.value)
-    ElMessage.success(t('users.rolesAssigned'))
+    // 只送管理者指派集。映射賦予的角色不在這份裡——要固定下來走釘住
+    const res = await assignRoles(currentUser.id, selectedRoles.value)
+    const ignored = (res?.disclosures || [])
+      .find((d) => d.code === 'role.mapped_ignored')
+    if (ignored) {
+      ElMessage.warning(t('users.mappedRolesIgnored', {
+        roles: ignored.params?.roles || '',
+      }))
+    } else {
+      ElMessage.success(t('users.rolesAssigned'))
+    }
+    if (res?.role_sets && currentUser.id != null) {
+      roleSetsById[currentUser.id] = res.role_sets
+    }
     roleDialogVisible.value = false
     fetchUserList()
   } catch (error) {
@@ -1770,6 +2098,90 @@ onMounted(() => {
 /* provider 實例名緊接在來源標籤後；換行時不擠壓表格其他欄 */
 .source-provider-tag {
   margin-left: 4px;
+}
+
+/* 角色與其來源標示成對出現，換行時一起換 */
+.role-cell {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.role-source-tag {
+  margin-left: 4px;
+}
+
+/* 儲存格第二行：次要事實，不與第一行爭視覺權重 */
+.cell-subline {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ot-text-secondary, #909399);
+}
+
+.dialog-hint {
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ot-text-secondary, #909399);
+}
+
+.dialog-hint--warning {
+  color: var(--ot-warning);
+}
+
+.mapped-roles-block {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.mapped-roles-block__title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mapped-roles-block__alert {
+  margin-top: 8px;
+}
+
+.mapped-role-row {
+  margin-bottom: 4px;
+}
+
+.mapped-role-row__note {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--ot-text-secondary, #909399);
+}
+
+.group-snapshot-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.group-snapshot-block__title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.group-snapshot-block__meta {
+  font-size: 12px;
+  color: var(--ot-text-secondary, #909399);
+}
+
+.group-snapshot-block__list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.group-snapshot-block__list li {
+  font-family: var(--ot-font-mono, monospace);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .users {

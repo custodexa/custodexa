@@ -21,7 +21,7 @@ func setupProfileEnv(t *testing.T) (*AuthService, *gorm.DB) {
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.Asset{}, &model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}); err != nil {
+		&model.Asset{}, &model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

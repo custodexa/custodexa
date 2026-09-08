@@ -28,7 +28,7 @@ func installEpochGateDB(t *testing.T, userIDs ...uint) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate users: %v", err)
 	}
 	for _, id := range userIDs {

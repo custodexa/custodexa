@@ -5,11 +5,16 @@
 管理介面的導覽結構與選單組織：側邊欄採分組資訊架構、可收合並標示目前位置，各頁採一致的頁面骨架；導覽依角色（persona）調整可見項與儀表板卡片；總覽群組含工作區入口（工作區維持純連線介面），審計群組含檢查點驗證與稽核工作台入口。
 ## Requirements
 ### Requirement: Grouped sidebar information architecture
-The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (Dashboard, Workspace entry), 資產 (Assets — shown as「我的資產」to non-admin/auditor roles, Authorizations, Change Secret Plans), 連線 (Sessions, My Connections, My Requests), 審核 (Approvals), 審計 (Audit Logs, Commands, Alerts, Access Reviews), 身分與權限 (Users, Roles, User Groups, Approver Scopes「審核範圍」), 系統設定 (Security Policies, Access Control, Key Management, Transmission Security). The former single 系統管理 group SHALL be split into 身分與權限 and 系統設定 with all route paths unchanged; the former 會話 group label SHALL be renamed 連線. Test-only pages (RDP recording test, connection test) MUST NOT appear in the production navigation.
+
+The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (Dashboard, Workspace entry), 資產 (Assets — shown as「我的資產」to non-admin/auditor roles, Credentials「帳號憑證庫」, Authorizations, Change Secret Plans, Change Secret Batches「批次改密」), 連線 (Sessions, My Connections, My Requests), 審核 (Approvals), 審計 (Audit Logs, Commands, Alerts, Access Reviews), 身分與權限 (Users, Roles, User Groups, Approver Scopes「審核範圍」, Identity Sources「身分來源」), 系統設定 (Security Policies, Access Control, Key Management, Transmission Security, Offsite Storage「離機儲存」). The former single 系統管理 group SHALL be split into 身分與權限 and 系統設定 with all route paths unchanged; the former 會話 group label SHALL be renamed 連線. Test-only pages (RDP recording test, connection test) MUST NOT appear in the production navigation.
+
+身分來源 SHALL 為單一入口，涵蓋目錄型與身分提供者型兩種來源——兩者是同層的身分來源，分列兩個入口會使設定者以為那是兩件互不相干的事，而其設定欄位、測試方式與群組映射的維護動線相同。外部群組對角色的映射規則 SHALL 於各來源的詳情頁內成為一個區段，SHALL NOT 另立獨立的映射頁。
+
+合併前的兩個路由（身分提供者、目錄設定）SHALL 繼續解析到合併後的頁面，SHALL NOT 回 404——書籤與既有文件都指向舊路徑。身分來源的路由段 SHALL 登記於登入後重導向的路由白名單；合併前的兩個路由段於其重導向仍存在期間 SHALL 一併保留於該白名單。
 
 #### Scenario: Grouped navigation rendered
 - **WHEN** an admin user logs in and the main layout renders
-- **THEN** the sidebar shows 身分與權限 (使用者管理/角色管理/使用者群組/審核範圍) and 系統設定 (安全政策/存取管控/金鑰管理/傳輸安全) as separate labeled groups, the 總覽 group contains the 工作區 entry, and no test pages are listed
+- **THEN** the sidebar shows 身分與權限 (使用者管理/角色管理/使用者群組/審核範圍/身分來源) and 系統設定 (安全政策/存取管控/金鑰管理/傳輸安全/離機儲存) as separate labeled groups, the 總覽 group contains the 工作區 entry, and no test pages are listed
 
 #### Scenario: Permission-aware visibility
 - **WHEN** a non-admin user logs in
@@ -22,6 +27,16 @@ The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (D
 #### Scenario: Renamed entry keeps deep links working
 - **WHEN** a user opens a bookmarked URL of any regrouped page (e.g. the former 通道加密清冊 path or any 系統管理 page)
 - **THEN** the original route resolves to the same page without redirect or 404
+
+#### Scenario: 合併前的兩個來源路由仍可用
+
+- **WHEN** 使用者開啟合併前的身分提供者或目錄設定書籤網址
+- **THEN** 該網址解析到身分來源頁的對應內容，SHALL NOT 回 404
+
+#### Scenario: 身分來源的路由段登記於重導向白名單
+
+- **WHEN** 使用者經身分提供者登入並指定身分來源頁為登入後的重導向目標
+- **THEN** 該目標通過白名單比對而未被退回預設路徑；合併前的兩個路由段同樣通過比對
 
 ### Requirement: Sidebar collapse
 The sidebar SHALL support collapsing to an icon-only rail and persist the collapsed state across page reloads (localStorage).

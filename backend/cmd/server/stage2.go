@@ -410,6 +410,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// LDAP 登入傳輸閘：warn 留痕/strict 拒絕。
 	// 舊版只在 LDAP 啟用時注入，現在恆注入——閘本身對本地路徑無作用
 	authService.SetTransmissionPolicy(transmissionPolicy)
+	// 角色映射事件的交易內審計：與角色變動同生共死，寫不進去即整筆回滾
+	authService.SetRoleMappingAuditSink(auditTxSink)
 	mark("authService")
 
 	// 初始化資產服務（憑證加解密走信封 key manager）
@@ -616,6 +618,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	oidcDiscovery := identity.NewOIDCDiscoveryService(oidcEgress)
 	oidcLoginService := identity.NewOIDCLoginService(
 		database.DB, oidcProviderService, oidcDiscovery, authService, auditService)
+	// 角色映射事件的交易內審計：與角色變動同生共死，寫不進去即整筆回滾
+	oidcLoginService.SetRoleMappingAuditSink(auditTxSink)
+	// 身分來源管理面（合併列表、映射規則 CRUD、狀態彙總、探索預覽）。
+	// 規則 CRUD 的留痕與寫列同交易，故收 auditTxSink；狀態彙總的探索燈號
+	// 只讀 discovery 的快取（不撥號），故一併注入
+	identitySourceService := identity.NewIdentitySourceService(database.DB, auditTxSink)
+	identitySourceService.SetDiscovery(oidcDiscovery)
 	mark("oidcServices")
 
 	// 匯出簽章服務（10.3.4）：首啟自動生成 Ed25519 金鑰，
@@ -880,6 +889,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		notificationChannelService: notificationChannelService,
 		oidcProviderService:        oidcProviderService,
 		oidcLoginService:           oidcLoginService,
+		identitySourceService:      identitySourceService,
 		exportSigning:              exportSigning,
 		keyManager:                 keyManager,
 		hostKeyService:             hostKeyService,
@@ -1420,6 +1430,8 @@ type routeServices struct {
 	notificationChannelService *audit.NotificationChannelService
 	oidcProviderService        *identity.OIDCProviderService
 	oidcLoginService           *identity.OIDCLoginService
+	// identitySourceService 身分來源管理面（合併列表、映射規則、狀態彙總、探索預覽）
+	identitySourceService *identity.IdentitySourceService
 	exportSigning              *keyvault.ExportSigningService
 	keyManager                 *keyvault.KeyManagerService
 	hostKeyService             *asset.HostKeyService
@@ -1540,6 +1552,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// LDAP 目錄設定（admin-only singleton 資源）。
 	// 服務層已於段 2 建構並注入 codec 與傳輸政策閘，handler 只是轉接層
 	ldapDirectoryHandler := api.NewLDAPDirectoryHandler(s.ldapDirectoryService)
+	// 身分來源管理面：合併列表與映射規則自成一支 handler；
+	// 兩支狀態彙總與探索預覽掛在既有的來源型別群組下（路徑屬於那個資源）
+	identitySourceHandler := api.NewIdentitySourceHandler(s.identitySourceService)
+	ldapDirectoryHandler.SetIdentitySources(s.identitySourceService)
+	oidcHandler.SetIdentitySources(s.identitySourceService)
 	offsiteStorageHandler := api.NewOffsiteStorageHandler(s.offsiteProfiles, s.offsiteLedger,
 		s.offsiteDescribers...)
 	// 單實例守衛全貌（admin 限定、唯讀）：探針讀包級單例快照
@@ -1661,6 +1678,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		notificationChannel:   notificationChannelHandler,
 		oidc:                  oidcHandler,
 		ldapDirectory:         ldapDirectoryHandler,
+		identitySource:        identitySourceHandler,
 		offsiteStorage:        offsiteStorageHandler,
 		instanceGuard:         instanceGuardHandler,
 		instanceGuardHalt:     instanceGuardHaltHandler,

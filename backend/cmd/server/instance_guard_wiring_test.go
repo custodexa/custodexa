@@ -105,7 +105,7 @@ func installGuardStatusDB(t *testing.T) *gorm.DB {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{"guard-admin", "guard-user"} {

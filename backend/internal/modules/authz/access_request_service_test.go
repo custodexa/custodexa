@@ -68,7 +68,7 @@ func setupAccessRequestEnv(t *testing.T) (*AccessRequestService, *policy.Securit
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
 		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestApproval{}, &model.ApproverScope{},
-		&model.SecurityPolicy{}, &model.AuditLog{}, &model.NotificationChannel{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.NotificationChannel{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_access_request_pending_dedup

@@ -297,24 +297,40 @@ func currentRoleNames(t *testing.T, db *gorm.DB, userID uint) []string {
 // 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下。
 func TestRoleChangeAdvancesCredentialEpoch(t *testing.T) {
 	cases := []struct {
-		name      string
+		name string
+		// extra 起始角色（受測帳號預設只有 admin）
+		extra     []string
 		roles     []string
 		wantRoles []string
 	}{
 		// keepsAdmin=false：走 identity.WithLocalAdminInvariant（系統級鎖）
 		{name: "remove-admin", roles: []string{model.RoleUser}, wantRoles: []string{model.RoleUser}},
-		// keepsAdmin=true：走 identity.WithUserCredentialLock（僅使用者級鎖）
-		{name: "keeps-admin", roles: []string{model.RoleAdmin, model.RoleUser},
+		// keepsAdmin=true：走 identity.WithUserCredentialLock（僅使用者級鎖）。
+		//
+		// **題例必須確有撤除**：世代推進的判準是「有效角色集是否有列被移除」，
+		// 純追加（admin → admin＋user）不推進，蓋不到這條取鎖分支。
+		// 起始 admin＋auditor、替換為 admin＋user 才同時滿足「保留 admin」與「有撤除」
+		{name: "keeps-admin", extra: []string{model.RoleAuditor},
+			roles:     []string{model.RoleAdmin, model.RoleUser},
 			wantRoles: []string{model.RoleAdmin, model.RoleUser}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := revMatrixDB(t)
 			e := setupLifecycleEnv(t, db)
+			for _, r := range tc.extra {
+				// 起始角色可能不在共用 fixture 的種子清單裡：就地補一列，
+				// 不動共用清單（那會改到其他測試看到的角色主檔）
+				if err := db.Where(model.Role{Name: r}).
+					FirstOrCreate(&model.Role{}, model.Role{Name: r}).Error; err != nil {
+					t.Fatalf("建立起始角色 %s: %v", r, err)
+				}
+				attachRoleByName(t, db, e.victim.ID, r)
+			}
 			refreshHash, sess := e.seedLiveAccess(t)
 			epochBefore := reloadUser(t, db, e.victim.ID).CredentialEpoch
 
-			if err := e.users.AssignRoles(e.victim.ID, tc.roles); err != nil {
+			if _, err := e.users.AssignRoles(e.victim.ID, tc.roles); err != nil {
 				t.Fatalf("變更角色為 %v: %v", tc.roles, err)
 			}
 			if got := currentRoleNames(t, db, e.victim.ID); !equalStrings(got, tc.wantRoles) {
@@ -355,7 +371,7 @@ func TestUnchangedRoleSetDoesNotAdvanceEpoch(t *testing.T) {
 	epochBefore := reloadUser(t, db, e.victim.ID).CredentialEpoch
 
 	// 相同集合、相反順序
-	if err := e.users.AssignRoles(e.victim.ID, []string{model.RoleUser, model.RoleAdmin}); err != nil {
+	if _, err := e.users.AssignRoles(e.victim.ID, []string{model.RoleUser, model.RoleAdmin}); err != nil {
 		t.Fatalf("以相同角色集重存: %v", err)
 	}
 

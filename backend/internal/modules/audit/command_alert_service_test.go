@@ -34,7 +34,7 @@ func setupAlertDB(t *testing.T) (*CommandAlertService, *gorm.DB) {
 	}
 	// users/assets 供 List 的 LEFT JOIN 補 username/asset_name；
 	// sessions 供 List 的 LEFT JOIN 帶出建線當下的來源位址（client_ip）
-	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewCommandAlertService(db), db

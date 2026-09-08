@@ -60,8 +60,9 @@ func setupRegressionEnv(t *testing.T) *regressionEnv {
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE IF NOT EXISTS user_roles (
-		user_id INTEGER NOT NULL, role_id INTEGER NOT NULL)`).Error; err != nil {
+	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
+	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
+	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, model.RoleUser} {

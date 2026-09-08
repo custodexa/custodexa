@@ -489,6 +489,9 @@ DEX_CLIENT_SECRET="${DEX_CLIENT_SECRET:-custodexa-dev-secret}"
 DEX_OK_LOGIN="oidcuser@dex.localhost";      DEX_OK_PASS="oidcpass123"
 DEX_DENY_LOGIN="outsider@outside.example";  DEX_DENY_PASS="deniedpass123"
 DEX_CONFLICT_LOGIN="admin@dex.localhost";   DEX_CONFLICT_PASS="conflictpass123"
+# 群組映射：靶機帳號 oidcuser 的 groups 宣告值，與要映射到的角色
+OIDC_MAPPED_GROUP_E2E="${OIDC_MAPPED_GROUP_E2E:-pam-auditors}"
+OIDC_MAPPED_ROLE_E2E="${OIDC_MAPPED_ROLE_E2E:-auditor}"
 
 oidc_skip() { echo "  (跳過 OIDC 場景：$1)"; }
 
@@ -553,9 +556,121 @@ oidc_purge_identity() {
             SELECT user_id FROM user_external_identities WHERE claim_email='$email')" > /dev/null
   psql_q "DELETE FROM asset_authorizations WHERE user_id IN (
             SELECT user_id FROM user_external_identities WHERE claim_email='$email')" > /dev/null
+  # 映射事實表尚未部署時略過；存在時須先刪，避免 users 外鍵阻擋清理。
+  psql_q "DO \$\$ BEGIN
+    IF to_regclass('public.user_role_mappings') IS NOT NULL THEN
+      DELETE FROM user_role_mappings WHERE user_id IN (
+        SELECT user_id FROM user_external_identities WHERE claim_email='$email');
+    END IF;
+  END \$\$;" > /dev/null || return 1
   psql_q "DELETE FROM users WHERE email='$email' AND id IN (
             SELECT user_id FROM user_external_identities WHERE claim_email='$email')" > /dev/null
   psql_q "DELETE FROM user_external_identities WHERE claim_email='$email'" > /dev/null
+}
+
+# 映射規則的建立與清除。**以 SQL 直寫**：規則的管理端點屬管理面批次，
+# 本場景要驗的是登入路徑，不等它。管理端點就緒後這兩支應改走 API。
+oidc_seed_mapping_rule() {
+  psql_q "INSERT INTO group_role_mappings
+            (created_at, updated_at, oidc_provider_id, match_value, role_id, enabled, created_by)
+          SELECT now(), now(), $1, '$2', r.id, true,
+                 (SELECT id FROM users WHERE username='admin' AND deleted_at IS NULL LIMIT 1)
+          FROM roles r WHERE r.name='$OIDC_MAPPED_ROLE_E2E'" > /dev/null
+}
+
+oidc_purge_mapping_rules() {
+  psql_q "DO \$\$ BEGIN
+    IF to_regclass('public.group_role_mappings') IS NOT NULL THEN
+      DELETE FROM group_role_mappings WHERE oidc_provider_id IS NOT NULL;
+    END IF;
+  END \$\$;" > /dev/null
+}
+
+# 受測帳號現行是否具映射到的角色（t/f）
+oidc_has_mapped_role() {
+  psql_q "SELECT EXISTS(
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            JOIN user_external_identities uei ON uei.user_id = ur.user_id
+            WHERE uei.claim_email='$DEX_OK_LOGIN' AND r.name='$OIDC_MAPPED_ROLE_E2E')"
+}
+
+oidc_credential_epoch() {
+  psql_q "SELECT u.credential_epoch FROM users u
+          JOIN user_external_identities uei ON uei.user_id = u.id
+          WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1"
+}
+
+# 角色斷言接點：本次登入命中角色；該人不再屬於受映射群組後重登撤角並推進世代。
+# 呼叫時該帳號已完成一次登入（規則已在 oidc_scenarios 內建好），故此處直接斷言結果。
+#
+# **「移出群組」以改規則的比對值代替**：dex 的群組寫死在靜態設定檔裡，要真的把人
+# 移出群組得改檔並重建容器，那會在場景中途拔掉正在用的身分提供者。登入路徑的判定
+# 是「觀測到的群組集合有沒有命中規則的比對值」，改哪一邊對這條路徑完全等價；
+# 靶機側的真實移出由目錄途徑（場景 13）承擔。
+oidc_assert_mapped_roles() {
+  local epoch_after_grant epoch_after_shrink channel snapshot
+
+  if [ "$(psql_q "SELECT to_regclass('public.user_role_mappings') IS NOT NULL")" != "t" ]; then
+    echo "  (跳過 OIDC 角色映射斷言：user_role_mappings 尚未建立，登入映射功能未就緒)"
+    return 0
+  fi
+
+  # 前置：本次登入是否觀測到群組。提供者未發群組宣告、或來源的群組宣告名未設定時，
+  # 映射一律不生效——那是環境設定的狀態，不是產品缺陷，故跳過而非判失敗。
+  # 判準取快照本身：它與映射事實在同一個交易裡寫入，是「這次登入看到了什麼」的直接紀錄
+  snapshot=$(psql_q "SELECT u.group_snapshot_groups FROM users u
+                     JOIN user_external_identities uei ON uei.user_id = u.id
+                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1")
+  if [ -z "$snapshot" ] || [ "$snapshot" = "[]" ]; then
+    echo "  (跳過 OIDC 角色映射斷言：$DEX_OK_LOGIN 本次登入未觀測到任何群組（快照＝${snapshot:-<查無>}）；"
+    echo "   請確認 dex 的靜態帳號帶有群組、且該來源已填群組宣告名後重跑)"
+    return 0
+  fi
+
+  # ---- 命中：取得角色，且映射事實帶本次途徑的通道 ----
+  if [ "$(oidc_has_mapped_role)" = "t" ]; then
+    ok "映射命中取得角色（${OIDC_MAPPED_ROLE_E2E}）"
+  else
+    bad "映射命中卻未取得角色（${OIDC_MAPPED_ROLE_E2E}）"
+    return 0
+  fi
+  channel=$(psql_q "SELECT urm.channel FROM user_role_mappings urm
+                    JOIN user_external_identities uei ON uei.user_id = urm.user_id
+                    WHERE uei.claim_email='$DEX_OK_LOGIN' LIMIT 1")
+  case "$channel" in
+    provider:*) ok "映射事實帶提供者途徑的通道（${channel}）" ;;
+    *) bad "映射事實的通道不是提供者途徑：${channel:-<查無>}" ;;
+  esac
+  # 群組觀測快照：診斷「我在群組裡卻沒拿到角色」的唯一線索，存的是原始值
+  snapshot=$(psql_q "SELECT u.group_snapshot_groups FROM users u
+                     JOIN user_external_identities uei ON uei.user_id = u.id
+                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1")
+  case "$snapshot" in
+    *"$OIDC_MAPPED_GROUP_E2E"*) ok "群組觀測快照存下本次觀測到的原始值（${snapshot}）" ;;
+    *) bad "群組觀測快照未含觀測到的群組值：${snapshot:-<查無>}" ;;
+  esac
+  epoch_after_grant=$(oidc_credential_epoch)
+
+  # ---- 不再命中後再次登入：失去角色且世代推進 ----
+  oidc_purge_mapping_rules
+  oidc_seed_mapping_rule "$OIDC_PROVIDER_ID" "no-such-group-e2e"
+  if ! oidc_sso_flow "$DEX_OK_LOGIN" "$DEX_OK_PASS"; then
+    bad "第二次 SSO 流程未走到 callback：$OIDC_ERR"
+    return 0
+  fi
+  epoch_after_shrink=$(oidc_credential_epoch)
+
+  if [ "$(oidc_has_mapped_role)" = "f" ]; then
+    ok "不再屬於受映射群組後再登入失去角色（${OIDC_MAPPED_ROLE_E2E}）"
+  else
+    bad "不再屬於受映射群組後再登入仍保有角色（${OIDC_MAPPED_ROLE_E2E}）"
+  fi
+  if [ -n "$epoch_after_shrink" ] && [ "$epoch_after_shrink" -gt "$epoch_after_grant" ]; then
+    ok "有效角色集縮減即推進憑證世代（${epoch_after_grant} → ${epoch_after_shrink}）"
+  else
+    bad "角色縮減未推進憑證世代（${epoch_after_grant} → ${epoch_after_shrink:-<查無>}）"
+  fi
 }
 
 oidc_scenarios() {
@@ -589,10 +704,13 @@ import json,sys
 d=json.load(sys.stdin).get('data') or []
 print(next((str(p['id']) for p in d
             if p.get('issuer')=='$DEX_ISSUER' and p.get('client_id')=='$DEX_CLIENT_ID'), ''))" 2>/dev/null)
+  # scopes 帶 groups：多數提供者（含 dex）只在請求它時才發出群組宣告，
+  # 少了它即使帳號有群組、規則也設了，權杖裡仍沒有 groups 而永遠零命中
   payload=$(python3 -c "
 import json
 print(json.dumps({'name':'e2e-dex-sso','issuer':'$DEX_ISSUER','client_id':'$DEX_CLIENT_ID',
-                  'client_secret':'$DEX_CLIENT_SECRET','scopes':'openid profile email',
+                  'client_secret':'$DEX_CLIENT_SECRET','scopes':'openid profile email groups',
+                  'groups_claim':'groups',
                   'admission_mode':'jit_with_rules','admission_rules':'''$rules''','enabled':True}))")
   if [ -n "$existing" ]; then
     resp=$(curl -s -X PUT "$BASE_URL/api/v1/oidc-providers/$existing" -H "Authorization: Bearer $TOKEN" \
@@ -628,6 +746,11 @@ print(json.dumps({'name':'e2e-dex-sso','issuer':'$DEX_ISSUER','client_id':'$DEX_
     return 0
   fi
   ok "dex provider 就緒（id=${OIDC_PROVIDER_ID}，issuer_kind=dedicated）"
+
+  # 映射規則：上一輪殘留一律先清（殘留的規則會讓「取得角色」在功能壞掉時仍為真），
+  # 再建一條指向靶機帳號實際持有的群組
+  oidc_purge_mapping_rules
+  oidc_seed_mapping_rule "$OIDC_PROVIDER_ID" "$OIDC_MAPPED_GROUP_E2E"
 
   # ---- 情境 A：成功登入 → exchange → 建 SSH 連線 ----
   local ex sso_token claims asset_id ssh_out uid
@@ -685,6 +808,10 @@ print(c.get('user_id'), c.get('username'), c.get('auth_method'), c.get('provider
         fi
         curl -s -o /dev/null -X DELETE "$BASE_URL/api/v1/assets/$asset_id" -H "Authorization: Bearer $TOKEN"
       fi
+      # **角色映射斷言擺在最後**：降權那一段會推進憑證世代並撤銷刷新憑證，
+      # 上面那張 SSO 會話權杖在世代比對下即刻失效。放在前面的話，
+      # 症狀會是「SSH 連線莫名 401」而不是「映射沒生效」
+      oidc_assert_mapped_roles
     fi
   fi
 
@@ -728,6 +855,10 @@ print(c.get('user_id'), c.get('username'), c.get('auth_method'), c.get('provider
     [ "${leftover:-1}" = "0" ] && ok "本地 admin 未被外部身分接管" \
       || bad "同名衝突卻建立了外部身分（$leftover 筆）"
   fi
+
+  # 映射規則不留到下一輪：殘留的規則會讓下一次的「取得角色」在功能壞掉時仍為真。
+  # 成功 SSO 的帳號本身是刻意保留的（沿既有做法），只清規則
+  oidc_purge_mapping_rules
 }
 
 oidc_scenarios
@@ -749,9 +880,17 @@ LDAP_URL_E2E="${LDAP_URL_E2E:-ldap://ldap-test:1389}"
 LDAP_BIND_DN_E2E="${LDAP_BIND_DN_E2E:-cn=admin,dc=example,dc=org}"
 LDAP_BIND_PASS_E2E="${LDAP_BIND_PASS_E2E:-adminpass}"
 LDAP_BASE_DN_E2E="${LDAP_BASE_DN_E2E:-ou=users,dc=example,dc=org}"
-# 靶機初始化的唯一目錄使用者（compose 的 LDAP_USERS/LDAP_PASSWORDS）
+# 靶機自訂 LDIF 的受映射群組帳號；對照帳號為 testldapplain。
 LDAP_LOGIN_USER="${LDAP_LOGIN_USER:-testldap}"
 LDAP_LOGIN_PASS="${LDAP_LOGIN_PASS:-ldappass123}"
+# 群組映射：受映射群組的辨識名稱、對照帳號、映射到的角色。
+# 對照帳號用於「把受映射群組的成員換成別人」——groupOfNames 至少要有一個成員，
+# 直接刪掉唯一成員會被目錄以 objectClass 違反拒絕，那不是本場景要測的東西。
+LDAP_GROUP_ATTR_E2E="${LDAP_GROUP_ATTR_E2E:-memberOf}"
+LDAP_MAPPED_GROUP_E2E="${LDAP_MAPPED_GROUP_E2E:-cn=inner,ou=groups,dc=example,dc=org}"
+LDAP_MAPPED_ROLE_E2E="${LDAP_MAPPED_ROLE_E2E:-auditor}"
+LDAP_LOGIN_USER_DN="${LDAP_LOGIN_USER_DN:-cn=$LDAP_LOGIN_USER,ou=users,dc=example,dc=org}"
+LDAP_OTHER_USER_DN="${LDAP_OTHER_USER_DN:-cn=testldapplain,ou=users,dc=example,dc=org}"
 
 ldap_skip() { echo "  (跳過 LDAP 場景：$1)"; }
 
@@ -761,11 +900,129 @@ ldap_skip() { echo "  (跳過 LDAP 場景：$1)"; }
 ldap_purge_shadow() {
   psql_q "DELETE FROM user_roles WHERE user_id IN (
             SELECT id FROM users WHERE username='$LDAP_LOGIN_USER' AND provisioning_origin='ldap')" > /dev/null
+  # 表未建立是合法的舊結構；只跳過缺表，不吞掉既有表的 DELETE 錯誤。
+  psql_q "DO \$\$ BEGIN
+    IF to_regclass('public.user_role_mappings') IS NOT NULL THEN
+      DELETE FROM user_role_mappings WHERE user_id IN (
+        SELECT id FROM users WHERE username='$LDAP_LOGIN_USER' AND provisioning_origin='ldap');
+    END IF;
+  END \$\$;" > /dev/null || return 1
   psql_q "DELETE FROM users WHERE username='$LDAP_LOGIN_USER' AND provisioning_origin='ldap'" > /dev/null
 }
 
+# 映射規則的建立與清除。**以 SQL 直寫**：規則的管理端點屬管理面批次，
+# 本場景要驗的是登入路徑，不等它。管理端點就緒後這兩支應改走 API。
+ldap_seed_mapping_rule() {
+  psql_q "INSERT INTO group_role_mappings
+            (created_at, updated_at, ldap_directory_id, match_value, role_id, enabled, created_by)
+          SELECT now(), now(), $1, '$LDAP_MAPPED_GROUP_E2E', r.id, true,
+                 (SELECT id FROM users WHERE username='admin' AND deleted_at IS NULL LIMIT 1)
+          FROM roles r WHERE r.name='$LDAP_MAPPED_ROLE_E2E'" > /dev/null
+}
+
+ldap_purge_mapping_rules() {
+  psql_q "DO \$\$ BEGIN
+    IF to_regclass('public.group_role_mappings') IS NOT NULL THEN
+      DELETE FROM group_role_mappings WHERE match_value='$LDAP_MAPPED_GROUP_E2E';
+    END IF;
+  END \$\$;" > /dev/null
+}
+
+# 受映射群組的成員換人／換回。groupOfNames 至少要有一個成員，故用 replace 而非
+# delete——刪掉唯一成員會被目錄以 objectClass 違反擋下，那與本場景要測的事無關。
+ldap_set_group_member() {
+  docker compose exec -T ldap-test ldapmodify -x -H ldap://localhost:1389 \
+    -D "$LDAP_BIND_DN_E2E" -w "$LDAP_BIND_PASS_E2E" > /dev/null 2>&1 <<EOF
+dn: $LDAP_MAPPED_GROUP_E2E
+replace: member
+member: $1
+EOF
+}
+
+# 帳號現行是否具映射到的角色（t/f）
+ldap_has_mapped_role() {
+  psql_q "SELECT EXISTS(
+            SELECT 1 FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            JOIN users u ON u.id = ur.user_id
+            WHERE u.username='$LDAP_LOGIN_USER' AND u.deleted_at IS NULL
+              AND r.name='$LDAP_MAPPED_ROLE_E2E')"
+}
+
+ldap_credential_epoch() {
+  psql_q "SELECT credential_epoch FROM users
+          WHERE username='$LDAP_LOGIN_USER' AND deleted_at IS NULL"
+}
+
+# 角色斷言接點：本次登入命中角色；移出 memberOf 群組後重登撤角並推進世代。
+# 呼叫時該帳號已完成一次登入（規則已在 ldap_scenario 內建好），故此處直接斷言結果。
+#
+# 前置：受映射群組是否已種入靶機且有成員。群組不存在（初始化 LDIF 沒跑到、
+# 或環境變數指向別的群組）時，後面每一條斷言都測不到任何產品行為——判為失敗
+# 會把環境問題指成產品缺陷，正是「前置不成立一律跳過」這條紀律要防的事。
+ldap_mapped_group_seeded() {
+  docker compose exec -T ldap-test ldapsearch -x -H ldap://localhost:1389 \
+    -D "$LDAP_BIND_DN_E2E" -w "$LDAP_BIND_PASS_E2E" \
+    -b "$LDAP_MAPPED_GROUP_E2E" -s base '(objectClass=*)' member 2>/dev/null \
+    | grep -q '^member:'
+}
+
+ldap_assert_mapped_roles() {
+  local epoch_after_grant epoch_after_shrink channel
+
+  if [ "$(psql_q "SELECT to_regclass('public.user_role_mappings') IS NOT NULL")" != "t" ]; then
+    echo "  (跳過 LDAP 角色映射斷言：user_role_mappings 尚未建立，登入映射功能未就緒)"
+    return 0
+  fi
+
+  if ! ldap_mapped_group_seeded; then
+    echo "  (跳過 LDAP 角色映射斷言：靶機上查無受映射群組或該群組沒有成員（${LDAP_MAPPED_GROUP_E2E}）；"
+    echo "   請重建 ldap-test 讓初始化 LDIF 種入該群組，或以 LDAP_MAPPED_GROUP_E2E 指向靶機上實際存在的群組後重跑)"
+    return 0
+  fi
+
+  # ---- 命中：取得角色，且映射事實帶本次途徑的通道 ----
+  if [ "$(ldap_has_mapped_role)" = "t" ]; then
+    ok "映射命中取得角色（${LDAP_MAPPED_ROLE_E2E}）"
+  else
+    bad "映射命中卻未取得角色（${LDAP_MAPPED_ROLE_E2E}）"
+    return 0
+  fi
+  channel=$(psql_q "SELECT urm.channel FROM user_role_mappings urm
+                    JOIN users u ON u.id = urm.user_id
+                    WHERE u.username='$LDAP_LOGIN_USER' AND u.deleted_at IS NULL LIMIT 1")
+  case "$channel" in
+    directory:*) ok "映射事實帶目錄途徑的通道（${channel}）" ;;
+    *) bad "映射事實的通道不是目錄途徑：${channel:-<查無>}" ;;
+  esac
+  epoch_after_grant=$(ldap_credential_epoch)
+
+  # ---- 移出群組後再次登入：失去角色且世代推進 ----
+  if ! ldap_set_group_member "$LDAP_OTHER_USER_DN"; then
+    bad "無法把受映射群組的成員換成對照帳號（靶機不可寫？）"
+    return 0
+  fi
+  curl -s -o /dev/null -X POST "$BASE_URL/api/v1/auth/login" -H "Content-Type: application/json" \
+    -d "{\"username\":\"$LDAP_LOGIN_USER\",\"password\":\"$LDAP_LOGIN_PASS\"}"
+  epoch_after_shrink=$(ldap_credential_epoch)
+
+  if [ "$(ldap_has_mapped_role)" = "f" ]; then
+    ok "移出群組後再登入失去角色（${LDAP_MAPPED_ROLE_E2E}）"
+  else
+    bad "移出群組後再登入仍保有角色（${LDAP_MAPPED_ROLE_E2E}）"
+  fi
+  if [ -n "$epoch_after_shrink" ] && [ "$epoch_after_shrink" -gt "$epoch_after_grant" ]; then
+    ok "有效角色集縮減即推進憑證世代（${epoch_after_grant} → ${epoch_after_shrink}）"
+  else
+    bad "角色縮減未推進憑證世代（${epoch_after_grant} → ${epoch_after_shrink:-<查無>}）"
+  fi
+
+  # 靶機還原：成員換回受測帳號（清理段的規則刪除另行處理）
+  ldap_set_group_member "$LDAP_LOGIN_USER_DN"
+}
+
 ldap_scenario() {
-  local existing resp code payload test_payload test_resp matched login_resp token claims shadow left
+  local existing resp code payload test_payload test_resp matched login_resp token claims shadow left dir_id
 
   if ! docker compose ps ldap-test 2>/dev/null | grep -q "Up"; then
     ldap_skip "ldap-test 靶機未運行（dev compose 專屬）；起 ldap-test 後重跑"
@@ -787,8 +1044,8 @@ print(d.get('url','') if d.get('configured') else '')" 2>/dev/null)
   # risk_acknowledged=true：ldap:// 為明文通道，warn 檔位下缺確認即 400（strict 檔位仍拒）
   payload="{\"name\":\"e2e-ldap\",\"url\":\"$LDAP_URL_E2E\",\"bind_dn\":\"$LDAP_BIND_DN_E2E\",\
 \"bind_password\":\"$LDAP_BIND_PASS_E2E\",\"base_dn\":\"$LDAP_BASE_DN_E2E\",\"user_filter\":\"(uid=%s)\",\
-\"attr_email\":\"mail\",\"attr_fullname\":\"cn\",\"skip_tls_verify\":false,\"enabled\":true,\
-\"risk_acknowledged\":true}"
+\"attr_email\":\"mail\",\"attr_fullname\":\"cn\",\"attr_group\":\"$LDAP_GROUP_ATTR_E2E\",\
+\"skip_tls_verify\":false,\"enabled\":true,\"risk_acknowledged\":true}"
   resp=$(curl -s -X PUT "$BASE_URL/api/v1/ldap-directory" -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" -d "$payload")
   if [ -z "$resp" ]; then
@@ -815,11 +1072,19 @@ assert d.get('url')=='$LDAP_URL_E2E', d.get('url')" \
     && ok "LDAP 設定 upsert 並啟用（回應不含密碼、has_bind_password=true）" \
     || { bad "LDAP 設定回應形狀異常: $(echo "$resp" | head -c 200)"; return 0; }
 
+  # ---- (1b) 映射規則：受映射群組 → 角色 ----
+  # 規則必須在登入之前就位——重算發生在登入當下，事後補規則什麼都驗不到
+  dir_id=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+  ldap_purge_mapping_rules
+  if [ -n "$dir_id" ]; then
+    ldap_seed_mapping_rule "$dir_id"
+  fi
+
   # ---- (2) 連線測試：三階段成功且回報比對筆數 ----
   test_payload="{\"url\":\"$LDAP_URL_E2E\",\"bind_dn\":\"$LDAP_BIND_DN_E2E\",\
 \"bind_password\":\"$LDAP_BIND_PASS_E2E\",\"base_dn\":\"$LDAP_BASE_DN_E2E\",\"user_filter\":\"(uid=%s)\",\
-\"attr_email\":\"mail\",\"attr_fullname\":\"cn\",\"skip_tls_verify\":false,\"enabled\":true,\
-\"risk_acknowledged\":true}"
+\"attr_email\":\"mail\",\"attr_fullname\":\"cn\",\"attr_group\":\"$LDAP_GROUP_ATTR_E2E\",\
+\"skip_tls_verify\":false,\"enabled\":true,\"risk_acknowledged\":true}"
   test_resp=$(curl -s -X POST "$BASE_URL/api/v1/ldap-directory/test" -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" -d "$test_payload")
   # 階梯已執行即 HTTP 200（含失敗），故斷言對象是 body 的 stages/failed_stage 而非狀態碼
@@ -846,6 +1111,7 @@ print(c)" 2>/dev/null)
     bad "LDAP 使用者登入失敗: $(echo "$login_resp" | head -c 200)"
   else
     ok "LDAP 使用者登入（${LDAP_LOGIN_USER}）"
+    ldap_assert_mapped_roles
     claims=$(echo "$token" | cut -d. -f2 | python3 -c "
 import sys,base64,json
 p=sys.stdin.read().strip(); p+='='*(-len(p)%4)
@@ -864,6 +1130,7 @@ print(c.get('auth_method'), c.get('username'))")
   fi
 
   # ---- (5) 清理 ----
+  ldap_purge_mapping_rules
   curl -s -o /dev/null -X DELETE "$BASE_URL/api/v1/ldap-directory" -H "Authorization: Bearer $TOKEN"
   left=$(curl -s "$BASE_URL/api/v1/ldap-directory" -H "Authorization: Bearer $TOKEN" \
     | python3 -c "import json,sys; print(json.load(sys.stdin).get('configured'))" 2>/dev/null)

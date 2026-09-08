@@ -24,8 +24,11 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 	// 撤銷路徑所需——缺表會讓「應允許」的情境敗在無關的 SQL 錯誤上
 	// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity），
 	// 缺表即整筆回滾——生產序由 migration 先建全部表
+	// model.UserRole：計數的來源條件讀 user_roles.source，而 many2many 標籤
+	// 自動建出的關聯表只有兩欄——缺這一個 model，計數會敗在「no such column」
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
-		&model.ApproverScope{}, &model.RefreshToken{}, &model.AuditLog{}); err != nil {
+		&model.ApproverScope{}, &model.RefreshToken{}, &model.AuditLog{},
+		&model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, "user"} {
@@ -186,7 +189,7 @@ func TestLocalAdminInvariantRejectsRoleRemovalOfLastLocalAdmin(t *testing.T) {
 	seedAccount(t, db, adminSpec{username: "sso-admin", admin: true, active: true, ldapUser: true})
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))
 
-	err := svc.AssignRoles(local.ID, []string{"user"})
+	_, err := svc.AssignRoles(local.ID, []string{"user"})
 	assertLastLocalAdminRejection(t, err)
 	if n := mustCountLocalAdmins(t, db); n != 1 {
 		t.Fatalf("被拒後本地 admin 應仍為 1，got %d", n)
@@ -199,7 +202,7 @@ func TestLocalAdminInvariantAllowsRoleResetKeepingAdmin(t *testing.T) {
 	local := seedAccount(t, db, adminSpec{username: "only-local", admin: true, active: true})
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))
 
-	if err := svc.AssignRoles(local.ID, []string{model.RoleAdmin, "user"}); err != nil {
+	if _, err := svc.AssignRoles(local.ID, []string{model.RoleAdmin, "user"}); err != nil {
 		t.Fatalf("保留 admin 的角色重設應允許，got %v", err)
 	}
 	if n := mustCountLocalAdmins(t, db); n != 1 {
@@ -245,7 +248,7 @@ func TestLocalAdminInvariantDoesNotBlockWhenAlreadyZero(t *testing.T) {
 	if err := svc.UpdateStatus(extA.ID, false); err != nil {
 		t.Fatalf("本地 admin 已為 0 時停用外部 admin 不應被擋，got %v", err)
 	}
-	if err := svc.AssignRoles(extB.ID, []string{"user"}); err != nil {
+	if _, err := svc.AssignRoles(extB.ID, []string{"user"}); err != nil {
 		t.Fatalf("本地 admin 已為 0 時移除外部 admin 角色不應被擋，got %v", err)
 	}
 	if err := svc.Delete(plain.ID); err != nil {

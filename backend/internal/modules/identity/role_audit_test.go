@@ -36,9 +36,9 @@ func setupRoleAuditDB(t *testing.T) *gorm.DB {
 		&model.PasswordHistory{}, &model.RefreshToken{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE IF NOT EXISTS user_roles (
-		role_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
-		PRIMARY KEY (role_id, user_id))`).Error; err != nil {
+	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後
+	// 與正式庫分歧，而分歧的症狀是無關斷言上的「no such column」
+	if err := db.AutoMigrate(&model.UserRole{}); err != nil {
 		t.Fatalf("user_roles: %v", err)
 	}
 	oldDB := database.DB
@@ -136,11 +136,11 @@ func TestRoleAuditAssignRolesLeavesAssignAndRevoke(t *testing.T) {
 	if err := svc.AddRole(other.ID, model.RoleAdmin); err != nil {
 		t.Fatalf("備援 admin: %v", err)
 	}
-	if err := svc.AssignRoles(u.ID, []string{model.RoleAdmin}); err != nil {
+	if _, err := svc.AssignRoles(u.ID, []string{model.RoleAdmin}); err != nil {
 		t.Fatalf("AssignRoles 初始: %v", err)
 	}
 
-	if err := svc.AssignRoles(u.ID, []string{model.RoleAuditor}); err != nil {
+	if _, err := svc.AssignRoles(u.ID, []string{model.RoleAuditor}); err != nil {
 		t.Fatalf("AssignRoles 替換: %v", err)
 	}
 	rows := roleAuditRows(t, db)
@@ -152,7 +152,7 @@ func TestRoleAuditAssignRolesLeavesAssignAndRevoke(t *testing.T) {
 	assertRoleAuditRow(t, rows[3], model.ActionAssign, u.ID, auditor.ID, model.RoleOriginAPI)
 
 	// 重存同一組角色是常態操作：無變動即無列
-	if err := svc.AssignRoles(u.ID, []string{model.RoleAuditor}); err != nil {
+	if _, err := svc.AssignRoles(u.ID, []string{model.RoleAuditor}); err != nil {
 		t.Fatalf("AssignRoles 無變動: %v", err)
 	}
 	if got := len(roleAuditRows(t, db)); got != 4 {

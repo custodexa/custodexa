@@ -243,7 +243,7 @@ func newOffsiteAPIEnv(t *testing.T) *offsiteAPIEnv {
 	}
 	sqlDB.SetMaxOpenConns(4)
 	if err := db.AutoMigrate(&model.OffsiteProfile{}, &model.OffsiteObject{},
-		&model.AuditLog{}, &model.User{}, &model.Role{}); err != nil {
+		&model.AuditLog{}, &model.User{}, &model.Role{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

@@ -61,7 +61,8 @@ func setupLDAPResolutionEnv(t *testing.T) (*AuthService, *policy.SecurityPolicyS
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
-		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}); err != nil {
+		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.UserRole{},
+		&model.GroupRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.Role{Name: model.RoleUser}).Error; err != nil {

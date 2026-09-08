@@ -83,7 +83,7 @@ func setupPGLockSchema(t *testing.T, baseDSN string) string {
 	// 故一併建表（空表 → pending 0）
 	if err := mig.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
-		&model.OffsiteProfile{}); err != nil {
+		&model.OffsiteProfile{}, &model.UserRole{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 	// 生產等價索引語義（migration 20260801_kek_soft_retire）：唯一索引轉 partial

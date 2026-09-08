@@ -88,6 +88,11 @@ func InitDatabase(cfg *config.Config) error {
 var schemaParityModels = []interface{}{
 	&model.User{},
 	&model.Role{},
+	// 角色指派關聯表：加上來源欄之後不再是純關聯表，需納入結構對照
+	&model.UserRole{},
+	// 外部群組對角色映射：規則表與映射事實表
+	&model.GroupRoleMapping{},
+	&model.UserRoleMapping{},
 	&model.Asset{},
 	&model.AssetGroup{},
 	&model.Session{},

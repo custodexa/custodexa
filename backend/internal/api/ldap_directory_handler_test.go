@@ -64,7 +64,9 @@ func setupLDAPDirectoryEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *poli
 	}
 	sqlDB.SetMaxOpenConns(4)
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
-		&model.SecurityPolicy{}, &model.User{}, &model.Role{}); err != nil {
+		&model.SecurityPolicy{}, &model.User{}, &model.Role{}, &model.UserRole{},
+		// 目錄刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
+		&model.GroupRoleMapping{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

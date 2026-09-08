@@ -67,7 +67,7 @@ func setupWSTokenEnv(t *testing.T) *wsTokenEnv {
 	// 單連線：ff51836 的「單獨跑綠、整包跑紅」防護
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.Asset{},
-		&model.Session{}, &model.OIDCProvider{}, &model.AuditLog{}); err != nil {
+		&model.Session{}, &model.OIDCProvider{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

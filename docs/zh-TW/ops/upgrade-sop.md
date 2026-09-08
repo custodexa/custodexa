@@ -161,7 +161,7 @@ bind mount 情境下映像內的權限設定不生效，主機端目錄權限由
 （或該版本在貴方的 registry 上仍取得到）。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的十條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的十二條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -288,6 +288,17 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
 >
 > `COMPOSE_PROJECT_NAME` 不提供保護：它隔離的是容器與網路的命名，不是 bind mount 的落點。
 > 萬一還是接錯了，怎麼在還沒造成損失前發現，見 §2.5 的「升級後第一件事」。
+>
+> **`tls/` 也要一併交接到新目錄**：內建 TLS 反向代理的憑證材料放在專案目錄下的 `tls/`，
+> 不在 `DATA_PATH` 內，新目錄少了它，`TLS_MODE=selfsigned` 會在啟動時重新簽發一組自簽 CA，
+> 於是所有信任舊 CA 的用戶端在升級當下失去這份信任。把該目錄複製過去，
+> 或把 §2.1 備份裡的 `tls` 壓縮檔解開到新樹：
+>
+> ```bash
+> cp -a /opt/custodexa/tls /opt/custodexa-new/
+> # 或者，從升級前備份解開：
+> tar -xzf "custodexa-tls-${STAMP}.tar.gz" -C /opt/custodexa-new
+> ```
 
 > **建置會覆蓋同名 tag：先把現行映像另存一份，否則沒有東西可回退。**
 > 三顆映像的參照都是 `:latest`（`custodexa/backend:latest`、`custodexa/frontend:latest`、
@@ -459,7 +470,7 @@ docker compose -f docker-compose.yml up -d
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的十條增量對應的日誌行逐字為：
+本版的十二條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -472,6 +483,8 @@ docker compose -f docker-compose.yml up -d
   執行 migration: 20260905_account_batch_rotation (account_batch_rotation)
   執行 migration: 20260906_credential_library (credential_library)
   執行 migration: 20260906_credential_library_contract (credential_library_contract)
+  執行 migration: 20260908_role_state_checkpoint (role_state_checkpoint)
+  執行 migration: 20260908_group_role_mapping (group_role_mapping)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -520,6 +533,24 @@ ssh 資產維持既有改密路徑、其餘維持不改密），其餘五欄可�
 的資料庫上已經套用過，往已套用的 migration 追加語句只會留下「程式碼宣告的形狀資料庫沒有」
 的落差。它只刪欄、無資料轉換，耗時與存量無關。**它的 `Down` 有損**，
 規劃任何退路之前先讀 §4.1。
+
+`20260908_role_state_checkpoint` 對審計檢查點表加四個可空欄，使檢查點一併封住當下生效的
+角色指派（快照的雜湊、快照本身、筆數，以及是否對得上）。不建表、不加索引或約束。
+**只加欄、無資料轉換、無回填**，耗時與存量無關。**升級前封的檢查點一律留空**，
+那是「那一段不涵蓋角色指派」的誠實表述，不做回填——把今天的快照寫進過去的檢查點，
+等於替歷史簽下一個它當時沒簽過的主張。**它的 `Down` 有損**，規劃任何退路之前先讀 §4.1。
+
+`20260908_group_role_mapping` 加上「外部目錄或身分提供者的群組對應到本系統角色」的資料層：
+對使用者與角色的關聯加一個來源欄（這個角色是管理者指派的、群組映射賦予的，還是兩者並存）、
+建兩張新表（管理者維護的映射規則，以及各條登入途徑每次重算後認定的映射事實）、
+對目錄設定加一個群組成員資格屬性名、對帳號表加三個群組觀測快照欄、
+對身分提供者設定加一個群組宣告名與三個宣告對應欄，另有六條外鍵與三條索引。
+**純加法、無資料回填**：加的欄位皆可空或帶預設，耗時與存量無關。
+**關聯上的存量列一律以預設值落在「管理者指派」**，那正是它們的實情——這個欄位出現之前，
+角色沒有第二種賦予途徑。**新增的設定欄在留空時一律代表「未設定、行為不變」**：
+群組屬性名或群組宣告名為空即代表本部署不讓外部群組決定角色，三個宣告對應欄為空即沿用
+現行的解析方式。一項都不設定的部署，升級後的行為與升級前逐字相同。
+**它的 `Down` 有損**，規劃任何退路之前先讀 §4.1。
 
 #### 查詢主控台（本版新增的功能，影響升級決策的部分）
 
@@ -1142,11 +1173,12 @@ worker 持有中、確定遺失）。只看到第一行，表示審計排空已�
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的十條增量
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的十二條增量
 （`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
-`20260906_credential_library_contract`）。
+`20260906_credential_library_contract`、`20260908_role_state_checkpoint`、
+`20260908_group_role_mapping`）。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；
@@ -1257,6 +1289,34 @@ docker compose -f docker-compose.yml exec -T postgres \
 **`20260906_credential_library_contract` 的 `Down` 有損，僅供開發資料庫使用。** 它把卸下的四個
 欄位以空殼加回來、重建群組索引，**不還原任何資料**：那四欄的內容在卸下的當下即已失去，
 之後再升級它們會以空值回來。它的生產退路同樣是部署回舊版映像並還原升級前的備份（§4.2）。
+
+**`20260908_role_state_checkpoint` 的 `Down` 有損，僅供開發資料庫使用。** 它刪掉那四個欄位，
+一併失去全部檢查點上的角色指派快照；其後所有檢查點回到不涵蓋角色指派，日後再升級也要等到
+下一次封章才重新有基準。它的生產退路同樣是部署回舊版映像並還原升級前的備份（§4.2）。
+
+**`20260908_group_role_mapping` 的 `Down` 有損，其中一部分還原不回來，僅供開發資料庫使用。**
+它帶走的三樣東西性質不同：
+
+- **管理者輸入的映射規則沒有第二個來源。** 那是在身分來源頁上逐條設定的，系統裡沒有別的地方
+  存著它們。**任何退版之前先把它們匯出**，與備份集同保管：
+
+  ```bash
+  docker compose -f docker-compose.yml exec -T postgres \
+    pg_dump --data-only -t group_role_mappings -U "${DB_USER:?}" -d "${DB_NAME:?}" \
+    > "custodexa-group-role-mappings-$(date +%Y%m%d-%H%M).sql"
+  ```
+
+- **使用者與角色關聯上的來源欄被刪掉**，於是「哪些角色是管理者指派的、哪些只是外部群組給的」
+  不再有記錄。全部角色列回到不分來源的舊語義，而**本地管理員計數會重新把管理員角色只來自
+  群組映射的帳號計入**——那種帳號的管理員角色會在群組異動後的下一次登入消失。
+- **映射事實也一併消失**，但那是可重建的：各帳號的下一次登入即重新認定。Down 卸除的是結構
+  ——來源標記、映射事實與規則——角色列本身仍在。經由映射取得的角色在退版後保留為普通指派，
+  不會自動失效；管理者要收回，須自行手動移除。
+
+群組觀測快照三欄與目錄、提供者的設定欄只是回到「未設定」，不損失要緊的東西
+——快照是診斷資料，下一次登入即重新寫入。它的生產退路同樣是部署回舊版映像並還原升級前的
+備份（§4.2）。**升級後才建立的映射規則會隨備份還原而消失**，若有新增，退版前照上面的方式
+先匯出，日後重新升級之後再設回去。
 
 **升級後才設定的登入告示，會隨備份還原而遺失**：那份文字是在升級之後寫進去的，
 升級前的備份裡沒有它。**要退版就先到安全政策頁把告示的標題與內文抄存下來**

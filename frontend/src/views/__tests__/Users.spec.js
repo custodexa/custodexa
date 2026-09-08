@@ -22,6 +22,14 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 const getUserListMock = vi.fn()
 const updateUserStatusMock = vi.fn()
 const getRoleListMock = vi.fn()
+// 角色來源（兩份集合）的事實源是 /users/:id；預設回一份只有管理者指派的集合，
+// 個別題例要驗映射時自行覆寫
+const getUserDetailMock = vi.fn().mockResolvedValue({
+  data: {},
+  role_sets: { manual: [], mapped: [] },
+})
+const pinUserRoleMock = vi.fn()
+const assignRolesMock = vi.fn().mockResolvedValue({ role_sets: { manual: [], mapped: [] } })
 const getApproverScopesMock = vi.fn()
 const createApproverScopeMock = vi.fn()
 const deleteApproverScopeMock = vi.fn()
@@ -53,11 +61,13 @@ vi.mock('@/api/userGroups', () => ({
 
 vi.mock('@/api/user', () => ({
   getUserList: (...a) => getUserListMock(...a),
+  getUserDetail: (...a) => getUserDetailMock(...a),
   getRoleList: (...a) => getRoleListMock(...a),
+  pinUserRole: (...a) => pinUserRoleMock(...a),
   createUser: (...a) => createUserMock(...a),
   updateUser: (...a) => updateUserMock(...a),
   deleteUser: vi.fn(),
-  assignRoles: vi.fn(),
+  assignRoles: (...a) => assignRolesMock(...a),
   addUserRole: vi.fn(),
   updateUserStatus: (...a) => updateUserStatusMock(...a),
   changePassword: vi.fn(),
@@ -155,6 +165,10 @@ describe('Users 分配角色對話框', () => {
   })
 
   it('開窗時由 /roles API 拉可指派清單，approver 以中文標籤呈現', async () => {
+    // 預填的事實源是管理者指派集，不是有效角色集
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {}, role_sets: { manual: ['user'], mapped: [] },
+    })
     const wrapper = mountView()
     await flushPromises()
 
@@ -170,6 +184,181 @@ describe('Users 分配角色對話框', () => {
     expect(text).toContain('稽核人員')
     expect(text).toContain('一般使用者')
     expect(wrapper.vm.selectedRoles).toEqual(['user'])
+  })
+
+  // 以下三條守的是同一個靜默失效：對話框若沿用有效角色集，映射賦予的角色會被
+  // 併進替換主體，後端把它忽略掉而畫面顯示成功——管理者以為釘住了，實際沒有。
+  // 錯了畫面仍然長得正常，只有這裡看得出來
+  it('預填與送出都只用管理者指派集，映射角色不進替換主體', async () => {
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {},
+      role_sets: { manual: ['user'], mapped: ['auditor'] },
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.handleAssignRoles({
+      id: 7, username: 'carol', roles: [{ name: 'user' }, { name: 'auditor' }],
+    })
+    await flushPromises()
+
+    // 有效角色集是兩個，管理者指派集只有一個
+    expect(wrapper.vm.selectedRoles).toEqual(['user'])
+    expect(wrapper.vm.mappedRoles).toEqual(['auditor'])
+
+    assignRolesMock.mockResolvedValue({ role_sets: { manual: ['user'], mapped: ['auditor'] } })
+    await wrapper.vm.handleRoleSubmit()
+    await flushPromises()
+
+    expect(assignRolesMock).toHaveBeenCalledWith(7, ['user'])
+  })
+
+  it('勾選映射角色走釘住端點，不併入替換請求', async () => {
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {},
+      role_sets: { manual: [], mapped: ['auditor'] },
+    })
+    pinUserRoleMock.mockResolvedValue({
+      role_sets: { manual: ['auditor'], mapped: ['auditor'] },
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'auditor' }] })
+    await flushPromises()
+
+    await wrapper.vm.handlePinMappedRole('auditor')
+    await flushPromises()
+
+    expect(pinUserRoleMock).toHaveBeenCalledWith(7, 'auditor')
+    expect(assignRolesMock).not.toHaveBeenCalled()
+    // 釘住之後成為並存態，管理者指派集裡也有它了
+    expect(wrapper.vm.selectedRoles).toEqual(['auditor'])
+  })
+
+  it('回應帶 role.mapped_ignored 時提示改用釘住', async () => {
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {}, role_sets: { manual: ['user'], mapped: ['auditor'] },
+    })
+    assignRolesMock.mockResolvedValue({
+      role_sets: { manual: ['user'], mapped: ['auditor'] },
+      disclosures: [{ code: 'role.mapped_ignored', params: { roles: 'auditor' } }],
+    })
+    const { ElMessage } = await import('element-plus')
+    const warningSpy = vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'user' }] })
+    await flushPromises()
+    await wrapper.vm.handleRoleSubmit()
+    await flushPromises()
+
+    expect(warningSpy).toHaveBeenCalled()
+    expect(String(warningSpy.mock.calls[0][0])).toContain('釘住')
+    warningSpy.mockRestore()
+  })
+
+  // 群組觀測快照是「我在群組裡卻沒拿到角色」的唯一診斷線索。失敗方向是靜默的：
+  // 值只要沒渲染出來，管理者就只能回頭去查資料庫，而畫面看不出少了東西
+  it('對話框顯示最近一次登入觀測到的群組原始值，無快照時說尚無觀測', async () => {
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {
+        group_snapshot_channel: 'directory:19',
+        group_snapshot_groups: '["cn=inner,ou=groups,dc=example,dc=org","Sales Team"]',
+        group_snapshot_at: '2026-09-09T03:00:00Z',
+      },
+      role_sets: { manual: ['user'], mapped: ['auditor'] },
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.vm.handleAssignRoles({ id: 7, username: 'carol', roles: [{ name: 'user' }] })
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('最近一次登入觀測到的群組')
+    expect(text).toContain('cn=inner,ou=groups,dc=example,dc=org')
+    expect(text).toContain('Sales Team')
+    expect(text).toContain('directory:19')
+    expect(wrapper.find('[data-test="group-snapshot-list"]').exists()).toBe(true)
+
+    // 從未經外部來源登入過的帳號：說「尚無觀測」，不留白
+    getUserDetailMock.mockResolvedValueOnce({
+      data: {}, role_sets: { manual: ['user'], mapped: [] },
+    })
+    await wrapper.vm.handleAssignRoles({ id: 8, username: 'dave', roles: [{ name: 'user' }] })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="group-snapshot-empty"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="group-snapshot-list"]').exists()).toBe(false)
+  })
+})
+
+// 列表的角色來源標示。**失敗方向是靜默的**：讀不到來源時若預設標成「手動」，
+// 管理者會在本頁反覆嘗試移除一個只有目錄側改得動的角色
+describe('Users 列表角色來源標示', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getRoleListMock.mockResolvedValue({ data: [] })
+  })
+
+  it('沒有群組觀測快照的帳號一律標為手動，且不為此多發一次讀取', async () => {
+    getUserListMock.mockResolvedValue(sampleUsers)
+    const wrapper = mountView()
+    await flushPromises()
+
+    const row = wrapper.vm.userList[0]
+    expect(wrapper.vm.roleSourceOf(row, 'user')).toBe('manual')
+    expect(getUserDetailMock).not.toHaveBeenCalled()
+  })
+
+  it('有群組觀測快照的帳號讀兩份集合，並存態標為 both', async () => {
+    getUserListMock.mockResolvedValue({
+      data: [{
+        id: 9,
+        username: 'ldapuser',
+        active: true,
+        roles: [{ name: 'user' }, { name: 'auditor' }, { name: 'approver' }],
+        group_snapshot_at: '2026-09-09T01:00:00Z',
+        created_at: '2026-07-01T10:00:00+08:00',
+      }],
+      total: 1,
+    })
+    getUserDetailMock.mockResolvedValue({
+      data: {},
+      role_sets: { manual: ['user', 'auditor'], mapped: ['auditor', 'approver'] },
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const row = wrapper.vm.userList[0]
+    expect(getUserDetailMock).toHaveBeenCalledWith(9)
+    expect(wrapper.vm.roleSourceOf(row, 'user')).toBe('manual')
+    expect(wrapper.vm.roleSourceOf(row, 'auditor')).toBe('both')
+    expect(wrapper.vm.roleSourceOf(row, 'approver')).toBe('mapped')
+    expect(wrapper.vm.needsApproverScope(row)).toBe(true)
+  })
+
+  it('讀不到兩份集合時不標來源（不猜成手動）', async () => {
+    getUserListMock.mockResolvedValue({
+      data: [{
+        id: 9,
+        username: 'ldapuser',
+        active: true,
+        roles: [{ name: 'user' }],
+        group_snapshot_at: '2026-09-09T01:00:00Z',
+        created_at: '2026-07-01T10:00:00+08:00',
+      }],
+      total: 1,
+    })
+    getUserDetailMock.mockRejectedValue(new Error('boom'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const row = wrapper.vm.userList[0]
+    expect(wrapper.vm.roleSourceOf(row, 'user')).toBe('')
+    expect(wrapper.vm.needsApproverScope(row)).toBe(false)
   })
 })
 

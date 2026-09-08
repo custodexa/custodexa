@@ -149,6 +149,12 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 
 	// ── 非資產類 ──
 	"AP-01": {pivotNotAsset, false, "封印狀態機留痕，主體是系統"},
+	"AP-90": {pivotNotAsset, false, "探索預覽的呼叫留痕：主體是身分提供者的位址與發起這次探索的管理者，" +
+		"與任何資產無關"},
+	"AP-89": {pivotNotAsset, false, "群組映射規則 CRUD 的唯一產生點：主體是一條「外部群組給哪個角色」的規則，" +
+		"與任何資產無關。理由同 AP-87"},
+	"AP-88": {pivotNotAsset, false, "外部群組映射造成角色變動（或映射被跳過）的唯一產生點：" +
+		"主體是帳號與它在外部來源的群組成員資格，與任何資產無關。理由同 AP-87"},
 	"AP-87": {pivotNotAsset, false, "角色指派變更的唯一產生點：主體是帳號與角色的關聯，與任何資產無關。" +
 		"填任一台資產的 id 都會在該資產的時間軸上長出一則與它無關的權限事件"},
 	"AP-86": {pivotNotAsset, false, "存量轉換失敗的留痕（交易外）：主體是轉換工作本身，details 只記階段與待處理筆數，無任何資產可指"},

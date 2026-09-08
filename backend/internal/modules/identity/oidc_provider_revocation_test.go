@@ -32,8 +32,11 @@ func revocationMigrate(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
+		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
+		// 索引計數（缺表即 fail-close）
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 }

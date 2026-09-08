@@ -47,7 +47,7 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 	// ClipboardEvent 為 bundle 的固定段，
 	// 純 bundle 測試也需要表存在（零列＝空段，無需解密器）
 	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{},
-		&model.ClipboardEvent{}); err != nil {
+		&model.ClipboardEvent{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

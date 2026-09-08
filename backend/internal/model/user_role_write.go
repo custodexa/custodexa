@@ -54,6 +54,12 @@ const (
 	RoleOriginOIDC = "oidc"
 	// RoleOriginLDAP LDAP 影子帳號供應時配的預設角色
 	RoleOriginLDAP = "ldap"
+	// RoleOriginMapping 外部群組映射：登入時重算認定的授予與撤除。
+	//
+	// **它不是操作者**：真正的行為者是外部目錄或身分提供者那一端的群組管理員，
+	// 本系統看不見他。留下這個值的意義是讓事後追查分得出「管理者按了按鈕」與
+	// 「某人所屬的群組變了」——後者要去外部來源的變更記錄裡查。
+	RoleOriginMapping = "mapping"
 	// RoleOriginSystem 系統路徑。**現況無任何呼叫點**：唯一曾用它的初始管理員播種
 	// 已改走不留痕的 `AssignUserRoleAtSeed`（解封前無蓋章鑰）。值保留是因為它是
 	// details 的既定值域之一，日後若有解封後執行的系統路徑（例如存量轉換）要配角色，
@@ -156,4 +162,73 @@ func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, 
 		return fmt.Errorf("角色指派留痕失敗: %w", err)
 	}
 	return nil
+}
+
+// UserRoleSourceOf 讀一列角色指派的來源；該列不存在時 exists 為 false。
+//
+// 讀取面與寫入面放在一起的理由：來源三態的每一次轉移都是「先知道現在是哪一態、
+// 再決定寫什麼」，兩者分家會讓呼叫端自己拼 SQL，而那正是本檔要收掉的東西。
+func UserRoleSourceOf(tx *gorm.DB, userID, roleID uint) (source string, exists bool, err error) {
+	var rows []string
+	if err := tx.Table("user_roles").
+		Where("user_id = ? AND role_id = ?", userID, roleID).
+		Pluck("source", &rows).Error; err != nil {
+		return "", false, fmt.Errorf("讀取角色指派來源失敗: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	return rows[0], true, nil
+}
+
+// SetUserRoleSource 更新一列角色指派的來源。
+//
+// # 為什麼它不留痕
+//
+// 來源欄是**投影**，不是權限本身：`manual` 升 `both`、`both` 降 `mapped` 都不改變
+// 「這個帳號有沒有這個角色」。對帳問的是「有效角色集有沒有在應用程式之外被改過」，
+// 而投影的變動不改變有效集，留一列審計只會讓事件流多出對帳重放不回來的雜訊。
+// 真正改變有效集的兩件事——列被建立、列被刪除——走的是
+// AssignUserRole／RevokeUserRole，兩者都留痕。
+//
+// 呼叫端 SHALL 與事實面的變動同交易：投影落後於事實的中間態一旦外洩到查詢，
+// 本地管理員計數就會讀到錯的答案。
+func SetUserRoleSource(tx *gorm.DB, userID, roleID uint, source string) error {
+	switch source {
+	case RoleSourceManual, RoleSourceMapped, RoleSourceBoth:
+	default:
+		return fmt.Errorf("未知的角色指派來源: %q", source)
+	}
+	res := tx.Exec("UPDATE user_roles SET source = ? WHERE user_id = ? AND role_id = ?",
+		source, userID, roleID)
+	if res.Error != nil {
+		return fmt.Errorf("更新角色指派來源失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("更新角色指派來源失敗：(%d, %d) 無對應列", userID, roleID)
+	}
+	return nil
+}
+
+// AssignUserRoleWithSource 於 tx 內授予一筆角色指派、落指定來源並同交易留痕。
+//
+// 與 AssignUserRole 的差別只有來源值：後者走欄位預設（管理者指派），
+// 本函式供映射路徑以 `mapped` 建立新列。冪等語義相同——該指派已存在時
+// 不寫列、不留痕、**也不動來源**（既存列的來源由轉移函式決定，不由建立面覆寫）。
+func AssignUserRoleWithSource(tx *gorm.DB, userID, roleID uint, source, origin string) error {
+	switch source {
+	case RoleSourceManual, RoleSourceMapped, RoleSourceBoth:
+	default:
+		return fmt.Errorf("未知的角色指派來源: %q", source)
+	}
+	res := tx.Exec(
+		"INSERT INTO user_roles (user_id, role_id, source) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+		userID, roleID, source)
+	if res.Error != nil {
+		return fmt.Errorf("寫入角色指派失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil
+	}
+	return recordUserRoleChange(tx, ActionAssign, userID, roleID, origin)
 }

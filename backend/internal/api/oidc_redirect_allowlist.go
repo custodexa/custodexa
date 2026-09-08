@@ -38,6 +38,7 @@ var frontendRouteSegments = map[string]bool{
 	"user-groups":             true,
 	"oidc-providers":          true,
 	"ldap-directory":          true,
+	"identity-sources":        true, // 身分來源（目錄與提供者的合併列表與詳情頁）
 	"approver-scopes":         true,
 	"security-policies":       true,
 	"access-control":          true,

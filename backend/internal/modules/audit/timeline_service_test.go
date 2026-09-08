@@ -37,7 +37,7 @@ func setupTimelineDB(t *testing.T) *gorm.DB {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{},
 		&model.AuditLog{}, &model.ClipboardEvent{}, &model.AuditRetentionWatermark{},
-		&model.AuditCheckpoint{}); err != nil {
+		&model.AuditCheckpoint{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

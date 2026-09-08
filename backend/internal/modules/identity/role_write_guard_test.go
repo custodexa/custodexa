@@ -57,20 +57,30 @@ type roleWriteSite struct {
 	Note    string
 }
 
-// roleWriteSites 五條**留痕**的角色寫入路徑，逐點登記。
+// roleWriteSites 逐點登記的**留痕**角色寫入路徑。
 //
 // 播種不在此表：它走不留痕的 `AssignUserRoleAtSeed`，由 roleSeedWriteSite 單獨列管
 var roleWriteSites = []roleWriteSite{
 	{File: "internal/modules/identity/user_service.go", Func: "Create",
 		Origins: []string{"RoleOriginRegister"}, Note: "本地建帳號時配的角色"},
-	{File: "internal/modules/identity/user_service.go", Func: "AddRole",
-		Origins: []string{"RoleOriginAPI"}, Note: "管理者一站式代配單一角色"},
-	{File: "internal/modules/identity/user_service.go", Func: "AssignRoles",
-		Origins: []string{"RoleOriginAPI"}, Note: "管理者替換角色集（授予與撤銷各一）"},
+	// 管理面的兩條路徑（替換角色集、一站式代配單一角色）**不再直接呼叫寫入面**：
+	// 兩者都改經下方的手動集狀態轉移函式，由那兩支承擔留痕。留在這裡等於登記一個
+	// 已不存在的呼叫點，反向斷言會判紅，而那個紅燈說的是「登記過期」不是「路徑失守」。
 	{File: "internal/modules/identity/auth_service.go", Func: "provisionShadowUser",
 		Origins: []string{"RoleOriginLDAP"}, Note: "LDAP 影子帳號供應"},
 	{File: "internal/modules/identity/oidc_login_service.go", Func: "provisionFromClaims",
 		Origins: []string{"RoleOriginOIDC"}, Note: "OIDC 首次登入建帳號"},
+	// 來源三態的四種狀態轉移（外部群組映射）。四支之中只有三支會建立或刪除
+	// 關聯列——轉移四的 mapped→both 只改投影，不改變有效角色集，故不留痕、
+	// 也不在此登記（見 model.SetUserRoleSource 的說明）。
+	{File: "internal/modules/identity/role_source_transitions.go", Func: "GrantMappedRole",
+		Origins: []string{"RoleOriginMapping"}, Note: "重算命中：以映射來源建立角色列"},
+	{File: "internal/modules/identity/role_source_transitions.go", Func: "RevokeMappedRolesForChannel",
+		Origins: []string{"RoleOriginMapping"}, Note: "重算不再命中：刪除僅由映射賦予的角色列"},
+	{File: "internal/modules/identity/role_source_transitions.go", Func: "RemoveManualRole",
+		Origins: []string{"RoleOriginAPI"}, Note: "管理者把角色移出手動集"},
+	{File: "internal/modules/identity/role_source_transitions.go", Func: "AddManualRole",
+		Origins: []string{"RoleOriginAPI"}, Note: "管理者把角色加入手動集"},
 }
 
 // roleSeedWriteSite 不留痕變體 `AssignUserRoleAtSeed` 的**唯一**合法呼叫點。
@@ -229,13 +239,23 @@ func collectRoleWriteCall(call *ast.CallExpr, rel string, funcStack []string,
 	if !ok {
 		return
 	}
-	if sel.Sel.Name != "AssignUserRole" && sel.Sel.Name != "RevokeUserRole" {
+	// AssignUserRoleWithSource 是同一個寫入面的第三個出口（映射路徑以指定來源
+	// 建列），漏掉它等於讓映射造成的角色授予整條脫離登記表
+	originArg := 3
+	switch sel.Sel.Name {
+	case "AssignUserRole", "RevokeUserRole":
+		originArg = 3
+	case "AssignUserRoleWithSource":
+		originArg = 4
+	default:
 		return
 	}
-	if len(funcStack) == 0 || len(call.Args) != 4 {
+	if len(funcStack) == 0 || len(call.Args) != originArg+1 {
 		return
 	}
-	origin, ok := call.Args[3].(*ast.SelectorExpr)
+	// **來源必須是具名常數**：寫成變數（例如由參數傳入）時本守衛看不見它，
+	// 那條路徑會靜默脫離登記表的射程。呼叫端 SHALL 直接寫常數
+	origin, ok := call.Args[originArg].(*ast.SelectorExpr)
 	if !ok {
 		return
 	}

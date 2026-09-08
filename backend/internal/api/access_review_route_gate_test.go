@@ -32,8 +32,7 @@ func setupAccessReviewGateEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *g
 	assert.NoError(t, err)
 	assert.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{},
-		&model.AssetAuthorization{}, &model.AccessReview{}, &model.AuditLog{},
-	))
+		&model.AssetAuthorization{}, &model.AccessReview{}, &model.AuditLog{}, &model.UserRole{}))
 
 	// AuthMiddleware 的憑證世代閘走 database.DB（fail-close：未注入即一律拒）。
 	// 不注入時整組測試會全數 401，且「真 AuthMiddleware」這句宣稱只剩一半為真——

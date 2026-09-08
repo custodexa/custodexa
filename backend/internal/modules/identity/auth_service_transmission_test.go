@@ -27,7 +27,7 @@ func setupLDAPGateEnv(t *testing.T, view policy.LDAPRiskView) (*AuthService, *po
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
-		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}); err != nil {
+		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 影子用戶供應需要預設 user 角色

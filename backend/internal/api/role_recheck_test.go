@@ -45,7 +45,7 @@ func setupRoleRecheckDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}); err != nil {
+		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

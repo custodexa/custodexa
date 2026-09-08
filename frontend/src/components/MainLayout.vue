@@ -165,7 +165,6 @@ import {
   Users,
   UserCheck,
   IdCard,
-  FolderTree,
   Shield,
   SlidersHorizontal,
   KeyRound,
@@ -342,19 +341,11 @@ const menuGroups = [
       { path: '/user-groups', titleKey: 'menu.userGroups', icon: Users, adminOnly: true },
       { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: UserCheck, adminOnly: true },
       {
-        // OIDC 身分提供者
-        path: '/oidc-providers',
-        titleKey: 'menu.oidcProviders',
+        // 身分來源：目錄與身分提供者合併為一項。兩者是同一件事的兩種接法，
+        // 分成兩個選單項會逼設定者先判斷「我要接的算哪一種」才找得到頁
+        path: '/identity-sources',
+        titleKey: 'menu.identitySources',
         icon: IdCard,
-        adminOnly: true,
-      },
-      {
-        // LDAP 目錄：與 OIDC 是同層的身分來源，
-        // 故緊鄰並列。群組語彙維持「身分與權限」而非 SSO——LDAP 是目錄型身分來源，
-        // 與 OIDC/SAML2 這類瀏覽器重導式 SSO 不同層，混為一組會誤導設定者
-        path: '/ldap-directory',
-        titleKey: 'menu.ldapDirectory',
-        icon: FolderTree,
         adminOnly: true,
       },
     ],
@@ -453,7 +444,13 @@ const sidebarWidth = computed(() =>
     : 'var(--ot-sidebar-width)'
 )
 
-const activeMenu = computed(() => route.path)
+// 有子路徑的功能頁（來源詳情）仍要讓所屬選單項保持選取：以完整路徑比對時，
+// 進到詳情頁會整條側欄都不亮，讀起來像離開了那個功能
+const SUBPATH_PARENTS = ['/identity-sources']
+const menuPathOf = (path) =>
+  SUBPATH_PARENTS.find((parent) => path === parent || path.startsWith(`${parent}/`)) || path
+
+const activeMenu = computed(() => menuPathOf(route.path))
 
 const pageTitleKeys = {
   '/dashboard': 'menu.dashboard',
@@ -477,8 +474,7 @@ const pageTitleKeys = {
   '/users': 'menu.users',
   '/profile': 'menu.profile',
   '/user-groups': 'menu.userGroups',
-  '/oidc-providers': 'menu.oidcProviders',
-  '/ldap-directory': 'menu.ldapDirectory',
+  '/identity-sources': 'menu.identitySources',
   '/roles': 'menu.roles',
   '/security-policies': 'menu.securityPolicies',
   '/access-control': 'menu.accessControl',
@@ -488,7 +484,7 @@ const pageTitleKeys = {
 }
 
 const currentPageTitle = computed(() =>
-  t(pageTitleKeys[route.path] || 'menu.home')
+  t(pageTitleKeys[menuPathOf(route.path)] || 'menu.home')
 )
 
 const toggleCollapse = () => {

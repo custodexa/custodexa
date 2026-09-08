@@ -53,6 +53,14 @@ type LDAPLoginResolution struct {
 	Auth LDAPAuthenticator
 	// Err 僅 State=failed 時非 nil；供伺服端 log，不對外呈現
 	Err error
+
+	// DirectoryID 本次撥號所用設定列的識別；映射事實的通道值由它組成
+	DirectoryID uint
+	// GroupAttr 群組成員資格屬性名；空＝本次登入不重算映射角色
+	GroupAttr string
+	// HasActiveRoleMappings 本來源是否有啟用中的映射規則。
+	// 只在 GroupAttr 為空時有意義（分辨完全短路與留痕跳過）
+	HasActiveRoleMappings bool
 }
 
 // LDAPLoginResolver 登入路徑的解析入口（AuthService 以 setter 注入）
@@ -95,6 +103,11 @@ func newLDAPLoginResolverWith(
 		}
 		return LDAPLoginResolution{
 			State: LDAPLoginReady,
+			// 映射重算所需的三個值全部取自同一份 snapshot：與撥號同源，
+			// 不存在「用這份設定撥號、用另一份設定判角色」的窗口
+			DirectoryID:           result.Snapshot.DirectoryID,
+			GroupAttr:             result.Snapshot.AttrGroup,
+			HasActiveRoleMappings: result.Snapshot.HasActiveRoleMappings,
 			// 風險判定就地取自本次 snapshot 的 risk view：撥號用的是同一個
 			// snapshot，兩者不可能指向不同設定
 			Risks: policy.LDAPRisksOf(result.Snapshot.LDAPRiskView),
@@ -118,6 +131,7 @@ func newLDAPAuthenticatorFromSnapshot(snap LDAPDialSnapshot) LDAPAuthenticator {
 		UserFilter:    snap.UserFilter,
 		AttrEmail:     snap.AttrEmail,
 		AttrFullName:  snap.AttrFullName,
+		AttrGroup:     snap.AttrGroup,
 		SkipTLSVerify: snap.SkipTLSVerify,
 	})
 }

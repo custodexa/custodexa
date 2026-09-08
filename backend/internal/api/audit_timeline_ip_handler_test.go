@@ -47,7 +47,7 @@ func setupIPTimelineDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.Session{}, &model.User{},
 		&model.Asset{}, &model.ClipboardEvent{}, &model.UserSourceIP{},
-		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}); err != nil {
+		&model.AuditRetentionWatermark{}, &model.AuditCheckpoint{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 指令與告警兩表在本包無 model 匯入需求，以 DDL 直建（欄位只取查詢會碰到的）

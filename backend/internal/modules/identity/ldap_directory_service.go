@@ -68,6 +68,18 @@ type LDAPDialSnapshot struct {
 	UserFilter   string
 	AttrEmail    string
 	AttrFullName string
+	// AttrGroup 群組成員資格屬性名；空＝本次登入不向目錄索取群組
+	AttrGroup string
+
+	// HasActiveRoleMappings 本來源是否有啟用中的群組映射規則。
+	//
+	// 用途只有一個：AttrGroup 為空時分辨「這個部署根本不用群組」與「規則設好了
+	// 但屬性名沒設」。後者要留一筆可辨識的跳過事件，否則管理者會看到規則列在
+	// 頁上、狀態是啟用，卻沒有一個人拿到角色，而系統一句話都不說。
+	//
+	// **只在 AttrGroup 為空時才查**：屬性名已設的部署走正常重算路徑，
+	// 那條路徑本來就要讀規則，這個旗標對它沒有意義
+	HasActiveRoleMappings bool
 }
 
 // LDAPDialResult 登入路徑的三態解析結果
@@ -108,6 +120,8 @@ type LDAPDirectoryRequest struct {
 	UserFilter   string `json:"user_filter"`
 	AttrEmail    string `json:"attr_email"`
 	AttrFullName string `json:"attr_fullname"`
+	// AttrGroup 群組成員資格屬性名；空＝不依外部群組決定角色
+	AttrGroup string `json:"attr_group"`
 
 	// BindPassword 空＝沿用既存（write-only 欄位，回應不回填故前端無從送回）
 	BindPassword string `json:"bind_password"`
@@ -137,6 +151,7 @@ type LDAPDirectoryView struct {
 	UserFilter   string `json:"user_filter"`
 	AttrEmail    string `json:"attr_email"`
 	AttrFullName string `json:"attr_fullname"`
+	AttrGroup    string `json:"attr_group"`
 
 	SkipTLSVerify bool `json:"skip_tls_verify"`
 	Enabled       bool `json:"enabled"`
@@ -157,6 +172,9 @@ var ErrLDAPBindPasswordRequired = errors.New("目錄位址已變更，必須重�
 
 // ErrLDAPDirectoryNotFound 無設定列
 var ErrLDAPDirectoryNotFound = errors.New("LDAP 目錄設定不存在")
+
+// ErrLDAPDirectoryHasMappings 目錄仍有群組映射規則，不可刪除
+var ErrLDAPDirectoryHasMappings = errors.New("此目錄仍有群組映射規則，請先移除規則")
 
 // ErrLDAPBindPasswordDecrypt bind 密碼解密失敗的**靜態哨兵**。
 //
@@ -275,10 +293,24 @@ func (s *LDAPDirectoryService) ResolveDialSnapshot(ctx context.Context) LDAPDial
 		UserFilter:   row.UserFilter,
 		AttrEmail:    row.AttrEmail,
 		AttrFullName: row.AttrFullName,
+		AttrGroup:    row.AttrGroup,
 	}
 	// URL 文法失敗不改變三態（見 ParsedURL 欄註解）
 	if endpoint, perr := ParseLDAPURL(row.URL); perr == nil {
 		snapshot.ParsedURL = endpoint
+	}
+
+	// **只在群組屬性名未設時才問**：已設的部署走正常重算，那條路徑本來就要讀
+	// 規則；未設的部署要靠這個旗標分辨「不用群組」與「規則設了但屬性名沒設」。
+	// 讀取失敗落 failed 三態而非當作 false——當作 false 會把「規則設了卻零命中」
+	// 這個唯一的訊號靜默關掉，而那正是加這個旗標的理由
+	if strings.TrimSpace(row.AttrGroup) == "" {
+		has, mErr := hasActiveGroupRoleMappings(s.db, model.RoleMappingChannelKindDirectory, row.ID)
+		if mErr != nil {
+			log.Printf("[LDAPDirectory] 映射規則旗標讀取失敗（fail-close，非未設定）directory_id=%d", row.ID)
+			return LDAPDialResult{State: policy.LDAPResolveFailed, Err: mErr}
+		}
+		snapshot.HasActiveRoleMappings = has
 	}
 
 	// **啟用態的完整性於 hydrated snapshot 上重驗**（fail-close）：migration、
@@ -491,6 +523,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 		UserFilter:      req.UserFilter,
 		AttrEmail:       req.AttrEmail,
 		AttrFullName:    req.AttrFullName,
+		AttrGroup:       req.AttrGroup,
 		SkipTLSVerify:   req.SkipTLSVerify,
 		Enabled:         req.Enabled,
 		HasBindPassword: hasBindPasswordAfter,
@@ -580,6 +613,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 	row.UserFilter = input.UserFilter
 	row.AttrEmail = input.AttrEmail
 	row.AttrFullName = input.AttrFullName
+	row.AttrGroup = input.AttrGroup
 	row.SkipTLSVerify = input.SkipTLSVerify
 	row.Enabled = input.Enabled
 	row.BindPasswordEnc = encAfter
@@ -618,6 +652,16 @@ func (s *LDAPDirectoryService) Delete(ctx context.Context, actor LDAPDirectoryAc
 		if row == nil {
 			return ErrLDAPDirectoryNotFound
 		}
+		// 仍有映射規則者拒刪（鎖內判定：鎖外預讀會讓一次併發的規則建立漏掉）。
+		// 目錄的刪除是軟刪、重建走新列換到新識別，不擋的話「刪掉重設」之後
+		// 全部目錄映射規則變孤兒，而來源詳情頁的映射區段看不出異常
+		total, _, err := CountMappings(tx, model.RoleMappingChannelKindDirectory, row.ID)
+		if err != nil {
+			return err
+		}
+		if total > 0 {
+			return ErrLDAPDirectoryHasMappings
+		}
 		if ldapDirectoryPreWriteHook != nil {
 			ldapDirectoryPreWriteHook()
 		}
@@ -655,6 +699,7 @@ func ldapDirectoryViewOf(row *model.LDAPDirectory) LDAPDirectoryView {
 		UserFilter:      row.UserFilter,
 		AttrEmail:       row.AttrEmail,
 		AttrFullName:    row.AttrFullName,
+		AttrGroup:       row.AttrGroup,
 		SkipTLSVerify:   row.SkipTLSVerify,
 		Enabled:         row.Enabled,
 		HasBindPassword: row.BindPasswordEnc != "",

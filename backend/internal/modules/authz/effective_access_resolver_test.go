@@ -23,8 +23,7 @@ func setupResolverDB(t *testing.T) (*EffectiveAccessResolver, *AssetAuthorizatio
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.AuditLog{},
-	))
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}))
 	// NodePathMap 等既有共用函式走 database.DB
 	oldDB := database.DB
 	database.DB = db

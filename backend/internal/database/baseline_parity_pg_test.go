@@ -222,7 +222,7 @@ var baselineStructuralAssertions = map[string]string{
 		"ON %s.session_commands USING btree (event_id) WHERE ((event_id)::text <> ''::text)",
 }
 
-// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 18 條）。
+// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 19 條）。
 //
 // `ldap_directories_singleton_check` 是其中最需要具名的一條：壓縮前它由
 // migration 的 inline CHECK 建立，且靠一條 AST 守衛（TestLDAPDirectoryNotInAutoMigrateList）
@@ -261,6 +261,10 @@ var baselineCheckConstraints = map[string]string{
 	"session_commands_result_status_domain": "session_commands",
 	"session_commands_tx_state_domain":      "session_commands",
 	"session_commands_event_id_shape":       "session_commands",
+	// 外部群組對角色映射：一條規則掛在目錄或身分提供者上，恰一。
+	// 被放寬時兩欄可同時為空（規則指不到任何來源，永遠不會被重算讀到）
+	// 或同時非空（同一條規則被兩條途徑各自認領，重算互相覆蓋）
+	"chk_group_role_mapping_source": "group_role_mappings",
 }
 
 func TestBaselineStructuralInvariantsPostgres(t *testing.T) {

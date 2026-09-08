@@ -62,7 +62,7 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 		&model.CredentialRotation{}, &model.CredentialRotationMember{},
 		&model.AssetAuthorization{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.AssetHostKey{}, &model.ChangeSecretCandidate{}, &model.ChangeSecretRecord{},
-		&model.ChangeSecretPlan{}))
+		&model.ChangeSecretPlan{}, &model.UserRole{}))
 	old := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = old })

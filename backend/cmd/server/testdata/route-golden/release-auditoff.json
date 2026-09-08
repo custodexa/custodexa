@@ -63,6 +63,11 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/keys/retired-material",
       "handler": "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).CleanupRetired-fm"
     },
@@ -423,6 +428,16 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/identity-sources",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/instance-guard",
       "handler": "github.com/custodexa/backend/internal/api.(*InstanceGuardHandler).Get-fm"
     },
@@ -440,6 +455,11 @@
       "method": "GET",
       "path": "/api/v1/ldap-directory",
       "handler": "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ldap-directory/status",
+      "handler": "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Status-fm"
     },
     {
       "method": "GET",
@@ -475,6 +495,16 @@
       "method": "GET",
       "path": "/api/v1/oidc-providers",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).List-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oidc-providers/:id",
+      "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).Get-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oidc-providers/:id/status",
+      "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).Status-fm"
     },
     {
       "method": "GET",
@@ -903,6 +933,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/instance-guard/ack",
       "handler": "github.com/custodexa/backend/internal/api.(*InstanceGuardHaltHandler).Ack-fm"
     },
@@ -970,6 +1005,11 @@
       "method": "POST",
       "path": "/api/v1/oidc-providers",
       "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).Create-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oidc-providers/discovery-preview",
+      "handler": "github.com/custodexa/backend/internal/api.(*OIDCHandler).DiscoveryPreview-fm"
     },
     {
       "method": "POST",
@@ -1073,6 +1113,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/users/:id/roles/pin",
+      "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).PinRole-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/users/:id/unlock",
       "handler": "github.com/custodexa/backend/internal/api.(*UserHandler).Unlock-fm"
     },
@@ -1130,6 +1175,11 @@
       "method": "PUT",
       "path": "/api/v1/credentials/:id",
       "handler": "github.com/custodexa/backend/internal/api.(*CredentialHandler).Update-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
     },
     {
       "method": "PUT",
@@ -1446,6 +1496,20 @@
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Unbind-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
       ]
     },
     {
@@ -2828,6 +2892,34 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/identity-sources",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/instance-guard",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -2887,6 +2979,20 @@
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ldap-directory/status",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*LDAPDirectoryHandler).Status-fm"
       ]
     },
     {
@@ -3001,6 +3107,34 @@
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oidc-providers/:id",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).Get-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/oidc-providers/:id/status",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).Status-fm"
       ]
     },
     {
@@ -4679,6 +4813,20 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/instance-guard/ack",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -4912,6 +5060,20 @@
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*OIDCHandler).Create-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/oidc-providers/discovery-preview",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*OIDCHandler).DiscoveryPreview-fm"
       ]
     },
     {
@@ -5285,6 +5447,20 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/users/:id/roles/pin",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*UserHandler).PinRole-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/users/:id/unlock",
       "chain": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -5510,6 +5686,20 @@
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).RegisterRoutes.RequirePermission.func3",
         "github.com/custodexa/backend/internal/api.(*CredentialHandler).Update-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
       ]
     },
     {

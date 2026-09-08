@@ -46,6 +46,8 @@ staticPasswords:
   #     帳號 oidcuser@dex.localhost / 密碼 oidcpass123
   - email: oidcuser@dex.localhost
     username: oidcuser
+    # ID token 需請求 groups scope 才會發出此字串陣列。
+    groups: [pam-auditors]
     userID: 11111111-1111-4111-8111-111111111111
     hash: "$2y$10$FEXoDICGbHPSL7whhE1OAe7HLv4We6wrVXjVQMf49Nymw6LtuFXw6"
 
@@ -74,3 +76,9 @@ staticPasswords:
     username: oidcoutsider
     userID: 33333333-3333-4333-8333-333333333333
     hash: "$2y$10$9XJvKiIEBt.btT/7pX5/T.1pWH6mmf1MejI8tEYVhLrFufbkq0E/i"
+
+  # 不屬於角色映射群組的對照帳號，密碼 oidcpass123（僅限開發靶機）。
+  - email: oidcnogroups@dex.localhost
+    username: oidcnogroups
+    userID: 44444444-4444-4444-8444-444444444444
+    hash: "$2y$10$FEXoDICGbHPSL7whhE1OAe7HLv4We6wrVXjVQMf49Nymw6LtuFXw6"

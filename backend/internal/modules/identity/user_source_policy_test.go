@@ -26,7 +26,7 @@ func sourcePolicyTestService(t *testing.T) (*UserService, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.PasswordHistory{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
-		&model.AuditLog{}); err != nil {
+		&model.AuditLog{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewUserService(db, authz.NewAssetAuthorizationService(db)), db

@@ -557,6 +557,7 @@ type routeDeps struct {
 	notificationChannel   *api.NotificationChannelHandler
 	oidc                  *api.OIDCHandler
 	ldapDirectory         *api.LDAPDirectoryHandler
+	identitySource        *api.IdentitySourceHandler
 	// offsiteStorage 離機儲存管理（evidence-offsite-storage）：admin 限定，
 	// 設定世代 CRUD＋佇列狀態＋失敗清單＋連線測試＋重試
 	offsiteStorage *api.OffsiteStorageHandler
@@ -698,6 +699,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 		// LDAP 目錄設定：與 OIDC provider 同屬
 		// 身分管理面的 admin-only 設定；singleton 資源（無 :id、無集合式建立）
 		d.ldapDirectory.RegisterRoutes(v1, d.authService)
+		// 身分來源：目錄與提供者的合併列表，以及以來源為軸的映射規則 CRUD
+		d.identitySource.RegisterRoutes(v1, d.authService)
 		// 離機儲存：與 LDAP 目錄同屬 admin-only 的基礎設施設定面；
 		// **恆註冊**——未設定時各端點回空狀態，管理員才有入口把它設定起來
 		d.offsiteStorage.RegisterRoutes(v1, d.authService)
