@@ -121,7 +121,9 @@ export function clauseLocaleKey(clauseNo) {
     /[一二三四五六七八九十]/g,
     (ch) => CJK_DIGITS[ch]
   )
-  const slug = arabic.replace(/[^0-9A-Za-z]+/g, '_').replace(/^_+|_+$/g, '')
+  // 切段後再接回來，而不是先併底線再修去頭尾的底線：後者的收尾樣式會隨輸入
+  // 長度回溯，處理長字串時耗時遠超過字串長度本身。切段是單趟掃描
+  const slug = arabic.split(/[^0-9A-Za-z]+/).filter(Boolean).join('_')
   return slug ? `c${slug}` : ''
 }
 
@@ -133,8 +135,8 @@ export function clauseLocaleKey(clauseNo) {
  * 上以該組登記的原文語言呈現。
  */
 function clauseText(clause, field) {
-  const fallback = (clause && clause[field]) || ''
-  if (!clause || !clause.group_code) return fallback
+  const fallback = clause?.[field] || ''
+  if (!clause?.group_code) return fallback
   const slug = clauseLocaleKey(clause.clause_no)
   if (!slug) return fallback
   const key = `policyClause.${clause.group_code}.${slug}.${field}`

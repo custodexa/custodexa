@@ -56,6 +56,13 @@ describe('clauseLocaleKey 條號轉鍵', () => {
     expect(clauseLocaleKey('24-1')).toBe('c24_1')
   })
 
+  // 轉鍵的收尾從「先併底線、再用收尾樣式修去頭尾」改成單趟切段，兩者在真實條號
+  // 上等價；本案釘住長分隔符輸入下的結果也不變，換寫法時不會悄悄多出或少掉底線
+  it('大量分隔符與底線不改變轉出的鍵', () => {
+    const noisy = `${'-'.repeat(2000)}15${'_'.repeat(2000)}3${'-'.repeat(2000)}`
+    expect(clauseLocaleKey(noisy)).toBe('c15_3')
+  })
+
   it('空條號回空字串（呼叫端據此回落）', () => {
     expect(clauseLocaleKey('')).toBe('')
     expect(clauseLocaleKey(undefined)).toBe('')

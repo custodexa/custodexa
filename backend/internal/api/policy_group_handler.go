@@ -26,6 +26,10 @@ import (
 // 有兩個寫入面時，「這條要求是誰改的」會分裂成兩套記錄。讀取開放給稽核人員
 // （他們要看得到對照的內容才判讀得了結果），寫入限管理員。
 
+// 組代號的路徑參數。路徑字串逐字不變，抽成常數使參數名只有一個改點——
+// 路由與 handler 取參數的名字對不上時，症狀是參數靜默地讀成空字串。
+const policyGroupCodePath = "/:code"
+
 // PolicyGroupHandler 政策組、條文、機構備註與人工確認的管理端。
 type PolicyGroupHandler struct {
 	groups     *policy.PolicyGroupRepository
@@ -585,16 +589,16 @@ func (h *PolicyGroupHandler) RegisterRoutes(r *gin.RouterGroup, authService *ide
 	read.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
 	{
 		read.GET("", h.List)
-		read.GET("/:code", h.Get)
+		read.GET(policyGroupCodePath, h.Get)
 	}
 
 	write := groups.Group("")
 	write.Use(middleware.RequireRole(model.RoleAdmin))
 	{
 		write.POST("", h.Create)
-		write.PUT("/:code", h.Rename)
+		write.PUT(policyGroupCodePath, h.Rename)
 		write.PUT("/:code/enabled", h.SetEnabled)
-		write.DELETE("/:code", h.Delete)
+		write.DELETE(policyGroupCodePath, h.Delete)
 		write.PUT("/:code/clauses/:clause_no", h.UpsertClause)
 		write.DELETE("/:code/clauses/:clause_no", h.DeleteClause)
 		write.PUT("/:code/clauses/:clause_no/annotation", h.UpsertAnnotation)

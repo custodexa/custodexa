@@ -2,6 +2,19 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.9.1 — code quality follow-up (2026-09-10)
+
+No schema change. No migration runs.
+
+### Fixes
+
+- Tightens the code introduced in 1.9.0 without changing behaviour: shared query fragments in the
+  policy group repository and the policy group routes are named once; the schedule shape parser
+  is split into smaller steps and its patterns are written as raw strings; the clause-number key
+  mapping uses a pattern that cannot backtrack and reads optional fields with optional chaining.
+- Makes the frequency picker's five field labels announce their controls to assistive
+  technology, and marks the policy group strip as a live output region.
+
 ## 1.9.0 — policy groups and the compliance map (2026-09-10)
 
 ### Policy groups are data, not code

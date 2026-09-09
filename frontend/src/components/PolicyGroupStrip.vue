@@ -1,10 +1,11 @@
 <template>
   <!-- 頁首列：現在對照的是哪幾組、去哪裡管它們、以及本頁的套用與儲存。
-       全系統的偏離視角在合規對照頁，不在這裡——設定頁只講本頁的事 -->
-  <div
+       全系統的偏離視角在合規對照頁，不在這裡——設定頁只講本頁的事。
+       用 output 而非帶 role 的 div：對輔助技術是同一件事（隱含 status），
+       但語義寫在標籤上，後續改版不會順手把它拿掉 -->
+  <output
     v-loading="loading"
     class="policy-strip"
-    role="status"
   >
     <div class="strip-groups">
       <span class="strip-label">{{ $t('policyStrip.groupsLabel') }}</span>
@@ -87,7 +88,7 @@
         {{ $t('common.save') }}
       </el-button>
     </div>
-  </div>
+  </output>
 </template>
 
 <script setup>

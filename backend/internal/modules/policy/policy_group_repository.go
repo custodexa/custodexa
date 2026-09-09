@@ -52,6 +52,14 @@ const (
 	policyClauseNoMaxLen  = 64
 )
 
+// 本檔反覆用到的查詢條件。條件字串逐字不變，抽成常數只是讓欄名有單一改點：
+// 散落的字面值改漏一處時，症狀是某一條路徑靜默地查到別的列。
+const (
+	condGroupByCode   = "code = ?"
+	condClauseByGroup = "group_code = ?"
+	condClauseByKey   = "group_code = ? AND clause_no = ?"
+)
+
 // ErrPolicyGroup 政策組寫入被拒的 sentinel（errors.Is 的比對錨點）
 var ErrPolicyGroup = errors.New("政策組寫入被拒")
 
@@ -99,7 +107,7 @@ func (r *PolicyGroupRepository) ListGroups() ([]model.PolicyGroup, error) {
 // GetGroup 取單一政策組；不存在回 ErrCodePolicyGroupNotFound。
 func (r *PolicyGroupRepository) GetGroup(code string) (*model.PolicyGroup, error) {
 	var g model.PolicyGroup
-	if err := r.db.Where("code = ?", code).First(&g).Error; err != nil {
+	if err := r.db.Where(condGroupByCode, code).First(&g).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, groupErr(ErrCodePolicyGroupNotFound, "組代號 %s", code)
 		}
@@ -114,7 +122,7 @@ func (r *PolicyGroupRepository) ListClauses(groupCode string) ([]model.PolicyCla
 	var out []model.PolicyClause
 	q := r.db.Order("group_code, clause_no")
 	if groupCode != "" {
-		q = q.Where("group_code = ?", groupCode)
+		q = q.Where(condClauseByGroup, groupCode)
 	}
 	if err := q.Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("讀取條文失敗: %w", err)
@@ -127,7 +135,7 @@ func (r *PolicyGroupRepository) ListControls(groupCode string) ([]model.PolicyCl
 	var out []model.PolicyClauseControl
 	q := r.db.Order("group_code, clause_no, policy_key")
 	if groupCode != "" {
-		q = q.Where("group_code = ?", groupCode)
+		q = q.Where(condClauseByGroup, groupCode)
 	}
 	if err := q.Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("讀取條文要求失敗: %w", err)
@@ -140,7 +148,7 @@ func (r *PolicyGroupRepository) ListAnnotations(groupCode string) ([]model.Polic
 	var out []model.PolicyClauseAnnotation
 	q := r.db.Order("group_code, clause_no")
 	if groupCode != "" {
-		q = q.Where("group_code = ?", groupCode)
+		q = q.Where(condClauseByGroup, groupCode)
 	}
 	if err := q.Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("讀取機構備註失敗: %w", err)
@@ -159,7 +167,7 @@ func (r *PolicyGroupRepository) CreateCustomGroup(code, name, locale string) err
 		return groupErr(ErrCodePolicyGroupCode, "組名稱不得為空")
 	}
 	var n int64
-	if err := r.db.Model(&model.PolicyGroup{}).Where("code = ?", code).Count(&n).Error; err != nil {
+	if err := r.db.Model(&model.PolicyGroup{}).Where(condGroupByCode, code).Count(&n).Error; err != nil {
 		return fmt.Errorf("檢查組代號失敗: %w", err)
 	}
 	if n > 0 {
@@ -183,7 +191,7 @@ func (r *PolicyGroupRepository) RenameCustomGroup(code, name string) error {
 	if name == "" {
 		return groupErr(ErrCodePolicyGroupCode, "組名稱不得為空")
 	}
-	if err := r.db.Model(&model.PolicyGroup{}).Where("code = ?", code).
+	if err := r.db.Model(&model.PolicyGroup{}).Where(condGroupByCode, code).
 		Update("name", name).Error; err != nil {
 		return fmt.Errorf("更名政策組失敗: %w", err)
 	}
@@ -197,7 +205,7 @@ func (r *PolicyGroupRepository) SetGroupEnabled(code string, enabled bool) error
 	if _, err := r.GetGroup(code); err != nil {
 		return err
 	}
-	if err := r.db.Model(&model.PolicyGroup{}).Where("code = ?", code).
+	if err := r.db.Model(&model.PolicyGroup{}).Where(condGroupByCode, code).
 		Update("enabled", enabled).Error; err != nil {
 		return fmt.Errorf("更新政策組生效狀態失敗: %w", err)
 	}
@@ -217,11 +225,11 @@ func (r *PolicyGroupRepository) DeleteCustomGroup(code string) error {
 		for _, m := range []interface{}{
 			&model.PolicyClauseControl{}, &model.PolicyClauseAnnotation{}, &model.PolicyClause{},
 		} {
-			if err := tx.Where("group_code = ?", code).Delete(m).Error; err != nil {
+			if err := tx.Where(condClauseByGroup, code).Delete(m).Error; err != nil {
 				return fmt.Errorf("清除政策組 %s 的附屬資料失敗: %w", code, err)
 			}
 		}
-		if err := tx.Where("code = ?", code).Delete(&model.PolicyGroup{}).Error; err != nil {
+		if err := tx.Where(condGroupByCode, code).Delete(&model.PolicyGroup{}).Error; err != nil {
 			return fmt.Errorf("刪除政策組 %s 失敗: %w", code, err)
 		}
 		return nil
@@ -260,7 +268,7 @@ func (r *PolicyGroupRepository) UpsertCustomClause(clause model.PolicyClause,
 		Title: clause.Title, Summary: clause.Summary, Kind: clause.Kind,
 	}
 	err = r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_code = ? AND clause_no = ?",
+		if err := tx.Where(condClauseByKey,
 			clause.GroupCode, clause.ClauseNo).Delete(&model.PolicyClauseControl{}).Error; err != nil {
 			return fmt.Errorf("清除舊要求失敗: %w", err)
 		}
@@ -290,11 +298,11 @@ func (r *PolicyGroupRepository) DeleteCustomClause(groupCode, clauseNo string) e
 		return err
 	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_code = ? AND clause_no = ?", groupCode, clauseNo).
+		if err := tx.Where(condClauseByKey, groupCode, clauseNo).
 			Delete(&model.PolicyClauseControl{}).Error; err != nil {
 			return fmt.Errorf("刪除條文要求失敗: %w", err)
 		}
-		if err := tx.Where("group_code = ? AND clause_no = ?", groupCode, clauseNo).
+		if err := tx.Where(condClauseByKey, groupCode, clauseNo).
 			Delete(&model.PolicyClause{}).Error; err != nil {
 			return fmt.Errorf("刪除條文失敗: %w", err)
 		}
@@ -337,7 +345,7 @@ func (r *PolicyGroupRepository) upsertAnnotation(groupCode, clauseNo string,
 	updates map[string]interface{}, fresh model.PolicyClauseAnnotation) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&model.PolicyClauseAnnotation{}).
-			Where("group_code = ? AND clause_no = ?", groupCode, clauseNo).
+			Where(condClauseByKey, groupCode, clauseNo).
 			Updates(updates)
 		if res.Error != nil {
 			return fmt.Errorf("更新機構備註失敗: %w", res.Error)
@@ -395,7 +403,7 @@ func (r *PolicyGroupRepository) assertControlKeysFree(groupCode, clauseNo string
 // upsertClauseRow 條文列的「有就更、沒有就建」（複合主鍵，不能靠 Save 判斷）。
 func upsertClauseRow(tx *gorm.DB, row model.PolicyClause) error {
 	res := tx.Model(&model.PolicyClause{}).
-		Where("group_code = ? AND clause_no = ?", row.GroupCode, row.ClauseNo).
+		Where(condClauseByKey, row.GroupCode, row.ClauseNo).
 		Updates(map[string]interface{}{
 			"title": row.Title, "summary": row.Summary, "kind": row.Kind,
 			"removed_in_version": row.RemovedInVersion,

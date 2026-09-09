@@ -28,19 +28,22 @@ const MINUTE_MAX = 59
 const HOUR_MAX = 23
 const DAY_MAX = 31
 
-// 無前導零的兩位數，與 buildCron 的輸出格式逐字對應
-const NUM = '(?:0|[1-9]\\d?)'
-const RE_DAILY = new RegExp(`^(${NUM}) (${NUM}) \\* \\* \\*$`)
-const RE_WEEKLY = new RegExp(`^(${NUM}) (${NUM}) \\* \\* ([0-6])$`)
-const RE_MONTHLY = new RegExp(`^(${NUM}) (${NUM}) (${NUM}) \\* \\*$`)
+// 無前導零的兩位數，與 buildCron 的輸出格式逐字對應。
+// 樣式字串一律用 String.raw：反斜線只需寫一層，肉眼可與正則本身逐字對照
+const NUM = String.raw`(?:0|[1-9]\d?)`
+const RE_DAILY = new RegExp(String.raw`^(${NUM}) (${NUM}) \* \* \*$`)
+const RE_WEEKLY = new RegExp(String.raw`^(${NUM}) (${NUM}) \* \* ([0-6])$`)
+const RE_MONTHLY = new RegExp(String.raw`^(${NUM}) (${NUM}) (${NUM}) \* \*$`)
 const RE_QUARTERLY = new RegExp(
-  `^(${NUM}) (${NUM}) (${NUM}) (${NUM}),(${NUM}),(${NUM}),(${NUM}) \\*$`
+  String.raw`^(${NUM}) (${NUM}) (${NUM}) (${NUM}),(${NUM}),(${NUM}),(${NUM}) \*$`
 )
-const RE_YEARLY = new RegExp(`^(${NUM}) (${NUM}) (${NUM}) (${NUM}) \\*$`)
+const RE_YEARLY = new RegExp(String.raw`^(${NUM}) (${NUM}) (${NUM}) (${NUM}) \*$`)
 
 // 自訂欄只做形態檢查（欄數與各欄字元組成），語義由後端排程解析器裁定
-const FIELD_TERM = '(?:\\*|\\d{1,4}|[A-Za-z]{3}(?:-[A-Za-z]{3})?|\\d{1,4}-\\d{1,4})'
-const RE_CRON_FIELD = new RegExp(`^${FIELD_TERM}(?:/\\d{1,4})?(?:,${FIELD_TERM}(?:/\\d{1,4})?)*$`)
+const FIELD_TERM = String.raw`(?:\*|\d{1,4}|[A-Za-z]{3}(?:-[A-Za-z]{3})?|\d{1,4}-\d{1,4})`
+const RE_CRON_FIELD = new RegExp(
+  String.raw`^${FIELD_TERM}(?:/\d{1,4})?(?:,${FIELD_TERM}(?:/\d{1,4})?)*$`
+)
 
 const inRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max
 
@@ -115,6 +118,33 @@ const parseTime = (minuteText, hourText) => {
   return { minute, hour }
 }
 
+// 各形狀的反推共用同一份約定：欄位值域不合的一律落到自訂並原樣保留 raw，
+// 既有排程不因為被讀取一次而被改寫
+const parseDaily = (match, raw) => {
+  const time = parseTime(match[1], match[2])
+  return time ? shapeOf('daily', time, raw) : asCustom(raw)
+}
+
+const parseWeekly = (match, raw) => {
+  const time = parseTime(match[1], match[2])
+  return time ? shapeOf('weekly', { ...time, weekday: Number(match[3]) }, raw) : asCustom(raw)
+}
+
+const parseMonthly = (match, raw) => {
+  const time = parseTime(match[1], match[2])
+  const day = Number(match[3])
+  return time && inRange(day, 1, DAY_MAX) ? shapeOf('monthly', { ...time, day }, raw) : asCustom(raw)
+}
+
+const parseYearly = (match, raw) => {
+  const time = parseTime(match[1], match[2])
+  const day = Number(match[3])
+  const month = Number(match[4])
+  return time && inRange(day, 1, DAY_MAX) && inRange(month, 1, 12)
+    ? shapeOf('yearly', { ...time, day, month }, raw)
+    : asCustom(raw)
+}
+
 const parseQuarter = (match, raw) => {
   const time = parseTime(match[1], match[2])
   const day = Number(match[3])
@@ -125,6 +155,16 @@ const parseQuarter = (match, raw) => {
   if (quarterMonths(start).join(',') !== months.join(',')) return asCustom(raw)
   return shapeOf('quarterly', { ...time, day, quarterStartMonth: start }, raw)
 }
+
+// 樣式與其反推函式，順序即比對順序（與 buildCron 的形狀排列相同）。
+// 五個樣式的欄位組成互不重疊，先命中的那個就是答案。
+const SHAPE_MATCHERS = [
+  [RE_DAILY, parseDaily],
+  [RE_WEEKLY, parseWeekly],
+  [RE_MONTHLY, parseMonthly],
+  [RE_QUARTERLY, parseQuarter],
+  [RE_YEARLY, parseYearly],
+]
 
 /**
  * 反推五欄排程字串為形狀與欄位。認不出來的一律回 custom 並在 raw 保留原字串。
@@ -137,38 +177,10 @@ export function parseCron(cron) {
   const raw = typeof cron === 'string' ? cron.trim() : ''
   if (!raw) return shapeOf(NO_SCHEDULE_MODE, {}, '')
 
-  const daily = RE_DAILY.exec(raw)
-  if (daily) {
-    const time = parseTime(daily[1], daily[2])
-    return time ? shapeOf('daily', time, raw) : asCustom(raw)
+  for (const [pattern, parseShape] of SHAPE_MATCHERS) {
+    const match = pattern.exec(raw)
+    if (match) return parseShape(match, raw)
   }
-
-  const weekly = RE_WEEKLY.exec(raw)
-  if (weekly) {
-    const time = parseTime(weekly[1], weekly[2])
-    return time ? shapeOf('weekly', { ...time, weekday: Number(weekly[3]) }, raw) : asCustom(raw)
-  }
-
-  const monthly = RE_MONTHLY.exec(raw)
-  if (monthly) {
-    const time = parseTime(monthly[1], monthly[2])
-    const day = Number(monthly[3])
-    return time && inRange(day, 1, DAY_MAX) ? shapeOf('monthly', { ...time, day }, raw) : asCustom(raw)
-  }
-
-  const quarterly = RE_QUARTERLY.exec(raw)
-  if (quarterly) return parseQuarter(quarterly, raw)
-
-  const yearly = RE_YEARLY.exec(raw)
-  if (yearly) {
-    const time = parseTime(yearly[1], yearly[2])
-    const day = Number(yearly[3])
-    const month = Number(yearly[4])
-    return time && inRange(day, 1, DAY_MAX) && inRange(month, 1, 12)
-      ? shapeOf('yearly', { ...time, day, month }, raw)
-      : asCustom(raw)
-  }
-
   return asCustom(raw)
 }
 

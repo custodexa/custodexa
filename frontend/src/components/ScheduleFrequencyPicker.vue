@@ -55,9 +55,11 @@
       <label
         v-if="mode === 'weekly'"
         class="schedule-field"
+        :for="fieldId('weekday')"
       >
         <span class="schedule-field-label">{{ $t('scheduleFrequency.weekdayLabel') }}</span>
         <el-select
+          :id="fieldId('weekday')"
           v-model="fields.weekday"
           :disabled="disabled"
           class="schedule-select"
@@ -75,9 +77,11 @@
       <label
         v-if="mode === 'quarterly'"
         class="schedule-field"
+        :for="fieldId('quarter-start')"
       >
         <span class="schedule-field-label">{{ $t('scheduleFrequency.quarterStartLabel') }}</span>
         <el-select
+          :id="fieldId('quarter-start')"
           v-model="fields.quarterStartMonth"
           :disabled="disabled"
           class="schedule-select schedule-select-wide"
@@ -95,9 +99,11 @@
       <label
         v-if="mode === 'yearly'"
         class="schedule-field"
+        :for="fieldId('month')"
       >
         <span class="schedule-field-label">{{ $t('scheduleFrequency.monthLabel') }}</span>
         <el-select
+          :id="fieldId('month')"
           v-model="fields.month"
           :disabled="disabled"
           class="schedule-select"
@@ -115,9 +121,11 @@
       <label
         v-if="showDayField"
         class="schedule-field"
+        :for="fieldId('day')"
       >
         <span class="schedule-field-label">{{ dayFieldLabel }}</span>
         <el-select
+          :id="fieldId('day')"
           v-model="fields.day"
           :disabled="disabled"
           class="schedule-select"
@@ -132,9 +140,13 @@
         </el-select>
       </label>
 
-      <label class="schedule-field">
+      <label
+        class="schedule-field"
+        :for="fieldId('time')"
+      >
         <span class="schedule-field-label">{{ $t('scheduleFrequency.timeLabel') }}</span>
         <el-time-select
+          :id="fieldId('time')"
           v-model="timeText"
           :disabled="disabled"
           start="00:00"
@@ -186,7 +198,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useId, watch } from 'vue'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 import { getScheduleNextRuns } from '@/api/schedules'
@@ -228,6 +240,11 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'update:valid'])
 
 const DAYS_OF_MONTH = Array.from({ length: 31 }, (_, index) => index + 1)
+
+// 標籤與其控制項的關聯用的識別字。同一頁可能同時掛著多個選擇器（例如兩個
+// 排程的編輯對話框），識別字帶實例前綴才不會互相搶到對方的欄位
+const instanceId = useId()
+const fieldId = (name) => `${instanceId}-schedule-${name}`
 
 const mode = ref(SCHEDULE_MODES[0])
 const fields = reactive(defaultShapeFields())
