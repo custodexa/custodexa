@@ -5115,11 +5115,11 @@
     "info": "View details",
     "requirements": "What the policy groups require",
     "none": "No policy group in effect covers this setting.",
-    "compliant": "{group} requires {expectation}. It is {current} now, which meets that.",
-    "deviating": "{group} requires {expectation}. It is {current} now, which does not meet that.",
-    "needsReviewUnconfirmed": "{group} offers {expected} as a reference value rather than a fixed requirement, and your organisation has not confirmed it yet.",
-    "needsReviewConfirmed": "{group} offers {expected} as a reference value rather than a fixed requirement; confirmed by {who} on {time}.",
-    "auditReview": "{group} has a clause covering this setting but names no value. It is {current} now, for an auditor to judge.",
+    "compliant": "Requires {expectation}. It is {current} now, {verdict}.",
+    "deviating": "Requires {expectation}. It is {current} now, {verdict}.",
+    "needsReviewUnconfirmed": "Offers {expected} as a reference value rather than a fixed requirement, and your organisation has not confirmed it yet.",
+    "needsReviewConfirmed": "Offers {expected} as a reference value rather than a fixed requirement; confirmed by {who} on {time}.",
+    "auditReview": "Has a clause covering this setting but names no value. It is {current} now, {verdict}.",
     "clauseNo": "Clause {no}",
     "expectMin": "at least {value}",
     "expectMax": "at most {value}",
@@ -5130,7 +5130,10 @@
     "lastChangeNone": "Nobody has changed this; it is still the factory default.",
     "auditLink": "View the change record",
     "effect": "When it takes effect",
-    "more": "More details"
+    "more": "More details",
+    "verdictCompliant": "which meets that",
+    "verdictDeviating": "which does not meet that",
+    "verdictAuditReview": "for an auditor to judge"
   },
   "applyPreview": {
     "title": "Apply recommended values: {page}",

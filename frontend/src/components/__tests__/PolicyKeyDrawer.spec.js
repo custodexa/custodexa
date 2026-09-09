@@ -78,6 +78,27 @@ describe('PolicyKeyDrawer — 對各生效組的一行人話', () => {
     expect(line.text()).toContain('至少 12 字元')
     expect(line.text()).toContain('8 字元')
     expect(line.text()).toContain('未達要求')
+    // 結果不只靠句尾兩個字：每行前面有色彩標籤，文字與色彩並用
+    const tag = wrapper.find('[data-test="requirement-result-pci_dss_4_0_1"]')
+    expect(tag.exists()).toBe(true)
+    expect(tag.text().trim()).not.toBe('')
+    expect(line.classes()).toContain('requirement-line--deviating')
+    // 要求值與目前值粗體、判定詞帶結果顏色：稽核人員掃一眼就抓到三個字眼
+    const values = line.findAll('.requirement-value')
+    expect(values.map((n) => n.text())).toEqual(expect.arrayContaining(['至少 12 字元', '8 字元']))
+    values.forEach((n) => expect(n.classes()).toContain('requirement-value--deviating'))
+    // 判定詞不另著色：前面已有結果標籤，顏色只放在數字上
+    expect(line.find('.verdict-word').exists()).toBe(false)
+  })
+
+  it('符合：結果標籤為綠色，與偏離可一眼區分', () => {
+    const wrapper = mountDrawer({
+      verdicts: [verdict({ result: 'compliant', reason: 'meets_expectation', current: '12' })],
+    })
+    const tag = wrapper.find('[data-test="requirement-result-pci_dss_4_0_1"]')
+    expect(tag.exists()).toBe(true)
+    expect(tag.text().trim()).not.toBe('')
+    expect(wrapper.find('[data-test="requirement-pci_dss_4_0_1"]').classes()).toContain('requirement-line--compliant')
   })
 
   it('待人工確認：標出參考值與是否已由機構確認', () => {

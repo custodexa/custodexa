@@ -2,6 +2,17 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.9.2 — clearer verdicts in the setting drawer (2026-09-10)
+
+No schema change. No migration runs.
+
+### Fixes
+
+- Each policy group's line in a setting's drawer now opens with a result tag and the group name
+  in bold on their own line, with the clause number at the right; the requirement and the current
+  value are set in bold and in the result's colour, so an auditor sees which group passes and
+  which does not without reading the sentence.
+
 ## 1.9.1 — code quality follow-up (2026-09-10)
 
 No schema change. No migration runs.

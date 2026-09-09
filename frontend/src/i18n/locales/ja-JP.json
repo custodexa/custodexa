@@ -5115,11 +5115,11 @@
     "info": "説明を見る",
     "requirements": "ポリシーグループの要求",
     "none": "この設定に対応する有効なポリシーグループはありません。",
-    "compliant": "{group}は{expectation}を求めています。現在は {current} で、適合しています。",
-    "deviating": "{group}は{expectation}を求めています。現在は {current} で、要求を満たしていません。",
-    "needsReviewUnconfirmed": "{group}は固定の要求ではなく {expected} を参考値として示しており、組織による確認はまだ行われていません。",
-    "needsReviewConfirmed": "{group}は固定の要求ではなく {expected} を参考値として示しており、{time} に {who} が確認済みです。",
-    "auditReview": "{group}にはこの設定に関する条項がありますが値の定めがありません。現在は {current} で、監査担当者が判断します。",
+    "compliant": "{expectation}を求めています。現在は {current} で、{verdict}。",
+    "deviating": "{expectation}を求めています。現在は {current} で、{verdict}。",
+    "needsReviewUnconfirmed": "固定の要求ではなく {expected} を参考値として示しており、組織による確認はまだ行われていません。",
+    "needsReviewConfirmed": "固定の要求ではなく {expected} を参考値として示しており、{time} に {who} が確認済みです。",
+    "auditReview": "この設定に関する条項がありますが値の定めがありません。現在は {current} で、{verdict}。",
     "clauseNo": "条項 {no}",
     "expectMin": "{value} 以上",
     "expectMax": "{value} 以下",
@@ -5130,7 +5130,10 @@
     "lastChangeNone": "まだ変更されておらず、初期値のままです。",
     "auditLink": "操作ログを見る",
     "effect": "いつ反映されるか",
-    "more": "詳しい説明"
+    "more": "詳しい説明",
+    "verdictCompliant": "適合しています",
+    "verdictDeviating": "要求を満たしていません",
+    "verdictAuditReview": "監査担当者が判断します"
   },
   "applyPreview": {
     "title": "推奨値の適用：{page}",

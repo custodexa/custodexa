@@ -5115,11 +5115,11 @@
     "info": "查看說明",
     "requirements": "政策組的要求",
     "none": "目前沒有生效的政策組對照到這個設定。",
-    "compliant": "{group}要求{expectation}，目前是 {current}，符合。",
-    "deviating": "{group}要求{expectation}，目前是 {current}，未達要求。",
-    "needsReviewUnconfirmed": "{group}以 {expected} 為參考值，沒有給固定要求，尚未由機構確認。",
-    "needsReviewConfirmed": "{group}以 {expected} 為參考值，沒有給固定要求，機構已於 {time} 由 {who} 確認。",
-    "auditReview": "{group}有條文涉及這個設定但沒有定值，目前是 {current}，由稽核人員判讀。",
+    "compliant": "要求{expectation}，目前是 {current}，{verdict}。",
+    "deviating": "要求{expectation}，目前是 {current}，{verdict}。",
+    "needsReviewUnconfirmed": "以 {expected} 為參考值，沒有給固定要求，尚未由機構確認。",
+    "needsReviewConfirmed": "以 {expected} 為參考值，沒有給固定要求，機構已於 {time} 由 {who} 確認。",
+    "auditReview": "有條文涉及這個設定但沒有定值，目前是 {current}，{verdict}。",
     "clauseNo": "條號 {no}",
     "expectMin": "至少 {value}",
     "expectMax": "至多 {value}",
@@ -5130,7 +5130,10 @@
     "lastChangeNone": "還沒有人改過，維持出廠預設。",
     "auditLink": "查看操作紀錄",
     "effect": "什麼時候生效",
-    "more": "更多說明"
+    "more": "更多說明",
+    "verdictCompliant": "符合",
+    "verdictDeviating": "未達要求",
+    "verdictAuditReview": "由稽核人員判讀"
   },
   "applyPreview": {
     "title": "套用政策建議值：{page}",

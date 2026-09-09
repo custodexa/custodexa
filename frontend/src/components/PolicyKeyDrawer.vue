@@ -31,18 +31,42 @@
             {{ $t('policyDrawer.draftNote') }}
           </el-tag>
         </div>
-        <p
+        <div
           v-for="line in requirementLines"
           :key="line.groupCode"
           class="requirement-line"
+          :class="`requirement-line--${line.result}`"
           :data-test="`requirement-${line.groupCode}`"
         >
-          {{ line.text }}
-          <span
-            v-if="line.clauseNo"
-            class="clause-no"
-          >{{ $t('policyDrawer.clauseNo', { no: line.clauseNo }) }}</span>
-        </p>
+          <div class="requirement-head">
+            <el-tag
+              :type="line.tagType"
+              size="small"
+              effect="light"
+              class="requirement-result"
+              :data-test="`requirement-result-${line.groupCode}`"
+            >
+              {{ line.resultLabel }}
+            </el-tag>
+            <strong class="requirement-group">{{ line.group }}</strong>
+            <span
+              v-if="line.clauseNo"
+              class="clause-no"
+            >{{ $t('policyDrawer.clauseNo', { no: line.clauseNo }) }}</span>
+          </div>
+          <span class="requirement-text">
+            <template
+              v-for="(part, idx) in line.parts"
+              :key="idx"
+            >
+              <strong
+                v-if="part.kind === 'value'"
+                :class="`requirement-value requirement-value--${line.result}`"
+              >{{ part.text }}</strong>
+              <template v-else>{{ part.text }}</template>
+            </template>
+          </span>
+        </div>
         <p
           v-if="requirementLines.length === 0"
           class="requirement-empty"
@@ -85,6 +109,7 @@
 import { computed } from 'vue'
 import { formatDateTime } from '@/utils/format'
 import { expectationText, formatValue, policyLabel, policyNote } from '@/utils/policyFormat'
+import { resultLabel, resultTagType } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 import { translated } from '@/utils/i18nDisplay'
 
@@ -124,43 +149,82 @@ const groupName = (code) => props.groupNames[code] || code
 const expectation = (verdict) =>
   expectationText(props.policy, verdict.comparator, verdict.expected)
 
-// 五種結果各自的句型。未對照不列——「沒有人要求」不是一個要讀的答案
-const sentence = (verdict) => {
-  const group = groupName(verdict.group_code)
+// 五種結果各自的句型。未對照不列——「沒有人要求」不是一個要讀的答案。
+// 句子切成段渲染：要求值、參考值、目前值粗體，句尾判定詞帶結果顏色，
+// 讓稽核人員掃一眼就抓到「要多少、現在多少、過不過」三個字眼。
+const MARK = '\u0000'
+const mark = (kind) => `${MARK}${kind}${MARK}`
+
+const sentenceSpec = (verdict) => {
   const current = formatValue(props.policy, verdict.current)
+  const expected = formatValue(props.policy, verdict.expected)
   switch (verdict.result) {
     case 'compliant':
-      return t('policyDrawer.compliant', { group, expectation: expectation(verdict), current })
+      return {
+        key: 'policyDrawer.compliant',
+        values: { expectation: expectation(verdict), current },
+        verdictWord: t('policyDrawer.verdictCompliant'),
+      }
     case 'deviating':
-      return t('policyDrawer.deviating', { group, expectation: expectation(verdict), current })
+      return {
+        key: 'policyDrawer.deviating',
+        values: { expectation: expectation(verdict), current },
+        verdictWord: t('policyDrawer.verdictDeviating'),
+      }
     case 'needs_review':
       if (verdict.confirmed_by) {
-        return t('policyDrawer.needsReviewConfirmed', {
-          group,
-          expected: formatValue(props.policy, verdict.expected),
-          who: verdict.confirmed_by,
-          time: formatDateTime(verdict.confirmed_at),
-        })
+        return {
+          key: 'policyDrawer.needsReviewConfirmed',
+          values: { expected, who: verdict.confirmed_by, time: formatDateTime(verdict.confirmed_at) },
+        }
       }
-      return t('policyDrawer.needsReviewUnconfirmed', {
-        group,
-        expected: formatValue(props.policy, verdict.expected),
-      })
+      return { key: 'policyDrawer.needsReviewUnconfirmed', values: { expected } }
     case 'review':
-      return t('policyDrawer.auditReview', { group, current })
+      return {
+        key: 'policyDrawer.auditReview',
+        values: { current },
+        verdictWord: t('policyDrawer.verdictAuditReview'),
+      }
     default:
-      return ''
+      return null
   }
+}
+
+const VALUE_SLOTS = ['expectation', 'expected', 'current']
+
+// 把翻譯後的句子依佔位切段：值類佔位先換成標記，再照標記拆開
+const sentenceParts = (spec) => {
+  const placeholders = { ...spec.values }
+  for (const slot of VALUE_SLOTS) {
+    if (slot in placeholders) placeholders[slot] = mark(slot)
+  }
+  if (spec.verdictWord !== undefined) placeholders.verdict = mark('verdict')
+  const raw = t(spec.key, placeholders)
+  if (!raw) return []
+  return raw.split(MARK).map((piece, i) => {
+    if (i % 2 === 0) return { kind: 'text', text: piece }
+    if (piece === 'verdict') return { kind: 'text', text: spec.verdictWord }
+    return { kind: 'value', text: spec.values[piece] }
+  }).filter((part) => part.text !== '')
 }
 
 const requirementLines = computed(() =>
   props.verdicts
     .filter((v) => v.result && v.result !== 'unmapped' && v.group_code)
-    .map((v) => ({
-      groupCode: v.group_code,
-      clauseNo: v.clause_no || '',
-      text: sentence(v),
-    }))
+    .map((v) => {
+      const spec = sentenceSpec(v)
+      const parts = spec ? sentenceParts(spec) : []
+      return {
+        groupCode: v.group_code,
+        group: groupName(v.group_code),
+        clauseNo: v.clause_no || '',
+        result: v.result,
+        resultLabel: resultLabel(v.result),
+        tagType: resultTagType(v.result),
+        parts,
+        text: [groupName(v.group_code), ...parts.map((p) => p.text)].join(''),
+      }
+    })
     .filter((line) => line.text)
 )
 
@@ -219,10 +283,75 @@ const auditLink = computed(() => ({
   line-height: 1.6;
 }
 
+.requirement-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-xs);
+  padding: var(--ot-space-sm) var(--ot-space-sm);
+  margin: 0 0 var(--ot-space-xs);
+  border-left: 3px solid var(--ot-border-color);
+  border-radius: var(--ot-radius-sm);
+  background: var(--ot-fill-color-lighter, transparent);
+}
+
+.requirement-line--compliant {
+  border-left-color: var(--el-color-success);
+}
+
+.requirement-line--deviating {
+  border-left-color: var(--el-color-danger);
+}
+
+.requirement-line--needs_review,
+.requirement-line--review {
+  border-left-color: var(--el-color-warning);
+}
+
+.requirement-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+}
+
+.requirement-result {
+  flex-shrink: 0;
+}
+
+.requirement-group {
+  font-weight: 600;
+  color: var(--ot-text-primary);
+  line-height: 1.4;
+}
+
+.requirement-value {
+  font-weight: 600;
+  color: var(--ot-text-primary);
+}
+
+.requirement-value--compliant {
+  color: var(--el-color-success);
+}
+
+.requirement-value--deviating {
+  color: var(--el-color-danger);
+}
+
+.requirement-value--review,
+.requirement-value--needs_review {
+  color: var(--el-color-warning);
+}
+
+.requirement-text {
+  display: block;
+  color: var(--ot-text-regular, var(--ot-text-primary));
+}
+
 .clause-no {
-  margin-left: var(--ot-space-xs);
+  flex-shrink: 0;
+  margin-left: auto;
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
+  white-space: nowrap;
 }
 
 .requirement-empty,
