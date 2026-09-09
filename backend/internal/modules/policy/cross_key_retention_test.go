@@ -12,8 +12,8 @@ import (
 // TestPolicySeedCheckpointRetention 7.1：新政策鍵的定義面。
 //
 // 斷言四件事而非只斷言「鍵存在」：預設值、0 可用（ZeroDisables）、單位鍵
-// （前端查譯錨點）、以及**沒有 PCIValue**——掛上 PCIValue 會讓它進「套用
-// 本頁建議值」並在偏離摘要與資料保留鍵並列，把跨鍵語義誤導成單鍵語義
+// （前端查譯錨點）、以及**不在任何內建組的對照內**——掛上一條要求會讓它進
+// 「一次滿足所有政策」並在偏離摘要與資料保留鍵並列，把跨鍵語義誤導成單鍵語義
 func TestPolicySeedCheckpointRetention(t *testing.T) {
 	def := findDef(PolicyRetentionCheckpointDays)
 	if def == nil {
@@ -30,8 +30,8 @@ func TestPolicySeedCheckpointRetention(t *testing.T) {
 	if def.Max != 3650 {
 		t.Errorf("Max=%d，want 3650（O5 判定：與資料保留鍵同一天花板）", def.Max)
 	}
-	if def.PCIValue != "" {
-		t.Errorf("PCIValue=%q，want 空（本鍵無獨立 PCI 建議值，合規語義是跨鍵關係）", def.PCIValue)
+	if reqs := builtinSeedRequirements(t, PolicyRetentionCheckpointDays); len(reqs) != 0 {
+		t.Errorf("內建組對本鍵掛了要求 %v，want 一條都沒有（合規語義是跨鍵關係，不是單鍵與常數比較）", reqs)
 	}
 	if def.UnitKey != "days" {
 		t.Errorf("UnitKey=%q，want days", def.UnitKey)
@@ -48,9 +48,6 @@ func TestPolicySeedCheckpointRetention(t *testing.T) {
 			found = true
 			if v.UnitKey != "days" {
 				t.Errorf("List 中 unit_key=%q, want days", v.UnitKey)
-			}
-			if v.Compliant != nil {
-				t.Error("無 PCIValue 的鍵不得產生符合性判定")
 			}
 		}
 	}

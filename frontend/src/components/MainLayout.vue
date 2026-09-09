@@ -142,7 +142,9 @@ import { ElMessage } from 'element-plus'
 // 語彙比 Element Plus 內建集合寬，讓每個選單項有專屬 icon、同視角下不重複
 import {
   ChevronDown,
+  ClipboardCheck,
   Gauge,
+  Scale,
   SquareTerminal,
   Server,
   TicketCheck,
@@ -329,6 +331,14 @@ const menuGroups = [
         icon: ListChecks,
         roles: ['admin', 'auditor'],
       },
+      {
+        // 合規對照：設定對各政策組的判定結果，唯讀。放稽核區而非設定區——
+        // 它回答的是「符不符」而不是「怎麼設」，讀者是稽核人員
+        path: '/compliance-map',
+        titleKey: 'menu.complianceMap',
+        icon: ClipboardCheck,
+        roles: ['admin', 'auditor'],
+      },
     ],
   },
   // 系統管理拆兩組：身分自成領域、政策開關收設定域
@@ -358,6 +368,14 @@ const menuGroups = [
         path: '/security-policies',
         titleKey: 'menu.securityPolicies',
         icon: Shield,
+        adminOnly: true,
+      },
+      {
+        // 政策組：條文與要求的維護面。緊接安全政策——
+        // 設定值與它要對照的條文是同一件事的兩面
+        path: '/policy-groups',
+        titleKey: 'menu.policyGroups',
+        icon: Scale,
         adminOnly: true,
       },
       {
@@ -466,6 +484,8 @@ const pageTitleKeys = {
   '/commands': 'menu.commands',
   '/alerts': 'menu.alerts',
   '/access-reviews': 'menu.accessReviews',
+  '/compliance-map': 'menu.complianceMap',
+  '/policy-groups': 'menu.policyGroups',
   '/checkpoint-verification': 'menu.checkpointVerification',
   '/authorizations': 'menu.authorizations',
   '/change-secret-plans': 'menu.changeSecretPlans',

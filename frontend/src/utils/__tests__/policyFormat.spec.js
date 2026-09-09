@@ -5,8 +5,7 @@ import {
   policyMin,
   policyUnit,
   formatValue,
-  isNonCompliantEPayment,
-  isNonCompliantValue,
+  expectationText,
 } from '@/utils/policyFormat'
 
 function setLocale(l) {
@@ -96,30 +95,27 @@ describe('policyMin — 數值輸入框下界', () => {
   })
 })
 
-// 文字型鍵沒有合規基準建議值：符合性比對必須短路回 false，
-// 不得落到 enum 分支（那裡以 enum_order 的索引比大小，對自由文字沒有意義）
-describe('符合性比對 — 文字型鍵短路', () => {
-  const textPolicy = {
-    key: 'login_banner_body',
-    type: 'text',
-    max_length: 2000,
-    multiline: true,
-    compliant: null,
-    epayment_compliant: null,
-  }
+// 要求的人話：抽屜的逐組要求與套用預覽的衝突說明共用同一支，
+// 兩個畫面上不得出現兩種說法
+describe('expectationText — 要求寫成一句人話', () => {
+  const intPolicy = { key: 'password_min_length', type: 'int', unit: '字元' }
 
-  it('值未改動時不因缺基準而判為偏離', () => {
-    expect(isNonCompliantValue(textPolicy, '告示', '告示')).toBe(false)
-    expect(isNonCompliantEPayment(textPolicy, '告示', '告示')).toBe(false)
+  it('整數型帶方向與單位', () => {
+    expect(expectationText(intPolicy, 'min', '12')).toBe('至少 12 字元')
+    expect(expectationText(intPolicy, 'max', '5')).toBe('至多 5 字元')
   })
 
-  it('編輯中的值也一律回 false（無基準可比）', () => {
-    expect(isNonCompliantValue(textPolicy, '新內文', '舊內文')).toBe(false)
-    expect(isNonCompliantEPayment(textPolicy, '新內文', '舊內文')).toBe(false)
+  it('開關型以白話值呈現，不吐機器值', () => {
+    const boolPolicy = { key: 'clipboard_send_enabled', type: 'bool' }
+    expect(expectationText(boolPolicy, 'equals', 'false')).toBe('設為 關閉')
   })
 
-  it('清空與含換行的長文同樣不判偏離', () => {
-    expect(isNonCompliantValue(textPolicy, '', '舊內文')).toBe(false)
-    expect(isNonCompliantValue(textPolicy, '第一行\n第二行', '')).toBe(false)
+  it('枚舉型走該鍵自己的段位文案', () => {
+    const enumPolicy = {
+      key: 'access_policy_default',
+      type: 'enum',
+      enum_order: ['open', 'reason', 'approval'],
+    }
+    expect(expectationText(enumPolicy, 'equals', 'approval')).toContain('需審核')
   })
 })

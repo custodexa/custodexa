@@ -244,6 +244,9 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// 憑證年齡與逾期狀態，排程面則可匿名改動報告的產出範圍、週期與保留天數）。
 	{symbol: "AuthMiddleware", file: "internal/api/rotation_report_handler.go", fn: "RotationReportHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/security_policy_handler.go", fn: "SecurityPolicyHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/policy_group_handler.go", fn: "PolicyGroupHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/compliance_handler.go", fn: "ComplianceHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/schedule_handler.go", fn: "ScheduleHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/session_command_handler.go", fn: "SessionCommandHandler.RegisterRoutes", count: 2},
 	{symbol: "AuthMiddleware", file: "internal/api/session_handler.go", fn: "SessionHandler.RegisterRoutes", count: 1},
 	// data-transfer-control 6.2 起為 2 處：檔案端點群組，以及資料傳輸能力查詢端點

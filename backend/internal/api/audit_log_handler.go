@@ -70,6 +70,12 @@ func (h *AuditLogHandler) List(c *gin.Context) {
 		filter.ClientIP = &clientIP
 	}
 
+	// key：只看某一個安全政策設定鍵的變更。稽核人員由設定名追到它的變更記錄時，
+	// 落在一份未篩選的日誌上等於把最後一步變成一場搜尋
+	if policyKey := c.Query("key"); policyKey != "" {
+		filter.PolicyKey = &policyKey
+	}
+
 	if startTime := c.Query("start_time"); startTime != "" {
 		if t, err := time.Parse(time.RFC3339, startTime); err == nil {
 			filter.StartTime = &t

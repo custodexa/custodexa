@@ -81,7 +81,7 @@ vi.mock('@/api/assets', () => ({
 }))
 
 vi.mock('@/api/securityPolicies', () => ({
-  getSecurityPolicies: vi.fn().mockResolvedValue({ data: [], deviation_count: 0 }),
+  getSecurityPolicies: vi.fn().mockResolvedValue({ data: [] }),
 }))
 
 vi.mock('@/api/accessRequests', () => ({

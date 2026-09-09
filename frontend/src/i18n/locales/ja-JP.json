@@ -117,7 +117,9 @@
     "ldapDirectory": "ディレクトリ設定（LDAP）",
     "checkpointVerification": "チェックポイント検証",
     "offsiteStorage": "オフサイト保管",
-    "identitySources": "アイデンティティソース"
+    "identitySources": "アイデンティティソース",
+    "complianceMap": "コンプライアンス対照",
+    "policyGroups": "ポリシーグループ"
   },
   "login": {
     "bannerRegionLabel": "ログイン告知",
@@ -209,9 +211,6 @@
     "tokenFailed": "接続認可の取得に失敗しました"
   },
   "policyForm": {
-    "pciApplied": "PCI 推奨値を入力しました。「保存」を押すと反映されます",
-    "pciAllCompliant": "このページのポリシーはすべて PCI 推奨値を満たしています",
-    "pageDeviation": "このページには PCI 推奨値からの乖離が{n}項目あります",
     "lockoutDisableConfirm": "ロック回数を 0 にするとアカウントロックが無効になり、総当たり攻撃への防御は監査アラートのみになります。無効にしますか？",
     "lockoutDisableTitle": "アカウントロックの無効化",
     "disable": "無効にする",
@@ -220,9 +219,7 @@
     "retentionShrinkTitle": "保持期間の短縮により旧データが削除されます",
     "confirmApply": "適用",
     "saved": "セキュリティポリシーを保存しました",
-    "restSection": "その他",
-    "epaymentApplied": "電子決済基準値を入力しました（両基準のうち厳しい方）。確認して保存してください",
-    "epaymentAllCompliant": "このページの各項目は電子決済基準を満たしています"
+    "restSection": "その他"
   },
   "enum": {
     "role": {
@@ -313,6 +310,9 @@
       "role": "ロール",
       "instance_guard": "単一インスタンスガード",
       "offsite_storage": "オフサイト保管",
+      "policy_group": "ポリシーグループ",
+      "compliance_map": "コンプライアンス対照",
+      "schedule": "スケジュール予定時刻",
       "unclassified": "未分類",
       "credential": "認証情報"
     },
@@ -564,7 +564,7 @@
     "section": {
       "login_lock": {
         "title": "ログインとロック",
-        "hint": "連続ログイン失敗によるアカウントロック（PCI 8.3.4）"
+        "hint": "連続ログイン失敗によるアカウントロック"
       },
       "login_banner": {
         "title": "ログイン告知",
@@ -572,7 +572,7 @@
       },
       "password": {
         "title": "パスワードポリシー",
-        "hint": "パスワード強度、履歴、強制変更（PCI 8.3.5–8.3.7）"
+        "hint": "パスワード強度、履歴、強制変更"
       },
       "asset_secret": {
         "title": "資産アカウント認証情報",
@@ -580,23 +580,23 @@
       },
       "mfa": {
         "title": "MFA",
-        "hint": "多要素認証の強制範囲（PCI 8.4.2）"
+        "hint": "多要素認証の強制範囲"
       },
       "session_account": {
         "title": "接続とアカウント",
-        "hint": "アイドルタイムアウト、接続寿命、休眠アカウントの無効化（PCI 8.2.6/8.2.8）"
+        "hint": "アイドルタイムアウト、接続寿命、休眠アカウントの無効化"
       },
       "log_retention": {
         "title": "ログ保持とレビュー",
-        "hint": "監査データの保持と日次レビュー（PCI 10.4.1/10.5.1）。チェックポイントチェーンの有効化以降、操作ログは「チェックポイント区間」単位で削除されます。区間内に未期限の行が 1 件でもあれば区間全体を保持するため、初回削除後も期限切れの行が少数残ることがあります（想定どおりの挙動であり不具合ではありません）。チェックポイントの保持日数は出荷時 0（無期限）で、4 つのデータ保持キーのうち最長のもの（0 は無期限）より短くすることはできません。証明は、それが証明するデータより長く残る必要があるため、違反する場合はバッチ全体が拒否されます。"
+        "hint": "監査データの保持と日次レビュー。チェックポイントチェーンの有効化以降、操作ログは「チェックポイント区間」単位で削除されます。区間内に未期限の行が 1 件でもあれば区間全体を保持するため、初回削除後も期限切れの行が少数残ることがあります（想定どおりの挙動であり不具合ではありません）。チェックポイントの保持日数は出荷時 0（無期限）で、4 つのデータ保持キーのうち最長のもの（0 は無期限）より短くすることはできません。証明は、それが証明するデータより長く残る必要があるため、違反する場合はバッチ全体が拒否されます。"
       },
       "access_policy": {
         "title": "接続ポリシー",
-        "hint": "グローバル既定値は「個別ポリシー未設定の資産」への接続前申請の要否を決めます（PCI Req 7.2 最小権限）；各資産は下表または資産編集フォームで個別に上書きできます。管理者は申請の制限を受けません（接続ごとに監査マーカーを記録）"
+        "hint": "グローバル既定値は「個別ポリシー未設定の資産」への接続前申請の要否を決めます（最小権限）；各資産は下表または資産編集フォームで個別に上書きできます。管理者は申請の制限を受けません（接続ごとに監査マーカーを記録）"
       },
       "request_params": {
         "title": "接続申請パラメータ",
-        "hint": "申請時間の上限と審査待ちタイムアウト（PCI Req 7.2）。最少承認人数は内部統制の強化オプション（二人レビュー慣行、PCI 要件ではありません）：2 以上に設定すると、申請は異なる承認者が閾値まで順に承認して初めて有効になります；閾値がある資産の承認可能人数を超える場合、管理者の補完または期限切れ待ちとなります"
+        "hint": "申請時間の上限と審査待ちタイムアウト。最少承認人数は内部統制の強化オプション（二人レビュー慣行）：2 以上に設定すると、申請は異なる承認者が閾値まで順に承認して初めて有効になります；閾値がある資産の承認可能人数を超える場合、管理者の補完または期限切れ待ちとなります"
       },
       "break_glass": {
         "title": "緊急接続と取り消し",
@@ -604,11 +604,11 @@
       },
       "transport": {
         "title": "通信セキュリティポリシー",
-        "hint": "6 チャネルの通信強制ラダー（PCI Req 4）：制限なし＝現状のまま影響ゼロ／警告して記録＝接続同意または保存確認を監査に記録／厳格に拒否＝先に資産の通信設定の完了が必要（拒否の影響数は下のチャネル一覧のプリチェックを参照）；LDAP の修復は「ディレクトリ設定（LDAP）」ページで行います（ディレクトリアドレスを ldaps:// に変更）"
+        "hint": "6 チャネルの通信強制ラダー：制限なし＝現状のまま影響ゼロ／警告して記録＝接続同意または保存確認を監査に記録／厳格に拒否＝先に資産の通信設定の完了が必要（拒否の影響数は下のチャネル一覧のプリチェックを参照）；LDAP の修復は「ディレクトリ設定（LDAP）」ページで行います（ディレクトリアドレスを ldaps:// に変更）"
       },
       "key": {
         "title": "鍵管理ポリシー",
-        "hint": "鍵ローテーションのリマインダー（cryptoperiod、PCI 3.7.4 の精神）；通知のみで何の動作もトリガーしません"
+        "hint": "鍵ローテーションのリマインダー（cryptoperiod）；通知のみで何の動作もトリガーしません"
       },
       "data_transfer": {
         "title": "データ転送制御",
@@ -1072,6 +1072,7 @@
     "requestBody": "リクエスト内容",
     "changeDetails": "変更の詳細",
     "errorMsg": "エラーメッセージ",
+    "noticeMsg": "補足",
     "emptyValue": "（なし）",
     "integrityTitle": "監査ログの完全性検証",
     "integrityInfo": "範囲内の監査ログの完全性マーカーを行ごとに再計算して保存値と照合し、事後の改ざんを検出できます。",
@@ -1086,7 +1087,9 @@
     "integrityMismatchAlert": "完全性の不一致が{n}件見つかりました。ログ ID：{ids}。改ざんの有無を直ちに調査してください。",
     "integrityAllPassed": "検査対象の行はすべて完全性検証に合格しました。",
     "integrityLegacyNote": "レガシー行{n}件：完全性機能の導入前に書き込まれたログで、完全性マーカーがなく、照合の対象外です。",
-    "integrityRangeRequired": "検証する日付範囲を選択してください"
+    "integrityRangeRequired": "検証する日付範囲を選択してください",
+    "filterKeyNotice": "セキュリティ設定「{setting}」の変更のみ表示しています",
+    "filterKeyClear": "フィルタを解除"
   },
   "commands": {
     "headerDesc": "接続をまたいでコマンドと文の記録を検索します。コマンドラインの内容はキー入力から再構成され、正確な内容は録画再生を参照します。クエリコンソールの文は送信時に記録されます。",
@@ -1568,7 +1571,7 @@
   },
   "syslogCard": {
     "title": "syslog ログ転送",
-    "hint": "監査ログを外部 SIEM へリアルタイム転送します（PCI 10.3.3、RFC 5424）；データベースが引き続き権威ストアです",
+    "hint": "監査ログを外部 SIEM へリアルタイム転送します（RFC 5424）；データベースが引き続き権威ストアです",
     "dropped": "{n}件を破棄しました（バッファオーバーフロー）",
     "enableLabel": "転送を有効化",
     "enableAria": "syslog 転送を有効化",
@@ -2098,12 +2101,7 @@
     "scopeAssigned": "承認範囲を割り当てました"
   },
   "securityPolicies": {
-    "description": "アカウント認証、接続、ログ保持のセキュリティ基準。各項目に PCI DSS 推奨値を表示します。アクセス制御、通信セキュリティ、鍵ポリシーはそれぞれの管理ページに移動しました（乖離サマリーのドメイン別一覧を参照）",
-    "systemCompliant": "システム全体のポリシーが PCI DSS 推奨値を満たしています",
-    "systemDeviation": "システム全体で PCI 推奨値から{n}項目の乖離があります",
-    "applyPage": "このページの推奨値を適用",
-    "currentPageCount": "本ページ {n}件",
-    "itemCount": "{n}件",
+    "description": "ログイン認証・接続・ログ保存に関する安全基準です。アクセス管理、通信の保護、鍵、オフサイト保管の設定はそれぞれ専用ページにあります。",
     "sessionCapRiskAlert": "プロトコル接続のアイドルタイムアウトは設定されていますが、「プロトコル接続の最大時間」が 0（上限なし）です。監視系の長時間接続（tail -f、top、ログストリーム）はサーバーが出力を送り続けるためアイドルタイムアウトで切断されません。絶対的な上限として最大時間の設定を推奨します。",
     "webSessionCapRiskAlert": "「Web セッションの最大時間」が 0 のため、Web セッションに時間の上限がありません。外部のアイデンティティソース（ディレクトリまたは OIDC プロバイダー）のグループ所属によってユーザーのロールを決めている場合、ソース側で所属を解除しても、そのユーザーが次回ログインするまで反映されません。ソース側での権限剥奪に依拠する運用では 0 に設定しないでください。",
     "insecureTransportTitle": "現在 http 接続のため、利用者は 15 分ごとに再ログインが必要です",
@@ -2333,8 +2331,8 @@
     "records": "記録",
     "emptyTitle": "パスワード変更計画がまだありません",
     "emptyHint": "計画を作成して資産パスワードを定期的に変更します",
-    "scheduleCron": "スケジュール cron",
-    "cronPlaceholder": "例：0 3 * * 0（空欄＝手動トリガーのみ）",
+    "scheduleCron": "実行スケジュール",
+    "cronPlaceholder": "5 項目の cron。例：0 3 * * 0（分 時 日 月 曜日）",
     "recordsTitle": "実行記録：{name}",
     "colMessage": "メッセージ",
     "nameRequired": "計画名を入力してください",
@@ -2722,16 +2720,6 @@
     "updated": "資産の接続ポリシーを更新しました",
     "cleared": "上書きをクリアしました（グローバルに従う）"
   },
-  "pciBanner": {
-    "okDefault": "このページのポリシーは PCI DSS の推奨値を満たしています",
-    "applyPage": "ページの推奨値を適用",
-    "unsaved": "未保存の変更",
-    "overviewLink": "システム全体で {n} 件の逸脱 · セキュリティポリシー概要",
-    "revert": "元に戻す",
-    "epaymentOk": "電子決済基準を満たす",
-    "epaymentDeviation": "{n} 項目が電子決済基準を下回る",
-    "applyEPayment": "電子決済基準を適用"
-  },
   "instanceGuard": {
     "ariaLabel": "単一インスタンスガードの警告",
     "headline": {
@@ -2821,13 +2809,12 @@
     }
   },
   "policyKeySections": {
-    "pciRecommend": "PCI 推奨: {value}",
-    "noPciValue": "PCI 推奨値なし",
-    "nonCompliant": "PCI 推奨に非準拠",
-    "epaymentRecommend": "電子決済基準：{value}",
-    "nonCompliantEPayment": "電子決済基準を下回る",
-    "pciReference": "参考値",
-    "pciReferenceNote": "Requirement {requirement} では、この頻度は事業体の目標リスク分析によって決定され、固定の日数は定められていません。この数値は本製品の既定の初期値で、利用者アカウントに対する 8.3.9 のしきい値を援用しています。"
+    "deviation": "基準未達 {n} 件",
+    "noDeviation": "基準未達なし",
+    "draftTag": "下書き",
+    "draftPending": "判定中",
+    "draftFailed": "判定できません",
+    "deviationMark": "適用中のポリシーグループの要求を満たしていません"
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "試行回数が多すぎるため、アカウントが一時的にロックされました。しばらくしてから再試行するか、管理者にお問い合わせください",
@@ -3009,6 +2996,7 @@
     "INTERNAL_CHECKPOINT_VERIFY": "チェックポイントの検証に失敗しました",
     "INTERNAL_CLIPBOARD_QUERY": "クリップボード記録の取得に失敗しました",
     "INTERNAL_COMMAND_ALERT_QUERY": "アラート記録の取得に失敗しました",
+    "INTERNAL_COMPLIANCE_SNAPSHOT": "コンプライアンス判定結果を取得できませんでした",
     "INTERNAL_CONNECT_TOKEN_ISSUE": "接続トークンの発行に失敗しました",
     "INTERNAL_CONSENT_RECORD": "同意記録の書き込みに失敗しました",
     "INTERNAL_CREDENTIAL_BIND": "認証情報の割り当てに失敗しました",
@@ -3073,6 +3061,8 @@
     "INTERNAL_OIDC_PROVIDER_LIST": "OIDC プロバイダー一覧の読み込みに失敗しました",
     "INTERNAL_OIDC_PROVIDER_SAVE": "OIDC プロバイダー設定の保存に失敗しました",
     "INTERNAL_PERMISSION_CHECK": "権限チェックに失敗しました",
+    "INTERNAL_POLICY_GROUP_READ": "ポリシーグループの読み込みに失敗しました",
+    "INTERNAL_POLICY_GROUP_WRITE": "ポリシーグループの保存に失敗しました",
     "INTERNAL_POLICY_WRITE": "ポリシーの書き込みに失敗しました",
     "INTERNAL_RECORDING_CONVERT": "録画フォーマットの変換に失敗しました",
     "INTERNAL_RECORDING_DELETE": "録画ファイルの削除に失敗しました",
@@ -3184,6 +3174,9 @@
     "NOTFOUND_USER_GROUP": "ユーザーグループが存在しません",
     "OIDC_DISCOVERY_PREVIEW_FAILED": "その issuer からディスカバリー文書を取得できませんでした。アドレスとネットワーク到達性を確認してください",
     "OIDC_PROVIDER_HAS_MAPPINGS": "このプロバイダーにはグループマッピング規則が残っています。規則を削除してからプロバイダーを削除してください",
+    "POLICY_GROUP_BUILTIN_READONLY": "組み込みポリシーグループの内容は編集できません。有効・無効の切り替えと自組織メモの追加のみ可能です",
+    "POLICY_GROUP_DUPLICATE_CODE": "そのポリシーグループコードは既に使われています。別のコードを指定してください",
+    "POLICY_GROUP_NOT_FOUND": "指定されたポリシーグループが見つかりません",
     "RULE_ACCESS_APPROVAL_REQUIRED": "この資産のアクセスポリシーでは、接続前に申請の承認が必要です",
     "RULE_ACCESS_REASON_REQUIRED": "この資産のアクセスポリシーでは、接続前に理由の入力が必要です",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "承認値は申請値を上回れません（時間は短縮のみ、開始は延期のみ可能）",
@@ -3337,6 +3330,7 @@
     "VALIDATION_ALERT_REVIEW_REQUEST": "リクエストが不正です：disposition（benign/escalated）を指定してください",
     "VALIDATION_ALERT_RULE_PATTERN": "正規表現パターンが無効です",
     "VALIDATION_ALERT_SEVERITY": "重大度は high/medium/low のいずれかを指定してください",
+    "VALIDATION_APPLY_PREVIEW_MODE": "適用方法が正しくありません。有効なポリシーグループを指定するか、すべてのポリシーを一度に満たす方法に切り替えてください",
     "VALIDATION_APPROVER_SCOPE_ACTOR": "承認者はちょうど 1 つ必要です（approver_id または approver_group_id のいずれか）",
     "VALIDATION_APPROVER_SCOPE_TARGET": "承認範囲の対象はちょうど 1 つ必要です（asset_id / asset_group_id / subject_user_id / subject_group_id のいずれか）",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy は空値（グローバル既定に従う）、open、reason、approval のみ指定できます",
@@ -3472,6 +3466,14 @@
     "VALIDATION_PLAN_TARGET_CREDENTIAL_REQUIRED": "認証情報を対象とする計画には認証情報の指定が必要です",
     "VALIDATION_PLAN_TARGET_KIND": "パスワード変更の対象種別はアカウントまたは認証情報のみです",
     "VALIDATION_POLICY_EMPTY": "ポリシー項目が指定されていません",
+    "VALIDATION_POLICY_GROUP_CLAUSE_KIND": "条文の種別と入力された設定要件が一致しません",
+    "VALIDATION_POLICY_GROUP_CLAUSE_NO": "条番号は必須で、長さの上限を超えてはいけません",
+    "VALIDATION_POLICY_GROUP_CODE": "ポリシーグループのコードと名称は必須で、長さの上限を超えてはいけません",
+    "VALIDATION_POLICY_GROUP_COMPARATOR": "比較方法がこの設定の型に合っていません",
+    "VALIDATION_POLICY_GROUP_DUPLICATE_KEY": "このセットには同じ設定に要件を定めた条文が既にあります",
+    "VALIDATION_POLICY_GROUP_EXPECTED_VALUE": "要件値がこの設定の有効範囲外です",
+    "VALIDATION_POLICY_GROUP_KEY_TYPE": "この型の設定は条文要件の対象にできません",
+    "VALIDATION_POLICY_GROUP_UNKNOWN_KEY": "要件が指しているセキュリティ設定が存在しません",
     "VALIDATION_POLICY_INVALID_VALUE": "セキュリティポリシー値が不正です：{key}",
     "VALIDATION_POLICY_RETENTION_CROSS_KEY": "チェックポイント保持日数はデータ保持日数より短くできません：{key}",
     "VALIDATION_POLICY_UNKNOWN_KEY": "未定義のセキュリティポリシー項目です：{key}",
@@ -3488,6 +3490,8 @@
     "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "保存日数は 1 から 3650 の範囲で指定してください",
     "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "スケジュール名は空にできません",
     "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "スケジュール名は128文字以内で入力してください",
+    "VALIDATION_SCHEDULE_BAD_CRON": "スケジュール書式が正しくありません。5 フィールド形式かどうか確認してください",
+    "VALIDATION_SCHEDULE_RUN_COUNT": "プレビューする実行回数は 1 から 10 の間で指定してください",
     "VALIDATION_SFTP_FILE_MISSING": "アップロードファイルがありません",
     "VALIDATION_SFTP_INVALID_PATH": "リモートパスは絶対パスである必要があり、「..」を含めることはできません",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "path がありません",
@@ -3586,6 +3590,13 @@
     "records": "件",
     "records_per_hour": "件/時",
     "seconds": "秒"
+  },
+  "policyZero": {
+    "retention": "無期限保存",
+    "localRetention": "早期削除なし",
+    "keyReminder": "通知しない",
+    "consentTtl": "失効しない",
+    "disabled": "この制限を使わない"
   },
   "keyEnvName": {
     "audit_export": "エクスポート署名鍵 (Ed25519)",
@@ -4738,7 +4749,7 @@
     "scheduleEditTitle": "レポートスケジュールの編集",
     "scheduleName": "スケジュール名",
     "cron": "実行スケジュール",
-    "cronPlaceholder": "5 項目の cron。例：0 1 1 * *（毎月 1 日 01:00）",
+    "cronPlaceholder": "5 項目の cron。例：0 1 1 * *（分 時 日 月 曜日）",
     "retentionDays": "生成物の保存日数",
     "retentionHint": "1 〜 3650 日。期限を過ぎた生成物は自動的に削除されます。",
     "retentionDaysValue": "{days} 日",
@@ -5034,5 +5045,597 @@
       "foreign": "旧保管設定",
       "retentionNote": "リモートコピーはストレージ側の保持ポリシーに従い、製品では削除しません"
     }
+  },
+  "scheduleFrequency": {
+    "label": "実行頻度",
+    "mode": {
+      "none": "スケジュールなし（手動実行のみ）",
+      "daily": "毎日",
+      "weekly": "毎週",
+      "monthly": "毎月",
+      "quarterly": "四半期ごと",
+      "yearly": "毎年",
+      "custom": "カスタム"
+    },
+    "noneHint": "自動では実行されません。必要なときに管理者が手動で実行します。",
+    "timeLabel": "時刻",
+    "weekdayLabel": "曜日",
+    "dayLabel": "日",
+    "dayValue": "{day} 日",
+    "quarterStartLabel": "実行する月",
+    "quarterDayLabel": "四半期の何日目",
+    "monthLabel": "月",
+    "monthValue": "{month} 月",
+    "quarterMonths": "{m1}、{m2}、{m3}、{m4} 月",
+    "customLabel": "カスタム",
+    "customPlaceholder": "5 項目の cron。例：0 1 1 * *",
+    "customHint": "分、時、日、月、曜日の順に半角スペースで区切ります。",
+    "error": {
+      "empty": "スケジュールを入力してください。",
+      "fieldCount": "5 項目（分、時、日、月、曜日）が必要ですが、現在は {count} 項目です。",
+      "fieldSyntax": "{index} 番目の項目「{field}」は認識できない書き方です。"
+    },
+    "previewTitle": "次回以降の実行時刻",
+    "previewLoading": "計算中",
+    "previewNone": "自動実行はありません。",
+    "previewInvalid": "書式を直すと実行時刻が表示されます。",
+    "previewUnavailable": "次回の実行時刻を取得できません",
+    "previewTimezone": "タイムゾーン {zone}",
+    "summary": {
+      "daily": "毎日 {time}",
+      "weekly": "毎週{weekday} {time}",
+      "monthly": "毎月 {day} 日 {time}",
+      "quarterly": "四半期ごと {day} 日 {time}",
+      "yearly": "毎年 {month} 月 {day} 日 {time}"
+    },
+    "weekday": {
+      "d0": "日曜日",
+      "d1": "月曜日",
+      "d2": "火曜日",
+      "d3": "水曜日",
+      "d4": "木曜日",
+      "d5": "金曜日",
+      "d6": "土曜日"
+    },
+    "nextRun": "次回 {time}",
+    "nextRunUnknown": "次回の実行時刻を取得できません"
+  },
+  "policyStrip": {
+    "groupsLabel": "適用中のポリシーグループ",
+    "noGroups": "有効なポリシーグループはありません",
+    "manage": "ポリシーグループの管理",
+    "map": "コンプライアンス対照",
+    "apply": "推奨値を適用",
+    "applyGroup": "{group}に合わせる",
+    "applyStrictest": "すべての政策を一度に満たす",
+    "unsaved": "未保存の変更があります",
+    "revert": "元に戻す"
+  },
+  "policyDrawer": {
+    "info": "説明を見る",
+    "requirements": "ポリシーグループの要求",
+    "none": "この設定に対応する有効なポリシーグループはありません。",
+    "compliant": "{group}は{expectation}を求めています。現在は {current} で、適合しています。",
+    "deviating": "{group}は{expectation}を求めています。現在は {current} で、要求を満たしていません。",
+    "needsReviewUnconfirmed": "{group}は固定の要求ではなく {expected} を参考値として示しており、組織による確認はまだ行われていません。",
+    "needsReviewConfirmed": "{group}は固定の要求ではなく {expected} を参考値として示しており、{time} に {who} が確認済みです。",
+    "auditReview": "{group}にはこの設定に関する条項がありますが値の定めがありません。現在は {current} で、監査担当者が判断します。",
+    "clauseNo": "条項 {no}",
+    "expectMin": "{value} 以上",
+    "expectMax": "{value} 以下",
+    "expectEquals": "{value}",
+    "draftNote": "未保存の値で判定しています",
+    "lastChange": "最終変更",
+    "lastChangeBy": "{time}（{who}）",
+    "lastChangeNone": "まだ変更されておらず、初期値のままです。",
+    "auditLink": "操作ログを見る",
+    "effect": "いつ反映されるか",
+    "more": "詳しい説明"
+  },
+  "applyPreview": {
+    "title": "推奨値の適用：{page}",
+    "scopeNote": "「{page}」ページの設定のみが変更されます。",
+    "basisGroup": "{group}の要求に基づきます。",
+    "basisStrictest": "有効なすべてのポリシーグループの要求を同時に満たします。",
+    "colName": "設定",
+    "colCurrent": "現在",
+    "colProposed": "変更後",
+    "colSource": "根拠",
+    "mfaAllWarning": "保存後は次回のログインからすべての利用者に多要素認証が必要になります。管理者自身の登録が済んでいることを先に確認してください。済んでいないとログインできなくなります。",
+    "empty": "変更が必要な設定はありません。",
+    "emptyConflicts": "自動で変更できる設定はありません。下の競合する要求はご自身で判断してください。",
+    "conflictTitle": "次の設定は要求が競合するため、自動では変更しません",
+    "conflictBody": "{name}：{reasons}。どちらに従うかを判断して手動で設定してください。",
+    "conflictReason": "{group}は{expectation}を求めています",
+    "compliant": "{n} 項目の設定が適合済み",
+    "pending": "{n} 項目が判断・確認待ち",
+    "unmapped": "どのポリシーグループにも含まれない設定：{n} 項目",
+    "notSaved": "確定しても入力欄に反映されるだけで、保存を押すまで有効になりません。",
+    "confirm": "入力欄に反映",
+    "filled": "入力欄に反映しました。保存すると有効になります",
+    "staleMessage": "プレビューの確認中に設定が変更されました。新しいプレビューを確認してから保存してください。",
+    "recheckFailed": "プレビューを再確認できなかったため保存していません。もう一度保存を押してお試しください。"
+  },
+  "verdictReason": {
+    "meets_expectation": "要求を満たしています",
+    "below_minimum": "要求の下限を下回っています",
+    "above_maximum": "要求の上限を超えています",
+    "value_mismatch": "要求された値と異なります",
+    "disabled_by_zero": "0 は無効化を意味し、要求を満たしません",
+    "value_not_comparable": "現在の値は要求と比較できません",
+    "reference_value_unconfirmed": "このグループは参考値を示しており、組織の確認がまだです",
+    "reference_value_confirmed": "このグループは参考値を示しており、組織が確認済みです",
+    "expectation_unspecified": "要求はありますが値の定めがなく、監査担当者が判断します",
+    "no_control": "このグループはこの設定を対象としていません"
+  },
+  "policyEffect": {
+    "lockout_max_attempts": "ログイン失敗のたびに即時適用され、すでにロック中のアカウントには影響しません。0 はロックしないことを表します。",
+    "lockout_duration_minutes": "ロックされた時点で解除時刻が決まるため、すでにロック中のアカウントは変わりません。",
+    "password_min_length": "パスワード変更時に適用され、既存のパスワードも次回ログイン時に照合され、満たさない場合はその場で変更を求められます。",
+    "password_require_alnum": "パスワード変更時に適用され、既存のパスワードも次回ログイン時に照合され、満たさない場合はその場で変更を求められます。",
+    "password_history_count": "次回のパスワード変更時にのみ確認し、既存の履歴をさかのぼって削除することはありません。0 は再利用を確認しないことを表します。",
+    "password_max_age_days": "ログインのたびに判定し、期限を過ぎたパスワードは次回ログイン時に変更を求められます。0 は期限なしを表します。",
+    "asset_secret_max_age_days": "ローテーション証跡レポートの作成時にのみ判定基準として使われ、パスワードを変更することはありません。0 は設定なしを表します。",
+    "force_change_on_reset": "管理者がパスワードをリセットした時点で判定され、以前にリセットされたアカウントには影響しません。",
+    "mfa_required": "次回のログインから有効になり、すでにログイン中の利用者には影響しません。",
+    "web_idle_minutes": "ログイン中の利用者にも適用され、遅くとも次回のトークン更新時にログアウトされます。0 はタイムアウトなしを表します。",
+    "web_max_session_hours": "次回のログインから適用され、ログイン中の利用者は元の時間のままです。0 は無制限を表します。",
+    "refresh_cookie_secure": "次回のログインまたはログイン状態の更新時に適用され、ブラウザーに保存済みの設定を置き換えます。",
+    "session_idle_minutes": "接続の確立時に決まり、確立済みの接続には影響しません。0 はタイムアウトなしを表します。",
+    "session_max_minutes": "接続の確立時に決まり、確立済みの接続には影響しません。0 は無制限を表します。",
+    "inactive_disable_days": "毎日未明のジョブ実行時にアカウントを無効化します。0 は自動で無効化しないことを表します。",
+    "retention_audit_log_days": "毎日未明のクリーンアップ実行時に適用され、削除済みのデータは復元できません。0 は無期限保存を表します。",
+    "retention_session_command_days": "毎日未明のクリーンアップ実行時に適用され、削除済みのデータは復元できません。0 は無期限保存を表します。",
+    "retention_alert_days": "毎日未明のクリーンアップ実行時に適用され、削除済みのデータは復元できません。0 は無期限保存を表します。",
+    "retention_recording_days": "毎日未明のクリーンアップ実行時に適用され、削除済みの録画は復元できません。0 は無期限保存を表します。",
+    "offsite_local_retention_days": "毎日のクリーンアップではローカルの複製のみを削除し、オフサイトの複製は残ります。オフサイト保管が無効な間は効果がありません。0 は前倒しで削除しないことを表します。",
+    "retention_checkpoint_days": "毎日のクリーンアップの実行時に適用され、いずれかのデータ保存日数より短い値は保存時に拒否されます。0 は無期限保存を表します。",
+    "audit_checkpoint_interval_seconds": "次回の定期チェックから新しい間隔を使い、すでに照合用の証拠がある区間は再計算されません。",
+    "audit_checkpoint_row_threshold": "次回の定期チェックから新しいしきい値を使い、すでに照合用の証拠がある区間は再計算されません。",
+    "audit_chain_recent_verify_days": "次回の検証から適用され、実際の日数はこの値と操作ログの保存日数の小さいほうになります。",
+    "audit_chain_verify_interval_seconds": "次回の定期チェックから新しい間隔を使い、期限が来たときに実行されます。",
+    "audit_chain_verify_rows_per_hour": "次のラウンドから適用され、実行中のラウンドは従来の速度で完了します。",
+    "retention_max_per_run": "次回のクリーンアップ実行から適用され、その回の削除量にのみ影響します。",
+    "daily_review_enabled": "直ちに有効になり、無効にした当日から承認は求められなくなります。",
+    "failure_alert_enabled": "直ちに有効になり、無効の間に送られなかった通知が後から送られることはありません。",
+    "recording_failclose_enabled": "接続の確立ごとに確認し、すでに接続中のものには影響しません。",
+    "key_cryptoperiod_reminder_days": "鍵一覧を再読み込みすると新しい表示になります。表示のみで、鍵の自動交換も通知も行いません。0 はリマインドしないことを表します。",
+    "key_rotation_max_per_run": "次回の鍵交換の実行時に適用され、その回の処理量のみを制限します。",
+    "k8s_list_timeout_seconds": "次回の一覧取得から有効になり、再起動は不要です。",
+    "transport_rdp_level": "新しい接続を作るときに確認し、確立済みの接続には影響しません。",
+    "transport_vnc_level": "新しい接続を作るときに確認し、確立済みの接続には影響しません。",
+    "transport_db_level": "新しい接続を作るときに確認し、確立済みの接続には影響しません。",
+    "transport_ldap_level": "次回ディレクトリアカウントでログインしたときに有効になり、ローカルアカウントには影響しません。",
+    "transport_syslog_level": "ログ転送設定の保存時にのみ確認し、稼働中の転送をさかのぼって止めることはありません。",
+    "transport_notify_level": "通知チャネルの保存時にのみ確認し、設定済みのチャネルはそのまま送信されます。",
+    "transport_consent_ttl_days": "以後の接続は新しい有効期間で判定され、新しい期限を超えた古い同意は再確認が必要です。0 は失効しないことを表します。",
+    "access_policy_default": "新規接続に直ちに適用され、有効時間内の承認はそのまま許可され、接続中のセッションも切断されません。",
+    "access_request_max_duration_minutes": "新しい申請の送信時にのみ確認し、送信済みの申請や承認済みの権限は変わりません。",
+    "access_request_pending_timeout_hours": "申請の送信時に期限が決まるため、審査待ちの申請はそのままです。",
+    "access_request_min_approvals": "直ちに有効になり、審査待ちの申請にも新しい人数が適用されます。",
+    "break_glass_enabled": "直ちに有効になり、無効にしても発行済みの緊急権限は失効しません。",
+    "break_glass_duration_minutes": "緊急接続を開始した時点で決まり、発行済みのものは変わりません。",
+    "break_glass_review_timeout_hours": "直ちに有効になり、審査待ちの過去の記録にもさかのぼって適用されます。",
+    "access_revoke_disconnect": "次回の権限取り消しから適用され、過去の取り消しで残った接続をさかのぼって切断することはありません。",
+    "clipboard_send_enabled": "接続の確立時に決まり、確立済みの接続は再接続してから反映されます。",
+    "clipboard_recv_enabled": "接続の確立時に決まり、確立済みの接続は再接続してから反映されます。",
+    "file_upload_enabled": "ファイル管理とコンテナ操作には直ちに適用され、RDP と VNC は再接続が必要です。",
+    "file_download_enabled": "ファイル管理とコンテナ操作には直ちに適用され、RDP と VNC は再接続が必要です。",
+    "file_delete_enabled": "直ちに有効になり、再接続は不要です。",
+    "login_banner_title": "次にログイン画面を開いた人から新しい内容が表示されます。",
+    "login_banner_body": "次にログイン画面を開いた人から新しい内容が表示されます。本文を空にすると告知全体が表示されません。"
+  },
+  "policyPlain": {
+    "refresh_cookie_secure": "暗号化された接続でのみログイン状態を保つかどうかです。",
+    "retention_checkpoint_days": "記録を照合するための証拠を何日残すかです。",
+    "audit_checkpoint_interval_seconds": "どのくらいの間隔で記録の照合用の証拠を作るかです。",
+    "audit_checkpoint_row_threshold": "何件たまったら早めに照合用の証拠を作るかです。",
+    "audit_chain_recent_verify_days": "新しい証拠を作ったあと、何日分の記録をさかのぼって調べるかです。",
+    "audit_chain_verify_interval_seconds": "どのくらいの間隔で過去の記録の点検を始めるかです。",
+    "audit_chain_verify_rows_per_hour": "古い記録を調べる速さで、1 時間あたりの件数です。",
+    "daily_review_enabled": "毎日だれかが記録を確認したことを求めるかどうかです。",
+    "failure_alert_enabled": "監査記録の機能に異常があったときに通知するかどうかです。",
+    "key_rotation_max_per_run": "1 回の鍵交換で暗号化をやり直す最大件数です。",
+    "transport_rdp_level": "RDP 接続の安全性が足りないときの扱いです。",
+    "transport_vnc_level": "VNC 接続の安全性が足りないときの扱いです。",
+    "transport_db_level": "データベース接続の安全性が足りないときの扱いです。",
+    "transport_ldap_level": "ディレクトリ接続の安全性が足りないときの扱いです。",
+    "transport_syslog_level": "ログの外部送信の安全性が足りないときの扱いです。",
+    "transport_notify_level": "外部への通知の安全性が足りないときの扱いです。",
+    "transport_consent_ttl_days": "接続のリスクが変わらない間、同意を何日記憶するかです。",
+    "access_policy_default": "接続前に理由の入力や承認が必要かどうかです。",
+    "break_glass_enabled": "有効にすると、緊急時は先に接続して後から審査できます。",
+    "break_glass_duration_minutes": "緊急接続で得た権限を使える時間です。",
+    "break_glass_review_timeout_hours": "緊急接続後、何時間審査がないと警告するかです。"
+  },
+  "policyClause": {
+    "pci_dss_4_0_1": {
+      "c8_3_4": {
+        "title": "アカウントロック機構"
+      },
+      "c8_3_6": {
+        "title": "パスワードの複雑性"
+      },
+      "c8_3_7": {
+        "title": "パスワード履歴の制限"
+      },
+      "c8_3_9": {
+        "title": "パスワードの有効期限"
+      },
+      "c8_6_3": {
+        "title": "資産認証情報のローテーション"
+      },
+      "c8_3_5": {
+        "title": "リセット後の強制変更"
+      },
+      "c8_4_2": {
+        "title": "多要素認証の適用範囲"
+      },
+      "c8_2_8": {
+        "title": "セッションのアイドルタイムアウト"
+      },
+      "c8_2_6": {
+        "title": "休眠アカウントの無効化"
+      },
+      "c10_5_1": {
+        "title": "監査データの保持"
+      },
+      "c10_4_1": {
+        "title": "日次レビューの承認"
+      },
+      "c10_7_2": {
+        "title": "監査失敗のアラート"
+      },
+      "c10_2": {
+        "title": "録画失敗時の接続遮断"
+      },
+      "c3_7_4": {
+        "title": "鍵ローテーションのリマインダー"
+      },
+      "c4_2_1": {
+        "title": "通信暗号化の強制レベル"
+      },
+      "c7_2": {
+        "title": "アクセス制御とブレークグラス"
+      }
+    },
+    "epayment_baseline": {
+      "c15_1": {
+        "title": "最小権限でのアカウント付与",
+        "summary": "最小権限および必要最小限の原則に従って適切な権限を設定する"
+      },
+      "c15_2": {
+        "title": "権限の定期審査と離職時の権限剥奪",
+        "summary": "アカウントと権限の妥当性を少なくとも年 1 回審査し、退職または異動の際は速やかに権限を削除する"
+      },
+      "c15_3_1": {
+        "title": "特権アカウントの分離",
+        "summary": "特権アカウントは日常運用アカウントと分離し、台帳で管理する"
+      },
+      "c15_3_2": {
+        "title": "特権アカウント管理システムの利用",
+        "summary": "特権アカウント管理システムを使用する"
+      },
+      "c15_3_3": {
+        "title": "最高権限の事前承認と定期レビュー",
+        "summary": "最高権限アカウントの使用には権限を持つ管理者の事前承認を要し、監査証跡を保持して使用結果を定期的にレビューする"
+      },
+      "c15_3_4": {
+        "title": "インターネット公開ホストの二要素認証",
+        "summary": "インターネットサービスを提供するサーバおよびディレクトリサービスホストには二要素認証を採用する"
+      },
+      "c15_4": {
+        "title": "利用端末とネットワーク位置の限定",
+        "summary": "必要に応じて使用する端末とネットワーク位置を限定できる。アカウントごとの許可元ネットワークは組織が設定する"
+      },
+      "c15_6": {
+        "title": "ログイン操作の記録",
+        "summary": "オペレーティングシステムにログインしてシステム変更やデータベースアクセスを行う際は、人による操作の記録を残す"
+      },
+      "c15_7": {
+        "title": "1 人 1 アカウント",
+        "summary": "アカウントは 1 人 1 つで管理し、個人を識別できるようにする"
+      },
+      "c15_9": {
+        "title": "データベースツールの管理",
+        "summary": "変更権限を持つユーティリティは台帳で管理し、使用を制限する"
+      },
+      "c4_7_1": {
+        "title": "パスワードは 6 桁以上",
+        "summary": "固定パスワードの長さは 6 桁を下回らないこと"
+      },
+      "c4_7_2": {
+        "title": "パスワードは英数字混在",
+        "summary": "英数字を混在させることが推奨される"
+      },
+      "c4_7_5": {
+        "title": "5 回失敗でロック",
+        "summary": "連続 5 回誤入力した場合は取引を継続させない"
+      },
+      "c4_7_6": {
+        "title": "新パスワードは旧と同一不可",
+        "summary": "変更後の固定パスワードは変更前と同一であってはならない"
+      },
+      "c4_7_7": {
+        "title": "初回ログイン時にパスワード変更",
+        "summary": "初回ログイン時にシステムが生成した初期パスワードの変更を強制する"
+      },
+      "c4_7_8": {
+        "title": "1 年未変更のパスワードへの対応",
+        "summary": "1 年を超えて変更されていない固定パスワードは適切に処理する。処理方法は期限切れによる強制変更に限らず、組織の業務手順で定める"
+      },
+      "c15_8": {
+        "title": "アカウントのパスワードは 3 か月ごとに変更",
+        "summary": "人が使用するアカウントは少なくとも 3 か月ごとに変更する。システム接続用アカウントは少なくとも 3 か月ごとに変更するか、他の補完的統制を講じる"
+      },
+      "c17_2": {
+        "title": "パスワードは復元不可能な形で保存",
+        "summary": "固定パスワードは保存前に不可逆な演算を施す"
+      },
+      "c21_8_3": {
+        "title": "リモート変更には二要素以上の認証",
+        "summary": "ログインごとに 2 つ以上のセキュリティ要素を用い、管理者の承認を得る。対応する設定要件は 15-3(三) および 15-3(四) に示す"
+      },
+      "c16_3": {
+        "title": "業務上の必要に応じた権限付与",
+        "summary": "業務遂行上の必要性に応じて、担当者が個人データに接触する権限を設定する"
+      },
+      "c17_4": {
+        "title": "鍵へのアクセスは必要な担当者のみ",
+        "summary": "鍵の保管場所を減らし、必要な管理担当者のみが鍵にアクセスできるようにする"
+      },
+      "c17_5": {
+        "title": "有効期限が近い鍵の交換",
+        "summary": "鍵の使用期限が近づいた場合や漏えいの疑いがある場合は交換する。リマインダー日数は組織が自らの鍵期限に応じて定める"
+      },
+      "c21_8_1": {
+        "title": "リモート管理申請の年次審査",
+        "summary": "リモート管理の申請目的、期間、時間帯、ネットワーク範囲、使用機器を審査する"
+      },
+      "c21_8_4": {
+        "title": "ネットワーク範囲と機器の限定",
+        "summary": "接続を許可するリモート機器を定義する。アカウントごとの許可元ネットワークは組織が設定する"
+      },
+      "c21_8_2": {
+        "title": "申請内容に沿った権限付与",
+        "summary": "認可の仕組みを設け、申請項目に応じて必要な権限のみを付与する"
+      },
+      "c24_1": {
+        "title": "ログの集中管理、アラートと 2 年保存",
+        "summary": "ログおよび監査証跡は集中管理し、適切なアラート指標を設定する。元のログと監査証跡は少なくとも 2 年保存する"
+      },
+      "c19_4": {
+        "title": "記録は 2 年保存",
+        "summary": "保存する記録はデジタル証拠の収集、保護、適切な管理を確保し、少なくとも 2 年保存する。保存日数の設定要件は 24-1 に示す"
+      },
+      "c24_3": {
+        "title": "事故対応中の証拠保全",
+        "summary": "対応の過程で証跡記録と証拠保全の有効性に留意する"
+      },
+      "c16_5": {
+        "title": "個人データ利用の監査証跡",
+        "summary": "個人データの利用に関する監査証跡を構築し保存する"
+      },
+      "c21_8_5": {
+        "title": "管理者による定期レビュー",
+        "summary": "監視の仕組みを設け、操作記録を保存し、管理者が定期的にレビューする。承認に関する設定要件は 15-3(三) に示す"
+      },
+      "c19_7": {
+        "title": "システム時刻の同期",
+        "summary": "各システムの時計は標準時を基準とし、すべてのシステム時計を同期させる"
+      },
+      "c21_6": {
+        "title": "リモート管理の暗号化とツールへのパスコード保存禁止",
+        "summary": "リモート接続でシステム管理作業を行う際は十分な強度の暗号化通信プロトコルを使用し、パスコードをツールソフトウェア内に記録しない"
+      },
+      "c17_1_2": {
+        "title": "外部送信の暗号化",
+        "summary": "機微データをインターネット上で伝送する際はメッセージの機密性を確保する仕組みを設ける"
+      },
+      "c6_1": {
+        "title": "暗号強度の下限",
+        "summary": "共通鍵暗号および公開鍵暗号の鍵長は基準に定める強度以上とする"
+      },
+      "c15_5": {
+        "title": "10 分無操作で画面を遮蔽",
+        "summary": "担当者が 10 分を超えて操作しない場合、画面上の個人データ表示を制限する"
+      },
+      "c21_8_7_3": {
+        "title": "アイドル時のロックまたは切断",
+        "summary": "仮想デスクトップは一定のアイドル時間後に画面をロックするか接続を切断するよう設定する。時間の長さは条文に定めがなく、組織が定める"
+      },
+      "c21_8_7_1": {
+        "title": "両端間のクリップボード共有を禁止",
+        "summary": "クリップボードを介して両端でデータをやり取りしないようにする"
+      },
+      "c16_6": {
+        "title": "ファイル外部送信の管制",
+        "summary": "データ漏えい防止の仕組みを設け、個人データファイルの転送を管制する"
+      },
+      "c24_2": {
+        "title": "事故の通報と対応",
+        "summary": "情報セキュリティ事故の評価、通報、処理、対応、事後の追跡改善の仕組みを設ける"
+      },
+      "c20_6": {
+        "title": "高リスクへの即時対応",
+        "summary": "セキュリティ事象を常時把握し、高リスクまたは重要な項目については直ちに調査と対応を行う"
+      }
+    }
+  },
+  "complianceMap": {
+    "headerDesc": "現在のセキュリティ設定が各ポリシーグループを満たしているかどうかを表示します。このページは結果のみで、設定の変更はセキュリティポリシーのページで行います。",
+    "builtAt": "データ時点",
+    "timezone": "タイムゾーン {tz}",
+    "groupsTitle": "ポリシーグループ",
+    "groupInactive": "無効",
+    "onlyDeviating": "逸脱のみ表示",
+    "searchLabel": "設定を検索",
+    "searchPlaceholder": "設定名またはキー名を入力",
+    "searchNoMatch": "該当する設定がありません",
+    "searchHit": "{n} 項目が一致し、該当する条文を展開しました",
+    "summaryClauses": "本グループの条文",
+    "summaryCompliant": "適合",
+    "summaryDeviating": "逸脱",
+    "summaryNeedsReview": "確認待ち",
+    "summaryAuditReview": "監査人の判断",
+    "summaryBuiltinProtection": "製品標準の保護",
+    "summaryBuiltinProtectionHint": "製品が直接提供し、調整できる設定がない条文です",
+    "summaryClausesBuiltinNote": "うち {n} 件は製品標準の保護のため、個別には掲載しません",
+    "summaryGroupClauses": "条文（単位：条）",
+    "summaryGroupKeys": "設定（単位：項目）",
+    "unitClause": "条",
+    "unitSetting": "項目",
+    "unmappedNote": "このグループの対照範囲外の設定が他に {n} 項目あります",
+    "clausesTitle": "条文",
+    "clauseKeys": "{n} 項目の設定を対照",
+    "clauseNo": "条番号 {no}",
+    "colSetting": "設定",
+    "colCurrent": "現在",
+    "colExpectation": "要求",
+    "colResult": "結果",
+    "colLastChange": "最終変更",
+    "recordLink": "変更記録を見る",
+    "lastChangeUnknown": "—",
+    "annotationLabel": "組織の注記",
+    "confirmed": "確認済み · {who} · {when}",
+    "notConfirmed": "未確認",
+    "emptyTitle": "このグループには対照できる条文がありません",
+    "emptyHint": "別のポリシーグループを選ぶか、ポリシーグループのページで条文を追加してください。",
+    "emptyDeviating": "このグループに逸脱している条文は現在ありません。",
+    "noGroupTitle": "有効なポリシーグループがありません",
+    "noGroupHint": "ポリシーグループのページで必要なグループを有効にしてください。",
+    "expectMin": "{value} 以上",
+    "expectMax": "{value} 以下",
+    "expectEquals": "{value} であること",
+    "expectReview": "要求はあるが値の定めがなく、監査人が判断します",
+    "expectReference": "参考値 {value}",
+    "expectNone": "—",
+    "resultCompliant": "適合",
+    "resultDeviating": "逸脱",
+    "resultNeedsReview": "確認待ち",
+    "resultReview": "監査人の判断",
+    "resultUnmapped": "対照なし",
+    "resultSelfAttested": "組織の申告",
+    "resultBuiltinProtection": "製品標準の保護",
+    "reviewNote": "現在の設定値はありますが固定の要求はなく、監査人が判断します",
+    "selfAttestedNote": "組織が説明し、システムは判定しません",
+    "asideWhat": "このグループについて",
+    "asideName": "名称",
+    "asideVersion": "バージョン",
+    "asideSource": "出所",
+    "asideSourceBuiltin": "製品標準",
+    "asideSourceCustom": "組織が作成",
+    "asideOriginalLocale": "条文は組織の原文（{locale}）のまま表示し、システムは翻訳しません",
+    "asideHow": "判定のしかた",
+    "asideHowBody": "各条文が指す設定について、現在の値と条文の要求を比べます。要求はあるが値が示されていない条文は、現在の値だけを示し、監査人が判断します。組織の注記は判定に影響しません。",
+    "asideAuto": "自動出力の設定",
+    "asideAutoNone": "未設定",
+    "asideRecent": "最近の出力",
+    "asideRecentNone": "出力の記録はありません",
+    "generateReport": "レポートを出力",
+    "generateReportDisabled": "レポート出力は次期に対応します"
+  },
+  "policyGroups": {
+    "headerDesc": "ポリシーグループと条文を管理します。ポリシーグループの変更はこのページだけで行い、コンプライアンス対照ページは結果のみを表示します。",
+    "create": "ポリシーグループを追加",
+    "sourceBuiltin": "製品標準",
+    "sourceCustom": "組織が作成",
+    "enabledLabel": "有効",
+    "clauseCount": "条文 {n} 件",
+    "versionLabel": "バージョン {version}",
+    "localeLabel": "原文 {locale}",
+    "rename": "名称変更",
+    "remove": "削除",
+    "addClause": "条文を追加",
+    "builtinHint": "製品標準グループの条文は製品のバージョンとともに更新されます。注記や確認はできますが、内容の編集はできません。",
+    "customHint": "組織が作成した条文は原文のまま保存・表示し、システムは翻訳しません。",
+    "emptyGroups": "ポリシーグループがありません",
+    "clausesTitle": "{name} の条文",
+    "colClauseNo": "条番号",
+    "colTitle": "タイトル",
+    "colKind": "種別",
+    "colKeys": "対応する設定",
+    "colExpectation": "要求",
+    "colNote": "注記",
+    "colActions": "操作",
+    "kindSetting": "設定要求",
+    "kindSelfAttested": "組織が自ら確認",
+    "kindBuiltinProtection": "製品標準の保護",
+    "removedTag": "削除済み",
+    "removedHint": "この条文は {version} 以降存在しません。注記は残り、判定には計上されません。",
+    "emptyClauses": "このグループにはまだ条文がありません",
+    "emptyClausesHint": "条文を追加から、社内規程を一件ずつ要求として書き込みます。",
+    "noteAction": "注記",
+    "confirmAction": "確認",
+    "editAction": "編集",
+    "deleteAction": "削除",
+    "noneKeys": "—",
+    "noteDialogTitle": "組織の注記",
+    "noteDialogHint": "注記は判定に影響しません。要求を判定に含めるには、組織のグループに条文を追加してください。",
+    "noteField": "注記",
+    "notePlaceholder": "例：組織に別途の規程があり、年次監査で説明済み。",
+    "confirmDialogTitle": "確認",
+    "confirmDialogHint": "この条文には固定値の定めがありません。確認すると、誰がいつ確認したかと、この一文が記録されます。",
+    "confirmField": "説明",
+    "confirmPlaceholder": "この条文への対応を一文で記載します。",
+    "confirmAgainHint": "この条文は {who} が {when} に確認済みです。再度確認すると前回の記録を上書きします。",
+    "confirmRequired": "説明を一文入力してください",
+    "createDialogTitle": "ポリシーグループを追加",
+    "codeField": "コード",
+    "codeHint": "英数字とアンダースコア。作成後は変更できません。",
+    "nameField": "名称",
+    "localeField": "原文の言語",
+    "localeHint": "条文はこの言語のまま表示し、システムは翻訳しません。",
+    "renameDialogTitle": "ポリシーグループの名称変更",
+    "deleteTitle": "ポリシーグループの削除",
+    "deleteMessage": "「{name}」を削除すると、その条文・要求・注記・確認記録もあわせて削除され、元に戻せません。設定ページとコンプライアンス対照ページにも表示されなくなります。",
+    "deleteClauseTitle": "条文の削除",
+    "deleteClauseMessage": "条番号 {no} を削除すると、この条文の要求はすべて削除され、判定に計上されなくなります。注記と確認記録は残ります。",
+    "saved": "保存しました",
+    "deleted": "削除しました",
+    "requiredCode": "コードを入力してください",
+    "requiredName": "名称を入力してください"
+  },
+  "clauseDialog": {
+    "createTitle": "条文を追加",
+    "editTitle": "条文を編集",
+    "clauseNoField": "条番号",
+    "clauseNoHint": "規範や社内規程での番号です。例：3-2。",
+    "titleField": "タイトル",
+    "titlePlaceholder": "この条文が求めることを一文で",
+    "summaryField": "概要",
+    "kindField": "種別",
+    "kindSetting": "設定要求",
+    "kindSettingHint": "システム内の設定を指し、適合するかどうかをシステムが判定します。",
+    "kindSelfAttested": "組織が自ら確認",
+    "kindSelfAttestedHint": "対応する設定がないため、表示のみで判定しません。",
+    "controlsField": "要求",
+    "addControl": "要求を追加",
+    "removeControl": "削除",
+    "keyField": "設定",
+    "keyPlaceholder": "設定を選択",
+    "expectationField": "要求",
+    "comparatorReview": "要求はあるが値の定めがなく、監査人が判断します",
+    "comparatorMin": "以上",
+    "comparatorMax": "以下",
+    "comparatorEquals": "であること",
+    "valueField": "値",
+    "rangeHint": "{min} から {max} まで",
+    "outOfRange": "入力できる範囲（{min} から {max}）を超えています",
+    "valueRequired": "要求値を入力してください",
+    "keyRequired": "設定を選択してください",
+    "controlsRequired": "設定要求には少なくとも一件の要求が必要です",
+    "duplicateKey": "同じグループ内では、設定ごとに要求は一件までです",
+    "afterSaveTitle": "保存後の結果",
+    "afterSaveCompliant": "現在 {value}。保存するとこの条文は適合と表示されます",
+    "afterSaveDeviating": "現在 {value}。保存するとこの条文は逸脱と表示されます",
+    "afterSaveReview": "現在 {value}。保存するとこの条文は監査人の判断になります",
+    "afterSaveUnknown": "設定と要求を選ぶと、保存後の結果がここに表示されます",
+    "afterSavePending": "判定中です。保存後の結果はまもなく表示されます",
+    "afterSaveFailed": "判定を取得できませんでした。しばらくしてからもう一度ご確認ください",
+    "afterSaveInvalid": "上の値を修正すると、保存後の結果が表示されます",
+    "textKeyUnsupported": "この設定は自由記述のため、比較できる要求値がありません",
+    "clauseNoRequired": "条番号を入力してください",
+    "titleRequired": "タイトルを入力してください"
   }
 }

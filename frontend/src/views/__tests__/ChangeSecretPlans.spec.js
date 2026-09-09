@@ -49,6 +49,12 @@ vi.mock('@/api/assets', () => ({
   ),
 }))
 
+// 下次執行時刻由排程端點回答；列表與表單都只顯示，不自行推算
+const nextRunsMock = vi.fn()
+vi.mock('@/api/schedules', () => ({
+  getScheduleNextRuns: (...a) => nextRunsMock(...a),
+}))
+
 const planFixture = (overrides = {}) => ({
   id: 1,
   name: 'weekly',
@@ -93,11 +99,20 @@ beforeEach(() => {
   listCandidatesMock.mockResolvedValue({ data: [] })
   createPlanMock.mockResolvedValue({})
   updatePlanMock.mockResolvedValue({})
+  nextRunsMock.mockResolvedValue({
+    runs: ['2026-09-13T03:00:00+08:00'],
+    timezone: 'Asia/Taipei',
+  })
 })
 
 describe('帳號範圍 ↔ 後端契約', () => {
   it('預設（全部帳號）送出 ["@ALL"]，不是空陣列', async () => {
     const wrapper = await mountPage()
+    // 列表的排程欄講人話並附下次執行時刻；排程字串退到編輯表單的自訂欄
+    expect(wrapper.find('[data-test="plan-schedule-1"]').text()).toBe('每星期日 03:00')
+    expect(wrapper.text()).toContain('下次 2026-09-13 03:00')
+    expect(wrapper.text()).not.toContain('0 3 * * 0')
+
     wrapper.vm.openCreate()
     wrapper.vm.form.name = 'p1'
     wrapper.vm.form.asset_ids = [1]

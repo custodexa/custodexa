@@ -117,7 +117,9 @@
     "ldapDirectory": "Directory (LDAP)",
     "checkpointVerification": "Checkpoint Verification",
     "offsiteStorage": "Offsite storage",
-    "identitySources": "Identity sources"
+    "identitySources": "Identity sources",
+    "complianceMap": "Compliance map",
+    "policyGroups": "Policy groups"
   },
   "login": {
     "bannerRegionLabel": "Login notice",
@@ -209,9 +211,6 @@
     "tokenFailed": "Failed to obtain connection authorization"
   },
   "policyForm": {
-    "pciApplied": "PCI recommended values filled in — click Save to apply",
-    "pciAllCompliant": "All policies on this page already meet the PCI recommendations",
-    "pageDeviation": "This page has {n} deviation from the PCI recommendations | This page has {n} deviations from the PCI recommendations",
     "lockoutDisableConfirm": "Setting lockout attempts to 0 disables account lockout; brute-force protection falls back to audit alerts only. Disable it?",
     "lockoutDisableTitle": "Disable Account Lockout",
     "disable": "Disable",
@@ -220,9 +219,7 @@
     "retentionShrinkTitle": "Shorter Retention Will Delete Old Data",
     "confirmApply": "Apply",
     "saved": "Security policies saved",
-    "restSection": "Others",
-    "epaymentApplied": "E-payment baseline values applied (stricter of the two baselines). Review and save.",
-    "epaymentAllCompliant": "All items on this page already meet the e-payment baseline"
+    "restSection": "Others"
   },
   "enum": {
     "role": {
@@ -313,6 +310,9 @@
       "role": "Role",
       "instance_guard": "Instance Guard",
       "offsite_storage": "Offsite Storage",
+      "policy_group": "Policy Group",
+      "compliance_map": "Compliance Map",
+      "schedule": "Schedule Preview",
       "unclassified": "Unclassified",
       "credential": "Credential"
     },
@@ -564,7 +564,7 @@
     "section": {
       "login_lock": {
         "title": "Sign-In and Lockout",
-        "hint": "Account lockout after consecutive failed sign-ins (PCI 8.3.4)"
+        "hint": "Account lockout after consecutive failed sign-ins"
       },
       "login_banner": {
         "title": "Login Notice",
@@ -572,7 +572,7 @@
       },
       "password": {
         "title": "Password Policy",
-        "hint": "Password strength, history, and forced change (PCI 8.3.5–8.3.7)"
+        "hint": "Password strength, history, and forced change"
       },
       "asset_secret": {
         "title": "Asset account credentials",
@@ -580,23 +580,23 @@
       },
       "mfa": {
         "title": "MFA",
-        "hint": "Multi-factor enforcement scope (PCI 8.4.2)"
+        "hint": "Multi-factor enforcement scope"
       },
       "session_account": {
         "title": "Sessions and Accounts",
-        "hint": "Idle timeout, session lifetime, and inactive-account disabling (PCI 8.2.6/8.2.8)"
+        "hint": "Idle timeout, session lifetime, and inactive-account disabling"
       },
       "log_retention": {
         "title": "Log Retention and Review",
-        "hint": "Audit data retention and daily review (PCI 10.4.1/10.5.1). Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the four data retention keys (0 means forever): the proof must outlive the data it proves, and violating batches are rejected in full."
+        "hint": "Audit data retention and daily review. Since the checkpoint chain was enabled, audit logs are purged by checkpoint interval: if any row in an interval has not expired, the whole interval is retained, so a few already-expired rows may remain after the first purge (expected behavior, not a defect). Checkpoint retention defaults to 0 (forever) and must not be shorter than the longest of the four data retention keys (0 means forever): the proof must outlive the data it proves, and violating batches are rejected in full."
       },
       "access_policy": {
         "title": "Connection Policy",
-        "hint": "The global default decides whether assets without an individual policy require a request before connecting (PCI Req 7.2 least privilege); each asset can override it in the table below or in the asset form. Administrators are exempt from requests (each connection leaves an audit marker)"
+        "hint": "The global default decides whether assets without an individual policy require a request before connecting (least privilege); each asset can override it in the table below or in the asset form. Administrators are exempt from requests (each connection leaves an audit marker)"
       },
       "request_params": {
         "title": "Access Request Parameters",
-        "hint": "Request duration cap and pending timeout (PCI Req 7.2). Minimum approvals is an internal-control hardening option (dual-review convention, not a PCI requirement): at 2 or more, a request only takes effect after distinct approvers approve it up to the threshold; if the threshold exceeds an asset's available approvers, the request needs admin backfill or times out"
+        "hint": "Request duration cap and pending timeout. Minimum approvals is an internal-control hardening option (dual-review convention): at 2 or more, a request only takes effect after distinct approvers approve it up to the threshold; if the threshold exceeds an asset's available approvers, the request needs admin backfill or times out"
       },
       "break_glass": {
         "title": "Break-Glass and Revocation",
@@ -604,11 +604,11 @@
       },
       "transport": {
         "title": "Transmission Security Policy",
-        "hint": "Enforcement ladder for six transport channels (PCI Req 4): Unrestricted = no impact / Warn and Record = connection consent or archive confirmation goes to the audit log / Strictly Reject = asset transmission settings must be completed first (see the channel inventory precheck below for affected counts); the LDAP fix is on the Directory (LDAP) page (change the directory address to ldaps://)"
+        "hint": "Enforcement ladder for six transport channels: Unrestricted = no impact / Warn and Record = connection consent or archive confirmation goes to the audit log / Strictly Reject = asset transmission settings must be completed first (see the channel inventory precheck below for affected counts); the LDAP fix is on the Directory (LDAP) page (change the directory address to ldaps://)"
       },
       "key": {
         "title": "Key Management Policy",
-        "hint": "Key rotation reminder (cryptoperiod, in the spirit of PCI 3.7.4); reminder only, triggers no action"
+        "hint": "Key rotation reminder (cryptoperiod); reminder only, triggers no action"
       },
       "data_transfer": {
         "title": "Data Transfer Control",
@@ -1072,6 +1072,7 @@
     "requestBody": "Request Body",
     "changeDetails": "Change Details",
     "errorMsg": "Error Message",
+    "noticeMsg": "Notice",
     "emptyValue": "(none)",
     "integrityTitle": "Audit Log Integrity Verification",
     "integrityInfo": "Recomputes the integrity marker of every audit log row in range and compares it with the stored value, detecting after-the-fact tampering.",
@@ -1086,7 +1087,9 @@
     "integrityMismatchAlert": "Found {n} integrity mismatches (log IDs: {ids}). Investigate possible tampering immediately.",
     "integrityAllPassed": "All checked rows passed integrity verification.",
     "integrityLegacyNote": "{n} legacy rows: logs written before the integrity feature launched have no integrity marker and are excluded from comparison.",
-    "integrityRangeRequired": "Select a verification date range"
+    "integrityRangeRequired": "Select a verification date range",
+    "filterKeyNotice": "Showing only changes to the security setting \"{setting}\"",
+    "filterKeyClear": "Clear filter"
   },
   "commands": {
     "headerDesc": "Search command and statement records across connections. Command-line entries are reconstructed from keystrokes and recordings are authoritative; query console statements are recorded when submitted.",
@@ -1568,7 +1571,7 @@
   },
   "syslogCard": {
     "title": "syslog Log Forwarding",
-    "hint": "Audit logs are forwarded to an external SIEM in real time (PCI 10.3.3, RFC 5424); the database remains the authoritative store",
+    "hint": "Audit logs are forwarded to an external SIEM in real time (RFC 5424); the database remains the authoritative store",
     "dropped": "{n} entries dropped (buffer overflow)",
     "enableLabel": "Enable Forwarding",
     "enableAria": "Enable syslog forwarding",
@@ -2098,12 +2101,7 @@
     "scopeAssigned": "Approver scope assigned"
   },
   "securityPolicies": {
-    "description": "Security thresholds for account authentication, connections, and log retention; each item shows its PCI DSS recommended value. Access control, transmission security, and key policies have moved to their own management pages (see the by-domain list in the deviation summary)",
-    "systemCompliant": "All system policies meet the PCI DSS recommended values",
-    "systemDeviation": "{n} system-wide deviation from the PCI recommendations | {n} system-wide deviations from the PCI recommendations",
-    "applyPage": "Apply recommended values for this page",
-    "currentPageCount": "This page {n} items",
-    "itemCount": "{n} items",
+    "description": "Security thresholds for sign-in, sessions and log retention. Access control, transport security, keys and offsite storage each have their own page.",
     "sessionCapRiskAlert": "A protocol idle timeout is set, but \"Protocol max session length\" is 0 (no cap). Monitoring-type long connections (tail -f, top, log streaming) keep receiving server output and are not interrupted by the idle timeout; setting a max session length as an absolute cap is recommended.",
     "webSessionCapRiskAlert": "\"Web session max hours\" is 0, which means web sessions have no upper time bound. When user roles come from group membership in an external identity source (a directory or an OIDC provider), removing membership there takes effect only at that user's next login. Do not set this to 0 when you rely on revocation from the source side.",
     "insecureTransportTitle": "This site is served over http, so users have to sign in again every 15 minutes",
@@ -2333,8 +2331,8 @@
     "records": "Records",
     "emptyTitle": "No secret rotation plans yet",
     "emptyHint": "Create a plan to rotate asset passwords periodically",
-    "scheduleCron": "Schedule (cron)",
-    "cronPlaceholder": "e.g. 0 3 * * 0 (leave empty for manual trigger only)",
+    "scheduleCron": "Schedule",
+    "cronPlaceholder": "Five-field cron, e.g. 0 3 * * 0 (minute hour day month weekday)",
     "recordsTitle": "Execution Records: {name}",
     "colMessage": "Message",
     "nameRequired": "Please enter a plan name",
@@ -2722,16 +2720,6 @@
     "updated": "Asset connection policy updated",
     "cleared": "Override cleared (following global)"
   },
-  "pciBanner": {
-    "okDefault": "This page's policies meet the PCI DSS recommended values",
-    "applyPage": "Apply Page Recommendations",
-    "unsaved": "Unsaved changes",
-    "overviewLink": "{n} system-wide deviation · Security Policy overview | {n} system-wide deviations · Security Policy overview",
-    "revert": "Revert",
-    "epaymentOk": "Meets e-payment baseline",
-    "epaymentDeviation": "{n} item(s) below e-payment baseline",
-    "applyEPayment": "Apply e-payment baseline"
-  },
   "instanceGuard": {
     "ariaLabel": "Single-instance guard warning",
     "headline": {
@@ -2821,13 +2809,12 @@
     }
   },
   "policyKeySections": {
-    "pciRecommend": "PCI recommends: {value}",
-    "noPciValue": "No PCI recommendation",
-    "nonCompliant": "Doesn't meet PCI recommendation",
-    "epaymentRecommend": "E-payment baseline: {value}",
-    "nonCompliantEPayment": "Below e-payment baseline",
-    "pciReference": "Reference value",
-    "pciReferenceNote": "Requirement {requirement} has the frequency determined by the entity’s targeted risk analysis and sets no fixed number of days; this figure is the product’s default starting point, borrowed from the 8.3.9 threshold for user accounts."
+    "deviation": "{n} deviation | {n} deviations",
+    "noDeviation": "No deviations",
+    "draftTag": "Draft",
+    "draftPending": "Checking",
+    "draftFailed": "Check failed",
+    "deviationMark": "Does not meet the requirements of the policy groups in effect"
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "Too many attempts; the account is temporarily locked. Please try again later or contact an administrator",
@@ -3009,6 +2996,7 @@
     "INTERNAL_CHECKPOINT_VERIFY": "Checkpoint verification failed",
     "INTERNAL_CLIPBOARD_QUERY": "Failed to query clipboard events",
     "INTERNAL_COMMAND_ALERT_QUERY": "Failed to query alert records",
+    "INTERNAL_COMPLIANCE_SNAPSHOT": "Unable to retrieve the compliance assessment",
     "INTERNAL_CONNECT_TOKEN_ISSUE": "Failed to issue the connection token",
     "INTERNAL_CONSENT_RECORD": "Failed to write the consent record",
     "INTERNAL_CREDENTIAL_BIND": "Failed to attach the credential",
@@ -3073,6 +3061,8 @@
     "INTERNAL_OIDC_PROVIDER_LIST": "Failed to load the OIDC provider list",
     "INTERNAL_OIDC_PROVIDER_SAVE": "Failed to save the OIDC provider configuration",
     "INTERNAL_PERMISSION_CHECK": "Permission check failed",
+    "INTERNAL_POLICY_GROUP_READ": "Failed to load the policy group",
+    "INTERNAL_POLICY_GROUP_WRITE": "Failed to save the policy group",
     "INTERNAL_POLICY_WRITE": "Failed to write policy",
     "INTERNAL_RECORDING_CONVERT": "Failed to convert recording format",
     "INTERNAL_RECORDING_DELETE": "Failed to delete recording file",
@@ -3184,6 +3174,9 @@
     "NOTFOUND_USER_GROUP": "User group does not exist",
     "OIDC_DISCOVERY_PREVIEW_FAILED": "Could not fetch the discovery document from that issuer. Check the address and network reachability",
     "OIDC_PROVIDER_HAS_MAPPINGS": "This provider still has group mapping rules. Remove the rules before deleting the provider",
+    "POLICY_GROUP_BUILTIN_READONLY": "Built-in policy group contents cannot be edited; you may only toggle it on or off and add your own notes",
+    "POLICY_GROUP_DUPLICATE_CODE": "That policy group code is already in use; choose another one",
+    "POLICY_GROUP_NOT_FOUND": "The specified policy group was not found",
     "RULE_ACCESS_APPROVAL_REQUIRED": "The access policy for this asset requires an approved request before connecting",
     "RULE_ACCESS_REASON_REQUIRED": "The access policy for this asset requires a stated reason before connecting",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "Approved values cannot exceed the requested ones (duration may only be shortened, start time may only be deferred)",
@@ -3337,6 +3330,7 @@
     "VALIDATION_ALERT_REVIEW_REQUEST": "Invalid request: disposition is required (benign/escalated)",
     "VALIDATION_ALERT_RULE_PATTERN": "Invalid regex pattern",
     "VALIDATION_ALERT_SEVERITY": "Severity must be high/medium/low",
+    "VALIDATION_APPLY_PREVIEW_MODE": "Invalid apply mode: pick an active policy group, or switch to satisfying every policy at once",
     "VALIDATION_APPROVER_SCOPE_ACTOR": "Exactly one approver is required (either approver_id or approver_group_id)",
     "VALIDATION_APPROVER_SCOPE_TARGET": "Exactly one approver scope target is required (one of asset_id / asset_group_id / subject_user_id / subject_group_id)",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy accepts only an empty value (follow the global default), open, reason or approval",
@@ -3472,6 +3466,14 @@
     "VALIDATION_PLAN_TARGET_CREDENTIAL_REQUIRED": "A credential-targeted plan must specify a credential",
     "VALIDATION_PLAN_TARGET_KIND": "The rotation target kind must be account or credential",
     "VALIDATION_POLICY_EMPTY": "No policy entries provided",
+    "VALIDATION_POLICY_GROUP_CLAUSE_KIND": "The clause type does not match the settings requirements you entered",
+    "VALIDATION_POLICY_GROUP_CLAUSE_NO": "The clause number is required and must stay within the length limit",
+    "VALIDATION_POLICY_GROUP_CODE": "Policy set code and name are required and must stay within the length limit",
+    "VALIDATION_POLICY_GROUP_COMPARATOR": "The comparison method does not fit the type of this setting",
+    "VALIDATION_POLICY_GROUP_DUPLICATE_KEY": "Another clause in this policy group already states a requirement for the same setting",
+    "VALIDATION_POLICY_GROUP_EXPECTED_VALUE": "The required value falls outside the valid range for this setting",
+    "VALIDATION_POLICY_GROUP_KEY_TYPE": "A setting of this type cannot be the target of a clause requirement",
+    "VALIDATION_POLICY_GROUP_UNKNOWN_KEY": "The requirement points to a security setting that does not exist",
     "VALIDATION_POLICY_INVALID_VALUE": "Invalid security policy value: {key}",
     "VALIDATION_POLICY_RETENTION_CROSS_KEY": "Checkpoint retention must not be shorter than data retention: {key}",
     "VALIDATION_POLICY_UNKNOWN_KEY": "Unknown security policy key: {key}",
@@ -3488,6 +3490,8 @@
     "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "Retention days must be between 1 and 3650",
     "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "Schedule name cannot be empty",
     "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "Schedule name exceeds the 128-character limit",
+    "VALIDATION_SCHEDULE_BAD_CRON": "The schedule expression is malformed; make sure it has five fields",
+    "VALIDATION_SCHEDULE_RUN_COUNT": "The number of previewed runs must be between 1 and 10",
     "VALIDATION_SFTP_FILE_MISSING": "Missing upload file",
     "VALIDATION_SFTP_INVALID_PATH": "The remote path must be an absolute path and must not contain \"..\"",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "Missing path",
@@ -3586,6 +3590,13 @@
     "records": "entries",
     "records_per_hour": "entries/hour",
     "seconds": "seconds"
+  },
+  "policyZero": {
+    "retention": "kept forever",
+    "localRetention": "no early cleanup",
+    "keyReminder": "no reminder",
+    "consentTtl": "never expires",
+    "disabled": "this limit is off"
   },
   "keyEnvName": {
     "audit_export": "Export Signing Key (Ed25519)",
@@ -4698,7 +4709,7 @@
       "result": "Result",
       "reason": "Reason",
       "scheduleName": "Schedule",
-      "cron": "Cron",
+      "cron": "Schedule",
       "periodAnchor": "Start of the next report period",
       "retention": "Retention",
       "language": "Language"
@@ -4737,8 +4748,8 @@
     "scheduleCreateTitle": "Add report schedule",
     "scheduleEditTitle": "Edit report schedule",
     "scheduleName": "Schedule name",
-    "cron": "Cron",
-    "cronPlaceholder": "Five-field cron, e.g. 0 1 1 * * (01:00 on the first of each month)",
+    "cron": "Schedule",
+    "cronPlaceholder": "Five-field cron, e.g. 0 1 1 * * (minute hour day month weekday)",
     "retentionDays": "Artifact retention (days)",
     "retentionHint": "1 to 3650 days. Artifacts are removed once they expire.",
     "retentionDaysValue": "{days} days",
@@ -5034,5 +5045,597 @@
       "foreign": "Previous storage settings",
       "retentionNote": "The remote copy is kept under the storage retention policy; the product does not delete it"
     }
+  },
+  "scheduleFrequency": {
+    "label": "Frequency",
+    "mode": {
+      "none": "No schedule (manual only)",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "yearly": "Yearly",
+      "custom": "Custom"
+    },
+    "noneHint": "Never runs on its own; an administrator triggers it when needed.",
+    "timeLabel": "Time",
+    "weekdayLabel": "Day of week",
+    "dayLabel": "Day of month",
+    "dayValue": "Day {day}",
+    "quarterStartLabel": "Months",
+    "quarterDayLabel": "Day of month",
+    "monthLabel": "Month",
+    "monthValue": "Month {month}",
+    "quarterMonths": "{m1}, {m2}, {m3}, {m4}",
+    "customLabel": "Custom",
+    "customPlaceholder": "Five-field cron, e.g. 0 1 1 * *",
+    "customHint": "Minute, hour, day of month, month and day of week, separated by spaces.",
+    "error": {
+      "empty": "Enter a schedule.",
+      "fieldCount": "Five fields are required (minute, hour, day of month, month, day of week); {count} given.",
+      "fieldSyntax": "Field {index} ({field}) is not a form we can read."
+    },
+    "previewTitle": "Next runs",
+    "previewLoading": "Calculating",
+    "previewNone": "No automatic runs.",
+    "previewInvalid": "Fix the schedule to see the next runs.",
+    "previewUnavailable": "Next run times are unavailable right now",
+    "previewTimezone": "Time zone {zone}",
+    "summary": {
+      "daily": "Daily at {time}",
+      "weekly": "Every {weekday} at {time}",
+      "monthly": "Monthly on day {day} at {time}",
+      "quarterly": "Quarterly on day {day} at {time}",
+      "yearly": "Yearly on month {month} day {day} at {time}"
+    },
+    "weekday": {
+      "d0": "Sunday",
+      "d1": "Monday",
+      "d2": "Tuesday",
+      "d3": "Wednesday",
+      "d4": "Thursday",
+      "d5": "Friday",
+      "d6": "Saturday"
+    },
+    "nextRun": "Next {time}",
+    "nextRunUnknown": "Next run time unavailable"
+  },
+  "policyStrip": {
+    "groupsLabel": "Policy groups in effect",
+    "noGroups": "No policy group is enabled",
+    "manage": "Manage policy groups",
+    "map": "Compliance map",
+    "apply": "Apply recommended values",
+    "applyGroup": "Meet {group}",
+    "applyStrictest": "Meet every policy at once",
+    "unsaved": "Unsaved changes",
+    "revert": "Revert"
+  },
+  "policyDrawer": {
+    "info": "View details",
+    "requirements": "What the policy groups require",
+    "none": "No policy group in effect covers this setting.",
+    "compliant": "{group} requires {expectation}. It is {current} now, which meets that.",
+    "deviating": "{group} requires {expectation}. It is {current} now, which does not meet that.",
+    "needsReviewUnconfirmed": "{group} offers {expected} as a reference value rather than a fixed requirement, and your organisation has not confirmed it yet.",
+    "needsReviewConfirmed": "{group} offers {expected} as a reference value rather than a fixed requirement; confirmed by {who} on {time}.",
+    "auditReview": "{group} has a clause covering this setting but names no value. It is {current} now, for an auditor to judge.",
+    "clauseNo": "Clause {no}",
+    "expectMin": "at least {value}",
+    "expectMax": "at most {value}",
+    "expectEquals": "{value}",
+    "draftNote": "Judged against values you have not saved yet",
+    "lastChange": "Last change",
+    "lastChangeBy": "{time} by {who}",
+    "lastChangeNone": "Nobody has changed this; it is still the factory default.",
+    "auditLink": "View the change record",
+    "effect": "When it takes effect",
+    "more": "More details"
+  },
+  "applyPreview": {
+    "title": "Apply recommended values: {page}",
+    "scopeNote": "Only the settings on the {page} page will change.",
+    "basisGroup": "Based on what {group} requires.",
+    "basisStrictest": "Meets what every policy group in effect requires.",
+    "colName": "Setting",
+    "colCurrent": "Now",
+    "colProposed": "Change to",
+    "colSource": "Source",
+    "mfaAllWarning": "After saving, every user must pass multi-factor authentication at their next sign-in. Confirm that administrators have finished enrolling first, or they will not be able to sign in.",
+    "empty": "Nothing to change.",
+    "emptyConflicts": "Nothing can be changed automatically; decide on the conflicting rules below yourself.",
+    "conflictTitle": "Two rules disagree on these settings, so they are left as they are",
+    "conflictBody": "{name}: {reasons}. Decide which one to follow and set it by hand.",
+    "conflictReason": "{group} requires {expectation}",
+    "compliant": "{n} settings already comply",
+    "pending": "{n} settings await judgement or confirmation",
+    "unmapped": "Not covered by any policy group: {n}",
+    "notSaved": "Confirming only fills the form; press Save to make it take effect.",
+    "confirm": "Fill the form",
+    "filled": "Values filled in. Press Save to make them take effect.",
+    "staleMessage": "The settings changed while you were reading the preview. Check the new preview before saving.",
+    "recheckFailed": "The preview could not be re-checked, so nothing was saved. Press Save again to retry."
+  },
+  "verdictReason": {
+    "meets_expectation": "Meets the requirement",
+    "below_minimum": "Below the required minimum",
+    "above_maximum": "Above the required maximum",
+    "value_mismatch": "Not the required value",
+    "disabled_by_zero": "0 turns this off, which does not meet the requirement",
+    "value_not_comparable": "The current value cannot be compared with the requirement",
+    "reference_value_unconfirmed": "This group gives a reference value; your organisation has not confirmed it",
+    "reference_value_confirmed": "This group gives a reference value; your organisation has confirmed it",
+    "expectation_unspecified": "Required but no value is named; an auditor judges it",
+    "no_control": "This group does not cover this setting"
+  },
+  "policyEffect": {
+    "lockout_max_attempts": "Applied at every failed sign-in; accounts already locked are unaffected. 0 means no lockout.",
+    "lockout_duration_minutes": "The unlock time is fixed the moment an account is locked, so accounts already locked keep their original unlock time.",
+    "password_min_length": "Enforced when a password is changed; existing passwords are checked at the next sign-in and must be changed on the spot if they fall short.",
+    "password_require_alnum": "Enforced when a password is changed; existing passwords are checked at the next sign-in and must be changed on the spot if they fall short.",
+    "password_history_count": "Checked only at the next password change; existing history is not removed retroactively. 0 means reuse is not checked.",
+    "password_max_age_days": "Evaluated at every sign-in; anyone whose password is past its age is asked to change it at the next sign-in. 0 means passwords never expire.",
+    "asset_secret_max_age_days": "Used only as the yardstick when the rotation evidence report is produced; it never changes a password. 0 means no age is set.",
+    "force_change_on_reset": "Evaluated the moment an administrator resets a password; accounts reset earlier are unaffected.",
+    "mfa_required": "Takes effect at the next sign-in; people already signed in are unaffected.",
+    "web_idle_minutes": "Applies to people already signed in as well, who are signed out at the next token renewal at the latest. 0 means no idle timeout.",
+    "web_max_session_hours": "Applies only from the next sign-in; people already signed in keep their original limit. 0 means no limit.",
+    "refresh_cookie_secure": "Applied at the next sign-in or when the sign-in state is renewed, replacing what is already stored in the browser.",
+    "session_idle_minutes": "Decided when a connection is established; connections already open are unaffected. 0 means no idle timeout.",
+    "session_max_minutes": "Decided when a connection is established; connections already open are unaffected. 0 means no limit.",
+    "inactive_disable_days": "Accounts are disabled when the nightly job runs. 0 means no account is disabled automatically.",
+    "retention_audit_log_days": "Applied when the nightly cleanup runs; data already deleted cannot be recovered. 0 means keep forever.",
+    "retention_session_command_days": "Applied when the nightly cleanup runs; data already deleted cannot be recovered. 0 means keep forever.",
+    "retention_alert_days": "Applied when the nightly cleanup runs; data already deleted cannot be recovered. 0 means keep forever.",
+    "retention_recording_days": "Applied when the nightly cleanup runs; recordings already deleted cannot be recovered. 0 means keep forever.",
+    "offsite_local_retention_days": "The nightly cleanup removes only the local copy while the offsite copy stays; the setting does nothing while offsite storage is off. 0 means no early cleanup.",
+    "retention_checkpoint_days": "Applied when the nightly cleanup runs; a value shorter than any data retention period is refused at save time. 0 means keep forever.",
+    "audit_checkpoint_interval_seconds": "The next scheduled check uses the new interval; ranges that already have a proof are not recalculated.",
+    "audit_checkpoint_row_threshold": "The next scheduled check uses the new threshold; ranges that already have a proof are not recalculated.",
+    "audit_chain_recent_verify_days": "Applies from the next verification round; the number of days actually used is the smaller of this value and the operation log retention.",
+    "audit_chain_verify_interval_seconds": "The next scheduled check uses the new interval, and it runs only once it is due.",
+    "audit_chain_verify_rows_per_hour": "Applies from the next round; the round currently running finishes at the old rate.",
+    "retention_max_per_run": "Applies at the next cleanup run and only affects how much that run deletes.",
+    "daily_review_enabled": "Takes effect immediately; once it is off, no sign-off is asked for from that day on.",
+    "failure_alert_enabled": "Takes effect immediately; notices missed while it was off are not sent afterwards.",
+    "recording_failclose_enabled": "Checked every time a connection is established; connections already open are unaffected.",
+    "key_cryptoperiod_reminder_days": "Reloading the key inventory shows the new marks; it only marks keys and never rotates them or sends a notice. 0 means no reminder.",
+    "key_rotation_max_per_run": "Applies the next time a key rotation runs and only limits how much that run processes.",
+    "k8s_list_timeout_seconds": "Takes effect at the next listing request; no restart is needed.",
+    "transport_rdp_level": "Checked when a new connection is made; connections already established are unaffected.",
+    "transport_vnc_level": "Checked when a new connection is made; connections already established are unaffected.",
+    "transport_db_level": "Checked when a new connection is made; connections already established are unaffected.",
+    "transport_ldap_level": "Takes effect at the next sign-in with a directory account; local accounts are unaffected.",
+    "transport_syslog_level": "Checked only when the log forwarding settings are saved; forwarding already running is not stopped retroactively.",
+    "transport_notify_level": "Checked only when a notification channel is saved; channels already set up keep sending.",
+    "transport_consent_ttl_days": "Later connections are judged against the new period; consents older than the new limit must be confirmed again. 0 means consents never expire.",
+    "access_policy_default": "Takes effect immediately for new connections; approvals still within their valid time keep working and open connections are not dropped.",
+    "access_request_max_duration_minutes": "Checked only when a new request is submitted; requests already submitted and access already approved stay as they are.",
+    "access_request_pending_timeout_hours": "The expiry is worked out when a request is submitted, so requests already waiting keep their original expiry.",
+    "access_request_min_approvals": "Takes effect immediately, including for requests already waiting for approval.",
+    "break_glass_enabled": "Takes effect immediately; turning it off does not revoke emergency access already issued.",
+    "break_glass_duration_minutes": "Fixed the moment emergency access is started; access already issued is unchanged.",
+    "break_glass_review_timeout_hours": "Takes effect immediately and also applies to earlier records still waiting for review.",
+    "access_revoke_disconnect": "Applies from the next time access is revoked; connections left over from earlier revocations are not dropped retroactively.",
+    "clipboard_send_enabled": "Decided when a connection is established; connections already open have to be reconnected before the change applies.",
+    "clipboard_recv_enabled": "Decided when a connection is established; connections already open have to be reconnected before the change applies.",
+    "file_upload_enabled": "Takes effect immediately for file management and container operations; RDP and VNC sessions have to be reconnected.",
+    "file_download_enabled": "Takes effect immediately for file management and container operations; RDP and VNC sessions have to be reconnected.",
+    "file_delete_enabled": "Takes effect immediately; no reconnection is needed.",
+    "login_banner_title": "The next person to open the sign-in page sees the new text.",
+    "login_banner_body": "The next person to open the sign-in page sees the new text; leaving the body empty hides the whole notice."
+  },
+  "policyPlain": {
+    "refresh_cookie_secure": "Whether sign-in is kept only over encrypted connections.",
+    "retention_checkpoint_days": "How many days the proof used to check records is kept.",
+    "audit_checkpoint_interval_seconds": "How often a proof is created for the records.",
+    "audit_checkpoint_row_threshold": "How many new records trigger an earlier proof.",
+    "audit_chain_recent_verify_days": "How many days of records are re-checked after a new proof.",
+    "audit_chain_verify_interval_seconds": "How often a round of checking past records starts.",
+    "audit_chain_verify_rows_per_hour": "How fast older records are checked, in records per hour.",
+    "daily_review_enabled": "Whether someone must confirm each day that the records were read.",
+    "failure_alert_enabled": "Whether to send notice when audit recording goes wrong.",
+    "key_rotation_max_per_run": "How many items are re-encrypted at most per key change.",
+    "transport_rdp_level": "What to do when an RDP connection is not secure enough.",
+    "transport_vnc_level": "What to do when a VNC connection is not secure enough.",
+    "transport_db_level": "What to do when a database connection is not secure enough.",
+    "transport_ldap_level": "What to do when a directory connection is not secure enough.",
+    "transport_syslog_level": "What to do when log forwarding is not secure enough.",
+    "transport_notify_level": "What to do when outgoing notices are not secure enough.",
+    "transport_consent_ttl_days": "How many days a consent is remembered while the risk is unchanged.",
+    "access_policy_default": "Whether connecting needs a reason or someone's approval first.",
+    "break_glass_enabled": "When on, urgent cases can connect first and be reviewed after.",
+    "break_glass_duration_minutes": "How long emergency access can be used.",
+    "break_glass_review_timeout_hours": "How long an emergency connection can go unreviewed before an alert."
+  },
+  "policyClause": {
+    "pci_dss_4_0_1": {
+      "c8_3_4": {
+        "title": "Account lockout mechanism"
+      },
+      "c8_3_6": {
+        "title": "Password complexity"
+      },
+      "c8_3_7": {
+        "title": "Password history restriction"
+      },
+      "c8_3_9": {
+        "title": "Password expiry"
+      },
+      "c8_6_3": {
+        "title": "Asset credential rotation"
+      },
+      "c8_3_5": {
+        "title": "Forced change after reset"
+      },
+      "c8_4_2": {
+        "title": "Multi-factor authentication scope"
+      },
+      "c8_2_8": {
+        "title": "Session idle timeout"
+      },
+      "c8_2_6": {
+        "title": "Inactive account disabling"
+      },
+      "c10_5_1": {
+        "title": "Audit data retention"
+      },
+      "c10_4_1": {
+        "title": "Daily review sign-off"
+      },
+      "c10_7_2": {
+        "title": "Audit failure alerting"
+      },
+      "c10_2": {
+        "title": "Block sessions when recording fails"
+      },
+      "c3_7_4": {
+        "title": "Key rotation reminder"
+      },
+      "c4_2_1": {
+        "title": "Transmission encryption enforcement level"
+      },
+      "c7_2": {
+        "title": "Access control and break-glass"
+      }
+    },
+    "epayment_baseline": {
+      "c15_1": {
+        "title": "Least-privilege account provisioning",
+        "summary": "Grant privileges according to least privilege and need-to-know"
+      },
+      "c15_2": {
+        "title": "Periodic privilege review and revocation on departure",
+        "summary": "Review the appropriateness of accounts and privileges at least annually; remove privileges promptly when someone leaves or changes roles"
+      },
+      "c15_3_1": {
+        "title": "Separate privileged accounts",
+        "summary": "Keep privileged accounts separate from day-to-day operations accounts and maintain an inventory of them"
+      },
+      "c15_3_2": {
+        "title": "Privileged account management system",
+        "summary": "Use a privileged account management system"
+      },
+      "c15_3_3": {
+        "title": "Approval before highest-privilege use, with periodic review",
+        "summary": "Use of the highest-privilege accounts requires prior approval from the responsible manager, keeps an audit trail, and is reviewed periodically"
+      },
+      "c15_3_4": {
+        "title": "Two-factor authentication for internet-facing hosts",
+        "summary": "Servers providing internet services and directory service hosts must use two-factor authentication"
+      },
+      "c15_4": {
+        "title": "Restrict source machines and network locations",
+        "summary": "Where necessary, restrict the machines and network locations that may be used; per-account allowed source ranges are configured by the organization"
+      },
+      "c15_6": {
+        "title": "Record operations after sign-in",
+        "summary": "Keep records of human operations when signing in to the operating system to make system changes or access databases"
+      },
+      "c15_7": {
+        "title": "One account per person",
+        "summary": "Manage accounts one per person so that individuals can be told apart"
+      },
+      "c15_9": {
+        "title": "Control database utilities",
+        "summary": "Utilities capable of making changes must be inventoried and their use restricted"
+      },
+      "c4_7_1": {
+        "title": "Passwords of at least six characters",
+        "summary": "Static passwords should be no shorter than six characters"
+      },
+      "c4_7_2": {
+        "title": "Mix letters and digits in passwords",
+        "summary": "A mix of letters and digits is recommended"
+      },
+      "c4_7_5": {
+        "title": "Lock out after five failures",
+        "summary": "After five consecutive failures, the transaction must not be allowed to continue"
+      },
+      "c4_7_6": {
+        "title": "New password must differ from the old one",
+        "summary": "A changed static password must not be the same as the previous one"
+      },
+      "c4_7_7": {
+        "title": "Force a password change at first sign-in",
+        "summary": "System-generated default passwords must be changed at first sign-in"
+      },
+      "c4_7_8": {
+        "title": "Handle passwords unchanged for a year",
+        "summary": "Static passwords unchanged for over a year must be handled appropriately; the handling is not limited to forced expiry and is set by the organization's own procedures"
+      },
+      "c15_8": {
+        "title": "Change account passwords every three months",
+        "summary": "Accounts used by people must be changed at least every three months; accounts used for system connections must be changed at least every three months or covered by other compensating controls"
+      },
+      "c17_2": {
+        "title": "Store passwords irreversibly",
+        "summary": "Static passwords must undergo an irreversible transformation before storage"
+      },
+      "c21_8_3": {
+        "title": "Two-factor verification for remote changes",
+        "summary": "Each sign-in uses two or more security factors and carries management authorization; the corresponding setting requirements appear under 15-3(三) and 15-3(四)"
+      },
+      "c16_3": {
+        "title": "Grant privileges by business need",
+        "summary": "Set personnel privileges for access to personal data according to what the work actually requires"
+      },
+      "c17_4": {
+        "title": "Limit key access to necessary staff",
+        "summary": "Reduce the number of places keys are stored and allow only the necessary administrators to access them"
+      },
+      "c17_5": {
+        "title": "Replace keys nearing expiry",
+        "summary": "Replace keys when their usable period is about to end or a compromise is suspected; the reminder lead time is set by the organization to match its own key lifetimes"
+      },
+      "c21_8_1": {
+        "title": "Annual review of remote-management requests",
+        "summary": "Review the purpose, period, time window, network range and devices declared in remote-management requests"
+      },
+      "c21_8_4": {
+        "title": "Restrict network ranges and devices",
+        "summary": "Define which remote devices may connect; per-account allowed source ranges are configured by the organization"
+      },
+      "c21_8_2": {
+        "title": "Grant authorization matching the request",
+        "summary": "Establish an authorization mechanism that grants only what the request asked for"
+      },
+      "c24_1": {
+        "title": "Central log management, alerting and two-year retention",
+        "summary": "Logs and audit trails must be managed centrally with suitable alert thresholds, and raw logs and audit trails must be retained for at least two years"
+      },
+      "c19_4": {
+        "title": "Retain records for two years",
+        "summary": "Retained records must ensure digital evidence is collected, protected and properly managed, and must be kept for at least two years; the retention-day setting requirements appear under 24-1"
+      },
+      "c24_3": {
+        "title": "Preserve evidence during incident handling",
+        "summary": "Take care that trail records and preserved evidence stay valid throughout incident handling"
+      },
+      "c16_5": {
+        "title": "Audit trail for personal-data use",
+        "summary": "Build and retain an audit trail of personal data use"
+      },
+      "c21_8_5": {
+        "title": "Periodic management review",
+        "summary": "Establish monitoring, retain operation records, and have management review them periodically; the sign-off setting requirement appears under 15-3(三)"
+      },
+      "c19_7": {
+        "title": "Synchronize system clocks",
+        "summary": "System clocks must be based on standard time and all system clocks must be synchronized"
+      },
+      "c21_6": {
+        "title": "Encrypt remote management and keep passcodes out of tools",
+        "summary": "Remote connections used for system administration must use a sufficiently strong encrypted protocol, and passcodes must not be stored inside the tool software"
+      },
+      "c17_1_2": {
+        "title": "Encrypt outbound transmission",
+        "summary": "Sensitive data transmitted over the internet must be protected by a message confidentiality mechanism"
+      },
+      "c6_1": {
+        "title": "Minimum encryption strength",
+        "summary": "Symmetric and asymmetric key lengths must meet or exceed the strengths listed in the baseline"
+      },
+      "c15_5": {
+        "title": "Mask the screen after ten idle minutes",
+        "summary": "When a person has not operated the computer for more than ten minutes, restrict the display of personal data on screen"
+      },
+      "c21_8_7_3": {
+        "title": "Lock or disconnect when idle",
+        "summary": "Configure virtual desktops to lock the screen or drop the connection after a period of inactivity; the clause gives no length, so the organization sets it"
+      },
+      "c21_8_7_1": {
+        "title": "No clipboard sharing between the two ends",
+        "summary": "Prevent data from being copied between the two ends through the clipboard"
+      },
+      "c16_6": {
+        "title": "Control outbound file transfers",
+        "summary": "Establish data-leak prevention and control the transfer of personal data files"
+      },
+      "c24_2": {
+        "title": "Report and handle incidents",
+        "summary": "Establish mechanisms to assess, report, handle, respond to and follow up on information security incidents"
+      },
+      "c20_6": {
+        "title": "Respond immediately to high risk",
+        "summary": "Stay aware of security events and immediately investigate and respond to high-risk or important items"
+      }
+    }
+  },
+  "complianceMap": {
+    "headerDesc": "Whether the current security settings meet each policy group. This page shows results only; change settings on the security policy pages.",
+    "builtAt": "Data as of",
+    "timezone": "Time zone {tz}",
+    "groupsTitle": "Policy groups",
+    "groupInactive": "Not in effect",
+    "onlyDeviating": "Deviations only",
+    "searchLabel": "Search settings",
+    "searchPlaceholder": "Setting name or key name",
+    "searchNoMatch": "No setting matches",
+    "searchHit": "{n} settings matched; the clauses holding them are expanded",
+    "summaryClauses": "Clauses in this group",
+    "summaryCompliant": "Meets",
+    "summaryDeviating": "Deviates",
+    "summaryNeedsReview": "Awaiting confirmation",
+    "summaryAuditReview": "For auditor judgement",
+    "summaryBuiltinProtection": "Built-in protection",
+    "summaryBuiltinProtectionHint": "Clauses the product covers directly, with no setting to adjust",
+    "summaryClausesBuiltinNote": "{n} of these are built-in protection and are not listed one by one",
+    "summaryGroupClauses": "Clauses (unit: clause)",
+    "summaryGroupKeys": "Settings (unit: setting)",
+    "unitClause": "clauses",
+    "unitSetting": "settings",
+    "unmappedNote": "{n} more settings are outside this group's scope",
+    "clausesTitle": "Clauses",
+    "clauseKeys": "{n} settings covered",
+    "clauseNo": "Clause {no}",
+    "colSetting": "Setting",
+    "colCurrent": "Current",
+    "colExpectation": "Required",
+    "colResult": "Result",
+    "colLastChange": "Last change",
+    "recordLink": "View change records",
+    "lastChangeUnknown": "—",
+    "annotationLabel": "Organization note",
+    "confirmed": "Confirmed · {who} · {when}",
+    "notConfirmed": "Not confirmed yet",
+    "emptyTitle": "This group has no clauses to compare",
+    "emptyHint": "Pick another policy group, or add clauses on the policy groups page.",
+    "emptyDeviating": "No clause in this group deviates right now.",
+    "noGroupTitle": "No policy group is in effect",
+    "noGroupHint": "Turn on the groups you need on the policy groups page.",
+    "expectMin": "At least {value}",
+    "expectMax": "At most {value}",
+    "expectEquals": "Must be {value}",
+    "expectReview": "Required but no value given; for auditor judgement",
+    "expectReference": "Reference value {value}",
+    "expectNone": "—",
+    "resultCompliant": "Meets",
+    "resultDeviating": "Deviates",
+    "resultNeedsReview": "Awaiting confirmation",
+    "resultReview": "For auditor judgement",
+    "resultUnmapped": "Not covered",
+    "resultSelfAttested": "Organization attests",
+    "resultBuiltinProtection": "Built-in protection",
+    "reviewNote": "There is a current value but no fixed requirement; the auditor judges it",
+    "selfAttestedNote": "The organization explains this; the system does not judge it",
+    "asideWhat": "About this group",
+    "asideName": "Name",
+    "asideVersion": "Version",
+    "asideSource": "Source",
+    "asideSourceBuiltin": "Built into the product",
+    "asideSourceCustom": "Written by the organization",
+    "asideOriginalLocale": "Clauses appear in the organization's own wording ({locale}); the system does not translate them",
+    "asideHow": "How results are decided",
+    "asideHowBody": "For every clause, the settings it points to are compared against the value the clause asks for. When a clause asks for something without naming a value, the system only lists the current value and leaves the judgement to the auditor. Organization notes never change a result.",
+    "asideAuto": "Scheduled output",
+    "asideAutoNone": "Not set up",
+    "asideRecent": "Recent output",
+    "asideRecentNone": "No output yet",
+    "generateReport": "Generate report",
+    "generateReportDisabled": "Report output arrives in the next release"
+  },
+  "policyGroups": {
+    "headerDesc": "Maintain policy groups and their clauses. Every change to a policy group happens here; the compliance map only shows results.",
+    "create": "New policy group",
+    "sourceBuiltin": "Built into the product",
+    "sourceCustom": "Written by the organization",
+    "enabledLabel": "In effect",
+    "clauseCount": "{n} clauses",
+    "versionLabel": "Version {version}",
+    "localeLabel": "Original language {locale}",
+    "rename": "Rename",
+    "remove": "Delete",
+    "addClause": "New clause",
+    "builtinHint": "Clauses in a built-in group ship with the product: you can add a note or confirm them, but not edit their content.",
+    "customHint": "Clauses you write are stored and shown in your own wording; the system does not translate them.",
+    "emptyGroups": "No policy group yet",
+    "clausesTitle": "Clauses in {name}",
+    "colClauseNo": "Clause",
+    "colTitle": "Title",
+    "colKind": "Type",
+    "colKeys": "Settings",
+    "colExpectation": "Required",
+    "colNote": "Note",
+    "colActions": "Actions",
+    "kindSetting": "Setting requirement",
+    "kindSelfAttested": "Confirmed by the organization",
+    "kindBuiltinProtection": "Built-in protection",
+    "removedTag": "Removed",
+    "removedHint": "This clause no longer exists after {version}; the note is kept and the clause no longer counts towards results.",
+    "emptyClauses": "This group has no clauses yet",
+    "emptyClausesHint": "Use New clause to write your rules one requirement at a time.",
+    "noteAction": "Note",
+    "confirmAction": "Confirm",
+    "editAction": "Edit",
+    "deleteAction": "Delete",
+    "noneKeys": "—",
+    "noteDialogTitle": "Organization note",
+    "noteDialogHint": "A note never changes a result. To make a requirement count, add a clause to a group you wrote yourself.",
+    "noteField": "Note",
+    "notePlaceholder": "For example: the organization has its own rule, explained in the annual audit.",
+    "confirmDialogTitle": "Confirm",
+    "confirmDialogHint": "The standard gives no fixed value for this clause. Confirming records who confirmed it, when, and this one sentence.",
+    "confirmField": "Explanation",
+    "confirmPlaceholder": "One sentence on how the organization handles this clause.",
+    "confirmAgainHint": "{who} confirmed this clause on {when}; confirming again replaces that record.",
+    "confirmRequired": "Please write one sentence",
+    "createDialogTitle": "New policy group",
+    "codeField": "Code",
+    "codeHint": "Letters, digits and underscores. Cannot be changed later.",
+    "nameField": "Name",
+    "localeField": "Original language",
+    "localeHint": "Clauses appear in this language exactly as written; the system does not translate them.",
+    "renameDialogTitle": "Rename policy group",
+    "deleteTitle": "Delete policy group",
+    "deleteMessage": "Deleting \"{name}\" also removes its clauses, requirements, notes and confirmations, and cannot be undone. The group disappears from the settings pages and the compliance map.",
+    "deleteClauseTitle": "Delete clause",
+    "deleteClauseMessage": "Deleting clause {no} removes every requirement on it, and it no longer counts towards results. Notes and confirmations are kept.",
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "requiredCode": "Please enter a code",
+    "requiredName": "Please enter a name"
+  },
+  "clauseDialog": {
+    "createTitle": "New clause",
+    "editTitle": "Edit clause",
+    "clauseNoField": "Clause number",
+    "clauseNoHint": "The number used in the standard or in your own rules, for example 3-2.",
+    "titleField": "Title",
+    "titlePlaceholder": "One line on what this clause asks for",
+    "summaryField": "Summary",
+    "kindField": "Type",
+    "kindSetting": "Setting requirement",
+    "kindSettingHint": "Points at a setting in the system, and the system decides whether it is met.",
+    "kindSelfAttested": "Confirmed by the organization",
+    "kindSelfAttestedHint": "No setting matches it, so the system only shows it and never judges it.",
+    "controlsField": "Requirements",
+    "addControl": "Add a requirement",
+    "removeControl": "Remove",
+    "keyField": "Setting",
+    "keyPlaceholder": "Pick a setting",
+    "expectationField": "Requirement",
+    "comparatorReview": "Required but no value given; for auditor judgement",
+    "comparatorMin": "At least",
+    "comparatorMax": "At most",
+    "comparatorEquals": "Must be",
+    "valueField": "Value",
+    "rangeHint": "From {min} to {max}",
+    "outOfRange": "Outside the allowed range ({min} to {max})",
+    "valueRequired": "Please enter a value",
+    "keyRequired": "Please pick a setting",
+    "controlsRequired": "A setting requirement needs at least one requirement",
+    "duplicateKey": "Each setting can carry only one requirement per group",
+    "afterSaveTitle": "Result after saving",
+    "afterSaveCompliant": "Currently {value}; after saving this clause reads as meeting the requirement",
+    "afterSaveDeviating": "Currently {value}; after saving this clause reads as a deviation",
+    "afterSaveReview": "Currently {value}; after saving this clause is left to auditor judgement",
+    "afterSaveUnknown": "Pick a setting and a requirement to see the result after saving",
+    "afterSavePending": "Checking; the result after saving will appear shortly",
+    "afterSaveFailed": "The check did not come back; try again shortly",
+    "afterSaveInvalid": "Fix the value above to see the result after saving",
+    "textKeyUnsupported": "This setting is free text, so there is no value to compare against",
+    "clauseNoRequired": "Please enter a clause number",
+    "titleRequired": "Please enter a title"
   }
 }

@@ -117,7 +117,9 @@
     "ldapDirectory": "目錄設定（LDAP）",
     "checkpointVerification": "檢查點驗證",
     "offsiteStorage": "離機儲存",
-    "identitySources": "身分來源"
+    "identitySources": "身分來源",
+    "complianceMap": "合規對照",
+    "policyGroups": "政策組"
   },
   "login": {
     "bannerRegionLabel": "登入告示",
@@ -209,9 +211,6 @@
     "tokenFailed": "取得連線授權失敗"
   },
   "policyForm": {
-    "pciApplied": "已填入 PCI 建議值，按「儲存」後生效",
-    "pciAllCompliant": "本頁政策已全數符合 PCI 建議值",
-    "pageDeviation": "本頁與 PCI 建議偏離 {n} 項",
     "lockoutDisableConfirm": "鎖定次數設為 0 將停用帳號鎖定，暴力破解防護僅剩稽核告警。確定要停用？",
     "lockoutDisableTitle": "停用帳號鎖定",
     "disable": "停用",
@@ -220,9 +219,7 @@
     "retentionShrinkTitle": "保留期限縮短將清除舊資料",
     "confirmApply": "確定套用",
     "saved": "安全政策已儲存",
-    "restSection": "其他",
-    "epaymentApplied": "已填入電支基準值（取兩基準較嚴者），請確認後儲存",
-    "epaymentAllCompliant": "本頁各項已符合電支基準"
+    "restSection": "其他"
   },
   "enum": {
     "role": {
@@ -313,6 +310,9 @@
       "role": "角色",
       "instance_guard": "單實例守衛",
       "offsite_storage": "離機儲存",
+      "policy_group": "政策組",
+      "compliance_map": "合規對照",
+      "schedule": "排程時刻預覽",
       "unclassified": "未分類",
       "credential": "憑證"
     },
@@ -564,7 +564,7 @@
     "section": {
       "login_lock": {
         "title": "登入與鎖定",
-        "hint": "連續登入失敗的帳號鎖定（PCI 8.3.4）"
+        "hint": "連續登入失敗的帳號鎖定"
       },
       "login_banner": {
         "title": "登入告示",
@@ -572,7 +572,7 @@
       },
       "password": {
         "title": "密碼政策",
-        "hint": "密碼強度、歷史與強制改密（PCI 8.3.5–8.3.7）"
+        "hint": "密碼強度、歷史與強制改密"
       },
       "asset_secret": {
         "title": "資產帳號憑證",
@@ -580,23 +580,23 @@
       },
       "mfa": {
         "title": "MFA",
-        "hint": "多因子驗證強制範圍（PCI 8.4.2）"
+        "hint": "多因子驗證強制範圍"
       },
       "session_account": {
         "title": "連線與帳號",
-        "hint": "閒置逾時、連線壽命與閒置帳號停用（PCI 8.2.6/8.2.8）"
+        "hint": "閒置逾時、連線壽命與閒置帳號停用"
       },
       "log_retention": {
         "title": "日誌保留與審閱",
-        "hint": "稽核資料保留與每日審閱（PCI 10.4.1/10.5.1）。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於四個資料保留鍵中最長者（0 視為永久）——證明必須活得比它所證明的資料久，違反時整批儲存被拒"
+        "hint": "稽核資料保留與每日審閱。操作日誌自檢查點鏈啟用起改以「檢查點區間」為清除單位：區間內只要有一列未過期，整段暫不清除，故首輪清除後可能看到少量已過期列仍在（預期行為，非缺陷）。檢查點保留天數出廠為 0＝永久，且不得短於四個資料保留鍵中最長者（0 視為永久）——證明必須活得比它所證明的資料久，違反時整批儲存被拒"
       },
       "access_policy": {
         "title": "連線政策",
-        "hint": "全域預設決定「未個別設定政策的資產」連線前是否要申請（PCI Req 7.2 最小權限）；各資產可於下表或資產編輯表單個別覆寫。管理員不受申請限制（每次連線留稽核標記）"
+        "hint": "全域預設決定「未個別設定政策的資產」連線前是否要申請（最小權限）；各資產可於下表或資產編輯表單個別覆寫。管理員不受申請限制（每次連線留稽核標記）"
       },
       "request_params": {
         "title": "連線申請參數",
-        "hint": "申請時長上限與待審逾時（PCI Req 7.2）。最少核准人數為內控強化選項（雙人覆核慣例，非 PCI 要求）：設 2 以上時，申請須由不同審核人員逐一核准達門檻才生效；門檻高於某資產的可核人數時，申請須由管理員補位或等待逾時"
+        "hint": "申請時長上限與待審逾時。最少核准人數為內控強化選項（雙人覆核慣例）：設 2 以上時，申請須由不同審核人員逐一核准達門檻才生效；門檻高於某資產的可核人數時，申請須由管理員補位或等待逾時"
       },
       "break_glass": {
         "title": "緊急連線與撤銷",
@@ -604,11 +604,11 @@
       },
       "transport": {
         "title": "傳輸安全政策",
-        "hint": "六通道傳輸強制階梯（PCI Req 4）：不限制＝現狀零影響／警告留痕＝連線同意或存檔確認入稽核／嚴格拒絕＝需先完成資產傳輸設定（拒絕影響數見下方通道清冊預檢）；LDAP 修復動作在「目錄設定（LDAP）」頁（將目錄位址改為 ldaps://）"
+        "hint": "六通道傳輸強制階梯：不限制＝現狀零影響／警告留痕＝連線同意或存檔確認入稽核／嚴格拒絕＝需先完成資產傳輸設定（拒絕影響數見下方通道清冊預檢）；LDAP 修復動作在「目錄設定（LDAP）」頁（將目錄位址改為 ldaps://）"
       },
       "key": {
         "title": "金鑰管理政策",
-        "hint": "金鑰輪替提醒（cryptoperiod，PCI 3.7.4 精神）；純提醒不觸發任何動作"
+        "hint": "金鑰輪替提醒（cryptoperiod）；純提醒不觸發任何動作"
       },
       "data_transfer": {
         "title": "資料傳輸管控",
@@ -1072,6 +1072,7 @@
     "requestBody": "請求內容",
     "changeDetails": "變更詳情",
     "errorMsg": "錯誤訊息",
+    "noticeMsg": "附註",
     "emptyValue": "(無)",
     "integrityTitle": "稽核日誌完整性驗證",
     "integrityInfo": "逐列重算範圍內稽核日誌的完整性標記並與存檔比對，可偵測日誌遭事後竄改。",
@@ -1086,7 +1087,9 @@
     "integrityMismatchAlert": "發現 {n} 筆完整性不符，日誌 ID：{ids}，請立即調查是否遭竄改。",
     "integrityAllPassed": "受檢列完整性驗證全數通過。",
     "integrityLegacyNote": "歷史列 {n} 筆：完整性功能上線前寫入的日誌，無完整性標記，不參與比對。",
-    "integrityRangeRequired": "請選擇驗證日期範圍"
+    "integrityRangeRequired": "請選擇驗證日期範圍",
+    "filterKeyNotice": "只看安全政策「{setting}」的變更",
+    "filterKeyClear": "清除篩選"
   },
   "commands": {
     "headerDesc": "跨連線搜尋指令與語句記錄。命令列的內容重組自按鍵流，以錄影回放為準；查詢主控台的語句於送出時登記。",
@@ -1568,7 +1571,7 @@
   },
   "syslogCard": {
     "title": "syslog 日誌轉發",
-    "hint": "稽核日誌即時轉發至外部 SIEM（PCI 10.3.3，RFC 5424）；資料庫仍為權威儲存",
+    "hint": "稽核日誌即時轉發至外部 SIEM（RFC 5424）；資料庫仍為權威儲存",
     "dropped": "已丟棄 {n} 筆（緩衝溢出）",
     "enableLabel": "啟用轉發",
     "enableAria": "啟用 syslog 轉發",
@@ -2098,12 +2101,7 @@
     "scopeAssigned": "已分配審核範圍"
   },
   "securityPolicies": {
-    "description": "帳號認證、連線與日誌留存的安全門檻；每項均標示 PCI DSS 建議值。存取管控、傳輸安全與金鑰政策已移往各自的管理頁（見偏離摘要的分域清單）",
-    "systemCompliant": "全系統政策符合 PCI DSS 建議值",
-    "systemDeviation": "全系統與 PCI 建議偏離 {n} 項",
-    "applyPage": "套用本頁建議值",
-    "currentPageCount": "本頁 {n} 項",
-    "itemCount": "{n} 項",
+    "description": "帳號認證、連線與日誌留存的安全門檻。存取管控、傳輸安全、金鑰與離機儲存的設定各有專屬管理頁。",
     "sessionCapRiskAlert": "已設定協議連線閒置逾時，但「協議連線最長時長」為 0（不封頂）。監看類長連線（tail -f、top、日誌串流）因伺服器持續輸出不受閒置逾時中斷，建議設定最長時長作絕對上限。",
     "webSessionCapRiskAlert": "「Web 工作階段最長時數」為 0，表示網頁工作階段沒有時間上界。若使用者角色由外部身分來源（目錄或 OIDC 提供者）的群組成員資格決定，在來源側移除成員資格後，要等到該使用者下次登入才會生效；倚賴來源側撤權時不得設為 0。",
     "insecureTransportTitle": "目前用 http 連線，使用者每 15 分鐘要重新登入",
@@ -2333,8 +2331,8 @@
     "records": "記錄",
     "emptyTitle": "尚無改密計劃",
     "emptyHint": "建立計劃以定期輪換資產密碼",
-    "scheduleCron": "排程 cron",
-    "cronPlaceholder": "如 0 3 * * 0（留空＝僅手動觸發）",
+    "scheduleCron": "執行排程",
+    "cronPlaceholder": "五欄 cron，例如 0 3 * * 0（分 時 日 月 星期）",
     "recordsTitle": "執行記錄：{name}",
     "colMessage": "訊息",
     "nameRequired": "請輸入計劃名稱",
@@ -2722,16 +2720,6 @@
     "updated": "資產連線政策已更新",
     "cleared": "已清除覆寫（跟隨全域）"
   },
-  "pciBanner": {
-    "okDefault": "本頁政策符合 PCI DSS 建議值",
-    "applyPage": "套用本頁建議值",
-    "unsaved": "有未儲存變更",
-    "overviewLink": "全系統偏離 {n} 項 · 安全政策總覽",
-    "revert": "還原",
-    "epaymentOk": "符合電支基準",
-    "epaymentDeviation": "{n} 項不符電支基準",
-    "applyEPayment": "套用電支基準"
-  },
   "instanceGuard": {
     "ariaLabel": "單實例守衛警示",
     "headline": {
@@ -2821,13 +2809,12 @@
     }
   },
   "policyKeySections": {
-    "pciRecommend": "PCI 建議：{value}",
-    "noPciValue": "無 PCI 建議值",
-    "nonCompliant": "不符 PCI 建議",
-    "epaymentRecommend": "電支基準：{value}",
-    "nonCompliantEPayment": "不符電支基準",
-    "pciReference": "參考值",
-    "pciReferenceNote": "Requirement {requirement} 要求此頻率由機構的目標風險分析決定，未定固定天數；此數字為本產品的預設起始值，借自 8.3.9 對使用者帳號的門檻。"
+    "deviation": "偏離 {n} 項",
+    "noDeviation": "無偏離項目",
+    "draftTag": "草稿",
+    "draftPending": "判定中",
+    "draftFailed": "判定失敗",
+    "deviationMark": "不符合生效政策組的要求"
   },
   "apiError": {
     "AUTH_ACCOUNT_LOCKED": "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員",
@@ -3009,6 +2996,7 @@
     "INTERNAL_CHECKPOINT_VERIFY": "檢查點驗證失敗",
     "INTERNAL_CLIPBOARD_QUERY": "查詢剪貼簿記錄失敗",
     "INTERNAL_COMMAND_ALERT_QUERY": "查詢告警記錄失敗",
+    "INTERNAL_COMPLIANCE_SNAPSHOT": "無法取得合規判定結果",
     "INTERNAL_CONNECT_TOKEN_ISSUE": "簽發連線 token 失敗",
     "INTERNAL_CONSENT_RECORD": "同意記錄寫入失敗",
     "INTERNAL_CREDENTIAL_BIND": "掛載憑證失敗",
@@ -3073,6 +3061,8 @@
     "INTERNAL_OIDC_PROVIDER_LIST": "讀取 OIDC provider 清單失敗",
     "INTERNAL_OIDC_PROVIDER_SAVE": "儲存 OIDC provider 設定失敗",
     "INTERNAL_PERMISSION_CHECK": "權限檢查失敗",
+    "INTERNAL_POLICY_GROUP_READ": "政策組讀取失敗",
+    "INTERNAL_POLICY_GROUP_WRITE": "政策組寫入失敗",
     "INTERNAL_POLICY_WRITE": "政策寫入失敗",
     "INTERNAL_RECORDING_CONVERT": "轉換錄製格式失敗",
     "INTERNAL_RECORDING_DELETE": "刪除錄製檔案失敗",
@@ -3184,6 +3174,9 @@
     "NOTFOUND_USER_GROUP": "使用者群組不存在",
     "OIDC_DISCOVERY_PREVIEW_FAILED": "無法向該 issuer 取得探索文件，請確認位址與網路可達性",
     "OIDC_PROVIDER_HAS_MAPPINGS": "此提供者仍有群組映射規則，請先移除規則再刪除提供者",
+    "POLICY_GROUP_BUILTIN_READONLY": "內建政策組的內容不可編輯，只能切換生效與加註機構備註",
+    "POLICY_GROUP_DUPLICATE_CODE": "這個政策組代號已經存在，請換一個",
+    "POLICY_GROUP_NOT_FOUND": "找不到指定的政策組",
     "RULE_ACCESS_APPROVAL_REQUIRED": "本資產的存取政策要求申請核准後連線",
     "RULE_ACCESS_REASON_REQUIRED": "本資產的存取政策要求填寫事由後連線",
     "RULE_ACCESS_REQUEST_DECISION_INCREASE": "核准值不得優於申請值（時長僅可下修、起始僅可推遲）",
@@ -3337,6 +3330,7 @@
     "VALIDATION_ALERT_REVIEW_REQUEST": "請求參數錯誤：需提供 disposition（benign/escalated）",
     "VALIDATION_ALERT_RULE_PATTERN": "regex pattern 無效",
     "VALIDATION_ALERT_SEVERITY": "severity 必須為 high/medium/low",
+    "VALIDATION_APPLY_PREVIEW_MODE": "套用方式不正確，請指定一個生效中的政策組或改用一次滿足所有政策",
     "VALIDATION_APPROVER_SCOPE_ACTOR": "審核方必須恰一（approver_id/approver_group_id 二擇一）",
     "VALIDATION_APPROVER_SCOPE_TARGET": "審核範圍客體必須恰一（asset_id/asset_group_id/subject_user_id/subject_group_id 四擇一）",
     "VALIDATION_ASSET_ACCESS_POLICY": "access_policy 僅允許空值（跟隨全域預設）、open、reason 或 approval",
@@ -3472,6 +3466,14 @@
     "VALIDATION_PLAN_TARGET_CREDENTIAL_REQUIRED": "以憑證為目標的計劃必須指定憑證",
     "VALIDATION_PLAN_TARGET_KIND": "改密目標種類僅支援帳號或憑證",
     "VALIDATION_POLICY_EMPTY": "未提供任何政策項",
+    "VALIDATION_POLICY_GROUP_CLAUSE_KIND": "條文型別與所填的設定要求不相符",
+    "VALIDATION_POLICY_GROUP_CLAUSE_NO": "條號不得為空，且長度須在上限之內",
+    "VALIDATION_POLICY_GROUP_CODE": "政策組代號與名稱不得為空，且長度須在上限之內",
+    "VALIDATION_POLICY_GROUP_COMPARATOR": "比較方式與這個設定的型別不符",
+    "VALIDATION_POLICY_GROUP_DUPLICATE_KEY": "這一組已經有另一條條文對同一個設定提出要求",
+    "VALIDATION_POLICY_GROUP_EXPECTED_VALUE": "要求值不在這個設定的合法範圍內",
+    "VALIDATION_POLICY_GROUP_KEY_TYPE": "這個設定的型別無法作為條文要求的對象",
+    "VALIDATION_POLICY_GROUP_UNKNOWN_KEY": "要求指向的安全設定不存在",
     "VALIDATION_POLICY_INVALID_VALUE": "安全政策值不合法：{key}",
     "VALIDATION_POLICY_RETENTION_CROSS_KEY": "檢查點保留天數不得短於資料保留天數：{key}",
     "VALIDATION_POLICY_UNKNOWN_KEY": "未定義的安全政策項：{key}",
@@ -3488,6 +3490,8 @@
     "VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION": "留存天數須介於 1 與 3650 之間",
     "VALIDATION_ROTATION_SCHEDULE_NAME_EMPTY": "排程名稱不可為空",
     "VALIDATION_ROTATION_SCHEDULE_NAME_TOO_LONG": "排程名稱長度上限 128 字",
+    "VALIDATION_SCHEDULE_BAD_CRON": "排程時刻的格式不正確，請確認是五欄格式",
+    "VALIDATION_SCHEDULE_RUN_COUNT": "預覽筆數須介於 1 與 10 之間",
     "VALIDATION_SFTP_FILE_MISSING": "缺少上傳檔案",
     "VALIDATION_SFTP_INVALID_PATH": "遠端路徑必須為絕對路徑且不得包含 ..",
     "VALIDATION_SFTP_MKDIR_PATH_MISSING": "缺少 path",
@@ -3586,6 +3590,13 @@
     "records": "筆",
     "records_per_hour": "筆/小時",
     "seconds": "秒"
+  },
+  "policyZero": {
+    "retention": "永久保留",
+    "localRetention": "不提前清理",
+    "keyReminder": "不提醒",
+    "consentTtl": "永不過期",
+    "disabled": "不啟用這項限制"
   },
   "keyEnvName": {
     "audit_export": "匯出簽章鑰 (Ed25519)",
@@ -4738,7 +4749,7 @@
     "scheduleEditTitle": "編輯報告排程",
     "scheduleName": "排程名稱",
     "cron": "時刻表",
-    "cronPlaceholder": "五欄 cron，例如 0 1 1 * *（每月一日 01:00）",
+    "cronPlaceholder": "五欄 cron，例如 0 1 1 * *（分 時 日 月 星期）",
     "retentionDays": "產物留存天數",
     "retentionHint": "1 至 3650 天。逾期後產物自動清除。",
     "retentionDaysValue": "{days} 天",
@@ -5034,5 +5045,597 @@
       "foreign": "舊儲存設定",
       "retentionNote": "遠端副本由儲存端的保留政策決定，產品不會刪除"
     }
+  },
+  "scheduleFrequency": {
+    "label": "執行頻率",
+    "mode": {
+      "none": "不排程（僅手動觸發）",
+      "daily": "每日",
+      "weekly": "每週",
+      "monthly": "每月",
+      "quarterly": "每季",
+      "yearly": "每年",
+      "custom": "自訂"
+    },
+    "noneHint": "不會自動執行；需要時由管理者手動觸發一次。",
+    "timeLabel": "時間",
+    "weekdayLabel": "星期",
+    "dayLabel": "日期",
+    "dayValue": "{day} 日",
+    "quarterStartLabel": "執行月份",
+    "quarterDayLabel": "當季第幾日",
+    "monthLabel": "月份",
+    "monthValue": "{month} 月",
+    "quarterMonths": "{m1}、{m2}、{m3}、{m4} 月",
+    "customLabel": "自訂",
+    "customPlaceholder": "五欄 cron，例如 0 1 1 * *",
+    "customHint": "依序為分、時、日、月、星期，以空白分隔。",
+    "error": {
+      "empty": "請輸入排程內容。",
+      "fieldCount": "需要五個欄位（分、時、日、月、星期），目前只有 {count} 個。",
+      "fieldSyntax": "第 {index} 個欄位「{field}」的寫法無法辨識。"
+    },
+    "previewTitle": "接下來的執行時刻",
+    "previewLoading": "計算中",
+    "previewNone": "沒有自動執行時刻。",
+    "previewInvalid": "排程格式修正後才會顯示執行時刻。",
+    "previewUnavailable": "暫時無法取得下次執行時刻",
+    "previewTimezone": "時區 {zone}",
+    "summary": {
+      "daily": "每日 {time}",
+      "weekly": "每{weekday} {time}",
+      "monthly": "每月 {day} 日 {time}",
+      "quarterly": "每季 {day} 日 {time}",
+      "yearly": "每年 {month} 月 {day} 日 {time}"
+    },
+    "weekday": {
+      "d0": "星期日",
+      "d1": "星期一",
+      "d2": "星期二",
+      "d3": "星期三",
+      "d4": "星期四",
+      "d5": "星期五",
+      "d6": "星期六"
+    },
+    "nextRun": "下次 {time}",
+    "nextRunUnknown": "下次執行時刻暫時無法取得"
+  },
+  "policyStrip": {
+    "groupsLabel": "目前對照的政策組",
+    "noGroups": "尚未啟用任何政策組",
+    "manage": "管理政策組",
+    "map": "合規對照",
+    "apply": "套用政策建議值",
+    "applyGroup": "符合{group}",
+    "applyStrictest": "一次滿足所有政策",
+    "unsaved": "有未儲存變更",
+    "revert": "還原"
+  },
+  "policyDrawer": {
+    "info": "查看說明",
+    "requirements": "政策組的要求",
+    "none": "目前沒有生效的政策組對照到這個設定。",
+    "compliant": "{group}要求{expectation}，目前是 {current}，符合。",
+    "deviating": "{group}要求{expectation}，目前是 {current}，未達要求。",
+    "needsReviewUnconfirmed": "{group}以 {expected} 為參考值，沒有給固定要求，尚未由機構確認。",
+    "needsReviewConfirmed": "{group}以 {expected} 為參考值，沒有給固定要求，機構已於 {time} 由 {who} 確認。",
+    "auditReview": "{group}有條文涉及這個設定但沒有定值，目前是 {current}，由稽核人員判讀。",
+    "clauseNo": "條號 {no}",
+    "expectMin": "至少 {value}",
+    "expectMax": "至多 {value}",
+    "expectEquals": "設為 {value}",
+    "draftNote": "以尚未儲存的值判定",
+    "lastChange": "最後變更",
+    "lastChangeBy": "{time} 由 {who}",
+    "lastChangeNone": "還沒有人改過，維持出廠預設。",
+    "auditLink": "查看操作紀錄",
+    "effect": "什麼時候生效",
+    "more": "更多說明"
+  },
+  "applyPreview": {
+    "title": "套用政策建議值：{page}",
+    "scopeNote": "只會變更「{page}」這一頁的設定。",
+    "basisGroup": "依據{group}的要求。",
+    "basisStrictest": "同時滿足所有生效政策組的要求。",
+    "colName": "設定",
+    "colCurrent": "目前",
+    "colProposed": "改成",
+    "colSource": "依據",
+    "mfaAllWarning": "儲存後所有使用者下次登入都要多因子驗證；請先確認管理員自己已完成綁定，否則會登不進來。",
+    "empty": "沒有需要變更的設定。",
+    "emptyConflicts": "沒有可以自動變更的設定，下面牴觸的規則請自行決定。",
+    "conflictTitle": "這幾項有兩條互相牴觸的規則，系統不會自動改",
+    "conflictBody": "{name}：{reasons}。請自行決定要依哪一條再手動設定。",
+    "conflictReason": "{group}要求{expectation}",
+    "compliant": "{n} 項設定已符合",
+    "pending": "{n} 項待判讀或待確認",
+    "unmapped": "另有 {n} 項不屬於任何政策組",
+    "notSaved": "確認後只會填進表單，還要按「儲存」才會生效。",
+    "confirm": "填入表單",
+    "filled": "已填入表單，按「儲存」後生效",
+    "staleMessage": "設定在你檢視預覽的期間有變動，請重新確認新的預覽再儲存。",
+    "recheckFailed": "重新確認預覽失敗，設定沒有儲存；請再按一次儲存重試。"
+  },
+  "verdictReason": {
+    "meets_expectation": "已達到要求",
+    "below_minimum": "低於要求的下限",
+    "above_maximum": "高於要求的上限",
+    "value_mismatch": "與要求的值不同",
+    "disabled_by_zero": "設為 0 等於停用，未達要求",
+    "value_not_comparable": "目前的值無法與要求比較",
+    "reference_value_unconfirmed": "這一組給的是參考值，尚未由機構確認",
+    "reference_value_confirmed": "這一組給的是參考值，機構已確認",
+    "expectation_unspecified": "有要求但沒有定值，由稽核人員判讀",
+    "no_control": "這一組沒有對照到這個設定"
+  },
+  "policyEffect": {
+    "lockout_max_attempts": "每次登入失敗時即時套用，已被鎖住的帳號不受影響；設 0 表示不鎖定。",
+    "lockout_duration_minutes": "在帳號被鎖住的那一刻算好解鎖時間，已經鎖住的人不會跟著改。",
+    "password_min_length": "改密碼時擋下，既有密碼也會在下次登入被比對，不符就要求當場改。",
+    "password_require_alnum": "改密碼時擋下，既有密碼也會在下次登入被比對，不符就要求當場改。",
+    "password_history_count": "只在下次改密碼時檢查，既有的歷史紀錄不會回頭刪；設 0 表示不檢查重用。",
+    "password_max_age_days": "每次登入即時算，既有密碼超齡的人下次登入就被要求改；設 0 表示不過期。",
+    "asset_secret_max_age_days": "只在產出輪替證據報告時當判定基準，不會去改任何密碼；設 0 表示不設定。",
+    "force_change_on_reset": "只在管理員按下重設密碼的當下判斷，先前重設過的帳號不受影響。",
+    "mfa_required": "下次登入才生效，已經登入的人不受影響。",
+    "web_idle_minutes": "已登入的人也立刻適用，最慢在下次換發登入權杖時被登出；設 0 表示不逾時。",
+    "web_max_session_hours": "只有下次登入才套用，已經登入的人維持原本的時數；設 0 表示不限。",
+    "refresh_cookie_secure": "下次登入或更新登入狀態時套用，換掉瀏覽器裡已存的設定。",
+    "session_idle_minutes": "連線建立時決定，已建立的連線不受影響；設 0 表示不逾時。",
+    "session_max_minutes": "連線建立時決定，已建立的連線不受影響；設 0 表示不限。",
+    "inactive_disable_days": "每日凌晨的排程執行時才停用帳號；設 0 表示不自動停用。",
+    "retention_audit_log_days": "每日凌晨的清理排程執行時套用，已刪除的資料無法復原；設 0 表示永久保留。",
+    "retention_session_command_days": "每日凌晨的清理排程執行時套用，已刪除的資料無法復原；設 0 表示永久保留。",
+    "retention_alert_days": "每日凌晨的清理排程執行時套用，已刪除的資料無法復原；設 0 表示永久保留。",
+    "retention_recording_days": "每日凌晨的清理排程執行時套用，已刪除的錄影無法復原；設 0 表示永久保留。",
+    "offsite_local_retention_days": "每日清理時只刪本機副本、離機副本仍在，離機儲存未啟用時本鍵無作用；設 0 表示不提前清。",
+    "retention_checkpoint_days": "每日清理排程執行時套用，短於任一資料保留天數會在存檔當下被擋；設 0 表示永久保留。",
+    "audit_checkpoint_interval_seconds": "下一次排程檢查即採新週期，已建立查核證明的區間不重算。",
+    "audit_checkpoint_row_threshold": "下一次排程檢查即採新門檻，已建立查核證明的區間不重算。",
+    "audit_chain_recent_verify_days": "下一輪驗證就套用；實際天數另取本欄與操作日誌保留天數的較小者。",
+    "audit_chain_verify_interval_seconds": "下一次排程檢查即採新週期，到期才執行。",
+    "audit_chain_verify_rows_per_hour": "下一輪套用，正在跑的那一輪跑完才換。",
+    "retention_max_per_run": "下一次清理執行時套用，只影響那一輪刪掉的量。",
+    "daily_review_enabled": "立即生效，關閉後當天起不再要求簽核。",
+    "failure_alert_enabled": "立即生效，關閉期間沒發出的通知不會補送。",
+    "recording_failclose_enabled": "每次建立連線時檢查，已經連上的連線不受影響。",
+    "key_cryptoperiod_reminder_days": "重新整理金鑰清冊就看得到新標示，只標示不會自動換金鑰也不發通知；設 0 表示不提醒。",
+    "key_rotation_max_per_run": "下次觸發換金鑰時套用，只限那一次處理的量。",
+    "k8s_list_timeout_seconds": "下一次要清單時就生效，不需要重新啟動。",
+    "transport_rdp_level": "建立新連線時檢查，已經建立的連線不受影響。",
+    "transport_vnc_level": "建立新連線時檢查，已經建立的連線不受影響。",
+    "transport_db_level": "建立新連線時檢查，已經建立的連線不受影響。",
+    "transport_ldap_level": "下次以目錄帳號登入時才生效，本地帳號不受影響。",
+    "transport_syslog_level": "只在儲存日誌外送設定時檢查，已在運作的外送不會被回頭擋下。",
+    "transport_notify_level": "只在儲存通知管道設定時檢查，已設定好的管道會照常送。",
+    "transport_consent_ttl_days": "後續連線按新效期判定，超過新期限的舊同意須重確認；設 0 表示永不過期。",
+    "access_policy_default": "立即對新連線生效，已核准且還在有效時間內的照舊放行、已連上的不斷線。",
+    "access_request_max_duration_minutes": "只在送出新申請時檢查，已送出的單與已核准的權限都不變。",
+    "access_request_pending_timeout_hours": "送單當下就算好到期時間，已在等待的申請單照舊。",
+    "access_request_min_approvals": "立即生效，已在等待的申請單也跟著改門檻。",
+    "break_glass_enabled": "立即生效，關閉不會讓已核發的緊急權限失效。",
+    "break_glass_duration_minutes": "按下緊急連線的當下就定好，已核發的不變。",
+    "break_glass_review_timeout_hours": "立即生效，而且回頭套用到還沒補審的舊紀錄。",
+    "access_revoke_disconnect": "下一次收回權限時才起作用，先前收回時留下的連線不會回頭斷。",
+    "clipboard_send_enabled": "連線建立時決定，已建立的連線需重新連線才會套用。",
+    "clipboard_recv_enabled": "連線建立時決定，已建立的連線需重新連線才會套用。",
+    "file_upload_enabled": "檔案管理與容器操作立即生效，RDP／VNC 需重新連線。",
+    "file_download_enabled": "檔案管理與容器操作立即生效，RDP／VNC 需重新連線。",
+    "file_delete_enabled": "立即生效，不需要重新連線。",
+    "login_banner_title": "下一個打開登入頁的人就看到新的。",
+    "login_banner_body": "下一個打開登入頁的人就看到新的，內文留空整段告示就不顯示。"
+  },
+  "policyPlain": {
+    "refresh_cookie_secure": "是否只在加密連線維持登入。",
+    "retention_checkpoint_days": "用來查核紀錄的證明留幾天。",
+    "audit_checkpoint_interval_seconds": "多久為紀錄建立一次查核證明。",
+    "audit_checkpoint_row_threshold": "累積幾筆就提早建立查核證明。",
+    "audit_chain_recent_verify_days": "新證明建立後，回查幾天的紀錄。",
+    "audit_chain_verify_interval_seconds": "多久啟動一輪歷史紀錄檢查。",
+    "audit_chain_verify_rows_per_hour": "檢查舊紀錄的速度，每小時幾筆。",
+    "daily_review_enabled": "是否要求每天確認已看過紀錄。",
+    "failure_alert_enabled": "是否通知稽核紀錄功能異常。",
+    "key_rotation_max_per_run": "每次換金鑰最多重新加密幾筆。",
+    "transport_rdp_level": "RDP 連線不夠安全時如何處理。",
+    "transport_vnc_level": "VNC 連線不夠安全時如何處理。",
+    "transport_db_level": "資料庫連線不夠安全時如何處理。",
+    "transport_ldap_level": "目錄連線不夠安全時如何處理。",
+    "transport_syslog_level": "日誌外送不夠安全時如何處理。",
+    "transport_notify_level": "對外通知不夠安全時如何處理。",
+    "transport_consent_ttl_days": "連線風險不變時，同意可記住幾天。",
+    "access_policy_default": "連線前要不要填理由或等人核准。",
+    "break_glass_enabled": "開啟後，緊急時可以先連線再補審。",
+    "break_glass_duration_minutes": "緊急連線的權限能用多久。",
+    "break_glass_review_timeout_hours": "緊急連線後多久沒補審就告警。"
+  },
+  "policyClause": {
+    "pci_dss_4_0_1": {
+      "c8_3_4": {
+        "title": "登入鎖定機制"
+      },
+      "c8_3_6": {
+        "title": "密碼複雜度"
+      },
+      "c8_3_7": {
+        "title": "密碼歷史限制"
+      },
+      "c8_3_9": {
+        "title": "密碼到期"
+      },
+      "c8_6_3": {
+        "title": "資產憑證輪替"
+      },
+      "c8_3_5": {
+        "title": "重設後強制改密"
+      },
+      "c8_4_2": {
+        "title": "多因子驗證範圍"
+      },
+      "c8_2_8": {
+        "title": "連線閒置逾時"
+      },
+      "c8_2_6": {
+        "title": "閒置帳號停用"
+      },
+      "c10_5_1": {
+        "title": "稽核資料保留"
+      },
+      "c10_4_1": {
+        "title": "每日審閱簽核"
+      },
+      "c10_7_2": {
+        "title": "稽核失效告警"
+      },
+      "c10_2": {
+        "title": "錄影失敗擋連線"
+      },
+      "c3_7_4": {
+        "title": "金鑰輪替提醒"
+      },
+      "c4_2_1": {
+        "title": "傳輸加密強制等級"
+      },
+      "c7_2": {
+        "title": "存取控制與破窗"
+      }
+    },
+    "epayment_baseline": {
+      "c15_1": {
+        "title": "最小權限配帳號",
+        "summary": "依最小權限及僅知原則配置適當之權限"
+      },
+      "c15_2": {
+        "title": "權限定期審查與離職撤權",
+        "summary": "至少每年定期審查帳號與權限之合理性；人員離職或調職時應盡速移除權限"
+      },
+      "c15_3_1": {
+        "title": "特權帳號要分開",
+        "summary": "特權帳號應和日常維運帳號區隔，且應列冊保管"
+      },
+      "c15_3_2": {
+        "title": "要有特權帳管系統",
+        "summary": "應使用特權帳號管理系統"
+      },
+      "c15_3_3": {
+        "title": "最高權限先簽核並定期覆核",
+        "summary": "最高權限帳號使用時須先取得權責主管同意，並保留稽核軌跡、定期覆核使用結果"
+      },
+      "c15_3_4": {
+        "title": "對外主機要雙因子",
+        "summary": "用於提供網際網路服務之伺服器及目錄服務主機，應採雙因子認證"
+      },
+      "c15_4": {
+        "title": "可限定來源電腦與網路位置",
+        "summary": "必要時得限定其使用之機器與網路位置；逐帳號的允許來源網段由機構自行設定"
+      },
+      "c15_6": {
+        "title": "登入操作要留紀錄",
+        "summary": "登入作業系統進行系統異動或資料庫存取時，應留存人為操作紀錄"
+      },
+      "c15_7": {
+        "title": "一人一個帳號",
+        "summary": "帳號應採一人一號管理，並能區分人員身分"
+      },
+      "c15_9": {
+        "title": "資料庫工具要控管",
+        "summary": "具變更權限之公用程式應列冊管理並限制使用"
+      },
+      "c4_7_1": {
+        "title": "密碼至少六位",
+        "summary": "固定密碼長度不應少於六位"
+      },
+      "c4_7_2": {
+        "title": "密碼混英文和數字",
+        "summary": "建議得採英數字混合使用"
+      },
+      "c4_7_5": {
+        "title": "錯五次就鎖住",
+        "summary": "連續錯誤達五次時不得再繼續執行交易"
+      },
+      "c4_7_6": {
+        "title": "新密碼不能同舊的",
+        "summary": "變更後之固定密碼不得與原固定密碼相同"
+      },
+      "c4_7_7": {
+        "title": "首次登入要改密碼",
+        "summary": "首次登入時應強制變更系統產製的預設密碼"
+      },
+      "c4_7_8": {
+        "title": "一年沒換要處理",
+        "summary": "固定密碼超過一年未變更應做妥善處理；處理方式不限於到期強制改密，由機構的作業程序訂定"
+      },
+      "c15_8": {
+        "title": "帳號密碼三個月換一次",
+        "summary": "提供人員使用之帳號至少三個月變更一次；提供系統連線之帳號至少每三個月一次或採其他補強管控"
+      },
+      "c17_2": {
+        "title": "密碼不可還原保存",
+        "summary": "固定密碼於儲存時應先進行不可逆運算"
+      },
+      "c21_8_3": {
+        "title": "遠端變更要雙重驗證",
+        "summary": "每次登入採二項以上安全設計並取得主管授權；對應的設定要求併於 15-3(三) 與 15-3(四) 呈現"
+      },
+      "c16_3": {
+        "title": "按業務需要給權限",
+        "summary": "應依執行業務之必要，設定相關人員接觸個人資料之權限"
+      },
+      "c17_4": {
+        "title": "金鑰只給必要的人",
+        "summary": "應減少金鑰儲存的地點，並僅允許必要之管理人員存取金鑰"
+      },
+      "c17_5": {
+        "title": "金鑰快到期要換",
+        "summary": "金鑰使用期限將屆或有洩漏疑慮時應進行替換；提醒天數由機構依自身金鑰期限訂定"
+      },
+      "c21_8_1": {
+        "title": "每年查遠距申請",
+        "summary": "應審查遠距管理之申請目的、期間、時段、網段與使用設備"
+      },
+      "c21_8_4": {
+        "title": "限定網段與設備",
+        "summary": "應定義允許可連結之遠端設備；逐帳號的允許來源網段由機構自行設定"
+      },
+      "c21_8_2": {
+        "title": "授權照申請內容給",
+        "summary": "應建立授權機制，依據其申請項目提供必要授權"
+      },
+      "c24_1": {
+        "title": "日誌集中管理、告警與兩年保存",
+        "summary": "日誌及稽核軌跡應集中管理、設定合適告警指標，原始日誌及稽核軌跡至少保存二年"
+      },
+      "c19_4": {
+        "title": "紀錄要留兩年",
+        "summary": "留存紀錄應確保數位證據之收集、保護與適當管理，至少留存二年；保存天數的設定要求併於 24-1 呈現"
+      },
+      "c24_3": {
+        "title": "出事要保全證據",
+        "summary": "應注意處理過程中軌跡紀錄與證據留存之有效性"
+      },
+      "c16_5": {
+        "title": "查個資要留軌跡",
+        "summary": "應建置留存個人資料使用之稽核軌跡"
+      },
+      "c21_8_5": {
+        "title": "主管要定期覆核",
+        "summary": "應建立監控機制、留存操作紀錄，並由主管定期覆核；覆核簽核的設定要求併於 15-3(三) 呈現"
+      },
+      "c19_7": {
+        "title": "系統時鐘要同步",
+        "summary": "各系統的時鐘應以標準時間為基準，所有系統時鐘應取得同步"
+      },
+      "c21_6": {
+        "title": "遠端管理要加密、通行碼不入工具",
+        "summary": "使用遠端連線進行系統管理作業時應使用足夠強度之加密通訊協定，且不得將通行碼紀錄於工具軟體內"
+      },
+      "c17_1_2": {
+        "title": "對外傳輸要加密",
+        "summary": "機敏資料於網際網路上傳輸應建立訊息隱密性機制"
+      },
+      "c6_1": {
+        "title": "加密強度有下限",
+        "summary": "對稱式與非對稱式加密之金鑰長度應達基準所列強度以上"
+      },
+      "c15_5": {
+        "title": "十分鐘沒動就遮蔽",
+        "summary": "人員超過十分鐘未操作電腦時，應限制使用者個人資料顯示於螢幕"
+      },
+      "c21_8_7_3": {
+        "title": "閒置就鎖或斷線",
+        "summary": "應設定虛擬桌面在一段閒置時間後鎖定螢幕或中斷連線；閒置時間長度條文未給值，由機構訂定"
+      },
+      "c21_8_7_1": {
+        "title": "兩端不能互相剪貼",
+        "summary": "避免透過剪貼簿於兩端剪貼資料"
+      },
+      "c16_6": {
+        "title": "檔案外傳要管制",
+        "summary": "應建立資料外洩防護機制，管制個人資料檔案之傳輸"
+      },
+      "c24_2": {
+        "title": "事故要通報處理",
+        "summary": "應建立資訊安全事故評估、通報、處理、應變及事後追蹤改善作業機制"
+      },
+      "c20_6": {
+        "title": "高風險立即應變",
+        "summary": "應隨時掌握資安事件，針對高風險或重要項目立即進行清查與應變"
+      }
+    }
+  },
+  "complianceMap": {
+    "headerDesc": "目前的安全設定，對每一個政策組符不符。這一頁只看結果，要改設定請到安全政策頁。",
+    "builtAt": "資料時點",
+    "timezone": "時區 {tz}",
+    "groupsTitle": "政策組",
+    "groupInactive": "未生效",
+    "onlyDeviating": "只看偏離",
+    "searchLabel": "搜尋設定",
+    "searchPlaceholder": "輸入設定名稱或鍵名",
+    "searchNoMatch": "找不到符合的設定",
+    "searchHit": "命中 {n} 項設定，已展開所屬條文",
+    "summaryClauses": "本組條文",
+    "summaryCompliant": "符合",
+    "summaryDeviating": "偏離",
+    "summaryNeedsReview": "待人工確認",
+    "summaryAuditReview": "待稽核判讀",
+    "summaryBuiltinProtection": "系統內建保護",
+    "summaryBuiltinProtectionHint": "條文中由產品直接提供、沒有可調設定的部分",
+    "summaryClausesBuiltinNote": "其中 {n} 條為系統內建保護，不逐條列出",
+    "summaryGroupClauses": "條文（單位：條）",
+    "summaryGroupKeys": "設定（單位：項）",
+    "unitClause": "條",
+    "unitSetting": "項",
+    "unmappedNote": "另有 {n} 項設定不在本組對照範圍內",
+    "clausesTitle": "條文",
+    "clauseKeys": "對照 {n} 項設定",
+    "clauseNo": "條號 {no}",
+    "colSetting": "設定",
+    "colCurrent": "目前",
+    "colExpectation": "要求",
+    "colResult": "結果",
+    "colLastChange": "最後變更",
+    "recordLink": "看變更記錄",
+    "lastChangeUnknown": "—",
+    "annotationLabel": "機構備註",
+    "confirmed": "已確認 · {who} · {when}",
+    "notConfirmed": "尚未確認",
+    "emptyTitle": "這一組沒有可對照的條文",
+    "emptyHint": "換一個政策組，或到政策組頁補上條文。",
+    "emptyDeviating": "這一組目前沒有偏離的條文。",
+    "noGroupTitle": "目前沒有生效的政策組",
+    "noGroupHint": "到政策組頁把要用的政策組打開。",
+    "expectMin": "至少 {value}",
+    "expectMax": "至多 {value}",
+    "expectEquals": "須為 {value}",
+    "expectReview": "有要求但不定值，由稽核判讀",
+    "expectReference": "參考值 {value}",
+    "expectNone": "—",
+    "resultCompliant": "符合",
+    "resultDeviating": "偏離",
+    "resultNeedsReview": "待人工確認",
+    "resultReview": "待稽核判讀",
+    "resultUnmapped": "未對照",
+    "resultSelfAttested": "機構自述",
+    "resultBuiltinProtection": "系統內建保護",
+    "reviewNote": "有目前設定值，無固定要求，由稽核判讀",
+    "selfAttestedNote": "由機構說明，系統不判定",
+    "asideWhat": "這一組是什麼",
+    "asideName": "名稱",
+    "asideVersion": "版本",
+    "asideSource": "來源",
+    "asideSourceBuiltin": "產品內建",
+    "asideSourceCustom": "機構自建",
+    "asideOriginalLocale": "條文為機構原文（{locale}），系統不翻譯",
+    "asideHow": "怎麼判定的",
+    "asideHowBody": "把每一條條文對到的設定，拿目前的值和條文寫的要求比對。條文只說要有、沒有給值的，系統只列出目前值，由稽核人員判讀。機構備註不影響判定。",
+    "asideAuto": "自動產出摘要",
+    "asideAutoNone": "尚未設定",
+    "asideRecent": "最近產出",
+    "asideRecentNone": "目前沒有產出記錄",
+    "generateReport": "產出報告",
+    "generateReportDisabled": "報告產出下一期開放"
+  },
+  "policyGroups": {
+    "headerDesc": "維護政策組與條文。政策組的變更都在這一頁，合規對照頁只呈現結果。",
+    "create": "新增政策組",
+    "sourceBuiltin": "產品內建",
+    "sourceCustom": "機構自建",
+    "enabledLabel": "生效",
+    "clauseCount": "{n} 條條文",
+    "versionLabel": "版本 {version}",
+    "localeLabel": "原文 {locale}",
+    "rename": "改名",
+    "remove": "刪除",
+    "addClause": "新增條文",
+    "builtinHint": "內建組的條文隨產品版本維護：可以加備註或做人工確認，不能改內容。",
+    "customHint": "自建組的條文以機構原文儲存與顯示，系統不翻譯。",
+    "emptyGroups": "目前沒有任何政策組",
+    "clausesTitle": "{name}的條文",
+    "colClauseNo": "條號",
+    "colTitle": "標題",
+    "colKind": "型別",
+    "colKeys": "對應設定",
+    "colExpectation": "要求",
+    "colNote": "備註",
+    "colActions": "操作",
+    "kindSetting": "設定要求",
+    "kindSelfAttested": "由機構自行確認",
+    "kindBuiltinProtection": "系統內建保護",
+    "removedTag": "已移除",
+    "removedHint": "規範的這一條在 {version} 之後不存在了；備註保留，判定不再計入。",
+    "emptyClauses": "這一組還沒有條文",
+    "emptyClausesHint": "按新增條文，把內規寫成一條一條的要求。",
+    "noteAction": "備註",
+    "confirmAction": "人工確認",
+    "editAction": "編輯",
+    "deleteAction": "刪除",
+    "noneKeys": "—",
+    "noteDialogTitle": "機構備註",
+    "noteDialogHint": "備註不影響判定。要讓一項要求進入判定，請在自建組新增一條條文。",
+    "noteField": "備註",
+    "notePlaceholder": "例如：機構另有內規，已於年度稽核說明。",
+    "confirmDialogTitle": "人工確認",
+    "confirmDialogHint": "規範這一條沒有給固定值。確認後會記下是誰、什麼時候確認的，以及這一句說明。",
+    "confirmField": "說明",
+    "confirmPlaceholder": "一句話說明機構怎麼處理這一條。",
+    "confirmAgainHint": "這一條已由 {who} 於 {when} 確認過；再次確認會覆蓋前一次。",
+    "confirmRequired": "請寫一句說明",
+    "createDialogTitle": "新增政策組",
+    "codeField": "代號",
+    "codeHint": "英數與底線，建立後不可更改。",
+    "nameField": "名稱",
+    "localeField": "原文語言",
+    "localeHint": "條文以這個語言原樣呈現，系統不翻譯。",
+    "renameDialogTitle": "政策組改名",
+    "deleteTitle": "刪除政策組",
+    "deleteMessage": "刪除「{name}」會一併移除它的條文、要求、備註與確認記錄，無法復原。設定頁與合規對照頁不會再出現這一組。",
+    "deleteClauseTitle": "刪除條文",
+    "deleteClauseMessage": "刪除條號 {no} 會移除這一條的所有要求，判定不再計入。備註與確認記錄保留。",
+    "saved": "已儲存",
+    "deleted": "已刪除",
+    "requiredCode": "請填代號",
+    "requiredName": "請填名稱"
+  },
+  "clauseDialog": {
+    "createTitle": "新增條文",
+    "editTitle": "編輯條文",
+    "clauseNoField": "條號",
+    "clauseNoHint": "規範或內規裡的編號，例如 3-2。",
+    "titleField": "標題",
+    "titlePlaceholder": "用一句話說這一條要求什麼",
+    "summaryField": "摘要",
+    "kindField": "型別",
+    "kindSetting": "設定要求",
+    "kindSettingHint": "指到系統裡的設定，由系統判定符不符。",
+    "kindSelfAttested": "由機構自行確認",
+    "kindSelfAttestedHint": "系統沒有對應的設定，只呈現、不判定。",
+    "controlsField": "要求",
+    "addControl": "新增一項要求",
+    "removeControl": "移除",
+    "keyField": "設定",
+    "keyPlaceholder": "選一個設定",
+    "expectationField": "要求",
+    "comparatorReview": "有要求但不定值，由稽核判讀",
+    "comparatorMin": "至少",
+    "comparatorMax": "至多",
+    "comparatorEquals": "須為",
+    "valueField": "值",
+    "rangeHint": "可填 {min} 到 {max}",
+    "outOfRange": "超出可填範圍（{min} 到 {max}）",
+    "valueRequired": "請填要求值",
+    "keyRequired": "請選一個設定",
+    "controlsRequired": "設定要求型至少要有一項要求",
+    "duplicateKey": "同一組裡每個設定只能有一項要求",
+    "afterSaveTitle": "儲存後結果",
+    "afterSaveCompliant": "目前 {value}，儲存後這一條顯示為符合",
+    "afterSaveDeviating": "目前 {value}，儲存後這一條顯示為偏離",
+    "afterSaveReview": "目前 {value}，儲存後這一條由稽核判讀",
+    "afterSaveUnknown": "選好設定與要求之後，這裡會顯示儲存後的結果",
+    "afterSavePending": "判定中，稍候顯示儲存後的結果",
+    "afterSaveFailed": "判定沒有回來，請稍後再看一次",
+    "afterSaveInvalid": "先修正上面的值，才能顯示儲存後的結果",
+    "textKeyUnsupported": "這個設定是自由文字，沒有可以比較的要求值",
+    "clauseNoRequired": "請填條號",
+    "titleRequired": "請填標題"
   }
 }

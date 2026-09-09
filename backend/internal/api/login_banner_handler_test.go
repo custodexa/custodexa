@@ -51,7 +51,9 @@ func setupLoginBannerRouter(t *testing.T) *bannerTestEnv {
 	policySvc := policy.NewSecurityPolicyService(db)
 	auditSvc := audit.NewAuditLogService(&config.FeatureFlags{
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false})
-	handler := NewSecurityPolicyHandler(policySvc, auditSvc)
+	groupRepo := policy.NewPolicyGroupRepository(db)
+	handler := NewSecurityPolicyHandler(policySvc, auditSvc,
+		policy.NewComplianceService(policySvc, groupRepo), groupRepo)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -150,7 +152,7 @@ func TestLoginBannerSetReturnsTitleAndBodyOnly(t *testing.T) {
 	// 其他政策一律不得出現：本端點無認證中介層，回應等同對匿名者公開
 	raw := w.Body.String()
 	for _, forbidden := range []string{"lockout_max_attempts", "updated_by", "updated_at",
-		"pci_value", "compliant", "deviation_count", "max_length"} {
+		"verdicts", "groups", "max_length"} {
 		if strings.Contains(raw, forbidden) {
 			t.Errorf("回應洩漏 %q: %s", forbidden, raw)
 		}

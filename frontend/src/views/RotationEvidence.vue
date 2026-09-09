@@ -400,10 +400,20 @@
             </el-table-column>
             <el-table-column
               :label="$t('rotationEvidence.column.cron')"
-              min-width="140"
+              min-width="170"
             >
               <template #default="{ row }">
-                <code>{{ row.cron }}</code>
+                <code v-if="isCustomSchedule(row.cron)">{{ row.cron }}</code>
+                <span
+                  v-else
+                  :data-test="`rotation-schedule-plain-${row.id}`"
+                >{{ describeSchedule(row.cron) }}</span>
+                <div
+                  v-if="nextRunText(row.cron)"
+                  class="sub"
+                >
+                  {{ nextRunText(row.cron) }}
+                </div>
               </template>
             </el-table-column>
             <el-table-column
@@ -602,7 +612,7 @@
                   </el-tag>
                 </div>
                 <div class="sub">
-                  <code>{{ s.cron }}</code> · {{ $t('rotationEvidence.retentionDaysValue', { days: s.retention_days }) }}
+                  {{ describeSchedule(s.cron) }} · {{ $t('rotationEvidence.retentionDaysValue', { days: s.retention_days }) }}
                 </div>
                 <div class="sub">
                   {{ $t('rotationEvidence.aside.scheduleAnchor', { time: formatDateTime(s.period_anchor) }) }}
@@ -785,9 +795,10 @@
           />
         </el-form-item>
         <el-form-item :label="$t('rotationEvidence.cron')">
-          <el-input
+          <ScheduleFrequencyPicker
             v-model="scheduleForm.cron"
-            :placeholder="$t('rotationEvidence.cronPlaceholder')"
+            v-model:valid="scheduleValid"
+            :custom-placeholder="$t('rotationEvidence.cronPlaceholder')"
             data-test="rotation-schedule-cron"
           />
         </el-form-item>
@@ -867,7 +878,7 @@
         <el-button
           type="primary"
           :loading="scheduleSaving"
-          :disabled="!scheduleForm.name || !scheduleForm.cron"
+          :disabled="!scheduleForm.name || !scheduleForm.cron || !scheduleValid"
           data-test="rotation-schedule-submit"
           @click="submitSchedule"
         >
@@ -886,6 +897,9 @@ import { ElMessage } from 'element-plus'
 import { CircleHelp, FileClock } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ScheduleFrequencyPicker from '@/components/ScheduleFrequencyPicker.vue'
+import { CUSTOM_MODE, describeSchedule, formatRunTime, parseCron } from '@/utils/cron-shape'
+import { getScheduleNextRuns } from '@/api/schedules'
 import {
   createRotationReportJob,
   createRotationReportSchedule,
@@ -944,6 +958,35 @@ const recordsTruncated = ref(false)
 
 const schedules = ref([])
 const schedulesExpanded = ref(false)
+
+// 排程時刻：列表講人話，下次執行時刻問後端（同一個時刻表只問一次）。
+// 取不到就不顯示那一行——列表不是交代失敗原因的地方，編輯表單才是。
+const scheduleValid = ref(true)
+const nextRunByCron = ref({})
+
+const isCustomSchedule = (cron) => parseCron(cron).mode === CUSTOM_MODE
+
+const nextRunText = (cron) => {
+  const run = nextRunByCron.value[cron]
+  return run ? t('scheduleFrequency.nextRun', { time: run }) : ''
+}
+
+const loadNextRuns = async (crons) => {
+  const distinct = [...new Set(crons.filter(Boolean))]
+  const pairs = await Promise.all(
+    distinct.map(async (cron) => {
+      try {
+        const res = await getScheduleNextRuns({ cron, count: 1 }, { skipErrorToast: true })
+        const run = Array.isArray(res?.runs) ? res.runs[0] : null
+        return [cron, run ? formatRunTime(run) : '']
+      } catch {
+        return [cron, '']
+      }
+    })
+  )
+  nextRunByCron.value = Object.fromEntries(pairs.filter(([, run]) => run))
+}
+
 const nodes = ref([])
 const plans = ref([])
 
@@ -1191,6 +1234,7 @@ const loadSchedules = async () => {
   try {
     const res = await listRotationReportSchedules()
     schedules.value = res?.data || []
+    await loadNextRuns(schedules.value.map((s) => s.cron))
   } catch (_e) {
     schedules.value = []
   }

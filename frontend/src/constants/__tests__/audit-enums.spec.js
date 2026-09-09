@@ -54,6 +54,8 @@ const BACKEND_RESOURCES = [
   'offsite_storage',
   // 帳號憑證（resource_id 指向憑證列本身，不是資產或帳號）
   'credential',
+  // 政策組條文映射：對照表的管理面寫入、判定的唯讀存取、排程時刻預覽
+  'policy_group', 'compliance_map', 'schedule',
   // 兜底哨兵（`extractResource` 對未分類路徑的回傳值，取代舊兜底 asset）
   'unclassified',
 ]

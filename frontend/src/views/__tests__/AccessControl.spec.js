@@ -23,9 +23,15 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
+const previewComplianceMock = vi.fn()
+const previewApplyMock = vi.fn()
+
 vi.mock('@/api/securityPolicies', () => ({
   getSecurityPolicies: (...args) => getPoliciesMock(...args),
   updateSecurityPolicies: (...args) => updatePoliciesMock(...args),
+  // 判定與套用預覽端點：判定一律由後端供給，前端不自己算一份
+  previewCompliance: (...args) => previewComplianceMock(...args),
+  previewApplyPolicies: (...args) => previewApplyMock(...args),
 }))
 
 const getAssetListMock = vi.fn()
@@ -36,6 +42,18 @@ vi.mock('@/api/assets', () => ({
   updateAsset: (...args) => updateAssetMock(...args),
 }))
 
+// 判定由後端建構，前端只投影
+const verdict = (key, result, expected, comparator = 'equals') => ({
+  key,
+  group_code: 'pci_dss_4_0_1',
+  clause_no: '7.2',
+  result,
+  reason: result === 'deviating' ? 'value_mismatch' : 'meets_expectation',
+  current: 'open',
+  expected,
+  comparator,
+})
+
 // 後端回全鍵集；本頁只承載存取域 7 鍵——password_min_length 為「不屬本頁」對照組
 const policyFixture = () => ({
   data: [
@@ -43,38 +61,31 @@ const policyFixture = () => ({
       key: 'access_policy_default',
       type: 'enum',
       enum_order: ['open', 'reason', 'approval'],
-      pci_value: 'approval',
-      requirement: '7.2',
       label: '連線申請政策（全域預設）',
       value: 'open',
-      compliant: false,
+      verdicts: [verdict('access_policy_default', 'deviating', 'approval')],
     },
     {
       key: 'access_request_max_duration_minutes',
       type: 'int',
-      pci_value: '1440',
       direction: 'max',
       label: '申請時長上限',
       unit: '分鐘',
       value: '1440',
-      compliant: true,
     },
     {
       key: 'access_request_pending_timeout_hours',
       type: 'int',
-      pci_value: '72',
       direction: 'max',
       label: '待審逾時',
       unit: '小時',
       value: '72',
-      compliant: true,
     },
     {
       key: 'break_glass_enabled',
       type: 'bool',
       label: '破窗緊急連線',
       value: 'false',
-      compliant: true,
     },
     {
       key: 'break_glass_duration_minutes',
@@ -82,7 +93,6 @@ const policyFixture = () => ({
       label: '破窗連線時窗',
       unit: '分鐘',
       value: '60',
-      compliant: true,
     },
     {
       key: 'break_glass_review_timeout_hours',
@@ -90,27 +100,35 @@ const policyFixture = () => ({
       label: '補審逾時告警',
       unit: '小時',
       value: '24',
-      compliant: true,
     },
     {
       key: 'access_revoke_disconnect',
       type: 'bool',
       label: '撤銷即斷線',
       value: 'false',
-      compliant: true,
     },
     {
       key: 'password_min_length',
       type: 'int',
-      pci_value: '12',
       direction: 'min',
       label: '密碼最小長度',
       unit: '字元',
       value: '8',
-      compliant: false,
+      verdicts: [verdict('password_min_length', 'deviating', '12', 'min')],
     },
   ],
-  deviation_count: 2,
+  groups: [{ code: 'pci_dss_4_0_1', name: 'PCI DSS 4.0.1', enabled: true }],
+})
+
+// 一次滿足所有政策：本頁只有連線政策要改
+const applyPreviewFixture = () => ({
+  mode: 'strictest',
+  changes: [
+    { key: 'access_policy_default', current: 'open', proposed: 'approval', source_group: 'pci_dss_4_0_1' },
+  ],
+  conflicts: [],
+  unchanged_count: 6,
+  unmapped_count: 0,
 })
 
 // 資產政策覆寫：高敏 SSH 已覆寫、一般 RDP 未覆寫
@@ -156,6 +174,8 @@ describe('AccessControl', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getPoliciesMock.mockResolvedValue(policyFixture())
+    previewComplianceMock.mockResolvedValue({ data: { draft: true, verdicts: [] } })
+    previewApplyMock.mockResolvedValue({ data: applyPreviewFixture() })
     getAssetListMock.mockResolvedValue(assetsFixture())
     updateAssetMock.mockResolvedValue({})
   })
@@ -171,9 +191,11 @@ describe('AccessControl', () => {
     // 非本頁鍵不得出現（域承載邊界）
     expect(wrapper.text()).not.toContain('密碼最小長度')
     // 偏離數只算本頁鍵子集：僅 access_policy_default（open 劣於 approval）
-    expect(wrapper.text()).toContain('本頁與 PCI 建議偏離 1 項')
-    // 雙向導覽：橫幅附全系統總數回母頁總覽連結（deviation_count=2）
-    expect(wrapper.text()).toContain('全系統偏離 2 項 · 安全政策總覽')
+    expect(wrapper.find('[data-test="section-deviation-access_policy"]').text()).toBe('偏離 1 項')
+    expect(wrapper.find('[data-test="section-deviation-break_glass"]').text()).toBe('無偏離項目')
+    // 頁首列說出現在對照的是哪幾組，並給合規對照頁入口
+    expect(wrapper.text()).toContain('目前對照的政策組')
+    expect(wrapper.text()).toContain('合規對照')
   })
 
   // 誠實邊界的條目數是規格條列，不是排版細節：少一項即為介面對外少講一件事
@@ -186,7 +208,6 @@ describe('AccessControl', () => {
           type: 'bool',
           label: '允許貼入受管資產',
           value: 'true',
-          compliant: true,
         },
       ],
       total: 3,
@@ -290,14 +311,20 @@ describe('AccessControl', () => {
     expect(wrapper.text()).toContain('清除覆寫（跟隨全域，目前：填寫理由即可連線）')
   })
 
-  it('apply-page-PCI touches only page keys and save sends only page keys', async () => {
+  it('套用預覽只算本頁鍵，確認後填表單、儲存只送本頁鍵', async () => {
     updatePoliciesMock.mockResolvedValue(policyFixture())
     const wrapper = await mountPage()
 
-    const applyBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('套用本頁建議值'))
-    await applyBtn.trigger('click')
+    wrapper.findComponent({ name: 'PolicyGroupStrip' }).vm.$emit('apply', { mode: 'strictest' })
+    await flushPromises()
+
+    // 套用範圍限本頁鍵：非本頁的密碼最小長度不進 scope
+    const request = previewApplyMock.mock.calls[0][0]
+    expect(request.scope).toContain('access_policy_default')
+    expect(request.scope).not.toContain('password_min_length')
+
+    const dialog = wrapper.findComponent({ name: 'ApplyPreviewDialog' })
+    dialog.vm.$emit('confirm', dialog.props('preview').changes)
     await flushPromises()
 
     expect(wrapper.text()).toContain('有未儲存變更')

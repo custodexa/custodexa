@@ -5,16 +5,12 @@
       :description="$t('accessControl.description')"
     />
 
-    <PolicyPciBanner
+    <PolicyGroupStrip
       :loading="loading"
       :saving="saving"
       :is-dirty="isDirty"
-      :deviation-count="pageDeviationCount"
-      :deviation-text="$t('policyForm.pageDeviation', { n: pageDeviationCount }, pageDeviationCount)"
-      :overview-count="totalDeviationCount"
-      :epayment-deviation-count="pageEPaymentDeviationCount"
-      @apply="applyPagePCI"
-      @apply-epayment="applyPageEPayment"
+      :groups="groups"
+      @apply="(command) => previewApply(command.mode, command.groupCode)"
       @reset="resetForm"
       @save="save"
     />
@@ -22,7 +18,10 @@
     <PolicyKeySections
       :sections="visibleSections"
       :form-values="formValues"
-      :saved-values="savedValues"
+      :verdicts-by-key="verdictsByKey"
+      :group-names="groupNames"
+      :draft="isDraftVerdicts"
+      :draft-status="draftStatus"
       @update:value="(key, value) => (formValues[key] = value)"
     >
       <template #section-extra="{ section }">
@@ -57,14 +56,25 @@
         />
       </template>
     </PolicyKeySections>
+
+    <ApplyPreviewDialog
+      v-model="previewVisible"
+      :preview="previewData"
+      :policies="pagePolicies"
+      :page-title="$t('menu.accessControl')"
+      :group-names="groupNames"
+      :verdicts-by-key="verdictsByKey"
+      @confirm="acceptPreview"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
-import PolicyPciBanner from '@/components/PolicyPciBanner.vue'
+import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
+import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import AssetPolicyTable from '@/components/AssetPolicyTable.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import { ACCESS_SECTIONS } from '@/constants/policyDomains'
@@ -75,16 +85,21 @@ const TRANSFER_BOUNDARY_COUNT = 7
 const {
   loading,
   saving,
+  pagePolicies,
+  groups,
+  groupNames,
   formValues,
   savedValues,
+  verdictsByKey,
+  isDraftVerdicts,
+  draftStatus,
   visibleSections,
   isDirty,
-  pageDeviationCount,
-  pageEPaymentDeviationCount,
-  totalDeviationCount,
+  previewVisible,
+  previewData,
   loadPolicies,
-  applyPagePCI,
-  applyPageEPayment,
+  previewApply,
+  acceptPreview,
   resetForm,
   save,
 } = usePolicyForm(ACCESS_SECTIONS)

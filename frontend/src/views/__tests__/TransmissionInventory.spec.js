@@ -22,10 +22,28 @@ vi.mock('@/api/transmissionInventory', () => ({
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
+const previewComplianceMock = vi.fn()
+const previewApplyMock = vi.fn()
+
 vi.mock('@/api/securityPolicies', () => ({
   getSecurityPolicies: (...args) => getPoliciesMock(...args),
   updateSecurityPolicies: (...args) => updatePoliciesMock(...args),
+  // 判定與套用預覽端點：判定一律由後端供給，前端不自己算一份
+  previewCompliance: (...args) => previewComplianceMock(...args),
+  previewApplyPolicies: (...args) => previewApplyMock(...args),
 }))
+
+// 判定由後端建構，前端只投影
+const verdict = (key, result, expected, comparator = 'equals') => ({
+  key,
+  group_code: 'pci_dss_4_0_1',
+  clause_no: '4.2.1',
+  result,
+  reason: result === 'deviating' ? 'value_mismatch' : 'meets_expectation',
+  current: 'off',
+  expected,
+  comparator,
+})
 
 const policyFixture = () => ({
   data: [
@@ -33,35 +51,31 @@ const policyFixture = () => ({
       key: 'transport_rdp_level',
       type: 'enum',
       enum_order: ['off', 'warn', 'strict'],
-      pci_value: 'warn',
-      requirement: '4.2.1',
       label: 'RDP 傳輸強制等級',
       value: 'off',
-      compliant: false,
+      verdicts: [verdict('transport_rdp_level', 'deviating', 'warn')],
     },
     {
       key: 'transport_consent_ttl_days',
       type: 'int',
-      pci_value: '90',
       direction: 'max',
       zero_disables: true,
       label: '傳輸風險同意效期',
       unit: '天',
       value: '90',
-      compliant: true,
+      verdicts: [verdict('transport_consent_ttl_days', 'compliant', '90', 'max')],
     },
     {
       key: 'password_min_length',
       type: 'int',
-      pci_value: '12',
       direction: 'min',
       label: '密碼最小長度',
       unit: '字元',
       value: '8',
-      compliant: false,
+      verdicts: [verdict('password_min_length', 'deviating', '12', 'min')],
     },
   ],
-  deviation_count: 2,
+  groups: [{ code: 'pci_dss_4_0_1', name: 'PCI DSS 4.0.1', enabled: true }],
 })
 
 const inventoryFixture = () => ({
@@ -137,9 +151,10 @@ describe('TransmissionInventory 通道加密清冊', () => {
     // 非本域鍵不出現（域承載邊界）
     expect(wrapper.text()).not.toContain('密碼最小長度')
     // 偏離數只算本頁子集：僅 transport_rdp_level（off 劣於 warn）
-    expect(wrapper.text()).toContain('本頁與 PCI 建議偏離 1 項')
-    // 雙向導覽：橫幅附全系統總數回母頁總覽連結
-    expect(wrapper.text()).toContain('全系統偏離 2 項 · 安全政策總覽')
+    expect(wrapper.find('[data-test="section-deviation-transport"]').text()).toBe('偏離 1 項')
+    // 頁首列給政策組與合規對照頁入口
+    expect(wrapper.text()).toContain('目前對照的政策組')
+    expect(wrapper.text()).toContain('合規對照')
   })
 
   it('儲存政策後重載清冊（政策等級欄同步）', async () => {

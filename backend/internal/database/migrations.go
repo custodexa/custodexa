@@ -165,6 +165,17 @@ var migrations = []Migration{
 		Up:      applyGroupRoleMapping,
 		Down:    rollbackGroupRoleMapping,
 	},
+	{
+		// 政策組的資料層：四張新表（policy_groups、policy_clauses、
+		// policy_clause_controls、policy_clause_annotations）與一條唯一索引。
+		// 純加表，既有行為零變更；內建組的內容由啟動種子 upsert。
+		// **Down 有損**（機構自建的組、條文、備註與人工確認記錄無第二處存放，
+		// 生產無回滾入口；見 migration_policy_groups.go 檔頭的 Down 契約）
+		Version: "20260909_policy_groups",
+		Name:    "policy_groups",
+		Up:      applyPolicyGroups,
+		Down:    rollbackPolicyGroups,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -185,7 +196,8 @@ func schemaDDLStatements() []string {
 	out = append(out, credentialLibraryDDL()...)
 	out = append(out, credentialLibraryContractDDL()...)
 	out = append(out, roleStateCheckpointDDL()...)
-	return append(out, groupRoleMappingDDL()...)
+	out = append(out, groupRoleMappingDDL()...)
+	return append(out, policyGroupsDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

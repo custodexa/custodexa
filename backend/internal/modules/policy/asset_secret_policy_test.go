@@ -4,13 +4,15 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/custodexa/backend/internal/model"
 	"github.com/stretchr/testify/require"
 )
 
-// TestAssetSecretMaxAgePolicyDef 釘住資產帳號憑證最長使用天數的定義。
+// TestAssetSecretMaxAgePolicyDef 釘住資產帳號憑證最長使用天數的定義與兩組要求。
 //
 // **值本身要被釘住**：出廠 0 是「升級零行為變更」的承諾，上界 3650 是防呆，
-// 兩個基準值與條號來自法規與條文核對。任一格被改動時應該紅，而不是靜默生效。
+// 兩組內建規範各自的要求值與條號來自法規與條文核對。任一格被改動時應該紅，
+// 而不是靜默生效。**要求的受測對象是內建組的種子**——判定讀的就是那一批列。
 func TestAssetSecretMaxAgePolicyDef(t *testing.T) {
 	def := findDef(PolicyAssetSecretMaxAgeDays)
 	require.NotNil(t, def, "政策鍵不存在")
@@ -20,14 +22,29 @@ func TestAssetSecretMaxAgePolicyDef(t *testing.T) {
 	require.True(t, def.ZeroDisables, "0 是關閉 sentinel，不是「零天」")
 	require.Equal(t, DirectionMax, def.Direction, "值須不大於基準")
 	require.Equal(t, 3650, def.Max)
-
-	require.Equal(t, "90", def.PCIValue)
-	require.True(t, def.PCIReference, "PCI 條文未定固定天數，此值須標為參考值")
-	require.Equal(t, "8.6.3", def.Requirement)
-
-	require.Equal(t, "90", def.EPaymentValue)
-	require.Equal(t, "15-8", def.EPaymentRequirement)
 	require.Equal(t, "天", def.Unit)
+
+	type requirement struct {
+		clauseNo, comparator, value string
+		referenceOnly               bool
+	}
+	want := map[string]requirement{
+		pciGroupCode:      {"8.6.3", model.PolicyControlComparatorMax, "90", true},
+		ePaymentGroupCode: {"15-8", model.PolicyControlComparatorMax, "90", false},
+	}
+	got := map[string]requirement{}
+	for _, seed := range builtinPolicyGroupSeeds() {
+		controls, err := buildSeedControls(seed)
+		require.NoError(t, err, "組 %s 的種子建不出來", seed.Code)
+		for _, c := range controls {
+			if c.PolicyKey != PolicyAssetSecretMaxAgeDays {
+				continue
+			}
+			got[seed.Code] = requirement{c.ClauseNo, c.Comparator, c.ExpectedValue, c.ReferenceOnly}
+		}
+	}
+	require.Equal(t, want, got,
+		"兩組對本鍵的要求與條文對照不符——PCI 未定固定天數故標為參考值，電支 §15-8 明定至少每三個月")
 }
 
 // TestAssetSecretMaxAgeValueDomain 值域＝0（關閉）或 1–3650。
@@ -50,19 +67,21 @@ func TestAssetSecretMaxAgeValueDomain(t *testing.T) {
 	}
 }
 
-// TestPCIReferenceRequiresValue 參考值必有 PCI 建議值：拿掉 validatePolicyDefs
-// 的這一條即轉紅。空的參考值會在設定頁掛出一個沒有數字的標籤，
-// 而符合性評估與一鍵套用都會靜默略過該鍵。
-func TestPCIReferenceRequiresValue(t *testing.T) {
-	orig := policyDefs
-	t.Cleanup(func() { policyDefs = orig })
+// TestReferenceOnlyRequirementCarriesValue 參考值必有要求值：拿掉資料存取層
+// 那一條校驗即轉紅。空的要求值會在條文上掛出一個沒有數字的參考值，
+// 而判定與一次滿足所有政策都會靜默略過該鍵（條文真的沒有給值時走未定值）。
+func TestReferenceOnlyRequirementCarriesValue(t *testing.T) {
+	def := findDef(PolicyAssetSecretMaxAgeDays)
+	require.NotNil(t, def)
 
-	policyDefs = []PolicyDef{{
-		Key: "reference_without_value_probe", Type: PolicyTypeInt, Default: "0",
-		PCIReference: true, ZeroDisables: true, Max: 10, Label: "探針",
-	}}
-	require.Error(t, validatePolicyDefs(), "標為參考值卻無 PCIValue 應被自檢擋下")
+	empty := model.PolicyClauseControl{
+		PolicyKey: PolicyAssetSecretMaxAgeDays, Comparator: model.PolicyControlComparatorMax,
+		ExpectedValue: "", ReferenceOnly: true,
+	}
+	require.Error(t, assertExpectedValueFitsComparator(def, empty),
+		"標為參考值卻無要求值應被校驗擋下")
 
-	policyDefs[0].PCIValue = "5"
-	require.NoError(t, validatePolicyDefs(), "補上 PCIValue 後應通過")
+	empty.ExpectedValue = "90"
+	require.NoError(t, assertExpectedValueFitsComparator(def, empty),
+		"補上要求值後應通過")
 }

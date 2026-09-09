@@ -19,7 +19,10 @@
 | OIDC provider | 7 | `/api/v1/oidc-providers` | 身分提供者 CRUD＋單筆詳情＋狀態彙總＋探索預覽（admin；secret write-only，身分域建後不可變） |
 | LDAP 目錄 | 5 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試＋狀態彙總（admin；bind 密碼 write-only，設定自 env 遷入 DB） |
 | 身分來源與群組映射 | 5 | `/api/v1/identity-sources` | 目錄與提供者的合併列表＋各來源的群組對角色映射規則 CRUD（admin） |
-| 安全政策 | 3 | `/api/v1/security-policies`, `/api/v1/auth/banner` | PCI 安全政策查詢/批次更新（admin）＋登入前告示讀取（公開） |
+| 安全政策 | 6 | `/api/v1/security-policies`, `/api/v1/auth/banner` | 安全政策查詢/批次更新、單一設定鍵的定義查詢、草稿判定與套用預覽（admin）＋登入前告示讀取（公開） |
+| 政策組 | 10 | `/api/v1/policy-groups` | 政策組與條文對照的維護：組建立/更名/生效開關/刪除、條文與要求整批取代、機構備註與人工確認（讀 admin＋auditor，寫 admin） |
+| 合規對照 | 1 | `/api/v1/compliance` | 設定現值對各生效政策組的判定快照（唯讀，admin＋auditor） |
+| 排程時刻預覽 | 1 | `/api/v1/schedules` | 由後端解析排程字串並回下次幾個執行時刻（admin；不讀寫任何資料） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（admin） |
 | 資產 | 17 | `/api/v1/assets` | CRUD、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
 | 帳號憑證庫 | 15 | `/api/v1/credentials`、`/api/v1/assets/:id/accounts/:accountId/credential` | 憑證 CRUD、範圍轉換、直接寫入密文、掛載與卸載、更換掛載憑證、整組改密與逐台補跑、單台脫離共用（全數 admin＋`credential:manage`） |
@@ -54,7 +57,7 @@
 | 改密 | 14 | `/api/v1/change-secret-plans`、`/api/v1/change-secret-candidates`、`/api/v1/change-secret-batches` | 計劃 CRUD、手動觸發、執行記錄；未驗證憑證清單／重試／清除；以帳號為主軸的批次改密 |
 | 營運指標 | 1 | `/metrics` | Prometheus 曝光格式（刻意不在 `/api` 之下，故預設不被 edge 代理） |
 
-**總計**: 217 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
+**總計**: 232 端點（含 4 個 WebSocket 端點）。此數為上表各模組的人工加總，口徑是
 「語義端點」；下方索引則是 gin 實際註冊的路由條目數，同一路徑的不同方法各計一條，
 故兩者不相等屬正常。**以索引為準**。
 
@@ -192,6 +195,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/command-alerts` | always |
 | POST | `/api/v1/command-alerts/:id/review` | always |
 | GET | `/api/v1/commands` | always |
+| GET | `/api/v1/compliance/snapshot` | always |
 | GET | `/api/v1/connect` | always |
 | POST | `/api/v1/connect-tokens` | always |
 | GET | `/api/v1/credentials` | always |
@@ -257,6 +261,16 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/oidc-providers/:id/status` | always |
 | POST | `/api/v1/oidc-providers/discovery-preview` | always |
 | GET | `/api/v1/ping` | always |
+| GET | `/api/v1/policy-groups` | always |
+| POST | `/api/v1/policy-groups` | always |
+| DELETE | `/api/v1/policy-groups/:code` | always |
+| GET | `/api/v1/policy-groups/:code` | always |
+| PUT | `/api/v1/policy-groups/:code` | always |
+| DELETE | `/api/v1/policy-groups/:code/clauses/:clause_no` | always |
+| PUT | `/api/v1/policy-groups/:code/clauses/:clause_no` | always |
+| PUT | `/api/v1/policy-groups/:code/clauses/:clause_no/annotation` | always |
+| POST | `/api/v1/policy-groups/:code/clauses/:clause_no/confirm` | always |
+| PUT | `/api/v1/policy-groups/:code/enabled` | always |
 | GET | `/api/v1/recordings/stats` | always |
 | GET | `/api/v1/recordings/stream` | always |
 | GET | `/api/v1/roles` | always |
@@ -268,10 +282,14 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/rotation-report/schedules/:id` | always |
 | PUT | `/api/v1/rotation-report/schedules/:id` | always |
 | POST | `/api/v1/rotation-report/schedules/:id/run` | always |
+| POST | `/api/v1/schedules/next-runs` | always |
 | GET | `/api/v1/seal/status` | always |
 | POST | `/api/v1/seal/unseal` | always |
 | GET | `/api/v1/security-policies` | always |
 | PUT | `/api/v1/security-policies` | always |
+| POST | `/api/v1/security-policies/apply-preview` | always |
+| POST | `/api/v1/security-policies/compliance/preview` | always |
+| GET | `/api/v1/security-policies/defs/:key` | always |
 | GET | `/api/v1/sessions` | always |
 | GET | `/api/v1/sessions/:id` | always |
 | GET | `/api/v1/sessions/:id/clipboard-events` | always |
@@ -3073,14 +3091,19 @@ GET /api/v1/roles
 
 ## 安全政策 API（admin only）
 
-PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語義與 PCI 建議值由
-服務層常數表定義；無對應列時以出廠預設生效。變更於單一交易內批次落庫（中途失敗全回滾），
+安全政策的 key-value 設定。政策值以字串儲存，型別語義與值域由服務層常數表定義，
+各組規範對各鍵的要求則是政策組的條文資料；無對應列時以出廠預設生效。變更於單一交易內批次落庫（中途失敗全回滾），
 每項變更寫入審計日誌（`resource=security_policy`，`old→new`，PCI 10.2.2）。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/security-policies` | 取全部政策項（現值＋兩基準建議值＋各自符合性）→ `{data: [PolicyView], deviation_count: N, epayment_deviation_count: M}` |
+| GET | `/security-policies` | 取全部政策項（現值＋**對各生效政策組的判定**）→ `{data: [PolicyView + verdicts], groups: [PolicyGroup]}` |
 | PUT | `/security-policies` | 批次更新，body `{"policies": {"key": "value", ...}}`（僅送有變更的鍵）；成功回同 GET 格式 |
+| GET | `/security-policies/defs/:key` | 單一設定鍵的定義、可選比較方式、值域與現值（條文表單選鍵後取用） |
+| POST | `/security-policies/compliance/preview` | 以尚未儲存的草稿值重算一份判定（唯讀） |
+| POST | `/security-policies/apply-preview` | 套用政策建議值的預覽（只算不寫） |
+
+後三項與政策組的對照維護同屬一套判定契約，逐項形狀見下方「政策組與合規對照 API」一章。
 
 同一組政策另有一個公開讀取端點 `GET /api/v1/auth/banner`，只回登入前告示的兩個鍵，見上方「登入前告示」。
 
@@ -3090,34 +3113,25 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
   "key": "lockout_max_attempts",
   "type": "int",
   "default": "10",
-  "pci_value": "10",
-  "epayment_value": "5",
   "direction": "max",
-  "requirement": "8.3.4",
-  "epayment_requirement": "4-7(五)",
   "label": "登入失敗鎖定次數上限",
   "unit": "次",
   "unit_key": "count",
   "value": "10",
-  "compliant": true,
-  "epayment_compliant": false,
-  "strictest_value": "5",
   "updated_by": "admin",
   "updated_at": "2026-07-03T00:00:00Z"
 }
 ```
-（`compliant` 為 null 表示該項無 PCI 建議值、不評估；`deviation_count` 為與 PCI 偏離的項數）
 
-**雙基準標示**：PCI-DSS 與電子支付機構資通安全基準為
-**平行兩軌**，各自有建議值（`pci_value`／`epayment_value`）、條號（`requirement`／
-`epayment_requirement`）與符合性（`compliant`／`epayment_compliant`）。兩者 SHALL NOT
-互相覆寫，偏離數亦不合計——同一項可能符合其一而偏離另一（如登入鎖定次數現值 8：
-符合 PCI 的 ≤10，偏離電支的 ≤5）。`epayment_compliant` 為 null 表示該項無電支建議值。
+**設定鍵不承載合規要求**：某一組規範對某個鍵要求什麼值，是政策組的條文資料，
+不是設定鍵的屬性；判定隨列表以 `verdicts` 一起回（見下方「安全政策列表的判定投影」）。
+`direction` 只說明這個鍵的危險方向朝哪邊（`max`＝值越大越鬆），供表單提示與判定比較使用。
 
-`strictest_value` 是**兩基準取嚴後**的建議值，供「套用電支基準」使用。**不可改用
-`epayment_value` 直接套用**：兩基準在部分項目上方向相反（密碼最小長度 PCI 要求 ≥12、
-電支只要求 ≥6），無條件覆寫會把已符合 PCI 的設定改差，使「套用合規基準」這個動作
-反而降低系統安全性。出廠預設值不因新增基準而改變（合規為一鍵之遙，非強制）。
+**多組並行**：一個鍵可同時被多組對照，且各組的要求可能方向相反（密碼最小長度一組
+要求 ≥12、另一組只要求 ≥6）。判定逐組各給一個結果，偏離數不跨組合計——同一項可能
+符合其一而偏離另一。「一次滿足所有政策」取各組要求的交集且**不放寬**：已比要求更嚴的
+現值不會被拉回要求值，否則「套用合規基準」這個動作反而降低系統安全性。
+出廠預設值不因任何一組而改變（合規為一鍵之遙，非強制）。
 
 `label`／`unit` 為繁中顯示 fallback；前端 i18n 以穩定 `key` 查 `policyLabel.<key>`、以語義 `unit_key`（值域 `count`／`minutes`／`chars`／`records`／`hours`／`days`／`persons`）查 `policyUnit.<unit_key>`——切語言顯示對應譯文，漏譯降級回 `label`／`unit`。
 
@@ -3132,32 +3146,32 @@ PCI-DSS 合規政策的 key-value 設定。政策值以字串儲存，型別語�
 超過 `max_length` 一律拒絕，回 400 `VALIDATION_POLICY_INVALID_VALUE` 並以 `params.key` 指名該鍵
 （**拒絕原因不進回應**）。正規化後為空字串等同未設定，是合法值。
 值存的是純文字，不做 HTML 轉義也不剝除標記——不把它渲染成標記是呈現層的責任。
-文字鍵無基準建議值，`compliant` 與 `epayment_compliant` 皆為 null，不計入兩個偏離數。
+文字鍵不能作為條文要求的對象（自由文字沒有任何一種比較方式是有意義的），故不產生判定、不計入偏離數。
 
 文字型鍵的**變更審計**改用結構化欄位：詳情欄為
 `{"changes":[{"field":"<鍵名>","old":"<舊值全文>","new":"<新值全文>"}]}`（單行 JSON，
 換行以逸出序列表示，故 CSV 匯出不會多出實體換行），訊息欄只留 `policy=<鍵名>`。
 非文字鍵維持既有的單行 `policy=<鍵> old=<舊> new=<新>` 且詳情欄為空。
 
-**政策鍵值域**（型別/出廠預設/PCI 建議值見 [DB_SCHEMA.md](DB_SCHEMA.md) security_policies 一節）:
+**政策鍵值域**（型別與出廠預設見 [DB_SCHEMA.md](DB_SCHEMA.md) security_policies 一節）:
 `lockout_max_attempts`、`lockout_duration_minutes`、`password_min_length`、`password_require_alnum`、
 `password_history_count`、`force_change_on_reset`、`mfa_required`（enum: off/admin_only/all）、
 `web_idle_minutes`、`web_max_session_hours`、
 `refresh_cookie_secure`（bool，預設 true——refresh cookie 是否標記 `Secure`（僅在 https 連線下由瀏覽器保存與回送）。
 發放 cookie 時現讀，改值即生效不需重啟；初值於首次啟動自部署組態播種
 （`AUTH_REFRESH_COOKIE_SECURE` 顯式值 → `PUBLIC_BASE_URL` 的 scheme；兩者皆缺則不寫政策列、出廠預設生效），
-播種後本鍵以政策為準、改 env 不再介入。**無 PCI／電支建議值**：正確取值由部署對外協定決定
-（https 部署開啟、刻意明文部署關閉），不是合規基準線，故不入「套用建議值」也不計偏離）、
+播種後本鍵以政策為準、改 env 不再介入。**不在任何內建組的對照內**：正確取值由部署對外協定決定
+（https 部署開啟、刻意明文部署關閉），不是合規基準線，故不入「一次滿足所有政策」也不計偏離）、
 `session_idle_minutes`、`session_max_minutes`、
 `inactive_disable_days`；日誌保留與審閱（PCI Req 10）:
 `retention_audit_log_days`、`retention_session_command_days`、`retention_alert_days`（預設 0=永久，PCI 365）、
 `retention_recording_days`（預設 90，初始值由 `RECORDING_RETENTION_DAYS` env 播種）、
-`retention_checkpoint_days`（檢查點鏈保留，預設 0＝永久、上界 3650、無 PCI 建議值——
+`retention_checkpoint_days`（檢查點鏈保留，預設 0＝永久、上界 3650、不在任何內建組的對照內——
 其合規語義是**跨鍵**關係，見下方跨鍵約束）、
 `daily_review_enabled`、`failure_alert_enabled`（bool，預設 false，PCI true）；存取政策（PCI 7.2）:
 `access_policy_default`（enum: open/reason/approval，預設 open，PCI approval——資產未個別設定政策時的全域段位）、
 `access_request_max_duration_minutes`（預設 1440）、`access_request_pending_timeout_hours`（預設 72）、
-`access_request_min_approvals`（int，預設 1、區間 1–10——最少核准人數，內控強化選項非 PCI 要求，無 PCI 建議值）；
+`access_request_min_approvals`（int，預設 1、區間 1–10——最少核准人數，內控強化選項非 PCI 要求，不在任何內建組的對照內）；
 破窗與撤銷（PCI 7.2）: `break_glass_enabled`（bool，預設 false——破窗 opt-in）、
 `break_glass_duration_minutes`（預設 60）、`break_glass_review_timeout_hours`（預設 24）、
 `access_revoke_disconnect`（bool，預設 false——撤銷預設只擋新連線不硬斷）；
@@ -3183,6 +3197,304 @@ PCI 建議 365——金鑰超齡提醒天數，反映於金鑰清冊的 `reminde
 **錯誤**: 400 未知鍵（`ErrPolicyUnknownKey`）或值不合法（型別/範圍，`ErrPolicyInvalidValue`）、
 跨鍵約束違反（`VALIDATION_POLICY_RETENTION_CROSS_KEY`）、
 未提供任何政策項；500 寫入失敗。
+
+---
+
+## 政策組與合規對照 API
+
+安全設定與外部規範條文的對照。一個**政策組**是一份對照的容器，內含若干**條文**，
+每條條文可對一到多個安全設定鍵提出**要求**；系統據此判定現值是否達到要求，
+並可為每條條文留下**機構備註**與**人工確認**記錄。
+
+三件事分屬三組路由，**寫入只有一個入口**：對照的內容改在 `/policy-groups`（限 admin），
+設定值改在 `/security-policies`，`/compliance` 唯讀。同一份對照若有兩個寫入面，
+「這條要求是誰改的」就會分裂成兩套記錄。讀取面開放給 auditor——看不到對照的內容，
+就判讀不了判定結果。
+
+政策組分兩種來源：**內建組**（`source: "builtin"`）的條文與要求隨產品版本發布，
+啟動時由種子寫入，管理面只能切換生效與加註備註；**自建組**（`source: "custom"`）的內容
+全部由管理者維護。內建組的內容版本記在 `version`，自建組的原文語言記在 `locale`。
+
+### 政策組維護（`/policy-groups`）
+
+| 方法 | 路徑 | 角色 | body | 回應 |
+|---|---|---|---|---|
+| GET | `/policy-groups` | admin＋auditor | — | `{data: [PolicyGroup]}`（依代號排序） |
+| GET | `/policy-groups/:code` | admin＋auditor | — | `{data: {group: PolicyGroup, clauses: [ClauseView]}}` |
+| POST | `/policy-groups` | admin | `{code, name, locale?}` | 201 `{data: PolicyGroup}` |
+| PUT | `/policy-groups/:code` | admin | `{name}` | `{data: PolicyGroup}` |
+| PUT | `/policy-groups/:code/enabled` | admin | `{enabled: bool}` | `{data: PolicyGroup}` |
+| DELETE | `/policy-groups/:code` | admin | — | `{data: {code}}` |
+| PUT | `/policy-groups/:code/clauses/:clause_no` | admin | `{title, summary, kind, controls: [...]}` | `{data: ClauseView}` |
+| DELETE | `/policy-groups/:code/clauses/:clause_no` | admin | — | `{data: {code, clause_no}}` |
+| PUT | `/policy-groups/:code/clauses/:clause_no/annotation` | admin | `{note}` | `{data: PolicyClauseAnnotation}` |
+| POST | `/policy-groups/:code/clauses/:clause_no/confirm` | admin | `{note}` | `{data: PolicyClauseAnnotation}` |
+
+**PolicyGroup**：`{code, name, source, enabled, version, locale, created_at, updated_at}`。
+
+**生效開關的 `enabled` 為必填欄**，缺欄位回 400 `VALIDATION_BAD_REQUEST` 而非讀成 `false`
+——漏帶欄位若被讀成「請停用這一組」，該組的偏離會整批消失在畫面上。**內建組的生效開關
+與備註同樣可寫**：一份對照要不要生效由機構決定，產品升級不改動它。
+
+**ClauseView**（條文卡片，管理頁與合規對照頁共用；下為形狀示意）：
+
+```json
+{
+  "group_code": "<組代號>", "clause_no": "<條號>",
+  "title": "<條文標題>", "summary": "",
+  "kind": "setting", "removed_in_version": "",
+  "created_at": "2026-09-09T00:00:00Z", "updated_at": "2026-09-09T00:00:00Z",
+  "controls": [
+    {"id": 1, "group_code": "<組代號>", "clause_no": "<條號>",
+     "policy_key": "password_min_length", "comparator": "min",
+     "expected_value": "12", "reference_only": false}
+  ],
+  "annotation": {"group_code": "<組代號>", "clause_no": "<條號>",
+                 "note": "", "confirmed_by": "", "confirmed_at": null,
+                 "confirmation_note": ""}
+}
+```
+
+`annotation` 在該條無備註時**整個欄位缺席**；`controls` 無要求時為空陣列。
+
+**`kind` 三值**（條文型別）：
+
+| 值 | 語義 | 是否掛要求 |
+|---|---|---|
+| `setting` | 設定要求：條文指向一到多個設定鍵並帶要求值，系統據以判定 | 是 |
+| `self_attested` | 由機構自行確認：不指向任何設定鍵，系統只呈現不判定 | 否 |
+| `builtin_protection` | 系統內建保護：產品無條件提供，沒有可調的設定值 | 否 |
+
+後兩者都不產生鍵層判定，但責任歸屬不同——`self_attested` 的責任在機構，
+`builtin_protection` 的責任在產品本身。型別與要求數不相容時回 400
+`VALIDATION_POLICY_GROUP_CLAUSE_KIND`。
+
+**`comparator` 四值**（要求的比較方式）：
+
+| 值 | 語義 | 適用型別 |
+|---|---|---|
+| `min` | 現值須不小於要求值 | 整數 |
+| `max` | 現值須不大於要求值 | 整數 |
+| `equals` | 現值須等於要求值 | 開關、選項 |
+| `review` | 條文涉及這個鍵但**未定值**，要求值須留空 | 整數、開關、選項 |
+
+`review` 不是漏填：條文寫的是語境式要求（如「使用足夠強度之加密」）時，沒有一個數字或
+開關值代表得了它，系統不替條文發明一個門檻，改為連同目前值列出、由稽核人員判讀。
+開關與選項一律 `equals`——這兩類的取值之間沒有強弱序，以序位比較會讓要求值被靜默解讀成
+「至少這麼嚴」而判錯。自由文字型的設定鍵不可作為要求對象（400
+`VALIDATION_POLICY_GROUP_KEY_TYPE`）。
+
+**條文的 `controls` 是整批取代**：送進來的就是這條條文的全部要求。未定值的要求送
+`comparator: "review"` 加空的 `expected_value`，帶值會回 400
+`VALIDATION_POLICY_GROUP_EXPECTED_VALUE`。**同一組內同一個設定鍵只能出現一條要求**
+（唯一索引釘住；重複回 400 `VALIDATION_POLICY_GROUP_DUPLICATE_KEY`）——同組內對同一個鍵
+給出兩個要求，該組即對自己自相矛盾，而判定結果會取決於資料列的讀取順序。
+
+**刪除的連帶範圍不對稱**：刪整組會連帶清除它的條文、要求與備註；**刪單條條文不刪備註**
+——備註是機構寫的東西，升級與編輯都不得清掉它。同理，內建組升級移除某條條文時只把
+`removed_in_version` 標成該內容版本、不刪列：標記後判定與對照不再計入本條，管理頁仍看得到它。
+
+四類寫入（組、條文、備註、確認）**各留一列審計**（`resource=policy_group`），
+詳情帶組代號、條號、操作名與舊值→新值。
+
+**錯誤碼**：
+
+| code | 狀態 | 什麼時候 |
+|---|---|---|
+| `POLICY_GROUP_BUILTIN_READONLY` | 403 | 想改內建組的名稱、條文，或刪掉它 |
+| `POLICY_GROUP_NOT_FOUND` | 404 | 組代號不存在（**不回空結果**：打錯字與「這組真的沒有對照」在畫面上分不出來） |
+| `POLICY_GROUP_DUPLICATE_CODE` | 409 | 建組時代號已被使用 |
+| `VALIDATION_POLICY_GROUP_CODE` | 400 | 代號或名稱為空／超出長度上限 |
+| `VALIDATION_POLICY_GROUP_CLAUSE_NO` | 400 | 條號為空／超出長度上限 |
+| `VALIDATION_POLICY_GROUP_CLAUSE_KIND` | 400 | 條文型別與所填的要求數不相容 |
+| `VALIDATION_POLICY_GROUP_UNKNOWN_KEY` | 400 | 要求指向不存在的設定鍵（`defs/:key` 上為 404） |
+| `VALIDATION_POLICY_GROUP_KEY_TYPE` | 400 | 該型別的設定鍵不能作為要求對象 |
+| `VALIDATION_POLICY_GROUP_COMPARATOR` | 400 | 比較方式與設定鍵的型別不符 |
+| `VALIDATION_POLICY_GROUP_EXPECTED_VALUE` | 400 | 要求值超出該鍵的值域，或未定值卻仍填了值 |
+| `VALIDATION_POLICY_GROUP_DUPLICATE_KEY` | 400 | 同組同鍵已有另一條要求 |
+| `INTERNAL_POLICY_GROUP_READ` / `INTERNAL_POLICY_GROUP_WRITE` | 500 | 資料庫讀寫失敗 |
+
+### 合規判定快照
+
+```
+GET /api/v1/compliance/snapshot?group=<code>
+```
+
+**權限**: admin 與 auditor，**唯讀**。`group` 省略即全部生效組。指定不存在的組回 404
+`POLICY_GROUP_NOT_FOUND`。判定建構失敗回 500 `INTERNAL_COMPLIANCE_SNAPSHOT`。
+
+回應四段是同一個畫面的四個區塊，一次帶齊——判定是有時點的，分四支端點讀會讓摘要與逐條
+結果來自不同時點而對不起來：
+
+```json
+{
+  "data": {
+    "built_at": "2026-09-09T11:15:03Z",
+    "draft": false,
+    "groups": [{"code": "pci_dss_4_0_1", "version": "4.0.1", "enabled": true}],
+    "verdicts": [
+      {"key": "password_min_length", "group_code": "pci_dss_4_0_1", "clause_no": "8.3.6",
+       "result": "deviating", "reason": "below_minimum",
+       "current": "8", "expected": "12", "comparator": "min"}
+    ],
+    "unmapped_keys": ["login_banner_title"],
+    "key_count": 55,
+    "builtin_protection_clauses": {"<組代號>": 14}
+  },
+  "groups":    [ PolicyGroup ],
+  "summaries": [ {"group_code": "...", "compliant": 9, "deviating": 15, "needs_review": 1,
+                  "audit_review": 6, "unmapped": 24, "builtin_protection": 0} ],
+  "clauses":   [ ClauseView ]
+}
+```
+
+- `data` 是判定本身。`data.groups` 含**未生效**的組（畫面要標示得出來），
+  頂層 `groups` 是本次查詢範圍內的政策組本體（帶組名），`summaries` **只含生效組**。
+- `built_at` 是這份判定建構的時刻（UTC）。`draft` 為真表示這份結果建立在尚未儲存的草稿值上
+  ——草稿與已儲存的結果長得一樣，不標示就無從分辨畫面上的數字是現況還是預期。
+- **判定只吃生效的組與未標記移除的條文**，且 `self_attested` 與 `builtin_protection` 型的條文
+  不產生鍵層判定。政策列不存在的設定鍵以其出廠預設判定。
+
+**`result` 五值**：
+
+| 值 | 語義 |
+|---|---|
+| `compliant` | 現值達到該組對該鍵的要求 |
+| `deviating` | 現值未達要求 |
+| `needs_review` | 該組以參考值呈現、未給規範明定值，待機構人工確認 |
+| `review` | 該組有條文涉及該鍵但條文未定值，附目前值待稽核判讀 |
+| `unmapped` | 該鍵不在任何生效組的條文內 |
+
+`current`（判定當下的設定值）**每一種結果都帶**：待稽核判讀要靠它才判讀得出設定是否合理，
+其餘結果也要它才說得出「要求 12、目前 8」。`expected`／`comparator` 在未對照與未定值時為空；
+`confirmed_by`／`confirmed_at` 只在該條有人工確認記錄時出現。
+
+`updated_by`／`updated_at`（該鍵最後一次由誰、在何時改的）**同樣每一種結果都帶**，含未對照的鍵
+——追證的下一步問的是「這個設定何時被誰改的」，而那與判定結果是符合還是偏離無關；
+另一個答得出這件事的地方是管理端的設定列表，而稽核角色讀不到那一支。該鍵從未被改過
+（值即出廠預設）時兩欄缺席。
+
+**`reason` 是機器碼不是句子**（人話與三語由呈現層依語系組出，句子留在呈現層才翻譯得了，
+也才不會有兩份措辭）：
+
+| reason | 何時 |
+|---|---|
+| `meets_expectation` | 現值達到要求 |
+| `below_minimum` | 現值低於「至少」型的要求 |
+| `above_maximum` | 現值高於「至多」型的要求 |
+| `value_mismatch` | 明確值型的要求不相符 |
+| `disabled_by_zero` | 該鍵的零值代表機制停用，而要求非零 |
+| `value_not_comparable` | 現值或要求值在這個鍵上無法比較 |
+| `reference_value_unconfirmed` | 參考值，機構尚未確認 |
+| `reference_value_confirmed` | 參考值，機構已確認 |
+| `expectation_unspecified` | 條文涉及這個鍵但未定值 |
+| `no_control` | 沒有任何生效組對照這個鍵 |
+
+**摘要六格**（`summaries` 的每一列）：前五格 `compliant`／`deviating`／`needs_review`／
+`audit_review`／`unmapped` 數的是**設定鍵**，**合計恆等於 `key_count`**。
+第六格 `builtin_protection` 數的是**條文**（該組由產品無條件承擔、沒有可調設定值的條數），
+**不進上面五格的合計**——把條文數加進去會讓分母憑空長大。同一組的條數另由
+`data.builtin_protection_clauses` 依組代號給出。
+
+**未對照的分母規則**：不在任何生效組對照範圍內的鍵，在 `verdicts` 內各有一列
+（`group_code` 為空、`result` 為 `unmapped`），同時列在 `unmapped_keys`，並計入該組摘要的
+`unmapped` 格。**它們不得併入符合數**——沒有人對照過的設定，與「有人對照且達到要求」
+是兩件事；偏離數的分母也不含它們。
+
+### 安全政策列表的判定投影
+
+`GET /security-policies` 的每一項在原有 `PolicyView` 欄位之外附 **`verdicts`**：該鍵對各生效組
+的判定（形狀同上；未被任何生效組對照時是一列 `group_code` 為空、`result` 為 `unmapped`）。
+頂層另有 **`groups`**：生效組清單（`PolicyGroup`，帶組名），供各承載頁的頁首列出
+「現在對照的是哪幾組」。
+
+判定隨列表一起回，是因為設定頁的每個分區都要立刻算得出偏離數；分兩支端點讀會讓值與判定
+來自兩個時點。**判定讀不到時整頁回 500 `INTERNAL_COMPLIANCE_SNAPSHOT`，不退回「零偏離」的
+列表**——後者會讓畫面顯示全部符合，那是安全控制的呈現在失效方向上說謊。
+
+**判定是符合性的唯一來源**：回應不另帶任何一份自算的符合性或偏離計數。
+分區偏離數由 `verdicts` 推導（同一個鍵偏離多組只算一次）。
+
+### 單一設定鍵的定義（條文表單用）
+
+```
+GET /api/v1/security-policies/defs/:key
+```
+
+**權限**: admin。條文表單選定設定鍵之後打這支，取表單要問的四件事：型別、可用的比較方式、
+合法值域、以及現在是多少（據以即時說出「儲存後這一條會顯示為偏離」）。未知鍵回 404
+`VALIDATION_POLICY_GROUP_UNKNOWN_KEY`。
+
+| 欄位 | 說明 |
+|---|---|
+| `key`／`type`／`label`／`unit`／`unit_key`／`default` | 設定鍵定義（`type` ∈ `int`／`bool`／`enum`／`text`） |
+| `value` | 目前生效值（無政策列時為出廠預設） |
+| `comparators` | 可選的比較方式：`int` → `["min","max","review"]`；`bool`／`enum` → `["equals","review"]`；`text` → `[]`（不可作為要求對象） |
+| `min`／`max`／`zero_disables`／`max_length`／`multiline` | 值域欄位，`omitempty`（`max` 為 0 表示沿用共用上界） |
+| `enum_order` | 選項的可選值（弱→強），僅 `enum` 型 |
+| `updated_by`／`updated_at` | 最後一次變更（`omitempty`） |
+
+### 草稿判定
+
+```
+POST /api/v1/security-policies/compliance/preview?group=<code>
+```
+
+**權限**: admin，**唯讀、不寫入任何東西**。body `{"draft": {"<key>": "<value>", ...}}`。
+回 `{"data": <同快照的 data>}`，其中 `draft` 為 `true`。
+
+草稿由後端重算而不是前端自己算：前端算一份會與伺服器的判定漂移，而兩者的分歧不會有任何
+一處報錯。草稿裡未定義的鍵靜默略過；**不合法的值原樣採用並據實判成偏離**——管理者打字打到
+一半就回 400 會讓畫面空掉。
+
+### 套用預覽
+
+```
+POST /api/v1/security-policies/apply-preview
+```
+
+**權限**: admin，**只算不寫**。body：
+
+```json
+{"scope": ["password_min_length", "..."], "mode": "group", "group_code": "<code>",
+ "draft": {"<key>": "<value>"}}
+```
+
+`mode` 為 `group`（依指定的一個生效組）或 `strictest`（一次滿足所有生效組）。
+模式未知、單組模式未指名組、或指定的組未生效，一律回 400 `VALIDATION_APPLY_PREVIEW_MODE`
+——回一份空預覽在畫面上與「沒有任何要變動的鍵」長得一樣。
+
+```json
+{"data": {"mode": "group", "group_code": "<code>",
+          "changes": [{"key": "...", "current": "8", "proposed": "12", "source_group": "<code>"}],
+          "conflicts": [{"key": "...", "reasons": [{"group": "<code>", "expected": "12", "comparator": "min"}]}],
+          "unchanged_count": 30, "unmapped_count": 19}}
+```
+
+`mode`／`group_code` 是回聲欄位，送出前重打一次預覽時拿來比對是同一種套用。
+**確認套用只把 `changes` 填進表單**，儲存仍走 `PUT /security-policies` 的既有流程與審計
+——預覽端點自己落庫，會讓一次「看看會變成什麼」變成一次沒有經過確認的變更。
+
+**收斂規則**（同一個鍵上多條要求怎麼合成一個結論）：
+
+1. **只有可自動套用的要求參與**。待人工確認（參考值）與待稽核判讀（未定值）的要求**不進來**
+   ——前者的數字沒有條文出處、後者根本沒有值，兩者都由人決定。這些鍵因此落在「不變動」，
+   而不是衝突：它們沒有與任何要求對立。
+2. **多條要求收斂成一個可接受區間**：「至少」抬高下界、「至多」壓低上界、明確值同時是上下界。
+   三種比較方式落在同一個區間模型上，衝突判定因此只有一條規則。
+3. **現值落在區間內就不動**；低於下界改成下界、高於上界改成上界。**移動的終點是被違反的那一端
+   ——不放寬**：已經比要求更嚴的現值不會被拉回要求值，「套用政策建議值」這個動作不該降低系統
+   的安全性。
+4. **零值代表停用的整數鍵**：現值為 0 而要求非零時，改成非零的那一端。0 在數值上小於任何要求，
+   但它的語義是「機制沒開」而不是「更嚴的數」。
+5. **下界高於上界即衝突**（開關與選項的兩條要求值不同，同樣落在這一條），該鍵**不自動改**，
+   列在 `conflicts` 並附每一條要求的來源組、要求值與比較方式，畫面據此說得出是哪兩條規則對立。
+
+**只動 `scope` 內的鍵**：`scope` 是本頁的鍵集合，範圍外的鍵一律不動——一個按鈕改掉四個頁面的
+設定，管理者按下去之前看不出影響範圍。`scope` 內未被任何生效組對照的鍵計入 `unmapped_count`，
+其餘不需變動者計入 `unchanged_count`。指定單組時仍以**全部**生效組建構判定，其他組的要求只在
+現值已經符合它們時納入為約束——那是「不放寬已符合其他生效組的值」這條規則的約束來源，
+不是要套用的目標。
 
 ---
 
@@ -3563,6 +3875,7 @@ GET /api/v1/audit-logs
 | `resource` | string | asset/session/recording/user/user_group/auth/file/security_policy/command_alert/audit_export/access_review/retention/daily_review/syslog_setting/audit_log/command/key_management/transmission/access_request/approver_scope/change_secret_plan/authorization/audit_timeline/clipboard_event/audit_checkpoint/audit_failure/audit_integrity/alert_rule/notify_channel/oidc_provider/ldap_directory/asset_group/snippet/role/unclassified（共 35，權威來源為 `backend/internal/model/audit_log.go` 的 `Resource*` 常數；前後端值域由雙向守衛釘住） |
 | `status` | string | success/failure/denied |
 | `client_ip` | string | 客戶端 IP |
+| `key` | string | 只看某一個安全政策設定鍵的變更列（例：`password_min_length`）；與 `resource` 併用為 AND |
 | `start_time`, `end_time` | RFC3339 | 時間範圍 |
 | `page`, `page_size` | int | 分頁 |
 | `sort_by` | string | 排序欄位（預設 created_at） |
@@ -4058,6 +4371,35 @@ POST   /api/v1/rotation-report/schedules/:id/run
 同一排程至多一張進行中的工作單，已有進行中者回 **409 `CONFLICT_ROTATION_SCHEDULE_INFLIGHT`**。
 `/run` 成功回 **202** `{"data": {"id": <工作單 id>, "status": "pending"}}`。
 排程觸發產生的工作單，申請者記為系統。
+
+### 下次執行時刻預覽（排程表單共用）
+
+```
+POST /api/v1/schedules/next-runs
+```
+
+**權限**: admin。**不讀寫任何資料**：只把一個排程字串解析成接下來的幾個時刻，
+供任何編輯排程的表單即時顯示（本頁的報告排程與改密計劃共用同一支）。
+
+```json
+// request
+{"cron": "0 0 1 1,4,7,10 *", "count": 3}
+// 200
+{"runs": ["2026-10-01T00:00:00Z", "2027-01-01T00:00:00Z", "2027-04-01T00:00:00Z"],
+ "timezone": "UTC"}
+```
+
+**本端點的 200 回應不包 `data` 信封**，呼叫端讀的是頂層的 `runs` 與 `timezone`；
+錯誤仍沿統一錯誤封套。
+
+- `cron` 為標準五欄（分 時 日 月 週），**欄位集與排程器載入計劃時所用的完全相同**——
+  預覽與實際觸發若各用一套解析，兩者會在邊界形態上分岔，而分岔的方向剛好是
+  「畫面說會跑、實際不跑」。不合法回 400 `VALIDATION_SCHEDULE_BAD_CRON`。
+- `count` 省略或為 0 即取 3，範圍 1–10，超出回 400 `VALIDATION_SCHEDULE_RUN_COUNT`。
+  有上限是因為每一筆都要往前推算一次日曆。
+- `timezone` 是後端排程器實際採用的時區名，時刻以該時區呈現，**呼叫端只顯示不換算**。
+- 形狀合法但永遠不會發生的時刻（如 2 月 30 日）回**已算出的部分**（可能是空陣列），
+  呼叫端據此顯示「沒有下次執行」，而不是一個假的時刻。
 
 ### 產物與下載
 

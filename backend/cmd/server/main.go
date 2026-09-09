@@ -541,6 +541,13 @@ type routeDeps struct {
 	seal                  *api.SealHandler
 	auth                  *api.AuthHandler
 	securityPolicy        *api.SecurityPolicyHandler
+	// policyGroup 政策組管理（規範條文與安全設定的對照）：讀取 admin 與 auditor，
+	// 寫入限 admin，且是全部對照寫入的唯一入口
+	policyGroup *api.PolicyGroupHandler
+	// compliance 合規對照的唯讀判定（admin 與 auditor）
+	compliance *api.ComplianceHandler
+	// schedule 排程時刻預覽（admin）：無狀態，把排程字串算成接下來的執行時刻
+	schedule              *api.ScheduleHandler
 	syslogSetting         *api.SyslogSettingHandler
 	auditIntegrity        *api.AuditIntegrityHandler
 	auditCheckpoint       *api.AuditCheckpointHandler
@@ -676,6 +683,13 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 
 		d.auth.RegisterRoutes(v1, d.authService)
 		d.securityPolicy.RegisterRoutes(v1, d.authService)
+		// 政策組與合規對照：緊鄰安全政策註冊——三者是同一件事的三個面
+		//（設定值、用來量它的對照、量出來的結果），角色邊界亦相鄰
+		//（設定寫入限 admin，對照寫入限 admin、讀取開放 auditor）
+		d.policyGroup.RegisterRoutes(v1, d.authService)
+		d.compliance.RegisterRoutes(v1, d.authService)
+		// 排程時刻預覽：與排程表單同一版面，但不屬任何單一排程資源
+		d.schedule.RegisterRoutes(v1, d.authService)
 		d.syslogSetting.RegisterRoutes(v1, d.authService)
 		d.auditIntegrity.RegisterRoutes(v1, d.authService)
 		// 檢查點鏈（audit-checkpoint-chain）：緊鄰列級完整性驗證註冊——

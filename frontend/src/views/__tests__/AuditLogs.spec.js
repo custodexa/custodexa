@@ -22,6 +22,12 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 // 全量 ElementPlus + 多 el-table 掛載貼近預設 5s 上限，放寬本檔 timeout
 vi.setConfig({ testTimeout: 20_000 })
 
+// 由某個設定的記錄連結進頁時，網址上的篩選要被讀走。逐測改寫 query 即可。
+const routeState = { query: {} }
+vi.mock('vue-router', () => ({
+  useRoute: () => routeState,
+}))
+
 const getAuditLogsMock = vi.fn()
 const exportAuditEvidenceMock = vi.fn()
 const getDailyReviewsMock = vi.fn()
@@ -91,9 +97,48 @@ describe('AuditLogs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    routeState.query = {}
     getAuditLogsMock.mockResolvedValue({ data: [], total: 0 })
     getDailyReviewsMock.mockResolvedValue({ data: { items: [], total: 0 } })
     getAuditFailuresMock.mockResolvedValue({ data: { items: [], total: 0 } })
+  })
+
+  // 首用路徑實走發現：成功的操作也可能帶訊息，掛在「錯誤訊息」底下並塗紅，
+  // 會讓一筆成功的紀錄在稽核眼裡讀成失敗
+  it('成功的紀錄把訊息放在附註，失敗的仍是錯誤訊息', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+
+    wrapper.vm.showDetails({
+      id: 1,
+      status: 'success',
+      action: 'update',
+      resource: 'security_policy',
+      created_at: '2026-09-09T01:02:03Z',
+      error_msg: '已改以備援管道送出',
+    })
+    await flushPromises()
+
+    let labels = wrapper.findAll('.el-descriptions__label').map((n) => n.text())
+    expect(labels).toContain('附註')
+    expect(labels).not.toContain('錯誤訊息')
+    expect(wrapper.find('.el-alert').classes()).toContain('el-alert--info')
+
+    wrapper.vm.showDetails({
+      id: 2,
+      status: 'failure',
+      action: 'update',
+      resource: 'security_policy',
+      created_at: '2026-09-09T01:02:03Z',
+      error_msg: '寫入失敗',
+    })
+    await flushPromises()
+
+    labels = wrapper.findAll('.el-descriptions__label').map((n) => n.text())
+    expect(labels).toContain('錯誤訊息')
+    expect(labels).not.toContain('附註')
+    expect(wrapper.find('.el-alert').classes()).toContain('el-alert--error')
   })
 
   it('fetches logs on mount and renders three tabs', async () => {
@@ -333,4 +378,57 @@ describe('AuditLogs', () => {
     expect(wrapper.find('.el-alert--error').exists()).toBe(true)
     expect(wrapper.find('.integrity-stat-danger').exists()).toBe(true)
   })
+
+  // 三步追證的最後一步：由設定名的記錄連結落地，這一頁要直接只看那個設定的變更。
+  // 不預填的話連結會停在一份未篩選的日誌上，最後一步變成一場搜尋。
+  it('帶 resource 與 key query 進頁即預填篩選並查詢', async () => {
+    setUserRoles(['auditor'])
+    routeState.query = { resource: 'security_policy', key: 'password_min_length' }
+
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+
+    expect(getAuditLogsMock).toHaveBeenCalledWith({
+      page: 1,
+      page_size: 20,
+      resource: 'security_policy',
+      key: 'password_min_length',
+    })
+    // 畫面要說得出現在只看什麼，否則使用者會以為日誌本來就只有這幾列
+    expect(wrapper.find('.applied-filter').text()).toContain('密碼最小長度')
+  })
+
+  it('套用中的設定篩選可一鍵清除，清除後重新查詢且不再帶鍵', async () => {
+    setUserRoles(['auditor'])
+    routeState.query = { resource: 'security_policy', key: 'password_min_length' }
+
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    getAuditLogsMock.mockClear()
+
+    await wrapper.find('.applied-filter button').trigger('click')
+    await flushPromises()
+
+    expect(getAuditLogsMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
+    expect(wrapper.find('.applied-filter').exists()).toBe(false)
+  })
+
+  // 第二個值刻意取物件原型上的名字：以 `in` 比對會誤判為命中，
+  // 把一個不是分類的字串原樣送給端點
+  it.each(['not_a_resource', 'constructor'])(
+    '網址上的分類不在值域內就不採用（%s）',
+    async (resource) => {
+      setUserRoles(['auditor'])
+      routeState.query = { resource, key: 'password_min_length' }
+
+      mountAuditLogs()
+      await flushPromises()
+
+      expect(getAuditLogsMock).toHaveBeenCalledWith({
+        page: 1,
+        page_size: 20,
+        key: 'password_min_length',
+      })
+    }
+  )
 })

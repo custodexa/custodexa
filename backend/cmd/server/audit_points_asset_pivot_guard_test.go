@@ -189,6 +189,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-11": {pivotNotAsset, false, "告警審閱處置，主體是告警（告警自身的資產樞紐由 command_alerts.asset_id 承擔）"},
 	"AP-12": {pivotNotAsset, false, "退役金鑰清理，主體是金鑰"},
 	"AP-13": {pivotNotAsset, false, "安全政策變更，主體是全域政策"},
+	"AP-91": {pivotNotAsset, false, "政策組管理面的寫入，主體是「用來量安全設定的那把尺」——對照的條文與要求不掛在任何一台機器上；填 AssetID 會讓一次規範對照的修改在某台資產的時間軸上長出假事件"},
 	"AP-15": {pivotNotAsset, false, "syslog 設定更新"},
 	"AP-16": {pivotNotAsset, false, "syslog 設定更新（同函式第二處）"},
 	"AP-17": {pivotNotAsset, false, "syslog 連線測試，主體是外送設定而非受管資產"},

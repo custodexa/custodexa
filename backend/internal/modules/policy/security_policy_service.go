@@ -131,7 +131,7 @@ const (
 	PolicyAccessRequestPendingTimeoutHours = "access_request_pending_timeout_hours"
 	// 最少核准人數：內控強化選項（雙人覆核慣例），
 	// 非 PCI 要求（官方查證：dual control 僅金鑰管理 Req 3.7.6；存取核准
-	// Req 7.2.3 單人即符合）——勿加 PCIValue
+	// Req 7.2.3 單人即符合）——勿收進內建政策組的設定要求
 	PolicyAccessRequestMinApprovals = "access_request_min_approvals"
 
 	// 破窗與撤銷政策鍵：
@@ -142,7 +142,7 @@ const (
 	PolicyAccessRevokeDisconnect       = "access_revoke_disconnect"
 
 	// 資料傳輸管控鍵（data-transfer-control，法源＝電支基準 §16-6／§21-8(七)，
-	// 非 PCI 條文——勿加 PCIValue）：剪貼簿雙向＋SFTP 三動作。
+	// 非 PCI 條文）：剪貼簿雙向＋SFTP 三動作。
 	// 方向以「受管資產」為參照系：send＝送進資產、recv＝自資產收出。
 	PolicyClipboardSendEnabled = "clipboard_send_enabled"
 	PolicyClipboardRecvEnabled = "clipboard_recv_enabled"
@@ -259,34 +259,15 @@ func (e *PolicyInvalidValueError) Error() string {
 // Unwrap 讓 errors.Is 可比對底層 sentinel
 func (e *PolicyInvalidValueError) Unwrap() error { return ErrPolicyInvalidValue }
 
-// PolicyDef 政策定義（PCI 建議值常數表，2026-07-02 對官方文件核對定稿，
-// 佐證：官方《PCI DSS v4.0.1》June 2024）。
-// 各鍵的建議值與其對應條號另載於 openspec/specs/security-policy/spec.md。
+// PolicyDef 政策定義：一個設定鍵的型別、值域與呈現方式。
+//
+// **不承載任何合規要求**：某一組規範對某個鍵要求什麼值，是政策組的條文資料
+// （見 policy_group_seed_*.go 與自建組），不是設定鍵的屬性。判定契約讀的是那份
+// 資料，本結構只提供比較所需的型別資訊（方向、零值語義、值域、枚舉序）。
 type PolicyDef struct {
 	Key     string `json:"key"`
 	Type    string `json:"type"`
 	Default string `json:"default"`
-	// PCIValue PCI 建議值；空字串 = 無 PCI 建議（不做符合性評估）
-	PCIValue string `json:"pci_value,omitempty"`
-	// EPaymentValue 電支基準建議值（《電子支付機構資通安全檢查機制實施規範》；
-	// 各鍵對應的條號見 EPaymentRequirement 欄，並由 epayment_baseline_test.go 逐項釘住）；
-	// 空字串 = 無該基準建議（不做符合性評估，與 PCIValue 空值語義一致）。
-	//
-	// **與 PCIValue 平行、不互相覆寫**：兩基準在部分項目上方向相反（如密碼最小長度
-	// 電支 6 寬於 PCI 12），任一覆寫另一都會使某一側的符合性評估失真
-	EPaymentValue string `json:"epayment_value,omitempty"`
-	// EPaymentRequirement 電支基準條號（如 15-8）
-	EPaymentRequirement string `json:"epayment_requirement,omitempty"`
-	// PCIReference PCIValue 是**參考值**而非條文明定值。
-	//
-	// 為真時，該條文以機構自行的目標風險分析決定頻率／門檻，未給固定數字，
-	// PCIValue 是本產品採用的常見實務起始值。設定頁必須把這個性質標示出來
-	// ——把參考值印成條文要求，會讓稽核以為那個數字有法源，而它沒有。
-	//
-	// 符合性評估與一鍵套用**照常作用**：值是給了的，只是出處性質不同。
-	// 為真時 PCIValue 必非空（validatePolicyDefs 釘住）——沒有值的參考值
-	// 不是一個有意義的宣告。
-	PCIReference bool `json:"pci_reference,omitempty"`
 	// Direction int 型比較方向（min/max）
 	Direction string `json:"direction,omitempty"`
 	// ZeroDisables 0=停用 sentinel：先判「不符建議」再比數值
@@ -318,10 +299,8 @@ type PolicyDef struct {
 	// Multiline text 型是否允許換行。false 時值內含 LF 即拒絕。
 	// 非 text 型必為 false（validatePolicyDefs 釘住）
 	Multiline bool `json:"multiline,omitempty"`
-	// EnumOrder 枚舉序（弱→強）；enum 型符合性 = 現值序位 >= PCI 值序位
+	// EnumOrder 枚舉序（弱→強）；「至少」型要求以序位比較
 	EnumOrder []string `json:"enum_order,omitempty"`
-	// Requirement PCI 條號（如 8.3.4）
-	Requirement string `json:"requirement,omitempty"`
 	// Label/Unit 供前端渲染；Unit 為 zh fallback，前端優先以 UnitKey 查譯
 	Label string `json:"label"`
 	Unit  string `json:"unit,omitempty"`
@@ -334,27 +313,24 @@ type PolicyDef struct {
 var policyDefs = []PolicyDef{
 	{
 		Key: PolicyLockoutMaxAttempts, Type: PolicyTypeInt, Default: "10",
-		PCIValue: "10", Direction: DirectionMax, ZeroDisables: true, Max: 1000,
-		Requirement: "8.3.4", Label: "登入失敗鎖定次數上限", Unit: "次",
-		EPaymentValue: "5", EPaymentRequirement: "4-7(五)",
+		Direction: DirectionMax, ZeroDisables: true, Max: 1000,
+		Label: "登入失敗鎖定次數上限", Unit: "次",
 	},
 	{
 		Key: PolicyLockoutDurationMinutes, Type: PolicyTypeInt, Default: "30",
-		PCIValue: "30", Direction: DirectionMin, Max: 10080, // 上界 7 天，防 int64 溢位（LOCK-1）
-		Requirement: "8.3.4", Label: "鎖定時長", Unit: "分鐘",
+		Direction: DirectionMin, Max: 10080, // 上界 7 天，防 int64 溢位（LOCK-1）
+		Label: "鎖定時長", Unit: "分鐘",
 	},
 	{
 		Key: PolicyPasswordMinLength, Type: PolicyTypeInt, Default: "12",
-		PCIValue: "12", Direction: DirectionMin, Max: 128, // bcrypt 上限 72 byte，128 字元已足
-		Requirement: "8.3.6", Label: "密碼最小長度", Unit: "字元",
-		// **本項電支基準寬於 PCI**（6 < 12）：套用電支基準時取嚴後仍為 12，
-		// 不得下調（evaluateStrictest）。這是「套用不可無條件覆寫」的具體案例
-		EPaymentValue: "6", EPaymentRequirement: "4-7(一)",
+		Direction: DirectionMin, Max: 128, // bcrypt 上限 72 byte，128 字元已足
+		Label: "密碼最小長度", Unit: "字元",
+		// **本項電支基準寬於 PCI**（6 < 12）：一次滿足所有政策時取嚴後仍為 12，
+		// 不得下調。這是「套用不可無條件覆寫」的具體案例
 	},
 	{
 		Key: PolicyPasswordRequireAlnum, Type: PolicyTypeBool, Default: "true",
-		PCIValue:    "true",
-		Requirement: "8.3.6", Label: "密碼須含字母與數字",
+		Label: "密碼須含字母與數字",
 	},
 	{
 		// 上界 24（使用者裁決 2026-08-19）：
@@ -365,57 +341,53 @@ var policyDefs = []PolicyDef{
 		// 而單次成本降到約 2 秒。**上界是防呆而非功能限制**：
 		// 它擋的是「把值設到讓端點自己變成攻擊面」的組態。
 		Key: PolicyPasswordHistoryCount, Type: PolicyTypeInt, Default: "4",
-		PCIValue: "4", Direction: DirectionMin, ZeroDisables: true, Max: 24,
-		Requirement: "8.3.7", Label: "禁止重用最近密碼筆數", Unit: "筆",
+		Direction: DirectionMin, ZeroDisables: true, Max: 24,
+		Label: "禁止重用最近密碼筆數", Unit: "筆",
 	},
 	{
 		// 密碼最長使用天數：登入時以
 		// password_changed_at 判過期，逾期導強制改密。出廠 0=關閉（易用取向，
 		// 升級零行為變更）；PCI 8.3.9 單因子情境建議 <=90 天，一鍵套用即開
 		Key: PolicyPasswordMaxAgeDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "90", Direction: DirectionMax, ZeroDisables: true, Max: 3650, // 上界 10 年
-		Requirement: "8.3.9", Label: "密碼最長使用天數", Unit: "天",
+		Direction: DirectionMax, ZeroDisables: true, Max: 3650, // 上界 10 年
+		Label: "密碼最長使用天數", Unit: "天",
 		// 電支 §15-8：人員／系統連線帳號至少每三個月變更一次
-		EPaymentValue: "90", EPaymentRequirement: "15-8",
 	},
 	{
 		// 資產帳號憑證最長使用天數：輪替證據報告據此判定逾期，計劃可覆蓋。
 		// 出廠 0＝關閉（升級零行為變更）。
 		//
-		// **PCI 值標為參考值**：Requirement 8.6.3 要求此頻率由機構的目標風險
-		// 分析決定，未定固定天數；90 借自 8.3.9 對使用者帳號的門檻，是本產品
-		// 的預設起始值。電支 §15-8 則明定至少每三個月，故該側非參考值。
+		// **PCI 側為參考值**：8.6.3 要求此頻率由機構的目標風險分析決定，未定
+		// 固定天數；內建組收的 90 借自 8.3.9 對使用者帳號的門檻，標為參考值。
+		// 電支 §15-8 則明定至少每三個月，故該側非參考值。
 		Key: PolicyAssetSecretMaxAgeDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "90", PCIReference: true, Direction: DirectionMax,
+		Direction:    DirectionMax,
 		ZeroDisables: true, Max: 3650, // 上界 10 年，與平台使用者密碼同
-		Requirement: "8.6.3", Label: "資產帳號憑證最長使用天數", Unit: "天",
-		EPaymentValue: "90", EPaymentRequirement: "15-8",
+		Label: "資產帳號憑證最長使用天數", Unit: "天",
 	},
 	{
 		Key: PolicyForceChangeOnReset, Type: PolicyTypeBool, Default: "true",
-		PCIValue:    "true",
-		Requirement: "8.3.5", Label: "管理員重設後強制改密",
+		Label: "管理員重設後強制改密",
 	},
 	{
 		Key: PolicyMFARequired, Type: PolicyTypeEnum, Default: MFARequiredOff,
-		PCIValue:    MFARequiredAll, // PCI 8.4.2：CDE 全員 MFA（出廠 off 為易用取向）
-		EnumOrder:   []string{MFARequiredOff, MFARequiredAdminOnly, MFARequiredAll},
-		Requirement: "8.4.2", Label: "多因子驗證強制範圍",
+		// PCI 8.4.2：CDE 全員 MFA（出廠 off 為易用取向）
+		EnumOrder: []string{MFARequiredOff, MFARequiredAdminOnly, MFARequiredAll},
+		Label:     "多因子驗證強制範圍",
 	},
 	{
 		// Web 會話 sliding 閒置窗口：距上次活動逾此分鐘數則刷新被拒、須重登。
 		// 出廠 60 為易用取向，PCI 8.3.10.1/8.2.8 建議 15
 		Key: PolicyWebIdleMinutes, Type: PolicyTypeInt, Default: "60",
-		PCIValue: "15", Direction: DirectionMax, ZeroDisables: true, Max: 10080, // 上界 7 天
-		Requirement: "8.2.8", Label: "Web 工作階段閒置逾時", Unit: "分鐘",
+		Direction: DirectionMax, ZeroDisables: true, Max: 10080, // 上界 7 天
+		Label: "Web 工作階段閒置逾時", Unit: "分鐘",
 		// 電支 §15-5：超過十分鐘未操作應限制個資顯示於螢幕。掛 web 閒置而非協議
 		// 會話閒置——條文語境是操作畫面上的個資顯示
-		EPaymentValue: "10", EPaymentRequirement: "15-5",
 	},
 	{
 		// Web 會話絕對壽命：登入起算，持續活動也不得超過。0=不限
-		//（ZeroDisables 僅放行 0 值；無 PCIValue 故不影響符合性評估）。
-		// PCI 未規定絕對壽命門檻，不做符合性評估
+		//（ZeroDisables 僅放行 0 值）。
+		// PCI 未規定絕對壽命門檻，內建組不收本鍵
 		Key: PolicyWebMaxSessionHours, Type: PolicyTypeInt, Default: "12",
 		ZeroDisables: true, Max: 8760, // 上界 1 年
 		Label: "Web 工作階段最長時數", Unit: "小時",
@@ -429,9 +401,9 @@ var policyDefs = []PolicyDef{
 		// 初值可由部署組態播種（AUTH_REFRESH_COOKIE_SECURE → PUBLIC_BASE_URL
 		// 的 scheme），播種後本頁為準、改 env 不再生效。
 		//
-		// **無 PCIValue／EPaymentValue 是刻意的**：本鍵的正確取值由部署對外協定
-		// 決定，不是合規基準線。掛建議值會讓「套用本頁建議值」把明文部署的本鍵
-		// 翻成開啟、製造整站續期失敗，還會虛構一個文件上不存在的條號對應。
+		// **不進任何內建組是刻意的**：本鍵的正確取值由部署對外協定決定，不是
+		// 合規基準線。掛一條要求會讓「一次滿足所有政策」把明文部署的本鍵翻成
+		// 開啟、製造整站續期失敗，還會虛構一個文件上不存在的條號對應。
 		// 落在 Web 會話鍵群內（承載頁同區塊）：它決定的正是這個會話能不能續期
 		Key: PolicyRefreshCookieSecure, Type: PolicyTypeBool, Default: "true",
 		Label: "登入狀態僅在 https 連線保存",
@@ -440,8 +412,8 @@ var policyDefs = []PolicyDef{
 		// 協議會話（SSH/k8s/DB/RDP/VNC）閒置逾時：出廠 60 為易用取向，
 		// PCI 8.2.8 建議 15；既有部署以 SSH_IDLE_TIMEOUT_MINUTES 初始化（SeedFromEnv）
 		Key: PolicySessionIdleMinutes, Type: PolicyTypeInt, Default: "60",
-		PCIValue: "15", Direction: DirectionMax, ZeroDisables: true, Max: 10080, // 上界 7 天
-		Requirement: "8.2.8", Label: "協議連線閒置逾時", Unit: "分鐘",
+		Direction: DirectionMax, ZeroDisables: true, Max: 10080, // 上界 7 天
+		Label: "協議連線閒置逾時", Unit: "分鐘",
 	},
 	{
 		// 協議會話最長時長：0=不限沿用既有預設；SSH_MAX_SESSION_MINUTES 初始化。
@@ -455,42 +427,41 @@ var policyDefs = []PolicyDef{
 		// 出廠 0=關閉（易用取向——突然停用是驚嚇型摩擦）；PCI 8.2.6 建議 ≤90 天，
 		// 一鍵套用即開；0=停用 sentinel 先判不符
 		Key: PolicyInactiveDisableDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "90", Direction: DirectionMax, ZeroDisables: true, Max: 3650, // 上界 10 年
-		Requirement: "8.2.6", Label: "閒置帳號自動停用天數", Unit: "天",
+		Direction: DirectionMax, ZeroDisables: true, Max: 3650, // 上界 10 年
+		Label: "閒置帳號自動停用天數", Unit: "天",
 	},
 	{
 		// 保留天數：min 型 = 保留須 >= 365 才符 10.5.1；
 		// 0=永久保留（不清除）視為「未定義保留政策」判不符建議（引導設明確政策），
 		// 可放寬不擋。出廠 0 = 日常模式不刪任何審計資料
 		Key: PolicyRetentionAuditLogDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "365", Direction: DirectionMin, ZeroDisables: true, Max: 3650,
-		Requirement: "10.5.1", Label: "操作日誌保留天數", Unit: "天",
+		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Label: "操作日誌保留天數", Unit: "天",
 		// 電支 §19-4／§24-1：至少保留 2 年（嚴於 PCI 的 1 年）
-		EPaymentValue: "730", EPaymentRequirement: "19-4",
 	},
 	{
 		Key: PolicyRetentionSessionCommandDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "365", Direction: DirectionMin, ZeroDisables: true, Max: 3650,
-		Requirement: "10.5.1", Label: "指令流保留天數", Unit: "天",
+		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Label: "指令流保留天數", Unit: "天",
 	},
 	{
 		Key: PolicyRetentionAlertDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "365", Direction: DirectionMin, ZeroDisables: true, Max: 3650,
-		Requirement: "10.5.1", Label: "告警記錄保留天數", Unit: "天",
+		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Label: "告警記錄保留天數", Unit: "天",
 	},
 	{
 		// 錄影保留：出廠 90 = 沿既有 recording cleanup 預設；
 		// 初始值由 RECORDING_RETENTION_DAYS 播種（main.go SeedFromEnv），升級行為不變
 		Key: PolicyRetentionRecordingDays, Type: PolicyTypeInt, Default: "90",
-		PCIValue: "365", Direction: DirectionMin, ZeroDisables: true, Max: 3650,
-		Requirement: "10.5.1", Label: "連線錄影保留天數", Unit: "天",
+		Direction: DirectionMin, ZeroDisables: true, Max: 3650,
+		Label: "連線錄影保留天數", Unit: "天",
 	},
 	{
 		// 離機儲存的本機快取期：
 		// 出廠 0＝不提前清（升級後行為不變）。上界沿其餘保留鍵的 3650。
 		//
 		// **ZeroDisables 為真**：0 在此確有「停用」語義（不做本機快取清除），
-		// 而非「無限大」。**無 PCIValue／Direction／Requirement**：它不是合規
+		// 而非「無限大」。**無 Direction、且不進任何內建組**：它不是合規
 		// 基準線上的項，理由見鍵常數的註解。
 		Key: PolicyOffsiteLocalRetentionDays, Type: PolicyTypeInt, Default: "0",
 		ZeroDisables: true, Max: 3650,
@@ -506,9 +477,9 @@ var policyDefs = []PolicyDef{
 		// 五鍵出廠即自洽（`RetentionCovers(0, 任意)` 恆真），全域驗永不誤擋。
 		// 語義上也一致：資料永久保留，其證明就必須永久。
 		//
-		// **無 PCIValue 是刻意的**：本鍵沒有獨立的 PCI 建議值，其合規語義是
+		// **不進任何內建組是刻意的**：本鍵沒有獨立的條文要求，其合規語義是
 		//「檢查點必須活得比它所證明的資料久」——那是**跨鍵**關係，不是單鍵
-		// 與某個常數的比較。掛一個假的 PCIValue 會讓它進「套用本頁建議值」
+		// 與某個常數的比較。掛一條假的要求會讓它進「一次滿足所有政策」
 		// 並在偏離摘要裡與四個資料保留鍵並列，把跨鍵語義誤導成單鍵語義。
 		// 約束落在 cross_key_retention.go（設定時擋）＋ retention 執行期保守跳過。
 		//
@@ -563,8 +534,8 @@ var policyDefs = []PolicyDef{
 		// **不存在需要更長間隔的營運理由**：一輪成本只有結構層數秒＋內容層零點幾秒，
 		// 會設 30 天的唯一動機是疏於管理，而上界正是要擋這個。
 		//
-		// **無 PCIValue 是刻意的**：PCI 沒有針對「鏈驗證頻率」的建議值，掛一個假的
-		// 會讓它進「套用本頁建議值」並在偏離摘要裡與真有條號的鍵並列
+		// **不進任何內建組是刻意的**：PCI 沒有針對「鏈驗證頻率」的條文，掛一條假的
+		// 會讓它進「一次滿足所有政策」並在偏離摘要裡與真有條號的鍵並列
 		// （同 retention_checkpoint_days／封章兩鍵的紀律）。
 		//
 		// **調長間隔不延長繞行週期**：每輪列預算＝速率 × 間隔，
@@ -614,22 +585,19 @@ var policyDefs = []PolicyDef{
 	{
 		// 每日審閱簽核（10.4.1）：出廠關（日常模式不加簽核義務），一鍵套用即開
 		Key: PolicyDailyReviewEnabled, Type: PolicyTypeBool, Default: "false",
-		PCIValue:    "true",
-		Requirement: "10.4.1", Label: "每日審閱簽核",
+		Label: "每日審閱簽核",
 	},
 	{
 		// 稽核失效告警通知（10.7.2）：失效事件記錄恆開，此鍵僅控制通知發送
 		Key: PolicyFailureAlertEnabled, Type: PolicyTypeBool, Default: "false",
-		PCIValue:    "true",
-		Requirement: "10.7.2", Label: "稽核失效告警通知",
+		Label: "稽核失效告警通知",
 	},
 	{
 		// 錄影 fail-close：出廠關（升級不改變
 		// 現狀）；開啟時簽發點前置錄影可寫性檢查失敗即拒非 admin 簽發（admin
 		// 唯一例外留痕）。PCI 10.2 軌跡完整語脈（自我要求框架）
 		Key: PolicyRecordingFailCloseEnabled, Type: PolicyTypeBool, Default: "false",
-		PCIValue:    "true",
-		Requirement: "10.2", Label: "錄影失敗擋新連線",
+		Label: "錄影失敗擋新連線",
 	},
 	{
 		// cryptoperiod 提醒：active 金鑰年齡逾此
@@ -637,8 +605,8 @@ var policyDefs = []PolicyDef{
 		// 非營運義務）；純提醒，永不觸發自動輪換、不外送通知。
 		// PCI 3.7.4 cryptoperiod 治理精神（自我要求框架，產品不存 PAN）
 		Key: PolicyKeyCryptoperiodReminderDays, Type: PolicyTypeInt, Default: "0",
-		PCIValue: "365", Direction: DirectionMax, ZeroDisables: true, Max: 3650,
-		Requirement: "3.7.4", Label: "金鑰輪替提醒天數", Unit: "天",
+		Direction: DirectionMax, ZeroDisables: true, Max: 3650,
+		Label: "金鑰輪替提醒天數", Unit: "天",
 	},
 	{
 		// 單次 DEK 輪替的重加密上限。
@@ -678,42 +646,36 @@ var policyDefs = []PolicyDef{
 	//（Req 4 傳輸強加密自我要求，留痕比阻斷有價值）
 	{
 		Key: PolicyTransportRDPLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "RDP 傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "RDP 傳輸強制等級",
 	},
 	{
 		Key: PolicyTransportVNCLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "VNC 傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "VNC 傳輸強制等級",
 	},
 	{
 		Key: PolicyTransportDBLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "資料庫傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "資料庫傳輸強制等級",
 	},
 	{
 		// LDAP 修復動作在身分管理的目錄設定頁（url 改 ldaps://，即時生效不需重啟；
 		// 設定自遷入 DB 後不再由部署層 env 供給）；strict 拒 LDAP
 		// 登入時本地帳號不受影響
 		Key: PolicyTransportLDAPLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "LDAP 傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "LDAP 傳輸強制等級",
 	},
 	{
 		Key: PolicyTransportSyslogLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "syslog 傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "syslog 傳輸強制等級",
 	},
 	{
 		Key: PolicyTransportNotifyLevel, Type: PolicyTypeEnum, Default: TransportLevelOff,
-		PCIValue:    TransportLevelWarn,
-		EnumOrder:   []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
-		Requirement: "4.2.1", Label: "通知傳輸強制等級",
+		EnumOrder: []string{TransportLevelOff, TransportLevelWarn, TransportLevelStrict},
+		Label:     "通知傳輸強制等級",
 	},
 	{
 		// 同意記憶效期：效期動態判定
@@ -727,26 +689,25 @@ var policyDefs = []PolicyDef{
 	// PCI Req 7.2 最小權限精神建議 approval（自我要求框架）
 	{
 		Key: PolicyAccessPolicyDefault, Type: PolicyTypeEnum, Default: model.AccessPolicyOpen,
-		PCIValue:    model.AccessPolicyApproval,
-		EnumOrder:   []string{model.AccessPolicyOpen, model.AccessPolicyReason, model.AccessPolicyApproval},
-		Requirement: "7.2", Label: "全域預設存取政策段位",
+		EnumOrder: []string{model.AccessPolicyOpen, model.AccessPolicyReason, model.AccessPolicyApproval},
+		Label:     "全域預設存取政策段位",
 	},
 	{
 		// 申請時長上限（防申請超長時窗繞道成永久授權）：max 型＝值須 ≤ 建議 1440（1 天）
 		Key: PolicyAccessRequestMaxDurationMinutes, Type: PolicyTypeInt, Default: "1440",
-		PCIValue: "1440", Direction: DirectionMax, Max: 525600, // 上界 1 年（分鐘）
+		Direction: DirectionMax, Max: 525600, // 上界 1 年（分鐘）
 		Label: "申請時長上限", Unit: "分鐘",
 	},
 	{
 		// pending 超時作廢時限（防單卡死；scheduler 掃描＋讀取惰性過濾雙保險）
 		Key: PolicyAccessRequestPendingTimeoutHours, Type: PolicyTypeInt, Default: "72",
-		PCIValue: "72", Direction: DirectionMax, Max: 8760, // 上界 1 年（小時）
+		Direction: DirectionMax, Max: 8760, // 上界 1 年（小時）
 		Label: "申請待審超時時限", Unit: "小時",
 	},
 	{
 		// 最少核准人數：達門檻才轉 approved；
-		// 預設 1＝與單人核准零行為差異。無 PCIValue（內控強化，非 PCI 要求——
-		// 不做符合性評估、不進「套用建議值」）；0 無效（int 型非 ZeroDisables 自動拒）
+		// 預設 1＝與單人核准零行為差異。不進任何內建組（內控強化，非 PCI 要求
+		// ——不產判定、不進「一次滿足所有政策」）；0 無效（int 型非 ZeroDisables 自動拒）
 		Key: PolicyAccessRequestMinApprovals, Type: PolicyTypeInt, Default: "1",
 		Max:   10,
 		Label: "最少核准人數", Unit: "人",
@@ -755,32 +716,29 @@ var policyDefs = []PolicyDef{
 		// 破窗緊急連線開關：繞過人審的通道採 opt-in，
 		// 出廠關即建議值（關閉期間緊急通道＝admin 豁免）
 		Key: PolicyBreakGlassEnabled, Type: PolicyTypeBool, Default: "false",
-		PCIValue:    "false",
-		Requirement: "7.2", Label: "破窗緊急連線",
+		Label: "破窗緊急連線",
 	},
 	{
 		// 破窗票證時窗（六題 2 拍板固定短窗，不開放破窗人自填；要長走正常申請）
 		Key: PolicyBreakGlassDurationMinutes, Type: PolicyTypeInt, Default: "60",
-		PCIValue: "60", Direction: DirectionMax, Max: 1440, // 上界 1 天（分鐘）
-		Requirement: "7.2", Label: "破窗票證時窗", Unit: "分鐘",
+		Direction: DirectionMax, Max: 1440, // 上界 1 天（分鐘）
+		Label: "破窗票證時窗", Unit: "分鐘",
 	},
 	{
 		// 破窗補審逾期時限：逾期未補審升級告警（每單至多一次）
 		Key: PolicyBreakGlassReviewTimeoutHours, Type: PolicyTypeInt, Default: "24",
-		PCIValue: "24", Direction: DirectionMax, Max: 720, // 上界 30 天（小時）
-		Requirement: "7.2", Label: "破窗補審逾期時限", Unit: "小時",
+		Direction: DirectionMax, Max: 720, // 上界 30 天（小時）
+		Label: "破窗補審逾期時限", Unit: "小時",
 	},
 	{
 		// 撤銷即斷線（H 決議）：出廠關＝只擋新連線（與到期語義一致）；
 		// 建議開（撤權即時收線，Req 7.2 撤銷存取的即時性）
 		Key: PolicyAccessRevokeDisconnect, Type: PolicyTypeBool, Default: "false",
-		PCIValue:    "true",
-		Requirement: "7.2", Label: "撤銷即斷線",
+		Label: "撤銷即斷線",
 	},
-	// 資料傳輸管控五鍵（data-transfer-control）：出廠允許（既有行為零變更），
-	// 一律無 PCIValue——法源是電支基準而非 PCI 條文，掛假 PCIValue 會讓它進
-	// 「套用本頁建議值」並被標成 PCI 要求（同 access_request_min_approvals 的紀律）。
-	// 電支基準值皆為 false，由 G3 電支建議值雙軌承接。
+	// 資料傳輸管控五鍵（data-transfer-control）：出廠允許（既有行為零變更）。
+	// 法源是電支基準而非 PCI 條文，故只出現在電支內建組的條文裡；替它們在 PCI
+	// 組掛一條要求等於發明一個出處（同 access_request_min_approvals 的紀律）。
 	{
 		Key: PolicyClipboardSendEnabled, Type: PolicyTypeBool, Default: "true",
 		Label: "剪貼簿貼入資產",
@@ -848,20 +806,15 @@ func init() {
 	}
 }
 
-// PolicyView 政策項視圖（API 回傳：定義 + 現值 + 符合性）
+// PolicyView 政策項視圖（API 回傳：定義 + 現值）。
+//
+// **不帶符合性**：一個鍵符不符合要求要看是對哪一組規範而言，答案由判定契約
+// 產出、隨列表另附（見 ComplianceSnapshot）。
 type PolicyView struct {
 	PolicyDef
-	Value string `json:"value"`
-	// Compliant 是否符合 PCI 建議；無 PCI 建議值時為 nil（前端顯示「無建議值」）
-	Compliant *bool `json:"compliant"`
-	// EPaymentCompliant 是否符合電支基準建議；無該基準建議值時為 nil。
-	// 與 Compliant 各自獨立——同一項可能符合其一而偏離另一
-	EPaymentCompliant *bool `json:"epayment_compliant"`
-	// StrictestValue 兩基準取嚴後的建議值（供「套用電支基準」使用）。
-	// 無任一基準值時為空字串。取嚴而非直接用 EPaymentValue 的理由見 evaluateStrictest
-	StrictestValue string     `json:"strictest_value,omitempty"`
-	UpdatedBy      string     `json:"updated_by,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Value     string     `json:"value"`
+	UpdatedBy string     `json:"updated_by,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 type policyCacheEntry struct {
@@ -885,8 +838,8 @@ type SecurityPolicyService struct {
 }
 
 // NewSecurityPolicyService 建立安全政策服務。
-// 同時對政策常數表做啟動自檢：常數表打錯字（如 enum PCIValue 非成員、
-// int 預設不可解析）會讓符合性評估靜默錯判，寧可啟動即 panic 也不上線
+// 同時對政策常數表做啟動自檢：常數表打錯字（如 enum 預設非 EnumOrder 成員、
+// int 預設不可解析）會讓判定與值域驗證靜默錯判，寧可啟動即 panic 也不上線
 func NewSecurityPolicyService(db *gorm.DB) *SecurityPolicyService {
 	if err := validatePolicyDefs(); err != nil {
 		panic(fmt.Sprintf("安全政策常數表自檢失敗（開發期錯誤）: %v", err))
@@ -899,8 +852,8 @@ func NewSecurityPolicyService(db *gorm.DB) *SecurityPolicyService {
 	}
 }
 
-// validatePolicyDefs 常數表完整性自檢：每個 Default／PCIValue 都須通過該欄型別驗證，
-// enum 的 Default／PCIValue 都須是 EnumOrder 成員；並斷言 Unit↔UnitKey
+// validatePolicyDefs 常數表完整性自檢：每個 Default 都須通過該欄型別驗證，
+// enum 的 Default 須是 EnumOrder 成員；並斷言 Unit↔UnitKey
 // invariant（rr-I5）：Unit≠""↔有合法 UnitKey 且與 canonical 映射一致、Unit==""不得有 UnitKey
 func validatePolicyDefs() error {
 	for i := range policyDefs {
@@ -908,20 +861,7 @@ func validatePolicyDefs() error {
 		if err := validatePolicyValue(def, def.Default); err != nil {
 			return fmt.Errorf("%s Default=%q 非法: %w", def.Key, def.Default, err)
 		}
-		if def.PCIValue != "" {
-			if err := validatePolicyValue(def, def.PCIValue); err != nil {
-				return fmt.Errorf("%s PCIValue=%q 非法: %w", def.Key, def.PCIValue, err)
-			}
-		}
-		// 參考值必有值：標了性質卻沒有數字，等於在設定頁上掛一個空標籤，
-		// 而符合性評估與一鍵套用都會靜默略過該鍵
-		if def.PCIReference && def.PCIValue == "" {
-			return fmt.Errorf("%s 標為 PCI 參考值但無 PCIValue（參考值必有值）", def.Key)
-		}
 		if def.Type == PolicyTypeEnum {
-			if def.PCIValue != "" && enumRank(def.EnumOrder, def.PCIValue) < 0 {
-				return fmt.Errorf("%s PCIValue=%q 不在 EnumOrder", def.Key, def.PCIValue)
-			}
 			if enumRank(def.EnumOrder, def.Default) < 0 {
 				return fmt.Errorf("%s Default=%q 不在 EnumOrder", def.Key, def.Default)
 			}
@@ -1248,15 +1188,38 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 	return changes, nil
 }
 
-// List 全部政策項視圖（含現值與符合性），依常數表順序
+// List 全部政策項視圖（含現值與符合性），依常數表順序。
+//
+// **查詢失敗不回錯**：這一支給強制執行路徑用——資料庫暫時讀不到時，執行期
+// 寧可拿到一份可用的值也不能整個停擺。判定、預覽與呈現不得用它，那三處讀不到
+// 實況時把出廠預設當成現值會在失效方向上說謊，故另有 ListWithError。
 func (s *SecurityPolicyService) List() []PolicyView {
 	// 一次撈全部政策列，避免逐鍵查詢
 	var rows []model.SecurityPolicy
-	rowByKey := map[string]model.SecurityPolicy{}
-	if err := s.db.Find(&rows).Error; err == nil {
-		for _, r := range rows {
-			rowByKey[r.Key] = r
-		}
+	if err := s.db.Find(&rows).Error; err != nil {
+		rows = nil
+	}
+	return buildPolicyViews(rows)
+}
+
+// ListWithError 全部政策項視圖；查詢失敗即回錯。
+//
+// **判定、套用預覽與設定頁的呈現用這一支**：讀不到實況就停止建構並讓呼叫端把
+// 失敗顯示出來。吞掉錯誤改回出廠預設的話，一份帶著新建構時點、看起來正常的
+// 判定會蓋住「現值根本沒讀到」這件事，而管理者無從得知。
+func (s *SecurityPolicyService) ListWithError() ([]PolicyView, error) {
+	var rows []model.SecurityPolicy
+	if err := s.db.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("讀取安全政策現值失敗: %w", err)
+	}
+	return buildPolicyViews(rows), nil
+}
+
+// buildPolicyViews 由政策列組出全部設定鍵的視圖（無列或值不合法者為出廠預設）。
+func buildPolicyViews(rows []model.SecurityPolicy) []PolicyView {
+	rowByKey := make(map[string]model.SecurityPolicy, len(rows))
+	for _, r := range rows {
+		rowByKey[r.Key] = r
 	}
 
 	views := make([]PolicyView, 0, len(policyDefs))
@@ -1271,38 +1234,9 @@ func (s *SecurityPolicyService) List() []PolicyView {
 			updatedAt := row.UpdatedAt
 			view.UpdatedAt = &updatedAt
 		}
-		view.Compliant = evaluateCompliance(&def, view.Value)
-		view.EPaymentCompliant = evaluateEPaymentCompliance(&def, view.Value)
-		view.StrictestValue = evaluateStrictest(&def)
 		views = append(views, view)
 	}
 	return views
-}
-
-// DeviationCount 與 PCI 建議偏離項數（政策頁摘要條）。
-//
-// **語義維持不變**：新增電支基準後仍只計 PCI
-// 偏離，不改為兩基準合計——既有前端與其 fixture 依賴這個數字的既有意義
-func (s *SecurityPolicyService) DeviationCount() int {
-	count := 0
-	for _, v := range s.List() {
-		if v.Compliant != nil && !*v.Compliant {
-			count++
-		}
-	}
-	return count
-}
-
-// EPaymentDeviationCount 與電支基準建議偏離項數。與 DeviationCount 各自獨立：
-// 同一項可能符合其一而偏離另一，合計會使兩者都不可解讀
-func (s *SecurityPolicyService) EPaymentDeviationCount() int {
-	count := 0
-	for _, v := range s.List() {
-		if v.EPaymentCompliant != nil && !*v.EPaymentCompliant {
-			count++
-		}
-	}
-	return count
 }
 
 // validatePolicyValue 驗證政策值的型別與範圍（不需要終值的呼叫端用這支）
@@ -1405,111 +1339,6 @@ func validateScalarPolicyValue(def *PolicyDef, value string) error {
 		return &PolicyInvalidValueError{Key: def.Key, Reason: "未知型別 " + def.Type}
 	}
 	return nil
-}
-
-// evaluateCompliance 對 PCI 建議值的符合性（既有語義，呼叫端不變）。
-func evaluateCompliance(def *PolicyDef, value string) *bool {
-	return evaluateComplianceAgainst(def, value, def.PCIValue)
-}
-
-// evaluateEPaymentCompliance 對電支基準建議值的符合性。
-// 與 PCI 走**同一個比較器**——比較邏輯只有一份，兩基準各跑一次
-// （複製比較邏輯會使兩側日後漂移）。
-func evaluateEPaymentCompliance(def *PolicyDef, value string) *bool {
-	return evaluateComplianceAgainst(def, value, def.EPaymentValue)
-}
-
-// evaluateComplianceAgainst 符合性比較器，基準值由呼叫端指定：
-// - 基準值為空 → nil（不評估）
-// - 0=停用 sentinel → 一律不符（先判，避免 0<=10 誤判合規）
-// - int: min 型須 >= 基準、max 型須 <= 基準
-// - bool: 等值
-// - enum: 現值序位 >= 基準值序位（枚舉序弱→強）
-func evaluateComplianceAgainst(def *PolicyDef, value, baseline string) *bool {
-	if baseline == "" {
-		return nil
-	}
-	result := false
-	switch def.Type {
-	case PolicyTypeInt:
-		n, err := strconv.Atoi(value)
-		base, baseErr := strconv.Atoi(baseline)
-		if err != nil || baseErr != nil {
-			return &result
-		}
-		if def.ZeroDisables && n == 0 {
-			return &result
-		}
-		if def.Direction == DirectionMin {
-			result = n >= base
-		} else {
-			result = n <= base
-		}
-	case PolicyTypeBool:
-		result = value == baseline
-	case PolicyTypeEnum:
-		// 任一序位為 -1（值或基準值不在序列）一律判不符：否則
-		// 基準值打錯字使其 rank=-1，任何合法值 >= -1 都會被誤報成合規
-		rankValue := enumRank(def.EnumOrder, value)
-		rankBase := enumRank(def.EnumOrder, baseline)
-		result = rankValue >= 0 && rankBase >= 0 && rankValue >= rankBase
-	}
-	return &result
-}
-
-// evaluateStrictest 回傳兩基準中**較嚴**的建議值，供「套用電支基準」使用。
-//
-// **為何不能直接套用 EPaymentValue**：兩基準在
-// 部分項目上方向相反——密碼最小長度 PCI 要求 >=12、電支只要求 >=6。若「套用電支
-// 基準」實作為無條件覆寫，一個已設 12 的系統會被改成 6，**「套用合規基準」這個
-// 動作反而降低了系統安全性**。取嚴交集才是「同時滿足兩基準」的正確語義。
-//
-// 較嚴的判定依型別與方向：
-// - int min 型（值須 >= 基準）：基準值較大者較嚴
-// - int max 型（值須 <= 基準）：基準值較小者較嚴
-// - bool：任一基準要求 true 即取 true（true 為較嚴側）
-// - enum：序位較高者較嚴（枚舉序弱→強）
-//
-// 任一基準缺值時回傳另一者；兩者皆缺回空字串（呼叫端據此略過該項）。
-func evaluateStrictest(def *PolicyDef) string {
-	pci, ep := def.PCIValue, def.EPaymentValue
-	if pci == "" {
-		return ep
-	}
-	if ep == "" {
-		return pci
-	}
-
-	switch def.Type {
-	case PolicyTypeInt:
-		p, pErr := strconv.Atoi(pci)
-		e, eErr := strconv.Atoi(ep)
-		if pErr != nil || eErr != nil {
-			return pci // 基準值不可解析時退回 PCI（既有行為），不臆測
-		}
-		if def.Direction == DirectionMin {
-			if e > p {
-				return ep
-			}
-			return pci
-		}
-		if e < p {
-			return ep
-		}
-		return pci
-	case PolicyTypeBool:
-		if pci == "true" || ep == "true" {
-			return "true"
-		}
-		return pci
-	case PolicyTypeEnum:
-		rp, re := enumRank(def.EnumOrder, pci), enumRank(def.EnumOrder, ep)
-		if re > rp {
-			return ep
-		}
-		return pci
-	}
-	return pci
 }
 
 // enumRank 枚舉序位；不在序列中回 -1（必不符）

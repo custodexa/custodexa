@@ -49,6 +49,12 @@ vi.mock('@/api/assets', () => ({
   getAssetGroups: () => Promise.resolve({ data: [] }),
 }))
 
+// 下次執行時刻由排程端點回答；列表與表單都只顯示，不自行推算
+const nextRunsMock = vi.fn()
+vi.mock('@/api/schedules', () => ({
+  getScheduleNextRuns: (...a) => nextRunsMock(...a),
+}))
+
 const listJobsMock = vi.fn()
 const downloadJobMock = vi.fn()
 vi.mock('@/api/auditExport', () => ({
@@ -154,6 +160,10 @@ beforeEach(() => {
   createJobMock.mockResolvedValue({ data: { id: 18, status: 'pending' } })
   listJobsMock.mockResolvedValue({ data: [], total: 0, page: 1, page_size: 3 })
   downloadJobMock.mockResolvedValue(new Blob(['zip']))
+  nextRunsMock.mockResolvedValue({
+    runs: ['2026-10-01T01:00:00+08:00'],
+    timezone: 'Asia/Taipei',
+  })
 })
 
 const reportJob = (over = {}) => ({
@@ -264,6 +274,10 @@ describe('排程管理是 admin 專屬區', () => {
     expect(wrapper.find('[data-test="rotation-schedules"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="rotation-schedule-name-1"]').text()).toBe('月報')
     expect(wrapper.find('[data-test="rotation-schedule-run-1"]').exists()).toBe(true)
+    // 時刻欄講人話並附下次執行時刻；排程字串退到編輯表單的自訂欄
+    expect(wrapper.find('[data-test="rotation-schedule-plain-1"]').text()).toBe('每月 1 日 01:00')
+    expect(wrapper.find('[data-test="rotation-schedules"]').text()).toContain('下次 2026-10-01 01:00')
+    expect(wrapper.find('[data-test="rotation-schedules"]').text()).not.toContain('0 1 1 * *')
   })
 
   it('排程送出的 payload 不含唯讀的區間錨點（送了也不採用，送出即誤導）', async () => {

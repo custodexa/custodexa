@@ -210,10 +210,8 @@ describe('locale 訊息語法（linked message 轉義）', () => {
     'instanceGuard.headline.peers',
     'ldapDirectory.matched',
     'ldapDirectory.matchedAtLeast',
-    // PCI 偏離摘要三處（英文寫死複數，1 項時顯示 "1 deviations"）
-    'pciBanner.overviewLink',
-    'policyForm.pageDeviation',
-    'securityPolicies.systemDeviation',
+    // 分區偏離數（英文若寫死複數，1 項時會顯示 "1 deviations"）
+    'policyKeySections.deviation',
     'transportPreflight.db_reject',
     'transportPreflight.rdp_reject',
     'transportPreflight.vnc_reject',
@@ -246,20 +244,12 @@ describe('locale 訊息語法（linked message 轉義）', () => {
     localStorage.removeItem(LANG_STORAGE_KEY)
   })
 
-  // 同型缺陷：PCI 偏離摘要的英文亦寫死複數。呼叫端須以
+  // 同型缺陷：分區偏離數的英文亦有寫死複數的風險。呼叫端須以
   // named + plural 兩參數傳（{ n } 供插值、count 供分支），少傳 count 會恆選第一支
-  it('PCI 偏離摘要的英文單複數各自選對分支', () => {
+  it('分區偏離數的英文單複數各自選對分支', () => {
     setLanguage('en-US')
-    expect(t('policyForm.pageDeviation', { n: 1 }, 1)).toBe(
-      'This page has 1 deviation from the PCI recommendations'
-    )
-    expect(t('policyForm.pageDeviation', { n: 3 }, 3)).toBe(
-      'This page has 3 deviations from the PCI recommendations'
-    )
-    expect(t('securityPolicies.systemDeviation', { n: 1 }, 1)).toContain('1 system-wide deviation ')
-    expect(t('securityPolicies.systemDeviation', { n: 2 }, 2)).toContain('2 system-wide deviations ')
-    expect(t('pciBanner.overviewLink', { n: 1 }, 1)).toContain('1 system-wide deviation ·')
-    expect(t('pciBanner.overviewLink', { n: 4 }, 4)).toContain('4 system-wide deviations ·')
+    expect(t('policyKeySections.deviation', { n: 1 }, 1)).toBe('1 deviation')
+    expect(t('policyKeySections.deviation', { n: 3 }, 3)).toBe('3 deviations')
     setLanguage(DEFAULT_LOCALE)
     localStorage.removeItem(LANG_STORAGE_KEY)
   })

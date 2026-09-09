@@ -166,6 +166,9 @@ func sealedStageOneDeps(cfg stageOneRouteConfig, sealHandler *api.SealHandler) r
 
 		auth:                  &api.AuthHandler{},
 		securityPolicy:        &api.SecurityPolicyHandler{},
+		policyGroup:           &api.PolicyGroupHandler{},
+		compliance:            &api.ComplianceHandler{},
+		schedule:              &api.ScheduleHandler{},
 		syslogSetting:         &api.SyslogSettingHandler{},
 		auditIntegrity:        &api.AuditIntegrityHandler{},
 		auditCheckpoint:       &api.AuditCheckpointHandler{},

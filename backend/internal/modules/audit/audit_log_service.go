@@ -46,11 +46,17 @@ type AuditLogFilter struct {
 	// AssetID 資產維度（auditor-workbench 補入 audit_logs.asset_id 後才成立）：
 	// 只認本欄，不以 (resource, resource_id) 冒充——後者會把改密計畫／授權列的
 	// id 當成資產 id，把別的實體的事件掛到這台資產上
-	AssetID   *uint
-	Action    *model.AuditAction
-	Resource  *model.AuditResource
-	Status    *model.AuditStatus
-	ClientIP  *string
+	AssetID  *uint
+	Action   *model.AuditAction
+	Resource *model.AuditResource
+	Status   *model.AuditStatus
+	ClientIP *string
+	// PolicyKey 安全政策的設定鍵：只收該鍵的變更列。
+	//
+	// 變更列沒有專屬欄位存這個鍵，它記在訊息欄的 `policy=<鍵>` 前綴裡
+	// （寫入端見安全政策的變更審計）。稽核人員由設定名追到變更記錄時，
+	// 少了這個條件就得在整份日誌裡自己找
+	PolicyKey *string
 	StartTime *time.Time
 	EndTime   *time.Time
 	Page      int
@@ -571,6 +577,22 @@ func normalizeAuditSortOrder(sortOrder string) string {
 	}
 }
 
+// policyKeyMarkerPrefix 安全政策變更列在訊息欄標示設定鍵的前綴。
+//
+// 格式由寫入端決定（安全政策的變更審計），本處是它的讀取端。兩端是同一件事的
+// 兩半：寫入端改格式而這裡沒跟上時，篩選不會報錯，只會安靜地少回幾列——
+// 故讀取端的測試一律以寫入端的同一支函式產生待篩的列，讓失準當場轉紅。
+const policyKeyMarkerPrefix = "policy="
+
+// escapeLikeLiteral 把字面值轉義成可安全放進 LIKE 樣式的字串（配 ESCAPE '\'）。
+//
+// **設定鍵幾乎都含底線**，而 LIKE 的 `_` 是「任一字元」：不轉義的話
+// `password_min_length` 會比對到 `passwordXminXlength` 這種根本不存在的鍵，
+// 篩選看起來有效、結果卻多收了列。
+func escapeLikeLiteral(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
 // List 查詢審計日誌列表（支援過濾、分頁、排序）
 func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, error) {
 	// 設定默認值
@@ -609,6 +631,14 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	}
 	if filter.ClientIP != nil {
 		query = query.Where("client_ip = ?", *filter.ClientIP)
+	}
+	if filter.PolicyKey != nil && *filter.PolicyKey != "" {
+		marker := policyKeyMarkerPrefix + *filter.PolicyKey
+		// 兩種形態：數值與開關型把舊值與新值接在同一欄（`policy=<鍵> old=… new=…`），
+		// 文字型只留鍵名（全文在變更詳情欄）。前綴後面必須是空白才算命中，
+		// 否則 `password_min_length` 會把 `password_min_length_extra` 一起收進來
+		query = query.Where("(error_msg = ? OR error_msg LIKE ? ESCAPE '\\')",
+			marker, escapeLikeLiteral(marker)+" %")
 	}
 	if filter.StartTime != nil {
 		query = query.Where("created_at >= ?", *filter.StartTime)

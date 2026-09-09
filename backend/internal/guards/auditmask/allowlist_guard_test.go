@@ -135,6 +135,25 @@ var knownAccountabilityVoids = map[string]string{
 	"api.(*SecurityPolicyHandler).Update": "policies 為巢狀 map（違反登記判準 3）；" +
 		"handler 逐鍵寫 old→new 專屬審計列（PCI 10.2.2），課責不靠 request_body",
 
+	// 政策組管理面：四類寫入各由 handler 寫一列專屬審計，details 帶組代號、條號、
+	// 操作與舊值→新值。**放行清單解不了這一族**：遮罩按鍵名全域比對、分不出端點，
+	// 而 `code`／`title`／`summary`／`controls` 這些名字在別的端點上承載的東西完全
+	// 不同（`code` 在 MFA 驗證與會話分享票上是一次性憑證），放行等於把它們逐字
+	// 寫進刪不掉的 audit_logs。專屬審計列本就答得出「哪一組的哪一條被改成什麼」。
+	"api.(*PolicyGroupHandler).Create": "code 在別的端點上是一次性憑證，" +
+		"鍵名全域比對之下不得放行；建組事實與代號由 handler 寫的專屬審計列課責" +
+		"（resource=policy_group、op=group_create，details 帶組代號與組名）",
+	"api.(*PolicyGroupHandler).UpsertClause": "controls 為巢狀清單（違反登記判準 3）；" +
+		"條文改成什麼由 handler 寫的專屬審計列課責" +
+		"（op=clause_upsert，details 帶組代號、條號與舊要求→新要求的摘要）",
+	"api.(*PolicyGroupHandler).UpsertAnnotation": "note 為自由文字；" +
+		"備註不影響判定，寫入事實與舊值→新值由 handler 寫的專屬審計列課責（op=annotation_upsert）",
+	"api.(*PolicyGroupHandler).ConfirmClause": "note 為自由文字；" +
+		"人工確認的操作者與時間由 handler 寫的專屬審計列課責（op=clause_confirm，帶前次確認資訊）",
+
+	"api.(*SecurityPolicyHandler).CompliancePreview": "draft 為巢狀 map、temp_controls 為巢狀清單" +
+		"（皆違反登記判準 3）；本端點唯讀、不寫入任何資料，沒有變更可課責",
+
 	"sshproxy.(*Handler).HandleCreateTransmissionConsent": "risk_keys 命中 G3 機密語義片段（key）故不放行；" +
 		"同意的對象由 asset_id 課責，同意內容由 TransmissionConsent.Record 寫入的立據紀錄承載",
 

@@ -1,6 +1,6 @@
 <template>
   <!-- 分區卡片：依 key 分組渲染，後端新增政策鍵自動出現在對應區塊
-       （自 SecurityPolicies.vue 抽取，四域頁共用） -->
+       （四個設定域頁共用）。列的渲染在 PolicyKeyRow，第二層在 PolicyKeyDrawer -->
   <div
     v-for="section in sections"
     :key="section.title"
@@ -9,6 +9,39 @@
     <div class="card-header">
       <span class="card-title">{{ section.title }}</span>
       <span class="card-hint">{{ section.hint }}</span>
+      <!-- 分區偏離數：同一鍵偏離多組只算一次；點它到合規對照頁看全系統視角。
+           草稿判定在途或失敗時不印數字——那時手上只有已儲存值的舊判定，
+           印出來等於拿舊答案冒充目前這一份編輯的結果 -->
+      <span class="card-deviation">
+        <span
+          v-if="draftStatus === 'pending' || draftStatus === 'failed'"
+          class="deviation-unknown"
+          :data-test="`section-deviation-${section.id || section.title}`"
+        >{{ draftStatus === 'pending'
+          ? $t('policyKeySections.draftPending')
+          : $t('policyKeySections.draftFailed') }}</span>
+        <router-link
+          v-else-if="deviationCount(section) > 0"
+          class="deviation-link"
+          :data-test="`section-deviation-${section.id || section.title}`"
+          to="/compliance-map"
+        >
+          {{ $t('policyKeySections.deviation', { n: deviationCount(section) }, deviationCount(section)) }}
+        </router-link>
+        <span
+          v-else
+          class="deviation-ok"
+          :data-test="`section-deviation-${section.id || section.title}`"
+        >{{ $t('policyKeySections.noDeviation') }}</span>
+        <el-tag
+          v-if="draft"
+          size="small"
+          type="info"
+          effect="plain"
+        >
+          {{ $t('policyKeySections.draftTag') }}
+        </el-tag>
+      </span>
     </div>
 
     <!-- 頁面專屬的區塊補充內容（跨欄位風險提示、專頁入口連結等） -->
@@ -17,154 +50,15 @@
       :section="section"
     />
 
-    <div
+    <PolicyKeyRow
       v-for="policy in section.policies"
       :key="policy.key"
-      class="policy-row"
-      :class="{ 'policy-row-text': policy.type === 'text' }"
-    >
-      <div class="policy-label">
-        <span>{{ policyLabel(policy) }}</span>
-        <span
-          v-if="policy.requirement"
-          class="policy-req"
-        >PCI {{ policy.requirement }}</span>
-        <!-- 逐鍵附註（生效時機／適用協議，data-transfer-control 6.1）：
-             無 policyNote.<key> 譯文者不顯示 -->
-        <span
-          v-if="policyNote(policy)"
-          class="policy-note"
-        >{{ policyNote(policy) }}</span>
-      </div>
-
-      <div class="policy-control">
-        <el-input-number
-          v-if="policy.type === 'int'"
-          :model-value="formValues[policy.key]"
-          :min="policyMin(policy)"
-          :max="policy.max || 99999"
-          :step="1"
-          step-strictly
-          :aria-label="policyLabel(policy)"
-          @update:model-value="$emit('update:value', policy.key, $event)"
-        />
-        <el-switch
-          v-else-if="policy.type === 'bool'"
-          :model-value="formValues[policy.key]"
-          :aria-label="policyLabel(policy)"
-          @update:model-value="$emit('update:value', policy.key, $event)"
-        />
-        <el-radio-group
-          v-else-if="policy.type === 'enum'"
-          :model-value="formValues[policy.key]"
-          @update:model-value="$emit('update:value', policy.key, $event)"
-        >
-          <el-radio-button
-            v-for="option in policy.enum_order"
-            :key="option"
-            :value="option"
-          >
-            {{ enumLabel(policy, option) }}
-          </el-radio-button>
-        </el-radio-group>
-        <!-- 文字型：多行鍵給可長高的輸入框，單行鍵給一般輸入框。
-             刻意不綁原生 maxlength——它以 UTF-16 單位計，補充平面字元每個算兩格，
-             會在後端仍接受的長度就把使用者的輸入截掉。字數改以下方計數呈現 -->
-        <div
-          v-else-if="policy.type === 'text'"
-          class="policy-text"
-        >
-          <el-input
-            v-if="policy.multiline"
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 12 }"
-            :model-value="formValues[policy.key]"
-            :aria-label="policyLabel(policy)"
-            @update:model-value="$emit('update:value', policy.key, $event)"
-          />
-          <el-input
-            v-else
-            :model-value="formValues[policy.key]"
-            :aria-label="policyLabel(policy)"
-            @update:model-value="$emit('update:value', policy.key, $event)"
-          />
-          <!-- 超出上限只變色不擋輸入：擋輸入等於在使用者貼上長文時靜默丟字，
-               長度的權威判定在後端，這裡只把「會被退回」先講出來 -->
-          <span
-            class="policy-counter"
-            :class="{ 'policy-counter-over': textLength(formValues[policy.key]) > policy.max_length }"
-          >{{ $t('bannerText.counter', {
-            count: textLength(formValues[policy.key]),
-            max: policy.max_length,
-          }) }}</span>
-        </div>
-        <span
-          v-if="policyUnit(policy)"
-          class="policy-unit"
-        >{{ policyUnit(policy) }}</span>
-      </div>
-
-      <!-- 文字型鍵沒有合規基準建議值，整欄對它只剩「無建議值」這句噪音 -->
-      <div
-        v-if="policy.type !== 'text'"
-        class="policy-meta"
-      >
-        <span
-          v-if="policy.pci_value"
-          class="policy-pci"
-          :data-test="`policy-pci-${policy.key}`"
-        >
-          {{ $t('policyKeySections.pciRecommend', { value: formatValue(policy, policy.pci_value) }) }}
-        </span>
-        <!-- 參考值：該條文以機構的目標風險分析定頻率，未定固定天數，數字是
-             本產品的預設起始值。標籤與附註一起出現才說得完整——只有數字的話，
-             讀者會把它當成條文明定的門檻 -->
-        <template v-if="policy.pci_reference">
-          <el-tag
-            size="small"
-            type="info"
-            :data-test="`policy-pci-reference-${policy.key}`"
-          >
-            {{ $t('policyKeySections.pciReference') }}
-          </el-tag>
-          <span class="policy-helper">
-            {{ $t('policyKeySections.pciReferenceNote', { requirement: policy.requirement }) }}
-          </span>
-        </template>
-        <span
-          v-else
-          class="policy-pci"
-        >{{ $t('policyKeySections.noPciValue') }}</span>
-        <el-tag
-          v-if="isNonCompliantValue(policy, formValues[policy.key], savedValues[policy.key])"
-          type="warning"
-          size="small"
-        >
-          <el-icon><CircleAlert /></el-icon>
-          {{ $t('policyKeySections.nonCompliant') }}
-        </el-tag>
-        <!-- 電支基準第二欄：與 PCI 並列而非取代，
-             兩基準的建議值可能不同且方向相反，各自標示符合性 -->
-        <span
-          v-if="policy.epayment_value"
-          class="policy-pci"
-        >
-          {{ $t('policyKeySections.epaymentRecommend', { value: formatValue(policy, policy.epayment_value) }) }}
-        </span>
-        <el-tag
-          v-if="isNonCompliantEPayment(policy, formValues[policy.key], savedValues[policy.key])"
-          type="warning"
-          size="small"
-        >
-          <el-icon><CircleAlert /></el-icon>
-          {{ $t('policyKeySections.nonCompliantEPayment') }}
-        </el-tag>
-        <span
-          v-if="policy.zero_disables && policy.type === 'int'"
-          class="policy-helper"
-        >{{ zeroHelperText(policy) }}</span>
-      </div>
-    </div>
+      :policy="policy"
+      :value="formValues[policy.key]"
+      :deviating="deviatingKeys.has(policy.key)"
+      @update:value="(key, value) => $emit('update:value', key, value)"
+      @info="openDrawer(policy)"
+    />
 
     <!-- 區塊尾端擴充（存取管控頁的資產覆寫表格等） -->
     <slot
@@ -172,35 +66,63 @@
       :section="section"
     />
   </div>
+
+  <PolicyKeyDrawer
+    v-model="drawerVisible"
+    :policy="activePolicy"
+    :verdicts="activeVerdicts"
+    :group-names="groupNames"
+    :draft="draft"
+  />
 </template>
 
 <script setup>
-import { CircleAlert } from 'lucide-vue-next'
-import {
-  enumLabel,
-  formatValue,
-  isNonCompliantEPayment,
-  isNonCompliantValue,
-  policyLabel,
-  policyMin,
-  policyNote,
-  policyUnit,
-  zeroHelperText,
-} from '@/utils/policyFormat'
+import { computed, ref } from 'vue'
+import PolicyKeyRow from './PolicyKeyRow.vue'
+import PolicyKeyDrawer from './PolicyKeyDrawer.vue'
 
-// 字數以 Unicode code point 計，與後端上限同一口徑；
-// String.length 是 UTF-16 單位，補充平面字元會被算成兩個
-const textLength = (value) => Array.from(value || '').length
-
-defineProps({
-  // visibleSections 產物：[{ title, hint, policies: [policy] }]
+const props = defineProps({
+  // visibleSections 產物：[{ id, title, hint, policies: [policy] }]
   sections: { type: Array, required: true },
-  // 編輯中值與已儲存值（符合性比對用）；寫入權在父層（update:value 事件）
+  // 編輯中值；寫入權在父層（update:value 事件）
   formValues: { type: Object, required: true },
-  savedValues: { type: Object, required: true },
+  // 鍵→該鍵對各生效組的判定。判定一律由後端建構：前端自己算一份會與伺服器漂移，
+  // 而分歧不會有任何一處報錯
+  verdictsByKey: { type: Object, default: () => ({}) },
+  // 政策組代號→顯示名
+  groupNames: { type: Object, default: () => ({}) },
+  // 判定是以尚未儲存的表單值算的
+  draft: { type: Boolean, default: false },
+  // 草稿判定的取得狀態：''／'ready'（有結果）、'pending'（在途）、'failed'（失敗）
+  draftStatus: { type: String, default: '' },
 })
 
 defineEmits(['update:value'])
+
+// 偏離鍵集：同一鍵對多組偏離只算一次（分區數字要是「幾個設定要處理」，
+// 不是「幾筆判定不合格」）
+const deviatingKeys = computed(() => {
+  const keys = new Set()
+  Object.entries(props.verdictsByKey).forEach(([key, verdicts]) => {
+    if ((verdicts || []).some((v) => v.result === 'deviating')) keys.add(key)
+  })
+  return keys
+})
+
+const deviationCount = (section) =>
+  section.policies.filter((p) => deviatingKeys.value.has(p.key)).length
+
+const drawerVisible = ref(false)
+const activePolicy = ref(null)
+
+const activeVerdicts = computed(() =>
+  activePolicy.value ? props.verdictsByKey[activePolicy.value.key] || [] : []
+)
+
+const openDrawer = (policy) => {
+  activePolicy.value = policy
+  drawerVisible.value = true
+}
 </script>
 
 <style scoped>
@@ -232,92 +154,25 @@ defineEmits(['update:value'])
   color: var(--ot-text-secondary);
 }
 
-.policy-row {
-  display: grid;
-  grid-template-columns: 240px minmax(220px, auto) 1fr;
-  align-items: center;
-  gap: var(--ot-space-md);
-  padding: var(--ot-space-sm) 0;
-}
-
-/* 文字型鍵沒有 meta 欄，輸入框吃掉整條剩餘寬度——
-   2000 字的內文擠在 220px 的數值欄寬裡是讀不動的 */
-.policy-row-text {
-  grid-template-columns: 240px 1fr;
-  align-items: start;
-}
-
-.policy-row + .policy-row {
-  border-top: 1px solid var(--ot-border-subtle);
-}
-
-.policy-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--ot-text-primary);
-}
-
-.policy-req {
-  font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-secondary);
-}
-
-.policy-note {
-  font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-secondary);
-  line-height: 1.4;
-}
-
-.policy-control {
+.card-deviation {
   display: flex;
   align-items: center;
-  gap: var(--ot-space-sm);
-}
-
-.policy-text {
-  display: flex;
-  flex-direction: column;
   gap: var(--ot-space-xs);
-  width: 100%;
-}
-
-.policy-counter {
-  align-self: flex-end;
-  font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-secondary);
-}
-
-.policy-counter-over {
-  color: var(--ot-danger);
-}
-
-.policy-unit {
-  color: var(--ot-text-secondary);
+  margin-left: auto;
   font-size: var(--ot-font-size-sm);
 }
 
-.policy-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--ot-space-sm);
-  flex-wrap: wrap;
+.deviation-link {
+  color: var(--el-color-warning);
+  text-decoration: none;
 }
 
-.policy-pci {
-  font-size: var(--ot-font-size-sm);
+.deviation-ok,
+.deviation-unknown {
   color: var(--ot-text-secondary);
 }
 
-.policy-helper {
-  font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-secondary);
-}
-
-@media (max-width: 900px) {
-  .policy-row {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
+:deep(.policy-row + .policy-row) {
+  border-top: 1px solid var(--ot-border-subtle);
 }
 </style>

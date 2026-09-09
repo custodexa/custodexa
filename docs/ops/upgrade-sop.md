@@ -26,19 +26,23 @@ Every item below is **a step the delivery engineer must perform**, not something
 
 The factory values of the security policies exist so the system works as soon as it is installed, not so it is compliant. For example:
 
-| Policy | Factory value | PCI suggested value |
+| Policy | Factory value | What the policy groups in effect ask for |
 |---|---|---|
-| Transport enforcement level (RDP, VNC, database, LDAP, syslog, notifications; six keys) | `off` (not enforced) | `warn` |
+| Transport enforcement level (RDP, VNC, database, LDAP, syslog, notifications; six keys) | `off` (not enforced) | No level: the clause on transport encryption asks for strong encryption without naming one of the three levels (`off`, `warn`, `strict`). See the last paragraph of this item |
 | Global default access policy tier | `open` | `approval` |
 
-**How**: as an admin, open each policy page in turn (security policy, transport security, access control, key management), use that page's apply button to fill in the baseline values, and **then press save**. The system offers two baselines, each independent:
+**How**: as an admin, open each policy page in turn (security policy, transport security, access control, key management), use that page's **Apply recommended values** menu to fill in the values, and **then press save**. The header of each policy page lists the policy groups in effect, and the menu holds one entry per group plus **Meet every policy at once**:
 
-- **Apply PCI suggested values**: fills in the PCI DSS suggested value for the policy keys on that page.
-- **Apply the electronic payment baseline**: fills in the **stricter of the two baselines** as computed by the backend, not the raw values of the electronic payment baseline. The two baselines point in opposite directions on some items (PCI requires a minimum password length of 12 while the electronic payment baseline requires only 6, for instance), and filling in the electronic payment value unconditionally would change a system already set to 12 down to 6. That is not applying a compliance baseline; it is lowering security.
+- **One group**: fills in that group's requirements for the policy keys on that page. A value already stricter than what that group asks for stays as it is, and a value that already meets a requirement of another group in effect is not relaxed either — applying one group never gives up what another one has secured.
+- **Meet every policy at once**: for each setting, takes the strictest requirement across every group in effect (the largest value where a requirement is a minimum, the smallest where it is a maximum). Where the PCI DSS group asks for a minimum password length of 12 and the electronic payment baseline asks for 6, for instance, this fills in 12; it never lowers a setting to the more permissive of the two. Where two groups ask for opposite values on the same setting, that setting is **left as it is**: the preview names it and says which two requirements disagree, and the decision is yours.
+
+Either way, the apply shows a preview first. It lists only the settings that would change, each with its current value, the value it would become, and the group that value comes from.
 
 The WinRM credential change channel is **not one of those six keys**: a credential change is a system path rather than a user connection, so it has neither an enforcement level nor a consent gate. Its encryption state (message-layer encryption over http, the certificate verification mode over https) appears only in the `winrm` row of the transport inventory and on the asset risk badge; see the Windows section of §2.5.
 
-The apply button only fills in form values, and **nothing takes effect until you press save**; you can revert at any point before saving. The scope of an apply is the policy keys on the current page, so it has to be done page by page and one pass does not cover everything.
+Confirming a preview only fills in form values, and **nothing takes effect until you press save**; you can revert at any point before saving. The scope of an apply is the policy keys on the current page, so it has to be done page by page and one pass does not cover everything.
+
+**An apply does not raise the six transport enforcement levels.** Neither built-in policy group names a level for them, so they stay at their factory value and the compliance map lists them as awaiting audit judgement, showing the current value. Choosing the level per protocol is a decision you make, and it is part of this checklist item.
 
 > **If you skip it**: the transport enforcement and access control of the new system all sit at their most permissive, with no warning of any kind. The system does not decide for you whether they should be tightened.
 
@@ -345,7 +349,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's twelve increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's thirteen increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -360,6 +364,7 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260906_credential_library_contract (credential_library_contract)
   執行 migration: 20260908_role_state_checkpoint (role_state_checkpoint)
   執行 migration: 20260908_group_role_mapping (group_role_mapping)
+  執行 migration: 20260909_policy_groups (policy_groups)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -431,6 +436,15 @@ unchanged" while it is empty**: an empty group attribute name or group claim nam
 deployment does not let external groups decide roles, and the three claim mapping columns fall back
 to the parsing already in use. A deployment that configures none of them behaves exactly as it did
 before the upgrade. **Its `Down` is lossy**; read §4.1 before planning any way back.
+
+`20260909_policy_groups` adds the data layer for policy groups and the compliance map: four new
+tables (a policy group, the clauses in it, each clause's requirements on individual security
+settings, and the organization's notes and manual confirmations) plus one unique index. **It creates
+tables only**: it touches no existing table, adds no column, converts nothing and backfills nothing,
+so its duration is independent of the volume held. The built-in groups' content is written by a seed
+at startup, not by the migration, and the four tables are empty until then. A deployment that opens
+none of the new pages behaves after the upgrade exactly as it did before. **Its `Down` is lossy and
+part of that loss cannot be restored**; read §4.1 before planning any way back.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -899,12 +913,12 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the twelve increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the thirteen increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
 `20260906_credential_library_contract`, `20260908_role_state_checkpoint`,
-`20260908_group_role_mapping`).
+`20260908_group_role_mapping`, `20260909_policy_groups`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -1026,6 +1040,26 @@ rewritten at the next sign-in. Its production way back is likewise deploying the
 and restoring the pre-upgrade backup (§4.2). **Mapping rules created after the upgrade are lost when
 the backup is restored**, so if you have added any, export them as above before rolling back and enter
 them again after a later upgrade.
+
+**The `Down` of `20260909_policy_groups` is lossy, part of that loss cannot be restored, and it is
+for development databases only.** It drops the four policy group tables outright. The built-in
+groups' content comes back on the next startup, because a seed writes it; **the policy groups an
+organization built itself, the clauses in them, and every note and manual confirmation have no
+second source**, and a rollback loses them for good. There is no dedicated export endpoint for
+them; what covers them is the pre-upgrade backup, which is a complete logical backup (§2.1) and
+therefore contains all four tables. **Before rolling back to a version that predates policy groups,
+export the self-built groups and the notes** and keep the export with the backup set:
+
+```bash
+docker compose -f docker-compose.yml exec -T postgres \
+  pg_dump --data-only -t policy_groups -t policy_clauses -t policy_clause_controls \
+    -t policy_clause_annotations -U "${DB_USER:?}" -d "${DB_NAME:?}" \
+    > "custodexa-policy-groups-$(date +%Y%m%d-%H%M).sql"
+```
+
+**Groups built and notes written after the upgrade are lost when the backup is restored** as well,
+for the same reason as everything else created after that point. Its production way back is likewise
+deploying the old version's images and restoring the pre-upgrade backup (§4.2).
 
 **A login banner configured after the upgrade is lost when the backup is restored**: that text was written after the upgrade, and the pre-upgrade backup does not contain it. **If you are going to roll back, copy the banner's title and body off the security policy page first** (plain text, into a ticket or a handover document), and put them back after a later upgrade.
 

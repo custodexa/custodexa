@@ -57,7 +57,19 @@
           min-width="120"
         >
           <template #default="{ row }">
-            <code v-if="row.cron">{{ row.cron }}</code>
+            <template v-if="row.cron">
+              <code v-if="isCustomSchedule(row.cron)">{{ row.cron }}</code>
+              <span
+                v-else
+                :data-test="`plan-schedule-${row.id}`"
+              >{{ describeSchedule(row.cron) }}</span>
+              <div
+                v-if="nextRunText(row.cron)"
+                class="muted"
+              >
+                {{ nextRunText(row.cron) }}
+              </div>
+            </template>
             <span
               v-else
               class="muted"
@@ -407,9 +419,12 @@
           </el-form-item>
         </template>
         <el-form-item :label="$t('changeSecretPlans.scheduleCron')">
-          <el-input
+          <ScheduleFrequencyPicker
             v-model="form.cron"
-            :placeholder="$t('changeSecretPlans.cronPlaceholder')"
+            v-model:valid="scheduleValid"
+            allow-empty
+            :custom-placeholder="$t('changeSecretPlans.cronPlaceholder')"
+            data-test="plan-schedule-picker"
           />
         </el-form-item>
         <!-- 憑證最長使用天數覆蓋：只影響輪替證據報告的適用天數，
@@ -438,7 +453,7 @@
         <el-button
           type="primary"
           :loading="saving"
-          :disabled="!form.name || !form.asset_ids.length"
+          :disabled="!form.name || !form.asset_ids.length || !scheduleValid"
           @click="submit"
         >
           {{ $t('common.save') }}
@@ -541,9 +556,12 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ScheduleFrequencyPicker from '@/components/ScheduleFrequencyPicker.vue'
 import { formatDateTime } from '@/utils/format'
+import { CUSTOM_MODE, describeSchedule, formatRunTime, parseCron } from '@/utils/cron-shape'
 import { t, te } from '@/i18n'
 import { getAssetList } from '@/api/assets'
+import { getScheduleNextRuns } from '@/api/schedules'
 import {
   effectiveRotationChannel,
   isRotatableAsset,
@@ -563,6 +581,35 @@ import {
 } from '@/api/changeSecret'
 
 const plans = ref([])
+
+// 排程時刻：列表講人話，下次執行時刻問後端（同一個時刻表只問一次）。
+// 取不到就不顯示那一行——列表不是交代失敗原因的地方，編輯表單才是。
+const scheduleValid = ref(true)
+const nextRunByCron = ref({})
+
+const isCustomSchedule = (cron) => parseCron(cron).mode === CUSTOM_MODE
+
+function nextRunText(cron) {
+  const run = nextRunByCron.value[cron]
+  return run ? t('scheduleFrequency.nextRun', { time: run }) : ''
+}
+
+async function loadNextRuns(crons) {
+  const distinct = [...new Set(crons.filter(Boolean))]
+  const pairs = await Promise.all(
+    distinct.map(async (cron) => {
+      try {
+        const res = await getScheduleNextRuns({ cron, count: 1 }, { skipErrorToast: true })
+        const run = Array.isArray(res?.runs) ? res.runs[0] : null
+        return [cron, run ? formatRunTime(run) : '']
+      } catch {
+        return [cron, '']
+      }
+    })
+  )
+  nextRunByCron.value = Object.fromEntries(pairs.filter(([, run]) => run))
+}
+
 // 全部資產供名稱與通道查表（記錄可能指向已不參與改密的資產）；
 // 下拉只列有效通道非 none 者——未設通道的 rdp 資產在這裡就選不到，
 // 而不是選了才在執行期被記為略過
@@ -706,6 +753,7 @@ async function load() {
   try {
     const res = await getChangeSecretPlans()
     plans.value = res.data || []
+    await loadNextRuns(plans.value.map((plan) => plan.cron))
   } catch (err) {
     console.error('[ChangeSecret] 載入計劃失敗:', err)
   } finally {

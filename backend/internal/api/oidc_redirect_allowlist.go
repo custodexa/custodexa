@@ -41,6 +41,8 @@ var frontendRouteSegments = map[string]bool{
 	"identity-sources":        true, // 身分來源（目錄與提供者的合併列表與詳情頁）
 	"approver-scopes":         true,
 	"security-policies":       true,
+	"compliance-map":          true,
+	"policy-groups":           true,
 	"access-control":          true,
 	"key-management":          true,
 	"transmission-inventory":  true,

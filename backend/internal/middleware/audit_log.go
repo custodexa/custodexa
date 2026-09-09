@@ -532,6 +532,23 @@ func extractResource(path string) model.AuditResource {
 		// 使同一個動作在資產樞紐上也查得到——路由層推導不出那台機器是誰
 		case "credentials":
 			return model.ResourceCredential
+		// 政策組（規範條文與安全設定的對照）：`:code` 是組代號、`:clause_no` 是
+		// 條號，**都不是自增 id**，故本族的 resource_id 恆 nil，座標寫在 details。
+		// 與 `security-policies` 不同段亦不同義——那一族記的是設定值的變更，
+		// 本族記的是「用來量它的那把尺」被改成什麼
+		case "policy-groups":
+			return model.ResourcePolicyGroup
+		// 合規對照的唯讀讀取：稽核據以出具意見的材料，「誰在什麼時候看了哪一組的
+		// 判定」須可辨識。**不入 auditSensitiveResources**——該集合的語義是
+		// 「對受保護材料或審計資料的讀取」，而判定結果既非秘密材料也非審計資料，
+		// 灌進去只會稀釋那個集合的訊號
+		case "compliance":
+			return model.ResourceComplianceMap
+		// 排程時刻預覽：無狀態、不讀寫資料表。分類的用途是讓它不落兜底。
+		// 註：`/rotation-report/schedules` 依路徑序先命中 `rotation-report`，
+		// 不受本條影響
+		case "schedules":
+			return model.ResourceSchedule
 		}
 	}
 

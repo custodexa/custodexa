@@ -132,6 +132,15 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
       {
+        // 合規對照：安全設定對每一個政策組的判定結果。**唯讀**——
+        // 條文改在政策組頁、設定值改在安全政策頁，這一頁只是同一份判定的投影。
+        // 權限沿稽核頁模式，admin 亦可讀（兩種角色看到的是同一個答案）
+        path: 'compliance-map',
+        name: 'ComplianceMap',
+        component: () => import('../views/ComplianceMap.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+      },
+      {
         path: 'access-reviews',
         name: 'AccessReviews',
         component: () => import('../views/AccessReviews.vue'),
@@ -217,6 +226,14 @@ const routes = [
         path: 'security-policies',
         name: 'SecurityPolicies',
         component: () => import('../views/SecurityPolicies.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] },
+      },
+      {
+        // 政策組：條文與要求的維護面，也是政策組**所有寫入的唯一入口**。
+        // 與安全政策頁相鄰——一邊是設定值、一邊是對照的條文，讀者是同一個人
+        path: 'policy-groups',
+        name: 'PolicyGroups',
+        component: () => import('../views/PolicyGroups.vue'),
         meta: { requiresAuth: true, roles: ['admin'] },
       },
       {

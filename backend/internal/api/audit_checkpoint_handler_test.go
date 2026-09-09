@@ -119,7 +119,11 @@ func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm
 	// signing 欄位以 fake 注入（建構子只吃具體型別；本測不需要真的 keyvault）
 	h := &AuditCheckpointHandler{verifier: verifier, signing: signer}
 	h.RegisterRoutes(group, authService)
-	NewSecurityPolicyHandler(policy.NewSecurityPolicyService(db), nil).RegisterRoutes(group, authService)
+	policySvc := policy.NewSecurityPolicyService(db)
+	policyGroupRepo := policy.NewPolicyGroupRepository(db)
+	NewSecurityPolicyHandler(policySvc, nil,
+		policy.NewComplianceService(policySvc, policyGroupRepo), policyGroupRepo).
+		RegisterRoutes(group, authService)
 
 	return r, crypto.NewJWTManager(jwtSecret, time.Minute), db, seal
 }

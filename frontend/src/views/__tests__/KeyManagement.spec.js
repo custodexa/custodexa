@@ -32,37 +32,52 @@ vi.mock('vue-router', () => ({
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
+const previewComplianceMock = vi.fn()
+const previewApplyMock = vi.fn()
+
 vi.mock('@/api/securityPolicies', () => ({
   getSecurityPolicies: (...args) => getPoliciesMock(...args),
   updateSecurityPolicies: (...args) => updatePoliciesMock(...args),
+  // 判定與套用預覽端點：判定一律由後端供給，前端不自己算一份
+  previewCompliance: (...args) => previewComplianceMock(...args),
+  previewApplyPolicies: (...args) => previewApplyMock(...args),
 }))
+
+// 判定由後端建構，前端只投影
+const verdict = (key, result, expected, comparator = 'min') => ({
+  key,
+  group_code: 'pci_dss_4_0_1',
+  clause_no: '3.7.4',
+  result,
+  reason: result === 'deviating' ? 'disabled_by_zero' : 'meets_expectation',
+  current: '0',
+  expected,
+  comparator,
+})
 
 const policyFixture = () => ({
   data: [
     {
       key: 'key_cryptoperiod_reminder_days',
       type: 'int',
-      pci_value: '365',
       direction: 'min',
       zero_disables: true,
-      requirement: '3.7.4',
       label: '金鑰輪替提醒天數',
       unit: '天',
       value: '0',
-      compliant: false,
+      verdicts: [verdict('key_cryptoperiod_reminder_days', 'deviating', '365')],
     },
     {
       key: 'password_min_length',
       type: 'int',
-      pci_value: '12',
       direction: 'min',
       label: '密碼最小長度',
       unit: '字元',
       value: '8',
-      compliant: false,
+      verdicts: [verdict('password_min_length', 'deviating', '12')],
     },
   ],
-  deviation_count: 2,
+  groups: [{ code: 'pci_dss_4_0_1', name: 'PCI DSS 4.0.1', enabled: true }],
 })
 
 const inventoryFixture = (overrides = {}) => ({
@@ -168,18 +183,18 @@ describe('KeyManagement 金鑰清冊', () => {
     getPoliciesMock.mockResolvedValue(policyFixture())
   })
 
-  it('政策鍵設定區只承載金鑰提醒鍵並附本頁偏離摘要', async () => {
+  it('政策鍵設定區只承載金鑰提醒鍵並附分區偏離數', async () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('金鑰管理政策')
     expect(wrapper.text()).toContain('金鑰輪替提醒天數')
-    expect(wrapper.text()).toContain('0 = 不提醒')
     // 非本域鍵不出現（域承載邊界）
     expect(wrapper.text()).not.toContain('密碼最小長度')
     // 偏離數只算本頁子集：僅提醒鍵（0 劣於 365）
-    expect(wrapper.text()).toContain('本頁與 PCI 建議偏離 1 項')
-    // 雙向導覽：橫幅附全系統總數回母頁總覽連結
-    expect(wrapper.text()).toContain('全系統偏離 2 項 · 安全政策總覽')
+    expect(wrapper.find('[data-test="section-deviation-key"]').text()).toBe('偏離 1 項')
+    // 頁首列給政策組與合規對照頁入口
+    expect(wrapper.text()).toContain('目前對照的政策組')
+    expect(wrapper.text()).toContain('合規對照')
   })
 
   it('儲存提醒鍵後重載清冊（超齡提醒即時反映）', async () => {

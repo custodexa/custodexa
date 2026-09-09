@@ -250,6 +250,16 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	k8sproxy.SetPolicySource(policyService)
 	mark("policyService")
 
+	// 內建政策組的內容隨產品版本發布，每次啟動 upsert 進資料庫（冪等，
+	// 不動機構決定的生效開關與機構備註）。
+	//
+	// **fail-close**：這批列是合規對照頁與判定的輸入。寫入失敗而放行啟動的話，
+	// 畫面上會出現一份看起來完整、實際上停在舊版或缺條文的對照——那是一個
+	// 對外的陳述，不該在沒有訊號的情況下失真。
+	if err := policy.SeedBuiltinPolicyGroups(database.DB); err != nil {
+		return fail("policyGroupSeed", err)
+	}
+
 	// LDAP 目錄設定服務：設定自 env 遷入 DB，
 	// 執行期唯一事實源。**落點必須在 keyManager 之後**——bind 密碼走信封加密，
 	// codec 未就緒即無法解密。
@@ -1498,8 +1508,20 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	authHandler.SetSourcePolicyReader(s.authService)
 	oidcHandler.SetSourcePolicyReader(s.authService)
 
+	// 政策組（規範條文與安全設定的對照）與合規判定：一份判定供三處投影
+	//（設定頁的分區偏離數、合規對照頁、套用預覽）。**建一次注入**——各處各建
+	// 一份不會壞掉，但同一時點的三個畫面會各算各的，而分歧不會有任何一處報錯
+	policyGroupRepo := policy.NewPolicyGroupRepository(database.DB)
+	complianceService := policy.NewComplianceService(s.policyService, policyGroupRepo)
+
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
-	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService)
+	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService,
+		complianceService, policyGroupRepo)
+	// 政策組管理（讀取 admin＋auditor，寫入 admin）與合規對照（唯讀）
+	policyGroupHandler := api.NewPolicyGroupHandler(policyGroupRepo, complianceService, s.auditService)
+	complianceHandler := api.NewComplianceHandler(complianceService, policyGroupRepo)
+	// 排程時刻預覽（admin）：無依賴，解析與排程器同一組欄位
+	scheduleHandler := api.NewScheduleHandler()
 
 	// syslog 轉發設定（10.3.3，admin 限定）
 	syslogSettingHandler := api.NewSyslogSettingHandler(database.DB, s.syslogForwarder, s.auditService)
@@ -1662,6 +1684,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 		auth:                  authHandler,
 		securityPolicy:        securityPolicyHandler,
+		policyGroup:           policyGroupHandler,
+		compliance:            complianceHandler,
+		schedule:              scheduleHandler,
 		syslogSetting:         syslogSettingHandler,
 		auditIntegrity:        auditIntegrityHandler,
 		auditCheckpoint:       auditCheckpointHandler,

@@ -576,3 +576,50 @@ describe('MainLayout 單實例守衛橫幅輪詢', () => {
     expect(getSealStatusMock).toHaveBeenCalledTimes(1)
   })
 })
+
+// 政策組與合規對照兩個新入口：合規對照是稽核職能（admin/auditor），
+// 政策組是設定職能（admin）。兩者分屬不同群組不是排版偏好——
+// 判定結果與判定依據的讀者不同，混在同一區會讓稽核人員走進一個有寫入鈕的頁面
+describe('MainLayout 政策組與合規對照的選單入口', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+  })
+
+  it('admin 在稽核群看到合規對照、在系統設定群看到政策組', async () => {
+    setUser(['admin'])
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('合規對照')
+    expect(text).toContain('政策組')
+    const indexes = wrapper
+      .findAllComponents({ name: 'ElMenuItem' })
+      .map((item) => item.props('index'))
+    expect(indexes).toContain('/compliance-map')
+    expect(indexes).toContain('/policy-groups')
+  })
+
+  it('auditor 看得到合規對照，看不到政策組（寫入面不對稽核角色開）', async () => {
+    setUser(['auditor'])
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('合規對照')
+    expect(text).not.toContain('政策組')
+  })
+
+  it('一般使用者兩個入口都看不到', async () => {
+    setUser(['user'])
+    const wrapper = mountLayout()
+    await wrapper.vm.$nextTick()
+
+    const text = wrapper.text()
+    expect(text).not.toContain('合規對照')
+    expect(text).not.toContain('政策組')
+  })
+})

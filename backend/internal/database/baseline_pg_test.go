@@ -126,11 +126,14 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 外部群組對角色映射 增 2 表（group_role_mappings、user_role_mappings）、
 	// 5 索引（兩張 pkey ＋ 規則表的 deleted_at 單欄 ＋ 兩條來源別的部分唯一索引）
 	// 與 1 條 CHECK（規則的來源恰一）。角色指派關聯表與提供者設定表為純加欄。
-	if got.Tables != 59 {
-		t.Errorf("表數 = %d, want 59（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表）", got.Tables)
+	// 政策組 增 4 表（policy_groups、policy_clauses、policy_clause_controls、
+	// policy_clause_annotations）、5 索引（四張 pkey ＋ 條文控制的組代號＋設定鍵唯一索引），
+	// 無 CHECK、無外鍵（掛靠關係由資料存取層維持）。
+	if got.Tables != 63 {
+		t.Errorf("表數 = %d, want 63（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表 ＋ 政策組四表）", got.Tables)
 	}
-	if got.Indexes != 205 {
-		t.Errorf("索引數 = %d, want 205（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條）", got.Indexes)
+	if got.Indexes != 210 {
+		t.Errorf("索引數 = %d, want 210（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條 ＋ 政策組的 5 條）", got.Indexes)
 	}
 	if got.Checks != 19 {
 		t.Errorf("CHECK 約束數 = %d, want 19（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一）", got.Checks)

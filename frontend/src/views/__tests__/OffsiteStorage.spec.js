@@ -54,8 +54,12 @@ vi.mock('@/api/offsiteStorage', () => ({
 
 // 政策表單走既有 composable；本檔只驗離機面，政策 API 回空集合即可
 vi.mock('@/api/securityPolicies', () => ({
-  getSecurityPolicies: vi.fn().mockResolvedValue({ data: [], deviation_count: 0 }),
+  getSecurityPolicies: vi.fn().mockResolvedValue({ data: [] }),
   updateSecurityPolicies: vi.fn().mockResolvedValue({}),
+  previewCompliance: vi.fn().mockResolvedValue({ data: { draft: true, verdicts: [] } }),
+  previewApplyPolicies: vi.fn().mockResolvedValue({
+    data: { mode: 'strictest', changes: [], conflicts: [], unchanged_count: 0, unmapped_count: 0 },
+  }),
 }))
 
 const messageBoxConfirm = vi.fn()

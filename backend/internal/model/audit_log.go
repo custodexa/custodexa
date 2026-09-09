@@ -249,6 +249,27 @@ const (
 	// 值長 10（varchar(20) 內）
 	ResourceCredential AuditResource = "credential"
 
+	// ResourcePolicyGroup 政策組（規範條文與安全設定的對照）的管理面寫入：
+	// 建組、更名、生效開關、刪組、條文增修刪、機構備註與人工確認。
+	//
+	// **不與 security_policy 共用**：後者的 resource_id 語義是設定鍵的變更，
+	// 而本類別記的是「對照本身被改成什麼」。混在一起會讓「把要求值放寬」與
+	// 「把設定值放寬」在查詢上長成同一件事，而前者改的是尺、後者改的是被量的東西。
+	// `resource_id` 恆 nil（組以代號識別，非自增 id，座標在 details）。值長 12
+	ResourcePolicyGroup AuditResource = "policy_group"
+
+	// ResourceComplianceMap 合規對照的唯讀存取（判定結果的讀取）。
+	//
+	// 對照結果是稽核據以出具意見的材料，「誰在什麼時候看了哪一組的判定」須可
+	// 辨識、不得落入兜底。唯讀，無寫入面。`resource_id` 恆 nil。值長 14
+	ResourceComplianceMap AuditResource = "compliance_map"
+
+	// ResourceSchedule 排程時刻的預覽（把一段排程字串算成接下來的執行時刻）。
+	//
+	// 無狀態、不讀寫任何資料表，分類的用途是讓它不落兜底而產生假的資產事件。
+	// `resource_id` 恆 nil。值長 8
+	ResourceSchedule AuditResource = "schedule"
+
 	// ResourceUnclassified 分類器的**兜底哨兵**。
 	//
 	// **兜底 SHALL NOT 落在任何有真實查詢面的類別上。** 舊兜底是 `asset`，

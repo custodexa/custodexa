@@ -125,18 +125,35 @@ func TestPolicyDefsSelfCheck(t *testing.T) {
 		t.Fatalf("正式常數表自檢應通過，got %v", err)
 	}
 
-	// 手工構造：enum PCIValue 打錯字（非 EnumOrder 成員）→ evaluateCompliance 會把最弱值誤報合規
-	bad := &PolicyDef{
-		Key: "x", Type: PolicyTypeEnum, Default: "off", PCIValue: "ALL",
-		EnumOrder: []string{"off", "admin_only", "all"},
+	// 手工構造：enum 出廠值打錯字（非 EnumOrder 成員）→ 自檢應抓到。
+	// 出廠值不在枚舉序內時，值域驗證與判定都會以一個不存在的值為起點
+	orig := policyDefs
+	t.Cleanup(func() { policyDefs = orig })
+	policyDefs = []PolicyDef{{
+		Key: "enum_default_typo_probe", Type: PolicyTypeEnum, Default: "ALL",
+		EnumOrder: []string{"off", "admin_only", "all"}, Label: "探針",
+	}}
+	if err := validatePolicyDefs(); err == nil {
+		t.Error("出廠值不在 EnumOrder 內應被自檢擋下")
 	}
-	// 直接驗比較器：PCIValue 不在序列，任何值都應判不符
-	if c := evaluateCompliance(bad, "off"); c == nil || *c {
-		t.Error("PCIValue 打錯字時，最弱值 off 不應被誤報合規")
+	policyDefs[0].Default = "all"
+	if err := validatePolicyDefs(); err != nil {
+		t.Errorf("改回合法枚舉值後應通過, got %v", err)
 	}
-	if c := evaluateCompliance(bad, "all"); c == nil || *c {
-		t.Error("PCIValue 打錯字時，任何值都應判不符（rank -1）")
+}
+
+// newSeededComplianceStack 一個寫入兩個內建組的記憶體庫上的政策服務與合規服務。
+func newSeededComplianceStack(t *testing.T) (*SecurityPolicyService, *ComplianceService) {
+	t.Helper()
+	svc, db := setupPolicyDB(t)
+	if err := db.AutoMigrate(&model.PolicyGroup{}, &model.PolicyClause{},
+		&model.PolicyClauseControl{}, &model.PolicyClauseAnnotation{}); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
+	if err := SeedBuiltinPolicyGroups(db); err != nil {
+		t.Fatalf("內建組種子: %v", err)
+	}
+	return svc, NewComplianceService(svc, NewPolicyGroupRepository(db))
 }
 
 // TestUpdateBatchTransactional 批次更新原子性＋審計回報僅含有變動者
@@ -172,195 +189,194 @@ func TestUpdateBatchTransactional(t *testing.T) {
 	}
 }
 
-// TestPolicyComplianceComparator 比較器：0=停用 sentinel 先判不符、min/max 方向、bool、枚舉序
+// factoryPCIDeviations 出廠預設對 PCI 組的偏離鍵數。
+// 逐鍵清單見 TestPolicyComplianceComparator 的三張表；出廠值改動或組內要求
+// 增減時這個數字必須被有意識地同步
+const factoryPCIDeviations = 15
+
+// TestPolicyComplianceComparator 比較器：0=停用 sentinel 先判偏離、至少／至多方向、開關、枚舉
 func TestPolicyComplianceComparator(t *testing.T) {
-	boolPtr := func(vs []PolicyView, key string) *bool {
-		for _, v := range vs {
-			if v.Key == key {
-				return v.Compliant
-			}
+	svc, cs := newSeededComplianceStack(t)
+
+	pciVerdict := func(key string) string {
+		t.Helper()
+		snap, err := cs.Snapshot("", nil)
+		if err != nil {
+			t.Fatalf("判定: %v", err)
 		}
-		return nil
+		return verdictResult(snap, key, pciGroupCode)
+	}
+	pciDeviations := func() int {
+		t.Helper()
+		snap, err := cs.Snapshot("", nil)
+		if err != nil {
+			t.Fatalf("判定: %v", err)
+		}
+		return snap.GroupDeviationCount(pciGroupCode)
 	}
 
-	svc, _ := setupPolicyDB(t)
-
-	// 出廠預設（易用取向的刻意偏離）：mfa_required=off（PCI 要 all）、
-	// web_idle_minutes/session_idle_minutes=60（PCI 要 ≤15）判不符；
-	// web_max_session_hours/session_max_minutes 無 PCI 建議不評估（nil）；其餘全數符合
+	// 出廠預設（易用取向的刻意偏離）對 PCI 組的逐鍵判定。
+	// **四張表加「其餘皆符合」**：漏列一個鍵時最後那一條會紅，
+	// 而不是靜默把新鍵當成已經合規
 	factoryDeviations := map[string]bool{
-		PolicyMFARequired:         true,
-		PolicyWebIdleMinutes:      true,
-		PolicySessionIdleMinutes:  true,
-		PolicyInactiveDisableDays: true, // 出廠 0=關閉，偏離 PCI 90（易用取向）
-		// 出廠 0=關閉，偏離 PCI 8.3.9 的 90 天
-		PolicyPasswordMaxAgeDays: true,
-		// 出廠 0=關閉，偏離 PCI 8.6.3 的參考值 90 天。**參考值照常參與符合性
-		// 評估**：值是給了的，只是出處性質是常見實務而非條文明定
-		PolicyAssetSecretMaxAgeDays: true,
-		// 稽核紀錄合規六鍵出廠全偏離（日常模式）：保留 0=永久視為未定義
-		// 保留政策、錄影 90 < 365、簽核與失效告警預設關
-		PolicyRetentionAuditLogDays:       true,
-		PolicyRetentionSessionCommandDays: true,
-		PolicyRetentionAlertDays:          true,
-		PolicyRetentionRecordingDays:      true,
+		PolicyAccessPolicyDefault:         true,
+		PolicyAccessRevokeDisconnect:      true,
 		PolicyDailyReviewEnabled:          true,
 		PolicyFailureAlertEnabled:         true,
-		// 金鑰信封：出廠 0=不提醒，偏離 PCI 365（cryptoperiod 提醒）
+		PolicyInactiveDisableDays:         true,
 		PolicyKeyCryptoperiodReminderDays: true,
-		// 傳輸安全政策：六通道出廠 off（零影響原則），偏離 PCI 建議 warn
-		PolicyTransportRDPLevel:    true,
-		PolicyTransportVNCLevel:    true,
+		PolicyMFARequired:                 true,
+		PolicyPasswordMaxAgeDays:          true,
+		PolicyRecordingFailCloseEnabled:   true,
+		PolicyRetentionAlertDays:          true,
+		PolicyRetentionAuditLogDays:       true,
+		PolicyRetentionRecordingDays:      true,
+		PolicyRetentionSessionCommandDays: true,
+		PolicySessionIdleMinutes:          true,
+		PolicyWebIdleMinutes:              true,
+	}
+	// 條文有涉及這個鍵但沒有給定值：列出目前值由稽核人員判讀
+	pendingAuditReview := map[string]bool{
 		PolicyTransportDBLevel:     true,
 		PolicyTransportLDAPLevel:   true,
-		PolicyTransportSyslogLevel: true,
 		PolicyTransportNotifyLevel: true,
-		// 存取政策核准：全域段位出廠 open（零破壞 opt-in），偏離 PCI 建議 approval；
-		// 時長上限/超時出廠即建議值，符合
-		PolicyAccessPolicyDefault: true,
-		// 破窗與撤銷：撤銷即斷線出廠關（H 決議，與到期語義一致），
-		// 偏離建議 true；破窗開關出廠關即建議值、短窗/補審時限出廠即建議值，符合
-		PolicyAccessRevokeDisconnect: true,
-		// 錄影失效處置：錄影 fail-close 出廠關（升級不改變現狀），
-		// 偏離建議 true
-		PolicyRecordingFailCloseEnabled: true,
+		PolicyTransportRDPLevel:    true,
+		PolicyTransportSyslogLevel: true,
+		PolicyTransportVNCLevel:    true,
 	}
-	noPCIRecommendation := map[string]bool{
-		PolicyWebMaxSessionHours: true,
-		PolicySessionMaxMinutes:  true,
-		// refresh cookie 的 Secure 屬性無合規建議值（決策 8）：
-		// 正確取值由部署對外協定決定（https 開、刻意明文關），不是合規基準線。
-		// 掛建議值會讓「套用本頁建議值」把明文部署的本鍵翻成開啟＝整站續期失敗
-		PolicyRefreshCookieSecure: true,
-		// 同意效期無 PCI 門檻
-		PolicyTransportConsentTTLDays: true,
-		// 最少核准人數＝內控強化非 PCI 要求
-		// （dual control 僅金鑰管理 Req 3.7.6，存取核准 Req 7.2.3 單人即符合）
-		PolicyAccessRequestMinApprovals: true,
-		// 檢查點保留天數無 PCI 建議值（audit-checkpoint-chain）：其合規語義
-		// 是「檢查點必須活得比它所證明的資料久」＝跨鍵關係，不是單鍵與常數比較。
-		// 掛 PCIValue 會讓它進「套用本頁建議值」並在偏離摘要與資料保留鍵並列
-		PolicyRetentionCheckpointDays: true,
-		// 封章門檻無 PCI 建議值：PCI 未規定封存頻率。其安全語義是「未封窗口
-		// 多大」＝與離機備份的分工，不是單鍵與常數比較
-		PolicyAuditCheckpointIntervalSeconds: true,
-		PolicyAuditCheckpointRowThreshold:    true,
-		// 鏈自動驗證三鍵無 PCI 建議值：
-		// PCI 未就「鏈驗證頻率／近期窗口／掃描速率」給出建議值。掛假的 PCIValue
-		// 會讓它們進「套用本頁建議值」並在偏離摘要中與真有條號的鍵並列。
-		// 其不可被實質關閉的保證由上界＋不可為 0（前兩鍵）與 Min 下界（速率鍵）承擔
-		PolicyAuditChainRecentVerifyDays:      true,
-		PolicyAuditChainVerifyIntervalSeconds: true,
-		PolicyAuditChainVerifyRowsPerHour:     true,
-		// 三個營運調校鍵無 PCI 建議值：PCI 未就
-		// 單輪清理／重加密的批次預算或叢集列表逾時給出建議值。掛假的 PCIValue
-		// 會讓它們進「套用本頁建議值」並在偏離摘要中與真有條號的鍵並列，
-		// 違反政策鍵的合規標示誠實紀律。其安全語義由 Min 下界承擔，不由 PCI 比較承擔
-		PolicyRetentionMaxPerRun:    true,
-		PolicyKeyRotationMaxPerRun:  true,
-		PolicyK8sListTimeoutSeconds: true,
-		// 離機儲存的本機快取期（evidence-offsite-storage）：它是磁碟預算旋鈕，
-		// 不是保留期——到期只刪本機檔，錄影仍可自離機副本取回。PCI 10.5.1 管的是
-		// 「證據留多久」，而那由 retention_recording_days 承擔；掛 PCIValue 會使
-		// 「套用本頁建議值」替部署方決定本機要留幾天，並在偏離摘要中與真的保留鍵並列
-		PolicyOffsiteLocalRetentionDays: true,
-		// data-transfer-control：五鍵法源是電支基準 §16-6／§21-8(七) 而非 PCI 條文。
-		// 掛假 PCIValue 會讓它進「套用本頁建議值」並被標成 PCI 要求；電支基準值
-		// （皆為 false）由 G3 電支建議值雙軌承接
-		PolicyClipboardSendEnabled: true,
-		PolicyClipboardRecvEnabled: true,
-		PolicyFileUploadEnabled:    true,
-		PolicyFileDownloadEnabled:  true,
-		PolicyFileDeleteEnabled:    true,
-		// 登入前告示：內容由部署方自填，沒有一個通用的正確字串可以拿來比對；
-		// 掛建議值會讓「套用本頁建議值」替部署方寫他們的告示
-		PolicyLoginBannerTitle: true,
-		PolicyLoginBannerBody:  true,
+	// 條文給的是參考值而非明定值，機構尚未確認
+	pendingConfirmation := map[string]bool{
+		PolicyAssetSecretMaxAgeDays: true,
 	}
-	for _, v := range svc.List() {
-		if factoryDeviations[v.Key] {
-			if v.Compliant == nil || *v.Compliant {
-				t.Errorf("%s 出廠預設應判不符 PCI 建議", v.Key)
-			}
-			continue
+	// 本組沒有對照這個鍵：不產生判定（見各鍵定義處的排除理由）
+	notMapped := map[string]bool{
+		PolicyAccessRequestMaxDurationMinutes:  true,
+		PolicyAccessRequestMinApprovals:        true,
+		PolicyAccessRequestPendingTimeoutHours: true,
+		PolicyAuditChainRecentVerifyDays:       true,
+		PolicyAuditChainVerifyIntervalSeconds:  true,
+		PolicyAuditChainVerifyRowsPerHour:      true,
+		PolicyAuditCheckpointIntervalSeconds:   true,
+		PolicyAuditCheckpointRowThreshold:      true,
+		PolicyClipboardRecvEnabled:             true,
+		PolicyClipboardSendEnabled:             true,
+		PolicyFileDeleteEnabled:                true,
+		PolicyFileDownloadEnabled:              true,
+		PolicyFileUploadEnabled:                true,
+		PolicyK8sListTimeoutSeconds:            true,
+		PolicyKeyRotationMaxPerRun:             true,
+		PolicyLoginBannerBody:                  true,
+		PolicyLoginBannerTitle:                 true,
+		PolicyOffsiteLocalRetentionDays:        true,
+		PolicyRefreshCookieSecure:              true,
+		PolicyRetentionCheckpointDays:          true,
+		PolicyRetentionMaxPerRun:               true,
+		PolicySessionMaxMinutes:                true,
+		PolicyTransportConsentTTLDays:          true,
+		PolicyWebMaxSessionHours:               true,
+	}
+	snap, err := cs.Snapshot("", nil)
+	if err != nil {
+		t.Fatalf("判定: %v", err)
+	}
+	for _, def := range policyDefs {
+		got := verdictResult(snap, def.Key, pciGroupCode)
+		want := ComplianceResultCompliant
+		switch {
+		case factoryDeviations[def.Key]:
+			want = ComplianceResultDeviating
+		case pendingAuditReview[def.Key]:
+			want = ComplianceResultAuditReview
+		case pendingConfirmation[def.Key]:
+			want = ComplianceResultNeedsReview
+		case notMapped[def.Key]:
+			want = ""
 		}
-		if noPCIRecommendation[v.Key] {
-			if v.Compliant != nil {
-				t.Errorf("%s 無 PCI 建議值，不應評估符合性", v.Key)
-			}
-			continue
-		}
-		if v.Compliant == nil || !*v.Compliant {
-			t.Errorf("出廠預設 %s 應符合 PCI 建議", v.Key)
+		if got != want {
+			t.Errorf("%s 出廠判定 = %q, want %q", def.Key, got, want)
 		}
 	}
-	if svc.DeviationCount() != 22 {
-		t.Errorf("出廠偏離數 = %d, want 22（mfa_required＋web_idle＋session_idle＋inactive_days＋password_max_age＋asset_secret_max_age＋審計合規六鍵＋金鑰提醒＋傳輸六通道＋存取政策段位＋撤銷即斷線＋錄影 fail-close）", svc.DeviationCount())
+	if got := snap.GroupDeviationCount(pciGroupCode); got != factoryPCIDeviations {
+		t.Errorf("出廠偏離數 = %d, want %d", got, factoryPCIDeviations)
 	}
 
-	// 0=停用：即使 0 <= 10 也必須判不符（sentinel 先判）
-	svc.Update(PolicyLockoutMaxAttempts, "0", "admin")
-	if c := boolPtr(svc.List(), PolicyLockoutMaxAttempts); c == nil || *c {
-		t.Error("鎖定停用（0）應判不符 PCI 建議")
+	// 0=停用：即使 0 <= 10 也必須判偏離（sentinel 先判）
+	if _, err := svc.Update(PolicyLockoutMaxAttempts, "0", "admin"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if got := pciVerdict(PolicyLockoutMaxAttempts); got != ComplianceResultDeviating {
+		t.Errorf("鎖定停用（0）判定 = %s, want %s", got, ComplianceResultDeviating)
 	}
 
-	// max 型：值 <= PCI 為符合（8 次比 10 次更嚴）
+	// 至多型：值 <= 要求為符合（8 次比 10 次更嚴）
 	svc.Update(PolicyLockoutMaxAttempts, "8", "admin")
-	if c := boolPtr(svc.List(), PolicyLockoutMaxAttempts); c == nil || !*c {
-		t.Error("8 次（更嚴）應符合")
+	if got := pciVerdict(PolicyLockoutMaxAttempts); got != ComplianceResultCompliant {
+		t.Errorf("8 次（更嚴）判定 = %s, want %s", got, ComplianceResultCompliant)
 	}
 	svc.Update(PolicyLockoutMaxAttempts, "15", "admin")
-	if c := boolPtr(svc.List(), PolicyLockoutMaxAttempts); c == nil || *c {
-		t.Error("15 次（放寬）應不符")
+	if got := pciVerdict(PolicyLockoutMaxAttempts); got != ComplianceResultDeviating {
+		t.Errorf("15 次（放寬）判定 = %s, want %s", got, ComplianceResultDeviating)
 	}
 
-	// min 型：值 >= PCI 為符合
+	// 至少型：值 >= 要求為符合
 	svc.Update(PolicyPasswordMinLength, "8", "admin")
-	if c := boolPtr(svc.List(), PolicyPasswordMinLength); c == nil || *c {
-		t.Error("長度 8（放寬）應不符")
+	if got := pciVerdict(PolicyPasswordMinLength); got != ComplianceResultDeviating {
+		t.Errorf("長度 8（放寬）判定 = %s, want %s", got, ComplianceResultDeviating)
 	}
 	svc.Update(PolicyPasswordMinLength, "16", "admin")
-	if c := boolPtr(svc.List(), PolicyPasswordMinLength); c == nil || !*c {
-		t.Error("長度 16（更嚴）應符合")
+	if got := pciVerdict(PolicyPasswordMinLength); got != ComplianceResultCompliant {
+		t.Errorf("長度 16（更嚴）判定 = %s, want %s", got, ComplianceResultCompliant)
 	}
 
-	// bool 型
+	// 開關型
 	svc.Update(PolicyPasswordRequireAlnum, "false", "admin")
-	if c := boolPtr(svc.List(), PolicyPasswordRequireAlnum); c == nil || *c {
-		t.Error("關閉字母數字要求應不符")
+	if got := pciVerdict(PolicyPasswordRequireAlnum); got != ComplianceResultDeviating {
+		t.Errorf("關閉字母數字要求判定 = %s, want %s", got, ComplianceResultDeviating)
 	}
 
-	// 偏離：lockout=15（放寬）＋require_alnum=false＋22 項出廠偏離
-	if svc.DeviationCount() != 24 {
-		t.Errorf("偏離數 = %d, want 24（lockout 放寬＋alnum 關＋22 項出廠偏離）", svc.DeviationCount())
+	// 偏離：lockout=15（放寬）＋require_alnum=false＋出廠偏離
+	if got, want := pciDeviations(), factoryPCIDeviations+2; got != want {
+		t.Errorf("偏離數 = %d, want %d（lockout 放寬＋alnum 關＋%d 項出廠偏離）",
+			got, want, factoryPCIDeviations)
 	}
 }
 
-// TestPolicyEnumComparator 枚舉比較器（mfa_required 於後續階段加入常數表，先驗證機制本身）
+// TestPolicyEnumComparator 枚舉比較器：要求是明確值，只有相等才算達到
 func TestPolicyEnumComparator(t *testing.T) {
 	def := &PolicyDef{
-		Key: "test_enum", Type: PolicyTypeEnum, PCIValue: "all",
+		Key: "test_enum", Type: PolicyTypeEnum,
 		EnumOrder: []string{"off", "admin_only", "all"},
 	}
-	if c := evaluateCompliance(def, "off"); c == nil || *c {
-		t.Error("off < all 應不符")
+	equals := model.PolicyControlComparatorEquals
+	if ok, _ := compareExpectation(def, "off", equals, "all"); ok {
+		t.Error("off 不等於 all 應不符")
 	}
-	if c := evaluateCompliance(def, "admin_only"); c == nil || *c {
-		t.Error("admin_only < all 應不符")
+	if ok, _ := compareExpectation(def, "admin_only", equals, "all"); ok {
+		t.Error("admin_only 不等於 all 應不符")
 	}
-	if c := evaluateCompliance(def, "all"); c == nil || !*c {
-		t.Error("all >= all 應符合")
+	if ok, _ := compareExpectation(def, "all", equals, "all"); !ok {
+		t.Error("all 等於 all 應符合")
 	}
-	if c := evaluateCompliance(def, "bogus"); c == nil || *c {
+	if ok, _ := compareExpectation(def, "bogus", equals, "all"); ok {
 		t.Error("未知枚舉值應不符")
 	}
 }
 
-// TestPolicyNoPCIValueSkipsCompliance 無 PCI 建議值的欄位不做符合性評估
-func TestPolicyNoPCIValueSkipsCompliance(t *testing.T) {
-	def := &PolicyDef{Key: "no_pci", Type: PolicyTypeInt, PCIValue: ""}
-	if c := evaluateCompliance(def, "999"); c != nil {
-		t.Error("無 PCI 建議值應回 nil（不評估）")
+// TestPolicyKeyWithoutRequirementSkipsVerdict 沒有任何一組對照的鍵不產生判定，
+// 而是列進「未對照」的分母
+func TestPolicyKeyWithoutRequirementSkipsVerdict(t *testing.T) {
+	defs := []PolicyDef{{Key: "no_requirement", Type: PolicyTypeInt,
+		Direction: DirectionMin, Default: "999", Max: 1000}}
+	groups := []model.PolicyGroup{
+		{Code: pciGroupCode, Source: model.PolicyGroupSourceBuiltin, Enabled: true},
+	}
+	snap := BuildSnapshot(defs, map[string]string{"no_requirement": "999"},
+		nil, groups, nil, nil, nil)
+	if got := verdictResult(snap, "no_requirement", pciGroupCode); got != "" {
+		t.Errorf("無要求的鍵對 %s 組產生了判定 %q", pciGroupCode, got)
+	}
+	if len(snap.UnmappedKeys) != 1 || snap.UnmappedKeys[0] != "no_requirement" {
+		t.Errorf("未對照鍵 = %v, want [no_requirement]", snap.UnmappedKeys)
 	}
 }
 
@@ -423,13 +439,9 @@ func TestRefreshCookieSecureDefaultsToTrue(t *testing.T) {
 		if v.Type != PolicyTypeBool {
 			t.Errorf("Type = %q, want %q", v.Type, PolicyTypeBool)
 		}
-		if v.PCIValue != "" || v.EPaymentValue != "" {
-			t.Errorf("不得帶合規建議值（PCI=%q 電支=%q）：本鍵取值由部署對外協定決定，"+
-				"掛建議值會讓「套用本頁建議值」把明文部署翻成開啟＝整站續期失敗",
-				v.PCIValue, v.EPaymentValue)
-		}
-		if v.Compliant != nil || v.EPaymentCompliant != nil {
-			t.Error("不得計入任何基準的符合性評估")
+		if reqs := builtinSeedRequirements(t, PolicyRefreshCookieSecure); len(reqs) != 0 {
+			t.Errorf("不得被內建組掛上要求（%v）：本鍵取值由部署對外協定決定，"+
+				"掛一條要求會讓「一次滿足所有政策」把明文部署翻成開啟＝整站續期失敗", reqs)
 		}
 		return
 	}
@@ -515,38 +527,44 @@ func TestTransportLevelRejectsInvalidValue(t *testing.T) {
 }
 
 func TestTransportLevelCompliance(t *testing.T) {
-	svc, _ := setupPolicyDB(t)
+	svc, cs := newSeededComplianceStack(t)
 
-	// off = 不符 PCI 建議（warn 起）；warn/strict = 符合（枚舉序位比較）
-	assertCompliance := func(value string, want bool) {
+	// 條文要求的是足夠強度的加密，不是本產品三段枚舉裡的某一段：三個取值都
+	// 走待稽核判讀並附目前值，不判符合也不判偏離
+	assertCompliance := func(value string) {
 		t.Helper()
 		if _, err := svc.Update(PolicyTransportVNCLevel, value, "admin"); err != nil {
 			t.Fatalf("update %s: %v", value, err)
 		}
-		for _, v := range svc.List() {
-			if v.Key != PolicyTransportVNCLevel {
+		snap, err := cs.Snapshot("", nil)
+		if err != nil {
+			t.Fatalf("判定: %v", err)
+		}
+		for _, v := range snap.Verdicts {
+			if v.Key != PolicyTransportVNCLevel || v.GroupCode != pciGroupCode {
 				continue
 			}
-			if v.Compliant == nil || *v.Compliant != want {
-				t.Errorf("value=%s compliant = %v, want %v", value, v.Compliant, want)
+			if v.Result != ComplianceResultAuditReview {
+				t.Errorf("value=%s 判定 = %s, want %s", value, v.Result, ComplianceResultAuditReview)
+			}
+			if v.Current != value {
+				t.Errorf("value=%s 判定帶的目前值 = %q", value, v.Current)
 			}
 			return
 		}
-		t.Fatal("List 未含 transport_vnc_level")
+		t.Fatalf("判定中未含 transport_vnc_level 對 %s 組的結果", pciGroupCode)
 	}
-	assertCompliance(TransportLevelOff, false)
-	assertCompliance(TransportLevelWarn, true)
-	assertCompliance(TransportLevelStrict, true)
+	assertCompliance(TransportLevelOff)
+	assertCompliance(TransportLevelWarn)
+	assertCompliance(TransportLevelStrict)
 }
 
 func TestTransportConsentTTLNoCompliance(t *testing.T) {
 	svc, _ := setupPolicyDB(t)
 
-	// TTL 無 PCI 建議值：不做符合性評估；0=永不過期為合法值
-	for _, v := range svc.List() {
-		if v.Key == PolicyTransportConsentTTLDays && v.Compliant != nil {
-			t.Errorf("transport_consent_ttl_days 不應有符合性評估, got %v", *v.Compliant)
-		}
+	// TTL 不在任何內建組的對照內：不產生判定；0=永不過期為合法值
+	if reqs := builtinSeedRequirements(t, PolicyTransportConsentTTLDays); len(reqs) != 0 {
+		t.Errorf("transport_consent_ttl_days 被內建組掛了要求 %v，want 一條都沒有", reqs)
 	}
 	if _, err := svc.Update(PolicyTransportConsentTTLDays, "0", "admin"); err != nil {
 		t.Errorf("0=永不過期應為合法值, err = %v", err)

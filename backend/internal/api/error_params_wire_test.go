@@ -153,7 +153,10 @@ func setupSecurityPolicyRouter(t *testing.T) *gin.Engine {
 	if err := db.AutoMigrate(&model.SecurityPolicy{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	handler := NewSecurityPolicyHandler(policy.NewSecurityPolicyService(db), nil)
+	policySvc := policy.NewSecurityPolicyService(db)
+	groupRepo := policy.NewPolicyGroupRepository(db)
+	handler := NewSecurityPolicyHandler(policySvc, nil,
+		policy.NewComplianceService(policySvc, groupRepo), groupRepo)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

@@ -100,6 +100,14 @@ var tableOwner = map[string]string{
 	// policy
 	"security_policies":     "policy",
 	"transmission_consents": "policy",
+	// 政策組四表：組、條文、條文對設定鍵的要求、機構備註與人工確認。
+	// 業務語義（哪些設定要對照哪些條文、要求怎麼比、內建列不可經管理介面改寫）
+	// 全部由 policy 模組定義與維護，與 security_policies 是同一組語義的兩半。
+	// **登記的實質效果**：其他模組直接以 gorm 或 SQL 碰這四張表即判跨界紅
+	"policy_groups":             "policy",
+	"policy_clauses":            "policy",
+	"policy_clause_controls":    "policy",
+	"policy_clause_annotations": "policy",
 	// session
 	"sessions":         "session",
 	"snippets":         "session",

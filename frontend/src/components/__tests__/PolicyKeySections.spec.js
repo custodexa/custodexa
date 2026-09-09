@@ -6,151 +6,163 @@ import PolicyKeySections from '../PolicyKeySections.vue'
 // 逐測卸載：殘留元件會讓後續測試耗時隨序累積
 enableAutoUnmount(afterEach)
 
-const TITLE_POLICY = {
-  key: 'login_banner_title',
-  type: 'text',
-  label: '登入告示標題',
-  max_length: 120,
-  compliant: null,
-  epayment_compliant: null,
+const drawerStub = {
+  props: ['modelValue'],
+  template: '<div v-if="modelValue" class="drawer-stub"><slot /></div>',
 }
 
-// multiline 在後端帶 omitempty：單行鍵的回應根本不會有這個欄位
-const BODY_POLICY = {
-  key: 'login_banner_body',
-  type: 'text',
-  label: '登入告示內文',
-  max_length: 2000,
-  multiline: true,
-  compliant: null,
-  epayment_compliant: null,
+const RouterLinkStub = {
+  props: ['to'],
+  template: '<a class="router-link-stub"><slot /></a>',
 }
 
-const INT_POLICY = {
-  key: 'lockout_max_attempts',
+const PASSWORD = {
+  key: 'password_min_length',
   type: 'int',
-  label: '登入失敗鎖定次數上限',
+  label: '密碼最小長度',
+  unit: '字元',
   min: 1,
-  max: 100,
-  pci_value: '6',
-  compliant: true,
+  max: 128,
+}
+const HISTORY = {
+  key: 'password_history_count',
+  type: 'int',
+  label: '禁止重用最近密碼筆數',
+  unit: '筆',
+  min: 0,
+  max: 24,
 }
 
-const mountSections = (policies, values) =>
+const deviating = (key, group) => ({
+  key,
+  group_code: group,
+  clause_no: '8.3.6',
+  result: 'deviating',
+  reason: 'below_minimum',
+  current: '8',
+  expected: '12',
+  comparator: 'min',
+})
+
+const mountSections = (props = {}) =>
   mount(PolicyKeySections, {
-    global: { plugins: [ElementPlus] },
+    global: {
+      plugins: [ElementPlus],
+      stubs: { 'el-drawer': drawerStub, RouterLink: RouterLinkStub, 'router-link': RouterLinkStub },
+    },
     props: {
-      sections: [{ title: '登入告示', hint: '提示', policies }],
-      formValues: values,
-      savedValues: values,
+      sections: [
+        { id: 'password', title: '密碼政策', hint: '提示', policies: [PASSWORD, HISTORY] },
+      ],
+      formValues: { password_min_length: 8, password_history_count: 4 },
+      verdictsByKey: {},
+      groupNames: { pci_dss_4_0_1: 'PCI DSS 4.0.1', epayment_baseline: '電支基準' },
+      ...props,
     },
   })
 
-describe('PolicyKeySections — 文字型政策鍵', () => {
-  it('多行鍵給 textarea，單行鍵給一般輸入框', () => {
-    const wrapper = mountSections([TITLE_POLICY, BODY_POLICY], {
-      login_banner_title: '授權使用者專用',
-      login_banner_body: '第一行\n第二行',
+describe('PolicyKeySections — 分區偏離數', () => {
+  it('沒有偏離時說的是「無偏離項目」，不是「全部符合」', () => {
+    // 沒有偏離不等於全部符合：待稽核判讀、待人工確認與未對照的鍵都在這一區裡，
+    // 它們都還沒有人說符合
+    const wrapper = mountSections()
+    expect(wrapper.find('[data-test="section-deviation-password"]').text()).toBe('無偏離項目')
+  })
+
+  it('同一鍵偏離兩組只算一次，且點數字到合規對照頁', () => {
+    const wrapper = mountSections({
+      verdictsByKey: {
+        password_min_length: [
+          deviating('password_min_length', 'pci_dss_4_0_1'),
+          deviating('password_min_length', 'epayment_baseline'),
+        ],
+      },
     })
 
-    const rows = wrapper.findAll('.policy-row-text')
-    expect(rows).toHaveLength(2)
-    expect(rows[0].find('textarea').exists()).toBe(false)
-    expect(rows[0].find('input').element.value).toBe('授權使用者專用')
-    expect(rows[1].find('textarea').element.value).toBe('第一行\n第二行')
+    const link = wrapper.find('[data-test="section-deviation-password"]')
+    expect(link.text()).toBe('偏離 1 項')
+    expect(wrapper.findComponent(RouterLinkStub).props('to')).toBe('/compliance-map')
   })
 
-  it('不綁原生 maxlength（那是 UTF-16 計數，會在後端仍接受的長度截斷輸入）', () => {
-    const wrapper = mountSections([TITLE_POLICY, BODY_POLICY], {
-      login_banner_title: '標題',
-      login_banner_body: '內文',
+  it('偏離的鍵在列上有標示，未偏離的沒有', () => {
+    const wrapper = mountSections({
+      verdictsByKey: {
+        password_min_length: [deviating('password_min_length', 'pci_dss_4_0_1')],
+        password_history_count: [
+          { key: 'password_history_count', group_code: 'pci_dss_4_0_1', result: 'compliant' },
+        ],
+      },
     })
 
-    expect(wrapper.find('.policy-row-text input').attributes('maxlength')).toBeUndefined()
-    expect(wrapper.find('.policy-row-text textarea').attributes('maxlength')).toBeUndefined()
+    expect(wrapper.find('[data-test="policy-deviation-password_min_length"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="policy-deviation-password_history_count"]').exists()).toBe(
+      false
+    )
   })
 
-  it('字數以 code point 計：2000 個補充平面字元顯示 2000 / 2000', () => {
-    const body = '\u{1F600}'.repeat(2000)
-    expect(body.length).toBe(4000)
-
-    const wrapper = mountSections([BODY_POLICY], { login_banner_body: body })
-    const counter = wrapper.find('.policy-counter')
-    expect(counter.text()).toBe('2000 / 2000')
-    expect(counter.classes()).not.toContain('policy-counter-over')
-  })
-
-  it('超過上限時計數變色，輸入不被截斷', () => {
-    const body = '字'.repeat(2001)
-    const wrapper = mountSections([BODY_POLICY], { login_banner_body: body })
-
-    const counter = wrapper.find('.policy-counter')
-    expect(counter.text()).toBe('2001 / 2000')
-    expect(counter.classes()).toContain('policy-counter-over')
-    expect(wrapper.find('textarea').element.value).toHaveLength(2001)
-  })
-
-  it('文字型鍵不顯示基準建議值 meta 欄', () => {
-    const wrapper = mountSections([BODY_POLICY], { login_banner_body: '內文' })
-
-    expect(wrapper.find('.policy-meta').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('無 PCI 建議值')
-  })
-
-  it('非文字型鍵的 meta 欄與控制項不受影響', () => {
-    const wrapper = mountSections([INT_POLICY], { lockout_max_attempts: 5 })
-
-    expect(wrapper.find('.policy-row-text').exists()).toBe(false)
-    expect(wrapper.find('.policy-meta').exists()).toBe(true)
-    expect(wrapper.text()).toContain('PCI 建議')
-    expect(wrapper.find('.policy-counter').exists()).toBe(false)
-  })
-
-  it('編輯輸入框時以 update:value 上拋鍵與新值', async () => {
-    const wrapper = mountSections([BODY_POLICY], { login_banner_body: '舊內文' })
-
-    await wrapper.find('textarea').setValue('新內文')
-
-    expect(wrapper.emitted('update:value')).toContainEqual([
-      'login_banner_body',
-      '新內文',
-    ])
+  it('草稿判定要標示為草稿', () => {
+    expect(mountSections().text()).not.toContain('草稿')
+    expect(mountSections({ draft: true }).text()).toContain('草稿')
   })
 })
 
-// 參考值：條文未定固定天數，數字是本產品的預設起始值。
-// 標籤與附註缺一，讀者就會把它當成條文明定的門檻。
-describe('PolicyKeySections — PCI 參考值', () => {
-  const REFERENCE_POLICY = {
-    key: 'asset_secret_max_age_days',
-    type: 'int',
-    label: '資產帳號憑證最長使用天數',
-    min: 1,
-    max: 3650,
-    zero_disables: true,
-    pci_value: '90',
-    pci_reference: true,
-    requirement: '8.6.3',
-    compliant: true,
-  }
+describe('PolicyKeySections — 第一層與抽屜', () => {
+  it('未展開任何抽屜時，畫面上沒有條號、建議值與不符文字', () => {
+    const wrapper = mountSections({
+      verdictsByKey: {
+        password_min_length: [deviating('password_min_length', 'pci_dss_4_0_1')],
+      },
+    })
 
-  it('標為參考值的鍵在建議值旁顯示標籤與附註，且附註說明條文不定天數', () => {
-    const wrapper = mountSections([REFERENCE_POLICY], { asset_secret_max_age_days: 90 })
-
-    const tag = wrapper.find('[data-test="policy-pci-reference-asset_secret_max_age_days"]')
-    expect(tag.exists()).toBe(true)
-    expect(tag.text()).toContain('參考值')
-
-    const meta = wrapper.find('.policy-meta').text()
-    expect(meta).toContain('8.6.3')
-    expect(meta).toContain('未定固定天數')
-    // 這個數字不是條文給的，不得寫成「PCI 建議 90 天」以外的更強主張
-    expect(meta).toContain('預設起始值')
+    const text = wrapper.text()
+    expect(text).toContain('密碼最小長度')
+    expect(text).not.toContain('8.3.6')
+    expect(text).not.toContain('PCI')
+    expect(text).not.toContain('建議')
+    expect(text).not.toContain('不符')
   })
 
-  it('未標參考值的鍵不長出標籤（一般建議值照舊）', () => {
-    const wrapper = mountSections([INT_POLICY], { lockout_max_attempts: 5 })
-    expect(wrapper.find('[data-test="policy-pci-reference-lockout_max_attempts"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('參考值')
+  it('點資訊鈕開抽屜，帶的是該鍵的判定', async () => {
+    const wrapper = mountSections({
+      verdictsByKey: {
+        password_min_length: [deviating('password_min_length', 'pci_dss_4_0_1')],
+      },
+    })
+
+    expect(wrapper.find('.drawer-stub').exists()).toBe(false)
+    await wrapper.find('[data-test="policy-info-password_min_length"]').trigger('click')
+
+    const drawer = wrapper.findComponent({ name: 'PolicyKeyDrawer' })
+    expect(drawer.props('policy').key).toBe('password_min_length')
+    expect(drawer.props('verdicts')).toHaveLength(1)
+    expect(wrapper.find('.drawer-stub').text()).toContain('PCI DSS 4.0.1')
+  })
+
+  it('編輯控制項時把鍵與新值上拋父層', () => {
+    const wrapper = mountSections()
+    wrapper
+      .findAllComponents({ name: 'ElInputNumber' })[0]
+      .vm.$emit('update:modelValue', 14)
+    expect(wrapper.emitted('update:value')).toContainEqual(['password_min_length', 14])
+  })
+
+  it('兩個具名插槽仍供頁面掛專屬內容', () => {
+    const wrapper = mount(PolicyKeySections, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { 'el-drawer': drawerStub, RouterLink: RouterLinkStub, 'router-link': RouterLinkStub },
+      },
+      props: {
+        sections: [{ id: 'password', title: '密碼政策', hint: '', policies: [PASSWORD] }],
+        formValues: { password_min_length: 8 },
+      },
+      slots: {
+        'section-extra': '<p class="extra-slot">區塊補充</p>',
+        'section-footer': '<p class="footer-slot">區塊尾端</p>',
+      },
+    })
+
+    expect(wrapper.find('.extra-slot').exists()).toBe(true)
+    expect(wrapper.find('.footer-slot').exists()).toBe(true)
   })
 })

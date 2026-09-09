@@ -68,3 +68,26 @@ describe('守衛攔下頁的路由註冊', () => {
     expect(resolved.meta.requiresAuth).toBeUndefined()
   })
 })
+
+// 政策組與合規對照：權限不對稱是刻意的。判定結果 admin 與 auditor 看的是同一份，
+// 而條文的寫入面只對 admin 開——auditor 進得去就等於稽核者可以改自己要稽核的依據
+describe('政策組與合規對照的路由註冊', () => {
+  it('/compliance-map 已註冊且 admin 與 auditor 皆可讀', () => {
+    const resolved = router.resolve('/compliance-map')
+    expect(resolved.name).toBe('ComplianceMap')
+    expect(resolved.meta.requiresAuth).toBe(true)
+    expect(resolved.meta.roles).toEqual(['admin', 'auditor'])
+  })
+
+  it('/policy-groups 已註冊且為 admin-only', () => {
+    const resolved = router.resolve('/policy-groups')
+    expect(resolved.name).toBe('PolicyGroups')
+    expect(resolved.meta.requiresAuth).toBe(true)
+    expect(resolved.meta.roles).toEqual(['admin'])
+  })
+
+  it('安全政策頁的路徑與名稱不因新增兩頁而改變（書籤不失效）', () => {
+    expect(router.resolve('/security-policies').name).toBe('SecurityPolicies')
+    expect(router.resolve('/audit-logs').name).toBe('AuditLogs')
+  })
+})

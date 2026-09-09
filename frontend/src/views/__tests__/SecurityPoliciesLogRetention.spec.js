@@ -13,9 +13,15 @@ enableAutoUnmount(afterEach)
 const getPoliciesMock = vi.fn()
 const updatePoliciesMock = vi.fn()
 
+const previewComplianceMock = vi.fn()
+const previewApplyMock = vi.fn()
+
 vi.mock('@/api/securityPolicies', () => ({
   getSecurityPolicies: (...args) => getPoliciesMock(...args),
   updateSecurityPolicies: (...args) => updatePoliciesMock(...args),
+  // 判定與套用預覽端點：判定一律由後端供給，前端不自己算一份
+  previewCompliance: (...args) => previewComplianceMock(...args),
+  previewApplyPolicies: (...args) => previewApplyMock(...args),
 }))
 
 const getSyslogMock = vi.fn()
@@ -28,19 +34,29 @@ vi.mock('@/api/syslogSettings', () => ({
   testSyslogSettings: (...args) => testSyslogMock(...args),
 }))
 
+// 判定由後端建構，前端只投影：deviating 的鍵才會有琥珀點與分區偏離數
+const verdict = (key, result, expected, comparator = 'min') => ({
+  key,
+  group_code: 'pci_dss_4_0_1',
+  clause_no: '10.5.1',
+  result,
+  reason: result === 'deviating' ? 'below_minimum' : 'meets_expectation',
+  current: '0',
+  expected,
+  comparator,
+})
+
 const retentionInt = (key, label, value) => ({
   key,
   type: 'int',
   default: '0',
-  pci_value: '365',
   direction: 'min',
   zero_disables: true,
   max: 3650,
-  requirement: '10.5.1',
   label,
   unit: '天',
   value,
-  compliant: false,
+  verdicts: [verdict(key, 'deviating', '365')],
 })
 
 // fixture 依 live GET /api/v1/security-policies 實際回傳（2026-07-13 驗證）
@@ -50,14 +66,12 @@ const policyFixture = (overrides = {}) => ({
       key: 'lockout_max_attempts',
       type: 'int',
       default: '10',
-      pci_value: '10',
       direction: 'max',
       zero_disables: true,
-      requirement: '8.3.4',
       label: '登入失敗鎖定次數上限',
       unit: '次',
       value: '10',
-      compliant: true,
+      verdicts: [verdict('lockout_max_attempts', 'compliant', '10', 'max')],
     },
     retentionInt('retention_audit_log_days', '操作日誌保留天數', '0'),
     retentionInt('retention_session_command_days', '指令流保留天數', '0'),
@@ -67,24 +81,20 @@ const policyFixture = (overrides = {}) => ({
       key: 'daily_review_enabled',
       type: 'bool',
       default: 'false',
-      pci_value: 'true',
-      requirement: '10.4.1',
       label: '每日審閱簽核',
       value: 'false',
-      compliant: false,
+      verdicts: [verdict('daily_review_enabled', 'deviating', 'true', 'equals')],
     },
     {
       key: 'failure_alert_enabled',
       type: 'bool',
       default: 'false',
-      pci_value: 'true',
-      requirement: '10.7.2',
       label: '稽核失效告警通知',
       value: 'false',
-      compliant: false,
+      verdicts: [verdict('failure_alert_enabled', 'deviating', 'true', 'equals')],
     },
   ],
-  deviation_count: 6,
+  groups: [{ code: 'pci_dss_4_0_1', name: 'PCI DSS 4.0.1', enabled: true }],
   ...overrides,
 })
 
@@ -103,6 +113,34 @@ const syslogFixture = (overrides = {}) => ({
     ...overrides,
   },
 })
+
+// 一次滿足所有政策的預覽：後端算好的變動清單，前端只負責填進表單
+const APPLY_CHANGES = [
+  { key: 'retention_audit_log_days', current: '0', proposed: '365', source_group: 'pci_dss_4_0_1' },
+  { key: 'retention_session_command_days', current: '0', proposed: '365', source_group: 'pci_dss_4_0_1' },
+  { key: 'retention_alert_days', current: '0', proposed: '365', source_group: 'pci_dss_4_0_1' },
+  { key: 'retention_recording_days', current: '90', proposed: '365', source_group: 'pci_dss_4_0_1' },
+  { key: 'daily_review_enabled', current: 'false', proposed: 'true', source_group: 'pci_dss_4_0_1' },
+  { key: 'failure_alert_enabled', current: 'false', proposed: 'true', source_group: 'pci_dss_4_0_1' },
+]
+
+const applyPreviewFixture = () => ({
+  mode: 'strictest',
+  changes: APPLY_CHANGES.map((c) => ({ ...c })),
+  conflicts: [],
+  unchanged_count: 1,
+  unmapped_count: 0,
+})
+
+// 套用政策建議值：頁首列送出模式 → 預覽對話框確認 → 值只進表單
+const applyRecommended = async (wrapper) => {
+  wrapper.findComponent({ name: 'PolicyGroupStrip' }).vm.$emit('apply', { mode: 'strictest' })
+  await flushPromises()
+  wrapper
+    .findComponent({ name: 'ApplyPreviewDialog' })
+    .vm.$emit('confirm', wrapper.findComponent({ name: 'ApplyPreviewDialog' }).props('preview').changes)
+  await flushPromises()
+}
 
 const mountPage = async () => {
   const wrapper = mount(SecurityPolicies, {
@@ -123,39 +161,38 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
     vi.clearAllMocks()
     getPoliciesMock.mockResolvedValue(policyFixture())
     getSyslogMock.mockResolvedValue(syslogFixture())
+    previewComplianceMock.mockResolvedValue({ data: { draft: true, verdicts: [] } })
+    previewApplyMock.mockResolvedValue({ data: applyPreviewFixture() })
     // 保留收縮確認預設放行；收縮測試個別覆寫為取消
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
   })
 
-  it('renders six retention/review keys with PCI labels and 0=永久保留 hint', async () => {
+  it('六個保留與審閱鍵都在，分區偏離數由判定推導', async () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('日誌保留與審閱')
-    expect(wrapper.text()).toContain('稽核資料保留與每日審閱（PCI 10.4.1/10.5.1）')
     expect(wrapper.text()).toContain('操作日誌保留天數')
     expect(wrapper.text()).toContain('指令流保留天數')
     expect(wrapper.text()).toContain('告警記錄保留天數')
     expect(wrapper.text()).toContain('連線錄影保留天數')
     expect(wrapper.text()).toContain('每日審閱簽核')
     expect(wrapper.text()).toContain('稽核失效告警通知')
-    expect(wrapper.text()).toContain('PCI 10.5.1')
-    expect(wrapper.text()).toContain('PCI 10.4.1')
-    // 保留鍵的 0 是「永久保留」語義；非保留鍵維持「0 = 停用」
-    expect(wrapper.text()).toContain('0 = 永久保留')
-    expect(wrapper.text()).toContain('0 = 停用')
-    // 偏離標記對新鍵生效（fixture 中僅新鍵不合規）
-    expect(wrapper.text()).toContain('不符 PCI 建議')
-    expect(wrapper.text()).toContain('與 PCI 建議偏離 6 項')
+    // 六個鍵各有一筆 deviating 判定
+    expect(wrapper.text()).toContain('偏離 6 項')
+    // 條號與建議值只在抽屜裡：設定列上一個字都沒有
+    //（區塊標題與提示的措辭是文案波的射程，不在本斷言內）
+    wrapper.findAll('.policy-row').forEach((row) => {
+      expect(row.text()).not.toContain('10.5.1')
+      expect(row.text()).not.toContain('PCI')
+      expect(row.text()).not.toContain('建議')
+    })
   })
 
-  it('apply-all-PCI fills 365/true for new keys and save sends them as strings', async () => {
-    updatePoliciesMock.mockResolvedValue(policyFixture({ deviation_count: 0 }))
+  it('套用政策建議值填入 365／true，儲存以字串送出', async () => {
+    updatePoliciesMock.mockResolvedValue(policyFixture())
     const wrapper = await mountPage()
 
-    const applyBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('套用本頁建議值'))
-    await applyBtn.trigger('click')
+    await applyRecommended(wrapper)
 
     const saveBtn = wrapper
       .findAll('button')
@@ -184,10 +221,7 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
     ElMessageBox.confirm.mockRejectedValue('cancel')
     const wrapper = await mountPage()
 
-    const applyBtn = wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('套用本頁建議值'))
-    await applyBtn.trigger('click')
+    await applyRecommended(wrapper)
 
     const saveBtn = wrapper.findAll('button').find((b) => b.text() === '儲存')
     await saveBtn.trigger('click')
@@ -202,10 +236,9 @@ describe('SecurityPolicies 日誌保留與審閱區塊', () => {
     getPoliciesMock.mockResolvedValue(
       policyFixture({
         data: [retentionInt('retention_audit_log_days', '操作日誌保留天數', '365')],
-        deviation_count: 0,
       })
     )
-    updatePoliciesMock.mockResolvedValue(policyFixture({ deviation_count: 0 }))
+    updatePoliciesMock.mockResolvedValue(policyFixture())
     const wrapper = await mountPage()
 
     const input = wrapper.find('input')
@@ -230,7 +263,9 @@ describe('SecurityPolicies syslog 轉發設定卡', () => {
     const wrapper = await mountPage()
 
     expect(wrapper.text()).toContain('syslog 日誌轉發')
-    expect(wrapper.text()).toContain('PCI 10.3.3')
+    // 卡片說明留協定出處（RFC），規範條號退到鍵的抽屜
+    expect(wrapper.text()).toContain('RFC 5424')
+    expect(wrapper.text()).not.toContain('PCI 10.3.3')
     // udp 時不顯示 TLS CA textarea
     expect(wrapper.find('.syslog-card textarea').exists()).toBe(false)
 

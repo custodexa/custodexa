@@ -3,7 +3,9 @@
 ## Purpose
 
 前端 UI 設計語言的一致性規範：以暗色優先的設計 token 定義色彩與間距、整合 Element Plus 暗色模式、統一非同步狀態呈現、終端與回放的視覺一致、可讀性與對比要求、Custodexa 品牌識別，並訂定 zh-TW 文案的用語標準與互動慣例、角色顯示的單一來源與列舉顯示完整性。
+
 ## Requirements
+
 ### Requirement: Dark-first design tokens
 The frontend SHALL define a single source of design tokens (CSS custom properties) covering color, spacing, radius, shadow, and typography scale, with dark theme as the default. All view pages and shared components MUST consume these tokens instead of hard-coded color or spacing values.
 
@@ -100,6 +102,8 @@ The frontend SHALL follow a single terminology standard for zh-TW user-facing co
 ### Requirement: Interaction convention standard
 The frontend SHALL follow a single interaction convention set, recorded in docs/DESIGN_SPEC.md and applied across all management pages: select/date/switch filters apply on change while text inputs apply on enter or an explicit 搜尋 button (with a 重設 affordance); in-row table actions use link-style buttons with semantic types; destructive confirmations use the unified title 確認刪除, consequence copy 此操作無法復原, and a danger-styled 確定刪除 button; every list/overview page offers a 重新整理 action in its page header; dialogs use one of three width tiers (480/560/680); submit forms validate via rules with inline error messages; tabs sit at page level and refetch on switch; empty states use the shared EmptyState component; global errors surface only via the interceptor toast; pagination uses the full layout with the shared container class.
 
+The convention set SHALL also include: schedules are edited through the shared frequency picker and listed in plain language with the next run time, never as a bare cron field; settings pages present each key as label, control, unit and an info entry, with explanations, references and compliance detail confined to a per-key drawer and one deviation count per section; and every first-layer string SHALL be readable by a non-specialist administrator or auditor, with technical identifiers, reference numbers, hashes and timezone offsets kept to secondary positions.
+
 #### Scenario: Filter behavior uniform
 - **WHEN** a user changes a dropdown filter on any list page
 - **THEN** the list refreshes immediately without pressing a separate query button, and text search still applies via enter or the 搜尋 button
@@ -115,6 +119,14 @@ The frontend SHALL follow a single interaction convention set, recorded in docs/
 #### Scenario: Shared utilities consumed
 - **WHEN** a page renders dates, durations, protocol tags, or role-gated content
 - **THEN** it consumes the shared format/protocol utilities and role composable rather than local reimplementations
+
+#### Scenario: Schedule edited through frequency picker
+- **WHEN** a user opens any form that edits a schedule
+- **THEN** the form presents the frequency picker with a next-run preview, and the list shows the schedule in plain language
+
+#### Scenario: Settings page first layer stays plain
+- **WHEN** a user opens any policy settings page without expanding a drawer
+- **THEN** each key shows only label, control, unit and an info entry, and each section shows one deviation count
 
 ### Requirement: Terminology sweep completed
 All user-facing copy across management pages SHALL conform to the terminology standard (使用者/連線/進行中/新增/已○○/重新整理/停用) with no residual 用戶/會話/刷新/創建/禁用 outside technical identifiers, verified by repository-wide search. The following boundary terms SHALL likewise follow Taiwan-standard usage: 檢視（非查看）、目前（非當前）、字元/字串（非字符/字符串）、唯讀（非只讀）、存取（非訪問）、連線（非連接，連接埠除外）、設定（非設置）、支援（非支持）、批次（非批量）、IP 位址（非 IP 地址）、一般（人稱，非普通）。
@@ -200,4 +212,3 @@ Every `button` element SHALL declare an explicit `type`. HTML defaults an undecl
 #### Scenario: Action button outside a form
 - **WHEN** a button triggers an action that is not a form submission
 - **THEN** it declares `type="button"` regardless of whether a form element currently encloses it
-

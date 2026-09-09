@@ -1,11 +1,11 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-08（外部群組對角色映射：新表 `group_role_mappings`／`user_role_mappings`，`user_roles` 加 `source` 欄，`ldap_directories` 加 `attr_group`，`oidc_providers` 加 `groups_claim` 與宣告對應三欄，`users` 加群組觀測快照三欄，migration `20260908_group_role_mapping`）
-> 前次更新：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
-> 再前次更新：2026-09-07（帳號憑證庫：新表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，`asset_accounts` 改為憑證掛載列，`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄、`change_secret_plans` 加 `target_kind`／`target_credential_id` 兩個目標宣告欄，migration `20260906_credential_library` 與 `20260906_credential_library_contract`）
+> **最後更新**：2026-09-09（政策組與合規對照：新表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，一條唯一索引 `idx_policy_clause_controls_group_key`，migration `20260909_policy_groups`）
+> 前次更新：2026-09-08（外部群組對角色映射：新表 `group_role_mappings`／`user_role_mappings`，`user_roles` 加 `source` 欄，`ldap_directories` 加 `attr_group`，`oidc_providers` 加 `groups_claim` 與宣告對應三欄，`users` 加群組觀測快照三欄，migration `20260908_group_role_mapping`）
+> 再前次更新：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`、`migration_group_role_mapping.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`、`migration_group_role_mapping.go`、`migration_policy_groups.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -67,6 +67,10 @@
 | ChangeSecretCandidate | `change_secret_candidates` | baseline＋增量 `20260905_account_batch_rotation` 加 `batch_id`／`shared_group` 欄＋增量 `20260906_credential_library` 加三個憑證快照欄＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 未驗證候選憑證（一帳號至多一筆，`account_id` 唯一）。`password_enc`／`private_key_enc` 登記於 `envelopeMigrationTargets` |
 | ChangeSecretBatch | `change_secret_batches` | 增量 `20260905_account_batch_rotation`＋增量 `20260906_credential_library_contract` 卸下 `shared_group` | 以帳號為主軸的批次改密（一列一次批次；不存任何密碼） |
 | SecurityPolicy | `security_policies` | baseline | PCI 安全政策 key-value |
+| PolicyGroup | `policy_groups` | **增量 `20260909_policy_groups`（非 baseline）**（主鍵為組代號字串） | 政策組（一份對照條文的容器；內建組隨產品版本發布，自建組由機構維護） |
+| PolicyClause | `policy_clauses` | **增量 `20260909_policy_groups`（非 baseline）**（複合主鍵 `(group_code, clause_no)`） | 政策組內的一條條文（三種型別；升級移除只標記 `removed_in_version` 不刪列） |
+| PolicyClauseControl | `policy_clause_controls` | **增量 `20260909_policy_groups`（非 baseline）**（`idx_policy_clause_controls_group_key`＝`(group_code, policy_key)` 唯一） | 條文對單一安全設定鍵的要求（一條條文可對多鍵；同組同鍵至多一條） |
+| PolicyClauseAnnotation | `policy_clause_annotations` | **增量 `20260909_policy_groups`（非 baseline）**（複合主鍵 `(group_code, clause_no)`） | 機構掛在條文上的備註與人工確認記錄（**刻意無 FK**——條文被標記移除後備註仍須存在且可讀） |
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
 | AccessReview | `access_reviews` | baseline | 週期性存取複審簽核（不可變，PCI 7.2.4） |
@@ -96,17 +100,18 @@
 | UserRoleMapping | `user_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（複合主鍵 `(user_id, role_id, channel)`，除主鍵外不另建索引） | 某條登入途徑於最近一次重算後認定的映射事實（每次登入重算，通道進主鍵故兩條途徑各自成列） |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **56 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **12 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **60 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **16 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
-與群組映射兩表 `group_role_mappings`／`user_role_mappings`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **59 張**表
-（守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`：59 表／205 索引／19 條 CHECK）。
+群組映射兩表 `group_role_mappings`／`user_role_mappings`，
+與政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **63 張**表
+（守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含十二條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
-全新安裝的最終形狀（59 表／205 索引／19 條 CHECK）以守衛基準為準。
+不含十三條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
 它有雞生蛋問題——必須先於「讀取已套用版本集合」而存在，故不能由 baseline 建立
@@ -190,6 +195,10 @@ erDiagram
     oidc_providers ||--o{ user_external_identities : configures
 
     users ||--o{ user_source_ips : seen_from
+
+    policy_groups ||--o{ policy_clauses : contains
+    policy_clauses ||--o{ policy_clause_controls : requires
+    policy_clauses |o--o| policy_clause_annotations : annotated
 
     users {
         uint id PK
@@ -587,6 +596,14 @@ erDiagram
         string matrix_snapshot
     }
 ```
+
+> 政策組四表之間**沒有任何外鍵**：條文與要求以組代號掛靠政策組，備註以（組代號，條號）
+> 掛靠條文。圖上的三條關係是資料語義而非資料庫約束。刪除自建組時連帶清除其條文、要求與
+> 備註，這件事由寫入端的單一交易完成並有測試釘住——交給資料庫的 `ON DELETE CASCADE`
+> 會讓「刪了什麼」不出現在任何一段可讀的程式碼裡，而那正是稽核要問的事。備註表**刻意**
+> 不指向條文列：條文會因升級而被標記移除，備註必須在那之後仍然存在且可讀。
+> 要求的 `policy_key` 指向的是安全設定鍵的**定義**（在程式碼裡），不是 `security_policies`
+> 的資料列——該鍵沒有政策列時以出廠預設參與判定，故兩張表之間不存在關係。
 
 ---
 
@@ -1686,46 +1703,47 @@ const (
 | `UpdatedBy` | string | `size:100` | `updated_by` | 最後修改者 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 最後修改時間 |
 
-**政策鍵值域與 PCI 建議值**（常數表 `service.policyDefs`，PCI 建議值以官方《PCI DSS v4.0.1》June 2024 定稿；
-出廠預設多為易用取向，PCI 值供「一鍵套用」符合性評估）:
+**政策鍵值域**（常數表 `service.policyDefs`；出廠預設多為易用取向）。
+**設定鍵不承載合規要求**：某一組規範對某個鍵要求什麼值，是 `policy_clause_controls`
+的資料（內建組由種子產生），判定與「一次滿足所有政策」都讀那一份:
 
-| Key | 型別 | 出廠預設 | PCI 建議 | 方向 | PCI 條號 | 說明 |
-|-----|------|--------|--------|------|--------|------|
-| `lockout_max_attempts` | int | `10` | `10` | max | 8.3.4 | 登入失敗鎖定次數上限（0=停用；上界 1000） |
-| `lockout_duration_minutes` | int | `30` | `30` | min | 8.3.4 | 鎖定時長（上界 10080＝7 天，防 int64 溢位） |
-| `password_min_length` | int | `12` | `12` | min | 8.3.6 | 密碼最小長度（上界 128） |
-| `password_require_alnum` | bool | `true` | `true` | - | 8.3.6 | 密碼須含字母與數字 |
-| `password_history_count` | int | `4` | `4` | min | 8.3.7 | 禁止重用最近密碼筆數（0=停用；**上界 24**） |
-| `force_change_on_reset` | bool | `true` | `true` | - | 8.3.5 | 管理員重設後強制改密 |
-| `mfa_required` | enum | `off` | `all` | 序位 | 8.4.2 | 多因子強制範圍（弱→強：`off`/`admin_only`/`all`） |
-| `web_idle_minutes` | int | `60` | `15` | max | 8.2.8 | Web 會話閒置逾時（0=停用；上界 10080） |
-| `web_max_session_hours` | int | `12` | （無） | - | - | Web 會話最長時數（0=不限；上界 8760；PCI 未規定不評估符合性） |
-| `session_idle_minutes` | int | `60` | `15` | max | 8.2.8 | 協議會話閒置逾時（0=停用；上界 10080；以 `SSH_IDLE_TIMEOUT_MINUTES` 初始化） |
-| `session_max_minutes` | int | `0` | （無） | - | - | 協議會話最長時長（0=不限；上界 525600；以 `SSH_MAX_SESSION_MINUTES` 初始化） |
-| `inactive_disable_days` | int | `0` | `90` | max | 8.2.6 | 閒置帳號自動停用天數（0=關閉；上界 3650） |
-| `retention_audit_log_days` | int | `0` | `365` | min | 10.5.1 | 操作日誌保留天數（0=永久保留＝未定義保留政策，判不符；上界 3650） |
-| `retention_session_command_days` | int | `0` | `365` | min | 10.5.1 | 指令流保留天數（同上） |
-| `retention_alert_days` | int | `0` | `365` | min | 10.5.1 | 告警記錄保留天數（同上） |
-| `retention_recording_days` | int | `90` | `365` | min | 10.5.1 | 會話錄影保留天數（初始值由 `RECORDING_RETENTION_DAYS` 播種） |
-| `daily_review_enabled` | bool | `false` | `true` | - | 10.4.1 | 每日審閱簽核 |
-| `failure_alert_enabled` | bool | `false` | `true` | - | 10.7.2 | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
-| `key_cryptoperiod_reminder_days` | int | `0` | `365` | max | 3.7.4 | 金鑰輪替提醒天數（0=不提醒；純提醒不觸發動作） |
-| `transport_rdp_level` | enum | `off` | `warn` | 序位 | 4.2.1 | RDP 傳輸強制等級（弱→強：`off`/`warn`/`strict`） |
-| `transport_vnc_level` | enum | `off` | `warn` | 序位 | 4.2.1 | VNC 傳輸強制等級（同上） |
-| `transport_db_level` | enum | `off` | `warn` | 序位 | 4.2.1 | 資料庫傳輸強制等級（同上） |
-| `transport_ldap_level` | enum | `off` | `warn` | 序位 | 4.2.1 | LDAP 傳輸強制等級（登入時 runtime 閘；strict 拒 LDAP 登入本地帳號不受影響） |
-| `transport_syslog_level` | enum | `off` | `warn` | 序位 | 4.2.1 | syslog 傳輸強制等級（同上） |
-| `transport_notify_level` | enum | `off` | `warn` | 序位 | 4.2.1 | 通知傳輸強制等級（同上） |
-| `transport_consent_ttl_days` | int | `90` | （無） | - | - | 傳輸風險同意效期（0=永不過期；上界 3650；PCI 未規定不評估符合性） |
-| `access_policy_default` | enum | `open` | `approval` | 序位 | 7.2 | 全域預設存取政策段位（弱→強：`open`/`reason`/`approval`；資產未個別設定時生效） |
-| `access_request_max_duration_minutes` | int | `1440` | `1440` | max | 7.2 | 申請時長上限（上界 525600＝1 年） |
-| `access_request_pending_timeout_hours` | int | `72` | `72` | max | 7.2 | 申請待審超時時限（上界 8760＝1 年） |
-| `break_glass_enabled` | bool | `false` | `false` | - | 7.2 | 破窗緊急連線開關（opt-in，關閉期緊急通道＝admin 豁免） |
-| `break_glass_duration_minutes` | int | `60` | `60` | max | 7.2 | 破窗票證固定時窗（上界 1440＝1 天；不開放破窗人自填） |
-| `break_glass_review_timeout_hours` | int | `24` | `24` | max | 7.2 | 破窗補審逾期時限（上界 720＝30 天；逾期升級告警） |
-| `access_revoke_disconnect` | bool | `false` | `true` | - | 7.2 | 撤銷即斷線（出廠關＝只擋新連線；建議開，與到期語義一致的預設取捨） |
-| `login_banner_title` | text | 空字串 | （無） | - | - | 登入前告示標題（上限 120 字元、單行；空即不顯示標題） |
-| `login_banner_body` | text | 空字串 | （無） | - | - | 登入前告示內文（上限 2000 字元、可換行；空即登入頁不顯示告示，標題不會單獨顯示） |
+| Key | 型別 | 出廠預設 | 方向 | 說明 |
+|-----|------|--------|------|------|
+| `lockout_max_attempts` | int | `10` | max | 登入失敗鎖定次數上限（0=停用；上界 1000） |
+| `lockout_duration_minutes` | int | `30` | min | 鎖定時長（上界 10080＝7 天，防 int64 溢位） |
+| `password_min_length` | int | `12` | min | 密碼最小長度（上界 128） |
+| `password_require_alnum` | bool | `true` | - | 密碼須含字母與數字 |
+| `password_history_count` | int | `4` | min | 禁止重用最近密碼筆數（0=停用；**上界 24**） |
+| `force_change_on_reset` | bool | `true` | - | 管理員重設後強制改密 |
+| `mfa_required` | enum | `off` | 序位 | 多因子強制範圍（弱→強：`off`/`admin_only`/`all`） |
+| `web_idle_minutes` | int | `60` | max | Web 會話閒置逾時（0=停用；上界 10080） |
+| `web_max_session_hours` | int | `12` | - | Web 會話最長時數（0=不限；上界 8760；PCI 未規定不評估符合性） |
+| `session_idle_minutes` | int | `60` | max | 協議會話閒置逾時（0=停用；上界 10080；以 `SSH_IDLE_TIMEOUT_MINUTES` 初始化） |
+| `session_max_minutes` | int | `0` | - | 協議會話最長時長（0=不限；上界 525600；以 `SSH_MAX_SESSION_MINUTES` 初始化） |
+| `inactive_disable_days` | int | `0` | max | 閒置帳號自動停用天數（0=關閉；上界 3650） |
+| `retention_audit_log_days` | int | `0` | min | 操作日誌保留天數（0=永久保留＝未定義保留政策，判不符；上界 3650） |
+| `retention_session_command_days` | int | `0` | min | 指令流保留天數（同上） |
+| `retention_alert_days` | int | `0` | min | 告警記錄保留天數（同上） |
+| `retention_recording_days` | int | `90` | min | 會話錄影保留天數（初始值由 `RECORDING_RETENTION_DAYS` 播種） |
+| `daily_review_enabled` | bool | `false` | - | 每日審閱簽核 |
+| `failure_alert_enabled` | bool | `false` | - | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
+| `key_cryptoperiod_reminder_days` | int | `0` | max | 金鑰輪替提醒天數（0=不提醒；純提醒不觸發動作） |
+| `transport_rdp_level` | enum | `off` | 序位 | RDP 傳輸強制等級（弱→強：`off`/`warn`/`strict`） |
+| `transport_vnc_level` | enum | `off` | 序位 | VNC 傳輸強制等級（同上） |
+| `transport_db_level` | enum | `off` | 序位 | 資料庫傳輸強制等級（同上） |
+| `transport_ldap_level` | enum | `off` | 序位 | LDAP 傳輸強制等級（登入時 runtime 閘；strict 拒 LDAP 登入本地帳號不受影響） |
+| `transport_syslog_level` | enum | `off` | 序位 | syslog 傳輸強制等級（同上） |
+| `transport_notify_level` | enum | `off` | 序位 | 通知傳輸強制等級（同上） |
+| `transport_consent_ttl_days` | int | `90` | - | 傳輸風險同意效期（0=永不過期；上界 3650；PCI 未規定不評估符合性） |
+| `access_policy_default` | enum | `open` | 序位 | 全域預設存取政策段位（弱→強：`open`/`reason`/`approval`；資產未個別設定時生效） |
+| `access_request_max_duration_minutes` | int | `1440` | max | 申請時長上限（上界 525600＝1 年） |
+| `access_request_pending_timeout_hours` | int | `72` | max | 申請待審超時時限（上界 8760＝1 年） |
+| `break_glass_enabled` | bool | `false` | - | 破窗緊急連線開關（opt-in，關閉期緊急通道＝admin 豁免） |
+| `break_glass_duration_minutes` | int | `60` | max | 破窗票證固定時窗（上界 1440＝1 天；不開放破窗人自填） |
+| `break_glass_review_timeout_hours` | int | `24` | max | 破窗補審逾期時限（上界 720＝30 天；逾期升級告警） |
+| `access_revoke_disconnect` | bool | `false` | - | 撤銷即斷線（出廠關＝只擋新連線；建議開，與到期語義一致的預設取捨） |
+| `login_banner_title` | text | 空字串 | - | 登入前告示標題（上限 120 字元、單行；空即不顯示標題） |
+| `login_banner_body` | text | 空字串 | - | 登入前告示內文（上限 2000 字元、可換行；空即登入頁不顯示告示，標題不會單獨顯示） |
 
 **設計說明**:
 - 服務層 typed accessor（Get/GetInt/GetBool）＋ 30 秒 TTL 快取（「更新即失效」不等 TTL）
@@ -2352,7 +2370,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共十三條**——baseline 一條，其後的增量十二條
+**現行 migration 共十四條**——baseline 一條，其後的增量十三條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2370,14 +2388,15 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260906_credential_library_contract` | 收縮：卸下已無讀寫面的過渡欄與索引——`asset_accounts.password_enc`／`private_key_enc`（登入秘密的落點已改為 `credential_secret_versions`，兩欄自存量搬移之後零讀者，**同時自 `envelopeMigrationTargets` 除名**）、`change_secret_candidates.shared_group`、`change_secret_batches.shared_group`（共用關係的真相已是憑證本體）、`idx_asset_accounts_credential_group`，共 5 條 DDL。**自成一條版本而非併入前一條**：前一條已套用於開發庫，同檔追加語句不會再執行，會留下「程式碼宣告已收縮、資料庫仍有舊欄」的落差。**`asset_accounts.credential_group` 刻意留著**（見第 3b 節）。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibraryContract`：反序把四欄的空殼與群組索引加回來。**Down 有損、開發庫限定**：**不還原任何資料**，卸下的四欄在卸下當下即失去內容，再次 Up 之後全部回到空值。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260908_role_state_checkpoint` | 角色指派納入檢查點的資料層：`audit_checkpoints` 加四個可空欄（`role_state_hash varchar(64)`、`role_state_snapshot text`、`role_state_count bigint`、`role_state_reconciled boolean`；見第 37 節），共 4 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：四欄皆可空、無資料轉換、無回填，耗時與存量無關。**既有檢查點留空即代表「該段不涵蓋角色指派」**，這是誠實的表述而非缺漏——回填一份「現在的」快照到過去的檢查點，等於替歷史簽下一個當時沒簽過的主張。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRoleStateCheckpoint`：反序 DROP 四欄。**Down 有損、開發庫限定**：四欄刪除即失去全部檢查點的角色指派快照，其後所有檢查點回到不涵蓋角色指派，再次 Up 之後要等下一次封章才重新有基準。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260908_group_role_mapping` | 外部群組對角色映射的資料層，共 **20 條 DDL**：`user_roles` 加 `source`（`varchar(16) NOT NULL DEFAULT 'manual'`；見第 2b 節）、建 `group_role_mappings`（含來源恰一的 CHECK `chk_group_role_mapping_source`；第 52 節）與 `user_role_mappings`（複合主鍵含通道；第 53 節）兩張表、`ldap_directories` 加 `attr_group`、`users` 加群組觀測快照三欄、`oidc_providers` 加 `groups_claim` 與宣告對應三欄，再加 6 條外鍵與 3 條索引（1 條軟刪索引 ＋ 2 條排除軟刪列的部分唯一索引）。**Up 為純加法**：加欄皆帶預設或可空，無資料轉換、無回填，耗時與存量無關；`source` 的存量列以 default 回填為 `manual`——本欄出現之前全部角色列都是管理者指派的，回填值即其實際語義。**四個空值欄一律代表「未設定＝行為不變」**（`attr_group` 與 `groups_claim` 空＝不依外部群組決定角色，宣告對應三欄空＝走現行解析），故既有部署升級後行為逐字不變。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackGroupRoleMapping`：反序 DROP 快照三欄 → 宣告四欄 → `DROP TABLE user_role_mappings` → `DROP TABLE group_role_mappings` → `attr_group` → `user_roles.source`。**Down 有損，且部分損失不可還原**：（一）`group_role_mappings` 的規則是管理者逐條設定的，系統沒有第二個地方存著它們，**回退前須自行備份**；（二）`user_roles.source` 卸下後「哪些角色是管理者指派的、哪些只是外部群組給的」永久消失，全部角色列回到不分來源的舊語義，本地管理員計數會重新把僅由映射取得管理員角色的帳號計入；（三）`user_role_mappings` 的列一併消失，可由下一次登入重算重建，但要等到當事人下一次登入；（四）快照三欄與四個宣告／屬性欄還原為未設定，無損。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260909_policy_groups` | 政策組與合規對照的資料層，共 **5 條 DDL**：建 `policy_groups`（主鍵為組代號；第 54 節）、`policy_clauses`（複合主鍵 `(group_code, clause_no)`；第 55 節）、`policy_clause_controls`（第 56 節）與 `policy_clause_annotations`（複合主鍵 `(group_code, clause_no)`；第 57 節）四張表，加一條唯一索引 `idx_policy_clause_controls_group_key`＝`(group_code, policy_key)`。**Up 為純建表**：不動任何既有表、不加欄、不回填、無資料轉換，耗時與存量無關；既有部署升級後行為逐字不變，四張表在內建組種子寫入之前是空的。**四張表之間刻意無外鍵**：條文與要求以組代號掛靠、備註以（組代號，條號）掛靠，連帶清除由寫入端的單一交易保證並有測試釘住；備註表更不指向條文列，因為條文會因升級被標記移除而備註必須活得比它久。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackPolicyGroups`：反序 DROP 唯一索引 → `policy_clause_annotations` → `policy_clause_controls` → `policy_clauses` → `policy_groups`。**Down 有損且損失不可還原、開發庫限定**：四張表整個消失。內建組的內容可由下一次啟動的種子重建，但**機構自建的政策組、自建條文、全部備註與人工確認記錄沒有第二個地方存著**，回退即永久遺失，故回退前須自行匯出。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的十二條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的十三條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
 > `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
 > `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長
-> （帳號數通常遠小於會話與審計的存量）；其餘十條為純加法、純型別放寬或純卸欄，耗時與存量無關。
+> （帳號數通常遠小於會話與審計的存量）；其餘十一條為純加法、純型別放寬或純卸欄，耗時與存量無關。
 > 升級程序見 `docs/ops/upgrade-sop.md`。
 >
 > **`20260906_credential_library` 之後還有一段解封後才跑的轉換**：憑證密文的欄位身分改綁與既有
@@ -3318,6 +3337,143 @@ pending → uploading → uploaded → local_purged
   產生的形式不報錯也不匹配任何列，於是「全部撤除」會靜默變成「什麼都沒做」。
 - **有效角色集真的變小才推進憑證世代**：純追加不推進；把一個並存態的角色解除一半（例如管理者
   收回手動指派，但映射仍命中）也不推進，因為那個角色本來就還在有效集裡。
+
+---
+
+### 54. PolicyGroup（政策組）
+
+**表名**: `policy_groups`
+**檔案**: `backend/internal/model/policy_group.go`
+**建表方式**: **增量 `20260909_policy_groups`（非 baseline）**，主鍵為組代號字串；無索引、無 CHECK
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `Code` | string | `primaryKey;size:64` | `code` | 組代號（人可讀字串），主鍵 |
+| `Name` | string | `size:200;not null` | `name` | 組名稱 |
+| `Source` | string | `size:16;not null` | `source` | 來源，決定可寫範圍：`builtin`（內建，內容隨產品版本發布）／`custom`（機構自建） |
+| `Enabled` | bool | `not null;default:true` | `enabled` | 生效開關。**內建組的開關也由機構決定**，產品升級不得改動它 |
+| `Version` | string | `size:32;not null;default:''` | `version` | 內建組的內容版本（規範文本自身的版本標示）；自建組留空 |
+| `Locale` | string | `size:16;not null;default:''` | `locale` | 自建組的原文語言標示；內建組留空 |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+
+**設計說明**:
+- **主鍵是組代號而不是流水號**：條文、要求與備註三張表都以組代號掛靠，而組代號同時是對外
+  引用的識別（報告與稽核記錄都引它）。換成流水號會讓同一個內建組在重建資料庫後拿到不同的
+  識別，既有引用即失效。
+- **`version` 與 `locale` 皆以空字串而非 NULL 表達「這一類的組不帶這個欄位」**：與 NULL 的
+  「未知」不同，兩態並存只會多出一個沒有意義的第三態。
+- `enabled` 預設 true：全新安裝時內建組即生效。
+- **無軟刪除欄**：刪除自建組是真刪，並在同一交易內連帶清除其條文、要求與備註。
+
+---
+
+### 55. PolicyClause（政策組內的條文）
+
+**表名**: `policy_clauses`
+**檔案**: `backend/internal/model/policy_group.go`
+**建表方式**: **增量 `20260909_policy_groups`（非 baseline）**，複合主鍵 `(group_code, clause_no)`；
+除主鍵外不另建索引、無 CHECK
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `GroupCode` | string | `primaryKey;size:64` | `group_code` | 所屬政策組的代號；複合主鍵之一（**無 FK**） |
+| `ClauseNo` | string | `primaryKey;size:64` | `clause_no` | 條號（條文在該組內的自然識別）；複合主鍵之一 |
+| `Title` | string | `size:300;not null` | `title` | 條文標題 |
+| `Summary` | string | `type:text;not null;default:''` | `summary` | 條文摘要（可留空） |
+| `Kind` | string | `size:32;not null` | `kind` | 條文型別：`setting`／`self_attested`／`builtin_protection`（見下） |
+| `RemovedInVersion` | string | `size:32;not null;default:''` | `removed_in_version` | 該條文已於哪一個內容版本自規範中消失；空字串＝仍存在 |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+
+**`kind` 三值**:
+
+| 值 | 語義 | 可否掛要求 |
+|---|---|---|
+| `setting` | 設定要求：條文指向一到多個安全設定鍵並帶要求值，系統據以判定 | 是（至少一條） |
+| `self_attested` | 由機構自行確認：不指向任何設定鍵，系統只呈現不判定 | 否 |
+| `builtin_protection` | 系統內建保護：產品無條件提供，沒有可調的設定值 | 否 |
+
+**設計說明**:
+- **後兩種型別是兩件事**：`self_attested` 的責任在機構，`builtin_protection` 的責任在產品本身。
+  兩者都不產生鍵層判定，但把它們混為一談，會讓閱讀者以為機構還得為產品已經承擔的事再做
+  一次確認。`builtin_protection` 型不得掛要求——掛得上就表示它是可調的，那該寫成設定要求型。
+- **`removed_in_version` 的語義是「升級只標記不刪列」**：機構可能已在這條上寫了備註或做過
+  人工確認，刪列會讓那些記錄失去掛靠對象。標記後判定與對照不再計入本條，但管理頁仍看得到它；
+  過濾與否交給呼叫端決定。
+- **`kind` 欄寬 32 而非 16**：型別值是可讀的識別字，最長的一個已經 18 個字元，
+  而寫不下時 PostgreSQL 是整筆寫入失敗，不是截斷。
+
+---
+
+### 56. PolicyClauseControl（條文對單一設定鍵的要求）
+
+**表名**: `policy_clause_controls`
+**檔案**: `backend/internal/model/policy_group.go`
+**建表方式**: **增量 `20260909_policy_groups`（非 baseline）**，
+`idx_policy_clause_controls_group_key`＝`UNIQUE (group_code, policy_key)`；無 CHECK
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵（`bigserial`） |
+| `GroupCode` | string | `size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:1` | `group_code` | 所屬政策組（**無 FK**） |
+| `ClauseNo` | string | `size:64;not null` | `clause_no` | 所屬條文的條號 |
+| `PolicyKey` | string | `size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:2` | `policy_key` | 要求指向的安全設定鍵。**指向的是設定鍵的定義（在程式碼裡）而非 `security_policies` 的資料列**——沒有政策列時該鍵以出廠預設參與判定 |
+| `Comparator` | string | `size:16;not null` | `comparator` | 比較方式：`min`／`max`／`equals`／`review`（見下），合法值域依鍵型別受限 |
+| `ExpectedValue` | string | `type:text;not null` | `expected_value` | 要求值，以字串存放（型別語義由設定鍵的定義決定，與設定值本身同一套）；`review` 時為空字串 |
+| `ReferenceOnly` | bool | `not null;default:false` | `reference_only` | 要求值是參考值而非規範明定值，為真時該要求產生「待人工確認」而不是符合或偏離 |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+
+**`comparator` 四值**:
+
+| 值 | 語義 | 適用的鍵型別 |
+|---|---|---|
+| `min` | 現值須不小於要求值 | 整數 |
+| `max` | 現值須不大於要求值 | 整數 |
+| `equals` | 現值須等於要求值 | 開關、選項 |
+| `review` | 條文涉及這個鍵但**未定值**，要求值留空 | 整數、開關、選項 |
+
+**索引與約束**:
+- `policy_clause_controls_pkey`＝`(id)`。
+- `idx_policy_clause_controls_group_key`＝`UNIQUE (group_code, policy_key)`：**同一組內同一個鍵
+  只能有一條要求**。缺了它，同組出現兩條彼此矛盾的要求時，判定結果取決於資料列的讀取順序
+  ——那是一個沒有訊號的錯誤。前綴同時服務「取某組全部要求」這個最主要的讀法，故不另建索引。
+
+**設計說明**:
+- **`comparator` 的合法值域於寫入端驗證而非以 CHECK 表達**：合法組合取決於該鍵的定義（在程式碼
+  裡），資料庫看不到那份定義，寫成 CHECK 只擋得住四值以外的字面量，擋不住「對開關型鍵用 min」
+  這種真正會判錯的組合。
+- **開關與選項一律 `equals`**：這兩類的取值之間沒有強弱序（某個開關的開與關哪個比較嚴，取決於
+  條文要求哪一個），以序位比較會讓要求值被靜默解讀成「至少這麼嚴」而判錯。
+- **`review` 不是漏填**：條文寫的是語境式要求時，沒有一個數字或開關值代表得了它。系統不替條文
+  發明一個值（那會讓閱讀者以為那個門檻有出處），改為連同目前值列出，由稽核人員判讀。
+- **`reference_only` 與 `review` 是不同的東西**：前者有值但值沒有規範出處（待機構確認），
+  後者根本沒有值（待稽核判讀）。兩者都不計入符合或偏離，摘要各自成格。
+
+---
+
+### 57. PolicyClauseAnnotation（機構備註與人工確認）
+
+**表名**: `policy_clause_annotations`
+**檔案**: `backend/internal/model/policy_group.go`
+**建表方式**: **增量 `20260909_policy_groups`（非 baseline）**，複合主鍵 `(group_code, clause_no)`；
+除主鍵外不另建索引、無 CHECK、**無 FK**
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `GroupCode` | string | `primaryKey;size:64` | `group_code` | 所屬政策組；複合主鍵之一 |
+| `ClauseNo` | string | `primaryKey;size:64` | `clause_no` | 所屬條文的條號；複合主鍵之一 |
+| `Note` | string | `type:text;not null;default:''` | `note` | 機構備註（純文字，不影響判定） |
+| `ConfirmedBy` | string | `size:100;not null;default:''` | `confirmed_by` | 最近一次人工確認的操作者；空字串＝尚未確認 |
+| `ConfirmedAt` | *time.Time | - | `confirmed_at` | 最近一次人工確認的時刻；未確認時為 NULL |
+| `ConfirmationNote` | string | `type:text;not null;default:''` | `confirmation_note` | 確認時附的一句說明 |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+
+**設計說明**:
+- **刻意不設外鍵到條文列**：條文列會因產品升級而被標記移除，備註必須在那之後仍然存在且可讀。
+  外鍵會把兩者的生命週期綁在一起，而它們本來就不同。同理，**刪除單條自建條文不刪它的備註**；
+  只有刪除整個自建組才連帶清除。
+- **確認不設到期**：由機構決定何時重新確認，**再次確認覆蓋前次**，歷史留在操作日誌裡。
+- 備註與確認都是機構寫入的資料，**不影響判定結果**；人工確認只作用於待確認（參考值）的條文，
+  作用是讓該筆判定的 `confirmed_by`／`confirmed_at` 有值。
 
 ---
 

@@ -2,11 +2,109 @@
 
 All notable changes to Custodexa will be documented in this file.
 
-## 1.8.1 — role-mapping channel identifiers (2026-09-09)
+## 1.9.0 — policy groups and the compliance map (2026-09-10)
 
-No schema change. No migration runs.
+### Policy groups are data, not code
 
-### Roles that come from an external group
+- Two built-in groups ship with the product and are written into the database when the backend
+  starts: PCI DSS 4.0.1, and the information system standard and security control baseline that
+  applies to electronic payment institutions. Each carries its clauses and the requirements those
+  clauses place on individual security settings.
+- An organization adds groups of its own for its internal rules, and can rename, enable, disable
+  and delete them and edit the clauses inside them; that text is stored and shown in the language
+  it was written in, labelled with that language and never machine translated. Several groups can
+  be in effect at once, a setting can belong to none of them, and two groups can ask different
+  things of the same setting.
+- A clause is either a requirement on settings or a statement the organization attests to itself.
+  A requirement names an exact value: at least or at most for numbers, and the value itself for
+  switches and choices, with no notion of one option outranking another.
+- A requirement can also state that the clause covers a setting without naming a value. That
+  setting then shows its current value for an auditor to read.
+- Every clause takes a note in the organization's own words. Clauses that carry a reference value
+  rather than a fixed one are confirmed by an administrator, with their name, the date and one
+  sentence. A version that no longer contains a clause keeps the notes and confirmations hanging on
+  it and marks that clause as removed.
+- Built-in clauses cannot be edited or deleted, only annotated and confirmed, and an upgrade leaves
+  each group's enabled state as the organization set it.
+
+### One compliance answer, shown in three places
+
+- One build takes the groups in effect and the current settings, and produces for every pairing of
+  setting and group one of five results: meets the requirement, deviates from it, awaiting the
+  organization's confirmation, awaiting an auditor's reading, or not covered by that group. Only the
+  first two count towards the compliant and deviating figures. Each result carries its reason, and
+  the build carries the time the settings were read.
+- The deviation counts on the settings pages, the summary and clause results on the compliance map,
+  and the apply preview all read that one build, and a test pins the three to the same set of
+  deviating settings.
+
+### The security policy pages, slimmed down
+
+- Each setting shows a label, its control, its unit and one info button. Clause numbers,
+  recommended values, non-compliance text and the meaning of a zero value now live in that
+  setting's drawer.
+- The drawer reads in order: one plain sentence saying what the value decides, one sentence per
+  group in effect giving its requirement and the result, who last changed the value and when with
+  a link to the record, when a change takes effect, and a longer explanation folded away.
+- Each section of a page shows how many of its settings deviate, and a deviating setting carries an
+  amber dot with text beside it rather than colour alone. The count opens the compliance map. While
+  a value is edited and not yet saved, the count follows the draft and is labelled as one.
+- The header of each page lists the groups in effect and offers to apply their values, either for
+  one group or for all of them at once.
+- Applying shows a preview first, listing only the settings that will change, each with its current
+  value, its new value and the group the value comes from. A value already stricter than every
+  requirement is left as it is, and a setting whose groups ask for opposite values is described in
+  plain words and left for the administrator to decide.
+
+### The compliance map
+
+- A read-only page under the audit group, open to administrators and auditors, with no way to write
+  anything from it; one click switches between groups.
+- The summary gives six figures in two rows, one row counting clauses and one counting settings, so
+  the two units are never added together. A line below them counts the settings outside this
+  group's scope.
+- A clause expands into its settings: current value, requirement, result, and who last changed the
+  value and when, with a link to that record. One filter shows only the deviating clauses, and a
+  search finds a setting by its displayed name or by its machine key.
+- An auditor reaches a setting's change history in three steps: find the setting, expand its
+  clause, follow the record link. The record page opens filtered to that setting.
+
+### Policy group management
+
+- A page under system settings, for administrators, and the only place any policy group is written.
+- Adding a requirement starts from the setting: choosing one brings its type, its comparison
+  directions, its unit and its legal range into the form, and the form shows the current value
+  along with the result the requirement will produce once saved.
+- Clauses awaiting the organization's confirmation are confirmed here. Every write on this page
+  goes to the operation log with the group, the clause and the values before and after.
+
+### Schedules in words rather than in a schedule string
+
+- Schedules are set with a frequency picker offering daily, weekly, monthly, quarterly, yearly and
+  custom, which opens the fields each frequency needs and lists the next three run times as they are
+  chosen. Those times come from the service that will run the schedule.
+- Credential change plans and rotation evidence report schedules use it. Their list columns read as
+  words with the next run time beside them, and the schedule string itself now lives in the custom
+  field.
+- An existing schedule is read back into whichever frequency it matches, and is kept as it is when
+  it matches none of them.
+
+### Upgrading
+
+- **Upgrade note**: the security policy list endpoint no longer returns `pci_value`,
+  `epayment_value`, `compliant`, `epayment_compliant` and `strictest_value` on each policy item, nor
+  `deviation_count` and `epayment_deviation_count` alongside them. Each item now carries its result
+  against every group in effect, and the response names those groups.
+- Adds one incremental migration that runs when the backend starts. It creates four tables and one
+  index and touches nothing that already exists, so its duration is independent of how much data
+  you hold. The built-in groups' content is written by the startup seed, not by the migration.
+- Back up before you upgrade. That backup is a complete logical backup and so contains the four new
+  tables; section 4.1 of `docs/ops/upgrade-sop.md` covers the way back and what to export first if
+  you have built groups of your own.
+- Writes to policy groups, reads of the compliance map and schedule previews each record under
+  their own audit resource, so they can be searched apart from changes to security policy values.
+
+### Fixes
 
 - Reads the numeric source identifier inside a role-mapping channel value at the integer width of
   the platform the backend was built for. A value that does not fit is rejected as malformed on every

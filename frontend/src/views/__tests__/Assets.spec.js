@@ -302,7 +302,6 @@ describe('Assets 節點樹與資產表單', () => {
     })
     getSecurityPoliciesMock.mockResolvedValue({
       data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
-      deviation_count: 0,
     })
   })
 
@@ -799,7 +798,6 @@ describe('Assets 改密通道側車', () => {
     getAssetGroups.mockResolvedValue({ data: [], total: 0 })
     getSecurityPoliciesMock.mockResolvedValue({
       data: [{ key: 'access_policy_default', type: 'enum', value: 'open' }],
-      deviation_count: 0,
     })
   })
 

@@ -71,16 +71,12 @@
 
     <!-- 金鑰政策鍵設定區（域收編）：
          提醒天數與清冊同頁；儲存後重載清冊，超齡提醒即時反映 -->
-    <PolicyPciBanner
+    <PolicyGroupStrip
       :loading="policyLoading"
       :saving="saving"
       :is-dirty="isDirty"
-      :deviation-count="pageDeviationCount"
-      :deviation-text="$t('policyForm.pageDeviation', { n: pageDeviationCount }, pageDeviationCount)"
-      :overview-count="totalDeviationCount"
-      :epayment-deviation-count="pageEPaymentDeviationCount"
-      @apply="applyPagePCI"
-      @apply-epayment="applyPageEPayment"
+      :groups="groups"
+      @apply="(command) => previewApply(command.mode, command.groupCode)"
       @reset="resetForm"
       @save="handleSavePolicies"
     />
@@ -88,8 +84,21 @@
     <PolicyKeySections
       :sections="visibleSections"
       :form-values="formValues"
-      :saved-values="savedValues"
+      :verdicts-by-key="verdictsByKey"
+      :group-names="groupNames"
+      :draft="isDraftVerdicts"
+      :draft-status="draftStatus"
       @update:value="(key, value) => (formValues[key] = value)"
+    />
+
+    <ApplyPreviewDialog
+      v-model="previewVisible"
+      :preview="previewData"
+      :policies="pagePolicies"
+      :page-title="$t('menu.keyManagement')"
+      :group-names="groupNames"
+      :verdicts-by-key="verdictsByKey"
+      @confirm="acceptPreview"
     />
 
     <!-- DB 側金鑰版本鏈 -->
@@ -703,8 +712,9 @@ import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
-import PolicyPciBanner from '@/components/PolicyPciBanner.vue'
+import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
+import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import { KEY_SECTIONS } from '@/constants/policyDomains'
 import {
@@ -733,16 +743,20 @@ import { t } from '@/i18n'
 const {
   loading: policyLoading,
   saving,
+  pagePolicies,
+  groups,
+  groupNames,
   formValues,
-  savedValues,
+  verdictsByKey,
+  isDraftVerdicts,
+  draftStatus,
   visibleSections,
   isDirty,
-  pageDeviationCount,
-  pageEPaymentDeviationCount,
-  totalDeviationCount,
+  previewVisible,
+  previewData,
   loadPolicies,
-  applyPagePCI,
-  applyPageEPayment,
+  previewApply,
+  acceptPreview,
   resetForm,
   save,
 } = usePolicyForm(KEY_SECTIONS)

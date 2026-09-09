@@ -27,51 +27,25 @@
       </ol>
     </el-alert>
 
-    <!-- 母頁總覽橫幅：全系統偏離總數＋分域列表；
-         套用鈕僅動本頁鍵——其他域到各自頁面套用，避免改到未檢視頁的值 -->
-    <PolicyPciBanner
+    <!-- 頁首列：生效政策組與本頁的套用、還原、儲存。
+         套用僅動本頁鍵——其他域到各自頁面套用，避免改到未檢視頁的值 -->
+    <PolicyGroupStrip
       :loading="loading"
       :saving="saving"
       :is-dirty="isDirty"
-      :deviation-count="totalDeviationCount"
-      :ok-text="$t('securityPolicies.systemCompliant')"
-      :deviation-text="$t('securityPolicies.systemDeviation', { n: totalDeviationCount }, totalDeviationCount)"
-      :apply-label="$t('securityPolicies.applyPage')"
-      :epayment-deviation-count="pageEPaymentDeviationCount"
-      @apply="applyPagePCI"
-      @apply-epayment="applyPageEPayment"
+      :groups="groups"
+      @apply="(command) => previewApply(command.mode, command.groupCode)"
       @reset="resetForm"
       @save="save"
-    >
-      <template #extra>
-        <div
-          v-if="totalDeviationCount > 0"
-          class="domain-breakdown"
-        >
-          <template
-            v-for="domain in domainDeviations"
-            :key="domain.id"
-          >
-            <span
-              v-if="domain.id === 'security'"
-              class="domain-item is-current"
-            >{{ $t('securityPolicies.currentPageCount', { n: domain.count }) }}</span>
-            <router-link
-              v-else
-              class="domain-item"
-              :to="domain.route"
-            >
-              {{ domain.label }} {{ $t('securityPolicies.itemCount', { n: domain.count }) }}
-            </router-link>
-          </template>
-        </div>
-      </template>
-    </PolicyPciBanner>
+    />
 
     <PolicyKeySections
       :sections="visibleSections"
       :form-values="formValues"
-      :saved-values="savedValues"
+      :verdicts-by-key="verdictsByKey"
+      :group-names="groupNames"
+      :draft="isDraftVerdicts"
+      :draft-status="draftStatus"
       @update:value="(key, value) => (formValues[key] = value)"
     >
       <template #section-extra="{ section }">
@@ -103,6 +77,16 @@
       </template>
     </PolicyKeySections>
 
+    <ApplyPreviewDialog
+      v-model="previewVisible"
+      :preview="previewData"
+      :policies="pagePolicies"
+      :page-title="$t('menu.securityPolicies')"
+      :group-names="groupNames"
+      :verdicts-by-key="verdictsByKey"
+      @confirm="acceptPreview"
+    />
+
     <SyslogForwardCard />
   </div>
 </template>
@@ -110,8 +94,9 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
-import PolicyPciBanner from '@/components/PolicyPciBanner.vue'
+import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
+import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import SyslogForwardCard from '@/components/SyslogForwardCard.vue'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import {
@@ -124,16 +109,21 @@ import {
 const {
   loading,
   saving,
-  policies,
+  pagePolicies,
+  groups,
+  groupNames,
   formValues,
   savedValues,
-  totalDeviationCount,
-  pageEPaymentDeviationCount,
+  verdictsByKey,
+  isDraftVerdicts,
+  draftStatus,
   visibleSections,
   isDirty,
+  previewVisible,
+  previewData,
   loadPolicies,
-  applyPagePCI,
-  applyPageEPayment,
+  previewApply,
+  acceptPreview,
   resetForm,
   save,
   setRestExclude,
@@ -145,23 +135,6 @@ setRestExclude(
     sectionKeys(d.sections)
   )
 )
-
-// 分域偏離列表：以後端 compliant 旗標（已儲存狀態）計數，與
-// deviation_count 同源——分域合計＝全系統總數。未歸域的鍵計入本頁
-const domainDeviations = computed(() => {
-  const assigned = new Set(
-    POLICY_DOMAINS.flatMap((d) => sectionKeys(d.sections))
-  )
-  return POLICY_DOMAINS.map((domain) => {
-    const keys = new Set(sectionKeys(domain.sections))
-    const count = policies.value.filter(
-      (p) =>
-        p.compliant === false &&
-        (keys.has(p.key) || (domain.id === 'security' && !assigned.has(p.key)))
-    ).length
-    return { ...domain, count }
-  })
-})
 
 // 明文連線建議（決策 4）：兩個事實各取自最可靠的源——頁面協定只有前端知道
 //（後端要知道同一件事只能猜標頭），生效值只有後端知道（隨政策清單供給）。
@@ -215,20 +188,4 @@ onMounted(() => {
   gap: var(--ot-space-xs);
 }
 
-.domain-breakdown {
-  display: flex;
-  align-items: center;
-  gap: var(--ot-space-md);
-  flex-wrap: wrap;
-}
-
-.domain-item {
-  font-size: var(--ot-font-size-sm);
-  color: var(--el-color-primary);
-  text-decoration: none;
-}
-
-.domain-item.is-current {
-  color: var(--ot-text-secondary);
-}
 </style>

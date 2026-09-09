@@ -1,5 +1,6 @@
 // 安全政策鍵的呈現與換算純函式：
-// 四個設定域頁與共用元件同源，避免 enum 文案與符合性判定跨頁複製。
+// 五個設定域頁與共用元件同源，避免 enum 文案與要求句型跨頁複製。
+// 符合性判定不在這裡——它由後端的判定契約供給，前端只投影。
 // 譯文住 locale 檔 enum.policyEnum/transportLevel/accessPolicy.*
 
 import { t } from '@/i18n'
@@ -97,6 +98,62 @@ export const formatValue = (policy, raw) => {
   return `${raw} ${policyUnit(policy)}`.trim()
 }
 
+// expectationText 政策組對某個鍵的要求，寫成一句人話。
+//
+// 抽屜的逐組要求與套用預覽的衝突說明共用這一支：同一件事在兩個畫面上寫成兩種
+// 說法，管理者會以為它們指的不是同一條規則。整數型才有方向（至少／至多），
+// 開關與枚舉只能是明確值；未定值（review）沒有可寫的要求，由呼叫端另外處理
+export const expectationText = (policy, comparator, expected) => {
+  const value = formatValue(policy, expected)
+  if (comparator === 'min') return t('policyDrawer.expectMin', { value })
+  if (comparator === 'max') return t('policyDrawer.expectMax', { value })
+  return t('policyDrawer.expectEquals', { value })
+}
+
+// 零值有特別語義的鍵 → 那個語義的譯文鍵。
+//
+// 「0」在不同鍵上不是同一件事：保留天數的 0 是永久保留，鎖定次數的 0 是不啟用
+// 這項限制。合規頁與政策組管理頁只印一個「0」，非專業讀者無從分辨；印錯一邊
+// 比不印更糟，故逐鍵登記而不用單一句子涵蓋全部。
+const ZERO_MEANING_KEYS = {
+  retention_audit_log_days: 'retention',
+  retention_session_command_days: 'retention',
+  retention_alert_days: 'retention',
+  retention_recording_days: 'retention',
+  retention_checkpoint_days: 'retention',
+  offsite_local_retention_days: 'localRetention',
+  key_cryptoperiod_reminder_days: 'keyReminder',
+  transport_consent_ttl_days: 'consentTtl',
+}
+
+// zeroMeaning 某鍵的 0 是什麼意思；沒有停用語義的鍵回空字串
+export const zeroMeaning = (key, zeroDisables) => {
+  if (!zeroDisables) return ''
+  const variant = ZERO_MEANING_KEYS[key] || 'disabled'
+  return t(`policyZero.${variant}`)
+}
+
+// formatKeyValue 只知道鍵與一個字串值時的人話呈現（判定結果與條文要求共用）。
+//
+// 與 formatValue 的差別在輸入：那一支拿得到完整的 policy 物件，這一支只拿得到
+// 判定回應帶的顯示中繼資料（unit_key、zero_disables）。兩支都在本檔，單位與
+// 零值語義因此只有一份寫法——設定頁、合規頁與管理頁不會各自長出一套。
+//
+// @param {string} key 政策鍵
+// @param {string} raw 值（字串）
+// @param {Object} [meta] { unit_key, unit, zero_disables }
+export const formatKeyValue = (key, raw, meta = {}) => {
+  const text = String(raw)
+  if (raw === 'true') return t('policyValue.on')
+  if (raw === 'false') return t('policyValue.off')
+  if (!/^-?\d+$/.test(text)) return enumLabel({ key: key || '' }, raw)
+  const unit = policyUnit({ unit_key: meta.unit_key, unit: meta.unit })
+  const withUnit = unit ? `${text} ${unit}` : text
+  if (text !== '0') return withUnit
+  const meaning = zeroMeaning(key, meta.zero_disables)
+  return meaning ? `${withUnit}（${meaning}）` : withUnit
+}
+
 // policyMin 數值輸入框的下界。
 //
 // 後端的合法值域是 `{0 若 zero_disables} ∪ [min, max]`——**不連續**，而數字
@@ -114,49 +171,3 @@ export const policyMin = (policy) => {
   if (policy.zero_disables) return 0
   return policy.min || 1
 }
-
-// 保留天數鍵的 0 是「永久保留」語義、
-// 金鑰提醒鍵的 0 是「不提醒」，
-// 與其他鍵的「0 = 停用」區分標註
-export const zeroHelperText = (policy) => {
-  if (policy.key.startsWith('retention_')) return t('policyValue.zeroRetention')
-  if (policy.key === 'key_cryptoperiod_reminder_days')
-    return t('policyValue.zeroKeyReminder')
-  if (policy.key === 'transport_consent_ttl_days')
-    return t('policyValue.zeroConsentTtl')
-  return t('policyValue.zeroDisable')
-}
-
-// 未儲存的編輯即時反映符合性（儲存後以後端計算為準）。
-// 基準值與後端已算好的符合性欄位由呼叫端指定，使兩個基準共用同一套比較邏輯
-// （複製比較邏輯會使兩側日後漂移）
-const isNonCompliantAgainst = (policy, value, savedValue, baseline, backendCompliant) => {
-  if (value === savedValue) {
-    return backendCompliant === false
-  }
-  if (!baseline) return false
-  if (policy.type === 'int') {
-    const base = Number(baseline)
-    if (policy.zero_disables && value === 0) return true
-    return policy.direction === 'min' ? value < base : value > base
-  }
-  if (policy.type === 'bool') {
-    return toApiValue(policy, value) !== baseline
-  }
-  const order = policy.enum_order || []
-  return order.indexOf(value) < order.indexOf(baseline)
-}
-
-// 對 PCI 建議值的符合性
-export const isNonCompliantValue = (policy, value, savedValue) =>
-  isNonCompliantAgainst(policy, value, savedValue, policy.pci_value, policy.compliant)
-
-// 對電支基準建議值的符合性。與 PCI 各自獨立——同一項可能符合其一而偏離另一
-export const isNonCompliantEPayment = (policy, value, savedValue) =>
-  isNonCompliantAgainst(
-    policy,
-    value,
-    savedValue,
-    policy.epayment_value,
-    policy.epayment_compliant
-  )

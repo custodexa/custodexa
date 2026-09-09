@@ -123,6 +123,22 @@
           </el-form>
         </div>
 
+        <!-- 由某個設定的記錄連結進來時，畫面要說得出「現在只看什麼」。
+             不說的話，一份被收斂過的日誌看起來就像本來只有這幾列 -->
+        <div
+          v-if="filters.key"
+          class="applied-filter"
+        >
+          <span>{{ $t('auditLogs.filterKeyNotice', { setting: settingLabel(filters.key) }) }}</span>
+          <el-button
+            link
+            type="primary"
+            @click="clearKeyFilter"
+          >
+            {{ $t('auditLogs.filterKeyClear') }}
+          </el-button>
+        </div>
+
         <!-- 資料表格 -->
         <div class="list-card">
           <el-table
@@ -598,14 +614,19 @@
           </div>
         </el-descriptions-item>
 
+        <!-- 成功的操作也可能帶訊息（例如做了什麼替代處置）。把它掛在「錯誤訊息」
+             底下並塗成紅色，會讓一筆成功的紀錄在稽核眼裡讀成失敗 -->
         <el-descriptions-item
           v-if="selectedLog.error_msg"
-          :label="$t('auditLogs.errorMsg')"
+          :label="isSuccessLog(selectedLog)
+            ? $t('auditLogs.noticeMsg')
+            : $t('auditLogs.errorMsg')"
           :span="2"
         >
           <el-alert
-            type="error"
+            :type="isSuccessLog(selectedLog) ? 'info' : 'error'"
             :closable="false"
+            data-test="log-message"
           >
             {{ selectedLog.error_msg }}
           </el-alert>
@@ -748,6 +769,7 @@ import {
   auditCauseLabel,
 } from '@/constants/audit-enums'
 import { useRoles } from '@/composables/useRoles'
+import { settingLabel } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 
 const route = useRoute()
@@ -767,6 +789,9 @@ const filters = ref({
   action: null,
   resource: null,
   status: null,
+  // key 只由網址帶入（畫面上沒有輸入框）：它收斂的是安全政策的變更列，
+  // 供稽核人員由設定名一路追到那個設定的變更記錄
+  key: null,
 })
 
 const pagination = ref({
@@ -788,6 +813,7 @@ const fetchLogs = async () => {
     if (filters.value.action) params.action = filters.value.action
     if (filters.value.resource) params.resource = filters.value.resource
     if (filters.value.status) params.status = filters.value.status
+    if (filters.value.key) params.key = filters.value.key
 
     // 時間範圍
     if (timeRange.value && timeRange.value.length === 2) {
@@ -817,8 +843,20 @@ const handleReset = () => {
     action: null,
     resource: null,
     status: null,
+    key: null,
   }
   timeRange.value = []
+  handleSearch()
+}
+
+// 清除由記錄連結帶進來的篩選。
+//
+// **鍵與分類一起清**：只有安全政策的變更列帶得出設定鍵，兩者是同一句話的兩半。
+// 只清鍵會留下一個「還在只看安全政策」但畫面上不再說明的狀態；分類選單本來就在
+// 畫面上，清完之後使用者看得見它回到全部
+const clearKeyFilter = () => {
+  filters.value.key = null
+  filters.value.resource = null
   handleSearch()
 }
 
@@ -925,6 +963,9 @@ const translateStatus = (status) =>
   AUDIT_STATUS_VALUES.includes(status) ? t(`enum.auditStatus.${status}`) : status
 
 const getActionTagType = auditActionTagType
+
+// 成功的操作：訊息欄的標籤與樣式由它決定（失敗與拒絕仍是錯誤訊息）
+const isSuccessLog = (log) => log?.status === 'success'
 
 // 獲取狀態標籤類型
 const getStatusTagType = (status) => {
@@ -1045,11 +1086,31 @@ const handleTabChange = (tab) => {
 // `?tab=failures` 讓別的頁面連得進失效事件頁籤（檢查點驗證頁的角色指派
 // 差異即由此連入）。**只認白名單內的值**：未知的 tab 一律落回操作日誌，
 // 不讓網址上的字串決定要打哪一支 API
+//
+// `?resource=` 與 `?key=` 同理，供設定名 → 變更記錄的連結落地即收斂：
+// 分類只認既有值域內的值；鍵是設定鍵，長度以政策鍵欄位寬度為界。
 const TAB_FROM_QUERY = ['logs', 'reviews', 'failures']
+const POLICY_KEY_MAX_LENGTH = 64
 onMounted(() => {
-  const tab = route?.query?.tab
+  const query = route?.query || {}
+  const tab = query.tab
   if (typeof tab === 'string' && TAB_FROM_QUERY.includes(tab)) {
     activeTab.value = tab
+  }
+  // 以自有鍵比對而非 `in`：`in` 連物件原型上的名字（constructor 之類）都算命中，
+  // 那些不是分類值，卻會被原樣送給端點
+  if (
+    typeof query.resource === 'string' &&
+    Object.keys(AUDIT_RESOURCES).includes(query.resource)
+  ) {
+    filters.value.resource = query.resource
+  }
+  if (
+    typeof query.key === 'string' &&
+    query.key !== '' &&
+    query.key.length <= POLICY_KEY_MAX_LENGTH
+  ) {
+    filters.value.key = query.key
   }
   handleTabChange(activeTab.value)
 })
@@ -1066,6 +1127,19 @@ onMounted(() => {
   border: 1px solid var(--ot-border-subtle);
   border-radius: var(--ot-radius-lg);
   margin-bottom: var(--ot-space-md);
+}
+
+.applied-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-sm);
+  flex-wrap: wrap;
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  margin-bottom: var(--ot-space-md);
+  background-color: var(--ot-bg-elevated);
+  border: 1px solid var(--ot-border-subtle);
+  border-radius: var(--ot-radius-lg);
+  font-size: var(--ot-font-size-sm);
 }
 
 .list-card {

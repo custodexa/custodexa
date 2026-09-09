@@ -148,8 +148,8 @@ func TestLoginBannerPolicyDefsShape(t *testing.T) {
 		if def.Multiline != want.multiline {
 			t.Errorf("%s Multiline = %v, want %v", want.key, def.Multiline, want.multiline)
 		}
-		if def.PCIValue != "" || def.EPaymentValue != "" {
-			t.Errorf("%s 掛了基準建議值（內容由部署方自填，不存在通用的正確值）", want.key)
+		if reqs := builtinSeedRequirements(t, want.key); len(reqs) != 0 {
+			t.Errorf("%s 被內建組掛了要求 %v（內容由部署方自填，不存在通用的正確值）", want.key, reqs)
 		}
 		if def.Unit != "" || def.UnitKey != "" {
 			t.Errorf("%s 有單位 %q/%q，文字鍵不應有", want.key, def.Unit, def.UnitKey)
@@ -176,9 +176,6 @@ func TestLoginBannerListExposesTextMetadata(t *testing.T) {
 		}
 		if v.MaxLength != wantMax {
 			t.Errorf("%s max_length = %d, want %d", key, v.MaxLength, wantMax)
-		}
-		if v.Compliant != nil || v.EPaymentCompliant != nil {
-			t.Errorf("%s 的符合性應為 nil（無基準建議值）", key)
 		}
 	}
 	if views[PolicyLoginBannerBody].Multiline != true {

@@ -73,6 +73,9 @@
 | C12 | 詞彙 | 使用者（非用戶）／連線（非會話，Session ID 技術欄位保留）／進行中·已結束·異常中斷／新增（按鈕）／已○○（成功訊息）／重新整理（非刷新）／停用（非禁用）。**本詞彙表＝zh-TW locale 的內容標準（撰寫事實源）；en-US/ja-JP 譯文循各語言自然慣用，不受中文詞對映束縛** |
 | C13 | 審核域詞彙 | 五種審查動作嚴格分詞（`review` 一詞四義的顯示層防線）：**核准**＝連線申請 approve／**補審**＝破窗事後 review／**複審**＝存取複審 access review／**審閱**＝告警審閱／**簽核**＝每日簽核；「審核範圍」專指 approver scope。新頁面文案勿混用 |
 | C14 | i18n | 三語 zh-TW（源）/en-US/ja-JP；譯文一律進 `src/i18n/locales/*.json`（三語 key 集合一致，結構單測釘住）；枚舉 label 走 locale＋值域留 constants；偏好存 localStorage `ot-lang`（**裝置級全域，是「localStorage 角色分域」慣例的刻意例外**——登入前就要生效）；切語言免 reload（活躍連線不斷）；勿把格式化結果存 state（斷 reactivity）；技術識別字（enum value、協議 tag、HKDF info、路徑）不譯 |
+| C15 | 排程編輯 | 任何編輯排程的表單一律經共用頻率選擇器（`ScheduleFrequencyPicker`），並附下次執行時刻預覽；列表以人話呈現該排程，**不裸露 cron 欄位**。時刻由後端算、前端只顯示不換算——前後端各一套解析會在邊界形態上分岔，而分岔的方向剛好是「畫面說會跑、實際不跑」 |
+| C16 | 設定頁形態 | 每個設定鍵的第一層只有「標籤＋控制項＋單位＋資訊鈕」；白話說明、要求出處、對各政策組的判定與最後變更一律收進逐鍵抽屜（`PolicyKeyDrawer`），**抽屜是唯一的第二層**；每個分區只顯示一個偏離數 |
+| C17 | 文案層級 | 第一層文字以**非專業人士（管理者或稽核人員）看得懂**為準；技術識別字、條號、雜湊與時區位移退到第二層。行話不是第一層的語言 |
 
 共用件（勿在頁內重新實作）：`utils/format.js`（日期 24h 含秒/時長/相對時間）、`utils/protocol.js` `protocolTagType`（協議 tag 色）、`composables/useRoles.js`（角色判定，口徑 admin>auditor>user；`hasRole`/`roleNames` 相容物件/字串兩形）、`utils/approver-scope.js`（審核範圍四維顯示＋節點全路徑）、`ApproverScopeForm`（範圍新增表單，矩陣頁與 Users 對話框共用）、`EmptyState`／`PageHeader`。
 

@@ -166,6 +166,14 @@ var schemaParityModels = []interface{}{
 	&model.CredentialSecretVersion{},
 	&model.CredentialRotation{},
 	&model.CredentialRotationMember{},
+	// 政策組的四張表。由增量 migration 20260909_policy_groups 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛。
+	// policy_clause_annotations 刻意不指向條文列（見 migration_policy_groups.go
+	// 檔頭）：條文被升級標記移除之後，機構寫的備註仍須存在
+	&model.PolicyGroup{},
+	&model.PolicyClause{},
+	&model.PolicyClauseControl{},
+	&model.PolicyClauseAnnotation{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。
