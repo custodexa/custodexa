@@ -15,6 +15,7 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -189,21 +190,49 @@ func TestProductionPathRejectsEndpointOverrideEnv(t *testing.T) {
 	}
 }
 
-// TestProductionPathAcceptsCleanEnv 正向控制：無覆寫時生產路徑照常建構客戶端。
+// TestNewAWSClientAcceptsInjectedCredentials 正向控制：無覆寫且**已注入憑證**時照常建構。
 // 沒有這一格，「一律回錯」也會讓上面全綠。
-func TestProductionPathAcceptsCleanEnv(t *testing.T) {
+//
+// **憑證改為顯式注入（委託拓撲與憑證改由介面管理）**：環境變數
+// `AWS_ACCESS_KEY_ID`／`AWS_SECRET_ACCESS_KEY` 自本版起**不再**構成憑證來源，
+// 故本案改為經 Settings.Credentials 注入。兩者的差別由下一案釘住。
+func TestNewAWSClientAcceptsInjectedCredentials(t *testing.T) {
 	t.Setenv("AWS_ENDPOINT_URL_KMS", "")
 	t.Setenv("AWS_ENDPOINT_URL", "")
-	t.Setenv("AWS_ACCESS_KEY_ID", "test")
-	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
 	c, err := newAWSClient(context.Background(), Settings{
 		Provider: ProviderAWS, KeyID: testKeyAlias, Region: testRegion,
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 	})
 	if err != nil {
 		t.Fatalf("無端點覆寫時不得拒絕: %v", err)
 	}
 	if c == nil {
 		t.Fatal("應回傳可用客戶端")
+	}
+}
+
+// TestAWSCredentialsAreNotTakenFromEnvironment 正式路徑缺憑證即拒，且**不回落
+// SDK 預設憑證鏈**——即使環境裡剛好有一組看起來可用的憑證。
+//
+// 部署形態是地端機房以開放名單連往外部雲端金鑰服務：環境中不存在應當被採用的
+// 機器身分，「恰好撿到一組」代表撿到的是別人的憑證。
+func TestAWSCredentialsAreNotTakenFromEnvironment(t *testing.T) {
+	t.Setenv("AWS_ENDPOINT_URL_KMS", "")
+	t.Setenv("AWS_ENDPOINT_URL", "")
+	t.Setenv("AWS_ACCESS_KEY_ID", "ambient-should-not-be-used")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "ambient-should-not-be-used")
+	c, err := newAWSClient(context.Background(), Settings{
+		Provider: ProviderAWS, KeyID: testKeyAlias, Region: testRegion,
+	})
+	if !errors.Is(err, ErrCredentialsMissing) {
+		t.Fatalf("缺憑證應回 ErrCredentialsMissing，得 %v", err)
+	}
+	if c != nil {
+		t.Fatal("拒絕建構時不得回傳可用客戶端")
+	}
+	// 錯誤訊息不得含任何憑證值。
+	if strings.Contains(err.Error(), "ambient-should-not-be-used") {
+		t.Fatalf("錯誤訊息洩漏了環境中的憑證值: %v", err)
 	}
 }
 

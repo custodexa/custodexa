@@ -4,6 +4,7 @@ package dbproxy
 
 import (
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"net"
 	"os"
 	"strings"
@@ -43,7 +44,7 @@ func TestStartRunsCLIAsDeprivilegedUser(t *testing.T) {
 		Host:     "127.0.0.1",
 		Port:     ln.Addr().(*net.TCPAddr).Port,
 		Username: "probe",
-		Password: "probe",
+		Password: material.Adopt([]byte("probe")),
 	}, 80, 24)
 	if err != nil {
 		t.Fatalf("啟動資料庫 CLI 失敗: %v", err)
@@ -88,7 +89,7 @@ func TestStartWiresPasswordPromptInjection(t *testing.T) {
 
 	withPassword, err := Start(Target{
 		Protocol: "postgres", Host: "127.0.0.1", Port: port,
-		Username: "probe", Password: "probe",
+		Username: "probe", Password: material.Adopt([]byte("probe")),
 	}, 80, 24)
 	if err != nil {
 		t.Fatalf("啟動資料庫 CLI 失敗: %v", err)

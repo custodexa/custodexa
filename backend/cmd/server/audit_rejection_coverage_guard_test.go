@@ -178,6 +178,13 @@ var coverageExemptRoutes = map[[2]string]coverageExemptReason{
 
 	{"GET", "/api/v1/seal/status"}:  exemptSealEpoch,
 	{"POST", "/api/v1/seal/unseal"}: exemptSealEpoch,
+	// 解封流程第一段（帳密驗證）：封存期段 2 未起，認證中介層與審計服務都不存在，
+	// 它本身就是「在那之前先驗一次身分」的端點，掛認證中介層會構成循環。
+	// 留痕由封存期的行程日誌承擔（`[SealAudit] unseal authorization attempt`），
+	// 與同群組其餘端點同形；豁免的是本守衛的機打判定，不是留痕義務。
+	{"POST", "/api/v1/seal/authorize"}: exemptSealEpoch,
+	// Existing identity verification runs in the handler; rejection uses the shared audit marker.
+	{"POST", "/api/v1/seal/seal"}: exemptHandlerSelfAuth,
 
 	// 守衛攔下頁的兩條端點：同 seal 端點群的理由——攔下模式下段 2 未起、
 	// 認證系統不存在，且該模式**不得產生任何資料庫寫入**，寫不了審計列。

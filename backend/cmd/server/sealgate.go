@@ -36,9 +36,14 @@ var sealGateWhitelist = map[[2]string]bool{
 	{http.MethodGet, "/healthz"}:                true,
 	{http.MethodGet, observability.MetricsPath}: true,
 	{http.MethodGet, "/api/v1/seal/status"}:     true,
+	{http.MethodPost, "/api/v1/seal/authorize"}: true,
 	{http.MethodPost, "/api/v1/seal/unseal"}:    true,
+	{http.MethodPost, "/api/v1/seal/seal"}:      true,
+	{http.MethodOptions, "/api/v1/seal/seal"}:   true,
 	{http.MethodOptions, "/api/v1/seal/status"}: true,
 	{http.MethodOptions, "/api/v1/seal/unseal"}: true,
+	// 解封流程的第一段（帳密驗證）必須在封存期可達，否則解封頁的第一步就打不通。
+	{http.MethodOptions, "/api/v1/seal/authorize"}: true,
 }
 
 // haltGateWhitelist 是守衛攔下模式唯一可達的端點集合。

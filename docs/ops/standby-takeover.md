@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/standby-takeover.md) | [日本語](../ja/ops/standby-takeover.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.9.2.
+> Applies to: Custodexa 1.10.0.
 >
 > **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
 >
@@ -126,7 +126,9 @@ The standby is a second application host prepared from the same files, kept **do
    |---|---|
    | `env` | The same `ENCRYPTION_KEY` in its `.env` (it comes with the copy above) |
    | `ui` | Nothing on disk; **someone has to enter the unseal material on the standby's unseal page after it starts.** Takeover time includes that person |
-   | `kms` | The same KMS key and credentials reachable from this host |
+   | `kms` | The custodian reachable from this host, and **someone to unseal the standby after it starts**: they sign in on its unseal page with a local administrator's username and password, check the custodian shown there, and supply that provider's credentials again. Takeover time includes that person. The custodian settings come from the shared database and need no preparation on this host; the credentials are held only in memory and are never copied with `.env`, so whoever takes over has to be able to obtain them at that moment |
+
+   **A delegated standby does not come up ready.** In `kms` mode the credentials exist only in the memory of the unseal generation that was running on the primary, so the standby has no way to obtain them by itself; it starts sealed and waits. Put the person who holds those credentials, and how they are reached out of hours, into the takeover plan alongside the person for `ui` mode. While sealed, the standby serves only the health check and the seal endpoints, so §5's checks below the first three cannot be run until the unseal is done.
 5. **Offsite evidence storage, enabled and verified on the primary** (System Settings → Offsite Storage). It is the only way the standby can play recordings the primary made; without it the standby has none of them (§2.3). The settings live in the database, so the standby uses them as soon as it starts; the standby's own host still needs network access to the storage endpoint.
 6. **The address users connect to.** Decide now how users reach the standby after a takeover: re-pointing a DNS name or a virtual address to the standby keeps `PUBLIC_BASE_URL`, the certificate and every SSO redirect URI unchanged, which is the arrangement this document assumes. Any other arrangement changes those values on the standby, and the IdP-side redirect URIs with them.
 7. **Start it once, then take it down.** Bring the standby up while the primary is **stopped** (a planned switchover, §3), verify it (§5), switch back, and leave the standby down. Two things to make sure of before you walk away: `docker compose ps` on the standby shows nothing, and nothing on that host starts the stack on boot (the `restart: always` policy only acts on containers that exist; a `down` removes them).
@@ -168,7 +170,7 @@ Use this for maintenance of the primary host, for the rehearsal in §2.2 step 7,
    docker compose logs backend | grep -E 'InstanceGuard|資料庫連線成功|Listening|監聽'
    ```
 
-   The log shows the database connection, then the normal startup without any `[InstanceGuard]` warning; the lock was free. With `KEK_PROVIDER=ui`, the backend now waits for the unseal, and so does everything else.
+   The log shows the database connection, then the normal startup without any `[InstanceGuard]` warning; the lock was free. With `KEK_PROVIDER=ui` or `kms`, the backend now waits for the unseal, and so does everything else.
 5. **Re-point the address** users connect to (DNS or virtual address) at the standby, and verify (§5).
 
 Switching back is the same steps with the hosts exchanged.
@@ -200,7 +202,7 @@ Two outcomes:
   ```
   CRITICAL：單實例鎖由另一個資料庫工作階段持有。本版不支援多實例部署，本實例未啟動服務。
     持鎖者：application_name=custodexa-instance-guard pid=268 backend_start=2026-09-05T13:50:58.116184Z code=2936aed7c309
-    風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
+    風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封存期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
     處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。
     處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 2936aed7c309 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=2936aed7c309 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
     澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。
@@ -280,7 +282,7 @@ Run on the standby after §3 or §4; every row has to hold before the takeover i
 | 3 | Lock state | `curl -sk https://<address>/api/v1/seal/status`; while `overridden`, also `GET /api/v1/instance-guard` as an administrator, or the holder in the banner | `instance_guard.state` is `held` after §3; after §4.3, `held`, or `overridden` with the holder's `backend_start` unchanged from the §4.2 message. `reason` is `ack_page` when the confirmation was made on the halt page and `ack_startup` when it came from `INSTANCE_GUARD_ACK`; the `overridden` audit row carries the confirming account for the first and `operator via env` for the second. A holder with a newer `backend_start` means another backend took the lock (§4.4) |
 | 4 | Sign-in works | Sign in with an account whose password you know | The sign-in succeeds; users' accounts, roles and assets are all there, since they are in the database |
 | 5 | The data is the primary's | Open the asset list and the audit page | Assets created on the primary are listed; the last audit rows written on the primary are there, followed by the sign-in you just made on the standby |
-| 6 | Unsealed | With `KEK_PROVIDER=ui`: the unseal page | Completed; with `env` or `kms`, the backend log shows no seal-related refusal |
+| 6 | Unsealed | With `KEK_PROVIDER=ui` or `kms`: the unseal page | Completed. In `kms` mode the page first asks for a local administrator's username and password, then shows the custodian for you to check against the deployment record, and then takes that provider's credentials; `seal/status` reports the unsealed state afterwards. With `env`, the backend log shows no seal-related refusal |
 | 7 | Recordings | Play a recording made on the primary that was uploaded offsite | It plays after the retrieval wait (first playback of an offsite recording downloads it) |
 | 8 | The address | Open the service under the address users use | It lands on the standby (compare the container names in `docker compose ps` against the certificate and the response) |
 | 9 | Source attribution | The audit row of your sign-in | Shows your client address, not the proxy's; otherwise `TRUSTED_PROXIES` is wrong for this host |

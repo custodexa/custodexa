@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"strings"
 
 	"github.com/custodexa/backend/internal/database"
@@ -78,8 +79,8 @@ type AssetCredentials struct {
 	// AccountID 實際使用的帳號 id；0＝零帳號資產（原本即無憑證者，合法）
 	AccountID  uint
 	Username   string
-	Password   string
-	PrivateKey string
+	Password   *material.Secret
+	PrivateKey *material.Secret
 }
 
 // AssetAccountDTO 帳號的**完整版**對外表示（管理視圖）：密文欄位絕不出站，
@@ -1251,4 +1252,11 @@ func changedSecretFields(hasPassword, hasPrivateKey, isDefault bool) []string {
 		fields = append(fields, "is_default")
 	}
 	return fields
+}
+
+func (c *AssetCredentials) Destroy() {
+	if c != nil {
+		c.Password.Destroy()
+		c.PrivateKey.Destroy()
+	}
 }

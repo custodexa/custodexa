@@ -85,7 +85,7 @@ func runStage2ForOffsite(t *testing.T, seedProfiles func(t *testing.T)) (*sealIn
 	if err != nil {
 		t.Fatalf("建構 KEK provider 失敗: %v", err)
 	}
-	g, err := runStage2(context.Background(), env.s1, kek)
+	g, err := runStage2(context.Background(), env.s1, kek, nil, nil)
 	if err != nil {
 		t.Fatalf("段 2 建構失敗: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestOffsiteLedgerContinuityFailureRollsBackStage2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("建構 KEK provider 失敗: %v", err)
 	}
-	g, err := runStage2(context.Background(), env.s1, kek)
+	g, err := runStage2(context.Background(), env.s1, kek, nil, nil)
 	if err == nil {
 		t.Fatal("帳冊指向不存在的世代時段 2 竟成功：取回將以「用現行設定猜」收場")
 	}

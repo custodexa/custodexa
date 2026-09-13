@@ -52,6 +52,8 @@ type authContextTouchpoint struct {
 // 清單可超前登記尚未存在的位置（單向判定，登記多了不會紅）——分批交付時，
 // 後批才出現的貫穿點可先寫進來備查。
 var authContextTouchpoints = []authContextTouchpoint{
+	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/identity/seal_authorizer.go", fn: "SealAuthorizer.Authorize", count: 1,
+		source: "Existing verified JWT AuthContext; credential generation is checked against the current identity database"},
 	// ── 簽發側：JWT ─────────────────────────────────────────────
 	{symbol: "GenerateToken", file: "internal/modules/identity/auth_service.go", fn: "AuthService.buildLoginResponse", count: 1,
 		source: "呼叫端傳入的 crypto.AuthContext（登入／MFA 完成／換發皆經此收口）"},
@@ -358,6 +360,17 @@ var authContextHomonymDecls = map[string]string{
 	// （`Uploader.resolve`）傳的是 `model.Mechanism*` 常數＝把某個離機失效機制
 	// 標記為已恢復，不簽發、不驗證、不失效任何憑證
 	"github.com/custodexa/backend/internal/offsite.FailureReporter.Resolve": "審計失敗復原標記（離機上傳側窄介面）",
+	// 解封授權脈絡的簽發（委託拓撲與憑證改由介面管理）。
+	//
+	// **與 JWT 簽發語義無關**：脈絡不是憑證——不帶角色、不可用於任何業務端點、
+	// 不進資料庫、不跨行程（行程重啟即全部失效），且它只證明「送出這個請求的人
+	// 在不久之前通過了管理員帳密」。本守衛要防的失效形態是「既簽 token 對
+	// provider 停用與憑證世代免疫」，而該形態在此**結構上不成立**：
+	// `SealGrantStore.Verify` 於**每次使用**呼叫 `VerifySealAdminStillAuthorized`
+	// 重新判定（停用、降權、鎖定、憑證世代推進皆在取用時被擋下並立即刪除脈絡），
+	// 效期上限另為 10 分鐘。故它不需要攜帶 `crypto.AuthContext`——那個結構承載的
+	// 是「這個 token 是用哪條認證路徑、在哪個世代簽出來的」，而脈絡從不被離線驗證。
+	"github.com/custodexa/backend/internal/api.SealGrantStore.Issue": "解封授權脈絡的簽發（非憑證；每次使用重新判定資格）",
 	// internal/seal 狀態機的套件級 Resolve(Situation)
 	"github.com/custodexa/backend/internal/seal..Resolve": "封印狀態機的情境解析",
 	// host key TOFU 驗證回呼（`hostKeys.Callback(assetID)` 回 ssh.HostKeyCallback），
@@ -371,7 +384,7 @@ var authContextHomonymDecls = map[string]string{
 	"github.com/custodexa/backend/internal/modules/identity.authorizationCascadeRevoker.RevokeByUser": "交易級聯撤銷授權資料（identity 側窄介面）",
 }
 
-// maxAuthContextHomonymDecls 同名例外的條數上限（現況 8）。
+// maxAuthContextHomonymDecls 同名例外的條數上限（現況 9）。
 //
 // **這個常數是本表的付費閘**：沒有它，允許清單可以無聲長大——每加一筆就有一個
 // 宣告自貫穿點掃描面消失，而消失本身不需要任何人簽字，也不會有任何數字在 PR diff
@@ -379,7 +392,7 @@ var authContextHomonymDecls = map[string]string{
 //
 // 上限是**收緊用的**：發現某個例外其實不該存在時刪掉它並調低此數，是正確方向；
 // 為了讓守衛變綠而調高它，等同於宣告「這一批認證脈絡不再有人看守」。
-const maxAuthContextHomonymDecls = 8
+const maxAuthContextHomonymDecls = 9
 
 // authContextWatchedSymbols 需要掃描呼叫點的符號集合。
 //

@@ -3,7 +3,6 @@ package seal
 import (
 	"context"
 	"errors"
-	"fmt"
 )
 
 // 本檔為 12 格中各終局處置的實作。所有轉態一律經 attempt.casCell → 單一
@@ -122,33 +121,28 @@ var errUnpublishedCAS = errors.New("seal: publish CAS 未成功（較新世代�
 // 本格不設 cleanup：持有者就在本地且已返回，資源就地同步釋放即可，
 // 不需要以「待收束」擋住下一次解封（與格 6／7 的持有者可能仍在跑不同）。
 func (a *attempt) unpublished(cause error, graph ServiceGraph) error {
-	a.releaseGraph(graph)
+	if err := a.releaseGraph(graph); err != nil {
+		a.casCell(EventStage2Failure, nil)
+		return newError(CodeInitFailed, cellInitFailed, a.gen, errors.Join(cause, err))
+	}
 	a.casCell(EventStage2Unpublished, nil)
 	return newError(CodePublishUnconfirmed, cellUnpublished, a.gen, cause)
 }
 
-// releaseGraph 釋放（可能是半建構的）服務圖，並吞下 panic：
-// 收束途中放棄會讓剩餘資源永久洩漏而使 cleanup 永不完成。
-func (a *attempt) releaseGraph(graph ServiceGraph) {
-	if graph == nil {
-		return
-	}
+// releaseGraph preserves release errors and bounded cleanup failures.
+func (a *attempt) releaseGraph(graph ServiceGraph) error {
 	base := a.baseCtx
 	if base == nil {
 		base = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(base), a.m.cleanupTimeout)
 	defer cancel()
-	defer func() {
-		if r := recover(); r != nil {
-			_ = fmt.Errorf("seal: 釋放服務圖 panic: %v", r)
-		}
-	}()
-	_ = graph.Release(ctx)
+	return releaseBounded(ctx, graph)
 }
 
-// releaseAndClear 釋放資源後以 CAS 清除 cleanup（格 8）；此後才可再取得持有權。
+// releaseAndClear clears the cleanup token only after successful release.
 func (a *attempt) releaseAndClear(graph ServiceGraph) {
-	a.releaseGraph(graph)
-	a.m.CompleteCleanup(a.gen)
+	if a.releaseGraph(graph) == nil {
+		a.m.CompleteCleanup(a.gen)
+	}
 }

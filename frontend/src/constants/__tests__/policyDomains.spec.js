@@ -44,6 +44,8 @@ const BACKEND_POLICY_KEYS = [
   'offsite_local_retention_days',
   'key_cryptoperiod_reminder_days',
   'key_rotation_max_per_run',
+  // 資料金鑰快取存活期：空值＝不限期
+  'dek_cache_ttl_seconds',
   'k8s_list_timeout_seconds',
   'transport_rdp_level',
   'transport_vnc_level',

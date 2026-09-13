@@ -9,6 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/seal"
 	"log"
 
 	"github.com/custodexa/backend/internal/model"
@@ -34,6 +36,7 @@ var ErrCheckpointSigningKeyVersionUnknown = errors.New("檢查點簽章鑰版本
 // 載入或生成失敗一律回錯（呼叫端 fail-close 拒絕啟動）：帶病啟動會產生一批
 // 無法驗證的檢查點，而檢查點的全部價值就在「可驗」。
 type CheckpointSigningService struct {
+	gate *seal.MaterialGate
 	// keys 版本→私鑰（公鑰由私鑰導出）
 	keys map[int]ed25519.PrivateKey
 	// activeVersion 現行簽章版本
@@ -44,7 +47,7 @@ type CheckpointSigningService struct {
 //
 // codec 為信封 ColumnCodec：私鑰以 RefCheckpointSigningPrivateKey 綁定 AAD 寫出
 // `enc:a1`——介面上沒有 Encrypt(plaintext)，建構上不可能寫出無 AAD 密文。
-func NewCheckpointSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*CheckpointSigningService, error) {
+func NewCheckpointSigningService(db *gorm.DB, codec crypto.ColumnCodec) (result *CheckpointSigningService, resultErr error) {
 	ctx := context.Background()
 
 	var rows []model.CheckpointSigningKey
@@ -56,7 +59,14 @@ func NewCheckpointSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*Checkp
 		return generateCheckpointSigningKey(ctx, db, codec)
 	}
 
-	svc := &CheckpointSigningService{keys: map[int]ed25519.PrivateKey{}}
+	svc := &CheckpointSigningService{gate: gateOf(codec), keys: map[int]ed25519.PrivateKey{}}
+	defer func() {
+		if result == nil {
+			for _, priv := range svc.keys {
+				material.Wipe(priv)
+			}
+		}
+	}()
 	for _, row := range rows {
 		privRaw, err := codec.DecryptFor(ctx, RefCheckpointSigningPrivateKey, row.PrivateKeyEnc)
 		if err != nil {
@@ -65,9 +75,11 @@ func NewCheckpointSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*Checkp
 		}
 		priv, err := base64.StdEncoding.DecodeString(privRaw)
 		if err != nil || len(priv) != ed25519.PrivateKeySize {
+			material.Wipe(priv)
 			return nil, fmt.Errorf("檢查點簽章私鑰 v%d 格式損毀", row.Version)
 		}
 		key := ed25519.PrivateKey(priv)
+		svc.keys[row.Version] = key
 		// 公鑰欄與私鑰必須自洽：不符表示有人單改公鑰欄想讓偽造簽章驗過
 		if want := base64.StdEncoding.EncodeToString(key.Public().(ed25519.PublicKey)); want != row.PublicKey {
 			return nil, fmt.Errorf("檢查點簽章鑰 v%d 的公鑰欄與私鑰不符（疑遭竄改）", row.Version)
@@ -86,8 +98,13 @@ func NewCheckpointSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*Checkp
 }
 
 // generateCheckpointSigningKey 首啟生成 v1（active）
-func generateCheckpointSigningKey(ctx context.Context, db *gorm.DB, codec crypto.ColumnCodec) (*CheckpointSigningService, error) {
+func generateCheckpointSigningKey(ctx context.Context, db *gorm.DB, codec crypto.ColumnCodec) (result *CheckpointSigningService, resultErr error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	defer func() {
+		if result == nil {
+			material.Wipe(priv)
+		}
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("生成檢查點簽章鑰失敗: %w", err)
 	}
@@ -106,23 +123,50 @@ func generateCheckpointSigningKey(ctx context.Context, db *gorm.DB, codec crypto
 		return nil, fmt.Errorf("寫入檢查點簽章鑰失敗: %w", err)
 	}
 	log.Printf("[CheckpointSigning] 已生成檢查點簽章鑰 v1（Ed25519，公鑰 %s...）", row.PublicKey[:12])
-	return &CheckpointSigningService{
+	return &CheckpointSigningService{gate: gateOf(codec),
 		keys:          map[int]ed25519.PrivateKey{1: priv},
 		activeVersion: 1,
 	}, nil
 }
 
 // ActiveVersion 現行簽章鑰版本（封章時記入檢查點）
-func (s *CheckpointSigningService) ActiveVersion() int { return s.activeVersion }
+func (s *CheckpointSigningService) ActiveVersion() int {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return 0
+	}
+	defer lease.Finish(func(bool) {})
+	return s.activeVersion
+}
 
 // Sign 以現行鑰簽，回 (版本, base64 簽章)
-func (s *CheckpointSigningService) Sign(data []byte) (int, string) {
+func (s *CheckpointSigningService) Sign(data []byte) (version int, result string) {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return 0, ""
+	}
+	defer lease.Finish(func(valid bool) {
+		if !valid {
+			version = 0
+			result = ""
+		}
+	})
 	priv := s.keys[s.activeVersion]
 	return s.activeVersion, base64.StdEncoding.EncodeToString(ed25519.Sign(priv, data))
 }
 
 // PublicKeyBase64 指定版本的公鑰（base64）；版本不存在回錯，不回空值
-func (s *CheckpointSigningService) PublicKeyBase64(version int) (string, error) {
+func (s *CheckpointSigningService) PublicKeyBase64(version int) (result string, err error) {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return "", err
+	}
+	defer lease.Finish(func(valid bool) {
+		if !valid {
+			result = ""
+			err = seal.ErrMaterialSealed
+		}
+	})
 	priv, ok := s.keys[version]
 	if !ok {
 		return "", fmt.Errorf("%w: v%d", ErrCheckpointSigningKeyVersionUnknown, version)
@@ -132,7 +176,7 @@ func (s *CheckpointSigningService) PublicKeyBase64(version int) (string, error) 
 
 // ActivePublicKeyBase64 現行鑰公鑰（公鑰端點與金鑰清冊的同源出口）
 func (s *CheckpointSigningService) ActivePublicKeyBase64() string {
-	pub, _ := s.PublicKeyBase64(s.activeVersion)
+	pub, _ := s.PublicKeyBase64(s.ActiveVersion())
 	return pub
 }
 

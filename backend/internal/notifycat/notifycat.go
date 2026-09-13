@@ -86,6 +86,7 @@ var mechanismEnum = []string{
 	model.MechanismSourcePolicy,
 	model.MechanismOffsiteUpload,
 	model.MechanismRoleStateIntegrity,
+	model.MechanismDEKUnwrap,
 }
 
 // ---- 事件常數（值＝現行呼叫點字串，逐一與呼叫點實查對照）----
@@ -119,6 +120,16 @@ const (
 	EventDailyReviewOverdue Event = "daily_review_overdue"
 	// EventTest 通道測試發送（alert_notifier.go:449 buildChannelBody 的 event="test"）
 	EventTest Event = "test"
+
+	// EventKEKTopologyChanged 委託保管處設定變更（kek_topology_handler.go）。
+	//
+	// **為什麼是 notifycat 事件而不是 alert_rules 種子**：alert_rules 是危險
+	// 指令的正則規則（Pattern／Protocols 皆為指令語義），拓撲變更不是指令事件；
+	// 塞進去會污染規則表的語義，並使種子數守衛（釘死 12 條）失去意義。
+	//
+	// 參數只含**非秘密**的前後值摘要與變更者：憑證欄位不在其中，且變更的完整
+	// 前後值以審計列為準——通知會經外部通道出站，審計不會。
+	EventKEKTopologyChanged Event = "kek_topology_changed"
 )
 
 // ---- EventSpec 註冊（SHALL 與上方常數同檔相鄰）----
@@ -168,6 +179,17 @@ var registry = map[Event]EventSpec{
 		Params: requestScopeParams(
 			ParamSpec{Name: "timeout_hours", Kind: KindInt, Required: true},
 		),
+	},
+
+	EventKEKTopologyChanged: {
+		Params: []ParamSpec{
+			{Name: "actor", Kind: KindOpaque, Required: true},
+			{Name: "provider", Kind: KindOpaque, Required: true},
+			// before 於首次設定時為「尚未設定」的字面摘要，故為必要而非可選
+			// ——可選會讓「首次設定」與「摘要組不出來」在通知上無從分辨。
+			{Name: "before", Kind: KindOpaque, Required: true},
+			{Name: "after", Kind: KindOpaque, Required: true},
+		},
 	},
 
 	EventAuditFailure: {

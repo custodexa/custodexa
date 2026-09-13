@@ -210,7 +210,7 @@ func TestInstanceGuardBlockedMessage(t *testing.T) {
 			"本版不支援多實例",
 			"另一個資料庫工作階段持有",
 			"application_name=" + app, "pid=777", "backend_start=2026-08-25T01:02:03Z", "code=" + fp.Code,
-			"金鑰快取、匯出工作、錄影落地與封印期留痕",
+			"金鑰快取、匯出工作、錄影落地與封存期留痕",
 			"先停止它，再重啟本實例",
 			"INSTANCE_GUARD_ACK=" + fp.Code,
 			"寫入審計事件並在管理介面顯示橫幅",

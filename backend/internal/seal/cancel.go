@@ -58,9 +58,11 @@ func (f ReleaserFunc) Release(ctx context.Context) error { return f(ctx) }
 // Release 為冪等：重複呼叫不重複釋放（現況多個 Stop() 非冪等，
 // 二次呼叫會 close 已關閉的 channel 而 panic，見 RESOURCES.md）。
 type ResourceBag struct {
-	mu       sync.Mutex
-	items    []bagItem
-	released bool
+	mu          sync.Mutex
+	items       []bagItem
+	released    bool
+	releaseDone chan struct{}
+	releaseErr  error
 }
 
 type bagItem struct {
@@ -127,10 +129,20 @@ func (b *ResourceBag) Released() bool {
 func (b *ResourceBag) Release(ctx context.Context) error {
 	b.mu.Lock()
 	if b.released {
+		done := b.releaseDone
 		b.mu.Unlock()
-		return nil
+		select {
+		case <-done:
+			b.mu.Lock()
+			err := b.releaseErr
+			b.mu.Unlock()
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	b.released = true
+	b.releaseDone = make(chan struct{})
 	items := b.items
 	b.items = nil
 	b.mu.Unlock()
@@ -142,7 +154,11 @@ func (b *ResourceBag) Release(ctx context.Context) error {
 			errs = append(errs, err)
 		}
 	}
-	return errors.Join(errs...)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.releaseErr = errors.Join(errs...)
+	close(b.releaseDone)
+	return b.releaseErr
 }
 
 func releaseOne(ctx context.Context, it bagItem) (err error) {

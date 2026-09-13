@@ -38,6 +38,8 @@ const (
 	WrappedFormatLocal = "local"
 	WrappedFormatKMS   = "kms"
 	WrappedFormatHSM   = "hsm"
+	WrappedFormatVault = "vault"
+	WrappedFormatGCP   = "gcp"
 )
 
 // ErrWrappedKeyFormat wrapped_key 值格式錯（未知標記／未知版本／損毀／
@@ -71,7 +73,7 @@ func AADBoundWrappedPrefix(tag string) string { return wrappedKeyPrefixV2 + tag 
 // 產出非終態 wrapped 值」自此是**建構事實**，不是靠呼叫端自律的承諾。
 func EncodeWrappedKey(tag string, raw []byte) (string, error) {
 	switch tag {
-	case WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM:
+	case WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM, WrappedFormatVault, WrappedFormatGCP:
 	default:
 		return "", fmt.Errorf("%w（未知格式標記 %q）", ErrWrappedKeyFormat, tag)
 	}
@@ -105,7 +107,7 @@ func ParseWrappedKey(s string) (tag string, raw []byte, err error) {
 	}
 	tag = rest[:sep]
 	switch tag {
-	case WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM:
+	case WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM, WrappedFormatVault, WrappedFormatGCP:
 	default:
 		return "", nil, fmt.Errorf("%w（未知格式標記 %q）", ErrWrappedKeyFormat, tag)
 	}

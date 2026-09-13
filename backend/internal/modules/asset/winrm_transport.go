@@ -165,7 +165,7 @@ type winrmTransport struct {
 	hc          *http.Client
 	url         string
 	username    string
-	password    string
+	password    []byte
 	newSecurity winrmSecurityFactory
 }
 
@@ -178,7 +178,8 @@ func (t *winrmTransport) post(msg *soap.SoapMessage) (string, error) {
 	winrmPostMu.Lock()
 	defer winrmPostMu.Unlock()
 
-	sec := t.newSecurity(t.username, t.password)
+	// The authentication library requires an immutable string; its copies are not erased.
+	sec := t.newSecurity(t.username, string(t.password))
 	if err := sec.handshake(t.ctx, t.hc, t.url); err != nil {
 		return "", err
 	}

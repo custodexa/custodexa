@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
@@ -126,6 +127,10 @@ func RunCredentialSecretConversion(db *gorm.DB, codec crypto.ColumnCodec) error 
 		if rebound, err = rebindMigratedVersionCiphertext(tx, codec); err != nil {
 			return err
 		}
+		bytesCodec, ok := codec.(material.BytesColumnCodec)
+		if !ok {
+			return fmt.Errorf("credential conversion requires bytes column codec")
+		}
 		stage = conversionStageScan
 		groups, err := credentialGroupsForMerge(tx)
 		if err != nil {
@@ -133,7 +138,7 @@ func RunCredentialSecretConversion(db *gorm.DB, codec crypto.ColumnCodec) error 
 		}
 		for _, g := range groups {
 			stage = conversionStageCompare
-			verdict, err := evaluateGroupForMerge(codec, g)
+			verdict, err := evaluateGroupForMerge(bytesCodec, g)
 			if err != nil {
 				return err
 			}
@@ -243,7 +248,7 @@ type mergeAttribute struct {
 // mergeAttributesOf 合併後由共用憑證**單一持有**的屬性。
 //
 // 這四項全部必須一致才准合併：合併只留第一位成員的值
-//（mergeGroupIntoSharedCredential），任一項不同就代表其餘成員的屬性被靜默改寫。
+// （mergeGroupIntoSharedCredential），任一項不同就代表其餘成員的屬性被靜默改寫。
 // 協定族尤其致命——它是掛載時與資產協定比對相容性的判準，被改掉的那台此後
 // 對不上任何憑證，而畫面上看不出發生過什麼。
 func mergeAttributesOf(m credentialGroupMember) []mergeAttribute {
@@ -259,7 +264,7 @@ func mergeAttributesOf(m credentialGroupMember) []mergeAttribute {
 //
 // 「沒有秘密」與「秘密是空的」是兩件事：前者代表這筆憑證從來沒有過秘密，
 // 後者代表有一版秘密而它的某一欄沒有內容。明文比對分不出這兩者
-//（兩邊解出來都是空字串），故存在性另外比。
+// （兩邊解出來都是空字串），故存在性另外比。
 type secretPresence struct {
 	Version    bool
 	Password   bool
@@ -383,17 +388,19 @@ type groupMergeVerdict struct {
 //     不比就等於靜默改寫其餘成員的協定族、認證方式與秘密型別。
 //
 // 解密失敗一律回錯（整批回滾）：拿不到明文就無從判定，此時「各留專用」是猜的。
-func evaluateGroupForMerge(codec crypto.ColumnCodec, g credentialGroup) (groupMergeVerdict, error) {
+func evaluateGroupForMerge(codec material.BytesColumnCodec, g credentialGroup) (groupMergeVerdict, error) {
 	ctx := context.Background()
 	first := g.Members[0]
 	firstPassword, err := decryptCredentialPassword(ctx, codec, first.PasswordEnc)
 	if err != nil {
 		return groupMergeVerdict{}, fmt.Errorf("解密帳號 #%d 的密碼以比對共用關係失敗: %w", first.AccountID, err)
 	}
+	defer firstPassword.Destroy()
 	firstKey, err := decryptCredentialPrivateKey(ctx, codec, first.PrivateKeyEnc)
 	if err != nil {
 		return groupMergeVerdict{}, fmt.Errorf("解密帳號 #%d 的私鑰以比對共用關係失敗: %w", first.AccountID, err)
 	}
+	defer firstKey.Destroy()
 	firstAttrs := mergeAttributesOf(first)
 	firstPresence := secretPresenceOf(first)
 
@@ -414,11 +421,21 @@ func evaluateGroupForMerge(codec crypto.ColumnCodec, g credentialGroup) (groupMe
 		}
 		key, err := decryptCredentialPrivateKey(ctx, codec, m.PrivateKeyEnc)
 		if err != nil {
+			password.Destroy()
 			return groupMergeVerdict{}, fmt.Errorf("解密帳號 #%d 的私鑰以比對共用關係失敗: %w", m.AccountID, err)
 		}
 		// 常數時間比較：逐筆全比完才回結論，不因先發現不同而提早離開迴圈
-		sameSecret := subtle.ConstantTimeCompare([]byte(password), []byte(firstPassword)) == 1 &&
-			subtle.ConstantTimeCompare([]byte(key), []byte(firstKey)) == 1
+		samePassword, passwordErr := compareSecretBytes(password, firstPassword)
+		sameKey, keyErr := compareSecretBytes(key, firstKey)
+		password.Destroy()
+		key.Destroy()
+		if passwordErr != nil {
+			return groupMergeVerdict{}, passwordErr
+		}
+		if keyErr != nil {
+			return groupMergeVerdict{}, keyErr
+		}
+		sameSecret := samePassword && sameKey
 		if !sameSecret {
 			secretsDiffer = true
 			addField("secret_value")
@@ -446,24 +463,30 @@ func evaluateGroupForMerge(codec crypto.ColumnCodec, g credentialGroup) (groupMe
 	return groupMergeVerdict{Reason: reason, Fields: fields}, nil
 }
 
-// decryptCredentialPassword／decryptCredentialPrivateKey 解封一個密文版本欄；
-// 空值即空明文（沒有秘密可比）。
-//
-// **兩支分開寫、各自帶字面 ref**：解封出口守衛以 AST 判定 `DecryptFor` 的第二個
-// 引數是不是資產類 CipherRef，把 ref 收成參數會讓這個解封點在掃描面上變成隱形人
-// ——那正是該守衛存在的理由。兩支皆具名登記於 assetCredentialExits。
-func decryptCredentialPassword(ctx context.Context, codec crypto.ColumnCodec, ciphertext string) (string, error) {
+// Each outlet keeps its column identity explicit and transfers an owner.
+func decryptCredentialPassword(ctx context.Context, codec material.BytesColumnCodec, ciphertext string) (*material.Secret, error) {
 	if ciphertext == "" {
-		return "", nil
+		return material.Adopt(nil), nil
 	}
-	return codec.DecryptFor(ctx, keyvault.RefCredentialVersionPassword, ciphertext)
+	return codec.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPassword, ciphertext)
 }
 
-func decryptCredentialPrivateKey(ctx context.Context, codec crypto.ColumnCodec, ciphertext string) (string, error) {
+func decryptCredentialPrivateKey(ctx context.Context, codec material.BytesColumnCodec, ciphertext string) (*material.Secret, error) {
 	if ciphertext == "" {
-		return "", nil
+		return material.Adopt(nil), nil
 	}
-	return codec.DecryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, ciphertext)
+	return codec.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPrivateKey, ciphertext)
+}
+
+func compareSecretBytes(a, b *material.Secret) (bool, error) {
+	same := false
+	err := a.Borrow(func(left []byte) error {
+		return b.Borrow(func(right []byte) error {
+			same = subtle.ConstantTimeCompare(left, right) == 1
+			return nil
+		})
+	})
+	return same, err
 }
 
 // mergeGroupIntoSharedCredential 把一致的群組合併為一筆具名共用憑證。
@@ -591,7 +614,7 @@ func markGroupMismatch(tx *gorm.DB, g credentialGroup, verdict groupMergeVerdict
 // **記階段而不記原始錯誤字串**：階段是本轉換自己定義的固定集合，事後可長期比對；
 // 原始錯誤來自資料庫與 codec，內容不受本檔控制，落進不可竄改的證據面之前
 // 無法保證它不帶入任何值。原始錯誤仍完整留在啟動日誌
-//（RunPostUnsealMigrations 逐項印出），兩者配套使用。
+// （RunPostUnsealMigrations 逐項印出），兩者配套使用。
 const (
 	conversionStageMarkerRead = "marker_read"
 	conversionStageCodec      = "codec_unavailable"

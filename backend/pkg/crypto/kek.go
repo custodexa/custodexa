@@ -17,12 +17,13 @@ const (
 	KEKModeHSM = "hsm"
 )
 
-// KeyRef.Provider 值域（三值，非四值）：描述「這串引用要用哪種解包途徑
-// 解讀」。env 與 ui 皆映射 local。
+// Key reference providers describe decoding routes; env and ui share local.
 const (
 	KeyRefProviderLocal = "local"
 	KeyRefProviderKMS   = "kms"
 	KeyRefProviderHSM   = "hsm"
+	KeyRefProviderVault = "vault"
+	KeyRefProviderGCP   = "gcp"
 )
 
 // ErrKEKFormatMismatch 包裹值格式標記與本 provider 不符：
@@ -33,7 +34,7 @@ var ErrKEKFormatMismatch = errors.New("包裹材料格式標記與現行 KEK pro
 // 本地模式為材料指紋（可由材料重算），委託模式為外部金鑰識別（不可重算）。
 // **相等性 SHALL 僅由 (Provider, KeyID) 決定，不含執行期組態模式**。
 type KeyRef struct {
-	// Provider local | kms | hsm（三值）
+	// Provider is local, kms, hsm, vault, or gcp.
 	Provider string
 	// KeyID local: hex(SHA-256(material)[:8])；kms: 正規 key ARN；hsm: token:label（跳脫後）
 	KeyID string
@@ -75,9 +76,9 @@ type KEKProvider interface {
 	KeyRef() KeyRef
 	// Mode 執行期組態模式（env／ui／kms／hsm）。清冊與執行期雙軌互證：清冊 provider 欄
 	// SHALL 由此導出，SHALL NOT 重讀 os.Getenv、亦 SHALL NOT 由 KeyRef().Provider
-	// 推導（後者三值，無法區分 env 與 ui）
+	// 推導（引用種類無法區分 env 與 ui）
 	Mode() string
-	// FormatTag 本 provider 寫出的 wrapped 格式標記（local／kms／hsm）
+	// FormatTag identifies the wrapped representation: local, kms, hsm, vault, or gcp.
 	FormatTag() string
 	// ReEncrypt 由舊 wrapped 直接產出本 provider 的 wrapped。
 	// 預設實作＝from.Unwrap 後本 provider Wrap；KMS 可覆寫為原生 ReEncrypt 原語

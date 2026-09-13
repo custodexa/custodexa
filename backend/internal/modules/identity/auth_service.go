@@ -1091,7 +1091,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 
 // ValidateToken 驗證 token
 func (s *AuthService) ValidateToken(tokenString string) (*crypto.Claims, error) {
-	return s.jwtManager.ValidateToken(tokenString)
+	return validateIdentityToken(s.jwtManager,tokenString)
 }
 
 // ValidateConnectionToken WS 連線端點統一認證（認證邊界一致性）：
@@ -1145,13 +1145,7 @@ func (s *AuthService) CheckUserConnectable(userID uint) error {
 		}
 		return err
 	}
-	if !user.Active {
-		return ErrUserInactive
-	}
-	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		return ErrAccountLocked
-	}
-	return nil
+ return checkConnectableUser(&user)
 }
 
 // CurrentConnectRole 一次查詢完成 connect 路徑的「可連線複查」與「現查有效角色」：

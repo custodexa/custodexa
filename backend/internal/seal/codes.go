@@ -88,3 +88,31 @@ func CellOf(err error) string {
 func newError(code, cell string, gen uint64, cause error) *Error {
 	return &Error{Code: code, Cell: cell, Generation: gen, Cause: cause}
 }
+
+// 委託憑證階段的可辨識成因。
+//
+// # 為什麼放在本套件
+//
+// 這些值由組裝根的驗證函式產生、由 HTTP 層分類，兩者都已依賴本套件，而狀態機的
+// Error 會把驗證錯誤原樣掛在 Cause 上（見 Error.Unwrap）——放在此處使
+// `errors.Is(unsealErr, seal.ErrCredentialRejected)` 在 HTTP 層直接成立，
+// 不需要第三個套件或一份平行的分類表。
+//
+// # 可區分性邊界
+//
+// 這四個成因**僅在請求帶有效解封授權脈絡時**才可對外區分；無脈絡的請求一律
+// 收斂為 CodeMaterialInvalid，與改前行為逐字相同。此時對象已通過管理員帳密
+// 驗證，匿名探測所需的回應不可區分保護不再適用。
+//
+// 四者皆為系統自定的分類：**SHALL NOT 轉呈保管處或雲端服務的原始回應**，
+// SHALL NOT 含秘密、請求本文或可供外部試探的認證細節。
+var (
+	// ErrCustodyUnreachable 保管處連不上（網路、位址、白名單）。
+	ErrCustodyUnreachable = errors.New("seal: custody service unreachable")
+	// ErrCredentialRejected 憑證被保管處拒絕（失效、權限不足）。
+	ErrCredentialRejected = errors.New("seal: credential rejected by custody service")
+	// ErrKeyMismatch 保管處回應的金鑰與本部署不符（解不開既有代表列）。
+	ErrKeyMismatch = errors.New("seal: custody key does not match this deployment")
+	// ErrTopologyChanged 核對之後拓撲被改動；舊核對結果不授權新目的地。
+	ErrTopologyChanged = errors.New("seal: topology changed after verification")
+)

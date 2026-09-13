@@ -60,25 +60,25 @@ func newRotationRecorder() *rotationRecorder {
 	}
 }
 
-func (r *rotationRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret string) error {
+func (r *rotationRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.rotateCalls[t.asset.Host]++
 	if err := r.rotateErr[t.asset.Host]; err != nil {
 		return err
 	}
-	r.rotated[t.asset.Host] = newSecret
+	r.rotated[t.asset.Host] = string(newSecret)
 	return nil
 }
 
-func (r *rotationRecorder) Verify(_ context.Context, t rotationTarget, newSecret string) error {
+func (r *rotationRecorder) Verify(_ context.Context, t rotationTarget, newSecret []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.verifyCalls[t.asset.Host]++
 	if err := r.verifyErr[t.asset.Host]; err != nil {
 		return err
 	}
-	r.verified[t.asset.Host] = newSecret
+	r.verified[t.asset.Host] = string(newSecret)
 	return nil
 }
 
@@ -114,7 +114,7 @@ func (r *rotationRecorder) snapshot() (map[string]string, map[string]int, map[st
 
 // keyApplier 金鑰三段式的可換替身：記下每台收到的私鑰並沿用同一組錯誤分流。
 func (r *rotationRecorder) applyKey(ctx context.Context, exec rotationExecutor, rt rotationTarget,
-	_ changeSecretTarget, _, _, newPrivate, _, _, _ string, onDelivered func()) error {
+	_ changeSecretTarget, _, _, newPrivate []byte, _, _, _ string, onDelivered func()) error {
 
 	r.mu.Lock()
 	r.rotateCalls[rt.asset.Host]++
@@ -122,7 +122,7 @@ func (r *rotationRecorder) applyKey(ctx context.Context, exec rotationExecutor, 
 		r.mu.Unlock()
 		return err
 	}
-	r.keyDelivered[rt.asset.Host] = newPrivate
+	r.keyDelivered[rt.asset.Host] = string(newPrivate)
 	r.mu.Unlock()
 	if onDelivered != nil {
 		onDelivered()
@@ -204,7 +204,7 @@ func (f *rotationFixture) secretOfBinding(t *testing.T, accountID uint) string {
 	acc := f.binding(t, accountID)
 	resolved, err := f.assets.resolver.ResolveForBinding(context.Background(), acc.AssetID, acc.ID)
 	require.NoError(t, err)
-	return resolved.Password
+	return secretText(t, resolved.Password)
 }
 
 func (f *rotationFixture) versionCount(t *testing.T, credentialID uint) int64 {

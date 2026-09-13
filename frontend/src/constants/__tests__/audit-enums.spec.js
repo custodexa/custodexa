@@ -80,6 +80,7 @@ const BACKEND_MECHANISMS = [
   'offsite_upload',
   // 角色指派與檢查點鏈不符（role-assignment-integrity）
   'role_state_integrity',
+  'dek_unwrap',
 ]
 
 // 後端↔前端雙向完備性守衛：直讀後端原始碼取
@@ -167,6 +168,7 @@ const BACKEND_CAUSES = [
   'offsite_upload_stalled',
   'offsite_integrity_mismatch',
   'role_state_mismatch',
+  'dek_unwrap_failed',
 ]
 
 describe('audit-enums 完備性（前後端值域一致）', () => {
@@ -199,7 +201,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
     }
   )
 
-  it('AUDIT_MECHANISMS 與後端 14 機制互為全集（含錄影三機制族、session_record、kek_retirement、aad_residue、checkpoint_anchor、鏈驗證三機制、source_policy、offsite_upload）', () => {
+  it('AUDIT_MECHANISMS 與後端 17 機制互為全集（含錄影三機制族、session_record、kek_retirement、aad_residue、checkpoint_anchor、鏈驗證三機制、source_policy、offsite_upload）', () => {
     expect(Object.keys(AUDIT_MECHANISMS).sort()).toEqual([...BACKEND_MECHANISMS].sort())
   })
 
@@ -218,7 +220,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(31)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(32)
   })
 
   it.skipIf(!backendSourcePath)(

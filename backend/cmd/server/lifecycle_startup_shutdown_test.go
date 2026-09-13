@@ -50,16 +50,18 @@ import (
 // expectedReleaseRegistration 是段 2 資源收束袋的**登記序**（＝釋放序的反序）。
 //
 // 對應 openspec/changes/archive/2026-08-11-modular-architecture/research/manifest-lifecycle.md
-//（隨公開快照出門）§7 的 R-1…R-13，另含該節以「摺疊」處理的
+// （隨公開快照出門）§7 的 R-1…R-13，另含該節以「摺疊」處理的
 // 5 個迴圈登記排程器（manifest 的有序序列只掃字面量名稱，迴圈項由本清單承擔）。
 // manifest §7 的列序依檔名排序故把 R-1 列於首位，但其註記已寫明「本項於
 // publishStage2 內登記，故登記時點晚於 R-2…R-13 全部」——**執行期的真實登記序
-// 即下表**，`keyManager` 第一個登記、`sealJournalReplay` 最後一個登記。
+// Registration starts with localKEK, vaultClient, and keyManager, and ends with sealJournalReplay.
 //
 // 這份清單是可執行契約：任何搬檔造成的登記重排會在此逐位失敗，而不是在某個
 // 收束窗口靜靜地少歸零一段金鑰。
 var expectedReleaseRegistration = []string{
-	"keyManager",                 // R-2　第一個登記 ⇒ 最後執行（危險點 3）
+	"localKEK",                   // Registered before keyManager so LIFO wipes the raw local KEK last.
+	"vaultClient",                // Closed after key-dependent resources and before the raw local KEK.
+	"keyManager",                 // Released after dependent resources and before the raw local KEK.
 	"auditFailureService",        // R-3
 	"syslogForwarder",            // R-4　晚於 R-5 執行（先解 hook 再停轉發器）
 	"auditIntegrity",             // R-5　SetAuditCreateHooks(nil,nil) ＋ 解單例
@@ -86,8 +88,8 @@ var expectedReleaseRegistration = []string{
 	// rotationReportScheduler 登記於 auditExportJobWorker **之後** ⇒ LIFO 下停在它之前：
 	// 先停止建新工作單，打包器才不會在收束途中又領到新件
 	"rotationReportScheduler", // 迴圈登記（rotation-evidence-report）
-	"metricsRefresher",           // R-13 段 2 最後登記（接替 perfMonitor）
-	"sealJournalReplay",          // R-1　publishStage2 內登記 ⇒ 最先被等待
+	"metricsRefresher",        // R-13 段 2 最後登記（接替 perfMonitor）
+	"sealJournalReplay",       // R-1　publishStage2 內登記 ⇒ 最先被等待
 }
 
 // lifecycleProbeRef 是 zeroize 行為探針用的列身分（任意合法表／欄即可）。
@@ -245,11 +247,9 @@ func TestLifecycleFullStartupThenReverseShutdown(t *testing.T) {
 		}
 	}
 
-	// 危險點 3：keyManager 必須第一個登記 ⇒ 最後執行；全部 KEK 衍生材料持有者
-	// 都必須排在它之後登記（故先釋放）。
-	if idx := indexOfRelease(names, "keyManager"); idx != 0 {
-		t.Errorf("keyManager 登記於第 %d 位（期望第 1 位 ⇒ 最後釋放）："+
-			"移到更後面登記＝更早歸零，被丟棄的服務圖在其餘收束期間仍持有可用 codec", idx+1)
+	// Only the raw local KEK and its remote client may outlive keyManager.
+	if indexOfRelease(names, "localKEK") != 0 || indexOfRelease(names, "vaultClient") != 1 || indexOfRelease(names, "keyManager") != 2 {
+		t.Errorf("release registration must begin with localKEK, vaultClient, keyManager; got %v", names)
 	}
 	for _, derived := range []string{"exportSigning", "alertNotifier", "auditIntegrity", "auditService"} {
 		if indexOfRelease(names, derived) <= indexOfRelease(names, "keyManager") {
@@ -363,7 +363,7 @@ func TestLifecycleStage2InjectedFailureRollsBack(t *testing.T) {
 	}
 
 	ctx := newStepCancelContext(context.Background(), lifecycleInjectedFailureStep)
-	g, err := runStage2(ctx, env.s1, kek)
+	g, err := runStage2(ctx, env.s1, kek, nil, nil)
 	if err == nil {
 		t.Fatal("注入取消後段 2 竟成功：合作式取消未生效，本測試的回滾斷言無從談起")
 	}

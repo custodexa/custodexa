@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
@@ -47,10 +48,26 @@ type Settings struct {
 	Client API
 	// Scope 目標金鑰的**信任帳號範圍**；零值＝不檢查（見 AccountScope）
 	Scope AccountScope
+	// Credentials 存取憑證提供者（**正式路徑必填**）。
+	//
+	// 自委託憑證改由解封頁提供起，憑證一律由組裝根自該解封世代的記憶體持有者
+	// 取得並顯式注入。缺席即拒絕建構，**SHALL NOT 回落 SDK 預設憑證鏈**——
+	// 部署形態是地端機房以開放名單連往外部雲端金鑰服務，環境中不存在可用的
+	// 機器身分；此時「回落預設鏈」只會讓一個沒有憑證的部署以看似成功的方式
+	// 走到第一次 KMS 呼叫才失敗，或更糟：撿到環境中另一組不該用的憑證。
+	//
+	// 測試靶機分支（Endpoint 非空）不受此約束，且**不因此擴大**：靶機仍只注入
+	// 佔位憑證，正式路徑仍必填。
+	Credentials aws.CredentialsProvider
 }
 
 // ErrEndpointOverride 生產路徑偵測到端點覆寫（安全審查 high #2）
 var ErrEndpointOverride = errors.New("KMS 端點覆寫遭拒：生產路徑不接受任何端點改導")
+
+// ErrCredentialsMissing 正式路徑未注入存取憑證。
+//
+// 訊息只列缺少的項目，不含值；建構失敗即無可用 provider，不降級、不回落。
+var ErrCredentialsMissing = errors.New("KMS 存取憑證未提供：正式路徑須由解封世代的憑證持有者顯式注入，不回落 SDK 預設憑證鏈")
 
 // endpointOverrideEnvKeys AWS SDK v2 自身解析的端點覆寫環境變數。
 //
@@ -62,8 +79,10 @@ var endpointOverrideEnvKeys = []string{"AWS_ENDPOINT_URL_KMS", "AWS_ENDPOINT_URL
 
 // newAWSClient 依 Settings 建構官方 SDK v2 的 KMS 客戶端。
 //
-// **憑證來源不自建**：走 SDK 預設鏈（IRSA／instance profile／AWS_* env／
-// SSO），產品不代管雲端憑證、也不新增自家 secret 存放。
+// **憑證來源自本版起為顯式注入**：由組裝根自該解封世代的記憶體持有者取得並經
+// Settings.Credentials 傳入；缺席即拒絕建構，不回落 SDK 預設鏈（IRSA／instance
+// profile／AWS_* env／SSO）。產品仍不代管雲端憑證、不新增自家 secret 存放——
+// 「不自行管理憑證」自此讀為「不持久化、不長存於解封世代之外」。
 //
 // **端點覆寫在生產路徑一律 fail-close（安全審查 high #2）**：
 // 先前的註解宣稱「生產路徑（Endpoint 為空）完全不經此分支」——該說法**只對本檔的
@@ -92,9 +111,16 @@ func newAWSClient(ctx context.Context, s Settings) (API, error) {
 	}
 
 	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(s.Region)}
-	if testHarness {
+	switch {
+	case testHarness:
 		opts = append(opts, awsconfig.WithCredentialsProvider(
 			credentials.NewStaticCredentialsProvider("test", "test", "")))
+	case s.Credentials == nil:
+		// 正式路徑缺憑證即拒絕建構，不回落預設鏈（見 Settings.Credentials）。
+		// 錯誤只說缺什麼，不含任何憑證值。
+		return nil, ErrCredentialsMissing
+	default:
+		opts = append(opts, awsconfig.WithCredentialsProvider(s.Credentials))
 	}
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {

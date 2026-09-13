@@ -1,8 +1,10 @@
 package sshproxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/custodexa/backend/internal/material"
 	"log"
 	"net/http"
 	"strconv"
@@ -88,6 +90,7 @@ func (h *Handler) HandleDBConsole(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
 		return
 	}
+	defer creds.Destroy()
 	st.creds = creds
 	resolved := st.contractObject()
 	if out := gate.AuthorizeResolvedAccount(reqCtx, subj, resolved,
@@ -101,16 +104,19 @@ func (h *Handler) HandleDBConsole(c *gin.Context) {
 
 	// 建立目標連線。密碼的所有權移交 dbconsole：Open 返回時我方副本已清零
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), dbconsole.ConnectTimeout)
-	dialect, err := dbconsole.Open(dialCtx, dbconsole.Config{
-		Protocol: protocol,
-		Host:     assetRow.Host,
-		Port:     assetRow.Port,
-		Username: creds.Username,
-		Password: []byte(creds.Password),
-		Database: assetRow.DBName,
-		TLSMode:  assetRow.DBTLSMode,
-		CACert:   assetRow.DBCACert,
+	dialect, err := material.Use(creds.Password, func(raw []byte) (dbconsole.Dialect, error) {
+		return dbconsole.Open(dialCtx, dbconsole.Config{
+			Protocol: protocol,
+			Host:     assetRow.Host,
+			Port:     assetRow.Port,
+			Username: creds.Username,
+			Password: bytes.Clone(raw),
+			Database: assetRow.DBName,
+			TLSMode:  assetRow.DBTLSMode,
+			CACert:   assetRow.DBCACert,
+		})
 	})
+	creds.Destroy()
 	cancelDial()
 	if err != nil {
 		// 起始連線失敗一律泛化：連線階段的錯誤字串含主機、埠、憑證主體與
@@ -436,6 +442,7 @@ func (s *consoleSession) switchByReconnect(from, to string) {
 		s.sendError("", apierror.CodeDBConsoleDatabaseUnavailable, nil, nil)
 		return
 	}
+	defer creds.Destroy()
 	st.creds = creds
 	if out := gate.AuthorizeResolvedAccount(ctx, subj, st.contractObject(),
 		gatewayapi.StageRedeemTerminal); out != nil {
@@ -444,16 +451,19 @@ func (s *consoleSession) switchByReconnect(from, to string) {
 	}
 
 	dialCtx, cancel := context.WithTimeout(context.Background(), dbconsole.ConnectTimeout)
-	next, err := dbconsole.Open(dialCtx, dbconsole.Config{
-		Protocol: s.protocol,
-		Host:     creds.Asset.Host,
-		Port:     creds.Asset.Port,
-		Username: creds.Username,
-		Password: []byte(creds.Password),
-		Database: to,
-		TLSMode:  creds.Asset.DBTLSMode,
-		CACert:   creds.Asset.DBCACert,
+	next, err := material.Use(creds.Password, func(raw []byte) (dbconsole.Dialect, error) {
+		return dbconsole.Open(dialCtx, dbconsole.Config{
+			Protocol: s.protocol,
+			Host:     creds.Asset.Host,
+			Port:     creds.Asset.Port,
+			Username: creds.Username,
+			Password: bytes.Clone(raw),
+			Database: to,
+			TLSMode:  creds.Asset.DBTLSMode,
+			CACert:   creds.Asset.DBCACert,
+		})
 	})
+	creds.Destroy()
 	cancel()
 	if err != nil {
 		class := string(dbconsole.ClassifyConnect(s.protocol, err))

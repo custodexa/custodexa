@@ -145,7 +145,7 @@ func (j *Journal) Replay(ctx context.Context, sink Sink) (ReplayResult, error) {
 			Timestamp:       e.TS,
 			SourceDigest:    e.SourceDigest,
 			Outcome:         e.Outcome,
-			UnknownOutcome:  e.Kind == KindReceived && unknown[e.Seq],
+			UnknownOutcome:  (e.Kind == KindReceived || e.Kind==KindSealReceived) && unknown[e.Seq],
 		})
 		if e.Seq > endSeq {
 			endSeq = e.Seq

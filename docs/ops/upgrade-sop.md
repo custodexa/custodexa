@@ -6,6 +6,8 @@
 >
 > This document covers two things: **the mandatory checks for a new installation** and **the version upgrade procedure for an existing deployment**.
 >
+> **Read this before upgrading a delegated key deployment (`KEK_PROVIDER=kms`, that is AWS KMS, GCP Cloud KMS or HashiCorp Vault): from this version on, such a deployment no longer restarts unattended.** The credentials for the key custodian are held only in the memory of the current unseal generation and are erased when the system is sealed, so nothing can read them back once the process has ended. **Every cold start therefore comes up sealed and waits for an administrator to be there**: a host reboot, a container recreation, a scaling event, a nightly maintenance window, the upgrade in this document, and the first start after a restore. That person signs in on the unseal page with a local administrator's username and password, checks the custodian shown there against the deployment record, and supplies that provider's credentials again. The process does not exit while it waits, because that state is the design rather than a configuration error. **Deployments in `ui` and `env` mode start exactly as they did before.** What to prepare is in §2.0, what the first start looks like is in §2.5, and what a rollback then needs is in §4.1; the operational limits this creates are in [Deployment Topology Limits](./deployment-topology-limits.md).
+>
 > Related documents: [Backup and Restore](./backup-and-restore.md), [Deployment Topology Limits](./deployment-topology-limits.md),
 > [Rotating the Platform's Own Privileged Credentials](./privileged-credential-rotation.md).
 >
@@ -127,13 +129,51 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
 If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the twelve in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the fourteen in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
 > Confirm your source version before planning the upgrade.
 
 > **What the single-instance guard guarantees**: as of this release, a second application instance started against the same database is stopped and asked to confirm (§2.6b). That mutual exclusion **only holds between guard-bearing releases**: older releases without the guard hold no lock, so on the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped. Step 5 of §2.3 is the first-upgrade check that exists for exactly this, and it must not be skipped.
+
+#### Upgrading to 1.10.0
+
+Four things in this release change what an upgrade involves; each has its own place further down.
+
+- **One new migration**, `20260913_kek_topology`, which creates a single-row table for the delegated key topology (§2.5). It creates that table and touches nothing else, so its duration does not depend on how much data the deployment holds.
+- **Delegated key deployments (`KEK_PROVIDER=kms`) stop at the unseal page after this upgrade and after every later restart.** The check below is the one to plan against; `ui` and `env` deployments upgrade as they did before.
+- **`.env` keeps two delegated keys**, `KEK_PROVIDER` and `KEK_KMS_PROVIDER`. The rest of the delegated settings are read into the database once at the first startup and are then set on the key management page. Leave the old lines in `.env` until that first startup has run and the rollback plan is settled; point 2 and point 3 of the check below say what each one does.
+- **The backend container runs with a reduced set of capabilities and resource limits**, supplied by the compose files that ship with the release. A deployment that orchestrates the backend itself supplies them; the list is in [Deployment Topology Limits](./deployment-topology-limits.md).
+
+#### Pre-upgrade check: delegated key deployments (`KEK_PROVIDER=kms`)
+
+Nothing in this check applies to `ui` or `env`; those two start after the upgrade exactly as they did before.
+
+**1. Arrange for a person to be there at the end of the upgrade.** The system comes up sealed and stays sealed until someone unseals it. That person needs three things at that moment, and obtaining any of them afterwards is downtime:
+
+- **A local administrator account and its password.** While the system is sealed, an account provisioned from a directory or an identity provider cannot be authenticated, because the external authentication path is assembled only after unseal. Confirm before the upgrade that at least one local administrator account exists and that someone can sign in as it.
+- **The credentials for the custodian**: the AWS access key id and secret access key, the contents of the GCP service account key file, or the Vault role secret or token. They are in no backup, no database table and no file on the host, so they come from whoever issues them.
+- **The deployment record of the topology**, to compare against what the unseal page shows: the custodian, the address, the role identifier and the key.
+
+**2. What `.env` loses.** Only `KEK_PROVIDER` and `KEK_KMS_PROVIDER` still take effect. `KEK_KMS_REGION`, `KEK_KMS_KEY_ID`, `KEK_VAULT_ADDR`, `KEK_VAULT_ROLE_ID` and `KEK_VAULT_SECRET_ID` do not. **Do not remove them from `.env` before the upgrade**: the non-secret ones among them are what the first startup reads in, and they are also what a rollback needs (§4.1).
+
+**3. What the first startup reads in.** While the topology has not been set in the database yet, the first startup after the upgrade takes the non-secret values from the environment once and writes them into the database:
+
+| `KEK_KMS_PROVIDER` | Read in from `.env` | Where the key reference comes from |
+|---|---|---|
+| `aws` | `KEK_KMS_REGION` | The `kek_id` on the existing key rows; nothing to prepare |
+| `vault` | `KEK_VAULT_ADDR`, `KEK_VAULT_ROLE_ID`, and `KEK_KMS_KEY_ID` as the Transit key name | The same |
+| `gcp` | Nothing, because GCP has no editable topology field | The same |
+
+Four properties of that step matter here. It **never reads `KEK_VAULT_SECRET_ID` and never stores it**; supply the role secret on the unseal page instead. It is **idempotent and overwrites nothing** that is already in the database. It **does not block startup when it fails**, and the values are then entered by hand on the key management page. And **a value that does not pass the current validation is not read in** — a Vault address that is not an `https://` origin is the usual one — with the log saying so rather than storing half a destination. The startup log also lists the keys in `.env` that no longer take effect, **by name only and never by value**.
+
+**4. The unseal page asks for a username and password first, in every mode.** This is new for `ui` and `env` as well as for delegated deployments, and the administrator's own account is what it checks. Two limits belong in your security assessment before the upgrade:
+
+- **While the system is sealed only the username and password are checked; the one-time code is not.** Its seed is protected by the data key, which cannot be unwrapped while sealed, so requiring it would mean having to unseal before being able to unseal. **This step is therefore not two-factor and must not be recorded as such.** What stands behind it: the unseal endpoints' own per-source backoff and time-limited cooldown, the source ranges in `SEAL_UNSEAL_ALLOWED_CIDRS`, responses that do not distinguish a wrong password from an unknown account, a line in the backend log for every attempt, and an authorization context that lasts ten minutes and re-checks on each use that the account is still an active administrator. **An account already locked is refused here too**; what this step does not do is add to the failed-attempt count or lock the account itself, because the account lockout policy belongs to the stage that exists only after unseal.
+- Compared with the previous version this is a net gain rather than a loss: a delegated unseal used to be triggered with a bearer token alone.
+
+**5. A rollback afterwards needs the topology back in `.env`.** The settings have moved into the database, and the older version does not read the `kek_topologies` table. Read §4.1 before you decide the rollback plan, not after.
 
 #### Pre-upgrade check: deployments serving over plain http
 
@@ -183,7 +223,7 @@ The pre-upgrade backup has to be a stopped backup; a no-downtime backup is not a
 Confirm at the same time:
 
 - The backup files are readable, which is step 6 of [Backup and Restore §3.2](./backup-and-restore.md#32-recommended-procedure-service-stopped-best-consistency) (`pg_restore --list` and `tar -tzf` inside the container, so the machine you operate from needs no PostgreSQL client).
-- The KEK material is in hand (`.env` for mode A, the unseal material for mode B, KMS access for mode C).
+- The KEK material is in hand: `.env` for mode A, the unseal material for mode B, and for mode C the custodian credentials plus a local administrator account, both of which the unseal at the end of the upgrade needs (see the delegated pre-upgrade check in §2.0).
 - The four fingerprints from the key inventory have been recorded (`ENCRYPTION_KEY (KEK)`, `JWT_SECRET`, the export signing key (Ed25519), and the checkpoint signing key (Ed25519)).
 - **The row counts of a few business tables have been noted down**, for the "this is the same data" check in §2.5 after the upgrade:
 
@@ -349,7 +389,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's thirteen increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's fourteen increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -365,6 +405,7 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260908_role_state_checkpoint (role_state_checkpoint)
   執行 migration: 20260908_group_role_mapping (group_role_mapping)
   執行 migration: 20260909_policy_groups (policy_groups)
+  執行 migration: 20260913_kek_topology (kek_topology)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -413,10 +454,10 @@ its duration is independent of the volume held. **Its `Down` is lossy**; read §
 any way back.
 
 `20260908_role_state_checkpoint` adds four nullable columns to the audit checkpoint table, so that a
-checkpoint also seals the role assignments in force at that moment (a hash of the snapshot, the
+checkpoint also notarizes the role assignments in force at that moment (a hash of the snapshot, the
 snapshot, a count, and whether it reconciled). It creates no table, index, or constraint. **It only
 adds columns, with no data conversion and no backfill**, so its duration is independent of the volume
-held. **Checkpoints sealed before the upgrade stay empty**, which is the honest statement that those
+held. **Checkpoints notarized before the upgrade stay empty**, which is the honest statement that those
 periods do not cover role assignments; they are not backfilled, because writing today's snapshot into
 a past checkpoint would sign, on history's behalf, a claim history never made. **Its `Down` is
 lossy**; read §4.1 before planning any way back.
@@ -445,6 +486,14 @@ so its duration is independent of the volume held. The built-in groups' content 
 at startup, not by the migration, and the four tables are empty until then. A deployment that opens
 none of the new pages behaves after the upgrade exactly as it did before. **Its `Down` is lossy and
 part of that loss cannot be restored**; read §4.1 before planning any way back.
+
+`20260913_kek_topology` creates one single-row table for the delegated key topology: the custodian,
+its address, the Transit key name, the AppRole role identifier and the service region, together with
+who last changed them and when. The custodians' secrets are not in it and are in no other stored
+place. **It creates one table**: it touches no existing table, adds no column and backfills nothing,
+so its duration is independent of the volume held. The table is empty until the first startup reads
+the non-secret values out of `.env` (§2.0) or an administrator sets them on the key management page.
+**Its `Down` is lossy**; read §4.1 before planning any way back.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -628,6 +677,32 @@ How to read it: **the second is decisive**: one user, zero sessions, and a handf
 > The order here cannot be reversed: **confirm you got the right data first, then do the rest of the verification in §2.7.**
 > §2.7 verifies whether the new version runs correctly; it will not tell you whether what it runs on is your data.
 
+#### The first start after the upgrade on a delegated deployment (`KEK_PROVIDER=kms`)
+
+The containers come up, `/health` answers, and **every business route answers 503 because the system is sealed**. That is the expected outcome of this upgrade, not a fault to diagnose. Finish it like this:
+
+1. **Check the startup log for the two lines about the delegated settings.** One reports which values were read from `.env` into the database; the other lists the keys that no longer take effect. Neither prints a value.
+
+   ```bash
+   docker compose -f docker-compose.yml logs backend | grep KEKTopology
+   ```
+
+   No line at all means either that the topology was already set in the database, or that `.env` held none of the non-secret keys. Nothing has to be read in for the unseal to work; the next step shows what the system actually holds.
+
+2. **Open the unseal page** at `https://<address>/unseal` (or on `SEAL_UNSEAL_BIND_ADDR` when the separate listener is configured), and sign in with a local administrator's username and password.
+
+3. **Check the custodian the page shows against your deployment record**, item by item: the custodian, the address, the role identifier, the region and the key. **If it does not match, stop and enter nothing**; the values are changed on the key management page, and a change you did not make is visible there in the change history and the alerts. If the page reports that the settings cannot be read, do not proceed either; read the status again first.
+
+4. **Supply that provider's credentials** and submit. The system tries the current key with them before accepting; a failure at this step is reported as one of three distinguishable causes, the custodian being unreachable, the credentials being refused, or the key not belonging to this deployment. If instead the initialization times out, **do not resubmit the form**: the page queries the status, and only offers to submit again once the backend reports itself sealed with the cleanup complete.
+
+5. **Confirm the state**, then carry on with §2.7:
+
+   ```bash
+   curl -sk https://<address>/api/v1/seal/status
+   ```
+
+The credentials are not kept for the next start. **Whatever brings the process down next, this sequence runs again**, which is what §2.0 asked you to plan for.
+
 ### 2.6 If the backend refuses to start and reports unrecognized versions in `schema_migrations`
 
 This is a deliberate fail-closed behavior of 1.0, and the database itself is not damaged.
@@ -665,7 +740,7 @@ This is this release's single-instance guard, and the database itself is not dam
 [InstanceGuard] 等待既有實例釋放單實例鎖（第 4/5 次，2s 後重試）
 CRITICAL：單實例鎖由另一個資料庫工作階段持有。本版不支援多實例部署，本實例未啟動服務。
   持鎖者：application_name=custodexa-instance-guard pid=8510 backend_start=2026-08-25T10:04:22.2442Z code=55bd875b8d97
-  風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
+  風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封存期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
   處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。
   處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 55bd875b8d97 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=55bd875b8d97 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
   澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。
@@ -913,12 +988,12 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the thirteen increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the fourteen increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
 `20260906_credential_library_contract`, `20260908_role_state_checkpoint`,
-`20260908_group_role_mapping`, `20260909_policy_groups`).
+`20260908_group_role_mapping`, `20260909_policy_groups`, `20260913_kek_topology`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -1007,7 +1082,7 @@ and restoring the pre-upgrade backup (§4.2).
 **The `Down` of `20260908_role_state_checkpoint` is lossy and is for development databases only.** It
 drops the four columns, and with them the role assignment snapshot on every checkpoint; afterwards
 all checkpoints are back to not covering role assignments, and a later upgrade gives you no baseline
-again until the next seal. Its production way back is likewise deploying the old version's images and
+again until the next notarization. Its production way back is likewise deploying the old version's images and
 restoring the pre-upgrade backup (§4.2).
 
 **The `Down` of `20260908_group_role_mapping` is lossy and part of that loss cannot be restored, and
@@ -1071,7 +1146,15 @@ The code contains one more internal function, `RollbackMigration`. This release 
 
 A database from across a baseline generation cannot even start the new version (§2.0, §2.6), so that situation is stopped before any data is touched and never reaches a rollback.
 
+**A delegated key deployment (`KEK_PROVIDER=kms`) has one more thing to recover before a rollback: its topology.** From this version the service region, the custodian address, the Transit key name and the role identifier live in the database, in `kek_topologies`, and **the older version does not read that table**. Restoring the pre-upgrade backup does not put them back into `.env` either; a backup restores the database, not the deployment files. So before rolling back:
+
+- **Obtain the topology values from their original custody or from your deployment record and write them back into `.env`** as `KEK_KMS_REGION`, `KEK_KMS_KEY_ID`, `KEK_VAULT_ADDR` and `KEK_VAULT_ROLE_ID`, whichever that provider used. Reading them off the key management page before the rollback is the easiest route, so **do it while the new version is still running**; afterwards that page is on a version that no longer exists on the host. If you never removed those lines from `.env` (§2.0 asked you not to), they are already there and only need checking against the page.
+- **The secrets are not recoverable from anywhere on the host**, because they were never in a file: the Vault role secret, the AWS access key pair and the GCP service account key contents have to be obtained again from whoever issues them. The older version reads `KEK_VAULT_SECRET_ID` from `.env`, so that one goes back in as well.
+- **Verify the rollback with a full restart and a real unseal**, not with "the service came up". The older version constructs its custodian client from `.env` at startup, so a missing or mistyped value shows up as a deployment that cannot decrypt anything, and the only proof that the values are right is one completed unseal followed by opening an asset that has credentials.
+
 ### 4.2 The actual rollback procedure
+
+**A delegated deployment does the `.env` work in §4.1 before step 2.** The topology values have to be in `.env` before the old version starts, because that is the only place it looks for them.
 
 1. Stop all services. **Confirm the guard-bearing release has stopped before the rollback**: `docker compose ps` shows no backend running, and the connection count query in step 5 of §2.3 reads 0. If the rollback target has no guard, the old release holds no lock and old and new coexisting are not stopped; the evidence for this step is only those two items.
 2. **Deploy the old version's images and binaries** (do this first; the restored database structure has to be paired with the matching code).

@@ -99,27 +99,27 @@ var freeTextKeys = map[string]bool{
 // 會擋下已經不再空白的登記，逼它下架。
 var knownAccountabilityVoids = map[string]string{
 	// ── 本文全為機密 ──────────────────────────────────────────────
-	"api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
+	"POST /api/v1/auth/change-password | api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
 	// Logout／Refresh 不再綁定任何 request body
 	//（憑證改由 httpOnly cookie 攜帶），故已無綁定點可登記——留著即成化石，
 	// 由 TestNoStaleAccountabilityVoidEntries 擋下
-	"api.(*AuthHandler).MFADisable":       "password 為密碼本體",
-	"api.(*AuthHandler).MFAEnable":        "code 為 TOTP 一次性碼",
-	"api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",
-	"api.(*AuthHandler).MFAVerify":        "code 為一次性碼、pending_token 為持有型憑證",
-	"api.(*UserHandler).ChangePassword":   "password 為密碼本體；改密事實由路徑與 resource_id 課責",
-	"api.(*CredentialHandler).RebindAccount": "credential_id 命中 G3 機密語義片段（credential）故不放行，" +
+	"POST /api/v1/auth/mfa/disable | api.(*AuthHandler).MFADisable":       "password 為密碼本體",
+	"POST /api/v1/auth/mfa/enable | api.(*AuthHandler).MFAEnable":        "code 為 TOTP 一次性碼",
+	"POST /api/v1/auth/mfa/enroll/confirm | api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",
+	"POST /api/v1/auth/mfa/verify | api.(*AuthHandler).MFAVerify":        "code 為一次性碼、pending_token 為持有型憑證",
+	"PUT /api/v1/users/:id/password | api.(*UserHandler).ChangePassword":   "password 為密碼本體；改密事實由路徑與 resource_id 課責",
+	"PUT /api/v1/assets/:id/accounts/:accountId/credential | api.(*CredentialHandler).RebindAccount": "credential_id 命中 G3 機密語義片段（credential）故不放行，" +
 		"且 G3 的過度攔截是刻意的安全側，不為個案開名稱例外；" +
 		"「哪一台的哪一個掛載改用了哪一筆憑證」由憑證服務自寫的專屬審計列課責" +
 		"（resource=credential、operation=rebind，另帶受影響資產識別）",
-	"api.(*CredentialHandler).SetSecret": "password／private_key 皆為秘密本體（放行任一即外洩）；" +
+	"POST /api/v1/credentials/:id/secret | api.(*CredentialHandler).SetSecret": "password／private_key 皆為秘密本體（放行任一即外洩）；" +
 		"「誰在什麼時候替哪一筆憑證補登了新秘密」由憑證服務自寫的專屬審計列課責" +
 		"（resource=credential、operation=set_secret、fields 只記欄位名不記材料）",
-	"api.(*OIDCHandler).Exchange": "browser_secret／ticket 為一次性兌換憑證",
+	"POST /api/v1/auth/oidc/exchange | api.(*OIDCHandler).Exchange": "browser_secret／ticket 為一次性兌換憑證",
 	// Login 的隱藏欄位只有 password（判準 1 永不放行），可見的 username 屬識別角色。
 	// 登入的課責不靠 request_body：成功／失敗、來源位址（已改為不可偽造）、
 	// MFA 狀態都由登入專屬審計列承擔
-	"api.(*AuthHandler).Login": "password 為密碼本體；登入事實、結果與來源位址由登入審計列本身課責",
+	"POST /api/v1/auth/login | api.(*AuthHandler).Login": "password 為密碼本體；登入事實、結果與來源位址由登入審計列本身課責",
 
 	// 分享碼是短期一次性憑證（持有即可加入他人會話）。放行等於把憑證逐字寫進
 	// audit_logs——該表受檢查點鏈保護，寫進去刪不掉，而碼的壽命遠短於審計保存期，
@@ -128,11 +128,11 @@ var knownAccountabilityVoids = map[string]string{
 	// 為每一次加入寫一列 `observerJoinAudit`，成功與拒絕皆有（`status=denied` 是
 	// 「反覆試碼」這個猜測攻擊訊號的唯一證據），含會話、加入者與來源位址。
 	// 簽票本身不構成存取，「誰在什麼時候讀了誰的終端」由那一列課責。
-	"sshproxy.(*Handler).HandleCreateShareTicket": "code 為一次性分享碼（持有型憑證）；" +
+	"POST /api/v1/sessions/share/token | sshproxy.(*Handler).HandleCreateShareTicket": "code 為一次性分享碼（持有型憑證）；" +
 		"讀取事實與對象由加入端 auditObserverJoin 寫入的 observerJoinAudit 列課責",
 
 	// ── 課責由他體系承擔 ──────────────────────────────────────────
-	"api.(*SecurityPolicyHandler).Update": "policies 為巢狀 map（違反登記判準 3）；" +
+	"PUT /api/v1/security-policies | api.(*SecurityPolicyHandler).Update": "policies 為巢狀 map（違反登記判準 3）；" +
 		"handler 逐鍵寫 old→new 專屬審計列（PCI 10.2.2），課責不靠 request_body",
 
 	// 政策組管理面：四類寫入各由 handler 寫一列專屬審計，details 帶組代號、條號、
@@ -140,32 +140,32 @@ var knownAccountabilityVoids = map[string]string{
 	// 而 `code`／`title`／`summary`／`controls` 這些名字在別的端點上承載的東西完全
 	// 不同（`code` 在 MFA 驗證與會話分享票上是一次性憑證），放行等於把它們逐字
 	// 寫進刪不掉的 audit_logs。專屬審計列本就答得出「哪一組的哪一條被改成什麼」。
-	"api.(*PolicyGroupHandler).Create": "code 在別的端點上是一次性憑證，" +
+	"POST /api/v1/policy-groups | api.(*PolicyGroupHandler).Create": "code 在別的端點上是一次性憑證，" +
 		"鍵名全域比對之下不得放行；建組事實與代號由 handler 寫的專屬審計列課責" +
 		"（resource=policy_group、op=group_create，details 帶組代號與組名）",
-	"api.(*PolicyGroupHandler).UpsertClause": "controls 為巢狀清單（違反登記判準 3）；" +
+	"PUT /api/v1/policy-groups/:code/clauses/:clause_no | api.(*PolicyGroupHandler).UpsertClause": "controls 為巢狀清單（違反登記判準 3）；" +
 		"條文改成什麼由 handler 寫的專屬審計列課責" +
 		"（op=clause_upsert，details 帶組代號、條號與舊要求→新要求的摘要）",
-	"api.(*PolicyGroupHandler).UpsertAnnotation": "note 為自由文字；" +
+	"PUT /api/v1/policy-groups/:code/clauses/:clause_no/annotation | api.(*PolicyGroupHandler).UpsertAnnotation": "note 為自由文字；" +
 		"備註不影響判定，寫入事實與舊值→新值由 handler 寫的專屬審計列課責（op=annotation_upsert）",
-	"api.(*PolicyGroupHandler).ConfirmClause": "note 為自由文字；" +
+	"POST /api/v1/policy-groups/:code/clauses/:clause_no/confirm | api.(*PolicyGroupHandler).ConfirmClause": "note 為自由文字；" +
 		"人工確認的操作者與時間由 handler 寫的專屬審計列課責（op=clause_confirm，帶前次確認資訊）",
 
-	"api.(*SecurityPolicyHandler).CompliancePreview": "draft 為巢狀 map、temp_controls 為巢狀清單" +
+	"POST /api/v1/security-policies/compliance/preview | api.(*SecurityPolicyHandler).CompliancePreview": "draft 為巢狀 map、temp_controls 為巢狀清單" +
 		"（皆違反登記判準 3）；本端點唯讀、不寫入任何資料，沒有變更可課責",
 
-	"sshproxy.(*Handler).HandleCreateTransmissionConsent": "risk_keys 命中 G3 機密語義片段（key）故不放行；" +
+	"POST /api/v1/transmission-consents | sshproxy.(*Handler).HandleCreateTransmissionConsent": "risk_keys 命中 G3 機密語義片段（key）故不放行；" +
 		"同意的對象由 asset_id 課責，同意內容由 TransmissionConsent.Record 寫入的立據紀錄承載",
 
 	// ── 本文不含課責內容 ──────────────────────────────────────────
-	"api.(*AccessRequestHandler).Reject":    "note 為自由文字；拒絕事實與對象由路徑、resource_id 與 action=reject 課責",
-	"api.(*AccessRequestHandler).Revoke":    "note 為自由文字；撤銷事實與對象由路徑、resource_id 與 action=revoke 課責",
-	"api.(*AccessReviewHandler).Create":     "note 為自由文字；覆核事實由 access_reviews 表承載",
-	"api.(*DailyReviewHandler).Sign":        "note 為自由文字；簽核事實由 daily_reviews 表承載",
-	"api.(*AssetHandler).TestConnection":    "timeout 為連線測試參數，非變更內容；測試對象即 resource_id",
-	"api.(*AssetHandler).RenameTag":         "from／to 為標籤字面，屬資產標籤維護而非權限變更",
-	"api.(*SFTPHandler).Mkdir":              "path 為檔案路徑，檔案操作的課責由 file_transfers／檔案稽核體系承擔",
-	"sshproxy.(*Handler).HandleCreateShare": "ttl_minutes 為分享時效參數；分享事實與對象由 session 分享紀錄承載",
+	"POST /api/v1/access-requests/:id/reject | api.(*AccessRequestHandler).Reject":    "note 為自由文字；拒絕事實與對象由路徑、resource_id 與 action=reject 課責",
+	"POST /api/v1/access-requests/:id/revoke | api.(*AccessRequestHandler).Revoke":    "note 為自由文字；撤銷事實與對象由路徑、resource_id 與 action=revoke 課責",
+	"POST /api/v1/access-reviews | api.(*AccessReviewHandler).Create":     "note 為自由文字；覆核事實由 access_reviews 表承載",
+	"POST /api/v1/daily-reviews | api.(*DailyReviewHandler).Sign":        "note 為自由文字；簽核事實由 daily_reviews 表承載",
+	"POST /api/v1/assets/:id/test-connection | api.(*AssetHandler).TestConnection":    "timeout 為連線測試參數，非變更內容；測試對象即 resource_id",
+	"POST /api/v1/assets/tags/rename | api.(*AssetHandler).RenameTag":         "from／to 為標籤字面，屬資產標籤維護而非權限變更",
+	"POST /api/v1/assets/:id/files/mkdir | api.(*SFTPHandler).Mkdir":              "path 為檔案路徑，檔案操作的課責由 file_transfers／檔案稽核體系承擔",
+	"POST /api/v1/sessions/:id/share | sshproxy.(*Handler).HandleCreateShare": "ttl_minutes 為分享時效參數；分享事實與對象由 session 分享紀錄承載",
 }
 
 // TestAuditAllowlistHasNoDeadKeys G1：放行清單不得有沒人綁定的死鍵。
@@ -211,26 +211,39 @@ func TestNoEndpointHasFullyMaskedAuditBody(t *testing.T) {
 			len(sites), discoveredAllowlistLowerBound)
 	}
 
-	allowed := map[string]bool{}
-	for _, k := range audit.SafeAuditFieldNames() {
-		allowed[k] = true
-	}
+	byKey := siteEndpoints(t)
 
 	for _, s := range sites {
-		visible := visibleFields(s.Fields, allowed)
-		if len(visible) > 0 {
-			continue
+		for _, endpoint := range endpointsOf(s, byKey) {
+			allowed := allowedFieldSetFor(endpoint)
+			visible := visibleFields(s.Fields, allowed)
+			if len(visible) > 0 {
+				continue
+			}
+			if _, declared := knownAccountabilityVoids[voidKey(endpoint, s.Key)]; declared {
+				continue
+			}
+			t.Errorf("%s 於端點 %s（%s:%d）的請求本文全被遮罩：欄位 %s 沒有任何一個在該端點的放行集內。\n"+
+				"這一列寫進 audit_logs 後 request_body 會是清一色 ***MASKED***，"+
+				"稽核答不出「動了什麼、變成什麼」。\n"+
+				"修法三擇一：把課責必要的非機密欄位登記進 audit.safeAuditFields（全域，判準見該處註解）、"+
+				"登記進 audit.endpointAuditFieldSet 的該端點專屬集，"+
+				"或在 knownAccountabilityVoids 以「端點 | 綁定點」為鍵具名登記理由。",
+				s.Key, endpoint, s.File, s.Line, strings.Join(s.Fields, ", "))
 		}
-		if _, declared := knownAccountabilityVoids[s.Key]; declared {
-			continue
-		}
-		t.Errorf("%s（%s:%d）的請求本文全被遮罩：欄位 %s 沒有任何一個在放行清單內。\n"+
-			"這一列寫進 audit_logs 後 request_body 會是清一色 ***MASKED***，"+
-			"稽核答不出「動了什麼、變成什麼」。\n"+
-			"修法二擇一：把課責必要的非機密欄位登記進 audit.safeAuditFields（判準見該處註解），"+
-			"或在 knownAccountabilityVoids 具名登記理由。",
-			s.Key, s.File, s.Line, strings.Join(s.Fields, ", "))
 	}
+}
+
+// endpointsOf 取綁定點服務的端點；掃不到路由時回一個空端點。
+//
+// **空端點不是免判**：它代表「這個綁定點沒有出現在路由 golden 上」（例如經
+// middleware 或非 gin 路徑進入），此時只套全域集判定，與改軸之前的行為相同。
+// 直接 continue 才是免判，那會讓「handler 改名後 golden 對不上」變成靜默豁免。
+func endpointsOf(s bindSite, byKey map[string][]string) []string {
+	if eps := byKey[s.Key]; len(eps) > 0 {
+		return eps
+	}
+	return []string{""}
 }
 
 // TestNoEndpointIsIdentityOnlyVisible G2b：沒有端點的審計本文只剩識別欄位可見。
@@ -244,29 +257,40 @@ func TestNoEndpointIsIdentityOnlyVisible(t *testing.T) {
 			len(sites), discoveredAllowlistLowerBound)
 	}
 
+	byKey := siteEndpoints(t)
+
 	for _, s := range sites {
-		reason, ok := identityOnlyReport(s)
-		if !ok {
-			continue
+		for _, endpoint := range endpointsOf(s, byKey) {
+			reason, ok := identityOnlyReport(s, endpoint)
+			if !ok {
+				continue
+			}
+			if _, declared := knownAccountabilityVoids[voidKey(endpoint, s.Key)]; declared {
+				continue
+			}
+			t.Errorf("%s 於端點 %s（%s:%d）的審計本文只剩識別欄位可見：%s。\n"+
+				"實質欄位 %s 全被遮成 ***MASKED***——這一列答得出「動到哪一個」，"+
+				"答不出「動成什麼」，於是「把安全開關關掉」與「改個名字」寫出同一列。\n"+
+				"修法三擇一：登記進 audit.safeAuditSubstanceFields（全域）、"+
+				"登記進 audit.endpointAuditFieldSet 的該端點專屬集，"+
+				"或在 knownAccountabilityVoids 以「端點 | 綁定點」為鍵具名登記理由。",
+				s.Key, endpoint, s.File, s.Line, reason,
+				strings.Join(nonFreeTextHidden(s, allowedFieldSetFor(endpoint)), ", "))
 		}
-		if _, declared := knownAccountabilityVoids[s.Key]; declared {
-			continue
-		}
-		t.Errorf("%s（%s:%d）的審計本文只剩識別欄位可見：%s。\n"+
-			"實質欄位 %s 全被遮成 ***MASKED***——這一列答得出「動到哪一個」，"+
-			"答不出「動成什麼」，於是「把安全開關關掉」與「改個名字」寫出同一列。\n"+
-			"修法二擇一：把課責必要的非機密欄位登記進 audit.safeAuditSubstanceFields"+
-			"（判準見該處註解），或在 knownAccountabilityVoids 具名登記理由。",
-			s.Key, s.File, s.Line, reason,
-			strings.Join(nonFreeTextHidden(s, allowedFieldSet()), ", "))
 	}
 }
 
 // identityOnlyReport 判定綁定點是否命中 G2b，並回傳可讀的可見欄位描述。
-func identityOnlyReport(s bindSite) (string, bool) {
-	allowed := allowedFieldSet()
+func identityOnlyReport(s bindSite, endpoint string) (string, bool) {
+	allowed := allowedFieldSetFor(endpoint)
 	substance := map[string]bool{}
 	for _, k := range audit.SafeAuditSubstanceFieldNames() {
+		substance[k] = true
+	}
+	// 端點專屬放行一律計為**實質**角色：它們登記的理由正是「這一列動成什麼」
+	// （目錄服務的伺服器位址、拓撲的目的地），把它們算成識別角色會讓 G2b 在
+	// 唯一補上的那個欄位上繼續報。
+	for _, k := range audit.EndpointAuditFieldNames(endpoint) {
 		substance[k] = true
 	}
 	for _, f := range s.Fields {
@@ -293,14 +317,6 @@ func nonFreeTextHidden(s bindSite, allowed map[string]bool) []string {
 		}
 	}
 	return out
-}
-
-func allowedFieldSet() map[string]bool {
-	allowed := map[string]bool{}
-	for _, k := range audit.SafeAuditFieldNames() {
-		allowed[k] = true
-	}
-	return allowed
 }
 
 // TestAuditFieldRolesAreDisjoint 兩個角色互斥。
@@ -343,14 +359,11 @@ func TestNoStaleAccountabilityVoidEntries(t *testing.T) {
 			len(sites), discoveredAllowlistLowerBound)
 	}
 
-	allowed := map[string]bool{}
-	for _, k := range audit.SafeAuditFieldNames() {
-		allowed[k] = true
-	}
-	byKey := map[string]bindSite{}
+	bySite := map[string]bindSite{}
 	for _, s := range sites {
-		byKey[s.Key] = s
+		bySite[s.Key] = s
 	}
+	routes := siteEndpoints(t)
 
 	keys := make([]string, 0, len(knownAccountabilityVoids))
 	for k := range knownAccountabilityVoids {
@@ -359,19 +372,46 @@ func TestNoStaleAccountabilityVoidEntries(t *testing.T) {
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		site, ok := byKey[k]
+		endpoint, siteKey, ok := splitVoidKey(k)
 		if !ok {
-			t.Errorf("knownAccountabilityVoids 登記了 %q，但全庫掃不到這個請求綁定點——"+
-				"登記已成化石（handler 改名或下架？），請刪除或更新", k)
+			t.Errorf("knownAccountabilityVoids 的鍵 %q 不是「端點 | 綁定點」形態——"+
+				"比對軸已改為端點 × 鍵名，舊形態的登記不會對上任何綁定點而永遠免判", k)
 			continue
 		}
-		visible := visibleFields(site.Fields, allowed)
-		if _, hit := identityOnlyReport(site); len(visible) > 0 && !hit {
+		site, found := bySite[siteKey]
+		if !found {
+			t.Errorf("knownAccountabilityVoids 登記了 %q，但全庫掃不到綁定點 %q——"+
+				"登記已成化石（handler 改名或下架？），請刪除或更新", k, siteKey)
+			continue
+		}
+		served := false
+		for _, e := range endpointsOf(site, routes) {
+			if e == endpoint {
+				served = true
+				break
+			}
+		}
+		if !served {
+			t.Errorf("knownAccountabilityVoids 登記了 %q，但綁定點 %q 已不再服務該端點——"+
+				"登記已成化石（路由改了？），請刪除或更新", k, siteKey)
+			continue
+		}
+		visible := visibleFields(site.Fields, allowedFieldSetFor(endpoint))
+		if _, hit := identityOnlyReport(site, endpoint); len(visible) > 0 && !hit {
 			t.Errorf("knownAccountabilityVoids 仍登記 %q，但它已有可見的實質欄位（可見欄位 %s）——"+
 				"課責空白已補上，登記須下架（留著會遮蔽日後真正的回歸）",
 				k, strings.Join(visible, ", "))
 		}
 	}
+}
+
+// splitVoidKey 拆「端點 | 綁定點」。
+func splitVoidKey(k string) (endpoint, site string, ok bool) {
+	parts := strings.SplitN(k, " | ", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 // TestAuditAllowlistRejectsSecretishKeys G3：放行清單不得出現機密語義的鍵。

@@ -101,6 +101,15 @@ const (
 	// 解除判準＝下一次對帳回報相符（合法移除該指派、或補上其應有的變更），
 	// 由對帳器在三個比對時機任一處呼叫 Resolve
 	MechanismRoleStateIntegrity = "role_state_integrity"
+	// MechanismDEKUnwrap 資料金鑰的重新解封失敗：
+	// 設有快取存活期時，到期後的加解密要向 KEK 保管處重新解封，保管處不可達或
+	// 拒絕即失敗。**獨立機制碼，不併入 kek_retirement**：那一支說的是退役收尾
+	// 沒收斂（服務不受影響、禁後續換鑰），本支說的是資料現在讀不出來也寫不進去。
+	// 兩者的處置對象與急迫性都不同，合併會讓先結案的那個把另一個也結掉。
+	//
+	// **解除判準＝下一次解封成功**：單次抖動不開列（見上報點的連續失敗門檻），
+	// 一次成功即代表保管處已恢復
+	MechanismDEKUnwrap = "dek_unwrap"
 )
 
 // 失效原因機器碼。
@@ -202,6 +211,9 @@ const (
 	// 應用程式的資料庫寫入**——五條合法路徑全部同交易留痕，審計寫不進去角色
 	// 就掛不上。cause_params 帶起算的檢查點序號與差集的識別（不出站）
 	CauseRoleStateMismatch = "role_state_mismatch"
+	// CauseDEKUnwrapFailed 資料金鑰重新解封連續失敗：KEK 保管處不可達、逾時
+	// 或拒絕。**不回退到任何舊材料**——需要金鑰的操作明確失敗
+	CauseDEKUnwrapFailed = "dek_unwrap_failed"
 )
 
 // CauseParamDetail forensic 明細參數鍵：承載底層 err 原文。
@@ -229,6 +241,10 @@ const (
 	// 與 CauseParamDetail 同紀律：只落 cause_params 與驗證頁，**不進出站 payload**
 	// ——層別是「這次是誰發現的」，不影響事件身分，也不是收件端需要知道的事
 	FailureParamChainVerifyLayer = "chain_verify_layer"
+	// FailureParamUnwrapFailures 連續解封失敗次數（出站）。
+	// 只帶次數：哪一把鑰、哪個版本、保管處回了什麼，都屬 forensic 明細，
+	// 不出站——次數已足以驅動「須有人前往查看」這唯一必要的行為
+	FailureParamUnwrapFailures = "unwrap_failures"
 )
 
 // AuditFailureEvent 審計機制失效事件（PCI 10.7.2/10.7.3）。

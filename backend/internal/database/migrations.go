@@ -176,6 +176,16 @@ var migrations = []Migration{
 		Up:      applyPolicyGroups,
 		Down:    rollbackPolicyGroups,
 	},
+	{
+		// 委託拓撲的資料層：單列表 kek_topologies（服務商、Vault 位址、
+		// Transit 金鑰名、AppRole 角色識別、AWS 服務區域）。全部明文欄位
+		// ——**封存狀態下須可讀，不得加密**（見 migration_kek_topology.go 檔頭）。
+		// 秘密不入本表。**Down 有損**（拓撲設定無第二處存放，生產無回滾入口）
+		Version: "20260913_kek_topology",
+		Name:    "kek_topology",
+		Up:      applyKEKTopology,
+		Down:    rollbackKEKTopology,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -197,7 +207,8 @@ func schemaDDLStatements() []string {
 	out = append(out, credentialLibraryContractDDL()...)
 	out = append(out, roleStateCheckpointDDL()...)
 	out = append(out, groupRoleMappingDDL()...)
-	return append(out, policyGroupsDDL()...)
+	out = append(out, policyGroupsDDL()...)
+	return append(out, kekTopologyDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

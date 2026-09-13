@@ -1,6 +1,7 @@
 package dbproxy
 
 import (
+	"github.com/custodexa/backend/internal/material"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestBuildCommandMSSQLNoCredentialInArgvOrEnv(t *testing.T) {
 	const secret = "sup3r-s3cret-pw"
 	prog, args, env, err := BuildCommand(Target{
 		Protocol: "mssql", Host: "sqlhost", Port: 0,
-		Username: "sa", Password: secret, DBName: "app",
+		Username: "sa", Password: material.Adopt([]byte(secret)), DBName: "app",
 	}, "")
 	if err != nil {
 		t.Fatalf("err=%v", err)
@@ -50,7 +51,7 @@ func TestBuildCommandMSSQLNoCredentialInArgvOrEnv(t *testing.T) {
 // 裸 -X 或合併成 "-X0" 都會被 cobra 拒絕（會話直接起不來）。
 func TestBuildCommandMSSQLDisableCmdFlagShape(t *testing.T) {
 	_, args, _, err := BuildCommand(Target{
-		Protocol: "mssql", Host: "h", Username: "sa", Password: "p",
+		Protocol: "mssql", Host: "h", Username: "sa", Password: material.Adopt([]byte("p")),
 	}, "")
 	if err != nil {
 		t.Fatalf("err=%v", err)
@@ -162,7 +163,7 @@ func TestBuildCommandMSSQLTLSModes(t *testing.T) {
 // sqlcmd 上游為 localizer.Sprintf("Password:")——**冒號後無尾隨空白**，
 // 與 psql 的 "Password for user X: " 不同型。
 func TestPasswordPromptMSSQL(t *testing.T) {
-	auth := PasswordPrompt(Target{Protocol: "mssql", Username: "sa", Password: "p"})
+	auth := PasswordPrompt(Target{Protocol: "mssql", Username: "sa", Password: material.Adopt([]byte("p"))})
 	if auth == nil {
 		t.Fatal("mssql 有密碼時須回提示注入設定")
 	}
@@ -177,8 +178,8 @@ func TestPasswordPromptMSSQL(t *testing.T) {
 	if auth.RequireCanonical {
 		t.Error("mssql 走 liner raw 模式，RequireCanonical 必須為 false")
 	}
-	if auth.Password != "p" {
-		t.Errorf("Password=%q", auth.Password)
+	if !passwordEquals(auth.Password, "p") {
+		t.Error("incorrect password owner")
 	}
 	// 無密碼時不得注入
 	if PasswordPrompt(Target{Protocol: "mssql", Username: "sa"}) != nil {

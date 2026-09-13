@@ -14,9 +14,11 @@ package model
 //	  → TestAuditLogRuneLimitsComeFromStructTags 轉紅（標籤改了、常數沒跟上）
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"gorm.io/gorm"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -176,7 +178,7 @@ func TestBeforeCreateBoundsBeforeStamping(t *testing.T) {
 	t.Cleanup(func() { SetAuditCreateHooks(nil, nil) })
 
 	row := &AuditLog{Path: "/api/v1/assets/" + strings.Repeat("A", 600)}
-	if err := row.BeforeCreate(nil); err != nil {
+	if err := row.BeforeCreate(&gorm.DB{Statement: &gorm.Statement{Context: context.Background()}}); err != nil {
 		t.Fatalf("BeforeCreate: %v", err)
 	}
 

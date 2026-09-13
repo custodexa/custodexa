@@ -351,7 +351,8 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// 再由 54 增為 55：資產帳號憑證最長使用天數
 		//（單位沿用既有的「天」，故 policyUnit 不變）
 		// riskLabel 由 8 增為 10：改密通道的兩個風險碼（winrm_http_ntlm／winrm_tls_insecure）
-		"policyLabel": 55, "policyUnit": 9, "riskLabel": 10,
+		// 再由 55 增為 56：DEK 快取存活期（單位沿用既有的「秒」，故 policyUnit 不變）
+		"policyLabel": 56, "policyUnit": 9, "riskLabel": 10,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
 		// 再由 9 增為 10：改密通道列的說明碼 winrm_rotation_channel

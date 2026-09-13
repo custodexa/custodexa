@@ -371,7 +371,7 @@ func TestCredentialRotationKeyTypeGroupChange(t *testing.T) {
 	}
 	resolved, err := f.assets.resolver.ResolveVersion(adminCtx(), cred.ID, pendingID)
 	require.NoError(t, err)
-	assert.Equal(t, first, resolved.PrivateKey, "就位的正是推到遠端的那一把")
+	assert.Equal(t, first, secretText(t, resolved.PrivateKey), "就位的正是推到遠端的那一把")
 	assert.Equal(t, model.ChangeSecretTypeSSHKey, resolved.SecretType)
 
 	after := f.credential(t, cred.ID)

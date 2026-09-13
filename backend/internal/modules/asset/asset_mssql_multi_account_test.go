@@ -44,12 +44,12 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, second.ID, got.AccountID)
 	assert.Equal(t, "app_reader", got.Username)
-	assert.Equal(t, "reader-pw", got.Password)
+	assert.True(t, secretMatches(t, got.Password, "reader-pw"), "resolved secret mismatch")
 
 	def, err := assets.GetWithCredentialsDefault(a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, defaultAccount.ID, def.AccountID)
-	assert.Equal(t, "sa-pw", def.Password, "指定帳號取密不得污染預設帳號那一條路")
+	assert.True(t, secretMatches(t, def.Password, "sa-pw"), "resolved secret mismatch")
 
 	// 第三個帳號改掛共用憑證：共用關係在 mssql 上同樣成立
 	shared, err := creds.Create(adminCtx(), &CreateCredentialRequest{
@@ -65,5 +65,5 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 	gotShared, err := assets.GetWithCredentialsForAccount(a.ID, third.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "dba", gotShared.Username)
-	assert.Equal(t, "dba-pw", gotShared.Password, "取密須解出該掛載所引用共用憑證的秘密")
+	assert.True(t, secretMatches(t, gotShared.Password, "dba-pw"), "resolved secret mismatch")
 }

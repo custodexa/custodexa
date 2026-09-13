@@ -2,6 +2,121 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.10.0 — two more key custodians, and delegated settings in the interface (2026-09-14)
+
+### New capabilities
+
+#### Vault Transit as a key custodian
+
+- Delegated key mode (`KEK_PROVIDER=kms`) now takes `KEK_KMS_PROVIDER=vault` alongside `aws`, and
+  addresses a Transit key by its name. The key that protects the data keys stays at the custodian:
+  data keys are wrapped and unwrapped there, and stored data and asset passwords are not sent.
+- Vault authenticates with an AppRole role identifier and role secret, or with a token given
+  directly, and renews that token while the system is unsealed.
+- Google Cloud KMS is the third custodian: `KEK_KMS_PROVIDER=gcp` addresses a CryptoKey by its
+  full resource name, authenticates with a service account key supplied at the unseal page, and
+  takes part in the key reference format, the wrapping format, the rewrap path and the wizard on
+  the same footing as AWS KMS and Vault Transit.
+- The version of the key is rotated at the custodian by whoever administers it. Moving this
+  deployment to a different key, or between local and delegated custody, goes through the rekey
+  wizard, which now offers the delegated custodians as targets.
+
+#### The delegated topology is set in the interface
+
+- The custodian, its address, the Transit key name, the AppRole role identifier and the service
+  region live in the database and are set in two places: the key management page, and the delegated
+  branch of the rekey wizard. Which key is in use is still read from the reference each key row
+  already carries.
+- Those settings are written only through an authenticated endpoint. Each change goes to the audit
+  log with the values before and after and the administrator who made it, and raises a security
+  alert on the notification channels already configured.
+- The unseal page shows the topology read-only as it loads, so the person unsealing compares the
+  custodian, the address, the role identifier and the key against the deployment record before
+  entering anything.
+
+#### The custodian's credentials are supplied at unseal
+
+- Each custodian's secret is entered on the unseal page every time the system is unsealed, held for
+  that unseal generation, and erased when the system is sealed: the AWS access key id and secret
+  access key, the contents of the Google service account key file, or the Vault role secret or
+  token. They go into no deployment file and onto no disk.
+- The unseal page asks for a local administrator's username and password before it shows any secret
+  field, in every mode. While the system is sealed that step checks the username and password; the
+  one-time code belongs to the stage that exists after unseal, so this step is not two-factor. Its
+  own per-source backoff, cooldown and allowed source ranges apply to it, an account that is already
+  locked is refused here too, and every attempt leaves a line in the backend log.
+- Once the administrator is authenticated, a failure at the credential step is reported as one of
+  three distinguishable causes: the custodian could not be reached, the credentials were refused, or
+  the key does not belong to this deployment.
+- A new installation can start straight into delegated mode, in four steps: verify the
+  administrator the deployment seeded, set the custodian, supply the credentials, create the first
+  keys. The backend creates those keys, wraps them with the external key and stores them before it
+  begins serving.
+
+#### Sealing a running deployment
+
+- An administrator seals a running system from the seal control. Sealing turns away new uses of the
+  key material, lets the work already holding it finish, and clears the cache.
+- Each mode comes back its own way: `ui` takes the key material typed in again, `env` reads it from
+  the deployment environment, and the delegated modes take the custodian's credentials on the unseal
+  page.
+
+#### How long a data key stays in memory
+
+- A new security policy, **data key retention in memory** (`dek_cache_ttl_seconds`, on the key
+  management policy page), decides how long an unwrapped data key is kept. Empty, which is the
+  factory value in every mode, keeps it until the system is sealed or restarted. `0` keeps none and
+  fetches the key from the custodian for each use. A number of seconds gives the key a fixed
+  lifetime from the moment it was unwrapped, and repeated use within it does not extend it.
+- `0` and a number of seconds both put the custodian on the everyday path, so measure that round
+  trip in your own environment before choosing a number. The audit stamping key and the signing
+  services' private keys stay outside this setting. A seal clears the cache at once whatever the
+  setting says.
+
+#### Limits on the backend container and process
+
+- The backend container drops every Linux capability and adds back four: `SETUID`, `SETGID` and
+  `CHOWN` for the database CLI subprocesses, and `IPC_LOCK` for memory locking. It runs with
+  `no-new-privileges`, with core dumps disabled, and with the locked-memory limit lifted.
+- Before it reads any configuration, the backend process makes itself non-dumpable, sets its core
+  limit to zero, and locks its resident and future pages so they are not swapped out. A setting that
+  cannot be applied stops startup and is named in the log.
+- An account password unwrapped for a connection is carried as writable bytes and cleared where it
+  was last needed. SSH password authentication hands the password to the handshake and clears it
+  once the handshake is done.
+
+### What changes for deployers
+
+- **One migration runs**, `20260913_kek_topology`, which creates a single-row table for the
+  delegated topology. It creates that table and touches nothing else, so how long it takes does not
+  depend on how much data the deployment holds.
+- **Delegated key deployments now stop at the unseal page after a restart or a seal.** An `aws` or
+  `vault` deployment comes up sealed and waits for an administrator to sign in on the unseal page,
+  check the topology and supply the credentials again. Count a person into every host reboot,
+  container recreation, maintenance window and restore. `ui` and `env` deployments start as they did
+  before, though a `ui` unseal now begins with the administrator sign-in described above.
+- **`.env` keeps two delegated keys**, `KEK_PROVIDER` and `KEK_KMS_PROVIDER`. `KEK_KMS_REGION`,
+  `KEK_KMS_KEY_ID`, `KEK_VAULT_ADDR`, `KEK_VAULT_ROLE_ID` and `KEK_VAULT_SECRET_ID` no longer take
+  effect. Leave them in place through the upgrade: the first startup reads the non-secret ones into
+  the database once, and the startup log then lists the keys that no longer take effect, by name and
+  without their values. `KEK_VAULT_SECRET_ID` is neither read nor stored; the role secret is
+  supplied on the unseal page.
+- **A new security policy key**, `dek_cache_ttl_seconds`, arrives empty, which is how the system
+  behaved before.
+- **Orchestration of your own supplies the backend container settings itself**: drop all
+  capabilities and add `SETUID`, `SETGID`, `CHOWN` and `IPC_LOCK`, set `no-new-privileges`, set the
+  core limit to zero and the locked-memory limit to unlimited. The compose files that ship with the
+  release already carry them.
+- The upgrade procedure for this release is in the deployment and upgrade SOP, §2.0 for what to
+  prepare and §2.5 for the first start.
+
+### Fixes
+
+- A change to an address setting is now recorded with the address in it. The audit field mask reads
+  the endpoint along with the field name, so `url` is recorded where it is a destination an auditor
+  follows, on the directory service settings and on the delegated topology, and stays masked
+  elsewhere.
+
 ## 1.9.2 — clearer verdicts in the setting drawer (2026-09-10)
 
 No schema change. No migration runs.

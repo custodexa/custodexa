@@ -1,13 +1,14 @@
 package dbproxy
 
 import (
+	"github.com/custodexa/backend/internal/material"
 	"strings"
 	"testing"
 )
 
 func TestBuildCommandPostgres(t *testing.T) {
 	prog, args, env, err := BuildCommand(Target{
-		Protocol: "postgres", Host: "db", Port: 0, Username: "u", Password: "secret", DBName: "app",
+		Protocol: "postgres", Host: "db", Port: 0, Username: "u", Password: material.Adopt([]byte("secret")), DBName: "app",
 	}, "")
 	if err != nil || prog != "psql" {
 		t.Fatalf("prog=%s err=%v", prog, err)
@@ -26,7 +27,7 @@ func TestBuildCommandPostgres(t *testing.T) {
 }
 
 func TestBuildCommandMySQLRedis(t *testing.T) {
-	_, args, _, _ := BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: "p"}, "")
+	_, args, _, _ := BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: material.Adopt([]byte("p"))}, "")
 	if !containsStr(args, "-p") {
 		t.Errorf("mariadb 有密碼時須帶不帶值的 -p（提示密碼）args=%v", args)
 	}
@@ -37,7 +38,7 @@ func TestBuildCommandMySQLRedis(t *testing.T) {
 	if containsStr(args, "--askpass") {
 		t.Errorf("redis 無密碼時不應帶 --askpass args=%v", args)
 	}
-	_, args, _, _ = BuildCommand(Target{Protocol: "redis", Host: "h", Password: "p"}, "")
+	_, args, _, _ = BuildCommand(Target{Protocol: "redis", Host: "h", Password: material.Adopt([]byte("p"))}, "")
 	if !containsStr(args, "--askpass") {
 		t.Errorf("redis 有密碼時須帶 --askpass args=%v", args)
 	}
@@ -52,7 +53,7 @@ func TestCredentialNeverEntersChildProcess(t *testing.T) {
 	legacyKeys := []string{"PGPASSWORD", "MYSQL_PWD", "REDISCLI_AUTH"}
 	for _, proto := range []string{"postgres", "mysql", "redis"} {
 		_, args, env, err := BuildCommand(Target{
-			Protocol: proto, Host: "h", Username: "u", Password: pw, DBName: "app",
+			Protocol: proto, Host: "h", Username: "u", Password: material.Adopt([]byte(pw)), DBName: "app",
 		}, "")
 		if err != nil {
 			t.Fatalf("%s: %v", proto, err)
@@ -68,9 +69,9 @@ func TestCredentialNeverEntersChildProcess(t *testing.T) {
 			}
 		}
 		// 有密碼就必須有提示注入設定，否則會話會卡在看不見的密碼提示
-		if p := PasswordPrompt(Target{Protocol: proto, Username: "u", Password: pw}); p == nil {
+		if p := PasswordPrompt(Target{Protocol: proto, Username: "u", Password: material.Adopt([]byte(pw))}); p == nil {
 			t.Errorf("%s: 缺提示注入設定", proto)
-		} else if p.Password != pw || p.Prompt == "" {
+		} else if !passwordEquals(p.Password, pw) || p.Prompt == "" {
 			t.Errorf("%s: 提示注入設定不完整 prompt=%q", proto, p.Prompt)
 		}
 	}
@@ -82,15 +83,15 @@ func TestCredentialNeverEntersChildProcess(t *testing.T) {
 // TestPasswordPromptStrings 提示字串為實測值（psql 16.14／mariadb 15.2／redis-cli 8.4.2）：
 // 這些字串是注入的唯一觸發條件，寫錯即整個 DB 會話卡在看不見的提示
 func TestPasswordPromptStrings(t *testing.T) {
-	pg := PasswordPrompt(Target{Protocol: "postgres", Username: "postgres", Password: "x"})
+	pg := PasswordPrompt(Target{Protocol: "postgres", Username: "postgres", Password: material.Adopt([]byte("x"))})
 	if pg.Prompt != "Password for user postgres: " || !pg.RequireCanonical {
 		t.Errorf("psql prompt=%q canonical=%v", pg.Prompt, pg.RequireCanonical)
 	}
-	my := PasswordPrompt(Target{Protocol: "mysql", Username: "root", Password: "x"})
+	my := PasswordPrompt(Target{Protocol: "mysql", Username: "root", Password: material.Adopt([]byte("x"))})
 	if my.Prompt != "Enter password: " || !my.RequireCanonical {
 		t.Errorf("mariadb prompt=%q canonical=%v", my.Prompt, my.RequireCanonical)
 	}
-	rd := PasswordPrompt(Target{Protocol: "redis", Password: "x"})
+	rd := PasswordPrompt(Target{Protocol: "redis", Password: material.Adopt([]byte("x"))})
 	if rd.Prompt != "Please input password: " || rd.RequireCanonical {
 		t.Errorf("redis prompt=%q canonical=%v", rd.Prompt, rd.RequireCanonical)
 	}
@@ -177,7 +178,7 @@ func TestBuildCommandTLSModes(t *testing.T) {
 	// 預設（空 TLSMode）不啟用 TLS，但須明示關掉憑證核對：MariaDB client 11.4
 	// 起「有提供密碼」會自動打開 --ssl-verify-server-cert，密碼改走 -p 提示注入
 	// 後若不明示，等於讓每個沒設 TLS 檔位的既有資產突然要求可信憑證鏈
-	_, args, env, _ = BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: "p"}, "")
+	_, args, env, _ = BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: material.Adopt([]byte("p"))}, "")
 	joinedTLS := strings.Join(args, " ")
 	if strings.Contains(joinedTLS, "--ssl ") || containsStr(args, "--ssl") {
 		t.Errorf("預設不應主動啟用 TLS args=%v", args)
@@ -186,7 +187,7 @@ func TestBuildCommandTLSModes(t *testing.T) {
 		t.Errorf("預設須明示關閉憑證核對（避免 -p 觸發 client 自動核對）args=%v", args)
 	}
 	// require＝加密但不驗憑證，同樣須明示，否則被自動升級成等同 verify-full
-	_, args, _, _ = BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: "p", TLSMode: "require"}, "")
+	_, args, _, _ = BuildCommand(Target{Protocol: "mysql", Host: "h", Username: "u", Password: material.Adopt([]byte("p")), TLSMode: "require"}, "")
 	if !containsStr(args, "--ssl") || !containsStr(args, "--ssl-verify-server-cert=0") {
 		t.Errorf("require 須為「加密不驗憑證」args=%v", args)
 	}

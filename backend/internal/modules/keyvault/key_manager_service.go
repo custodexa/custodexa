@@ -1,16 +1,19 @@
 package keyvault
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/seal"
 	"io"
 	"log"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
@@ -29,9 +32,10 @@ var ErrKEKMismatch = errors.New("KEK 與金鑰表不符：請確認 ENCRYPTION_K
 // 路徑皆已整組刪除——非 `enc:a1` 之值一律 fail-close（ErrNonFinalCiphertext）。
 // 審計 HMAC 鑰（audit_integrity 用途）以原始位元組提供給完整性服務。
 type KeyManagerService struct {
-	db  *gorm.DB
-	kek crypto.KEKProvider
-	mu  sync.RWMutex
+	materialGate seal.MaterialGate
+	db           *gorm.DB
+	kek          crypto.KEKProvider
+	mu           sync.RWMutex
 	// keys[purpose][version] = 金鑰明文材料（32 bytes）
 	keys map[string]map[int][]byte
 	// ciphers data 用途的 AESCrypto 快取（避免每次重建）
@@ -49,8 +53,29 @@ type KeyManagerService struct {
 	// InitAlertNotifier 就緒後讀取上報（沿 LastKEKSwitch 補記模式）。
 	// nil＝本次啟動收尾成功或無收尾。取鎖跳過不記（非失敗）。
 	lastFinalizeErr error
-	// policies 單次重加密上限的執行期來源（安全政策頁）；nil＝未接，退回 env
+	// policies 單次重加密上限與 DEK 快取存活期的執行期來源（安全政策頁）；
+	// nil＝未接，前者退回 env、後者視為未設定
 	policies rotationPolicySource
+	// dek data DEK 各版本的存活期簿記（見 dek_cache_ttl.go）。
+	// 未設定存活期的部署裡它只是一份被動的登記，不參與任何取用路徑
+	dek map[int]*dekCacheEntry
+	// dekRetiring 已自快取移出、仍有在途租約或釘選的材料：
+	// 最後一位歸還者負責覆寫。它們已不在 keys 表內，故收束時須另行掃過
+	dekRetiring []*dekCacheEntry
+	// dekFlights 進行中的 single-flight 解封（key＝版本）
+	dekFlights map[int]*dekFlight
+	// dekTimers 各版本的到期清除計時器
+	dekTimers map[int]*time.Timer
+	// dekInflight 在途解封總數（跨版本），受 dekMaxInflightUnwrap 約束
+	dekInflight int
+	// dekFailStreak 連續解封失敗次數；一次成功即歸零
+	dekFailStreak int
+	// dekObserver 解封可觀測性出口（窄介面，組裝根注入）
+	dekObserver DEKUnwrapObserver
+	// dekFailReporter 連續失敗的失效事件上報面（窄介面，組裝根注入）
+	dekFailReporter AuditFailureReporter
+	// nowFn 時點來源；nil＝time.Now（測試以此驅動到期，不靠真實睡眠）
+	nowFn func() time.Time
 }
 
 // KEKSwitchResult 本次啟動 KEK 切換收尾結果（供審計與退役史 from→to）
@@ -73,14 +98,42 @@ type kekSlot struct {
 //
 // **legacy 單鑰參數已刪除**：系統不具備任何
 // legacy 解密路徑，無前綴密文於解密時即 fail-close。
-func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (*KeyManagerService, error) {
+func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (result *KeyManagerService, err error) {
+	return InitKeyManagerWithBootstrap(db, kek, nil)
+}
+
+// BootstrapTxHook 於**首批金鑰落表的同一交易內**執行的附帶寫入。
+//
+// 目前唯一的使用者是全新安裝直接以委託模式開機：拓撲與首批金鑰必須全有全無。
+// hook 回錯即整筆 rollback（金鑰列一併不留），故 hook 內 SHALL NOT 做任何
+// 不可回滾的動作（外呼、檔案寫入、狀態機轉移）。
+type BootstrapTxHook func(tx *gorm.DB) error
+
+// ErrBootstrapHookOnNonEmptyKeyTable hook 已備妥但金鑰表非空。
+//
+// **fail-close 而非靜默略過**：hook 的內容（拓撲）與首批金鑰是同一次初始化的
+// 兩半；金鑰表非空代表這不是一次全新安裝，此時若略過 hook 就會回到「兩者
+// 分兩次寫」的形態，而那正是本要求要消除的。
+var ErrBootstrapHookOnNonEmptyKeyTable = errors.New("初始化附帶寫入已備妥，但金鑰表非空：此非全新安裝")
+
+// InitKeyManagerWithBootstrap 同 InitKeyManager，另允許在 bootstrap 交易內
+// 附帶一筆寫入（hook 為 nil 時行為與 InitKeyManager 逐字相同）。
+func InitKeyManagerWithBootstrap(db *gorm.DB, kek crypto.KEKProvider, hook BootstrapTxHook) (result *KeyManagerService, err error) {
 	s := &KeyManagerService{
-		db:      db,
-		kek:     kek,
-		keys:    map[string]map[int][]byte{},
-		ciphers: map[int]*crypto.AESCrypto{},
-		active:  map[string]int{},
+		db:         db,
+		kek:        kek,
+		keys:       map[string]map[int][]byte{},
+		ciphers:    map[int]*crypto.AESCrypto{},
+		active:     map[string]int{},
+		dek:        map[int]*dekCacheEntry{},
+		dekFlights: map[int]*dekFlight{},
+		dekTimers:  map[int]*time.Timer{},
 	}
+	defer func() {
+		if result == nil {
+			s.ZeroizeForRelease()
+		}
+	}()
 	// bootstrap 閘門：僅金鑰表完全為空時補鑄；
 	// 非空表由 load 驗證完整性（缺代表／斷號／損毀即 fail-close，不補鑄），
 	// 避免退役列使某 slot 只剩歷史而被誤判為空、補出新鑰使歷史密文永久不可解
@@ -92,9 +145,11 @@ func InitKeyManager(db *gorm.DB, kek crypto.KEKProvider) (*KeyManagerService, er
 		return nil, err
 	}
 	if count == 0 {
-		if err := s.bootstrap(); err != nil {
+		if err := s.bootstrap(hook); err != nil {
 			return nil, err
 		}
+	} else if hook != nil {
+		return nil, ErrBootstrapHookOnNonEmptyKeyTable
 	}
 	return s, nil
 }
@@ -452,9 +507,24 @@ func (s *KeyManagerService) KEKMode() string { return s.kek.Mode() }
 //
 // **恆帶 AAD、恆帶 `wk:2` 前綴**：本地格式的
 // 相容窗（裸 base64、無 AAD）已拆除，寫入端不再有任何格式分岔。
-func wrapMaterial(kek crypto.KEKProvider, purpose string, version int, raw []byte) (string, error) {
+// With a rewrap source, input is persisted ciphertext and the request context is retained.
+// Both operations use the same AAD and the sole column encoder below.
+func wrapMaterial(kek crypto.KEKProvider, purpose string, version int, input []byte, source ...materialRewrapSource) (string, error) {
 	tag := kek.FormatTag()
-	wrapped, err := kek.Wrap(context.Background(), raw, crypto.DEKAAD(purpose, version))
+	var wrapped []byte
+	var err error
+	if len(source) == 0 {
+		wrapped, err = kek.Wrap(context.Background(), input, crypto.DEKAAD(purpose, version))
+	} else {
+		rewrap := source[0]
+		wrapped, err = kek.ReEncrypt(rewrap.ctx, input, crypto.DEKAAD(purpose, version), rewrap.provider)
+		if err == nil {
+			err = rewrap.ctx.Err()
+		}
+		if err == nil && len(wrapped) == 0 {
+			err = errors.New("GCP rewrap returned empty ciphertext")
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("包裹金鑰失敗: %w", err)
 	}
@@ -474,7 +544,12 @@ func unwrapMaterial(kek crypto.KEKProvider, purpose string, version int, column 
 		return nil, fmt.Errorf("%w（列格式標記 %q，現行 provider 為 %q）",
 			crypto.ErrKEKFormatMismatch, tag, kek.FormatTag())
 	}
-	return kek.Unwrap(context.Background(), wrapped, crypto.DEKAAD(purpose, version))
+	raw, err := kek.Unwrap(context.Background(), wrapped, crypto.DEKAAD(purpose, version))
+	if err != nil {
+		material.Wipe(raw)
+		return nil, err
+	}
+	return raw, nil
 }
 
 func (s *KeyManagerService) putKey(purpose string, version int, raw []byte) {
@@ -486,6 +561,11 @@ func (s *KeyManagerService) putKey(purpose string, version int, raw []byte) {
 		if c, err := crypto.NewAESCrypto(raw); err == nil {
 			s.ciphers[version] = c
 		}
+		// 存活期的起算時點＝解封成功的這一刻（不是首次使用、也不是政策生效時刻）。
+		// 未設定存活期時本登記不影響任何取用路徑
+		if s.dek != nil {
+			s.dek[version] = &dekCacheEntry{version: version, raw: raw, unwrappedAt: s.now()}
+		}
 	}
 }
 
@@ -495,7 +575,7 @@ func (s *KeyManagerService) putKey(purpose string, version int, raw []byte) {
 // 原「audit_integrity 快照 legacy 派生鑰為 v0（retired）」已拆除——全新安裝不再
 // 出生即帶退役列，版本鏈自 v1 起。此適用於**全部**初始化路徑（env 模式首啟與
 // `ui` 模式初始化解封同）。
-func (s *KeyManagerService) bootstrap() error {
+func (s *KeyManagerService) bootstrap(hook BootstrapTxHook) error {
 	// 原子化：三筆初始金鑰包同一交易，
 	// 中途失敗 rollback——不留「非空但不完整」的表，致後續啟動的金鑰鏈完整性檢查永久
 	// ErrKEKMismatch。記憶體狀態（keys/active）於 commit 成功後才更新。
@@ -542,6 +622,13 @@ func (s *KeyManagerService) bootstrap() error {
 				return err
 			}
 			created = append(created, seeded{model.DataKeyPurposeAuditIntegrity, 1, raw, true})
+		}
+		// 附帶寫入落在**同一筆交易的最後**：金鑰列任一插入失敗即已 return，
+		// hook 不會在半套金鑰上執行；hook 失敗則整筆 rollback，金鑰列一併不留。
+		if hook != nil {
+			if err := hook(tx); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -598,25 +685,11 @@ func (s *KeyManagerService) Decrypt(ciphertext string) (string, error) {
 
 // EncryptFor 以 active data DEK 加密並綁定列身分（資料層 AAD）。
 // ref 不完整（缺表／欄／pk）即拒絕——AAD 綁定不得因呼叫端疏漏而靜默退化。
-func (s *KeyManagerService) EncryptFor(_ context.Context, ref crypto.CipherRef, plaintext string) (string, error) {
-	if plaintext == "" {
-		return "", nil
-	}
-	if !ref.Valid() {
-		return "", fmt.Errorf("%w（table=%q column=%q）", ErrCipherRefIncomplete, ref.Table, ref.Column)
-	}
-	s.mu.RLock()
-	ver := s.active[model.DataKeyPurposeData]
-	c := s.ciphers[ver]
-	s.mu.RUnlock()
-	if c == nil {
-		return "", errors.New("data DEK 未初始化")
-	}
-	raw, err := c.EncryptBytesAAD([]byte(plaintext), ref.AAD())
-	if err != nil {
-		return "", err
-	}
-	return crypto.EncodeEnvelopeAAD(crypto.AADSchemeA1, ver, raw)
+func (s *KeyManagerService) EncryptFor(ctx context.Context, ref crypto.CipherRef, plaintext string) (string, error) {
+	// This compatibility boundary cannot erase the caller's immutable string.
+	raw := []byte(plaintext)
+	defer material.Wipe(raw)
+	return s.EncryptBytesFor(ctx, ref, raw)
 }
 
 // DecryptFor 解密並驗證列身分；AAD 不符即解密失敗（跨表跨欄搬移密文擋於此）。
@@ -637,37 +710,18 @@ var ErrCipherRefIncomplete = errors.New("密文列身分不完整，無法建立
 // 判定落在**本層**而非 `crypto.ParseEnvelopeFull`：後者維持能解析 `enc:v`，
 // 因為殘值盤點與退役 DEK 引用掃描以它為判定基礎——收斂解密不等於收斂解析。
 func (s *KeyManagerService) decryptWith(ciphertext string, ref crypto.CipherRef) (string, error) {
-	if ciphertext == "" {
-		return "", nil
-	}
-	scheme, ver, raw, ok, err := crypto.ParseEnvelopeFull(ciphertext)
+	return vaultUse(&s.materialGate, func() (string, error) { return s.decryptString(ciphertext, ref) }, nil)
+}
+func (s *KeyManagerService) decryptString(ciphertext string, ref crypto.CipherRef) (string, error) {
+	owner, err := material.AdoptResult(s.decryptBytesWith(ciphertext, ref))
 	if err != nil {
 		return "", err
 	}
-	if !ok {
-		return "", fmt.Errorf("%w（無前綴值）", ErrNonFinalCiphertext)
-	}
-	if scheme == crypto.AADSchemeNone {
-		return "", fmt.Errorf("%w（無 AAD 綁定的 enc:v 值）", ErrNonFinalCiphertext)
-	}
-	if scheme == crypto.AADSchemeA1 && !ref.Valid() {
-		return "", fmt.Errorf("%w（帶 AAD 密文須經 DecryptFor 解密）", ErrCipherRefIncomplete)
-	}
-	s.mu.RLock()
-	c := s.ciphers[ver]
-	s.mu.RUnlock()
-	if c == nil {
-		return "", fmt.Errorf("密文引用不存在的 data DEK v%d", ver)
-	}
-	var aad []byte
-	if scheme == crypto.AADSchemeA1 {
-		aad = ref.AAD()
-	}
-	plain, err := c.DecryptBytesAAD(raw, aad)
-	if err != nil {
-		return "", err
-	}
-	return string(plain), nil
+	defer owner.Destroy()
+	var result string
+	// The compatibility result is an immutable copy; the owned buffer is erased.
+	err = owner.Borrow(func(raw []byte) error { result = string(raw); return nil })
+	return result, err
 }
 
 // ErrNonFinalCiphertext 讀到發佈前過渡格式的密文（無前綴或無 AAD 綁定）。
@@ -676,18 +730,39 @@ func (s *KeyManagerService) decryptWith(ciphertext string, ref crypto.CipherRef)
 var ErrNonFinalCiphertext = errors.New("密文為發佈前過渡格式（非 enc:a1）：系統無相容解密路徑，資料庫須重建")
 
 // ActiveHMACKey 現行審計蓋章鑰（版本與材料）
-func (s *KeyManagerService) ActiveHMACKey() (int, []byte) {
+func (s *KeyManagerService) ActiveHMACKey() (version int, key []byte) {
+	lease, err := s.materialGate.Borrow()
+	if err != nil {
+		return 0, nil
+	}
+	defer lease.Finish(func(valid bool) {
+		if !valid {
+			material.Wipe(key)
+			key = nil
+			version = 0
+		}
+	})
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ver := s.active[model.DataKeyPurposeAuditIntegrity]
-	return ver, s.keys[model.DataKeyPurposeAuditIntegrity][ver]
+	return ver, bytes.Clone(s.keys[model.DataKeyPurposeAuditIntegrity][ver])
 }
 
 // HMACKeyByVersion 指定版本蓋章鑰；不存在回 nil（驗證端計為不符）
-func (s *KeyManagerService) HMACKeyByVersion(version int) []byte {
+func (s *KeyManagerService) HMACKeyByVersion(version int) (key []byte) {
+	lease, err := s.materialGate.Borrow()
+	if err != nil {
+		return nil
+	}
+	defer lease.Finish(func(valid bool) {
+		if !valid {
+			material.Wipe(key)
+			key = nil
+		}
+	})
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.keys[model.DataKeyPurposeAuditIntegrity][version]
+	return bytes.Clone(s.keys[model.DataKeyPurposeAuditIntegrity][version])
 }
 
 // RewrapPending KEK 重包是否待切換（清冊「重包未完成」提示）

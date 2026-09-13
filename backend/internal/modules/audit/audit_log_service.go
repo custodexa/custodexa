@@ -791,8 +791,10 @@ func (s *AuditLogService) reportDrainTimeout() error {
 //  1. **非機密**：值不是憑證、金鑰材料、權杖、密碼，也不是可被貼進機密的自由文字
 //     欄（`note`／`reason`／`content`／`description` 一律不登記——長度無上限的
 //     自由文字是機密外洩的通道，而 audit_logs 受檢查點鏈保護，寫進去刪不掉）。
-//     **判準吃的是鍵名的全域語義**：遮罩只看 map 的鍵，不知道請求打的是哪個端點，
-//     故同名鍵在任一端點上可能是憑證，就一律不登記（`url` 即因此不登記，見下）。
+//     **本清單（全域集）吃的是鍵名的全域語義**：登記於此即代表「這個鍵名在**任一**
+//     端點上都不是機密」。同名鍵只要在某個端點上可能承載憑證，就不得進全域集
+//     ——但自端點感知遮罩落地起，它可以改登記於 `endpointAuditFieldSet` 的端點
+//     專屬集（`url` 即走這條路）。兩個集合皆維持 default-deny。
 //  2. **課責必要**：少了它，這一列就答不出「動了誰／動了什麼／變成什麼」。
 //     純粹的顯示偏好、逾時秒數、旗標噪音不因「反正不機密」而登記。
 //  3. **純量或識別字列表**：遮罩只走一層 map，登記鍵的值會**整包**原樣入庫。
@@ -809,12 +811,12 @@ func (s *AuditLogService) reportDrainTimeout() error {
 //
 //   - `policies`（PUT /security-policies）：巢狀 map，違反判準 3。該端點在
 //     handler 內逐鍵寫 old→new 的專屬審計列（PCI 10.2.2），課責不靠 request_body。
-//   - `url`（PUT /ldap-directory 與 notification-channels）：**違反判準 1 的全域
-//     語義條款**。LDAP 的 `ldaps://host:636` 不是憑證，但同一個鍵名在通知通道上
-//     承載 webhook 位址，而 Slack／Teams／釘釘形態的 webhook URL 本身就是持有型
-//     權杖。遮罩分不出這兩個端點，只能取嚴的一側。LDAP 的認證來源變更改由
-//     `base_dn`／`user_filter`／`skip_tls_verify`／`enabled` 課責，伺服器位址的
-//     可見性須待端點感知遮罩（列入 backlog）。
+//   - `url`：**已自本清單移出**。端點感知遮罩落地之後，同一個鍵名可以在不同端點
+//     有不同判定，故不再需要取嚴的一側：`url` 在目錄服務端點登記為可追蹤
+//     （`ldaps://host:636` 是伺服器位址，不是憑證），在通知管道端點**維持遮罩**
+//     （Slack／Teams／釘釘形態的 webhook URL 本身即持有型權杖）。登記處見
+//     `endpointAuditFieldSet`。目錄服務的伺服器位址變更自此可稽核——那是本產品
+//     長期的課責空白，其成因正是「遮罩只看鍵名、分不出端點」。
 //   - `tls_ca`／`db_ca_cert`／`k8s_ca_cert`／`rdp_verify_cert`／`risk_keys`／
 //     `key_strategy`／`secret_type`／`password_length`／`password_mode` 等：鍵名命中 auditmask G3
 //     的機密語義片段（cert／key／secret／password）。**不為個案開名稱例外**——
@@ -1139,9 +1141,22 @@ func SafeAuditIdentityFieldNames() []string {
 	return names
 }
 
-// MaskSensitiveFields 脫敏敏感欄位（白名單機制，見 safeAuditFieldSet 的登記判準）
-func MaskSensitiveFields(data map[string]interface{}) map[string]interface{} {
+// MaskSensitiveFields 脫敏敏感欄位（白名單機制，見 safeAuditFieldSet 的登記判準）。
+//
+// # endpoint 參數
+//
+// 形態為 `"<METHOD> <路由樣板>"`（例：`"PUT /api/v1/ldap-directory"`）。
+// **取自伺服端的路由註冊事實**（gin 的 `FullPath()`），不是請求可控的任何欄位
+// ——否則呼叫端只要宣告一個寬鬆端點就能讓自己的憑證原樣入庫。
+//
+// 放行集合＝**全域集 ∪ 該端點的專屬集**，兩者皆維持 default-deny。端點未知
+// （空字串，或沒有登記專屬集）時只套全域集，這是安全側的退化：未知端點不會
+// 因此多放行任何鍵。
+func MaskSensitiveFields(endpoint string, data map[string]interface{}) map[string]interface{} {
 	safe := safeAuditFieldSet()
+	for k := range endpointAuditFieldSet(endpoint) {
+		safe[k] = true
+	}
 	masked := make(map[string]interface{})
 	for key, value := range data {
 		if safe[key] {
@@ -1153,4 +1168,72 @@ func MaskSensitiveFields(data map[string]interface{}) map[string]interface{} {
 	}
 
 	return masked
+}
+
+// endpointAuditFieldSet 端點專屬的放行集。
+//
+// # 為什麼需要第二個軸
+//
+// 全域集的登記判準吃的是鍵名的**全域**語義：同一個鍵名只要在某個端點上可能是
+// 憑證，就一律不得登記。`url` 即因此長期不登記——目錄服務的 `ldaps://host:636`
+// 不是憑證，但通知管道的 webhook URL 本身就是持有型權杖，而遮罩分不出端點時
+// 只能取嚴的一側。代價是目錄服務的伺服器位址變更不可稽核。
+//
+// 端點專屬集解掉的正是這件事：判定改為「這個鍵名**在這個端點上**是不是機密」。
+//
+// # 登記判準（在全域集三條之外另加兩條）
+//
+//  4. **端點必須是伺服端註冊的路由樣板**，不是請求宣告的任何值。
+//  5. **憑證欄位在任何端點都不登記**：本表是放寬「鍵名全域語義」這一條，
+//     不是放寬「值是不是機密」。`password`／`secret`／`token`／`*_enc` 一類
+//     一律不得出現在本表——放寬的是判準 1 的全域性，不是判準 1 本身。
+//
+// # 為什麼不是 `map[endpoint]set` 的包級變數
+//
+// 同 safeAuditFieldSet：不可變字面量、無初始化順序語義，做成包級全域只會讓它
+// 被生命週期清單當成有時序風險的狀態登記一次。
+func endpointAuditFieldSet(endpoint string) map[string]bool {
+	switch endpoint {
+	// 目錄服務設定：`url` 是 LDAP 伺服器位址（`ldaps://host:636`），非憑證。
+	// **這條登記是「認證來源被改導到哪裡」的唯一課責欄**——改前只能靠
+	// `base_dn`／`user_filter`／`skip_tls_verify`／`enabled` 間接推斷。
+	// 同表的 `bind_password_enc` 一類憑證欄不在此，仍受全域 default-deny 遮蔽。
+	case "PUT /api/v1/ldap-directory":
+		return map[string]bool{"url": true}
+
+	// 委託拓撲：位址、服務區域與角色識別皆為非秘密，且它們承載的正是
+	// 「上鎖的資料金鑰送去哪裡解」——只記「拓撲已變更」不成立。
+	//
+	// **`transit_key_name` 刻意不登記**：其鍵名命中機密語義片段（key），而該片段
+	// 清單的過度攔截是刻意的安全側，不為個案開名稱例外。該欄的課責由拓撲端點
+	// **自寫的專屬審計列**承擔（`kek_topology_update` 事件，details 帶完整的前後值
+	// 摘要），與安全政策端點逐鍵寫 old→new 的做法同型。
+	case "PUT /api/v1/keys/topology":
+		return map[string]bool{"address": true, "region": true, "role_id": true}
+	}
+	return nil
+}
+
+// EndpointAuditFieldNames 端點專屬放行集的鍵（無序副本，供 `internal/guards/auditmask`）。
+//
+// 守衛以「端點 × 鍵名」為比對軸，故它需要拿得到每個端點各自放行了什麼。
+func EndpointAuditFieldNames(endpoint string) []string {
+	set := endpointAuditFieldSet(endpoint)
+	names := make([]string, 0, len(set))
+	for k := range set {
+		names = append(names, k)
+	}
+	return names
+}
+
+// AuditMaskEndpoints 有登記專屬集的端點清單（供守衛列舉）。
+//
+// **與 endpointAuditFieldSet 的 case 標籤逐字對應**：兩處分歧時守衛會漏掉一個
+// 端點的登記，而漏掉的那個正是「有人偷偷加了一條放行」最可能的藏身處。
+// 由 `TestEndpointAuditSetsAreEnumerated` 比對。
+func AuditMaskEndpoints() []string {
+	return []string{
+		"PUT /api/v1/ldap-directory",
+		"PUT /api/v1/keys/topology",
+	}
 }

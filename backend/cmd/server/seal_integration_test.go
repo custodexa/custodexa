@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -64,6 +65,15 @@ type sealIntegrationEnv struct {
 // 產物（stage1 結構）交棒，驗的仍是段 1／段 2 的分界本身。
 func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *sealIntegrationEnv {
 	t.Helper()
+	return newSealIntegrationEnvWith(t, nil, opts...)
+}
+
+// newSealIntegrationEnvWith 同上，另允許在**建狀態機之前**改寫段 1 的產物。
+//
+// 委託模式的整合案例需要這一道：`kekDecision.Mode` 與 `delegatedProviderSource`
+// 都是 `newSealMachine` 讀去決定分流與建構縫的輸入，建完才改等於改不到。
+func newSealIntegrationEnvWith(t *testing.T, mutate func(*stage1), opts ...func(*config.SealConfig)) *sealIntegrationEnv {
+	t.Helper()
 	prev := gin.Mode()
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(prev) })
@@ -74,6 +84,16 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 	if err != nil {
 		t.Fatalf("開啟測試 DB 失敗: %v", err)
 	}
+	// 檔案型 sqlite 只允許單一寫者：這套環境會起真的排程器與審計 sink，
+	// 連線池一旦開出第二條連線，兩邊同時寫就換來 SQLITE_BUSY（曾使
+	// TestGCPWizardE2E 的 rewrap 在整包跑時 500、單獨跑則綠）。
+	// 收到 1 條連線後，寫入在 database/sql 層排隊，sqlite 看不到競爭。
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("取得 sql.DB 失敗: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+
 	prevDB := database.DB
 	database.DB = db
 	t.Cleanup(func() { database.DB = prevDB })
@@ -124,6 +144,10 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 	keyvault.ResetPostUnsealQueueForTest()
 	keyvault.ResetPostUnsealRunCountsForTest()
 
+	if mutate != nil {
+		mutate(env.s1)
+	}
+
 	w, err := newSealMachine(env.s1, env.swap)
 	if err != nil {
 		t.Fatalf("建立封印狀態機失敗: %v", err)
@@ -160,6 +184,13 @@ func newSealIntegrationEnv(t *testing.T, opts ...func(*config.SealConfig)) *seal
 }
 
 // do 送一次請求至**當前生效**的 handler（換手後即為段 2 的完整 router）。
+//
+// **解封請求自動附上授權脈絡**：自委託拓撲與憑證改由介面管理之後
+// `/seal/unseal` 於所有模式都要求 `Authorization: SealGrant <grant>`，而那正是
+// 解封頁實際走的兩步（先帳密、再材料）。在此代取一次，使既有呼叫點不必各自
+// 重述那一步——「無脈絡即拒」本身另有專屬測試守著
+// （`internal/api` 的 TestUnsealRequiresGrantBeforeTouchingMaterial），
+// 不靠這些整合測試偶然覆蓋。
 func (e *sealIntegrationEnv) do(method, path, body string) *httptest.ResponseRecorder {
 	var r *http.Request
 	if body == "" {
@@ -168,9 +199,36 @@ func (e *sealIntegrationEnv) do(method, path, body string) *httptest.ResponseRec
 		r = httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 	}
+	if method == http.MethodPost && strings.HasSuffix(path, "/seal/unseal") {
+		if grant := e.sealGrant(); grant != "" {
+			r.Header.Set("Authorization", "SealGrant "+grant)
+		}
+	}
 	w := httptest.NewRecorder()
 	e.swap.ServeHTTP(w, r)
 	return w
+}
+
+// sealGrant 走 `/seal/authorize` 取一個解封授權脈絡。
+//
+// 取不到時回空字串而非 Fatal：部分測試刻意在「守衛攔下」「網段不符」等更早的
+// 閘上驗證，那些情境下授權端點本來就打不通，而它們要斷言的是那個更早的拒絕。
+func (e *sealIntegrationEnv) sealGrant() string {
+	body := fmt.Sprintf(`{"username":%q,"password":%q}`, testAdminUser, testAdminPassword)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/seal/authorize", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	e.swap.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		return ""
+	}
+	var out struct {
+		Grant string `json:"grant"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil {
+		return ""
+	}
+	return out.Grant
 }
 
 // initPayload 組出初始化解封的請求體（含 paste-back 與初始管理員憑證）。
@@ -820,5 +878,34 @@ func TestSealJournalReplayRowsAreStamped(t *testing.T) {
 		if r.IntegrityHMAC == "" {
 			t.Errorf("回灌列 HMAC MUST 非空（id=%d）", r.ID)
 		}
+	}
+}
+
+// delegatedUnsealBody 組出委託解封的請求體。
+//
+// **鍵集與拓撲摘要都不是測試自己編的**：摘要取自與解封端點同一支
+// `keyvault.TopologyDigest`，金鑰識別取自金鑰列——若兩者的算法分歧，
+// 這裡就會先紅，而不是等到實跑才發現「核對永遠不符」。
+func delegatedUnsealBody(t *testing.T, provider string) string {
+	t.Helper()
+	row, err := keyvault.LoadKEKTopology(database.DB)
+	if err != nil && !errors.Is(err, keyvault.ErrKEKTopologyNotConfigured) {
+		t.Fatalf("讀取拓撲失敗: %v", err)
+	}
+	keyRef, err := keyvault.CurrentKEKID(database.DB)
+	if err != nil {
+		t.Fatalf("讀取現行 KEK 引用失敗: %v", err)
+	}
+	digest := ""
+	if row != nil || keyRef != "" {
+		digest = keyvault.TopologyDigest(row, keyRef)
+	}
+	switch provider {
+	case "aws":
+		return fmt.Sprintf(`{"access_key_id":"AKIAFIXTURE","secret_access_key":"fixture-secret","topology_digest":%q}`, digest)
+	case "gcp":
+		return fmt.Sprintf(`{"service_account_json":"{\"type\":\"service_account\"}","topology_digest":%q}`, digest)
+	default:
+		return fmt.Sprintf(`{"vault_secret_id":"fixture-secret-id","topology_digest":%q}`, digest)
 	}
 }

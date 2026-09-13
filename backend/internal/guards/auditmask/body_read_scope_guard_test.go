@@ -23,6 +23,14 @@ var rawRequestBodyReaders = map[string]string{
 		"（避免明文停留在結構體），本文全為金鑰材料，遮罩後無可放行內容",
 	"internal/api/seal_handler.go": "POST /seal/unseal：解封材料早於認證系統可用，" +
 		"留痕由 seal journal 承擔（見 audit-coverage 規格「他體系留痕的明載定調」）",
+	"internal/api/seal_authorize.go": "POST /seal/authorize：帳號與密碼於封存期輸入，" +
+		"密碼須以可覆寫的 []byte 承載（gin binding 必產生不可覆寫的 string 副本）；" +
+		"本文只有 username 與 password，遮罩後無可放行內容，" +
+		"留痕由封存期的行程日誌與解封端點的既有機制承擔",
+	"internal/api/kek_topology_handler.go": "PUT /keys/topology：請求本文以「該服務商的精確鍵集」" +
+		"逐鍵比對（多一鍵少一鍵皆拒），gin binding 的寬鬆語義表達不了這個約束；" +
+		"課責不靠 request_body 而靠 handler 自寫的 kek_topology_update 審計列（帶完整前後值摘要），" +
+		"另於 audit.endpointAuditFieldSet 為本端點登記 address／region／role_id 為可追蹤",
 }
 
 // TestRawRequestBodyReadersAreDeclared 原始 body 讀取點必須具名登記

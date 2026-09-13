@@ -67,6 +67,21 @@ services:
 
   # Go 後端服務（開發模式，支援熱重載）
   backend:
+    # Drop unrelated capabilities; retain only the operations listed below.
+    cap_drop: [ALL]
+    cap_add:
+      - SETUID # Switch DB CLI children to the dedicated user.
+      - SETGID # Switch DB CLI children to the dedicated group.
+      - CHOWN # Transfer temporary CA files to the DB CLI user.
+      - IPC_LOCK # Lock process memory without the memlock limit.
+    # Prevent privilege gains through setuid executables.
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      # Disable core dumps with explicit soft and hard limits.
+      core:
+        soft: 0
+        hard: 0
+      memlock: -1 # Allow locking all current and future process memory.
     image: custodexa/backend:dev
     build:
       context: .
@@ -492,6 +507,33 @@ services:
     networks:
       - custodexa-network
     restart: unless-stopped
+
+  # Isolated, ephemeral Transit fixture. Supply the token through Compose.
+  vault:
+    image: hashicorp/vault:2.1.0@sha256:5520cc26271c024e6ffa45cdf95255bd26b70d71ba4b7e0bc18925bef4128adb
+    hostname: vault
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?Set the dev initialization token}
+      VAULT_ADDR: http://127.0.0.1:8200
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        set -o pipefail
+        vault version
+        vault server -dev -dev-listen-address=0.0.0.0:8200 -dev-root-token-id="$${VAULT_DEV_ROOT_TOKEN_ID}" 2>&1 |
+          sed 's/Root Token:.*/Root Token: [REDACTED]/'
+    ports:
+      - "127.0.0.1:8200:8200"
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - custodexa-network
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: "no"
 
 # 開發靶機專用。設定 LDIF 先載 overlay，資料 LDIF 隨後新增群組，才能產生 memberOf。
 configs:

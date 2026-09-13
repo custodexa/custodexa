@@ -49,9 +49,9 @@ func TestWindowsCommandNeverContainsPassword(t *testing.T) {
 	assert.Contains(t, script, "exit 3", "標準輸入為空須以退出碼 3 結束")
 	assert.Contains(t, script, "ConvertTo-SecureString $p -AsPlainText -Force")
 
-	stdin := windowsRotationStdin(password, "old", account)
-	assert.Contains(t, stdin, password, "標準輸入內容含新密碼")
-	assert.True(t, strings.HasSuffix(stdin, "\n"+account+"\n"), "帳號名為標準輸入最後一行")
+	stdin := windowsRotationStdin([]byte(password), []byte("old"), account)
+	assert.Contains(t, string(stdin), password, "標準輸入內容含新密碼")
+	assert.True(t, strings.HasSuffix(string(stdin), "\n"+account+"\n"), "帳號名為標準輸入最後一行")
 
 	verify := decodeWindowsCommand(t, buildWindowsCommand(windowsVerifyScript))
 	assert.Equal(t, windowsVerifyScript, verify)

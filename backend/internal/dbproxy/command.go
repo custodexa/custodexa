@@ -5,6 +5,7 @@ package dbproxy
 
 import (
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"strconv"
 	"strings"
 
@@ -17,7 +18,7 @@ type Target struct {
 	Host     string
 	Port     int
 	Username string
-	Password string
+	Password *material.Secret
 	DBName   string
 	// TLSMode DB 連線 TLS 模式（per-asset 可選）：
 	//   ""(預設，沿用 client 預設，不破壞既有資產) / disable(停用) /
@@ -97,7 +98,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 			"-P", strconv.Itoa(port),
 			"-u", t.Username,
 		}
-		if t.Password != "" {
+		if !t.Password.IsEmpty() {
 			// -p 不帶值＝提示密碼（帶值會落 argv）。實測後接的位置參數不會被
 			// 當成密碼吃掉：`-u root -p testdb` 仍以 testdb 為資料庫
 			args = append(args, "-p")
@@ -158,7 +159,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 		// 環境不含 REDISCLI_AUTH：--askpass 讓 redis-cli 輸出
 		// "Please input password: " 並停下等輸入，由 PTY 層注入。
 		// 歷史檔導向 /dev/null（理由同 psql）
-		if t.Password != "" {
+		if !t.Password.IsEmpty() {
 			args = append(args, "--askpass")
 		}
 		return "redis-cli", args, []string{"REDISCLI_HISTFILE=/dev/null"}, nil
@@ -223,7 +224,7 @@ func BuildCommand(t Target, caFile string) (string, []string, []string, error) {
 // （實測同 user/host/port 的 `\connect` 會重用快取密碼、根本不再提示，
 // 故第一次注入之後的同名提示必然是換了目標）。
 func PasswordPrompt(t Target) *localpty.PasswordAuth {
-	if t.Password == "" {
+	if t.Password.IsEmpty() {
 		return nil
 	}
 	switch t.Protocol {

@@ -740,13 +740,13 @@ describe('自動驗證狀態區塊', () => {
       '検出できる範囲が広がるわけではありません'
     )
     expect(zhTW.checkpointVerification.limits.R5.mitigation).toContain(
-      '不涵蓋本條所述的尚未封存區間'
+      '不涵蓋本條所述的尚未存證區間'
     )
     expect(enUS.checkpointVerification.limits.R5.mitigation).toContain(
-      'does not cover the not-yet-sealed stretch'
+      'does not cover the not-yet-notarized stretch'
     )
     expect(jaJP.checkpointVerification.limits.R5.mitigation).toContain(
-      '未封印の区間は対象外'
+      '未保全の区間は対象外'
     )
   })
 })

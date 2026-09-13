@@ -108,6 +108,12 @@ func Start(prog string, args, env []string, cols, rows int) (*Conn, error) {
 // HOME/TMPDIR 指向該身分唯讀的空目錄。PTY 從屬端由本程序（root）開啟後以
 // fd 傳給子程序，權限在 open 時已檢查完畢，換身分不影響終端讀寫。
 func StartWithOptions(prog string, args, env []string, cols, rows int, opt Options) (*Conn, error) {
+	handedOff := false
+	defer func() {
+		if opt.Auth != nil && !handedOff {
+			opt.Auth.Password.Destroy()
+		}
+	}()
 	cmd := exec.Command(prog, args...)
 	home := os.Getenv("HOME")
 	base := []string{
@@ -139,8 +145,9 @@ func StartWithOptions(prog string, args, env []string, cols, rows int, opt Optio
 		return nil, fmt.Errorf("啟動本地終端程式失敗: %w", err)
 	}
 	c := &Conn{cmd: cmd, ptmx: ptmx}
-	if opt.Auth != nil && opt.Auth.Password != "" && opt.Auth.Prompt != "" {
+	if opt.Auth != nil && !opt.Auth.Password.IsEmpty() && opt.Auth.Prompt != "" {
 		c.auth = newPromptAuth(*opt.Auth, ptmx, c.Write)
+		handedOff = true
 	}
 	return c, nil
 }
@@ -186,6 +193,9 @@ func (c *Conn) WindowChange(rows, cols int) error {
 
 // Close 關閉 PTY 並終止子程序（冪等；Wait 回收避免殭屍程序）
 func (c *Conn) Close() {
+	if c.auth != nil {
+		c.auth.cfg.Password.Destroy()
+	}
 	if c.ptmx != nil {
 		c.ptmx.Close()
 	}

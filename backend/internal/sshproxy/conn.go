@@ -1,9 +1,12 @@
 package sshproxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"io"
 	"net"
 	"strings"
@@ -26,11 +29,12 @@ var (
 
 // ConnConfig SSH 連線參數（憑證由後端注入）
 type ConnConfig struct {
+	Context    context.Context
 	Host       string
 	Port       int
 	Username   string
-	Password   string
-	PrivateKey string
+	Password   *sshmaterial.Password
+	PrivateKey *material.Secret
 	Cols       int
 	Rows       int
 	// HostKey host key 驗證 callback（必填，host-key-verification）
@@ -59,16 +63,16 @@ type SSHConn struct {
 func authMethods(cfg ConnConfig) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 
-	if cfg.PrivateKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
+	if !cfg.PrivateKey.IsEmpty() {
+		signer, err := material.Use(cfg.PrivateKey, ssh.ParsePrivateKey)
 		if err != nil {
 			return nil, fmt.Errorf("解析私鑰失敗: %w", err)
 		}
 		methods = append(methods, ssh.PublicKeys(signer))
 	}
 
-	if cfg.Password != "" {
-		methods = append(methods, ssh.Password(cfg.Password))
+	if !cfg.Password.Empty() {
+		methods = append(methods, ssh.PasswordCallback(cfg.Password.Callback))
 	}
 
 	if len(methods) == 0 {
@@ -105,6 +109,8 @@ func (c *SSHConn) Client() *ssh.Client {
 // HostKeyCallback 由呼叫端注入（host-key-verification TOFU）；
 // 未注入時 fail-closed 拒線，杜絕無驗證路徑。
 func Dial(cfg ConnConfig) (*SSHConn, error) {
+	defer cfg.Password.Destroy()
+	defer cfg.PrivateKey.Destroy()
 	if cfg.HostKey == nil {
 		return nil, errors.New("host key 驗證未配置，連線已拒絕")
 	}
@@ -121,7 +127,9 @@ func Dial(cfg ConnConfig) (*SSHConn, error) {
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	client, err := ssh.Dial("tcp", addr, clientConfig)
+	client, err := sshmaterial.Dial(cfg.Context, addr, clientConfig)
+	cfg.Password.Destroy()
+	cfg.PrivateKey.Destroy()
 	if err != nil {
 		return nil, classifyDialError(err)
 	}

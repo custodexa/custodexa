@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,8 +13,10 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/custodexa/backend/internal/database"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"gorm.io/gorm"
 )
 
@@ -100,7 +103,8 @@ func (s *SFTPService) connect(assetID, accountID uint) (*sftp.Client, func(), er
 	if err != nil {
 		return nil, nil, err
 	}
-	assetRow, password, privateKey := creds.Asset, creds.Password, creds.PrivateKey
+	defer creds.Destroy()
+	assetRow := creds.Asset
 	// 零帳號資產：與連線入口同語義，明確回「無可用帳號」而非落到下方
 	// 「未設定可用憑證」——後者訊息指向憑證欄，會誤導管理員去改資產表單
 	if creds.AccountID == 0 {
@@ -110,27 +114,9 @@ func (s *SFTPService) connect(assetID, accountID uint) (*sftp.Client, func(), er
 		return nil, nil, errors.New("僅 SSH 資產支援檔案管理")
 	}
 
-	var methods []ssh.AuthMethod
-	if privateKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(privateKey))
-		if err != nil {
-			return nil, nil, fmt.Errorf("解析私鑰失敗: %w", err)
-		}
-		methods = append(methods, ssh.PublicKeys(signer))
-	}
-	if password != "" {
-		methods = append(methods, ssh.Password(password))
-	}
-	if len(methods) == 0 {
-		return nil, nil, errors.New("資產未設定可用憑證")
-	}
-
-	sshClient, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", assetRow.Host, assetRow.Port), &ssh.ClientConfig{
-		User:            creds.Username, // 與憑證同帳號
-		Auth:            methods,
-		HostKeyCallback: s.hostKeys.Callback(assetRow.ID), // TOFU（host-key-verification），與 SSH 連線路徑同庫
-		Timeout:         sftpDialTimeout,
-	})
+	password := sshmaterial.NewPassword(creds.Password)
+	sshClient, err := dialSFTP(context.Background(), creds, password, s.hostKeys.Callback(assetRow.ID))
+	creds.Destroy()
 	if err != nil {
 		return nil, nil, fmt.Errorf("SSH 連線失敗: %w", err)
 	}
@@ -285,4 +271,26 @@ func (s *SFTPService) Delete(assetID, accountID uint, remotePath string) error {
 		return fmt.Errorf("刪除檔案失敗: %w", err)
 	}
 	return nil
+}
+
+func dialSFTP(ctx context.Context, creds *asset.AssetCredentials, password *sshmaterial.Password, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+	defer creds.Destroy()
+	defer password.Destroy()
+	var methods []ssh.AuthMethod
+	if !creds.PrivateKey.IsEmpty() {
+		signer, err := material.Use(creds.PrivateKey, ssh.ParsePrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("解析私鑰失敗: %w", err)
+		}
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
+	if !password.Empty() {
+		methods = append(methods, ssh.PasswordCallback(password.Callback))
+	}
+	if len(methods) == 0 {
+		return nil, errors.New("資產未設定可用憑證")
+	}
+	return sshmaterial.Dial(ctx, fmt.Sprintf("%s:%d", creds.Asset.Host, creds.Asset.Port), &ssh.ClientConfig{
+		User: creds.Username, Auth: methods, HostKeyCallback: hostKey, Timeout: sftpDialTimeout,
+	})
 }

@@ -27,14 +27,14 @@ type fakeExecutor struct {
 	verifyErr   error
 }
 
-func (f *fakeExecutor) Rotate(_ context.Context, t rotationTarget, _, _ string) error {
+func (f *fakeExecutor) Rotate(_ context.Context, t rotationTarget, _, _ []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.rotateCalls = append(f.rotateCalls, t)
 	return f.rotateErr
 }
 
-func (f *fakeExecutor) Verify(_ context.Context, t rotationTarget, _ string) error {
+func (f *fakeExecutor) Verify(_ context.Context, t rotationTarget, _ []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.verifyCalls = append(f.verifyCalls, t)
@@ -247,7 +247,7 @@ func TestNotWiredExecutorIsCleanFailure(t *testing.T) {
 	assert.EqualValues(t, 0, f.candidateCount(t), "未觸碰遠端 ⇒ 候選 SHALL 清除")
 
 	// 哨兵可被 errors.Is 認出：2.x 換上真執行器時，這條分支要能被找出來刪掉
-	err := notWiredExecutor{}.Rotate(context.Background(), rotationTarget{}, "old", "new")
+	err := notWiredExecutor{}.Rotate(context.Background(), rotationTarget{}, []byte("old"), []byte("new"))
 	require.ErrorIs(t, err, errExecutorNotWired)
 	var localErr *localPreconditionError
 	require.True(t, errors.As(err, &localErr), "未接線須走本地前置失敗分支")

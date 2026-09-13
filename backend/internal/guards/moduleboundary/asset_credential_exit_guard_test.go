@@ -150,40 +150,13 @@ func TestAssetCredentialDecryptOnlyAtDeclaredExits(t *testing.T) {
 			t.Fatalf("解析 %s 失敗：守衛拒絕在殘缺的 AST 上作判定: %v", rel, perr)
 		}
 		scanned++
-		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			owner := rel + "#" + funcQualifiedName(fn)
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				ce, ok := n.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				sel, ok := ce.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "DecryptFor" || len(ce.Args) < 2 {
-					return true
-				}
-				site := rel + ":" + itoa(fset.Position(ce.Pos()).Line)
-				refName, literal := cipherRefIdent(ce.Args[1])
-				if !literal {
-					if _, ok := assetDecryptRefAllowlist[rel]; !ok {
-						unresolved = append(unresolved, site+"（ref 非字面 keyvault.RefX，靜態判不出是不是資產類）")
-					}
-					return true
-				}
-				if _, isAsset := assetRefs[refName]; !isAsset {
-					return true
-				}
-				if _, allowed := assetCredentialExits[owner]; allowed {
-					seen[owner] = append(seen[owner], site)
-					return true
-				}
-				violations = append(violations, site+"："+owner+" 解封 "+refName)
-				return true
-			})
+		found, bad, unknown := scanCredentialExits(fset, f, rel, assetRefs)
+		for owner, sites := range found {
+			seen[owner] = append(seen[owner], sites...)
 		}
+		violations = append(violations, bad...)
+		unresolved = append(unresolved, unknown...)
+
 		return nil
 	})
 	if err != nil {
@@ -196,7 +169,7 @@ func TestAssetCredentialDecryptOnlyAtDeclaredExits(t *testing.T) {
 	// 偵測器健康：兩個既知出口必須被看見（掃不到＝偵測器壞了，不是「沒有出口」）
 	for exit := range assetCredentialExits {
 		if len(seen[exit]) == 0 {
-			t.Errorf("[偵測器健康] 出口清單登記的 %s 未被掃到任何資產類 DecryptFor："+
+			t.Errorf("[偵測器健康] 出口清單登記的 %s 未被掃到任何資產類 DecryptBytesFor："+
 				"要嘛該出口已移除（SHALL 同步刪除登記列），要嘛偵測器失效而本守衛已成恆綠", exit)
 		}
 	}
@@ -260,4 +233,78 @@ func cipherRefIdent(e ast.Expr) (string, bool) {
 		return x.Name, true
 	}
 	return "", false
+}
+
+func isColumnDecrypt(name string) bool { return name == "DecryptFor" || name == "DecryptBytesFor" }
+
+// Direct calls keep the column identity and the owning exit observable.
+func scanCredentialExits(fset *token.FileSet, f *ast.File, rel string, assetRefs map[string]string) (map[string][]string, []string, []string) {
+	seen := map[string][]string{}
+	var violations, unresolved []string
+	direct := map[*ast.SelectorExpr]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if ce, ok := n.(*ast.CallExpr); ok {
+			if sel, ok := ce.Fun.(*ast.SelectorExpr); ok {
+				direct[sel] = true
+			}
+		}
+		return true
+	})
+	ast.Inspect(f, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok && isColumnDecrypt(sel.Sel.Name) && !direct[sel] {
+			violations = append(violations, rel+":"+itoa(fset.Position(sel.Pos()).Line)+": indirect decrypt method reference")
+		}
+		return true
+	})
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		owner := rel + "#" + funcQualifiedName(fn)
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			ce, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := ce.Fun.(*ast.SelectorExpr)
+			if !ok || !isColumnDecrypt(sel.Sel.Name) || len(ce.Args) < 2 {
+				return true
+			}
+			site := rel + ":" + itoa(fset.Position(ce.Pos()).Line)
+			refName, literal := cipherRefIdent(ce.Args[1])
+			if !literal || !strings.HasPrefix(refName, "Ref") {
+				if _, ok := assetDecryptRefAllowlist[rel]; !ok && !isCiphertextRecryptBoundary(owner) {
+					unresolved = append(unresolved, site+"（ref 非字面 keyvault.RefX，靜態判不出是不是資產類）")
+				}
+				return true
+			}
+			if _, isAsset := assetRefs[refName]; !isAsset {
+				return true
+			}
+			if sel.Sel.Name == "DecryptFor" {
+				violations = append(violations, site+": asset secret uses string adapter")
+				return true
+			}
+			if _, allowed := assetCredentialExits[owner]; allowed {
+				seen[owner] = append(seen[owner], site)
+				return true
+			}
+			violations = append(violations, site+"："+owner+" 解封 "+refName)
+			return true
+		})
+	}
+	return seen, violations, unresolved
+}
+
+// These existing keyvault boundaries return or persist ciphertext, not asset
+// credentials. The exemption is per function, never for the surrounding file.
+func isCiphertextRecryptBoundary(owner string) bool {
+	switch owner {
+	case "internal/modules/keyvault/envelope_migration_service.go#reencryptEnvelopeColumn",
+		"internal/modules/keyvault/post_unseal_migration.go#RecryptForNewRef":
+		return true
+	default:
+		return false
+	}
 }

@@ -55,7 +55,7 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 }
 
 // Rotate 改密。本地驗證 → 舊密碼建工作階段 → 腳本＋標準輸入 → 依結果標記與退出碼分流。
-func (e windowsWinRMExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret string) error {
+func (e windowsWinRMExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret []byte) error {
 	if err := validateWindowsAccountName(t.username); err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func classifyWinRMRotateError(err error) error {
 }
 
 // Verify 以新密碼另建工作階段跑驗證指令，依固定序列重試。
-func (e windowsWinRMExecutor) Verify(ctx context.Context, t rotationTarget, newSecret string) error {
+func (e windowsWinRMExecutor) Verify(ctx context.Context, t rotationTarget, newSecret []byte) error {
 	var last error
 	for _, delay := range e.verifyDelays {
 		if delay > 0 {
@@ -111,7 +111,7 @@ func (e windowsWinRMExecutor) Verify(ctx context.Context, t rotationTarget, newS
 		if err != nil {
 			return err
 		}
-		out := session.run(buildWindowsCommand(windowsVerifyScript), "", e.dialTimeout, e.commandTimeout)
+		out := session.run(buildWindowsCommand(windowsVerifyScript), nil, e.dialTimeout, e.commandTimeout)
 		switch {
 		case out.err != nil:
 			last = out.err

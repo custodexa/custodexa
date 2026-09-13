@@ -29,7 +29,7 @@ func TestWinRMClientRefusesUnencryptedTarget(t *testing.T) {
 			e.dialTimeout, e.commandTimeout = 5*time.Second, 5*time.Second
 			target := rotationTarget{asset: f.asset(), channel: model.RotationChannelWindowsWinRM, username: "Administrator"}
 
-			err := e.Rotate(context.Background(), target, "old", "NewP@ss1")
+			err := e.Rotate(context.Background(), target, []byte("old"), []byte("NewP@ss1"))
 			require.Error(t, err)
 			var rejected *remoteRejectedError
 			require.True(t, errors.As(err, &rejected), "須為遠端確定未變更的分流型別: %v", err)
@@ -113,9 +113,9 @@ func TestWinRMClientTLSModes(t *testing.T) {
 			asset := f.asset()
 			asset.WinrmTLSMode = c.mode
 			asset.WinrmCACert = c.ca
-			session, err := newWinRMSession(context.Background(), asset, "Administrator", "old", f.security, 5*time.Second)
+			session, err := newWinRMSession(context.Background(), asset, "Administrator", []byte("old"), f.security, 5*time.Second)
 			require.NoError(t, err)
-			out := session.run(buildWindowsCommand(windowsVerifyScript), "", 5*time.Second, 5*time.Second)
+			out := session.run(buildWindowsCommand(windowsVerifyScript), nil, 5*time.Second, 5*time.Second)
 			if c.accept {
 				require.NoError(t, out.err)
 				assert.Equal(t, 0, out.exitCode)

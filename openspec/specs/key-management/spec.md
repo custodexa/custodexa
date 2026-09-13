@@ -2,11 +2,20 @@
 
 ## Purpose
 本規範定義落庫敏感資料的信封加密（KEK/DEK 分層）、金鑰清冊與換鑰治理、KEK 切換狀態機與軟刪除退役，以及金鑰清冊儀表板之顯示、指紋與可觀測性。
+
 ## Requirements
+
 ### Requirement: KEK/DEK 信封加密分層
 系統 SHALL 以信封加密保護落庫敏感資料：資料由 DEK（AES-256-GCM）加密，DEK 由 KEK 包裹後存於金鑰表（含用途、版本、狀態；每用途同時僅一把 active，retired 鑰 SHALL 永久保留供舊資料解密）。KEK SHALL 經 `KEKProvider` 介面取得。落庫密文 SHALL 一律為帶自描述方案前綴之信封格式並含 AAD 綁定（見「信封密文的 AAD 列綁定」）；無前綴或方案未知之值 SHALL fail-close 回可辨識格式錯，系統 SHALL NOT 具備任何 legacy 單鑰解密路徑。KEK 明文與 DEK 明文 SHALL NOT 落庫、SHALL NOT 經 API 回傳、SHALL NOT 寫入日誌。
 
 自 KEK provider 模組化起本 requirement 擴充如下：`KEKProvider` SHALL 支援多種 KEK 來源模式，且模式差異 SHALL 完全封裝於該介面之下——金鑰表版本鏈、信封密文格式、輪替、重包、清理與退役狀態機在各模式下 SHALL 具相同語義。DEK 明文於啟動時解出後常駐行程記憶體，運行期一般加解密 SHALL NOT 觸發 KEK 操作（KEK 僅於啟動、重包與清理時被使用）；委託型 provider 之外部服務短暫不可達 SHALL NOT 影響既有連線與既有密文之加解密。
+
+Vault 亦為本 requirement 的一種委託來源：provider 套件承擔包裹／解包契約，正式啟動、切換與換鑰精靈已接線並經完整服務組裝實跑。Vault 短暫不可達時，既有連線、審計寫入與已快取 DEK 的加解密 SHALL 維持正常，需要 Vault 的操作 SHALL 明確失敗；此運行期行為的實跑證據限於 HTTP keep-alive 連線與審計計數，SHALL NOT 擴張為 SSH／RDP 會話持續可用之宣稱。
+GCP Cloud KMS 亦為本 requirement 的一種委託來源：`kms` 模式搭配 `KEK_KMS_PROVIDER=gcp` 時，DEK 之包裹與解包委託 Cloud KMS 執行，金鑰表版本鏈、信封密文格式、輪替、重包、清理與退役狀態機之語義不變。上段「委託型 provider 之外部服務短暫不可達」之運行期語義同樣適用於 Cloud KMS 不可達或其 ADC 認證失效之情形：既有連線、審計寫入與已快取 DEK 的加解密 SHALL 維持正常，需要 KMS 的新操作 SHALL 明確失敗，冷啟動 SHALL NOT 放行。
+
+自介面填鑰模式引入運行中 seal 起，上段之運行期語義 SHALL 以封印狀態為前提重讀（原文保留供追溯）：DEK 明文 SHALL 於啟動或重新解封時解出並在已解封期間快取，seal 後 SHALL 清除該快取並拒絕資料加解密直到重新 unseal 成功；KEK SHALL 僅於啟動、重新解封、重包與清理時被使用。上段與下方「運行期不依賴 KEK 可達性」情境所述「委託型 provider 之外部服務短暫不可達 SHALL NOT 影響既有連線與既有密文之加解密」，SHALL 僅適用於未觸發 seal 且仍為已解封之期間。
+
+自 DEK 快取存活期政策引入起，上述「DEK 明文於啟動時解出後常駐行程記憶體，運行期一般加解密 SHALL NOT 觸發 KEK 操作」SHALL 讀為 `dek_cache_ttl_seconds` 未設定時之語義（即出廠預設，原文保留供追溯）。該鍵設為 `0` 或 `N>0` 時，運行期加解密 SHALL 可觸發 KEK 解封操作，且「委託型 provider 之外部服務短暫不可達 SHALL NOT 影響既有密文之加解密」SHALL NOT 再適用於快取已到期之情形——該情形的行為以「DEK 快取存活期政策與到期重解」為準。設定與其代價 SHALL 於介面與營運文件據實呈現，SHALL NOT 以既有的「運行期不依賴 KEK 可達性」概括全部設定值。
 
 #### Scenario: 新資料以信封格式加密
 - **WHEN** 建立帶密碼的資產
@@ -24,10 +33,19 @@
 - **WHEN** 系統已完成啟動，其後委託型 KEK 服務（現行為 KMS）不可達
 - **THEN** 既有連線、審計寫入與既有密文之加解密完全正常；僅重包與清理等 KEK 操作被拒並回明確錯誤
 
+seal SHALL NOT 改寫金鑰表、觸發輪替或退役材料；重新解封 SHALL 驗證現行代表列並重建同一版本鏈。原「SHALL NOT 以逐次遠端解封取代快取」之絕對禁止 SHALL 由「DEK 快取存活期政策與到期重解」取代（原文保留供追溯）：逐次解封 SHALL 僅在 `dek_cache_ttl_seconds` 明示設為 `0` 時成立，SHALL NOT 為出廠預設、SHALL NOT 由系統自行切換。
+
+#### Scenario: seal 不變更持久化金鑰
+- **WHEN** 系統完成 seal 並以原模式及有效來源重新解封
+- **THEN** 既有金鑰與資料密文 MUST 不因 seal 被改寫，原版本資料 MUST 仍可讀；MUST NOT 隱含換鑰或退役
+
 ### Requirement: 換鑰精靈（無自動輪換）
 系統 SHALL 提供 admin 專屬換鑰操作且 SHALL NOT 自動輪換任何金鑰：(1) DEK 輪替——生成新版本、批次重加密該用途全部資料（audit_integrity 用途 SHALL NOT 重算歷史章，僅新章改用新鑰）、舊代轉 retired；進度可查、可中斷續跑。(2) KEK 重包——生成新 KEK（SHALL 僅一次性顯示，不落庫不落日誌）、以新舊 KEK 雙包裹並存落庫、引導更新 env 後重啟、新 KEK 開機驗證成功後將舊包裹列**軟退役**（保留列與 `wrapped_key` 材料至顯式清理，SHALL NOT 硬刪——見「退役資料軟刪除與顯式清理」）。所有換鑰操作 SHALL 入審計（操作者、鑰用途、版本變化）。
 
 自 KEK provider 模組化起，上段 (2) 的「伺服端生成新 KEK 並一次性顯示」語義**已被下列明文流向反轉取代**（原文保留供追溯）：KEK 重包的新 KEK 材料 SHALL 由管理員於請求中提供，伺服端 SHALL NOT 生成、SHALL NOT 回傳任何 KEK 明文、SHALL NOT 落庫、SHALL NOT 寫入日誌，且該請求內容 SHALL NOT 進入審計紀錄的請求內容欄位（`audit_logs.request_body`；措辭與「新 KEK 明文暴露面收斂」一致，避免實作者只擋其他欄位）。重包回應 SHALL 僅含新 KEK 指紋（非機密）與重包列數。請求 SHALL 包含二次輸入（paste-back）與保存確認旗標，兩者 SHALL 由伺服端校驗——二次輸入不符或未確認保存時 SHALL 拒絕（400）且 SHALL NOT 對金鑰表產生任何寫入；此校驗 SHALL NOT 僅實作於前端。**兩欄位之證明力 SHALL 明確區分**：二次輸入之比對為伺服端唯一可獨立驗證的機械不變式（證明呼叫端當下持有並能完整重述該材料），SHALL 為受理之前置條件；保存確認旗標 SHALL NOT 被視為具授權力或安全不變式——伺服端無從驗證材料是否已離線保存，該欄位僅為使用者意圖聲明，系統 SHALL NOT 以其宣稱材料已安全保存。**重包請求體 SHALL 為互斥的變體結構**：本地目標攜帶新 KEK 材料與其二次輸入，委託目標攜帶目標金鑰引用，由顯式的目標種類欄位判別；混合或與所宣告種類不符之請求體 SHALL fail-close 拒絕，SHALL NOT 以欄位優先序擇一處理（否則可繞過本地目標之格式驗證與二次輸入，或使 KEK 明文被送入本應僅接受引用的委託路徑）。委託型目標（KMS／HSM）之重包 SHALL 以目標金鑰引用取代 KEK 材料，並於受理前完成目標金鑰之連通性與權限預檢。其餘語義（雙包裹並存、切換後退役、全操作入審計）不變。
+
+Vault 新增範圍 SHALL 限於重包請求解析器的 `{mode:"vault",key_ref:"..."}` 變體與服務層目標登記；位址或憑證混入該變體 SHALL 被拒絕。正式精靈的 Vault 預檢、pending 建立、移除本地材料、切換重啟、全列解包與舊列軟退役已依序實走並取得證據；正式 constructor 未取得生命週期 owner 時仍 SHALL 拒絕建構，SHALL NOT 回落其他 provider。
+GCP 新增範圍 SHALL 限於重包請求解析器的 `gcp` 委託變體與服務層目標登記：該變體 SHALL 僅攜帶完整 CryptoKey 資源名作為目標金鑰引用，SHALL NOT 混入任何憑證或端點欄位（認證取自 ADC）。受理前之目標預檢 SHALL 涵蓋語法、可信 project 與服務回應檢查，預檢失敗 SHALL 拒絕受理且金鑰表零寫入。GCP 之重包 SHALL 以來源解包再目標 encrypt 兩步於同一事務邊界完成，SHALL NOT 宣稱具備服務端 ReEncrypt 對等原語。
 
 #### Scenario: DEK 輪替後新舊資料皆可讀
 - **WHEN** admin 執行 data DEK 輪替完成
@@ -51,6 +69,8 @@
 
 ### Requirement: 金鑰清冊儀表板
 系統 SHALL 提供 admin 專屬金鑰清冊：列出 DEK 各版本與蓋章鑰各版本（自 v1 起）之用途、版本、狀態、年齡、上次輪替時間，以及 env 側金鑰（JWT_SECRET、KEK、匯出簽章鑰）之指紋。DEK／蓋章鑰版本鏈 SHALL 僅呈現以**現行 KEK 包裹且未退役、非待切換**的列（退役之舊 KEK 包裹列與待切換 pending 列 SHALL NOT 混入版本鏈，另以退役史／待切換狀態呈現）。env 側三鑰 SHALL 一致呈現指紋：`JWT_SECRET` 與 KEK SHALL 顯示其材料的 SHA-256 前 8 bytes 摘要指紋、Ed25519 匯出簽章鑰 SHALL 顯示其**公鑰指紋**（對原始公鑰位元組取 SHA-256 前 8 bytes，公鑰來源與 `/api/v1/audit-export/public-key` 端點一致）。三鑰指紋 SHALL 由同一 fingerprint 演算法產生（`hex(SHA-256(material)[:8])`）。指紋為單向摘要、僅供人眼辨識，SHALL NOT 用於反推金鑰、SHALL NOT 作授權或業務唯一性判斷依據（KEK 指紋於重包時作碰撞保守拒絕之用不在此限，見「KEK 切換狀態機」）。env 側金鑰 SHALL 標示管理方（`JWT_SECRET`／KEK 為部署方管理、Ed25519 匯出簽章鑰為系統管理）並附輪替 runbook 指引。env 側金鑰 SHALL 僅呈現指紋與管理方，**SHALL NOT 呈現「年齡」或「上次輪替時間」**——環境變數不帶輪替紀錄，該值技術上無從得知，呈現任何數字即為捏造；指紋本身已隱含「該鑰是否存在」（未設定者無指紋可算）。清冊 SHALL NOT 顯示任何金鑰明文、私鑰或 wrapped 值（Ed25519 公鑰非機密，不在此限）。清冊 SHALL NOT 含任何 legacy 遷移狀態欄位。金鑰管理頁 SHALL 承載 cryptoperiod 提醒政策鍵 `key_cryptoperiod_reminder_days` 的設定區（沿安全政策機制與本頁 PCI 子集偏離摘要／套用本頁建議值）。cryptoperiod 提醒政策 >0 且金鑰超齡時 SHALL 於清冊顯示提醒（僅提醒，SHALL NOT 觸發任何動作或外送通知）。
+
+Vault provider 的模式存取器 SHALL 回 `kms`，KeyRef 的種類 SHALL 回 `vault` 並帶完整正規引用；這是 provider 物件契約，正式清冊沿用同一契約。切換至 Vault 後的清冊已實跑核實：模式欄回 `kms`，Vault 身分由執行期 KeyRef 的種類與清冊呈現的完整引用共同互證，待切換狀態收斂為無 pending。
 
 #### Scenario: 清冊誠實區分可管與不可管
 - **WHEN** admin 開啟金鑰清冊
@@ -86,6 +106,8 @@
 
 自 KEK provider 模組化起本 requirement 擴充如下（原文所述 env 三鑰之指紋語義維持為本地模式的規範，不廢止）：KEK 項 SHALL 另呈現其**執行期 provider 模式**（`env`／`ui`／`kms`／`hsm`）與**金鑰引用**。指紋欄的語義依模式分岔——本地模式（`env`／`ui`）SHALL 維持 `hex(SHA-256(material)[:8])` 材料指紋；**委託模式（`kms`／`hsm`）無本地材料，SHALL 以外部金鑰引用（正規化後的雲端金鑰 ARN；`hsm` 之引用形式待其 provider 交付時定案）取代材料指紋呈現，此情形 SHALL NOT 視為違反「無任一鑰的指紋欄留空」**（原 Scenario 之前提為本地模式，委託模式下該欄以金鑰引用滿足「可供人眼辨識與外部對照」之目的）。外部金鑰引用非機密，SHALL 完整呈現以供稽核對照外部主控台。provider 欄 SHALL 由執行期 provider 物件導出，SHALL NOT 重新讀取環境變數。`ui` 模式 SHALL 另呈現封印狀態（`sealed`／`unsealing`／`unsealed`／`sealed-faulted`）。上述新增呈現 SHALL NOT 洩漏任何金鑰材料。
 
+自運行中 seal 引入起，上段之「`ui` 模式 SHALL 另呈現封印狀態」SHALL 擴充為：`ui`、`env` 與已交付之委託模式 SHALL 一律呈現其**實際**封印狀態（`sealed`／`unsealing`／`unsealed`／`sealed-faulted`）與待收束資訊，SHALL NOT 將 `env` 或委託模式固定顯示為已解封。金鑰管理頁 SHALL 併同提供一鍵 seal 入口與其服務中斷說明；封印後之狀態頁 SHALL 呈現對應模式的還原指引。
+
 #### Scenario: 委託模式以金鑰引用取代材料指紋
 - **WHEN** 以 `kms` 模式運行並檢視金鑰清冊的 KEK 項（`hsm` 之呈現契約相同，但其 provider 未交付故此情境目前不可達）
 - **THEN** 該項顯示 provider 模式與外部金鑰引用（非機密、完整呈現），指紋欄不因無材料而留空為「—」，且回應不含任何金鑰材料
@@ -93,6 +115,12 @@
 #### Scenario: provider 欄不得重讀環境變數
 - **WHEN** 清冊組出 KEK 項的 provider 欄
 - **THEN** 其值 MUST 取自執行期 provider 物件之**模式存取器**；守衛 MUST 確認該處未讀取 `KEK_PROVIDER` 環境變數（重讀將使部署宣告與執行期實況同源而失去互證價值），且 MUST NOT 由金鑰引用之 provider 維度推導（該維度不區分兩種本地模式）
+
+GCP 委託之金鑰引用形式 SHALL 為完整 CryptoKey 資源名（`projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>`，不含版本子資源），於清冊完整呈現以供對照 GCP 主控台；該引用非機密，SHALL NOT 遮罩或截斷。GCP provider 之模式存取器 SHALL 回 `kms`，服務商身分 SHALL 由金鑰引用之種類（`gcp`）與該完整資源名共同判讀，模式欄本身不區分委託服務商。
+
+#### Scenario: 三模式清冊與 seal 控制
+- **WHEN** 管理員檢視清冊並觸發 seal
+- **THEN** MUST 提供一鍵 seal 與服務中斷說明，封印後既有狀態頁 MUST 顯示真實狀態、待收束與對應還原指引；MUST NOT 將 env／委託固定為已解封
 
 ### Requirement: JWT_SECRET 長度下限
 `JWT_SECRET` 為 HS256 認證信任根，系統啟動時 SHALL 要求其長度達下限（≥32 **bytes**，對齊 HS256 之 256-bit 密碼學下限）；不足時 SHALL fail-close 拒絕啟動並輸出含排查指引的明確錯誤，SHALL NOT 以弱 secret 帶病啟動。`JWT_SECRET` SHOULD 由 CSPRNG 生成——長度檢查為符合 key-size 下限、降低常見弱值風險的務實手段，系統 SHALL NOT 宣稱可由單一值驗證其熵（低熵長字串仍可被猜測）。開發用預設值與範本 SHALL 亦滿足此下限。
@@ -120,6 +148,9 @@
 開機時 KEK 無法解包任何 active wrapped_key（指紋不符或解包失敗）時，系統 SHALL 拒絕啟動並輸出含排查指引的明確錯誤；SHALL NOT 靜默退回任何其他解密路徑帶病運行。
 
 自 KEK provider 模組化起補充判準與範圍：金鑰表一致性的**權威判準 SHALL 為「現行代表列實際解包成功」**，`kek_id` 相等 SHALL 僅作為篩選條件、SHALL NOT 被任何路徑當作一致性的充分條件（委託型 provider 的 `kek_id` 為外部金鑰引用，不可由材料重算）。委託型 KEK 服務於啟動時不可達或無權限時，系統 SHALL 拒絕啟動並輸出可辨識的明確錯誤，SHALL NOT 降級啟動、SHALL NOT 以本地材料替代。
+
+Vault 正式 factory 未取得 client 生命週期 owner 時 SHALL 回不可用錯誤與 nil provider，不因組態齊備而放行。上述委託服務不可達的正式啟動情境同樣適用於 Vault：Vault 不可達時的冷啟動已實跑，解封被拒且不建立任何服務。
+GCP 分支同樣適用上述委託服務不可達之拒絕啟動語義：Cloud KMS 端點不可達、ADC 憑證缺失或無效、或無該 CryptoKey 之 Decrypt 權限時，系統 SHALL 回可辨識錯誤與不可用 provider 並拒絕啟動，SHALL NOT 降級為本地材料、匿名認證或其他 provider。
 
 #### Scenario: 錯誤 KEK 拒絕啟動
 - **WHEN** env 中 KEK 被改為與金鑰表 kek_id 不符的值後啟動
@@ -395,7 +426,7 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 - **THEN** 其產出 MUST 每次皆通過伺服端材料驗證
 
 ### Requirement: KEK 來源模式與顯式判定
-系統 SHALL 以顯式環境變數 `KEK_PROVIDER` 宣告 KEK 來源模式，其值 SHALL 為白名單之一：`env`（本地 env 材料）、`ui`（管理員經介面注入、僅存記憶體）、`kms`（雲端金鑰服務委託）、`hsm`（硬體安全模組委託）；未設定時 SHALL 預設為 `env`（向後相容路徑；**部署範本之出貨預設值為 `ui`**，見 deployment-configuration 的「KEK 出貨預設模式」）。系統 SHALL NOT 以任何組態的存在或留空隱式推斷模式——本地 KEK 鑰留空 SHALL NOT 被解讀為「意圖使用 `ui`」，而 SHALL 視為缺少必要組態並 fail-close。
+系統 SHALL 以顯式環境變數 `KEK_PROVIDER` 宣告 KEK 來源模式，其值 SHALL 為白名單之一：`env`（本地 env 材料）、`ui`（管理員經介面注入、僅存記憶體）、`kms`（外部金鑰服務委託，包含 AWS KMS 與 Vault Transit）、`hsm`（硬體安全模組委託）；未設定時 SHALL 預設為 `env`（向後相容路徑；**部署範本之出貨預設值為 `ui`**，見 deployment-configuration 的「KEK 出貨預設模式」）。系統 SHALL NOT 以任何組態的存在或留空隱式推斷模式——本地 KEK 鑰留空 SHALL NOT 被解讀為「意圖使用 `ui`」，而 SHALL 視為缺少必要組態並 fail-close。
 
 **交付狀態的誠實界定（SHALL 明載）**：白名單列出四值，但**可實際運作的模式為 `env`、`ui`、`kms` 三者**。`hsm` 目前僅交付**介面與組態層**——`KEKProvider` 介面的委託形狀、組態鍵的逐鍵齊備檢查、PIN 與 PIN 檔恰一有值之判定、以及非 HSM 建置變體下的拒絕——**其 provider 實作未交付**，故以 `KEK_PROVIDER=hsm` 啟動 SHALL 拒絕啟動並輸出「尚未交付」之可辨識錯誤，SHALL NOT 回落至其他 provider、SHALL NOT 靜默降級。系統與其文件 SHALL NOT 宣稱具備硬體安全模組保護能力。此界定的原因是外部條件未定（廠商與其 PKCS#11 行為、金鑰生命週期規則尚未確認），非實作遺漏；完整交付的時機與範圍待前述外部條件確認後另行規劃。
 
@@ -406,6 +437,9 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 **判定分兩段**：純組態判定（正規化、白名單、矛盾格、材料格式、委託組態齊備、建置能力）SHALL 於連接資料庫之前完成，此段任一 fail-close 路徑 SHALL NOT 產生任何資料庫寫入；資料庫相關之閘（金鑰表一致性）必然發生於 schema 遷移與初始資料建立之後，該段 SHALL 保證**金鑰表**未被寫入，SHALL NOT 宣稱資料庫整體未被寫入。
 
 **`env` 模式的材料格式驗證**：`env` 模式啟動時 SHALL 對本地 KEK 材料施以與新 KEK 相同的伺服端格式驗證（輸入編碼之解碼、字元集、非出廠預設值）；不合格 SHALL 拒絕啟動，SHALL NOT 僅以部署範本註解作為唯一防線。此驗證之編碼與字元集適用範圍依「KEK 材料的輸入編碼」要求：三種形態皆可，字元集政策僅適用於原字元形態。**未宣告 `KEK_PROVIDER` 之相容路徑維持不施加格式政策**，僅套用輸入編碼之解碼——既有部署升級後行為完全不變。
+
+Vault 的交付狀態 SHALL 與 `kms` 模式白名單分開表述：`KEK_KMS_PROVIDER=vault` 的 provider 白名單、組態齊備、套件 driver、factory 分派與正式 owner 接線均已具實作並經實跑，Vault SHALL 可作正式啟動來源。Vault 分支 SHALL 要求 `KEK_KMS_KEY_ID`、`KEK_VAULT_ADDR`、`KEK_VAULT_ROLE_ID`、`KEK_VAULT_SECRET_ID`，不要求 `KEK_KMS_REGION`；組態齊備 SHALL NOT 免除建構時的 AppRole 登入與金鑰預檢，任一失敗 SHALL 拒絕啟動。
+GCP 的交付狀態 SHALL 與 `kms` 模式白名單分開表述：`KEK_KMS_PROVIDER=gcp` 為 `kms` 模式下的另一服務商分支，其 provider 白名單、組態齊備判定與 driver 均屬交付範圍。GCP 分支 SHALL 要求 `KEK_KMS_KEY_ID` 為完整 CryptoKey 資源名，SHALL NOT 要求 `KEK_KMS_REGION`（location 由資源名承載；留有值時 SHALL 以不含值的提示指出其對 GCP 不生效），亦 SHALL NOT 新增產品專屬的 GCP 憑證或 endpoint 組態鍵（認證取自 ADC）；AWS 分支的 Region 必填 SHALL 保留。組態齊備 SHALL NOT 免除建構時的 ADC 認證與 CryptoKey 預檢，任一失敗 SHALL 拒絕啟動。
 
 #### Scenario: 未設 KEK_PROVIDER 且有本地鑰
 - **WHEN** 部署僅設 `ENCRYPTION_KEY` 而未設 `KEK_PROVIDER`
@@ -420,7 +454,7 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 - **THEN** 系統 MUST 拒絕啟動並指出組態矛盾（宣告不落地卻於環境留存材料）
 
 #### Scenario: 委託模式組態不齊逐項列缺
-- **WHEN** `KEK_PROVIDER=kms` 但金鑰識別或區域等必要鍵缺少
+- **WHEN** `KEK_PROVIDER=kms` 但依所選服務商判定的必要組態缺少（AWS 為金鑰識別與區域等；Vault 為金鑰識別、位址與 AppRole 憑證等）
 - **THEN** 系統 MUST 拒絕啟動，錯誤 MUST 逐項列出缺少的組態鍵，而非籠統報錯
 
 #### Scenario: 白名單外的值不猜
@@ -487,9 +521,12 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 
 **包裹層 AAD 之判別子**：格式的版本段 SHALL 承載「該包裹值是否帶 AAD」之判別子（`1`＝無 AAD、`2`＝帶 AAD）。寫入端（本地與委託皆同）SHALL 一律產出帶 AAD 形式（判別子 `2`），且系統 SHALL NOT 具備任何產出判別子 `1` 之寫出或就地改寫能力（含前綴遷移之字串包裝工具）；**全部 provider（本地與委託）之包裹與解包路徑 SHALL 於建構上拒絕空 AAD**——原「本地 provider 接受 nil AAD＝不綁定」之 per-provider 差異為相容窗時代產物，隨相容窗一同廢止。讀取端 SHALL 拒收判別子 `1` 並於解包前回可辨識格式錯——判別子 `1` 之合法產出路徑已不存在，接受它等同永久接受任何無 AAD 之舊包裹材料（含備份）被貼入金鑰槽。
 
-**金鑰引用不含執行期組態模式**：金鑰引用之 provider 維度 SHALL 僅表達「該引用以何種途徑解讀」（本地／雲端金鑰服務／硬體模組三類），**本地之兩種執行期模式（環境變數填鑰與介面填鑰）SHALL 同映射為「本地」**。金鑰引用之相等性 SHALL 僅由該維度與金鑰識別決定，**SHALL NOT 含執行期組態模式**——否則「同一材料於兩種本地模式下金鑰引用相同」在結構上不可能成立，同鑰互換免遷移即失去依據。執行期組態模式 SHALL 由 provider 物件之獨立存取器提供（供清冊呈現與稽核對照），SHALL NOT 進入金鑰引用、SHALL NOT 落入金鑰表之 KEK 識別欄。
+**金鑰引用不含執行期組態模式**：金鑰引用之 provider 維度 SHALL 僅表達「該引用以何種途徑解讀」（本地／雲端金鑰服務／Vault Transit／硬體模組四類），**本地之兩種執行期模式（環境變數填鑰與介面填鑰）SHALL 同映射為「本地」**。金鑰引用之相等性 SHALL 僅由該維度與金鑰識別決定，**SHALL NOT 含執行期組態模式**——否則「同一材料於兩種本地模式下金鑰引用相同」在結構上不可能成立，同鑰互換免遷移即失去依據。執行期組態模式 SHALL 由 provider 物件之獨立存取器提供（供清冊呈現與稽核對照），SHALL NOT 進入金鑰引用、SHALL NOT 落入金鑰表之 KEK 識別欄。
 
 **外部金鑰引用之正規化**：委託模式下同一把金鑰可能有多種等價表示形式；系統 SHALL 於啟動時將組態所給之引用解析為**單一正規形式**後才作為金鑰表之 KEK 識別值，使等價的組態寫法變更 SHALL NOT 導致代表列篩選落空而拒絕啟動。解析失敗 SHALL fail-close，SHALL NOT 以原值猜測。既有非正規形式之列 SHALL 由一次性識別欄改寫遷移收斂（純識別欄改寫，SHALL NOT 需要重包，材料與資料密文不動）。
+
+Vault 的引用／格式與 provider 契約、服務層對 Vault 目標的交易處理，以及正式啟動時的引用解析皆已接線並經實跑；上述等價引用開機語義同樣適用於 Vault 引用。
+GCP Cloud KMS SHALL 於金鑰引用之 provider 維度另立獨立種類（`gcp`，與本地、雲端金鑰服務、Vault Transit、硬體模組並列），其金鑰識別為完整 CryptoKey 資源名，包裹格式亦另立獨立標示，SHALL NOT 重用其他委託種類之格式標示。上述外部金鑰引用之正規化規範同樣適用於 GCP：組態所給之引用 SHALL 於啟動時解析為單一正規形式後才落庫為 KEK 識別值，版本子資源 SHALL NOT 作為部署 KEK 引用，解析失敗 SHALL fail-close、SHALL NOT 猜測。
 
 #### Scenario: 無前綴 wrapped 值拒收
 - **WHEN** 金鑰載入時遇到無前綴的 wrapped_key 值（不論其來源，含拆除前建立之資料庫）
@@ -500,7 +537,7 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 - **THEN** 系統 MUST 於解包前回可辨識格式錯並 fail-close，MUST NOT 以空 AAD 或無 AAD 語義解包
 
 #### Scenario: 外部金鑰引用可完整存放
-- **WHEN** 以委託型 provider 重包，金鑰識別為雲端金鑰 ARN 或裝置金鑰標籤
+- **WHEN** 以委託型 provider 重包，金鑰識別為雲端金鑰 ARN、Vault Transit 具名金鑰引用或裝置金鑰標籤
 - **THEN** 該識別完整存入金鑰表且唯一索引仍生效，未被截斷
 
 #### Scenario: 金鑰引用不因執行期模式而不同
@@ -551,9 +588,15 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 ### Requirement: 介面填鑰模式之封印狀態機
 `ui` 模式下系統 SHALL 以封印狀態機管理可用性，狀態集合 SHALL 為四態：**封印**（未持有材料）、**解封中**（已取得解封獨佔；材料驗證與初始化皆在其臨界區內進行）、**已解封**（初始化完成且服務已發佈）、**封印且故障**（材料正確但後續初始化失敗）。啟動時 SHALL 進入封印狀態且 SHALL NOT 讀取金鑰材料。封印狀態 SHALL NOT 被持久化——行程重啟 SHALL 重新封印。`env` 與委託模式於啟動完成後 SHALL 恆為已解封，使狀態查詢在各模式下形狀一致。
 
+自運行中 seal 引入起，本狀態機之適用範圍與封印態語義擴充如下（原文保留供追溯）：同一狀態機 SHALL 一併管理 `ui`、`env` 與已交付委託模式之可用性；**封印**態 SHALL 讀為「已停止提供解封能力」，材料清理是否完成 SHALL 另以待收束欄位表達。上段「`env` 與委託模式於啟動完成後 SHALL 恆為已解封」SHALL 改讀為：該二模式保留自部署來源完成啟動解封之行為，但提供服務後同樣 SHALL 允許由已解封轉封印——狀態 SHALL NOT 再由模式固定；重新解封前 SHALL 保持封印，材料操作 SHALL fail-close。「啟動時 SHALL NOT 讀取金鑰材料」與「行程重啟 SHALL 重新封印」維持為 `ui` 模式之規範。
+
 **兩段啟動**：`ui` 模式的啟動 SHALL 分為兩段——第一段建立封印閘、健康檢查、封印狀態查詢與解封端點、封印期留痕寫入器並開放監聽；第二段（金鑰管理器載入、依賴金鑰之服務建構、完整路由樹）SHALL 延後至解封成功後執行。第二段之失敗 SHALL NOT 終止行程，SHALL 回傳可辨識機器碼並使狀態轉為「封印且故障」，且 SHALL 允許再次解封重試；非 `ui` 模式維持啟動期致命錯之既有語義。第一段 SHALL NOT 建構任何第二段服務——封印期對非白名單路由之 503 SHALL 由「服務不存在」而非「服務已存在但被攔阻」達成。
 
+三模式於運行中 seal 之後的重新解封 SHALL 經與冷啟動相同的獨佔、留痕、材料驗證與第二段發佈；恢復失敗 SHALL NOT 終止行程、SHALL NOT 降級放行。上段「第一段 SHALL NOT 建構任何第二段服務」所描述者為 `ui` 冷啟動；運行中 seal 之待收束期間得暫持尚未釋放的舊服務圖，但 SHALL 已撤銷其材料使用資格並拒絕業務請求，且 SHALL 據實標示待收束，SHALL NOT 將其呈現為材料已清理完成。
+
 **服務圖之組裝 SHALL 完成於發佈之前**：對外可服務所需的**全部**構件（含路由樹本身）SHALL 於狀態發佈之前組裝完畢，發佈後之步驟 SHALL 僅為單次原子換手。若組裝之任一部分留待發佈之後執行，其失敗將使系統停留於「狀態已解封、但對外仍全面拒絕服務」且**無出邊可重試**的死狀態——已解封狀態依設計僅由行程結束離開，故該失敗不可自癒。發佈後之換手 SHALL NOT 具備失敗分支。
+
+上段所述「無出邊可重試」與「已解封狀態依設計僅由行程結束離開」SHALL 改讀為：已解封另得由管理員觸發之運行中 seal 離開。該出邊 SHALL NOT 被用來容忍不完整之服務發佈，亦 SHALL NOT 使發佈前組裝之失敗改以事後收回處理。
 
 **解封的原子性與單一飛行**：進入「解封中」SHALL 以比較並設定（CAS）方式獨佔，其**來源態集合 SHALL 包含「封印」與「封印且故障」兩者**——自「封印且故障」重試 SHALL 同樣經由「解封中」，SHALL NOT 直達已解封（否則故障後之並發重試可繞過獨佔）。**取得獨佔 SHALL 發生於任何材料驗證開始之前**：獨佔的臨界區 SHALL 涵蓋材料格式檢查、材料驗證（解包現行代表列，或初始化路徑之憑證驗證）、初始金鑰建立、第二段初始化與發佈之**全程**；未取得獨佔的請求 SHALL 在**任何驗證開始前**即被拒（衝突），SHALL NOT 有第二份驗證同時執行。「材料是否正確」SHALL 為「解封中」之內的一個步驟，SHALL NOT 為進入「解封中」的前置條件。已解封狀態下收到的解封請求 SHALL 被拒且 SHALL NOT 重跑初始化。
 
@@ -567,13 +610,19 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 
 **初始化解封（空金鑰表）**：解封時金鑰表為空者 SHALL 走初始化路徑——所提供之材料即成為本部署之初始 KEK，並據以執行既有的初始金鑰建立流程；金鑰表非空者 SHALL 走一般解封路徑，其唯一成功條件為該材料能成功解包現行代表列。**初始化解封 SHALL 要求初始管理員憑證**（一般解封維持不要求登入憑證）——空金鑰表時任何材料皆「成功」，不存在「能解開既有代表列」這個授權證明，若不另行認證，則全新部署在管理員動手前的窗口內，任何可連線者皆得搶先將自己知悉的材料宣告為部署主金鑰，且合法管理員僅會見到「已解封」而無從察覺。此要求 SHALL NOT 造成與多因素認證之死鎖：初始管理員於第一段已建立、其密碼為雜湊而不受 KEK 保護、全新安裝必然尚未啟用多因素認證。初始化解封 SHALL NOT 豁免初始管理員之「首次登入強制改密」狀態——該狀態 SHALL 於解封後維持不變，SHALL NOT 因通過解封而被清除或視為已完成（解封是一次性部署動作、不是登入，二者不得互相代償）。該憑證驗證於第一段執行，SHALL 據實記載其**不套用既有帳號鎖定政策**（該政策於第二段才建構），其防爆破由解封退避承擔。初始化解封另 SHALL 要求與新 KEK 重包相同的二次輸入與保存確認（認證約束「誰有權宣告」、二次輸入約束「宣告內容是否正確」，兩者正交且皆為必要），並 SHALL 施以完整的材料格式驗證（一般解封 SHALL NOT 施以格式驗證，既有部署之 KEK 可能早於格式規則）。兩條路徑 SHALL 產生可區分的審計事件，初始化事件 SHALL 記錄其金鑰引用與所建立之金鑰版本。多實例同時初始化 SHALL 沿用既有跨實例互斥與鎖內重讀，恰一成功、其餘 fail-close。
 
+本段之「初始化解封」與「一般解封」SHALL 限指 `ui` 模式之人工填鑰路徑；`env` 與委託模式之還原以其部署來源完成，SHALL NOT 適用本段之路徑判定與免登入論證。
+
 **封印期路由與授權**：封印期間，除健康檢查、封印狀態查詢與解封端點外，系統 SHALL 對所有路由回應 503 並附機器碼（SHALL NOT 以 401 或 500 表達，狀態須可被外部監控正確辨識）。**一般解封**端點 SHALL NOT 要求既有登入憑證（多因素認證秘密本身受 KEK 保護，要求登入將形成死鎖）；該論證之適用範圍 SHALL 限於金鑰表非空之情形——唯有「能解開既有代表列」方構成真實的授權證明。初始化解封之授權要求另見上。
+
+上段「一般解封端點 SHALL NOT 要求既有登入憑證」SHALL 限於 `ui` 一般解封；`env` 與委託模式之還原 SHALL 要求受授權之操作，SHALL NOT 因處於封印期而開放匿名還原。
 
 **抗鎖死**：連續失敗 SHALL 以指數退避與有時限冷卻抑制，冷卻 SHALL 於期滿後自動恢復可嘗試——系統 SHALL NOT 具備任何需重啟行程才能解除的終局鎖定狀態（**本要求之範圍為失敗計數與冷卻**——即攻擊者可觸發者；前代持有者之資源收束遲未完成屬行程級**故障**而非鎖定，SHALL 於封印狀態查詢明示並容許管理員重啟，二者 SHALL NOT 混為一談）。**冷卻期間抵達之嘗試 SHALL 被直接拒絕（不驗證、不取得獨佔），且 SHALL NOT 計入失敗計數、SHALL NOT 刷新或延長冷卻到期時間**；退避成長 SHALL 有明確上限。缺此二者則即使無終局鎖定態，持續送出的嘗試仍可使到期窗口永不出現，等價於可持續的服務阻斷。系統 SHALL NOT 宣稱退避本身即為完整防禦——可嘗試窗口必然出現，攻擊者仍可於窗口內搶先嘗試，故 SHALL 與來源網段限制搭配（解封端點不要求登入憑證，終局鎖定將使匿名請求者得以持續阻斷正當管理員解封）。退避 SHALL 分層為個別來源與全域兩級，全域門檻 SHALL 明顯高於個別來源。系統 SHALL 定義可信代理來源之組態；未設定可信代理時，個別來源之退避 SHALL 保守降級為全域退避，SHALL NOT 依賴可被請求標頭偽造的來源識別。系統 SHALL 提供解封端點繫結獨立監聽位址或限制來源網段之組態（是否啟用由部署方決定）；該組態一經**顯式設定**即 SHALL 具實效——**繫結失敗 SHALL fail-close 拒絕啟動**（SHALL NOT 僅記錄後續行，否則安全邊界靜默降級）、**獨立監聽位址上 SHALL 僅暴露封印相關端點**（SHALL NOT 於解封後轉為完整業務介面，否則管理網段的隔離意圖被反轉），且**來源網段限制 SHALL 涵蓋整個封印端點群**而非僅解封動作。**未設定可信代理時，來源判定 SHALL 僅採信傳輸層對端位址**，SHALL NOT 採用可由請求標頭影響之來源識別——否則網段白名單可被轉送標頭污染而繞過。可信代理組態本身若不合法，系統 SHALL 拒絕啟動，SHALL NOT 退回「信任全部代理」之預設而同時對外宣稱可信代理已設定。
 
 **失敗回應之不可區分範圍（SHALL 精確界定）**：不可區分之對象為**材料類失敗**——格式錯誤、材料驗證失敗、初始化解封之憑證錯誤、二次輸入不符、保存確認未完成，五者 SHALL 共用同一狀態碼、同一機器碼與同一回應內容。憑證錯誤 SHALL 併入本類：若其可與材料錯誤區分，請求者即可探得「管理員憑證正確但金鑰材料不符」，該位元正是初始化窗口最不應洩漏者。**限速類回應（退避、冷卻）SHALL 可區分**並附到期資訊——正當管理員必須能分辨「正被限速」與「輸入錯誤」，此為抗鎖死要求的必要可觀測性；「不可區分」SHALL NOT 被擴張解讀為涵蓋限速回應。時間側通道不在承諾範圍（路徑長度天然不同），SHALL 據實記載。
 
 **封印期留痕**：封印期間審計蓋章鑰不可用。系統 SHALL 於第一段建立獨立於金鑰管理器與資料庫的留痕紀錄，依「保證與其誠實邊界」所載之分層保證記錄解封嘗試（時間、來源、結果、失敗機器碼、單調序號與冪等識別）——**被驗證的嘗試具個別持久化紀錄、被拒絕者以合批計數承載**，系統 SHALL NOT 宣稱「記錄全部嘗試且逐筆不可遺失」（與合批之未同步時窗及環狀覆寫互斥）。留痕 SHALL NOT 記錄任何 KEK 材料或其片段。該留痕 SHALL NOT 受既有「審計失敗時是否落檔」之功能開關控制、SHALL NOT 可被關閉；留痕不可用（無法建立、路徑不可寫等）時 `ui` 模式 SHALL 拒絕開放監聽——無留痕能力即不得提供未經登入的端點。**留痕 SHALL 為兩筆式協定**：`received`（於**取得解封獨佔之後、任何材料驗證之前**寫入並同步至穩定儲存，含時間、來源、單調序號、冪等識別與嘗試種類）與 `outcome`（處理後寫入，以同一冪等識別關聯，含結果與失敗機器碼）。單一寫入 SHALL NOT 被要求同時承載處理結果——結果於 `received` 寫入時尚未產生。`received` 寫入失敗 SHALL 使該次嘗試回滾獨佔、被拒且不進行任何材料驗證；此順序 SHALL NOT 顛倒，否則會留下「已被驗證但無紀錄」的嘗試。不變式 SHALL 為「**任何被驗證的嘗試必有持久化的個別紀錄**」。
+
+留痕不可用時之拒絕開放監聽 SHALL 適用於所有提供封印／還原能力的模式，SHALL NOT 僅限 `ui`。
 
 **崩潰恢復語義**：僅有 `received` 而無對應 `outcome` 者，SHALL 判為「結果未知」並於回灌時據實標示，SHALL NOT 推測為成功或失敗，SHALL NOT 靜默丟棄（「曾有人於此時嘗試解封」本身即為必須留存之事實）。`outcome` 之結果碼 SHALL 涵蓋成功、材料失敗、**初始化失敗**、逾時與**主動中止**五類。
 
@@ -584,6 +633,8 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 **成功事件之語義與發佈標記**：成功事件所記錄者為「材料驗證通過且第二段完成」，**SHALL NOT 被解讀為服務已發佈**。發佈成功後 SHALL 另寫一筆帶同一世代之**發佈標記**。回灌時，具成功事件而**無**同世代發佈標記者 SHALL **據實標示為「已驗證通過但未確認發佈」**，SHALL NOT 標示為解封成功。成功事件已持久化而發佈未成功（世代已被逾時取代或行程中止）SHALL 比照寫入失敗之處置——回到來源態、清除金鑰材料、丟棄服務圖，且**SHALL NOT 因此鎖死**：後續解封照常受理並產生新世代，既有成功事件僅為歷史紀錄，SHALL NOT 構成任何前置條件。
 
 **殘餘窗口之誠實界定**：發佈標記自身之寫入與發佈之間仍存在窗口——任兩個原子操作之間皆然，SHALL NOT 藉由再增加紀錄宣稱消除（新紀錄僅產生下一個窗口）。本規範之選擇為**使窗口可被辨識並據實標示**：凡無法判定者一律標為「結果未知」或「未確認發佈」，且任一情形 SHALL NOT 導致鎖死。系統 SHALL NOT 採「先發佈後寫入」之順序（已回應之操作不可撤銷，只能事後補記）。此定序亦使已解封狀態維持「僅由行程結束離開」之性質。
+
+此定序 SHALL NOT 被解讀為禁止管理員另行觸發運行中 seal；seal 之受理、收束與結果 SHALL 與解封發佈之留痕分開辨識。
 
 **留痕載體為定長預配置檔（永不成長）**：留痕 SHALL 於第一段以預配置方式建立為**固定大小**之檔案，含雙 header 槽（各具世代序號與檢查碼，取檢查碼有效且世代較大者）與兩個各自定長的環狀區——**關鍵事件環**（`received`／`outcome`）與**拒絕事件環**。建立失敗 SHALL 不開放監聽。因容量固定，系統 SHALL NOT 具備「容量耗盡」狀態，亦 SHALL NOT 需要輪替、聚合視窗或任何形式的准入配額（容量攻擊面於物理上不存在）。
 
@@ -747,6 +798,10 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 - **WHEN** 已解封的 `ui` 模式服務重啟
 - **THEN** 系統 MUST 回到封印狀態，MUST NOT 自任何持久化來源恢復解封
 
+#### Scenario: 同一狀態機的 seal 與還原
+- **WHEN** 任一已交付模式接受 seal 並於清理完成後還原
+- **THEN** MUST 先由已解封轉封印，恢復 MUST 經同一解封中狀態、獨佔與新世代發佈；MUST NOT 以獨立旗標、平行控制面或直接重建快取繞過狀態機
+
 ### Requirement: KEK 提供者切換路徑
 系統 SHALL 支援下列 KEK 提供者切換路徑，且各路徑之前置條件 SHALL 明確：`env` 與 `ui` 之間以**相同材料**互換 SHALL 免遷移——僅需改變模式宣告與材料注入方式，金鑰引用一致即可上線，SHALL NOT 產生任何金鑰表寫入、SHALL NOT 觸發退役收尾。更換材料，或自 `env`／`ui` 切換至委託模式、委託模式之間切換、自委託模式切回本地模式，SHALL 一律經換鑰精靈重包完成。自委託模式將材料流回本地 SHALL 為需顯式確認的降級操作並入審計。
 
@@ -782,6 +837,9 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 
 封印狀態與既有的「退役收斂降級」狀態 SHALL 為正交兩軸並各自獨立呈現（前者描述服務是否已上線、後者描述服務運行中是否有未收斂狀態），SHALL NOT 以其一覆蓋或推導另一——已解封之部署仍可能同時處於降級。清冊 SHALL NOT 因新增 provider 呈現而洩漏任何金鑰材料——本地模式顯示指紋、委託模式顯示外部金鑰引用（非機密）。
 
+Vault 的模式／引用分離 SHALL 由 provider 物件存取器提供。正式啟動事件、清冊與審計的 Vault 整合已接線，切換後的清冊呈現與審計寫入均有實跑證據；部署宣告與執行期清冊的雙軌比對在 Vault 部署同樣適用，比對時 SHALL 以模式欄配合引用種類判讀，模式欄本身不區分委託服務商。
+GCP 部署之雙軌比對同樣適用：模式欄 SHALL 由執行期 provider 物件導出且為 `kms`，GCP 身分 SHALL 由執行期金鑰引用之種類與清冊呈現之完整 CryptoKey 資源名共同互證；稽核者 SHALL 以模式欄配合該引用對照 GCP 主控台，模式欄本身不區分委託服務商。
+
 #### Scenario: 清冊 provider 非重讀環境變數
 - **WHEN** 檢視金鑰清冊的 KEK 項
 - **THEN** provider 欄位由執行期 provider 導出；守衛 MUST 確認該值不來自環境變數重讀
@@ -795,7 +853,14 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 - **THEN** 顯示外部金鑰引用（ARN 或裝置金鑰標籤）供對照外部主控台，且不含任何金鑰材料
 
 ### Requirement: 雲端金鑰服務委託（KMS）
-`kms` 模式下 KEK 材料 SHALL 永不進入本行程：DEK 之包裹與解包 SHALL 委託雲端金鑰服務執行。組態所給之金鑰識別 MAY 為別名、金鑰識別碼或完整資源名稱，系統 SHALL 於啟動時解析為完整資源名稱後才落庫為 KEK 識別值（見「KEKProvider 介面與金鑰引用抽象」之正規化規範）。DEK 本身 SHALL 仍由本地 CSPRNG 生成（SHALL NOT 改用雲端服務的資料金鑰生成原語），以維持與其他模式相同的 DEK 生命週期語義與可互換性。AAD SHALL 映射至雲端服務的原生加密脈絡能力。目標金鑰之權限預檢 SHALL 涵蓋實際所需的全部操作，**含解析金鑰識別所需之描述權限**——遺漏將使「組態齊備但缺該權限」之部署得到誤導性錯誤。系統 SHALL NOT 自行管理雲端憑證，SHALL 依該雲端 SDK 的預設憑證鏈取得。系統 SHALL NOT 快取解包後的 KEK 或以任何形式將 KEK 材料留存本地。
+`kms` 模式下 KEK 材料 SHALL 永不進入本行程：DEK 之包裹與解包 SHALL 委託雲端金鑰服務執行。組態所給之金鑰識別 MAY 為別名、金鑰識別碼或完整資源名稱，系統 SHALL 於啟動時解析為完整資源名稱後才落庫為 KEK 識別值（見「KEKProvider 介面與金鑰引用抽象」之正規化規範）。DEK 本身 SHALL 仍由本地 CSPRNG 生成（SHALL NOT 改用雲端服務的資料金鑰生成原語），以維持與其他模式相同的 DEK 生命週期語義與可互換性。AAD SHALL 映射至雲端服務的原生加密脈絡能力。目標金鑰之權限預檢 SHALL 涵蓋實際所需的全部操作，**含解析金鑰識別所需之描述權限**——遺漏將使「組態齊備但缺該權限」之部署得到誤導性錯誤。系統 SHALL NOT 快取解包後的 KEK 或以任何形式將 KEK 材料留存本地。
+
+**憑證來源自本次起改為顯式注入**（原文「系統 SHALL NOT 自行管理雲端憑證，SHALL 依該雲端 SDK 的預設憑證鏈取得」SHALL 改讀如下）：三家服務商的憑證 SHALL 一律由組裝根自該解封世代的記憶體憑證持有者取得並顯式注入，SHALL NOT 依賴 SDK 的預設憑證鏈或環境自動發現。理由為部署形態：地端機房以開放名單連往外部雲端金鑰服務時無機器身分可用，憑證必為靜態，而靜態憑證放在部署檔即為明碼秘密。系統仍 SHALL NOT 自建憑證儲存庫、SHALL NOT 將憑證寫入任何持久化位置；「不自行管理憑證」自本次起讀為「不持久化、不長存於世代之外」，而非「不接手憑證」。
+
+Vault 新增範圍 SHALL 限於獨立 driver：認證由部署提供的 AppRole 憑證登入，client 管理 token 租期；這不改變 AWS 與 GCP 的憑證取得語義。Vault 的正式啟動與精靈已由組裝根持有的 client owner 接線：每個解封世代配置一個 owner，啟動與精靈共用同一 constructor，封存或關閉時於金鑰管理器釋放後才收束該 client。該 owner 形狀 SHALL 推廣至三家：AWS 與 GCP 亦各有綁定同一解封世代的憑證持有者，其生命週期規則相同。
+GCP 新增範圍 SHALL 限於獨立 driver：認證 SHALL 使用解封時提供的服務帳號金鑰檔內容顯式建構，SHALL NOT 自建 credential store、SHALL NOT 使用靜態測試憑證回落、SHALL NOT 提供通用端點覆寫。GCP 之金鑰識別 SHALL 為完整 CryptoKey 資源名，不接受版本子資源作為部署 KEK 引用；目標金鑰之權限預檢 SHALL 涵蓋 Encrypt、Decrypt 與解析金鑰識別所需之描述權限。
+
+共用正規 AAD 之服務商映射 SHALL 另含 GCP：GCP 使用 `additionalAuthenticatedData` 直接承載同一正規 AAD 位元組，REST JSON 的 bytes 傳輸編碼僅由傳輸層處理，SHALL NOT 先將邏輯 AAD 額外 base64 一層；空 AAD SHALL 在出站前拒絕，AAD 不符或使用他鑰時解包 MUST 失敗。
 
 #### Scenario: DEK 生成路徑不分岔
 - **WHEN** 於 `kms` 模式下建立新的 DEK 版本
@@ -803,7 +868,11 @@ SHALL NOT 因欄位搬家而在清單中留下缺口——清單漏一張表的�
 
 #### Scenario: 加密脈絡承載 AAD
 - **WHEN** 於 `kms` 模式包裹 DEK
-- **THEN** 用途、版本與金鑰引用經雲端服務的加密脈絡綁定；脈絡不符時解包 MUST 失敗
+- **THEN** 用途與版本的正規 AAD 經服務原生脈絡綁定；金鑰引用由明確指定的服務金鑰參數綁定，SHALL NOT 再納入 AAD。同一正規 AAD 位元組在 AWS 的 wire 映射為既有 EncryptionContext 字串 map `{"aad": base64(aad)}`，在 Vault 套件的 wire 映射為 derived key 的 `context=base64(aad)`（金鑰衍生綁定，不是 AEAD associated_data）；脈絡不符或使用他鑰時解包 MUST 失敗。Vault 的映射為套件契約，正式路徑使用同一映射
+
+#### Scenario: 憑證由世代持有者顯式注入
+- **WHEN** 三家中任一家於啟動或精靈路徑建構 provider
+- **THEN** 憑證 MUST 取自該解封世代的記憶體持有者並顯式注入，MUST NOT 回落至 SDK 預設憑證鏈或環境自動發現；持有者不存在時 MUST 拒絕建構
 
 ### Requirement: 硬體安全模組委託（HSM）
 `hsm` 模式 SHALL 經 PKCS#11 介面委託硬體安全模組執行 KEK 運算，KEK SHALL 永不離開裝置。金鑰引用之正規形式由 token 標籤與金鑰標籤組成，兩段 SHALL 各自跳脫分隔字元後再連接——標籤可含任意字元，未跳脫時不同的標籤組合會產生相同引用，污染代表列篩選、唯一索引與稽核引用。裝置存取密語 SHALL 由直接組態或檔案組態**恰一**提供——兩者皆未提供 SHALL 判為缺項、兩者皆提供 SHALL 判為組態矛盾，系統 SHALL 一律拒絕啟動並指出衝突，SHALL NOT 以任一方為優先而靜默採用。此能力 SHALL 以建置標記隔離，預設映像 SHALL NOT 含其原生相依；於未含該能力的建置中宣告 `hsm` SHALL fail-close 並明示需使用 HSM 變體映像，SHALL NOT 靜默回落至其他 provider。測試 SHALL 以軟體 HSM 靶機覆蓋，並以環境變數 gating 使無 HSM 環境的測試維持通過。
@@ -935,11 +1004,15 @@ KEK 為一把 **32 位元組**的金鑰；系統 SHALL 將「輸入編碼」與�
 ### Requirement: 封印狀態下的介面進站導向
 `ui` 模式下，介面 SHALL 於**進站時**判定封印狀態並將使用者導至解封頁——自任何網址進入（含根路徑與任一深連結）皆 SHALL 被接住，SHALL NOT 僅於登入失敗時才提示。封印期間的服務端 503 訊息 SHALL 明寫解封頁之路徑，使導向失效時仍留有可依循的線索。
 
+自運行中 seal 引入起，上段之適用範圍 SHALL 自 `ui` 模式擴及三種已交付模式（`ui`／`env`／委託）——凡處於封印狀態者，皆 SHALL 於進站時被接住並導至封印狀態頁。
+
 已解封時解封頁 SHALL NOT 可達：對該頁之導覽 SHALL 被導離。導向規則 SHALL 為**單一守衛的兩個方向**，SHALL NOT 由兩套互相獨立的判斷各自實作。
 
 **解封當下 SHALL NOT 中斷正在完成流程者**：解封成功時使用者仍停留於解封頁，介面 SHALL 呈現成功結果與後續入口，SHALL NOT 因狀態已轉為已解封而立即將其導離。
 
 **封印狀態之判定 SHALL 具三個更新來源**：進站探測（狀態未知時查詢封印狀態端點）、解封頁自身的狀態讀取與解封結果、以及服務端封印機器碼之執行期訊號（使用者停留期間行程重啟而重新封印時，下一次請求之 503 SHALL 使介面回到封印相位並導向解封頁）。
+
+第三個來源之觸發事由 SHALL 併計管理員觸發之運行中 seal：使用者停留期間服務端接受 seal 而回到封印狀態時，其效果與 `ui` 行程重啟重新封印相同——下一次請求之 503 SHALL 使介面回到封印相位並導向解封頁。
 
 **探測失敗 SHALL 放行而非導向**：封印狀態查詢失敗時，相位 SHALL 維持未知並放行本次導覽。封印的強制點在服務端（非白名單路由一律 503），介面導向只提供去向指引；以探測失敗為由將全體使用者導至解封頁，會使一次短暫的服務端不可用把**已解封**部署的使用者逐出應用，而該頁同樣讀不到狀態。放行的代價由執行期 503 訊號自我修正。
 
@@ -969,8 +1042,20 @@ KEK 為一把 **32 位元組**的金鑰；系統 SHALL 將「輸入編碼」與�
 - **WHEN** 封印狀態查詢因網路或服務端錯誤而失敗
 - **THEN** 本次導覽 MUST 放行，MUST NOT 將使用者導至解封頁
 
+三模式 SHALL 共用同一封存狀態頁與同一解封控制面。原文「`env` 與委託模式呈現受授權的還原操作及其部署來源，SHALL NOT 要求後兩者填入本地 KEK」SHALL 改讀為：`ui` 呈現人工填鑰；`env` 呈現受授權的重讀部署來源操作；**委託模式呈現唯讀拓撲核對與該服務商的憑證輸入**，三者皆 SHALL NOT 要求委託部署填入本地 KEK。三種分支 SHALL 一律先經管理者帳密驗證才顯示其材料或憑證欄位。封存後新登入若依賴已釋放服務而不可用，介面 SHALL 明示使用仍有效的管理員憑證或由部署者依既有啟動路徑重啟恢復，SHALL NOT 開放匿名解封來規避此限制。
+
+#### Scenario: env 與委託封印頁不索取 KEK
+- **WHEN** `env` 或委託模式的使用者進入封存狀態頁
+- **THEN** MUST 顯示部署來源或唯讀拓撲、收束／故障狀態與授權條件，MUST NOT 顯示人工填本地 KEK 的表單，也 MUST NOT 把頁面載入視為授權
+
+#### Scenario: 委託封存頁在驗證後才顯示憑證欄
+- **WHEN** 委託模式的使用者進入封存狀態頁但尚未通過帳密驗證
+- **THEN** 頁面 MUST 只顯示狀態與唯讀拓撲，MUST NOT 呈現任何憑證輸入欄位
+
 ### Requirement: 解封頁之生成指令參考
-解封頁與換鑰精靈 SHALL 於材料輸入欄位附近列出**可複製的**生成指令參考，涵蓋每一種被接受的輸入形態各至少一條。列出的每一條指令 SHALL 經自動化守衛**實際執行**驗證其產出必然通過伺服端材料驗證，SHALL NOT 僅以推論列出。
+解封頁與換鑰精靈 SHALL 於**本地 KEK 材料**輸入欄位附近列出**可複製的**生成指令參考，涵蓋每一種被接受的本地材料輸入形態各至少一條。列出的每一條指令 SHALL 經自動化守衛**實際執行**驗證其產出必然通過伺服端材料驗證，SHALL NOT 僅以推論列出。
+
+本要求之適用範圍 SHALL 限於本系統自行生成的材料。委託模式的憑證（存取金鑰對、服務帳號金鑰檔、角色密鑰、權杖）由外部保管處或雲端服務簽發，本系統 SHALL NOT 為其提供生成指令，亦 SHALL NOT 以任何形式暗示操作者可自行生成——該處 SHALL 改為指向取得該憑證的責任方與所需權限範圍的說明。
 
 指令為**參考**而非要求：介面 SHALL 表述為「以下任一皆可」，且 SHALL 保留以瀏覽器 CSPRNG 於本地生成材料的入口（並非所有操作者都在具備 shell 的機器上操作）。「請以 CSPRNG 生成、勿自行編造」之熵警告 SHALL 保留，SHALL NOT 因提供指令而弱化——列出指令的目的正是提供現成的正確做法以取代自行編造。
 
@@ -987,6 +1072,10 @@ KEK 為一把 **32 位元組**的金鑰；系統 SHALL 將「輸入編碼」與�
 #### Scenario: 本地生成入口保留
 - **WHEN** 操作者所在環境無法執行 shell 指令
 - **THEN** 介面 MUST 仍提供以瀏覽器 CSPRNG 本地生成材料的按鈕
+
+#### Scenario: 委託憑證不提供生成指令
+- **WHEN** 檢視委託模式的憑證輸入步驟
+- **THEN** MUST NOT 出現生成該憑證的指令，MUST 改為說明由誰簽發與所需權限範圍
 
 ### Requirement: 換鑰精靈之切換指示依執行期 provider 分岔
 
@@ -1034,3 +1123,641 @@ SHALL NOT 另由介面推論（如以「有封印狀態」反推模式為 `ui`�
 - **THEN** 介面 MUST 指出切換屬部署層之 provider 遷移並指向營運文件，
   MUST NOT 呈現任何未經查證之逐步指示
 
+### Requirement: Vault Transit 委託與組態齊備
+組態層 SHALL 接受 `KEK_PROVIDER=kms` 搭配 `KEK_KMS_PROVIDER=vault`；套件層的 Vault provider SHALL 以 Transit 具名金鑰作 KEK，KEK 材料 SHALL 永不進入後端行程記憶體、資料庫、日誌或產品 API。DEK SHALL 仍由本地生成，包裹／解包時才委託 Transit；此 driver 的呼叫端 SHALL 僅傳入 DEK，不傳業務密碼與資料。正式服務已接線，Vault 啟動後的 DEK 快取與業務加解密語義與其他模式相同。AppRole 憑證與短期 token 為後端存取 Vault 的機密，SHALL NOT 宣稱後端不再持有任何機密。
+
+Vault 的必要設定 SHALL 分兩處供給（原文「Vault 必要組態 SHALL 為 `KEK_KMS_PROVIDER`、`KEK_KMS_KEY_ID`、`KEK_VAULT_ADDR`、`KEK_VAULT_ROLE_ID`、`KEK_VAULT_SECRET_ID`」SHALL 改讀如下）：環境變數僅保留 `KEK_PROVIDER` 與 `KEK_KMS_PROVIDER`；非秘密拓撲（位址、Transit 金鑰名稱、角色識別）取自資料庫的拓撲設定，金鑰識別於既有部署沿金鑰列的 KEK 引用；秘密（角色密鑰或直接提供的權杖）取自該解封世代的記憶體持有者。Vault 分支 SHALL 不要求服務區域。任一處缺項、未知服務商或委託模式殘留本地 KEK 材料 SHALL fail-close，錯誤 SHALL 列缺少的欄位名而不洩漏值。AWS 的區域必填 SHALL 維持，其來源同樣改為拓撲設定。
+
+#### Scenario: Vault 保管 KEK
+- **WHEN** 在套件入口完成 Vault provider 建構，並包裹或解包一把本地生成的 DEK
+- **THEN** KEK 運算在 Vault 完成，後端僅交換 DEK 材料、包裹值及必要脈絡；產品不讀取或匯出 Transit KEK，不向 Vault 送業務密碼
+
+#### Scenario: Vault 缺憑證拒絕啟動
+- **WHEN** Vault 分支的拓撲已齊備但世代持有者無角色密鑰亦無權杖
+- **THEN** 建構被拒並指出缺少的項目，不回落本地 KEK，不以 root token 補位
+
+#### Scenario: Vault 不要求 AWS 區域
+- **WHEN** Vault 必要設定皆齊備、沒有本地 KEK 材料且拓撲未設服務區域
+- **THEN** 齊備驗證通過，不以缺區域拒絕；AWS 分支缺區域仍拒絕。齊備通過不免除建構時的登入與預檢，正式 factory 缺 client owner 時仍拒絕
+
+### Requirement: Vault AppRole 認證生命週期
+Vault 委託 SHALL 以下列二者之一取得存取權，由操作者於解封時選定，SHALL NOT 同時提供：（一）以拓撲設定的角色識別搭配解封時輸入的角色密鑰登入；（二）直接提供的權杖，等同跳過登入步驟。二者 SHALL NOT 構成不同的 driver，拓撲亦 SHALL NOT 因選用權杖而改變。系統 SHALL 依登入與續期回應中 auth 的 token、租期與 renewable 管理 token 自動續期；此續期 SHALL NOT 輪替 KEK。憑證權限 SHALL 限縮至指定 Transit 金鑰與必要的認證續期操作，SHALL NOT 使用產品內的 root token 或任意金鑰管理權限。登入、續期與重新登入 SHALL 可取消；可重試續期故障至多再試兩次，初次登入及失效邊界的單一重新登入失敗即終止，SHALL NOT 無限重試；過期、撤銷或明確拒絕後 SHALL NOT 將舊 token 當作有效憑證。有效角色密鑰仍可用時 SHALL 嘗試受控重新登入；直接提供權杖者無登入可重試，其失效 SHALL 直接 fail-close 並要求重新解封。失敗 SHALL 回可辨識錯誤，不轉換 provider。介面與文件 SHALL 明載長壽命權杖非建議做法。
+
+#### Scenario: 登入失敗沒有可用 provider
+- **WHEN** 套件 client 登入或 provider 預檢時，AppRole 登入被拒、回傳無有效 token 或無法完成權限預檢
+- **THEN** 建構失敗，不產生可用的替代 provider；套件建構路徑不存取資料庫，正式重包 handler 走同一建構與預檢，其失敗同樣不產生可用 provider
+
+#### Scenario: token 按回傳租期續期
+- **WHEN** renewable token 接近其回傳租期且續期成功
+- **THEN** 後續委託操作使用更新後租期的有效 token，既有 DEK 與業務密文不變
+
+#### Scenario: 直接提供的權杖失效即 fail-close
+- **WHEN** 以直接提供的權杖解封後，該權杖過期或遭撤銷
+- **THEN** 需要 Vault 的新操作 MUST 失敗，MUST NOT 嘗試以角色識別自行登入補位；恢復 MUST 經重新解封提供新的權杖或角色密鑰
+
+#### Scenario: 認證失效採 fail-close
+- **WHEN** token 過期或遭撤銷，且無法重新登入
+- **THEN** 需要 Vault 的新操作失敗且不回成功包裹或明文，錯誤與日誌不含角色識別、角色密鑰、token 或 DEK；此為 client／provider 失效邊界；正式服務的中斷演練另有實跑證據——既有連線、審計寫入與已快取 DEK 的加解密維持正常，該證據限於 HTTP keep-alive 與審計計數，不涵蓋 SSH／RDP 會話
+
+### Requirement: Vault Transit 四動作語義
+Vault 委託 SHALL 將 wrap 對應 `POST /v1/transit/encrypt/<key>`、unwrap 對應 `POST /v1/transit/decrypt/<key>`、遠端 KEK 版本輪替對應 `POST /v1/transit/keys/<key>/rotate`、同一具名金鑰的舊包裹換版對應 `POST /v1/transit/rewrap/<key>`。Rotate SHALL 由部署管理者的 Vault 管理權限於手動營運路徑執行，SHALL NOT 成為產品的自動輪替或假託為 DEK 輪替。產品 SHALL NOT 以此套件能力宣稱 Vault 換鑰精靈已完成接線。
+
+原生 rewrap SHALL 保持同一具名金鑰與脈絡、不向呼叫端回傳 DEK 明文；跨具名金鑰或跨 provider 的包裹轉換 SHALL 使用解包後包裹的語義，SHALL NOT 宣稱 Transit rewrap 可接受任意來源／目的兩把鑰。provider 的同鑰 rewrap 能力 SHALL 可透過契約及真實靶機驗證；SHALL NOT 據此宣稱既有精靈已支援同一 KeyRef 的資料庫原地換版。
+
+#### Scenario: wrap 與 unwrap
+- **WHEN** 使用具名 derived key 包裹 DEK，再以相同 context 解包所得完整 Transit 密文
+- **THEN** encrypt 取得 data.ciphertext，decrypt 取得 data.plaintext 並解碼回相同 DEK；任一步錯誤不得回成功值
+
+#### Scenario: 管理者輪替遠端 KEK 版本
+- **WHEN** 部署管理者明確對該具名 key 呼叫 rotate
+- **THEN** Vault 新增 key 版本，後續 wrap 採可用的新版本；key 引用不變，既有包裹不會因此自動改寫，產品不生成或取回 KEK 材料
+
+#### Scenario: 同鑰舊包裹換版
+- **WHEN** 以同一具名 key 和原 context 對舊版本包裹呼叫 rewrap
+- **THEN** Vault 回新版本 data.ciphertext，解包後仍為原 DEK，rewrap 回應沒有明文；此行為不繞過產品對同一重包目標的拒絕
+
+#### Scenario: local 來源不是原生 Transit rewrap
+- **WHEN** 呼叫 Vault provider.ReEncrypt 將 local provider 的包裹轉換為 Vault 包裹
+- **THEN** 使用來源解包與目標 encrypt 語義，來源失敗不執行目標包裹；不得將 local blob 直接交給 Transit rewrap
+
+### Requirement: Vault context 承載既有正規 AAD
+Vault 委託 SHALL 使用 derived key，將既有用途與版本之正規 AAD 位元組以一次標準 base64 編碼送入 `context`；SHALL NOT 改採 `associated_data`，亦 SHALL NOT 改動 AWS 的 `EncryptionContextAADKey` 對應。context 是金鑰衍生輸入，SHALL NOT 宣稱其等同 AEAD associated_data。空 AAD SHALL 在出站前拒絕，錯 context SHALL 解包失敗；非 derived key SHALL 在預檢拒絕。
+
+#### Scenario: context 綁定錯誤
+- **WHEN** 將包裹時的用途或版本改為另一值後嘗試 unwrap 或同鑰 rewrap
+- **THEN** 操作失敗且不回明文或成功包裹
+
+#### Scenario: 空 AAD 不出站
+- **WHEN** wrap 或 unwrap 收到 nil 或零長度 AAD
+- **THEN** 操作直接回錯，Vault API 呼叫次數為零
+
+#### Scenario: 非 derived key 拒絕
+- **WHEN** 目標 Transit key 未啟用 derived
+- **THEN** 套件 provider 建構預檢失敗，不以僅傳 context 當作已完成綁定
+
+### Requirement: Vault 退役列解包由本系統自守
+系統 SHALL 在呼叫 Vault 解包前拒絕已標記 KEK 退役的列；SHALL NOT 以 Vault 可解舊版本、或 `min_decryption_version` 設定代替本地退役判定。DEK 的用途版本退役與 KEK 包裹列退役 SHALL 依既有狀態機區分，SHALL NOT 以此新增對歷史資料讀取的禁令。
+
+#### Scenario: Vault 可解但本地列已退役
+- **WHEN** 某 KEK 包裹列已設退役標記，而 Vault 仍保留且允許解其版本
+- **THEN** 本系統在出站前拒絕該列，Vault decrypt 呼叫次數為零
+
+#### Scenario: 未退役包裹的歷史 DEK
+- **WHEN** 歷史資料所需 DEK 版本已退役，但現行 KEK 包裹列未退役且可合法解包
+- **THEN** 仍可依既有歷史解密規則讀取資料，不把 DEK 版本退役誤判為 KEK 包裹列不可解
+
+### Requirement: Vault 獨立格式與金鑰引用
+Vault 包裹 SHALL 使用外層 `wk:2:vault:<base64(完整 Transit 密文字串)>`，內層保留 `vault:v<n>:` 版本語義；SHALL NOT 沿用 AWS 的 `kms` 格式標記。金鑰引用種類與委託目標種類 SHALL 新增 `vault`，執行期模式仍 SHALL 為 `kms`。引用 SHALL 唯一識別部署信任域、Transit 掛載點與具名 key，不包含遠端版本或認證機密；不同信任域的同名 key SHALL 不相等。未知外層格式／格式版本，或引用種類與目標種類不一致 SHALL 在解包前拒絕；本地 env/ui 互解語義不變。
+
+#### Scenario: 格式可辨識且不可混用
+- **WHEN** 寫入 Vault 包裹後重新載入，或把其格式標記改成 kms
+- **THEN** 正確 vault 格式可解析並交由 Vault provider；改標為 kms 的值不得以試錯回落成功解包
+
+#### Scenario: 引用種類與模式分離
+- **WHEN** 讀取 Vault provider 的 Mode／KeyRef，並以服務層注入的 constructor 建立 Vault 重包目標
+- **THEN** 物件的模式為 kms，引用與目標種類為 vault；引用完整且不含 KEK 或 AppRole 機密；正式清冊與精靈使用同一引用
+
+### Requirement: Vault 部署信任域與端點守衛
+Vault 位址與 AppRole 憑證 SHALL 只來自部署組態；換鑰請求解析器的 Vault 變體 SHALL 僅能帶 Vault 金鑰引用，SHALL NOT 改變位址、掛載或認證來源。正式請求 SHALL 使用經驗證的 HTTPS 目的地，拒絕非預期覆寫與跨信任域導向；HTTP SHALL 僅可經測試專用注入使用，不能由正式部署的模式猜測啟用。AWS 既有端點拒絕 SHALL 維持。
+
+#### Scenario: 請求指定其他信任域
+- **WHEN** 目標 key_ref 指向部署信任域以外的 Vault，或請求混入位址或憑證欄位
+- **THEN** 請求在出站前被拒，沒有金鑰表寫入或向該位址送出機密
+
+#### Scenario: 正式位址為 HTTP 或被覆寫
+- **WHEN** 套件的正式 NewClient 建構入口取得 HTTP 位址、非預期 SDK 覆寫，或其 HTTP client 遇到重新導向
+- **THEN** 建構或請求 fail-close，不傳送 AppRole 憑證、token 或 DEK 到非預期目的地
+
+### Requirement: Vault 服務層重包與正式入口邊界
+RewrapKEK 服務層 SHALL 以既有交易處理注入的 Vault 目標：同一 KeyRef 拒絕，部分包裹失敗時整批回滾。正式啟動與重包 factory 未取得 client 生命週期 owner 時 SHALL 拒絕建構。local→vault 正式精靈、切換重啟、未切換放棄與切換後的備份回復均已於完整服務組裝與真實 Transit 靶機實走驗證；備份回復的證據限於 SQLite 組裝的整庫備份與還原，SHALL NOT 宣稱 PostgreSQL 部署的災難復原程序、外部儲存或錄影回復已驗證。
+
+#### Scenario: 同鑰目標拒絕
+- **WHEN** RewrapKEK 服務收到與現行 provider 相同 KeyRef 的 Vault 目標
+- **THEN** 目標 Wrap 呼叫次數為零、資料列不變且不建立 pending
+
+#### Scenario: 重包部分失敗回滾
+- **WHEN** 服務層交易已插入第一列 Vault 待切換包裹，第二列目標 Wrap 失敗
+- **THEN** 交易回滾，全列與操作前相同，不留下部分 pending
+
+#### Scenario: 缺 client owner constructor 時拒絕建構
+- **WHEN** 正式啟動或重包 factory 選中 Vault，但沒有可借用的 client owner constructor
+- **THEN** 回不可用錯誤與 nil provider，不自行建立無主 worker、不回落其他 provider
+
+### Requirement: GCP 委託與組態齊備
+系統 SHALL 支援 `KEK_PROVIDER=kms` 搭配 `KEK_KMS_PROVIDER=gcp`，KEK 材料 SHALL 永不進入後端行程記憶體、資料庫、日誌或產品 API。DEK SHALL 由本地生成，經 Cloud KMS 包裹／解包；業務資料與密碼 SHALL NOT 送往 KMS，啟動解封後的 DEK SHALL 沿既有快取供一般加解密，SHALL NOT 宣稱後端不再持有機密。
+
+GCP 的完整 CryptoKey 資源名 SHALL 取自拓撲設定或既有金鑰列的 KEK 引用（原文「沿用 KEK_KMS_KEY_ID 承載」SHALL 改讀為此），SHALL NOT 新增產品專屬的 GCP 憑證或 endpoint 環境變數鍵。服務區域在 GCP 分支 SHALL 不作必要條件、不映射 location、亦不改變目的地；若拓撲留有值 SHALL 以不含值的提示指出它對 GCP 不生效。AWS 分支的區域必填 SHALL 保留。未知服務商、缺完整資源名或委託模式仍留本地 KEK 材料 SHALL fail-close。
+
+#### Scenario: GCP 保管 KEK
+- **WHEN** 以 GCP 委託模式包裹或解包 DEK
+- **THEN** KEK 運算在 Cloud KMS 完成，後端僅交換 DEK 材料、包裹與脈絡，沒有讀取或匯出 KEK 的路徑，業務資料不出站到 KMS
+
+#### Scenario: GCP 沒有 AWS 區域依賴
+- **WHEN** GCP 完整資源名齊備而拓撲未設服務區域，或留有與資源 location 不同的值
+- **THEN** 前者可繼續憑證建構與金鑰預檢；後者提示區域不生效且不改變資源或服務目的地；AWS 缺區域仍拒絕
+
+### Requirement: GCP CryptoKey 資源引用與 project 信任範圍
+GCP 的 kek_id SHALL 為 `projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>`，SHALL NOT 含 cryptoKeyVersions 子資源。完整引用 SHALL 不被截斷並可供清冊與外部服務對照。可信 project SHALL 由部署的 KEK_KMS_KEY_ID 推導；單次重包請求 SHALL NOT 擴張信任範圍，目標引用在語法、project 與服務回應檢查通過後才可執行包含 DEK 的操作。別名與等價 project 表示 SHALL 僅在可證明等價時正規化，SHALL NOT 猜測。
+
+#### Scenario: 版本子資源不是 kek_id
+- **WHEN** 部署或重包目標將 cryptoKeyVersions/<n> 當作 KEK 引用
+- **THEN** 系統回可辨識引用錯誤，不靜默截去版本並採用可能不同的 primary
+
+#### Scenario: 目標指定外部 project
+- **WHEN** 單次 key_ref 指向部署未信任的 project
+- **THEN** 受理失敗，金鑰表零寫入，沒有向該目標送 DEK encrypt／decrypt 請求
+
+#### Scenario: 回應金鑰不符
+- **WHEN** encrypt 回傳的版本資源不屬於預期 CryptoKey，或 metadata 無法確認合法金鑰
+- **THEN** 操作或建構 fail-close，不使用該包裹，不以字面引用相等取代實際預檢
+
+### Requirement: GCP 重包的同一 fail-close 事務
+涉及 GCP 的 KEK 重包 SHALL 以來源 unwrap（GCP 來源為 decrypt）再目標 wrap（GCP 目標為 encrypt）完成，SHALL NOT 宣稱具備服務端 ReEncrypt 對等原語。來源解包、目標包裹及整批 pending 列寫入 SHALL 在同一個既有資料庫事務邊界內執行；任一步、任一列或提交失敗 SHALL 不留下部分 pending 列，也不得回傳重包成功。遠端請求本身 SHALL NOT 被宣稱可由 DB rollback 撤回。
+
+重包 SHALL 使用被鎖內查詢選出的未退役來源包裹與原 AAD，SHALL NOT 以先前快取明文 Wrap 代替本次兩步操作；空材料清理佔位沿既有複製規則，SHALL NOT 為佔位製造 decrypt 請求。其他核心狀態機、互斥、待切換、重用拒絕與退役規則 SHALL 維持。
+
+#### Scenario: decrypt 失敗沒有 encrypt
+- **WHEN** GCP 來源解包在交易內被拒、逾時或取消
+- **THEN** 不執行該列目標 encrypt，交易失敗且沒有部分 pending 列，不以快取材料回落
+
+#### Scenario: encrypt 或後續列失敗整批回滾
+- **WHEN** 來源解包成功後目標 encrypt 失敗，或前一列成功後下一列失敗
+- **THEN** 整批 DB 寫入回滾，既有 live 列與記憶體切換狀態不變，沒有成功重包回應
+
+#### Scenario: 提交失敗不報成功
+- **WHEN** 遠端兩步均成功但資料庫提交失敗
+- **THEN** 系統回錯且不設記憶體 pending 成功狀態，不宣稱遠端呼叫已撤回
+
+#### Scenario: local 來源遷移到 GCP
+- **WHEN** 以 local 未退役來源列重包到 GCP
+- **THEN** 在同一事務內用來源 provider 解包後呼叫 GCP encrypt；不是要求 local blob 交由 GCP decrypt，也不是取快取 DEK 直接包裹
+
+### Requirement: GCP additionalAuthenticatedData 使用正規位元組
+GCP encrypt 與 decrypt SHALL 直接使用既有用途／版本長度前綴正規 AAD 位元組作 additionalAuthenticatedData，不帶 AWS 字串 map、不把 base64 文字當成邏輯 AAD。REST JSON 的 bytes 欄位 SHALL 由傳輸層按官方格式做單次 base64；SHALL NOT 因傳輸需求對邏輯 AAD 再包一層。空 AAD SHALL 在出站前拒絕，錯 AAD 或他鑰 SHALL 解包失敗。
+
+#### Scenario: 原始 AAD 原樣傳遞
+- **WHEN** 同一用途與版本的 DEK 經 GCP wrap／unwrap
+- **THEN** 兩個請求的邏輯 additionalAuthenticatedData 均等於原 canonical AAD 位元組；REST 捕獲值解碼一次即可得到它
+
+#### Scenario: 空值與錯 AAD 拒絕
+- **WHEN** AAD 為空，或解包時將用途／版本改成另一值
+- **THEN** 空值在出站前拒絕，錯脈絡不回明文；不得以空 AAD 或其他 provider 試錯回落
+
+### Requirement: GCP ADC 與正式端點拒絕
+正式 GCP client SHALL 以解封時提供的服務帳號金鑰檔內容顯式建構認證（原文「經 ADC 取得部署的服務帳號或 Workload Identity 認證；認證來源與更新 SHALL 交由官方 SDK」SHALL 改讀為此）：認證材料 SHALL 由該解封世代的記憶體持有者供給，交由官方 SDK 的顯式憑證建構入口使用；產品 SHALL NOT 建立私有 credential store、SHALL NOT 將該材料持久化、SHALL NOT 保留靜態測試憑證回落或通用端點設定，亦 SHALL NOT 於顯式憑證缺席時回落至環境自動發現。正式路徑 SHALL 同時檢查可影響 KMS 目的地的輸入與最終解析結果，拒絕自訂 endpoint、HTTP、TLS 驗證停用或非預期導向；測試 SHALL 只經 client 注入接縫使用 fake，不以端點覆寫冒充正式整合。
+
+#### Scenario: ADC 不可用拒絕建構
+- **WHEN** 啟動或精靈預檢時世代持有者無服務帳號金鑰檔內容、其內容無效或無所需金鑰權限
+- **THEN** 回可辨識錯誤與不可用 provider，重包零金鑰寫入，不降級為本地、匿名認證或環境自動發現的 ADC，不記錄憑證內容
+
+#### Scenario: 環境存在可用 ADC 亦不採用
+- **WHEN** 執行環境恰有可用的 ADC，而世代持有者未供給服務帳號金鑰檔內容
+- **THEN** MUST 拒絕建構，MUST NOT 以環境中的 ADC 補位——憑證來源自本次起為顯式注入的單一路徑
+
+#### Scenario: 正式 endpoint 被覆寫
+- **WHEN** 環境、SDK option 或解析結果試圖將 KMS 請求送到自訂或不安全端點
+- **THEN** 在送出 DEK 前拒絕，不能因來源不在第一層已知清單而放行
+
+#### Scenario: 運行期認證或 KMS 失效
+- **WHEN** 已完成啟動後憑證失效或 GCP KMS 不可達
+- **THEN** 既有連線、審計與一般資料加解密沿 DEK 快取維持，需要 KMS 的新操作明確失敗，冷啟動不得放行
+
+### Requirement: GCP 獨立包裹格式與目標種類
+GCP SHALL 使用 `wk:2:gcp:<base64(服務回傳密文位元組)>`，KeyRef 與委託目標種類 SHALL 新增 gcp，執行期 Mode 仍為 kms。編碼、解析、API 目標 union 及一致性守衛 SHALL 同步接受此新種類；SHALL NOT 重用 AWS kms tag、拼接 Vault 密文前綴或自行解析 GCP blob 的版本。未知 tag／wk:1／裸值與目標種類錯配 SHALL 持續拒絕。
+
+#### Scenario: 新格式與引用一致
+- **WHEN** 精靈提交 mode=gcp 的完整 CryptoKey 引用並寫入包裹
+- **THEN** 包裹 tag 為 gcp，引用種類為 gcp，清冊執行期模式為 kms；key_ref 完整且不含憑證
+
+#### Scenario: 格式錯配不得試錯
+- **WHEN** 將 GCP 包裹標為 kms，或 mode=gcp 搭配其他種類的引用
+- **THEN** 系統在解包前拒絕，不交另一 provider 嘗試解密
+
+### Requirement: GCP 版本輪替與退役自守
+部署管理者 SHALL 以新增 CryptoKeyVersion 並設定 primary 完成遠端 KEK 版本輪替；產品更換 CryptoKey 引用 SHALL 沿既有換鑰精靈，不新增共用 Rotate 方法、自動輪替或同鑰 DB 原地換版入口。encrypt 使用 CryptoKey 的 primary，decrypt 由服務選取所需版本；切 primary SHALL NOT 被宣稱自動重包既有 DB 列。
+
+已設 KEK 退役標記的包裹列 SHALL 在呼叫 GCP 前被本系統拒絕，不依賴遠端版本 disable／destroy。歷史 DEK 版本的 retired 狀態 SHALL 不與 KEK 包裹列退役混同。
+
+#### Scenario: primary 改變不改 kek_id
+- **WHEN** 管理者新增版本並指定為 primary
+- **THEN** kek_id 仍停留 CryptoKey 層，新 wrap 使用 primary，舊包裹在遠端舊版本仍可用且本地未退役時可解，DB 不自動換版
+
+#### Scenario: 遠端仍可解但本地已退役
+- **WHEN** KEK 包裹列已退役而服務仍允許其版本 decrypt
+- **THEN** 本系統在出站前拒絕該列，GCP decrypt 呼叫數為零
+
+### Requirement: GCP 跨模式遷移與驗證界線
+local→gcp SHALL 經既有精靈完成目標預檢、同一事務重包、pending、部署切換、移除本地材料及重啟，以全數現行代表列實際解包驗證上線，舊 KEK 包裹沿既有規則軟退役。以 fake 執行完整精靈流程 SHALL 清楚標示其證明範圍，SHALL NOT 代替真專案 ADC／IAM／服務端綁定驗收。
+
+#### Scenario: 精靈 local 到 GCP
+- **WHEN** 管理者透過精靈選 gcp 目標，完成重包與部署切換後重啟
+- **THEN** 現行列均可實際解包，舊 KEK 列軟退役，清冊顯示完整 CryptoKey 引用，原有業務密文位元不變且可讀
+
+#### Scenario: 真專案憑證尚未取得
+- **WHEN** fake 共用 contract 已通過，但真專案服務帳號憑證尚未取得
+- **THEN** 整合項目 SHALL 記「整合待憑證」並保持未完成；contract 綠是該條在本波的可交付上限，SHALL NOT 標為整合通過或完整交付
+
+### Requirement: 解封材料的可覆寫所有權與用畢清理
+
+系統 SHALL 將六個已登記的資產憑證解封出口所產生的密碼及私鑰以可覆寫位元組交付，為每份自有材料指定擁有者與最後用途。範圍 SHALL 包含掛載就位版本、指定版本、VNC SFTP 側車、轉換比對的密碼與私鑰、改密候選；接收者 SHALL NOT 透過可避免的 string 轉換、無追蹤複製、格式化或快取延長明文生命期。轉交 SHALL 移交或借用明確的所有權，SHALL NOT 任意清理仍被其他用途使用的共用材料。
+
+系統 SHALL 在成功、失敗、取消、逾時及部分產出路徑清理自有秘密。握手專用密碼 SHALL 於 SSH 認證需要時才建立必經的字串表示，並於握手成功或失敗後歸零自有位元組，SHALL NOT 等待整場會話結束。未進認證即失敗者也 SHALL 歸零。私鑰解析、遠端改密／提權、候選驗證與提交、轉換比對及非 SSH 下游 SHALL 分別界定最後用途；仍需秘密者 SHALL 於最後使用後立即清理，SHALL NOT 提早抹除而破壞流程。不可控制的函式庫字串、解析器與封包副本 SHALL 依誠實邊界揭露。
+
+#### Scenario: 握手成功後會話仍持續
+- **WHEN** 密碼認證成功而 SSH 會話繼續運行
+- **THEN** 應用擁有的握手專用密碼位元組 MUST 已歸零，MUST NOT 等到會話關閉；既有連線繼續運作
+
+#### Scenario: 認證失敗或尚未認證即取消
+- **WHEN** SSH 認證失敗、host key 拒絕或請求在認證前取消
+- **THEN** 本次已取得的自有秘密 MUST 歸零，MUST NOT 因回呼未執行而遺漏清理
+
+#### Scenario: 第二個秘密解封失敗
+- **WHEN** 同一出口已解出密碼但私鑰解密失敗
+- **THEN** MUST 清掉已產生的自有密碼且回錯，MUST NOT 交付含部分秘密的結果
+
+#### Scenario: 改密在握手後仍需秘密
+- **WHEN** 改密流程在認證後仍需舊密碼提權或新秘密驗證與提交
+- **THEN** 認證暫存 MUST 用畢清理，流程擁有的材料 MUST 保留至各自最後用途並歸零；重試、提交及還原語義 MUST 維持
+
+#### Scenario: 六個出口逐點驗收
+- **WHEN** 驗收資產解封出口及其消費端
+- **THEN** 六個出口 MUST 各有成功與失敗的歸零證據，側車、DB 提示注入及轉換比對 MUST 按最後用途清理；MUST NOT 只驗 SSH 便宣稱全部涵蓋
+
+### Requirement: 管理員運行中 seal 與材料使用柵欄
+
+系統 SHALL 在既有封印控制面提供 admin 專屬的一鍵 seal，沿同一狀態機新增已解封至封印的轉換，SHALL NOT 另建獨立入口或平行狀態機。未授權請求 SHALL 零狀態變更、零材料清理。受理前 SHALL 持久化操作者、來源、模式、世代及操作識別的受理紀錄；SHALL NOT 記錄材料或認證憑證。受理紀錄寫入失敗 SHALL 拒絕操作，SHALL NOT 宣稱已封印。
+
+封印轉換 SHALL 原子撤銷新的材料使用資格並標示待收束；依賴 DEK 的新加解密與金鑰操作 SHALL fail-close，包含持有舊服務引用者。在途使用 SHALL 受取消與有界收束，SHALL NOT 在封印生效後交付新的明文結果。清理完成前 SHALL NOT 接受重新解封。系統 SHALL 清除 DEK／HMAC 的全部版本、cipher 與 active 快取及服務圖擁有的已解封簽章私鑰，並完成應用擁有的本地 KEK 材料釋放，不把 env 來源宣稱為已清除。
+
+seal 成功 SHALL 僅在收束、歸零及結果紀錄確認後回報；逾時、清理錯誤或結果未能持久化 SHALL 保持封印、顯示待收束／故障並拒絕還原，SHALL NOT 回復放行或假稱清理成功。被釋放服務圖上的連線與工作 SHALL 有界中止並完成可完成的審計收尾，介面 SHALL 在 seal 前說明中斷範圍，SHALL NOT 宣稱不停機。操作失敗後的重啟處置 SHALL 有明確指引。
+
+#### Scenario: 未授權 seal 無副作用
+- **WHEN** 匿名、非 admin 或已失效的管理員憑證要求 seal
+- **THEN** MUST 拒絕且不轉態、不清金鑰、不影響服務；拒絕不得洩漏機密
+
+#### Scenario: seal 拒絕舊引用與在途交付
+- **WHEN** seal 生效時另一呼叫端仍持有舊 codec 或正在完成解密
+- **THEN** MUST 拒絕新材料使用及封印後明文交付，收束完成後全部自有快取材料 MUST 為零或不可用
+
+#### Scenario: 清理失敗不能宣稱完成
+- **WHEN** seal 受理後釋放失敗、逾時或結果紀錄未確認
+- **THEN** MUST 保持封印及可辨識故障／待收束，拒絕 unseal，MUST NOT 回報清理成功或自動重建快取
+
+#### Scenario: seal 與還原並發
+- **WHEN** seal 尚待收束而多個還原請求抵達
+- **THEN** MUST 全部拒絕；收束成功後才可由恰一請求取得新世代獨佔，舊世代結果 MUST NOT 覆蓋新狀態
+
+### Requirement: 三模式的受控重新解封
+
+三種已交付模式 SHALL 在 seal 後由相同解封控制面還原。ui SHALL 重新人工輸入有效 KEK，沿既有一般解封驗證及退避；env SHALL 在受理後重新讀取部署環境，SHALL NOT 使用封存前快取材料代替重讀；**委託模式 SHALL 由操作者於解封頁重新提供該服務商的憑證**（原文「委託模式 SHALL 用部署的有效憑證自動重新解包既有 DEK」SHALL 改讀為此——憑證自本次起只存在於解封世代的記憶體，封存即抹除，故不存在可自動取用的部署憑證），以其重新解包既有 DEK，SHALL NOT 要求提交本地 KEK 或回落至本地 provider。
+
+env 的自動取材 SHALL 僅於受授權的請求後執行，不因狀態查詢、業務請求或 seal 完成而立刻還原；委託模式 SHALL NOT 具備任何自動還原路徑。控制面 SHALL 在不解封 DEK、不建立完整業務服務的情況下驗證仍有效的完整管理員身分與授權；無法驗證 SHALL 拒絕，SHALL NOT 僅憑來源網段放行。無有效管理員憑證時 SHALL 指引部署者依既有啟動來源重啟恢復，不另增封存期登入或憑證救援。原文「ui 以材料證明解封的既有路徑不受此登入要求影響」SHALL 改讀為：**三模式一律先經管理者帳密驗證**，`ui` 的材料證明自本次起為驗證之後的第二道，SHALL NOT 再以「知道材料」單獨承擔授權。
+
+所有模式 SHALL 實際驗證現行代表列、重建服務圖、持久化成功後才發佈；來源無效、遠端不可達、權限不足或初始化失敗 SHALL 保持封存或封存且故障並可受控重試。解封 SHALL NOT 隱含模式切換、換鑰、輪替或逐次資料使用的遠端解封。
+
+**env 的首次啟動 SHALL 維持無人值守**，經同一狀態機完成有效材料驗證、初始化及發佈後才開放業務監聽；`/health` 的可達性與回應語義 SHALL 維持既有契約。缺 KEK 或初始化失敗 SHALL 非零退出並拒啟動，**SHALL NOT 改為等待人工解封**——`env` 不經解封頁，本次的憑證輸入路徑與它無關。此首次啟動與運行中 seal 後的受授權還原 SHALL 分開處理。
+
+**委託模式的首次啟動自本次起 SHALL NOT 為無人值守**（原文「env／委託的首次啟動 SHALL 維持無人值守」中的委託部分 SHALL 改讀為此，env 部分維持原文）：其憑證只能由解封頁提供，故行程啟動後 SHALL 進入已封存並等待人工解封，SHALL NOT 非零退出——「等不到憑證」不是組態錯誤而是設計上的正常狀態。此變更 SHALL 於升級說明與營運程序明載，重啟即需人工介入為委託模式的已知代價；`ui` 與 `env` 的啟動語義 SHALL NOT 受此影響。
+
+#### Scenario: env 與委託改造前後啟動行為不變
+- **WHEN** 對 env 與委託模式分別比較改造前後的無人值守冷啟動，涵蓋有效來源、初始化尚未完成及缺 KEK
+- **THEN** env 的行為 MUST 逐項不變：有效來源 MUST 自動完成解封、業務監聽 MUST 僅於發佈後開放、`/health` 語義 MUST 不變；缺 KEK 或初始化失敗 MUST 非零退出且不開業務監聽，MUST NOT 等待人工輸入或回落至其他模式。委託模式 MUST 改為進入已封存等待人工解封（本次的破壞性變更），MUST NOT 非零退出，MUST NOT 回落至其他模式
+
+#### Scenario: 委託模式冷啟動進入已封存
+- **WHEN** 委託模式的部署重新啟動行程
+- **THEN** MUST 進入已封存並開放解封頁與狀態查詢，MUST NOT 非零退出，MUST NOT 以任何殘留憑證自動解封
+
+#### Scenario: ui seal 後人工重輸
+- **WHEN** ui 清理完成後管理員通過帳密驗證，先提供錯誤再提供正確 KEK
+- **THEN** 前者 MUST 拒絕且維持封存，後者 MUST 以新世代解封並讀回原密文，MUST NOT 取用舊材料快取
+
+#### Scenario: env seal 後重讀來源
+- **WHEN** env 清理完成後受授權解封，但來源已移除或改錯
+- **THEN** MUST 依重新讀取的無效材料拒絕，MUST NOT 沿用舊 provider；來源修正後才可重新解封
+
+#### Scenario: 委託模式以部署憑證自動重解
+- **WHEN** 委託 seal 後受授權的解封請求抵達，遠端可達
+- **THEN** 系統 MUST NOT 以任何部署側殘留憑證自動重解——憑證已隨世代抹除；MUST 要求操作者通過驗證、核對拓撲並重新提供憑證，其後才重新解包現行 DEK 並發佈，MUST NOT 要求填本地 KEK；遠端不可達或憑證失效時 MUST 保持封存且不回落
+
+#### Scenario: 封印不被匿名流量取消
+- **WHEN** env 或委託模式已封存，匿名者查狀態或要求解封
+- **THEN** 狀態查詢可依既有規則回覆，解封 MUST 被拒且零遠端解包，MUST NOT 因任何殘留憑證而自動取消封存
+
+### Requirement: 記憶體衛生效益與誠實邊界
+
+在行程硬化與本功能驗收完成、明確列出部署模式、封印清理完成時點及驗證範圍後，產品 MAY 宣稱「帳號明文不跨 SSH 握手駐留；DEK 與簽章鑰常駐於受硬化保護的行程記憶體，可由 seal 一鍵清空；記憶體快照仍可能包含金鑰與明文」。系統 SHALL 限定該說法於受驗收的自有材料與防護條件，SHALL NOT 擴張為未封印期間 DEK 不快取、env 根金鑰已消失或所有執行期／函式庫副本已抹除；證據不足 SHALL 標待驗證，SHALL NOT 先行宣稱達成。
+
+產品 SHALL NOT 宣稱「記憶體中無明文」，亦 SHALL NOT 解除「密鑰永不以明文存在」禁語。對線上持續讀記憶體的攻擊者，本功能 SHALL 明寫「只增加痕跡不增加牆」：可等每次連線的短暫明文窗口、可拿委託憑證自行解封，會話流量本就在記憶體裡。此措辭 SHALL NOT 被解讀為能偵測每次記憶體讀取；審計只記產品可觀察的 seal／還原與材料操作。
+
+系統 SHALL 揭露 string 與不可控制副本的生命期由執行期處理，自有位元組逐一覆寫不等同整個 heap 已清空。env 模式 KEK 仍殘留 environ 區塊，本 change 不消除此來源。已歸零的同一區塊是否仍含舊值，SHALL NOT 在無證據時當成事實；保守設計 SHALL 假定可能存在未覆寫的其他副本，不以 GC、丟參考或抽樣未找到作為全域抹除證明。
+
+#### Scenario: 發佈效益說明
+- **WHEN** 文件或介面引用「帳號明文不跨 SSH 握手駐留；DEK 與簽章鑰常駐於受硬化保護的行程記憶體，可由 seal 一鍵清空；記憶體快照仍可能包含金鑰與明文」
+- **THEN** MUST 同時附適用模式、硬化與清理條件、驗證範圍及 env／函式庫副本限制；缺證據 MUST 標待驗證，MUST NOT 宣稱記憶體中無明文
+
+#### Scenario: 揭露持續記憶體讀取能力
+- **WHEN** 說明對線上持續讀取者的保護
+- **THEN** MUST 明寫只增加痕跡不增加牆及短暫窗、委託憑證、會話流量三項界線，MUST NOT 宣稱可阻止或必然偵測該攻擊者
+
+#### Scenario: env seal 成功的界線
+- **WHEN** env 模式完成服務快取清理
+- **THEN** MUST 說明 environ 仍含根金鑰，MUST NOT 把成功回應當作該來源或全行程所有副本已消失的證據
+
+### Requirement: DEK 快取存活期政策與到期重解
+
+系統 SHALL 以安全政策鍵 `dek_cache_ttl_seconds` 控制 DEK 明文解封後於行程記憶體的存活期，三種值域語義固定：未設或空值 SHALL 維持現行行為（解封後全程快取至 seal 或行程結束），且 SHALL 為**全部 KEK 模式的出廠預設**；`0` SHALL 表示不保留快取，每次需要時才向 KEK 保管處解封並於該次操作結束後清除；`N>0` SHALL 表示自**解封成功時點**起算 N 秒的固定存活期。固定期限 SHALL NOT 因任何存取而續期或延長，系統 SHALL NOT 實作滑動視窗語義。本鍵 SHALL 於全部 KEK 模式可設定，SHALL NOT 依模式停用或隱藏；本機模式（`ui`／`env`）的設定頁 SHALL 說明該模式下 KEK 本即位於行程記憶體、本設定縮短的僅為 DEK 駐留。
+
+到期或未快取時的取用 SHALL 走一次使用邊界：解封所得明文 SHALL 僅供該次加解密操作使用，操作成功、失敗、取消或逾時 SHALL 一律清除自有材料，SHALL NOT 跨操作保留。系統 SHALL 對同時在途的解封請求數設定上限；超出上限者 SHALL 等待既有解封結果或以明確錯誤失敗，SHALL NOT 無界排隊、SHALL NOT 為同一 (用途, 版本) 併發發出重複的保管處請求。到期時刻已在途的操作 SHALL 沿既有材料租約語義完成，SHALL NOT 於操作中途被抽走材料；到期後的額外駐留 SHALL 以在途操作的有界完成為限。
+
+KEK 保管處故障、逾時或拒絕時，需要重新解封的操作 SHALL 明確失敗，系統 SHALL NOT 回退到已到期或已清除的舊快取、SHALL NOT 以任何降級路徑取得明文。解封的逾時、有限重試、退避與限流 SHALL 自成一組語義並與業務操作重試分離，SHALL NOT 使改密、輪替等具副作用的業務動作因解封重試而重做。解封失敗 SHALL 計數並沿既有告警機制上報，其錯誤 SHALL 可與「KEK 與金鑰表不符」的啟動期判定區分，SHALL NOT 把一次網路抖動呈現為金鑰組態錯誤。
+
+#### Scenario: 未設定時行為不變
+- **WHEN** 系統以未設定 `dek_cache_ttl_seconds` 的部署啟動並完成解封
+- **THEN** DEK 明文 MUST 於已解封期間持續快取，運行期一般加解密 MUST NOT 觸發 KEK 操作；升級 MUST NOT 改變既有部署的行為
+
+#### Scenario: 固定期限不因存取續期
+- **WHEN** `dek_cache_ttl_seconds` 設為 N 且該 DEK 在期間內被持續使用
+- **THEN** 快取 MUST 於解封成功後第 N 秒到期並清除，MUST NOT 因存取而延長；下一次取用 MUST 重新向保管處解封
+
+#### Scenario: 到期時在途操作不被抽走材料
+- **WHEN** 存活期在一次加解密操作進行中屆滿
+- **THEN** 該在途操作 MUST 以既有租約完成或依既有規則失敗，MUST NOT 於中途讀到已清除的材料；清除 MUST 於在途操作收束後完成
+
+#### Scenario: 保管處故障不回退舊快取
+- **WHEN** 快取已到期且 KEK 保管處不可達或拒絕解封
+- **THEN** 需要 DEK 的操作 MUST 明確失敗並計入解封失敗計數，MUST NOT 使用任何先前材料、MUST NOT 回傳明文
+
+#### Scenario: 併發取用不放大保管處請求
+- **WHEN** 多個操作於快取缺失時同時需要同一 (用途, 版本) 的 DEK
+- **THEN** 在途解封請求數 MUST 不超過設定上限，MUST NOT 對保管處發出無界的重複請求；超限者等待或以明確錯誤失敗
+
+#### Scenario: 零值下不跨操作保留
+- **WHEN** `dek_cache_ttl_seconds` 設為 0 且一次加解密操作完成
+- **THEN** 該次解封所得明文 MUST 已清除，下一次操作 MUST 重新解封；MUST NOT 有任何跨操作的明文留存路徑
+
+### Requirement: DEK 快取失效與封印的優先序
+
+seal SHALL 立即使 DEK 快取失效，SHALL NOT 等待存活期屆滿；封印後的取用 SHALL 依既有封印語義 fail-close，SHALL NOT 因 `dek_cache_ttl_seconds` 之設定而出現「已封印但仍可重新解封」之路徑。存活期屆滿 SHALL 僅為快取層事件，SHALL NOT 觸發封印狀態轉換、SHALL NOT 改變世代編號、SHALL NOT 改寫金鑰表。到期清除 SHALL 沿用既有材料柵欄的關閘、排空、覆寫序列，SHALL NOT 以丟棄參考取代逐位元組覆寫。
+
+系統 SHALL 記載本機制未涵蓋之長期秘密：啟動時解出並自行常駐之簽章私鑰（檢查點簽章鑰與匯出簽章鑰）SHALL NOT 受本存活期約束，其清除時點 SHALL 維持既有的釋放與封印路徑。審計蓋章鑰亦 SHALL NOT 受本存活期約束——每一列審計的寫入與驗證都需取用該鑰，逐次解封會使審計寫入依賴保管處可達性。涵蓋範圍 SHALL 於介面與文件明列，文件與介面 SHALL NOT 使讀者推論本設定已縮短上述材料之駐留。
+
+#### Scenario: seal 不等待存活期
+- **WHEN** 管理員於存活期尚未屆滿時執行 seal
+- **THEN** DEK 快取 MUST 立即失效並歸零，後續資料加解密 MUST fail-close 直到重新 unseal 成功
+
+#### Scenario: 到期不改變封印狀態
+- **WHEN** 存活期屆滿而系統仍為已解封
+- **THEN** 封印狀態與世代編號 MUST 不變，介面 MUST NOT 呈現為已封印；金鑰表 MUST 不被改寫
+
+#### Scenario: 簽章鑰與審計蓋章鑰不在涵蓋範圍
+- **WHEN** 稽核者詢問本設定縮短了哪些材料的駐留
+- **THEN** 說明 MUST 明列簽章私鑰與審計蓋章鑰不受此存活期約束，MUST NOT 以「金鑰不再常駐」概括
+
+#### Scenario: 審計寫入不因存活期而依賴保管處
+- **WHEN** `dek_cache_ttl_seconds` 設為 0 且 KEK 保管處不可達
+- **THEN** 審計列的蓋章與寫入 MUST 不受影響，MUST NOT 因本設定而失敗
+
+### Requirement: DEK 解封的量測與宣稱邊界
+
+系統 SHALL 沿既有營運指標慣例曝光解封可觀測性：解封成功與失敗累計數（失敗依可區分之原因分）、解封延遲分佈，以及現行存活期設定值。封印期 SHALL 依既有慣例以缺值表達服務不存在，SHALL NOT 以 0 值冒充。連續解封失敗 SHALL 沿既有告警通道上報，SHALL NOT 僅留行程日誌。
+
+對外宣稱 SHALL 限於：「委託模式不跨操作保留明文 DEK，並於操作完成後執行清除，以縮短其在記憶體中的暴露窗口；操作期間的記憶體快照仍可能包含金鑰與明文。」系統 SHALL NOT 宣稱記憶體中無明文、SHALL NOT 宣稱抵抗持續控制行程之攻擊者、SHALL NOT 宣稱全部副本必然消失；既有禁語清單 SHALL NOT 因本機制解除。本機模式（`ui`／`env`）SHALL NOT 被描述為與委託模式具相同的暴露窗口縮減效果。
+
+#### Scenario: 解封失敗可觀測且可告警
+- **WHEN** 保管處連續拒絕解封
+- **THEN** 解封失敗累計數 MUST 增加且告警 MUST 依既有通道發出，採集端 MUST 能據此查詢
+
+#### Scenario: 宣稱不越過誠實邊界
+- **WHEN** 產品文件或介面描述本設定的效果
+- **THEN** 文字 MUST 同時揭露操作期間快照仍可能包含金鑰與明文，MUST NOT 使用「記憶體中無明文」或等義說法
+
+### Requirement: 委託拓撲的持久化與設定入口
+
+委託模式的設定 SHALL 分為兩類且分開保管：**非秘密拓撲**（服務區域、保管處位址、Transit 金鑰名稱、角色識別）SHALL 持久化於資料庫；**秘密**（存取金鑰對、服務帳號金鑰檔內容、角色密鑰或直接提供的權杖）SHALL NOT 持久化於任何位置。部署環境變數於委託模式下 SHALL 僅保留 KEK 模式與服務商兩鍵；其餘委託相關鍵 SHALL 退場，SHALL NOT 保留為「未設定時的退路」——雙來源會使介面顯示的拓撲與實際送達的目的地分歧。
+
+拓撲 SHALL 存於**未經信封加密的欄位**：其讀取發生於已封存狀態下（解封頁載入時），此時資料金鑰尚未解出，任何受信封保護的欄位都讀不到。拓撲為非秘密，此選擇 SHALL NOT 被表述為降低保護等級。
+
+拓撲的寫入 SHALL 為單筆原子更新：同一服務商的欄位集 SHALL 一次寫入或一次都不寫，SHALL NOT 允許部分成功而留下半套目的地。欄位 SHALL 逐項驗證（位址須為 HTTPS、金鑰識別須符合該服務商的正規形式、必要欄位缺項即拒），非法值 SHALL 被拒且既有值維持不變。
+
+設定入口 SHALL 有二：換鑰精靈於重包目標選為委託服務商時一併收取該服務商的拓撲欄位；金鑰管理頁提供拓撲區塊供既有部署修改。兩處 SHALL 讀寫同一份事實源。金鑰識別 SHALL 沿金鑰列既有的 KEK 引用，SHALL NOT 另存一份可與之分歧的副本；全新安裝時尚無金鑰列，其金鑰識別於初始化流程收取後即成為首批金鑰列的 KEK 引用。
+
+#### Scenario: 拓撲於已封存狀態可讀
+
+- **WHEN** 系統處於已封存狀態，解封頁請求本部署的拓撲
+- **THEN** 拓撲 MUST 可讀且完整，MUST NOT 因資料金鑰尚未解出而缺項或失敗
+
+#### Scenario: 部分欄位非法即整筆拒絕
+
+- **WHEN** 一次拓撲更新中位址合法但角色識別為空
+- **THEN** 整筆更新 MUST 被拒且既有拓撲維持原值，錯誤 MUST 指出缺少的欄位名而不回顯值
+
+#### Scenario: 非 HTTPS 位址被拒
+
+- **WHEN** 將保管處位址設為明文傳輸的位址
+- **THEN** 更新 MUST 被拒，MUST NOT 以警告後放行的方式接受
+
+#### Scenario: 委託設定不再自環境變數取得
+
+- **WHEN** 部署環境同時設有已退場的委託環境變數與資料庫中的拓撲
+- **THEN** 系統 MUST 以資料庫為唯一事實源，MUST NOT 以環境變數覆寫或補位
+
+### Requirement: 拓撲變更的授權、留痕與告警
+
+拓撲欄位承載「上鎖的資料金鑰送去哪裡解、重包時明文金鑰送去哪裡」，其變更 SHALL 視為安全變更。變更 SHALL 僅能經已認證且具管理角色的端點完成，SHALL NOT 有任何未認證入口。每次變更 SHALL 寫入審計，且審計本文 SHALL 可查明**變更前值與變更後值**——只記「拓撲已變更」不成立。被拒絕的變更 SHALL 同樣留痕並可查明企圖改成什麼。
+
+變更 SHALL 同時發出安全類告警，沿既有告警規則種子與通知通道，內容 SHALL 含變更者、變更時點與前後值摘要。告警 SHALL NOT 被表述為必然送達——通知通道未設定或不可達時仍以審計為準。
+
+變更 SHALL NOT 要求第二位管理者確認。課責由認證端點、審計、告警與兩處人工核對點（解封頁的唯讀核對、換鑰精靈的目的地預檢）共同承擔；系統 SHALL NOT 宣稱其中任一項可獨力阻止具資料庫寫入權者改導目的地。
+
+換鑰精靈於送出重包前 SHALL 顯示目標保管處位址與金鑰識別並要求操作者確認；解封頁 SHALL 於提供秘密前顯示同一組資訊供核對。兩處的確認 SHALL 為本次操作者的核對，SHALL NOT 被呈現為第二人審批。
+
+#### Scenario: 變更前後值進審計
+
+- **WHEN** 管理員將保管處位址自一個位址改為另一個位址
+- **THEN** 審計列 MUST 可查明前值與後值，MUST NOT 只顯示遮罩標記或「已更新」
+
+#### Scenario: 被拒的變更仍留痕
+
+- **WHEN** 一次拓撲變更因位址非法而被驗證拒絕
+- **THEN** 審計列 MUST 存在且可查明企圖改成的值
+
+#### Scenario: 變更觸發安全類告警
+
+- **WHEN** 拓撲欄位變更成功寫入
+- **THEN** MUST 依既有告警機制產生一則安全類告警，含變更者與前後值摘要；通知通道未設定時 MUST NOT 宣稱已通知
+
+#### Scenario: 未認證無法變更拓撲
+
+- **WHEN** 匿名或非管理角色的請求試圖修改拓撲
+- **THEN** MUST 被拒且零狀態變更，拒絕 MUST 留痕
+
+### Requirement: 解封頁的管理者身分驗證
+
+解封頁 SHALL 於呈現任何秘密輸入欄位之前，先完成管理員帳號與密碼的驗證；此要求 SHALL 適用於 `ui` 模式與委託模式的解封與初始化流程。驗證 SHALL 沿既有的封存期授權器，於不解出資料金鑰、不建立完整業務服務圖的前提下完成。
+
+已封存狀態下 SHALL **只驗帳號與密碼，SHALL NOT 要求動態驗證碼**：動態驗證碼種子為受資料金鑰保護的欄位，封存時無法解出，要求它會構成「先解封才能驗證、先驗證才能解封」的循環。正常登入流程的動態驗證碼要求 SHALL NOT 因此弱化。此邊界 SHALL 於文件明載為已知取捨，SHALL NOT 被表述為解封頁已具備雙因子保護。
+
+帳密階段的失敗 SHALL 沿既有的登入退避與鎖定；冷卻期間 SHALL 拒絕送出並顯示可再試的時點。驗證成功 SHALL 產生僅供本次解封流程使用的授權脈絡，其效期 SHALL 有限；效期屆滿、權限變動或拓撲於核對後改變 SHALL 使該脈絡失效並要求重驗，SHALL NOT 以舊核對結果授權送往新目的地。解封流程的授權脈絡 SHALL NOT 等同一般登入工作階段，SHALL NOT 因解封成功而自動授予業務權限。
+
+#### Scenario: 未驗證不顯示秘密欄位
+
+- **WHEN** 未完成帳密驗證的操作者開啟解封頁
+- **THEN** 頁面 MUST NOT 呈現任何秘密輸入欄位，後端對未帶授權脈絡的解封請求 MUST 拒絕
+
+#### Scenario: 已封存不索取動態驗證碼
+
+- **WHEN** 已綁定動態驗證碼的管理員於已封存狀態進行解封驗證
+- **THEN** 流程 MUST 只要求帳號與密碼，MUST NOT 因種子不可解而失敗或卡住
+
+#### Scenario: 拓撲於核對後改變即重驗
+
+- **WHEN** 操作者已核對拓撲並停留於憑證步驟，期間拓撲被另一路徑修改
+- **THEN** 送出 MUST 被拒並要求重新核對，MUST NOT 以舊核對結果將憑證送往新目的地
+
+#### Scenario: 解封授權不等於業務權限
+
+- **WHEN** 解封成功
+- **THEN** 操作者 MUST 仍需經一般登入取得業務工作階段，解封流程的授權脈絡 MUST NOT 被接受為業務請求的憑證
+
+### Requirement: 解封頁的保管處揭示與核對
+
+委託模式的解封頁 SHALL 於載入時即以唯讀方式呈現本部署的 KEK 拓撲：保管處服務商、位址、角色識別或服務區域、金鑰識別。呈現 SHALL 先於任何秘密輸入，使操作者在交出憑證之前即可判斷目的地是否與機構的部署紀錄一致。
+
+核對 SHALL 為流程中的**獨立一步**，SHALL 要求操作者顯式確認相符後才進入憑證步驟。不相符時頁面 SHALL 指引停止並聯絡部署管理者，SHALL NOT 於解封頁提供修改位址、略過傳輸驗證或改用另一個保管處的捷徑——恢復服務的急迫性 SHALL NOT 成為將憑證送往未核對目的地的理由。
+
+解封頁 SHALL NOT 提供服務商選擇：服務商由部署檔宣告，金鑰列的 KEK 引用已決定哪一家能解，選錯只會 fail-close。
+
+**誠實界定**：唯讀呈現使可達解封頁者讀得到內部拓撲，此為「交出憑證前先核對目的地」這項能力的代價，SHALL 沿既有的來源網段限制承擔；系統 SHALL NOT 宣稱唯讀呈現能防止具資料庫寫入權者篡改所顯示的內容。
+
+#### Scenario: 載入即可核對目的地
+
+- **WHEN** 委託模式的已封存部署開啟解封頁
+- **THEN** 頁面 MUST 顯示服務商、位址、角色識別或區域與金鑰識別，MUST NOT 要求先輸入秘密才顯示
+
+#### Scenario: 核對是獨立且必經的一步
+
+- **WHEN** 操作者通過帳密驗證
+- **THEN** MUST 先進入核對步驟並顯式確認相符，未確認 MUST NOT 顯示秘密輸入欄位
+
+#### Scenario: 不相符時沒有捷徑
+
+- **WHEN** 操作者判定拓撲與部署紀錄不符
+- **THEN** 頁面 MUST 指引停止並聯絡部署管理者，MUST NOT 提供就地修改位址或改換保管處的操作
+
+#### Scenario: 解封頁不選服務商
+
+- **WHEN** 檢視委託模式解封頁
+- **THEN** 服務商 MUST 為唯讀，MUST NOT 提供任何切換服務商的控制項
+
+### Requirement: 委託憑證的解封頁輸入與世代記憶體持有
+
+委託模式的秘密 SHALL 由解封頁於每次解封時輸入，交由該解封世代的記憶體憑證持有者保管，SHALL NOT 寫入部署檔、資料庫、日誌或任何磁碟位置，SHALL NOT 回顯，SHALL NOT 出現於錯誤訊息。
+
+三家的秘密形態 SHALL 為：AWS 的存取金鑰識別與密鑰；GCP 的服務帳號金鑰檔內容；Vault 的角色密鑰**或**直接提供的權杖，二選一。Vault 兩種方式 SHALL 互斥，切換 SHALL 清除前一種已輸入的值；直接提供權杖 SHALL 等同跳過角色登入，其餘生命週期（續期、失效即 fail-close、封存抹除）SHALL 與角色登入路徑相同。介面與文件 SHALL 明載長壽命權杖非建議做法。
+
+三家的憑證持有者 SHALL 具**統一形狀**：綁定一個解封世代、於世代結束時關閉且永不復用、由組裝根持有並在金鑰管理器釋放後才收束。封存 SHALL 抹除該世代所持有的秘密位元組並使其不可再用；重新解封 SHALL 配置新的世代與新的持有者，SHALL NOT 重用前一世代的憑證。
+
+秘密的傳輸 SHALL 受請求體上限與嚴格鍵集約束：未知鍵、重複鍵、尾隨內容 SHALL 一律拒絕；服務帳號金鑰檔內容 SHALL 有明定的大小上限與編碼規則，SHALL 由後端安全解析，解析失敗 SHALL 回可辨識錯誤且 SHALL NOT 回顯內容片段。
+
+**誠實界定**：秘密改由記憶體持有 SHALL NOT 被表述為行程記憶體中無明文，亦 SHALL NOT 被表述為瀏覽器端全部輸入副本已消失——執行環境、輸入法、擴充套件與系統剪貼簿的副本不在系統可控範圍。
+
+#### Scenario: 秘密不落地
+
+- **WHEN** 以任一服務商完成一次解封
+- **THEN** 所輸入的秘密 MUST NOT 出現於資料庫、部署檔、日誌與任何磁碟檔案，錯誤訊息與審計本文 MUST NOT 含其值
+
+#### Scenario: 封存抹除該世代憑證
+
+- **WHEN** 管理員對已解封的委託部署執行封存
+- **THEN** 該世代持有的憑證位元組 MUST 歸零且不可再用，下一次解封 MUST 重新索取秘密
+
+#### Scenario: Vault 兩種方式互斥
+
+- **WHEN** 操作者於角色密鑰與直接權杖之間切換
+- **THEN** 前一種已輸入的值 MUST 被清除，送出的請求 MUST 只含其中一種
+
+#### Scenario: 服務帳號金鑰檔超限即拒
+
+- **WHEN** 貼入的服務帳號金鑰檔內容超出明定上限或不符編碼規則
+- **THEN** MUST 回可辨識錯誤，MUST NOT 回顯內容片段，MUST NOT 部分接受
+
+### Requirement: 全新安裝的直接委託初始化
+
+全新安裝 SHALL 支援直接以委託模式開機，SHALL NOT 要求先以本地模式安裝再遷移。其流程 SHALL 為四步：初始管理者驗證、設定保管處拓撲、提供憑證、建立金鑰並啟用。第一步 SHALL 以部署提供的初始管理員帳密驗證（該帳號由資料庫種子於解封之前建立，沿既有的首登強制改密機制）；既有部署同樣以驗證身分為第一步，兩條路徑 SHALL 由狀態明確區分。
+
+初始化的後端序列 SHALL 於同一解封臨界區內完成：以憑證建立保管處連線並完成權限預檢 → 本地產生首批資料金鑰（一般資料與審計完整性等用途）→ 以外部 KEK 包裹 → 落金鑰表並持久化拓撲 → 完成第二段初始化 → 發佈為已解封。任一步失敗 SHALL 保持已封存或已封存且故障，SHALL NOT 留下部分寫入的金鑰表，SHALL NOT 於部分成功時對操作者顯示「未做任何變更」。
+
+初始化路徑 SHALL 由後端的權威狀態判定，SHALL NOT 由操作者手動猜測。狀態不足以判定是否為全新安裝時 SHALL 阻擋並要求取得完整狀態，SHALL NOT 以未知等同全新安裝而收取秘密——在直接委託初始化可用之後，猜錯路徑的代價是把憑證交給一個判定錯誤的流程。
+
+#### Scenario: 全新安裝直接以委託模式開機
+
+- **WHEN** 尚無金鑰列的部署以委託模式啟動，管理員依四步完成初始化
+- **THEN** 系統 MUST 建立首批資料金鑰、以外部 KEK 包裹並落表，其後 MUST 進入已解封並開放業務監聽
+
+#### Scenario: 初始化中途失敗不留半套
+
+- **WHEN** 首批金鑰已建立但落表或發佈失敗
+- **THEN** 系統 MUST 保持已封存或已封存且故障、MUST 可受控重試，MUST NOT 留下部分寫入的金鑰表，MUST NOT 宣稱未做任何變更
+
+#### Scenario: 狀態未知不收秘密
+
+- **WHEN** 後端狀態不足以判定為全新安裝或既有部署
+- **THEN** 頁面 MUST 阻擋並要求先取得完整狀態，MUST NOT 呈現秘密輸入欄位
+
+#### Scenario: 全新安裝第一步是初始管理者驗證
+
+- **WHEN** 尚無金鑰列的部署開啟解封頁
+- **THEN** 第一步 MUST 為初始管理者驗證，MUST 以部署提供的初始管理員帳密換取授權脈絡，MUST NOT 在該步呈現任何秘密輸入欄位
+
+### Requirement: 解封失敗的可區分性邊界
+
+管理員身分驗證**通過之後**的憑證階段錯誤 SHALL 可區分，至少涵蓋三類：保管處連不上、憑證被保管處拒絕、保管處回應的金鑰與本部署不符。此時的對象已是通過認證的管理員，匿名探測所需的回應不可區分保護不再適用；可區分的錯誤是操作者判斷下一步的唯一依據。
+
+身分驗證**之前**的帳密階段 SHALL 維持既有的回應不可區分與退避，SHALL NOT 洩漏帳號是否存在或是否具管理角色。
+
+可區分的錯誤 SHALL 由後端能安全判定的狀態產生，SHALL NOT 直接轉呈保管處或雲端服務的原始回應，SHALL NOT 含秘密、請求本文或可供外部試探的認證細節。逾時 SHALL NOT 被表述為失敗或成功：逾時後 SHALL 先重新查詢權威狀態，僅於後端確認仍為已封存且清理完成時才允許重試，SHALL NOT 以逾時作為可安全重做初始化的證據。
+
+介面文案 SHALL NOT 寫死逾時秒數，SHALL 以「設定的逾時時間內」一類表述；實際逾時由服務商設定決定。
+
+#### Scenario: 驗證後的三類錯誤可區分
+
+- **WHEN** 通過身分驗證的管理員送出憑證，而保管處不可達、拒絕憑證或回應的金鑰不符
+- **THEN** 頁面 MUST 分別顯示可行動的三種訊息，MUST NOT 一律收斂為材料無效
+
+#### Scenario: 驗證前不可區分
+
+- **WHEN** 帳密階段以不存在的帳號或錯誤密碼嘗試
+- **THEN** 回應 MUST 不可區分且沿既有退避，MUST NOT 洩漏帳號是否存在
+
+#### Scenario: 逾時先查狀態
+
+- **WHEN** 送出憑證後在設定的逾時時間內未取得結果
+- **THEN** 頁面 MUST 引導重新查詢權威狀態，MUST NOT 直接呈現可再次送出的秘密表單，MUST NOT 斷言已失敗或已成功
+
+#### Scenario: 錯誤不轉呈原始回應
+
+- **WHEN** 保管處回傳含內部細節的錯誤
+- **THEN** 對外訊息 MUST 為系統自定的可辨識分類，MUST NOT 含秘密、請求本文或原始回應內容
+
+### Requirement: 封存用詞的統一
+
+使用者可見面 SHALL 使用同一組用詞：**封存**（動作）、**已封存**（狀態）、**解封**（恢復）。「還原」「封印」SHALL 自使用者可見面退場。適用範圍 SHALL 涵蓋三語文案、後端供給的顯示標籤、對外文件與政策白話句；同一概念出現兩種說法 SHALL 視為缺陷。
+
+審計檢查點鏈原本亦稱「封存」（將一段紀錄封章成不可竄改的區間），與本組用詞撞詞。該概念 SHALL 改稱**存證**，其衍生用語（存證單位編號、存證週期、存證完成）SHALL 一併對齊，三語與相關文件同步。兩組用詞 SHALL NOT 在任一使用者可見面互相混用。
+
+規格文件中既有的狀態機名稱與需求標題 SHALL NOT 在本次改名射程內——改動它們會使同一份規格出現兩套指稱而無助於操作者；本要求約束的是使用者讀得到的文字與其機器碼對應的顯示字串。
+
+#### Scenario: 可見面無舊用詞
+
+- **WHEN** 掃描三份語言檔的解封頁與金鑰管理相關鍵
+- **THEN** MUST NOT 出現「封印」「還原」作為狀態或動作的稱呼
+
+#### Scenario: 檢查點鏈改稱存證
+
+- **WHEN** 檢視檢查點驗證頁、稽核調查工作台與相關文件
+- **THEN** 該概念 MUST 一律稱為存證，MUST NOT 與資料金鑰的封存混用同一詞
+
+#### Scenario: 三語一致
+
+- **WHEN** 以三種語言檢視同一組狀態與動作
+- **THEN** 三語 MUST 各自維持一致的對應詞，MUST NOT 只改其中一語

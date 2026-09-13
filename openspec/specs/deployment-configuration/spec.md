@@ -2,7 +2,9 @@
 
 ## Purpose
 規範部署與環境設定的一致性與正確性：環境變數範本的完備性守衛、dev 與正式版 compose 對範本的一致消費、應用資料落點可設定、預設 compose 指令產出正式版部署、測試專用掛載不外溢正式版，以及首次部署指示與實際啟動路徑的一致。
+
 ## Requirements
+
 ### Requirement: 環境變數範本完備性
 系統所有後端**產品碼**消費中的環境變數 SHALL 全數記載於**專案根 `.env.example`（唯一環境變數範本）**或屬明確 allowlist。自動化漂移守衛測試 SHALL 掃描後端產品原始碼（排除 `_test.go`、vendor、testdata，以及 `//go:build ignore` 的獨立開發/smoke 工具 `scripts/`）中傳給已知讀取函式（`os.Getenv`/`os.LookupEnv`、config helper `getEnv`/`getEnvInt`/`getEnvBool`、`SeedFromEnv`）的字面 key 集合，並斷言其為範本記載集合 ∪ allowlist 的子集。allowlist 兩類：系統/測試專用變數（HOME/PATH、`APIERROR_LOCALE_DIR`、`SSH_TEST_HOST`）；以及 **compose 提供的拓撲/模式常數**（`DB_HOST`/`GIN_MODE`/`DB_DRIVER`/`GUACD_HOST` 等，由 compose `environment:` 提供、不入使用者範本）。無法字面掃描的純動態讀取（key 傳入區域閉包而非上述函式，如逾時退路）SHALL 由測試維護的 `knownIndirectKeys` 靜態清單併入核對。新增未記載的產品消費變數 SHALL 使守衛測試失敗。守衛測試在 backend 容器內執行，範本 SHALL 唯讀掛入容器（`/opt/custodexa/.env.example`，掛在 `/app` bind mount 之外以免污染 host）。
 
@@ -108,13 +110,28 @@
 ### Requirement: 設定已遷移至資料庫的功能其降版預檢
 當某功能的設定事實源已自環境變數遷移至資料庫，降版至讀取環境變數的舊版本 SHALL 有明確的運維預檢程序記載於部署文件：自管理介面取得現行設定值、回填 `.env`（含祕密欄位，若先前已依建議移除）、降版後以該功能執行一次登入或連線驗證。系統 SHALL NOT 自動回寫部署方的環境檔。文件 SHALL 明示「保留原 `.env` 不等於保留最新行為」——環境變數為遷移當下的快照，其後於管理介面所做的變更不會反映其中。
 
+**委託金鑰保管處的拓撲自本次起併入本要求**，且其降版預檢 SHALL 額外載明兩點，因為它與目錄設定的形態不同：
+
+1. **回填的欄位分兩類**。非秘密拓撲（保管處位址、服務區域、金鑰名稱、角色識別）可自金鑰管理頁讀出後回填；**秘密（存取金鑰對、服務帳號金鑰檔內容、角色密鑰或權杖）自本版起不再存於任何位置**，管理介面讀不出來，SHALL 由部署方自其原始保管處另行取得後填入舊版本的 `.env`。文件 SHALL NOT 表述為「自介面匯出設定即可降版」。
+2. **降版後的可用性驗證 SHALL 為一次完整重啟**：舊版本以環境變數的委託設定啟動並成功解開現行金鑰列，才算預檢通過；僅確認設定已填入不構成驗證。
+
+升級方向 SHALL 同樣有明確程序：自舊版本升上本版時，環境變數中的委託拓撲 SHALL 由升級程序一次性讀入資料庫，其中的秘密 SHALL NOT 被寫入資料庫；升級完成後部署方 SHALL 自 `.env` 移除已退場的委託鍵，文件 SHALL 明示未移除者不會生效而非仍然有效。
+
 #### Scenario: 降版預檢載於部署文件
 - **WHEN** 運維查閱降版程序以自本版本回退
-- **THEN** 文件列出 LDAP 設定的回填步驟與降版後驗證方式，並警示 env 為過期快照
+- **THEN** 文件列出目錄設定的回填步驟與降版後驗證方式，並警示 env 為過期快照
 
 #### Scenario: 未回填即降版的後果可預期
-- **WHEN** 部署方於遷移後修改過 LDAP 設定並移除 `.env` 中的 bind 密碼，未執行回填即降版
-- **THEN** 行為回到 env 快照（設定過期或 LDAP 登入失敗），此結果已於文件明載而非未定義行為
+- **WHEN** 部署方於遷移後修改過目錄設定並移除 `.env` 中的 bind 密碼，未執行回填即降版
+- **THEN** 行為回到 env 快照（設定過期或目錄登入失敗），此結果已於文件明載而非未定義行為
+
+#### Scenario: 委託秘密無法自介面取回
+- **WHEN** 運維依降版程序準備回填委託設定
+- **THEN** 文件 MUST 明示秘密須自原始保管處另行取得，MUST NOT 指示自管理介面匯出
+
+#### Scenario: 升級不把秘密寫進資料庫
+- **WHEN** 自舊版本升級，且舊 `.env` 內含委託秘密
+- **THEN** 升級程序 MUST 只將非秘密拓撲讀入資料庫，秘密 MUST NOT 被持久化；首次啟動後 MUST 於解封頁索取憑證
 
 ### Requirement: 首次部署指示與實際啟動路徑一致
 
@@ -197,4 +214,3 @@ SHALL 將 backend 的啟動依賴收斂為不含 postgres，並 SHALL 以 `.env`
 - **WHEN** 檢視 `.env.example` 並執行環境變數守衛測試
 - **THEN** 範本含註解狀態的 `COMPOSE_FILE=docker-compose.yml:docker-compose.external-database.yml`、`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT` 與上述說明；
   範本不含 `DB_HOST` 行；`TestEnvExampleNoDrift` 等守衛通過
-

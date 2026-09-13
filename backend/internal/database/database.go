@@ -174,6 +174,11 @@ var schemaParityModels = []interface{}{
 	&model.PolicyClause{},
 	&model.PolicyClauseControl{},
 	&model.PolicyClauseAnnotation{},
+	// 委託拓撲單列表。由增量 migration 20260913_kek_topology 建表，
+	// 走 schemaDDLStatements() 受兩層 parity 守衛。
+	// **全部欄位明文且不得改為信封加密欄**——讀取時點在已封存狀態，
+	// 受信封保護的欄位在那個時點解不出來（見 migration_kek_topology.go 檔頭）
+	&model.KEKTopology{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

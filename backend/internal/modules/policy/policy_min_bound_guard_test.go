@@ -65,6 +65,8 @@ var keysNotRequiringMin = map[string]string{
 	PolicyAuditChainVerifyIntervalSeconds: "危險方向朝大（間隔拉長＝鏈尾異常在全鏈層的發現時延放大），" +
 		"Max=604800 ＋ 不可為 0 已蓋住。調小不會使機制失效——每輪列預算＝速率×間隔，繞行週期不變",
 	PolicyKeyCryptoperiodReminderDays:     "純提醒、不觸發任何動作；危險方向朝大，且 0=不提醒為出廠預設",
+	PolicyDekCacheTTLSeconds: "調小是更嚴格的一端（0＝完全不留快取），沒有「調小即機制停擺」的形態；" +
+		"危險方向朝大——期限長到與不限期不可分辨——由 Max=86400 蓋住",
 	PolicyTransportConsentTTLDays:         "危險方向朝大（同意記得更久＝更少重新確認），調小是更嚴格；0=永不過期由 ZeroDisables 承擔",
 	PolicyAccessRequestMaxDurationMinutes: "危險方向朝大（申請超長時窗繞道成永久授權），Direction=max ＋ PCI 偏離已蓋住",
 	PolicyAccessRequestPendingTimeoutHours: "危險方向朝大（待審單長期不作廢），Direction=max 已蓋住。" +

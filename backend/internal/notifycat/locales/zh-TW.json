@@ -78,5 +78,11 @@
       "title": "{product} 測試通知",
       "text": "這是一則測試通知，用於驗證通知通道設定是否正確。"
     }
+  },
+  "kek_topology_changed": {
+    "default": {
+      "title": "保管處設定已變更",
+      "text": "{actor} 變更了 {provider} 的保管處設定：{before} → {after}。"
+    }
   }
 }

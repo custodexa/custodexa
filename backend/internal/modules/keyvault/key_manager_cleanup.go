@@ -81,120 +81,128 @@ type KeyCleanupResult struct {
 //
 // 全程在跨實例互斥鎖內；掃描一律經 tx（sqlite :memory: 連線池陷阱＋一致視圖）。
 func (s *KeyManagerService) CleanupRetiredMaterial() (*KeyCleanupResult, error) {
-	env := s.kekKeyID()
-	result := &KeyCleanupResult{Purged: []KeyCleanupItem{}, Skipped: []KeyCleanupSkipped{}}
-	err := s.withDataKeysLock(func(tx *gorm.DB) error {
-		// 全收斂閘（鎖內重讀）：pending campaign 或 retire backlog 存在即拒
-		var pendingCount int64
-		if err := tx.Model(&model.DataKey{}).Where("kek_pending = ?", true).
-			Count(&pendingCount).Error; err != nil {
-			return fmt.Errorf("檢查待切換狀態失敗: %w", err)
-		}
-		backlogCount, err := countRetireBacklog(tx, env)
-		if err != nil {
-			return err
-		}
-		if pendingCount > 0 || backlogCount > 0 {
-			return ErrCleanupNotConverged
-		}
-
-		// 類 1：KEK 退役列（材料尚存）。「全收斂下現行 KEK 對每 slot 皆有 live 列」
-		// 的不變式只在開機被強制——銷毀是不可逆操作，交易內逐 slot 自證：
-		// 該 slot 無現行 KEK 的 live 材料列即拒清（論證變機制）
-		var kekRetired []model.DataKey
-		// 候選只需識別欄位——不投影 wrapped_key，材料觸及面收斂
-		if err := tx.Select("id", "purpose", "version", "kek_id").
-			Where("kek_retired_at IS NOT NULL AND wrapped_key <> ''").
-			Find(&kekRetired).Error; err != nil {
-			return fmt.Errorf("讀取 KEK 退役列失敗: %w", err)
-		}
-		var purgeIDs []uint
-		for _, r := range kekRetired {
-			var envRow model.DataKey
-			if err := tx.
-				Where("purpose = ? AND version = ? AND kek_id = ? AND kek_pending = ? AND kek_retired_at IS NULL AND wrapped_key <> ''",
-					r.Purpose, r.Version, env, false).
-				First(&envRow).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return fmt.Errorf("清理中止：slot %s v%d 無現行 KEK 的 live 材料列，銷毀退役副本將致該版本永久不可解", r.Purpose, r.Version)
-				}
-				return fmt.Errorf("清理前置自證查詢失敗: %w", err)
+	return vaultUse(&s.materialGate, func() (*KeyCleanupResult, error) {
+		env := s.kekKeyID()
+		result := &KeyCleanupResult{Purged: []KeyCleanupItem{}, Skipped: []KeyCleanupSkipped{}}
+		err := s.withDataKeysLock(func(tx *gorm.DB) error {
+			// 全收斂閘（鎖內重讀）：pending campaign 或 retire backlog 存在即拒
+			var pendingCount int64
+			if err := tx.Model(&model.DataKey{}).Where("kek_pending = ?", true).
+				Count(&pendingCount).Error; err != nil {
+				return fmt.Errorf("檢查待切換狀態失敗: %w", err)
 			}
-			// 非空不等於有效：現行列材料須實際以現行 KEK
-			// 解包成功，否則退役副本可能是該版本最後的有效材料——拒清
-			if _, err := s.unwrapRow(envRow); err != nil {
-				return fmt.Errorf("清理中止：slot %s v%d 現行 KEK 材料列無法解包（%v），退役副本可能是最後有效材料", r.Purpose, r.Version, err)
-			}
-			purgeIDs = append(purgeIDs, r.ID)
-			result.Purged = append(result.Purged, KeyCleanupItem{Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID})
-		}
-
-		// 類 2：退役 DEK 版本的現行列——逐版本引用掃描。
-		// kek_id=env 在全收斂閘下可由謂詞推導，仍顯式寫明：
-		// 日後放寬收斂閘時不得靜默開始清到他 KEK 的列
-		var dekRetired []model.DataKey
-		if err := tx.Select("id", "purpose", "version", "kek_id").
-			Where("kek_retired_at IS NULL AND status = ? AND kek_id = ? AND wrapped_key <> ''",
-				model.DataKeyStatusRetired, env).Find(&dekRetired).Error; err != nil {
-			return fmt.Errorf("讀取退役 DEK 版本失敗: %w", err)
-		}
-		// 引用掃描前置：不可歸屬殘值即整筆拒清（見 ErrCleanupResidueDetected）。
-		// 僅在確有須引用掃描的候選時執行——無候選時不發生任何以版本歸屬為前提的
-		// 判定，額外阻斷 KEK 退役副本的清理只會製造無來由的死路
-		if len(dekRetired) > 0 {
-			if err := assertNoNonAttributableResidue(tx); err != nil {
-				return err
-			}
-		}
-		// **已知限制：引用掃描與材料清除無法阻止「其他實例以舊記憶體 DEK 寫入」**。
-		// 掃描歸零後、清除生效前，另一個尚未重啟的行程
-		// 仍可能以其快取的舊版本 DEK 加密新資料，該筆密文將引用已銷毀的材料而永久
-		// 不可讀。**非本 change 引入、單實例部署不可達**——完整解是「加密寫入時檢查
-		// 版本仍為現行」的柵欄，屬多副本部署的前置項（與 AlertNotifier 快取一致性
-		// 缺口同屬一項），尚未實作。
-		// 現有緩解三層：stale 實例的輪替／重包／清理一律 409
-		// fail-close（ErrStaleKeyCache）、清理前逐 slot 自證、清理確認文案要求先重啟
-		// 所有實例。**上 HA 或滾動更新前必須先做該項，否則會掉資料。**
-		for _, r := range dekRetired {
-			allowed, refs, class, err := s.assertPurgeAllowed(tx, r.Purpose, r.Version)
+			backlogCount, err := countRetireBacklog(tx, env)
 			if err != nil {
 				return err
 			}
-			if !allowed {
-				result.Skipped = append(result.Skipped, KeyCleanupSkipped{
-					Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID,
-					Refs: refs, Reason: class.ReasonCode, ProtectionClass: class.Name})
-				continue
+			if pendingCount > 0 || backlogCount > 0 {
+				return ErrCleanupNotConverged
 			}
-			purgeIDs = append(purgeIDs, r.ID)
-			result.Purged = append(result.Purged, KeyCleanupItem{Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID})
-		}
 
-		if len(purgeIDs) > 0 {
-			if err := tx.Model(&model.DataKey{}).Where("id IN ?", purgeIDs).
-				Update("wrapped_key", "").Error; err != nil {
-				return fmt.Errorf("清理材料失敗: %w", err)
+			// 類 1：KEK 退役列（材料尚存）。「全收斂下現行 KEK 對每 slot 皆有 live 列」
+			// 的不變式只在開機被強制——銷毀是不可逆操作，交易內逐 slot 自證：
+			// 該 slot 無現行 KEK 的 live 材料列即拒清（論證變機制）
+			var kekRetired []model.DataKey
+			// 候選只需識別欄位——不投影 wrapped_key，材料觸及面收斂
+			if err := tx.Select("id", "purpose", "version", "kek_id").
+				Where("kek_retired_at IS NOT NULL AND wrapped_key <> ''").
+				Find(&kekRetired).Error; err != nil {
+				return fmt.Errorf("讀取 KEK 退役列失敗: %w", err)
+			}
+			var purgeIDs []uint
+			for _, r := range kekRetired {
+				var envRow model.DataKey
+				if err := tx.
+					Where("purpose = ? AND version = ? AND kek_id = ? AND kek_pending = ? AND kek_retired_at IS NULL AND wrapped_key <> ''",
+						r.Purpose, r.Version, env, false).
+					First(&envRow).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("清理中止：slot %s v%d 無現行 KEK 的 live 材料列，銷毀退役副本將致該版本永久不可解", r.Purpose, r.Version)
+					}
+					return fmt.Errorf("清理前置自證查詢失敗: %w", err)
+				}
+				// 非空不等於有效：現行列材料須實際以現行 KEK
+				// 解包成功，否則退役副本可能是該版本最後的有效材料——拒清
+				if _, err := s.unwrapRow(envRow); err != nil {
+					return fmt.Errorf("清理中止：slot %s v%d 現行 KEK 材料列無法解包（%v），退役副本可能是最後有效材料", r.Purpose, r.Version, err)
+				}
+				purgeIDs = append(purgeIDs, r.ID)
+				result.Purged = append(result.Purged, KeyCleanupItem{Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID})
+			}
+
+			// 類 2：退役 DEK 版本的現行列——逐版本引用掃描。
+			// kek_id=env 在全收斂閘下可由謂詞推導，仍顯式寫明：
+			// 日後放寬收斂閘時不得靜默開始清到他 KEK 的列
+			var dekRetired []model.DataKey
+			if err := tx.Select("id", "purpose", "version", "kek_id").
+				Where("kek_retired_at IS NULL AND status = ? AND kek_id = ? AND wrapped_key <> ''",
+					model.DataKeyStatusRetired, env).Find(&dekRetired).Error; err != nil {
+				return fmt.Errorf("讀取退役 DEK 版本失敗: %w", err)
+			}
+			// 引用掃描前置：不可歸屬殘值即整筆拒清（見 ErrCleanupResidueDetected）。
+			// 僅在確有須引用掃描的候選時執行——無候選時不發生任何以版本歸屬為前提的
+			// 判定，額外阻斷 KEK 退役副本的清理只會製造無來由的死路
+			if len(dekRetired) > 0 {
+				if err := assertNoNonAttributableResidue(tx); err != nil {
+					return err
+				}
+			}
+			// **已知限制：引用掃描與材料清除無法阻止「其他實例以舊記憶體 DEK 寫入」**。
+			// 掃描歸零後、清除生效前，另一個尚未重啟的行程
+			// 仍可能以其快取的舊版本 DEK 加密新資料，該筆密文將引用已銷毀的材料而永久
+			// 不可讀。**非本 change 引入、單實例部署不可達**——完整解是「加密寫入時檢查
+			// 版本仍為現行」的柵欄，屬多副本部署的前置項（與 AlertNotifier 快取一致性
+			// 缺口同屬一項），尚未實作。
+			// 現有緩解三層：stale 實例的輪替／重包／清理一律 409
+			// fail-close（ErrStaleKeyCache）、清理前逐 slot 自證、清理確認文案要求先重啟
+			// 所有實例。**上 HA 或滾動更新前必須先做該項，否則會掉資料。**
+			for _, r := range dekRetired {
+				allowed, refs, class, err := s.assertPurgeAllowed(tx, r.Purpose, r.Version)
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					result.Skipped = append(result.Skipped, KeyCleanupSkipped{
+						Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID,
+						Refs: refs, Reason: class.ReasonCode, ProtectionClass: class.Name})
+					continue
+				}
+				purgeIDs = append(purgeIDs, r.ID)
+				result.Purged = append(result.Purged, KeyCleanupItem{Purpose: r.Purpose, Version: r.Version, KEKID: r.KEKID})
+			}
+
+			if len(purgeIDs) > 0 {
+				if err := tx.Model(&model.DataKey{}).Where("id IN ?", purgeIDs).
+					Update("wrapped_key", "").Error; err != nil {
+					return fmt.Errorf("清理材料失敗: %w", err)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		// 已清理的現行退役版本自 in-memory 快取移除（材料已銷毀，不得再供解密）
+		s.mu.Lock()
+		for _, p := range result.Purged {
+			if p.KEKID == env {
+				if m := s.keys[p.Purpose]; m != nil {
+					delete(m, p.Version)
+				}
+				if p.Purpose == model.DataKeyPurposeData {
+					delete(s.ciphers, p.Version)
+					// 存活期簿記同步移除：留著會讓到期掃描去找一把已不存在的鑰
+					delete(s.dek, p.Version)
+					if t := s.dekTimers[p.Version]; t != nil {
+						t.Stop()
+						delete(s.dekTimers, p.Version)
+					}
+				}
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	// 已清理的現行退役版本自 in-memory 快取移除（材料已銷毀，不得再供解密）
-	s.mu.Lock()
-	for _, p := range result.Purged {
-		if p.KEKID == env {
-			if m := s.keys[p.Purpose]; m != nil {
-				delete(m, p.Version)
-			}
-			if p.Purpose == model.DataKeyPurposeData {
-				delete(s.ciphers, p.Version)
-			}
-		}
-	}
-	s.mu.Unlock()
-	return result, nil
+		s.mu.Unlock()
+		return result, nil
+	}, nil)
 }
 
 // ── 金鑰材料的銷毀保護類別 ────────────────────────────────────────────────

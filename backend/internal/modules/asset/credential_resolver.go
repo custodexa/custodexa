@@ -7,9 +7,9 @@ import (
 	"sort"
 
 	"github.com/custodexa/backend/internal/database"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
-	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
 
@@ -52,8 +52,8 @@ type ResolvedCredential struct {
 	// SecretType 見 model.ChangeSecretType* 常數
 	SecretType string
 
-	Password   string
-	PrivateKey string
+	Password   *material.Secret
+	PrivateKey *material.Secret
 
 	// PublicKey／PreviousPublicKey 公鑰非機密，供金鑰輪替比對與清理
 	PublicKey         string
@@ -65,12 +65,12 @@ type ResolvedCredential struct {
 // 不持有 *gorm.DB：連線路徑與改密路徑各自帶進自己的交易或連線，
 // 由呼叫端決定讀取要不要與寫入同一交易。
 type CredentialResolver struct {
-	crypto crypto.ColumnCodec
+	crypto material.BytesColumnCodec
 }
 
 // NewCredentialResolver 建立解析器。codec SHALL 與資產服務用同一個實例——
 // 兩份 codec 會讓憑證在管理員沒察覺時走不同的加密路徑。
-func NewCredentialResolver(codec crypto.ColumnCodec) *CredentialResolver {
+func NewCredentialResolver(codec material.BytesColumnCodec) *CredentialResolver {
 	return &CredentialResolver{crypto: codec}
 }
 
@@ -119,15 +119,17 @@ func (r *CredentialResolver) ResolveForBinding(ctx context.Context, assetID, acc
 		out.Username = cred.Username
 	}
 	if version.PasswordEnc != "" {
-		plain, derr := r.crypto.DecryptFor(ctx, keyvault.RefCredentialVersionPassword, version.PasswordEnc)
+		plain, derr := r.crypto.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPassword, version.PasswordEnc)
 		if derr != nil {
+			out.Destroy()
 			return nil, fmt.Errorf("解密密碼失敗: %w", derr)
 		}
 		out.Password = plain
 	}
 	if version.PrivateKeyEnc != "" {
-		plain, derr := r.crypto.DecryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, version.PrivateKeyEnc)
+		plain, derr := r.crypto.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPrivateKey, version.PrivateKeyEnc)
 		if derr != nil {
+			out.Destroy()
 			return nil, fmt.Errorf("解密私鑰失敗: %w", derr)
 		}
 		out.PrivateKey = plain
@@ -161,15 +163,17 @@ func (r *CredentialResolver) ResolveVersion(ctx context.Context, credentialID, v
 	}
 	out.Username = cred.Username
 	if version.PasswordEnc != "" {
-		plain, derr := r.crypto.DecryptFor(ctx, keyvault.RefCredentialVersionPassword, version.PasswordEnc)
+		plain, derr := r.crypto.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPassword, version.PasswordEnc)
 		if derr != nil {
+			out.Destroy()
 			return nil, fmt.Errorf("解密密碼失敗: %w", derr)
 		}
 		out.Password = plain
 	}
 	if version.PrivateKeyEnc != "" {
-		plain, derr := r.crypto.DecryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, version.PrivateKeyEnc)
+		plain, derr := r.crypto.DecryptBytesFor(ctx, keyvault.RefCredentialVersionPrivateKey, version.PrivateKeyEnc)
 		if derr != nil {
+			out.Destroy()
 			return nil, fmt.Errorf("解密私鑰失敗: %w", derr)
 		}
 		out.PrivateKey = plain
@@ -746,4 +750,12 @@ func credentialSecretTypeFor(hasPassword, hasPrivateKey bool) string {
 		return model.ChangeSecretTypePassword
 	}
 	return model.ChangeSecretTypePassword
+}
+
+// Destroy releases both fields after their final authentication or rotation use.
+func (c *ResolvedCredential) Destroy() {
+	if c != nil {
+		c.Password.Destroy()
+		c.PrivateKey.Destroy()
+	}
 }

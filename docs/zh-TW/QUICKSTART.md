@@ -129,7 +129,7 @@ curl http://localhost:8080/health
 # {"status":"ok","service":"custodexa-backend"}
 ```
 
-**封印狀態（出貨預設 `KEK_PROVIDER=ui`）**：全新安裝啟動後系統處於**封印待初始化**態，
+**已封存狀態（出貨預設 `KEK_PROVIDER=ui`）**：全新安裝啟動後系統處於**已封存待初始化**態，
 `/health` 正常但業務端點尚未開放，首次造訪前端會進入初始化解封頁。查詢狀態：
 
 ```bash
@@ -169,7 +169,7 @@ docker compose logs -f frontend
 
 **出貨預設（`KEK_PROVIDER=ui`）第一次會先進入初始化解封頁**：主金鑰在你的瀏覽器
 **本地生成、只存在伺服器記憶體**，頁面會要求你確認已妥善保存（之後每一次行程重啟
-都停在封印狀態，需要用它解封）；以 `admin`＋`ADMIN_INITIAL_PASSWORD` 授權初始化。
+都停在已封存狀態，需要用它解封）；以 `admin`＋`ADMIN_INITIAL_PASSWORD` 授權初始化。
 （env／kms 模式沒有這一步，直接到登入頁。）
 
 接著登入：帳號 `admin`、密碼為 `.env` 的 `ADMIN_INITIAL_PASSWORD`。首次登入會先進
@@ -258,7 +258,7 @@ docker compose logs backend | tail -30
 
 > 開發機驗證正式版時，上列指令一律加顯式 `-f docker-compose.yml`（覆蓋 `.env` 的 `COMPOSE_FILE`）。
 
-出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封印閘擋下；先於瀏覽器完成
+出貨預設 `ui` 模式下，(4) 在**初始化解封完成前**會被封存閘擋下；先於瀏覽器完成
 初始化（見「首次使用」），或以 `curl -k https://localhost/api/v1/seal/status` 確認狀態。
 
 (4) 於**全新部署**回傳的是 `{"change_token": "...", "password_change_required": true, "policy_hint": {...}}`
@@ -285,9 +285,9 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 
 - 系統維持不變式「本地 admin 數量不得自一以上降為零」：把最後一個本地 admin 改為僅外部登入、
   停用、移除 admin 角色或刪除，皆會被拒絕。
-- 理由不只是「IdP 掛了就進不去」：**封印解封（`KEK_PROVIDER=ui`）與初始管理員驗證只認本地憑證**，
+- 理由不只是「IdP 掛了就進不去」：**封存後的解封（`KEK_PROVIDER=ui`）與初始管理員驗證只認本地憑證**，
   該路徑發生在系統尚未完全啟動的階段，不可能經由外部 IdP 完成。全體 admin 都外部化＝
-  一旦進入封印狀態即無人能解封。
+  一旦進入已封存狀態即無人能解封。
 - 該本地 admin 應設強密碼並啟用 MFA，作為 break-glass 帳號使用。
 
 **IdP 端停權不會自動終斷進行中的協議連線**：

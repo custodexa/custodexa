@@ -1,12 +1,15 @@
 package audit
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/seal"
 	"sync"
 	"time"
 
@@ -29,6 +32,7 @@ const integrityMismatchIDCap = 100
 // 起由檢查點鏈承擔（本層是「內容真不真」，鏈是「序列少沒少」，兩層不得互相
 // 宣稱對方的保證）。降級與丟棄的事件不入庫故不在任一層覆蓋內（誠實邊界 R2）
 type AuditIntegrityService struct {
+	gate *seal.MaterialGate
 	// keyFn 版本→蓋章鑰；未知版本回 nil，
 	// 驗證端計為不符。activeFn 現行版本與鑰（Stamp 寫入 key_version）。
 	keyFn    func(version int) []byte
@@ -85,6 +89,7 @@ func InitAuditIntegrityVersioned(db *gorm.DB, km *keyvault.KeyManagerService) (*
 		return nil, err
 	}
 	svc := &AuditIntegrityService{
+		gate:          km.MaterialGate(),
 		keyFn:         km.HMACKeyByVersion,
 		activeFn:      km.ActiveHMACKey,
 		baselineMaxID: baselineMaxID,
@@ -113,8 +118,8 @@ type integrityPayload struct {
 	// 既有已蓋章列不會集體誤判為竄改；有值的列則納入涵蓋，把「事件被改掛到
 	// 另一台資產」納入逐列偵測——資產樞紐的正確性正是靠這個鍵，不涵蓋等於
 	// 樞紐的主鍵無防護
-	AssetID *uint  `json:"asset_id,omitempty"`
-	Status  string `json:"status"`
+	AssetID     *uint  `json:"asset_id,omitempty"`
+	Status      string `json:"status"`
 	UserID      uint   `json:"user_id"`
 	Username    string `json:"username"`
 	ClientIP    string `json:"client_ip"`
@@ -130,8 +135,22 @@ type integrityPayload struct {
 // 未知版本回空字串（驗證端計為不符）。
 // payload 不含 key_version——格式必須與叢集 B 上線時完全一致，否則
 // 既有已蓋章列全數誤判；版本被竄改時取錯鑰重算必不符，偵測不受影響
-func (s *AuditIntegrityService) ComputeHMAC(l *model.AuditLog) string {
+func (s *AuditIntegrityService) ComputeHMAC(l *model.AuditLog) (result string) {
+	if s.gate != nil {
+		lease, err := s.gate.Borrow()
+		if err != nil {
+			return ""
+		}
+		defer lease.Finish(func(valid bool) {
+			if !valid {
+				result = ""
+			}
+		})
+	}
 	key := s.keyFn(l.KeyVersion)
+	if s.gate != nil {
+		defer material.Wipe(key)
+	}
 	if key == nil {
 		return ""
 	}
@@ -166,7 +185,31 @@ func (s *AuditIntegrityService) computeWith(key []byte, l *model.AuditLog) strin
 
 // Stamp 為一批待寫入列填 HMAC（以現行蓋章鑰，並記 key_version）
 func (s *AuditIntegrityService) Stamp(logs []*model.AuditLog) {
+	if s.gate != nil {
+		lease, err := s.gate.Borrow()
+		if err != nil {
+			for _, l := range logs {
+				l.KeyVersion = 0
+				l.IntegrityHMAC = ""
+			}
+			return
+		}
+		defer lease.Finish(func(valid bool) {
+			if !valid {
+				for _, l := range logs {
+					l.KeyVersion = 0
+					l.IntegrityHMAC = ""
+				}
+			}
+		})
+	}
 	ver, key := s.activeFn()
+	if s.gate != nil {
+		defer material.Wipe(key)
+	}
+	if len(key) == 0 {
+		return
+	}
 	for _, l := range logs {
 		l.KeyVersion = ver
 		l.IntegrityHMAC = s.computeWith(key, l)
@@ -176,7 +219,27 @@ func (s *AuditIntegrityService) Stamp(logs []*model.AuditLog) {
 // StampOne 單列填 HMAC（model BeforeCreate hook 注入點——覆蓋 middleware
 // 批次以外的直寫路徑：asset GORM hook、file_tap、k8s cp）
 func (s *AuditIntegrityService) StampOne(l *model.AuditLog) {
+	if s.gate != nil {
+		lease, err := s.gate.Borrow()
+		if err != nil {
+			l.KeyVersion = 0
+			l.IntegrityHMAC = ""
+			return
+		}
+		defer lease.Finish(func(valid bool) {
+			if !valid {
+				l.KeyVersion = 0
+				l.IntegrityHMAC = ""
+			}
+		})
+	}
 	ver, key := s.activeFn()
+	if s.gate != nil {
+		defer material.Wipe(key)
+	}
+	if len(key) == 0 {
+		return
+	}
 	l.KeyVersion = ver
 	l.IntegrityHMAC = s.computeWith(key, l)
 }
@@ -279,4 +342,57 @@ func (s *AuditIntegrityService) Verify(db *gorm.DB, from, to time.Time) (*Integr
 		}
 	}
 	return report, nil
+}
+
+// ReserveWrite admits a finite audit operation before it starts. Its existing
+// HMAC borrow remains valid until that operation finishes, including its commit.
+func (s *AuditIntegrityService) ReserveWrite(ctx context.Context) (context.Context, func(), error) {
+	if s.gate == nil {
+		return ctx, func() {}, nil
+	}
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return nil, nil, err
+	}
+	version, key := s.activeFn()
+	if len(key) == 0 {
+		lease.Finish(func(bool) {})
+		return nil, nil, seal.ErrMaterialSealed
+	}
+	reservation := &auditWriteReservation{service: s, version: version, key: key, lease: lease}
+	return model.WithAuditStampReservation(ctx, reservation), reservation.release, nil
+}
+
+type auditWriteReservation struct {
+	mu      sync.Mutex
+	service *AuditIntegrityService
+	version int
+	key     []byte
+	lease   *seal.MaterialLease
+}
+
+func (r *auditWriteReservation) Stamp(row *model.AuditLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lease == nil {
+		return seal.ErrMaterialSealed
+	}
+	row.KeyVersion = r.version
+	row.IntegrityHMAC = r.service.computeWith(r.key, row)
+	if row.IntegrityHMAC == "" {
+		return errors.New("audit: reserved write could not be stamped")
+	}
+	return nil
+}
+func (r *auditWriteReservation) release() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lease == nil {
+		return
+	}
+	material.Wipe(r.key)
+	r.key = nil
+	r.lease.Finish(func(bool) {})
+	r.lease = nil
+	r.service = nil
 }

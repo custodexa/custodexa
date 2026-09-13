@@ -44,7 +44,7 @@ func TestWindowsSSHExecutorCommandShape(t *testing.T) {
 	srv := newTestSSHServer(t, "Administrator", "old")
 	e := testWindowsSSHExecutor(nil)
 
-	require.NoError(t, e.Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword))
+	require.NoError(t, e.Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword)))
 
 	cmd, _ := srv.lastExecCommand.Load().(string)
 	require.True(t, strings.HasPrefix(cmd, "powershell.exe -NoProfile -NonInteractive -EncodedCommand "), "exec 字串須顯式呼叫 powershell.exe: %q", cmd)
@@ -60,7 +60,7 @@ func TestWindowsSSHExecutorCommandShape(t *testing.T) {
 	assert.Equal(t, newPassword+"\nold\nAdministrator\n", stdin, "密碼與帳號名只經標準輸入投遞（第一行新、第二行舊、第三行帳號名）")
 
 	// 驗證：以新密碼另建連線跑無副作用指令（靶機未更新密碼，故此處仍以 old 驗）
-	require.NoError(t, e.Verify(context.Background(), sshTarget(srv, "Administrator"), "old"))
+	require.NoError(t, e.Verify(context.Background(), sshTarget(srv, "Administrator"), []byte("old")))
 	verifyCmd, _ := srv.lastExecCommand.Load().(string)
 	assert.Equal(t, windowsVerifyScript, decodeWindowsCommand(t, verifyCmd))
 	verifyStdin, _ := srv.lastChpasswdStdin.Load().(string)
@@ -77,7 +77,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdExitCode = 3
 		srv.mu.Unlock()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		require.Positive(t, srv.chpasswdExitFired.Load(), "退出碼注入器未觸發")
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
@@ -89,7 +89,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdExitCode = 1
 		srv.mu.Unlock()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteRejected, rejected.reason)
@@ -100,7 +100,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdDropConn = true
 		srv.mu.Unlock()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		require.Error(t, err)
 		require.Positive(t, srv.chpasswdDropFired.Load(), "斷線注入器未觸發")
 		var rejected *remoteRejectedError
@@ -111,7 +111,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 
 	t.Run("舊密碼錯", func(t *testing.T) {
 		srv := newTestSSHServer(t, "Administrator", "old")
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "wrong", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("wrong"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonOldCredentialLoginFailed, rejected.reason)
@@ -120,7 +120,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 
 	t.Run("帳號名不合", func(t *testing.T) {
 		srv := newTestSSHServer(t, "Administrator", "old")
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, `DOMAIN\Administrator`), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, `DOMAIN\Administrator`), []byte("old"), []byte(newPassword))
 		var local *localPreconditionError
 		require.True(t, errors.As(err, &local), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonAccountNameInvalid, local.reason)
@@ -130,7 +130,7 @@ func TestWindowsSSHExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("驗證重試序列", func(t *testing.T) {
 		srv := newTestSSHServer(t, "Administrator", "old")
 		var slept []time.Duration
-		err := testWindowsSSHExecutor(&slept).Verify(context.Background(), sshTarget(srv, "Administrator"), "wrong")
+		err := testWindowsSSHExecutor(&slept).Verify(context.Background(), sshTarget(srv, "Administrator"), []byte("wrong"))
 		require.Error(t, err)
 		assert.Equal(t, []time.Duration{2 * time.Second, 5 * time.Second}, slept, "與 WinRM 同一組序列")
 		assert.EqualValues(t, 3, srv.passwordAuthCalls.Load(), "三次嘗試各撥號一次")

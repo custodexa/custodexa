@@ -440,7 +440,7 @@ func TestCredentialDeletedCredentialFailsClosedOnResolve(t *testing.T) {
 	// 刪除前連線取得的秘密即建立時直填的那一組
 	got, err := assets.GetWithCredentialsForAccount(asset.ID, accountID)
 	require.NoError(t, err)
-	require.Equal(t, "seed-pw", got.Password)
+	require.True(t, secretMatches(t, got.Password, "seed-pw"), "resolved secret mismatch")
 
 	// 掛載仍在、憑證被軟刪（走資料層製造殘態：服務層的引用檢查會擋下這種刪除）
 	require.NoError(t, db.Delete(&model.Credential{}, credID).Error)
@@ -496,7 +496,7 @@ func TestCredentialDeclaredSecretUpdatesAllBindings(t *testing.T) {
 		require.NoError(t, db.First(&binding, id).Error)
 		got, gerr := assets.GetWithCredentialsForAccount(binding.AssetID, binding.ID)
 		require.NoError(t, gerr)
-		assert.Equal(t, "new-pw", got.Password)
+		assert.True(t, secretMatches(t, got.Password, "new-pw"), "resolved secret mismatch")
 	}
 
 	// 舊版本列的密文原封不動（版本不可變）

@@ -2,7 +2,9 @@
 
 ## Purpose
 規範正式版部署的安全加固底線：無內建公開 bootstrap 憑證與首登強制改密、DB-aware 分階段啟動、正式版映像移除固定 shell 入口並使 CLI 子程序降權面可實跑核對、對外 ingress 的 TLS termination 契約，以及這些安全底線不得由 feature flag 關閉。
+
 ## Requirements
+
 ### Requirement: 無內建公開 bootstrap 憑證，seed 一律需部署方提供合格初始密碼
 
 系統 SHALL NOT 以任何內建、硬編碼或公開的固定密碼建立初始管理員（移除 `admin123`）。任何會執行 seed 的模式（使用者表為空）SHALL 要求部署方經 `.env` 提供 `ADMIN_INITIAL_PASSWORD`。該值為缺失、空字串、等於出貨 placeholder、短於長度下限，或含前後空白／CR-LF／控制字元時，系統 SHALL 拒絕（fail-close，不執行 seed）。密碼的驗證與**雜湊產生** SHALL 使用完全相同的 bytes，SHALL NOT 靜默 `TrimSpace` 後再使用。
@@ -358,3 +360,61 @@ SHALL NOT 另行發明判定方式。backend SHALL 等待該容器通過健康�
 - **THEN** 編排施加的能力丟棄、禁止提權與唯讀根仍然生效，系統正常運作；
   部署方無須為此修改編排定義
 
+### Requirement: backend 容器與行程以受限能力執行
+
+專案交付的編排定義 SHALL 使 backend 容器以受限能力執行：丟棄全部 Linux capability，只保留
+資料庫 CLI 子程序換身分所需的 `SETUID`、`SETGID`、`CHOWN` 與鎖頁所需的 `IPC_LOCK` 四項；
+拒絕經 setuid 檔案提權；core dump 大小上限為零；鎖頁上限不設限。保留的四項 SHALL 各自對應
+一個既有且可指認的用途，SHALL NOT 預防性保留。開發版編排 SHALL 施加與正式版相同的設定。
+
+backend 行程 SHALL 在讀取任何組態之前自行施加三項硬化：標記行程不可傾印、將 core dump 上限
+設為零、將全部現有與未來的記憶體頁鎖定不得換出。三項任一失敗 SHALL 拒絕啟動並指出失敗的
+一項，SHALL NOT 降級續跑。理由是這三項只有在金鑰材料進入記憶體之前生效才有意義，事後補做
+等於沒做；而「無法鎖頁仍啟動」會使部署者以為受保護而實際未受保護。
+
+上述行程層設定 SHALL 使容器內任何身分（含 root）在不具 `CAP_SYS_PTRACE` 時無法讀取 backend
+行程的記憶體與環境變數。編排層保證該能力不存在，故兩層合起來的效果是：進入容器取得 shell
+不足以取走金鑰材料。
+
+正式版建置驗證流程 SHALL 對編排定義實跑核對：capability 集合恰為上述四項、禁止提權旗標生效、
+core 上限為零；正式版與開發版兩份定義逐項相同。任一不成立即失敗。行程啟動後不可傾印
+屬執行期性質，由行程層守衛測試（呼叫硬化函式後核對傾印旗標、core 上限與鎖頁量）與
+實跑場景核對，不由建置驗證流程核對——該流程不啟動完整堆疊。
+
+本 requirement SHALL NOT 被解讀為「記憶體中無明文」：KEK、資料金鑰與解封後的帳號明文仍在
+行程記憶體中，本 requirement 限制的是誰能讀到它。對外文件 SHALL 只列出實際施加的設定，
+SHALL NOT 使用「container hardened」或「最小權限 runtime」等未逐項列出設定的總稱。
+
+#### Scenario: 容器內 root 無法讀取 backend 行程的環境變數與記憶體
+
+- **WHEN** 以硬化後的編排啟動 backend，並以容器內 root 身分嘗試讀取 backend 行程的
+  `/proc/<pid>/environ` 與 `/proc/<pid>/mem`
+- **THEN** 兩者皆被拒絕；backend 行程本身正常服務，`GET /health` 回 `status: ok`
+
+#### Scenario: 資料庫 CLI 降權在受限能力下仍成立
+
+- **WHEN** 以硬化後的編排啟動 backend，並分別建立 PostgreSQL、MySQL、MSSQL 的 web CLI 會話
+- **THEN** 三者皆連線成功，子程序以專用降權身分執行、capability 全空；
+  既有的 CLI 降權面守衛全數通過
+
+#### Scenario: 鎖頁失敗即拒絕啟動
+
+- **WHEN** 編排未給予 `IPC_LOCK` 或鎖頁上限不足，啟動 backend
+- **THEN** backend 於讀取組態之前退出，日誌指出鎖頁失敗；SHALL NOT 以未鎖頁狀態提供服務
+
+#### Scenario: 正式版建置驗證核對能力集合
+
+- **WHEN** 執行正式版建置驗證，而編排定義的 backend capability 集合多於或少於上述四項、
+  或禁止提權旗標缺失、或 core 上限非零
+- **THEN** 驗證失敗並指出不符的一項
+
+#### Scenario: 硬化後既有連線與資料路徑無退化
+
+- **WHEN** 以硬化後的編排啟動全套服務，各建立一段 SSH、RDP 會話，執行一次剪貼簿事件與
+  一次審計匯出
+- **THEN** 全部成功，錄影與匯出產物落地非空，行程記憶體占用在部署文件記載的基準內
+
+#### Scenario: 開發版與正式版設定一致
+
+- **WHEN** 比對兩份編排定義的 backend 區塊
+- **THEN** capability 集合、禁止提權旗標、core 與鎖頁上限四項逐項相同

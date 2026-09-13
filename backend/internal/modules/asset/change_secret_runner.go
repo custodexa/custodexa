@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"log"
 	"strings"
 	"time"
@@ -340,10 +342,11 @@ func (r *ChangeSecretRunner) runTarget(job rotationJob, tgt changeSecretTarget) 
 	if err != nil {
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCredentialLoadFailed)
 	}
+	defer creds.Destroy()
 	if creds.AccountID != tgt.accountID || creds.Username != tgt.username {
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonAccountChanged)
 	}
-	if creds.Password == "" && creds.PrivateKey == "" {
+	if creds.Password.IsEmpty() && creds.PrivateKey.IsEmpty() {
 		return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonNoCredential)
 	}
 
@@ -369,7 +372,7 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 	rec *model.ChangeSecretRecord,
 	finish func(string, string) model.ChangeSecretRecord) model.ChangeSecretRecord {
 
-	if creds.Password == "" {
+	if creds.Password.IsEmpty() {
 		return finish(model.ChangeSecretSkipped, model.ChangeSecretReasonNoPasswordCredential)
 	}
 	// 整批同一組模式已在批次開頭產生密碼；其餘每個目標各自隨機
@@ -401,7 +404,9 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidatePersistFailed)
 	}
 
-	if err := exec.Rotate(ctx, rt, creds.Password, newPassword); err != nil {
+	newBytes := []byte(newPassword)
+	defer material.Wipe(newBytes)
+	if err := withProtocolSecret(creds.Password, func(oldPassword []byte) error { return exec.Rotate(ctx, rt, oldPassword, newBytes) }); err != nil {
 		logRemoteCause(tgt, "改密失敗", err)
 		// 本地前置驗證失敗＝完全未接觸遠端，遠端狀態並非不可知：清候選走乾淨失敗。
 		// 若誤歸為 unverified，候選會一直卡著並擋住該帳號後續全部改密
@@ -426,7 +431,7 @@ func (r *ChangeSecretRunner) rotatePassword(job rotationJob, tgt changeSecretTar
 	}
 	_ = r.candidates.MarkApplied(cand.ID)
 
-	if err := exec.Verify(ctx, rt, newPassword); err != nil {
+	if err := exec.Verify(ctx, rt, newBytes); err != nil {
 		// 本地憑證**不動**，候選保留待重試。硬提交是在猜遠端狀態，
 		// 猜錯就把還能用的憑證改壞
 		logRemoteCause(tgt, "新密驗證失敗", err)
@@ -465,8 +470,8 @@ func (r *ChangeSecretRunner) rotateKey(job rotationJob, tgt changeSecretTarget,
 	}
 	// 舊的「本系統推送鑰」：僅當帳號現以私鑰認證時存在
 	previousLine := ""
-	if creds.PrivateKey != "" {
-		if line, err := PublicLineFromPrivateKey(creds.PrivateKey); err == nil {
+	if !creds.PrivateKey.IsEmpty() {
+		if line, err := publicLineFromOwnedKey(creds.PrivateKey); err == nil {
 			previousLine = line
 		}
 	}
@@ -485,9 +490,13 @@ func (r *ChangeSecretRunner) rotateKey(job rotationJob, tgt changeSecretTarget,
 		return finish(model.ChangeSecretFailed, model.ChangeSecretReasonCandidatePersistFailed)
 	}
 
-	if err := applySSHKeyOnTarget(ctx, exec, rt, tgt, creds.Password, creds.PrivateKey,
-		newPrivate, newLine, previousLine, job.keyStrategy,
-		func() { _ = r.candidates.MarkApplied(cand.ID) }); err != nil {
+	newBytes := []byte(newPrivate)
+	defer material.Wipe(newBytes)
+	if err := withProtocolPair(creds.Password, creds.PrivateKey, func(password, privateKey []byte) error {
+		return applySSHKeyOnTarget(ctx, exec, rt, tgt, password, privateKey,
+			newBytes, newLine, previousLine, job.keyStrategy,
+			func() { _ = r.candidates.MarkApplied(cand.ID) })
+	}); err != nil {
 
 		// 遠端確定未變更（含還原成功）＝清候選走乾淨失敗；還原也失敗＝狀態不可知，
 		// 候選必須留著，它是那把可能已在遠端生效的秘密的唯一副本
@@ -532,54 +541,37 @@ func normalizeSecretType(t string) string {
 	return model.ChangeSecretTypePassword
 }
 
-// dialSSHPassword 以密碼建立輕量 exec 用連線（不開 PTY）
-func dialSSHPassword(addr, user, password string, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
-	return ssh.Dial("tcp", addr, &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		HostKeyCallback: hostKey,
-		Timeout:         changeSecretDialTimeout,
-	})
+// Authentication copies are owned by Dial, independently of rotation buffers.
+func dialSSHPassword(ctx context.Context, addr, user string, password *sshmaterial.Password, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+	defer password.Destroy()
+	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PasswordCallback(password.Callback)}, HostKeyCallback: hostKey, Timeout: changeSecretDialTimeout})
 }
 
-// dialSSHPrivateKey 以私鑰建立連線（金鑰輪替的驗證步驟）
-func dialSSHPrivateKey(addr, user, privatePEM string, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
-	signer, err := ssh.ParsePrivateKey([]byte(privatePEM))
+func dialSSHPrivateKey(ctx context.Context, addr, user string, privatePEM []byte, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+	signer, err := ssh.ParsePrivateKey(privatePEM)
 	if err != nil {
 		return nil, fmt.Errorf("解析私鑰失敗: %w", err)
 	}
-	return ssh.Dial("tcp", addr, &ssh.ClientConfig{
-		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: hostKey,
-		Timeout:         changeSecretDialTimeout,
-	})
+	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: hostKey, Timeout: changeSecretDialTimeout})
 }
 
-// dialSSHCredentials 以帳號現行憑證登入（私鑰優先，其次密碼）。
-//
-// 收兩個秘密欄而非整包解析結果：連線與輪替兩條路徑的取密回傳型別不同，
-// 讓撥號認識其中一種會逼另一種為了撥號而多轉一次型別。
-func dialSSHCredentials(addr, user, password, privateKey string, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+func dialSSHCredentials(ctx context.Context, addr, user string, password *sshmaterial.Password, privateKey *material.Secret, hostKey ssh.HostKeyCallback) (*ssh.Client, error) {
+	defer password.Destroy()
+	defer privateKey.Destroy()
 	var methods []ssh.AuthMethod
-	if privateKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+	if !privateKey.IsEmpty() {
+		signer, err := material.Use(privateKey, ssh.ParsePrivateKey)
 		if err == nil {
 			methods = append(methods, ssh.PublicKeys(signer))
 		}
 	}
-	if password != "" {
-		methods = append(methods, ssh.Password(password))
+	if !password.Empty() {
+		methods = append(methods, ssh.PasswordCallback(password.Callback))
 	}
 	if len(methods) == 0 {
 		return nil, fmt.Errorf("帳號無可用憑證")
 	}
-	return ssh.Dial("tcp", addr, &ssh.ClientConfig{
-		User:            user,
-		Auth:            methods,
-		HostKeyCallback: hostKey,
-		Timeout:         changeSecretDialTimeout,
-	})
+	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: methods, HostKeyCallback: hostKey, Timeout: changeSecretDialTimeout})
 }
 
 // runChpasswd 執行改密：root 直接 chpasswd；非 root 以 sudo -S 餵舊密提權。
@@ -587,7 +579,7 @@ func dialSSHCredentials(addr, user, password, privateKey string, hostKey ssh.Hos
 // **憑證一律經 session stdin 投遞**，SHALL NOT 進入命令列——目標機的 ps 與
 // /proc/<pid>/cmdline 因此看不到任何密碼。後端側亦無子程序（全程行程內 SSH
 // 客戶端），故本地 argv／environ 同樣不持有憑證。
-func runChpasswd(client *ssh.Client, user, oldPassword, newPassword string) error {
+func runChpasswd(client *ssh.Client, user string, oldPassword, newPassword []byte) error {
 	// chpasswd 自 stdin 逐行讀 user:password；user/新密含換行會拆出額外條目
 	// 改到非目標帳號（stdin 注入），故在組裝 entry 前嚴格拒絕控制字元
 	//
@@ -596,7 +588,7 @@ func runChpasswd(client *ssh.Client, user, oldPassword, newPassword string) erro
 	if strings.ContainsAny(user, "\n\r\x00:") {
 		return &localPreconditionError{reason: model.ChangeSecretReasonInvalidAccountName}
 	}
-	if strings.ContainsAny(newPassword, "\n\r\x00") {
+	if bytes.ContainsAny(newPassword, "\n\r\x00") {
 		return &localPreconditionError{reason: model.ChangeSecretReasonInvalidNewSecret}
 	}
 
@@ -606,19 +598,16 @@ func runChpasswd(client *ssh.Client, user, oldPassword, newPassword string) erro
 	}
 	defer sess.Close()
 
-	entry := fmt.Sprintf("%s:%s", user, newPassword)
-	var cmd string
-	var stdin string
-	if user == "root" {
-		cmd = "chpasswd"
-		stdin = entry + "\n"
-	} else {
-		// sudo -S 自 stdin 讀密碼；chpasswd 條目為 stdin 的第二行
+	cmd := "chpasswd"
+	if user != "root" {
 		cmd = "sudo -S -p '' sh -c 'chpasswd'"
-		stdin = oldPassword + "\n" + entry + "\n"
 	}
+	stdin := rotationStdin(user, oldPassword, newPassword)
+	defer material.Wipe(stdin)
+	input := newSecretInput(stdin)
+	defer input.Close()
+	sess.Stdin = input
 
-	sess.Stdin = strings.NewReader(stdin)
 	var stderr bytes.Buffer
 	sess.Stderr = &stderr
 	if err := sess.Run(cmd); err != nil {
@@ -705,10 +694,10 @@ func (r *ChangeSecretRunner) alertFailure(job rotationJob, rec model.ChangeSecre
 //	*remoteRejectedError     遠端確定未變更（含驗證失敗但已還原）→ 清候選、乾淨失敗
 //	*remoteStateUnknownError 已寫入但還原也失敗 → 保留候選、狀態不可知
 func applySSHKeyOnTarget(ctx context.Context, exec rotationExecutor, rt rotationTarget,
-	tgt changeSecretTarget, oldPassword, oldPrivateKey, newPrivate, newLine, previousLine,
+	tgt changeSecretTarget, oldPassword, oldPrivateKey, newPrivate []byte, newLine, previousLine,
 	keyStrategy string, onDelivered func()) error {
 
-	client, err := dialSSHCredentials(rt.addr, rt.username, oldPassword, oldPrivateKey, rt.hostKeyCB)
+	client, err := dialSSHCredentials(ctx, rt.addr, rt.username, sshmaterial.CopyPassword(oldPassword), material.Adopt(bytes.Clone(oldPrivateKey)), rt.hostKeyCB)
 	if err != nil {
 		logRemoteCause(tgt, "舊憑證登入失敗", err)
 		return &remoteRejectedError{reason: model.ChangeSecretReasonOldCredentialLoginFailed, cause: err}
@@ -772,4 +761,24 @@ func applySSHKeyOnTarget(ctx context.Context, exec rotationExecutor, rt rotation
 		}
 	}
 	return nil
+}
+
+func rotationStdin(user string, oldPassword, newPassword []byte) []byte {
+	size := len(user) + 1 + len(newPassword) + 1
+	if user != "root" {
+		size += len(oldPassword) + 1
+	}
+	out := make([]byte, size)
+	at := 0
+	if user != "root" {
+		at += copy(out, oldPassword)
+		out[at] = '\n'
+		at++
+	}
+	at += copy(out[at:], user)
+	out[at] = ':'
+	at++
+	at += copy(out[at:], newPassword)
+	out[at] = '\n'
+	return out
 }

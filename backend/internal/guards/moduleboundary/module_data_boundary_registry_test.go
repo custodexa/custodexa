@@ -93,6 +93,11 @@ var tableOwner = map[string]string{
 	"user_source_ips": "audit",
 	// keyvault
 	"data_keys":           "keyvault",
+	// 委託拓撲：非秘密的「主金鑰送去
+	// 哪裡解」。屬 keyvault——讀寫都在該模組的服務層，且它與 data_keys.kek_id
+	// 是同一個問題的兩半（目的地與金鑰識別）。**全部欄位明文**：讀取時點在已
+	// 封存狀態，受信封保護的欄位在那個時點解不出來
+	"kek_topologies":      "keyvault",
 	"export_signing_keys": "keyvault",
 	// audit-checkpoint-chain：檢查點簽章鑰為 keyvault 自有表（私鑰材料只在 keyvault 內解包），
 	// audit 側只透過 CheckpointSigningService 的方法簽／驗，不直接碰本表
@@ -147,10 +152,11 @@ var nonModelTables = map[string]bool{
 // 會被 modelTableNames 的命名推導誤列為表；「現實→登記」反向核對時排除。
 // 新增此類型別 SHALL 在此具名登記，否則反向核對轉紅——這是刻意的：讓「它是不是表」成為顯式決定。
 var nonTableModelStructs = map[string]bool{
-	"asset_change_details":        true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
-	"transmission_risks":          true, // TransmissionRisk：傳輸風險值物件
-	"asset_account_audit_details": true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
-	"user_role_audit_details":     true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
+	"audit_stamp_reservation_keys": true, // Context key for an admitted audit write, not a database model.
+	"asset_change_details":         true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
+	"transmission_risks":           true, // TransmissionRisk：傳輸風險值物件
+	"asset_account_audit_details":  true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
+	"user_role_audit_details":      true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

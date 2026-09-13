@@ -38,9 +38,38 @@ func postUnseal(r *gin.Engine, body, sourceIP string) *httptest.ResponseRecorder
 	if sourceIP != "" {
 		req.RemoteAddr = net.JoinHostPort(sourceIP, "40000")
 	}
+	// 先過第一段（帳密），再送材料——與解封頁實際的兩步相同。
+	if grant := endpointSealGrant(r, sourceIP); grant != "" {
+		req.Header.Set("Authorization", "SealGrant "+grant)
+	}
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	return w
+}
+
+// endpointSealGrant 走 `/seal/authorize` 取一個脈絡。
+//
+// 取不到時回空字串：網段不符、端點已移置等更早的閘上，授權端點本來就打不通，
+// 而那些案例要斷言的正是那個更早的拒絕。
+func endpointSealGrant(r *gin.Engine, sourceIP string) string {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/seal/authorize",
+		strings.NewReader(`{"username":"admin","password":"fixture"}`))
+	req.Header.Set("Content-Type", "application/json")
+	if sourceIP != "" {
+		req.RemoteAddr = net.JoinHostPort(sourceIP, "40000")
+	}
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		return ""
+	}
+	var out struct {
+		Grant string `json:"grant"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &out) != nil {
+		return ""
+	}
+	return out.Grant
 }
 
 // getStatus 取 /seal/status 的解析結果（沿用 httptest 預設來源）。
@@ -405,6 +434,8 @@ func TestSealStatusExposesFaultAndTimeoutHint(t *testing.T) {
 func TestUnsealRejectsWhenAlreadyUnsealed(t *testing.T) {
 	m := seal.NewUnsealed(&fakeGraph{})
 	h := api.NewSealHandler(m, nil)
+	// 授權恆成立：本案守的是「已解封時的解封請求回 409」，不是授權（另有專屬測試）。
+	h.SetSealAuthorization(api.NewSealGrantStore(0), func(string, []byte) (uint, error) { return 1, nil })
 	r := sealEndpointRouter(t, h)
 
 	w := postUnseal(r, `{"kek":"x"}`, "")

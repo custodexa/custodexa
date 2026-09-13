@@ -191,11 +191,11 @@ describe('InstanceGuardBanner 管理者細節', () => {
     expect(text).toContain('INSTANCE_GUARD_ACK')
     expect(text).toContain('系統無法識別確認者是誰')
     expect(text).toContain('不會阻止兩個實例同時執行造成的資料問題')
-    // 風險句：四類照設計原句，兩個名詞用白話（不是「錄影落地」「封印期留痕」這類工程口語）；
+    // 風險句：四類照設計原句，兩個名詞用白話（不是「錄影落地」「封存期留痕」這類工程口語）；
     // 不加設計沒寫的具體機制（哪個實例寫到哪台機器、哪段紀錄會漏，設計沒有主張，介面就不能主張）
-    expect(text).toContain('錄影檔儲存與封印期間稽核紀錄的資料問題')
+    expect(text).toContain('錄影檔儲存與封存期間稽核紀錄的資料問題')
     expect(text).not.toContain('錄影落地')
-    expect(text).not.toContain('封印期留痕')
+    expect(text).not.toContain('封存期留痕')
     // 處置
     expect(text).toContain('確認另一個實例已停止')
   })

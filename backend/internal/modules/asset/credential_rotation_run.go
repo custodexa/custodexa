@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"log"
 	"time"
 
@@ -265,8 +266,8 @@ type memberContext struct {
 	exec      rotationExecutor
 	old       *ResolvedCredential
 	// newPassword／newPrivateKey 本輪要推到遠端的秘密（依型別二擇一）
-	newPassword   string
-	newPrivateKey string
+	newPassword   *material.Secret
+	newPrivateKey *material.Secret
 	secretType    string
 }
 
@@ -288,12 +289,18 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 	if err != nil {
 		return nil, model.ChangeSecretReasonCredentialLoadFailed
 	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			old.Destroy()
+		}
+	}()
 	// 釘住帳號名：成員快照與現況不符即代表這一列已代表另一個系統身分，
 	// 把新秘密推上去等於改錯對象
 	if old.Username != member.Username {
 		return nil, model.ChangeSecretReasonAccountChanged
 	}
-	if old.Password == "" && old.PrivateKey == "" {
+	if old.Password.IsEmpty() && old.PrivateKey.IsEmpty() {
 		return nil, model.ChangeSecretReasonNoCredential
 	}
 
@@ -301,6 +308,7 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 	if reason != "" {
 		return nil, reason
 	}
+	defer next.Destroy()
 	secretType := next.SecretType
 	if secretType == "" {
 		secretType = model.ChangeSecretTypePassword
@@ -308,6 +316,16 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 	if model.IsWindowsRotationChannel(channel) && secretType == model.ChangeSecretTypeSSHKey {
 		return nil, model.ChangeSecretReasonSecretTypeUnsupported
 	}
+	password, err := material.Move(next.Password)
+	if err != nil {
+		return nil, model.ChangeSecretReasonCredentialLoadFailed
+	}
+	key, err := material.Move(next.PrivateKey)
+	if err != nil {
+		password.Destroy()
+		return nil, model.ChangeSecretReasonCredentialLoadFailed
+	}
+	transferred = true
 	return &memberContext{
 		target: rotationTarget{
 			asset:      asset,
@@ -323,8 +341,8 @@ func (s *CredentialRotationService) prepareMember(ctx context.Context,
 		},
 		exec:          s.executors(channel),
 		old:           old,
-		newPassword:   next.Password,
-		newPrivateKey: next.PrivateKey,
+		newPassword:   password,
+		newPrivateKey: key,
 		secretType:    secretType,
 	}, ""
 }
@@ -348,10 +366,20 @@ func (s *CredentialRotationService) targetSecret(ctx context.Context,
 		if err != nil {
 			return nil, model.ChangeSecretReasonRetrySecretUnavailable
 		}
+		defer secret.Destroy()
+		password, err := material.Move(secret.Password)
+		if err != nil {
+			return nil, model.ChangeSecretReasonCredentialLoadFailed
+		}
+		key, err := material.Move(secret.PrivateKey)
+		if err != nil {
+			password.Destroy()
+			return nil, model.ChangeSecretReasonCredentialLoadFailed
+		}
 		return &ResolvedCredential{
 			SecretType: cand.SecretType,
-			Password:   secret.Password,
-			PrivateKey: secret.PrivateKey,
+			Password:   password,
+			PrivateKey: key,
 		}, ""
 	}
 	if member.TargetVersionID == nil || *member.TargetVersionID == 0 {
@@ -377,6 +405,7 @@ func (s *CredentialRotationService) deliverMember(ctx context.Context,
 		return
 	}
 
+	defer mc.Destroy()
 	cand, reason := s.ensureCandidate(ctx, rot, member, mc)
 	if reason != "" {
 		s.failClean(rot, member, reason, run)
@@ -396,7 +425,7 @@ func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 	mc *memberContext, cand *model.ChangeSecretCandidate, run memberRun) {
 
 	oldSecret := mc.old.Password
-	if err := mc.exec.Rotate(ctx, mc.target, oldSecret, mc.newPassword); err != nil {
+	if err := withProtocolPair(oldSecret, mc.newPassword, func(old, next []byte) error { return mc.exec.Rotate(ctx, mc.target, old, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "改密失敗", err)
 		reason, clean := classifyRotationError(err)
 		if clean {
@@ -413,7 +442,7 @@ func (s *CredentialRotationService) deliverPassword(ctx context.Context,
 	if err := s.markUnverified(member, ""); err != nil {
 		return
 	}
-	if err := mc.exec.Verify(ctx, mc.target, mc.newPassword); err != nil {
+	if err := withProtocolSecret(mc.newPassword, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "新密驗證失敗", err)
 		_, _ = s.candidates.RecordFailure(cand, model.ChangeSecretReasonVerifyFailed)
 		s.stayUnverified(rot, member, model.ChangeSecretReasonVerifyFailed, run)
@@ -431,23 +460,27 @@ func (s *CredentialRotationService) deliverKey(ctx context.Context,
 	rot *model.CredentialRotation, member *model.CredentialRotationMember,
 	mc *memberContext, cand *model.ChangeSecretCandidate, run memberRun) {
 
-	newLine, err := PublicLineFromPrivateKey(mc.newPrivateKey)
+	newLine, err := publicLineFromOwnedKey(mc.newPrivateKey)
 	if err != nil {
 		s.failClean(rot, member, model.ChangeSecretReasonKeypairGenerateFailed, run)
 		return
 	}
 	previousLine := ""
-	if mc.old.PrivateKey != "" {
-		if line, lerr := PublicLineFromPrivateKey(mc.old.PrivateKey); lerr == nil {
+	if !mc.old.PrivateKey.IsEmpty() {
+		if line, lerr := publicLineFromOwnedKey(mc.old.PrivateKey); lerr == nil {
 			previousLine = line
 		}
 	}
 	// 既有金鑰（含使用者自放的）一律保留：整組輪替換的是本系統推送的那一把，
 	// 順手清掉別人放的鑰會讓管理者失去自己的入口，而他的操作裡沒有一步表達過這個意思
-	err = s.keyApplier(ctx, mc.exec, mc.target, mc.logTarget,
-		mc.old.Password, mc.old.PrivateKey, mc.newPrivateKey, newLine, previousLine,
-		model.KeyStrategyAppendReplace,
-		func() { _ = s.candidates.MarkApplied(cand.ID) })
+	err = withProtocolPair(mc.old.Password, mc.old.PrivateKey, func(password, key []byte) error {
+		return withProtocolSecret(mc.newPrivateKey, func(next []byte) error {
+			return s.keyApplier(ctx, mc.exec, mc.target, mc.logTarget,
+				password, key, next, newLine, previousLine,
+				model.KeyStrategyAppendReplace,
+				func() { _ = s.candidates.MarkApplied(cand.ID) })
+		})
+	})
 	if err != nil {
 		reason, clean := classifyRotationError(err)
 		if clean {
@@ -479,11 +512,12 @@ func (s *CredentialRotationService) verifyMember(ctx context.Context,
 		s.stayUnverified(rot, member, reason, run)
 		return
 	}
+	defer mc.Destroy()
 	newSecret := mc.newPassword
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
 		newSecret = mc.newPrivateKey
 	}
-	if err := mc.exec.Verify(ctx, mc.target, newSecret); err != nil {
+	if err := withProtocolSecret(newSecret, func(next []byte) error { return mc.exec.Verify(ctx, mc.target, next) }); err != nil {
 		logRemoteCause(mc.logTarget, "補跑驗證失敗", err)
 		if cand, cerr := s.candidates.FindByAccount(member.AccountID); cerr == nil && cand != nil {
 			_, _ = s.candidates.RecordFailure(cand, model.ChangeSecretReasonRetryLoginFailed)
@@ -520,12 +554,7 @@ func (s *CredentialRotationService) ensureCandidate(ctx context.Context,
 	if member.TargetVersionID != nil {
 		in.TargetVersionID = *member.TargetVersionID
 	}
-	if mc.secretType == model.ChangeSecretTypeSSHKey {
-		in.PrivateKey = mc.newPrivateKey
-	} else {
-		in.Password = mc.newPassword
-	}
-	cand, err := s.candidates.Create(ctx, in)
+	cand, err := s.candidates.createOwnedInTx(ctx, s.db, in, mc.newPassword, mc.newPrivateKey)
 	if err != nil {
 		if errors.Is(err, ErrCandidateExists) {
 			return nil, model.ChangeSecretReasonCandidatePending
@@ -801,4 +830,12 @@ func deleteAccountCandidate(tx *gorm.DB, accountID uint) error {
 func logMemberTransitionFailure(member *model.CredentialRotationMember, to string, err error) {
 	log.Printf("[CredentialRotation] 成員狀態寫入失敗 member=%d to=%s err=%s",
 		member.ID, to, sanitizeRemoteMessage(err.Error()))
+}
+
+func (m *memberContext) Destroy() {
+	if m != nil {
+		m.old.Destroy()
+		m.newPassword.Destroy()
+		m.newPrivateKey.Destroy()
+	}
 }

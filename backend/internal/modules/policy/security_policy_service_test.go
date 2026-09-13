@@ -259,6 +259,7 @@ func TestPolicyComplianceComparator(t *testing.T) {
 		PolicyAuditCheckpointIntervalSeconds:   true,
 		PolicyAuditCheckpointRowThreshold:      true,
 		PolicyClipboardRecvEnabled:             true,
+		PolicyDekCacheTTLSeconds:               true,
 		PolicyClipboardSendEnabled:             true,
 		PolicyFileDeleteEnabled:                true,
 		PolicyFileDownloadEnabled:              true,

@@ -10,6 +10,32 @@ export function getKeyInventory() {
   })
 }
 
+// 委託保管處的拓撲（非秘密：位址、區域、角色識別、Transit 金鑰名稱）。
+// **秘密不在此**——存取金鑰、服務帳號金鑰檔、角色密鑰與權杖只在解封頁輸入。
+// 回應含 `provider`（唯讀，來自部署檔）、`configured`、`editable_fields`、
+// `key_ref`（唯讀，來自金鑰列 kek_id）與 `digest`（解封頁核對用的快照摘要）。
+export function getKEKTopology(config = {}) {
+  return request({
+    url: '/keys/topology',
+    method: 'get',
+    ...config,
+  })
+}
+
+// 更新拓撲。payload 為**按服務商的精確鍵集**（多一鍵少一鍵、未知鍵一律 400）：
+//   vault：{ address, transit_key_name, role_id }
+//   aws：{ region }
+//   gcp：無可編輯欄位，端點一律回 400 KEY_TOPOLOGY_NOT_EDITABLE
+// 任一欄非法即整筆拒絕且既有值不變；成功與被拒皆入審計並觸發告警。
+export function updateKEKTopology(payload, config = {}) {
+  return request({
+    url: '/keys/topology',
+    method: 'put',
+    data: payload,
+    ...config,
+  })
+}
+
 // 輪替金鑰：purpose = 'data'（批次重加密）| 'audit_integrity'（僅新章換鑰）
 export function rotateKey(purpose) {
   return request({

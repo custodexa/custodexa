@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -140,6 +141,7 @@ type appGraph struct {
 	cfg          *config.Config
 	auditService *audit.AuditLogService
 	keyManager   *keyvault.KeyManagerService
+	credentials   *credentialOwner
 
 	// unsealedAt 本世代的解封時點（清冊 seal_state 的伴隨欄位）。
 	unsealedAt time.Time
@@ -160,6 +162,11 @@ type appGraph struct {
 func (g *appGraph) Release(ctx context.Context) error {
 	if g == nil || g.bag == nil {
 		return nil
+	}
+	if g.keyManager != nil {
+		if err := g.keyManager.DrainMaterial(ctx); err != nil {
+			return err
+		}
 	}
 	return g.bag.Release(ctx)
 }
@@ -182,9 +189,19 @@ func (g *appGraph) ServiceNames() []string {
 //
 // 回傳的 graph 即使在 err != nil 時也可為非 nil（半建構圖）：狀態機會對它呼叫
 // Release 以收束已取得的資源，故 SHALL NOT 在失敗時丟棄已登記的 bag。
-func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGraph, error) {
+// topology 僅全新安裝的委託路徑為非 nil：已驗證但尚未落庫的拓撲，
+// 於 InitKeyManager 的 bootstrap 交易內與首批金鑰列一併落地（全有全無）。
+func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credentials *credentialOwner,
+	topology *keyvault.KEKTopologyInput, owners ...*material.Secret) (*appGraph, error) {
 	cfg := s1.cfg
-	g := &appGraph{bag: &seal.ResourceBag{}, cfg: cfg}
+	g := &appGraph{bag: &seal.ResourceBag{}, cfg: cfg, credentials: credentials}
+	for _, owner := range owners {
+		g.bag.AddFunc("localKEK", func(context.Context) error { owner.Destroy(); return nil })
+	}
+
+	if credentials != nil {
+		g.bag.AddFunc("vaultClient", func(context.Context) error { credentials.Close(); return nil })
+	}
 
 	mark := func(name string) { g.built = append(g.built, name) }
 	fail := func(step string, err error) (*appGraph, error) {
@@ -198,7 +215,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	if err := seal.CheckCancelStep(ctx, "InitKeyManager"); err != nil {
 		return fail("InitKeyManager", err)
 	}
-	keyManager, err := keyvault.InitKeyManager(database.DB, kek)
+	keyManager, err := keyvault.InitKeyManagerWithBootstrap(database.DB, kek, delegatedTopologyBootstrapHook(topology))
 	if err != nil {
 		return fail("InitKeyManager", err)
 	}
@@ -481,6 +498,24 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	g.bag.AddFunc("auditService", func(rctx context.Context) error { return auditService.Shutdown(rctx) })
 	mark("auditService")
 
+	// 委託設定升級讀入的留痕：讀入發生在段 1（審計服務尚不存在），故在此補上。
+	// 只記**欄位名**與來源，不記值——來源之一是舊 `.env`，其相鄰的鍵是角色密鑰。
+	if len(s1.importedTopologyFields) > 0 {
+		body, mErr := json.Marshal(map[string]any{
+			"event":  "kek_topology_env_import",
+			"fields": s1.importedTopologyFields,
+			"source": "deployment_env",
+		})
+		if mErr == nil {
+			auditService.Log(&audit.AuditLogEntry{
+				UserID: 0, Username: "system",
+				Action: model.ActionUpdate, Resource: model.ResourceKeyManagement,
+				Status: model.StatusSuccess, Path: "/startup/kek-topology-import",
+				Method: "POST", RequestBody: string(body),
+			})
+		}
+	}
+
 	// ── 離機儲存（evidence-offsite-storage） ────────────────────────────
 	//
 	// **保管鏈的非同步面在此才注入**：seed 的登記必須早於
@@ -597,6 +632,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 		return nil
 	})
 	mark("alertNotifier")
+
+	// DEK 解封連續失敗的上報面（窄介面，與退役收斂同一組失效事件族）。
+	// 注入時機在告警服務就緒之後——更早注入的話，首批通知必被丟棄
+	keyManager.SetDEKFailureReporter(auditFailureService)
 
 	// KEK 退役收斂 degraded 首次評估
 	kekRetirementMonitor := keyvault.NewKEKRetirementMonitor(keyManager, auditFailureService)
@@ -871,6 +910,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	changeSecretBatchService := asset.NewChangeSecretBatchService(database.DB, rotationReportBuilder)
 
 	deps, err := buildRouteDeps(cfg, routeServices{
+		credentials:           credentials,
+		kmsProvider:           s1.kekDecision.KMS.Provider,
 		metrics:              s1.metrics,
 		checkpointVerifier:   checkpointVerifier,
 		chainVerifyStatus:    chainVerifyService,
@@ -1146,6 +1187,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider) (*appGra
 	// 0 值會讓採集端把「服務不存在」讀成「服務正常且計數為零」
 	s1.metrics.RegisterStage2()
 
+	// 資料金鑰解封的四條序列：與段 2 同時成立（封印期沒有可解封的金鑰，
+	// 序列缺席正確表達「服務不存在」）。存活期設定值那一條另有缺席語義，
+	// 由其 collector 自行決定（未設定時不輸出）
+	s1.metrics.RegisterDEKUnwrap()
+	keyManager.SetDEKObserver(s1.metrics)
+
 	// 現讀資料源（取值成本 O(1)，不需背景刷新）
 	s1.metrics.SetConnectionSource(func() float64 { return float64(registry.Count()) })
 	s1.metrics.SetAuditQueueSource(func() float64 { return float64(auditService.QueueDepth()) })
@@ -1410,6 +1457,10 @@ func instanceGuardAuditSink(auditService *audit.AuditLogService) func(database.G
 
 // routeServices 是 buildRouteDeps 的輸入：段 2 建構完成的服務集合。
 type routeServices struct {
+	credentials *credentialOwner
+	// kmsProvider 部署檔宣告的委託服務商（非委託模式為空字串）。
+	// 拓撲端點據此決定可編輯欄位；服務商本身不可經介面改。
+	kmsProvider string
 	// metrics 段 1 建立、段 1／段 2 共用的指標實例
 	metrics      *observability.Metrics
 	authService  *identity.AuthService
@@ -1442,12 +1493,12 @@ type routeServices struct {
 	oidcLoginService           *identity.OIDCLoginService
 	// identitySourceService 身分來源管理面（合併列表、映射規則、狀態彙總、探索預覽）
 	identitySourceService *identity.IdentitySourceService
-	exportSigning              *keyvault.ExportSigningService
-	keyManager                 *keyvault.KeyManagerService
-	hostKeyService             *asset.HostKeyService
-	syslogForwarder            *audit.SyslogForwarder
-	auditIntegrity             *audit.AuditIntegrityService
-	checkpointVerifier         *audit.CheckpointVerifier // 檢查點驗證服務
+	exportSigning         *keyvault.ExportSigningService
+	keyManager            *keyvault.KeyManagerService
+	hostKeyService        *asset.HostKeyService
+	syslogForwarder       *audit.SyslogForwarder
+	auditIntegrity        *audit.AuditIntegrityService
+	checkpointVerifier    *audit.CheckpointVerifier // 檢查點驗證服務
 	// chainVerifyStatus 兩層自動驗證的營運狀態來源（與排程器同一實例）
 	chainVerifyStatus       *audit.ChainVerifyService
 	checkpointSigning       *keyvault.CheckpointSigningService
@@ -1601,7 +1652,13 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	keyManagementHandler.SetAuditService(s.auditService) // 清理退役資料顯式留痕
 	// 委託重包目標的 provider 建構器：組裝根是唯一知道本部署
 	// KMS 組態的地方，故由此注入；未注入時委託分支回「尚未提供」而非靜默退化
-	keyManagementHandler.SetDelegatedProviderFactory(buildDelegatedRewrapProvider)
+	factory := buildDelegatedRewrapProvider
+	if s.credentials != nil {
+		factory = s.credentials.buildDelegated
+	}
+	keyManagementHandler.SetDelegatedProviderFactory(factory)
+	// 委託拓撲端點：服務商由部署檔宣告，經此注入（handler 不讀環境）
+	keyManagementHandler.SetDeploymentKMSProvider(func() string { return s.kmsProvider })
 	// 檢查點簽章鑰的清冊項（audit-checkpoint-chain 3.4）：公鑰指紋＋版本＋系統管理標示
 	keyManagementHandler.SetCheckpointSigning(s.checkpointSigning)
 
@@ -1733,4 +1790,11 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		conn: s.connHandler,
 		ssh:  s.sshHandler,
 	}, nil
+}
+
+func (g *appGraph) MaterialGate() *seal.MaterialGate {
+	if g == nil || g.keyManager == nil {
+		return nil
+	}
+	return g.keyManager.MaterialGate()
 }

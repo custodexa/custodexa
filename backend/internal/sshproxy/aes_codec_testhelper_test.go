@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"testing"
 
 	"github.com/custodexa/backend/pkg/crypto"
@@ -58,4 +59,31 @@ func aesColumnCodec(t *testing.T, key []byte) crypto.ColumnCodec {
 		t.Fatalf("建立測試 column codec 失敗: %v", err)
 	}
 	return aadTestCodec{c: c}
+}
+
+func (a aadTestCodec) EncryptBytesFor(_ context.Context, ref crypto.CipherRef, plaintext []byte) (string, error) {
+	if len(plaintext) == 0 {
+		return "", nil
+	}
+	if !ref.Valid() {
+		return "", fmt.Errorf("incomplete column identity")
+	}
+	raw, err := a.c.EncryptBytesAAD(plaintext, ref.AAD())
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
+}
+func (a aadTestCodec) DecryptBytesFor(_ context.Context, ref crypto.CipherRef, ciphertext string) (*material.Secret, error) {
+	if ciphertext == "" {
+		return material.Adopt(nil), nil
+	}
+	if !ref.Valid() {
+		return nil, fmt.Errorf("incomplete column identity")
+	}
+	raw, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return nil, crypto.ErrInvalidCiphertext
+	}
+	return material.AdoptResult(a.c.DecryptBytesAAD(raw, ref.AAD()))
 }

@@ -20,6 +20,12 @@ type Conn = localpty.Conn
 // client 的本機能力面（`\copy … FROM`、`\i` 等讀檔類命令）維持開放，安全保證改由
 // 「該身分在容器內讀不到、寫不了任何有價值的東西」承擔，不依賴輸入解析。
 func Start(t Target, cols, rows int) (*Conn, error) {
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			t.Password.Destroy()
+		}
+	}()
 	cols, rows = clampWinsize(t.Protocol, cols, rows)
 
 	uid, gid, _, err := localpty.LookupUser(localpty.CLIUser)
@@ -64,6 +70,10 @@ func Start(t Target, cols, rows int) (*Conn, error) {
 			cleanup()
 		}
 		return nil, err
+	}
+	handedOff = true
+	if PasswordPrompt(t) == nil {
+		t.Password.Destroy()
 	}
 	if cleanup != nil {
 		conn.SetOnClose(cleanup)

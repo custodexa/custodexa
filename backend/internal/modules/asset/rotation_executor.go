@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/sshmaterial"
 
 	"github.com/custodexa/backend/internal/model"
 	"golang.org/x/crypto/ssh"
@@ -27,9 +28,9 @@ import (
 // 硬清候選等於猜遠端狀態，猜錯就把還能用的憑證改壞。
 type rotationExecutor interface {
 	// Rotate 在目標機上把 t.username 的秘密自 oldSecret 換成 newSecret。
-	Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret string) error
+	Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret []byte) error
 	// Verify 以新秘密對目標實連一次。成功才代表遠端確實已是新秘密。
-	Verify(ctx context.Context, t rotationTarget, newSecret string) error
+	Verify(ctx context.Context, t rotationTarget, newSecret []byte) error
 }
 
 // rotationTarget 一次遠端改密操作的目標描述。
@@ -113,14 +114,14 @@ func rotationExecutorFor(channel string) rotationExecutor {
 // notWiredExecutor 沒有執行器的通道：不觸碰遠端，直接走乾淨失敗。
 type notWiredExecutor struct{}
 
-func (notWiredExecutor) Rotate(context.Context, rotationTarget, string, string) error {
+func (notWiredExecutor) Rotate(context.Context, rotationTarget, []byte, []byte) error {
 	return &localPreconditionError{
 		reason: model.ChangeSecretReasonChannelNotConfigured,
 		cause:  errExecutorNotWired,
 	}
 }
 
-func (notWiredExecutor) Verify(context.Context, rotationTarget, string) error {
+func (notWiredExecutor) Verify(context.Context, rotationTarget, []byte) error {
 	return &localPreconditionError{
 		reason: model.ChangeSecretReasonChannelNotConfigured,
 		cause:  errExecutorNotWired,
@@ -139,8 +140,8 @@ type posixSSHExecutor struct{}
 // 舊憑證登入失敗歸為 remoteRejectedError：那一刻遠端確定還沒被改過，處置與
 // 「指令跑完但非零退出」相同——清候選、乾淨失敗。兩者的原因碼不同，
 // 使記錄仍分得出是登不進去還是指令被拒。
-func (posixSSHExecutor) Rotate(_ context.Context, t rotationTarget, oldSecret, newSecret string) error {
-	client, err := dialSSHPassword(t.addr, t.username, oldSecret, t.hostKeyCB)
+func (posixSSHExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret []byte) error {
+	client, err := dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(oldSecret), t.hostKeyCB)
 	if err != nil {
 		return &remoteRejectedError{
 			reason: model.ChangeSecretReasonOldCredentialLoginFailed,
@@ -170,15 +171,15 @@ func (posixSSHExecutor) Rotate(_ context.Context, t rotationTarget, oldSecret, n
 // 金鑰型別走私鑰認證、密碼型別走密碼認證——秘密型別在 target 上，
 // 使重試執行器與改密執行器共用同一條驗證路徑（兩者分岔即會出現
 // 「手動能過、自動不能」的行為差異）。
-func (posixSSHExecutor) Verify(_ context.Context, t rotationTarget, newSecret string) error {
+func (posixSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSecret []byte) error {
 	var (
 		client *ssh.Client
 		err    error
 	)
 	if t.secretType == model.ChangeSecretTypeSSHKey {
-		client, err = dialSSHPrivateKey(t.addr, t.username, newSecret, t.hostKeyCB)
+		client, err = dialSSHPrivateKey(ctx, t.addr, t.username, newSecret, t.hostKeyCB)
 	} else {
-		client, err = dialSSHPassword(t.addr, t.username, newSecret, t.hostKeyCB)
+		client, err = dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(newSecret), t.hostKeyCB)
 	}
 	if err != nil {
 		return err

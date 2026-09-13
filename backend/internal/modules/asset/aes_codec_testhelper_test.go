@@ -1,12 +1,14 @@
 package asset
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"testing"
 
 	"github.com/custodexa/backend/internal/modules/keyvault"
@@ -129,3 +131,44 @@ func encryptColumn(t *testing.T, km *keyvault.KeyManagerService, table, column, 
 
 // refAssetPassword 測試預設列身分（不關心身分的測試一律取此）
 var refAssetPassword = crypto.CipherRef{Table: "assets", Column: "password_enc"}
+
+func (a aadTestCodec) EncryptBytesFor(_ context.Context, ref crypto.CipherRef, plaintext []byte) (string, error) {
+	if len(plaintext) == 0 {
+		return "", nil
+	}
+	if !ref.Valid() {
+		return "", fmt.Errorf("incomplete column identity")
+	}
+	raw, err := a.c.EncryptBytesAAD(plaintext, ref.AAD())
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
+}
+
+func (a aadTestCodec) DecryptBytesFor(_ context.Context, ref crypto.CipherRef, ciphertext string) (*material.Secret, error) {
+	if ciphertext == "" {
+		return material.Adopt(nil), nil
+	}
+	if !ref.Valid() {
+		return nil, fmt.Errorf("incomplete column identity")
+	}
+	data, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return nil, crypto.ErrInvalidCiphertext
+	}
+	return material.AdoptResult(a.c.DecryptBytesAAD(data, ref.AAD()))
+}
+
+// secretMatches compares an owned value without exposing either value in failures.
+func secretMatches(t *testing.T, secret *material.Secret, expected string) bool {
+	t.Helper()
+	t.Cleanup(secret.Destroy)
+	matched, err := material.Use(secret, func(raw []byte) (bool, error) {
+		return bytes.Equal(raw, []byte(expected)), nil
+	})
+	if err != nil {
+		t.Fatal("secret comparison could not borrow material")
+	}
+	return matched
+}

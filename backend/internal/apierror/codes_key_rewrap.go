@@ -70,3 +70,27 @@ var (
 	CodeKeyRewrapTargetSeen = register("CONFLICT_KEY_REWRAP_TARGET_SEEN",
 		Descriptor{ZhFallback: "此 KEK 曾用於本系統（含已退役紀錄）：請改用一把全新的金鑰"})
 )
+
+// ── 委託拓撲設定 ────────────────────────────────────────────────────
+//
+// 拓撲承載「上鎖的資料金鑰送去哪裡解、重包時明文金鑰送去哪裡」，其變更為安全
+// 變更：只能經已認證且具管理角色的端點完成，成功與被拒皆留痕。
+var (
+	// CodeKeyTopologyInvalid 拓撲欄位驗證失敗。對外 400。
+	//
+	// **整筆拒絕、既有值不變**：部分套用會留下「位址已改、角色未改」的半套
+	// 目的地。錯誤只列欄位名，不回顯值。
+	//
+	// `fields` 為以 ", " 相接的欄位名清單（opaque：欄位集隨服務商而異，無法列舉
+	// 成封閉 enum）。它同時是訊息的內容與前端逐欄標紅的依據——沒有這個 param，
+	// 呼叫端送出的欄位清單會在 validateParams 被當成未宣告鍵整組丟掉。
+	CodeKeyTopologyInvalid = register("KEY_TOPOLOGY_INVALID",
+		Descriptor{
+			ZhFallback: "保管處設定沒有通過驗證，整筆未變更。請修正這些欄位：{fields}",
+			Params:     []ParamSpec{{Key: "fields", Kind: ParamOpaque}},
+		})
+
+	// CodeKeyTopologyNotEditable 該服務商沒有可編輯的拓撲欄位。對外 400。
+	CodeKeyTopologyNotEditable = register("KEY_TOPOLOGY_NOT_EDITABLE",
+		Descriptor{ZhFallback: "這個保管處沒有可在此修改的欄位。"})
+)

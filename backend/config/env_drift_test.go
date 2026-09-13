@@ -42,6 +42,9 @@ var identReaderArg0 = map[string]bool{"getEnv": true, "getEnvInt": true, "getEnv
 // 分兩類：系統/測試專用；compose 拓撲——後者由 docker-compose 的 environment: 提供
 // （純拓撲/模式常數，非運維旋鈕），故不列於 .env.example 而列於此。
 var driftAllowlist = map[string]bool{
+	"UNSEAL_SSH_TARGET":   true, // SSH integration target, not deployment configuration.
+	"UNSEAL_SSH_USER":     true, // SSH integration account override.
+	"UNSEAL_SSH_PASSWORD": true, // SSH integration credential override.
 	// 系統 / 測試專用
 	"HOME":                true,
 	"PATH":                true,
@@ -59,6 +62,21 @@ var driftAllowlist = map[string]bool{
 	"LOOPBACK_PASSWORD_2":     true,
 	"LOOPBACK_NEW_PASSWORD":   true,
 	"LOOPBACK_NEW_PASSWORD_2": true,
+	// 已退場的委託設定鍵（委託拓撲與憑證改由介面管理）。
+	//
+	// 非秘密拓撲已改由介面設定並存於資料庫，秘密改由解封頁於每次解封輸入；
+	// 這三個鍵在產品碼內**只剩一個讀取點**——升級時把舊 `.env` 的非秘密值一次性
+	// 搬進資料庫的 `importDelegatedTopologyFromEnv`。它們不再是部署旋鈕，
+	// 故**刻意不入 .env.example**（留在範本裡等於邀請部署者繼續設定一個不生效的值），
+	// 於此具名登記。`KEK_VAULT_SECRET_ID` 同列但用途不同：它是**秘密**鍵，
+	// 產品碼只讀「它有沒有值」以決定是否在啟動日誌提示它已不生效，
+	// 其值不入庫、不進日誌、不進任何設定結構。
+	"KEK_KMS_REGION":      true,
+	"KEK_VAULT_ADDR":      true,
+	"KEK_VAULT_ROLE_ID":   true,
+	"KEK_KMS_KEY_ID":      true,
+	"KEK_VAULT_SECRET_ID": true,
+
 	"TEST_KMS_ENDPOINT":       true, // KMS 模擬器（localstack）端點
 	"TEST_S3_ENDPOINT":        true, // S3 模擬器（localstack）端點（離機儲存 s3 driver 整合測試）
 	"TEST_GCS_ENDPOINT":       true, // GCS 模擬器（fake-gcs-server）端點（離機儲存 gcs driver 整合測試）
@@ -132,6 +150,9 @@ var knownIndirectKeys = []string{
 	"KEK_KMS_PROVIDER",
 	"KEK_KMS_KEY_ID",
 	"KEK_KMS_REGION",
+	"KEK_VAULT_ADDR",
+	"KEK_VAULT_ROLE_ID",
+	"KEK_VAULT_SECRET_ID",
 	"KEK_HSM_MODULE",
 	"KEK_HSM_TOKEN_LABEL",
 	"KEK_HSM_KEY_LABEL",
@@ -329,6 +350,16 @@ func TestEnvExampleNoDrift(t *testing.T) {
 	consumed := collectConsumedKeys(t, root)
 	documented := parseEnvExampleKeys(t, envExamplePath(t, root))
 
+	missing := missingDocumentedKeys(consumed, documented)
+	if len(missing) > 0 {
+		t.Errorf("以下 %d 個消費中的環境變數未記載於專案根 .env.example（或加入 driftAllowlist）：\n  %s\n"+
+			"若為運維可調設定：補入 .env.example；若為 compose 拓撲/測試/系統專用：加入 driftAllowlist。",
+			len(missing), strings.Join(missing, "\n  "))
+	}
+}
+
+// missingDocumentedKeys is shared with the declaration-removal control.
+func missingDocumentedKeys(consumed, documented map[string]bool) []string {
 	var missing []string
 	for k := range consumed {
 		if driftAllowlist[k] || documented[k] {
@@ -337,11 +368,7 @@ func TestEnvExampleNoDrift(t *testing.T) {
 		missing = append(missing, k)
 	}
 	sort.Strings(missing)
-	if len(missing) > 0 {
-		t.Errorf("以下 %d 個消費中的環境變數未記載於專案根 .env.example（或加入 driftAllowlist）：\n  %s\n"+
-			"若為運維可調設定：補入 .env.example；若為 compose 拓撲/測試/系統專用：加入 driftAllowlist。",
-			len(missing), strings.Join(missing, "\n  "))
-	}
+	return missing
 }
 
 // TestEnvExampleNoInlineComments 防回歸：.env.example 作 compose env_file 消費時，

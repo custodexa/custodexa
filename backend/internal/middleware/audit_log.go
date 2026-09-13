@@ -147,7 +147,15 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		// 脫敏敏感欄位
 		maskedBody := ""
 		if bodyData != nil {
-			masked := audit.MaskSensitiveFields(bodyData)
+			// 端點取自**伺服端的路由註冊事實**（gin 的路由樣板＋方法），
+			// 不取自 URL 路徑字串、更不取自請求的任何欄位——否則呼叫端只要
+			// 宣告一個寬鬆端點，就能讓自己的憑證原樣寫進刪不掉的審計列。
+			// 未匹配任何路由時 FullPath() 為空，遮罩退化為只套全域集（安全側）。
+			endpoint := c.Request.Method + " " + c.FullPath()
+			if c.FullPath() == "" {
+				endpoint = ""
+			}
+			masked := audit.MaskSensitiveFields(endpoint, bodyData)
 			if data, err := json.Marshal(masked); err == nil {
 				maskedBody = string(data)
 			}

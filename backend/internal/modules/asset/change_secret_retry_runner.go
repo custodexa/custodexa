@@ -142,6 +142,7 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 		r.noteFailure(cand, model.ChangeSecretReasonRetrySecretUnavailable, err)
 		return false
 	}
+	defer secret.Destroy()
 	asset, err := r.assets.GetByID(cand.AssetID)
 	if err != nil {
 		r.noteFailure(cand, model.ChangeSecretReasonAssetLookupFailed, err)
@@ -162,11 +163,12 @@ func (r *ChangeSecretRetryRunner) RetryOne(cand *model.ChangeSecretCandidate) bo
 	if cand.SecretType == model.ChangeSecretTypeSSHKey {
 		newSecret = secret.PrivateKey
 	}
-	if err := r.executors(channel).Verify(ctx, rt, newSecret); err != nil {
+	if err := withProtocolSecret(newSecret, func(next []byte) error { return r.executors(channel).Verify(ctx, rt, next) }); err != nil {
 		r.noteFailure(cand, model.ChangeSecretReasonRetryLoginFailed, err)
 		return false
 	}
 
+	secret.Destroy()
 	if err := r.candidates.Promote(ctx, cand); err != nil {
 		r.noteFailure(cand, model.ChangeSecretReasonPromoteFailed, err)
 		return false

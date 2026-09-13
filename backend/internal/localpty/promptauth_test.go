@@ -4,6 +4,7 @@ package localpty
 
 import (
 	"bytes"
+	"github.com/custodexa/backend/internal/material"
 	"os"
 	"strings"
 	"sync"
@@ -131,7 +132,7 @@ func readRaw(t *testing.T, f *os.File, d time.Duration) []byte {
 // 注入後的回顯（到第一個換行為止）也不外流
 func TestPromptAuthInjectsAndHidesPrompt(t *testing.T) {
 	a, slave := newInjector(t, PasswordAuth{
-		Password: "pw-sentinel", Prompt: testPrompt, RequireCanonical: true,
+		Password: material.Adopt([]byte("pw-sentinel")), Prompt: testPrompt, RequireCanonical: true,
 	})
 	setLineState(t, slave, true, false) // client 正在讀密碼
 	col := startCollector(a)
@@ -163,7 +164,7 @@ func TestPromptAuthInjectsAndHidesPrompt(t *testing.T) {
 // 且前半段不得先漏到錄影
 func TestPromptAuthSplitPrompt(t *testing.T) {
 	a, slave := newInjector(t, PasswordAuth{
-		Password: "pw", Prompt: testPrompt, RequireCanonical: true,
+		Password: material.Adopt([]byte("pw")), Prompt: testPrompt, RequireCanonical: true,
 	})
 	setLineState(t, slave, true, false)
 	col := startCollector(a)
@@ -184,7 +185,7 @@ func TestPromptAuthSplitPrompt(t *testing.T) {
 // 時不得注入——否則使用者可用查詢結果誘出密碼
 func TestPromptAuthOnlyAtEndOfChunk(t *testing.T) {
 	a, slave := newInjector(t, PasswordAuth{
-		Password: "pw", Prompt: testPrompt, RequireCanonical: true,
+		Password: material.Adopt([]byte("pw")), Prompt: testPrompt, RequireCanonical: true,
 	})
 	setLineState(t, slave, true, false)
 	col := startCollector(a)
@@ -205,7 +206,7 @@ func TestPromptAuthOnlyAtEndOfChunk(t *testing.T) {
 // 剛好以提示字串結尾也不得注入
 func TestPromptAuthRequiresPasswordLineState(t *testing.T) {
 	a, slave := newInjector(t, PasswordAuth{
-		Password: "pw", Prompt: testPrompt, RequireCanonical: true,
+		Password: material.Adopt([]byte("pw")), Prompt: testPrompt, RequireCanonical: true,
 	})
 	setLineState(t, slave, false, false) // readline 互動中
 	col := startCollector(a)
@@ -226,7 +227,7 @@ func TestPromptAuthRequiresPasswordLineState(t *testing.T) {
 // （例如 `\c db u otherhost`），此時把密碼送出去就是外洩
 func TestPromptAuthInjectsOnlyOnce(t *testing.T) {
 	a, slave := newInjector(t, PasswordAuth{
-		Password: "pw", Prompt: testPrompt, RequireCanonical: true,
+		Password: material.Adopt([]byte("pw")), Prompt: testPrompt, RequireCanonical: true,
 	})
 	setLineState(t, slave, true, false)
 	col := startCollector(a)
@@ -275,16 +276,16 @@ func TestPromptAuthNoAuthIsPassthrough(t *testing.T) {
 
 // TestPromptPrefixLen 尾端部分命中的長度計算（跨 read 切斷的辨識基礎）
 func TestPromptPrefixLen(t *testing.T) {
-	p := []byte("Password: ")
+	p := []byte("Password: material.Adopt([]byte(")
 	cases := []struct {
 		data string
 		want int
 	}{
-		{"xxPassword", 8},
+		{"))xxPassword", 8},
 		{"xxPass", 4},
 		{"xx", 0},
-		{"Password: ", 0}, // 完整命中由 HasSuffix 處理，不算前綴
-		{"P", 1},
+		{"Password: material.Adopt([]byte(", 0}, // 完整命中由 HasSuffix 處理，不算前綴
+		{"))P", 1},
 	}
 	for _, c := range cases {
 		if got := promptPrefixLen([]byte(c.data), p); got != c.want {

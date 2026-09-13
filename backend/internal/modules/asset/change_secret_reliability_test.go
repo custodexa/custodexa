@@ -119,14 +119,14 @@ func (f *csFixture) storedPassword(t *testing.T) string {
 	t.Helper()
 	creds, err := f.assets.GetWithCredentialsForAccount(f.assetID, f.accountID)
 	require.NoError(t, err)
-	return creds.Password
+	return secretText(t, creds.Password)
 }
 
 func (f *csFixture) storedPrivateKey(t *testing.T) string {
 	t.Helper()
 	creds, err := f.assets.GetWithCredentialsForAccount(f.assetID, f.accountID)
 	require.NoError(t, err)
-	return creds.PrivateKey
+	return secretText(t, creds.PrivateKey)
 }
 
 // --- 候選先於遠端落庫／成功路徑 ---

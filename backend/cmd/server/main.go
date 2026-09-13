@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
@@ -24,6 +25,7 @@ import (
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/observability"
+	"github.com/custodexa/backend/internal/prochardening"
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/internal/seal"
 	"github.com/custodexa/backend/internal/sshproxy"
@@ -72,8 +74,12 @@ var oidcIssuerDeclarationDigest = identity.DedicatedIssuerDeclarationDigest(nil)
 // **同一份段 2 邏輯、兩種失敗處置**：分歧只落在本檔的呼叫端（下方兩個分支），
 // runStage2 內不做模式分支。
 func main() {
+	if err := prochardening.Harden(); err != nil {
+		log.Fatalf("process hardening failed: %v", err)
+	}
 	s1 := runStage1()
 	defer database.Close()
+	defer s1.closeStartupVault()
 
 	// http.Server 的 Handler 固定為可換手層：監聽於段 1 即開放，
 	// 解封成功後才把段 2 的完整 router 換上。
@@ -85,29 +91,28 @@ func main() {
 
 	var (
 		machine *seal.Machine
-		graph   *appGraph
 		// sealOnlyHandler 為獨立解封監聽的 handler；nil 代表不另開監聽。
 		sealOnlyHandler http.Handler
 		shutdown        func(context.Context) error
 	)
 
-	// 來源網段組態在**任何模式下都要解析**：A／C 模式過去一律傳 nil，
-	// 於是設了 SEAL_UNSEAL_ALLOWED_CIDRS 的部署以為來源受限、實際完全沒有生效，
-	// 而打錯的網段也不會有人發現。解析失敗即拒絕啟動。
-	allowedSources, err := s1.cfg.Seal.ParseAllowedCIDRs()
-	if err != nil {
-		log.Fatalf("解封端點的來源網段組態不合法（拒絕啟動）: %v", err)
+	failStartup := func(format string, args ...any) {
+		if shutdown != nil {
+			_ = shutdown(context.Background())
+		}
+		s1.closeStartupVault()
+		log.Fatalf(format, args...)
 	}
 
-	if s1.sealedMode() {
+	{
 		w, err := newSealMachine(s1, swap)
 		if err != nil {
-			log.Fatalf("建立封印狀態機失敗（拒絕開放監聽）: %v", err)
+			failStartup("建立封印狀態機失敗（拒絕開放監聽）: %v", err)
 		}
 		machine = w.machine
 		r, err := newEngine(s1, true)
 		if err != nil {
-			log.Fatalf("建立段 1 router 失敗（拒絕開放監聽）: %v", err)
+			failStartup("建立段 1 router 失敗（拒絕開放監聽）: %v", err)
 		}
 		registerRoutes(r, sealedStageOneDeps(stageOneRouteConfig{
 			corsMiddleware: s1.corsMiddleware,
@@ -118,7 +123,7 @@ func main() {
 		if w.admin != nil {
 			sr, err := newEngine(s1, true)
 			if err != nil {
-				log.Fatalf("建立解封端點獨立監聽的 router 失敗（拒絕開放監聽）: %v", err)
+				failStartup("建立解封端點獨立監聽的 router 失敗（拒絕開放監聽）: %v", err)
 			}
 			registerRoutes(sr, sealedStageOneDeps(stageOneRouteConfig{
 				corsMiddleware: s1.corsMiddleware,
@@ -135,52 +140,21 @@ func main() {
 				err = snap.Services.Release(ctx)
 			}
 			machine.WaitCleanup()
+			s1.closeStartupVault()
 			if s1.journal != nil {
 				_ = s1.journal.Close()
 			}
 			return err
 		}
-		log.Println("[Seal] KEK_PROVIDER=ui：已封印啟動，段 2 延後至解封成功後執行")
-	} else {
-		// A（env）／C（kms／hsm）模式：段 2 於啟動時連續執行，
-		// 任一失敗即殺行程——啟動期無人可回覆，續存無意義。
-		g, err := runStage2(context.Background(), s1, s1.kekProvider)
-		if err != nil {
-			log.Fatalf("初始化服務失敗: %v", err)
+		if s1.sealedMode() {
+			log.Printf("[Seal] KEK_PROVIDER=%s：已封存啟動，段 2 延後至解封成功後執行", s1.kekDecision.Mode)
+		} else {
+			result, err := machine.Unseal(context.Background(), seal.UnsealRequest{SourceKey: "startup", SourceDigest: fmt.Sprintf("%x", sha256.Sum256([]byte("startup")))})
+			if err != nil {
+				failStartup("初始化服務失敗（拒絕開放監聽）: %v", err)
+			}
+			publishStage2(result.Services, machine, swap, s1.journal, &bootstrapPendingState{})
 		}
-		graph = g
-		machine = seal.NewUnsealed(g)
-		sealHandler := api.NewSealHandler(machine, nil)
-		sealHandler.SetSourceControls(s1.cfg.Seal.TrustedProxyConfigured(), allowedSources, "")
-		// 守衛粗狀態：管理介面橫幅輪詢的資料出口，A／C 模式在此接線；
-		// B 模式在 sealwire.go 的 newWiredSealHandler 接線
-		sealHandler.SetInstanceGuardProbe(instanceGuardStatusProbe)
-		// **A／C 模式不建立獨立解封監聽**，且明說理由：該模式恆 unsealed，
-		// 解封端點只會回 409，另開一個監聽面不會增加任何運維能力，
-		// 卻會多一個對外開放的埠。組態被忽略時必須留下可查的一行。
-		if addr := s1.cfg.Seal.UnsealBindAddr; addr != "" {
-			log.Printf("[Seal] 已設 SEAL_UNSEAL_BIND_ADDR=%s，但目前為 %s 模式（恆解封）：不建立獨立解封監聽，該組態僅在 KEK_PROVIDER=ui 下生效",
-				addr, s1.kekDecision.Mode)
-		}
-		r, err := newEngine(s1, false)
-		if err != nil {
-			log.Fatalf("建立 router 失敗（拒絕開放監聽）: %v", err)
-		}
-		deps := g.deps
-		deps.sealGate = sealGateMiddleware(func() bool {
-			return machine.Snapshot().State == seal.StateUnsealed
-		})
-		deps.seal = sealHandler
-		// 金鑰清冊的封印狀態欄：A／C 模式恆 unsealed，解封時點即啟動時點
-		// ——狀態查詢在各模式下形狀一致是 spec 明文要求，不因「本模式沒有封印期」
-		// 而省略欄位（省略會逼前端寫兩套判斷）。
-		startedAt := time.Now()
-		deps.keyManagement.SetSealStateProbe(func() (string, time.Time) {
-			return string(machine.Snapshot().State), startedAt
-		})
-		registerRoutes(r, deps)
-		swap.Set(r)
-		shutdown = func(ctx context.Context) error { return graph.Release(ctx) }
 	}
 
 	// 封印狀態指標的資料源。
@@ -245,7 +219,7 @@ func main() {
 	// 而解封實際上只能從主監聽進來——部署方相信的隔離根本沒有發生。
 	listeners, err := openListeners(srv, sealSrv)
 	if err != nil {
-		log.Fatalf("開放監聽失敗（拒絕啟動）: %v", err)
+		failStartup("開放監聽失敗（拒絕啟動）: %v", err)
 	}
 	if sealSrv != nil {
 		log.Printf("[Seal] 解封端點另行繫結於 %s（僅 seal 端點與健康檢查；主監聽上的解封一律拒絕）",
@@ -538,9 +512,9 @@ type routeDeps struct {
 	authorizationService *authz.AssetAuthorizationService
 
 	// API handlers（依註冊順序排列，便於與 registerRoutes 對照）
-	seal                  *api.SealHandler
-	auth                  *api.AuthHandler
-	securityPolicy        *api.SecurityPolicyHandler
+	seal           *api.SealHandler
+	auth           *api.AuthHandler
+	securityPolicy *api.SecurityPolicyHandler
 	// policyGroup 政策組管理（規範條文與安全設定的對照）：讀取 admin 與 auditor，
 	// 寫入限 admin，且是全部對照寫入的唯一入口
 	policyGroup *api.PolicyGroupHandler

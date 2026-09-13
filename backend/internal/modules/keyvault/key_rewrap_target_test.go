@@ -140,7 +140,7 @@ func TestLocalRewrapTargetSameMaterialSameKeyRef(t *testing.T) {
 func TestDelegatedRewrapTargetFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	// factory 未注入：已知模式一律「尚未提供」
-	for _, mode := range []string{RewrapTargetModeKMS, RewrapTargetModeHSM} {
+	for _, mode := range []string{RewrapTargetModeKMS, RewrapTargetModeHSM, RewrapTargetModeVault, RewrapTargetModeGCP} {
 		target, err := NewDelegatedRewrapTarget(ctx, mode, "arn:aws:kms:ap-northeast-1:1:key/abc", nil)
 		if !errors.Is(err, ErrRewrapTargetUnsupported) {
 			t.Fatalf("%s 未注入 factory 應回 ErrRewrapTargetUnsupported，得 %v", mode, err)
@@ -297,6 +297,18 @@ func TestRewrapKEKRevalidatesTargetInvariant(t *testing.T) {
 			&RewrapTarget{mode: RewrapTargetModeLocal, material: []byte(good)},
 			ErrRewrapTargetInvariant,
 		},
+		{"gcp-mode-local-reference-mismatch", &RewrapTarget{mode: RewrapTargetModeGCP, provider: goodProvider}, ErrRewrapTargetInvariant},
+		{"gcp-missing-provider", &RewrapTarget{mode: RewrapTargetModeGCP}, ErrRewrapTargetInvariant},
+		{
+			"vault-mode-local-reference-mismatch",
+			&RewrapTarget{mode: RewrapTargetModeVault, provider: goodProvider},
+			ErrRewrapTargetInvariant,
+		},
+		{
+			"vault-missing-provider",
+			&RewrapTarget{mode: RewrapTargetModeVault},
+			ErrRewrapTargetInvariant,
+		},
 		{
 			"手寫 literal：模式不在白名單",
 			&RewrapTarget{mode: "bogus", provider: goodProvider, material: []byte(good)},
@@ -338,4 +350,67 @@ func TestRewrapTargetDestroyZeroesMaterial(t *testing.T) {
 		}
 	}
 	target.Destroy() // 冪等：handler 與服務層各登記一次 defer
+}
+
+// vaultTargetFixture changes only identity; cryptographic behavior is a test fixture.
+type vaultTargetFixture struct {
+	crypto.KEKProvider
+	id string
+}
+
+func (p *vaultTargetFixture) KeyRef() crypto.KeyRef {
+	return crypto.KeyRef{Provider: crypto.KeyRefProviderVault, KeyID: p.id}
+}
+func (p *vaultTargetFixture) FormatTag() string { return crypto.WrappedFormatVault }
+
+func TestDelegatedRewrapTargetFailsClosedVault(t *testing.T) {
+	local, err := crypto.NewEnvKEKProvider(kmTestKey(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	factory := func(context.Context, string, string) (crypto.KEKProvider, error) {
+		return &vaultTargetFixture{KEKProvider: local, id: "vault:aHR0cHM6Ly92YXVsdC5leGFtcGxl:transit:key"}, nil
+	}
+	target, err := NewDelegatedRewrapTarget(context.Background(), RewrapTargetModeVault, "reference", factory)
+	if err != nil || target.Validate() != nil || target.Mode() != RewrapTargetModeVault || target.IsLocal() {
+		t.Fatal("valid Vault registration refused")
+	}
+	wrong := func(context.Context, string, string) (crypto.KEKProvider, error) { return local, nil }
+	target, err = NewDelegatedRewrapTarget(context.Background(), RewrapTargetModeVault, "reference", wrong)
+	if target != nil || !errors.Is(err, ErrRewrapTargetInvariant) {
+		t.Fatal("mode/reference mismatch accepted")
+	}
+}
+
+// gcpTargetFixture exercises registration without representing a remote driver.
+type gcpTargetFixture struct {
+	crypto.KEKProvider
+	id string
+}
+
+func (p *gcpTargetFixture) KeyRef() crypto.KeyRef {
+	return crypto.KeyRef{Provider: crypto.KeyRefProviderGCP, KeyID: p.id}
+}
+func (p *gcpTargetFixture) FormatTag() string { return crypto.WrappedFormatGCP }
+func TestDelegatedRewrapTargetFailsClosedGCP(t *testing.T) {
+	local, err := crypto.NewEnvKEKProvider(kmTestKey(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := "projects/test-project/locations/global/keyRings/test-ring/cryptoKeys/key"
+	factory := func(_ context.Context, mode, key string) (crypto.KEKProvider, error) {
+		if mode != RewrapTargetModeGCP || key != ref {
+			t.Fatal("target reference changed")
+		}
+		return &gcpTargetFixture{KEKProvider: local, id: key}, nil
+	}
+	target, err := NewDelegatedRewrapTarget(context.Background(), RewrapTargetModeGCP, ref, factory)
+	if err != nil || target.Validate() != nil || target.IsLocal() || target.KeyRef().KeyID != ref {
+		t.Fatal("valid GCP registration refused")
+	}
+	wrong := func(context.Context, string, string) (crypto.KEKProvider, error) { return local, nil }
+	target, err = NewDelegatedRewrapTarget(context.Background(), RewrapTargetModeGCP, ref, wrong)
+	if target != nil || !errors.Is(err, ErrRewrapTargetInvariant) {
+		t.Fatal("mode/reference mismatch accepted")
+	}
 }

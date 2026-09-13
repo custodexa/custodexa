@@ -155,6 +155,9 @@ export const AUDIT_MECHANISM_VALUES = [
   // 角色指派與檢查點鏈不符：與 audit_chain_content 分開——那一支說的是
   // 已封區間的審計紀錄被動過，本支說的是權限本身被動過而無留痕，處置不同
   'role_state_integrity',
+  // 資料金鑰重新解封失敗：與 kek_retirement 分開——那一支說的是退役收尾沒收斂
+  //（服務不受影響），本支說的是資料現在讀不出也寫不進去，急迫性不同
+  'dek_unwrap',
 ]
 
 // AUDIT_ACTIONS[v] = { label(getter→t), tagType }；介面與 i18n 前相同
@@ -237,6 +240,8 @@ export const AUDIT_CAUSE_VALUES = [
   // 角色指派對帳不符：最近一個含快照的檢查點加上其後的角色指派紀錄
   // 推不出現行狀態
   'role_state_mismatch',
+  // 資料金鑰連續解封失敗：保管處不可達、逾時或拒絕；不回退到任何舊材料
+  'dek_unwrap_failed',
 ]
 
 export const AUDIT_CAUSES = {}

@@ -96,7 +96,9 @@ func TestUpdateAuditDiff(t *testing.T) {
 
 // TestFullNameNotMasked full_name/local_display_name 不再被脫敏（非機密）
 func TestFullNameNotMasked(t *testing.T) {
-	masked := audit.MaskSensitiveFields(map[string]interface{}{
+	// 端點傳空字串：本案守的是**全域集**的判定（full_name 在任一端點皆非機密），
+	// 空端點恰好只套全域集，故是這條性質最貼切的輸入。
+	masked := audit.MaskSensitiveFields("", map[string]interface{}{
 		"full_name":          "Alice Wang",
 		"local_display_name": "小王",
 		"password":           "secret",

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -184,27 +185,45 @@ func TestKEKMatrixRow7_DelegatedWithLocalKey(t *testing.T) {
 
 // 列 8：委託組態不齊／PIN 兩鍵衝突 → 拒啟動，錯誤**逐鍵**列出
 func TestKEKMatrixRow8_DelegatedConfigIncomplete(t *testing.T) {
-	t.Run("kms 缺兩鍵逐鍵列出", func(t *testing.T) {
+	// **語義變更（委託拓撲與憑證改由介面管理）**：
+	// kms 分支的「逐鍵齊備」只剩服務商一鍵。金鑰識別、區域、Vault 位址／角色與
+	// 全部憑證都不再自環境取得——拓撲讀自資料庫（啟動期尚未連線）、秘密來自解封
+	// 世代（啟動期尚不存在），故它們的齊備驗證延後至 provider 建構期
+	// （ValidateKMSSettings，改列欄位名常數）。列 8 於 kms 分支因此只剩這一格。
+	t.Run("kms 缺服務商鍵", func(t *testing.T) {
 		err := wantReject(t, map[string]string{
 			EnvKeyKEKProvider: KEKModeKMS,
-			EnvKeyKMSProvider: "aws",
 		}, false, "8")
-		for _, k := range []string{EnvKeyKMSKeyID, EnvKeyKMSRegion} {
-			if !strings.Contains(err.Error(), k) {
-				t.Errorf("錯誤未逐鍵列出 %s：%v", k, err)
-			}
-		}
-		if strings.Contains(err.Error(), EnvKeyKMSProvider) {
-			t.Errorf("已設的鍵不應列為缺項：%v", err)
+		if !strings.Contains(err.Error(), EnvKeyKMSProvider) {
+			t.Errorf("錯誤未指名 %s：%v", EnvKeyKMSProvider, err)
 		}
 	})
-	t.Run("kms 鍵值為純空白視同缺項", func(t *testing.T) {
+	t.Run("kms 服務商為純空白視同缺項", func(t *testing.T) {
 		wantReject(t, map[string]string{
 			EnvKeyKEKProvider: KEKModeKMS,
-			EnvKeyKMSProvider: "aws",
-			EnvKeyKMSKeyID:    "   ",
-			EnvKeyKMSRegion:   "ap-northeast-1",
+			EnvKeyKMSProvider: "   ",
 		}, false, "8")
+	})
+	t.Run("kms 服務商在值域外", func(t *testing.T) {
+		wantReject(t, map[string]string{
+			EnvKeyKEKProvider: KEKModeKMS,
+			EnvKeyKMSProvider: "azure",
+		}, false, "8")
+	})
+	t.Run("其餘欄位的齊備驗證改於建構期（不放寬，只換位置）", func(t *testing.T) {
+		d := wantAccept(t, map[string]string{
+			EnvKeyKEKProvider: KEKModeKMS,
+			EnvKeyKMSProvider: "aws",
+		}, false, KEKModeKMS, "9")
+		err := ValidateKMSSettings(d.KMS)
+		if err == nil {
+			t.Fatal("建構期接受了只有服務商的委託設定")
+		}
+		for _, field := range []string{FieldKMSKeyID, FieldKMSRegion, FieldAWSAccessKeyID, FieldAWSSecretAccessKey} {
+			if !strings.Contains(err.Error(), field) {
+				t.Errorf("建構期錯誤未逐項列出 %s：%v", field, err)
+			}
+		}
 	})
 	t.Run("hsm PIN 與 PIN_FILE 皆未設", func(t *testing.T) {
 		err := wantReject(t, map[string]string{
@@ -238,11 +257,11 @@ func TestKEKMatrixRow9_DelegatedComplete(t *testing.T) {
 		d := wantAccept(t, map[string]string{
 			EnvKeyKEKProvider: KEKModeKMS,
 			EnvKeyKMSProvider: "aws",
-			EnvKeyKMSKeyID:    "alias/custodexa-kek",
-			EnvKeyKMSRegion:   "ap-northeast-1",
 		}, false, KEKModeKMS, "9")
-		if d.KMS.KeyID != "alias/custodexa-kek" {
-			t.Errorf("KMS 組態未帶回：%+v", d.KMS)
+		// 齊備＝服務商可解析。**判定結果不得攜帶拓撲或秘密**：它們此刻還不存在，
+		// 若出現即代表又有一條自環境取得委託憑證的路徑。
+		if !reflect.DeepEqual(d.KMS, KMSSettings{Provider: "aws"}) {
+			t.Errorf("KMS 判定結果攜帶了拓撲或秘密：%+v", d.KMS)
 		}
 	})
 	t.Run("hsm（pkcs11 build）", func(t *testing.T) {
@@ -362,7 +381,7 @@ func TestDefaultSecretViolationsModeAware(t *testing.T) {
 			env := map[string]string{EnvKeyKEKProvider: mode}
 			switch mode {
 			case KEKModeKMS:
-				env[EnvKeyKMSProvider], env[EnvKeyKMSKeyID], env[EnvKeyKMSRegion] = "aws", "alias/k", "ap-northeast-1"
+				env[EnvKeyKMSProvider] = "aws"
 			case KEKModeHSM:
 				env[EnvKeyHSMModule], env[EnvKeyHSMTokenLabel] = "/m.so", "tok"
 				env[EnvKeyHSMKeyLabel], env[EnvKeyHSMPin] = "kek", "1234"

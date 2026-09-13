@@ -423,9 +423,9 @@ func TestGetWithCredentialsDefault(t *testing.T) {
 	// 核心驗證：密碼和私鑰已解密為明文，且 username 取自帳號而非 assets 內嵌欄位
 	assert.Equal(t, uint(7), creds.AccountID)
 	assert.Equal(t, "svc-account", creds.Username, "username 應取自帳號")
-	assert.Equal(t, password, creds.Password, "密碼應該被解密為明文")
-	assert.Equal(t, privateKey, creds.PrivateKey, "私鑰應該被解密為明文")
-	assert.NotEqual(t, encryptedPassword, creds.Password, "解密後不應等於密文")
+	assert.Equal(t, password, secretText(t, creds.Password), "密碼應該被解密為明文")
+	assert.Equal(t, privateKey, secretText(t, creds.PrivateKey), "私鑰應該被解密為明文")
+	assert.NotEqual(t, encryptedPassword, secretText(t, creds.Password), "解密後不應等於密文")
 }
 
 // TestGetWithCredentialsForAccount_CrossAssetRejected 跨資產 account id 注入

@@ -15,9 +15,11 @@ import (
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/kernel"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/keyvault"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"github.com/custodexa/backend/pkg/crypto"
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
@@ -76,7 +78,8 @@ type AssetService struct {
 	// enc:v 密文——「cutover 後只產 enc:a1」是結構保證而非執行期政策判斷。
 	// 建構時注入（三職拆解）：不再於建構期由 env 材料自建 codec、
 	// 也不再有 SetCodec 事後覆寫，使無本地 KEK 材料的模式（ui／kms／hsm）可建構
-	crypto crypto.ColumnCodec
+	crypto      crypto.ColumnCodec
+	bytesCrypto material.BytesColumnCodec
 	// resolver 憑證取密的單一入口（見 credential_resolver.go）。與 crypto 同一個
 	// codec 實例：兩份 codec 會讓寫入與讀取走不同的加密路徑而無人察覺
 	resolver  *CredentialResolver
@@ -145,12 +148,17 @@ func NewAssetService(codec crypto.ColumnCodec, guacdHost string, guacdPort int, 
 	if codec == nil {
 		return nil, fmt.Errorf("初始化資產服務失敗: codec 為必要參數（不得於建構期自 env 材料自建）")
 	}
+	bytesCodec, ok := codec.(material.BytesColumnCodec)
+	if !ok {
+		return nil, fmt.Errorf("asset service requires bytes column codec")
+	}
 	return &AssetService{
-		crypto:    codec,
-		resolver:  NewCredentialResolver(codec),
-		guacdHost: guacdHost,
-		guacdPort: guacdPort,
-		auditTx:   auditTx,
+		bytesCrypto: bytesCodec,
+		crypto:      codec,
+		resolver:    NewCredentialResolver(bytesCodec),
+		guacdHost:   guacdHost,
+		guacdPort:   guacdPort,
+		auditTx:     auditTx,
 	}, nil
 }
 
@@ -981,8 +989,17 @@ func (s *AssetService) GetWithCredentialsForAccount(assetID, accountID uint) (*A
 	if rerr == nil {
 		creds.AccountID = resolved.AccountID
 		creds.Username = resolved.Username
-		creds.Password = resolved.Password
-		creds.PrivateKey = resolved.PrivateKey
+		defer resolved.Destroy()
+		var err error
+		creds.Password, err = material.Move(resolved.Password)
+		if err != nil {
+			return nil, err
+		}
+		creds.PrivateKey, err = material.Move(resolved.PrivateKey)
+		if err != nil {
+			creds.Destroy()
+			return nil, err
+		}
 		return creds, nil
 	}
 	if !errors.Is(rerr, ErrAssetNoUsableAccount) {
@@ -1013,22 +1030,26 @@ func (s *AssetService) ListK8sPods(ctx context.Context, id uint) ([]k8sproxy.Pod
 	if err != nil {
 		return nil, err
 	}
+	defer creds.Destroy()
 	asset, token := creds.Asset, creds.Password
 	if asset.Protocol != model.ProtocolK8s {
 		return nil, ErrInvalidProtocol
 	}
 	// 零帳號＝空 token：kubernetes client 會以匿名身分打叢集
-	if creds.AccountID == 0 || token == "" {
+	if creds.AccountID == 0 || token.IsEmpty() {
 		return nil, ErrAssetNoUsableAccount
 	}
-	target := k8sproxy.Target{
-		Server:    fmt.Sprintf("https://%s:%d", asset.Host, asset.Port),
-		Token:     token,
-		Namespace: asset.K8sNamespace,
-		CACert:    asset.K8sCACert,
-		Insecure:  asset.K8sInsecureSkipTLS,
-	}
-	return k8sproxy.ListPods(ctx, target)
+	return material.Use(token, func(raw []byte) ([]k8sproxy.PodInfo, error) {
+		// The Kubernetes SDK requires an immutable token; its copies are not erased.
+		target := k8sproxy.Target{
+			Server:    fmt.Sprintf("https://%s:%d", asset.Host, asset.Port),
+			Token:     string(raw),
+			Namespace: asset.K8sNamespace,
+			CACert:    asset.K8sCACert,
+			Insecure:  asset.K8sInsecureSkipTLS,
+		}
+		return k8sproxy.ListPods(ctx, target)
+	})
 }
 
 // k8sTarget 組 K8s 資產的連線目標（含選定 pod/container）。
@@ -1038,23 +1059,27 @@ func (s *AssetService) k8sTarget(id uint, pod, container string) (k8sproxy.Targe
 	if err != nil {
 		return k8sproxy.Target{}, err
 	}
+	defer creds.Destroy()
 	asset, token := creds.Asset, creds.Password
 	if asset.Protocol != model.ProtocolK8s {
 		return k8sproxy.Target{}, ErrInvalidProtocol
 	}
 	// 同 ListK8sPods：空 token 一律拒，不以匿名身分做 exec／kubectl cp
-	if creds.AccountID == 0 || token == "" {
+	if creds.AccountID == 0 || token.IsEmpty() {
 		return k8sproxy.Target{}, ErrAssetNoUsableAccount
 	}
-	return k8sproxy.Target{
-		Server:    fmt.Sprintf("https://%s:%d", asset.Host, asset.Port),
-		Token:     token,
-		Namespace: asset.K8sNamespace,
-		Pod:       pod,
-		Container: container,
-		CACert:    asset.K8sCACert,
-		Insecure:  asset.K8sInsecureSkipTLS,
-	}, nil
+	return material.Use(token, func(raw []byte) (k8sproxy.Target, error) {
+		// The Kubernetes SDK retains an immutable token beyond this owner.
+		return k8sproxy.Target{
+			Server:    fmt.Sprintf("https://%s:%d", asset.Host, asset.Port),
+			Token:     string(raw),
+			Namespace: asset.K8sNamespace,
+			Pod:       pod,
+			Container: container,
+			CACert:    asset.K8sCACert,
+			Insecure:  asset.K8sInsecureSkipTLS,
+		}, nil
+	})
 }
 
 // K8sCopyToPod 上傳本地檔到 K8s 資產的指定 pod/container（kubectl cp）
@@ -1076,13 +1101,13 @@ func (s *AssetService) K8sCopyFromPod(ctx context.Context, id uint, pod, contain
 }
 
 // GetSftpPassword 解密 VNC SFTP 側車密碼（vnc-file-transfer；僅後端記憶體內使用）
-func (s *AssetService) GetSftpPassword(asset *model.Asset) (string, error) {
+func (s *AssetService) GetSftpPassword(asset *model.Asset) (*material.Secret, error) {
 	if asset == nil || !asset.SftpEnabled || asset.SftpPasswordEnc == "" {
-		return "", nil
+		return material.Adopt(nil), nil
 	}
-	pwd, err := s.crypto.DecryptFor(context.Background(), keyvault.RefAssetsSftpPassword, asset.SftpPasswordEnc)
+	pwd, err := s.bytesCrypto.DecryptBytesFor(context.Background(), keyvault.RefAssetsSftpPassword, asset.SftpPasswordEnc)
 	if err != nil {
-		return "", fmt.Errorf("解密 SFTP 密碼失敗: %w", err)
+		return nil, fmt.Errorf("解密 SFTP 密碼失敗: %w", err)
 	}
 	return pwd, nil
 }
@@ -1774,6 +1799,7 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 		return result, nil
 	}
 
+	defer creds.Destroy()
 	testResult := probe.run(s, ctx, creds, timeout)
 	if testResult.Success {
 		log.Printf("[TestConnection] 連線測試成功: Asset ID=%d, Probe=%s, Latency=%dms",
@@ -1789,6 +1815,7 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 // 吃 AssetCredentials 而非拆散的 asset+password：username 與密碼必須同帳號。
 // 由 connectionProbes["ssh"] 呼叫；timeout 已於分派前夾制。
 func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, timeout int) *ConnectionTestResult {
+	defer creds.Destroy()
 	asset := creds.Asset
 	result := &ConnectionTestResult{Protocol: string(asset.Protocol), TestedAt: time.Now()}
 	if s.hostKeys == nil {
@@ -1802,18 +1829,15 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	// 空密碼不包成 ssh.Password("")：對允許空密碼的伺服器，
 	// 空密碼認證可能「成功」而讓 UI 顯示資產可連——那是假象，不是可用憑證。
 	// 撥測只走密碼認證（金鑰撥測未實作），故無密碼即無從測起，直接判失敗
-	if creds.Password == "" {
+	if creds.Password.IsEmpty() {
 		result.setFailure(apierror.CodeAssetTestNoAccount, ErrorCodeNoUsableAccount)
 		return result
 	}
 
 	start := time.Now()
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", asset.Host, asset.Port), &ssh.ClientConfig{
-		User:            creds.Username,
-		Auth:            []ssh.AuthMethod{ssh.Password(creds.Password)},
-		HostKeyCallback: s.hostKeys.Callback(assetID),
-		Timeout:         time.Duration(timeout) * time.Second,
-	})
+	password := sshmaterial.NewPassword(creds.Password)
+	client, err := dialSSHProbe(context.Background(), fmt.Sprintf("%s:%d", asset.Host, asset.Port), creds.Username, password, s.hostKeys.Callback(assetID), time.Duration(timeout)*time.Second)
+	creds.Destroy()
 	result.LatencyMs = time.Since(start).Milliseconds()
 	if err != nil {
 		// 碼化：host key 變更與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）
@@ -1832,4 +1856,35 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 	result.Success = true
 	// 成功不帶 UI 文案：前端以 $t('assets.testSuccess') 自有文案提示
 	return result
+}
+
+func (s *AssetService) updateOwnedPassword(assetID, accountID uint, username string, secret *material.Secret) error {
+	if accountID == 0 {
+		return ErrAssetAccountNotFound
+	}
+	encrypted, err := material.Use(secret, func(raw []byte) (string, error) {
+		return s.bytesCrypto.EncryptBytesFor(context.Background(), keyvault.RefCredentialVersionPassword, raw)
+	})
+	if err != nil {
+		return fmt.Errorf("加密密碼失敗: %w", err)
+	}
+	return s.commitBindingSecret(assetID, accountID, username, model.ChangeSecretTypePassword, encrypted, "", "password", "更新帳號密碼失敗")
+}
+
+func (s *AssetService) updateOwnedPrivateKey(assetID, accountID uint, username string, secret *material.Secret) error {
+	if accountID == 0 {
+		return ErrAssetAccountNotFound
+	}
+	encrypted, err := material.Use(secret, func(raw []byte) (string, error) {
+		return s.bytesCrypto.EncryptBytesFor(context.Background(), keyvault.RefCredentialVersionPrivateKey, raw)
+	})
+	if err != nil {
+		return fmt.Errorf("加密私鑰失敗: %w", err)
+	}
+	return s.commitBindingSecret(assetID, accountID, username, model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
+}
+
+func dialSSHProbe(ctx context.Context, addr, user string, password *sshmaterial.Password, hostKey ssh.HostKeyCallback, timeout time.Duration) (*ssh.Client, error) {
+	defer password.Destroy()
+	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PasswordCallback(password.Callback)}, HostKeyCallback: hostKey, Timeout: timeout})
 }

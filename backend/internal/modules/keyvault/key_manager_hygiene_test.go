@@ -392,7 +392,7 @@ func TestBootstrapRaceFailsClosed(t *testing.T) {
 		t.Fatalf("provider: %v", err)
 	}
 	racer := &KeyManagerService{db: db, kek: p}
-	if err := racer.bootstrap(); err == nil || !strings.Contains(err.Error(), "競態") {
+	if err := racer.bootstrap(nil); err == nil || !strings.Contains(err.Error(), "競態") {
 		t.Fatalf("空表判定失效後 bootstrap 應 fail-close（競態錯誤），得 %v", err)
 	}
 	var n int64

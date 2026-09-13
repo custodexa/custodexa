@@ -136,7 +136,7 @@ func blockedMessage(fp HolderFingerprint, verdict ackVerdict) string {
 	if verdict == ackMismatch {
 		b.WriteString("  提供的 INSTANCE_GUARD_ACK 與當前持鎖者指紋不符（持鎖者已變更），請以上列 code 重新確認。\n")
 	}
-	b.WriteString("  風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封印期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。\n")
+	b.WriteString("  風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封存期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。\n")
 	b.WriteString("  處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。\n")
 	b.WriteString("  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，" +
 		"以管理員帳密重打確認碼 " + fp.Code + " 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=" + fp.Code +

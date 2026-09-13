@@ -22,15 +22,16 @@
     "aad_residue_impossible_state": "偵測到非終態格式密文殘值（不可能態：程式缺陷或資料庫直寫）",
     "checkpoint_anchor_dropped": "檢查點離機備份未送出（該檢查點無離機副本）",
     "audit_chain_structure_invalid": "檢查點鏈結構異常（簽章、鏈接或序號被動）",
-    "audit_chain_content_mismatch": "已封區間的審計紀錄與檢查點不符或缺失",
-    "audit_chain_content_extra_rows": "已封區間出現額外紀錄且其列級簽章有效（待人工確認）",
+    "audit_chain_content_mismatch": "已存證區間的審計紀錄與檢查點不符或缺失",
+    "audit_chain_content_extra_rows": "已存證區間出現額外紀錄且其列級簽章有效（待人工確認）",
     "audit_chain_verify_failed": "鏈驗證本身無法完成（機制狀態未知，非無異常）",
     "source_policy_unreadable": "判定點讀不到使用者的允許來源網段清單",
     "source_policy_corrupt": "使用者的允許來源網段清單字串無法解析（資料庫直寫或程式缺陷）",
     "offsite_upload_failed": "離機儲存上傳重試已達上限（該證據目前只有本機副本）",
     "offsite_upload_stalled": "離機儲存上傳反覆中斷（同一物件的傳輸租約已多次逾期）",
     "offsite_integrity_mismatch": "離機副本取回時內容與上傳當下不符（已拒絕交付）",
-    "role_state_mismatch": "角色指派與檢查點鏈不符（有變更未經應用程式留痕）"
+    "role_state_mismatch": "角色指派與檢查點鏈不符（有變更未經應用程式留痕）",
+    "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）"
   },
   "severity": {
     "high": "高風險",

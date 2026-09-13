@@ -78,5 +78,11 @@
       "title": "{product} test notification",
       "text": "This is a test notification used to verify that the channel is configured correctly."
     }
+  },
+  "kek_topology_changed": {
+    "default": {
+      "title": "Custodian settings changed",
+      "text": "{actor} changed the {provider} custodian settings: {before} -> {after}."
+    }
   }
 }

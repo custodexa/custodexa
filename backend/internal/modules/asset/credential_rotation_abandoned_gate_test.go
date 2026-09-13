@@ -83,7 +83,7 @@ func TestAbandonedRotationDoesNotCaptureLaterCandidate(t *testing.T) {
 
 	creds, err := f.assets.GetWithCredentialsForAccount(f.bindingOf(t, accountID).AssetID, accountID)
 	require.NoError(t, err)
-	assert.Equal(t, "plan-new-pass", creds.Password, "就位版本必須是剛轉正的那一組")
+	assert.Equal(t, "plan-new-pass", secretText(t, creds.Password), "就位版本必須是剛轉正的那一組")
 }
 
 // 未收斂的憑證拒絕拆分與脫離（與發起新一輪同一判準）

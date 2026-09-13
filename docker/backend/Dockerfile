@@ -169,4 +169,8 @@ RUN rm -f /bin/sh /bin/ash /bin/bash /usr/bin/sh /usr/bin/ash /usr/bin/bash
 
 EXPOSE 8080
 
+# This image expects the orchestrator to apply capability restrictions.
+# SETUID and SETGID switch DB CLI children to their dedicated identity.
+# CHOWN transfers temporary CA files to that identity.
+# IPC_LOCK allows process memory locking without the memlock limit.
 CMD ["./custodexa"]

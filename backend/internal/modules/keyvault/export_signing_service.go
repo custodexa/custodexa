@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/seal"
 	"log"
 
 	"github.com/custodexa/backend/internal/model"
@@ -18,6 +20,7 @@ import (
 // PCI 10.3.4）。選 Ed25519 而非 HMAC：
 // 驗證者（QSA）在組織外，公鑰可分發離線驗證，共享密鑰不可行
 type ExportSigningService struct {
+	gate *seal.MaterialGate
 	priv ed25519.PrivateKey
 	pub  ed25519.PublicKey
 }
@@ -30,7 +33,7 @@ type ExportSigningService struct {
 // 私鑰一律以 RefExportSigningPrivateKey 綁定 AAD 寫出 `enc:a1`——介面上沒有
 // Encrypt(plaintext)，建構上不可能寫出無 AAD 密文；既有 enc:v／legacy 密文
 // 由 DecryptFor 依前綴分派解密（strict 未啟用時）
-func NewExportSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*ExportSigningService, error) {
+func NewExportSigningService(db *gorm.DB, codec crypto.ColumnCodec) (result *ExportSigningService, resultErr error) {
 	ctx := context.Background()
 	var row model.ExportSigningKey
 	switch err := db.First(&row, 1).Error; {
@@ -41,10 +44,11 @@ func NewExportSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*ExportSign
 		}
 		priv, err := base64.StdEncoding.DecodeString(privRaw)
 		if err != nil || len(priv) != ed25519.PrivateKeySize {
+			material.Wipe(priv)
 			return nil, errors.New("簽章私鑰格式損毀")
 		}
 		key := ed25519.PrivateKey(priv)
-		return &ExportSigningService{priv: key, pub: key.Public().(ed25519.PublicKey)}, nil
+		return &ExportSigningService{gate: gateOf(codec), priv: key, pub: key.Public().(ed25519.PublicKey)}, nil
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		// 首啟生成
 	default:
@@ -52,6 +56,11 @@ func NewExportSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*ExportSign
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	defer func() {
+		if result == nil {
+			material.Wipe(priv)
+		}
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("生成簽章金鑰失敗: %w", err)
 	}
@@ -68,21 +77,40 @@ func NewExportSigningService(db *gorm.DB, codec crypto.ColumnCodec) (*ExportSign
 		return nil, fmt.Errorf("寫入簽章金鑰失敗: %w", err)
 	}
 	log.Printf("[ExportSigning] 已生成匯出簽章金鑰（Ed25519，公鑰 %s...）", row.PublicKey[:12])
-	return &ExportSigningService{priv: priv, pub: pub}, nil
+	return &ExportSigningService{gate: gateOf(codec), priv: priv, pub: pub}, nil
 }
 
 // Sign 簽 manifest bytes，回 base64 簽章
-func (s *ExportSigningService) Sign(data []byte) string {
+func (s *ExportSigningService) Sign(data []byte) (result string) {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return ""
+	}
+	defer lease.Finish(func(valid bool) {
+		if !valid {
+			result = ""
+		}
+	})
 	return base64.StdEncoding.EncodeToString(ed25519.Sign(s.priv, data))
 }
 
 // PublicKeyBase64 公鑰（base64，供下載端點與離線驗證）
 func (s *ExportSigningService) PublicKeyBase64() string {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return ""
+	}
+	defer lease.Finish(func(bool) {})
 	return base64.StdEncoding.EncodeToString(s.pub)
 }
 
 // VerifySignature 驗證（測試與文檔範例用；實務驗證者以公鑰離線驗）
 func (s *ExportSigningService) VerifySignature(data []byte, sigBase64 string) bool {
+	lease, err := s.gate.Borrow()
+	if err != nil {
+		return false
+	}
+	defer lease.Finish(func(bool) {})
 	sig, err := base64.StdEncoding.DecodeString(sigBase64)
 	if err != nil {
 		return false

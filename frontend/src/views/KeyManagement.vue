@@ -5,7 +5,15 @@
       :description="$t('keyManagement.description')"
     >
       <template #actions>
-        <el-button @click="loadInventory">
+        <el-button
+          type="danger"
+          :loading="sealing"
+          :disabled="loading || sealing || inventory.seal_state !== 'unsealed' || kekGuideMode === 'unknown'"
+          @click="handleSeal"
+        >
+          {{ $t('keyManagement.sealAction') }}
+        </el-button>
+        <el-button @click="refreshInventoryAndTopology">
           <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
@@ -69,6 +77,111 @@
       })"
     />
 
+    <!-- 委託保管處（拓撲）。只在委託部署出現；服務商由部署檔宣告故唯讀。
+         這裡的每一欄都是「上鎖的資料金鑰要送去哪裡解」的答案，憑證不在本頁 -->
+    <el-card
+      v-if="hasTopology"
+      v-loading="topologyLoading"
+      class="section-card topology-card"
+      data-test="kek-topology-card"
+    >
+      <template #header>
+        <div class="card-header">
+          <span>{{ $t('keyManagement.topoTitle') }}</span>
+          <el-button
+            v-if="!topologyEditing && !topologyReadonly"
+            text
+            type="primary"
+            class="topo-edit-btn"
+            @click="startTopologyEdit"
+          >
+            {{ $t('keyManagement.topoEdit') }}
+          </el-button>
+        </div>
+      </template>
+      <p class="topo-desc">
+        {{ $t('keyManagement.topoDesc') }}
+      </p>
+
+      <!-- 唯讀呈現 -->
+      <dl
+        v-if="!topologyEditing"
+        class="topo-grid"
+      >
+        <template
+          v-for="row in topologyRows"
+          :key="row.label"
+        >
+          <dt>{{ $t(row.label) }}</dt>
+          <dd class="topo-value">
+            {{ row.value || $t('keyManagement.topoUnset') }}
+          </dd>
+        </template>
+      </dl>
+      <p
+        v-if="!topologyEditing && topologyReadonly"
+        class="topo-hint"
+      >
+        {{ $t('keyManagement.topoNotEditable') }}
+      </p>
+      <p
+        v-if="!topologyEditing && topologyUpdatedText"
+        class="topo-hint"
+        data-test="kek-topology-updated"
+      >
+        {{ topologyUpdatedText }}
+      </p>
+
+      <!-- 編輯：只出現該服務商可改的欄位 -->
+      <div
+        v-if="topologyEditing"
+        class="topo-form"
+      >
+        <div
+          v-for="field in topologyEditableFields"
+          :key="field.model"
+          class="topo-field"
+        >
+          <span
+            :id="`kek-topo-${field.model}-label`"
+            class="kek-label"
+          >{{ $t(field.label) }}</span>
+          <el-input
+            v-model="topologyForm[field.model]"
+            class="topo-input"
+            spellcheck="false"
+            autocomplete="off"
+            :aria-labelledby="`kek-topo-${field.model}-label`"
+          />
+          <p
+            v-if="topologyInvalidFields.includes(field.model)"
+            class="kek-error"
+          >
+            {{ $t('keyManagement.topoFieldRejected') }}
+          </p>
+          <p
+            v-else-if="field.hint"
+            class="kek-hint"
+          >
+            {{ $t(field.hint) }}
+          </p>
+        </div>
+        <div class="card-actions">
+          <el-button @click="cancelTopologyEdit">
+            {{ $t('common.cancel') }}
+          </el-button>
+          <el-button
+            type="primary"
+            :loading="topologySaving"
+            :disabled="topologySaveDisabled"
+            @click="saveTopology"
+          >
+            {{ $t('keyManagement.topoSave') }}
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
     <!-- 金鑰政策鍵設定區（域收編）：
          提醒天數與清冊同頁；儲存後重載清冊，超齡提醒即時反映 -->
     <PolicyGroupStrip
@@ -80,6 +193,17 @@
       @reset="resetForm"
       @save="handleSavePolicies"
     />
+
+    <!-- 本機模式（env／ui）的一句白話：主金鑰本來就在行程記憶體，資料金鑰保留
+         時間仍可設定。**只說明、不擋設定**——本鍵在全部 KEK 模式皆可編輯，
+         依模式灰掉等於替機構決定它不需要這個旋鈕 -->
+    <p
+      v-if="kekGuideMode === 'env' || kekGuideMode === 'ui'"
+      class="dek-ttl-local-note"
+      data-test="dek-ttl-local-mode-note"
+    >
+      {{ $t('keyManagement.dekTtlLocalModeNote') }}
+    </p>
 
     <PolicyKeySections
       :sections="visibleSections"
@@ -442,9 +566,11 @@
         finish-status="success"
         class="rewrap-steps"
       >
-        <el-step :title="$t('keyManagement.rewrapStep1')" />
-        <el-step :title="$t('keyManagement.rewrapStep2')" />
-        <el-step :title="$t('keyManagement.rewrapStep3')" />
+        <el-step
+          v-for="key in rewrapStepTitleKeys"
+          :key="key"
+          :title="$t(key)"
+        />
       </el-steps>
 
       <div
@@ -502,9 +628,20 @@
               >{{ $t('keyManagement.rewrapTargetUnavailable') }}</span>
             </el-radio>
           </el-radio-group>
+          <!-- 委託目標的憑證不在本精靈收：它們只在解封頁輸入且只活在該解封世代 -->
+          <p
+            v-if="isDelegatedRewrapTarget"
+            class="kek-hint"
+            data-test="rewrap-delegated-note"
+          >
+            {{ $t('keyManagement.rewrapTargetDelegatedNote') }}
+          </p>
         </div>
 
+        <!-- 「新 KEK 只出現一次」只對本地目標成立：委託目標的材料由保管處保管，
+             使用者手上沒有需要抄寫的東西 -->
         <el-alert
+          v-if="!isDelegatedRewrapTarget"
           type="warning"
           :closable="false"
           show-icon
@@ -514,7 +651,7 @@
       </div>
 
       <div
-        v-else-if="rewrapStep === 1"
+        v-else-if="rewrapStep === 1 && !isDelegatedRewrapTarget"
         class="rewrap-body"
       >
         <el-alert
@@ -594,6 +731,100 @@
         </el-checkbox>
       </div>
 
+      <!-- 第 2 步（委託目標）：設定保管處。此處只收非秘密的目的地資訊；
+           連線用的憑證在解封時於解封頁提供，不經本精靈 -->
+      <div
+        v-else-if="rewrapStep === 1"
+        class="rewrap-body rewrap-target-body"
+      >
+        <p>{{ $t('keyManagement.rewrapTargetIntro', { provider: rewrapTargetLabel }) }}</p>
+        <div class="kek-field">
+          <span
+            id="kek-rewrap-keyref-label"
+            class="kek-label"
+          >{{ $t('keyManagement.rewrapKeyRefLabel') }}</span>
+          <el-input
+            v-model="rewrapKeyRef"
+            aria-labelledby="kek-rewrap-keyref-label"
+            class="target-input"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <p
+            v-if="rewrapKeyRefHint"
+            class="kek-hint"
+          >
+            {{ rewrapKeyRefHint }}
+          </p>
+        </div>
+        <div
+          v-for="field in rewrapTargetFields"
+          :key="field.model"
+          class="kek-field"
+        >
+          <span
+            :id="`kek-rewrap-${field.model}-label`"
+            class="kek-label"
+          >{{ $t(field.label) }}</span>
+          <el-input
+            v-model="rewrapTargetForm[field.model]"
+            :aria-labelledby="`kek-rewrap-${field.model}-label`"
+            class="target-input"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <p
+            v-if="field.hint"
+            class="kek-hint"
+          >
+            {{ $t(field.hint) }}
+          </p>
+        </div>
+        <p class="kek-hint">
+          {{ $t('keyManagement.rewrapTargetNoSecretHint') }}
+        </p>
+      </div>
+
+      <!-- 第 3 步（委託目標）：送出前預檢。重包會把資料金鑰的明文送到這個目的地去包，
+           故位址與金鑰識別攤開來要人逐項看過並確認 -->
+      <div
+        v-else-if="rewrapStep === 2 && isDelegatedRewrapTarget"
+        class="rewrap-body rewrap-preflight-body"
+        data-test="rewrap-preflight"
+      >
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="$t('keyManagement.rewrapPreflightTitle')"
+          :description="$t('keyManagement.rewrapPreflightDesc')"
+          class="rewrap-once-alert"
+        />
+        <dl class="topo-grid">
+          <dt>{{ $t('keyManagement.topoProvider') }}</dt>
+          <dd class="topo-value">
+            {{ rewrapTargetLabel }}
+          </dd>
+          <dt>{{ $t('keyManagement.rewrapPreflightAddress') }}</dt>
+          <dd class="topo-value">
+            {{ rewrapTargetAddressText }}
+          </dd>
+          <template v-if="rewrapTargetForm.role_id">
+            <dt>{{ $t('keyManagement.topoRoleId') }}</dt>
+            <dd class="topo-value">
+              {{ rewrapTargetForm.role_id }}
+            </dd>
+          </template>
+          <dt>{{ $t('keyManagement.rewrapKeyRefLabel') }}</dt>
+          <dd class="topo-value">
+            {{ rewrapKeyRef }}
+          </dd>
+        </dl>
+        <el-checkbox v-model="rewrapPreflightConfirmed">
+          {{ $t('keyManagement.rewrapPreflightCheckbox') }}
+        </el-checkbox>
+      </div>
+
       <div
         v-else
         class="rewrap-body"
@@ -616,7 +847,16 @@
              env＝寫入環境變數後重啟；ui＝重啟後於解封頁輸入（且明確禁止寫入 .env）；
              kms／hsm＝部署層 provider 遷移，逐步程序未在產品內定案故指向營運文件；
              unknown＝列出各模式做法要操作者辨識，**不回落 env**（誤判代價不對稱） -->
-        <template v-if="kekGuideMode === 'env'">
+        <!-- 目標是委託保管處時，切換步驟由**目標**決定而非現行 provider：
+             重啟後會停在已封存，憑證要有人到解封頁提供 -->
+        <template v-if="rewrapResult.target_mode && rewrapResult.target_mode !== 'local'">
+          <p>{{ $t('keyManagement.finalStepsIntroDelegatedTarget', { provider: rewrapTargetLabel }) }}</p>
+          <ol class="rewrap-guide">
+            <li>{{ $t('keyManagement.finalStepDelegatedTarget1') }}</li>
+            <li>{{ $t('keyManagement.finalStepDelegatedTarget2') }}</li>
+          </ol>
+        </template>
+        <template v-else-if="kekGuideMode === 'env'">
           <p>{{ $t('keyManagement.finalStepsIntro') }}</p>
           <ol class="rewrap-guide">
             <i18n-t
@@ -681,13 +921,22 @@
           {{ $t('keyManagement.rewrapNext') }}
         </el-button>
         <el-button
-          v-if="rewrapStep === 1"
-          @click="rewrapStep = 0"
+          v-if="rewrapStep > 0 && rewrapStep < rewrapResultStep"
+          @click="rewrapStep -= 1"
         >
           {{ $t('keyManagement.rewrapBack') }}
         </el-button>
+        <!-- 委託目標在第 2 步只前進到預檢，送出鍵只出現在預檢頁 -->
         <el-button
-          v-if="rewrapStep === 1"
+          v-if="rewrapStep === 1 && isDelegatedRewrapTarget"
+          type="primary"
+          :disabled="!rewrapTargetReady"
+          @click="rewrapStep = 2"
+        >
+          {{ $t('keyManagement.rewrapNext') }}
+        </el-button>
+        <el-button
+          v-if="rewrapStep === rewrapResultStep - 1"
           type="primary"
           :loading="rewrapping"
           :disabled="rewrapSubmitDisabled"
@@ -696,7 +945,7 @@
           {{ $t('keyManagement.submitRewrap') }}
         </el-button>
         <el-button
-          v-if="rewrapStep === 2"
+          v-if="rewrapStep === rewrapResultStep"
           type="primary"
           @click="closeRewrap"
         >
@@ -708,7 +957,10 @@
 </template>
 
 <script setup>
-import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { seal, getSealStatus } from '@/api/seal'
+import { publishSealStatus, UNSEAL_PATH } from '@/utils/sealPhase'
 import { ElMessage } from 'element-plus'
 import { RefreshCw } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
@@ -719,6 +971,8 @@ import { usePolicyForm } from '@/composables/usePolicyForm'
 import { KEY_SECTIONS } from '@/constants/policyDomains'
 import {
   getKeyInventory,
+  getKEKTopology,
+  updateKEKTopology,
   rotateKey,
   rewrapKEK,
   abandonRewrap,
@@ -761,6 +1015,54 @@ const {
   save,
 } = usePolicyForm(KEY_SECTIONS)
 
+const router = useRouter()
+const sealing = ref(false)
+const handleSeal = async () => {
+  // 委託模式自「憑證改由解封頁輸入」起與 env 分家：封存會抹掉該世代的憑證，
+  // 沒有任何可自動取用的部署憑證，恢復必須有人到解封頁重新提供。
+  // 這句是按下封存前唯一會被讀到的恢復說明，寫成「系統會自動取得」即為誤導
+  const RECOVERY_KEYS = {
+    ui: 'keyManagement.sealRestoreUi',
+    env: 'keyManagement.sealRestoreDeployment',
+    delegated: 'keyManagement.sealRestoreDelegated',
+  }
+  const recoveryKey = RECOVERY_KEYS[kekGuideMode.value] || 'keyManagement.sealRestoreDeployment'
+  try {
+    await confirmDestructive(
+      h('div', [
+        h('p', t('keyManagement.sealImpact')),
+        h('p', t(recoveryKey)),
+        h('p', t('keyManagement.sealReconnect')),
+      ]),
+      t('keyManagement.sealTitle'),
+      {
+        confirmButtonText: t('keyManagement.sealConfirm'),
+        cancelButtonText: t('common.cancel'),
+      },
+    )
+  } catch {
+    return
+  }
+  sealing.value = true
+  try {
+    const result = await seal({ timeout: 90000, skipErrorToast: true })
+    publishSealStatus(result)
+    await router.replace(UNSEAL_PATH)
+  } catch (error) {
+    ElMessage.error(resolveApiError(error))
+    // A failed response may follow a completed state transition; read the shared state page.
+    try {
+      const status = await getSealStatus({ skipErrorToast: true })
+      publishSealStatus(status)
+      if (status.state !== 'unsealed') await router.replace(UNSEAL_PATH)
+    } catch {
+      // Keep the current page when the authoritative status cannot be reached.
+    }
+  } finally {
+    sealing.value = false
+  }
+}
+
 const loading = ref(false)
 const inventory = ref({
   keys: [],
@@ -791,13 +1093,73 @@ const kekSavedConfirmed = ref(false)
 // 「與現行 KEK 相同」的前端預警；指紋算不出來時恆 false（本端無法判定即不宣稱）
 const kekIsCurrent = ref(false)
 
-// 重包目標（union 判別子）。委託目標的契約已定但本版後端回 501，
-// 故以 available=false 標示為本版未提供，而不是讓使用者送出後才收到錯誤
+// 重包目標（union 判別子）。三家委託保管處自本版起可選；HSM 仍未提供，
+// 以 available=false 標示，而不是讓使用者送出後才收到錯誤
 const REWRAP_TARGET_OPTIONS = [
   { mode: 'local', labelKey: 'keyManagement.rewrapTargetLocal', available: true },
-  { mode: 'kms', labelKey: 'keyManagement.rewrapTargetKms', available: false },
+  { mode: 'kms', labelKey: 'keyManagement.rewrapTargetKms', available: true },
+  { mode: 'gcp', labelKey: 'keyManagement.rewrapTargetGcp', available: true },
+  { mode: 'vault', labelKey: 'keyManagement.rewrapTargetVault', available: true },
   { mode: 'hsm', labelKey: 'keyManagement.rewrapTargetHsm', available: false },
 ]
+
+// 委託目標的欄位。**與後端的精確鍵集逐字同源**：AWS 收區域、Vault 收位址與角色識別，
+// GCP 兩者皆無；金鑰引用三家都要。憑證不在此——它們只在解封頁輸入
+const REWRAP_TARGET_FIELDS = {
+  kms: [
+    { model: 'region', label: 'keyManagement.topoRegion', hint: 'keyManagement.topoRegionHint' },
+  ],
+  gcp: [],
+  vault: [
+    { model: 'address', label: 'keyManagement.topoAddress', hint: 'keyManagement.topoAddressHint' },
+    { model: 'role_id', label: 'keyManagement.topoRoleId' },
+  ],
+}
+const REWRAP_TARGET_PROVIDER_LABELS = {
+  local: 'keyManagement.rewrapTargetLocal',
+  kms: 'keyManagement.rewrapTargetKms',
+  gcp: 'keyManagement.rewrapTargetGcp',
+  vault: 'keyManagement.rewrapTargetVault',
+  hsm: 'keyManagement.rewrapTargetHsm',
+}
+const REWRAP_KEY_REF_HINTS = {
+  kms: 'keyManagement.rewrapKeyRefHintAws',
+  gcp: 'keyManagement.rewrapKeyRefHintGcp',
+  vault: 'keyManagement.rewrapKeyRefHintVault',
+}
+
+const rewrapKeyRef = ref('')
+const rewrapTargetForm = reactive({ region: '', address: '', role_id: '' })
+const rewrapPreflightConfirmed = ref(false)
+
+const isDelegatedRewrapTarget = computed(() => rewrapMode.value !== 'local')
+const rewrapTargetFields = computed(() => REWRAP_TARGET_FIELDS[rewrapMode.value] || [])
+const rewrapTargetLabel = computed(() => t(REWRAP_TARGET_PROVIDER_LABELS[rewrapMode.value] || ''))
+const rewrapKeyRefHint = computed(() =>
+  REWRAP_KEY_REF_HINTS[rewrapMode.value] ? t(REWRAP_KEY_REF_HINTS[rewrapMode.value]) : ''
+)
+// 委託目標多一頁預檢：送出前把「金鑰明文會送到哪裡去包」攤開來要人確認。
+// 本地目標維持三步（材料在使用者手上，沒有外部目的地可核對）
+const rewrapStepTitleKeys = computed(() =>
+  isDelegatedRewrapTarget.value
+    ? [
+        'keyManagement.rewrapStep1',
+        'keyManagement.rewrapStepTarget',
+        'keyManagement.rewrapStepPreflight',
+        'keyManagement.rewrapStep3',
+      ]
+    : ['keyManagement.rewrapStep1', 'keyManagement.rewrapStep2', 'keyManagement.rewrapStep3']
+)
+const rewrapResultStep = computed(() => rewrapStepTitleKeys.value.length - 1)
+// 預檢頁上讀給人看的目的地：位址（Vault）或區域（AWS）；GCP 的目的地即資源名本身
+const rewrapTargetAddressText = computed(
+  () => rewrapTargetForm.address || rewrapTargetForm.region || t('keyManagement.rewrapTargetNoAddress')
+)
+const rewrapTargetReady = computed(
+  () =>
+    !!rewrapKeyRef.value.trim() &&
+    rewrapTargetFields.value.every((field) => !!rewrapTargetForm[field.model].trim())
+)
 
 // 前端格式檢查的原因碼 → 文案。**檢查僅為輸入輔助，權威在伺服端**（見 utils/kek.js）
 const KEK_FORMAT_TEXT_KEYS = {
@@ -818,14 +1180,19 @@ const kekConfirmMismatch = computed(
 )
 // 送出前置：格式無異議、paste-back 逐字相符且非空、保存確認已勾、非現行 KEK。
 // 這是 UX 前置，不是授權——伺服端對同一組條件另有獨立且權威的驗證
-const rewrapSubmitDisabled = computed(
-  () =>
+// 委託目標沒有材料可比對，其前置是「目的地填齊且預檢已由人確認」
+const rewrapSubmitDisabled = computed(() => {
+  if (isDelegatedRewrapTarget.value) {
+    return !rewrapTargetReady.value || !rewrapPreflightConfirmed.value
+  }
+  return (
     !newKek.value ||
     !!kekFormatReason.value ||
     newKekConfirm.value !== newKek.value ||
     !kekSavedConfirmed.value ||
     kekIsCurrent.value
-)
+  )
+})
 
 // 與現行 KEK 相同的預警：指紋演算法與伺服端一致，但 crypto.subtle 不可用時
 // 回 null＝本端無法判定，此時不阻擋（由伺服端 409 把關）
@@ -1038,6 +1405,174 @@ const loadInventory = async () => {
   }
 }
 
+// —— 委託保管處的拓撲（非秘密設定，改動即改變「資料金鑰送去哪裡解」）——
+//
+// 這個區塊只在委託部署出現：`provider` 由部署檔宣告（唯讀），前端不提供切換
+//（選錯服務商只會 fail-close，且金鑰列的 kek_id 已釘死哪一家能解）。
+// 憑證（存取金鑰、服務帳號金鑰檔、角色密鑰、權杖）**不在本頁**——它們只在解封頁
+// 輸入且只活在該解封世代，本頁任何欄位皆為可公開的目的地資訊。
+const topology = ref(null)
+const topologyLoading = ref(false)
+const topologySaving = ref(false)
+const topologyEditing = ref(false)
+const topologyInvalidFields = ref([])
+const topologyForm = reactive({
+  address: '',
+  transit_key_name: '',
+  role_id: '',
+  region: '',
+})
+
+// 逐服務商的可編輯欄位。與後端的精確鍵集同源——送出的鍵集即由此導出，
+// 多一鍵少一鍵都會被整筆拒絕
+const TOPOLOGY_FIELD_DEFS = {
+  vault: [
+    { model: 'address', label: 'keyManagement.topoAddress', hint: 'keyManagement.topoAddressHint' },
+    { model: 'transit_key_name', label: 'keyManagement.topoTransitKey' },
+    { model: 'role_id', label: 'keyManagement.topoRoleId' },
+  ],
+  aws: [{ model: 'region', label: 'keyManagement.topoRegion', hint: 'keyManagement.topoRegionHint' }],
+  // GCP 無可編輯欄位：完整 CryptoKey 資源名沿金鑰列的 kek_id（唯讀顯示），
+  // 服務區域對 GCP 不生效
+  gcp: [],
+}
+
+const topologyProvider = computed(() => topology.value?.provider || '')
+// 服務商名稱用人看得懂的產品名，不用機器碼
+const TOPOLOGY_PROVIDER_LABELS = {
+  aws: 'AWS KMS',
+  gcp: 'GCP Cloud KMS',
+  vault: 'HashiCorp Vault',
+}
+const topologyProviderLabel = computed(
+  () => TOPOLOGY_PROVIDER_LABELS[topologyProvider.value] || topologyProvider.value
+)
+// 委託部署才有拓撲可設；非委託模式後端回 provider=""，整個區塊不渲染
+const hasTopology = computed(() => !!topologyProvider.value)
+const topologyEditableFields = computed(() => {
+  const defs = TOPOLOGY_FIELD_DEFS[topologyProvider.value] || []
+  const allowed = topology.value?.editable_fields
+  if (!Array.isArray(allowed)) return defs
+  return defs.filter((field) => allowed.includes(field.model))
+})
+const topologyReadonly = computed(() => topologyEditableFields.value.length === 0)
+
+// 唯讀呈現：第一層只放白話標籤與值，不放摘要雜湊之類的機制細節
+const topologyRows = computed(() => {
+  const topo = topology.value
+  if (!topo) return []
+  const rows = [{ label: 'keyManagement.topoProvider', value: topologyProviderLabel.value }]
+  if (topo.address) rows.push({ label: 'keyManagement.topoAddress', value: topo.address })
+  if (topo.region) rows.push({ label: 'keyManagement.topoRegion', value: topo.region })
+  if (topo.transit_key_name) {
+    rows.push({ label: 'keyManagement.topoTransitKey', value: topo.transit_key_name })
+  }
+  if (topo.role_id) rows.push({ label: 'keyManagement.topoRoleId', value: topo.role_id })
+  rows.push({ label: 'keyManagement.topoKeyRef', value: topo.key_ref || '' })
+  return rows
+})
+const topologyUpdatedText = computed(() => {
+  const topo = topology.value
+  if (!topo?.updated_at) return ''
+  return t('keyManagement.topoUpdatedBy', {
+    who: topo.updated_by || '—',
+    when: formatDateTime(topo.updated_at),
+  })
+})
+// 送出前給人看的那一句：改的是哪個位址
+const topologyTargetText = computed(
+  () => topologyForm.address || topologyForm.region || topology.value?.key_ref || '—'
+)
+const topologyDirty = computed(() =>
+  topologyEditableFields.value.some(
+    (field) => topologyForm[field.model].trim() !== (topology.value?.[field.model] || '')
+  )
+)
+const topologySaveDisabled = computed(
+  () =>
+    topologySaving.value ||
+    !topologyDirty.value ||
+    topologyEditableFields.value.some((field) => !topologyForm[field.model].trim())
+)
+
+const loadTopology = async () => {
+  topologyLoading.value = true
+  try {
+    topology.value = await getKEKTopology({ skipErrorToast: true })
+  } catch (error) {
+    // 拓撲讀不到不等於沒有拓撲：不顯示區塊即可，不編一份空拓撲頂替
+    console.error('載入 KEK 拓撲失敗:', error)
+    topology.value = null
+  } finally {
+    topologyLoading.value = false
+  }
+}
+
+const refreshInventoryAndTopology = () => {
+  loadInventory()
+  loadTopology()
+}
+
+const startTopologyEdit = () => {
+  topologyInvalidFields.value = []
+  topologyEditableFields.value.forEach((field) => {
+    topologyForm[field.model] = topology.value?.[field.model] || ''
+  })
+  topologyEditing.value = true
+}
+
+const cancelTopologyEdit = () => {
+  topologyEditing.value = false
+  topologyInvalidFields.value = []
+}
+
+const saveTopology = async () => {
+  // 確認框寫的是後果而不是動作：改位址＝改變上鎖的資料金鑰會被送到哪裡去解，
+  // 送錯地方就等於把金鑰交給那一端。留痕與告警一併講明，不讓人以為這是靜悄悄的設定
+  try {
+    await confirmDestructive(
+      h('div', [
+        h('p', t('keyManagement.topoConfirmImpact', { target: topologyTargetText.value })),
+        h('p', t('keyManagement.topoConfirmAudited')),
+      ]),
+      t('keyManagement.topoConfirmTitle'),
+      {
+        confirmButtonText: t('keyManagement.topoConfirmAction'),
+        cancelButtonText: t('common.cancel'),
+      }
+    )
+  } catch {
+    return
+  }
+  topologySaving.value = true
+  try {
+    // 精確鍵集：只送該服務商的可編輯欄位
+    const payload = {}
+    topologyEditableFields.value.forEach((field) => {
+      payload[field.model] = topologyForm[field.model].trim()
+    })
+    topology.value = await updateKEKTopology(payload, { skipErrorToast: true })
+    topologyInvalidFields.value = []
+    topologyEditing.value = false
+    ElMessage.success(t('keyManagement.topoSaved'))
+  } catch (error) {
+    // 驗證失敗時後端只回欄位名（不回顯值），且整筆拒絕、既有值不變。
+    // 欄位清單缺席時就不逐欄標紅——只呈現後端訊息，不自己猜是哪一欄壞了
+    const data = error.response?.data
+    // 後端以 ParamOpaque 傳回，形態是 ", " 相接的字串；切開才標得了逐欄。
+    // 陣列形態一併吃下，兩種都不是就不猜是哪一欄壞了。
+    const raw = data?.params?.fields ?? data?.fields
+    topologyInvalidFields.value = Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string' && raw.trim()
+        ? raw.split(',').map((f) => f.trim()).filter(Boolean)
+        : []
+    ElMessage.error(resolveApiError(data, error.response?.status))
+  } finally {
+    topologySaving.value = false
+  }
+}
+
 // 輪替確認：data 會批次重加密（可中斷續跑）；audit 僅新章換鑰、歷史不重算
 const confirmRotate = async (purpose) => {
   const messages = {
@@ -1096,6 +1631,7 @@ const openRewrapWizard = () => {
   rewrapMode.value = 'local'
   rewrapResult.value = { target_mode: '', new_kek_id: '', rewrapped_keys: 0 }
   clearRewrapSecret()
+  resetRewrapTarget()
   rewrapVisible.value = true
 }
 
@@ -1119,15 +1655,24 @@ const executeRewrap = async () => {
     // 故此處逐字對齊契約，不夾帶任何額外欄位。
     // 兩欄套**同一次**修剪：貼上 `openssl rand -hex 32` 的輸出會帶結尾換行，
     // 而伺服端的 paste-back 比對的是原始位元組，兩欄修剪不一致就會誤判不符
-    const payload = {
-      mode: 'local',
-      new_kek: newKek.value.trim(),
-      new_kek_confirm: newKekConfirm.value.trim(),
-      confirm_saved: kekSavedConfirmed.value,
-    }
+    const payload = isDelegatedRewrapTarget.value
+      ? {
+          mode: rewrapMode.value,
+          key_ref: rewrapKeyRef.value.trim(),
+          ...rewrapTargetFields.value.reduce(
+            (acc, field) => ({ ...acc, [field.model]: rewrapTargetForm[field.model].trim() }),
+            {}
+          ),
+        }
+      : {
+          mode: 'local',
+          new_kek: newKek.value.trim(),
+          new_kek_confirm: newKekConfirm.value.trim(),
+          confirm_saved: kekSavedConfirmed.value,
+        }
     // skipErrorToast：由此 catch 統一呈現（衝突時需合併後端訊息＋恢復指引），避免與攔截器重複 toast
     rewrapResult.value = await rewrapKEK(payload, { skipErrorToast: true })
-    rewrapStep.value = 2
+    rewrapStep.value = rewrapResultStep.value
   } catch (error) {
     const status = error.response?.status
     // 一律刷新清冊：若後端已建 pending，「KEK 重包尚未切換」banner 與
@@ -1197,11 +1742,30 @@ const clearRewrapSecret = () => {
   kekIsCurrent.value = false
 }
 
+// 委託目標的欄位皆為非秘密，但預檢確認不可跨次沿用：換一個目標就得重看一次
+const resetRewrapTarget = () => {
+  rewrapKeyRef.value = ''
+  rewrapTargetForm.region = ''
+  rewrapTargetForm.address = ''
+  rewrapTargetForm.role_id = ''
+  rewrapPreflightConfirmed.value = false
+}
+
 // 對話框關閉事件：先清明文再刷新清冊
 const onRewrapDialogClosed = () => {
   clearRewrapSecret()
+  resetRewrapTarget()
   loadInventory()
+  loadTopology()
 }
+
+// 換目標即回到第一步並清掉前一個目標的輸入：不同服務商的鍵集互斥，
+// 留著上一家的欄位只會讓下一次送出被整包拒絕
+watch(rewrapMode, () => {
+  rewrapStep.value = 0
+  clearRewrapSecret()
+  resetRewrapTarget()
+})
 
 // 關閉即觸發 dialog @closed → 清明文＋loadInventory，無需在此重複處理
 const closeRewrap = () => {
@@ -1372,6 +1936,7 @@ const handleSavePolicies = async () => {
 onMounted(() => {
   loadPolicies()
   loadInventory()
+  loadTopology()
 })
 </script>
 
@@ -1401,6 +1966,14 @@ onMounted(() => {
 .card-hint {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+/* 本機模式說明：附在政策區塊上方，讀作說明而非警示（它不擋任何設定） */
+.dek-ttl-local-note {
+  margin: 0 0 var(--ot-space-sm);
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
 }
 
 /* 切換控制推到表頭右側，與標題／說明同一行 */
@@ -1462,6 +2035,58 @@ onMounted(() => {
 
 .rewrap-once-alert {
   margin-bottom: 12px;
+}
+
+/* 委託保管處區塊：兩欄式的唯讀清單，窄幅折成單欄 */
+.topo-desc {
+  margin: 0 0 12px;
+  color: var(--el-text-color-regular);
+}
+
+.topo-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.topo-grid dt {
+  color: var(--el-text-color-secondary);
+}
+
+.topo-grid dd {
+  margin: 0;
+}
+
+.topo-value {
+  word-break: break-all;
+  font-family: var(--ot-font-mono, monospace);
+}
+
+.topo-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.topo-field {
+  margin-bottom: 16px;
+}
+
+.topo-input,
+.target-input {
+  max-width: 520px;
+}
+
+@media (max-width: 600px) {
+  .topo-grid {
+    grid-template-columns: 1fr;
+    gap: 2px 0;
+  }
+
+  .topo-grid dd {
+    margin-bottom: 8px;
+  }
 }
 
 .kek-field {

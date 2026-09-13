@@ -108,6 +108,12 @@ const (
 	// 單位與 env `KEY_ROTATION_MAX_PER_RUN` 1:1（筆），SeedFromEnv 直接搬值不換算。
 	// **調小才危險**：設成 1 使換鑰永遠跑不完，金鑰輪替實質失效而清冊上仍顯示可輪替
 	PolicyKeyRotationMaxPerRun = "key_rotation_max_per_run"
+	// PolicyDekCacheTTLSeconds DEK 明文解封後於行程記憶體的存活期（秒）。
+	// 三態：空值＝不限期（出廠預設，行為與本鍵引入前相同）、0＝不留快取、
+	// N>0＝自解封成功起算 N 秒的固定期限。三態的「空值」由 AllowEmpty 承載。
+	// **本鍵不做符合性評估**：無 Direction、不進任何內建政策組，
+	// 其 ZeroDisables 僅用於放行 0，不帶「0＝不符建議」的合規語義
+	PolicyDekCacheTTLSeconds = "dek_cache_ttl_seconds"
 
 	// 叢集存取政策鍵。
 	// PolicyK8sListTimeoutSeconds 單位與 env `K8S_LIST_TIMEOUT_SECONDS` 1:1（秒）。
@@ -272,6 +278,15 @@ type PolicyDef struct {
 	Direction string `json:"direction,omitempty"`
 	// ZeroDisables 0=停用 sentinel：先判「不符建議」再比數值
 	ZeroDisables bool `json:"zero_disables,omitempty"`
+	// AllowEmpty 空字串是合法值，語義為「未設定」。
+	//
+	// **只有 int 型可用，且該鍵 Default 必為空**（validatePolicyDefs 雙向釘住）：
+	// 本欄的存在理由是某些數值鍵需要三態（未設／0／N>0），而 int 分支對空字串
+	// 一律 Atoi 失敗。不用哨兵數值（如 -1）表達「未設定」，是因為負數已被 int
+	// 分支全面拒絕，為一個鍵開例外會讓其餘 int 鍵的守衛前提鬆動。
+	// Default 必為空的理由是對稱：出廠值若是某個數字，「未設定」就不再是預設態，
+	// 空值只會是管理員清空後的殘態，而那與本欄要表達的語義不同。
+	AllowEmpty bool `json:"allow_empty,omitempty"`
 	// Max int 型上界（0 = 用 defaultPolicyIntMax）；防溢位與不合理極端值（LOCK-1）
 	Max int `json:"max,omitempty"`
 	// Min int 型下界（0 = 無下界）：**堵「調到極小＝實質關閉」的靜默路徑**。
@@ -496,13 +511,13 @@ var policyDefs = []PolicyDef{
 		// 兩者合起來使本鍵無法被用來實質關閉封章——極大值或 0 都不合法
 		Key: PolicyAuditCheckpointIntervalSeconds, Type: PolicyTypeInt, Default: "3600",
 		Max:   86400,
-		Label: "檢查點封存週期", Unit: "秒",
+		Label: "檢查點存證週期", Unit: "秒",
 	},
 	{
 		// 上界 100 萬筆，同樣不可為 0；與週期先到先觸發
 		Key: PolicyAuditCheckpointRowThreshold, Type: PolicyTypeInt, Default: "10000",
 		Max:   1000000,
-		Label: "檢查點封存筆數門檻", Unit: "筆",
+		Label: "檢查點存證筆數門檻", Unit: "筆",
 	},
 	{
 		// 近期層窗口天數：每次封存後
@@ -623,6 +638,32 @@ var policyDefs = []PolicyDef{
 		Key: PolicyKeyRotationMaxPerRun, Type: PolicyTypeInt, Default: "100000",
 		Min: 500, Max: 10000000,
 		Label: "單次換鑰重加密上限", Unit: "筆",
+	},
+	{
+		// DEK 快取存活期。三態：空值＝不限期（出廠預設，升級後行為不變）、
+		// 0＝不留快取（每次用到才向 KEK 保管處解封、用完清除）、
+		// N>0＝自解封成功起算 N 秒的固定期限，不因存取續期。
+		//
+		// **本鍵沒有合規建議值，也不進任何內建政策組**：它是機構自選的風險預算
+		// 旋鈕——縮短明文駐留換取「保管處不可達時新操作失敗」的可用性代價。
+		// 掛上建議值等同宣稱某個秒數為合規要求，而沒有任何規範說得出那個數字。
+		// 故無 Direction、不出現在偏離摘要。
+		//
+		// **ZeroDisables 在本鍵只負責放行 0，不帶合規語義**：其原始用途是
+		// 「0＝明著關掉，先判不符建議再比數值」，而本鍵的 0 是**最嚴格**的一端，
+		// 不是關閉。下一個讀者若把它讀成「0 代表不符建議」就反了。
+		//
+		// **上界 86400（一天）的理由是結構性的**：本鍵縮短的是「解封後到清除」
+		// 這段駐留，而行程本身的重啟與重新解封週期在實務上以天計。期限一旦
+		// 長於一天，到期事件在絕大多數部署裡永遠輪不到發生，設定值與空值
+		// （不限期）在行為上不可分辨——一個讀起來像有防護、實際上沒有的值。
+		// 不設 Min：0 是本鍵合法且有意義的一端，而 1 秒雖短卻誠實
+		// （每秒重解一次，代價立刻反映在解封計數與延遲上，不是偽裝成還開著）。
+		Key: PolicyDekCacheTTLSeconds, Type: PolicyTypeInt, Default: "",
+		AllowEmpty: true, ZeroDisables: true, Max: 86400,
+		// Label 與 zh-TW locale 的 policyLabel 同字（守衛比對 registry↔locale）：
+		// 面向管理員的名稱用白話，不用縮寫
+		Label: "資料金鑰的記憶體保留時間", Unit: "秒",
 	},
 	{
 		// K8s pod 列表逾時。出廠 10 秒沿
@@ -855,9 +896,14 @@ func NewSecurityPolicyService(db *gorm.DB) *SecurityPolicyService {
 // validatePolicyDefs 常數表完整性自檢：每個 Default 都須通過該欄型別驗證，
 // enum 的 Default 須是 EnumOrder 成員；並斷言 Unit↔UnitKey
 // invariant（rr-I5）：Unit≠""↔有合法 UnitKey 且與 canonical 映射一致、Unit==""不得有 UnitKey
-func validatePolicyDefs() error {
-	for i := range policyDefs {
-		def := &policyDefs[i]
+func validatePolicyDefs() error { return validateDefList(policyDefs) }
+
+// validateDefList 對任意定義切片做同一組自檢。
+// 與 validatePolicyDefs 分開，是為了讓守衛測試能對「刻意寫壞的一筆定義」求值，
+// 而不必去改動全域常數表——改全域表的測試會與併行的其他測試互相污染。
+func validateDefList(defs []PolicyDef) error {
+	for i := range defs {
+		def := &defs[i]
 		if err := validatePolicyValue(def, def.Default); err != nil {
 			return fmt.Errorf("%s Default=%q 非法: %w", def.Key, def.Default, err)
 		}
@@ -879,6 +925,16 @@ func validatePolicyDefs() error {
 			}
 			if def.Multiline {
 				return fmt.Errorf("%s Type=%s 不得設 Multiline（僅 text 型有換行語義）", def.Key, def.Type)
+			}
+		}
+		// AllowEmpty 的結構自檢：非 int 型設了會被靜默忽略（其餘型別的空值語義
+		// 各自不同）；Default 非空則「未設定」不再是出廠態，本欄的語義落空
+		if def.AllowEmpty {
+			if def.Type != PolicyTypeInt {
+				return fmt.Errorf("%s Type=%s 不得設 AllowEmpty（僅 int 型有空值語義）", def.Key, def.Type)
+			}
+			if def.Default != "" {
+				return fmt.Errorf("%s AllowEmpty 但 Default=%q 非空（空值須為出廠態）", def.Key, def.Default)
 			}
 		}
 		// Min 的結構自檢：非 int 型不得設 Min（無意義且會被靜默忽略）；
@@ -1301,6 +1357,10 @@ func normalizeTextPolicyValue(def *PolicyDef, value string) (string, error) {
 func validateScalarPolicyValue(def *PolicyDef, value string) error {
 	switch def.Type {
 	case PolicyTypeInt:
+		// 空值＝未設定：只有明示 AllowEmpty 的鍵接受，其餘鍵的空字串仍是型別錯
+		if value == "" && def.AllowEmpty {
+			return nil
+		}
 		n, err := strconv.Atoi(value)
 		if err != nil || n < 0 {
 			return &PolicyInvalidValueError{Key: def.Key, Reason: "須為非負整數"}

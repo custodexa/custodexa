@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/custodexa/backend/internal/material"
 	"log"
 
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -35,11 +36,28 @@ type stage1 struct {
 	kekDecision *config.KEKDecision
 	// kekProvider 僅 A（env）／C（kms／hsm）模式有值；B（ui）模式為 nil,
 	// 由解封時提交的材料建構（sealwire.go）。
-	kekProvider crypto.KEKProvider
+	kekProvider      crypto.KEKProvider
+	kekOwner         *material.Secret
+	credentials       *credentialOwner
+	initialKEKRef    crypto.KeyRef
+	deploymentSource func(context.Context) (crypto.KEKProvider, *material.Secret, error)
+	// delegatedProviderSource 委託模式的 provider 建構接縫（nil＝走正式建構）。
+	//
+	// **與 deploymentSource 同級但不同對象**：後者是「重讀部署來源」（env 模式），
+	// 前者是「以本解封世代的憑證建構委託 provider」。委託解封自本版起不再經
+	// deploymentSource，故需要自己的接縫——否則以 fake 保管處驗證整條解封路徑
+	// 的測試只能改去打真實雲端服務，而那不是測試。
+	// 正式路徑恆為 nil；接縫收的是**已 adopt 憑證的世代持有者**，
+	// 故「憑證有沒有被交出去」在接縫上仍然看得見。
+	delegatedProviderSource func(context.Context, *credentialOwner) (crypto.KEKProvider, error)
 	// corsMiddleware 已建構完成的全域 CORS middleware。
 	// cors.New 會 Validate 並在設定非法時 panic，屬可終止行程的呼叫，
 	// 故建構落在段 1 而非 registerRoutes 內。
 	corsMiddleware gin.HandlerFunc
+	// importedTopologyFields 升級一次性讀入所搬進的欄位名（段 2 據此寫一筆審計列）。
+	// **在段 1 讀入、段 2 留痕**：讀入發生在審計服務存在之前，而「這個部署的拓撲
+	// 是什麼時候、從哪裡來的」必須進審計；用一個行程內欄位交棒即可，不另開通道。
+	importedTopologyFields []string
 	// journal 封印期定長環狀留痕；僅 B 模式建立。
 	// **建立失敗即不開放監聽**——未認證端點的嘗試不得零留痕。
 	journal *sealjournal.Journal
@@ -50,8 +68,15 @@ type stage1 struct {
 	metrics *observability.Metrics
 }
 
-// sealedMode 是否為 B（ui）模式：段 2 延後至解封成功後執行。
-func (s *stage1) sealedMode() bool { return s.kekDecision.Mode == config.KEKModeUI }
+// sealedMode 段 2 是否延後至解封成功後執行。
+//
+// **自本版起涵蓋委託模式**：委託憑證只存在於解封世代的記憶體，行程結束即無處
+// 可取，故冷啟動必然取不到憑證。既有語義（無憑證即非零退出）會讓委託部署的每
+// 一次重啟都表現為組態錯誤，而它其實是設計上的正常狀態——改為進入已封存並等待
+// 人工解封。`env` 的無人值守與 `/health` 語義**不受影響**。
+func (s *stage1) sealedMode() bool {
+	return s.kekDecision.Mode == config.KEKModeUI || s.kekDecision.Mode == config.KEKModeKMS
+}
 
 // validateTrustedProxies 以 gin 自身的解析器驗證可信代理清單。
 //
@@ -171,15 +196,25 @@ func runStage1() *stage1 {
 	// （不可達／無權限／金鑰不合用）即 fail-close，SHALL NOT 降級啟動。
 	// 探測落在此處而非 DB 連線之後，是為維持「組態段 DB-independent」的立約。
 	var kekProvider crypto.KEKProvider
-	if kekDecision.Mode != config.KEKModeUI {
-		kekProvider, err = buildKEKProvider(context.Background(), kekDecision)
+	var kekOwner *material.Secret
+	credentials := newCredentialOwner()
+	failStartup := func(format string, args ...any) {
+		credentials.Close()
+		kekOwner.Destroy()
+		log.Fatalf(format, args...)
+	}
+	// **ui 與委託模式皆不在此建構**：前者的材料、後者的憑證都只由解封端點進入
+	// 記憶體，段 1 建構不出 provider 是正常狀態而非啟動失敗。env 與 hsm 維持原樣
+	// ——其材料在部署檔內，缺或錯即 fail-close。
+	if kekDecision.Mode == config.KEKModeEnv || kekDecision.Mode == config.KEKModeHSM {
+		kekProvider, kekOwner, err = credentials.buildStartup(context.Background(), kekDecision)
 		if err != nil {
-			log.Fatalf("初始化 KEK provider 失敗: %v", err)
+			failStartup("初始化 KEK provider 失敗: %v", err)
 		}
 	}
 	// 初始化資料庫
 	if err := database.InitDatabase(cfg); err != nil {
-		log.Fatalf("資料庫初始化失敗: %v", err)
+		failStartup("資料庫初始化失敗: %v", err)
 	}
 
 	// 單實例守衛的掛點：**DB 已可用、尚未發生任何寫入的唯一窗口**。
@@ -199,7 +234,7 @@ func runStage1() *stage1 {
 		serveHaltedUntilResumed(cfg)
 	case blockErr != nil:
 		// 取鎖回應失敗、dialect 不支援、啟動被取消：攔下頁對這些無能為力，維持 fail-close。
-		log.Fatalf("%v", blockErr)
+		failStartup("%v", blockErr)
 	}
 	logInstanceGuardAcquired()
 
@@ -207,7 +242,7 @@ func runStage1() *stage1 {
 	// **開機 AutoMigrate 已移除**：schema 的唯一
 	// 事實源是 baseline 的 DDL，model 與 baseline 的一致性改由 parity 守衛把關。
 	if err := database.RunMigrations(); err != nil {
-		log.Fatalf("資料庫 migrations 執行失敗: %v", err)
+		failStartup("資料庫 migrations 執行失敗: %v", err)
 	}
 
 	// DB-aware bootstrap 序（deployment-hardening）：schema 已就緒，先判定安裝狀態，
@@ -215,14 +250,14 @@ func runStage1() *stage1 {
 	// 故不併入無條件的 DefaultSecretViolations（否則既有安裝未設即被誤擋）。
 	userCount, err := database.CountUsers()
 	if err != nil {
-		log.Fatalf("查詢使用者數失敗（bootstrap 判定）: %v", err)
+		failStartup("查詢使用者數失敗（bootstrap 判定）: %v", err)
 	}
 	adminInitialPassword := ""
 	if userCount == 0 {
 		// 全新安裝（階段 4）：seed 前驗證 ADMIN_INITIAL_PASSWORD 的 byte 契約——
 		// 任何會 seed 的模式皆要求合格值，不因 dev/release 而放寬
 		if v := config.ValidateAdminInitialPassword(cfg.Security.AdminInitialPassword); v != "" {
-			log.Fatalf("拒絕以不合格 ADMIN_INITIAL_PASSWORD 建立初始管理員（%s）：請於 .env 設定合格高熵密碼（>=%d bytes、非預設/placeholder、無空白換行）後重啟",
+			failStartup("拒絕以不合格 ADMIN_INITIAL_PASSWORD 建立初始管理員（%s）：請於 .env 設定合格高熵密碼（>=%d bytes、非預設/placeholder、無空白換行）後重啟",
 				v, config.AdminInitialPasswordMinLength)
 		}
 		adminInitialPassword = cfg.Security.AdminInitialPassword
@@ -236,8 +271,12 @@ func runStage1() *stage1 {
 	// **這一步是初始化解封「要求憑證不會重蹈 MFA 死鎖」論證的第一個前提**：
 	// seed 落在段 1，故解封端點做憑證驗證時初始管理員必然已存在。
 	if err := database.SeedDatabase(adminInitialPassword); err != nil {
-		log.Fatalf("資料庫初始化資料失敗: %v", err)
+		failStartup("資料庫初始化資料失敗: %v", err)
 	}
+
+	// 委託設定的升級一次性讀入：把舊 `.env` 的非秘密拓撲搬進資料庫並提示哪些鍵
+	// 已不再生效。冪等、不阻啟動、秘密鍵不讀不存（見 kek_topology_import.go）。
+	importedTopologyFields := importDelegatedTopologyFromEnv(kekDecision)
 
 	// legacy 預設憑證掃描（deployment-hardening）：release serving 前掃所有具 admin 角色帳號，
 	// 任一密碼仍為出廠預設 admin123 即 fail-close，要求離線 remediation（見 QUICKSTART）。
@@ -245,10 +284,10 @@ func runStage1() *stage1 {
 	if cfg.IsReleaseMode() {
 		hits, err := database.ScanLegacyDefaultAdmins()
 		if err != nil {
-			log.Fatalf("legacy 預設憑證掃描失敗: %v", err)
+			failStartup("legacy 預設憑證掃描失敗: %v", err)
 		}
 		if len(hits) > 0 {
-			log.Fatalf("拒絕啟動（deployment-hardening）：偵測到 %d 個管理帳號仍使用出廠預設密碼，屬公開已知憑證，請依 QUICKSTART 離線 remediation 重設後重啟", len(hits))
+			failStartup("拒絕啟動（deployment-hardening）：偵測到 %d 個管理帳號仍使用出廠預設密碼，屬公開已知憑證，請依 QUICKSTART 離線 remediation 重設後重啟", len(hits))
 		}
 	}
 
@@ -274,6 +313,9 @@ func runStage1() *stage1 {
 		cfg:            cfg,
 		kekDecision:    kekDecision,
 		kekProvider:    kekProvider,
+		kekOwner:       kekOwner,
+		credentials:            credentials,
+		importedTopologyFields: importedTopologyFields,
 		corsMiddleware: corsMiddleware,
 		metrics:        observability.New(),
 	}
@@ -281,12 +323,12 @@ func runStage1() *stage1 {
 	// 封印期就要能採集；接在指標實例建構之後、任何監聽開放之前
 	s.metrics.SetInstanceGuardSource(instanceGuardMetricsSource)
 
-	// 封印期留痕：僅 B 模式需要——A／C 模式恆 unsealed，不存在封印期。
+	// All modes use the same durable journal before opening a listener.
 	// **建立失敗即不開放監聽**：不受任何 feature flag 控制、不可關閉。
-	if s.sealedMode() {
+	{
 		j, err := sealjournal.Open(sealjournal.ResolveDir())
 		if err != nil {
-			log.Fatalf("封印期 journal 建立/開啟失敗（拒絕開放監聽，未認證端點的嘗試不得零留痕）: %v", err)
+			failStartup("封印期 journal 建立/開啟失敗（拒絕開放監聽，未認證端點的嘗試不得零留痕）: %v", err)
 		}
 		s.journal = j
 		unknown, missing, corrupt := j.OpenRecovery()
@@ -296,5 +338,8 @@ func runStage1() *stage1 {
 		}
 	}
 
+	if kekProvider != nil {
+		s.initialKEKRef = kekProvider.KeyRef()
+	}
 	return s
 }

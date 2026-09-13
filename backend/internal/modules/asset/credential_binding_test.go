@@ -532,7 +532,7 @@ func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	got, err := assets.GetWithCredentialsDefault(asset.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "ops", got.Username)
-	assert.Equal(t, "shared-pw", got.Password)
+	assert.True(t, secretMatches(t, got.Password, "shared-pw"), "resolved secret mismatch")
 
 	// 二擇一：同時給共用憑證與直填欄位一律拒絕
 	_, err = assets.Create(&CreateAssetRequest{
@@ -568,7 +568,7 @@ func TestAssetCreateWithInlineCredentialCreatesDedicated(t *testing.T) {
 
 	got, err := assets.GetWithCredentialsDefault(asset.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "inline-pw", got.Password)
+	assert.True(t, secretMatches(t, got.Password, "inline-pw"), "resolved secret mismatch")
 
 	// 內嵌物件與頂層簡寫二擇一
 	_, err = assets.Create(&CreateAssetRequest{

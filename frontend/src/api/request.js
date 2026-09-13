@@ -51,6 +51,8 @@ const REFRESHABLE_401_CODES = new Set(['AUTH_TOKEN_INVALID', 'AUTH_TOKEN_MISSING
 // 有 code 時才採 code-based 判定。/auth/* 業務端點的無-code 401 沿用舊行為（不刷新）。
 const isAuthPath = (url) => (url || '').startsWith('/auth/')
 const shouldRefresh401 = (data, url) => {
+  // Sealed restore must not attempt a login or token refresh through sealed routes.
+  if (url === '/seal/unseal') return false
   const code = data?.code
   return code ? REFRESHABLE_401_CODES.has(code) : !isAuthPath(url)
 }

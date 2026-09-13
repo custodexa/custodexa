@@ -1,11 +1,13 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-09（政策組與合規對照：新表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，一條唯一索引 `idx_policy_clause_controls_group_key`，migration `20260909_policy_groups`）
+> **最後更新**：2026-09-13（委託拓撲：新表 `kek_topologies`（單列），migration `20260913_kek_topology`）
+> 前次更新：2026-09-13（DEK 快取存活期政策鍵 `dek_cache_ttl_seconds`，無 migration，政策鍵表加一列）
+> 前次更新：2026-09-09（政策組與合規對照：新表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，一條唯一索引 `idx_policy_clause_controls_group_key`，migration `20260909_policy_groups`）
 > 前次更新：2026-09-08（外部群組對角色映射：新表 `group_role_mappings`／`user_role_mappings`，`user_roles` 加 `source` 欄，`ldap_directories` 加 `attr_group`，`oidc_providers` 加 `groups_claim` 與宣告對應三欄，`users` 加群組觀測快照三欄，migration `20260908_group_role_mapping`）
 > 再前次更新：2026-09-07（角色指派納入檢查點：`audit_checkpoints` 加 `role_state_hash`／`role_state_snapshot`／`role_state_count`／`role_state_reconciled` 四個可空欄，migration `20260908_role_state_checkpoint`）
 
 > 資料來源：`backend/internal/database/baseline_schema_{identity,asset,authz,audit,platform}.go`
-> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`、`migration_group_role_mapping.go`、`migration_policy_groups.go`）——
+> **加上其後的增量 migration**（`migration_audit_export_jobs.go`、`migration_evidence_offsite.go`、`migration_source_ip_forensics.go`、`migration_db_query_console.go`、`migration_rotation_evidence_report.go`、`migration_security_policies_value_text.go`、`migration_windows_local_account_rotation.go`、`migration_account_batch_rotation.go`、`migration_credential_library.go`、`migration_credential_library_contract.go`、`migration_role_state_checkpoint.go`、`migration_group_role_mapping.go`、`migration_policy_groups.go`、`migration_kek_topology.go`）——
 > 兩段串接即 `migrations.go` 的 `schemaDDLStatements()`，那才是 schema 的**唯一事實源**、
 > `backend/internal/database/baseline_seed.go`（內建告警規則種子）、`backend/internal/model/*.go`（欄位語義與 JSON 形狀）、
 > `backend/internal/database/database.go` 的 `schemaParityModels`（`schemaDDLStatements()` 必須對得上的 model 清單，**只被驗證、不被執行**）。
@@ -71,6 +73,7 @@
 | PolicyClause | `policy_clauses` | **增量 `20260909_policy_groups`（非 baseline）**（複合主鍵 `(group_code, clause_no)`） | 政策組內的一條條文（三種型別；升級移除只標記 `removed_in_version` 不刪列） |
 | PolicyClauseControl | `policy_clause_controls` | **增量 `20260909_policy_groups`（非 baseline）**（`idx_policy_clause_controls_group_key`＝`(group_code, policy_key)` 唯一） | 條文對單一安全設定鍵的要求（一條條文可對多鍵；同組同鍵至多一條） |
 | PolicyClauseAnnotation | `policy_clause_annotations` | **增量 `20260909_policy_groups`（非 baseline）**（複合主鍵 `(group_code, clause_no)`） | 機構掛在條文上的備註與人工確認記錄（**刻意無 FK**——條文被標記移除後備註仍須存在且可讀） |
+| KEKTopology | `kek_topologies` | **增量 `20260913_kek_topology`（非 baseline）**（`kek_topologies_singleton_check` CHECK ＋ `idx_kek_topologies_singleton` unique，兩道合起來才保證單列） | 委託模式的**非秘密**拓撲：主金鑰送去哪裡解（服務商、保管處位址、Transit 金鑰名、角色識別、服務區域）。**全部欄位明文且不得改為信封加密欄**——讀取時點在已封存狀態，受信封保護的欄位在那個時點解不出來。秘密不在本表 |
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
 | AccessReview | `access_reviews` | baseline | 週期性存取複審簽核（不可變，PCI 7.2.4） |
@@ -673,7 +676,7 @@ const (
 本次登入方式（執行期值，隨流程傳遞**不落庫**）。
 `model.User.IsExternal()` 取三訊號（`external_credential`／`is_ldap`／`provisioning_origin != local`）的**聯集**
 （fail-secure：單欄漂移不會打開本地密碼路徑）；所有密碼類判定（自助改密、admin 重設、
-本地登入分派、封印解封的初始管理員驗證）一律經此方法，不得直讀單一欄位。
+本地登入分派、封存解封的初始管理員驗證）一律經此方法，不得直讀單一欄位。
 過渡期不變式：`(is_ldap=true) ⟺ (provisioning_origin='ldap')`、`origin != local ⟹ external_credential`。
 
 **索引（實際 DB 狀態）**:
@@ -768,7 +771,7 @@ const (
   而刪列等於有效角色集縮減、縮減會推進憑證世代把人踢下線，下一次登入重算又把列長回來。
   三態下固定與解除固定都是單條更新，不動有效角色集。
 - **本地管理員計數只認管理者指派的成分**（`model.IsManualSource`＝`manual` 或 `both`）：
-  只由映射賦予的管理員角色會隨群組異動在下一次登入消失，撐不住封印解封的能力。
+  只由映射賦予的管理員角色會隨群組異動在下一次登入消失，撐不住封存解封的能力。
 - **存量列與既有的角色寫入路徑一律落在 `manual`**：那些路徑寫的都是兩欄 INSERT、吃欄位預設。
   語義是「認證通過即基本存取，外部群組只管升權」，基本角色永不受映射控制。
 - **寫入面收口**：`UPDATE`／`INSERT INTO`／`DELETE FROM user_roles` 的 SQL 只准出現在
@@ -1180,8 +1183,8 @@ const (
 | `RequestID` | string | `type:varchar(100);index:idx_*` | `request_id` | 追蹤 ID |
 | `IntegrityHMAC` | string | `type:varchar(64)` | `-` | 逐列完整性驗證碼（PCI 10.3.4；HMAC-SHA256 hex）。由 `AuditLog.BeforeCreate` 註冊 hook 蓋章，覆蓋**全部入庫路徑**（middleware 批次、asset GORM hook、file_tap、k8s cp）——**「入庫」二字是刻意的（誠實邊界 R2）**：檔案降級（`AuditLogService.writeToFile`）與佇列滿載丟棄的事件不進 DB、不經本 hook，既無 HMAC 也無 key_version，故 SHALL NOT 表述為「覆蓋全部寫入路徑」；基準前歷史列為空，基準後仍空即判不符（以列 id 對比 IntegrityBaseline.max_log_id 判定） |
 | `KeyVersion` | int | migration default 0 | `-` | 蓋章鑰版本。0＝legacy 派生鑰快照（凍結為 audit_integrity DataKey v0，JWT_SECRET 輪替不影響歷史驗章），>=1 為系統生成的版本化鑰。驗證按列 KeyVersion 取對應鑰 |
-| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 封印期留痕回灌的冪等鍵。B 模式封印期的解封嘗試先寫入定長環狀 journal，解封後回灌審計；回灌為 **at-least-once**，故以本欄的唯一索引保證重複回灌不產生重複列。**一般審計列為 NULL**（唯一索引對 NULL 不生效）。合成的聚合列另以 `(journal_uuid, 起始 seq, 結束 seq)` 導出確定性 ID 填入本欄——聚合列無個別事件 uuid，若不給確定性鍵，checkpoint 未落盤而重跑時同一區間會重複入審計 |
-| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 回灌冪等鍵。封印期 journal 的 at-least-once 回灌以此去重：個別事件列用 journal 的確定性事件 ID，合成聚合列用 `(journal_uuid, 起始 seq, 結束 seq)` 導出的確定性 ID。**可為 NULL 且必須是指標**——一般審計列不帶此鍵，若用空字串則唯一索引會讓第二筆一般審計列直接寫入失敗；多個 NULL 在 Postgres 與 SQLite 的唯一索引下皆允許並存 |
+| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 封存期留痕回灌的冪等鍵。B 模式封存期的解封嘗試先寫入定長環狀 journal，解封後回灌審計；回灌為 **at-least-once**，故以本欄的唯一索引保證重複回灌不產生重複列。**一般審計列為 NULL**（唯一索引對 NULL 不生效）。合成的聚合列另以 `(journal_uuid, 起始 seq, 結束 seq)` 導出確定性 ID 填入本欄——聚合列無個別事件 uuid，若不給確定性鍵，checkpoint 未落盤而重跑時同一區間會重複入審計 |
+| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 回灌冪等鍵。封存期 journal 的 at-least-once 回灌以此去重：個別事件列用 journal 的確定性事件 ID，合成聚合列用 `(journal_uuid, 起始 seq, 結束 seq)` 導出的確定性 ID。**可為 NULL 且必須是指標**——一般審計列不帶此鍵，若用空字串則唯一索引會讓第二筆一般審計列直接寫入失敗；多個 NULL 在 Postgres 與 SQLite 的唯一索引下皆允許並存 |
 
 **字串欄位長度收口**（`backend/internal/model/audit_log_bounds.go`）：
 `AuditLog.BeforeCreate` 在**蓋章之前**把字串欄位收進各自 gorm 標籤宣告的上界內（上界由標籤
@@ -1728,6 +1731,7 @@ const (
 | `daily_review_enabled` | bool | `false` | - | 每日審閱簽核 |
 | `failure_alert_enabled` | bool | `false` | - | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
 | `key_cryptoperiod_reminder_days` | int | `0` | max | 金鑰輪替提醒天數（0=不提醒；純提醒不觸發動作） |
+| `dek_cache_ttl_seconds` | int | 空 | max | 資料金鑰快取存活期（空=不限期；0=用時現解不留快取；N=固定期限不續期；空值合法為本鍵獨有） |
 | `transport_rdp_level` | enum | `off` | 序位 | RDP 傳輸強制等級（弱→強：`off`/`warn`/`strict`） |
 | `transport_vnc_level` | enum | `off` | 序位 | VNC 傳輸強制等級（同上） |
 | `transport_db_level` | enum | `off` | 序位 | 資料庫傳輸強制等級（同上） |
@@ -2525,7 +2529,7 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 把區間內每列的 `(id, key_version, integrity_hmac)` 依 id 升冪聚合成一個雜湊，鏈接前一檢查點並以 Ed25519 簽章，
 使「少了列」成為可偵測事件。封章時另取一份當下的角色指派快照一併簽入（見四個 `role_state_*` 欄），
 使「管理者與稽核者的角色被直接改資料庫掛上或拿掉」同樣落在鏈的保護範圍內。
-**區間主軸是 id 不是 created_at**：封印期回灌列的 `created_at` 是過去事件時刻而 id 是新取號，
+**區間主軸是 id 不是 created_at**：封存期回灌列的 `created_at` 是過去事件時刻而 id 是新取號，
 時間區間必然被後來長出的列打破。空區間（`row_count=0`、`id_from = id_to + 1`）照樣蓋章並簽名。
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -2669,7 +2673,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 | `RecentLastStatus` | string | `size:16;not null;default:''` | `recent_last_status` | `passed`／`failed`／`error`（`error`＝本輪無法完成，狀態為未知而非「無異常」） |
 | `RecentLastDurationMs` | int64 | `not null;default:0` | `recent_last_duration_ms` | 近期層最近一輪耗時 |
 | `RecentWindowDaysEffective` | int | `not null;default:0` | `recent_window_days_effective` | 近期層本次**實際生效**的窗口天數（政策值經審計紀錄保留天數 clamp 後）。記生效值而非設定值：承諾驗證保留期以外的範圍是空頭支票 |
-| `RecentLastSeq` | uint | `not null;default:0` | `recent_last_seq` | 上次觀測到的鏈尾檢查點序號；前進即代表期間有新封存（觀測式觸發的狀態載體） |
+| `RecentLastSeq` | uint | `not null;default:0` | `recent_last_seq` | 上次觀測到的鏈尾檢查點序號；前進即代表期間有新存證（觀測式觸發的狀態載體） |
 | `FullLastRunAt` | *time.Time | - | `full_last_run_at` | 全鏈層最近執行時點；nil＝從未執行 |
 | `FullLastStatus` | string | `size:16;not null;default:''` | `full_last_status` | 同 `RecentLastStatus` 的值域 |
 | `FullLastDurationMs` | int64 | `not null;default:0` | `full_last_duration_ms` | 全鏈層最近一輪耗時 |
@@ -3474,6 +3478,43 @@ pending → uploading → uploaded → local_purged
 - **確認不設到期**：由機構決定何時重新確認，**再次確認覆蓋前次**，歷史留在操作日誌裡。
 - 備註與確認都是機構寫入的資料，**不影響判定結果**；人工確認只作用於待確認（參考值）的條文，
   作用是讓該筆判定的 `confirmed_by`／`confirmed_at` 有值。
+
+---
+
+### 58. KEKTopology（委託模式的保管處拓撲）
+
+**表名**: `kek_topologies`
+**檔案**: `backend/internal/model/kek_topology.go`
+**建表方式**: **增量 `20260913_kek_topology`（非 baseline）**，單列表：
+`CONSTRAINT kek_topologies_singleton_check CHECK ((singleton = 1))` ＋
+`CREATE UNIQUE INDEX idx_kek_topologies_singleton ON kek_topologies (singleton)`
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey` | `id` | 主鍵 |
+| `Singleton` | uint8 | `not null;default:1;uniqueIndex` | - | 單列守衛欄；恆為 1 |
+| `Provider` | string | `size:16;not null;default:''` | `provider` | 服務商（aws／gcp／vault）。**非事實源**：實際生效的服務商由部署檔的 `KEK_KMS_PROVIDER` 宣告，本欄只記這一列是為哪一家設定的 |
+| `Address` | string | `size:255;not null;default:''` | `address` | 保管處位址（Vault 專屬，須 `https://`） |
+| `TransitKeyName` | string | `size:128;not null;default:''` | `transit_key_name` | Transit 具名金鑰（Vault 專屬） |
+| `RoleID` | string | `size:128;not null;default:''` | `role_id` | AppRole 的角色識別（Vault 專屬；**非秘密**，秘密是角色密鑰） |
+| `Region` | string | `size:64;not null;default:''` | `region` | 服務區域（AWS 專屬；GCP 不使用，Vault 不要求） |
+| `UpdatedBy` | string | `size:100;not null;default:''` | `updated_by` | 最後變更者（課責；變更前後值另入審計） |
+| `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
+
+**設計說明**:
+- **為什麼是單列專用表而不是 `security_policies` 的 key-value**：(1) 原子性——一次拓撲更新是三到四個
+  欄位，key-value 形態下中途失敗會留下「位址已改、角色未改」的半套目的地；(2) `security_policies`
+  是合規政策面，拓撲不是合規旋鈕、沒有建議值、也不該進偏離摘要；(3) 它是具型別的設定
+  （位址須 HTTPS、識別有字元與長度約束），同型前例是 `ldap_directories` 與 `syslog_settings`。
+- **全部欄位明文，且不得改為信封加密欄**：本表的讀取時點在**已封存狀態**（解封頁載入、建構 provider），
+  此時資料金鑰尚未解出。拓撲是非秘密，明文儲存不降低保護等級；改為加密會讓解封頁在封存狀態白屏，
+  而那正是最需要它的時點。
+- **秘密不在本表**：AWS 存取金鑰、GCP 服務帳號金鑰檔內容、Vault 角色密鑰或權杖一律不落任何持久化
+  位置，只存在於該解封世代的記憶體憑證持有者，封存即抹除。
+- **金鑰識別不在本表**（Vault 的 Transit 金鑰名除外）：既有部署沿 `data_keys.kek_id`，本表不另存一份
+  可與之分歧的副本——分歧時解封頁顯示的金鑰與實際解包用的金鑰不同，核對就失去意義。
+- **兩道單列守衛缺一不可**：單靠 unique index 只禁止相同值重複（`singleton=1` 與 `singleton=2` 仍可
+  並存），單靠 CHECK 則擋不住兩列都是 1。兩列並存時「主金鑰送去哪裡解」取決於讀取順序。
 
 ---
 

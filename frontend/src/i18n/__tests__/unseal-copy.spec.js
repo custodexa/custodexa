@@ -36,8 +36,9 @@ const LOCALES = [
 ]
 
 // 掃空防護：namespace 更名或鍵被大批移除時守衛必須轉紅，不得因無項目可檢而通過。
-// 下限釘在 50（本 change 交付時為 58 鍵）。
-const MIN_LEAF_KEYS = 50
+// 下限隨委託解封文案（三步／四步、四張補板、逾時導引）上修至 150
+// （本 change 交付時為 167 鍵；舊值 50 對應舊版 58 鍵的射程，留著等於沒有掃空防護）。
+const MIN_LEAF_KEYS = 150
 
 // `instanceGuard.*` 的獨立下限（交付時 74 鍵：橫幅 26＋detail 24＋halt 24）。
 // 套 unseal 的下限等於沒有掃空防護——兩組各自的鍵數差一倍以上
@@ -54,11 +55,27 @@ const SNAKE_CASE = /[a-z0-9]+_[a-z0-9_]+/
 const CAMEL_CASE = /\b[a-z]+[A-Z][A-Za-z]*/
 // 行話（拉丁字母面）：本 change 逐一替換掉的工程用語
 const JARGON_LATIN = /\b(envelope ciphertext|envelope-ciphertext|unwrap|unwraps|unwrapping|fail-close|failclose|keying material|material|materials)\b/i
-// 行話（中日文面）
-const JARGON_CJK = /信封密文|遺失語義|解包|收束|収束|留痕|材料|エンベロープ暗号文|エンベロープ/
+// 行話（中日文面）。**退場用詞「封印」「還原」併入本表**（用詞統一：封存／已封存／解封）——
+// 兩詞在改名前正是這三頁的狀態與動作稱呼，不併入就等於只靠人眼盯著它們不回流。
+// 日文面的退場詞為「封印」「開封」（シール／アンシールへ統一）；「復旧手段」一類的
+// 一般日語不在退場射程——它指的是救援管道，不是封存動作的稱呼。
+const JARGON_CJK =
+  /信封密文|遺失語義|解包|收束|収束|留痕|材料|エンベロープ暗号文|エンベロープ|封印|還原|開封/
 
-// 本 change 刪除的三鍵：內容為純內部設計理由，SHALL NOT 以任何形式回流
-const REMOVED_KEYS = ['serverAuthorityHint', 'lossNotice', 'materialFormatHint']
+// 已刪除的鍵：前三者內容為純內部設計理由；後六者是「路徑未知時手動切」與舊的「還原」
+// 用詞，其中 `normalDesc` 舊值明寫「一般解封不需要帳號密碼」——自前置身分驗證起該句為假，
+// 留著比沒有更糟。九者皆 SHALL NOT 以任何形式回流
+const REMOVED_KEYS = [
+  'serverAuthorityHint',
+  'lossNotice',
+  'materialFormatHint',
+  'pathUnknownTitle',
+  'pathUnknownDesc',
+  'switchToInitialization',
+  'switchToNormal',
+  'restoreAction',
+  'restoreTitle',
+]
 
 const scanEntries = (entries) => {
   for (const [key, text] of entries) {

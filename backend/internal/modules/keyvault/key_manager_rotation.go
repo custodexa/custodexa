@@ -26,9 +26,14 @@ const rotationMaxPerRunDefault = 100000
 // 與 PolicyKeyRotationMaxPerRun 的 Min 同值
 const rotationMinPerRun = 500
 
-// rotationPolicySource 單次上限的執行期來源（安全政策頁）
+// rotationPolicySource 執行期政策來源（安全政策頁）。
+//
+// 兩個消費者：單次重加密上限走 GetInt，DEK 快取存活期走 Get——後者是三態鍵，
+// 空字串即「未設定」，而 GetInt 會把空字串折成 0，那在本鍵剛好是語義相反的
+// 「不留快取」。故存活期一律讀原始字串自行判讀，SHALL NOT 走 GetInt
 type rotationPolicySource interface {
 	GetInt(key string) int
+	Get(key string) string
 }
 
 // SetPolicySource 接上安全政策頁作為單次重加密上限的執行期事實源。
@@ -142,6 +147,9 @@ func (s *KeyManagerService) requireFreshActiveTx(tx *gorm.DB, purpose string) (i
 // 行程內旗標——多實例下另一實例的 pending 本行程看不見）；重加密長迴圈
 // 在鎖外（不持鎖掃大表）。
 func (s *KeyManagerService) RotateDataDEK() (*DEKRotationResult, error) {
+	return vaultUse(&s.materialGate, func() (*DEKRotationResult, error) { return s.rotateDataDEK() }, nil)
+}
+func (s *KeyManagerService) rotateDataDEK() (*DEKRotationResult, error) {
 	var fromVer, toVer int
 	var newRaw []byte
 	bumped := false
@@ -213,6 +221,9 @@ func (s *KeyManagerService) RotateDataDEK() (*DEKRotationResult, error) {
 // 不重算歷史章（版本化的意義）——新列以新鑰蓋章，歷史列以其 key_version 驗證。
 // data_keys 判定與寫入在跨實例互斥鎖內。
 func (s *KeyManagerService) RotateAuditKey() (*DEKRotationResult, error) {
+	return vaultUse(&s.materialGate, func() (*DEKRotationResult, error) { return s.rotateAuditKey() }, nil)
+}
+func (s *KeyManagerService) rotateAuditKey() (*DEKRotationResult, error) {
 	var fromVer, toVer int
 	var newRaw []byte
 	err := s.withDataKeysLock(func(tx *gorm.DB) error {
@@ -340,136 +351,156 @@ type KEKRewrapResult struct {
 // 本地目標維持「曾出現過即拒」的嚴格語義；委託目標改判「不得存在使用該 kek_id 的
 // 未退役列」（理由與代價見守衛 (c) 的註解）。
 func (s *KeyManagerService) RewrapKEK(ctx context.Context, target *RewrapTarget) (*KEKRewrapResult, error) {
-	if target == nil {
-		return nil, fmt.Errorf("%w：未指定重包目標", ErrRewrapTargetModeInvalid)
-	}
-	// **sink 端重驗不變式**：欄位不導出只擋得住套件外的呼叫端，
-	// 同一套件內的 struct literal 可造出未經任何驗證的目標。此處重跑與構造入口
-	// 同一組驗證，使「以不合格材料重包」在**任何**呼叫路徑上都不成立。
-	// 材料副本用畢即銷毀（誠實邊界見 RewrapTarget.Destroy）。
-	if err := target.Validate(); err != nil {
-		return nil, err
-	}
-	defer target.Destroy()
+	return vaultUse(&s.materialGate, func() (*KEKRewrapResult, error) {
+		if target == nil {
+			return nil, fmt.Errorf("%w：未指定重包目標", ErrRewrapTargetModeInvalid)
+		}
+		// **sink 端重驗不變式**：欄位不導出只擋得住套件外的呼叫端，
+		// 同一套件內的 struct literal 可造出未經任何驗證的目標。此處重跑與構造入口
+		// 同一組驗證，使「以不合格材料重包」在**任何**呼叫路徑上都不成立。
+		// 材料副本用畢即銷毀（誠實邊界見 RewrapTarget.Destroy）。
+		if err := target.Validate(); err != nil {
+			return nil, err
+		}
+		defer target.Destroy()
 
-	env := s.kekKeyID()
-	newProvider := target.Provider()
+		env := s.kekKeyID()
+		newProvider := target.Provider()
 
-	var count int64
-	err := s.withDataKeysLock(func(tx *gorm.DB) error {
-		// 守衛 (a)：已存在待切換 pending → 拒絕（要求先完成切換或放棄重包，
-		// 不靜默清除既有 pending 而使已交付的新 KEK 失效）
-		var pendingCount int64
-		if err := tx.Model(&model.DataKey{}).Where("kek_pending = ?", true).Count(&pendingCount).Error; err != nil {
-			return fmt.Errorf("檢查待切換狀態失敗: %w", err)
-		}
-		if pendingCount > 0 {
-			return ErrRewrapPendingExists
-		}
-		// 守衛 (b)：退役 backlog（前次切換未成功退役的舊列）→ 拒絕，先重啟收斂
-		backlogCount, err := countRetireBacklog(tx, env)
-		if err != nil {
-			return err
-		}
-		if backlogCount > 0 {
-			return ErrRetireBacklog
-		}
-		// 守衛 (b2)：目標不得等於現行 KEK。守衛 (c) 亦會擋下
-		// （現行 KEK 必有列），但成因不同：此處是「填了同一把鑰」的操作失誤，
-		// 需要專屬訊息，不該被歸類為指紋撞見
-		if target.KeyRef().Equal(s.kek.KeyRef()) {
-			return ErrRewrapTargetSameAsCurrent
-		}
-		// 守衛 (c)：目標金鑰引用與金鑰表的衝突檢查。
-		//
-		// **本地與委託的判定範圍刻意不同**：
-		//   - 本地：曾出現過即拒（含退役列——退役列自軟刪除後永久保留指紋史）。
-		//     前提是「KEK 由伺服器隨機生成、碰撞就換一把」，代價為零；本守衛同時
-		//     擋下「重用舊 KEK」的操作失誤與（機率天文級小的）指紋碰撞。
-		//   - 委託：目標由操作者指定且 **ARN 不可重生**。沿用嚴格語義的話，
-		//     一次 abandon 過的 ARN 將永久無法再被指定為重包目標，而錯誤訊息
-		//     「請改用另一把金鑰」對操作者是死路——等於**永久燒毀該 CMK**。
-		//     故委託改判「不得存在使用該 kek_id 的**未退役**列」（同鑰重試因此
-		//     可行，與 schema 的 partial 唯一索引一致，model/data_key.go:31-33）。
-		//
-		// **放寬的代價（SHALL NOT 靜默放寬）**：本守衛同時是 DEKAAD 完備性的
-		// 依賴之二（pkg/crypto/codec.go:85-90）——AAD 不含 kek_id，其「同
-		// (purpose,version) 下不會有兩份可並存材料」的論證有一半靠這道守衛。
-		// 放寬後，「同 (purpose,version,kek_id) 下並存兩份材料」的替換 DoS 面
-		// 於委託模式重新開啟。可接受的理由：具 DB 寫權者本就在信任邊界外，
-		// 且 partial 唯一索引仍擋住未退役列並存。放寬是明示接受的取捨。
-		q := tx.Model(&model.DataKey{}).Where("kek_id = ?", newProvider.KeyRef().KeyID)
-		if !target.IsLocal() {
-			q = q.Where("kek_retired_at IS NULL")
-		}
-		var exists int64
-		if err := q.Count(&exists).Error; err != nil {
-			return fmt.Errorf("檢查 KEK 指紋碰撞失敗: %w", err)
-		}
-		if exists > 0 {
-			return ErrRewrapTargetSeen
-		}
+		// 釘選 data 版本的原材料：重包迴圈直接讀它們，設有存活期時可能一把都不在
+		// 快取裡。**必須在開交易之前**——解回材料要另外查金鑰表，而交易進行中
+		// 另開查詢在單連線的部署上會自己等自己。釘選只推遲清除，解除時補做到期掃描
+		unpin := s.pinDataVersions()
+		defer unpin()
 
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-		// 以現行 KEK 的未退役列為藍本重包（含 retired DEK 與 v0——歷史解密/驗章都要跟上）
-		var rows []model.DataKey
-		if err := tx.Where("kek_id = ? AND kek_retired_at IS NULL", env).Find(&rows).Error; err != nil {
-			return fmt.Errorf("讀取金鑰表失敗: %w", err)
-		}
-		for _, row := range rows {
-			// 已清理佔位：材料已銷毀，佔位隨行複製至新 KEK 保版本鏈不斷號
-			if row.WrappedKey == "" && row.Status == model.DataKeyStatusRetired {
-				placeholder := model.DataKey{
-					Purpose: row.Purpose, Version: row.Version, WrappedKey: "",
-					KEKID: newProvider.KeyRef().KeyID, Status: row.Status,
-					CreatedAt: time.Now(), RetiredAt: row.RetiredAt, KEKPending: true,
-				}
-				if err := tx.Create(&placeholder).Error; err != nil {
-					return fmt.Errorf("寫入佔位重包列失敗: %w", err)
-				}
-				continue
+		var count int64
+		err := s.withDataKeysLock(func(tx *gorm.DB) error {
+			// 守衛 (a)：已存在待切換 pending → 拒絕（要求先完成切換或放棄重包，
+			// 不靜默清除既有 pending 而使已交付的新 KEK 失效）
+			var pendingCount int64
+			if err := tx.Model(&model.DataKey{}).Where("kek_pending = ?", true).Count(&pendingCount).Error; err != nil {
+				return fmt.Errorf("檢查待切換狀態失敗: %w", err)
 			}
-			raw := s.keys[row.Purpose][row.Version]
-			if raw == nil {
-				return fmt.Errorf("金鑰 %s v%d 未載入，無法重包", row.Purpose, row.Version)
+			if pendingCount > 0 {
+				return ErrRewrapPendingExists
 			}
-			column, err := wrapMaterial(newProvider, row.Purpose, row.Version, raw)
+			// 守衛 (b)：退役 backlog（前次切換未成功退役的舊列）→ 拒絕，先重啟收斂
+			backlogCount, err := countRetireBacklog(tx, env)
 			if err != nil {
-				return fmt.Errorf("重包 %s v%d 失敗: %w", row.Purpose, row.Version, err)
+				return err
 			}
-			clone := model.DataKey{
-				Purpose:    row.Purpose,
-				Version:    row.Version,
-				WrappedKey: column,
-				KEKID:      newProvider.KeyRef().KeyID,
-				Status:     row.Status,
-				CreatedAt:  time.Now(),
-				RetiredAt:  row.RetiredAt,
-				KEKPending: true, // 待切換 pending：切換完成（env 指向此 clone）後由 load 轉正
+			if backlogCount > 0 {
+				return ErrRetireBacklog
 			}
-			if err := tx.Create(&clone).Error; err != nil {
-				return fmt.Errorf("寫入重包列失敗: %w", err)
+			// 守衛 (b2)：目標不得等於現行 KEK。守衛 (c) 亦會擋下
+			// （現行 KEK 必有列），但成因不同：此處是「填了同一把鑰」的操作失誤，
+			// 需要專屬訊息，不該被歸類為指紋撞見
+			if target.KeyRef().Equal(s.kek.KeyRef()) {
+				return ErrRewrapTargetSameAsCurrent
 			}
-		}
-		count = int64(len(rows))
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
+			// 守衛 (c)：目標金鑰引用與金鑰表的衝突檢查。
+			//
+			// **本地與委託的判定範圍刻意不同**：
+			//   - 本地：曾出現過即拒（含退役列——退役列自軟刪除後永久保留指紋史）。
+			//     前提是「KEK 由伺服器隨機生成、碰撞就換一把」，代價為零；本守衛同時
+			//     擋下「重用舊 KEK」的操作失誤與（機率天文級小的）指紋碰撞。
+			//   - 委託：目標由操作者指定且 **ARN 不可重生**。沿用嚴格語義的話，
+			//     一次 abandon 過的 ARN 將永久無法再被指定為重包目標，而錯誤訊息
+			//     「請改用另一把金鑰」對操作者是死路——等於**永久燒毀該 CMK**。
+			//     故委託改判「不得存在使用該 kek_id 的**未退役**列」（同鑰重試因此
+			//     可行，與 schema 的 partial 唯一索引一致，model/data_key.go:31-33）。
+			//
+			// **放寬的代價（SHALL NOT 靜默放寬）**：本守衛同時是 DEKAAD 完備性的
+			// 依賴之二（pkg/crypto/codec.go:85-90）——AAD 不含 kek_id，其「同
+			// (purpose,version) 下不會有兩份可並存材料」的論證有一半靠這道守衛。
+			// 放寬後，「同 (purpose,version,kek_id) 下並存兩份材料」的替換 DoS 面
+			// 於委託模式重新開啟。可接受的理由：具 DB 寫權者本就在信任邊界外，
+			// 且 partial 唯一索引仍擋住未退役列並存。放寬是明示接受的取捨。
+			q := tx.Model(&model.DataKey{}).Where("kek_id = ?", newProvider.KeyRef().KeyID)
+			if !target.IsLocal() {
+				q = q.Where("kek_retired_at IS NULL")
+			}
+			var exists int64
+			if err := q.Count(&exists).Error; err != nil {
+				return fmt.Errorf("檢查 KEK 指紋碰撞失敗: %w", err)
+			}
+			if exists > 0 {
+				return ErrRewrapTargetSeen
+			}
 
-	s.mu.Lock()
-	s.rewrapPending = true
-	s.mu.Unlock()
-	// 日誌只帶金鑰引用（非機密），**永不含材料**——「不落日誌」的落點之一
-	log.Printf("[KeyManager] KEK 重包完成（目標 %s，新金鑰引用 %s，%d 列）：等待管理員更新 env 後重啟切換",
-		target.Mode(), newProvider.KeyRef().KeyID, count)
-	return &KEKRewrapResult{
-		TargetMode:    target.Mode(),
-		NewKEKID:      newProvider.KeyRef().KeyID,
-		RewrappedKeys: int(count),
-	}, nil
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+			// 以現行 KEK 的未退役列為藍本重包（含 retired DEK 與 v0——歷史解密/驗章都要跟上）
+			var rows []model.DataKey
+			if err := tx.Where("kek_id = ? AND kek_retired_at IS NULL", env).Find(&rows).Error; err != nil {
+				return fmt.Errorf("讀取金鑰表失敗: %w", err)
+			}
+			for _, row := range rows {
+				if usesGCPRewrap(s.kek, newProvider) && ctx.Err() != nil {
+					return ctx.Err()
+				}
+				// 已清理佔位：材料已銷毀，佔位隨行複製至新 KEK 保版本鏈不斷號
+				if row.WrappedKey == "" && row.Status == model.DataKeyStatusRetired {
+					placeholder := model.DataKey{
+						Purpose: row.Purpose, Version: row.Version, WrappedKey: "",
+						KEKID: newProvider.KeyRef().KeyID, Status: row.Status,
+						CreatedAt: time.Now(), RetiredAt: row.RetiredAt, KEKPending: true,
+					}
+					if err := tx.Create(&placeholder).Error; err != nil {
+						return fmt.Errorf("寫入佔位重包列失敗: %w", err)
+					}
+					continue
+				}
+				var column string
+				var err error
+				if usesGCPRewrap(s.kek, newProvider) {
+					column, err = rewrapGCPRow(ctx, s.kek, newProvider, row)
+				} else {
+					raw := s.keys[row.Purpose][row.Version]
+					if raw == nil {
+						return fmt.Errorf("金鑰 %s v%d 未載入，無法重包", row.Purpose, row.Version)
+					}
+					column, err = wrapMaterial(newProvider, row.Purpose, row.Version, raw)
+				}
+				if err != nil {
+					return fmt.Errorf("重包 %s v%d 失敗: %w", row.Purpose, row.Version, err)
+				}
+				clone := model.DataKey{
+					Purpose:    row.Purpose,
+					Version:    row.Version,
+					WrappedKey: column,
+					KEKID:      newProvider.KeyRef().KeyID,
+					Status:     row.Status,
+					CreatedAt:  time.Now(),
+					RetiredAt:  row.RetiredAt,
+					KEKPending: true, // 待切換 pending：切換完成（env 指向此 clone）後由 load 轉正
+				}
+				if err := tx.Create(&clone).Error; err != nil {
+					return fmt.Errorf("寫入重包列失敗: %w", err)
+				}
+			}
+			count = int64(len(rows))
+			if usesGCPRewrap(s.kek, newProvider) {
+				return ctx.Err()
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		s.mu.Lock()
+		s.rewrapPending = true
+		s.mu.Unlock()
+		// 日誌只帶金鑰引用（非機密），**永不含材料**——「不落日誌」的落點之一
+		log.Printf("[KeyManager] KEK 重包完成（目標 %s，新金鑰引用 %s，%d 列）：等待管理員更新 env 後重啟切換",
+			target.Mode(), newProvider.KeyRef().KeyID, count)
+		return &KEKRewrapResult{
+			TargetMode:    target.Mode(),
+			NewKEKID:      newProvider.KeyRef().KeyID,
+			RewrappedKeys: int(count),
+		}, nil
+	}, nil)
 }
 
 // AbandonRewrap 放棄尚未切換的 KEK 重包：將以新 KEK 包裹的過渡列（kek_id 不等於
@@ -485,6 +516,9 @@ func (s *KeyManagerService) RewrapKEK(ctx context.Context, target *RewrapTarget)
 // withDataKeysLock 內——與另一實例的啟動收尾／重包／輪替以 DB 層互斥序列化；
 // 即使交錯，收尾側的 promote 列數守衛也會偵測 clones 已被放棄而安全中止。
 func (s *KeyManagerService) AbandonRewrap() (int, error) {
+	return vaultUse(&s.materialGate, func() (int, error) { return s.abandonRewrap() }, nil)
+}
+func (s *KeyManagerService) abandonRewrap() (int, error) {
 	env := s.kekKeyID()
 	var abandoned int64
 	err := s.withDataKeysLock(func(tx *gorm.DB) error {

@@ -15,9 +15,13 @@ const rotateKeyMock = vi.fn()
 const rewrapKEKMock = vi.fn()
 const abandonRewrapMock = vi.fn()
 const cleanupRetiredMock = vi.fn()
+const getTopologyMock = vi.fn()
+const updateTopologyMock = vi.fn()
 
 vi.mock('@/api/keys', () => ({
   getKeyInventory: (...args) => getInventoryMock(...args),
+  getKEKTopology: (...args) => getTopologyMock(...args),
+  updateKEKTopology: (...args) => updateTopologyMock(...args),
   rotateKey: (...args) => rotateKeyMock(...args),
   rewrapKEK: (...args) => rewrapKEKMock(...args),
   abandonRewrap: (...args) => abandonRewrapMock(...args),
@@ -1076,5 +1080,403 @@ describe('KEK 重包精靈的表單標籤關聯', () => {
     assertResolvable(wrapper, ids)
     // 兩個欄位若共用同一標籤，輔助技術會把「新 KEK」與「確認」報成同一個名稱
     expect(new Set(ids).size).toBe(2)
+  })
+})
+
+// 資料金鑰保留時間：
+// **全部 KEK 模式皆可編輯**。本機模式（env／ui）只多一句白話說明，不灰掉、不隱藏
+// ——依模式停用等於替機構決定它不需要這個旋鈕，而該鍵的價值正是讓機構自己選。
+describe('資料金鑰保留時間鍵在各 KEK 模式的可編輯性', () => {
+  // 三態：空值＝不限期、0＝不留、N＝固定期限。無 direction、不進任何政策組
+  const dekPolicy = (value = '') => ({
+    key: 'dek_cache_ttl_seconds',
+    type: 'int',
+    allow_empty: true,
+    zero_disables: true,
+    max: 86400,
+    label: 'DEK 快取存活期',
+    unit: '秒',
+    value,
+    verdicts: [],
+  })
+
+  const withDek = (value = '') => {
+    const base = policyFixture()
+    return { ...base, data: [...base.data, dekPolicy(value)] }
+  }
+
+  // 以承載列定位控制項：aria-label 是否落在 props 或 attrs 由元件版本決定，
+  // 用它定位會讓測試綁在 Element Plus 的實作細節上
+  const dekInput = (wrapper) => {
+    const row = wrapper
+      .findAllComponents({ name: 'PolicyKeyRow' })
+      .find((c) => c.props('policy')?.key === 'dek_cache_ttl_seconds')
+    return row ? row.findComponent({ name: 'ElInputNumber' }) : null
+  }
+
+  const saveButton = (wrapper) => wrapper.findAll('button').find((b) => b.text() === '儲存')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPoliciesMock.mockResolvedValue(withDek())
+  })
+
+  for (const provider of ['env', 'ui', 'kms', 'hsm']) {
+    it(`${provider} 模式：控制項存在且可編輯`, async () => {
+      getInventoryMock.mockResolvedValue(inventoryFixture({ provider }))
+      const wrapper = await mountPage()
+
+      expect(wrapper.text()).toContain('資料金鑰的記憶體保留時間')
+      const input = dekInput(wrapper)
+      expect(input?.exists(), '控制項未渲染').toBe(true)
+      expect(input.props('disabled')).toBeFalsy()
+      // 空值態不得被折成 0——0 在本鍵是「完全不留」，是另一個設定值
+      expect(input.props('modelValue')).toBeNull()
+      // 未設定的空框以 placeholder 說明，不讓它看起來像載入失敗
+      expect(input.props('placeholder')).toBe('未設定')
+    })
+  }
+
+  it('本機模式（env／ui）附一句白話說明，委託模式不附', async () => {
+    for (const provider of ['env', 'ui']) {
+      getInventoryMock.mockResolvedValue(inventoryFixture({ provider }))
+      const wrapper = await mountPage()
+      const note = wrapper.find('[data-test="dek-ttl-local-mode-note"]')
+      expect(note.exists(), `${provider} 缺本機模式說明`).toBe(true)
+      expect(note.text()).toContain('資料金鑰的記憶體保留時間')
+    }
+    getInventoryMock.mockResolvedValue(inventoryFixture({ provider: 'kms' }))
+    const delegated = await mountPage()
+    expect(delegated.find('[data-test="dek-ttl-local-mode-note"]').exists()).toBe(false)
+  })
+
+  it('本鍵不進偏離摘要（無合規建議值）', async () => {
+    getInventoryMock.mockResolvedValue(inventoryFixture())
+    const wrapper = await mountPage()
+    // 偏離數仍只有提醒鍵那一項
+    expect(wrapper.find('[data-test="section-deviation-key"]').text()).toBe('偏離 1 項')
+    expect(
+      wrapper.find('[data-test="policy-deviation-dek_cache_ttl_seconds"]').exists()
+    ).toBe(false)
+  })
+
+  it('未設定改成 0 時送出 "0"（不留快取）', async () => {
+    getInventoryMock.mockResolvedValue(inventoryFixture())
+    updatePoliciesMock.mockResolvedValue(withDek('0'))
+    const wrapper = await mountPage()
+
+    dekInput(wrapper).vm.$emit('update:modelValue', 0)
+    await flushPromises()
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(updatePoliciesMock).toHaveBeenCalledWith({ dek_cache_ttl_seconds: '0' })
+  })
+
+  it('清空已設定的秒數時送出空字串，不送 "0"', async () => {
+    getPoliciesMock.mockResolvedValue(withDek('600'))
+    getInventoryMock.mockResolvedValue(inventoryFixture())
+    updatePoliciesMock.mockResolvedValue(withDek())
+    const wrapper = await mountPage()
+    expect(dekInput(wrapper).props('modelValue')).toBe(600)
+
+    dekInput(wrapper).vm.$emit('update:modelValue', null)
+    await flushPromises()
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(updatePoliciesMock).toHaveBeenCalledWith({ dek_cache_ttl_seconds: '' })
+  })
+})
+
+// —— 委託保管處（拓撲）：讀取、編輯、儲存 ——
+//
+// 這個區塊承載的是「上鎖的資料金鑰要送到哪裡去解」。憑證不在本頁，
+// 故本組的每一條斷言都只碰非秘密欄位。
+const topologyFixture = (overrides = {}) => ({
+  provider: 'vault',
+  configured: true,
+  address: 'https://vault.corp.example:8200',
+  transit_key_name: 'custodexa-kek',
+  role_id: 'role-custodexa-operations',
+  region: '',
+  key_ref: 'vault:custodexa-kek',
+  editable_fields: ['address', 'transit_key_name', 'role_id'],
+  digest: 'a'.repeat(64),
+  updated_by: 'admin',
+  updated_at: '2026-09-13T02:00:00Z',
+  ...overrides,
+})
+
+const topoInputs = (wrapper) => wrapper.findAll('.topo-input input')
+
+describe('KeyManagement 委託保管處設定', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getInventoryMock.mockResolvedValue(inventoryFixture({ provider: 'kms' }))
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    getTopologyMock.mockResolvedValue(topologyFixture())
+  })
+
+  it('非委託部署不渲染本區塊（後端回 provider 空字串）', async () => {
+    getTopologyMock.mockResolvedValue({ provider: '', configured: false, editable_fields: [] })
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('[data-test="kek-topology-card"]').exists()).toBe(false)
+  })
+
+  it('Vault：唯讀顯示位址、角色識別與金鑰識別，並記上次由誰改', async () => {
+    const wrapper = await mountPage()
+    const card = wrapper.find('[data-test="kek-topology-card"]')
+
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain('HashiCorp Vault')
+    expect(card.text()).toContain('https://vault.corp.example:8200')
+    expect(card.text()).toContain('role-custodexa-operations')
+    expect(card.text()).toContain('vault:custodexa-kek')
+    expect(wrapper.find('[data-test="kek-topology-updated"]').text()).toContain('admin')
+    // 唯讀態不渲染任何輸入欄
+    expect(topoInputs(wrapper)).toHaveLength(0)
+  })
+
+  it('AWS：只出現服務區域一欄可改', async () => {
+    getTopologyMock.mockResolvedValue(
+      topologyFixture({
+        provider: 'aws',
+        address: '',
+        transit_key_name: '',
+        role_id: '',
+        region: 'ap-northeast-1',
+        key_ref: 'arn:aws:kms:ap-northeast-1:123456789012:key/abcd',
+        editable_fields: ['region'],
+      })
+    )
+    const wrapper = await mountPage()
+    await findButton(wrapper, '修改').trigger('click')
+    await flushPromises()
+
+    expect(topoInputs(wrapper)).toHaveLength(1)
+    expect(wrapper.find('[data-test="kek-topology-card"]').text()).toContain('服務區域')
+  })
+
+  it('GCP：沒有可編輯欄位，只顯示金鑰資源名並說明原因', async () => {
+    getTopologyMock.mockResolvedValue(
+      topologyFixture({
+        provider: 'gcp',
+        address: '',
+        transit_key_name: '',
+        role_id: '',
+        key_ref: 'projects/p/locations/asia-east1/keyRings/r/cryptoKeys/k',
+        editable_fields: [],
+      })
+    )
+    const wrapper = await mountPage()
+    const card = wrapper.find('[data-test="kek-topology-card"]')
+
+    expect(findButton(wrapper, '修改')).toBeUndefined()
+    expect(card.text()).toContain('projects/p/locations/asia-east1/keyRings/r/cryptoKeys/k')
+    expect(card.text()).toContain('沒有可在這裡修改的欄位')
+  })
+
+  it('儲存前的確認框寫明後果與留痕告警，確認後只送該服務商的精確鍵集', async () => {
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    updateTopologyMock.mockResolvedValue(
+      topologyFixture({ address: 'https://vault-b.corp.example:8200' })
+    )
+    const wrapper = await mountPage()
+    await findButton(wrapper, '修改').trigger('click')
+    await flushPromises()
+
+    await topoInputs(wrapper)[0].setValue('https://vault-b.corp.example:8200')
+    await flushPromises()
+    await findButton(wrapper, '儲存設定').trigger('click')
+    await flushPromises()
+
+    const confirmText = vnodeText(confirmSpy.mock.calls[0][0])
+    expect(confirmText).toContain('https://vault-b.corp.example:8200')
+    expect(confirmText).toContain('送到那個位址去解')
+    expect(confirmText).toContain('記錄')
+    expect(confirmText).toContain('告警')
+    expect(updateTopologyMock).toHaveBeenCalledWith(
+      {
+        address: 'https://vault-b.corp.example:8200',
+        transit_key_name: 'custodexa-kek',
+        role_id: 'role-custodexa-operations',
+      },
+      { skipErrorToast: true }
+    )
+  })
+
+  it('取消確認框即不送出任何請求', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+    const wrapper = await mountPage()
+    await findButton(wrapper, '修改').trigger('click')
+    await flushPromises()
+
+    await topoInputs(wrapper)[0].setValue('https://vault-b.corp.example:8200')
+    await flushPromises()
+    await findButton(wrapper, '儲存設定').trigger('click')
+    await flushPromises()
+
+    expect(updateTopologyMock).not.toHaveBeenCalled()
+  })
+
+  it('驗證被拒：整筆未變更，畫面上的現行值不被企圖值覆蓋', async () => {
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    updateTopologyMock.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { code: 'KEY_TOPOLOGY_INVALID', params: { fields: ['address'] } },
+      },
+    })
+    const wrapper = await mountPage()
+    await findButton(wrapper, '修改').trigger('click')
+    await flushPromises()
+
+    await topoInputs(wrapper)[0].setValue('http://vault-b.corp.example:8200')
+    await flushPromises()
+    await findButton(wrapper, '儲存設定').trigger('click')
+    await flushPromises()
+
+    // 仍停在編輯態並標出被拒欄位；元件持有的拓撲仍是後端現行值
+    expect(topoInputs(wrapper)).toHaveLength(3)
+    expect(wrapper.find('[data-test="kek-topology-card"]').text()).toContain('整筆未變更')
+    expect(wrapper.vm.topology.address).toBe('https://vault.corp.example:8200')
+  })
+})
+
+// —— 換鑰精靈：委託目標與送出前預檢 ——
+describe('KeyManagement 換鑰精靈的委託目標', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getInventoryMock.mockResolvedValue(inventoryFixture())
+    getPoliciesMock.mockResolvedValue(policyFixture())
+    getTopologyMock.mockResolvedValue({ provider: '', configured: false, editable_fields: [] })
+  })
+
+  const pickTarget = async (wrapper, label) => {
+    await findButton(wrapper, 'KEK 重包精靈').trigger('click')
+    await flushPromises()
+    const radio = wrapper
+      .findAllComponents({ name: 'ElRadio' })
+      .find((c) => c.text().includes(label))
+    await radio.find('input').setValue(true)
+    await flushPromises()
+  }
+
+  const targetInputs = (wrapper) => wrapper.findAll('.target-input input')
+
+  it('三家委託保管處皆可選，HSM 仍標示本版未提供', async () => {
+    const wrapper = await mountPage()
+    await findButton(wrapper, 'KEK 重包精靈').trigger('click')
+    await flushPromises()
+
+    const radios = wrapper.findAllComponents({ name: 'ElRadio' })
+    const byLabel = (label) => radios.find((c) => c.text().includes(label))
+    expect(byLabel('AWS KMS').find('input').attributes('disabled')).toBeUndefined()
+    expect(byLabel('GCP Cloud KMS').find('input').attributes('disabled')).toBeUndefined()
+    expect(byLabel('HashiCorp Vault').find('input').attributes('disabled')).toBeUndefined()
+    expect(byLabel('HSM').text()).toContain('本版未提供')
+  })
+
+  it('Vault 目標：收位址與角色識別，預檢頁顯示目標位址與金鑰識別要人確認', async () => {
+    rewrapKEKMock.mockResolvedValue({
+      target_mode: 'vault',
+      new_kek_id: 'ffff9999',
+      rewrapped_keys: 3,
+    })
+    const wrapper = await mountPage()
+    await pickTarget(wrapper, 'HashiCorp Vault')
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+
+    // 第 2 步只收非秘密的目的地資訊（金鑰識別＋位址＋角色識別）
+    expect(targetInputs(wrapper)).toHaveLength(3)
+    await targetInputs(wrapper)[0].setValue('vault:custodexa-kek')
+    await targetInputs(wrapper)[1].setValue('https://vault-b.corp.example:8200')
+    await targetInputs(wrapper)[2].setValue('role-b')
+    await flushPromises()
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+
+    const preflight = wrapper.find('[data-test="rewrap-preflight"]')
+    expect(preflight.exists()).toBe(true)
+    expect(preflight.text()).toContain('https://vault-b.corp.example:8200')
+    expect(preflight.text()).toContain('vault:custodexa-kek')
+    expect(preflight.text()).toContain('role-b')
+
+    // 未勾核對確認前不可送出
+    expect(findButton(wrapper, '執行重包').attributes('disabled')).toBeDefined()
+    const checkbox = wrapper
+      .findAllComponents({ name: 'ElCheckbox' })
+      .find((c) => c.text().includes('我已核對'))
+    await checkbox.find('input').setValue(true)
+    await flushPromises()
+    await findButton(wrapper, '執行重包').trigger('click')
+    await flushPromises()
+
+    expect(rewrapKEKMock).toHaveBeenCalledWith(
+      {
+        mode: 'vault',
+        key_ref: 'vault:custodexa-kek',
+        address: 'https://vault-b.corp.example:8200',
+        role_id: 'role-b',
+      },
+      { skipErrorToast: true }
+    )
+    // 切換指引依**目標**分岔：重啟後會停在已封存，憑證要有人到解封頁提供
+    expect(wrapper.text()).toContain('解封頁')
+  })
+
+  it('AWS 目標收區域、GCP 目標只收金鑰識別（鍵集逐家不同）', async () => {
+    rewrapKEKMock.mockResolvedValue({ target_mode: 'gcp', new_kek_id: 'ffff', rewrapped_keys: 3 })
+    const wrapper = await mountPage()
+
+    await pickTarget(wrapper, 'AWS KMS')
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+    expect(targetInputs(wrapper)).toHaveLength(2)
+
+    await findButton(wrapper, '上一步').trigger('click')
+    await flushPromises()
+    await pickTarget(wrapper, 'GCP Cloud KMS')
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+    expect(targetInputs(wrapper)).toHaveLength(1)
+
+    await targetInputs(wrapper)[0].setValue('projects/p/locations/l/keyRings/r/cryptoKeys/k')
+    await flushPromises()
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+    const checkbox = wrapper
+      .findAllComponents({ name: 'ElCheckbox' })
+      .find((c) => c.text().includes('我已核對'))
+    await checkbox.find('input').setValue(true)
+    await flushPromises()
+    await findButton(wrapper, '執行重包').trigger('click')
+    await flushPromises()
+
+    expect(rewrapKEKMock).toHaveBeenCalledWith(
+      { mode: 'gcp', key_ref: 'projects/p/locations/l/keyRings/r/cryptoKeys/k' },
+      { skipErrorToast: true }
+    )
+  })
+
+  it('委託目標不收任何憑證欄，且切換目標會清掉前一家的輸入', async () => {
+    const wrapper = await mountPage()
+    await pickTarget(wrapper, 'HashiCorp Vault')
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+    await targetInputs(wrapper)[1].setValue('https://vault-b.corp.example:8200')
+    await flushPromises()
+
+    // 秘密欄一律不出現在本精靈
+    expect(wrapper.findAll('input[type="password"]')).toHaveLength(0)
+
+    await findButton(wrapper, '上一步').trigger('click')
+    await flushPromises()
+    await pickTarget(wrapper, 'AWS KMS')
+    await findButton(wrapper, '下一步').trigger('click')
+    await flushPromises()
+
+    expect(targetInputs(wrapper).map((i) => i.element.value)).toEqual(['', ''])
   })
 })

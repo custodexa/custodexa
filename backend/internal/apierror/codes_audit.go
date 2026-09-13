@@ -152,6 +152,8 @@ var policyKeyZhLabels = identityLabels(
 	"key_cryptoperiod_reminder_days",
 	// 單輪換鑰重加密上限
 	"key_rotation_max_per_run",
+	// DEK 快取存活期（三態，空值＝不限期）
+	"dek_cache_ttl_seconds",
 	// 叢集存取
 	"k8s_list_timeout_seconds",
 	// 傳輸安全

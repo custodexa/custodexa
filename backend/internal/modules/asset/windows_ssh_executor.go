@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -29,7 +30,7 @@ func newWindowsSSHExecutor() windowsSSHExecutor {
 }
 
 // Rotate 本地驗證 → 舊密碼登入 → 腳本＋標準輸入 → 依結果標記與退出碼分流。
-func (e windowsSSHExecutor) Rotate(_ context.Context, t rotationTarget, oldSecret, newSecret string) error {
+func (e windowsSSHExecutor) Rotate(ctx context.Context, t rotationTarget, oldSecret, newSecret []byte) error {
 	if err := validateWindowsAccountName(t.username); err != nil {
 		return err
 	}
@@ -39,7 +40,7 @@ func (e windowsSSHExecutor) Rotate(_ context.Context, t rotationTarget, oldSecre
 	if err := validateWindowsOldSecret(oldSecret); err != nil {
 		return err
 	}
-	client, err := dialSSHPassword(t.addr, t.username, oldSecret, t.hostKeyCB)
+	client, err := dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(oldSecret), t.hostKeyCB)
 	if err != nil {
 		return &remoteRejectedError{reason: model.ChangeSecretReasonOldCredentialLoginFailed, cause: err}
 	}
@@ -51,7 +52,7 @@ func (e windowsSSHExecutor) Rotate(_ context.Context, t rotationTarget, oldSecre
 }
 
 // Verify 以新密碼另建連線跑驗證指令，依固定序列重試。
-func (e windowsSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSecret string) error {
+func (e windowsSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSecret []byte) error {
 	var last error
 	for _, delay := range e.verifyDelays {
 		if delay > 0 {
@@ -59,7 +60,7 @@ func (e windowsSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSec
 				return err
 			}
 		}
-		last = e.verifyOnce(t, newSecret)
+		last = e.verifyOnce(ctx, t, newSecret)
 		if last == nil {
 			return nil
 		}
@@ -67,13 +68,13 @@ func (e windowsSSHExecutor) Verify(ctx context.Context, t rotationTarget, newSec
 	return last
 }
 
-func (e windowsSSHExecutor) verifyOnce(t rotationTarget, newSecret string) error {
-	client, err := dialSSHPassword(t.addr, t.username, newSecret, t.hostKeyCB)
+func (e windowsSSHExecutor) verifyOnce(ctx context.Context, t rotationTarget, newSecret []byte) error {
+	client, err := dialSSHPassword(ctx, t.addr, t.username, sshmaterial.CopyPassword(newSecret), t.hostKeyCB)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	_, _, err = runWindowsSSHCommand(client, buildWindowsCommand(windowsVerifyScript), "", e.commandTimeout)
+	_, _, err = runWindowsSSHCommand(client, buildWindowsCommand(windowsVerifyScript), nil, e.commandTimeout)
 	return err
 }
 
@@ -90,14 +91,17 @@ type windowsSSHRunResult struct {
 //
 // timeout 自指令送出起算：到期即關閉會話與整條連線（不再等目標，跑指令的 goroutine 隨之結束），
 // 回帶遠端狀態不可知的錯誤——指令已送出，目標可能已改密。撥號逾時另在 dialSSHPassword。
-func runWindowsSSHCommand(client *ssh.Client, command, stdin string, timeout time.Duration) (string, string, error) {
+func runWindowsSSHCommand(client *ssh.Client, command string, stdin []byte, timeout time.Duration) (string, string, error) {
+	defer material.Wipe(stdin)
 	sess, err := client.NewSession()
 	if err != nil {
 		return "", "", err
 	}
 	defer sess.Close()
-	if stdin != "" {
-		sess.Stdin = strings.NewReader(stdin)
+	if len(stdin) != 0 {
+		input := newSecretInput(stdin)
+		defer input.Close()
+		sess.Stdin = input
 	}
 	var stdout, stderr bytes.Buffer
 	sess.Stdout = limitedWriter{&stdout, winrmStdoutLimit}
@@ -118,6 +122,7 @@ func runWindowsSSHCommand(client *ssh.Client, command, stdin string, timeout tim
 		// 關會話與連線讓 Run 立即返回；緩衝區此後仍可能被寫入，不讀
 		_ = sess.Close()
 		_ = client.Close()
+		<-done
 		return "", "", &remoteStateUnknownError{
 			reason: model.ChangeSecretReasonRemoteStateUnknown,
 			cause:  fmt.Errorf("windows ssh: command timed out after %s", timeout),

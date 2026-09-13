@@ -2,6 +2,7 @@ package localpty
 
 import (
 	"bytes"
+	"github.com/custodexa/backend/internal/material"
 	"os"
 )
 
@@ -19,7 +20,7 @@ const maxSwallowBytes = 4096
 // 且同一降權身分的會話彼此都讀得到——密碼只要進過子程序環境就等於公開。
 type PasswordAuth struct {
 	// Password 要注入的明文密碼（不含換行）
-	Password string
+	Password *material.Secret
 	// Prompt client 索取密碼時輸出的完整提示字串（含結尾空白）。
 	// 比對方式為「輸出區塊的結尾恰為此字串」——提示之後 client 必然停下等輸入，
 	// 故真提示永遠落在區塊尾端。
@@ -78,6 +79,7 @@ func (a *promptAuth) Read(p []byte) (int, error) {
 		}
 		if err != nil {
 			a.readErr = err
+			a.cfg.Password.Destroy()
 			// 收線時把暫扣的位元組還給呼叫端（它終究不是提示）
 			a.out = append(a.out, a.held...)
 			a.held = nil
@@ -117,10 +119,15 @@ func (a *promptAuth) process(chunk []byte) {
 			a.armed = false
 			a.swallow = true
 			a.swallowed = 0
-			pw := make([]byte, 0, len(a.cfg.Password)+1)
-			pw = append(pw, a.cfg.Password...)
-			pw = append(pw, '\n')
-			_, _ = a.write(pw)
+			_ = a.cfg.Password.Borrow(func(raw []byte) error {
+				pw := make([]byte, len(raw)+1)
+				defer material.Wipe(pw)
+				copy(pw, raw)
+				pw[len(raw)] = '\n'
+				_, err := a.write(pw)
+				return err
+			})
+			a.cfg.Password.Destroy()
 			return
 		}
 		// 提示可能跨兩次 read 被切斷：尾端若是提示的真前綴就先扣住。
@@ -134,6 +141,7 @@ func (a *promptAuth) process(chunk []byte) {
 		// 認證階段結束，此後零介入
 		if !a.cfg.RequireCanonical || a.interactiveReached() {
 			a.armed = false
+			a.cfg.Password.Destroy()
 		}
 	}
 	a.out = append(a.out, data...)

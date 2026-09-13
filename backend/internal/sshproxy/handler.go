@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"log"
 	"net/http"
 	"os"
@@ -16,9 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
-	"gorm.io/gorm"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
@@ -32,7 +31,10 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/custodexa/backend/pkg/gatewayapi"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 )
 
 var upgrader = websocket.Upgrader{
@@ -320,6 +322,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
 		return
 	}
+	defer creds.Destroy()
 	st.creds = creds
 	// 已解析客體：AccountID 維持 grant 帶的**選擇器**值（0＝預設帳號，K8s 閘 G-S12
 	// 判的正是這個請求值）；Username 為解封後實際會用的帳號名，即 G-S13 的判定對象
@@ -339,15 +342,9 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 	var k8sLogsMode bool
 	if assetRow.Protocol == model.ProtocolSSH {
 		sshConn, err := Dial(ConnConfig{
-			Host: assetRow.Host,
-			Port: assetRow.Port,
-			// username 與憑證同取自同一帳號；不再讀 assetRow.Username
-			Username:   creds.Username,
-			Password:   password,
-			PrivateKey: privateKey,
-			Cols:       cols,
-			Rows:       rows,
-			HostKey:    h.HostKeys.Callback(assetID),
+			Context: reqCtx, Host: assetRow.Host, Port: assetRow.Port, Username: creds.Username,
+			Password: sshmaterial.NewPassword(password), PrivateKey: privateKey,
+			Cols: cols, Rows: rows, HostKey: h.HostKeys.Callback(assetID),
 		})
 		if err != nil {
 			log.Printf("[SSHProxy] SSH 連線失敗: assetID=%d, err=%v", assetID, err)
@@ -364,15 +361,22 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		sshClient = sshConn.Client()
 	} else if assetRow.Protocol == model.ProtocolK8s {
 		// 連線時選 pod：namespace 取自資產（server-trusted），pod/container/模態由前端帶入
-		target := k8sproxy.Target{
-			Server:    fmt.Sprintf("https://%s:%d", assetRow.Host, assetRow.Port),
-			Token:     password,
-			Namespace: assetRow.K8sNamespace,
-			Pod:       c.Query("k8s_pod"),
-			Container: c.Query("k8s_container"),
-			CACert:    assetRow.K8sCACert,
-			Insecure:  assetRow.K8sInsecureSkipTLS,
-			Mode:      k8sproxy.Mode(c.Query("k8s_mode")),
+		// The Kubernetes SDK retains an immutable token; its copies are not erased.
+		target, tokenErr := material.Use(password, func(raw []byte) (k8sproxy.Target, error) {
+			return k8sproxy.Target{
+				Server:    fmt.Sprintf("https://%s:%d", assetRow.Host, assetRow.Port),
+				Token:     string(raw),
+				Namespace: assetRow.K8sNamespace,
+				Pod:       c.Query("k8s_pod"),
+				Container: c.Query("k8s_container"),
+				CACert:    assetRow.K8sCACert,
+				Insecure:  assetRow.K8sInsecureSkipTLS,
+				Mode:      k8sproxy.Mode(c.Query("k8s_mode")),
+			}, nil
+		})
+		if tokenErr != nil {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
+			return
 		}
 		// one-shot 單指令尚未實裝 argv 側指令審計與阻斷（列 v1.1）：在此一律拒絕，
 		// 避免單指令繞過指令阻斷器（只看 PTY 串流）與審計（security review HIGH）。
@@ -402,13 +406,18 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		k8sSnapshot = snap
 		k8sLogsMode = target.Mode == k8sproxy.ModeLogs
 	} else {
+		// Transfer ownership until prompt injection or connection closure.
+		dbPassword, err := material.Move(password)
+		if err != nil {
+			return
+		}
 		dbConn, err := dbproxy.Start(dbproxy.Target{
 			Protocol: string(assetRow.Protocol),
 			Host:     assetRow.Host,
 			Port:     assetRow.Port,
 			// username 與憑證同取自同一帳號；不再讀 assetRow.Username
 			Username: creds.Username,
-			Password: password,
+			Password: dbPassword,
 			DBName:   assetRow.DBName,
 			TLSMode:  assetRow.DBTLSMode,
 			CACert:   assetRow.DBCACert,
@@ -422,6 +431,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		conn = dbConn
 	}
 
+	creds.Destroy()
 	// 6. Session 記錄 fail-close：能走到此步證明 DB 讀正常（前置
 	// CheckUserConnectable/GetWithCredentials 皆已過），故 session INSERT 失敗＝
 	// 部分故障。無 session 主鍵即無 registry/錄影/指令審計/監看，一律拒連——admin
@@ -876,11 +886,11 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 	id := assetID
 	sess := &model.Session{
 		DBConsole: dbConsole,
-		UserID:   userID,
-		AssetID:  &id,
-		Protocol: protocol,
-		ClientIP: clientIP,
-		Status:   model.SessionStatusActive,
+		UserID:    userID,
+		AssetID:   &id,
+		Protocol:  protocol,
+		ClientIP:  clientIP,
+		Status:    model.SessionStatusActive,
 		// 帳號雙快照：與 session 建立原子寫入，之後永不更新
 		AccountID:       acct.ID,
 		AccountUsername: acct.Username,

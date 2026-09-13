@@ -79,14 +79,29 @@ export const enumLabel = (policy, option) => {
   return enumLabels[option] || option
 }
 
+// isEmptyPolicyValue 三態數值鍵的「未設定」態（後端 allow_empty）。
+//
+// **未設定不得折成 0**：`Number('')` 是 0，而在允許空值的鍵上 0 是另一個有意義
+// 的設定值（資料金鑰保留時間的 0＝完全不留）。把未設定顯示成 0，等於替管理員
+// 選了最嚴格的一端，而且會在他下一次按儲存時把那個選擇真的寫回去。
+export const isEmptyPolicyValue = (value) => value === '' || value === null || value === undefined
+
+export const allowsEmpty = (policy) => Boolean(policy?.allow_empty) && policy?.type === 'int'
+
 export const toFormValue = (policy) => {
-  if (policy.type === 'int') return Number(policy.value)
+  if (policy.type === 'int') {
+    if (allowsEmpty(policy) && isEmptyPolicyValue(policy.value)) return null
+    return Number(policy.value)
+  }
   if (policy.type === 'bool') return policy.value === 'true'
   return policy.value
 }
 
 export const toApiValue = (policy, value) => {
-  if (policy.type === 'int') return String(value)
+  if (policy.type === 'int') {
+    if (allowsEmpty(policy) && isEmptyPolicyValue(value)) return ''
+    return String(value)
+  }
   if (policy.type === 'bool') return value ? 'true' : 'false'
   return value
 }

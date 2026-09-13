@@ -265,6 +265,9 @@ var baselineCheckConstraints = map[string]string{
 	// 被放寬時兩欄可同時為空（規則指不到任何來源，永遠不會被重算讀到）
 	// 或同時非空（同一條規則被兩條途徑各自認領，重算互相覆蓋）
 	"chk_group_role_mapping_source": "group_role_mappings",
+	// 委託拓撲的單列常數載體：拓撲是「上鎖的資料金鑰送去哪裡解」的唯一事實源，
+	// 兩列並存時讀取順序決定目的地，而那是一個沒有訊號的錯誤
+	"kek_topologies_singleton_check": "kek_topologies",
 }
 
 func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
@@ -355,6 +358,13 @@ func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
 	if c, ok := actualCons["offsite_profiles_singleton_check"]; ok {
 		if !strings.Contains(strings.ToLower(c.Def), "singleton = 1") {
 			t.Errorf("offsite_profiles_singleton_check 的定義不是 (singleton = 1)：%s", c.Def)
+		}
+	}
+	// kek_topologies 的單列 CHECK 專屬斷言：同上，被放寬時 unique index 擋不住 singleton=2
+	if c, ok := actualCons["kek_topologies_singleton_check"]; ok {
+		if !strings.Contains(strings.ToLower(c.Def), "singleton = 1") {
+			t.Errorf("kek_topologies_singleton_check 的定義不是 (singleton = 1)：%s\n"+
+				"兩列拓撲並存時「主金鑰送去哪裡解」取決於讀取順序", c.Def)
 		}
 	}
 	// credential_mode ⇔ 密文非空的等價約束被放寬時，`revoked` 或 `default_chain`

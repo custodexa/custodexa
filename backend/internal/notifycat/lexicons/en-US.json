@@ -22,15 +22,16 @@
     "aad_residue_impossible_state": "Non-final-format ciphertext residue detected (impossible state: code defect or direct database write)",
     "checkpoint_anchor_dropped": "Checkpoint off-box copy not sent (no off-box copy of that checkpoint)",
     "audit_chain_structure_invalid": "Checkpoint chain structure anomaly (signature, linkage or sequence tampered)",
-    "audit_chain_content_mismatch": "Audit records in a sealed interval mismatch the checkpoint or are missing",
-    "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a sealed interval (needs manual review)",
+    "audit_chain_content_mismatch": "Audit records in a notarized interval mismatch the checkpoint or are missing",
+    "audit_chain_content_extra_rows": "Extra records with valid row-level signatures found in a notarized interval (needs manual review)",
     "audit_chain_verify_failed": "Chain verification itself could not complete (mechanism state unknown, not \"no anomaly\")",
     "source_policy_unreadable": "Judgment point could not read the user's allowed source ranges",
     "source_policy_corrupt": "The user's stored allowed source ranges cannot be parsed (direct DB write or program defect)",
     "offsite_upload_failed": "Offsite upload has reached the retry limit (that evidence currently has only a local copy)",
     "offsite_upload_stalled": "Offsite upload keeps being interrupted (the transfer lease for one object expired repeatedly)",
     "offsite_integrity_mismatch": "A retrieved offsite copy did not match what was uploaded (delivery refused)",
-    "role_state_mismatch": "Role assignments do not match the checkpoint chain (a change was made without an audit record)"
+    "role_state_mismatch": "Role assignments do not match the checkpoint chain (a change was made without an audit record)",
+    "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)"
   },
   "severity": {
     "high": "High",

@@ -305,23 +305,30 @@ The KEK has three custody modes, declared by the environment variable `KEK_PROVI
 > Choosing this mode is choosing to carry custody of the material on your own. Before submitting the initialization, save the material to a secure offline location (a password vault or physical custody, for instance) and confirm that at least one other person can obtain it.
 
 - **The initialization trap (very important)**: if the initialization times out, the screen tells you to **retry with the key you entered the first time, not a new one**. **Do exactly that.** A timeout does not mean initialization failed: internally it **may already have completed**, and the first key is already fixed as this deployment's master key. Using a new key at that point **fails forever**, and there is no remedy.
-- **An ordinary unseal** (an existing deployment, not initialization): it needs only the material, no account credentials, and it does not validate the material's format (an existing deployment's KEK may predate the current format rules). Repeated failures trigger exponential backoff, and past a threshold a time-limited cooldown; **the cooldown ends on its own and the process never has to be restarted for any reason**. Attempts during the cooldown are refused outright and do not extend it.
+- **An ordinary unseal** (an existing deployment, not initialization): the page first checks a local administrator's username and password, and then takes the material. **The one-time code is not checked while the system is sealed**, because its seed is protected by the data key; that step is therefore not two-factor and should not be recorded as one. The material itself is not validated for format (an existing deployment's KEK may predate the current format rules). Repeated failures trigger exponential backoff, and past a threshold a time-limited cooldown; **the cooldown ends on its own and the process never has to be restarted for any reason**. Attempts during the cooldown are refused outright and do not extend it.
 - **A convergence worth enabling**: with `SEAL_UNSEAL_BIND_ADDR` set, the unseal endpoint is served by a separate listener on that address, and that listener exposes only the seal-related endpoints (it does not turn into the full business interface after unseal), while the main listener refuses unseal requests outright and points them at the management port. **Failing to bind means refusing to start**, so it does not silently degrade into looking isolated while not being so.
   When trusted proxies (`TRUSTED_PROXIES`) are not configured, the source is determined from the transport-layer peer address only, and per-IP backoff conservatively degrades to global backoff.
 
-### 4.3 Mode C: `KEK_PROVIDER=kms` (delegated to a cloud KMS)
+### 4.3 Mode C: `KEK_PROVIDER=kms` (delegated to a key custodian)
 
 ```
 KEK_PROVIDER=kms
 KEK_KMS_PROVIDER=aws
-KEK_KMS_REGION=<region>
-KEK_KMS_KEY_ID=<alias, key-id, or ARN>
 ```
 
-- **Recovery prerequisite**: the key in KMS and the AWS account must still exist, and the restored environment must have IAM permission to access that key. A key scheduled for deletion or a closed account amounts to losing the material.
-- **IAM permissions needed**: `kms:Encrypt`, `kms:Decrypt`, `kms:DescribeKey`; if native re-encryption is used, also the two actions `kms:ReEncryptFrom` and `kms:ReEncryptTo`.
-- **Credentials**: the AWS SDK default chain (IRSA, instance profile, `AWS_*`); the product does not manage them.
-- **Trust boundary**: `KEK_KMS_KEY_ID` is also the only source of the trusted account scope, and the target key of a delegated rewrap must be in the same AWS account and partition as it, or it is refused.
+**Two keys, and no more.** `KEK_KMS_REGION`, `KEK_KMS_KEY_ID`, `KEK_VAULT_ADDR`, `KEK_VAULT_ROLE_ID` and `KEK_VAULT_SECRET_ID` no longer take effect. What used to be in them is now in two different places:
+
+- **The non-secret topology** — the service region, the custodian address, the Transit key name, the role identifier — is set on the key management page and stored in the database, in the `kek_topologies` table. **It is backed up with the database** and needs nothing kept for it separately. The key reference itself is not stored there; it follows the `kek_id` on the key rows, which are in the database too.
+- **The credentials** — the AWS access key pair, the contents of the GCP service account key file, the Vault role secret or a directly supplied token — are entered on the unseal page at every unseal, are held only in the memory of that unseal generation, and are erased when the system is sealed. **They are in no backup**, because they are in no file and in no table. Their custody is the deployment's, on the same footing as mode B's material.
+
+**What this changes for recovery.** After a restore, the restored system knows where its custodian is, because that travelled with the database, and does not know how to reach it, because that did not. **The first start after a restore therefore comes up sealed and waits for a person**, who signs in on the unseal page with a local administrator's username and password, checks the custodian shown there against the deployment record, and supplies that provider's credentials. The process does not exit while it waits. Put both the person and the credentials into the recovery plan; a restore rehearsal that stops at "the containers are up" has not rehearsed this mode.
+
+- **Recovery prerequisite**: the key still exists at the custodian and is still usable, the account or project that holds it is still open, and credentials with permission to use it can still be obtained. A key scheduled for deletion, a closed account, or credentials that can never be obtained again amounts to losing the material. Revoked credentials are recoverable in a way a deleted key is not: the issuer can issue another set.
+- **Permissions needed on the AWS path**: `kms:Encrypt`, `kms:Decrypt`, `kms:DescribeKey`; if native re-encryption is used, also the two actions `kms:ReEncryptFrom` and `kms:ReEncryptTo`. Construction runs one throwaway encrypt and decrypt round trip besides `DescribeKey`, so a missing permission surfaces while unsealing rather than at first use.
+- **Credentials are injected explicitly and are never discovered from the environment.** The AWS SDK default chain (IRSA, instance profile, `AWS_*`, SSO) and GCP Application Default Credentials are no longer used, and construction is refused when no credentials were supplied. A restored environment that relies on an instance role will not come up; supply the credentials on the unseal page.
+- **A directly supplied Vault token** is accepted instead of an AppRole login, with the same lifecycle: it is erased on seal and fails closed when it expires. A long-lived token is not a recommended practice, because its exposure window equals its lifetime and this product cannot rotate it.
+- **Trust boundary**: the `kek_id` on the key rows is also the only source of the trusted account scope, and the target key of a delegated rewrap must be in the same AWS account and partition as it, or it is refused.
+- **Changing the topology is a security change.** The address decides where the wrapped data keys are sent to be unwrapped, and where the plaintext key material goes during a rewrap. Only the authenticated key management page can change it; every change, accepted or refused, is written to the audit log with its before and after values, and an accepted one raises a security alert through the configured notification channels (with none configured, the audit row is the only record). **This does not stop anyone who can write to the database directly**, and the check on the unseal page is a step for a person to perform, not a guarantee the system enforces; the defence on that path is database access control and the off-box copy of the audit log.
 - **Multi-region keys (MRK)**: the stored identifier includes the region, so **switching to a replica amounts to changing the key and requires a rewrap first**. If your disaster recovery plan covers a cross-region switch, put that rewrap into the procedure; switching straight over leaves the existing data undecryptable.
 - **Endpoint overrides are always refused**: detecting a value in `AWS_ENDPOINT_URL_KMS` or `AWS_ENDPOINT_URL` means refusing to start. Those variables are parsed by the SDK directly and would direct `kms:Encrypt` requests, which contain the plaintext data key, at that address (which may be plaintext HTTP).
 
@@ -416,7 +423,7 @@ docker compose exec -T postgres \
 docker compose up -d
 ```
 
-A KEK mode B deployment is still sealed after step 6, and only starts serving once the material is entered at `/unseal`.
+A KEK mode B deployment is still sealed after step 6, and only starts serving once the material is entered at `/unseal`. **A mode C deployment is sealed after step 6 as well**: its custodian settings came back with the database, but the credentials were in no backup, so someone signs in at `/unseal`, checks the custodian on screen, and supplies them again (§4.3). Until then every business route answers 503, which is expected rather than a failed restore.
 
 ---
 
@@ -440,9 +447,11 @@ A KEK mode B deployment is still sealed after step 6, and only starts serving on
 > Item 6 is the most valuable one: **a fingerprint is a one-way digest, and matching fingerprints confirm that the same key is in use after the restore**, without touching any key material. Record these **four** fingerprints with every backup and keep them with it.
 > Record only three at backup time and one of them has nothing to compare against after the restore; the one usually missed is the checkpoint signing key.
 >
-> The Key Management page can only be entered **after unseal** (mode B), so this item comes after the service is back.
+> The Key Management page can only be entered **after unseal** (modes B and C), so this item comes after the service is back.
 >
-> After a restore, the role assignment comparison on the checkpoint verification page runs against the newest checkpoint in the backup whose sealing-time comparison matched (a checkpoint sealed while a mismatch was open is never used as the starting point), and the first sealing on the restored system whose comparison matches becomes the new starting point.
+> **In mode C, check the custodian settings on that same page while you are there**: the address, region, Transit key name and role identifier came back from the backup, so they are as of the backup point in time. If the topology was changed after that point, what you are looking at is the older destination, and the change has to be made again on this page; the alert and the audit rows for that change are in the system that was backed up, not in this one.
+>
+> After a restore, the role assignment comparison on the checkpoint verification page runs against the newest checkpoint in the backup whose notarization-time comparison matched (a checkpoint notarized while a mismatch was open is never used as the starting point), and the first notarization on the restored system whose comparison matches becomes the new starting point.
 
 ---
 

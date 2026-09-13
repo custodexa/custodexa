@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"log"
 	"sync"
 
@@ -31,6 +33,7 @@ func NewConnection(protocol string, params map[string]string) *Connection {
 func (c *Connection) Connect(guacdHost string, guacdPort int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer clearCredentialParams(c.Params)
 
 	log.Printf("[Connection] 開始連線到 guacd %s:%d...", guacdHost, guacdPort)
 
@@ -211,4 +214,21 @@ func (c *Connection) IsReady() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.Ready
+}
+
+// Removing references does not overwrite immutable protocol or library copies.
+func clearCredentialParams(params map[string]string) {
+	delete(params, "password")
+	delete(params, "sftp-password")
+	delete(params, "private-key")
+	delete(params, "sftp-private-key")
+}
+
+func connectWithMaterial(ctx context.Context, conn *Connection, host string, port int, secret *material.Secret) error {
+	defer secret.Destroy()
+	defer clearCredentialParams(conn.Params)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return conn.Connect(host, port)
 }

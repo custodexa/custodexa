@@ -228,7 +228,7 @@ func sealEventStatus(e sealjournal.ReplayEvent) model.AuditStatus {
 		return model.StatusFailure
 	}
 	switch e.Outcome {
-	case "", "success":
+	case "", "success", "seal_completed":
 		return model.StatusSuccess
 	default:
 		return model.StatusFailure

@@ -20,6 +20,9 @@
     </div>
 
     <div class="policy-control">
+      <!-- 允許空值的數值鍵是三態（未設定／0／N）：清空輸入框回到未設定，
+           而不是被夾成 0——0 在這類鍵上是另一個有意義的設定值。
+           空白時以 placeholder 明示「未設定」，不讓空框看起來像載入失敗 -->
       <el-input-number
         v-if="policy.type === 'int'"
         :model-value="value"
@@ -27,6 +30,8 @@
         :max="policy.max || 99999"
         :step="1"
         step-strictly
+        :value-on-clear="allowsEmpty(policy) ? null : undefined"
+        :placeholder="allowsEmpty(policy) ? $t('policyValue.unset') : ''"
         :aria-label="label"
         @update:model-value="$emit('update:value', policy.key, $event)"
       />
@@ -102,7 +107,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Info } from 'lucide-vue-next'
-import { enumLabel, policyLabel, policyMin, policyUnit } from '@/utils/policyFormat'
+import { allowsEmpty, enumLabel, policyLabel, policyMin, policyUnit } from '@/utils/policyFormat'
 
 const props = defineProps({
   policy: { type: Object, required: true },

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"strings"
 	"time"
 
@@ -51,14 +53,19 @@ const (
 // LoopbackRotate 以正式執行器對目標改密，分流同狀態機。
 func LoopbackRotate(ctx context.Context, t LoopbackTarget, oldSecret, newSecret string) LoopbackOutcome {
 	start := time.Now()
-	err := rotationExecutorFor(t.Channel).Rotate(ctx, t.rotationTarget(), oldSecret, newSecret)
+	oldRaw, newRaw := []byte(oldSecret), []byte(newSecret)
+	defer material.Wipe(oldRaw)
+	defer material.Wipe(newRaw)
+	err := rotationExecutorFor(t.Channel).Rotate(ctx, t.rotationTarget(), oldRaw, newRaw)
 	return loopbackRotateOutcome(err, start)
 }
 
 // LoopbackVerify 以正式執行器對目標驗證憑證。驗證失敗在狀態機裡恆為 unverified。
 func LoopbackVerify(ctx context.Context, t LoopbackTarget, secret string) LoopbackOutcome {
 	start := time.Now()
-	err := rotationExecutorFor(t.Channel).Verify(ctx, t.rotationTarget(), secret)
+	raw := []byte(secret)
+	defer material.Wipe(raw)
+	err := rotationExecutorFor(t.Channel).Verify(ctx, t.rotationTarget(), raw)
 	if err != nil {
 		return LoopbackOutcome{Class: LoopbackUnverified, Reason: model.ChangeSecretReasonVerifyFailed,
 			Error: err.Error(), ElapsedMS: time.Since(start).Milliseconds()}
@@ -73,7 +80,7 @@ func LoopbackVerify(ctx context.Context, t LoopbackTarget, secret string) Loopba
 // commandTimeout 為 0 時用正式值（兩通道皆適用）。
 func LoopbackRotateWithoutStdin(ctx context.Context, t LoopbackTarget, secret string,
 	commandTimeout time.Duration) LoopbackOutcome {
-	return loopbackRunScript(ctx, t, secret, windowsRotationScript, "", commandTimeout, loopbackRotationClassifier(t))
+	return loopbackRunScript(ctx, t, secret, windowsRotationScript, nil, commandTimeout, loopbackRotationClassifier(t))
 }
 
 // LoopbackWinRMScript 在正式的 WinRM 工作階段上跑呼叫端給的腳本（無標準輸入）並依退出碼分流。
@@ -82,7 +89,7 @@ func LoopbackRotateWithoutStdin(ctx context.Context, t LoopbackTarget, secret st
 // 只有腳本內容由呼叫端給。commandTimeout 為 0 時用正式值。
 func LoopbackWinRMScript(ctx context.Context, t LoopbackTarget, secret, script string,
 	commandTimeout time.Duration) LoopbackOutcome {
-	return loopbackRunScript(ctx, t, secret, script, "", commandTimeout, loopbackExitOnlyClassifier)
+	return loopbackRunScript(ctx, t, secret, script, nil, commandTimeout, loopbackExitOnlyClassifier)
 }
 
 // LoopbackVerifyOnce 以指定密碼**單次**登入（不走驗證重試序列，避免累積失敗登入次數）。
@@ -90,7 +97,7 @@ func LoopbackWinRMScript(ctx context.Context, t LoopbackTarget, secret, script s
 // 登入被拒回 failed／OLD_CREDENTIAL_LOGIN_FAILED（與兩執行器對舊憑證登入階段的分流同義），
 // 其餘錯誤照 Rotate 的分流；成功回 success。供回歸斷言「某個密碼此刻能不能登入」。
 func LoopbackVerifyOnce(ctx context.Context, t LoopbackTarget, secret string) LoopbackOutcome {
-	return loopbackRunScript(ctx, t, secret, windowsVerifyScript, "", 0, loopbackExitOnlyClassifier)
+	return loopbackRunScript(ctx, t, secret, windowsVerifyScript, nil, 0, loopbackExitOnlyClassifier)
 }
 
 // loopbackExitOnlyClassifier 非改密腳本（驗證指令、呼叫端自帶的腳本）沒有結果標記，只看退出碼。
@@ -150,7 +157,10 @@ func loopbackRotateInjected(ctx context.Context, t LoopbackTarget, oldSecret, ne
 	if err := validateWindowsOldSecret(oldSecret); err != nil {
 		return loopbackRotateOutcome(err, start)
 	}
-	return loopbackRunScript(ctx, t, oldSecret, script, windowsRotationStdin(newSecret, oldSecret, t.Username), commandTimeout, loopbackRotationClassifier(t))
+	oldRaw, newRaw := []byte(oldSecret), []byte(newSecret)
+	defer material.Wipe(oldRaw)
+	defer material.Wipe(newRaw)
+	return loopbackRunScript(ctx, t, oldSecret, script, windowsRotationStdin(newRaw, oldRaw, t.Username), commandTimeout, loopbackRotationClassifier(t))
 }
 
 // loopbackReplaceStatement 正式腳本，把指定的那一句換成 replacement；
@@ -172,15 +182,18 @@ func loopbackRotationClassifier(t LoopbackTarget) func(int, string, string) erro
 
 // loopbackRunScript 以 secret 建正式的 WinRM 工作階段或 SSH 連線，跑 script（stdin 可空），
 // 指令跑完交 classify 分流、傳輸失敗照正式分流；回三態。commandTimeout 為 0 時用正式值（兩通道同值）。
-func loopbackRunScript(ctx context.Context, t LoopbackTarget, secret, script, stdin string,
+func loopbackRunScript(ctx context.Context, t LoopbackTarget, secret, script string, stdin []byte,
 	commandTimeout time.Duration, classify func(int, string, string) error) LoopbackOutcome {
 	start := time.Now()
 	if commandTimeout <= 0 {
 		commandTimeout = windowsCommandTimeout
 	}
+	raw := []byte(secret)
+	defer material.Wipe(raw)
+	defer material.Wipe(stdin)
 	rt := t.rotationTarget()
 	if t.Channel == model.RotationChannelWindowsWinRM {
-		session, err := newWinRMSession(ctx, rt.asset, rt.username, secret, newWinRMNTLMSecurity, winrmDialTimeout)
+		session, err := newWinRMSession(ctx, rt.asset, rt.username, raw, newWinRMNTLMSecurity, winrmDialTimeout)
 		if err != nil {
 			return loopbackRotateOutcome(&localPreconditionError{reason: model.ChangeSecretReasonChannelNotConfigured, cause: err}, start)
 		}
@@ -190,7 +203,7 @@ func loopbackRunScript(ctx context.Context, t LoopbackTarget, secret, script, st
 		}
 		return loopbackRotateOutcome(classify(out.exitCode, out.stdout, out.stderr), start)
 	}
-	client, err := dialSSHPassword(rt.addr, rt.username, secret, rt.hostKeyCB)
+	client, err := dialSSHPassword(ctx, rt.addr, rt.username, sshmaterial.CopyPassword(raw), rt.hostKeyCB)
 	if err != nil {
 		return loopbackRotateOutcome(&remoteRejectedError{reason: model.ChangeSecretReasonOldCredentialLoginFailed, cause: err}, start)
 	}

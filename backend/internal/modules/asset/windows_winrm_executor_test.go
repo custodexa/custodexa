@@ -28,7 +28,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("exit 0", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		e := testWinRMExecutor(f, nil)
-		require.NoError(t, e.Rotate(context.Background(), winrmTarget(f), "old", newPassword))
+		require.NoError(t, e.Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword)))
 
 		snap := f.snapshot()
 		require.Len(t, snap.commands, 1)
@@ -46,7 +46,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("exit 3 密碼未投遞", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.exitCode = 3 })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonStdinNotDelivered, rejected.reason)
@@ -55,7 +55,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("exit 1 遠端拒絕", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.exitCode = 1; f.stderr = "Access is denied." })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteRejected, rejected.reason)
@@ -65,7 +65,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("連線中斷 狀態不可知", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.dropOnReceive = true })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		require.Error(t, err)
 		var rejected *remoteRejectedError
 		var local *localPreconditionError
@@ -76,14 +76,14 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 	t.Run("OperationTimeout fault 後繼續等", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.timeoutFaultOnce = true })
-		require.NoError(t, testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword))
+		require.NoError(t, testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword)))
 		assert.GreaterOrEqual(t, f.snapshot().receives, 2)
 	})
 
 	t.Run("非逾時 fault 狀態不可知", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.faultOnReceive = true })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		require.Error(t, err)
 		var rejected *remoteRejectedError
 		assert.False(t, errors.As(err, &rejected))
@@ -91,7 +91,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 
 	t.Run("舊密碼錯 登入失敗", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "wrong", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("wrong"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonOldCredentialLoginFailed, rejected.reason)
@@ -102,7 +102,7 @@ func TestWinRMExecutorExitCodeSemantics(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		target := winrmTarget(f)
 		target.username = `DOMAIN\Administrator`
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, []byte("old"), []byte(newPassword))
 		var local *localPreconditionError
 		require.True(t, errors.As(err, &local), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonAccountNameInvalid, local.reason)
@@ -118,7 +118,7 @@ func TestWinRMExecutorVerifyRetrySequence(t *testing.T) {
 		f.set(func(f *fakeWinRMServer) { f.failHandshakes = 2 })
 		var slept []time.Duration
 		e := testWinRMExecutor(f, &slept)
-		require.NoError(t, e.Verify(context.Background(), winrmTarget(f), "new"))
+		require.NoError(t, e.Verify(context.Background(), winrmTarget(f), []byte("new")))
 		assert.Equal(t, []time.Duration{2 * time.Second, 5 * time.Second}, slept, "序列 0s／2s／5s：首次不等，其後等 2s、5s")
 		snap := f.snapshot()
 		// 每則 WS-Man 訊息各自交握：前兩次嘗試各在第一則就被拒，第三次才走完整序列
@@ -132,7 +132,7 @@ func TestWinRMExecutorVerifyRetrySequence(t *testing.T) {
 		f := newFakeWinRMServer(t, "new")
 		var slept []time.Duration
 		e := testWinRMExecutor(f, &slept)
-		err := e.Verify(context.Background(), winrmTarget(f), "wrong")
+		err := e.Verify(context.Background(), winrmTarget(f), []byte("wrong"))
 		require.ErrorIs(t, err, errWinRMAuthFailed)
 		assert.Equal(t, []time.Duration{2 * time.Second, 5 * time.Second}, slept)
 		assert.Equal(t, 3, f.snapshot().handshakes, "三次嘗試各一次交握")
@@ -141,7 +141,7 @@ func TestWinRMExecutorVerifyRetrySequence(t *testing.T) {
 	t.Run("驗證指令非零退出視為失敗", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "new")
 		f.set(func(f *fakeWinRMServer) { f.exitCode = 5 })
-		err := testWinRMExecutor(f, nil).Verify(context.Background(), winrmTarget(f), "new")
+		err := testWinRMExecutor(f, nil).Verify(context.Background(), winrmTarget(f), []byte("new"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exit 5")
 	})
@@ -156,7 +156,7 @@ func TestWinRMExecutorTimeoutIsUnverified(t *testing.T) {
 	e := testWinRMExecutor(f, nil)
 	e.commandTimeout = 300 * time.Millisecond
 	start := time.Now()
-	err := e.Rotate(context.Background(), winrmTarget(f), "old", "NewP@ss1")
+	err := e.Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte("NewP@ss1"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "timed out")
 	var rejected *remoteRejectedError
@@ -198,7 +198,7 @@ func TestWinRMExecutorSessionFailuresAreDefinite(t *testing.T) {
 		e := testWinRMExecutor(f, nil)
 		e.dialTimeout = 300 * time.Millisecond
 		start := time.Now()
-		err := e.Rotate(context.Background(), winrmTarget(f), "old", "NewP@ss1")
+		err := e.Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte("NewP@ss1"))
 		assertUnreachable(t, err)
 		assert.Contains(t, err.Error(), "timed out")
 		assert.Less(t, time.Since(start), 2*time.Second, "逾時後不得等目標")
@@ -209,7 +209,7 @@ func TestWinRMExecutorSessionFailuresAreDefinite(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		target := winrmTarget(f)
 		target.asset.WinrmPort = closedTCPPort(t)
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, "old", "NewP@ss1")
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, []byte("old"), []byte("NewP@ss1"))
 		assertUnreachable(t, err)
 		assert.Equal(t, 0, f.snapshot().handshakes, "沒有請求抵達任何端點")
 	})
@@ -218,7 +218,7 @@ func TestWinRMExecutorSessionFailuresAreDefinite(t *testing.T) {
 		f := newFakeWinRMTLSServer(t, "old")
 		target := winrmTarget(f)
 		target.asset.WinrmTLSMode = model.WinrmTLSModeSystem
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, "old", "NewP@ss1")
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), target, []byte("old"), []byte("NewP@ss1"))
 		assertUnreachable(t, err)
 		assert.Contains(t, err.Error(), "x509")
 		assert.Equal(t, 0, f.snapshot().handshakes, "憑證不受信任時不得有請求抵達端點（不降級）")
@@ -229,7 +229,7 @@ func TestWinRMExecutorSessionFailuresAreDefinite(t *testing.T) {
 		f.set(func(f *fakeWinRMServer) { f.mode = fakeWinRMModeForbidden })
 		e := newWindowsWinRMExecutor() // 正式組態：真 NTLM 交握
 		e.dialTimeout, e.commandTimeout = 5*time.Second, 5*time.Second
-		err := e.Rotate(context.Background(), winrmTarget(f), "old", "NewP@ss1")
+		err := e.Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte("NewP@ss1"))
 		assertUnreachable(t, err)
 		assert.Contains(t, err.Error(), "403")
 		snap := f.snapshot()
@@ -262,7 +262,7 @@ func TestWinRMSessionFailuresThroughRunner(t *testing.T) {
 		require.NoError(t, fx.db.Where("asset_id = ?", assetID).First(&acct).Error)
 		creds, err := fx.assets.GetWithCredentialsForAccount(assetID, acct.ID)
 		require.NoError(t, err)
-		return creds.Password
+		return secretText(t, creds.Password)
 	}
 
 	t.Run("工作階段建立前 403", func(t *testing.T) {
@@ -324,7 +324,7 @@ func TestWinRMExecutorThroughRunner(t *testing.T) {
 		require.NoError(t, fx.db.Where("asset_id = ?", assetID).First(&acct).Error)
 		creds, err := fx.assets.GetWithCredentialsForAccount(assetID, acct.ID)
 		require.NoError(t, err)
-		return creds.Password
+		return secretText(t, creds.Password)
 	}
 
 	t.Run("成功", func(t *testing.T) {

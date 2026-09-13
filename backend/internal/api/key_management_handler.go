@@ -41,6 +41,13 @@ type KeyManagementHandler struct {
 	// delegatedProvider 委託重包目標的 provider 建構器（組裝根注入）。
 	// 未注入時委託分支回「尚未提供」，SHALL NOT 靜默退化為本地目標。
 	delegatedProvider keyvault.DelegatedProviderFactory
+	// kmsProvider 部署檔宣告的委託服務商（組裝根注入；非委託模式回空字串）。
+	// 拓撲端點據此決定可編輯欄位——服務商本身**不可經介面改**，
+	// 金鑰列的 KEK 引用已釘死哪一家能解。
+	kmsProvider DeploymentKMSProvider
+	// auditTopologyHook 拓撲變更留痕的觀察點（見 topologyAuditRecord）。
+	// 正式路徑不注入；留痕本身一律走 auditService。
+	auditTopologyHook func(topologyAuditRecord)
 }
 
 // SetDelegatedProviderFactory 注入委託重包目標的 provider 建構器（組裝根呼叫）。
@@ -316,6 +323,12 @@ func (h *KeyManagementHandler) Rewrap(c *gin.Context) {
 	defer target.Destroy()
 
 	result, err := h.km.RewrapKEK(c.Request.Context(), target)
+	if err == nil {
+		// 重包成功＝目的地確實換了：此時才把拓撲落庫，並與拓撲端點共用同一條
+		// 留痕與告警路徑。落庫失敗不回滾重包（金鑰已重包，回滾才是更危險的動作），
+		// 只留痕並於回應標示拓撲未同步，由管理者在金鑰管理頁補上。
+		h.persistRewrapTopology(c, payload)
+	}
 	if err != nil {
 		if errors.Is(err, keyvault.ErrKeyOpBusy) {
 			apierror.Respond(c, http.StatusConflict, apierror.CodeKeyOpBusy, nil)
@@ -396,6 +409,13 @@ func (h *KeyManagementHandler) buildRewrapTarget(c *gin.Context) (*keyvault.Rewr
 		return target, payload, true
 	}
 
+	// 委託目標的拓撲於**重包成功之後**才落庫（見 persistRewrapTopology）。
+	//
+	// **為什麼不是先落庫再建構**：先落庫的話，一次預檢失敗會留下「拓撲已指向新
+	// 保管處、金鑰仍由舊 KEK 包裹」的狀態——下一次冷啟動會拿新目的地去解舊金鑰，
+	// 而那是開不了機的形態。順序反過來則最壞情況只是「重包成功但拓撲沒跟上」，
+	// 該狀態可由金鑰管理頁的拓撲區塊修正，且精靈的結果頁已顯示目標。
+	//
 	// 委託目標（Phase C 3.1／3.3）：provider 建構即連通性預檢，
 	// 三類失敗各有專屬機器碼——「版本不支援」「組態／權限問題」「判別子打錯」
 	// 的處置完全不同，合併成一個碼等於要操作者猜。
@@ -489,9 +509,68 @@ func (h *KeyManagementHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 	keys.Use(middleware.RequireRole("admin"))
 	{
 		keys.GET("", h.Inventory)
+		// 委託拓撲：唯一的認證寫入面（見 kek_topology_handler.go 檔頭）
+		keys.GET("/topology", h.GetKEKTopology)
+		keys.PUT("/topology", h.UpdateKEKTopology)
 		keys.POST("/rotate", h.Rotate)
 		keys.POST("/rewrap", h.Rewrap)
 		keys.DELETE("/rewrap", h.AbandonRewrap)
 		keys.DELETE("/retired-material", h.CleanupRetired)
 	}
+}
+
+// persistRewrapTopology 將委託重包目標的拓撲寫入拓撲表。
+//
+// 只在該服務商**有**可編輯拓撲欄位時寫入（GCP 與 HSM 無）。寫入與拓撲端點走
+// 同一個服務層函式，故驗證、原子性與課責欄一致；變更同樣留痕與告警——
+// 換家是比改一個欄位更大的目的地變更，不該因為走的是精靈就少一份紀錄。
+func (h *KeyManagementHandler) persistRewrapTopology(c *gin.Context, payload *rewrapPayload) {
+	provider := rewrapTopologyProvider(payload.Mode)
+	if len(keyvault.EditableTopologyFields(provider)) == 0 {
+		return
+	}
+	before, _ := keyvault.LoadKEKTopology(h.db)
+	in := keyvault.KEKTopologyInput{
+		Provider: provider, Region: payload.Region, Address: payload.Address,
+		RoleID: payload.RoleID, UpdatedBy: currentActorName(c),
+		// Vault 的 Transit 金鑰名即重包目標的金鑰引用：兩者是同一個事實，
+		// 不另存一份可與之分歧的副本。
+		TransitKeyName: rewrapTransitKeyName(provider, payload.KeyRef),
+	}
+	beforeSummary := topologySummary(before)
+	afterSummary := topologySummary(&model.KEKTopology{Provider: provider, Region: in.Region,
+		Address: in.Address, RoleID: in.RoleID, TransitKeyName: in.TransitKeyName})
+	if _, _, err := keyvault.SaveKEKTopology(h.db, in); err != nil {
+		// 不改回應碼：重包本身已成功，把它報成失敗會誘使操作者重跑一次重包。
+		// 留痕記下「拓撲未同步」這個事實，由管理者在金鑰管理頁補上。
+		log.Printf("[KEKTopology] 重包成功但拓撲落庫失敗（請於金鑰管理頁補設）: %v", err)
+		h.auditTopologyChange(c, provider, beforeSummary, afterSummary, false, apierror.CodeKeyTopologyInvalid)
+		return
+	}
+	h.auditTopologyChange(c, provider, beforeSummary, afterSummary, true, "")
+	h.notifyTopologyChange(currentActorName(c), provider, beforeSummary, afterSummary)
+}
+
+// rewrapTopologyProvider 把重包判別子映射為拓撲服務商。
+//
+// `kms` 這個判別子在線上表述裡指的是 AWS（vault／gcp 各有自己的判別子），
+// 這個對應在別處已成立，此處只是把它寫明。
+func rewrapTopologyProvider(mode string) string {
+	switch mode {
+	case rewrapModeKMS:
+		return keyvault.TopologyProviderAWS
+	case rewrapModeVault:
+		return keyvault.TopologyProviderVault
+	case rewrapModeGCP:
+		return keyvault.TopologyProviderGCP
+	default:
+		return ""
+	}
+}
+
+func rewrapTransitKeyName(provider, keyRef string) string {
+	if provider == keyvault.TopologyProviderVault {
+		return keyRef
+	}
+	return ""
 }

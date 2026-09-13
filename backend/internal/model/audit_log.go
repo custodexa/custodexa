@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -299,14 +300,14 @@ const (
 // 涵蓋子資源。
 //
 // **入列的唯一判準是 id 空間相同**：clipboard_event 的 resource_id 是**連線 id**
-//（範圍鍵，見 ResourceClipboardEvent），與樞紐鍵同一空間，故以連線 id 展開查詢
+// （範圍鍵，見 ResourceClipboardEvent），與樞紐鍵同一空間，故以連線 id 展開查詢
 // 只會撈到該連線自己的事件。id 空間不同者 SHALL NOT 入列——例如
 // ResourceChangeSecretPlan 的 resource_id 是計畫 id，展開會把別的實體的事件掛到
 // 樞紐上（產生假事件，比遺漏更糟，正是這條判準要根除的缺陷）。
 //
 // **判準的放寬**：recording 與
 // command 兩分類**同時**涵蓋單會話端點（resource_id＝連線 id）與跨會話端點
-//（`/recordings/stats`、`/commands`，無 :id 故 resource_id 恆為 **nil**）。
+// （`/recordings/stats`、`/commands`，無 :id 故 resource_id 恆為 **nil**）。
 // 故入列判準自「該分類的 resource_id 恆與樞紐同 id 空間」放寬為
 // 「**非 nil 時**恆與樞紐同 id 空間」。此放寬安全：展開查詢是
 // `resource IN (...) AND resource_id = ?`，nil 不匹配任何樞紐 id，跨會話列
@@ -456,6 +457,9 @@ func (a *AuditLog) BeforeCreate(tx *gorm.DB) error {
 	// 全批回滾，一個零憑證的超長路徑請求即可把同批的真實攻擊記錄一起沖掉
 	//（見 audit_log_bounds.go 檔頭）
 	BoundAuditLogFields(a)
+	if reservation, ok := tx.Statement.Context.Value(auditStampReservationKey{}).(AuditStampReservation); ok {
+		return reservation.Stamp(a)
+	}
 	if stamp, _ := getAuditCreateHooks(); stamp != nil {
 		stamp(a)
 	}
@@ -484,4 +488,13 @@ func (a *AuditLog) BeforeUpdate(tx *gorm.DB) error {
 // 新增 audit 相關碼時不得引入 SkipHooks
 func (a *AuditLog) BeforeDelete(tx *gorm.DB) error {
 	return gorm.ErrInvalidValue
+}
+
+// AuditStampReservation carries an already admitted write through material-gate closure.
+// The owner must release it after the entire transaction finishes.
+type AuditStampReservation interface{ Stamp(*AuditLog) error }
+type auditStampReservationKey struct{}
+
+func WithAuditStampReservation(ctx context.Context, reservation AuditStampReservation) context.Context {
+	return context.WithValue(ctx, auditStampReservationKey{}, reservation)
 }

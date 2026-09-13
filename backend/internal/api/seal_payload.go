@@ -43,6 +43,51 @@ type SealUnsealPayload struct {
 	// Password 為初始管理員密碼。**僅初始化解封要求**；
 	// 一般解封不要求（要求 JWT 會在 admin 已開 MFA 時死鎖）。
 	Password []byte
+
+	// ── 委託模式的秘密（一律可覆寫的 []byte，封存時隨世代抹除）──────────
+	//
+	// 三家各一組，**按分支的精確鍵集**收取；混合分支的鍵集由呼叫端拒絕。
+	// 這些值 SHALL NOT 落任何持久化位置、SHALL NOT 回顯、SHALL NOT 進錯誤訊息。
+
+	// AccessKeyID／SecretAccessKey AWS 存取金鑰對。
+	AccessKeyID     []byte
+	SecretAccessKey []byte
+	// ServiceAccountJSON GCP 服務帳號金鑰檔內容（另有欄位級大小上限）。
+	ServiceAccountJSON []byte
+	// VaultSecretID Vault AppRole 的角色密鑰。
+	VaultSecretID []byte
+	// VaultToken 直接提供的 Vault 權杖（與 VaultSecretID **二選一**）。
+	VaultToken []byte
+
+	// ── 非秘密欄位（核對綁定與全新安裝的拓撲）────────────────────────
+	//
+	// 留 string：非秘密，且其中數項要進審計本文。
+
+	// TopologyDigest 核對步驟取得的拓撲摘要；與後端現行拓撲不符即拒並要求重新核對
+	//（**舊核對結果不得授權送往新目的地**）。
+	TopologyDigest string
+	// Region 服務區域（全新安裝 · AWS）。
+	Region string
+	// KeyRef 金鑰識別（全新安裝：AWS 的金鑰 ARN／別名、GCP 的完整 CryptoKey 資源名）。
+	KeyRef string
+	// Address／TransitKeyName／RoleID Vault 拓撲（全新安裝 · Vault）。
+	Address        string
+	TransitKeyName string
+	RoleID         string
+
+	// present 本次請求實際出現過的鍵（**鍵集精確比對的輸入**）。
+	// 分支判定在呼叫端（它才知道模式、服務商與是否為全新安裝），故解析層
+	// 只記錄事實、不做分支判斷。
+	present map[string]bool
+}
+
+// Present 回傳本次請求出現過的鍵集副本。
+func (p *SealUnsealPayload) Present() map[string]bool {
+	out := make(map[string]bool, len(p.present))
+	for k := range p.present {
+		out[k] = true
+	}
+	return out
 }
 
 // ErrSealPayloadMalformed 解封請求體無法解析。
@@ -52,9 +97,18 @@ type SealUnsealPayload struct {
 var ErrSealPayloadMalformed = errors.New("解封請求體無法解析")
 
 // MaxSealUnsealBodyBytes 解封請求體大小上限（誠實邊界的「輸入大小上限」）。
-// 材料本身為 32 bytes，憑證與 paste-back 副本合計遠低於此值；上限存在的理由是
-// 使單次驗證成本有界，而非表達任何欄位長度政策。
-const MaxSealUnsealBodyBytes = 8 << 10
+//
+// 上限存在的理由是使單次驗證成本有界，而非表達任何欄位長度政策。
+// **自 8 KiB 上調至 24 KiB**：GCP 的服務帳號金鑰檔（含 PEM 私鑰）單欄即可達數
+// KiB，原上限會讓合法輸入被當成格式錯誤而回一個指不出原因的碼。
+const MaxSealUnsealBodyBytes = 24 << 10
+
+// MaxServiceAccountJSONBytes 服務帳號金鑰檔內容的**欄位級**上限。
+//
+// 與本文上限分開訂：本文上限管的是單次驗證成本，欄位上限管的是「這個欄位收到的
+// 是不是一份服務帳號金鑰檔」。實測一份含 2048-bit RSA 私鑰的金鑰檔約 2.3 KiB，
+// 取 16 KiB 容納更長的金鑰與額外欄位，同時仍拒絕明顯不是金鑰檔的輸入。
+const MaxServiceAccountJSONBytes = 16 << 10
 
 // DecodeSealMaterial 解析解封材料。
 //
@@ -71,7 +125,7 @@ func DecodeSealMaterial(material []byte) (*SealUnsealPayload, error) {
 	if len(material) == 0 || len(material) > MaxSealUnsealBodyBytes {
 		return nil, ErrSealPayloadMalformed
 	}
-	p := &SealUnsealPayload{}
+	p := &SealUnsealPayload{present: map[string]bool{}}
 	dec := json.NewDecoder(bytes.NewReader(material))
 	if err := decodeSealObject(dec, p); err != nil {
 		p.Zeroize()
@@ -101,6 +155,11 @@ func decodeSealObject(dec *json.Decoder, p *SealUnsealPayload) error {
 		return errors.New("解封材料必須是 JSON 物件")
 	}
 	seen := map[string]bool{}
+	if p.present == nil {
+		// 直接建構本結構的呼叫端（單元測試）不經 DecodeSealMaterial，
+		// 於此補建而非 panic——鍵集記錄是解析層的產物，不該要求呼叫端先備好容器。
+		p.present = map[string]bool{}
+	}
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
@@ -114,6 +173,7 @@ func decodeSealObject(dec *json.Decoder, p *SealUnsealPayload) error {
 			return fmt.Errorf("解封材料含重複欄位 %q", key)
 		}
 		seen[key] = true
+		p.present[key] = true
 		if err := decodeSealField(dec, p, key); err != nil {
 			return err
 		}
@@ -155,15 +215,62 @@ func decodeSealField(dec *json.Decoder, p *SealUnsealPayload, key string) error 
 		}
 		p.ConfirmSaved = b
 		return nil
+	case "access_key_id":
+		return decodeSecretBytes(dec, &p.AccessKeyID)
+	case "secret_access_key":
+		return decodeSecretBytes(dec, &p.SecretAccessKey)
+	case "service_account_json":
+		if err := decodeSecretBytes(dec, &p.ServiceAccountJSON); err != nil {
+			return err
+		}
+		// 欄位級上限：超限即拒且**不回顯任何片段**。
+		if len(p.ServiceAccountJSON) > MaxServiceAccountJSONBytes {
+			return fmt.Errorf("service_account_json 超出欄位上限 %d bytes", MaxServiceAccountJSONBytes)
+		}
+		return nil
+	case "vault_secret_id":
+		return decodeSecretBytes(dec, &p.VaultSecretID)
+	case "vault_token":
+		return decodeSecretBytes(dec, &p.VaultToken)
+	case "topology_digest":
+		return decodePlainString(dec, &p.TopologyDigest)
+	case "region":
+		return decodePlainString(dec, &p.Region)
+	case "key_ref":
+		return decodePlainString(dec, &p.KeyRef)
+	case "address":
+		return decodePlainString(dec, &p.Address)
+	case "transit_key_name":
+		return decodePlainString(dec, &p.TransitKeyName)
+	case "role_id":
+		return decodePlainString(dec, &p.RoleID)
 	default:
 		return fmt.Errorf("解封材料含未知欄位 %q", key)
 	}
+}
+
+// decodePlainString 解析非秘密的字串欄位。
+//
+// 與 decodeSecretBytes 分開：這些值是拓撲與核對摘要，會進審計本文、需要以
+// string 比對；把它們當秘密處置只會讓「哪些欄位是秘密」這件事在程式碼裡失焦。
+func decodePlainString(dec *json.Decoder, dst *string) error {
+	var raw json.RawMessage
+	if err := dec.Decode(&raw); err != nil {
+		return err
+	}
+	v, err := jsonStringBytes(raw)
+	if err != nil {
+		return err
+	}
+	*dst = string(v)
+	return nil
 }
 
 // decodeSecretBytes 把一個 JSON 字串值解進我方配置的 buffer，並覆寫中間副本。
 func decodeSecretBytes(dec *json.Decoder, dst *[]byte) error {
 	var raw json.RawMessage
 	if err := dec.Decode(&raw); err != nil {
+		zeroBytes(raw)
 		return err
 	}
 	// RawMessage 是 encoding/json 交出的一份獨立副本，解完即覆寫。
@@ -181,12 +288,17 @@ func decodeSecretBytes(dec *json.Decoder, dst *[]byte) error {
 // **容量一次配足（len(body)）且只 append 不擴容**：反轉義只會使長度變短或
 // 不變，故不會發生 realloc——若發生，舊 backing array 會成為一份無人持有、
 // 因而永遠不會被覆寫的明文殘影。
-func jsonStringBytes(raw []byte) ([]byte, error) {
+func jsonStringBytes(raw []byte) (result []byte, resultErr error) {
 	if len(raw) < 2 || raw[0] != '"' || raw[len(raw)-1] != '"' {
 		return nil, errors.New("欄位值必須是 JSON 字串")
 	}
 	body := raw[1 : len(raw)-1]
 	out := make([]byte, 0, len(body))
+	defer func() {
+		if resultErr != nil {
+			zeroBytes(out[:cap(out)])
+		}
+	}()
 	for i := 0; i < len(body); {
 		c := body[i]
 		if c == '"' {
@@ -298,14 +410,36 @@ func (p *SealUnsealPayload) Zeroize() {
 	if p == nil {
 		return
 	}
-	zeroBytes(p.KEK)
-	zeroBytes(p.KEKConfirm)
-	zeroBytes(p.Password)
+	for _, b := range [][]byte{p.KEK, p.KEKConfirm, p.Password,
+		p.AccessKeyID, p.SecretAccessKey, p.ServiceAccountJSON, p.VaultSecretID, p.VaultToken} {
+		zeroBytes(b)
+	}
 	p.KEK = nil
 	p.KEKConfirm = nil
 	p.Password = nil
+	p.AccessKeyID = nil
+	p.SecretAccessKey = nil
+	p.ServiceAccountJSON = nil
+	p.VaultSecretID = nil
+	p.VaultToken = nil
 	p.Username = ""
 	p.ConfirmSaved = false
+	p.TopologyDigest = ""
+	p.Region = ""
+	p.KeyRef = ""
+	p.Address = ""
+	p.TransitKeyName = ""
+	p.RoleID = ""
+}
+
+// TakeSecret 交出一個秘密欄位的**所有權**並自本結構斷開。
+//
+// 呼叫端（世代憑證持有者）自此負責歸零；本結構的 Zeroize 不再覆寫它——
+// 兩邊都持有同一段位元組時，先歸零的一方會讓另一方讀到一段全零的「憑證」。
+func TakeSecret(dst *[]byte) []byte {
+	out := *dst
+	*dst = nil
+	return out
 }
 
 // zeroBytes 逐位元組覆寫。

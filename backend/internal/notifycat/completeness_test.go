@@ -406,3 +406,38 @@ func cloneCatalog() map[string]map[Event]map[string]message {
 	}
 	return out
 }
+
+// TestNotifyCatCompletenessCoversTopologyChange 拓撲變更事件的契約與三語完備。
+//
+// 新增事件時漏補任一語系，投遞會降級為 generic 文案——收到通知的人看不出
+// 「保管處設定被改了」這件事，而那正是這個事件存在的全部理由。
+func TestNotifyCatCompletenessCoversTopologyChange(t *testing.T) {
+	params := map[string]string{
+		"actor":    "admin",
+		"provider": "vault",
+		"before":   "address=https://old.example:8200 role_id=r1",
+		"after":    "address=https://new.example:8200 role_id=r1",
+	}
+	clean, err := Validate(EventKEKTopologyChanged, params)
+	if err != nil {
+		t.Fatalf("事件參數不合契約: %v", err)
+	}
+	for _, k := range []string{"actor", "provider", "before", "after"} {
+		if clean[k] == "" {
+			t.Fatalf("淨化後遺失必要參數 %q: %v", k, clean)
+		}
+	}
+	// 四個參數皆為必要：少任一個都不得通過（缺 before 時「首次設定」與
+	// 「摘要組不出來」在通知上就分不開了）。
+	for _, drop := range []string{"actor", "provider", "before", "after"} {
+		partial := map[string]string{}
+		for k, v := range params {
+			if k != drop {
+				partial[k] = v
+			}
+		}
+		if _, err := Validate(EventKEKTopologyChanged, partial); err == nil {
+			t.Errorf("缺參數 %q 仍通過驗證", drop)
+		}
+	}
+}

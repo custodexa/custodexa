@@ -67,17 +67,45 @@ func TestLocalProviderEnvUIEquivalence(t *testing.T) {
 	}
 }
 
-// KeyRef.Provider 為三值，SHALL NOT 取 env／ui
-func TestKeyRefProviderIsThreeValued(t *testing.T) {
+// Provider identity uses the registered kinds, never the env or ui runtime modes.
+func TestKeyRefProviderKinds(t *testing.T) {
+	kinds := []string{KeyRefProviderLocal, KeyRefProviderKMS, KeyRefProviderHSM, KeyRefProviderVault, KeyRefProviderGCP}
+	seen := map[string]bool{}
+	for _, kind := range kinds {
+		t.Run(kind, func(t *testing.T) {
+			if kind == "" || seen[kind] {
+				t.Fatal("provider constants must be distinct")
+			}
+			seen[kind] = true
+			ref := KeyRef{Provider: kind, KeyID: "same-id"}
+			if !ref.Equal(KeyRef{Provider: kind, KeyID: "same-id"}) {
+				t.Fatal("same reference differs")
+			}
+			for _, other := range kinds {
+				if other != kind && ref.Equal(KeyRef{Provider: other, KeyID: "same-id"}) {
+					t.Fatal("provider identity collapsed")
+				}
+			}
+			encoded, err := EncodeWrappedKey(kind, []byte("vault:v1:opaque"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tag, raw, err := ParseWrappedKey(encoded)
+			if err != nil || tag != kind || string(raw) != "vault:v1:opaque" {
+				t.Fatal("provider format roundtrip failed")
+			}
+		})
+	}
+
 	for _, mode := range []string{KEKModeEnv, KEKModeUI} {
 		p, err := NewLocalAESKEKProvider(testKey(1), mode)
 		if err != nil {
 			t.Fatalf("%s: %v", mode, err)
 		}
 		switch p.KeyRef().Provider {
-		case KeyRefProviderLocal, KeyRefProviderKMS, KeyRefProviderHSM:
+		case KeyRefProviderLocal, KeyRefProviderKMS, KeyRefProviderHSM, KeyRefProviderVault, KeyRefProviderGCP:
 		default:
-			t.Fatalf("KeyRef.Provider %q 不在三值域內", p.KeyRef().Provider)
+			t.Fatalf("KeyRef.Provider %q is not registered", p.KeyRef().Provider)
 		}
 		if p.KeyRef().Provider == mode {
 			t.Fatalf("KeyRef.Provider 取到執行期模式 %q：env／ui 的 KeyRef 將不可能相同", mode)
@@ -133,7 +161,7 @@ func TestWrappedKeyPrefixAlwaysEnforced(t *testing.T) {
 	raw := []byte("wrapped-material-bytes")
 
 	t.Run("全部格式標記一律編為帶 AAD 的 wk:2", func(t *testing.T) {
-		for _, tag := range []string{WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM} {
+		for _, tag := range []string{WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM, WrappedFormatVault, WrappedFormatGCP} {
 			v, err := EncodeWrappedKey(tag, raw)
 			if err != nil {
 				t.Fatalf("%s: %v", tag, err)
@@ -174,13 +202,13 @@ func TestWrappedKeyPrefixAlwaysEnforced(t *testing.T) {
 	})
 
 	t.Run("未知格式標記與未知版本於解包前即判定不符", func(t *testing.T) {
-		if _, _, err := ParseWrappedKey("wk:2:vault:aGk="); err == nil {
+		if _, _, err := ParseWrappedKey("wk:2:unknown-provider:aGk="); err == nil {
 			t.Fatal("未知格式標記應回格式錯，而非落入籠統 GCM 失敗")
 		}
 		if _, _, err := ParseWrappedKey("wk:3:local:aGk="); err == nil {
 			t.Fatal("未知 wrapped 格式版本應於解包前即回格式錯")
 		}
-		if _, err := EncodeWrappedKey("vault", raw); err == nil {
+		if _, err := EncodeWrappedKey("unknown-provider", raw); err == nil {
 			t.Fatal("未知格式標記不得可編碼")
 		}
 	})
@@ -330,7 +358,7 @@ func TestCanonicalAADIsInjective(t *testing.T) {
 // 無前綴無 AAD 的裸值——「終態格式」只存在於註解裡。
 func TestEncodeWrappedKeyHasNoUnboundBranch(t *testing.T) {
 	raw := []byte("wrapped-material-bytes")
-	for _, tag := range []string{WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM} {
+	for _, tag := range []string{WrappedFormatLocal, WrappedFormatKMS, WrappedFormatHSM, WrappedFormatVault, WrappedFormatGCP} {
 		v, err := EncodeWrappedKey(tag, raw)
 		if err != nil {
 			t.Fatalf("格式 %s 應可編碼: %v", tag, err)

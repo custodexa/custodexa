@@ -85,15 +85,15 @@ func TestCredentialResolverUsesEffectiveVersionOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, effectiveID, resolved.VersionID,
 		"取回的必須是掛載的就位版本；退回 current 或試 pending 都會在改密中途用錯版本")
-	assert.Equal(t, "effective-pw", resolved.Password)
+	assert.Equal(t, "effective-pw", secretText(t, resolved.Password))
 
 	// 連線路徑（薄殼）與解析器必須給出同一個答案——守衛盯的是實際建線用的那個值
 	creds, err := assets.GetWithCredentialsForAccount(asset.ID, account.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "effective-pw", creds.Password,
+	assert.Equal(t, "effective-pw", secretText(t, creds.Password),
 		"連線取密必須是就位版本；讀 current 即為本守衛的突變態")
-	assert.NotEqual(t, "current-pw", creds.Password)
-	assert.NotEqual(t, "pending-pw", creds.Password)
+	assert.NotEqual(t, "current-pw", secretText(t, creds.Password))
+	assert.NotEqual(t, "pending-pw", secretText(t, creds.Password))
 }
 
 // 就位版本為空＝該掛載尚未取得任何密文：回既有的「無可用帳號憑證」語義，
@@ -126,8 +126,8 @@ func TestCredentialResolverNilEffectiveIsUnusable(t *testing.T) {
 	creds, err := assets.GetWithCredentialsForAccount(asset.ID, account.ID)
 	require.NoError(t, err)
 	assert.Equal(t, account.ID, creds.AccountID)
-	assert.Empty(t, creds.Password)
-	assert.Empty(t, creds.PrivateKey)
+	assert.Empty(t, secretText(t, creds.Password))
+	assert.Empty(t, secretText(t, creds.PrivateKey))
 }
 
 // 跨資產的掛載識別 fail-close：不得靜默退回預設帳號，也不得解出別台的秘密。
@@ -166,7 +166,7 @@ func TestCredentialResolverRejectsForeignBinding(t *testing.T) {
 	require.NotNil(t, own.EffectiveVersionID)
 	resolved, err := assets.resolver.ResolveVersion(context.Background(), own.CredentialID, *own.EffectiveVersionID)
 	require.NoError(t, err)
-	assert.Equal(t, "pw-a1", resolved.Password)
+	assert.Equal(t, "pw-a1", secretText(t, resolved.Password))
 }
 
 // 系統路徑寫入面：新增版本而非就地覆寫，且就位版本同交易改指新版。
@@ -210,7 +210,7 @@ func TestUpdateSecretAppendsVersionNotOverwrite(t *testing.T) {
 
 	creds, err := assets.GetWithCredentialsForAccount(asset.ID, before.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "new-pw", creds.Password)
+	assert.Equal(t, "new-pw", secretText(t, creds.Password))
 
 	// 憑證的現行版本同步推進（系統路徑於驗證通過後才呼叫寫入面）
 	var cred model.Credential
@@ -238,8 +238,8 @@ func TestUpdatePrivateKeyKeepsExistingPassword(t *testing.T) {
 
 	creds, err := assets.GetWithCredentialsForAccount(asset.ID, account.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "PRIVATE-KEY-BODY", creds.PrivateKey)
-	assert.Equal(t, "keep-me", creds.Password, "金鑰輪替不得順手清掉密碼備援入口")
+	assert.Equal(t, "PRIVATE-KEY-BODY", secretText(t, creds.PrivateKey))
+	assert.Equal(t, "keep-me", secretText(t, creds.Password), "金鑰輪替不得順手清掉密碼備援入口")
 }
 
 // effectiveSecretPlain 取某掛載**就位版本**的明文（測試輔助）。
@@ -254,7 +254,7 @@ func effectiveSecretPlain(t *testing.T, db *gorm.DB, svc *AssetService, accountI
 	resolved, err := svc.resolver.ResolveVersion(context.Background(),
 		account.CredentialID, *account.EffectiveVersionID)
 	require.NoError(t, err)
-	return resolved.Password, resolved.PrivateKey
+	return secretText(t, resolved.Password), secretText(t, resolved.PrivateKey)
 }
 
 // effectiveCipher 取某掛載就位版本的密碼密文（測試輔助；斷言「密文不進審計」用）。

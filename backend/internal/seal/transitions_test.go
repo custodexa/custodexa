@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// TestCellCountIsTwelve：遷移表為 12 格定稿表，格數本身是驗收條件。
-func TestCellCountIsTwelve(t *testing.T) {
-	if got := len(Cells()); got != 12 {
-		t.Fatalf("預期 12 格，實得 %d", got)
+// TestCellCountMatchesDesign derives the count from the complete expected table.
+func TestCellCountMatchesDesign(t *testing.T) {
+	if got := len(Cells()); got != len(designCells()) {
+		t.Fatalf("expected %d design cells, got %d", len(designCells()), got)
 	}
 	seen := map[string]bool{}
 	for _, c := range Cells() {
@@ -17,14 +17,14 @@ func TestCellCountIsTwelve(t *testing.T) {
 		}
 		seen[c.ID] = true
 	}
-	for _, want := range []string{"1", "2", "3", "3b", "4", "4b", "5", "5b", "6", "7", "8", "9"} {
+	for want := range designCells() {
 		if !seen[want] {
 			t.Errorf("缺格 %s", want)
 		}
 	}
 }
 
-// TestCellsPairwiseExclusive：12 格的 (from, event) 判準 SHALL 兩兩互斥。
+// TestCellsPairwiseExclusive checks the entire state and event product.
 // 以窮舉笛卡兒積驗證，不得有同一 Situation 落入兩格。
 func TestCellsPairwiseExclusive(t *testing.T) {
 	total := 0
@@ -74,8 +74,8 @@ func TestEveryCellHasPositiveSituation(t *testing.T) {
 }
 
 // TestCellsMatchDesignTable：逐格對照遷移表定稿的目標態與副作用欄位。
-func TestCellsMatchDesignTable(t *testing.T) {
-	want := map[string]Cell{
+func designCells() map[string]Cell {
+	return map[string]Cell{
 		"1":  {Target: StateSealed},
 		"2":  {Target: StateUnsealing},
 		"3":  {Target: targetUnchanged},
@@ -88,7 +88,13 @@ func TestCellsMatchDesignTable(t *testing.T) {
 		"7":  {Target: targetSource, SetsCleanup: true, CleanupReason: CodeStage2Timeout, Outcome: OutcomeTimeout},
 		"8":  {Target: targetUnchanged, ClearsCleanup: true},
 		"9":  {Target: StateSealed},
+		"10": {Target: StateSealed, SetsCleanup: true, CleanupReason: CodeSealRequested},
+		"11": {Target: StateSealedFaulted},
 	}
+}
+
+func TestCellsMatchDesignTable(t *testing.T) {
+	want := designCells()
 	for _, c := range Cells() {
 		w, ok := want[c.ID]
 		if !ok {
@@ -139,6 +145,10 @@ func TestLegalTransitionsResolveToExpectedCell(t *testing.T) {
 		{"格6 段2失敗", Situation{From: StateUnsealing, Event: EventStage2Failure}, "6"},
 		{"格7 段2逾時", Situation{From: StateUnsealing, Event: EventStage2Timeout}, "7"},
 		{"格8 收束完成", Situation{From: StateSealedFaulted, Event: EventCleanupDone, HasCleanup: true}, "8"},
+		{"seal accepted", Situation{From: StateUnsealed, Event: EventSealRequest, HolderAcquired: true}, "10"},
+		{"seal cleanup failed", Situation{From: StateSealed, Event: EventSealCleanupFailed, HasCleanup: true}, "11"},
+		{"seal rejected", Situation{From: StateSealed, Event: EventSealRequest}, "3"},
+		{"seal cleanup completed", Situation{From: StateSealed, Event: EventCleanupDone, HasCleanup: true}, "8"},
 		{"格9 行程結束", Situation{From: StateUnsealed, Event: EventProcessExit}, "9"},
 	}
 	for _, tc := range cases {
@@ -161,6 +171,9 @@ func TestIllegalTransitionsResolveToNothing(t *testing.T) {
 		name string
 		sit  Situation
 	}{
+		{"seal while sealed", Situation{From: StateSealed, Event: EventSealRequest, HolderAcquired: true}},
+		{"seal with cleanup", Situation{From: StateUnsealed, Event: EventSealRequest, HolderAcquired: true, HasCleanup: true}},
+		{"seal failure without cleanup", Situation{From: StateSealed, Event: EventSealCleanupFailed}},
 		{"sealed 收到段2逾時", Situation{From: StateSealed, Event: EventStage2Timeout}},
 		{"sealed 收到段2失敗", Situation{From: StateSealed, Event: EventStage2Failure}},
 		{"sealed 收到發佈", Situation{From: StateSealed, Event: EventStage2Published}},

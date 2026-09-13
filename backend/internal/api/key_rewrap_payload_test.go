@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 )
 
 // 換鑰精靈 discriminated union 的解析與 handler 行為（伺服端部分）。
@@ -85,9 +85,9 @@ func TestDecodeRewrapPayloadUnion(t *testing.T) {
 		want error // nil＝應接受
 	}{
 		{"本地變體合法", localRewrapBody(m), nil},
-		{"委託變體合法（解析層）", `{"mode":"kms","key_ref":"arn:aws:kms:x:1:key/a"}`, nil},
+		{"委託變體合法（解析層）", `{"mode":"kms","key_ref":"arn:aws:kms:x:1:key/a","region":"ap-northeast-1"}`, nil},
 		{"混合：本地欄＋委託欄", fmt.Sprintf(`{"mode":"local","new_kek":%q,"new_kek_confirm":%q,"confirm_saved":true,"key_ref":"arn"}`, m, m), errRewrapPayloadMixed},
-		{"混合：宣告 kms 卻帶本地欄", fmt.Sprintf(`{"mode":"kms","key_ref":"arn","new_kek":%q}`, m), errRewrapPayloadMixed},
+		{"混合：宣告 kms 卻帶本地欄", fmt.Sprintf(`{"mode":"kms","key_ref":"arn","region":"ap-northeast-1","new_kek":%q}`, m), errRewrapPayloadMixed},
 		{"mode 與欄位不符：宣告 local 卻只帶 key_ref", `{"mode":"local","key_ref":"arn"}`, errRewrapPayloadMixed},
 		{"缺 confirm_saved", fmt.Sprintf(`{"mode":"local","new_kek":%q,"new_kek_confirm":%q}`, m, m), errRewrapPayloadMixed},
 		{"缺 new_kek_confirm", fmt.Sprintf(`{"mode":"local","new_kek":%q,"confirm_saved":true}`, m), errRewrapPayloadMixed},
@@ -151,7 +151,7 @@ func TestRewrapHandlerRejectionsProduceZeroKeyWrites(t *testing.T) {
 			http.StatusBadRequest, "VALIDATION_KEY_REWRAP_MATERIAL"},
 		{"材料字元集外", `{"mode":"local","new_kek":"Api-TestKEKMaterial0000000000001","new_kek_confirm":"Api-TestKEKMaterial0000000000001","confirm_saved":true}`,
 			http.StatusBadRequest, "VALIDATION_KEY_REWRAP_MATERIAL"},
-		{"委託目標尚未交付", `{"mode":"kms","key_ref":"arn:aws:kms:x:1:key/a"}`,
+		{"委託目標尚未交付", `{"mode":"kms","key_ref":"arn:aws:kms:x:1:key/a","region":"ap-northeast-1"}`,
 			http.StatusNotImplemented, "VALIDATION_KEY_REWRAP_TARGET_UNSUPPORTED"},
 	}
 	for _, tc := range cases {
@@ -279,7 +279,7 @@ func TestDecodeRewrapPayloadRejectsDuplicateKeysAndTrailing(t *testing.T) {
 		"重複 new_kek（送兩份材料）": fmt.Sprintf(
 			`{"mode":"local","new_kek":%q,"new_kek":%q,"new_kek_confirm":%q,"confirm_saved":true}`,
 			apiTestKEKMaterial(12), m, m),
-		"重複 key_ref": `{"mode":"kms","key_ref":"a","key_ref":"b"}`,
+		"重複 key_ref": `{"mode":"kms","key_ref":"a","key_ref":"b","region":"ap-northeast-1"}`,
 		"尾隨右中括號":     localRewrapBody(m) + `]`,
 		"尾隨右大括號":     localRewrapBody(m) + `}`,
 		"尾隨純量":       localRewrapBody(m) + `1`,
@@ -377,4 +377,44 @@ func deferCallName(d *ast.DeferStmt) string {
 		}
 	}
 	return ""
+}
+
+func TestVaultTargetUnion(t *testing.T) {
+	ref := "vault:aHR0cHM6Ly92YXVsdC5leGFtcGxl:transit:key"
+	body := fmt.Sprintf(`{"mode":"vault","key_ref":%q,"address":"https://vault.example:8200","role_id":"role-fixture"}`, ref)
+	got, err := decodeRewrapPayload([]byte(body))
+	if err != nil || got.Mode != rewrapModeVault || got.KeyRef != ref {
+		t.Fatal("valid Vault target refused")
+	}
+	for _, field := range []string{"address", "role_id", "secret_id", "new_kek", "new_kek_confirm", "confirm_saved", "region"} {
+		t.Run(field, func(t *testing.T) {
+			mixed := fmt.Sprintf(`{"mode":"vault","key_ref":%q,"address":"https://vault.example:8200","role_id":"role-fixture",%q:"fixture"}`, ref, field)
+			got, err := decodeRewrapPayload([]byte(mixed))
+			if err == nil || got != nil {
+				t.Fatal("request-supplied configuration accepted")
+			}
+		})
+	}
+}
+
+func TestGCPTargetUnion(t *testing.T) {
+	ref := "projects/test-project/locations/global/keyRings/test-ring/cryptoKeys/key"
+	body := fmt.Sprintf(`{"mode":"gcp","key_ref":%q}`, ref)
+	got, err := decodeRewrapPayload([]byte(body))
+	if err != nil || got.Mode != rewrapModeGCP || got.KeyRef != ref {
+		t.Fatal("valid GCP target refused")
+	}
+	for _, field := range []string{"address", "endpoint", "credentials", "credentials_file", "new_kek", "new_kek_confirm", "confirm_saved", "region"} {
+		t.Run(field, func(t *testing.T) {
+			mixed := fmt.Sprintf(`{"mode":"gcp","key_ref":%q,%q:"fixture"}`, ref, field)
+			if got, err := decodeRewrapPayload([]byte(mixed)); err == nil || got != nil {
+				t.Fatal("request-supplied configuration accepted")
+			}
+		})
+	}
+	for _, body := range []string{`{"mode":"gcp"}`, `{"mode":"gcp","key_ref":42}`, `{"mode":"unknown-provider","key_ref":"x"}`} {
+		if got, err := decodeRewrapPayload([]byte(body)); err == nil || got != nil {
+			t.Fatal("invalid target union accepted")
+		}
+	}
 }

@@ -327,6 +327,8 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"DELETE", "/api/v1/keys/retired-material"}:                                      {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"DELETE", "/api/v1/keys/rewrap"}:                                                {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rewrap"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
+	{"GET", "/api/v1/keys/topology"}:                                                 {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
+	{"PUT", "/api/v1/keys/topology"}:                                                 {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"POST", "/api/v1/keys/rotate"}:                                                  {classResource, model.ResourceKeyManagement, "命中分類器段 `keys`"},
 	{"GET", "/api/v1/offsite-storage/status"}:                                        {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
 	{"GET", "/api/v1/offsite-storage/failures"}:                                      {classResource, model.ResourceOffsiteStorage, "命中分類器段 `offsite-storage`（新增常數接線）；設定變更與運維動作（非審計資料讀取），不入 auditSensitiveResources；`:id` 分別指向帳冊列與世代列，**都不是資產或會話 id**"},
@@ -506,12 +508,21 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/recordings/stream"}: {classNoIdentity, "",
 		"[歸屬：handler 自寫] rtoken 取流（刻意不掛 JWT）；" +
 			"留痕＝AP-68 `recording_handler.go` `auditRecordingRetrieval`"},
+	{"POST", "/api/v1/seal/seal"}: {classNoIdentity, "",
+		"[歸屬：他體系] 管理員觸發、會中斷業務與連線的封印控制面；handler 複用 identity 驗證，並非匿名操作。" +
+			"鏈中不掛通用認證中介層；受理與結果進 seal journal，回灌為 execute／key_management，保留 actor 與世代。" +
+			"認證拒絕另走匿名拒絕審計標記；封印期拒絕日誌不等同資料庫審計列。"},
 	{"GET", "/api/v1/seal/status"}: {classNoIdentity, "",
 		"[歸屬：他體系] 封印期端點，須早於認證系統可用；留痕由 seal journal 承擔" +
 			"（spec「他體系留痕的明載定調」），`audit_logs` 無列不計為缺口"},
 	{"POST", "/api/v1/seal/unseal"}: {classNoIdentity, "",
 		"[歸屬：他體系] 封印期解封端點，須早於認證系統可用；留痕由 seal journal 承擔" +
 			"（spec「他體系留痕的明載定調」），`audit_logs` 無列不計為缺口"},
+	{"POST", "/api/v1/seal/authorize"}: {classNoIdentity, "",
+		"[歸屬：他體系] 解封流程第一段的帳密驗證，須早於認證系統可用——它本身就是" +
+			"「在那之前先驗一次身分」的端點，掛通用認證中介層會構成循環。" +
+			"留痕由封存期的行程日誌承擔（每次嘗試一行，只記結果不記帳號），" +
+			"`audit_logs` 無列不計為缺口"},
 	{"GET", "/api/v1/instance-guard/halt"}: {classNoIdentity, "",
 		"[歸屬：他體系] 守衛攔下頁的狀態查詢，須早於認證系統可用（攔下模式下段 2 未起、" +
 			"JWT 不存在）；唯讀、無副作用、不觸及任何資料庫寫入，`audit_logs` 無列不計為缺口"},

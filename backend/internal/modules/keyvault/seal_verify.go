@@ -3,6 +3,7 @@ package keyvault
 import (
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 
 	"gorm.io/gorm"
 
@@ -53,7 +54,9 @@ func ProbeKEKUnwrap(db *gorm.DB, kek crypto.KEKProvider) error {
 		return ErrSealNoRepresentativeRow
 	}
 	for _, r := range rows {
-		if _, err := unwrapMaterial(kek, r.Purpose, r.Version, r.WrappedKey); err != nil {
+		raw, err := unwrapMaterial(kek, r.Purpose, r.Version, r.WrappedKey)
+		material.Wipe(raw)
+		if err != nil {
 			return fmt.Errorf("代表列 %s v%d 解包失敗: %w", r.Purpose, r.Version, err)
 		}
 	}

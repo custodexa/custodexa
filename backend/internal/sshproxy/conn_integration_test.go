@@ -2,6 +2,7 @@ package sshproxy
 
 import (
 	"errors"
+	"github.com/custodexa/backend/internal/sshmaterial"
 	"golang.org/x/crypto/ssh"
 	"os"
 	"strings"
@@ -32,7 +33,7 @@ func dialTestServer(t *testing.T, cols, rows int) *SSHConn {
 		Host:     host,
 		Port:     port,
 		Username: "testuser",
-		Password: "testpass123",
+		Password: sshmaterial.CopyPassword([]byte("testpass123")),
 		Cols:     cols,
 		Rows:     rows,
 	})
@@ -117,7 +118,7 @@ func TestIntegrationAuthFailed(t *testing.T) {
 		Host:     host,
 		Port:     port,
 		Username: "testuser",
-		Password: "wrong-password",
+		Password: sshmaterial.CopyPassword([]byte("wrong-password")),
 		Cols:     80,
 		Rows:     24,
 	})
@@ -138,7 +139,7 @@ func TestIntegrationUnreachable(t *testing.T) {
 		Host:     "192.0.2.1",
 		Port:     22,
 		Username: "testuser",
-		Password: "testpass123",
+		Password: sshmaterial.CopyPassword([]byte("testpass123")),
 		Cols:     80,
 		Rows:     24,
 	})
@@ -160,7 +161,7 @@ func TestDialNoCredentials(t *testing.T) {
 }
 
 func TestDialRejectsMissingHostKeyCallback(t *testing.T) {
-	_, err := Dial(ConnConfig{Host: "ssh-test", Port: 2222, Username: "testuser", Password: "x", Cols: 80, Rows: 24})
+	_, err := Dial(ConnConfig{Host: "ssh-test", Port: 2222, Username: "testuser", Password: sshmaterial.CopyPassword([]byte("x")), Cols: 80, Rows: 24})
 	if err == nil || !strings.Contains(err.Error(), "host key") {
 		t.Errorf("nil HostKey must fail closed, got %v", err)
 	}

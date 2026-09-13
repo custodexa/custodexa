@@ -90,8 +90,17 @@ type Metrics struct {
 	offsiteSpoolBytes        prometheus.Gauge
 	offsiteCredentialState   *prometheus.GaugeVec
 
+	// --- DEK 解封（資料金鑰隨用隨解，快取到期後重新向保管處解封） ---
+	//
+	// 設有快取存活期時，到期後的加解密會向 KEK 保管處重新解封。四條序列答的是
+	// 「解封在不在成功、要多久、有幾件在途、現行設定是什麼」。
+	dekUnwrapTotal    *prometheus.CounterVec
+	dekUnwrapDuration prometheus.Histogram
+	dekUnwrapInflight prometheus.Gauge
+
 	offsiteInventoryOnce  sync.Once
 	offsiteUploadLaneOnce sync.Once
+	dekOnce               sync.Once
 
 	// --- 注入的資料源 ---
 	mu                  sync.RWMutex
@@ -99,6 +108,11 @@ type Metrics struct {
 	instanceGuardSource InstanceGuardSource
 	connectionSource    func() float64
 	auditQueueSource    func() float64
+	// dekCacheTTLSeconds／dekCacheTTLPresent 現行 DEK 快取存活期設定值。
+	// **未設定時序列缺席、不以 0 冒充**：0 在本鍵剛好是最嚴格的設定值
+	//（不留快取），語義與「沒有設定」相反，是採集端最容易誤讀的一種曝光
+	dekCacheTTLSeconds int
+	dekCacheTTLPresent bool
 }
 
 // New 建立指標集合並註冊封印期即成立的部分。
@@ -211,6 +225,25 @@ func New() *Metrics {
 			Name: "custodexa_offsite_credential_state",
 			Help: "離機儲存憑證的三態；目前所處的態為 1，其餘為 0。",
 		}, []string{"state"}),
+
+		// reason 只在失敗時帶值：「不可達」「被拒絕」「逾時」的處置完全不同
+		//（前者看網路與保管處健康、中者看認證與權限、後者看預算與延遲），
+		// 合併成一個失敗數會讓「現在該找誰」答不出來
+		dekUnwrapTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "custodexa_dek_unwrap_total",
+			Help: "資料金鑰向 KEK 保管處解封的累計次數，依結果與失敗原因分。",
+		}, []string{"result", "reason"}),
+		// bucket 自 1 毫秒起：同機解封是次毫秒級，跨區同區域是十至數十毫秒，
+		// 端到端預算 5 秒。DefBuckets 最小格 5 毫秒會把整個健康區間壓成一格
+		dekUnwrapDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "custodexa_dek_unwrap_duration_seconds",
+			Help:    "單次資料金鑰解封的耗時分佈。",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+		}),
+		dekUnwrapInflight: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "custodexa_dek_unwrap_inflight",
+			Help: "目前在途的資料金鑰解封數。",
+		}),
 	}
 
 	// 行程執行期指標：封印期即成立（不依賴任何段 2 服務）
@@ -392,6 +425,55 @@ func (m *Metrics) RegisterStage2() {
 			return src()
 		}))
 	})
+}
+
+// dekCacheTTLDesc 現行存活期設定值。以自訂 collector 而非 Gauge 曝光，
+// 因為「未設定」必須是**序列缺席**——Gauge 沒有缺席這個狀態。
+var dekCacheTTLDesc = prometheus.NewDesc(
+	"custodexa_dek_cache_ttl_seconds",
+	"資料金鑰解封後於記憶體的存活期設定值（秒）；未設定時本序列缺席。",
+	nil, nil,
+)
+
+type dekCacheTTLCollector struct{ m *Metrics }
+
+func (c *dekCacheTTLCollector) Describe(ch chan<- *prometheus.Desc) { ch <- dekCacheTTLDesc }
+
+func (c *dekCacheTTLCollector) Collect(ch chan<- prometheus.Metric) {
+	c.m.mu.RLock()
+	present, seconds := c.m.dekCacheTTLPresent, c.m.dekCacheTTLSeconds
+	c.m.mu.RUnlock()
+	if !present {
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(dekCacheTTLDesc, prometheus.GaugeValue, float64(seconds))
+}
+
+// RegisterDEKUnwrap 註冊資料金鑰解封的四條序列（段 2 服務就緒後）。
+//
+// 冪等：每次重新解封都會走到這裡，重複註冊會使 MustRegister panic。
+func (m *Metrics) RegisterDEKUnwrap() {
+	m.dekOnce.Do(func() {
+		m.registry.MustRegister(m.dekUnwrapTotal, m.dekUnwrapDuration, m.dekUnwrapInflight)
+		m.registry.MustRegister(&dekCacheTTLCollector{m: m})
+	})
+}
+
+// ObserveUnwrap 記一次解封的結果與耗時（result＝success／failure；
+// reason 僅失敗時帶值）。
+func (m *Metrics) ObserveUnwrap(result, reason string, d time.Duration) {
+	m.dekUnwrapTotal.WithLabelValues(result, reason).Inc()
+	m.dekUnwrapDuration.Observe(d.Seconds())
+}
+
+// SetUnwrapInflight 更新在途解封數。
+func (m *Metrics) SetUnwrapInflight(n int) { m.dekUnwrapInflight.Set(float64(n)) }
+
+// SetCacheTTL 更新現行存活期設定值；present=false 時該序列缺席。
+func (m *Metrics) SetCacheTTL(seconds int, present bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dekCacheTTLSeconds, m.dekCacheTTLPresent = seconds, present
 }
 
 // --- 離機儲存（停用態表） ---

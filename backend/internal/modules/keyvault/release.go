@@ -1,6 +1,7 @@
 package keyvault
 
 import (
+	"context"
 	"github.com/custodexa/backend/pkg/crypto"
 )
 
@@ -31,6 +32,9 @@ func (s *KeyManagerService) ZeroizeForRelease() {
 	if s == nil {
 		return
 	}
+	if err := s.DrainMaterial(context.Background()); err != nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for purpose, versions := range s.keys {
@@ -44,6 +48,8 @@ func (s *KeyManagerService) ZeroizeForRelease() {
 	}
 	s.ciphers = map[int]*crypto.AESCrypto{}
 	s.active = map[string]int{}
+	// 存活期簿記與計時器一併收掉：seal 立即使快取失效，不等任何期限屆滿
+	s.resetDEKCacheStateLocked()
 	s.kek = nil
 }
 
@@ -52,6 +58,12 @@ func (s *KeyManagerService) ZeroizeForRelease() {
 func (s *ExportSigningService) ZeroizeForRelease() {
 	if s == nil {
 		return
+	}
+	if s.gate != nil {
+		s.gate.CloseWith(nil)
+		if s.gate.Drain(context.Background()) != nil {
+			return
+		}
 	}
 	for i := range s.priv {
 		s.priv[i] = 0
@@ -70,6 +82,12 @@ func (s *ExportSigningService) ZeroizeForRelease() {
 func (s *CheckpointSigningService) ZeroizeForRelease() {
 	if s == nil {
 		return
+	}
+	if s.gate != nil {
+		s.gate.CloseWith(nil)
+		if s.gate.Drain(context.Background()) != nil {
+			return
+		}
 	}
 	for version, priv := range s.keys {
 		for i := range priv {

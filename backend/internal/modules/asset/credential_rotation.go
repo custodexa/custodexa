@@ -138,7 +138,7 @@ type CredentialRotationService struct {
 
 // sshKeyApplier 金鑰三段式的遠端段簽名（見 applySSHKeyOnTarget）。
 type sshKeyApplier func(ctx context.Context, exec rotationExecutor, rt rotationTarget,
-	tgt changeSecretTarget, oldPassword, oldPrivateKey, newPrivate, newLine, previousLine,
+	tgt changeSecretTarget, oldPassword, oldPrivateKey, newPrivate []byte, newLine, previousLine,
 	keyStrategy string, onDelivered func()) error
 
 // NewCredentialRotationService 建立輪替服務。

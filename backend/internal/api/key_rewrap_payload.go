@@ -30,6 +30,8 @@ const (
 	rewrapModeLocal = "local"
 	rewrapModeKMS   = "kms"
 	rewrapModeHSM   = "hsm"
+	rewrapModeVault = "vault"
+	rewrapModeGCP   = "gcp"
 )
 
 // 請求體欄位名（單一事實源：解析、鍵集比對與測試共用同一組字面）
@@ -39,6 +41,11 @@ const (
 	rewrapFieldNewKEKConfirm = "new_kek_confirm"
 	rewrapFieldConfirmSaved  = "confirm_saved"
 	rewrapFieldKeyRef        = "key_ref"
+	// 委託目標的拓撲欄位。**非秘密**：憑證（存取金鑰、服務帳號金鑰檔、角色密鑰、
+	// 權杖）SHALL NOT 經精靈傳遞——它們只在解封頁輸入且只活在該解封世代。
+	rewrapFieldRegion  = "region"
+	rewrapFieldAddress = "address"
+	rewrapFieldRoleID  = "role_id"
 )
 
 // maxRewrapBodyBytes 重包請求體大小上限。材料本身為 32 bytes，兩份副本加判別子
@@ -68,6 +75,12 @@ type rewrapPayload struct {
 	ConfirmSaved  bool
 	// KeyRef 僅委託變體有值
 	KeyRef string
+	// Region／Address／RoleID 為委託目標的**非秘密拓撲**：
+	// AWS 收 Region，Vault 收 Address 與 RoleID，GCP 與 HSM 兩者皆無。
+	// **憑證不在此**——存取金鑰、服務帳號金鑰檔、角色密鑰與權杖只在解封頁輸入。
+	Region  string
+	Address string
+	RoleID  string
 }
 
 // zeroRewrapBody 逐位元組覆寫原始請求體。
@@ -105,16 +118,23 @@ func (p *rewrapPayload) Zeroize() {
 
 // 各變體的精確鍵集（含判別子）。**必要鍵＝全部鍵**——union 不允許選填欄位，
 // 否則「缺漏」與「刻意不帶」無從區分，混合偵測就會出現縫隙。
+// **委託變體自本次起收該服務商的拓撲欄位**：重包目標改成另一個保管處時，
+// 目的地（區域／位址／角色識別）與金鑰引用是同一次操作的兩半；讓拓撲留在別處
+// 設定會出現「引用指向新家、位址還在舊家」的半套目的地。
+// GCP 與 HSM 沒有可設定的拓撲欄位，維持 `{mode, key_ref}`。
 var rewrapVariantKeys = map[string][]string{
 	rewrapModeLocal: {rewrapFieldMode, rewrapFieldNewKEK, rewrapFieldNewKEKConfirm, rewrapFieldConfirmSaved},
-	rewrapModeKMS:   {rewrapFieldMode, rewrapFieldKeyRef},
+	rewrapModeKMS:   {rewrapFieldMode, rewrapFieldKeyRef, rewrapFieldRegion},
 	rewrapModeHSM:   {rewrapFieldMode, rewrapFieldKeyRef},
+	rewrapModeVault: {rewrapFieldMode, rewrapFieldKeyRef, rewrapFieldAddress, rewrapFieldRoleID},
+	rewrapModeGCP:   {rewrapFieldMode, rewrapFieldKeyRef},
 }
 
 // rewrapKnownFields 全部已知欄位（未知欄位一律拒絕，fail-close）
 var rewrapKnownFields = map[string]bool{
 	rewrapFieldMode: true, rewrapFieldNewKEK: true, rewrapFieldNewKEKConfirm: true,
 	rewrapFieldConfirmSaved: true, rewrapFieldKeyRef: true,
+	rewrapFieldRegion: true, rewrapFieldAddress: true, rewrapFieldRoleID: true,
 }
 
 // decodeRewrapPayload 解析並驗證重包請求體。
@@ -243,9 +263,20 @@ func decodeRewrapPayload(body []byte) (*rewrapPayload, error) {
 			p.Zeroize()
 			return nil, errRewrapNotSaved
 		}
-	case rewrapModeKMS, rewrapModeHSM:
+	case rewrapModeKMS, rewrapModeHSM, rewrapModeVault, rewrapModeGCP:
 		if err := json.Unmarshal(raw[rewrapFieldKeyRef], &p.KeyRef); err != nil {
 			return nil, errRewrapPayloadMalformed
+		}
+		for field, dst := range map[string]*string{
+			rewrapFieldRegion: &p.Region, rewrapFieldAddress: &p.Address, rewrapFieldRoleID: &p.RoleID,
+		} {
+			v, present := raw[field]
+			if !present {
+				continue
+			}
+			if err := json.Unmarshal(v, dst); err != nil {
+				return nil, errRewrapPayloadMalformed
+			}
 		}
 	}
 	return p, nil

@@ -1,16 +1,16 @@
-// 封印相位的單一持有者。
+// 封存相位的單一持有者。
 //
 // **問題**：`KEK_PROVIDER=ui` 的全新安裝，管理員開站 → 被導到登入頁 → 輸入帳密 →
-// 得到「系統尚未解封，服務未上線」→ 然後就卡死了。`/unseal` 存在且封印期可達，
+// 得到「系統尚未解封，服務未上線」→ 然後就卡死了。`/unseal` 存在且封存期可達，
 // 但沒有任何東西會把人送過去。ui 模式因此形同不可用。
 //
-// **本模組不是安全邊界**：封印的強制點在後端（非白名單路由一律 503），
+// **本模組不是安全邊界**：封存的強制點在後端（非白名單路由一律 503），
 // 這裡只回答「使用者該去哪一頁」。`/seal/status` 是後端恆註冊且不要求登入的端點，
 // 任何人都取得到同樣的資訊；導離 `/unseal` 縮小的是**介面可及面**（不再有一個
 // 可互動的對外解封表單），**不是**偵察面。不得宣稱它阻止探測。
 
 // **探測走裸 axios、不經 api/request 攔截器**（沿 postRefresh 的既有理由，
-// 再加一條）：(1) 攔截器見到封印機器碼會呼叫本模組導向，探測自己觸發導向即為
+// 再加一條）：(1) 攔截器見到封存機器碼會呼叫本模組導向，探測自己觸發導向即為
 // 遞迴；(2) 探測失敗不該冒出全域 toast；(3) 最實際的一點——`api/request` 需要
 // 本模組的 markSealed，本模組若回頭 import `api/seal` 就構成模組環，
 // 而環在 bundler 下的求值順序不是我們能保證的東西。
@@ -25,15 +25,15 @@ export const SEAL_PHASE_UNKNOWN = 'unknown'
 export const SEAL_PHASE_SEALED = 'sealed'
 export const SEAL_PHASE_UNSEALED = 'unsealed'
 // 單實例守衛攔下：段 1 取鎖失敗，行程停在只開最小監聽的攔下模式。
-// **與封印相位共用這一份快取**——兩者都由 `/seal/status` 一次回答，各自建一套
-// 快取必然在同一次探測後得出不同結論並互踢（封印守衛的既有教訓）。
+// **與封存相位共用這一份快取**——兩者都由 `/seal/status` 一次回答，各自建一套
+// 快取必然在同一次探測後得出不同結論並互踢（封存守衛的既有教訓）。
 // 攔下期 `state` 仍是 `sealed`（服務確實未上線），故 halted 的判定看
 // `instance_guard.state`，且**先於** sealed 判定——否則人會被送去一個
 // 同樣打不通的解封頁。
 export const SEAL_PHASE_HALTED = 'halted'
 
-// 後端封印閘對非白名單路由回的機器碼；見到它即代表「現在是封印狀態」，
-// 且此訊號**恆為最終權威**（涵蓋「使用者停留在頁面上時後端重啟而重新封印」）
+// 後端封存閘對非白名單路由回的機器碼；見到它即代表「現在是已封存狀態」，
+// 且此訊號**恆為最終權威**（涵蓋「使用者停留在頁面上時後端重啟而重新封存」）
 export const SEAL_GATE_CODE = 'SEAL_SERVICE_SEALED'
 
 let phase = SEAL_PHASE_UNKNOWN
@@ -46,7 +46,7 @@ export function getSealPhase() {
 }
 
 /**
- * 由封印狀態端點的回應更新相位。
+ * 由封存狀態端點的回應更新相位。
  *
  * 解封頁每次讀狀態與解封成功後都必須呼叫它——否則解封成功後點「前往登入」，
  * 守衛會以陳舊的 sealed 相位把人彈回 `/unseal`，變成新的鎖死。
@@ -59,13 +59,18 @@ export function publishSealStatus(status) {
     phase = SEAL_PHASE_HALTED
     return
   }
+  // 狀態回應自委託拓撲改版起多帶 `authorization_required`／`credential_form`／
+  // `topology` 三組欄位。它們是**解封頁的畫面輸入**，不是相位輸入：相位仍只由
+  // `state`（與 halted）決定，故本函式的映射不擴張。守衛依然是**單一守衛的兩個
+  // 方向**（未解封 → 導向解封頁；已解封 → 導離解封頁）——多一條「因為要驗帳密所以
+  // 另立一個相位」會讓兩套判斷在同一次探測後互踢，那正是 halted 併入本快取的理由。
   phase = state === 'unsealed' ? SEAL_PHASE_UNSEALED : SEAL_PHASE_SEALED
 }
 
 /**
  * 由攔下端點的回應更新相位。
  *
- * 確認送出成功（或鎖自行釋放）後，本實例會接著跑完段 1 與段 2；此刻的封印相位
+ * 確認送出成功（或鎖自行釋放）後，本實例會接著跑完段 1 與段 2；此刻的封存相位
  * 是 sealed 或 unsealed 尚未可知，故 running 只**清掉** halted 而不猜測後續相位，
  * 由下一次導覽重新探測。少了這一步，攔下頁上的「前往登入」會被守衛以陳舊的
  * halted 相位彈回本頁——與解封頁修過的鎖死同型。
@@ -81,7 +86,7 @@ export function publishHaltStatus(halt) {
   if (phase === SEAL_PHASE_HALTED) phase = SEAL_PHASE_UNKNOWN
 }
 
-/** 執行期訊號：收到封印機器碼即回到封印相位。 */
+/** 執行期訊號：收到封存機器碼即回到封存相位。 */
 export function markSealed() {
   phase = SEAL_PHASE_SEALED
 }

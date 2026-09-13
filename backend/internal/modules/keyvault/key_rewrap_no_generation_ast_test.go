@@ -586,6 +586,10 @@ type randomnessSourceException struct {
 // 清單同時做反向完備性檢查（登記了但現實中已不取用＝陳舊登記，會在下一個
 // 同名函式出現時無聲放行）。
 var randomnessSourceAllowlist = []randomnessSourceException{
+	{File: "pkg/crypto/gcpkms/provider.go", Func: "newProvider",
+		Reason: "Generates a disposable 32-byte preflight canary to verify remote encrypt/decrypt permissions and integrity; it is never installed as a KEK and both canary buffers are cleared."},
+	{File: "pkg/crypto/vaulttransit/provider.go", Func: "Preflight",
+		Reason: "Generates a disposable 32-byte Transit round-trip probe; it is never installed as a KEK, and the probe and decrypted result are cleared before returning."},
 	{File: "internal/proxy/observer_ticket.go", Func: "IssueObserverTicket",
 		Reason: "監看／分享加入的一次性觀看票（記憶體內、短 TTL、即焚），與終端 connect token 同型，非加密材料。"},
 	{File: "cmd/rotation-loopback/main.go", Func: "randomSecret",
@@ -601,6 +605,9 @@ var randomnessSourceAllowlist = []randomnessSourceException{
 	{File: "internal/proxy/connect_token.go", Func: "IssueConnectToken",
 		Reason: "連線的一次性 connect token（記憶體內、短 TTL），非加密材料。" +
 			"（方法名已對齊 gatewayapi.TokenService，原名 Issue）"},
+	{File: "internal/modules/keyvault/dek_cache_ttl.go", Func: "dekBackoff",
+		Reason: "DEK 到期重解的重試退避抖動（±50%），只決定「下一次重試等多久」；" +
+			"不產出任何位元組材料，與 KEK 無關。"},
 	{File: "internal/sealjournal/open.go", Func: "newBootID",
 		Reason: "封印期日誌的 boot 識別（防檔名／序列碰撞），非加密材料。"},
 	{File: "internal/modules/identity/auth_refresh_service.go", Func: "generateRefreshPlain",

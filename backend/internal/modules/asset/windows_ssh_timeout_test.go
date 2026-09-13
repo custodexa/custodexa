@@ -39,7 +39,7 @@ func TestWindowsSSHExecutorCommandTimeoutIsUnverified(t *testing.T) {
 	e.commandTimeout = 300 * time.Millisecond
 
 	start := time.Now()
-	err := e.Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+	err := e.Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 	elapsed := time.Since(start)
 	require.Error(t, err)
 	require.Positive(t, srv.windowsStallFired.Load(), "停住注入器未觸發")
@@ -72,7 +72,7 @@ func TestWindowsSSHVerifyCommandTimeout(t *testing.T) {
 	e.commandTimeout = 300 * time.Millisecond
 
 	start := time.Now()
-	err := e.Verify(context.Background(), sshTarget(srv, "Administrator"), "old")
+	err := e.Verify(context.Background(), sshTarget(srv, "Administrator"), []byte("old"))
 	require.Error(t, err)
 	assert.Less(t, time.Since(start), 2*time.Second, "三次驗證各自逾時後即返回")
 	assert.Contains(t, err.Error(), "timed out")
@@ -116,7 +116,7 @@ func TestWindowsSSHCommandTimeoutThroughRunner(t *testing.T) {
 	require.NoError(t, fx.db.Where("asset_id = ?", id).First(&acct).Error)
 	creds, err := fx.assets.GetWithCredentialsForAccount(id, acct.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "winoldpass", creds.Password, "本地憑證不動")
+	assert.Equal(t, "winoldpass", secretText(t, creds.Password), "本地憑證不動")
 }
 
 // TestClassifyWindowsOutcomeMarkerOutsideContract 契約表外的結果標記值（契約腳本印不出來）：
@@ -178,5 +178,5 @@ func TestWindowsSSHMarkerOutsideContractThroughRunner(t *testing.T) {
 	require.NoError(t, fx.db.Where("asset_id = ?", id).First(&acct).Error)
 	creds, err := fx.assets.GetWithCredentialsForAccount(id, acct.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "winoldpass", creds.Password, "本地憑證不動")
+	assert.Equal(t, "winoldpass", secretText(t, creds.Password), "本地憑證不動")
 }

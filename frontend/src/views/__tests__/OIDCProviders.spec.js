@@ -189,7 +189,7 @@ describe('OIDCProviders 管理頁', () => {
     expect(alert.props('type')).toBe('error')
     expect(alert.props('closable')).toBe(false)
     // 要說出後果與出路，否則管理者無從判斷該做什麼
-    expect(wrapper.text()).toContain('封印')
+    expect(wrapper.text()).toContain('封存')
     expect(wrapper.text()).toContain('請立即建立一個本地管理員帳號')
   })
 

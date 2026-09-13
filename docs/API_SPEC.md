@@ -230,6 +230,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/keys/rewrap` | always |
 | POST | `/api/v1/keys/rewrap` | always |
 | POST | `/api/v1/keys/rotate` | always |
+| GET | `/api/v1/keys/topology` | always |
+| PUT | `/api/v1/keys/topology` | always |
 | DELETE | `/api/v1/ldap-directory` | always |
 | GET | `/api/v1/ldap-directory` | always |
 | PUT | `/api/v1/ldap-directory` | always |
@@ -283,6 +285,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | PUT | `/api/v1/rotation-report/schedules/:id` | always |
 | POST | `/api/v1/rotation-report/schedules/:id/run` | always |
 | POST | `/api/v1/schedules/next-runs` | always |
+| POST | `/api/v1/seal/authorize` | always |
+| POST | `/api/v1/seal/seal` | always |
 | GET | `/api/v1/seal/status` | always |
 | POST | `/api/v1/seal/unseal` | always |
 | GET | `/api/v1/security-policies` | always |
@@ -494,40 +498,82 @@ GET /api/v1/ping
 
 **回應** (200): `{"status": "ok"}`（原 `{"message": "pong"}`，移除 `message` 文案欄）
 
-### 封印狀態與解封（`KEK_PROVIDER=ui` 為主要場景）
+### 封存狀態、封存與解封
 
-兩段啟動下，段 1 只開放健康檢查與下列兩條路徑；**其餘全部路由於封印期一律回
-503＋`SEAL_SERVICE_SEALED`**（不是 500、不是 401——狀態必須可被外部監控正確辨識），
-未匹配的路徑亦同（封印期不對外透露路由是否存在）。A／C 模式恆為 `unsealed`，
-兩條路徑照常註冊：狀態查詢是有效的運維面，解封端點則一律回 409 且不重跑任何初始化。
+封存期間保留健康檢查與下列控制面路徑；其餘業務路徑回 503 與
+`SEAL_SERVICE_SEALED`。ui、env 與委託模式都可在運行期間封存。
 
 ```
 GET  /api/v1/seal/status
+POST /api/v1/seal/authorize
+POST /api/v1/seal/seal
 POST /api/v1/seal/unseal
 ```
 
-兩者**皆不要求 JWT**。要求 JWT 會在「管理員已啟用 MFA」時死鎖——TOTP secret 是
-信封加密欄，封印期解不開，管理員無法登入來解封。一般解封的授權由「知道 KEK」
-承擔（能解開現行代表列即最強授權證明）；**空金鑰表的初始化解封沒有這個證明，
-故另行要求初始管理員憑證**。
+狀態查詢不要求 JWT。`POST /seal/seal` 要求既有 admin Bearer JWT，驗證沿用
+身分系統的 scope、到期、撤銷、憑證世代與管理員身分檢查；不提供另行登入或簽發 token 的路徑。
+
+**解封分兩段，三種模式一律相同**：先以 `POST /seal/authorize` 驗管理員帳號與密碼換一個短效的
+**解封授權脈絡**，再以 `POST /seal/unseal` 帶著它送出材料或憑證。改前 `ui` 由「知道材料」單獨
+承擔授權、`env` 與委託各要一個 admin Bearer JWT；自本版起材料證明是**驗證之後的第二道**，
+而 Bearer JWT 不再被解封端點接受（封存仍走 Bearer）。
+
+`env` 解封仍是重讀行程可見的設定來源（不是在運行中重新讀取主機 `.env` 檔）；
+**委託模式自本版起沒有「重讀部署來源」這條路**——憑證只存在於解封世代的記憶體，封存即抹除，
+恢復一律經解封頁核對保管處並重新提供憑證。
+
+**`POST /seal/seal`**：不需秘密請求體。成功回 200
+`{"state":"sealed","generation":N}`，表示該世代的收束與結果留痕已完成；過程會停止
+新業務並收束工作及連線。已有收束或非可封存狀態回 409 `SEAL_CLEANUP_PENDING`；
+受理留痕失敗回 503 `SEAL_JOURNAL_IO_FAILURE`；收束或結果留痕失敗回 500
+`SEAL_INIT_FAILED`，狀態保留故障，不能當作成功後直接解封。
+
+認證失敗回 401，來源限制回 403 `SEAL_SOURCE_NOT_ALLOWED`。認證拒絕使用匿名審計標記，
+業務審計服務可用時入列；封存期間仍保留不含憑證的拒絕日誌，該日誌不等同於資料庫審計列。
+admin JWT 失效時，env 部署可修正來源後重啟；ui 以 KEK 材料解封；委託部署一律經解封頁重新提供憑證。
 
 **`GET /seal/status` 回應** (200)：
 
 | 欄位 | 說明 |
 |---|---|
 | `state` | `sealed` / `unsealing` / `unsealed` / `sealed-faulted` |
-| `generation` | 世代號（每次取得解封持有權 +1） |
+| `generation` | 世代號（受理封存或取得解封持有權時遞增） |
+| `mode` | `ui`／`env`／`kms`；決定解封的材料形態及授權方式 |
 | `fault_code` | 僅 `sealed-faulted` 時出現，為失敗機器碼 |
 | `cooldown_until` | 全域冷卻到期時間（RFC3339）；冷卻期滿自動恢復，**不需重啟行程** |
 | `cleanup_pending` / `cleanup_generation` / `cleanup_reason` / `cleanup_started_at` | 前代持有者待收束狀態 |
-| `journal_faulted` | 封印期留痕 I/O 故障（fail-close 拒收新嘗試，修復後自動恢復） |
+| `journal_faulted` | 封存期留痕 I/O 故障（fail-close 拒收新嘗試，修復後自動恢復） |
 | `timeout_total` | 段 2 逾時次數（逾時另計，不入材料失敗計數） |
 | `timeout_retry_hint_code` | 發生過逾時時出現，值為 `SEAL_STAGE2_TIMEOUT`：**初始化可能已完成，請以第一次輸入的材料重試，切勿改用新材料** |
 | `initialization_required` | 金鑰表為空（走初始化解封路徑）；判定失敗時回 500 而非以 `false` 頂替 |
 | `trusted_proxy` / `source_restricted` / `bind_addr` | 可信代理、來源網段限制與獨立監聽位址的組態現況 |
+| `authorization_required` | 恆 `true`：三模式一律先經管理者帳密驗證才顯示材料或憑證欄位。這是契約而非旋鈕 |
+| `credential_form` | 僅委託模式出現，值為 `aws`／`gcp`／`vault`，決定憑證欄的形態（解封頁**不提供服務商選擇**） |
+| `topology` | 僅委託模式出現的唯讀拓撲：`{provider, configured, address, transit_key_name, role_id, region, key_ref, digest}`。`key_ref` 取自金鑰列的 `kek_id`（尚無金鑰列時為空）；`digest` 為核對綁定摘要，解封請求須原樣帶回。拓撲尚未設定且金鑰表為空時 `digest` 為空字串。讀不到權威狀態時整個欄位省略，介面據此阻擋而非顯示一份可能錯誤的目的地 |
 | `instance_guard` | 單實例守衛的粗狀態 `{state, since, reason, peers}`：`state` 為 `held`／`overridden`／`lost`／`halted`（關閉中短暫為 `stopping`／`released`）、`since` 狀態起始時間（RFC3339）、`reason` 為 `""`／`ack_page`／`ack_startup`／`contention`／`db_unreachable`／`permanent`／`unknown`、`peers` 偵測到的其他守衛版實例連線數。攔下模式下本端點的 `state` 恆為 `sealed`，**相位判定看 `instance_guard.state = halted`**。**不含識別資訊**（無持鎖者指紋、確認碼、主機名、pid）；供管理介面橫幅每 60 秒輪詢，本端點不寫審計列。全貌走 `GET /api/v1/instance-guard`（下段） |
 
-**`POST /seal/unseal` 請求體**：
+**`POST /seal/authorize` 請求體**（精確鍵集，未知鍵／重複鍵／尾隨內容一律拒絕）：
+
+```json
+{"username": "<管理員帳號>", "password": "<密碼>"}
+```
+
+成功回 200 `{"grant":"<不透明字串>","expires_at":"<RFC3339>","topology_digest":"<僅委託模式>"}`，
+回應為 `Cache-Control: no-store`。脈絡是**行程記憶體內的短效憑據**（預設十分鐘，非 JWT、不進資料庫、
+不跨行程），且**每次使用時重新確認**該管理員仍具資格——停用、降權、鎖定或憑證世代被推進即失效。
+它 SHALL NOT 作為任何業務請求的憑證，解封成功也不會把它升級為工作階段。
+
+**已封存狀態下只驗帳號與密碼，不索取動態驗證碼**：種子是受資料金鑰保護的欄位，封存時解不開，
+要求它會構成「先解封才能驗證、先驗證才能解封」的循環。此邊界為已知取捨，**不得**被表述為
+解封頁具備雙因子保護；其緩解是沿既有登入退避與鎖定、來源網段限制、回應不可區分與逐次留痕。
+
+失敗一律回 401 `SEAL_AUTHORIZE_REJECTED`，且**帳號不存在、密碼錯、非管理角色、帳號停用、
+鎖定中與請求體格式錯的回應逐字相同**（可區分即帳號枚舉）。退避與冷卻分別回 429
+`SEAL_BACKOFF_ACTIVE` 與 `SEAL_COOLDOWN_ACTIVE`；被擋下的嘗試不驗證、不計入失敗計數、
+不刷新到期時間。
+
+（以下為 ui 模式；**所有模式**都要求標頭 `Authorization: SealGrant <grant>`，缺或無效回 401
+`SEAL_GRANT_REQUIRED`／`SEAL_GRANT_INVALID`）：
 
 ```json
 {
@@ -541,15 +587,29 @@ POST /api/v1/seal/unseal
 
 - **一般解封**（金鑰表非空）只需 `kek`，**不驗格式**（既有部署的 KEK 可能早於格式規則），
   唯一判準是「以該材料解包現行代表列全數成功」。
+- **委託解封**按服務商的**精確鍵集**：AWS 為 `access_key_id`＋`secret_access_key`，
+  GCP 為 `service_account_json`，Vault 為 `vault_secret_id` **或** `vault_token`（二選一），
+  四者皆另帶 `topology_digest`。摘要與後端現行拓撲不符即 409 `SEAL_TOPOLOGY_CHANGED`
+  並要求重新核對——**舊核對結果不授權送往新目的地**。全新安裝的委託分支改帶初始管理員帳密
+  與該服務商的拓撲欄位（AWS：`region`＋`key_ref`；GCP：`key_ref`；Vault：`address`＋
+  `transit_key_name`＋`role_id`），**不帶** `topology_digest`。
+  秘密欄一律解進可覆寫的位元組並交給該解封世代的憑證持有者，封存時歸零；
+  `service_account_json` 另有 16 KiB 的欄位級上限，請求本文上限為 24 KiB。
 - **初始化解封**（金鑰表為空）另要求 paste-back 二次輸入、保存確認、初始管理員憑證，
   並過完整格式驗證（長度 32、字元集、非出廠預設值）。`confirm_saved` 為 UX 意圖聲明、
   **不具授權力**；伺服端唯一信任的機械不變式是 `kek_confirm` 的逐字比對。
   憑證驗證走段 1 簡化路徑，**不套用安全政策的帳號鎖定**（該服務於段 2 才建構），
   其防爆破由下列退避／冷卻承擔；且**不豁免 `must_change_password`**。
 
-**回應**：成功 200 `{"state":"unsealed","generation":N}`。失敗一律走機器碼信封，
-且**失敗回應的內容不可區分**（格式錯、材料錯、paste-back 不符、憑證錯皆為
-`SEAL_MATERIAL_INVALID`）；timing 差異不在承諾範圍內。
+**回應**：成功 200 `{"state":"unsealed","generation":N}`，並撤銷全部授權脈絡。
+失敗一律走機器碼信封，且**帳密未過之前的失敗內容不可區分**（格式錯、材料錯、paste-back 不符、
+憑證錯皆為 `SEAL_MATERIAL_INVALID`）；timing 差異不在承諾範圍內。
+
+**管理者身分驗證通過之後**的憑證階段失敗**可區分**三類：`SEAL_CUSTODY_UNREACHABLE`（502，
+保管處連不上）、`SEAL_CREDENTIAL_REJECTED`（400，憑證被保管處拒絕）、`SEAL_KEY_MISMATCH`
+（400，保管處回應的金鑰與本部署不符）。三者皆為系統自定的分類，**不轉呈**保管處的原始回應，
+不含秘密、請求本文或可供外部試探的認證細節。匿名探測拿不到它們——那些成因在建構上只可能產生於
+身分驗證通過之後。逾時仍為 `SEAL_STAGE2_TIMEOUT`（504），不新增細分。
 
 | 機器碼 | 狀態碼 | 情境 |
 |---|---|---|
@@ -563,9 +623,9 @@ POST /api/v1/seal/unseal
 | `SEAL_INIT_FAILED` | 500 | 材料正確但段 2 初始化失敗（狀態轉 `sealed-faulted`，**行程續存、可重試**） |
 | `SEAL_PUBLISH_UNCONFIRMED` | 500 | 段 2 完成但服務從未發佈（不鎖死，重試產生新世代） |
 | `SEAL_STAGE2_TIMEOUT` | 504 | 段 2 逾時（不計入材料失敗計數） |
-| `SEAL_JOURNAL_IO_FAILURE` | 503 | 封印期留痕寫入故障，fail-close 拒收新嘗試 |
+| `SEAL_JOURNAL_IO_FAILURE` | 503 | 封存期留痕寫入故障，fail-close 拒收新嘗試 |
 
-**抗鎖死**：無任何需重啟行程才能解除的鎖定態。退避成長有封頂、冷卻有明確到期時間，
+**退避**：退避成長有封頂、冷卻有明確到期時間，
 冷卻期間抵達的嘗試被直接拒絕且**不計入失敗、不延長冷卻**。未設定 `TRUSTED_PROXIES`
 時 per-IP 退避**保守降級為全域退避**——無可信代理鏈約定時限速鍵可被轉送標頭污染，
 寧可影響可用性也不提供可繞過的假防線。部署方 SHOULD 另以 `SEAL_UNSEAL_BIND_ADDR`
@@ -999,7 +1059,7 @@ GET /api/v1/auth/banner
 修改者、修改時間、基準建議值或符合性。這條路由沒有認證中介層，回應內容即等同對匿名者公開。
 
 回應帶 `Cache-Control: no-store`：告示改完之後，下一個開啟登入頁的人就該看到新的。
-封印期回 **503** `SEAL_SERVICE_SEALED`（與登入方法清單一致）。
+封存期回 **503** `SEAL_SERVICE_SEALED`（與登入方法清單一致）。
 **不寫審計列、不寫資料庫**——一次登入頁載入不該在稽核軌跡上留下一列。
 兩個鍵分兩次讀取，管理員儲存的那一瞬間可能一鍵新一鍵舊，於政策快取效期內收斂。
 
@@ -2526,7 +2586,9 @@ https 配 `system` 或 `ca` 無風險。兩鍵同時進資產列表的 `transmis
 |---|---|---|
 | GET | `/keys` | 金鑰清冊：DB 側金鑰版本鏈（DataKey，不含金鑰材料）＋env 側四鑰一致顯示指紋（KEK／JWT_SECRET 為 secret 摘要指紋，匯出簽章鑰與檢查點簽章鑰為 Ed25519 公鑰指紋，並附公鑰供複製/下載）＋KEK 退役史（from→to）＋切換待收斂提示＋遷移與重包狀態＋超齡提醒 |
 | POST | `/keys/rotate` | 輪替金鑰。`{"purpose": "data"}` 生成新 DEK 並批次重加密（上限 `KEY_ROTATION_MAX_PER_RUN`）；現行版本仍有殘值時以現版續跑（回應 `resumed: true`，不鑄新版本），殘值歸零才鑄新版；`{"purpose": "audit_integrity"}` 僅新章換鑰、歷史不重算。KEK 重包待切換期間回 409（`rewrap_pending`，切換完成後恢復） |
-| POST | `/keys/rewrap` | KEK 重包：以**呼叫端指定的目標 KEK** 重包全部金鑰、新舊雙包裹並存。請求體為 discriminated union——本地目標 `{mode:"local", new_kek, new_kek_confirm, confirm_saved}`、委託目標 `{mode:"kms"\|"hsm", key_ref}`；混合欄位一律 400 拒絕。**伺服端不生成、不回傳、不落庫、不落日誌任何 KEK 明文**（明文流向反轉）。遷移未完成回 409；委託目標的連通性預檢失敗回 502 `INTERNAL_KEY_REWRAP_TARGET_UNAVAILABLE`；該模式未交付回 501 `VALIDATION_KEY_REWRAP_TARGET_UNSUPPORTED` |
+| GET | `/keys/topology` | 委託模式的**非秘密**保管處拓撲（主金鑰送去哪裡解）：`{provider, configured, address, transit_key_name, role_id, region, key_ref, editable_fields, digest, updated_by, updated_at}`。`provider` 取自部署檔的 `KEK_KMS_PROVIDER`（**不可經介面改**——金鑰列的 `kek_id` 已釘死哪一家能解）；`key_ref` 取自金鑰列的 `kek_id`，拓撲表不另存一份可與之分歧的副本 |
+| PUT | `/keys/topology` | 更新拓撲。請求本文為**該服務商的精確鍵集**：Vault 為 `{address, transit_key_name, role_id}`、AWS 為 `{region}`；GCP 沒有可編輯欄位，一律回 400 `KEY_TOPOLOGY_NOT_EDITABLE`（其完整 CryptoKey 資源名沿 `kek_id`，全新安裝時於解封頁收取）。多一鍵、少一鍵、未知鍵皆拒。逐欄驗證（位址須 `https://`、區域與識別須符合正規形式）；非法值**整筆拒絕且既有值維持不變**，回 400 `KEY_TOPOLOGY_INVALID` 並附 `fields`（只列欄位名，不回顯值）。**變更是安全變更**：成功與被拒都寫入審計且本文查得到前後值，成功另發安全類告警——通知通道未設定或不可達時只有審計，介面不得宣稱已通知。核對點（解封頁的唯讀呈現、換鑰精靈的目的地預檢）是本次操作者的核對，**不是**第二人審批，也不阻止直接改資料庫的人 |
+| POST | `/keys/rewrap` | KEK 重包：以**呼叫端指定的目標 KEK** 重包全部金鑰、新舊雙包裹並存。請求體為 discriminated union——本地目標 `{mode:"local", new_kek, new_kek_confirm, confirm_saved}`、委託目標 `{mode:"kms", key_ref, region}`／`{mode:"vault", key_ref, address, role_id}`／`{mode:"gcp"\|"hsm", key_ref}`（委託變體自本版起一併收該服務商的拓撲欄位；**憑證不經精靈**，它們只在解封頁輸入）；混合欄位一律 400 拒絕。拓撲於**重包成功之後**才落庫——先落庫的話一次預檢失敗會留下「拓撲指向新保管處、金鑰仍由舊 KEK 包裹」，那是開不了機的形態。**伺服端不生成、不回傳、不落庫、不落日誌任何 KEK 明文**（明文流向反轉）。遷移未完成回 409；委託目標的連通性預檢失敗回 502 `INTERNAL_KEY_REWRAP_TARGET_UNAVAILABLE`；該模式未交付回 501 `VALIDATION_KEY_REWRAP_TARGET_UNSUPPORTED` |
 | DELETE | `/keys/rewrap` | 放棄尚未切換的 KEK 重包：**軟退役**新 KEK 的未切換包裹列（`kek_retired_reason=abandoned`，材料保留至顯式清理）、清除待切換狀態，回應 `{"deleted": n}`（鍵名保留 wire 相容，值＝軟退役筆數）。無待切換重包時回 409；另一金鑰操作進行中回 409 `CONFLICT_KEY_OP_BUSY` |
 | DELETE | `/keys/retired-material` | 清理退役金鑰材料：**系統唯一的材料銷毀點**。前置全收斂閘（有待切換 pending 或退役 backlog 即回 409 `CONFLICT_KEY_CLEANUP_NOT_CONVERGED`）＋逐 slot 自證（現行 KEK 須有可解包的 live 材料列）＋退役 DEK 版本引用掃描（仍被存量密文或審計列引用者拒清並逐項回報）。回應 `{"purged": [{purpose, version, kek_id}], "skipped": [{purpose, version, kek_id, refs, reason}]}`；指紋與退役軌跡永久保留，清理後留佔位列使版本鏈不斷號。清理明細顯式留痕審計 |
 
@@ -3065,7 +3127,7 @@ POST /api/v1/users/source-policy/check
 | `status` | 涵蓋狀態（**僅 `valid=true` 時才寫**） | 這份草稿等不等於不限 |
 
 **草稿清單與被試算的位址一律不進 `details`**：那是一份從未儲存的草稿，寫進去等於把試算輸入
-永久封存在受檢查點鏈保護、刪不掉的紀錄裡，卻換不到任何課責。
+永久留存於受檢查點鏈保護、刪不掉的紀錄裡，卻換不到任何課責。
 草稿本體另由 `request_body` 承擔：`allowed_cidrs` 自 2026-08-26 起登記為審計放行的實質欄位
 （清單變更是安全開關，不放行就與改名寫出同一列），而遮罩以鍵名為單位、分不出端點，
 故本端點的草稿清單也會原樣入庫；被試算的 `address` 不在白名單內，入庫即為 `***MASKED***`。
@@ -3177,6 +3239,7 @@ GET /api/v1/roles
 `access_revoke_disconnect`（bool，預設 false——撤銷預設只擋新連線不硬斷）；
 金鑰管理（PCI Req 3）: `key_cryptoperiod_reminder_days`（int，預設 0＝不提醒，
 PCI 建議 365——金鑰超齡提醒天數，反映於金鑰清冊的 `reminder_days`）；
+`dek_cache_ttl_seconds`（int，空值合法；空＝資料金鑰解封後常駐記憶體不限期（預設）、`0`＝每次使用時向 KEK 保管處現解且用完即清、`N`＝自解封起 N 秒固定期限到期重解不續期；全部 KEK 模式可設；封存時立即失效；保管處故障不回退舊快取）；
 登入前告示（`text` 型，無基準建議值）: `login_banner_title`（`max_length` 120、單行）、
 `login_banner_body`（`max_length` 2000、`multiline`；內文為空即登入頁不顯示告示，
 標題不會單獨顯示。兩鍵的內容於登入前對任何人可讀，見上方登入前告示段）。
@@ -4783,9 +4846,9 @@ GET /metrics
 **高成本指標讀的是快取值**：活躍會話（查資料庫）與錄影儲存量（遍歷檔案系統）由背景任務
 定期刷新（預設 30 秒）後供讀取，不於每次採集時同步查詢；其值因此最多落後一個刷新週期。
 
-**封印期（尚未解封）可採集，但只有縮減盤**：僅曝光 `custodexa_seal_state`、四條 `custodexa_instance_guard_*`
-序列與 Go runtime 指標，使監控能區分「系統封印中待解封」與「系統當機」——兩者的處置完全不同。
-守衛序列自段 1 起就存在（守衛在 migration 之前取鎖），封印期即可看到 `overridden`／`held`。封印期尚未建構的服務
+**封存期（尚未解封）可採集，但只有縮減盤**：僅曝光 `custodexa_seal_state`、四條 `custodexa_instance_guard_*`
+序列與 Go runtime 指標，使監控能區分「系統封存中待解封」與「系統當機」——兩者的處置完全不同。
+守衛序列自段 1 起就存在（守衛在 migration 之前取鎖），封存期即可看到 `overridden`／`held`。封存期尚未建構的服務
 （會話、錄影、審計佇列、HTTP 統計），其指標**缺席而非為 0**：0 值會讓採集端把「服務不存在」
 讀成「服務正常且計數為零」，而缺值在 PromQL 中可由 `absent()` 明確偵測。守衛序列同理：
 資料源未注入時四條序列缺席而非為 0。

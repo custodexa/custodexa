@@ -237,7 +237,7 @@ func (j *Journal) Close() error {
 func (j *Journal) writeCritical(kind uint8, gen, refSeq uint64, digest, outcome string) (uint64, error) {
 	nh := *j.hdr
 	seq := refSeq
-	if kind == slotKindReceived {
+	if kind == slotKindReceived || kind==slotKindSealReceived {
 		seq = nh.SeqNext
 	}
 	idx := nh.CriticalWriteIndex
@@ -279,7 +279,7 @@ func (j *Journal) writeCritical(kind uint8, gen, refSeq uint64, digest, outcome 
 		nh.CriticalOverwrittenLastSeq = overwritten.Seq
 	}
 	switch kind {
-	case slotKindReceived:
+	case slotKindReceived,slotKindSealReceived:
 		nh.SeqNext = seq + 1
 		nh.Live.Received++
 	case slotKindPublished:
@@ -474,7 +474,13 @@ func scanRings(f fileIO, h *header) (scanResult, error) {
 		}
 		kind := KindReceived
 		switch s.Kind {
-		case slotKindOutcome:
+		case slotKindSealReceived:
+ kind=KindSealReceived
+ received[s.Seq]=true
+ case slotKindSealOutcome:
+ kind=KindSealOutcome
+ hasOutcome[s.Seq]=true
+ case slotKindOutcome:
 			kind = KindOutcome
 			hasOutcome[s.Seq] = true
 		case slotKindPublished:

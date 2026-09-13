@@ -171,6 +171,11 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-73": {pivotNotAsset, false, "本地登入來源限流的聚合列：主體是來源位址與被擋下的請求數，" +
 		"與任何資產無關——被擋下的請求連密碼比對都沒走到，遑論選擇資產。同 AP-71 的類別"},
 	"AP-02": {pivotNotAsset, false, "KEK 切換補記，主體是金鑰"},
+	"AP-92": {pivotNotAsset, false, "委託設定自部署檔一次性讀入資料庫的留痕：主體是本部署的保管處設定，" +
+		"與任何資產無關——它記的是「主金鑰送去哪裡解」的來源，不是任何一台機器上發生的事"},
+	"AP-93": {pivotNotAsset, false, "委託拓撲變更的唯一產生點：主體是本部署的保管處目的地。" +
+		"它涵蓋的是整個部署的全部密文，填任何一台資產的 id 都會在該資產的時間軸上" +
+		"長出一則與它無關、卻實際影響所有資產的事件"},
 	"AP-03": {pivotNotAsset, false, "週期性存取複審建立，主體是複審單"},
 	"AP-05": {pivotNotAsset, false, "稽核證據匯出，主體是匯出作業"},
 	"AP-75": {pivotNotAsset, false, "匯出 job 發起／下載／拒絕留痕：主體是匯出作業，" +

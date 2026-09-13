@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"log"
 	"net"
 	"syscall"
@@ -93,21 +94,30 @@ var connectionProbes = map[model.ProtocolType]connectionProbe{
 // 逾時保障——它只是不再收到 guacd 不支援的協議。
 func (s *AssetService) probeGuacd(ctx context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	asset := creds.Asset
-	params := guacamole.TestConnectionParams{
-		Protocol: string(asset.Protocol),
-		Host:     asset.Host,
-		Port:     asset.Port,
-		// username 與密碼同取自 default 帳號（憑證與 username 必須同帳號）
-		Username: creds.Username,
-		Password: creds.Password,
-		Timeout:  time.Duration(timeout) * time.Second,
-		Width:    1024,
-		Height:   768,
-	}
-	// 私鑰：test_helper 的 BuildConnectionParams 不支援 private-key；撥測用 password 已足夠
-	_ = creds.PrivateKey
+	defer creds.Destroy()
+	raw, err := material.Use(creds.Password, func(password []byte) (guacamole.TestResult, error) {
+		// Guacd requires an immutable password string; its copies are not erased.
+		params := guacamole.TestConnectionParams{
+			Protocol: string(asset.Protocol),
+			Host:     asset.Host,
+			Port:     asset.Port,
+			// username 與密碼同取自 default 帳號（憑證與 username 必須同帳號）
+			Username: creds.Username,
+			Password: string(password),
+			Timeout:  time.Duration(timeout) * time.Second,
+			Width:    1024,
+			Height:   768,
+		}
+		// 私鑰：test_helper 的 BuildConnectionParams 不支援 private-key；撥測用 password 已足夠
+		_ = creds.PrivateKey
 
-	raw := guacamole.TestGuacamoleConnection(ctx, s.guacdHost, s.guacdPort, params)
+		return guacamole.TestGuacamoleConnection(ctx, s.guacdHost, s.guacdPort, params), nil
+	})
+	if err != nil {
+		result := &ConnectionTestResult{Protocol: string(asset.Protocol), TestedAt: time.Now()}
+		result.setFailure(apierror.CodeAssetTestNoAccount, ErrorCodeNoUsableAccount)
+		return result
+	}
 
 	result := &ConnectionTestResult{
 		Success:   raw.Success,

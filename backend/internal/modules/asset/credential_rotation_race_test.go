@@ -247,7 +247,7 @@ type hookedExecutor struct {
 	onRotate func()
 }
 
-func (h *hookedExecutor) Rotate(ctx context.Context, t rotationTarget, old, next string) error {
+func (h *hookedExecutor) Rotate(ctx context.Context, t rotationTarget, old, next []byte) error {
 	if h.onRotate != nil {
 		fn := h.onRotate
 		h.onRotate = nil
@@ -256,7 +256,7 @@ func (h *hookedExecutor) Rotate(ctx context.Context, t rotationTarget, old, next
 	return h.inner.Rotate(ctx, t, old, next)
 }
 
-func (h *hookedExecutor) Verify(ctx context.Context, t rotationTarget, secret string) error {
+func (h *hookedExecutor) Verify(ctx context.Context, t rotationTarget, secret []byte) error {
 	return h.inner.Verify(ctx, t, secret)
 }
 

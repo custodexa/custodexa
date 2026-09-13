@@ -66,6 +66,20 @@ Structural mitigations already in place (in effect with the default deployment, 
 
 **Mitigation is not the absence of risk**: if the backend is compromised, or a managed remote desktop host attacks back through the protocol, that path still exists. **If your vulnerability management policy requires every component's base system to be within its support period, put this image into an exception assessment before deployment.**
 
+**The backend still runs as root.** Its shipped deployment and startup code apply the following settings:
+
+- `cap_drop: [ALL]` removes the capability set, then `cap_add: [SETUID, SETGID, CHOWN, IPC_LOCK]` adds back exactly four capabilities: `SETUID` and `SETGID` switch DB CLI subprocesses to their dedicated user and group; `CHOWN` transfers ownership of temporary CA files to that user; `IPC_LOCK` permits memory locking beyond the locked-memory limit.
+- `security_opt: [no-new-privileges:true]` prevents gaining privileges through execution of setuid files or file capabilities.
+- `ulimits.core` has both `soft: 0` and `hard: 0`; the backend also sets its own `RLIMIT_CORE` to zero.
+- `PR_SET_DUMPABLE=0` makes the backend process non-dumpable. Together with the absence of `SYS_PTRACE`, this denies other processes in the container, including root processes under these capability limits, access to its `/proc/<pid>/environ` and `/proc/<pid>/mem`.
+- `ulimits.memlock: -1` and `mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT)` lock resident pages and lock other mapped pages when they become resident, preventing those pages from being swapped out.
+
+On 2026-09-12 (Asia/Taipei), with the backend settings above and 15 development services running (backend with Air, dex, fake-gcs, frontend, guacd, k3s-test, ldap-test, localstack, mssql-test, mysql-test, postgres, rdp-test, ssh-multi-test, ssh-test, and vnc-test), alongside the measurement client and background service work but no other Go tests or end-to-end smoke tests, the backend measured VmRSS 68616 kB / VmLck 1369796 kB with 0 active SSH sessions and VmRSS 76952 kB / VmLck 1370060 kB with 20 concurrent SSH sessions to ssh-test held open for 45 seconds after an echo command in 120×30 terminals; these single samples are reference measurements, not a guaranteed memory ceiling.
+
+**Key material remains in the backend process's memory.** These settings restrict which other processes can read it; they do not remove it or prevent the backend itself from accessing it. They do not protect it from an administrator who controls the host or can change the deployment's privileges.
+
+**Custom orchestration must supply these settings.** Drop all capabilities and add only `SETUID`, `SETGID`, `CHOWN`, and `IPC_LOCK`; also apply the privilege and resource limits listed above. In Compose, the required memory-locking settings are `cap_add` containing `IPC_LOCK` and `ulimits.memlock: -1`. Other orchestrators must supply equivalent capabilities and resource limits. If a startup control cannot be applied, the backend exits; a memory-locking failure reports `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)`. Check those exact settings when diagnosing that error.
+
 ## How allowed source ranges affect the deployment
 
 **Allowed source ranges (`allowed_cidrs`) restrict which source addresses an account may use the system from.** An empty list means no source restriction, which is the default. It restricts the **usable sources**; it does not replace the password policy, account lockout, or multi-factor.
@@ -151,7 +165,7 @@ If the lock is lost at runtime (postgres restart, the session being terminated, 
 
 ## Effect on availability planning
 
-The single-instance shape has no automatic failover, so availability planning works on shortening the time to restore: keep backups and KEK material ready at all times, and rehearse the restore procedure in advance. See [backup and restore](./backup-and-restore.md).
+The single-instance shape has no automatic failover, so availability planning works on shortening the time to restore: keep backups and KEK material ready at all times, and rehearse the restore procedure in advance. See [backup and restore](./backup-and-restore.md). With a delegated key mode, "ready at all times" also means the custodian credentials being obtainable by whoever is on call, and a person being available for every restart; the next section states what that costs.
 
 What can be shortened further is the time to service after the loss of the **application host**, as opposed to the database: with the database on a separate server and a prepared standby host, service comes back by starting the standby against the same database, which is a procedure a person or a script runs rather than something the product does by itself. What that procedure needs in advance and what it does not preserve (the recordings and other files that only the failed host held) are in [Application Host Standby Takeover](./standby-takeover.md). The loss of the database is still handled by restoring a backup.
 
@@ -160,3 +174,37 @@ What can be shortened further is the time to service after the loss of the **app
 - **It shortens the exposure window for evidence; it does not remove it.** The upload happens only after the session ends: text recordings are queued within seconds, graphical recordings wait at least a minute (until the file stops changing), and if the storage endpoint is unreachable they wait until it recovers. **Within that window the local copy is still the only copy.** If the machine is destroyed then, that recording has no second copy.
 - **It does not change the recovery time objective.** A remote copy means evidence already offsite can still be retrieved after the machine is destroyed, but bringing the system back into service still requires the restore procedure (database, KEK, deployment-layer configuration). **Offsite storage is not a substitute for backups**; plan for both together.
 - **The first playback of an offsite recording involves a download wait.** For a recording whose local copy has been cleared, playback first retrieves it from object storage, writes it locally, and verifies the hash before streaming begins; the wait depends on file size and bandwidth. This is expected behavior, not a fault, and it happens only on that recording's first playback (the staged cache is reusable within its lifetime). If your audit work has response time requirements, count this wait in.
+
+## Delegated key mode: the deployment is not unattended
+
+**With `KEK_PROVIDER=kms` (AWS KMS, GCP Cloud KMS or HashiCorp Vault), this release does not restart without a person.** The credentials used to reach the custodian are held only in the memory of the current unseal generation and are erased when the system is sealed, so nothing can read them back once the process has ended. Every cold start therefore comes up **sealed**, serving only the health check and the seal endpoints until an administrator unseals it: a host reboot, a container recreation, a scaling event, a nightly maintenance window, and the first start after a restore are all on that list. **The process does not exit.** Waiting for credentials is the designed normal state rather than a configuration error, and a supervisor that restarts the container does not resolve it.
+
+Three consequences for planning:
+
+- **Someone has to be reachable for every restart**, the unplanned ones included. Decide who, and how they are called out of hours, before choosing this mode. `ui` mode has always had this property; from this release `kms` shares it. `env` is the one mode that restarts unattended, and it pays for that with the master key sitting in cleartext on the host.
+- **Automatic scaling and unattended restart policies do not fit this mode**: they bring back a process that cannot serve.
+- **Monitoring has to alert on the sealed state**, or a restart at 03:00 is found at 09:00. The state is readable while sealed, from `GET /api/v1/seal/status` and from the seal group in `/metrics`.
+
+**What the unseal page asks for, and the boundary of that check.** The administrator signs in on the unseal page with a username and password, checks the custodian shown there against the deployment record, and supplies that provider's credentials again. Two limits belong in a security assessment:
+
+- **While the system is sealed only the username and password are checked; the one-time code is not.** Its seed is protected by the data key, which cannot be unwrapped while sealed, so requiring it would mean having to unseal before being able to unseal. **This step is therefore not two-factor and must not be described as one.** What stands behind it: the unseal endpoints' own per-source backoff and time-limited cooldown, the source ranges in `SEAL_UNSEAL_ALLOWED_CIDRS`, responses that do not distinguish a wrong password from an unknown account, a line in the backend log for every attempt, and an authorization context that lasts ten minutes and re-checks on each use that the account is still an active administrator. **An account already locked is refused here too**; what this step does not do is add to the failed-attempt count or lock the account itself, because the account lockout policy belongs to the stage that exists only after unseal.
+- **The account has to be a local administrator.** An account provisioned from a directory or an identity provider cannot be authenticated while sealed, because the external authentication path is assembled only after unseal. A deployment whose administrators all come from an external source cannot unseal itself, so keep at least one local administrator account, as the delivery checklist already requires.
+
+**Where the custodian settings live.** The address, region, Transit key name and role identifier are rows in the database, set on the key management page; every change is recorded in the audit log with its before and after values and raises a security alert through the configured notification channels, and with no channel configured the audit row is the only record. The credentials are in neither the database nor `.env`. What follows for backup and takeover: the settings travel with the database backup, the credentials do not. See [Backup and Restore §4.3](./backup-and-restore.md#43-mode-c-kek_providerkms-delegated-to-a-key-custodian) and [Application Host Standby Takeover §2.2](./standby-takeover.md).
+
+## Data key retention in memory: what the setting costs in availability
+
+Stored secrets — asset account passwords, recorded clipboard content, directory bind credentials — are encrypted with a data key, and that key is unwrapped by the master key before use. The security policy **Data key retention in memory** (key management page) decides how long the unwrapped data key is kept.
+
+**Left empty, which is the factory default, nothing about your deployment changes.** The data key is unwrapped once and kept until the system is sealed or the process restarts, and a delegated key custodian is not on the everyday path.
+
+**Set it to 0 or to a number of seconds and the custodian enters the runtime path.** While the custodian is unreachable, every action that needs the key unwrapped again fails: retrieving an asset account password as a connection is established, and writing recorded content during a session already in progress. That is the trade the setting exists to offer — a shorter time in memory, paid for in availability — and it is not a degradation that can be worked around at the time.
+
+Settle two things before turning it on:
+
+- **Whether new connections failing while the custodian is unreachable is acceptable, and for how long.** Answer that before choosing a value, not after the first outage. There is no fallback to the previous key material: an unwrap that fails, fails.
+- **The round trip to your own custodian.** Each unwrap is one call to it, and the delay depends on the region, the network path and the custodian itself. **Measure it in your own environment** rather than taking a number from any document, and choose the value from what you measured.
+
+On local key modes — the master key comes from an environment variable, or an administrator enters it at startup — the setting is still available and still shortens how long the data key is kept. What it does not change is the master key itself, which is in the process's memory throughout in those modes.
+
+Audit records are outside this setting: the key that stamps them is not subject to the retention period, so records can still be written while the custodian is unreachable. What the setting shortens is the time the data key is present in memory; during an operation, memory still holds keys and unencrypted data.

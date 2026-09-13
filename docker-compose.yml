@@ -81,6 +81,21 @@ services:
 
   # Go 後端服務（生產模式）
   backend:
+    # Drop unrelated capabilities; retain only the operations listed below.
+    cap_drop: [ALL]
+    cap_add:
+      - SETUID # Switch DB CLI children to the dedicated user.
+      - SETGID # Switch DB CLI children to the dedicated group.
+      - CHOWN # Transfer temporary CA files to the DB CLI user.
+      - IPC_LOCK # Lock process memory without the memlock limit.
+    # Prevent privilege gains through setuid executables.
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      # Disable core dumps with explicit soft and hard limits.
+      core:
+        soft: 0
+        hard: 0
+      memlock: -1 # Allow locking all current and future process memory.
     image: custodexa/backend:latest
     build:
       context: .

@@ -69,7 +69,7 @@ func TestRewrapDelegatedTargetSucceedsAndCarriesNoPlaintext(t *testing.T) {
 	})
 
 	before := countKeyRows(t, h)
-	w, _ := doRewrap(t, h, `{"mode":"kms","key_ref":"`+apiFakeKMSARN+`"}`)
+	w, _ := doRewrap(t, h, `{"mode":"kms","key_ref":"`+apiFakeKMSARN+`","region":"ap-northeast-1"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("委託目標的合法請求應成功，得 %d body=%s", w.Code, w.Body.String())
 	}
@@ -113,7 +113,7 @@ func TestRewrapDelegatedPreflightFailureIsDistinct(t *testing.T) {
 	})
 
 	before := countKeyRows(t, h)
-	w, _ := doRewrap(t, h, `{"mode":"kms","key_ref":"`+apiFakeKMSARN+`"}`)
+	w, _ := doRewrap(t, h, `{"mode":"kms","key_ref":"`+apiFakeKMSARN+`","region":"ap-northeast-1"}`)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("預檢失敗應回 502，得 %d body=%s", w.Code, w.Body.String())
 	}

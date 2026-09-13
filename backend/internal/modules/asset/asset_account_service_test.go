@@ -83,7 +83,7 @@ func TestCreateAssetWritesDefaultAccountOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, account.ID, creds.AccountID)
 	assert.Equal(t, "root", creds.Username)
-	assert.Equal(t, "s3cret", creds.Password)
+	assert.Equal(t, "s3cret", secretText(t, creds.Password))
 }
 
 // 零憑證資產（三欄全空）不建帳號，且連線解析回空憑證束而非錯誤
@@ -126,7 +126,7 @@ func TestUpdateAssetWritesThroughToDefaultAccount(t *testing.T) {
 	creds, err := assets.GetWithCredentialsDefault(asset.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "deploy", creds.Username)
-	assert.Equal(t, "rotated", creds.Password)
+	assert.Equal(t, "rotated", secretText(t, creds.Password))
 
 	var stored model.Asset
 	require.NoError(t, db.First(&stored, asset.ID).Error)
@@ -152,7 +152,7 @@ func TestUpdateAssetCreatesDefaultAccountWhenMissing(t *testing.T) {
 	assert.True(t, account.IsDefault)
 	creds, err := assets.GetWithCredentialsDefault(asset.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "vncpass", creds.Password)
+	assert.Equal(t, "vncpass", secretText(t, creds.Password))
 }
 
 // 帳號 CRUD ＋ default 交易式切換 ＋ 禁刪最後 default
@@ -199,7 +199,7 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	creds, err := assets.GetWithCredentialsDefault(asset.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "app", creds.Username)
-	assert.Equal(t, "apppw", creds.Password)
+	assert.Equal(t, "apppw", secretText(t, creds.Password))
 
 	// assets 顯示欄隨 default 鏡射
 	var stored model.Asset

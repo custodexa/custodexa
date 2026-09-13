@@ -143,7 +143,7 @@ golden 的 diff 須在 commit 中**逐條審視**——它是快照而非不可�
   > - `internal/modules/identity` **9**：OIDC「產生新長效能力 vs 解綁」併發矩陣的五種交錯（5）；
   >   provider 列鎖下的兌換／Join／停用先後（3）；兌換洪流對上停用的不變量（1）。
   > - `internal/modules/audit` **8**：保留期區間清除的原子性與會話被砍時的行為、區間效能與
-  >   基線比較（4）；保留基線與審計寫入吞吐（2）；檢查點寬限期量測、封印不拖慢寫入（2）。
+  >   基線比較（4）；保留基線與審計寫入吞吐（2）；檢查點寬限期量測、封存不拖慢寫入（2）。
   > - `internal/database` **4**：宣告索引與實庫對帳、審計樞紐索引的歷史漂移修復（2）；
   >   `kek_id` 欄寬升級路徑（1）；LDAP `CHECK (singleton=1)` ＋ partial unique index 的真實約束（1）。
   >

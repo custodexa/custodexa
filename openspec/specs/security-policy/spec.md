@@ -231,6 +231,22 @@ CORS SHALL 由設定驅動 allowlist：未設定時 dev 模式全開、release �
 ### Requirement: 金鑰管理政策鍵
 安全政策 SHALL 提供「金鑰管理」政策鍵：cryptoperiod 提醒天數鍵 `key_cryptoperiod_reminder_days`（0 = 不提醒，出廠預設 0）；該鍵設定 UI 由金鑰管理頁承載，並 SHALL 標示 PCI 建議值 365、納入分域一鍵套用、為 0 時 SHALL 顯示於偏離摘要（本頁子集＋母頁總覽）且不擋存檔；政策變更 SHALL 入審計（沿既有安全政策機制）。提醒 SHALL 僅呈現於金鑰清冊，SHALL NOT 觸發自動輪換或外送通知。
 
+安全政策 SHALL 另提供 DEK 快取存活期鍵 `dek_cache_ttl_seconds`（秒；空值＝不限期，出廠預設空值）。值域 SHALL 為空值、`0` 或正整數，語義以 `key-management` 的「DEK 快取存活期政策與到期重解」為準；上界 SHALL 有限，非法值 SHALL 被拒且政策維持原值。本鍵 SHALL 沿既有安全政策機制：設定 UI 由金鑰管理頁承載、納入分域一鍵套用之呈現、變更入審計。本鍵 SHALL NOT 具合規建議值、SHALL NOT 進入任何內建政策組、SHALL NOT 出現於偏離摘要——它是機構自選的風險預算旋鈕，不是合規基準線；掛上建議值等同宣稱某個秒數為合規要求。
+
+本鍵 SHALL 於全部 KEK 模式可設定，SHALL NOT 依模式停用、灰掉或隱藏。本機模式（`ui`／`env`）下設定頁 SHALL 以一句白話說明該模式的 KEK 本即位於行程記憶體、本設定縮短的僅為 DEK 駐留，SHALL NOT 以此說明阻擋設定。設定為 `0` 或正整數時，介面 SHALL 據實呈現其代價：KEK 保管處不可達期間，需要重新解封的新操作（含建立連線取用憑證）將失敗；SHALL NOT 以「不影響既有連線」概括全部設定值。
+
+#### Scenario: 全模式可設定且不灰掉
+- **WHEN** 管理員在 `env` 或 `ui` 模式的部署開啟金鑰管理頁政策區塊
+- **THEN** `dek_cache_ttl_seconds` MUST 可編輯並附本機模式的白話說明，MUST NOT 被停用或隱藏
+
+#### Scenario: 本鍵不列入合規判定
+- **WHEN** 檢視金鑰管理頁與安全政策母頁的偏離摘要
+- **THEN** `dek_cache_ttl_seconds` MUST NOT 出現於任何內建政策組的判定或偏離清單，其值為空值時 MUST NOT 被標為不符
+
+#### Scenario: 非法值被拒
+- **WHEN** 以 API 將 `dek_cache_ttl_seconds` 設為負數、非整數或超出上界之值
+- **THEN** 更新 MUST 被拒且政策維持原值，錯誤 MUST 可辨識
+
 #### Scenario: 分域套用涵蓋金鑰政策
 - **WHEN** 管理員於金鑰管理頁點擊「套用本頁建議值」並儲存
 - **THEN** 提醒天數鍵設為 365，該域偏離摘要不再列出金鑰項

@@ -114,8 +114,17 @@ const windowsAccountNameForbidden = "\"/\\[]:;|=,+*?<>"
 
 // windowsRotationStdin 改密腳本的標準輸入：新密碼、舊密碼、帳號名各一行（UTF-8）。
 // 兩執行器共用，順序是腳本契約的一部分。
-func windowsRotationStdin(newSecret, oldSecret, account string) string {
-	return newSecret + "\n" + oldSecret + "\n" + account + "\n"
+func windowsRotationStdin(newSecret, oldSecret []byte, account string) []byte {
+	out := make([]byte, len(newSecret)+len(oldSecret)+len(account)+3)
+	at := copy(out, newSecret)
+	out[at] = '\n'
+	at++
+	at += copy(out[at:], oldSecret)
+	out[at] = '\n'
+	at++
+	at += copy(out[at:], account)
+	out[at] = '\n'
+	return out
 }
 
 // buildWindowsCommand 把腳本包成 `powershell.exe … -EncodedCommand <base64>`。
@@ -168,7 +177,7 @@ func validateWindowsAccountName(name string) error {
 
 // validateWindowsNewSecret 新密碼走「標準輸入第一行」的協定，含換行或 NUL 會截斷
 // 或污染那一行；空密碼則會被腳本判為未投遞。都在本地擋下，不送出。
-func validateWindowsNewSecret(secret string) error {
+func validateWindowsNewSecret[T ~string | ~[]byte](secret T) error {
 	if !windowsSecretLineSafe(secret) {
 		return &localPreconditionError{reason: model.ChangeSecretReasonInvalidNewSecret}
 	}
@@ -178,7 +187,7 @@ func validateWindowsNewSecret(secret string) error {
 // validateWindowsOldSecret 舊密碼走「標準輸入第二行」，腳本拿它回滾。含換行或 NUL 的
 // 舊密碼會被截成錯的值，腳本拿錯的值回滾等於把帳號改到一個誰都不知道的密碼——
 // 比不回滾更糟，故在本地擋下，遠端零接觸。
-func validateWindowsOldSecret(secret string) error {
+func validateWindowsOldSecret[T ~string | ~[]byte](secret T) error {
 	if !windowsSecretLineSafe(secret) {
 		return &localPreconditionError{reason: model.ChangeSecretReasonInvalidOldSecret}
 	}
@@ -186,8 +195,16 @@ func validateWindowsOldSecret(secret string) error {
 }
 
 // windowsSecretLineSafe 一個秘密能否完整佔據標準輸入的一行。
-func windowsSecretLineSafe(secret string) bool {
-	return secret != "" && !strings.ContainsAny(secret, "\r\n\x00")
+func windowsSecretLineSafe[T ~string | ~[]byte](secret T) bool {
+	if len(secret) == 0 {
+		return false
+	}
+	for i := 0; i < len(secret); i++ {
+		if secret[i] == 0 || secret[i] == '\r' || secret[i] == '\n' {
+			return false
+		}
+	}
+	return true
 }
 
 // windowsLogSubject 後端 log 用的目標識別：資產 ID 與帳號名，不含任何秘密。

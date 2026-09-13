@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"time"
 
 	"gorm.io/gorm"
@@ -220,8 +221,8 @@ func (s *CredentialRotationService) seedSplitCandidate(ctx context.Context, tx *
 	in.AccountUsername = cred.Username
 	switch {
 	case fixedSecret != nil:
-		in.Password = fixedSecret.Password
-		in.PrivateKey = fixedSecret.PrivateKey
+		_, err := s.candidates.createOwnedInTx(ctx, tx, in, fixedSecret.Password, fixedSecret.PrivateKey)
+		return err
 	case cred.SecretType == model.ChangeSecretTypeSSHKey:
 		private, _, err := GenerateSSHKeyPair(fmt.Sprintf("credential-%d-binding-%d", cred.ID, binding.ID))
 		if err != nil {
@@ -356,13 +357,17 @@ func (s *CredentialRotationService) encryptRotationSecret(ctx context.Context,
 	mc *memberContext) (string, string, error) {
 
 	if mc.secretType == model.ChangeSecretTypeSSHKey {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPrivateKey, mc.newPrivateKey)
+		enc, err := material.Use(mc.newPrivateKey, func(raw []byte) (string, error) {
+			return s.assets.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefCredentialVersionPrivateKey, raw)
+		})
 		if err != nil {
 			return "", "", fmt.Errorf("加密私鑰失敗: %w", err)
 		}
 		return "", enc, nil
 	}
-	enc, err := s.crypto.EncryptFor(ctx, keyvault.RefCredentialVersionPassword, mc.newPassword)
+	enc, err := material.Use(mc.newPassword, func(raw []byte) (string, error) {
+		return s.assets.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefCredentialVersionPassword, raw)
+	})
 	if err != nil {
 		return "", "", fmt.Errorf("加密密碼失敗: %w", err)
 	}
@@ -435,6 +440,7 @@ func (s *CredentialRotationService) Detach(ctx context.Context, credentialID, ac
 		return nil, err
 	}
 
+	defer fixed.Destroy()
 	rot, err := s.startSplitRotation(ctx, credentialID,
 		[]model.AssetAccount{*binding}, req.Policy, fixed)
 	if err != nil {
@@ -484,12 +490,12 @@ func detachFixedSecret(cred *model.Credential, req DetachCredentialRequest) (*Ca
 			if req.PrivateKey == "" {
 				return nil, ErrCredentialSecretRequired
 			}
-			return &CandidateSecret{PrivateKey: req.PrivateKey}, nil
+			return &CandidateSecret{PrivateKey: material.Adopt([]byte(req.PrivateKey))}, nil
 		}
 		if req.Password == "" {
 			return nil, ErrCredentialSecretRequired
 		}
-		return &CandidateSecret{Password: req.Password}, nil
+		return &CandidateSecret{Password: material.Adopt([]byte(req.Password))}, nil
 	default:
 		return nil, ErrCredentialDetachSourceInvalid
 	}

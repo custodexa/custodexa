@@ -151,18 +151,18 @@ func newSecretRecorder() *secretRecorder {
 	}
 }
 
-func (s *secretRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret string) error {
+func (s *secretRecorder) Rotate(_ context.Context, t rotationTarget, _, newSecret []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.rotateCalls[t.asset.Host]++
 	if err := s.rotateErr[t.asset.Host]; err != nil {
 		return err
 	}
-	s.rotated[t.asset.Host] = newSecret
+	s.rotated[t.asset.Host] = string(newSecret)
 	return nil
 }
 
-func (s *secretRecorder) Verify(_ context.Context, t rotationTarget, _ string) error {
+func (s *secretRecorder) Verify(_ context.Context, t rotationTarget, _ []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.verifyCalls[t.asset.Host]++
@@ -266,7 +266,7 @@ func TestBatchPerTargetModeUsesDistinctPasswords(t *testing.T) {
 
 	creds1, err := f.assets.GetWithCredentialsForAccount(a1, acc1)
 	require.NoError(t, err)
-	assert.Equal(t, p1, creds1.Password, "成功後提交為帳號憑證")
+	assert.True(t, secretMatches(t, creds1.Password, p1), "resolved secret mismatch")
 
 	got := f.reload(t, batch.ID)
 	assert.Equal(t, model.ChangeSecretBatchCompleted, got.Status)

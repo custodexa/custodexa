@@ -80,6 +80,11 @@ func TestSealOnlyRouterHasNoBusinessRoutes(t *testing.T) {
 	allowed := map[string]bool{
 		"/health": true, "/healthz": true,
 		"/api/v1/seal/status": true, "/api/v1/seal/unseal": true,
+		"/api/v1/seal/seal": true,
+		// 解封流程第一段（帳密驗證）：與解封同屬一條流程，必須與它在同一個
+		// 監聽面上——分開會讓「在業務網段驗證、於管理網段送出」成立，
+		// 而獨立監聽的全部意義就是那條網段隔離。
+		"/api/v1/seal/authorize": true,
 	}
 	var extra []string
 	for _, rt := range r.Routes() {

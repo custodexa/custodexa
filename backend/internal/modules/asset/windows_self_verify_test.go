@@ -55,8 +55,8 @@ func TestWindowsRotationScriptContract(t *testing.T) {
 		assert.Equal(t, p[1], p[2], "標記碼與退出碼須相同: %s", p[0])
 	}
 
-	stdin := windowsRotationStdin(newPassword, oldPassword, account)
-	assert.Equal(t, newPassword+"\n"+oldPassword+"\n"+account+"\n", stdin, "第一行新密碼、第二行舊密碼、第三行帳號名")
+	stdin := windowsRotationStdin([]byte(newPassword), []byte(oldPassword), account)
+	assert.Equal(t, newPassword+"\n"+oldPassword+"\n"+account+"\n", string(stdin), "第一行新密碼、第二行舊密碼、第三行帳號名")
 }
 
 // TestClassifyWindowsExitSelfVerify 4 → 確定失敗帶自驗失敗碼；5 → 狀態不可知帶回滾失敗碼；6 → 視同成功。
@@ -97,7 +97,7 @@ func TestWinRMExecutorSelfVerifyExitCodes(t *testing.T) {
 
 	t.Run("標準輸入三行", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "0ld-P@ss!")
-		require.NoError(t, testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "0ld-P@ss!", newPassword))
+		require.NoError(t, testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("0ld-P@ss!"), []byte(newPassword)))
 		assert.Equal(t, newPassword+"\n0ld-P@ss!\nAdministrator\n", f.stdinText(), "第一行新密碼、第二行舊密碼、第三行帳號名")
 		assert.NotContains(t, decodeWindowsCommand(t, f.snapshot().commands[0]), "0ld-P@ss!", "舊密碼不進腳本")
 	})
@@ -105,7 +105,7 @@ func TestWinRMExecutorSelfVerifyExitCodes(t *testing.T) {
 	t.Run("exit 4 自驗失敗已回滾", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.exitCode = windowsExitSelfVerifyRolledBack })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteSelfVerifyFailed, rejected.reason)
@@ -115,7 +115,7 @@ func TestWinRMExecutorSelfVerifyExitCodes(t *testing.T) {
 	t.Run("exit 5 回滾失敗 狀態不可知", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
 		f.set(func(f *fakeWinRMServer) { f.exitCode = windowsExitSelfVerifyRollbackFailed })
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword))
 		var unknown *remoteStateUnknownError
 		require.True(t, errors.As(err, &unknown), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteSelfVerifyRollbackFailed, unknown.reason)
@@ -132,14 +132,14 @@ func TestWinRMExecutorSelfVerifyExitCodes(t *testing.T) {
 			f.exitCodeFirstCommandOnly = true
 		})
 		e := testWinRMExecutor(f, nil)
-		require.NoError(t, e.Rotate(context.Background(), winrmTarget(f), "old", newPassword))
+		require.NoError(t, e.Rotate(context.Background(), winrmTarget(f), []byte("old"), []byte(newPassword)))
 		assert.Equal(t, newPassword, f.snapshot().password, "端點已是新密碼")
-		require.NoError(t, e.Verify(context.Background(), winrmTarget(f), newPassword), "重連驗證以新密碼通過")
+		require.NoError(t, e.Verify(context.Background(), winrmTarget(f), []byte(newPassword)), "重連驗證以新密碼通過")
 	})
 
 	t.Run("舊密碼含換行 本地攔下", func(t *testing.T) {
 		f := newFakeWinRMServer(t, "old")
-		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), "old\nx", newPassword)
+		err := testWinRMExecutor(f, nil).Rotate(context.Background(), winrmTarget(f), []byte("old\nx"), []byte(newPassword))
 		var local *localPreconditionError
 		require.True(t, errors.As(err, &local), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonInvalidOldSecret, local.reason)
@@ -153,7 +153,7 @@ func TestWindowsSSHExecutorSelfVerifyExitCodes(t *testing.T) {
 
 	t.Run("標準輸入三行", func(t *testing.T) {
 		srv := newTestSSHServer(t, "Administrator", "0ld-P@ss!")
-		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "0ld-P@ss!", newPassword))
+		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("0ld-P@ss!"), []byte(newPassword)))
 		stdin, _ := srv.lastChpasswdStdin.Load().(string)
 		assert.Equal(t, newPassword+"\n0ld-P@ss!\nAdministrator\n", stdin)
 		cmd, _ := srv.lastExecCommand.Load().(string)
@@ -165,7 +165,7 @@ func TestWindowsSSHExecutorSelfVerifyExitCodes(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdExitCode = windowsExitSelfVerifyRolledBack
 		srv.mu.Unlock()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		require.Positive(t, srv.chpasswdExitFired.Load(), "退出碼注入器未觸發")
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
@@ -177,7 +177,7 @@ func TestWindowsSSHExecutorSelfVerifyExitCodes(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdExitCode = windowsExitSelfVerifyRollbackFailed
 		srv.mu.Unlock()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		var unknown *remoteStateUnknownError
 		require.True(t, errors.As(err, &unknown), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteSelfVerifyRollbackFailed, unknown.reason)
@@ -188,13 +188,13 @@ func TestWindowsSSHExecutorSelfVerifyExitCodes(t *testing.T) {
 		srv.mu.Lock()
 		srv.chpasswdExitCode = windowsExitSelfVerifyUnavailable
 		srv.mu.Unlock()
-		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword))
+		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword)))
 		require.Positive(t, srv.chpasswdExitFired.Load(), "退出碼注入器未觸發")
 	})
 
 	t.Run("舊密碼含換行 本地攔下", func(t *testing.T) {
 		srv := newTestSSHServer(t, "Administrator", "old")
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old\nx", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old\nx"), []byte(newPassword))
 		var local *localPreconditionError
 		require.True(t, errors.As(err, &local), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonInvalidOldSecret, local.reason)
@@ -228,7 +228,7 @@ func TestWinRMSelfVerifyThroughRunner(t *testing.T) {
 		require.NoError(t, fx.db.Where("asset_id = ?", assetID).First(&acct).Error)
 		creds, err := fx.assets.GetWithCredentialsForAccount(assetID, acct.ID)
 		require.NoError(t, err)
-		return creds.Password
+		return secretText(t, creds.Password)
 	}
 
 	t.Run("exit 4 自驗失敗已回滾 failed", func(t *testing.T) {

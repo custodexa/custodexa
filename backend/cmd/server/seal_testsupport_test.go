@@ -138,6 +138,11 @@ func newTestSealSetup(t *testing.T, opts ...testMachineOption) (*seal.Machine, *
 		t.Fatalf("建立測試狀態機失敗: %v", err)
 	}
 	h := api.NewSealHandler(m, j)
+	// 解封自委託拓撲與憑證改由介面管理之後要求授權脈絡。
+	// 本組測試守的是狀態機的退避、冷卻與遷移格，不是授權本身
+	//（授權另有 `internal/api` 的專屬測試），故在此接上一個恆通過的驗證器，
+	// 並由 postUnseal 代取脈絡——**不是關掉授權**，是讓它恆成立。
+	h.SetSealAuthorization(api.NewSealGrantStore(0), func(string, []byte) (uint, error) { return 1, nil })
 	h.SetAdmitter(func(ctx context.Context) (func(bool), error) {
 		ticket, err := j.Admit(ctx)
 		if err != nil {

@@ -1,16 +1,6 @@
 import request from './request'
 
-// 封印狀態與解封。
-//
-// **兩條端點都不要求 JWT**：要求 JWT 會在「admin 已開 MFA」時死鎖——TOTP secret
-// 是信封加密欄，封印期解不開，管理員無法登入來解封。授權改由「知道 KEK」承擔
-//（一般解封）；空金鑰表的初始化解封另要求初始管理員憑證（見 unseal 的 payload）。
-// 故本模組的呼叫端不需要也不應該預設已登入；請求攔截器帶不帶 token 皆不影響。
-
-// 取得封印狀態：state（sealed／unsealing／unsealed／sealed-faulted）、generation、
-// cleanup_pending（待收束）、cooldown_until（冷卻到期）、fault_code（故障機器碼）、
-// journal_faulted、timeout_total 與 timeout_retry_hint_code（逾時重試指引）、
-// initialization_required（空金鑰表＝初始化解封路徑；未解封時才出現）
+// Status is public; unsealing requires an administrator-verified grant.
 export function getSealStatus(config = {}) {
   return request({
     url: '/seal/status',
@@ -19,17 +9,44 @@ export function getSealStatus(config = {}) {
   })
 }
 
-// 送出一次解封嘗試。payload：
-//   一般解封（既有部署）：{ kek }
-//   初始化解封（空金鑰表）：{ kek, kek_confirm, confirm_saved, username, password }
-// 後端以未知欄位拒絕（DisallowUnknownFields），故不得夾帶額外鍵。
-// **材料類失敗（格式／解包／憑證／paste-back／保存確認）回應刻意不可區分**——
+// 解封流程的第一段：管理員帳號與密碼驗證（封印閘白名單端點）。
+// payload 為精確鍵集 `{ username, password }`。
+// **回應刻意不可區分**（帳號不存在／密碼錯／非管理者／停用／鎖定同一碼同一形狀），
 // 呼叫端 SHALL 直接呈現 resolveApiError 的結果，SHALL NOT 自行推測失敗成因。
-export function unseal(payload, config = {}) {
+// 成功回 `{ grant, expires_at, topology_digest }`；grant 只存在於行程與本頁記憶體，
+// 不是業務工作階段憑證，也 SHALL NOT 寫入任何 storage。
+export function sealAuthorize(payload, config = {}) {
+  return request({
+    url: '/seal/authorize',
+    method: 'post',
+    data: payload,
+    ...config,
+  })
+}
+
+// 送出一次解封嘗試。payload 依分支為精確鍵集（後端以未知欄位拒絕，夾帶多餘鍵即整包被拒）：
+//   ui 一般解封：{ kek }
+//   ui 初始化：{ kek, kek_confirm, confirm_saved, username, password }
+//   env：{}
+//   委託解封：該服務商的秘密鍵 ＋ { topology_digest }
+//   委託全新安裝：初始管理員兩鍵 ＋ 拓撲欄位 ＋ 該服務商的秘密鍵
+// grant 以 `Authorization: SealGrant <grant>` 標頭帶出。**所有模式、所有分支皆必要**，
+// 全新安裝亦同（初始管理員由段 1 的種子建立，第一步即可換脈絡）；全新安裝的請求本文
+// 仍帶 username／password，那一份在臨界區之內驗證，與脈絡的時點與用途不同。
+// **憑證類失敗的細分只在帶有效 grant 時才可能出現**；無 grant 時後端一律收斂為
+// 材料無效，呼叫端 SHALL NOT 自行推測成因。
+export function unseal(payload, options = {}) {
+  const { grant, headers, ...config } = options
   return request({
     url: '/seal/unseal',
     method: 'post',
     data: payload,
     ...config,
+    headers: grant ? { ...headers, Authorization: `SealGrant ${grant}` } : headers,
   })
+}
+
+// Seal the current generation; completion can include connection and worker cleanup.
+export function seal(config = {}) {
+  return request({ url: '/seal/seal', method: 'post', data: {}, ...config })
 }

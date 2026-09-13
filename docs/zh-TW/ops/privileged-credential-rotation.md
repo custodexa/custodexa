@@ -147,6 +147,10 @@
 
 ## 4. KEK（金鑰加密金鑰）
 
+GCP 請先讀 [§13b](#gcp-kms)：正式接線與完整遷移／回復驗收尚未完成，一般 KEK 程序不表示 GCP 已可部署。
+
+Vault 請先閱讀 [§14](#vault-transit)：目前證據涵蓋隔離完整服務測試組裝，未涵蓋部署專屬的 TLS 或儲存回復。以下一般 KEK 步驟不是 Vault 已支援的證據。
+
 KEK 是整個信封加密體系的根。它的「輪替」在本產品中稱為**重包（rewrap）**：
 以新 KEK 重新包裹既有的資料金鑰，資料本身不重新加密。
 
@@ -170,12 +174,12 @@ KEK 退役是軟退役：只變更狀態欄位，包裹材料不清空。因此*
 **完成切換的步驟依 KEK 模式而異。** 重包本身與切換機制在各模式相同，切換一律由**開機流程**
 完成（系統以新 KEK 驗證可解包全部金鑰後，把舊包裹列標記退役），差別只在「新 KEK 從哪裡
 進入行程」，以及該開機流程**何時才跑得起來**：模式 A／C 於重啟當下，模式 B 因啟動後停在
-封印狀態，要到有人於解封頁提交材料之後才執行，故其切換是在解封時完成：
+封存狀態，要到有人於解封頁提交材料之後才執行，故其切換是在解封時完成：
 
 | 模式 | 重包完成後要做的事 |
 |---|---|
 | `env`（模式 A） | 把新 KEK 寫入 `.env` 的 `ENCRYPTION_KEY`（或 compose 檔）→ 重啟後端服務 → 開機時完成切換 |
-| `ui`（模式 B） | 重啟後端服務（重啟後回到封印狀態）→ **在解封頁輸入新的那把 KEK** → 解封時完成切換。**不要把新 KEK 寫入 `.env` 或任何環境變數**：模式 B 的材料只存在於記憶體，寫上磁碟等同放棄本模式唯一的保護 |
+| `ui`（模式 B） | 重啟後端服務（重啟後回到封存狀態）→ **在解封頁輸入新的那把 KEK** → 解封時完成切換。**不要把新 KEK 寫入 `.env` 或任何環境變數**：模式 B 的材料只存在於記憶體，寫上磁碟等同放棄本模式唯一的保護 |
 | `kms`（模式 C） | 見下方「跨模式遷移」。切換須改 `KEK_PROVIDER` 宣告與對應組態後重啟，屬部署層變更 |
 
 模式 B 的完整路徑是：重包 → 重啟 → 於解封頁輸入新一代 KEK → 解封成功並可正常登入。
@@ -195,6 +199,17 @@ KEK 退役是軟退役：只變更狀態欄位，包裹材料不清空。因此*
 **反向遷移（雲端 → 本機）**同樣經重包精靈，選本地目標即可。
 
 ---
+
+### 運行中 seal 與解封
+
+驗證範圍（2026-09-13）：開發版 env、ui 與委託模式的 HTTP 操作；委託使用已交付 AWS driver 與隔離靶機。完整三模式頁面操作及整個 release 的記憶體傾印結論仍是未驗證限制。
+
+1. 封存前安排服務中斷，保留目前的金鑰來源與既有管理員工作階段。seal 停止新材料使用並釋放服務圖，包含工作與連線；不得承諾會話不中斷或所有外部工作都完成。
+2. 管理員以既有 Bearer token 請求 `POST /api/v1/seal/seal`。讀取 `GET /api/v1/seal/status`，等待 `state=sealed` 且 `cleanup_pending=false`。只有 sealed 標籤不證明清理成功；查詢狀態不會解封服務。
+3. 透過 `POST /api/v1/seal/unseal` 解封。`ui` 明確重輸同一有效 KEK；一般解封不需登入。`env` 以既有管理員 token 提交空物件，後端重讀 `ENCRYPTION_KEY`；編輯部署檔不會改變運行中行程的環境。委託模式由相同授權請求以部署憑證重新解封，不輸入本地 KEK。保留 `KEK_KMS_PROVIDER`、`KEK_KMS_REGION`、`KEK_KMS_KEY_ID` 與設定的金鑰服務存取能力。
+4. 等待 `unsealing` 結束並確認 `unsealed`，再確認原密文資料可存取。材料錯誤或委託來源不可用不能當成成功。清理中或並發解封的 `409` 表示應先查狀態再重試，不要並發重送。seal 與解封不是金鑰輪替。
+5. env 或委託模式的管理員 token 過期、撤銷或其他無效情況，應以設定的來源重啟後端。沒有獨立救援登入或另簽救援 token。遇到 `sealed-faulted` 或持續 `cleanup_pending`，保留結果、處理回報原因，停止舊行程後再重啟。不要刪除 journal，也不要把重啟當成先前清理成功的證明。
+6. 帳號明文不跨 SSH 握手駐留；DEK 與簽章鑰常駐於受硬化保護的行程記憶體，可由 seal 一鍵清空；記憶體快照仍可能包含金鑰與明文。 env 模式的金鑰可仍在行程環境、組態 string 與部署檔。unsealed 期間會快取 DEK；協議 string、函式庫副本與會話流量不屬全記憶體抹除承諾。自有 buffer 全零不證明沒有任何明文。來源憑證仍可允許後續解封；seal 不會撤銷它們。
 
 ## 5. DEK 與審計蓋章鑰
 
@@ -340,6 +355,8 @@ base64 值不可直接讀懂，必須在本地重算後比對。
 
 ### 10.4 手動復原退役的 KEK 列（最後手段）
 
+Vault 請依 [§14.7](#vault-recovery)。不要將本節手動復活資料列的程序套用至 Vault，應採一致的完整備份回復。
+
 僅在「必須回退到某把已退役的 KEK」時使用，且**只有在該 KEK 的材料尚未經顯式清理時
 才可行**（見 §4）。
 
@@ -466,3 +483,213 @@ base64 值不可直接讀懂，必須在本地重算後比對。
 2. **審計紀錄中有這次更動**。憑證庫的每個動作皆為 admin 限定且入審計；掛載與卸載另會記下
    受影響的主機，故這件事從主機那一側也查得到，不必只從憑證查。
 3. **輪替證據報告的標示如預期**。已脫離的主機不再標為共用；報告讀的是憑證的範圍。
+
+
+---
+
+<a id="gcp-kms"></a>
+## 13b. GCP Cloud KMS KEK 操作
+
+<a id="gcp-availability"></a>
+### 13b.1 交付範圍與版本前置條件
+
+GCP Cloud KMS 可選用。它已對契約測試套件與行程內 fake 實跑驗證；本專案尚未在實際的 GCP 專案上跑過。目前建置包含 GCP driver、五種 provider 的共用契約測試、使用 fake client 的服務物件測試，以及正式啟動與 client ownership 接線；完整遷移精靈尚未交付。在實際專案上，ADC／IAM、PostgreSQL 交易回滾、行程重啟、既有會話、審計送出與完整備份回復仍待驗。將運行中的部署的保管處改為 GCP 之前，先把這一點納入判斷。
+
+以下程序僅適用於已具備正式接線，且已通過隔離完整服務驗收的版本。缺少任何前置就停止，不以手動改資料庫或自行組請求替代。對 GCP 而言，本門檻也限制 §4 與 §10 的一般程序；不得為回復現行資料庫而繞過本地退役判定。
+
+<a id="gcp-configuration"></a>
+### 13b.2 資源身分、組態與 TLS
+
+使用完整 CryptoKey 資源名 `projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>` 作為 `kek_id`，不使用裸金鑰名、URL 或 cryptoKeyVersions 子資源。部署引用決定可信 project；精靈目標只提供該 project 內的金鑰引用，不提供新的 project 信任設定或憑證。driver 不猜測 project ID 與 project number 的等價性。完整引用須符合 255-byte 儲存上限。參見 [Cloud KMS 資源參考](https://cloud.google.com/kms/docs/reference/rest)。
+
+以下是目標組態，不能取代部署演練：
+
+```dotenv
+KEK_PROVIDER=kms
+KEK_KMS_PROVIDER=gcp
+KEK_KMS_KEY_ID=projects/example-project/locations/global/keyRings/platform/cryptoKeys/platform-kek
+KEK_KMS_REGION=
+ENCRYPTION_KEY=
+```
+
+GCP 不要求 `KEK_KMS_REGION`，請保持未設定或空值。保留的值會被忽略，不傳入 SDK；location 取自資源名。委託模式拒絕非空 `ENCRYPTION_KEY`。切換前，維持現行本地模式及其回復材料，直到 §13b.5 明確要求套用目標組態。
+
+KMS 資料 transport 只使用 https://cloudkms.googleapis.com、驗證憑證的 TLS 1.2 以上連線，不跟隨 redirect，也不使用環境 proxy。自訂 endpoint、HTTP、停用 TLS 驗證及非預設 SDK universe／mTLS 設定都會被拒絕。憑證的 token／metadata 流量走獨立的官方 ADC 流程，其合法目的地不被限制為 KMS 主機。產品不新增 endpoint 或 GCP 憑證組態鍵。
+
+<a id="gcp-authentication"></a>
+### 13b.3 ADC、權限與憑證更換
+
+認證使用官方 SDK 的 Application Default Credentials（ADC），token 更新由該函式庫負責。由部署供應核准的工作負載身分或服務帳號憑證來源。`GOOGLE_APPLICATION_CREDENTIALS` 是標準 SDK 輸入，不是產品機密儲存。沒有匿名或靜態測試憑證回落，也沒有產品端運行中更換憑證的 API。不要假定修改憑證檔就會更新已建構的 client。
+
+執行期身分只給選定 CryptoKey 所需的 metadata 讀取與 encrypt/decrypt 權限。建立版本、改 primary、停用或銷毀版本、修改存取政策，使用另一個管理者身分。只有 metadata 權限並不足夠，預檢還必須完成 encrypt 與 decrypt。實際專案 IAM 與憑證更新仍須在隔離真專案驗收。
+
+1. 記錄核准身分、非機密資源引用、憑證保管、維護窗口與回復存取權，不記錄私鑰或 bearer token。
+2. 透過部署機密機制準備替換存取權。確認採用成功前保留獲授權的回復存取權；憑證內容不得放在 shell 引數、工單或受版本控制的檔案。
+3. 滿足 §13b.1 後，依該版本支援的部署／重啟程序重建 client。切換正式存取權前，要求真專案 metadata、encrypt/decrypt 與憑證更新檢查成功。
+4. 採用成功後撤銷舊存取權；若採用失敗則停止，透過部署程序還原獲授權的存取。懷疑外洩時應立即撤銷受影響存取權，並接受需 KMS 的操作可能不可用；憑證本身不能替代遺失的 KEK 版本。
+
+<a id="gcp-actions"></a>
+### 13b.4 API 動作、AAD 與不同輪替
+
+以下路徑的 `<cryptoKey>` 代表 §13b.2 的完整資源名。
+
+| 動作 | 請求 | 效果與邊界 |
+| --- | --- | --- |
+| 包裹 DEK | `POST /v1/<cryptoKey>:encrypt` | 使用 CryptoKey 的 primary；傳送明文與原 AAD，取得密文、實際版本名與完整性欄位。 |
+| 解包 DEK | `POST /v1/<cryptoKey>:decrypt` | 傳送密文與原 AAD，將 DEK 回傳後端；服務選擇該密文的版本。 |
+| 建立遠端版本 | `POST /v1/<cryptoKey>/cryptoKeyVersions` | 管理者操作。僅 create 回應不代表 primary 已改變，也不代表資料庫包裹已改變。 |
+| 選定 primary | `POST /v1/<cryptoKey>:updatePrimaryVersion` | 管理者提供 `cryptoKeyVersionId`，須確認回應／讀回 CryptoKey 的 primary 相符。CryptoKey 引用不變，既有資料庫包裹不會被改寫。 |
+| 更換產品 KEK 引用 | 來源 decrypt，再目標 encrypt | 不使用原生 ReEncrypt 端點。涉及 GCP 的服務重包，其兩步與 clone 列寫入都在既有加鎖資料庫交易內。操作或提交失敗不回成功，也不在記憶體發布 pending 狀態；遠端請求本身無法由資料庫回滾。 |
+
+官方 schema：[encrypt](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/encrypt)、[decrypt](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/decrypt)、[建立版本](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys.cryptoKeyVersions/create)、[更新 primary](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/updatePrimaryVersion)。
+
+driver 直接把既有用途／版本的正規 DEKAAD 位元組放入 `additionalAuthenticatedData`，REST JSON 再做一次 base64 編碼。不要預先編碼邏輯 AAD，也不要在各操作間改變它。driver 提供請求 CRC32C 並檢查回應完整性；encrypt 的版本 parent 必須精確等於預期 CryptoKey。空或畸形結果會被拒絕，這些檢查不能替代 IAM。儲存包裹格式為 `wk:2:gcp:<base64(raw-ciphertext)>`。
+
+建立版本、選定 primary 與更換資料庫包裹是不同事件。只做遠端管理後，不得回報資料庫已換版。同一 KeyRef 的精靈守衛不允許把精靈當作原地換版工具，產品沒有該端點。產品 DEK 輪替也是另一件事。仍有現行列或保留備份依賴的遠端版本，不得停用或銷毀；即使 KMS 仍可解其密文，本系統也會拒絕本地已退役的 KEK 列。
+
+<a id="gcp-migration"></a>
+### 13b.5 local→gcp 操作程序
+
+以下是具備整合條件版本的驗收步驟，不是目前建置已完成正式遷移的證據。
+
+1. 滿足 §13b.1，暫停其他金鑰操作，取得資料庫、相關檔案與組態的一致備份。記錄回復時間點、應用映像 digest／版本、schema 版本、本地 KEK 回復方式與目標 CryptoKey。依[備份與還原](./backup-and-restore.md)操作，並套用 §13b.7 的額外金鑰要求。
+2. 保留現行本地模式與材料，準備 GCP 目標組態及 ADC 來源，在隔離真專案證明目標 metadata 與 encrypt/decrypt 權限。此時不移除本地回復材料。
+3. 在該版本支援的 admin 精靈選 GCP，只送完整目標引用，要求 scope 驗證與 canary 預檢成功。缺少選項或正式 client ownership 接線時，停止且不切換 KEK。
+4. 要求交易成功後所有 pending 目標包裹與來源包裹並存，確認來源仍可讀既有資料、失敗操作沒有新增 pending 列。部署前必須完成 PostgreSQL 回滾驗收，才能依賴該行為。
+5. 套用 §13b.2 目標組態，移除作用中的本地 `ENCRYPTION_KEY`，依該版本支援的程序重啟。要求每個現行列解包成功、舊資料密文不變且可讀、清冊模式／引用正確、來源包裹軟退役。只有金鑰名相符並不足夠。
+6. 記錄觀察到的啟動與審計結果，在依賴持續可用前完成 §§13b.6–13b.7 的中斷與回復驗收。必要金鑰版本及回復材料須保留至核准的備份保留期限結束。
+
+<a id="gcp-continuity"></a>
+### 13b.6 可用性證據與中斷驗收
+
+服務物件 fake 測試顯示，fake KMS 不可達時，快取資料加解密與快取審計金鑰存取仍可執行；需要 KMS 的操作及新的服務物件載入則失敗。這些測試不證明既有會話、審計送出或真實行程重啟有相同行為，不得依此承諾服務不中斷。
+
+滿足版本門檻後，在隔離完整服務環境演練 KMS 不可達與 ADC 拒絕。接受部署前，要求實際觀察既有資料讀取、新連線、審計送出、需遠端操作的拒絕及冷啟動拒絕。依觀察到的故障停止或回復，不改 endpoint、不繞過完整性檢查，也不以快取明文代替密文來強迫成功。這些完整服務演練仍待完成。
+
+<a id="gcp-recovery"></a>
+### 13b.7 放棄與備份回復
+
+**切換之前：**保留現行本地 KEK 與組態。對未切換的 pending 目標，使用該版本支援的 admin 放棄操作（`DELETE /api/v1/keys/rewrap`），再檢查 pending、目標退役、現行資料讀取與審計結果。不要只為放棄 pending 而還原較舊的資料庫。本地 pending／放棄已有服務物件 fake 證據，完整 handler／精靈程序仍待驗。再次嘗試仍須通過該版本的目標引用守衛，不手動復活退役列。
+
+**切換之後：**不要只降版二進位、重設退役旗標，或把現行資料庫指向已退役來源 KEK。在核准回復環境停止寫入並保全現況證據，依[備份與還原](./backup-and-restore.md)，用相容的應用映像、schema、相關檔案及部署組態還原一致備份組。切換前備份需要原本可回復的本地 KEK 材料；GCP 備份需要同一完整 CryptoKey、其包裹列所需的全部遠端版本，以及有效且獲授權的 ADC 存取。資料庫備份不包含 KMS KEK，必要金鑰材料遺失後，單靠憑證不能回復資料。
+
+重新允許寫入前，要求回復列實際解包、舊資料讀回、清冊與審計一致。記錄選定回復點、二進位／映像與 schema 相容性、金鑰版本依賴及觀察結果。備份點之後的寫入可能遺失，相關檔案與外部儲存也須對齊同一時間點。相符資源名或較新版二進位都不證明相容或可解密。這是完整備份回復，不是復活現行資料庫的退役列；完整 GCP 還原程序仍待驗。
+
+<a id="gcp-protection"></a>
+### 13b.8 保護宣稱與操作紀錄
+
+在 driver 邊界，**KEK 不進後端行程，但 DEK 與認證憑證仍在後端**。密碼明文與會話流量也可能存在記憶體，不得宣稱後端沒有機密或明文、所有記憶體副本都被清除，或產品提供 HSM 等級保護。部署選用 Cloud KMS 的 HSM protection level，不構成此類產品整體宣稱。
+
+紀錄限於時間、非機密引用、版本識別、狀態碼與讀回結果，不收集私鑰、bearer token、DEK、明文或含機密的請求／回應本文。fake 證據與真專案證據分開；真專案結果仍待憑證與驗收，不因契約測試綠燈而視為完成。
+
+---
+
+<a id="vault-transit"></a>
+## 14. Vault Transit KEK 操作
+
+<a id="vault-availability"></a>
+### 14.1 交付範圍與前置條件
+
+正式啟動與委託精靈 factory 現已具備 Vault client owner 接線。隔離完整服務測試組裝透過正式 handler 與資料庫，使用真 dev Vault AppRole／Transit；僅 HTTP client 由測試專用程式注入，已驗 local→vault 遷移與服務世代重啟。正式 transport 仍要求驗證憑證的 HTTPS；這份演練不代表正式 TLS 部署已驗證。
+
+將 §14.4、§14.6 或 §14.7 用於運行中的部署前，須以該部署相容的映像／schema、持久 Vault 金鑰版本、儲存與 TLS 演練；缺少前置即停止。§4 與 §10 的一般程序不表示 Vault 已可用；Vault 操作及回復以本節的適用範圍為準。
+
+<a id="vault-configuration"></a>
+### 14.2 TLS 與部署組態
+
+在固定 `transit` 掛載點建立對稱 derived key，AppRole 掛載於 `auth/approle`。使用專用金鑰並停用匯出與明文備份。此 adapter 不支援自訂掛載點或 namespace。下列是目標組態範例，不能取代部署演練；憑證值必須由部署的機密注入機制提供。
+
+```dotenv
+KEK_PROVIDER=kms
+KEK_KMS_PROVIDER=vault
+KEK_KMS_KEY_ID=custodexa-kek
+KEK_VAULT_ADDR=https://vault.example.com
+KEK_VAULT_ROLE_ID=
+KEK_VAULT_SECRET_ID=
+KEK_KMS_REGION=
+ENCRYPTION_KEY=
+```
+
+部署時注入非空 role_id 與 secret_id。Vault 不要求 `KEK_KMS_REGION`，請保持未設定或空值；AWS 分支仍要求 region。委託模式拒絕非空的 `ENCRYPTION_KEY`。local→vault 切換前，保留原有 `KEK_PROVIDER` 與本地材料，直到程序明確要求切換。
+
+`KEK_KMS_KEY_ID` 接受金鑰名或正規引用 `vault:<base64url-without-padding(HTTPS-origin)>:transit:<key-name>`。金鑰名限 ASCII 英文字母、數字、`_` 與 `-`，完整引用至多 255 bytes。origin 是正規 HTTPS scheme/host/port，不帶路徑、query、憑證或 fragment。引用不含金鑰版本或憑證。目標引用必須解析至部署 origin；精靈請求不能提供另一個位址或憑證。
+
+正式 transport 要求驗證伺服器憑證的 HTTPS、TLS 1.2 以上，並拒絕 redirect。請讓後端執行環境透過系統信任庫信任伺服器憑證。不要使用 `VAULT_ADDR`、`VAULT_TOKEN`、`VAULT_CACERT`、`VAULT_SKIP_VERIFY` 或其他 Vault SDK 環境覆寫：adapter 會拒絕，且沒有自訂 CA 檔或用戶端憑證設定。此 transport 不使用環境 proxy 設定。loopback HTTP dev 靶機只能經私有測試注入使用；dev mode 不是正式 TLS 或持久化方案。
+
+<a id="vault-authentication"></a>
+### 14.3 AppRole 權限與 token 續期
+
+產品身分只給具名金鑰 metadata 讀取、encrypt/decrypt/rewrap 與 token 自身續期權限。以 `custodexa-kek` 為金鑰名時，policy 形狀如下：
+
+```hcl
+path "transit/keys/custodexa-kek" { capabilities = ["read"] }
+path "transit/encrypt/custodexa-kek" { capabilities = ["update"] }
+path "transit/decrypt/custodexa-kek" { capabilities = ["update"] }
+path "transit/rewrap/custodexa-kek" { capabilities = ["update"] }
+path "auth/token/renew-self" { capabilities = ["update"] }
+```
+
+各處金鑰名須一致替換。不要附加允許任意金鑰、rotate、export 或全域管理的其他 policy。掛載點、金鑰、policy 與 AppRole 由管理者身分另行建立。產品不接受 root token 作為認證回落。參見 [AppRole API](https://developer.hashicorp.com/vault/api-docs/auth/approle) 與 [token API](https://developer.hashicorp.com/vault/api-docs/auth/token)。
+
+client 驗證 auth token 與正租期，於回傳租期一半時續期，並依新租期重新排程。不可續期 token 不會硬續。可重試的續期故障至多再試兩次；到期或觀察到拒絕時，單一登入流程可在設定的 SecretID 仍有效時重用它。登入失敗會終止該 client，不切換 provider。撤銷只能在 Vault 拒絕操作或續期、或本地租期結束時被察覺。token 續期不會輪替 KEK 或 DEK。
+
+<a id="vault-secretid"></a>
+### 14.4 更換 SecretID
+
+本部署程序須先滿足 §14.1。client 保留建構時傳入的憑證；修改環境來源不會熱載入既有 client。產品沒有在運行中輪替或注入 AppRole 憑證的端點。
+
+1. 記錄 role、policy、token／SecretID 的 TTL 與使用次數限制，以及維護／回復窗口，不記憑證值。替換的 SecretID 必須可供預定登入及允許的回復登入使用。一次性 SecretID 若已用於測試登入，就不能再交後端使用；測試應另發一份。
+2. 由 Vault 管理者核發替換 SecretID，透過核准的部署機密通道交付，不放工單、命令列引數、日誌或受版本控制的檔案。收集的回應本文與 shell tracing 不得含 role_id 或 secret_id。
+3. 在隔離完整服務環境中，依該版本支援的重啟程序重建 client，注入新的 `KEK_VAULT_SECRET_ID`（若 role 更換，也更新 `KEK_VAULT_ROLE_ID`）。先要求登入、具名金鑰 metadata／canary 與續期成功，再於正式環境重複程序。測試組裝已實走新 AppRole client 與服務世代；這不表示部署專屬的 SecretID 更換與續期已就緒。
+4. 成功採用後，由管理者以 accessor 停用舊 SecretID，並視需要另行撤銷舊 client token。銷毀 SecretID 會阻止往後用它登入，但不會因此撤銷先前已核發的 token。若懷疑憑證外洩，應立即撤銷並接受需 Vault 操作的不可用，不應只為避免停機而保留存取權。
+5. 採用失敗時停止切換，還原獲授權的部署組態或核發新憑證。不要假定舊 SecretID 尚有剩餘使用次數，也不要假定已撤銷的 token 可續期。
+
+<a id="vault-actions"></a>
+### 14.5 四動作與兩種不同輪替
+
+| 動作 | Vault 請求 | 效果與邊界 |
+| --- | --- | --- |
+| 包裹 DEK | `POST /v1/transit/encrypt/<key>` | 傳送 base64 DEK 與 context，讀取 `data.ciphertext`；KEK 留在 Vault。 |
+| 解包 DEK | `POST /v1/transit/decrypt/<key>` | 傳送完整密文與原 context，將 `data.plaintext` 解碼為後端 DEK。 |
+| 輪替遠端 KEK 版本 | `POST /v1/transit/keys/<key>/rotate` | 管理者操作；新增同名金鑰版本，不改引用或資料庫包裹列。產品 AppRole 不能 rotate。 |
+| 同名金鑰舊密文換版 | `POST /v1/transit/rewrap/<key>` | 回傳新 `data.ciphertext`，回應沒有明文。provider 回傳該值，不負責存回資料庫。 |
+
+參見 [Transit API](https://developer.hashicorp.com/vault/api-docs/secret/transit)。driver 將既有用途／版本的正規 AAD 位元組恰好一次編為 `context=base64(aad)`。`context` 用來衍生金鑰，不是 AEAD `associated_data`；本 driver 不使用後者。decrypt 與 rewrap 保留原 context。完整 `vault:v<n>:` 密文保留遠端版本，儲存格式為 `wk:2:vault:<base64(complete-transit-ciphertext)>`。
+
+遠端版本輪替與產品 KEK 引用更換是不同程序。只做遠端 rotate，絕不表示資料庫包裹已換到新版。產品的同一 KeyRef 守衛不允許把精靈當作資料庫原地換版工具；產品沒有該換版端點。不要手動改寫包裹列。產品 DEK 輪替又是另一個操作，不能拿來代替 Vault rotate。
+
+provider 層跨金鑰或跨 provider 轉換採來源 unwrap 後目標 encrypt；原生 Transit rewrap 僅限同名金鑰與同 origin。服務重包路徑在既有資料庫交易內，以已快取的 DEK 呼叫目標 Wrap。完整服務 handler 證據及其限制見 §14.1。仍有現行或保留備份的包裹依賴舊版本時，不要提高 `min_decryption_version` 或刪除遠端舊版本。即使 Vault 可解舊版本，本系統仍自守本地 KEK 包裹列的退役判定。
+
+<a id="vault-migration"></a>
+### 14.6 local→vault 操作程序
+
+僅在滿足 §14.1 後執行，先於隔離完整服務環境演練。以下是必要操作與驗收檢查，不是已完成正式遷移的宣稱。
+
+1. 暫停其他金鑰操作。取得一致的資料庫與必要檔案／組態備份，記錄時間點、應用映像 digest／版本、schema 版本、來源 KEK 回復方式，以及目標 Vault origin／key 與保留版本。機密材料另行保護。基本備份程序見[備份與還原](./backup-and-restore.md)，也須符合 §14.2 與 §14.7 的 Vault 限定條件。
+2. 建立 TLS、derived 目標金鑰與限縮權限的 AppRole。在維持現行本地模式／材料下先注入 Vault 設定。用另發的測試 SecretID 檢查登入、metadata、encrypt/decrypt 與續期，保留部署 SecretID 的可用性。
+3. 在該版本支援的 admin 重包精靈選 Vault，僅送其正規引用，要求目標預檢成功。缺少 Vault 選項或 client ownership 接線時應停止，不變更現行 KEK。
+4. 要求 pending 目標包裹與來源包裹並存，並檢查來源仍可讀資料。回復窗口尚未結束前，不移除來源回復材料或清理退役材料。
+5. 改用 §14.2 的目標組態、移除本地 `ENCRYPTION_KEY`，依支援的程序重啟。要求每個現行代表列實際解包成功、既有資料密文位元不變且可讀、清冊模式／引用正確、來源包裹軟退役。僅引用相符並不足夠。
+6. 記錄觀察到的啟動、登入、續期與審計結果。在依賴服務持續可用前，於隔離環境演練 Vault 不可達與冷啟動拒絕行為。測試組裝已觀察到通往真 Vault 的路徑中斷時，快取資料加解密、重用的 HTTP 連線及新增審計寫入仍正常，需 Vault 操作與冷解封失敗；此結果不表示 SSH／RDP 會話或整個部署必然持續可用。
+
+<a id="vault-recovery"></a>
+### 14.7 放棄與備份回復
+
+兩條程序都須先滿足 §14.1 的完整服務門檻。單一隔離 Vault 無法演練產品資料庫、精靈放棄或還原。不要把 dev 靶機當作可持久保存的金鑰備份。
+
+**尚未切換：**保留現行本地 KEK 與組態，只對尚未切換的 pending 目標使用受支援的 admin 放棄操作（`DELETE /api/v1/keys/rewrap`）。檢查 pending 收斂、現行資料仍可讀、放棄的目標記為 retired。不得復活退役列。已放棄的委託引用可再次經精靈提交，仍須通過新一輪預檢及既有同現行引用、live 列與 pending 守衛；放棄不會永久燒毀該遠端鑰。記錄操作時間與審計結果。不要只為放棄未切換操作而還原較舊的資料庫。真 Vault handler 演練觀察到放棄 HTTP 200、零 pending、包裹材料保留且退役原因為 `abandoned`、本地資料可讀並有審計紀錄；不損失業務寫入。
+
+**切換之後：**不要只回退二進位、重設退役列旗標，或對現行資料庫重新配置已退役的來源 KEK。在核准的回復環境中停止寫入並保留現況證據，再以相容的應用映像與 schema、相關檔案及部署組態，還原一致的完整備份組。依[備份與還原](./backup-and-restore.md) 操作；其中 AWS 憑證的假設不適用於 Vault AppRole 機密。取得該備份所需的 KEK：切換前備份需要來源本地材料；Vault 備份需要同一 Vault origin／具名 key、所有必要遠端版本及可用 AppRole 憑證。這是完整備份回復，不是在現行資料庫復活退役列。恢復寫入前，實測資料列解包、舊資料讀取、清冊與審計一致性。
+
+記錄選定的回復時間點、二進位／映像與 schema 相容性、組態／憑證保管、必要遠端金鑰版本及實際讀回結果。回復資料庫時間點之後的寫入不在該備份內，可能遺失；相關檔案與外部儲存也須依同一時間點對帳。較新的應用程式或相符的金鑰標籤不能證明相容或可解密。必要 KEK 版本或可回復本地材料遺失時，只有認證憑證也無法恢復資料。下述演練的涵蓋範圍小於部署備份／還原。
+
+**已完成的隔離演練與限制：**`--case rollback --require-vault` 先執行上述未切換放棄，再以另一套完整服務 fixture 切換至 Vault，選定**切換後的 Vault 備份**回復點。封存並等待清理完成後，關閉 journal，備份整個 SQLite 資料庫（全部資料表）、seal journal 與受保護組態。記錄精確測試二進位 hash、schema hash、toolchain、時間點、正規引用及必要遠端版本。恢復服務後提交一筆較晚資料，再次停止寫入，保留現況資料庫／journal，才將備份還原至新路徑與新服務狀態機，另發 AppRole 憑證。解封前核對備份資料列、審計及檔案一致性，解封後實際解包每個 live 列，核對舊密文不變、資料可讀與 kms/vault 清冊。較晚那列不存在，明確呈現回復點的損失；來源退役列仍維持退役。
+
+此演練使用同一測試二進位與 schema，未配置錄影或外部儲存。它**不是**[備份與還原](./backup-and-restore.md) 所述部署的 `pg_dump`／`pg_restore`／`tar` 演練，也未證明跨版本相容、Vault 儲存還原或切換前本地備份的還原；這些仍需另有部署證據，不得由 SQLite 結果推論。即使實驗成功，切換前備份仍須保存可回復的來源材料，Vault 備份仍須持久保留必要遠端版本。
+
+<a id="vault-protection"></a>
+### 14.8 保護宣稱與操作紀錄
+
+在 driver 邊界，**KEK 不進後端行程，但 DEK 與認證憑證仍在後端**。密碼明文與會話流量也可能在記憶體中。不得宣稱記憶體中無明文、所有副本均已清除，或產品具備 HSM 等級保護。Vault 儲存或 seal 保護的部署選擇，不能作為產品具備該保護的宣稱。
+
+操作紀錄限於時間點、非機密引用、版本、狀態碼與讀回結果。不要收集 token、role_id、secret_id、DEK、明文或含機密的請求／回應本文。完整服務測試觀察到通往真 Vault 路徑中斷時，既有 HTTP 連線、新審計寫入與快取資料加解密仍正常；它未證明 SSH／RDP 持續可用、正式 TLS、PostgreSQL 或外部儲存回復，部署端仍須演練這些相依。

@@ -131,9 +131,9 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 2. **`StopAlertNotifierForRelease` 依賴 `ResourceBag` LIFO 的隱含前提**：
    「呼叫端先停排程器」無任何程式碼強制，成立僅因兩個排程器碰巧登記在推送器之後。
    移動 bag 登記位置即靜默破壞，症狀是收束 panic（可見）或 in-flight 告警遺失（**不可見**）。
-3. **`keyManager.ZeroizeForRelease` 的釋放位置**：它是「封印」在記憶體層面唯一的實體動作。
+3. **`keyManager.ZeroizeForRelease` 的釋放位置**：它是「封存」在記憶體層面唯一的實體動作。
    登記位置變晚（＝執行變早）時，被丟棄的服務圖在其餘收束期間仍持有可用 codec，
-   「封印」退化為路由層的假象，**且這條路徑上沒有任何測試會自動變紅**。
+   「封存」退化為路由層的假象，**且這條路徑上沒有任何測試會自動變紅**。
 
 **已知排序張力（現況、誠實記載）**：`auditService.Shutdown` 執行序早於
 `connectionRegistry.CloseAll`。HTTP 路徑由 `main.go` 外層順序保證，但**協議連線（WS）

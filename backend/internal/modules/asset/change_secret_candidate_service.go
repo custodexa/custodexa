@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"time"
 
 	"github.com/custodexa/backend/internal/kernel/dberr"
@@ -37,6 +38,7 @@ var (
 type ChangeSecretCandidateService struct {
 	db           *gorm.DB
 	crypto       crypto.ColumnCodec
+	bytesCrypto  material.BytesColumnCodec
 	assetService *AssetService
 	auditTx      port.TxSink
 }
@@ -47,7 +49,11 @@ func NewChangeSecretCandidateService(db *gorm.DB, codec crypto.ColumnCodec,
 	if codec == nil {
 		return nil, fmt.Errorf("初始化候選憑證服務失敗: codec 為必要參數")
 	}
-	return &ChangeSecretCandidateService{db: db, crypto: codec, assetService: assetService, auditTx: auditTx}, nil
+	bytesCodec, ok := codec.(material.BytesColumnCodec)
+	if !ok {
+		return nil, fmt.Errorf("candidate service requires bytes column codec")
+	}
+	return &ChangeSecretCandidateService{db: db, crypto: codec, bytesCrypto: bytesCodec, assetService: assetService, auditTx: auditTx}, nil
 }
 
 // CandidateInput 建立候選的輸入（明文秘密只在此結構內短暫存在）
@@ -74,8 +80,8 @@ type CandidateInput struct {
 
 // CandidateSecret 解密後的候選秘密（僅 runner 與重試排程使用，不出服務層邊界）
 type CandidateSecret struct {
-	Password   string
-	PrivateKey string
+	Password   *material.Secret
+	PrivateKey *material.Secret
 }
 
 // Create 建立候選列。**呼叫點必須在動遠端之前**：後端在
@@ -93,6 +99,15 @@ func (s *ChangeSecretCandidateService) Create(ctx context.Context, in CandidateI
 func (s *ChangeSecretCandidateService) CreateInTx(ctx context.Context, tx *gorm.DB,
 	in CandidateInput) (*model.ChangeSecretCandidate, error) {
 
+	password, key := material.Adopt([]byte(in.Password)), material.Adopt([]byte(in.PrivateKey))
+	defer password.Destroy()
+	defer key.Destroy()
+	return s.createOwnedInTx(ctx, tx, in, password, key)
+}
+
+func (s *ChangeSecretCandidateService) createOwnedInTx(ctx context.Context, tx *gorm.DB,
+	in CandidateInput, password, key *material.Secret) (*model.ChangeSecretCandidate, error) {
+
 	cand := &model.ChangeSecretCandidate{
 		AssetID:           in.AssetID,
 		AccountID:         in.AccountID,
@@ -107,15 +122,19 @@ func (s *ChangeSecretCandidateService) CreateInTx(ctx context.Context, tx *gorm.
 		PreviousPublicKey: in.PreviousPublicKey,
 		NextAttemptAt:     time.Now().Add(candidateRetryBase),
 	}
-	if in.Password != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefChangeSecretCandidatePassword, in.Password)
+	if !password.IsEmpty() {
+		enc, err := material.Use(password, func(raw []byte) (string, error) {
+			return s.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefChangeSecretCandidatePassword, raw)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("加密候選密碼失敗: %w", err)
 		}
 		cand.PasswordEnc = enc
 	}
-	if in.PrivateKey != "" {
-		enc, err := s.crypto.EncryptFor(ctx, keyvault.RefChangeSecretCandidatePrivateKey, in.PrivateKey)
+	if !key.IsEmpty() {
+		enc, err := material.Use(key, func(raw []byte) (string, error) {
+			return s.bytesCrypto.EncryptBytesFor(ctx, keyvault.RefChangeSecretCandidatePrivateKey, raw)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("加密候選私鑰失敗: %w", err)
 		}
@@ -134,16 +153,18 @@ func (s *ChangeSecretCandidateService) CreateInTx(ctx context.Context, tx *gorm.
 func (s *ChangeSecretCandidateService) Secret(ctx context.Context, cand *model.ChangeSecretCandidate) (CandidateSecret, error) {
 	var out CandidateSecret
 	if cand.PasswordEnc != "" {
-		pw, err := s.crypto.DecryptFor(ctx, keyvault.RefChangeSecretCandidatePassword, cand.PasswordEnc)
+		pw, err := s.bytesCrypto.DecryptBytesFor(ctx, keyvault.RefChangeSecretCandidatePassword, cand.PasswordEnc)
 		if err != nil {
-			return out, fmt.Errorf("解密候選密碼失敗: %w", err)
+			out.Destroy()
+			return CandidateSecret{}, fmt.Errorf("解密候選密碼失敗: %w", err)
 		}
 		out.Password = pw
 	}
 	if cand.PrivateKeyEnc != "" {
-		key, err := s.crypto.DecryptFor(ctx, keyvault.RefChangeSecretCandidatePrivateKey, cand.PrivateKeyEnc)
+		key, err := s.bytesCrypto.DecryptBytesFor(ctx, keyvault.RefChangeSecretCandidatePrivateKey, cand.PrivateKeyEnc)
 		if err != nil {
-			return out, fmt.Errorf("解密候選私鑰失敗: %w", err)
+			out.Destroy()
+			return CandidateSecret{}, fmt.Errorf("解密候選私鑰失敗: %w", err)
 		}
 		out.PrivateKey = key
 	}
@@ -220,17 +241,18 @@ func (s *ChangeSecretCandidateService) Promote(ctx context.Context, cand *model.
 	if err != nil {
 		return err
 	}
+	defer secret.Destroy()
 	switch cand.SecretType {
 	case model.ChangeSecretTypeSSHKey:
-		if secret.PrivateKey == "" {
+		if secret.PrivateKey.IsEmpty() {
 			return fmt.Errorf("候選私鑰為空")
 		}
-		err = s.assetService.UpdatePrivateKey(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.PrivateKey)
+		err = s.assetService.updateOwnedPrivateKey(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.PrivateKey)
 	default:
-		if secret.Password == "" {
+		if secret.Password.IsEmpty() {
 			return fmt.Errorf("候選密碼為空")
 		}
-		err = s.assetService.UpdatePassword(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.Password)
+		err = s.assetService.updateOwnedPassword(cand.AssetID, cand.AccountID, cand.AccountUsername, secret.Password)
 	}
 	if err != nil {
 		return err
@@ -412,4 +434,11 @@ func (s *ChangeSecretCandidateService) DiscardByAdmin(id uint, userID uint, oper
 			CredentialScope: credScope,
 		}, userID, operator)
 	})
+}
+
+func (s *CandidateSecret) Destroy() {
+	if s != nil {
+		s.Password.Destroy()
+		s.PrivateKey.Destroy()
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/custodexa/backend/pkg/crypto/gcpkms"
 )
 
 // KEK 來源模式判定。
@@ -30,8 +31,6 @@ const (
 	EnvKeyEncryptionKey = "ENCRYPTION_KEY"
 
 	EnvKeyKMSProvider = "KEK_KMS_PROVIDER"
-	EnvKeyKMSKeyID    = "KEK_KMS_KEY_ID"
-	EnvKeyKMSRegion   = "KEK_KMS_REGION"
 
 	EnvKeyHSMModule     = "KEK_HSM_MODULE"
 	EnvKeyHSMTokenLabel = "KEK_HSM_TOKEN_LABEL"
@@ -125,11 +124,40 @@ type KEKDecision struct {
 	HSM HSMSettings
 }
 
-// KMSSettings 雲端金鑰服務委託組態
+// KMSSettings 雲端金鑰服務委託組態。
+//
+// **兩類欄位、兩個來源，皆非環境變數**：
+//
+//   - 非秘密拓撲（Region、Vault.Address、Vault.RoleID、Vault 的 Transit 金鑰名）
+//     取自資料庫的拓撲設定；KeyID 於既有部署沿金鑰列的 KEK 引用。
+//   - 秘密（AWSAccessKeyID／AWSSecretAccessKey、GCPServiceAccountJSON、
+//     Vault.SecretID／Vault.Token）取自**該解封世代的記憶體憑證持有者**，
+//     SHALL NOT 自環境變數、部署檔或資料庫取得，亦 SHALL NOT 被持久化。
+//
+// **誠實邊界**：秘密欄位為 string（GCP 為 []byte）意味它們在本結構內不可覆寫；
+// 可宣稱的是不寫入任何持久化位置、封存時歸零**憑證持有者**所持有的位元組，
+// 不可宣稱行程記憶體中已無該明文。
 type KMSSettings struct {
 	Provider string
 	KeyID    string
 	Region   string
+	Vault    VaultSettings
+	// AWSAccessKeyID／AWSSecretAccessKey 存取金鑰對（秘密；解封時輸入）。
+	AWSAccessKeyID     string
+	AWSSecretAccessKey string
+	// GCPServiceAccountJSON 服務帳號金鑰檔內容（秘密；解封時輸入）。
+	GCPServiceAccountJSON []byte
+}
+
+// VaultSettings carries the topology-owned connection plus the generation secret.
+type VaultSettings struct {
+	// Address／RoleID 為非秘密拓撲（介面設定、資料庫持久化）。
+	Address string
+	RoleID  string
+	// SecretID／Token 為秘密（解封時輸入），**二選一**：
+	// SecretID 走 AppRole 登入，Token 等同跳過登入。同時提供即組態矛盾。
+	SecretID string
+	Token    string
 }
 
 // HSMSettings 硬體模組委託組態
@@ -264,6 +292,9 @@ func DecideKEK(lookup EnvLookup, hsmBuild bool) (*KEKDecision, error) {
 		// 列 9
 		d.Mode, d.MatrixRow = declared, "9"
 		d.Rationale = fmt.Sprintf("顯式宣告 %s=%s，委託組態齊備", EnvKeyKEKProvider, declared)
+		if notice := d.KMS.Notice(); notice != "" {
+			d.Rationale += "; " + notice
+		}
 		return d, nil
 	}
 
@@ -271,40 +302,116 @@ func DecideKEK(lookup EnvLookup, hsmBuild bool) (*KEKDecision, error) {
 	return nil, fmt.Errorf("[列 10] %s=%q 判定落空：拒絕啟動", EnvKeyKEKProvider, declared)
 }
 
-// collectKMS 逐鍵齊備檢查（trim 後非空才算有值）
-func collectKMS(lookup EnvLookup) (KMSSettings, []string) {
-	var missing []string
-	get := func(key string) string {
-		raw, trimmed, _ := lookupTrimmed(lookup, key)
-		if trimmed == "" {
-			missing = append(missing, fmt.Sprintf("缺 %s", key))
-			return ""
+// 委託設定的欄位名（錯誤訊息的單一事實源）。
+//
+// **不再是環境變數鍵名**：`KEK_KMS_KEY_ID`／`KEK_KMS_REGION`／`KEK_VAULT_ADDR`／
+// `KEK_VAULT_ROLE_ID`／`KEK_VAULT_SECRET_ID` 自本版起退場——非秘密拓撲改由介面
+// 設定並持久化於資料庫，秘密改由解封頁於每次解封時輸入且只存在於該解封世代的
+// 記憶體。錯誤訊息因此改列**欄位名**；若仍列環境變數鍵名，操作者會去改一個不再
+// 生效的檔案。
+const (
+	FieldKMSProvider   = "kms provider"
+	FieldKMSKeyID      = "key reference"
+	FieldKMSRegion     = "service region"
+	FieldVaultAddress  = "vault address"
+	FieldVaultRoleID   = "vault role id"
+	FieldVaultSecretID = "vault secret id or token"
+
+	FieldAWSAccessKeyID     = "aws access key id"
+	FieldAWSSecretAccessKey = "aws secret access key"
+	FieldGCPServiceAccount  = "gcp service account key"
+)
+
+// ValidateKMSSettings is shared by startup and delegated-target construction.
+// Problems name configuration fields, never their supplied values.
+func ValidateKMSSettings(s KMSSettings) error {
+	var problems []string
+	require := func(key, value string) {
+		if strings.TrimSpace(value) == "" {
+			problems = append(problems, "缺 "+key)
 		}
-		return raw
 	}
-	s := KMSSettings{
-		Provider: get(EnvKeyKMSProvider),
-		KeyID:    get(EnvKeyKMSKeyID),
-		Region:   get(EnvKeyKMSRegion),
+	require(FieldKMSProvider, s.Provider)
+	require(FieldKMSKeyID, s.KeyID)
+	switch s.Provider {
+	case "aws":
+		require(FieldKMSRegion, s.Region)
+		require(FieldAWSAccessKeyID, s.AWSAccessKeyID)
+		require(FieldAWSSecretAccessKey, s.AWSSecretAccessKey)
+	case gcpkms.ProviderGCP:
+		if _, err := gcpkms.ParseKeyResource(s.KeyID); err != nil {
+			problems = append(problems, FieldKMSKeyID+" requires a complete CryptoKey resource")
+		}
+		if len(s.GCPServiceAccountJSON) == 0 {
+			problems = append(problems, "缺 "+FieldGCPServiceAccount)
+		}
+	case "vault":
+		require(FieldVaultAddress, s.Vault.Address)
+		// **角色路徑與權杖路徑恰一**：皆無即缺憑證，皆有即組態矛盾。
+		// 不做優先序猜測——猜錯的後果是「以為用的是短期權杖，實際走了長壽命的那條」。
+		byRole := strings.TrimSpace(s.Vault.RoleID) != "" && strings.TrimSpace(s.Vault.SecretID) != ""
+		byToken := strings.TrimSpace(s.Vault.Token) != ""
+		switch {
+		case byRole && byToken:
+			problems = append(problems, FieldVaultSecretID+" is ambiguous (role secret and token both supplied)")
+		case !byRole && !byToken:
+			if strings.TrimSpace(s.Vault.RoleID) == "" {
+				problems = append(problems, "缺 "+FieldVaultRoleID)
+			}
+			problems = append(problems, "缺 "+FieldVaultSecretID)
+		}
+	case "":
+		// Without a provider, retain the existing missing-region diagnostic.
+		require(FieldKMSRegion, s.Region)
+	default:
+		problems = append(problems, FieldKMSProvider+" is not supported (aws/vault/gcp)")
 	}
-	return s, missing
+	if len(problems) != 0 {
+		return fmt.Errorf("KMS 組態不齊或無效：%s", strings.Join(problems, "、"))
+	}
+	return nil
 }
 
-// KMSSettingsFromEnv 讀取 KMS 組態但**不做齊備檢查**（缺項回空字串）。
+// Notice reports ignored configuration without disclosing its value.
+func (s KMSSettings) Notice() string {
+	if s.Provider == gcpkms.ProviderGCP && s.Region != "" {
+		return FieldKMSRegion + " is ignored for gcp"
+	}
+	return ""
+}
+
+// KMSProviderFromEnv 讀取**唯一仍由部署檔宣告的委託設定**：服務商。
 //
-// 用途只有一個：換鑰精靈的委託目標需要「本行程的 region／服務商」，而該情境下
-// 本行程仍以 env／ui 模式運行——此時 DecideKEK 根本不會走列 8，KEKDecision.KMS
-// 恆為零值。呼叫端 SHALL 自行判定缺項並回可辨識錯誤（見 buildDelegatedRewrapProvider）。
-func KMSSettingsFromEnv(lookup EnvLookup) KMSSettings {
-	get := func(key string) string {
-		_, trimmed, _ := lookupTrimmed(lookup, key)
-		return trimmed
+// 其餘欄位自本版起不再來自環境：非秘密拓撲（位址、Transit 金鑰名、角色識別、
+// 服務區域）由介面設定並持久化於資料庫；秘密（存取金鑰、服務帳號金鑰檔、
+// 角色密鑰或權杖）由解封頁於每次解封輸入，只存在於該解封世代的記憶體。
+//
+// **服務商留在部署檔的理由**：金鑰列的 KEK 引用已釘死哪一家能解，讓解封頁或
+// 資料庫決定服務商只會多一條可被改導的路徑；選錯亦只會 fail-close。
+func KMSProviderFromEnv(lookup EnvLookup) (string, error) {
+	_, provider, _ := lookupTrimmed(lookup, EnvKeyKMSProvider)
+	switch provider {
+	case "aws", "vault", gcpkms.ProviderGCP:
+		return provider, nil
+	case "":
+		return "", fmt.Errorf("缺 %s", EnvKeyKMSProvider)
+	default:
+		return "", fmt.Errorf("%s is not supported (aws/vault/gcp)", EnvKeyKMSProvider)
 	}
-	return KMSSettings{
-		Provider: get(EnvKeyKMSProvider),
-		KeyID:    get(EnvKeyKMSKeyID),
-		Region:   get(EnvKeyKMSRegion),
+}
+
+// collectKMS 只收服務商；齊備驗證延後至 provider 建構期。
+//
+// **齊備驗證為何不能留在啟動期**：拓撲讀自資料庫（此時尚未連線），秘密讀自
+// 解封世代（此時尚不存在）。啟動期要求它們齊備等於要求委託部署在無人提供憑證
+// 時就失敗，而那正是本版明確改掉的語義——委託模式冷啟動 SHALL 進入已封存等待
+// 人工解封，SHALL NOT 非零退出。
+func collectKMS(lookup EnvLookup) (KMSSettings, []string) {
+	provider, err := KMSProviderFromEnv(lookup)
+	if err != nil {
+		return KMSSettings{}, []string{err.Error()}
 	}
+	return KMSSettings{Provider: provider}, nil
 }
 
 // collectHSM 逐鍵齊備檢查；PIN 與 PIN_FILE **恰一有值**（皆無＝缺項、

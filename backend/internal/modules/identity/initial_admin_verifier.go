@@ -3,6 +3,7 @@ package identity
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -81,4 +82,68 @@ func VerifyInitialAdminCredential(db *gorm.DB, username string, password []byte)
 		return ErrSealInitialAdminInvalid
 	}
 	return nil
+}
+
+// VerifySealAdminCredential 驗證解封流程的管理員帳密（封存期專用）。
+//
+// # 與一般登入的差別，以及為什麼是這些差別
+//
+//   - **不驗動態驗證碼**：TOTP 種子是受資料金鑰保護的欄位，封存時解不出來。
+//     要求它會構成「先解封才能驗證、先驗證才能解封」的循環。正常登入的動態
+//     驗證碼要求**不因此弱化**——本函式不是登入，不簽發工作階段、不改任何
+//     帳號狀態（含 MustChangePassword 與失敗計數）。
+//   - **不套用 SecurityPolicyService 的帳號鎖定政策**：該服務於段 2 才建構，
+//     此處取用不到。本函式仍尊重已寫入帳號的鎖定期限（LockedUntil），
+//     其餘防爆破由解封端點的退避與冷卻承擔。
+//
+// # 回應不可區分
+//
+// 帳號不存在、密碼錯、非管理角色、帳號停用、外部身分帳號、鎖定中一律回同一個
+// ErrSealInitialAdminInvalid。呼叫端 SHALL NOT 讓它們產生不同的回應內容——
+// 本階段面對的是匿名探測，可區分的錯誤等於帳號枚舉。
+//
+// 回傳通過驗證的使用者識別，供授權脈絡與審計記錄「是誰要求解封」。
+func VerifySealAdminCredential(db *gorm.DB, username string, password []byte) (uint, error) {
+	if err := VerifyInitialAdminCredential(db, username, password); err != nil {
+		return 0, ErrSealInitialAdminInvalid
+	}
+	var user model.User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		return 0, ErrSealInitialAdminInvalid
+	}
+	// 鎖定期內一律拒絕：鎖定是既有的爆破防護，不因為走的是解封頁而豁免。
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		return 0, ErrSealInitialAdminInvalid
+	}
+	return user.ID, nil
+}
+
+// VerifySealAdminStillAuthorized 重新確認該使用者仍具解封資格。
+//
+// 供解封授權脈絡於**每次使用**時重新判定：脈絡的效期以分鐘計，而在那段窗口內
+// 帳號可能被停用、被降權、被鎖定，或其憑證世代被推進。規格要求「權限變動 SHALL
+// 使該脈絡失效並要求重驗」，那句話只有在取用時重新判定才成立。
+//
+// **不驗密碼**：密碼已在簽發時驗過，這裡問的是「這個人現在還有沒有資格」。
+// 回錯即失效；錯誤內容不對外（呼叫端一律收斂為同一個機器碼）。
+func VerifySealAdminStillAuthorized(db *gorm.DB, userID uint) error {
+	if db == nil || userID == 0 {
+		return ErrSealInitialAdminInvalid
+	}
+	var user model.User
+	if err := db.Preload("Roles").First(&user, userID).Error; err != nil {
+		return ErrSealInitialAdminInvalid
+	}
+	if user.IsExternal() || !user.Active {
+		return ErrSealInitialAdminInvalid
+	}
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		return ErrSealInitialAdminInvalid
+	}
+	for _, r := range user.Roles {
+		if r.Name == model.RoleAdmin {
+			return nil
+		}
+	}
+	return ErrSealInitialAdminInvalid
 }

@@ -30,12 +30,13 @@ import (
 // 連通性預檢（KMS：DescribeKey 正規化＋金鑰可用性＋一次真實 Encrypt／Decrypt
 // 往返）。未注入 factory 或該模式尚未交付（hsm）時仍回 ErrRewrapTargetUnsupported。
 
-// 重包目標的判別子值域，逐字沿用 crypto.KeyRef.Provider 的三值——
-// union 的判別子與落庫的金鑰引用同源，避免兩套字面各自漂移
+// Target discriminators share the persisted key-reference provider constants.
 const (
 	RewrapTargetModeLocal = crypto.KeyRefProviderLocal
 	RewrapTargetModeKMS   = crypto.KeyRefProviderKMS
 	RewrapTargetModeHSM   = crypto.KeyRefProviderHSM
+	RewrapTargetModeVault = crypto.KeyRefProviderVault
+	RewrapTargetModeGCP   = crypto.KeyRefProviderGCP
 )
 
 // ErrRewrapMaterialFormat 本地目標材料未通過伺服端格式驗證（長度、
@@ -155,7 +156,7 @@ func (t *RewrapTarget) Validate() error {
 		return fmt.Errorf("%w：目標為 nil", ErrRewrapTargetInvariant)
 	}
 	switch t.mode {
-	case RewrapTargetModeLocal, RewrapTargetModeKMS, RewrapTargetModeHSM:
+	case RewrapTargetModeLocal, RewrapTargetModeKMS, RewrapTargetModeHSM, RewrapTargetModeVault, RewrapTargetModeGCP:
 	default:
 		return fmt.Errorf("%w：%q", ErrRewrapTargetModeInvalid, t.mode)
 	}
@@ -223,7 +224,7 @@ func (t *RewrapTarget) Destroy() {
 // （非單一 kms:ReEncrypt）。
 func NewDelegatedRewrapTarget(ctx context.Context, mode, keyRef string, factory DelegatedProviderFactory) (*RewrapTarget, error) {
 	switch mode {
-	case RewrapTargetModeKMS, RewrapTargetModeHSM:
+	case RewrapTargetModeKMS, RewrapTargetModeHSM, RewrapTargetModeVault, RewrapTargetModeGCP:
 	default:
 		return nil, fmt.Errorf("%w：%q", ErrRewrapTargetModeInvalid, mode)
 	}

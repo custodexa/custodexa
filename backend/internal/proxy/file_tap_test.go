@@ -18,6 +18,14 @@ func setupFileTapDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
+	// In-memory SQLite is per-connection: a second pooled connection sees an
+	// empty database ("no such table"). Pin the pool to one connection so the
+	// async audit sink and the test share the same schema.
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("sql db: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AuditLog{}, &model.User{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

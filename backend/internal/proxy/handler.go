@@ -7,6 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
@@ -205,6 +206,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
 		return
 	}
+	defer creds.Destroy()
 	st.creds = creds
 	// role key 慣例沿用既有 CheckPermission（兩道 authz 閘共用同一 ctx）
 	st.authzCtx = context.WithValue(c.Request.Context(), "role", st.currentRole) //nolint:staticcheck // 沿用既有 CheckPermission 的 string key 慣例
@@ -231,7 +233,12 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	params["port"] = strconv.Itoa(assetRow.Port)
 	// username 與密碼同取自同一帳號；不再讀 assetRow.Username
 	params["username"] = creds.Username
-	params["password"] = password
+	// Guacd requires an immutable password string; its copies are not erased.
+	_, materialErr := material.Use(password, func(raw []byte) (struct{}, error) { params["password"] = string(raw); return struct{}{}, nil })
+	if materialErr != nil {
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
+		return
+	}
 
 	// 初始顯示尺寸：前端實測容器尺寸，供 guacd 握手 size instruction 使用
 	if w := c.Query("width"); w != "" {
@@ -269,6 +276,8 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	// VNC 檔案傳輸（vnc-file-transfer）：RFB 無檔案通道，經 guacd SFTP 側車。
 	// sftp-hostname 固定取資產 host（不可由前端改指，防繞收口）；憑證僅此處
 	// 記憶體內解密注入。解密失敗僅停用檔案傳輸，不中斷 VNC 連線本體。
+	var sidecarSecret *material.Secret
+	defer func() { sidecarSecret.Destroy(); clearCredentialParams(params) }()
 	if protocol == "vnc" && assetRow.SftpEnabled {
 		sftpPwd, sftpErr := h.AssetService.GetSftpPassword(assetRow)
 		if sftpErr != nil {
@@ -278,7 +287,11 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 			params["sftp-hostname"] = assetRow.Host
 			params["sftp-port"] = strconv.Itoa(assetRow.SftpPort)
 			params["sftp-username"] = assetRow.SftpUsername
-			params["sftp-password"] = sftpPwd
+			sidecarSecret = sftpPwd
+			// Guacd requires immutable strings; dropping references cannot erase its copies.
+			if err := sftpPwd.Borrow(func(raw []byte) error { params["sftp-password"] = string(raw); return nil }); err != nil {
+				delete(params, "enable-sftp")
+			}
 			// sftp-root-directory 決定前端上傳落地根：libguac 以此為前綴，
 			// 一般帳號無權寫伺服器根 /，故預設對到帳號家目錄（v1；自訂路徑列 backlog）
 			params["sftp-root-directory"] = sftpRootForUser(assetRow.SftpUsername)
@@ -306,10 +319,11 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 
 	// 5. 創建 Connection 並執行握手
 	conn := NewConnection(protocol, params)
-	if err := conn.Connect(h.GuacdHost, h.GuacdPort); err != nil {
+	if err := connectWithMaterial(reqCtx, conn, h.GuacdHost, h.GuacdPort, sidecarSecret); err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeGuacdHandshake, err)
 		return
 	}
+	creds.Destroy()
 	// 錄影的時間原點：guacd 一握手成功即開始寫
 	// .guac，而 SessionRecording 的 t=0 是檔內第一個 sync 幀。此刻**早於**下方的
 	// 會話建檔，故圖形路徑未校正的深連結落點偏「早」（與文字終端方向相反，見

@@ -2,6 +2,7 @@ package dbproxy
 
 import (
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"os"
 	"os/exec"
 	"strings"
@@ -34,7 +35,7 @@ func TestMSSQLRealBinaryPromptAndCredentialIsolation(t *testing.T) {
 		Protocol: "mssql",
 		// 不可路由的位址：即使密碼階段之後才連線，也不會真的打到任何東西
 		Host: "192.0.2.1", Port: 1433,
-		Username: "sa", Password: secret,
+		Username: "sa", Password: material.Adopt([]byte(secret)),
 	}
 
 	prog, args, env, err := BuildCommand(target, "")
@@ -124,7 +125,7 @@ func TestMSSQLRealBinaryPromptLiteral(t *testing.T) {
 		t.Errorf("提示帶尾隨空白，PasswordPrompt 的 Prompt 須同步修正：%q", got)
 	}
 	// 與 PasswordPrompt 宣告的字串對齊
-	want := PasswordPrompt(Target{Protocol: "mssql", Password: "x"}).Prompt
+	want := PasswordPrompt(Target{Protocol: "mssql", Password: material.Adopt([]byte("x"))}).Prompt
 	if !strings.Contains(got, want) {
 		t.Errorf("實測提示 %q 不含 PasswordPrompt 宣告的 %q", got, want)
 	}

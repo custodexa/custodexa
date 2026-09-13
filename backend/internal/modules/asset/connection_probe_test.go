@@ -10,6 +10,7 @@ package asset
 import (
 	"context"
 	"errors"
+	"github.com/custodexa/backend/internal/material"
 	"net"
 	"reflect"
 	"strconv"
@@ -305,7 +306,7 @@ func credsForProbe(protocol model.ProtocolType, host string, port int) *AssetCre
 		Asset:     &model.Asset{Protocol: protocol, Host: host, Port: port},
 		AccountID: 7,
 		Username:  "probe",
-		Password:  "secret",
+		Password:  material.Adopt([]byte("secret")),
 	}
 }
 

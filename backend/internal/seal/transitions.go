@@ -2,8 +2,17 @@ package seal
 
 import "time"
 
-// Event 為遷移表的事件維度（12 格）。
+// Event identifies a transition in the fourteen-cell table.
 type Event string
+
+const (
+	EventSealRequest       Event = "seal_request"
+	EventSealCleanupFailed Event = "seal_cleanup_failed"
+	cellSeal                     = "10"
+	cellSealFailed               = "11"
+	CodeSealCleanupFailed        = "SEAL_CLEANUP_FAILED"
+	CodeSealRequested            = "SEAL_REQUESTED"
+)
 
 const (
 	// EventBoot B 模式行程啟動（格 1）
@@ -58,7 +67,7 @@ const (
 
 // Situation 是遷移判準所需的全部可觀察輸入。
 //
-// 12 格的 (From, Event) 判準 SHALL 兩兩互斥：任一 Situation 至多命中一格。
+// The transition predicates are pairwise exclusive.
 // 互斥性由 TestCellsPairwiseExclusive 以窮舉笛卡兒積驗證，非靠人工推論。
 type Situation struct {
 	// From 為觀察到的來源態；格 1 使用 stateBoot 偽態
@@ -96,7 +105,7 @@ type Cell struct {
 	match func(Situation) bool
 }
 
-// cells 為 12 格定稿表。順序即表列順序。
+// cells defines the fourteen transitions in table order.
 var cells = []Cell{
 	{
 		ID: cellBoot, Event: EventBoot, Target: StateSealed,
@@ -119,7 +128,7 @@ var cells = []Cell{
 		// 格 3：唯一的「未取得持有權」出口。態不變，成因以機器碼區分
 		// （進行中／待收束／已解封），不進行任何驗證。
 		match: func(s Situation) bool {
-			return s.Event == EventUnsealRequest && !s.HolderAcquired
+			return (s.Event == EventUnsealRequest || s.Event == EventSealRequest) && !s.HolderAcquired
 		},
 	},
 	{
@@ -196,9 +205,22 @@ var cells = []Cell{
 			return s.Event == EventProcessExit
 		},
 	},
+	{
+		ID: cellSeal, Event: EventSealRequest, Target: StateSealed,
+		SetsCleanup: true, CleanupReason: CodeSealRequested,
+		match: func(s Situation) bool {
+			return s.From == StateUnsealed && s.Event == EventSealRequest && s.HolderAcquired && !s.HasCleanup
+		},
+	},
+	{
+		ID: cellSealFailed, Event: EventSealCleanupFailed, Target: StateSealedFaulted,
+		match: func(s Situation) bool {
+			return s.From == StateSealed && s.Event == EventSealCleanupFailed && s.HasCleanup
+		},
+	},
 }
 
-// Cells 回傳 12 格定稿表的複本（測試與稽核用）。
+// Cells returns a copy of the transition table.
 func Cells() []Cell {
 	out := make([]Cell, len(cells))
 	copy(out, cells)
@@ -215,7 +237,7 @@ func AllEvents() []Event {
 	return []Event{
 		EventBoot, EventUnsealRequest, EventPrePrepareAbort, EventMaterialFailure,
 		EventPostPrepareAbort, EventStage2Published, EventStage2Unpublished,
-		EventStage2Failure, EventStage2Timeout, EventCleanupDone, EventProcessExit,
+		EventStage2Failure, EventStage2Timeout, EventCleanupDone, EventProcessExit, EventSealRequest, EventSealCleanupFailed,
 	}
 }
 
@@ -270,12 +292,15 @@ func applyCell(observed *sealNode, cell Cell, now time.Time, mut func(*sealNode)
 			next.faultCode = ""
 		}
 	}
+	if cell.ID == cellSeal {
+		next.generation = observed.generation + 1
+	}
 	if cell.ClearsCleanup {
 		next.cleanup = nil
 	}
 	if cell.SetsCleanup {
 		next.cleanup = &cleanupToken{
-			generation: observed.generation,
+			generation: next.generation,
 			reason:     cell.CleanupReason,
 			startedAt:  now,
 		}

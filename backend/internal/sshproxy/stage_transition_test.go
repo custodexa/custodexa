@@ -2,6 +2,7 @@ package sshproxy
 
 import (
 	"context"
+	"github.com/custodexa/backend/internal/material"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -298,7 +299,7 @@ func TestNoEarlyCredentialUnseal(t *testing.T) {
 		}
 	}
 
-	t.Run("對照組：一路走到解封點時 DecryptFor 必被呼叫", func(t *testing.T) {
+	t.Run("control: bytes exit must decrypt", func(t *testing.T) {
 		h, db, codec := gateCountingFixture(t)
 		seedEncrypted(t, db, codec)
 		token, err := h.ConnectTokens.IssueConnectToken(context.Background(), gateGrant(1, 1, 0))
@@ -307,7 +308,7 @@ func TestNoEarlyCredentialUnseal(t *testing.T) {
 		}
 		gateRedeemSSH(h, token, "80", "24")
 		if atomic.LoadInt64(&codec.decrypts) == 0 {
-			t.Fatal("對照組不成立：走到解封點卻沒有任何 DecryptFor，計數器沒有偵測能力")
+			t.Fatal("對照組不成立：走到解封點卻沒有任何 DecryptBytesFor，計數器沒有偵測能力")
 		}
 	})
 
@@ -339,7 +340,7 @@ func TestNoEarlyCredentialUnseal(t *testing.T) {
 				t.Fatalf("%s 應拒絕: status=%d resp=%v", tc.gate, status, resp)
 			}
 			if got := atomic.LoadInt64(&codec.decrypts); got != 0 {
-				t.Fatalf("%s 在解封之前就拒絕，SHALL NOT 產生任何明文憑證，實得 DecryptFor %d 次",
+				t.Fatalf("%s 在解封之前就拒絕，SHALL NOT 產生任何明文憑證，實得 DecryptBytesFor %d 次",
 					tc.gate, got)
 			}
 		})
@@ -371,7 +372,7 @@ func TestNoEarlyCredentialUnseal(t *testing.T) {
 			t.Fatalf("簽發應成功: status=%d resp=%v", status, resp)
 		}
 		if got := atomic.LoadInt64(&codec.decrypts); got != 0 {
-			t.Fatalf("簽發端點 SHALL NOT 解封任何憑證（只解析 username），實得 DecryptFor %d 次", got)
+			t.Fatalf("簽發端點 SHALL NOT 解封任何憑證（只解析 username），實得 DecryptBytesFor %d 次", got)
 		}
 	})
 }
@@ -424,4 +425,12 @@ func TestAuditSideEffectOrdering(t *testing.T) {
 	if userDetails["policy_exemption"] != "" {
 		t.Fatalf("非 admin 被政策閘攔截時不應有豁免標記: keys=%v", userKeys)
 	}
+}
+
+func (c *gateCountingCodec) EncryptBytesFor(ctx context.Context, ref crypto.CipherRef, raw []byte) (string, error) {
+	return c.inner.(material.BytesColumnCodec).EncryptBytesFor(ctx, ref, raw)
+}
+func (c *gateCountingCodec) DecryptBytesFor(ctx context.Context, ref crypto.CipherRef, ciphertext string) (*material.Secret, error) {
+	atomic.AddInt64(&c.decrypts, 1)
+	return c.inner.(material.BytesColumnCodec).DecryptBytesFor(ctx, ref, ciphertext)
 }

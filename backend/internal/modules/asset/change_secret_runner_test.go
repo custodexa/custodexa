@@ -36,7 +36,7 @@ func TestRunChpasswdRejectsStdinInjection(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			err := runChpasswd(nil, c.user, "old", c.newPass)
+			err := runChpasswd(nil, c.user, []byte("old"), []byte(c.newPass))
 			if err == nil {
 				t.Errorf("%s 應被拒絕", c.name)
 			}

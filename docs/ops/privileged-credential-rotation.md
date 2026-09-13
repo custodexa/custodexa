@@ -115,6 +115,10 @@ Where the "external coordination needed" column is not empty, **if that coordina
 
 ## 4. KEK (key encryption key)
 
+For GCP, first read [§13b](#gcp-kms): production wiring and complete migration/recovery acceptance are not yet available. The generic KEK procedures do not establish GCP deployment readiness.
+
+For Vault, first read [§14](#vault-transit): the current evidence covers an isolated full-service test assembly, not deployment-specific TLS or storage recovery. The generic KEK steps below are not evidence of Vault support.
+
 The KEK is the root of the whole envelope encryption scheme. Rotating it is called a **rewrap** in this product: the existing data keys are wrapped again with a new KEK, and the data itself is not re-encrypted.
 
 **Entry point**: the Key Management page → KEK rewrap wizard (admin only). The related APIs are all admin only:
@@ -152,6 +156,17 @@ The on-screen instructions on the Key Management page and in the key change wiza
 **Migrating back (cloud → local)** also goes through the rewrap wizard; just choose a local target.
 
 ---
+
+### Runtime seal and unseal
+
+Verification scope (2026-09-13): HTTP operation of the development build in env, ui and delegated modes; delegation used the delivered AWS driver with an isolated target. Complete three-mode page operation and a release-wide memory-dump conclusion remain unverified limitations.
+
+1. Before sealing, arrange a service interruption and retain the current key source and existing administrator session. Seal stops new material use and releases the service graph, including work and connections; do not promise uninterrupted sessions or completion of every external job.
+2. An administrator requests `POST /api/v1/seal/seal` with the existing Bearer token. Read `GET /api/v1/seal/status`; wait for `state=sealed` and `cleanup_pending=false`. A sealed label alone does not prove cleanup succeeded. Status queries do not restore service.
+3. Restore through `POST /api/v1/seal/unseal`. In `ui`, explicitly enter the same effective KEK again; ordinary unseal does not require login. In `env`, submit an empty object with the existing administrator token: the backend rereads `ENCRYPTION_KEY`. Editing a deployment file does not change a running process environment. In delegated mode, the same authorized request uses deployment credentials to unwrap again; do not enter a local KEK. Retain `KEK_KMS_PROVIDER`, `KEK_KMS_REGION` and `KEK_KMS_KEY_ID` and access to the configured key service.
+4. Wait for `unsealing` to finish and confirm `unsealed`; verify access to the original encrypted data. Wrong material or an unavailable delegated source must not be treated as success. `409` during cleanup or a concurrent unseal means inspect status before retrying; do not send parallel retries. Seal and unseal are not key rotation.
+5. For an expired, revoked or otherwise invalid administrator token in env or delegated mode, restart the backend with the configured source. There is no separate rescue login or newly issued rescue token. For `sealed-faulted` or persistent `cleanup_pending`, preserve the result, resolve the reported cause and stop the old process before restarting. Do not delete the journal or treat restart as proof that earlier cleanup succeeded.
+6. Account plaintext is not retained beyond the SSH handshake; DEKs and signing keys remain resident in process memory protected by the configured process safeguards and can be cleared with the seal action; memory snapshots may still contain keys and plaintext. In env mode, the key can remain in process environment, configuration strings and deployment files. In unsealed mode DEKs are cached; protocol strings, library copies and session traffic are outside an all-memory erasure promise. Owned buffers becoming zero does not establish the absence of all plaintext. Source credentials can permit subsequent unwrapping; seal does not revoke them.
 
 ## 5. DEK and the audit stamping key
 
@@ -269,6 +284,8 @@ The reverse rewrap (delegated → local) is itself performed through the rewrap 
 > **Reverting is only that one reverse rewrap.** The legal value of the wrapping prefix is always a single form, with no fallback branch, so the rewrap completing is the end of it. There is no second step.
 
 ### 10.4 Manually recovering a retired KEK row (last resort)
+
+For Vault, use [§14.7](#vault-recovery). Do not apply this manual row-revival procedure to Vault; use a consistent whole-backup recovery instead.
 
 Use this only when you must roll back to a KEK that has been retired, and **it is only possible while that KEK's material has not been cleared explicitly** (see §4).
 
@@ -414,3 +431,213 @@ Two ways forward, both supported:
    findable from the host as well as from the credential.
 3. **The rotation evidence report marks the hosts as expected.** A host that has been detached is no
    longer marked as sharing; the report reads the credential's scope.
+
+
+---
+
+<a id="gcp-kms"></a>
+## 13b. GCP Cloud KMS KEK operations
+
+<a id="gcp-availability"></a>
+### 13b.1 Availability and release prerequisites
+
+GCP Cloud KMS is selectable. It has been exercised against the contract test suite and an in-process fake; a run against a live GCP project has not yet been performed by the project. The current build includes the GCP driver, five-provider common contract tests, service-object tests using a fake client, and the production startup and client ownership wiring; the complete migration wizard is not yet available. Against a live project, ADC/IAM, PostgreSQL transaction rollback, process restart, live sessions, audit delivery and complete backup recovery remain unverified. Take that into account before making GCP the custodian of an operating deployment.
+
+The procedures below apply only to a release with the required production wiring and successful isolated full-service acceptance. Stop if any prerequisite is missing; do not substitute manual database edits or handcrafted requests. For GCP, this gate also qualifies the generic procedures in §§4 and 10. Local retirement checks must not be bypassed to recover the current database.
+
+<a id="gcp-configuration"></a>
+### 13b.2 Resource identity, configuration and TLS
+
+Use the full CryptoKey resource name `projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>` as `kek_id`. Do not use a bare key name, URL, or a cryptoKeyVersions child resource. The deployment reference defines the trusted project; a wizard target supplies only a key reference in that project, not a new project trust setting or credentials. The driver does not guess equivalence between project IDs and project numbers. The complete reference must fit the 255-byte storage limit. See the [Cloud KMS resource reference](https://cloud.google.com/kms/docs/reference/rest).
+
+This is the target configuration, not an instruction to enable an unwired release:
+
+```dotenv
+KEK_PROVIDER=kms
+KEK_KMS_PROVIDER=gcp
+KEK_KMS_KEY_ID=projects/example-project/locations/global/keyRings/platform/cryptoKeys/platform-kek
+KEK_KMS_REGION=
+ENCRYPTION_KEY=
+```
+
+GCP does not require `KEK_KMS_REGION`; leave it unset or empty. A retained value is ignored and is not passed to the SDK; location comes from the resource name. Delegated mode rejects nonempty `ENCRYPTION_KEY`. Before switching, keep the active local mode and its recovery material until §13b.5 explicitly calls for the target configuration.
+
+The KMS data transport uses only https://cloudkms.googleapis.com, TLS 1.2 or later with certificate verification, and no redirects or environment proxy. Custom endpoints, HTTP, disabled TLS verification and nondefault SDK universe/mTLS settings are rejected. Credential token/metadata traffic follows the separate official ADC flow; its legitimate destinations are not restricted to the KMS host. No product endpoint or GCP credential configuration keys are added.
+
+<a id="gcp-authentication"></a>
+### 13b.3 ADC, permissions and credential replacement
+
+Authentication uses the official SDK's Application Default Credentials (ADC); token refresh belongs to that library. Supply the deployment's approved workload identity or service-account credential source. `GOOGLE_APPLICATION_CREDENTIALS` is a standard SDK input, not a product secret store. There is no anonymous or static test-credential fallback and no product API for live credential replacement. Do not assume changing a credential file updates an already constructed client.
+
+Grant the runtime identity only the metadata read and encrypt/decrypt access needed for the selected CryptoKeys. Use a separate administrator identity for creating versions, changing primary, disabling or destroying versions, and changing access policy. Metadata access alone is insufficient: preflight must complete encrypt and decrypt as well. Actual project IAM and credential refresh still require isolated real-project acceptance.
+
+1. Record the approved identity, nonsecret resource references, credential custody, maintenance window and recovery access. Do not record private keys or bearer tokens.
+2. Provision replacement access through the deployment's secret mechanism. Preserve authorized recovery access until adoption is confirmed; never place credential contents in shell arguments, tickets or tracked files.
+3. Once §13b.1 is satisfied, rebuild the client through that release's supported deployment/restart procedure. Require real-project metadata, encrypt/decrypt and credential refresh checks before switching production access.
+4. Revoke superseded access after successful adoption. If adoption fails, stop and restore authorized access through the deployment procedure. If compromise is suspected, revoke affected access promptly and accept that operations requiring KMS may be unavailable; credentials alone cannot replace missing KEK versions.
+
+<a id="gcp-actions"></a>
+### 13b.4 API operations, AAD and distinct rotations
+
+In the paths below, `<cryptoKey>` means the complete resource name from §13b.2.
+
+| Operation | Request | Effect and boundary |
+| --- | --- | --- |
+| Wrap a DEK | `POST /v1/<cryptoKey>:encrypt` | Uses the CryptoKey's primary; sends plaintext and original AAD, and receives ciphertext plus the actual version name and integrity fields. |
+| Unwrap a DEK | `POST /v1/<cryptoKey>:decrypt` | Sends ciphertext and the original AAD; returns the DEK to the backend. The service selects the ciphertext's version. |
+| Create a remote version | `POST /v1/<cryptoKey>/cryptoKeyVersions` | Administrator action. A create response alone is not proof that primary changed or that stored database wraps changed. |
+| Select primary | `POST /v1/<cryptoKey>:updatePrimaryVersion` | Administrator supplies `cryptoKeyVersionId`; require the returned/read-back CryptoKey primary to match. The CryptoKey reference stays the same; existing database wraps are not rewritten. |
+| Replace a product KEK reference | Source decrypt, then target encrypt | No native ReEncrypt endpoint is used. For GCP-related service rewraps, both operations and clone-row writes occur inside the existing locked database transaction. Failure or failed commit returns no success and does not publish pending state in memory. Remote requests themselves cannot be rolled back by the database. |
+
+Official schemas: [encrypt](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/encrypt), [decrypt](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/decrypt), [create version](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys.cryptoKeyVersions/create), and [update primary](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings.cryptoKeys/updatePrimaryVersion).
+
+The driver supplies the existing purpose/version canonical DEKAAD bytes directly as `additionalAuthenticatedData`; REST JSON applies one base64 encoding. Do not pre-encode the logical AAD or change it between operations. The driver supplies request CRC32C checksums and checks response integrity; encrypt's version parent must exactly match the expected CryptoKey. Empty or malformed results are rejected. These checks do not replace IAM. Stored wraps use `wk:2:gcp:<base64(raw-ciphertext)>`.
+
+Creating a version, selecting primary, and replacing database wraps are separate events. Do not report a database version upgrade after only remote administration. The same-KeyRef wizard guard prevents using the wizard as an in-place version updater; no such product endpoint is provided. Product DEK rotation is also separate. Do not disable or destroy any remote version needed by live rows or retained backups. The system rejects locally retired KEK rows even when KMS could still decrypt their ciphertext.
+
+<a id="gcp-migration"></a>
+### 13b.5 local→gcp procedure
+
+These are acceptance steps for a suitably integrated release, not evidence that the current build has completed a production migration.
+
+1. Satisfy §13b.1, pause competing key operations and take a consistent backup of the database, associated files and configuration. Record the recovery timestamp, application image digest/version, schema version, local KEK recovery method and target CryptoKey. Use [backup and restore](./backup-and-restore.md) with the additional key requirements in §13b.7.
+2. Keep the active local mode and material. Prepare the GCP target configuration and ADC source, and prove target metadata plus encrypt/decrypt permissions in an isolated real project. Do not remove local recovery material at this stage.
+3. In the release's supported admin wizard, select GCP and submit only the full target reference. Require scope validation and canary preflight. If the option or production client ownership wiring is absent, stop without switching the KEK.
+4. Require all pending target wraps to coexist with source wraps after a successful transaction. Confirm the source still reads existing data and that failed operations leave no new pending rows. PostgreSQL rollback acceptance must be completed before relying on it in deployment.
+5. Apply §13b.2's target configuration, remove the active local `ENCRYPTION_KEY`, and use the release's supported restart procedure. Require every current row to unwrap, old data to remain readable with unchanged ciphertext, correct inventory mode/reference, and soft retirement of source wraps. A matching key name is insufficient.
+6. Record observed startup and audit results, and complete outage and recovery acceptance under §§13b.6–13b.7 before depending on continuity. Retain required key versions and recovery materials for the approved backup retention period.
+
+<a id="gcp-continuity"></a>
+### 13b.6 Availability evidence and outage acceptance
+
+Service-object fake tests show cached data encryption/decryption and cached audit-key access continuing while the fake KMS is unavailable; operations that require KMS and a new service-object load fail. These tests do not prove that live sessions, audit delivery or a real process restart behave the same way. Do not promise uninterrupted service from this evidence.
+
+After the release gate is satisfied, rehearse KMS unreachability and ADC rejection in an isolated full-service environment. Require observed existing-data reads, new connections, audit delivery, remote-operation refusal and cold-start refusal before accepting the deployment. Stop or recover according to the observed failure; do not change endpoint settings, bypass integrity checks or replace ciphertext with cached plaintext to force success. These full-service exercises remain outstanding.
+
+<a id="gcp-recovery"></a>
+### 13b.7 Abandonment and backup recovery
+
+**Before switching:** preserve the current local KEK and configuration. For an unswitched pending target, use the release's supported admin abandonment operation (`DELETE /api/v1/keys/rewrap`), then check pending state, target retirement, current data reads and the audit result. Do not restore an older database just to abandon pending work. Local pending/abandon behavior has service-object fake evidence; the complete handler/wizard procedure remains unverified. Any later attempt must pass the release's target-reference guards; do not revive retired rows manually.
+
+**After switching:** do not merely downgrade the binary, reset retired-row flags, or point the current database at a retired source KEK. Stop writes in the approved recovery environment and preserve the current evidence. Restore a consistent backup set with its compatible application image, schema, associated files and deployment configuration, following [backup and restore](./backup-and-restore.md). A pre-switch backup requires its original recoverable local KEK material. A GCP-backed backup requires the same full CryptoKey, all remote versions needed by its wrapped rows, and working authorized ADC access. A database backup does not contain the KMS KEK; credentials alone cannot recover data after required key material is lost.
+
+Require actual unwrap of the recovered rows, old-data readback, inventory and audit consistency before reopening writes. Record the chosen recovery point, binary/image and schema compatibility, key-version dependencies and observed results. Writes after that backup point may be lost; reconcile files and external storage to the same point. A matching resource name or a newer binary proves neither compatibility nor decryptability. This is whole-backup recovery, not revival of retired rows in the current database. The complete GCP restore procedure remains unverified.
+
+<a id="gcp-protection"></a>
+### 13b.8 Protection claims and operating records
+
+At the driver boundary, **the KEK does not enter the backend process, but DEKs and authentication credentials remain in the backend**. Password plaintext and session traffic may also exist in memory. Do not claim that the backend contains no secrets or plaintext, that all memory copies are erased, or that the product provides HSM-level protection. A deployment's choice of a Cloud KMS HSM protection level does not establish such a product-wide claim.
+
+Record timestamps, nonsecret references, version identifiers, status codes and readback outcomes. Do not collect private keys, bearer tokens, DEKs, plaintext, or secret-bearing request/response bodies. Keep fake evidence separate from real-project evidence; real-project results remain pending credentials and acceptance, not completed because a contract test is green.
+
+---
+
+<a id="vault-transit"></a>
+## 14. Vault Transit KEK operations
+
+<a id="vault-availability"></a>
+### 14.1 Availability and prerequisites
+
+Production startup and delegated wizard factories now have Vault client ownership wiring. The isolated full-service test assembly exercises the formal handlers and database with real dev Vault AppRole/Transit; only its HTTP client is injected through test-only code. It verifies local→vault migration and generation restart. Production transport still requires verified HTTPS; this rehearsal does not validate a production TLS deployment.
+
+Before applying §§14.4, 14.6 or 14.7 to a live deployment, rehearse with that deployment's compatible image/schema, durable Vault key versions, storage and TLS. Missing prerequisites require stopping. The general procedures in §§4 and 10 do not establish Vault availability; this section governs Vault, including recovery.
+
+<a id="vault-configuration"></a>
+### 14.2 TLS and deployment configuration
+
+Provision a symmetric derived key at the fixed `transit` mount and AppRole at `auth/approle`. Use a dedicated key with export and plaintext backup disabled. Custom mounts and namespaces are not supported by this adapter. The following is a target configuration example, not a substitute for deployment rehearsal; credential values must come from the deployment's secret injection mechanism.
+
+```dotenv
+KEK_PROVIDER=kms
+KEK_KMS_PROVIDER=vault
+KEK_KMS_KEY_ID=custodexa-kek
+KEK_VAULT_ADDR=https://vault.example.com
+KEK_VAULT_ROLE_ID=
+KEK_VAULT_SECRET_ID=
+KEK_KMS_REGION=
+ENCRYPTION_KEY=
+```
+
+Set nonempty role_id and secret_id at deployment time. Vault does not require `KEK_KMS_REGION`; leave it unset or empty. The AWS branch still requires its region. Delegated mode rejects a nonempty `ENCRYPTION_KEY`. Before a local-to-Vault switchover, keep the existing `KEK_PROVIDER` and local material until the procedure explicitly says to change them.
+
+`KEK_KMS_KEY_ID` accepts the key name or the canonical reference `vault:<base64url-without-padding(HTTPS-origin)>:transit:<key-name>`. Key names contain only ASCII letters, digits, `_` and `-`; the entire reference is at most 255 bytes. The origin is canonical HTTPS scheme/host/port, without a path, query, credentials or fragment. The reference has no key version or credential. A target reference must resolve to the deployment origin; a wizard request cannot supply a different address or credential.
+
+Production transport requires HTTPS with certificate verification and TLS 1.2 or newer, and refuses redirects. Ensure the backend runtime trusts the server certificate through its system trust store. Do not use `VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_CACERT`, `VAULT_SKIP_VERIFY` or other Vault SDK environment overrides: the adapter rejects them, and it has no custom CA-file or client-certificate setting. Environment proxy settings are not used by this transport. The loopback HTTP dev fixture is accessible only through private test injection; dev mode is not a production TLS or persistence solution.
+
+<a id="vault-authentication"></a>
+### 14.3 AppRole permissions and token renewal
+
+Give the product identity only metadata read and encrypt/decrypt/rewrap on its named key, plus token self-renewal. For a key named `custodexa-kek`, the policy shape is:
+
+```hcl
+path "transit/keys/custodexa-kek" { capabilities = ["read"] }
+path "transit/encrypt/custodexa-kek" { capabilities = ["update"] }
+path "transit/decrypt/custodexa-kek" { capabilities = ["update"] }
+path "transit/rewrap/custodexa-kek" { capabilities = ["update"] }
+path "auth/token/renew-self" { capabilities = ["update"] }
+```
+
+Replace the key name consistently. Do not attach other policies that grant wildcard key access, rotate, export or global administration. Provision mounts, keys, policies and AppRole separately with an administrator identity. The product does not accept a root token as an authentication fallback. See the [AppRole API](https://developer.hashicorp.com/vault/api-docs/auth/approle) and [token API](https://developer.hashicorp.com/vault/api-docs/auth/token).
+
+The client validates the auth token and a positive lease, renews at half the returned lease, and reschedules using the new lease. A nonrenewable token is not forcibly renewed. Retryable renewal faults have at most two retries; at expiry or an observed rejection, one login flow may reuse the configured SecretID if it is still valid. Failed login terminates that client; it does not switch provider. A revoked token can be detected only when Vault rejects an operation or renewal, or its local lease ends. Token renewal does not rotate a KEK or a DEK.
+
+<a id="vault-secretid"></a>
+### 14.4 Replacing a SecretID
+
+This deployment procedure requires the availability gate in §14.1. The client retains the credentials supplied at construction; editing an environment source does not hot-reload an existing client. There is no product endpoint for rotating or injecting AppRole credentials into a running client.
+
+1. Record the role, policy, token/SecretID TTL and use limits, and the maintenance/recovery window without recording credential values. Ensure the replacement SecretID can be used for the planned login and any permitted recovery login. A one-use SecretID consumed by a test login cannot also be used by the backend; issue a separate SecretID for the test.
+2. Have the Vault administrator issue a replacement SecretID. Deliver it through the approved deployment secret channel, not a ticket, command-line argument, log or tracked file. Keep role_id and secret_id out of collected response bodies and shell tracing.
+3. In the isolated full-service environment, reconstruct the client through the release's supported restart procedure with the replacement injected as `KEK_VAULT_SECRET_ID` (and `KEK_VAULT_ROLE_ID` if the role changed). Require successful login, named-key metadata/canary and renewal before repeating the procedure in production. Fresh AppRole clients and service generations have been exercised in the test assembly; this does not establish deployment-specific SecretID replacement and renewal readiness.
+4. After successful adoption, have the administrator invalidate the old SecretID by its accessor and separately retire the old client token as appropriate. Destroying a SecretID prevents later logins with it; it does not by itself revoke tokens already issued from it. If credentials are suspected compromised, revoke them promptly and accept the resulting unavailability of Vault-dependent operations; do not retain access solely to avoid downtime.
+5. If adoption fails, stop the switchover and restore an authorized deployment configuration or issue fresh credentials. Do not assume an old SecretID still has remaining uses or that a revoked token can be renewed.
+
+<a id="vault-actions"></a>
+### 14.5 Four operations and two different rotations
+
+| Operation | Vault request | Effect and boundary |
+| --- | --- | --- |
+| Wrap a DEK | `POST /v1/transit/encrypt/<key>` | Sends base64 DEK plus context; reads `data.ciphertext`. The KEK stays in Vault. |
+| Unwrap a DEK | `POST /v1/transit/decrypt/<key>` | Sends the complete ciphertext and original context; decodes `data.plaintext` into the backend DEK. |
+| Rotate the remote KEK version | `POST /v1/transit/keys/<key>/rotate` | Administrator operation; creates a new version of the same named key. It does not change the key reference or rewrite database wrapped rows. The product AppRole cannot rotate. |
+| Rewrap an old ciphertext under the same named key | `POST /v1/transit/rewrap/<key>` | Returns a new `data.ciphertext` without plaintext in the response. The provider returns that value; it does not persist it to the database. |
+
+See the [Transit API](https://developer.hashicorp.com/vault/api-docs/secret/transit). The driver sends the existing purpose/version canonical AAD bytes as `context=base64(aad)` exactly once. `context` derives the key; it is not AEAD `associated_data`, which this driver does not use. Keep the original context on decrypt and rewrap. The complete `vault:v<n>:` ciphertext retains the remote version; storage uses `wk:2:vault:<base64(complete-transit-ciphertext)>`.
+
+Remote version rotation and product KEK-reference replacement are different procedures. Remote rotate alone never means that database wraps have moved to the new version. The product's same-KeyRef guard prevents using the wizard as an in-place database version upgrader; no such upgrade endpoint is provided. Do not manually rewrite wrapped rows. Product DEK rotation is a third, separate operation and is not a substitute for Vault rotate.
+
+At provider level, conversion from another key or provider uses source unwrap followed by target encrypt; native Transit rewrap is only for the same named key and origin. The service rewrap path uses already cached DEKs and target Wrap within its existing database transaction. The full-service handler evidence and its limits are described in §14.1. Do not raise `min_decryption_version` or delete old remote versions while any live or retained-backup wrap needs them. Local KEK-row retirement remains enforced by the system even when Vault can decrypt the old version.
+
+<a id="vault-migration"></a>
+### 14.6 local→vault procedure
+
+Execute only after §14.1 is satisfied, first in an isolated full-service environment. These are required steps and acceptance checks, not a claim of a completed production migration.
+
+1. Freeze competing key operations. Capture a consistent database and required file/configuration backup, record its timestamp, application image digest/version, schema version, source KEK recovery method, and target Vault origin/key and retained versions. Protect secret material separately. Use [backup and restore](./backup-and-restore.md) for the base backup procedure; the Vault qualifications in §§14.2 and 14.7 also apply.
+2. Provision TLS, the derived target key and restricted AppRole. Inject the Vault settings while keeping the active local mode/material. Check login, metadata, encrypt/decrypt and renewal using a separate test SecretID; keep the deployment SecretID usable.
+3. In the release's supported admin rewrap wizard, choose Vault and submit only its canonical reference. Require successful target preflight. If the Vault option or client ownership wiring is unavailable, stop without changing the active KEK.
+4. Require the pending target wraps and source wraps to coexist, and confirm the source still reads the data. Do not remove source recovery material or clear retired material before the recovery window is resolved.
+5. Change to the target configuration in §14.2, remove the local `ENCRYPTION_KEY`, and use the supported restart procedure. Require actual unwrap of every current representative row, readable pre-existing data with unchanged ciphertext, correct inventory mode/reference and soft retirement of source wraps. A matching reference alone is insufficient.
+6. Record the observed startup, login, renewal and audit results. Rehearse unavailable Vault and cold-start failure behavior in the isolated environment before depending on service continuity. The test assembly has observed cached data crypto, a reused HTTP connection and new audit writes continuing when its route to real Vault is disconnected; Vault-required operations and cold unseal fail. This does not establish SSH/RDP session continuity or deployment-wide availability.
+
+<a id="vault-recovery"></a>
+### 14.7 Abandonment and backup recovery
+
+Both procedures require the full-service gate in §14.1. An isolated Vault alone cannot exercise the product database, wizard abandonment or restore. Do not use the dev fixture as a durable key backup.
+
+**Before switching:** keep the current local KEK and configuration. Use the supported admin abandonment operation (`DELETE /api/v1/keys/rewrap`) only for an unswitched pending target. Check that pending converges, the current data remains readable, and the abandoned target is recorded as retired. Do not revive retired rows. An abandoned delegated reference may be submitted again through the wizard, subject to fresh preflight and the existing same-current-reference, live-row and pending guards; abandonment does not permanently burn that remote key. Capture the operation time and audit result. Do not restore an older database merely to abandon an unswitched operation. The real-Vault handler rehearsal observed HTTP 200 for abandonment, zero pending, retained wrapped material with retirement reason `abandoned`, local readback and an audit record; it loses no business writes.
+
+**After switching:** do not simply revert the binary, reset flags on retired rows, or reconfigure a retired source KEK against the current database. In the approved recovery environment, stop writes and preserve the current evidence, then restore a consistent backup set using the compatible application image and schema, associated files and deployment configuration. Follow [backup and restore](./backup-and-restore.md); its AWS credential assumptions do not apply to Vault AppRole secrets. Obtain the KEK required by that backup: source local material for a pre-switch backup, or the same Vault origin/named key with every required remote version plus working AppRole credentials for a Vault-backed backup. This is whole-backup recovery, not resurrection of retired rows in the current database. Test actual row unwrap and old data reads, inventory and audit consistency before allowing writes.
+
+Record the chosen recovery timestamp, binary/image and schema compatibility, configuration/credential custody, required remote key versions and observed readback results. Writes after the recovered database point are outside that backup and may be lost; reconcile associated files and external storage against the same point. A newer application or a matching key label is not proof of compatibility or decryptability. If the necessary KEK versions or recoverable local material are lost, credentials alone cannot recover the data. The rehearsal scope below is narrower than a deployment backup/restore.
+
+**Completed isolated rehearsal and limits:** `--case rollback --require-vault` first performs the unswitched abandonment above, then switches a separate full-service fixture to Vault and selects a **post-switch Vault-backed** recovery point. After sealing and draining cleanup, it closes the journal and snapshots the whole SQLite database (all tables), seal journal and protected configuration. It records the exact test binary hash, schema hash, toolchain, timestamp, canonical reference and required remote versions. It resumes service, commits one later data row, freezes writes again and preserves the current database/journal before restoring the backup into fresh paths and a new service machine with fresh AppRole credentials. It verifies backup row/audit/file consistency before unseal, then actual unwrap of every live row, unchanged old ciphertext, readable data and kms/vault inventory. The later row is absent, making the recovery-point loss explicit; retired source rows stay retired.
+
+This uses the same test binary and schema, with no recordings or external storage configured. It is **not** a `pg_dump`/`pg_restore`/`tar` rehearsal of the deployment described in [backup and restore](./backup-and-restore.md), nor proof of cross-version compatibility, restoration of Vault storage, or restoration of a pre-switch local backup. Those require separate deployment evidence; do not infer them from the SQLite result. Keep recoverable source material for a pre-switch backup and durable remote versions for a Vault-backed backup, regardless of the successful lab result.
+
+<a id="vault-protection"></a>
+### 14.8 Protection claims and operational records
+
+At the driver boundary, **the KEK does not enter the backend process, but DEKs and authentication credentials remain in the backend**. Password plaintext and session traffic can also exist in memory. Do not claim that memory contains no plaintext, that all copies are erased, or that the product provides HSM-level protection. Deployment choices for Vault storage or seal protection do not establish such a product claim.
+
+Keep operating records to timestamps, nonsecret references, versions, status codes and readback outcomes. Do not collect tokens, role_id, secret_id, DEKs, plaintext or secret-bearing request/response bodies. The full-service test observes an existing HTTP connection, new audit writes and cached data crypto during a disconnected real-Vault route. It does not prove SSH/RDP continuity, production TLS, PostgreSQL restore or external-storage recovery; deployments must rehearse those dependencies.

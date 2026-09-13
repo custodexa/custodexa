@@ -71,6 +71,7 @@ type Config struct {
 
 // Machine 為四態封印狀態機。
 type Machine struct {
+ sealBusy atomic.Bool
 	node    atomic.Pointer[sealNode]
 	journal Journal
 	verify  VerifyFunc
@@ -313,6 +314,7 @@ type attempt struct {
 // Unseal 執行一次解封嘗試。臨界區為「取得持有權 → 材料格式檢查 → 材料驗證 →
 // bootstrap 或 load → 段 2 建構 → 原子發佈」全程；其他請求在任何驗證開始前即被拒。
 func (m *Machine) Unseal(ctx context.Context, req UnsealRequest) (Result, error) {
+ defer zeroize(req.Material)
 	a, err := m.acquire(req)
 	if err != nil {
 		return Result{}, err

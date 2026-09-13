@@ -7,10 +7,10 @@ import (
 
 	"github.com/custodexa/backend/internal/modules/identity"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 )
 
 // authRejectionContextKey 認證中介層拒絕標記。
@@ -220,4 +220,10 @@ func GetCurrentUsername(c *gin.Context) (string, bool) {
 		return "", false
 	}
 	return username.(string), true
+}
+
+// AbortControlAuthentication uses the shared anonymous-rejection audit marker.
+// It does not retain the authentication service or create another token path.
+func AbortControlAuthentication(c *gin.Context, code apierror.ErrCode) {
+	abortUnauthenticated(c, code)
 }

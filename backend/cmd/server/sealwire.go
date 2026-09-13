@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"log"
@@ -30,13 +31,21 @@ import (
 
 // verifiedUnseal 是 VerifyFunc 交給段 2 的載荷。
 type verifiedUnseal struct {
-	kek crypto.KEKProvider
+	kek        crypto.KEKProvider
+	owner      *material.Secret
+	credentials *credentialOwner
 	// bootstrap 為 true 代表走初始化解封路徑（data_keys 為空）。
 	// 顯式欄位而非由其他欄位推導：分流結果決定 bootstrap 是否執行，
 	// 用「使用者名稱是否為空」代表它，等於把兩件事綁在一個巧合上。
 	bootstrap bool
 	// adminUsername 僅初始化路徑有值，供審計事件記錄「由誰宣告主金鑰」。
 	adminUsername string
+	// topology 僅全新安裝的委託路徑有值：已驗證但**尚未落庫**的拓撲。
+	//
+	// 驗證段刻意不寫它——拓撲要與首批金鑰列落在同一筆交易（見
+	// keyvault.SaveKEKTopologyTx 的理由），而首批金鑰在段 2 才產生。
+	// 帶著它走到段 2 是「同事務」在結構上唯一的作法。
+	topology *keyvault.KEKTopologyInput
 }
 
 // sealAuditEvent 是兩條解封路徑各自的審計事件名（兩條路徑於審計上可區分）。
@@ -102,6 +111,9 @@ func (b *bootstrapPendingState) clear() {
 // swap 為 http.Server 的可換手 handler：解封成功後才把段 2 的完整 router 換上
 // （publish 之後，見 sealgate.go 的換手時機說明）。
 func newSealMachine(s1 *stage1, swap *swappableHandler) (*sealWiring, error) {
+	if s1.journal == nil || s1.journal.Faulted() {
+		return nil, errors.New("seal journal unavailable; refusing startup")
+	}
 	sealCfg := s1.cfg.Seal
 	allowed, err := sealCfg.ParseAllowedCIDRs()
 	if err != nil {
@@ -128,7 +140,24 @@ func newSealMachine(s1 *stage1, swap *swappableHandler) (*sealWiring, error) {
 		Journal: s1.journal,
 		Limiter: limiter,
 		Verify: func(ctx context.Context, material []byte) (seal.VerifiedMaterial, error) {
-			v, err := verifyUnsealMaterial(material, pending)
+			var v *verifiedUnseal
+			var err error
+			if s1.kekDecision.Mode == config.KEKModeKMS {
+				// 委託模式：憑證只由本次請求提供，故**不接手段 1 的持有者**
+				// ——那一個從來沒有拿到過憑證（冷啟動即進已封存）。
+				v, err = verifyDelegatedUnseal(ctx, s1, material, pending)
+			} else if s1.sealedMode() {
+				v, err = verifyUnsealMaterial(material, pending)
+				if err == nil {
+					v.credentials = s1.credentials
+					s1.credentials = nil
+					if v.credentials == nil {
+						v.credentials = newCredentialOwner()
+					}
+				}
+			} else {
+				v, err = verifyDeploymentMaterial(ctx, s1)
+			}
 			if err != nil {
 				return seal.VerifiedMaterial{}, err
 			}
@@ -142,13 +171,30 @@ func newSealMachine(s1 *stage1, swap *swappableHandler) (*sealWiring, error) {
 		return nil, err
 	}
 
+	// **兩個監聽面共用同一份授權脈絡表與同一個授權退避器**：獨立監聽是網路可達
+	// 面的隔離，不是第二套授權模型。各自一份會讓「在 A 面驗證、於 B 面送出」
+	// 成立，也會讓退避計數被分成兩半。
+	grants := api.NewSealGrantStore(0)
+	// 權限變動即失效：脈絡於每次使用時重新確認該管理員仍具資格
+	// （停用、降權、鎖定、憑證世代推進皆在此被擋下）。
+	grants.SetRevalidator(func(userID uint) error {
+		return identity.VerifySealAdminStillAuthorized(database.DB, userID)
+	})
+	authLimiter := seal.NewLimiter(seal.LimiterConfig{
+		BaseBackoff:       sealCfg.BackoffBase,
+		MaxBackoff:        sealCfg.BackoffMax,
+		GlobalThreshold:   sealCfg.CooldownThreshold,
+		GlobalCooldown:    sealCfg.Cooldown,
+		MaxGlobalCooldown: sealCfg.CooldownMax,
+	})
+
 	w := &sealWiring{machine: machine}
-	w.main = newWiredSealHandler(s1, machine, allowed, sealCfg, swap, pending)
+	w.main = newWiredSealHandler(s1, machine, allowed, sealCfg, swap, pending, grants, authLimiter)
 	mainHandler = w.main
 	// 解封端點另行繫結時：主監聽的 handler 硬拒解封，獨立監聽另建一個可受理的。
 	if sealCfg.UnsealBindAddr != "" {
 		w.main.SetUnsealRelocated(true)
-		w.admin = newWiredSealHandler(s1, machine, allowed, sealCfg, swap, pending)
+		w.admin = newWiredSealHandler(s1, machine, allowed, sealCfg, swap, pending, grants, authLimiter)
 	}
 	return w, nil
 }
@@ -158,8 +204,19 @@ func newSealMachine(s1 *stage1, swap *swappableHandler) (*sealWiring, error) {
 // 兩個監聽面各持一個實例，但**狀態機、journal、限速與 admission 全部共用**——
 // 獨立監聽是網路可達面的隔離，不是第二套授權模型，更不是第二份狀態。
 func newWiredSealHandler(s1 *stage1, machine *seal.Machine, allowed []*net.IPNet,
-	sealCfg config.SealConfig, swap *swappableHandler, pending *bootstrapPendingState) *api.SealHandler {
+	sealCfg config.SealConfig, swap *swappableHandler, pending *bootstrapPendingState,
+	grants *api.SealGrantStore, authLimiter *seal.Limiter) *api.SealHandler {
 	h := api.NewSealHandler(machine, s1.journal)
+	authorizer := identity.NewSealAuthorizer(s1.cfg.Security.JWTSecret, database.DB)
+	h.SetAuthorizer(string(s1.kekDecision.Mode), authorizer.Authorize)
+	// 解封流程的第一段：封存期可用的帳密驗證（不驗動態驗證碼，見
+	// identity.VerifySealAdminCredential 的邊界說明）。
+	h.SetSealAuthorization(grants, func(username string, password []byte) (uint, error) {
+		return identity.VerifySealAdminCredential(database.DB, username, password)
+	})
+	h.SetAuthLimiter(authLimiter)
+	// 唯讀拓撲：委託模式於載入即呈現供核對，先於任何秘密輸入。
+	h.SetTopologyProbe(delegatedTopologyProbe(s1.kekDecision))
 	h.SetSourceControls(sealCfg.TrustedProxyConfigured(), allowed, sealCfg.UnsealBindAddr)
 	// 守衛粗狀態（橫幅輪詢的資料出口）：兩個監聽面各一個 handler，探針共用同一份快照
 	h.SetInstanceGuardProbe(instanceGuardStatusProbe)
@@ -192,7 +249,7 @@ func runStage2Graph(ctx context.Context, s1 *stage1, vm seal.VerifiedMaterial,
 	if !ok || v == nil {
 		return nil, fmt.Errorf("段 2 收到非預期的驗證載荷型別 %T", vm.Payload)
 	}
-	g, err := runStage2(ctx, s1, v.kek)
+	g, err := runStage2(ctx, s1, v.kek, v.credentials, v.topology, v.owner)
 	// 解封路徑的中繼資料掛在**本次**的服務圖上，不放共享變數：
 	// 逾時後才返回的殭屍段 2 會寫入同一份共享狀態，用共享變數承接
 	// 等於自造一個資料競賽。
@@ -285,17 +342,18 @@ func verifyUnsealMaterial(material []byte, pending *bootstrapPendingState) (*ver
 		pending.arm(v.adminUsername)
 		return v, nil
 	}
-	kek, err := buildUIKEKProvider(payload.KEK)
+	kek, owner, err := buildOwnedUIKEKProvider(payload.KEK)
 	if err != nil {
 		return nil, err
 	}
 	if err := keyvault.ProbeKEKUnwrap(database.DB, kek); err != nil {
+		owner.Destroy()
 		return nil, err
 	}
 	if armed, username := pending.snapshot(); armed {
-		return &verifiedUnseal{kek: kek, bootstrap: true, adminUsername: username}, nil
+		return &verifiedUnseal{kek: kek, owner: owner, bootstrap: true, adminUsername: username}, nil
 	}
-	return &verifiedUnseal{kek: kek}, nil
+	return &verifiedUnseal{kek: kek, owner: owner}, nil
 }
 
 // verifyInitializeUnseal 是初始化解封（空金鑰表）的驗證。
@@ -323,11 +381,11 @@ func verifyInitializeUnseal(p *api.SealUnsealPayload) (*verifiedUnseal, error) {
 	if err := identity.VerifyInitialAdminCredential(database.DB, p.Username, p.Password); err != nil {
 		return nil, err
 	}
-	kek, err := buildUIKEKProvider(p.KEK)
+	kek, owner, err := buildOwnedUIKEKProvider(p.KEK)
 	if err != nil {
 		return nil, err
 	}
-	return &verifiedUnseal{kek: kek, bootstrap: true, adminUsername: p.Username}, nil
+	return &verifiedUnseal{kek: kek, owner: owner, bootstrap: true, adminUsername: p.Username}, nil
 }
 
 // buildStage2Engine 以段 2 的完整依賴建 router。
@@ -432,6 +490,16 @@ func startSealJournalReplay(j *sealjournal.Journal, g *appGraph) {
 	if j == nil || g == nil || g.bag == nil {
 		return
 	}
+	replayCtx := context.Background()
+	finish := func() {}
+	if integrity := audit.GetAuditIntegrity(); integrity != nil {
+		var err error
+		replayCtx, finish, err = integrity.ReserveWrite(replayCtx)
+		if err != nil {
+			log.Printf("[SealJournal] replay material admission failed: %v", err)
+			return
+		}
+	}
 	done := make(chan struct{})
 	// 先登記等待點、再起 goroutine：反序會留下「已在跑但還沒有人等得到」的窗口。
 	g.bag.AddFunc("sealJournalReplay", func(ctx context.Context) error {
@@ -444,7 +512,8 @@ func startSealJournalReplay(j *sealjournal.Journal, g *appGraph) {
 	})
 	go func() {
 		defer close(done)
-		res, err := j.Replay(context.Background(), audit.NewSealJournalSink(g.auditService))
+		defer finish()
+		res, err := j.Replay(replayCtx, audit.NewSealJournalSink(g.auditService))
 		if err != nil {
 			log.Printf("[SealJournal] 回灌失敗（不阻服務，下次解封重跑去重）: %v", err)
 			return
@@ -455,4 +524,58 @@ func startSealJournalReplay(j *sealjournal.Journal, g *appGraph) {
 		log.Printf("[SealJournal] 回灌完成：事件 %d 筆、序號 %d-%d、聚合列 %s",
 			res.Events, res.StartSeq, res.EndSeq, res.AggregateID)
 	}()
+}
+
+// verifyDeploymentMaterial consumes the startup provider once, then rereads the source.
+func verifyDeploymentMaterial(ctx context.Context, s1 *stage1) (*verifiedUnseal, error) {
+	p, owner := s1.kekProvider, s1.kekOwner
+	credentials := s1.credentials
+	s1.credentials = nil
+	if credentials == nil {
+		credentials = newCredentialOwner()
+	}
+	delivered := false
+	defer func() {
+		if !delivered {
+			credentials.Close()
+			owner.Destroy()
+		}
+	}()
+	s1.kekProvider = nil
+	s1.kekOwner = nil
+	if p == nil {
+		source := s1.deploymentSource
+		if source == nil {
+			source = func(ctx context.Context) (crypto.KEKProvider, *material.Secret, error) {
+				decision, err := config.DecideKEK(config.OSEnvLookup, config.HSMBuildEnabled)
+				if err != nil {
+					return nil, nil, err
+				}
+				if decision.Mode != s1.kekDecision.Mode {
+					return nil, nil, fmt.Errorf("KEK mode changed; restart required")
+				}
+				return credentials.buildStartup(ctx, decision)
+			}
+		}
+		var err error
+		p, owner, err = source(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if p.KeyRef() != s1.initialKEKRef {
+			owner.Destroy()
+			return nil, fmt.Errorf("KEK reference changed; restart required")
+		}
+	}
+
+	count, err := keyvault.CountDataKeys(database.DB)
+	if err == nil && count > 0 {
+		err = keyvault.ProbeKEKUnwrap(database.DB, p)
+	}
+	if err != nil {
+		owner.Destroy()
+		return nil, err
+	}
+	delivered = true
+	return &verifiedUnseal{kek: p, owner: owner, credentials: credentials}, nil
 }

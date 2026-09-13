@@ -78,5 +78,11 @@
       "title": "{product} テスト通知",
       "text": "これは通知チャネルの設定が正しいか確認するためのテスト通知です。"
     }
+  },
+  "kek_topology_changed": {
+    "default": {
+      "title": "保管先設定が変更されました",
+      "text": "{actor} が {provider} の保管先設定を変更しました：{before} → {after}。"
+    }
   }
 }

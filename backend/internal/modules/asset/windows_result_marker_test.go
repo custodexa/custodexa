@@ -101,7 +101,7 @@ func TestWindowsSSHExecutorResultMarker(t *testing.T) {
 	const newPassword = "N3w-P@ssw0rd!"
 	rotate := func(t *testing.T, srv *testSSHServer) error {
 		t.Helper()
-		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword)
+		err := testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword))
 		require.Positive(t, srv.chpasswdExitFired.Load(), "退出碼注入器未觸發")
 		return err
 	}
@@ -120,7 +120,7 @@ func TestWindowsSSHExecutorResultMarker(t *testing.T) {
 	t.Run("標記 6 退出碼 1 交重連驗證後通過", func(t *testing.T) {
 		srv := degraded(t, windowsExitSelfVerifyUnavailable)
 		require.NoError(t, rotate(t, srv))
-		require.NoError(t, testWindowsSSHExecutor(nil).Verify(context.Background(), sshTarget(srv, "Administrator"), newPassword), "靶機已是新密碼")
+		require.NoError(t, testWindowsSSHExecutor(nil).Verify(context.Background(), sshTarget(srv, "Administrator"), []byte(newPassword)), "靶機已是新密碼")
 	})
 
 	t.Run("標記 4 退出碼 1 自驗失敗已回滾", func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestWindowsSSHExecutorResultMarker(t *testing.T) {
 		var rejected *remoteRejectedError
 		require.True(t, errors.As(err, &rejected), "err=%v", err)
 		assert.Equal(t, model.ChangeSecretReasonRemoteSelfVerifyFailed, rejected.reason)
-		require.NoError(t, testWindowsSSHExecutor(nil).Verify(context.Background(), sshTarget(srv, "Administrator"), "old"), "靶機仍是舊密碼")
+		require.NoError(t, testWindowsSSHExecutor(nil).Verify(context.Background(), sshTarget(srv, "Administrator"), []byte("old")), "靶機仍是舊密碼")
 	})
 
 	t.Run("標記 3 退出碼 1 密碼未投遞", func(t *testing.T) {
@@ -168,7 +168,7 @@ func TestWindowsSSHExecutorResultMarker(t *testing.T) {
 		srv.mu.Lock()
 		srv.windowsOmitResultMarker = true
 		srv.mu.Unlock()
-		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), "old", newPassword))
+		require.NoError(t, testWindowsSSHExecutor(nil).Rotate(context.Background(), sshTarget(srv, "Administrator"), []byte("old"), []byte(newPassword)))
 	})
 }
 
@@ -206,7 +206,7 @@ func TestWindowsSSHResultMarkerThroughRunner(t *testing.T) {
 		require.NoError(t, fx.db.Where("asset_id = ?", assetID).First(&acct).Error)
 		creds, err := fx.assets.GetWithCredentialsForAccount(assetID, acct.ID)
 		require.NoError(t, err)
-		return creds.Password
+		return secretText(t, creds.Password)
 	}
 
 	t.Run("標記 6 退出碼 1 success", func(t *testing.T) {

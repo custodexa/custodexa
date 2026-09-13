@@ -24,7 +24,7 @@ offline.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
-    <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; every session leaves a recording, a command log, and an Ed25519-sealed audit chain." src="docs/assets/architecture-light.svg" width="920">
+    <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; every session leaves a recording, a command log, and an Ed25519-notarized audit chain." src="docs/assets/architecture-light.svg" width="920">
   </picture>
 </p>
 
@@ -50,7 +50,7 @@ Every session takes the same path, and the evidence is made along the way.
 | **02 Policy engine** | Each asset is set to direct connection, reason required, or approval required. An approval and the time-limited authorization it grants land together, so "why was this person allowed in" always has an answer. Role-based access control goes down to which account on which machine a person may use. |
 | **03 Protocol proxy** | SSH, RDP, VNC, MySQL, PostgreSQL, SQL Server, Redis and Kubernetes exec, each a browser tab away. Credentials terminate here and never reach the browser, with one-time connect tokens and host key verification. Dangerous commands and database statements can alert or be stopped where they stand, and clipboard and file transfer content is captured. |
 | **04 Credential rotation** | Scheduled password changes for Linux and Windows local accounts, verified on the target and rolled back there on failure. The rotation evidence report says, per account, how long it has gone without a change. |
-| **05 Recording and audit** | Full-session recording with replay (seek, speed control) for every protocol, a command and statement trail that handles full-screen programs like vim correctly, webhook alerts, a checkpoint chain that seals intervals, and evidence bundles carrying a manifest and a signature, with offsite copies to object storage. |
+| **05 Recording and audit** | Full-session recording with replay (seek, speed control) for every protocol, a command and statement trail that handles full-screen programs like vim correctly, webhook alerts, a checkpoint chain that notarizes intervals, and evidence bundles carrying a manifest and a signature, with offsite copies to object storage. |
 
 **Truly open source, single edition.** No enterprise tier and no paywalled features.
 What you see is all there is, under AGPL-3.0.

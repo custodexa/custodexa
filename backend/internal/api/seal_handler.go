@@ -4,10 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,8 +47,10 @@ type SealAdmitFunc func(ctx context.Context) (release func(receivedLanded bool),
 // （一般解封）；空金鑰表的初始化解封沒有這個證明，故另行要求初始管理員憑證，
 // 該要求由 VerifyFunc 在臨界區內執行。
 type SealHandler struct {
-	machine *seal.Machine
-	journal SealJournalStatus
+	authorize func(context.Context, string) (uint, error)
+	mode      string
+	machine   *seal.Machine
+	journal   SealJournalStatus
 
 	// trustedProxyConfigured 為 false 時，per-source 退避 SHALL 保守降級為全域退避
 	// （可信來源契約：寧可影響可用性，也不提供可被轉送標頭污染而繞過的假防線）。
@@ -71,6 +80,97 @@ type SealHandler struct {
 	// 回應**不含**持鎖者指紋、確認碼、主機名／pid（那些走管理者限定端點）。
 	// nil＝未注入（僅單測），此時省略欄位。
 	instanceGuard func() InstanceGuardStatus
+
+	// ── 解封授權脈絡（自本版起三模式一律先驗帳密）────────────────────
+	//
+	// grants 為行程記憶體內的短效脈絡表；verifyCredential 為封存期可用的帳密
+	// 驗證器。兩者任一未注入時 /seal/authorize 一律回拒——缺驗證器不得退化為
+	// 免驗證，而解封端點缺脈絡即拒。
+	grants           *SealGrantStore
+	verifyCredential SealCredentialVerifier
+	// authLimiter 授權端點自己的退避與冷卻。
+	//
+	// **與解封端點各自一份而非共用**：兩者的失敗語義不同（帳密錯 vs 憑證錯），
+	// 共用計數會讓一方的失敗把另一方鎖住，而管理者在憑證階段的重試是正常操作。
+	// 兩者用同一份 LimiterConfig，「沿既有退避與鎖定」指的是同一套規則而非同一份計數。
+	authLimiter   *seal.Limiter
+	authLimiterMu sync.Mutex
+	authCooldown  time.Time
+	// topologyProbe 供給解封頁核對用的唯讀拓撲；非委託模式回 ok=false。
+	topologyProbe func() (SealTopologyView, bool)
+}
+
+// SealTopologyView 解封頁的唯讀拓撲呈現。
+//
+// **在提供任何秘密之前就要能讀到**：操作者要在交出憑證前判斷目的地是否與機構的
+// 部署紀錄一致。全部欄位皆為非秘密。
+//
+// 誠實界定：唯讀呈現使可達解封頁者讀得到內部拓撲，這是「交出憑證前先核對目的地」
+// 這項能力的代價，由既有的來源網段限制承擔；它 SHALL NOT 被宣稱能防止具資料庫
+// 寫入權者篡改所顯示的內容。
+type SealTopologyView struct {
+	// Provider 保管處服務商（唯讀；由部署檔宣告，解封頁不提供切換）。
+	Provider string `json:"provider"`
+	// Configured 拓撲是否已設定（全新安裝在設定之前為 false）。
+	Configured bool `json:"configured"`
+	// Address／TransitKeyName／RoleID Vault 分支的拓撲。
+	Address        string `json:"address"`
+	TransitKeyName string `json:"transit_key_name"`
+	RoleID         string `json:"role_id"`
+	// Region 服務區域（AWS 分支）。
+	Region string `json:"region"`
+	// KeyRef 金鑰識別（沿金鑰列的 KEK 引用；尚無金鑰列時為空）。
+	KeyRef string `json:"key_ref"`
+	// Digest 拓撲快照摘要，供核對綁定（送出憑證時帶回比對）。
+	Digest string `json:"digest"`
+}
+
+// SetTopologyProbe 注入唯讀拓撲探針。
+func (h *SealHandler) SetTopologyProbe(fn func() (SealTopologyView, bool)) { h.topologyProbe = fn }
+
+// SetAuthLimiter 注入授權端點的退避器（沿解封端點的同一份組態）。
+func (h *SealHandler) SetAuthLimiter(l *seal.Limiter) { h.authLimiter = l }
+
+// authorizeLimiter 取得授權端點的退避器；未注入時以預設組態就地建一份
+//（僅單測情境；正式路徑一律由組裝根注入與解封端點相同的組態）。
+func (h *SealHandler) authorizeLimiter() *seal.Limiter {
+	h.authLimiterMu.Lock()
+	defer h.authLimiterMu.Unlock()
+	if h.authLimiter == nil {
+		h.authLimiter = seal.NewLimiter(seal.LimiterConfig{})
+	}
+	return h.authLimiter
+}
+
+// authorizeCooldownUntil 全域冷卻是否生效。
+func (h *SealHandler) authorizeCooldownUntil(now time.Time) (time.Time, bool) {
+	h.authLimiterMu.Lock()
+	defer h.authLimiterMu.Unlock()
+	if h.authCooldown.IsZero() || !now.Before(h.authCooldown) {
+		return time.Time{}, false
+	}
+	return h.authCooldown, true
+}
+
+// recordAuthorizeFailure 記一次帳密失敗並在達門檻時武裝全域冷卻。
+func (h *SealHandler) recordAuthorizeFailure(key string, now time.Time) {
+	until, arm := h.authorizeLimiter().RecordMaterialFailure(key, now)
+	if !arm {
+		return
+	}
+	h.authLimiterMu.Lock()
+	defer h.authLimiterMu.Unlock()
+	if until.After(h.authCooldown) {
+		h.authCooldown = until
+	}
+}
+
+// topologyView 取得唯讀拓撲（非委託模式回 ok=false）。
+func (h *SealHandler) topologyView() (SealTopologyView, bool) {
+	if h.topologyProbe == nil {
+		return SealTopologyView{}, false
+	}
+	return h.topologyProbe()
 }
 
 // NewSealHandler 建立解封端點 handler。
@@ -114,7 +214,9 @@ const globalSourceKey = "__global__"
 // 兩條路徑都必須在封印閘的白名單內，否則管理員無法查狀態、亦無法解封。
 func (h *SealHandler) RegisterRoutes(v1 *gin.RouterGroup) {
 	v1.GET("/seal/status", h.Status)
+	v1.POST("/seal/authorize", h.Authorize)
 	v1.POST("/seal/unseal", h.Unseal)
+	v1.POST("/seal/seal", h.Seal)
 }
 
 // Status 暴露當前態、generation、失敗機器碼、冷卻到期時間、待收束、journal 狀態
@@ -131,12 +233,28 @@ func (h *SealHandler) Status(c *gin.Context) {
 
 	body := gin.H{
 		"state":             string(snap.State),
+		"mode":              h.mode,
 		"generation":        snap.Generation,
 		"cleanup_pending":   snap.CleanupPending,
 		"journal_faulted":   h.journalFaulted(),
 		"timeout_total":     h.machine.TimeoutTotal(),
 		"trusted_proxy":     h.trustedProxyConfigured,
 		"source_restricted": len(h.allowedSources) > 0,
+		// 三模式一律先經管理者帳密驗證才顯示材料或憑證欄位。恆為 true——
+		// 這是契約而非旋鈕，前端據此決定第一步畫什麼。
+		"authorization_required": true,
+	}
+	// 委託模式：唯讀拓撲與該服務商的憑證欄形態。**先於任何秘密輸入**，
+	// 使操作者在交出憑證之前即可核對目的地。
+	if view, ok := h.topologyView(); ok {
+		body["topology"] = view
+		body["credential_form"] = view.Provider
+	}
+	// **只有 env 保留這條指引**：委託模式自本版起沒有「重讀部署來源」這條路
+	// ——憑證只存在於解封世代，重啟後無處可取，恢復一律經解封頁重新提供。
+	// 留著它會讓操作者以為重啟就能自動恢復。
+	if h.mode == "env" {
+		body["restore_guidance"] = "Use the existing administrator session to restore. If it is unavailable or invalid, restart the backend with the configured key source."
 	}
 	if h.bindAddr != "" {
 		body["bind_addr"] = h.bindAddr
@@ -205,9 +323,38 @@ func (h *SealHandler) Unseal(c *gin.Context) {
 		return
 	}
 
+	// **所有模式一律要求解封授權脈絡**（改前只有 mode != "ui" 要求 Bearer）。
+	// 脈絡證明送出者剛通過管理員帳密驗證；`ui` 的「知道材料」自本版起是驗證
+	// 之後的第二道，SHALL NOT 再單獨承擔授權。
+	//
+	// **全新安裝不例外**：初始管理員於段 1 的種子即已建立（`database.SeedDatabase`
+	// 在解封之前執行），故「驗證一個不存在的帳號」這個顧慮在本產品不成立——
+	// 全新安裝的第一步就是以那組憑證換一個脈絡，其後三步帶著它走。
+	// 請求本文仍帶同一組帳密：那一份在**臨界區之內**驗證，是「誰有權宣告本部署
+	// 的主金鑰」的證明；脈絡則是「在看到秘密欄位之前已通過驗證」的證明。
+	// 兩者的時點與用途不同，故不互相代償。
+	grantToken, _, gerr := h.grantFromRequest(c)
+	if gerr != nil {
+		code := apierror.CodeSealGrantRequired
+		if c.GetHeader("Authorization") != "" {
+			// 帶了脈絡但不成立：過期、已撤銷或格式不符，與「根本沒帶」分開回報，
+			// 否則操作者無從判斷該重驗還是先驗。兩者都不洩漏帳號是否存在。
+			code = apierror.CodeSealGrantInvalid
+		}
+		log.Printf("[SealAudit] unseal rejected code=%s", code)
+		apierror.Respond(c, http.StatusUnauthorized, code, nil)
+		return
+	}
+
 	// 輸入大小上限：讀取本身即有界，超過即截斷後交由材料驗證拒絕
 	//（超長內容不另給專屬碼，維持回應內容不可區分）。
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, MaxSealUnsealBodyBytes+1))
+	body := make([]byte, MaxSealUnsealBodyBytes+1)
+	defer material.Wipe(body)
+	n, err := io.ReadFull(c.Request.Body, body)
+	body = body[:n]
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		err = nil
+	}
 	if err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeSealMaterialInvalid, nil)
 		return
@@ -233,10 +380,24 @@ func (h *SealHandler) Unseal(c *gin.Context) {
 	res, uerr := h.machine.Unseal(c.Request.Context(), req)
 	release(receivedLanded(uerr))
 	if uerr != nil {
-		code, status := SealErrorResponse(uerr)
+		// **可區分性的判準是成因本身，不是請求帶了什麼**：四個可辨識成因
+		// （拓撲已變動、保管處不可達、憑證被拒、金鑰不符）在建構上只可能產生於
+		// 管理者身分驗證通過**之後**——既有部署經授權脈絡驗證，全新安裝經同一
+		// 請求內的初始管理員憑證驗證。匿名探測拿不到它們：帳密未過的請求在更早
+		// 一步就收斂為材料無效，與改前逐字相同。
+		//
+		// 以成因判定而非以「有無脈絡」判定，使全新安裝的四步流程同樣拿得到可
+		// 行動的錯誤，而這不放寬任何一分匿名可見性。
+		code, status := SealErrorResponseFor(uerr, true)
 		apierror.Respond(c, status, code, nil)
 		return
 	}
+	// 解封成功即撤銷全部脈絡：新的世代已成立，任何在舊狀態下取得的核對結果
+	// 都不該再能送出。
+	if h.grants != nil {
+		h.grants.RevokeAll()
+	}
+	_ = grantToken
 	// 放行在回應之前：拿到 200 的呼叫端下一個請求就必須打得到完整服務。
 	if h.onUnsealed != nil {
 		h.onUnsealed(res.Services)
@@ -338,6 +499,7 @@ var sealErrorStatus = map[string]struct {
 	seal.CodeMaterialInvalid:    {apierror.CodeSealMaterialInvalid, http.StatusBadRequest},
 	seal.CodeAborted:            {apierror.CodeSealAborted, http.StatusBadRequest},
 	seal.CodeJournalIOFailure:   {apierror.CodeSealJournalIOFailure, http.StatusServiceUnavailable},
+	seal.CodeSealCleanupFailed:  {apierror.CodeSealInitFailed, http.StatusInternalServerError},
 	seal.CodeInitFailed:         {apierror.CodeSealInitFailed, http.StatusInternalServerError},
 	seal.CodeStage2Timeout:      {apierror.CodeSealStage2Timeout, http.StatusGatewayTimeout},
 	seal.CodePublishUnconfirmed: {apierror.CodeSealPublishUnconfirmed, http.StatusInternalServerError},
@@ -347,8 +509,85 @@ var sealErrorStatus = map[string]struct {
 // 未登記的碼一律退回「材料無效」而非 500：不可辨識的失敗不得因此洩漏出
 // 一個可區分的回應形狀（回應內容不可區分）。
 func SealErrorResponse(err error) (apierror.ErrCode, int) {
+	return SealErrorResponseFor(err, false)
+}
+
+// distinguishableCauses 憑證階段的可辨識成因對應表。
+//
+// 順序無關（成因互斥），但 ErrTopologyChanged 先於其餘：核對已失效時根本
+// 不該去判斷保管處的回應。
+var distinguishableCauses = []struct {
+	cause  error
+	code   apierror.ErrCode
+	status int
+}{
+	{seal.ErrTopologyChanged, apierror.CodeSealTopologyChanged, http.StatusConflict},
+	{seal.ErrCustodyUnreachable, apierror.CodeSealCustodyUnreachable, http.StatusBadGateway},
+	{seal.ErrCredentialRejected, apierror.CodeSealCredentialRejected, http.StatusBadRequest},
+	{seal.ErrKeyMismatch, apierror.CodeSealKeyMismatch, http.StatusBadRequest},
+}
+
+// SealErrorResponseFor 取得解封錯誤對應的 apierror 碼與 HTTP 狀態。
+//
+// distinguishable 為真（請求帶有效授權脈絡）時，憑證階段的三類成因與「核對已
+// 失效」各回專屬碼；為假時一律沿既有行為——未登記的碼退回「材料無效」而非
+// 500，使不可辨識的失敗不洩漏出可區分的回應形狀。
+func SealErrorResponseFor(err error, distinguishable bool) (apierror.ErrCode, int) {
+	if distinguishable {
+		for _, d := range distinguishableCauses {
+			if errors.Is(err, d.cause) {
+				return d.code, d.status
+			}
+		}
+	}
 	if m, ok := sealErrorStatus[seal.CodeOf(err)]; ok {
 		return m.code, m.status
 	}
 	return apierror.CodeSealMaterialInvalid, http.StatusBadRequest
+}
+
+// SetAuthorizer uses the existing identity verifier for control-plane requests.
+func (h *SealHandler) SetAuthorizer(mode string, authorize func(context.Context, string) (uint, error)) {
+	h.mode = mode
+	h.authorize = authorize
+}
+func (h *SealHandler) authorizeRequest(c *gin.Context) (uint, bool) {
+	if h.authorize == nil {
+		h.rejectAuthorization(c, apierror.CodeTokenInvalid)
+		return 0, false
+	}
+	parts := strings.SplitN(c.GetHeader("Authorization"), " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		h.rejectAuthorization(c, apierror.CodeTokenMissing)
+		return 0, false
+	}
+	actor, err := h.authorize(c.Request.Context(), parts[1])
+	if err != nil {
+		h.rejectAuthorization(c, apierror.CodeTokenInvalid)
+		return 0, false
+	}
+	return actor, true
+}
+func (h *SealHandler) Seal(c *gin.Context) {
+	if h.unsealRelocated || !h.sourceAllowed(c) {
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeSealSourceNotAllowed, nil)
+		return
+	}
+	actor, ok := h.authorizeRequest(c)
+	if !ok {
+		return
+	}
+	result, err := h.machine.Seal(c.Request.Context(), seal.SealRequest{Actor: actor, Mode: h.mode, SourceDigest: sourceDigest(h.sourceIP(c))})
+	if err != nil {
+		code, status := SealErrorResponse(err)
+		apierror.Respond(c, status, code, nil)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"state": result.State, "generation": result.Generation})
+}
+
+// rejectAuthorization leaves a bounded-field log even when the business audit sink is sealed.
+func (h *SealHandler) rejectAuthorization(c *gin.Context, code apierror.ErrCode) {
+	log.Printf("[SealAudit] authorization rejected code=%s", code)
+	middleware.AbortControlAuthentication(c, code)
 }

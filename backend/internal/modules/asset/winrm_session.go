@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/material"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ type winrmSession struct {
 }
 
 // newWinRMSession 依資產的通道設定建立工作階段。
-func newWinRMSession(ctx context.Context, asset *model.Asset, username, password string,
+func newWinRMSession(ctx context.Context, asset *model.Asset, username string, password []byte,
 	newSecurity winrmSecurityFactory, dialTimeout time.Duration) (*winrmSession, error) {
 	if asset.WinrmScheme != model.WinrmSchemeHTTP && asset.WinrmScheme != model.WinrmSchemeHTTPS {
 		return nil, fmt.Errorf("winrm: unknown scheme %q", asset.WinrmScheme)
@@ -92,8 +93,10 @@ func newWinRMSession(ctx context.Context, asset *model.Asset, username, password
 // 逾時發生在指令送出前，包成 winrmDialError 讓執行器分成確定失敗；指令逾時發生在送出後，
 // 是狀態不可知。計時器到期與 shell 剛建立同時發生時以 dialed 為準——那一刻指令即將送出，
 // 只能交給指令計時器，不能再當成「未送出」。
-func (s *winrmSession) run(command, stdin string, dialTimeout, commandTimeout time.Duration) winrmOutcome {
+func (s *winrmSession) run(command string, stdin []byte, dialTimeout, commandTimeout time.Duration) winrmOutcome {
 	defer s.cancel()
+	defer material.Wipe(stdin)
+	defer func() { s.tr.password = nil }()
 	dialed := make(chan struct{})
 	done := make(chan winrmOutcome, 1)
 	go func() { done <- s.execute(command, stdin, dialed) }()
@@ -109,6 +112,7 @@ func (s *winrmSession) run(command, stdin string, dialTimeout, commandTimeout ti
 		case <-dialed:
 		default:
 			s.cancel()
+			<-done
 			return winrmOutcome{err: &winrmDialError{cause: fmt.Errorf("shell creation timed out after %s", dialTimeout)}}
 		}
 	}
@@ -120,12 +124,13 @@ func (s *winrmSession) run(command, stdin string, dialTimeout, commandTimeout ti
 		return out
 	case <-commandTimer.C:
 		s.cancel()
+		<-done
 		return winrmOutcome{err: fmt.Errorf("winrm: command timed out after %s", commandTimeout)}
 	}
 }
 
 // execute WS-Man 序列本體。dialed 在 shell 建立後關閉，供 run 切換計時器。
-func (s *winrmSession) execute(command, stdin string, dialed chan<- struct{}) winrmOutcome {
+func (s *winrmSession) execute(command string, stdin []byte, dialed chan<- struct{}) winrmOutcome {
 	defer s.tr.hc.CloseIdleConnections()
 	p := &s.params
 	url := s.tr.url
@@ -152,10 +157,11 @@ func (s *winrmSession) execute(command, stdin string, dialed chan<- struct{}) wi
 	defer func() { _, _ = s.tr.post(winrm.NewSignalRequest(url, shellID, commandID, p)) }()
 
 	// 標準輸入：資料一則、EOF 一則（目標以 End 旗標得知輸入結束）
-	if stdin != "" {
-		if _, err := s.tr.post(winrm.NewSendInputRequest(url, shellID, commandID, []byte(stdin), false, p)); err != nil {
+	if len(stdin) != 0 {
+		if _, err := s.tr.post(winrm.NewSendInputRequest(url, shellID, commandID, stdin, false, p)); err != nil {
 			return winrmOutcome{err: err}
 		}
+		material.Wipe(stdin)
 	}
 	if _, err := s.tr.post(winrm.NewSendInputRequest(url, shellID, commandID, nil, true, p)); err != nil {
 		return winrmOutcome{err: err}
