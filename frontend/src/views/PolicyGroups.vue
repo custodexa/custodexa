@@ -41,7 +41,10 @@
         :key="group.code"
         class="group-card"
         :class="{ active: group.code === activeCode }"
+        role="button"
+        tabindex="0"
         @click="activeCode = group.code"
+        @keydown.enter.space.prevent="activeCode = group.code"
       >
         <div class="card-head">
           <span class="card-name">{{ group.name }}</span>
@@ -60,6 +63,7 @@
         <div
           class="card-actions"
           @click.stop
+          @keydown.stop
         >
           <el-switch
             :model-value="group.enabled"

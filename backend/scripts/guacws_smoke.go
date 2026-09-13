@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/pkg/guacamole"
+	"github.com/custodexa/backend/scripts/guard"
 	"github.com/gorilla/websocket"
 )
 
@@ -46,6 +47,11 @@ func main() {
 
 	if *token == "" || *asset == "" {
 		log.Fatal("缺少 -token 或 -asset")
+	}
+
+	// Refuse to put the Bearer JWT on the wire in clear text to a remote host.
+	if err := guard.CheckPlainText(*base); err != nil {
+		log.Fatal(err)
 	}
 
 	ct := issueConnectToken(*base, *token, *asset, *account)

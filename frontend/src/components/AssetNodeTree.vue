@@ -6,7 +6,10 @@
       <span
         class="tree-title all-assets"
         :class="{ active: selectedKey === null }"
+        role="button"
+        tabindex="0"
         @click="selectAll"
+        @keydown.enter.space.prevent="selectAll"
       >{{ $t('nodeTree.allAssets') }}<span
         v-if="counts.all !== null"
         class="node-count"
@@ -87,7 +90,10 @@
       <div
         class="ungrouped-item"
         :class="{ active: selectedKey === 'ungrouped' }"
+        role="button"
+        tabindex="0"
         @click="selectUngrouped"
+        @keydown.enter.space.prevent="selectUngrouped"
       >
         {{ $t('assets.ungrouped') }}
         <span

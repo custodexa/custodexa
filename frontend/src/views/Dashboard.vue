@@ -26,7 +26,10 @@
           v-loading="loading"
           class="stat-card"
           :class="{ 'stat-card-clickable': card.to }"
+          :role="card.to ? 'button' : undefined"
+          :tabindex="card.to ? 0 : undefined"
           @click="card.to && $router.push(card.to)"
+          @keydown.enter.space.prevent="card.to && $router.push(card.to)"
         >
           <div
             class="stat-icon"
@@ -62,7 +65,10 @@
       >
         <div
           class="stat-card stat-card-clickable"
+          role="button"
+          tabindex="0"
           @click="$router.push(card.to)"
+          @keydown.enter.space.prevent="$router.push(card.to)"
         >
           <div
             class="stat-icon"
@@ -233,7 +239,10 @@
       <div class="review-counts">
         <div
           class="review-count"
+          role="button"
+          tabindex="0"
           @click="$router.push('/audit-logs')"
+          @keydown.enter.space.prevent="$router.push('/audit-logs')"
         >
           <div class="review-count-value">
             {{ reviewSnapshot.login_failures ?? 0 }}
@@ -244,7 +253,10 @@
         </div>
         <div
           class="review-count"
+          role="button"
+          tabindex="0"
           @click="$router.push('/alerts')"
+          @keydown.enter.space.prevent="$router.push('/alerts')"
         >
           <div class="review-count-value">
             {{ reviewSnapshot.unreviewed_alerts ?? 0 }}
@@ -255,7 +267,10 @@
         </div>
         <div
           class="review-count"
+          role="button"
+          tabindex="0"
           @click="$router.push('/audit-logs')"
+          @keydown.enter.space.prevent="$router.push('/audit-logs')"
         >
           <div class="review-count-value">
             {{ reviewSnapshot.high_risk_ops ?? 0 }}
@@ -309,7 +324,10 @@
       <div class="action-grid">
         <div
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/workspace')"
+          @keydown.enter.space.prevent="$router.push('/workspace')"
         >
           <el-icon :size="22">
             <SquareTerminal />
@@ -325,7 +343,10 @@
         </div>
         <div
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/assets')"
+          @keydown.enter.space.prevent="$router.push('/assets')"
         >
           <el-icon :size="22">
             <Server />
@@ -342,7 +363,10 @@
         <div
           v-if="isPrivileged"
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/sessions')"
+          @keydown.enter.space.prevent="$router.push('/sessions')"
         >
           <el-icon :size="22">
             <MonitorPlay />
@@ -359,7 +383,10 @@
         <div
           v-else
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/my-connections')"
+          @keydown.enter.space.prevent="$router.push('/my-connections')"
         >
           <el-icon :size="22">
             <Cable />
@@ -376,7 +403,10 @@
         <div
           v-if="!isPrivileged"
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/my-requests')"
+          @keydown.enter.space.prevent="$router.push('/my-requests')"
         >
           <el-icon :size="22">
             <ClipboardList />
@@ -393,7 +423,10 @@
         <div
           v-if="isPrivileged"
           class="action-card"
+          role="button"
+          tabindex="0"
           @click="$router.push('/audit-logs')"
+          @keydown.enter.space.prevent="$router.push('/audit-logs')"
         >
           <el-icon :size="22">
             <ScrollText />

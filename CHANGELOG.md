@@ -2,6 +2,18 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.10.1 — keyboard access on clickable cards and lists (2026-09-14)
+
+No schema change. No migration runs.
+
+### Fixes
+
+- Cards, tree nodes, tab context-menu items and policy group actions that respond to a mouse
+  click now respond to Enter and Space as well, and are reachable with Tab.
+- The developer smoke tools under `backend/scripts` send an access token only over `https`
+  or `wss`, or to a loopback address; any other plain-text destination is refused before the
+  token leaves the machine. These tools are not part of the shipped image.
+
 ## 1.10.0 — two more key custodians, and delegated settings in the interface (2026-09-14)
 
 ### New capabilities

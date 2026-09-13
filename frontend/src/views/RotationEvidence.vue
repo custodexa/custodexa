@@ -70,7 +70,10 @@
               class="summary-cell"
               :class="{ 'summary-cell-active': bucketFilter === bucket }"
               :data-test="`rotation-summary-${bucket}`"
+              role="button"
+              tabindex="0"
               @click="toggleBucket(bucket)"
+              @keydown.enter.space.prevent="toggleBucket(bucket)"
             >
               <div class="summary-value">
                 {{ bucketCount(bucket) }}

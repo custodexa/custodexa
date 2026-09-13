@@ -68,7 +68,10 @@
               class="asset-item"
               :class="{ 'is-gated': entryState(item) !== 'open' }"
               :data-access-state="entryState(item)"
+              role="button"
+              tabindex="0"
               @click="onAssetClick(item)"
+              @keydown.enter.space.prevent="onAssetClick(item)"
             >
               <!-- 名稱是選錯資產的唯一防線：截斷時仍要能以滑鼠取得全名 -->
               <span
@@ -354,28 +357,64 @@
     <ul
       v-if="tabMenu.visible"
       class="tab-context-menu"
+      role="menu"
       :style="{ left: tabMenu.x + 'px', top: tabMenu.y + 'px' }"
     >
-      <li @click="menuReconnect">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuReconnect"
+        @keydown.enter.space.prevent="menuReconnect"
+      >
         {{ $t('workspace.menuReconnect') }}
       </li>
-      <li @click="menuDuplicate">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuDuplicate"
+        @keydown.enter.space.prevent="menuDuplicate"
+      >
         {{ $t('workspace.menuDuplicate') }}
       </li>
       <li class="menu-divider" />
-      <li @click="menuClose">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuClose"
+        @keydown.enter.space.prevent="menuClose"
+      >
         {{ $t('workspace.menuClose') }}
       </li>
-      <li @click="menuCloseOthers">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuCloseOthers"
+        @keydown.enter.space.prevent="menuCloseOthers"
+      >
         {{ $t('workspace.menuCloseOthers') }}
       </li>
-      <li @click="menuCloseLeft">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuCloseLeft"
+        @keydown.enter.space.prevent="menuCloseLeft"
+      >
         {{ $t('workspace.menuCloseLeft') }}
       </li>
-      <li @click="menuCloseRight">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuCloseRight"
+        @keydown.enter.space.prevent="menuCloseRight"
+      >
         {{ $t('workspace.menuCloseRight') }}
       </li>
-      <li @click="menuCloseAll">
+      <li
+        role="menuitem"
+        tabindex="0"
+        @click="menuCloseAll"
+        @keydown.enter.space.prevent="menuCloseAll"
+      >
         {{ $t('workspace.menuCloseAll') }}
       </li>
     </ul>
