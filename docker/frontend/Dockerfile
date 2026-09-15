@@ -10,25 +10,30 @@
 # (3) 漏洞公告要能說「升到 X 版」——浮動 tag 使 X 連自己都不知道。
 # 不釘版，這三件事都無法履行。
 #
-# **釘 20.20.2（2026-08-17 查證：當日 node:20-alpine／20.20-alpine／20.20.2-alpine／
-# 20.20.2-alpine3.23 四個 tag 的 manifest digest 完全相同 sha256:fb4cd12c…，故本次
-# 釘版不改變任何交付內容，只是把「當時碰巧拉到什麼」變成「指名拉什麼」）**。
+# **釘 26.8.2（2026-09-15 查證：node:26.8.2-alpine 為當日 Node 26 線最新 alpine tag）**。
 #
-# **Node 20（Iron）已 EOL，本次刻意只釘版、不升 major**：v20.20.2（2026-03-24）
-# 是該線最後一個 release，Docker Hub 的 20.x alpine tag 也停在 2026-04-17 之後不再更新
-# ——意即此後 Node 本體與其基底的 CVE 都不會再有修補版。**這不是可以長期停留的狀態**，
-# 但升 major（現行 LTS 為 22 Jod／24 Krypton）會換掉整條前端建置鏈的執行環境，屬取捨題
-# 而非釘版的一部分，要不要升 major 得另行評估。緩解事實（降低急迫度、不解除必要性）：本階段與下方
-# builder 皆**不進交付映像**（正式版前端執行環境是 nginx stage），故 Node 的漏洞面限於
-# 建置期而非使用者的執行環境。
+# **版本線選擇：追最新 LTS 線，不落後。**本專案是安全軟體，建置鏈的 Node 不停留在
+# 已 EOL 或即將換代的線上。2026-09-15 的事實：Node 20（Iron）2026-04-30 EOL；
+# 22（Jod）已進 maintenance；24（Krypton）2026-10-20 進 maintenance；
+# 26 於 2026-05-05 發布、**2026-10-28 轉 LTS**、支援至 2029-04-30。
+# 26 線內依 semver 不再有破壞性變更，轉 LTS 時內容不變、只有承諾期變長，
+# 故直接釘 26 而非先釘 24 再於六週後換線。
+# 前端建置鏈各套件的 engines（vite 8、@vitejs/plugin-vue 6、happy-dom 20、vitest 5）
+# 皆允許 Node 26，鎖定檔內無任何套件對 Node 設上限。
+# **Node 26 與 vitest 的耦合**：Node 26 內建 `localStorage` getter（未給
+# `--localstorage-file` 時回 undefined），vitest 4 的 happy-dom 環境不覆蓋既有全域，
+# 整包測試會在 setup 階段以 `localStorage.getItem` 為 undefined 全數失敗；
+# vitest 5 已處理（vitest-dev/vitest#10293）。故本線 Node 要求 vitest >= 5。
 #
-# 重評觸發點（任一成立即重新評估升 major，不等其餘兩項）：
-# 1. 下次動到前端建置鏈時（升 Vite／換 bundler／改本檔的建置階段）一併評估
-#    ——那時本來就要重測整條鏈，邊際成本最低。
-# 2. 現行 LTS（22 Jod／24 Krypton）任一進入 maintenance，使可選版本收斂到只剩一個時。
-# 3. 出現針對**建置期**工具鏈的供應鏈事件時（本階段雖不出貨，建置環境仍是供應鏈的一環）。
-# 這三點是刻意寫成可判斷的事件而非日期：日期會過期而沒有人回頭看，事件會自己找上門。
-FROM node:20.20.2-alpine AS development
+# 緩解事實（降低急迫度、不解除必要性）：本階段與下方 builder 皆**不進交付映像**
+# （正式版前端執行環境是 nginx stage），故 Node 的漏洞面限於建置期而非使用者的執行環境。
+#
+# 重評觸發點（任一成立即重新評估，不等其餘各項）：
+# 1. Node 官方 schedule 出現比現釘線更新的 LTS 線（每年 10 月）→ 升到該線。
+# 2. 現釘線有新 patch 版（security release 尤其）→ 更新 patch 版號。
+# 3. 下次動到前端建置鏈時（升 Vite／換 bundler／改本檔的建置階段）一併核對。
+# 4. 出現針對**建置期**工具鏈的供應鏈事件時。
+FROM node:26.8.2-alpine AS development
 
 WORKDIR /app
 
@@ -52,8 +57,8 @@ EXPOSE 3000
 # 啟動開發伺服器（支援 HMR）
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
-# 建置階段（版本釘選與 Node 20 EOL 的說明見檔首，兩個 stage 須同版）
-FROM node:20.20.2-alpine AS builder
+# 建置階段（版本釘選與版本線選擇的說明見檔首，兩個 stage 須同版）
+FROM node:26.8.2-alpine AS builder
 
 WORKDIR /app
 
