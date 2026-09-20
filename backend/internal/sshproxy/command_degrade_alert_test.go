@@ -180,3 +180,18 @@ func TestDegradeAlertWithoutSinkIsLoudNotSilent(t *testing.T) {
 	store.EnqueueDegraded(model.DegradeAltScreen, now)
 	store.Close() // 不得 panic、不得卡住
 }
+
+// TestCommandStoreInputWithoutCommandAlert 安全網降級列入庫後，沿既有 span 機制發出恰一筆告警。
+func TestCommandStoreInputWithoutCommandAlert(t *testing.T) {
+	store, sink := newDegradeAlertStore(t)
+	store.EnqueueDegraded(model.DegradeInputNoCommand, time.Now())
+	store.Close()
+
+	got := sink.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("降級告警數 = %d, want 1：%+v", len(got), got)
+	}
+	if got[0].Kind != model.AlertKindAuditDegraded || got[0].Command != "" {
+		t.Errorf("告警形狀有誤：%+v", got[0])
+	}
+}

@@ -64,6 +64,30 @@ var (
 // 全為 ASCII 控制碼，故可直接交給 bytes.ContainsAny 逐 code point 比對。
 const interruptKeys = "\x03"
 
+// indexEnter 回傳 data 中第一個 Enter 的位置；沒有則回 -1。
+//
+// **Enter 同時認 `\r` 與 `\n`**：目標主機的 line discipline 對兩者一視同仁，
+// 瀏覽器終端送 `\r`，程式化客戶端多送 `\n`。只認其中一種時，另一種送出的指令
+// 在對端正常執行、錄影正常留存，指令審計卻一筆不記且無任何降級訊號。
+// 所有以 Enter 為界的判定 SHALL 經本函式，不得各自寫死位元組。
+func indexEnter(data []byte) int {
+	return bytes.IndexAny(data, "\r\n")
+}
+
+// countEnters 計 data 中的 Enter 數（`\r` 與 `\n` 皆計）。
+// `\r\n` 會計成 2：第二個是「只按 Enter」的空輪，既有規則不記，計數語義不變。
+func countEnters(data []byte) int {
+	return bytes.Count(data, []byte{'\r'}) + bytes.Count(data, []byte{'\n'})
+}
+
+// hasSubstantiveInput 一幀輸入是否含 Enter 與中斷鍵以外的位元組。
+// 供會話層 sawInput 判定：只按 Enter、只按 Ctrl-C 都不算「使用者打了字」。
+func hasSubstantiveInput(data []byte) bool {
+	return bytes.IndexFunc(data, func(r rune) bool {
+		return r != '\r' && r != '\n' && !bytes.ContainsRune([]byte(interruptKeys), r)
+	}) >= 0
+}
+
 // CommandFunc 指令結算回呼：command 為虛擬螢幕還原後的完整指令行
 type CommandFunc func(command string, executedAt time.Time)
 
@@ -172,11 +196,17 @@ type CommandParser struct {
 	// **使用者打進檔案的內文當成指令發出**＝捏造，且既有 Scenario
 	// 「Alternate screen suppressed」當場轉紅。
 	roundAltScreen bool
-	// roundHasInput 當輪的輸入方向收到過 `\r` 以外的位元組。
+	// roundHasInput 當輪的輸入方向收到過 Enter 以外的位元組。
 	//
 	// 用來把兩種「結算文字為空」分開：只按 Enter 是正常的空輸入（不記），
 	// 打了字卻重組不出任何文字則是**對端關掉了回顯**（記降級，見 noteNoEcho）。
 	roundHasInput bool
+	// sawInput 本連線曾收到過 Enter 與中斷鍵以外的實質輸入位元組（會話層，不隨輪重置）。
+	// recordCount 本連線已發出的紀錄數（指令、限定、降級三類皆計）。
+	// 兩者合起來是會話結束時的安全網判準：有輸入卻零紀錄＝審計失效，
+	// 必須留下降級列而非讓會話看起來像「沒有操作」（見 Flush）。
+	sawInput    bool
+	recordCount int
 	// 兩個新降級終態的可觀測旗標（測試直接斷言，不靠讀日誌）
 	unanchored     bool
 	taintedDropped bool
@@ -230,6 +260,12 @@ func (p *CommandParser) SetRecordSink(fn CommandRecordFunc) {
 // 不能處理完第一個事件就把其後的位元組整批丟掉：那等於交出一條
 // 「把指令藏在中斷鍵後面就不留痕」的規避路徑（實測見下方 interrupt 分支的註解）。
 func (p *CommandParser) WriteInput(data []byte) {
+	// 會話層事實：這一幀有沒有實質輸入。在任何分支之前判定，
+	// 使中斷鍵前的位元組與 pending 期間排入佇列的位元組同樣計入——
+	// 它們都是使用者打過的字；安全網問的是「打過字卻零紀錄」，不問那些字有沒有執行。
+	if hasSubstantiveInput(data) {
+		p.sawInput = true
+	}
 	// pending 中：前一輪已送出、正等回顯結算。此刻抵達的輸入**整段**排入佇列
 	// （含中斷鍵，順序原樣保留），結算後重放——語義等同於「這些位元組晚一點才抵達」。
 	// 原先此處是整段丟棄：指令在遠端正常執行、審計零紀錄，而送出時機與封包切分
@@ -245,7 +281,7 @@ func (p *CommandParser) WriteInput(data []byte) {
 		//     執行中的行程而非輸入行（`sleep 100\r` 與 0x03 落在同一次 read 時，
 		//     若讓中斷鍵優先就會把已執行的指令漏記）。
 		//   - 中斷鍵先到：當輪作廢，其後的位元組另起一輪（見下）。
-		enter := bytes.IndexByte(data, '\r')
+		enter := indexEnter(data)
 		interrupt := bytes.IndexAny(data, interruptKeys)
 
 		if interrupt >= 0 && (enter < 0 || interrupt < enter) {
@@ -361,6 +397,13 @@ func (p *CommandParser) Flush() {
 		p.emit(p.stmtBuf.String())
 		p.stmtBuf.Reset()
 		p.stmtLen = 0
+	}
+	// 安全網：曾收到實質輸入、卻自始至終沒有任何紀錄（含降級列）。
+	// 這代表某個尚未被發現的判定或結算缺口把整條會話的指令審計吃掉了；
+	// 不補這一筆，會話頁看起來就是「連上去什麼都沒做」而非「審計失效」。
+	// 只記事實、不斷言成因（解析缺口、對端關回顯、客戶端形態皆可能）。
+	if p.sawInput && p.recordCount == 0 {
+		p.emitDegraded(model.DegradeInputNoCommand)
 	}
 }
 
@@ -480,7 +523,7 @@ func (p *CommandParser) takeReplaySegment() []byte {
 		return nil
 	}
 	n := p.replayQueue.Len()
-	if i := bytes.IndexByte(p.replayQueue.Bytes(), '\r'); i >= 0 {
+	if i := indexEnter(p.replayQueue.Bytes()); i >= 0 {
 		n = i + 1
 	}
 	// 複製：Next 回傳的切片在下次寫入佇列後即失效
@@ -489,7 +532,7 @@ func (p *CommandParser) takeReplaySegment() []byte {
 
 // replaySegBody 取一段重放輸入中 Enter 之前的位元組。
 func replaySegBody(seg []byte) []byte {
-	if i := bytes.IndexByte(seg, '\r'); i >= 0 {
+	if i := indexEnter(seg); i >= 0 {
 		return seg[:i]
 	}
 	return seg
@@ -708,7 +751,7 @@ func (p *CommandParser) flushReplayQueue() {
 		if len(seg) == 0 {
 			return
 		}
-		if bytes.IndexByte(seg, '\r') < 0 {
+		if indexEnter(seg) < 0 {
 			return
 		}
 		anchor := p.replayAnchorText(seg)
@@ -740,6 +783,7 @@ func (p *CommandParser) emitDegraded(reason string) {
 	if p.onRecord == nil {
 		return
 	}
+	p.recordCount++
 	p.onRecord("", true, reason, time.Now())
 }
 
@@ -753,7 +797,7 @@ func (p *CommandParser) emitDegraded(reason string) {
 // 這個計數只是**下界**，故改用 DegradeQueueUncounted——
 // spec 與 UI SHALL NOT 宣稱該區段的輪數正確。
 func (p *CommandParser) emitDegradedPerRound(queue []byte, reason string) {
-	rounds := bytes.Count(queue, []byte{'\r'})
+	rounds := countEnters(queue)
 	if rounds == 0 {
 		return
 	}
@@ -1099,10 +1143,12 @@ func (p *CommandParser) emit(command string) {
 	caveat := p.pendingCaveat
 	p.pendingCaveat = ""
 	if caveat != "" && p.onRecord != nil {
+		p.recordCount++
 		p.onRecord(command, false, caveat, time.Now())
 		return
 	}
 	if p.onCommand != nil {
+		p.recordCount++
 		p.onCommand(command, time.Now())
 	}
 }

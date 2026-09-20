@@ -96,3 +96,25 @@ func TestPlanRecords(t *testing.T) {
 		t.Errorf("order: first = %+v", records[0])
 	}
 }
+
+// TestPlanCreateDisabledPersists 建立時傳 enabled:false 必須落庫為 false：
+// model 的 default:true 會讓 gorm 把零值欄位排除在 INSERT 外，交給 DB 預設值。
+func TestPlanCreateDisabledPersists(t *testing.T) {
+	svc := setupPlanDB(t)
+	plan, err := svc.Create(&ChangeSecretPlanRequest{
+		Name: "paused", AssetIDs: []uint{1}, Enabled: boolPtr(false),
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if plan.Enabled {
+		t.Fatal("returned plan should be disabled")
+	}
+	reloaded, err := svc.Get(plan.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if reloaded.Enabled {
+		t.Fatal("persisted plan should be disabled, got enabled")
+	}
+}

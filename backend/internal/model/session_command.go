@@ -47,6 +47,14 @@ const (
 	// **絕不回填輸入位元組**——記錄按鍵內容是獨立能力（獨立資料流、獨立加密、
 	// 查看須留痕且填理由），有自己的使用者裁決，不在本 change 的射程內。
 	DegradeNoEcho = "input_without_echo"
+	// DegradeInputNoCommand 會話結束時的安全網：本連線曾收到實質輸入位元組
+	// （Enter 與中斷鍵以外），卻自始至終沒有產生任何紀錄（指令、限定、降級皆無）。
+	//
+	// 這是「審計失效」的訊號，不是「使用者沒有操作」：任何尚未被發現的 Enter 判定
+	// 或結算缺口都會落在這裡。
+	// 一條會話最多一筆，時間取會話結束時刻。
+	// **UI 文案 SHALL 描述事實（有輸入但無法還原任何指令）、SHALL NOT 斷言成因。**
+	DegradeInputNoCommand = "input_without_command"
 
 	// QualifyReplayFallback 重放輪未能在輸出中定位自身回顯，改以使用者送出的
 	// 輸入位元組結算：文字是使用者確實送出的位元組，**但 tab 補全與歷史鍵的

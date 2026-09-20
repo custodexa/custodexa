@@ -288,6 +288,14 @@ func (s *ChangeSecretPlanService) Create(req *ChangeSecretPlanRequest) (*model.C
 		}
 		return nil, err
 	}
+	// Enabled 帶 default:true：gorm 會把零值排除在 INSERT 外並回填 DB 預設值，
+	// 故建立即停用的計劃要再以明確欄位更新落庫，否則會以啟用狀態進排程
+	if !enabled {
+		if err := s.db.Model(plan).UpdateColumn("enabled", false).Error; err != nil {
+			return nil, err
+		}
+		plan.Enabled = false
+	}
 	return plan, nil
 }
 

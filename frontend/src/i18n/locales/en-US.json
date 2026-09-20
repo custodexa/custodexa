@@ -457,6 +457,7 @@
       "queue_uncounted": "Input still awaiting settlement could no longer be matched, and the pending-input buffer of this session had reached its limit: this stretch holds more rounds than the number of records listed here.",
       "queue_overflow": "Pending input reached its limit and later input was no longer queued. This entry marks where the overflow began; it does not mean only one round followed.",
       "input_without_echo": "Input was sent in this round, but the output stream holds no text that could be reconstructed.",
+      "input_without_command": "Input was sent on this connection, but no command could be reconstructed by the time it ended; this entry marks a command-audit failure for the connection. Use the recording as the source of truth.",
       "replay_input_bytes": "This text comes from the input bytes the user sent. What tab completion and history keys actually expanded to exists only in the echo, so it may differ from the command that ran."
     },
     "commandAlertReason": {

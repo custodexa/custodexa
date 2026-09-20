@@ -6,7 +6,7 @@
 ## Requirements
 ### Requirement: SSH command capture
 
-For SSH sessions the system SHALL reconstruct executed command lines by feeding the server output stream into a virtual terminal screen and extracting the current line when the user submits it with Enter. This reconstruction MUST correctly reflect backspace editing, tab completion, and history recall (arrow keys), since the captured text comes from the rendered screen rather than raw keystrokes. Captured commands SHALL be persisted with session, user, asset, sequence and timestamp. When the rendered screen shows evidence of full-screen redraw, the system SHALL stop reconstructing command text from screen content for that round.
+For SSH sessions the system SHALL reconstruct executed command lines by feeding the server output stream into a virtual terminal screen and extracting the current line when the user submits it with Enter. **Enter SHALL be recognized as either carriage return (`\r`) or line feed (`\n`)**, matching how the target host's line discipline treats both bytes; a `\r\n` pair SHALL count as one submission followed by one empty submission, and empty submissions SHALL NOT produce records. Every rule that counts submissions (replay-queue round counting, queue settlement at close) SHALL use the same Enter definition. This reconstruction MUST correctly reflect backspace editing, tab completion, and history recall (arrow keys), since the captured text comes from the rendered screen rather than raw keystrokes. Captured commands SHALL be persisted with session, user, asset, sequence and timestamp. When the rendered screen shows evidence of full-screen redraw, the system SHALL stop reconstructing command text from screen content for that round.
 
 **偵測 SHALL NOT 僅依賴輸出流中的 alternate-screen 標記。** 那些位元組由被稽核主機送出，
 而輸出流的內容使用者可以影響——全螢幕程式送出的與其他來源送出的無從分辨。
@@ -28,73 +28,61 @@ For SSH sessions the system SHALL reconstruct executed command lines by feeding 
 SHALL NOT 以去除前後空白後的 prompt 文字長度代替——去空白會使原點少一欄，
 而尾端輸出恰為換行時游標本就在新的一列、原點應為空。
 
-**重組結果 SHALL NOT 含使用者未送出的內容。** 原點錯位的後果不是漏記而是**捏造**：
-行清除從錯誤欄位切開，前半段殘留與後半段新指令會拼成一條從未存在的指令。
-已在真實會話實錄三例（其中兩例入庫文字含使用者從未執行的 `rm -rf` 前綴，
-另一例把補全中途的片段與新語句拼接）。捏造比漏記更嚴重：稽核者對指令內容做的是子字串比對，
-命中的會是一件當事人能舉證自己沒做的事。
-
-本要求 SHALL 同等適用於所有經同一重組器的協議（ssh／mysql／postgres／mssql／redis／k8s exec）——
-資料庫 CLI 經本機 PTY 走同一條路徑，其 readline 重繪形態與 SSH 同型。
-
 #### Scenario: Command captured
+- **WHEN** a user types `ls -la` and presses Enter in an SSH session
+- **THEN** a command record `ls -la` is stored for that session
 
-- **WHEN** a user types "ls -la" followed by Enter in an SSH session
-- **THEN** a session_commands row exists with command "ls -la" linked to the session
+#### Scenario: 以換行符結尾的指令同樣被記錄
+- **WHEN** 客戶端以 `uptime\n`（而非 `uptime\r`）送出指令且對端正常回顯
+- **THEN** 該會話存在一筆 `uptime` 指令紀錄，與 `\r` 結尾者形態相同
+
+#### Scenario: CRLF 不產生重複或空白紀錄
+- **WHEN** 客戶端以 `uptime\r\n` 送出指令
+- **THEN** 該會話恰有一筆 `uptime` 指令紀錄，沒有多出的空白紀錄
+
+#### Scenario: 同幀多條以換行分隔的指令各自記錄
+- **WHEN** 客戶端在同一幀送出 `echo a\necho b\n`
+- **THEN** 該會話依序存在 `echo a` 與 `echo b` 兩筆紀錄
 
 #### Scenario: Backspace correction
-
-- **WHEN** the user types "lss", presses Backspace, then Enter
-- **THEN** the persisted command is "ls"
+- **WHEN** a user types `lss`, presses backspace, then types `s` and Enter
+- **THEN** the stored command is `ls`
 
 #### Scenario: Tab completion captured
-
-- **WHEN** the user types "cat /etc/hos", presses Tab completing to "/etc/hosts", then Enter
-- **THEN** the persisted command is "cat /etc/hosts"
+- **WHEN** a user types `ls /et` then Tab (server completes to `/etc/`) then Enter
+- **THEN** the stored command is `ls /etc/`
 
 #### Scenario: History recall captured
-
-- **WHEN** the user presses the Up arrow recalling "ls -la" and presses Enter
-- **THEN** the persisted command is "ls -la"
+- **WHEN** a user presses Up arrow (server replays `cat /etc/hosts`) then Enter
+- **THEN** the stored command is `cat /etc/hosts`
 
 #### Scenario: Alternate screen suppressed
-
-- **WHEN** the user is editing inside vim and presses Enter repeatedly
-- **THEN** no command rows are recorded until vim exits the alternate screen
+- **WHEN** a user runs `vim` (server sends `\x1b[?1049h`) and types inside it
+- **THEN** no command records are created for keystrokes until `\x1b[?1049l` is received
 
 #### Scenario: 整行清除後改打的指令不被拼接
-
-- **WHEN** 使用者打了一條指令、以 Ctrl-U 清掉整行、改打另一條指令後按 Enter
-- **THEN** 入庫文字只有實際送出的那一條，且全庫該會話查不到被清掉那條的任何片段
+- **WHEN** 使用者輸入 `abc`、按 Ctrl-U 清行、改打 `ls` 後 Enter
+- **THEN** 該會話的指令紀錄為 `ls`，不含 `abc`
 
 #### Scenario: 補全後清行改打的語句不被拼接
-
-- **WHEN** 使用者在資料庫 CLI 以 Tab 觸發補全、以 Ctrl-U 清行後改打另一條語句並送出
-- **THEN** 入庫文字為實際送出的語句，不含補全中途的片段
+- **WHEN** 使用者輸入 `ls /et`、按 Tab 補全、按 Ctrl-U 清行、改打 `pwd` 後 Enter
+- **THEN** 該會話的指令紀錄為 `pwd`
 
 #### Scenario: 重繪自帶 prompt 的情形不受原點種入影響
-
-- **WHEN** 重繪本身已把 prompt 重印進回顯（部分 shell 的多候選補全即如此）
-- **THEN** 結算文字與原點種入前完全相同
+- **WHEN** 多候選補全使 shell 重印提示符與輸入
+- **THEN** 結算文字仍為使用者送出的指令，不含提示符
 
 #### Scenario: 偽造的 alternate-screen 標記不使會話靜音
-
-- **WHEN** 終端輸出流中出現 alternate-screen 進入標記，但該標記並非由全螢幕程式產生
-  （輸出流的內容使用者可影響，兩者無從分辨），其後使用者繼續執行指令
-- **THEN** 後續每一輪輸入仍各自產生審計記錄（完整指令文字或降級紀錄），
-  且該會話 SHALL NOT 因此進入永久靜音
+- **WHEN** 輸出流中出現非全螢幕程式送出的 alternate-screen 標記，其後使用者照常在 shell 執行指令
+- **THEN** 後續每一輪輸入仍各自產生審計記錄（完整指令文字或降級紀錄），不存在整段靜音
 
 #### Scenario: 不進入 alternate screen 的全螢幕程式不產生假指令
-
-- **WHEN** 使用者執行一支不送 alternate-screen 標記但會全螢幕重繪的程式
-  （如 BusyBox 的 `less`）並離開
-- **THEN** 該會話 SHALL NOT 出現使用者未曾送出的指令文字
-  （含「提示符＋指令」形態的拼接結果）
+- **WHEN** 使用者執行不切換 alternate screen 的全螢幕程式並在其中按鍵
+- **THEN** 該時段不產生以螢幕內容捏造的指令紀錄
 
 #### Scenario: 標記被切在幀邊界上仍不產生假指令
-
-- **WHEN** alternate-screen 標記的位元組跨越兩次讀取的邊界
-- **THEN** 全螢幕重繪 SHALL NOT 被重組為指令文字
+- **WHEN** alternate-screen 標記位元組跨越兩個輸出幀
+- **THEN** 判定結果與單幀送達時相同
 
 ### Requirement: Command retrieval APIs
 The system SHALL provide two command retrieval endpoints with distinct permission gates: the per-session command list (`GET /sessions/:id/commands`) SHALL require `session:view`, and the cross-session search (`GET /commands`; keyword substring, user, asset, time range, pagination) SHALL require `audit:view`. Both `session:view` and `audit:view` are held only by admin/auditor. A regular user SHALL NOT retrieve the commands of any session through either endpoint — neither their own nor others' — because command content may contain secrets typed at the terminal.
@@ -223,6 +211,30 @@ SHALL NOT 據此推論該段內容必然可信。此限制 MUST 於使用者可�
 
 - **WHEN** 一條會話中出現異常的降級樣態（如長時間持續降級而未離開全螢幕狀態）
 - **THEN** 該樣態 SHALL 可被告警機制觀測，而非僅存在於可查詢的紀錄中
+
+### Requirement: 有輸入但零指令的會話 SHALL 標示降級並可告警
+
+當一條 SSH 會話結束時，若系統曾收到來自使用者端的實質輸入位元組（非空、非純 Enter），卻自始至終沒有產生任何指令紀錄（包含降級紀錄），系統 SHALL 為該會話補一筆降級紀錄：指令文字恆為空、降級原因為專用機器碼，時間取會話結束時刻。該筆紀錄 SHALL 經既有的降級告警路徑發出告警，SHALL NOT 靜默。
+
+降級紀錄 SHALL NOT 含任何輸入位元組或推測的指令文字。呈現面的文案 SHALL 描述事實（有輸入但無法還原任何指令），SHALL NOT 斷言成因（解析缺口、對端關閉回顯、客戶端形態皆可能）。
+
+此要求是安全網：其目的是讓任何尚未被發現的 Enter 判定或結算缺口，對稽核者呈現為「審計失效」而非「這條會話沒有操作」。
+
+#### Scenario: 有輸入但解析器未結算任何指令
+- **WHEN** 一條 SSH 會話收到過非空輸入，結束時指令紀錄為零
+- **THEN** 該會話存在恰一筆指令文字為空的降級紀錄，且產生一筆降級告警
+
+#### Scenario: 正常會話不觸發
+- **WHEN** 一條 SSH 會話至少產生過一筆指令紀錄或降級紀錄
+- **THEN** 會話結束時不補任何額外紀錄
+
+#### Scenario: 只按 Enter 不觸發
+- **WHEN** 一條 SSH 會話的輸入只有 Enter（無其他位元組）
+- **THEN** 會話結束時不補降級紀錄
+
+#### Scenario: 呈現面不斷言成因
+- **WHEN** 稽核者在會話詳情看到該降級紀錄
+- **THEN** 文案描述「有輸入但無法還原任何指令」，不含「客戶端」「回顯」等成因用語
 
 ### Requirement: 結構化執行來源的指令紀錄與檢索
 

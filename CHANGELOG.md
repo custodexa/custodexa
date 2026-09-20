@@ -2,6 +2,31 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.10.2 — Enter as LF, and a safety net for command audit (2026-09-20)
+
+No schema change. No migration runs.
+
+### Fixes
+
+- The SSH command parser treats a line feed as Enter, the same as a carriage return. Clients
+  that end a command with `\n`, as many programmatic clients do, now have each command
+  recorded; before, such a connection ran and was recorded on video but had no command
+  entries.
+- When a connection received typed input but no command could be reconstructed by the time
+  it ended, one degraded entry `input_without_command` is written for that connection and the
+  usual degraded-audit alert fires. The entry states that command audit did not work for the
+  connection and points to the recording; it makes no claim about the cause.
+- A password rotation plan created with `enabled: false` is now stored as disabled. It used
+  to be stored as enabled and entered the schedule.
+
+### Build
+
+- The frontend image is built on `node:26.8.2-alpine`, replacing the Node.js 20 line, which
+  reached end of life in April 2026. The test runner moves to Vitest 5. Two development
+  dependencies move to releases that close published advisories: js-yaml 4.3.2 and
+  `@vitest/mocker` 5.0.0. Neither Node.js stage is part of the production image, which still
+  serves the built files from nginx.
+
 ## 1.10.1 — keyboard access on clickable cards and lists (2026-09-14)
 
 No schema change. No migration runs.

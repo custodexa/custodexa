@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-13（委託拓撲：新表 `kek_topologies`（單列），migration `20260913_kek_topology`）
+> **最後更新**：2026-09-15（指令審計降級原因新增 `input_without_command`，無 migration）
+> 前次更新：2026-09-13（委託拓撲：新表 `kek_topologies`（單列），migration `20260913_kek_topology`）
 > 前次更新：2026-09-13（DEK 快取存活期政策鍵 `dek_cache_ttl_seconds`，無 migration，政策鍵表加一列）
 > 前次更新：2026-09-09（政策組與合規對照：新表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，一條唯一索引 `idx_policy_clause_controls_group_key`，migration `20260909_policy_groups`）
 > 前次更新：2026-09-08（外部群組對角色映射：新表 `group_role_mappings`／`user_role_mappings`，`user_roles` 加 `source` 欄，`ldap_directories` 加 `attr_group`，`oidc_providers` 加 `groups_claim` 與宣告對應三欄，`users` 加群組觀測快照三欄，migration `20260908_group_role_mapping`）
@@ -1292,7 +1293,7 @@ const (
 | `K8sPod` | string | `size:253` | `k8s_pod` | K8s 冗餘欄：當次選定 pod（跨會話搜尋免 JOIN sessions） |
 | `K8sContainer` | string | `size:63` | `k8s_container` | K8s 冗餘欄：當次 container |
 | `Degraded` | bool | `not null;default:false` | `degraded` | **該輪沒有可信的指令文字**。全螢幕重繪、alt-screen 標記區間、無回顯輸入等情形下，重組結果不可信，此時記一筆降級列而非靜默丟棄——後者可被主動觸發成「零紀錄」。為 true 時 `Command` 必為空 |
-| `DegradeReason` | string | `size:64;not null;default:''` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go` |
+| `DegradeReason` | string | `size:64;not null;default:''` | `degrade_reason` | 降級原因機器碼。**兩個值域刻意不合併**：`Degraded=true` 時取 `Degrade*` 常數（無可信文字）；`Degraded=false` 且本欄非空時取 `Qualify*` 常數（**文字已入庫但可能不等於實際執行的指令**）。合併會使「`Degraded=false` ⇒ 文字可信」變成假話。值域見 `model/session_command.go`。`input_without_command` 為會話結束時的安全網：有實質輸入卻零紀錄時補一筆（2026-09-15 起） |
 
 **查詢主控台的結果事實欄**（十一欄，由增量 migration `20260826_db_query_console` 加欄）。
 **文字終端會話的列一律留在預設值**：`result_status = ''` 即「這不是主控台列」，

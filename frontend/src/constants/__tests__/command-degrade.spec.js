@@ -41,6 +41,7 @@ const BACKEND_DEGRADE = [
   'queue_uncounted',
   'queue_overflow',
   'input_without_echo',
+  'input_without_command',
 ]
 const BACKEND_QUALIFY = ['replay_input_bytes']
 
