@@ -9,6 +9,7 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/gin-gonic/gin"
 )
@@ -87,6 +88,16 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		if strings.HasPrefix(tokenString, identity.AgentTokenPrefix) {
+			if kind, _ := GetPrincipalKind(c); kind != model.KindAgent {
+				if !authenticateAgent(c, authService, tokenString) {
+					return
+				}
+			}
+			c.Next()
+			return
+		}
+
 		// 驗證 token
 		claims, err := authService.ValidateToken(tokenString)
 		if err != nil {
@@ -126,6 +137,7 @@ func AuthMiddleware(authService *identity.AuthService) gin.HandlerFunc {
 		// 混合帳號（同時有本地密碼與外部身分）會被誤標，導致 provider 停用時
 		// 誤殺以本地密碼建立的連線
 		c.Set("authContext", claims.AuthContext)
+		c.Set("principal_kind", model.KindHuman)
 
 		c.Next()
 	}
@@ -226,4 +238,46 @@ func GetCurrentUsername(c *gin.Context) (string, bool) {
 // It does not retain the authentication service or create another token path.
 func AbortControlAuthentication(c *gin.Context, code apierror.ErrCode) {
 	abortUnauthenticated(c, code)
+}
+
+func GetPrincipalKind(c *gin.Context) (string, bool) {
+	v, ok := c.Get("principal_kind")
+	kind, typed := v.(string)
+	return kind, ok && typed && (kind == model.KindHuman || kind == model.KindAgent)
+}
+func GetAgentTokenID(c *gin.Context) (uint, bool) {
+	v, ok := c.Get("agent_token_id")
+	id, typed := v.(uint)
+	return id, ok && typed && id != 0
+}
+
+// RejectAgentTokenOnHumanPaths precedes even public/scoped authentication flows.
+func RejectAgentTokenOnHumanPaths() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer "+identity.AgentTokenPrefix) {
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAgentForbiddenRoute, nil)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func authenticateAgent(c *gin.Context, auth *identity.AuthService, token string) bool {
+	if auth == nil {
+		abortUnauthenticated(c, apierror.CodeAuthAgentTokenInvalid, "agent_auth_unavailable")
+		return false
+	}
+	principal, reason := auth.ValidateAgentToken(token, sourceip.Of(c))
+	if principal == nil {
+		abortUnauthenticated(c, apierror.CodeAuthAgentTokenInvalid, reason)
+		return false
+	}
+	c.Set("principal_kind", model.KindAgent)
+	c.Set("agent_token_id", principal.TokenID)
+	c.Set("userID", principal.UserID)
+	c.Set("username", principal.Username)
+	c.Set("email", principal.Email)
+	c.Set("role", model.RoleUser)
+	return true
 }

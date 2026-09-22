@@ -27,6 +27,11 @@
             {{ $t('auditorWorkbench.headerDesc') }}
           </p>
         </el-popover>
+        <a
+          v-if="subject === 'user' && picked?.id === subjectId && picked?.kind === 'agent'"
+          :href="`/audit/agent-tasks?subject=${subjectId}`"
+          data-test="agent-task-exit"
+        >{{ $t('agentTasks.subjectExit') }}</a>
         <!-- 匯出入口留在頁首動作列的顯眼處，兩種包型各一顆並排（使用者裁決
              2026-08-25）：包型是取件方式與內容的分野（陳述／證物、同步／非同步），
              藏進對話框內的 radio 等於要使用者先按了才知道有另一種。

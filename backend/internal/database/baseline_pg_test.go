@@ -129,14 +129,16 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 政策組 增 4 表（policy_groups、policy_clauses、policy_clause_controls、
 	// policy_clause_annotations）、5 索引（四張 pkey ＋ 條文控制的組代號＋設定鍵唯一索引），
 	// 無 CHECK、無外鍵（掛靠關係由資料存取層維持）。
-	if got.Tables != 63 {
-		t.Errorf("表數 = %d, want 63（47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表 ＋ 政策組四表）", got.Tables)
+	// 委託拓撲增 1 表、2 索引、1 CHECK；輸出規則增量再增 1 CHECK。
+	// Agent 前置兩表＋agent 通道三表；前置增 14 索引／2 CHECK，agent 通道增 8 索引／9 CHECK。
+	if got.Tables != 70 {
+		t.Errorf("表數 = %d, want 70（exposures 1 ＋ 既有 64 ＋ agent 前置兩表 ＋ agent 通道三表；原 64：47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表 ＋ 政策組四表 ＋ kek_topologies）", got.Tables)
 	}
-	if got.Indexes != 210 {
-		t.Errorf("索引數 = %d, want 210（舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條 ＋ 政策組的 5 條）", got.Indexes)
+	if got.Indexes != 235 {
+		t.Errorf("索引數 = %d, want 235（exposures 複合主鍵 1 ＋ 既有 212 ＋ agent 前置 14 ＋ agent 通道 8；原 212：舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條 ＋ 政策組的 5 條 ＋ kek_topologies 的 2 條）", got.Indexes)
 	}
-	if got.Checks != 19 {
-		t.Errorf("CHECK 約束數 = %d, want 19（13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一）", got.Checks)
+	if got.Checks != 33 {
+		t.Errorf("CHECK 約束數 = %d, want 33（breaker session CHECK 1 ＋ 既有 21 ＋ agent 前置 2 ＋ agent 通道 9；原 21：13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一 ＋ kek_topologies singleton ＋ alert_rules direction）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。
@@ -156,12 +158,15 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 			versions, wantVersions, LDAPSeedMarkerVersion)
 	}
 
-	// 12 條種子的 protocols 分佈＝三段疊加的終態
+	// 16 條種子＝12 條歷史 input ＋ 2 條增量 output ＋ 2 條 agent/input/block（逐欄核對）
 	assertBuiltinAlertRules(t, db)
 
-	// 種子路徑重跑仍是 12 列（唯一索引＋ON CONFLICT DO NOTHING）
+	// 原兩階段種子路徑重跑仍是 16 列（agent 增量另由 TestAgentSubjectRulesPostgres 驗）（唯一索引＋ON CONFLICT DO NOTHING）
 	if err := seedBuiltinAlertRules(db); err != nil {
 		t.Fatalf("重跑種子失敗（冪等性不成立）: %v", err)
+	}
+	if err := seedBuiltinAlertRulesForDirection(db, "output"); err != nil {
+		t.Fatalf("重跑輸出種子失敗（冪等性不成立）: %v", err)
 	}
 	assertBuiltinAlertRules(t, db)
 
@@ -176,7 +181,7 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	}
 }
 
-// assertBuiltinAlertRules 12 條種子的逐條核對。
+// assertBuiltinAlertRules 16 條種子的逐條核對。
 //
 // **protocols 分佈是本檔最重要的一條斷言**：它是唯一能抓到「三段疊加只做了前兩段」
 // 的檢查。schema 等價比對（pg_dump --schema-only）完全看不到種子資料，
@@ -188,20 +193,22 @@ func assertBuiltinAlertRules(t *testing.T, db *gorm.DB) {
 	if err := db.Raw(`SELECT count(*) FROM alert_rules`).Scan(&total).Error; err != nil {
 		t.Fatalf("讀取 alert_rules 失敗: %v", err)
 	}
-	if total != 12 {
-		t.Fatalf("alert_rules = %d 列, want 12", total)
+	if total != 16 {
+		t.Fatalf("alert_rules = %d 列, want 16", total)
 	}
 
 	type row struct {
-		Name      string
-		Pattern   string
-		Severity  string
-		Action    string
-		Enabled   bool
-		Protocols string
+		Name        string
+		Pattern     string
+		Severity    string
+		Action      string
+		Enabled     bool
+		Protocols   string
+		Direction   string
+		SubjectKind string
 	}
 	var rows []row
-	if err := db.Raw(`SELECT name, pattern, severity, action, enabled, protocols
+	if err := db.Raw(`SELECT name, pattern, severity, action, enabled, protocols, direction, subject_kind
 		FROM alert_rules ORDER BY name`).Scan(&rows).Error; err != nil {
 		t.Fatalf("讀取 alert_rules 明細失敗: %v", err)
 	}
@@ -225,16 +232,22 @@ func assertBuiltinAlertRules(t *testing.T, db *gorm.DB) {
 		if got.Protocols != want.Protocols {
 			t.Errorf("%q 的 protocols = %q, want %q", want.Name, got.Protocols, want.Protocols)
 		}
-		if got.Action != "alert" || !got.Enabled {
-			t.Errorf("%q 的 action/enabled = %q/%v, want alert/true", want.Name, got.Action, got.Enabled)
+		if got.Direction != want.Direction {
+			t.Errorf("%q 的 direction = %q, want %q", want.Name, got.Direction, want.Direction)
+		}
+		if got.SubjectKind != want.SubjectKind {
+			t.Errorf("%q subject_kind=%q want %q", want.Name, got.SubjectKind, want.SubjectKind)
+		}
+		if got.Action != want.Action || !got.Enabled {
+			t.Errorf("%q 的 action/enabled = %q/%v, want %s/true", want.Name, got.Action, got.Enabled, want.Action)
 		}
 		dist[got.Protocols]++
 	}
-	want := map[string]int{"ssh,k8s": 8, "mysql,postgres,mssql": 3, "redis": 1}
+	want := map[string]int{"ssh,k8s": 10, "mysql,postgres,mssql": 3, "redis": 1, "ssh,k8s,mysql,postgres,mssql,redis": 2}
 	for proto, n := range want {
 		if dist[proto] != n {
 			t.Errorf("protocols=%q 的規則數 = %d, want %d。"+
-				"三段疊加的終態是 ssh,k8s×8 / mysql,postgres,mssql×3 / redis×1；"+
+				"終態是 input：ssh,k8s×10 / mysql,postgres,mssql×3 / redis×1；output：文字協議集×2；"+
 				"mysql,postgres（無 mssql）代表漏了 20260813 那一段",
 				proto, dist[proto], n)
 		}
@@ -243,7 +256,7 @@ func assertBuiltinAlertRules(t *testing.T, db *gorm.DB) {
 
 // TestBaselineRefusesLegacyDatabasePostgres fail-close 正向實走。
 //
-// 斷言的是**拒絕啟動本身**與**零寫入**，不是「規則仍是 12 列」——後者在一個
+// 斷言的是**拒絕啟動本身**與**零寫入**，不是「規則仍是 16 列」——後者在一個
 // 根本還沒建表的資料庫上恆真，證明不了任何東西。
 func TestBaselineRefusesLegacyDatabasePostgres(t *testing.T) {
 	dsn := testgate.Value(t, testgate.EnvPGDSN)

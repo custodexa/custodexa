@@ -31,7 +31,7 @@ import (
 func checkpointSchemaDB(t *testing.T, schema string) *gorm.DB {
 	t.Helper()
 	db := baselineSchemaDB(t, schema)
-	if err := db.AutoMigrate(&model.AuditCheckpoint{}, &model.IntegrityBaseline{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}); err != nil {
 		t.Fatalf("AutoMigrate 檢查點表: %v", err)
 	}
 	if err := db.Create(&model.IntegrityBaseline{

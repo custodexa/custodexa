@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/custodexa/backend/internal/agentmcp"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -480,6 +481,7 @@ func buildCORSConfig(allowedOrigins []string, isRelease bool) cors.Config {
 // 函式，不負責建立任何東西。旗標與預先算好的設定（corsCfg）一併由此傳入，
 // 使註冊過程不需存取 config、不需寫 log。
 type routeDeps struct {
+	mcp *agentmcp.Handler
 	// 全域設定與旗標
 	//
 	// corsMiddleware 為**已建構完成**的 gin.HandlerFunc，非設定物件：
@@ -601,6 +603,8 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 	if d.auditLogEnabled {
 		r.Use(middleware.AuditLogMiddleware(d.auditService))
 	}
+
+	r.Use(middleware.AgentRouteAllowlist(d.authService))
 
 	// Health check endpoint
 	// 同時接受 POST：webhook 測試發送（alert-notifications E2E）需要一個
@@ -763,6 +767,7 @@ func registerRoutes(r *gin.Engine, d routeDeps) {
 
 		// SSH 資產檔案管理：資產收口 + 全操作審計
 		d.sftp.RegisterRoutes(v1, d.authService)
+		v1.POST("/mcp", middleware.AuthMiddleware(d.authService), d.mcp.Handle)
 	}
 }
 

@@ -37,6 +37,7 @@ var tableOwner = map[string]string{
 	"credential_rotations":        "asset",
 	"credential_rotation_members": "asset",
 	// identity
+	"agent_tokens":             "identity",
 	"users":                    "identity",
 	"roles":                    "identity",
 	"user_roles":               "identity",
@@ -57,6 +58,7 @@ var tableOwner = map[string]string{
 	"user_role_mappings":  "identity",
 	// authz
 	"asset_authorizations":     "authz",
+	"access_request_items":     "authz",
 	"access_requests":          "authz",
 	"access_request_approvals": "authz",
 	"access_reviews":           "authz",
@@ -78,7 +80,11 @@ var tableOwner = map[string]string{
 	// 跨模組判定對這張表整個失效——任何模組讀寫它都不會被看見
 	"audit_retention_watermarks": "audit",
 	// audit-checkpoint-chain：檢查點鏈本體屬 audit（封章／驗證／修剪皆在 audit 模組）
-	"audit_checkpoints": "audit",
+	"audit_checkpoints":          "audit",
+	"agent_tool_calls":           "audit",
+	"agent_task_reports":         "audit",
+	"agent_probe_events":         "audit",
+	"agent_visibility_exposures": "authz",
 	// audit-checkpoint-chain 第 6 組：鏈修剪記錄（殘鏈的新起點錨定），
 	// 與檢查點同屬 audit（產生於 retention 的鏈修剪路徑）
 	"audit_checkpoint_trims": "audit",
@@ -92,7 +98,7 @@ var tableOwner = map[string]string{
 	// 它是告警的判定依據，與 command_alerts 同家
 	"user_source_ips": "audit",
 	// keyvault
-	"data_keys":           "keyvault",
+	"data_keys": "keyvault",
 	// 委託拓撲：非秘密的「主金鑰送去
 	// 哪裡解」。屬 keyvault——讀寫都在該模組的服務層，且它與 data_keys.kek_id
 	// 是同一個問題的兩半（目的地與金鑰識別）。**全部欄位明文**：讀取時點在已
@@ -152,11 +158,16 @@ var nonModelTables = map[string]bool{
 // 會被 modelTableNames 的命名推導誤列為表；「現實→登記」反向核對時排除。
 // 新增此類型別 SHALL 在此具名登記，否則反向核對轉紅——這是刻意的：讓「它是不是表」成為顯式決定。
 var nonTableModelStructs = map[string]bool{
-	"audit_stamp_reservation_keys": true, // Context key for an admitted audit write, not a database model.
-	"asset_change_details":         true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
-	"transmission_risks":           true, // TransmissionRisk：傳輸風險值物件
-	"asset_account_audit_details":  true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
-	"user_role_audit_details":      true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
+	"nullable_alert_session_ids":     true, // serializer value object; no table
+	"tool_call_completion_keys":      true, // Context result-write scope, not a database model.
+	"tool_call_stamp_keys":           true, // Context stamp provider, not a database model.
+	"audit_stamp_reservation_keys":   true, // Context key for an admitted audit write, not a database model.
+	"asset_change_details":           true, // AssetChangeDetails：資產變更審計 Details 的 JSON 形狀
+	"transmission_risks":             true, // TransmissionRisk：傳輸風險值物件
+	"asset_account_audit_details":    true, // AssetAccountAuditDetails：帳號操作審計 Details 的 JSON 形狀
+	"user_role_audit_details":        true, // UserRoleAuditDetails：角色指派審計 Details 的 JSON 形狀
+	"access_request_executors":       true, // AccessRequestExecutor：申請單執行者的唯讀投影，不是表
+	"access_request_decision_bounds": true, // AccessRequestDecisionBounds：審核可決範圍值物件，不是表
 }
 
 // infraTables 不屬於任何業務模組的基礎設施表／系統目錄。

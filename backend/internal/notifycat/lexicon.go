@@ -69,6 +69,9 @@ const (
 // AlertStateBlocked 阻斷型告警標示鍵（command_alert Slack 呈現用）。
 const AlertStateBlocked = "blocked"
 
+// AlertStatePossibleSensitive is deliberately heuristic, never a certainty claim.
+const AlertStatePossibleSensitive = "possible_sensitive_output"
+
 // 降級文案的詞庫鍵。text 帶 {event} 佔位符（唯一允許的插值），由
 // RenderDegraded 以 interpolate 展開——降級路徑不吃 params 值。
 const (
@@ -110,6 +113,7 @@ var causeEnum = []string{
 	model.CauseOffsiteUploadStalled,
 	model.CauseOffsiteIntegrityMismatch,
 	model.CauseRoleStateMismatch,
+	model.CausePrincipalStateMismatch,
 	model.CauseDEKUnwrapFailed,
 }
 

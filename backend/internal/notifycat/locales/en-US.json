@@ -84,5 +84,17 @@
       "title": "Custodian settings changed",
       "text": "{actor} changed the {provider} custodian settings: {before} -> {after}."
     }
+  },
+  "agent_task_report_submitted": {
+    "default": {
+      "title": "Task report",
+      "text": "Agent {user_id} submitted report {report_id}, version {version}, for task {request_id}. Owner: {owner_id}."
+    }
+  },
+  "agent_breaker_tripped": {
+    "default": {
+      "title": "Agent probe breaker",
+      "text": "Agent {user_id} token {token_id} suspended by probe breaker. Owner: {owner_id}."
+    }
   }
 }

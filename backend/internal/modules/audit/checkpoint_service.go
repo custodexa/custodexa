@@ -275,7 +275,7 @@ func (s *CheckpointService) EnsureGenesis() error {
 	if err := s.applyStateSnapshot(&cp); err != nil {
 		return err
 	}
-	if err := s.signAndPersist(&cp); err != nil {
+	if err := s.sealToolCallInterval(nil, &cp); err != nil {
 		return err
 	}
 	log.Printf("[Checkpoint] genesis 已建立（seq=1、id_from=%d、錨定 baseline max_log_id=%d）",
@@ -385,7 +385,7 @@ func (s *CheckpointService) SealUpTo(idHi uint) (*model.AuditCheckpoint, error) 
 	if err := s.applyStateSnapshot(&cp); err != nil {
 		return nil, err
 	}
-	if err := s.signAndPersist(&cp); err != nil {
+	if err := s.sealToolCallInterval(last, &cp); err != nil {
 		return nil, err
 	}
 	s.anchorCheckpoint(&cp)
@@ -393,7 +393,7 @@ func (s *CheckpointService) SealUpTo(idHi uint) (*model.AuditCheckpoint, error) 
 }
 
 // applyStateSnapshot 取狀態表登記清單的快照，填入檢查點的四個狀態欄並把
-// 載荷版本推進到 v2。
+// 載荷版本推進到 LatestCheckpointScheme。
 //
 // **快照失敗即整輪封章失敗**（不退回 v1 靜默落一個不涵蓋角色指派的檢查點）：
 // 退回等於在資料庫異常的當下把完整性機制自己關掉，而那正是攻擊者製造的條件。
@@ -409,7 +409,7 @@ func (s *CheckpointService) applyStateSnapshot(cp *model.AuditCheckpoint) error 
 	if err != nil {
 		return fmt.Errorf("封章前取狀態表快照失敗（本輪不封章）: %w", err)
 	}
-	cp.AggScheme = model.AggSchemeV2
+	cp.AggScheme = model.LatestCheckpointScheme
 	cp.RoleStateSnapshot = &body
 	cp.RoleStateReconciled = s.reconcileForSeal()
 	for i := range snaps {
@@ -439,15 +439,21 @@ func (s *CheckpointService) reconcileForSeal() *bool {
 	if s.roleState == nil {
 		return nil
 	}
-	report, err := s.roleState.Reconcile(context.Background())
-	if err != nil {
-		log.Printf("[Checkpoint] 封章前角色指派對帳未能完成（本次不記結果）: %v", err)
+	reports := s.roleState.ReconcileTables(context.Background())
+	known := true
+	for _, report := range reports {
+		if report.State == RoleStateMismatch {
+			matched := false
+			return &matched
+		}
+		if !report.Covered || report.State == StateTableUnknown {
+			known = false
+		}
+	}
+	if !known {
 		return nil
 	}
-	if !report.Covered {
-		return nil
-	}
-	matched := report.Matched()
+	matched := true
 	return &matched
 }
 
@@ -457,6 +463,9 @@ func (s *CheckpointService) reconcileForSeal() *bool {
 // Sign 回傳的版本與先前讀到的不同＝期間發生輪替，整輪放棄（下輪重試）——
 // 落一筆「payload 寫 v1、實際以 v2 簽」的檢查點會永遠驗不過
 func (s *CheckpointService) signAndPersist(cp *model.AuditCheckpoint) error {
+	return s.signAndPersistDB(s.db, cp)
+}
+func (s *CheckpointService) signAndPersistDB(db *gorm.DB, cp *model.AuditCheckpoint) error {
 	if s.signer == nil {
 		return errors.New("檢查點簽章鑰未注入：拒絕落一個不可驗的檢查點")
 	}
@@ -479,7 +488,7 @@ func (s *CheckpointService) signAndPersist(cp *model.AuditCheckpoint) error {
 	if s.anchor != nil && s.anchor.Enabled() {
 		cp.AnchorStatus = model.AnchorStatusDropped
 	}
-	if err := s.db.Create(cp).Error; err != nil {
+	if err := db.Create(cp).Error; err != nil {
 		// seq UNIQUE 衝突走這裡（並發封章的最後防線）：本輪失敗，鏈維持線性
 		return fmt.Errorf("寫入檢查點 seq=%d 失敗: %w", cp.Seq, err)
 	}
@@ -597,4 +606,35 @@ func (s *CheckpointService) reportAnchorRecovered() {
 	if s.anchorFailing.CompareAndSwap(true, false) && s.onFailure != nil {
 		s.onFailure(model.MechanismCheckpointAnchor, "", nil, true)
 	}
+}
+
+// SHARE waits for in-flight ledger INSERT transactions before capturing the upper
+// bound and prevents late commits below that bound. Results may change after sealing.
+func (s *CheckpointService) sealToolCallInterval(last *model.AuditCheckpoint, cp *model.AuditCheckpoint) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec("LOCK TABLE agent_tool_calls IN SHARE MODE").Error; err != nil {
+				return err
+			}
+		}
+		var to uint
+		if err := tx.Model(&model.AgentToolCall{}).Select("COALESCE(MAX(id),0)").Scan(&to).Error; err != nil {
+			return fmt.Errorf("ledger upper bound: %w", err)
+		}
+		from := uint(1)
+		if last == nil {
+			to = 0 // Genesis starts ledger coverage at the first row, without claiming pre-existing rows yet.
+		} else if last.ToolCallIDTo != nil {
+			from = *last.ToolCallIDTo + 1
+			if to < *last.ToolCallIDTo {
+				to = *last.ToolCallIDTo
+			}
+		}
+		hash, count, err := aggregateToolCalls(tx, from, to)
+		if err != nil {
+			return err
+		}
+		cp.ToolCallIDFrom, cp.ToolCallIDTo, cp.ToolCallRowCount, cp.ToolCallAggHash = &from, &to, &count, &hash
+		return s.signAndPersistDB(tx, cp)
+	})
 }

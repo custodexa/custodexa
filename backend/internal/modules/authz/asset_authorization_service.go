@@ -29,8 +29,9 @@ var (
 
 // AssetAuthorizationService 資產授權服務
 type AssetAuthorizationService struct {
-	repo *assetAuthorizationRepository
-	db   *gorm.DB
+	agentProbeRecorder func(context.Context, uint, uint, uint, string) error
+	repo               *assetAuthorizationRepository
+	db                 *gorm.DB
 }
 
 // NewAssetAuthorizationService 創建資產授權服務

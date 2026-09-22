@@ -132,3 +132,34 @@ func TestAlertReviewIdempotentCorrection(t *testing.T) {
 		t.Error("重覆審閱應更新為最新處置與複審者")
 	}
 }
+
+// TestAlertListFiltersQualifyJoinedColumns 主體與資產過濾在三表 JOIN 下不得歧義：
+// sessions 也有 user_id／asset_id，未加表名前綴的 WHERE 會在 SQL 層直接報錯，
+// 稽核按主體查告警即得 500。先確認過濾真的以告警列為準。
+func TestAlertListFiltersQualifyJoinedColumns(t *testing.T) {
+	svc, db := setupAlertDB(t)
+	sessAsset := uint(9)
+	if err := db.Create(&model.Session{ID: 1, UserID: 9, AssetID: &sessAsset, ClientIP: "10.0.0.1"}).Error; err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	a := seedAlert(t, db, "ssh 127.0.0.1") // user_id=1，會話列 user_id=9
+	asset := uint(5)
+	db.Model(a).Update("asset_id", asset)
+
+	uid := uint(1)
+	byUser, err := svc.List(&CommandAlertFilter{UserID: &uid})
+	if err != nil {
+		t.Fatalf("List by user: %v", err)
+	}
+	if byUser.Total != 1 || len(byUser.Data) != 1 || byUser.Data[0].ClientIP != "10.0.0.1" {
+		t.Fatalf("by user = total %d, rows %d", byUser.Total, len(byUser.Data))
+	}
+	other := uint(9)
+	if r, err := svc.List(&CommandAlertFilter{UserID: &other}); err != nil || r.Total != 0 {
+		t.Fatalf("session 的 user_id 不得當成告警主體：total=%d err=%v", r.Total, err)
+	}
+	byAsset, err := svc.List(&CommandAlertFilter{AssetID: &asset, Severity: "high", Unreviewed: true})
+	if err != nil || byAsset.Total != 1 {
+		t.Fatalf("List by asset: total=%d err=%v", byAsset.Total, err)
+	}
+}

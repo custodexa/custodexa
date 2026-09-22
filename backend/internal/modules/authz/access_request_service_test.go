@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -67,7 +67,7 @@ func setupAccessRequestEnv(t *testing.T) (*AccessRequestService, *policy.Securit
 		t.Fatalf("sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{}, &model.AssetGroup{}, &model.AssetNode{},
-		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestApproval{}, &model.ApproverScope{},
+		&model.AssetAuthorization{}, &model.AccessRequest{}, &model.AccessRequestItem{}, &model.AgentVisibilityExposure{}, &model.AccessRequestApproval{}, &model.ApproverScope{},
 		&model.SecurityPolicy{}, &model.AuditLog{}, &model.NotificationChannel{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

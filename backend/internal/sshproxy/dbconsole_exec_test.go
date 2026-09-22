@@ -1,6 +1,7 @@
 package sshproxy
 
 import (
+	"github.com/custodexa/backend/pkg/gatewayapi"
 	"strings"
 	"testing"
 
@@ -515,7 +516,7 @@ func TestConsoleRealMatcherFailsCloseWhenRulesUnavailable(t *testing.T) {
 		t.Fatalf("移除規則表: %v", err)
 	}
 	real := audit.NewAlertMatcher(f.env.db, audit.NewAlertRecorder(f.env.db))
-	f.s.matcher = consoleMatcherOf(real)
+	f.s.matcher = consoleMatcherOf(real, gatewayapi.PrincipalKindUnknown)
 
 	f.runQuery("SELECT 1")
 

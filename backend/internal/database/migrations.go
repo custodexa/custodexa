@@ -186,6 +186,24 @@ var migrations = []Migration{
 		Up:      applyKEKTopology,
 		Down:    rollbackKEKTopology,
 	},
+	{
+		// 輸出敏感資料規則：direction＋CHECK，並插入兩條輸出規則終態種子。
+		// Down 有損（方向值無第二處存放；見 migration_alert_rule_direction.go）。
+		Version: "20260921_alert_rule_direction",
+		Name:    "alert_rule_direction",
+		Up:      applyAlertRuleDirection,
+		Down:    rollbackAlertRuleDirection,
+	},
+	{Version: "20260921_agent_audit_actions", Name: "agent_audit_actions", Up: expandAgentAuditActions, Down: rollbackIdentityAgentPrincipal},
+	{Version: "20260921_identity_agent_principal", Name: "identity_agent_principal", Up: applyIdentityAgentPrincipal, Down: rollbackIdentityAgentPrincipal},
+	{Version: "20260921_principal_integrity", Name: "principal_integrity", Up: applyPrincipalIntegrity, Down: rollbackIdentityAgentPrincipal},
+	{Version: "20260921_access_request_items", Name: "access_request_items", Up: applyAccessRequestItems, Down: rollbackAccessRequestItems},
+	{Version: "20260921_access_request_item_decisions", Name: "access_request_item_decisions", Up: applyAccessRequestItemDecisions, Down: rollbackAccessRequestItems},
+	{Version: "20260921_agent_audit_ledger", Name: "agent_audit_ledger", Up: applyAgentAuditLedger, Down: rollbackAgentAuditLedger},
+	{Version: "20260921_agent_breaker_alert", Name: "agent_breaker_alert", Up: applyAgentBreakerAlert, Down: rollbackAgentBreakerAlert},
+	{Version: "20260921_agent_visibility_exposures", Name: "agent_visibility_exposures", Up: applyAgentVisibilityExposures, Down: rollbackAgentVisibilityExposures},
+	{Version: "20260921_agent_subject_rules", Name: "agent_subject_rules", Up: applyAgentSubjectRules, Down: rollbackAgentSubjectRules},
+	{Version: "20260922_agent_session_token_name", Name: "agent_session_token_name", Up: applyAgentSessionTokenName, Down: rollbackAgentSessionTokenName},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -208,7 +226,16 @@ func schemaDDLStatements() []string {
 	out = append(out, roleStateCheckpointDDL()...)
 	out = append(out, groupRoleMappingDDL()...)
 	out = append(out, policyGroupsDDL()...)
-	return append(out, kekTopologyDDL()...)
+	out = append(out, kekTopologyDDL()...)
+	out = append(out, alertRuleDirectionDDL()...)
+	out = append(out, identityAgentPrincipalDDL()...)
+	out = append(out, principalIntegrityDDL()...)
+	out = append(out, accessRequestItemsDDL()...)
+	out = append(out, accessRequestItemDecisionsDDL()...)
+	out = append(out, agentAuditLedgerDDL()...)
+	out = append(out, agentBreakerAlertDDL()...)
+	out = append(out, agentVisibilityExposuresDDL()...)
+	return append(out, agentSessionTokenNameDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

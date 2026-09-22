@@ -16,8 +16,8 @@ import (
 	"regexp"
 	"sort"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/gin-gonic/gin"
 )
 
 // ErrCode is a stable, machine-readable error code. Values MUST be created via
@@ -70,6 +70,8 @@ type ParamSpec struct {
 // {key} placeholders (same syntax as vue-i18n and the frontend apiError.zh-TW
 // value, so the bijection test compares them as templates).
 type Descriptor struct {
+	// AuditOnly codes are registered reasons, never response codes or locale keys.
+	AuditOnly  bool
 	ZhFallback string
 	Params     []ParamSpec
 }
@@ -144,7 +146,7 @@ func DescriptorOf(code ErrCode) (Descriptor, bool) {
 	if !ok {
 		return Descriptor{}, false
 	}
-	cp := Descriptor{ZhFallback: d.ZhFallback}
+	cp := Descriptor{ZhFallback: d.ZhFallback, AuditOnly: d.AuditOnly}
 	if d.Params != nil {
 		cp.Params = make([]ParamSpec, len(d.Params))
 		for i, p := range d.Params {
@@ -186,6 +188,12 @@ type ErrorResponse struct {
 // dropped (never leaked) after logging.
 func Write(c *gin.Context, status int, r ErrorResponse) {
 	d, ok := registry[r.Code]
+	if ok && d.AuditOnly {
+		r.Code = CodeAuthAgentTokenInvalid
+		r.Params = nil
+		r.Meta = nil
+		d = registry[r.Code]
+	}
 	if !ok {
 		log.Printf("[apierror] unregistered code %q (path=%s)", logSafe(string(r.Code)), c.FullPath())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "系統發生錯誤，請稍後再試"})

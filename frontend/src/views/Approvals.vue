@@ -40,20 +40,59 @@
           <el-table
             v-loading="loading"
             :data="pendingRequests"
+            class="pending-table"
+            data-test="pending-table"
             style="width: 100%"
             stripe
           >
+            <el-table-column type="expand">
+              <template #default="{ row }">
+                <PerItemApproval
+                  :request="row"
+                  :actor-id="currentUserId"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('multiRequest.task')"
+              min-width="70"
+            >
+              <template #default="{ row }">
+                #{{ row.id }}<p v-if="row.items">
+                  {{ $t('multiRequest.count', { n: row.items.length }) }}
+                </p>
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('approvals.colRequester')"
-              width="130"
+              min-width="160"
             >
               <template #default="{ row }">
                 {{ row.requester?.username || `#${row.requester_id}` }}
+                <PrincipalBadge
+                  v-if="row.requester?.kind"
+                  :kind="row.requester.kind"
+                  :owner-id="row.requester.owner_user_id"
+                  :owner-name="row.requester.owner_username || (row.executor?.id === row.requester_id ? row.executor.owner_username : undefined)"
+                />
+                <div
+                  v-if="row.executor && row.executor.id !== row.requester_id"
+                  data-test="executor-principal"
+                >
+                  {{ row.executor.username }} <PrincipalBadge
+                    :kind="row.executor.kind"
+                    :owner-id="row.executor.owner_user_id"
+                    :owner-name="row.executor.owner_username"
+                  />
+                </div>
+                <p v-else-if="!row.executor && row.executor_user_id && row.executor_user_id !== row.requester_id">
+                  {{ $t('multiRequest.executorRef', { id: row.executor_user_id }) }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
               :label="$t('common.asset')"
-              min-width="150"
+              min-width="125"
             >
               <template #default="{ row }">
                 {{ row.asset?.name || $t('common.assetRef', { id: row.asset_id }) }}
@@ -69,13 +108,12 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.requestReason')"
-              min-width="220"
-              show-overflow-tooltip
+              min-width="155"
               prop="reason"
             />
             <el-table-column
               :label="$t('approvals.colWishUse')"
-              width="150"
+              min-width="105"
             >
               <template #default="{ row }">
                 {{ formatMinutes(row.requested_duration_minutes) }}
@@ -89,7 +127,7 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.requestTime')"
-              width="170"
+              min-width="120"
             >
               <template #default="{ row }">
                 {{ formatDateTime(row.created_at) }}
@@ -98,7 +136,7 @@
             <el-table-column
               v-if="quorumEnabled"
               :label="$t('approvals.colApprovalProgress')"
-              width="110"
+              width="90"
             >
               <template #default="{ row }">
                 <el-tooltip
@@ -117,11 +155,12 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.actions')"
-              width="190"
+              width="125"
               fixed="right"
             >
               <template #default="{ row }">
                 <el-button
+                  v-if="!row.items?.length"
                   link
                   type="primary"
                   size="small"
@@ -131,6 +170,7 @@
                   {{ hasMyVote(row) ? $t('approvals.approvedByMe') : $t('approvals.approve') }}
                 </el-button>
                 <el-button
+                  v-if="!row.items?.length"
                   link
                   type="danger"
                   size="small"
@@ -159,12 +199,45 @@
             style="width: 100%"
             stripe
           >
+            <el-table-column type="expand">
+              <template #default="{ row }">
+                <RequestItems :request="row" />
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('multiRequest.task')"
+              min-width="130"
+            >
+              <template #default="{ row }">
+                #{{ row.id }}<p v-if="row.items">
+                  {{ $t('multiRequest.count', { n: row.items.length }) }}
+                </p>
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('approvals.colRequester')"
               width="130"
             >
               <template #default="{ row }">
                 {{ row.requester?.username || `#${row.requester_id}` }}
+                <PrincipalBadge
+                  v-if="row.requester?.kind"
+                  :kind="row.requester.kind"
+                  :owner-id="row.requester.owner_user_id"
+                />
+                <div
+                  v-if="row.executor"
+                  data-test="executor-principal"
+                >
+                  {{ row.executor.username }} <PrincipalBadge
+                    :kind="row.executor.kind"
+                    :owner-id="row.executor.owner_user_id"
+                    :owner-name="row.executor.owner_username"
+                  />
+                </div>
+                <p v-else-if="row.executor_user_id">
+                  {{ $t('multiRequest.executorRef', { id: row.executor_user_id }) }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
@@ -646,6 +719,9 @@ import { RefreshCw, Lock } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
+import RequestItems from '@/components/access-request/RequestItems.vue'
+import PerItemApproval from '@/components/access-request/PerItemApproval.vue'
 import { formatDateTime } from '@/utils/format'
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
@@ -997,4 +1073,6 @@ onMounted(fetchPending)
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
 }
+.pending-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+.pending-table :deep(.el-button) { margin: var(--ot-space-xs); }
 </style>

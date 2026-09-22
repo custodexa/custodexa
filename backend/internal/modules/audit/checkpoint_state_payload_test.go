@@ -82,7 +82,7 @@ func TestCheckpointCanonicalGoldenV2(t *testing.T) {
 
 // TestSealWritesRoleStateSnapshot 封章寫入四欄且宣告 v2。
 //
-// 同時釘住 role_state_reconciled 於本波固定為 nil：對帳器尚未接上，
+// 同時釘住 role_state_reconciled 在此版固定為 nil：對帳器尚未接上，
 // 以 true 佔位就是簽下一個沒有人做過的主張
 func TestSealWritesRoleStateSnapshot(t *testing.T) {
 	f := setupVerifyFixture(t)
@@ -94,10 +94,10 @@ func TestSealWritesRoleStateSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seal: %v", err)
 	}
-	if cp.AggScheme != model.AggSchemeV2 {
-		t.Fatalf("agg_scheme = %s, want %s", cp.AggScheme, model.AggSchemeV2)
+	if cp.AggScheme != model.LatestCheckpointScheme {
+		t.Fatalf("agg_scheme = %s, want %s", cp.AggScheme, model.LatestCheckpointScheme)
 	}
-	if cp.RoleStateSnapshot == nil || *cp.RoleStateSnapshot != `{"user_roles":[[1,1],[2,2]]}` {
+	if cp.RoleStateSnapshot == nil || *cp.RoleStateSnapshot != `{"agent_tokens":[],"user_principals":[],"user_roles":[[1,1],[2,2]]}` {
 		t.Fatalf("快照欄 = %v, want 排序後的兩筆", cp.RoleStateSnapshot)
 	}
 	if cp.RoleStateCount == nil || *cp.RoleStateCount != 2 {
@@ -122,7 +122,7 @@ func TestSealWritesRoleStateSnapshot(t *testing.T) {
 	if err := f.db.Where("seq = ?", 1).First(&genesis).Error; err != nil {
 		t.Fatalf("讀 genesis: %v", err)
 	}
-	if genesis.AggScheme != model.AggSchemeV2 || genesis.RoleStateSnapshot == nil {
+	if genesis.AggScheme != model.LatestCheckpointScheme || genesis.RoleStateSnapshot == nil {
 		t.Fatalf("genesis scheme=%s snapshot=%v, want v2 且帶快照",
 			genesis.AggScheme, genesis.RoleStateSnapshot)
 	}
@@ -141,6 +141,11 @@ func TestCheckpointV1PayloadStillVerifies(t *testing.T) {
 		t.Fatalf("seal: %v", err)
 	}
 
+	makeHistoricalV2Fixture(t, f)
+	last, err = f.seal.Latest()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// 手工續接一個 v1 形態的檢查點（模擬升級前封的點）
 	prevHash, err := CheckpointLinkHash(last)
 	if err != nil {

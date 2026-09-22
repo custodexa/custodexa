@@ -852,7 +852,9 @@ func safeAuditIdentityFields() map[string]bool {
 		// account_id 為資產帳號 FK（非憑證本體），與 asset_id 同類：連線 token
 		// 簽發審計要看得出「這次連線選了哪個帳號」，脫掉即失去帳號維度的可稽核性
 		"account_id": true,
-		"parent_id":  true, // 資產群組搬遷的目的地（群組結構牽動授權繼承範圍）
+		// 任務信封的數字識別，不是持有型憑證；與 asset_id 同屬目標識別。
+		"access_request_id": true,
+		"parent_id":         true, // 資產群組搬遷的目的地（群組結構牽動授權繼承範圍）
 
 		// ── 身分綁定：綁到哪個 IdP 的哪個 subject ──────────────────────
 		// subject 是 IdP 簽發的識別字而非持有型憑證，知道它不能拿來登入
@@ -906,7 +908,7 @@ func safeAuditSubstanceFields() map[string]bool {
 		// 卻沒有任何請求綁定它，真正上線的鍵是 `roles`（PUT /users/:id/roles 與
 		// POST /users 皆是），於是「誰把誰升成什麼角色」全庫無處可查。
 		// 角色名稱、啟停旗標、豁免旗標都不是機密——它們正是課責的內容本身。
-		"roles":  true, // 升權後的角色集合
+		"roles": true, // 升權後的角色集合
 		// `role`（單數）：釘住端點與群組映射規則各以單數鍵送一個角色名。
 		// **這一次是真的有請求綁定它**——舊清單的 role 是死鍵（上線的鍵是複數），
 		// 兩者不可混為一談。少了它，「把映射來的管理員角色固定成管理者指派」
@@ -917,8 +919,8 @@ func safeAuditSubstanceFields() map[string]bool {
 		// 「把哪一個群組映射成管理員」少了任一半都答不出來。群組值不是憑證、
 		// 非自由文字（長度受欄位寬度約束、由目錄端的既有命名決定）
 		"match_value": true,
-		"active": true, // 帳號（與資產）停用／啟用的方向
-		"exempt": true, // 閒置停用豁免的授予／撤銷方向（PCI 8.2.6 例外文件化）
+		"active":      true, // 帳號（與資產）停用／啟用的方向
+		"exempt":      true, // 閒置停用豁免的授予／撤銷方向（PCI 8.2.6 例外文件化）
 
 		// ── 授權的權限級別與帳號範圍 ───────────────────────────────────
 		// 少了 permission 就不知道授的是 view 還是 connect。accounts 是資產帳號的
@@ -1194,6 +1196,13 @@ func MaskSensitiveFields(endpoint string, data map[string]interface{}) map[strin
 // 被生命週期清單當成有時序風險的狀態登記一次。
 func endpointAuditFieldSet(endpoint string) map[string]bool {
 	switch endpoint {
+	case "POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release":
+		return map[string]bool{"reason": true}
+	case "POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/revoke", "POST /api/v1/access-requests/:id/review":
+		return map[string]bool{"note": true}
+	case "POST /api/v1/users/:id/agent-tokens":
+		// 憑證有效期限屬課責事實，明文與雜湊仍不放行。
+		return map[string]bool{"expires_at": true}
 	// 目錄服務設定：`url` 是 LDAP 伺服器位址（`ldaps://host:636`），非憑證。
 	// **這條登記是「認證來源被改導到哪裡」的唯一課責欄**——改前只能靠
 	// `base_dn`／`user_filter`／`skip_tls_verify`／`enabled` 間接推斷。
@@ -1233,6 +1242,9 @@ func EndpointAuditFieldNames(endpoint string) []string {
 // 由 `TestEndpointAuditSetsAreEnumerated` 比對。
 func AuditMaskEndpoints() []string {
 	return []string{
+		"POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
+		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/revoke", "POST /api/v1/access-requests/:id/review",
+		"POST /api/v1/users/:id/agent-tokens",
 		"PUT /api/v1/ldap-directory",
 		"PUT /api/v1/keys/topology",
 	}

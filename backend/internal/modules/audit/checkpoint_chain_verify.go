@@ -94,7 +94,9 @@ type ChainReport struct {
 	// UnsealedRows 最新檢查點之後尚未封章的列數（誠實邊界 R5 的窗口大小）
 	UnsealedRows int64 `json:"unsealed_rows"`
 	// UnsealedFromID 未封尾段的起始 id（＝最新 id_to + 1）
-	UnsealedFromID uint `json:"unsealed_from_id"`
+	UnsealedFromID         uint   `json:"unsealed_from_id"`
+	ToolCallUnsealedRows   *int64 `json:"tool_call_unsealed_rows,omitempty"`
+	ToolCallUnsealedFromID *uint  `json:"tool_call_unsealed_from_id,omitempty"`
 	// AnchorDisabled 最新檢查點是否無離機錨定（R3 降級橫幅的判據；
 	// 取鏈尾而非全鏈聚合，理由見 VerifyChain）
 	AnchorDisabled bool `json:"anchor_disabled"`
@@ -121,7 +123,8 @@ type ChainReport struct {
 	// 「封章之後的每一筆變動有沒有留痕」。直寫 `user_roles` 提權時鏈仍然
 	// 100% 通過（檢查點一個字都沒動），把它併進 Status 會讓兩種完全不同的
 	// 持有物共用一個結論。nil＝本次未附帶（未接對帳器）
-	RoleState *RoleStateReport `json:"role_state,omitempty"`
+	RoleState   *RoleStateReport   `json:"role_state,omitempty"`
+	StateTables []StateTableReport `json:"-"`
 }
 
 // VerifyChain 結構層全鏈驗證：逐點驗簽章、驗 prev hash 鏈接、驗 seq 連續與區間鄰接。
@@ -185,7 +188,27 @@ func (v *CheckpointVerifier) VerifyChain() (*ChainReport, error) {
 		return nil, fmt.Errorf("計數未封尾段失敗: %w", err)
 	}
 	report.UnsealedRows = unsealed
-	report.RoleState = v.reconcileRoleState()
+	if last.AggScheme == model.AggSchemeV3 && last.ToolCallIDTo != nil {
+		var n int64
+		if err := v.db.Model(&model.AgentToolCall{}).Where("id > ?", *last.ToolCallIDTo).Count(&n).Error; err != nil {
+			return nil, err
+		}
+		from := *last.ToolCallIDTo + 1
+		report.ToolCallUnsealedRows = &n
+		report.ToolCallUnsealedFromID = &from
+	}
+	if v.roleState != nil {
+		report.StateTables = v.roleState.ReconcileTables(context.Background())
+		for _, state := range report.StateTables {
+			if state.Table == StateTableUserRoles {
+				if state.State != StateTableUnknown {
+					report.RoleState = roleReport(state)
+				} else {
+					log.Printf("[RoleState] verify reconciliation unknown: %s", state.Error)
+				}
+			}
+		}
+	}
 	return report, nil
 }
 
@@ -244,6 +267,11 @@ func (v *CheckpointVerifier) verifyChainPoint(chain []model.AuditCheckpoint, i i
 	}
 
 	prev := chain[i-1]
+	if prev.AggScheme == model.AggSchemeV3 && cp.AggScheme != model.AggSchemeV3 {
+		res.Status = IntervalStatusPayloadInvalid
+		res.Detail = "checkpoint scheme downgrade after v3"
+		return res
+	}
 	if cp.Seq != prev.Seq+1 {
 		res.Status = ChainStatusSeqGap
 		res.Detail = fmt.Sprintf("seq 不連續：前一點 seq=%d", prev.Seq)
@@ -264,6 +292,16 @@ func (v *CheckpointVerifier) verifyChainPoint(chain []model.AuditCheckpoint, i i
 		// 區間鄰接是 spec 明文要求：不鄰接代表中間有一段 id 不受任何檢查點覆蓋
 		res.Status = ChainStatusChainBroken
 		res.Detail = fmt.Sprintf("區間不鄰接：前一點 id_to=%d、本點 id_from=%d", prev.IDTo, cp.IDFrom)
+	}
+	if cp.AggScheme == model.AggSchemeV3 {
+		want := uint(1)
+		if prev.AggScheme == model.AggSchemeV3 && prev.ToolCallIDTo != nil {
+			want = *prev.ToolCallIDTo + 1
+		}
+		if *cp.ToolCallIDFrom != want {
+			res.Status = ChainStatusChainBroken
+			res.Detail = fmt.Sprintf("ledger interval not adjacent: want from=%d got=%d", want, *cp.ToolCallIDFrom)
+		}
 	}
 	return res
 }
@@ -316,8 +354,10 @@ func (v *CheckpointVerifier) verifyChainHead(cp model.AuditCheckpoint,
 // IntervalReport 內容層逐區間結果（結構層欄位一併帶出，供 UI 單表呈現）
 type IntervalReport struct {
 	ChainPointResult
-	RemainRows     int64  `json:"remain_rows"`
-	InvalidHMACIDs []uint `json:"invalid_hmac_ids,omitempty"`
+	AuditLogs      *IntervalContentResult  `json:"audit_logs,omitempty"`
+	ToolCalls      *ToolCallIntervalResult `json:"tool_calls,omitempty"`
+	RemainRows     int64                   `json:"remain_rows"`
+	InvalidHMACIDs []uint                  `json:"invalid_hmac_ids,omitempty"`
 }
 
 // ContentReport 內容層報告
@@ -364,8 +404,17 @@ func (v *CheckpointVerifier) VerifyContentBySeq(seqFrom, seqTo uint) (*ContentRe
 				return nil, err
 			}
 			item.Status = content.Status
+			item.AuditLogs = &content
 			item.RemainRows = content.RemainRows
 			item.InvalidHMACIDs = content.InvalidHMACIDs
+			item.ToolCalls, err = v.verifyToolCallInterval(&cp)
+			if err != nil {
+				return nil, err
+			}
+			if item.Status == IntervalStatusPassed && item.ToolCalls.Status != IntervalStatusPassed && item.ToolCalls.Status != "not_covered" {
+				item.Status = item.ToolCalls.Status
+				item.Detail = item.ToolCalls.Detail
+			}
 		}
 		report.StatusCounts[item.Status]++
 		report.Intervals = append(report.Intervals, item)

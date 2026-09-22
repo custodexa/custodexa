@@ -238,7 +238,7 @@ DB_MARKER="dbsmoke-$(date +%s)"
 # ANSI-C 引用 $'…'，$$ 展開成空 → 名稱撞殘留資產回 409（實測重現，勿改回）
 DB_ASSET_ID=$(curl -s -X POST "$BASE_URL/api/v1/assets" -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"e2e-pg-'"$$"'","protocol":"postgres","host":"postgres","port":5432,"username":"postgres","password":"postgres"}' \
+  -d "$(PG_SMOKE_PASSWORD="${PG_SMOKE_PASSWORD:-postgres}" python3 -c 'import json,os,sys; print(json.dumps({"name":"e2e-pg-"+sys.argv[1],"protocol":"postgres","host":"postgres","port":5432,"username":"postgres","password":os.environ["PG_SMOKE_PASSWORD"]}))' "$$")" \
   | python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))")
 if [ -z "$DB_ASSET_ID" ]; then
   bad "postgres 測試資產建立失敗"
@@ -1510,6 +1510,19 @@ graphics_scenario() {
 # VNC 無 username 概念（handler 於 fillDefaults 直接 delete），故留空。
 graphics_scenario 16 RDP rdp rdp-test rdp-test 3389 testuser testpass123
 graphics_scenario 17 VNC vnc vnc-test vnc-test 5901 "" vncpass123
+
+# --- 18. Agent 任務信封：行程內簽發，HTTP 面 403 ---
+echo "[18] Agent 任務信封（行程內簽發，HTTP 面 403）"
+# The Go harness uses authenticated agent context and the shared issue service;
+# sessions are created only by the existing SSH redemption handler against ssh-test.
+agent_task_out=$(docker compose exec -T backend sh -c 'TEST_AGENT_TASK_SSH=1 go test -count=1 -run "^TestAccessRequestAgentLive$" -v ./internal/sshproxy' 2>&1)
+agent_task_rc=$?
+echo "$agent_task_out"
+if [ "$agent_task_rc" -eq 0 ] && echo "$agent_task_out" | grep -q 'PASS step 6'; then
+  ok "Agent 兩資產任務：逐項核准／下修、真 SSH 兌換、單項撤銷即時收線；HTTP 四入口 403"
+else
+  bad "Agent 任務信封 e2e 未完整通過"
+fi
 
 echo ""
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="

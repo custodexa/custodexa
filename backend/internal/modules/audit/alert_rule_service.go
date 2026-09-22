@@ -13,11 +13,14 @@ import (
 
 // 規則驗證錯誤：handler 以 errors.Is 區分 400（輸入問題）與 500（系統問題）
 var (
-	ErrAlertRuleNotFound = errors.New("告警規則不存在")
-	ErrInvalidPattern    = errors.New("regex pattern 無效")
-	ErrInvalidSeverity   = errors.New("severity 必須為 high/medium/low")
-	ErrInvalidAction     = errors.New("action 必須為 alert/block")
-	ErrInvalidProtocols  = errors.New("protocols 僅接受 ssh/k8s/mysql/postgres/redis/mssql（逗號分隔，空=全協議）")
+	ErrAlertRuleNotFound  = errors.New("告警規則不存在")
+	ErrInvalidPattern     = errors.New("regex pattern 無效")
+	ErrInvalidSeverity    = errors.New("severity 必須為 high/medium/low")
+	ErrInvalidSubjectKind = errors.New("subject_kind 必須為 all/human/agent")
+	ErrInvalidDirection   = errors.New("direction 必須為 input/output")
+	ErrOutputBlock        = errors.New("輸出面不支援阻斷：位元組送達之後無從收回")
+	ErrInvalidAction      = errors.New("action 必須為 alert/block")
+	ErrInvalidProtocols   = errors.New("protocols 僅接受 ssh/k8s/mysql/postgres/redis/mssql（逗號分隔，空=全協議）")
 	// ErrAlertRuleNameExists 規則名撞上 alert_rules.name 的唯一索引。
 	//
 	// 該索引是種子冪等的前提，但規則名在
@@ -38,12 +41,14 @@ func isNameConflict(err error) bool {
 
 // AlertRuleRequest 規則建立/更新請求（Create 與 Update 欄位相同，共用一個結構）
 type AlertRuleRequest struct {
-	Name      string  `json:"name" binding:"required"`
-	Pattern   string  `json:"pattern" binding:"required"`
-	Severity  string  `json:"severity" binding:"required"`
-	Action    string  `json:"action"`    // 空=alert；alert/block
-	Enabled   *bool   `json:"enabled"`   // 指標區分「未傳」與「false」；未傳預設啟用
-	Protocols *string `json:"protocols"` // 指標區分「未傳」（Create=全協議、Update=不變）與空字串（全協議）
+	SubjectKind *string `json:"subject_kind"` // omitted: Create=all, Update=unchanged
+	Direction   *string `json:"direction"`    // omitted: Create=input, Update=unchanged
+	Name        string  `json:"name" binding:"required"`
+	Pattern     string  `json:"pattern" binding:"required"`
+	Severity    string  `json:"severity" binding:"required"`
+	Action      string  `json:"action"`    // 空=alert；alert/block
+	Enabled     *bool   `json:"enabled"`   // 指標區分「未傳」與「false」；未傳預設啟用
+	Protocols   *string `json:"protocols"` // 指標區分「未傳」（Create=全協議、Update=不變）與空字串（全協議）
 }
 
 // commandAuditedProtocols 具指令審計的文字終端協議（協議分流值域）；
@@ -86,6 +91,15 @@ func NewAlertRuleService(db *gorm.DB) *AlertRuleService {
 // validateRule 驗證請求：regex 以 regexp.Compile 驗證後才入庫，
 // 編譯錯誤原文附在錯誤訊息中，讓 API 呼叫端知道 pattern 哪裡壞
 func validateRule(req *AlertRuleRequest) error {
+	if req.SubjectKind != nil && !model.ValidAlertSubjectKind(*req.SubjectKind) {
+		return ErrInvalidSubjectKind
+	}
+	if req.Direction != nil && !model.ValidAlertDirection(*req.Direction) {
+		return ErrInvalidDirection
+	}
+	if req.Direction != nil && *req.Direction == model.DirectionOutput && req.Action == "block" {
+		return ErrOutputBlock
+	}
 	if !model.ValidAlertSeverity(req.Severity) {
 		return ErrInvalidSeverity
 	}
@@ -134,13 +148,23 @@ func (s *AlertRuleService) Create(req *AlertRuleRequest) (*model.AlertRule, erro
 	if req.Protocols != nil {
 		protocols, _ = normalizeProtocols(*req.Protocols) // validateRule 已驗證過
 	}
+	direction := model.DirectionInput
+	if req.Direction != nil {
+		direction = *req.Direction
+	}
+	subjectKind := model.AlertSubjectAll
+	if req.SubjectKind != nil {
+		subjectKind = *req.SubjectKind
+	}
 	rule := model.AlertRule{
-		Name:      req.Name,
-		Pattern:   req.Pattern,
-		Severity:  req.Severity,
-		Action:    normalizeAction(req.Action),
-		Protocols: protocols,
-		Enabled:   enabled,
+		SubjectKind: subjectKind,
+		Direction:   direction,
+		Name:        req.Name,
+		Pattern:     req.Pattern,
+		Severity:    req.Severity,
+		Action:      normalizeAction(req.Action),
+		Protocols:   protocols,
+		Enabled:     enabled,
 	}
 	if err := s.db.Create(&rule).Error; err != nil {
 		if isNameConflict(err) {
@@ -169,11 +193,22 @@ func (s *AlertRuleService) Update(id uint, req *AlertRuleRequest) (*model.AlertR
 		return nil, fmt.Errorf("查詢告警規則失敗: %w", err)
 	}
 
+	direction := rule.Direction
+	if req.Direction != nil {
+		direction = *req.Direction
+	}
+	if direction == model.DirectionOutput && normalizeAction(req.Action) == "block" {
+		return nil, ErrOutputBlock
+	}
 	updates := map[string]interface{}{
-		"name":     req.Name,
-		"pattern":  req.Pattern,
-		"severity": req.Severity,
-		"action":   normalizeAction(req.Action),
+		"direction": direction,
+		"name":      req.Name,
+		"pattern":   req.Pattern,
+		"severity":  req.Severity,
+		"action":    normalizeAction(req.Action),
+	}
+	if req.SubjectKind != nil {
+		updates["subject_kind"] = *req.SubjectKind
 	}
 	if req.Enabled != nil {
 		updates["enabled"] = *req.Enabled

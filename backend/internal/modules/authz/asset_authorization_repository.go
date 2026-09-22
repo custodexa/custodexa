@@ -535,6 +535,12 @@ func approverScopeRouteCondition(requesterCol string) string {
 	return "(" + scopeRouteAssetSubquery + " OR " + requesterCol + " IN " + scopeRouteSubjectSubquery + ")"
 }
 
+// requestItemScopeRouteCondition applies the same scope family to each item.
+// The legacy branch serves historical rows without items; migrated rows use items.
+func requestItemScopeRouteCondition() string {
+	return "(id IN (SELECT request_id FROM access_request_items WHERE deleted_at IS NULL AND " + approverScopeRouteCondition("requester_id") + ") OR (NOT EXISTS (SELECT 1 FROM access_request_items WHERE request_id=access_requests.id AND deleted_at IS NULL) AND " + approverScopeRouteCondition("requester_id") + "))"
+}
+
 // permissionWeight 權限權重（connect > view，J 兩階收斂），用於聚合每資產最高授權等級。
 // 歷史軟刪列可能殘留 manage 值（審計不可變），不在此表內＝權重 0，
 // 但軟刪列本就不進任何解析路徑，無實際影響

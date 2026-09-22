@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// PrincipalKindUnknown explicitly represents unavailable authenticated provenance.
+// It is not a persisted user kind and only matches rules for all subjects.
+const PrincipalKindUnknown = "unknown"
+
 // ConnectGrant connect-token 所攜帶的授權脈絡。
 // 欄位對齊 internal/proxy/connect_token.go:11-33。
 //
@@ -27,7 +31,13 @@ import (
 // 無從填、也不該填——填了等於把帳號解析結果凍結進票證，兌換側就失去現查的機會。
 // 這與 PolicyGate 兩階段的分界是同一條理由。
 type ConnectGrant struct {
-	UserID uint
+	// AgentTokenID identifies the issuing agent credential; it is rechecked when creating a session.
+	AgentTokenID uint
+	// PrincipalKind comes only from the authenticated issuing context; unavailable provenance is PrincipalKindUnknown.
+	PrincipalKind string
+	UserID        uint
+	// AccessRequestID 選取任務信封；授權仍須於簽發與兌換時現查任務項。
+	AccessRequestID uint
 
 	// AssetID／AccountID 客體選擇器（AccountID 0＝預設帳號）。
 	// **定位是憑證選擇器、不是授權快照**——簽發與兌換點皆以

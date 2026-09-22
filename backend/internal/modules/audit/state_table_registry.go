@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/custodexa/backend/internal/model"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +35,7 @@ import (
 // `TestStateTableRegistryGuard` 雙向盯住（多登記一張沒測試的表轉紅、
 // 矩陣多一列未登記的表轉紅），使「加了登記卻沒有人證明它真的抓得到」不可能發生。
 
-// StateTableUserRoles 角色指派表（本期唯一登記項）
+// StateTableUserRoles 角色指派表
 const StateTableUserRoles = "user_roles"
 
 // StateSnapshot 單一狀態表的一份正規化快照。
@@ -49,7 +50,8 @@ type StateSnapshot struct {
 	Count int64
 }
 
-// StateTable 登記清單的一項。
+// StateTable 登記清單的一項。Name 是項名，得為欄位投影而非整表。
+// users 只涵蓋 kind／owner_user_id；其他欄位必須另立投影，不擴張此項。
 //
 // EventResource 是該表的變更在 `audit_logs` 內的資源名——對帳以它篩出
 // 「上一檢查點之後、經應用程式發生的變更」。本期只有一張表，欄位仍以登記項
@@ -57,10 +59,14 @@ type StateSnapshot struct {
 type StateTable struct {
 	Name          string
 	EventResource string
+	EventMarker   string // Optional canonical details marker selecting authoritative state events.
 	Snapshot      func(ctx context.Context, tx *gorm.DB) (StateSnapshot, error)
+	Decode        func([]byte) (StateSet, error)
+	Apply         func(StateSet, []model.AuditLog) (StateSnapshot, error)
+	Diff          func(StateSet, StateSet) ([]string, []string)
 }
 
-// StateTableRegistry 登記清單（本期只含 user_roles）。
+// StateTableRegistry 登記清單：角色指派、主體種類／owner 投影、憑證狀態。
 //
 // 回傳新 slice 而非暴露套件變數：呼叫端不得就地改寫登記清單，
 // 「執行期被改掉的登記清單」等於一個可被關閉的完整性機制
@@ -70,7 +76,10 @@ func StateTableRegistry() []StateTable {
 			Name:          StateTableUserRoles,
 			EventResource: "user_role",
 			Snapshot:      SnapshotUserRoles,
+			Decode:        decodeRoleSet, Apply: applyRoleSet, Diff: diffState,
 		},
+		projectionTable(StateTablePrincipals, "user", SnapshotPrincipals),
+		projectionTable(StateTableAgentTokens, "agent_token", SnapshotAgentTokens),
 	}
 }
 

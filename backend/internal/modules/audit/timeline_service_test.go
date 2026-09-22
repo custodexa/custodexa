@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -288,7 +288,7 @@ func TestTimelineFileTransferNotDoubleCounted(t *testing.T) {
 // TestTimelineAssetPivotRejectsResourceIDImpersonation 資產樞紐只認 asset_id 欄。
 //
 // 造一筆 resource_id 與資產 id 相同、但 asset_id 為空的改密計畫審計列
-//（正是訂正前 extractResource 會產出的形態），資產樞紐**不得**撈到它
+// （正是訂正前 extractResource 會產出的形態），資產樞紐**不得**撈到它
 func TestTimelineAssetPivotRejectsResourceIDImpersonation(t *testing.T) {
 	db := setupTimelineDB(t)
 	ts := time.Date(2026, 8, 12, 3, 0, 0, 0, time.UTC)
@@ -604,7 +604,7 @@ func TestTimelineSubjectsMinimalFields(t *testing.T) {
 		t.Error("已停用主體應標記 active=false 而非被濾掉")
 	}
 	// 欄位白名單（json 標籤）
-	allowed := map[string]bool{"id": true, "name": true, "display_name": true, "active": true, "deleted": true}
+	allowed := map[string]bool{"id": true, "name": true, "display_name": true, "active": true, "deleted": true, "kind,omitempty": true, "owner_user_id,omitempty": true} // Additive approved subject fields.
 	tp := reflect.TypeOf(subs[0])
 	for i := 0; i < tp.NumField(); i++ {
 		tag := tp.Field(i).Tag.Get("json")

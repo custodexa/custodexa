@@ -52,6 +52,8 @@ type authContextTouchpoint struct {
 // 清單可超前登記尚未存在的位置（單向判定，登記多了不會紅）——分批交付時，
 // 後批才出現的貫穿點可先寫進來備查。
 var authContextTouchpoints = []authContextTouchpoint{
+	{symbol: "Begin", file: "internal/agentmcp/dispatch.go", fn: "Handler.execute", count: 1, source: "工具帳本 Begin，不是憑證簽發；主體與 token 來自本次 AuthMiddleware／SDK session owner，owner 現查，task 歸屬先驗，帶 context 寫 pending 再轉送"},
+	{symbol: "CreateWithGenerationGuard", file: "internal/modules/session/session_service.go", fn: "SessionService.Create", count: 1, source: "帶 agent token／actor 的舊 Create 入口委派同一交易守衛；人類 epoch 脈絡為空，agent 憑證與任務來源由 session 欄位交給現查鎖及 actor source 驗證"},
 	{symbol: "VerifyCredentialGenerationTx", file: "internal/modules/identity/seal_authorizer.go", fn: "SealAuthorizer.Authorize", count: 1,
 		source: "Existing verified JWT AuthContext; credential generation is checked against the current identity database"},
 	// ── 簽發側：JWT ─────────────────────────────────────────────
@@ -94,6 +96,8 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "scoped token 的 claims.EffectiveMethod()/ProviderID；世代由 service 內部現查"},
 
 	// ── 簽發側：非 JWT 的短期能力（連線／錄影／監看） ─────────────
+	{symbol: "IssueConnectToken", file: "internal/agentmcp/handler.go", fn: "Handler.OpenSession", count: 1,
+		source: "MCP 每次 HTTP 已驗證的 RequestExtra 脈絡：GetAuthContext + 主體經同一 IssueConnectGrant 填入 ConnectGrant，來源位址不入票"},
 	{symbol: "IssueConnectToken", file: "internal/sshproxy/handler.go", fn: "Handler.HandleCreateConnectToken", count: 1,
 		source: "ConnectTokenManager（接線後方法名對齊 gatewayapi.TokenService，原名 Issue）：" +
 			"middleware.GetAuthContext(c) 經 subj 填入 proxy.ConnectGrant"},
@@ -144,12 +148,12 @@ var authContextTouchpoints = []authContextTouchpoint{
 		source: "refresh 換發入口；脈絡自 refresh 列讀出、世代現查"},
 
 	// ── 驗證側：一次性能力兌換 ───────────────────────────────────
-	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/handler.go", fn: "Handler.HandleSSH", count: 1,
+	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/establish.go", fn: "Handler.establishTerminal", count: 1,
 		source: "ConnectTokenManager 兌換（接線後方法名對齊 gatewayapi.TokenService，原名 Resolve）：" +
 			"取出 grant 後須複查 provider 啟用與世代。此處呼叫帶原因的版本——" +
 			"**判定本體逐字不變**（RedeemConnectToken 即以本方法實作），多回傳的原因只供審計分辨" +
 			"票證無效／過期；對外回應仍收斂為同一則「token 無效」，不給票證存在性探測面"},
-	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/dbconsole_handler.go", fn: "Handler.HandleDBConsole", count: 1,
+	{symbol: "RedeemConnectTokenWithReason", file: "internal/sshproxy/establish.go", fn: "Handler.establishConsole", count: 1,
 		source: "查詢主控台兌換（與 HandleSSH 同一份判定、同一張閘序表）：取出 grant 後" +
 			"由 G-S3／G-S4 複查角色與憑證世代。原因只供審計分辨票證無效／過期，" +
 			"對外仍收斂為同一則「token 無效」"},
@@ -191,8 +195,8 @@ var authContextTouchpoints = []authContextTouchpoint{
 	// （`POST /sessions/:id/monitor-token`、`POST /sessions/share/token`）。
 	// 這兩支承接了原先掛在 WS 路由上的認證面——WS 端改收一次性票後，
 	// 全部准入判定移到簽發端，而簽發端的認證脈絡即由本中介層寫入
-	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 8},
-	{symbol: "AuthMiddleware", file: "internal/api/access_request_handler.go", fn: "AccessRequestHandler.RegisterRoutes", count: 2},
+	{symbol: "AuthMiddleware", file: "cmd/server/main.go", fn: "registerRoutes", count: 9},
+	{symbol: "AuthMiddleware", file: "internal/api/access_request_handler.go", fn: "AccessRequestHandler.RegisterRoutes", count: 3, source: "申請單、審核範圍與 agent 任務唯讀端點各進相同現查認證閘；任務端點另限 audit:view"},
 	{symbol: "AuthMiddleware", file: "internal/api/access_review_handler.go", fn: "AccessReviewHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/alert_rule_handler.go", fn: "AlertRuleHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/asset_account_handler.go", fn: "AssetAccountHandler.RegisterRoutes", count: 1},
@@ -201,7 +205,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/audit_export_handler.go", fn: "AuditExportHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_checkpoint_handler.go", fn: "AuditCheckpointHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_failure_handler.go", fn: "AuditFailureHandler.RegisterRoutes", count: 1},
-	{symbol: "AuthMiddleware", file: "internal/api/audit_integrity_handler.go", fn: "AuditIntegrityHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/audit_integrity_handler.go", fn: "AuditIntegrityHandler.RegisterRoutes", count: 2, source: "完整性驗證與工具帳本唯讀各自經相同認證閘，另限 admin／auditor"},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_log_handler.go", fn: "AuditLogHandler.RegisterRoutes", count: 1},
 	// auditor-workbench：時間軸／主體兩支端點一次橫跨六類審計資料，是全站可讀範圍最寬的
 	// 讀取面之一。漏掛（或漏登記後被人取下）＝稽核資料以匿名身分全站可讀，且該路徑簽發／
@@ -259,7 +263,7 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/syslog_setting_handler.go", fn: "SyslogSettingHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/transmission_inventory_handler.go", fn: "TransmissionInventoryHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/user_group_handler.go", fn: "UserGroupHandler.RegisterRoutes", count: 1},
-	{symbol: "AuthMiddleware", file: "internal/api/user_handler.go", fn: "UserHandler.RegisterRoutes", count: 1},
+	{symbol: "AuthMiddleware", file: "internal/api/user_handler.go", fn: "UserHandler.RegisterRoutes", count: 5, source: "帳號、agent token、breaker 解除、breaker 事件唯讀與 my/agents 自助端點各進相同現查認證閘；token／breaker 另限 human admin／owner，自助主體由服務層重驗 human／active 與政策"},
 
 	// ── 失效側：RecordingTokenManager 撤銷與唯讀訂閱收線 ─────────
 	// 「哪些事件會撤銷錄影 token／收線訂閱」的單一可查清冊。

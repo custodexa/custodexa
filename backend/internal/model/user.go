@@ -17,12 +17,24 @@ const (
 	AuthSourceOIDC = "oidc"
 )
 
+const (
+	KindHuman = "human"
+	KindAgent = "agent"
+)
+
 // User 使用者模型
 type User struct {
+	// OwnerUsername is a read-only list projection, never a database column.
+	OwnerUsername string `gorm:"-" json:"owner_username,omitempty"`
+
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+
+	Kind             string     `gorm:"size:16;not null;default:human" json:"kind"`
+	OwnerUserID      *uint      `json:"owner_user_id"`
+	BreakerPendingAt *time.Time `json:"breaker_pending_at"`
 
 	Username string `gorm:"uniqueIndex;not null;size:50" json:"username"`
 	// Email 未知以 NULL 表達（非空字串）；唯一性僅約束非 NULL 值。

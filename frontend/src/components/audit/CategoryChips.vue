@@ -40,6 +40,14 @@
           >
             {{ badgeText(type) }}
           </el-tag>
+          <el-tag
+            v-if="isOn(type) && coverage.find((c) => c.type === type)?.incomplete"
+            size="small"
+            type="warning"
+            :data-test="`coverage-incomplete-${type}`"
+          >
+            {{ $t('auditorWorkbench.coverage.commandIncomplete', { count: coverage.find((c) => c.type === type)?.degraded_count || 0 }) }}
+          </el-tag>
         </button>
       </template>
 

@@ -31,7 +31,7 @@ import (
 // 誤截，稽核平白損失資訊。
 func TestAuditLogRuneLimitsComeFromStructTags(t *testing.T) {
 	want := map[string]int{
-		"Action":          20,
+		"Action":          32,
 		"Resource":        20,
 		"Status":          20,
 		"Username":        100,

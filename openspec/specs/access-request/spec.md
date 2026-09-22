@@ -189,6 +189,10 @@
 ### Requirement: 我的申請自助頁
 系統 SHALL 提供申請人**獨立的**「我的申請」功能頁（與「我的連線」分離——每角色功能頁單獨切開、降低頁面功能耦合）：呈現呼叫者**自己**的申請單（pending 與歷史決定，含狀態、資產、時長、決定者與事由）與有效臨時授權（時窗起迄）；pending 列 SHALL 提供撤回操作（二次確認）。導覽 SHALL 對一般使用者顯示獨立入口。資料 SHALL owner-scoped（以 JWT user_id 過濾，SHALL NOT 接受 client 傳入的使用者參數），SHALL NOT 呈現他人申請。
 
+頁面 SHALL 提供建立多資產申請的入口。申請單 SHALL 以「單」為列、其項目可展開：列摘要 SHALL 呈現項目數與整單狀態，展開後每項 SHALL 呈現資產、帳號範圍與該項狀態（待審／已核准／已拒絕／已撤銷）。單項被拒或被撤 SHALL NOT 呈現為整單失效。
+
+申請單 SHALL 呈現其任務 id（即申請單 id），且 SHALL 可由已核准的單進入該任務的檢視。
+
 #### Scenario: 獨立頁與入口
 - **WHEN** 一般使用者登入且有一張 pending 單與一筆時窗內臨時授權
 - **THEN** 導覽顯示獨立的「我的申請」入口，頁面呈現該申請狀態與臨時授權時窗；「我的連線」頁不含申請內容（兩功能頁不耦合）
@@ -201,8 +205,20 @@
 - **WHEN** 使用者請求附帶他人識別參數
 - **THEN** 參數被忽略，回應仍僅限本人資料
 
+#### Scenario: 逐項狀態可展開
+- **WHEN** 使用者檢視一張三項中一項被拒的已決定單
+- **THEN** 列摘要顯示項目數與整單狀態，展開可見三項各自的資產、帳號範圍與狀態，被拒的一項不使另兩項顯示為失效
+
 ### Requirement: 審核中心與事件通知
 系統 SHALL 提供審核中心（**有效審核者**可入——具 `approver` 角色 OR 屬任一審核方群組；`admin` 角色本身 SHALL NOT 構成進入資格）：待審（依審核範圍過濾）、歷史、有效臨時授權三視圖；導航 SHALL 對有效審核者顯示待審計數。進入資格判定 SHALL 與端點守衛同一來源，SHALL NOT 出現「看得到入口卻被端點拒絕」或「端點放行卻無入口」的分裂。申請建立/核准/拒絕事件 SHALL 廣播至既有通知通道，payload SHALL 最小化（單號、資產名、事件類型、連結；SHALL NOT 含事由全文）；送達保證為「盡力外送＋審核中心必見」（通道未配置時不阻斷流程）。管理員對申請流的全域檢視 SHALL 經既有 admin 專屬頁面（審核範圍總覽、授權管理與審計）取得，SHALL NOT 依賴審核中心。
+
+待審視圖 SHALL 支援逐項決定：審核者 SHALL 可對單內每項各自核准、拒絕或刪除，並 SHALL 可對核准的項下修**時長、起始與帳號範圍**；
+帳號範圍的可選值 SHALL 收斂為該項申請範圍的子集（申請為全部帳號者 SHALL 可收成具體清單，反向 SHALL NOT 可選）。
+介面 SHALL NOT 提供上調選項（超出申請範圍的值不可選）。審核範圍未命中的項 SHALL 呈現為不可決定並說明原因，SHALL NOT 隱藏該項。
+
+送出 SHALL 於同一層級完成並在送出前呈現逐項決定摘要（哪幾項核准、哪幾項下修成什麼、哪幾項拒絕或刪除）。送出後部分項失敗時，介面 SHALL 逐項回報結果，SHALL NOT 以單一成功或失敗訊息概括。
+
+申請人或執行者為 agent 主體的單，待審與歷史視圖 SHALL 標示主體類型與其負責人。
 
 #### Scenario: 待審依範圍過濾
 - **WHEN** approver 開啟審核中心待審視圖
@@ -220,8 +236,32 @@
 - **WHEN** 申請建立且已配置通知通道
 - **THEN** 出站 payload 含單號/資產名/事件類型/連結，不含事由全文
 
+#### Scenario: 逐項下修不可上調
+- **WHEN** approver 對申請 240 分鐘的一項調整時長
+- **THEN** 可選值不超過 240 分鐘；帳號範圍同理只能縮小到申請範圍的子集
+
+#### Scenario: 全部帳號的項可收成具體清單
+- **WHEN** approver 對一項申請範圍為全部帳號的項調整帳號範圍
+- **THEN** 可選值為該資產上的帳號清單（下修為子集）；選定後 SHALL NOT 能再改回全部帳號
+
+#### Scenario: 範圍外的項可見但不可決定
+- **WHEN** 一張兩項的單中只有一項落在該 approver 的審核範圍
+- **THEN** 另一項仍呈現於畫面但不可決定，並說明因不在其審核範圍
+
+#### Scenario: 送出前摘要與逐項回報
+- **WHEN** approver 對三項分別核准、下修、拒絕後送出，其中一項後端失敗
+- **THEN** 送出前呈現三項決定摘要；送出後逐項回報結果，成功的兩項與失敗的一項分別可辨
+
+#### Scenario: agent 申請單可辨識
+- **WHEN** approver 檢視一張由 agent 主體提出的待審單
+- **THEN** 申請人處標示其為 AI agent 並可見其負責人
+
 ### Requirement: 臨時授權提前撤銷
-系統 SHALL 支援對仍有效的臨時授權（ticket 來源）提前撤銷。撤銷資格：一般核准單＝admin OR 該單原核准人；自動核准單與破窗單（無真人核准人）＝admin OR 範圍命中的 approver。撤銷 SHALL 於同一交易內軟刪票證授權（CAS，先到者贏）並在申請單上記錄 revoked_at/revoked_by/revoke_note——申請單狀態機 SHALL NOT 新增終態（approved 維持，附註欄非狀態轉移）。撤銷後權限判定即刻不命中（擋新連線）、資產連線入口的伺服端標註自然回落；撤銷 SHALL 入審計並通知申請人側可見。
+系統 SHALL 支援對仍有效的臨時授權（ticket 來源）提前撤銷，撤銷範圍 SHALL 可為整單或單一任務項。撤銷資格：一般核准單＝admin OR 該單原核准人；自動核准單與破窗單（無真人核准人）＝admin OR 範圍命中的 approver。撤銷 SHALL 於同一交易內軟刪該範圍的票證授權（CAS，先到者贏）並在申請單／任務項上記錄 revoked_at/revoked_by/revoke_note——申請單狀態機 SHALL NOT 新增終態（approved 維持，附註欄非狀態轉移）。撤銷後權限判定即刻不命中（擋新連線）、資產連線入口的伺服端標註自然回落；撤銷 SHALL 入審計並通知申請人側可見。
+
+**對既有會話的效力**：由 agent 主體執行的會話（執行主體 `kind='agent'`）SHALL 於撤銷交易提交後**無條件終止**（沿既有終止語義與 CAS 競態安全，`end_reason='revoked'`），SHALL NOT 受 `access_revoke_disconnect` 政策鍵約束；審計事件 SHALL 帶被終止的 session 識別清單。人類執行的會話 SHALL 沿既有 `access_revoke_disconnect` 語義（見「撤銷斷線聯動」）。
+
+**射程邊界（本版本明載）**：終止的射程止於本系統建立並代理的會話。目標主機上已由該會話啟動、且生命週期不依附該會話的背景程序 SHALL NOT 因撤銷而停止，本規格 SHALL NOT 被解讀為具備該能力。
 
 #### Scenario: 原核准人撤銷
 - **WHEN** 核准人 P 對自己核准且票證仍有效的單發起撤銷（附事由）
@@ -246,6 +286,14 @@
 #### Scenario: 已到期票證不可撤
 - **WHEN** 對票證已自然到期的單發起撤銷
 - **THEN** 409 拒絕（無有效票證可撤，到期與撤銷語義分離）
+
+#### Scenario: 撤銷即時終止 agent 會話
+- **WHEN** 由 agent 主體執行的會話正進行中，其任務項被撤銷（`access_revoke_disconnect` 為預設 false）
+- **THEN** 該會話被終止（`end_reason='revoked'`），審計事件帶被終止的 session 識別清單；撤銷後 SHALL NOT 出現該會話仍能執行指令的情形
+
+#### Scenario: 撤銷不追殺主機背景程序
+- **WHEN** agent 會話先前於目標主機啟動了脫離該會話的背景程序，其後任務項被撤銷
+- **THEN** 會話被終止並留痕；該背景程序不受影響，且系統 SHALL NOT 對外宣稱已終止之
 
 ### Requirement: 撤銷斷線聯動
 安全政策鍵 `access_revoke_disconnect` 預設 false：撤銷僅擋新連線、不中斷進行中會話（與到期語義一致）。設為 true 時，撤銷 SHALL 於交易提交後終止該使用者×該資產的全部 active 會話（`end_reason='revoked'`，沿既有終止語義含 CAS 競態安全）；個別會話收線失敗 SHALL NOT 回滾撤銷（票證失效為主要目標，殘餘記日誌）。
@@ -273,3 +321,189 @@
 - **WHEN** 以未帶 `kind` 的請求建立申請單並查詢之
 - **THEN** `kind='normal'`，其行為與一般申請單完全一致
 
+### Requirement: 申請單任務項
+申請單 SHALL 由一至多個**任務項**組成（`access_request_items`：資產、帳號範圍、逐項狀態 `pending|approved|rejected|revoked`、逐項核准時長與起始、決定者與決定時刻、撤銷時刻與撤銷者、決定當時的政策快照）。單資產申請 SHALL 恰對應一個任務項；`access_requests.asset_id` SHALL 保留為第一項的鏡像欄，既有讀取面與既有請求形狀 SHALL NOT 因此改變。新讀取面 SHALL 以任務項為準。
+
+同一申請人對同一資產 SHALL 僅允許一項 pending 任務項（去重語義由單層擴充至項層，既有單資產行為不變）。此去重 SHALL 由資料庫層的唯一約束保證，任務項 SHALL 為此保留申請人識別的冗餘欄位——併發建單只有資料庫層擋得住，服務層先查後寫擋不住。任務項的資產 SHALL 逐項套用既有可視守門（不可視即「不存在」語義）與既有段位判定，且段位判定 SHALL 看**該項的執行主體種類**（自主模式為申請人、輔助模式為指定的執行者）：`open` 段位資產對人類執行的項 SHALL NOT 建項；對由 agent 執行的項 SHALL 建項並視同 `reason` 段位自動核准，人類為 agent 執行者建立的 open 段位項亦同——判定看執行者而非申請人，否則委派模式在 `open` 段位資產上會無單可用，而自動化執行者建立連線必帶任務識別，形成無出口的斷路。
+
+每個任務項 SHALL 於**被決定的當下**留存政策快照（該資產當時的段位、當時適用的核准門檻、自動核准時的系統依據）。快照 SHALL NOT 於事後回查現行政策改寫——政策可變，而稽核要回答的是「核准當時依的是什麼」。
+
+一項被拒絕、被刪除或被撤銷 SHALL NOT 使整單失效，亦 SHALL NOT 使其餘項退回未授權狀態；整單狀態 SHALL 為各項狀態的彙總（尚有 pending 項即 pending；全部終態即依既有終態語義收斂）。
+
+#### Scenario: 一單多資產逐項核准
+- **WHEN** 申請人對資產 A 與 B 提交一張含兩項的申請，核准人核准 A 項、拒絕 B 項
+- **THEN** A 項 approved 並產生對應臨時授權，B 項 rejected；整單仍可查得兩項各自的決定者與事由
+
+#### Scenario: 單資產申請仍為一項
+- **WHEN** 以既有單資產請求形狀（`asset_id` ＋ `accounts`）建立申請單
+- **THEN** 系統建立恰一個任務項，`access_requests.asset_id` 與該項的資產一致，既有回應欄位逐欄不變
+
+#### Scenario: 撤單項不影響其餘項
+- **WHEN** 一張含三項且全部 approved 的單，其中一項被撤銷
+- **THEN** 該項的臨時授權即刻失效（擋新連線），其餘兩項的授權不受影響，整單狀態仍為 approved
+
+#### Scenario: 決定當時的政策可事後重建
+
+- **WHEN** 一項於 `approval` 段位、門檻為兩個核准時被核准，其後管理員把該資產改為 `open` 段位
+- **THEN** 該項的政策快照仍呈現決定當時的段位與門檻，SHALL NOT 被改寫為現行政策
+
+#### Scenario: 項層去重
+- **WHEN** 申請人已有一項對資產 A 的 pending 任務項，再提交含資產 A 的新單
+- **THEN** 回 409 並帶既有在途單與項的識別，不建重複項
+
+### Requirement: agent 主體申請與執行者
+申請人 SHALL 可為 agent 主體（`users.kind='agent'`）。申請單 SHALL 帶 `executor_user_id`（NULL 或指向一個 agent 主體）：
+
+- **自主模式**：`executor_user_id` 為 NULL 且申請人為 agent 主體——授權主體與執行主體同為該 agent。
+- **輔助模式**：人類申請人建立申請單並將 `executor_user_id` 指向一個 agent 主體——委派由本系統核發，`on_behalf_of` SHALL 取自申請人，SHALL NOT 由呼叫端自報，亦 SHALL NOT 由 agent 的擁有者推導。
+
+輔助模式的任務項 SHALL 同時受申請人與執行者兩側的可視範圍約束（取交集）；任一側不可視即該項不成立。此交集 SHALL 為**即時交集**：每次判定現查兩側的當前可視範圍，SHALL NOT 以核准當時的快照為準——申請人事後失去可視時，該項 SHALL 即刻不再命中，與撤權的即時性一致。`executor_user_id` SHALL NOT 於單建立後變更——換執行者 SHALL 開新單。agent 主體 SHALL NOT 核准任何申請單（含自己的）。
+
+由 agent 執行的任務項 SHALL 對**任何段位**的資產都存在——`open` 段位不構成免單的例外，系統 SHALL 視同 `reason` 段位即時自動核准（決定者記 system、帶自動核准標記），使每一條 agent 連線都可回溯到一個任務 id。輔助模式下人類為 agent 執行者對 `open` 段位資產建立的項 SHALL 同樣建立並自動核准。
+
+
+#### Scenario: agent 自主開單
+- **WHEN** agent 主體對其可視、`approval` 段位的資產提交申請
+- **THEN** 建立 pending 單，`executor_user_id` 為 NULL，審核範圍命中的 approver 於審核中心可見該單並可辨識申請人為 agent
+
+#### Scenario: 人類委派 agent 執行
+- **WHEN** 人類申請人建立申請單並指定 `executor_user_id` 為 agent X
+- **THEN** 單記錄 `on_behalf_of` 為該申請人；核准後由 agent X 的身分取得的授權綁定該單，且不因該 agent 的擁有者是誰而改變
+
+#### Scenario: 輔助模式取可視交集
+- **WHEN** 人類申請人可視資產 A，但被指定的 agent 執行者不可視 A
+- **THEN** 該項不成立（回「不存在」語義），不建項、不洩漏存在性
+
+#### Scenario: 核准後申請人失去可視即失效
+- **WHEN** 輔助模式的任務項已核准，其後人類申請人失去該資產的可視
+- **THEN** 該項的後續判定即刻不命中（擋新連線），系統不以核准當時的快照放行
+
+#### Scenario: agent 對 open 段位資產仍須開單
+- **WHEN** agent 主體對 `open` 段位資產請求連線而無任何申請單
+- **THEN** 連線被拒；其提交申請後單即時轉 approved（決定者 system）並帶任務 id，連線方可建立
+
+#### Scenario: agent 不得核准
+- **WHEN** agent 主體對任一 pending 單執行核准或拒絕
+- **THEN** 一律回 403，單不受影響、不計票
+
+### Requirement: 任務關閉的時點與其效力
+
+申請單 SHALL 具備**關閉時刻**並持久化。關閉 SHALL 由下列任一觸發：執行者經 `close_task` 主動關閉該任務，或該單全部任務項皆已到期或被撤銷。關閉時刻 SHALL NOT 由「全部項是否為終態」於查詢時推導——報告的修訂時窗與缺報告的判定都以它為起點，推導值會使同一份報告因時間或政策變動而忽然逾窗。已有關閉時刻者 SHALL NOT 被後續觸發覆寫。
+
+任務關閉 SHALL 終止該任務名下其餘進行中的會話，沿既有的即時終止出口，SHALL NOT 另開第二條終止入口。
+
+任務報告的修訂時窗 SHALL 自關閉時刻起算；**缺報告 SHALL 以關閉時刻判定**——關閉當下無報告列即為缺報告，其後於修訂窗內的提交 SHALL NOT 改寫「關閉時缺報告」這項事實。
+
+#### Scenario: 全部項終態即關閉
+
+- **WHEN** 一張兩項的單，其中一項被撤銷、另一項其後自然到期
+- **THEN** 該單記錄關閉時刻，其名下仍進行中的會話被終止
+
+#### Scenario: 缺報告以關閉時判定
+
+- **WHEN** 任務關閉當下無任何報告列，其後執行者於修訂窗內補交一版
+- **THEN** 該任務仍記錄「關閉時缺報告」，補交的版本以修訂呈現
+
+#### Scenario: 關閉時刻不被二次覆寫
+
+- **WHEN** 執行者經 `close_task` 關閉任務之後，該單剩餘項才到期
+- **THEN** 關閉時刻維持首次寫入的值
+
+### Requirement: 申請帳號範圍的存在性驗證
+建立申請單時，每個任務項的帳號範圍內的每個帳號名 SHALL 存在於該項資產的帳號清單中；不存在者 SHALL 回 400 `VALIDATION_ACCOUNT_NOT_ON_ASSET` 且不建單。`@ALL` 範圍 SHALL NOT 觸發此驗證。核准人 SHALL NOT 上調帳號範圍（沿用時長與起始「只可下修」的既有語義）。
+
+由 agent 主體執行的任務項（自主模式的申請人為 agent，或輔助模式指定的執行者為 agent）SHALL 必須指定具體帳號範圍，SHALL NOT 使用全部帳號（`@ALL`）或空範圍；違反 SHALL 回 400 `VALIDATION_AGENT_ACCOUNTS_REQUIRED` 且不建單。理由是任務信封的成立要件即為綁定帳號——未綁帳號的核准書使兌換端的逐項比對沒有比對對象。人類申請人的任務項 SHALL NOT 受此限制，其 `@ALL` 語義不變。
+
+#### Scenario: 範圍寫了不存在的帳號被拒
+- **WHEN** 申請人對資產 A 提交帳號範圍 `["testuser"]`，而 A 上沒有 `testuser` 這個帳號
+- **THEN** 回 400 `VALIDATION_ACCOUNT_NOT_ON_ASSET`，不建單，核准人不會看到一張寫著不存在帳號的核准書
+
+#### Scenario: 全帳號範圍免驗
+- **WHEN** 人類申請人的申請未帶帳號範圍（`@ALL`）
+- **THEN** 建單成功，行為與擴充前一致
+
+#### Scenario: agent 的項未指定帳號被拒
+- **WHEN** agent 主體提交一項帳號範圍為 `@ALL`（或未帶帳號範圍）的任務項
+- **THEN** 回 400 `VALIDATION_AGENT_ACCOUNTS_REQUIRED`，不建單
+
+#### Scenario: 輔助模式的執行者為 agent 時同樣受限
+- **WHEN** 人類申請人建立申請單並指定執行者為 agent 主體，但某一項未指定帳號範圍
+- **THEN** 回 400 `VALIDATION_AGENT_ACCOUNTS_REQUIRED`，不建單（判定看執行者，不看申請人）
+
+### Requirement: agent 開單速率與在途上限
+agent 主體的開單 SHALL 受兩個政策鍵約束：`agent_request_rate_per_hour`（每小時開單上限，預設 30）與 `agent_request_pending_max`（同時 pending 單上限，預設 5）。任一上限被突破 SHALL 回 429 `RULE_AGENT_REQUEST_RATE` 且不建單，並 SHALL 入審計。人類申請人 SHALL NOT 受此兩鍵約束。計數 SHALL 於資料庫原子累計，SHALL NOT 依賴行程記憶體。
+
+#### Scenario: 超過每小時開單上限
+- **WHEN** agent 主體於一小時內第 31 次開單（預設值）
+- **THEN** 回 429 `RULE_AGENT_REQUEST_RATE`，不建單，審計留一列
+
+#### Scenario: 超過在途上限
+- **WHEN** agent 主體已有 5 張 pending 單再提交第 6 張
+- **THEN** 回 429 `RULE_AGENT_REQUEST_RATE`；其中一張被決定或作廢後即可再開
+
+#### Scenario: 人類不受上限影響
+- **WHEN** 人類申請人於同一小時內開超過 30 張單
+- **THEN** 行為與擴充前一致，不因 agent 政策鍵被擋
+
+### Requirement: 多資產申請表單
+
+系統 SHALL 提供一張申請單同時申請多個資產的表單，入口 SHALL 位於「我的申請」頁；資產頁既有的單資產快捷申請入口 SHALL 保留，其送出結果 SHALL 為恰一項的多資產單（兩條路徑寫入同一資料形態）。
+
+表單 SHALL 以逐項的形式呈現：每項含資產、帳號範圍（全部帳號或指定帳號清單）、與該項無關的欄位 SHALL NOT 逐項重複。時長與事由 SHALL 為整單共用欄位。
+
+帳號選擇 SHALL 限於該資產上實際存在的帳號；送出前 SHALL 於前端檢查必填（至少一項、每項有資產、事由非空），送出後後端的帳號存在性拒絕 SHALL 以指向該項的錯誤呈現，SHALL NOT 只給整單層級的泛用錯誤。
+
+執行者為 agent 主體的項，表單 SHALL NOT 提供「全部帳號」選項且帳號範圍 SHALL 為必填——任務信封綁到帳號才成立，讓使用者送出一個必被後端拒絕的值只是把錯誤延後。
+
+自動化主體的開單速率或在途上限被觸發時，申請表單 SHALL 即時呈現已達上限的事實與當前數量與上限值；該提示 SHALL NOT 出現在任務列表（那裡呈現的是任務，不是配額）。
+
+表單 SHALL 於單一層級內完成（新增項、刪除項、選帳號皆不另開疊層對話框）。
+
+申請人為 agent 主體或執行者指定為 agent 主體時，表單與列表 SHALL 標示該主體類型與其負責人。
+
+#### Scenario: 一單多資產
+
+- **WHEN** 使用者在「我的申請」開表單，加入資產 A（指定帳號 ops）與資產 B（全部帳號），填時長與事由後送出
+- **THEN** 建立一張含兩項的申請單，列表該單可展開看到兩項各自的資產與帳號範圍
+
+#### Scenario: 單資產快捷路徑同形態
+
+- **WHEN** 使用者自資產頁對資產 A 送出快捷申請
+- **THEN** 建立的單含恰一項，其呈現形態與多資產單一致
+
+#### Scenario: 帳號不存在的錯誤指到該項
+
+- **WHEN** 送出的第二項帳號在該資產上不存在
+- **THEN** 錯誤呈現在第二項旁，第一項的輸入不被清空
+
+#### Scenario: agent 項不提供全部帳號選項
+
+- **WHEN** 使用者在表單中把某一項的執行者指定為 agent 主體
+- **THEN** 該項的帳號選擇不含「全部帳號」，且未選任何帳號時無法送出
+
+#### Scenario: 達開單上限時表單即時告知
+
+- **WHEN** 某 agent 主體本小時的開單數已達上限，使用者在表單中為其建單
+- **THEN** 表單即時顯示已達上限與當前數量與上限值；任務列表不呈現此提示
+
+#### Scenario: 表單不疊層
+
+- **WHEN** 使用者在表單內新增項並選擇帳號
+- **THEN** 全程於同一層級的表單內完成
+
+### Requirement: 申請讀取與錯誤的增量契約
+系統 SHALL 保留既有申請寫入、讀取權限與機器碼，僅新增受控 details 與唯讀投影。原本允許 agent 的 POST /access-requests 與 GET /access-requests/mine SHALL 維持原路由允許清單。
+
+#### Scenario: 配額拒絕具體可辨
+- **WHEN** agent 建單超過原有小時或 pending 上限
+- **THEN** 429 原碼不變，details 加 used、limit、window_seconds 與 dimension；hour 為 3600 秒，pending 無滾動窗而為 0，不改計數或限額
+
+#### Scenario: 帳號拒絕指出項目
+- **WHEN** 第 i 項帳號不存在於資產
+- **THEN** 400 原碼不變，details 帶零起算 item_index 與 asset_id，整筆建單仍不提交
+
+#### Scenario: 執行者投影與下修界線
+- **WHEN** 在原權限與原主體範圍內讀申請清單
+- **THEN** 每單增加 executor 的 id、username、kind、owner_user_id、owner_username；每項增加 decision_bounds 的 max_duration、earliest_start、accounts
+- **AND** 界線沿 decisionValues 的原申請上限與 max(now, requested_start)，帳號 @ALL 沿原 sentinel，不是具名帳號；此投影不授予審核權限，提交時仍檢查即時範圍
+- **AND** agent 的 mine 忽略 client requester_id，只回自己提出的單；不洩漏其他人的申請

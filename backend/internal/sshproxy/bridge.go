@@ -7,11 +7,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/gorilla/websocket"
 )
 
 // 輸出批次 flush 間隔：60ms 是「人眼察覺不到延遲」與「不讓每個 byte 各成一個 WS 封包」的折衷
@@ -49,7 +49,7 @@ type resizeSink interface {
 
 // bridge 串接 WebSocket（前端 xterm.js）與 SSHConn（遠端 PTY）的雙向轉發
 type bridge struct {
-	ws             *websocket.Conn
+	ws             Transport
 	conn           TerminalConn
 	session        *model.Session
 	sessionService *session.SessionService
@@ -82,7 +82,7 @@ type bridge struct {
 }
 
 func newBridge(
-	ws *websocket.Conn,
+	ws Transport,
 	conn TerminalConn,
 	sess *model.Session,
 	sessionService *session.SessionService,
@@ -331,6 +331,13 @@ func (b *bridge) writeRaw(raw []byte) {
 // pumpOutput SSH stdout → WS（60ms 批次 flush）＋ 旁路 sinks
 func (b *bridge) pumpOutput() {
 	defer b.stop()
+	defer func() {
+		for _, sink := range b.outputSinks {
+			if closer, ok := sink.(interface{ Close() }); ok {
+				closer.Close()
+			}
+		}
+	}()
 
 	type readResult struct {
 		data []byte

@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/session"
+	"github.com/gin-gonic/gin"
 )
 
 // SessionServiceInterface Session 服務接口（用於測試注入）
@@ -43,6 +43,23 @@ func (h *SessionHandler) List(c *gin.Context) {
 		PageSize: 20,
 	}
 
+	if kind := c.Query("actor_kind"); kind != "" {
+		if kind != model.KindHuman && kind != model.KindAgent {
+			apierror.Respond(c, 400, apierror.CodeBadParams, nil)
+			return
+		}
+		filter.ActorKind = kind
+	}
+	if value := c.Query("access_request_id"); value != "" {
+		id, err := strconv.ParseUint(value, 10, 32)
+		if err != nil || id == 0 {
+			apierror.Respond(c, 400, apierror.CodeBadParams, nil)
+			return
+		}
+		requestID := uint(id)
+		filter.AccessRequestID = &requestID
+		c.Set("audit_details", map[string]string{"access_request_id": value, "query": middleware.MaskCredentialQuery(c.Request.URL.RawQuery)})
+	}
 	// 解析使用者 ID
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if userID, err := strconv.ParseUint(userIDStr, 10, 32); err == nil {

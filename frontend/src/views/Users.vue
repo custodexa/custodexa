@@ -25,6 +25,25 @@
         :inline="true"
         :model="filterForm"
       >
+        <el-form-item :label="$t('agentPrincipals.kind')">
+          <el-select
+            v-model="filterForm.kind"
+            clearable
+            :placeholder="$t('common.all')"
+            data-test="principal-kind-filter"
+            style="width: 160px"
+            @change="handleFilter"
+          >
+            <el-option
+              value="human"
+              :label="$t('agentPrincipals.human')"
+            />
+            <el-option
+              value="agent"
+              :label="$t('agentPrincipals.agent')"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item :label="$t('common.search')">
           <el-input
             v-model="filterForm.search"
@@ -185,6 +204,18 @@
             >
               {{ row.full_name }}
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column
+          :label="$t('agentPrincipals.kind')"
+          min-width="130"
+        >
+          <template #default="{ row }">
+            <PrincipalBadge
+              :kind="row.kind"
+              :owner-id="row.owner_user_id"
+              :owner-name="row.owner_username"
+            />
           </template>
         </el-table-column>
         <!-- 帳號來源：供應來源為權威欄位，
@@ -384,12 +415,23 @@
                  顯式綁定」），只對 oidc 來源開放會使該路徑無從進入。
                  這是本 change 的主要入口，維持常駐可見，不收進選單 -->
             <el-button
+              v-if="row.kind !== 'agent'"
               type="primary"
               size="small"
               link
               @click="handleManageIdentities(row)"
             >
               {{ $t('users.externalIdentities') }}
+            </el-button>
+            <el-button
+              v-if="row.kind === 'agent'"
+              type="primary"
+              size="small"
+              link
+              data-test="open-agent-tokens"
+              @click="openTokenDrawer(row)"
+            >
+              {{ $t('agentPrincipals.keys') }}
             </el-button>
             <el-dropdown
               class="row-more"
@@ -414,6 +456,7 @@
                        用短句而非完整 tooltip 文案——長句會把選單撐到 217×297，
                        在最後幾列會同時貼齊視窗右緣與下緣 -->
                   <el-dropdown-item
+                    v-if="row.kind !== 'agent'"
                     command="changePassword"
                     :disabled="isExternalAccount(row)"
                   >
@@ -502,7 +545,31 @@
       width="560px"
       :close-on-click-modal="false"
     >
+      <div
+        v-if="!isEdit"
+        class="principal-kind-choice"
+      >
+        <span>{{ $t('agentPrincipals.kind') }}</span>
+        <el-radio-group
+          v-model="createKind"
+          :aria-label="$t('agentPrincipals.kind')"
+          data-test="create-kind"
+        >
+          <el-radio value="human">
+            {{ $t('agentPrincipals.human') }}
+          </el-radio>
+          <el-radio value="agent">
+            {{ $t('agentPrincipals.agent') }}
+          </el-radio>
+        </el-radio-group>
+      </div>
+      <AgentPrincipalForm
+        v-if="dialogVisible && !isEdit && createKind === 'agent'"
+        @created="agentCreated"
+        @cancel="dialogVisible = false"
+      />
       <el-form
+        v-else
         ref="formRef"
         :model="form"
         :rules="formRules"
@@ -688,7 +755,10 @@
            一行；按下與放開之間按鈕已離開游標，瀏覽器不產生 click——使用者看到的是
            「按了沒反應」。不失焦即無重排。輸入框裡還沒收進清單的那一項改由
            handleSubmit 自己收攏，不倚賴失焦的副作用 -->
-      <template #footer>
+      <template
+        v-if="isEdit || createKind === 'human'"
+        #footer
+      >
         <el-button
           data-test="user-dialog-cancel"
           @mousedown.prevent
@@ -1052,11 +1122,18 @@
         @changed="handleIdentitiesChanged"
       />
     </el-drawer>
+    <TokenDrawer
+      v-model="tokenDrawerVisible"
+      :principal="tokenPrincipal"
+      :owner-name="tokenPrincipal.owner_username"
+      @open="dialogVisible = false"
+      @changed="fetchUserList"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Plus,
@@ -1084,6 +1161,9 @@ import {
 } from '@/api/user'
 import { getCurrentUser } from '@/api/auth'
 import PageHeader from '@/components/PageHeader.vue'
+import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
+import TokenDrawer from '@/components/agent/TokenDrawer.vue'
+import AgentPrincipalForm from '@/components/agent/AgentPrincipalForm.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'
@@ -1126,11 +1206,15 @@ const pagination = reactive({
 // 過濾表單
 const filterForm = reactive({
   provisioningOrigin: '',
+  kind: '',
   search: '',
   active: '',
 })
 
 // 對話框狀態
+const tokenDrawerVisible = ref(false)
+const tokenPrincipal = ref({})
+const createKind = ref('human')
 const dialogVisible = ref(false)
 const roleDialogVisible = ref(false)
 const passwordDialogVisible = ref(false)
@@ -1450,6 +1534,8 @@ const fetchUserList = async () => {
   loading.value = true
   try {
     const params = {
+      include_agents: true,
+      kind: filterForm.kind || undefined,
       page: pagination.page,
       page_size: pagination.page_size,
       search: filterForm.search || undefined,
@@ -1485,6 +1571,7 @@ const handleFilter = () => {
 
 // 重置過濾
 const handleResetFilter = () => {
+  filterForm.kind = ''
   filterForm.search = ''
   filterForm.active = ''
   filterForm.provisioningOrigin = ''
@@ -1549,6 +1636,8 @@ const resetForm = () => {
 
 // 處理創建
 const handleCreate = () => {
+  tokenDrawerVisible.value = false
+  createKind.value = 'human'
   loadAssignableRoles()
   resetForm()
   isEdit.value = false
@@ -1558,6 +1647,7 @@ const handleCreate = () => {
 
 // 處理編輯
 const handleEdit = (row) => {
+  tokenDrawerVisible.value = false
   resetForm()
   isEdit.value = true
   form.id = row.id
@@ -2047,12 +2137,29 @@ const handleRowCommand = (command, row) => {
 }
 
 // 掛載時取得資料
+function openTokenDrawer(row) {
+  dialogVisible.value = false
+  roleDialogVisible.value = false
+  passwordDialogVisible.value = false
+  scopeDialogVisible.value = false
+  identityDrawerVisible.value = false
+  tokenPrincipal.value = row
+  tokenDrawerVisible.value = true
+}
+function agentCreated() {
+  dialogVisible.value = false
+  fetchUserList()
+}
+watch([dialogVisible, roleDialogVisible, passwordDialogVisible, scopeDialogVisible, identityDrawerVisible], values => {
+  if (values.some(Boolean)) tokenDrawerVisible.value = false
+})
 onMounted(() => {
   fetchUserList()
 })
 </script>
 
 <style scoped>
+.principal-kind-choice { display: flex; align-items: center; gap: var(--ot-space-md); margin-bottom: var(--ot-space-md); }
 /* 允許來源網段：tag 清單 + 輸入框 + 逐條就近提示。
    提示一律在欄位下方就近呈現（C6），不彈對話框、不擋送出 */
 .cidr-field {

@@ -37,6 +37,9 @@ const (
 
 // Session 連線 session 模型
 type Session struct {
+	// Current username for the snapshotted owner ID; read-only, not a stored name snapshot.
+	OwnerUsername string `gorm:"-" json:"owner_username,omitempty"`
+
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -45,6 +48,14 @@ type Session struct {
 	SessionID string        `gorm:"uniqueIndex;not null;size:100" json:"session_id"`
 	Status    SessionStatus `gorm:"not null;size:20" json:"status"`
 	Protocol  ProtocolType  `gorm:"not null;size:10" json:"protocol"`
+
+	AgentTokenName         *string    `gorm:"size:100" json:"agent_token_name"`
+	AgentTokenID           *uint      `json:"agent_token_id"`
+	AccessRequestID        *uint      `json:"access_request_id"`
+	ActorKind              *string    `gorm:"size:16" json:"actor_kind,omitempty"`
+	OnBehalfOfUserID       *uint      `json:"on_behalf_of_user_id,omitempty"`
+	OwnerUserID            *uint      `json:"owner_user_id,omitempty"`
+	RevokedDuringSessionAt *time.Time `json:"revoked_during_session_at,omitempty"`
 
 	// 關聯資訊
 	UserID  uint   `gorm:"not null" json:"user_id"`

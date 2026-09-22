@@ -8,6 +8,7 @@ import (
 
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
 )
@@ -200,6 +201,9 @@ func (s *AuthService) VerifyCredentialGenerationByUserID(authCtx crypto.AuthCont
 //
 // 呼叫端須在同一交易/鎖內完成推進與後續掃描，並於鎖外執行實際的連線關閉。
 func BumpCredentialEpoch(db *gorm.DB, userID uint, reason string) error {
+	return db.Transaction(func(tx *gorm.DB) error { return bumpCredentialEpochTx(tx, userID, reason) })
+}
+func bumpCredentialEpochTx(db *gorm.DB, userID uint, reason string) error {
 	res := db.Model(&model.User{}).Where("id = ?", userID).
 		UpdateColumn("credential_epoch", gorm.Expr("credential_epoch + 1"))
 	if res.Error != nil {
@@ -207,6 +211,9 @@ func BumpCredentialEpoch(db *gorm.DB, userID uint, reason string) error {
 	}
 	if res.RowsAffected == 0 {
 		return ErrUserNotFound
+	}
+	if err := NewAgentTokenService(db, audit.NewTxSink()).suspendOwnedInTx(db, userID); err != nil {
+		return err
 	}
 	log.Printf("[AuthEpoch] 使用者憑證世代已推進 (userID=%d, reason=%s)", userID, reason)
 	return nil

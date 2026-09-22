@@ -750,3 +750,41 @@ describe('自動驗證狀態區塊', () => {
     )
   })
 })
+
+
+describe('主體與憑證逐項完整性', () => {
+  it('三列並列、兩項差集與事件編號各自呈現', async () => {
+    verifyChainMock.mockResolvedValue(chainFixture({
+      role_state: { covered: true, state: 'match', since_seq: 1 },
+      principal_state: { covered: true, state: 'mismatch', since_seq: 1, missing: [2], extra: [2], last_event: { id: 41 } },
+      agent_token_state: { covered: true, state: 'mismatch', since_seq: 1, missing: [], extra: [99], last_event: { id: 42 } },
+    }))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="role-state-status"]').text()).toBe(zhTW.checkpointVerification.roleState.match.replace('{seq}', '1'))
+    for (const [key, id, event] of [['principals', '2', '41'], ['tokens', '99', '42']]) {
+      const row = wrapper.find(`[data-test="state-${key}"]`)
+      expect(row.text()).toContain(zhTW.checkpointVerification.principalState[key])
+      expect(row.find('.el-alert').text()).toContain(id)
+      expect(row.find('.el-link').text()).toContain(event)
+      expect(row.find('.el-tag').classes()).toContain('el-tag--danger')
+    }
+  })
+  it('未知及未涵蓋不可呈現相符', async () => {
+    verifyChainMock.mockResolvedValue(chainFixture({
+      principal_state: { covered: false, state: 'unknown' },
+      agent_token_state: { covered: false, state: 'not_covered' },
+    }))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="state-principals"] .el-tag').text()).toBe(zhTW.checkpointVerification.roleState.unavailable)
+    expect(wrapper.find('[data-test="state-tokens"] .el-tag').text()).toBe(zhTW.checkpointVerification.roleState.notCovered)
+  })
+  it('兩項呈現與新機制成因三語齊備', () => {
+    for (const locale of [zhTW, enUS, jaJP]) {
+      for (const key of ['principals', 'tokens', 'differences']) {
+        expect(locale.checkpointVerification.principalState[key]).toBeTruthy()
+      }
+    }
+  })
+})

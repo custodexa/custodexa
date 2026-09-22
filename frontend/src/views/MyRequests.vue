@@ -5,12 +5,24 @@
       :description="$t('myRequests.headerDesc')"
     >
       <template #actions>
+        <el-button
+          type="primary"
+          @click="createVisible = !createVisible"
+        >
+          {{ $t('multiRequest.title') }}
+        </el-button>
         <el-button @click="fetchAll">
           <el-icon><RefreshCw /></el-icon>
           {{ $t('common.refresh') }}
         </el-button>
       </template>
     </PageHeader>
+
+    <MultiAssetRequestForm
+      v-if="createVisible"
+      @cancel="createVisible = false"
+      @created="requestCreated"
+    />
 
     <!-- 有效限時連線：核准後的可連線時窗（到期自動失效，不影響進行中連線） -->
     <div
@@ -61,6 +73,25 @@
         style="width: 100%"
         stripe
       >
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <RequestItems :request="row" />
+          </template>
+        </el-table-column>
+        <el-table-column
+          :label="$t('multiRequest.task')"
+          min-width="140"
+        >
+          <template #default="{ row }">
+            <a
+              v-if="(row.items || []).some(i => i.status === 'approved') || row.status === 'approved'"
+              :href="`/audit/agent-tasks/${row.id}`"
+              data-test="request-task"
+            >#{{ row.id }}</a><span v-else>#{{ row.id }}</span><p v-if="row.items">
+              {{ $t('multiRequest.count', { n: row.items.length }) }}
+            </p>
+          </template>
+        </el-table-column>
         <el-table-column
           :label="$t('common.asset')"
           min-width="180"
@@ -173,6 +204,8 @@ import { RefreshCw } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import MultiAssetRequestForm from '@/components/access-request/MultiAssetRequestForm.vue'
+import RequestItems from '@/components/access-request/RequestItems.vue'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
 import {
@@ -181,6 +214,8 @@ import {
   cancelAccessRequest,
 } from '@/api/accessRequests'
 
+const createVisible = ref(false)
+function requestCreated() { createVisible.value = false; fetchAll() }
 const loading = ref(false)
 const requests = ref([])
 const activeTickets = ref([])
@@ -205,7 +240,7 @@ const fetchAll = async () => {
 const handleCancel = async (row) => {
   try {
     await ElMessageBox.confirm(
-      t('myRequests.cancelConfirm', { name: row.asset?.name || t('common.assetRef', { id: row.asset_id }) }),
+      t('myRequests.cancelConfirm', { name: row.items?.length > 1 ? t('multiRequest.count', { n: row.items.length }) : row.asset?.name || t('common.assetRef', { id: row.asset_id }) }),
       t('myRequests.cancelTitle'),
       {
         confirmButtonText: t('myRequests.cancel'),
@@ -254,17 +289,17 @@ const statusTagType = (status) => {
 // 已撤銷的核准單顯示「已提前撤銷」而非「已核准」
 //（撤銷是附註不是狀態轉移，前端據 revoked_at 覆蓋顯示）
 const displayStatusText = (row) => {
-  if (row.revoked_at && row.status === 'approved') return t('myRequests.statusRevoked')
+  if (row.revoked_at && !row.items?.some(i => i.status === 'approved') && row.status === 'approved') return t('myRequests.statusRevoked')
   return statusText(row.status)
 }
 
 const displayStatusTagType = (row) => {
-  if (row.revoked_at && row.status === 'approved') return 'info'
+  if (row.revoked_at && !row.items?.some(i => i.status === 'approved') && row.status === 'approved') return 'info'
   return statusTagType(row.status)
 }
 
 const statusTooltip = (row) => {
-  if (row.revoked_at && row.status === 'approved') return t('myRequests.tooltipRevoked')
+  if (row.revoked_at && !row.items?.some(i => i.status === 'approved') && row.status === 'approved') return t('myRequests.tooltipRevoked')
   if (row.status === 'pending') return t('myRequests.tooltipPending')
   if (row.status === 'expired') return t('myRequests.tooltipExpired')
   return ''
@@ -295,6 +330,7 @@ onMounted(fetchAll)
 </script>
 
 <style scoped>
+a { color: var(--ot-primary); }
 .my-requests {
   display: flex;
   flex-direction: column;

@@ -61,7 +61,7 @@ func purgeSchemaDB(t *testing.T, schema string) (*gorm.DB, string) {
 			_ = s.Close()
 		}
 	})
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.SecurityPolicy{},
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.AuditLog{}, &model.SecurityPolicy{},
 		&model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}

@@ -58,7 +58,7 @@ func newDegradeAlertStore(t *testing.T) (*CommandStore, *degradeAlertSink) {
 		t.Fatalf("建表失敗: %v", err)
 	}
 	aid := uint(3)
-	store := NewCommandStore(db, 42, 7, &aid, "ssh")
+	store := NewCommandStore(db, 42, 7, &aid, "ssh", gatewayapi.PrincipalKindUnknown)
 	sink := &degradeAlertSink{}
 	store.SetAlertSink(sink)
 	return store, sink
@@ -153,7 +153,7 @@ func TestDegradeAlertDrainsAtClose(t *testing.T) {
 }
 
 // TestQualifiedTextRowClosesSpanAndRaisesNoAlert 受限定的文字列
-//（Degraded=false 且 DegradeReason 非空）**不是**降級列：它有文字。
+// （Degraded=false 且 DegradeReason 非空）**不是**降級列：它有文字。
 // 它不得自己觸發降級告警，且應結束當前的 span（兩個值域刻意不合併）。
 func TestQualifiedTextRowClosesSpanAndRaisesNoAlert(t *testing.T) {
 	store, sink := newDegradeAlertStore(t)

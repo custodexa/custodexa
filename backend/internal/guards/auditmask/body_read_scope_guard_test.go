@@ -18,6 +18,7 @@ import (
 // 判定用型別資訊（見 scanResult.RawBodyFiles）而非字串比對：gatewayapi 的
 // `ev.Request.Body` 長得一模一樣卻與 HTTP 請求本文無關，字串比對會誤報。
 var rawRequestBodyReaders = map[string]string{
+	"internal/agentmcp/entry.go":       "MCP JSON-RPC preflight restores the bounded request body for the SDK; HTTP middleware retains default-deny body masking, entry details include only tool/reason/time, and the tool ledger independently strips secrets before Redact",
 	"internal/middleware/audit_log.go": "審計中介層本體——它就是那個讀 body 再套遮罩的地方",
 	"internal/api/key_management_handler.go": "POST /keys/rewrap：KEK 材料不進 gin binding" +
 		"（避免明文停留在結構體），本文全為金鑰材料，遮罩後無可放行內容",

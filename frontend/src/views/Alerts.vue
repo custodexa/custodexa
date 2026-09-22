@@ -132,6 +132,7 @@
                   v-else-if="isNewSourceIPAlert(row)"
                   data-test="alert-new-source-ip-kind"
                 >{{ $t('alerts.kindNewSourceIP') }}</span>
+                <span v-else-if="isAgentBreakerAlert(row)">{{ $t('alerts.kindAgentBreaker') }}</span>
                 <span v-else>{{ row.rule_name }}</span>
                 <el-tag
                   v-if="row.blocked"
@@ -187,6 +188,15 @@
                     {{ $t('alerts.newSourceIPFirstSession') }}
                   </span>
                 </div>
+                <span
+                  v-else-if="isAgentBreakerAlert(row)"
+                >{{ $t('alerts.agentBreakerDescription') }}</span>
+                <span
+                  v-else-if="row.reason_code?.startsWith('o1:')"
+                  data-test="alert-output-sensitive"
+                >
+                  {{ $t('alerts.outputSummary', { count: parseInt(row.reason_code.split(':')[1], 36) }) }}
+                </span>
                 <!-- 非降級類但也沒有文字：不宣稱成因，只把事實講清楚 -->
                 <span
                   v-else-if="!row.command"
@@ -221,7 +231,14 @@
               fixed="right"
             >
               <template #default="{ row }">
+                <a
+                  v-if="isAgentBreakerAlert(row) && row.user_id"
+                  :href="`/agent-breakers?user_id=${row.user_id}`"
+                  class="agent-breaker-link"
+                  data-test="breaker-entry"
+                >{{ $t('agentBreaker.open') }}</a>
                 <el-button
+                  v-if="row.session_id"
                   link
                   type="primary"
                   @click="goToSession(row)"
@@ -290,6 +307,22 @@
               show-overflow-tooltip
             />
 
+            <el-table-column
+              :label="$t('alerts.subjectKind')"
+              width="130"
+            >
+              <template #default="{ row }">
+                {{ $t(`alerts.subject${({ all: 'All', human: 'Human', agent: 'Agent' })[row.subject_kind || 'all']}`) }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('alerts.direction')"
+              width="130"
+            >
+              <template #default="{ row }">
+                {{ $t(row.direction === 'output' ? 'alerts.directionOutput' : 'alerts.directionInput') }}
+              </template>
+            </el-table-column>
             <el-table-column
               prop="pattern"
               :label="$t('alerts.patternLabel')"
@@ -771,12 +804,59 @@
           </el-select>
         </el-form-item>
 
+        <el-form-item
+          :label="$t('alerts.subjectKind')"
+          prop="subject_kind"
+        >
+          <el-select v-model="ruleForm.subject_kind">
+            <el-option
+              value="all"
+              :label="$t('alerts.subjectAll')"
+            />
+            <el-option
+              value="human"
+              :label="$t('alerts.subjectHuman')"
+            />
+            <el-option
+              value="agent"
+              :label="$t('alerts.subjectAgent')"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item
+          :label="$t('alerts.direction')"
+          prop="direction"
+        >
+          <el-select
+            v-model="ruleForm.direction"
+            @change="ruleForm.action = ruleForm.direction === 'output' ? 'alert' : ruleForm.action"
+          >
+            <el-option
+              value="input"
+              :label="$t('alerts.directionInput')"
+            />
+            <el-option
+              value="output"
+              :label="$t('alerts.directionOutput')"
+            />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          v-if="ruleForm.direction === 'output'"
+          :title="$t('alerts.outputScope')"
+          :description="`${$t('alerts.outputNoBlock')} ${$t('alerts.outputCardContract')}`"
+          type="info"
+          :closable="false"
+        />
         <el-form-item :label="$t('alerts.actionLabel')">
           <el-radio-group v-model="ruleForm.action">
             <el-radio-button value="alert">
               {{ $t('alerts.actionAlert') }}
             </el-radio-button>
-            <el-radio-button value="block">
+            <el-radio-button
+              value="block"
+              :disabled="ruleForm.direction === 'output'"
+            >
               {{ $t('alerts.actionBlock') }}
             </el-radio-button>
           </el-radio-group>
@@ -856,6 +936,7 @@ import { riskLabel } from '@/utils/transportDisplay'
 import {
   isDegradedAlert,
   isNewSourceIPAlert,
+  isAgentBreakerAlert,
   commandAlertReasonLabel,
 } from '@/constants/command-degrade'
 import { buildAddressPivotLink, localDayRange } from '@/components/audit/timelineQuery'
@@ -1050,6 +1131,8 @@ const emptyRuleForm = () => ({
   pattern: '',
   severity: 'high',
   action: 'alert',
+  direction: 'input',
+  subject_kind: 'all',
   protocols: [],
   enabled: true,
 })
@@ -1076,6 +1159,8 @@ const openEditDialog = (row) => {
     pattern: row.pattern,
     severity: row.severity,
     action: row.action || 'alert',
+    direction: row.direction || 'input',
+    subject_kind: row.subject_kind || 'all',
     protocols: row.protocols ? row.protocols.split(',').filter(Boolean) : [],
     enabled: row.enabled,
   }
@@ -1083,6 +1168,10 @@ const openEditDialog = (row) => {
 }
 
 const handleSaveRule = async () => {
+  if (ruleForm.value.direction === 'output' && ruleForm.value.action === 'block') {
+    ElMessage.error(t('alerts.outputNoBlock'))
+    return
+  }
   if (ruleFormRef.value) {
     const valid = await ruleFormRef.value.validate().catch(() => false)
     if (valid === false) return
@@ -1116,6 +1205,9 @@ const handleToggleEnabled = async (row, value) => {
       pattern: row.pattern,
       severity: row.severity,
       enabled: value,
+      direction: row.direction || 'input',
+    subject_kind: row.subject_kind || 'all',
+      action: row.action || 'alert',
     })
     ElMessage.success(value ? t('alerts.ruleEnabled') : t('alerts.ruleDisabled'))
     fetchRules()
@@ -1466,4 +1558,8 @@ const handleTabChange = (tab) => {
 .blocked-tag {
   margin-left: 6px;
 }
+</style>
+
+<style scoped>
+.agent-breaker-link { color: var(--ot-primary); margin-right: var(--ot-space-sm); }
 </style>

@@ -141,7 +141,7 @@ func TestCommandParserEnterBeforeInterruptStillSettles(t *testing.T) {
 //
 // 這不是紙上推演：2026-08-16 對 ssh-test 靶機（bash+readline）實測，
 // `sleep` 執行中單幀送出 "\x03echo X\r"，遠端確實印出 X——指令真的執行了。
-// 本產品的存在意義是讓有權者留痕，繞過留痕即為必修（goal-charter §6）。
+// 本產品的存在意義是讓有權者留痕，繞過留痕即為必修。
 //
 // 下面兩支測試用的回顯序列取自該次實測，不是想像的形態。
 

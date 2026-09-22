@@ -85,6 +85,8 @@ func TestLoginLDAP_FirstLoginProvisionsShadowUser(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`INSERT INTO "users"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
+	// 主體投影 create 與供應帳號同交易。
+	mock.ExpectQuery(`INSERT INTO "audit_logs"`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectQuery(`SELECT .+ FROM "roles" WHERE name`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(2, "user"))
 	mock.ExpectExec(`INSERT INTO user_roles`).

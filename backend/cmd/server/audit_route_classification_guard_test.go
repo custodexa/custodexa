@@ -193,8 +193,18 @@ const (
 // 再強調一次：**本表不是列舉來源**。列舉來源是 `buildRouter` 的 `r.Routes()`；
 // 本表只是「每條路由的分類決定」的紀錄，且該紀錄必須通得過方向 3 的實碼對照。
 var auditRouteRegistry = map[[2]string]routeAuditEntry{
+	{"GET", "/api/v1/agent-tasks/:requestId"}:         {classResource, model.ResourceAccessRequest, "任務詳情，沿 audit:view；AP-21 記任務與分頁條件，無資產樞紐"},
+	{"GET", "/api/v1/agent-tasks"}:                    {classResource, model.ResourceAccessRequest, "任務唯讀列表，沿 audit:view，無資產樞紐"},
+	{"GET", "/api/v1/users/:id/agent-breaker/events"}: {classResource, model.ResourceAuditIntegrity, "審計事件讀取，入 auditSensitiveResources；resource_id 是 agent 主體，查詢範圍由 AP-21 留痕"},
+	{"POST", "/api/v1/mcp"}:                           {classResource, model.ResourceAgentToolCall, "MCP 傳輸請求（含初始化與工具清單）；HTTP 稽核列非逐工具帳本，無 resource_id，建線拒絕另沿 AP-69"},
+	{"GET", "/api/v1/my/agents"}:                      {classResource, model.ResourceUser, "本人名下 agent 清單，分類為 user"},
+	{"POST", "/api/v1/my/agents"}:                     {classResource, model.ResourceUser, "自助建立 agent 帳號；用途另由同交易活動列保存"},
 
 	// ── classResource：分類器命中具名段（171 條）──
+	{"GET", "/api/v1/access-requests/:id/reports"}:                                   {classResource, model.ResourceAccessRequest, "任務報告唯讀查詢，id 為任務"},
+	{"POST", "/api/v1/access-requests/:id/reports"}:                                  {classResource, model.ResourceAccessRequest, "提交任務報告，版本內容另由交易審計留摘要"},
+	{"POST", "/api/v1/users/:id/agent-breaker/release"}:                              {classResource, model.ResourceUser, "解除主體未處置事件；不復權 token"},
+	{"GET", "/api/v1/agent-tool-calls"}:                                              {classResource, model.ResourceAgentToolCall, "帳本查詢既有實碼分類；session_id query，同為審計資源讀取，AP-21 記查詢範圍"},
 	{"POST", "/api/v1/access-requests"}:                                              {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
 	{"POST", "/api/v1/access-requests/:id/approve"}:                                  {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
 	{"POST", "/api/v1/access-requests/:id/cancel"}:                                   {classResource, model.ResourceAccessRequest, "命中分類器段 `access-requests`"},
@@ -437,6 +447,9 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"POST", "/api/v1/users/:id/roles/:role"}:                                        {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"PUT", "/api/v1/users/:id/status"}:                                              {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users/:id/unlock"}:                                             {classResource, model.ResourceUser, "命中分類器段 `users`"},
+	{"POST", "/api/v1/users/:id/agent-tokens"}:                                       {classResource, model.ResourceUser, "HTTP 請求依 users 分類，id 是主體；token 自身的 create/revoke/suspend 另由 AP-95 留痕"},
+	{"GET", "/api/v1/users/:id/agent-tokens"}:                                        {classResource, model.ResourceUser, "HTTP 請求依 users 分類，讀取主體的 token 中繼資料，不回傳秘密"},
+	{"DELETE", "/api/v1/users/:id/agent-tokens/:tokenId"}:                            {classResource, model.ResourceUser, "HTTP 請求依 users 分類，id 是主體；token 撤銷另由 AP-95 留痕"},
 	{"GET", "/api/v1/users/local-admin-count"}:                                       {classResource, model.ResourceUser, "命中分類器段 `users`"},
 	{"POST", "/api/v1/users/source-policy/check"}:                                    {classResource, model.ResourceUser, "命中分類器段 `users`（允許來源網段的純判定端點，靜態段與 `:id` 並存）"},
 
@@ -1174,7 +1187,10 @@ func TestNoIdentityRoutesMatchMiddlewareChain(t *testing.T) {
 
 // TestAuditIdentityKeySetOnlyByAuthMiddleware 方向 5 的**前提錨點**。
 //
-// 方向 5 的推論鏈是：鏈中無 AuthMiddleware ⇒ context 無 `userID` ⇒ 審計中介層早退。
+// 方向 5 分類原路由的正常處理鏈；對非 agent bearer，
+// 鏈中無 AuthMiddleware ⇒ context 無 `userID` ⇒ 審計中介層早退。
+// 全域 AgentRouteAllowlist 的已認證 agent 拒絕分支另由 AgentRouteAllowlist 測試驗證留痕；
+// 它也只經 auth.go 的 authenticateAgent 寫身分，不把公用路由變成人類認證路由。
 // 中間那一步靠的是「`userID` 這個語義鍵只有 AuthMiddleware 會寫」。若哪天有 handler
 // 為了留痕而自行 `c.Set("userID", ...)`（設計上明確否決過的做法），推論鏈就斷了：
 // 那條路由會開始寫列，而方向 5 仍然說它「不入審計」——守衛全綠、事實相反。

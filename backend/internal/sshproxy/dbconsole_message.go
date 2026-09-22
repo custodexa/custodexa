@@ -71,7 +71,8 @@ type consoleClientMessage struct {
 
 	// query：執行單位的原文（編輯器全文或選取範圍）。
 	// 目標庫＝當前庫，不再帶 database 參數——那會與 switch 的語義重疊
-	SQL string `json:"sql,omitempty"`
+	SQL            string `json:"sql,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 
 	// cancel：要取消的事件
 	EventID string `json:"event_id,omitempty"`

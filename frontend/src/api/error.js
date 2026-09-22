@@ -39,6 +39,12 @@ function translateParams(params) {
  */
 export function resolveApiError(data, status, fallback) {
   const code = data?.code
+  if (code === 'RULE_AGENT_REQUEST_RATE') {
+    const d = data.details
+    if (d && Number.isFinite(d.used) && Number.isFinite(d.limit) && ['hour', 'pending'].includes(d.dimension)) {
+      return t(`multiRequest.quota.${d.dimension}`, { used: d.used, limit: d.limit })
+    }
+  }
   if (code && CODE_GRAMMAR.test(code)) {
     if (i18n.global.te(`apiError.${code}`)) {
       return t(`apiError.${code}`, translateParams(data.params))

@@ -40,11 +40,34 @@
               width="80"
             />
             <el-table-column
-              :label="$t('common.user')"
-              width="120"
+              :label="$t('sessions.actorColumn')"
+              min-width="180"
             >
               <template #default="{ row }">
-                {{ row.user?.username || '-' }}
+                <div>{{ row.user?.username || `#${row.user_id}` }}</div>
+                <PrincipalBadge
+                  :kind="row.actor_kind || ''"
+                  :owner-id="row.owner_user_id"
+                />
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('multiRequest.task')"
+              min-width="160"
+            >
+              <template #default="{ row }">
+                <a
+                  v-if="row.access_request_id"
+                  :href="`/audit/agent-tasks/${row.access_request_id}`"
+                  data-test="session-task"
+                >#{{ row.access_request_id }}</a><span v-else>—</span>
+                <p
+                  v-if="row.revoked_during_session_at"
+                  class="session-revocation"
+                  data-test="session-revocation"
+                >
+                  {{ $t('agentSession.revoked', { time: formatDateTime(row.revoked_during_session_at) }) }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
@@ -187,6 +210,25 @@
             :inline="true"
             :model="filterForm"
           >
+            <el-form-item :label="$t('agentPrincipals.kind')">
+              <el-select
+                v-model="filterForm.actor_kind"
+                clearable
+                :placeholder="$t('common.all')"
+                data-test="session-kind-filter"
+                style="width: 160px"
+                @change="handleFilter"
+              >
+                <el-option
+                  value="human"
+                  :label="$t('agentPrincipals.human')"
+                />
+                <el-option
+                  value="agent"
+                  :label="$t('agentPrincipals.agent')"
+                />
+              </el-select>
+            </el-form-item>
             <el-form-item :label="$t('common.protocol')">
               <el-select
                 v-model="filterForm.protocol"
@@ -257,43 +299,68 @@
           <el-table
             v-loading="loading"
             :data="sessionList"
+            class="history-table"
+            data-test="history-table"
             style="width: 100%"
             stripe
           >
             <el-table-column
               prop="id"
               label="ID"
-              width="80"
+              width="60"
             />
             <el-table-column
-              :label="$t('common.user')"
-              width="120"
+              :label="$t('sessions.actorColumn')"
+              min-width="130"
             >
               <template #default="{ row }">
-                {{ row.user?.username || '-' }}
+                <div>{{ row.user?.username || `#${row.user_id}` }}</div>
+                <PrincipalBadge
+                  :kind="row.actor_kind || ''"
+                  :owner-id="row.owner_user_id"
+                  :owner-name="row.owner_username"
+                />
+                <p class="sub-text">
+                  {{ $t('sessions.clientIp') }}: {{ row.client_ip || '-' }}
+                </p>
+              </template>
+            </el-table-column>
+            <el-table-column
+              :label="$t('multiRequest.task')"
+              min-width="65"
+            >
+              <template #default="{ row }">
+                <a
+                  v-if="row.access_request_id"
+                  :href="`/audit/agent-tasks/${row.access_request_id}`"
+                  data-test="session-task"
+                >#{{ row.access_request_id }}</a><span v-else>—</span>
+                <p
+                  v-if="row.revoked_during_session_at"
+                  class="session-revocation"
+                  data-test="session-revocation"
+                >
+                  {{ $t('agentSession.revoked', { time: formatDateTime(row.revoked_during_session_at) }) }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
               :label="$t('common.asset')"
-              min-width="150"
+              min-width="140"
             >
               <template #default="{ row }">
                 {{ row.asset?.name || '-' }}
+                <p class="sub-text">
+                  {{ row.asset?.host || '-' }}:{{ row.asset?.port || '-' }}
+                </p>
               </template>
             </el-table-column>
-            <el-table-column
-              :label="$t('assets.host')"
-              min-width="150"
-            >
-              <template #default="{ row }">
-                {{ row.asset?.host || '-' }}:{{ row.asset?.port || '-' }}
-              </template>
-            </el-table-column>
+
             <!-- 連線帳號：連線當下的 username 快照，
                  帳號日後改名／刪除不改寫此欄 -->
             <el-table-column
               :label="$t('sessions.accountColumn')"
-              min-width="120"
+              min-width="85"
               show-overflow-tooltip
             >
               <template #default="{ row }">
@@ -306,7 +373,7 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.protocol')"
-              width="140"
+              min-width="80"
             >
               <template #default="{ row }">
                 <el-tag :type="protocolTagType(row.protocol)">
@@ -327,63 +394,41 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.status')"
-              width="100"
+              min-width="100"
             >
               <template #default="{ row }">
                 <el-tag :type="getStatusTagType(row.status)">
                   {{ getStatusText(row.status) }}
                 </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessions.endReason')"
-              width="110"
-            >
-              <template #default="{ row }">
-                <el-tag
+                <p
                   v-if="row.status !== 'active'"
-                  :type="getEndReasonTagType(row.end_reason)"
+                  class="sub-text"
                 >
                   {{ getEndReasonText(row.end_reason) }}
-                </el-tag>
-                <span v-else>-</span>
+                </p>
               </template>
             </el-table-column>
-            <el-table-column
-              :label="$t('sessions.clientIp')"
-              width="140"
-            >
-              <template #default="{ row }">
-                {{ row.client_ip || '-' }}
-              </template>
-            </el-table-column>
+
+
             <el-table-column
               :label="$t('sessions.startTime')"
-              width="170"
+              min-width="140"
             >
               <template #default="{ row }">
                 {{ formatDateTime(row.start_time) }}
+                <p class="sub-text">
+                  {{ $t('sessions.endTime') }}: {{ formatDateTime(row.end_time) }}
+                </p>
+                <p class="sub-text">
+                  {{ $t('sessions.duration') }}: {{ formatDurationSeconds(row.duration) }}
+                </p>
               </template>
             </el-table-column>
-            <el-table-column
-              :label="$t('sessions.endTime')"
-              width="170"
-            >
-              <template #default="{ row }">
-                {{ formatDateTime(row.end_time) }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessions.duration')"
-              width="120"
-            >
-              <template #default="{ row }">
-                {{ formatDurationSeconds(row.duration) }}
-              </template>
-            </el-table-column>
+
+
             <el-table-column
               :label="$t('sessions.recordingColumn')"
-              width="90"
+              min-width="60"
             >
               <template #default="{ row }">
                 <!-- 無錄影額外標示：
@@ -411,7 +456,7 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.actions')"
-              width="120"
+              width="110"
               fixed="right"
             >
               <template #default="{ row }">
@@ -487,8 +532,9 @@ import {
 } from '@/api/sessions'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
 import { isTextTerminal, protocolTagType, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
-import { getEndReasonText, getEndReasonTagType } from '@/utils/end-reason'
+import { getEndReasonText } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
 import { auditCauseLabel } from '@/constants/audit-enums'
@@ -510,6 +556,7 @@ const pagination = reactive({
 
 // 過濾表單
 const filterForm = reactive({
+  actor_kind: '',
   protocol: '',
   status: '',
 })
@@ -539,6 +586,7 @@ const fetchSessionList = async () => {
     const params = {
       page: pagination.page,
       page_size: pagination.page_size,
+      actor_kind: filterForm.actor_kind || undefined,
       protocol: filterForm.protocol || undefined,
       status: filterForm.status || undefined,
     }
@@ -612,6 +660,7 @@ const handleFilter = () => {
 
 // 重置過濾
 const handleResetFilter = () => {
+  filterForm.actor_kind = ''
   filterForm.protocol = ''
   filterForm.status = ''
   dateRange.value = null
@@ -706,6 +755,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+a { color: var(--ot-primary); }
+.session-revocation { color: var(--ot-warning); font-size: var(--ot-font-size-sm); margin: var(--ot-space-sm) 0; }
 
 .console-badge {
   margin-left: 4px;
@@ -740,4 +791,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
 }
+.history-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+.history-table :deep(.el-tag) { height: auto; min-height: 24px; white-space: normal; line-height: 1.4; padding: var(--ot-space-xs); }
+.history-table :deep(.el-button) { margin: var(--ot-space-xs); }
+.history-table .sub-text { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0; }
 </style>

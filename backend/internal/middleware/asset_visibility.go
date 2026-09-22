@@ -2,12 +2,13 @@ package middleware
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // AssetPermissionChecker 逐資產授權檢查（由 service 層實作，middleware 只依賴介面避免循環引用）
@@ -55,6 +56,17 @@ func RequireAssetVisible(checker AssetPermissionChecker) gin.HandlerFunc {
 			return
 		}
 		if !hasPermission {
+			if kind, _ := GetPrincipalKind(c); kind == model.KindAgent {
+				if tokenID, ok := GetAgentTokenID(c); ok {
+					if recorder, ok := checker.(interface {
+						RecordDeniedAgentProbe(context.Context, uint, uint, uint, string) error
+					}); ok {
+						if err := recorder.RecordDeniedAgentProbe(ctx, userID, tokenID, uint(id), c.Request.Method+" "+c.FullPath()); err != nil {
+							log.Printf("[AgentProbe] denied event failed user_id=%d asset_ref=%d: %v", userID, id, err)
+						}
+					}
+				}
+			}
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
 			c.Abort()
 			return

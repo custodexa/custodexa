@@ -193,11 +193,21 @@ func ruleAppliesToProtocol(ruleProtocols, protocol string) bool {
 }
 
 func (m *AlertMatcher) Match(command, protocol string) []*model.AlertRule {
+	return m.matchSubject(command, protocol, gatewayapi.PrincipalKindUnknown)
+}
+
+func (m *AlertMatcher) matchSubject(command, protocol, subjectKind string) []*model.AlertRule {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var matched []*model.AlertRule
 	for i := range m.rules {
+		if !ruleAppliesToSubject(m.rules[i].rule.SubjectKind, subjectKind) {
+			continue
+		}
+		if m.rules[i].rule.Direction != "" && m.rules[i].rule.Direction != model.DirectionInput {
+			continue
+		}
 		if !ruleAppliesToProtocol(m.rules[i].rule.Protocols, protocol) {
 			continue
 		}
@@ -217,6 +227,10 @@ func (m *AlertMatcher) Match(command, protocol string) []*model.AlertRule {
 // 這裡不再直寫 DB 的理由不是本路徑有問題，而是要讓 command_alerts 只剩一個落地面，
 // 阻斷路徑就無從再開一條繞過 tee 的旁路。
 func (m *AlertMatcher) MatchAndStore(cmds []model.SessionCommand, protocol string) {
+	m.matchAndStoreSubject(cmds, protocol, gatewayapi.PrincipalKindUnknown)
+}
+
+func (m *AlertMatcher) matchAndStoreSubject(cmds []model.SessionCommand, protocol, subjectKind string) {
 	var alerts []gatewayapi.CommandAlert
 	for _, cmd := range cmds {
 		if cmd.Degraded {
@@ -228,7 +242,7 @@ func (m *AlertMatcher) MatchAndStore(cmds []model.SessionCommand, protocol strin
 			// 不經規則表。由 TestDegradedRowsNeverEnterRuleMatching 釘住。
 			continue
 		}
-		for _, rule := range m.Match(cmd.Command, protocol) {
+		for _, rule := range m.matchSubject(cmd.Command, protocol, subjectKind) {
 			ruleID := rule.ID
 			alerts = append(alerts, gatewayapi.CommandAlert{
 				Kind:      model.AlertKindRule,
@@ -259,4 +273,20 @@ func (m *AlertMatcher) MatchAndStore(cmds []model.SessionCommand, protocol strin
 		log.Printf("[AlertMatcher] 告警寫入失敗 (count=%d): %v", len(alerts), err)
 		return
 	}
+}
+
+// OutputRules snapshots only enabled output rules for a session's scanner.
+func (m *AlertMatcher) OutputRules(protocol, subjectKind string) []model.AlertRule {
+	if m == nil {
+		return nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var rules []model.AlertRule
+	for _, r := range m.rules {
+		if ruleAppliesToSubject(r.rule.SubjectKind, subjectKind) && r.rule.Direction == model.DirectionOutput && ruleAppliesToProtocol(r.rule.Protocols, protocol) {
+			rules = append(rules, r.rule)
+		}
+	}
+	return rules
 }

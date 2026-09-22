@@ -34,7 +34,8 @@ type CommandStore struct {
 	k8sContainer string
 
 	// protocol 會話協議：告警比對依此分流 shell/SQL 規則（避免跨協議誤報）
-	protocol string
+	protocol    string
+	subjectKind string
 
 	db        *gorm.DB
 	ch        chan model.SessionCommand
@@ -51,7 +52,7 @@ type CommandStore struct {
 }
 
 // NewCommandStore 建立入庫器並啟動寫入 goroutine
-func NewCommandStore(db *gorm.DB, sessionID, userID uint, assetID *uint, protocol string) *CommandStore {
+func NewCommandStore(db *gorm.DB, sessionID, userID uint, assetID *uint, protocol string, subjectKind string) *CommandStore {
 	s := &CommandStore{
 		sessionID: sessionID,
 		userID:    userID,
@@ -61,6 +62,7 @@ func NewCommandStore(db *gorm.DB, sessionID, userID uint, assetID *uint, protoco
 		ch:        make(chan model.SessionCommand, commandQueueSize),
 		done:      make(chan struct{}),
 	}
+	s.subjectKind = subjectKind
 	go s.writeLoop()
 	return s
 }
@@ -93,7 +95,7 @@ func (s *CommandStore) Enqueue(command string, executedAt time.Time) {
 // 這個事實的價值有一半在於它落在哪兩條指令之間。
 //
 // **command 恆為空**：呼叫端傳不進文字，且 baseline 的
-// `CHECK (NOT degraded OR command = '')` 在 DB 層再擋一次。
+// `CHECK (NOT degraded OR command = ”)` 在 DB 層再擋一次。
 func (s *CommandStore) EnqueueDegraded(reason string, executedAt time.Time) {
 	s.enqueue("", true, reason, executedAt)
 }
@@ -154,7 +156,7 @@ func (s *CommandStore) writeLoop() {
 			if matcher := audit.GetAlertMatcher(); matcher != nil {
 				// 告警比對掛載點（command-alerts）：flush 成功後逐條比對，
 				// MatchAndStore 內部錯誤僅 log，不反向影響入庫
-				matcher.MatchAndStore(batch, s.protocol)
+				matcher.ForSubject(s.subjectKind).MatchAndStore(batch, s.protocol)
 			}
 			// 降級告警的專用發射器：同樣在**入庫成功之後**，
 			// 且刻意在規則比對之後——規則路徑的行為一個字都不變。

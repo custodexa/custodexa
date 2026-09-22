@@ -425,6 +425,10 @@ func (s *OIDCLoginService) callback(ctx context.Context, state, code string,
 		return nil, err
 	}
 
+	if user.Kind == model.KindAgent {
+		return nil, ErrOIDCFlowInvalid
+	}
+
 	// 角色映射重算。**接在既存身分與供應兩條路徑匯流之後、簽出交棒憑證之前**：
 	// 憑證於鎖內重讀使用者世代，重算若晚一步，被降權的那次登入會拿到帶舊世代
 	// 的票，兌換時比對不過——每一次降權都會把當事人鎖死在門外
@@ -458,6 +462,9 @@ func (s *OIDCLoginService) recomputeMappedRoles(p *model.OIDCProvider, user *mod
 		log.Printf("[OIDC] 群組映射重算失敗（fail-close）: userID=%d provider=%d err=%v",
 			user.ID, p.ID, err)
 		return err
+	}
+	if outcome.EpochBumped && s.auth != nil && s.auth.agentTokens != nil {
+		s.auth.agentTokens.finishSuspendedOwner(user.ID)
 	}
 	if !outcome.Changed() {
 		return nil
@@ -661,6 +668,9 @@ func (s *OIDCLoginService) provisionFromClaims(p *model.OIDCProvider, claims *Ve
 
 	txErr := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		if err := recordPrincipalState(tx, user, model.ActionCreate); err != nil {
 			return err
 		}
 		var role model.Role

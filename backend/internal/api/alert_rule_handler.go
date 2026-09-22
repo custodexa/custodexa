@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // AlertRuleServiceInterface 告警規則服務接口（用於測試注入）
@@ -40,6 +40,12 @@ func NewAlertRuleHandler(ruleService AlertRuleServiceInterface) *AlertRuleHandle
 // client 回應（僅碼＋固定 zh fallback），泛化訊息，避免內部實作細節外洩
 func respondRuleError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, audit.ErrInvalidSubjectKind):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+	case errors.Is(err, audit.ErrInvalidDirection):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAlertDirection, nil)
+	case errors.Is(err, audit.ErrOutputBlock):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAlertOutputBlock, nil)
 	case errors.Is(err, audit.ErrInvalidPattern):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAlertPattern, nil)
 	case errors.Is(err, audit.ErrInvalidSeverity):

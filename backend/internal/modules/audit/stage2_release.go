@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"github.com/custodexa/backend/internal/model"
 	"log"
 	"sync"
 )
@@ -34,7 +35,10 @@ func ResetAuditFailureSingleton() {
 // ResetAuditIntegritySingleton 清除審計完整性服務單例。
 // 呼叫端 SHALL 於此之前先 model.SetAuditCreateHooks(nil, nil) 解除建立 hook，
 // 否則 GORM 直寫路徑仍會打到已釋放的物件。
-func ResetAuditIntegritySingleton() { registerAuditIntegrity(nil) }
+func ResetAuditIntegritySingleton() {
+	model.SetAgentToolCallStampHook(nil)
+	registerAuditIntegrity(nil)
+}
 
 // alertNotifierStopMu 使同一物件的收束序列化（兩條路徑可能同時抵達：
 // 段 2 重試的 bag 釋放與行程收尾）。

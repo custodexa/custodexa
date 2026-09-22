@@ -60,7 +60,9 @@ var (
 
 	// --- 告警規則（alert_rule_handler.go）---
 
-	CodeInvalidAlertPattern = register("VALIDATION_ALERT_RULE_PATTERN", Descriptor{
+	CodeInvalidAlertDirection = register("VALIDATION_ALERT_DIRECTION", Descriptor{ZhFallback: "direction 必須為 input/output"})
+	CodeAlertOutputBlock      = register("VALIDATION_ALERT_OUTPUT_BLOCK", Descriptor{ZhFallback: "輸出面不支援阻斷：位元組送達之後無從收回。"})
+	CodeInvalidAlertPattern   = register("VALIDATION_ALERT_RULE_PATTERN", Descriptor{
 		ZhFallback: "regex pattern 無效"})
 	// CodeInvalidAlertSeverity 與 command_alert_handler.go 共用（同一規則：
 	// severity 必須為 high/medium/low）

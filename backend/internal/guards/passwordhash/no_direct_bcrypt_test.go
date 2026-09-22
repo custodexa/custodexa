@@ -2,7 +2,7 @@
 //
 // 抽出 `pkg/crypto` 的 Hasher／Verifier 之後，若有人在別處直接 import bcrypt，
 // 那一處就換不掉演算法——而換演算法正是抽這層介面的唯一動機。
-// 「請大家都走介面」寫在文件裡等於沒寫（goal-charter §7：誠實邊界要機器可見），
+// 「請大家都走介面」寫在文件裡等於沒寫（誠實邊界要機器可見），
 // 故以掃描釘死。
 package passwordhash
 

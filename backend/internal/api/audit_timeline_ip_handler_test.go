@@ -54,7 +54,7 @@ func setupIPTimelineDB(t *testing.T) *gorm.DB {
 	for _, ddl := range []string{
 		`CREATE TABLE session_commands (id integer primary key autoincrement,
 			session_id integer, user_id integer, asset_id integer,
-			command text, seq integer, executed_at datetime)`,
+			command text, seq integer, executed_at datetime, degraded boolean NOT NULL DEFAULT 0, degrade_reason text NOT NULL DEFAULT '')`,
 		`CREATE TABLE command_alerts (id integer primary key autoincrement,
 			rule_id integer, rule_name text, session_id integer, user_id integer,
 			asset_id integer, command text, severity text, disposition text,

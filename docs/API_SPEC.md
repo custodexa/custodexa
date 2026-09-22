@@ -1,5 +1,7 @@
 # Custodexa - API 規格文件
 
+> 最後更新：2026-09-22（規則主體、agent 審計／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
+
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
 > `backend/internal/sshproxy/handler.go`, `backend/internal/proxy/handler.go`,
 > `backend/internal/modules/*`（asset／identity／authz／policy／audit／session／keyvault 七模組）, `backend/internal/model/*.go`,
@@ -50,7 +52,7 @@
 | 稽核工作台 | 2 | `/api/v1/audit/timeline`, `/api/v1/audit/subjects` | 六類審計資料的聚合時間軸＋樞紐候選（人／資產／來源位址；`audit:view`，唯讀） |
 | 稽核匯出 | 4 | `/api/v1/audit-export` | 事件報告同步匯出＋證據包非同步 job（發起/清單/下載）（PCI 10.5.1） |
 | 存取複審 | 4 | `/api/v1/access-reviews` | 存取矩陣/複審歷史/單筆快照/簽核（PCI 7.2.4；全端點無條件守門） |
-| 告警規則 | 4 | `/api/v1/alert-rules` | 危險指令規則 CRUD |
+| 告警規則 | 4 | `/api/v1/alert-rules` | 輸入指令／輸出敏感資料規則 CRUD |
 | 告警查詢 / 審閱 | 2 | `/api/v1/command-alerts` | 告警記錄查詢 + 審閱處置（PCI 10.4.1） |
 | 通知通道 | 5 | `/api/v1/notification-channels` | webhook 通道 CRUD + 測試 |
 | 命令片段 | 4 | `/api/v1/snippets` | user-scoped 片段 CRUD |
@@ -86,6 +88,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/access-requests/:id/approve` | always |
 | POST | `/api/v1/access-requests/:id/cancel` | always |
 | POST | `/api/v1/access-requests/:id/reject` | always |
+| GET | `/api/v1/access-requests/:id/reports` | always |
+| POST | `/api/v1/access-requests/:id/reports` | always |
 | POST | `/api/v1/access-requests/:id/review` | always |
 | POST | `/api/v1/access-requests/:id/revoke` | always |
 | POST | `/api/v1/access-requests/break-glass` | always |
@@ -100,6 +104,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/access-reviews` | always |
 | GET | `/api/v1/access-reviews/:id` | always |
 | GET | `/api/v1/access-reviews/matrix` | always |
+| GET | `/api/v1/agent-tasks` | always |
+| GET | `/api/v1/agent-tasks/:requestId` | always |
+| GET | `/api/v1/agent-tool-calls` | always |
 | GET | `/api/v1/alert-rules` | always |
 | POST | `/api/v1/alert-rules` | always |
 | DELETE | `/api/v1/alert-rules/:id` | always |
@@ -237,6 +244,9 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | PUT | `/api/v1/ldap-directory` | always |
 | GET | `/api/v1/ldap-directory/status` | always |
 | POST | `/api/v1/ldap-directory/test` | always |
+| POST | `/api/v1/mcp` | always |
+| GET | `/api/v1/my/agents` | always |
+| POST | `/api/v1/my/agents` | always |
 | GET | `/api/v1/my/connections` | always |
 | POST | `/api/v1/my/connections/:id/terminate` | always |
 | GET | `/api/v1/notification-channels` | always |
@@ -336,6 +346,11 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | DELETE | `/api/v1/users/:id` | always |
 | GET | `/api/v1/users/:id` | always |
 | PUT | `/api/v1/users/:id` | always |
+| GET | `/api/v1/users/:id/agent-breaker/events` | always |
+| POST | `/api/v1/users/:id/agent-breaker/release` | always |
+| GET | `/api/v1/users/:id/agent-tokens` | always |
+| POST | `/api/v1/users/:id/agent-tokens` | always |
+| DELETE | `/api/v1/users/:id/agent-tokens/:tokenId` | always |
 | GET | `/api/v1/users/:id/external-identities` | always |
 | POST | `/api/v1/users/:id/external-identities` | always |
 | DELETE | `/api/v1/users/:id/external-identities/:identityId` | always |
@@ -822,6 +837,11 @@ MFA 分流（驗證或強制註冊）→ 強制改密 → 發正式 token**。
 ```
 
 （Web 會話刷新憑證隨此回應以 `Set-Cookie: custodexa_refresh=...` 下發，不在 body 內。）
+
+本端點的四種 200 回應**都是頂層物件，沒有 `data` 外層**：`{"data":…}` 只用於列表端點
+（見「統一回應格式」）。程式取值請用 `token`／`user`／`mfa_required`／`pending_token`／
+`mfa_enrollment_required`／`enrollment_token`／`password_change_required`／`change_token`，
+取 `data.token` 會得到空值。四種形態互斥，以旗標欄位存在與否分流。
 
 **回應** (200，MFA 用戶第一階段，需輸入 TOTP):
 ```json
@@ -2384,7 +2404,7 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
 
 ### 告警規則（admin only）
 
-指令入庫時與啟用規則比對，命中即依 `action` 告警或阻斷；規則 CUD 後快取即時重載。
+輸入指令只套用啟用的 input 規則；阻斷在送出前執行，告警在指令入庫後比對。輸入規則 CUD 後快取即時重載。輸出旁路只套用 output 規則並產生「可能含敏感資料」告警；新增、停用與修改於新會話生效，進行中的會話沿用啟動時規則集。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
@@ -2400,6 +2420,8 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
   "pattern": "rm\\s+-rf\\s+/",
   "severity": "high",
   "action": "block",
+  "direction": "input",
+  "subject_kind": "all",
   "enabled": true
 }
 ```
@@ -2407,6 +2429,15 @@ owner-scoped 終止呼叫者**自己**的 active 連線（實際斷開 WebSocket
 - `severity`: `high`/`medium`/`low`；`action`: `alert`（預設）/`block`（阻斷）；`enabled` 未傳預設啟用
 - `protocols`（逗號分隔協議，空＝全協議，用於 shell/SQL 規則分流）：Create/Update 皆可傳，
   會驗證值域並寫入，非法值回 400（`ErrInvalidProtocols`）；migration/seed 亦會設定
+
+- `subject_kind`: `all`／`human`／`agent`；建立省略為 all、更新省略保留。未知或空字串回 400 `BAD_PARAMS`。規則列表回傳此欄；認證型別未知時僅比對 all，仍執行比對。兩條 agent 專屬 input/block 種子分別防橫向移動與敏感路徑讀取，適用 SSH／K8s；既有 14 條為 all。橫向移動種子只在**指令位置**比對（行首、`;` `&` `|` `(` 反引號之後，或 `sudo` 之後的指令名），因此路徑或引數裡出現同名字串不會命中它——同一指令若涉及敏感路徑，會由敏感路徑種子歸因，兩條規則的告警計數因此各自對應自己的語義。自訂規則沿用一般正則語義，不繼承此限定。
+- `direction`: `input`／`output`；Create 未傳預設 input，Update 未傳保留原值。未知值（含顯式空字串）回 400，code=`VALIDATION_ALERT_DIRECTION`。
+- 建立與更新皆拒 `direction=output`＋`action=block`，回 400（`VALIDATION_ALERT_OUTPUT_BLOCK`），不寫入資料庫；位元組送達後無從收回。
+- 輸出只掃解析後文字流（SSH／K8s／資料庫主控台），不含 RDP／VNC 畫面、加密／壓縮／編碼內容，不剝除終端控制序列；未命中不表示不存在。
+- 內建卡號 pattern 原樣時另做 Luhn 校驗；編輯 pattern 後視為一般正則。遮罩只作用於 MCP 通道回給 agent 的文字與任務報告本文（見「MCP agent channel」），人類終端、錄影與指令證據一律保留原文。
+- **遮罩是規則驅動、逐條列舉**：套用的是「已啟用、`direction=output`、`subject_kind` 涵蓋 agent、協議相符」的規則集，不是一套通用的敏感資料防護。種子只給兩條（卡號 pattern 與私鑰標頭 pattern），其餘形態（例如密碼雜湊、API 金鑰、個資欄位）沒有對應規則就不會被遮罩也不會告警。部署方須依自身敏感資料清單自行補規則。
+- 輸出告警沿既有查詢／通知／syslog 鏈，kind=rule、command 為空，reason_code=`o1:<base36 count>`；同（規則、會話）5 秒內彙總，triggered_at 為首命中時刻。webhook 的 optional `possible_sensitive_output.count` 提供次數，沒有命中原文或位移。
+- 旁路佇列溢出停用該場掃描時，審計查詢可見 action=`output_scan_disabled`、resource=session、resource_id=會話主鍵、details 的 session_id 與 reason=`queue_overflow`；不表示會話被阻斷。
 
 ### 告警查詢
 
@@ -2428,6 +2459,16 @@ data 項另含審閱處置欄位 `reviewed_by`/`reviewed_at`/`disposition`（`pe
 機器碼落 `reason_code`（`audit_degraded_span`／`new_source_ip_session`）。
 `new_source_ip` 為 `severity=medium`；它記錄的是「這個帳號以前沒從這個位址連過」，
 **不表示該次連線被阻擋**——是否放行由允許來源網段（見「用戶 API」）決定，兩者互不影響。
+
+**`reason_code` 字典**：值為穩定機器碼，三種形態——
+- `audit_degraded_span`／`new_source_ip_session`：上述兩類非規則告警的固定碼。
+- `RULE_*`（如 `RULE_AGENT_BREAKER_TRIPPED`）：系統事件類告警沿用 apierror 碼。
+- `o1:<base36>`：輸出面規則告警專用。冒號前為**格式版本**（`o` 表輸出面、`1` 表第 1 版），
+  冒號後為該規則在同一 5 秒彙總視窗內的**命中次數**，以 base36 編碼（`o1:2` ＝ 2 次、
+  `o1:a` ＝ 10 次）。次數不是規則 id、不是嚴重度、也不是位移；命中原文與位置都不入庫。
+  規則身分讀同列的 `rule_id`／`rule_name`。
+  此次數與帳本的 `masked_count` 是兩條獨立計數（一條出自輸出流掃描、一條出自回傳值遮罩），
+  數值常一致但不保證相等，對帳時各以自身來源為準。
 
 ### 告警審閱處置（PCI 10.4.1）
 
@@ -2923,13 +2964,23 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 
 ---
 
+## 自助建立自動化帳號
+
+`POST /api/v1/my/agents` 與 `GET /api/v1/my/agents` 需已認證且啟用中的 human；不需 admin 角色。兩端點不在 agent 路由允許清單，以 agent 憑證呼叫皆回 `403 AUTH_AGENT_FORBIDDEN_ROUTE`；未認證回既有 401。
+
+- POST 請求：`{"username":"nightly-worker","purpose":"每日報表"}`。名稱 trim 後 3–50 字元，用途 trim 後 1–2000 字元；缺欄或值域外回 `400 VALIDATION_BAD_PARAMS`。成功回 `201 {"data":<user>}`，kind 固定 agent、owner 固定認證呼叫者。額外的 owner_user_id、kind、password、roles 等欄位不採信，無可用密碼、不具登入能力，沿用既有角色與審核者守衛。
+- GET 成功回 `200 {"data":[<user>],"total":N}`，依 id 排序，只列本人名下未軟刪的 agent（含停用者），不列他人主體。用途不屬 users 欄位，清單不回傳用途。
+- `agent_self_create_enabled` 出廠 false，關閉時兩端點皆回 `403 RULE_AGENT_SELF_CREATE_DISABLED`。`agent_self_create_max_per_owner` 出廠 3，合法值 1–100，達上限的 POST 回 `403 RULE_AGENT_SELF_CREATE_LIMIT`。上限計入本人所有未軟刪 agent，含管理員建立與停用者；軟刪後釋放額度。上限調低或政策關閉不影響既有主體，管理員 `/users` 建立不受配額限制。
+- 自助建立在同一交易內鎖 owner、重讀政策與資格、計數並建立主體；主體投影審計維持 system actor，另以 owner 為 actor 留 self_service=true、purpose 與兩政策值的建立活動列。任何交易失敗均不留下帳號或上述審計列。管理員建立不帶 self_service 旗標。無 schema 或 migration 變更。
+
+
 ## 用戶 API
 
-> 整組 admin only（`RequireRole("admin")`）。
+> 帳號管理為 admin only（`RequireRole("admin")`）；agent token 三端點允許 human admin 或該 agent 的 owner。
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/users` | 列表 → `{data, total}`；query: `search`（用戶名/郵箱）、`active`、`page`、`page_size` |
+| GET | `/users` | 列表 → `{data, total}`；query: `search`（用戶名/郵箱）、`active`、`page`、`page_size`、`include_agents=true`（預設只含 human） |
 | POST | `/users` | 創建 → 201 `{data: User}` |
 | GET | `/users/:id` | 詳情 → `{data: User}` |
 | PUT | `/users/:id` | 更新基本資訊（不含密碼/角色） |
@@ -2957,7 +3008,7 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 （`username` 3-50 字元、`email` 需合法、用戶名重複回 400；`password` 除 binding 下限外，
 另過密碼政策 validator——預設最小長度 12、須含字母與數字，違規回 400 附可讀原因）
 
-建立的帳號一律標記 `must_change_password`：使用者以此處設定的初始密碼首次登入時，
+建立的 human 帳號一律標記 `must_change_password`：使用者以此處設定的初始密碼首次登入時，
 `POST /auth/login` 回 `password_change_required` 與 `change_token`（原因 `must_change`），
 完成改密後才換發正式會話。此標記不受 `force_change_on_reset` 政策影響。
 
@@ -2973,6 +3024,39 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 注意：登入/`/auth/me` 回應用的是精簡 `UserInfo`（`id/username/email/full_name/local_display_name/
 display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver`），
 不含上述欄位；完整欄位僅見於 `/users` 管理端點。
+
+### Agent 主體與 token
+
+`User` 另含 `kind`（`human`／`agent`，省略預設 human）、`owner_user_id`（agent 必填）、
+`breaker_pending_at`（只讀、可空）。POST `/users` 建 agent 時須省略 `password`，指定啟用中的
+human owner，例如 `{"username":"automation-worker","email":"worker@example.test","kind":"agent","owner_user_id":12,"roles":["user"]}`。
+agent 不能登入、改密、使用 MFA，也不能取得 admin／auditor／approver 角色或審核範圍。
+`kind` 建立後不可變；PUT `/users/:id` 可更換 agent 的 owner，仍須為啟用中的 human。
+owner 仍有 agent 時刪除回 409，附 `agent_ids`。列表預設排除 agent，顯式 `include_agents=true` 才合併列出。
+
+| 方法 | 路徑 | 請求與回應 |
+|---|---|---|
+| POST | `/users/:id/agent-tokens` | `{"name":"automation","expires_at":"2026-12-01T00:00:00Z"}` → 201，token 欄位與一次性明文 `token`；`Cache-Control: no-store` |
+| GET | `/users/:id/agent-tokens` | 200 `{"data":[AgentToken...]}`，不含明文與雜湊 |
+| DELETE | `/users/:id/agent-tokens/:tokenId` | 可帶 `{"note":"rotation"}` → 204，冪等撤銷，並終止該 token 的既有會話 |
+
+三端點只允許 human admin 或目標 agent 的 owner，其他身分為 403。名稱必填且至多 100 字元；
+`expires_at` 必填且在未來；`breaker_pending_at` 非空時發證回 409 `RULE_AGENT_BREAKER_PENDING`，
+撤銷或重建 token 不清除旗標。目前沒有旗標寫入／清除端點。
+`AgentToken` 可讀欄位為 `id,user_id,name,created_by,created_at,expires_at,last_used_at,revoked_at,revoked_by,revoke_note,suspended_at,suspended_reason`。
+
+agent 以 `Authorization: Bearer cxa_…` 認證，每次現查憑證、主體、owner 狀態與來源網段；
+不合格一律 401 `AUTH_AGENT_TOKEN_INVALID`，撤銷／停用的真實原因僅記審計。
+允許面為資產與帳號唯讀、建立／查自己的／撤回自己的申請、自身連線清單、任務報告提交與 MCP。
+每條允許路由仍受原有權限與所有權檢查；報告與 MCP 由後續 change 實作，此處未提供建線入口。
+其餘端點回 403 `AUTH_AGENT_FORBIDDEN_ROUTE`，包含 `POST /connect-tokens` 與
+`GET /ssh`、`GET /db-console`、`GET /connect` 三種 WS 握手；不存在的目標亦同。
+
+停用 agent、owner 停用或憑證世代進位、已綁定 provider 失效會停用相關 token 並收線。
+撤銷／停用提交後才做實際關閉，部分失敗留痕且不回滾憑證失效。
+終止時效目標為 ≤3 秒；超過目標記 `agent_sessions_terminate_late`，不承諾毫秒級時效。
+審計另記 `agent_token_revoked`／`agent_token_suspended` 與 `agent_sessions_terminated`，
+終止事件含成功及失敗的會話 ID 清單，超時事件含會話 ID 與實際耗時（秒）。
 
 **帳號來源**：`/users` 列表另回 `auth_provider_names`
 （該帳號已綁定的 OIDC provider 實例名陣列，依名稱排序；非持久化欄位，查詢時組出）。
@@ -3631,7 +3715,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | GET | `/audit-checkpoints?page=&page_size=` | 檢查點列表（seq 倒序）→ `{data: {items: [...], total}}`；每筆含 `seq`／`id_from`／`id_to`／`row_count`／`agg_hash`／`agg_scheme`／`prev_checkpoint_hash`／`sealed_at`／`signing_key_version`／`signature`／`anchor_status`／`purged_at` |
-| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled, role_state}}}` |
+| GET | `/audit-checkpoints/verify` | **結構層**（預設全鏈）→ `{data: {chain: {total, latest_seq, oldest_seq, passed, failed, status, failures, unsealed_rows, unsealed_from_id, anchor_disabled, role_state, principal_state, agent_token_state}}}` |
 | GET | `/audit-checkpoints/verify?content=true&seq_from=&seq_to=` | 加驗**內容層**（亦支援 `from=`／`to=` 日期映射）→ 另回 `content.intervals[]`，逐區間帶 `status` 與 `remain_rows` |
 | GET | `/audit-checkpoints/public-key` | 鏈簽章公鑰 → `{data: {algorithm: "Ed25519", public_key, fingerprint, version}}`，供離線驗章 |
 
@@ -3664,6 +3748,19 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 `not_covered` 出現在尚未封出任何含快照的檢查點時（升級後首個封章之前），
 **它不是相符**；欄位整段缺席表示本次未附帶對帳結果，同樣不得讀成相符。
 帳號名與角色名只在本端點的回應內出現：快照與失效事件一律只帶識別。
+
+**主體與憑證維度**：`chain.principal_state`（`user_principals`）與
+`chain.agent_token_state`（`agent_tokens`）和既有 `role_state` 並列，既有角色欄位不變。
+兩者各帶 `covered`、`state`、`since_seq`、`expected_hash`、`actual_hash`、
+`missing`／`extra`（僅帳號或憑證識別值陣列，空差集省略）與不符時的 `last_event`。
+`state` 為 `match`／`mismatch`／`not_covered`／`unknown`；讀取或推演失敗為
+`unknown`，不會使其他項失去結果，也不可視為相符。升級後首次含新項的封章前，
+新兩列為「尚未涵蓋」。`last_event` 形狀沿用角色事件，機制為
+`principal_state_integrity`、成因為 `principal_state_mismatch`；事件參數帶項名與差集識別值，
+不帶帳號名、電子郵件、憑證材料或其原始雜湊。
+對帳在驗證、封章及核發憑證前執行，偵測非即時；發證前不符不阻斷發證，
+對帳錯誤只記日誌，不修改主體或憑證現況，也不記為相符。
+服務層投影狀態列 actor 記 `system`，操作者由既有 HTTP 審計列承擔。
 
 **寫入面刻意不存在**：本組端點無任何 POST/PUT/DELETE——「可以被系統改的檢查點」
 在稽核面前一文不值。到期修剪只由 retention 排程依 `retention_checkpoint_days` 執行。
@@ -3808,7 +3905,7 @@ PUT /api/v1/authorizations/:id/accounts
 **兌換複查**、工作區**帳號選擇器過濾**；系統路徑（改密計劃、k8s、SFTP 側車）走預設帳號、不經此判定。
 帳號範圍收緊於**兌換點 DB 現查**即時生效（已簽發 token 不因效期未到而放行）。
 
-**申請單傳遞**: `POST /api/v1/access-requests` 的 `accounts` 於核准時原樣落入 ticket 授權列；
+**申請單傳遞**: `POST /api/v1/access-requests` 的 `accounts` 於核准時以最終核定的子集落入該項 ticket 授權列；
 核准人**不得上調**（同既有「時長/起始只可下修」語義）。
 
 ### 有效權限雙視角（admin only）
@@ -3842,7 +3939,7 @@ subject 顯式參數解析（不自 request context 推導），來源六種聯�
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| POST | `/access-requests` | 提出申請，body `{asset_id, reason(≤1000 必填), duration_minutes(≥1，≤政策上限), date_start?(預約起始)}` → 201；reason 段位自動核准（決定者 system、回應即帶 `approved`）；open 段位拒建單（400） |
+| POST | `/access-requests` | 提出申請，body `{asset_id, accounts?, reason, duration_minutes, date_start?}` 或 `{items:[{asset_id,accounts?}], executor_user_id?, reason, duration_minutes, date_start?}` → 201；reason 段自動核准；open 段僅人類自行執行拒建，agent 執行項自動核准 |
 | POST | `/access-requests/break-glass` | 破窗緊急連線，body `{asset_id, reason(≤1000 必填)}` → 201；時長固定政策鍵（client 傳入即忽略）；即時核准＋建 ticket 授權＋標記待補審 |
 | GET | `/access-requests/mine` | 我的申請（全狀態；破窗單帶 `kind='break_glass'`、撤銷單帶 `revoked_at`/`revoke_note`）→ `{data, total}` |
 | GET | `/access-requests/mine/tickets` | 我的有效限時連線（時窗內 ticket 授權，帶 `request_id` 回鏈）→ `{data, total}` |
@@ -3850,6 +3947,27 @@ subject 顯式參數解析（不自 request context 推導），來源六種聯�
 
 **錯誤**: 409 同資產已有在途單（帶在途單資訊；若在途單實已逾時，伺服端就地作廢後重試建單）、
 400 時長超過 `access_request_max_duration_minutes`／open 段位、404 資產不可視（非授權資產不洩漏存在性）。
+
+**多項任務**：新形狀 `items` 限 1–20 個不同資產，不可同時帶外層 `asset_id`／`accounts`。
+`reason` 必填、至多 1000 字；`duration_minutes` ≥1 且不超過政策上限。舊單資產形狀仍建立一項。
+每項以執行者判定政策與帳號範圍；agent 執行項必須指定具體帳號，不接受省略、空集合或 `@ALL`。
+`executor_user_id` 只在建立時可指定，必須為啟用中的 agent；省略時由申請人執行。
+輔助模式在建單與每次連線判定現查申請人、執行者的可視交集。
+
+回應保留所有既有欄位與省略規則，新增 `items[]`、可空省略的 `executor_user_id`／`closed_at`。
+`asset_id`、`accounts`、`authorization_id` 為第一項鏡像；每項帶 `id,request_id,requester_id,asset_id,accounts,status`、
+核定值 `approved_duration_minutes,approved_date_start`、決定者／時間、票證 `authorization_id`、撤銷附註與
+JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另帶 `auto_basis`）。
+快照於決定時保存，其後政策改動不回寫。每項帶 `approvals,approvals_received,approvals_required`；
+列表同樣帶 items。`mine/tickets` 與 `tickets` 的每張項票證均帶所屬 `request_id`。
+尚有 pending 項則整單 pending；一項拒絕／刪項／撤銷不使其他項失效。
+全部已授權項到期或被撤銷且無 pending 項時，首次寫入 `closed_at`，並收線任務名下殘存會話。
+
+**新增錯誤**：400 `VALIDATION_BAD_PARAMS`（新舊形狀混用／項數／重複資產等）、
+`VALIDATION_ACCOUNT_NOT_ON_ASSET`（帳號未掛載於該資產）、`VALIDATION_AGENT_ACCOUNTS_REQUIRED`、
+`VALIDATION_EXECUTOR_NOT_AGENT`；409 重複 pending 項附 top-level `request_id,item_id`；
+429 `RULE_AGENT_REQUEST_RATE`（agent 每小時建單／同時 pending 上限，預設 30／5）。
+人類不受 agent 速率鍵限制。agent 嘗試審核或拒絕回 403 `AUTH_AGENT_FORBIDDEN_ROUTE`。
 
 **破窗錯誤**: 403 `break_glass_disabled`（政策開關關閉，機器可辨 code）／
 無破窗資格（需時窗內常設 connect，票證不算）／admin 與 auditor 不受理；409 同資產已有有效破窗票證
@@ -3875,26 +3993,26 @@ subject 顯式參數解析（不自 request context 推導），來源六種聯�
 | GET | `/access-requests/history` | 歷史（一律依審核範圍過濾；分頁）→ `{data, total, page, page_size}` |
 | GET | `/access-requests/tickets` | 有效限時連線（審核視角，帶 `request_id` 回鏈供撤銷）→ `{data, total}` |
 | GET | `/access-requests/reviews/pending` | 待補審破窗單（範圍過濾＋排除本人單）→ `{data, total}` |
-| POST | `/access-requests/:id/approve` | 核准（quorum 逐票）；body 可空（照申請值），或 `{duration_minutes?(僅可下修), date_start?(僅可推遲), note?}`；核准數達 `access_request_min_approvals` 門檻的那一票才同交易建 ticket 授權並回填 `authorization_id`，未達門檻回 pending 單＋進度；同人重複核准 409 |
-| POST | `/access-requests/:id/reject` | 拒絕，body `{note}` 必填；任一具資格者即拒（既有核准記錄留存供審計） |
-| POST | `/access-requests/:id/revoke` | 提前撤銷限時連線，body `{note}` 必填；軟刪票證＋單附註（不動狀態機終態）；政策開啟時同步斷線。**守衛為 `RequireRevokeEligibility`（admin OR 有效審核者），與上列審核端點分離** |
+| POST | `/access-requests/:id/approve` | 核准（quorum 逐票）；body 可空（照申請值），或 `{item_id?, accounts?, duration_minutes?(僅可下修), date_start?(僅可推遲), remove?, note?}`／`{items:[{item_id,accounts?,duration_minutes?,date_start?,remove?}],note?}`；核准數達 `access_request_min_approvals` 門檻的那一票才同交易建 ticket 授權並回填 `authorization_id`，未達門檻回 pending 單＋進度；同人重複核准 409 |
+| POST | `/access-requests/:id/reject` | 拒絕，body `{item_id?,note}`，note 必填；省略 item_id 拒絕全部 pending 項，指定時只拒該項；任一具資格者即拒（既有核准記錄留存供審計） |
+| POST | `/access-requests/:id/revoke` | 提前撤銷限時連線，body `{item_id?,note}`，note 必填；省略 item_id 撤整單，指定時只撤該項；軟刪票證＋撤銷附註，其他項不受影響。agent 無條件收線，人類沿撤銷斷線政策。**守衛為 `RequireRevokeEligibility`（admin OR 有效審核者），與上列審核端點分離** |
 | POST | `/access-requests/:id/review` | 破窗事後補審，body `{disposition(confirmed\|violation), note?}`；破窗人自審 403、CAS 防重複 |
 
 **裁決資格**（雙側聯集）: 資產側範圍命中（直配資產 OR 經節點含子樹）**OR**
 申請人側範圍命中（申請人本人 OR 其所屬使用者群組）；**admin 身分不再兜底**，範圍未命中即
 無人可裁，解法為 admin 補建審核範圍或指派 approver。**禁自核硬擋**（申請人＝操作者一律 403，
-兼具 admin 身分者也不例外）。**錯誤**: 400 上調時長/提前起始、403 範圍外或自核、409 非 pending 或已逾時
+兼具 admin 身分者也不例外）。**錯誤**: 400 上調時長/提前起始/放寬帳號/空帳號集合、403 範圍外或自核、409 非 pending 或已逾時
 （CAS 帶 `pending_expires_at > now` 守衛——逾期單核准落敗）、409 同人重複核准。
 
 **最少核准人數**（政策鍵 `access_request_min_approvals`，預設 1、區間 1–10）: 每筆核准逐票記錄於
-`access_request_approvals`（同單同人唯一）；兼具 admin 身分的有效審核者一票計入但不單票繞過門檻
+`access_request_approvals`（同項同人唯一；歷史無 item_id 列維持同單同人唯一）；兼具 admin 身分的有效審核者一票計入但不單票繞過門檻
 （雙人完整性）。可審池不足門檻時 **SHALL NOT 由 admin 以 admin 身分補位**，須擴充可審池。申請單回應帶
 `approvals`（逐票：誰/何時/note）與 `approvals_received`/`approvals_required` 進度欄；未達門檻的核准
 回 200＋pending 單。政策值於每次核准時讀取。自動核准（reason 段）與破窗不受門檻約束。
 
 **撤銷資格**: 一般核准單＝admin OR 原核准人；自動核准單與破窗單（無真人核准人）
 ＝admin OR 範圍命中 approver。**撤銷錯誤**: 403 非資格、409 無有效票證可撤（已到期或已撤，語義分離）、
-400 事由缺漏。`access_revoke_disconnect=true` 時撤銷同步收線該 user×asset 的 active 會話
+400 事由缺漏。agent 執行項撤銷無條件收線，人類則在 `access_revoke_disconnect=true` 時收線該 user×asset 的 active 會話
 （`end_reason='revoked'`，收線失敗不回滾撤銷）。**補審錯誤**: 403 破窗人自審／範圍外、
 409 已補審、400 處置值非法／非破窗單。逾期未補審（`break_glass_review_timeout_hours`）發
 `break_glass_review_overdue` 升級告警。**逾期後週期重發**——以該單最近一次告警時刻節流，
@@ -5088,11 +5206,20 @@ POST /api/v1/connect-tokens
 Authorization: Bearer <token>
 ```
 
-**請求**: `{"asset_id": 1, "account_id": 3}`（`account_id` 選填，省略／0＝該資產的預設帳號）
+**請求**: `{"asset_id": 1, "account_id": 3, "access_request_id": 12}`（`account_id` 選填，省略／0＝該資產的預設帳號）
 **回應** (200): `{"connect_token": "<hex>", "expires_in": 60}`
 
 簽發時完成資產存在性與連線授權檢查（資產不存在 404、無授權 403）；
 token 綁定 user+asset+account，Resolve 即焚。guacd 與原生 SSH 兩路徑共用同一 token 管理器。
+
+`access_request_id` 對人類選填，帶入時於簽發及 SSH／圖形／DB console 兌換現查任務主體、
+資產、解析後的帳號、核准時窗、撤銷及關閉狀態；不符回 403 `AUTH_REQUEST_ITEM_MISMATCH`，
+附 `dimension`（asset／scope／window）；審計的 `request_item_dimension` 記拒絕維度並帶任務及目標資產。既有較前置閘的拒絕碼仍優先。
+未帶任務的人類保留原路徑：無有效常設 connect 時只採 ticket；同資產多張票不聯集，
+按項 `decided_at` 新到舊、同時刻 id 大到小取一張；有常設 connect 時維持原聯集。
+agent HTTP bearer 對 REST connect-tokens 與三種 WS 仍一律 403 `AUTH_AGENT_FORBIDDEN_ROUTE`。
+agent 的行程內簽發必帶任務 id，使用與 HTTP 相同的簽發閘序；這不是額外公開端點。
+連線成功在 session 保存 `access_request_id`。撤銷僅終止本系統代理會話，不終止目標端已脫離會話的背景程序。
 
 **允許來源網段**：簽發端也判來源，位置在角色現查之後、請求綁定之前——只依主體判定，
 不需要資產，也就不對「來源不對」的請求洩漏資產是否存在或有無授權。
@@ -5198,3 +5325,80 @@ Authorization: Bearer <token>
 | `CORS_ALLOWED_ORIGINS` | 空 | 逗號分隔允許來源；release 模式未設＝僅允許同源 |
 | `ADMIN_INITIAL_PASSWORD` | 無預設 | **全新空 DB 必須設定合格值**（>=12 bytes、非預設/placeholder、無前後空白、無換行或控制字元；**中間空白允許**），未設或不合格即 `log.Fatal` 拒絕啟動（不因 dev/release 放寬）；既有 DB 不需要此值，僅在仍留著**合格**值時記警告提醒移除（不合格值於既有 DB 靜默忽略） |
 | `LDAP_*` | 見認證 API 一節 | LDAP 認證設定 |
+
+## Agent 審計、任務報告與熔斷控制
+
+所有路徑以下省略 `/api/v1`。HTTP 連線四入口仍拒 agent；agent 的任務兌換走同一行程內服務，須帶已認證主體與 access_request_id。
+
+| 方法／路徑 | 資格與行為 |
+|---|---|
+| GET `/agent-tool-calls` | admin／auditor；查詢 user_id、access_request_id、from／to（RFC3339）、decision、offset／limit。回 `{data,total}`，含 result_digest／result_excerpt／masked_count；decision=pending 表示已記錄，是否送出與結果皆未知，非成功（契約 §9.13）。|
+| POST `/access-requests/:id/reports` | 任務原執行 agent 提交 `{body}`，201 回不可變的新版本；任務關閉後 24 小時內可補交／修訂；時鐘以持久化 closed_at 為準。人類或其他 agent 為 403、超窗 409、本文錯誤 400。|
+| GET `/access-requests/:id/reports` | admin／auditor、執行者、申請者或 owner；回 latest、versions、closed_at、missing_report_at_close。關閉時沒有版本即缺報告，後續補交不改該事實。|
+| GET `/access-requests/history` | 即時有效審核者 OR auditor。auditor 跨範圍唯讀；其他審核者維持原核准範圍。approve／reject／revoke／review 沿原資格，純 auditor 仍 403。|
+| POST `/users/:id/agent-breaker/release` | owner 或 admin，必填 `{reason}`（API 上限 1000 字元，服務層另限制 1000 bytes）；成功 204，原因入審計。清除未處置旗標，不復活已停用 token；須重新核發。錯誤：400 `VALIDATION_BAD_PARAMS`（reason 缺漏、空白或超長）、403 `AUTH_PERMISSION_DENIED`（非 owner 亦非 admin、呼叫者非人類、或目標非 agent 主體）、409 `CONFLICT_AGENT_BREAKER_NOT_PENDING`（該主體目前沒有待處置熔斷——此端點只清旗標，沒有旗標即無事可清）。|
+
+任務報告每版以任務 id、版本與 body_hash 寫專屬審計列，HTTP 審計不複製正文。申請端點的 reason 與核准／駁回／撤銷／補審端點的 note 僅在端點專屬遮罩集放行；憑證鍵仍遮蔽。報告／熔斷通知沿既有 webhook／Slack 推送並帶 owner_id，沒有新增個人收件匣或送達保證。
+
+會話詳情帶 access_request_id、agent_token_id、actor_kind、on_behalf_of_user_id、owner_user_id、revoked_during_session_at。主體快照取建線當下；人類會話的原欄位保持原值，新快照欄為可空。撤權後收線記獨立事件。
+
+範圍外引用的對外回應皆為相同 404；目標不存在或軟刪為 retired，有 exposure 為 revoked，其餘為 never_visible。只計 never_visible，主體內同一 id 每窗一次，政策鍵 `agent_probe_trip_count=3`／`agent_probe_window_seconds=300`。
+
+**這道計數的涵蓋範圍要先看清楚**：跳閘門檻只數 never_visible，也就是**目標資產確實存在、但從未對該主體曝光過**的引用。對外回應雖然三類相同，但列舉不存在的資產 id（含已軟刪者）歸 retired、有過曝光紀錄者歸 revoked，兩者都**不累計、不會跳閘**，僅留事件列供查。因此「以遞增 id 掃描」這種最常見的探測形態，只要掃到的 id 多半不存在，就不會撞上這道熔斷。它防的是「拿真實但不該看到的資產反覆試」，不是通用的 id 掃描偵測；要涵蓋後者請另配告警規則與速率政策。事件列的 `class` 欄即為此三分類，可用 `GET /users/:id/agent-breaker/events` 逐筆核對。跳閘停該 token、失效其已換出憑證與既有會話，主體標未處置；其間發證回 409 `RULE_AGENT_BREAKER_PENDING`。告警 `kind=agent_breaker_tripped` 可無會話（session_id=null）；既有會話告警仍回數值 session_id。曝光紀錄自升級起累積，不回推升級前歷史，詳見升級 SOP。
+
+工作台 timeline 與證據包 manifest 的 command coverage 共用完整性來源：同樞紐、半開時間窗 `[from,to)` 的留存 `input_without_command` 降級列。存在時新增 `incomplete=true` 與 `degraded_count`；零列時省略，既有欄位保持一致。此軸與 present／purged／not_retained 保留期三態並存；不含已清除列，也不證明原指令從未遺漏。無樞紐的舊式 session 匯出仍不提供 coverage。
+
+agent 種子是指令文字規則，只涵蓋可列舉形態，無法窮舉寫檔、別名或其他工具的等效操作；仍需任務範圍與報告對照，不代表操作面已受完整控制。
+
+檢查點新章採 v3，舊 v1／v2 照原載荷驗證。工具帳本區間列數、id 範圍與不可變第一階段聚合進鏈；第二階段結果由逐列 HMAC 保護，不進鏈聚合。pending 列可在封章後完成，驗證仍須檢查三層；持有 HMAC 鑰者能偽造結果欄，不能把列級結果驗證說成鏈對結果的承諾。
+
+### Agent UI 唯讀增量契約
+
+以下沿既有 AuthMiddleware，未登入回 401。新增端點與既有禁用端點對 agent token 回 403；admin／auditor 的跨主體稽核權限是明示權限，普通 human 不能藉他人 id 取得資料。既有 POST `/access-requests` 與 GET `/access-requests/mine` 沿原 agent 允許清單。
+
+| 端點 | 性質／所需角色 | 增量契約 |
+|---|---|---|
+| GET `/agent-tasks` | 唯讀；admin／auditor（audit:view） | `subject`、`owner` 為正整數主體／目前負責人 id；`from`／`to` 為 RFC3339 建立時間半開窗；`report_status=submitted|missing|not_submitted`。offset 預設 0、limit 預設／上限 100（0 或超限收斂為 100，負值回 400）。回 `{data,total}`；列含 id、subject、username、owner_user_id、status、report_status、created_at、closed_at。submitted=有報告版本；missing=已關閉但沒有任何版本；not_submitted=尚未關閉且沒有版本，不取代報告 API 的 missing_report_at_close。owner 是目前主體關聯，非歷史快照。 |
+| GET `/agent-tasks/:requestId` | 唯讀審計；admin／auditor（audit:view） | 回 `{request,approval_total,session_ids,session_total,reports:{versions,total,closed_at,missing_report_at_close}}`。request 為 agent 申請單、最多 20 項、executor 投影與原核准註記；核准註記另用 approval_offset（預設 0）、同 limit 分頁，approval_total 為全部票數；session_ids 與 reports.versions 共用 offset／limit（預設／上限 100），版本降序；缺報告旗標按關閉時刻全版本查證，不受分頁影響。未知／人類任務 404，非法 id 400；requestId 及遮罩 query 留痕。 |
+| GET `/agent-tool-calls` | 唯讀審計；admin／auditor | 既有 query 增正整數 `session_id`，AND 合併其他條件；保留既有 limit 預設 100、最大 500（超限回預設），敏感讀取審計記查詢條件。 |
+| GET `/users/:id/agent-breaker/events` | 唯讀審計；admin／auditor 或該 agent 的 human owner | offset／limit 同任務列表（上限 100），from／to 為事件時間半開窗；回 `{data,total,breaker_pending_at}`。事件列為原 id、user_id、agent_token_id、asset_ref、endpoint、class、created_at，按時間與 id 降序。未知主體／非 owner 一律 403，避免藉 id 探測；空結果 data=[]。breaker_pending_at 只描述主體目前未處置狀態，不是逐事件解除歷史；不回推 exposure 升級前資料。此端點歸 audit_integrity，resource_id 為主體 id、無 asset pivot，GET query 留痕。 |
+| GET `/users` | 唯讀；admin | 新 query `kind=human|agent` 由伺服器篩選並共用 total；明示 kind 優先 include_agents，未指定時維持原行為，非法 kind 回 400。 |
+| GET `/my/agents` | 唯讀；已認證 active human 本人 | 200 加 `self_create:{enabled,max_per_owner,current}`；current 為目前本人名下未軟刪 agent 數，含停用主體。政策關閉保留原 403／RULE_AGENT_SELF_CREATE_DISABLED，錯誤 envelope 也加同形 self_create（enabled=false）；不洩漏名下列或他人計數，不接受 owner query。 |
+| GET `/access-requests/mine` | 唯讀；已認證本人，含既有 agent | 只查 requester_id=認證主體；忽略 client requester_id。回應增 executor 與項目 decision_bounds。 |
+| GET `/access-requests/pending`、`/reviews/pending`、`/history` | 唯讀；原有效審核者及其範圍；history 另開 auditor 跨範圍唯讀 | 增 `executor:{id,username,kind,owner_user_id,owner_username}`（目前主體投影）及每項 `decision_bounds:{max_duration,earliest_start,accounts}`；只在原範圍查詢後附加。max_duration 是原申請分鐘，earliest_start=max(now,requested_date_start)，accounts 沿原 scope（包括 @ALL sentinel）。界線不是決定授權，不放寬角色／範圍，送出仍由原服務檢查。 |
+| GET `/sessions` | 唯讀；admin／auditor（session:view） | 新 query `access_request_id` 為正整數，以任務關聯篩選並共用 total；帶此 query 時 page_size 上限 100，條件於 HTTP 審計列留痕；非法 id 回 400。`actor_kind=human|agent` agent 比對已存種類；human 包含明示 human 及 kind／agent_token_id 皆 NULL 的既有人類建線形態，不改原 JSON，非法值 400。 |
+| GET `/sessions`、`/sessions/:id` | 唯讀；admin／auditor（session:view） | 新 `agent_token_name` 為建立時快照，既有會話 NULL；不 join token 現值。增量 migration 只加 sessions 一欄，既有建線交易一處賦值；Down 保留資料，停用讀寫由舊版應用承擔。 |
+| GET `/audit/subjects?type=user` | 唯讀；admin／auditor（audit:view） | 在最小主體 DTO 增 kind 與有值時的 owner_user_id，含停用／軟刪主體供調查；資產主體不增加虛構種類。 |
+
+`POST /access-requests` 不是唯讀端點，寫入權限與判定均不改：429 `RULE_AGENT_REQUEST_RATE` 增 `details:{used,limit,window_seconds,dimension}`（hour=3600；pending=0，表示無滾動窗）；400 `VALIDATION_ACCOUNT_NOT_ON_ASSET` 增 `details:{item_index,asset_id}`，item_index 為 **0 起算**。裸 sentinel 仍保留原碼，服務實際帳號檢查回具項目資料的 typed error；其他錯誤 envelope 欄原樣保留。
+
+### Agent 前端路由
+
+此處是瀏覽器頁面路由。`/audit/agent-tasks` 與 `/audit/agent-tasks/:requestId` 沿 admin／auditor 權限，列表由伺服器依主體、目前負責人、時間與報告狀態篩選；詳情依主體、授權、會話／帳本、自述報告四段呈現。核准票、會話與報告分頁讀取；缺報告依關閉時刻判定，補交不抹除事實。列表與 executor 的 owner 為目前關聯，執行當時 owner／token 名稱取會話快照。稽核工作台僅 kind=agent 提供任務出口。
+
+`/agent-breakers?user_id=<id>` 讀事件端點，admin 或 owner 可解除（包括兼任 auditor 的 owner）；其他 auditor 唯讀；列表選主體沿既有權限，普通使用者只查本人，auditor 可由主體 id 進入。never_visible 只計本頁不同目標數，並非目前時間窗的熔斷總數；token 依已存停用時間／原因呈現，無法回推歷次跳閘完整名單或通知送達。`/my-agents` 讀同端點 self_create 控制建立，政策關閉的 403 不冒稱名下為空。會話帳本用 session_id、任務帳本用 access_request_id，共用 ToolCallLedger；pending 沿契約顯示「已記錄，是否送出與結果皆未知」。
+
+`ToolCallLedger` 共用元件以既有帳本 query 查詢與伺服器分頁，拒絕未支援的 query（包含 `session_id`），未掛載任務詳情或會話頁。區塊說明為「錄影保留原始畫面、帳本保留回傳摘要與雜湊」；節錄不等同全文，pending 不證明呼叫已送出。解除必填原因，且明示不復活已停用 token、熔斷當下的已換發票證與既有連線已失效。
+
+## MCP agent channel: POST /api/v1/mcp
+
+Authenticate with `Authorization: Bearer cxa_...` (an active agent token). Human JWTs and cookies are rejected. Streamable HTTP uses POST only; GET and DELETE are not new agent routes. `custodexa-mcp` offers stdio by forwarding to the same endpoint. Set `CUSTODEXA_MCP_URL` and `CUSTODEXA_AGENT_TOKEN` in its environment; use HTTPS outside local development. Build with `go build -o custodexa-mcp ./cmd/custodexa-mcp` in the backend build environment. No local grants, target connections or evidence store exist in the client.
+
+`initialize` reports `protocolVersion` and a `serverInfo` naming **the peer you are actually talking to**, so the two transports differ: a direct HTTP connection answers `serverInfo.name: "custodexa"` (the service), while the stdio client answers `serverInfo.name: "custodexa-mcp"` (the forwarder in front of it). Both report `version: "1"`. Do not use `serverInfo.name` to assert which product or release is on the other end, and do not require a single value across transports; identify the deployment from its URL and its own version endpoints instead. A direct HTTP `initialize` also returns an `Mcp-Session-Id` response header that subsequent requests on that connection must carry.
+
+The ten tools are `list_assets`, `request_access`, `check_request`, `open_session`, `close_session`, `run_command`, `send_keys`, `query`, `read_screen` and `close_task`. Discover their schemas with `tools/list`. Supply explicit per-asset `accounts` to request access, and an explicit `request_id` to open a session. Handles use `session_handle`; reset uses `key` (`ctrl-c`, `ctrl-d`, `enter`); reports use `report`. No HTTP connect-token or WebSocket route is available to agent credentials.
+
+**Who decides a `request_access` task.** The decision is not agent-specific: each requested asset carries an access policy segment, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. A requested item in the `approval` segment stays `pending` until a human approver with that asset in scope decides it. Items in the `open` and `reason` segments are approved at submission time and the request comes back `status: "approved"` immediately, recorded with `auto_approved: true` and a policy snapshot of `{"segment": ..., "auto_basis": ..., "required_approvals": 0}`. Under the shipped defaults most assets fall outside `approval`, so an integrator who never changes the policy will see every agent task approve itself. **To put agent tasks in front of a human, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval`**; `access_request_min_approvals` then sets how many approvals such a request needs. A request that was auto-approved has no approval votes, and `POST /access-requests/:id/approve` on it returns `409` because it has already left `pending`.
+
+`check_request` reports `approvals_required` from the items' policy snapshots: the largest `required_approvals` among the items, which is `0` when every item was auto-approved and the configured threshold when an item is in the `approval` segment. The task detail reports the same snapshot value per item, so the two views agree on one request. `approvals_received` counts recorded approvals and is meaningful only while `status` is `pending`; read `status` first.
+
+Four operational boundaries:
+
+1. `completed` means a prompt was observed again; it guarantees neither termination nor success. Prompts and stale-output attribution are heuristics. `timed_out` has an unknown outcome; inspect subsequent output before retrying. Optional same-handle idempotency keys suppress repeated writes for 60 seconds, not across process restarts.
+2. `read_screen` is the tail of a line buffer, not a virtual terminal screen. `needs_input` never triggers automatic interruption; the caller must request `send_keys` explicitly.
+3. Agent-visible output and report text are masked; recordings and command records retain the original. Masking is rule-driven and enumerated, not a general sensitive-data filter: it applies the enabled alert rules with `direction=output` whose subject kind covers agents and whose protocol list covers the session, and it replaces each matched span with `[REDACTED]`. Anything no enabled rule matches reaches the agent in full. The shipped rule set contains two output rules (a card-number pattern and a private-key header pattern); other categories, such as password hashes or API keys, need rules of their own before they are masked or alerted on. `masked_count` on the tool-call ledger row states how many spans were replaced in that response. Attributable calls first create a pending ledger row and update that same row on completion. Unattributable task/handle calls are rejected before that ledger and recorded in the same HTTP request's audit row (principal, tool, reason, time). Pending proves recorded intent, not delivery or completion. Command coverage exists in the audit workbench and batch export, not a single-session export.
+4. Token expiry, bound-item expiry and task closure terminate existing sessions and in-flight tools without waiting for command completion. The 250ms sampling interval is not a completion SLA. Only system-created sessions are controlled; detached target processes may survive. Cancellation during a request closes its session; silent departure between POSTs is detected through a five-minute idle lease, not immediately. Handles cannot transfer across tokens, MCP connections, restart or takeover.
+
+**What a block looks like.** A command that matches an enabled `action=block` input rule comes back as `{"status": "blocked", "code": "RULE_COMMAND_BLOCKED", "notices": [{"code": "RULE_COMMAND_BLOCKED"}]}` and is recorded in the tool-call ledger with `decision: "denied"`. The typed bytes are never forwarded to the target, and an interrupt byte is then written to the target to clear whatever is already in its line buffer. That interrupt is part of the mechanism, so the `output` field of a blocked response is not reliably empty: depending on the target's shell and echo settings it can contain `^C` and a fresh prompt, and the same `^C` appears at that point in the recording. **A `^C` next to a blocked command is the platform clearing the line, not an operator pressing Ctrl-C**; the blocked command's own text never reaches the target, so no interpretation of it is needed. Reviewers should read the accompanying alert row (`blocked: true` plus rule identity) rather than the terminal text, and the recording carries a standalone marker line containing `[RULE_COMMAND_BLOCKED]` and the rule name, in a fixed server-side format, so it stays greppable across viewer locales. If that line-clearing write fails, the session is terminated rather than continued, so that no fragment of a blocked command can be completed by a later Enter.
+
+Terminal recovery fields are structured: `needs_input` includes `recovery: {tool: "send_keys", key: "ctrl-c", automatic: false}`; a confirmed reset includes `reset: true` and `next_action: "run_command"`. A stale running response includes `dispatched: false` and `next_action: "observe_or_send_keys"`. These fields describe local observations and available actions, not a guarantee about the remote process.

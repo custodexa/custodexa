@@ -69,7 +69,9 @@ type roleStateEventView struct {
 // audit 模組的報告維持「只有識別、可安全落 log 與外送」的性質
 type checkpointVerifyResponse struct {
 	*audit.ChainReport
-	RoleState *roleStateView `json:"role_state,omitempty"`
+	RoleState       *roleStateView      `json:"role_state,omitempty"`
+	PrincipalState  *principalStateView `json:"principal_state,omitempty"`
+	AgentTokenState *principalStateView `json:"agent_token_state,omitempty"`
 }
 
 // roleStateNameSource 帳號名與角色名的來源（實作＝`identity.UserService`）。

@@ -95,6 +95,7 @@ func InitAuditIntegrityVersioned(db *gorm.DB, km *keyvault.KeyManagerService) (*
 		baselineMaxID: baselineMaxID,
 	}
 	registerAuditIntegrity(svc)
+	model.SetAgentToolCallStampHook(svc.StampToolCall)
 	return svc, nil
 }
 

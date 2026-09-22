@@ -698,11 +698,14 @@ func (h *AuthHandler) authenticateChangePassword(c *gin.Context) (*crypto.Claims
 
 // respondChangePasswordError 改密錯誤映射（政策違規回可讀訊息，內部錯誤泛化）
 func (h *AuthHandler) respondChangePasswordError(c *gin.Context, claims *crypto.Claims, err error) {
+	var principal *identity.PrincipalError
 	var violation *policy.PasswordPolicyViolation
 	status := http.StatusBadRequest
 	var code apierror.ErrCode
 	var params map[string]any
 	switch {
+	case errors.As(err, &principal):
+		status, code = principal.Status, principal.Code
 	case errors.As(err, &violation):
 		// 政策違規訊息可直接回給使用者（code+params 由 service 綁定）
 		code = violation.Code
@@ -755,6 +758,7 @@ func (h *AuthHandler) auditPasswordChange(c *gin.Context, claims *crypto.Claims,
 // RegisterRoutes 註冊認證相關路由
 func (h *AuthHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
 	auth := r.Group("/auth")
+	auth.Use(middleware.RejectAgentTokenOnHumanPaths())
 	{
 		// 不需要認證的路由
 		auth.POST("/login", h.Login)

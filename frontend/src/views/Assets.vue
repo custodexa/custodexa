@@ -28,6 +28,14 @@
         </el-button>
       </template>
     </PageHeader>
+    <section
+      v-if="lastCreatedRequest?.items?.length"
+      class="created-request"
+      data-test="quick-request-result"
+    >
+      <a :href="`/my-requests`">{{ $t('multiRequest.task') }} #{{ lastCreatedRequest.id }} · {{ $t('multiRequest.count', { n: lastCreatedRequest.items.length }) }}</a>
+      <RequestItems :request="lastCreatedRequest" />
+    </section>
 
     <!-- 搜尋與過濾 -->
     <div class="filter-bar">
@@ -613,6 +621,14 @@
       :close-on-click-modal="false"
     >
       <el-alert
+        v-if="applyError"
+        :title="$t('multiRequest.item', { n: 1 })"
+        :description="applyError"
+        type="error"
+        :closable="false"
+        data-test="quick-item-error"
+      />
+      <el-alert
         v-if="applyTarget"
         :title="applyHint"
         type="info"
@@ -796,6 +812,7 @@ import { resolveApiError } from '@/api/error'
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
 import PageHeader from '@/components/PageHeader.vue'
+import RequestItems from '@/components/access-request/RequestItems.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import AssetNodeTree from '@/components/AssetNodeTree.vue'
 
@@ -1689,6 +1706,8 @@ const handleConnect = (row) => {
 }
 
 // 申請連線對話框
+const lastCreatedRequest = ref(null)
+const applyError = ref('')
 const applyVisible = ref(false)
 const applying = ref(false)
 const applyTarget = ref(null)
@@ -1722,6 +1741,7 @@ const applyHint = computed(() => {
 
 const openApplyDialog = (row) => {
   applyTarget.value = row
+  applyError.value = ''
   applyForm.reason = ''
   applyForm.duration_minutes = 60
   applyForm.date_start = null
@@ -1736,6 +1756,7 @@ const submitApply = async () => {
     return // 驗證未過，紅字就近提示
   }
   applying.value = true
+  applyError.value = ''
   try {
     const payload = {
       asset_id: applyTarget.value.id,
@@ -1746,6 +1767,7 @@ const submitApply = async () => {
       payload.date_start = new Date(applyForm.date_start).toISOString()
     }
     const created = await createAccessRequest(payload)
+    lastCreatedRequest.value = created
     applyVisible.value = false
     if (created.status === 'approved') {
       // 填理由段：自動核准，直接開工作區連線（重跑標準連線流程）
@@ -1755,7 +1777,9 @@ const submitApply = async () => {
       ElMessage.success(t('assets.applySubmitted'))
     }
   } catch (error) {
-    // 409 重複申請 / 400 超上限等由攔截器顯示後端訊息
+    const data = error?.response?.data
+    if (data?.code === 'VALIDATION_ACCOUNT_NOT_ON_ASSET' && data.details?.item_index === 0 && data.details?.asset_id === applyTarget.value.id) applyError.value = resolveApiError(data, error.response.status)
+    // Existing request inputs remain intact on failure.
     console.error('送出申請失敗:', error)
   } finally {
     applying.value = false
@@ -1881,6 +1905,8 @@ async function openEditFromQuery() {
 </script>
 
 <style scoped>
+.created-request { border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); padding: var(--ot-space-md); margin: var(--ot-space-md) 0; }
+.created-request a { color: var(--ot-primary); }
 .assets {
   /* MainLayout already provides padding via --ot-space-lg */
 }

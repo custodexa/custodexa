@@ -119,7 +119,8 @@
     "offsiteStorage": "Offsite storage",
     "identitySources": "Identity sources",
     "complianceMap": "Compliance map",
-    "policyGroups": "Policy groups"
+    "policyGroups": "Policy groups",
+    "myAgents": "My agents"
   },
   "login": {
     "bannerRegionLabel": "Login notice",
@@ -253,6 +254,12 @@
       "unlock": "Unlock Account",
       "pw_noncompliant": "Password policy noncompliant",
       "recording_failed": "Recording Failed",
+      "output_scan_disabled": "Output scanning disabled",
+      "agent_token_revoked": "Agent token revoked",
+      "agent_token_suspended": "Agent token suspended",
+      "agent_sessions_terminated": "Agent session termination result",
+      "agent_sessions_terminate_late": "Agent session termination exceeded the target",
+      "suspend": "Suspended",
       "new_source_ip": "Sign In From New Source",
       "file_list": "Browse Files",
       "file_upload": "File Upload",
@@ -272,6 +279,8 @@
       "offsite_cred_revoke": "Offsite credential revocation"
     },
     "auditResource": {
+      "agent_token": "Agent token",
+      "agent_tool_call": "Agent tool call ledger",
       "user_role": "Role Assignment",
       "asset": "Asset",
       "session": "Session",
@@ -333,6 +342,7 @@
       "source_policy": "Source Range Policy",
       "offsite_upload": "Offsite storage upload",
       "role_state_integrity": "Role assignment consistency with the audit chain",
+      "principal_state_integrity": "Principal and credential state integrity",
       "dek_unwrap": "Data key re-unwrap"
     },
     "cause": {
@@ -367,6 +377,7 @@
       "offsite_upload_stalled": "Upload leases for the same object keep expiring; the upload is stuck",
       "offsite_integrity_mismatch": "The retrieved offsite copy does not match what was uploaded; delivery was refused",
       "role_state_mismatch": "Role assignments do not match the audit chain (a change was made without an audit record)",
+      "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
       "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)"
     },
     "endReason": {
@@ -597,6 +608,10 @@
       "access_policy": {
         "title": "Connection Policy",
         "hint": "The global default decides whether assets without an individual policy require a request before connecting (least privilege); each asset can override it in the table below or in the asset form. Administrators are exempt from requests (each connection leaves an audit marker)"
+      },
+      "agent_controls": {
+        "title": "Agent accounts",
+        "hint": "Manage self-service creation, request quotas and probe blocking. Self-service creation is off by default; the limit only restricts new agents."
       },
       "request_params": {
         "title": "Access Request Parameters",
@@ -945,7 +960,8 @@
     "emptyHistoryTitle": "No matching history",
     "emptyHistoryHint": "Adjust the filters or check again after a session has closed",
     "accountColumn": "Account",
-    "consoleBadge": "Console"
+    "consoleBadge": "Console",
+    "actorColumn": "Operator"
   },
   "sessionDetail": {
     "title": "Session Details",
@@ -1221,7 +1237,20 @@
     "kindNewSourceIP": "New source address for account",
     "newSourceIPFirstSession": "First connection from this address",
     "newSourceIPNoAddress": "This connection has no usable source address",
-    "newSourceIPPivot": "Investigate this address across that whole day"
+    "newSourceIPPivot": "Investigate this address across that whole day",
+    "direction": "Direction",
+    "directionInput": "Input commands",
+    "directionOutput": "Target output",
+    "outputNoBlock": "Output cannot be blocked after bytes have been delivered.",
+    "outputScope": "Output may contain sensitive data; alerts only. Only text protocols are scanned. RDP/VNC graphics, encrypted or encoded content are not covered. No match does not mean absence.",
+    "outputCardContract": "The builtin card pattern also uses Luhn validation. Editing that pattern makes it a regular expression without card validation.",
+    "outputSummary": "Output may contain sensitive data ({count} matches)",
+    "kindAgentBreaker": "Agent probe breaker",
+    "agentBreakerDescription": "Repeated references to unseen assets suspended the triggering token. Owner or administrator review is required.",
+    "subjectKind": "Subject",
+    "subjectAll": "All",
+    "subjectHuman": "Human",
+    "subjectAgent": "Agent"
   },
   "transmission": {
     "headerDesc": "Transmission enforcement policy and channel encryption inventory (formerly the Channel Encryption Inventory page): each policy level is annotated with its PCI recommendation; the inventory aggregates encryption status and deviations across all channels, and exported snapshots carry a timestamp and generator for use as an audit inventory",
@@ -1606,7 +1635,7 @@
     "linkCopied": "Link copied"
   },
   "users": {
-    "headerDesc": "Manage system users and role assignments",
+    "headerDesc": "Manage people and automation. Every AI agent must have a human owner.",
     "create": "New User",
     "searchPlaceholder": "Username or email",
     "fullName": "Full Name",
@@ -2977,6 +3006,19 @@
     "deviationMark": "Does not meet the requirements of the policy groups in effect"
   },
   "apiError": {
+    "AUTH_AGENT_TOKEN_INVALID": "Invalid agent token",
+    "AUTH_AGENT_FORBIDDEN_ROUTE": "Agents cannot access this endpoint",
+    "AUTH_REQUEST_ITEM_MISMATCH": "Access request item mismatch",
+    "VALIDATION_ACCOUNT_NOT_ON_ASSET": "The account does not belong to the specified asset",
+    "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "Agent tasks require explicit accounts",
+    "RULE_AGENT_SELF_CREATE_DISABLED": "Self-service agent creation is disabled",
+    "RULE_AGENT_SELF_CREATE_LIMIT": "Your agents have reached the self-service creation limit",
+    "RULE_AGENT_BREAKER_PENDING": "Resolve the agent circuit breaker before creating a token",
+    "RULE_AGENT_REQUEST_RATE": "The agent has reached the request rate limit",
+    "RULE_AGENT_BREAKER_TRIPPED": "The agent circuit breaker has tripped",
+    "CONFLICT_AGENT_BREAKER_NOT_PENDING": "The agent has no pending circuit breaker event to release",
+    "VALIDATION_EXECUTOR_NOT_AGENT": "The executor must be an agent principal",
+    "VALIDATION_AGENT_OWNER_REQUIRED": "An agent principal requires an active human owner.",
     "AUTH_ACCOUNT_LOCKED": "Too many attempts; the account is temporarily locked. Please try again later or contact an administrator",
     "AUTH_APPROVER_REQUIRED": "Insufficient permission: approver or administrator role required",
     "AUTH_ASSET_CONNECT_DENIED": "You do not have permission to connect to this asset; contact an administrator",
@@ -3684,7 +3726,9 @@
     "SEAL_CREDENTIAL_REJECTED": "The custodian rejected these credentials. Check whether they expired or lack permissions.",
     "SEAL_KEY_MISMATCH": "The key returned by the custodian does not match this deployment. Check the key on the Key Management page first.",
     "KEY_TOPOLOGY_INVALID": "The custodian settings did not pass validation and nothing was changed. Correct these fields: {fields}",
-    "KEY_TOPOLOGY_NOT_EDITABLE": "This custodian has no fields that can be edited here."
+    "KEY_TOPOLOGY_NOT_EDITABLE": "This custodian has no fields that can be edited here.",
+    "VALIDATION_ALERT_DIRECTION": "direction must be input/output",
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "Output cannot be blocked after bytes have been delivered."
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "This provider has a groups claim name set, but the groups scope is not requested. Most providers will not emit group claims, so no mapping rule will match and roles already granted by rules are revoked.",
@@ -3693,6 +3737,12 @@
     "MAPPING_TARGETS_ADMIN_ROLE": "This rule grants the administrator role to every member of that group. Saving it is recorded in the audit log."
   },
   "policyLabel": {
+    "agent_self_create_enabled": "Allow self-service agent creation",
+    "agent_self_create_max_per_owner": "Self-service agent limit per owner",
+    "agent_probe_trip_count": "Agent probe circuit breaker threshold",
+    "agent_probe_window_seconds": "Agent probe counting window (seconds)",
+    "agent_request_rate_per_hour": "Automation account requests per hour",
+    "agent_request_pending_max": "Automation account pending requests",
     "access_policy_default": "Global default access policy tier",
     "access_request_max_duration_minutes": "Max request duration",
     "access_request_min_approvals": "Minimum approvers",
@@ -4302,6 +4352,11 @@
       "unsealed": "Records not yet notarized",
       "unsealedHint": "(from record {id}; this stretch is not yet covered by the chain, see boundary R5 below)"
     },
+    "principalState": {
+      "principals": "Principal kind and owner",
+      "tokens": "Agent credential state",
+      "differences": "Expected identifiers missing from current state: {missing}; extra identifiers: {extra}"
+    },
     "roleState": {
       "title": "Role assignments",
       "desc": "Compares the roles held right now against what was signed into the most recent checkpoint, plus every recorded grant and revocation since. A difference means a role was added or removed by editing the database directly, bypassing this system.",
@@ -4603,7 +4658,8 @@
       "partial": " The deletion run is still in progress, so records still visible in this period may disappear later; what you see now is not the final retention state.",
       "notRetainedDetail": "{category}: records of this kind are not on any deletion schedule and have never been removed under the retention policy, so a blank stretch here was not caused by deletion. That is not the same as 'deleted under the retention policy'. It still does not prove nothing happened: only events the system actually captures become records — clipboard events, for example, are captured only on graphical desktop sessions and only for text.",
       "emptyPresent": "{category}: no records in this interval.",
-      "checkpointLink": "Check whether this deletion was legitimate (checkpoint numbers {from}-{to})"
+      "checkpointLink": "Check whether this deletion was legitimate (checkpoint numbers {from}-{to})",
+      "commandIncomplete": "Command history incomplete: {count} records with missing command text"
     },
     "spans": {
       "title": "Sessions",
@@ -4697,6 +4753,12 @@
         "unlock": "Unlocked account",
         "pw_noncompliant": "Password not compliant with policy",
         "recording_failed": "Recording failed",
+        "output_scan_disabled": "Output scanning disabled",
+        "agent_token_revoked": "Agent token revoked",
+        "agent_token_suspended": "Agent token suspended",
+        "agent_sessions_terminated": "Agent session termination result",
+        "agent_sessions_terminate_late": "Agent session termination exceeded the target",
+        "suspend": "Suspended",
         "file_list": "Browsed files",
         "file_upload": "Uploaded file",
         "file_download": "Downloaded file",
@@ -5812,5 +5874,235 @@
     "textKeyUnsupported": "This setting is free text, so there is no value to compare against",
     "clauseNoRequired": "Please enter a clause number",
     "titleRequired": "Please enter a title"
+  },
+  "agentPrincipals": {
+    "agent": "AI agent",
+    "human": "Human",
+    "unknown": "Type unavailable",
+    "unavailable": "Unavailable",
+    "kind": "Principal type",
+    "owner": "Owner",
+    "ownerValue": "Owner: {owner}",
+    "selectOwner": "Search active human accounts",
+    "creationHelp": "The owner manages this agent. Agents connect with keys; they cannot sign in to the UI or hold administrator, auditor or approver roles.",
+    "keys": "Keys",
+    "keysFor": "Keys for {name}",
+    "keyHelp": "Keys let an agent connect. Revoking a key immediately ends sessions established with it, without waiting for work to finish.",
+    "issuedKeys": "Issued keys",
+    "noKeys": "This agent has no keys yet. Issue its first key to enable connections.",
+    "createdBy": "Created by",
+    "expiresAt": "Expires at",
+    "lastUsedAt": "Last used",
+    "neverUsed": "Never used",
+    "issue": "Issue key",
+    "keyName": "Key name",
+    "expiryHelp": "Name and expiry are required. The key becomes invalid when it expires.",
+    "issueRequired": "Enter a key name and a future expiry time.",
+    "inactiveHelp": "This principal is disabled. Contact an administrator.",
+    "revealTitle": "This key is shown only once",
+    "revealOnce": "Copy and store it securely now. You cannot retrieve it after leaving; revoke and reissue if it was not saved.",
+    "copied": "Copied",
+    "copyFailed": "Copy failed. Save the key manually before leaving.",
+    "revoke": "Revoke key",
+    "revokeNote": "Reason (optional, recorded)",
+    "revokeConsequence": "Revocation cannot be undone. Sessions established with this key will end immediately, without waiting for work to finish.",
+    "myTitle": "My agents",
+    "myDescription": "Manage keys and pending actions for your automation accounts.",
+    "ownerFixed": "You are the owner. Contact an administrator to change ownership or disable the principal.",
+    "create": "Create agent",
+    "purpose": "Purpose",
+    "empty": "You have no agents yet.",
+    "emptyEnabled": "Create an agent, then issue its first key to connect.",
+    "emptyDisabled": "An administrator creates agents. Once created, they appear here for you to manage their keys.",
+    "loadFailed": "The list could not be loaded. This does not mean you have no agents.",
+    "policyUnknown": "Self-creation availability could not be confirmed. Contact an administrator. You can still manage existing agents’ keys.",
+    "selfRequired": "Enter a name of 3–50 characters and a purpose.",
+    "tokenStatus": {
+      "valid": "Valid",
+      "expired": "Expired",
+      "suspended": "Suspended",
+      "revoked": "Revoked"
+    },
+    "quota": "{current} of {max} agents owned",
+    "you": "You"
+  },
+  "agentTasks": {
+    "title": "AI agent tasks",
+    "ledger": "Tool call ledger",
+    "reports": "Task reports",
+    "unavailable": "The task list is not available yet. This page reserves its entry point and does not load task data.",
+    "subjectExit": "View this principal’s tasks",
+    "listHelp": "Search by principal, current owner and request time. Report status reflects currently available versions.",
+    "subject": "Principal ID",
+    "timeRange": "Request time range",
+    "reportStatus": "Report status",
+    "status": {
+      "submitted": "Report available",
+      "missing": "Closed, no report available",
+      "not_submitted": "Open, no report available"
+    },
+    "created": "Requested at",
+    "closed": "Closed at",
+    "open": "Still open",
+    "detailTitle": "Task #{id}",
+    "back": "Back to tasks",
+    "sections": {
+      "who": "Who acts for whom, and why",
+      "grants": "What was authorized",
+      "activity": "What was recorded",
+      "reports": "What the agent reports"
+    },
+    "currentOwner": "The owner above is the current association. Each session records its owner at creation.",
+    "reduced": "Duration reduced",
+    "decisionBy": "Decided by: {id}; at: {time}",
+    "start": "Approved start: {time}",
+    "noSessions": "No sessions recorded for this task.",
+    "recording": "View recording",
+    "selfReport": "Agent self-report, not authorization evidence or an independently verified conclusion.",
+    "missingAtClose": "No report at closure; closed at {time}.",
+    "noReports": "No report versions available.",
+    "version": "Version {n} · Submitted {time}",
+    "revision": "Revision after closure",
+    "latestOnly": "Show latest only",
+    "allVersions": "Show all versions",
+    "approvedWindow": "Approved window",
+    "decider": "Decided by"
+  },
+  "agentBreaker": {
+    "pending": "Automatic suspension pending review",
+    "issueBlocked": "This agent has an unresolved automatic suspension. New keys cannot be issued.",
+    "resolve": "Review suspension",
+    "title": "Automatic suspension handling",
+    "eventsUnavailable": "The release form is available; the event history is not yet available.",
+    "selectFromEntry": "Open an alert or an agent token drawer to select the principal.",
+    "unavailable": "This agent is unavailable, or you are not its owner.",
+    "noPending": "No breaker is currently awaiting handling.",
+    "releaseTokens": "Releasing does not restore disabled tokens. Issue new tokens.",
+    "releaseSessions": "Connection tickets issued before the trip and existing connections were invalidated when the breaker tripped.",
+    "released": "The pending flag was cleared. Disabled tokens still need replacement.",
+    "reason": "Reason for release",
+    "reasonRequired": "Enter a reason of at most 1000 UTF-8 bytes.",
+    "release": "Confirm release",
+    "open": "Handle breaker",
+    "events": "Reference events",
+    "noEvents": "No reference events in this range.",
+    "countBoundary": "Distinct never-visible targets on this page: {n}. Only this class counts toward the threshold; this is not the current breaker window count.",
+    "classes": {
+      "never_visible": "Never visible (counts toward threshold)",
+      "revoked": "Previously visible, now unavailable (excluded)",
+      "retired": "Absent or removed (excluded)"
+    },
+    "tokenBoundary": "Current token records. Suspension times and causes come from stored facts, not a reconstructed list for every trip.",
+    "tokenStopped": "Suspended by breaker at {time}",
+    "assetNameBoundary": "Asset names and protocols reflect currently readable data, not a historical snapshot. Unavailable assets retain their identifier."
+  },
+  "multiRequest": {
+    "title": "Create access request",
+    "executor": "Who will operate",
+    "self": "I will operate",
+    "minutes": "Duration (minutes)",
+    "item": "Item {n}",
+    "itemId": "Item #{id}",
+    "accounts": "Allowed accounts",
+    "allAccounts": "All accounts",
+    "agentAccounts": "AI agents require named accounts; all accounts is unavailable.",
+    "accountsLoading": "Loading accounts. Submission is unavailable until complete.",
+    "accountsEmpty": "No selectable accounts. Choose another asset or contact an administrator.",
+    "accountsFailed": "Could not load accounts. This does not mean there are none.",
+    "remove": "Remove item",
+    "add": "Add item",
+    "submit": "Submit request",
+    "count": "{n} asset items",
+    "task": "Task",
+    "revokedAt": "Revoked at {time}",
+    "executorRef": "Executor #{id} (owner data unavailable)",
+    "state": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "revoked": "Revoked",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    },
+    "quota": {
+      "hour": "This principal has reached its hourly request limit ({used}/{limit}).",
+      "pending": "This principal has reached its pending request limit ({used}/{limit})."
+    },
+    "relationship": "You are the requester; this agent performs the work. Its owner is shown here.",
+    "reasonHint": "Reviewers will see this reason, and it remains visible for later audits.",
+    "missingAccounts": "Select accounts for {n} remaining items"
+  },
+  "itemReview": {
+    "scopeUnknown": "Eligibility is checked on submission; this list does not provide eligibility per item.",
+    "remove": "Remove item",
+    "removeHelp": "Removing this item rejects it and retains the review record.",
+    "narrow": "Choose specific accounts",
+    "note": "Reason required for rejection or removal",
+    "summary": "Review each decision before submission",
+    "submit": "Submit selected decisions",
+    "invalid": "Check reasons, account scope and time window. Approval may only narrow the request.",
+    "voteRecorded": "Approval vote recorded; awaiting other reviewers.",
+    "saved": "Decision saved for this item",
+    "action": {
+      "approve": "Approve / narrow",
+      "reject": "Reject",
+      "remove": "Remove (reject)"
+    }
+  },
+  "agentSession": {
+    "snapshot": "Principal snapshot at connection time (recorded IDs, without current lookups)",
+    "actor": "Actor at connection time",
+    "onBehalf": "On behalf of",
+    "none": "No represented user (autonomous)",
+    "unknown": "Not recorded",
+    "owner": "Owner at connection time",
+    "token": "Token used",
+    "tokenId": "ID #{id}; name snapshot unavailable",
+    "revoked": "Authorization revoked during the session: {time}",
+    "recordingTab": "Recording and session evidence"
+  },
+  "agentLedger": {
+    "title": "Tool call ledger",
+    "boundary": "Recordings retain the original screen; the ledger retains response summaries and hashes.",
+    "decision": "Decision",
+    "loadFailed": "Ledger could not be loaded",
+    "empty": "No tool calls match this query.",
+    "masked": "{n} masked",
+    "duration": "Duration: {n} ms",
+    "session": "Session #{id}",
+    "noSession": "No session created",
+    "pendingBoundary": "Recorded; whether it was sent and its result are both unknown.",
+    "details": "View record details",
+    "reasonCode": "Reason code",
+    "result": "Result status",
+    "unknown": "Unknown",
+    "arguments": "Redacted arguments",
+    "digest": "Response hash",
+    "excerpt": "Response excerpt",
+    "excerptBoundary": "This is an excerpt, not the full response.",
+    "unavailable": "Not provided",
+    "unknownReason": "No explanation is available for this reason.",
+    "unsupportedQuery": "This query is not supported; the ledger was not loaded.",
+    "decisions": {
+      "pending": "Pending",
+      "allowed": "Allowed",
+      "denied": "Denied",
+      "breaker": "Breaker tripped",
+      "rate_limited": "Rate limited"
+    },
+    "toolName": "Tool name (technical detail)",
+    "unknownTool": "Other tool action",
+    "tools": {
+      "list_assets": "View available assets",
+      "request_access": "Request access to assets",
+      "check_request": "Check request progress",
+      "open_session": "Open an asset connection",
+      "run_command": "Run a terminal command",
+      "send_keys": "Send terminal control keys",
+      "query": "Run a database query",
+      "read_screen": "Read terminal output",
+      "close_session": "Close an asset connection",
+      "close_task": "Close the task and submit a report"
+    }
   }
 }

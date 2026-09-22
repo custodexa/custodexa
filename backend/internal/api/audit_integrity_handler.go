@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // AuditIntegrityHandler audit_logs 完整性驗證 API
-//（admin 與 auditor 皆可讀）
+// （admin 與 auditor 皆可讀）
 type AuditIntegrityHandler struct {
 	db        *gorm.DB
 	integrity *audit.AuditIntegrityService
@@ -56,7 +56,15 @@ func (h *AuditIntegrityHandler) Verify(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditIntegrityVerify, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": report})
+	toolCalls, err := h.integrity.VerifyToolCalls(h.db, from, to)
+	if err != nil {
+		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAuditIntegrityVerify, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": struct {
+		*audit.IntegrityReport
+		ToolCalls *audit.IntegrityReport `json:"tool_calls"`
+	}{report, toolCalls}})
 }
 
 // RegisterRoutes 註冊完整性驗證路由（admin 或 auditor）。
@@ -66,6 +74,10 @@ func (h *AuditIntegrityHandler) Verify(c *gin.Context) {
 // 「被監督者代為出具監督證明」的角色錯配只解一半。本端點唯讀且不含設定面，
 // 開放不擴大寫入權
 func (h *AuditIntegrityHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
+	tools := r.Group("/agent-tool-calls")
+	tools.Use(middleware.AuthMiddleware(authService))
+	tools.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
+	tools.GET("", h.ToolCalls)
 	integrity := r.Group("/audit-integrity")
 	integrity.Use(middleware.AuthMiddleware(authService))
 	integrity.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))

@@ -17,7 +17,8 @@ const (
 // 規格不變式不該掛在可 CRUD 的資料列上，故改以本欄分流來源。
 const (
 	// AlertKindRule 規則比對／阻斷產生的告警，rule_id 必為非空。
-	AlertKindRule = "rule"
+	AlertKindAgentBreaker = "agent_breaker_tripped"
+	AlertKindRule         = "rule"
 	// AlertKindAuditDegraded 指令審計降級產生的告警，rule_id 必為 NULL。
 	AlertKindAuditDegraded = "audit_degraded"
 	// AlertKindNewSourceIP 帳號首次自某來源位址建立協議會話的告警，rule_id 必為 NULL。
@@ -57,11 +58,11 @@ type CommandAlert struct {
 
 	// Kind 告警來源類別（AlertKind* 之一）：規則比對／阻斷為 rule，
 	// 指令審計降級為 audit_degraded。**存在的理由是後者不得掛在規則上**。
-	Kind string `gorm:"size:20;not null" json:"kind"`
-	// ReasonCode 非規則類告警的機器碼（值域見 AlertReason* 常數）；規則類為空字串。
+	Kind string `gorm:"size:32;not null" json:"kind"`
+	// ReasonCode 機器碼；輸入規則為空，輸出規則採 OutputAlertMetadata 的版本化計數／位置編碼。
 	ReasonCode string `gorm:"size:64;not null" json:"reason_code"`
 
-	SessionID uint  `gorm:"not null" json:"session_id"`
+	SessionID uint  `gorm:"type:bigint;serializer:nullable_alert_session" json:"session_id"`
 	UserID    uint  `gorm:"not null" json:"user_id"`
 	AssetID   *uint `json:"asset_id,omitempty"` // 手動連線可能無資產，與 session_commands 一致為 nullable
 

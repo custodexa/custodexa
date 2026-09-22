@@ -94,7 +94,8 @@ type SessionTerminator interface {
 
 // UserService 使用者管理服務
 type UserService struct {
-	db *gorm.DB
+	agentTokens *AgentTokenService
+	db          *gorm.DB
 	// policies 安全政策服務（密碼 validator 與強制改密開關）；
 	// nil 表示不啟用政策驗證（僅測試建構路徑，生產組裝一律注入）
 	policies *policy.SecurityPolicyService
@@ -133,8 +134,10 @@ func (s *UserService) SetSessionTerminator(t SessionTerminator) {
 
 // ListUsersRequest 獲取使用者列表請求
 type ListUsersRequest struct {
-	Search string // 搜尋使用者名稱或郵箱
-	Active *bool  // 篩選啟用狀態（nil = 全部）
+	Kind          string // Explicit human/agent filter takes precedence over include_agents.
+	IncludeAgents bool   // Explicit opt-in; zero value excludes agents from user/approver/group candidates.
+	Search        string // 搜尋使用者名稱或郵箱
+	Active        *bool  // 篩選啟用狀態（nil = 全部）
 	// ProvisioningOrigin 供應來源篩選（local/ldap/oidc；空＝全部）。
 	// **必須是伺服端篩選**：列表是分頁的，在前端篩當頁資料會讓使用者看到
 	// 「第 2 頁明明有 oidc 帳號，篩選後卻說沒有」
@@ -153,11 +156,15 @@ type UserListResponse struct {
 
 // CreateUserRequest 創建使用者請求
 type CreateUserRequest struct {
-	Username string   `json:"username" binding:"required,min=3,max=50"`
-	Password string   `json:"password" binding:"required,min=6"`
-	Email    string   `json:"email" binding:"required,email"`
-	FullName string   `json:"full_name"`
-	Roles    []string `json:"roles"` // 角色名稱列表
+	selfCreation     *agentSelfCreation // Internal-only context; never populated from JSON.
+	passwordProvided bool               // JSON presence: even an empty password field is forbidden for agents.
+	Kind             string             `json:"kind"`
+	OwnerUserID      *uint              `json:"owner_user_id"`
+	Username         string             `json:"username" binding:"required,min=3,max=50"`
+	Password         string             `json:"password" binding:"required_unless=Kind agent,omitempty,min=6"`
+	Email            string             `json:"email" binding:"required,email"`
+	FullName         string             `json:"full_name"`
+	Roles            []string           `json:"roles"` // 角色名稱列表
 	// AllowedCIDRs 允許來源網段清單；省略＝不限。逐項驗證與正規化由
 	// sourceip 單一實作承載，任一項不合法整體拒絕
 	AllowedCIDRs []string `json:"allowed_cidrs"`
@@ -168,8 +175,10 @@ type CreateUserRequest struct {
 // 校驗格式（emailFormatRe），使「僅前後空白差異的既有 email」能被 trim 後偵測為
 // 衝突回 409（spec：surrounding whitespace → conflict），而非在 binding 層被 400 擋下
 type UpdateUserRequest struct {
-	Email    string `json:"email"`
-	FullName string `json:"full_name"`
+	Kind        *string `json:"kind"`
+	OwnerUserID *uint   `json:"owner_user_id"`
+	Email       string  `json:"email"`
+	FullName    string  `json:"full_name"`
 	// AllowedCIDRs 具 presence 語義：欄位省略與 JSON null 皆解為 nil 指標＝保留現值；
 	// 非 nil 空陣列＝清除為不限；非空＝整體取代。指標型別即語義——舊形狀 payload
 	// （只帶 email／full_name）不會把既有限制靜默清空
@@ -232,6 +241,14 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 
 	// 構建查詢
 	query := s.db.Model(&model.User{})
+	if req.Kind != "" {
+		if req.Kind != model.KindHuman && req.Kind != model.KindAgent {
+			return nil, gorm.ErrInvalidValue
+		}
+		query = query.Where("kind = ?", req.Kind)
+	} else if !req.IncludeAgents {
+		query = query.Where("kind = ?", model.KindHuman)
+	}
 
 	// 搜尋條件：使用者名稱或郵箱
 	if req.Search != "" {
@@ -278,6 +295,9 @@ func (s *UserService) List(req *ListUsersRequest) (*UserListResponse, error) {
 		return nil, fmt.Errorf("查詢使用者列表失敗: %w", result.Error)
 	}
 
+	if err := s.fillAgentOwnerNames(users); err != nil {
+		return nil, err
+	}
 	s.fillAuthProviderNames(users)
 	decorateSourcePolicyAll(users)
 
@@ -327,6 +347,32 @@ func (s *UserService) fillAuthProviderNames(users []model.User) {
 
 // Create 創建使用者
 func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
+	self := req.selfCreation
+	kind := req.Kind
+	if kind == "" {
+		kind = model.KindHuman
+	}
+	if kind != model.KindHuman && kind != model.KindAgent {
+		return nil, ErrPrincipalKindImmutable
+	}
+	if kind == model.KindAgent {
+		if err := validateAgentOwner(s.db, req.OwnerUserID); err != nil {
+			return nil, err
+		}
+		if req.passwordProvided || req.Password != "" {
+			return nil, ErrAgentPassword
+		}
+	} else {
+		if req.OwnerUserID != nil {
+			return nil, ErrAgentOwnerRequired
+		}
+		if req.Password == "" {
+			return nil, ErrAgentPassword
+		}
+	}
+	if err := GuardAgentRoles(&model.User{Kind: kind}, req.Roles); err != nil {
+		return nil, err
+	}
 	// 檢查使用者名稱是否已存在
 	var existingUser model.User
 	err := s.db.Where("username = ?", req.Username).First(&existingUser).Error
@@ -338,21 +384,25 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	}
 
 	// 密碼政策驗證（單一 validator；新帳號無歷史，userID=0 跳過歷史比對）
-	if err := s.ValidateNewPassword(0, req.Password); err != nil {
-		return nil, err
-	}
+	if kind == model.KindHuman {
+		if err := s.ValidateNewPassword(0, req.Password); err != nil {
+			return nil, err
+		}
 
+	}
 	// 允許來源網段：省略＝不限；任一項不合法整體拒絕
 	allowedCIDRs, err := normalizeAllowedCIDRs(req.AllowedCIDRs)
 	if err != nil {
 		return nil, err
 	}
 
-	// 加密密碼
-	hashedPassword, err := crypto.DefaultPasswordHasher().Hash([]byte(req.Password))
-	if err != nil {
-		log.Printf("[UserService] Create: Hash password error: %v", err)
-		return nil, fmt.Errorf("密碼加密失敗: %w", err)
+	// "!" cannot be accepted by any supported password verifier.
+	hashedPassword := "!"
+	if kind == model.KindHuman {
+		hashedPassword, err = crypto.DefaultPasswordHasher().Hash([]byte(req.Password))
+		if err != nil {
+			return nil, fmt.Errorf("密碼加密失敗: %w", err)
+		}
 	}
 
 	// 創建使用者。last_login_at 以建立時間起算（閒置停用以「距最後登入」判定，
@@ -363,15 +413,16 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	// 三個建號路徑各自顯式賦值是不變式守衛的前提，靠 default 巧合成立的語義
 	// 會在日後有人改 default 時無聲失效
 	//
-	// MustChangePassword 一律 true，**不接任何政策開關**：初始密碼必然經建號者之手，
+	// 人類帳號 MustChangePassword 一律 true，agent 恆 false。**不接任何政策開關**：初始密碼必然經建號者之手，
 	// 不存在「只有本人知道」的狀態，該帳號的操作在審計上無法與建號者區分。
 	// force_change_on_reset 管的是 admin 重設既有帳號密碼——那時帳號持有人已建立過
 	// 自己的密碼，管理者可依情境判斷；建號沒有對應的正當關閉場景，可關閉的強制會使
 	// 「本地帳號的現行密碼不曾為他人所知」退化為視設定而定。
 	// PasswordChangedAt 維持不賦值：NULL 的語義即「密碼從未由持有人變更過」。
 	user := &model.User{
+		Kind: kind, OwnerUserID: req.OwnerUserID,
 		Username:           req.Username,
-		Password:           string(hashedPassword),
+		Password:           hashedPassword,
 		Email:              normalizeEmail(req.Email),
 		FullName:           req.FullName,
 		Active:             true,
@@ -379,13 +430,20 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 		ProvisioningOrigin: model.AuthSourceLocal,
 		ExternalCredential: false,
 		AllowedCIDRs:       allowedCIDRs,
-		MustChangePassword: true,
+		MustChangePassword: kind == model.KindHuman,
 	}
 
 	// 開始事務
 	tx := s.db.Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("開始事務失敗: %w", tx.Error)
+	}
+
+	if self != nil {
+		if err := self.check(tx); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
 
 	// 創建使用者記錄
@@ -396,12 +454,14 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	}
 
 	// 初始密碼寫入歷史（否則首次改密可設回原密碼）
-	if err := s.recordPasswordHistory(tx, user.ID, user.Password); err != nil {
-		tx.Rollback()
-		log.Printf("[UserService] Create: Record password history error: %v", err)
-		return nil, err
-	}
+	if kind == model.KindHuman {
+		if err := s.recordPasswordHistory(tx, user.ID, user.Password); err != nil {
+			tx.Rollback()
+			log.Printf("[UserService] Create: Record password history error: %v", err)
+			return nil, err
+		}
 
+	}
 	// 如果指定了角色，分配角色
 	if len(req.Roles) > 0 {
 		var roles []model.Role
@@ -427,6 +487,18 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 				log.Printf("[UserService] Create: Assign roles error: %v", err)
 				return nil, fmt.Errorf("分配角色失敗: %w", err)
 			}
+		}
+	}
+
+	if err := recordPrincipalState(tx, user, model.ActionCreate); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	if self != nil {
+		if err := self.audit(tx, user); err != nil {
+			tx.Rollback()
+			return nil, err
 		}
 	}
 
@@ -466,9 +538,27 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 		return nil, nil, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
+	if req.Kind != nil && *req.Kind != user.Kind {
+		return nil, nil, ErrPrincipalKindImmutable
+	}
+	if req.OwnerUserID != nil {
+		if user.Kind != model.KindAgent {
+			return nil, nil, ErrAgentOwnerRequired
+		}
+		if err := validateAgentOwner(s.db, req.OwnerUserID); err != nil {
+			return nil, nil, err
+		}
+	}
 	// 更新欄位與 before/after 差異（僅記實際變更者）
 	updates := map[string]interface{}{}
 	diff := map[string]string{}
+	if req.OwnerUserID != nil && (user.OwnerUserID == nil || *user.OwnerUserID != *req.OwnerUserID) {
+		updates["owner_user_id"] = *req.OwnerUserID
+		if user.OwnerUserID != nil {
+			diff["owner_user_id.before"] = fmt.Sprint(*user.OwnerUserID)
+		}
+		diff["owner_user_id.after"] = fmt.Sprint(*req.OwnerUserID)
+	}
 
 	if req.Email != "" {
 		normalized := strings.ToLower(strings.TrimSpace(req.Email))
@@ -520,7 +610,15 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 
 	// 執行更新
 	if len(updates) > 0 {
-		if err := s.db.Model(&user).Updates(updates).Error; err != nil {
+		if err := s.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&user).Updates(updates).Error; err != nil {
+				return err
+			}
+			if _, changed := updates["owner_user_id"]; changed {
+				return recordPrincipalState(tx, &user, model.ActionUpdate)
+			}
+			return nil
+		}); err != nil {
 			// 預查與 UPDATE 非原子：兩併發更新皆過預查後、後寫者撞 DB 唯一索引，
 			// 轉成 ErrEmailConflict 回 409（defense in depth，非通用 500）
 			if dberr.IsUniqueViolation(err) {
@@ -555,6 +653,9 @@ func (s *UserService) Delete(id uint) error {
 		return fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
+	if err := rejectOwnedAgents(s.db, id); err != nil {
+		return err
+	}
 	// 檢查是否為管理員
 	isAdmin := false
 	for _, role := range user.Roles {
@@ -597,6 +698,9 @@ func (s *UserService) Delete(id uint) error {
 	// TTL 的 access token。取鎖順序 system → user
 	if err := WithLocalAdminInvariant(s.db, id, func(tx *gorm.DB) error {
 		return withUserCredentialLockTx(tx, id, func(tx *gorm.DB) error {
+			if err := rejectOwnedAgents(tx, id); err != nil {
+				return err
+			}
 			// **必須早於軟刪除**：軟刪後 Model(&User{}).Where("id = ?") 帶
 			// deleted_at IS NULL，世代推進會匹配 0 列而回 ErrUserNotFound
 			if err := s.invalidateCredentialsLocked(tx, id, "account_deleted"); err != nil {
@@ -616,7 +720,7 @@ func (s *UserService) Delete(id uint) error {
 			if err := tx.Delete(&user).Error; err != nil {
 				return fmt.Errorf("刪除使用者失敗: %w", err)
 			}
-			return nil
+			return recordPrincipalState(tx, &user, model.ActionDelete)
 		})
 	}); err != nil {
 		log.Printf("[UserService] Delete: Delete user error: %v", err)
@@ -643,6 +747,10 @@ func (s *UserService) AddRole(userID uint, roleName string) error {
 		}
 		return fmt.Errorf("查詢使用者失敗: %w", err)
 	}
+	if err := GuardAgentRoles(&user, []string{roleName}); err != nil {
+		return err
+	}
+
 	var role model.Role
 	if err := s.db.Where("name = ?", roleName).First(&role).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -841,6 +949,10 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		return nil, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
+	if err := GuardAgentRoles(&user, roleNames); err != nil {
+		return nil, err
+	}
+
 	// 查詢角色
 	var roles []model.Role
 	if len(roleNames) > 0 {
@@ -887,6 +999,7 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 	// 兩者威脅模型不等價。進行中唯讀監看訂閱的殘留（monitor 不受 -01 約束）
 	// 已另行記錄，非本函式邏輯需處理範圍。
 	// 降權後**新的**特權連線已由 -01 的 DB 現查角色擋下
+	var epochBumped bool
 	var result RoleAssignResult
 	applyRoles := func(tx *gorm.DB) error {
 		result = RoleAssignResult{}
@@ -949,6 +1062,7 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		if err := BumpCredentialEpoch(tx, userID, "roles_changed"); err != nil {
 			return err
 		}
+		epochBumped = true
 		// 撤 refresh 比照 invalidateCredentialsLocked：換發本就會被世代閘拒，撤銷是為了
 		// 讓失效原因可稽核，並避免留下一批 revoked_at IS NULL 卻實際不可用的憑證列
 		if _, err := RevokeAllRefreshTokens(tx, userID, model.RefreshRevokeCredentialEpoch); err != nil {
@@ -973,6 +1087,9 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		return nil, fmt.Errorf("分配角色失敗: %w", assignErr)
 	}
 
+	if epochBumped && s.agentTokens != nil {
+		s.agentTokens.finishSuspendedOwner(userID)
+	}
 	log.Printf("[UserService] AssignRoles: Roles assigned successfully, UserID: %d, Roles: %v", userID, roleNames)
 	return &result, nil
 }
@@ -1106,6 +1223,10 @@ func (s *UserService) SelfChangePassword(userID uint, oldPassword, newPassword s
 		}
 		return fmt.Errorf("查詢使用者失敗: %w", err)
 	}
+	if user.Kind == model.KindAgent {
+		return ErrAgentHumanOnly
+	}
+
 	if user.IsExternal() {
 		return ErrExternalUserPassword
 	}
@@ -1129,6 +1250,10 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 	// 外部身分帳號的密碼真身在身分提供者端；本地設定只會製造「改了卻沒生效」的假象，
 	// 更嚴重的是 OIDC 帳號一旦有可用本地密碼，即取得繞過 IdP（連同其 MFA、條件式存取、
 	// provider 停用治理）的永久後門，必須明確拒絕
+	if user.Kind == model.KindAgent {
+		return ErrAgentHumanOnly
+	}
+
 	if user.IsExternal() {
 		return ErrExternalUserPassword
 	}
@@ -1178,6 +1303,9 @@ func (s *UserService) setPassword(userID uint, newPassword string, mustChange bo
 		return err
 	}
 
+	if s.agentTokens != nil {
+		s.agentTokens.finishSuspendedOwner(userID)
+	}
 	// 改密撤銷全部會話（spec：自助或 admin 重設皆同）——密碼可能因洩漏而改，
 	// 各裝置既存會話須重新驗證。強制改密流程隨後由 handler 換發新會話，順序不受影響。
 	//

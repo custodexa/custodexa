@@ -31,6 +31,7 @@
     "offsite_upload_stalled": "Offsite upload keeps being interrupted (the transfer lease for one object expired repeatedly)",
     "offsite_integrity_mismatch": "A retrieved offsite copy did not match what was uploaded (delivery refused)",
     "role_state_mismatch": "Role assignments do not match the checkpoint chain (a change was made without an audit record)",
+    "principal_state_mismatch": "Principal or credential state does not match the checkpoint chain (a change has no audit record)",
     "dek_unwrap_failed": "Data key re-unwrap keeps failing (the key custodian is unreachable or refusing, so operations that need the key fail)"
   },
   "severity": {
@@ -39,7 +40,8 @@
     "low": "Low"
   },
   "alert_state": {
-    "blocked": "Blocked"
+    "blocked": "Blocked",
+    "possible_sensitive_output": "Output may contain sensitive data"
   },
   "degraded": {
     "title": "Degraded notification",

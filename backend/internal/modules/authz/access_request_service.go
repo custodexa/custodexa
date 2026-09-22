@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/custodexa/backend/internal/kernel/dberr"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/notifycat"
 	"gorm.io/gorm"
@@ -85,6 +84,8 @@ const expireBatchLimit = 500
 
 // SubmitAccessRequestInput 申請提出輸入
 type SubmitAccessRequestInput struct {
+	Items           []ItemInput
+	ExecutorUserID  *uint
 	AssetID         uint
 	Reason          string
 	DurationMinutes int
@@ -97,6 +98,10 @@ type SubmitAccessRequestInput struct {
 
 // DecideInput 核准輸入：核准人可下修時長/推遲起始，不可上調（決議 C）
 type DecideInput struct {
+	ItemID          uint
+	Items           []ItemDecision
+	Accounts        *[]string
+	Remove          bool
 	DurationMinutes *int
 	DateStart       *time.Time
 	Note            string
@@ -129,12 +134,13 @@ type AccessRequestServiceInterface interface {
 // 決議鐵則：時效來源唯一（核准流）、CAS 終態不可復活、審計完整、
 // 禁自核硬擋（含單人層）、payload 最小化
 type AccessRequestService struct {
-	db           *gorm.DB
-	policies     *policy.SecurityPolicyService
-	accessPolicy *policy.AccessPolicyService
-	authzRepo    *assetAuthorizationRepository
-	audit        *audit.AuditLogService
-	notifier     *audit.AlertNotifier
+	accountPresent func(*gorm.DB, uint, string) (bool, error)
+	db             *gorm.DB
+	policies       *policy.SecurityPolicyService
+	accessPolicy   *policy.AccessPolicyService
+	authzRepo      *assetAuthorizationRepository
+	audit          *audit.AuditLogService
+	notifier       *audit.AlertNotifier
 	// sessions 撤銷即斷線收線；nil＝不聯動（測試路徑或政策恆關部署）
 	sessions SessionTerminator
 }
@@ -175,110 +181,7 @@ func NewAccessRequestService(
 // open 段拒建單；reason 段同交易即時自動核准（決定者記 system、auto 標記）——
 // 與強制審核共用同一表單與資料軌（決議 B）
 func (s *AccessRequestService) Submit(requesterID uint, username, role string, input SubmitAccessRequestInput) (*model.AccessRequest, error) {
-	// admin 豁免政策閘不需申請；auditor 本就不得連線資產（決議 3 的必然推論：
-	// 若受理 auditor 申請，核准即繞過「auditor 不豁免」的攔截語義）
-	if role == model.RoleAdmin || role == model.RoleAuditor {
-		return nil, ErrRequesterExempt
-	}
-
-	var asset model.Asset
-	if err := s.db.First(&asset, input.AssetID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrAccessRequestNotFound
-		}
-		return nil, fmt.Errorf("查詢資產失敗: %w", err)
-	}
-
-	// 可視守門：不可視的資產回「不存在」語義（不洩漏存在性；三來源之一即可視）
-	visible, err := s.authzRepo.CheckPermission(requesterID, asset.ID,
-		[]model.PermissionType{model.PermissionView, model.PermissionConnect})
-	if err != nil {
-		return nil, err
-	}
-	if !visible {
-		if covered, err := s.authzRepo.ApproverScopeCoversAsset(requesterID, asset.ID); err != nil {
-			return nil, err
-		} else if !covered {
-			return nil, ErrAccessRequestNotFound
-		}
-	}
-
-	// 區域變數改名 policy→segment（搬包後 `policy` 已是套件名，同名區域變數會遮蔽它）
-	segment := s.accessPolicy.AccessPolicyOf(&asset)
-	if segment == model.AccessPolicyOpen {
-		return nil, ErrPolicyOpenNoRequest
-	}
-
-	maxDuration := s.policies.GetInt(policy.PolicyAccessRequestMaxDurationMinutes)
-	if input.DurationMinutes < 1 || input.DurationMinutes > maxDuration {
-		return nil, &DurationExceedsPolicyError{MaxMinutes: maxDuration}
-	}
-	now := time.Now()
-	if input.DateStart != nil && input.DateStart.Before(now) {
-		return nil, ErrStartInPast
-	}
-
-	// 帳號範圍：與授權列共用同一組驗證與正規化，
-	// 避免申請單接受了授權列拒收的形狀，核准時才炸在建授權那一步
-	accountScope, err := NormalizeGrantAccounts(input.Accounts)
-	if err != nil {
-		return nil, err
-	}
-
-	timeoutHours := s.policies.GetInt(policy.PolicyAccessRequestPendingTimeoutHours)
-	buildRequest := func() *model.AccessRequest {
-		return &model.AccessRequest{
-			RequesterID:              requesterID,
-			AssetID:                  asset.ID,
-			Reason:                   input.Reason,
-			RequestedDurationMinutes: input.DurationMinutes,
-			RequestedDateStart:       input.DateStart,
-			Status:                   model.AccessRequestPending,
-			PendingExpiresAt:         now.Add(time.Duration(timeoutHours) * time.Hour),
-			Kind:                     model.AccessRequestKindNormal,
-			Accounts:                 accountScope,
-		}
-	}
-	createOnce := func(req *model.AccessRequest) error {
-		return s.db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(req).Error; err != nil {
-				return err
-			}
-			// reason 段即時自動核准：同一狀態機軌跡（pending→approved），差別只在免等
-			if segment == model.AccessPolicyReason {
-				return s.approveInTx(tx, req, nil, DecideInput{}, true, now)
-			}
-			return nil
-		})
-	}
-
-	req := buildRequest()
-	err = createOnce(req)
-	if err != nil && dberr.IsUniqueViolation(err) {
-		// 撞去重：若在途單其實已逾時（scheduler 尚未掃到），就地 CAS 作廢後重試
-		// 一次——惰性過濾只蓋讀路徑，寫路徑不補全會讓使用者卡到下一輪掃描
-		// （UI 走查實測發現）。真 pending 則回在途單識別（409）
-		if s.expireOverduePendingFor(requesterID, asset.ID, now) {
-			req = buildRequest()
-			err = createOnce(req)
-		}
-	}
-	if err != nil {
-		if dberr.IsUniqueViolation(err) {
-			return nil, s.duplicatePendingError(requesterID, asset.ID)
-		}
-		return nil, fmt.Errorf("建立申請失敗: %w", err)
-	}
-
-	if req.AutoApproved {
-		s.logAudit(requesterID, username, model.ActionApprove, req.ID,
-			`{"auto":true,"decided_by":"system"}`)
-		s.notify(notifycat.EventAccessRequestApproved, req.ID, asset.Name,
-			map[string]string{"mode": notifycat.ApprovalModeAuto})
-	} else {
-		s.notify(notifycat.EventAccessRequestCreated, req.ID, asset.Name, nil)
-	}
-	return s.reload(req.ID)
+	return s.submitItems(requesterID, username, role, input)
 }
 
 // expireOverduePendingFor 就地作廢單一使用者×資產的逾期 pending 單（CAS，
@@ -286,16 +189,13 @@ func (s *AccessRequestService) Submit(requesterID uint, username, role string, i
 func (s *AccessRequestService) expireOverduePendingFor(requesterID, assetID uint, now time.Time) bool {
 	var overdue model.AccessRequest
 	err := s.db.Select("id").
-		Where("requester_id = ? AND asset_id = ? AND status = ? AND pending_expires_at < ?",
+		Where("requester_id = ? AND id IN (SELECT request_id FROM access_request_items WHERE asset_id = ? AND deleted_at IS NULL) AND status = ? AND pending_expires_at < ?",
 			requesterID, assetID, model.AccessRequestPending, now).
 		First(&overdue).Error
 	if err != nil {
 		return false
 	}
-	res := s.db.Model(&model.AccessRequest{}).
-		Where("id = ? AND status = ?", overdue.ID, model.AccessRequestPending).
-		Updates(map[string]interface{}{"status": model.AccessRequestExpired, "updated_at": now})
-	if res.Error != nil || res.RowsAffected == 0 {
+	if err := s.finishPendingItems(overdue.ID, model.AccessRequestExpired, now); err != nil {
 		return false
 	}
 	s.logAudit(requesterID, "system", model.ActionExpire, overdue.ID, `{"cause":"pending_timeout_on_resubmit"}`)
@@ -316,92 +216,6 @@ func (s *AccessRequestService) duplicatePendingError(requesterID, assetID uint) 
 
 // approveInTx 核准共用路徑（人工與自動）：CAS 轉 approved＋同交易建臨時授權＋回填 FK。
 // 決議 C：核准人可下修時長/推遲起始，不可上調——優於申請值即拒
-func (s *AccessRequestService) approveInTx(tx *gorm.DB, req *model.AccessRequest, approverID *uint, input DecideInput, auto bool, now time.Time) error {
-	duration := req.RequestedDurationMinutes
-	if input.DurationMinutes != nil {
-		if *input.DurationMinutes > req.RequestedDurationMinutes || *input.DurationMinutes < 1 {
-			return ErrDecisionIncrease
-		}
-		duration = *input.DurationMinutes
-	}
-
-	// 起始：申請空值＝核准即刻起算；核准人僅可推遲（不可早於申請值/現在）
-	start := now
-	if req.RequestedDateStart != nil {
-		start = *req.RequestedDateStart
-	}
-	if input.DateStart != nil {
-		if input.DateStart.Before(start) {
-			return ErrDecisionIncrease
-		}
-		start = *input.DateStart
-	}
-	expired := start.Add(time.Duration(duration) * time.Minute)
-
-	note := input.Note
-	if auto {
-		note = "system"
-	}
-	updates := map[string]interface{}{
-		"status":                    model.AccessRequestApproved,
-		"approver_id":               approverID,
-		"decided_at":                now,
-		"decision_note":             note,
-		"approved_duration_minutes": duration,
-		"approved_date_start":       start,
-		"auto_approved":             auto,
-		"updated_at":                now,
-	}
-	// CAS 帶逾時守衛：scheduler 五分鐘間隙內，已逾 pending_expires_at
-	// 的申請雖已從待審列表惰性過濾，直呼 approve 仍可能搶在掃描前把它合法化。
-	// 加 pending_expires_at > now 讓「本應 expired 的申請」核准落敗回 409（終態語義）。
-	// 自動核准路徑（Submit 同交易建單）的 expires_at 為未來值，此守衛恆過
-	res := tx.Model(&model.AccessRequest{}).
-		Where("id = ? AND status = ? AND pending_expires_at > ?", req.ID, model.AccessRequestPending, now).
-		Updates(updates)
-	if res.Error != nil {
-		return fmt.Errorf("核准狀態轉移失敗: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return ErrAccessRequestConflict
-	}
-
-	// 臨時授權：申請人×資產×connect＋時效窗＋source=ticket。
-	// granted_by 有 FK 至 users——自動核准以申請人落欄（觸發者），
-	// 決定者=system 由 auto_approved＋decision_note 承載
-	grantedBy := req.RequesterID
-	if approverID != nil {
-		grantedBy = *approverID
-	}
-	// 帳號範圍原樣自申請單傳遞：核准人**不得上調**——
-	// 沿用時長／起始「只可下修」的既有語義。核准動作沒有帳號範圍輸入欄，
-	// 故此處直接取申請值即已滿足「不可上調」；日後若開放核准時調整，
-	// 必須加上「新範圍 ⊆ 申請範圍」的驗證，否則核准即可授出未經申請的帳號
-	auth := &model.AssetAuthorization{
-		UserID:      &req.RequesterID,
-		AssetID:     &req.AssetID,
-		Permission:  model.PermissionConnect,
-		DateStart:   &start,
-		DateExpired: &expired,
-		GrantedBy:   grantedBy,
-		Source:      model.AuthorizationSourceTicket,
-		Accounts:    req.Accounts,
-	}
-	if err := tx.Create(auth).Error; err != nil {
-		return fmt.Errorf("建立臨時授權失敗: %w", err)
-	}
-	if err := tx.Model(&model.AccessRequest{}).Where("id = ?", req.ID).
-		Update("authorization_id", auth.ID).Error; err != nil {
-		return fmt.Errorf("回填授權關聯失敗: %w", err)
-	}
-
-	// 回寫呼叫端持有的實體（Submit 自動核准路徑回傳用）
-	req.Status = model.AccessRequestApproved
-	req.AutoApproved = auto
-	req.AuthorizationID = &auth.ID
-	return nil
-}
-
 // eligibleToDecide 決定資格＝admin 兜底 OR 審核範圍命中；禁自核先於資格判定硬擋
 func (s *AccessRequestService) eligibleToDecide(actorID uint, isAdmin bool, req *model.AccessRequest) error {
 	if req.RequesterID == actorID {
@@ -440,126 +254,12 @@ func (s *AccessRequestService) loadPending(requestID uint) (*model.AccessRequest
 // 下＝「有資格投一票」而非「單票通過」（雙人完整性；各 isAdmin 短路點以此為準）。
 // 併發序列化：交易起手以 CAS UPDATE 鎖申請單列（終態即擋），後續計票在鎖內正確
 func (s *AccessRequestService) Approve(actorID uint, isAdmin bool, requestID uint, input DecideInput) (*model.AccessRequest, error) {
-	req, err := s.loadPending(requestID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.eligibleToDecide(actorID, isAdmin, req); err != nil {
-		return nil, err
-	}
-
-	required := s.policies.GetInt(policy.PolicyAccessRequestMinApprovals)
-	if required < 1 {
-		required = 1
-	}
-
-	now := time.Now()
-	reached := false
-	var votes int64
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// 鎖單（可攜寫法，Postgres/SQLite 皆適用）：UPDATE 取得列鎖並驗 pending，
-		// 併發核准/拒絕/撤回在此序列化；終態單 RowsAffected=0 走衝突。
-		// 逾時守衛：門檻>1 時未達門檻的票不呼叫
-		// approveInTx，其 pending_expires_at 守衛遂被繞過——已逾期單的部分票會被
-		// 永久記入並回成功。此處鎖單即帶 pending_expires_at > now，讓逾期單鎖不命中
-		// 走衝突（與 approveInTx 同一守衛，投票入庫前擋下）
-		lock := tx.Model(&model.AccessRequest{}).
-			Where("id = ? AND status = ? AND pending_expires_at > ?", req.ID, model.AccessRequestPending, now).
-			Update("updated_at", now)
-		if lock.Error != nil {
-			return fmt.Errorf("鎖定申請單失敗: %w", lock.Error)
-		}
-		if lock.RowsAffected == 0 {
-			return ErrAccessRequestConflict
-		}
-
-		// 交易內重查資格（TOCTOU）：鎖單後、投票入庫前，操作者可能已被
-		// 移出審核方群組或範圍被刪——非 admin 一律於鎖內重判，杜絕以已撤資格寫入
-		// 達門檻的最後一票。admin 兜底恆具資格不需重查
-		if !isAdmin {
-			covered, cErr := s.authzRepo.ApproverScopeCoversRequestTx(tx, actorID, req.AssetID, req.RequesterID)
-			if cErr != nil {
-				return cErr
-			}
-			if !covered {
-				return ErrNotEligibleApprover
-			}
-		}
-
-		vote := &model.AccessRequestApproval{RequestID: req.ID, ApproverID: actorID, Note: input.Note}
-		if err := tx.Create(vote).Error; err != nil {
-			if dberr.IsUniqueViolation(err) {
-				return ErrAlreadyApprovedByActor
-			}
-			return fmt.Errorf("寫入核准記錄失敗: %w", err)
-		}
-		if err := tx.Model(&model.AccessRequestApproval{}).
-			Where("request_id = ?", req.ID).Count(&votes).Error; err != nil {
-			return fmt.Errorf("計票失敗: %w", err)
-		}
-		if int(votes) >= required {
-			reached = true
-			return s.approveInTx(tx, req, &actorID, input, false, now)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	result, rerr := s.reload(requestID)
-	if rerr != nil {
-		return nil, rerr
-	}
-	if reached {
-		s.notify(notifycat.EventAccessRequestApproved, req.ID, s.assetName(req.AssetID),
-			map[string]string{"mode": notifycat.ApprovalModeManual})
-	} else {
-		s.notify(notifycat.EventAccessRequestApprovalProgress, req.ID, s.assetName(req.AssetID),
-			map[string]string{
-				"votes":    strconv.FormatInt(votes, 10),
-				"required": strconv.Itoa(required),
-			})
-	}
-	return result, nil
+	return s.approveRequestItems(actorID, isAdmin, requestID, input)
 }
 
 // Reject 拒絕（事由必填）
 func (s *AccessRequestService) Reject(actorID uint, isAdmin bool, requestID uint, note string) (*model.AccessRequest, error) {
-	if note == "" {
-		return nil, ErrDecisionNoteRequired
-	}
-	req, err := s.loadPending(requestID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.eligibleToDecide(actorID, isAdmin, req); err != nil {
-		return nil, err
-	}
-
-	now := time.Now()
-	res := s.db.Model(&model.AccessRequest{}).
-		Where("id = ? AND status = ?", requestID, model.AccessRequestPending).
-		Updates(map[string]interface{}{
-			"status":        model.AccessRequestRejected,
-			"approver_id":   actorID,
-			"decided_at":    now,
-			"decision_note": note,
-			"updated_at":    now,
-		})
-	if res.Error != nil {
-		return nil, fmt.Errorf("拒絕狀態轉移失敗: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrAccessRequestConflict
-	}
-
-	result, rerr := s.reload(requestID)
-	if rerr != nil {
-		return nil, rerr
-	}
-	s.notify(notifycat.EventAccessRequestRejected, req.ID, s.assetName(req.AssetID), nil)
-	return result, nil
+	return s.RejectItem(actorID, isAdmin, requestID, 0, note)
 }
 
 // Cancel 申請人撤回自己的 pending 單（owner-scoped：他人單回不存在）
@@ -574,18 +274,8 @@ func (s *AccessRequestService) Cancel(requesterID uint, requestID uint) (*model.
 	}
 
 	now := time.Now()
-	res := s.db.Model(&model.AccessRequest{}).
-		Where("id = ? AND requester_id = ? AND status = ?", requestID, requesterID, model.AccessRequestPending).
-		Updates(map[string]interface{}{
-			"status":     model.AccessRequestCancelled,
-			"decided_at": now,
-			"updated_at": now,
-		})
-	if res.Error != nil {
-		return nil, fmt.Errorf("撤回狀態轉移失敗: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrAccessRequestConflict
+	if err := s.finishPendingItems(requestID, model.AccessRequestCancelled, now); err != nil {
+		return nil, err
 	}
 	return s.reload(requestID)
 }
@@ -604,29 +294,24 @@ func (s *AccessRequestService) ExpireOverdue(now time.Time) (int, error) {
 
 	expired := 0
 	for i := range overdue {
-		res := s.db.Model(&model.AccessRequest{}).
-			Where("id = ? AND status = ?", overdue[i].ID, model.AccessRequestPending).
-			Updates(map[string]interface{}{
-				"status":     model.AccessRequestExpired,
-				"updated_at": now,
-			})
-		if res.Error != nil {
-			return expired, fmt.Errorf("超時作廢失敗 (id=%d): %w", overdue[i].ID, res.Error)
-		}
-		if res.RowsAffected == 0 {
-			continue // 併發中被人工決定/撤回，CAS 讓行
+		if err := s.finishPendingItems(overdue[i].ID, model.AccessRequestExpired, now); err != nil {
+			if errors.Is(err, ErrAccessRequestConflict) {
+				continue
+			}
+			return expired, err
 		}
 		expired++
 		s.logAudit(overdue[i].RequesterID, "system", model.ActionExpire, overdue[i].ID,
 			`{"cause":"pending_timeout"}`)
 	}
-	return expired, nil
+	_, closeErr := s.ExpireApprovedItems(now)
+	return expired, closeErr
 }
 
 // ListMine 申請人自助視圖（owner-scoped）
 func (s *AccessRequestService) ListMine(requesterID uint) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
-	err := s.db.Preload("Asset").Preload("Approver").
+	err := s.db.Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Asset").Preload("Approver").
 		Where("requester_id = ?", requesterID).
 		Order("created_at DESC").Limit(200).
 		Find(&reqs).Error
@@ -634,6 +319,9 @@ func (s *AccessRequestService) ListMine(requesterID uint) ([]*model.AccessReques
 		return nil, fmt.Errorf("查詢我的申請失敗: %w", err)
 	}
 	s.attachApprovalProgress(reqs)
+	if err := s.attachReadFields(reqs, time.Now()); err != nil {
+		return nil, err
+	}
 	return reqs, nil
 }
 
@@ -667,7 +355,8 @@ func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, no
 		Where("status = ? AND pending_expires_at > ? AND requester_id <> ?",
 			model.AccessRequestPending, now, actorID)
 	if !isAdmin {
-		q = q.Where(approverScopeRouteCondition("requester_id"),
+		q = q.Where(requestItemScopeRouteCondition(),
+			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID,
 			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID)
 	}
 	return q
@@ -677,13 +366,16 @@ func (s *AccessRequestService) pendingScopeFilter(actorID uint, isAdmin bool, no
 func (s *AccessRequestService) ListPending(actorID uint, isAdmin bool, now time.Time) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
 	err := s.pendingScopeFilter(actorID, isAdmin, now).
-		Preload("Requester").Preload("Asset").
+		Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").
 		Order("created_at ASC").Limit(200).
 		Find(&reqs).Error
 	if err != nil {
 		return nil, fmt.Errorf("查詢待審申請失敗: %w", err)
 	}
 	s.attachApprovalProgress(reqs)
+	if err := s.attachReadFields(reqs, time.Now()); err != nil {
+		return nil, err
+	}
 	return reqs, nil
 }
 
@@ -709,7 +401,8 @@ func (s *AccessRequestService) ListHistory(actorID uint, isAdmin bool, page, pag
 	q := s.db.Model(&model.AccessRequest{}).
 		Where("status <> ?", model.AccessRequestPending)
 	if !isAdmin {
-		q = q.Where(approverScopeRouteCondition("requester_id"),
+		q = q.Where(requestItemScopeRouteCondition(),
+			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID,
 			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID)
 	}
 
@@ -718,7 +411,7 @@ func (s *AccessRequestService) ListHistory(actorID uint, isAdmin bool, page, pag
 		return nil, 0, fmt.Errorf("查詢申請歷史總數失敗: %w", err)
 	}
 	var reqs []*model.AccessRequest
-	err := q.Preload("Requester").Preload("Asset").Preload("Approver").
+	err := q.Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").Preload("Approver").
 		Order("decided_at DESC NULLS LAST, id DESC").
 		Limit(pageSize).Offset((page - 1) * pageSize).
 		Find(&reqs).Error
@@ -726,6 +419,9 @@ func (s *AccessRequestService) ListHistory(actorID uint, isAdmin bool, page, pag
 		return nil, 0, fmt.Errorf("查詢申請歷史失敗: %w", err)
 	}
 	s.attachApprovalProgress(reqs)
+	if err := s.attachReadFields(reqs, time.Now()); err != nil {
+		return nil, 0, err
+	}
 	return reqs, total, nil
 }
 
@@ -766,8 +462,8 @@ func (s *AccessRequestService) attachRequestIDs(tickets []*model.AssetAuthorizat
 		ID              uint
 		AuthorizationID uint
 	}
-	if err := s.db.Model(&model.AccessRequest{}).
-		Select("id", "authorization_id").
+	if err := s.db.Model(&model.AccessRequestItem{}).
+		Select("request_id AS id", "authorization_id").
 		Where("authorization_id IN ?", authIDs).
 		Scan(&rows).Error; err != nil {
 		return fmt.Errorf("查詢票證所屬申請單失敗: %w", err)
@@ -788,7 +484,7 @@ func (s *AccessRequestService) attachRequestIDs(tickets []*model.AssetAuthorizat
 // reload 帶關聯重載（回應序列化用）
 func (s *AccessRequestService) reload(id uint) (*model.AccessRequest, error) {
 	var req model.AccessRequest
-	err := s.db.Preload("Requester").Preload("Asset").Preload("Approver").
+	err := s.db.Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").Preload("Approver").
 		First(&req, id).Error
 	if err != nil {
 		return nil, fmt.Errorf("重載申請單失敗: %w", err)
@@ -1011,75 +707,7 @@ func (s *AccessRequestService) BreakGlass(requesterID uint, username, role strin
 // 三欄（不動狀態機——approved 終態不變）；資格分流見 eligibleToRevoke；
 // 政策開啟時交易後收線（失敗不回滾）
 func (s *AccessRequestService) Revoke(actorID uint, isAdmin bool, username string, requestID uint, note string) (*model.AccessRequest, error) {
-	if note == "" {
-		return nil, ErrDecisionNoteRequired
-	}
-	req, err := s.loadPending(requestID)
-	if err != nil {
-		return nil, err
-	}
-	if req.Status != model.AccessRequestApproved || req.AuthorizationID == nil {
-		return nil, ErrTicketNotActive
-	}
-	if err := s.eligibleToRevoke(actorID, isAdmin, req); err != nil {
-		return nil, err
-	}
-
-	now := time.Now()
-	// 票證須仍有效（已到期不可撤：到期與撤銷語義分離，spec scenario）
-	var ticket model.AssetAuthorization
-	if err := s.db.First(&ticket, *req.AuthorizationID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrTicketNotActive // 已軟刪＝已撤銷
-		}
-		return nil, fmt.Errorf("查詢票證失敗: %w", err)
-	}
-	if ticket.DateExpired != nil && !ticket.DateExpired.After(now) {
-		return nil, ErrTicketNotActive
-	}
-
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		// CAS 軟刪票證：並發撤銷先到者贏（RowsAffected=0＝已被撤）
-		res := tx.Where("id = ? AND deleted_at IS NULL", ticket.ID).
-			Delete(&model.AssetAuthorization{})
-		if res.Error != nil {
-			return fmt.Errorf("撤銷票證失敗: %w", res.Error)
-		}
-		if res.RowsAffected == 0 {
-			return ErrAccessRequestConflict
-		}
-		// 單附註（非狀態轉移；revoked_at IS NULL 守衛防重複附註）
-		ann := tx.Model(&model.AccessRequest{}).
-			Where("id = ? AND revoked_at IS NULL", req.ID).
-			Updates(map[string]interface{}{
-				"revoked_at":  now,
-				"revoked_by":  actorID,
-				"revoke_note": note,
-				"updated_at":  now,
-			})
-		if ann.Error != nil {
-			return fmt.Errorf("撤銷附註失敗: %w", ann.Error)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	s.logAudit(actorID, username, model.ActionRevoke, req.ID,
-		fmt.Sprintf(`{"authorization_id":%d}`, ticket.ID))
-
-	// 斷線聯動（政策預設關）：收線失敗不回滾——票證失效是主要目標
-	if s.policies.GetBool(policy.PolicyAccessRevokeDisconnect) && s.sessions != nil {
-		if n, terr := s.sessions.TerminateByUserAsset(req.RequesterID, req.AssetID, model.EndReasonRevoked); terr != nil {
-			log.Printf("[AccessRequest] 撤銷收線失敗 (request=%d): %v", req.ID, terr)
-		} else if n > 0 {
-			log.Printf("[AccessRequest] 撤銷收線 %d 個會話 (request=%d)", n, req.ID)
-		}
-	}
-
-	s.notify(notifycat.EventTicketRevoked, req.ID, s.assetName(req.AssetID), nil)
-	return s.reload(req.ID)
+	return s.RevokeItem(actorID, isAdmin, username, requestID, 0, note)
 }
 
 // eligibleToRevoke 撤銷資格（六題 4）：一般單＝admin OR 原核准人；
@@ -1155,11 +783,14 @@ func (s *AccessRequestService) Review(actorID uint, isAdmin bool, requestID uint
 func (s *AccessRequestService) ListPendingReview(actorID uint, isAdmin bool) ([]*model.AccessRequest, error) {
 	var reqs []*model.AccessRequest
 	err := s.pendingReviewFilter(actorID, isAdmin).
-		Preload("Requester").Preload("Asset").Preload("Authorization").
+		Preload("Items", func(tx *gorm.DB) *gorm.DB { return tx.Order("id") }).Preload("Requester").Preload("Asset").Preload("Authorization").
 		Order("created_at ASC").Limit(200).
 		Find(&reqs).Error
 	if err != nil {
 		return nil, fmt.Errorf("查詢待補審破窗單失敗: %w", err)
+	}
+	if err := s.attachReadFields(reqs, time.Now()); err != nil {
+		return nil, err
 	}
 	return reqs, nil
 }
@@ -1179,7 +810,8 @@ func (s *AccessRequestService) pendingReviewFilter(actorID uint, isAdmin bool) *
 		Where("kind = ? AND review_status = ? AND requester_id <> ?",
 			model.AccessRequestKindBreakGlass, model.BreakGlassReviewPending, actorID)
 	if !isAdmin {
-		q = q.Where(approverScopeRouteCondition("requester_id"),
+		q = q.Where(requestItemScopeRouteCondition(),
+			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID,
 			actorID, actorID, actorID, actorID, actorID, actorID, actorID, actorID)
 	}
 	return q

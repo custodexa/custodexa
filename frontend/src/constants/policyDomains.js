@@ -85,6 +85,14 @@ export const SECURITY_SECTIONS = [
 
 export const ACCESS_SECTIONS = [
   section('access_policy', ['access_policy_default']),
+  section('agent_controls', [
+    'agent_self_create_enabled',
+    'agent_self_create_max_per_owner',
+    'agent_probe_trip_count',
+    'agent_probe_window_seconds',
+    'agent_request_rate_per_hour',
+    'agent_request_pending_max',
+  ]),
   section('request_params', [
     'access_request_max_duration_minutes',
     'access_request_pending_timeout_hours',

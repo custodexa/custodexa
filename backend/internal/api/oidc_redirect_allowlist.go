@@ -13,6 +13,8 @@ import "strings"
 // 雙向比對**。新增前端路由時該測試會紅，這是刻意的：靜默漂移的表現是
 // 「使用者 SSO 登入後被莫名丟回首頁」，比一個明確變紅的測試難查得多。
 var frontendRouteSegments = map[string]bool{
+	"agent-breakers":          true,
+	"my-agents":               true,
 	"":                        true, // 根路徑（預設落點）
 	"login":                   true,
 	"unseal":                  true,

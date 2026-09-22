@@ -45,6 +45,8 @@ var nextvalSchemaRe = regexp.MustCompile(`nextval\('[^.']*\.`)
 // **不是本 change 引入的**。把它們改成與 model tag 一致，等於偷偷改變全新部署的
 // schema 而繞過等價驗證——那是獨立的裁決，不在壓縮的射程內。
 var baselineShapeExceptions = map[string]string{
+	"access_requests.accounts|nullable": "將既有 AccessRequest 納入 parity；baseline 原本即 NOT NULL，而 model AccountScope nil 的相容語義為 @ALL，tag 未宣告 not null。保留原 schema 的嚴格寫入界線，不因新增任務項放寬既有欄位。",
+	"access_requests.accounts|default":  "同上；baseline 原本即 DEFAULT '[\"@ALL\"]'::text，model 的 AccountScope Valuer 自行輸出全帳號而未設 default tag。新舊部署既有語義相同，不改歷史欄位。",
 	"audit_logs.key_version|nullable": "舊鏈的 20260715_key_mgmt_envelope 以 " +
 		"`ADD COLUMN ... NOT NULL DEFAULT 0` 補欄，而 model tag 未宣告 not null/default。" +
 		"**空庫（嚴格）才是全新部署拿到的形狀**：既有部署因 GORM 對已存在的表新增欄位時" +
@@ -200,7 +202,9 @@ var baselineStructuralAssertions = map[string]string{
 	"idx_data_keys_purpose_version_kek": "CREATE UNIQUE INDEX idx_data_keys_purpose_version_kek ON %s.data_keys " +
 		"USING btree (purpose, version, kek_id) WHERE (kek_retired_at IS NULL)",
 	"idx_failure_events_single_open": "CREATE UNIQUE INDEX idx_failure_events_single_open ON %s.audit_failure_events " +
-		"USING btree (mechanism) WHERE (ended_at IS NULL)",
+		"USING btree (mechanism) WHERE ((ended_at IS NULL) AND ((mechanism)::text <> 'principal_state_integrity'::text))",
+	"idx_failure_events_principal_open": "CREATE UNIQUE INDEX idx_failure_events_principal_open ON %s.audit_failure_events " +
+		"USING btree ((((cause_params)::jsonb ->> 'table'::text))) WHERE ((ended_at IS NULL) AND ((mechanism)::text = 'principal_state_integrity'::text))",
 	"idx_ldap_directories_singleton": "CREATE UNIQUE INDEX idx_ldap_directories_singleton ON %s.ldap_directories " +
 		"USING btree (singleton) WHERE (deleted_at IS NULL)",
 	"uniq_alert_rules_name": "CREATE UNIQUE INDEX uniq_alert_rules_name ON %s.alert_rules USING btree (name)",
@@ -222,7 +226,7 @@ var baselineStructuralAssertions = map[string]string{
 		"ON %s.session_commands USING btree (event_id) WHERE ((event_id)::text <> ''::text)",
 }
 
-// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 19 條）。
+// baselineCheckConstraints CHECK 約束的具名清單與所在表（現況 21 條）。
 //
 // `ldap_directories_singleton_check` 是其中最需要具名的一條：壓縮前它由
 // migration 的 inline CHECK 建立，且靠一條 AST 守衛（TestLDAPDirectoryNotInAutoMigrateList）
@@ -236,6 +240,17 @@ var baselineStructuralAssertions = map[string]string{
 // 本測試因而長期紅——平時 PG-gated skip 故無人看見。三條補列，且 command_alerts_kind_check
 // 的值域自增量 migration 起含 new_source_ip，由下方專屬斷言釘住。
 var baselineCheckConstraints = map[string]string{
+	"sessions_actor_kind_check":        "sessions",
+	"alert_rules_subject_kind_check":   "alert_rules",
+	"agent_tool_calls_seq_check":       "agent_tool_calls",
+	"agent_tool_calls_request_check":   "agent_tool_calls",
+	"agent_tool_calls_decision_check":  "agent_tool_calls",
+	"agent_tool_calls_excerpt_check":   "agent_tool_calls",
+	"agent_tool_calls_counts_check":    "agent_tool_calls",
+	"agent_task_reports_version_check": "agent_task_reports",
+	"agent_probe_events_class_check":   "agent_probe_events",
+
+	"alert_rules_direction_check":          "alert_rules",
 	"alert_rules_action_check":             "alert_rules",
 	"alert_rules_severity_check":           "alert_rules",
 	"chk_approver_scope_actor":             "approver_scopes",
@@ -245,6 +260,7 @@ var baselineCheckConstraints = map[string]string{
 	"command_alerts_severity_check":        "command_alerts",
 	"command_alerts_kind_check":            "command_alerts",
 	"command_alerts_kind_rule_ref":         "command_alerts",
+	"command_alerts_session_ref":           "command_alerts",
 	"session_commands_degraded_no_text":    "session_commands",
 	"ldap_directories_singleton_check":     "ldap_directories",
 	"notification_channels_language_check": "notification_channels",
@@ -264,6 +280,8 @@ var baselineCheckConstraints = map[string]string{
 	// 外部群組對角色映射：一條規則掛在目錄或身分提供者上，恰一。
 	// 被放寬時兩欄可同時為空（規則指不到任何來源，永遠不會被重算讀到）
 	// 或同時非空（同一條規則被兩條途徑各自認領，重算互相覆蓋）
+	"users_kind_check":              "users",
+	"users_owner_check":             "users",
 	"chk_group_role_mapping_source": "group_role_mappings",
 	// 委託拓撲的單列常數載體：拓撲是「上鎖的資料金鑰送去哪裡解」的唯一事實源，
 	// 兩列並存時讀取順序決定目的地，而那是一個沒有訊號的錯誤

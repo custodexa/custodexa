@@ -2,10 +2,10 @@ package sshproxy
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/model"
@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/recorder"
 	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/custodexa/backend/pkg/gatewayapi"
+	"github.com/gin-gonic/gin"
 )
 
 // 兩階段閘序宣告
@@ -36,8 +37,12 @@ import (
 
 // connectTokenRequest 簽發請求體（原為 HandleCreateConnectToken 內的匿名結構，
 // 因閘序需跨閘傳遞而具名，欄位與 tag 逐字未改）
-type connectTokenRequest struct {
-	AssetID uint `json:"asset_id" binding:"required"`
+type connectTokenRequest = ConnectTokenRequest
+
+// ConnectTokenRequest is shared by HTTP and authenticated in-process callers.
+type ConnectTokenRequest struct {
+	AssetID         uint `json:"asset_id" binding:"required"`
+	AccessRequestID uint `json:"access_request_id"`
 	// AccountID 選填的連線帳號：省略／0＝預設帳號，
 	// 語義與多帳號前的行為完全一致
 	AccountID uint `json:"account_id"`
@@ -45,6 +50,7 @@ type connectTokenRequest struct {
 
 // issueState 簽發側閘序的共享中間狀態：前一道閘算出、後面的閘要用的東西
 type issueState struct {
+	input    *ConnectTokenRequest
 	role     string
 	req      connectTokenRequest
 	assetRow *model.Asset
@@ -108,6 +114,13 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 			return out
 		}},
 		{Name: "G-I3", Eval: func() *connectgate.Outcome {
+			if st.input != nil {
+				st.req = *st.input
+				if st.req.AssetID == 0 {
+					return connectgate.Deny(http.StatusBadRequest, string(apierror.CodeBadParams), nil)
+				}
+				return nil
+			}
 			if err := c.ShouldBindJSON(&st.req); err != nil {
 				return connectgate.Deny(http.StatusBadRequest, string(apierror.CodeBadParams), nil)
 			}
@@ -173,7 +186,7 @@ func (h *Handler) issuePreResolveGates(c *gin.Context,
 func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 	s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject,
 	st *issueState) []connectgate.Gate {
-	return []connectgate.Gate{
+	gates := []connectgate.Gate{
 		{Name: "G-I10", Eval: func() *connectgate.Outcome {
 			// 帳號授權範圍（強制點 1／3）：客體綁定之後——
 			// 「這個帳號屬於這台」與「你被授權用這個帳號」是兩件事。
@@ -183,6 +196,9 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			// 零帳號資產（Found=false）不在此擋——那是憑證路徑的 fail-close 職責
 			//（兌換點 CodeAccountNoneUsable），在此擋會把「資產沒設帳號」誤報成「未授權」
 			if !st.identity.Found {
+				return nil
+			}
+			if st.req.AccessRequestID != 0 {
 				return nil
 			}
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
@@ -276,6 +292,18 @@ func (h *Handler) issueResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 	}
+	if connectgate.NeedsRequestEnvelope(h.AuthorizationService, st.req.AccessRequestID, s.UserID) {
+		envelope := connectgate.Gate{Name: "G-I16", Eval: func() *connectgate.Outcome {
+			out := connectgate.RequestEnvelope(h.AuthorizationService, st.req.AccessRequestID, s.UserID, o.AssetID, o.Username)
+			if out != nil {
+				mergeAuditDetails(c, map[string]string{"request_item_dimension": fmt.Sprint(out.Meta["dimension"]), "target_asset_id": fmt.Sprint(o.AssetID), "access_request_id": fmt.Sprint(st.req.AccessRequestID)})
+			}
+			return out
+		}}
+		gates = append(gates[:1], append([]connectgate.Gate{envelope}, gates[1:]...)...)
+	}
+	return gates
+
 }
 
 // redeemState SSH 兌換側閘序的共享中間狀態
@@ -381,7 +409,7 @@ func (h *Handler) redeemPreResolveGates(c *gin.Context,
 func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 	s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject,
 	st *redeemState) []connectgate.Gate {
-	return []connectgate.Gate{
+	gates := []connectgate.Gate{
 		{Name: "G-S7", Eval: func() *connectgate.Outcome {
 			// 停用硬擋兌換點重查（與 AUTH-1 對稱的 assetRow 側）：token 於資產停用前
 			// 簽發者，殘窗（60s TTL）內兌換須擋；語義同簽發點（403+asset_disabled）
@@ -449,6 +477,9 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			// 帳號授權範圍兌換複查：與既有授權／政策重查同處、同哲學
 			//（DB 現查，簽發後遭收緊者於此即時生效，token 效期不構成放行理由）。
 			// 判定對象是 creds 實際解析出的帳號 username——grant.AccountID=0 時即預設帳號
+			if st.grant.AccessRequestID != 0 {
+				return nil
+			}
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
 				authorizationContext(c, st.currentRole), s.UserID, o.AssetID,
 				model.ProtocolType(o.Protocol), o.Username); aerr != nil {
@@ -466,6 +497,18 @@ func (h *Handler) redeemResolvedAccountGates(c *gin.Context,
 			return nil
 		}},
 	}
+	if connectgate.NeedsRequestEnvelope(h.AuthorizationService, st.grant.AccessRequestID, s.UserID) {
+		envelope := connectgate.Gate{Name: "G-S15", Eval: func() *connectgate.Outcome {
+			out := connectgate.RequestEnvelope(h.AuthorizationService, st.grant.AccessRequestID, s.UserID, o.AssetID, o.Username)
+			if out != nil {
+				mergeAuditDetails(c, map[string]string{"request_item_dimension": fmt.Sprint(out.Meta["dimension"]), "target_asset_id": fmt.Sprint(o.AssetID), "access_request_id": fmt.Sprint(st.grant.AccessRequestID)})
+			}
+			return out
+		}}
+		gates = append(gates, envelope)
+	}
+	return gates
+
 }
 
 // assetDisabledOutcome 資產停用硬擋的判定結果：**本包（簽發點 G-I6 與 SSH 兌換點 G-S7）

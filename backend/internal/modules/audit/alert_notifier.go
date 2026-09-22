@@ -47,10 +47,11 @@ type notifyPayload struct {
 }
 
 type notifyAlertBody struct {
-	ID       uint   `json:"id"`
-	Command  string `json:"command"`
-	Severity string `json:"severity"`
-	RuleName string `json:"rule_name"`
+	Output   *OutputAlertMetadata `json:"possible_sensitive_output,omitempty"`
+	ID       uint                 `json:"id"`
+	Command  string               `json:"command"`
+	Severity string               `json:"severity"`
+	RuleName string               `json:"rule_name"`
 	// Kind／ReasonCode 告警來源類別與機器碼。
 	// **收端需要它們才分得出「規則命中」與「該輪內容無法還原」**：
 	// 降級類沒有規則可指，rule_name 存的是機器碼，只讀 rule_name 的收端會把
@@ -109,9 +110,14 @@ type alertSubjectNames struct {
 
 // buildAlertPayload 將告警組裝為推送 payload
 func buildAlertPayload(alert model.CommandAlert, names alertSubjectNames) notifyPayload {
+	var output *OutputAlertMetadata
+	if meta, ok := ParseOutputAlert(alert.ReasonCode); ok {
+		output = &meta
+	}
 	return notifyPayload{
 		Event: "command_alert",
 		Alert: notifyAlertBody{
+			Output:      output,
 			ID:          alert.ID,
 			Command:     alert.Command,
 			Severity:    alert.Severity,
@@ -186,6 +192,9 @@ func buildSlackText(lang, event string, alert model.CommandAlert, names alertSub
 		}
 	}
 	cmd := fmt.Sprintf("```\n%s\n```", slackEscape(alert.Command))
+	if meta, ok := ParseOutputAlert(alert.ReasonCode); ok {
+		cmd = fmt.Sprintf("%s (%d)", notifycat.Phrase(lang, notifycat.LexiconAlertState, notifycat.AlertStatePossibleSensitive), meta.Count)
+	}
 	return header + "\n" + cmd + "\n" + buildAlertContext(lang, alert, names)
 }
 

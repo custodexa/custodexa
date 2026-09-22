@@ -2,16 +2,17 @@ package api
 
 import (
 	"errors"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +25,7 @@ type ApproverScopeServiceInterface interface {
 
 // AccessRequestHandler 申請核准流 API
 type AccessRequestHandler struct {
+	reports  *audit.AgentTaskReports
 	requests authz.AccessRequestServiceInterface
 	scopes   ApproverScopeServiceInterface
 	// db 供審核端點守門即時查 roles（RequireApproverRole）
@@ -46,7 +48,39 @@ func respondAccessRequestError(c *gin.Context, internalCode apierror.ErrCode, er
 		return
 	}
 
+	var rate *authz.AgentRequestRateError
+	if errors.As(err, &rate) {
+		window := 0 // Pending quota has no rolling time window.
+		if rate.Dimension == "hour" {
+			window = 3600
+		}
+		apierror.Write(c, 429, apierror.ErrorResponse{Code: apierror.CodeRuleAgentRequestRate, Meta: map[string]any{"details": map[string]any{"used": rate.Count, "limit": rate.Limit, "window_seconds": window, "dimension": rate.Dimension}}})
+		return
+	}
+	var account *authz.AccountNotOnAssetError
+	if errors.As(err, &account) {
+		apierror.Write(c, 400, apierror.ErrorResponse{Code: apierror.CodeValidationAccountNotOnAsset, Meta: map[string]any{"details": map[string]any{"item_index": account.ItemIndex, "asset_id": account.AssetID}}})
+		return
+	}
+	var duplicate *authz.DuplicatePendingItemError
+	if errors.As(err, &duplicate) {
+		apierror.Write(c, http.StatusConflict, apierror.ErrorResponse{Code: apierror.CodeDuplicatePendingRequest, Meta: map[string]any{"request_id": duplicate.RequestID, "item_id": duplicate.ItemID}})
+		return
+	}
+
 	switch {
+	case errors.Is(err, authz.ErrAgentCannotDecide):
+		apierror.Respond(c, http.StatusForbidden, apierror.CodeAuthAgentForbiddenRoute, nil)
+	case errors.Is(err, authz.ErrRequestItemsShape):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+	case errors.Is(err, authz.ErrAccountNotOnAsset):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationAccountNotOnAsset, nil)
+	case errors.Is(err, authz.ErrAgentAccountsRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationAgentAccountsRequired, nil)
+	case errors.Is(err, authz.ErrExecutorNotAgent):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeValidationExecutorNotAgent, nil)
+	case errors.Is(err, authz.ErrAgentRequestRate):
+		apierror.Respond(c, http.StatusTooManyRequests, apierror.CodeRuleAgentRequestRate, nil)
 	case errors.Is(err, authz.ErrAccessRequestNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAccessRequestNotFound, nil)
 
@@ -151,11 +185,18 @@ func revokeIdentity(c *gin.Context) (uint, bool, bool) {
 	return userID, admin, true
 }
 
+type createAccessRequestItem struct {
+	AssetID  uint      `json:"asset_id"`
+	Accounts *[]string `json:"accounts"`
+}
+
 type createAccessRequestReq struct {
-	AssetID         uint       `json:"asset_id" binding:"required"`
-	Reason          string     `json:"reason" binding:"required,max=1000"`
-	DurationMinutes int        `json:"duration_minutes" binding:"required,min=1"`
-	DateStart       *time.Time `json:"date_start"`
+	AssetID         uint                      `json:"asset_id"`
+	Items           []createAccessRequestItem `json:"items"`
+	ExecutorUserID  *uint                     `json:"executor_user_id"`
+	Reason          string                    `json:"reason" binding:"required,max=1000"`
+	DurationMinutes int                       `json:"duration_minutes" binding:"required,min=1"`
+	DateStart       *time.Time                `json:"date_start"`
 	// Accounts 申請的帳號範圍：省略（nil）＝@ALL（既有行為）；
 	// 顯式 [] 拒收（見 authz.NormalizeGrantAccounts）
 	Accounts *[]string `json:"accounts"`
@@ -172,8 +213,20 @@ func (h *AccessRequestHandler) Create(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccessRequestFields, nil)
 		return
 	}
+	if req.Items == nil && req.AssetID == 0 {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccessRequestFields, nil)
+		return
+	}
+	var items []authz.ItemInput
+	if req.Items != nil {
+		items = make([]authz.ItemInput, len(req.Items))
+		for i, item := range req.Items {
+			items[i] = authz.ItemInput{AssetID: item.AssetID, Accounts: item.Accounts}
+		}
+	}
 	created, err := h.requests.Submit(userID, username, role, authz.SubmitAccessRequestInput{
-		AssetID:         req.AssetID,
+		AssetID: req.AssetID,
+		Items:   items, ExecutorUserID: req.ExecutorUserID,
 		Reason:          req.Reason,
 		DurationMinutes: req.DurationMinutes,
 		DateStart:       req.DateStart,
@@ -183,7 +236,7 @@ func (h *AccessRequestHandler) Create(c *gin.Context) {
 		respondAccessRequestError(c, apierror.CodeInternalAccessRequestCreate, err)
 		return
 	}
-	c.JSON(http.StatusCreated, created)
+	c.JSON(http.StatusCreated, accessRequestResponse(created))
 }
 
 // ListMine GET /access-requests/mine 我的申請（owner-scoped：一律以 JWT user_id
@@ -198,7 +251,7 @@ func (h *AccessRequestHandler) ListMine(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAccessRequestMineQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": reqs, "total": len(reqs)})
+	c.JSON(http.StatusOK, gin.H{"data": accessRequestResponses(reqs), "total": len(reqs)})
 }
 
 // MyTickets GET /access-requests/mine/tickets 我的有效臨時授權（時窗起迄）
@@ -231,7 +284,7 @@ func (h *AccessRequestHandler) Cancel(c *gin.Context) {
 		respondAccessRequestError(c, apierror.CodeInternalAccessRequestCancel, err)
 		return
 	}
-	c.JSON(http.StatusOK, req)
+	c.JSON(http.StatusOK, accessRequestResponse(req))
 }
 
 // ListPending GET /access-requests/pending 待審列表（一律依審核範圍；
@@ -246,7 +299,7 @@ func (h *AccessRequestHandler) ListPending(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAccessRequestPendingQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": reqs, "total": len(reqs)})
+	c.JSON(http.StatusOK, gin.H{"data": accessRequestResponses(reqs), "total": len(reqs)})
 }
 
 // PendingCount GET /access-requests/pending/count 待審計數（導航 badge）
@@ -277,12 +330,12 @@ func (h *AccessRequestHandler) ListHistory(c *gin.Context) {
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	reqs, total, err := h.requests.ListHistory(userID, notEffectiveAdmin, page, pageSize)
+	reqs, total, err := h.requests.ListHistory(userID, c.GetBool("accessRequestHistoryAuditor"), page, pageSize)
 	if err != nil {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAccessRequestHistoryQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": reqs, "total": total, "page": page, "page_size": pageSize})
+	c.JSON(http.StatusOK, gin.H{"data": accessRequestResponses(reqs), "total": total, "page": page, "page_size": pageSize})
 }
 
 // ActiveTickets GET /access-requests/tickets 有效臨時授權清冊（審核中心）
@@ -300,9 +353,13 @@ func (h *AccessRequestHandler) ActiveTickets(c *gin.Context) {
 }
 
 type approveAccessRequestReq struct {
-	DurationMinutes *int       `json:"duration_minutes" binding:"omitempty,min=1"`
-	DateStart       *time.Time `json:"date_start"`
-	Note            string     `json:"note" binding:"max=1000"`
+	ItemID          uint                 `json:"item_id"`
+	Items           []authz.ItemDecision `json:"items"`
+	Accounts        *[]string            `json:"accounts"`
+	Remove          bool                 `json:"remove"`
+	DurationMinutes *int                 `json:"duration_minutes" binding:"omitempty,min=1"`
+	DateStart       *time.Time           `json:"date_start"`
+	Note            string               `json:"note" binding:"max=1000"`
 }
 
 // Approve POST /access-requests/:id/approve 核准（可下修時長/推遲起始）
@@ -325,6 +382,7 @@ func (h *AccessRequestHandler) Approve(c *gin.Context) {
 		}
 	}
 	decided, err := h.requests.Approve(userID, notEffectiveAdmin, uint(id), authz.DecideInput{
+		ItemID: req.ItemID, Items: req.Items, Accounts: req.Accounts, Remove: req.Remove,
 		DurationMinutes: req.DurationMinutes,
 		DateStart:       req.DateStart,
 		Note:            req.Note,
@@ -333,11 +391,12 @@ func (h *AccessRequestHandler) Approve(c *gin.Context) {
 		respondAccessRequestError(c, apierror.CodeInternalAccessRequestApprove, err)
 		return
 	}
-	c.JSON(http.StatusOK, decided)
+	c.JSON(http.StatusOK, accessRequestResponse(decided))
 }
 
 type rejectAccessRequestReq struct {
-	Note string `json:"note" binding:"required,max=1000"`
+	ItemID uint   `json:"item_id"`
+	Note   string `json:"note" binding:"required,max=1000"`
 }
 
 // Reject POST /access-requests/:id/reject 拒絕（事由必填）
@@ -356,12 +415,21 @@ func (h *AccessRequestHandler) Reject(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeDecisionNoteRequired, nil)
 		return
 	}
-	decided, err := h.requests.Reject(userID, notEffectiveAdmin, uint(id), req.Note)
+	var decided *model.AccessRequest
+	if req.ItemID == 0 {
+		decided, err = h.requests.Reject(userID, notEffectiveAdmin, uint(id), req.Note)
+	} else if svc, ok := h.requests.(interface {
+		RejectItem(uint, bool, uint, uint, string) (*model.AccessRequest, error)
+	}); ok {
+		decided, err = svc.RejectItem(userID, notEffectiveAdmin, uint(id), req.ItemID, req.Note)
+	} else {
+		err = authz.ErrRequestItemsShape
+	}
 	if err != nil {
 		respondAccessRequestError(c, apierror.CodeInternalAccessRequestReject, err)
 		return
 	}
-	c.JSON(http.StatusOK, decided)
+	c.JSON(http.StatusOK, accessRequestResponse(decided))
 }
 
 type breakGlassReq struct {
@@ -387,11 +455,12 @@ func (h *AccessRequestHandler) BreakGlass(c *gin.Context) {
 		respondAccessRequestError(c, apierror.CodeInternalBreakGlassSubmit, err)
 		return
 	}
-	c.JSON(http.StatusCreated, created)
+	c.JSON(http.StatusCreated, accessRequestResponse(created))
 }
 
 type revokeAccessRequestReq struct {
-	Note string `json:"note" binding:"required,max=1000"`
+	ItemID uint   `json:"item_id"`
+	Note   string `json:"note" binding:"required,max=1000"`
 }
 
 // Revoke POST /access-requests/:id/revoke 臨時授權提前撤銷（事由必填；
@@ -412,12 +481,21 @@ func (h *AccessRequestHandler) Revoke(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeRevokeNoteRequired, nil)
 		return
 	}
-	revoked, err := h.requests.Revoke(userID, isAdmin, username, uint(id), req.Note)
+	var revoked *model.AccessRequest
+	if req.ItemID == 0 {
+		revoked, err = h.requests.Revoke(userID, isAdmin, username, uint(id), req.Note)
+	} else if svc, ok := h.requests.(interface {
+		RevokeItem(uint, bool, string, uint, uint, string) (*model.AccessRequest, error)
+	}); ok {
+		revoked, err = svc.RevokeItem(userID, isAdmin, username, uint(id), req.ItemID, req.Note)
+	} else {
+		err = authz.ErrRequestItemsShape
+	}
 	if err != nil {
 		respondAccessRequestError(c, apierror.CodeInternalAccessTicketRevoke, err)
 		return
 	}
-	c.JSON(http.StatusOK, revoked)
+	c.JSON(http.StatusOK, accessRequestResponse(revoked))
 }
 
 type reviewAccessRequestReq struct {
@@ -447,7 +525,7 @@ func (h *AccessRequestHandler) Review(c *gin.Context) {
 		respondAccessRequestError(c, apierror.CodeInternalBreakGlassReview, err)
 		return
 	}
-	c.JSON(http.StatusOK, reviewed)
+	c.JSON(http.StatusOK, accessRequestResponse(reviewed))
 }
 
 // ListPendingReview GET /access-requests/reviews/pending 待補審破窗單（審核中心）
@@ -461,7 +539,7 @@ func (h *AccessRequestHandler) ListPendingReview(c *gin.Context) {
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalBreakGlassReviewQuery, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": reqs, "total": len(reqs)})
+	c.JSON(http.StatusOK, gin.H{"data": accessRequestResponses(reqs), "total": len(reqs)})
 }
 
 type createApproverScopeReq struct {
@@ -562,18 +640,21 @@ func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 	requests.Use(middleware.AuthMiddleware(authService))
 	{
 		requests.POST("", h.Create)
+		requests.POST("/:id/reports", h.SubmitReport)
+		requests.GET("/:id/reports", h.ReportVersions)
 		requests.GET("/mine", h.ListMine)
 		requests.GET("/mine/tickets", h.MyTickets)
 		requests.POST("/:id/cancel", h.Cancel)
 		// 破窗：登入即可呼叫，開關/資格在 service 裁決
 		requests.POST("/break-glass", h.BreakGlass)
 
+		requests.GET("/history", middleware.RequireAccessRequestHistoryReader(h.db), h.ListHistory)
+
 		review := requests.Group("")
 		review.Use(middleware.RequireApproverRole(h.db))
 		{
 			review.GET("/pending", h.ListPending)
 			review.GET("/pending/count", h.PendingCount)
-			review.GET("/history", h.ListHistory)
 			review.GET("/tickets", h.ActiveTickets)
 			review.GET("/reviews/pending", h.ListPendingReview)
 			review.POST("/:id/approve", h.Approve)
@@ -597,4 +678,9 @@ func (h *AccessRequestHandler) RegisterRoutes(r *gin.RouterGroup, authService *i
 		scopes.POST("", h.CreateScope)
 		scopes.DELETE("/:id", h.DeleteScope)
 	}
+	// Append new groups to preserve existing middleware closure identities in route goldens.
+	tasks := r.Group("/agent-tasks", middleware.AuthMiddleware(authService), middleware.RequirePermission(middleware.PermAuditView))
+	tasks.GET("", h.AgentTasks)
+	tasks.GET("/:requestId", h.AgentTaskDetail)
+
 }

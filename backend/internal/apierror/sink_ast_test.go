@@ -52,6 +52,7 @@ var updateSinkAllowlist = flag.Bool("update", false,
 // 清單由 sinkCoverageRoots 的涵蓋斷言把關：任何 import gin 的非測試套件
 // 必須落在本清單內，否則測試紅——堵「在清單外套件寫 handler」的規避路徑。
 var sinkScanDirs = []string{
+	"internal/agentmcp", // MCP HTTP adapter is subject to the same raw-error sink scan.
 	"internal/api",
 	"internal/middleware",
 	"internal/sshproxy",

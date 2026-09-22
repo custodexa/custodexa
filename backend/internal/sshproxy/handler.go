@@ -4,24 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
-	"github.com/custodexa/backend/internal/sshmaterial"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/database"
-	"github.com/custodexa/backend/internal/dbproxy"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
@@ -264,202 +260,13 @@ func NewHandler(
 // 建 Session 記錄 → 升級 WebSocket → 雙向 pump → 斷線清理。
 // SSH 握手在 WS 升級前完成，失敗時能以一般 HTTP 錯誤回應。
 func (h *Handler) HandleSSH(c *gin.Context) {
-	// 1-3. 身分與授權：connect_token 一次性簽發即焚，
-	// 唯一連線入口——授權與傳輸政策閘都在簽發時完成。舊 query-JWT 直連
-	// 模式已收口（繞過簽發閘＝繞過傳輸政策）
-	ct := c.Query("connect_token")
-	if ct == "" {
-		// 兌換拒絕留痕（connection-gating spec）：
-		// 與 `/connect` 共用 `proxy.AuditConnectDenied` 這一個寫入點
-		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(proxy.RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized}, proxy.ViaSSH)
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenMissing, nil)
+	est, failure := h.establishTerminal(h.establishRequest(c, c.Query("connect_token"), false))
+	if failure != nil {
+		h.writeEstablishFailure(c, failure)
 		return
 	}
-	// 拒絕原因取內部版本：對外仍是同一則「token 無效」（不給票證存在性探測面），
-	// 審計則分得出偽造票與過期票——前者是探測訊號，後者多半只是慢了一步
-	grant, denyReason := h.ConnectTokens.RedeemConnectTokenWithReason(c.Request.Context(), ct)
-	if denyReason != proxy.RedeemDenyNone {
-		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(denyReason), HTTPStatus: http.StatusUnauthorized}, proxy.ViaSSH)
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenInvalid, nil)
-		return
-	}
-
-	// 兩階段閘序：AuthorizePreResolve → 憑證解封 → AuthorizeResolvedAccount。
-	// 閘序表在 connect_gates.go，順序即該表的列序（G-S* 編號的定義亦在該檔）
-	st := &redeemState{grant: grant}
-	// 主體＝票證所帶的溯源脈絡。**ClaimedRole 留空是實質**：grant 刻意不攜帶角色
-	// （見 proxy/connect_token.go），兌換側的角色一律由 G-S3 現查
-	subj := st.contractSubject(sourceip.Of(c))
-	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
-		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
-			return h.redeemPreResolveGates(c, s, st)
-		},
-		func(s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject) []connectgate.Gate {
-			return h.redeemResolvedAccountGates(c, s, o, st)
-		},
-	)
-	reqCtx := c.Request.Context()
-	if out := gate.AuthorizePreResolve(reqCtx, subj, gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st, proxy.ViaSSH)
-		return
-	}
-	userID, assetID := grant.UserID, grant.AssetID
-	cols, rows := st.cols, st.rows
-
-	// 4. 取資產與憑證（記憶體內解密，永不出後端）——**兩階段之間的唯一解封點**。
-	// 以 grant 所帶帳號取憑證（0＝預設帳號）。
-	// 帳號於簽發後被刪除／改隸他資產者在此 fail-close 拒絕——**絕不靜默退回
-	// 預設帳號**（那等於以另一組憑證建線，且跨資產注入即可拿到目標預設憑證）
-	creds, err := h.AssetService.GetWithCredentialsForAccount(assetID, grant.AccountID)
-	if err != nil {
-		log.Printf("[SSHProxy] 取得資產憑證失敗: assetID=%d, accountID=%d, err=%v", assetID, grant.AccountID, err)
-		if errors.Is(err, asset.ErrAssetAccountNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetAccountNotFound, nil)
-			return
-		}
-		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
-		return
-	}
-	defer creds.Destroy()
-	st.creds = creds
-	// 已解析客體：AccountID 維持 grant 帶的**選擇器**值（0＝預設帳號，K8s 閘 G-S12
-	// 判的正是這個請求值）；Username 為解封後實際會用的帳號名，即 G-S13 的判定對象
-	resolved := st.contractObject()
-	if out := gate.AuthorizeResolvedAccount(reqCtx, subj, resolved,
-		gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st, proxy.ViaSSH)
-		return
-	}
-	assetRow, password, privateKey := creds.Asset, creds.Password, creds.PrivateKey
-
-	// 5. 建立終端連線：SSH 走遠端 PTY；資料庫協議走本地 CLI PTY（database-protocol），
-	// 兩者同實作 TerminalConn，後續審計鏈完全一致
-	var conn TerminalConn
-	var sshClient *ssh.Client
-	var k8sSnapshot *k8sproxy.PodSnapshot
-	var k8sLogsMode bool
-	if assetRow.Protocol == model.ProtocolSSH {
-		sshConn, err := Dial(ConnConfig{
-			Context: reqCtx, Host: assetRow.Host, Port: assetRow.Port, Username: creds.Username,
-			Password: sshmaterial.NewPassword(password), PrivateKey: privateKey,
-			Cols: cols, Rows: rows, HostKey: h.HostKeys.Callback(assetID),
-		})
-		if err != nil {
-			log.Printf("[SSHProxy] SSH 連線失敗: assetID=%d, err=%v", assetID, err)
-			// Dial 已分類為使用者語言（逾時/認證/不可達）；
-			// 僅「解析私鑰失敗: %w」帶庫原文，截斷至動作描述避免洩漏
-			msg := err.Error()
-			if idx := strings.Index(msg, ": "); idx > 0 {
-				msg = msg[:idx]
-			}
-			writeDialError(c, dialErrorCode(err), msg)
-			return
-		}
-		conn = sshConn
-		sshClient = sshConn.Client()
-	} else if assetRow.Protocol == model.ProtocolK8s {
-		// 連線時選 pod：namespace 取自資產（server-trusted），pod/container/模態由前端帶入
-		// The Kubernetes SDK retains an immutable token; its copies are not erased.
-		target, tokenErr := material.Use(password, func(raw []byte) (k8sproxy.Target, error) {
-			return k8sproxy.Target{
-				Server:    fmt.Sprintf("https://%s:%d", assetRow.Host, assetRow.Port),
-				Token:     string(raw),
-				Namespace: assetRow.K8sNamespace,
-				Pod:       c.Query("k8s_pod"),
-				Container: c.Query("k8s_container"),
-				CACert:    assetRow.K8sCACert,
-				Insecure:  assetRow.K8sInsecureSkipTLS,
-				Mode:      k8sproxy.Mode(c.Query("k8s_mode")),
-			}, nil
-		})
-		if tokenErr != nil {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
-			return
-		}
-		// one-shot 單指令尚未實裝 argv 側指令審計與阻斷（列 v1.1）：在此一律拒絕，
-		// 避免單指令繞過指令阻斷器（只看 PTY 串流）與審計（security review HIGH）。
-		if target.Mode == k8sproxy.ModeOneShot || c.Query("k8s_command") != "" {
-			apierror.Respond(c, http.StatusBadRequest, apierror.CodeK8sOneShotDisabled, nil)
-			return
-		}
-		if target.Pod == "" {
-			apierror.Respond(c, http.StatusBadRequest, apierror.CodeK8sPodRequired, nil)
-			return
-		}
-		// 釘 session 快照（同時驗證 pod 存在/可達/權限），錯誤已分類為六類（各配一碼）
-		snap, gerr := k8sproxy.GetPod(c.Request.Context(), target)
-		if gerr != nil {
-			log.Printf("[K8sProxy] GetPod 失敗: assetID=%d, pod=%s, err=%v", assetID, target.Pod, gerr)
-			writeDialError(c, k8sDialCode(gerr), gerr.Error())
-			return
-		}
-		target.Container = snap.Container // 解析後的實際容器（default annotation/第一個）
-		k8sConn, err := k8sproxy.Start(target, cols, rows)
-		if err != nil {
-			log.Printf("[K8sProxy] kubectl 啟動失敗: assetID=%d, err=%v", assetID, err)
-			writeDialError(c, apierror.CodeK8sStartFailed, zhFallbackOf(apierror.CodeK8sStartFailed))
-			return
-		}
-		conn = k8sConn
-		k8sSnapshot = snap
-		k8sLogsMode = target.Mode == k8sproxy.ModeLogs
-	} else {
-		// Transfer ownership until prompt injection or connection closure.
-		dbPassword, err := material.Move(password)
-		if err != nil {
-			return
-		}
-		dbConn, err := dbproxy.Start(dbproxy.Target{
-			Protocol: string(assetRow.Protocol),
-			Host:     assetRow.Host,
-			Port:     assetRow.Port,
-			// username 與憑證同取自同一帳號；不再讀 assetRow.Username
-			Username: creds.Username,
-			Password: dbPassword,
-			DBName:   assetRow.DBName,
-			TLSMode:  assetRow.DBTLSMode,
-			CACert:   assetRow.DBCACert,
-		}, cols, rows)
-		if err != nil {
-			// Start 僅在程式缺失/PTY 失敗時出錯（不含目標連線失敗），記詳情回泛化訊息
-			log.Printf("[DBProxy] CLI 啟動失敗: assetID=%d, err=%v", assetID, err)
-			writeDialError(c, apierror.CodeDBClientStartFailed, zhFallbackOf(apierror.CodeDBClientStartFailed))
-			return
-		}
-		conn = dbConn
-	}
-
-	creds.Destroy()
-	// 6. Session 記錄 fail-close：能走到此步證明 DB 讀正常（前置
-	// CheckUserConnectable/GetWithCredentials 皆已過），故 session INSERT 失敗＝
-	// 部分故障。無 session 主鍵即無 registry/錄影/指令審計/監看，一律拒連——admin
-	// 亦不豁免（完全無審計歸屬，與錄影 fail-close 的 admin 例外刻意不同）
-	// 帳號雙快照：帶入連線當下實際使用的帳號 ID 與 username
-	// 認證溯源（1.9）：provider/世代自 grant 原樣帶入，SSH/K8s/DB 三協議共此一路徑
-	sess := h.createSession(userID, assetID, assetRow.Protocol, sourceip.Of(c), k8sSnapshot,
-		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
-		authProvenance{ProviderID: grant.ProviderID, AuthEpoch: grant.AuthEpoch,
-			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, false)
-	if sess == nil {
-		conn.Close()
-		log.Printf("[SSHProxy] session 記錄建立失敗，連線已拒 (userID=%d assetID=%d)", userID, assetID)
-		if failure := audit.GetAuditFailure(); failure != nil {
-			failure.Report(model.MechanismSessionRecord, model.CauseSessionRecordCreateFailed,
-				map[string]string{
-					"user_id":  strconv.FormatUint(uint64(userID), 10),
-					"asset_id": strconv.FormatUint(uint64(assetID), 10),
-				})
-		}
-		writeSessionRecordFailed(c)
-		return
-	}
-
-	// 6b. 帳號新來源位址：session 主鍵已得（fail-close 已過）才觀察——
-	// 告警列以 session_id 為自然鍵，先觀察就沒有可綁的會話。
-	// 失敗只記 log 不阻連線，且交易整筆回滾，下次自同位址建線補發
-	h.observeSourceIP(c, sess, userID, assetID)
+	conn, sess := est.conn, est.Session
+	h.observeSourceIP(c, sess, est.grant.UserID, est.grant.AssetID)
 
 	// 7. 升級 WebSocket
 	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -470,6 +277,15 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		return
 	}
 
+	h.runTerminal(est, ws)
+}
+
+func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
+	conn, sess, grant := est.conn, est.Session, est.grant
+	userID, assetID := grant.UserID, grant.AssetID
+	cols, rows := est.cols, est.rows
+	sshClient, k8sSnapshot, k8sLogsMode := est.sshClient, est.k8sSnapshot, est.k8sLogsMode
+	assetRow := est.asset
 	// 8. 雙向轉發，掛載指令審計旁路（session 建立失敗時無歸屬主鍵，跳過審計）
 	bridge := newBridge(ws, conn, sess, h.SessionService, h.RecordingPath, userID, assetID)
 
@@ -535,7 +351,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		// 指令審計與阻斷：K8s logs 唯讀模態跳過（k8s-exec：logs 無指令、無注入）
 		if !k8sLogsMode {
 			aid := assetID
-			store = NewCommandStore(database.DB, sess.ID, userID, &aid, string(assetRow.Protocol))
+			store = NewCommandStore(database.DB, sess.ID, userID, &aid, string(assetRow.Protocol), grant.PrincipalKind)
 			// 降級告警的落地面：與阻斷路徑共用同一個 AlertSink，
 			// 通知與 syslog 離機轉發因此自動接上，不重演「只入庫不 tee」
 			store.SetAlertSink(h.AlertSink)
@@ -555,7 +371,7 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 
 			// 指令阻斷（command-blocking）：matcher 未初始化時為 nil＝直通；
 			// protocol 用於規則分流（shell 規則不掃 SQL、SQL 規則不掃 shell）
-			bridge.attachBlocker(newCommandBlocker(audit.GetAlertMatcher(), h.AlertSink, sess.ID, userID, assetID, string(assetRow.Protocol)))
+			bridge.attachBlocker(newCommandBlocker(audit.GetAlertMatcher().ForSubject(grant.PrincipalKind), h.AlertSink, sess.ID, userID, assetID, string(assetRow.Protocol)))
 		}
 	}
 
@@ -573,6 +389,9 @@ func (h *Handler) HandleSSH(c *gin.Context) {
 		bridge.writeErrorMessage(apierror.CodeSessionTerminated)
 		bridge.stop()
 	} else {
+		if tap := newSensitiveTap(audit.GetAlertMatcher(), sess, string(assetRow.Protocol), h.AlertSink, h.AuditService, grant.PrincipalKind); tap != nil {
+			bridge.outputSinks = append(bridge.outputSinks, tap)
+		}
 		bridge.Run()
 	}
 
@@ -837,7 +656,7 @@ func (h *Handler) writeRedeemOutcome(c *gin.Context, out *connectgate.Outcome,
 	st *redeemState, via string) {
 	h.auditRedeemDenied(c, proxy.ConnectDenial{
 		UserID: st.grant.UserID, AssetID: st.grant.AssetID,
-		Reason: out.Decision.Code, HTTPStatus: out.Status, Cause: st.sourceDenyCause,
+		Reason: out.Decision.Code, HTTPStatus: out.Status, Cause: st.sourceDenyCause, RequestItemDimension: connectgate.RequestItemDimension(out), AccessRequestID: st.grant.AccessRequestID,
 	}, via)
 	h.writeOutcome(c, out)
 }
@@ -869,8 +688,10 @@ type accountSnapshot struct {
 // provider**——混合帳號（同時有本地密碼與外部身分）會被誤標，導致停用某 provider
 // 時連帶砍掉該帳號以本地密碼建立的會話。ProviderID 0 表本地／LDAP 登入
 type authProvenance struct {
-	ProviderID uint
-	AuthEpoch  int
+	AgentTokenID    uint
+	AccessRequestID uint
+	ProviderID      uint
+	AuthEpoch       int
 	// AuthMethod／CredEpoch 供「兌換建 session」的鎖內世代複查（3.8b）——
 	// 序列化的三步「重查前提 → 讀世代 → 建立」需要完整脈絡，只帶 provider 維度
 	// 會漏掉使用者維度（解綁外部身分／改為僅外部登入後的 connect grant）
@@ -894,6 +715,14 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		// 帳號雙快照：與 session 建立原子寫入，之後永不更新
 		AccountID:       acct.ID,
 		AccountUsername: acct.Username,
+	}
+	if prov.AgentTokenID != 0 {
+		id := prov.AgentTokenID
+		sess.AgentTokenID = &id
+	}
+	if prov.AccessRequestID != 0 {
+		id := prov.AccessRequestID
+		sess.AccessRequestID = &id
 	}
 	// 認證溯源（1.9）：僅快照，授權仍現查。0 寫 NULL 以區分「本地登入」
 	//（與 guacd 路徑 proxy/handler.go 同語義）
@@ -1276,67 +1105,18 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 		return
 	}
 
-	// 兩階段閘序：AuthorizePreResolve → 帳號身分解析 → AuthorizeResolvedAccount。
-	// 閘序表在 connect_gates.go，順序即該表的列序（G-I* 編號的定義亦在該檔）。
-	// **簽發側的「解析」不解封憑證**——只解析 username（ResolveAccountIdentity 與
-	// GetWithCredentialsForAccount 共用 resolveAssetAccount，故 fail-close 語義一致）
-	st := &issueState{}
-	// 主體：ClaimedRole＝**呼叫端自陳的**角色（JWT／middleware 的角色快照）。
-	// 它僅供溯源，SHALL NOT 作判定依據——閘序用的角色一律是 G-I2 由
-	// CurrentConnectRole 現查後寫進 st.role 的那一份。
 	issueAuthCtx := middleware.GetAuthContext(c)
 	subj := gatewayapi.ConnectSubject{
-		UserID:      userID,
-		ClaimedRole: claimedRole,
-		AuthMethod:  issueAuthCtx.EffectiveMethod(),
-		ProviderID:  issueAuthCtx.ProviderID,
-		AuthEpoch:   issueAuthCtx.AuthEpoch,
-		CredEpoch:   issueAuthCtx.CredEpoch,
-		ClientIP:    sourceip.Of(c),
+		UserID: userID, ClaimedRole: claimedRole,
+		AuthMethod: issueAuthCtx.EffectiveMethod(), ProviderID: issueAuthCtx.ProviderID,
+		AuthEpoch: issueAuthCtx.AuthEpoch, CredEpoch: issueAuthCtx.CredEpoch, ClientIP: sourceip.Of(c),
 	}
-	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
-		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
-			return h.issuePreResolveGates(c, s, st)
-		},
-		func(s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject) []connectgate.Gate {
-			return h.issueResolvedAccountGates(c, s, o, st)
-		},
-	)
-	reqCtx := c.Request.Context()
-	if out := gate.AuthorizePreResolve(reqCtx, subj, gatewayapi.StageIssue); out != nil {
+	grant, out := h.IssueConnectGrant(c, subj, nil)
+	if out != nil {
 		h.writeOutcome(c, out)
 		return
 	}
-	req := st.req
-
-	identity, idErr := h.AssetService.ResolveAccountIdentity(req.AssetID, req.AccountID)
-	if idErr != nil {
-		if errors.Is(idErr, asset.ErrAssetAccountNotFound) {
-			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetAccountNotFound, nil)
-			return
-		}
-		log.Printf("[ConnectToken] 解析連線帳號失敗: assetID=%d accountID=%d err=%v", req.AssetID, req.AccountID, idErr)
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetAccountResolve, idErr)
-		return
-	}
-	st.identity = identity
-
-	// 已解析客體：AccountID 為請求帶的選擇器（0＝預設帳號），
-	// Username 為 ResolveAccountIdentity 解析出的帳號名，即 G-I10 的判定對象
-	resolved := st.contractObject()
-	if out := gate.AuthorizeResolvedAccount(reqCtx, subj, resolved,
-		gatewayapi.StageIssue); out != nil {
-		h.writeOutcome(c, out)
-		return
-	}
-	// 認證脈絡於簽發階段取得（1.9）：兌換點只剩 grant，屆時已無從得知
-	// 「當初經哪個 provider 認證」，而那正是停用時要按 provider 收線的依據。
-	// 與 subj 同源（issueAuthCtx），故票證所帶脈絡與判定所見主體逐欄相同
-	token, err := h.ConnectTokens.IssueConnectToken(reqCtx, proxy.ConnectGrant{
-		UserID: userID, AssetID: req.AssetID, AccountID: req.AccountID,
-		AuthMethod: subj.AuthMethod, ProviderID: subj.ProviderID,
-		AuthEpoch: subj.AuthEpoch, CredEpoch: subj.CredEpoch,
-	})
+	token, err := h.ConnectTokens.IssueConnectToken(c.Request.Context(), grant)
 	if err != nil {
 		// 容量拒絕與內部故障分開處置：前者是可預期的暫時性狀態（503／稍後再試），
 		// 混進 500 會讓「有人在灌未兌換 token」淹沒在一般故障告警裡

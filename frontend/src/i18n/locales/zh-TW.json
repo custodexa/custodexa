@@ -119,7 +119,8 @@
     "offsiteStorage": "離機儲存",
     "identitySources": "身分來源",
     "complianceMap": "合規對照",
-    "policyGroups": "政策組"
+    "policyGroups": "政策組",
+    "myAgents": "我的 agent"
   },
   "login": {
     "bannerRegionLabel": "登入告示",
@@ -253,6 +254,12 @@
       "unlock": "解鎖帳號",
       "pw_noncompliant": "密碼不符政策",
       "recording_failed": "錄影失敗",
+      "output_scan_disabled": "輸出掃描已停用",
+      "agent_token_revoked": "自動化權杖已撤銷",
+      "agent_token_suspended": "自動化權杖已停用",
+      "agent_sessions_terminated": "自動化會話終止結果",
+      "agent_sessions_terminate_late": "自動化會話終止超過目標時效",
+      "suspend": "已停用",
       "new_source_ip": "自新來源位址登入",
       "file_list": "檔案瀏覽",
       "file_upload": "檔案上傳",
@@ -272,6 +279,8 @@
       "offsite_cred_revoke": "離機憑證撤銷"
     },
     "auditResource": {
+      "agent_token": "自動化權杖",
+      "agent_tool_call": "自動化工具呼叫帳本",
       "user_role": "角色指派",
       "asset": "資產",
       "session": "連線",
@@ -333,6 +342,7 @@
       "source_policy": "來源網段限定政策",
       "offsite_upload": "離機儲存上傳",
       "role_state_integrity": "角色指派與稽核鏈的一致性",
+      "principal_state_integrity": "主體與憑證狀態完整性",
       "dek_unwrap": "資料金鑰的重新取得"
     },
     "cause": {
@@ -367,6 +377,7 @@
       "offsite_upload_stalled": "同一物件的上傳租約反覆到期，上傳卡住",
       "offsite_integrity_mismatch": "取回的離機副本與上傳當下不符，已拒絕交付",
       "role_state_mismatch": "角色指派與稽核鏈不符（有變更未經應用程式留痕）",
+      "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經应用程式留痕）",
       "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）"
     },
     "endReason": {
@@ -597,6 +608,10 @@
       "access_policy": {
         "title": "連線政策",
         "hint": "全域預設決定「未個別設定政策的資產」連線前是否要申請（最小權限）；各資產可於下表或資產編輯表單個別覆寫。管理員不受申請限制（每次連線留稽核標記）"
+      },
+      "agent_controls": {
+        "title": "自動化帳號",
+        "hint": "管理自助建立、申請配額與探測阻斷。自助建立預設關閉，上限只約束新建。"
       },
       "request_params": {
         "title": "連線申請參數",
@@ -945,7 +960,8 @@
     "emptyHistoryTitle": "沒有符合的歷史記錄",
     "emptyHistoryHint": "請調整篩選條件或等待有連線關閉後再查詢",
     "accountColumn": "帳號",
-    "consoleBadge": "主控台"
+    "consoleBadge": "主控台",
+    "actorColumn": "操作者"
   },
   "sessionDetail": {
     "title": "連線詳情",
@@ -1221,7 +1237,20 @@
     "kindNewSourceIP": "帳號新來源位址",
     "newSourceIPFirstSession": "首次自此位址建立連線",
     "newSourceIPNoAddress": "這場連線沒有可用的來源位址",
-    "newSourceIPPivot": "以這個位址調查當日的全部紀錄"
+    "newSourceIPPivot": "以這個位址調查當日的全部紀錄",
+    "direction": "比對方向",
+    "directionInput": "輸入指令",
+    "directionOutput": "目標輸出",
+    "outputNoBlock": "輸出面不支援阻斷：位元組送達之後無從收回。",
+    "outputScope": "可能含敏感資料，僅告警。只掃描文字協議；RDP/VNC 畫面、加密或編碼內容未涵蓋。未命中不表示不存在。",
+    "outputCardContract": "內建卡號樣式另做 Luhn 校驗；改寫該樣式後視為一般正則，不再套用卡號校驗。",
+    "outputSummary": "輸出可能含敏感資料（{count} 次）",
+    "kindAgentBreaker": "自動化主體探測熔斷",
+    "agentBreakerDescription": "重複引用從未可視資產，已停用觸發的 token，待負責人或管理員處置。",
+    "subjectKind": "適用主體",
+    "subjectAll": "全體",
+    "subjectHuman": "人類",
+    "subjectAgent": "自動化主體"
   },
   "transmission": {
     "headerDesc": "傳輸強制政策與通道加密清冊（原「通道加密清冊」頁）：政策等級每項標示 PCI 建議值；清冊彙整全通道加密狀態與偏離，匯出快照帶時間戳與產生者，可作稽核 inventory",
@@ -1606,7 +1635,7 @@
     "linkCopied": "連結已複製"
   },
   "users": {
-    "headerDesc": "管理系統使用者和角色分配",
+    "headerDesc": "管理人員與自動化程式；每個 AI agent 都必須指定一位人員負責。",
     "create": "新增使用者",
     "searchPlaceholder": "使用者名稱或 Email",
     "fullName": "全名",
@@ -2977,6 +3006,19 @@
     "deviationMark": "不符合生效政策組的要求"
   },
   "apiError": {
+    "AUTH_AGENT_TOKEN_INVALID": "自動化權杖無效",
+    "AUTH_AGENT_FORBIDDEN_ROUTE": "自動化主體不可使用此端點",
+    "AUTH_REQUEST_ITEM_MISMATCH": "存取申請項目不符",
+    "VALIDATION_ACCOUNT_NOT_ON_ASSET": "帳號不屬於指定資產",
+    "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "自動化任務須指定帳號",
+    "RULE_AGENT_SELF_CREATE_DISABLED": "未開放自助建立自動化帳號",
+    "RULE_AGENT_SELF_CREATE_LIMIT": "名下自動化帳號已達自助建立上限",
+    "RULE_AGENT_BREAKER_PENDING": "自動化主體熔斷待處置，無法建立權杖",
+    "RULE_AGENT_REQUEST_RATE": "自動化主體已達申請速率上限",
+    "RULE_AGENT_BREAKER_TRIPPED": "自動化主體已觸發熔斷",
+    "CONFLICT_AGENT_BREAKER_NOT_PENDING": "自動化主體目前沒有待處置的熔斷",
+    "VALIDATION_EXECUTOR_NOT_AGENT": "執行主體必須為自動化主體",
+    "VALIDATION_AGENT_OWNER_REQUIRED": "自動化主體須指定啟用中的人類帳號為擁有者",
     "AUTH_ACCOUNT_LOCKED": "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員",
     "AUTH_APPROVER_REQUIRED": "權限不足：需審核人員或管理員身分",
     "AUTH_ASSET_CONNECT_DENIED": "您沒有連線此資產的權限，請聯繫管理員",
@@ -3684,7 +3726,9 @@
     "SEAL_CREDENTIAL_REJECTED": "保管處拒絕這份憑證。請確認憑證是否已失效或權限不足。",
     "SEAL_KEY_MISMATCH": "保管處回應的金鑰與本部署不符。請先到金鑰管理頁核對金鑰。",
     "KEY_TOPOLOGY_INVALID": "保管處設定沒有通過驗證，整筆未變更。請修正這些欄位：{fields}",
-    "KEY_TOPOLOGY_NOT_EDITABLE": "這個保管處沒有可在此修改的欄位。"
+    "KEY_TOPOLOGY_NOT_EDITABLE": "這個保管處沒有可在此修改的欄位。",
+    "VALIDATION_ALERT_DIRECTION": "direction 必須為 input/output",
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "輸出面不支援阻斷：位元組送達之後無從收回。"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "此提供者設定了群組 claim 名稱，但授權範圍不含 groups。多數提供者因此不會發出群組宣告，映射規則將無人命中，已依規則取得的角色也會被撤回。",
@@ -3693,6 +3737,12 @@
     "MAPPING_TARGETS_ADMIN_ROLE": "這條規則會把管理員角色授予該群組的所有成員，儲存後會留下稽核記錄。"
   },
   "policyLabel": {
+    "agent_self_create_enabled": "允許自助建立自動化帳號",
+    "agent_self_create_max_per_owner": "每人自助建立自動化帳號上限",
+    "agent_probe_trip_count": "自動化帳號探測阻斷次數",
+    "agent_probe_window_seconds": "自動化帳號探測計數期間（秒）",
+    "agent_request_rate_per_hour": "自動化帳號每小時申請上限",
+    "agent_request_pending_max": "自動化帳號待審申請上限",
     "access_policy_default": "全域預設存取政策段位",
     "access_request_max_duration_minutes": "申請時長上限",
     "access_request_min_approvals": "最少核准人數",
@@ -4302,6 +4352,11 @@
       "unsealed": "尚未存證的紀錄筆數",
       "unsealedHint": "（自紀錄編號 {id} 起；此段尚未納入鏈保護，見下方邊界 R5）"
     },
+    "principalState": {
+      "principals": "帳號種類與擁有者",
+      "tokens": "自動化帳號憑證狀態",
+      "differences": "預期存在但現況缺少的識別值：{missing}；現況多出的識別值：{extra}"
+    },
     "roleState": {
       "title": "角色指派",
       "desc": "把現在的角色指派，與最近一次存證時簽入檢查點的內容加上其後每一筆有紀錄的授予與撤銷相比對。兩者不一致，代表有角色是繞過本系統直接改資料庫掛上或拿掉的。",
@@ -4603,7 +4658,8 @@
       "partial": "清除作業還在進行中，這段期間現在還看得到的紀錄，稍後可能被清除；本次查詢的結果不代表最終的保留狀態。",
       "notRetainedDetail": "{category}：這類紀錄不在自動清除的對象內，從未依保留政策刪除過，故這段期間的空白不是清除造成的。這與「已依保留政策清除」是兩回事；但空白也不等於當時沒有事情發生，紀錄以系統實際採集到的為準（例如剪貼簿只在圖形桌面連線上採集，且只收文字內容）。",
       "emptyPresent": "{category}：此區間無紀錄。",
-      "checkpointLink": "查核這段清除是否合法（檢查點序號 {from}–{to}）"
+      "checkpointLink": "查核這段清除是否合法（檢查點序號 {from}–{to}）",
+      "commandIncomplete": "指令紀錄不完整：{count} 筆缺少指令內容"
     },
     "spans": {
       "title": "連線",
@@ -4697,6 +4753,12 @@
         "unlock": "解鎖帳號",
         "pw_noncompliant": "密碼不符政策",
         "recording_failed": "錄影失敗",
+        "output_scan_disabled": "輸出掃描已停用",
+        "agent_token_revoked": "自動化權杖已撤銷",
+        "agent_token_suspended": "自動化權杖已停用",
+        "agent_sessions_terminated": "自動化會話終止結果",
+        "agent_sessions_terminate_late": "自動化會話終止超過目標時效",
+        "suspend": "已停用",
         "file_list": "瀏覽檔案",
         "file_upload": "上傳檔案",
         "file_download": "下載檔案",
@@ -5812,5 +5874,235 @@
     "textKeyUnsupported": "這個設定是自由文字，沒有可以比較的要求值",
     "clauseNoRequired": "請填條號",
     "titleRequired": "請填標題"
+  },
+  "agentPrincipals": {
+    "agent": "AI agent",
+    "human": "人類",
+    "unknown": "類型未提供",
+    "unavailable": "未提供",
+    "kind": "主體類型",
+    "owner": "負責人",
+    "ownerValue": "負責人：{owner}",
+    "selectOwner": "搜尋啟用中的人類帳號",
+    "creationHelp": "負責人承擔這個 agent 的管理責任。agent 只使用鑰匙連線，不能登入介面，也不能取得管理、稽核或審核角色。",
+    "keys": "鑰匙",
+    "keysFor": "{name} 的鑰匙",
+    "keyHelp": "鑰匙是 agent 用來連線的憑證。收回鑰匙會立即結束使用它建立的會話，不等工作完成。",
+    "issuedKeys": "已發出的鑰匙",
+    "noKeys": "這個 agent 還沒有鑰匙。發出第一把後才能開始連線。",
+    "createdBy": "建立者",
+    "expiresAt": "到期時間",
+    "lastUsedAt": "最近使用",
+    "neverUsed": "尚未使用",
+    "issue": "發新鑰匙",
+    "keyName": "鑰匙名稱",
+    "expiryHelp": "名稱與到期時間都必填；到期後鑰匙自動失效。",
+    "issueRequired": "請填寫鑰匙名稱與未來的到期時間。",
+    "inactiveHelp": "這個主體已停用，請聯絡管理員。",
+    "revealTitle": "這串鑰匙只顯示這一次",
+    "revealOnce": "請立即複製並妥善保管。離開後無法再次取得；未保存時請收回並重新發一把。",
+    "copied": "已複製",
+    "copyFailed": "無法複製，請在離開前手動保存。",
+    "revoke": "收回鑰匙",
+    "revokeNote": "收回原因（選填，會留在紀錄裡）",
+    "revokeConsequence": "收回後無法復原。使用這把鑰匙建立的會話會立即結束，不等工作完成。",
+    "myTitle": "我的 agent",
+    "myDescription": "管理您名下自動化程式的鑰匙與待處置狀態。",
+    "ownerFixed": "負責人固定是您；變更負責人或停用整個主體請找管理員。",
+    "create": "建立 agent",
+    "purpose": "用途說明",
+    "empty": "您名下還沒有 agent。",
+    "emptyEnabled": "建立後，發出第一把鑰匙即可開始連線。",
+    "emptyDisabled": "建立 agent 由管理員處理；建立後會出現在這裡，鑰匙由您管理。",
+    "loadFailed": "未能載入清單，這不代表您名下沒有 agent。",
+    "policyUnknown": "目前無法確認是否允許自行建立，請聯絡管理員。現有 agent 的鑰匙仍可管理。",
+    "selfRequired": "請填寫 3–50 字元的名稱與用途說明。",
+    "tokenStatus": {
+      "valid": "有效",
+      "expired": "已到期",
+      "suspended": "已停用",
+      "revoked": "已撤銷"
+    },
+    "quota": "名下 {current}／{max} 個 agent",
+    "you": "您"
+  },
+  "agentTasks": {
+    "title": "AI agent 任務",
+    "ledger": "工具呼叫帳本",
+    "reports": "任務報告",
+    "unavailable": "任務列表尚未提供。此處暫為入口預留位置，沒有載入任務資料。",
+    "subjectExit": "看這個主體的任務",
+    "listHelp": "依主體、目前負責人與申請時間查詢任務。報告狀態是目前的版本狀態。",
+    "subject": "主體 ID",
+    "timeRange": "申請時間範圍",
+    "reportStatus": "報告狀態",
+    "status": {
+      "submitted": "已有報告",
+      "missing": "已關閉，尚無報告",
+      "not_submitted": "未關閉，尚無報告"
+    },
+    "created": "申請時間",
+    "closed": "關閉時間",
+    "open": "尚未關閉",
+    "detailTitle": "任務 #{id}",
+    "back": "返回任務列表",
+    "sections": {
+      "who": "誰代誰做什麼",
+      "grants": "被准了什麼",
+      "activity": "實際做了什麼",
+      "reports": "Agent 自己說做了什麼"
+    },
+    "currentOwner": "上方負責人為目前關聯；執行當時負責人請見各會話快照。",
+    "reduced": "時長已下修",
+    "decisionBy": "決定者：{id}；時間：{time}",
+    "start": "核准起始：{time}",
+    "noSessions": "此任務尚無會話紀錄。",
+    "recording": "查看錄影",
+    "selfReport": "以下為 agent 自述，非授權證據，也不代表已獨立查證。",
+    "missingAtClose": "關閉時缺報告；關閉時間：{time}",
+    "noReports": "尚無報告版本。",
+    "version": "版本 {n} · 提交於 {time}",
+    "revision": "關閉後修訂",
+    "latestOnly": "只看最新版本",
+    "allVersions": "展開全部版本",
+    "approvedWindow": "核准起訖",
+    "decider": "決定者"
+  },
+  "agentBreaker": {
+    "pending": "自動停用待處置",
+    "issueBlocked": "這個 agent 有尚未處置的自動停用事件，現在不能發新鑰匙。",
+    "resolve": "前往處置",
+    "title": "自動停用處置",
+    "eventsUnavailable": "目前提供解除表單；事件序列尚未提供。",
+    "selectFromEntry": "請從告警或 agent 鑰匙抽屜進入，選定要處置的主體。",
+    "unavailable": "無法讀取此 agent 的處置資料，或你不是負責人。",
+    "noPending": "目前沒有未處置的熔斷。",
+    "releaseTokens": "解除不自動恢復已停用 token，須重新發證。",
+    "releaseSessions": "熔斷當下已換發的連線票證與既有連線已失效。",
+    "released": "已解除未處置旗標；已停用 token 仍須重新發證。",
+    "reason": "解除原因",
+    "reasonRequired": "請填寫原因，且 UTF-8 編碼不超過 1000 位元組。",
+    "release": "確認解除",
+    "open": "前往熔斷處置",
+    "events": "引用事件序列",
+    "noEvents": "此範圍尚無引用事件。",
+    "countBoundary": "本頁從未可視的不同目標：{n}。僅此類計入門檻；這不是目前時間窗的熔斷計數。",
+    "classes": {
+      "never_visible": "從未可視（計入門檻）",
+      "revoked": "曾可視，現已不可視（不計入門檻）",
+      "retired": "不存在或已移除（不計入門檻）"
+    },
+    "tokenBoundary": "此處列目前鑰匙狀態；停用時間與原因依已存紀錄，不回推歷次跳閘的完整名單。",
+    "tokenStopped": "因熔斷停用於 {time}",
+    "assetNameBoundary": "資產名稱與協議為目前可讀資料；無法讀取時保留資產識別碼，不代表事件當時名稱。"
+  },
+  "multiRequest": {
+    "title": "建立連線申請",
+    "executor": "誰來操作",
+    "self": "我自己操作",
+    "minutes": "使用時長（分鐘）",
+    "item": "第 {n} 項",
+    "itemId": "項目 #{id}",
+    "accounts": "可以用哪些帳號",
+    "allAccounts": "全部帳號",
+    "agentAccounts": "AI agent 必須指定帳號，不提供全部帳號。",
+    "accountsLoading": "正在載入帳號，完成前不能送出。",
+    "accountsEmpty": "沒有可選的帳號，請改選資產或洽管理員。",
+    "accountsFailed": "帳號清單載入失敗，不代表沒有帳號。",
+    "remove": "刪除這項",
+    "add": "再加一項",
+    "submit": "送出申請",
+    "count": "{n} 項資產",
+    "task": "任務",
+    "revokedAt": "撤銷於 {time}",
+    "executorRef": "執行者 #{id}（負責人資料未提供）",
+    "state": {
+      "pending": "等候審核",
+      "approved": "已核准",
+      "rejected": "未核准",
+      "revoked": "已撤銷",
+      "cancelled": "已撤回",
+      "expired": "已到期"
+    },
+    "quota": {
+      "hour": "本主體本小時已達開單上限（{used}/{limit}）",
+      "pending": "本主體待處理申請已達上限（{used}/{limit}）"
+    },
+    "relationship": "申請人是您，實際操作的是這個 agent；負責人如下所示。",
+    "reasonHint": "審核者會看到，事後稽核也看得到。",
+    "missingAccounts": "還有 {n} 項沒選帳號"
+  },
+  "itemReview": {
+    "scopeUnknown": "各項審核資格會在送出時確認；目前清單未提供逐項資格。",
+    "remove": "移除這項",
+    "removeHelp": "移除這項視同退回這項，審核紀錄仍會保留。",
+    "narrow": "改選具體帳號",
+    "note": "退回或移除時必填原因",
+    "summary": "送出前確認逐項決定",
+    "submit": "送出已選的逐項決定",
+    "invalid": "請檢查原因、帳號範圍與時窗；核准值只能下修。",
+    "voteRecorded": "此項核准票已記錄，仍待其他審核者。",
+    "saved": "此項決定已儲存",
+    "action": {
+      "approve": "核准／下修",
+      "reject": "拒絕",
+      "remove": "移除（拒絕）"
+    }
+  },
+  "agentSession": {
+    "snapshot": "連線建立當時的主體快照（以識別碼記錄，不回查現況）",
+    "actor": "當時操作者",
+    "onBehalf": "代表人",
+    "none": "無代表人（自主執行）",
+    "unknown": "未記錄",
+    "owner": "當時負責人",
+    "token": "使用的 token",
+    "tokenId": "識別碼 #{id}；名稱快照未提供",
+    "revoked": "會話進行中授權已撤銷：{time}",
+    "recordingTab": "錄影與會話證據"
+  },
+  "agentLedger": {
+    "title": "工具呼叫帳本",
+    "boundary": "錄影保留原始畫面、帳本保留回傳摘要與雜湊",
+    "decision": "判定",
+    "loadFailed": "帳本載入失敗",
+    "empty": "此查詢沒有工具呼叫紀錄。",
+    "masked": "遮罩 {n} 筆",
+    "duration": "耗時 {n} 毫秒",
+    "session": "會話 #{id}",
+    "noSession": "未建立會話",
+    "pendingBoundary": "已記錄，是否送出與結果皆未知。",
+    "details": "查看紀錄細節",
+    "reasonCode": "原因碼",
+    "result": "結果狀態",
+    "unknown": "未知",
+    "arguments": "遮罩後參數",
+    "digest": "回傳雜湊",
+    "excerpt": "回傳節錄",
+    "excerptBoundary": "這是節錄，並非回傳全文。",
+    "unavailable": "未提供",
+    "unknownReason": "尚無此原因的說明。",
+    "unsupportedQuery": "查詢條件尚未支援，未載入帳本。",
+    "decisions": {
+      "pending": "待定",
+      "allowed": "允許",
+      "denied": "拒絕",
+      "breaker": "熔斷",
+      "rate_limited": "速率上限"
+    },
+    "toolName": "工具名稱（技術細節）",
+    "unknownTool": "其他工具操作",
+    "tools": {
+      "list_assets": "查看可用資產",
+      "request_access": "申請資產使用權限",
+      "check_request": "查看申請進度",
+      "open_session": "建立資產連線",
+      "run_command": "執行終端指令",
+      "send_keys": "傳送終端控制按鍵",
+      "query": "執行資料庫查詢",
+      "read_screen": "讀取終端輸出",
+      "close_session": "結束資產連線",
+      "close_task": "關閉任務並提交報告"
+    }
   }
 }

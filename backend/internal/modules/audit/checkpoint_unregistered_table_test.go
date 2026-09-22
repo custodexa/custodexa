@@ -2,9 +2,9 @@ package audit
 
 import (
 	"encoding/json"
+	"reflect"
 	"sort"
 	"testing"
-
 )
 
 // 未登記的狀態表不參與比對（role-assignment-integrity spec「未登記的表不參與比對」）。
@@ -60,12 +60,12 @@ func TestStateCoverageListsOnlyRegisteredTables(t *testing.T) {
 	for _, st := range StateTableRegistry() {
 		registered = append(registered, st.Name)
 	}
-	if len(registered) != 1 || registered[0] != StateTableUserRoles {
-		t.Fatalf("登記清單 = %v, want [%s]：新增登記項必須連同其寫入點的留痕與"+
+	if !reflect.DeepEqual(registered, []string{StateTableUserRoles, StateTablePrincipals, StateTableAgentTokens}) {
+		t.Fatalf("登記清單 = %v, want 三項（含 %s）：新增登記項必須連同其寫入點的留痕與"+
 			"竄改矩陣一起進來，不得只加一行登記", registered, StateTableUserRoles)
 	}
-	if got := f.snapshotTables(t, seq); len(got) != 1 || got[0] != StateTableUserRoles {
-		t.Fatalf("檢查點 seq=%d 的快照欄涵蓋 %v, want [%s]：檢查點不得宣稱涵蓋"+
+	if got := f.snapshotTables(t, seq); !reflect.DeepEqual(got, []string{StateTableAgentTokens, StateTablePrincipals, StateTableUserRoles}) {
+		t.Fatalf("檢查點 seq=%d 的快照欄涵蓋 %v, want 三項（含 %s）：檢查點不得宣稱涵蓋"+
 			"一張沒有留痕路徑的表", seq, got, StateTableUserRoles)
 	}
 }
@@ -128,7 +128,7 @@ func TestUnregisteredTableWriteDoesNotAffectReconcile(t *testing.T) {
 		t.Fatalf("seq=%d 的 role_state_reconciled = %v, want true",
 			after, afterRow.RoleStateReconciled)
 	}
-	if got := f.snapshotTables(t, after); len(got) != 1 || got[0] != StateTableUserRoles {
-		t.Fatalf("快照欄涵蓋 %v, want [%s]", got, StateTableUserRoles)
+	if got := f.snapshotTables(t, after); !reflect.DeepEqual(got, []string{StateTableAgentTokens, StateTablePrincipals, StateTableUserRoles}) {
+		t.Fatalf("快照欄涵蓋 %v, want 三項（含 %s）", got, StateTableUserRoles)
 	}
 }

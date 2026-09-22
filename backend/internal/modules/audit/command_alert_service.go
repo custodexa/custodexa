@@ -92,22 +92,22 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 	query := s.db.Model(&model.CommandAlert{})
 
 	if filter.Severity != "" {
-		query = query.Where("severity = ?", filter.Severity)
+		query = query.Where("command_alerts.severity = ?", filter.Severity)
 	}
 	if filter.UserID != nil {
-		query = query.Where("user_id = ?", *filter.UserID)
+		query = query.Where("command_alerts.user_id = ?", *filter.UserID)
 	}
 	if filter.AssetID != nil {
-		query = query.Where("asset_id = ?", *filter.AssetID)
+		query = query.Where("command_alerts.asset_id = ?", *filter.AssetID)
 	}
 	if filter.StartTime != nil {
-		query = query.Where("triggered_at >= ?", *filter.StartTime)
+		query = query.Where("command_alerts.triggered_at >= ?", *filter.StartTime)
 	}
 	if filter.EndTime != nil {
-		query = query.Where("triggered_at <= ?", *filter.EndTime)
+		query = query.Where("command_alerts.triggered_at <= ?", *filter.EndTime)
 	}
 	if filter.Unreviewed {
-		query = query.Where("reviewed_at IS NULL")
+		query = query.Where("command_alerts.reviewed_at IS NULL")
 	}
 
 	var total int64
@@ -132,7 +132,7 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 		Joins("LEFT JOIN assets ON assets.id = command_alerts.asset_id").
 		// LEFT 而非 INNER：會話列被清除的舊告警仍要列得出來，只是少一個位址
 		Joins("LEFT JOIN sessions ON sessions.id = command_alerts.session_id").
-		Order("triggered_at DESC, id DESC").
+		Order("command_alerts.triggered_at DESC, command_alerts.id DESC").
 		Limit(pageSize).
 		Offset((page - 1) * pageSize).
 		Find(&alerts).Error; err != nil {

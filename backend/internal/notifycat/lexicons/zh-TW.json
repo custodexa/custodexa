@@ -31,6 +31,7 @@
     "offsite_upload_stalled": "離機儲存上傳反覆中斷（同一物件的傳輸租約已多次逾期）",
     "offsite_integrity_mismatch": "離機副本取回時內容與上傳當下不符（已拒絕交付）",
     "role_state_mismatch": "角色指派與檢查點鏈不符（有變更未經應用程式留痕）",
+    "principal_state_mismatch": "主體或憑證狀態與檢查點鏈不符（有變更未經应用程式留痕）",
     "dek_unwrap_failed": "資料金鑰重新取得連續失敗（金鑰保管處連不上或拒絕，需要金鑰的操作會失敗）"
   },
   "severity": {
@@ -39,7 +40,8 @@
     "low": "低風險"
   },
   "alert_state": {
-    "blocked": "已阻斷"
+    "blocked": "已阻斷",
+    "possible_sensitive_output": "輸出可能含敏感資料"
   },
   "degraded": {
     "title": "通知降級投遞",

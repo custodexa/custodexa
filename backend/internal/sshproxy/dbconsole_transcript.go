@@ -30,8 +30,9 @@ type consoleTranscriptSink interface {
 // **不含任何結果資料列**：體積無上界，且含敏感資料而本產品沒有遮罩。
 // 轉錄是自結構化語句紀錄派生的閱讀面，以事件識別逐行對應；兩者衝突時以紀錄為準
 type consoleTranscript struct {
-	mu    sync.Mutex
-	sinks []consoleTranscriptSink
+	mu        sync.Mutex
+	sinks     []consoleTranscriptSink
+	sensitive *sensitiveTap
 }
 
 func newConsoleTranscript(sinks ...consoleTranscriptSink) *consoleTranscript {
@@ -89,6 +90,9 @@ func (t *consoleTranscript) Partial(eventID string, rows int64, affected int64, 
 
 // Error 目標端回錯
 func (t *consoleTranscript) Error(eventID, code, message string) {
+	if t != nil && t.sensitive != nil {
+		t.sensitive.WriteOutput([]byte(message + "\n"))
+	}
 	t.writeLine(fmt.Sprintf("-- %s error %s: %s", eventID, code,
 		truncateRunes(message, consoleTranscriptMaxMessage)))
 }

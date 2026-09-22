@@ -175,3 +175,17 @@ func (m *ConnectTokenManager) RedeemConnectTokenWithReason(_ context.Context, to
 	}
 	return grant, RedeemDenyNone
 }
+
+// InvalidateByAgentToken removes only capabilities issued by the triggering token.
+func (m *ConnectTokenManager) InvalidateByAgentToken(tokenID uint) {
+	if tokenID == 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key, grant := range m.grants {
+		if grant.AgentTokenID == tokenID {
+			delete(m.grants, key)
+		}
+	}
+}

@@ -41,11 +41,19 @@ const (
 // （(requester_id, asset_id) WHERE status='pending' AND deleted_at IS NULL，
 // 於 20260718 migration 以原生 SQL 建立——GORM tag 表達不了 status 條件）
 type AccessRequest struct {
+	ExecutorInfo *AccessRequestExecutor `gorm:"-" json:"executor,omitempty"`
+
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
+	ExecutorUserID *uint               `json:"executor_user_id,omitempty"`
+	ClosedAt       *time.Time          `json:"closed_at,omitempty"`
+	Executor       *User               `gorm:"foreignKey:ExecutorUserID" json:"-"`
+	Items          []AccessRequestItem `gorm:"foreignKey:RequestID" json:"items,omitempty"`
+
+	// AssetID 與 Accounts 保留為第一項鏡像，供既有讀取面相容。
 	RequesterID uint   `gorm:"not null;index:idx_access_request_requester" json:"requester_id"`
 	AssetID     uint   `gorm:"not null;index:idx_access_request_asset" json:"asset_id"`
 	Reason      string `gorm:"type:varchar(1000);not null" json:"reason"`
@@ -149,4 +157,18 @@ func (r *AccessRequest) BeforeCreate(tx *gorm.DB) error {
 // IsTerminal 是否為終態（approved/rejected/cancelled/expired）
 func (r *AccessRequest) IsTerminal() bool {
 	return r.Status != AccessRequestPending
+}
+
+// AccessRequestExecutor is a read-only, minimal projection, not a full User.
+type AccessRequestExecutor struct {
+	ID            uint   `json:"id"`
+	Username      string `json:"username"`
+	Kind          string `json:"kind"`
+	OwnerUserID   *uint  `json:"owner_user_id"`
+	OwnerUsername string `json:"owner_username"`
+}
+type AccessRequestDecisionBounds struct {
+	MaxDuration   int          `json:"max_duration"`
+	EarliestStart time.Time    `json:"earliest_start"`
+	Accounts      AccountScope `json:"accounts"`
 }

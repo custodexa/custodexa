@@ -623,3 +623,22 @@ describe('MainLayout 政策組與合規對照的選單入口', () => {
     expect(text).not.toContain('政策組')
   })
 })
+
+it('我的 agent 導覽位於一般使用者我的申請同層', async () => {
+  localStorage.clear(); resetSessionForTests(); vi.clearAllMocks()
+  getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+  setUser(['user'])
+  const w = mountLayout(); await flushPromises()
+  const menus = w.findAllComponents({ name: 'ElMenuItem' })
+  const paths = menus.map(m => m.props('index'))
+  expect(paths[paths.indexOf('/my-requests') + 1]).toBe('/my-agents')
+  expect(menus.find(m => m.props('index') === '/my-agents').text()).toContain('我的 agent')
+})
+
+it('任務入口沿 audit:view 角色，普通人不見', async () => {
+  for (const roles of [['user'], ['auditor']]) {
+    setUser(roles); const w = mountLayout(); await flushPromises()
+    const entries = w.findAllComponents({ name: 'ElMenuItem' }).map(item => item.props('index'))
+    expect(entries.includes('/audit/agent-tasks')).toBe(roles.includes('auditor')); w.unmount()
+  }
+})

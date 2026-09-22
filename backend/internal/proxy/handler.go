@@ -345,6 +345,10 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		AccountID:       creds.AccountID,
 		AccountUsername: creds.Username,
 	}
+	if grant.AccessRequestID != 0 {
+		id := grant.AccessRequestID
+		sess.AccessRequestID = &id
+	}
 	// 只有實際會產生錄影的協議才釘原點；未錄製時留 NULL，前端據此不作定位宣稱
 	if recordingName != "" {
 		sess.RecordingStartedAt = &recordingStartedAt

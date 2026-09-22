@@ -98,16 +98,18 @@ var freeTextKeys = map[string]bool{
 // 清單**不得**用來塞「懶得判斷」的端點：`TestNoStaleAccountabilityVoidEntries`
 // 會擋下已經不再空白的登記，逼它下架。
 var knownAccountabilityVoids = map[string]string{
+	"POST /api/v1/access-requests/:id/reports | api.(*AccessRequestHandler).SubmitReport":  "報告正文可能含敏感內容，HTTP 本文保持遮罩；報告版本、任務、body_hash 由 AP-101 同交易專屬列課責，正文依任務報告讀取權限提供",
+	"DELETE /api/v1/users/:id/agent-tokens/:tokenId | api.(*UserHandler).RevokeAgentToken": "note 為自由文字，可能含秘密，維持遮蔽；撤銷對象及結果由 agent_token revoke／agent_token_revoked 與 agent_sessions_terminated 專屬列課責",
 	// ── 本文全為機密 ──────────────────────────────────────────────
 	"POST /api/v1/auth/change-password | api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
 	// Logout／Refresh 不再綁定任何 request body
 	//（憑證改由 httpOnly cookie 攜帶），故已無綁定點可登記——留著即成化石，
 	// 由 TestNoStaleAccountabilityVoidEntries 擋下
-	"POST /api/v1/auth/mfa/disable | api.(*AuthHandler).MFADisable":       "password 為密碼本體",
-	"POST /api/v1/auth/mfa/enable | api.(*AuthHandler).MFAEnable":        "code 為 TOTP 一次性碼",
+	"POST /api/v1/auth/mfa/disable | api.(*AuthHandler).MFADisable":              "password 為密碼本體",
+	"POST /api/v1/auth/mfa/enable | api.(*AuthHandler).MFAEnable":                "code 為 TOTP 一次性碼",
 	"POST /api/v1/auth/mfa/enroll/confirm | api.(*AuthHandler).MFAEnrollConfirm": "code 為 TOTP 一次性碼",
-	"POST /api/v1/auth/mfa/verify | api.(*AuthHandler).MFAVerify":        "code 為一次性碼、pending_token 為持有型憑證",
-	"PUT /api/v1/users/:id/password | api.(*UserHandler).ChangePassword":   "password 為密碼本體；改密事實由路徑與 resource_id 課責",
+	"POST /api/v1/auth/mfa/verify | api.(*AuthHandler).MFAVerify":                "code 為一次性碼、pending_token 為持有型憑證",
+	"PUT /api/v1/users/:id/password | api.(*UserHandler).ChangePassword":         "password 為密碼本體；改密事實由路徑與 resource_id 課責",
 	"PUT /api/v1/assets/:id/accounts/:accountId/credential | api.(*CredentialHandler).RebindAccount": "credential_id 命中 G3 機密語義片段（credential）故不放行，" +
 		"且 G3 的過度攔截是刻意的安全側，不為個案開名稱例外；" +
 		"「哪一台的哪一個掛載改用了哪一筆憑證」由憑證服務自寫的專屬審計列課責" +
@@ -158,14 +160,12 @@ var knownAccountabilityVoids = map[string]string{
 		"同意的對象由 asset_id 課責，同意內容由 TransmissionConsent.Record 寫入的立據紀錄承載",
 
 	// ── 本文不含課責內容 ──────────────────────────────────────────
-	"POST /api/v1/access-requests/:id/reject | api.(*AccessRequestHandler).Reject":    "note 為自由文字；拒絕事實與對象由路徑、resource_id 與 action=reject 課責",
-	"POST /api/v1/access-requests/:id/revoke | api.(*AccessRequestHandler).Revoke":    "note 為自由文字；撤銷事實與對象由路徑、resource_id 與 action=revoke 課責",
-	"POST /api/v1/access-reviews | api.(*AccessReviewHandler).Create":     "note 為自由文字；覆核事實由 access_reviews 表承載",
-	"POST /api/v1/daily-reviews | api.(*DailyReviewHandler).Sign":        "note 為自由文字；簽核事實由 daily_reviews 表承載",
-	"POST /api/v1/assets/:id/test-connection | api.(*AssetHandler).TestConnection":    "timeout 為連線測試參數，非變更內容；測試對象即 resource_id",
-	"POST /api/v1/assets/tags/rename | api.(*AssetHandler).RenameTag":         "from／to 為標籤字面，屬資產標籤維護而非權限變更",
-	"POST /api/v1/assets/:id/files/mkdir | api.(*SFTPHandler).Mkdir":              "path 為檔案路徑，檔案操作的課責由 file_transfers／檔案稽核體系承擔",
-	"POST /api/v1/sessions/:id/share | sshproxy.(*Handler).HandleCreateShare": "ttl_minutes 為分享時效參數；分享事實與對象由 session 分享紀錄承載",
+	"POST /api/v1/access-reviews | api.(*AccessReviewHandler).Create":              "note 為自由文字；覆核事實由 access_reviews 表承載",
+	"POST /api/v1/daily-reviews | api.(*DailyReviewHandler).Sign":                  "note 為自由文字；簽核事實由 daily_reviews 表承載",
+	"POST /api/v1/assets/:id/test-connection | api.(*AssetHandler).TestConnection": "timeout 為連線測試參數，非變更內容；測試對象即 resource_id",
+	"POST /api/v1/assets/tags/rename | api.(*AssetHandler).RenameTag":              "from／to 為標籤字面，屬資產標籤維護而非權限變更",
+	"POST /api/v1/assets/:id/files/mkdir | api.(*SFTPHandler).Mkdir":               "path 為檔案路徑，檔案操作的課責由 file_transfers／檔案稽核體系承擔",
+	"POST /api/v1/sessions/:id/share | sshproxy.(*Handler).HandleCreateShare":      "ttl_minutes 為分享時效參數；分享事實與對象由 session 分享紀錄承載",
 }
 
 // TestAuditAllowlistHasNoDeadKeys G1：放行清單不得有沒人綁定的死鍵。

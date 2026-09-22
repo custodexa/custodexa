@@ -100,7 +100,8 @@ const (
 	//
 	// 解除判準＝下一次對帳回報相符（合法移除該指派、或補上其應有的變更），
 	// 由對帳器在三個比對時機任一處呼叫 Resolve
-	MechanismRoleStateIntegrity = "role_state_integrity"
+	MechanismRoleStateIntegrity      = "role_state_integrity"
+	MechanismPrincipalStateIntegrity = "principal_state_integrity"
 	// MechanismDEKUnwrap 資料金鑰的重新解封失敗：
 	// 設有快取存活期時，到期後的加解密要向 KEK 保管處重新解封，保管處不可達或
 	// 拒絕即失敗。**獨立機制碼，不併入 kek_retirement**：那一支說的是退役收尾
@@ -210,7 +211,8 @@ const (
 	// 加上其後的 `user_role` 審計列推不出現行狀態。**唯一可能的來源是繞過
 	// 應用程式的資料庫寫入**——五條合法路徑全部同交易留痕，審計寫不進去角色
 	// 就掛不上。cause_params 帶起算的檢查點序號與差集的識別（不出站）
-	CauseRoleStateMismatch = "role_state_mismatch"
+	CauseRoleStateMismatch      = "role_state_mismatch"
+	CausePrincipalStateMismatch = "principal_state_mismatch"
 	// CauseDEKUnwrapFailed 資料金鑰重新解封連續失敗：KEK 保管處不可達、逾時
 	// 或拒絕。**不回退到任何舊材料**——需要金鑰的操作明確失敗
 	CauseDEKUnwrapFailed = "dek_unwrap_failed"

@@ -74,6 +74,7 @@ func (s *OIDCProviderService) SetRecordingTokenRevoker(r ProviderRecordingTokenR
 
 // providerRevocationPlan 鎖內判定的結果，交由鎖外執行實際收線
 type providerRevocationPlan struct {
+	AgentOwnerIDs []uint
 	// SessionIDs 已於鎖內標記為終止、待鎖外關閉 WS 的會話
 	SessionIDs []uint
 	// RefreshRevoked 已撤銷的 refresh 憑證數（僅供日誌與審計）
@@ -104,6 +105,13 @@ func (s *OIDCProviderService) invalidateProviderLocked(tx *gorm.DB, providerID u
 	}
 
 	plan := &providerRevocationPlan{}
+	if s.agentTokens != nil {
+		owners, err := s.agentTokens.suspendProviderOwnersInTx(tx, providerID)
+		if err != nil {
+			return nil, err
+		}
+		plan.AgentOwnerIDs = owners
+	}
 
 	// 2. 撤銷該 provider 簽出的全部 refresh 憑證
 	n, err := revokeRefreshTokensByProvider(tx, providerID)
@@ -134,6 +142,13 @@ func (s *OIDCProviderService) invalidateProviderLocked(tx *gorm.DB, providerID u
 // SessionService.IsTerminated 的兌換點複查）。
 func (s *OIDCProviderService) revokeProviderAccess(providerID uint,
 	plan *providerRevocationPlan, reason string) {
+	if plan != nil && s.agentTokens != nil {
+		for _, ownerID := range plan.AgentOwnerIDs {
+			if err := s.agentTokens.invalidateUserAccess(ownerID, reason); err != nil {
+				log.Printf("[AgentToken] provider owner invalidation failed owner_id=%d: %v", ownerID, err)
+			}
+		}
+	}
 
 	if plan != nil && s.sessions != nil && len(plan.SessionIDs) > 0 {
 		s.sessions.CloseTerminated(plan.SessionIDs)

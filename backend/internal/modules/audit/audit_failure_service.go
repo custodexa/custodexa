@@ -383,7 +383,7 @@ func (s *AuditFailureService) ReconcileOnStartup() {
 	defer s.mu.Unlock()
 
 	res := s.db.Model(&model.AuditFailureEvent{}).
-		Where("ended_at IS NULL AND mechanism <> ?", model.MechanismKEKRetirement).
+		Where("ended_at IS NULL AND mechanism NOT IN ?", []string{model.MechanismKEKRetirement, model.MechanismPrincipalStateIntegrity}).
 		Updates(map[string]any{
 			"ended_at": time.Now(),
 			"details":  "進程重啟時回填；實際恢復時間不精確（重啟前的失效狀態不跨進程保存）",

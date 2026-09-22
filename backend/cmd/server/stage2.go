@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/custodexa/backend/internal/agentmcp"
 	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/audit/port"
@@ -141,7 +142,7 @@ type appGraph struct {
 	cfg          *config.Config
 	auditService *audit.AuditLogService
 	keyManager   *keyvault.KeyManagerService
-	credentials   *credentialOwner
+	credentials  *credentialOwner
 
 	// unsealedAt 本世代的解封時點（清冊 seal_state 的伴隨欄位）。
 	unsealedAt time.Time
@@ -465,6 +466,13 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 
 	// 初始化 Session 服務（注入 Registry）
 	sessionService := session.NewSessionService(registry)
+	sessionService.SetAuditSink(auditTxSink)
+	sessionService.SetAgentActorSource(func(tx *gorm.DB, sess *model.Session) error {
+		if err := identity.BindAgentSessionPrincipal(tx, sess); err != nil {
+			return err
+		}
+		return authz.BindAgentSessionTask(tx, sess)
+	})
 	assetService.SetSessionTerminator(sessionService) // 資產停用即收線
 	mark("sessionService")
 
@@ -590,6 +598,10 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	userService := identity.NewUserService(database.DB, authorizationService)
 	userService.SetSecurityPolicies(policyService)
 	userService.SetSessionTerminator(sessionService)
+	agentTokens := identity.NewAgentTokenService(database.DB, auditTxSink)
+	agentTokens.SetSessionTerminator(sessionService)
+	userService.SetAgentTokenService(agentTokens)
+	authService.SetAgentTokenService(agentTokens)
 	// 外部身分管理四操作的審計出口
 	userService.SetAuditSink(auditService)
 	mark("userService")
@@ -723,6 +735,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	connHandler.SourceIPBaseline = sourceIPBaseline
 	// 兩路徑共用同一 token manager（簽發端點掛在 sshHandler）
 	connHandler.ConnectTokens = sshHandler.ConnectTokens
+	wireAgentProbeBreaker(database.DB, auditTxSink, alertSink, authorizationService, agentTokens, sshHandler.ConnectTokens, agentProbeLimits(policyService), audit.NotifyAgentOwner)
 	// host-key-verification: TOFU host key 服務（SSH 與 SFTP 共用）
 	hostKeyService := asset.NewHostKeyService(database.DB)
 	sshHandler.HostKeys = hostKeyService
@@ -739,6 +752,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 世代閘只能拒絕「下一次出示憑證」的請求，長連線建立後不再出示憑證。
 	// 錄影 token 的 provider 級撤銷於 recordingHandler 建立後接（見下方 stage）
 	oidcProviderService.SetSessionTerminator(sessionService)
+	oidcProviderService.SetAgentTokenService(agentTokens)
 	oidcProviderService.SetSubscriptionTerminator(sshHandler.Monitor)
 	mark("sshHandler")
 	mark("hostKeyService")
@@ -829,6 +843,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		database.DB, policyService, accessPolicyService, auditService, alertNotifier)
 	// 撤銷即斷線政策開啟時收線（沿 Terminate CAS）
 	accessRequestService.SetSessionService(sessionService)
+	accessRequestService.SetAccountPresenceSource(asset.RequestAccountPresent)
 	accessRequestScheduler := scheduler.NewAccessRequestTimeoutScheduler(accessRequestService)
 	if err := seal.CheckCancelStep(ctx, "accessRequestScheduler.Start"); err != nil {
 		return fail("accessRequestScheduler.Start", err)
@@ -852,6 +867,8 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// audit 只拿「現有 (user_id, role_id)」。**必須早於封章與對帳的任何一次執行**——
 	// 未注入時 SnapshotUserRoles 以錯誤停下（fail-close），不會拿空集合封進鏈裡
 	audit.SetUserRolesSource(identity.SnapshotUserRolePairs)
+	audit.SetPrincipalSource(identity.SnapshotPrincipalStates)
+	audit.SetAgentTokenSource(identity.SnapshotAgentTokenStates)
 	checkpointPurger := audit.NewCheckpointPurger(database.DB, checkpointSigning)
 	checkpointService := audit.NewCheckpointService(database.DB, checkpointSigning, syslogForwarder,
 		func(mechanism, causeCode string, params map[string]string, recovered bool) {
@@ -875,6 +892,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	checkpointService.SetRoleStateReconciler(roleStateReconciler)
 	checkpointVerifier.SetRoleStateReconciler(roleStateReconciler)
 	authService.SetRoleStateProbe(roleStateReconciler)
+	agentTokens.SetIntegrityProbe(roleStateReconciler)
 
 	// 檢查點鏈兩層自動驗證的編排者。
 	//
@@ -910,10 +928,11 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	changeSecretBatchService := asset.NewChangeSecretBatchService(database.DB, rotationReportBuilder)
 
 	deps, err := buildRouteDeps(cfg, routeServices{
-		credentials:           credentials,
-		kmsProvider:           s1.kekDecision.KMS.Provider,
+		credentials:          credentials,
+		kmsProvider:          s1.kekDecision.KMS.Provider,
 		metrics:              s1.metrics,
 		checkpointVerifier:   checkpointVerifier,
+		agentTokenService:    agentTokens,
 		chainVerifyStatus:    chainVerifyService,
 		checkpointSigning:    checkpointSigning,
 		authService:          authService,
@@ -1498,6 +1517,7 @@ type routeServices struct {
 	hostKeyService        *asset.HostKeyService
 	syslogForwarder       *audit.SyslogForwarder
 	auditIntegrity        *audit.AuditIntegrityService
+	agentTokenService     *identity.AgentTokenService
 	checkpointVerifier    *audit.CheckpointVerifier // 檢查點驗證服務
 	// chainVerifyStatus 兩層自動驗證的營運狀態來源（與排程器同一實例）
 	chainVerifyStatus       *audit.ChainVerifyService
@@ -1667,6 +1687,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	userGroupHandler := api.NewUserGroupHandler(identity.NewUserGroupService(database.DB, s.auditTxSink, s.authorizationService))
 
 	userHandler := api.NewUserHandler(s.userService)
+	userHandler.SetAgentTokenService(s.agentTokenService)
 	userHandler.SetAuditService(s.auditService)
 	userHandler.SetSourcePolicyReader(s.authService)
 
@@ -1721,6 +1742,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	accessRequestHandler := api.NewAccessRequestHandler(
 		s.accessRequestService, authz.NewApproverScopeService(database.DB), database.DB)
+	accessRequestHandler.SetAgentTaskReports(audit.NewAgentTaskReports(database.DB, audit.NewTxSink(), authz.ReadAgentTaskForReport, identity.ReadAgentAuditPrincipal, audit.NotifyAgentOwner))
 
 	// 資產列表連線入口三態標註（伺服端單一事實源）
 	// 三態標註歸 authz：改由 AccessRequestService 承載
@@ -1789,6 +1811,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 		conn: s.connHandler,
 		ssh:  s.sshHandler,
+		mcp:  agentmcp.NewHandler(s.sshHandler, s.accessRequestService),
 	}, nil
 }
 

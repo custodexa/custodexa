@@ -95,9 +95,9 @@ const (
 	// 單位與 env `RETENTION_MAX_PER_RUN` 1:1（筆），SeedFromEnv 直接搬值不換算。
 	// **調小才危險**：設成 1 使清理永遠追不上新增量，保留政策實質失效而畫面上
 	// 仍顯示每日在跑，故本鍵設 Min（見 policyDefs 的下界理由）
-	PolicyRetentionMaxPerRun = "retention_max_per_run"
-	PolicyDailyReviewEnabled = "daily_review_enabled"
-	PolicyFailureAlertEnabled     = "failure_alert_enabled"
+	PolicyRetentionMaxPerRun  = "retention_max_per_run"
+	PolicyDailyReviewEnabled  = "daily_review_enabled"
+	PolicyFailureAlertEnabled = "failure_alert_enabled"
 	// 錄影 fail-close：簽發點前置錄影可寫性
 	// 檢查失敗時拒發非 admin 連線 token
 	PolicyRecordingFailCloseEnabled = "recording_failclose_enabled"
@@ -133,6 +133,12 @@ const (
 	// 存取政策鍵（PCI Req 7.2 最小權限的時間維度）：
 	// 全域預設段位＋申請時長上限＋pending 超時時限
 	PolicyAccessPolicyDefault              = "access_policy_default"
+	PolicyAgentSelfCreateEnabled           = "agent_self_create_enabled"
+	PolicyAgentSelfCreateMaxPerOwner       = "agent_self_create_max_per_owner"
+	PolicyAgentProbeTripCount              = "agent_probe_trip_count"
+	PolicyAgentProbeWindowSeconds          = "agent_probe_window_seconds"
+	PolicyAgentRequestRatePerHour          = "agent_request_rate_per_hour"
+	PolicyAgentRequestPendingMax           = "agent_request_pending_max"
 	PolicyAccessRequestMaxDurationMinutes  = "access_request_max_duration_minutes"
 	PolicyAccessRequestPendingTimeoutHours = "access_request_pending_timeout_hours"
 	// 最少核准人數：內控強化選項（雙人覆核慣例），
@@ -733,6 +739,12 @@ var policyDefs = []PolicyDef{
 		EnumOrder: []string{model.AccessPolicyOpen, model.AccessPolicyReason, model.AccessPolicyApproval},
 		Label:     "全域預設存取政策段位",
 	},
+	{Key: PolicyAgentSelfCreateEnabled, Type: PolicyTypeBool, Default: "false", Label: "允許自助建立自動化帳號"},
+	{Key: PolicyAgentSelfCreateMaxPerOwner, Type: PolicyTypeInt, Default: "3", Max: 100, Label: "每人自助建立自動化帳號上限"},
+	{Key: PolicyAgentProbeTripCount, Type: PolicyTypeInt, Default: "3", Max: 1000, Label: "自動化帳號探測阻斷次數"},
+	{Key: PolicyAgentProbeWindowSeconds, Type: PolicyTypeInt, Default: "300", Max: 86400, Label: "自動化帳號探測計數期間（秒）"},
+	{Key: PolicyAgentRequestRatePerHour, Type: PolicyTypeInt, Default: "30", Max: 10000, Label: "自動化帳號每小時申請上限"},
+	{Key: PolicyAgentRequestPendingMax, Type: PolicyTypeInt, Default: "5", Max: 1000, Label: "自動化帳號待審申請上限"},
 	{
 		// 申請時長上限（防申請超長時窗繞道成永久授權）：max 型＝值須 ≤ 建議 1440（1 天）
 		Key: PolicyAccessRequestMaxDurationMinutes, Type: PolicyTypeInt, Default: "1440",
@@ -1080,7 +1092,7 @@ type PolicyChange struct {
 //
 // **不套用跨鍵約束**（audit-checkpoint-chain 7.3）。理由是**故障方向**，
 // 與升級相容無關（檢查點鍵出廠 0，原註解所述的
-//「出廠 3650 使 `RECORDING_RETENTION_DAYS=0` 違規」前提已不存在）：
+// 「出廠 3650 使 `RECORDING_RETENTION_DAYS=0` 違規」前提已不存在）：
 // 播種被擋時該鍵無列而退回出廠值，`RECORDING_RETENTION_DAYS=3650` 的部署
 // 會靜默退回 90 天並**開始刪本應保留更久的錄影**——擋種子的失敗方向是刪資料。
 // 放行則只產生一個違規狀態且不損失證據：retention 執行期偵測到違規即跳過
@@ -1097,7 +1109,7 @@ func (s *SecurityPolicyService) SeedFromEnv(key, envVar string) {
 }
 
 // SeedValue 以呼叫端算出的值播種政策列，規則與 SeedFromEnv 完全相同
-//（僅在該鍵尚無列時寫入、過 validate、updatedBy 記 env-init、不套跨鍵約束、
+// （僅在該鍵尚無列時寫入、過 validate、updatedBy 記 env-init、不套跨鍵約束、
 // 非法值記警告不擋啟動）。
 //
 // **為何需要它**：SeedFromEnv 只受理「env 原值直接搬」，而部分鍵的種子是

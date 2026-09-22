@@ -239,11 +239,16 @@ func timePtrToUnixMicro(t *time.Time) *int64 {
 // 取 *model.AuditCheckpoint 而非個別參數：封章與驗證兩側必須吃同一個
 // 建構函式，否則「封章時多帶一欄、驗證時少帶一欄」的漂移不會被任何測試看見
 func CheckpointSignBytes(cp *model.AuditCheckpoint) ([]byte, error) {
+	if cp.AggScheme != model.AggSchemeV3 && (cp.ToolCallIDFrom != nil || cp.ToolCallIDTo != nil || cp.ToolCallRowCount != nil || cp.ToolCallAggHash != nil) {
+		return nil, fmt.Errorf("%w: legacy scheme with v3 tool call fields (version downgrade)", ErrCheckpointPayloadInvalid)
+	}
 	switch cp.AggScheme {
 	case model.AggSchemeV1:
 		return checkpointSignBytesV1(cp)
 	case model.AggSchemeV2:
 		return checkpointSignBytesV2(cp)
+	case model.AggSchemeV3:
+		return checkpointSignBytesV3(cp)
 	default:
 		// 未知版本不猜：拿 v1 的形狀去驗一個未知版本的檢查點，
 		// 結果會是「簽章驗不過」而掩蓋掉真正的原因（版本無法辨識）

@@ -64,6 +64,15 @@ func (s *AssetAuthorizationService) resolveAccountScope(
 		}
 	}
 
+	if requiredPerm == model.PermissionConnect {
+		sources, err := s.repo.ResolveConnectSources(userID, assetID, now)
+		if err != nil {
+			return EffectiveAccountScope{}, err
+		}
+		if !sources.Standing && sources.Ticket {
+			return s.latestTicketScope(userID, assetID, now)
+		}
+	}
 	scopes, err := s.repo.AccountScopesFor(userID, assetID, GetPermissionHierarchy(requiredPerm), now)
 	if err != nil {
 		return EffectiveAccountScope{}, err

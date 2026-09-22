@@ -53,10 +53,11 @@ func (s *SessionService) MarkTerminatedByProvider(tx *gorm.DB, providerID uint,
 		res := tx.Model(&model.Session{}).
 			Where("id = ? AND status = ?", sess.ID, model.SessionStatusActive).
 			Updates(map[string]interface{}{
-				"status":     model.SessionStatusDisconnected,
-				"end_time":   now,
-				"duration":   duration,
-				"end_reason": reason,
+				"status":                    model.SessionStatusDisconnected,
+				"end_time":                  now,
+				"duration":                  duration,
+				"end_reason":                reason,
+				"revoked_during_session_at": now,
 			})
 		if res.Error != nil {
 			// 標記失敗 SHALL 中止整個失效流程：這是鎖內的 DB 判定，
@@ -64,6 +65,9 @@ func (s *SessionService) MarkTerminatedByProvider(tx *gorm.DB, providerID uint,
 			return nil, fmt.Errorf("標記 provider 會話終止失敗 (sessionID=%d): %w", sess.ID, res.Error)
 		}
 		if res.RowsAffected > 0 {
+			if err := s.recordRevoked(tx, &sess, reason, now); err != nil {
+				return nil, err
+			}
 			marked = append(marked, sess.ID)
 		}
 	}
@@ -127,7 +131,7 @@ func (s *SessionService) CreateWithGenerationGuard(authCtx crypto.AuthContext,
 		func(tx *gorm.DB) error {
 			// 前提與世代於鎖內重讀（現查 DB，不得沿用鎖外預讀的值）
 			var user model.User
-			if err := tx.Select("id", "credential_epoch", "active").
+			if err := tx.Select("id", "credential_epoch", "active", "kind").
 				First(&user, session.UserID).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return identity.ErrUserNotFound
@@ -137,8 +141,20 @@ func (s *SessionService) CreateWithGenerationGuard(authCtx crypto.AuthContext,
 			if !user.Active {
 				return identity.ErrCredentialGenerationStale
 			}
-			if err := identity.VerifyCredentialGenerationTx(tx, authCtx, &user); err != nil {
-				return err
+			if user.Kind == model.KindAgent {
+				if session.AccessRequestID == nil || *session.AccessRequestID == 0 || session.AgentTokenID == nil || *session.AgentTokenID == 0 || s.agentActorSource == nil {
+					return fmt.Errorf("agent session requires task, token and actor source")
+				}
+				if err := s.agentActorSource(tx, session); err != nil {
+					return err
+				}
+			} else {
+				if session.AgentTokenID != nil || session.ActorKind != nil {
+					return fmt.Errorf("human session cannot claim agent provenance")
+				}
+				if err := identity.VerifyCredentialGenerationTx(tx, authCtx, &user); err != nil {
+					return err
+				}
 			}
 			identity.FirePreWriteHook(identity.OIDCSiteSessionCreate)
 			return s.createInTx(tx, session)

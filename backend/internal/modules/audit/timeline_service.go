@@ -188,6 +188,9 @@ const (
 // **空白區間不得無標記**：沒有這份 coverage，一段空白會被稽核員讀成
 // 「紀錄被刪」，工作台自己製造竄改誤報
 type TimelineCoverage struct {
+	// Incomplete is independent of retention. Omitted when no retained degradation exists.
+	Incomplete      bool              `json:"incomplete,omitempty"`
+	DegradedCount   int64             `json:"degraded_count,omitempty"`
 	Type            TimelineEventType `json:"type"`
 	State           string            `json:"state"`
 	PurgedThroughAt *time.Time        `json:"purged_through_at,omitempty"`
@@ -207,12 +210,12 @@ type CheckpointSeqRange struct {
 
 // TimelineResult 端點回應
 type TimelineResult struct {
-	Events     []TimelineEvent               `json:"events"`
-	Spans      []TimelineSpan                `json:"spans"`
-	Coverage   []TimelineCoverage            `json:"coverage"`
-	Counts     map[TimelineEventType]int64   `json:"counts"`
-	NextCursor string                        `json:"next_cursor,omitempty"`
-	Truncated  bool                          `json:"truncated"`
+	Events     []TimelineEvent             `json:"events"`
+	Spans      []TimelineSpan              `json:"spans"`
+	Coverage   []TimelineCoverage          `json:"coverage"`
+	Counts     map[TimelineEventType]int64 `json:"counts"`
+	NextCursor string                      `json:"next_cursor,omitempty"`
+	Truncated  bool                        `json:"truncated"`
 }
 
 const (
@@ -601,11 +604,11 @@ func (s *TimelineService) commandScope(q TimelineQuery) *gorm.DB {
 
 // joinedSourceRow 經 LEFT JOIN sessions 的來源列（指令／告警共用形狀）
 type joinedSourceRow struct {
-	ID        uint
-	SessionID uint
-	UserID    uint
-	AssetID   *uint
-	Command   string
+	ID         uint
+	SessionID  uint
+	UserID     uint
+	AssetID    *uint
+	Command    string
 	ExecutedAt time.Time
 	// 告警專屬
 	RuleName    string
@@ -914,6 +917,12 @@ func (s *TimelineService) buildCoverage(q TimelineQuery) ([]TimelineCoverage, er
 	out := make([]TimelineCoverage, 0, len(q.Types))
 	for _, t := range q.Types {
 		cov := TimelineCoverage{Type: t, State: CoveragePresent}
+		if t == TimelineTypeCommand {
+			if err := s.commandScope(q).Where("sc.degraded = ? AND sc.degrade_reason = ?", true, model.DegradeInputNoCommand).Count(&cov.DegradedCount).Error; err != nil {
+				return nil, err
+			}
+			cov.Incomplete = cov.DegradedCount > 0
+		}
 		class, retained := coverageClass(t)
 		if !retained {
 			cov.State = CoverageNotRetained

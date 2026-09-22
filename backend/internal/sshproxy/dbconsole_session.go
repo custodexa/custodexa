@@ -65,18 +65,19 @@ type consoleSession struct {
 	// grant 兌換的票所帶的主體與客體。重跑閘序需要它，
 	// 且它**不帶角色**（角色一律現查）
 	grant proxy.ConnectGrant
-	ws    *websocket.Conn
-	sess     *model.Session
+	ws    Transport
+	sess  *model.Session
 	// dialectMu 守著 dialect 本身的替換：PostgreSQL 的切庫是換一條連線，
 	// 而 `cancel` 與匯出可能同時在讀它
 	dialectMu sync.RWMutex
 	dialect   dbconsole.Dialect
 	protocol  dbconsole.Protocol
-	userID   uint
-	assetID  uint
+	userID    uint
+	assetID   uint
 
 	auditCtx   *consoleAuditContext
 	transcript *consoleTranscript
+	sensitive  *sensitiveTap
 	recorder   consoleCommandRecorder
 	matcher    consoleStatementMatcher
 	alerts     gatewayapi.AlertSink
@@ -120,6 +121,7 @@ type consoleSession struct {
 // send 送一則訊息。佇列滿即判定為慢速消費者並收線——
 // 背壓的方向必須是關掉這一條連線，不是讓它拖垮行程
 func (s *consoleSession) send(v any) {
+	s.scanSensitiveResult(v)
 	raw, err := json.Marshal(v)
 	if err != nil {
 		log.Printf("[DBConsole] 訊息序列化失敗: %v", err)
@@ -218,7 +220,9 @@ func (s *consoleSession) sessionID() uint {
 func (s *consoleSession) writePump() {
 	defer s.ws.Close()
 	for raw := range s.out {
-		_ = s.ws.SetWriteDeadline(time.Now().Add(dbconsole.WriteDeadline))
+		if timed, ok := s.ws.(interface{ SetWriteDeadline(time.Time) error }); ok {
+			_ = timed.SetWriteDeadline(time.Now().Add(dbconsole.WriteDeadline))
+		}
 		if err := s.ws.WriteMessage(websocket.TextMessage, raw); err != nil {
 			if isWriteTimeout(err) {
 				log.Printf("[DBConsole] 單則寫入逾期，關閉會話 (SessionID=%d)", s.sessionID())
@@ -422,7 +426,15 @@ func (s *consoleSession) dispatch(msg consoleClientMessage) {
 
 	switch msg.Type {
 	case consoleMsgQuery:
-		s.handleQuery(msg.SQL)
+		if _, inprocess := s.ws.(*InProcessTransport); inprocess && msg.TimeoutSeconds > 0 {
+			timeout := time.Duration(msg.TimeoutSeconds) * time.Second
+			if timeout > dbconsole.StatementTimeout {
+				timeout = dbconsole.StatementTimeout
+			}
+			s.handleQueryTimeout(msg.SQL, timeout)
+		} else {
+			s.handleQuery(msg.SQL)
+		}
 	case consoleMsgCancel:
 		s.handleCancel(msg.EventID)
 	case consoleMsgTree:

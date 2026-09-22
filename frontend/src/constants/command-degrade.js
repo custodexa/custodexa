@@ -98,3 +98,5 @@ export const isDegradedRow = (row) => row?.degraded === true
 
 /** 該列是否為「文字已入庫但受限定」（Qualify*）。降級列不算在內——兩者不同型 */
 export const isQualifiedRow = (row) => row?.degraded !== true && Boolean(row?.degrade_reason)
+
+export const isAgentBreakerAlert = (row) => row?.kind === 'agent_breaker_tripped'

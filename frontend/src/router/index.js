@@ -78,6 +78,29 @@ const routes = [
         component: () => import('../views/MyRequests.vue'),
       },
       {
+        path: 'audit/agent-tasks',
+        name: 'AgentTasks',
+        component: () => import('../views/AgentTasks.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+      },
+      {
+        path: 'audit/agent-tasks/:requestId',
+        name: 'AgentTaskDetail',
+        component: () => import('../views/AgentTaskDetail.vue'),
+        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+      },
+      {
+        path: 'agent-breakers',
+        name: 'AgentBreakers',
+        component: () => import('../views/AgentBreakers.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'my-agents',
+        name: 'MyAgents',
+        component: () => import('../views/MyAgents.vue'),
+      },
+      {
         // 審核中心。**不做 admin 兜底**
         // ——僅具 admin 者對審核端點一律 403，若仍讓他進頁只會看到一個永遠是空的
         //「待審」表格（假空態，比擋住更危險）。`approver` 述詞的實際判定走

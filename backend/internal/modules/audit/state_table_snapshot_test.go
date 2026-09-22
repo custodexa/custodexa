@@ -236,19 +236,19 @@ func TestStateSnapshotColumnCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SnapshotStateTables: %v", err)
 	}
-	want := `{"user_roles":[[1,2],[2,1]]}`
+	want := `{"agent_tokens":[],"user_principals":[],"user_roles":[[1,2],[2,1]]}`
 	if column != want {
 		t.Fatalf("快照欄 = %s, want %s", column, want)
 	}
-	if len(snaps) != 1 || snaps[0].Table != StateTableUserRoles {
-		t.Fatalf("快照數 = %d（%v）, want 只有 user_roles", len(snaps), snaps)
+	if len(snaps) != 3 || snaps[2].Table != StateTableUserRoles {
+		t.Fatalf("快照數 = %d（%v）, want 三項", len(snaps), snaps)
 	}
 	tables, err := DecodeStateSnapshotColumn(column)
 	if err != nil {
 		t.Fatalf("decode column: %v", err)
 	}
-	if got := stateHash([]byte(tables[StateTableUserRoles])); got != snaps[0].Hash {
-		t.Fatalf("由欄位重算的雜湊 %s ≠ 快照雜湊 %s：離線驗證者重建不出同一組位元組", got, snaps[0].Hash)
+	if got := stateHash([]byte(tables[StateTableUserRoles])); got != snaps[2].Hash {
+		t.Fatalf("由欄位重算的雜湊 %s ≠ 快照雜湊 %s：離線驗證者重建不出同一組位元組", got, snaps[2].Hash)
 	}
 	// 長度前綴：不同長度的本體不得因串接而碰撞
 	if stateHash([]byte("[[1,2]]")) == stateHash([]byte("[[1,2]] ")) {

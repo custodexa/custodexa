@@ -14,6 +14,8 @@ import (
 // 加任何一個欄位進來，都等於用另一條路重新開放那些資料，
 // 故此結構的欄位集合由 handler 側的白名單測試釘住
 type TimelineSubjectRef struct {
+	Kind        string `json:"kind,omitempty"`
+	OwnerUserID *uint  `json:"owner_user_id,omitempty"`
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
@@ -166,12 +168,14 @@ func (s *TimelineService) ListSubjects(kind TimelineSubject, q string, limit int
 		ID               uint
 		Username         string
 		FullName         string
+		Kind             string
+		OwnerUserID      *uint
 		LocalDisplayName *string
 		Active           bool
 		DeletedAt        *string
 	}
 	tx := s.db.Unscoped().Model(&model.User{}).
-		Select("id, username, full_name, local_display_name, active, deleted_at")
+		Select("id, username, full_name, local_display_name, active, deleted_at, kind, owner_user_id")
 	if strings.TrimSpace(q) != "" {
 		tx = tx.Where("LOWER(username) LIKE ? OR LOWER(full_name) LIKE ?", like, like)
 	}
@@ -187,7 +191,8 @@ func (s *TimelineService) ListSubjects(kind TimelineSubject, q string, limit int
 			display = r.Username
 		}
 		out = append(out, TimelineSubjectRef{
-			ID:          r.ID,
+			ID:   r.ID,
+			Kind: r.Kind, OwnerUserID: r.OwnerUserID,
 			Name:        r.Username,
 			DisplayName: display,
 			Active:      r.Active,

@@ -37,6 +37,9 @@ func (s *UserService) PinMappedRole(userID uint, roleName string) (*RoleSets, er
 		}
 		return nil, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
+	if err := GuardAgentRoles(&user, []string{roleName}); err != nil {
+		return nil, err
+	}
 	var role model.Role
 	if err := s.db.Where("name = ?", roleName).First(&role).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

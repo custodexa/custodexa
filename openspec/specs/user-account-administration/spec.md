@@ -252,3 +252,177 @@ SHALL NOT 使任何帳號失去全部可用登入途徑。判準為「操作後�
 - **WHEN** 系統唯一的管理者把自己的清單設為不含當前來源，隨後登入與刷新皆被拒
 - **THEN** 依營運文件執行離線資料庫重設可清除該清單；重新登入成功且登入審計列含來源位址；之後線上重設清單的欄位級差異入審計
 
+### Requirement: 主體種類與自動化主體的擁有者
+
+使用者帳號 SHALL 帶主體種類（`human` 或 `agent`），預設 `human`，並 SHALL 於資料庫層以約束限制其值域。種類 SHALL 於建立時決定且 SHALL NOT 可經任何端點變更——兩個方向皆不可（human 不得轉 agent、agent 不得轉 human），否則「這個帳號受哪一套限制」會隨時間漂移而審計無從還原。
+
+`kind=agent` 的帳號 SHALL 必填擁有者，擁有者 SHALL 為 `kind=human` 且啟用中的帳號；缺擁有者或指向不合格帳號的建立請求 SHALL 以可辨識機器碼拒絕。`kind=human` 的帳號 SHALL NOT 帶擁有者。
+
+agent 主體 SHALL NOT 具備任何本地或外部登入能力：SHALL NOT 持有可用密碼、SHALL NOT 可經本地帳密、目錄服務或外部身分提供者登入、SHALL NOT 可註冊或驗證多因素、強制改密旗標 SHALL 恆為否。上述限制 SHALL 於服務層判定，SHALL NOT 僅依賴介面不提供入口。
+
+自動化主體沿用同一使用者表，因此授權記錄、可視範圍與審核範圍 SHALL 以同一主體識別值綁定，SHALL NOT 另立平行主體表。
+
+**自助建立**：系統 SHALL 提供一般使用者自助建立自己名下 agent 主體的端點，且該端點 SHALL NOT 與管理員的使用者管理端點共用路徑。是否開放 SHALL 由安全政策鍵決定（見本 capability 的自助建立政策鍵群），出廠 SHALL 為關閉。政策關閉時該端點 SHALL 回 403 並帶可辨識機器碼，SHALL NOT 建立任何帳號。
+
+自助建立的呼叫者 SHALL 為 `kind=human` 且啟用中的帳號。所建主體的擁有者 SHALL 固定為呼叫者本人，取自其認證身分；請求本體即使帶擁有者欄位亦 SHALL NOT 被採信，SHALL NOT 有任何參數可指定他人為擁有者。自助建立 SHALL 必填主體名稱與用途說明；用途說明 SHALL 隨該次建立的審計列保存。
+
+自助建立的主體 SHALL 受與管理員建立完全相同的限制——不可登入、無可用密碼、角色守衛、不得成為審核者、建立審計與主體完整性登記列同交易——自助路徑 SHALL NOT 提供任何放寬上述限制的參數。
+
+每位擁有者名下現存的 agent 主體數 SHALL 受安全政策鍵上限約束；達上限時自助建立 SHALL 回 403 並帶可辨識機器碼，SHALL NOT 建立帳號。計數 SHALL 以資料庫現查並於建立交易內判定，SHALL NOT 依賴行程記憶體。上限調小 SHALL NOT 追溯影響既有主體：超出上限者維持可用，僅不得再新建。管理員經使用者管理端點建立 agent 主體 SHALL NOT 受本上限約束。
+
+agent 主體 SHALL NOT 得使用自助建立端點——自動化主體不得建立自動化主體。此判定 SHALL 由既有的 agent 路由範圍限縮承擔：該端點 SHALL NOT 列入 agent 允許清單。
+
+自助建立的審計列 SHALL 可與管理員建立區分：其詳情 SHALL 標示來源為自助。系統 SHALL 提供呼叫者列出自己名下 agent 主體的端點，其結果 SHALL 只含該呼叫者擁有的主體。管理員使用者清單的預設行為 SHALL NOT 因自助建立而改變——預設仍只回 `kind=human`。
+
+#### Scenario: 缺擁有者的自動化主體建立被拒
+
+- **WHEN** 建立 `kind=agent` 的帳號但未指定擁有者
+- **THEN** 回 400 並帶可辨識機器碼，無帳號被建立
+
+#### Scenario: 擁有者必須是啟用中的人類帳號
+
+- **WHEN** 建立 `kind=agent` 的帳號，擁有者指向另一個 agent 主體或指向已停用的帳號
+- **THEN** 請求被拒，無帳號被建立
+
+#### Scenario: 自動化主體不可登入
+
+- **WHEN** 以 agent 主體的使用者名稱嘗試本地登入、目錄服務登入或外部身分登入
+- **THEN** 登入被拒，且 SHALL NOT 因此產生可用的會話憑證或待驗證的中繼憑證
+
+#### Scenario: 自動化主體不可持有密碼路徑
+
+- **WHEN** 管理員對 agent 主體呼叫設定密碼或多因素相關操作
+- **THEN** 請求被拒，該主體的強制改密旗標維持為否
+
+#### Scenario: 主體種類不可變更
+
+- **WHEN** 以更新端點嘗試把既有帳號的主體種類改為另一種
+- **THEN** 種類不變；既有人類帳號的種類恆為 `human`
+
+#### Scenario: 政策關閉時自助建立被拒
+
+- **WHEN** 自助建立政策鍵為關閉（出廠值），一般使用者呼叫自助建立端點
+- **THEN** 回 403 並帶可辨識機器碼，無帳號被建立，且回應 SHALL NOT 透露他人任何資料
+
+#### Scenario: 政策開啟時建立成功且擁有者為本人
+
+- **WHEN** 自助建立政策鍵為開啟，啟用中的一般使用者提交名稱與用途說明，並於請求本體帶入指向他人的擁有者欄位
+- **THEN** 主體建立成功，其種類為 `agent`、擁有者為呼叫者本人（請求帶的擁有者欄位不生效）、無可用密碼且不可登入；建立審計列標示來源為自助並含用途說明；主體完整性登記涵蓋該列
+
+#### Scenario: 超過名下上限時被拒
+
+- **WHEN** 呼叫者名下現存 agent 主體數已達上限政策鍵之值，再次自助建立
+- **THEN** 回 403 並帶可辨識機器碼，無帳號被建立；既有主體不受影響
+
+#### Scenario: 自動化主體不得建立自動化主體
+
+- **WHEN** 以 agent 憑證呼叫自助建立端點
+- **THEN** 請求被拒（該端點不在 agent 允許清單內），無帳號被建立
+
+#### Scenario: 自助建立不改變管理員清單預設
+
+- **WHEN** 一般使用者自助建立 agent 主體後，管理員以預設參數讀取使用者清單
+- **THEN** 該 agent 主體不出現於結果；呼叫者以自身的名下清單端點讀取時可見，且該端點只回其本人擁有的主體
+
+### Requirement: 自動化主體的角色守衛
+
+agent 主體 SHALL NOT 被指派 admin、auditor 或 approver 角色，亦 SHALL NOT 被指定為任何審核範圍的審核者。此判定 SHALL 於角色寫入的每一條路徑生效——替換管理者指派集、冪等追加單一角色、釘住映射角色，以及登入時依外部群組映射重算——SHALL NOT 只在其中一條路徑設防。違反 SHALL 以可辨識機器碼拒絕該次指派，SHALL NOT 靜默忽略。
+
+agent 主體的有效角色集 SHALL 恆為無特權角色。既有的角色指派審計、憑證世代推進與完整性鏈語義 SHALL NOT 因本要求改變。
+
+#### Scenario: 指派特權角色被拒
+
+- **WHEN** 管理員把 admin 或 auditor 角色指派給 agent 主體
+- **THEN** 請求被拒並帶可辨識機器碼，該主體的角色集不變
+
+#### Scenario: 冪等追加路徑同樣受守衛
+
+- **WHEN** 管理員經冪等追加端點對 agent 主體追加 approver 角色
+- **THEN** 請求被拒；兩條寫入路徑的判定結果一致
+
+#### Scenario: 一般角色可指派
+
+- **WHEN** 管理員把無特權角色指派給 agent 主體
+- **THEN** 指派成功，並留既有格式的角色指派審計列
+
+#### Scenario: 不得成為審核者
+
+- **WHEN** 管理員把某個審核範圍的審核者設為 agent 主體
+- **THEN** 請求被拒，該審核範圍不變
+
+### Requirement: 自動化主體的未處置事件旗標與發證閘
+
+agent 主體 SHALL 帶「有未處置熔斷事件」的時刻旗標（未設即為無）。旗標非空時，該主體 SHALL NOT 得發放新的 agent token，請求 SHALL 回 409 並帶可辨識機器碼——重發 token SHALL NOT 成為繞過未處置事件的途徑。
+
+旗標 SHALL 掛在主體上而非個別 token 上：撤銷或重建 token SHALL NOT 清除旗標。清除 SHALL 為顯式的處置動作，SHALL NOT 隨時間自動失效。本要求只定義旗標語義與發證閘；寫入旗標的偵測機制與清除該旗標的處置端點由後續變更定義。
+
+發放與撤銷 agent token SHALL 限於管理員或該主體的擁有者，並 SHALL 留審計（含 token 名稱、到期時刻與操作者），審計內容 SHALL NOT 含明文或其雜湊。
+
+#### Scenario: 有未處置事件時不得發新 token
+
+- **WHEN** 某 agent 主體的未處置事件旗標非空，管理員為其建立新 token
+- **THEN** 回 409 並帶可辨識機器碼，無 token 被建立
+
+#### Scenario: 撤銷既有 token 不清除旗標
+
+- **WHEN** 旗標非空的 agent 主體其全部既有 token 被撤銷後再次請求發證
+- **THEN** 仍回 409；旗標維持非空
+
+#### Scenario: 擁有者可發證與撤銷
+
+- **WHEN** agent 主體的擁有者（非管理員）為該主體建立或撤銷 token
+- **THEN** 操作成功並留審計；其他一般使用者對同一主體的相同操作被拒
+
+#### Scenario: 審計不含憑證材料
+
+- **WHEN** 檢視 token 建立與撤銷的審計列
+- **THEN** 可見主體、token 名稱、到期時刻與操作者，SHALL NOT 見明文或其雜湊
+
+### Requirement: 自動化主體自助建立政策鍵群
+
+安全政策 SHALL 提供兩個自助建立政策鍵：`agent_self_create_enabled`（bool，出廠預設 `false`）決定一般使用者是否得自助建立自己名下的 agent 主體；`agent_self_create_max_per_owner`（int，出廠預設 3，值域 1 至 100）為每位擁有者名下現存 agent 主體數的上限。
+
+兩鍵的設定 UI SHALL 由存取管控頁承載，並 SHALL 沿既有政策機制：政策值存於資料庫並於執行期生效、批次寫入為原子、非法值以可辨識機器碼拒絕、變更入審計。出廠值 SHALL 使升級後行為零變更——自助建立端點存在但一律拒絕。
+
+`agent_self_create_max_per_owner` SHALL NOT 設下界：本鍵的危險方向是調大（配額放寬），調小只是更嚴格且狀態誠實，SHALL NOT 出現「介面上顯示開著而機制實質失效」的情形；0 SHALL 由既有的非零值域判定拒絕。
+
+兩鍵 SHALL NOT 攜帶任何規範基準建議值：沒有一個基準對「自動化主體可否自助建立」與「每人可有幾個」給出建議值，兩者取決於部署方的管理形態。掛用假的建議值會使其被標示為基準要求並進入「套用本頁建議值」，違反政策鍵的合規標示誠實紀律。因此兩鍵 SHALL NOT 產生對任一生效政策組的判定，亦 SHALL NOT 計入偏離摘要與全系統偏離總數。
+
+兩鍵的 label 與單位 SHALL 納入政策 i18n（三語）與鍵歸屬單一事實源，由既有完備性測試把關；鍵 SHALL 歸入單一設定域，SHALL NOT 落入母頁「其他」區塊。
+
+#### Scenario: 出廠預設與行為零變更
+
+- **WHEN** 既有部署升級後未調整任何政策
+- **THEN** `agent_self_create_enabled` 讀出 `false`、`agent_self_create_max_per_owner` 讀出 3；自助建立端點一律拒絕，管理員建立 agent 主體的路徑行為不變
+
+#### Scenario: 值域外的上限被拒
+
+- **WHEN** 管理員把 `agent_self_create_max_per_owner` 設為 0 或大於 100 的值
+- **THEN** 寫入被拒並帶可辨識機器碼，政策現值不變
+
+#### Scenario: 政策變更入審計
+
+- **WHEN** 管理員把 `agent_self_create_enabled` 由 `false` 改為 `true` 並儲存
+- **THEN** 變更生效無須重啟，並留既有格式的政策變更審計列（含舊值與新值）
+
+#### Scenario: 不計入合規偏離
+
+- **WHEN** 檢視任一生效政策組的符合性判定與偏離摘要
+- **THEN** 兩鍵不產生判定、不出現於偏離摘要，亦不計入全系統偏離總數
+
+#### Scenario: 鍵歸屬單一設定域
+
+- **WHEN** 檢視政策鍵的域歸屬
+- **THEN** 兩鍵歸屬存取管控頁且不重複歸域，各設定域鍵集的聯集等於後端全鍵集
+
+### Requirement: Agent 管理唯讀投影
+系統 SHALL 在既有權限下提供種類 query 與本人自建政策資訊，SHALL NOT 擴張 agent token 路由權限或以 POST 探測政策。
+
+#### Scenario: 管理者按種類查人員
+- **WHEN** admin 查 GET /users?kind=human 或 kind=agent
+- **THEN** 資料與 total 使用同一伺服器篩選，明示 kind 優先於 include_agents，未指定時保留原行為；未知種類回 400，非 admin 回 403
+
+#### Scenario: 本人可取得自建政策與配額
+- **WHEN** human 查 GET /my/agents
+- **THEN** 依已認證 id 回 self_create 的 enabled、max_per_owner、current，不接受 client owner 參數
+- **AND** 政策啟用沿原 200；政策關閉保留 403 與原機器碼，增附同形 self_create，不放行原本禁止的主體清單

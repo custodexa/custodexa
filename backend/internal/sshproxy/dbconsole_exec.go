@@ -20,6 +20,10 @@ import (
 // 不是一個執行單位，而是一個畸形或越界的請求。真正的執行單位自
 // runSubmission 起算，那裡的每一個單位都會先有一列
 func (s *consoleSession) handleQuery(text string) {
+	s.handleQueryTimeout(text, dbconsole.StatementTimeout)
+}
+
+func (s *consoleSession) handleQueryTimeout(text string, timeout time.Duration) {
 	if len(text) > dbconsole.MaxStatementBytes {
 		s.sendError("", apierror.CodeDBConsoleStatementTooLarge, nil, nil)
 		return
@@ -47,13 +51,16 @@ func (s *consoleSession) handleQuery(text string) {
 	go func() {
 		defer s.inWork.Done()
 		defer s.release()
-		s.runSubmission(units)
+		s.runSubmissionTimeout(units, timeout)
 	}()
 }
 
 // runSubmission 逐單位執行。第一個失敗即停止後續批次（MSSQL 的 GO 序列），
 // 未送出的批次各留一列——那些列記的是「從未送出」，不是「執行失敗」
 func (s *consoleSession) runSubmission(units []string) {
+	s.runSubmissionTimeout(units, dbconsole.StatementTimeout)
+}
+func (s *consoleSession) runSubmissionTimeout(units []string, timeout time.Duration) {
 	allowed, current, ok := s.resolveTarget()
 	if !ok {
 		return
@@ -84,7 +91,7 @@ func (s *consoleSession) runSubmission(units []string) {
 			s.recordNotSent(unit, current, i, len(units))
 			continue
 		}
-		if !s.runUnit(unit, current, allowed, i, len(units), budget) {
+		if !s.runUnitTimeout(unit, current, allowed, i, len(units), budget, timeout) {
 			stopped = true
 		}
 	}
@@ -151,6 +158,9 @@ func (s *consoleSession) recordNotSent(unit, database string, index, total int) 
 // 的窗口，而這條路徑沒有第二個真相來源可以事後補
 func (s *consoleSession) runUnit(unit, database string, allowed model.StringList,
 	index, total int, budget *dbconsole.Submission) bool {
+	return s.runUnitTimeout(unit, database, allowed, index, total, budget, dbconsole.StatementTimeout)
+}
+func (s *consoleSession) runUnitTimeout(unit, database string, allowed model.StringList, index, total int, budget *dbconsole.Submission, timeout time.Duration) bool {
 	eventID, err := dbconsole.NewEventID()
 	if err != nil {
 		log.Printf("[DBConsole] 事件識別產生失敗: %v", err)
@@ -217,7 +227,7 @@ func (s *consoleSession) runUnit(unit, database string, allowed model.StringList
 
 	// 步驟 8：送出。ctx 只綁逾時與明確取消
 	started := time.Now()
-	outcome, execErr := s.execUnit(unit, budget)
+	outcome, execErr := s.execUnitTimeout(unit, budget, timeout)
 	elapsed := time.Since(started)
 
 	if execErr != nil {
@@ -261,7 +271,10 @@ func (s *consoleSession) runUnit(unit, database string, allowed model.StringList
 // execUnit 送出一個單位。多批次送出共用同一份位元組額度——
 // 每個批次各給一份完整額度，等於那條上限對多批次形同不存在
 func (s *consoleSession) execUnit(unit string, budget *dbconsole.Submission) (*dbconsole.ExecOutcome, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), dbconsole.StatementTimeout)
+	return s.execUnitTimeout(unit, budget, dbconsole.StatementTimeout)
+}
+func (s *consoleSession) execUnitTimeout(unit string, budget *dbconsole.Submission, timeout time.Duration) (*dbconsole.ExecOutcome, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	d := s.currentDialect()

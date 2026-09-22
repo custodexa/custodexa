@@ -1355,7 +1355,7 @@ local→gcp SHALL 經既有精靈完成目標預檢、同一事務重包、pendi
 
 #### Scenario: 真專案憑證尚未取得
 - **WHEN** fake 共用 contract 已通過，但真專案服務帳號憑證尚未取得
-- **THEN** 整合項目 SHALL 記「整合待憑證」並保持未完成；contract 綠是該條在本波的可交付上限，SHALL NOT 標為整合通過或完整交付
+- **THEN** 整合項目 SHALL 記「整合待憑證」並保持未完成；contract 綠是該條當前的可交付上限，SHALL NOT 標為整合通過或完整交付
 
 ### Requirement: 解封材料的可覆寫所有權與用畢清理
 

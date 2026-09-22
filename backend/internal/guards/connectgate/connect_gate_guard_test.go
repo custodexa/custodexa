@@ -54,8 +54,8 @@ var gateJudgmentCalls = map[string]bool{
 // **每條都必須有理由，缺理由即紅**：這份清單就是「憑證在哪些地方會變成明文」的
 // 完整答案，沒有第二份。
 var gateUnsealAllowlist = map[string]string{
-	"internal/sshproxy/handler.go#HandleSSH": "SSH 兌換入口的固定解封點；另受 betweenStages 位置斷言約束",
-	"internal/sshproxy/dbconsole_handler.go#HandleDBConsole": "查詢主控台兌換入口的固定解封點，" +
+	"internal/sshproxy/establish.go#establishTerminal": "SSH 兌換入口的固定解封點；另受 betweenStages 位置斷言約束",
+	"internal/sshproxy/establish.go#establishConsole": "查詢主控台兌換入口的固定解封點，" +
 		"位置與 HandleSSH 同構（兩階段之間）；閘序表逐字共用，只多兩道主控台專屬閘",
 	"internal/sshproxy/dbconsole_handler.go#switchByReconnect": "PostgreSQL 切庫＝關閉並重連，" +
 		"而重連是一次新的連線建立：**重跑整段閘序後**才解封。不重跑等於以一張已兌換的票" +
@@ -84,7 +84,7 @@ var gateUnsealAllowlist = map[string]string{
 var gateJudgmentAllowlist = map[string]string{
 	"internal/sshproxy/handler.go#connectPermissionOutcome": "G-I5／G-S9 兩道閘共用的判定實作，" +
 		"由閘序以 Gate.Eval 委派；checkPermission 亦以它實作，兩條路徑不可能分化",
-	"internal/sshproxy/handler.go#HandleCreateConnectToken": "簽發側兩階段之間的『帳號身分解析』步驟" +
+	"internal/sshproxy/connect_issue_service.go#IssueConnectGrant": "HTTP 與行程內共用簽發側兩階段之間的『帳號身分解析』步驟" +
 		"（ResolveAccountIdentity，只解析 username 不解封憑證），位置等同兌換側的解封點",
 }
 
@@ -227,7 +227,7 @@ func TestUnsealOutletOnlyAtFixedPosition(t *testing.T) {
 	gateAssertAllowlistFullyUsed(t, "解封", gateUnsealAllowlist, used)
 
 	// 兩個連線入口另受「位置必須夾在兩階段之間」約束
-	gateAssertBetweenStages(t, root, "internal/sshproxy/handler.go", "HandleSSH", "GetWithCredentialsForAccount")
+	gateAssertBetweenStages(t, root, "internal/sshproxy/establish.go", "establishTerminal", "GetWithCredentialsForAccount")
 	gateAssertBetweenStages(t, root, "internal/proxy/handler.go", "HandleConnect", "GetWithCredentialsForAccount")
 }
 

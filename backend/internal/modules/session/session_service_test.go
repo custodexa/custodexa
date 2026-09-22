@@ -97,6 +97,13 @@ func TestCreateSession(t *testing.T) {
 			sqlmock.AnyArg(), // session_id
 			model.SessionStatusActive,
 			model.ProtocolSSH,
+			nil, // agent_token_name: additive nullable snapshot
+			nil, // agent_token_id: human session
+			nil, // access_request_id: existing session path
+			nil, // actor_kind: nullable human snapshot
+			nil, // on_behalf_of_user_id
+			nil, // owner_user_id
+			nil, // revoked_during_session_at
 			uint(1),
 			sqlmock.AnyArg(), // asset_id
 			"192.168.1.100",

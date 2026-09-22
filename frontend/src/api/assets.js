@@ -24,10 +24,11 @@ export function getAssetList(params) {
  * @param {number} id - 資產 ID
  * @returns {Promise}
  */
-export function getAsset(id) {
+export function getAsset(id, options = {}) {
   return request({
     url: `/assets/${id}`,
     method: 'get',
+    skipErrorToast: options.skipErrorToast,
   })
 }
 

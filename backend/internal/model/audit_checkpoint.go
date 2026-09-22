@@ -36,6 +36,11 @@ const AggSchemeV1 = "cp-agg-v1"
 // role_state_snapshot 重建 `state` 陣列（見 docs/security/audit-checkpoint-offline-verification.md）
 const AggSchemeV2 = "cp-agg-v2"
 
+const AggSchemeV3 = "cp-agg-v3"
+
+// LatestCheckpointScheme is the current sealing version; extending payloads updates this one source.
+const LatestCheckpointScheme = AggSchemeV3
+
 // ErrCheckpointImmutable 檢查點守衛的統一錯誤（改／刪皆回此值）
 var ErrCheckpointImmutable = errors.New("audit_checkpoints 為不可變證據：不得經 ORM 刪除，且僅允許更新錨定與清除狀態欄")
 
@@ -69,8 +74,12 @@ type AuditCheckpoint struct {
 	RowCount int64 `gorm:"not null" json:"row_count"`
 
 	// AggHash 區間聚合雜湊（hex SHA-256）；AggScheme 為其演算法版本標識
-	AggHash   string `gorm:"type:varchar(64);not null" json:"agg_hash"`
-	AggScheme string `gorm:"type:varchar(32);not null" json:"agg_scheme"`
+	AggHash          string  `gorm:"type:varchar(64);not null" json:"agg_hash"`
+	AggScheme        string  `gorm:"type:varchar(32);not null" json:"agg_scheme"`
+	ToolCallIDFrom   *uint   `json:"tool_call_id_from,omitempty"`
+	ToolCallIDTo     *uint   `json:"tool_call_id_to,omitempty"`
+	ToolCallRowCount *int64  `json:"tool_call_row_count,omitempty"`
+	ToolCallAggHash  *string `gorm:"size:64" json:"tool_call_agg_hash,omitempty"`
 
 	// PrevCheckpointHash 前一檢查點「被簽章欄位＋signature」canonical 序列化的
 	// SHA-256（hex）。genesis 錨定 integrity_baselines 的 max_log_id 與 baseline_at

@@ -3,9 +3,9 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/modules/authz"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -87,5 +87,29 @@ func RequireRevokeEligibility(db *gorm.DB) gin.HandlerFunc {
 
 		c.Set(RevokeAdminKey, verdict.IsAdmin)
 		c.Next()
+	}
+}
+
+// RequireAccessRequestHistoryReader grants auditor access only to history reads.
+func RequireAccessRequestHistoryReader(db *gorm.DB) gin.HandlerFunc {
+	approver := RequireApproverRole(db)
+	return func(c *gin.Context) {
+		id, ok := GetCurrentUserID(c)
+		if !ok {
+			abortUnauthenticated(c, apierror.CodeUnauthenticated)
+			return
+		}
+		auditor, err := authz.IsAccessRequestHistoryAuditor(db, id)
+		if err != nil {
+			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalRoleQuery, err)
+			c.Abort()
+			return
+		}
+		c.Set("accessRequestHistoryAuditor", auditor)
+		if auditor {
+			c.Next()
+			return
+		}
+		approver(c)
 	}
 }

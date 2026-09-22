@@ -7,7 +7,6 @@ import (
 	"github.com/custodexa/backend/internal/material"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,133 +34,28 @@ import (
 // 主控台若自己重寫一組 if 鏈，任何一次閘序更新都得記得改兩個地方，而漏掉的那次
 // 不會有任何東西轉紅
 func (h *Handler) HandleDBConsole(c *gin.Context) {
-	ct := c.Query("connect_token")
-	if ct == "" {
-		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(proxy.RedeemDenyMissing), HTTPStatus: http.StatusUnauthorized},
-			proxy.ViaDBConsole)
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenMissing, nil)
-		return
-	}
-	grant, denyReason := h.ConnectTokens.RedeemConnectTokenWithReason(c.Request.Context(), ct)
-	if denyReason != proxy.RedeemDenyNone {
-		h.auditRedeemDenied(c, proxy.ConnectDenial{
-			Reason: string(denyReason), HTTPStatus: http.StatusUnauthorized},
-			proxy.ViaDBConsole)
-		apierror.Respond(c, http.StatusUnauthorized, apierror.CodeConnectTokenInvalid, nil)
-		return
-	}
-
-	st := &redeemState{grant: grant}
-	subj := st.contractSubject(sourceip.Of(c))
-	auditCtx := h.consoleAuditContext(c, grant.UserID, grant.AssetID)
-
-	// admission 名額於閘序內佔用。任何後續失敗都必須釋放，否則一次被拒的兌換
-	// 會永久吃掉一個名額——那是使用者無法自救的狀態
-	var releaseAdmission func()
-	keep := false
-	defer func() {
-		if releaseAdmission != nil && !keep {
-			releaseAdmission()
+	est, failure := h.establishConsole(h.establishRequest(c, c.Query("connect_token"), true))
+	if failure != nil {
+		if failure.Dial {
+			h.writeConsoleDialError(c, apierror.ErrCode(failure.Outcome.Decision.Code), failure.DBError)
+		} else {
+			h.writeEstablishFailure(c, failure)
 		}
-	}()
-
-	var gate gatewayapi.PolicyGate = connectgate.NewSequence(
-		func(s gatewayapi.ConnectSubject) []connectgate.Gate {
-			return h.consolePreResolveGates(c, s, st)
-		},
-		func(s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject) []connectgate.Gate {
-			return h.consoleResolvedAccountGates(c, s, o, st, auditCtx, &releaseAdmission)
-		},
-	)
-	reqCtx := c.Request.Context()
-	if out := gate.AuthorizePreResolve(reqCtx, subj, gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st, proxy.ViaDBConsole)
 		return
 	}
-	userID, assetID := grant.UserID, grant.AssetID
-
-	// 唯一解封點：與 `/ssh` 共用同一個呼叫，帳號於簽發後被刪除或改隸他資產者
-	// 在此 fail-close，絕不靜默退回預設帳號
-	creds, err := h.AssetService.GetWithCredentialsForAccount(assetID, grant.AccountID)
-	if err != nil {
-		log.Printf("[DBConsole] 取得資產憑證失敗: assetID=%d, accountID=%d, err=%v",
-			assetID, grant.AccountID, err)
-		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetCredentialUnavailable, nil)
-		return
-	}
-	defer creds.Destroy()
-	st.creds = creds
-	resolved := st.contractObject()
-	if out := gate.AuthorizeResolvedAccount(reqCtx, subj, resolved,
-		gatewayapi.StageRedeemTerminal); out != nil {
-		h.writeRedeemOutcome(c, out, st, proxy.ViaDBConsole)
-		return
-	}
-
-	assetRow := creds.Asset
-	protocol := dbconsole.Protocol(assetRow.Protocol)
-
-	// 建立目標連線。密碼的所有權移交 dbconsole：Open 返回時我方副本已清零
-	dialCtx, cancelDial := context.WithTimeout(context.Background(), dbconsole.ConnectTimeout)
-	dialect, err := material.Use(creds.Password, func(raw []byte) (dbconsole.Dialect, error) {
-		return dbconsole.Open(dialCtx, dbconsole.Config{
-			Protocol: protocol,
-			Host:     assetRow.Host,
-			Port:     assetRow.Port,
-			Username: creds.Username,
-			Password: bytes.Clone(raw),
-			Database: assetRow.DBName,
-			TLSMode:  assetRow.DBTLSMode,
-			CACert:   assetRow.DBCACert,
-		})
-	})
-	creds.Destroy()
-	cancelDial()
-	if err != nil {
-		// 起始連線失敗一律泛化：連線階段的錯誤字串含主機、埠、憑證主體與
-		// 主機端規則，那些是我們的拓撲不是使用者的產品內容。**不建立會話列**
-		class := dbconsole.ClassifyConnect(protocol, err)
-		log.Printf("[DBConsole] 目標連線失敗: assetID=%d class=%s err=%v", assetID, class, err)
-		auditCtx.auditConnectFailure(string(class))
-		h.writeConsoleDialError(c, consoleConnectCode(class),
-			dbconsole.DBErrorOf(protocol, err, false))
-		return
-	}
-
-	// 會話記錄 fail-close：無 session 主鍵即無註冊表、錄影、語句審計與監看，
-	// 一律拒連——admin 亦不豁免
-	sess := h.createSession(userID, assetID, assetRow.Protocol, sourceip.Of(c), nil,
-		accountSnapshot{ID: creds.AccountID, Username: creds.Username},
-		authProvenance{ProviderID: grant.ProviderID, AuthEpoch: grant.AuthEpoch,
-			AuthMethod: grant.AuthMethod, CredEpoch: grant.CredEpoch}, true)
-	if sess == nil {
-		_ = dialect.Close()
-		log.Printf("[DBConsole] session 記錄建立失敗，連線已拒 (userID=%d assetID=%d)", userID, assetID)
-		if failure := audit.GetAuditFailure(); failure != nil {
-			failure.Report(model.MechanismSessionRecord, model.CauseSessionRecordCreateFailed,
-				map[string]string{
-					"user_id":  strconv.FormatUint(uint64(userID), 10),
-					"asset_id": strconv.FormatUint(uint64(assetID), 10),
-				})
-		}
-		writeSessionRecordFailed(c)
-		return
-	}
-	auditCtx.sessionID = sess.ID
-	h.observeSourceIP(c, sess, userID, assetID)
-
+	h.observeSourceIP(c, est.Session, est.grant.UserID, est.grant.AssetID)
 	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[DBConsole] WebSocket 升級失敗: %v", err)
-		_ = dialect.Close()
-		h.closeSession(sess, "")
+		_ = est.dialect.Close()
+		h.closeSession(est.Session, "")
+		if est.release != nil {
+			est.release()
+		}
 		return
 	}
-	keep = true
-
-	cs := h.newConsoleSession(c, ws, sess, dialect, protocol, grant, auditCtx)
-	h.runConsoleSession(cs, releaseAdmission)
+	cs := h.newConsoleSession(c, ws, est.Session, est.dialect, est.protocol, est.grant, est.auditCtx)
+	h.runConsoleSession(cs, est.release)
 }
 
 // consoleConnectCode 起始連線錯誤分類到對外機器碼的映射。
@@ -297,7 +191,7 @@ func (h *Handler) consoleAuditContext(c *gin.Context, userID, assetID uint) *con
 }
 
 // newConsoleSession 組裝會話的執行期狀態
-func (h *Handler) newConsoleSession(c *gin.Context, ws *websocket.Conn, sess *model.Session,
+func (h *Handler) newConsoleSession(c *gin.Context, ws Transport, sess *model.Session,
 	dialect dbconsole.Dialect, protocol dbconsole.Protocol, grant proxy.ConnectGrant,
 	auditCtx *consoleAuditContext) *consoleSession {
 	return &consoleSession{
@@ -312,7 +206,7 @@ func (h *Handler) newConsoleSession(c *gin.Context, ws *websocket.Conn, sess *mo
 		assetID:  auditCtx.assetID,
 		auditCtx: auditCtx,
 		recorder: newConsoleCommandStore(database.DB),
-		matcher:  consoleMatcherOf(audit.GetAlertMatcher()),
+		matcher:  consoleMatcherOf(audit.GetAlertMatcher(), grant.PrincipalKind),
 		alerts:   h.AlertSink,
 		cache:    newConsoleResultCache(),
 		out:      make(chan []byte, dbconsole.OutboundQueueDepth),
@@ -322,11 +216,11 @@ func (h *Handler) newConsoleSession(c *gin.Context, ws *websocket.Conn, sess *mo
 // consoleMatcherOf 具體型別的 nil 指標裝進介面後不等於 nil，
 // 而主控台把「比對器缺席」當成 fail-close 的訊號——不濾掉這種值，
 // fail-close 會在第一次比對時變成 panic
-func consoleMatcherOf(m *audit.AlertMatcher) consoleStatementMatcher {
+func consoleMatcherOf(m *audit.AlertMatcher, subjectKind string) consoleStatementMatcher {
 	if m == nil {
 		return nil
 	}
-	return m
+	return m.ForSubject(subjectKind)
 }
 
 // runConsoleSession 會話的完整生命週期：錄影與監看掛載 → 註冊表登記 →
@@ -360,7 +254,10 @@ func (h *Handler) runConsoleSession(cs *consoleSession, releaseAdmission func())
 		}
 	}
 	room := h.Monitor.OpenRoom(sess.ID, consoleTranscriptCols, consoleTranscriptRows)
+	cs.sensitive = newSensitiveTap(audit.GetAlertMatcher(), sess, string(cs.protocol), h.AlertSink, h.AuditService, cs.grant.PrincipalKind)
+	defer cs.sensitive.Close()
 	cs.transcript = newConsoleTranscript(recTap, room)
+	cs.transcript.sensitive = cs.sensitive
 
 	h.Registry.Register(sess.ID, cs.terminate)
 	if h.SessionService.IsTerminated(sess.ID) {

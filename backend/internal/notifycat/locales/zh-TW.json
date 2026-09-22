@@ -84,5 +84,17 @@
       "title": "保管處設定已變更",
       "text": "{actor} 變更了 {provider} 的保管處設定：{before} → {after}。"
     }
+  },
+  "agent_task_report_submitted": {
+    "default": {
+      "title": "任務報告",
+      "text": "主體 {user_id} 提交任務 {request_id} 報告 {report_id} 第 {version} 版。負責人：{owner_id}。"
+    }
+  },
+  "agent_breaker_tripped": {
+    "default": {
+      "title": "自動化主體探測熔斷",
+      "text": "主體 {user_id} 的 token {token_id} 因探測熔斷而停用。負責人：{owner_id}。"
+    }
   }
 }

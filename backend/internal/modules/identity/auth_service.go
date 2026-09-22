@@ -57,7 +57,8 @@ const passwordChangeTokenTTL = 15 * time.Minute
 
 // AuthService 認證服務
 type AuthService struct {
-	jwtManager *crypto.JWTManager
+	agentTokens *AgentTokenService
+	jwtManager  *crypto.JWTManager
 	// mfaCrypto 用於加解密 TOTP secret（users.totp_secret_enc）；nil 表示 MFA 功能未啟用。
 	// **ColumnCodec**：介面上
 	// **沒有** Encrypt(plaintext)，故持有者在**建構上**不可能寫出無 AAD 的 enc:v 密文。
@@ -430,6 +431,9 @@ func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string,
 		return nil, "", result.Error
 	}
 
+	if !notFound && user.Kind == model.KindAgent {
+		return nil, "", ErrInvalidCredentials
+	}
 	// 鎖定 gate 先於密碼驗證（判定順序）；查無帳號者無計數對象、直接走驗證失敗路徑
 	if !notFound {
 		if err := s.gateLockout(&user); err != nil {
@@ -670,6 +674,9 @@ func warnLockoutDisabled() {
 // finishLogin 認證後段（密碼與 MFA 全過後）：計數歸零、更新 last_login_at，
 // 再走強制改密 gate 或核發正式 token。Login 與 MFA 第二階段共用
 func (s *AuthService) finishLogin(user *model.User, violation *policy.PasswordPolicyViolation, authCtx crypto.AuthContext) (*LoginResponse, error) {
+	if user.Kind == model.KindAgent {
+		return nil, ErrInvalidCredentials
+	}
 	// 發 token 前複查鎖定（LOCK-2）：並發突發中，本請求密碼 gate 通過後、發 token 前，
 	// 帳號可能已被其他失敗請求鎖定——此刻夾帶正確密碼者不得放行
 	var fresh model.User
@@ -806,6 +813,9 @@ func (s *AuthService) recomputeLDAPRoleMapping(user *model.User, info *LDAPUserI
 	if err != nil {
 		log.Printf("[AuthService] 目錄群組映射重算失敗（fail-close）: userID=%d err=%v", user.ID, err)
 		return err
+	}
+	if outcome.EpochBumped && s.agentTokens != nil {
+		s.agentTokens.finishSuspendedOwner(user.ID)
 	}
 	if !outcome.Changed() {
 		return nil
@@ -948,6 +958,11 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 		return nil, fmt.Errorf("建立影子用戶失敗: %w", err)
 	}
 
+	if err := recordPrincipalState(tx, user, model.ActionCreate); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
 	var role model.Role
 	if err := tx.Where("name = ?", model.RoleUser).First(&role).Error; err != nil {
 		tx.Rollback()
@@ -1038,6 +1053,9 @@ func (s *AuthService) buildAuthContext(user *model.User, method string, provider
 // buildLoginResponse 核發正式 session token 並組裝登入回應。
 // 抽出共用是因為一階段登入與 MFA 第二階段交換必須回完全相同的形狀
 func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthContext) (*LoginResponse, error) {
+	if user.Kind == model.KindAgent {
+		return nil, ErrInvalidCredentials
+	}
 	roles := make([]string, len(user.Roles))
 	for i, role := range user.Roles {
 		roles[i] = role.Name
@@ -1091,7 +1109,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 
 // ValidateToken 驗證 token
 func (s *AuthService) ValidateToken(tokenString string) (*crypto.Claims, error) {
-	return validateIdentityToken(s.jwtManager,tokenString)
+	return validateIdentityToken(s.jwtManager, tokenString)
 }
 
 // ValidateConnectionToken WS 連線端點統一認證（認證邊界一致性）：
@@ -1145,7 +1163,7 @@ func (s *AuthService) CheckUserConnectable(userID uint) error {
 		}
 		return err
 	}
- return checkConnectableUser(&user)
+	return checkConnectableUser(&user)
 }
 
 // CurrentConnectRole 一次查詢完成 connect 路徑的「可連線複查」與「現查有效角色」：
@@ -1198,6 +1216,9 @@ func (s *AuthService) CurrentConnectRoleAndSourcePolicy(userID uint) (string, st
 // 密碼類 gate 由 finishLogin 依 authCtx.EffectiveMethod() 判定：本次為 oidc
 // 故不適用，混合帳號（同時有本地密碼與外部身分）以本地密碼登入時仍照常適用。
 func (s *AuthService) LoginWithExternalIdentity(user *model.User, authCtx crypto.AuthContext) (*LoginResponse, error) {
+	if user.Kind == model.KindAgent {
+		return nil, ErrInvalidCredentials
+	}
 	if !user.Active {
 		return nil, ErrUserInactive
 	}

@@ -34,7 +34,11 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 - **THEN** the route no longer exists, and asset connectivity can only be verified through the server-side asset test action
 
 ### Requirement: 一次性連線 token
-系統 SHALL 提供 `POST /api/v1/connect-tokens`：經 JWT 認證與資產連線授權檢查後簽發一次性 token（60 秒有效）；請求 MAY 指定 `account_id`（省略＝預設帳號），簽發 SHALL 驗證該帳號隸屬該資產且在請求者有效授權帳號範圍內；SSH、guacd（RDP/VNC）與資料庫查詢主控台三類 WS 端點 SHALL 接受 `connect_token` 並於使用後即刻失效；過期或已用 token SHALL 被拒絕；前端三類 WS URL SHALL NOT 攜帶 JWT。同一張票 SHALL 只能於其中一個入口兌換一次，簽發側 SHALL NOT 因入口不同而分化。
+系統 SHALL 提供 `POST /api/v1/connect-tokens`：經 JWT 或 agent token 認證與資產連線授權檢查後簽發一次性 token（60 秒有效）；請求 MAY 指定 `account_id`（省略＝預設帳號），簽發 SHALL 驗證該帳號隸屬該資產且在請求者有效授權帳號範圍內；請求 MAY 指定 `access_request_id`，principal 型別為 `agent` 者 SHALL 必帶（判定見「任務信封逐項比對」）；自動化主體的簽發與兌換 SHALL 只發生在服務介面的行程內路徑上，本 REST 端點與三類 WS 端點對其憑證 SHALL 一律拒絕。**票證來源（ticket）授權的帳號範圍 SHALL 對該來源的連線強制生效**：以票證取得的連線 SHALL NOT 因該主體另有 `@ALL` 範圍的其他授權列而放寬——核准書寫了哪些帳號，以該核准連上的就只能是那些帳號。同一資產有**多張有效票證**時 SHALL NOT 取其聯集，SHALL 以**最新核准的那一張**的帳號範圍為準——只篩來源型別擋不住這一路，因為放寬的來源本身也是票證；要以較舊的那張連線 SHALL 顯式帶其任務識別。SSH、guacd（RDP/VNC）與資料庫查詢主控台三類 WS 端點 SHALL 接受 `connect_token` 並於使用後即刻失效；過期或已用 token SHALL 被拒絕；前端三類 WS URL SHALL NOT 攜帶 JWT。同一張票 SHALL 只能於其中一個入口兌換一次，簽發側 SHALL NOT 因入口不同而分化。
+
+**第四個兌換入口：MCP 服務的行程內兌換。** MCP 服務為自動化執行者建立終端或查詢主控台連線時，SHALL 於後端行程內簽發並立即兌換一張一次性 token，兌換 SHALL 經過與三類 WS 端點相同的兌換閘序，SHALL NOT 另立判定路徑，亦 SHALL NOT 省略票證而直接建線。「同一張票只能兌換一次」的不變式 SHALL 涵蓋本入口：於 MCP 行程內兌換過的票，其後於任一 WS 端點再次兌換 SHALL 被拒，反之亦然。
+
+行程內兌換 SHALL NOT 使兌換點的來源位址判定退化：判定所用的位址 SHALL 為發起該次 MCP 呼叫的呼叫端位址，SHALL NOT 為迴路位址。票證仍 SHALL NOT 攜帶位址——位址 SHALL 由行程內的呼叫脈絡直接傳遞至兌換點，而非寫入票證後再讀回。兌換點 SHALL 仍於兌換當下現讀允許來源網段清單，SHALL NOT 信任簽發時的判定結果。
 
 #### Scenario: 正常兩段式連線
 - **WHEN** 前端以 JWT 換取 connect token 後開啟 WS（SSH 或 guacd）
@@ -59,6 +63,26 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 #### Scenario: 主控台路徑持 token 連線
 - **WHEN** 前端以 connect token 開啟資料庫查詢主控台 WS
 - **THEN** 連線建立且 URL 不含 JWT 與任何憑證，token 即焚；同一票再於 SSH 入口兌換被拒
+
+#### Scenario: MCP 行程內兌換沿用同一閘序
+- **WHEN** 自動化執行者經 MCP 服務建立終端連線
+- **THEN** 該次連線經過與 WS 入口相同的兌換閘序（角色現查、授權重查、政策重查、來源位址閘、帳號客體綁定、會話記錄 fail-close），任一閘拒絕時不建線且拒絕留痕
+
+#### Scenario: MCP 兌換的票不可再被 WS 入口使用
+- **WHEN** MCP 服務行程內兌換一張票後，同一張票被送至 SSH WS 端點
+- **THEN** 該次兌換被拒（票已即焚）
+
+#### Scenario: 票證範圍不被他列放寬
+- **WHEN** 使用者持一張帳號範圍為 `["app"]` 的有效票證，同時對該資產另有一列範圍為 `@ALL` 的其他來源授權，而該資產段位使其僅能以票證連線
+- **THEN** 以 `root` 兌換被拒；以 `app` 兌換放行
+
+#### Scenario: 同資產多張票證取最新核准的一張
+- **WHEN** 使用者對同一資產先後有兩張有效票證，舊的一張範圍為 `@ALL`、新核准的一張範圍為 `["app"]`，且未指定任務識別
+- **THEN** 以最新核准那張的範圍判定，`root` 被拒；兩張的範圍 SHALL NOT 被聯集
+
+#### Scenario: 行程內兌換的來源位址不退化為迴路
+- **WHEN** 主體的允許來源網段清單非空，執行者自清單外的位址經 MCP 服務請求建立連線
+- **THEN** 兌換被拒（`source_not_allowed`），判定所用位址為該執行者的呼叫端位址；清單內位址的同一請求則正常建線
 
 ### Requirement: 不安全通道連線前同意閘
 connect-token 簽發 SHALL 依傳輸安全政策對 RDP／VNC／DB 連線加閘：該通道為 warn 且申請者對該資產無有效同意記憶時，簽發 SHALL 被拒並回須同意之風險項；該通道為 strict 且資產命中風險判定時，簽發 SHALL 無條件拒絕。off 檔 SHALL 完全不影響簽發。閘檢查 SHALL 位於簽發端點（授權檢查之後），確保所有連線入口（含直呼 API）一致受閘。
@@ -246,3 +270,40 @@ connect token 的**簽發點**與**兩個兌換點**（文字終端與圖形 WS�
 
 - **WHEN** 使用者的 PostgreSQL 主控台會話進行中，admin 撤銷其對該資產的授權，隨後使用者切換資料庫
 - **THEN** 重撥前的閘序拒絕切換、留痕，會話維持原庫（既有收線機制另行終斷會話）
+
+### Requirement: 任務信封逐項比對
+`POST /api/v1/connect-tokens` SHALL 接受 `access_request_id`。principal 型別為 `agent` 的簽發請求 SHALL 必帶此欄，未帶 SHALL 回 403 `AUTH_REQUEST_ITEM_MISMATCH`；人類呼叫者 MAY 省略（沿既有路徑）。自動化主體的簽發 SHALL 只發生在自動化執行者服務介面的行程內路徑上（該主體的路由允許清單不含本 REST 端點與三類連線端點，見 `auth-session` 的路由範圍限縮）；兩條路徑 SHALL 共用同一個比對實作，SHALL NOT 各判一套。
+
+帶 `access_request_id` 時，簽發點 SHALL 於該單內找出對應本次請求資產的任務項，並逐項比對三個維度，任一不符 SHALL 回 403 `AUTH_REQUEST_ITEM_MISMATCH`：
+
+1. **資產**：任務項的資產與請求資產相同，且該項狀態為 `approved`。
+2. **帳號範圍**：**實際解析出的連線帳號名**（`account_id` 省略時為預設帳號）落在該項核准的帳號範圍內——判定對象 SHALL NOT 是請求參數。
+3. **時窗**：兌換時刻落在該項核准的起始與到期之間。
+
+比對 SHALL 以該任務項自身的核准值為準，SHALL NOT 與該主體其他授權列聯集——**同主體其他來源的 `@ALL` 範圍 SHALL NOT 放寬本次任務信封的判定**。拒絕 SHALL 沿既有兌換拒絕留痕路徑入審計，並記目標資產與被拒的判定維度。
+
+簽發成功的 grant SHALL 攜帶 `access_request_id`，兌換點 SHALL 以同一組維度重跑比對（與簽發點對稱），簽發後遭撤銷或下修的任務項 SHALL 於兌換即時生效。
+
+#### Scenario: agent 未帶任務 id 被拒
+- **WHEN** agent 主體的連線簽發請求未帶 `access_request_id`
+- **THEN** 回 403 `AUTH_REQUEST_ITEM_MISMATCH`，不簽發 token，審計留一列
+
+#### Scenario: 範圍外帳號被拒
+- **WHEN** 任務項核准的帳號範圍為 `["app"]`，呼叫者以該單指定 `account_id` 對應帳號 `root` 兌換
+- **THEN** 回 403 `AUTH_REQUEST_ITEM_MISMATCH`，不簽發 token
+
+#### Scenario: 省略 account_id 不繞過範圍
+- **WHEN** 任務項核准的帳號範圍為 `["app"]` 而該資產預設帳號為 `root`，呼叫者省略 `account_id`
+- **THEN** 以解析出的 `root` 判定並回 403，SHALL NOT 因未指定參數而放行
+
+#### Scenario: 他單的授權不救本次請求
+- **WHEN** 呼叫者對同一資產另有一張範圍為 `@ALL` 的有效核准單，但本次帶的是範圍為 `["app"]` 的任務項
+- **THEN** 以本次任務項為準判定，`root` 仍被拒
+
+#### Scenario: 跨資產任務項被拒
+- **WHEN** 呼叫者帶資產 A 的任務 id 請求資產 B 的 token
+- **THEN** 回 403 `AUTH_REQUEST_ITEM_MISMATCH`，且不洩漏該單是否含資產 B
+
+#### Scenario: 簽發後任務項被撤於兌換即時生效
+- **WHEN** 帶任務 id 的 token 簽發後、兌換前該任務項被撤銷
+- **THEN** 兌換端點於建線前拒絕（403 機器可辨），token 效期未到不構成放行理由

@@ -31,6 +31,7 @@
     "offsite_upload_stalled": "オフサイト保管へのアップロードが繰り返し中断している（同一オブジェクトの転送リースが複数回失効）",
     "offsite_integrity_mismatch": "取得したオフサイト複製がアップロード時点と一致しない（配信を拒否）",
     "role_state_mismatch": "ロール割り当てがチェックポイントチェーンと一致しない（監査記録のない変更がある）",
+    "principal_state_mismatch": "主体または資格情報の状態がチェックポイントチェーンと一致しない（監査記録のない変更がある）",
     "dek_unwrap_failed": "データ鍵の再取得が連続して失敗（鍵の保管先に到達できないか拒否されており、鍵を必要とする操作は失敗します）"
   },
   "severity": {
@@ -39,7 +40,8 @@
     "low": "低"
   },
   "alert_state": {
-    "blocked": "ブロック済み"
+    "blocked": "ブロック済み",
+    "possible_sensitive_output": "出力に機密情報が含まれる可能性"
   },
   "degraded": {
     "title": "通知の劣化配信",

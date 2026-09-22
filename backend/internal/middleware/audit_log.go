@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // auditLogOption 審計中介層的內部可調項。
@@ -363,6 +363,10 @@ func extractResource(path string) model.AuditResource {
 	// 且連線樞紐以 model.AuditHubSubResources 展開涵蓋這三類
 	for _, part := range parts {
 		switch part {
+		// The registered events segment is users/:id/agent-breaker/events.
+		// Keep it ahead of the enclosing users resource; registry covers all routes.
+		case "events":
+			return model.ResourceAuditIntegrity
 		case "clipboard-events":
 			return model.ResourceClipboardEvent
 		// `recording` 是**單數**段（`/sessions/:id/recording{,/download,/stream,/token}`），
@@ -389,7 +393,7 @@ func extractResource(path string) model.AuditResource {
 			return model.ResourceSession
 		case "recordings":
 			return model.ResourceRecording
-		case "users":
+		case "users", "agents":
 			return model.ResourceUser
 		case "auth", "login", "logout":
 			return model.ResourceAuth
@@ -399,6 +403,10 @@ func extractResource(path string) model.AuditResource {
 		// 留在此處會是永不可達的死規則
 		case "audit-logs":
 			return model.ResourceAuditLog
+		case "agent-tasks":
+			return model.ResourceAccessRequest
+		case "agent-tool-calls", "mcp":
+			return model.ResourceAgentToolCall
 		case "command-alerts":
 			return model.ResourceCommandAlert
 		case "security-policies":
@@ -575,6 +583,7 @@ func extractResource(path string) model.AuditResource {
 // auditSensitiveResources 審計資源集合（PCI 10.2.1.3）：這些資源的 GET
 // 讀取另記查詢條件摘要，使「誰查了什麼」可稽核
 var auditSensitiveResources = map[model.AuditResource]bool{
+	model.ResourceAgentToolCall: true,
 	model.ResourceAuditLog:      true,
 	model.ResourceCommand:       true,
 	model.ResourceCommandAlert:  true,

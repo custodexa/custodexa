@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -120,7 +120,7 @@ func setupCheckpointDB(t *testing.T) *gorm.DB {
 		t.Fatalf("db handle: %v", err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.IntegrityBaseline{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 封章會取角色指派關聯表的快照——少了它，本套件的每一次封章都會在

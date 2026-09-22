@@ -154,3 +154,17 @@ describe('CategoryChips 計數與覆蓋狀態', () => {
     expect(wrapper.find('[data-test="checkpoint-link-clipboard"]').exists()).toBe(false)
   })
 })
+
+
+describe('command integrity coverage', () => {
+  it('shows degradation independently of retention and removes it for clean coverage', async () => {
+    const wrapper = mountChips()
+    expect(wrapper.find('[data-test="coverage-incomplete-command"]').exists()).toBe(false)
+    await wrapper.setProps({ coverage: COVERAGE.map(c => c.type === 'command'
+      ? { ...c, incomplete: true, degraded_count: 2 } : c) })
+    expect(wrapper.find('[data-test="coverage-incomplete-command"]').exists()).toBe(true)
+    expect(wrapper.props('coverage').find(c => c.type === 'command').state).toBe('present')
+    await wrapper.setProps({ coverage: COVERAGE })
+    expect(wrapper.find('[data-test="coverage-incomplete-command"]').exists()).toBe(false)
+  })
+})

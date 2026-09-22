@@ -16,15 +16,27 @@ func ValidAlertSeverity(s string) bool {
 	return s == AlertSeverityHigh || s == AlertSeverityMedium || s == AlertSeverityLow
 }
 
+const (
+	DirectionInput  = "input"
+	DirectionOutput = "output"
+)
+
+// ValidAlertDirection reports whether a rule direction is supported.
+func ValidAlertDirection(s string) bool {
+	return s == DirectionInput || s == DirectionOutput
+}
+
 // AlertRule 危險指令告警規則（command-alerts）
 // 注意：本表由 migration v7.9 以原生 SQL 建立，不走 AutoMigrate，
 // 欄位定義需與 migration 保持一致
 type AlertRule struct {
-	ID       uint   `gorm:"primarykey" json:"id"`
-	Name     string `gorm:"size:100;not null" json:"name"`
-	Pattern  string `gorm:"type:text;not null" json:"pattern"`            // regex，入庫前以 regexp.Compile 驗證
-	Severity string `gorm:"size:10;not null" json:"severity"`             // high/medium/low（CHECK 約束）
-	Action   string `gorm:"size:10;not null;default:alert" json:"action"` // alert=告警 block=阻斷（command-blocking）
+	SubjectKind string `gorm:"size:16;not null;default:all" json:"subject_kind"`
+	Direction   string `gorm:"size:10;not null;default:input" json:"direction"`
+	ID          uint   `gorm:"primarykey" json:"id"`
+	Name        string `gorm:"size:100;not null" json:"name"`
+	Pattern     string `gorm:"type:text;not null" json:"pattern"`            // regex，入庫前以 regexp.Compile 驗證
+	Severity    string `gorm:"size:10;not null" json:"severity"`             // high/medium/low（CHECK 約束）
+	Action      string `gorm:"size:10;not null;default:alert" json:"action"` // alert=告警 block=阻斷（command-blocking）
 	// Protocols 逗號分隔的適用協議（如 "ssh,k8s" 或 "mysql,postgres,redis"）；
 	// 空＝全協議。shell 指令規則與 SQL 危險規則的語法不通用，故依會話協議分流，
 	// 避免 shell 正則誤掃 SQL 字面值（如 SELECT 內含 'rm -rf'）造成誤報。
@@ -38,4 +50,10 @@ type AlertRule struct {
 // TableName 指定表名
 func (AlertRule) TableName() string {
 	return "alert_rules"
+}
+
+const AlertSubjectAll = "all"
+
+func ValidAlertSubjectKind(s string) bool {
+	return s == AlertSubjectAll || s == KindHuman || s == KindAgent
 }

@@ -89,3 +89,11 @@ func EvaluateRevokeRouteEligibility(db *gorm.DB, userID uint) (RevokeRouteEligib
 	}
 	return RevokeRouteEligibility{Allowed: allowed}, nil
 }
+
+// IsAccessRequestHistoryAuditor is a live role read, exclusive to the read-only
+// history route. It must never grant approval or revocation eligibility.
+func IsAccessRequestHistoryAuditor(db *gorm.DB, userID uint) (bool, error) {
+	var n int64
+	err := db.Table("user_roles").Joins("JOIN roles ON user_roles.role_id=roles.id").Where("user_roles.user_id=? AND roles.name=? AND roles.deleted_at IS NULL", userID, model.RoleAuditor).Count(&n).Error
+	return n > 0, err
+}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/connectgate"
 	"github.com/custodexa/backend/internal/model"
@@ -18,6 +17,7 @@ import (
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/custodexa/backend/pkg/gatewayapi"
+	"github.com/gin-gonic/gin"
 )
 
 // 兩階段閘序宣告（圖形側）
@@ -118,7 +118,7 @@ func (h *ConnectionHandler) redeemPreResolveGates(
 func (h *ConnectionHandler) redeemResolvedAccountGates(
 	s gatewayapi.ConnectSubject, o gatewayapi.ResolvedConnectObject,
 	st *graphicsRedeemState) []connectgate.Gate {
-	return []connectgate.Gate{
+	gates := []connectgate.Gate{
 		{Name: "G-G7", Eval: func() *connectgate.Outcome {
 			// 停用硬擋兌換點重查（與 AUTH-1 對稱的 assetRow 側）：token 於資產停用前
 			// 簽發者，殘窗（60s TTL）內兌換須擋；語義同簽發點（403+asset_disabled）
@@ -201,6 +201,9 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			// 404 RULE_ACCOUNT_NONE_USABLE、圖形側卻回 403，管理員會照著訊息去查權限而非補帳號。
 			// 順序與 sshproxy/handler.go 對齊（政策閘 → 零帳號 → 範圍複查），
 			// 且不動政策閘既有的回應契約
+			if st.grant.AccessRequestID != 0 {
+				return nil
+			}
 			if aerr := h.AuthorizationService.AuthorizeConnectAccount(
 				st.authzCtx, s.UserID, o.AssetID,
 				model.ProtocolType(o.Protocol), o.Username); aerr != nil {
@@ -218,6 +221,13 @@ func (h *ConnectionHandler) redeemResolvedAccountGates(
 			return nil
 		}},
 	}
+	if connectgate.NeedsRequestEnvelope(h.AuthorizationService, st.grant.AccessRequestID, s.UserID) {
+		gates = append(gates, connectgate.Gate{Name: "G-G14", Eval: func() *connectgate.Outcome {
+			return connectgate.RequestEnvelope(h.AuthorizationService, st.grant.AccessRequestID, s.UserID, o.AssetID, o.Username)
+		}})
+	}
+	return gates
+
 }
 
 // writeOutcome 把閘序判定結果寫成 HTTP 回應（語義與 sshproxy 側同源），
@@ -231,7 +241,7 @@ func (h *ConnectionHandler) writeOutcome(c *gin.Context, out *connectgate.Outcom
 	code := apierror.ErrCode(out.Decision.Code)
 	h.auditConnectDenied(c, ConnectDenial{
 		UserID: st.grant.UserID, AssetID: st.grant.AssetID,
-		Reason: string(code), HTTPStatus: out.Status, Cause: st.sourceDenyCause,
+		Reason: string(code), HTTPStatus: out.Status, Cause: st.sourceDenyCause, RequestItemDimension: connectgate.RequestItemDimension(out), AccessRequestID: st.grant.AccessRequestID,
 	})
 	if out.Internal != nil {
 		apierror.RespondInternal(c, out.Status, code, out.Internal)
@@ -247,7 +257,9 @@ func (h *ConnectionHandler) writeOutcome(c *gin.Context, out *connectgate.Outcom
 // 兩包各寫一份的話，欄位集會各自演化——「某一側少填來源位址」不會讓任何測試轉紅，
 // 而 spec 的「兌換拒絕留痕」本來就沒有端點限定。
 type ConnectDenial struct {
-	UserID uint
+	RequestItemDimension string
+	AccessRequestID      uint
+	UserID               uint
 	// AssetID 票證指向的資產；票證本身不成立時為 0（寫入 NULL）
 	AssetID uint
 	// Reason 拒絕原因的機器碼：票證類為 `ticket_missing`／`ticket_invalid`／
@@ -272,6 +284,7 @@ const (
 	ViaConnect   = "connect"
 	ViaSSH       = "ssh"
 	ViaDBConsole = "db_console"
+	ViaMCP       = "mcp"
 	// ViaMonitor／ViaShare 唯讀觀看的兩條入口。**與觀看加入留痕的 `via` 值
 	// 逐字相同**（`internal/sshproxy` 的 observerVia* 即取自此處）：稽核以
 	// `via` 分組時，同一條入口的「被擋下」與「加入了」必須落在同一個桶裡
@@ -365,6 +378,9 @@ func (ev ConnectDenial) errorMsg() string {
 // detailsJSON 結構化細節。成因非空時多一個 `cause` 鍵——
 // 稽核據此把「被擋」歸因到「政策壞了」而非「來源不對」
 func (ev ConnectDenial) detailsJSON(via string) string {
+	if ev.RequestItemDimension != "" {
+		return fmt.Sprintf(`{"asset_id":%d,"reason":%q,"via":%q,"request_item_dimension":%q,"access_request_id":%d}`, ev.AssetID, ev.Reason, via, ev.RequestItemDimension, ev.AccessRequestID)
+	}
 	if ev.Cause == "" {
 		return fmt.Sprintf(`{"asset_id":%d,"reason":%q,"via":%q}`, ev.AssetID, ev.Reason, via)
 	}

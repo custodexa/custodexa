@@ -18,6 +18,8 @@ import {
 // 值域硬拷後端（policyDomains 金標準模式）：後端加值此測試即紅燈
 // AuditAction: backend/internal/model/audit_log.go:13-42
 const BACKEND_ACTIONS = [
+  'suspend', 'agent_token_revoked', 'agent_token_suspended',
+  'agent_sessions_terminated', 'agent_sessions_terminate_late',
   'create', 'read', 'update', 'delete', 'execute', 'login', 'logout',
   'unlock', 'pw_noncompliant', 'recording_failed',
   // 來源限定功能：新來源位址的登入標記（只留審計、不告警）
@@ -34,6 +36,8 @@ const BACKEND_ACTIONS = [
 ]
 // AuditResource: backend/internal/model/audit_log.go 的 Resource* 常數區
 const BACKEND_RESOURCES = [
+  'agent_token',
+  'agent_tool_call',
   'asset', 'session', 'recording', 'user', 'auth', 'file',
   'security_policy', 'command_alert', 'audit_export', 'access_review',
   'retention', 'daily_review', 'syslog_setting', 'audit_log', 'user_group',
@@ -80,6 +84,7 @@ const BACKEND_MECHANISMS = [
   'offsite_upload',
   // 角色指派與檢查點鏈不符（role-assignment-integrity）
   'role_state_integrity',
+  'principal_state_integrity',
   'dek_unwrap',
 ]
 
@@ -168,6 +173,7 @@ const BACKEND_CAUSES = [
   'offsite_upload_stalled',
   'offsite_integrity_mismatch',
   'role_state_mismatch',
+  'principal_state_mismatch',
   'dek_unwrap_failed',
 ]
 
@@ -220,7 +226,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(32)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(33)
   })
 
   it.skipIf(!backendSourcePath)(

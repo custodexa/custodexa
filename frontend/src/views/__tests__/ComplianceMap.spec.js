@@ -18,7 +18,7 @@ vi.mock('@/api/securityPolicies', () => ({
   updateSecurityPolicies: vi.fn(),
 }))
 
-// 判定理由的譯文由設定頁抽屜那一側提供，本波可能晚於本頁落地：
+// 判定理由的譯文由設定頁抽屜那一側提供，可能晚於本頁落地：
 // 測試自備最小 messages，證明「有譯文時顯示人話」；未知碼的退路另有一案
 i18n.global.mergeLocaleMessage('zh-TW', {
   verdictReason: { below_minimum: '低於要求' },

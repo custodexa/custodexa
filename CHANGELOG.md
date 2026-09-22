@@ -2,6 +2,165 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.11.0 — a governed channel for automated operators (2026-09-22)
+
+Eleven migrations run on upgrade. They create six tables (`access_request_items`, `agent_tokens`,
+`agent_tool_calls`, `agent_task_reports`, `agent_probe_events`, `agent_visibility_exposures`) and add
+columns to `users`, `sessions`, `access_requests`, `access_request_approvals`, `alert_rules` and
+`audit_checkpoints`. Existing access requests are backfilled: each gains one item that mirrors it,
+and the approvals already recorded against it are linked to that item.
+
+### Added
+
+#### Automated operators are their own kind of account
+
+- An account is now either a person or an automated operator, and every automated operator has a
+  person as its owner. An automated operator has no password and cannot log in through the local,
+  LDAP or OIDC paths, cannot register a second factor, cannot hold the administrator, auditor or
+  approver role, and cannot be named as an approver.
+- Automated operators authenticate with long-lived bearer tokens, issued, listed and revoked under
+  `/api/v1/users/:id/agent-tokens`. The token text starts with `cxa_`, appears once in the creation
+  response and is stored only as a hash. An expiry is required, and one automated operator may hold
+  several tokens.
+- Revoking a token, suspending a token, suspending the automated operator, or the owner becoming
+  inactive each terminate the sessions that token has open, and each is recorded as its own audit
+  event. An invalid, revoked or suspended token is reported to the caller with one common code.
+- Automated credentials reach only the endpoints the channel needs: reading assets and asset
+  accounts, raising, querying and withdrawing their own requests, listing their own sessions,
+  submitting task reports, and the MCP endpoint. The one-time connection token endpoints and the
+  three WebSocket endpoints refuse them, so a session opens only through the MCP service.
+
+#### One request, several assets, and a task that the approval describes
+
+- An access request may now carry several items. Each item is one asset with an account scope and a
+  time window, and an approver approves, narrows, removes or rejects each item on its own. Existing
+  single-asset request and response shapes are preserved.
+- A person raising a request may name an automated operator as its executor. Items executed by an
+  automated operator must name the accounts they cover, and every such item exists even on assets
+  that people may reach without a request, where it is approved automatically. Every session an
+  automated operator opens therefore belongs to a task.
+- A request now has a close time, set when the executor closes the task or when every item has
+  expired or been withdrawn. Closing terminates the task's remaining sessions and starts the window
+  in which its report may be revised.
+- Automated operators are held to `agent_request_rate_per_hour` (30 at the factory) and
+  `agent_request_pending_max` (5), and requests past either limit are refused.
+- Withdrawing a request or an item blocks new connections at once and terminates the automated
+  operator's sessions under it.
+
+#### A second evidence chain for tool calls
+
+- Every tool call writes a row to `agent_tool_calls` holding the authorisation decision, the refusal
+  code where there was one, a digest and an excerpt of what was returned, how many spans were masked
+  and how long it took.
+- The ledger is stamped row by row and is now the second data source of the audit checkpoint chain.
+  The signature payload moves to its third version and covers the ledger's identifier range, row
+  count and aggregate hash. Checkpoints sealed earlier verify under the version that sealed them.
+- Task reports are kept as versions and never overwritten. A revision may be submitted only by the
+  principal that filed the original and only within 24 hours of the task's close time, and each
+  version notifies the owner. Whether a report is missing is judged from the close time.
+
+#### The probe breaker and disclosure records
+
+- References to asset identifiers that an automated operator was never shown are counted. Three of
+  them inside 300 seconds trips the breaker, which is `agent_probe_trip_count` and
+  `agent_probe_window_seconds` on the policy page. A trip suspends that token, ends its sessions,
+  notifies the owner, and marks the account so that no new token is issued until it is cleared.
+- Identifiers actually disclosed are recorded in `agent_visibility_exposures`: those returned to an
+  automated operator on a filtered list page, and those approved for a task executor. The records
+  are kept after access is removed.
+- Breaker events are readable from `GET /api/v1/users/:id/agent-breaker/events` by administrators,
+  auditors and the owner, and cleared with a stated reason through the matching `release` endpoint,
+  after which a new token is issued. `GET /api/v1/agent-tool-calls` serves the ledger.
+
+#### Alert rules read the output side, and can name a kind of subject
+
+- An alert rule now has a matching direction, input or output. The twelve rules that shipped before
+  are input rules and match exactly as they did. An output rule may only raise an alert; saving one
+  with a blocking action is refused.
+- Two output rules ship: card numbers of 13 to 19 digits that pass the Luhn check, and private key
+  headers. The scan continues across output frames, so a number split between two is still found.
+- The alert record holds the rule, the session, how many times it matched and where, and not the
+  text that matched. Detection reads the decoded text stream and is heuristic, so a hit is reported
+  as output that may contain sensitive data.
+- A rule also names the kind of subject it applies to: everyone, people, or automated operators. Two
+  blocking rules for automated operators ship, covering lateral movement and reads of sensitive
+  paths. The installed seed set now has 16 rules.
+
+#### The MCP service
+
+- `POST /api/v1/mcp` serves a streamable HTTP MCP endpoint inside the backend process, authenticated
+  by an agent token as a bearer. A separate `custodexa-mcp` binary offers the stdio transport and
+  calls that same endpoint.
+- Version 1 fixes ten tools: `list_assets`, `request_access`, `check_request`, `open_session`,
+  `run_command`, `send_keys`, `query`, `read_screen`, `close_session` and `close_task`. They cover
+  SSH, Kubernetes exec and the database query console.
+- `run_command` reports one of six outcomes and marks output that arrived late from an earlier
+  command; `needs_input` means the session waits for input until `send_keys` resets it. An optional
+  idempotency key, repeated on the same session within 60 seconds, returns the previous result.
+- Text returned to the automated operator passes the output rules and is masked, and the number of
+  masked spans is recorded on the ledger row. The recording and the command records keep the
+  original text.
+- The backend takes a new dependency, `github.com/modelcontextprotocol/go-sdk` (Apache-2.0).
+
+#### Owners can create their own automated operators
+
+- Two policy settings on the access control page decide this: `agent_self_create_enabled`, off at
+  the factory, and `agent_self_create_max_per_owner`, 3 at the factory and settable from 1 to 100.
+- With the setting on, `POST /api/v1/my/agents` lets an active person create an automated operator,
+  and the owner is taken from the authenticated identity whatever the request body says.
+  `GET /api/v1/my/agents` returns that person's own automated operators with the count and limit.
+- This path relaxes none of the restrictions that apply when an administrator creates one, and its
+  audit row carries the purpose the creator stated.
+
+#### Screens for administration and audit
+
+- User management labels automated operators, and one side drawer handles a token's issuing, its
+  one-time plaintext, revocation, suspension and breaker state.
+- The session list and session detail name the actor, the person the work was done for, the task,
+  the owner as it stood at execution time, and authorisation withdrawn mid-session.
+- A task view keyed on the request gathers that task's approved scope, its sessions, its tool call
+  ledger and its reports on one page, with the latest report open and the earlier ones expandable.
+  The ledger also appears in the session detail.
+- The breaker release screen is reached from the alert page, and a my-agents page lets an owner
+  issue and revoke keys for the automated operators they own.
+- All of the above ships in Traditional Chinese, English and Japanese.
+
+### Fixes
+
+- Filtering the alert list by user or by asset returned an error since the list started carrying
+  the connection's source address. Both filters work again.
+- The account scope written on an approved request now takes effect when a one-time connection token
+  is redeemed, on the human path as well as the automated one. Before, a separate grant covering all
+  accounts could widen it. Where several valid approvals cover one asset, the most recently approved
+  one decides rather than their union.
+- The command completeness statement in an evidence package is now based on the degraded records: a
+  window holding a session with input but no reconstructed command is not presented as complete.
+- The integrity registry that reconciles state tables now covers three projections instead of one:
+  role assignments as before, the kind and owner of each account, and the state of each agent token.
+  Each projection is reported and raises its own event, the verification page and the verification
+  endpoint list all three, and a reconciliation runs before a token is issued without blocking it.
+
+### Build
+
+- The OpenTelemetry Go modules move to 1.45.0, which closes the published advisory about
+  exporter configuration being written to the info log. They are pulled in by the Google Cloud
+  Storage client used for off-site evidence copies.
+
+### Upgrade notes
+
+- Disclosure records begin at this upgrade. An identifier disclosed before it, and not listed or
+  approved again since, is classified as never shown when a later reference to it is refused.
+- The two new rows on the verification page read as not covered until the first checkpoint holding
+  their snapshots is sealed.
+- Changes to output rules take effect for new sessions; a session already running keeps the rule set
+  it started with. Both automated operator rules are inserted without disturbing an existing rule of
+  the same name, so an administrator's edits are preserved.
+- To put the MCP service into use: create an automated operator with an active owner, issue a named
+  token with an expiry as that owner or as an administrator, keep the one-time plaintext in the
+  operator's secret store, and pass it to `custodexa-mcp` as `CUSTODEXA_AGENT_TOKEN` with the HTTPS
+  endpoint as `CUSTODEXA_MCP_URL`. Session cookies and the tokens people log in with do not
+  authenticate that endpoint.
+
 ## 1.10.2 — Enter as LF, and a safety net for command audit (2026-09-20)
 
 No schema change. No migration runs.

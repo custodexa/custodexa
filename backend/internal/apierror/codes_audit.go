@@ -64,11 +64,11 @@ var (
 	// 檢查點驗證（audit-checkpoint-chain 8.1／8.2）。RANGE_REQUIRED 是內容層的
 	// 硬閘：全鏈重掃是數十億列級掃描，同步請求必逾時，故未帶範圍一律拒絕而
 	// **不是**「預設全歷史」——後者會讓一次誤點擊拖垮生產庫
-	CodeCheckpointRangeRequired = register("VALIDATION_CHECKPOINT_RANGE_REQUIRED", Descriptor{ZhFallback: "內容層驗證須指定 seq 或日期範圍"})
-	CodeCheckpointRangeFormat   = register("VALIDATION_CHECKPOINT_RANGE_FORMAT", Descriptor{ZhFallback: "範圍參數格式不正確（seq 為正整數、日期為 YYYY-MM-DD）"})
-	CodeAuditExportFilterRequired  = register("VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED", Descriptor{ZhFallback: "至少需指定一個篩選條件（session_id/user_id/asset_id/時段）"})
-	CodePolicyUpdateEmpty          = register("VALIDATION_POLICY_EMPTY", Descriptor{ZhFallback: "未提供任何政策項"})
-	CodeKeyRotatePurposeInvalid    = register("VALIDATION_KEY_ROTATE_PURPOSE", Descriptor{ZhFallback: "purpose 必須為 data 或 audit_integrity"})
+	CodeCheckpointRangeRequired   = register("VALIDATION_CHECKPOINT_RANGE_REQUIRED", Descriptor{ZhFallback: "內容層驗證須指定 seq 或日期範圍"})
+	CodeCheckpointRangeFormat     = register("VALIDATION_CHECKPOINT_RANGE_FORMAT", Descriptor{ZhFallback: "範圍參數格式不正確（seq 為正整數、日期為 YYYY-MM-DD）"})
+	CodeAuditExportFilterRequired = register("VALIDATION_AUDIT_EXPORT_FILTER_REQUIRED", Descriptor{ZhFallback: "至少需指定一個篩選條件（session_id/user_id/asset_id/時段）"})
+	CodePolicyUpdateEmpty         = register("VALIDATION_POLICY_EMPTY", Descriptor{ZhFallback: "未提供任何政策項"})
+	CodeKeyRotatePurposeInvalid   = register("VALIDATION_KEY_ROTATE_PURPOSE", Descriptor{ZhFallback: "purpose 必須為 data 或 audit_integrity"})
 )
 
 // 政策批次更新是一次送多鍵，錯誤不指名鍵時 admin 無從得知該改哪一項，故兩碼
@@ -109,6 +109,12 @@ var (
 // **允許清單**而非翻譯。新增政策鍵時必須同步本清單，否則
 // service.TestPolicyKeyAllowlistCoversDefs 會紅。
 var policyKeyZhLabels = identityLabels(
+	"agent_probe_trip_count",
+	"agent_probe_window_seconds",
+	"agent_request_rate_per_hour",
+	"agent_request_pending_max",
+	"agent_self_create_enabled",
+	"agent_self_create_max_per_owner",
 	// 帳號安全
 	"lockout_max_attempts",
 	"lockout_duration_minutes",

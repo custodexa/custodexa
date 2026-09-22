@@ -44,6 +44,9 @@ func snapshotTestedTables() []string {
 	for _, c := range cases {
 		names = append(names, c.table)
 	}
+	for _, c := range projectionSnapshotCases() {
+		names = append(names, c.table)
+	}
 	sort.Strings(names)
 	return names
 }
@@ -55,6 +58,9 @@ func tamperCoveredTables() []string {
 		if sc.stateTable != "" {
 			seen[sc.stateTable] = true
 		}
+	}
+	for _, c := range projectionTamperCases() {
+		seen[c.table] = true
 	}
 	names := make([]string, 0, len(seen))
 	for n := range seen {

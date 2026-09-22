@@ -86,7 +86,15 @@ func InitDatabase(cfg *config.Config) error {
 // 漂移形態；這兩層就是它的守衛。清單漏一個 model＝該 model 的漂移不再被檢查，
 // 故新增 model 時必須同步登記於此。
 var schemaParityModels = []interface{}{
+	&model.AgentToolCall{},
+	&model.AgentTaskReport{},
+	&model.AgentProbeEvent{},
+	&model.AgentVisibilityExposure{},
+	&model.AccessRequest{},
+	&model.AccessRequestItem{},
+	&model.AccessRequestApproval{},
 	&model.User{},
+	&model.AgentToken{},
 	&model.Role{},
 	// 角色指派關聯表：加上來源欄之後不再是純關聯表，需納入結構對照
 	&model.UserRole{},

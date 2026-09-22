@@ -186,6 +186,22 @@ describe('Alerts', () => {
     expect(wrapper.text()).toContain('mkfs')
   })
 
+  it('preserves output direction and rejects output blocking in the form', async () => {
+    setUserRoles(['admin'])
+    const wrapper = mountAlerts()
+    await flushPromises()
+    wrapper.vm.openEditDialog({ ...sampleRules[0], direction: 'output', action: 'alert' })
+    await flushPromises()
+    expect(wrapper.vm.ruleForm.direction).toBe('output')
+    expect(wrapper.text()).toContain('比對方向')
+    wrapper.vm.ruleForm.action = 'block'
+    await wrapper.vm.handleSaveRule()
+    expect(updateAlertRuleMock).not.toHaveBeenCalled()
+    wrapper.vm.ruleForm.action = 'alert'
+    await wrapper.vm.handleSaveRule()
+    expect(updateAlertRuleMock).toHaveBeenCalledWith(1, expect.objectContaining({ direction: 'output', action: 'alert' }))
+  })
+
   it('creates a new rule via dialog and refreshes the rule list', async () => {
     setUserRoles(['admin'])
     createAlertRuleMock.mockResolvedValue({ id: 3 })
@@ -211,6 +227,8 @@ describe('Alerts', () => {
       pattern: 'curl.*\\|.*sh',
       severity: 'medium',
       action: 'alert',
+      direction: 'input',
+      subject_kind: 'all',
       protocols: 'mysql,postgres',
       enabled: true,
     })
@@ -260,9 +278,28 @@ describe('Alerts', () => {
       pattern: 'mkfs',
       severity: 'low',
       action: 'alert',
+      direction: 'input',
+      subject_kind: 'all',
       protocols: 'ssh,k8s',
       enabled: false,
     })
+  })
+
+  it('preserves subject selection through editing and enabled toggles', async () => {
+    setUserRoles(['admin'])
+    const wrapper = mountAlerts()
+    await flushPromises()
+    const row = { ...sampleRules[0], subject_kind: 'agent', action: 'block' }
+    wrapper.vm.openEditDialog(row)
+    await flushPromises()
+    expect(wrapper.vm.ruleForm.subject_kind).toBe('agent')
+    wrapper.vm.ruleForm.subject_kind = 'human'
+    await wrapper.vm.handleSaveRule()
+    await flushPromises()
+    expect(updateAlertRuleMock).toHaveBeenCalledWith(1, expect.objectContaining({ subject_kind: 'human' }))
+    await wrapper.vm.handleToggleEnabled(row, false)
+    await flushPromises()
+    expect(updateAlertRuleMock).toHaveBeenLastCalledWith(1, expect.objectContaining({ subject_kind: 'agent', enabled: false }))
   })
 
   it('channel edit keeps secret unless cleared explicitly (空 secret 沿用、clear_secret 顯式清除)', async () => {
@@ -352,6 +389,9 @@ describe('Alerts', () => {
       pattern: 'rm\\s+-rf\\s+/',
       severity: 'high',
       enabled: false,
+      action: 'alert',
+      direction: 'input',
+      subject_kind: 'all',
     })
   })
 

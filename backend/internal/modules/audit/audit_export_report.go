@@ -68,8 +68,10 @@ type ExportScope struct {
 // **說明文字不由後端產生**：`NoteCode`＋`NoteParams` 是機器碼與參數，
 // 對外文字由 i18n 決定（後端零散文出站，三語才可能齊備）
 type ExportCoverage struct {
-	Type  string `json:"type"`
-	State string `json:"state"` // present | purged | not_retained
+	Incomplete    bool   `json:"incomplete,omitempty"`
+	DegradedCount int64  `json:"degraded_count,omitempty"`
+	Type          string `json:"type"`
+	State         string `json:"state"` // present | purged | not_retained
 	// ArchiveUnitRange 已清除區間對應的**封存單位編號**區間，供獨立查核
 	ArchiveUnitRange *CheckpointSeqRange `json:"archive_unit_range,omitempty"`
 	PurgedThroughAt  *time.Time          `json:"purged_through_at,omitempty"`
@@ -493,7 +495,7 @@ func (s *AuditExportService) writeReportClipboard(zw *zip.Writer, q TimelineQuer
 		return s.db.Table("clipboard_events AS ce").
 			// content_length 讀事實欄（信封加密後密文長度非事實；長度於落庫時
 			// 以明文位元組計，見 model.ClipboardEvent）
-			Select("ce.id, ce.session_id, ce.direction, ce.created_at, " +
+			Select("ce.id, ce.session_id, ce.direction, ce.created_at, "+
 				"ce.content_length, se.user_id, se.asset_id").
 			Joins("JOIN sessions AS se ON se.id = ce.session_id").
 			Where("ce.created_at >= ? AND ce.created_at < ?", q.From, q.To).
@@ -582,6 +584,7 @@ func toExportCoverage(cov []TimelineCoverage) []ExportCoverage {
 	out := make([]ExportCoverage, 0, len(cov))
 	for _, c := range cov {
 		e := ExportCoverage{
+			Incomplete: c.Incomplete, DegradedCount: c.DegradedCount,
 			Type:             string(c.Type),
 			State:            c.State,
 			PurgedThroughAt:  c.PurgedThroughAt,

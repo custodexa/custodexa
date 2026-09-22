@@ -143,6 +143,37 @@
         </el-descriptions-item>
       </el-descriptions>
 
+
+      <section
+        v-for="item in principalStates"
+        :key="item.key"
+        :data-test="`state-${item.key}`"
+      >
+        <el-descriptions
+          :column="1"
+          border
+        >
+          <el-descriptions-item :label="$t(`checkpointVerification.principalState.${item.key}`)">
+            <el-tag :type="ROLE_STATE_TAG[item.value?.state] || 'info'">
+              {{ principalStateLabel(item.value) }}
+            </el-tag>
+            <el-link
+              v-if="item.value?.last_event"
+              type="primary"
+              @click="goToFailureEvents"
+            >
+              {{ $t('checkpointVerification.roleState.eventLink', { id: item.value.last_event.id }) }}
+            </el-link>
+          </el-descriptions-item>
+        </el-descriptions>
+        <el-alert
+          v-if="item.value?.state === 'mismatch'"
+          type="error"
+          :closable="false"
+          :title="$t('checkpointVerification.principalState.differences', { missing: item.value.missing?.join(', ') || '-', extra: item.value.extra?.join(', ') || '-' })"
+        />
+      </section>
+
       <!--
         差集兩張表分開列：「有紀錄卻不在現況」與「在現況卻沒有紀錄」是兩種
         不同的事件（前者是被拿掉的權限，後者是憑空多出來的權限），合成一張
@@ -707,6 +738,15 @@ const autoVerify = computed(() => chain.value?.auto_verify || null)
 // 相符，是這一列唯一不可接受的失敗方向。
 // ---------------------------------------------------------------------------
 const roleState = computed(() => chain.value?.role_state || null)
+const principalStates = computed(() => [
+  { key: 'principals', value: chain.value?.principal_state },
+  { key: 'tokens', value: chain.value?.agent_token_state },
+])
+const principalStateLabel = (value) => {
+  if (!value || value.state === 'unknown') return t('checkpointVerification.roleState.unavailable')
+  if (value.state === 'not_covered') return t('checkpointVerification.roleState.notCovered')
+  return t(`checkpointVerification.roleState.${value.state}`, { seq: value.since_seq ?? '-' })
+}
 const roleStateMismatch = computed(() => roleState.value?.state === 'mismatch')
 
 // 不符為錯誤色、未涵蓋與取不到為中性色。**未涵蓋不是警告**：升級後尚未封出

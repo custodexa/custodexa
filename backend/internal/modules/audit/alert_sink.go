@@ -102,6 +102,11 @@ func (s *alertRecorder) RecordAlertInTx(tx *gorm.DB, a gatewayapi.CommandAlert) 
 func (s *alertRecorder) PublishCommitted(rows []model.CommandAlert) {
 	if notifier := GetAlertNotifier(); notifier != nil {
 		for _, row := range rows {
+			// Breaker publishes one structured event with owner_id after commit.
+			// It has no session, so the command/session notification shape does not apply.
+			if row.Kind == model.AlertKindAgentBreaker {
+				continue
+			}
 			notifier.Enqueue(row)
 		}
 	}

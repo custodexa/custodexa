@@ -203,6 +203,14 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 		log.Printf("[RoleMapping] 下列映射規則的群組值無法解析為辨識名稱，永遠不會命中: %q", badRules)
 	}
 
+	names := make([]string, 0, len(matchedRoleIDs))
+	for _, id := range matchedRoleIDs {
+		names = append(names, matchedNames[id])
+	}
+	if err := GuardAgentRoles(user, names); err != nil {
+		return RoleMappingOutcome{}, err
+	}
+
 	now := time.Now()
 	var addedIDs []uint
 	for _, roleID := range matchedRoleIDs {

@@ -586,6 +586,7 @@ type randomnessSourceException struct {
 // 清單同時做反向完備性檢查（登記了但現實中已不取用＝陳舊登記，會在下一個
 // 同名函式出現時無聲放行）。
 var randomnessSourceAllowlist = []randomnessSourceException{
+	{File: "internal/modules/identity/agent_token_service.go", Func: "GenerateAgentToken", Reason: "32 bytes 產生 agent bearer 憑證的隨機值，持久化只存 SHA-256；不參與加解密、從不安裝為 KEK。"},
 	{File: "pkg/crypto/gcpkms/provider.go", Func: "newProvider",
 		Reason: "Generates a disposable 32-byte preflight canary to verify remote encrypt/decrypt permissions and integrity; it is never installed as a KEK and both canary buffers are cleared."},
 	{File: "pkg/crypto/vaulttransit/provider.go", Func: "Preflight",

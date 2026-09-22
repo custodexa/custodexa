@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -82,7 +82,7 @@ func setupCheckpointAPIEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *gorm
 	}
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.AutoMigrate(&model.User{}, &model.AuditLog{}, &model.AuditCheckpoint{},
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.AuditCheckpoint{},
 		&model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -237,8 +237,8 @@ func TestAuditCheckpointHandler(t *testing.T) {
 		var resp struct {
 			Data struct {
 				Content struct {
-					Intervals    []map[string]any  `json:"intervals"`
-					StatusCounts map[string]int64  `json:"status_counts"`
+					Intervals    []map[string]any `json:"intervals"`
+					StatusCounts map[string]int64 `json:"status_counts"`
 				} `json:"content"`
 			} `json:"data"`
 		}
@@ -412,7 +412,7 @@ func TestAuditIntegrityOpenToAuditor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}, &model.UserRole{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.AuditLog{}, &model.IntegrityBaseline{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

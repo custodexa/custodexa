@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/gin-gonic/gin"
 )
 
 // MFASetup 產生 TOTP secret 與 otpauth URL
@@ -34,8 +34,9 @@ func (h *AuthHandler) MFASetup(c *gin.Context) {
 
 	resp, err := h.authService.GenerateMFASetup(userID)
 	if err != nil {
-		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusFailure, http.StatusInternalServerError, err.Error())
-		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalMFASetup, err)
+		status := principalErrorStatus(err, http.StatusInternalServerError)
+		h.auditAuthEvent(c, userID, username, model.ActionUpdate, model.StatusFailure, status, err.Error())
+		respondMFAError(c, status, err, apierror.CodeInternalMFASetup)
 		return
 	}
 
@@ -68,7 +69,7 @@ func (h *AuthHandler) MFAEnable(c *gin.Context) {
 	}
 
 	if err := h.authService.EnableMFA(userID, req.Code); err != nil {
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		if errors.Is(err, identity.ErrMFAInvalidCode) || errors.Is(err, identity.ErrMFASetupRequired) ||
 			errors.Is(err, identity.ErrMFAReplay) {
 			status = http.StatusBadRequest
@@ -112,7 +113,7 @@ func (h *AuthHandler) MFAEnrollSetup(c *gin.Context) {
 	}
 	resp, err := h.authService.EnrollmentSetup(token)
 	if err != nil {
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		switch {
 		case errors.Is(err, identity.ErrMFAPendingTokenInvalid):
 			status = http.StatusUnauthorized
@@ -155,7 +156,7 @@ func (h *AuthHandler) MFAEnrollConfirm(c *gin.Context) {
 
 	resp, err := h.authService.CompleteEnrollment(token, req.Code)
 	if err != nil {
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		switch {
 		case errors.Is(err, identity.ErrMFAInvalidCode), errors.Is(err, identity.ErrMFAReplay),
 			errors.Is(err, identity.ErrMFASetupRequired):
@@ -212,7 +213,7 @@ func (h *AuthHandler) MFADisable(c *gin.Context) {
 	}
 
 	if err := h.authService.DisableMFA(userID, req.Password); err != nil {
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		if errors.Is(err, identity.ErrInvalidCredentials) {
 			status = http.StatusUnauthorized
 		}
@@ -236,7 +237,7 @@ func (h *AuthHandler) MFAVerify(c *gin.Context) {
 	resp, err := h.authService.VerifyMFALogin(&req)
 	if err != nil {
 		// 公開端點：僅 sentinel 可回原文，內部錯誤泛化
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		if errors.Is(err, identity.ErrMFAInvalidCode) || errors.Is(err, identity.ErrMFAReplay) ||
 			errors.Is(err, identity.ErrMFAPendingTokenInvalid) ||
 			errors.Is(err, identity.ErrMFANotEnabled) || errors.Is(err, identity.ErrUserInactive) {
@@ -304,7 +305,7 @@ func (h *AuthHandler) AdminDisableMFA(c *gin.Context) {
 	}
 
 	if err := h.authService.AdminDisableMFA(uint(targetID)); err != nil {
-		status := http.StatusInternalServerError
+		status := principalErrorStatus(err, http.StatusInternalServerError)
 		if errors.Is(err, identity.ErrUserNotFound) {
 			status = http.StatusNotFound
 		}
@@ -321,6 +322,9 @@ func (h *AuthHandler) AdminDisableMFA(c *gin.Context) {
 // respondMFAError 統一 MFA 失敗回應：5xx 記 cause 後回泛化 internalCode（不洩漏）；
 // 4xx 依 sentinel 映射為對應機器碼（狀態由呼叫端各自的守衛決定，不在此處改動）。
 func respondMFAError(c *gin.Context, status int, err error, internalCode apierror.ErrCode) {
+	if respondPrincipalError(c, err) {
+		return
+	}
 	if status >= http.StatusInternalServerError {
 		apierror.RespondInternal(c, status, internalCode, err)
 		return

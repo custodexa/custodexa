@@ -87,6 +87,16 @@ type assetPivotEntry struct {
 // 搬家、行號漂移都不會使本表失準；反之若以 file:line 為鍵，每次無關的編輯都會製造
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
+	"AP-99":  {pivotFilled, false, "探測拒絕資產 ID，同步填入 AssetID"},
+	"AP-100": {pivotNotAsset, true, "雖有觸發資產 ID，跳閘作用於 token 與跨資產會話，資產引用另由 AP-99 留痕"},
+	"AP-101": {pivotNotAsset, false, "任務報告可跨資產，ResourceID 為任務 ID"},
+	"AP-102": {pivotNotAsset, false, "主體未處置事件解除，ResourceID 為主體 ID"},
+	"AP-104": {pivotNotAsset, false, "自助建立主體，ResourceID 是帳號 ID；owner 與用途非資產事件"},
+	"AP-103": {pivotFilled, false, "會話撤權沿保存的 session AssetID 歸屬資產"},
+	"AP-95":  {pivotNotAsset, false, "Agent token 建立、撤銷、停用只作用於憑證主體，不指定資產；ResourceID 為 token ID，填資產鍵會捏造資產事件"},
+	"AP-98":  {pivotNotAsset, false, "agent 建單超限拒絕，主體為申請人；尚未建立單號，請求可跨資產，不能捏造單一資產主體鍵"},
+	"AP-97":  {pivotNotAsset, false, "主體投影建立、擁有者變更與刪除；ResourceID 是帳號 ID，非資產事件"},
+	"AP-96":  {pivotNotAsset, false, "Agent token 生命週期與批次收線事件，ResourceID 為 token ID；會話清單可跨資產，不能捏造單一資產主體鍵"},
 	// ── 資產類：直接賦值 ──
 	"AP-04": {pivotFilled, false, "kubectl cp 成功留痕；檔案傳輸類的資產樞紐來源（檔案傳輸列）"},
 	"AP-65": {pivotFilled, false, "kubectl cp 被傳輸閘擋下的 denied 留痕，與 AP-04 對稱"},
@@ -173,6 +183,7 @@ var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-02": {pivotNotAsset, false, "KEK 切換補記，主體是金鑰"},
 	"AP-92": {pivotNotAsset, false, "委託設定自部署檔一次性讀入資料庫的留痕：主體是本部署的保管處設定，" +
 		"與任何資產無關——它記的是「主金鑰送去哪裡解」的來源，不是任何一台機器上發生的事"},
+	"AP-94": {pivotFilled, false, "輸出旁路溢出停用屬於該會話與資產，AssetID 取會話快照，使該資產的掃描缺口可由樞紐查詢"},
 	"AP-93": {pivotNotAsset, false, "委託拓撲變更的唯一產生點：主體是本部署的保管處目的地。" +
 		"它涵蓋的是整個部署的全部密文，填任何一台資產的 id 都會在該資產的時間軸上" +
 		"長出一則與它無關、卻實際影響所有資產的事件"},

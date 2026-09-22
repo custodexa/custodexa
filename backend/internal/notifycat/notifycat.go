@@ -86,6 +86,7 @@ var mechanismEnum = []string{
 	model.MechanismSourcePolicy,
 	model.MechanismOffsiteUpload,
 	model.MechanismRoleStateIntegrity,
+	model.MechanismPrincipalStateIntegrity,
 	model.MechanismDEKUnwrap,
 }
 
@@ -93,6 +94,8 @@ var mechanismEnum = []string{
 
 const (
 	// EventAccessRequestCreated 新申請待審（access_request_service.go:235）
+	EventAgentTaskReport      Event = "agent_task_report_submitted"
+	EventAgentBreakerTripped  Event = "agent_breaker_tripped"
 	EventAccessRequestCreated Event = "access_request.created"
 	// EventAccessRequestApproved 申請核准；auto=段位自動核准(:233)、manual=票數達標(:466)
 	EventAccessRequestApproved Event = "access_request.approved"
@@ -147,6 +150,8 @@ func requestScopeParams(extra ...ParamSpec) []ParamSpec {
 // registry 事件契約表。新增事件＝同時加常數與此表條目，並補三語 locales
 // （完備性守衛雙向比對，漏任一側即紅）。
 var registry = map[Event]EventSpec{
+	EventAgentTaskReport:      {Params: []ParamSpec{{Name: "owner_id", Kind: KindInt, Required: true}, {Name: "request_id", Kind: KindInt, Required: true}, {Name: "report_id", Kind: KindInt, Required: true}, {Name: "version", Kind: KindInt, Required: true}, {Name: "user_id", Kind: KindInt, Required: true}}},
+	EventAgentBreakerTripped:  {Params: []ParamSpec{{Name: "owner_id", Kind: KindInt, Required: true}, {Name: "user_id", Kind: KindInt, Required: true}, {Name: "token_id", Kind: KindInt, Required: true}}},
 	EventAccessRequestCreated: {Params: requestScopeParams()},
 
 	EventAccessRequestApproved: {

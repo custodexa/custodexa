@@ -336,3 +336,31 @@ describe('Assets 連測逐列中態', () => {
     expect(wrapper.vm.isTesting(2)).toBe(false)
   }, 15000)
 })
+
+// 原快捷請求形狀仍由服務建立恰一項；呈現沿多項單共用元件。
+describe('快捷申請多項相容性', () => {
+  it('快捷申請建立恰一項的單', async () => {
+    const { createAccessRequest } = await import('@/api/accessRequests')
+    const result = { id: 23, status: 'pending', asset_id: 1, items: [{ id: 31, asset_id: 1, accounts: ['@ALL'], status: 'pending' }] }
+    createAccessRequest.mockResolvedValue(result)
+    getAssetListMock.mockResolvedValue({ data: [], total: 0 }); getAssetTagsMock.mockResolvedValue({ data: [] })
+    setUserRoles(['user'])
+    const w = mount(Assets, { global: { plugins: [ElementPlus], stubs: { 'el-dialog': { props: ['modelValue'], template: '<section v-if="modelValue"><slot /><slot name="footer" /></section>' } } } })
+    await flushPromises()
+    w.vm.openApplyDialog({ id: 1, name: 'app', access_state: 'approval_required' }); await flushPromises()
+    w.vm.applyForm.reason = 'work'; await flushPromises(); await w.vm.submitApply(); await flushPromises()
+    expect(createAccessRequest).toHaveBeenLastCalledWith({ asset_id: 1, reason: 'work', duration_minutes: 60 })
+    expect(w.get('[data-test="quick-request-result"]').findAll('[data-test="request-item-state"]')).toHaveLength(1)
+    expect(w.get('[data-test="quick-request-result"]').text()).toContain('1 項資產')
+  })
+})
+
+it('帳號不存在錯誤指到該項且保留其他項輸入', async () => {
+  const { createAccessRequest } = await import('@/api/accessRequests')
+  createAccessRequest.mockRejectedValue({ response: { status: 400, data: { code: 'VALIDATION_ACCOUNT_NOT_ON_ASSET', details: { item_index: 0, asset_id: 1 } } } })
+  getAssetListMock.mockResolvedValue({ data: [], total: 0 }); getAssetTagsMock.mockResolvedValue({ data: [] }); setUserRoles(['user'])
+  const w = mount(Assets, { global: { plugins: [ElementPlus], stubs: { 'el-dialog': { props: ['modelValue'], template: '<section v-if="modelValue"><slot /><slot name="footer" /></section>' } } } })
+  await flushPromises(); w.vm.openApplyDialog({ id: 1, name: 'app', access_state: 'approval_required' }); await flushPromises()
+  w.vm.applyForm.reason = 'retain'; w.vm.applyForm.duration_minutes = 30; await flushPromises(); await w.vm.submitApply(); await flushPromises()
+  expect(w.get('[data-test="quick-item-error"]').text()).toContain('第 1 項'); expect(w.vm.applyVisible).toBe(true); expect(w.vm.applyForm.reason).toBe('retain'); expect(w.vm.applyForm.duration_minutes).toBe(30)
+})

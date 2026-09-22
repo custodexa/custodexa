@@ -5,6 +5,12 @@ import { POLICY_DOMAINS, sectionKeys } from '../policyDomains'
 // 一致性守護：各域鍵集互斥且聯集＝後端全鍵集——
 // 後端新增政策鍵時必須在 policyDomains.js 歸域並同步本清單，否則此測試紅燈提醒。
 const BACKEND_POLICY_KEYS = [
+  'agent_self_create_enabled',
+  'agent_self_create_max_per_owner',
+  'agent_probe_trip_count',
+  'agent_probe_window_seconds',
+  'agent_request_rate_per_hour',
+  'agent_request_pending_max',
   'lockout_max_attempts',
   'lockout_duration_minutes',
   // 登入前告示（文字型兩鍵）

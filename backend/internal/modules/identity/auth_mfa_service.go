@@ -217,6 +217,10 @@ func (s *AuthService) VerifyMFALogin(req *MFAVerifyRequest) (*LoginResponse, err
 		}
 		return nil, err
 	}
+	if user.Kind == model.KindAgent {
+		return nil, ErrAgentHumanOnly
+	}
+
 	if !user.Active {
 		return nil, ErrUserInactive
 	}
@@ -404,6 +408,10 @@ func (s *AuthService) findUserByID(userID uint) (*model.User, error) {
 		}
 		return nil, err
 	}
+	if user.Kind == model.KindAgent {
+		return nil, ErrAgentHumanOnly
+	}
+
 	return &user, nil
 }
 

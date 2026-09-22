@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -250,6 +250,12 @@ func TestPolicyComplianceComparator(t *testing.T) {
 	}
 	// 本組沒有對照這個鍵：不產生判定（見各鍵定義處的排除理由）
 	notMapped := map[string]bool{
+		PolicyAgentSelfCreateEnabled:           true,
+		PolicyAgentSelfCreateMaxPerOwner:       true,
+		PolicyAgentProbeTripCount:              true,
+		PolicyAgentProbeWindowSeconds:          true,
+		PolicyAgentRequestRatePerHour:          true,
+		PolicyAgentRequestPendingMax:           true,
 		PolicyAccessRequestMaxDurationMinutes:  true,
 		PolicyAccessRequestMinApprovals:        true,
 		PolicyAccessRequestPendingTimeoutHours: true,

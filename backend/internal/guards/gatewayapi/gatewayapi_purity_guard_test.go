@@ -95,7 +95,7 @@ var gwRequiredTypes = map[string][]string{
 	// ConnectGrant 客體改平鋪：現行票證只帶 asset_id／account_id 兩個選擇器，
 	// 嵌 ConnectObjectRef 等於宣稱票證帶著 Protocol／Channel 而實作永遠填不了。
 	// Limits 一併移除（零生產者零消費者，未拍板）。
-	"ConnectGrant": {"UserID", "AssetID", "AccountID", "AuthMethod", "ProviderID", "AuthEpoch", "CredEpoch", "ExpiresAt"},
+	"ConnectGrant": {"PrincipalKind", "AgentTokenID", "UserID", "AssetID", "AccountID", "AccessRequestID", "AuthMethod", "ProviderID", "AuthEpoch", "CredEpoch", "ExpiresAt"},
 	"AlertSink":    {"RecordAlert", "RecordAlerts"},
 	// Kind／ReasonCode 為降級告警而設：降級告警不掛規則，
 	// 缺這兩欄則「這筆告警為何存在」只能塞回 RuleName 那個字串欄——
@@ -145,7 +145,9 @@ var gwExactFieldSets = map[string][]string{
 	// 客體平鋪＋去 Limits（理由見 gwRequiredTypes 同名項）。
 	// **白名單守的安全性質未變**：仍無任何角色欄——ConnectGrant 加 Role／UserRole／
 	// RoleSnapshot 之類任意命名的欄位一律紅。
-	"ConnectGrant": {"UserID", "AssetID", "AccountID", "AuthMethod", "ProviderID",
+	// AccessRequestID 只選取任務信封，不保存核准結果；簽發與兌換皆現查任務項、
+	// 帳號範圍與時窗，不能僅憑此 id 授權。
+	"ConnectGrant": {"PrincipalKind", "AgentTokenID", "UserID", "AssetID", "AccountID", "AccessRequestID", "AuthMethod", "ProviderID",
 		"AuthEpoch", "CredEpoch", "ExpiresAt"},
 	"ConnectSubject": {"UserID", "ClaimedRole", "AuthMethod", "ProviderID",
 		"AuthEpoch", "CredEpoch", "ClientIP"},

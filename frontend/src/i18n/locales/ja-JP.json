@@ -119,7 +119,8 @@
     "offsiteStorage": "オフサイト保管",
     "identitySources": "アイデンティティソース",
     "complianceMap": "コンプライアンス対照",
-    "policyGroups": "ポリシーグループ"
+    "policyGroups": "ポリシーグループ",
+    "myAgents": "自分のエージェント"
   },
   "login": {
     "bannerRegionLabel": "ログイン告知",
@@ -253,6 +254,12 @@
       "unlock": "アカウントロック解除",
       "pw_noncompliant": "パスワードポリシー不適合",
       "recording_failed": "録画失敗",
+      "output_scan_disabled": "出力走査を無効化",
+      "agent_token_revoked": "エージェントトークンを失効",
+      "agent_token_suspended": "エージェントトークンを停止",
+      "agent_sessions_terminated": "エージェントセッションの終了結果",
+      "agent_sessions_terminate_late": "エージェントセッションの終了が目標時間を超過",
+      "suspend": "停止済み",
       "new_source_ip": "新しい送信元からのログイン",
       "file_list": "ファイル一覧",
       "file_upload": "ファイルアップロード",
@@ -272,6 +279,8 @@
       "offsite_cred_revoke": "オフサイト資格情報の失効"
     },
     "auditResource": {
+      "agent_token": "エージェントトークン",
+      "agent_tool_call": "エージェントツール呼び出し台帳",
       "user_role": "ロール割り当て",
       "asset": "資産",
       "session": "接続",
@@ -333,6 +342,7 @@
       "source_policy": "送信元範囲ポリシー",
       "offsite_upload": "オフサイト保管へのアップロード",
       "role_state_integrity": "ロール割り当てと監査チェーンの整合性",
+      "principal_state_integrity": "主体と資格情報の状態の整合性",
       "dek_unwrap": "データ鍵の再取得"
     },
     "cause": {
@@ -367,6 +377,7 @@
       "offsite_upload_stalled": "同一オブジェクトのアップロードリースが繰り返し失効し、処理が滞留しています",
       "offsite_integrity_mismatch": "取得したオフサイトの控えがアップロード時と一致せず、引き渡しを拒否しました",
       "role_state_mismatch": "ロール割り当てが監査チェーンと一致しない（監査記録のない変更がある）",
+      "principal_state_mismatch": "主体または資格情報の状態がチェックポイントチェーンと一致しない（監査記録のない変更がある）",
       "dek_unwrap_failed": "データ鍵の再取得が連続して失敗（鍵の保管先に到達できないか拒否されており、鍵を必要とする操作は失敗します）"
     },
     "endReason": {
@@ -597,6 +608,10 @@
       "access_policy": {
         "title": "接続ポリシー",
         "hint": "グローバル既定値は「個別ポリシー未設定の資産」への接続前申請の要否を決めます（最小権限）；各資産は下表または資産編集フォームで個別に上書きできます。管理者は申請の制限を受けません（接続ごとに監査マーカーを記録）"
+      },
+      "agent_controls": {
+        "title": "エージェントアカウント",
+        "hint": "セルフサービス作成、申請上限、探索の遮断を管理します。作成は既定で無効です。上限は新規作成のみを制限します。"
       },
       "request_params": {
         "title": "接続申請パラメータ",
@@ -945,7 +960,8 @@
     "emptyHistoryTitle": "一致する履歴がありません",
     "emptyHistoryHint": "フィルター条件を調整するか、接続の終了後に再度確認してください",
     "accountColumn": "アカウント",
-    "consoleBadge": "コンソール"
+    "consoleBadge": "コンソール",
+    "actorColumn": "操作者"
   },
   "sessionDetail": {
     "title": "接続の詳細",
@@ -1221,7 +1237,20 @@
     "kindNewSourceIP": "アカウントの新しい送信元アドレス",
     "newSourceIPFirstSession": "このアドレスからの初回接続",
     "newSourceIPNoAddress": "この接続には利用できる送信元アドレスがありません",
-    "newSourceIPPivot": "このアドレスで当日の記録をまとめて調査"
+    "newSourceIPPivot": "このアドレスで当日の記録をまとめて調査",
+    "direction": "照合方向",
+    "directionInput": "入力コマンド",
+    "directionOutput": "接続先の出力",
+    "outputNoBlock": "送信済みのバイトは取り消せないため、出力はブロックできません。",
+    "outputScope": "出力に機密情報が含まれる可能性を警告します。文字プロトコルのみ対象です。RDP/VNC の画面、暗号化・符号化された内容は対象外です。未検出は不存在を意味しません。",
+    "outputCardContract": "組み込みカード番号パターンには Luhn 検証も適用します。パターンを編集すると通常の正規表現となり、カード番号の検証は行いません。",
+    "outputSummary": "出力に機密情報が含まれる可能性（{count} 件）",
+    "kindAgentBreaker": "自動化主体の探索遮断",
+    "agentBreakerDescription": "未表示資産への反復参照により、該当トークンを停止しました。責任者または管理者による確認が必要です。",
+    "subjectKind": "対象主体",
+    "subjectAll": "すべて",
+    "subjectHuman": "人間",
+    "subjectAgent": "自動化主体"
   },
   "transmission": {
     "headerDesc": "通信強制ポリシーとチャネル暗号化インベントリ（旧「チャネル暗号化インベントリ」ページ）：ポリシーレベルには各項目に PCI 推奨値を表示します；インベントリは全チャネルの暗号化状態と乖離を集約し、エクスポートするスナップショットにはタイムスタンプと生成者が付くため、監査用インベントリとして利用できます",
@@ -1606,7 +1635,7 @@
     "linkCopied": "リンクをコピーしました"
   },
   "users": {
-    "headerDesc": "システムユーザーとロール割り当てを管理します",
+    "headerDesc": "人と自動化プログラムを管理します。各 AI agent には人の責任者を指定します。",
     "create": "ユーザーを追加",
     "searchPlaceholder": "ユーザー名またはメール",
     "fullName": "氏名",
@@ -2977,6 +3006,19 @@
     "deviationMark": "適用中のポリシーグループの要求を満たしていません"
   },
   "apiError": {
+    "AUTH_AGENT_TOKEN_INVALID": "エージェントトークンが無効です",
+    "AUTH_AGENT_FORBIDDEN_ROUTE": "エージェントはこのエンドポイントを利用できません",
+    "AUTH_REQUEST_ITEM_MISMATCH": "アクセス申請項目が一致しません",
+    "VALIDATION_ACCOUNT_NOT_ON_ASSET": "アカウントは指定された資産に属していません",
+    "VALIDATION_AGENT_ACCOUNTS_REQUIRED": "エージェントのタスクにはアカウントの指定が必要です",
+    "RULE_AGENT_SELF_CREATE_DISABLED": "エージェントのセルフサービス作成は無効です",
+    "RULE_AGENT_SELF_CREATE_LIMIT": "所有するエージェント数が作成上限に達しています",
+    "RULE_AGENT_BREAKER_PENDING": "エージェントの遮断状態を解除してからトークンを作成してください",
+    "RULE_AGENT_REQUEST_RATE": "エージェントの申請頻度が上限に達しました",
+    "RULE_AGENT_BREAKER_TRIPPED": "エージェントの遮断機能が作動しました",
+    "CONFLICT_AGENT_BREAKER_NOT_PENDING": "この自動化主体には処置待ちのサーキットブレーカー事象はありません",
+    "VALIDATION_EXECUTOR_NOT_AGENT": "実行主体にはエージェントを指定してください",
+    "VALIDATION_AGENT_OWNER_REQUIRED": "エージェント主体には有効な人間の所有者アカウントが必要です。",
     "AUTH_ACCOUNT_LOCKED": "試行回数が多すぎるため、アカウントが一時的にロックされました。しばらくしてから再試行するか、管理者にお問い合わせください",
     "AUTH_APPROVER_REQUIRED": "権限が不足しています：承認者または管理者の権限が必要です",
     "AUTH_ASSET_CONNECT_DENIED": "この資産へ接続する権限がありません。管理者にお問い合わせください",
@@ -3684,7 +3726,9 @@
     "SEAL_CREDENTIAL_REJECTED": "保管先がこの資格情報を拒否しました。失効や権限不足がないか確認してください。",
     "SEAL_KEY_MISMATCH": "保管先が返した鍵がこの配備と一致しません。まず鍵管理ページで鍵を照合してください。",
     "KEY_TOPOLOGY_INVALID": "保管先設定が検証を通過せず、変更は行われていません。次の項目を修正してください：{fields}",
-    "KEY_TOPOLOGY_NOT_EDITABLE": "この保管先には、ここで変更できる項目がありません。"
+    "KEY_TOPOLOGY_NOT_EDITABLE": "この保管先には、ここで変更できる項目がありません。",
+    "VALIDATION_ALERT_DIRECTION": "direction は input/output を指定してください",
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "送信済みのバイトは取り消せないため、出力はブロックできません。"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "このプロバイダーにはグループ claim 名が設定されていますが、groups スコープが要求されていません。多くのプロバイダーはグループクレームを発行しないため、マッピング規則は誰にも一致せず、規則で付与済みのロールも取り消されます。",
@@ -3693,6 +3737,12 @@
     "MAPPING_TARGETS_ADMIN_ROLE": "この規則は、そのグループの全メンバーに管理者ロールを付与します。保存すると監査記録に残ります。"
   },
   "policyLabel": {
+    "agent_self_create_enabled": "エージェントのセルフサービス作成を許可",
+    "agent_self_create_max_per_owner": "所有者ごとのエージェント作成上限",
+    "agent_probe_trip_count": "エージェントの探索による遮断回数",
+    "agent_probe_window_seconds": "エージェントの探索集計期間（秒）",
+    "agent_request_rate_per_hour": "自動化アカウントの時間当たり申請上限",
+    "agent_request_pending_max": "自動化アカウントの審査待ち申請上限",
     "access_policy_default": "グローバル既定アクセスポリシー段階",
     "access_request_max_duration_minutes": "申請期間の上限",
     "access_request_min_approvals": "最小承認者数",
@@ -4302,6 +4352,11 @@
       "unsealed": "未保全の記録件数",
       "unsealedHint": "（記録番号 {id} 以降。この区間はまだ連鎖の保護下になく、下記の限界 R5 を参照）"
     },
+    "principalState": {
+      "principals": "主体の種類と所有者",
+      "tokens": "自動化主体の資格情報の状態",
+      "differences": "現在の状態にない識別値：{missing}、現在の状態にのみ存在する識別値：{extra}"
+    },
     "roleState": {
       "title": "役割の割り当て",
       "desc": "現在の役割の割り当てを、直近の保全でチェックポイントに署名された内容と、それ以降に記録された付与・剥奪のすべてと突き合わせます。食い違いは、本システムを経ずにデータベースを直接書き換えて役割が付けられた、または外されたことを意味します。",
@@ -4603,7 +4658,8 @@
       "partial": "削除処理が進行中のため、この期間に現在表示されている記録は後で削除される可能性があります。今回の結果は最終的な保持状態ではありません。",
       "notRetainedDetail": "{category}：この種類の記録は自動削除の対象外であり、保持ポリシーによって削除されたことは一度もありません。したがってこの期間の空白は削除によるものではなく、「保持ポリシーにより削除済み」とは異なります。ただし空白は「事象が無かった」ことの証明にはなりません。記録として残るのは、システムが実際に取得できたものだけです（たとえばクリップボードは画面操作型の接続のみ、かつ文字情報のみを取得します）。",
       "emptyPresent": "{category}：この区間に記録はありません。",
-      "checkpointLink": "この削除が正当かどうかを検証する（チェックポイント番号 {from}〜{to}）"
+      "checkpointLink": "この削除が正当かどうかを検証する（チェックポイント番号 {from}〜{to}）",
+      "commandIncomplete": "コマンド記録は不完全：内容が欠落した記録 {count} 件"
     },
     "spans": {
       "title": "接続",
@@ -4697,6 +4753,12 @@
         "unlock": "アカウントのロック解除",
         "pw_noncompliant": "パスワードがポリシー不適合",
         "recording_failed": "録画失敗",
+        "output_scan_disabled": "出力走査を無効化",
+        "agent_token_revoked": "エージェントトークンを失効",
+        "agent_token_suspended": "エージェントトークンを停止",
+        "agent_sessions_terminated": "エージェントセッションの終了結果",
+        "agent_sessions_terminate_late": "エージェントセッションの終了が目標時間を超過",
+        "suspend": "停止済み",
         "file_list": "ファイル一覧を参照",
         "file_upload": "ファイルをアップロード",
         "file_download": "ファイルをダウンロード",
@@ -5812,5 +5874,235 @@
     "textKeyUnsupported": "この設定は自由記述のため、比較できる要求値がありません",
     "clauseNoRequired": "条番号を入力してください",
     "titleRequired": "タイトルを入力してください"
+  },
+  "agentPrincipals": {
+    "agent": "AI エージェント",
+    "human": "人間",
+    "unknown": "種別不明",
+    "unavailable": "情報なし",
+    "kind": "主体の種別",
+    "owner": "責任者",
+    "ownerValue": "責任者：{owner}",
+    "selectOwner": "有効な人間のアカウントを検索",
+    "creationHelp": "責任者がこのエージェントを管理します。接続にはキーを使用し、画面へのログインや管理・監査・承認の役割は利用できません。",
+    "keys": "キー",
+    "keysFor": "{name} のキー",
+    "keyHelp": "キーはエージェントの接続用認証情報です。取り消すと、そのキーで開いたセッションは作業の完了を待たずに終了します。",
+    "issuedKeys": "発行済みキー",
+    "noKeys": "まだキーがありません。最初のキーを発行すると接続できるようになります。",
+    "createdBy": "発行者",
+    "expiresAt": "有効期限",
+    "lastUsedAt": "最終使用",
+    "neverUsed": "未使用",
+    "issue": "キーを発行",
+    "keyName": "キー名",
+    "expiryHelp": "名前と有効期限は必須です。期限を過ぎるとキーは無効になります。",
+    "issueRequired": "キー名と将来の有効期限を入力してください。",
+    "inactiveHelp": "この主体は無効です。管理者に連絡してください。",
+    "revealTitle": "このキーは一度だけ表示されます",
+    "revealOnce": "今すぐコピーして安全に保管してください。画面を閉じると再取得できません。保存できなかった場合は取り消して再発行してください。",
+    "copied": "コピーしました",
+    "copyFailed": "コピーできませんでした。画面を閉じる前に手動で保存してください。",
+    "revoke": "キーを取り消す",
+    "revokeNote": "理由（任意・記録されます）",
+    "revokeConsequence": "取り消しは元に戻せません。このキーで開いたセッションは作業の完了を待たずに直ちに終了します。",
+    "myTitle": "自分のエージェント",
+    "myDescription": "自分が責任者の自動化アカウントのキーと対応状況を管理します。",
+    "ownerFixed": "責任者はあなたです。責任者の変更や主体の無効化は管理者に依頼してください。",
+    "create": "エージェントを作成",
+    "purpose": "用途",
+    "empty": "自分のエージェントはまだありません。",
+    "emptyEnabled": "作成後、最初のキーを発行すると接続できます。",
+    "emptyDisabled": "エージェントの作成は管理者が行います。作成後はここに表示され、キーを管理できます。",
+    "loadFailed": "一覧を読み込めませんでした。エージェントがないことを意味するものではありません。",
+    "policyUnknown": "自分で作成できるか確認できません。管理者に連絡してください。既存エージェントのキーは管理できます。",
+    "selfRequired": "3～50文字の名前と用途を入力してください。",
+    "tokenStatus": {
+      "valid": "有効",
+      "expired": "期限切れ",
+      "suspended": "停止中",
+      "revoked": "取消済み"
+    },
+    "quota": "所有 agent：{current}／{max}",
+    "you": "あなた"
+  },
+  "agentTasks": {
+    "title": "AI エージェントのタスク",
+    "ledger": "ツール呼び出し台帳",
+    "reports": "タスク報告",
+    "unavailable": "タスク一覧はまだ提供されていません。このページは入口の仮設置であり、タスク情報は読み込みません。",
+    "subjectExit": "この主体のタスクを見る",
+    "listHelp": "主体、現在の責任者、申請日時で検索します。報告状態は現在の版を示します。",
+    "subject": "主体 ID",
+    "timeRange": "申請日時範囲",
+    "reportStatus": "報告状態",
+    "status": {
+      "submitted": "報告あり",
+      "missing": "終了済み・報告なし",
+      "not_submitted": "未終了・報告なし"
+    },
+    "created": "申請日時",
+    "closed": "終了日時",
+    "open": "未終了",
+    "detailTitle": "タスク #{id}",
+    "back": "タスク一覧に戻る",
+    "sections": {
+      "who": "誰が誰のために何をするか",
+      "grants": "何が承認されたか",
+      "activity": "実際に何が記録されたか",
+      "reports": "Agent による自己報告"
+    },
+    "currentOwner": "上記は現在の責任者です。実行当時の責任者は各セッションの記録で確認できます。",
+    "reduced": "時間短縮済み",
+    "decisionBy": "決定者：{id}、日時：{time}",
+    "start": "承認開始日時：{time}",
+    "noSessions": "このタスクのセッション記録はありません。",
+    "recording": "録画を見る",
+    "selfReport": "以下は agent の自己報告です。権限の証拠や独立した検証結果ではありません。",
+    "missingAtClose": "終了時点では報告なし。終了日時：{time}",
+    "noReports": "報告の版はありません。",
+    "version": "版 {n} · 提出日時 {time}",
+    "revision": "終了後の改訂",
+    "latestOnly": "最新版のみ表示",
+    "allVersions": "すべての版を表示",
+    "approvedWindow": "承認期間",
+    "decider": "決定者"
+  },
+  "agentBreaker": {
+    "pending": "自動停止・要対応",
+    "issueBlocked": "未対応の自動停止があります。新しいキーは発行できません。",
+    "resolve": "対応画面へ",
+    "title": "自動停止への対応",
+    "eventsUnavailable": "解除フォームを利用できます。イベント履歴はまだ提供されていません。",
+    "selectFromEntry": "アラートまたは agent のトークン画面から対象を選択してください。",
+    "unavailable": "この agent の情報を取得できないか、あなたが所有者ではありません。",
+    "noPending": "現在、未対応の遮断はありません。",
+    "releaseTokens": "解除しても無効化されたトークンは復元されません。再発行が必要です。",
+    "releaseSessions": "遮断時点で発行済みの接続チケットと既存の接続は無効化されています。",
+    "released": "未対応フラグを解除しました。無効なトークンは再発行が必要です。",
+    "reason": "解除理由",
+    "reasonRequired": "理由を入力してください。UTF-8 で 1000 バイト以下にしてください。",
+    "release": "解除を確定",
+    "open": "遮断に対応する",
+    "events": "参照イベント一覧",
+    "noEvents": "この範囲に参照イベントはありません。",
+    "countBoundary": "このページの未可視対象数：{n}。この種類のみしきい値の対象です。現在の判定時間枠のカウントではありません。",
+    "classes": {
+      "never_visible": "可視履歴なし（しきい値対象）",
+      "revoked": "過去に可視、現在は不可視（対象外）",
+      "retired": "存在しない、または削除済み（対象外）"
+    },
+    "tokenBoundary": "現在のキー記録を表示します。停止日時と理由は保存済みの事実に基づき、過去の全停止一覧を推測しません。",
+    "tokenStopped": "ブレーカーにより停止：{time}",
+    "assetNameBoundary": "資産名とプロトコルは現在参照できる情報で、発生時の記録ではありません。参照できない資産は識別番号を表示します。"
+  },
+  "multiRequest": {
+    "title": "接続申請を作成",
+    "executor": "操作する主体",
+    "self": "自分で操作",
+    "minutes": "利用時間（分）",
+    "item": "項目 {n}",
+    "itemId": "項目 #{id}",
+    "accounts": "利用するアカウント",
+    "allAccounts": "すべてのアカウント",
+    "agentAccounts": "AI agent には個別のアカウント指定が必要です。",
+    "accountsLoading": "アカウントの読み込みが完了するまで送信できません。",
+    "accountsEmpty": "選択できるアカウントがありません。別の資産を選ぶか管理者に連絡してください。",
+    "accountsFailed": "アカウント一覧を読み込めませんでした。アカウントがないとは限りません。",
+    "remove": "項目を削除",
+    "add": "項目を追加",
+    "submit": "申請を送信",
+    "count": "資産 {n} 項目",
+    "task": "タスク",
+    "revokedAt": "取消日時：{time}",
+    "executorRef": "実行主体 #{id}（所有者情報なし）",
+    "state": {
+      "pending": "審査待ち",
+      "approved": "承認済み",
+      "rejected": "却下",
+      "revoked": "取消済み",
+      "cancelled": "撤回済み",
+      "expired": "期限切れ"
+    },
+    "quota": {
+      "hour": "この主体は今時間の申請上限に達しました（{used}/{limit}）。",
+      "pending": "この主体の処理待ち申請が上限に達しました（{used}/{limit}）。"
+    },
+    "relationship": "申請者はあなたで、実際に操作するのはこの agent です。責任者はここに表示されます。",
+    "reasonHint": "この理由は審査担当者に表示され、後日の監査でも確認できます。",
+    "missingAccounts": "あと {n} 項目でアカウントの選択が必要です"
+  },
+  "itemReview": {
+    "scopeUnknown": "項目ごとの審査権限は送信時に確認されます。一覧には権限情報がありません。",
+    "remove": "項目を除外",
+    "removeHelp": "この項目を削除すると却下扱いになり、審査記録は残ります。",
+    "narrow": "個別アカウントに絞る",
+    "note": "却下・除外には理由が必要です",
+    "summary": "送信前に項目ごとの判断を確認",
+    "submit": "選択した判断を送信",
+    "invalid": "理由、アカウント範囲、時間枠を確認してください。申請範囲は縮小のみ可能です。",
+    "voteRecorded": "承認票を記録しました。他の審査者を待っています。",
+    "saved": "この項目の判断を保存しました",
+    "action": {
+      "approve": "承認・範囲縮小",
+      "reject": "却下",
+      "remove": "除外（却下）"
+    }
+  },
+  "agentSession": {
+    "snapshot": "接続時点の主体情報（記録された ID、現在の情報は参照しません）",
+    "actor": "接続時の操作主体",
+    "onBehalf": "代理対象",
+    "none": "代理対象なし（自律実行）",
+    "unknown": "記録なし",
+    "owner": "接続時の所有者",
+    "token": "使用した token",
+    "tokenId": "ID #{id}：名称の記録なし",
+    "revoked": "セッション中に権限取消：{time}",
+    "recordingTab": "録画とセッション証跡"
+  },
+  "agentLedger": {
+    "title": "ツール呼び出し台帳",
+    "boundary": "録画には元の画面、台帳には応答の要約とハッシュを保存します。",
+    "decision": "判定",
+    "loadFailed": "台帳を読み込めませんでした",
+    "empty": "この条件に一致するツール呼び出しはありません。",
+    "masked": "マスク {n} 件",
+    "duration": "所要時間 {n} ミリ秒",
+    "session": "セッション #{id}",
+    "noSession": "セッション未作成",
+    "pendingBoundary": "記録済みですが、送信されたかどうかも結果も不明です。",
+    "details": "記録の詳細を見る",
+    "reasonCode": "理由コード",
+    "result": "結果の状態",
+    "unknown": "不明",
+    "arguments": "マスク済みパラメーター",
+    "digest": "応答ハッシュ",
+    "excerpt": "応答の抜粋",
+    "excerptBoundary": "これは抜粋であり、応答全文ではありません。",
+    "unavailable": "未提供",
+    "unknownReason": "この理由の説明はまだありません。",
+    "unsupportedQuery": "この検索条件は未対応のため、台帳を読み込んでいません。",
+    "decisions": {
+      "pending": "未確定",
+      "allowed": "許可",
+      "denied": "拒否",
+      "breaker": "遮断",
+      "rate_limited": "レート制限"
+    },
+    "toolName": "ツール名（技術情報）",
+    "unknownTool": "その他のツール操作",
+    "tools": {
+      "list_assets": "利用可能な資産を確認",
+      "request_access": "資産の利用権限を申請",
+      "check_request": "申請の進捗を確認",
+      "open_session": "資産への接続を開始",
+      "run_command": "端末コマンドを実行",
+      "send_keys": "端末の制御キーを送信",
+      "query": "データベースクエリを実行",
+      "read_screen": "端末の出力を読み取る",
+      "close_session": "資産への接続を終了",
+      "close_task": "タスクを終了して報告を提出"
+    }
   }
 }

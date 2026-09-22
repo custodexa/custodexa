@@ -37,7 +37,7 @@ type CommandAlert struct {
 	// 要求的安全訊號，若借一條內建規則承載，管理員停用該規則即可靜默關掉它。
 	// 落地面依本欄決定 rule_id 寫不寫得進去（DB CHECK 釘死兩者的對應）。
 	Kind string
-	// ReasonCode 非規則類告警的機器碼；規則類為空字串。
+	// ReasonCode 機器碼；輸出規則亦以版本化編碼承載計數及位置（不含原文）。
 	// **SHALL NOT 用來承載使用者可見文案**——它是機器欄，翻譯由消費端依碼對映。
 	ReasonCode string
 

@@ -81,6 +81,16 @@ func (s *ApproverScopeService) Create(spec ApproverScopeSpec) (*model.ApproverSc
 	}
 
 	if spec.ApproverID != nil {
+		var principal model.User
+		if err := s.db.First(&principal, *spec.ApproverID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrNotApproverRole
+			}
+			return nil, fmt.Errorf("查詢審核主體失敗: %w", err)
+		}
+		if principal.Kind == model.KindAgent {
+			return nil, ErrNotApproverRole
+		}
 		// 個人審核方須具 approver 角色（範圍掛在審核職能上，掛非 approver 是配置錯誤）
 		var roleCount int64
 		err := s.db.Table("user_roles").

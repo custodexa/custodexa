@@ -131,8 +131,10 @@ func (h *AuditCheckpointHandler) Verify(c *gin.Context) {
 	// 角色指派維度：差集自識別換算為帳號名與角色名。
 	// **不新增路由**——讀者與鏈健康總覽完全相同，而新端點要動兩份機器產物
 	resp := gin.H{"chain": &checkpointVerifyResponse{
-		ChainReport: chain,
-		RoleState:   projectRoleState(chain.RoleState, h.roleNames),
+		ChainReport:     chain,
+		RoleState:       projectRoleState(chain.RoleState, h.roleNames),
+		PrincipalState:  projectPrincipalState(chain.StateTables, audit.StateTablePrincipals, h.roleNames),
+		AgentTokenState: projectPrincipalState(chain.StateTables, audit.StateTableAgentTokens, h.roleNames),
 	}}
 
 	wantContent := c.Query("content") == "true" || c.Query("seq_from") != "" ||

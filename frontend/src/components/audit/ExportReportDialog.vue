@@ -406,7 +406,8 @@ const coverageLines = computed(() =>
       state === 'purged'
         ? purgedText(entry)
         : t(`auditorWorkbench.export.coverage.${state}`)
-    return { type, state, category: typeLabel(type), text }
+    const integrity = entry.incomplete ? t('auditorWorkbench.coverage.commandIncomplete', { count: entry.degraded_count || 0 }) : ''
+    return { type, state, category: typeLabel(type), text: integrity ? `${text} ${integrity}` : text }
   })
 )
 

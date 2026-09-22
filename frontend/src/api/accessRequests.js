@@ -8,7 +8,7 @@ import request from './request'
 
 /**
  * 提出連線申請
- * @param {Object} data - { asset_id, reason, duration_minutes, date_start? }
+ * @param {Object} data - { asset_id?, items?: [{ asset_id, accounts }], executor_user_id?, reason, duration_minutes, date_start? }
  */
 export function createAccessRequest(data, options = {}) {
   return request({
@@ -80,7 +80,7 @@ export function getActiveTickets() {
 /**
  * 核准申請（可縮短時長/延後開始，不可放寬）
  * @param {number} id
- * @param {Object} data - { duration_minutes?, date_start?, note? }
+ * @param {Object} data - { item_id?, items?, accounts?, remove?, duration_minutes?, date_start?, note? }
  */
 export function approveAccessRequest(id, data = {}) {
   return request({
@@ -178,4 +178,14 @@ export function getPendingReviews() {
     url: '/access-requests/reviews/pending',
     method: 'get',
   })
+}
+
+/** Reject a single request item; the whole-request API above is unchanged. */
+export function rejectAccessRequestItem(id, itemId, note) {
+  return request({ url: `/access-requests/${id}/reject`, method: 'post', data: { item_id: itemId, note } })
+}
+
+/** Revoke a single approved item without revoking its siblings. */
+export function revokeAccessRequestItem(id, itemId, note) {
+  return request({ url: `/access-requests/${id}/revoke`, method: 'post', data: { item_id: itemId, note } })
 }

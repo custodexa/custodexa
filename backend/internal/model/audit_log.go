@@ -27,6 +27,8 @@ const (
 	// ActionRecordingFailed session 錄影失敗：
 	// 失效事件表同機制去重，逐 session 可追溯靠本審計列
 	ActionRecordingFailed AuditAction = "recording_failed"
+	// ActionOutputScanDisabled marks a session output scanner disabled by queue overflow (20 bytes).
+	ActionOutputScanDisabled AuditAction = "output_scan_disabled"
 	// ActionNewSourceIP 帳號自從未見過的來源位址完成 web 登入：只留審計標記、
 	// 不進告警表（登入無會話可綁；且登入與建線各響一次會違反「同位址不重響」）。
 	// 與基準表的插入同交易寫入，失敗整筆回滾、下次登入再補。varchar(20) 內
@@ -48,8 +50,13 @@ const (
 	// ActionRevoke 臨時授權提前撤銷；**role-assignment-integrity 起亦承載角色指派的移除**
 	// （resource=user_role）。沿用同一個值而非另立 `role_revoke`：撤銷的語義相同，
 	// 分辨靠 resource 欄，而對帳讀的正是 (resource, action) 這一對
-	ActionRevoke AuditAction = "revoke"
-	ActionReview AuditAction = "review" // 破窗事後補審
+	ActionRevoke                     AuditAction = "revoke"
+	ActionSuspend                    AuditAction = "suspend"
+	ActionAgentTokenRevoked          AuditAction = "agent_token_revoked"
+	ActionAgentTokenSuspended        AuditAction = "agent_token_suspended"
+	ActionAgentSessionsTerminated    AuditAction = "agent_sessions_terminated"
+	ActionAgentSessionsTerminateLate AuditAction = "agent_sessions_terminate_late"
+	ActionReview                     AuditAction = "review" // 破窗事後補審
 
 	// ActionAssign 角色指派授予（resource=user_role）。
 	//
@@ -102,10 +109,12 @@ const (
 	//
 	// 為何獨立於 session：回傳的是終端畫面錄影**本體**，取走它與看一眼連線
 	// 詳情在稽核上是兩件事，須能以 resource 欄直接篩出（PCI 10.2.1.3）
-	ResourceRecording AuditResource = "recording"
-	ResourceUser      AuditResource = "user"
-	ResourceAuth      AuditResource = "auth"
-	ResourceFile      AuditResource = "file"
+	ResourceRecording     AuditResource = "recording"
+	ResourceUser          AuditResource = "user"
+	ResourceAgentToken    AuditResource = "agent_token"
+	ResourceAgentToolCall AuditResource = "agent_tool_call"
+	ResourceAuth          AuditResource = "auth"
+	ResourceFile          AuditResource = "file"
 	// ResourceSecurityPolicy 安全政策變更（PCI 10.2.2；action=update，
 	// Details 記 key 與舊值→新值。Action 欄為 varchar(20)，
 	// 故以 resource 區分而非 design 原稿的長 action 名）
@@ -351,7 +360,7 @@ type AuditLog struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	// 核心欄位
-	Action     AuditAction   `gorm:"type:varchar(20);not null;index:idx_audit_action_status" json:"action"`
+	Action     AuditAction   `gorm:"type:varchar(32);not null;index:idx_audit_action_status" json:"action"`
 	Resource   AuditResource `gorm:"type:varchar(20);not null;index:idx_audit_resource" json:"resource"`
 	ResourceID *uint         `gorm:"index:idx_audit_resource" json:"resource_id,omitempty"` // 可選，指向具體資源
 	Status     AuditStatus   `gorm:"type:varchar(20);not null;index:idx_audit_action_status" json:"status"`

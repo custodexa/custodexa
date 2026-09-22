@@ -80,6 +80,40 @@
           </el-tag>
         </div>
 
+        <section
+          class="agent-attribution"
+          data-test="agent-attribution"
+        >
+          <h3>{{ $t('agentSession.snapshot') }}</h3>
+          <dl>
+            <dt>{{ $t('agentSession.actor') }}</dt><dd>
+              #{{ session.user_id }} <PrincipalBadge
+                :kind="session.actor_kind || ''"
+                :owner-id="session.owner_user_id"
+              />
+            </dd>
+            <dt>{{ $t('agentSession.onBehalf') }}</dt><dd data-test="represented-user">
+              {{ session.on_behalf_of_user_id ? `#${session.on_behalf_of_user_id}` : $t(session.actor_kind === 'agent' ? 'agentSession.none' : 'agentSession.unknown') }}
+            </dd>
+            <dt>{{ $t('multiRequest.task') }}</dt><dd>
+              <a
+                v-if="session.access_request_id"
+                :href="`/audit/agent-tasks/${session.access_request_id}`"
+              >#{{ session.access_request_id }}</a><span v-else>{{ $t('agentSession.unknown') }}</span>
+            </dd>
+            <dt>{{ $t('agentSession.owner') }}</dt><dd data-test="snapshot-owner">
+              {{ session.owner_user_id ? `#${session.owner_user_id}` : $t('agentSession.unknown') }}
+            </dd>
+            <dt>{{ $t('agentSession.token') }}</dt><dd>{{ session.agent_token_name || (session.agent_token_id ? $t('agentSession.tokenId', { id: session.agent_token_id }) : $t('agentSession.unknown')) }}</dd>
+          </dl>
+          <p
+            v-if="session.revoked_during_session_at"
+            class="session-revocation"
+            data-test="session-revocation"
+          >
+            {{ $t('agentSession.revoked', { time: formatDateTime(session.revoked_during_session_at) }) }}
+          </p>
+        </section>
         <el-descriptions
           :column="2"
           border
@@ -198,467 +232,490 @@
         </el-descriptions>
       </div>
 
-      <!-- 回放定位提示：帶 ?t= 進來時**一律**
+      <el-tabs
+        v-model="evidenceTab"
+        data-test="session-evidence-tabs"
+      >
+        <el-tab-pane
+          :label="$t('agentSession.recordingTab')"
+          name="recording"
+        >
+          <!-- 回放定位提示：帶 ?t= 進來時**一律**
            給出結果，含做不到的情形。靜默忽略會讓稽核以為畫面上就是那一刻。
            `:description` 不可省：el-alert 的描述段以 `$slots.default || description`
            決定是否渲染，而具名 slot 由「無 → 有」時（提示先出現、播放器稍後才回報落點）
            不會讓 el-alert 重新求值 `$slots.default`，補充說明會整段消失（實測）。
            綁上 description 讓它隨資料變動，slot 只負責掛 data-test 與樣式 -->
-      <el-alert
-        v-if="seek.present"
-        :type="seek.level"
-        :closable="false"
-        show-icon
-        class="seek-alert"
-        data-test="seek-notice"
-        :title="seek.message"
-        :description="seek.detail || ''"
-      >
-        <template
-          v-if="seek.detail"
-          #default
-        >
-          <span data-test="seek-detail">{{ seek.detail }}</span>
-        </template>
-      </el-alert>
+          <el-alert
+            v-if="seek.present"
+            :type="seek.level"
+            :closable="false"
+            show-icon
+            class="seek-alert"
+            data-test="seek-notice"
+            :title="seek.message"
+            :description="seek.detail || ''"
+          >
+            <template
+              v-if="seek.detail"
+              #default
+            >
+              <span data-test="seek-detail">{{ seek.detail }}</span>
+            </template>
+          </el-alert>
 
-      <!-- Recording Player Card -->
-      <div
-        v-if="session.has_recording"
-        ref="playerCardRef"
-        class="player-card"
-      >
-        <div class="card-header">
-          <span class="card-title">{{ $t('sessionDetail.playbackTitle') }}</span>
-          <el-tag type="success">
-            {{ $t('sessionDetail.protocolRecording', { protocol: session.protocol.toUpperCase() }) }}
-          </el-tag>
-        </div>
+          <!-- Recording Player Card -->
+          <div
+            v-if="session.has_recording"
+            id="recording"
+            ref="playerCardRef"
+            class="player-card"
+          >
+            <div class="card-header">
+              <span class="card-title">{{ $t('sessionDetail.playbackTitle') }}</span>
+              <el-tag type="success">
+                {{ $t('sessionDetail.protocolRecording', { protocol: session.protocol.toUpperCase() }) }}
+              </el-tag>
+            </div>
 
-        <!-- 主控台的錄影是轉錄而非畫面重播：稽核員若以為看到的是全部，
+            <!-- 主控台的錄影是轉錄而非畫面重播：稽核員若以為看到的是全部，
              會把「錄影裡沒有」讀成「沒發生」 -->
-        <el-alert
-          v-if="session.db_console"
-          class="recording-note"
-          type="info"
-          show-icon
-          :closable="false"
-          data-test="console-recording-note"
-          :title="$t('sessionDetail.consoleRecordingNote')"
-        />
+            <el-alert
+              v-if="session.db_console"
+              class="recording-note"
+              type="info"
+              show-icon
+              :closable="false"
+              data-test="console-recording-note"
+              :title="$t('sessionDetail.consoleRecordingNote')"
+            />
 
-        <!-- 文字終端錄製回放（SSH 與資料庫 CLI，asciicast 格式） -->
-        <div
-          v-if="isTextTerminal(session.protocol)"
-          class="player-wrapper"
-        >
-          <!-- 等 recordingUrl（一次性 token 取得後才有值）就緒才掛載播放器，
+            <!-- 文字終端錄製回放（SSH 與資料庫 CLI，asciicast 格式） -->
+            <div
+              v-if="isTextTerminal(session.protocol)"
+              class="player-wrapper"
+            >
+              <!-- 等 recordingUrl（一次性 token 取得後才有值）就緒才掛載播放器，
                避免對空 URL 初始化導致 asciinema 抓到 SPA index.html、解析失敗的殘留錯誤層 -->
-          <AsciinemaPlayer
-            v-if="recordingUrl"
-            :recording-url="recordingUrl"
-            :auto-play="false"
-            :start-at="startAtSeconds"
-            @start-at-applied="onStartAtApplied"
-          />
-          <EmptyState
-            v-else-if="session.has_recording"
-            :title="$t('sessionDetail.recordingLoadingTitle')"
-            :hint="$t('sessionDetail.recordingLoadingHint')"
-          />
-        </div>
-
-        <!-- RDP/VNC Recording Player (Guacamole native format) -->
-        <div
-          v-else-if="session.protocol === 'rdp' || session.protocol === 'vnc'"
-          class="player-wrapper"
-        >
-          <GuacamolePlayer
-            :recording-url="recordingStreamUrl"
-            :auto-play="false"
-            :start-at="startAtSeconds"
-            @start-at-applied="onStartAtApplied"
-          />
-        </div>
-
-        <!-- Other Protocols -->
-        <div
-          v-else
-          class="player-placeholder"
-        >
-          <el-result
-            icon="info"
-            :title="$t('sessionDetail.unsupportedTitle')"
-            :sub-title="$t('sessionDetail.unsupportedSubtitle', { protocol: session.protocol.toUpperCase() })"
-          >
-            <template #extra>
-              <el-button
-                type="primary"
-                @click="handleDownload"
-              >
-                <el-icon><Download /></el-icon>
-                {{ $t('sessionDetail.downloadRecording') }}
-              </el-button>
-            </template>
-          </el-result>
-        </div>
-      </div>
-
-      <!-- Command Records Card (SSH only, hidden when empty) -->
-      <div
-        v-if="showCommands"
-        class="commands-card"
-      >
-        <div class="card-header">
-          <div class="card-title-group">
-            <span class="card-title">{{ $t('sessionDetail.commandsTitle') }}</span>
-            <!-- 兩種載體的來源不同：命令列的文字重組自按鍵流，主控台的列是
-                 語句送出時登記的原文。同一句話對兩邊都說即有一邊是假的 -->
-            <span class="card-note">{{ isConsoleSession
-              ? $t('sessionDetail.consoleCommandsNote')
-              : $t('sessionDetail.commandsNote') }}</span>
-          </div>
-          <div class="card-tag-group">
-            <el-tag type="info">
-              {{ $t('sessionDetail.commandCount', { n: commands.length }) }}
-            </el-tag>
-            <!-- 無法還原的輪次另計：混在總數裡會讓「N 筆指令」聽起來像 N 筆都有內容 -->
-            <el-tag
-              v-if="degradedCount > 0"
-              type="warning"
-              data-test="degraded-count"
-            >
-              {{ $t('sessionDetail.degradedCount', { n: degradedCount }) }}
-            </el-tag>
-          </div>
-        </div>
-
-        <el-table
-          :data="commands"
-          stripe
-          style="width: 100%"
-        >
-          <el-table-column
-            prop="seq"
-            :label="$t('sessionDetail.seqColumn')"
-            width="70"
-          />
-          <el-table-column
-            prop="executed_at"
-            :label="$t('common.time')"
-            width="180"
-          >
-            <template #default="{ row }">
-              {{ formatDateTime(row.executed_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="command"
-            :label="$t('commands.commandColumn')"
-            min-width="220"
-            show-overflow-tooltip
-          >
-            <template #default="{ row }">
-              <CommandCell
-                :row="row"
-                :recording-state="commandRecordingState"
-                @seek="seekToCommand"
+              <AsciinemaPlayer
+                v-if="recordingUrl"
+                :recording-url="recordingUrl"
+                :auto-play="false"
+                :start-at="startAtSeconds"
+                @start-at-applied="onStartAtApplied"
               />
-            </template>
-          </el-table-column>
-          <!-- 主控台會話才有的結果事實。命令列會話這幾欄恆空，
-               整組不渲染比逐格顯示 '-' 誠實 -->
-          <template v-if="isConsoleSession">
-            <el-table-column
-              :label="$t('sessionDetail.targetDatabaseColumn')"
-              width="130"
-              show-overflow-tooltip
-            >
-              <template #default="{ row }">
-                {{ row.target_database || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessionDetail.resultStatusColumn')"
-              width="130"
-            >
-              <template #default="{ row }">
-                <el-tag
-                  v-if="row.result_status"
-                  :type="consoleStatusTagType(row)"
-                  data-test="result-status"
-                >
-                  {{ consoleStatusLabel(row) }}
-                </el-tag>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessionDetail.resultReasonColumn')"
-              width="130"
-              show-overflow-tooltip
-            >
-              <template #default="{ row }">
-                {{ row.result_reason ? resultReasonLabel(row.result_reason) : '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessionDetail.resultRowsColumn')"
-              width="90"
-            >
-              <template #default="{ row }">
-                {{ consoleRowsText(row) }}
-              </template>
-            </el-table-column>
-            <el-table-column
-              :label="$t('sessionDetail.durationColumn')"
-              width="90"
-            >
-              <template #default="{ row }">
-                {{ row.duration_ms === null || row.duration_ms === undefined
-                  ? '-' : $t('sessionDetail.durationMs', { n: row.duration_ms }) }}
-              </template>
-            </el-table-column>
-            <!-- 事件識別是主控台的深連結錨點：結果未知橫幅指回這一格 -->
-            <el-table-column
-              :label="$t('sessionDetail.eventIdColumn')"
-              width="230"
-              show-overflow-tooltip
-            >
-              <template #default="{ row }">
-                <span
-                  v-if="row.event_id"
-                  :id="`cmd-${row.event_id}`"
-                  :title="row.event_id"
-                  class="event-id-cell"
-                  :class="{ 'is-anchored': anchoredEventId === row.event_id }"
-                  data-test="event-id"
-                >{{ row.event_id }}</span>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-          </template>
-        </el-table>
-      </div>
+              <EmptyState
+                v-else-if="session.has_recording"
+                :title="$t('sessionDetail.recordingLoadingTitle')"
+                :hint="$t('sessionDetail.recordingLoadingHint')"
+              />
+            </div>
 
-      <!-- Clipboard Records Card（調閱面：列表只給事實，按「解密調閱」才解密單筆。
-           無事件不渲染整卡——空殼區塊會讓「沒有剪貼簿流量」看起來像功能壞掉 -->
-      <div
-        v-if="showClipboard"
-        id="clipboard"
-        ref="clipboardCardRef"
-        class="clipboard-card"
-        data-test="clipboard-card"
-      >
-        <div class="card-header">
-          <div class="card-title-group">
-            <span class="card-title">{{ $t('sessionDetail.clipboardTitle') }}</span>
-            <!-- 按鍵＝解密＝留痕，事先講明：稽核員不該在不知情下留下調閱紀錄 -->
-            <span class="card-note">{{ $t('sessionDetail.clipboardNote') }}</span>
-          </div>
-          <div class="card-tag-group">
-            <el-tag type="info">
-              {{ $t('sessionDetail.clipboardCount', { n: clipboardEvents.length }) }}
-            </el-tag>
-            <!-- 缺口筆數另計：混在總數裡會讓「N 筆」聽起來像 N 筆都能調閱 -->
-            <el-tag
-              v-if="clipboardFailedCount > 0"
-              type="warning"
-              data-test="clipboard-failed-count"
+            <!-- RDP/VNC Recording Player (Guacamole native format) -->
+            <div
+              v-else-if="session.protocol === 'rdp' || session.protocol === 'vnc'"
+              class="player-wrapper"
             >
-              {{ $t('sessionDetail.clipboardFailedCount', { n: clipboardFailedCount }) }}
-            </el-tag>
-          </div>
-        </div>
+              <GuacamolePlayer
+                :recording-url="recordingStreamUrl"
+                :auto-play="false"
+                :start-at="startAtSeconds"
+                @start-at-applied="onStartAtApplied"
+              />
+            </div>
 
-        <el-table
-          ref="clipboardTableRef"
-          :data="clipboardEvents"
-          stripe
-          row-key="id"
-          style="width: 100%"
-        >
-          <el-table-column type="expand">
-            <template #default="{ row }">
-              <!-- 缺口列：展開給失敗說明而非呼端點——內容不存在，呼了也只是
-                   多一筆「交付了空無」的留痕；說明要講清楚「事件存在、內容缺席」 -->
-              <div
-                v-if="row.content_status !== 'available'"
-                class="clipboard-expand"
+            <!-- Other Protocols -->
+            <div
+              v-else
+              class="player-placeholder"
+            >
+              <el-result
+                icon="info"
+                :title="$t('sessionDetail.unsupportedTitle')"
+                :sub-title="$t('sessionDetail.unsupportedSubtitle', { protocol: session.protocol.toUpperCase() })"
               >
-                <el-alert
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                  :title="$t('sessionDetail.clipboardStatus.failed')"
-                  :description="$t('sessionDetail.clipboardGapDetail')"
-                  data-test="clipboard-gap-detail"
-                />
-              </div>
-              <div
-                v-else
-                class="clipboard-expand"
-                data-test="clipboard-content-pane"
-              >
-                <div
-                  v-if="clipboardContentState[row.id]?.loading"
-                  class="clipboard-content-loading"
-                  data-test="clipboard-content-loading"
-                >
-                  <el-icon class="is-loading">
-                    <LoaderCircle />
-                  </el-icon>
-                  {{ $t('sessionDetail.clipboardContentLoading') }}
-                </div>
-                <el-alert
-                  v-else-if="clipboardContentState[row.id]?.error"
-                  type="error"
-                  :closable="false"
-                  show-icon
-                  :title="$t('sessionDetail.clipboardContentError')"
-                  data-test="clipboard-content-error"
-                >
+                <template #extra>
                   <el-button
-                    size="small"
-                    data-test="clipboard-content-retry"
-                    @click="loadClipboardContent(row)"
+                    type="primary"
+                    @click="handleDownload"
                   >
-                    {{ $t('common.retry') }}
+                    <el-icon><Download /></el-icon>
+                    {{ $t('sessionDetail.downloadRecording') }}
                   </el-button>
-                </el-alert>
-                <template v-else-if="clipboardContentState[row.id]?.loaded">
-                  <!-- 留痕回饋：內容之上先講「這一次調閱已經被記下來了」，
+                </template>
+              </el-result>
+            </div>
+          </div>
+
+          <!-- Command Records Card (SSH only, hidden when empty) -->
+          <div
+            v-if="showCommands"
+            class="commands-card"
+          >
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-title">{{ $t('sessionDetail.commandsTitle') }}</span>
+                <!-- 兩種載體的來源不同：命令列的文字重組自按鍵流，主控台的列是
+                 語句送出時登記的原文。同一句話對兩邊都說即有一邊是假的 -->
+                <span class="card-note">{{ isConsoleSession
+                  ? $t('sessionDetail.consoleCommandsNote')
+                  : $t('sessionDetail.commandsNote') }}</span>
+              </div>
+              <div class="card-tag-group">
+                <el-tag type="info">
+                  {{ $t('sessionDetail.commandCount', { n: commands.length }) }}
+                </el-tag>
+                <!-- 無法還原的輪次另計：混在總數裡會讓「N 筆指令」聽起來像 N 筆都有內容 -->
+                <el-tag
+                  v-if="degradedCount > 0"
+                  type="warning"
+                  data-test="degraded-count"
+                >
+                  {{ $t('sessionDetail.degradedCount', { n: degradedCount }) }}
+                </el-tag>
+              </div>
+            </div>
+
+            <el-table
+              :data="commands"
+              stripe
+              style="width: 100%"
+            >
+              <el-table-column
+                prop="seq"
+                :label="$t('sessionDetail.seqColumn')"
+                width="70"
+              />
+              <el-table-column
+                prop="executed_at"
+                :label="$t('common.time')"
+                width="180"
+              >
+                <template #default="{ row }">
+                  {{ formatDateTime(row.executed_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="command"
+                :label="$t('commands.commandColumn')"
+                min-width="220"
+                show-overflow-tooltip
+              >
+                <template #default="{ row }">
+                  <CommandCell
+                    :row="row"
+                    :recording-state="commandRecordingState"
+                    @seek="seekToCommand"
+                  />
+                </template>
+              </el-table-column>
+              <!-- 主控台會話才有的結果事實。命令列會話這幾欄恆空，
+               整組不渲染比逐格顯示 '-' 誠實 -->
+              <template v-if="isConsoleSession">
+                <el-table-column
+                  :label="$t('sessionDetail.targetDatabaseColumn')"
+                  width="130"
+                  show-overflow-tooltip
+                >
+                  <template #default="{ row }">
+                    {{ row.target_database || '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="$t('sessionDetail.resultStatusColumn')"
+                  width="130"
+                >
+                  <template #default="{ row }">
+                    <el-tag
+                      v-if="row.result_status"
+                      :type="consoleStatusTagType(row)"
+                      data-test="result-status"
+                    >
+                      {{ consoleStatusLabel(row) }}
+                    </el-tag>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="$t('sessionDetail.resultReasonColumn')"
+                  width="130"
+                  show-overflow-tooltip
+                >
+                  <template #default="{ row }">
+                    {{ row.result_reason ? resultReasonLabel(row.result_reason) : '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="$t('sessionDetail.resultRowsColumn')"
+                  width="90"
+                >
+                  <template #default="{ row }">
+                    {{ consoleRowsText(row) }}
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="$t('sessionDetail.durationColumn')"
+                  width="90"
+                >
+                  <template #default="{ row }">
+                    {{ row.duration_ms === null || row.duration_ms === undefined
+                      ? '-' : $t('sessionDetail.durationMs', { n: row.duration_ms }) }}
+                  </template>
+                </el-table-column>
+                <!-- 事件識別是主控台的深連結錨點：結果未知橫幅指回這一格 -->
+                <el-table-column
+                  :label="$t('sessionDetail.eventIdColumn')"
+                  width="230"
+                  show-overflow-tooltip
+                >
+                  <template #default="{ row }">
+                    <span
+                      v-if="row.event_id"
+                      :id="`cmd-${row.event_id}`"
+                      :title="row.event_id"
+                      class="event-id-cell"
+                      :class="{ 'is-anchored': anchoredEventId === row.event_id }"
+                      data-test="event-id"
+                    >{{ row.event_id }}</span>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
+              </template>
+            </el-table>
+          </div>
+
+          <!-- Clipboard Records Card（調閱面：列表只給事實，按「解密調閱」才解密單筆。
+           無事件不渲染整卡——空殼區塊會讓「沒有剪貼簿流量」看起來像功能壞掉 -->
+          <div
+            v-if="showClipboard"
+            id="clipboard"
+            ref="clipboardCardRef"
+            class="clipboard-card"
+            data-test="clipboard-card"
+          >
+            <div class="card-header">
+              <div class="card-title-group">
+                <span class="card-title">{{ $t('sessionDetail.clipboardTitle') }}</span>
+                <!-- 按鍵＝解密＝留痕，事先講明：稽核員不該在不知情下留下調閱紀錄 -->
+                <span class="card-note">{{ $t('sessionDetail.clipboardNote') }}</span>
+              </div>
+              <div class="card-tag-group">
+                <el-tag type="info">
+                  {{ $t('sessionDetail.clipboardCount', { n: clipboardEvents.length }) }}
+                </el-tag>
+                <!-- 缺口筆數另計：混在總數裡會讓「N 筆」聽起來像 N 筆都能調閱 -->
+                <el-tag
+                  v-if="clipboardFailedCount > 0"
+                  type="warning"
+                  data-test="clipboard-failed-count"
+                >
+                  {{ $t('sessionDetail.clipboardFailedCount', { n: clipboardFailedCount }) }}
+                </el-tag>
+              </div>
+            </div>
+
+            <el-table
+              ref="clipboardTableRef"
+              :data="clipboardEvents"
+              stripe
+              row-key="id"
+              style="width: 100%"
+            >
+              <el-table-column type="expand">
+                <template #default="{ row }">
+                  <!-- 缺口列：展開給失敗說明而非呼端點——內容不存在，呼了也只是
+                   多一筆「交付了空無」的留痕；說明要講清楚「事件存在、內容缺席」 -->
+                  <div
+                    v-if="row.content_status !== 'available'"
+                    class="clipboard-expand"
+                  >
+                    <el-alert
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                      :title="$t('sessionDetail.clipboardStatus.failed')"
+                      :description="$t('sessionDetail.clipboardGapDetail')"
+                      data-test="clipboard-gap-detail"
+                    />
+                  </div>
+                  <div
+                    v-else
+                    class="clipboard-expand"
+                    data-test="clipboard-content-pane"
+                  >
+                    <div
+                      v-if="clipboardContentState[row.id]?.loading"
+                      class="clipboard-content-loading"
+                      data-test="clipboard-content-loading"
+                    >
+                      <el-icon class="is-loading">
+                        <LoaderCircle />
+                      </el-icon>
+                      {{ $t('sessionDetail.clipboardContentLoading') }}
+                    </div>
+                    <el-alert
+                      v-else-if="clipboardContentState[row.id]?.error"
+                      type="error"
+                      :closable="false"
+                      show-icon
+                      :title="$t('sessionDetail.clipboardContentError')"
+                      data-test="clipboard-content-error"
+                    >
+                      <el-button
+                        size="small"
+                        data-test="clipboard-content-retry"
+                        @click="loadClipboardContent(row)"
+                      >
+                        {{ $t('common.retry') }}
+                      </el-button>
+                    </el-alert>
+                    <template v-else-if="clipboardContentState[row.id]?.loaded">
+                      <!-- 留痕回饋：內容之上先講「這一次調閱已經被記下來了」，
                        時刻＝前端收到內容的時刻（語義為調閱時刻）。
                        沒有這一行，解密內容看起來就跟本來就是明文一樣 -->
-                  <div
-                    class="clipboard-access-logged"
-                    data-test="clipboard-access-logged"
-                  >
-                    <el-icon><CircleCheck /></el-icon>
-                    {{ $t('sessionDetail.clipboardAccessLogged', {
-                      time: clipboardAccessTimeText(clipboardContentState[row.id]?.accessedAt),
-                    }) }}
-                  </div>
-                  <pre
-                    class="clipboard-content"
-                    data-test="clipboard-content"
-                  >{{ clipboardContentState[row.id]?.content }}</pre>
-                </template>
-                <!-- 尚未解密：展開只給「上鎖」狀態，不直載內容。
+                      <div
+                        class="clipboard-access-logged"
+                        data-test="clipboard-access-logged"
+                      >
+                        <el-icon><CircleCheck /></el-icon>
+                        {{ $t('sessionDetail.clipboardAccessLogged', {
+                          time: clipboardAccessTimeText(clipboardContentState[row.id]?.accessedAt),
+                        }) }}
+                      </div>
+                      <pre
+                        class="clipboard-content"
+                        data-test="clipboard-content"
+                      >{{ clipboardContentState[row.id]?.content }}</pre>
+                    </template>
+                    <!-- 尚未解密：展開只給「上鎖」狀態，不直載內容。
                      展開本身不呼端點，唯一的解密入口是列上的「解密調閱」鍵 -->
-                <div
-                  v-else
-                  class="clipboard-locked"
-                  data-test="clipboard-locked-hint"
-                >
-                  <el-icon><Lock /></el-icon>
-                  {{ $t('sessionDetail.clipboardLockedHint') }}
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="created_at"
-            :label="$t('common.time')"
-            width="180"
-          >
-            <template #default="{ row }">
-              {{ formatDateTime(row.created_at) }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="direction"
-            :label="$t('sessionDetail.clipboardDirectionColumn')"
-            min-width="200"
-          >
-            <template #default="{ row }">
-              {{ clipboardDirectionText(row.direction) }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="content_length"
-            :label="$t('sessionDetail.clipboardLengthColumn')"
-            width="140"
-            align="right"
-          />
-          <el-table-column
-            :label="$t('sessionDetail.clipboardStatusColumn')"
-            width="160"
-          >
-            <template #default="{ row }">
-              <el-tag
-                v-if="row.content_status === 'available'"
-                type="success"
-                size="small"
+                    <div
+                      v-else
+                      class="clipboard-locked"
+                      data-test="clipboard-locked-hint"
+                    >
+                      <el-icon><Lock /></el-icon>
+                      {{ $t('sessionDetail.clipboardLockedHint') }}
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="created_at"
+                :label="$t('common.time')"
+                width="180"
               >
-                {{ $t('sessionDetail.clipboardStatus.available') }}
-              </el-tag>
-              <el-tag
-                v-else
-                type="warning"
-                size="small"
-                data-test="clipboard-status-failed"
+                <template #default="{ row }">
+                  {{ formatDateTime(row.created_at) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="direction"
+                :label="$t('sessionDetail.clipboardDirectionColumn')"
+                min-width="200"
               >
-                {{ $t('sessionDetail.clipboardStatus.failed') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <!-- 調閱欄：鎖頭圖示標明「內容是加密留存的」，解密要按鍵才發生。
+                <template #default="{ row }">
+                  {{ clipboardDirectionText(row.direction) }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="content_length"
+                :label="$t('sessionDetail.clipboardLengthColumn')"
+                width="140"
+                align="right"
+              />
+              <el-table-column
+                :label="$t('sessionDetail.clipboardStatusColumn')"
+                width="160"
+              >
+                <template #default="{ row }">
+                  <el-tag
+                    v-if="row.content_status === 'available'"
+                    type="success"
+                    size="small"
+                  >
+                    {{ $t('sessionDetail.clipboardStatus.available') }}
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    type="warning"
+                    size="small"
+                    data-test="clipboard-status-failed"
+                  >
+                    {{ $t('sessionDetail.clipboardStatus.failed') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <!-- 調閱欄：鎖頭圖示標明「內容是加密留存的」，解密要按鍵才發生。
                缺口列不給鍵——內容不存在，按了只會留下「交付了空無」的紀錄 -->
-          <el-table-column
-            :label="$t('sessionDetail.clipboardActionColumn')"
-            width="170"
-          >
-            <template #default="{ row }">
-              <div
-                v-if="row.content_status === 'available'"
-                class="clipboard-action"
+              <el-table-column
+                :label="$t('sessionDetail.clipboardActionColumn')"
+                width="170"
               >
-                <el-icon
-                  class="clipboard-lock"
-                  data-test="clipboard-lock-icon"
-                >
-                  <Lock />
-                </el-icon>
-                <el-button
-                  size="small"
-                  type="primary"
-                  plain
-                  :loading="clipboardContentState[row.id]?.loading"
-                  data-test="clipboard-decrypt-btn"
-                  @click="revealClipboardContent(row)"
-                >
-                  {{ $t('sessionDetail.clipboardDecryptButton') }}
-                </el-button>
-              </div>
-              <span
-                v-else
-                class="clipboard-action-none"
-                data-test="clipboard-action-none"
-              >—</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+                <template #default="{ row }">
+                  <div
+                    v-if="row.content_status === 'available'"
+                    class="clipboard-action"
+                  >
+                    <el-icon
+                      class="clipboard-lock"
+                      data-test="clipboard-lock-icon"
+                    >
+                      <Lock />
+                    </el-icon>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      plain
+                      :loading="clipboardContentState[row.id]?.loading"
+                      data-test="clipboard-decrypt-btn"
+                      @click="revealClipboardContent(row)"
+                    >
+                      {{ $t('sessionDetail.clipboardDecryptButton') }}
+                    </el-button>
+                  </div>
+                  <span
+                    v-else
+                    class="clipboard-action-none"
+                    data-test="clipboard-action-none"
+                  >—</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
 
-      <!-- No Recording Card -->
-      <div
-        v-if="!session.has_recording"
-        class="no-recording-card"
-      >
-        <EmptyState
-          :title="$t('sessionDetail.noRecordingContent')"
-        >
-          <template #action>
-            <el-button
-              type="primary"
-              @click="goBack"
+          <!-- No Recording Card -->
+          <div
+            v-if="!session.has_recording"
+            class="no-recording-card"
+          >
+            <EmptyState
+              :title="$t('sessionDetail.noRecordingContent')"
             >
-              {{ $t('sessionDetail.backToList') }}
-            </el-button>
-          </template>
-        </EmptyState>
-      </div>
+              <template #action>
+                <el-button
+                  type="primary"
+                  @click="goBack"
+                >
+                  {{ $t('sessionDetail.backToList') }}
+                </el-button>
+              </template>
+            </EmptyState>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane
+          v-if="session.actor_kind === 'agent'"
+          :label="$t('agentTasks.ledger')"
+          name="ledger"
+        >
+          <ToolCallLedger
+            v-if="evidenceTab === 'ledger'"
+            :key="session.id"
+            :query="{ session_id: session.id }"
+            :show-session="false"
+          />
+        </el-tab-pane>
+      </el-tabs>
     </div>
   </div>
 </template>
@@ -676,6 +733,9 @@ import {
   CirclePlay,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
+import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
+import ToolCallLedger from '@/components/agent/ToolCallLedger.vue'
+const evidenceTab = ref('recording')
 import AsciinemaPlayer from '@/components/AsciinemaPlayer.vue'
 import GuacamolePlayer from '@/components/GuacamolePlayer.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -1344,6 +1404,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.agent-attribution { margin-bottom: var(--ot-space-md); padding: var(--ot-space-md); border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); }
+.agent-attribution h3 { font-size: var(--ot-font-size-lg); }
+.agent-attribution dl { display: grid; grid-template-columns: auto 1fr; gap: var(--ot-space-sm) var(--ot-space-md); }
+.agent-attribution dt { color: var(--ot-text-secondary); }
+.agent-attribution dd { margin: 0; }
+.agent-attribution a { color: var(--ot-primary); }
+.session-revocation { color: var(--ot-warning); font-size: var(--ot-font-size-sm); }
 .session-detail {
   max-width: 1400px;
   margin: 0 auto;

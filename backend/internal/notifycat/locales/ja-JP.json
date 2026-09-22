@@ -84,5 +84,17 @@
       "title": "保管先設定が変更されました",
       "text": "{actor} が {provider} の保管先設定を変更しました：{before} → {after}。"
     }
+  },
+  "agent_task_report_submitted": {
+    "default": {
+      "title": "タスク報告",
+      "text": "主体 {user_id} がタスク {request_id} の報告 {report_id}、版 {version} を提出しました。責任者：{owner_id}。"
+    }
+  },
+  "agent_breaker_tripped": {
+    "default": {
+      "title": "自動化主体の探索遮断",
+      "text": "主体 {user_id} のトークン {token_id} を探索遮断により停止しました。責任者：{owner_id}。"
+    }
   }
 }

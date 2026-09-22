@@ -490,6 +490,11 @@ func (s *UserService) loadUser(tx *gorm.DB, userID uint) (*model.User, error) {
 // 一律於鎖外呼叫，且個別失敗不回滾主操作——身分已解除是主要安全目標，
 // 收線失敗記日誌人工跟進（同 UpdateStatus 的既有取捨）
 func (s *UserService) revokeUserAccess(userID uint, reason string) {
+	if s.agentTokens != nil {
+		if err := s.agentTokens.invalidateUserAccess(userID, reason); err != nil {
+			log.Printf("[AgentToken] user invalidation failed user_id=%d: %v", userID, err)
+		}
+	}
 	if s.sessionTerminator != nil {
 		if n, err := s.sessionTerminator.TerminateAllByUser(userID); err != nil {
 			log.Printf("[ExternalIdentity] 終斷協議會話失敗 (userID=%d, reason=%s): %v", userID, reason, err)

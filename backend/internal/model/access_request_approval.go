@@ -15,9 +15,11 @@ type AccessRequestApproval struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 
-	RequestID  uint   `gorm:"not null;uniqueIndex:idx_request_approval_once;index" json:"request_id"`
-	ApproverID uint   `gorm:"not null;uniqueIndex:idx_request_approval_once" json:"approver_id"`
-	Note       string `gorm:"type:varchar(1000)" json:"note,omitempty"`
+	ItemID     *uint              `gorm:"uniqueIndex:idx_request_approval_once;index" json:"item_id,omitempty"`
+	Item       *AccessRequestItem `gorm:"foreignKey:ItemID" json:"-"`
+	RequestID  uint               `gorm:"not null;uniqueIndex:idx_request_approval_once;index" json:"request_id"`
+	ApproverID uint               `gorm:"not null;uniqueIndex:idx_request_approval_once" json:"approver_id"`
+	Note       string             `gorm:"type:varchar(1000)" json:"note,omitempty"`
 
 	// 關聯（用於 Preload）
 	Approver User `gorm:"foreignKey:ApproverID" json:"approver,omitempty"`

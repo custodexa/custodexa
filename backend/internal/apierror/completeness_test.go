@@ -117,7 +117,19 @@ func TestCodeTranslationsComplete(t *testing.T) {
 		t.Logf("locale %s apiError 鍵數=%d（下限 %d）", l, len(byLocale[l]), minAPIErrorLocaleKeys)
 	}
 
-	codes := AllCodes()
+	codes := []ErrCode{}
+	for _, code := range AllCodes() {
+		d, _ := DescriptorOf(code)
+		if d.AuditOnly {
+			for _, l := range locales {
+				if _, exists := byLocale[l][string(code)]; exists {
+					t.Errorf("audit-only code %q has forbidden %s frontend text", code, l)
+				}
+			}
+			continue
+		}
+		codes = append(codes, code)
+	}
 
 	// forward: every registered code has a non-empty key in every language, its
 	// zh matches the registry template, and all three languages carry the same

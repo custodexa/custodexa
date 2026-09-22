@@ -252,6 +252,7 @@ const menuGroups = [
         icon: ClipboardList,
         hideRoles: ['admin', 'auditor'],
       },
+      { path: '/my-agents', titleKey: 'menu.myAgents', icon: ClipboardList, hideRoles: ['admin', 'auditor'] },
     ],
   },
   {
@@ -283,8 +284,13 @@ const menuGroups = [
         roles: ['admin', 'auditor'],
       },
       {
-        // 輪替證據：緊接工作台——它是稽核季度最常被要的那一份東西，
-        // 且排程管理就在頁內（不另立側欄項目，離開這一頁看排程沒有上下文）
+        // 任務聚合與工作台共用稽核權限。
+        path: '/audit/agent-tasks',
+        titleKey: 'agentTasks.title',
+        icon: TextSearch,
+        roles: ['admin', 'auditor'],
+      },
+      {
         path: '/rotation-evidence',
         titleKey: 'menu.rotationEvidence',
         icon: FileClock,
@@ -476,8 +482,10 @@ const pageTitleKeys = {
   '/sessions': 'menu.sessions',
   '/my-connections': 'menu.myConnections',
   '/my-requests': 'menu.myRequests',
+  '/my-agents': 'menu.myAgents',
   '/approvals': 'menu.approvals',
   '/audit/workbench': 'menu.auditWorkbench',
+  '/audit/agent-tasks': 'agentTasks.title',
   '/rotation-evidence': 'menu.rotationEvidence',
   '/audit/exports': 'menu.auditExports',
   '/audit-logs': 'menu.auditLogs',

@@ -16,12 +16,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/gin-gonic/gin"
 )
 
 // AssetServiceInterface 資產服務接口（用於測試注入）
@@ -390,6 +390,24 @@ func (h *AssetHandler) List(c *gin.Context) {
 		// 節點掛載資訊：僅當頁列，失敗不擋列表
 		if err := h.authorizationService.FillNodeInfoForDTOs(pageRows); err != nil {
 			log.Printf("[AssetList] 節點資訊填充失敗（列表照常回傳）: %v", err)
+		}
+
+		if kind, _ := middleware.GetPrincipalKind(c); kind == model.KindAgent {
+			recorder, ok := h.authorizationService.(interface {
+				RecordAgentVisibilityExposures(context.Context, uint, []uint) error
+			})
+			if !ok {
+				apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, errors.New("agent visibility recorder not configured"))
+				return
+			}
+			ids := make([]uint, 0, len(pageRows))
+			for _, row := range pageRows {
+				ids = append(ids, row.ID)
+			}
+			if err := recorder.RecordAgentVisibilityExposures(c.Request.Context(), userID, ids); err != nil {
+				apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAssetQuery, err)
+				return
+			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{

@@ -119,8 +119,9 @@ func normalizeClaimName(raw string) (string, error) {
 //     API 可繞過 UI）。它們是外部身分的鍵，變更即等同換身分域，會使既有使用者全數失聯
 //   - 停用、刪除、密鑰輪替皆推進 auth_epoch，使既簽憑證立即失效且重新啟用不復活
 type OIDCProviderService struct {
-	db    *gorm.DB
-	codec crypto.ColumnCodec
+	agentTokens *AgentTokenService
+	db          *gorm.DB
+	codec       crypto.ColumnCodec
 	// egress 出站信任邊界（issuer 形狀與 scheme 驗證）
 	egress *OIDCEgressPolicy
 	// deployDedicatedIssuers 部署層宣告的專屬 issuer（OIDC_DEDICATED_ISSUERS）。

@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // UserServiceInterface 用戶服務接口（用於測試注入）
@@ -45,6 +45,7 @@ type UserServiceInterface interface {
 
 // UserHandler 用戶 API handler
 type UserHandler struct {
+	agentTokens *identity.AgentTokenService
 	userService UserServiceInterface
 	// auditService 解鎖等安全事件的顯式審計；nil 表示停用
 	auditService *audit.AuditLogService
@@ -69,11 +70,19 @@ func (h *UserHandler) SetAuditService(auditService *audit.AuditLogService) {
 func (h *UserHandler) List(c *gin.Context) {
 	// 解析查詢參數
 	req := &identity.ListUsersRequest{
-		Search:   c.Query("search"),
-		Page:     1,
-		PageSize: 20,
+		Search:        c.Query("search"),
+		IncludeAgents: c.Query("include_agents") == "true",
+		Page:          1,
+		PageSize:      20,
 	}
 
+	if kind := c.Query("kind"); kind != "" {
+		if kind != model.KindHuman && kind != model.KindAgent {
+			apierror.Respond(c, 400, apierror.CodeBadParams, nil)
+			return
+		}
+		req.Kind = kind
+	}
 	// 解析頁碼
 	if page, err := strconv.Atoi(c.Query("page")); err == nil && page > 0 {
 		req.Page = page
@@ -132,6 +141,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 	// 調用服務創建用戶
 	user, err := h.userService.Create(&req)
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUsernameExists) {
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeUsernameExists, nil)
 			return
@@ -212,6 +224,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 	// 調用服務
 	user, diff, err := h.userService.Update(uint(id), &req)
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -257,6 +272,9 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	// 調用服務
 	err = h.userService.Delete(uint(id))
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -317,6 +335,9 @@ func (h *UserHandler) AssignRoles(c *gin.Context) {
 	// 調用服務
 	result, err := h.userService.AssignRoles(uint(id), *req.ManualRoles)
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -363,6 +384,9 @@ func (h *UserHandler) PinRole(c *gin.Context) {
 	}
 	sets, err := h.userService.PinMappedRole(uint(id), req.Role)
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, identity.ErrUserNotFound):
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
@@ -387,6 +411,9 @@ func (h *UserHandler) AddRole(c *gin.Context) {
 	}
 	roleName := c.Param("role")
 	if err := h.userService.AddRole(uint(id), roleName); err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -480,6 +507,9 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 	// 調用服務
 	err = h.userService.ChangePassword(uint(id), req.Password)
 	if err != nil {
+		if respondPrincipalError(c, err) {
+			return
+		}
 		if errors.Is(err, identity.ErrUserNotFound) {
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeUserNotExist, nil)
 			return
@@ -776,6 +806,15 @@ func (h *UserHandler) GetLocalAdminCount(c *gin.Context) {
 
 // RegisterRoutes 註冊用戶相關路由
 func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.AuthService) {
+	tokens := r.Group("/users/:id/agent-tokens")
+	tokens.Use(middleware.AuthMiddleware(authService), h.RequireAgentTokenManager)
+	tokens.POST("", h.CreateAgentToken)
+	tokens.GET("", h.ListAgentTokens)
+	tokens.DELETE("/:tokenId", h.RevokeAgentToken)
+	breakers := r.Group("/users/:id/agent-breaker")
+	breakers.Use(middleware.AuthMiddleware(authService), h.RequireAgentTokenManager)
+	breakers.POST("/release", h.ReleaseAgentBreaker)
+
 	users := r.Group("/users")
 	users.Use(middleware.AuthMiddleware(authService))
 	users.Use(middleware.RequireRole("admin"))
@@ -811,4 +850,12 @@ func (h *UserHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.A
 		users.POST("/:id/external-identities/:identityId/unbind-and-disable", h.UnbindExternalIdentityAndDisable)
 		users.POST("/:id/external-only", h.ConvertToExternalOnly)
 	}
+	myAgents := r.Group("/my/agents", middleware.AuthMiddleware(authService))
+	myAgents.POST("", h.CreateMyAgent)
+	myAgents.GET("", h.ListMyAgents)
+
+	// Append new groups to preserve existing middleware closure identities in route goldens.
+	events := r.Group("/users/:id/agent-breaker/events", middleware.AuthMiddleware(authService))
+	events.GET("", h.AgentBreakerEvents)
+
 }

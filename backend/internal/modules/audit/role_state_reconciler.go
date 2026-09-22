@@ -94,13 +94,18 @@ type RoleStateReconciler struct {
 	// mu 保護冪等鍵；對帳頻率低（每次封章、每次驗證、每次特權登入），粗鎖足矣
 	mu sync.Mutex
 	// lastKey 最近一次已開單的 (since_seq, actual_hash)。空＝目前無未結案的不符
-	lastKey string
+	lastKeys     map[string]string
+	stateFailure StateFailureSink
 }
 
 // NewRoleStateReconciler 建立對帳器。failure 為 nil 時只回報不開事件
-//（工具與測試路徑；產品組裝根必注入）
+// （工具與測試路徑；產品組裝根必注入）
 func NewRoleStateReconciler(db *gorm.DB, failure AuditFailureAlerter) *RoleStateReconciler {
-	return &RoleStateReconciler{db: db, failure: failure}
+	r := &RoleStateReconciler{db: db, failure: failure}
+	if sink, ok := failure.(StateFailureSink); ok {
+		r.stateFailure = sink
+	}
+	return r
 }
 
 // Reconcile 執行一次對帳並在不符時開立失效事件。
@@ -108,65 +113,29 @@ func NewRoleStateReconciler(db *gorm.DB, failure AuditFailureAlerter) *RoleState
 // 回傳的 error 只表示**對帳本身沒做成**（讀不到檢查點、快照解不開）——
 // 那是「未知」而非「無異常」，呼叫端不得把它當成相符。
 func (r *RoleStateReconciler) Reconcile(ctx context.Context) (*RoleStateReport, error) {
-	report, err := r.compute(ctx)
-	if err != nil {
-		return nil, err
+	for _, report := range r.ReconcileTables(ctx) {
+		if report.Table == StateTableUserRoles {
+			if report.State == StateTableUnknown {
+				return nil, fmt.Errorf("%s", report.Error)
+			}
+			return roleReport(report), nil
+		}
 	}
-	r.settle(report)
-	return report, nil
+	return nil, fmt.Errorf("user_roles registry missing")
 }
 
-// compute 純計算：不開事件、不寫任何東西
+// compute preserves the legacy role report using the registered codec.
 func (r *RoleStateReconciler) compute(ctx context.Context) (*RoleStateReport, error) {
-	base, err := r.baselineCheckpoint(ctx)
-	if err != nil {
-		return nil, err
+	for _, st := range StateTableRegistry() {
+		if st.Name == StateTableUserRoles {
+			report, err := r.computeTable(ctx, st)
+			if err != nil {
+				return nil, err
+			}
+			return roleReport(report), nil
+		}
 	}
-	if base == nil {
-		return &RoleStateReport{Covered: false, State: RoleStateNotCovered}, nil
-	}
-	tables, err := DecodeStateSnapshotColumn(*base.RoleStateSnapshot)
-	if err != nil {
-		return nil, err
-	}
-	body, ok := tables[StateTableUserRoles]
-	if !ok {
-		return nil, fmt.Errorf("檢查點 seq=%d 的快照欄缺 %s：基準不可用",
-			base.Seq, StateTableUserRoles)
-	}
-	baseline, err := DecodeRolePairs(body)
-	if err != nil {
-		return nil, err
-	}
-	events, err := r.roleEventsAfter(ctx, base.IDTo)
-	if err != nil {
-		return nil, err
-	}
-	expected := applyRoleEvents(baseline, events)
-	expectedBody, _ := EncodeRolePairs(expected)
-
-	actualSnap, err := SnapshotUserRoles(ctx, r.db)
-	if err != nil {
-		return nil, err
-	}
-	actual, err := DecodeRolePairs(actualSnap.Body)
-	if err != nil {
-		return nil, err
-	}
-	missing, extra := DiffRolePairs(expected, actual)
-	report := &RoleStateReport{
-		Covered:      true,
-		State:        RoleStateMatch,
-		SinceSeq:     base.Seq,
-		ExpectedHash: stateHash(expectedBody),
-		ActualHash:   actualSnap.Hash,
-		Missing:      missing,
-		Extra:        extra,
-	}
-	if len(missing) > 0 || len(extra) > 0 {
-		report.State = RoleStateMismatch
-	}
-	return report, nil
+	return nil, fmt.Errorf("user_roles registry missing")
 }
 
 // settle 依對帳結果開立或結案失效事件（冪等鍵 = since_seq + actual_hash）
@@ -176,18 +145,21 @@ func (r *RoleStateReconciler) settle(report *RoleStateReport) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.lastKeys == nil {
+		r.lastKeys = map[string]string{}
+	}
 	if report.State == RoleStateMatch {
-		if r.lastKey != "" {
-			r.lastKey = ""
+		if r.lastKeys[StateTableUserRoles] != "" {
+			r.lastKeys[StateTableUserRoles] = ""
 		}
 		r.failure.Resolve(model.MechanismRoleStateIntegrity)
 		return
 	}
 	key := strconv.FormatUint(uint64(report.SinceSeq), 10) + ":" + report.ActualHash
-	if key == r.lastKey {
+	if key == r.lastKeys[StateTableUserRoles] {
 		return // 同一筆不符已開過單
 	}
-	r.lastKey = key
+	r.lastKeys[StateTableUserRoles] = key
 	// counts 傳 nil＝`Report` 的原語義（`Report` 本身即 `ReportWithCounts(…, nil)`）：
 	// 角色指派的不符沒有受控整數計數可出站，差集只進事件詳情
 	r.failure.ReportWithCounts(model.MechanismRoleStateIntegrity, model.CauseRoleStateMismatch,
@@ -218,7 +190,7 @@ func (r *RoleStateReconciler) settle(report *RoleStateReport) {
 //     「不知道」不是「通過」，拿它當基準與拿 false 當基準是同一件事。
 //  3. 兩者皆無（升級後首個含快照的封章之前）＝ 無基準，由呼叫端判 not_covered。
 //
-// **只取載荷版本涵蓋狀態摘要的檢查點（agg_scheme v2）**：v1 檢查點的簽章不涵蓋
+// **只取載荷版本涵蓋狀態摘要的檢查點（agg_scheme v2/v3）**：v1 檢查點的簽章不涵蓋
 // 快照欄，能寫資料庫的人可以事後把快照欄與 reconciled=true 補到舊檢查點上，鏈驗證照過、
 // 對帳卻拿它當基準——基準的可信度必須由簽章背書，而不是由欄位存在與否背書。
 //
@@ -228,7 +200,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 	db := r.db.WithContext(ctx)
 
 	var reconciled model.AuditCheckpoint
-	switch err := db.Where("agg_scheme = ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", model.AggSchemeV2, true).
+	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3}, true).
 		Order("seq DESC").First(&reconciled).Error; {
 	case err == nil:
 		return &reconciled, nil
@@ -241,7 +213,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 	// 第一個已知不符的檢查點；其後的一切都不可信
 	var firstTainted model.AuditCheckpoint
 	taintedSeq := uint(0)
-	switch err := db.Where("agg_scheme = ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", model.AggSchemeV2, false).
+	switch err := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled = ?", []string{model.AggSchemeV2, model.AggSchemeV3}, false).
 		Order("seq ASC").First(&firstTainted).Error; {
 	case err == nil:
 		taintedSeq = firstTainted.Seq
@@ -250,7 +222,7 @@ func (r *RoleStateReconciler) baselineCheckpoint(ctx context.Context) (*model.Au
 		return nil, fmt.Errorf("讀取最早一個對帳不符的檢查點失敗: %w", err)
 	}
 
-	q := db.Where("agg_scheme = ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled IS NULL", model.AggSchemeV2)
+	q := db.Where("agg_scheme IN ? AND role_state_snapshot IS NOT NULL AND role_state_reconciled IS NULL", []string{model.AggSchemeV2, model.AggSchemeV3})
 	if taintedSeq > 0 {
 		q = q.Where("seq < ?", taintedSeq)
 	}
