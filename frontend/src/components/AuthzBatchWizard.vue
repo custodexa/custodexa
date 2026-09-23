@@ -260,7 +260,7 @@
           >
             <template #default="{ row }">
               <el-tag
-                :type="protocolTagType(row.protocol)"
+                class="ot-tag-neutral"
                 size="small"
               >
                 {{ row.protocol.toUpperCase() }}
@@ -409,7 +409,6 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
-import { protocolTagType } from '@/utils/protocol'
 import { ElMessage } from 'element-plus'
 import { Search, Eye, Cable } from 'lucide-vue-next'
 import { batchCreateAuthorizations } from '@/api/authorizations'

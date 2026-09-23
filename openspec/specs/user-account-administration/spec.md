@@ -262,7 +262,7 @@ agent 主體 SHALL NOT 具備任何本地或外部登入能力：SHALL NOT 持�
 
 自動化主體沿用同一使用者表，因此授權記錄、可視範圍與審核範圍 SHALL 以同一主體識別值綁定，SHALL NOT 另立平行主體表。
 
-**自助建立**：系統 SHALL 提供一般使用者自助建立自己名下 agent 主體的端點，且該端點 SHALL NOT 與管理員的使用者管理端點共用路徑。是否開放 SHALL 由安全政策鍵決定（見本 capability 的自助建立政策鍵群），出廠 SHALL 為關閉。政策關閉時該端點 SHALL 回 403 並帶可辨識機器碼，SHALL NOT 建立任何帳號。
+**自助建立**：系統 SHALL 提供一般使用者自助建立自己名下 agent 主體的端點，且該端點 SHALL NOT 與管理員的使用者管理端點共用路徑。是否開放 SHALL 由安全政策鍵決定（見本 capability 的自助建立政策鍵群），出廠 SHALL 為關閉。政策關閉時該端點 SHALL 回 403 並帶可辨識機器碼，SHALL NOT 建立任何帳號。此政策鍵 SHALL 只約束建立：列出自己名下 agent 主體的端點 SHALL NOT 受其限制。
 
 自助建立的呼叫者 SHALL 為 `kind=human` 且啟用中的帳號。所建主體的擁有者 SHALL 固定為呼叫者本人，取自其認證身分；請求本體即使帶擁有者欄位亦 SHALL NOT 被採信，SHALL NOT 有任何參數可指定他人為擁有者。自助建立 SHALL 必填主體名稱與用途說明；用途說明 SHALL 隨該次建立的審計列保存。
 
@@ -272,7 +272,7 @@ agent 主體 SHALL NOT 具備任何本地或外部登入能力：SHALL NOT 持�
 
 agent 主體 SHALL NOT 得使用自助建立端點——自動化主體不得建立自動化主體。此判定 SHALL 由既有的 agent 路由範圍限縮承擔：該端點 SHALL NOT 列入 agent 允許清單。
 
-自助建立的審計列 SHALL 可與管理員建立區分：其詳情 SHALL 標示來源為自助。系統 SHALL 提供呼叫者列出自己名下 agent 主體的端點，其結果 SHALL 只含該呼叫者擁有的主體。管理員使用者清單的預設行為 SHALL NOT 因自助建立而改變——預設仍只回 `kind=human`。
+自助建立的審計列 SHALL 可與管理員建立區分：其詳情 SHALL 標示來源為自助。系統 SHALL 提供呼叫者列出自己名下 agent 主體的端點，其結果 SHALL 只含該呼叫者擁有的主體；該端點 SHALL 對任何啟用中的 human 呼叫者可用，不論自助建立政策鍵為開或關——負責人對名下既有主體的責任不隨建立入口關閉而消失。該清單回應 SHALL 附帶一個布林值，指出自助建立目前是否開放。管理員使用者清單的預設行為 SHALL NOT 因自助建立而改變——預設仍只回 `kind=human`。
 
 #### Scenario: 缺擁有者的自動化主體建立被拒
 
@@ -303,6 +303,11 @@ agent 主體 SHALL NOT 得使用自助建立端點——自動化主體不得建
 
 - **WHEN** 自助建立政策鍵為關閉（出廠值），一般使用者呼叫自助建立端點
 - **THEN** 回 403 並帶可辨識機器碼，無帳號被建立，且回應 SHALL NOT 透露他人任何資料
+
+#### Scenario: 政策關閉時仍可列出名下既有主體
+
+- **WHEN** 自助建立政策鍵為關閉，啟用中的一般使用者呼叫名下 agent 清單端點
+- **THEN** 回 200 與其本人名下的主體清單、計數與上限，並以布林值指出自助建立未開放；清單 SHALL NOT 含他人擁有的主體
 
 #### Scenario: 政策開啟時建立成功且擁有者為本人
 
@@ -424,5 +429,5 @@ agent 主體 SHALL 帶「有未處置熔斷事件」的時刻旗標（未設即�
 
 #### Scenario: 本人可取得自建政策與配額
 - **WHEN** human 查 GET /my/agents
-- **THEN** 依已認證 id 回 self_create 的 enabled、max_per_owner、current，不接受 client owner 參數
-- **AND** 政策啟用沿原 200；政策關閉保留 403 與原機器碼，增附同形 self_create，不放行原本禁止的主體清單
+- **THEN** 依已認證 id 回 self_create 的 enabled、max_per_owner、current 與同值的布林旗標，不接受 client owner 參數
+- **AND** 政策開或關皆回 200 與本人名下清單；受政策鍵限制的只有建立端點，清單範圍恆為呼叫者本人擁有的主體

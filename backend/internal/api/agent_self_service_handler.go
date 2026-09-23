@@ -63,15 +63,17 @@ func (h *UserHandler) ListMyAgents(c *gin.Context) {
 	}
 	users, err := svc.ListMyAgents(agentTokenActor(c).UserID)
 	if err != nil {
-		if status != nil && errors.Is(err, identity.ErrAgentSelfCreateDisabled) {
-			apierror.Write(c, 403, apierror.ErrorResponse{Code: apierror.CodeRuleAgentSelfCreateDisabled, Meta: map[string]any{"self_create": status}})
-			return
-		}
 		if respondPrincipalError(c, err) {
 			return
 		}
 		apierror.RespondInternal(c, 500, apierror.CodeInternalUserQuery, err)
 		return
 	}
-	c.JSON(200, gin.H{"data": users, "total": len(users), "self_create": status})
+	// Listing is open to any active human owner; only creation follows the policy key,
+	// which self_create_enabled reports so the caller knows whether to offer it.
+	enabled := false
+	if status != nil {
+		enabled = status.Enabled
+	}
+	c.JSON(200, gin.H{"data": users, "total": len(users), "self_create": status, "self_create_enabled": enabled})
 }

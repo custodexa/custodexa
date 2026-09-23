@@ -30,6 +30,16 @@ describe('formatDateTime（全站唯一實作：zh-TW 24 小時制含秒）', ()
     expect(formatDateTime('')).toBe('-')
     expect(formatDateTime(null)).toBe('-')
   })
+
+  // 稽核時間必須自帶時區：沒有標示時讀者只能猜是誰的牆上時鐘
+  it('標示可辨時區偏移，且三語逐字相同', () => {
+    const out = formatDateTime('2026-07-20T18:44:05+08:00')
+    expect(out).toMatch(/\(UTC(|[+-]\d{1,2}(:\d{2})?)\)$/)
+    const suffix = out.slice(out.lastIndexOf('('))
+    for (const locale of ['en-US', 'ja-JP']) {
+      expect(withLocale(locale, () => formatDateTime('2026-07-20T18:44:05+08:00'))).toContain(suffix)
+    }
+  })
 })
 
 describe('formatDate', () => {

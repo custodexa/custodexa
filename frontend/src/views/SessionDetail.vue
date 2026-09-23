@@ -6,7 +6,7 @@
     <!-- 共用 PageHeader（左對齊，與全站一致） -->
     <PageHeader
       :title="$t('sessionDetail.title')"
-      :description="!loading && session ? `Session ID: ${session.id}` : ''"
+      :description="!loading && session ? $t('sessionDetail.idLabel', { id: session.id }) : ''"
     >
       <template #actions>
         <el-button @click="goBack">
@@ -33,7 +33,7 @@
       <el-icon
         class="is-loading"
         :size="40"
-        style="color: var(--ot-text-disabled)"
+        style="color: var(--ot-text-secondary)"
       >
         <LoaderCircle />
       </el-icon>
@@ -87,24 +87,32 @@
           <h3>{{ $t('agentSession.snapshot') }}</h3>
           <dl>
             <dt>{{ $t('agentSession.actor') }}</dt><dd>
-              #{{ session.user_id }} <PrincipalBadge
+              {{ session.user?.username || $t('agentSession.unknown') }} <a
+                v-if="session.user_id"
+                :href="`/users?open=${session.user_id}`"
+                data-test="actor-keys-link"
+              >{{ $t('agentPrincipals.openKeys') }}</a> <PrincipalBadge
                 :kind="session.actor_kind || ''"
                 :owner-id="session.owner_user_id"
+                :owner-name="session.owner_username"
               />
             </dd>
             <dt>{{ $t('agentSession.onBehalf') }}</dt><dd data-test="represented-user">
-              {{ session.on_behalf_of_user_id ? `#${session.on_behalf_of_user_id}` : $t(session.actor_kind === 'agent' ? 'agentSession.none' : 'agentSession.unknown') }}
+              {{ session.on_behalf_of_username || (session.on_behalf_of_user_id ? $t('agentPrincipals.unavailable') : $t(session.actor_kind === 'agent' ? 'agentSession.none' : 'agentSession.unknown')) }}
             </dd>
             <dt>{{ $t('multiRequest.task') }}</dt><dd>
               <a
                 v-if="session.access_request_id"
                 :href="`/audit/agent-tasks/${session.access_request_id}`"
-              >#{{ session.access_request_id }}</a><span v-else>{{ $t('agentSession.unknown') }}</span>
+              >{{ $t('agentTasks.detailTitle', { id: session.access_request_id }) }}</a><span v-else>{{ $t('agentSession.unknown') }}</span><span
+                v-if="taskReason"
+                data-test="session-task-reason"
+              > · {{ taskReason }}</span>
             </dd>
             <dt>{{ $t('agentSession.owner') }}</dt><dd data-test="snapshot-owner">
-              {{ session.owner_user_id ? `#${session.owner_user_id}` : $t('agentSession.unknown') }}
+              {{ session.owner_username || (session.owner_user_id ? $t('agentPrincipals.unavailable') : $t('agentSession.unknown')) }}
             </dd>
-            <dt>{{ $t('agentSession.token') }}</dt><dd>{{ session.agent_token_name || (session.agent_token_id ? $t('agentSession.tokenId', { id: session.agent_token_id }) : $t('agentSession.unknown')) }}</dd>
+            <dt>{{ $t('agentSession.key') }}</dt><dd>{{ session.agent_token_name || (session.agent_token_id ? $t('agentSession.keyId', { id: session.agent_token_id }) : $t('agentSession.unknown')) }}</dd>
           </dl>
           <p
             v-if="session.revoked_during_session_at"
@@ -122,8 +130,8 @@
             {{ session.user?.username || '-' }}
           </el-descriptions-item>
           <el-descriptions-item :label="$t('common.protocol')">
-            <el-tag :type="protocolTagType(session.protocol)">
-              {{ session.protocol.toUpperCase() }}
+            <el-tag class="ot-tag-neutral">
+              {{ protocolText(session.protocol) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item :label="$t('common.asset')">
@@ -713,6 +721,7 @@
             :key="session.id"
             :query="{ session_id: session.id }"
             :show-session="false"
+            :targets="ledgerTargets"
           />
         </el-tab-pane>
       </el-tabs>
@@ -744,7 +753,8 @@ import { isDegradedRow } from '@/constants/command-degrade'
 import { getSession, getRecordingUrl, getRecordingToken, recordingStreamUrlByToken, downloadRecording } from '@/api/sessions'
 import { getSessionCommands } from '@/api/commands'
 import { getSessionClipboardEvents, getClipboardEventContent } from '@/api/clipboardEvents'
-import { isTextTerminal, protocolTagType } from '@/utils/protocol'
+import { isTextTerminal } from '@/utils/protocol'
+import { getAgentTask } from '@/api/agentTasks'
 import { getEndReasonText, getEndReasonTagType } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t, currentLocale } from '@/i18n'
@@ -767,6 +777,26 @@ const sessionId = route.params.id
 const loading = ref(true)
 const error = ref(null)
 const session = ref(null)
+// 任務主旨：會話契約沒有這一欄，另向任務端點取；讀不到就不顯示（不宣稱讀得到）
+const taskReason = ref('')
+// 協議碼在首層一律帶人話
+const PROTOCOL_KINDS = { ssh: 'terminal', k8s: 'terminal', rdp: 'desktop', vnc: 'desktop', mysql: 'database', postgres: 'database', redis: 'database', mssql: 'database' }
+const protocolText = (protocol) => {
+  const code = String(protocol || '').toUpperCase()
+  const kind = PROTOCOL_KINDS[String(protocol || '').toLowerCase()]
+  return kind ? t(`enum.protocolKind.${kind}`, { code }) : code
+}
+const fetchTaskReason = async () => {
+  taskReason.value = ''
+  const id = session.value?.access_request_id
+  if (!id) return
+  try {
+    const response = await getAgentTask(id, { limit: 1, offset: 0 })
+    if (session.value?.access_request_id === id) taskReason.value = response?.request?.reason || ''
+  } catch { /* 沒有讀取權限或端點不可用時就不顯示主旨 */ }
+}
+// The ledger rows carry no target of their own; this session supplies its asset and account.
+const ledgerTargets = computed(() => session.value ? { [session.value.id]: { asset: session.value.asset?.name || '', account: session.value.account_username || '' } } : {})
 const downloading = ref(false)
 const commands = ref([])
 
@@ -1295,6 +1325,8 @@ const fetchSessionDetail = async () => {
 
     console.log('[SessionDetail] Session 載入成功:', session.value)
 
+    fetchTaskReason()
+
     if (!session.value.has_recording) {
       ElMessage.warning(t('sessionDetail.noRecordingContent'))
     }
@@ -1405,12 +1437,12 @@ onMounted(() => {
 
 <style scoped>
 .agent-attribution { margin-bottom: var(--ot-space-md); padding: var(--ot-space-md); border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); }
-.agent-attribution h3 { font-size: var(--ot-font-size-lg); }
+.agent-attribution h3 { font-size: var(--ot-font-size-lg); font-weight: 600; }
 .agent-attribution dl { display: grid; grid-template-columns: auto 1fr; gap: var(--ot-space-sm) var(--ot-space-md); }
 .agent-attribution dt { color: var(--ot-text-secondary); }
 .agent-attribution dd { margin: 0; }
 .agent-attribution a { color: var(--ot-primary); }
-.session-revocation { color: var(--ot-warning); font-size: var(--ot-font-size-sm); }
+.session-revocation { color: var(--ot-danger); font-size: var(--ot-font-size-sm); }
 .session-detail {
   max-width: 1400px;
   margin: 0 auto;
@@ -1432,13 +1464,13 @@ onMounted(() => {
 /* 事件識別要能被選取複製；深連結落點另加底色，否則捲到了也看不出是哪一列 */
 .event-id-cell {
   font-family: var(--ot-font-mono, monospace);
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   user-select: all;
 }
 
 .event-id-cell.is-anchored {
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--ot-radius-sm);
   background: var(--el-color-warning-light-8);
 }
 
@@ -1551,8 +1583,9 @@ onMounted(() => {
   margin-bottom: var(--ot-space-md);
 }
 
+/* 卡片標題必須比本文更顯著：md 與本文同為 14px，量測判為 title-not-prominent */
 .card-title {
-  font-size: var(--ot-font-size-md);
+  font-size: var(--ot-font-size-lg);
   font-weight: 600;
   color: var(--ot-text-primary);
 }

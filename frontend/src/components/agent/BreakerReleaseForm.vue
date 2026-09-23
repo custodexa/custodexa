@@ -6,8 +6,6 @@
     data-test="breaker-release"
     @submit.prevent="submit"
   >
-    <p>{{ t('agentBreaker.releaseTokens') }}</p>
-    <p>{{ t('agentBreaker.releaseSessions') }}</p>
     <el-alert
       v-if="error"
       :title="error"

@@ -101,7 +101,7 @@ func (s *AgentTokenService) Create(userID uint, req CreateAgentTokenRequest, act
 func (s *AgentTokenService) List(userID uint) ([]model.AgentToken, error) {
 	result := []model.AgentToken{}
 	err := s.db.Where("user_id = ?", userID).Order("id").Find(&result).Error
-	return result, err
+	return result, s.fillTokenCreatorNames(result, err)
 }
 func (s *AgentTokenService) Revoke(userID, tokenID uint, note string, actor gatewayapi.Actor) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error { return s.changeState(tx, userID, tokenID, note, actor, false) })

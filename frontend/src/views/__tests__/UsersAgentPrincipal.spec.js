@@ -25,7 +25,7 @@ describe('Users agent principal', () => {
     const w = mount(Users, { global }); await flushPromises()
     const badges = w.findAllComponents(PrincipalBadge)
     expect(badges.map(b => b.props('kind'))).toEqual(['human', 'agent'])
-    expect(badges[1].text()).toContain('負責人：#1')
+    expect(badges[1].text()).toContain('負責人：未提供')
     expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ include_agents: true }))
   })
   it('agent 建立表單無登入與高權角色欄位', async () => {

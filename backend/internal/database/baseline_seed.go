@@ -52,8 +52,31 @@ var builtinAlertRules = []builtinAlertRule{
 	{"Redis 清空資料庫", `(?i)\bflush(all|db)\b`, "high", "redis", model.DirectionInput, model.AlertSubjectAll, "alert"},
 	{"輸出可能含信用卡號", sensitivescan.CardPattern, "high", "ssh,k8s,mysql,postgres,mssql,redis", model.DirectionOutput, model.AlertSubjectAll, "alert"},
 	{"輸出可能含私鑰標頭", sensitivescan.PrivateKeyPattern, "high", "ssh,k8s,mysql,postgres,mssql,redis", model.DirectionOutput, model.AlertSubjectAll, "alert"},
-	{"Agent 橫向移動阻斷", `(?i)(^|[\s;&|(\x60\n\r$=\\])["']*(\S*/)?(ssh|scp|sftp|nc|ncat|socat|Enter-PSSession|Invoke-Command|psexec)["']*(\s|$|[;&|)])`, "high", "ssh,k8s", model.DirectionInput, model.KindAgent, "block"},
+	{AgentLateralRuleName, AgentLateralRulePattern, "high", "ssh,k8s", model.DirectionInput, model.KindAgent, "block"},
 	{"Agent 敏感路徑讀取阻斷", `(?i)(\.ssh/|\bauthorized_keys\b|/etc/shadow\b|\bid_rsa\b)`, "high", "ssh,k8s", model.DirectionInput, model.KindAgent, "block"},
+}
+
+// Agent 橫向移動阻斷規則的名稱與 pattern 的**唯一事實源**。
+//
+// 出廠種子（baseline／agent_subject_rules）與資料 migration
+// （20260923_agent_lateral_rule_pattern）都由此取值：pattern 內含大量反斜線與
+// 引號，任何一處另抄一份字面值，日後只改一邊的後果是「新安裝擋得住、升級站點
+// 擋不住」而沒有任何測試會紅。
+const (
+	AgentLateralRuleName = "Agent 橫向移動阻斷"
+
+	// AgentLateralRulePattern 現行版：只在**指令位置**比對（行首、分隔符後、
+	// 路徑前綴、引號包覆），故讀取 ~/.ssh 這類路徑不再誤觸。
+	AgentLateralRulePattern = `(?i)(^|[\s;&|(\x60\n\r$=\\])["']*(\S*/)?(ssh|scp|sftp|nc|ncat|socat|Enter-PSSession|Invoke-Command|psexec)["']*(\s|$|[;&|)])`
+)
+
+// agentLateralLegacyPatterns 1.11.0（含其開發期）出廠過的兩個歷史 pattern。
+//
+// 升級時只有 pattern 仍等於其中之一者才視為「未被管理員改過」而更新；
+// 任何其他值一律保留——管理員的調校不該被升級覆寫。
+var agentLateralLegacyPatterns = []string{
+	`(?i)\b(ssh|scp|sftp|nc|socat|Enter-PSSession|Invoke-Command|psexec)\b`,
+	`(?i)(^\s*|[;&|(\x60]\s*|\bsudo\s+(\S+\s+)*)(ssh|scp|sftp|nc|socat|Enter-PSSession|Invoke-Command|psexec)\b`,
 }
 
 // seedBuiltinAlertRules 在 baseline 階段冪等寫入 12 條既有輸入規則。

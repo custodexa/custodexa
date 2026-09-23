@@ -16,14 +16,19 @@ type AgentTaskFilter struct {
 	Offset, Limit  int
 }
 type AgentTaskRow struct {
-	ID           uint       `json:"id"`
-	Subject      uint       `json:"subject"`
-	Username     string     `json:"username"`
-	OwnerUserID  *uint      `json:"owner_user_id"`
-	Status       string     `json:"status"`
-	ReportStatus string     `json:"report_status"`
-	CreatedAt    time.Time  `json:"created_at"`
-	ClosedAt     *time.Time `json:"closed_at"`
+	ID            uint   `json:"id"`
+	Subject       uint   `json:"subject"`
+	Username      string `json:"username"`
+	OwnerUserID   *uint  `json:"owner_user_id"`
+	OwnerUsername string `json:"owner_username"`
+	// OnBehalfOfUsername names the human the task was filed for; empty when the agent
+	// filed for itself (requester and executor are the same principal).
+	OnBehalfOfUsername string     `json:"on_behalf_of_username"`
+	Reason             string     `json:"reason"`
+	Status             string     `json:"status"`
+	ReportStatus       string     `json:"report_status"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ClosedAt           *time.Time `json:"closed_at"`
 }
 
 // QueryAgentTasks is a read projection. Owner is current, not a historical snapshot.
@@ -56,6 +61,7 @@ func QueryAgentTasks(ctx context.Context, db *gorm.DB, f AgentTaskFilter) ([]Age
 		return nil, 0, err
 	}
 	rows := []AgentTaskRow{}
-	err := q.Select("access_requests.id, agent.id AS subject, agent.username, agent.owner_user_id, access_requests.status, access_requests.created_at, access_requests.closed_at, "+reportStatus+" AS report_status", audit.AgentTaskReportRequestIDs(db)).Order("access_requests.created_at DESC, access_requests.id DESC").Offset(f.Offset).Limit(f.Limit).Scan(&rows).Error
+	const onBehalfOf = "CASE WHEN access_requests.requester_id <> agent.id THEN COALESCE(requester.username, '') ELSE '' END"
+	err := q.Joins("LEFT JOIN users owner ON owner.id = agent.owner_user_id").Joins("LEFT JOIN users requester ON requester.id = access_requests.requester_id").Select("access_requests.id, agent.id AS subject, agent.username, agent.owner_user_id, owner.username AS owner_username, "+onBehalfOf+" AS on_behalf_of_username, access_requests.reason, access_requests.status, access_requests.created_at, access_requests.closed_at, "+reportStatus+" AS report_status", audit.AgentTaskReportRequestIDs(db)).Order("access_requests.created_at DESC, access_requests.id DESC").Offset(f.Offset).Limit(f.Limit).Scan(&rows).Error
 	return rows, total, err
 }

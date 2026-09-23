@@ -340,3 +340,50 @@ func TestRevokeItemOnlyWholeMixedTask(t *testing.T) {
 		t.Fatal("whole revoke revived", err)
 	}
 }
+
+// An approval overwrites item.Accounts, so without the snapshot the record can no longer
+// show what was asked for. @ALL is written explicitly, never as a JSON null.
+func TestRequestedAccountsPreservedInSnapshot(t *testing.T) {
+	t.Run("narrowed approval keeps the wide request", func(t *testing.T) {
+		s, _, _, _ := setupItemRequestEnv(t)
+		req, err := s.Submit(1, "human", model.RoleUser, SubmitAccessRequestInput{AssetID: 1, Reason: "work", DurationMinutes: 60})
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := []string{"app"}
+		got, err := s.Approve(2, false, req.ID, DecideInput{ItemID: req.Items[0].ID, Accounts: &names})
+		if err != nil {
+			t.Fatal(err)
+		}
+		item := got.Items[0]
+		if !reflect.DeepEqual(item.Accounts, model.AccountScope{"app"}) {
+			t.Fatal("granted scope", item.Accounts)
+		}
+		item.FillRequestedAccounts()
+		if item.RequestedAccounts == nil || !reflect.DeepEqual(*item.RequestedAccounts, model.AccountScope{model.AccountScopeAll}) {
+			t.Fatal("requested scope lost", item.PolicySnapshot)
+		}
+	})
+	t.Run("automatic approval preserves it too", func(t *testing.T) {
+		s, _, _, agent := setupItemRequestEnv(t)
+		auto, err := s.Submit(agent, "agent", model.RoleUser, itemInput(3))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !auto.AutoApproved {
+			t.Fatal("fixture is not an automatic approval")
+		}
+		item := auto.Items[0]
+		item.FillRequestedAccounts()
+		if item.RequestedAccounts == nil || !reflect.DeepEqual(*item.RequestedAccounts, model.AccountScope{"app"}) {
+			t.Fatal("requested scope lost", item.PolicySnapshot)
+		}
+	})
+	t.Run("a snapshot without the key stays null", func(t *testing.T) {
+		item := model.AccessRequestItem{PolicySnapshot: `{"segment":"open"}`}
+		item.FillRequestedAccounts()
+		if item.RequestedAccounts != nil {
+			t.Fatal("invented a requested scope", item.RequestedAccounts)
+		}
+	})
+}

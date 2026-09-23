@@ -8,7 +8,7 @@ package apierror
 // grantEntityZhLabels 是授權建立/批次建立引用完整性檢查涉及的四種實體
 // （主體：user/user_group；客體：asset/asset_group）的 zh 顯示字。
 var grantEntityZhLabels = map[string]string{
-	"user":        "用戶",
+	"user":        "使用者",
 	"user_group":  "使用者群組",
 	"asset":       "資產",
 	"asset_group": "資產分組",

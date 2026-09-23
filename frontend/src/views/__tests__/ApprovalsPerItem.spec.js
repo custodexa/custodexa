@@ -16,6 +16,17 @@ const request = () => ({ id: 23, requester_id: 5, requester: { id: 5, username: 
 beforeEach(() => { vi.clearAllMocks(); api.asset.mockResolvedValue({ name: 'db-host', protocol: 'ssh' }); api.pending.mockResolvedValue({ data: [request()] }); api.approve.mockResolvedValue({ items: [{ id: 1, status: 'approved' }] }); api.reject.mockResolvedValue({}); api.accounts.mockResolvedValue({ data: [{ username: 'ops' }, { username: 'deploy' }] }) })
 const open = (data = request()) => mount(Review, { props: { request: data, actorId: 9 }, global: { plugins: [ElementPlus] } })
 describe('逐項審核', () => {
+  // 回歸：整張單同時攤開時，第二項的決策控制與送出列落在可見範圍外要捲才看得到
+  it('一次只展開一項，決定完接續下一個待決項', async () => {
+    const w = open()
+    await flushPromises()
+    // v-show 以行內 display 收合；未掛進文件的節點 isVisible() 判不出來，直接讀樣式
+    const shown = () => w.findAll('[data-test="item-body"]').map(b => b.attributes('style') !== 'display: none;')
+    expect(shown()).toEqual([true, false])
+    await w.findAll('[data-test="toggle-item"]')[1].trigger('click')
+    await flushPromises()
+    expect(shown()).toEqual([false, true])
+  })
   it('展開後每項各自可決定', async () => {
     const w = mount(Approvals, { global: { plugins: [ElementPlus] } }); await flushPromises()
     await w.get('.el-table__expand-icon').trigger('click'); await flushPromises()
@@ -27,10 +38,41 @@ describe('逐項審核', () => {
     expect(api.approve).toHaveBeenCalledWith(23, expect.objectContaining({ item_id: 1 }))
     expect(api.reject).toHaveBeenCalledWith(23, 2, 'no access')
   })
+  // 回歸：送出後畫面留在舊的 radio、頁籤待審數又已經變了，同一頁兩個矛盾答案
+  it('送出後以 API 回傳寫回該列狀態，該列留在原位不被重抓掉', async () => {
+    api.approve.mockResolvedValue({ items: [{ id: 1, status: 'approved' }] })
+    const w = mount(Approvals, { global: { plugins: [ElementPlus] } }); await flushPromises()
+    await w.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    const review = w.getComponent(Review)
+    review.vm.forms[1].action = 'approve'; review.vm.forms[1].accounts = ['ops']; review.vm.forms[1].duration = 30
+    await flushPromises()
+    api.pending.mockResolvedValue({ data: [] })
+    const events = []
+    window.addEventListener('ot-approvals-changed', () => events.push(1))
+    await review.get('[data-test="submit-decisions"]').trigger('click'); await flushPromises()
+    // 剛決定的單不得立刻消失：審核者要看得到自己做了什麼，並能直達該申請單
+    expect(api.pending).toHaveBeenCalledTimes(1)
+    expect(events).toHaveLength(1)
+    expect(review.get('[data-test="decision-result"]').exists()).toBe(true)
+    expect(review.get('[data-test="open-request-link"]').attributes('href')).toBe('/approvals?request=23')
+  })
+  it('單項決定後該項改以已決定狀態呈現，不再留可改的選項', async () => {
+    const w = open()
+    w.vm.forms[1].action = 'approve'; w.vm.forms[1].accounts = ['ops']; w.vm.forms[1].duration = 30
+    await w.vm.submit(); await flushPromises()
+    const items = w.findAll('[data-test="decision-item"]')
+    expect(items[0].find('[data-test="item-decided-state"]').exists()).toBe(true)
+    expect(items[0].findComponent({ name: 'ElRadioGroup' }).exists()).toBe(false)
+  })
+  it('單頭直接答出誰申請、替誰做', async () => {
+    const text = open().get('[data-test="review-header"]').text()
+    expect(text).toContain('worker')
+    expect(text).toMatch(/自主|autonom|自律/)
+  })
   it('agent 申請單標示主體類型與負責人', async () => {
     const w = mount(Approvals, { global: { plugins: [ElementPlus] } }); await flushPromises()
     expect(w.getComponent(PrincipalBadge).text()).toContain('AI agent')
-    expect(w.getComponent(PrincipalBadge).text()).toContain('負責人：#2')
+    expect(w.getComponent(PrincipalBadge).text()).toContain('負責人：未提供')
   })
   it('時長與帳號選項不可上調', async () => {
     const w = open(); w.vm.forms[1].action = 'approve'; await flushPromises()
@@ -50,7 +92,7 @@ describe('逐項審核', () => {
   it('送出前呈現逐項摘要', async () => {
     const w = open(); w.vm.forms[1].action = 'approve'; w.vm.forms[1].duration = 30; w.vm.forms[1].accounts = ['ops']; w.vm.forms[2].action = 'remove'; w.vm.forms[2].note = 'not needed'; await flushPromises()
     const text = w.get('[data-test="decision-summary"]').text()
-    expect(text).toContain('項目 #1'); expect(text).toContain('30 分鐘'); expect(text).toContain('ops'); expect(text).toContain('移除（拒絕）'); expect(api.approve).not.toHaveBeenCalled()
+    expect(text).toContain('db-host'); expect(text).not.toContain('項目 #1'); expect(text).toContain('30 分鐘'); expect(text).toContain('ops'); expect(text).toContain('移除（拒絕）'); expect(api.approve).not.toHaveBeenCalled()
     expect(w.findAllComponents({ name: 'ElDialog' })).toHaveLength(0)
   })
   it('部分失敗時逐項回報', async () => {
@@ -110,6 +152,22 @@ it('polish2：待審申請人就是執行者時合併同一組主體，姓名只
   const table = w.get('[data-test="pending-table"]')
   expect(table.findAll('.principal-badge')).toHaveLength(1)
   expect(table.text().split('負責人：admin')).toHaveLength(2)
-  expect(table.text()).not.toContain('負責人：#2')
+  expect(table.text()).not.toContain('負責人：未提供')
   expect(table.find('[data-test="executor-principal"]').exists()).toBe(false)
+})
+
+describe('自主執行的 agent 不被寫成代表其 owner', () => {
+  it('無 on_behalf_of 時顯示自主執行並附負責人', async () => {
+    const w = open({ ...request(), requester: { id: 5, username: 'worker', kind: 'agent', owner_user_id: 2, owner_username: 'owner-a' } })
+    await flushPromises()
+    const line = w.get('[data-test="review-representation"]').text()
+    expect(line).toContain('自主執行')
+    expect(line).toContain('owner-a')
+    expect(line).not.toContain('代表：')
+  })
+  it('有 on_behalf_of 時才寫代表', async () => {
+    const w = open({ ...request(), on_behalf_of_username: 'human-b' })
+    await flushPromises()
+    expect(w.get('[data-test="review-representation"]').text()).toBe('代表：human-b')
+  })
 })

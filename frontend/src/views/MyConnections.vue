@@ -34,7 +34,7 @@
           width="100"
         >
           <template #default="{ row }">
-            <el-tag :type="protocolTagType(row.protocol)">
+            <el-tag class="ot-tag-neutral">
               {{ (row.protocol || '').toUpperCase() }}
             </el-tag>
           </template>
@@ -115,7 +115,6 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { getMyConnections, terminateMyConnection } from '@/api/myConnections'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
-import { protocolTagType } from '@/utils/protocol'
 import { t } from '@/i18n'
 
 const loading = ref(false)

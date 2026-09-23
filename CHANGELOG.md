@@ -2,6 +2,69 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.11.1 — names, layout and reach on the agent channel screens (2026-09-23)
+
+One data migration runs on upgrade, `20260923_agent_lateral_rule_pattern`, and there is no schema
+change with it.
+
+### Fixes
+
+#### Reads and contracts
+
+- The factory lateral movement rule for automated operators matches only at a command position, so
+  reading a path such as `~/.ssh` is no longer attributed to it. On an installed site the migration
+  brings that rule to the current pattern, and a rule whose pattern an administrator has changed is
+  left as it stands.
+- An owner can list the automated operators in their name while self-service creation stays off.
+  `GET /api/v1/my/agents` answers an active owner whatever `agent_self_create_enabled` says, and
+  reports that setting in its response so the screen knows whether to offer a creation entry. Only
+  the matching `POST` follows the setting.
+- Where the channel's read endpoints returned a number for a person, they now also project an
+  account name: the owner of an automated operator, the person a session was worked for, whoever
+  issued a key, whoever decided each item of a request, and each approver. The names are read-only
+  projections of the account as it stands, and the name is left out when the account is gone.
+- A ledger row names the asset and the account the call ran against.
+- An approved item keeps the account scope as it was requested, beside the scope that was approved,
+  so a narrowing is visible afterwards. Items approved before this release report no requested
+  scope.
+- A breaker event names the asset it refers to, and an asset that has since been removed is still
+  named and marked as removed.
+
+#### The interface
+
+- The task page reads as one page: the header carries the task's purpose and its closed time, the
+  four sections carry a one-line explanation instead of a number, the summary lines up as one label
+  column with the requester and the open and close times, an automatically approved item says so
+  instead of showing no decider, each connection names its asset and how it ended, a tool call
+  summary shows how many calls were allowed and refused, and the report section states the 24 hour
+  revision window.
+- The tool call ledger on the task page and on the session page is one table, with the time, the
+  action in plain words, the target host and account, the decision, how many spans were masked and
+  how long the call took; a refused call shows its reason under the row.
+- The approved scope section sets what was requested beside what was approved, marks each narrowed
+  item, and says so where the requested scope was not kept and the comparison is therefore partial.
+- The task list carries the task's purpose, and searches automated operators and owners by account
+  name rather than by number.
+- Connection detail sits inside the main layout, so the sidebar, the breadcrumb and the language
+  switch stay in reach when it is opened from a list.
+- The sidebar carries a direct entry to the automated operators, which reaches an operator's keys
+  without a detour through user management.
+- Text fields show a visible focus ring, a row that expands is a button and announces its state,
+  and pagination controls and switches carry names for assistive technology.
+- The brand blue splits into a text shade and a fill shade, so blue text on dark surfaces and white
+  text on a solid button both meet AA; placeholders and disabled controls are readable at the same
+  bar.
+- Labels that were cut short fit in Traditional Chinese, English and Japanese.
+- A key's one-time text stays on screen until it is dismissed, and revoking another key of the same
+  operator leaves it in place. The key drawer states the counts as figures, and key state reads the
+  same wherever it appears.
+- In an itemised review, decisions stay where they were put while the list refreshes, the count of
+  decided items follows them, and a submission that met a conflicting change can be sent again
+  after the page reloads.
+- An itemised review opens one item at a time and moves on to the next undecided one, so the
+  controls and the submit row stay in view on a request that carries many items.
+- Times on these screens carry their `UTC±H` offset.
+
 ## 1.11.0 — a governed channel for automated operators (2026-09-22)
 
 Eleven migrations run on upgrade. They create six tables (`access_request_items`, `agent_tokens`,
@@ -127,6 +190,10 @@ and the approvals already recorded against it are linked to that item.
 
 ### Fixes
 
+- Releasing a breaker on an automated operator that has no pending event answers with
+  `CONFLICT_AGENT_BREAKER_NOT_PENDING` rather than a code borrowed from access requests.
+- `check_request` reports `approvals_required` from the items' policy snapshots, so an
+  automatically approved task reports 0, the same value the task detail shows.
 - Filtering the alert list by user or by asset returned an error since the list started carrying
   the connection's source address. Both filters work again.
 - The account scope written on an approved request now takes effect when a one-time connection token

@@ -15,7 +15,7 @@ describe('會話主體欄', () => {
   it('任務欄連往任務視角', async () => {
     const w = mount(Sessions, { global: { plugins: [ElementPlus] } }); await flushPromises()
     expect(w.get('[data-test="session-task"]').attributes('href')).toBe('/audit/agent-tasks/23')
-    expect(w.text()).toContain('負責人：#2'); expect(w.text()).not.toContain('#999')
+    expect(w.text()).toContain('負責人：未提供'); expect(w.text()).not.toContain('#999')
   })
   it('撤權後仍活動於列表與詳情皆可見', async () => {
     const w = mount(Sessions, { global: { plugins: [ElementPlus] } }); await flushPromises()
@@ -48,7 +48,29 @@ it('polish2：歷史負責人用該列 owner_username，不取操作者現任負
   const w = mount(Sessions, { global: { plugins: [ElementPlus] } }); await flushPromises()
   w.vm.activeTab = 'history'; await w.vm.handleFilter(); await flushPromises()
   const table = w.get('[data-test="history-table"]')
-  expect(table.text()).toContain('負責人：recorded-owner')
-  expect(table.text()).not.toContain('負責人：#2')
-  expect(table.text()).not.toContain('new-owner')
+  // 負責人收進展開列：仍取該列快照的 owner_username，不取操作者現任負責人
+  await table.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+  const more = w.get('[data-test="session-more"]')
+  expect(more.text()).toContain('recorded-owner')
+  expect(more.text()).not.toContain('未提供')
+  expect(w.text()).not.toContain('new-owner')
+})
+
+it('歷史列的撤權：欄內只留彩標，完整句與時間在 title 與展開列', async () => {
+  const w = mount(Sessions, { global: { plugins: [ElementPlus] } }); await flushPromises()
+  w.vm.activeTab = 'history'; await w.vm.handleFilter(); await flushPromises()
+  const table = w.get('[data-test="history-table"]')
+  const tag = table.get('[data-test="session-revocation"]')
+  expect(tag.text()).toBe('授權已撤銷')
+  expect(tag.attributes('title')).toContain(formatDateTime(row.revoked_during_session_at))
+  await table.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+  expect(w.get('[data-test="session-more-revocation"]').text()).toBe(formatDateTime(row.revoked_during_session_at))
+})
+
+it('識別字欄不從中間斷字：帳號與代表人欄走單行省略號', async () => {
+  const w = mount(Sessions, { global: { plugins: [ElementPlus] } }); await flushPromises()
+  w.vm.activeTab = 'history'; await w.vm.handleFilter(); await flushPromises()
+  const columns = w.getComponent('[data-test="history-table"]').findAllComponents({ name: 'ElTableColumn' })
+  const nowrap = columns.filter(col => col.props('className') === 'nowrap-cell')
+  expect(nowrap.length).toBe(2)
 })

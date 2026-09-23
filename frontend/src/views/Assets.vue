@@ -225,7 +225,7 @@
             class-name="protocol-col"
           >
             <template #default="{ row }">
-              <el-tag :type="protocolTagType(row.protocol)">
+              <el-tag class="ot-tag-neutral">
                 {{ row.protocol.toUpperCase() }}
               </el-tag>
             </template>
@@ -799,7 +799,7 @@ import { createAccessRequest, breakGlassConnect } from '@/api/accessRequests'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
 import { riskLabel } from '@/utils/transportDisplay'
 import { getSecurityPolicies } from '@/api/securityPolicies'
-import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS, protocolTagType } from '@/utils/protocol'
+import { isDatabaseProtocol, isDBConsoleProtocol, isPasswordOnlyProtocol, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
 import {
   WINRM_DEFAULT_PORTS,
   ROTATION_SSH_DEFAULT_PORT,

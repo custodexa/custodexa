@@ -53,7 +53,9 @@
     "changePassword": "パスワード変更",
     "newPassword": "新しいパスワード",
     "disableMfa": "MFA を無効化",
-    "assetRef": "資産 #{id}",
+    "assetRef": "資産 {id}",
+    "assetRemoved": "{name}（削除済みの資産）",
+    "pageSize": "1 ページの件数",
     "emergency": "緊急",
     "requestReason": "申請理由",
     "requestTime": "申請日時",
@@ -72,7 +74,18 @@
     "close": "閉じる",
     "retry": "再試行",
     "collapseSidebar": "サイドバーを折りたたむ",
-    "expandSidebar": "サイドバーを展開"
+    "expandSidebar": "サイドバーを展開",
+    "breadcrumb": "パンくずリスト",
+    "idColumn": "番号",
+    "loading": "読み込み中…",
+    "mainNav": "メインナビゲーション",
+    "switchLanguage": "言語を切り替える",
+    "accountMenu": "アカウントメニュー",
+    "toggleRowDetail": "この行の詳細を開閉",
+    "userRef": "ユーザー {id}",
+    "sessionRef": "接続 {id}",
+    "expand": "開く",
+    "collapse": "閉じる"
   },
   "menu": {
     "group": {
@@ -120,7 +133,8 @@
     "identitySources": "アイデンティティソース",
     "complianceMap": "コンプライアンス対照",
     "policyGroups": "ポリシーグループ",
-    "myAgents": "自分のエージェント"
+    "myAgents": "自分のエージェント",
+    "agentPrincipals": "AI agent 主体"
   },
   "login": {
     "bannerRegionLabel": "ログイン告知",
@@ -560,6 +574,11 @@
     "credentialDetachSource": {
       "random": "ランダム生成",
       "custom": "自分で指定"
+    },
+    "protocolKind": {
+      "terminal": "ターミナル（{code}）",
+      "desktop": "リモートデスクトップ（{code}）",
+      "database": "データベース（{code}）"
     }
   },
   "policyValue": {
@@ -933,11 +952,11 @@
     "windowsSshNote": "このホストは Windows：パスワード変更は OpenSSH 経由で PowerShell を実行します。オフ＝POSIX コマンドで変更"
   },
   "sessions": {
-    "headerDesc": "アクティブな接続の監視と履歴の確認",
+    "headerDesc": "アクティブな接続の監視と履歴の確認。AI エージェントは人に代わって操作する自動化プログラムです。",
     "autoRefresh": "自動再読み込み",
     "tabActive": "アクティブ接続",
     "tabHistory": "履歴",
-    "clientIp": "送信元 IP",
+    "clientIp": "送信元アドレス（IP）",
     "startTime": "開始時刻",
     "endTime": "終了時刻",
     "duration": "継続時間",
@@ -1035,7 +1054,8 @@
     "durationMs": "{n} ミリ秒",
     "eventIdColumn": "イベント識別子",
     "resultUnsettled": "結果不明（未記録）",
-    "rowsAffected": "{n} 行に影響"
+    "rowsAffected": "{n} 行に影響",
+    "idLabel": "接続番号 {id}"
   },
   "myConnections": {
     "headerDesc": "自分の接続記録を確認できます",
@@ -1573,7 +1593,8 @@
     "initFailed": "プレーヤーの初期化に失敗しました",
     "controlFailed": "再生操作に失敗しました",
     "seekFailed": "シークに失敗しました",
-    "fullscreenFailed": "全画面切替に失敗しました"
+    "fullscreenFailed": "全画面切替に失敗しました",
+    "speed": "再生速度"
   },
   "guacPlayer": {
     "loading": "RDP 録画を読み込んでいます...",
@@ -1645,6 +1666,7 @@
     "inactivityExempt": "休眠除外",
     "inactivityExemptTooltip": "除外アカウントは「休眠期限超過による自動無効化」（PCI 8.2.6）の対象外です",
     "toggleExemptAria": "{name} の休眠無効化除外を切り替え",
+    "toggleActiveAria": "{name} を有効または無効にする",
     "exempt": "除外",
     "lastLogin": "最終ログイン",
     "lastLoginAt": "最終ログイン {time}",
@@ -1849,6 +1871,8 @@
     "approve": "承認",
     "reject": "却下",
     "emptyPending": "承認待ちの申請はありません",
+    "emptyPendingHint": "今あなたの判断を待っている申請はありません。新しい申請はここに表示され、処理済みのものは「AI エージェントのタスク」で確認できます。",
+    "requestNotOnPage": "申請 {id} はこのページにありません。ページを切り替えて確認してください",
     "tabHistory": "履歴",
     "colResult": "結果",
     "status": {
@@ -1875,7 +1899,7 @@
     "forbiddenTitle": "承認権限がありません",
     "forbiddenHint": "承認センターは有効な承認者（approver ロール保持者、または承認グループのメンバー）のみが利用できます。管理者ロールだけでは承認権限になりません。承認が必要な場合は、管理者に approver ロールまたは承認範囲の割り当てを依頼してください。",
     "loadFailed": "読み込みに失敗しました。再読み込みしてください。",
-    "tabSql": "SQL承認",
+    "tabSql": "データベースクエリ承認",
     "approveDialogTitle": "接続申請の承認",
     "approveSummary": "{user}が{asset}への接続を申請",
     "reasonLine": "理由：{reason}",
@@ -2053,7 +2077,14 @@
     "tooltipExpired": "長時間未処理のため自動的に閉じられました。再度申請できます",
     "approvedBy": "{name}が承認",
     "approverFallback": "承認担当者",
-    "decisionWithDuration": "{who}、利用可能{duration}"
+    "decisionWithDuration": "{who}、利用可能{duration}",
+    "created": {
+      "approved": "申請 {id}「{subject}」を送信し、承認されました。今すぐ接続できます。",
+      "partial": "申請 {id}「{subject}」を送信しました。一部の項目は承認済み、残りは承認待ちです。",
+      "pending": "申請 {id}「{subject}」を送信しました。承認待ちです。"
+    },
+    "createdNoSubject": "理由未記入",
+    "createdGoToList": "下の「自分の申請」一覧で確認"
   },
   "authzWizard": {
     "stepSubject": "主体を選択",
@@ -5924,7 +5955,25 @@
       "revoked": "取消済み"
     },
     "quota": "所有 agent：{current}／{max}",
-    "you": "あなた"
+    "you": "あなた",
+    "youSuffix": "{name}（あなた）",
+    "subjectRef": "主体 #{id}",
+    "suspendedLabel": "停止の理由と時刻",
+    "suspendedValue": "{reason} · {time}",
+    "suspendedReasons": {
+      "agent_breaker_tripped": "参照できない対象への探索を繰り返したため自動停止",
+      "unknown": "理由の記録なし"
+    },
+    "savedAck": "このキーを保存しました",
+    "summaryUsable": "現在利用できるキー {n} 本",
+    "summaryNextExpiry": "最も早い期限：{name}（{time}）",
+    "summarySuspended": "停止中 {n} 本。新しいキーの発行が必要です",
+    "manageKeys": "キーを管理",
+    "plainLanguage": "「AI agent」はあなたの代わりに作業を自動実行するプログラムです。キーで接続するだけで、この画面にはログインできません。",
+    "agentExplained": "AI エージェント（自動化された操作者）",
+    "openKeys": "キーを見る",
+    "statUsable": "利用できるキー",
+    "statSuspended": "停止中"
   },
   "agentTasks": {
     "title": "AI エージェントのタスク",
@@ -5932,8 +5981,27 @@
     "reports": "タスク報告",
     "unavailable": "タスク一覧はまだ提供されていません。このページは入口の仮設置であり、タスク情報は読み込みません。",
     "subjectExit": "この主体のタスクを見る",
-    "listHelp": "主体、現在の責任者、申請日時で検索します。報告状態は現在の版を示します。",
-    "subject": "主体 ID",
+    "listHelp": "主体、現在の責任者、申請日時で検索します。AI エージェントは人に代わって操作する自動化プログラムです。報告状態は現在の版を示します。",
+    "subject": "主体",
+    "reason": "件名",
+    "compare": {
+      "requested": "申請",
+      "approved": "承認",
+      "accounts": "アカウント範囲",
+      "duration": "期間",
+      "reduced": "縮小あり",
+      "asRequested": "申請どおり承認",
+      "notApproved": "この項目は未承認",
+      "undecided": "未決定",
+      "narrowedCount": "{total} 件中 {n} 件が縮小",
+      "requestedAccountsUnavailable": "申請時のアカウント範囲は保持されず、承認範囲のみが残ります",
+      "noApprovedAccounts": "承認されたアカウントはありません",
+      "noApprovedWindow": "承認された期間はありません",
+      "shorterBy": "申請より {n} 分短い",
+      "note": "申請と承認が異なる場合は承認が優先され、接続もツール呼び出しも承認範囲で遮断されます。",
+      "scopeUnknown": "申請時のアカウント範囲が保存されておらず、完全には比較できません",
+      "durationReducedScopeUnknown": "時間は短縮されました。申請時のアカウント範囲が保存されておらず、完全には比較できません"
+    },
     "timeRange": "申請日時範囲",
     "reportStatus": "報告状態",
     "status": {
@@ -5944,7 +6012,8 @@
     "created": "申請日時",
     "closed": "終了日時",
     "open": "未終了",
-    "detailTitle": "タスク #{id}",
+    "detailTitle": "タスク {id}",
+    "detailTitleNamed": "タスク {id} · {subject}",
     "back": "タスク一覧に戻る",
     "sections": {
       "who": "誰が誰のために何をするか",
@@ -5966,7 +6035,60 @@
     "latestOnly": "最新版のみ表示",
     "allVersions": "すべての版を表示",
     "approvedWindow": "承認期間",
-    "decider": "決定者"
+    "decider": "決定者",
+    "detailHelp": "4 つの区分は順序固定です。前の 3 つはプラットフォームが記録した証跡、最後は agent 自身の説明です。",
+    "closedAt": "クローズ済み {time}",
+    "requesterLabel": "申請者",
+    "executorLabel": "実行者",
+    "openedAndClosed": "起票とクローズ",
+    "openedClosedValue": "{created} 提出 → {closed} クローズ",
+    "openedOnlyValue": "{created} 提出、未クローズ",
+    "closedMeaning": "クローズ後、この申請で接続することはできません。",
+    "autoApproved": "アクセスポリシーによる自動承認（人手の承認なし）",
+    "decisionNoteLabel": "承認メモ",
+    "sessionsTitle": "確立された接続（{n}）",
+    "sessionRevoked": "セッション中に権限が取り消され切断",
+    "reportWindow": "報告を提出・修正できるのは実行した agent のみで、クローズから 24 時間以内に限ります。監査者は閲覧のみで、代筆も旧版の削除もできません。",
+    "sectionHints": {
+      "who": "誰が申請し、誰が実行し、誰が責任を負うか。",
+      "grants": "承認者の項目ごとの判断で、これが権限の上限です。",
+      "activity": "プログラムの申告ではなく、プラットフォームが記録したものです。",
+      "reports": "証跡ではなく主張のため、最後に置いています。"
+    },
+    "stats": {
+      "title": "ツール呼び出しの集計",
+      "labels": {
+        "allowed": "許可",
+        "blocked": "ブロック",
+        "unknown": "結果不明"
+      },
+      "allowed": "許可 {n}",
+      "blocked": "ブロック {n}",
+      "unknown": "結果不明 {n}",
+      "note": "ブロックには拒否・遮断・レート上限を含みます。結果不明は記録済みでも送信と結果が確定していないことを指します。"
+    },
+    "summary": {
+      "didWhat": "何をしたか",
+      "callsValue": "ツール呼び出し {n} 回",
+      "blockedWhere": "どこで止められたか",
+      "blockedValue": "{n} 件を遮断",
+      "whoOwns": "責任者",
+      "report": "報告",
+      "reportSubmitted": "提出済み（版 {n}）",
+      "reportMissing": "未提出",
+      "counting": "集計中…",
+      "unknown": "不明",
+      "grantDiff": "申請と承認の差",
+      "grantDiffValue": "{total} 件中 {n} 件を縮小",
+      "grantDiffSame": "申請どおり承認",
+      "grantDiffNone": "明細データなし",
+      "grantDiffScopeUnknown": "{n} 件は申請時のアカウント範囲が保存されておらず、完全には比較できません"
+    },
+    "emptyTitle": "該当するタスクはありません",
+    "emptyHint": "主体・責任者・申請期間の条件を広げるか、エージェントが最初のタスクを起票するのを待ってください。",
+    "noSessionsNext": "この申請ではまだ接続がありません。エージェントが接続するとここに表示されます。",
+    "searchByName": "名前で検索",
+    "autoApprovedNote": "システムによる自動承認（人の承認なし）"
   },
   "agentBreaker": {
     "pending": "自動停止・要対応",
@@ -5976,25 +6098,41 @@
     "eventsUnavailable": "解除フォームを利用できます。イベント履歴はまだ提供されていません。",
     "selectFromEntry": "アラートまたは agent のトークン画面から対象を選択してください。",
     "unavailable": "この agent の情報を取得できないか、あなたが所有者ではありません。",
-    "noPending": "現在、未対応の遮断はありません。",
-    "releaseTokens": "解除しても無効化されたトークンは復元されません。再発行が必要です。",
-    "releaseSessions": "遮断時点で発行済みの接続チケットと既存の接続は無効化されています。",
-    "released": "未対応フラグを解除しました。無効なトークンは再発行が必要です。",
+    "noPending": "未対応の自動停止はありません",
+    "releaseTokens": "解除しても停止された鍵は復元されません。新しい鍵の発行が必要です。",
+    "releaseSessions": "自動停止の時点で発行済みの接続チケットと既存の接続は無効化されています。",
+    "released": "未対応フラグを解除しました。停止された鍵は再発行が必要です。",
     "reason": "解除理由",
     "reasonRequired": "理由を入力してください。UTF-8 で 1000 バイト以下にしてください。",
     "release": "解除を確定",
     "open": "遮断に対応する",
-    "events": "参照イベント一覧",
-    "noEvents": "この範囲に参照イベントはありません。",
-    "countBoundary": "このページの未可視対象数：{n}。この種類のみしきい値の対象です。現在の判定時間枠のカウントではありません。",
+    "events": "自動停止のきっかけとなった記録",
+    "noEvents": "この範囲には記録がありません。",
+    "countBoundary": "このページで「許可されていない対象」へ接続した対象数：{n}。この種類のみしきい値の対象です。現在の判定時間枠のカウントではありません。",
     "classes": {
-      "never_visible": "可視履歴なし（しきい値対象）",
+      "never_visible": "許可されていない対象への接続（しきい値対象）",
       "revoked": "過去に可視、現在は不可視（対象外）",
       "retired": "存在しない、または削除済み（対象外）"
     },
-    "tokenBoundary": "現在のキー記録を表示します。停止日時と理由は保存済みの事実に基づき、過去の全停止一覧を推測しません。",
-    "tokenStopped": "ブレーカーにより停止：{time}",
-    "assetNameBoundary": "資産名とプロトコルは現在参照できる情報で、発生時の記録ではありません。参照できない資産は識別番号を表示します。"
+    "tokenBoundary": "現在のキー記録を表示します。停止日時と理由は保存済みの事実に基づき、過去の自動停止すべての一覧を推測しません。",
+    "tokenStopped": "{reason}／{time} に停止",
+    "assetNameBoundary": "資産名とプロトコルは現在参照できる情報で、発生時の記録ではありません。参照できない資産は識別番号を表示します。",
+    "pageHelp": "AI エージェントは人に代わって操作する自動化プログラムです。許可されていない対象へ繰り返し接続しようとすると自動的に停止されます。このページでその後の対応を行います。",
+    "whyLabel": "停止された理由",
+    "whyValue": "このプログラムは許可されていない対象へ繰り返し接続しようとし、しきい値に達したため自動的に停止されました。",
+    "effectLabel": "停止後の状態",
+    "nextLabel": "解除後",
+    "nextValue": "停止された鍵は復元されません。新しい鍵を発行してください：",
+    "reissue": "新しい鍵を発行する",
+    "entryLabel": "このページへの入口",
+    "entryValue": "アラート一覧の自動停止アラートからこのページへ移動できます",
+    "noEventsNext": "記録がなくても理由を入力すれば解除できます。解除後は新しい鍵を発行してください。",
+    "tokenRevoked": "{time} に取り消し",
+    "tokenExpired": "{time} に期限切れ",
+    "statTargets": "しきい値に数える対象数",
+    "countBoundaryShort": "「許可されていない対象」への接続のみがしきい値の対象であり、これは現在の判定時間枠のカウントではありません。",
+    "noPendingHint": "この主体に未対応の自動停止はありません。今後自動停止された場合は、このページに解除フォームが表示されます。",
+    "effectTokens": "停止中はこの主体のキーを使用できず、新しいキーも発行できません。"
   },
   "multiRequest": {
     "title": "接続申請を作成",
@@ -6005,7 +6143,7 @@
     "itemId": "項目 #{id}",
     "accounts": "利用するアカウント",
     "allAccounts": "すべてのアカウント",
-    "agentAccounts": "AI agent には個別のアカウント指定が必要です。",
+    "agentAccounts": "AI agent（自動操作の主体）には個別のアカウント指定が必要です。",
     "accountsLoading": "アカウントの読み込みが完了するまで送信できません。",
     "accountsEmpty": "選択できるアカウントがありません。別の資産を選ぶか管理者に連絡してください。",
     "accountsFailed": "アカウント一覧を読み込めませんでした。アカウントがないとは限りません。",
@@ -6030,7 +6168,21 @@
     },
     "relationship": "申請者はあなたで、実際に操作するのはこの agent です。責任者はここに表示されます。",
     "reasonHint": "この理由は審査担当者に表示され、後日の監査でも確認できます。",
-    "missingAccounts": "あと {n} 項目でアカウントの選択が必要です"
+    "missingAccounts": "あと {n} 項目でアカウントの選択が必要です",
+    "assetOption": "{name}（{host}）",
+    "readyToSubmit": "必要な項目はそろっています。送信できます。",
+    "blockers": {
+      "reason": "未入力：申請理由",
+      "duration": "未入力：利用時間（1 分以上）",
+      "asset": "未選択：各項目に資産が必要です",
+      "duplicate": "同じ資産が重複しています。余分な項目を削除してください",
+      "loading": "アカウントを読み込み中です。完了後に送信できます",
+      "loadError": "アカウント一覧の読み込みに失敗しました。再試行してください",
+      "noAccounts": "選択した資産に利用できるアカウントがありません。別の資産を選んでください",
+      "accounts": "未選択：各項目にアカウントが必要です",
+      "agentAllAccounts": "AI agent（自動操作の主体）は「全アカウント」を利用できません。個別に選んでください"
+    },
+    "serverRejected": "サーバーがこの送信を受け付けませんでした。上の理由を確認してから再送してください。"
   },
   "itemReview": {
     "scopeUnknown": "項目ごとの審査権限は送信時に確認されます。一覧には権限情報がありません。",
@@ -6047,19 +6199,33 @@
       "approve": "承認・範囲縮小",
       "reject": "却下",
       "remove": "除外（却下）"
-    }
+    },
+    "identifiers": "識別子",
+    "requesterLine": "申請者：{name}",
+    "onBehalfOf": "代理対象：{name}",
+    "autonomous": "自律実行（代理対象なし）",
+    "autonomousWithOwner": "自律実行（責任者：{name}）",
+    "executedByFor": "{agent} が実行、{requester} の代理",
+    "selfOperated": "本人が操作",
+    "unknownPerson": "未提供",
+    "assetNameUnreadable": "資産名を読み取れません（資産 #{id}）",
+    "selectedCount": "送信対象 {n} 項目",
+    "openRequest": "この申請を開く",
+    "decisionNote": "理由：{note}",
+    "itemsRejected": "{n} 件が受け付けられませんでした。理由は各項目に表示しています。"
   },
   "agentSession": {
-    "snapshot": "接続時点の主体情報（記録された ID、現在の情報は参照しません）",
+    "snapshot": "接続開始時点の主体スナップショット：関係と鍵は接続時の記録、名称は現在の名称を表示",
     "actor": "接続時の操作主体",
     "onBehalf": "代理対象",
     "none": "代理対象なし（自律実行）",
     "unknown": "記録なし",
     "owner": "接続時の所有者",
-    "token": "使用した token",
-    "tokenId": "ID #{id}：名称の記録なし",
     "revoked": "セッション中に権限取消：{time}",
-    "recordingTab": "録画とセッション証跡"
+    "recordingTab": "録画とセッション証跡",
+    "key": "使用した鍵",
+    "keyId": "鍵番号 {id}：名称の記録なし",
+    "revokedShort": "セッション中に権限取消"
   },
   "agentLedger": {
     "title": "ツール呼び出し台帳",
@@ -6069,7 +6235,7 @@
     "empty": "この条件に一致するツール呼び出しはありません。",
     "masked": "マスク {n} 件",
     "duration": "所要時間 {n} ミリ秒",
-    "session": "セッション #{id}",
+    "session": "接続 {id}",
     "noSession": "セッション未作成",
     "pendingBoundary": "記録済みですが、送信されたかどうかも結果も不明です。",
     "details": "記録の詳細を見る",
@@ -6083,12 +6249,24 @@
     "unavailable": "未提供",
     "unknownReason": "この理由の説明はまだありません。",
     "unsupportedQuery": "この検索条件は未対応のため、台帳を読み込んでいません。",
+    "columns": {
+      "time": "日時",
+      "action": "操作",
+      "target": "対象",
+      "decision": "判定",
+      "masked": "マスク",
+      "duration": "所要時間",
+      "link": "リンク"
+    },
+    "durationValue": "{n} ミリ秒",
+    "task": "タスク {id}",
+    "seq": "記録番号",
     "decisions": {
       "pending": "未確定",
       "allowed": "許可",
       "denied": "拒否",
-      "breaker": "遮断",
-      "rate_limited": "レート制限"
+      "breaker": "自動停止",
+      "rate_limited": "呼び出し上限超過"
     },
     "toolName": "ツール名（技術情報）",
     "unknownTool": "その他のツール操作",
@@ -6103,6 +6281,10 @@
       "read_screen": "端末の出力を読み取る",
       "close_session": "資産への接続を終了",
       "close_task": "タスクを終了して報告を提出"
-    }
+    },
+    "callsColumn": "ツール呼び出し",
+    "callsValue": "計 {n} 回",
+    "blockedValue": "うち {n} 回ブロック",
+    "emptyNext": "エージェントが接続してツールを呼び出すと、ここに記録が表示されます。"
   }
 }

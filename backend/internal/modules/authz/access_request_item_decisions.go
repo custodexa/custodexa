@@ -110,7 +110,15 @@ func (s *AccessRequestService) itemSnapshot(tx *gorm.DB, item *model.AccessReque
 	if err != nil {
 		return "", err
 	}
-	snapshot := map[string]any{"segment": segment, "required_approvals": required}
+	// The decision overwrites item.Accounts, so the requested scope is preserved here first;
+	// without it the record can no longer show what was asked for versus what was granted.
+	// An empty scope is written as the explicit @ALL sentinel: a JSON null would be
+	// indistinguishable from a snapshot taken before this projection existed.
+	requested := model.NormalizeAccountScope(item.Accounts)
+	if requested.IsAll() {
+		requested = model.AccountScope{model.AccountScopeAll}
+	}
+	snapshot := map[string]any{"segment": segment, "required_approvals": required, "requested_accounts": requested}
 	if auto {
 		snapshot["required_approvals"] = 0
 		snapshot["auto_basis"] = segment

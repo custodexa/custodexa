@@ -38,11 +38,14 @@
       >
         <div class="list-panel">
           <el-table
+            ref="pendingTableRef"
             v-loading="loading"
+            v-expand-row-a11y
             :data="pendingRequests"
             class="pending-table"
             data-test="pending-table"
             style="width: 100%"
+            row-key="id"
             stripe
           >
             <el-table-column type="expand">
@@ -50,15 +53,26 @@
                 <PerItemApproval
                   :request="row"
                   :actor-id="currentUserId"
+                  @decided="afterItemDecision"
                 />
               </template>
             </el-table-column>
+            <!-- 四位數的任務編號在 70px 下被裁成「任務 100 ..」：
+                 這欄是這張表的主鍵欄，寬度取三語最長者 -->
             <el-table-column
               :label="$t('multiRequest.task')"
-              min-width="70"
+              min-width="140"
             >
               <template #default="{ row }">
-                #{{ row.id }}<p v-if="row.items">
+                <!-- el-table 內建的展開圖示是 div，Tab 到不了、Enter 也按不下去。
+                     逐項審核的唯一入口不能只有滑鼠可用 -->
+                <el-button
+                  link
+                  data-test="toggle-items"
+                  @click="pendingTableRef?.toggleRowExpansion(row)"
+                >
+                  {{ $t('agentTasks.detailTitle', { id: row.id }) }}
+                </el-button><p v-if="row.items">
                   {{ $t('multiRequest.count', { n: row.items.length }) }}
                 </p>
               </template>
@@ -181,7 +195,12 @@
               </template>
             </el-table-column>
             <template #empty>
-              <EmptyState :title="emptyTitleFor('approvals.emptyPending')" />
+              <!-- 空清單要說得出「為什麼空」與「接下來去哪」：只寫一句沒有申請，
+                   讀者分不出是真的沒有、還是自己站錯頁 -->
+              <EmptyState
+                :title="emptyTitleFor('approvals.emptyPending')"
+                :hint="loadFailed ? '' : $t('approvals.emptyPendingHint')"
+              />
             </template>
           </el-table>
         </div>
@@ -193,9 +212,21 @@
         name="history"
       >
         <div class="list-panel">
+          <!-- 由逐項審核的「看這張申請單」帶進來時，那張單要自己展開；
+               翻頁後不在本頁的要明說，不能靜靜地開一張看不出差別的歷史頁 -->
+          <p
+            v-if="highlightMissing"
+            class="history-hint"
+            data-test="history-highlight-missing"
+          >
+            {{ $t('approvals.requestNotOnPage', { id: highlightId }) }}
+          </p>
           <el-table
+            ref="historyTableRef"
             v-loading="loading"
+            v-expand-row-a11y
             :data="historyRequests"
+            row-key="id"
             style="width: 100%"
             stripe
           >
@@ -209,7 +240,7 @@
               min-width="130"
             >
               <template #default="{ row }">
-                #{{ row.id }}<p v-if="row.items">
+                {{ $t('agentTasks.detailTitle', { id: row.id }) }}<p v-if="row.items">
                   {{ $t('multiRequest.count', { n: row.items.length }) }}
                 </p>
               </template>
@@ -714,7 +745,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { RefreshCw, Lock } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -741,6 +773,17 @@ const loading = ref(false)
 const deciding = ref(false)
 
 const pendingRequests = ref([])
+const pendingTableRef = ref(null)
+
+// 逐項決定送出後：待審佇列與側欄待審數都已經變了，不重新讀就會留下
+// 「本頁說 2、側欄說 1」這種自相矛盾的畫面。side badge 由版面層輪詢，
+// 這裡直接通知它立刻重讀，不等下一輪。
+// 送出後不立刻重抓待審：重抓會讓剛決定的單整列消失，審核者看不到自己剛做了什麼。
+// 該列留在原位（逐項元件已把結果與理由寫回列上，並給直達申請單的連結），
+// 只把側欄待審數更新；佇列本身等使用者按重新整理或換頁籤時才重讀
+const afterItemDecision = async () => {
+  window.dispatchEvent(new CustomEvent('ot-approvals-changed'))
+}
 const historyRequests = ref([])
 const historyPage = ref(1)
 const historyPageSize = ref(20)
@@ -1032,14 +1075,57 @@ const formatMinutes = (minutes) => {
     : t('common.hoursMinutes', { h: hours, m: rest })
 }
 
-onMounted(fetchPending)
+// 逐項審核送出後的「看這張申請單」：不具 audit:view 的審核者導到這裡，
+// 直接落在歷史頁的那一張單上並展開逐項結果。翻頁後仍找不到時要明說
+// 「不在這一頁」，不能靜靜地開一張看不出差別的歷史頁
+const highlightId = ref(null)
+const highlightMissing = ref(false)
+const historyTableRef = ref(null)
+const revealHighlight = async () => {
+  if (!highlightId.value) return
+  const row = historyRequests.value.find((item) => item.id === highlightId.value)
+  highlightMissing.value = !row
+  if (!row) return
+  await nextTick()
+  historyTableRef.value?.toggleRowExpansion(row, true)
+}
+
+onMounted(async () => {
+  const requested = Number(new URLSearchParams(window.location.search).get('request'))
+  if (Number.isInteger(requested) && requested > 0) {
+    highlightId.value = requested
+    activeTab.value = 'history'
+    await fetchHistory()
+    await revealHighlight()
+    return
+  }
+  fetchPending()
+})
 </script>
 
 <style scoped>
+/* 「這張單不在本頁」是要照著做的指示（去翻頁），不是背景說明，留在主文字色 */
+.history-hint {
+  margin: 0 0 var(--ot-space-sm);
+  color: var(--ot-text-primary);
+  font-size: var(--ot-font-size-md);
+}
+
 .approvals {
   display: flex;
   flex-direction: column;
   gap: var(--ot-space-lg);
+}
+
+/* 版面縱向間距一律由上面的 gap 給；PageHeader 自帶的下緣會與 gap 疊成 48px，
+   那不在間距階上 */
+.approvals > :deep(.page-header) {
+  margin-bottom: 0;
+}
+
+/* 元件庫的分頁標頭預設留 15px，不在間距刻度上 */
+.approvals :deep(.el-tabs__header) {
+  margin-bottom: var(--ot-space-md);
 }
 
 .list-panel {

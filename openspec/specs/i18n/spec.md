@@ -54,11 +54,16 @@ The frontend SHALL offer a language switcher in the MainLayout header, on the lo
 - **THEN** `document.title` re-renders with the translated subtitle and `document.documentElement.lang` reflects the active locale
 
 ### Requirement: Localized date, duration, and relative time
-Date and time rendering SHALL derive its locale from the active i18n language (via the shared format utilities — no per-page reimplementation), using Intl APIs for date order and month representation and Intl.RelativeTimeFormat for relative time. The hour representation SHALL remain fixed at 24-hour across all languages (audit precision decision, not a localization preference). Duration texts SHALL use count-aware plural messages (English singular/plural distinguished, Japanese/Chinese spacing natural) — never unit-string interpolation joined by spaces. Values displayed on a loaded page SHALL be re-derived at render time so a language switch re-renders them; storing pre-formatted strings in component state is a defect for the surfaces this capability covers.
+Date and time rendering SHALL derive its locale from the active i18n language (via the shared format utilities — no per-page reimplementation), using Intl APIs for date order and month representation and Intl.RelativeTimeFormat for relative time. The hour representation SHALL remain fixed at 24-hour across all languages (audit precision decision, not a localization preference). Rendered timestamps SHALL carry an unambiguous UTC-offset marker (for example `2026/09/22 22:04:05 (UTC+8)`); the marker SHALL be byte-identical across the three languages, so the offset is read the same way regardless of the active language. Date-only rendering is exempt (no time of day is shown). Duration texts SHALL use count-aware plural messages (English singular/plural distinguished, Japanese/Chinese spacing natural) — never unit-string interpolation joined by spaces. Values displayed on a loaded page SHALL be re-derived at render time so a language switch re-renders them; storing pre-formatted strings in component state is a defect for the surfaces this capability covers.
 
 #### Scenario: Date format follows language
 - **WHEN** the active language changes from zh-TW to en-US
 - **THEN** timestamps rendered by the shared format utilities switch to the en-US date order while remaining 24-hour
+
+#### Scenario: Timestamp carries a readable time zone
+
+- **WHEN** the same timestamp renders in zh-TW, en-US and ja-JP
+- **THEN** each rendering ends with the same UTC-offset marker, so no reader has to guess whose wall clock the time belongs to
 
 #### Scenario: Relative time localized
 - **WHEN** a list shows an event from three minutes ago in ja-JP

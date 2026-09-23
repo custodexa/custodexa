@@ -90,8 +90,11 @@ func (self *agentSelfCreation) audit(tx *gorm.DB, user *model.User) error {
 	return port.WriteInTx(audit.NewTxSink(), tx, port.AuditEvent{Actor: self.actor, Action: string(model.ActionCreate), Resource: string(model.ResourceUser), ResourceID: &user.ID, Status: string(model.StatusSuccess), Details: string(details)})
 }
 
+// ListMyAgents is deliberately independent of the self-creation policy key: an owner
+// stays accountable for the agents already in their name even when creating new ones
+// is closed, so the list is gated on owner eligibility alone.
 func (s *UserService) ListMyAgents(ownerID uint) ([]model.User, error) {
-	if err := selfServiceOwner(s.db, ownerID); err != nil {
+	if err := validateAgentOwner(s.db, &ownerID); err != nil {
 		return nil, err
 	}
 	users := make([]model.User, 0)

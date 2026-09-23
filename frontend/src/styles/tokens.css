@@ -23,12 +23,27 @@
   --ot-text-secondary: #9da7b1;
   --ot-text-disabled: #6e7781;
   --ot-text-inverse: #0f1419;
+  /* Label on a filled, disabled control: muted but still legible (AA on the
+     sunken fill steps). Element Plus defaults to 50% white, which is not. */
+  --ot-text-on-fill-disabled: rgba(255, 255, 255, 0.78);
 
-  /* Brand and semantic colors (Primary Blue ramp; semantics unchanged) */
-  --ot-primary: #4f83f1;
-  --ot-primary-hover: #6e9bff;
+  /* Brand and semantic colors (Primary Blue ramp; semantics unchanged).
+     The ramp is split by use: text, links and selected states take the light
+     step so they read at AA on every dark surface (7aa5ff on bg-active 4.8:1);
+     filled controls take the brand value 2563eb so white text reads at 5.2:1.
+     One blue cannot satisfy both, so never put white text on --ot-primary. */
+  --ot-primary: #7aa5ff;
+  --ot-primary-hover: #86adff;
   --ot-primary-active: #2563eb;
-  --ot-primary-dim: rgba(79, 131, 241, 0.15);
+  --ot-primary-fill: #2563eb;
+  --ot-primary-fill-hover: #1d4ed8;
+  --ot-primary-dim: rgba(122, 165, 255, 0.15);
+  /* Primary mixed toward the page background: the fill steps that carry
+     text on dark surfaces (disabled fills, selected rows, hover plates).
+     Mixing toward the background keeps white/near-white labels at AA. */
+  --ot-primary-sunken: #2d4c89;
+  --ot-primary-sunken-deep: #1e3f7d;
+  --ot-primary-sunken-deepest: #16305e;
   --ot-success: #4ec47a;
   --ot-warning: #d9a93e;
   --ot-danger: #e5604f;

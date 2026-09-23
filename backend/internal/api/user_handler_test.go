@@ -151,9 +151,9 @@ func (m *MockUserService) ConvertToExternalOnly(userID uint, actor identity.Iden
 	return args.Error(0)
 }
 
-// TestUserHandler_List 測試用戶列表
+// TestUserHandler_List 測試使用者列表
 func TestUserHandler_List(t *testing.T) {
-	t.Run("成功獲取用戶列表", func(t *testing.T) {
+	t.Run("成功獲取使用者列表", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		activeTrue := true
@@ -290,15 +290,15 @@ func TestUserHandler_List(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "查詢用戶失敗")
+		assert.Contains(t, response["error"], "查詢使用者失敗")
 
 		mockUserService.AssertExpectations(t)
 	})
 }
 
-// TestUserHandler_Create 測試創建用戶
+// TestUserHandler_Create 測試創建使用者
 func TestUserHandler_Create(t *testing.T) {
-	t.Run("成功創建用戶", func(t *testing.T) {
+	t.Run("成功創建使用者", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		activeTrue := true
@@ -467,9 +467,9 @@ func TestUserHandler_Create(t *testing.T) {
 	})
 }
 
-// TestUserHandler_Get 測試獲取用戶詳情
+// TestUserHandler_Get 測試獲取使用者詳情
 func TestUserHandler_Get(t *testing.T) {
-	t.Run("成功獲取用戶詳情", func(t *testing.T) {
+	t.Run("成功獲取使用者詳情", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		activeTrue := true
@@ -509,7 +509,7 @@ func TestUserHandler_Get(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -526,10 +526,10 @@ func TestUserHandler_Get(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
-	t.Run("用戶不存在（404）", func(t *testing.T) {
+	t.Run("使用者不存在（404）", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("GetByID", uint(999)).Return(nil, identity.ErrUserNotFound)
@@ -547,7 +547,7 @@ func TestUserHandler_Get(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -570,15 +570,15 @@ func TestUserHandler_Get(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "查詢用戶失敗")
+		assert.Contains(t, response["error"], "查詢使用者失敗")
 
 		mockUserService.AssertExpectations(t)
 	})
 }
 
-// TestUserHandler_Update 測試更新用戶
+// TestUserHandler_Update 測試更新使用者
 func TestUserHandler_Update(t *testing.T) {
-	t.Run("成功更新用戶", func(t *testing.T) {
+	t.Run("成功更新使用者", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		activeTrue := true
@@ -619,7 +619,7 @@ func TestUserHandler_Update(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -642,7 +642,7 @@ func TestUserHandler_Update(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
 	t.Run("請求格式錯誤", func(t *testing.T) {
@@ -666,7 +666,7 @@ func TestUserHandler_Update(t *testing.T) {
 		assert.Contains(t, response["error"], "請求參數錯誤")
 	})
 
-	t.Run("用戶不存在", func(t *testing.T) {
+	t.Run("使用者不存在", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("Update", uint(999), mock.AnythingOfType("*identity.UpdateUserRequest")).
@@ -691,7 +691,7 @@ func TestUserHandler_Update(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -721,15 +721,15 @@ func TestUserHandler_Update(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "更新用戶失敗")
+		assert.Contains(t, response["error"], "更新使用者失敗")
 
 		mockUserService.AssertExpectations(t)
 	})
 }
 
-// TestUserHandler_Delete 測試刪除用戶
+// TestUserHandler_Delete 測試刪除使用者
 func TestUserHandler_Delete(t *testing.T) {
-	t.Run("成功刪除用戶", func(t *testing.T) {
+	t.Run("成功刪除使用者", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("Delete", uint(1)).Return(nil)
@@ -753,7 +753,7 @@ func TestUserHandler_Delete(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -770,10 +770,10 @@ func TestUserHandler_Delete(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
-	t.Run("用戶不存在", func(t *testing.T) {
+	t.Run("使用者不存在", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("Delete", uint(999)).Return(identity.ErrUserNotFound)
@@ -791,7 +791,7 @@ func TestUserHandler_Delete(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -837,7 +837,7 @@ func TestUserHandler_Delete(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "刪除用戶失敗")
+		assert.Contains(t, response["error"], "刪除使用者失敗")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -878,7 +878,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -901,7 +901,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
 	t.Run("請求格式錯誤（缺少 manual_roles）", func(t *testing.T) {
@@ -927,7 +927,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		assert.Contains(t, response["error"], "請求參數錯誤")
 	})
 
-	t.Run("用戶不存在", func(t *testing.T) {
+	t.Run("使用者不存在", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("AssignRoles", uint(999), []string{"admin"}).
@@ -952,7 +952,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -1020,7 +1020,7 @@ func TestUserHandler_AssignRoles(t *testing.T) {
 
 // TestUserHandler_UpdateStatus 測試更新狀態
 func TestUserHandler_UpdateStatus(t *testing.T) {
-	t.Run("成功更新用戶狀態", func(t *testing.T) {
+	t.Run("成功更新使用者狀態", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("UpdateStatus", uint(1), false).Return(nil)
@@ -1050,7 +1050,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -1073,7 +1073,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
 	t.Run("請求格式錯誤（active 為 nil）", func(t *testing.T) {
@@ -1099,7 +1099,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		assert.Contains(t, response["error"], "請求參數錯誤")
 	})
 
-	t.Run("用戶不存在", func(t *testing.T) {
+	t.Run("使用者不存在", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("UpdateStatus", uint(999), false).
@@ -1124,7 +1124,7 @@ func TestUserHandler_UpdateStatus(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})
@@ -1222,7 +1222,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("無效的用戶 ID", func(t *testing.T) {
+	t.Run("無效的使用者 ID", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		handler := newTestUserHandler(mockUserService)
@@ -1245,7 +1245,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "無效的用戶 ID")
+		assert.Contains(t, response["error"], "無效的使用者 ID")
 	})
 
 	t.Run("密碼政策違規回可讀訊息", func(t *testing.T) {
@@ -1287,7 +1287,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		mockUserService.AssertExpectations(t)
 	})
 
-	t.Run("用戶不存在", func(t *testing.T) {
+	t.Run("使用者不存在", func(t *testing.T) {
 		mockUserService := new(MockUserService)
 
 		mockUserService.On("ChangePassword", uint(999), "newpassword123").
@@ -1312,7 +1312,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 		var response map[string]string
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockUserService.AssertExpectations(t)
 	})

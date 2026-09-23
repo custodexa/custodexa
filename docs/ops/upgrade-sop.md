@@ -146,6 +146,10 @@ If you build the images yourself, see the tag-aside step in §2.2; if you deploy
 
 > **What the single-instance guard guarantees**: as of this release, a second application instance started against the same database is stopped and asked to confirm (§2.6b). That mutual exclusion **only holds between guard-bearing releases**: older releases without the guard hold no lock, so on the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped. Step 5 of §2.3 is the first-upgrade check that exists for exactly this, and it must not be skipped.
 
+#### Upgrading to 1.11.1
+
+- **One data migration runs**, `20260923_agent_lateral_rule_pattern`. It changes no schema and touches a single row: the factory rule that blocks lateral movement by an automated operator. An installed copy of that rule which no administrator has edited is updated to the newer pattern, which matches only at a command position, so reading a path such as `~/.ssh` no longer trips it; a copy an administrator has edited keeps its own pattern. Its duration does not depend on how much data the deployment holds.
+
 #### Upgrading to 1.10.0
 
 Four things in this release change what an upgrade involves; each has its own place further down.

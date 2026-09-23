@@ -8,6 +8,7 @@
         <el-switch
           v-model="autoRefresh"
           :active-text="$t('sessions.autoRefresh')"
+          :aria-label="$t('sessions.autoRefresh')"
           @change="handleAutoRefreshChange"
         />
         <el-button @click="handleRefresh">
@@ -34,21 +35,37 @@
             style="width: 100%"
             stripe
           >
+            <!-- 編號帶類型：單獨一格「118」讀不出是什麼的編號 -->
             <el-table-column
               prop="id"
-              label="ID"
-              width="80"
-            />
+              :label="$t('common.idColumn')"
+              width="120"
+            >
+              <template #default="{ row }">
+                {{ $t('common.sessionRef', { id: row.id }) }}
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('sessions.actorColumn')"
               min-width="180"
             >
               <template #default="{ row }">
-                <div>{{ row.user?.username || `#${row.user_id}` }}</div>
+                <div>{{ row.user?.username || $t('agentPrincipals.unavailable') }}</div>
                 <PrincipalBadge
                   :kind="row.actor_kind || ''"
                   :owner-id="row.owner_user_id"
+                  :owner-name="row.owner_username"
                 />
+              </template>
+            </el-table-column>
+            <!-- 代表人：agent 是替誰做的。沒有這欄，列表答不出「替誰」 -->
+            <el-table-column
+              :label="$t('agentSession.onBehalf')"
+              min-width="120"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                <span data-test="session-on-behalf">{{ onBehalfText(row) }}</span>
               </template>
             </el-table-column>
             <el-table-column
@@ -56,14 +73,27 @@
               min-width="160"
             >
               <template #default="{ row }">
-                <a
+                <el-tooltip
                   v-if="row.access_request_id"
-                  :href="`/audit/agent-tasks/${row.access_request_id}`"
-                  data-test="session-task"
-                >#{{ row.access_request_id }}</a><span v-else>—</span>
+                  :content="taskReasons[row.access_request_id] || $t('agentTasks.reason')"
+                  :disabled="!taskReasons[row.access_request_id]"
+                  placement="top"
+                >
+                  <a
+                    :href="`/audit/agent-tasks/${row.access_request_id}`"
+                    data-test="session-task"
+                  >{{ $t('agentTasks.detailTitle', { id: row.access_request_id }) }}</a>
+                </el-tooltip><span v-else>—</span>
+                <p
+                  v-if="taskReasons[row.access_request_id]"
+                  class="cell-subline"
+                  data-test="session-task-subject"
+                >
+                  {{ taskReasons[row.access_request_id] }}
+                </p>
                 <p
                   v-if="row.revoked_during_session_at"
-                  class="session-revocation"
+                  class="session-revocation-line"
                   data-test="session-revocation"
                 >
                   {{ $t('agentSession.revoked', { time: formatDateTime(row.revoked_during_session_at) }) }}
@@ -106,8 +136,8 @@
               width="140"
             >
               <template #default="{ row }">
-                <el-tag :type="protocolTagType(row.protocol)">
-                  {{ row.protocol.toUpperCase() }}
+                <el-tag class="ot-tag-neutral">
+                  {{ protocolText(row.protocol) }}
                 </el-tag>
                 <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
                      指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
@@ -298,55 +328,123 @@
         <div class="list-panel">
           <el-table
             v-loading="loading"
+            v-expand-row-a11y
             :data="sessionList"
             class="history-table"
             data-test="history-table"
             style="width: 100%"
             stripe
           >
-            <el-table-column
-              prop="id"
-              label="ID"
-              width="60"
-            />
+            <!-- 次要欄位（負責人、來源位址、結束時間、持續時間）收進展開列：
+                 每列三行灰字時，首屏的次要文字會多過要讀的主文字 -->
+            <el-table-column type="expand">
+              <template #default="{ row }">
+                <dl
+                  class="session-more"
+                  data-test="session-more"
+                >
+                  <dt>{{ $t('common.idColumn') }}</dt>
+                  <dd>{{ $t('common.sessionRef', { id: row.id }) }}</dd>
+                  <template v-if="row.actor_kind === 'agent'">
+                    <dt>{{ $t('agentPrincipals.owner') }}</dt>
+                    <dd>{{ row.owner_username || $t('agentPrincipals.unavailable') }}</dd>
+                  </template>
+                  <dt>{{ $t('sessions.clientIp') }}</dt>
+                  <dd>{{ row.client_ip || '-' }}</dd>
+                  <dt>{{ $t('sessions.endTime') }}</dt>
+                  <dd>{{ formatDateTime(row.end_time) }}</dd>
+                  <dt>{{ $t('sessions.duration') }}</dt>
+                  <dd>{{ formatDurationSeconds(row.duration) }}</dd>
+                  <template v-if="row.revoked_during_session_at">
+                    <dt>{{ $t('agentSession.revokedShort') }}</dt>
+                    <dd data-test="session-more-revocation">
+                      {{ formatDateTime(row.revoked_during_session_at) }}
+                    </dd>
+                  </template>
+                </dl>
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('sessions.actorColumn')"
               min-width="130"
             >
               <template #default="{ row }">
-                <div>{{ row.user?.username || `#${row.user_id}` }}</div>
+                <div
+                  class="ident-line"
+                  :title="row.user?.username || ''"
+                >
+                  {{ row.user?.username || $t('agentPrincipals.unavailable') }}
+                </div>
                 <PrincipalBadge
                   :kind="row.actor_kind || ''"
                   :owner-id="row.owner_user_id"
                   :owner-name="row.owner_username"
+                  :show-owner="false"
                 />
-                <p class="sub-text">
-                  {{ $t('sessions.clientIp') }}: {{ row.client_ip || '-' }}
-                </p>
               </template>
             </el-table-column>
+            <!-- 代表人：agent 是替誰做的。沒有這欄，列表答不出「替誰」 -->
+            <el-table-column
+              :label="$t('agentSession.onBehalf')"
+              min-width="90"
+              class-name="nowrap-cell"
+              show-overflow-tooltip
+            >
+              <template #default="{ row }">
+                <span data-test="session-on-behalf">{{ onBehalfText(row) }}</span>
+              </template>
+            </el-table-column>
+            <!-- 任務欄帶主旨：只有「任務 91」時，讀者仍得點進去才知道那張單在做什麼 -->
             <el-table-column
               :label="$t('multiRequest.task')"
-              min-width="65"
+              min-width="120"
             >
               <template #default="{ row }">
                 <a
                   v-if="row.access_request_id"
                   :href="`/audit/agent-tasks/${row.access_request_id}`"
                   data-test="session-task"
-                >#{{ row.access_request_id }}</a><span v-else>—</span>
+                >{{ $t('agentTasks.detailTitle', { id: row.access_request_id }) }}</a><span v-else>—</span>
                 <p
-                  v-if="row.revoked_during_session_at"
-                  class="session-revocation"
-                  data-test="session-revocation"
+                  v-if="taskReasons[row.access_request_id]"
+                  class="cell-subline"
+                  data-test="session-task-subject"
                 >
-                  {{ $t('agentSession.revoked', { time: formatDateTime(row.revoked_during_session_at) }) }}
+                  {{ taskReasons[row.access_request_id] }}
                 </p>
+              </template>
+            </el-table-column>
+            <!-- 工具呼叫次數：原本要進詳情再捲到帳本逐列數，列表直接給總數與擋下數 -->
+            <el-table-column
+              :label="$t('agentLedger.callsColumn')"
+              min-width="80"
+            >
+              <template #default="{ row }">
+                <span
+                  v-if="!callCounts[row.id]"
+                  data-test="session-calls"
+                >—</span>
+                <span
+                  v-else-if="callCounts[row.id].state === 'loading'"
+                  data-test="session-calls"
+                >{{ $t('agentTasks.summary.counting') }}</span>
+                <span
+                  v-else-if="callCounts[row.id].state === 'error'"
+                  data-test="session-calls"
+                >{{ $t('agentLedger.unknown') }}<el-button
+                  link
+                  size="small"
+                  @click="loadCallCount(row)"
+                >{{ $t('common.retry') }}</el-button></span>
+                <span
+                  v-else
+                  data-test="session-calls"
+                >{{ $t('agentLedger.callsValue', { n: callCounts[row.id].total }) }}<br>{{ $t('agentLedger.blockedValue', { n: callCounts[row.id].blocked }) }}</span>
               </template>
             </el-table-column>
             <el-table-column
               :label="$t('common.asset')"
-              min-width="140"
+              min-width="120"
             >
               <template #default="{ row }">
                 {{ row.asset?.name || '-' }}
@@ -360,7 +458,8 @@
                  帳號日後改名／刪除不改寫此欄 -->
             <el-table-column
               :label="$t('sessions.accountColumn')"
-              min-width="85"
+              min-width="95"
+              class-name="nowrap-cell"
               show-overflow-tooltip
             >
               <template #default="{ row }">
@@ -373,11 +472,11 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.protocol')"
-              min-width="80"
+              min-width="95"
             >
               <template #default="{ row }">
-                <el-tag :type="protocolTagType(row.protocol)">
-                  {{ row.protocol.toUpperCase() }}
+                <el-tag class="ot-tag-neutral">
+                  {{ protocolText(row.protocol) }}
                 </el-tag>
                 <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
                      指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
@@ -406,57 +505,38 @@
                 >
                   {{ getEndReasonText(row.end_reason) }}
                 </p>
+                <!-- 撤權句原本整句塞進狀態欄：en 折六行、列高 270px。欄內只留
+                     彩標＋完整句子的 title，時間另落在展開列，兩處都讀得到 -->
+                <!-- 結束原因已是「授權撤銷斷線」時不再掛同義彩標：同一件事說兩次 -->
+                <el-tag
+                  v-if="row.revoked_during_session_at && row.end_reason !== 'revoked'"
+                  type="danger"
+                  class="session-revocation"
+                  data-test="session-revocation"
+                  :title="$t('agentSession.revoked', { time: formatDateTime(row.revoked_during_session_at) })"
+                >
+                  {{ $t('agentSession.revokedShort') }}
+                </el-tag>
               </template>
             </el-table-column>
 
 
             <el-table-column
               :label="$t('sessions.startTime')"
-              min-width="140"
+              min-width="110"
             >
               <template #default="{ row }">
                 {{ formatDateTime(row.start_time) }}
-                <p class="sub-text">
-                  {{ $t('sessions.endTime') }}: {{ formatDateTime(row.end_time) }}
-                </p>
-                <p class="sub-text">
-                  {{ $t('sessions.duration') }}: {{ formatDurationSeconds(row.duration) }}
-                </p>
               </template>
             </el-table-column>
 
 
-            <el-table-column
-              :label="$t('sessions.recordingColumn')"
-              min-width="60"
-            >
-              <template #default="{ row }">
-                <!-- 無錄影額外標示：
-                     缺錄影必須可見，不得只是播放鈕沉默消失 -->
-                <el-tooltip
-                  v-if="row.recording_error"
-                  :content="$t('sessions.recordingErrorTooltip', { error: auditCauseLabel(row.recording_error) })"
-                  placement="top"
-                >
-                  <el-tag
-                    type="danger"
-                    size="small"
-                  >
-                    {{ $t('sessions.noRecording') }}
-                  </el-tag>
-                </el-tooltip>
-                <el-icon
-                  v-else-if="row.has_recording"
-                  style="color: var(--ot-success)"
-                >
-                  <CirclePlay />
-                </el-icon>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
+            <!-- 錄影狀態與入口併在本欄：原本另立的「錄製」欄與這裡講同一件事，
+                 兩欄並存時欄寬預算被佔掉，反而讓操作文字在 en 被裁掉尾字。
+                 寬度取三語最長者（en「View Recording」） -->
             <el-table-column
               :label="$t('common.actions')"
-              width="110"
+              width="140"
               fixed="right"
             >
               <template #default="{ row }">
@@ -515,6 +595,7 @@
 </template>
 
 <script setup>
+import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -533,11 +614,27 @@ import {
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
-import { isTextTerminal, protocolTagType, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
+import { isTextTerminal, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
+import { getAgentToolCalls, getAgentTask } from '@/api/agentTasks'
 import { getEndReasonText } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
 import { t } from '@/i18n'
 import { auditCauseLabel } from '@/constants/audit-enums'
+
+// 代表人只有 agent 會有；後端未投影名稱時退回「—」而不是裸 id
+const onBehalfText = (row) => {
+  if (row.on_behalf_of_username) return row.on_behalf_of_username
+  if (row.on_behalf_of_user_id) return t('agentPrincipals.unavailable')
+  return row.actor_kind === 'agent' ? t('agentSession.none') : '—'
+}
+
+// 協議碼在首層一律帶人話：SSH／RDP 這類縮寫本身不說明它是什麼連線
+const PROTOCOL_KINDS = { ssh: 'terminal', k8s: 'terminal', rdp: 'desktop', vnc: 'desktop', mysql: 'database', postgres: 'database', redis: 'database', mssql: 'database' }
+const protocolText = (protocol) => {
+  const code = String(protocol || '').toUpperCase()
+  const kind = PROTOCOL_KINDS[String(protocol || '').toLowerCase()]
+  return kind ? t(`enum.protocolKind.${kind}`, { code }) : code
+}
 
 const router = useRouter()
 
@@ -579,6 +676,48 @@ const fetchActiveSessions = async () => {
   }
 }
 
+// 工具呼叫計數：只對 agent 會話讀，名下沒有紀錄就是 0；讀不到說「未知」並可重試
+const callCounts = reactive({})
+let countEpoch = 0
+const loadCallCount = async (row) => {
+  const version = countEpoch
+  callCounts[row.id] = { state: 'loading', total: 0, blocked: 0 }
+  try {
+    const response = await getAgentToolCalls({ session_id: row.id, offset: 0, limit: 500 })
+    if (version !== countEpoch) return
+    const data = response.data || []
+    const blocked = data.filter((call) => ['denied', 'breaker', 'rate_limited'].includes(call.decision)).length
+    callCounts[row.id] = { state: 'ok', total: response.total || data.length, blocked }
+  } catch {
+    if (version === countEpoch) callCounts[row.id] = { state: 'error', total: 0, blocked: 0 }
+  }
+}
+const loadCallCounts = async (rows) => {
+  countEpoch += 1
+  for (const key of Object.keys(callCounts)) delete callCounts[key]
+  const agents = rows.filter((row) => row.actor_kind === 'agent')
+  for (let i = 0; i < agents.length; i += 4) await Promise.all(agents.slice(i, i + 4).map(loadCallCount))
+}
+
+// 任務主旨：會話契約沒有這一欄，向任務端點補取，只為了讓「任務 N」有 tooltip 說出
+// 那張單在做什麼；讀不到就不顯示 tooltip，不猜也不宣稱讀得到
+const taskReasons = reactive({})
+let reasonEpoch = 0
+const loadTaskReasons = async (rows) => {
+  reasonEpoch += 1
+  const version = reasonEpoch
+  for (const key of Object.keys(taskReasons)) delete taskReasons[key]
+  const ids = [...new Set(rows.map((row) => row.access_request_id).filter(Boolean))]
+  for (let i = 0; i < ids.length; i += 4) {
+    await Promise.all(ids.slice(i, i + 4).map(async (id) => {
+      try {
+        const response = await getAgentTask(id, { limit: 1, offset: 0 })
+        if (version === reasonEpoch && response?.request?.reason) taskReasons[id] = response.request.reason
+      } catch { /* 讀不到就沒有 tooltip */ }
+    }))
+  }
+}
+
 // 取得 Session 歷史列表
 const fetchSessionList = async () => {
   loading.value = true
@@ -600,6 +739,8 @@ const fetchSessionList = async () => {
     const response = await getSessionList(params)
     sessionList.value = response.data
     pagination.total = response.total
+    loadCallCounts(sessionList.value)
+    loadTaskReasons(sessionList.value)
   } catch (error) {
     console.error('取得 Session 列表失敗:', error)
   } finally {
@@ -756,7 +897,8 @@ onUnmounted(() => {
 
 <style scoped>
 a { color: var(--ot-primary); }
-.session-revocation { color: var(--ot-warning); font-size: var(--ot-font-size-sm); margin: var(--ot-space-sm) 0; }
+.session-revocation { margin-top: var(--ot-space-xs); }
+.session-revocation-line { color: var(--ot-text-primary); font-weight: 600; font-size: var(--ot-font-size-sm); margin: var(--ot-space-sm) 0; }
 
 .console-badge {
   margin-left: 4px;
@@ -764,6 +906,30 @@ a { color: var(--ot-primary); }
 
 .sessions {
   /* MainLayout already provides padding via --ot-space-lg */
+}
+
+/* 元件庫的分頁標頭預設留 15px，不在間距刻度上 */
+.sessions :deep(.el-tabs__header) {
+  margin-bottom: var(--ot-space-md);
+}
+
+/* 展開列：標籤與值成對，值維持主文字階（要讀的是值不是標籤） */
+.session-more {
+  display: grid;
+  grid-template-columns: 10em minmax(0, 1fr);
+  gap: var(--ot-space-xs) var(--ot-space-md);
+  margin: 0;
+  padding: var(--ot-space-md);
+}
+
+.session-more dt {
+  color: var(--ot-text-secondary);
+  font-size: var(--ot-font-size-sm);
+}
+
+.session-more dd {
+  margin: 0;
+  color: var(--ot-text-primary);
 }
 
 .account-cell {
@@ -791,8 +957,20 @@ a { color: var(--ot-primary); }
   display: flex;
   justify-content: flex-end;
 }
-.history-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
-.history-table :deep(.el-tag) { height: auto; min-height: 24px; white-space: normal; line-height: 1.4; padding: var(--ot-space-xs); }
+/* anywhere 會把 testuser 這種單詞從中間切成 testuse／r；
+   break-word 只在整個單詞放不下時才斷，欄寬已經各自放寬 */
+/* break-word 仍會在長識別字沒處斷時從中間切（testuser → testuse／r）。
+   改回預設斷行規則（中日文照常逐字換行、西文只在詞界斷），
+   放不下的識別欄改單行省略號＋tooltip（nowrap-cell） */
+.history-table :deep(.cell) { white-space: normal; overflow-wrap: normal; word-break: normal; }
+.history-table :deep(td.nowrap-cell .cell) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ident-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 任務主旨是要讀的內容而不是註腳，留在主文字色，只降字級 */
+.cell-subline { color: var(--ot-text-primary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0 0; }
+.history-table :deep(.el-tag) { height: auto; min-height: 24px; white-space: normal; overflow-wrap: normal; word-break: normal; line-height: 1.4; padding: var(--ot-space-xs); }
 .history-table :deep(.el-button) { margin: var(--ot-space-xs); }
+/* 操作文字在三語間長短差一倍（en「View Recording」最長）：EP 的按鈕預設
+   nowrap，固定欄寬下尾字直接被儲存格裁掉。允許換行，裁切消失 */
+.sessions :deep(.el-table .el-button) { white-space: normal; height: auto; }
 .history-table .sub-text { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0; }
 </style>

@@ -114,7 +114,12 @@ func (s *SessionService) GetByID(id uint) (*model.Session, error) {
 		return nil, result.Error
 	}
 
-	return &session, nil
+	// Same name projection as the list endpoint, so detail and list agree.
+	page := []model.Session{session}
+	if err := fillSessionOwnerNames(page); err != nil {
+		return nil, fmt.Errorf("查詢 Session 負責人名稱失敗: %w", err)
+	}
+	return &page[0], nil
 }
 
 // GetBySessionID 根據 SessionID 取得 Session

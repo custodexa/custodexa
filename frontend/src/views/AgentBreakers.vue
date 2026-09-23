@@ -1,6 +1,9 @@
 <template>
   <div>
-    <PageHeader :title="t('agentBreaker.title')">
+    <PageHeader
+      :title="t('agentBreaker.title')"
+      :description="t('agentBreaker.pageHelp')"
+    >
       <template #actions>
         <el-button
           :loading="loading"
@@ -26,7 +29,7 @@
         data-test="breaker-principal"
       >
         <el-button @click="choose(user.id)">
-          {{ user.username }} · #{{ user.id }}
+          {{ user.username || t('agentPrincipals.subjectRef', { id: user.id }) }}
         </el-button><span>{{ t(user.breaker_pending_at ? 'agentBreaker.pending' : 'agentBreaker.noPending') }}</span>
       </article>
       <el-pagination
@@ -43,7 +46,17 @@
       :title="error"
       type="error"
       :closable="false"
-    />
+      show-icon
+    >
+      <el-button
+        :loading="loading"
+        data-test="breaker-error-retry"
+        @click="load"
+      >
+        {{ t('common.retry') }}
+      </el-button>
+      <a href="/alerts">{{ t('agentBreaker.entryValue') }}</a>
+    </el-alert>
     <p
       v-if="released"
       role="status"
@@ -54,24 +67,69 @@
       {{ t('agentBreaker.selectFromEntry') }}
     </p>
     <section v-if="principal && !loading">
-      <h2>{{ principal.username }} · #{{ principal.id }}</h2>
-      <PrincipalBadge
-        :kind="principal.kind"
-        :owner-id="principal.owner_user_id"
-        :owner-name="principal.owner_username"
-      />
-      <p>{{ t(principal.breaker_pending_at ? 'agentBreaker.pending' : 'agentBreaker.noPending') }}</p>
-      <AgentBreakerEvents
-        :user-id="principal.id"
-        :read-tokens="canManage"
-        @state="setPending"
-      />
+      <header class="breaker-head">
+        <h2>{{ principal.username || t('agentPrincipals.subjectRef', { id: principal.id }) }}</h2>
+        <a
+          :href="keysHref"
+          data-test="principal-keys-link"
+        >{{ t('agentPrincipals.openKeys') }}</a>
+        <el-tag :type="principal.breaker_pending_at ? 'warning' : 'success'">
+          {{ t(principal.breaker_pending_at ? 'agentBreaker.pending' : 'agentBreaker.noPending') }}
+        </el-tag>
+        <!-- 身分徽章與負責人原本各自換行，主體那一列散成三行 -->
+        <PrincipalBadge
+          :kind="principal.kind"
+          :owner-id="principal.owner_user_id"
+          :owner-name="principal.owner_username"
+        />
+      </header>
+      <!-- 首屏就要答完五題：為什麼被停、停了以後怎樣、怎麼解除、
+           解除後做什麼（含直達入口）、從告警頁怎麼回到這裡 -->
+      <dl
+        class="breaker-brief"
+        data-test="breaker-brief"
+      >
+        <!-- 「為什麼被停」是對已發生事實的陳述：沒有待處置時不能照樣宣稱 -->
+        <template v-if="principal.breaker_pending_at">
+          <dt>{{ t('agentBreaker.whyLabel') }}</dt><dd>{{ t('agentBreaker.whyValue') }}</dd>
+        </template>
+        <!-- 「停了以後怎樣」講停用期間；「解除之後」講解除後還要做什麼。
+             兩格原本都掛 releaseTokens，同一句說兩次而停用期間沒人交代 -->
+        <dt>{{ t('agentBreaker.effectLabel') }}</dt><dd>
+          <span class="breaker-sentence">{{ t('agentBreaker.effectTokens') }}</span>
+          <span class="breaker-sentence">{{ t('agentBreaker.releaseSessions') }}</span>
+        </dd>
+        <dt>{{ t('agentBreaker.nextLabel') }}</dt><dd>
+          <span class="breaker-sentence">{{ t('agentBreaker.releaseTokens') }}</span>
+          <a
+            :href="reissueHref"
+            data-test="reissue-link"
+          >{{ t('agentBreaker.reissue') }}</a>
+        </dd>
+        <dt>{{ t('agentBreaker.entryLabel') }}</dt><dd>
+          <a href="/alerts">{{ t('agentBreaker.entryValue') }}</a>
+        </dd>
+      </dl>
+      <!-- 無待處置時原本連一句話都沒有，讀者無從判斷是「沒有」還是「沒載到」 -->
+      <p
+        v-if="!principal.breaker_pending_at"
+        data-test="breaker-no-pending-hint"
+      >
+        {{ t('agentBreaker.noPendingHint') }}
+      </p>
+      <!-- 處置表單在事件序列之前：這頁是來處置的，
+           「怎麼解除」被整段事件擠到首屏之外等於答不到 -->
       <BreakerReleaseForm
         v-if="principal.breaker_pending_at"
         :key="principal.id"
         :principal="principal"
         :actor="actor"
         @released="onReleased"
+      />
+      <AgentBreakerEvents
+        :user-id="principal.id"
+        :read-tokens="canManage"
+        @state="setPending"
       />
     </section>
   </div>
@@ -143,6 +201,10 @@ async function load() {
   } catch (e) { if (version === epoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) loading.value = false }
 }
+// 解除之後要重新發一把鑰匙：管理者在使用者管理的鑰匙抽屜、負責人在「我的 agent」
+// 直達該 agent 的鑰匙抽屜：admin 走使用者管理的 open 查詢，負責人走自己的清單
+const keysHref = computed(() => roleNames(actor.value.roles).includes('admin') ? `/users?open=${principal.value?.id || ''}` : '/my-agents')
+const reissueHref = computed(() => roleNames(actor.value.roles).includes('admin') ? '/users' : '/my-agents')
 function choose(id) { chosenId.value = id }
 function openSelected() { if (Number.isSafeInteger(selectedId.value) && selectedId.value > 0) choose(selectedId.value) }
 function changeChoices(page) { choicePage.value = page; load() }
@@ -153,5 +215,12 @@ onBeforeUnmount(() => { epoch++ })
 </script>
 <style scoped>
 p { color: var(--ot-text-secondary); margin: var(--ot-space-md) 0; }
-h2 { font-size: var(--ot-font-size-lg); }
+a { color: var(--ot-primary); }
+.breaker-brief { display: grid; grid-template-columns: 9em minmax(0, 1fr); gap: var(--ot-space-sm) var(--ot-space-md); margin: var(--ot-space-md) 0; }
+.breaker-brief dt { color: var(--ot-text-secondary); }
+.breaker-brief dd { margin: 0; color: var(--ot-text-primary); }
+/* 兩句相接時要有詞距：英日文沒有空格會黏成一個字 */
+.breaker-sentence { margin-inline-end: var(--ot-space-xs); }
+h2 { font-size: var(--ot-font-size-lg); margin: 0; }
+.breaker-head { display: flex; align-items: center; gap: var(--ot-space-sm); flex-wrap: wrap; margin: var(--ot-space-md) 0; }
 </style>

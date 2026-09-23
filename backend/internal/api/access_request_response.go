@@ -25,6 +25,8 @@ func accessRequestResponse(req *model.AccessRequest) *accessRequestDTO {
 	out := &accessRequestDTO{AccessRequest: req, Items: make([]accessRequestItemDTO, 0, len(req.Items))}
 	for _, item := range req.Items {
 		i := accessRequestItemDTO{AccessRequestItem: item, PolicySnapshot: map[string]any{}, ApprovalsRequired: req.ApprovalsRequired}
+		// Projected here too, so a caller that skips attachReadFields still sees the requested scope.
+		i.AccessRequestItem.FillRequestedAccounts()
 		_ = json.Unmarshal([]byte(item.PolicySnapshot), &i.PolicySnapshot)
 		if i.PolicySnapshot == nil {
 			i.PolicySnapshot = map[string]any{}

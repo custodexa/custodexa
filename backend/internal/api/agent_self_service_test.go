@@ -54,9 +54,47 @@ func TestMyAgents(t *testing.T) {
 		if w := request(method, "", `{}`); w.Code != 401 {
 			t.Fatalf("unauth %s: %d %s", method, w.Code, w.Body)
 		}
-		if w := request(method, jwt, `{}`); w.Code != 403 || !strings.Contains(w.Body.String(), "RULE_AGENT_SELF_CREATE_DISABLED") {
-			t.Fatalf("disabled %s: %d %s", method, w.Code, w.Body)
+	}
+	// Creation follows the policy key; listing the agents already in one's name does not.
+	if w := request("POST", jwt, `{}`); w.Code != 403 || !strings.Contains(w.Body.String(), "RULE_AGENT_SELF_CREATE_DISABLED") {
+		t.Fatalf("disabled POST: %d %s", w.Code, w.Body)
+	}
+	owned := model.User{Username: "pre-existing-agent", Password: "!", Kind: model.KindAgent, OwnerUserID: &owner.ID, Active: true}
+	if err := db.Create(&owned).Error; err != nil {
+		t.Fatal(err)
+	}
+	w0 := request("GET", jwt, "")
+	if w0.Code != 200 {
+		t.Fatalf("disabled GET: %d %s", w0.Code, w0.Body)
+	}
+	var closedList struct {
+		Data              []model.User `json:"data"`
+		Total             int          `json:"total"`
+		SelfCreateEnabled bool         `json:"self_create_enabled"`
+		SelfCreate        struct {
+			Enabled     bool  `json:"enabled"`
+			MaxPerOwner int   `json:"max_per_owner"`
+			Current     int64 `json:"current"`
+		} `json:"self_create"`
+	}
+	if err := json.Unmarshal(w0.Body.Bytes(), &closedList); err != nil {
+		t.Fatal(err)
+	}
+	if closedList.SelfCreateEnabled || closedList.SelfCreate.Enabled || closedList.Total != len(closedList.Data) || closedList.SelfCreate.Current != int64(closedList.Total) || closedList.SelfCreate.MaxPerOwner == 0 {
+		t.Fatalf("closed-policy list shape: %s", w0.Body)
+	}
+	found := false
+	for _, row := range closedList.Data {
+		if row.OwnerUsername != owner.Username {
+			t.Fatalf("closed-policy list owner name: %s", w0.Body)
 		}
+		found = found || row.Username == owned.Username
+	}
+	if !found {
+		t.Fatalf("closed-policy list missing pre-existing agent: %s", w0.Body)
+	}
+	if strings.Contains(w0.Body.String(), hidden.Username) {
+		t.Fatalf("closed-policy list leaked another owner's agent: %s", w0.Body)
 	}
 	if _, err := policies.Update(policy.PolicyAgentSelfCreateEnabled, "true", "test"); err != nil {
 		t.Fatal(err)
@@ -78,7 +116,7 @@ func TestMyAgents(t *testing.T) {
 		t.Fatal("body persisted credentials/purpose")
 	}
 	w = request("GET", jwt, "")
-	if w.Code != 200 || strings.Contains(w.Body.String(), hidden.Username) || !strings.Contains(w.Body.String(), saved.Username) || strings.Contains(w.Body.String(), "nightly report") {
+	if w.Code != 200 || strings.Contains(w.Body.String(), hidden.Username) || !strings.Contains(w.Body.String(), saved.Username) || strings.Contains(w.Body.String(), "nightly report") || !strings.Contains(w.Body.String(), `"self_create_enabled":true`) {
 		t.Fatalf("list: %d %s", w.Code, w.Body)
 	}
 	if _, err := policies.Update(policy.PolicyAgentSelfCreateMaxPerOwner, "1", "test"); err != nil {

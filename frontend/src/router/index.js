@@ -60,6 +60,15 @@ const routes = [
         meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
       },
       {
+        // 連線詳情掛在 Layout 之內：掛在外面時整頁沒有側欄、麵包屑與語言切換，
+        // 從列表點進來像是離開了系統。與任務詳情看齊
+        path: 'sessions/:id',
+        name: 'SessionDetail',
+        component: () => import('../views/SessionDetail.vue'),
+        // 與列表頁同步收斂：詳情含指令流與錄影入口
+        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+      },
+      {
         path: 'my-connections',
         name: 'MyConnections',
         component: () => import('../views/MyConnections.vue'),
@@ -323,13 +332,6 @@ const routes = [
     name: 'Terminal',
     component: () => import('../views/Terminal.vue'),
     meta: { requiresAuth: true },
-  },
-  {
-    path: '/sessions/:id',
-    name: 'SessionDetail',
-    component: () => import('../views/SessionDetail.vue'),
-    // 與列表頁同步收斂：詳情含指令流與錄影入口
-    meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
   },
   {
     path: '/share/:code',

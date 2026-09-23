@@ -9,7 +9,7 @@ vi.mock('@/api/assetAccounts', () => ({ listAssetAccounts: api.accounts }))
 vi.mock('@/api/agents', () => ({ getMyAgents: api.agents }))
 vi.mock('@/api/accessRequests', () => ({ createAccessRequest: api.create }))
 enableAutoUnmount(afterEach)
-beforeEach(() => { vi.clearAllMocks(); api.assets.mockResolvedValue({ data: [{ id: 1, name: 'app' }] }); api.accounts.mockResolvedValue({ data: [{ username: 'ops' }] }); api.agents.mockResolvedValue({ data: [{ id: 7, username: 'worker', active: true, kind: 'agent', owner_user_id: 3 }] }) })
+beforeEach(() => { vi.clearAllMocks(); localStorage.removeItem('custodexa.multiRequest.executorId'); api.assets.mockResolvedValue({ data: [{ id: 1, name: 'app' }] }); api.accounts.mockResolvedValue({ data: [{ username: 'ops' }] }); api.agents.mockResolvedValue({ data: [{ id: 7, username: 'worker', active: true, kind: 'agent', owner_user_id: 3 }] }) })
 const open = async () => { const w = mount(Form, { global: { plugins: [ElementPlus] } }); await flushPromises(); return w }
 describe('多資產申請', () => {
   it('新增與刪除項不開第二層', async () => {
@@ -32,8 +32,11 @@ describe('多資產申請', () => {
     expect(w.get('[data-test="submit-request"]').attributes('disabled')).toBeUndefined()
   })
   it('agent 項無全部帳號選項且帳號必填', async () => {
+    // 兩個帳號：唯一帳號會被自動帶入（另有專測），這裡要留下「必須自己挑」的情境
+    api.accounts.mockResolvedValue({ data: [{ username: 'ops' }, { username: 'dba' }] })
     const w = await open(); w.vm.executorId = 7; w.vm.reason = 'work'; w.vm.items[0].assetId = 1
     await w.vm.loadAccounts(w.vm.items[0]); await flushPromises()
+    expect(w.vm.items[0].accounts).toEqual([])
     expect(w.findAllComponents({ name: 'ElOption' }).map(o => o.props('value'))).not.toContain('@ALL')
     await w.vm.submit(); expect(api.create).not.toHaveBeenCalled()
     w.vm.items[0].accounts = ['ops']; api.create.mockResolvedValue({ id: 8, items: [{ id: 1 }] })
@@ -79,4 +82,22 @@ it('polish 2、4、5：姓名、代表關係、理由後果與缺帳號項數', 
   await w.findAll('[data-test="remove-item"]')[1].trigger('click')
   expect(w.find('[data-test="missing-accounts"]').exists()).toBe(false)
   expect(w.get('[data-test="submit-request"]').attributes('disabled')).toBeUndefined()
+})
+
+it('選完資產就把帳號範圍帶好：唯一帳號直接帶入，自己操作預設全部帳號', async () => {
+  api.accounts.mockResolvedValue({ data: [{ username: 'ops' }] })
+  const w = await open(); w.vm.executorId = 7; w.vm.items[0].assetId = 1
+  await w.vm.loadAccounts(w.vm.items[0]); await flushPromises()
+  expect(w.vm.items[0].accounts).toEqual(['ops'])
+  api.accounts.mockResolvedValue({ data: [{ username: 'ops' }, { username: 'dba' }] })
+  w.vm.executorId = 0; await w.vm.loadAccounts(w.vm.items[0]); await flushPromises()
+  expect(w.vm.items[0].accounts).toEqual(['@ALL'])
+})
+
+it('誰來操作預設帶入唯一可用的 agent；停用的不帶', async () => {
+  const w = await open()
+  expect(w.vm.executorId).toBe(7)
+  api.agents.mockResolvedValue({ data: [{ id: 7, username: 'worker', active: false, kind: 'agent' }, { id: 8, username: 'other', active: false, kind: 'agent' }] })
+  const w2 = await open()
+  expect(w2.vm.executorId).toBe(0)
 })

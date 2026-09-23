@@ -204,6 +204,8 @@ var migrations = []Migration{
 	{Version: "20260921_agent_visibility_exposures", Name: "agent_visibility_exposures", Up: applyAgentVisibilityExposures, Down: rollbackAgentVisibilityExposures},
 	{Version: "20260921_agent_subject_rules", Name: "agent_subject_rules", Up: applyAgentSubjectRules, Down: rollbackAgentSubjectRules},
 	{Version: "20260922_agent_session_token_name", Name: "agent_session_token_name", Up: applyAgentSessionTokenName, Down: rollbackAgentSessionTokenName},
+	// 純資料 migration（無 schema 變更）：既有站點的出廠橫向移動規則改用指令位置比對。
+	{Version: "20260923_agent_lateral_rule_pattern", Name: "agent_lateral_rule_pattern", Up: applyAgentLateralRulePattern, Down: rollbackAgentLateralRulePattern},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。

@@ -6,6 +6,7 @@ describe('PrincipalBadge', () => {
     const w = mount(PrincipalBadge, { props: { kind: 'agent', ownerId: 9, ownerName: 'carol' } })
     expect(w.text()).toContain('AI agent')
     expect(w.text()).toContain('負責人：carol')
+    expect(w.get('.principal-badge__kind').attributes('aria-label')).toBe('AI agent（自動化操作者）')
     w.unmount()
   })
   it('類型只看後端欄位不看名稱', () => {
@@ -13,7 +14,8 @@ describe('PrincipalBadge', () => {
     expect(human.text()).toBe('人類')
     const agent = mount(PrincipalBadge, { props: { kind: 'agent', ownerId: 9 } })
     expect(agent.text()).toContain('AI agent')
-    expect(agent.text()).toContain('#9')
+    expect(agent.text()).toContain('未提供')
+    expect(agent.text()).not.toContain('#9')
     human.unmount(); agent.unmount()
   })
   it('移除顏色後語義仍可讀', () => {

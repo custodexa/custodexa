@@ -38,3 +38,32 @@ func TestAccessRequestItemViews(t *testing.T) {
 		require.Equal(t, req.ID, *ticket.RequestID)
 	}
 }
+
+// 審核者要知道自己在核准哪一台機器。名稱隨項目一起投影，因為「決定一個項目」
+// 不等於「讀得到那個資產」——審核者對非主資產通常沒有讀取權，逼前端回頭打
+// GET /assets/:id 只會落到「資產名稱無法讀取」的裸 id。
+func TestPendingItemsProjectAssetName(t *testing.T) {
+	s, db, _, _ := twoPendingItems(t)
+	// 這位審核者的範圍只涵蓋資產 2，且名下沒有任何資產授權（授權只發給 agent）。
+	require.NoError(t, db.Where("approver_id=?", 2).Delete(&model.ApproverScope{}).Error)
+	actor, assetID := uint(2), uint(2)
+	require.NoError(t, db.Create(&model.ApproverScope{ApproverID: &actor, AssetID: &assetID, GrantedBy: 3}).Error)
+	var grants int64
+	require.NoError(t, db.Model(&model.AssetAuthorization{}).Where("user_id = ?", actor).Count(&grants).Error)
+	require.Zero(t, grants, "前提：審核者對這些資產沒有讀取權")
+	// 資產 1 已軟刪：名稱仍要讀得到，而且要說得出目標已不存在。
+	require.NoError(t, db.Delete(&model.Asset{}, 1).Error)
+
+	pending, err := s.ListPending(2, false, time.Now())
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	require.Len(t, pending[0].Items, 2)
+	byAsset := map[uint]model.AccessRequestItem{}
+	for _, item := range pending[0].Items {
+		byAsset[item.AssetID] = item
+	}
+	require.Equal(t, "a-approval", byAsset[1].AssetName)
+	require.True(t, byAsset[1].AssetDeleted, "軟刪資產要標示出來")
+	require.Equal(t, "a-reason", byAsset[2].AssetName)
+	require.False(t, byAsset[2].AssetDeleted)
+}

@@ -53,7 +53,9 @@
     "changePassword": "Change Password",
     "newPassword": "New Password",
     "disableMfa": "Disable MFA",
-    "assetRef": "Asset #{id}",
+    "assetRef": "Asset {id}",
+    "assetRemoved": "{name} (asset removed)",
+    "pageSize": "Rows per page",
     "emergency": "Emergency",
     "requestReason": "Reason",
     "requestTime": "Requested At",
@@ -72,7 +74,18 @@
     "close": "Close",
     "retry": "Retry",
     "collapseSidebar": "Collapse sidebar",
-    "expandSidebar": "Expand sidebar"
+    "expandSidebar": "Expand sidebar",
+    "breadcrumb": "Breadcrumb",
+    "idColumn": "No.",
+    "loading": "Loading…",
+    "mainNav": "Main navigation",
+    "switchLanguage": "Switch language",
+    "accountMenu": "Account menu",
+    "toggleRowDetail": "Expand or collapse this row's details",
+    "userRef": "User {id}",
+    "sessionRef": "Session {id}",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "menu": {
     "group": {
@@ -120,7 +133,8 @@
     "identitySources": "Identity sources",
     "complianceMap": "Compliance map",
     "policyGroups": "Policy groups",
-    "myAgents": "My agents"
+    "myAgents": "My agents",
+    "agentPrincipals": "AI agent subjects"
   },
   "login": {
     "bannerRegionLabel": "Login notice",
@@ -560,6 +574,11 @@
     "credentialDetachSource": {
       "random": "Generate at random",
       "custom": "Enter my own"
+    },
+    "protocolKind": {
+      "terminal": "Terminal ({code})",
+      "desktop": "Remote desktop ({code})",
+      "database": "Database ({code})"
     }
   },
   "policyValue": {
@@ -933,11 +952,11 @@
     "windowsSshNote": "This host is Windows: rotation runs PowerShell over OpenSSH. Off = rotate with POSIX commands"
   },
   "sessions": {
-    "headerDesc": "Monitor active sessions and review history",
+    "headerDesc": "Monitor active sessions and review history. An AI agent is an automated program acting for a person.",
     "autoRefresh": "Auto Refresh",
     "tabActive": "Active Sessions",
     "tabHistory": "History",
-    "clientIp": "Source IP",
+    "clientIp": "Source address (IP)",
     "startTime": "Start Time",
     "endTime": "End Time",
     "duration": "Duration",
@@ -1035,7 +1054,8 @@
     "durationMs": "{n} ms",
     "eventIdColumn": "Event ID",
     "resultUnsettled": "Result unknown (not recorded)",
-    "rowsAffected": "{n} row(s) affected"
+    "rowsAffected": "{n} row(s) affected",
+    "idLabel": "Session no. {id}"
   },
   "myConnections": {
     "headerDesc": "Review your own session records",
@@ -1573,7 +1593,8 @@
     "initFailed": "Failed to initialize the player",
     "controlFailed": "Playback control failed",
     "seekFailed": "Failed to seek",
-    "fullscreenFailed": "Failed to toggle fullscreen"
+    "fullscreenFailed": "Failed to toggle fullscreen",
+    "speed": "Playback speed"
   },
   "guacPlayer": {
     "loading": "Loading the RDP recording...",
@@ -1645,6 +1666,7 @@
     "inactivityExempt": "Inactivity Exempt",
     "inactivityExemptTooltip": "Exempt accounts are not governed by \"auto-disable on inactivity\" (PCI 8.2.6)",
     "toggleExemptAria": "Toggle inactivity-disable exemption for {name}",
+    "toggleActiveAria": "Enable or disable {name}",
     "exempt": "Exempt",
     "lastLogin": "Last Login",
     "lastLoginAt": "Last login {time}",
@@ -1849,6 +1871,8 @@
     "approve": "Approve",
     "reject": "Reject",
     "emptyPending": "No requests awaiting approval",
+    "emptyPendingHint": "Nothing is waiting on your decision right now. New requests appear here, and the AI agent tasks page shows the ones already handled.",
+    "requestNotOnPage": "Request {id} is not on this page; use the pager to find it",
     "tabHistory": "History",
     "colResult": "Result",
     "status": {
@@ -1875,7 +1899,7 @@
     "forbiddenTitle": "You are not an eligible approver",
     "forbiddenHint": "The approval center is open to effective approvers only (the approver role, or membership in an approver group). Holding the admin role alone does not grant approval eligibility — ask an administrator to assign you the approver role or an approver scope.",
     "loadFailed": "Failed to load. Please refresh and try again.",
-    "tabSql": "SQL Approval",
+    "tabSql": "Database query approval",
     "approveDialogTitle": "Approve Connection Request",
     "approveSummary": "{user} requests connection to {asset}",
     "reasonLine": "Reason: {reason}",
@@ -2053,7 +2077,14 @@
     "tooltipExpired": "Closed automatically after being unattended too long; you may reapply",
     "approvedBy": "Approved by {name}",
     "approverFallback": "approver",
-    "decisionWithDuration": "{who}, valid for {duration}"
+    "decisionWithDuration": "{who}, valid for {duration}",
+    "created": {
+      "approved": "Request {id} \"{subject}\" was submitted and approved; you can connect now.",
+      "partial": "Request {id} \"{subject}\" was submitted: some items are approved, the rest await approval.",
+      "pending": "Request {id} \"{subject}\" was submitted and awaits approval."
+    },
+    "createdNoSubject": "no reason given",
+    "createdGoToList": "View it in the My Requests list below"
   },
   "authzWizard": {
     "stepSubject": "Select Subject",
@@ -5924,7 +5955,25 @@
       "revoked": "Revoked"
     },
     "quota": "{current} of {max} agents owned",
-    "you": "You"
+    "you": "You",
+    "youSuffix": "{name} (you)",
+    "subjectRef": "Subject #{id}",
+    "suspendedLabel": "Suspension reason and time",
+    "suspendedValue": "{reason} · {time}",
+    "suspendedReasons": {
+      "agent_breaker_tripped": "Repeated probing of targets it cannot see; suspended automatically",
+      "unknown": "Reason not recorded"
+    },
+    "savedAck": "I have saved this key",
+    "summaryUsable": "{n} usable key(s)",
+    "summaryNextExpiry": "Expires soonest: {name} ({time})",
+    "summarySuspended": "{n} suspended; a new key must be issued",
+    "manageKeys": "Manage keys",
+    "plainLanguage": "An \"AI agent\" is a program that performs work on your behalf. It connects with keys only and cannot sign in to this interface.",
+    "agentExplained": "AI agent (automated operator)",
+    "openKeys": "View keys",
+    "statUsable": "Usable keys",
+    "statSuspended": "Suspended"
   },
   "agentTasks": {
     "title": "AI agent tasks",
@@ -5932,19 +5981,39 @@
     "reports": "Task reports",
     "unavailable": "The task list is not available yet. This page reserves its entry point and does not load task data.",
     "subjectExit": "View this principal’s tasks",
-    "listHelp": "Search by principal, current owner and request time. Report status reflects currently available versions.",
-    "subject": "Principal ID",
+    "listHelp": "Search by principal, current owner and request time. An AI agent is an automated program acting for a person; report status reflects currently available versions.",
+    "subject": "Principal",
+    "reason": "Subject",
+    "compare": {
+      "requested": "Requested",
+      "approved": "Approved",
+      "accounts": "Account scope",
+      "duration": "Duration",
+      "reduced": "Narrowed",
+      "asRequested": "Approved as requested",
+      "notApproved": "Item not approved",
+      "undecided": "Not decided yet",
+      "narrowedCount": "{n} of {total} items narrowed",
+      "requestedAccountsUnavailable": "The account scope as requested is not retained; only the approved scope remains",
+      "noApprovedAccounts": "No account approved",
+      "noApprovedWindow": "No approved window",
+      "shorterBy": "{n} minutes shorter than requested",
+      "note": "Where request and approval differ, the approval governs: connections and tool calls are held to the approved scope.",
+      "scopeUnknown": "Requested account scope was not preserved; the comparison is incomplete",
+      "durationReducedScopeUnknown": "Duration was shortened; requested account scope was not preserved, so the comparison is incomplete"
+    },
     "timeRange": "Request time range",
     "reportStatus": "Report status",
     "status": {
       "submitted": "Report available",
-      "missing": "Closed, no report available",
-      "not_submitted": "Open, no report available"
+      "missing": "Closed · no report",
+      "not_submitted": "Open · no report"
     },
     "created": "Requested at",
     "closed": "Closed at",
     "open": "Still open",
-    "detailTitle": "Task #{id}",
+    "detailTitle": "Task {id}",
+    "detailTitleNamed": "Task {id} · {subject}",
     "back": "Back to tasks",
     "sections": {
       "who": "Who acts for whom, and why",
@@ -5966,7 +6035,60 @@
     "latestOnly": "Show latest only",
     "allVersions": "Show all versions",
     "approvedWindow": "Approved window",
-    "decider": "Decided by"
+    "decider": "Decided by",
+    "detailHelp": "The four sections keep a fixed order: the first three are what the platform recorded, the last is what the agent says it did.",
+    "closedAt": "Closed {time}",
+    "requesterLabel": "Requester",
+    "executorLabel": "Executor",
+    "openedAndClosed": "Opened and closed",
+    "openedClosedValue": "Submitted {created} → closed {closed}",
+    "openedOnlyValue": "Submitted {created}; not closed yet",
+    "closedMeaning": "Once closed, this request can no longer open a connection.",
+    "autoApproved": "Auto-approved by access policy (no human vote)",
+    "decisionNoteLabel": "Approval note",
+    "sessionsTitle": "Connections opened ({n})",
+    "sessionRevoked": "Access revoked mid-session; connection cut",
+    "reportWindow": "Only the agent that ran the task can submit or revise a report within 24 hours of closure. Auditors can read it, not write it, and no version can be deleted.",
+    "sectionHints": {
+      "who": "Who requested it, who executed it, who is answerable for it.",
+      "grants": "The approver decision per item; this is the ceiling on what was permitted.",
+      "activity": "Recorded by the platform, not reported by the program.",
+      "reports": "Last, because it is a claim rather than evidence."
+    },
+    "stats": {
+      "title": "Tool call summary",
+      "labels": {
+        "allowed": "Allowed",
+        "blocked": "Blocked",
+        "unknown": "Outcome unknown"
+      },
+      "allowed": "Allowed {n}",
+      "blocked": "Blocked {n}",
+      "unknown": "Outcome unknown {n}",
+      "note": "Blocked covers denied, breaker and rate-limited calls; outcome unknown means the call was recorded but neither delivery nor result is known."
+    },
+    "summary": {
+      "didWhat": "What it did",
+      "callsValue": "{n} tool calls",
+      "blockedWhere": "Where it was blocked",
+      "blockedValue": "{n} blocked",
+      "whoOwns": "Who is accountable",
+      "report": "Report",
+      "reportSubmitted": "Submitted (version {n})",
+      "reportMissing": "Not submitted",
+      "counting": "Counting…",
+      "unknown": "Unknown",
+      "grantDiff": "Requested vs. approved",
+      "grantDiffValue": "{n} of {total} items narrowed",
+      "grantDiffSame": "Approved as requested",
+      "grantDiffNone": "No per-item detail",
+      "grantDiffScopeUnknown": "{n} item(s) have no preserved requested account scope, so the comparison is incomplete"
+    },
+    "emptyTitle": "No matching tasks",
+    "emptyHint": "Widen the subject, owner or time range, or wait for the first task an agent opens.",
+    "noSessionsNext": "No connection has been opened on this request yet; sessions appear here once the agent connects.",
+    "searchByName": "Search by name",
+    "autoApprovedNote": "Approved automatically by the system (no human approval)"
   },
   "agentBreaker": {
     "pending": "Automatic suspension pending review",
@@ -5976,25 +6098,41 @@
     "eventsUnavailable": "The release form is available; the event history is not yet available.",
     "selectFromEntry": "Open an alert or an agent token drawer to select the principal.",
     "unavailable": "This agent is unavailable, or you are not its owner.",
-    "noPending": "No breaker is currently awaiting handling.",
-    "releaseTokens": "Releasing does not restore disabled tokens. Issue new tokens.",
-    "releaseSessions": "Connection tickets issued before the trip and existing connections were invalidated when the breaker tripped.",
-    "released": "The pending flag was cleared. Disabled tokens still need replacement.",
+    "noPending": "No auto-suspend awaiting handling",
+    "releaseTokens": "Releasing does not restore suspended keys. Issue a new key.",
+    "releaseSessions": "Connection tickets issued before the suspension and existing connections were invalidated at that moment.",
+    "released": "The pending flag is cleared; suspended keys still need to be reissued.",
     "reason": "Reason for release",
     "reasonRequired": "Enter a reason of at most 1000 UTF-8 bytes.",
     "release": "Confirm release",
     "open": "Handle breaker",
-    "events": "Reference events",
-    "noEvents": "No reference events in this range.",
-    "countBoundary": "Distinct never-visible targets on this page: {n}. Only this class counts toward the threshold; this is not the current breaker window count.",
+    "events": "Records that triggered the auto-suspend",
+    "noEvents": "No records in this range.",
+    "countBoundary": "Distinct targets on this page that were never allowed to be seen: {n}. Only this class counts toward the threshold; this is not the count for the current window.",
     "classes": {
-      "never_visible": "Never visible (counts toward threshold)",
+      "never_visible": "Reached a target it was never allowed to see (counts toward threshold)",
       "revoked": "Previously visible, now unavailable (excluded)",
       "retired": "Absent or removed (excluded)"
     },
-    "tokenBoundary": "Current token records. Suspension times and causes come from stored facts, not a reconstructed list for every trip.",
-    "tokenStopped": "Suspended by breaker at {time}",
-    "assetNameBoundary": "Asset names and protocols reflect currently readable data, not a historical snapshot. Unavailable assets retain their identifier."
+    "tokenBoundary": "Current token records. Suspension times and causes come from stored facts, not a reconstructed list for every past auto-suspension.",
+    "tokenStopped": "{reason}; suspended at {time}",
+    "assetNameBoundary": "Asset names and protocols reflect currently readable data, not a historical snapshot. Unavailable assets retain their identifier.",
+    "pageHelp": "An AI agent is an automated program acting for a person. When it repeatedly reaches for targets it was never allowed to see, the platform suspends it automatically; this page handles what follows.",
+    "whyLabel": "Why it was stopped",
+    "whyValue": "This program repeatedly reached for targets it was never allowed to see, and the platform suspended it once the threshold was met.",
+    "effectLabel": "What the stop means",
+    "nextLabel": "After releasing",
+    "nextValue": "Suspended keys are not restored. Issue a new one:",
+    "reissue": "Issue a new key",
+    "entryLabel": "How to get here",
+    "entryValue": "The auto-suspend alert in the alert list opens this page",
+    "noEventsNext": "You can still release with a reason when no record is listed; issue a new key afterwards.",
+    "tokenRevoked": "Revoked at {time}",
+    "tokenExpired": "Expired at {time}",
+    "statTargets": "Targets counted toward the threshold",
+    "countBoundaryShort": "Only targets that were never allowed to be seen count toward the threshold, and this is not the count for the current window.",
+    "noPendingHint": "This principal has no auto-suspend awaiting handling. If it is suspended later, the release form appears on this page.",
+    "effectTokens": "While suspended, this principal cannot use its keys and no new key can be issued."
   },
   "multiRequest": {
     "title": "Create access request",
@@ -6005,7 +6143,7 @@
     "itemId": "Item #{id}",
     "accounts": "Allowed accounts",
     "allAccounts": "All accounts",
-    "agentAccounts": "AI agents require named accounts; all accounts is unavailable.",
+    "agentAccounts": "An AI agent (automated operator) requires named accounts; all accounts is unavailable.",
     "accountsLoading": "Loading accounts. Submission is unavailable until complete.",
     "accountsEmpty": "No selectable accounts. Choose another asset or contact an administrator.",
     "accountsFailed": "Could not load accounts. This does not mean there are none.",
@@ -6030,7 +6168,21 @@
     },
     "relationship": "You are the requester; this agent performs the work. Its owner is shown here.",
     "reasonHint": "Reviewers will see this reason, and it remains visible for later audits.",
-    "missingAccounts": "Select accounts for {n} remaining items"
+    "missingAccounts": "Select accounts for {n} remaining items",
+    "assetOption": "{name} ({host})",
+    "readyToSubmit": "Everything required is filled in; you can submit.",
+    "blockers": {
+      "reason": "Missing: request reason",
+      "duration": "Missing: duration (must be more than 0 minutes)",
+      "asset": "Missing: every item needs an asset",
+      "duplicate": "The same asset appears twice; remove the extra item",
+      "loading": "Accounts are still loading; wait before submitting",
+      "loadError": "Account list failed to load; retry before submitting",
+      "noAccounts": "The selected asset has no available accounts; choose another asset",
+      "accounts": "Missing: every item needs accounts",
+      "agentAllAccounts": "An AI agent (automated operator) cannot use \"all accounts\"; pick named accounts"
+    },
+    "serverRejected": "The server did not accept this submission. Read the reason above before resubmitting."
   },
   "itemReview": {
     "scopeUnknown": "Eligibility is checked on submission; this list does not provide eligibility per item.",
@@ -6047,19 +6199,33 @@
       "approve": "Approve / narrow",
       "reject": "Reject",
       "remove": "Remove (reject)"
-    }
+    },
+    "identifiers": "Identifiers",
+    "requesterLine": "Requester: {name}",
+    "onBehalfOf": "On behalf of: {name}",
+    "autonomous": "Acting autonomously (nobody represented)",
+    "autonomousWithOwner": "Acting autonomously (owner: {name})",
+    "executedByFor": "Executed by {agent} for {requester}",
+    "selfOperated": "Operated in person",
+    "unknownPerson": "Not provided",
+    "assetNameUnreadable": "Asset name unreadable (asset #{id})",
+    "selectedCount": "{n} item(s) selected to submit",
+    "openRequest": "Open this request",
+    "decisionNote": "Reason: {note}",
+    "itemsRejected": "{n} item(s) were not accepted. The reason is shown on each item."
   },
   "agentSession": {
-    "snapshot": "Principal snapshot at connection time (recorded IDs, without current lookups)",
+    "snapshot": "Principal snapshot taken when the session started: the relationships and key are recorded at connection time; names shown are current names",
     "actor": "Actor at connection time",
     "onBehalf": "On behalf of",
     "none": "No represented user (autonomous)",
     "unknown": "Not recorded",
     "owner": "Owner at connection time",
-    "token": "Token used",
-    "tokenId": "ID #{id}; name snapshot unavailable",
-    "revoked": "Authorization revoked during the session: {time}",
-    "recordingTab": "Recording and session evidence"
+    "revoked": "Revoked mid-session: {time}",
+    "recordingTab": "Recording and session evidence",
+    "key": "Key used",
+    "keyId": "Key no. {id}; name snapshot unavailable",
+    "revokedShort": "Revoked mid-session"
   },
   "agentLedger": {
     "title": "Tool call ledger",
@@ -6069,7 +6235,7 @@
     "empty": "No tool calls match this query.",
     "masked": "{n} masked",
     "duration": "Duration: {n} ms",
-    "session": "Session #{id}",
+    "session": "Session {id}",
     "noSession": "No session created",
     "pendingBoundary": "Recorded; whether it was sent and its result are both unknown.",
     "details": "View record details",
@@ -6083,12 +6249,24 @@
     "unavailable": "Not provided",
     "unknownReason": "No explanation is available for this reason.",
     "unsupportedQuery": "This query is not supported; the ledger was not loaded.",
+    "columns": {
+      "time": "Time",
+      "action": "Action",
+      "target": "Target",
+      "decision": "Decision",
+      "masked": "Masked",
+      "duration": "Duration",
+      "link": "Link"
+    },
+    "durationValue": "{n} ms",
+    "task": "Task {id}",
+    "seq": "Record number",
     "decisions": {
       "pending": "Pending",
       "allowed": "Allowed",
       "denied": "Denied",
-      "breaker": "Breaker tripped",
-      "rate_limited": "Rate limited"
+      "breaker": "Auto-suspended",
+      "rate_limited": "Call limit exceeded"
     },
     "toolName": "Tool name (technical detail)",
     "unknownTool": "Other tool action",
@@ -6103,6 +6281,10 @@
       "read_screen": "Read terminal output",
       "close_session": "Close an asset connection",
       "close_task": "Close the task and submit a report"
-    }
+    },
+    "callsColumn": "Tool calls",
+    "callsValue": "{n} in total",
+    "blockedValue": "{n} blocked",
+    "emptyNext": "Records appear here once the agent connects and calls a tool."
   }
 }

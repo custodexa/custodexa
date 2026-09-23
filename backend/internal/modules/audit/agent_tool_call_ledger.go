@@ -115,8 +115,57 @@ func (s *AgentToolCallLedger) Query(ctx context.Context, f AgentToolCallFilter) 
 		return nil, 0, err
 	}
 	rows := []model.AgentToolCall{}
-	err := q.Order("id DESC").Offset(f.Offset).Limit(f.Limit).Find(&rows).Error
-	return rows, n, err
+	if err := q.Order("id DESC").Offset(f.Offset).Limit(f.Limit).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := s.fillToolCallTargets(ctx, rows); err != nil {
+		return nil, 0, err
+	}
+	return rows, n, nil
+}
+
+// fillToolCallTargets projects the session's target asset and account onto each row in one
+// query. The ledger stores only session_id; a call made outside a session has no target and
+// keeps both fields empty rather than borrowing one from elsewhere.
+func (s *AgentToolCallLedger) fillToolCallTargets(ctx context.Context, rows []model.AgentToolCall) error {
+	ids := make([]uint, 0, len(rows))
+	seen := map[uint]bool{}
+	for i := range rows {
+		id := rows[i].SessionID
+		if id == nil || *id == 0 || seen[*id] {
+			continue
+		}
+		seen[*id] = true
+		ids = append(ids, *id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	type target struct {
+		ID              uint
+		AssetName       string
+		AccountUsername string
+	}
+	targets := []target{}
+	if err := s.db.WithContext(ctx).Table("sessions s").
+		Select("s.id AS id, COALESCE(a.name, '') AS asset_name, COALESCE(s.account_username, '') AS account_username").
+		Joins("LEFT JOIN assets a ON a.id = s.asset_id").
+		Where("s.id IN ?", ids).Scan(&targets).Error; err != nil {
+		return err
+	}
+	byID := make(map[uint]target, len(targets))
+	for _, t := range targets {
+		byID[t.ID] = t
+	}
+	for i := range rows {
+		if rows[i].SessionID == nil {
+			continue
+		}
+		if t, ok := byID[*rows[i].SessionID]; ok {
+			rows[i].AssetName, rows[i].AccountUsername = t.AssetName, t.AccountUsername
+		}
+	}
+	return nil
 }
 
 // RedactedOutput must be exactly the caller-visible, already-redacted output.

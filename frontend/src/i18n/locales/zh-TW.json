@@ -53,7 +53,9 @@
     "changePassword": "修改密碼",
     "newPassword": "新密碼",
     "disableMfa": "停用 MFA",
-    "assetRef": "資產 #{id}",
+    "assetRef": "資產 {id}",
+    "assetRemoved": "{name}（已移除的資產）",
+    "pageSize": "每頁筆數",
     "emergency": "緊急",
     "requestReason": "申請理由",
     "requestTime": "申請時間",
@@ -72,7 +74,18 @@
     "close": "關閉",
     "retry": "重試",
     "collapseSidebar": "收合側欄",
-    "expandSidebar": "展開側欄"
+    "expandSidebar": "展開側欄",
+    "breadcrumb": "導覽路徑",
+    "idColumn": "編號",
+    "loading": "載入中…",
+    "mainNav": "主選單",
+    "switchLanguage": "切換語言",
+    "accountMenu": "帳號選單",
+    "toggleRowDetail": "展開或收合這一列的明細",
+    "userRef": "使用者 {id}",
+    "sessionRef": "連線 {id}",
+    "expand": "展開",
+    "collapse": "收合"
   },
   "menu": {
     "group": {
@@ -120,7 +133,8 @@
     "identitySources": "身分來源",
     "complianceMap": "合規對照",
     "policyGroups": "政策組",
-    "myAgents": "我的 agent"
+    "myAgents": "我的 agent",
+    "agentPrincipals": "AI agent 主體"
   },
   "login": {
     "bannerRegionLabel": "登入告示",
@@ -560,6 +574,11 @@
     "credentialDetachSource": {
       "random": "隨機產生",
       "custom": "自訂"
+    },
+    "protocolKind": {
+      "terminal": "終端（{code}）",
+      "desktop": "遠端桌面（{code}）",
+      "database": "資料庫（{code}）"
     }
   },
   "policyValue": {
@@ -933,11 +952,11 @@
     "windowsSshNote": "此主機為 Windows：改密經 OpenSSH 執行 PowerShell。關閉＝以 POSIX 指令改密"
   },
   "sessions": {
-    "headerDesc": "監控活動連線與檢視歷史記錄",
+    "headerDesc": "監控活動連線與檢視歷史記錄。AI agent 指代人操作的自動化程式。",
     "autoRefresh": "自動重新整理",
     "tabActive": "活動連線",
     "tabHistory": "歷史記錄",
-    "clientIp": "來源 IP",
+    "clientIp": "來源位址（IP）",
     "startTime": "開始時間",
     "endTime": "結束時間",
     "duration": "持續時間",
@@ -1035,7 +1054,8 @@
     "durationMs": "{n} 毫秒",
     "eventIdColumn": "事件識別",
     "resultUnsettled": "結果未知（未回填）",
-    "rowsAffected": "影響 {n} 列"
+    "rowsAffected": "影響 {n} 列",
+    "idLabel": "連線編號 {id}"
   },
   "myConnections": {
     "headerDesc": "檢視自己的連線紀錄",
@@ -1573,7 +1593,8 @@
     "initFailed": "播放器初始化失敗",
     "controlFailed": "播放控制失敗",
     "seekFailed": "跳轉失敗",
-    "fullscreenFailed": "全螢幕切換失敗"
+    "fullscreenFailed": "全螢幕切換失敗",
+    "speed": "播放速度"
   },
   "guacPlayer": {
     "loading": "正在載入 RDP 錄製內容...",
@@ -1645,6 +1666,7 @@
     "inactivityExempt": "閒置豁免",
     "inactivityExemptTooltip": "豁免帳號不受「閒置逾期自動停用」（PCI 8.2.6）治理",
     "toggleExemptAria": "切換 {name} 的閒置停用豁免",
+    "toggleActiveAria": "啟用或停用 {name}",
     "exempt": "豁免",
     "lastLogin": "最後登入",
     "lastLoginAt": "最後登入 {time}",
@@ -1849,6 +1871,8 @@
     "approve": "核准",
     "reject": "拒絕",
     "emptyPending": "目前沒有等候審核的申請",
+    "emptyPendingHint": "目前沒有等候你決定的申請；新申請進來會顯示在這裡，也可以到「AI agent 任務」看已處理的。",
+    "requestNotOnPage": "申請 {id} 不在這一頁，請翻頁查看",
     "tabHistory": "歷史",
     "colResult": "結果",
     "status": {
@@ -1875,7 +1899,7 @@
     "forbiddenTitle": "您目前不具審核資格",
     "forbiddenHint": "審核中心僅開放給有效審核者（具 approver 角色或屬審核方群組）。僅具管理員角色不構成審核資格；如需審核，請由管理員指派 approver 角色或審核範圍。",
     "loadFailed": "載入失敗，請重新整理後再試",
-    "tabSql": "SQL 核准",
+    "tabSql": "資料庫查詢核准",
     "approveDialogTitle": "核准連線申請",
     "approveSummary": "{user} 申請連線 {asset}",
     "reasonLine": "理由：{reason}",
@@ -2053,7 +2077,14 @@
     "tooltipExpired": "太久沒人處理已自動關閉，可重新申請",
     "approvedBy": "{name} 核准",
     "approverFallback": "審核人",
-    "decisionWithDuration": "{who}，可用 {duration}"
+    "decisionWithDuration": "{who}，可用 {duration}",
+    "created": {
+      "approved": "申請 {id}「{subject}」已送出，並已核准，現在就可以連線。",
+      "partial": "申請 {id}「{subject}」已送出：部分項目已核准，其餘等候審核。",
+      "pending": "申請 {id}「{subject}」已送出，等候審核。"
+    },
+    "createdNoSubject": "未填理由",
+    "createdGoToList": "在下方「我的申請」清單查看"
   },
   "authzWizard": {
     "stepSubject": "選擇主體",
@@ -3245,7 +3276,7 @@
     "INTERNAL_LDAP_STORED_SETTINGS_UNAVAILABLE": "既有 LDAP 目錄設定讀取失敗，無法沿用既存 bind 密碼",
     "INTERNAL_LDAP_TRANSMISSION_GATE_UNAVAILABLE": "傳輸安全政策未就緒，LDAP 目錄設定與連線測試暫停服務",
     "INTERNAL_LOGIN": "登入失敗",
-    "INTERNAL_MFA_ADMIN_DISABLE": "停用用戶 MFA 失敗",
+    "INTERNAL_MFA_ADMIN_DISABLE": "停用使用者 MFA 失敗",
     "INTERNAL_MFA_DISABLE": "停用 MFA 失敗",
     "INTERNAL_MFA_ENABLE": "啟用 MFA 失敗",
     "INTERNAL_MFA_ENROLL": "完成 MFA 綁定失敗",
@@ -3318,7 +3349,7 @@
     "INTERNAL_UNLOCK": "解鎖失敗",
     "INTERNAL_UPLOAD_FILE_SAVE": "儲存上傳檔失敗",
     "INTERNAL_USER_CREATE": "建立使用者失敗",
-    "INTERNAL_USER_DELETE": "刪除用戶失敗",
+    "INTERNAL_USER_DELETE": "刪除使用者失敗",
     "INTERNAL_USER_EXTERNAL_ONLY": "轉換為僅外部登入失敗",
     "INTERNAL_USER_GROUP_AUTH_COUNT": "查詢群組授權數失敗",
     "INTERNAL_USER_GROUP_CREATE": "建立使用者群組失敗",
@@ -3327,8 +3358,8 @@
     "INTERNAL_USER_GROUP_QUERY": "查詢使用者群組失敗",
     "INTERNAL_USER_GROUP_UPDATE": "更新使用者群組失敗",
     "INTERNAL_USER_INFO_QUERY": "無法取得使用者資訊",
-    "INTERNAL_USER_QUERY": "查詢用戶失敗",
-    "INTERNAL_USER_UPDATE": "更新用戶失敗",
+    "INTERNAL_USER_QUERY": "查詢使用者失敗",
+    "INTERNAL_USER_UPDATE": "更新使用者失敗",
     "LDAP_DIRECTORY_HAS_MAPPINGS": "此目錄仍有群組映射規則，請先移除規則再刪除目錄設定",
     "MAPPING_ACK_REQUIRED": "這條規則需要先確認風險才能儲存",
     "MAPPING_RULE_NOT_FOUND": "找不到指定的映射規則",
@@ -3372,7 +3403,7 @@
     "NOTFOUND_SESSION_RECORDING": "此 Session 沒有錄製檔案",
     "NOTFOUND_SESSION_SHARE": "分享不存在或已過期",
     "NOTFOUND_SNIPPET": "片段不存在",
-    "NOTFOUND_USER": "用戶不存在",
+    "NOTFOUND_USER": "使用者不存在",
     "NOTFOUND_USER_GROUP": "使用者群組不存在",
     "OIDC_DISCOVERY_PREVIEW_FAILED": "無法向該 issuer 取得探索文件，請確認位址與網路可達性",
     "OIDC_PROVIDER_HAS_MAPPINGS": "此提供者仍有群組映射規則，請先移除規則再刪除提供者",
@@ -5924,7 +5955,25 @@
       "revoked": "已撤銷"
     },
     "quota": "名下 {current}／{max} 個 agent",
-    "you": "您"
+    "you": "您",
+    "youSuffix": "{name}（您）",
+    "subjectRef": "主體 #{id}",
+    "suspendedLabel": "停用原因與時間",
+    "suspendedValue": "{reason} · {time}",
+    "suspendedReasons": {
+      "agent_breaker_tripped": "偵測到反覆探索不可見的目標，系統自動停用",
+      "unknown": "原因未留存"
+    },
+    "savedAck": "我已保存這串鑰匙",
+    "summaryUsable": "目前可用 {n} 把鑰匙",
+    "summaryNextExpiry": "最近到期：{name}（{time}）",
+    "summarySuspended": "已停用 {n} 把，須另發新的",
+    "manageKeys": "管理鑰匙",
+    "plainLanguage": "「AI agent」是替您自動執行工作的程式。它只靠鑰匙建立連線，不能登入這個介面。",
+    "agentExplained": "AI agent（自動化操作者）",
+    "openKeys": "看鑰匙",
+    "statUsable": "可用鑰匙",
+    "statSuspended": "已停用"
   },
   "agentTasks": {
     "title": "AI agent 任務",
@@ -5932,8 +5981,27 @@
     "reports": "任務報告",
     "unavailable": "任務列表尚未提供。此處暫為入口預留位置，沒有載入任務資料。",
     "subjectExit": "看這個主體的任務",
-    "listHelp": "依主體、目前負責人與申請時間查詢任務。報告狀態是目前的版本狀態。",
-    "subject": "主體 ID",
+    "listHelp": "依主體、目前負責人與申請時間查詢任務。AI agent 指代人操作的自動化程式；報告狀態是目前的版本狀態。",
+    "subject": "主體",
+    "reason": "主旨",
+    "compare": {
+      "requested": "申請",
+      "approved": "核准",
+      "accounts": "帳號範圍",
+      "duration": "時長",
+      "reduced": "已縮限",
+      "asRequested": "照申請核准",
+      "notApproved": "整項未核准",
+      "undecided": "尚未決定",
+      "narrowedCount": "{total} 項中有 {n} 項被縮限",
+      "requestedAccountsUnavailable": "申請時的帳號範圍未留存，核准後只保留核准範圍",
+      "noApprovedAccounts": "沒有核准任何帳號",
+      "noApprovedWindow": "沒有核准期間",
+      "shorterBy": "比申請短 {n} 分鐘",
+      "note": "申請與核准不一致時以核准為準，連線與工具呼叫都照核准範圍擋。",
+      "scopeUnknown": "申請時帳號範圍未留存，無法完整比較",
+      "durationReducedScopeUnknown": "時長已下修；申請時帳號範圍未留存，無法完整比較"
+    },
     "timeRange": "申請時間範圍",
     "reportStatus": "報告狀態",
     "status": {
@@ -5944,7 +6012,8 @@
     "created": "申請時間",
     "closed": "關閉時間",
     "open": "尚未關閉",
-    "detailTitle": "任務 #{id}",
+    "detailTitle": "任務 {id}",
+    "detailTitleNamed": "任務 {id} · {subject}",
     "back": "返回任務列表",
     "sections": {
       "who": "誰代誰做什麼",
@@ -5966,7 +6035,60 @@
     "latestOnly": "只看最新版本",
     "allVersions": "展開全部版本",
     "approvedWindow": "核准起訖",
-    "decider": "決定者"
+    "decider": "決定者",
+    "detailHelp": "四段順序固定：前三段是平台記下的證據，最後一段是 agent 自己的說法。",
+    "closedAt": "已關閉 {time}",
+    "requesterLabel": "申請人",
+    "executorLabel": "執行者",
+    "openedAndClosed": "開單與關閉",
+    "openedClosedValue": "{created} 送出 → {closed} 關閉",
+    "openedOnlyValue": "{created} 送出；尚未關閉",
+    "closedMeaning": "關閉之後這張單不能再用來連線。",
+    "autoApproved": "自動核准（依存取政策，無人工票）",
+    "decisionNoteLabel": "核准註記",
+    "sessionsTitle": "建立過的連線（{n}）",
+    "sessionRevoked": "進行中被撤權，連線中斷",
+    "reportWindow": "只有原執行的 agent 能在任務關閉後 24 小時內補交或修訂；稽核者只能看，不能代寫、不能刪除舊版。",
+    "sectionHints": {
+      "who": "一句話版的身分關係：誰申請、誰執行、誰負責。",
+      "grants": "審核者的逐項決定，這是權限的上限。",
+      "activity": "平台自己記下的，不是程式自己報的。",
+      "reports": "放在最後，因為這是說法、不是證據。"
+    },
+    "stats": {
+      "title": "工具呼叫統計",
+      "labels": {
+        "allowed": "允許",
+        "blocked": "擋下",
+        "unknown": "結果未知"
+      },
+      "allowed": "允許 {n}",
+      "blocked": "擋下 {n}",
+      "unknown": "結果未知 {n}",
+      "note": "擋下含拒絕、熔斷與速率上限；結果未知代表已記錄，但是否送出與結果都不確定。"
+    },
+    "summary": {
+      "didWhat": "做了什麼",
+      "callsValue": "工具呼叫 {n} 次",
+      "blockedWhere": "哪裡被擋",
+      "blockedValue": "擋下 {n} 次",
+      "whoOwns": "誰負責",
+      "report": "報告",
+      "reportSubmitted": "已交（版本 {n}）",
+      "reportMissing": "未交",
+      "counting": "統計中…",
+      "unknown": "未知",
+      "grantDiff": "申請與核准的差",
+      "grantDiffValue": "{total} 項中有 {n} 項被縮限",
+      "grantDiffSame": "照申請核准",
+      "grantDiffNone": "沒有逐項資料",
+      "grantDiffScopeUnknown": "{n} 項的申請帳號範圍未留存，無法完整比較"
+    },
+    "emptyTitle": "沒有符合的任務",
+    "emptyHint": "請放寬主體、負責人或申請時間，或等 agent 開出第一張單。",
+    "noSessionsNext": "這張單還沒有人用它連線；agent 連線後會出現在這裡。",
+    "searchByName": "輸入名稱查詢",
+    "autoApprovedNote": "系統自動核准（無人工票）"
   },
   "agentBreaker": {
     "pending": "自動停用待處置",
@@ -5976,25 +6098,41 @@
     "eventsUnavailable": "目前提供解除表單；事件序列尚未提供。",
     "selectFromEntry": "請從告警或 agent 鑰匙抽屜進入，選定要處置的主體。",
     "unavailable": "無法讀取此 agent 的處置資料，或你不是負責人。",
-    "noPending": "目前沒有未處置的熔斷。",
-    "releaseTokens": "解除不自動恢復已停用 token，須重新發證。",
-    "releaseSessions": "熔斷當下已換發的連線票證與既有連線已失效。",
-    "released": "已解除未處置旗標；已停用 token 仍須重新發證。",
+    "noPending": "目前沒有待處置的自動停用",
+    "releaseTokens": "解除後不會自動恢復已停用的鑰匙，須重新發一把。",
+    "releaseSessions": "自動停用當下已換發的連線票證與既有連線已失效。",
+    "released": "已解除未處置旗標；已停用的鑰匙仍須重新發一把。",
     "reason": "解除原因",
     "reasonRequired": "請填寫原因，且 UTF-8 編碼不超過 1000 位元組。",
     "release": "確認解除",
     "open": "前往熔斷處置",
-    "events": "引用事件序列",
-    "noEvents": "此範圍尚無引用事件。",
-    "countBoundary": "本頁從未可視的不同目標：{n}。僅此類計入門檻；這不是目前時間窗的熔斷計數。",
+    "events": "觸發自動停用的紀錄",
+    "noEvents": "這個範圍目前沒有紀錄。",
+    "countBoundary": "本頁「連向沒有授權看到的目標」的不同目標數：{n}。只有這類計入門檻；這不是目前時間窗的自動停用計數。",
     "classes": {
-      "never_visible": "從未可視（計入門檻）",
+      "never_visible": "連向沒有授權看到的目標（計入門檻）",
       "revoked": "曾可視，現已不可視（不計入門檻）",
       "retired": "不存在或已移除（不計入門檻）"
     },
-    "tokenBoundary": "此處列目前鑰匙狀態；停用時間與原因依已存紀錄，不回推歷次跳閘的完整名單。",
-    "tokenStopped": "因熔斷停用於 {time}",
-    "assetNameBoundary": "資產名稱與協議為目前可讀資料；無法讀取時保留資產識別碼，不代表事件當時名稱。"
+    "tokenBoundary": "此處列目前鑰匙狀態；停用時間與原因依已存紀錄，不回推歷次自動停用的完整名單。",
+    "tokenStopped": "{reason}；停用於 {time}",
+    "assetNameBoundary": "資產名稱與協議為目前可讀資料；無法讀取時保留資產識別碼，不代表事件當時名稱。",
+    "pageHelp": "AI agent 指代人操作的自動化程式。它反覆連向沒有被授權看到的目標時，系統會自動停用它；這頁處理後續。",
+    "whyLabel": "為什麼被停",
+    "whyValue": "這個程式反覆連向它沒有被授權看到的目標，達到門檻後系統自動停用。",
+    "effectLabel": "停了以後怎樣",
+    "nextLabel": "解除之後",
+    "nextValue": "舊鑰匙不會自動恢復，要重新發一把：",
+    "reissue": "前往發新鑰匙",
+    "entryLabel": "從哪裡進來",
+    "entryValue": "告警清單的自動停用告警可直接進到這一頁",
+    "noEventsNext": "沒有紀錄時仍可填原因解除；解除後記得重新發一把鑰匙。",
+    "tokenRevoked": "已撤銷於 {time}",
+    "tokenExpired": "已到期於 {time}",
+    "statTargets": "計入門檻的目標數",
+    "countBoundaryShort": "只有「連向沒有授權看到的目標」這一類計入門檻，而這不是目前時間窗的自動停用計數。",
+    "noPendingHint": "這個主體現在沒有待處置的自動停用。之後若被自動停用，處置表單會出現在這一頁。",
+    "effectTokens": "停用期間這個主體的鑰匙不能用，也不能發新鑰匙。"
   },
   "multiRequest": {
     "title": "建立連線申請",
@@ -6005,7 +6143,7 @@
     "itemId": "項目 #{id}",
     "accounts": "可以用哪些帳號",
     "allAccounts": "全部帳號",
-    "agentAccounts": "AI agent 必須指定帳號，不提供全部帳號。",
+    "agentAccounts": "AI agent（自動化操作者）必須指定帳號，不提供全部帳號。",
     "accountsLoading": "正在載入帳號，完成前不能送出。",
     "accountsEmpty": "沒有可選的帳號，請改選資產或洽管理員。",
     "accountsFailed": "帳號清單載入失敗，不代表沒有帳號。",
@@ -6030,7 +6168,21 @@
     },
     "relationship": "申請人是您，實際操作的是這個 agent；負責人如下所示。",
     "reasonHint": "審核者會看到，事後稽核也看得到。",
-    "missingAccounts": "還有 {n} 項沒選帳號"
+    "missingAccounts": "還有 {n} 項沒選帳號",
+    "assetOption": "{name}（{host}）",
+    "readyToSubmit": "條件已齊備，可以送出。",
+    "blockers": {
+      "reason": "還缺：申請理由",
+      "duration": "還缺：使用時長（要大於 0 分鐘）",
+      "asset": "還缺：每一項都要選一個資產",
+      "duplicate": "同一個資產重複了，請刪掉多的那項",
+      "loading": "帳號還在載入，載完才能送出",
+      "loadError": "帳號清單載入失敗，請重試後再送出",
+      "noAccounts": "所選資產沒有可用帳號，請改選資產",
+      "accounts": "還缺：每一項都要選帳號",
+      "agentAllAccounts": "AI agent（自動化操作者）不能用「全部帳號」，請改選具體帳號"
+    },
+    "serverRejected": "伺服器未接受這次送出，請先看上方原因再重送"
   },
   "itemReview": {
     "scopeUnknown": "各項審核資格會在送出時確認；目前清單未提供逐項資格。",
@@ -6047,19 +6199,33 @@
       "approve": "核准／下修",
       "reject": "拒絕",
       "remove": "移除（拒絕）"
-    }
+    },
+    "identifiers": "識別碼",
+    "requesterLine": "申請人：{name}",
+    "onBehalfOf": "代表：{name}",
+    "autonomous": "自主執行（無代表人）",
+    "autonomousWithOwner": "自主執行（負責人：{name}）",
+    "executedByFor": "由 {agent} 執行，代表 {requester}",
+    "selfOperated": "本人操作",
+    "unknownPerson": "未提供",
+    "assetNameUnreadable": "資產名稱無法讀取（資產 #{id}）",
+    "selectedCount": "已選 {n} 項待送出",
+    "openRequest": "看這張申請單",
+    "decisionNote": "理由：{note}",
+    "itemsRejected": "{n} 項未被接受，原因列在各項上"
   },
   "agentSession": {
-    "snapshot": "連線建立當時的主體快照（以識別碼記錄，不回查現況）",
+    "snapshot": "連線建立當時的主體快照：身分關係與鑰匙以連線當下記錄，名稱顯示目前名稱",
     "actor": "當時操作者",
     "onBehalf": "代表人",
     "none": "無代表人（自主執行）",
     "unknown": "未記錄",
     "owner": "當時負責人",
-    "token": "使用的 token",
-    "tokenId": "識別碼 #{id}；名稱快照未提供",
     "revoked": "會話進行中授權已撤銷：{time}",
-    "recordingTab": "錄影與會話證據"
+    "recordingTab": "錄影與會話證據",
+    "key": "使用的鑰匙",
+    "keyId": "鑰匙編號 {id}；名稱快照未提供",
+    "revokedShort": "授權已撤銷"
   },
   "agentLedger": {
     "title": "工具呼叫帳本",
@@ -6069,7 +6235,7 @@
     "empty": "此查詢沒有工具呼叫紀錄。",
     "masked": "遮罩 {n} 筆",
     "duration": "耗時 {n} 毫秒",
-    "session": "會話 #{id}",
+    "session": "連線 {id}",
     "noSession": "未建立會話",
     "pendingBoundary": "已記錄，是否送出與結果皆未知。",
     "details": "查看紀錄細節",
@@ -6083,12 +6249,24 @@
     "unavailable": "未提供",
     "unknownReason": "尚無此原因的說明。",
     "unsupportedQuery": "查詢條件尚未支援，未載入帳本。",
+    "columns": {
+      "time": "時間",
+      "action": "動作",
+      "target": "對象",
+      "decision": "判定",
+      "masked": "遮罩",
+      "duration": "耗時",
+      "link": "連結"
+    },
+    "durationValue": "{n} 毫秒",
+    "task": "任務 {id}",
+    "seq": "紀錄序號",
     "decisions": {
       "pending": "待定",
       "allowed": "允許",
       "denied": "拒絕",
-      "breaker": "熔斷",
-      "rate_limited": "速率上限"
+      "breaker": "自動停用",
+      "rate_limited": "超出呼叫上限"
     },
     "toolName": "工具名稱（技術細節）",
     "unknownTool": "其他工具操作",
@@ -6103,6 +6281,10 @@
       "read_screen": "讀取終端輸出",
       "close_session": "結束資產連線",
       "close_task": "關閉任務並提交報告"
-    }
+    },
+    "callsColumn": "工具呼叫",
+    "callsValue": "共 {n} 次",
+    "blockedValue": "擋下 {n} 次",
+    "emptyNext": "agent 連線並呼叫工具後，紀錄會出現在這裡。"
   }
 }

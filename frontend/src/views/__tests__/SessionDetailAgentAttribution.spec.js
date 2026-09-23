@@ -77,22 +77,29 @@ const mountDetail = () =>
   mount(SessionDetail, { global: { plugins: [ElementPlus] } })
 
 describe('會話歸屬快照', () => {
-  const agent = (extra = {}) => baseSession({ user_id: 5, actor_kind: 'agent', owner_user_id: 2, on_behalf_of_user_id: 7, agent_token_id: 8, access_request_id: 23, user: { username: 'renamed', owner_user_id: 999 }, ...extra })
+  const agent = (extra = {}) => baseSession({ user_id: 5, actor_kind: 'agent', owner_user_id: 2, owner_username: 'owner-a', on_behalf_of_user_id: 7, on_behalf_of_username: 'human-7', agent_token_id: 8, access_request_id: 23, user: { username: 'agent-5', owner_user_id: 999 }, ...extra })
   it('輔助模式呈現代表人', async () => {
     getSessionMock.mockResolvedValue(agent()); const w = mountDetail(); await flushPromises()
-    expect(w.get('[data-test="represented-user"]').text()).toBe('#7')
+    expect(w.get('[data-test="represented-user"]').text()).toBe('human-7')
     expect(w.get('[data-test="agent-attribution"]').text()).toContain('AI agent')
   })
+  // 契約有名稱時一律顯示名稱：只寫識別碼的欄位讀者答不出「這是誰」
+  it('名稱未投影時退回「未提供」而非裸識別碼', async () => {
+    getSessionMock.mockResolvedValue(agent({ on_behalf_of_username: '', owner_username: '' })); const w = mountDetail(); await flushPromises()
+    expect(w.get('[data-test="represented-user"]').text()).toBe('未提供')
+    expect(w.get('[data-test="snapshot-owner"]').text()).toBe('未提供')
+    expect(w.get('[data-test="agent-attribution"]').text()).not.toContain('#7')
+  })
   it('自主模式明示無代表人而非留白', async () => {
-    getSessionMock.mockResolvedValue(agent({ on_behalf_of_user_id: null })); const w = mountDetail(); await flushPromises()
+    getSessionMock.mockResolvedValue(agent({ on_behalf_of_user_id: null, on_behalf_of_username: '' })); const w = mountDetail(); await flushPromises()
     expect(w.get('[data-test="represented-user"]').text()).toBe('無代表人（自主執行）')
   })
   it('標明為當時快照', async () => {
     getSessionMock.mockResolvedValue(agent()); const w = mountDetail(); await flushPromises()
     const text = w.get('[data-test="agent-attribution"]').text()
-    expect(text).toContain('連線建立當時的主體快照'); expect(w.get('[data-test="snapshot-owner"]').text()).toBe('#2')
-    expect(text).not.toContain('renamed'); expect(text).not.toContain('#999')
-    expect(text).toContain('識別碼 #8；名稱快照未提供')
+    expect(text).toContain('連線建立當時的主體快照'); expect(w.get('[data-test="snapshot-owner"]').text()).toBe('owner-a')
+    expect(text).toContain('agent-5'); expect(text).not.toContain('#999')
+    expect(text).toContain('鑰匙編號 8；名稱快照未提供')
   })
   it('撤權後仍活動於列表與詳情皆可見', async () => {
     getSessionMock.mockResolvedValue(agent({ status: 'active', revoked_during_session_at: '2026-09-22T01:00:00Z' })); const w = mountDetail(); await flushPromises()

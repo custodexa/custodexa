@@ -919,3 +919,4 @@ worker 停止處理殘留 queue，在 defer 經既有 AuditLogService 留 AP-94�
 | G-211 | var:internal/modules/identity/agent_self_service.go:ErrAgentSelfCreateLimit | ErrAgentSelfCreateLimit | internal/modules/identity/agent_self_service.go:25 | 包級全域／不可變錯誤 | identity | W-SS | 自助政策與配額拒絕；只讀錯誤值，無啟停順序。 |
 
 | G-212 | var:internal/agentmcp/tools.go:descriptions | descriptions | internal/agentmcp/tools.go:8 | 包級全域／只讀工具描述表 | agentmcp 交付層 | W4-1 | NewServer 逐項註冊封閉十工具；無 I/O 或啟停順序，建構後不改表；不得在工具註冊後再改描述以致列舉與實作漂移。 |
+| G-213 | var:internal/database/baseline_seed.go:agentLateralLegacyPatterns | agentLateralLegacyPatterns | internal/database/baseline_seed.go:77 | 包級全域／不可變查表 | infra | 1.11.1 資料 migration | 出廠「Agent 橫向移動阻斷」規則的歷史 pattern 清單，只供 `20260923_agent_lateral_rule_pattern` 的 UPDATE WHERE 比對；無序、無 I/O。守衛：migration 測試以此表逐值驗證更新與保留；若改了 `AgentLateralRulePattern` 而未把舊值加進此表，已安裝站點的舊規則不會被更新。 |

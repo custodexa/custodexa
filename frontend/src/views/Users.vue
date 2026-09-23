@@ -32,7 +32,7 @@
             :placeholder="$t('common.all')"
             data-test="principal-kind-filter"
             style="width: 160px"
-            @change="handleFilter"
+            @change="handleKindChange"
           >
             <el-option
               value="human"
@@ -124,6 +124,7 @@
            **新增欄位前先重算這條加總**；加不進去就再往展開列收，不要動 fixed。 -->
       <el-table
         v-loading="loading"
+        v-expand-row-a11y
         :data="userList"
         style="width: 100%"
         stripe
@@ -182,12 +183,19 @@
             </div>
           </template>
         </el-table-column>
+        <!-- 編號欄不放裸數字：一格單獨的「31」在稽核截圖上讀不出是什麼的編號。
+             欄頭用中性的「編號」，值帶類型（使用者 31）。
+             加寬 40px（70→110）後欄寬總和仍守在可視寬內 -->
         <el-table-column
           prop="id"
-          label="ID"
-          width="70"
+          :label="$t('common.idColumn')"
+          width="110"
           sortable
-        />
+        >
+          <template #default="{ row }">
+            {{ $t('common.userRef', { id: row.id }) }}
+          </template>
+        </el-table-column>
         <el-table-column
           prop="username"
           :label="$t('common.username')"
@@ -206,9 +214,11 @@
             </div>
           </template>
         </el-table-column>
+        <!-- 主體類型連帶顯示負責人帳號名：130px 時「負責人：xxx」折成兩行，
+             與同列的使用者名稱基線對不齊 -->
         <el-table-column
           :label="$t('agentPrincipals.kind')"
-          min-width="130"
+          min-width="190"
         >
           <template #default="{ row }">
             <PrincipalBadge
@@ -290,9 +300,10 @@
                   {{ $t(`users.roleSource.${roleSourceOf(row, role.name || role)}`) }}
                 </el-tag>
               </span>
+              <!-- 「無角色」是事實敘述而非狀態，不佔用品牌青（身分徽章同色） -->
               <el-tag
                 v-if="!row.roles || row.roles.length === 0"
-                type="info"
+                class="ot-tag-neutral"
                 size="small"
               >
                 {{ $t('users.noRole') }}
@@ -332,6 +343,7 @@
               <el-switch
                 v-model="row.active"
                 :loading="row._statusLoading"
+                :aria-label="$t('users.toggleActiveAria', { name: row.username })"
                 @change="handleStatusChange(row)"
               />
               <el-tooltip
@@ -1133,7 +1145,9 @@
 </template>
 
 <script setup>
+import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Plus,
@@ -1203,10 +1217,19 @@ const pagination = reactive({
   total: 0,
 })
 
-// 過濾表單
+// 過濾表單。類型與網址同步：側欄的「AI agent 主體」就是本頁 `?kind=agent`，
+// 一個入口即到預篩過的清單，不必再拉一次下拉
+// 元件測試不掛 router，useRoute()／useRouter() 會是 undefined：
+// 網址同步是附加能力，缺了 router 仍要能純粹當列表用
+const route = useRoute()
+const router = useRouter()
+const kindFromQuery = () => {
+  const value = route?.query?.kind ?? new URLSearchParams(window.location.search).get('kind')
+  return ['agent', 'human'].includes(value) ? value : ''
+}
 const filterForm = reactive({
   provisioningOrigin: '',
-  kind: '',
+  kind: kindFromQuery(),
   search: '',
   active: '',
 })
@@ -1569,8 +1592,33 @@ const handleFilter = () => {
   fetchUserList()
 }
 
+// 類型改由頁內下拉切換時把網址一併改掉，否則側欄仍亮在「AI agent 主體」
+// 而清單已經不是 agent 了
+const handleKindChange = () => {
+  const next = filterForm.kind || undefined
+  if (router && (route?.query?.kind || undefined) !== next) {
+    const query = { ...route.query }
+    if (next) query.kind = next
+    else delete query.kind
+    router.replace({ query })
+  }
+  handleFilter()
+}
+
+watch(() => route?.query?.kind, () => {
+  const next = kindFromQuery()
+  if (next === filterForm.kind) return
+  filterForm.kind = next
+  handleFilter()
+})
+
 // 重置過濾
 const handleResetFilter = () => {
+  if (router && route?.query?.kind) {
+    const query = { ...route.query }
+    delete query.kind
+    router.replace({ query })
+  }
   filterForm.kind = ''
   filterForm.search = ''
   filterForm.active = ''
@@ -2153,8 +2201,22 @@ function agentCreated() {
 watch([dialogVisible, roleDialogVisible, passwordDialogVisible, scopeDialogVisible, identityDrawerVisible], values => {
   if (values.some(Boolean)) tokenDrawerVisible.value = false
 })
-onMounted(() => {
-  fetchUserList()
+// `/users?open=<id>`：任務詳情與熔斷頁可直達該 agent 的鑰匙抽屜，
+// 不必回側欄捲到「使用者管理」再自己找人
+async function openFromQuery() {
+  const id = Number(new URLSearchParams(window.location.search).get('open'))
+  if (!Number.isInteger(id) || id <= 0) return
+  const row = userList.value.find(user => user.id === id)
+  if (row) { openTokenDrawer(row); return }
+  try {
+    const response = await getUserDetail(id)
+    const user = response?.data || response
+    if (user?.id) openTokenDrawer(user)
+  } catch { /* 讀不到就停在列表；錯誤訊息由攔截器呈現 */ }
+}
+onMounted(async () => {
+  await fetchUserList()
+  openFromQuery()
 })
 </script>
 
@@ -2221,16 +2283,16 @@ onMounted(() => {
 /* 儲存格第二行：次要事實，不與第一行爭視覺權重 */
 .cell-subline {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   line-height: 1.4;
-  color: var(--ot-text-secondary, #909399);
+  color: var(--ot-text-secondary);
 }
 
 .dialog-hint {
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   line-height: 1.5;
-  color: var(--ot-text-secondary, #909399);
+  color: var(--ot-text-secondary);
 }
 
 .dialog-hint--warning {
@@ -2245,7 +2307,7 @@ onMounted(() => {
 
 .mapped-roles-block__title {
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--ot-font-size-md);
   font-weight: 500;
 }
 
@@ -2259,8 +2321,8 @@ onMounted(() => {
 
 .mapped-role-row__note {
   margin-left: 6px;
-  font-size: 12px;
-  color: var(--ot-text-secondary, #909399);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
 }
 
 .group-snapshot-block {
@@ -2271,13 +2333,13 @@ onMounted(() => {
 
 .group-snapshot-block__title {
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: var(--ot-font-size-md);
   font-weight: 500;
 }
 
 .group-snapshot-block__meta {
-  font-size: 12px;
-  color: var(--ot-text-secondary, #909399);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
 }
 
 .group-snapshot-block__list {
@@ -2287,7 +2349,7 @@ onMounted(() => {
 
 .group-snapshot-block__list li {
   font-family: var(--ot-font-mono, monospace);
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   word-break: break-all;
 }
 

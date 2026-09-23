@@ -39,6 +39,9 @@ const (
 type Session struct {
 	// Current username for the snapshotted owner ID; read-only, not a stored name snapshot.
 	OwnerUsername string `gorm:"-" json:"owner_username,omitempty"`
+	// Current username for the snapshotted delegator ID (who the agent acted for);
+	// read-only, not a stored name snapshot.
+	OnBehalfOfUsername string `gorm:"-" json:"on_behalf_of_username,omitempty"`
 
 	ID        uint           `gorm:"primarykey" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`

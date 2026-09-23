@@ -12,6 +12,7 @@ import { BRAND } from './brand'
 import i18n, { setupDocumentMetadata } from './i18n'
 import { epGlobalConfig } from './i18n/element-plus'
 import { installCrossTabSync } from './utils/session'
+import AppPagination from './components/AppPagination.vue'
 
 // 品牌樣板：favicon 由 brand.js 驅動，index.html 不含品牌字；
 // title 由 setupDocumentMetadata 隨語言切換更新，不在此一次性賦值
@@ -43,6 +44,10 @@ app.use(i18n)
 // （ElMessageBox/ElMessage）讀 app-level global config，須與
 // el-config-provider 共用同一來源才會隨語言切換
 app.use(ElementPlus, epGlobalConfig)
+
+// 分頁器改用自家替身：EP 的每頁筆數下拉沒有標籤，報讀器只會讀到一個數字。
+// 註冊順序必須在 app.use(ElementPlus) 之後，否則會被原件蓋回去。
+app.component('ElPagination', AppPagination)
 
 // title 與 <html lang> 隨語言即時更新（watch immediate）
 setupDocumentMetadata()

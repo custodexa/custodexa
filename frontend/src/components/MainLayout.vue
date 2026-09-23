@@ -39,6 +39,8 @@
         :collapse-transition="false"
         router
         class="sidebar-menu"
+        tabindex="0"
+        :aria-label="t('common.mainNav')"
       >
         <template
           v-for="group in visibleGroups"
@@ -75,15 +77,47 @@
     <el-container>
       <el-header class="header">
         <div class="header-left">
-          <span class="current-path">{{ currentPageTitle }}</span>
+          <!-- 麵包屑：詳情頁沒有自己的選單項，若只顯示單一標題會落回「首頁」，
+               讀起來像離開了那個功能。父層一律可點回列表 -->
+          <nav
+            class="current-path"
+            :aria-label="t('common.breadcrumb')"
+          >
+            <template
+              v-for="(crumb, index) in breadcrumbs"
+              :key="index"
+            >
+              <span
+                v-if="index"
+                class="crumb-sep"
+                aria-hidden="true"
+              >›</span>
+              <router-link
+                v-if="crumb.to"
+                :to="crumb.to"
+                class="crumb-link"
+              >
+                {{ crumb.label }}
+              </router-link><span
+                v-else
+                class="crumb-current"
+              >{{ crumb.label }}</span>
+            </template>
+          </nav>
         </div>
         <div class="header-right">
           <!-- 語言切換：即時生效免 reload，偏好存 ot-lang -->
           <el-dropdown @command="setLanguage">
-            <span class="lang-switch">
+            <button
+              type="button"
+              class="lang-switch"
+              :aria-label="t('common.switchLanguage')"
+            >
               {{ LOCALE_LABELS[locale] }}
-              <el-icon class="el-icon--right"><ChevronDown /></el-icon>
-            </span>
+              <el-icon class="el-icon--right">
+                <ChevronDown />
+              </el-icon>
+            </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item
@@ -98,11 +132,17 @@
             </template>
           </el-dropdown>
           <el-dropdown @command="handleCommand">
-            <span class="user-info">
+            <button
+              type="button"
+              class="user-info"
+              :aria-label="t('common.accountMenu')"
+            >
               <el-icon><CircleUserRound /></el-icon>
               {{ userName }}
-              <el-icon class="el-icon--right"><ChevronDown /></el-icon>
-            </span>
+              <el-icon class="el-icon--right">
+                <ChevronDown />
+              </el-icon>
+            </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="profile">
@@ -176,6 +216,7 @@ import {
   CircleUserRound,
   PanelLeftOpen,
   PanelLeftClose,
+  Bot,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
@@ -186,6 +227,7 @@ import { logout } from '@/api/auth'
 import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
 import { clearSession } from '@/utils/session'
+import { detailSubject } from '@/utils/detailTitle'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -353,6 +395,9 @@ const menuGroups = [
     adminOnly: true,
     items: [
       { path: '/users', titleKey: 'menu.users', icon: User, adminOnly: true },
+      // AI agent 主體自成一個入口：從側欄走到某個 agent 的鑰匙，原本要先進
+      // 使用者管理、再拉類型下拉、再挑人。預篩後只剩「進來、按鑰匙」兩步
+      { path: '/users?kind=agent', titleKey: 'menu.agentPrincipals', icon: Bot, adminOnly: true },
       { path: '/roles', titleKey: 'menu.roles', icon: UserCog, adminOnly: true },
       { path: '/user-groups', titleKey: 'menu.userGroups', icon: Users, adminOnly: true },
       { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: UserCheck, adminOnly: true },
@@ -474,7 +519,12 @@ const SUBPATH_PARENTS = ['/identity-sources']
 const menuPathOf = (path) =>
   SUBPATH_PARENTS.find((parent) => path === parent || path.startsWith(`${parent}/`)) || path
 
-const activeMenu = computed(() => menuPathOf(route.path))
+// 使用者管理與 AI agent 主體是同一個路徑的兩個入口，靠 query 區分選取
+const activeMenu = computed(() =>
+  route.path === '/users' && route.query.kind === 'agent'
+    ? '/users?kind=agent'
+    : menuPathOf(route.path)
+)
 
 const pageTitleKeys = {
   '/dashboard': 'menu.dashboard',
@@ -500,6 +550,7 @@ const pageTitleKeys = {
   '/change-secret-batches': 'menu.changeSecretBatches',
   '/credentials': 'menu.credentials',
   '/users': 'menu.users',
+  '/users?kind=agent': 'menu.agentPrincipals',
   '/profile': 'menu.profile',
   '/user-groups': 'menu.userGroups',
   '/identity-sources': 'menu.identitySources',
@@ -511,9 +562,37 @@ const pageTitleKeys = {
   '/offsite-storage': 'menu.offsiteStorage',
 }
 
-const currentPageTitle = computed(() =>
-  t(pageTitleKeys[menuPathOf(route.path)] || 'menu.home')
+// 詳情頁以路由名稱取標題（帶參數，無法放進以路徑為鍵的表），
+// 並各自指回所屬列表頁；沒有登錄的路由仍退回選單標題
+const detailPages = {
+  AgentTaskDetail: {
+    // 主旨由詳情頁載入後寫進 detailSubject；還沒載到就只帶編號
+    title: () => (detailSubject.value
+      ? t('agentTasks.detailTitleNamed', { id: route.params.requestId, subject: detailSubject.value })
+      : t('agentTasks.detailTitle', { id: route.params.requestId })),
+    parent: { to: '/audit/agent-tasks', label: () => t('agentTasks.title') },
+  },
+  AgentBreakers: {
+    title: () => t('agentBreaker.title'),
+    parent: { to: '/alerts', label: () => t('menu.alerts') },
+  },
+  SessionDetail: {
+    title: () => t('sessionDetail.title'),
+    parent: { to: '/sessions', label: () => t('menu.sessions') },
+  },
+}
+
+const currentPageTitle = computed(
+  () =>
+    detailPages[route.name]?.title() ||
+    t(pageTitleKeys[activeMenu.value] || 'menu.home')
 )
+
+const breadcrumbs = computed(() => {
+  const parent = detailPages[route.name]?.parent
+  const current = { label: currentPageTitle.value, to: '' }
+  return parent ? [{ label: parent.label(), to: parent.to }, current] : [current]
+})
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
@@ -654,16 +733,21 @@ const syncUserFromStorage = () => {
   }
 }
 
+// 審核送出後不必等下一輪輪詢：審核中心派 ot-approvals-changed，badge 立刻重算
+const onApprovalsChanged = () => { if (effectiveApprover.value) refreshApprovalBadge() }
+
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
   if (instanceGuardTimer) clearInterval(instanceGuardTimer)
   window.removeEventListener('ot-user-updated', syncUserFromStorage)
+  window.removeEventListener('ot-approvals-changed', onApprovalsChanged)
 })
 
 onMounted(() => {
   syncUserFromStorage()
   // 自助更新顯示名後同分頁即時反映（storage 事件不在同分頁觸發，改用自訂事件）
   window.addEventListener('ot-user-updated', syncUserFromStorage)
+  window.addEventListener('ot-approvals-changed', onApprovalsChanged)
   startApprovalBadgePolling()
   refreshEffectiveApprover()
   startInstanceGuardPolling()
@@ -757,7 +841,7 @@ onMounted(() => {
 .menu-group-label {
   padding: var(--ot-space-md) var(--ot-space-md) var(--ot-space-xs);
   font-size: var(--ot-font-size-xs);
-  color: var(--ot-text-disabled);
+  color: var(--ot-text-secondary);
   letter-spacing: 0.5px;
 }
 
@@ -825,9 +909,25 @@ onMounted(() => {
 }
 
 .current-path {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ot-space-xs);
   font-size: var(--ot-font-size-lg);
   font-weight: 500;
   color: var(--ot-text-primary);
+}
+
+.crumb-link {
+  color: var(--ot-text-secondary);
+  text-decoration: none;
+}
+
+.crumb-link:hover {
+  color: var(--ot-text-primary);
+}
+
+.crumb-sep {
+  color: var(--ot-text-secondary);
 }
 
 .header-right {
@@ -838,6 +938,10 @@ onMounted(() => {
 
 .user-info {
   cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
   display: flex;
   align-items: center;
   gap: var(--ot-space-xs);
@@ -850,6 +954,10 @@ onMounted(() => {
 
 .lang-switch {
   cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
   display: flex;
   align-items: center;
   gap: var(--ot-space-xs);

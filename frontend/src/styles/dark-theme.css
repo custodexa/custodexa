@@ -10,9 +10,9 @@ html.dark {
      （#93b4f8 白字 1.9:1）。#2d4c89 = primary #4f83f1 × bg #0a1522 50% 混，白字 8.4:1 */
   --el-color-primary: var(--ot-primary);
   --el-color-primary-light-3: var(--ot-primary-hover);
-  --el-color-primary-light-5: #2d4c89;
-  --el-color-primary-light-7: #1e3f7d;
-  --el-color-primary-light-8: #16305e;
+  --el-color-primary-light-5: var(--ot-primary-sunken);
+  --el-color-primary-light-7: var(--ot-primary-sunken-deep);
+  --el-color-primary-light-8: var(--ot-primary-sunken-deepest);
   --el-color-primary-light-9: var(--ot-primary-dim);
   --el-color-primary-dark-2: var(--ot-primary-active);
   --el-color-success: var(--ot-success);
@@ -39,7 +39,9 @@ html.dark {
   --el-text-color-primary: var(--ot-text-primary);
   --el-text-color-regular: var(--ot-text-primary);
   --el-text-color-secondary: var(--ot-text-secondary);
-  --el-text-color-placeholder: var(--ot-text-disabled);
+  /* 佔位字（篩選「全部」「請選擇」等）沿用 EP 預設的 disabled 灰只有 3.83:1，
+     低於 AA 4.5:1。佔位字是使用者要讀的提示而非停用狀態，提到次要文字階 */
+  --el-text-color-placeholder: var(--ot-text-secondary);
   --el-text-color-disabled: var(--ot-text-disabled);
 
   /* Borders */
@@ -68,6 +70,17 @@ html.dark {
    rgba(255,255,255,.5) — composited over the (correctly darkened) light-5
    background that caps contrast at ~3.4:1. Raise alpha so the label passes
    AA (~5.8:1 on primary light-5 #2d4c89) while still reading as muted */
+/* Filled primary buttons take the brand fill step: white text on #2563eb is 5.2:1.
+   --ot-primary is the text step (links, selected items, outlines) and never carries
+   white text; plain / text / link variants keep the text step. */
+html.dark .el-button--primary:not(.is-plain):not(.is-text):not(.is-link):not(.is-disabled) {
+  --el-button-bg-color: var(--ot-primary-fill);
+  --el-button-border-color: var(--ot-primary-fill);
+  --el-button-hover-bg-color: var(--ot-primary-fill-hover);
+  --el-button-hover-border-color: var(--ot-primary-fill-hover);
+  --el-button-active-bg-color: var(--ot-primary-fill-hover);
+  --el-button-active-border-color: var(--ot-primary-fill-hover);
+}
 .el-button--primary.is-disabled,
 .el-button--primary.is-disabled:hover,
 .el-button--success.is-disabled,
@@ -76,7 +89,7 @@ html.dark {
 .el-button--warning.is-disabled:hover,
 .el-button--danger.is-disabled,
 .el-button--danger.is-disabled:hover {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--ot-text-on-fill-disabled);
 }
 
 /* Table: keep header distinguishable on dark surfaces */
@@ -110,4 +123,103 @@ html.dark .el-pagination {
 html.dark body {
   background-color: var(--ot-bg-page);
   color: var(--ot-text-primary);
+}
+
+/* 停用的頁籤仍是要讀的標籤（讀者得知道那一頁存在），
+   EP 的 disabled 灰只有 4.04:1；提到次要文字階，停用感由游標與不可點維持 */
+html.dark .el-tabs__item.is-disabled {
+  color: var(--ot-text-secondary);
+}
+
+/* plain 的 danger 按鈕在暗色下被 EP 調成暗紅（2.17:1），
+   文字幾乎讀不出來；改回語意色本色 */
+html.dark .el-button--danger.is-plain:not(.is-disabled),
+html.dark .el-button--danger.is-plain:not(.is-disabled):focus {
+  --el-button-text-color: var(--ot-danger);
+
+  color: var(--ot-danger);
+}
+
+/* 表單列距回到間距階：EP 預設 18px 不在 4/8/16/24/32 之內，
+   同一頁就會同時出現兩種節奏，讀起來像兩套版面 */
+.el-form-item {
+  margin-bottom: var(--ot-space-md);
+}
+
+/* 同理：EP 的頁籤標頭與內容之間預設 15px，也不在間距階上 */
+.el-tabs__header {
+  margin-bottom: var(--ot-space-md);
+}
+
+/* 停用的下拉仍要讀得出「這一欄還沒選」：EP 把停用選單的文字壓到 disabled 階，
+   暗底只有 2.9:1。停用感由游標與不可點維持，文字提到次要階 */
+html.dark .el-select__wrapper.is-disabled,
+html.dark .el-select__wrapper.is-disabled .el-select__placeholder,
+html.dark .el-select__wrapper.is-disabled .el-select__selected-item {
+  color: var(--ot-text-secondary);
+}
+
+/* plain／text／link 型的停用按鈕：EP 把文字調成各語意色的 light-5，
+   暗底最低只有 2.17:1（danger plain），字幾乎看不出來。
+   語意色在停用時本來就不該再承載狀態，統一提到次要文字階 */
+html.dark .el-button.is-plain.is-disabled,
+html.dark .el-button.is-plain.is-disabled:hover,
+html.dark .el-button.is-plain.is-disabled:focus,
+html.dark .el-button.is-plain.is-disabled:active,
+html.dark .el-button.is-text.is-disabled,
+html.dark .el-button.is-text.is-disabled:hover,
+html.dark .el-button.is-link.is-disabled,
+html.dark .el-button.is-link.is-disabled:hover {
+  --el-button-disabled-text-color: var(--ot-text-secondary);
+
+  color: var(--ot-text-secondary);
+}
+
+/* 待審徽章：EP 的 badge 一律白字，落在 danger 底色上只有 3.43:1。
+   徽章是要讀的數字而非裝飾，文字改用反色階（深字）取得對比，
+   底色維持品牌 danger 不動 */
+html.dark .el-badge__content,
+html.dark .el-badge__content.is-fixed {
+  color: var(--ot-text-inverse);
+}
+
+/* 鍵盤焦點必須看得見：EP 的 radio/checkbox 把原生 input 藏在視覺方塊後面，
+   預設 outline 落在看不見的元素上，Tab 過去等於沒有回饋 */
+:focus-visible {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 2px;
+}
+
+.el-radio__original:focus-visible + .el-radio__inner,
+.el-checkbox__original:focus-visible + .el-checkbox__inner,
+.el-radio-button__original-radio:focus-visible + .el-radio-button__inner {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 2px;
+}
+
+/* 輸入類元件的焦點：EP 把聚焦畫在 wrapper 的 inset box-shadow 上，
+   而暗色主題把該 shadow 對應的 --el-border-color 映到與未聚焦同一個
+   邊框色階——量到的 wrapper computed style 聚焦前後完全相同，
+   等於整組輸入框都沒有焦點回饋。焦點由 wrapper 自己畫外框，
+   聚焦前後才有可量的差別；真正承接焦點的是內層 input，
+   故用 :focus-within 而非 :focus */
+.el-input__wrapper:focus-within,
+.el-select__wrapper:focus-within,
+.el-input-number:focus-within .el-input__wrapper,
+.el-textarea:focus-within .el-textarea__inner,
+.el-date-editor.el-input__wrapper:focus-within,
+.el-date-editor--datetimerange:focus-within {
+  border-color: var(--ot-primary);
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 1px;
+}
+
+/* 中性彩標：不帶語意的格（協議這類分類、已成定局而無待辦的終局狀態）
+   不佔用成功／警告／危險與品牌青。品牌青同時當身分徽章與多種狀態時，
+   讀者分不出哪一格是身分、哪一格是狀態 */
+.el-tag.ot-tag-neutral {
+  --el-tag-bg-color: var(--ot-bg-elevated);
+  --el-tag-border-color: var(--ot-border);
+  --el-tag-text-color: var(--ot-text-secondary);
+  --el-tag-hover-color: var(--ot-border);
 }

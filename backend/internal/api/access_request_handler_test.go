@@ -332,6 +332,34 @@ func TestAccessRequestHandler_Review(t *testing.T) {
 		reqSvc.AssertCalled(t, "ListPending", uint(2), false, mock.Anything)
 	})
 
+	// 審核者讀得到「在核准哪一台機器」：名稱隨項目走，不必回頭打資產端點
+	t.Run("待審列表的每個項目帶資產名稱", func(t *testing.T) {
+		reqSvc := new(MockAccessRequestService)
+		reqSvc.On("ListPending", uint(2), false, mock.Anything).Return([]*model.AccessRequest{{
+			ID: 4, Items: []model.AccessRequestItem{
+				{ID: 11, AssetID: 26, AssetName: "w43-pending-approval"},
+				{ID: 12, AssetID: 27, AssetName: "retired-host", AssetDeleted: true},
+			},
+		}}, nil)
+		r, _ := newAccessRequestRouter(reqSvc, nil, 2, "user", &notAdmin)
+
+		w := doJSON(r, "GET", "/access-requests/pending", nil)
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Data []struct {
+				Items []struct {
+					AssetName    string `json:"asset_name"`
+					AssetDeleted bool   `json:"asset_deleted"`
+				} `json:"items"`
+			} `json:"data"`
+		}
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "w43-pending-approval", body.Data[0].Items[0].AssetName)
+		assert.False(t, body.Data[0].Items[0].AssetDeleted)
+		assert.Equal(t, "retired-host", body.Data[0].Items[1].AssetName)
+		assert.True(t, body.Data[0].Items[1].AssetDeleted)
+	})
+
 	t.Run("核准帶下修值", func(t *testing.T) {
 		reqSvc := new(MockAccessRequestService)
 		short := 30

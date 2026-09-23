@@ -67,13 +67,16 @@ const displayTitle = computed(() => props.title || t('common.emptyDefault'))
 
 .empty-title {
   font-size: var(--ot-font-size-md);
-  color: var(--ot-text-secondary);
+  /* 面板裡唯一的主句：跟下面的註腳同色時，整個空態讀起來就是一團灰字 */
+  color: var(--ot-text-primary);
+  font-weight: 600;
   margin: 0;
 }
 
 .empty-hint {
   font-size: var(--ot-font-size-sm);
-  color: var(--ot-text-disabled);
+  /* 空態的說明句是要讀的：disabled 階只有 3.83:1，低於 AA */
+  color: var(--ot-text-secondary);
   margin: var(--ot-space-xs) 0 0;
 }
 

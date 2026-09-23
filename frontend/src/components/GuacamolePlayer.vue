@@ -53,6 +53,7 @@
           <el-select
             v-model="speed"
             size="small"
+            :aria-label="$t('player.speed')"
             style="width: 90px"
             @change="handleSpeedChange"
           >

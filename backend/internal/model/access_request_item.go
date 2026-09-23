@@ -11,6 +11,20 @@ const AccessRequestItemRevoked AccessRequestStatus = "revoked"
 // AccessRequestItem is the independently scoped asset within a request envelope.
 type AccessRequestItem struct {
 	DecisionBounds *AccessRequestDecisionBounds `gorm:"-" json:"decision_bounds,omitempty"`
+	// Current username for the stored decider ID; read-only projection, never a stored name.
+	// An automatic approval has no decider, so it stays empty.
+	DecidedByUsername string `gorm:"-" json:"decided_by_username,omitempty"`
+	// Account scope as requested, preserved in policy_snapshot before a decision may narrow
+	// Accounts. Null means the snapshot predates the projection, not "requested nothing".
+	RequestedAccounts *AccountScope `gorm:"-" json:"requested_accounts"`
+	// AssetName is a read-only display projection so a reviewer can tell which machine an
+	// item is for. Deciding an item is not reading the asset, so the name travels with the
+	// item instead of forcing a second fetch the reviewer may not be authorized to make.
+	// Empty means the asset row is gone entirely (hard delete), not "unnamed".
+	AssetName string `gorm:"-" json:"asset_name"`
+	// AssetDeleted marks a soft-deleted asset: the name still resolves, and the reviewer
+	// needs to know the target no longer exists.
+	AssetDeleted bool `gorm:"-" json:"asset_deleted"`
 
 	ID                      uint                `gorm:"primaryKey" json:"id"`
 	CreatedAt               time.Time           `json:"created_at"`
@@ -50,4 +64,17 @@ func (i *AccessRequestItem) BeforeCreate(*gorm.DB) error {
 		return gorm.ErrInvalidValue
 	}
 	return nil
+}
+
+// FillRequestedAccounts projects the pre-decision account scope preserved in policy_snapshot.
+// A snapshot without the key leaves the field nil, so a reader can tell "not preserved"
+// from "requested an empty scope".
+func (i *AccessRequestItem) FillRequestedAccounts() {
+	i.RequestedAccounts = nil
+	var snapshot struct {
+		RequestedAccounts *AccountScope `json:"requested_accounts"`
+	}
+	if json.Unmarshal([]byte(i.PolicySnapshot), &snapshot) == nil {
+		i.RequestedAccounts = snapshot.RequestedAccounts
+	}
 }

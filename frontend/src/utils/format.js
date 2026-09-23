@@ -48,11 +48,27 @@ const DATE_OPTIONS = {
 // 輸出與改動前逐字相同（這是錯誤路徑，效能無所謂）
 const isValidDate = (date) => Number.isFinite(date.getTime())
 
+// 時區標示：審計時間若不寫時區，讀者無從判斷那是誰的牆上時鐘——跨時區稽核
+// 時這是會讀錯的（差幾小時看起來像沒差）。偏移自行由 getTimezoneOffset 推算
+// 而非用 Intl 的 timeZoneName：Intl 的字樣隨語言變（GMT+8／UTC+8／協定世界時），
+// 三語就會出現三種寫法；此處固定輸出 `UTC±H[:MM]`，三語逐字相同。
+// 夏令時間也涵蓋：偏移是「該時刻」的偏移，不是固定常數。
+function utcOffsetLabel(date) {
+  const minutes = -date.getTimezoneOffset()
+  if (minutes === 0) return 'UTC'
+  const sign = minutes > 0 ? '+' : '-'
+  const abs = Math.abs(minutes)
+  const hours = Math.floor(abs / 60)
+  const rest = abs % 60
+  return `UTC${sign}${hours}${rest ? `:${String(rest).padStart(2, '0')}` : ''}`
+}
+
 export function formatDateTime(datetime) {
   if (!datetime) return '-'
   const date = new Date(datetime)
   if (!isValidDate(date)) return date.toLocaleString(currentLocale(), DATE_TIME_OPTIONS)
-  return cachedFormat(DATE_TIME_FORMATS, currentLocale(), DATE_TIME_OPTIONS).format(date)
+  const formatted = cachedFormat(DATE_TIME_FORMATS, currentLocale(), DATE_TIME_OPTIONS).format(date)
+  return `${formatted} (${utcOffsetLabel(date)})`
 }
 
 export function formatDate(datetime) {

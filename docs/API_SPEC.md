@@ -2255,6 +2255,8 @@ GET /api/v1/sessions
 （自助終止）/ `backend_restart` / `orphaned`（啟動清掃孤兒）/ `revoked`（授權撤銷）。
 K8s 會話帶不可變 pod 快照（uid/image/node 於連線當下釘住）。
 
+agent 會話（`actor_kind=agent`）的列表與詳情另帶兩個唯讀名稱欄：`owner_username`（當時負責人）與 `on_behalf_of_username`（這次連線替誰做）。兩者由快照的 user id 即時投影目前帳號名，非資料表欄位；主體已刪時該鍵不出現。
+
 **離機儲存兩欄**（`offsite_object_id`／`offsite_status`）:
 - `offsite_object_id`：保管帳冊列的識別；本會話的錄影尚未（或不會）進入離機佇列時**該鍵不出現**（`omitempty`）。
 - `offsite_status`：**恆出現**（未進佇列時為空字串）。值域＝帳冊七態
@@ -2969,8 +2971,8 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 `POST /api/v1/my/agents` 與 `GET /api/v1/my/agents` 需已認證且啟用中的 human；不需 admin 角色。兩端點不在 agent 路由允許清單，以 agent 憑證呼叫皆回 `403 AUTH_AGENT_FORBIDDEN_ROUTE`；未認證回既有 401。
 
 - POST 請求：`{"username":"nightly-worker","purpose":"每日報表"}`。名稱 trim 後 3–50 字元，用途 trim 後 1–2000 字元；缺欄或值域外回 `400 VALIDATION_BAD_PARAMS`。成功回 `201 {"data":<user>}`，kind 固定 agent、owner 固定認證呼叫者。額外的 owner_user_id、kind、password、roles 等欄位不採信，無可用密碼、不具登入能力，沿用既有角色與審核者守衛。
-- GET 成功回 `200 {"data":[<user>],"total":N}`，依 id 排序，只列本人名下未軟刪的 agent（含停用者），不列他人主體。用途不屬 users 欄位，清單不回傳用途。
-- `agent_self_create_enabled` 出廠 false，關閉時兩端點皆回 `403 RULE_AGENT_SELF_CREATE_DISABLED`。`agent_self_create_max_per_owner` 出廠 3，合法值 1–100，達上限的 POST 回 `403 RULE_AGENT_SELF_CREATE_LIMIT`。上限計入本人所有未軟刪 agent，含管理員建立與停用者；軟刪後釋放額度。上限調低或政策關閉不影響既有主體，管理員 `/users` 建立不受配額限制。
+- GET 成功回 `200 {"data":[<user>],"total":N,"self_create":{enabled,max_per_owner,current},"self_create_enabled":<bool>}`，依 id 排序，只列本人名下未軟刪的 agent（含停用者），不列他人主體。用途不屬 users 欄位，清單不回傳用途。`self_create_enabled` 即政策鍵現值，供介面決定要不要提供建立入口。
+- `agent_self_create_enabled` 出廠 false，關閉時 POST 回 `403 RULE_AGENT_SELF_CREATE_DISABLED`；GET 不受此鍵限制，負責人在出廠預設下仍可列出並管理名下既有 agent（列清單與自助建立是兩件事，責任不隨建立入口關閉而消失）。`agent_self_create_max_per_owner` 出廠 3，合法值 1–100，達上限的 POST 回 `403 RULE_AGENT_SELF_CREATE_LIMIT`。上限計入本人所有未軟刪 agent，含管理員建立與停用者；軟刪後釋放額度。上限調低或政策關閉不影響既有主體，管理員 `/users` 建立不受配額限制。
 - 自助建立在同一交易內鎖 owner、重讀政策與資格、計數並建立主體；主體投影審計維持 system actor，另以 owner 為 actor 留 self_service=true、purpose 與兩政策值的建立活動列。任何交易失敗均不留下帳號或上述審計列。管理員建立不帶 self_service 旗標。無 schema 或 migration 變更。
 
 
@@ -3037,7 +3039,7 @@ owner 仍有 agent 時刪除回 409，附 `agent_ids`。列表預設排除 agent
 | 方法 | 路徑 | 請求與回應 |
 |---|---|---|
 | POST | `/users/:id/agent-tokens` | `{"name":"automation","expires_at":"2026-12-01T00:00:00Z"}` → 201，token 欄位與一次性明文 `token`；`Cache-Control: no-store` |
-| GET | `/users/:id/agent-tokens` | 200 `{"data":[AgentToken...]}`，不含明文與雜湊 |
+| GET | `/users/:id/agent-tokens` | 200 `{"data":[AgentToken...]}`，不含明文與雜湊；每列另投影 `created_by_username`（建立者目前帳號名，唯讀、非快照） |
 | DELETE | `/users/:id/agent-tokens/:tokenId` | 可帶 `{"note":"rotation"}` → 204，冪等撤銷，並終止該 token 的既有會話 |
 
 三端點只允許 human admin 或目標 agent 的 owner，其他身分為 403。名稱必填且至多 100 字元；
@@ -3988,7 +3990,7 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/access-requests/pending` | 待審列表（僅審核範圍內＋排除本人單）→ `{data, total}` |
+| GET | `/access-requests/pending` | 待審列表（僅審核範圍內＋排除本人單）→ `{data, total}`。每個 `items[]` 另投影唯讀的 `asset_name`（審核者對該資產未必有讀取權，名稱是決定所需資訊，故隨項目一起回；批次解析，不需逐項回頭查資產）與 `asset_deleted`（資產已軟刪時為 true，名稱照舊可讀）；資料列已被硬刪時 `asset_name` 為空字串。同樣適用於 `/reviews/pending`、`/history`、`/mine` 與 `GET /agent-tasks/:requestId` 的項目 |
 | GET | `/access-requests/pending/count` | 待審＋待補審計數（同範圍語義，導航 badge 輪詢用）→ `{count, review_count}` |
 | GET | `/access-requests/history` | 歷史（一律依審核範圍過濾；分頁）→ `{data, total, page, page_size}` |
 | GET | `/access-requests/tickets` | 有效限時連線（審核視角，帶 `request_id` 回鏈供撤銷）→ `{data, total}` |
@@ -5332,7 +5334,7 @@ Authorization: Bearer <token>
 
 | 方法／路徑 | 資格與行為 |
 |---|---|
-| GET `/agent-tool-calls` | admin／auditor；查詢 user_id、access_request_id、from／to（RFC3339）、decision、offset／limit。回 `{data,total}`，含 result_digest／result_excerpt／masked_count；decision=pending 表示已記錄，是否送出與結果皆未知，非成功（契約 §9.13）。|
+| GET `/agent-tool-calls` | admin／auditor；查詢 user_id、access_request_id、from／to（RFC3339）、decision、offset／limit。回 `{data,total}`，含 result_digest／result_excerpt／masked_count；另由會話投影 `asset_name`／`account_username`（唯讀，會話外的呼叫或無資產的會話留空）；decision=pending 表示已記錄，是否送出與結果皆未知，非成功（契約 §9.13）。|
 | POST `/access-requests/:id/reports` | 任務原執行 agent 提交 `{body}`，201 回不可變的新版本；任務關閉後 24 小時內可補交／修訂；時鐘以持久化 closed_at 為準。人類或其他 agent 為 403、超窗 409、本文錯誤 400。|
 | GET `/access-requests/:id/reports` | admin／auditor、執行者、申請者或 owner；回 latest、versions、closed_at、missing_report_at_close。關閉時沒有版本即缺報告，後續補交不改該事實。|
 | GET `/access-requests/history` | 即時有效審核者 OR auditor。auditor 跨範圍唯讀；其他審核者維持原核准範圍。approve／reject／revoke／review 沿原資格，純 auditor 仍 403。|
@@ -5341,6 +5343,8 @@ Authorization: Bearer <token>
 任務報告每版以任務 id、版本與 body_hash 寫專屬審計列，HTTP 審計不複製正文。申請端點的 reason 與核准／駁回／撤銷／補審端點的 note 僅在端點專屬遮罩集放行；憑證鍵仍遮蔽。報告／熔斷通知沿既有 webhook／Slack 推送並帶 owner_id，沒有新增個人收件匣或送達保證。
 
 會話詳情帶 access_request_id、agent_token_id、actor_kind、on_behalf_of_user_id、owner_user_id、revoked_during_session_at。主體快照取建線當下；人類會話的原欄位保持原值，新快照欄為可空。撤權後收線記獨立事件。
+
+agent 會話的列表與詳情另投影兩個唯讀名稱欄：`owner_username`（快照 owner_user_id 的目前帳號名）與 `on_behalf_of_username`（快照 on_behalf_of_user_id 的目前帳號名，即這次連線替誰做）。兩者非欄位、非歷史快照，主體已刪時該鍵不出現（`omitempty`）；人類會話不帶這兩個鍵。詳情與列表走同一組投影，兩處顯示一致。
 
 範圍外引用的對外回應皆為相同 404；目標不存在或軟刪為 retired，有 exposure 為 revoked，其餘為 never_visible。只計 never_visible，主體內同一 id 每窗一次，政策鍵 `agent_probe_trip_count=3`／`agent_probe_window_seconds=300`。
 
@@ -5358,16 +5362,16 @@ agent 種子是指令文字規則，只涵蓋可列舉形態，無法窮舉寫�
 
 | 端點 | 性質／所需角色 | 增量契約 |
 |---|---|---|
-| GET `/agent-tasks` | 唯讀；admin／auditor（audit:view） | `subject`、`owner` 為正整數主體／目前負責人 id；`from`／`to` 為 RFC3339 建立時間半開窗；`report_status=submitted|missing|not_submitted`。offset 預設 0、limit 預設／上限 100（0 或超限收斂為 100，負值回 400）。回 `{data,total}`；列含 id、subject、username、owner_user_id、status、report_status、created_at、closed_at。submitted=有報告版本；missing=已關閉但沒有任何版本；not_submitted=尚未關閉且沒有版本，不取代報告 API 的 missing_report_at_close。owner 是目前主體關聯，非歷史快照。 |
-| GET `/agent-tasks/:requestId` | 唯讀審計；admin／auditor（audit:view） | 回 `{request,approval_total,session_ids,session_total,reports:{versions,total,closed_at,missing_report_at_close}}`。request 為 agent 申請單、最多 20 項、executor 投影與原核准註記；核准註記另用 approval_offset（預設 0）、同 limit 分頁，approval_total 為全部票數；session_ids 與 reports.versions 共用 offset／limit（預設／上限 100），版本降序；缺報告旗標按關閉時刻全版本查證，不受分頁影響。未知／人類任務 404，非法 id 400；requestId 及遮罩 query 留痕。 |
-| GET `/agent-tool-calls` | 唯讀審計；admin／auditor | 既有 query 增正整數 `session_id`，AND 合併其他條件；保留既有 limit 預設 100、最大 500（超限回預設），敏感讀取審計記查詢條件。 |
-| GET `/users/:id/agent-breaker/events` | 唯讀審計；admin／auditor 或該 agent 的 human owner | offset／limit 同任務列表（上限 100），from／to 為事件時間半開窗；回 `{data,total,breaker_pending_at}`。事件列為原 id、user_id、agent_token_id、asset_ref、endpoint、class、created_at，按時間與 id 降序。未知主體／非 owner 一律 403，避免藉 id 探測；空結果 data=[]。breaker_pending_at 只描述主體目前未處置狀態，不是逐事件解除歷史；不回推 exposure 升級前資料。此端點歸 audit_integrity，resource_id 為主體 id、無 asset pivot，GET query 留痕。 |
+| GET `/agent-tasks` | 唯讀；admin／auditor（audit:view） | `subject`、`owner` 為正整數主體／目前負責人 id；`from`／`to` 為 RFC3339 建立時間半開窗；`report_status=submitted|missing|not_submitted`。offset 預設 0、limit 預設／上限 100（0 或超限收斂為 100，負值回 400）。回 `{data,total}`；列含 id、subject、username、owner_user_id、owner_username、on_behalf_of_username、reason、status、report_status、created_at、closed_at；reason 為申請理由的唯讀投影，供列表直接呈現任務主旨；on_behalf_of_username 為申請人帳號名（agent 自行開單時為空字串），供列表答出「替誰做」。submitted=有報告版本；missing=已關閉但沒有任何版本；not_submitted=尚未關閉且沒有版本，不取代報告 API 的 missing_report_at_close。owner 是目前主體關聯，非歷史快照。 |
+| GET `/agent-tasks/:requestId` | 唯讀審計；admin／auditor（audit:view） | 回 `{request,approval_total,session_ids,session_total,reports:{versions,total,closed_at,missing_report_at_close}}`。request 為 agent 申請單、最多 20 項、executor 投影與原核准註記；`executor_user_id` 一律帶有效執行者（agent 自行開單時申請人即執行者，此欄回申請人 id，不回 null——儲存欄位本身不變）；每項另投影 `decided_by_username`（決定者帳號名，自動核准無決定者故留空）與 `requested_accounts`（申請當時的帳號範圍，核准縮限前已留存於 policy_snapshot；未留存的舊項回 null）；每張核准票另投影 `approver_username`（核准者目前帳號名，唯讀、非快照）；核准註記另用 approval_offset（預設 0）、同 limit 分頁，approval_total 為全部票數；session_ids 與 reports.versions 共用 offset／limit（預設／上限 100），版本降序；缺報告旗標按關閉時刻全版本查證，不受分頁影響。未知／人類任務 404，非法 id 400；requestId 及遮罩 query 留痕。 |
+| GET `/agent-tool-calls` | 唯讀審計；admin／auditor | 既有 query 增正整數 `session_id`，AND 合併其他條件；回應每列附會話目標投影 `asset_name`／`account_username`；保留既有 limit 預設 100、最大 500（超限回預設），敏感讀取審計記查詢條件。 |
+| GET `/users/:id/agent-breaker/events` | 唯讀審計；admin／auditor 或該 agent 的 human owner | offset／limit 同任務列表（上限 100），from／to 為事件時間半開窗；回 `{data,total,breaker_pending_at}`。事件列為原 id、user_id、agent_token_id、asset_ref、endpoint、class、created_at，按時間與 id 降序；另投影唯讀的 `asset_name` 與 `asset_deleted`，取資產目前名稱（非事件當時快照），已移除的資產仍取得出名稱並以 `asset_deleted=true` 標示，查無該資產時 `asset_name` 為空字串。未知主體／非 owner 一律 403，避免藉 id 探測；空結果 data=[]。breaker_pending_at 只描述主體目前未處置狀態，不是逐事件解除歷史；不回推 exposure 升級前資料。此端點歸 audit_integrity，resource_id 為主體 id、無 asset pivot，GET query 留痕。 |
 | GET `/users` | 唯讀；admin | 新 query `kind=human|agent` 由伺服器篩選並共用 total；明示 kind 優先 include_agents，未指定時維持原行為，非法 kind 回 400。 |
-| GET `/my/agents` | 唯讀；已認證 active human 本人 | 200 加 `self_create:{enabled,max_per_owner,current}`；current 為目前本人名下未軟刪 agent 數，含停用主體。政策關閉保留原 403／RULE_AGENT_SELF_CREATE_DISABLED，錯誤 envelope 也加同形 self_create（enabled=false）；不洩漏名下列或他人計數，不接受 owner query。 |
+| GET `/my/agents` | 唯讀；已認證 active human 本人 | 200 加 `self_create:{enabled,max_per_owner,current}` 與布林 `self_create_enabled`；current 為目前本人名下未軟刪 agent 數，含停用主體。政策關閉不影響本端點，仍回 200 與名下清單（`self_create_enabled=false`）；受政策鍵限制的只有 POST。不洩漏他人主體或計數，不接受 owner query。 |
 | GET `/access-requests/mine` | 唯讀；已認證本人，含既有 agent | 只查 requester_id=認證主體；忽略 client requester_id。回應增 executor 與項目 decision_bounds。 |
 | GET `/access-requests/pending`、`/reviews/pending`、`/history` | 唯讀；原有效審核者及其範圍；history 另開 auditor 跨範圍唯讀 | 增 `executor:{id,username,kind,owner_user_id,owner_username}`（目前主體投影）及每項 `decision_bounds:{max_duration,earliest_start,accounts}`；只在原範圍查詢後附加。max_duration 是原申請分鐘，earliest_start=max(now,requested_date_start)，accounts 沿原 scope（包括 @ALL sentinel）。界線不是決定授權，不放寬角色／範圍，送出仍由原服務檢查。 |
 | GET `/sessions` | 唯讀；admin／auditor（session:view） | 新 query `access_request_id` 為正整數，以任務關聯篩選並共用 total；帶此 query 時 page_size 上限 100，條件於 HTTP 審計列留痕；非法 id 回 400。`actor_kind=human|agent` agent 比對已存種類；human 包含明示 human 及 kind／agent_token_id 皆 NULL 的既有人類建線形態，不改原 JSON，非法值 400。 |
-| GET `/sessions`、`/sessions/:id` | 唯讀；admin／auditor（session:view） | 新 `agent_token_name` 為建立時快照，既有會話 NULL；不 join token 現值。增量 migration 只加 sessions 一欄，既有建線交易一處賦值；Down 保留資料，停用讀寫由舊版應用承擔。 |
+| GET `/sessions`、`/sessions/:id` | 唯讀；admin／auditor（session:view） | agent 會話兩處均投影 `owner_username` 與 `on_behalf_of_username`（快照 user id 的目前帳號名，唯讀、非歷史快照，詳情與列表同一組投影）。新 `agent_token_name` 為建立時快照，既有會話 NULL；不 join token 現值。增量 migration 只加 sessions 一欄，既有建線交易一處賦值；Down 保留資料，停用讀寫由舊版應用承擔。 |
 | GET `/audit/subjects?type=user` | 唯讀；admin／auditor（audit:view） | 在最小主體 DTO 增 kind 與有值時的 owner_user_id，含停用／軟刪主體供調查；資產主體不增加虛構種類。 |
 
 `POST /access-requests` 不是唯讀端點，寫入權限與判定均不改：429 `RULE_AGENT_REQUEST_RATE` 增 `details:{used,limit,window_seconds,dimension}`（hour=3600；pending=0，表示無滾動窗）；400 `VALIDATION_ACCOUNT_NOT_ON_ASSET` 增 `details:{item_index,asset_id}`，item_index 為 **0 起算**。裸 sentinel 仍保留原碼，服務實際帳號檢查回具項目資料的 typed error；其他錯誤 envelope 欄原樣保留。

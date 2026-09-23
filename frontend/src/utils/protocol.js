@@ -33,18 +33,6 @@ export const PROTOCOL_DEFAULT_PORTS = {
   k8s: 6443,
 }
 
-// 協議 tag 顏色唯一映射：
-// 同一資產的協議 chip 全站同色；新協議在此登記，勿在頁面內寫 inline 判斷
-const PROTOCOL_TAG_TYPES = {
-  ssh: 'success',
-  rdp: 'primary',
-  vnc: 'warning',
-  mysql: 'info',
-  postgres: 'info',
-  redis: 'info',
-  mssql: 'info',
-  k8s: 'info',
-}
-
-export const protocolTagType = (protocol) =>
-  PROTOCOL_TAG_TYPES[(protocol || '').toLowerCase()] || 'info'
+// 協議是分類而不是狀態：分類不佔用成功／警告／危險等語意色，
+// 彩標一律走中性的 .ot-tag-neutral（styles/dark-theme.css），
+// 協議由標籤文字本身區辨，故此處不再提供顏色映射。

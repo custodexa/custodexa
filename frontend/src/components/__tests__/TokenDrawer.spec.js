@@ -82,6 +82,36 @@ describe('TokenDrawer', () => {
     expect(w.find('[data-test="token-reveal"]').exists()).toBe(false)
     expect(w.text()).not.toContain('cxa_reveal_once_fixture')
   })
+  // 回歸：watch 源是新陣列時，父層刷新清單（principal 換成等值新物件）會重跑
+  // reset，把剛發出的一次性明文抹掉——使用者永遠來不及複製那串鑰匙
+  it('清單刷新與父層換 principal 物件都不得抹掉一次性明文', async () => {
+    const w = await open()
+    w.vm.name = 'nightly'
+    w.vm.expiresAt = new Date('2099-01-01T00:00:00Z')
+    await w.get('[data-test="issue-token"]').trigger('click'); await flushPromises()
+    expect(w.get('[data-test="token-reveal"]').text()).toContain('cxa_reveal_once_fixture')
+    await w.setProps({ principal: { ...principal } }); await flushPromises()
+    expect(w.get('[data-test="token-reveal"]').text()).toContain('cxa_reveal_once_fixture')
+    await w.vm.loadTokens(); await flushPromises()
+    expect(w.get('[data-test="token-reveal"]').text()).toContain('cxa_reveal_once_fixture')
+    await w.get('[data-test="token-saved"]').trigger('click')
+    expect(w.find('[data-test="token-reveal"]').exists()).toBe(false)
+  })
+  it('首屏摘要直接答出可用把數與最近到期', async () => {
+    api.list.mockResolvedValue({ data: [token, { ...token, id: 10, name: 'soon', expires_at: '2098-01-01T00:00:00Z' }, { ...token, id: 11, name: 'stopped', suspended_at: '2026-09-01T00:00:00Z' }] })
+    const w = await open()
+    // 把數是統計塊（數字獨立成節點、標籤才是灰字），最近到期另起一行
+    expect(w.get('[data-test="token-usable-stat"]').text()).toBe('2')
+    expect(w.get('[data-test="token-suspended-stat"]').text()).toBe('1')
+    expect(w.get('[data-test="token-next-expiry"]').text()).toContain('soon')
+  })
+  it('熔斷已解除後，停用的鑰匙不再標成待處置琥珀', async () => {
+    api.list.mockResolvedValue({ data: [{ ...token, suspended_at: '2026-09-01T00:00:00Z', suspended_reason: 'agent_breaker_tripped' }] })
+    const released = await open()
+    expect(released.getComponent({ name: 'ElTag' }).props('type')).toBe('info')
+    const pending = await open({ ...principal, breaker_pending_at: '2026-09-22T00:00:00Z' })
+    expect(pending.getComponent({ name: 'ElTag' }).props('type')).toBe('warning')
+  })
   it('撤銷確認載明會話立即結束', async () => {
     const w = await open()
     await w.get('[data-test="revoke-start"]').trigger('click')
@@ -99,6 +129,21 @@ describe('TokenDrawer', () => {
     expect(w.get('a').attributes('href')).toBe('/agent-breakers?user_id=5')
     await w.vm.issue(); expect(api.create).not.toHaveBeenCalled()
   })
+})
+
+// 使用者管理頁用的是同一個抽屜：刷新使用者清單同樣不得把明文洗掉
+it('使用者管理頁：發證後刷新使用者清單，明文仍在', async () => {
+  const w = mount(Users, { global: options })
+  await flushPromises()
+  w.vm.openTokenDrawer(principal)
+  await flushPromises()
+  const drawer = w.getComponent(TokenDrawer)
+  drawer.vm.name = 'nightly'
+  drawer.vm.expiresAt = new Date('2099-01-01T00:00:00Z')
+  await drawer.get('[data-test="issue-token"]').trigger('click'); await flushPromises()
+  expect(drawer.get('[data-test="token-reveal"]').text()).toContain('cxa_reveal_once_fixture')
+  await w.vm.fetchUserList(); await flushPromises()
+  expect(drawer.get('[data-test="token-reveal"]').text()).toContain('cxa_reveal_once_fixture')
 })
 
 describe('熔斷處置出口', () => {

@@ -21,6 +21,11 @@ const (
 
 // AgentToolCall retains the caller's redacted view, not the host's original output.
 type AgentToolCall struct {
+	// Target of the call's session, projected on read: the ledger stores only session_id, and a
+	// call made outside a session has no target. Never part of the integrity payload.
+	AssetName       string `gorm:"-" json:"asset_name,omitempty"`
+	AccountUsername string `gorm:"-" json:"account_username,omitempty"`
+
 	ID               uint      `gorm:"primarykey" json:"id"`
 	Seq              uint      `gorm:"not null;uniqueIndex:idx_agent_tool_calls_user_seq,priority:2" json:"seq"`
 	UserID           uint      `gorm:"not null;uniqueIndex:idx_agent_tool_calls_user_seq,priority:1" json:"user_id"`

@@ -11,9 +11,10 @@ vi.mock('vue-router', async original => ({ ...(await original()), useRoute: () =
 class Observer { observe() {} disconnect() {} takeRecords() { return [] } }
 vi.stubGlobal('MutationObserver', Observer)
 enableAutoUnmount(afterEach)
-beforeEach(() => { vi.clearAllMocks(); api.route.query = {}; api.list.mockResolvedValue({ data: [{ id: 23, subject: 5, username: 'worker', owner_user_id: 2, status: 'approved', report_status: 'submitted', created_at: '2026-09-22T00:00:00Z' }], total: 1 }) })
+beforeEach(() => { vi.clearAllMocks(); api.route.query = {}; api.list.mockResolvedValue({ data: [{ id: 23, subject: 5, username: 'worker', owner_user_id: 2, owner_username: 'alice', status: 'approved', report_status: 'submitted', created_at: '2026-09-22T00:00:00Z' }], total: 1 }) })
 const open = async () => { const w = mount(AgentTasks, { global: { plugins: [ElementPlus] } }); await flushPromises(); return w }
 describe('任務列表', () => {
+  it('負責人顯示帳號名而非 id', async () => { const w = await open(); expect(w.text()).toContain('alice'); expect(w.text()).not.toContain('負責人：#2') })
   it('四種篩選各自生效', async () => {
     const w = await open()
     w.vm.filters.subject = 5; await w.vm.load(); expect(api.list).toHaveBeenLastCalledWith({ subject: 5, offset: 0, limit: 20 })

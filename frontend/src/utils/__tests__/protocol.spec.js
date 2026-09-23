@@ -5,7 +5,6 @@ import {
   isDBConsoleProtocol,
   isPasswordOnlyProtocol,
   PROTOCOL_DEFAULT_PORTS,
-  protocolTagType,
 } from '../protocol'
 
 describe('protocol 分類（與後端 model.ProtocolType 對齊）', () => {
@@ -58,26 +57,6 @@ describe('protocol 分類（與後端 model.ProtocolType 對齊）', () => {
       mssql: 1433,
       k8s: 6443,
     })
-  })
-})
-
-describe('protocolTagType（全站唯一色映射）', () => {
-  it('maps each protocol to its tag type', () => {
-    expect(protocolTagType('ssh')).toBe('success')
-    expect(protocolTagType('rdp')).toBe('primary')
-    expect(protocolTagType('vnc')).toBe('warning')
-    expect(protocolTagType('mysql')).toBe('info')
-    expect(protocolTagType('postgres')).toBe('info')
-    expect(protocolTagType('redis')).toBe('info')
-    expect(protocolTagType('mssql')).toBe('info')
-    expect(protocolTagType('k8s')).toBe('info')
-  })
-
-  it('is case-insensitive and falls back to info', () => {
-    expect(protocolTagType('SSH')).toBe('success')
-    expect(protocolTagType('telnet')).toBe('info')
-    expect(protocolTagType('')).toBe('info')
-    expect(protocolTagType(undefined)).toBe('info')
   })
 })
 

@@ -25,9 +25,11 @@
 
 | 角色 | Token | 值 | 色盤來源 | 用途 |
 |---|---|---|---|---|
-| 品牌主色（暗底） | `--ot-primary` | `#4f83f1` | Primary Blue 亮階（暗底 AA 4.9:1） | 動作、連結、強調、焦點 |
-| 主色 hover | `--ot-primary-hover` | `#6e9bff` | 亮一階 | 互動 hover |
-| 主色 active | `--ot-primary-active` | `#2563eb` | Primary Blue 品牌原值 | 按下狀態、實底按鈕深階 |
+| 品牌主色（暗底，文字階） | `--ot-primary` | `#7aa5ff` | Primary Blue 亮階（所有暗底面 AA，最深的 bg-active 4.8:1） | 連結、選取態、強調、焦點；不可作白字的底色 |
+| 主色 hover | `--ot-primary-hover` | `#86adff` | 再亮一階 | 文字階的 hover |
+| 主色 active | `--ot-primary-active` | `#2563eb` | Primary Blue 品牌原值 | 按下狀態 |
+| 主色實底 | `--ot-primary-fill` | `#2563eb` | 品牌原值作實心底（白字 5.2:1） | 實底按鈕與任何需要白字的底色 |
+| 主色實底 hover | `--ot-primary-fill-hover` | `#1d4ed8` | 深一階（白字 6.7:1） | 實底按鈕 hover／active |
 | 夜色底（頁） | `--ot-bg-page` | `#0a1522` | Primary Navy 深化 | 深色介面底 |
 | 夜色底（面板） | `--ot-bg-surface` | `#0d1b2a` | Primary Navy 原值 | 卡片/面板 |
 | 夜色底（浮層） | `--ot-bg-elevated` | `#14283e` | Navy 亮階 | 彈窗/浮層 |
@@ -81,7 +83,7 @@
 
 ## 改視覺前的檢核清單
 
-- [ ] 主色是否仍為 Primary Blue 家族（暗底 `#4f83f1`／品牌 `#2563eb`）？（換掉＝品牌變更，須先開 issue 討論）
+- [ ] 主色是否仍為 Primary Blue 家族（文字階 `#7aa5ff`／實底 `#2563eb`；2026-09-23 依對比量測拆成文字階與實底階）？（換掉＝品牌變更，須先開 issue 討論）
 - [ ] 暗底是否與 navy `#0a1522`/`#0d1b2a` 同色相？mono 是否 JetBrains Mono 堆疊？
 - [ ] 琥珀/紅是否只出現在語意位置（警示、REC）？
 - [ ] icon 是否置於淺色徽章上（深色介面）？品牌名是否一律 Custodexa？

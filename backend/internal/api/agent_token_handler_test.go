@@ -72,6 +72,10 @@ func TestAgentTokenEndpointsAuthz(t *testing.T) {
 					if strings.Contains(w.Body.String(), seed.Token) || strings.Contains(w.Body.String(), seed.TokenHash) || strings.Contains(w.Body.String(), `"token"`) {
 						t.Fatal("list exposed token")
 					}
+					// 建立者以帳號名投影，抽屜不能只寫「建立者 #1」
+					if !strings.Contains(w.Body.String(), fmt.Sprintf(`"created_by_username":%q`, owner.Username)) {
+						t.Fatalf("list missing creator name: %s", w.Body)
+					}
 				}
 			}
 		})

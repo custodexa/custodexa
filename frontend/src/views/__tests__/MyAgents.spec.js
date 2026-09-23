@@ -23,7 +23,8 @@ describe('我的 agent', () => {
     expect(w.get('[data-test="my-agent-row"]').text()).toContain('my-worker')
     expect(w.findAllComponents({ name: 'ElSelect' })).toHaveLength(0)
     expect(w.findAllComponents({ name: 'ElSwitch' })).toHaveLength(0)
-    expect(w.text()).toContain('負責人固定是您')
+    // 頁首只留一句說明，其餘兩句收進「？」提示（提示內容以 aria-label 呈現）
+    expect(w.findAllComponents({ name: 'HelpTip' })[0].get('button').attributes('aria-label')).toContain('負責人固定是您')
     expect(w.get('a').attributes('href')).toBe('/agent-breakers?user_id=5')
     w.vm.openKeys(w.vm.agents[0]); await flushPromises()
     await vi.waitFor(() => expect(w.getComponent(TokenDrawer).find('[data-test="token-panel"]').exists()).toBe(true))
@@ -47,7 +48,7 @@ it('政策開：固定本人建立，無 owner 欄', async () => {
 it('政策關：403 政策值顯示管理員處理而非載入失敗', async () => {
   api.list.mockRejectedValue({ response: { status: 403, data: { code: 'RULE_AGENT_SELF_CREATE_DISABLED', self_create: { enabled: false, max_per_owner: 5, current: 1 } } } })
   const w = mount(MyAgents, { global }); await flushPromises(); expect(w.get('[data-test="policy-disabled"]').text()).toContain('建立 agent 由管理員處理')
-  expect(w.find('[data-test="create-my-agent"]').exists()).toBe(false); expect(w.text()).not.toContain('未能載入清單'); expect(w.find('[data-test="my-agents-empty"]').exists()).toBe(false); expect(api.create).not.toHaveBeenCalled()
+  expect(w.find('[data-test="create-my-agent"]').exists()).toBe(false); expect(w.text()).not.toContain('未能載入清單'); expect(w.find('[data-test="my-agents-empty"]').exists()).toBe(true); expect(api.create).not.toHaveBeenCalled()
 })
 
 it.each(['zh-TW', 'en-US', 'ja-JP'])('畫面 7 三語 DOM：本人清單與政策建立 %s', async locale => { i18n.global.locale.value = locale; api.list.mockResolvedValue({ data: [{ id: 5, username: 'worker', kind: 'agent', active: true, owner_user_id: 1 }], self_create: { enabled: true, current: 1, max_per_owner: 5 } }); const w = mount(MyAgents, { global }); await flushPromises(); await w.get('[data-test="create-my-agent"]').trigger('click'); expect(w.find('[data-test="create-my-agent-form"]').exists()).toBe(true); expect(w.findAllComponents({ name: 'ElSelect' })).toHaveLength(0); expect(w.text()).not.toMatch(/agentPrincipals\.|agentBreaker\.|common\./) })

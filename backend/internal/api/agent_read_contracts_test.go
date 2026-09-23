@@ -132,6 +132,12 @@ func TestAgentTasksListContract(t *testing.T) {
 	body := agentReadJSON(t, w)
 	require.EqualValues(t, 1, body["total"])
 	require.EqualValues(t, b.ID, body["data"].([]any)[0].(map[string]any)["id"])
+	// 負責人以帳號名投影，畫面不得只剩 id
+	require.Equal(t, e.owner.Username, body["data"].([]any)[0].(map[string]any)["owner_username"])
+	// 主旨在列表即可讀，稽核者不必點進每張單才知道這張單要做什麼
+	require.Equal(t, "fixture", body["data"].([]any)[0].(map[string]any)["reason"])
+	// 代表人＝申請人（單子是負責人替 agent 開的），列表就要答得出「替誰做」
+	require.Equal(t, e.owner.Username, body["data"].([]any)[0].(map[string]any)["on_behalf_of_username"])
 	require.Empty(t, agentReadJSON(t, e.get("/agent-tasks?owner=999", e.jwt[model.RoleAdmin]))["data"])
 	for _, query := range []string{"subject=bad", "report_status=wrong", "limit=-1", "from=2026-09-23T00:00:00Z&to=2026-09-22T00:00:00Z"} {
 		require.Equal(t, 400, e.get("/agent-tasks?"+query, e.jwt[model.RoleAuditor]).Code)
@@ -143,6 +149,12 @@ func TestAgentTasksListContract(t *testing.T) {
 	body = agentReadJSON(t, e.get("/agent-tasks?limit=99999", e.jwt[model.RoleAdmin]))
 	require.Len(t, body["data"], 100)
 	require.EqualValues(t, 105, body["total"])
+	// agent 自行開的單沒有代表人，欄位留空而不是回自己的名字。最新一筆排在首列
+	self := &model.AccessRequest{RequesterID: e.agent.ID, AssetID: 200, Reason: "self filed", RequestedDurationMinutes: 30, Status: model.AccessRequestPending, PendingExpiresAt: time.Now().Add(time.Hour)}
+	require.NoError(t, e.db.Create(self).Error)
+	top := agentReadJSON(t, e.get("/agent-tasks?limit=1", e.jwt[model.RoleAdmin]))["data"].([]any)[0].(map[string]any)
+	require.EqualValues(t, self.ID, top["id"])
+	require.Empty(t, top["on_behalf_of_username"])
 }
 func TestSessionLedgerContract(t *testing.T) {
 	e := newAgentReadEnv(t)
@@ -156,6 +168,25 @@ func TestSessionLedgerContract(t *testing.T) {
 	body := agentReadJSON(t, w)
 	require.EqualValues(t, 1, body["total"])
 	require.Len(t, body["data"], 1)
+	// 帳本列要看得出打到哪台資產的哪個帳號，不能只留一個 session id
+	require.NoError(t, e.db.Create(&model.Asset{Name: "prod-db-01", Host: "10.0.0.9", Port: 22, Protocol: model.ProtocolSSH, CreatedBy: e.owner.ID}).Error)
+	var asset model.Asset
+	require.NoError(t, e.db.Where("name = ?", "prod-db-01").First(&asset).Error)
+	require.NoError(t, e.db.Create(&model.Session{SessionID: "ledger-target", UserID: e.agent.ID, AssetID: &asset.ID, AccountUsername: "app", StartTime: time.Now(), Status: model.SessionStatusClosed, Protocol: model.ProtocolSSH}).Error)
+	var target model.Session
+	require.NoError(t, e.db.Where("session_id = ?", "ledger-target").First(&target).Error)
+	require.NoError(t, e.db.Session(&gorm.Session{SkipHooks: true}).Create(&model.AgentToolCall{Seq: 4, UserID: e.agent.ID, AgentTokenID: 1, OwnerUserID: e.owner.ID, Tool: "list_assets", ArgsRedacted: "{}", Decision: model.ToolCallPending, SessionID: &target.ID}).Error)
+	row := agentReadJSON(t, e.get(fmt.Sprintf("/agent-tool-calls?session_id=%d", target.ID), e.jwt[model.RoleAuditor]))["data"].([]any)[0].(map[string]any)
+	require.Equal(t, "prod-db-01", row["asset_name"])
+	require.Equal(t, "app", row["account_username"])
+	// 會話外的呼叫沒有對象，不得借用別列的資產
+	outside := agentReadJSON(t, e.get("/agent-tool-calls?user_id="+fmt.Sprint(e.agent.ID), e.jwt[model.RoleAuditor]))["data"].([]any)
+	for _, raw := range outside {
+		if raw.(map[string]any)["session_id"] == nil {
+			require.Empty(t, raw.(map[string]any)["asset_name"])
+			require.Empty(t, raw.(map[string]any)["account_username"])
+		}
+	}
 	require.Empty(t, agentReadJSON(t, e.get("/agent-tool-calls?session_id=999", e.jwt[model.RoleAuditor]))["data"])
 	require.Equal(t, 400, e.get("/agent-tool-calls?session_id=0", e.jwt[model.RoleAdmin]).Code)
 	var logs []model.AuditLog
@@ -173,11 +204,26 @@ func TestBreakerEventsContract(t *testing.T) {
 		require.NoError(t, e.db.Create(&model.AgentProbeEvent{UserID: e.agent.ID, AgentTokenID: 1, AssetRef: uint(i + 1), Endpoint: "GET /assets/:id", Class: model.ProbeNeverVisible, CreatedAt: at}).Error)
 	}
 	require.NoError(t, e.db.Create(&model.AgentProbeEvent{UserID: 999, AgentTokenID: 1, AssetRef: 1000, Endpoint: "GET /assets/:id", Class: model.ProbeRetired, CreatedAt: at}).Error)
+	// Asset names are projected read-only so the screen never names a target by
+	// its number. A removed asset still resolves, flagged as removed.
+	live := &model.Asset{Name: "live-asset", Protocol: "ssh", Host: "10.0.0.1", Port: 22}
+	require.NoError(t, e.db.Create(live).Error)
+	gone := &model.Asset{Name: "gone-asset", Protocol: "ssh", Host: "10.0.0.2", Port: 22}
+	require.NoError(t, e.db.Create(gone).Error)
+	require.NoError(t, e.db.Delete(gone).Error)
+	require.NoError(t, e.db.Create(&model.AgentProbeEvent{UserID: e.agent.ID, AgentTokenID: 1, AssetRef: live.ID, Endpoint: "GET /assets/:id", Class: model.ProbeRevoked, CreatedAt: at.Add(time.Minute)}).Error)
+	require.NoError(t, e.db.Create(&model.AgentProbeEvent{UserID: e.agent.ID, AgentTokenID: 1, AssetRef: gone.ID, Endpoint: "GET /assets/:id", Class: model.ProbeRetired, CreatedAt: at.Add(2 * time.Minute)}).Error)
 	w := e.get(path+"?limit=99999", e.jwt[model.RoleAuditor])
 	require.Equal(t, 200, w.Code, w.Body.String())
 	body := agentReadJSON(t, w)
-	require.EqualValues(t, 103, body["total"])
+	require.EqualValues(t, 105, body["total"])
 	require.Len(t, body["data"], 100)
+	rows := body["data"].([]any)
+	removed, existing := rows[0].(map[string]any), rows[1].(map[string]any)
+	require.Equal(t, "gone-asset", removed["asset_name"])
+	require.Equal(t, true, removed["asset_deleted"])
+	require.Equal(t, "live-asset", existing["asset_name"])
+	require.Equal(t, false, existing["asset_deleted"])
 	require.NotNil(t, body["breaker_pending_at"])
 	var logs []model.AuditLog
 	require.NoError(t, e.db.Where("resource = ?", model.ResourceAuditIntegrity).Find(&logs).Error)
@@ -199,11 +245,16 @@ func TestUserKindContract(t *testing.T) {
 }
 func TestSelfCreateContract(t *testing.T) {
 	e := newAgentReadEnv(t)
+	// 政策關閉時仍可列名下 agent；關閉的只有自助建立
 	w := e.get("/my/agents", e.jwt[model.RoleUser])
-	require.Equal(t, 403, w.Code)
-	status := agentReadJSON(t, w)["self_create"].(map[string]any)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	closed := agentReadJSON(t, w)
+	require.Equal(t, false, closed["self_create_enabled"])
+	status := closed["self_create"].(map[string]any)
 	require.Equal(t, false, status["enabled"])
 	require.EqualValues(t, 1, status["current"])
+	require.Len(t, closed["data"], 1)
+	require.Equal(t, e.agent.Username, closed["data"].([]any)[0].(map[string]any)["username"])
 	_, err := e.policies.Update(policy.PolicyAgentSelfCreateEnabled, "true", "test")
 	require.NoError(t, err)
 	w = e.get(fmt.Sprintf("/my/agents?owner_user_id=%d", e.owner.ID), e.jwt["other"])
@@ -214,6 +265,7 @@ func TestSelfCreateContract(t *testing.T) {
 	w = e.get("/my/agents", e.jwt[model.RoleUser])
 	require.Equal(t, 200, w.Code)
 	require.EqualValues(t, 1, agentReadJSON(t, w)["self_create"].(map[string]any)["current"])
+	require.Equal(t, true, agentReadJSON(t, w)["self_create_enabled"])
 }
 func TestQuotaDetailsContract(t *testing.T) {
 	for _, dimension := range []string{"hour", "pending"} {

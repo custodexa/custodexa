@@ -7,7 +7,7 @@
       <template #actions>
         <el-button
           type="primary"
-          @click="createVisible = !createVisible"
+          @click="createVisible = true"
         >
           {{ $t('multiRequest.title') }}
         </el-button>
@@ -18,11 +18,43 @@
       </template>
     </PageHeader>
 
-    <MultiAssetRequestForm
-      v-if="createVisible"
-      @cancel="createVisible = false"
-      @created="requestCreated"
-    />
+    <!-- 表單走抽屜：原本開表單會把列表整個換掉，送出前看不到自己已經有哪些單 -->
+    <el-drawer
+      v-model="createVisible"
+      :title="$t('multiRequest.title')"
+      size="60%"
+      data-test="create-request-drawer"
+      destroy-on-close
+    >
+      <MultiAssetRequestForm
+        v-if="createVisible"
+        @cancel="createVisible = false"
+        @created="requestCreated"
+      />
+    </el-drawer>
+
+    <!-- 送出後的結果面板：橫幅文字與顏色依後端回傳的實際狀態決定。
+         固定寫「等候審核」會與自動核准的單互相矛盾，讀者無從判斷現在能不能連線。
+         逐項結果就地列在同一面板，不必再展開列表比對 -->
+    <section
+      v-if="created"
+      class="list-panel result-panel"
+      data-test="request-created"
+    >
+      <el-alert
+        :type="createdAlertType"
+        :title="createdTitle"
+        :closable="true"
+        show-icon
+        @close="created = null"
+      />
+      <RequestItems
+        v-if="created.items?.length"
+        :request="created"
+        data-test="request-created-items"
+      />
+      <a href="#my-requests-list">{{ $t('myRequests.createdGoToList') }}</a>
+    </section>
 
     <!-- 有效限時連線：核准後的可連線時窗（到期自動失效，不影響進行中連線） -->
     <div
@@ -66,12 +98,17 @@
     </div>
 
     <!-- 申請列表：在途與歷史 -->
-    <div class="list-panel">
+    <div
+      id="my-requests-list"
+      class="list-panel"
+    >
+      <!-- 不加 stripe：斑馬列的底色是 bg-elevated，撤回（danger 文字）落在上面
+           只有 4.36:1，低於 AA；列與列之間本來就有分隔線，底色不必再差一階 -->
       <el-table
         v-loading="loading"
+        v-expand-row-a11y
         :data="requests"
         style="width: 100%"
-        stripe
       >
         <el-table-column type="expand">
           <template #default="{ row }">
@@ -80,21 +117,21 @@
         </el-table-column>
         <el-table-column
           :label="$t('multiRequest.task')"
-          min-width="140"
+          min-width="110"
         >
           <template #default="{ row }">
             <a
               v-if="(row.items || []).some(i => i.status === 'approved') || row.status === 'approved'"
               :href="`/audit/agent-tasks/${row.id}`"
               data-test="request-task"
-            >#{{ row.id }}</a><span v-else>#{{ row.id }}</span><p v-if="row.items">
+            >{{ $t('agentTasks.detailTitle', { id: row.id }) }}</a><span v-else>{{ $t('agentTasks.detailTitle', { id: row.id }) }}</span><p v-if="row.items">
               {{ $t('multiRequest.count', { n: row.items.length }) }}
             </p>
           </template>
         </el-table-column>
         <el-table-column
           :label="$t('common.asset')"
-          min-width="180"
+          min-width="140"
         >
           <template #default="{ row }">
             {{ row.asset?.name || $t('common.assetRef', { id: row.asset_id }) }}
@@ -110,13 +147,16 @@
         </el-table-column>
         <el-table-column
           :label="$t('common.requestReason')"
-          min-width="200"
-          show-overflow-tooltip
+          min-width="150"
           prop="reason"
-        />
+        >
+          <template #default="{ row }">
+            <span class="reason-cell">{{ row.reason }}</span>
+          </template>
+        </el-table-column>
         <el-table-column
           :label="$t('myRequests.colDuration')"
-          width="110"
+          width="90"
         >
           <template #default="{ row }">
             {{ formatMinutes(row.requested_duration_minutes) }}
@@ -124,7 +164,7 @@
         </el-table-column>
         <el-table-column
           :label="$t('common.requestTime')"
-          width="170"
+          width="150"
         >
           <template #default="{ row }">
             {{ formatDateTime(row.created_at) }}
@@ -132,7 +172,7 @@
         </el-table-column>
         <el-table-column
           :label="$t('common.status')"
-          width="120"
+          width="100"
         >
           <template #default="{ row }">
             <el-tooltip
@@ -148,7 +188,8 @@
         </el-table-column>
         <el-table-column
           :label="$t('myRequests.colResult')"
-          min-width="180"
+          min-width="200"
+          class-name="result-cell"
         >
           <template #default="{ row }">
             <span v-if="row.revoked_at">
@@ -174,6 +215,7 @@
           :label="$t('common.actions')"
           width="100"
           fixed="right"
+          class-name="actions-cell"
         >
           <template #default="{ row }">
             <el-button
@@ -199,13 +241,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import MultiAssetRequestForm from '@/components/access-request/MultiAssetRequestForm.vue'
 import RequestItems from '@/components/access-request/RequestItems.vue'
+import { expandRowA11y as vExpandRowA11y } from '@/directives/expandRowA11y'
 import { formatDateTime } from '@/utils/format'
 import { t } from '@/i18n'
 import {
@@ -215,7 +258,42 @@ import {
 } from '@/api/accessRequests'
 
 const createVisible = ref(false)
-function requestCreated() { createVisible.value = false; fetchAll() }
+// 整份回傳而不只是編號：橫幅要講的是「現在是什麼狀態」，那只有回傳的 status
+// 與逐項 status 說得準
+const created = ref(null)
+function requestCreated(result) {
+  createVisible.value = false
+  created.value = result?.data ?? result ?? null
+  fetchAll()
+}
+
+// 主旨取申請理由（過長截斷）：編號本身不說明任何事，讀者記得的是自己寫的理由
+const createdSubject = computed(() => {
+  const reason = (created.value?.reason || '').trim()
+  if (!reason) return t('myRequests.createdNoSubject')
+  return reason.length > 30 ? `${reason.slice(0, 30)}…` : reason
+})
+
+const createdState = computed(() => {
+  const request = created.value
+  if (!request) return 'pending'
+  const items = request.items || []
+  if (items.length) {
+    const approved = items.filter(item => item.status === 'approved').length
+    if (approved === items.length) return 'approved'
+    if (approved > 0) return 'partial'
+    return 'pending'
+  }
+  return request.status === 'approved' ? 'approved' : 'pending'
+})
+
+const createdTitle = computed(() => t(`myRequests.created.${createdState.value}`, {
+  id: created.value?.id,
+  subject: createdSubject.value,
+}))
+
+// 綠色只留給「真的已經可以連線」；還要等人處理的用警示階，與列表狀態標籤同色系
+const createdAlertType = computed(() => createdState.value === 'approved' ? 'success' : 'warning')
 const loading = ref(false)
 const requests = ref([])
 const activeTickets = ref([])
@@ -337,6 +415,12 @@ a { color: var(--ot-primary); }
   gap: var(--ot-space-lg);
 }
 
+/* 版面縱向間距一律由上面的 gap 給；PageHeader 自帶的下緣會與 gap 疊成 48px，
+   那不在間距階上 */
+.my-requests > :deep(.page-header) {
+  margin-bottom: 0;
+}
+
 .list-panel {
   background-color: var(--ot-bg-surface);
   border: 1px solid var(--ot-border-subtle);
@@ -351,7 +435,32 @@ a { color: var(--ot-primary); }
   margin-bottom: var(--ot-space-md);
 }
 
+/* 處理結果是「送出之後怎麼了」的唯一出口：不折行就會被右側固定的操作欄蓋掉 */
+.list-panel :deep(.result-cell .cell) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* 理由整段可讀：截斷後要 hover 才看得到全文，稽核時等於把資訊藏起來 */
+.reason-cell {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .ticket-panel {
   border-color: var(--ot-primary-dim);
+}
+
+/* 撤回是這一列唯一的出口：size=small 的 12px 在這張表上太小，提到次要字級階 */
+.list-panel :deep(.actions-cell .el-button) {
+  font-size: var(--ot-font-size-sm);
+}
+
+.result-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-md);
+  align-items: flex-start;
 }
 </style>

@@ -116,8 +116,8 @@
                 </span>
               </el-tooltip>
               <el-tag
+                class="ot-tag-neutral"
                 size="small"
-                :type="protocolTagType(item.protocol)"
               >
                 {{ item.protocol.toUpperCase() }}
               </el-tag>
@@ -462,7 +462,7 @@ import { getAssetList, getAsset, uploadK8sFile, downloadK8sFile } from '@/api/as
 import { listAssetAccounts } from '@/api/assetAccounts'
 import { resolveApiError } from '@/api/error'
 import { moveItem } from '@/utils/move-item'
-import { isTextTerminal, isDBConsoleProtocol, protocolTagType } from '@/utils/protocol'
+import { isTextTerminal, isDBConsoleProtocol } from '@/utils/protocol'
 import { closeOthers, closeLeft, closeRight, closeAll } from '@/utils/tab-close'
 import { assetEntryState } from '@/utils/asset-access'
 import { confirmDestructive } from '@/utils/confirm'

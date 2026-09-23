@@ -90,6 +90,9 @@ describe('Approvals 審核中心', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('目前沒有等候審核的申請')
+    // 空態要交代原因與下一步，不能只留一句「沒有」
+    expect(wrapper.text()).toContain('新申請進來會顯示在這裡')
+    expect(wrapper.text()).toContain('AI agent 任務')
   })
 
   it('待審列表渲染申請人/資產/理由與待審計數', async () => {

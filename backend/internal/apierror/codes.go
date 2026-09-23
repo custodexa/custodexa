@@ -11,7 +11,7 @@ package apierror
 // fallback of parametrized codes (frontend re-translates via its enum getter).
 var resourceZhLabels = map[string]string{
 	"asset":              "資產",
-	"user":               "用戶",
+	"user":               "使用者",
 	"change_secret_plan": "計劃",
 	"snippet":            "片段",
 	"user_group":         "使用者群組",
@@ -186,9 +186,11 @@ var (
 
 // --- NOTFOUND_* ---
 var (
-	// NOTFOUND_USER is the admin user-management "用戶不存在"; distinct from the
-	// auth-domain AUTH_USER_NOT_FOUND ("使用者不存在") by wording (用戶 vs 使用者).
-	CodeUserNotExist = register("NOTFOUND_USER", Descriptor{ZhFallback: "用戶不存在"})
+	// NOTFOUND_USER is the admin user-management miss; AUTH_USER_NOT_FOUND is the
+	// auth-domain one. Both read "使用者不存在" — the wire wording is user-facing and
+	// must match the rest of the product, so the two stay distinct by code, not by
+	// wording (the frontend picks its string from the code, never from this fallback).
+	CodeUserNotExist = register("NOTFOUND_USER", Descriptor{ZhFallback: "使用者不存在"})
 )
 
 // --- RULE_USER_* (user management / password policy rules) ---
@@ -234,10 +236,10 @@ var (
 	CodeInternalChangePassword           = register("INTERNAL_CHANGE_PASSWORD", Descriptor{ZhFallback: "修改密碼失敗"})
 	CodeChangePasswordUnavailable        = register("INTERNAL_CHANGE_PASSWORD_UNAVAILABLE", Descriptor{ZhFallback: "改密服務未啟用"})
 
-	CodeInternalUserQuery        = register("INTERNAL_USER_QUERY", Descriptor{ZhFallback: "查詢用戶失敗"})
+	CodeInternalUserQuery        = register("INTERNAL_USER_QUERY", Descriptor{ZhFallback: "查詢使用者失敗"})
 	CodeInternalUserCreate       = register("INTERNAL_USER_CREATE", Descriptor{ZhFallback: "建立使用者失敗"})
-	CodeInternalUserUpdate       = register("INTERNAL_USER_UPDATE", Descriptor{ZhFallback: "更新用戶失敗"})
-	CodeInternalUserDelete       = register("INTERNAL_USER_DELETE", Descriptor{ZhFallback: "刪除用戶失敗"})
+	CodeInternalUserUpdate       = register("INTERNAL_USER_UPDATE", Descriptor{ZhFallback: "更新使用者失敗"})
+	CodeInternalUserDelete       = register("INTERNAL_USER_DELETE", Descriptor{ZhFallback: "刪除使用者失敗"})
 	CodeInternalRoleAssign       = register("INTERNAL_ROLE_ASSIGN", Descriptor{ZhFallback: "分配角色失敗"})
 	CodeInternalRoleAdd          = register("INTERNAL_ROLE_ADD", Descriptor{ZhFallback: "追加角色失敗"})
 	CodeInternalStatusUpdate     = register("INTERNAL_STATUS_UPDATE", Descriptor{ZhFallback: "更新狀態失敗"})
@@ -249,7 +251,7 @@ var (
 	CodeInternalMFAEnroll       = register("INTERNAL_MFA_ENROLL", Descriptor{ZhFallback: "完成 MFA 綁定失敗"})
 	CodeInternalMFADisable      = register("INTERNAL_MFA_DISABLE", Descriptor{ZhFallback: "停用 MFA 失敗"})
 	CodeInternalMFAVerify       = register("INTERNAL_MFA_VERIFY", Descriptor{ZhFallback: "MFA 驗證失敗"})
-	CodeInternalMFAAdminDisable = register("INTERNAL_MFA_ADMIN_DISABLE", Descriptor{ZhFallback: "停用用戶 MFA 失敗"})
+	CodeInternalMFAAdminDisable = register("INTERNAL_MFA_ADMIN_DISABLE", Descriptor{ZhFallback: "停用使用者 MFA 失敗"})
 )
 
 // ============================================================================

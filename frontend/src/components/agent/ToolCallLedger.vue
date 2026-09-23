@@ -3,10 +3,15 @@
     class="tool-ledger"
     data-test="tool-ledger"
   >
-    <h2>{{ t('agentLedger.title') }}</h2>
-    <p data-test="ledger-boundary">
-      {{ t('agentLedger.boundary') }}
-    </p>
+    <header class="ledger-head">
+      <h2>{{ t('agentLedger.title') }}</h2>
+      <p
+        class="ledger-hint"
+        data-test="ledger-boundary"
+      >
+        {{ t('agentLedger.boundary') }}
+      </p>
+    </header>
     <el-form
       inline
       @submit.prevent="load"
@@ -16,6 +21,7 @@
           v-model="decision"
           clearable
           :placeholder="t('common.all')"
+          :aria-label="t('agentLedger.decision')"
           @change="resetPage"
         >
           <el-option
@@ -40,65 +46,22 @@
       type="error"
       :closable="false"
     />
-    <p v-if="!loading && !error && !rows.length">
-      {{ t('agentLedger.empty') }}
-    </p>
+    <EmptyState
+      v-if="!loading && !error && !rows.length"
+      :title="t('agentLedger.empty')"
+      :hint="t('agentLedger.emptyNext')"
+      :icon="ListChecks"
+    />
     <div
       v-loading="loading"
       :aria-busy="loading"
     >
-      <article
-        v-for="row in rows"
-        :key="row.id"
-        class="tool-ledger__row"
-        data-test="ledger-row"
-      >
-        <div class="tool-ledger__summary">
-          <span>#{{ row.seq }}</span><time>{{ formatDateTime(row.created_at) }}</time><strong data-test="tool-action">{{ toolLabel(row.tool) }}</strong>
-          <el-tag
-            :type="row.decision === 'denied' || row.decision === 'breaker' ? 'warning' : 'info'"
-            data-test="ledger-decision"
-          >
-            {{ decisionLabel(row.decision) }}
-          </el-tag>
-          <el-tag
-            v-if="row.masked_count > 0"
-            type="warning"
-            data-test="masked-count"
-          >
-            {{ t('agentLedger.masked', { n: row.masked_count }) }}
-          </el-tag><span v-else>{{ t('agentLedger.masked', { n: 0 }) }}</span>
-          <span>{{ t('agentLedger.duration', { n: row.duration_ms }) }}</span>
-          <span v-if="showSession"><a
-            v-if="row.session_id"
-            :href="`/sessions/${row.session_id}`"
-          >{{ t('agentLedger.session', { id: row.session_id }) }}</a><span v-else>{{ t('agentLedger.noSession') }}</span></span>
-        </div>
-        <p v-if="row.decision === 'pending'">
-          {{ t('agentLedger.pendingBoundary') }}
-        </p>
-        <p
-          v-if="row.denial_code"
-          data-test="denial-explanation"
-        >
-          {{ denialLabel(row.denial_code) }}
-        </p>
-        <details>
-          <summary>{{ t('agentLedger.details') }}</summary>
-          <dl>
-            <dt>{{ t('agentLedger.reasonCode') }}</dt><dd><code>{{ row.denial_code || '—' }}</code></dd>
-            <dt>{{ t('agentLedger.toolName') }}</dt><dd><code>{{ row.tool }}</code></dd>
-            <dt>{{ t('agentLedger.result') }}</dt><dd>{{ row.decision === 'pending' ? t('agentLedger.unknown') : row.result_status || t('agentLedger.unknown') }}</dd>
-            <dt>{{ t('agentLedger.arguments') }}</dt><dd><pre>{{ JSON.stringify(row.args_redacted, null, 2) }}</pre></dd>
-            <dt>{{ t('agentLedger.digest') }}</dt><dd><code>{{ row.result_digest || t('agentLedger.unavailable') }}</code></dd>
-            <dt>{{ t('agentLedger.excerpt') }}</dt><dd>
-              <p data-test="excerpt-boundary">
-                {{ t('agentLedger.excerptBoundary') }}
-              </p><pre>{{ row.result_excerpt || t('agentLedger.unavailable') }}</pre>
-            </dd>
-          </dl>
-        </details>
-      </article>
+      <ToolCallLedgerTable
+        v-if="rows.length"
+        :rows="rows"
+        :targets="targets"
+        :link-mode="showSession ? 'session' : 'task'"
+      />
     </div>
     <el-pagination
       v-if="total"
@@ -112,19 +75,18 @@
 </template>
 <script setup>
 import { ref, watch, onBeforeUnmount } from 'vue'
-import i18n, { t } from '@/i18n'
+import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
-import { formatDateTime } from '@/utils/format'
 import { getAgentToolCalls } from '@/api/agentTasks'
-const props = defineProps({ query: { type: Object, default: () => ({}) }, showSession: { type: Boolean, default: true } })
+import { ListChecks } from 'lucide-vue-next'
+import EmptyState from '@/components/EmptyState.vue'
+import ToolCallLedgerTable from '@/components/agent/ToolCallLedgerTable.vue'
+const props = defineProps({ query: { type: Object, default: () => ({}) }, showSession: { type: Boolean, default: true }, targets: { type: Object, default: () => ({}) } })
 const rows = ref([]), total = ref(0), page = ref(1), loading = ref(false), error = ref(''), decision = ref('')
 const pageSize = 20
 const decisions = ['pending', 'allowed', 'denied', 'breaker', 'rate_limited']
 const allowedQuery = ['user_id', 'access_request_id', 'session_id', 'from', 'to']
 let epoch = 0
-const decisionLabel = value => decisions.includes(value) ? t(`agentLedger.decisions.${value}`) : t('agentLedger.unknown')
-const toolLabel = tool => Object.prototype.hasOwnProperty.call(i18n.global.getLocaleMessage(i18n.global.locale.value).agentLedger.tools, tool) ? t(`agentLedger.tools.${tool}`) : t('agentLedger.unknownTool')
-const denialLabel = code => resolveApiError({ code }, 403, t('agentLedger.unknownReason'))
 async function load() {
   const version = ++epoch
   loading.value = true; error.value = ''; rows.value = []; total.value = 0
@@ -143,13 +105,11 @@ onBeforeUnmount(() => { epoch++ })
 </script>
 <style scoped>
 .tool-ledger { color: var(--ot-text-primary); }
-h2 { font-size: var(--ot-font-size-lg); }
-.tool-ledger__row { border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); padding: var(--ot-space-md); margin: var(--ot-space-md) 0; }
-.tool-ledger__summary { display: flex; flex-wrap: wrap; gap: var(--ot-space-sm); align-items: center; }
-p, dt { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--ot-space-sm) var(--ot-space-md); }
-dd { margin: 0; overflow-wrap: anywhere; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--ot-font-mono); font-size: var(--ot-font-size-sm); }
-a { color: var(--ot-primary); }
-summary { cursor: pointer; margin-top: var(--ot-space-sm); }
+/* 標題、說明句、篩選列三者原本讀起來同一階：標題加重、說明句降級，
+   篩選列拉開間距才看得出「這是這一區塊的工具列」 */
+.ledger-head { margin-bottom: var(--ot-space-md); }
+h2 { font-size: var(--ot-font-size-lg); font-weight: 600; margin: 0; }
+.ledger-hint { margin: var(--ot-space-xs) 0 0; color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
+/* 判定篩選同樣會塌到 44px 而看不見佔位字，寬度下限與任務列表的篩選一致 */
+.tool-ledger :deep(.el-select) { min-width: calc(var(--ot-space-xl) * 6); }
 </style>

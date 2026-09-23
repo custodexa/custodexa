@@ -303,7 +303,7 @@ func TestAuthorizationHandler_Create(t *testing.T) {
 		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("用戶不存在（404）", func(t *testing.T) {
+	t.Run("使用者不存在（404）", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		mockAuthService.On("Grant", mock.Anything, mock.MatchedBy(func(spec authz.GrantSpec) bool {
@@ -337,7 +337,7 @@ func TestAuthorizationHandler_Create(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.Contains(t, response["error"], "用戶不存在")
+		assert.Contains(t, response["error"], "使用者不存在")
 
 		mockAuthService.AssertExpectations(t)
 	})
@@ -541,7 +541,7 @@ func TestAuthorizationHandler_Delete(t *testing.T) {
 
 // TestAuthorizationHandler_List 測試查詢授權列表
 func TestAuthorizationHandler_List(t *testing.T) {
-	t.Run("成功查詢用戶授權列表", func(t *testing.T) {
+	t.Run("成功查詢使用者授權列表", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		assetID := uint(10)
@@ -953,7 +953,7 @@ func TestAuthorizationHandler_List(t *testing.T) {
 		mockAuthService.AssertExpectations(t)
 	})
 
-	t.Run("Service 層錯誤（查詢用戶授權）", func(t *testing.T) {
+	t.Run("Service 層錯誤（查詢使用者授權）", func(t *testing.T) {
 		mockAuthService := new(MockAuthorizationService)
 
 		mockAuthService.On("ListAuthorizations", map[string]interface{}{"user_id": uint(2)}, 1, 20).

@@ -124,7 +124,7 @@
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含十三條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含二十六條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -2468,7 +2468,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共十四條**——baseline 一條，其後的增量十三條
+**現行 migration 共二十七條**——baseline 一條，其後的增量二十六條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2494,10 +2494,16 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260921_agent_audit_actions` | audit_logs.action 由 varchar(20) 擴為 varchar(32)，容納本單完整事件名稱，無資料改寫 | 保留長事件名稱，拒絕縮欄回退 |
 | `20260908_group_role_mapping` | 外部群組對角色映射的資料層，共 **20 條 DDL**：`user_roles` 加 `source`（`varchar(16) NOT NULL DEFAULT 'manual'`；見第 2b 節）、建 `group_role_mappings`（含來源恰一的 CHECK `chk_group_role_mapping_source`；第 52 節）與 `user_role_mappings`（複合主鍵含通道；第 53 節）兩張表、`ldap_directories` 加 `attr_group`、`users` 加群組觀測快照三欄、`oidc_providers` 加 `groups_claim` 與宣告對應三欄，再加 6 條外鍵與 3 條索引（1 條軟刪索引 ＋ 2 條排除軟刪列的部分唯一索引）。**Up 為純加法**：加欄皆帶預設或可空，無資料轉換、無回填，耗時與存量無關；`source` 的存量列以 default 回填為 `manual`——本欄出現之前全部角色列都是管理者指派的，回填值即其實際語義。**四個空值欄一律代表「未設定＝行為不變」**（`attr_group` 與 `groups_claim` 空＝不依外部群組決定角色，宣告對應三欄空＝走現行解析），故既有部署升級後行為逐字不變。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackGroupRoleMapping`：反序 DROP 快照三欄 → 宣告四欄 → `DROP TABLE user_role_mappings` → `DROP TABLE group_role_mappings` → `attr_group` → `user_roles.source`。**Down 有損，且部分損失不可還原**：（一）`group_role_mappings` 的規則是管理者逐條設定的，系統沒有第二個地方存著它們，**回退前須自行備份**；（二）`user_roles.source` 卸下後「哪些角色是管理者指派的、哪些只是外部群組給的」永久消失，全部角色列回到不分來源的舊語義，本地管理員計數會重新把僅由映射取得管理員角色的帳號計入；（三）`user_role_mappings` 的列一併消失，可由下一次登入重算重建，但要等到當事人下一次登入；（四）快照三欄與四個宣告／屬性欄還原為未設定，無損。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260909_policy_groups` | 政策組與合規對照的資料層，共 **5 條 DDL**：建 `policy_groups`（主鍵為組代號；第 54 節）、`policy_clauses`（複合主鍵 `(group_code, clause_no)`；第 55 節）、`policy_clause_controls`（第 56 節）與 `policy_clause_annotations`（複合主鍵 `(group_code, clause_no)`；第 57 節）四張表，加一條唯一索引 `idx_policy_clause_controls_group_key`＝`(group_code, policy_key)`。**Up 為純建表**：不動任何既有表、不加欄、不回填、無資料轉換，耗時與存量無關；既有部署升級後行為逐字不變，四張表在內建組種子寫入之前是空的。**四張表之間刻意無外鍵**：條文與要求以組代號掛靠、備註以（組代號，條號）掛靠，連帶清除由寫入端的單一交易保證並有測試釘住；備註表更不指向條文列，因為條文會因升級被標記移除而備註必須活得比它久。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackPolicyGroups`：反序 DROP 唯一索引 → `policy_clause_annotations` → `policy_clause_controls` → `policy_clauses` → `policy_groups`。**Down 有損且損失不可還原、開發庫限定**：四張表整個消失。內建組的內容可由下一次啟動的種子重建，但**機構自建的政策組、自建條文、全部備註與人工確認記錄沒有第二個地方存著**，回退即永久遺失，故回退前須自行匯出。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260913_kek_topology` | 建單列表 `kek_topologies`（`kek_topologies_singleton_check` CHECK ＋ `idx_kek_topologies_singleton` unique），委託拓撲與憑證設定；第 58 節 | 委託模式重啟停在解封頁，本版無回滾 |
+| `20260921_principal_integrity` | 主體完整性登記：重建 `users` 上與 kind／owner 相關的索引，不新增表、不回填 | 純索引重建，可重跑 |
+| `20260921_access_request_items` | 建 `access_request_items`（一申請多項目），並為每張既有有效申請回填一項；第 32 節 | 回填為一對一，不刪原欄 |
+| `20260921_access_request_item_decisions` | `access_request_items` 補票證 FK、撤銷附註與逐項核准 FK，`access_request_approvals` 加 `item_id`（`(item_id,request_id,approver_id)` 唯一）；第 33 節 | 純加欄與索引，無回填刪除 |
+| `20260922_agent_session_token_name` | `sessions` 加 `agent_token_name varchar(100) NULL`，建線當下快照 token 名稱，存量列為 NULL | 純加欄，可重跑 |
+| `20260923_agent_lateral_rule_pattern` | **純資料 migration，無 DDL**：把 `alert_rules` 內名為「Agent 橫向移動阻斷」且 pattern 仍等於 1.11.0 兩個出廠值之一的那一列，改寫為現行 pattern（只在指令位置比對，讀取 `~/.ssh` 這類路徑不再誤觸）並更新 `updated_at`。出廠規則只在建表時以 `ON CONFLICT DO NOTHING` 插種子，既有站點升級時那條 INSERT 不生效，故需要這一條。**pattern 不等於任何歷史出廠值者一律不動**——那是管理員調校過的規則，升級不覆寫站點自己的判斷。新值與兩個歷史值同出 `baseline_seed.go` 的常數，種子與本條不得各抄一份 | `rollbackAgentLateralRulePattern` 為 **no-op**：舊 pattern 是已知的誤判來源，回寫等於把誤觸阻斷裝回去；且此處分不出「本次升級改的」與「管理員升級後自行改回舊值的」，一律回寫會覆蓋後者。退版＝部署回舊版映像並還原升級前備份 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的十三條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的二十六條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
 > `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
 > `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長

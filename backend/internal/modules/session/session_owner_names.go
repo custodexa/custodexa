@@ -5,16 +5,24 @@ import (
 	"github.com/custodexa/backend/internal/model"
 )
 
-// Only the persisted session owner ID determines attribution; never the agent's current owner.
+// Only the persisted session owner and delegator IDs determine attribution; never the
+// agent's current owner. Both names resolve in one bounded batch for the page.
 func fillSessionOwnerNames(sessions []model.Session) error {
 	ids := make([]uint, 0)
 	seen := make(map[uint]bool)
+	collect := func(id *uint) {
+		if id == nil || seen[*id] {
+			return
+		}
+		seen[*id] = true
+		ids = append(ids, *id)
+	}
 	for i := range sessions {
 		sessions[i].OwnerUsername = ""
-		if sessions[i].ActorKind != nil && *sessions[i].ActorKind == model.KindAgent && sessions[i].OwnerUserID != nil && !seen[*sessions[i].OwnerUserID] {
-			id := *sessions[i].OwnerUserID
-			seen[id] = true
-			ids = append(ids, id)
+		sessions[i].OnBehalfOfUsername = ""
+		if sessions[i].ActorKind != nil && *sessions[i].ActorKind == model.KindAgent {
+			collect(sessions[i].OwnerUserID)
+			collect(sessions[i].OnBehalfOfUserID)
 		}
 	}
 	if len(ids) == 0 {
@@ -29,8 +37,14 @@ func fillSessionOwnerNames(sessions []model.Session) error {
 		names[owner.ID] = owner.Username
 	}
 	for i := range sessions {
-		if sessions[i].ActorKind != nil && *sessions[i].ActorKind == model.KindAgent && sessions[i].OwnerUserID != nil {
+		if sessions[i].ActorKind == nil || *sessions[i].ActorKind != model.KindAgent {
+			continue
+		}
+		if sessions[i].OwnerUserID != nil {
 			sessions[i].OwnerUsername = names[*sessions[i].OwnerUserID]
+		}
+		if sessions[i].OnBehalfOfUserID != nil {
+			sessions[i].OnBehalfOfUsername = names[*sessions[i].OnBehalfOfUserID]
 		}
 	}
 	return nil

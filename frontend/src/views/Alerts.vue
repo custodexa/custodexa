@@ -1521,7 +1521,7 @@ const handleTabChange = (tab) => {
 
 .action-hint {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   color: var(--el-color-warning);
   line-height: 1.5;
 }
@@ -1532,27 +1532,27 @@ const handleTabChange = (tab) => {
 
 .secret-status {
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   color: var(--el-text-color-secondary);
 }
 
 .field-muted {
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   color: var(--el-text-color-secondary);
 }
 
 .field-hint {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--ot-font-size-xs);
   color: var(--el-text-color-secondary);
   line-height: 1.5;
 }
 
 .field-hint code {
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--ot-radius-sm);
   background: var(--el-fill-color-light);
-  font-size: 11px;
+  font-size: var(--ot-font-size-xs);
 }
 
 .blocked-tag {
