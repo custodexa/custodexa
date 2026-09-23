@@ -62,7 +62,7 @@ func (a *consoleAuditContext) log(action model.AuditAction, resource model.Audit
 	status model.AuditStatus, statusCode int, body map[string]any) {
 	if a == nil || a.svc == nil {
 		// 本路由不掛認證中介層，中介層恆整筆跳過：審計服務缺席即回到零留痕，不得靜默
-		log.Printf("[DBConsole] 審計服務未注入，事件未留痕（kind=%v status=%s）", body["kind"], status)
+		log.Printf("[DBConsole] 稽核服務未注入，事件未留痕（kind=%v status=%s）", body["kind"], status)
 		return
 	}
 	raw, err := json.Marshal(body)

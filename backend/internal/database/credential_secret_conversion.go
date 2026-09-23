@@ -104,7 +104,7 @@ const MigrationGroupMismatchPrefix = "[MIGRATION_GROUP_MISMATCH:"
 // 解不開的密文留在庫裡，並靜默放棄全部共用關係。
 func RunCredentialSecretConversion(db *gorm.DB, codec crypto.ColumnCodec) error {
 	if db == nil {
-		return fmt.Errorf("憑證密文轉換需要資料庫句柄")
+		return fmt.Errorf("憑證密文轉換需要資料庫連線")
 	}
 	done, err := migrationMarkerApplied(db, CredentialSecretConversionMarkerVersion)
 	if err != nil {
@@ -604,7 +604,7 @@ func markGroupMismatch(tx *gorm.DB, g credentialGroup, verdict groupMergeVerdict
 		Details:  string(details),
 	}
 	if err := tx.Create(&entry).Error; err != nil {
-		return fmt.Errorf("寫入群組 %s 的待處理審計失敗: %w", g.Value, err)
+		return fmt.Errorf("寫入群組 %s 的待處理稽核失敗: %w", g.Value, err)
 	}
 	return nil
 }

@@ -54,7 +54,7 @@ var (
 	// CodeValidationPolicyGroupKeyType 該型別的設定不能作為設定要求的對象
 	//（自由文字型沒有可比較的要求值）
 	CodeValidationPolicyGroupKeyType = register("VALIDATION_POLICY_GROUP_KEY_TYPE",
-		Descriptor{ZhFallback: "這個設定的型別無法作為條文要求的對象"})
+		Descriptor{ZhFallback: "這個設定的型別無法作為條文要求的目標"})
 
 	// CodeValidationPolicyGroupComparator 比較方式與設定的型別不符
 	//（整數型才有「至少」「至多」，開關與選項型只能要求明確值）

@@ -779,7 +779,7 @@ func (h *AssetHandler) auditK8sFile(c *gin.Context, userID, assetID uint, action
 	username, _ := middleware.GetCurrentUsername(c)
 	aid := assetID
 	if h.auditSink == nil {
-		log.Printf("[AssetHandler] 審計投遞面未注入，k8s 檔案操作留痕已丟失 (asset=%d action=%s)", assetID, action)
+		log.Printf("[AssetHandler] 稽核投遞面未注入，k8s 檔案操作留痕已丟失 (asset=%d action=%s)", assetID, action)
 		return
 	}
 	// 收口（AP-04）：改經 AsyncSink，繞過 AuditLogEnabled 分支。
@@ -809,7 +809,7 @@ func (h *AssetHandler) auditK8sFileDenied(c *gin.Context, userID, assetID uint, 
 	username, _ := middleware.GetCurrentUsername(c)
 	aid := assetID
 	if h.auditSink == nil {
-		log.Printf("[AssetHandler] 審計投遞面未注入，k8s 檔案拒絕留痕已丟失 (asset=%d action=%s)", assetID, action)
+		log.Printf("[AssetHandler] 稽核投遞面未注入，k8s 檔案拒絕留痕已丟失 (asset=%d action=%s)", assetID, action)
 		return
 	}
 	_ = h.auditSink.Submit(c.Request.Context(), gatewayapi.AuditEvent{

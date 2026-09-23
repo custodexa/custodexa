@@ -13,7 +13,7 @@ import (
 )
 
 // ErrHostKeyChanged 指紋不符：可能的中間人攻擊，硬拒線
-var ErrHostKeyChanged = errors.New("主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯繫管理員重置 host key")
+var ErrHostKeyChanged = errors.New("主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key")
 
 // HostKeyService SSH host key 的 TOFU 記錄與驗證（host-key-verification）
 type HostKeyService struct {

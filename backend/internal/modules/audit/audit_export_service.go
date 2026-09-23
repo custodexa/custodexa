@@ -44,7 +44,7 @@ type ExportFilter struct {
 	Subject TimelineSubject
 	// Types 類別篩選（空＝六類全收）；值域與時間軸同一套，
 	// 未知值由 handler 擋在門外（不靜默忽略）。
-	// **兩種包型都適用**（2026-08-25 使用者裁決）：事件報告決定出哪幾個 csv，
+	// **兩種包型都適用**：事件報告決定出哪幾個 csv，
 	// 證據包決定收哪幾段證物（有本體者裝本體，無本體者以事件事實 csv 列入）
 	Types []TimelineEventType
 
@@ -258,13 +258,16 @@ func (s *AuditExportService) exportBundle(w io.Writer, filter *ExportFilter,
 	manifest.JobRequestedAt = jobRequestedAt
 	manifest.SelectedTypes = bundleSelectedTypes(filter)
 
-	// 各段依類別篩選收錄（2026-08-25 使用者裁決）：**未被選取的類別段不入包**，
+	// 各段依類別篩選收錄：**未被選取的類別段不入包**，
 	// 且其 Counts／Truncated 鍵一併缺席——寫個 0 會讓「沒選」與「選了但範圍內沒有」
 	// 看起來是同一回事。類別參數缺席＝全部類別，既有呼叫端行為逐位不變。
 	//
 	// 1. 操作日誌 → audit_logs.json
 	if filter.SelectsType(TimelineTypeAuditLog) {
 		if err := s.writeAuditLogs(zw, filter, manifest); err != nil {
+			return nil, err
+		}
+		if err := s.writeToolCalls(zw, filter, manifest); err != nil {
 			return nil, err
 		}
 	}

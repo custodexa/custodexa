@@ -52,6 +52,7 @@ type crossModuleWriteException struct {
 // **這份清單不受編譯器保護**（AR-3 的誠實讓步）：它擋的是「悄悄多寫一張
 // 別人的表」，不是「不能寫」。新增登記欄位時 SHALL 同步補列，否則本守衛轉紅。
 var keyvaultCrossModuleWriteAllowlist = []crossModuleWriteException{
+	{Table: "agent_tool_calls", OwnerModule: "audit", Reason: "機敏參數密文的 DEK 輪替與引用保護；只更新未納入 HMAC 的 args_sealed，不動已簽章欄位。"},
 	{Table: "assets", OwnerModule: "asset",
 		Reason: "資產密碼／私鑰／SFTP 密碼三欄的信封重加密。DEK 輪替與 AAD 遷移必須橫跨全部密文欄，改呼叫 asset 的方法會產生 keyvault→asset 出向依賴，摧毀 keyvault 零出向前提。"},
 	{Table: "users", OwnerModule: "identity",

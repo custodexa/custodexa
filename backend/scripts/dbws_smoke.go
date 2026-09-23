@@ -32,7 +32,7 @@ func main() {
 	token := flag.String("token", "", "JWT token")
 	asset := flag.String("asset", "", "database asset id")
 	base := flag.String("url", "ws://localhost:8080", "backend base ws url")
-	extra := flag.String("extra", "", "額外執行的指令（驗證審計/阻斷用）")
+	extra := flag.String("extra", "", "額外執行的指令（驗證稽核/阻斷用）")
 	prompt := flag.String("prompt", "=#", "CLI 提示符特徵（psql：=#；redis：6379>；mysql：mysql>）")
 	probe := flag.String("probe", "select 40+2 as smoke;", "往返驗證指令")
 	want := flag.String("want", "42", "往返驗證期望輸出")

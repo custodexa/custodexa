@@ -9,7 +9,7 @@ package sshproxy
 // CUP／VPA／ED 2·3／DECSTBM 次數是 **0**——它只用 `\r` ＋ `ESC[K` 逐行重畫，
 // 一次絕對定位都不送。Redrawn 因此不觸發，而該輪的原點與提示符都被 pager 的
 // 狀態列佔走（`/etc/services`），三條剝除規則同時落空。
-// 修法前（`4d56d74`..`db2eecc`）此處入庫的是
+// 修法前此處入庫的是
 // `ssh-test-server:~$ echo done-BASHGNULESS_NOALT`——一條使用者從未送出的字串。
 //
 // 兩個方向的斷言都要有：

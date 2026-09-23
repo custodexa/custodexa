@@ -35,7 +35,7 @@ import (
 
 // --- fixture ---
 
-// revMatrixDB 單連線 :memory:（ff51836：sqlite `:memory:` 的第二條連線是另一個
+// revMatrixDB 單連線 :memory:（sqlite `:memory:` 的第二條連線是另一個
 // 空 DB，連線池放行即出現「建了資料卻查不到」的假紅）
 func revMatrixDB(t *testing.T) *gorm.DB {
 	t.Helper()

@@ -206,7 +206,7 @@ func receiverKey(e ast.Expr) string {
 
 // [internal/modules/identity/oidc_flow_test.go] 的複本
 // setupOIDCEnv sqlite in-memory 環境。SetMaxOpenConns(1) 為必要——
-// 純 Go driver 的每條連線是各自獨立的空 DB（ff51836 教訓）
+// 純 Go driver 的每條連線是各自獨立的空 DB
 func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProviderService, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

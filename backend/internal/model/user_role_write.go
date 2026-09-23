@@ -146,7 +146,7 @@ func recordUserRoleChange(tx *gorm.DB, action AuditAction, userID, roleID uint, 
 		Resource: string(ResourceUserRole), UserID: userID, RoleID: roleID, Origin: origin,
 	})
 	if err != nil {
-		return fmt.Errorf("序列化角色指派審計詳情失敗: %w", err)
+		return fmt.Errorf("序列化角色指派稽核詳情失敗: %w", err)
 	}
 	subject := userID
 	row := AuditLog{

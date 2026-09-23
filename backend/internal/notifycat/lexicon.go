@@ -96,6 +96,7 @@ var causeEnum = []string{
 	model.CauseAuditWriteFallbackFile,
 	model.CauseAuditWriteBatchDropped,
 	model.CauseAuditWriteSyncRefused,
+	model.CauseSensitiveRevealAlertWriteFailed,
 	model.CauseCommandAuditWriteRefused,
 	model.CauseCommandBlockerUnavailable,
 	model.CauseSyslogConnectFailed,

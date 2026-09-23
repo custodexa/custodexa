@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import Alerts from '../Alerts.vue'
+import { t } from '@/i18n'
 
 // 本檔掛載後從不卸載，殘留元件在 document 上累積使單測耗時隨測試序單調
 // 上升（單獨跑實測 709ms→6962ms，約 10 倍）——全量並行時末幾格逼近逾時上限而轉紅
@@ -146,6 +147,22 @@ describe('Alerts', () => {
       page_size: 20,
       severity: 'high',
     })
+  })
+
+  it('filters sensitive content access alerts and labels their event kind', async () => {
+    setUserRoles(['auditor'])
+    searchAlertsMock.mockResolvedValue({ data: [{
+      id: 9, kind: 'sensitive_reveal', rule_name: '', session_id: 'sess-001',
+      triggered_at: '2026-06-12T08:01:00Z', severity: 'medium',
+    }], total: 1 })
+    const wrapper = mountAlerts()
+    await flushPromises()
+    expect(wrapper.get('[data-test="alert-sensitive-reveal-kind"]').text()).toBe(t('alerts.kindSensitiveReveal'))
+    searchAlertsMock.mockClear()
+    wrapper.vm.filters.kind = 'sensitive_reveal'
+    wrapper.vm.handleSearch()
+    await flushPromises()
+    expect(searchAlertsMock).toHaveBeenCalledWith({ page: 1, page_size: 20, kind: 'sensitive_reveal' })
   })
 
   it('navigates to session detail when clicking 檢視連線', async () => {

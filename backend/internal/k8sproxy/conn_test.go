@@ -80,7 +80,7 @@ func TestStartIncompleteTarget(t *testing.T) {
 func TestKubeconfigTLSDefaults(t *testing.T) {
 	def := kubeconfigYAML("https://s:6443", "tok", "", false)
 	if strings.Contains(def, "insecure-skip-tls-verify") {
-		t.Error("預設不應略過 TLS 驗證（mustFix #3）")
+		t.Error("預設不應略過 TLS 驗證")
 	}
 	if strings.Contains(def, "certificate-authority-data") {
 		t.Error("未設 CA 時不應出現 certificate-authority-data")

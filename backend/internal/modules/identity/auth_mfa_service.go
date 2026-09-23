@@ -297,7 +297,7 @@ func (s *AuthService) authProviderName(providerID uint) string {
 	}
 	var p model.OIDCProvider
 	if err := db.Select("id", "name").First(&p, providerID).Error; err != nil {
-		log.Printf("[MFA] 審計標註取 provider 名稱失敗 (id=%d): %v", providerID, err)
+		log.Printf("[MFA] 稽核標註取 provider 名稱失敗 (id=%d): %v", providerID, err)
 		return ""
 	}
 	return p.Name

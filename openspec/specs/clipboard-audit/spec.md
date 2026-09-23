@@ -3,7 +3,9 @@
 ## Purpose
 
 RDP/VNC 剪貼簿內容留存與查詢、SFTP 內容摘要。
+
 ## Requirements
+
 ### Requirement: 剪貼簿內容留存
 RDP/VNC 會話的文字剪貼簿傳輸 SHALL 重組並留存（會話/方向/內容/時間，單筆上限 64KB）；留存失敗 SHALL NOT 中斷會話。
 
@@ -62,6 +64,8 @@ SFTP 上傳與下載 SHALL 於審計記錄附 SHA256 與大小。
 
 單筆內容 SHALL 經專屬端點取得，該端點 SHALL 於伺服器端**逐筆入審計**（操作者、會話、事件識別、時間），SHALL NOT 依賴前端上報；審計紀錄的語義 SHALL 為「伺服器端已解密並交付回應」，SHALL NOT 宣稱無法保證的客戶端收件。**留痕成功是回傳內容的前置條件（fail-close）**：審計寫入不可用時 SHALL 拒絕該次調閱並回收斂錯誤，SHALL NOT 在無留痕下交付明文——「留痕不阻擋」的前提是留痕真的發生；該失敗 SHALL 沿既有審計失敗告警鏈揭露。端點 SHALL 以單一受權查詢同時約束事件識別與所屬會話，事件不屬路徑中會話者 SHALL 拒絕（收斂錯誤），審計欄位 SHALL 取自查得的真實紀錄。列表查詢的既有頁面級審計（查了列表）與單筆調閱審計（看了哪一筆）語義不同，SHALL 並存。
 
+安全政策 `alert_on_sensitive_reveal` 開啟時，每一次成功交付 SHALL 另依 command-alerts「敏感內容調閱告警」產生告警；告警寫入失敗 SHALL 沿審計失敗告警鏈揭露，SHALL NOT 回頭撤銷已交付的內容。
+
 無 `audit:view` 權限者 SHALL 不可達內容——UI 不呈現入口，列表與單筆端點均由權限閘拒絕。
 
 凡向稽核員指出「內容可調閱」的文案（時間軸註記、匯出說明）SHALL 指向實際存在的調閱路徑，SHALL NOT 主張不存在的介面。
@@ -96,3 +100,8 @@ SFTP 上傳與下載 SHALL 於審計記錄附 SHA256 與大小。
 - **WHEN** 稽核員沿時間軸註記或匯出說明所指的路徑操作
 - **THEN** 該路徑實際存在且抵達內容調閱面
 
+#### Scenario: 政策開啟時展開即告警
+
+- **GIVEN** `alert_on_sensitive_reveal` 為 `true`
+- **WHEN** 有權者展開某筆剪貼簿記錄
+- **THEN** 內容交付、審計列新增，且產生一筆 `sensitive_reveal` 告警帶該事件識別與會話

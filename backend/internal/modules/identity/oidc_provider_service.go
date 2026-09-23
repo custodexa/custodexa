@@ -631,7 +631,7 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	}
 
 	if needsInvalidation {
-		log.Printf("[OIDC] provider %d 憑證世代已推進（停用=%v 密鑰輪替=%v）", id, disabling, secretRotated)
+		log.Printf("[OIDC] provider %d 憑證世代已推進（停用=%v 金鑰輪替=%v）", id, disabling, secretRotated)
 		// 鎖外收線（design 行 268：持鎖時長界定為單次 DB 往返級）
 		s.revokeProviderAccess(id, plan, reason)
 	}

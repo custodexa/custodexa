@@ -76,6 +76,11 @@
         <el-tag :type="principal.breaker_pending_at ? 'warning' : 'success'">
           {{ t(principal.breaker_pending_at ? 'agentBreaker.pending' : 'agentBreaker.noPending') }}
         </el-tag>
+        <time
+          v-if="principal.breaker_pending_at"
+          :datetime="principal.breaker_pending_at"
+          data-test="breaker-pending-at"
+        >{{ t('agentBreaker.pendingSince', { time: formatDateTime(principal.breaker_pending_at) }) }}</time>
         <!-- 身分徽章與負責人原本各自換行，主體那一列散成三行 -->
         <PrincipalBadge
           :kind="principal.kind"
@@ -91,7 +96,7 @@
       >
         <!-- 「為什麼被停」是對已發生事實的陳述：沒有待處置時不能照樣宣稱 -->
         <template v-if="principal.breaker_pending_at">
-          <dt>{{ t('agentBreaker.whyLabel') }}</dt><dd>{{ t('agentBreaker.whyValue') }}</dd>
+          <dt>{{ t('agentBreaker.whyLabel') }}</dt><dd>{{ t('agentBreaker.whyValue') }} {{ t('agentBreaker.pendingSince', { time: formatDateTime(principal.breaker_pending_at) }) }}</dd>
         </template>
         <!-- 「停了以後怎樣」講停用期間；「解除之後」講解除後還要做什麼。
              兩格原本都掛 releaseTokens，同一句說兩次而停用期間沒人交代 -->
@@ -138,6 +143,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { t } from '@/i18n'
+import { formatDateTime } from '@/utils/format'
 import { getCurrentUser } from '@/api/auth'
 import { getUserDetail } from '@/api/user'
 import { getMyAgents, getAgentBreakerEvents, getAgentTokens, listAgentPrincipals } from '@/api/agents'

@@ -13,7 +13,7 @@ var (
 	// 預言機）；正當使用者需要知道該找管理員，而不是重試密碼。
 	// 政策不可用（清單讀不到或損壞）也回本碼——對外不分岔，歸因只在稽核。
 	CodeAuthSourceNotAllowed = register("AUTH_SOURCE_NOT_ALLOWED", Descriptor{
-		ZhFallback: "目前的來源位址不在允許範圍內，請聯繫管理員"})
+		ZhFallback: "目前的來源位址不在允許範圍內，請聯絡管理員"})
 )
 
 // --- VALIDATION_*（允許網段清單與位址參數）---

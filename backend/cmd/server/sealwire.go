@@ -444,7 +444,7 @@ func writeSealAudit(g *appGraph) bool {
 	}
 	body, err := json.Marshal(details)
 	if err != nil {
-		log.Printf("[Seal] 解封審計序列化失敗（不阻塞服務）: %v", err)
+		log.Printf("[Seal] 解封稽核序列化失敗（不阻塞服務）: %v", err)
 		return false
 	}
 	g.auditService.Log(&audit.AuditLogEntry{
@@ -463,7 +463,7 @@ func writeSealAudit(g *appGraph) bool {
 func bootstrapKeyVersions(g *appGraph) []string {
 	var rows []model.DataKey
 	if err := database.DB.Where("kek_retired_at IS NULL").Order("purpose, version").Find(&rows).Error; err != nil {
-		log.Printf("[Seal] 讀取 bootstrap 金鑰版本清單失敗（審計欄留空）: %v", err)
+		log.Printf("[Seal] 讀取 bootstrap 金鑰版本清單失敗（稽核欄留空）: %v", err)
 		return nil
 	}
 	out := make([]string, 0, len(rows))

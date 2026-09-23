@@ -14,7 +14,7 @@ import (
 // DB 的計數早已是 3，憑證卻要到第 4 次才作廢——上限被悄悄放寬。
 //
 // 並發交錯以 hook 製造而非靠時間競賽：競態測試若靠 goroutine 搶跑，會在「剛好
-// 沒撞上」時假綠，正是本專案既有的 flaky 前科來源。
+// 沒撞上」時假綠。
 func TestExchangeBindingFailureThresholdUsesFreshCount(t *testing.T) {
 	login, _, db := setupOIDCEnv(t)
 	p := seedProvider(t, db, nil)

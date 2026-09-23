@@ -5,9 +5,9 @@ import Login from '../Login.vue'
 import { getAccessToken, resetSessionForTests } from '@/utils/session'
 import { recordInsecureTransportRelogin } from '@/utils/reloginContext'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 const pushMock = vi.fn()
@@ -394,7 +394,7 @@ describe('Login', () => {
     loginMock.mockRejectedValue({
       response: {
         status: 423,
-        data: { error: '嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員' },
+        data: { error: '嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯絡管理員' },
       },
     })
 

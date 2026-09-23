@@ -213,7 +213,7 @@ func TestInstanceGuardBlockedMessage(t *testing.T) {
 			"金鑰快取、匯出工作、錄影落地與封存期留痕",
 			"先停止它，再重啟本實例",
 			"INSTANCE_GUARD_ACK=" + fp.Code,
-			"寫入審計事件並在管理介面顯示橫幅",
+			"寫入稽核事件並在管理介面顯示橫幅",
 			"這不是資料庫損毀",
 			"未由本實例執行 migration 或任何資料寫入",
 			"持鎖者變更後失效",

@@ -36,7 +36,7 @@ func rewrapAndReinit(t *testing.T, db *gorm.DB, km *KeyManagerService) (*KeyMana
 	}
 	km2, err := InitKeyManager(db, p)
 	if err != nil {
-		t.Fatalf("切換那次 InitKeyManager 不應 fail-close（HIGH-1）: %v", err)
+		t.Fatalf("切換那次 InitKeyManager 不應 fail-close: %v", err)
 	}
 	return km2, oldKEK, res.NewKEKID
 }

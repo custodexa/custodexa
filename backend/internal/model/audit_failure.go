@@ -153,6 +153,8 @@ const (
 	// 逐筆留痕是交付明文的前置條件（剪貼簿單筆調閱），留痕寫不進去即拒絕交付
 	// ——證據未損（明文沒出去），但審計機制本身失效，須經告警鏈揭露
 	CauseAuditWriteSyncRefused = "audit_write_sync_refused"
+	// Sensitive reveal audit succeeded, but its additional alert could not be persisted.
+	CauseSensitiveRevealAlertWriteFailed = "sensitive_reveal_alert_write_failed"
 	// CauseSyslogConnectFailed syslog 轉發連線失敗
 	CauseSyslogConnectFailed = "syslog_connect_failed"
 	// CauseSyslogBufferOverflow syslog 轉發緩衝溢出（丟棄計數）

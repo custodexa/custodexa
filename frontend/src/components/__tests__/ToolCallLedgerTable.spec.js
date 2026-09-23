@@ -5,8 +5,8 @@ import ToolCallLedgerTable from '../agent/ToolCallLedgerTable.vue'
 import i18n, { t } from '@/i18n'
 enableAutoUnmount(afterEach)
 const rows = [
-  { id: 1, seq: 11, session_id: 5, access_request_id: 8, tool: 'run_command', decision: 'allowed', denial_code: '', masked_count: 2, duration_ms: 105, result_status: 'ok', args_redacted: {}, created_at: '2026-09-22T06:41:02Z' },
-  { id: 2, seq: 12, session_id: null, access_request_id: 8, tool: 'open_session', decision: 'denied', denial_code: 'AUTH_REQUEST_ITEM_MISMATCH', masked_count: 0, duration_ms: 8, result_status: 'error', args_redacted: {}, created_at: '2026-09-22T06:40:12Z' },
+  { id: 1, seq: 11, session_id: 5, access_request_id: 8, tool: 'run_command', decision: 'allowed', denial_code: '', masked_count: 2, duration_ms: 105, result_status: 'ok', args_retained: true, args_redacted: {}, created_at: '2026-09-22T06:41:02Z' },
+  { id: 2, seq: 12, session_id: null, access_request_id: 8, tool: 'open_session', decision: 'denied', denial_code: 'AUTH_REQUEST_ITEM_MISMATCH', masked_count: 0, duration_ms: 8, result_status: 'error', args_retained: true, args_redacted: {}, created_at: '2026-09-22T06:40:12Z' },
 ]
 const targets = { 5: { asset: 'app-web-01', account: 'appuser' } }
 const open = (props = {}) => mount(ToolCallLedgerTable, { props: { rows, targets, ...props }, global: { plugins: [ElementPlus] } })

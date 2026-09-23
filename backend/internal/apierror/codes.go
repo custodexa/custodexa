@@ -84,7 +84,7 @@ var (
 // --- AUTH_* (login / token / credential) ---
 var (
 	CodeUserInactive       = register("AUTH_USER_INACTIVE", Descriptor{ZhFallback: "使用者帳號未啟用"})
-	CodeAccountLocked      = register("AUTH_ACCOUNT_LOCKED", Descriptor{ZhFallback: "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員"})
+	CodeAccountLocked      = register("AUTH_ACCOUNT_LOCKED", Descriptor{ZhFallback: "嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯絡管理員"})
 	CodeInvalidCredentials = register("AUTH_INVALID_CREDENTIALS", Descriptor{ZhFallback: "使用者名稱或密碼錯誤"})
 	CodeUserNotFound       = register("AUTH_USER_NOT_FOUND", Descriptor{ZhFallback: "使用者不存在"})
 	// CodeAuthLoginRateLimited 本地登入端點的來源濫用防護攔截
@@ -221,7 +221,7 @@ var (
 // --- RULE_SSH_* (terminal dial failures surfaced over the WS error message).
 // ZhFallback mirrors the sshproxy sentinel texts. ---
 var (
-	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯繫管理員重置 host key"})
+	CodeSSHHostKeyChanged = register("RULE_SSH_HOST_KEY_CHANGED", Descriptor{ZhFallback: "主機金鑰已變更，連線已拒絕；若主機確實重灌，請聯絡管理員重置 host key"})
 	CodeSSHAuthFailed     = register("RULE_SSH_AUTH_FAILED", Descriptor{ZhFallback: "SSH 認證失敗，請確認資產憑證"})
 	CodeSSHDialTimeout    = register("RULE_SSH_DIAL_TIMEOUT", Descriptor{ZhFallback: "連線目標主機逾時"})
 	CodeSSHUnreachable    = register("RULE_SSH_UNREACHABLE", Descriptor{ZhFallback: "無法連線到目標主機"})

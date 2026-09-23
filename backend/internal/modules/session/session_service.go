@@ -93,7 +93,7 @@ func (s *SessionService) Create(session *model.Session) error {
 
 	// 儲存到資料庫
 	if err := database.DB.Create(session).Error; err != nil {
-		return fmt.Errorf("創建 Session 失敗: %w", err)
+		return fmt.Errorf("建立 Session 失敗: %w", err)
 	}
 
 	return nil

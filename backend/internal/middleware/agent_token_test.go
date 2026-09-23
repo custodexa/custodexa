@@ -231,3 +231,40 @@ func TestAgentTokenLastUsedThrottle(t *testing.T) {
 		})
 	}
 }
+
+// TestAgentAuthContextCarriesLiveCredentialEpoch pins the regression found on the dev
+// stack: an agent whose credential epoch had been bumped could authenticate (the token
+// row is live) but every connect grant it issued carried CredEpoch 0, so the
+// redemption recheck rejected it with AUTH_CONNECT_TOKEN_INVALID. The auth context
+// set by the agent path must equal the principal's current epoch, before and after a bump.
+func TestAgentAuthContextCarriesLiveCredentialEpoch(t *testing.T) {
+	f := newAgentAuthFixture(t)
+	var seen crypto.AuthContext
+	r := f.router(func(c *gin.Context) { seen = GetAuthContext(c); c.Status(204) })
+	if w := agentRequest(r, f.token.Token); w.Code != 204 {
+		t.Fatal(w.Body)
+	}
+	if seen.CredEpoch != 0 || seen.EffectiveMethod() != crypto.AuthMethodLocalPassword {
+		t.Fatalf("fresh agent: %+v", seen)
+	}
+	if err := identity.BumpCredentialEpoch(f.db, f.agent.ID, "roles_changed"); err != nil {
+		t.Fatal(err)
+	}
+	var agent model.User
+	if err := f.db.First(&agent, f.agent.ID).Error; err != nil || agent.CredentialEpoch != 1 {
+		t.Fatalf("bump not applied: %v %+v", err, agent)
+	}
+	if w := agentRequest(r, f.token.Token); w.Code != 204 {
+		t.Fatal(w.Body)
+	}
+	if seen.CredEpoch != 1 {
+		t.Fatalf("bumped agent: context epoch %d, want 1", seen.CredEpoch)
+	}
+	// The redemption gate must accept a subject built from this context.
+	if err := f.auth.VerifyCredentialGenerationByUserID(seen, f.agent.ID); err != nil {
+		t.Fatalf("live epoch rejected at redemption: %v", err)
+	}
+	if err := f.auth.VerifyCredentialGenerationByUserID(crypto.AuthContext{}, f.agent.ID); err == nil {
+		t.Fatal("zero-epoch context still accepted; the regression would be invisible")
+	}
+}

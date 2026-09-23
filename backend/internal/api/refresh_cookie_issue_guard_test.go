@@ -97,7 +97,7 @@ func setupRefreshCookieEnv(t *testing.T) *refreshCookieEnv {
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // ff51836 的「單獨跑綠、整包跑紅」防護
+	sqlDB.SetMaxOpenConns(1) // :memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.SecurityPolicy{}, &model.PasswordHistory{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.OIDCFlowState{}, &model.OIDCLoginTicket{},

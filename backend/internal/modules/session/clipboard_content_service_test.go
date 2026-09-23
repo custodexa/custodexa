@@ -34,7 +34,7 @@ func setupClipboardContentDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("取得 sql.DB: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // sqlite :memory: 連線池陷阱（ff51836 教訓）
+	sqlDB.SetMaxOpenConns(1) // sqlite :memory: 每條連線各自是獨立的空庫，故釘為單連線
 	if err := db.AutoMigrate(&model.ClipboardEvent{}, &model.AuditLog{}, &model.Session{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

@@ -36,7 +36,7 @@ describe('policyLabel — key 錨點查譯 + 降級', () => {
     expect(policyLabel({ label: 'x' })).toBe('x')
   })
 
-  it('prod：缺鍵靜默不 warn（rr-Minor3）', () => {
+  it('prod：缺鍵靜默不 warn', () => {
     vi.stubEnv('DEV', false)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     setLocale('en-US')
@@ -46,7 +46,7 @@ describe('policyLabel — key 錨點查譯 + 降級', () => {
   })
 })
 
-describe('policyUnit — unit_key 查譯 + 降級不回空字串（rr-I9）', () => {
+describe('policyUnit — unit_key 查譯 + 降級不回空字串', () => {
   it('zh/en：查 policyUnit.<unit_key>', () => {
     expect(policyUnit({ unit_key: 'minutes', unit: '分鐘' })).toBe('分鐘')
     setLocale('en-US')

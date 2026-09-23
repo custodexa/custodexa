@@ -3,7 +3,9 @@
 ## Purpose
 
 互動指令比對告警規則並記錄告警事件，供稽核查詢與通知派送。
+
 ## Requirements
+
 ### Requirement: Alert rule management
 
 Admins SHALL manage alert rules (name, regex pattern, severity high/medium/low, enabled). Invalid regex MUST be rejected at save time. Default seed rules for common destructive commands SHALL ship with the migration.
@@ -408,3 +410,34 @@ SHALL 分別記錄但 SHALL NOT 計入門檻。三類 SHALL 以事件列上的**
 - **THEN** 依時間與 id 降序回時間、目標 id、端點、class、token id，offset／limit 分頁且上限 100，附主體目前 breaker_pending_at
 - **AND** 非 owner 的一般 human、agent token 回 403；未登入回 401；空結果回 data=[] 與 total=0
 - **AND** 目前未處置旗標不冒充每個事件的解除歷史，不回推 exposures 升級前歷史
+
+### Requirement: 敏感內容調閱告警
+
+安全政策 SHALL 提供 `alert_on_sensitive_reveal`（bool，出廠預設 `false`）。開啟時，每一次伺服器端解密並交付原文的調閱——含工具呼叫帳本的機敏參數原文與剪貼簿內容——除既有逐筆審計列外，SHALL 另產生一筆告警：來源類別為 `sensitive_reveal`（不掛任何告警規則，管理員 SHALL NOT 能以停用規則的方式關閉此訊號，只能經政策鍵關閉）、`rule_id` 為空、`rule_name` 與 `reason_code` 為機器碼、嚴重度為 medium。告警 SHALL 帶：調閱者（帳號與 id）、來源類別與識別（帳本列 id 或剪貼簿事件 id）、所屬會話、資產與任務（若有）、時間、調閱者填寫的理由；指令文字欄 SHALL 為空（本類無指令可指，SHALL NOT 填入被調閱的原文）。告警 SHALL 僅經唯一告警落地面寫入，沿既有通知推送、syslog 轉發與審閱處置流程；告警清單 SHALL 可依此來源類別篩選並直達對應的調閱審計列。資料庫層對來源類別的值域約束 SHALL 同步擴充。
+
+告警查詢 SHALL 提供 `session_id` 與 `blocked` 兩個篩選（AND 合併、非法值 400），使會話詳情能取回該會話被阻斷的指令告警。
+
+政策關閉時 SHALL NOT 產生此類告警，逐筆調閱審計列不受影響。政策頁對此鍵的說明 SHALL 寫明「預設關閉；開啟後每次調閱原文都會產生一筆告警，適用於高機敏環境」。
+
+#### Scenario: 政策開啟時調閱即告警
+
+- **GIVEN** `alert_on_sensitive_reveal` 為 `true`
+- **WHEN** 稽核者調閱某帳本列的機敏參數原文並填寫理由
+- **THEN** 產生一筆來源類別為 `sensitive_reveal` 的 medium 告警，帶調閱者、帳本列 id、所屬會話與任務、理由；告警推送至已啟用通道，且審計亦有該次調閱列
+
+#### Scenario: 剪貼簿調閱同樣涵蓋
+
+- **GIVEN** `alert_on_sensitive_reveal` 為 `true`
+- **WHEN** 稽核者展開某筆剪貼簿內容
+- **THEN** 產生一筆 `sensitive_reveal` 告警，帶剪貼簿事件 id 與所屬會話
+
+#### Scenario: 政策關閉時只留審計
+
+- **GIVEN** `alert_on_sensitive_reveal` 為 `false`（出廠值）
+- **WHEN** 稽核者調閱任一原文
+- **THEN** 審計新增調閱列，告警表無新列、通知通道無推送
+
+#### Scenario: 告警不含被調閱的原文
+
+- **WHEN** 檢視任一筆 `sensitive_reveal` 告警
+- **THEN** 指令文字欄為空，告警內容只含人、位置、事件識別與理由

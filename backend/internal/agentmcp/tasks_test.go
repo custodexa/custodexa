@@ -145,6 +145,19 @@ func TestToolCheckRequestWaitingInfo(t *testing.T) {
 		require.Contains(t, descriptions["check_request"], text)
 	}
 }
+
+// 撤銷不是申請單狀態：整單撤銷後 status 仍為 approved，agent 只能從 closed_at 判定不會過，
+// 工具說明必須指向 closed_at，且不得列出申請單不存在的 revoked 狀態。
+func TestToolCheckRequestRevokedTaskSignalsClosedAt(t *testing.T) {
+	f := newFixture(t)
+	_, err := f.h.requests.Revoke(1, true, "owner", f.task, "test")
+	require.NoError(t, err)
+	v := object(t, f.invoke(t, "check_request", map[string]any{"request_id": f.task}))
+	require.Equal(t, string(model.AccessRequestApproved), v["status"])
+	require.NotNil(t, v["closed_at"])
+	require.Contains(t, descriptions["check_request"], "closed_at")
+	require.NotContains(t, descriptions["check_request"], "revoked")
+}
 func TestToolOpenSessionExplicitTask(t *testing.T) {
 	f := newFixture(t)
 	r := f.invoke(t, "open_session", map[string]any{"asset_id": f.asset})

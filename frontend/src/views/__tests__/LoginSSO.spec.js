@@ -13,9 +13,9 @@ import Login from '../Login.vue'
 import { getAccessToken, resetSessionForTests } from '@/utils/session'
 import { SSO_SECRET_KEY } from '@/utils/sso'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 const pushMock = vi.fn()
@@ -256,7 +256,7 @@ describe('Login SSO 區塊', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('您的帳號不符合此登入方式的准入條件')
-    expect(wrapper.text()).toContain('請聯繫管理員確認')
+    expect(wrapper.text()).toContain('請聯絡管理員確認')
     expect(window.location.hash).toBe('')
     // 准入不通過不可重試（重試也不會過），不給重新發起按鈕
     expect(wrapper.find('.sso-restart-btn').exists()).toBe(false)

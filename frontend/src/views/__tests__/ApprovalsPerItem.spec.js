@@ -27,6 +27,18 @@ describe('逐項審核', () => {
     await flushPromises()
     expect(shown()).toEqual([false, true])
   })
+  it('未選移除時不顯示提示，切換離開移除後再次隱藏', async () => {
+    const w = open()
+    const item = w.findAll('[data-test="decision-item"]')[0]
+    expect(item.find('[data-test="remove-explanation"]').exists()).toBe(false)
+    const radios = item.findAll('input[type="radio"]')
+    await radios[2].setValue(true)
+    expect(item.get('[data-test="remove-explanation"]').text()).toContain('審核紀錄仍會保留')
+    for (const index of [0, 1]) {
+      await radios[index].setValue(true)
+      expect(item.find('[data-test="remove-explanation"]').exists()).toBe(false)
+    }
+  })
   it('展開後每項各自可決定', async () => {
     const w = mount(Approvals, { global: { plugins: [ElementPlus] } }); await flushPromises()
     await w.get('.el-table__expand-icon').trigger('click'); await flushPromises()
@@ -128,7 +140,7 @@ it('範圍外的項可見但不可決定：依 11:20 裁決於明確後端拒絕
 
 it.each(['zh-TW', 'en-US', 'ja-JP'])('畫面 3 三語 DOM：項目與確認同層 %s', async locale => { i18n.global.locale.value = locale; const w = open(); w.vm.forms[1].action = 'approve'; await flushPromises(); expect(w.findAll('[data-test="decision-item"]')).toHaveLength(2); expect(w.find('[data-test="decision-summary"]').exists()).toBe(true); expect(w.text()).not.toMatch(/itemReview\.|multiRequest\.|approvals\./); expect(w.findAllComponents({ name: 'ElDialog' })).toHaveLength(0) })
 
-it('polish 6–8：逐項資產名稱、常駐移除說明與待審關鍵欄可見', async () => {
+it('逐項資產名稱、按需移除說明與待審關鍵欄可見', async () => {
   const data = request(); data.asset_id = 1; data.asset = { name: 'app-host' }; api.pending.mockResolvedValue({ data: [data] })
   const w = mount(Approvals, { global: { plugins: [ElementPlus] } }); await flushPromises()
   const table = w.get('[data-test="pending-table"]')
@@ -140,6 +152,9 @@ it('polish 6–8：逐項資產名稱、常駐移除說明與待審關鍵欄可�
   expect(items[0].get('h3').text()).toBe('app-host')
   expect(items[1].get('h3').text()).toBe('db-host')
   expect(api.asset).not.toHaveBeenCalledWith(1, expect.anything())
+  expect(items[0].find('[data-test="remove-explanation"]').exists()).toBe(false)
+  w.getComponent(Review).vm.forms[1].action = 'remove'
+  await flushPromises()
   expect(items[0].get('[data-test="remove-explanation"]').text()).toContain('審核紀錄仍會保留')
 })
 

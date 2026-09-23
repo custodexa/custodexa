@@ -1,6 +1,6 @@
 package moduleboundary
 
-// 資料邊界閘門的**登記表**（Phase B 任務 6.0a）。
+// 資料邊界閘門的**登記表**。
 //
 // 掃描器與守衛在 module_data_boundary_guard_test.go；本檔只放「人審過的事實」，
 // 使登記與判定分離——改登記表不必動掃描邏輯，反之亦然。

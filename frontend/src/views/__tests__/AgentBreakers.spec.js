@@ -3,6 +3,7 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import AgentBreakers from '../AgentBreakers.vue'
 import i18n from '@/i18n'
+import { formatDateTime } from '@/utils/format'
 import AgentBreakerEvents from '@/components/agent/AgentBreakerEvents.vue'
 import BreakerReleaseForm from '@/components/agent/BreakerReleaseForm.vue'
 const api = vi.hoisted(() => ({ asset: vi.fn(), me: vi.fn(), mine: vi.fn(), user: vi.fn(), release: vi.fn(), events: vi.fn(), tokens: vi.fn(), route: { query: { user_id: '5' } } }))
@@ -53,7 +54,7 @@ it('polish 9：白話標題、資產名與協議；HTTP 路徑收進細節', asy
   const w = await open()
   expect(w.get('h1').text()).toBe('自動停用處置')
   const event = w.get('[data-test="probe-event"]')
-  expect(event.get('[data-test="probe-target"]').text()).toContain('cache-host · SSH')
+  expect(event.get('[data-test="probe-target"]').text()).toContain('cache-host · 終端（SSH）')
   expect(event.get('[data-test="probe-target"]').text()).not.toContain('GET')
   expect(event.get('details').text()).toContain('GET /api/v1/assets/:id')
   expect(event.get('details').attributes('open')).toBeUndefined()
@@ -77,4 +78,20 @@ it('polish2：管理者以既有單筆讀取補姓名，本人沿認證姓名', 
   const owner = await open()
   expect(owner.getComponent({ name: 'PrincipalBadge' }).props('ownerName')).toBe('my-name')
   expect(api.user).not.toHaveBeenCalled()
+})
+
+it('待處置首屏標頭與成因皆有本次停用時刻', async () => {
+  const w = await open()
+  const time = w.get('[data-test="breaker-pending-at"]')
+  expect(time.element.closest('.breaker-head')).not.toBeNull()
+  expect(time.attributes('datetime')).toBe(principal.breaker_pending_at)
+  expect(time.text()).toContain(formatDateTime(principal.breaker_pending_at))
+  expect(w.get('[data-test="breaker-brief"]').text()).toContain(formatDateTime(principal.breaker_pending_at))
+})
+it('沒有待處置時不呈現停用時刻與成因', async () => {
+  api.mine.mockResolvedValue({ data: [{ ...principal, breaker_pending_at: null }] })
+  api.events.mockResolvedValue({ data: [], total: 0, breaker_pending_at: null })
+  const w = await open()
+  expect(w.find('[data-test="breaker-pending-at"]').exists()).toBe(false)
+  expect(w.get('[data-test="breaker-brief"]').text()).not.toContain(formatDateTime(principal.breaker_pending_at))
 })

@@ -91,7 +91,7 @@ var (
 // 進 registry：service 只設 Code，message 取同一支碼的 ZhFallback。
 // host key 變更與 SSH 認證失敗直接复用 RULE_SSH_*（codes.go）——同一事實、同一文案。
 var (
-	CodeAssetTestHostKeyUnavailable = register("RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE", Descriptor{ZhFallback: "host key 驗證未配置"})
+	CodeAssetTestHostKeyUnavailable = register("RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE", Descriptor{ZhFallback: "host key 驗證未設定"})
 	// 協議中性：本碼自 DB／k8s 撥測上線後跨協議共用，
 	// 原文案「SSH 連線失敗」會對 postgres／k8s 資產指錯協議。
 	CodeAssetTestConnectionFailed  = register("RULE_ASSET_TEST_CONNECTION_FAILED", Descriptor{ZhFallback: "連線失敗，請確認目標主機與網路可達性"})

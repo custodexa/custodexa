@@ -18,9 +18,12 @@ var (
 
 // CommandAlertFilter 告警查詢條件（與 SessionCommandFilter 同形：審計查詢一致體驗）
 type CommandAlertFilter struct {
+	Kind       string     // policy/system signal or rule source
 	Severity   string     // severity 過濾（high/medium/low）
 	UserID     *uint      // 用戶過濾
 	AssetID    *uint      // 資產過濾
+	SessionID  *uint      // 會話過濾
+	Blocked    *bool      // 阻斷狀態過濾；nil 表示不篩選
 	StartTime  *time.Time // 觸發時間（起）
 	EndTime    *time.Time // 觸發時間（迄）
 	Unreviewed bool       // 僅列未審閱（reviewed_at IS NULL），供每日審閱走查（10.4.1）
@@ -91,6 +94,9 @@ func (s *CommandAlertService) CountUnreviewedBySeverity() (map[string]int64, err
 func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertListResponse, error) {
 	query := s.db.Model(&model.CommandAlert{})
 
+	if filter.Kind != "" {
+		query = query.Where("command_alerts.kind = ?", filter.Kind)
+	}
 	if filter.Severity != "" {
 		query = query.Where("command_alerts.severity = ?", filter.Severity)
 	}
@@ -99,6 +105,12 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 	}
 	if filter.AssetID != nil {
 		query = query.Where("command_alerts.asset_id = ?", *filter.AssetID)
+	}
+	if filter.SessionID != nil {
+		query = query.Where("command_alerts.session_id = ?", *filter.SessionID)
+	}
+	if filter.Blocked != nil {
+		query = query.Where("command_alerts.blocked = ?", *filter.Blocked)
 	}
 	if filter.StartTime != nil {
 		query = query.Where("command_alerts.triggered_at >= ?", *filter.StartTime)

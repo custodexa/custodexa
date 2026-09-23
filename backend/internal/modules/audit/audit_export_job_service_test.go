@@ -35,7 +35,7 @@ func newJobServiceDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
-	// sqlite :memory: 連線池陷阱（ff51836）：收斂單連線
+	// sqlite :memory: 每條連線各自是獨立的空庫，故收斂為單連線
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AuditExportJob{}); err != nil {
 		t.Fatalf("migrate: %v", err)

@@ -2,6 +2,117 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.12.0 — tool call arguments kept as evidence (2026-09-23)
+
+### New capabilities
+
+#### The ledger keeps what an automated operator sent
+
+- Each row of the tool call ledger now keeps the arguments of the call: the command
+  of `run_command`, the statement of `query`, the keys of `send_keys`, the report of `close_task`,
+  and the identifiers and reasons the tools take. Refused and blocked calls keep theirs too, and the
+  ledger shows a refused command under its row.
+- Credential fields such as passwords and tokens are dropped before anything is stored. A session
+  handle is replaced by a fingerprint that cannot be reversed and is the same on every row for that
+  handle. A span that matches an output rule for sensitive data, such as a card number or a private
+  key header, is replaced by a marker and counted in the row's masked spans.
+- Where a call had such a span, its arguments are also stored encrypted under the deployment's data
+  keys, without the credential fields and with the handle fingerprint.
+  `GET /api/v1/agent-tool-calls/:id/arguments` returns them to a holder of `audit:view` who gives a
+  reason of up to 1000 bytes. The audit row for the read, with the ledger row, the session, the task
+  and the reason, is written before anything is decrypted, and a read whose audit row cannot be
+  written is refused. Automated credentials cannot call it, and a row with no encrypted arguments
+  answers with the same 404 as a row that does not exist.
+- The ledger on the task page and on the session page offers "Reveal original" on a row with masked
+  spans and asks for the reason first. Rows written before this release say that their arguments were
+  not retained.
+- The integrity code of a new ledger row covers the fact that its arguments were retained. An
+  evidence package that includes operation logs carries the ledger as `agent_tool_calls.json`, with
+  the arguments as the ledger shows them and without the encrypted copy.
+
+#### Blocked commands in the recording and on the session page
+
+- When a blocking rule stops a command in an automated operator's SSH session, the recording carries
+  the blocked command on a line after the block marker, with sensitive spans masked by the output
+  rules.
+- The command tab of the session detail lists blocked commands alongside the commands that ran, in time
+  order, marked as not sent to the target and linked to that point in the recording. Command records
+  hold only the commands that were sent; a blocked command is kept as its alert, and for an automated
+  operator also as its ledger row.
+- `GET /api/v1/command-alerts` takes `kind`, `session_id` and `blocked` as filters, and the alert page
+  filters by source type.
+
+#### An alert when sensitive content is opened
+
+- A new security policy key, `alert_on_sensitive_reveal`, sits with the automated operator settings
+  on the access control page and is off by default. With it on, every delivery of the original
+  arguments of a tool call or of the content of a clipboard record raises an alert of kind
+  `sensitive_reveal` at medium severity.
+- The alert names who opened which record, in which session and task, and the reason given, and
+  carries none of the content.
+- The clipboard content endpoint accepts an optional `reason`, which goes into the audit row and into
+  the alert.
+
+### What changes for deployers
+
+- **Two migrations run.** `20260924_agent_tool_call_args_retained` adds two columns to the tool call
+  ledger. It backfills nothing and signs no existing row again, so its duration does not depend on how
+  much data the deployment holds. `20260924_sensitive_reveal_alert` adds `sensitive_reveal` to the
+  alert kinds. Under PostgreSQL's usual behavior, adding the constraint back checks the rows
+  already in the alert table, so it may take longer as that table grows, and it rewrites nothing.
+- **The stdio adapter is installed on its own.** `custodexa-mcp` is published at
+  `github.com/custodexa/custodexa-mcp`. Install it on the agent's machine with
+  `go install github.com/custodexa/custodexa-mcp@latest`, or take a release binary and check it
+  against the `checksums.txt` of that release. The backend image no longer contains
+  `/usr/local/bin/custodexa-mcp`, so a host that started the adapter from the image needs to point at
+  the installed binary instead. The adapter reads `CUSTODEXA_MCP_URL` and `CUSTODEXA_AGENT_TOKEN` from its own
+  environment, and `.env.example` no longer lists them. The README and the quick start describe connecting
+  an agent directly over streamable HTTP and through the adapter.
+- **Traditional Chinese text from the backend follows Taiwan usage.** Log lines, error messages,
+  metric help text and Traditional Chinese notifications change wording: `監聽端口` is now `監聽連接埠`,
+  and `審計佇列排空逾時` is now `稽核佇列排空逾時`. Machine codes and metric names do not change. A log
+  search or a filter that matches the Chinese wording needs the new terms.
+
+### Fixes
+
+#### Automated operators and rules
+
+- A connection grant issued to an automated operator carries the operator's current credential
+  generation, which redemption compares with the live value. An operator whose generation has moved
+  on, after a role change or after being disabled and enabled again, can open sessions with the grants
+  it is issued after that change.
+- When one command matches several blocking rules, the block is attributed to the rule with the
+  lowest id, so a command names the same rule every time, whatever order the rules are stored in. Rules that only alert
+  each record their own alert, in id order.
+- The `check_request` tool description names `rejected`, `cancelled` and `expired` as the statuses to
+  stop waiting on, and points the operator to `closed_at`: withdrawing items leaves a request
+  `approved`, and a task closed by withdrawal, expiry or `close_task` carries a close time.
+
+#### The interface
+
+- The session list shows the operator and the person the work was done for in full, wrapping long
+  names. The protocol column names the kind of session with the protocol code under it, and the task
+  cell carries how many tool calls were made and how many were blocked.
+- Authorization withdrawn during a session reads "Authorization revoked, connection ended" on the
+  session list, the session detail and the task page.
+- The breaker page shows when the pending suspension began, names each event's protocol in words,
+  and marks in amber only the events of the trip that is still pending.
+- The key drawer, the itemized review and the My agents page show the owner, the key counts and the
+  requested scope in the primary text color.
+- Several Traditional Chinese terms on screen follow Taiwan usage, such as 金鑰 and 時窗, and the
+  Japanese screens use one rendering per term, such as ポリシー and 委任.
+
+#### Documentation
+
+- The operations documents give the installed seed set as 16 rules and the checkpoint payload as
+  version 3.
+- The deployment and upgrade SOP lists the twenty-eight incremental migrations since the baseline,
+  each with its log line and what it does.
+- The SOP describes what the factory lateral movement rule matches. It reads the whole command line
+  without shell parsing, so a blocked name in an argument position also trips it (`man ssh`,
+  `which nc`, `ls /usr/bin/ssh`), while `~/.ssh`, `sshd` and `ssh-keygen` do not.
+- Screen and menu names in the documents follow the interface.
+
 ## 1.11.1 — names, layout and reach on the agent channel screens (2026-09-23)
 
 One data migration runs on upgrade, `20260923_agent_lateral_rule_pattern`, and there is no schema

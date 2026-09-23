@@ -49,8 +49,8 @@ type CheckpointPurger struct {
 
 // purgeFaults 區間清除的交易內故障注入點（測試專用）。
 //
-// fired 計數是「注入器真的被觸發過」的自證——前置條件早退造成注入器
-// 零觸發、測試卻通過，是本專案既有教訓（fault-injection-never-fired）
+// fired 計數是「注入器真的被觸發過」的自證——前置條件早退會造成注入器
+// 零觸發卻仍讓測試通過，故須以此計數避免測試靜默失去防護意義
 type purgeFaults struct {
 	// afterDelete 於區間列刪除之後、tombstone 簽章之前呼叫
 	afterDelete func() error

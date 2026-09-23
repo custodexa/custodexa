@@ -16,6 +16,8 @@ import (
 // AuditIntegrityHandler audit_logs 完整性驗證 API
 // （admin 與 auditor 皆可讀）
 type AuditIntegrityHandler struct {
+	arguments ToolCallArgumentsReader
+	reveals   ClipboardSensitiveRevealReporter
 	db        *gorm.DB
 	integrity *audit.AuditIntegrityService
 }
@@ -84,4 +86,5 @@ func (h *AuditIntegrityHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 	{
 		integrity.GET("/verify", h.Verify)
 	}
+	r.GET("/agent-tool-calls/:id/arguments", middleware.AuthMiddleware(authService), middleware.RequirePermission(middleware.PermAuditView), h.ToolCallArguments)
 }

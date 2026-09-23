@@ -98,6 +98,6 @@ func (s *CommandStore) emitDegradeAlert(row model.SessionCommand) {
 	// 綁會話 ctx 會讓「會話正在結束」變成「最後一段降級的告警發不出去」，
 	// 而會話在降級中結束**正是**最需要留痕的形態。
 	if err := gatewayapi.RecordAlert(context.Background(), s.alerts, alert); err != nil {
-		log.Printf("[SSHProxy] 指令審計降級告警落地失敗 (SessionID=%d): %v", s.sessionID, err)
+		log.Printf("[SSHProxy] 指令稽核降級告警落地失敗 (SessionID=%d): %v", s.sessionID, err)
 	}
 }

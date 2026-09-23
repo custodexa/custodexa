@@ -165,7 +165,7 @@ func NewAuditLogService(cfg *config.FeatureFlags) *AuditLogService {
 	// 確保 fallback 目錄存在
 	if cfg.AuditFallbackToFile {
 		if err := os.MkdirAll(service.fallbackDir, 0755); err != nil {
-			log.Printf("警告: 創建 audit fallback 目錄失敗: %v", err)
+			log.Printf("警告: 建立 audit fallback 目錄失敗: %v", err)
 		}
 	}
 
@@ -175,7 +175,7 @@ func NewAuditLogService(cfg *config.FeatureFlags) *AuditLogService {
 			service.wg.Add(1)
 			go service.worker(i)
 		}
-		log.Printf("審計日誌異步寫入已啟動（%d workers, batch size %d）", service.workerCount, service.batchSize)
+		log.Printf("稽核日誌非同步寫入已啟動（%d workers, batch size %d）", service.workerCount, service.batchSize)
 	}
 
 	return service
@@ -225,7 +225,7 @@ func (s *AuditLogService) logAt(entry *AuditLogEntry, occurredAt time.Time) {
 		select {
 		case s.logChan <- auditLog:
 			// 成功加入 channel
-			log.Printf("[Audit] 日誌已加入隊列：%s %s %s (Path: %s)",
+			log.Printf("[Audit] 日誌已加入佇列：%s %s %s (Path: %s)",
 				auditLog.Username, auditLog.Action, auditLog.Resource, auditLog.Path)
 		default:
 			// Channel 滿載：僅在啟用檔案降級時寫檔（與 DB 寫失敗分支一致，尊重開關——
@@ -236,18 +236,18 @@ func (s *AuditLogService) logAt(entry *AuditLogEntry, occurredAt time.Time) {
 			// 的寫庫失敗），原先唯一的痕跡是下面這行 log——不可查詢、不可告警、
 			// 容器重啟即失。指標使「審計曾經掉過資料」成為可查證的持久事實
 			if s.cfg.AuditFallbackToFile {
-				log.Printf("警告: 審計日誌 channel 滿載，降級至檔案備份")
+				log.Printf("警告: 稽核日誌 channel 滿載，降級至檔案備份")
 				s.writeToFile(auditLog)
 				s.notifyDrop(true)
 			} else {
-				log.Printf("警告: 審計日誌 channel 滿載且檔案降級已關閉，本筆日誌丟棄")
+				log.Printf("警告: 稽核日誌 channel 滿載且檔案降級已關閉，本筆日誌丟棄")
 				s.notifyDrop(false)
 			}
 		}
 	} else {
 		// 同步寫入（阻塞）
 		if err := s.writeToDatabase([]*model.AuditLog{auditLog}); err != nil {
-			log.Printf("錯誤: 審計日誌寫入失敗: %v", err)
+			log.Printf("錯誤: 稽核日誌寫入失敗: %v", err)
 			if s.cfg.AuditFallbackToFile {
 				s.writeToFile(auditLog)
 			}
@@ -280,7 +280,7 @@ func (s *AuditLogService) worker(id int) {
 
 		case <-s.stopChan:
 			// 優雅關閉：先把佇列內尚未被取走的列排空，再 flush 手上的批次
-			log.Printf("Worker %d: 收到關閉信號，排空佇列...", id)
+			log.Printf("Worker %d: 收到關閉訊號，排空佇列...", id)
 			s.drainOnShutdown(id, batch)
 			return
 		}
@@ -436,7 +436,7 @@ func (s *AuditLogService) retryRowsIndividually(logs []*model.AuditLog) []*model
 	var failed []*model.AuditLog
 	for _, l := range logs {
 		if err := s.persist([]*model.AuditLog{l}); err != nil {
-			log.Printf("錯誤: 審計列逐列重試仍失敗（%s %s，status=%d）: %v",
+			log.Printf("錯誤: 稽核列逐列重試仍失敗（%s %s，status=%d）: %v",
 				l.Method, l.Path, l.StatusCode, err)
 			failed = append(failed, l)
 		}
@@ -465,7 +465,7 @@ func (s *AuditLogService) writeToDatabase(logs []*model.AuditLog) error {
 
 	// 使用 CreateInBatches 批次插入（每次最多 100 條）
 	if err := database.DB.CreateInBatches(logs, 100).Error; err != nil {
-		return fmt.Errorf("批次寫入審計日誌失敗: %w", err)
+		return fmt.Errorf("批次寫入稽核日誌失敗: %w", err)
 	}
 
 	return nil
@@ -487,7 +487,7 @@ func (s *AuditLogService) writeRowsToFile(rows []*model.AuditLog) int {
 
 	file, err := os.OpenFile(filepath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("錯誤: 打開 fallback 檔案失敗: %v", err)
+		log.Printf("錯誤: 開啟 fallback 檔案失敗: %v", err)
 		return 0
 	}
 	defer file.Close()
@@ -497,7 +497,7 @@ func (s *AuditLogService) writeRowsToFile(rows []*model.AuditLog) int {
 		// 序列化為 JSON
 		data, err := json.Marshal(auditLog)
 		if err != nil {
-			log.Printf("錯誤: 序列化審計日誌失敗: %v", err)
+			log.Printf("錯誤: 序列化稽核日誌失敗: %v", err)
 			return written
 		}
 
@@ -650,7 +650,7 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	// 計算總數
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, fmt.Errorf("查詢審計日誌總數失敗: %w", err)
+		return nil, fmt.Errorf("查詢稽核日誌總數失敗: %w", err)
 	}
 
 	// 應用分頁和排序
@@ -659,7 +659,7 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 
 	var logs []*model.AuditLog
 	if err := query.Order(orderClause).Offset(offset).Limit(filter.PageSize).Find(&logs).Error; err != nil {
-		return nil, fmt.Errorf("查詢審計日誌失敗: %w", err)
+		return nil, fmt.Errorf("查詢稽核日誌失敗: %w", err)
 	}
 
 	return &AuditLogListResult{
@@ -674,7 +674,7 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 func (s *AuditLogService) Get(id uint) (*model.AuditLog, error) {
 	var auditLog model.AuditLog
 	if err := database.DB.First(&auditLog, id).Error; err != nil {
-		return nil, fmt.Errorf("查詢審計日誌失敗: %w", err)
+		return nil, fmt.Errorf("查詢稽核日誌失敗: %w", err)
 	}
 	return &auditLog, nil
 }
@@ -685,7 +685,7 @@ func (s *AuditLogService) GetByResourceID(resource model.AuditResource, resource
 	if err := database.DB.Where("resource = ? AND resource_id = ?", resource, resourceID).
 		Order("created_at DESC").
 		Find(&logs).Error; err != nil {
-		return nil, fmt.Errorf("查詢資源審計歷史失敗: %w", err)
+		return nil, fmt.Errorf("查詢資源稽核歷史失敗: %w", err)
 	}
 	return logs, nil
 }
@@ -713,7 +713,7 @@ type ShutdownDrainError struct {
 func (e *ShutdownDrainError) Lost() int { return e.Unflushed - e.FallbackFiled - e.InFlight }
 
 func (e *ShutdownDrainError) Error() string {
-	return fmt.Sprintf("審計佇列排空逾時：%d 列未確認落地（已降級寫檔 %d 列、worker 持有中未回報 %d 列、確定遺失 %d 列）",
+	return fmt.Sprintf("稽核佇列排空逾時：%d 列未確認落地（已降級寫檔 %d 列、worker 持有中未回報 %d 列、確定遺失 %d 列）",
 		e.Unflushed, e.FallbackFiled, e.InFlight, e.Lost())
 }
 
@@ -728,7 +728,7 @@ func (s *AuditLogService) Shutdown(ctx context.Context) error {
 		return nil
 	}
 
-	log.Printf("審計日誌服務正在關閉，排空佇列（目前深度 %d）...", len(s.logChan))
+	log.Printf("稽核日誌服務正在關閉，排空佇列（目前深度 %d）...", len(s.logChan))
 
 	// 停止 ticker
 	s.flushTicker.Stop()
@@ -745,7 +745,7 @@ func (s *AuditLogService) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
-		log.Println("審計日誌服務已優雅關閉，佇列已排空")
+		log.Println("稽核日誌服務已優雅關閉，佇列已排空")
 		return nil
 	case <-ctx.Done():
 		close(s.drainAbort)

@@ -488,7 +488,7 @@ func (w *AuditExportJobWorker) auditRevokedCancel(job *model.AuditExportJob) {
 		"requester":    job.RequesterName,
 	})
 	if err != nil {
-		log.Printf("[AuditExportJob] job=%d 取消審計欄位組裝失敗: %v", job.ID, err)
+		log.Printf("[AuditExportJob] job=%d 取消稽核欄位組裝失敗: %v", job.ID, err)
 		return
 	}
 	jobRef := job.ID

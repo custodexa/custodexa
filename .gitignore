@@ -81,7 +81,6 @@ coverage/
 .\#*
 
 # Local tool state
-.claude/ralph-loop.local.md
 .screenshots/
 .playwright-mcp/
 # 本機 CLI 工具的生成物（工具狀態，非源碼）
@@ -102,11 +101,9 @@ backend/testdata/locales/
 backend/cmd/server/testdata/docs/
 backend/cmd/server/testdata/docs-rw/
 
-# routes_guard_test.go:697 的突變自檢暫存目錄（`os.MkdirTemp(base, "guardselfcheck-")`）。
-# 放在 cmd/server/testdata 下有其理由——go 工具鏈忽略 testdata，故暫存的樣本 .go 不會被
-# 編譯，而 `packages.Load` 又需要它落在 module 內。**但該測試未清理**，每跑一次就留一個
-# 帶隨機後綴的目錄，且已有一個（guardselfcheck-4107287797）被誤 commit 進版控。
-# 本規則先擋住繼續累積；測試自身的清理與既有殘留的移除另案處理。
+# 路由守衛自我檢查的暫存目錄（`os.MkdirTemp(base, "guardselfcheck-")`，帶隨機後綴）。
+# 放在 cmd/server/testdata 下是因為 go 工具鏈忽略 testdata，暫存的樣本 .go 不會被編譯，
+# 而 `packages.Load` 又需要它落在 module 內。
 backend/cmd/server/testdata/guardselfcheck-*/
 
 # 兩份 manifest（審計產生點／lifecycle）守衛的 openspec 唯讀掛載點。
@@ -138,10 +135,5 @@ backend/cmd/server/testdata/deploy/
 !/screenshots/session-playback.png
 !/screenshots/command-audit.png
 
-# 知識圖譜產出（可由 code-review-graph / graphify 重建，不入版控）
-# code-review-graph 的 .code-review-graph/ 由工具自帶 .gitignore 自我忽略，無須在此列
+# 本機工具產物（可重建，不入版控）
 graphify-out/
-
-# 設計畫布的發佈打包檔（內含編輯器、2MB 級；來源 .dc.html 與 canvas.json 才入版控）
-openspec/changes/**/research/design/*.html
-!openspec/changes/**/research/design/*.dc.html

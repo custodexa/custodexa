@@ -59,7 +59,7 @@ func (s *stubClipboardContentReader) ReadContent(_ context.Context, _, _ uint,
 
 // installClipboardHandlerAuditDB 換上 :memory: 審計庫並回傳它供讀回斷言。
 // MaxOpenConns(1)：sqlite :memory: 每條新連線是獨立空 DB，收斂到 1
-// 才能讓 middleware 的寫入與本測試的讀回落在同一個 DB 上（ff51836 教訓）
+// 才能讓 middleware 的寫入與本測試的讀回落在同一個 DB 上
 func installClipboardHandlerAuditDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

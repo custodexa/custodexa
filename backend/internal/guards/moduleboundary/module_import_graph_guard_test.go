@@ -1,6 +1,6 @@
 package moduleboundary
 
-// 模組相依圖守衛骨架（Phase B 任務 1.13）。
+// 模組相依圖守衛骨架。
 //
 // **最初要釘的是三條剛拆掉的環**（1.10–1.12）：keyvault→identity、keyvault→audit、
 // policy→audit 零依賴。完整的依賴矩陣留待各模組真正搬包後逐步開啟。

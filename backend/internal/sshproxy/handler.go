@@ -367,7 +367,7 @@ func (h *Handler) runTerminal(est *EstablishedTerminal, ws Transport) {
 			parser.SetRecordSink(store.Record)
 			tap = newAuditTap(parser)
 			bridge.attachAudit(tap)
-			log.Printf("[SSHProxy] 指令審計已啟用 (SessionID=%d)", sess.ID)
+			log.Printf("[SSHProxy] 指令稽核已啟用 (SessionID=%d)", sess.ID)
 
 			// 指令阻斷（command-blocking）：matcher 未初始化時為 nil＝直通；
 			// protocol 用於規則分流（shell 規則不掃 SQL、SQL 規則不掃 shell）
@@ -748,7 +748,7 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		AuthMethod: prov.AuthMethod, ProviderID: prov.ProviderID,
 		AuthEpoch: prov.AuthEpoch, CredEpoch: prov.CredEpoch,
 	}, sess); err != nil {
-		log.Printf("[SSHProxy] 創建 Session 失敗: %v（呼叫點將 fail-close 拒連）", err)
+		log.Printf("[SSHProxy] 建立 Session 失敗: %v（呼叫點將 fail-close 拒連）", err)
 		return nil
 	}
 	return sess
@@ -1033,7 +1033,7 @@ type observerJoinAudit struct {
 // （形狀比照 `RecordingHandler.auditRecordingRetrieval`）。
 func (h *Handler) auditObserverJoin(c *gin.Context, ev observerJoinAudit) {
 	if h.AuditService == nil {
-		log.Printf("[Monitor] 審計服務未注入，%s 的觀看加入未留痕（via=%s sessionID=%d）",
+		log.Printf("[Monitor] 稽核服務未注入，%s 的觀看加入未留痕（via=%s sessionID=%d）",
 			c.Request.URL.Path, ev.via, ev.sessionID)
 		return
 	}

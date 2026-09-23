@@ -6,7 +6,7 @@ import i18n, { t } from '@/i18n'
 const api = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('@/api/agentTasks', () => ({ getAgentToolCalls: api.list }))
 enableAutoUnmount(afterEach)
-const row = { id: 1, seq: 4, user_id: 7, access_request_id: 8, session_id: null, tool: 'open_session', decision: 'denied', denial_code: 'AUTH_REQUEST_ITEM_MISMATCH', masked_count: 2, duration_ms: 12, result_status: 'error', result_digest: 'sha256-fixture', result_excerpt: '<script>excerpt</script>', args_redacted: { password: '[REDACTED]' }, created_at: '2026-09-22T00:00:00Z' }
+const row = { id: 1, seq: 4, user_id: 7, access_request_id: 8, session_id: null, tool: 'open_session', decision: 'denied', denial_code: 'AUTH_REQUEST_ITEM_MISMATCH', masked_count: 2, duration_ms: 12, result_status: 'error', result_digest: 'sha256-fixture', result_excerpt: '<script>excerpt</script>', args_retained: true, args_redacted: { password: '[REDACTED]' }, created_at: '2026-09-22T00:00:00Z' }
 beforeEach(() => { vi.clearAllMocks(); api.list.mockResolvedValue({ data: [row], total: 1 }) })
 const open = async (props = {}) => { const w = mount(ToolCallLedger, { props: { query: { access_request_id: 8 }, ...props }, global: { plugins: [ElementPlus] } }); await flushPromises(); return w }
 describe('ToolCallLedger', () => {

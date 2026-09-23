@@ -51,7 +51,7 @@
 
     <!-- 外層留白、內層為無 padding 的掛載點：FitAddon 量 parent 的
          clientHeight 含 padding，直接掛在有 padding 的容器會高估行數，
-         導致最底行被裁半（使用者實測於 seq 1 100 後輸入行只見一半） -->
+         導致最底行被裁半 -->
     <!-- 行動快捷鍵列：觸控鍵盤沒有 ESC／Tab／Ctrl，補上最常用的控制序列 -->
     <div
       v-if="showMobileKeys"

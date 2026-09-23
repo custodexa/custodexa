@@ -97,7 +97,7 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 			}); err != nil {
 				// 刷新失敗只記 log 不中止任務：一次查詢失敗不該讓後續刷新全部停擺，
 				// 而指標值停在前一輪比整條指標消失更能反映「系統還在，只是這次沒讀到」
-				log.Printf("[Metrics] 活躍會話刷新失敗：%v", err)
+				log.Printf("[Metrics] 活躍會話更新失敗：%v", err)
 			} else {
 				m.SetActiveSessions(byProtocol)
 			}
@@ -114,7 +114,7 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 				used, err = src.RecordingStorage()
 				return err
 			}); err != nil {
-				log.Printf("[Metrics] 錄影儲存量刷新失敗：%v", err)
+				log.Printf("[Metrics] 錄影儲存量更新失敗：%v", err)
 			} else {
 				m.SetRecordingStorage(used)
 			}
@@ -129,7 +129,7 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 				bySeverity, err = src.PendingAlerts()
 				return err
 			}); err != nil {
-				log.Printf("[Metrics] 未審閱告警數刷新失敗：%v", err)
+				log.Printf("[Metrics] 未審閱告警數更新失敗：%v", err)
 			} else {
 				m.SetPendingAlerts(bySeverity)
 			}
@@ -144,7 +144,7 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 				snap, err = src.OffsiteQueue()
 				return err
 			}); err != nil {
-				log.Printf("[Metrics] 離機佇列刷新失敗：%v", err)
+				log.Printf("[Metrics] 離機佇列更新失敗：%v", err)
 			} else {
 				m.SetOffsiteQueue(snap)
 			}
@@ -157,7 +157,7 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 		defer close(done)
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[Metrics] 背景刷新任務因 panic 終止（指標將停在最後一次成功值）：%v\n%s",
+				log.Printf("[Metrics] 背景更新任務因 panic 終止（指標將停在最後一次成功值）：%v\n%s",
 					r, debug.Stack())
 			}
 		}()
@@ -196,9 +196,9 @@ func StartRefresher(m *Metrics, src RefreshSources, interval time.Duration) Stop
 		case <-done:
 			return nil
 		case <-ctx.Done():
-			return fmt.Errorf("指標刷新未在關機期限內結束（%w）；關機序後段將與殘餘刷新重疊", ctx.Err())
+			return fmt.Errorf("指標更新未在關機期限內結束（%w）；關機序後段將與殘餘更新重疊", ctx.Err())
 		case <-budget.C:
-			return fmt.Errorf("指標刷新未在 %s 內結束；關機序後段將與殘餘刷新重疊", StopWaitBudget)
+			return fmt.Errorf("指標更新未在 %s 內結束；關機序後段將與殘餘更新重疊", StopWaitBudget)
 		}
 	}
 }

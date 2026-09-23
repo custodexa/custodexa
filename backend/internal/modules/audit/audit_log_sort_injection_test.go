@@ -33,7 +33,7 @@ func setupSortTestService(t *testing.T) *AuditLogService {
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // :memory: 連線池陷阱：多連線各自拿到空 DB（ff51836 教訓）
+	sqlDB.SetMaxOpenConns(1) // :memory: 每條連線各自拿到獨立空 DB，故釘為單連線
 	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

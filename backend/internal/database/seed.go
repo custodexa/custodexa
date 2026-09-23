@@ -88,7 +88,7 @@ func seedRoles() error {
 		},
 		{
 			Name:        model.RoleAuditor,
-			Description: "稽核人員，可以檢視所有審計日誌和連線記錄",
+			Description: "稽核人員，可以檢視所有稽核日誌和連線記錄",
 		},
 		{
 			// 可疊加職能角色：僅授予審核職能，

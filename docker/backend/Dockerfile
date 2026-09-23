@@ -81,8 +81,6 @@ RUN VERSION_VALUE="${VERSION:-$(tr -d ' \t\r\n' < /VERSION)}" \
     && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
        -ldflags "-w -s -X main.Version=${VERSION_VALUE}" -o /bin/custodexa ./cmd/server
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-w -s" -o /bin/custodexa-mcp ./cmd/custodexa-mcp
-
 # MSSQL CLI（sqlcmd）建置階段（database-protocol「mssql 協議 CLI」）
 #
 # 來源 https://github.com/microsoft/go-sqlcmd（授權 MIT，非 EULA）。刻意**自建**而非
@@ -128,7 +126,6 @@ WORKDIR /root/
 
 # 從 builder 複製二進位文件
 COPY --from=builder /bin/custodexa .
-COPY --from=builder /bin/custodexa-mcp /usr/local/bin/custodexa-mcp
 
 # MSSQL CLI：Alpine 無現成套件（微軟的 ODBC 版 mssql-tools18 受 EULA 約束），
 # 故由上方 sqlcmd-builder 階段自建後複製。0755 非 setuid、非全域可寫，

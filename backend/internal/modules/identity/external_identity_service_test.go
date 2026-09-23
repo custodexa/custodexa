@@ -50,8 +50,8 @@ func extIdentityMigrate(t *testing.T, db *gorm.DB) {
 	}
 }
 
-// extIdentityDB 單連線 :memory: fixture（ff51836：連線池放行第二條即出現
-// 「建了資料卻查不到」的假紅）。並發測試另用檔案型 DB，見 extIdentityConcurrentDB
+// extIdentityDB 單連線 :memory: fixture：連線池放行第二條即出現
+// 「建了資料卻查不到」的假紅。並發測試另用檔案型 DB，見 extIdentityConcurrentDB
 func extIdentityDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

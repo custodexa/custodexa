@@ -236,6 +236,54 @@ for that session. To search commands across sessions, use the Command Audit page
 This "every operation leaves a trail" chain is the core of the product, and a first deployment
 should walk through it once to confirm that recordings play back.
 
+### 5. Connect your first agent host
+
+Skip this step if you are not bringing in an AI agent. What an agent may do, and what it
+leaves behind, is set out in [AI agent access](../README.md#ai-agent-access) in the README.
+
+**Create the agent and its token.** As an administrator, open Identity & Access → AI agent
+subjects → New User, set Principal type to AI agent and pick its owner, an active human
+account. On the agent's row, Keys → Issue key creates the token, which the interface calls a key,
+and asks for a name and an expiry. Copy the token before you close the panel: it is not
+shown again. The owner can issue tokens from My agents as well. Through the API, the same
+two steps are `POST /api/v1/users` with `"kind":"agent"` and an `owner_user_id`, then `POST /api/v1/users/:id/agent-tokens`.
+
+**Point the host at Custodexa.** A host that supports streamable HTTP connects directly.
+Configuration keys differ between hosts; one example:
+
+```json
+{
+  "mcpServers": {
+    "custodexa": {
+      "type": "http",
+      "url": "https://<your-custodexa>/api/v1/mcp",
+      "headers": { "Authorization": "Bearer cxa_..." }
+    }
+  }
+}
+```
+
+A host limited to stdio launches the adapter instead. Install it with
+`go install github.com/custodexa/custodexa-mcp@latest`, then give the host its absolute path
+and pass the endpoint and token through the environment:
+
+```json
+{
+  "mcpServers": {
+    "custodexa": {
+      "command": "/absolute/path/to/custodexa-mcp",
+      "env": {
+        "CUSTODEXA_MCP_URL": "https://<your-custodexa>/api/v1/mcp",
+        "CUSTODEXA_AGENT_TOKEN": "cxa_..."
+      }
+    }
+  }
+}
+```
+
+Examples for specific hosts are in the
+[custodexa-mcp README](https://github.com/custodexa/custodexa-mcp#readme).
+
 ## Production deployment notes
 
 The production stack is the default compose file (see the startup steps above); this section adds
@@ -386,7 +434,7 @@ like it comes from the proxy's single IP.
 
 The LDAP directory settings (address, bind credentials, search parameters, attribute mapping) are
 stored in the database from the administration pages, maintained under
-Identity & Access → Directory (LDAP); **the database is the single source of truth**, and the nine
+Identity & Access → Identity sources; **the database is the single source of truth**, and the nine
 `LDAP_*` keys in `.env` are only a **seed source for the first startup**.
 
 | Situation | Behavior |
@@ -532,7 +580,7 @@ and the access token travels in the Authorization header. The one thing to line 
 
 **The Secure flag on the session refresh cookie**: the web session refresh credential is issued as
 an `HttpOnly` cookie (`custodexa_refresh`), and its `Secure` flag is decided by the security
-policy **"keep sign-in state only over https"** (System Settings → Security Policies → Sessions
+policy **"Keep sign-in only on https connections"** (System Settings → Security Policies → Sessions
 and Accounts). Change the value on that page and save, and the next cookie issued uses the new
 value; no restart needed.
 
@@ -557,7 +605,7 @@ with `AUTH_REFRESH_COOKIE_SECURE=true`.
 the first startup, or turn the policy off on the security policy page afterwards. With the policy
 on, the system still works; the cost is that browsers do not keep the cookie, so everyone signs in
 again about every 15 minutes (the lifetime of the access token). Users see this: the sign-in page
-explains the situation when they are signed out and asks them to contact an administrator, and an
+tells the user that sign-in state is not kept over this http connection, and an
 administrator signing in over the same http address sees a matching notice at the top of the
 security policy page with two ways to resolve it. **The system never changes this setting on its
 own.**
@@ -985,7 +1033,7 @@ The development stack ships dex (a lightweight CNCF OIDC provider) as an IdP tar
    `OIDC_DEDICATED_ISSUERS` if you need to (otherwise it counts as a shared identity domain and its
    admission rules have to carry an organizational condition). Then run
    `docker compose up -d --force-recreate backend`.
-2. Sign in as admin and create the provider on the OIDC provider administration page (issuer,
+2. Sign in as admin and create the provider on the Identity sources page (issuer,
    client_id and secret as above).
 3. Sign out, and the sign-in page should show an SSO button for that provider.
 

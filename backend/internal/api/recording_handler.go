@@ -234,7 +234,7 @@ func (h *RecordingHandler) auditRecordingRetrieval(c *gin.Context, rtoken string
 	if h.auditService == nil {
 		// 組裝漏接時**不得靜默**：這條路由沒有中介層兜底，審計服務缺席即等於
 		// 回到零留痕的缺陷態
-		log.Printf("[Recording] 審計服務未注入，%s 的錄影取證未留痕（session=%d）",
+		log.Printf("[Recording] 稽核服務未注入，%s 的錄影取證未留痕（session=%d）",
 			c.Request.URL.Path, grant.SessionID)
 		return
 	}

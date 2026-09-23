@@ -17,7 +17,7 @@ var (
 	// CodeDBConsoleLimitReached admission 閘：同時進行的主控台會話數達上限。
 	// 計數口徑是運行時的連線註冊表，不是會話表的 active 列
 	CodeDBConsoleLimitReached = register("RULE_DB_CONSOLE_LIMIT_REACHED",
-		Descriptor{ZhFallback: "查詢主控台的同時連線數已達上限。若您另有開啟中的主控台，關閉後即可再試；否則請稍後再試或聯繫管理員"})
+		Descriptor{ZhFallback: "查詢主控台的同時連線數已達上限。若您另有開啟中的主控台，關閉後即可再試；否則請稍後再試或聯絡管理員"})
 	// CodeDBConsoleBusy 單一會話同時只允許一個進行中的送出
 	CodeDBConsoleBusy = register("RULE_DB_CONSOLE_BUSY",
 		Descriptor{ZhFallback: "上一次送出尚未完成"})

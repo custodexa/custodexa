@@ -14,6 +14,7 @@
     "audit_write_fallback_file": "Audit batch write failed; fell back to file",
     "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
     "audit_write_sync_refused": "Synchronous audit write failed; the operation was refused",
+    "sensitive_reveal_alert_write_failed": "Sensitive content access was audited, but its additional alert could not be written",
     "command_audit_write_refused": "Synchronous statement record write failed; the statement was refused",
     "command_blocker_unavailable": "The command blocking matcher is unavailable; the statement was refused",
     "syslog_connect_failed": "Syslog forwarding connection failed",

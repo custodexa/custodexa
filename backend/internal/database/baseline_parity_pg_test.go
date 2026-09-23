@@ -401,7 +401,7 @@ func TestBaselineStructuralInvariantsPostgres(t *testing.T) {
 	// command_alerts.kind 值域專屬斷言：增量 migration 重建後必須含 new_source_ip，
 	// 否則新來源位址告警的 INSERT 在生產直接撞 CHECK 而告警靜默消失
 	if c, ok := actualCons["command_alerts_kind_check"]; ok {
-		for _, kind := range []string{"rule", "audit_degraded", "new_source_ip"} {
+		for _, kind := range []string{"rule", "audit_degraded", "new_source_ip", "agent_breaker_tripped", "sensitive_reveal"} {
 			if !strings.Contains(c.Def, "'"+kind+"'") {
 				t.Errorf("command_alerts_kind_check 的值域缺 %q：%s", kind, c.Def)
 			}

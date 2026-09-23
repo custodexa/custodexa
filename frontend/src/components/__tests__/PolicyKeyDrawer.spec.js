@@ -179,6 +179,15 @@ describe('PolicyKeyDrawer — 抽屜其餘四段', () => {
     expect(mountDrawer().find('.drawer-plain').exists()).toBe(false)
   })
 
+  it('敏感原文調閱告警政策說明預設關閉及啟用後的每次告警', () => {
+    const wrapper = mountDrawer({
+      policy: { ...POLICY, key: 'alert_on_sensitive_reveal', type: 'bool', value: 'false' },
+      verdicts: [],
+    })
+    expect(wrapper.find('.drawer-plain').text()).toContain('預設關閉')
+    expect(wrapper.find('.drawer-plain').text()).toContain('每次調閱原文')
+  })
+
   it('最後變更帶時間與操作者，記錄連結帶資源與鍵的篩選參數', () => {
     const wrapper = mountDrawer()
 

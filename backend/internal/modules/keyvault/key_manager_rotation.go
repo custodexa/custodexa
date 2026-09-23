@@ -241,7 +241,7 @@ func (s *KeyManagerService) rotateAuditKey() (*DEKRotationResult, error) {
 		return nil, err
 	}
 	s.commitBumpedKey(model.DataKeyPurposeAuditIntegrity, toVer, newRaw)
-	log.Printf("[KeyManager] 審計蓋章鑰輪替 v%d→v%d（歷史章不重算）", fromVer, toVer)
+	log.Printf("[KeyManager] 稽核蓋章鑰輪替 v%d→v%d（歷史章不重算）", fromVer, toVer)
 	return &DEKRotationResult{Purpose: model.DataKeyPurposeAuditIntegrity, FromVersion: fromVer, ToVersion: toVer}, nil
 }
 
@@ -326,7 +326,7 @@ func (s *KeyManagerService) RotationPendingCount() (int64, error) {
 // 與重包列數。此不變式由 TestRewrapResultHasNoPlaintextField 的形狀守衛釘住。
 //
 // **回應形狀由 union 判別**：TargetMode 是判別子；本地目標的
-// NewKEKID 為材料指紋，委託目標（Phase C 3.3 接上）為外部識別（KMS ARN／
+// NewKEKID 為材料指紋，委託目標為外部識別（KMS ARN／
 // HSM token:label）。委託分支要增欄位就加在自己的分支上——**明文欄在任何分支都
 // 不存在**，故不會有「委託分支以空字串靜默退化」的問題。
 type KEKRewrapResult struct {
@@ -557,6 +557,6 @@ func (s *KeyManagerService) abandonRewrap() (int, error) {
 	s.mu.Lock()
 	s.rewrapPending = false
 	s.mu.Unlock()
-	log.Printf("[KeyManager] KEK 重包已放棄：軟退役 %d 筆未切換新 KEK 包裹列（材料保留至顯式清理），續以現行 KEK %s 運行", abandoned, env)
+	log.Printf("[KeyManager] KEK 重包已放棄：軟退役 %d 筆未切換新 KEK 包裹列（材料保留至顯式清理），續以現行 KEK %s 執行", abandoned, env)
 	return int(abandoned), nil
 }

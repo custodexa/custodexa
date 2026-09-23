@@ -238,7 +238,7 @@ var purgeClasses = map[string]keyPurgeClass{
 			var n int64
 			if err := tx.Model(&model.AuditLog{}).Where("key_version = ?", version).
 				Count(&n).Error; err != nil {
-				return 0, fmt.Errorf("審計引用掃描失敗（v%d）: %w", version, err)
+				return 0, fmt.Errorf("稽核引用掃描失敗（v%d）: %w", version, err)
 			}
 			return n, nil
 		},

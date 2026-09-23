@@ -548,8 +548,8 @@ func TestFailCloseLDAPSeedRollsBackOnAuditFailure(t *testing.T) {
 	inj.arm()
 	// **codec 必須是真的**：`identity.RunLDAPEnvSeed` 在 bind password 非空時，於**進入交易之前**
 	// 就有 `if codec == nil { return err }`（`ldap_seed_migration.go`）。傳 nil 會在那裡早退，
-	// 永不觸及插列／審計／marker，使下方四條斷言全因「什麼都沒發生」成立——
-	// 這正是對抗驗證揭露的假綠根因。防呆使此前提不可能再靜默退化。
+	// 永不觸及插列／審計／marker，使下方四條斷言全因「什麼都沒發生」成立而通過——
+	// 這是一種假綠：本檢查確保此前提不會再靜默退化。
 	err := identity.RunLDAPEnvSeed(db, aesColumnCodec(t, make([]byte, 32)), audit.NewTxSink())
 
 	// **落地狀態先斷言、回傳值後斷言**：本檔的突變配方要求「移除 fail-close 後該格在
@@ -576,7 +576,7 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// 單連線：sqlite :memory: 每條連線是各自獨立的庫（既有 flaky 真因 ff51836）。
+	// 單連線：sqlite :memory: 每條連線是各自獨立的庫。
 	// seed 路徑跨多次查詢（catalog 探測、marker 查詢、鎖內交易），不釘連線會偶發看不到表。
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -741,7 +741,7 @@ func newLDAPDirectoryBackstopDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// 單連線：sqlite :memory: 每條連線是各自獨立的庫（既有 flaky 真因 ff51836）
+	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)

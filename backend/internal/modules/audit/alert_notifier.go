@@ -310,7 +310,7 @@ func ReloadAlertNotifier() {
 		return
 	}
 	if err := n.Reload(); err != nil {
-		log.Printf("[AlertNotifier] 通道快取刷新失敗（沿用舊快取）: %v", err)
+		log.Printf("[AlertNotifier] 通道快取更新失敗（沿用舊快取）: %v", err)
 	}
 }
 

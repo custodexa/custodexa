@@ -60,7 +60,7 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 		return nil
 	}
 	if s == nil || s.db == nil {
-		return fmt.Errorf("告警落地面未注入 DB 句柄")
+		return fmt.Errorf("告警落地面未注入 DB 控制代碼")
 	}
 	rows := make([]model.CommandAlert, 0, len(as))
 	for _, a := range as {
@@ -84,7 +84,7 @@ func (s *alertRecorder) RecordAlerts(_ context.Context, as []gatewayapi.CommandA
 // 簽名不進 gatewayapi.AlertSink：那個公開包零 gorm，交易句柄只能在同行程內傳遞。
 func (s *alertRecorder) RecordAlertInTx(tx *gorm.DB, a gatewayapi.CommandAlert) (model.CommandAlert, error) {
 	if s == nil || tx == nil {
-		return model.CommandAlert{}, fmt.Errorf("告警落地面未取得交易句柄")
+		return model.CommandAlert{}, fmt.Errorf("告警落地面未取得交易控制代碼")
 	}
 	row := alertRowOf(a)
 	if err := tx.Create(&row).Error; err != nil {
@@ -133,6 +133,7 @@ func alertRowOf(a gatewayapi.CommandAlert) model.CommandAlert {
 		UserID:      a.Actor.UserID,
 		AssetID:     a.AssetID,
 		Command:     a.Command,
+		Note:        a.Note,
 		Severity:    a.Level,
 		TriggeredAt: a.OccurredAt,
 		Disposition: a.Disposition,

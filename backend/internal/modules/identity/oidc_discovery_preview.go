@@ -134,7 +134,7 @@ func (s *IdentitySourceService) auditDiscoveryPreview(actor GroupRoleMappingActo
 	}
 	payload, err := json.Marshal(details)
 	if err != nil {
-		log.Printf("[OIDC] 探索預覽審計序列化失敗: %v", err)
+		log.Printf("[OIDC] 探索預覽稽核序列化失敗: %v", err)
 		return
 	}
 	status := model.StatusSuccess
@@ -151,7 +151,7 @@ func (s *IdentitySourceService) auditDiscoveryPreview(actor GroupRoleMappingActo
 			Details:  string(payload),
 		})
 	}); err != nil {
-		log.Printf("[OIDC] 探索預覽審計寫入失敗: %v", err)
+		log.Printf("[OIDC] 探索預覽稽核寫入失敗: %v", err)
 	}
 }
 

@@ -87,6 +87,7 @@ type assetPivotEntry struct {
 // 搬家、行號漂移都不會使本表失準；反之若以 file:line 為鍵，每次無關的編輯都會製造
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
+	"AP-105": {pivotFilled, false, "帳本原文調閱的同步審計：有會話時解析資產主體；無會話的工具呼叫維持空資產"},
 	"AP-99":  {pivotFilled, false, "探測拒絕資產 ID，同步填入 AssetID"},
 	"AP-100": {pivotNotAsset, true, "雖有觸發資產 ID，跳閘作用於 token 與跨資產會話，資產引用另由 AP-99 留痕"},
 	"AP-101": {pivotNotAsset, false, "任務報告可跨資產，ResourceID 為任務 ID"},

@@ -201,7 +201,7 @@ func writeExternalLoginAttemptAudits(emits []externalLoginAttemptEmit) {
 			Details:  string(details),
 		}
 		if err := database.DB.Create(entry).Error; err != nil {
-			log.Printf("[AuthService] 外部帳號本地登入嘗試審計寫入失敗: %v", err)
+			log.Printf("[AuthService] 外部帳號本地登入嘗試稽核寫入失敗: %v", err)
 		}
 	}
 }

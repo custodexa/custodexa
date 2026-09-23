@@ -692,7 +692,7 @@ func (s *LDAPDirectoryService) auditTestOutcome(req LDAPDirectoryTestRequest,
 		details["diagnostic_id"] = result.DiagnosticID
 	}
 	if err := s.ldapDirectoryAuditLog(s.db, req.Actor, model.ActionExecute, status, nil, details); err != nil {
-		log.Printf("[LDAPDirectoryTest] 測試結果審計寫入失敗（結果不受影響）: %v", err)
+		log.Printf("[LDAPDirectoryTest] 測試結果稽核寫入失敗（結果不受影響）: %v", err)
 	}
 }
 
@@ -720,7 +720,7 @@ func (s *LDAPDirectoryService) auditTestRejected(req LDAPDirectoryTestRequest,
 	}
 	if err := s.ldapDirectoryAuditLog(s.db, req.Actor, model.ActionExecute,
 		model.StatusDenied, nil, details); err != nil {
-		log.Printf("[LDAPDirectoryTest] 被拒測試審計寫入失敗（拒絕結果不受影響）: %v", err)
+		log.Printf("[LDAPDirectoryTest] 被拒測試稽核寫入失敗（拒絕結果不受影響）: %v", err)
 	}
 }
 

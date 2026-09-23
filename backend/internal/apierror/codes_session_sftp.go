@@ -87,7 +87,7 @@ var (
 	// ZhFallback「會話不存在」）——同一資源不存在語義，复用優先；本檔不重複註冊。
 	//
 	// INTERNAL_SESSION_QUERY 已被 codes_audit.go（錄影播放前置查詢，
-	// ZhFallback「獲取 Session 資訊失敗」）取走——雖語義相近但呼叫網域不同
+	// ZhFallback「取得 Session 資訊失敗」）取走——雖語義相近但呼叫網域不同
 	// （本檔為 session 管理端列表/詳情查詢），故另立 _ADMIN_ 命名避免撞碼。
 	CodeInternalSessionAdminQuery  = register("INTERNAL_SESSION_ADMIN_QUERY", Descriptor{ZhFallback: "查詢 Session 失敗"})
 	CodeInternalSessionActiveQuery = register("INTERNAL_SESSION_ACTIVE_QUERY", Descriptor{ZhFallback: "查詢活動 Session 失敗"})

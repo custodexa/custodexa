@@ -108,7 +108,7 @@ type recordedFailure struct {
 // setupCheckpointDB 建 sqlite 測試庫。
 //
 // MaxOpenConns(1)：`:memory:` 的每條連線是**各自獨立的資料庫**，連線池
-// 一放大就出現「單獨跑綠、整包跑紅」（本專案既有教訓，ff51836）
+// 一放大就會出現「單獨跑綠、整包跑紅」
 func setupCheckpointDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

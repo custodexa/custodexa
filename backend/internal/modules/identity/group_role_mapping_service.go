@@ -468,7 +468,7 @@ func (s *IdentitySourceService) auditMapping(tx *gorm.DB, actor GroupRoleMapping
 	}
 	payload, err := json.Marshal(details)
 	if err != nil {
-		return fmt.Errorf("序列化群組映射規則審計內容失敗: %w", err)
+		return fmt.Errorf("序列化群組映射規則稽核內容失敗: %w", err)
 	}
 	id := row.ID
 	if err := port.WriteInTx(s.auditTx, tx, port.AuditEvent{
@@ -480,7 +480,7 @@ func (s *IdentitySourceService) auditMapping(tx *gorm.DB, actor GroupRoleMapping
 		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
 		Details:    string(payload),
 	}); err != nil {
-		return fmt.Errorf("寫入群組映射規則審計失敗: %w", err)
+		return fmt.Errorf("寫入群組映射規則稽核失敗: %w", err)
 	}
 	return nil
 }

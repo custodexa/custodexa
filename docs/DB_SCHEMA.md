@@ -1,10 +1,11 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-22（agent 帳本／報告／探測事件、v3 檢查點、規則主體與 16 條種子；agent_token_name 快照）
+> **最後更新**：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
+> 前次更新：2026-09-23（agent_tool_calls 新增 args_sealed／args_retained、command_alerts.kind 加 sensitive_reveal；agent 帳本／報告／探測事件、v3 檢查點、規則主體與 16 條種子；agent_token_name 快照）
 > 前次更新：2026-09-21（多項存取任務：access_request_items、執行者／關閉時刻、逐項票證與核准記錄）
-> 前次更新：2026-09-21（users 主體欄、agent_tokens、sessions 關聯；審計 action 擴為 varchar(32)）
-> 前次更新：2026-09-21（輸出面敏感資料規則：增量加 direction、14 條種子、輸出告警計數與掃描停用審計）
-> 前次更新：2026-09-15（指令審計降級原因新增 `input_without_command`，無 migration）
+> 前次更新：2026-09-21（users 主體欄、agent_tokens、sessions 關聯；稽核 action 擴為 varchar(32)）
+> 前次更新：2026-09-21（輸出面敏感資料規則：增量加 direction、14 條種子、輸出告警計數與掃描停用稽核）
+> 前次更新：2026-09-15（指令稽核降級原因新增 `input_without_command`，無 migration）
 > 前次更新：2026-09-13（委託拓撲：新表 `kek_topologies`（單列），migration `20260913_kek_topology`）
 > 前次更新：2026-09-13（DEK 快取存活期政策鍵 `dek_cache_ttl_seconds`，無 migration，政策鍵表加一列）
 > 前次更新：2026-09-09（政策組與合規對照：新表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，一條唯一索引 `idx_policy_clause_controls_group_key`，migration `20260909_policy_groups`）
@@ -67,8 +68,8 @@
 | ApproverScope | `approver_scopes` | baseline（CHECK `chk_approver_scope_actor`＋`chk_approver_scope_target`；八條 partial unique） | approver 審核範圍（資產/節點/申請人/使用者群組四維恰一） |
 | AccessRequestItem | `access_request_items` | 增量 `20260921_access_request_items`／`20260921_access_request_item_decisions` | 任務項、逐項核准與票證、政策快照 |
 | AccessRequestApproval | `access_request_approvals` | baseline | 申請項核准逐票記錄（quorum，同項同人唯一） |
-| AuditLog | `audit_logs` | baseline＋`20260921_agent_audit_actions` 擴 action 至 varchar(32) | 審計日誌（不可變） |
-| SessionCommand | `session_commands` | baseline（CHECK `session_commands_degraded_no_text`）＋增量 `20260826_db_query_console`（十一個結果事實欄、三條 CHECK、三個部分索引） | 指令與查詢語句審計記錄（文字終端重組列＋查詢主控台執行單位列，以 `result_status` 是否為空區分） |
+| AuditLog | `audit_logs` | baseline＋`20260921_agent_audit_actions` 擴 action 至 varchar(32) | 稽核日誌（不可變） |
+| SessionCommand | `session_commands` | baseline（CHECK `session_commands_degraded_no_text`）＋增量 `20260826_db_query_console`（十一個結果事實欄、三條 CHECK、三個部分索引） | 指令與查詢語句稽核記錄（文字終端重組列＋查詢主控台執行單位列，以 `result_status` 是否為空區分） |
 | AlertRule | `alert_rules` | baseline（CHECK action／severity；`uniq_alert_rules_name` 唯一索引＝種子 `ON CONFLICT` 的衝突目標）＋`baseline_seed.go` baseline 12 條輸入＋direction 增量 2 條輸出，再加 subject 增量 2 條 agent/input/block，共 16 條內建規則 | 輸入指令告警/阻斷與輸出敏感資料告警規則 |
 | CommandAlert | `command_alerts` | baseline（CHECK severity／kind／kind↔rule_id；**刻意無 FK**——rule_id/session_id 為觸發快照冗餘，規則改名或刪除不得破壞歷史告警） | 危險指令告警記錄（含審閱處置欄位） |
 | NotificationChannel | `notification_channels` | baseline（CHECK type／language） | 告警 webhook 通知通道 |
@@ -89,15 +90,15 @@
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
 | AccessReview | `access_reviews` | baseline | 週期性存取複審簽核（不可變，PCI 7.2.4） |
 | DailyReviewLog | `daily_review_logs` | baseline | 每日審閱簽核（PCI 10.4.1） |
-| AuditFailureEvent | `audit_failure_events` | baseline（`idx_failure_events_single_open`＝一機制至多一未結案失敗區間，partial unique） | 審計機制失效事件（PCI 10.7.2/10.7.3） |
+| AuditFailureEvent | `audit_failure_events` | baseline（`idx_failure_events_single_open`＝一機制至多一未結案失敗區間，partial unique） | 稽核機制失效事件（PCI 10.7.2/10.7.3） |
 | SyslogSetting | `syslog_settings` | baseline | syslog 轉發設定（PCI 10.3.3） |
 | ExportSigningKey | `export_signing_keys` | baseline | 匯出簽章金鑰（PCI 10.3.4） |
 | IntegrityBaseline | `integrity_baselines` | baseline | 完整性啟用基準（PCI 10.3.4） |
-| AuditCheckpoint | `audit_checkpoints` | baseline | 審計檢查點鏈（id 區間聚合＋鏈接＋Ed25519 簽章，偵測「列被刪」） |
+| AuditCheckpoint | `audit_checkpoints` | baseline | 稽核檢查點鏈（id 區間聚合＋鏈接＋Ed25519 簽章，偵測「列被刪」） |
 | CheckpointSigningKey | `checkpoint_signing_keys` | baseline | 檢查點鏈簽章鑰（Ed25519，自始帶版本欄；`private_key_enc` 登記於 `envelopeMigrationTargets`） |
 | AuditCheckpointTrim | `audit_checkpoint_trims` | baseline | 檢查點鏈修剪記錄（殘鏈的新起點錨定，不可變；刻意獨立於 audit_logs——留痕會過期，錨定不會） |
 | AuditChainVerifyState | `audit_chain_verify_states` | baseline | 檢查點鏈兩層自動驗證的營運狀態（單列，ID 恆為 1；兩層各記最近執行時點、滾動重驗位置、未結案失敗區間集合）。**營運狀態非證明**：不在鏈的覆蓋範圍內，具 DB 寫入權者可改 |
-| AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；稽核工作台的 `present`／`purged` 三態來源） |
+| AuditRetentionWatermark | `audit_retention_watermarks` | baseline（`class` 唯一索引；**無 `deleted_at`**——本表永不刪除） | 保留期清除水位（每類別一列，永久保留；調查工作台的 `present`／`purged` 三態來源） |
 | AuditExportJob | `audit_export_jobs` | **migration（增量 `20260824_audit_export_jobs`，非 baseline）**＋增量 `20260903_rotation_evidence_report` 加 `kind` 欄與 `(kind, status)` 索引 | 匯出工作單追蹤（純狀態表，非證據；種類分流：證據包綁申請者本人並以部分唯一索引去重，輪替證據報告為共用產物） |
 | UserSourceIP | `user_source_ips` | **migration（增量 `20260826_source_ip_forensics`，非 baseline）** | 帳號×來源位址的「已見」基準（新來源位址告警的判定依據，**非證據**、不受保留政策清除；複合主鍵，刻意無 FK） |
 | OffsiteProfile | `offsite_profiles` | **migration（增量 `20260825_evidence_offsite`，非 baseline）**（CHECK `offsite_profiles_singleton_check`＋`offsite_profiles_credential_mode_check`；`idx_offsite_profiles_current` partial unique＝現行世代至多一列） | 離機儲存的設定世代目錄（每列一個世代，連線參數＋憑證模式）；`credentials_enc` 登記於 `envelopeMigrationTargets` |
@@ -114,17 +115,19 @@
 | UserRoleMapping | `user_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（複合主鍵 `(user_id, role_id, channel)`，除主鍵外不另建索引） | 某條登入途徑於最近一次重算後認定的映射事實（每次登入重算，通道進主鍵故兩條途徑各自成列） |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **60 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **16 張由 baseline 之後的增量 migration 建的表**：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **67 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **23 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
 群組映射兩表 `group_role_mappings`／`user_role_mappings`，
-與政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **63 張**表
+政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，
+`kek_topologies`，`agent_tokens`，`access_request_items`，
+與 agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_events`／`agent_visibility_exposures`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **70 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含二十六條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含二十八條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -135,7 +138,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共十三條：baseline 加十二條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共二十九條：baseline 加二十八條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -657,7 +660,7 @@ erDiagram
 | `FullName` | string | `size:100` | `full_name` | 顯示名稱 |
 | `Active` | bool | `default:true` | `active` | 啟用狀態 |
 | `IsLDAP` | bool | `default:false` | `is_ldap` | 是否 LDAP 用戶 |
-| `ProvisioningOrigin` | string | `size:16;not null;default:'local'` | `provisioning_origin` | 供應來源（`local`／`ldap`／`oidc`）：建立時寫入後不可變，僅供顯示、審計與統計，**不參與授權判定**。 |
+| `ProvisioningOrigin` | string | `size:16;not null;default:'local'` | `provisioning_origin` | 供應來源（`local`／`ldap`／`oidc`）：建立時寫入後不可變，僅供顯示、稽核與統計，**不參與授權判定**。 |
 | `ExternalCredential` | bool | `default:false` | `external_credential` | 憑證由外部提供者管理，禁止一切本地密碼路徑。語義刻意是「外部化＝true」而非「有本地密碼＝true」——GORM 對帶 `default` tag 的欄位遇零值交由 DB 填 default，`default:true` 的 bool 顯式寫 false 會被覆寫（真 postgres 實測），反轉後外部帳號寫非零值故必寫入。同 migration |
 | `CredentialEpoch` | int | `not null;default:0` | `-` | **使用者級**憑證世代（單調遞增）。解除外部身分綁定／帳號停用刪除／改為僅外部登入／改密時推進，使該使用者既有憑證全數失效；**自動鎖定刻意不推進**（鎖定可由未認證第三方觸發，推進將使其成為遠端斷線武器）。換發路徑一律簽發當下現查，不得繼承來源憑證。同 migration |
 | `TOTPSecretEnc` | string | `size:512` | `-` | TOTP secret（AES 加密，永不輸出 JSON）。migration `v7.7` 補欄 |
@@ -683,7 +686,7 @@ erDiagram
 且**只在群組已知時寫**：讀不到群組時覆蓋，會抹掉「上次成功讀到什麼」這個唯一的診斷線索。
 值是外部來源自報的，介面呈現時標示為外部自報、不與本系統自有的識別值混排。
 
-**認證來源常數**（登入審計標註用，同時作為 `users.provisioning_origin` 的值域）:
+**認證來源常數**（登入稽核標註用，同時作為 `users.provisioning_origin` 的值域）:
 ```go
 const (
     AuthSourceLocal = "local" // 本地帳密認證
@@ -746,7 +749,7 @@ const (
 | `suspended_reason` | text | `suspended_reason` |
 
 owner 憑證世代進位時，同交易停用名下 token；不保存 token 的 owner 世代快照。
-重新啟用 owner 不恢復舊 token。兩種失效狀態皆冪等，狀態寫入與相關審計同交易。
+重新啟用 owner 不恢復舊 token。兩種失效狀態皆冪等，狀態寫入與相關稽核同交易。
 
 ### 2. Role（角色）
 
@@ -769,7 +772,7 @@ owner 憑證世代進位時，同交易停用名下 token；不保存 token 的 
 const (
     RoleAdmin    = "admin"    // 管理員
     RoleUser     = "user"     // 一般用戶
-    RoleAuditor  = "auditor"  // 審計員
+    RoleAuditor  = "auditor"  // 稽核人員
     RoleApprover = "approver" // 審核人（可疊加角色；seed 補種）
 )
 ```
@@ -906,7 +909,7 @@ const (
 
 **協議判別方法**:
 - `IsDatabase()` - mysql / postgres / redis / mssql
-- `IsTextTerminal()` - ssh + 資料庫 CLI + k8s（走 sshproxy bridge，指令審計/錄製/監看/阻斷全沿用）
+- `IsTextTerminal()` - ssh + 資料庫 CLI + k8s（走 sshproxy bridge，指令稽核/錄製/監看/阻斷全沿用）
 - `SupportsQueryConsole()` - mysql / postgres / mssql。**與 `IsDatabase()` 刻意不同**：
   redis 是資料庫協議但沒有 SQL 執行單位、結果集與交易態，主控台的整套模型對它不成立。
   `allowed_databases` 可否非空、主控台入口與協議閘一律以本判定為準
@@ -919,14 +922,14 @@ const (
 - 節點掛載走 `asset_nodes` M2M（多歸屬）；無 belongs-to 關聯
 
 **GORM Hooks** (定義於 `asset_audit.go`):
-- `AfterCreate` / `AfterUpdate` / `AfterDelete` - 自動記錄審計日誌
+- `AfterCreate` / `AfterUpdate` / `AfterDelete` - 自動記錄稽核日誌
 
 ---
 
 ### 3b. AssetAccount（資產帳號／憑證掛載列）
 
 **表名**: `asset_accounts`
-**檔案**: `backend/internal/model/asset_account.go`（審計結構 `asset_account_audit.go`）
+**檔案**: `backend/internal/model/asset_account.go`（稽核結構 `asset_account_audit.go`）
 **建表方式**: baseline（`baseline_schema_asset.go`）＋增量 `20260906_credential_library`
 （加 `credential_id`／`effective_version_id` 兩欄與 `idx_asset_accounts_credential`）
 ＋增量 `20260906_credential_library_contract`（卸下 `password_enc`／`private_key_enc` 與
@@ -952,13 +955,13 @@ const (
 | `EffectiveVersionID` | *uint | - | `effective_version_id` | 該台當下用以連線的密文版本，**必須屬於 `CredentialID` 那筆憑證**；NULL＝尚未取得任何密文。**連線一律只取本欄**：不依憑證的現行或待生效版本推測、不自動試兩個版本（自動試兩版會製造鎖帳與秘密探測面） |
 | `Username` | string | `size:100` | `username` | 登入帳號名的**顯示副本**。真相在 `credentials.username`，連線與改密以憑證上的名字為準；本欄由帳號服務同步維護，供尚未切換的讀取面與唯一索引 `(asset_id, username)` 沿用 |
 | `IsDefault` | bool | `default:false;index` | `is_default` | 預設帳號：系統路徑（改密 runner、k8s、SFTP 獨立入口）與未指定 `account_id` 的連線一律走此帳號 |
-| `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與審計辨識，不改變授權判定。逐掛載獨立：同一組秘密在不同主機上的特權性可以不同 |
+| `Privileged` | bool | `default:false` | `privileged` | 特權帳號標記（如 root/sa）。**純標示欄**，供 UI 與稽核辨識，不改變授權判定。逐掛載獨立：同一組秘密在不同主機上的特權性可以不同 |
 | `AuthMethod` | string | `size:20;default:sql` | `auth_method` | 認證類型的**同步副本**（真相在 `credentials.auth_method`）。值域 `sql`｜`domain`；**1.0 只接受 `sql`**，`domain` 由驗證層明確拒絕（`VALIDATION_ACCOUNT_AUTH_METHOD_UNSUPPORTED`，不靜默降級）。刻意放帳號而非資產：同一台 MSSQL 可同時掛 SQL login 與域帳號，放資產上兩者無法並存 |
 | `Note` | string | `size:255` | `note` | 備註 |
 
 **`username` 與 `auth_method` 是同步副本，不是唯讀欄**：兩者仍由帳號服務寫入（帳號更新、
 資產表單對預設帳號的追趕同步），並由連線解析在憑證讀不到名字時回退讀取、由釘住名比對、
-審計列與唯一索引 `idx_asset_accounts_username` 讀取。把它們卸下要跨五個套件改讀取面與唯一索引，
+稽核列與唯一索引 `idx_asset_accounts_username` 讀取。把它們卸下要跨五個套件改讀取面與唯一索引，
 是獨立的一件事，不在本次收縮的範圍內。
 
 **`credential_group` 這一欄在資料庫裡還在，model 已不再宣告它**。它由增量
@@ -993,9 +996,9 @@ const (
 該掛載就位版本上的密文，兩欄留在表上的是切換當時的歷史殘值，不是現行憑證的鏡射。
 `PUT /assets/:id` 的憑證欄位透明轉寫 default 帳號所引用的憑證。
 
-**審計**: 不掛 GORM hook（hook 拿不到 diff），由 service 顯式呼叫
+**稽核**: 不掛 GORM hook（hook 拿不到 diff），由 service 顯式呼叫
 `RecordAssetAccountAudit`；操作類型 `create`/`update`/`delete`/`set_default`，
-Details **只記被變更的欄位名稱**，永不含密文或明文憑證（審計庫讀取面遠比憑證欄寬）。
+Details **只記被變更的欄位名稱**，永不含密文或明文憑證（稽核庫讀取面遠比憑證欄寬）。
 
 **會話快照**: `sessions.account_id` + `sessions.account_username` 雙快照，
 寫入後永不隨帳號改名／刪除更新——只存 FK 不足以保證不可否認性。
@@ -1042,7 +1045,7 @@ GORM tag 既表達不了 `COALESCE` 也表達不了謂詞；拿掉它同層即�
 | `NodeID` | uint | `not null;index` | `node_id` | 節點（asset_groups.id） |
 
 **索引**: `idx_asset_nodes_asset_node`＝`UNIQUE (asset_id, node_id)`（ON CONFLICT 冪等依據）。
-**語義**: 多歸屬 M2M（一資產可掛多節點；零掛載＝未分組）；硬刪（掛/摘即增刪列，變更審計在 service 層記 `node_ids` 舊→新）。授權解析的子樹展開：授權節點 N 涵蓋資產 A ⟺ N ∈ A 的掛載節點或其任一祖先（遞迴 CTE，無快取即時查詢）。
+**語義**: 多歸屬 M2M（一資產可掛多節點；零掛載＝未分組）；硬刪（掛/摘即增刪列，變更稽核在 service 層記 `node_ids` 舊→新）。授權解析的子樹展開：授權節點 N 涵蓋資產 A ⟺ N ∈ A 的掛載節點或其任一祖先（遞迴 CTE，無快取即時查詢）。
 
 ---
 
@@ -1120,9 +1123,9 @@ const (
 - `idx_sessions_account_id` - `(account_id)`
 - `idx_sessions_auth_provider_id` - `(auth_provider_id)`
 - `idx_sessions_deleted_at` - `(deleted_at)`
-- `idx_sessions_user_start` - `(user_id, start_time)`，稽核工作台人樞紐的會話類 keyset 查詢
+- `idx_sessions_user_start` - `(user_id, start_time)`，調查工作台人樞紐的會話類 keyset 查詢
 - `idx_sessions_asset_start` - `(asset_id, start_time)`，同上的資產樞紐側
-- `idx_sessions_client_ip_start` - `(client_ip, start_time)`，稽核工作台**位址樞紐**的會話查詢與三表 join
+- `idx_sessions_client_ip_start` - `(client_ip, start_time)`，調查工作台**位址樞紐**的會話查詢與三表 join
   皆以 `sessions.client_ip` 為鍵，時間窗 keyset 需第二鍵。**由增量 migration `20260826_source_ip_forensics`
   建立**（DDL 逐字：`CREATE INDEX idx_sessions_client_ip_start ON sessions USING btree (client_ip, start_time)`），
   非 baseline
@@ -1162,7 +1165,7 @@ const (
 | `AssetGroupID` | *uint | `uniqueIndex:idx_*` | `asset_group_id,omitempty` | 資產分組 ID（客體之一） |
 | `Permission` | PermissionType | `type:varchar(20);not null;uniqueIndex:idx_*` | `permission` | 權限類型 |
 | `DateStart` | *time.Time | - | `date_start,omitempty` | 時效窗起（空＝不設限；來源限核准流，管理 API 不接受手填） |
-| `DateExpired` | *time.Time | - | `date_expired,omitempty` | 時效窗迄（空＝永久；到期語義＝解析不命中，記錄留存供審計） |
+| `DateExpired` | *time.Time | - | `date_expired,omitempty` | 時效窗迄（空＝永久；到期語義＝解析不命中，記錄留存供稽核） |
 | `Source` | string | `type:varchar(20)` | `source` | 授權來源 `manual`（預設，BeforeCreate 空值回填）/ `ticket`（核准流臨時授權，帶時效窗） |
 | `Accounts` | AccountScope（`[]string`） | `type:text`（DB 端 NOT NULL DEFAULT `["@ALL"]`） | `accounts,omitempty` | 帳號範圍：`["@ALL"]`＝客體範圍內資產全部帳號（行為與多帳號前一致），或具名 username 清單（語義＝範圍內資產上的同名帳號）。**不參與唯一索引**——帳號範圍是授權列屬性、非去重維度（收緊範圍＝改既有列，不是新增列）。 |
 | `GrantedBy` | uint | `not null` | `granted_by` | 授權者 ID（ticket 列＝核准人；自動核准因 FK 記申請人＋申請單 auto_approved 標記辨識） |
@@ -1171,7 +1174,7 @@ const (
 ```go
 type PermissionType string
 const (
-    PermissionView    PermissionType = "view"    // 查看資產資訊
+    PermissionView    PermissionType = "view"    // 檢視資產資訊
     PermissionConnect PermissionType = "connect" // 連線到資產（含 view）
     // Deprecated: manage 已移除——API binding 拒收，僅歷史軟刪列殘留此值
     PermissionManage  PermissionType = "manage"
@@ -1203,7 +1206,7 @@ const (
 
 ---
 
-### 7. AuditLog（審計日誌）
+### 7. AuditLog（稽核日誌）
 
 **表名**: `audit_logs`
 **檔案**: `backend/internal/model/audit_log.go`
@@ -1220,7 +1223,7 @@ const (
 | `Resource` | AuditResource | `type:varchar(20);not null;index:idx_*` | `resource` | 資源類型 |
 | `ResourceID` | *uint | `index:idx_audit_resource` | `resource_id` | 資源 ID |
 | `Status` | AuditStatus | `type:varchar(20);not null;index:idx_*` | `status` | 操作狀態 |
-| `AssetID` | *uint | `index:idx_audit_asset_created,priority:1` | `asset_id,omitempty` | 資產主體鍵。稽核工作台的資產樞紐**只認本欄**，SHALL NOT 以 `(resource, resource_id)` 冒充——`(resource, resource_id)` 對改密計畫、授權列等實體會記成 `resource=asset` 而 `resource_id` 是計畫 id／授權列 id，據此反查會把別的實體的事件掛到這台資產上（假事件比遺漏更糟）。主體在**寫入期**釘在來源列上，與 sessions／session_commands／command_alerts 既有的 `user_id`＋`asset_id` 冗餘慣例一致。指標型可為 NULL：非資產類動作留空，**不得以 0 冒充「無資產」**。納入 HMAC 蓋章 payload 但走 `omitempty`——nil 時位元組與加欄前相同，既有已蓋章列零誤判。寫入端由 `cmd/server/audit_points_asset_pivot_guard_test.go` 逐產生點登記守衛 |
+| `AssetID` | *uint | `index:idx_audit_asset_created,priority:1` | `asset_id,omitempty` | 資產主體鍵。調查工作台的資產樞紐**只認本欄**，SHALL NOT 以 `(resource, resource_id)` 冒充——`(resource, resource_id)` 對改密計畫、授權列等實體會記成 `resource=asset` 而 `resource_id` 是計畫 id／授權列 id，據此反查會把別的實體的事件掛到這台資產上（假事件比遺漏更糟）。主體在**寫入期**釘在來源列上，與 sessions／session_commands／command_alerts 既有的 `user_id`＋`asset_id` 冗餘慣例一致。指標型可為 NULL：非資產類動作留空，**不得以 0 冒充「無資產」**。納入 HMAC 蓋章 payload 但走 `omitempty`——nil 時位元組與加欄前相同，既有已蓋章列零誤判。寫入端由 `cmd/server/audit_points_asset_pivot_guard_test.go` 逐產生點登記守衛 |
 | `UserID` | uint | `not null;index:idx_audit_user_created,priority:1` | `user_id` | 操作者 ID。與 `CreatedAt` 的 priority 2 合成複合索引 `(user_id, created_at)` |
 | `Username` | string | `type:varchar(100);not null` | `username` | 操作者名稱（反正規化） |
 | `Method` | string | `type:varchar(10)` | `method` | HTTP 方法 |
@@ -1234,8 +1237,8 @@ const (
 | `RequestID` | string | `type:varchar(100);index:idx_*` | `request_id` | 追蹤 ID |
 | `IntegrityHMAC` | string | `type:varchar(64)` | `-` | 逐列完整性驗證碼（PCI 10.3.4；HMAC-SHA256 hex）。由 `AuditLog.BeforeCreate` 註冊 hook 蓋章，覆蓋**全部入庫路徑**（middleware 批次、asset GORM hook、file_tap、k8s cp）——**「入庫」二字是刻意的（誠實邊界 R2）**：檔案降級（`AuditLogService.writeToFile`）與佇列滿載丟棄的事件不進 DB、不經本 hook，既無 HMAC 也無 key_version，故 SHALL NOT 表述為「覆蓋全部寫入路徑」；基準前歷史列為空，基準後仍空即判不符（以列 id 對比 IntegrityBaseline.max_log_id 判定） |
 | `KeyVersion` | int | migration default 0 | `-` | 蓋章鑰版本。0＝legacy 派生鑰快照（凍結為 audit_integrity DataKey v0，JWT_SECRET 輪替不影響歷史驗章），>=1 為系統生成的版本化鑰。驗證按列 KeyVersion 取對應鑰 |
-| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 封存期留痕回灌的冪等鍵。B 模式封存期的解封嘗試先寫入定長環狀 journal，解封後回灌審計；回灌為 **at-least-once**，故以本欄的唯一索引保證重複回灌不產生重複列。**一般審計列為 NULL**（唯一索引對 NULL 不生效）。合成的聚合列另以 `(journal_uuid, 起始 seq, 結束 seq)` 導出確定性 ID 填入本欄——聚合列無個別事件 uuid，若不給確定性鍵，checkpoint 未落盤而重跑時同一區間會重複入審計 |
-| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 回灌冪等鍵。封存期 journal 的 at-least-once 回灌以此去重：個別事件列用 journal 的確定性事件 ID，合成聚合列用 `(journal_uuid, 起始 seq, 結束 seq)` 導出的確定性 ID。**可為 NULL 且必須是指標**——一般審計列不帶此鍵，若用空字串則唯一索引會讓第二筆一般審計列直接寫入失敗；多個 NULL 在 Postgres 與 SQLite 的唯一索引下皆允許並存 |
+| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 封存期留痕回灌的冪等鍵。B 模式封存期的解封嘗試先寫入定長環狀 journal，解封後回灌稽核；回灌為 **at-least-once**，故以本欄的唯一索引保證重複回灌不產生重複列。**一般稽核列為 NULL**（唯一索引對 NULL 不生效）。合成的聚合列另以 `(journal_uuid, 起始 seq, 結束 seq)` 導出確定性 ID 填入本欄——聚合列無個別事件 uuid，若不給確定性鍵，checkpoint 未落盤而重跑時同一區間會重複入稽核 |
+| `IdempotencyUUID` | *string | `type:varchar(64);uniqueIndex:idx_audit_idempotency` | `-` | 回灌冪等鍵。封存期 journal 的 at-least-once 回灌以此去重：個別事件列用 journal 的確定性事件 ID，合成聚合列用 `(journal_uuid, 起始 seq, 結束 seq)` 導出的確定性 ID。**可為 NULL 且必須是指標**——一般稽核列不帶此鍵，若用空字串則唯一索引會讓第二筆一般稽核列直接寫入失敗；多個 NULL 在 Postgres 與 SQLite 的唯一索引下皆允許並存 |
 
 **字串欄位長度收口**（`backend/internal/model/audit_log_bounds.go`）：
 `AuditLog.BeforeCreate` 在**蓋章之前**把字串欄位收進各自 gorm 標籤宣告的上界內（上界由標籤
@@ -1315,12 +1318,12 @@ const (
 **GORM Hooks**:
 - `BeforeCreate` - 確保 CreatedAt 設置（HMAC 涵蓋時戳，必須在此定值）＋經註冊 hook 蓋完整性 HMAC
 - `AfterCreate` - 經註冊 hook tee 入 syslog 離機轉發（PCI 10.3.3，覆蓋全部**入庫**路徑；未入庫的降級事件同樣不轉發）
-- `BeforeUpdate` - **禁止更新**（審計日誌不可變）
+- `BeforeUpdate` - **禁止更新**（稽核日誌不可變）
 - `BeforeDelete` - **禁止 ORM 刪除**（含 Unscoped 硬刪；唯一刪除路徑為保留政策原生 SQL）
 
 ---
 
-### 8. SessionCommand（指令與查詢語句審計記錄）
+### 8. SessionCommand（指令與查詢語句稽核記錄）
 
 **表名**: `session_commands`
 **檔案**: `backend/internal/model/session_command.go`
@@ -1360,7 +1363,7 @@ const (
 | `ResultRows` | *int64 | - | `result_rows,omitempty` | 回傳的資料列數（跨結果集合計）；NULL＝不適用或未回填 |
 | `RowsAffected` | *int64 | - | `rows_affected,omitempty` | 目標端回報的影響列數；NULL＝不適用或未回填 |
 | `ResultSets` | *int32 | - | `result_sets,omitempty` | 本單位回傳的結果集數；NULL＝不適用或未回填 |
-| `ErrorCode` | string | `size:64;not null;default:''` | `error_code,omitempty` | 目標端錯誤碼（SQLSTATE／MySQL errno／MSSQL number 的字串形態）。**只記碼不記訊息**：錯誤文本可能夾帶資料片段（唯一約束違反會回鍵值），而審計列是長期保存的 |
+| `ErrorCode` | string | `size:64;not null;default:''` | `error_code,omitempty` | 目標端錯誤碼（SQLSTATE／MySQL errno／MSSQL number 的字串形態）。**只記碼不記訊息**：錯誤文本可能夾帶資料片段（唯一約束違反會回鍵值），而稽核列是長期保存的 |
 | `DurationMS` | *int32 | - | `duration_ms,omitempty` | 送出到取得終態的耗時（毫秒）；NULL＝未回填 |
 | `ResultTruncated` | bool | `not null;default:false` | `result_truncated` | 回傳結果因上限而截斷（列數、位元組或單欄值）。**是回傳上限不是查詢上限**——目標端仍可能已算完整個結果 |
 | `TxStateAfter` | string | `size:8;not null;default:''` | `tx_state_after,omitempty` | 本單位執行後的交易態。取自逐單位本就會做的一次探詢，零額外往返；MySQL 恆為 `unknown`。稽核據此能判讀「這筆 `ok` 落在未提交的交易內」 |
@@ -1398,7 +1401,7 @@ const (
 **索引列表**（以 `pg_indexes.indexdef` 實測為準）:
 - `idx_session_commands_session_seq` - `(session_id, seq)`，單會話指令流取序
 - `idx_session_commands_user_id` - `(user_id)`，跨會話搜尋常用維度
-- `idx_session_commands_user_executed` - `(user_id, executed_at)`，稽核工作台人樞紐的指令類 keyset 查詢
+- `idx_session_commands_user_executed` - `(user_id, executed_at)`，調查工作台人樞紐的指令類 keyset 查詢
 - `idx_session_commands_asset_executed` - `(asset_id, executed_at)`，同上的資產樞紐側
 - `idx_session_commands_event_id` - **部分唯一索引** `(event_id) WHERE event_id <> ''`。
   事件識別只有主控台列才有，文字終端列一律空字串；普通唯一索引會讓第二筆文字終端列就撞上唯一衝突。
@@ -1419,7 +1422,7 @@ const (
 - **降級列與指令列共用 `Seq` 計數器**（`CommandStore` 單一發號來源），故兩者在
   `(session_id, seq)` 序上正確交錯——「第 3 輪降級、第 4 輪是真指令」即 seq 3 與 4，
   稽核視圖不需任何合併邏輯。分表會使 spec 主句「每一輪輸入 SHALL 產生一筆對應的
-  審計記錄」由一次 count 變成一個 join
+  稽核記錄」由一次 count 變成一個 join
 - **佇列滿載丟列時 `seq` 留下斷號，斷號本身即證據**（`s.seq++` 在 select 之前），
   由 `command_degrade_record_test.go` 的守衛釘住
 
@@ -1467,7 +1470,7 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 **檔案**: `backend/internal/model/command_alert.go`
 **建表方式**: baseline（`baseline_schema_audit.go`），含 `severity`／`kind`／`kind↔rule_id` 三條 CHECK。
 `command_alerts_kind_check` 的值域由增量 migration `20260826_source_ip_forensics` 重建擴充
-（`DROP CONSTRAINT` → `ADD CONSTRAINT ... CHECK (kind IN ('rule','audit_degraded','new_source_ip'))`，**約束名不變**）。
+（`DROP CONSTRAINT` → `ADD CONSTRAINT ... CHECK (kind IN ('rule','audit_degraded','new_source_ip'))`，**約束名不變**；其後 `20260922_agent_breaker_alert` 加 `agent_breaker_tripped`、`migration_sensitive_reveal_alert` 加 `sensitive_reveal`，同法重建）。
 **刻意不設外鍵**：`rule_id`／`session_id` 是觸發當下的快照冗餘，規則改名或刪除不得破壞歷史告警
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
@@ -1475,8 +1478,8 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `RuleID` | *uint | - | `rule_id,omitempty` | 命中規則 ID。**指標型且 DB 為 nullable**：`kind='audit_degraded'` 的告警沒有規則可指，值型會把「無規則」寫成 0 |
 | `RuleName` | string | `size:100;not null` | `rule_name` | 規則名稱快照（冗餘，免 JOIN）。**降級類填機器碼**（該類無規則名可快照，同 `alert_notifier` 的 `testRuleName` 慣例） |
-| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別，現行值域三值：`rule`（規則比對／阻斷）／`audit_degraded`（指令審計降級）／`new_source_ip`（帳號首次自某來源位址建線）。CHECK 限定值域（`command_alerts_kind_check`，由 `20260826_source_ip_forensics` 重建擴充），另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`——故後兩類的 `rule_id` 必為 NULL。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它；新來源位址告警同理 |
-| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域兩值：`audit_degraded_span`／`new_source_ip_session`，見 `model/command_alert.go` 的 `AlertReason*` 常數）；輸入規則類為空字串；輸出規則類為 `o1:<base36 count>`，只存命中次數、不存原文或位移 |
+| `Kind` | string | `size:20;not null` | `kind` | 告警來源類別，現行值域五值：`rule`（規則比對／阻斷）／`audit_degraded`（指令稽核降級）／`new_source_ip`（帳號首次自某來源位址建線）／`agent_breaker_tripped`（agent 熔斷跳閘）／`sensitive_reveal`（解密調閱機敏原文，政策 `alert_on_sensitive_reveal` 開啟時）。CHECK 限定值域（`command_alerts_kind_check`，由 `20260826_source_ip_forensics` 重建擴充），另有 CHECK 釘住 `(kind='rule') = (rule_id IS NOT NULL)`——故 `rule` 以外四類的 `rule_id` 必為 NULL。**存在的理由是規格不變式不該掛在可 CRUD 的資料列上**——降級訊號若借一條內建規則承載，管理員停用該規則即可靜默關掉它；新來源位址告警同理 |
+| `ReasonCode` | string | `size:64;not null` | `reason_code` | 非規則類告警的機器碼（現行值域：`audit_degraded_span`／`new_source_ip_session`／`RULE_AGENT_BREAKER_TRIPPED`／`sensitive_reveal`，見 `model/command_alert.go` 的 `AlertReason*`／`AlertKind*` 常數）；輸入規則類為空字串；輸出規則類為 `o1:<base36 count>`，只存命中次數、不存原文或位移 |
 | `SessionID` | uint | `not null` | `session_id` | 所屬會話 ID |
 | `UserID` | uint | `not null` | `user_id` | 用戶 ID（冗餘） |
 | `AssetID` | *uint | - | `asset_id` | 資產 ID（冗餘，手動連線可為 NULL） |
@@ -1493,12 +1496,12 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 - `idx_command_alerts_triggered_at` - `(triggered_at DESC)`，告警列表預設按時間倒序
 - `idx_command_alerts_severity` - `(severity)`，常用過濾維度
 - `idx_command_alerts_unreviewed` - `(triggered_at DESC) WHERE reviewed_at IS NULL`，部分索引加速每日未審閱走查
-- `idx_command_alerts_user_triggered` - `(user_id, triggered_at)`，稽核工作台人樞紐的告警類 keyset 查詢
+- `idx_command_alerts_user_triggered` - `(user_id, triggered_at)`，調查工作台人樞紐的告警類 keyset 查詢
 - `idx_command_alerts_asset_triggered` - `(asset_id, triggered_at)`，同上的資產樞紐側
 
 **設計說明**:
 - **四條寫入路徑、單一落地面**（第三條是下一則的降級告警，第四條是再下一則的新來源位址告警）：比對路徑（`proxy.CommandRecorder` writeLoop 在指令批次 flush 成功後比對）與阻斷路徑（`sshproxy` 的 `commandBlocker`，指令送往目標前攔下）皆經 `internal/modules/audit/alert_sink.go` 的落地面寫入，該處同時做「入庫 → 通知推送 → syslog 離機轉發」。**修復前阻斷路徑直寫本表且不做 syslog tee**，導致「實際被阻斷的危險指令」這一類最高價值證據只存在本機一份。兩路徑的錯誤處置皆為「僅 log、不影響指令入庫與會話」（無可回滾的業務交易）
-- **第三條寫入路徑：指令審計降級的專用發射器**。由 `sshproxy` 的 `CommandStore` 在指令批次 flush 成功後、規則比對之後呼叫，落地經同一個 `AlertSink`（故通知與 syslog tee 自動接上）。
+- **第三條寫入路徑：指令稽核降級的專用發射器**。由 `sshproxy` 的 `CommandStore` 在指令批次 flush 成功後、規則比對之後呼叫，落地經同一個 `AlertSink`（故通知與 syslog tee 自動接上）。
   **不走規則表**是刻意的：規則是可 CRUD 停用／刪除的營運物件，把規格要求的安全訊號掛上去等於交出「管理員一鍵靜默」的開關；且內建規則數有硬斷言，還得為它填一個永不匹配的 pattern＝在機器欄裡寫謊。
   該類的 `kind='audit_degraded'`、`rule_id IS NULL`、`command=''`（降級的定義就是沒有可信的指令文字）、`severity='medium'`。
   **以 span 為單位，一段連續降級只發一筆**：真 vim 一次編輯產生數十筆降級列，逐列告警＝告警疲勞。
@@ -1544,7 +1547,7 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 
 ---
 
-### 12. ClipboardEvent（剪貼簿審計）
+### 12. ClipboardEvent（剪貼簿稽核）
 
 **表名**: `clipboard_events`
 **檔案**: `backend/internal/model/clipboard_event.go`
@@ -1798,7 +1801,7 @@ const (
 | `transport_consent_ttl_days` | int | `90` | - | 傳輸風險同意效期（0=永不過期；上界 3650；PCI 未規定不評估符合性） |
 | `access_policy_default` | enum | `open` | 序位 | 全域預設存取政策段位（弱→強：`open`/`reason`/`approval`；資產未個別設定時生效） |
 | `access_request_max_duration_minutes` | int | `1440` | max | 申請時長上限（上界 525600＝1 年） |
-| `access_request_pending_timeout_hours` | int | `72` | max | 申請待審超時時限（上界 8760＝1 年） |
+| `access_request_pending_timeout_hours` | int | `72` | max | 申請待審逾時時限（上界 8760＝1 年） |
 | `break_glass_enabled` | bool | `false` | - | 破窗緊急連線開關（opt-in，關閉期緊急通道＝admin 豁免） |
 | `break_glass_duration_minutes` | int | `60` | max | 破窗票證固定時窗（上界 1440＝1 天；不開放破窗人自填） |
 | `break_glass_review_timeout_hours` | int | `24` | max | 破窗補審逾期時限（上界 720＝30 天；逾期升級告警） |
@@ -1811,7 +1814,7 @@ const (
 - `text` 型的兩鍵字元數上限**以 Unicode code point 計**，寫入時先正規化（換行統一為 `\n`、去首尾空白）
   再驗證，落庫與讀出的都是正規化後的值；控制字元（TAB 與多行鍵的換行除外）與超長值一律拒絕。
   這是 `value` 由 `varchar(128)` 放寬為 `text` 的原因——文字型的值放不進原本的長度
-  （放寬欄位而非另立一張表，是為了讓文字鍵沿用政策機制既有的批次原子、變更審計與快取）
+  （放寬欄位而非另立一張表，是為了讓文字鍵沿用政策機制既有的批次原子、變更稽核與快取）
 - `SeedFromEnv` 以既有環境變數初始化（僅在 DB 尚無該鍵列時），升級相容
 - 常數表打錯字（enum PCIValue 非成員、int 預設不可解析等）在啟動時 panic（常數表自檢），寧可不上線也不靜默誤判符合性
 
@@ -1858,7 +1861,7 @@ const (
 | `AuthEpoch` | int | `not null;default:0` | `-` | 認證脈絡：簽發當下的 provider 世代（`oidc_providers.auth_epoch` 快照），刷新時比對現行值。同 migration |
 | `CredEpoch` | int | `not null;default:0` | `-` | 認證脈絡：簽發當下的使用者世代（`users.credential_epoch` 快照）。同 migration |
 | `RevokedAt` | *time.Time | `index` | `revoked_at,omitempty` | 撤銷時間 |
-| `RevokedReason` | string | `size:32` | `revoked_reason,omitempty` | 撤銷原因（見下），供審計與 reuse detection 判別 |
+| `RevokedReason` | string | `size:32` | `revoked_reason,omitempty` | 撤銷原因（見下），供稽核與 reuse detection 判別 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 
 **撤銷原因常數**:
@@ -1930,7 +1933,7 @@ const (
 
 ---
 
-### 22. AuditFailureEvent（審計機制失效事件）
+### 22. AuditFailureEvent（稽核機制失效事件）
 
 **表名**: `audit_failure_events`
 **檔案**: `backend/internal/model/audit_failure.go`
@@ -2019,7 +2022,7 @@ const (
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
-| `Purpose` | string | `type:varchar(32);not null;uniqueIndex(1)` | `purpose` | 用途：`data`（資產憑證/通知 secret 等落庫資料）、`audit_integrity`（審計 HMAC 蓋章鑰） |
+| `Purpose` | string | `type:varchar(32);not null;uniqueIndex(1)` | `purpose` | 用途：`data`（資產憑證/通知 secret 等落庫資料）、`audit_integrity`（稽核 HMAC 蓋章鑰） |
 | `Version` | int | `not null;uniqueIndex(2)` | `version` | 版本；audit_integrity 的 0 為 legacy 派生鑰快照 |
 | `WrappedKey` | string | `type:text;not null` | `-` | KEK 包裹後金鑰材料（base64），不經 API 回傳 |
 | `KEKID` | string | `type:varchar(32);not null;uniqueIndex(3)` | `kek_id` | 包裹所用 KEK 指紋（SHA-256 前 8 bytes hex）；開機一致性檢查與重包識別 |
@@ -2070,7 +2073,7 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 **檔案**: `backend/internal/database/migrations.go`
 **建表方式**: **不由 baseline 建立**——`RunMigrations` 的 bootstrap DDL
 （`migrations.go` 的 `schemaMigrationsBootstrapDDL`），也是產品程式碼中唯一的 `CREATE TABLE IF NOT EXISTS`。
-雞生蛋：baseline 該不該執行正是靠讀本表判定，故它必須先於 baseline 存在。**全庫唯一的例外，其餘 46 張表一律走 baseline**
+雞生蛋：baseline 該不該執行正是靠讀本表判定，故它必須先於 baseline 存在。**全庫唯一的例外**：其餘表中 46 張由 baseline 建立、23 張由其後的增量 migration 建立
 
 | 欄位 | 類型 | GORM Tags | 說明 |
 |------|------|-----------|------|
@@ -2099,7 +2102,7 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 **關聯**:
 - `Users []User` - 多對多（透過 `user_group_members` 表，一人可屬多群）
 
-**語義**：授權主體的分組維度，與 RBAC 的 Role 正交——Role 管職能（端點權限）、UserGroup 管授權分組（資產可及範圍），不可混用。刪除群組時 service 層於同一交易內軟刪成員關係＋掛該群組的全部授權記錄，審計日誌記連動撤銷筆數（`resource=user_group`）。
+**語義**：授權主體的分組維度，與 RBAC 的 Role 正交——Role 管職能（端點權限）、UserGroup 管授權分組（資產可及範圍），不可混用。刪除群組時 service 層於同一交易內軟刪成員關係＋掛該群組的全部授權記錄，稽核日誌記連動撤銷筆數（`resource=user_group`）。
 
 ---
 
@@ -2231,7 +2234,7 @@ partial unique `access_request_items_pending_unique`：`(requester_id,asset_id) 
 | `AssetGroupID` | *uint | `uniqueIndex:idx_approver_scope_agroup` | `asset_group_id,omitempty` | 客體節點（含子樹，四維恰一） |
 | `SubjectUserID` | *uint | `uniqueIndex:idx_approver_scope_suser` | `subject_user_id,omitempty` | 申請人側：使用者（四維恰一） |
 | `SubjectGroupID` | *uint | `uniqueIndex:idx_approver_scope_sgroup` | `subject_group_id,omitempty` | 申請人側：使用者群組（四維恰一，成員異動即時反映） |
-| `GrantedBy` | uint | `not null` | `granted_by` | 分配者（admin only，入審計） |
+| `GrantedBy` | uint | `not null` | `granted_by` | 分配者（admin only，入稽核） |
 
 **語義**：條目＝審核方（個人 XOR 群組）×客體（四維恰一）。資產側與授權客體同構（範圍命中＝直配資產
 OR 經節點含子樹）；申請人側＝申請人本人 OR 所屬群組（OR 資格擴充，非收斂路由）。裁決資格＝〔資產側 OR
@@ -2261,7 +2264,7 @@ OR 經節點含子樹）；申請人側＝申請人本人 OR 所屬群組（OR �
 
 **語義**：quorum 按項逐票記錄（`access_request_min_approvals` 政策）。核准數達門檻的那一票才觸發該項
 CAS 轉 approved 並建立其 ticket；整單仍有 pending 項時維持 pending（`AccessRequest.ApproverID`＝補齊門檻的最終核准人）；記錄不可變（無軟刪無更新），
-拒絕/撤回/逾時終態下已存在的票留存供審計。
+拒絕/撤回/逾時終態下已存在的票留存供稽核。
 
 ---
 
@@ -2359,7 +2362,7 @@ const (
 - **身分域鍵為 `(issuer, client_id, subject)` 而非 `provider_id`**——身分歸屬於「issuer＋client_id」這個外部事實，
   不是我方 provider 列的識別碼。以代理鍵當身分域會使 admin 誤刪重建 provider 後全體使用者被鎖出
   （新 `provider_id` 使既有身分全數未命中，繼而撞名被拒）。登入查找一律以三元組為準。
-- **claim 快照與 `users` 本體刻意分離**：本體是授權主體識別（授權綁定、審計歸屬皆依它），回訪不得改寫；
+- **claim 快照與 `users` 本體刻意分離**：本體是授權主體識別（授權綁定、稽核歸屬皆依它），回訪不得改寫；
   快照則是 IdP 現況的觀測值。快照內容**完全由外部控制**（低權使用者可把自己的 `preferred_username` 設為 `admin`），
   故 UI 顯示時必須標示為「身分提供者自報值」並與本地使用者名稱分欄，不得混排。
 
@@ -2389,7 +2392,7 @@ const (
   過期記錄即使清理排程尚未執行亦須拒絕（排程延遲不得擴大有效窗口）。
 - **`BindingHash` 是瀏覽器綁定**：DB 保存 state 只證明「伺服器簽發且未用過」，不證明 callback 發生在發起的瀏覽器。
   攻擊者可自行發起流程、以自己的 IdP 帳號完成授權但攔住 callback，再把該 URL 交給受害者——
-  state/nonce/PKCE 全部有效，受害者會被登入攻擊者帳號（login CSRF），其後操作與審計全歸屬錯誤。
+  state/nonce/PKCE 全部有效，受害者會被登入攻擊者帳號（login CSRF），其後操作與稽核全歸屬錯誤。
   故發起端產生 secret 存 sessionStorage，begin 只送其雜湊，兌換時須提出原文。
 - **刻意不帶使用者憑證世代**：begin 階段尚未認證、不知使用者是誰；使用者世代自 callback 簽發的 login ticket 起才進入憑證鏈。
 - 全表容量上限與 per-IP 限流：防未認證洪水佔滿（本地登入路徑不受影響，為刻意取捨）。
@@ -2409,7 +2412,7 @@ const (
 | `ProviderID` | uint | `not null;index` | `-` | 認證來源 provider |
 | `AuthEpoch` | int | `not null;default:0` | `-` | 簽發當下的 provider 世代 |
 | `CredEpoch` | int | `not null;default:0` | `-` | 簽發當下的使用者世代；與 `AuthEpoch` 兌換時**並列比對**，兩者缺一即留下該類憑證的復活窗口 |
-| `AuthMethod` | string | `size:32;not null` | `-` | 本次認證方式，隨會話全鏈傳遞（決定密碼類 gate 是否適用、審計標註） |
+| `AuthMethod` | string | `size:32;not null` | `-` | 本次認證方式，隨會話全鏈傳遞（決定密碼類 gate 是否適用、稽核標註） |
 | `FlowBindingHash` | string | `size:64;not null` | `-` | 自 flow state 承接的瀏覽器綁定雜湊 |
 | `RedirectNext` | string | `size:255` | `-` | 已驗證的登入後導向目標；兌換成功後回傳給 SPA，**不得於兌換階段重新採信前端提交值** |
 | `BindingFailures` | int | `not null;default:0` | `-` | 綁定不符的累計次數；以單一條件式 UPDATE 原子遞增，達三次即作廢，與成功兌換互斥 |
@@ -2468,46 +2471,67 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共二十七條**——baseline 一條，其後的增量二十六條
+**現行 migration 共二十九條**——baseline 一條，其後的增量二十八條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
 |---|---|---|
-| `20260816_schema_baseline` | 建立整個 schema（46 張表、26 條外鍵、116 條索引，共 188 條無條件 DDL）＋種入 12 條內建告警規則。呼叫端把它與 `schema_migrations` 的版本記錄包在單一交易內，PostgreSQL 的 DDL 可交易，故全成或全不成，不會留下半套 schema | **一律回拒絕錯誤**（`refuseBaselineRollback`）。baseline 建的是整個 schema，「回滾」它等於刪掉全部使用者、資產、授權與審計證據——一個看起來像回滾入口、實際是資料庫毀滅按鈕的東西比沒有入口更危險。退路是還原備份 |
-| `20260921_alert_rule_direction` | 為 alert_rules 加 direction 與值域 CHECK；既有列預設 input；種入兩條 output/alert 規則，使種子終態共 14 條 | 有損移除 direction，方向值無第二份儲存；營運回退採備份還原 |
-| `20260921_agent_audit_ledger` | 帳本／報告／探測事件三表，sessions 主體快照、alert_rules.subject_kind、checkpoints 帳本區間 | 拒絕刪除歸責證據；停用讀寫並保留資料 |
-| `20260921_agent_breaker_alert` | command_alerts.kind 擴至 32，session_id 可空但 CHECK 僅限 agent_breaker_tripped | 拒絕破壞證據 |
-| `20260921_agent_visibility_exposures` | agent_visibility_exposures 告知事實表與索引；不回推歷史 | 拒絕破壞證據 |
-| `20260921_agent_subject_rules` | 兩條 agent/input/block 規則，無 DDL，ON CONFLICT 保留編輯 | 保留規則；舊版須還原升級前備份 |
+| `20260816_schema_baseline` | 建立整個 schema（46 張表、26 條外鍵、116 條索引，共 188 條無條件 DDL）＋種入 12 條內建告警規則。呼叫端把它與 `schema_migrations` 的版本記錄包在單一交易內，PostgreSQL 的 DDL 可交易，故全成或全不成，不會留下半套 schema | **一律回拒絕錯誤**（`refuseBaselineRollback`）。baseline 建的是整個 schema，「回滾」它等於刪掉全部使用者、資產、授權與稽核證據——一個看起來像回滾入口、實際是資料庫毀滅按鈕的東西比沒有入口更危險。退路是還原備份 |
 | `20260824_audit_export_jobs` | 建 `audit_export_jobs` 表（1 建表 ＋ 3 索引，含 1 條部分唯一索引；見第 42 節）。**baseline 之後的首條增量 migration**——純新表、無加密欄、無回填，在全新庫（baseline → 本條）與既有庫（僅本條）上收斂同形。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `DROP TABLE audit_export_jobs`（`rollbackAuditExportJobs`）。純狀態表，證據不在其中，可棄可逆 |
 | `20260825_evidence_offsite` | 離機儲存：建 `offsite_profiles` 設定世代表（含信封加密憑證欄與兩條具名 CHECK；見第 44 節）與 `offsite_objects` 保管帳冊（見第 45 節），建 5 條索引，並對 `sessions` 與 `audit_export_jobs` 各加 `offsite_object_id`／`offsite_status` 兩欄、對 `sessions` 建 2 條部分索引。**兩張表同一條 migration**：帳冊的 `storage_generation_id` 是指向世代表的邏輯外鍵，分兩條會產生「帳冊已存在而世代表尚未存在」的中間形狀，該形狀下的世代連續性健檢無法判讀。**加密欄無資料回填**——`credentials_enc` 由管理介面寫入，或由 post-unseal 佇列的 env seed 寫入（見下），故 migration 本身不需要 codec。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackEvidenceOffsite`：反序 DROP 兩條 `sessions` 索引 → 四個加欄 → `DROP TABLE offsite_objects` → `DROP TABLE offsite_profiles`。**回退是資料追蹤不可逆**：drop 帳冊即失去「哪個錄影的遠端副本在哪個 bucket、哪個 key、上傳當下的 SHA-256 是多少」，drop 世代表更失去「哪個物件要用哪組憑證取回」的對應；**遠端物件不隨回退消失**（產品從不刪遠端），故回退後那些物件成為孤兒。回退前須 `pg_dump --data-only -t offsite_objects` 匯出清冊與備份集同保管，重新升級時先還原清冊即零重傳（程序見 `docs/ops/upgrade-sop.md` §4） |
 | `20260826_source_ip_forensics` | 來源位址追查：`ALTER TABLE users ADD COLUMN allowed_cidrs text NOT NULL DEFAULT ''`、建 `user_source_ips` 表（見第 43 節）、建 `idx_sessions_client_ip_start` 與 `idx_user_source_ips_ip_seen` 兩索引、重建 `command_alerts_kind_check` 使 `kind` 值域含 `new_source_ip`，最後**冷啟動回填**（自 `sessions` 全史與 `audit_logs` 登入成功列合併，使部署當下已見的位址不觸發告警）。**Up 為純加法**：不刪不改任何既有資料列 | `rollbackSourceIPForensics`：反序 DROP 兩索引 → `DELETE FROM command_alerts WHERE kind = 'new_source_ip'` → 還原舊 CHECK → `DROP TABLE user_source_ips` → `DROP COLUMN allowed_cidrs`。**銷毀資料、開發庫限定**：丟掉整份已見位址基準與每位使用者的來源限定，再次 Up 後清單為空（來源限制靜默消失）、基準為空（全部位址重新判為新）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260826_db_query_console` | 查詢主控台：`assets.allowed_databases`（見第 3 節）、`sessions.db_console`（第 5 節）、`session_commands` 十一個結果事實欄＋三條 CHECK＋三個部分索引（第 8 節），共 19 條 DDL。`sessions.end_reason` 增列兩個值（`target_closed`／`slow_consumer`）——該欄無 CHECK，**故無 DDL**。**Up 為純加法**：全部加欄都帶 DEFAULT，無資料轉換、無回填，耗時與存量無關。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDBQueryConsole`：反序 DROP 三索引 → 三條 CHECK → 十一欄 → `sessions.db_console` → `assets.allowed_databases`。**Down 有損、開發庫限定**：刪掉的兩類東西性質不同——`allowed_databases` 是**政策**（管理者設定的執行目標限制，刪了即靜默解除，再次 Up 之後全部資產回到不限制）；十一欄是**稽核證據**（每個執行單位的終態、目標庫、事件識別），刪了沒有第二個來源可補，轉錄錄影是自同一事件派生的閱讀面而不是事實來源。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4），而該備份必須含 `session_commands` 全表 |
-| `20260903_security_policies_value_text` | 登入前告示的前置：`ALTER TABLE security_policies ALTER COLUMN value TYPE text`（見第 17 節），共 1 條 DDL，不建表、不加欄、不加索引或約束。政策值一律以字串存放，既有鍵全是整數、布林與短枚舉，128 位元組夠用；文字型政策鍵（上限二千個 Unicode 字元、可含換行）放不進去。**放寬欄位而非另立一張表**，是為了讓文字鍵直接沿用政策機制既有的批次原子、變更審計、快取與錯誤碼。**Up 為純型別放寬、無資料回填**：`varchar(128)` → `text` 在 PostgreSQL 是相容擴張，存量列原值不動，耗時與存量無關。本語句**不列入** `schemaDDLStatements()`——該清單的解析器只認 CREATE TABLE 與 ADD COLUMN（欄名層級的比對），型別改動屬第 2 層 parity 的射程，而第 2 層以「baseline ＋依序跑完全部增量」建庫，本條自然涵蓋其中 | `rollbackSecurityPoliciesValueText`：收窄回 `character varying(128)`。**開發庫限定**：存量值若已超過 128 位元組，資料庫直接報錯並使整個交易回滾，故不另寫前置檢查。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260904_windows_local_account_rotation` | Windows 本機帳號改密的資料層：`assets` 加六個改密通道側車欄（`rotation_channel varchar(16) NOT NULL DEFAULT ''`、`winrm_scheme varchar(8)`、`winrm_port bigint`、`winrm_tls_mode varchar(16)`、`winrm_ca_cert text`、`rotation_ssh_port bigint`；見第 3 節），共 6 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：`rotation_channel` 預設空字串而非回填實值（空＝依協定推導，升級後既有列行為與升級前逐項相同），其餘五欄可空，無資料轉換、無回填，耗時與存量無關。**六個具名欄而不是一個 JSON 設定欄**：既有 per-protocol 側車（RDP 傳輸安全、DB TLS、VNC SFTP）全是具名欄，值域受控、SQL 層可查、schema parity 守衛看得見；它承載的是「憑證要送到哪裡、用不用 TLS」，正是最不該只有應用層知道形狀的值。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackWindowsLocalAccountRotation`：反序 DROP 六欄。**Down 有損、開發庫限定**：六欄刪除即失去全部改密通道設定（含上傳的 CA 憑證），再次 Up 之後所有資產回到「未設定」而由協定推導——**rdp 資產從此不再改密且不會有任何提示**。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260905_account_batch_rotation` | 以帳號為主軸的批次改密的資料層：建新表 `change_secret_batches` 與其 `(username)` 索引（第 47 節）、`change_secret_records.batch_id`（`bigint NOT NULL DEFAULT 0`，加 `(batch_id)` 索引；第 16 節）、`change_secret_candidates.batch_id`（同型）與 `shared_group`（`varchar(36)` 可空；第 16b 節），共 6 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填，耗時與存量無關。`batch_id` 的存量列以 default 回填為 0——本欄出現之前這兩張表只承載計劃的記錄與候選，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackAccountBatchRotation`：反序 DROP `shared_group` → 候選的 `batch_id` → 記錄的 `(batch_id)` 索引與欄 → 批次表的索引 → `DROP TABLE change_secret_batches`。**Down 有損、開發庫限定**：刪表即失去全部批次的彙總計數與發起者；刪欄即失去記錄與候選的來源辨識（再次 Up 之後全部回到「來自計劃」）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260826_db_query_console` | 查詢主控台：`assets.allowed_databases`（見第 3 節）、`sessions.db_console`（第 5 節）、`session_commands` 十一個結果事實欄＋三條 CHECK＋三個部分索引（第 8 節），共 19 條 DDL。`sessions.end_reason` 增列兩個值（`target_closed`／`slow_consumer`）——該欄無 CHECK，**故無 DDL**。**Up 為純加法**：加欄皆帶 DEFAULT 或可空，無資料轉換、無回填；三條 CHECK 與三個部分索引建在既有的 `session_commands` 上，依 PostgreSQL 的一般行為，這兩類語句需掃描該表的既有列，耗時可能隨其列數增加。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDBQueryConsole`：反序 DROP 三索引 → 三條 CHECK → 十一欄 → `sessions.db_console` → `assets.allowed_databases`。**Down 有損、開發庫限定**：刪掉的兩類東西性質不同——`allowed_databases` 是**政策**（管理者設定的執行目標限制，刪了即靜默解除，再次 Up 之後全部資產回到不限制）；十一欄是**稽核證據**（每個執行單位的終態、目標庫、事件識別），刪了沒有第二個來源可補，轉錄錄影是自同一事件派生的閱讀面而不是事實來源。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4），而該備份必須含 `session_commands` 全表 |
+| `20260903_security_policies_value_text` | 登入前告示的前置：`ALTER TABLE security_policies ALTER COLUMN value TYPE text`（見第 17 節），共 1 條 DDL，不建表、不加欄、不加索引或約束。政策值一律以字串存放，既有鍵全是整數、布林與短枚舉，128 位元組夠用；文字型政策鍵（上限二千個 Unicode 字元、可含換行）放不進去。**放寬欄位而非另立一張表**，是為了讓文字鍵直接沿用政策機制既有的批次原子、變更稽核、快取與錯誤碼。**Up 為純型別放寬、無資料回填**：存量列原值不動；依 PostgreSQL 的一般行為，`varchar(128)` → `text` 屬不需重寫表的相容擴張，耗時通常與存量無關。本語句**不列入** `schemaDDLStatements()`——該清單的解析器只認 CREATE TABLE 與 ADD COLUMN（欄名層級的比對），型別改動屬第 2 層 parity 的射程，而第 2 層以「baseline ＋依序跑完全部增量」建庫，本條自然涵蓋其中 | `rollbackSecurityPoliciesValueText`：收窄回 `character varying(128)`。**開發庫限定**：存量值若已超過 128 位元組，資料庫直接報錯並使整個交易回滾，故不另寫前置檢查。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260903_rotation_evidence_report` | 輪替證據報告的資料層：`asset_accounts.credential_group`（可空，加 `(credential_group)` 索引；見第 3b 節）、`change_secret_plans.max_age_days`（`bigint NOT NULL DEFAULT 0`；第 15 節）、`audit_export_jobs.kind`（`varchar(32) NOT NULL DEFAULT 'evidence_bundle'`，加 `(kind, status)` 索引；第 42 節），並建新表 `rotation_report_schedules` 與其名稱唯一索引（第 46 節），共 7 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填；兩條索引建在既有的 `asset_accounts` 與 `audit_export_jobs` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加。`kind` 的存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRotationEvidenceReport`：反序 DROP 名稱索引 → `DROP TABLE rotation_report_schedules` → `(kind, status)` 索引 → `kind` 欄 → `max_age_days` 欄 → 群組索引 → `credential_group` 欄。**Down 有損、開發庫限定**：`credential_group` 是系統推導出的共用憑證標示（刪了即消失，再次 Up 之後全部回到未歸組，且不回溯補登）；`max_age_days` 是政策設定（刪了即靜默解除，全部計劃回到沿用全域）；排程表整張刪除即失去全部排程定義；`kind` 刪除後兩種產物混在同一個列表裡而無從分辨，下載授權的種類分支一併失效。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260904_windows_local_account_rotation` | Windows 本機帳號改密的資料層：`assets` 加六個改密通道側車欄（`rotation_channel varchar(16) NOT NULL DEFAULT ''`、`winrm_scheme varchar(8)`、`winrm_port bigint`、`winrm_tls_mode varchar(16)`、`winrm_ca_cert text`、`rotation_ssh_port bigint`；見第 3 節），共 6 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：`rotation_channel` 預設空字串而非回填實值（空＝依協定推導，升級後既有列行為與升級前逐項相同），其餘五欄可空，無資料轉換、無回填；依 PostgreSQL 的一般行為，帶常數預設或可空的加欄不重寫表，耗時通常與存量無關。**六個具名欄而不是一個 JSON 設定欄**：既有 per-protocol 側車（RDP 傳輸安全、DB TLS、VNC SFTP）全是具名欄，值域受控、SQL 層可查、schema parity 守衛看得見；它承載的是「憑證要送到哪裡、用不用 TLS」，正是最不該只有應用層知道形狀的值。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackWindowsLocalAccountRotation`：反序 DROP 六欄。**Down 有損、開發庫限定**：六欄刪除即失去全部改密通道設定（含上傳的 CA 憑證），再次 Up 之後所有資產回到「未設定」而由協定推導——**rdp 資產從此不再改密且不會有任何提示**。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260905_account_batch_rotation` | 以帳號為主軸的批次改密的資料層：建新表 `change_secret_batches` 與其 `(username)` 索引（第 47 節）、`change_secret_records.batch_id`（`bigint NOT NULL DEFAULT 0`，加 `(batch_id)` 索引；第 16 節）、`change_secret_candidates.batch_id`（同型）與 `shared_group`（`varchar(36)` 可空；第 16b 節），共 6 條 DDL。**Up 為純加法**：加欄都帶預設或可空，無資料轉換、無回填；`(batch_id)` 索引建在既有的 `change_secret_records` 上，依 PostgreSQL 的一般行為需掃描該表的既有列，耗時可能隨其列數增加。`batch_id` 的存量列以 default 回填為 0——本欄出現之前這兩張表只承載計劃的記錄與候選，回填值即其實際語義。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackAccountBatchRotation`：反序 DROP `shared_group` → 候選的 `batch_id` → 記錄的 `(batch_id)` 索引與欄 → 批次表的索引 → `DROP TABLE change_secret_batches`。**Down 有損、開發庫限定**：刪表即失去全部批次的彙總計數與發起者；刪欄即失去記錄與候選的來源辨識（再次 Up 之後全部回到「來自計劃」）。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260906_credential_library` | 帳號憑證庫的資料層：建四張新表（`credentials`、`credential_secret_versions`、`credential_rotations`、`credential_rotation_members`）與其索引、`asset_accounts` 加 `credential_id`／`effective_version_id`、`change_secret_plans` 加 `target_kind`／`target_credential_id`、`change_secret_records` 與 `change_secret_candidates` 各加三個憑證快照欄，並在同一交易內把既有帳號列的內嵌密文**轉為專用憑證**（每筆存活帳號各得一筆專用憑證，持有密文者另建其第 1 版；密文原樣搬、不解密重加密。所屬資產已軟刪的遺留帳號列同樣建憑證與第 1 版，再於同一交易把帳號列與憑證一併軟刪，憑證庫不顯示、密文版本保留；日誌分項報存活與隨已移除資產一併移除的筆數）。次序寫死：存量搬移之後才卸除 `credential_id` 的暫時 DEFAULT 並建 `(asset_id, credential_id)` partial unique——回填前全部存量列的 `credential_id` 都是 0，先建索引必然撞鍵。**重跑語義是失敗即整交易回滾、修正後可再跑一次**，不是冪等。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibrary`：反序 DROP 掛載唯一索引 → 三張改密表的加欄 → `asset_accounts` 兩欄 → 四張新表與其索引。**Down 有損、開發庫限定**：刪四張表即失去全部共用憑證關係與密文版本歷史，`asset_accounts` 兩欄刪除後「這台用哪筆憑證、就位在哪一版」無來源可還原，存量搬移沒有反向。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260906_credential_library_contract` | 收縮：卸下已無讀寫面的過渡欄與索引——`asset_accounts.password_enc`／`private_key_enc`（登入秘密的落點已改為 `credential_secret_versions`，兩欄自存量搬移之後零讀者，**同時自 `envelopeMigrationTargets` 除名**）、`change_secret_candidates.shared_group`、`change_secret_batches.shared_group`（共用關係的真相已是憑證本體）、`idx_asset_accounts_credential_group`，共 5 條 DDL。**自成一條版本而非併入前一條**：前一條已套用於開發庫，同檔追加語句不會再執行，會留下「程式碼宣告已收縮、資料庫仍有舊欄」的落差。**`asset_accounts.credential_group` 刻意留著**（見第 3b 節）。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackCredentialLibraryContract`：反序把四欄的空殼與群組索引加回來。**Down 有損、開發庫限定**：**不還原任何資料**，卸下的四欄在卸下當下即失去內容，再次 Up 之後全部回到空值。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260908_role_state_checkpoint` | 角色指派納入檢查點的資料層：`audit_checkpoints` 加四個可空欄（`role_state_hash varchar(64)`、`role_state_snapshot text`、`role_state_count bigint`、`role_state_reconciled boolean`；見第 37 節），共 4 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：四欄皆可空、無資料轉換、無回填，耗時與存量無關。**既有檢查點留空即代表「該段不涵蓋角色指派」**，這是誠實的表述而非缺漏——回填一份「現在的」快照到過去的檢查點，等於替歷史簽下一個當時沒簽過的主張。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRoleStateCheckpoint`：反序 DROP 四欄。**Down 有損、開發庫限定**：四欄刪除即失去全部檢查點的角色指派快照，其後所有檢查點回到不涵蓋角色指派，再次 Up 之後要等下一次封章才重新有基準。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260921_identity_agent_principal` | users 加 kind／owner_user_id／breaker_pending_at、兩個 CHECK 與 owner FK；新增 agent_tokens、三個 FK 與兩個索引；sessions 加可空 agent_token_id／access_request_id 及 token FK；純增量無刪欄 | 保留主體、憑證與證據；Down 明確拒絕，停用讀寫回退 |
-| `20260921_agent_audit_actions` | audit_logs.action 由 varchar(20) 擴為 varchar(32)，容納本單完整事件名稱，無資料改寫 | 保留長事件名稱，拒絕縮欄回退 |
-| `20260908_group_role_mapping` | 外部群組對角色映射的資料層，共 **20 條 DDL**：`user_roles` 加 `source`（`varchar(16) NOT NULL DEFAULT 'manual'`；見第 2b 節）、建 `group_role_mappings`（含來源恰一的 CHECK `chk_group_role_mapping_source`；第 52 節）與 `user_role_mappings`（複合主鍵含通道；第 53 節）兩張表、`ldap_directories` 加 `attr_group`、`users` 加群組觀測快照三欄、`oidc_providers` 加 `groups_claim` 與宣告對應三欄，再加 6 條外鍵與 3 條索引（1 條軟刪索引 ＋ 2 條排除軟刪列的部分唯一索引）。**Up 為純加法**：加欄皆帶預設或可空，無資料轉換、無回填，耗時與存量無關；`source` 的存量列以 default 回填為 `manual`——本欄出現之前全部角色列都是管理者指派的，回填值即其實際語義。**四個空值欄一律代表「未設定＝行為不變」**（`attr_group` 與 `groups_claim` 空＝不依外部群組決定角色，宣告對應三欄空＝走現行解析），故既有部署升級後行為逐字不變。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackGroupRoleMapping`：反序 DROP 快照三欄 → 宣告四欄 → `DROP TABLE user_role_mappings` → `DROP TABLE group_role_mappings` → `attr_group` → `user_roles.source`。**Down 有損，且部分損失不可還原**：（一）`group_role_mappings` 的規則是管理者逐條設定的，系統沒有第二個地方存著它們，**回退前須自行備份**；（二）`user_roles.source` 卸下後「哪些角色是管理者指派的、哪些只是外部群組給的」永久消失，全部角色列回到不分來源的舊語義，本地管理員計數會重新把僅由映射取得管理員角色的帳號計入；（三）`user_role_mappings` 的列一併消失，可由下一次登入重算重建，但要等到當事人下一次登入；（四）快照三欄與四個宣告／屬性欄還原為未設定，無損。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260908_role_state_checkpoint` | 角色指派納入檢查點的資料層：`audit_checkpoints` 加四個可空欄（`role_state_hash varchar(64)`、`role_state_snapshot text`、`role_state_count bigint`、`role_state_reconciled boolean`；見第 37 節），共 4 條 `ADD COLUMN`，不建表、不加索引或約束。**Up 為純加法**：四欄皆可空、無資料轉換、無回填；依 PostgreSQL 的一般行為，可空加欄不重寫表，耗時通常與存量無關。**既有檢查點留空即代表「該段不涵蓋角色指派」**，這是誠實的表述而非缺漏——回填一份「現在的」快照到過去的檢查點，等於替歷史簽下一個當時沒簽過的主張。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackRoleStateCheckpoint`：反序 DROP 四欄。**Down 有損、開發庫限定**：四欄刪除即失去全部檢查點的角色指派快照，其後所有檢查點回到不涵蓋角色指派，再次 Up 之後要等下一次封章才重新有基準。**生產回退＝部署回舊版映像並還原升級前備份**（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260908_group_role_mapping` | 外部群組對角色映射的資料層，共 **20 條 DDL**：`user_roles` 加 `source`（`varchar(16) NOT NULL DEFAULT 'manual'`；見第 2b 節）、建 `group_role_mappings`（含來源恰一的 CHECK `chk_group_role_mapping_source`；第 52 節）與 `user_role_mappings`（複合主鍵含通道；第 53 節）兩張表、`ldap_directories` 加 `attr_group`、`users` 加群組觀測快照三欄、`oidc_providers` 加 `groups_claim` 與宣告對應三欄，再加 6 條外鍵與 3 條索引（1 條軟刪索引 ＋ 2 條排除軟刪列的部分唯一索引）。**Up 為純加法**：加欄皆帶預設或可空，無資料轉換、無回填，外鍵與索引只建在兩張新表上；依 PostgreSQL 的一般行為，耗時通常與存量無關；`source` 的存量列以 default 回填為 `manual`——本欄出現之前全部角色列都是管理者指派的，回填值即其實際語義。**四個空值欄一律代表「未設定＝行為不變」**（`attr_group` 與 `groups_claim` 空＝不依外部群組決定角色，宣告對應三欄空＝走現行解析），故既有部署升級後行為逐字不變。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackGroupRoleMapping`：反序 DROP 快照三欄 → 宣告四欄 → `DROP TABLE user_role_mappings` → `DROP TABLE group_role_mappings` → `attr_group` → `user_roles.source`。**Down 有損，且部分損失不可還原**：（一）`group_role_mappings` 的規則是管理者逐條設定的，系統沒有第二個地方存著它們，**回退前須自行備份**；（二）`user_roles.source` 卸下後「哪些角色是管理者指派的、哪些只是外部群組給的」永久消失，全部角色列回到不分來源的舊語義，本地管理員計數會重新把僅由映射取得管理員角色的帳號計入；（三）`user_role_mappings` 的列一併消失，可由下一次登入重算重建，但要等到當事人下一次登入；（四）快照三欄與四個宣告／屬性欄還原為未設定，無損。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 | `20260909_policy_groups` | 政策組與合規對照的資料層，共 **5 條 DDL**：建 `policy_groups`（主鍵為組代號；第 54 節）、`policy_clauses`（複合主鍵 `(group_code, clause_no)`；第 55 節）、`policy_clause_controls`（第 56 節）與 `policy_clause_annotations`（複合主鍵 `(group_code, clause_no)`；第 57 節）四張表，加一條唯一索引 `idx_policy_clause_controls_group_key`＝`(group_code, policy_key)`。**Up 為純建表**：不動任何既有表、不加欄、不回填、無資料轉換，耗時與存量無關；既有部署升級後行為逐字不變，四張表在內建組種子寫入之前是空的。**四張表之間刻意無外鍵**：條文與要求以組代號掛靠、備註以（組代號，條號）掛靠，連帶清除由寫入端的單一交易保證並有測試釘住；備註表更不指向條文列，因為條文會因升級被標記移除而備註必須活得比它久。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackPolicyGroups`：反序 DROP 唯一索引 → `policy_clause_annotations` → `policy_clause_controls` → `policy_clauses` → `policy_groups`。**Down 有損且損失不可還原、開發庫限定**：四張表整個消失。內建組的內容可由下一次啟動的種子重建，但**機構自建的政策組、自建條文、全部備註與人工確認記錄沒有第二個地方存著**，回退即永久遺失，故回退前須自行匯出。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
-| `20260913_kek_topology` | 建單列表 `kek_topologies`（`kek_topologies_singleton_check` CHECK ＋ `idx_kek_topologies_singleton` unique），委託拓撲與憑證設定；第 58 節 | 委託模式重啟停在解封頁，本版無回滾 |
-| `20260921_principal_integrity` | 主體完整性登記：重建 `users` 上與 kind／owner 相關的索引，不新增表、不回填 | 純索引重建，可重跑 |
-| `20260921_access_request_items` | 建 `access_request_items`（一申請多項目），並為每張既有有效申請回填一項；第 32 節 | 回填為一對一，不刪原欄 |
-| `20260921_access_request_item_decisions` | `access_request_items` 補票證 FK、撤銷附註與逐項核准 FK，`access_request_approvals` 加 `item_id`（`(item_id,request_id,approver_id)` 唯一）；第 33 節 | 純加欄與索引，無回填刪除 |
-| `20260922_agent_session_token_name` | `sessions` 加 `agent_token_name varchar(100) NULL`，建線當下快照 token 名稱，存量列為 NULL | 純加欄，可重跑 |
-| `20260923_agent_lateral_rule_pattern` | **純資料 migration，無 DDL**：把 `alert_rules` 內名為「Agent 橫向移動阻斷」且 pattern 仍等於 1.11.0 兩個出廠值之一的那一列，改寫為現行 pattern（只在指令位置比對，讀取 `~/.ssh` 這類路徑不再誤觸）並更新 `updated_at`。出廠規則只在建表時以 `ON CONFLICT DO NOTHING` 插種子，既有站點升級時那條 INSERT 不生效，故需要這一條。**pattern 不等於任何歷史出廠值者一律不動**——那是管理員調校過的規則，升級不覆寫站點自己的判斷。新值與兩個歷史值同出 `baseline_seed.go` 的常數，種子與本條不得各抄一份 | `rollbackAgentLateralRulePattern` 為 **no-op**：舊 pattern 是已知的誤判來源，回寫等於把誤觸阻斷裝回去；且此處分不出「本次升級改的」與「管理員升級後自行改回舊值的」，一律回寫會覆蓋後者。退版＝部署回舊版映像並還原升級前備份 |
+| `20260913_kek_topology` | 建單列表 `kek_topologies`（第 58 節），共 **2 條 DDL**：建表（含 CHECK `kek_topologies_singleton_check`）＋唯一索引 `idx_kek_topologies_singleton`，兩道合起來才保證單列。存委託模式的**非秘密**拓撲（服務商、保管處位址、Transit 金鑰名、AppRole 角色識別、服務區域）與課責欄 `updated_by`；全部欄位明文，秘密不入本表。純建表，不動既有表、無回填 | `rollbackKEKTopology`：`DROP TABLE kek_topologies`。**Down 有損**：拓撲設定沒有第二處存放，回退後須重新以介面設定，或回到舊版以 `.env` 的 `KEK_KMS_REGION`／`KEK_VAULT_ADDR`／`KEK_VAULT_ROLE_ID` 為準。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
+| `20260921_alert_rule_direction` | `alert_rules` 加 `direction`（`varchar(10) NOT NULL DEFAULT 'input'`）與值域 CHECK `alert_rules_direction_check`（`input`／`output`），共 **2 條 DDL**；既有列以 default 成為 `input`。之後以 `ON CONFLICT (name) DO NOTHING` 種入兩條 output／alert 規則，此時種子共 14 條（終態 16 條，另兩條由 `20260921_agent_subject_rules` 種入） | `rollbackAlertRuleDirection`：反序 DROP CHECK → `direction` 欄。**Down 有損**：規則列仍在，但輸出面規則的方向值沒有第二處存放，再次 Up 無法還原。生產回退＝部署回舊版映像並還原升級前備份 |
+| `20260921_agent_audit_actions` | `audit_logs.action` 由 `varchar(20)` 放寬為 `varchar(32)`（1 條 `ALTER COLUMN … TYPE`），容納較長的事件名稱；不改寫資料列。本語句不列入 `schemaDDLStatements()`（同 `20260903_security_policies_value_text`，型別改動屬第 2 層 parity 的射程） | 與 `20260921_identity_agent_principal` 共用 `rollbackIdentityAgentPrincipal`，**一律回拒絕錯誤**，不縮欄 |
+| `20260921_identity_agent_principal` | agent 主體的資料層，共 **12 條 DDL**：`users` 加 `kind`（`varchar(16) NOT NULL DEFAULT 'human'`）、`owner_user_id`、`breaker_pending_at`，加 CHECK `users_kind_check`、`users_owner_check` 與外鍵 `fk_users_owner`；建 `agent_tokens`（第 1b 節；表內三條外鍵、`token_hash` 唯一索引與 `user_id` 索引）；`sessions` 加可空的 `agent_token_id`／`access_request_id` 與外鍵 `fk_sessions_agent_token`（`access_request_id` 不設外鍵）。不刪欄、無回填，既有 `users` 列以 default 成為 `human` | `rollbackIdentityAgentPrincipal`：**一律回拒絕錯誤**。保留主體與憑證資料，不支援刪欄回滾 |
+| `20260921_principal_integrity` | 重建 `audit_failure_events` 的未結案唯一索引，共 **3 條 DDL**：DROP `idx_failure_events_single_open` 後重建為排除 `principal_state_integrity` 機制的 partial unique（其他機制仍是每機制至多一筆未結案事件），並新增 `idx_failure_events_principal_open`＝該機制以 `cause_params::jsonb->>'table'` 為鍵的 partial unique（每個登記項至多一筆未結案事件）。不加欄、無回填 | 與 `20260921_identity_agent_principal` 共用 `rollbackIdentityAgentPrincipal`，**一律回拒絕錯誤** |
+| `20260921_access_request_items` | 多項存取任務的資料層，共 **9 條 DDL**：`access_requests` 加 `executor_user_id`（外鍵 `users`）與 `closed_at`；建 `access_request_items`（第 30a 節）與 5 條一般索引。同一交易內以 `INSERT … SELECT` **為每張未軟刪的既有申請回填一項**（已撤銷、取消或過期者落為 `revoked`，其餘沿用原狀態；`decided_by` 取原 `approver_id`），回填後核對「來源申請數＝插入數＝項數＝涵蓋申請數」，不符即整交易回滾；核對通過後才建 partial unique `access_request_items_pending_unique` | `rollbackAccessRequestItems`：**一律回拒絕錯誤**。回退須先停用應用程式的項讀寫，申請與項的證據保留，不刪表 |
+| `20260921_access_request_item_decisions` | 逐項票證與核准的資料層，共 **8 條 DDL**：`access_request_items` 加 `authorization_id`（外鍵 `asset_authorizations`，唯一索引）與 `revoke_note varchar(1000)`；`access_request_approvals` 加 `item_id`（外鍵 `access_request_items`，另建索引），`idx_request_approval_once` 改建為 `(item_id, request_id, approver_id)` 唯一，並新增 `idx_request_approval_legacy_once`＝`item_id IS NULL` 列的 `(request_id, approver_id)` 唯一（第 30a、32 節）。同一交易內**三段存量回填**：項的 `authorization_id`／`revoke_note` 自同資產的原申請複製；其餘已核定項以執行者（無則申請人）、資產與核定時窗比對 `source='ticket'` 的授權，恰好一筆才連結、多筆不猜；既有核准票的 `item_id` 指向與原申請同資產的項 | 與前一條共用 `rollbackAccessRequestItems`，**一律回拒絕錯誤** |
+| `20260921_agent_audit_ledger` | agent 稽核帳本的資料層，共 **19 條 DDL**：`sessions` 加主體快照四欄（`actor_kind` 與其 CHECK、`on_behalf_of_user_id`／`owner_user_id` 外鍵 `users`、`revoked_during_session_at`）；`alert_rules` 加 `subject_kind`（`varchar(16) NOT NULL DEFAULT 'all'`）與其 CHECK；`audit_checkpoints` 加帳本區間四個可空欄（`tool_call_id_from`／`tool_call_id_to`／`tool_call_row_count`／`tool_call_agg_hash`）；建 `agent_tool_calls`（五條 CHECK、`(user_id, seq)` 唯一＋兩條索引；第 60 節）、`agent_task_reports`（`(access_request_id, version)` 唯一；第 61 節）、`agent_probe_events`（class CHECK＋一條索引；第 62 節）三張表。無回填，既有列的新欄留 NULL 或取 default | `rollbackAgentAuditLedger`：**一律回拒絕錯誤**。保留全部證據，回退以停用讀寫達成、不刪資料 |
+| `20260921_agent_breaker_alert` | `command_alerts.kind` 由 `varchar(20)` 放寬為 `varchar(32)`、`session_id` 改可空、重建 `command_alerts_kind_check` 使值域含 `agent_breaker_tripped`，並新增 CHECK `command_alerts_session_ref`（`session_id` 為空只允許此種告警），共 **5 條 DDL**，無回填 | `rollbackAgentBreakerAlert`：**一律回拒絕錯誤**。保留鑑識記錄，回退以停用讀寫達成 |
+| `20260921_agent_visibility_exposures` | 建 `agent_visibility_exposures`（複合主鍵 `(user_id, asset_id)`，無其他索引；第 59 節），共 **1 條 DDL**；不回推升級前的告知紀錄 | `rollbackAgentVisibilityExposures`：**一律回拒絕錯誤**。保留告知證據，回退以停用讀寫達成 |
+| `20260921_agent_subject_rules` | **無 DDL**：依 `baseline_seed.go` 的 `builtinAlertRules` 種入 `subject_kind` 為 agent 的兩條 input／block 規則，以 `ON CONFLICT (name) DO NOTHING` 插入，已存在同名規則即保留原列；種子終態 16 條。`subject_kind` 欄由前面的 `20260921_agent_audit_ledger` 建立 | `rollbackAgentSubjectRules`：**一律回拒絕錯誤**。保留規則主體與證據；舊版讀取端須還原升級前備份 |
+| `20260922_agent_session_token_name` | `sessions` 加 `agent_token_name varchar(100)` 可空欄，共 **1 條 DDL**；建線當下快照 token 名稱，存量列維持 NULL、不回填 | `rollbackAgentSessionTokenName` 為 **no-op**（回傳成功、不刪欄）：停用靠部署舊版應用，既有快照保留 |
+| `20260923_agent_lateral_rule_pattern` | **純資料 migration，無 DDL**：把 `alert_rules` 內名為「Agent 橫向移動阻斷」且 pattern 仍等於 1.11.0 兩個出廠值之一的那一列，改寫為現行 pattern（以整行原文比對、不做 shell 分詞，名稱出現在引數位置也會命中；讀取 `~/.ssh` 這類路徑不再誤觸）並更新 `updated_at`。出廠規則只在建表時以 `ON CONFLICT DO NOTHING` 插種子，既有站點升級時那條 INSERT 不生效，故需要這一條。**pattern 不等於任何歷史出廠值者一律不動**——那是管理員調校過的規則，升級不覆寫站點自己的判斷。新值與兩個歷史值同出 `baseline_seed.go` 的常數，種子與本條不得各抄一份 | `rollbackAgentLateralRulePattern` 為 **no-op**：舊 pattern 是已知的誤判來源，回寫等於把誤觸阻斷裝回去；且此處分不出「本次升級改的」與「管理員升級後自行改回舊值的」，一律回寫會覆蓋後者。退版＝部署回舊版映像並還原升級前備份 |
+| `20260924_agent_tool_call_args_retained` | `agent_tool_calls` 加 `args_sealed bytea` 可空欄與 `args_retained boolean NOT NULL DEFAULT false`（第 60 節），共 **2 條 DDL**，無回填；存量列以 default 成為 `false`，即「參數當時整欄遮罩、原文不存在」 | `rollbackAgentToolCallArgsRetained` 為 **no-op**（回傳成功、不刪欄）：應用回退後，證據與既有已簽章的帳本列保留 |
+| `20260924_sensitive_reveal_alert` | 重建 `command_alerts_kind_check`，值域加 `sensitive_reveal`，共 **2 條 DDL**（DROP＋ADD CONSTRAINT），不加欄、無回填 | `rollbackSensitiveRevealAlert`：**一律回拒絕錯誤**。保留告警證據，停用改由政策設定達成、不刪記錄 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的二十六條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
-> 依 `migrations` 陣列的順序在同一次啟動內跑完。耗時的口徑分三類：
-> `20260826_source_ip_forensics` 含冷啟動回填，其耗時隨 `sessions` 與 `audit_logs` 的存量成長；
-> `20260906_credential_library` 的存量搬移逐筆處理存活的資產帳號列，其耗時隨帳號數成長
-> （帳號數通常遠小於會話與審計的存量）；其餘十一條為純加法、純型別放寬或純卸欄，耗時與存量無關。
+> **升級注意**：baseline 之後的二十八條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
+>
+> - **讀寫存量資料列，耗時隨對應表的列數成長（4 條）**：
+>   `20260826_source_ip_forensics`（冷啟動回填，以 `INSERT … SELECT` 彙整 `sessions` 與 `audit_logs` 的登入成功列）、
+>   `20260906_credential_library`（逐筆把存活的 `asset_accounts` 列轉為專用憑證，帳號數通常遠小於會話與稽核的存量）、
+>   `20260921_access_request_items`（以 `INSERT … SELECT` 為每張未軟刪的 `access_requests` 回填一項）、
+>   `20260921_access_request_item_decisions`（三段 `UPDATE`，連結 `access_request_items`、`access_requests`、
+>   `asset_authorizations` 與 `access_request_approvals`）。
+> - **只寫固定少量的列，不隨存量成長（3 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
+>   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）。
+> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（21 條）**。其中 9 條在既有表上建索引或加 CHECK／外鍵：
+>   `20260825_evidence_offsite`（`sessions`）、`20260826_db_query_console`（`session_commands`）、
+>   `20260903_rotation_evidence_report`（`asset_accounts`、`audit_export_jobs`）、`20260905_account_batch_rotation`（`change_secret_records`）、
+>   `20260921_identity_agent_principal`（`users`、`sessions`）、`20260921_principal_integrity`（`audit_failure_events`）、
+>   `20260921_agent_audit_ledger`（`sessions`、`alert_rules`）、`20260921_agent_breaker_alert` 與 `20260924_sensitive_reveal_alert`
+>   （`command_alerts`）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
+>   另外 12 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
+>   `20260824_audit_export_jobs`、`20260903_security_policies_value_text`、`20260904_windows_local_account_rotation`、
+>   `20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、
+>   `20260909_policy_groups`、`20260913_kek_topology`、`20260921_agent_audit_actions`、`20260921_agent_visibility_exposures`、
+>   `20260922_agent_session_token_name`、`20260924_agent_tool_call_args_retained`。依 PostgreSQL 的一般行為，
+>   這些語句通常不需掃描或重寫既有列，耗時通常與存量無關。
+>
 > 升級程序見 `docs/ops/upgrade-sop.md`。
 >
 > **`20260906_credential_library` 之後還有一段解封後才跑的轉換**：憑證密文的欄位身分改綁與既有
@@ -2525,10 +2549,10 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 2. **憑證密文轉換**（標記 `20260906_credential_secrets_converted`）：兩步包在單一交易內——
    先把段 1 原樣搬進 `credential_secret_versions` 的密文**改綁欄位身分**（信封密文的 AAD 綁
    表｜欄，那批值的 AAD 仍是帳號表的身分，以新表的身分解不開；不改綁的話 DEK 輪替與退役金鑰的
-   引用掃描會逐筆失敗），再**以解密後的明文判定既有隱性共用關係能否合併**（判定涵蓋三面：明文、秘密的有無、合併後由共用憑證單一持有的四個屬性，即帳號名、秘密型別、認證方式、協定族，任一面不一致即不合併；審計列的 reason 分 `group_secrets_mismatch` 與 `group_metadata_mismatch`，並以 `mismatch_fields` 列出不一致項目）（同一組明文的兩份
+   引用掃描會逐筆失敗），再**以解密後的明文判定既有隱性共用關係能否合併**（判定涵蓋三面：明文、秘密的有無、合併後由共用憑證單一持有的四個屬性，即帳號名、秘密型別、認證方式、協定族，任一面不一致即不合併；稽核列的 reason 分 `group_secrets_mismatch` 與 `group_metadata_mismatch`，並以 `mismatch_fields` 列出不一致項目）（同一組明文的兩份
    信封密文帶各自的隨機 nonce，密文層永遠不相等，故只能比對明文）。一致者合併為一筆自動命名的
    共用憑證，成員掛載全改指、段 1 為它們建的專用憑證一併刪除；不一致者各留專用，於憑證的備註
-   前置機器碼標記並每組寫一筆審計列。任一步失敗即整段 rollback、**不寫標記**，佇列記一筆失敗並另在交易之外寫一筆 status=failure 的審計列（details 記失敗階段與待處理筆數，不含密文或明文），
+   前置機器碼標記並每組寫一筆稽核列。任一步失敗即整段 rollback、**不寫標記**，佇列記一筆失敗並另在交易之外寫一筆 status=failure 的稽核列（details 記失敗階段與待處理筆數，不含密文或明文），
    下次啟動重試；**不得降級**為「解不開就全部各留專用」——那會靜默丟掉全部共用關係，
    而管理者從畫面上看不出差別。冪等以標記而非欄位形狀判定：本轉換不刪任何欄，
    且不一致的群組每次都會再度符合「未合併」的形狀。
@@ -2610,7 +2634,7 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
 
 1. **密碼儲存**: 使用 bcrypt 雜湊
 2. **憑證加密**: 使用 AES-256-GCM 加密資產密碼、SSH 私鑰與 TOTP secret（共用同一把金鑰）
-3. **軟刪除**: 核心模型（users/roles/assets/asset_groups/sessions/asset_authorizations）支援軟刪除，保留審計軌跡；audit_logs 另有 ORM 層 `BeforeUpdate`/`BeforeDelete` 雙守衛（含 Unscoped 硬刪），唯一刪除路徑為保留政策的原生 SQL 清除（清除入審計）；審計附屬表（session_commands、command_alerts、clipboard_events 等）為不可變記錄，僅保留政策可清除。
+3. **軟刪除**: 核心模型（users/roles/assets/asset_groups/sessions/asset_authorizations）支援軟刪除，保留稽核軌跡；audit_logs 另有 ORM 層 `BeforeUpdate`/`BeforeDelete` 雙守衛（含 Unscoped 硬刪），唯一刪除路徑為保留政策的原生 SQL 清除（清除入稽核）；稽核附屬表（session_commands、command_alerts、clipboard_events 等）為不可變記錄，僅保留政策可清除。
    **audit_logs 的清除語義**：清除單位不是「逐列過期即刪」，而是**已封檢查點區間整段清除**——
    區間須已封章、`row_count > 0`、`max_created_at < cutoff`，且交易內再確認無未過期列；刪除與 tombstone 簽章
    （`purged_at`／`purge_signature`／`purge_signing_key_version`／`purge_policy_days`）同一交易提交。
@@ -2618,15 +2642,15 @@ const AccountScopeAll = "@ALL" // 全部帳號（別名，`@` 前綴為保留命
    反向偏差（提早刪）不會發生。實刪列數少於檢查點所簽 `row_count` 時整段回滾——照清會把一起竊取洗成「合法清除」。
    genesis 之前的列（`id < genesis id_from`）不受任何檢查點覆蓋，續走逐列路徑並以 id 上界封死，兩條路徑不重疊。
    原生 SQL 刪除入口為精確清冊（`cmd/server/audit_raw_delete_sites_guard_test.go`），新增未登記的入口即測試轉紅。
-4. **審計不可變**: 審計日誌禁止更新（BeforeUpdate 拒絕）；存取複審簽核（access_reviews）為 append-only 證據，`BeforeUpdate`/`BeforeDelete` 一律拒絕（PCI 7.2.4）
+4. **稽核不可變**: 稽核日誌禁止更新（BeforeUpdate 拒絕）；存取複審簽核（access_reviews）為 append-only 證據，`BeforeUpdate`/`BeforeDelete` 一律拒絕（PCI 7.2.4）
 5. **敏感欄位隱藏**: 密碼、私鑰、TOTP secret、host key 公鑰本體、webhook secret、refresh token_hash、password_histories 雜湊、failed_login_attempts、totp_last_step 等欄位 JSON 標籤為 `-`
-6. **審計表無 FK**: session_commands / command_alerts 刻意不加外鍵，寫入位於會話資料路徑上，避免外鍵檢查與級聯刪除影響會話可用性與審計資料保留
+6. **稽核表無 FK**: session_commands / command_alerts 刻意不加外鍵，寫入位於會話資料路徑上，避免外鍵檢查與級聯刪除影響會話可用性與稽核資料保留
 7. **認證強化（/ PCI-DSS v4.0.1）**: refresh 憑證只存 SHA-256（明文僅發放當下回傳，rotation + reuse detection）；密碼歷史防重用（8.3.7）；帳號鎖定（密碼/TOTP 失敗共用計數，8.3.4）；TOTP 防重放（totp_last_step CAS 推進，8.5.1）；access token 固定 15 分短效，撤銷殘窗有上限
 8. **雙層憑證世代**: provider 級 `oidc_providers.auth_epoch` 與使用者級 `users.credential_epoch` 各自單調遞增、**永不回退**；所有簽發出去的憑證（access／refresh／scoped／login ticket／connect grant／sessions 溯源）記錄簽發當下的兩個世代，全部驗證點**現查 DB** 並列比對（不得讀程序快取，否則多副本下停用形同虛設）。provider 停用／刪除／secret 輪替推進前者，解綁外部身分／帳號停用刪除／改為僅外部登入／改密推進後者。OIDC 一次性憑證（`oidc_flow_states`／`oidc_login_tickets`）皆為原子消費、僅存雜湊或隨機值，且帶到期索引供清理排程掃描
 
 ---
 
-### 37. AuditCheckpoint（審計檢查點鏈）
+### 37. AuditCheckpoint（稽核檢查點鏈）
 
 **表名**: `audit_checkpoints`
 **檔案**: `backend/internal/model/audit_checkpoint.go`
@@ -2733,7 +2757,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 **建表方式**: baseline（`baseline_schema_audit.go`），含 `class` 唯一索引。
 **無 `deleted_at` 欄**——本表永不刪除，軟刪欄只會讓「被藏起來的列」與「不存在的列」在冷啟動語義上不可區分
 
-稽核工作台的保留三態（`present`／`purged`／`not_retained`）來源。
+調查工作台的保留三態（`present`／`purged`／`not_retained`）來源。
 **為何另立一張表**：現行清除留痕本身是一筆 `audit_logs` 列，下一輪 retention 會把它一併清掉——
 拿它當「此區間已依保留政策清除」的來源，會在最需要它的時候（區間夠舊）消失，工作台於是把
 「已合法清除」誤呈為「空白」，即自己製造竄改誤報。故水位落在一張**永不清除**的表，
@@ -2779,7 +2803,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 | `RecentLastRunAt` | *time.Time | - | `recent_last_run_at` | 近期層最近執行時點；nil＝從未執行 |
 | `RecentLastStatus` | string | `size:16;not null;default:''` | `recent_last_status` | `passed`／`failed`／`error`（`error`＝本輪無法完成，狀態為未知而非「無異常」） |
 | `RecentLastDurationMs` | int64 | `not null;default:0` | `recent_last_duration_ms` | 近期層最近一輪耗時 |
-| `RecentWindowDaysEffective` | int | `not null;default:0` | `recent_window_days_effective` | 近期層本次**實際生效**的窗口天數（政策值經審計紀錄保留天數 clamp 後）。記生效值而非設定值：承諾驗證保留期以外的範圍是空頭支票 |
+| `RecentWindowDaysEffective` | int | `not null;default:0` | `recent_window_days_effective` | 近期層本次**實際生效**的窗口天數（政策值經稽核紀錄保留天數 clamp 後）。記生效值而非設定值：承諾驗證保留期以外的範圍是空頭支票 |
 | `RecentLastSeq` | uint | `not null;default:0` | `recent_last_seq` | 上次觀測到的鏈尾檢查點序號；前進即代表期間有新存證（觀測式觸發的狀態載體） |
 | `FullLastRunAt` | *time.Time | - | `full_last_run_at` | 全鏈層最近執行時點；nil＝從未執行 |
 | `FullLastStatus` | string | `size:16;not null;default:''` | `full_last_status` | 同 `RecentLastStatus` 的值域 |
@@ -2821,7 +2845,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
 | `RequesterID` | uint | `not null;index:idx_audit_export_jobs_requester_status,priority:1` | `-` | 申請者（下載授權與清單範圍的判準；回應層另走 DisplayMap 投影） |
 | `Kind` | string | `size:32;not null;default:evidence_bundle;index:idx_audit_export_jobs_kind_status,priority:1` | `kind` | 工作單種類（閉集：`evidence_bundle`／`rotation_report`）。決定由哪個打包者產出、清單走哪一種範圍、下載走哪一種授權判準。存量列以 default 回填為 `evidence_bundle`——本欄出現之前這張表只承載證據包，回填值即其實際語義。model 本身不帶 json tag，`kind` 由回應層投影輸出。由增量 `20260903_rotation_evidence_report` 加欄 |
-| `RequesterName` | string | `size:50;not null` | `-` | 申請者名稱（發起當下快照，供 manifest `exported_by` 與審計列） |
+| `RequesterName` | string | `size:50;not null` | `-` | 申請者名稱（發起當下快照，供 manifest `exported_by` 與稽核列） |
 | `FilterJSON` | string | `type:text;not null` | `-` | 完整篩選條件快照（`ExportFilter` 的 JSON 序列化；供 worker 重建篩選，不出站） |
 | `FilterHash` | string | `size:64;not null` | `-` | 篩選正規化 SHA-256；`pending`／`running` 去重鍵 |
 | `Status` | string | `size:16;not null;index:idx_audit_export_jobs_requester_status,priority:2;index:idx_audit_export_jobs_status;index:idx_audit_export_jobs_kind_status,priority:2` | `status` | 狀態五態：`pending`／`running`／`done`／`failed`／`expired`（**無獨立「取消」態**——失權取消落 `failed` 並以 `ErrorSummary` 標因） |
@@ -2881,7 +2905,7 @@ retention **跳過**鏈修剪並記告警；`TrimChain` 另有「仍覆蓋現存
 DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS`，在已套用的庫上重跑必須大聲失敗。
 
 帳號 × 來源位址的「**已見**」基準。它是新來源位址告警的**判定依據，不是日誌、也不是防篡改證據**
-（證據是 `command_alerts` 的告警列與 `audit_logs` 的審計列）；故**不在任何保留政策的清除目標內**
+（證據是 `command_alerts` 的告警列與 `audit_logs` 的稽核列）；故**不在任何保留政策的清除目標內**
 ——清掉它會讓舊位址回來時再被判為新，告警就成了噪音。表大小上界＝使用者數 × 相異位址數，
 每列只更新時間、不追加，無無界增長來源。
 **刻意無外鍵**（與 `command_alerts` 同取向）：軟刪使用者的列保留（帳號可能重新啟用），
@@ -2970,7 +2994,7 @@ CREATE TABLE offsite_profiles (
 | `Region` | string | `size:64;not null;default:''` | `region` | 區域 |
 | `PathStyle` | bool | `not null;default:false` | `path_style` | S3 path-style 定址 |
 | `CredentialMode` | string | `size:16;not null` | `credential_mode` | 三值：`stored`（用本世代自己的憑證，密文非空）／`default_chain`（部署方**刻意**選 SDK 預設憑證鏈，密文必空）／`revoked`（曾有憑證、已由管理員撤銷，密文必空且 `credentials_cleared_at` 非空）。三值分立是為了消除「空密文」的歧義——若空密文同時代表「用預設鏈」與「已撤銷」，撤銷後仍可能靜默改走預設鏈繼續取回。`revoked` 一律不回退預設鏈 |
-| `CredentialsEnc` | string | `type:text;not null;default:''` | `-` | 該世代的憑證（信封加密；明文為依 provider 的 JSON）。**write-only**：任何讀取投影、API 回應與審計皆不含本欄與其遮罩值 |
+| `CredentialsEnc` | string | `type:text;not null;default:''` | `-` | 該世代的憑證（信封加密；明文為依 provider 的 JSON）。**write-only**：任何讀取投影、API 回應與稽核皆不含本欄與其遮罩值 |
 | `CredentialRevision` | int64 | `not null;default:0` | `-` | 每次憑證變更或撤銷 +1；per-generation client 快取的失效依據。跨程序與重啟的正確性不靠行程內事件——取用 client 前核對快取內記載的版號與該列現值，不等即丟棄重建 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `ActivatedAt` | time.Time | - | `activated_at` | 成為現行世代的時刻 |
@@ -3113,7 +3137,7 @@ pending → uploading → uploaded → local_purged
 
 **不得作出的宣稱**（本節與引用本節的文件一律避免）:
 1. **`sha256` 不是錄製當下的完整性證明**——它是**上傳當下**讀到的位元組的雜湊。本機檔在錄製到上傳
-   之間的任何改動無從偵測（與審計檢查點鏈、會話錄影大小欄同一揭露）。
+   之間的任何改動無從偵測（與稽核檢查點鏈、會話錄影大小欄同一揭露）。
 2. **不得宣稱遠端物件等於磁碟最終內容**——上傳後的複驗只能偵測「上傳期間變了」；圖形錄影的收尾尾段
    寫在量測之後，其長尾差額不在射程內。
 3. **儲存端的分段校驗值與本欄的整檔 SHA-256 不可比**——大檔走分段上傳時，儲存端計算的是分段雜湊的
@@ -3123,9 +3147,9 @@ pending → uploading → uploaded → local_purged
    versioning 與 lifecycle 設定承擔（`version_id` 只是參考性記錄），產品不列舉、不清理、不依賴。
    同 key 被外力覆寫時，產品的防護**只到拒絕交付**（雜湊不符即 `integrity_mismatch`）；能否救回原內容
    取決於部署方的 versioning 與保留設定。
-5. **帳冊是現況，審計事件才是軌跡**——本表每列只保存目前狀態（狀態機是覆寫式的）；
-   「什麼時候上傳的、什麼時候判定不符、什麼時候本機到期」的時序在保管鏈審計事件裡。
-   反過來說，帳冊狀態是權威，審計列受審計佇列同樣的滿載降級與丟棄計數約束。
+5. **帳冊是現況，稽核事件才是軌跡**——本表每列只保存目前狀態（狀態機是覆寫式的）；
+   「什麼時候上傳的、什麼時候判定不符、什麼時候本機到期」的時序在保管鏈稽核事件裡。
+   反過來說，帳冊狀態是權威，稽核列受稽核佇列同樣的滿載降級與丟棄計數約束。
 
 ---
 
@@ -3162,8 +3186,8 @@ pending → uploading → uploaded → local_purged
   一段沒有任何報告涵蓋的空白，而**空白在報告上看不出來**。以錨點記起點，連續兩期必然首尾相接、
   不重疊也不漏。修改 `cron` 會使當期區間以修改時刻切開，這是刻意的：週期換了之後，舊週期的區間
   對讀報告的人已經沒有意義。「立即產出」視為提前的一期，同樣推進錨點；手動產出不碰任何排程的錨點。
-- **本表是設定，不是證據**：它記的是「要產什麼報告」，產出的事實落在工作單與審計日誌。
-  排程的建立、修改與刪除各入審計。
+- **本表是設定，不是證據**：它記的是「要產什麼報告」，產出的事實落在工作單與稽核日誌。
+  排程的建立、修改與刪除各入稽核。
 - **同一排程至多一張進行中的工作單**：建單時掃過該種類所有進行中的工作單，其篩選快照帶同一個
   排程識別即拒絕，回收斂錯誤。這道判定在服務層，不另設資料庫層約束。
   報告種類的去重鍵是種類加篩選雜湊（**不含申請者**），與證據包的每申請者去重是兩套判準。
@@ -3219,7 +3243,7 @@ pending → uploading → uploaded → local_purged
   同出一源。**憑證名稱不落在本表**——名稱只在「建立批次 → 執行批次」這一次呼叫之間需要，
   批次列不是憑證關係的真相來源；行程中途被砍後的承接（重試轉正、掛載數重估）由候選列上的
   憑證快照承擔。批次在行程中途被砍時會留下一筆零掛載的共用憑證，那是合法的待用狀態。
-- 本表是處置動作的彙總，不是證據：逐台的事實落在改密記錄與帳號變更審計。
+- 本表是處置動作的彙總，不是證據：逐台的事實落在改密記錄與帳號變更稽核。
 
 ---
 
@@ -3409,7 +3433,7 @@ pending → uploading → uploaded → local_purged
 - **比對值原樣存**：目錄側是群組的辨識名稱，比對時兩邊各自解析成結構再比（屬性型別不分大小寫、
   屬性值分大小寫）；提供者側是該提供者宣告裡的字面值，逐字比對。另存一份正規化值等於在兩種
   比對規則之外再造一套，而它必然與其中一種不一致。
-- **`created_by` 進資料而不是只留審計列**：映射到管理員角色是特權賦予路徑，「誰開的」必須
+- **`created_by` 進資料而不是只留稽核列**：映射到管理員角色是特權賦予路徑，「誰開的」必須
   在規則本身回答得出來。
 - **來源刪除的相依**：仍有規則掛著的目錄或提供者不可刪除（服務層回衝突），先移除規則再刪來源。
 
@@ -3429,7 +3453,7 @@ pending → uploading → uploaded → local_purged
 | `Channel` | string | `primaryKey;size:64` | `channel` | 登入途徑，形如「種類:來源識別」（`directory:1`／`provider:3`）；複合主鍵之一 |
 | `MatchedAt` | time.Time | `not null` | `matched_at` | 最近一次重算認定這筆映射的時間 |
 
-無 `created_at`／`deleted_at`：本表是「最近一次重算後的認定」，不是歷史帳；歷史在審計列裡。
+無 `created_at`／`deleted_at`：本表是「最近一次重算後的認定」，不是歷史帳；歷史在稽核列裡。
 
 **設計說明**:
 - **本表是映射的事實源**。有效角色集＝角色指派關聯表的手動列，聯集本表去重後的角色；
@@ -3605,7 +3629,7 @@ pending → uploading → uploaded → local_purged
 | `TransitKeyName` | string | `size:128;not null;default:''` | `transit_key_name` | Transit 具名金鑰（Vault 專屬） |
 | `RoleID` | string | `size:128;not null;default:''` | `role_id` | AppRole 的角色識別（Vault 專屬；**非秘密**，秘密是角色密鑰） |
 | `Region` | string | `size:64;not null;default:''` | `region` | 服務區域（AWS 專屬；GCP 不使用，Vault 不要求） |
-| `UpdatedBy` | string | `size:100;not null;default:''` | `updated_by` | 最後變更者（課責；變更前後值另入審計） |
+| `UpdatedBy` | string | `size:100;not null;default:''` | `updated_by` | 最後變更者（課責；變更前後值另入稽核） |
 | `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
 
 **設計說明**:
@@ -3648,7 +3672,9 @@ pending → uploading → uploaded → local_purged
 | user_id、agent_token_id、owner_user_id | bigint，分別 REFERENCES users／agent_tokens／users |
 | access_request_id、session_id、on_behalf_of_user_id | nullable bigint FK access_requests／sessions／users |
 | tool | varchar(64) |
-| args_redacted | jsonb，遮罩後參數 |
+| args_redacted | jsonb，參數（原文；`session_handle` 為 `fp:` 指紋、命中機敏規則的片段為固定標記）——`20260924_agent_tool_call_args_retained` 前寫入的列為整欄遮罩 |
+| args_sealed | bytea nullable，命中機敏規則時的參數原文信封密文（AAD 綁 `agent_tool_calls|args_sealed`，走 KEK／DEK 輪替登記；不進列級 HMAC，只經 `GET /agent-tool-calls/:id/arguments` 帶理由解密） |
+| args_retained | boolean NOT NULL DEFAULT false，`20260924_agent_tool_call_args_retained` 起寫入的列為 true；false 表示參數當時被整欄遮罩、原文不存在。**true 時進列級 HMAC 載荷**（附加 `\|retained=1`，false 列載荷逐位元不變），把 true 改 false 會驗章失敗 |
 | decision | varchar(16)，pending／allowed／denied／breaker／rate_limited |
 | denial_code、result_status | varchar(100)、varchar(32) |
 | result_digest、integrity_hmac | varchar(64)，SHA-256／列級 HMAC |
@@ -3685,7 +3711,7 @@ pending → uploading → uploaded → local_purged
 
 索引 `(user_id,class,created_at)`。主體列鎖下 COUNT DISTINCT asset_ref，只計時間窗內 never_visible；不使用行程記憶體計數。分類證據見 agent_visibility_exposures。
 
-### Agent 審計鏈與控制的既有表增量欄位與回退
+### Agent 稽核鏈與控制的既有表增量欄位與回退
 
 - sessions：nullable actor_kind varchar(16) CHECK human／agent；on_behalf_of_user_id 與 owner_user_id 為 nullable bigint REFERENCES users；revoked_during_session_at 為 nullable timestamptz。前置的 agent_token_id／access_request_id 不重建。人類舊列保留 NULL。
 - audit_checkpoints：nullable tool_call_id_from、tool_call_id_to、tool_call_row_count bigint 與 tool_call_agg_hash varchar(64)，v3 載荷在 v2 欄序末尾加這四欄；v1／v2 仍照原版驗證。
@@ -3739,7 +3765,7 @@ pending → uploading → uploaded → local_purged
 `idx_failure_events_single_open` 保留其他機制每機制僅一筆未結案事件，排除
 `principal_state_integrity`；新增 `idx_failure_events_principal_open`，對該機制以
 `cause_params::jsonb->>'table'` 保證每登記項僅一筆未結案事件。
-服務層投影狀態列 actor 記 `system`，操作者由既有 HTTP 審計列承擔。
+服務層投影狀態列 actor 記 `system`，操作者由既有 HTTP 稽核列承擔。
 
 ### Agent 會話名稱快照增量（2026-09-22）
 

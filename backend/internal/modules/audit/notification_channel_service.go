@@ -121,7 +121,7 @@ func (s *NotificationChannelService) auditAcknowledgment(req *NotificationChanne
 		Details:  string(details),
 	}
 	if err := s.db.Create(entry).Error; err != nil {
-		log.Printf("[NotificationChannel] 傳輸確認聲明審計寫入失敗: %v", err)
+		log.Printf("[NotificationChannel] 傳輸確認聲明稽核寫入失敗: %v", err)
 	}
 }
 

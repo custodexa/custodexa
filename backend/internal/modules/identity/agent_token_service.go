@@ -186,6 +186,12 @@ type AgentTokenIdentity struct {
 	UserID   uint
 	Username string
 	Email    string
+	// CredentialEpoch is the agent principal's current credential generation, read in
+	// the same query as the other authorization facts. Connect grants issued on this
+	// request carry it so the redemption-time generation recheck (G-S4) compares the
+	// value that was live at issuance instead of a zero that only matches never-bumped
+	// principals.
+	CredentialEpoch int
 }
 
 // ValidateAgentToken reads all authorization facts with one joined query. No
@@ -201,6 +207,7 @@ func (s *AuthService) ValidateAgentToken(plaintext, ip string) (*AgentTokenIdent
 		AgentID          uint
 		AgentKind        string
 		AgentActive      bool
+		AgentCredEpoch   int `gorm:"column:agent_cred_epoch"`
 		Username         string
 		Email            string
 		AllowedCIDRs     string `gorm:"column:allowed_cidrs"`
@@ -208,7 +215,7 @@ func (s *AuthService) ValidateAgentToken(plaintext, ip string) (*AgentTokenIdent
 		OwnerKind        string
 		OwnerActive      bool
 	}
-	err := db.Table("agent_tokens AS t").Select("t.*, a.id AS agent_id, a.kind AS agent_kind, a.active AS agent_active, a.username, a.email, a.allowed_cidrs, o.id AS owner_id, o.kind AS owner_kind, o.active AS owner_active").
+	err := db.Table("agent_tokens AS t").Select("t.*, a.id AS agent_id, a.kind AS agent_kind, a.active AS agent_active, a.credential_epoch AS agent_cred_epoch, a.username, a.email, a.allowed_cidrs, o.id AS owner_id, o.kind AS owner_kind, o.active AS owner_active").
 		Joins("JOIN users a ON a.id = t.user_id AND a.deleted_at IS NULL").Joins("JOIN users o ON o.id = a.owner_user_id AND o.deleted_at IS NULL").Where("t.token_hash = ?", agentTokenDigest(plaintext)).Take(&row).Error
 	if err != nil {
 		return nil, invalid
@@ -237,5 +244,5 @@ func (s *AuthService) ValidateAgentToken(plaintext, ip string) (*AgentTokenIdent
 		// Conditional update coordinates replicas; failure cannot deny authentication.
 		_ = db.Session(&gorm.Session{SkipDefaultTransaction: true}).Model(&model.AgentToken{}).Where("id = ? AND (last_used_at IS NULL OR last_used_at < ?)", row.ID, threshold).UpdateColumn("last_used_at", now).Error
 	}
-	return &AgentTokenIdentity{TokenID: row.ID, UserID: row.AgentID, Username: row.Username, Email: row.Email}, ""
+	return &AgentTokenIdentity{TokenID: row.ID, UserID: row.AgentID, Username: row.Username, Email: row.Email, CredentialEpoch: row.AgentCredEpoch}, ""
 }

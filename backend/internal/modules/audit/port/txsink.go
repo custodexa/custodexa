@@ -74,7 +74,7 @@ type TxSink interface {
 // requireAuditTxSink）保證走不到這裡；在測試與工具路徑上以 error 表達，
 // 可讓呼叫端的 fail-close 語義原樣生效（業務交易回滾），
 // 而 panic 會把「審計沒寫成」升級成「整個行程死掉」，那是另一種行為變更。
-var ErrTxSinkMissing = errors.New("交易內審計落地面未注入（強制審計不得靜默略過）")
+var ErrTxSinkMissing = errors.New("交易內稽核落地面未注入（強制稽核不得靜默略過）")
 
 // WriteInTx 是呼叫端使用 TxSink 的**唯一合法形式**。
 //

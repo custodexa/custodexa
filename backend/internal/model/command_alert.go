@@ -25,6 +25,8 @@ const (
 	// 不掛規則：管理員不得以停用規則的方式關掉這個訊號。位址由所屬會話承載
 	// （session_id NOT NULL 保證可 join），本表不另存位址。
 	AlertKindNewSourceIP = "new_source_ip"
+	// AlertKindSensitiveReveal is an opt-in policy signal, never a CRUD rule.
+	AlertKindSensitiveReveal = "sensitive_reveal"
 )
 
 // AlertReasonDegradedSpan 降級告警的機器碼：一段連續的降級輪次（span）開始。

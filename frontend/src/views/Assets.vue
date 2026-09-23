@@ -401,8 +401,8 @@
           </el-table-column>
           <!-- 操作欄一律 fixed right：一般 user 欄寬總和逾 1140px，常見視窗下
              表格橫向溢寬、不 fixed 的操作欄會滑出可視範圍（macOS 隱形卷軸
-             使其不可發現＝根本無法連線，使用者實測踩中）。EP sticky 實作
-             無溢寬時不疊壓相鄰欄（寬窄雙視窗×雙角色實測驗證） -->
+             使其不可發現＝根本無法連線）。EP sticky 實作在無溢寬時
+             不疊壓相鄰欄。 -->
           <el-table-column
             :label="$t('common.actions')"
             :width="isAdmin ? 180 : 120"

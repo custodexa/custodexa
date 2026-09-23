@@ -22,7 +22,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/architecture-dark.svg">
-    <img alt="架構圖：操作者用瀏覽器經 Custodexa 閘道（認證閘、政策引擎、協議代理、審計、證據出口）連向 SSH、RDP/VNC、資料庫與 Kubernetes 靶機，靶機零安裝；每一場會話都留下錄影、指令記錄與 Ed25519 存證的審計鏈。" src="../assets/architecture-light.svg" width="920">
+    <img alt="架構圖：操作者用瀏覽器經 Custodexa 閘道（認證閘、政策引擎、協議代理、稽核、證據出口）連向 SSH、RDP/VNC、資料庫與 Kubernetes 靶機，靶機零安裝；每一場會話都留下錄影、指令記錄與 Ed25519 存證的稽核鏈。" src="../assets/architecture-light.svg" width="920">
   </picture>
 </p>
 
@@ -71,9 +71,9 @@
 | | |
 |---|---|
 | ![儀表板總覽](../../screenshots/dashboard-overview.png) | ![工作區網頁終端](../../screenshots/workspace-terminal.png) |
-| ![會話錄影回放與指令記錄](../../screenshots/session-playback.png) | ![指令審計](../../screenshots/command-audit.png) |
+| ![會話錄影回放與指令記錄](../../screenshots/session-playback.png) | ![指令稽核](../../screenshots/command-audit.png) |
 
-左上起：儀表板總覽、工作區網頁終端（含使用者浮水印）、會話錄影回放與指令記錄、指令審計搜尋。
+左上起：儀表板總覽、工作區網頁終端（含使用者浮水印）、會話錄影回放與指令記錄、指令稽核搜尋。
 
 ## 快速開始
 
@@ -116,8 +116,34 @@ Windows 請在 WSL 內執行腳本。
 
 - **握手全部在後端完成**，瀏覽器只是顯示器與鍵盤。這就是「前端拿不到明文憑證」的由來。
   實作見 `backend/internal/proxy/`。
-- **SSH、資料庫 CLI、K8s exec 共用同一條文字終端鏈路**，錄影、指令審計、阻斷、監看
+- **SSH、資料庫 CLI、K8s exec 共用同一條文字終端鏈路**，錄影、指令稽核、阻斷、監看
   四件事只實作一次，八種協議一致生效。
+
+## AI agent 接入
+
+MCP 服務端由 Custodexa 後端直接提供，以 streamable HTTP 開在 `POST /api/v1/mcp`，
+不必另外部署。
+
+支援 streamable HTTP 的宿主直接連到 `https://<你的 Custodexa>/api/v1/mcp`，
+以 `Authorization: Bearer` 帶上 agent token。只能用 stdio 啟動本機服務的宿主，改跑
+[`custodexa-mcp`](https://github.com/custodexa/custodexa-mcp) 轉接頭：它把每一次呼叫轉送到
+同一個端點，自己不做任何判定。安裝用 `go install github.com/custodexa/custodexa-mcp@latest`，
+或從它的 [Releases](https://github.com/custodexa/custodexa-mcp/releases) 下載二進位檔。
+
+agent 通道開放到哪裡：
+
+- **agent 的自助建立出廠為關閉。** 由管理員建立 agent，並為每一個指定一位人類負責人；
+  安全政策開放自助建立之後，任何啟用中的人類使用者都能建立自己名下的 agent。
+- **每一把 agent token 都必須設到期時間。** 明文只在發出當下顯示一次。
+- **agent 只能連線經 `request_access` 申請並核准的資產。** 設為「需審核人核准」的資產，申請會等人類審核者決定；
+  設為「不需申請」或「填寫理由即可連線」的資產在建單當下即核准，出廠預設是「不需申請」。
+- **每一次工具呼叫都留紀錄。** 工具帳本保存參數與判定結果，被拒絕的呼叫也在內；
+  無法歸屬到該 agent 自己的任務或會話的呼叫會被拒絕，記在 HTTP 請求稽核。
+- **回傳給 agent 的內容經遮罩，錄影保留原始畫面。** 遮罩只取代已啟用的輸出規則命中的片段，
+  出廠規則涵蓋卡號與私鑰標頭。
+
+十項工具與其行為見 [docs/API_SPEC.md](../API_SPEC.md) 的 MCP 章；token 輪替、事件處置與
+agent 的核准設定見 [ops/deployment-topology-limits.md](ops/deployment-topology-limits.md)。
 
 ## 文檔地圖
 
@@ -136,9 +162,9 @@ Windows 請在 WSL 內執行腳本。
 
 - **它管的是「經過它的連線」**。若目標主機仍開放直連，那些流量不在它的視野內。
   請用網路層（防火牆／安全群組）把直連封掉，讓堡壘機成為唯一入口。
-- **文字指令審計有先天極限**（例如某些全螢幕程式的邊角行為、無回顯輸入）。
+- **文字指令稽核有先天極限**（例如某些全螢幕程式的邊角行為、無回顯輸入）。
   有爭議時，以**連線錄影回放**為事實來源，錄影記的是實際畫面，不經任何重組推斷。
-- **審計寫入失敗不會中斷你的連線**，但介面會明確提示降級狀態，不會假裝一切正常。
+- **稽核寫入失敗不會中斷你的連線**，但介面會明確提示降級狀態，不會假裝一切正常。
 
 ## 參考專案
 

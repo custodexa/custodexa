@@ -160,7 +160,7 @@ func (s *RecordingService) resolveFor(sess *model.Session, verifyHash bool) (Res
 			if os.IsNotExist(statErr) {
 				return ResolvedRecording{}, ErrRecordingNotFound
 			}
-			return ResolvedRecording{}, fmt.Errorf("獲取檔案資訊失敗: %w", statErr)
+			return ResolvedRecording{}, fmt.Errorf("取得檔案資訊失敗: %w", statErr)
 		}
 		return ResolvedRecording{Path: sess.RecordingPath, Source: RecordingSourceLocal,
 			Size: info.Size(), ModTime: info.ModTime(),

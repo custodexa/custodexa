@@ -36,6 +36,8 @@ type AgentToolCall struct {
 	OwnerUserID      uint      `gorm:"not null" json:"owner_user_id"`
 	Tool             string    `gorm:"size:64;not null" json:"tool"`
 	ArgsRedacted     string    `gorm:"type:jsonb;not null" json:"args_redacted"`
+	ArgsSealed       []byte    `gorm:"type:bytea" json:"-"`
+	ArgsRetained     bool      `gorm:"not null;default:false" json:"args_retained"`
 	Decision         string    `gorm:"size:16;not null" json:"decision"`
 	DenialCode       string    `gorm:"size:100;not null" json:"denial_code"`
 	ResultStatus     string    `gorm:"size:32;not null" json:"result_status"`

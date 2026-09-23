@@ -19,7 +19,7 @@ import (
 // 背景 goroutine，panic 直接終止整個行程；而停止函式只送信號不等待，關機序把
 // refresher 排在最前（R-13）的用意（它先停、其依賴才拆）因此形同虛設。
 //
-// 本檔的每個斷言前都先證明「注入確實發生」——注入器沒觸發而測試全綠是本專案踩過的坑。
+// 本檔的每個斷言前都先證明「注入確實發生」——注入器沒觸發而測試仍然全綠會是一種假綠。
 
 // syncBuffer log 輸出的併發安全接收端。
 //
@@ -271,6 +271,6 @@ func TestStopAfterTaskPanicReturnsPromptly(t *testing.T) {
 	require.NoError(t, stop(context.Background()), "任務已因 panic 結束，停止函式卻回報未等到")
 	require.Less(t, time.Since(start), StopWaitBudget, "停止函式等滿了預算：done 未於 panic 展開時關閉")
 
-	require.True(t, strings.Contains(logs.String(), "背景刷新任務因 panic 終止"),
+	require.True(t, strings.Contains(logs.String(), "背景更新任務因 panic 終止"),
 		"任務本體的 panic 未留下紀錄：\n%s", logs.String())
 }

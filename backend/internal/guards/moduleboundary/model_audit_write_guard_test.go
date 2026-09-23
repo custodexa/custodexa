@@ -1,6 +1,6 @@
 package moduleboundary
 
-// `internal/model` 的審計寫入面禁令（Phase B 任務 6.2）。
+// `internal/model` 的審計寫入面禁令。
 //
 // **擋的是什麼**：重構已把 T-2 的 11 個產生點自 `model.RecordAssetAccountChange`／
 // `RecordAssetChange`／`RecordAssetNodeChange` 收口到 `audit/port.WriteInTx`，

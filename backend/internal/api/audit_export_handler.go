@@ -164,7 +164,7 @@ func parseExportPack(c *gin.Context, filter *audit.ExportFilter) (isReport bool,
 	return false, false
 }
 
-// parseExportBundleScope 證據包模式的樞紐與類別參數（2026-08-25 使用者裁決）。
+// parseExportBundleScope 解析證據包模式的樞紐與類別參數。
 //
 // 與事件報告的差別：樞紐與時間窗**非必填**——既有的「指定 session 匯出這場的
 // 證物」仍是合法範圍。帶了樞紐就比照報告校驗其 id。類別枚舉與稽核調查時間軸

@@ -182,7 +182,7 @@ func revokeRefreshTokensByProvider(db *gorm.DB, providerID uint) (int64, error) 
 			"revoked_reason": model.RefreshRevokeProviderDisabled,
 		})
 	if res.Error != nil {
-		return 0, fmt.Errorf("撤銷 provider 刷新憑證失敗: %w", res.Error)
+		return 0, fmt.Errorf("撤銷 provider 更新憑證失敗: %w", res.Error)
 	}
 	return res.RowsAffected, nil
 }

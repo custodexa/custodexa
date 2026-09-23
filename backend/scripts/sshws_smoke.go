@@ -41,7 +41,7 @@ func main() {
 	asset := flag.String("asset", "1", "asset id")
 	account := flag.Int("account", 0, "資產帳號 id（0=省略，走預設帳號）")
 	base := flag.String("url", "ws://localhost:8080", "backend base ws url")
-	extra := flag.String("extra", "", "額外執行的指令（驗證審計/告警用）")
+	extra := flag.String("extra", "", "額外執行的指令（驗證稽核/告警用）")
 	extraExpect := flag.String("extra-expect", "", "extra 輸出須含的字串（空=不斷言）")
 	idleWait := flag.Int("idle-wait", 0, "閒置斷線驗證：靜默等待秒數上限（0=不驗證）")
 	flag.Parse()

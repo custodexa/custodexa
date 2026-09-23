@@ -50,7 +50,7 @@ func ReportSessionRecordingFailure(sessionID uint, mechanism, causeCode string, 
 		Details:    audit.CauseText(causeCode, params),
 	}
 	if err := database.DB.Create(entry).Error; err != nil {
-		log.Printf("[Recording] 錄影失敗審計留痕失敗 (SessionID=%d): %v", sessionID, err)
+		log.Printf("[Recording] 錄影失敗稽核留痕失敗 (SessionID=%d): %v", sessionID, err)
 	}
 
 	if failure := audit.GetAuditFailure(); failure != nil {

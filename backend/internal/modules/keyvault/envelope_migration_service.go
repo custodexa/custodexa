@@ -24,6 +24,7 @@ type envelopeMigrationColumn struct {
 	// **空＝id**——此預設是給資產多帳號的**零改動契約**（交叉相容契約 2）：
 	// 其登記形式 {table, column} 無須任何改動。
 	pkColumn string
+	binary   bool // bytea holds the UTF-8 envelope bytes, not PostgreSQL hex output.
 }
 
 // pk 回傳本欄位的主鍵欄名（空即 id）；僅用於掃描分頁與 CAS 寫回條件
@@ -37,6 +38,23 @@ func (c envelopeMigrationColumn) pk() string {
 // cipherRef 本欄位的 AAD 綁定身分（a1 方案：table|column，**與列無關**）
 func (c envelopeMigrationColumn) cipherRef() crypto.CipherRef {
 	return crypto.CipherRef{Table: c.table, Column: c.column}
+}
+
+// valueSQL decodes only registered bytea envelopes for scans/prefix checks.
+func (c envelopeMigrationColumn) valueSQL(db *gorm.DB) string {
+	if !c.binary {
+		return c.column
+	}
+	if db.Dialector.Name() == "postgres" {
+		return fmt.Sprintf("convert_from(%s, 'UTF8')", c.column)
+	}
+	return fmt.Sprintf("CAST(%s AS TEXT)", c.column)
+}
+func (c envelopeMigrationColumn) storedValue(value string) any {
+	if c.binary {
+		return []byte(value)
+	}
+	return value
 }
 
 // envelopeMigrationTargets 全部落庫敏感欄位（設計 Context 盤點）
@@ -76,6 +94,7 @@ var envelopeMigrationTargets = []envelopeMigrationColumn{
 	// 引用掃描來源，漏登會使該欄密文永久不可解（剪貼簿審計證據整批損毀）。
 	// 缺口紀錄（加密失敗）該欄為空字串，掃描的 `<> ''` 謂詞自然跳過
 	{table: "clipboard_events", column: "content_enc"},
+	{table: "agent_tool_calls", column: "args_sealed", binary: true},
 	// 離機儲存的**逐世代**物件儲存憑證。與 model 同批入冊——
 	// 本清單同時是 DEK 輪替重加密與退役 DEK 銷毀前的引用掃描來源。
 	// 漏登的後果比其他欄更遠：退役 DEK 誤判零引用而銷毀後，該世代憑證永久不可解，
@@ -211,8 +230,8 @@ func reencryptEnvelopeColumnWith(db *gorm.DB, target envelopeMigrationColumn, sk
 		// 值非空即撈回，是否已達目標由 Go 層 skip 判定（軟刪列一併處理，
 		// 避免復原後漏網）
 		if err := db.Table(target.table).
-			Select(fmt.Sprintf("%s AS pk, %s AS value", pkCol, target.column)).
-			Where(fmt.Sprintf("%s > ? AND %s <> ''", pkCol, target.column), lastID).
+			Select(fmt.Sprintf("%s AS pk, %s AS value", pkCol, target.valueSQL(db))).
+			Where(fmt.Sprintf("%s > ? AND %s <> ''", pkCol, target.valueSQL(db)), lastID).
 			Order(pkCol).Limit(500).Scan(&batch).Error; err != nil {
 			log.Printf("[EnvelopeMigration] 掃描 %s.%s 失敗: %v", target.table, target.column, err)
 			result.Failed++
@@ -246,7 +265,7 @@ func reencryptEnvelopeColumnWith(db *gorm.DB, target envelopeMigrationColumn, sk
 			// live 輪換），無條件覆蓋會吃掉新值；原值不符即放棄本列，
 			// 是否仍待處理交由 pending 再確認（marker 守衛／下次輪替）
 			res := db.Exec(fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ? AND %s = ?",
-				target.table, target.column, pkCol, target.column), enc, r.PK, r.Value)
+				target.table, target.column, pkCol, target.column), target.storedValue(enc), r.PK, target.storedValue(r.Value))
 			if res.Error != nil {
 				result.recordFailure(target, r.PK, res.Error)
 				continue
@@ -256,7 +275,7 @@ func reencryptEnvelopeColumnWith(db *gorm.DB, target envelopeMigrationColumn, sk
 				// （正向：pending 再確認；反向：直接計入 Failed，見 RevertEnvelopeAADMigration）
 				result.CASConflicts++
 				result.bumpColumnStat(target, func(s *EnvelopeColumnStat) { s.CASConflicts++ })
-				log.Printf("[EnvelopeMigration] %s.%s %s=%d 掃描期間被並發改寫，跳過不覆蓋", target.table, target.column, pkCol, r.PK)
+				log.Printf("[EnvelopeMigration] %s.%s %s=%d 掃描期間被同時改寫，跳過不覆蓋", target.table, target.column, pkCol, r.PK)
 				continue
 			}
 			result.Migrated++
@@ -288,8 +307,8 @@ func countPendingColumnValues(db *gorm.DB, target envelopeMigrationColumn, skip 
 	for {
 		var batch []row
 		if err := db.Table(target.table).
-			Select(fmt.Sprintf("%s AS pk, %s AS value", pkCol, target.column)).
-			Where(fmt.Sprintf("%s > ? AND %s <> ''", pkCol, target.column), lastID).
+			Select(fmt.Sprintf("%s AS pk, %s AS value", pkCol, target.valueSQL(db))).
+			Where(fmt.Sprintf("%s > ? AND %s <> ''", pkCol, target.valueSQL(db)), lastID).
 			Order(pkCol).Limit(500).Scan(&batch).Error; err != nil {
 			return 0, err
 		}

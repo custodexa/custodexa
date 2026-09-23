@@ -59,7 +59,7 @@ func stateSnapshotDB(t *testing.T, c stateSnapshotCase) *gorm.DB {
 	if err != nil {
 		t.Fatalf("db handle: %v", err)
 	}
-	// `:memory:` 配連線池＝每條連線各自一個空 DB（本專案踩過的既有坑）
+	// `:memory:` 配連線池＝每條連線各自一個空 DB，故釘為單連線
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.Exec(c.createDDL).Error; err != nil {
 		t.Fatalf("建表 %s: %v", c.table, err)

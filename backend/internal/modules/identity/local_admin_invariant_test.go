@@ -40,7 +40,7 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 
 // localAdminDB 單連線 :memory: fixture。
 // SetMaxOpenConns(1) 為必要：sqlite `:memory:` 每條連線各自是一個獨立的空資料庫，
-// 連線池放行第二條即出現「建了資料卻查不到」的假紅（見 ff51836）。
+// 連線池放行第二條即出現「建了資料卻查不到」的假紅。
 func localAdminDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

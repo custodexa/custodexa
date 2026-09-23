@@ -54,7 +54,7 @@ func setupLDAPResolutionEnv(t *testing.T) (*AuthService, *policy.SecurityPolicyS
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// 單連線：sqlite :memory: 每條連線是各自獨立的庫（本專案既有 flaky 真因，ff51836）
+	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)

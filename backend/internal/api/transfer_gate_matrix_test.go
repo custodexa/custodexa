@@ -168,7 +168,7 @@ func setupTransferMatrixEnv(t *testing.T, globalAllow bool) (*SFTPHandler, *gorm
 	if err != nil {
 		t.Fatalf("sql db: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // :memory: 多連線＝多個獨立空庫（ff51836 教訓）
+	sqlDB.SetMaxOpenConns(1) // :memory: 多連線＝多個獨立空庫，故釘住單連線
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetAuthorization{},
 		&model.ApproverScope{}, &model.Session{}, &model.AuditLog{}, &model.SecurityPolicy{}, &model.UserRole{}); err != nil {

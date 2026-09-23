@@ -52,6 +52,7 @@ const (
 	// 分辨靠 resource 欄，而對帳讀的正是 (resource, action) 這一對
 	ActionRevoke                     AuditAction = "revoke"
 	ActionSuspend                    AuditAction = "suspend"
+	ActionAgentToolCallArgsViewed    AuditAction = "agent_tool_call_args_viewed"
 	ActionAgentTokenRevoked          AuditAction = "agent_token_revoked"
 	ActionAgentTokenSuspended        AuditAction = "agent_token_suspended"
 	ActionAgentSessionsTerminated    AuditAction = "agent_sessions_terminated"

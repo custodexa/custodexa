@@ -83,7 +83,7 @@ func (c *Client) WriteInstruction(instruction *Instruction) error {
 
 	// 刷新緩衝區
 	if err := c.writer.Flush(); err != nil {
-		return fmt.Errorf("刷新緩衝區失敗: %w", err)
+		return fmt.Errorf("排清緩衝區失敗: %w", err)
 	}
 
 	return nil

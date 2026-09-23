@@ -100,7 +100,7 @@ describe('inventoryNote / inventoryPreflight — 碼查譯 + 降級', () => {
       .toBe('若切 strict 將拒絕 3 台 RDP 資產連線')
   })
 
-  it('ja：清冊 syslog risk 經 display_params 成功翻譯（rr-I2）', () => {
+  it('ja：清冊 syslog risk 經 display_params 成功翻譯', () => {
     setLocale('ja-JP')
     const r = { key: 'syslog_non_tls', label: 'syslog 轉發未加密（udp）' }
     const out = riskLabel(r, { protocol: 'udp' })
@@ -144,7 +144,7 @@ describe('前端 required-param 常數防漂移', () => {
   })
 })
 
-describe('inventoryDetail — detail_codes 完整 map（rr-I4）', () => {
+describe('inventoryDetail — detail_codes 完整 map', () => {
   it('en：unset 譯、技術鍵原樣，不合併', () => {
     setLocale('en-US')
     expect(inventoryDetail({ detail_codes: { unset: 2, disable: 1 } }))

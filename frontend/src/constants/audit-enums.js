@@ -221,6 +221,9 @@ export const AUDIT_CAUSE_VALUES = [
   // 同步（fail-close）審計寫入失敗：逐筆留痕是交付明文的前置條件
   //（剪貼簿單筆調閱），留痕寫不進去即拒絕交付——證據未損、機制失效須揭露
   'audit_write_sync_refused',
+  // 機敏原文調閱的審計列已寫成功、但政策要求的加強告警（sensitive_reveal）寫不進去：
+  // 內容已交付、留痕仍在，缺的是告警訊號——不阻擋、但要揭露
+  'sensitive_reveal_alert_write_failed',
   // 查詢主控台的兩條 fail-close：語句紀錄寫不進去、阻斷比對器不可用，
   // 兩者都使該語句未送往目標端
   'command_audit_write_refused',

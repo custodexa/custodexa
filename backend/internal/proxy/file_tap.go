@@ -256,7 +256,7 @@ func (t *FileTap) submit(action model.AuditAction, status model.AuditStatus, nam
 			username = fmt.Sprintf("uid:%d", userID)
 		}
 		if sink == nil {
-			log.Printf("[FileTap] 審計投遞面未注入，檔案傳輸留痕已丟失: session=%d action=%s status=%s",
+			log.Printf("[FileTap] 稽核投遞面未注入，檔案傳輸留痕已丟失: session=%d action=%s status=%s",
 				sessionID, action, status)
 			return
 		}
@@ -281,7 +281,7 @@ func (t *FileTap) submit(action model.AuditAction, status model.AuditStatus, nam
 			Request: gatewayapi.RequestMeta{Path: name},
 			Details: details,
 		}); err != nil {
-			log.Printf("[FileTap] 檔案傳輸審計留存失敗: session=%d action=%s err=%v", sessionID, action, err)
+			log.Printf("[FileTap] 檔案傳輸稽核留存失敗: session=%d action=%s err=%v", sessionID, action, err)
 		}
 	}()
 }

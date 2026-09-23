@@ -206,6 +206,11 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "AuthMiddleware", file: "internal/api/audit_checkpoint_handler.go", fn: "AuditCheckpointHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_failure_handler.go", fn: "AuditFailureHandler.RegisterRoutes", count: 1},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_integrity_handler.go", fn: "AuditIntegrityHandler.RegisterRoutes", count: 2, source: "完整性驗證與工具帳本唯讀各自經相同認證閘，另限 admin／auditor"},
+	// 同一函式的第 3 處另列一行（判定鍵相同，count 累加），使上一列的範圍與理由原樣不動。
+	// 這處是單一路由層級的掛載而非群組：`GET /agent-tool-calls/:id/arguments` 會解密
+	// 工具呼叫的封存參數原文，不併入上方僅限角色的群組，而是在路由鏈上逐條掛認證閘＋
+	// RequirePermission(audit:view)；可調閱的角色與清單相同。漏掛＝匿名即可調閱原文。
+	{symbol: "AuthMiddleware", file: "internal/api/audit_integrity_handler.go", fn: "AuditIntegrityHandler.RegisterRoutes", count: 1, source: "工具呼叫參數原文調閱（單一路由）：access token 與世代經相同現查認證閘，鏈上另疊 audit:view；agent 主體角色不具該權限"},
 	{symbol: "AuthMiddleware", file: "internal/api/audit_log_handler.go", fn: "AuditLogHandler.RegisterRoutes", count: 1},
 	// auditor-workbench：時間軸／主體兩支端點一次橫跨六類審計資料，是全站可讀範圍最寬的
 	// 讀取面之一。漏掛（或漏登記後被人取下）＝稽核資料以匿名身分全站可讀，且該路徑簽發／
@@ -772,6 +777,14 @@ func assertAuthContextHomonymsAreBounded(t *testing.T, scan authContextScan) {
 // （新增寫入點必須經覆核，避免第三處以不同語義覆蓋脈絡）。
 var authContextWriterSites = map[string]string{
 	"internal/middleware/auth.go|AuthMiddleware": "一般 API 路徑：自 access token 的 claims 解出後寫入",
+	// agent token 分支：與上一列同屬認證中介層，只是 token 形態不同，故非「以不同語義覆蓋」。
+	// agent token 不是 JWT、沒有 claims 可沿用，其有效性改由每次請求對 token 列、agent
+	// 主體與擁有者的現查決定（撤銷、停權、主體與擁有者啟用、來源網段），驗過才寫入。
+	// 寫入值只有 CredEpoch＝同一次查詢讀出的主體現行憑證世代；方法為本地、ProviderID=0
+	// （agent 主體不經外部身分來源）。下游據此簽出的連線授權，兌換時照常經世代閘複查。
+	"internal/middleware/auth.go|authenticateAgent": "agent token 路徑：ValidateAgentToken 現查通過後，" +
+		"以同一查詢讀出的主體現行憑證世代寫入（本地方法、無 provider 維度）；" +
+		"不寫則下游簽發的連線授權恆帶世代 0，主體世代推進過即在兌換閘被恆拒",
 	// 原有一列 `internal/sshproxy/handler.go|Handler.authenticate`（WS `?token=` 旁路）。
 	// 唯讀觀看的兩條 WS 改收一次性觀看票後，`authenticate` 不再自 query 取 JWT，
 	// 該處已無寫入——雙向判定當場打出「登記了但程式碼找不到」，故下架。

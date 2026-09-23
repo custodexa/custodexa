@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -161,5 +161,39 @@ func TestAlertListFiltersQualifyJoinedColumns(t *testing.T) {
 	byAsset, err := svc.List(&CommandAlertFilter{AssetID: &asset, Severity: "high", Unreviewed: true})
 	if err != nil || byAsset.Total != 1 {
 		t.Fatalf("List by asset: total=%d err=%v", byAsset.Total, err)
+	}
+}
+
+func TestCommandAlertSessionBlockedFilters(t *testing.T) {
+	svc, db := setupAlertDB(t)
+	first := seedAlert(t, db, "ssh 10.0.0.9")
+	if err := db.Model(first).Update("blocked", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	second := seedAlert(t, db, "echo safe")
+	third := seedAlert(t, db, "blocked elsewhere")
+	if err := db.Model(third).Updates(map[string]any{"session_id": 2, "blocked": true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	sessionID := uint(1)
+	blocked := true
+	result, err := svc.List(&CommandAlertFilter{SessionID: &sessionID, Blocked: &blocked})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 1 || len(result.Data) != 1 || result.Data[0].ID != first.ID {
+		t.Fatalf("session AND blocked = %+v", result)
+	}
+	row := result.Data[0]
+	if row.SessionID != 1 || !row.Blocked || row.RuleName == "" || row.Command != "ssh 10.0.0.9" || row.TriggeredAt.IsZero() {
+		t.Fatalf("alert projection = %+v", row)
+	}
+	blocked = false
+	result, err = svc.List(&CommandAlertFilter{SessionID: &sessionID, Blocked: &blocked})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 1 || result.Data[0].ID != second.ID {
+		t.Fatalf("blocked=false = %+v", result)
 	}
 }

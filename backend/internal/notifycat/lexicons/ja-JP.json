@@ -14,6 +14,7 @@
     "audit_write_fallback_file": "監査バッチ書き込みに失敗し、ファイルへ退避",
     "audit_write_batch_dropped": "監査バッチ書き込みに失敗し、ファイル退避が無効のためバッチを破棄",
     "audit_write_sync_refused": "同期監査書き込みに失敗し、当該操作を拒否",
+    "sensitive_reveal_alert_write_failed": "機密内容の閲覧は監査記録済みですが、追加アラートの書き込みに失敗しました",
     "command_audit_write_refused": "同期のステートメント記録の書き込みに失敗し、当該ステートメントを拒否",
     "command_blocker_unavailable": "コマンドブロック照合器が利用できないため、当該ステートメントを拒否",
     "syslog_connect_failed": "syslog 転送の接続に失敗",

@@ -65,8 +65,12 @@ var builtinAlertRules = []builtinAlertRule{
 const (
 	AgentLateralRuleName = "Agent 橫向移動阻斷"
 
-	// AgentLateralRulePattern 現行版：只在**指令位置**比對（行首、分隔符後、
-	// 路徑前綴、引號包覆），故讀取 ~/.ssh 這類路徑不再誤觸。
+	// AgentLateralRulePattern 現行版：比對整行原文，不做 shell 分詞。名稱須以
+	// 行首、空白、`;&|(`、反引號、換行、`$`、`=`、`\` 起頭（可略過引號與路徑前綴），
+	// 並以空白、行尾或 `;&|)` 收尾（可接引號）。故引數位置的同名詞也會命中
+	// （`man ssh`、`which nc`、`ls /usr/bin/ssh`）；名稱前緊接 `.`（`~/.ssh`）或
+	// 後接 `/`、`-`、`.` 等其他字元（`/etc/ssh/`、`sshd`、`ssh-keygen`、`ssh.exe`）
+	// 則不命中。寧可多擋、不漏擋：誤擋的代價只是中斷 agent 的工作。
 	AgentLateralRulePattern = `(?i)(^|[\s;&|(\x60\n\r$=\\])["']*(\S*/)?(ssh|scp|sftp|nc|ncat|socat|Enter-PSSession|Invoke-Command|psexec)["']*(\s|$|[;&|)])`
 )
 

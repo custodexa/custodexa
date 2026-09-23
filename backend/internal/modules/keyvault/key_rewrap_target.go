@@ -25,7 +25,7 @@ import (
 //     且該重驗涵蓋「provider 確實由這份通過格式驗證的材料建出」——手寫的
 //     struct literal 若不附上合格材料就過不了 sink，附了就等於通過同一組驗證。
 //
-// **委託分支（kms／hsm）自 Phase C 3.1／3.3 起接上實際 provider**：
+// **委託分支（kms／hsm）已接上實際 provider**：
 // 目標 provider 由組裝根注入的 DelegatedProviderFactory 建構，建構本身即完成
 // 連通性預檢（KMS：DescribeKey 正規化＋金鑰可用性＋一次真實 Encrypt／Decrypt
 // 往返）。未注入 factory 或該模式尚未交付（hsm）時仍回 ErrRewrapTargetUnsupported。
@@ -46,7 +46,7 @@ var ErrRewrapMaterialFormat = errors.New("新 KEK 材料不合格式要求")
 // ErrRewrapTargetModeInvalid 判別子不在白名單
 var ErrRewrapTargetModeInvalid = errors.New("重包目標模式無效")
 
-// ErrRewrapTargetUnsupported 委託目標尚未交付（Phase C 3.1／3.3）
+// ErrRewrapTargetUnsupported 委託目標尚未交付
 var ErrRewrapTargetUnsupported = errors.New("委託 KEK 目標的重包尚未提供")
 
 // ErrRewrapTargetSameAsCurrent 目標金鑰引用等於現行 KEK

@@ -42,9 +42,6 @@ const endpointFieldName = "Endpoint"
 // 由 `resolveOAuth2ConfigFile` 於掃描時解析；找不到或找到多個即 t.Fatal
 // ——豁免對象消失時守衛必須說話，不得默默放行或默默誤報。
 var endpointWriteAllowlist = map[string][]string{
-	// MCP client destination only: no KMS Settings, DEK or key material.
-	// URL rejects userinfo/query/fragment and redirects; see the MCP service design.
-	"cmd/custodexa-mcp/main.go": {"relay"},
 	// AgentProbeEvent.Endpoint stores the denied inbound route as audit evidence.
 	// RecordDenied never constructs a KMS client or sends DEK material; this is
 	// an unrelated same-name model field, not a destination override.

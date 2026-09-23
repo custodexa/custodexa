@@ -24,7 +24,7 @@ func setupTerminationDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
-	// sqlite :memory: 連線池陷阱（ff51836）：單連線
+	// sqlite :memory: 連線池陷阱：單連線
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.Session{}))
 	oldDB := database.DB

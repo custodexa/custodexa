@@ -71,15 +71,14 @@ var (
 	CodeSessionRecordFailed = register("RULE_SESSION_RECORD_FAILED", Descriptor{
 		ZhFallback: "會話記錄建立失敗，連線已中止"})
 	CodeRecordingUnavailable = register("RULE_RECORDING_UNAVAILABLE", Descriptor{
-		ZhFallback: "錄影儲存異常，暫停新連線，請聯繫管理員"})
+		ZhFallback: "錄影儲存異常，暫停新連線，請聯絡管理員"})
 	CodeAccessApprovalRequired = register("RULE_ACCESS_APPROVAL_REQUIRED", Descriptor{
 		ZhFallback: "本資產的存取政策要求申請核准後連線"})
 	CodeAccessReasonRequired = register("RULE_ACCESS_REASON_REQUIRED", Descriptor{
 		ZhFallback: "本資產的存取政策要求填寫事由後連線"})
 )
 
-// CommandBlockedAuditMarker 產生指令阻斷的**稽核標準格式**標記文字
-// （2026-08-01 使用者核可的稽核語義變更）。
+// CommandBlockedAuditMarker 產生指令阻斷的**稽核標準格式**標記文字。
 //
 // 這不是「使用者所見文案的伺服端副本」——使用者端看到的是 MsgNotice 幀由前端依
 // 自身語系渲染的結果。本函式產出的是**伺服端固定 zh 格式＋機器碼前綴**，寫入

@@ -32,7 +32,7 @@
   "pkg/crypto/kms/arn.go": "2d5cd7276575642569cf10ec4c861617be760633273023180b9a864bd9fe3b86",
   "pkg/crypto/kms/client.go": "430b29b5385ac23066f2d19794e6c516076436a32b9d880f668c1ebb2e90c1ba",
   "pkg/crypto/kms/contract_test.go": "53b0090600f0c6213a171310f8812d4d4c14b3ea7090ca2fa491495e55588055",
-  "pkg/crypto/kms/endpoint_gate_test.go": "6c609a2fb8536d3c8397b6de5407a918e9993401cd04c0ef4d8e5cb6d9603470",
+  "pkg/crypto/kms/endpoint_gate_test.go": "5158fb4c8ed00fb577f5bc32be6f57b74fc8e8e6e982de58fa75644582dcadc2",
   "pkg/crypto/kms/fake_client_test.go": "a7e6d82928c51a7c76ac5c9eee8b95c2c0a9e355456f0b4cf322dbe25a952447",
   "pkg/crypto/kms/hardening_test.go": "6df1fcf051cc8d3ca9ae4d76606579a5d850d5f8e4cd90ff8e714656965ac958",
   "pkg/crypto/kms/localstack_test.go": "99ef3db86551e64a46d9c41524ab959ddce73424d0ef42607c4e561cf5588751",
@@ -62,6 +62,6 @@
   "pkg/crypto/vaulttransit/wizard_http_test.go": "d2c07fb8d5035800f532dd8fb085945b34886e509114690e528927452d2ec5bd",
   "pkg/crypto/wrapped_key.go": "0b9c665322cf8fee66751884b6dc37cf55c676e98f808ee503397af3c33b9c13"
  },
- "revision": "1.11.0-release-comment-neutralized",
- "notes": "2026-09-22 1.11.0 備版：pkg/crypto/kms/endpoint_gate_test.go 只改一行註解措辭（去除內部設計文件代號），程式碼與斷言逐字未動，基準隨之刷新。 2026-09-14 引用可解析性清理。相對 e7228f47 只有兩檔變動，且皆為註解文字：pkg/crypto/kms/hardening_test.go 與 pkg/crypto/gcpkms/endpoint_gate_test.go 的檔頭註解把內部提案識別字改寫成描述該行為的句子（公開樹讀者查不到那個識別字）。兩檔的程式碼、斷言與測試射程逐字未動。 2026-09-22 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動（e0096a32）：endpointWriteAllowlist 新增 internal/modules/audit/agent_probe_breaker.go 的 RecordDenied——AgentProbeEvent.Endpoint 是同名審計欄位而非 KMS 目的地覆寫，守衛程式碼與斷言逐字未動；基準於 agent 主體自助建立收工時一併登記。 2026-09-22 agent MCP 服務再只動同一檔：endpointWriteAllowlist 新增 cmd/custodexa-mcp/main.go 的 relay——MCP 客戶端目的地 URL，與 KMS Settings、DEK 或金鑰材料無關；守衛程式碼與斷言逐字未動。"
+ "revision": "1.11.1-stdio-relay-allowlist-removed",
+ "notes": "2026-09-23 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：stdio 轉接頭已移出本 repo，endpointWriteAllowlist 刪除 stdio MCP 客戶端 main.go 的 relay 條目及其註解（放行面只減不增）；守衛程式碼與斷言逐字未動。 2026-09-22 備版：pkg/crypto/kms/endpoint_gate_test.go 只改一行註解措辭（去除內部設計文件代號），程式碼與斷言逐字未動，基準隨之刷新。 2026-09-14 引用可解析性清理：pkg/crypto/kms/hardening_test.go 與 pkg/crypto/gcpkms/endpoint_gate_test.go 的檔頭註解把內部提案識別字改寫成描述該行為的句子（公開樹讀者查不到那個識別字），兩檔的程式碼、斷言與測試射程逐字未動，僅註解文字有變動。 2026-09-22 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：endpointWriteAllowlist 新增 internal/modules/audit/agent_probe_breaker.go 的 RecordDenied——AgentProbeEvent.Endpoint 是同名審計欄位而非 KMS 目的地覆寫，守衛程式碼與斷言逐字未動；基準於 agent 主體自助建立收工時一併登記。 2026-09-22 再只動同一檔：endpointWriteAllowlist 新增 stdio MCP 客戶端 main.go 的 relay，即 MCP 客戶端目的地 URL，與 KMS Settings、DEK 或金鑰材料無關；守衛程式碼與斷言逐字未動。"
 }

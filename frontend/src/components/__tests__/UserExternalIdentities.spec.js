@@ -366,7 +366,7 @@ describe('UserExternalIdentities admin 代綁', () => {
   })
 })
 
-describe('UserExternalIdentities 破壞性動作的誤觸面（UI 對抗審查 HIGH-1/HIGH-2）', () => {
+describe('UserExternalIdentities 破壞性動作的誤觸面', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     listMock.mockResolvedValue({ data: [dexIdentity], total: 1 })
@@ -440,7 +440,7 @@ describe('UserExternalIdentities 破壞性動作的誤觸面（UI 對抗審查 H
   })
 })
 
-describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH-1/HIGH-2）', () => {
+describe('UserExternalIdentities 跨使用者競態與互斥', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     providersMock.mockResolvedValue({ data: [] })
@@ -694,7 +694,7 @@ describe('UserExternalIdentities 跨使用者競態與互斥（讀碼審查 HIGH
   })
 })
 
-describe('UserExternalIdentities 載入失敗的錯誤態（UI 對抗審查 HIGH-4）', () => {
+describe('UserExternalIdentities 載入失敗的錯誤態', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     providersMock.mockResolvedValue({ data: [] })

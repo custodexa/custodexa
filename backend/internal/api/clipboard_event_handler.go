@@ -5,15 +5,18 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/custodexa/backend/pkg/gatewayapi"
+	"github.com/gin-gonic/gin"
 )
 
 // ClipboardEventLister 會話剪貼簿記錄查詢能力（消費者側窄介面）。
@@ -29,8 +32,14 @@ type ClipboardContentReader interface {
 		op session.ClipboardReadOperator) (*session.ClipboardContentView, error)
 }
 
+// ClipboardSensitiveRevealReporter emits the optional alert after the mandatory audit.
+type ClipboardSensitiveRevealReporter interface {
+	Report(context.Context, audit.SensitiveRevealInput)
+}
+
 // ClipboardEventHandler 剪貼簿留存查詢 API（clipboard-audit）
 type ClipboardEventHandler struct {
+	reveals ClipboardSensitiveRevealReporter
 	events  ClipboardEventLister
 	content ClipboardContentReader
 }
@@ -38,6 +47,11 @@ type ClipboardEventHandler struct {
 // NewClipboardEventHandler 建立 handler
 func NewClipboardEventHandler(events ClipboardEventLister, content ClipboardContentReader) *ClipboardEventHandler {
 	return &ClipboardEventHandler{events: events, content: content}
+}
+
+// SetSensitiveRevealReporter wires the optional policy-controlled alert signal.
+func (h *ClipboardEventHandler) SetSensitiveRevealReporter(reporter ClipboardSensitiveRevealReporter) {
+	h.reveals = reporter
 }
 
 // clipboardEventFact List 的事實投影。
@@ -95,8 +109,8 @@ func (h *ClipboardEventHandler) List(c *gin.Context) {
 
 // GetContent 解密回傳單筆剪貼簿內容。
 //
-// 伺服器端逐筆留痕由 service 承擔且為交付前置（fail-close）；此處只做參數
-// 解析與錯誤收斂。事件不存在／識別非法／不屬路徑中會話三種情形一律收斂為
+// 伺服器端逐筆留痕由 service 承擔且為交付前置（fail-close）；此處做參數
+// 解析、錯誤收斂與成功調閱後的可選告警。事件不存在／識別非法／不屬路徑中會話三種情形一律收斂為
 // 同一 404 機器碼，不洩存在性細節。缺口紀錄（content_status=failed）回事實
 // 而 content 鍵缺席——不以空字串冒充內容。
 func (h *ClipboardEventHandler) GetContent(c *gin.Context) {
@@ -110,7 +124,13 @@ func (h *ClipboardEventHandler) GetContent(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeClipboardEventNotFound, nil)
 		return
 	}
+	reason := strings.TrimSpace(c.Query("reason"))
+	if len(reason) > 1000 {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
 	op := session.ClipboardReadOperator{
+		Reason:    reason,
 		UserID:    c.GetUint("userID"),
 		Username:  c.GetString("username"),
 		ClientIP:  sourceip.Of(c),
@@ -124,7 +144,7 @@ func (h *ClipboardEventHandler) GetContent(c *gin.Context) {
 			return
 		}
 		// 解密失敗、審計不可用（fail-close 拒絕）等一律收斂：原因只進
-		// 伺服器端 log 與告警鏈，不對外展開（audit-detail-not-outward）
+		// 伺服器端 log 與告警鏈，不對外展開
 		apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalClipboardQuery, err)
 		return
 	}
@@ -137,6 +157,14 @@ func (h *ClipboardEventHandler) GetContent(c *gin.Context) {
 		"created_at":     view.Event.CreatedAt,
 	}
 	if view.Event.ContentStatus == model.ClipboardContentAvailable {
+		// ReadContent has already committed the fail-close audit. Alerts cannot revoke delivery.
+		if h.reveals != nil {
+			h.reveals.Report(c.Request.Context(), audit.SensitiveRevealInput{
+				Actor:      gatewayapi.Actor{UserID: op.UserID, Username: op.Username},
+				SourceType: "clipboard_event", SourceID: view.Event.ID, SessionID: view.Event.SessionID,
+				AssetID: view.AssetID, AccessRequestID: view.AccessRequestID, Reason: reason, RequestID: op.RequestID,
+			})
+		}
 		payload["content"] = view.Content
 	}
 	c.JSON(http.StatusOK, gin.H{"data": payload})

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -82,13 +83,18 @@ func ReloadAlertMatcher() {
 		return
 	}
 	if err := m.Reload(); err != nil {
-		log.Printf("[AlertMatcher] 規則快取刷新失敗（沿用舊快取）: %v", err)
+		log.Printf("[AlertMatcher] 規則快取更新失敗（沿用舊快取）: %v", err)
 	}
 }
 
-// compileRules 純函數：過濾停用規則、預編譯 regex。
+// compileRules 純函數：過濾停用規則、預編譯 regex，並依規則 id 升冪排序。
 // 無效 regex 跳過並記 log 而非整批失敗——一條壞規則不應癱瘓其他規則
 // （正常路徑 API 已驗證 pattern，此處防的是直接改 DB 等旁路寫入）
+//
+// **排序是阻斷歸因的依據**：MatchBlock 取第一條命中的阻斷規則，快取順序即歸因順序。
+// 不帶排序的查詢回傳的是資料列的實體儲存順序，規則被更新過就可能換位，
+// 同一行指令在不同站點會歸到不同規則。排序放在快取唯一的建構點，
+// 任何規則來源都得到同一個順序；id 升冪與規則管理清單的排列一致
 func compileRules(rules []model.AlertRule) []compiledRule {
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, r := range rules {
@@ -102,6 +108,9 @@ func compileRules(rules []model.AlertRule) []compiledRule {
 		}
 		compiled = append(compiled, compiledRule{rule: r, re: re})
 	}
+	sort.SliceStable(compiled, func(i, j int) bool {
+		return compiled[i].rule.ID < compiled[j].rule.ID
+	})
 	return compiled
 }
 
@@ -164,10 +173,8 @@ func (m *AlertMatcher) Reload() error {
 	return m.LoadRules()
 }
 
-// Match 比對單條指令，回傳所有命中的啟用規則。
-// 讀鎖下迭代：Reload 全量替換 slice，已回傳的指標指向舊 slice 元素，
-// 不會被後續 Reload 改動，呼叫端可安全持有
-// MatchBlock 回傳第一條命中的 block 規則（command-blocking 輪 A）：
+// MatchBlock 回傳命中的 block 規則中 id 最小的一條（快取依 id 升冪排列，
+// 見 compileRules）：同一行指令命中多條阻斷規則時，歸因與資料庫回傳順序無關。
 // 阻斷判定走與告警同一規則快取，無額外查庫
 func (m *AlertMatcher) MatchBlock(command, protocol string) (*model.AlertRule, bool) {
 	for _, rule := range m.Match(command, protocol) {
@@ -192,6 +199,9 @@ func ruleAppliesToProtocol(ruleProtocols, protocol string) bool {
 	return false
 }
 
+// Match 比對單條指令，依規則 id 升冪回傳所有命中的啟用規則。
+// 讀鎖下迭代：Reload 全量替換 slice，已回傳的指標指向舊 slice 元素，
+// 不會被後續 Reload 改動，呼叫端可安全持有
 func (m *AlertMatcher) Match(command, protocol string) []*model.AlertRule {
 	return m.matchSubject(command, protocol, gatewayapi.PrincipalKindUnknown)
 }

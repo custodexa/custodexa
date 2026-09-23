@@ -197,7 +197,7 @@ func RunLDAPEnvSeed(db *gorm.DB, codec crypto.ColumnCodec, auditTx port.TxSink) 
 		seeded = true
 		return nil
 	}); err != nil {
-		return fmt.Errorf("LDAP seed 寫入失敗（列、審計與標記同進退，標記未寫，下次啟動重試）: %w", err)
+		return fmt.Errorf("LDAP seed 寫入失敗（列、稽核與標記同進退，標記未寫，下次啟動重試）: %w", err)
 	}
 
 	if seeded {
@@ -328,7 +328,7 @@ func ldapSeedAudit(auditTx port.TxSink, db *gorm.DB, row *model.LDAPDirectory, c
 		"transmission_risks": ldapSeedRisks(cfg),
 	})
 	if err != nil {
-		return fmt.Errorf("序列化 LDAP seed 審計內容失敗: %w", err)
+		return fmt.Errorf("序列化 LDAP seed 稽核內容失敗: %w", err)
 	}
 	// 審計收口（AP-51）：改經 audit 模組的 TxSink。db 參數即呼叫端傳進來的
 	// 鎖內 tx——插列、審計、marker 三者同事務的前提就寄在這個句柄上。
@@ -339,7 +339,7 @@ func ldapSeedAudit(auditTx port.TxSink, db *gorm.DB, row *model.LDAPDirectory, c
 		Status:   string(model.StatusSuccess),
 		Details:  string(details),
 	}); err != nil {
-		return fmt.Errorf("寫入 LDAP seed 審計失敗: %w", err)
+		return fmt.Errorf("寫入 LDAP seed 稽核失敗: %w", err)
 	}
 	return nil
 }

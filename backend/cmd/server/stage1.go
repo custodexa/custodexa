@@ -112,9 +112,9 @@ func runStage1() *stage1 {
 	// 輸出功能開關狀態（強制後的生效值）
 	log.Println("=== 功能開關狀態 ===")
 	log.Println("權限控制: 無條件啟用（無開關）")
-	log.Printf("審計日誌: %v", cfg.Features.AuditLogEnabled)
-	log.Printf("  ├─ 異步寫入: %v", cfg.Features.AsyncAuditEnabled)
-	log.Printf("  └─ 文件備份: %v", cfg.Features.AuditFallbackToFile)
+	log.Printf("稽核日誌: %v", cfg.Features.AuditLogEnabled)
+	log.Printf("  ├─ 非同步寫入: %v", cfg.Features.AsyncAuditEnabled)
+	log.Printf("  └─ 檔案備份: %v", cfg.Features.AuditFallbackToFile)
 	log.Printf("異常偵測: %v", cfg.Features.AnomalyDetectionEnabled)
 	log.Printf("告警系統: %v", cfg.Features.AlertingEnabled)
 	log.Println("====================")
@@ -167,7 +167,7 @@ func runStage1() *stage1 {
 		// 出廠預設密鑰不得上線（2.2.2）：偵測到即 fatal，逼部署者換金鑰。
 		// 模式感知：非 env 模式下「本地 KEK 鑰未設」是合法組態而非違規
 		if violations := cfg.DefaultSecretViolations(kekDecision); len(violations) > 0 {
-			log.Fatalf("拒絕以出廠預設密鑰啟動生產模式（PCI 2.2.2）：%v 仍為預設值，請設定環境變數後重啟",
+			log.Fatalf("拒絕以出廠預設金鑰啟動生產模式（PCI 2.2.2）：%v 仍為預設值，請設定環境變數後重啟",
 				violations)
 		}
 		// 註：安全紅線類 feature flag 的 release 強制**已上移**至本函式開頭的
@@ -306,7 +306,7 @@ func runStage1() *stage1 {
 		log.Println("CORS：release 模式未設 CORS_ALLOWED_ORIGINS，僅允許同源")
 	}
 	if cfg.Features.AuditLogEnabled {
-		log.Println("審計日誌中間件已啟用")
+		log.Println("稽核日誌中介軟體已啟用")
 	}
 
 	s := &stage1{
@@ -333,7 +333,7 @@ func runStage1() *stage1 {
 		s.journal = j
 		unknown, missing, corrupt := j.OpenRecovery()
 		if len(unknown) > 0 || len(missing) > 0 || corrupt > 0 {
-			log.Printf("[SealJournal] 啟動恢復：結果未知 %d 筆、序號缺口 %d 段、CRC 損毀槽 %d 個（將於解封後據實入審計）",
+			log.Printf("[SealJournal] 啟動恢復：結果未知 %d 筆、序號缺口 %d 段、CRC 損毀槽 %d 個（將於解封後據實入稽核）",
 				len(unknown), len(missing), corrupt)
 		}
 	}

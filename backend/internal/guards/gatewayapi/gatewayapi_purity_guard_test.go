@@ -422,7 +422,7 @@ func TestGatewayAPIContractSurface(t *testing.T) {
 				missing = append(missing, fmt.Sprintf(
 					"  %s 出現未登記欄位 %s：本型別採**欄位白名單**（gwExactFieldSets），"+
 						"任何新增欄位一律紅。若確有必要，改守衛白名單並在 PR 說明該欄不會成為授權判定依據——"+
-						"名稱黑名單擋不住 Role／UserRole／RoleSnapshot 這類別名（對抗審查實證）",
+						"名稱黑名單擋不住 Role／UserRole／RoleSnapshot 這類別名",
 					tname, f))
 			}
 		}

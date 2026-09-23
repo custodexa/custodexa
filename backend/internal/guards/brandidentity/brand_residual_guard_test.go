@@ -5,8 +5,8 @@ package brandidentity
 // **釘住什麼**：backend module 內不得出現歷史品牌名。歷史上這件事失敗過一次——
 // 一次只做顯示層的更名把技術識別字列為 Non-goals（見 specs/brand-identity
 // 的「為何需要獨立能力」段），結果舊品牌繼續出現在**對外送出**的三個面
-// （syslog app-name、通知測試內容、改密寫進目標主機的帳號 comment）
-// 直到 2026-08-14 被使用者實測發現。
+// （syslog app-name、通知測試內容、改密寫進目標主機的帳號 comment），
+// 且長期未被發現。
 //
 // **射程邊界（明載，不誇大）**：本守衛只掃 backend module。repo 其餘部分
 // （frontend、docker、compose、scripts、docs、行銷產出）由維護者側的全樹品牌掃描

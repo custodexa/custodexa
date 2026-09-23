@@ -5,6 +5,9 @@ import {
   isDBConsoleProtocol,
   isPasswordOnlyProtocol,
   PROTOCOL_DEFAULT_PORTS,
+  protocolKind,
+  protocolKindText,
+  protocolKindShortText,
 } from '../protocol'
 
 describe('protocol 分類（與後端 model.ProtocolType 對齊）', () => {
@@ -77,5 +80,21 @@ describe('isDBConsoleProtocol（查詢主控台的協議閘）', () => {
       (p) => isDatabaseProtocol(p) && !isDBConsoleProtocol(p)
     )
     expect(dbOnly).toEqual(['redis'])
+  })
+})
+
+describe('共用協議人話映射', () => {
+  it.each([['ssh', 'terminal', '終端'], ['postgres', 'database', '資料庫'], ['rdp', 'desktop', '遠端桌面']])('%s → %s', (code, kind, text) => {
+    expect(protocolKind(code)).toBe(kind)
+    expect(protocolKindShortText(code)).toBe(text)
+    expect(protocolKindText(code)).toBe(`${text}（${code.toUpperCase()}）`)
+  })
+  it('大小寫分類一致，未知碼維持原樣、空值安全', () => {
+    expect(protocolKind('SSH')).toBe('terminal')
+    expect(protocolKind('telnet')).toBeNull()
+    expect(protocolKind('__proto__')).toBeNull()
+    expect(protocolKindText('telnet')).toBe('telnet')
+    expect(protocolKindShortText('telnet')).toBe('telnet')
+    expect(protocolKindText(undefined)).toBe('')
   })
 })

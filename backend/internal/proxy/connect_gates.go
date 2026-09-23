@@ -326,7 +326,7 @@ const viaUnknown = "unknown"
 func AuditConnectDenied(svc *audit.AuditLogService, c *gin.Context, ev ConnectDenial) {
 	if svc == nil {
 		// 這兩條路由都沒有中介層兜底，審計服務缺席即回到零留痕的缺陷態，不得靜默
-		log.Printf("[Handler] 審計服務未注入，%s 的兌換拒絕未留痕（reason=%s）",
+		log.Printf("[Handler] 稽核服務未注入，%s 的兌換拒絕未留痕（reason=%s）",
 			c.Request.URL.Path, ev.Reason)
 		return
 	}

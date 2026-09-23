@@ -436,7 +436,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	// 開始事務
 	tx := s.db.Begin()
 	if tx.Error != nil {
-		return nil, fmt.Errorf("開始事務失敗: %w", tx.Error)
+		return nil, fmt.Errorf("開始交易失敗: %w", tx.Error)
 	}
 
 	if self != nil {
@@ -450,7 +450,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
 		log.Printf("[UserService] Create: Create user error: %v", err)
-		return nil, fmt.Errorf("創建使用者失敗: %w", err)
+		return nil, fmt.Errorf("建立使用者失敗: %w", err)
 	}
 
 	// 初始密碼寫入歷史（否則首次改密可設回原密碼）
@@ -505,7 +505,7 @@ func (s *UserService) Create(req *CreateUserRequest) (*model.User, error) {
 	// 提交事務
 	if err := tx.Commit().Error; err != nil {
 		log.Printf("[UserService] Create: Commit error: %v", err)
-		return nil, fmt.Errorf("提交事務失敗: %w", err)
+		return nil, fmt.Errorf("提交交易失敗: %w", err)
 	}
 
 	// 預加載角色後返回
@@ -1066,7 +1066,7 @@ func (s *UserService) AssignRoles(userID uint, roleNames []string) (*RoleAssignR
 		// 撤 refresh 比照 invalidateCredentialsLocked：換發本就會被世代閘拒，撤銷是為了
 		// 讓失效原因可稽核，並避免留下一批 revoked_at IS NULL 卻實際不可用的憑證列
 		if _, err := RevokeAllRefreshTokens(tx, userID, model.RefreshRevokeCredentialEpoch); err != nil {
-			return fmt.Errorf("撤銷刷新憑證失敗: %w", err)
+			return fmt.Errorf("撤銷更新憑證失敗: %w", err)
 		}
 		return nil
 	}
@@ -1162,7 +1162,7 @@ func (s *UserService) UpdateStatus(userID uint, active bool) error {
 				}
 				// 撤銷成因沿用 disabled（既有稽核語義，非 credential_epoch）
 				if _, err := RevokeAllRefreshTokens(tx, userID, model.RefreshRevokeDisabled); err != nil {
-					return fmt.Errorf("撤銷刷新憑證失敗: %w", err)
+					return fmt.Errorf("撤銷更新憑證失敗: %w", err)
 				}
 				return nil
 			})

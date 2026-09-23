@@ -41,7 +41,7 @@ func revocationMigrate(t *testing.T, db *gorm.DB) {
 	}
 }
 
-// revocationDB 單連線 :memory:（靜態斷言用；ff51836 的連線池假紅防護）
+// revocationDB 單連線 :memory:（靜態斷言用；避免連線池造成假紅）
 func revocationDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

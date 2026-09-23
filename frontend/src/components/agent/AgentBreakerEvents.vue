@@ -44,11 +44,11 @@
         class="breaker-events__target"
         data-test="probe-target"
       >
-        <time>{{ formatDateTime(event.created_at) }}</time> · {{ assetText(event) }}<span v-if="assetLabels[event.asset_ref]?.protocol"> · {{ assetLabels[event.asset_ref].protocol.toUpperCase() }}</span>
+        <time>{{ formatDateTime(event.created_at) }}</time> · {{ assetText(event) }}<span v-if="assetLabels[event.asset_ref]?.protocol"> · {{ protocolKindText(assetLabels[event.asset_ref].protocol) }}</span>
       </p>
       <el-tag
-        :type="event.class === 'never_visible' ? 'warning' : undefined"
-        :class="{ 'ot-tag-neutral': event.class !== 'never_visible' }"
+        :type="isCurrentTrip(event) ? 'warning' : undefined"
+        :class="{ 'ot-tag-neutral': !isCurrentTrip(event) }"
         data-test="probe-class"
       >
         {{ ['never_visible', 'revoked', 'retired'].includes(event.class) ? t(`agentBreaker.classes.${event.class}`) : t('agentSession.unknown') }}
@@ -110,6 +110,7 @@ import { t } from '@/i18n'
 import { getAgentBreakerEvents, getAgentTokens } from '@/api/agents'
 import { resolveApiError } from '@/api/error'
 import { formatDateTime } from '@/utils/format'
+import { protocolKindText } from '@/utils/protocol'
 import { ShieldAlert } from 'lucide-vue-next'
 import { useAssetLabels } from '@/composables/useAssetLabels'
 import { agentTokenState, agentTokenTagType, agentTokenTagClass } from '@/utils/agentTokenStatus'
@@ -122,7 +123,10 @@ const rows = ref([]), tokens = ref([]), total = ref(0), page = ref(1), loading =
 // 鑰匙狀態要完整：停用只是其中一種，撤銷與到期同樣要看得見，
 // 停用還要說出已存的原因與時間。彩標映射與抽屜共用同一份
 // （utils/agentTokenStatus）：同一把停用鑰匙在兩頁之間不得是兩種嚴重度
-const breakerPending = ref(false)
+const breakerPendingAt = ref(null)
+const breakerPending = computed(() => Boolean(breakerPendingAt.value))
+// 琥珀＝目前待處置這次跳閘的事件；同時刻也計入，舊事件與已解除歷史為中性。
+const isCurrentTrip = event => event.class === 'never_visible' && breakerPendingAt.value && new Date(event.created_at) >= new Date(breakerPendingAt.value)
 const tokenState = token => agentTokenState(token)
 const usableCount = computed(() => tokens.value.filter(token => tokenState(token) === 'valid').length)
 const suspendedCount = computed(() => tokens.value.filter(token => tokenState(token) === 'suspended').length)
@@ -148,7 +152,7 @@ const thresholdCount = computed(() => new Set(rows.value.filter(row => row.class
 let epoch = 0
 async function load() {
   const version = ++epoch; loading.value = true; error.value = ''; rows.value = []
-  try { const response = await getAgentBreakerEvents(props.userId, { offset: (page.value - 1) * 20, limit: 20 }); if (version === epoch) { rows.value = response.data || []; total.value = response.total || 0; breakerPending.value = Boolean(response.breaker_pending_at); emit('state', response.breaker_pending_at) } }
+  try { const response = await getAgentBreakerEvents(props.userId, { offset: (page.value - 1) * 20, limit: 20 }); if (version === epoch) { rows.value = response.data || []; total.value = response.total || 0; breakerPendingAt.value = response.breaker_pending_at || null; emit('state', response.breaker_pending_at) } }
   catch (e) { if (version === epoch) error.value = resolveApiError(e?.response?.data, e?.response?.status) }
   finally { if (version === epoch) loading.value = false }
 }

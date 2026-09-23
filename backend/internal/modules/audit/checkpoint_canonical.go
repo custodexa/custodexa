@@ -36,7 +36,7 @@ import (
 //	  可重建性優先於微幅效能。與列級 `integrityPayload` 同形，維護心智一致。
 //
 // 時間欄一律取 UnixMicro：postgres timestamptz 保存微秒精度，
-// 納秒會在 round-trip 後不一致（列級蓋章已踩過此坑）。
+// 納秒會在 round-trip 後不一致。
 
 // checkpointAggEntry 聚合串流的單列輸入（id 升冪，取自 audit_logs 的三欄）
 type checkpointAggEntry struct {
@@ -313,7 +313,7 @@ func CheckpointLinkHash(cp *model.AuditCheckpoint) (string, error) {
 	}
 	raw, err := json.Marshal(checkpointLinkPayload{Signed: signed, Signature: cp.Signature})
 	if err != nil {
-		return "", fmt.Errorf("序列化檢查點鏈接 payload 失敗: %w", err)
+		return "", fmt.Errorf("序列化檢查點連結 payload 失敗: %w", err)
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil

@@ -12,12 +12,12 @@
 - **可用性鐵則：系統絕對不能起不來。** 例如 KEK 切換的收尾不 fail-close——
   這是堡壘機，起不來的代價高於殘留不一致；正解是 best-effort 重試＋明確狀態欄位，
   而不是拒絕啟動。
-- **審計鐵則：完全沒有審計軌跡時 fail-close，且 admin 不豁免。** 例如 session 記錄
+- **稽核鐵則：完全沒有稽核軌跡時 fail-close，且 admin 不豁免。** 例如 session 記錄
   INSERT 失敗必須關閉連線＋拒絕升級＋告警（能走到該步代表 DB 讀取正常，屬部分故障）。
-  與錄影失敗的差別在「殘留審計程度」：錄影失敗仍留有 session＋指令審計，故可討論例外；
+  與錄影失敗的差別在「殘留稽核程度」：錄影失敗仍留有 session＋指令稽核，故可討論例外；
   session 記錄失敗則全無軌跡，無例外。
 
-判斷新失敗路徑時問兩個問題：「失敗後還剩多少審計軌跡」、
+判斷新失敗路徑時問兩個問題：「失敗後還剩多少稽核軌跡」、
 「fail-close 會不會讓整台機器不可用」。
 
 ## 2. 連線收口（安全紅線）
@@ -95,9 +95,9 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 **guacd 連線參數真正生效的位置是 `backend/internal/proxy/handler.go`**
 （`GuacdHost`／`GuacdPort` 由 `NewConnectionHandler` 收）。改 guacd 行為前先確認呼叫鏈。
 
-## 6. 審計寫入：兩種 sink 與 fail-close 語義
+## 6. 稽核寫入：兩種 sink 與 fail-close 語義
 
-審計列的產生點目前有 **67 個**（AST 全庫掃描判準：產生一筆 `audit_logs` 列的位置），
+稽核列的產生點目前有 **67 個**（AST 全庫掃描判準：產生一筆 `audit_logs` 列的位置），
 權威清冊在 `openspec/changes/archive/2026-08-11-modular-architecture/research/manifest-audit-points.md`，
 由 `backend/cmd/server/audit_points_manifest_guard_test.go` 雙向守衛。
 
@@ -109,14 +109,14 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
   `backend/internal/model/asset_audit.go`；以 `tx.Session(&gorm.Session{NewDB: true})`
   脫離呼叫方交易），刻意不改走 sink：改走 sink 需再造一個包級全域的可漏接旗標，
   收益不值該風險。
-- **新增審計產生點時必須同步 manifest**，否則守衛紅。交易歸屬欄（是否吃呼叫方 tx）
+- **新增稽核產生點時必須同步 manifest**，否則守衛紅。交易歸屬欄（是否吃呼叫方 tx）
   由 AST def-use 判定器機器比對，**人工標錯會轉紅**——不要手動「修」成綠的。
 - `model.AuditLog` 是 append-only：`(*AuditLog).BeforeUpdate`
   （`backend/internal/model/audit_log.go:387-390`）直接回 `gorm.ErrInvalidValue`，
-  ORM 改寫既有審計列不會成功。
+  ORM 改寫既有稽核列不會成功。
 - 蓋章與 syslog tee 掛在 `model.SetAuditCreateHooks`
   （`backend/internal/model/audit_log.go:345`，由 `cmd/server` 於啟動第 7 步注入）。
-  **此註冊點之前寫出的審計列 HMAC 為空且不進 tee，而驗章端會把空章列當歷史列而不計入
+  **此註冊點之前寫出的稽核列 HMAC 為空且不進 tee，而驗章端會把空章列當歷史列而不計入
   竄改判定**——失敗形態是「更安靜」而非「更吵」。動 stage2 結構時必須確認註冊時點未後移。
 
 ## 7. 啟停順序即契約
@@ -127,7 +127,7 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 並由 `backend/cmd/server/lifecycle_manifest_guard_test.go` 與
 `lifecycle_startup_shutdown_test.go` 守住。三個最危險的順序敏感點（失敗形態全部是「安靜」的）：
 
-1. **審計蓋章 hook 的註冊時點**（見上節）。
+1. **稽核蓋章 hook 的註冊時點**（見上節）。
 2. **`StopAlertNotifierForRelease` 依賴 `ResourceBag` LIFO 的隱含前提**：
    「呼叫端先停排程器」無任何程式碼強制，成立僅因兩個排程器碰巧登記在推送器之後。
    移動 bag 登記位置即靜默破壞，症狀是收束 panic（可見）或 in-flight 告警遺失（**不可見**）。
@@ -137,7 +137,7 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
 
 **已知排序張力（現況、誠實記載）**：`auditService.Shutdown` 執行序早於
 `connectionRegistry.CloseAll`。HTTP 路徑由 `main.go` 外層順序保證，但**協議連線（WS）
-不經 HTTP Shutdown**，理論上存在「審計已 flush、連線仍在寫」的窗口；
+不經 HTTP Shutdown**，理論上存在「稽核已 flush、連線仍在寫」的窗口；
 現況以 `TestLifecycleKnownUncoveredOrderingTension` 釘住相對序並明記未涵蓋。
 
 ## 8. SQL 與資料層陷阱
@@ -186,7 +186,7 @@ HTTP middleware 之外，各 WebSocket 入口（`/ssh` sshproxy、`/connect` pro
   （字面量會被守衛擋）。webhook payload 為 `{event, params, sent_at}` 零散文；
   Slack 類通道由 `notifycat.Render(channel 語言, ...)` 組字（per-channel `language` 欄）。
 - 未註冊事件或缺參數時**降級投遞、不得消失**（合規告警不可因格式問題丟失）。
-- 審計失敗的 cause 走 `model.Cause*` 機器碼＋params，detail 只落庫不出站；
+- 稽核失敗的 cause 走 `model.Cause*` 機器碼＋params，detail 只落庫不出站；
   `sessions.recording_error` 同碼集。
 
 ### WS／終端：送碼、前端查譯
@@ -210,7 +210,7 @@ vue-i18n 把 `@` 視為 linked message 起手（`@:key`／`@.modifier:key`）。
 ### 例外（spec 定性）
 
 - 後端 log、啟動期 fail-close 訊息：運維面，不譯。
-- 審計欄位的 forensic 原文（如 `audit_logs.error_msg`、`Details`）：保留原文。
+- 稽核欄位的 forensic 原文（如 `audit_logs.error_msg`、`Details`）：保留原文。
 
 ## 10. 前端 UI 慣例
 
@@ -265,7 +265,7 @@ UI／互動類修正的驗收要做「**動作 × 狀態**」矩陣掃描（例�
   動品牌 token 須先開 issue 討論。
 - 亮底設計的品牌主色直接放暗底會過不了對比度 AA：暗底連結用亮階、品牌原值降為按下態。
   語義色與終端色盤永不隨品牌變動。
-- 技術識別字（審計用途的 HKDF info、錄影路徑、module 名、seed email 等）
+- 技術識別字（稽核用途的 HKDF info、錄影路徑、module 名、seed email 等）
   **絕不因視覺改版而更名**。
 
 ### 頁面結構

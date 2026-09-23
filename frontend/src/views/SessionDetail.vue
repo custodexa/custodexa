@@ -373,6 +373,13 @@
                 <el-tag type="info">
                   {{ $t('sessionDetail.commandCount', { n: commands.length }) }}
                 </el-tag>
+                <el-tag
+                  v-if="blockedAlerts.length"
+                  class="ot-tag-neutral"
+                  data-test="blocked-command-count"
+                >
+                  {{ $t('sessionDetail.blockedCount', { n: blockedAlerts.length }) }}
+                </el-tag>
                 <!-- 無法還原的輪次另計：混在總數裡會讓「N 筆指令」聽起來像 N 筆都有內容 -->
                 <el-tag
                   v-if="degradedCount > 0"
@@ -385,15 +392,18 @@
             </div>
 
             <el-table
-              :data="commands"
+              :data="commandTimeline"
               stripe
               style="width: 100%"
             >
               <el-table-column
-                prop="seq"
                 :label="$t('sessionDetail.seqColumn')"
                 width="70"
-              />
+              >
+                <template #default="{ row }">
+                  {{ row.blockedAlert ? '—' : row.seq }}
+                </template>
+              </el-table-column>
               <el-table-column
                 prop="executed_at"
                 :label="$t('common.time')"
@@ -410,7 +420,36 @@
                 show-overflow-tooltip
               >
                 <template #default="{ row }">
+                  <div
+                    v-if="row.blockedAlert"
+                    class="blocked-command-row"
+                    data-test="blocked-command-row"
+                  >
+                    <div class="blocked-command-title">
+                      <el-tag class="ot-tag-neutral">
+                        {{ $t('sessionDetail.blockedNotSent') }}
+                      </el-tag>
+                      <span
+                        class="blocked-rule-name"
+                        :title="row.rule_name"
+                      >{{ row.rule_name }}</span>
+                    </div>
+                    <div class="blocked-command-action">
+                      <code>{{ row.command }}</code>
+                      <el-button
+                        v-if="commandRecordingState === 'available'"
+                        link
+                        type="primary"
+                        size="small"
+                        data-test="blocked-command-seek"
+                        @click="seekToCommand(row)"
+                      >
+                        {{ $t('sessionDetail.blockedSeek') }}
+                      </el-button>
+                    </div>
+                  </div>
                   <CommandCell
+                    v-else
                     :row="row"
                     :recording-state="commandRecordingState"
                     @seek="seekToCommand"
@@ -752,6 +791,7 @@ import CommandCell from '@/components/audit/CommandCell.vue'
 import { isDegradedRow } from '@/constants/command-degrade'
 import { getSession, getRecordingUrl, getRecordingToken, recordingStreamUrlByToken, downloadRecording } from '@/api/sessions'
 import { getSessionCommands } from '@/api/commands'
+import { searchAlerts } from '@/api/alerts'
 import { getSessionClipboardEvents, getClipboardEventContent } from '@/api/clipboardEvents'
 import { isTextTerminal } from '@/utils/protocol'
 import { getAgentTask } from '@/api/agentTasks'
@@ -799,12 +839,21 @@ const fetchTaskReason = async () => {
 const ledgerTargets = computed(() => session.value ? { [session.value.id]: { asset: session.value.asset?.name || '', account: session.value.account_username || '' } } : {})
 const downloading = ref(false)
 const commands = ref([])
+const blockedAlerts = ref([])
+const commandTimeline = computed(() => {
+  if (!blockedAlerts.value.length) return commands.value
+  return [...commands.value, ...blockedAlerts.value.map(alert => ({
+    ...alert,
+    blockedAlert: true,
+    executed_at: alert.triggered_at,
+  }))].sort((a, b) => new Date(a.executed_at).getTime() - new Date(b.executed_at).getTime())
+})
 
 const playerCardRef = ref(null)
 
 // 文字終端會話（SSH/資料庫 CLI）且有指令資料時顯示指令記錄卡
 const showCommands = computed(
-  () => isTextTerminal(session.value?.protocol) && commands.value.length > 0
+  () => isTextTerminal(session.value?.protocol) && commandTimeline.value.length > 0
 )
 
 // 無法還原的輪次數（degraded 列）。與指令總數分開呈現
@@ -934,7 +983,7 @@ const handleOffsiteRetry = async () => {
 // 列表只給事實（時間、方向、長度、狀態），按「解密調閱」才呼單筆端點解密——
 // 「指定閱讀」語義：按鍵即解密即留痕（伺服器端逐筆審計，fail-close）。
 //
-// 為何不再「展開即直載」（使用者實走後裁決）：展開後內容直接出現，讀起來
+// 為何不再「展開即直載」：展開後內容直接出現，讀起來
 // 就像那些內容本來就是明文躺著，稽核員感受不到自己剛做了一次受控解密、也不
 // 知道這次調閱已經留痕。故改成鎖頭＋按鍵的顯式動作，並在內容之上回報留痕。
 //
@@ -1007,7 +1056,7 @@ const fetchClipboardEvents = async () => {
 // 佈局靜默 SETTLE_MS 或總計 MAX_MS 即收工；使用者一有捲動意圖
 //（滾輪/觸控/按鍵）立即停手，不與人搶捲軸。
 //
-// 兩項刻意選擇，都是踩過才知道的（修復波第二輪，瀏覽器實測）：
+// 兩項刻意選擇，理由如下：
 //   1. 首捲用 instant 而非 smooth。深連結落地本就該直接到位（原生 #fragment
 //      即如此）；smooth 期間補捲會蓋掉動畫，等於每次都在跟自己搶捲軸。
 //   2. **不跳過首個 RO 回報**。ResizeObserver 會把回報批次合併：長高若發生在
@@ -1334,6 +1383,7 @@ const fetchSessionDetail = async () => {
     // 文字終端會話載入指令記錄（失敗不影響詳情頁）
     if (isTextTerminal(session.value.protocol)) {
       fetchCommands()
+      fetchBlockedAlerts()
       loadRecordingUrl()
     }
 
@@ -1366,6 +1416,31 @@ const fetchCommands = async () => {
     commands.value = []
   }
   await anchorConsoleEvent()
+}
+
+const fetchBlockedAlerts = async () => {
+  blockedAlerts.value = []
+  const current = session.value
+  if (!current) return
+  const params = { session_id: current.id, blocked: 'true' }
+  try {
+    const matches = []
+    let page = 1
+    let more = true
+    // 一場會話的阻斷告警不會多到要翻幾十頁；設上限是為了後端分頁欄位異常時不會無限打 API
+    const MAX_PAGES = 20
+    while (more && page <= MAX_PAGES) {
+      const response = await searchAlerts(page === 1 ? params : { ...params, page })
+      const data = response.data || []
+      matches.push(...data)
+      more = data.length > 0 && page * Number(response.page_size || 20) < Number(response.total ?? data.length)
+      page += 1
+    }
+    if (session.value?.id === current.id) blockedAlerts.value = matches
+  } catch {
+    // Alerts are an additional evidence source; session commands remain readable.
+    blockedAlerts.value = []
+  }
 }
 
 // Handle download recording
@@ -1601,6 +1676,19 @@ onMounted(() => {
   align-items: center;
   gap: var(--ot-space-sm);
 }
+.card-tag-group :deep(.el-tag) { font-size: var(--ot-font-size-sm); }
+.blocked-command-row { display: grid; gap: var(--ot-space-xs); color: var(--ot-text-primary); white-space: normal; }
+.blocked-command-title { display: flex; align-items: center; gap: var(--ot-space-sm); min-width: 0; }
+.blocked-command-title :deep(.el-tag.ot-tag-neutral) {
+  flex-shrink: 0;
+  font-size: var(--ot-font-size-sm);
+  font-weight: 600;
+  --el-tag-text-color: var(--ot-text-primary);
+}
+.blocked-rule-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blocked-command-action { display: flex; align-items: center; justify-content: space-between; gap: var(--ot-space-md); min-width: 0; }
+.blocked-command-action code { font-family: var(--ot-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.blocked-command-action :deep(.el-button) { flex-shrink: 0; margin-inline-start: auto; }
 
 .card-note {
   font-size: var(--ot-font-size-xs);

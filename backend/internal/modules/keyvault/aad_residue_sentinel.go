@@ -34,7 +34,7 @@ func AADResidueLowerBound(db *gorm.DB) ([]AADResidue, int64, error) {
 	for _, target := range envelopeMigrationTargets {
 		var n int64
 		err := db.Table(target.table).
-			Where(fmt.Sprintf("%s <> '' AND %s NOT LIKE ?", target.column, target.column),
+			Where(fmt.Sprintf("%s <> '' AND %s NOT LIKE ?", target.valueSQL(db), target.valueSQL(db)),
 				aadResidueSQLPattern).
 			Count(&n).Error
 		if err != nil {

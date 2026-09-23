@@ -68,12 +68,14 @@ func (h *Handler) execute(ctx context.Context, c *gin.Context, owner sessionOwne
 	if entry != nil {
 		protocol = string(entry.connection.Session.Protocol)
 	}
-	maskedArgs := audit.MaskSensitiveFields("", args)
-	value, _, err := redactValue(maskedArgs, protocol)
+	if name == "close_task" {
+		protocol = ""
+	} // Reports span protocols.
+	visible, sealed, argsMasked, err := h.prepareLedgerArgs(ctx, name, args, protocol)
 	if err != nil {
 		return codeResult("INTERNAL_OUTPUT_REDACTION"), nil
 	}
-	in := audit.AgentToolCallInput{PrincipalKind: model.KindAgent, UserID: owner.User, AgentTokenID: owner.Token, OwnerUserID: *user.OwnerUserID, Tool: name, Args: value.(map[string]any)}
+	in := audit.AgentToolCallInput{PrincipalKind: model.KindAgent, UserID: owner.User, AgentTokenID: owner.Token, OwnerUserID: *user.OwnerUserID, Tool: name, Args: visible, ArgsSealed: sealed, MaskedCount: argsMasked}
 	if task != nil {
 		in.AccessRequestID = &task.ID
 		if task.RequesterID != owner.User {
@@ -139,11 +141,11 @@ func (h *Handler) execute(ctx context.Context, c *gin.Context, owner sessionOwne
 	return final, nil
 }
 
-// redactValue is the single product Redact callsite. It processes decoded values,
+// redactValue processes decoded argument and delivery values,
 // including query cells, before JSON encoding; recording and command taps precede it.
 func redactValue(value any, protocol string) (any, int, error) {
 	matcher := audit.GetAlertMatcher()
-	if matcher == nil {
+	if matcher == nil || matcher.BlockerHealth() != nil {
 		return nil, 0, fmt.Errorf("output rules unavailable")
 	}
 	rules, err := sensitivescan.Compile(outputRules(matcher, protocol), scanProtocol(protocol))

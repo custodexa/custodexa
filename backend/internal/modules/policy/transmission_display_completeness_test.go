@@ -353,7 +353,8 @@ func TestDisplayNamespaceCardinality(t *testing.T) {
 		// riskLabel 由 8 增為 10：改密通道的兩個風險碼（winrm_http_ntlm／winrm_tls_insecure）
 		// 再由 55 增為 56：DEK 快取存活期（單位沿用既有的「秒」，故 policyUnit 不變）
 		// agent 主體自助建立的兩個政策鍵（60 → 62），完備性基數登記。
-		"policyLabel": 62, "policyUnit": 9, "riskLabel": 10,
+		// 敏感原文調閱告警開關（62 → 63），不計合規偏離。
+		"policyLabel": 63, "policyUnit": 9, "riskLabel": 10,
 		// transportNote 由 8 增為 9：LDAP 的兩碼改名（deploy_managed→ui_managed）
 		// 之外另加故障態專屬碼 ldap_resolve_failed
 		// 再由 9 增為 10：改密通道列的說明碼 winrm_rotation_channel
@@ -477,7 +478,7 @@ func TestNewRiskFailFastOnMissingParam(t *testing.T) {
 	_ = newRisk(RiskSyslogNonTLS, nil)
 }
 
-// TestRiskJSONShapeUnchanged 持久化形狀 golden test（rr-Minor1）：risk wire 結構恰
+// TestRiskJSONShapeUnchanged 持久化形狀 golden test：risk wire 結構恰
 // {key,label} 兩欄——consent risk_items 與各類審計 snapshot 皆 marshal 同型，故一併守。
 func TestRiskJSONShapeUnchanged(t *testing.T) {
 	r := newRisk(RiskSyslogNonTLS, map[string]any{"protocol": "tcp"})

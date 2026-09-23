@@ -9,7 +9,8 @@ const RedactionPlaceholder = "[REDACTED]"
 
 // Redact replaces matched spans completely. Count is the number of replacements,
 // including zero on a scanned, unchanged value. Callers must persist this count
-// in their own return ledger; recordings and evidence must never use this method.
+// in their own return ledger. Host output recordings stay untouched; the added
+// agent blocked-input evidence line is explicitly redacted before recording.
 func (r *Rules) Redact(text string) (string, int) {
 	hits := r.Scan(text)
 	if len(hits) == 0 {

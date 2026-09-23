@@ -44,6 +44,24 @@
               </el-select>
             </el-form-item>
 
+            <el-form-item :label="$t('alerts.kindFilter')">
+              <el-select
+                v-model="filters.kind"
+                clearable
+                :placeholder="$t('common.all')"
+                style="width: 190px"
+                data-test="alert-kind-filter"
+                @change="handleSearch"
+              >
+                <el-option
+                  v-for="option in kindOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+
             <el-form-item :label="$t('sessions.timeRange')">
               <el-date-picker
                 v-model="timeRange"
@@ -133,6 +151,10 @@
                   data-test="alert-new-source-ip-kind"
                 >{{ $t('alerts.kindNewSourceIP') }}</span>
                 <span v-else-if="isAgentBreakerAlert(row)">{{ $t('alerts.kindAgentBreaker') }}</span>
+                <span
+                  v-else-if="row.kind === 'sensitive_reveal'"
+                  data-test="alert-sensitive-reveal-kind"
+                >{{ $t('alerts.kindSensitiveReveal') }}</span>
                 <span v-else>{{ row.rule_name }}</span>
                 <el-tag
                   v-if="row.blocked"
@@ -191,6 +213,10 @@
                 <span
                   v-else-if="isAgentBreakerAlert(row)"
                 >{{ $t('alerts.agentBreakerDescription') }}</span>
+                <span
+                  v-else-if="row.kind === 'sensitive_reveal'"
+                  data-test="alert-sensitive-reveal"
+                >{{ $t('alerts.sensitiveRevealDescription') }}</span>
                 <span
                   v-else-if="row.reason_code?.startsWith('o1:')"
                   data-test="alert-output-sensitive"
@@ -962,6 +988,15 @@ const SEVERITY_VALUES = ['high', 'medium', 'low']
 const severityOptions = computed(() =>
   SEVERITY_VALUES.map((value) => ({ value, label: t(`enum.alertLevel.${value}`) }))
 )
+const KIND_LABELS = {
+  rule: 'kindRule',
+  audit_degraded: 'kindAuditDegraded',
+  new_source_ip: 'kindNewSourceIP',
+  agent_breaker_tripped: 'kindAgentBreaker',
+  sensitive_reveal: 'kindSensitiveReveal',
+}
+const kindOptions = computed(() => Object.entries(KIND_LABELS)
+  .map(([value, key]) => ({ value, label: t(`alerts.${key}`) })))
 
 const activeTab = ref('alerts')
 
@@ -973,6 +1008,7 @@ const alerts = ref([])
 const alertsLoading = ref(false)
 const timeRange = ref([])
 const filters = ref({
+  kind: '',
   severity: '',
   unreviewed: false,
 })
@@ -1040,6 +1076,7 @@ const fetchAlerts = async () => {
     }
 
     if (filters.value.severity) params.severity = filters.value.severity
+    if (filters.value.kind) params.kind = filters.value.kind
     if (filters.value.unreviewed) params.unreviewed = 'true'
 
     if (timeRange.value && timeRange.value.length === 2) {
@@ -1068,7 +1105,7 @@ const handleSizeChange = () => {
 }
 
 const handleReset = () => {
-  filters.value = { severity: '', unreviewed: false }
+  filters.value = { kind: '', severity: '', unreviewed: false }
   timeRange.value = []
   handleSearch()
 }

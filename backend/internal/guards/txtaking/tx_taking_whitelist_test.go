@@ -20,7 +20,8 @@ import (
 // **編譯器與資料邊界閘門（6.0b ratchet）都看不見對方寫了哪張表**——
 // 寫入發生在 authz 的方法體內、對象是 authz 自有的表，掃描器判為「自己寫自己」，
 // 而真正的事實是「asset／identity 的交易在寫 authz 的表」。ratchet 因此會顯示
-// 「乾淨」，這正是誠實邊界所說「DoD 第 1 條在此類路徑上名存實亡」的具體形狀。
+// 「乾淨」，這正是「跨模組存取只經對外介面（編譯器可證）」這條規則
+// 在此類路徑上名存實亡的具體形狀。
 //
 // 本守衛以三個彼此獨立的軸維持可審計性：
 //
@@ -75,7 +76,7 @@ var txTakingWhitelist = []txTakingEntry{
 			"權限查詢只查 asset_authorizations、不 join assets，資產刪了而授權留著" +
 			"＝已刪資產的授權在權限判定中仍然命中（本 change 要修的缺陷本體）；" +
 			"授權撤了而資產刪除回滾＝無故失權。ApproverScope.AssetID 同理——" +
-			"資產消失後留下的是懸掛範圍（同 aaa2018 對抗驗證抓到的形態）。" +
+			"資產消失後留下的是懸掛範圍。" +
 			"asset 不得 import authz（禁止邊），authz 也不能反過來驅動 asset 的" +
 			"刪除交易，故只能由 asset 交出交易句柄。與 RevokeByAssetGroup 是同一類" +
 			"問題的兩個粒度（節點／單一資產）。",
@@ -88,8 +89,8 @@ var txTakingWhitelist = []txTakingEntry{
 			"internal/modules/identity/user_group_service.go:115（Delete ApproverScope）",
 		},
 		Reason: "刪群組即失權（spec）與「群組審核範圍一併失效」必須與群組軟刪同交易：" +
-			"殘留 approver_group=null 的幽靈範圍會讓殘留成員列回復審核資格" +
-			"（對抗驗證 aaa2018 #1/#2）。撤銷筆數還要進同交易的審計 Details，" +
+			"殘留 approver_group=null 的幽靈範圍會讓殘留成員列回復審核資格。" +
+			"撤銷筆數還要進同交易的審計 Details，" +
 			"分兩個交易寫會出現「審計說撤了 N 筆、實際回滾了」的不一致。",
 	},
 	{

@@ -4,7 +4,7 @@ package config
 //
 // # 為什麼這裡幾乎是空的
 //
-// 設定全 UI 化（使用者裁決）之後，離機儲存的連線參數與憑證由
+// 離機儲存改為設定全 UI 化之後，連線參數與憑證由
 // `offsite_profiles` 專用表承載、由管理介面維護；`OFFSITE_*` 的其餘鍵降為
 // **初次 seed 專用**，只在 post-unseal 佇列的 seed 讀一次
 // （`internal/offsite/seed_migration.go`，以字面字串直接呼叫 `os.Getenv`，

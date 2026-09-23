@@ -374,6 +374,7 @@
       "audit_write_fallback_file": "Audit batch write failed; fell back to file",
       "audit_write_batch_dropped": "Audit batch write failed; file fallback disabled, batch dropped",
       "audit_write_sync_refused": "Synchronous audit write failed; the access was refused (content not delivered)",
+      "sensitive_reveal_alert_write_failed": "Failed to write the sensitive-access alert (audit trail kept; content was delivered)",
       "command_audit_write_refused": "Synchronous statement record write failed; the statement was refused",
       "command_blocker_unavailable": "The command blocking matcher is unavailable; the statement was refused",
       "syslog_connect_failed": "Syslog forwarding connection failed",
@@ -402,7 +403,7 @@
       "user_terminate": "Self-Terminated",
       "backend_restart": "Server Restart Cleanup",
       "orphaned": "Orphan Cleanup",
-      "revoked": "Authorization Revoked",
+      "revoked": "Authorization revoked, connection ended",
       "block_clear_failed": "Block Clear Failed"
     },
     "sessionStatus": {
@@ -579,6 +580,11 @@
       "terminal": "Terminal ({code})",
       "desktop": "Remote desktop ({code})",
       "database": "Database ({code})"
+    },
+    "protocolKindShort": {
+      "terminal": "Terminal",
+      "desktop": "Desktop",
+      "database": "Database"
     }
   },
   "policyValue": {
@@ -983,6 +989,9 @@
     "actorColumn": "Operator"
   },
   "sessionDetail": {
+    "blockedCount": "{n} blocked",
+    "blockedNotSent": "Blocked; not sent to target",
+    "blockedSeek": "View recording time",
     "title": "Session Details",
     "backToList": "Back to List",
     "downloadRecording": "Download Recording",
@@ -1168,6 +1177,10 @@
     "errorCodeColumn": "Error code"
   },
   "alerts": {
+    "kindFilter": "Source type",
+    "kindRule": "Rule alert",
+    "kindSensitiveReveal": "Sensitive content access",
+    "sensitiveRevealDescription": "Sensitive content was accessed; see the per-access audit record for details.",
     "title": "Command Alerts",
     "headerDesc": "Dangerous-command alert records and rule management",
     "tabAlerts": "Alert Records",
@@ -3228,6 +3241,7 @@
     "INTERNAL_CHECKPOINT_QUERY": "Failed to query checkpoints",
     "INTERNAL_CHECKPOINT_VERIFY": "Checkpoint verification failed",
     "INTERNAL_CLIPBOARD_QUERY": "Failed to query clipboard events",
+    "INTERNAL_TOOL_CALL_ARGUMENTS": "Failed to retrieve tool call arguments",
     "INTERNAL_COMMAND_ALERT_QUERY": "Failed to query alert records",
     "INTERNAL_COMPLIANCE_SNAPSHOT": "Unable to retrieve the compliance assessment",
     "INTERNAL_CONNECT_TOKEN_ISSUE": "Failed to issue the connection token",
@@ -3379,6 +3393,7 @@
     "NOTFOUND_CHANGE_SECRET_CANDIDATE": "Pending credential not found",
     "NOTFOUND_CHANGE_SECRET_PLAN": "Change-secret plan not found",
     "NOTFOUND_CLIPBOARD_EVENT": "Clipboard record not found",
+    "NOTFOUND_TOOL_CALL_ARGUMENTS": "This tool call has no original arguments available to view",
     "NOTFOUND_COMMAND_ALERT": "Alert not found",
     "NOTFOUND_CREDENTIAL": "Credential not found",
     "NOTFOUND_CREDENTIAL_BINDING": "The attachment does not exist or does not belong to this credential",
@@ -3774,6 +3789,7 @@
     "agent_probe_window_seconds": "Agent probe counting window (seconds)",
     "agent_request_rate_per_hour": "Automation account requests per hour",
     "agent_request_pending_max": "Automation account pending requests",
+    "alert_on_sensitive_reveal": "Alert on sensitive content access",
     "access_policy_default": "Global default access policy tier",
     "access_request_max_duration_minutes": "Max request duration",
     "access_request_min_approvals": "Minimum approvers",
@@ -4781,6 +4797,7 @@
         "login": "Signed in",
         "logout": "Signed out",
         "new_source_ip": "Signed in from a new source address",
+        "agent_tool_call_args_viewed": "Viewed the sensitive original arguments of a tool call (recorded)",
         "unlock": "Unlocked account",
         "pw_noncompliant": "Password not compliant with policy",
         "recording_failed": "Recording failed",
@@ -5493,6 +5510,7 @@
     "login_banner_body": "The next person to open the sign-in page sees the new text; leaving the body empty hides the whole notice."
   },
   "policyPlain": {
+    "alert_on_sensitive_reveal": "Off by default. When enabled, every access to original content creates an alert. Intended for highly sensitive environments.",
     "refresh_cookie_secure": "Whether sign-in is kept only over encrypted connections.",
     "retention_checkpoint_days": "How many days the proof used to check records is kept.",
     "audit_checkpoint_interval_seconds": "How often a proof is created for the records.",
@@ -5918,7 +5936,7 @@
     "creationHelp": "The owner manages this agent. Agents connect with keys; they cannot sign in to the UI or hold administrator, auditor or approver roles.",
     "keys": "Keys",
     "keysFor": "Keys for {name}",
-    "keyHelp": "Keys let an agent connect. Revoking a key immediately ends sessions established with it, without waiting for work to finish.",
+    "keyHelp": "Revoking a connection key ends its sessions immediately, even during work.",
     "issuedKeys": "Issued keys",
     "noKeys": "This agent has no keys yet. Issue its first key to enable connections.",
     "createdBy": "Created by",
@@ -5938,7 +5956,7 @@
     "revokeNote": "Reason (optional, recorded)",
     "revokeConsequence": "Revocation cannot be undone. Sessions established with this key will end immediately, without waiting for work to finish.",
     "myTitle": "My agents",
-    "myDescription": "Manage keys and pending actions for your automation accounts.",
+    "myDescription": "Manage agent keys and pending actions.",
     "ownerFixed": "You are the owner. Contact an administrator to change ownership or disable the principal.",
     "create": "Create agent",
     "purpose": "Purpose",
@@ -5958,7 +5976,7 @@
     "you": "You",
     "youSuffix": "{name} (you)",
     "subjectRef": "Subject #{id}",
-    "suspendedLabel": "Suspension reason and time",
+    "suspendedLabel": "Suspended",
     "suspendedValue": "{reason} · {time}",
     "suspendedReasons": {
       "agent_breaker_tripped": "Repeated probing of targets it cannot see; suspended automatically",
@@ -6047,7 +6065,6 @@
     "autoApproved": "Auto-approved by access policy (no human vote)",
     "decisionNoteLabel": "Approval note",
     "sessionsTitle": "Connections opened ({n})",
-    "sessionRevoked": "Access revoked mid-session; connection cut",
     "reportWindow": "Only the agent that ran the task can submit or revise a report within 24 hours of closure. Auditors can read it, not write it, and no version can be deleted.",
     "sectionHints": {
       "who": "Who requested it, who executed it, who is answerable for it.",
@@ -6091,6 +6108,7 @@
     "autoApprovedNote": "Approved automatically by the system (no human approval)"
   },
   "agentBreaker": {
+    "pendingSince": "Since {time}",
     "pending": "Automatic suspension pending review",
     "issueBlocked": "This agent has an unresolved automatic suspension. New keys cannot be issued.",
     "resolve": "Review suspension",
@@ -6221,13 +6239,20 @@
     "none": "No represented user (autonomous)",
     "unknown": "Not recorded",
     "owner": "Owner at connection time",
-    "revoked": "Revoked mid-session: {time}",
+    "revoked": "Authorization revoked, connection ended: {time}",
     "recordingTab": "Recording and session evidence",
     "key": "Key used",
     "keyId": "Key no. {id}; name snapshot unavailable",
-    "revokedShort": "Revoked mid-session"
+    "revokedShort": "Authorization revoked, connection ended"
   },
   "agentLedger": {
+    "argumentsNotRetained": "Arguments were not retained in records from before this version",
+    "revealArguments": "Reveal original",
+    "revealReason": "Reason for access",
+    "revealReasonHint": "Access to the original is audited. Enter a reason.",
+    "revealed": "Accessed",
+    "revealFailed": "Could not access the original arguments",
+    "handleFingerprint": "Handle fingerprint; it cannot be reversed",
     "title": "Tool call ledger",
     "boundary": "Recordings retain the original screen; the ledger retains response summaries and hashes.",
     "decision": "Decision",
@@ -6242,7 +6267,7 @@
     "reasonCode": "Reason code",
     "result": "Result status",
     "unknown": "Unknown",
-    "arguments": "Redacted arguments",
+    "arguments": "Arguments",
     "digest": "Response hash",
     "excerpt": "Response excerpt",
     "excerptBoundary": "This is an excerpt, not the full response.",

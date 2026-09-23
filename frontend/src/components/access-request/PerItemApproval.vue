@@ -8,14 +8,14 @@
       class="item-review__header"
       data-test="review-header"
     >
-      <p>{{ t('itemReview.requesterLine', { name: requesterName }) }}</p>
+      <p>
+        {{ t('itemReview.requesterLine', { name: requesterName }) }}
+        <HelpTip :content="t('itemReview.scopeUnknown')" />
+      </p>
       <p data-test="review-representation">
         {{ representationLine }}
       </p>
     </header>
-    <p class="item-review__hint">
-      {{ t('itemReview.scopeUnknown') }}
-    </p>
     <article
       v-for="item in request.items"
       :key="item.id"
@@ -31,7 +31,9 @@
           {{ t('common.assetRef', { id: item.asset_id }) }} · {{ t('multiRequest.itemId', { id: item.id }) }}
         </p>
       </details>
-      <p>{{ (item.accounts || []).length && !(item.accounts || []).includes('@ALL') ? item.accounts.join(t('common.listSeparator')) : t('multiRequest.allAccounts') }} · {{ t('common.minutesN', { n: request.requested_duration_minutes }) }}</p>
+      <p class="item-review__scope">
+        {{ (item.accounts || []).length && !(item.accounts || []).includes('@ALL') ? item.accounts.join(t('common.listSeparator')) : t('multiRequest.allAccounts') }} · {{ t('common.minutesN', { n: request.requested_duration_minutes }) }}
+      </p>
       <el-tag
         v-if="item.status !== 'pending'"
         :type="decidedTagType(item.status)"
@@ -138,7 +140,11 @@
               </el-form-item>
             </el-form>
           </div>
-          <p data-test="remove-explanation">
+          <p
+            v-if="forms[item.id].action === 'remove'"
+            class="item-review__hint"
+            data-test="remove-explanation"
+          >
             {{ t('itemReview.removeHelp') }}
           </p>
           <el-input
@@ -210,7 +216,7 @@
         class="item-review__error"
         data-test="review-bar-rejected"
       >{{ t('itemReview.itemsRejected', { n: rejectedCount }) }}</span>
-      <span>{{ t('itemReview.selectedCount', { n: selected.length }) }}</span>
+      <span class="item-review__selected-count">{{ t('itemReview.selectedCount', { n: selected.length }) }}</span>
       <el-button
         type="primary"
         :disabled="busy || !selected.length"
@@ -226,6 +232,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { t } from '@/i18n'
+import HelpTip from '@/components/HelpTip.vue'
 import { formatDateTime } from '@/utils/format'
 import { resolveApiError } from '@/api/error'
 import { approveAccessRequest, rejectAccessRequestItem } from '@/api/accessRequests'
@@ -370,6 +377,7 @@ onBeforeUnmount(() => { disposed = true })
 .item-review__row, .item-review__summary { padding: var(--ot-space-md); margin-bottom: var(--ot-space-md); border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); }
 .item-review__summary { background: var(--ot-bg-elevated); }
 h3 { font-size: var(--ot-font-size-lg); font-weight: 600; }
+.item-review__scope { color: var(--ot-text-primary); }
 .item-review__hint { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
 .item-review__toggle { margin-bottom: var(--ot-space-sm); }
 /* 48vh：加上單頭、項目標題與黏底送出列，整組仍落在一個 900px 高的視窗內 */
@@ -380,6 +388,7 @@ h3 { font-size: var(--ot-font-size-lg); font-weight: 600; }
 .item-review__header p { margin: 0; font-size: var(--ot-font-size-sm); color: var(--ot-text-primary); }
 .item-review__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: var(--ot-space-md); padding: var(--ot-space-sm) var(--ot-space-md); background: var(--ot-bg-elevated); border-top: 1px solid var(--ot-border-subtle); }
 .item-review__bar span { font-size: var(--ot-font-size-sm); color: var(--ot-text-secondary); }
+.item-review__bar .item-review__selected-count { color: var(--ot-text-primary); }
 .item-review__ok { color: var(--ot-success); }
 .item-review__error { color: var(--ot-danger); }
 </style>

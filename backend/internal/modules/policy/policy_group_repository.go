@@ -514,7 +514,7 @@ func assertComparatorFitsType(def *PolicyDef, comparator string) error {
 			return nil
 		}
 		return groupErr(ErrCodePolicyGroupKeyType,
-			"型別為 %s 的設定鍵 %s 不能作為設定要求的對象", def.Type, def.Key)
+			"型別為 %s 的設定鍵 %s 不能作為設定要求的目標", def.Type, def.Key)
 	}
 	switch def.Type {
 	case PolicyTypeInt:
@@ -533,6 +533,6 @@ func assertComparatorFitsType(def *PolicyDef, comparator string) error {
 		return nil
 	default:
 		return groupErr(ErrCodePolicyGroupKeyType,
-			"型別為 %s 的設定鍵 %s 不能作為設定要求的對象", def.Type, def.Key)
+			"型別為 %s 的設定鍵 %s 不能作為設定要求的目標", def.Type, def.Key)
 	}
 }

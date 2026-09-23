@@ -348,7 +348,7 @@ func (s *AssetGroupService) nodeAudit(tx *gorm.DB, action model.AuditAction, nod
 		Request:    gatewayapi.RequestMeta{ClientIP: clientIP},
 		Details:    details,
 	}); err != nil {
-		return fmt.Errorf("審計留痕失敗: %w", err)
+		return fmt.Errorf("稽核留痕失敗: %w", err)
 	}
 	return nil
 }
@@ -562,7 +562,7 @@ func (s *AssetGroupService) Delete(id uint, actorID uint, actorName, clientIP st
 			Details: fmt.Sprintf(`{"asset_node_name":%q,"revoked_authorizations":%d,"revoked_approver_scopes":%d}`,
 				group.Name, revoked, revokedScopes),
 		}); err != nil {
-			return fmt.Errorf("審計留痕失敗: %w", err)
+			return fmt.Errorf("稽核留痕失敗: %w", err)
 		}
 		return nil
 	})

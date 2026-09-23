@@ -20,7 +20,7 @@
       />
       <!-- 首屏摘要：「哪把還能用」「哪把快到期」原本要捲到底逐張卡片比對，
            答案放在這裡就不必捲。兩個把數是這面板的統計，不是說明句——
-           數字獨立成統計塊，標籤才降到灰字階 -->
+           數字獨立成統計塊，標籤以主色呈現，字級區分層級 -->
       <template v-if="!loading && !listFailed && tokens.length">
         <StatBlock
           data-test="token-summary"
@@ -362,6 +362,8 @@ onBeforeUnmount(() => { epoch++; plaintext.value = ''; clearInterval(refreshTime
 .token-panel { display: flex; flex-direction: column; gap: var(--ot-space-lg); color: var(--ot-text-primary); }
 .token-panel h3 { font-size: var(--ot-font-size-lg); font-weight: 600; margin: 0 0 var(--ot-space-md); }
 .token-panel p { margin: var(--ot-space-sm) 0; }
+/* 負責人與鑰匙統計是操作依據；子元件只在此面板提升層級。 */
+.token-panel :deep(.principal-badge__owner), .token-panel :deep(.stat-label) { color: var(--ot-text-primary); }
 .token-panel__hint, dt { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
 .token-panel__summary { margin: 0; color: var(--ot-text-primary); font-size: var(--ot-font-size-sm); }
 .token-panel__notice { padding: var(--ot-space-md); border: 1px solid var(--ot-warning); border-radius: var(--ot-radius-md); background: var(--ot-bg-elevated); }
@@ -370,6 +372,6 @@ onBeforeUnmount(() => { epoch++; plaintext.value = ''; clearInterval(refreshTime
 .token-panel__row, .token-panel__actions { display: flex; gap: var(--ot-space-sm); justify-content: space-between; flex-wrap: wrap; }
 .token-panel__actions { margin-top: var(--ot-space-md); justify-content: flex-end; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: var(--ot-space-xs) var(--ot-space-sm); font-size: var(--ot-font-size-sm); }
-dd { margin: 0; overflow-wrap: anywhere; }
+dd { color: var(--ot-text-primary); margin: 0; overflow-wrap: anywhere; }
 a { color: var(--ot-primary); }
 </style>

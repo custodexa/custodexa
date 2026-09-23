@@ -23,6 +23,7 @@ import (
 	"github.com/custodexa/backend/internal/proxy"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/custodexa/backend/internal/sshproxy"
+	"github.com/custodexa/backend/pkg/crypto"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"github.com/gin-gonic/gin"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
@@ -35,15 +36,16 @@ type sessionOwner struct {
 }
 
 type Handler struct {
-	ssh      *sshproxy.Handler
-	http     http.Handler
-	mu       sync.Mutex
-	sessions map[string]*ownedSession
-	ledger   toolLedger
-	requests *authz.AccessRequestService
-	reports  *audit.AgentTaskReports
-	watchers map[string]bool
-	now      func() time.Time
+	ssh         *sshproxy.Handler
+	http        http.Handler
+	mu          sync.Mutex
+	sessions    map[string]*ownedSession
+	ledger      toolLedger
+	ledgerCodec crypto.ColumnCodec
+	requests    *authz.AccessRequestService
+	reports     *audit.AgentTaskReports
+	watchers    map[string]bool
+	now         func() time.Time
 }
 
 func NewHandler(ssh *sshproxy.Handler, requests ...*authz.AccessRequestService) *Handler {

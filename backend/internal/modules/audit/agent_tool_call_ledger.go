@@ -22,6 +22,8 @@ type AgentToolCallInput struct {
 	AccessRequestID, SessionID, OnBehalfOfUserID *uint
 	Tool                                         string
 	Args                                         map[string]interface{}
+	ArgsSealed                                   []byte
+	MaskedCount                                  int
 }
 
 type AgentToolCallLedger struct {
@@ -39,7 +41,7 @@ func (s *AgentToolCallLedger) Begin(ctx context.Context, in AgentToolCallInput) 
 	if in.PrincipalKind != model.KindAgent || s.integrity == nil {
 		return nil, errors.New("authenticated agent and integrity service required")
 	}
-	args, err := json.Marshal(MaskSensitiveFields("", in.Args))
+	args, err := json.Marshal(StripLedgerCredentials(in.Args))
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +49,7 @@ func (s *AgentToolCallLedger) Begin(ctx context.Context, in AgentToolCallInput) 
 	for attempt := 0; attempt < 20; attempt++ {
 		row = model.AgentToolCall{UserID: in.UserID, AgentTokenID: in.AgentTokenID, OwnerUserID: in.OwnerUserID,
 			AccessRequestID: in.AccessRequestID, SessionID: in.SessionID, OnBehalfOfUserID: in.OnBehalfOfUserID,
-			Tool: in.Tool, ArgsRedacted: string(args), Decision: model.ToolCallPending}
+			Tool: in.Tool, ArgsRedacted: string(args), ArgsSealed: in.ArgsSealed, ArgsRetained: true, MaskedCount: in.MaskedCount, Decision: model.ToolCallPending}
 		err = s.db.WithContext(model.WithToolCallStamp(ctx, s.integrity.StampToolCall)).Transaction(func(tx *gorm.DB) error {
 			if tx.Dialector.Name() == "postgres" {
 				if e := tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended('agent_tool_seq:' || CAST(? AS text), 0))", strconv.FormatUint(uint64(in.UserID), 10)).Error; e != nil {
@@ -177,7 +179,7 @@ type AgentToolCallResult struct {
 }
 
 func (s *AgentToolCallLedger) Complete(ctx context.Context, id uint, result AgentToolCallResult) (*model.AgentToolCall, error) {
-	if result.Decision == model.ToolCallPending || !utf8.ValidString(result.RedactedOutput) {
+	if result.MaskedCount < 0 || result.Decision == model.ToolCallPending || !utf8.ValidString(result.RedactedOutput) {
 		return nil, errors.New("invalid final result")
 	}
 	var row model.AgentToolCall
@@ -199,7 +201,7 @@ func (s *AgentToolCallLedger) Complete(ctx context.Context, id uint, result Agen
 				excerpt = excerpt[:len(excerpt)-1]
 			}
 		}
-		row.ResultExcerpt, row.DurationMS, row.MaskedCount = excerpt, result.DurationMS, result.MaskedCount
+		row.ResultExcerpt, row.DurationMS, row.MaskedCount = excerpt, result.DurationMS, row.MaskedCount+result.MaskedCount
 		if err := row.Validate(); err != nil {
 			return err
 		}

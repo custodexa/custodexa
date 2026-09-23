@@ -26,7 +26,7 @@ import (
 // 與同步匯出同屬 AuditExportHandler（同一 /audit-export 路由群、同一
 // audit:view 閘）；本檔只放 job 三端點：POST 發起、GET 清單、GET 下載。
 //
-// 證據包的下載授權綁**申請者本人**（使用者裁決，不得放寬）：非申請者（含其他具
+// 證據包的下載授權綁**申請者本人**，不得放寬：非申請者（含其他具
 // audit:view 帳號）一律收斂 **403**（`CodeExportJobRequesterOnly`），不洩 job
 // 存在性；申請者本人的不可下載態收斂 410。細節只進審計。
 //
@@ -168,8 +168,8 @@ func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 
 // DownloadJob 下載產物（GET /audit-export/jobs/:id/download）。
 //
-// 認證＋audit:view 由路由群中介層承擔；本端點加第三道：**申請者本人**（使用者裁決，
-// 不得放寬）。非申請者（含其他具 audit:view 帳號）、job 不存在、識別非法
+// 認證＋audit:view 由路由群中介層承擔；本端點加第三道：**申請者本人**，
+// 不得放寬。非申請者（含其他具 audit:view 帳號）、job 不存在、識別非法
 // 三種情形收斂為同一 403 同一碼——分成 404/403 會讓具權限的探測者以狀態碼
 // 枚舉 job 存在性。本人 job 的不可下載態（pending/running/failed/expired）
 // 收斂 410。每次下載入審計（誰、何時、哪個包＋SHA-256）；拒絕同樣入審計，

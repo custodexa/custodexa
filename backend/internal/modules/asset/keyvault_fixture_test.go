@@ -144,10 +144,9 @@ func newMigrationDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池會讓「寫在 A 連線、
-	// 讀在 B 連線」偶發查無資料（本專案既有 flaky 真因，ff51836）。
-	// TestRetiredKeyNotPurgedWhileCredentialVersionReferences 在整包跑時穩定紅——
-	// 引用掃描落到空表而誤判零引用——即此類，非受測邏輯問題
+	// 單連線：sqlite :memory: 每條連線是各自獨立的庫，連線池若放行第二條連線，
+	// 會讓「寫在 A 連線、讀在 B 連線」偶發查無資料——引用掃描落到空表而誤判
+	// 零引用，屬連線池問題而非受測邏輯問題
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
@@ -208,7 +207,7 @@ func rewrapAndReinit(t *testing.T, db *gorm.DB, km *keyvault.KeyManagerService) 
 	}
 	km2, err := keyvault.InitKeyManager(db, p)
 	if err != nil {
-		t.Fatalf("切換那次 keyvault.InitKeyManager 不應 fail-close（HIGH-1）: %v", err)
+		t.Fatalf("切換那次 keyvault.InitKeyManager 不應 fail-close: %v", err)
 	}
 	return km2, oldKEK, res.NewKEKID
 }

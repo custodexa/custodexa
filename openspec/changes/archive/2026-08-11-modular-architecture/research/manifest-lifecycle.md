@@ -19,7 +19,7 @@
 
 ### 0.1 為什麼要有這份 manifest
 
-Phase B 要把 223 檔的扁平 `internal/service` 拆成 7 個 Go package。**拆包會改變
+模組化重構要把 223 檔的扁平 `internal/service` 拆成 7 個 Go package。**拆包會改變
 「包級變數初始化 → `init()` → 組裝根的注入／註冊 → 啟動步驟 → 停止／reset／zeroize」
 這條時序鏈**，而系統已存在多個順序敏感點（sink 必須先注入才有人寫審計、
 `model.SetAuditCreateHooks` 的蓋章 hook、release singleton、金鑰 zeroize、封印狀態機）。
@@ -282,6 +282,7 @@ docker compose exec -T backend go test ./cmd/server -run 'Lifecycle'
 | G-66b | var:internal/modules/keyvault/cipher_refs.go:RefChangeSecretCandidatePrivateKey | RefChangeSecretCandidatePrivateKey | internal/modules/keyvault/cipher_refs.go:32 | 包級全域／AAD 綁定登記 | keyvault | —（change-secret-ssh-deepening 新增） | 同上，候選私鑰欄。 |
 | G-66c | var:internal/modules/keyvault/cipher_refs.go:RefCredentialVersionPassword | RefCredentialVersionPassword | internal/modules/keyvault/cipher_refs.go:37 | 包級全域／AAD 綁定登記 | keyvault | —（credential-library 新增） | 同 G-62：憑證密文版本的密碼欄 AAD 身分。**與 G-65 的帳號欄刻意分立而非沿用**——AAD 綁「表\|欄」，換表即換身分；沿用舊 ref 會讓兩個生命週期不同的落點在密文層無從區分，而存量轉換正是靠這個區別判斷「這一份密文還是舊身分、需要改綁」。 |
 | G-66d | var:internal/modules/keyvault/cipher_refs.go:RefCredentialVersionPrivateKey | RefCredentialVersionPrivateKey | internal/modules/keyvault/cipher_refs.go:38 | 包級全域／AAD 綁定登記 | keyvault | —（credential-library 新增） | 同 G-66c，私鑰欄。 |
+| G-66e | var:internal/modules/keyvault/cipher_refs.go:RefAgentToolCallArgs | RefAgentToolCallArgs | internal/modules/keyvault/cipher_refs.go:70 | 包級全域／AAD 綁定登記 | keyvault | —（agent-ledger-evidence-fidelity 1.2 新增） | 同 G-62：工具呼叫帳本 `args_sealed` 欄（命中機敏規則的參數原文）的 AAD 身分，與 G-142 剪貼簿 `content_enc` 刻意分立——兩者都是被監控者產生的原始材料，但表不同、調閱端點與告警來源類別不同，密文層要能分辨。必須留在 `allCipherRefs` 同包，否則 AAD 完備性守衛與 DEK 輪替都看不到這一欄。 |
 | G-67 | var:internal/modules/keyvault/cipher_refs.go:RefUserTOTPSecret | RefUserTOTPSecret | internal/modules/keyvault/cipher_refs.go:35 | 包級全域／AAD 綁定登記 | keyvault | W2 | 同 G-62（跨模組：identity 的 MFA secret 由 keyvault 的 ref 描述）。 |
 | G-68 | var:internal/modules/keyvault/cipher_refs.go:RefExportSigningPrivateKey | RefExportSigningPrivateKey | internal/modules/keyvault/cipher_refs.go:38 | 包級全域／AAD 綁定登記 | keyvault | W2 | 同 G-62。 |
 | G-69 | var:internal/modules/keyvault/cipher_refs.go:RefChannelSecret | RefChannelSecret | internal/modules/keyvault/cipher_refs.go:45 | 包級全域／AAD 綁定登記 | keyvault | W2 | 同 G-62；為 §3.1 的 4.10 audit→keyvault 反向邊之一（`notification_channel_service.go:166,253` 消費）。該方向**保留為合法單向**，搬檔後不得反轉。 |
@@ -885,7 +886,7 @@ worker 停止處理殘留 queue，在 defer 經既有 AuditLogService 留 AP-94�
 收束且僅一次。這些是會話層時序，不是新的 stage2 啟動 step／ResourceBag 項目。
 `cardRE` 已移除包級全域，改在 Compile 預編譯；本 change 無新增 var/init/singleton 機器錨點。
 
-## W1-4 主體／憑證快照來源
+## 主體／憑證快照來源
 
 | ID | 機器錨點 | 項目 | 位置 | 分類 | 方向 | 波次 | 時序語義 |
 |---|---|---|---|---|---|---|---|
@@ -913,6 +914,9 @@ worker 停止處理殘留 queue，在 defer 經既有 AuditLogService 留 AP-94�
 | I-6 | init:internal/model/alert_session_id.go:init | nullable alert session serializer | internal/model/alert_session_id.go | init() | model → GORM | W3-2 | 在模型解析前註冊，既有 Go uint 對應 nullable bigint；缺註冊不能解析模型，不能把沒有會話寫為假 ID。 |
 
 | H-136 | hook:cmd/server/agent_probe_wiring.go:authorization.SetAgentProbeRecorder | authorization.SetAgentProbeRecorder | cmd/server/agent_probe_wiring.go | setter 後綁定 | assembly → authz／audit／identity | W3-2 | 路由開放前注入；同交易分類、停證與告警，提交後失效共用 connect grants、沿 token 終止路徑收線、推送 owner_id。缺接線拒絕記錄，不得視為成功。 |
+| H-137 | hook:cmd/server/stage2.go:clipboardHandler.SetSensitiveRevealReporter | `clipboardHandler.SetSensitiveRevealReporter(audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))` | cmd/server/stage2.go:1731 | setter 後綁定 | assembly ← audit／policy | —（agent-ledger-evidence-fidelity 3.3 新增） | 剪貼簿單筆調閱的「解密即告警」訊號（政策 `alert_on_sensitive_reveal`，預設關）。**必須晚於 `s.alertSink`、`s.policyService`、`s.auditFailureService` 三者建構**，且只在 AP-74 審計列寫入成功之後由 handler 呼叫——它是加強訊號不是留痕本體，提前綁定會拿到 nil sink 而靜默不發；漏綁定的症狀是政策開了卻零告警，稽核者以為沒人調閱。 |
+| H-138 | hook:cmd/server/stage2.go:agentmcp.NewHandler().WithLedgerCodec | `agentmcp.NewHandler(s.sshHandler, s.accessRequestService).WithLedgerCodec(s.keyManager)` | cmd/server/stage2.go:1818 | setter 後綁定（builder 鏈） | assembly ← keyvault | —（agent-ledger-evidence-fidelity 1.1 新增） | 工具呼叫帳本機敏參數的加密 codec 注入。**必須晚於 H-2 `InitKeyManagerWithBootstrap`**（否則 nil codec）；MCP 路由只在 unseal 後服務，故實際不會出現「codec 未就緒但有呼叫」，但 `prepareLedgerArgs` 仍對 nil／錯誤 codec fail-close 拒絕該次呼叫，不得以明文落 `args_sealed`。漏注入的症狀是**每一次命中機敏規則的工具呼叫都被拒**，不是靜默明文。 |
+| H-139 | hook:cmd/server/stage2.go:auditIntegrityHandler.SetToolCallArguments | `auditIntegrityHandler.SetToolCallArguments(audit.NewToolCallArgumentsService(database.DB, s.keyManager, s.auditTxSink, s.auditFailureService), audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))` | cmd/server/stage2.go:1605 | setter 後綁定 | assembly ← audit／keyvault／policy | —（agent-ledger-evidence-fidelity 1.4 新增） | 帳本機敏參數調閱端點（`GET /agent-tool-calls/:id/arguments`）的服務注入：codec（解密 `args_sealed`）、TxSink（AP-105 逐筆留痕）、失敗告警鏈、政策控制的 `sensitive_reveal` 告警。**必須晚於 H-2 keyManager、`s.auditTxSink`、`s.auditFailureService`、`s.policyService`、`s.alertSink` 五者**；未綁定時 handler 對該端點回收斂錯誤而非明文——漏注入的症狀是端點永遠 5xx，不是靜默揭露。與 H-137 共用 SensitiveRevealService 建構方式，兩處各自建構是刻意的（無共享狀態）。 |
 
 | G-210 | var:internal/modules/identity/agent_self_service.go:ErrAgentSelfCreateDisabled | ErrAgentSelfCreateDisabled | internal/modules/identity/agent_self_service.go:24 | 包級全域／不可變錯誤 | identity | W-SS | 自助政策與配額拒絕；只讀錯誤值，無啟停順序。 |
 

@@ -63,7 +63,7 @@ func setupRoleStateAPIFixture(t *testing.T) *roleStateAPIFixture {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	// `:memory:` 配連線池＝每條連線各自一個空庫（本專案踩過），故收斂為單連線
+	// `:memory:` 配連線池＝每條連線各自一個空庫，故收斂為單連線
 	sqlDB, _ := db.DB()
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.AuditLog{},

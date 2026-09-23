@@ -20,7 +20,7 @@ import (
 // newOffsiteDB 建立測試庫。
 //
 // **SetMaxOpenConns(1) 不可省**：純 Go sqlite driver 的每條連線是**各自獨立的
-// 空 DB**（ff51836 的根因）。本包的並發測試會另開 goroutine 寫入，池一旦開出
+// 空 DB**。本包的並發測試會另開 goroutine 寫入，池一旦開出
 // 第二條連線，該次寫入就落到一個沒有任何表的新 DB，症狀是
 // 「單獨跑綠、整包跑紅」且錯誤訊息是 no such table。
 func newOffsiteDB(t *testing.T) *gorm.DB {

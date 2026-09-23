@@ -220,6 +220,6 @@ func truncateRunes(s string, n int) string {
 // 被截斷的值多半是攻擊載荷，原樣進 log 等於把載荷散佈到日誌收集鏈
 func logAuditTruncation(field, orig string, limit int) {
 	sum := sha256.Sum256([]byte(orig))
-	log.Printf("警告: 審計欄位 %s 超出上界（%d 字元 > %d），已截斷並附指紋 sha256=%s",
+	log.Printf("警告: 稽核欄位 %s 超出上界（%d 字元 > %d），已截斷並附指紋 sha256=%s",
 		field, utf8.RuneCountInString(orig), limit, hex.EncodeToString(sum[:8]))
 }

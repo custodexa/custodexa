@@ -216,7 +216,7 @@ func TestTunnelStartReturnsOnClientNormalClose(t *testing.T) {
 // 這條打的是 pumpGuacamoleToWebSocket 的對稱缺口：ReadInstruction 出錯且連線已不
 // IsConnected 時該 pump 回 nil，若不同時收線，另一條 WS pump 仍阻塞在 ReadMessage，
 // 一樣要等保活 ping。只在 WS 側加 `defer t.Close()` 時本測試會紅
-//（memory: same-type-different-path——同型缺陷要換條路徑再驗一次）。
+// 同型缺陷要換一條獨立路徑再驗一次，不能只補原本觸發的那條路徑。
 func TestTunnelStartReturnsOnGuacdClose(t *testing.T) {
 	guacd := newFakeGuacd(t)
 	conn := guacd.dial(t)

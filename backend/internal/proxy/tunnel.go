@@ -246,7 +246,7 @@ func (t *Tunnel) pumpTimeout() {
 			t.mu.Unlock()
 
 			t.setEndReason(reason)
-			log.Printf("[Tunnel] 會話超時斷線(%s)", reason)
+			log.Printf("[Tunnel] 會話逾時斷線(%s)", reason)
 			t.Close()
 			return
 		}
@@ -296,7 +296,7 @@ func (t *Tunnel) pumpWebSocketToGuacamole() error {
 		// 跳過空消息（Guacamole.js 會發送空消息作為心跳）
 		messageStr := string(message)
 		if messageStr == "" || messageStr == ";" {
-			log.Printf("[Tunnel] [WS->Guac] 跳過空消息: len=%d, content=[%s]", len(messageStr), messageStr)
+			log.Printf("[Tunnel] [WS->Guac] 跳過空訊息: len=%d, content=[%s]", len(messageStr), messageStr)
 			continue
 		}
 

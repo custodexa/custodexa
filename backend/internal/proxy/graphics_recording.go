@@ -71,7 +71,7 @@ func finalizeGraphicsRecording(sessionID uint, basePath, recordingName string, d
 	// 更新 Session 錄製資訊
 	fileInfo, err := deps.stat(newPath)
 	if err != nil {
-		log.Printf("[Handler] 獲取 RDP 錄製檔案大小失敗: %v", err)
+		log.Printf("[Handler] 取得 RDP 錄製檔案大小失敗: %v", err)
 		deps.reportFailure(sessionID, model.CauseRecordingFileStatFailed,
 			map[string]string{model.CauseParamDetail: err.Error()})
 		return

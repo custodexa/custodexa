@@ -97,12 +97,12 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 				anon.record(c, reason, requestID, time.Since(start))
 				return
 			}
-			log.Printf("[Audit] 跳過審計：%s (userID存在=%v, username存在=%v)",
+			log.Printf("[Audit] 跳過稽核：%s (userID存在=%v, username存在=%v)",
 				c.Request.URL.Path, userIDExists, usernameExists)
 			return
 		}
 
-		log.Printf("[Audit] 記錄操作：%s %s (用戶: %s)",
+		log.Printf("[Audit] 記錄操作：%s %s (使用者: %s)",
 			c.Request.Method, c.Request.URL.Path, username)
 
 		// 解析 action 和 resource

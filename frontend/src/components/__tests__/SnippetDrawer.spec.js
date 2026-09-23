@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 // happy-dom 與 el-drawer 不相容（既知炸點）：以渲染 default slot 的 stub 取代

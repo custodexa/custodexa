@@ -45,7 +45,7 @@ func toolCallSignBytes(a *model.AgentToolCall) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(toolCallIntegrityPayload{
+	b, err := json.Marshal(toolCallIntegrityPayload{
 		ID: a.ID, Kind: "agent_tool_call_v1", Seq: a.Seq, UserID: a.UserID, AgentTokenID: a.AgentTokenID,
 		AccessRequestID: a.AccessRequestID, SessionID: a.SessionID, OnBehalfOfUserID: a.OnBehalfOfUserID,
 		OwnerUserID: a.OwnerUserID, Tool: a.Tool, ArgsRedacted: canonical, Decision: a.Decision,
@@ -53,6 +53,10 @@ func toolCallSignBytes(a *model.AgentToolCall) ([]byte, error) {
 		ResultExcerpt: a.ResultExcerpt, MaskedCount: a.MaskedCount, DurationMS: a.DurationMS,
 		CreatedAtUs: a.CreatedAt.UnixMicro(), KeyVersion: a.KeyVersion,
 	})
+	if err != nil || !a.ArgsRetained {
+		return b, err
+	}
+	return append(b, []byte("|retained=1")...), nil
 }
 
 func computeToolCallHMAC(key []byte, a *model.AgentToolCall) string {

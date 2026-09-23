@@ -222,6 +222,6 @@ func (s *TransmissionConsentService) usernameOf(userID uint) string {
 // writeAudit 審計寫入（同意/拒絕事件低頻，直寫；失敗記 log 不阻斷主流程）
 func (s *TransmissionConsentService) writeAudit(entry *model.AuditLog) {
 	if err := s.db.Create(entry).Error; err != nil {
-		log.Printf("[TransmissionConsent] 審計寫入失敗: %v", err)
+		log.Printf("[TransmissionConsent] 稽核寫入失敗: %v", err)
 	}
 }

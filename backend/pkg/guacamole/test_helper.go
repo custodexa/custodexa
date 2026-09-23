@@ -144,28 +144,28 @@ func ParseGuacamoleError(errorMsg string) (errorType string, message string) {
 	// 先檢查更具體的錯誤類型，避免被通用關鍵字誤判
 	switch {
 	case strings.Contains(lowerMsg, "upstream_timeout"):
-		return ErrorTypeTimeout, "連線超時"
+		return ErrorTypeTimeout, "連線逾時"
 
 	case strings.Contains(lowerMsg, "client_unauthorized"):
-		return ErrorTypeAuthenticationFailed, "認證失敗：用戶名或密碼錯誤"
+		return ErrorTypeAuthenticationFailed, "認證失敗：使用者名稱或密碼錯誤"
 
 	case strings.Contains(lowerMsg, "upstream_not_found"):
 		return ErrorTypeConnectionRefused, "連線被拒絕：無法連接到主機"
 
 	case strings.Contains(lowerMsg, "timeout"),
 		strings.Contains(lowerMsg, "i/o timeout"):
-		return ErrorTypeTimeout, "連線超時"
+		return ErrorTypeTimeout, "連線逾時"
 
 	case strings.Contains(lowerMsg, "authentication"),
 		strings.Contains(lowerMsg, "login"):
-		return ErrorTypeAuthenticationFailed, "認證失敗：用戶名或密碼錯誤"
+		return ErrorTypeAuthenticationFailed, "認證失敗：使用者名稱或密碼錯誤"
 
 	case strings.Contains(lowerMsg, "connection refused"),
 		strings.Contains(lowerMsg, "connect"):
 		return ErrorTypeConnectionRefused, "連線被拒絕：無法連接到主機"
 
 	case strings.Contains(lowerMsg, "unauthorized"):
-		return ErrorTypeAuthenticationFailed, "認證失敗：用戶名或密碼錯誤"
+		return ErrorTypeAuthenticationFailed, "認證失敗：使用者名稱或密碼錯誤"
 
 	default:
 		return ErrorTypeProtocolError, errorMsg

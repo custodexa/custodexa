@@ -4,9 +4,9 @@ import ElementPlus from 'element-plus'
 import AccessControl from '../AccessControl.vue'
 import { t } from '@/i18n'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容，
@@ -140,9 +140,9 @@ const assetsFixture = () => ({
   total: 2,
 })
 
-// el-select 的選中文案與選項清單走 teleported popper，happy-dom 下不渲染——
+// el-select 的選中文案與選項清單走 teleported popper，happy-dom 下不渲染，
 // 以具名 stub 讓選項文案（含動態繼承文案）直接落入 DOM，change 事件語義不變
-// （沿 frontend-testing-quirks「測邏輯層不測 EP 內部」原則）
+// （測邏輯層不測 EP 內部）
 const ElSelectStub = {
   name: 'ElSelect',
   props: ['modelValue'],

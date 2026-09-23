@@ -23,7 +23,7 @@ func newAssetAuthorizationRepository(db *gorm.DB) *assetAuthorizationRepository 
 // Create 創建授權
 func (r *assetAuthorizationRepository) Create(auth *model.AssetAuthorization) error {
 	if err := r.db.Create(auth).Error; err != nil {
-		return fmt.Errorf("創建授權失敗: %w", err)
+		return fmt.Errorf("建立授權失敗: %w", err)
 	}
 	return nil
 }

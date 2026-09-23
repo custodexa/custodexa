@@ -19,7 +19,7 @@ import (
 // （四路徑主體聯集、節點含子樹客體、時效窗），sqlmock 只會複誦我寫的 SQL 字串，
 // 對「群組授權有沒有真的被撈到」零證明力。
 //
-// `:memory:` 連線池釘為 1（ff51836 教訓）：多連線各自拿到獨立的空記憶體庫，
+// `:memory:` 連線池釘為 1：多連線各自拿到獨立的空記憶體庫，
 // 症狀是單獨跑綠、整包跑紅。
 func setupScopeEnv(t *testing.T) (*AssetAuthorizationService, *gorm.DB) {
 	t.Helper()

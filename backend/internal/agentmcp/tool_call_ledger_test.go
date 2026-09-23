@@ -191,7 +191,7 @@ func TestOutputMaskingAgentOnly(t *testing.T) {
 	require.NotContains(t, report.Body, "4111111111111111")
 	row = model.AgentToolCall{}
 	require.NoError(t, f.db.Where("tool=?", "close_task").First(&row).Error)
-	require.Equal(t, 1, row.MaskedCount)
+	require.Equal(t, 2, row.MaskedCount)
 }
 
 func TestToolCallLedgerMaskedCountIsSigned(t *testing.T) {

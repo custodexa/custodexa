@@ -100,6 +100,19 @@
           {{ denialLabel(row.denial_code) }}
         </td>
       </tr>
+      <tr
+        v-if="blocked(row) && row.args_retained && typeof row.args_redacted?.command === 'string'"
+        class="why denied"
+      >
+        <td colspan="7">
+          <code data-test="denied-command-preview">{{ row.args_redacted.command }}</code>
+          <code
+            v-if="row.denial_code"
+            class="denied-code"
+            data-test="denied-reason-code-preview"
+          >{{ row.denial_code }}</code>
+        </td>
+      </tr>
       <tr class="more">
         <td colspan="7">
           <details>
@@ -109,7 +122,45 @@
               <dt>{{ t('agentLedger.reasonCode') }}</dt><dd><code data-test="denial-code">{{ row.denial_code || placeholder }}</code></dd>
               <dt>{{ t('agentLedger.toolName') }}</dt><dd><code>{{ row.tool }}</code></dd>
               <dt>{{ t('agentLedger.result') }}</dt><dd>{{ row.decision === 'pending' ? t('agentLedger.unknown') : row.result_status || t('agentLedger.unknown') }}</dd>
-              <dt>{{ t('agentLedger.arguments') }}</dt><dd><pre>{{ JSON.stringify(row.args_redacted, null, 2) }}</pre></dd>
+              <dt>{{ t('agentLedger.arguments') }}</dt><dd>
+                <span
+                  v-if="!row.args_retained"
+                  data-test="arguments-not-retained"
+                >{{ t('agentLedger.argumentsNotRetained') }}</span>
+                <template v-else>
+                  <div class="argument-actions">
+                    <el-tag
+                      v-if="hasRevealed(row)"
+                      class="ot-tag-neutral"
+                      data-test="arguments-revealed"
+                    >
+                      {{ t('agentLedger.revealed') }}
+                    </el-tag>
+                    <el-button
+                      v-else-if="canReveal && row.masked_count > 0"
+                      link
+                      type="primary"
+                      data-test="reveal-arguments"
+                      @click="openReveal(row)"
+                    >
+                      {{ t('agentLedger.revealArguments') }}
+                    </el-button>
+                  </div>
+                  <div
+                    v-if="handleFingerprint(argumentsFor(row))"
+                    class="handle-fingerprint"
+                  >
+                    <code>{{ handleFingerprint(argumentsFor(row)) }}</code>
+                    <HelpTip
+                      :content="t('agentLedger.handleFingerprint')"
+                    />
+                  </div>
+                  <pre
+                    v-if="Object.keys(otherArguments(argumentsFor(row))).length"
+                    data-test="ledger-arguments"
+                  >{{ JSON.stringify(otherArguments(argumentsFor(row)), null, 2) }}</pre>
+                </template>
+              </dd>
               <dt>{{ t('agentLedger.digest') }}</dt><dd><code>{{ row.result_digest || t('agentLedger.unavailable') }}</code></dd>
               <dt>{{ t('agentLedger.excerpt') }}</dt><dd>
                 <p data-test="excerpt-boundary">
@@ -122,10 +173,50 @@
       </tr>
     </tbody>
   </table>
+  <el-dialog
+    v-model="revealDialogVisible"
+    :title="t('agentLedger.revealArguments')"
+    width="480px"
+    @closed="clearReveal"
+  >
+    <p>{{ t('agentLedger.revealReasonHint') }}</p>
+    <el-input
+      v-model="revealReason"
+      type="textarea"
+      :rows="3"
+      :placeholder="t('agentLedger.revealReason')"
+      data-test="reveal-reason"
+    />
+    <p
+      v-if="revealError"
+      class="reveal-error"
+      data-test="reveal-error"
+    >
+      {{ revealError }}
+    </p>
+    <template #footer>
+      <el-button @click="revealDialogVisible = false">
+        {{ t('common.cancel') }}
+      </el-button>
+      <el-button
+        type="primary"
+        :disabled="!validReason || revealSubmitting"
+        :loading="revealSubmitting"
+        data-test="reveal-submit"
+        @click="submitReveal"
+      >
+        {{ t('agentLedger.revealArguments') }}
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 <script setup>
+import { ref, computed, watch } from 'vue'
 import i18n, { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
+import { getAgentToolCallArguments } from '@/api/agentTasks'
+import { useRoles } from '@/composables/useRoles'
+import HelpTip from '@/components/HelpTip.vue'
 import { formatDateTime } from '@/utils/format'
 // targets maps session id to the asset and account that session reached; the ledger
 // contract carries no target of its own, so an unmatched session stays a placeholder.
@@ -135,6 +226,57 @@ const props = defineProps({
   linkMode: { type: String, default: 'session' },
 })
 const placeholder = '—'
+const { isPrivileged: canReveal } = useRoles()
+const revealed = ref({})
+const revealDialogVisible = ref(false)
+const revealReason = ref('')
+const revealError = ref('')
+const revealSubmitting = ref(false)
+const selectedRow = ref(null)
+const validReason = computed(() => {
+  const reason = revealReason.value.trim()
+  return reason.length > 0 && new TextEncoder().encode(reason).length <= 1000
+})
+const hasRevealed = row => Object.prototype.hasOwnProperty.call(revealed.value, row.id)
+const argumentsFor = row => hasRevealed(row) ? revealed.value[row.id] : row.args_redacted
+const handleFingerprint = value => typeof value?.session_handle === 'string' && value.session_handle.startsWith('fp:')
+  ? value.session_handle : ''
+const otherArguments = value => {
+  if (!value || typeof value !== 'object') return {}
+  if (!handleFingerprint(value)) return value
+  const rest = { ...value }
+  delete rest.session_handle
+  return rest
+}
+watch(() => props.rows, () => {
+  revealed.value = {}
+  revealDialogVisible.value = false
+})
+const openReveal = row => {
+  selectedRow.value = row
+  revealReason.value = ''
+  revealError.value = ''
+  revealDialogVisible.value = true
+}
+const clearReveal = () => {
+  selectedRow.value = null
+  revealReason.value = ''
+  revealError.value = ''
+}
+const submitReveal = async () => {
+  if (!selectedRow.value || !validReason.value || revealSubmitting.value) return
+  revealSubmitting.value = true
+  revealError.value = ''
+  try {
+    const response = await getAgentToolCallArguments(selectedRow.value.id, revealReason.value.trim())
+    revealed.value[selectedRow.value.id] = response.data.arguments
+    revealDialogVisible.value = false
+  } catch (error) {
+    revealError.value = resolveApiError(error?.response?.data, error?.response?.status, t('agentLedger.revealFailed'))
+  } finally {
+    revealSubmitting.value = false
+  }
+}
 // The ledger row carries its own target where the contract provides one; the session
 // list is the fallback for rows recorded before that projection existed.
 const target = row => row.asset_name || row.account_username
@@ -167,6 +309,10 @@ dt { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
 dd { margin: 0; overflow-wrap: anywhere; }
 p { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--ot-font-mono); font-size: var(--ot-font-size-sm); }
+.argument-actions { display: flex; align-items: center; gap: var(--ot-space-sm); }
+.handle-fingerprint { display: flex; align-items: center; gap: var(--ot-space-xs); font-family: var(--ot-font-mono); }
+.denied-code { margin-inline-start: var(--ot-space-sm); }
+.reveal-error { color: var(--ot-danger); }
 a { color: var(--ot-primary); }
 summary { cursor: pointer; }
 </style>

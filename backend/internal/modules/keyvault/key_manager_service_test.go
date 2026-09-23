@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -23,7 +23,7 @@ func newKeyManagerDB(t *testing.T) *gorm.DB {
 	// OIDCProvider／LDAPDirectory 一併建表：其 client_secret_enc／bind_password_enc
 	// 登記於 envelopeMigrationTargets，AAD 殘餘掃描會逐表計數，缺表即整個掃描失敗
 	// （非本測試意圖）
-	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}); err != nil {
+	if err := db.AutoMigrate(&model.DataKey{}, &model.OIDCProvider{}, &model.LDAPDirectory{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// schema_migrations 屬 repository 層，測試以等價表建立。

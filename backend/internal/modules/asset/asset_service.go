@@ -596,7 +596,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 			return err
 		}
 		if err := tx.Create(asset).Error; err != nil {
-			return fmt.Errorf("創建資產失敗: %w", err)
+			return fmt.Errorf("建立資產失敗: %w", err)
 		}
 		// 建立表單的單帳號快速欄位透明成為 default 帳號：與資產同交易——
 		// 建了資產卻沒建帳號，該資產自階段 2 起即為「無身分可連」的死資產。
@@ -647,7 +647,7 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 				CredentialID:    credID,
 				CredentialScope: credScope,
 			}, req.CreatedBy, req.CreatedByName); err != nil {
-				return fmt.Errorf("記錄預設帳號建立審計失敗: %w", err)
+				return fmt.Errorf("記錄預設帳號建立稽核失敗: %w", err)
 			}
 		}
 		for _, nodeID := range nodeIDs {

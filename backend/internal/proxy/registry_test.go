@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// 創建測試用的 WebSocket 服務器和客戶端連線（Tunnel.Disconnect 協議測試用）
+// 創建測試用的 WebSocket 伺服器和客戶端連線（Tunnel.Disconnect 協議測試用）
 func createTestWebSocketConn(t *testing.T) (*websocket.Conn, *httptest.Server) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {

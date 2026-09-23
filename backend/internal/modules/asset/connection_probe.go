@@ -2,12 +2,12 @@ package asset
 
 // 撥測（test-connection）的協議分派對照表與各協議 probe。
 //
-// 為何獨立成檔：分派曾是「白名單 SSH ＋ else 一律送 guacd」的**否定式**結構，
-// 於是 mysql／postgres／redis／k8s 四種協議被 else 靜默吞進 guacd——guacd 沒有這些
+// 為何獨立成檔：分派若採「白名單 SSH ＋ else 一律送 guacd」的**否定式**結構，
+// 新增協議（mysql／postgres／redis／k8s 等）容易被 else 靜默吞進 guacd——guacd 沒有這些
 // client library，回應是「不回 error 指令也不關 socket」，撥測永不返回並固定洩漏
-// 一條 TCP 連線與 2 個 fd。同型缺陷在 e09658d（2026-06-12）以「再加一個 case」修過一次，
-// 隔天新協議上線即復發。本檔把分派改成資料結構，並以雙向完備性守衛
-// （TestConnectionProbeTableComplete）釘住 assetProtocols ⇔ connectionProbes。
+// 一條 TCP 連線與 2 個 fd。本檔把分派改成資料結構，並以雙向完備性守衛
+// （TestConnectionProbeTableComplete）釘住 assetProtocols ⇔ connectionProbes，
+// 新增協議若忘記登記即測試不過，避免此類缺陷復發。
 
 import (
 	"context"

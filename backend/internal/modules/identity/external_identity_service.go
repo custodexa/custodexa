@@ -431,7 +431,7 @@ func (s *UserService) invalidateCredentialsLocked(tx *gorm.DB, userID uint, reas
 		return err
 	}
 	if _, err := RevokeAllRefreshTokens(tx, userID, model.RefreshRevokeCredentialEpoch); err != nil {
-		return fmt.Errorf("撤銷刷新憑證失敗: %w", err)
+		return fmt.Errorf("撤銷更新憑證失敗: %w", err)
 	}
 	return nil
 }

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -119,7 +119,7 @@ func TestRotationRejectedByForeignPendingInDB(t *testing.T) {
 // 不阻塞（sqlite 路徑驗 package 級 try-mutex；同語義的 postgres 路徑見 PG 整合測試）。
 // DB 用 shared-cache 具名 memory DSN：goroutine 內的持鎖交易佔用一條連線時，
 // 鎖外查詢（RewrapKEK 的遷移 fast-fail）自第二條連線仍看得到同一 DB
-// （sqlite :memory: 每連線獨立空 DB 的連線池陷阱——見 sqlite-memory-connection-pool）
+// （sqlite :memory: 每連線獨立空 DB 的連線池陷阱）
 func TestLockBusyReturns409Sentinel(t *testing.T) {
 	shared, err := gorm.Open(sqlite.Open("file:lockbusytest?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
@@ -127,7 +127,7 @@ func TestLockBusyReturns409Sentinel(t *testing.T) {
 	}
 	if err := shared.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.User{}, &model.ExportSigningKey{}, &model.CheckpointSigningKey{}, &model.OIDCProvider{},
 		&model.LDAPDirectory{}, &model.NotificationChannel{}, &model.AuditLog{}, &model.DataKey{},
-		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.UserRole{}); err != nil {
+		&model.ChangeSecretCandidate{}, &model.ClipboardEvent{}, &model.OffsiteProfile{}, &model.AgentToolCall{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := shared.Exec("CREATE TABLE schema_migrations (version varchar(50) PRIMARY KEY, applied_at datetime NOT NULL)").Error; err != nil {

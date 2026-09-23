@@ -170,7 +170,7 @@ func TestQualifiedTextRowClosesSpanAndRaisesNoAlert(t *testing.T) {
 
 // TestDegradeAlertWithoutSinkIsLoudNotSilent 未注入落地面時 SHALL NOT 靜默 no-op。
 //
-// 靜默的後果是「告警系統看起來正常但一筆都沒發」——那是本 repo 已經踩過的形態
+// 靜默的後果是「告警系統看起來正常但一筆都沒發」
 // 此處以「不 panic 且會話照常結束」為界：錯誤只記 log，不反壓會話。
 func TestDegradeAlertWithoutSinkIsLoudNotSilent(t *testing.T) {
 	store, _ := newDegradeAlertStore(t)

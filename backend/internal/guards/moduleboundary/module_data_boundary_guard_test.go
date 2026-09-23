@@ -1,6 +1,6 @@
 package moduleboundary
 
-// 資料邊界閘門（Phase B 任務 6.0a–6.0c）。
+// 資料邊界閘門。
 //
 // **為何非有不可**：`go list -deps` 證得了 import 層零出向，證不了資料層——七個模組
 // 共用 `internal/model` 並各自持有 `*gorm.DB`，任何模組都能直接讀寫他模組的表而

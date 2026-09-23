@@ -32,6 +32,7 @@ import (
 // 存在的意義是「顯式承認例外」，使守衛不因無法偵測而失去意義
 var knownNonEncColumns = map[string][]string{
 	"notification_channels": {"secret", "url"},
+	"agent_tool_calls":      {"args_sealed"},
 }
 
 // minModelParsedFiles model 套件的解析檔數下限（防空集合假綠）。

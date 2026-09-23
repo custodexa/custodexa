@@ -4,9 +4,9 @@ import ElementPlus from 'element-plus'
 import Roles from '../Roles.vue'
 import i18n from '@/i18n'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 // happy-dom 的 MutationObserver 與 el-table key-render-helper 不相容
@@ -27,7 +27,7 @@ vi.mock('@/api/user', () => ({
 
 const seededRoles = [
   { id: 1, name: 'admin', description: '系統管理員，擁有所有權限', created_at: '2026-01-01T00:00:00Z' },
-  { id: 2, name: 'auditor', description: '稽核人員，可以檢視所有審計日誌和連線記錄', created_at: '2026-01-01T00:00:00Z' },
+  { id: 2, name: 'auditor', description: '稽核人員，可以檢視所有稽核日誌和連線記錄', created_at: '2026-01-01T00:00:00Z' },
 ]
 
 const mountView = () =>

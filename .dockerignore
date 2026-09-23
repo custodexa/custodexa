@@ -25,13 +25,8 @@ data
 frontend/dist
 backend/docs
 
-# 知識圖譜產物（post-commit hook 增量更新，與建置無關）
-.code-review-graph
+# 本機工具產物（與建置無關）
 graphify-out
-
-# 行銷與簡報素材（不進任何映像）
-product-deck
-product-page
 
 # 規格與文件（backend 測試以 volume 掛載取得，非 build 期需要）
 openspec

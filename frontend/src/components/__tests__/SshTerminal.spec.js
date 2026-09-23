@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 // xterm 與 addons 在 happy-dom 無法真實渲染，以可觀察的 mock 取代
@@ -272,7 +272,7 @@ describe('SshTerminal', () => {
     })
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.text()).toContain('請聯繫管理員確認後重置主機金鑰')
+    expect(wrapper.text()).toContain('請聯絡管理員確認後重置主機金鑰')
     const goBtn = wrapper
       .findAll('button')
       .find((b) => b.text().includes('前往資產設定重置主機金鑰'))

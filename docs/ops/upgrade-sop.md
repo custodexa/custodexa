@@ -59,7 +59,7 @@ Confirming a preview only fills in form values, and **nothing takes effect until
 
 ### 1.2 Configure the off-box log collector (syslog forwarding), a required companion, not an option
 
-**Where**: System Settings → Security Policy → log forwarding settings.
+**Where**: System Settings → Security Policies → syslog Log Forwarding.
 
 The audit integrity mechanism (the checkpoint chain) **covers only local integrity while no off-box collector is configured**. It can prove that the records in the database have not been altered, but it cannot counter replacing the local data together with the checkpoints (including rolling the whole database back to an older backup). For such an attack to be discovered there has to be a copy the system itself cannot reach.
 
@@ -112,7 +112,7 @@ Delivery does not end with the system installed. Complete these at the same time
 
 ### 1.7 Configure the login banner
 
-**Where**: System Settings → Security Policy → login banner.
+**Where**: System Settings → Security Policies → Login Notice.
 
 Before a user signs in, the sign-in page shows a passage you wrote, declaring that the system is for authorized users only and that all operations are recorded. The wording of that declaration belongs to your legal and HR functions, and the product presumes no content: **it ships empty, and empty means nothing is shown**.
 
@@ -138,7 +138,7 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
 If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the fourteen in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the twenty-eight in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
@@ -148,7 +148,7 @@ If you build the images yourself, see the tag-aside step in §2.2; if you deploy
 
 #### Upgrading to 1.11.1
 
-- **One data migration runs**, `20260923_agent_lateral_rule_pattern`. It changes no schema and touches a single row: the factory rule that blocks lateral movement by an automated operator. An installed copy of that rule which no administrator has edited is updated to the newer pattern, which matches only at a command position, so reading a path such as `~/.ssh` no longer trips it; a copy an administrator has edited keeps its own pattern. Its duration does not depend on how much data the deployment holds.
+- **One data migration runs**, `20260923_agent_lateral_rule_pattern`. It changes no schema and touches a single row: the factory rule that blocks lateral movement by an automated operator. An installed copy of that rule which no administrator has edited is updated to the newer pattern. It matches against the raw command line without shell parsing, so a blocked name in an argument position also trips it (`man ssh`, `which nc`, `ls /usr/bin/ssh`), while reading a path such as `~/.ssh` no longer does; a copy an administrator has edited keeps its own pattern. Its duration does not depend on how much data the deployment holds.
 
 #### Upgrading to 1.10.0
 
@@ -191,7 +191,7 @@ Four properties of that step matter here. It **never reads `KEK_VAULT_SECRET_ID`
 #### Pre-upgrade check: deployments serving over plain http
 
 Whether the web session refresh cookie is stored only over https is decided by the security policy
-**"keep sign-in state only over https connections"** (System Settings → Security Policy → "Connections and accounts"), whose factory value is on. This policy is not new in this release, **deployments on v1.0.4 already have it**; the table below is the seeding rule at the first startup while it **has no value yet**:
+**"Keep sign-in only on https connections"** (System Settings → Security Policies → "Sessions and Accounts"), whose factory value is on. This policy is not new in this release, **deployments on v1.0.4 already have it**; the table below is the seeding rule at the first startup while it **has no value yet**:
 
 | `.env` at the first startup after the upgrade | Initial policy value |
 |---|---|
@@ -204,16 +204,16 @@ Whether the web session refresh cookie is stored only over https is decided by t
 
 **But your deployment probably already has a value** (for an existing deployment, if it ever started with `AUTH_REFRESH_COOKIE_SECURE` or `PUBLIC_BASE_URL`, the seeding happened then), and in that case changing `.env` has no effect at all; see the note at the end of this section. **To confirm the current state, look at the actual value of that switch on the security policy page, not at `.env`.**
 
-Not setting it does not make the system unusable: the service starts normally and connections are established normally. The cost is that the browser does not store the refresh cookie, so a user's sign-in state lasts at most 15 minutes (the lifetime of the access token), after which their next action takes them back to the sign-in page and whatever they were looking at is interrupted. The sign-in page explains the situation to the user and asks them to contact an administrator; when an administrator signs in at that same http address, a matching notice appears at the top of the security policy page.
+Not setting it does not make the system unusable: the service starts normally and connections are established normally. The cost is that the browser does not store the refresh cookie, so a user's sign-in state lasts at most 15 minutes (the lifetime of the access token), after which their next action takes them back to the sign-in page and whatever they were looking at is interrupted. The sign-in page tells the user that sign-in state is not kept over this http connection; when an administrator signs in at that same http address, a matching notice appears at the top of the security policy page.
 **The system never changes this policy on its own.**
 
-**If you only notice after the upgrade, there is no need to touch the deployment files again**: sign in as admin, turn off "keep sign-in state only over https connections" on System Settings → Security Policy and save, and the next cookie issued uses the new value with no restart needed.
+**If you only notice after the upgrade, there is no need to touch the deployment files again**: sign in as admin, turn off "Keep sign-in only on https connections" on System Settings → Security Policies and save, and the next cookie issued uses the new value with no restart needed.
 
 Deployments serving over https do not need this item; leaving the policy on is the correct setting.
 
 > This policy accepts seeding from `.env` only while it has no value. Once it has been seeded, or once someone has saved on the security policy page, changing `.env` has no effect at all, and adjustments always go back to the security policy page.
 
-> **You confirmed the policy is off, yet the sign-in page still says the system keeps sign-in state only over https connections**: that notice is shown by the frontend on three **local** conditions (the page was opened over http, this tab has never refreshed successfully, and the refresh finally failed), and **it does not look at the policy's actual value**. So a brand-new browser (or a private window) opening the sign-in page for the first time sees it even with the policy off. **Always judge the current policy state by the switch on the security policy page**; if it stops appearing after a successful sign-in, this is what happened, and there is no configuration problem to chase.
+> **You confirmed the policy is off, yet the sign-in page still says "This site is opened over http, so sign-in state is not kept (re-login every 15 minutes)."**: that notice is shown by the frontend on three **local** conditions (the page was opened over http, this tab has never refreshed successfully, and the refresh finally failed), and **it does not look at the policy's actual value**. So a brand-new browser (or a private window) opening the sign-in page for the first time sees it even with the policy off. **Always judge the current policy state by the switch on the security policy page**; if it stops appearing after a successful sign-in, this is what happened, and there is no configuration problem to chase.
 
 #### Pre-upgrade check: the external ports and the built-in TLS proxy when upgrading to 1.4.0
 
@@ -402,7 +402,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's fourteen increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's twenty-eight increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -419,6 +419,20 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260908_group_role_mapping (group_role_mapping)
   執行 migration: 20260909_policy_groups (policy_groups)
   執行 migration: 20260913_kek_topology (kek_topology)
+  執行 migration: 20260921_alert_rule_direction (alert_rule_direction)
+  執行 migration: 20260921_agent_audit_actions (agent_audit_actions)
+  執行 migration: 20260921_identity_agent_principal (identity_agent_principal)
+  執行 migration: 20260921_principal_integrity (principal_integrity)
+  執行 migration: 20260921_access_request_items (access_request_items)
+  執行 migration: 20260921_access_request_item_decisions (access_request_item_decisions)
+  執行 migration: 20260921_agent_audit_ledger (agent_audit_ledger)
+  執行 migration: 20260921_agent_breaker_alert (agent_breaker_alert)
+  執行 migration: 20260921_agent_visibility_exposures (agent_visibility_exposures)
+  執行 migration: 20260921_agent_subject_rules (agent_subject_rules)
+  執行 migration: 20260922_agent_session_token_name (agent_session_token_name)
+  執行 migration: 20260923_agent_lateral_rule_pattern (agent_lateral_rule_pattern)
+  執行 migration: 20260924_agent_tool_call_args_retained (agent_tool_call_args_retained)
+  執行 migration: 20260924_sensitive_reveal_alert (sensitive_reveal_alert)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -507,6 +521,112 @@ place. **It creates one table**: it touches no existing table, adds no column an
 so its duration is independent of the volume held. The table is empty until the first startup reads
 the non-secret values out of `.env` (§2.0) or an administrator sets them on the key management page.
 **Its `Down` is lossy**; read §4.1 before planning any way back.
+
+`20260921_alert_rule_direction` adds a direction column to the alert rules (input or output, with a
+value range constraint). Existing rules all take the default, input, so they keep matching what is
+typed exactly as before. In the same step it inserts the two built-in output rules (possible card
+numbers and private key headers in output), skipping any name that already exists. **It backfills
+nothing and rewrites no existing rule**; the alert rule table is small, so its duration does not depend
+on how much data the deployment holds. **Its `Down` is lossy**; read §4.1 before planning any way back.
+
+`20260921_agent_audit_actions` widens the action column of the audit log from 20 to 32 characters, so
+that the longer action names of the automated operator channel fit. **It is a pure type widening, with
+no data conversion and no backfill**; existing audit rows are untouched. Under PostgreSQL's usual
+behaviour, a type widening like this typically does not need to scan or rewrite existing rows, so its
+duration is typically independent of the volume held. **Its `Down` refuses to run**; see §4.1.
+
+`20260921_identity_agent_principal` gives accounts a kind (a person or an automated operator), an owner
+reference that an automated operator must have and a person must not, and the time a probe breaker
+tripped and is awaiting release. It creates the agent token table (named, expiring tokens stored only
+as a hash, with who created and revoked each one, a revocation note, and the time and reason it was
+suspended) and adds two reference columns to sessions (the token a session was opened with, and the
+access request it belongs to). **Existing accounts all become persons and existing sessions keep both
+references empty; nothing is backfilled.** Under PostgreSQL's usual behaviour, adding a constraint scans
+the table's existing rows to check them, so this may take longer as the number of accounts and sessions
+grows; no existing row is rewritten. **Its `Down` refuses to run**; see §4.1.
+
+`20260921_principal_integrity` rebuilds one partial unique index on the audit failure events and adds
+another, so that the principal state integrity check can keep one open failure interval per table it
+watches, while every other mechanism keeps at most one. **It changes no column and touches no data**;
+its duration follows the size of the audit failure event table, not the session or audit volume.
+**Its `Down` refuses to run**; see §4.1.
+
+`20260921_access_request_items` splits an access request into items, one per requested asset. It adds
+the account that carries out the request and the closing time to access requests, and creates the item
+table (asset, accounts, status, approved window, who decided, revocation, and a snapshot of the access
+policy in force) with its indexes. **In the same transaction it converts every existing access request
+that is not deleted into exactly one item**, carrying over its status (a request that was revoked,
+cancelled or expired becomes a revoked item), approved window and decision; converted items carry an
+empty policy snapshot. It then checks that every request got exactly one item; on any mismatch it stops
+and the whole transaction is rolled back, leaving the database as it was. The rule that allows only one
+pending item per requester and asset is installed after that check. **Its duration grows with the
+number of access requests**, which in a typical deployment is far smaller than the session and audit
+volume. **Its `Down` refuses to run**; see §4.1.
+
+`20260921_access_request_item_decisions` ties decisions to items: it adds to each item the
+authorization ticket it produced and the revocation note, adds an item reference to approval votes, and
+rebuilds the one-vote-per-approver rule so that it applies per item, with a separate rule for votes that
+carry no item. **In the same transaction it fills these from the existing data**: each item takes the
+ticket and note of its request; an item still without a ticket is linked to one only when exactly one
+ticket matches its executing account, asset and approved window, and is left empty rather than guessed
+when several match; each existing vote is linked to the item for its request's asset. **Its duration
+grows with the number of access requests and votes.** **Its `Down` refuses to run**; see §4.1.
+
+`20260921_agent_audit_ledger` creates the evidence layer of the automated operator channel: three tables
+(the tool call ledger, each row carrying an integrity code and key version; the task reports and their
+versions; and the probe events, that is, references to assets outside the operator's reach), four
+columns on sessions (the kind of actor, on whose behalf, the owner, and the time the session was ended
+by a revocation) with a value range constraint, a subject column on alert rules (all, persons or automated
+operators), and four columns on audit checkpoints for the tool call range, row count and aggregate hash.
+**It is purely additive with no backfill**: existing rules default to all and keep matching everyone as
+before, and checkpoints notarized before the upgrade keep the new columns empty. Under PostgreSQL's usual
+behaviour, adding the session constraint scans the session table's existing rows to check them, so this
+may take longer as the number of sessions grows; no existing row is rewritten. **Its `Down` refuses to
+run**; see §4.1.
+
+`20260921_agent_breaker_alert` lets the alert table hold the probe breaker's alert: it widens the alert
+kind column from 20 to 32 characters, adds the new kind to its value range, and allows the session
+reference to be empty for that kind only. Existing alerts are not changed. Under PostgreSQL's usual
+behaviour, widening the column and re-adding the value range constraint scans the alert table's existing
+rows to check them, so this may take longer as the table grows; nothing is rewritten. **Its `Down`
+refuses to run**; see §4.1.
+
+`20260921_agent_visibility_exposures` creates one table recording, per automated operator and asset,
+when the asset was first and last shown to that operator. **It creates a table only and backfills
+nothing**, so its duration is independent of the volume held. The record starts at this upgrade and
+does not reconstruct what was shown before (see "Agent audit chain: verification and rollback
+boundary" below). **Its `Down` refuses to run**; see §4.1.
+
+`20260921_agent_subject_rules` changes no schema. It inserts the two built-in rules that apply to
+automated operators only and block the command (lateral movement, and reads of sensitive paths such as
+SSH keys and the shadow file, on SSH and Kubernetes sessions), skipping any name that already exists, so
+a rule an administrator already keeps under that name is left as it is. Its duration is independent of
+the volume held. **Its `Down` refuses to run**; see §4.1.
+
+`20260922_agent_session_token_name` adds one nullable column to sessions: the name of the agent token a
+session was opened with, recorded when the session is created. **Existing sessions keep it empty;
+nothing is backfilled**, and its duration is independent of the volume held. **Its `Down` does
+nothing**; see §4.1.
+
+`20260923_agent_lateral_rule_pattern` changes no schema. It updates the built-in lateral movement rule
+to the current pattern only where the stored pattern is still one of the previously shipped factory
+values; a rule an administrator has edited is left alone (what the new pattern matches is under
+"Upgrading to 1.11.1" in §2.0). It touches at most one row, so its duration is independent of the
+volume held. **Its `Down` does nothing**; see §4.1.
+
+`20260924_agent_tool_call_args_retained` adds two columns to the tool call ledger: the original
+arguments of a call whose arguments had sensitive spans masked, stored encrypted, and a marker saying the row was recorded with them. The
+marker is part of what the row's integrity code covers, and reading the original arguments is a
+separate action that is audited before anything is decrypted. **Existing ledger rows keep the
+arguments empty and the marker false; nothing is backfilled and no existing row is signed again**, so
+its duration is independent of the volume held. **Its `Down` does nothing**; see §4.1.
+
+`20260924_sensitive_reveal_alert` adds one kind to the value range of the alert table: the alert raised
+when someone opens protected original content (a clipboard record, or the original arguments of a tool
+call) while the security policy that asks for it is on. That policy is off by default, so nothing
+changes until an administrator turns it on. Existing alerts are not changed. Under PostgreSQL's usual
+behaviour, re-adding the value range constraint scans the alert table's existing rows to check them, so
+this may take longer as the table grows; nothing is rewritten. **Its `Down` refuses to run**; see §4.1.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -617,10 +737,10 @@ The minimum TLS version is 1.2. You provide the target's listener certificate (w
 
 #### Startup logs related to offsite storage (new in this release)
 
-**The line that decides whether the feature is running.** With no current storage settings generation (never configured, or offsite storage stopped in the admin interface), the log has only this line and no upload worker is created:
+**The line that decides whether the feature is running.** With no current storage settings generation (never configured, or offsite storage stopped in the admin interface), the log has only this line and the upload worker is not started at startup. It starts once an administrator completes the offsite storage settings in the admin interface, with no restart needed:
 
 ```
-[OffsiteUploader] 目前無現行離機儲存設定世代，不啟動上傳 worker
+[OffsiteUploader] 目前無現行離機儲存設定世代，暫不啟動上傳 worker（完成設定後即時啟動）
 ```
 
 Seeing this line means this deployment is not making new uploads right now. It **does not mean the feature is broken**, and it does not affect retrieval of historical objects.
@@ -724,8 +844,7 @@ This is a deliberate fail-closed behavior of 1.0, and the database itself is not
 
 ```
 拒絕啟動：資料庫的 schema_migrations 內有 N 筆本版程式碼不認得的 migration 版本：…
-  本版本以單一 schema baseline（20260816_schema_baseline）作為 schema 的唯一事實源，
-  壓縮前的逐條 migration 已不存在，因此不提供既有資料庫的就地升級路徑。
+  本版本以單一 schema baseline（20260816_schema_baseline）作為 schema 的唯一事實源，壓縮前的逐條 migration 已不存在，因此**不提供既有資料庫的就地升級路徑**。
 ```
 
 **What it means**: this database was created **before** the baseline generation, and this release's code cannot read the shape of its schema.
@@ -755,7 +874,7 @@ CRITICAL：單實例鎖由另一個資料庫工作階段持有。本版不支援
   持鎖者：application_name=custodexa-instance-guard pid=8510 backend_start=2026-08-25T10:04:22.2442Z code=55bd875b8d97
   風險：兩個實例同時執行會造成金鑰快取、匯出工作、錄影落地與封存期留痕的資料問題（見 docs/ops/deployment-topology-limits.md）。
   處置 (a)：若確認另一實例仍在執行：先停止它，再重啟本實例（無需任何設定）。
-  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 55bd875b8d97 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=55bd875b8d97 後重啟。兩者都會寫入審計事件並在管理介面顯示橫幅，直到鎖由本實例取得。
+  處置 (b)：若確認無其他實例在執行（例如持鎖者是主機當機後殘留的工作階段）：開啟本實例的守衛攔下頁 /instance-guard，以管理員帳密重打確認碼 55bd875b8d97 後確認，不需重啟；腳本化替代路徑為設定環境變數 INSTANCE_GUARD_ACK=55bd875b8d97 後重啟。兩者都會寫入稽核事件並在管理介面顯示橫幅，直到鎖由本實例取得。
   澄清：這不是資料庫損毀；本次啟動未由本實例執行 migration 或任何資料寫入；INSTANCE_GUARD_ACK 綁定上列指紋，持鎖者變更後失效；確認後兩實例並存造成的資料問題由確認者承擔，守衛只保證此事被記錄。
 ```
 
@@ -802,7 +921,7 @@ If that line instead says the holder's details could not be obtained (`無法取
 
 **What confirming means (read this through before you confirm, on either path)**:
 
-- The confirmation is bound to the holder fingerprint in that message. As soon as the holder changes (another instance came up, or the leftover was reclaimed and a new holder appeared), the code stops being valid. On the page the submission is refused and a new code is offered; with the environment variable the guard halts the start again and prints a new code, the message gains a line, `提供的 INSTANCE_GUARD_ACK 與當前持鎖者指紋不符（持鎖者已變更），請以上列 code 重新確認`, and no audit event is written. So neither path can be left set permanently to turn the guard off.
+- The confirmation is bound to the holder fingerprint in that message. As soon as the holder changes (another instance came up, or the leftover was reclaimed and a new holder appeared), the code stops being valid. On the page the submission is refused and a new code is offered; with the environment variable the guard halts the start again and prints a new code, the message gains a line, `提供的 INSTANCE_GUARD_ACK 與目前持鎖者指紋不符（持鎖者已變更），請以上列 code 重新確認`, and no audit event is written. So neither path can be left set permanently to turn the guard off.
 - Every confirmed start writes an `audit_logs` row: `resource=instance_guard`, `status=failure`, with details containing `event=overridden`, `ack`, the holder fingerprint (`holder.*`), this instance's `instance.hostname`, `pid`, and `started_at`, and the confirmer. With interface-entry mode (mode B) this row reaches the database only after unseal, though its timestamp is still the moment of the start.
 - **Who the row names depends on the path.** A confirmation on the halt page names the administrator account that was verified, records the page as the source, and carries the number of credential failures that preceded it. `actor="operator via env"` means **the system does not know who set it**: an environment variable cannot identify a natural person, so on that path who set it and when is owned by your change management, and belongs on the change ticket.
 - After a confirmation the guard **stops nothing at all**: migrations run, the service opens, background jobs run. If your judgment was wrong and the other instance really is alive, two instances write the same database at the same time, and the data problems listed on the message's risk line **will occur; the guard does not prevent them**, and they are owned by whoever confirmed.
@@ -853,7 +972,7 @@ Then three more checks specific to an upgrade:
    The env side of the inventory has four items: `ENCRYPTION_KEY (KEK)`, `JWT_SECRET`, the export signing key (Ed25519), and the checkpoint signing key (Ed25519). **Compare all four**: comparing only the first three would not reveal the checkpoint signing key having been replaced.
 7. **Audit chain verification** passes, with no unexpected break in the sequence.
 8. Spot-check that a session recording that existed before the upgrade plays back. **Both a local source and an offsite source count as a pass**: a session whose local copy was cleared per the retention settings is fetched from object storage instead (with a download wait on first playback, and retrieval always verifies the hash before delivery).
-   Deployments with offsite storage enabled should also glance at the "Offsite Storage" page on the admin side: the settings summary and generation state as expected, and no abnormal buildup in the failure list.
+   Deployments with offsite storage enabled should also glance at the "Offsite storage" page on the admin side: the settings summary and generation state as expected, and no abnormal buildup in the failure list.
 9. **Run one end-to-end audit verification for real**: create a test connection (SSH or database), run a few recognizable commands, then confirm in the audit interface that **those commands really appear for that session**.
 10. **Deployments with a Windows credential change channel configured**: trigger a credential change plan manually against one representative host and confirm the record is success.
     A failed with "the session could not be established" means it could not connect before the command was sent, so check the target's WinRM or SSH reachability and certificate settings first; unverified means the remote state is unknowable after the command was sent and the candidate will be retried by the system, which is not a sign of a failed upgrade.
@@ -929,10 +1048,10 @@ When a stage runs out of its budget the service **records a message and exits wi
 A non-zero exit code is a fact supervisors and CI need to know, **and a fact the operator needs to see** as well:
 
 ```bash
-docker compose logs backend | tail -20   # look for 「關閉過程有未完成項目」 and 「審計佇列排空逾時」
+docker compose logs backend | tail -20   # look for 「關閉過程有未完成項目」 and 「稽核佇列排空逾時」
 ```
 
-「關閉過程有未完成項目」 means some step did not finish within its budget; it appears for a listener that timed out as well as for the audit drain. 「審計佇列排空逾時」 is the line that concerns audit rows: it carries the counts described in §3.1 (rows not confirmed written, rows written to the fallback file, rows a worker still held, rows lost). If only the first line appears, the audit drain finished and what ran out of time was a listener.
+「關閉過程有未完成項目」 means some step did not finish within its budget; it appears for a listener that timed out as well as for the audit drain. 「稽核佇列排空逾時」 is the line that concerns audit rows: it carries the counts described in §3.1 (rows not confirmed written, rows written to the fallback file, rows a worker still held, rows lost). If only the first line appears, the audit drain finished and what ran out of time was a listener.
 
 ### 3.2b The effect of stopping on offsite uploads (with offsite storage enabled)
 
@@ -1001,12 +1120,17 @@ The events go through asynchronous audit (at most once), and when the database c
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the fourteen increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the twenty-eight increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
 `20260906_credential_library_contract`, `20260908_role_state_checkpoint`,
-`20260908_group_role_mapping`, `20260909_policy_groups`, `20260913_kek_topology`).
+`20260908_group_role_mapping`, `20260909_policy_groups`, `20260913_kek_topology`,
+`20260921_alert_rule_direction`, `20260921_agent_audit_actions`, `20260921_identity_agent_principal`,
+`20260921_principal_integrity`, `20260921_access_request_items`, `20260921_access_request_item_decisions`,
+`20260921_agent_audit_ledger`, `20260921_agent_breaker_alert`, `20260921_agent_visibility_exposures`,
+`20260921_agent_subject_rules`, `20260922_agent_session_token_name`, `20260923_agent_lateral_rule_pattern`,
+`20260924_agent_tool_call_args_retained`, `20260924_sensitive_reveal_alert`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 
@@ -1026,7 +1150,7 @@ docker compose -f docker-compose.yml exec -T postgres \
 
 Two more consequences of a rollback to know first:
 
-- **Recordings whose local cache copy has been cleared cannot be played on the old version**: the old version has no offsite retrieval path, and the local file has already been cleared per the retention settings. Before the rollback, confirm how many are affected and tell the people concerned, either on the "Offsite Storage" page on the admin side or with a one-line count:
+- **Recordings whose local cache copy has been cleared cannot be played on the old version**: the old version has no offsite retrieval path, and the local file has already been cleared per the retention settings. Before the rollback, confirm how many are affected and tell the people concerned, either on the "Offsite storage" page on the admin side or with a one-line count:
 
   ```bash
   docker compose -f docker-compose.yml exec -T postgres \
@@ -1149,6 +1273,31 @@ docker compose -f docker-compose.yml exec -T postgres \
 for the same reason as everything else created after that point. Its production way back is likewise
 deploying the old version's images and restoring the pre-upgrade backup (§4.2).
 
+**The `Down` of `20260921_alert_rule_direction` is lossy and is for development databases only.** It
+drops the direction column and its constraint. The rule rows stay, but which of them were output rules
+has no second source: a later upgrade brings the column back with every rule set to input, and the two
+built-in output rules are not inserted again because their names already exist, so those rules would
+be matched against what is typed instead of what is shown. Its production way back is likewise
+deploying the old version's images and restoring the pre-upgrade backup (§4.2).
+
+**The `Down` of the following ten increments refuses to run and returns an error**:
+`20260921_agent_audit_actions`, `20260921_identity_agent_principal`, `20260921_principal_integrity`,
+`20260921_access_request_items`, `20260921_access_request_item_decisions`, `20260921_agent_audit_ledger`,
+`20260921_agent_breaker_alert`, `20260921_agent_visibility_exposures`, `20260921_agent_subject_rules` and
+`20260924_sensitive_reveal_alert`. What they hold is evidence (automated operator principals and their
+tokens, the tool call ledger, task reports, probe events, visibility exposures, access request items and
+their decisions, breaker and reveal alerts), and removing it is not offered as a way back. Their
+production way back is deploying the old version's images and restoring the pre-upgrade backup (§4.2);
+before that, keep a separate post-upgrade evidence backup as described under "Agent audit chain:
+verification and rollback boundary" below.
+
+**The `Down` of `20260922_agent_session_token_name`, `20260923_agent_lateral_rule_pattern` and
+`20260924_agent_tool_call_args_retained` does nothing**: it changes neither the schema nor the data. The
+token name snapshots and the encrypted original arguments stay where they are, and the lateral movement
+rule keeps its current pattern, because putting the older pattern back would bring back the false
+blocks it replaced. Their production way back is likewise deploying the old version's images and
+restoring the pre-upgrade backup (§4.2).
+
 **A login banner configured after the upgrade is lost when the backup is restored**: that text was written after the upgrade, and the pre-upgrade backup does not contain it. **If you are going to roll back, copy the banner's title and body off the security policy page first** (plain text, into a ticket or a handover document), and put them back after a later upgrade.
 
 **Report schedules created and policy values set after the upgrade are likewise lost when the backup is restored**, for the same reason: the pre-upgrade backup does not contain them. If you are going to roll back, copy off the schedules' names, schedules, scopes, retention days, and languages, along with any newly set asset account credential day policy values (into a ticket or a handover document), and set them again after a later upgrade. Copy the day overrides on credential change plans along with them.
@@ -1227,7 +1376,7 @@ Visibility exposures begin at this upgrade; they do not reconstruct older visibi
 
 ## Agent MCP operations
 
-Create an agent principal with an active human owner. As that owner or an administrator, create a named, expiring agent token; save the one-time plaintext in the operator's secret store. The agent has only the user role and explicitly scoped asset/account grants. Supply `CUSTODEXA_AGENT_TOKEN` to `custodexa-mcp` through its environment and set `CUSTODEXA_MCP_URL` to the HTTPS `/api/v1/mcp` endpoint. Human JWTs and cookies cannot authenticate this endpoint. The stdio client forwards tool calls; all decisions and evidence writes happen in the service. Never put the token in command arguments or reports.
+Create an agent principal with an active human owner. As that owner or an administrator, create a named, expiring agent token; save the one-time plaintext in the operator's secret store. The agent has only the user role and explicitly scoped asset/account grants. Install the `custodexa-mcp` stdio client on the agent's machine from https://github.com/custodexa/custodexa-mcp, either with `go install github.com/custodexa/custodexa-mcp@latest` or as a release binary verified against the `checksums.txt` published with that release. Supply `CUSTODEXA_AGENT_TOKEN` to `custodexa-mcp` through its environment and set `CUSTODEXA_MCP_URL` to the HTTPS `/api/v1/mcp` endpoint. Human JWTs and cookies cannot authenticate this endpoint. The stdio client forwards tool calls; all decisions and evidence writes happen in the service. Never put the token in command arguments or reports.
 
 Whether a task the agent submits waits for a person is decided by the access policy segment of each requested asset, taken from the asset's own `access_policy` when set and otherwise from the `access_policy_default` security policy. An item in the `approval` segment stays pending until an approver whose scope covers that asset decides it. Items in the `open` and `reason` segments are approved at submission, are recorded with `auto_approved: true` and a policy snapshot, and carry no approval votes. Under the shipped defaults most assets fall outside `approval`, so a deployment that changes nothing will see agent tasks approve themselves. To require a human decision, set `access_policy` to `approval` on the assets concerned, or set `access_policy_default` to `approval` for the whole deployment; `access_request_min_approvals` then sets how many approvals such a request needs. Decide this before granting an agent its first asset, and state the choice in the runbook: automatic approval is still fully recorded, but it is not a human control.
 
@@ -1239,6 +1388,6 @@ Token expiry, the bound task item's expiry and task closure terminate existing s
 
 `completed` means a prompt was observed again; it guarantees neither command termination nor success. Prompts can be forged and background output can interleave. `timed_out` means the outcome is unknown: inspect subsequent output before retrying. Same-handle idempotency keys suppress repeat writes for 60 seconds; calls without a key can execute again. `needs_input` requires an explicit `send_keys` reset; the service never sends an interrupt automatically. `read_screen` is a line buffer, not a virtual screen. Agent-visible text is masked while recordings and command records retain the original. Masking is rule-driven and enumerated, not a general sensitive-data filter: it applies the enabled alert rules with `direction=output` whose subject kind covers agents and whose protocol list covers the session, and replaces each matched span with a placeholder. Anything no enabled rule matches reaches the agent in full, and the shipped rule set covers two categories, a card-number pattern and a private-key header pattern. Treat the rule list as the definition of what this deployment considers sensitive on the agent channel, review it against the data actually reachable on the granted assets, and add rules for the categories that matter there. Masking never applies to human terminals, recordings or command records.
 
-For evidence, preserve the database, recordings, checkpoints and matching versioned integrity keys. A pending tool row proves recorded intent, not delivery or completion. An unattributable task/handle is rejected before the tool ledger and recorded in that MCP HTTP request's audit row with principal, tool, reason code and time. Command integrity coverage is available only through the audit workbench and batch export; a single-session export has no coverage axis. Zero degraded rows does not prove that no commands were lost. Keep report versions and closed-task timestamps; do not manufacture results for pending calls.
+For evidence, preserve the database, recordings, checkpoints and matching versioned integrity keys. A pending tool row proves recorded intent, not delivery or completion. An unattributable task/handle is rejected before the tool ledger and recorded in that MCP HTTP request's audit row with principal, tool, reason code and time. Command integrity coverage is available only through the Investigation Workbench and batch export; a single-session export has no coverage axis. Zero degraded rows does not prove that no commands were lost. Keep report versions and closed-task timestamps; do not manufacture results for pending calls.
 
 Before upgrade, pause agent dispatch and retain evidence; after upgrade, verify a new MCP connection and token lifecycle.

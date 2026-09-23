@@ -81,7 +81,7 @@ func setupSSHDenyEnv(t *testing.T, protocol string) *sshDenyEnv {
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
-	// 單連線：ff51836 的「單獨跑綠、整包跑紅」防護
+	// 單連線：:memory: 每條連線各自獨立空庫，避免單獨跑綠、整包跑紅
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetAccount{}, &model.Credential{}, &model.CredentialSecretVersion{}, &model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},

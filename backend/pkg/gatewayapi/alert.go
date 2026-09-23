@@ -20,6 +20,9 @@ type CommandAlert struct {
 	// 「無資產」與「資產 ID 為 0」，會把 NULL 靜默寫成 0。
 	AssetID *uint
 
+	// Note carries structured forensic metadata, never revealed plaintext.
+	Note string
+
 	Command string
 
 	// RuleID **指標型**（同 AssetID 的理由）：Kind 為降級類的告警沒有規則可指，

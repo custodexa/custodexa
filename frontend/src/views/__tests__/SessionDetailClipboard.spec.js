@@ -430,11 +430,11 @@ describe('SessionDetail 剪貼簿卡：#clipboard 錨點', () => {
       )
       expect(mine).toBeTruthy()
 
-      // **首個回報就必須補捲**（修復波第二輪）：RO 會合併批次回報，長高若
-      // 發生在首次回報派送之前就併在首報裡。曾為了「不蓋掉 smooth 首捲」而
-      // 無條件跳過首報，結果長高落在首批時唯一的補捲機會被吃掉、其後再無
-      // 回報，卡片停在視窗外（實測連開六次重現 2 次，cardTop 809 卡底 1003）。
-      // 補捲冪等，寧可多捲一次也不能漏那一次——本行擋的就是「跳過首報」回歸
+      // **首個回報就必須補捲**：RO 會合併批次回報，長高若
+      // 發生在首次回報派送之前就併在首報裡。若為了「不蓋掉 smooth 首捲」而
+      // 無條件跳過首報，長高落在首批時唯一的補捲機會就會被吃掉、其後再無
+      // 回報，卡片停在視窗外。
+      // 補捲冪等，寧可多捲一次也不能漏那一次，本行擋的就是「跳過首報」回歸
       const before = scrollSpy.mock.calls.length
       mine.cb([], mine)
       expect(scrollSpy.mock.calls.length).toBeGreaterThan(before)

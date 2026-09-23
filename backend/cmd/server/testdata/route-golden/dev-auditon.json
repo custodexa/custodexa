@@ -213,6 +213,11 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/agent-tool-calls/:id/arguments",
+      "handler": "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).ToolCallArguments-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/alert-rules",
       "handler": "github.com/custodexa/backend/internal/api.(*AlertRuleHandler).List-fm"
     },
@@ -2344,6 +2349,22 @@
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.RequireAnyRole.func2",
         "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).ToolCalls-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-tool-calls/:id/arguments",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.AuthMiddleware.func5",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).RegisterRoutes.RequirePermission.func6",
+        "github.com/custodexa/backend/internal/api.(*AuditIntegrityHandler).ToolCallArguments-fm"
       ]
     },
     {

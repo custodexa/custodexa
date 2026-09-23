@@ -90,7 +90,7 @@ func applyBaseline(db *gorm.DB) error {
 // 東西比沒有入口更危險，故本函式一律回錯，把退路指回還原備份。
 var errBaselineRollbackRefused = errors.New(
 	"拒絕回滾 schema baseline：本版本建立的是整個資料庫 schema，回滾它等同丟棄全部資料表" +
-		"（使用者、資產、授權與審計證據一併消失），而非還原到某個較舊的 schema 形狀。" +
+		"（使用者、資產、授權與稽核證據一併消失），而非還原到某個較舊的 schema 形狀。" +
 		"本產品不提供 migration 回滾；升級失敗的唯一退路是還原升級前的資料庫備份" +
 		"（程序見 docs/ops/backup-and-restore.md）。")
 

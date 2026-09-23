@@ -330,7 +330,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 	// model.Session.RecordingStartedAt 的說明）。於此擷取，隨會話一併寫入
 	recordingStartedAt := time.Now()
 
-	log.Printf("[Handler] 握手成功，準備升級 WebSocket")
+	log.Printf("[Handler] 交握成功，準備升級 WebSocket")
 
 	// 7. 創建 Session 記錄
 	assetID := &assetIDUint
@@ -384,7 +384,7 @@ func (h *ConnectionHandler) HandleConnect(c *gin.Context) {
 		})
 		return
 	}
-	log.Printf("[Handler] Session 已創建: ID=%d", sess.ID)
+	log.Printf("[Handler] Session 已建立: ID=%d", sess.ID)
 
 	// 帳號新來源位址：session 主鍵已得（fail-close 已過）才觀察——告警列以
 	// session_id 為自然鍵，先觀察就沒有可綁的會話。失敗只記 log 不阻連線，

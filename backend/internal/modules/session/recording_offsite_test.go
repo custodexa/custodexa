@@ -30,7 +30,7 @@ func setupOffsiteSessionDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
-	// sqlite :memory: 連線池陷阱（ff51836）：每條連線是各自獨立的空庫
+	// sqlite :memory: 連線池陷阱：每條連線是各自獨立的空庫
 	sqlDB.SetMaxOpenConns(1)
 	require.NoError(t, db.AutoMigrate(&model.Session{}, &model.OffsiteObject{}))
 	oldDB := database.DB

@@ -81,11 +81,11 @@ var (
 	// 未通過准入判定。**不回填未通過的規則細節**——那會讓外部使用者得以
 	// 逐條試探組織的准入條件
 	CodeAuthOIDCAdmissionDenied = register("AUTH_OIDC_ADMISSION_DENIED",
-		Descriptor{ZhFallback: "您的帳號不符合此登入方式的准入條件，請聯繫管理員"})
+		Descriptor{ZhFallback: "您的帳號不符合此登入方式的准入條件，請聯絡管理員"})
 
 	// 映射所得使用者名稱已被占用（同名不接管，需管理員處理）
 	CodeAuthOIDCUsernameConflict = register("AUTH_OIDC_USERNAME_CONFLICT",
-		Descriptor{ZhFallback: "帳號名稱衝突，請聯繫管理員處理"})
+		Descriptor{ZhFallback: "帳號名稱衝突，請聯絡管理員處理"})
 
 	// 流程狀態或交棒憑證失效：不存在／已消費／已過期／瀏覽器綁定不符——
 	// 四者**對外不可區分**，避免成為憑證有效性的探測器

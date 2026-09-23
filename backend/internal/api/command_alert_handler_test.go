@@ -200,6 +200,43 @@ func TestCommandAlertHandler_List(t *testing.T) {
 	})
 }
 
+func TestCommandAlertSessionBlockedFilters(t *testing.T) {
+	for _, tc := range []struct {
+		query   string
+		session uint
+		blocked bool
+	}{
+		{"session_id=73&blocked=true", 73, true},
+		{"session_id=73&blocked=false", 73, false},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			service := new(MockCommandAlertService)
+			service.On("List", mock.MatchedBy(func(f *audit.CommandAlertFilter) bool {
+				return f.SessionID != nil && *f.SessionID == tc.session &&
+					f.Blocked != nil && *f.Blocked == tc.blocked
+			})).Return(emptyAlertResponse(), nil).Once()
+			router := setupTestRouter()
+			router.GET("/command-alerts", NewCommandAlertHandler(service).List)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/command-alerts?"+tc.query, nil))
+			assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			service.AssertExpectations(t)
+		})
+	}
+	for _, query := range []string{"session_id=", "session_id=0", "session_id=-1", "session_id=abc", "session_id=4294967296", "blocked=", "blocked=TRUE", "blocked=1", "blocked=no"} {
+		t.Run(query, func(t *testing.T) {
+			service := new(MockCommandAlertService)
+			router := setupTestRouter()
+			router.GET("/command-alerts", NewCommandAlertHandler(service).List)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/command-alerts?"+query, nil))
+			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), "VALIDATION_BAD_PARAMS")
+			service.AssertNotCalled(t, "List", mock.Anything)
+		})
+	}
+}
+
 // TestCommandAlertHandler_Review 審閱處置端點（audit-workflows）
 func TestCommandAlertHandler_Review(t *testing.T) {
 	t.Run("成功審閱回 200 並傳遞處置分類", func(t *testing.T) {

@@ -279,5 +279,10 @@ func authenticateAgent(c *gin.Context, auth *identity.AuthService, token string)
 	c.Set("username", principal.Username)
 	c.Set("email", principal.Email)
 	c.Set("role", model.RoleUser)
+	// Agent tokens carry no claims, so the auth context is built from the live row:
+	// local method (no provider dimension) and the principal's current credential
+	// epoch. Without this, connect grants were issued with CredEpoch 0 and the
+	// redemption recheck rejected every agent whose epoch had ever been bumped.
+	c.Set("authContext", crypto.AuthContext{CredEpoch: principal.CredentialEpoch})
 	return true
 }

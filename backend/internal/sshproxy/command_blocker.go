@@ -18,8 +18,9 @@ type blockMatcher interface {
 // 行緩衝 Enter 提交且可信時查 block 規則；命中即指示 bridge 不轉發。
 // 阻斷事件照常入告警庫（嚴重度沿規則）、推通知並離機轉發
 type commandBlocker struct {
-	buf     *InputLineBuffer
-	matcher blockMatcher
+	buf          *InputLineBuffer
+	blockedInput string // Last matched complete line; input pump owns this state.
+	matcher      blockMatcher
 	// alerts 告警落地面：取代原本的 *gorm.DB 直寫。
 	// 型別是介面而非 *gorm.DB 正是修法本體——本型別自此沒有「自己寫一列」的能力，
 	// 入庫、通知與 syslog tee 三件事一起發生或一起不發生
@@ -57,6 +58,7 @@ func newCommandBlocker(matcher blockMatcher, alerts gatewayapi.AlertSink, sessio
 // 不再回傳注入用警告字串——警告改由 bridge 送 MsgNotice 控制幀
 // （Code＋zh fallback＋params{rule}），文案與 ANSI 上色歸前端。
 func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
+	c.blockedInput = ""
 	line, submitted, trusted := c.buf.Feed(data)
 	if !submitted || !trusted || line == "" {
 		return nil
@@ -66,6 +68,7 @@ func (c *commandBlocker) Inspect(data []byte) *model.AlertRule {
 		return nil
 	}
 
+	c.blockedInput = line
 	c.recordBlocked(rule, line)
 	return rule
 }

@@ -32,7 +32,7 @@ import (
 
 // --- fixture ---
 
-// wsMatrixDB 單連線 :memory:（ff51836：第二條連線是另一個空 DB）
+// wsMatrixDB 單連線 :memory:（第二條連線會是另一個空 DB）
 func wsMatrixDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})

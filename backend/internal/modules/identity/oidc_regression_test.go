@@ -40,7 +40,7 @@ type regressionEnv struct {
 	db       *gorm.DB
 }
 
-// setupRegressionEnv 單連線 :memory:（ff51836：連線池放行第二條即出現
+// setupRegressionEnv 單連線 :memory:（連線池放行第二條即出現
 // 「建了資料卻查不到」的假紅）。含 audit_logs——外部帳號本地登入嘗試的審計
 // 若因缺表而寫入失敗只會留日誌，斷言「有落審計」需要真的有這張表
 func setupRegressionEnv(t *testing.T) *regressionEnv {

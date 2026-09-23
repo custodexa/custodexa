@@ -381,7 +381,7 @@ func (s *LDAPDirectoryService) RiskViewProvider() func() policy.LDAPRiskResult {
 		// closure 入口即檢查：nil service 在 factory 呼叫當下不會失敗（Go 允許
 		// nil 接收者），錯誤要嘛在此收斂為 failed，要嘛在解參考時 panic
 		if s == nil || s.db == nil {
-			log.Print("[LDAPDirectory] 風險視圖 provider 的目錄服務未接線（fail-close）")
+			log.Print("[LDAPDirectory] 風險檢視 provider 的目錄服務未接線（fail-close）")
 			return policy.LDAPRiskResult{State: policy.LDAPResolveFailed, Err: ErrLDAPDirectoryServiceUnavailable}
 		}
 		return s.ResolveRiskView(context.Background())
@@ -759,7 +759,7 @@ func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDire
 	status model.AuditStatus, resourceID *uint, details map[string]any) error {
 	payload, err := json.Marshal(details)
 	if err != nil {
-		return fmt.Errorf("序列化 LDAP 目錄設定審計內容失敗: %w", err)
+		return fmt.Errorf("序列化 LDAP 目錄設定稽核內容失敗: %w", err)
 	}
 	if err := port.WriteInTx(s.auditTx, db, port.AuditEvent{
 		Action:     string(action),
@@ -770,7 +770,7 @@ func (s *LDAPDirectoryService) ldapDirectoryAuditLog(db *gorm.DB, actor LDAPDire
 		Request:    gatewayapi.RequestMeta{ClientIP: actor.IP},
 		Details:    string(payload),
 	}); err != nil {
-		return fmt.Errorf("寫入 LDAP 目錄設定審計失敗: %w", err)
+		return fmt.Errorf("寫入 LDAP 目錄設定稽核失敗: %w", err)
 	}
 	return nil
 }
@@ -858,7 +858,7 @@ func (s *LDAPDirectoryService) auditRejection(req LDAPDirectoryRequest, rej ldap
 	}
 	if err := s.ldapDirectoryAuditLog(s.db, req.Actor, model.ActionUpdate,
 		model.StatusDenied, nil, details); err != nil {
-		log.Printf("[LDAPDirectory] 被拒嘗試審計寫入失敗（拒絕結果不受影響）: %v", err)
+		log.Printf("[LDAPDirectory] 被拒嘗試稽核寫入失敗（拒絕結果不受影響）: %v", err)
 	}
 }
 

@@ -206,6 +206,8 @@ var migrations = []Migration{
 	{Version: "20260922_agent_session_token_name", Name: "agent_session_token_name", Up: applyAgentSessionTokenName, Down: rollbackAgentSessionTokenName},
 	// 純資料 migration（無 schema 變更）：既有站點的出廠橫向移動規則改用指令位置比對。
 	{Version: "20260923_agent_lateral_rule_pattern", Name: "agent_lateral_rule_pattern", Up: applyAgentLateralRulePattern, Down: rollbackAgentLateralRulePattern},
+	{Version: "20260924_agent_tool_call_args_retained", Name: "agent_tool_call_args_retained", Up: applyAgentToolCallArgsRetained, Down: rollbackAgentToolCallArgsRetained},
+	{Version: "20260924_sensitive_reveal_alert", Name: "sensitive_reveal_alert", Up: applySensitiveRevealAlert, Down: rollbackSensitiveRevealAlert},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -235,8 +237,10 @@ func schemaDDLStatements() []string {
 	out = append(out, accessRequestItemsDDL()...)
 	out = append(out, accessRequestItemDecisionsDDL()...)
 	out = append(out, agentAuditLedgerDDL()...)
+	out = append(out, agentToolCallArgsRetainedDDL()...)
 	out = append(out, agentBreakerAlertDDL()...)
 	out = append(out, agentVisibilityExposuresDDL()...)
+	out = append(out, sensitiveRevealAlertDDL()...)
 	return append(out, agentSessionTokenNameDDL()...)
 }
 
@@ -357,7 +361,7 @@ func RunMigrations() error {
 
 	// 1. 確保 schema_migrations 表存在
 	if err := DB.Exec(schemaMigrationsBootstrapDDL).Error; err != nil {
-		return fmt.Errorf("創建 schema_migrations 表失敗: %w", err)
+		return fmt.Errorf("建立 schema_migrations 表失敗: %w", err)
 	}
 
 	// 2. 獲取已執行的 migrations

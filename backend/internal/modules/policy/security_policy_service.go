@@ -132,8 +132,10 @@ const (
 
 	// 存取政策鍵（PCI Req 7.2 最小權限的時間維度）：
 	// 全域預設段位＋申請時長上限＋pending 超時時限
-	PolicyAccessPolicyDefault              = "access_policy_default"
-	PolicyAgentSelfCreateEnabled           = "agent_self_create_enabled"
+	PolicyAccessPolicyDefault    = "access_policy_default"
+	PolicyAgentSelfCreateEnabled = "agent_self_create_enabled"
+	// Optional audit signal; deliberately absent from built-in compliance requirements.
+	PolicyAlertOnSensitiveReveal           = "alert_on_sensitive_reveal"
 	PolicyAgentSelfCreateMaxPerOwner       = "agent_self_create_max_per_owner"
 	PolicyAgentProbeTripCount              = "agent_probe_trip_count"
 	PolicyAgentProbeWindowSeconds          = "agent_probe_window_seconds"
@@ -326,7 +328,7 @@ type PolicyDef struct {
 	Label string `json:"label"`
 	Unit  string `json:"unit,omitempty"`
 	// UnitKey 語義單位鍵（前端 i18n 錨點，值域見 unitKeyByZh）。由 init 依 Unit 衍生，
-	// 不手填——確保 Unit≠"" 必有合法 UnitKey（rr-I5 invariant，杜絕漏填）
+	// 不手填——確保 Unit≠"" 必有合法 UnitKey，杜絕漏填
 	UnitKey string `json:"unit_key,omitempty"`
 }
 
@@ -354,7 +356,7 @@ var policyDefs = []PolicyDef{
 		Label: "密碼須含字母與數字",
 	},
 	{
-		// 上界 24（使用者裁決 2026-08-19）：
+		// 上界 24：
 		// 本鍵的值直接決定改密請求的成本——每多一筆歷史就多一次密碼雜湊比對。
 		// 實測（cost=10，單次雜湊約 78ms）：設 100 時單一次改密約 **8.03 秒**，
 		// 是登入的 103 倍；而改密端點對外暴露、一般認證帳號即可觸發。
@@ -543,7 +545,7 @@ var policyDefs = []PolicyDef{
 		// 不必擋使用者存檔（同 retention_checkpoint_days 註解對跨鍵驗證的保留）
 		Key: PolicyAuditChainRecentVerifyDays, Type: PolicyTypeInt, Default: "7",
 		Max:   30,
-		Label: "鏈驗證近期窗口", Unit: "天",
+		Label: "鏈驗證近期時窗", Unit: "天",
 	},
 	{
 		// 全鏈層驗證間隔。
@@ -740,6 +742,7 @@ var policyDefs = []PolicyDef{
 		Label:     "全域預設存取政策段位",
 	},
 	{Key: PolicyAgentSelfCreateEnabled, Type: PolicyTypeBool, Default: "false", Label: "允許自助建立自動化帳號"},
+	{Key: PolicyAlertOnSensitiveReveal, Type: PolicyTypeBool, Default: "false", Label: "調閱敏感原文時告警"},
 	{Key: PolicyAgentSelfCreateMaxPerOwner, Type: PolicyTypeInt, Default: "3", Max: 100, Label: "每人自助建立自動化帳號上限"},
 	{Key: PolicyAgentProbeTripCount, Type: PolicyTypeInt, Default: "3", Max: 1000, Label: "自動化帳號探測阻斷次數"},
 	{Key: PolicyAgentProbeWindowSeconds, Type: PolicyTypeInt, Default: "300", Max: 86400, Label: "自動化帳號探測計數期間（秒）"},
@@ -755,7 +758,7 @@ var policyDefs = []PolicyDef{
 		// pending 超時作廢時限（防單卡死；scheduler 掃描＋讀取惰性過濾雙保險）
 		Key: PolicyAccessRequestPendingTimeoutHours, Type: PolicyTypeInt, Default: "72",
 		Direction: DirectionMax, Max: 8760, // 上界 1 年（小時）
-		Label: "申請待審超時時限", Unit: "小時",
+		Label: "申請待審逾時時限", Unit: "小時",
 	},
 	{
 		// 最少核准人數：達門檻才轉 approved；
@@ -827,7 +830,7 @@ var policyDefs = []PolicyDef{
 
 // unitKeyByZh 政策單位的 zh→語義鍵 canonical 映射（unit 閉集）。
 // 前端以 unit_key 查 policyUnit.<unit_key>；此表為 unit_key 的單一事實源。
-// 新增政策若用了不在此表的 Unit，init 期 validatePolicyDefs 會 panic（rr-I5）。
+// 新增政策若用了不在此表的 Unit，init 期 validatePolicyDefs 會 panic。
 var unitKeyByZh = map[string]string{
 	"次":  "count",
 	"分鐘": "minutes",
@@ -907,7 +910,7 @@ func NewSecurityPolicyService(db *gorm.DB) *SecurityPolicyService {
 
 // validatePolicyDefs 常數表完整性自檢：每個 Default 都須通過該欄型別驗證，
 // enum 的 Default 須是 EnumOrder 成員；並斷言 Unit↔UnitKey
-// invariant（rr-I5）：Unit≠""↔有合法 UnitKey 且與 canonical 映射一致、Unit==""不得有 UnitKey
+// 不變式：Unit≠""↔有合法 UnitKey 且與 canonical 映射一致、Unit==""不得有 UnitKey
 func validatePolicyDefs() error { return validateDefList(policyDefs) }
 
 // validateDefList 對任意定義切片做同一組自檢。

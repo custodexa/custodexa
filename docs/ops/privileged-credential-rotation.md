@@ -14,10 +14,10 @@
 
 | Credential | Stored in | Rotation entry point | When it takes effect | Interrupts existing connections or sign-ins | External coordination needed |
 |---|---|---|---|---|---|
-| LDAP bind password | Database (envelope encrypted) | Identity & Access → LDAP Directory (UI) | Immediately | No | Must be changed on the directory server first |
+| LDAP bind password | Database (envelope encrypted) | Identity & Access → Identity sources (UI) | Immediately | No | Must be changed on the directory server first |
 | Notification channel secret | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | The receiving end must be updated in step |
 | Notification channel URL | Database (envelope encrypted) | Notification Channels (UI) | Immediately (same process) | Not applicable | — |
-| Offsite storage credentials (offsite evidence storage) | Database (envelope encrypted, one set per settings generation) | System Settings → Offsite Storage (UI) | As soon as the save succeeds | No | The storage side must create the new credentials first and revoke the old ones afterwards |
+| Offsite storage credentials (offsite evidence storage) | Database (envelope encrypted, one set per settings generation) | System Settings → Offsite storage (UI) | As soon as the save succeeds | No | The storage side must create the new credentials first and revoke the old ones afterwards |
 | KEK (key encryption key) | Depends on mode: env / memory / KMS | Key Management → KEK rewrap wizard | After the rewrap completes | No | Mode C needs a key on the KMS side |
 | DEK (data key) | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
 | Audit stamping key | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
@@ -39,7 +39,7 @@ Where the "external coordination needed" column is not empty, **if that coordina
 **Rotation procedure**:
 
 1. Change the service account's password on the directory server (AD or LDAP) first.
-2. Admin side → Identity & Access → LDAP Directory → enter the new password.
+2. Admin side → Identity & Access → Identity sources → enter the new password.
 3. Press "Test Connection" to confirm the bind succeeds. **That test runs against the current form values, including unsaved changes**, so you can verify the new password before saving. It takes up to about 15 seconds.
 4. Save.
 
@@ -93,7 +93,7 @@ Where the "external coordination needed" column is not empty, **if that coordina
 **Rotation procedure**:
 
 1. Create the new credentials on the storage side (S3, MinIO, or GCS) first.
-2. Admin side → System Settings → Offsite Storage → enter the new credentials.
+2. Admin side → System Settings → Offsite storage → enter the new credentials.
 3. Press "Test Connection". **That test runs against the current form values, including unsaved changes**, so you can confirm the new credentials before saving.
 4. Save.
 5. Go back to the storage side and revoke the old credentials.
@@ -631,7 +631,7 @@ Both procedures require the full-service gate in §14.1. An isolated Vault alone
 
 Record the chosen recovery timestamp, binary/image and schema compatibility, configuration/credential custody, required remote key versions and observed readback results. Writes after the recovered database point are outside that backup and may be lost; reconcile associated files and external storage against the same point. A newer application or a matching key label is not proof of compatibility or decryptability. If the necessary KEK versions or recoverable local material are lost, credentials alone cannot recover the data. The rehearsal scope below is narrower than a deployment backup/restore.
 
-**Completed isolated rehearsal and limits:** `--case rollback --require-vault` first performs the unswitched abandonment above, then switches a separate full-service fixture to Vault and selects a **post-switch Vault-backed** recovery point. After sealing and draining cleanup, it closes the journal and snapshots the whole SQLite database (all tables), seal journal and protected configuration. It records the exact test binary hash, schema hash, toolchain, timestamp, canonical reference and required remote versions. It resumes service, commits one later data row, freezes writes again and preserves the current database/journal before restoring the backup into fresh paths and a new service machine with fresh AppRole credentials. It verifies backup row/audit/file consistency before unseal, then actual unwrap of every live row, unchanged old ciphertext, readable data and kms/vault inventory. The later row is absent, making the recovery-point loss explicit; retired source rows stay retired.
+**Completed isolated rehearsal and limits:** Rollback against Vault has been rehearsed in an isolated environment. The rehearsal first performs the unswitched abandonment above, then switches a separate full-service fixture to Vault and selects a **post-switch Vault-backed** recovery point. After sealing and draining cleanup, it closes the journal and snapshots the whole SQLite database (all tables), seal journal and protected configuration. It records the exact test binary hash, schema hash, toolchain, timestamp, canonical reference and required remote versions. It resumes service, commits one later data row, freezes writes again and preserves the current database/journal before restoring the backup into fresh paths and a new service machine with fresh AppRole credentials. It verifies backup row/audit/file consistency before unseal, then actual unwrap of every live row, unchanged old ciphertext, readable data and kms/vault inventory. The later row is absent, making the recovery-point loss explicit; retired source rows stay retired.
 
 This uses the same test binary and schema, with no recordings or external storage configured. It is **not** a `pg_dump`/`pg_restore`/`tar` rehearsal of the deployment described in [backup and restore](./backup-and-restore.md), nor proof of cross-version compatibility, restoration of Vault storage, or restoration of a pre-switch local backup. Those require separate deployment evidence; do not infer them from the SQLite result. Keep recoverable source material for a pre-switch backup and durable remote versions for a Vault-backed backup, regardless of the successful lab result.
 

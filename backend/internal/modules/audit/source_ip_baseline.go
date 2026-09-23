@@ -61,7 +61,7 @@ var (
 	// ErrSourceIPBaselineNotWired 基準服務未注入 DB 或告警落地面不支援交易內寫入。
 	ErrSourceIPBaselineNotWired = errors.New("來源位址基準服務未接線（DB 或告警落地面缺席）")
 	// ErrSourceIPBaselineAuditSink 交易內審計落地面未注入（登入標記寫不出去）。
-	ErrSourceIPBaselineAuditSink = errors.New("來源位址基準服務未注入交易內審計落地面")
+	ErrSourceIPBaselineAuditSink = errors.New("來源位址基準服務未注入交易內稽核落地面")
 )
 
 // NewSourceIPBaseline 建立基準服務。alerts 須為組裝根建構的告警落地面
@@ -194,7 +194,7 @@ func (b *SourceIPBaseline) ObserveLogin(ctx context.Context, in LoginObservation
 			if errors.Is(err, port.ErrTxSinkMissing) {
 				return ErrSourceIPBaselineAuditSink
 			}
-			return fmt.Errorf("新來源位址審計標記寫入失敗: %w", err)
+			return fmt.Errorf("新來源位址稽核標記寫入失敗: %w", err)
 		}
 		inserted = true
 		return nil

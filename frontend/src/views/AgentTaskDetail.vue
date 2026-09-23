@@ -263,7 +263,7 @@
                   :type="session.revoked_during_session_at ? 'danger' : sessionEnded(session) ? 'info' : 'success'"
                   data-test="session-status"
                 >
-                  {{ session.revoked_during_session_at ? t('agentTasks.sessionRevoked') : sessionEnded(session) ? t('common.stateEnded') : t('common.stateActive') }}
+                  {{ session.revoked_during_session_at ? getEndReasonText('revoked') : sessionEnded(session) ? t('common.stateEnded') : t('common.stateActive') }}
                 </el-tag>
               </div>
               <p>{{ formatDateTime(session.start_time || session.created_at) }} · {{ t('sessionDetail.account') }}: {{ session.account_username || t('agentSession.unknown') }} · {{ t('agentSession.owner') }}: {{ session.owner_username || t('agentSession.unknown') }} · {{ t('agentSession.key') }}: {{ session.agent_token_name || t('agentSession.unknown') }}</p>
@@ -376,6 +376,8 @@ import { getAgentTask, getAgentToolCalls } from '@/api/agentTasks'
 import { getSessionList } from '@/api/sessions'
 import { resolveApiError } from '@/api/error'
 import { formatDateTime } from '@/utils/format'
+// 撤權斷線的措辭與會話列表、詳情同源（enum.endReason.revoked），三畫面不各說各話
+import { getEndReasonText } from '@/utils/end-reason'
 import { useAssetLabels } from '@/composables/useAssetLabels'
 import { setDetailSubject, clearDetailSubject, briefSubject } from '@/utils/detailTitle'
 import PageHeader from '@/components/PageHeader.vue'

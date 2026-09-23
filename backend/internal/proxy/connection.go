@@ -44,17 +44,17 @@ func (c *Connection) Connect(guacdHost string, guacdPort int) error {
 	}
 	c.GuacClient = client
 
-	log.Printf("[Connection] 已連線到 guacd，開始握手流程...")
+	log.Printf("[Connection] 已連線到 guacd，開始交握流程...")
 
 	// 2. 執行完整握手流程
 	if err := c.handshake(); err != nil {
 		c.GuacClient.Close()
 		c.GuacClient = nil
-		return fmt.Errorf("握手失敗: %w", err)
+		return fmt.Errorf("交握失敗: %w", err)
 	}
 
 	c.Ready = true
-	log.Printf("[Connection] 握手完成，連線已就緒")
+	log.Printf("[Connection] 交握完成，連線已就緒")
 
 	return nil
 }
@@ -172,7 +172,7 @@ func (c *Connection) handshake() error {
 		return fmt.Errorf("預期 ready，收到: %s", readyInst.Opcode)
 	}
 
-	log.Printf("[Handshake] 收到 ready，握手成功！")
+	log.Printf("[Handshake] 收到 ready，交握成功！")
 
 	return nil
 }

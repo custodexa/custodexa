@@ -211,7 +211,7 @@ func (s *SessionService) createInTx(tx *gorm.DB, session *model.Session) error {
 		session.StartTime = time.Now()
 	}
 	if err := tx.Create(session).Error; err != nil {
-		return fmt.Errorf("創建 Session 失敗: %w", err)
+		return fmt.Errorf("建立 Session 失敗: %w", err)
 	}
 	return nil
 }

@@ -82,7 +82,7 @@ func TestCommandParserSQLDegradedRoundDoesNotWeldFakeStatement(t *testing.T) {
 
 	// replay_tainted_drop 覆蓋重放路徑的同型缺陷：半條語句已累積，之後一個重放輪
 	// 因全螢幕重繪而 tainted-drop（finalizeReplayFallback 的拒發分支）。不清 stmtBuf
-	// 則同樣被後續乾淨輪焊接。這是 same-type-different-path：修 finalize 兩分支不夠，
+	// 則同樣被後續乾淨輪焊接。這是同型缺陷換了一條路徑：修 finalize 兩分支不夠，
 	// 重放路徑的降級終端也要清。
 	t.Run("replay_tainted_drop", func(t *testing.T) {
 		parser, commands, records := newRecordingParser("postgres")

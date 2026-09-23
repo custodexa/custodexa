@@ -47,10 +47,17 @@
             </el-table-column>
             <el-table-column
               :label="$t('sessions.actorColumn')"
-              min-width="180"
+              min-width="200"
+              class-name="identity-cell"
             >
               <template #default="{ row }">
-                <div>{{ row.user?.username || $t('agentPrincipals.unavailable') }}</div>
+                <div
+                  class="ident-line"
+                  data-test="session-actor"
+                  :title="row.user?.username || ''"
+                >
+                  {{ row.user?.username || $t('agentPrincipals.unavailable') }}
+                </div>
                 <PrincipalBadge
                   :kind="row.actor_kind || ''"
                   :owner-id="row.owner_user_id"
@@ -61,8 +68,8 @@
             <!-- 代表人：agent 是替誰做的。沒有這欄，列表答不出「替誰」 -->
             <el-table-column
               :label="$t('agentSession.onBehalf')"
-              min-width="120"
-              show-overflow-tooltip
+              min-width="140"
+              class-name="identity-cell"
             >
               <template #default="{ row }">
                 <span data-test="session-on-behalf">{{ onBehalfText(row) }}</span>
@@ -136,8 +143,11 @@
               width="140"
             >
               <template #default="{ row }">
-                <el-tag class="ot-tag-neutral">
-                  {{ protocolText(row.protocol) }}
+                <el-tag
+                  class="ot-tag-neutral protocol-kind"
+                  data-test="session-protocol-kind"
+                >
+                  {{ protocolKindShortText(row.protocol) }}
                 </el-tag>
                 <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
                      指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
@@ -150,6 +160,12 @@
                 >
                   {{ $t('sessions.consoleBadge') }}
                 </el-tag>
+                <p
+                  class="sub-text"
+                  data-test="session-protocol-code"
+                >
+                  {{ String(row.protocol || '').toUpperCase() }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
@@ -366,11 +382,13 @@
             </el-table-column>
             <el-table-column
               :label="$t('sessions.actorColumn')"
-              min-width="130"
+              min-width="200"
+              class-name="identity-cell"
             >
               <template #default="{ row }">
                 <div
                   class="ident-line"
+                  data-test="session-actor"
                   :title="row.user?.username || ''"
                 >
                   {{ row.user?.username || $t('agentPrincipals.unavailable') }}
@@ -386,9 +404,8 @@
             <!-- 代表人：agent 是替誰做的。沒有這欄，列表答不出「替誰」 -->
             <el-table-column
               :label="$t('agentSession.onBehalf')"
-              min-width="90"
-              class-name="nowrap-cell"
-              show-overflow-tooltip
+              min-width="140"
+              class-name="identity-cell"
             >
               <template #default="{ row }">
                 <span data-test="session-on-behalf">{{ onBehalfText(row) }}</span>
@@ -397,7 +414,7 @@
             <!-- 任務欄帶主旨：只有「任務 91」時，讀者仍得點進去才知道那張單在做什麼 -->
             <el-table-column
               :label="$t('multiRequest.task')"
-              min-width="120"
+              min-width="100"
             >
               <template #default="{ row }">
                 <a
@@ -412,39 +429,36 @@
                 >
                   {{ taskReasons[row.access_request_id] }}
                 </p>
-              </template>
-            </el-table-column>
-            <!-- 工具呼叫次數：原本要進詳情再捲到帳本逐列數，列表直接給總數與擋下數 -->
-            <el-table-column
-              :label="$t('agentLedger.callsColumn')"
-              min-width="80"
-            >
-              <template #default="{ row }">
-                <span
-                  v-if="!callCounts[row.id]"
-                  data-test="session-calls"
-                >—</span>
-                <span
-                  v-else-if="callCounts[row.id].state === 'loading'"
-                  data-test="session-calls"
-                >{{ $t('agentTasks.summary.counting') }}</span>
-                <span
-                  v-else-if="callCounts[row.id].state === 'error'"
-                  data-test="session-calls"
-                >{{ $t('agentLedger.unknown') }}<el-button
-                  link
-                  size="small"
-                  @click="loadCallCount(row)"
-                >{{ $t('common.retry') }}</el-button></span>
-                <span
-                  v-else
-                  data-test="session-calls"
-                >{{ $t('agentLedger.callsValue', { n: callCounts[row.id].total }) }}<br>{{ $t('agentLedger.blockedValue', { n: callCounts[row.id].blocked }) }}</span>
+                <p
+                  class="cell-subline"
+                  data-test="session-task-calls"
+                >
+                  <span
+                    v-if="!callCounts[row.id]"
+                    data-test="session-calls"
+                  >—</span>
+                  <span
+                    v-else-if="callCounts[row.id].state === 'loading'"
+                    data-test="session-calls"
+                  >{{ $t('agentTasks.summary.counting') }}</span>
+                  <span
+                    v-else-if="callCounts[row.id].state === 'error'"
+                    data-test="session-calls"
+                  >{{ $t('agentLedger.unknown') }}<el-button
+                    link
+                    size="small"
+                    @click="loadCallCount(row)"
+                  >{{ $t('common.retry') }}</el-button></span>
+                  <span
+                    v-else
+                    data-test="session-calls"
+                  >{{ $t('agentTasks.summary.callsValue', { n: callCounts[row.id].total }) }}<br>{{ $t('agentLedger.blockedValue', { n: callCounts[row.id].blocked }) }}</span>
+                </p>
               </template>
             </el-table-column>
             <el-table-column
               :label="$t('common.asset')"
-              min-width="120"
+              min-width="100"
             >
               <template #default="{ row }">
                 {{ row.asset?.name || '-' }}
@@ -472,11 +486,14 @@
             </el-table-column>
             <el-table-column
               :label="$t('common.protocol')"
-              min-width="95"
+              min-width="110"
             >
               <template #default="{ row }">
-                <el-tag class="ot-tag-neutral">
-                  {{ protocolText(row.protocol) }}
+                <el-tag
+                  class="ot-tag-neutral protocol-kind"
+                  data-test="session-protocol-kind"
+                >
+                  {{ protocolKindShortText(row.protocol) }}
                 </el-tag>
                 <!-- 同一個協議有命令列與查詢主控台兩種載體，錄影形態與
                      指令紀錄的欄位都不同：協議 chip 旁必須看得出是哪一種 -->
@@ -489,6 +506,12 @@
                 >
                   {{ $t('sessions.consoleBadge') }}
                 </el-tag>
+                <p
+                  class="sub-text"
+                  data-test="session-protocol-code"
+                >
+                  {{ String(row.protocol || '').toUpperCase() }}
+                </p>
               </template>
             </el-table-column>
             <el-table-column
@@ -523,7 +546,7 @@
 
             <el-table-column
               :label="$t('sessions.startTime')"
-              min-width="110"
+              min-width="95"
             >
               <template #default="{ row }">
                 {{ formatDateTime(row.start_time) }}
@@ -614,7 +637,7 @@ import {
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
-import { isTextTerminal, PROTOCOL_DEFAULT_PORTS } from '@/utils/protocol'
+import { isTextTerminal, PROTOCOL_DEFAULT_PORTS, protocolKindShortText } from '@/utils/protocol'
 import { getAgentToolCalls, getAgentTask } from '@/api/agentTasks'
 import { getEndReasonText } from '@/utils/end-reason'
 import { formatDateTime, formatDurationSeconds } from '@/utils/format'
@@ -628,13 +651,6 @@ const onBehalfText = (row) => {
   return row.actor_kind === 'agent' ? t('agentSession.none') : '—'
 }
 
-// 協議碼在首層一律帶人話：SSH／RDP 這類縮寫本身不說明它是什麼連線
-const PROTOCOL_KINDS = { ssh: 'terminal', k8s: 'terminal', rdp: 'desktop', vnc: 'desktop', mysql: 'database', postgres: 'database', redis: 'database', mssql: 'database' }
-const protocolText = (protocol) => {
-  const code = String(protocol || '').toUpperCase()
-  const kind = PROTOCOL_KINDS[String(protocol || '').toLowerCase()]
-  return kind ? t(`enum.protocolKind.${kind}`, { code }) : code
-}
 
 const router = useRouter()
 
@@ -957,14 +973,9 @@ a { color: var(--ot-primary); }
   display: flex;
   justify-content: flex-end;
 }
-/* anywhere 會把 testuser 這種單詞從中間切成 testuse／r；
-   break-word 只在整個單詞放不下時才斷，欄寬已經各自放寬 */
-/* break-word 仍會在長識別字沒處斷時從中間切（testuser → testuse／r）。
-   改回預設斷行規則（中日文照常逐字換行、西文只在詞界斷），
-   放不下的識別欄改單行省略號＋tooltip（nowrap-cell） */
-.history-table :deep(.cell) { white-space: normal; overflow-wrap: normal; word-break: normal; }
+/* 歷史欄依詞界換行；工具統計併任務、IP 在明細，帳號保留首層。 */
+.history-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
 .history-table :deep(td.nowrap-cell .cell) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ident-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 任務主旨是要讀的內容而不是註腳，留在主文字色，只降字級 */
 .cell-subline { color: var(--ot-text-primary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0 0; }
 .history-table :deep(.el-tag) { height: auto; min-height: 24px; white-space: normal; overflow-wrap: normal; word-break: normal; line-height: 1.4; padding: var(--ot-space-xs); }
@@ -972,5 +983,17 @@ a { color: var(--ot-primary); }
 /* 操作文字在三語間長短差一倍（en「View Recording」最長）：EP 的按鈕預設
    nowrap，固定欄寬下尾字直接被儲存格裁掉。允許換行，裁切消失 */
 .sessions :deep(.el-table .el-button) { white-space: normal; height: auto; }
-.history-table .sub-text { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0; }
+.sub-text { color: var(--ot-text-secondary); font-size: var(--ot-font-size-sm); margin: var(--ot-space-xs) 0; }
+/* 身分完整可讀，長帳號允許換行；不使用 tooltip 的單行省略。 */
+.sessions :deep(.identity-cell .cell),
+.sessions .ident-line,
+.sessions [data-test="session-on-behalf"] {
+  white-space: normal;
+  word-break: break-all;
+  overflow: visible;
+  text-overflow: clip;
+}
+.sessions [data-test="session-on-behalf"] { word-break: normal; overflow-wrap: anywhere; }
+.sessions :deep(.protocol-kind),
+.sessions :deep(.protocol-kind .el-tag__content) { white-space: nowrap; }
 </style>

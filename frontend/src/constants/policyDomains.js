@@ -92,6 +92,7 @@ export const ACCESS_SECTIONS = [
     'agent_probe_window_seconds',
     'agent_request_rate_per_hour',
     'agent_request_pending_max',
+    'alert_on_sensitive_reveal',
   ]),
   section('request_params', [
     'access_request_max_duration_minutes',

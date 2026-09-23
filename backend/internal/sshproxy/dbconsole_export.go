@@ -318,7 +318,7 @@ func (c *consoleCountingWriter) sum() string {
 func (h *Handler) auditConsoleExport(c *gin.Context, userID, assetID uint,
 	status model.AuditStatus, statusCode int, body map[string]any) {
 	if h.AuditService == nil {
-		log.Printf("[DBConsole] 審計服務未注入，匯出事件未留痕（status=%s）", status)
+		log.Printf("[DBConsole] 稽核服務未注入，匯出事件未留痕（status=%s）", status)
 		return
 	}
 	raw, err := json.Marshal(body)

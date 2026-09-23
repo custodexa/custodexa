@@ -424,7 +424,7 @@ func (s *AuthService) webIdleMinutes() int {
 // 撤銷端點重試。攻擊者能得到的僅是「刷新被拒」——與成功撤銷時的結果一致
 func (s *AuthService) detectReuse(row *model.RefreshToken) error {
 	if _, err := RevokeAllRefreshTokens(database.DB, row.UserID, model.RefreshRevokeReuseDetected); err != nil {
-		log.Printf("[AuthService] reuse detection 家族撤銷失敗，本次刷新以 fail-close 拒絕 (userID=%d): %v",
+		log.Printf("[AuthService] reuse detection 家族撤銷失敗，本次更新以 fail-close 拒絕 (userID=%d): %v",
 			row.UserID, err)
 		return &RefreshFamilyRevokeError{UserID: row.UserID, Err: err}
 	}

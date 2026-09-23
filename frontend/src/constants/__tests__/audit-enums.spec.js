@@ -158,6 +158,7 @@ const BACKEND_CAUSES = [
   'audit_write_fallback_file',
   'audit_write_batch_dropped',
   'audit_write_sync_refused',
+  'sensitive_reveal_alert_write_failed',
   'syslog_connect_failed',
   'syslog_buffer_overflow',
   'kek_retirement_backlog',
@@ -226,7 +227,7 @@ describe('audit-enums 完備性（前後端值域一致）', () => {
 
   it('AUDIT_CAUSES 與後端失效原因互為全集', () => {
     expect(Object.keys(AUDIT_CAUSES).sort()).toEqual([...BACKEND_CAUSES].sort())
-    expect(AUDIT_CAUSE_VALUES).toHaveLength(33)
+    expect(AUDIT_CAUSE_VALUES).toHaveLength(34)
   })
 
   it.skipIf(!backendSourcePath)(

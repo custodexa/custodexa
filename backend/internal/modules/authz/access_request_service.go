@@ -383,7 +383,7 @@ func (s *AccessRequestService) ListPending(actorID uint, isAdmin bool, now time.
 func (s *AccessRequestService) PendingCount(actorID uint, isAdmin bool, now time.Time) (int64, error) {
 	var count int64
 	if err := s.pendingScopeFilter(actorID, isAdmin, now).Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("查詢待審計數失敗: %w", err)
+		return 0, fmt.Errorf("查詢待審核數失敗: %w", err)
 	}
 	return count, nil
 }
@@ -799,7 +799,7 @@ func (s *AccessRequestService) ListPendingReview(actorID uint, isAdmin bool) ([]
 func (s *AccessRequestService) PendingReviewCount(actorID uint, isAdmin bool) (int64, error) {
 	var count int64
 	if err := s.pendingReviewFilter(actorID, isAdmin).Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("查詢待補審計數失敗: %w", err)
+		return 0, fmt.Errorf("查詢待補審核數失敗: %w", err)
 	}
 	return count, nil
 }

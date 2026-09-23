@@ -956,6 +956,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		recordingService:           recordingService,
 		dailyReviewService:         dailyReviewService,
 		auditFailureService:        auditFailureService,
+		alertSink:                  alertSink,
 		notificationChannelService: notificationChannelService,
 		oidcProviderService:        oidcProviderService,
 		oidcLoginService:           oidcLoginService,
@@ -1287,10 +1288,10 @@ func newMetricsRefreshSources(
 
 	dbUsable := func() error {
 		if metricsDB == nil {
-			return errors.New("指標刷新的 DB 句柄在組裝時即為空")
+			return errors.New("指標更新的 DB 連線在組裝時即為空")
 		}
 		if database.DB != metricsDB {
-			return errors.New("全域 DB 句柄已在指標刷新啟動後被替換或移除")
+			return errors.New("全域 DB 連線已在指標更新啟動後被替換或移除")
 		}
 		return nil
 	}
@@ -1425,7 +1426,7 @@ func logKEKSwitchAudit(keyManager *keyvault.KeyManagerService, auditService *aud
 		}
 		details, err := json.Marshal(map[string]interface{}{"changes": changes})
 		if err != nil {
-			log.Printf("[KeyManager] KEK 切換審計序列化失敗（不阻塞啟動）: %v", err)
+			log.Printf("[KeyManager] KEK 切換稽核序列化失敗（不阻塞啟動）: %v", err)
 			continue
 		}
 		auditService.Log(&audit.AuditLogEntry{
@@ -1436,7 +1437,7 @@ func logKEKSwitchAudit(keyManager *keyvault.KeyManagerService, auditService *aud
 			Details:  string(details),
 		})
 	}
-	log.Printf("[KeyManager] KEK 切換審計已補記：%d 把舊 KEK → %s（退役 %d 筆）",
+	log.Printf("[KeyManager] KEK 切換稽核已補記：%d 把舊 KEK → %s（退役 %d 筆）",
 		len(sw.Retired), sw.ToKEKID, sw.RetiredCount)
 }
 
@@ -1454,7 +1455,7 @@ func instanceGuardAuditSink(auditService *audit.AuditLogService) func(database.G
 	return func(ev database.GuardEvent) {
 		body, err := json.Marshal(instanceGuardEventDetails(ev))
 		if err != nil {
-			log.Printf("[InstanceGuard] 守衛事件 %s 序列化失敗（審計列未寫）: %v", ev.Event, err)
+			log.Printf("[InstanceGuard] 守衛事件 %s 序列化失敗（稽核列未寫）: %v", ev.Event, err)
 			return
 		}
 		status := model.StatusFailure
@@ -1469,7 +1470,7 @@ func instanceGuardAuditSink(auditService *audit.AuditLogService) func(database.G
 			Status:     string(status),
 			Details:    string(body),
 		}); err != nil {
-			log.Printf("[InstanceGuard] 守衛事件 %s 投遞審計失敗: %v", ev.Event, err)
+			log.Printf("[InstanceGuard] 守衛事件 %s 投遞稽核失敗: %v", ev.Event, err)
 		}
 	}
 }
@@ -1507,6 +1508,7 @@ type routeServices struct {
 	recordingService           *session.RecordingService
 	dailyReviewService         *audit.DailyReviewService
 	auditFailureService        *audit.AuditFailureService
+	alertSink                  gatewayapi.AlertSink
 	notificationChannelService *audit.NotificationChannelService
 	oidcProviderService        *identity.OIDCProviderService
 	oidcLoginService           *identity.OIDCLoginService
@@ -1600,6 +1602,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 	// audit_logs 完整性驗證（10.3.4；admin＋auditor）
 	auditIntegrityHandler := api.NewAuditIntegrityHandler(database.DB, s.auditIntegrity)
+	auditIntegrityHandler.SetToolCallArguments(audit.NewToolCallArgumentsService(database.DB, s.keyManager, s.auditTxSink, s.auditFailureService), audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))
 
 	// 檢查點鏈查詢／驗證／公鑰（audit-checkpoint-chain，admin＋auditor 唯讀）
 	auditCheckpointHandler := api.NewAuditCheckpointHandler(s.checkpointVerifier, s.checkpointSigning)
@@ -1707,7 +1710,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// 依 auditLogEnabled 旗標決定（關閉時整組 3 條 /audit-logs 不存在）
 	auditLogHandler := api.NewAuditLogHandler(s.auditService)
 	if cfg.Features.AuditLogEnabled {
-		log.Println("審計日誌查詢 API 已註冊")
+		log.Println("稽核日誌查詢 API 已註冊")
 	}
 
 	// 稽核證據匯出（audit-workflows，PCI 10.5.1）：服務已於段 2 建構
@@ -1725,6 +1728,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	clipboardContentService := session.NewClipboardContentService(
 		database.DB, s.keyManager, s.auditTxSink, s.auditFailureService)
 	clipboardHandler := api.NewClipboardEventHandler(s.sessionService, clipboardContentService)
+	clipboardHandler.SetSensitiveRevealReporter(audit.NewSensitiveRevealService(s.policyService, s.alertSink, s.auditFailureService))
 
 	// 稽核調查工作台（auditor-workbench）：六來源聚合＋主體目錄，唯讀
 	auditTimelineHandler := api.NewAuditTimelineHandler(audit.NewTimelineService(database.DB))
@@ -1811,7 +1815,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 
 		conn: s.connHandler,
 		ssh:  s.sshHandler,
-		mcp:  agentmcp.NewHandler(s.sshHandler, s.accessRequestService),
+		mcp:  agentmcp.NewHandler(s.sshHandler, s.accessRequestService).WithLedgerCodec(s.keyManager),
 	}, nil
 }
 

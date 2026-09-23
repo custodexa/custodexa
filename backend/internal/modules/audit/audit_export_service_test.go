@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -47,7 +47,7 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 	// ClipboardEvent 為 bundle 的固定段，
 	// 純 bundle 測試也需要表存在（零列＝空段，無需解密器）
 	if err := db.AutoMigrate(&model.User{}, &model.Asset{}, &model.Session{}, &model.AuditLog{},
-		&model.ClipboardEvent{}, &model.UserRole{}); err != nil {
+		&model.ClipboardEvent{}, &model.UserRole{}, &model.AgentToolCall{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

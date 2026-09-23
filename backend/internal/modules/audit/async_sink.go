@@ -117,14 +117,14 @@ func (s *directSink) Submit(_ context.Context, ev gatewayapi.AuditEvent) error {
 	if s == nil || s.db == nil {
 		// 未注入即回錯，不靜默成功——C-plain 兩點的呼叫端雖不 fail-close，
 		// 至少 log 得出「審計沒寫進去」，而不是以為寫了。
-		log.Printf("[Audit] DirectSink 未注入 DB 句柄，審計列未落地 (action=%s resource=%s)", ev.Action, ev.Resource)
+		log.Printf("[Audit] DirectSink 未注入 DB 控制代碼，稽核列未落地 (action=%s resource=%s)", ev.Action, ev.Resource)
 		return errDirectSinkNoDB
 	}
 	return s.db.Create(auditRowOf(ev)).Error
 }
 
 // errDirectSinkNoDB directSink 未接線。
-var errDirectSinkNoDB = directSinkError("審計直寫落地面未注入 DB 句柄")
+var errDirectSinkNoDB = directSinkError("稽核直寫落地面未注入 DB 控制代碼")
 
 type directSinkError string
 

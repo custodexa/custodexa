@@ -257,6 +257,8 @@ onMounted(load)
 onBeforeUnmount(() => { epoch++ })
 </script>
 <style scoped>
+/* 卡片的負責人與鑰匙統計直接支援管理決策。 */
+.my-agents__row :deep(.principal-badge__owner), .my-agents__row :deep(.stat-label) { color: var(--ot-text-primary); }
 .my-agents { color: var(--ot-text-primary); }
 .my-agents__keys { color: var(--ot-text-primary); font-size: var(--ot-font-size-md); margin: 0 0 var(--ot-space-sm); }
 .my-agents__list { margin-top: var(--ot-space-lg); padding: var(--ot-space-md); border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-lg); background: var(--ot-bg-surface); }

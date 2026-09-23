@@ -9,8 +9,10 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/internal/notifycat"
+	"github.com/custodexa/backend/internal/sensitivescan"
 	"github.com/gorilla/websocket"
 )
 
@@ -221,7 +223,7 @@ func (b *bridge) pumpTimeout() {
 			}
 			b.writeErrorMessage(code)
 			b.setEndReason(reason)
-			log.Printf("[SSHProxy] 會話超時斷線(%s): session=%v", reason, b.sessionID())
+			log.Printf("[SSHProxy] 會話逾時斷線(%s): session=%v", reason, b.sessionID())
 			b.stop()
 			return
 		}
@@ -309,11 +311,14 @@ const blockedMarkerFormat = "\r\n\x1b[31m%s\x1b[0m\r\n"
 // `[RULE_COMMAND_BLOCKED]`，供回放與稽核 grep。寫入 sinks 後，錄影回放、即時監看
 // 與審計虛擬螢幕三軌都留下阻斷軌跡（原本三軌皆看不到阻斷，僅前端當下閃一則提示）。
 //
-// 規則名過 notifycat.SanitizeOpaque：AlertRule.Name 僅驗 required，可含 ANSI 逸出
+// 規則名與阻斷輸入過 notifycat.SanitizeOpaque；兩者皆可能含 ANSI 逸出
 // 序列與控制字元，未淨化即直接寫進錄影與監看者終端＝注入面。
-func (b *bridge) writeBlockedMarkerToSinks(ruleName string) {
+func (b *bridge) writeBlockedMarkerToSinks(ruleName, blockedInput string) {
 	marker := fmt.Sprintf(blockedMarkerFormat,
 		apierror.CommandBlockedAuditMarker(notifycat.SanitizeOpaque(ruleName)))
+	if blockedInput != "" {
+		marker += "  > " + notifycat.SanitizeOpaque(blockedInput) + "\r\n"
+	}
 	for _, sink := range b.outputSinks {
 		sink.WriteOutput([]byte(marker))
 	}
@@ -326,6 +331,22 @@ func (b *bridge) writeRaw(raw []byte) {
 	if err := b.ws.WriteMessage(websocket.TextMessage, raw); err != nil {
 		log.Printf("[SSHProxy] WS 寫入失敗: %v", err)
 	}
+}
+
+// Agent input arrives without remote echo. Only this added evidence line is
+// redacted; ordinary host output and human WS recording retain their semantics.
+func (b *bridge) redactBlockedInput(input string) string {
+	matcher := audit.GetAlertMatcher()
+	if matcher == nil || matcher.BlockerHealth() != nil {
+		return "[REDACTION_UNAVAILABLE]"
+	}
+	protocol := b.blocker.protocol
+	rules, err := sensitivescan.Compile(matcher.OutputRules(protocol, model.KindAgent), protocol)
+	if err != nil {
+		return "[REDACTION_UNAVAILABLE]"
+	}
+	visible, _ := rules.Redact(input)
+	return visible
 }
 
 // pumpOutput SSH stdout → WS（60ms 批次 flush）＋ 旁路 sinks
@@ -439,7 +460,11 @@ func (b *bridge) pumpInput() {
 					// params 傳遞、由前端組字與上色）；中斷鍵清遠端行緩衝
 					b.writeNoticeMessage(apierror.CodeCommandBlocked,
 						map[string]string{"rule": blockedRule.Name})
-					b.writeBlockedMarkerToSinks(blockedRule.Name)
+					blockedInput := ""
+					if _, inProcess := b.ws.(*InProcessTransport); inProcess {
+						blockedInput = b.redactBlockedInput(b.blocker.blockedInput)
+					}
+					b.writeBlockedMarkerToSinks(blockedRule.Name, blockedInput)
 					if _, err := b.conn.Write([]byte{0x03}); err != nil { // Ctrl+C 清遠端已鍵入行
 						// fail-close：清行失敗＝遠端行緩衝可能殘留被阻斷指令的
 						// 前綴，使用者下次按 Enter 就送出殘句——阻斷等於沒發生。

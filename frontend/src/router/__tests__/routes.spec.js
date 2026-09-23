@@ -53,7 +53,7 @@ describe('帳號憑證庫的路由註冊', () => {
 })
 
 // 守衛攔下頁：**不得帶 requiresAuth**。攔下模式的路由樹上沒有登入端點，
-// 帶了就是把唯一的救援路徑導去一個不存在的頁面（解封頁踩過同一個坑）
+// 帶了就是把唯一的救援路徑導去一個不存在的頁面（解封頁同理）
 describe('守衛攔下頁的路由註冊', () => {
   it('/instance-guard 已註冊且不要求登入、不限角色', () => {
     const resolved = router.resolve('/instance-guard')

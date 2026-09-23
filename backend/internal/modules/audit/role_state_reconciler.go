@@ -246,7 +246,7 @@ func (r *RoleStateReconciler) roleEventsAfter(ctx context.Context, idTo uint) ([
 	if err := r.db.WithContext(ctx).Unscoped().
 		Where("resource = ? AND id > ?", model.ResourceUserRole, idTo).
 		Order("id ASC").Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("讀取角色指派審計列失敗: %w", err)
+		return nil, fmt.Errorf("讀取角色指派稽核列失敗: %w", err)
 	}
 	return rows, nil
 }
@@ -264,7 +264,7 @@ func applyRoleEvents(baseline []RolePair, rows []model.AuditLog) []RolePair {
 	for i := range rows {
 		var d model.UserRoleAuditDetails
 		if err := json.Unmarshal([]byte(rows[i].Details), &d); err != nil {
-			log.Printf("[RoleState] 審計列 id=%d 的詳情解析失敗，本列不套用: %v", rows[i].ID, err)
+			log.Printf("[RoleState] 稽核列 id=%d 的詳情解析失敗，本列不套用: %v", rows[i].ID, err)
 			continue
 		}
 		pair := RolePair{UserID: uint64(d.UserID), RoleID: uint64(d.RoleID)}
@@ -274,7 +274,7 @@ func applyRoleEvents(baseline []RolePair, rows []model.AuditLog) []RolePair {
 		case model.ActionRevoke:
 			delete(set, pair)
 		default:
-			log.Printf("[RoleState] 審計列 id=%d 的動作 %q 不在角色指派的動作值域內，本列不套用",
+			log.Printf("[RoleState] 稽核列 id=%d 的動作 %q 不在角色指派的動作值域內，本列不套用",
 				rows[i].ID, rows[i].Action)
 		}
 	}

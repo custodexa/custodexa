@@ -51,6 +51,7 @@ describe('任務詳情', () => {
       id: index + 1, seq: index + 1, tool: 'list_assets', decision: 'denied', denial_code: code,
       created_at: '2026-09-22T01:00:00Z', duration_ms: 0, masked_count: 0,
       args_redacted: { access_request_id: 23, agent_token_id: 8 },
+      args_retained: true,
     })), total: codes.length })
     const w = await open()
     const details = w.findAll('[data-test="ledger-row"] details')

@@ -35,7 +35,7 @@ func (s *AccessRequestTimeoutScheduler) Start() error {
 		return err
 	}
 	s.cron.Start()
-	log.Printf("[AccessRequest] pending 超時作廢排程器已啟動（每 %s）", accessRequestSweepInterval)
+	log.Printf("[AccessRequest] pending 逾時作廢排程器已啟動（每 %s）", accessRequestSweepInterval)
 	return nil
 }
 
@@ -49,9 +49,9 @@ func (s *AccessRequestTimeoutScheduler) run() {
 	now := time.Now()
 	n, err := s.service.ExpireOverdue(now)
 	if err != nil {
-		log.Printf("[AccessRequest] pending 超時掃描失敗: %v", err)
+		log.Printf("[AccessRequest] pending 逾時掃描失敗: %v", err)
 	} else if n > 0 {
-		log.Printf("[AccessRequest] pending 超時作廢 %d 筆", n)
+		log.Printf("[AccessRequest] pending 逾時作廢 %d 筆", n)
 	}
 
 	// 破窗補審逾期升級告警：同輪掃描、防重標記，

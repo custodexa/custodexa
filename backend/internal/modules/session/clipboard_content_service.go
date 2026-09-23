@@ -41,14 +41,17 @@ type ClipboardReadOperator struct {
 	ClientIP  string
 	RequestID string
 	Path      string
+	Reason    string
 }
 
 // ClipboardContentView 單筆調閱結果。Content 僅於
 // Event.ContentStatus == model.ClipboardContentAvailable 時有值；
 // 缺口紀錄（failed）只回事實，內容欄由呈現端缺席處理（不以空字串冒充）。
 type ClipboardContentView struct {
-	Event   model.ClipboardEvent
-	Content string
+	Event           model.ClipboardEvent
+	Content         string
+	AssetID         *uint
+	AccessRequestID *uint
 }
 
 // ClipboardContentService 單筆剪貼簿內容的解密與逐筆留痕。
@@ -94,8 +97,11 @@ func (s *ClipboardContentService) ReadContent(ctx context.Context, sessionID, ev
 	// 經所屬會話解析——缺這一鍵，「這台資產的剪貼簿內容被誰調閱過」在資產
 	// 樞紐上與「沒有人調閱過」不可分辨。解析失敗即拒絕：主體鍵是本留痕的
 	// 完整性要件，不做「查不到就留空」的靜默降級
-	var sessionSubject struct{ AssetID *uint }
-	if err := s.db.Model(&model.Session{}).Select("asset_id").
+	var sessionSubject struct {
+		AssetID         *uint
+		AccessRequestID *uint
+	}
+	if err := s.db.Model(&model.Session{}).Select("asset_id", "access_request_id").
 		Where("id = ?", ev.SessionID).Take(&sessionSubject).Error; err != nil {
 		return nil, fmt.Errorf("解析剪貼簿事件的資產主體失敗: %w", err)
 	}
@@ -104,15 +110,19 @@ func (s *ClipboardContentService) ReadContent(ctx context.Context, sessionID, ev
 	// 回應」（缺口紀錄則為交付事實與缺口狀態），不宣稱無法保證的客戶端收件。
 	// resource_id 沿 ResourceClipboardEvent 的範圍鍵慣例（連線 id），
 	// 事件識別走 details.event_id
-	details, err := json.Marshal(map[string]string{
+	detailValues := map[string]string{
 		"session_id":     strconv.FormatUint(uint64(ev.SessionID), 10),
 		"event_id":       strconv.FormatUint(uint64(ev.ID), 10),
 		"direction":      ev.Direction,
 		"content_status": ev.ContentStatus,
 		"content_length": strconv.Itoa(ev.ContentLength),
-	})
+	}
+	if op.Reason != "" {
+		detailValues["reason"] = op.Reason
+	}
+	details, err := json.Marshal(detailValues)
 	if err != nil {
-		return nil, fmt.Errorf("組裝調閱審計欄位失敗: %w", err)
+		return nil, fmt.Errorf("組裝調閱稽核欄位失敗: %w", err)
 	}
 	sessionRef := ev.SessionID
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -138,5 +148,5 @@ func (s *ClipboardContentService) ReadContent(ctx context.Context, sessionID, ev
 		}
 		return nil, fmt.Errorf("調閱留痕失敗，拒絕交付內容: %w", err)
 	}
-	return &ClipboardContentView{Event: ev, Content: content}, nil
+	return &ClipboardContentView{Event: ev, Content: content, AssetID: sessionSubject.AssetID, AccessRequestID: sessionSubject.AccessRequestID}, nil
 }

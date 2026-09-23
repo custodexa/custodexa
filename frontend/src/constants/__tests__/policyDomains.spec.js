@@ -11,6 +11,8 @@ const BACKEND_POLICY_KEYS = [
   'agent_probe_window_seconds',
   'agent_request_rate_per_hour',
   'agent_request_pending_max',
+  // 解密調閱原文時另發 sensitive_reveal 告警（預設關）
+  'alert_on_sensitive_reveal',
   'lockout_max_attempts',
   'lockout_duration_minutes',
   // 登入前告示（文字型兩鍵）

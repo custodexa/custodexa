@@ -243,7 +243,7 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 			return RoleMappingOutcome{}, err
 		}
 		if _, err := RevokeAllRefreshTokens(tx, user.ID, model.RefreshRevokeCredentialEpoch); err != nil {
-			return RoleMappingOutcome{}, fmt.Errorf("撤銷刷新憑證失敗: %w", err)
+			return RoleMappingOutcome{}, fmt.Errorf("撤銷更新憑證失敗: %w", err)
 		}
 		outcome.EpochBumped = true
 	}
@@ -329,7 +329,7 @@ func writeRoleMappingAudit(tx *gorm.DB, auditSink port.TxSink, user *model.User,
 	obs GroupObservation, code string, details map[string]any) error {
 	payload, err := json.Marshal(details)
 	if err != nil {
-		return fmt.Errorf("序列化角色映射審計內容失敗: %w", err)
+		return fmt.Errorf("序列化角色映射稽核內容失敗: %w", err)
 	}
 	uid := user.ID
 	if err := port.WriteInTx(auditSink, tx, port.AuditEvent{
@@ -342,7 +342,7 @@ func writeRoleMappingAudit(tx *gorm.DB, auditSink port.TxSink, user *model.User,
 		ErrorMsg:   code,
 		Details:    string(payload),
 	}); err != nil {
-		return fmt.Errorf("寫入角色映射審計失敗: %w", err)
+		return fmt.Errorf("寫入角色映射稽核失敗: %w", err)
 	}
 	return nil
 }

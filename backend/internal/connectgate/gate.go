@@ -78,7 +78,7 @@ type Stage = gatewayapi.Stage
 // 回傳型別非它不可（Decision 表達不了狀態碼、平鋪機器欄與內部故障分支，
 // 理由逐條見 `gatewayapi.Denial` 的註解）。別名而非重新宣告，是為了讓
 // `internal/proxy`／`internal/sshproxy` 既有的兩百餘處 `*connectgate.Outcome`
-// 逐字不動——這波是結構接線，不是閘內容變更。
+// 逐字不動——這是結構接線，不是閘內容變更。
 //
 // **回傳 nil 代表本閘通過**；非 nil 即拒絕，故 Decision.Allowed 恆為 false。
 type Outcome = gatewayapi.Denial

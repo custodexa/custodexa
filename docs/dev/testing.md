@@ -68,7 +68,7 @@ docker compose exec -T frontend npm run lint
 ### 瀏覽器層驗證的邊界
 
 - 自動化瀏覽器與本機共用剪貼簿：測剪貼簿功能前先寫入哨兵值覆蓋，
-  測後清理 `clipboard_events`，避免把真實剪貼簿內容（可能含密鑰）留進審計庫。
+  測後清理 `clipboard_events`，避免把真實剪貼簿內容（可能含密鑰）留進稽核庫。
 - a11y snapshot 與自動 click 會**遮蔽「元素滑出可視範圍」的視覺缺陷**
   （snapshot 列得出卷軸外內容、click 會自動捲動）。驗「使用者看不看得到」
   必須用 `getBoundingClientRect` 對照 `window.innerWidth` ＋`elementFromPoint`，或看截圖。
@@ -108,7 +108,7 @@ golden 的 diff 須在 commit 中**逐條審視**——它是快照而非不可�
 
 - **`type:timestamptz` 欄位在 sqlite 測試 DB 掃不回**：glebarez sqlite 建表後
   scan 回 `time.Time` 失敗——測試改用原生 SQL 建 datetime 等價表。
-- **Asset 的 `AfterCreate` 審計 hook 會寫 `audit_logs`**：測試的 AutoMigrate
+- **Asset 的 `AfterCreate` 稽核 hook 會寫 `audit_logs`**：測試的 AutoMigrate
   必須含 `model.AuditLog`，缺表會回滾 asset 建立（症狀離根因很遠）。
 - **GORM `default` tag 觸發 `RETURNING`，破壞 sqlmock 期望**：
   去掉 default tag、寫入端顯式設值。
@@ -143,8 +143,8 @@ golden 的 diff 須在 commit 中**逐條審視**——它是快照而非不可�
   > - `internal/modules/identity` **9**：OIDC「產生新長效能力 vs 解綁」併發矩陣的五種交錯（5）；
   >   provider 列鎖下的兌換／Join／停用先後（3）；兌換洪流對上停用的不變量（1）。
   > - `internal/modules/audit` **8**：保留期區間清除的原子性與會話被砍時的行為、區間效能與
-  >   基線比較（4）；保留基線與審計寫入吞吐（2）；檢查點寬限期量測、封存不拖慢寫入（2）。
-  > - `internal/database` **4**：宣告索引與實庫對帳、審計樞紐索引的歷史漂移修復（2）；
+  >   基線比較（4）；保留基線與稽核寫入吞吐（2）；檢查點寬限期量測、封存不拖慢寫入（2）。
+  > - `internal/database` **4**：宣告索引與實庫對帳、稽核樞紐索引的歷史漂移修復（2）；
   >   `kek_id` 欄寬升級路徑（1）；LDAP `CHECK (singleton=1)` ＋ partial unique index 的真實約束（1）。
   >
   > 要真的驗到它們，需備一個 PostgreSQL 靶機並帶 `TEST_PG_DSN=... REQUIRE_INTEGRATION=1` 執行。
@@ -250,7 +250,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 > **寫或改守衛，完成前必做「敏感度驗證」——刻意破壞被驗證對象，確認測試轉紅，
 > 並保留輸出當證據。宣稱「守衛已就位」而沒有轉紅實測，一律視為未驗收。**
 
-已實際踩過的假綠形態（每一條都真的發生過）：
+已知的假綠形態（逐條對照檢查）：
 
 1. **go test 快取只追蹤 module 內的檔案**：守衛讀 module 外的文件當基準時，
    改文件不會使快取失效——`go test` 回報 `(cached)` 綠而根本沒執行。
@@ -335,9 +335,9 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 
 | 關鍵效果類別 | 名稱無關 oracle | 證據（`backend/` 起算） |
 |---|---|---|
-| 審計寫入與 fail-close 回滾 | 有（runtime，射程 asset／identity） | GORM Create callback 注入器 `internal/modules/asset/audit_failclose_backstop_test.go:196`；目標判定看**表名 OR Go 型別**，不看函式名 `:372` |
-| 審計列不可刪 | 有（runtime） | `internal/modules/audit/audit_log_guard_test.go:16`（BeforeDelete 副作用，含 Unscoped） |
-| 審計寫入點完備登記（manifest） | 部分 | 掃描器認 `model.AuditLog{…}` 複合字面量＋recorder 名 `cmd/server/audit_points_manifest_guard_test.go:407`；GORM 層 backstop 只覆蓋 asset／identity 兩模組 |
+| 稽核寫入與 fail-close 回滾 | 有（runtime，射程 asset／identity） | GORM Create callback 注入器 `internal/modules/asset/audit_failclose_backstop_test.go:196`；目標判定看**表名 OR Go 型別**，不看函式名 `:372` |
+| 稽核列不可刪 | 有（runtime） | `internal/modules/audit/audit_log_guard_test.go:16`（BeforeDelete 副作用，含 Unscoped） |
+| 稽核寫入點完備登記（manifest） | 部分 | 掃描器認 `model.AuditLog{…}` 複合字面量＋recorder 名 `cmd/server/audit_points_manifest_guard_test.go:407`；GORM 層 backstop 只覆蓋 asset／identity 兩模組 |
 | 憑證明文解封 | 有（runtime） | 計數式 `ColumnCodec` 直接觀測 `DecryptFor` 次數 `internal/sshproxy/stage_transition_test.go:239`，附對照組 `:287`；掃描器對**非字面 ref** fail-close `internal/guards/moduleboundary/asset_credential_exit_guard_test.go:190`（具名例外 `:46`＋例外的二次條件 `:206`） |
 | 跨模組資料讀寫 ratchet | 有（型別＋fail-close） | 句柄以 `*gorm.DB` **型別**辨識、raw SQL 抽表名、**非字面即報紅** `internal/guards/moduleboundary/module_data_boundary_guard_test.go:815`（判準說明 `:19-22`） |
 | 跨模組交易外交（tx-taking） | 有（型別層） | 以簽章是否含 `*gorm.DB` 判定 `internal/guards/txtaking/tx_taking_whitelist_test.go:320`，明言不看識別字拼法 `:337` |
@@ -355,7 +355,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
   失效方向是 fail-close。殘餘缺口是「新增一個未登記的觸點」，屬登記表覆蓋面
   問題而非 oracle 盲區。不補。
 - **生命週期註冊／釋放**：唯一純名稱層的類別。靜默失效的後果是啟停順序異常
-  ——**可觀察、可復原、不屬安全紅線**（憑證外洩／審計缺漏／授權繞過／
+  ——**可觀察、可復原、不屬安全紅線**（憑證外洩／稽核缺漏／授權繞過／
   跨模組資料越界）。為它建 runtime oracle 需要把整個服務圖的註冊面重做一遍，
   與收斂原則衝突。**接受此風險**，不補。
 
@@ -373,7 +373,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 ## 6. 突變自檢（mutation self-check）的操作紀律
 
 「刻意改壞 → 確認轉紅 → 還原」是本專案驗收守衛與 fail-close 的核心手段。
-以下三條是踩過事故換來的硬規則：
+以下三條為硬規則：
 
 ### 6.1 還原只准用事前 `cp` 快照，禁用 `git checkout --`
 
@@ -415,14 +415,14 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 1. **每個 fault-injection 測試都要斷言「注入器至少 fire 過一次」**
    （注入器內計數，`t.Cleanup` 檢查 `fired > 0`）。這道防呆獨立於被測邏輯——
    它證明的是「測試真的執行到了注入點」。
-2. **`fired > 0` 還不夠，要證明「目標命中」**：一個操作可能寫多筆審計列，
+2. **`fired > 0` 還不夠，要證明「目標命中」**：一個操作可能寫多筆稽核列，
    credit 會被不相干的那筆取得。收緊為三件套：
    - 注入器只對**命中本格身分 spec**（AP 編號＋action／resource／Details 指紋）的寫入注入失敗；
    - 注入器回傳**本格獨有的哨兵 error**，每格 `errors.Is(err, sentinel)`；
    - Cleanup 斷言「命中本格身分的注入次數 > 0」。
 3. **每格必須配「無故障對照」**：三條回滾斷言在「查詢條件寫錯」「夾具沒建起業務列」
    「多點共用一格而第一個點先失敗使後續永不可達」時也全成立。
-   對照組機械斷言：無故障時業務入口成功、業務列落到預期筆數、且確實抵達本格指定的審計點。
+   對照組機械斷言：無故障時業務入口成功、業務列落到預期筆數、且確實抵達本格指定的稽核點。
 4. **為防呆自己加突變自檢**：把某格改成不觸及被測路徑，該格必須因防呆而紅。
 5. **驗收 fault-injection 測試的唯一有效指標是：把生產碼的保護移除後該格會轉紅。**
    只跑「測試通過」不構成證據。
@@ -438,9 +438,9 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 9. 同型風險：mock 沒被呼叫、spy 計數為零、`t.Cleanup` 內的斷言因 panic 跳過、
    前置條件早退（nil 參數、feature flag 關閉、權限不足、空集合）。
 10. **既有的 fail-close backstop 不會自動涵蓋新加的 fail-close 點**：backstop 的
-    注入軸是**特定一種故障**（例如「審計寫入失敗」）。新增一條「協作者回錯誤就整筆
+    注入軸是**特定一種故障**（例如「稽核寫入失敗」）。新增一條「協作者回錯誤就整筆
     失敗」的路徑後，把它改成 log-and-continue **不會**讓任何既有格子轉紅——實證：
-    把交易級聯撤銷的錯誤處置改成吞掉，委派斷言與審計 backstop 兩格都照樣綠。
+    把交易級聯撤銷的錯誤處置改成吞掉，委派斷言與稽核 backstop 兩格都照樣綠。
     **每新增一個 fail-close 點，就要有一格以該點自己的故障驅動的測試。**
 11. **測試替身的「不做事」會打掉別人的對照組**：把一個有副作用的協作者換成純記錄式
     stub，會讓「無故障對照組」的副作用斷言失效（實證：級聯刪除的替身不刪東西，
@@ -464,7 +464,7 @@ load 高於核心數數倍即為過載。可參考的量級：load 達核心數�
 
 ## 9. e2e 煙霧測試
 
-`scripts/e2e_smoke.sh` 是端到端基準（登入、建線、審計、多帳號、SSO、RDP／VNC 圖形協議等 18 段場景，
+`scripts/e2e_smoke.sh` 是端到端基準（登入、建線、稽核、多帳號、SSO、RDP／VNC 圖形協議等 18 段場景，
 腳本輸出以 `[0]`–`[17]` 標號），在開發版 compose 下直接跑：
 
 ```bash
@@ -488,11 +488,11 @@ ADMIN_PASS='<現行 admin 密碼>' bash scripts/e2e_smoke.sh
 - 閒置斷線場景為 opt-in（需把 backend 的 `SSH_IDLE_TIMEOUT_MINUTES` 調到 1 並
   `IDLE_TIMEOUT_SMOKE=1` 跑，全程約 75 秒），驗畢還原設定並 recreate。
 - K8s live 與 SSO 場景依賴 dev compose 靶機（dex 等），不可達時自動 skip。
-- **e2e 綠不構成「優雅關閉期無審計遺失」的證據**：腳本全程不停止 backend，
+- **e2e 綠不構成「優雅關閉期無稽核遺失」的證據**：腳本全程不停止 backend，
   該路徑零執行。要驗需要「WS 連線存活期間觸發優雅關閉」的專用測試。
-- 修改煙測腳本後，除了跑通，**還要抽查審計庫裡實際送出的請求體**——
+- 修改煙測腳本後，除了跑通，**還要抽查稽核庫裡實際送出的請求體**——
   shell 引用類 bug（如舊版 bash 對 `$$` 的 ANSI-C 誤讀）的症狀離根因極遠，
-  審計庫的 `request_body` 是唯一直接證據。
+  稽核庫的 `request_body` 是唯一直接證據。
 
 ### 目錄與身分提供者的群組測試資料
 

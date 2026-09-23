@@ -208,7 +208,7 @@ func comparatorForDef(def *PolicyDef) (string, error) {
 	case PolicyTypeBool, PolicyTypeEnum:
 		return model.PolicyControlComparatorEquals, nil
 	default:
-		return "", fmt.Errorf("型別為 %s 的設定鍵 %s 不能作為設定要求的對象", def.Type, def.Key)
+		return "", fmt.Errorf("型別為 %s 的設定鍵 %s 不能作為設定要求的目標", def.Type, def.Key)
 	}
 }
 

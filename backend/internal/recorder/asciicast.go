@@ -77,7 +77,7 @@ func (r *AsciicastRecorder) Start(metadata RecordingMetadata) error {
 	// 0700／0600：錄影是會話全文，可能含使用者在目標機上鍵入的密碼。後端本體以
 	// root 讀寫不受影響，容器內的其他身分（資料庫 CLI 的降權執行身分）則讀不到
 	if err := os.MkdirAll(dirPath, 0700); err != nil {
-		return fmt.Errorf("創建錄製目錄失敗: %w", err)
+		return fmt.Errorf("建立錄製目錄失敗: %w", err)
 	}
 	// MkdirAll 只對**新建**的目錄套 perm，既存目錄原樣不動（實測：本版上線當天的
 	// 日期目錄由舊版以 0755 建立，改成 0700 後仍是 0755）。故每次開檔顯式收斂一次，
@@ -93,7 +93,7 @@ func (r *AsciicastRecorder) Start(metadata RecordingMetadata) error {
 	// 創建檔案（0600，理由同上；os.Create 的 0666&umask 會落在 0644）
 	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("創建錄製檔案失敗: %w", err)
+		return fmt.Errorf("建立錄製檔案失敗: %w", err)
 	}
 
 	r.file = file

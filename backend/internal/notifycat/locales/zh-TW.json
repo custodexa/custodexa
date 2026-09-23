@@ -47,23 +47,23 @@
   },
   "audit_failure": {
     "default": {
-      "title": "審計機制失效",
+      "title": "稽核機制失效",
       "text": "機制 {mechanism} 於 {started_at} 失效（PCI 10.7.2）：{cause_code}[（失敗檢查點 {failed_points} 個）][（失敗區間 {failed_intervals} 個）]"
     }
   },
   "audit_failure_resolved": {
     "known": {
-      "title": "審計機制已恢復",
+      "title": "稽核機制已恢復",
       "text": "機制 {mechanism} 已恢復，失效區間 {started_at} ~ {ended_at}。"
     },
     "unknown": {
-      "title": "審計機制已恢復",
+      "title": "稽核機制已恢復",
       "text": "機制 {mechanism} 已恢復，起點不明（失效紀錄未落 DB）。"
     }
   },
   "audit_failure_ongoing": {
     "default": {
-      "title": "審計機制持續失效",
+      "title": "稽核機制持續失效",
       "text": "機制 {mechanism} 仍未恢復：{cause_code}[（積壓 {backlog} 筆）][（失敗檢查點 {failed_points} 個）][（失敗區間 {failed_intervals} 個）]（{reported_at}）"
     }
   },

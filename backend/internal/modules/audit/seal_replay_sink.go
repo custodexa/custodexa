@@ -147,10 +147,10 @@ func (s *SealJournalSink) Commit(ctx context.Context, batch sealjournal.ReplayBa
 //     它成功不足以證明主寫入鏈已恢復，代為 Resolve 會抹掉真正的失效狀態。
 func (s *AuditLogService) SubmitSealReplayRows(ctx context.Context, db *gorm.DB, rows []*model.AuditLog) error {
 	if s == nil {
-		return fmt.Errorf("回灌落地端未接線（審計服務為 nil）")
+		return fmt.Errorf("回灌落地端未接線（稽核服務為 nil）")
 	}
 	if s.cfg == nil || !s.cfg.AuditLogEnabled {
-		return fmt.Errorf("審計日誌已停用，封印期留痕無處落地（checkpoint 不推進，事件仍留在 journal）")
+		return fmt.Errorf("稽核日誌已停用，封印期留痕無處落地（checkpoint 不推進，事件仍留在 journal）")
 	}
 	if len(rows) == 0 {
 		return nil
@@ -161,7 +161,7 @@ func (s *AuditLogService) SubmitSealReplayRows(ctx context.Context, db *gorm.DB,
 				Columns:   []clause.Column{{Name: "idempotency_uuid"}},
 				DoNothing: true,
 			}).Create(row).Error; err != nil {
-				return fmt.Errorf("回灌審計列失敗: %w", err)
+				return fmt.Errorf("回灌稽核列失敗: %w", err)
 			}
 		}
 		return nil

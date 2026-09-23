@@ -141,6 +141,10 @@ var sinkWiringRegistry = []sinkWiring{
 				kind: consumerCallArg, target: "InitAlertMatcher",
 				why: "比對路徑：alertMatcher 的落地面，拆線即比對告警改走無出口的路徑",
 			},
+			{
+				kind: consumerStructField, target: "alertSink",
+				why: "routeServices 注入：敏感原文調閱沿唯一告警落地面寫入",
+			},
 		},
 	},
 }

@@ -152,7 +152,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		{Name: "ENCRYPTION_KEY (KEK)", Fingerprint: h.km.KEKKeyID(), ManagedBy: "deployer",
 			Note: "信封主鑰：換鑰走精靈的 KEK 重包流程", NoteCode: "encryption_key"},
 		{Name: "JWT_SECRET", Fingerprint: h.jwtFingerprint, ManagedBy: "deployer",
-			Note: "登入簽章鑰：輪替=改 env 重啟（全員重登）；審計驗章已解耦不受影響", NoteCode: "jwt_secret"},
+			Note: "登入簽章鑰：輪替=改 env 重啟（全員重登）；稽核驗章已解耦不受影響", NoteCode: "jwt_secret"},
 	}
 	// Ed25519 匯出簽章鑰：canonical 公鑰來源為 signing service（與 /audit-export/public-key
 	// 端點同源），顯示公鑰指紋並帶公鑰供複製/下載
@@ -174,7 +174,7 @@ func (h *KeyManagementHandler) Inventory(c *gin.Context) {
 		version := h.checkpointSigning.ActiveVersion()
 		pubB64 := h.checkpointSigning.ActivePublicKeyBase64()
 		ev := envKeyView{Name: "檢查點簽章鑰 (Ed25519)", NameCode: "audit_checkpoint", ManagedBy: "system",
-			Note: "審計檢查點鏈的簽章鑰；私鑰信封加密落庫、無匯出入口，公鑰供離線驗章",
+			Note: "稽核檢查點鏈的簽章鑰；私鑰信封加密落庫、無匯出入口，公鑰供離線驗章",
 			NoteCode: "audit_checkpoint", PublicKey: pubB64, Version: version}
 		if fp, err := h.checkpointSigning.PublicKeyFingerprint(version); err == nil {
 			ev.Fingerprint = fp
@@ -416,7 +416,7 @@ func (h *KeyManagementHandler) buildRewrapTarget(c *gin.Context) (*keyvault.Rewr
 	// 而那是開不了機的形態。順序反過來則最壞情況只是「重包成功但拓撲沒跟上」，
 	// 該狀態可由金鑰管理頁的拓撲區塊修正，且精靈的結果頁已顯示目標。
 	//
-	// 委託目標（Phase C 3.1／3.3）：provider 建構即連通性預檢，
+	// 委託目標：provider 建構即連通性預檢，
 	// 三類失敗各有專屬機器碼——「版本不支援」「組態／權限問題」「判別子打錯」
 	// 的處置完全不同，合併成一個碼等於要操作者猜。
 	target, err := keyvault.NewDelegatedRewrapTarget(c.Request.Context(), payload.Mode, payload.KeyRef, h.delegatedProvider)

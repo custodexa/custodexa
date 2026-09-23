@@ -24,7 +24,7 @@ var (
 	// 路徑參數 rotation id 解析失敗
 	CodeInvalidRotationID = register("VALIDATION_INVALID_ROTATION_ID", Descriptor{ZhFallback: "無效的改密輪次 ID"})
 	// 路徑參數 rotation member id 解析失敗
-	CodeInvalidRotationMemberID = register("VALIDATION_INVALID_ROTATION_MEMBER_ID", Descriptor{ZhFallback: "無效的改密對象 ID"})
+	CodeInvalidRotationMemberID = register("VALIDATION_INVALID_ROTATION_MEMBER_ID", Descriptor{ZhFallback: "無效的改密目標 ID"})
 
 	// 共用憑證必須具名：名稱是操作者辨識「這組秘密是哪一組」的唯一依據，
 	// 缺名的共用憑證在憑證庫上與其他筆無從區分
@@ -73,7 +73,7 @@ var (
 	CodeCredentialRotationNotFound = register("NOTFOUND_CREDENTIAL_ROTATION",
 		Descriptor{ZhFallback: "改密輪次不存在"})
 	CodeCredentialRotationMemberNotFound = register("NOTFOUND_CREDENTIAL_ROTATION_MEMBER",
-		Descriptor{ZhFallback: "改密對象不存在或不屬於該輪次"})
+		Descriptor{ZhFallback: "改密目標不存在或不屬於該輪次"})
 )
 
 // --- RULE_CREDENTIAL_*（業務規則；service sentinel 一對一）---
@@ -97,7 +97,7 @@ var (
 	// 零掛載的共用憑證是合法的待用狀態，但對它發起改密沒有任何遠端可動
 	CodeCredentialRotationNoBinding = register("RULE_CREDENTIAL_ROTATION_NO_BINDING", Descriptor{ZhFallback: "憑證沒有任何掛載，無可改密的目標"})
 	// 成員當下的狀態不接受補跑（已就位或已終止）
-	CodeCredentialMemberNotRetryable = register("RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE", Descriptor{ZhFallback: "該對象目前的狀態不接受補跑"})
+	CodeCredentialMemberNotRetryable = register("RULE_CREDENTIAL_MEMBER_NOT_RETRYABLE", Descriptor{ZhFallback: "該目標目前的狀態不接受補跑"})
 	// 脫離未完成：該掛載仍在原共用憑證上。終態與機器可讀原因走回應 body 的
 	// 專屬欄位，不進錯誤 params——params 只收受控值域
 	CodeCredentialDetachFailed = register("RULE_CREDENTIAL_DETACH_FAILED", Descriptor{ZhFallback: "脫離共用未完成，該掛載仍使用原共用憑證"})
@@ -124,6 +124,6 @@ var (
 
 	CodeInternalCredentialRotationStart   = register("INTERNAL_CREDENTIAL_ROTATION_START_FAILED", Descriptor{ZhFallback: "發起整組改密失敗"})
 	CodeInternalCredentialRotationGet     = register("INTERNAL_CREDENTIAL_ROTATION_GET", Descriptor{ZhFallback: "查詢改密進度失敗"})
-	CodeInternalCredentialRotationRetry   = register("INTERNAL_CREDENTIAL_ROTATION_RETRY", Descriptor{ZhFallback: "補跑改密對象失敗"})
+	CodeInternalCredentialRotationRetry   = register("INTERNAL_CREDENTIAL_ROTATION_RETRY", Descriptor{ZhFallback: "補跑改密目標失敗"})
 	CodeInternalCredentialRotationAbandon = register("INTERNAL_CREDENTIAL_ROTATION_ABANDON", Descriptor{ZhFallback: "放棄改密輪次失敗"})
 )

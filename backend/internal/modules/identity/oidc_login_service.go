@@ -37,9 +37,9 @@ var (
 	// ErrOIDCProviderUnavailable provider 已停用或設定不完整
 	ErrOIDCProviderUnavailable = errors.New("此登入方式目前不可用")
 	// ErrOIDCAdmissionDenied 未通過准入判定
-	ErrOIDCAdmissionDenied = errors.New("您的帳號不符合此登入方式的准入條件，請聯繫管理員")
+	ErrOIDCAdmissionDenied = errors.New("您的帳號不符合此登入方式的准入條件，請聯絡管理員")
 	// ErrOIDCUsernameConflict 映射所得使用者名稱已被占用
-	ErrOIDCUsernameConflict = errors.New("帳號名稱衝突，請聯繫管理員處理")
+	ErrOIDCUsernameConflict = errors.New("帳號名稱衝突，請聯絡管理員處理")
 	// ErrOIDCTicketInvalid 交棒憑證無效（不存在／已消費／過期／綁定不符，對外不可區分）
 	ErrOIDCTicketInvalid = errors.New("登入憑證已失效，請重新登入")
 )
@@ -931,7 +931,7 @@ func (s *OIDCLoginService) Exchange(ticketPlain, browserSecret string) (*LoginRe
 func (s *OIDCLoginService) providerNameOf(providerID uint) string {
 	var p model.OIDCProvider
 	if err := s.db.Select("id", "name").First(&p, providerID).Error; err != nil {
-		log.Printf("[OIDC] 審計標註取 provider 名稱失敗 (id=%d): %v", providerID, err)
+		log.Printf("[OIDC] 稽核標註取 provider 名稱失敗 (id=%d): %v", providerID, err)
 		return ""
 	}
 	return p.Name

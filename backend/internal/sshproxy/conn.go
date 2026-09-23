@@ -112,7 +112,7 @@ func Dial(cfg ConnConfig) (*SSHConn, error) {
 	defer cfg.Password.Destroy()
 	defer cfg.PrivateKey.Destroy()
 	if cfg.HostKey == nil {
-		return nil, errors.New("host key 驗證未配置，連線已拒絕")
+		return nil, errors.New("host key 驗證未設定，連線已拒絕")
 	}
 	methods, err := authMethods(cfg)
 	if err != nil {

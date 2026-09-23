@@ -17,7 +17,7 @@ import (
 // 第 6 組的 postgres 整合驗證。
 //
 // **為何 sqlite 單測不夠**：本組的核心主張是「刪除與 tombstone 同一交易、
-// 中斷必回滾」。sqlite `:memory:` 連線池被釘成單連線（既有教訓 ff51836），
+// 中斷必回滾」。sqlite `:memory:` 連線池被釘成單連線，
 // 量不到「交易外的另一條連線看得到什麼」；而「行程被殺」在 Go 內只能以
 // panic 近似。postgres 兩者都測得到：另開連線觀察可見性、以
 // pg_terminate_backend 真的殺掉交易所在的 session。

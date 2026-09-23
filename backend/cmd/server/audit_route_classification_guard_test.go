@@ -193,6 +193,7 @@ const (
 // 再強調一次：**本表不是列舉來源**。列舉來源是 `buildRouter` 的 `r.Routes()`；
 // 本表只是「每條路由的分類決定」的紀錄，且該紀錄必須通得過方向 3 的實碼對照。
 var auditRouteRegistry = map[[2]string]routeAuditEntry{
+	{"GET", "/api/v1/agent-tool-calls/:id/arguments"}: {classResource, model.ResourceAgentToolCall, "逐筆參數調閱，交付前同步審計"},
 	{"GET", "/api/v1/agent-tasks/:requestId"}:         {classResource, model.ResourceAccessRequest, "任務詳情，沿 audit:view；AP-21 記任務與分頁條件，無資產樞紐"},
 	{"GET", "/api/v1/agent-tasks"}:                    {classResource, model.ResourceAccessRequest, "任務唯讀列表，沿 audit:view，無資產樞紐"},
 	{"GET", "/api/v1/users/:id/agent-breaker/events"}: {classResource, model.ResourceAuditIntegrity, "審計事件讀取，入 auditSensitiveResources；resource_id 是 agent 主體，查詢範圍由 AP-21 留痕"},

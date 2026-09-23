@@ -37,8 +37,8 @@ import (
 // 寫審計（post-unseal 佇列），自檢晚於它等於沒檢查。
 func requireAuditTxSink(sink port.TxSink) error {
 	if isNilSink(sink) {
-		return fmt.Errorf("交易內審計落地面（port.TxSink）未注入：" +
-			"強制審計是「全操作審計」紅線的唯一落地路徑，未接線即拒絕啟動，" +
+		return fmt.Errorf("交易內稽核落地面（port.TxSink）未注入：" +
+			"強制稽核是「全操作稽核」紅線的唯一落地路徑，未接線即拒絕啟動，" +
 			"不得降級為靜默略過")
 	}
 	return nil
@@ -66,7 +66,7 @@ func requireAlertSink(sink gatewayapi.AlertSink) error {
 func requireAuditAsyncSinks(sinks ...gatewayapi.AsyncSink) error {
 	for i, sink := range sinks {
 		if isNilSink(sink) {
-			return fmt.Errorf("第 %d 個非同步審計投遞面（gatewayapi.AsyncSink）未注入："+
+			return fmt.Errorf("第 %d 個非同步稽核投遞面（gatewayapi.AsyncSink）未注入："+
 				"未接線即拒絕啟動，不得降級為 no-op", i+1)
 		}
 	}

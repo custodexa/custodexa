@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // CommandAlertServiceInterface 告警查詢服務接口（用於測試注入）
@@ -40,6 +40,7 @@ func (h *CommandAlertHandler) SetAuditService(auditService *audit.AuditLogServic
 // List 告警列表查詢
 func (h *CommandAlertHandler) List(c *gin.Context) {
 	filter := &audit.CommandAlertFilter{
+		Kind:     c.Query("kind"),
 		Page:     1,
 		PageSize: 20,
 	}
@@ -64,6 +65,23 @@ func (h *CommandAlertHandler) List(c *gin.Context) {
 			aid := uint(assetID)
 			filter.AssetID = &aid
 		}
+	}
+	if raw, present := c.GetQuery("session_id"); present {
+		id, err := strconv.ParseUint(raw, 10, 32)
+		if err != nil || id == 0 {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		sessionID := uint(id)
+		filter.SessionID = &sessionID
+	}
+	if raw, present := c.GetQuery("blocked"); present {
+		if raw != "true" && raw != "false" {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		blocked := raw == "true"
+		filter.Blocked = &blocked
 	}
 
 	if startTimeStr := c.Query("start_time"); startTimeStr != "" {

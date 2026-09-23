@@ -182,13 +182,13 @@ func main() {
 		return string(machine.Snapshot().State), names
 	})
 
-	// 啟動服務器
+	// 啟動伺服器
 	log.Printf("==================================")
 	log.Printf("%s 後端服務啟動成功", branding.Name)
 	log.Printf("版本: %s", Version)
 	log.Printf("構建時間: %s", BuildTime)
 	log.Printf("==================================")
-	log.Printf("監聽端口: %s", s1.cfg.Server.Port)
+	log.Printf("監聽連接埠: %s", s1.cfg.Server.Port)
 	log.Printf("==================================")
 
 	// 明文傳輸告警（deployment-hardening）：後端以明文 HTTP 提供服務（設計為置於反向代理之後）。
@@ -233,7 +233,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("收到關閉信號，開始優雅關閉...")
+	log.Println("收到關閉訊號，開始優雅關閉...")
 
 	// 關閉 HTTP Server（含解封端點的獨立監聽）→ 再收束段 2 資源。
 	// 順序不可倒：仍在處理中的請求可能還會產生審計列。
@@ -263,10 +263,10 @@ func main() {
 		// **離開碼保留**：關閉逾時（仍有連線未收完、審計未 flush 完）是 supervisor
 		// 與 CI 需要知道的事實。改用 Fatalf 會跳過後續資源收束，故錯誤只記錄、
 		// 收束照跑，非零碼留到全部收束完成的最末端才生效。
-		log.Println("服務器關閉過程有未完成項目，以非零碼結束")
+		log.Println("伺服器關閉過程有未完成項目，以非零碼結束")
 		os.Exit(code)
 	}
-	log.Println("服務器已優雅關閉")
+	log.Println("伺服器已優雅關閉")
 }
 
 // openListeners 同步建立全部監聽位址；任一失敗即關閉已建立者並回錯。

@@ -142,7 +142,7 @@ func (s *UserGroupService) Delete(id uint, actorID uint, actorName, clientIP str
 			Request:    gatewayapi.RequestMeta{ClientIP: clientIP},
 			Details:    fmt.Sprintf(`{"group_name":%q,"revoked_authorizations":%d}`, group.Name, revoked),
 		}); err != nil {
-			return fmt.Errorf("審計留痕失敗: %w", err)
+			return fmt.Errorf("稽核留痕失敗: %w", err)
 		}
 		return nil
 	})

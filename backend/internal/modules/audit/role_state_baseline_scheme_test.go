@@ -13,7 +13,7 @@ import (
 // 威脅：升級前的 v1 檢查點簽章不涵蓋快照欄。能寫資料庫的人直寫提權後，再把「現況」
 // 快照與 reconciled=true 補到一個 v1 檢查點上（序號可以比真基準新）：鏈驗證照過
 // （v1 載荷本來就沒有 state），對帳若只看「快照欄非空且相符」就會拿它當基準，
-// 直寫的指派被洗白。發版前跨模型審查抓到的第 1 條
+// 直寫的指派被洗白。
 func TestRoleStateBaselineIgnoresForgedV1Checkpoint(t *testing.T) {
 	f := setupRoleFixture(t)
 	f.legalAssign(t, 1, 1)

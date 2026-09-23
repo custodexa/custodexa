@@ -29,7 +29,7 @@ import (
 //
 // **鎖內只做 DB 判定與標記**：實際關閉 WS、收線監看訂閱、撤銷錄影 token 一律
 // 由呼叫端於鎖外執行，持鎖時長因此界定為單次 DB 往返級——`internal/proxy` 的
-// 計時敏感測試已有 flaky 前科，長時間持鎖會把它變成常態。
+// 計時敏感測試對長時間持鎖敏感，持鎖過久會讓它不穩。
 //
 // **取鎖順序固定 system → provider → user**（design 行 264）：system 級即
 // local_admin_invariant.go 的 LocalAdminLockKey；同時需要 provider 與 user 兩把者

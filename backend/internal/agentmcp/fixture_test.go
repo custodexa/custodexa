@@ -3,6 +3,7 @@ package agentmcp
 import (
 	"context"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -61,7 +62,11 @@ func newFixture(t *testing.T) *fixture {
 	target := model.Asset{Name: "mcp-target", Protocol: model.ProtocolSSH, Host: "ssh-test", Port: 2222, Active: true, AccessPolicy: &open, CreatedBy: owner.ID}
 	require.NoError(t, db.Create(&target).Error)
 	codec := aesColumnCodec(t, make([]byte, 32))
-	enc, err := codec.EncryptFor(context.Background(), crypto.CipherRef{Table: "credential_secret_versions", Column: "password_enc"}, "testpass123")
+	sshPassword := "testpass123"
+	if fromEnv := os.Getenv("LEDGER_E2E_SSH_PASSWORD"); fromEnv != "" {
+		sshPassword = fromEnv
+	}
+	enc, err := codec.EncryptFor(context.Background(), crypto.CipherRef{Table: "credential_secret_versions", Column: "password_enc"}, sshPassword)
 	require.NoError(t, err)
 	cred := model.Credential{Scope: model.CredentialScopeDedicated, Username: "testuser", SecretType: model.ChangeSecretTypePassword, AuthMethod: "password", ProtocolFamily: model.ProtocolFamilySSH}
 	require.NoError(t, db.Create(&cred).Error)
@@ -106,7 +111,7 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(func() { audit.InitAlertMatcher(nil, nil) })
 	issued, err := identity.NewAgentTokenService(db, audit.NewTxSink()).Create(agent.ID, identity.CreateAgentTokenRequest{Name: "mcp-test", ExpiresAt: time.Now().Add(time.Hour)}, gatewayapi.Actor{UserID: owner.ID})
 	require.NoError(t, err)
-	f := &fixture{h: NewHandler(ssh), db: db, token: issued.Token, agent: agent.ID, asset: target.ID, account: account.ID, task: task.ID, item: item.ID}
+	f := &fixture{h: NewHandler(ssh).WithLedgerCodec(km), db: db, token: issued.Token, agent: agent.ID, asset: target.ID, account: account.ID, task: task.ID, item: item.ID}
 	return f
 }
 func (f *fixture) input() OpenSessionInput {

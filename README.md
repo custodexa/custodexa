@@ -140,6 +140,40 @@ Two decisions that shape the whole system:
   recording, command audit, blocking, and live monitoring are implemented once and apply
   uniformly across all eight protocols.
 
+## AI agent access
+
+The Custodexa backend serves the MCP server itself, at `POST /api/v1/mcp` over streamable
+HTTP, so there is no separate server to deploy.
+
+A host that supports streamable HTTP connects to `https://<your-custodexa>/api/v1/mcp`
+directly and sends an agent token as `Authorization: Bearer`. A host that can only launch
+local servers over stdio runs the [`custodexa-mcp`](https://github.com/custodexa/custodexa-mcp)
+adapter instead, which forwards every call to that same endpoint and decides nothing on
+its own. Install it with `go install github.com/custodexa/custodexa-mcp@latest`, or take
+a binary from its [releases](https://github.com/custodexa/custodexa-mcp/releases).
+
+What the agent channel allows:
+
+- **Self-service agent creation is off by default.** An administrator creates agents
+  and names a human owner for each one. Once the security policy allows self-service
+  creation, any active human user can create agents of their own.
+- **Every agent token has an expiry.** Its plaintext is shown once, when it is issued.
+- **An agent can connect only to assets it has requested through `request_access` and
+  been approved for.** An asset set to "Approval Required" holds the request for a human
+  approver. Assets set to "No Request Needed" or "Reason Required" approve it on submission,
+  and "No Request Needed" is the shipped default.
+- **Every tool call is recorded.** The tool-call ledger keeps the arguments and the
+  decision, refusals included. A call that cannot be tied to the agent's own task or
+  session is refused and recorded in the HTTP request audit.
+- **What the agent receives is masked, and the recording keeps the original screen.**
+  Masking replaces only what an enabled output rule matches; the shipped rules cover card
+  numbers and private key headers.
+
+The ten tools and how they behave are described in the MCP section of
+[docs/API_SPEC.md](docs/API_SPEC.md). Token rotation, incident handling and the approval
+settings for agents are in
+[docs/ops/deployment-topology-limits.md](docs/ops/deployment-topology-limits.md).
+
 ## Documentation
 
 The quick start, the operations guides, and the security and contributing notes are

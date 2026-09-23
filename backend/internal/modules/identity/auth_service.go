@@ -32,7 +32,7 @@ var (
 	// ErrUserNotFound 使用者不存在
 	ErrUserNotFound = errors.New("使用者不存在")
 	// ErrAccountLocked 帳號因連續失敗被鎖定（明示訊息：不透露剩餘時間/次數）
-	ErrAccountLocked = errors.New("嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯繫管理員")
+	ErrAccountLocked = errors.New("嘗試次數過多，帳號已暫時鎖定，請稍後再試或聯絡管理員")
 	// ErrConnectionNotAuthorized WS 連線授權失敗（scoped token / 停用 / 鎖定）
 	ErrConnectionNotAuthorized = errors.New("此 token 不可用於建立連線")
 	// ErrLDAPTransportRejected LDAP 登入被傳輸安全政策（strict）拒絕。
@@ -876,7 +876,7 @@ func (s *AuthService) auditLDAPResolveFailure(existing *model.User, username str
 		Details:  `{"event":"ldap_resolve_failed"}`,
 	}
 	if err := database.DB.Create(entry).Error; err != nil {
-		log.Printf("[AuthService] LDAP 設定解析失敗審計寫入失敗: %v", err)
+		log.Printf("[AuthService] LDAP 設定解析失敗稽核寫入失敗: %v", err)
 	}
 }
 
@@ -899,7 +899,7 @@ func (s *AuthService) auditLDAPTransport(userID uint, username string, risks []p
 		Details:  string(details),
 	}
 	if err := database.DB.Create(entry).Error; err != nil {
-		log.Printf("[AuthService] LDAP 傳輸閘審計寫入失敗: %v", err)
+		log.Printf("[AuthService] LDAP 傳輸閘稽核寫入失敗: %v", err)
 	}
 }
 
@@ -909,11 +909,11 @@ func (s *AuthService) auditLDAPTransport(userID uint, username string, risks []p
 func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, error) {
 	randomBytes := make([]byte, 32)
 	if _, err := rand.Read(randomBytes); err != nil {
-		return nil, fmt.Errorf("產生影子用戶隨機密碼失敗: %w", err)
+		return nil, fmt.Errorf("產生影子使用者隨機密碼失敗: %w", err)
 	}
 	hashed, err := crypto.DefaultPasswordHasher().Hash([]byte(hex.EncodeToString(randomBytes)))
 	if err != nil {
-		return nil, fmt.Errorf("影子用戶密碼雜湊失敗: %w", err)
+		return nil, fmt.Errorf("影子使用者密碼雜湊失敗: %w", err)
 	}
 
 	// email 未知/衝突以 NULL 表達：trim+小寫正規化後
@@ -924,7 +924,7 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	if emailPtr != nil {
 		var emailCount int64
 		if err := database.DB.Model(&model.User{}).Where("LOWER(email) = ?", *emailPtr).Count(&emailCount).Error; err != nil {
-			return nil, fmt.Errorf("檢查影子用戶 email 衝突失敗: %w", err)
+			return nil, fmt.Errorf("檢查影子使用者 email 衝突失敗: %w", err)
 		}
 		if emailCount > 0 {
 			emailPtr = nil
@@ -950,12 +950,12 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	// 建用戶與綁角色必須同生共死：半成品帳號（無角色）會造成權限判斷異常
 	tx := database.DB.Begin()
 	if tx.Error != nil {
-		return nil, fmt.Errorf("開始影子用戶供應事務失敗: %w", tx.Error)
+		return nil, fmt.Errorf("開始影子使用者供應交易失敗: %w", tx.Error)
 	}
 
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
-		return nil, fmt.Errorf("建立影子用戶失敗: %w", err)
+		return nil, fmt.Errorf("建立影子使用者失敗: %w", err)
 	}
 
 	if err := recordPrincipalState(tx, user, model.ActionCreate); err != nil {
@@ -977,11 +977,11 @@ func (s *AuthService) provisionShadowUser(info *LDAPUserInfo) (*model.User, erro
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		return nil, fmt.Errorf("提交影子用戶供應事務失敗: %w", err)
+		return nil, fmt.Errorf("提交影子使用者供應交易失敗: %w", err)
 	}
 
 	user.Roles = []model.Role{role}
-	log.Printf("[AuthService] LDAP 影子用戶已供應 (username=%s, id=%d)", user.Username, user.ID)
+	log.Printf("[AuthService] LDAP 影子使用者已供應 (username=%s, id=%d)", user.Username, user.ID)
 	return user, nil
 }
 

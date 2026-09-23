@@ -25,7 +25,7 @@ import (
 //
 // # marker 寫入後 env 不再參與任何執行期判定
 //
-// 使用者裁決原句：「.env 的設定應該算是初次設定，後面變更由系統頁面設定」。
+// 設計原則：「.env 的設定屬於初次設定，後面變更由系統頁面設定」。
 // quickstart 自動化因此不退步：`.env` 填好首啟即用，之後管理走 UI。
 
 // PostUnsealMigrationOffsiteSeed 內建佇列項名。
@@ -280,7 +280,7 @@ func RunOffsiteEnvSeed(db *gorm.DB, codec crypto.ColumnCodec, journal CustodyJou
 		seeded = true
 		return nil
 	}); err != nil {
-		return fmt.Errorf("離機儲存 seed 寫入失敗（列、審計與標記同進退，標記未寫，下次啟動重試）: %w", err)
+		return fmt.Errorf("離機儲存 seed 寫入失敗（列、稽核與標記同進退，標記未寫，下次啟動重試）: %w", err)
 	}
 
 	if seeded {

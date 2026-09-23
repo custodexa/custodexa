@@ -49,7 +49,7 @@ func newAggregateRowAuditDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sql.DB: %v", err)
 	}
-	// 單連線：sqlite :memory: 每條連線是各自獨立的庫（既有 flaky 真因 ff51836）
+	// 單連線：sqlite :memory: 每條連線是各自獨立的庫
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)

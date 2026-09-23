@@ -69,7 +69,7 @@ cp .env.example .env
 > 而範本多數旋鈕預設為空值，故 `.env`（與範本）的說明一律置於獨立行、值行不帶行內註解，
 > 否則值會含註解導致服務啟動失敗。
 
-**資料存放位置（`DATA_PATH`）**：主體應用資料（審計 / 錄影 / 資料庫）落在單一資料夾根，
+**資料存放位置（`DATA_PATH`）**：主體應用資料（稽核 / 錄影 / 資料庫）落在單一資料夾根，
 由 `DATA_PATH` 決定，預設為專案內 `./data`（開發可直接檢視）。生產部署可覆寫為指定資料夾或磁碟：
 
 ```bash
@@ -143,7 +143,7 @@ curl -k https://localhost/api/v1/seal/status
 > 改密後 `ADMIN_INITIAL_PASSWORD` 即退役，請自 `.env` 移除或輪替。
 
 登入之後怎麼建第一筆資產、發起第一條連線，見下方「首次使用」一節。
-生產環境的必設項集中在「正式部署補充」；對外 TLS、時間同步、審計完整性邊界與日誌保留
+生產環境的必設項集中在「正式部署補充」；對外 TLS、時間同步、稽核完整性邊界與日誌保留
 這些部署方責任與行為說明，見「生產環境的部署方責任與行為邊界」；admin 密碼遺失、
 啟動被弱憑證掃描擋下，或管理者被來源限定鎖在外時的離線重設，見「故障排除」。
 
@@ -197,11 +197,55 @@ docker compose logs -f frontend
 網頁終端出現遠端主機的提示符即代表連上了。試跑幾個指令（`whoami`、`ls`），
 輸入 `exit` 或關閉分頁即結束會話。
 
-### 4. 回看審計
+### 4. 回看稽核
 
 會話結束後，到「連線管理」可看到這筆歷史會話，點進詳情就有**錄影回放**
-（可拖進度、調倍速）與該次會話的**指令記錄**；要跨會話搜尋指令，用「指令審計」頁。
+（可拖進度、調倍速）與該次會話的**指令記錄**；要跨會話搜尋指令，用「指令稽核」頁。
 這條「操作必留痕」的鏈路就是本產品的核心，首次部署建議實際走一遍確認錄影可回放。
+
+### 5. 接上第一個 agent 宿主
+
+不導入 AI agent 的話，跳過這一步。agent 能做什麼、會留下什麼，
+見 README 的 [AI agent 接入](README.md#ai-agent-接入)。
+
+**建立 agent 與它的 token。** 以管理員身分開「身分與權限」→「AI agent 主體」→「新增使用者」，
+「主體類型」選 AI agent，再挑一個啟用中的人類帳號當「負責人」。在該 agent 那一列按「鑰匙」→
+「發新鑰匙」建立 token（介面上稱為鑰匙），填名稱與到期時間。關閉面板前先複製 token，
+之後不會再顯示。負責人也可以從「我的 agent」發 token。走 API 的話，同樣兩步是
+帶 `"kind":"agent"` 與 `owner_user_id` 的 `POST /api/v1/users`，再來是 `POST /api/v1/users/:id/agent-tokens`。
+
+**讓宿主指向 Custodexa。** 支援 streamable HTTP 的宿主直連。各宿主的設定鍵名不同，以下是一例：
+
+```json
+{
+  "mcpServers": {
+    "custodexa": {
+      "type": "http",
+      "url": "https://<你的 Custodexa>/api/v1/mcp",
+      "headers": { "Authorization": "Bearer cxa_..." }
+    }
+  }
+}
+```
+
+只支援 stdio 的宿主改為啟動轉接頭。以 `go install github.com/custodexa/custodexa-mcp@latest`
+安裝後，把它的絕對路徑交給宿主，端點與 token 經環境變數傳入：
+
+```json
+{
+  "mcpServers": {
+    "custodexa": {
+      "command": "/absolute/path/to/custodexa-mcp",
+      "env": {
+        "CUSTODEXA_MCP_URL": "https://<你的 Custodexa>/api/v1/mcp",
+        "CUSTODEXA_AGENT_TOKEN": "cxa_..."
+      }
+    }
+  }
+}
+```
+
+各宿主的設定範例見 [custodexa-mcp 的 README](https://github.com/custodexa/custodexa-mcp#readme)。
 
 ## 正式部署補充
 
@@ -300,7 +344,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 **多副本部署的已知邊界**（單實例部署不受影響）：
 
 - 本版起，對同一資料庫啟動的第二個應用實例會被守衛**攔下並要求確認**；守衛防的是不知情的
-  並存，不是並存本身——確認後的執行留有審計證據，其資料後果由確認者承擔
+  並存，不是並存本身——確認後的執行留有稽核證據，其資料後果由確認者承擔
   （見 [部署形態限制](ops/deployment-topology-limits.md)）。
 - 錄影播放存取憑證（recording token）的授權為 **per-process**：token 由哪個後端副本簽發，
   就只有該副本能兌換與撤銷。多副本下若停用帳號／provider 的請求落在其他副本，
@@ -325,7 +369,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
 ### 5. LDAP 目錄設定
 
 LDAP 目錄設定（位址／bind 帳密／搜尋參數／屬性映射）由管理端存入資料庫，
-於「身分管理 → LDAP 目錄」頁維護；**資料庫是唯一事實源**，
+於「身分與權限 → 身分來源」頁維護；**資料庫是唯一事實源**，
 `.env` 的 `LDAP_*` 九個鍵只是**首次啟動的 seed 來源**。
 
 | 情境 | 行為 |
@@ -460,7 +504,7 @@ TLS 在更前面的一層終結而 `PUBLIC_BASE_URL` 無法反映對外位址時
 **走明文 HTTP 對外的部署**，請在首次啟動前把 `AUTH_REFRESH_COOKIE_SECURE` 設成 `false`，
 或啟動後到安全政策頁把該項關掉。政策開著的話系統仍然可用，代價是瀏覽器不保存這個
 cookie，每個人隔約 15 分鐘（存取權杖的壽命）就要重新登入一次。這件事使用者看得到：
-被登出時登入頁會說明現況並請他找管理員，管理員以同一個 http 位址登入後，安全政策頁
+登入頁告知使用者此 http 連線不保存登入狀態，管理員以同一個 http 位址登入後，安全政策頁
 上方也會出現對應的提示與兩條處理路徑。**系統不會自行改動這個設定。**
 
 本機開發用 `http://localhost` 不受影響：Chromium 145 與 Firefox 146 實測都接受來自
@@ -605,9 +649,9 @@ curl --cacert tls/ca-public/custodexa-ca.crt -sI https://<TLS_DOMAIN>/ | head -1
 容器時鐘繼承宿主，本產品不內建 NTP client。生產宿主必須啟用時間同步
 （chrony / systemd-timesyncd / 雲平台預設 NTP），時間源採 UTC 並指向業界公認的時間伺服器（10.6.2）；
 宿主系統時間變更的存取控制與稽核屬 OS 層責任（10.6.3）。
-審計日誌時戳的可比性完全依賴宿主時鐘正確。
+稽核日誌時戳的可比性完全依賴宿主時鐘正確。
 
-### 審計完整性的能力邊界（PCI 10.3.4）
+### 稽核完整性的能力邊界（PCI 10.3.4）
 
 audit_logs 逐列 HMAC＋匯出 manifest Ed25519 簽章＋syslog 即時離機轉發三者合為補償控制，
 可偵測「既有列被修改」與「基準時間後被竄改並清空 HMAC」（首次啟動記錄啟用基準，
@@ -652,7 +696,7 @@ docker compose down
 # 注意：audit / recordings / postgres 為 bind mount，不受 -v 影響，仍留在 ${DATA_PATH:-./data}
 docker compose down -v
 
-# 完全清除應用資料（審計 / 錄影 / 資料庫）：停止後手動刪除 DATA_PATH 目錄內容
+# 完全清除應用資料（稽核 / 錄影 / 資料庫）：停止後手動刪除 DATA_PATH 目錄內容
 # 預設 ./data；若已自訂 DATA_PATH，改刪該實際路徑（.env 的值不會帶入此手動指令）
 docker compose down && rm -rf ./data/*
 ```
@@ -715,7 +759,7 @@ docker compose up --build
   公開已知的弱憑證（例如 `admin123`），服務會**拒絕啟動**，要求先重設。
 - **管理者把自己鎖在允許來源網段外**：帳號設了允許來源網段（`users.allowed_cidrs`）之後，
   從清單外的位址登入、續期與建立連線都會被擋。**還有其他管理者時不要走這條路**——請對方
-  在介面上把清單改回來就好，那條路徑會留下欄位級的審計差異。系統沒有其他管理者時，才用
+  在介面上把清單改回來就好，那條路徑會留下欄位級的稽核差異。系統沒有其他管理者時，才用
   下面的離線清除。
 
 密碼遺失與弱憑證掃描這兩類，要換掉的是密碼。做法是以 DB 直連在**單一交易**內同時更新
@@ -759,9 +803,9 @@ UPDATE users SET allowed_cidrs = '' WHERE id = $1;
 
 本產品**不提供**線上救援 API（具 DB 寫入權者本可直接重設，不另開遠端權限面）。
 
-上面三種情況的離線重設都**不經產品審計**：這條路徑繞過應用程式，`audit_logs` 不會有對應的列。
+上面三種情況的離線重設都**不經產品稽核**：這條路徑繞過應用程式，`audit_logs` 不會有對應的列。
 該次改動由部署方自己的變更管理留痕（誰、什麼時候、為什麼連進資料庫）。產品側事後看得到的，
-是復原之後的登入審計列（含來源位址），以及回到介面重設清單時的欄位級差異。
+是復原之後的登入稽核列（含來源位址），以及回到介面重設清單時的欄位級差異。
 
 ### 清除並重新開始
 ```bash
@@ -833,7 +877,7 @@ docker compose exec -T backend sh -c "strings /app/tmp/main | grep <新函式名
    `OIDC_ALLOWED_INTERNAL_HOSTS=dex.localhost`（非 release 模式下，列於此的主機名同時允許 http），
    並視需要把 `http://dex.localhost:5556/dex` 加入 `OIDC_DEDICATED_ISSUERS`（否則視為共用身分域，
    准入規則必須帶組織歸屬條件）。改後 `docker compose up -d --force-recreate backend`。
-2. 以 admin 登入 → OIDC provider 管理頁建立 provider（issuer / client_id / secret 如上）。
+2. 以 admin 登入 →「身分來源」頁建立 provider（issuer / client_id / secret 如上）。
 3. 登出後登入頁應出現該 provider 的 SSO 按鈕。
 
 **驗證 discovery（設定 provider 前先做，可省下大量誤判）**：

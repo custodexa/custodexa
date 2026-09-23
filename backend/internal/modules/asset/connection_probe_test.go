@@ -2,10 +2,9 @@ package asset
 
 // 撥測分派的守衛測試。
 //
-// 這裡的雙向完備性守衛是**唯一能阻止同型缺陷復發的機制**：
-// e09658d（2026-06-12）以「白名單 SSH ＋ else 送 guacd」修過一次撥測盲區，
-// 隔天 dbproxy／k8sproxy 上線時只在 validateProtocol 加放行、沒動撥測分派，
-// 四個協議立刻掉回 else 並在零測試覆蓋下存活兩個月。
+// 這裡的雙向完備性守衛是阻止撥測盲區復發的機制：若只在 validateProtocol
+// 加放行、沒同步更新撥測分派表，新協議會掉回「白名單 SSH ＋ else 送 guacd」
+// 的 else 分支，在零測試覆蓋下長期存活而不被發現。
 
 import (
 	"context"

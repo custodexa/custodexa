@@ -9,15 +9,17 @@ package apierror
 
 // --- NOTFOUND_* ---
 var (
-	CodeSessionNotFound         = register("NOTFOUND_SESSION", Descriptor{ZhFallback: "Session 不存在"})
-	CodeSessionHasNoRecording   = register("NOTFOUND_SESSION_RECORDING", Descriptor{ZhFallback: "此 Session 沒有錄製檔案"})
-	CodeRecordingFileNotFound   = register("NOTFOUND_RECORDING_FILE", Descriptor{ZhFallback: "錄製檔案不存在"})
-	CodeRecordingTimingNotFound = register("NOTFOUND_RECORDING_TIMING", Descriptor{ZhFallback: "錄製時間檔案不存在"})
-	CodeAuditLogNotFound        = register("NOTFOUND_AUDIT_LOG", Descriptor{ZhFallback: "稽核日誌不存在"})
+	CodeToolCallArgumentsNotFound = register("NOTFOUND_TOOL_CALL_ARGUMENTS", Descriptor{ZhFallback: "這筆工具呼叫沒有可調閱的參數原文"})
+	CodeInternalToolCallArguments = register("INTERNAL_TOOL_CALL_ARGUMENTS", Descriptor{ZhFallback: "調閱工具呼叫參數失敗"})
+	CodeSessionNotFound           = register("NOTFOUND_SESSION", Descriptor{ZhFallback: "Session 不存在"})
+	CodeSessionHasNoRecording     = register("NOTFOUND_SESSION_RECORDING", Descriptor{ZhFallback: "此 Session 沒有錄製檔案"})
+	CodeRecordingFileNotFound     = register("NOTFOUND_RECORDING_FILE", Descriptor{ZhFallback: "錄製檔案不存在"})
+	CodeRecordingTimingNotFound   = register("NOTFOUND_RECORDING_TIMING", Descriptor{ZhFallback: "錄製時間檔案不存在"})
+	CodeAuditLogNotFound          = register("NOTFOUND_AUDIT_LOG", Descriptor{ZhFallback: "稽核日誌不存在"})
 	// CodeClipboardEventNotFound 單筆剪貼簿內容調閱的**收斂拒絕**：
 	// 事件不存在、事件識別非法、事件不屬路徑中會話（跨會話探測）
 	// 三種情形共用本碼——存在性細節
-	// 不對外，只進稽核（audit-detail-not-outward）
+	// 不對外，只進稽核
 	CodeClipboardEventNotFound = register("NOTFOUND_CLIPBOARD_EVENT", Descriptor{ZhFallback: "剪貼簿記錄不存在"})
 )
 
@@ -114,6 +116,7 @@ var policyKeyZhLabels = identityLabels(
 	"agent_request_rate_per_hour",
 	"agent_request_pending_max",
 	"agent_self_create_enabled",
+	"alert_on_sensitive_reveal",
 	"agent_self_create_max_per_owner",
 	// 帳號安全
 	"lockout_max_attempts",
@@ -214,13 +217,13 @@ var (
 
 // --- INTERNAL_* (generalized 5xx; cause logged server-side by RespondInternal) ---
 var (
-	CodeInternalRecordingMetadataQuery = register("INTERNAL_RECORDING_METADATA_QUERY", Descriptor{ZhFallback: "獲取錄製元數據失敗"})
-	CodeInternalRecordingFileQuery     = register("INTERNAL_RECORDING_FILE_QUERY", Descriptor{ZhFallback: "獲取錄製檔案失敗"})
-	CodeInternalSessionQuery           = register("INTERNAL_SESSION_QUERY", Descriptor{ZhFallback: "獲取 Session 資訊失敗"})
+	CodeInternalRecordingMetadataQuery = register("INTERNAL_RECORDING_METADATA_QUERY", Descriptor{ZhFallback: "取得錄製中繼資料失敗"})
+	CodeInternalRecordingFileQuery     = register("INTERNAL_RECORDING_FILE_QUERY", Descriptor{ZhFallback: "取得錄製檔案失敗"})
+	CodeInternalSessionQuery           = register("INTERNAL_SESSION_QUERY", Descriptor{ZhFallback: "取得 Session 資訊失敗"})
 	CodeInternalRecordingTokenIssue    = register("INTERNAL_RECORDING_TOKEN_ISSUE", Descriptor{ZhFallback: "簽發錄影 token 失敗"})
 	CodeInternalRecordingFileOpen      = register("INTERNAL_RECORDING_FILE_OPEN", Descriptor{ZhFallback: "開啟錄製檔案失敗"})
-	CodeInternalRecordingFileStat      = register("INTERNAL_RECORDING_FILE_STAT", Descriptor{ZhFallback: "獲取檔案資訊失敗"})
-	CodeInternalRecordingStatsQuery    = register("INTERNAL_RECORDING_STATS_QUERY", Descriptor{ZhFallback: "獲取統計資訊失敗"})
+	CodeInternalRecordingFileStat      = register("INTERNAL_RECORDING_FILE_STAT", Descriptor{ZhFallback: "取得檔案資訊失敗"})
+	CodeInternalRecordingStatsQuery    = register("INTERNAL_RECORDING_STATS_QUERY", Descriptor{ZhFallback: "取得統計資訊失敗"})
 	CodeInternalRecordingDelete        = register("INTERNAL_RECORDING_DELETE", Descriptor{ZhFallback: "刪除錄製檔案失敗"})
 
 	CodeInternalAuditLogQuery                = register("INTERNAL_AUDIT_LOG_QUERY", Descriptor{ZhFallback: "查詢稽核日誌失敗"})

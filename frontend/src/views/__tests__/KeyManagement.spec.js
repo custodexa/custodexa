@@ -3,9 +3,9 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import KeyManagement from '../KeyManagement.vue'
 
-// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積使單測耗時隨測試序
-// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅。治法同 fca615b（Assets／
-// AuditLogs／Users／MainLayout）：enableAutoUnmount(afterEach)。
+// 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
+// 上升，全量並行時末幾格逼近逾時上限而間歇轉紅，故以 enableAutoUnmount(afterEach) 確保
+// 每測結束卸載元件。
 enableAutoUnmount(afterEach)
 
 // 金鑰清冊與換鑰精靈前端
@@ -162,7 +162,7 @@ const setupStateDump = (wrapper) =>
     )
   )
 
-// el-table 在 happy-dom 下的 MutationObserver 會炸（frontend-testing-quirks）：
+// el-table 在 happy-dom 下的 MutationObserver 會炸：
 // 以簡易 stub 渲染 data 供文字斷言，欄位模板不在本測試範圍
 const tableStub = {
   props: ['data'],
@@ -248,7 +248,7 @@ describe('KeyManagement 金鑰清冊', () => {
     const wrapper = await mountPage()
     expect(wrapper.text()).toContain('KEK 重包尚未切換')
     // 重包待切換期間 DEK 與蓋章鑰輪替均停用（後端亦 409 守衛）
-    const dekBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替資料加密鑰'))
+    const dekBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替資料加密金鑰'))
     const auditBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替稽核蓋章鑰'))
     expect(dekBtn.attributes('disabled')).toBeDefined()
     expect(auditBtn.attributes('disabled')).toBeDefined()
@@ -257,7 +257,7 @@ describe('KeyManagement 金鑰清冊', () => {
   it('DEK 輪替未跑完時顯示續跑橫幅', async () => {
     getInventoryMock.mockResolvedValue(inventoryFixture({ rotation_pending: 7 }))
     const wrapper = await mountPage()
-    expect(wrapper.text()).toContain('資料加密鑰輪替未跑完')
+    expect(wrapper.text()).toContain('資料加密金鑰輪替未跑完')
     expect(wrapper.text()).toContain('續跑')
   })
 
@@ -278,7 +278,7 @@ describe('KeyManagement 金鑰清冊', () => {
     rotateKeyMock.mockResolvedValue({ purpose: 'data', from_version: 1, to_version: 2, reencrypted: 3, failed: 0, pending: 0 })
     const wrapper = await mountPage()
 
-    const rotateBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替資料加密鑰'))
+    const rotateBtn = wrapper.findAll('button').find((b) => b.text().includes('輪替資料加密金鑰'))
     await rotateBtn.trigger('click')
     await flushPromises()
 
@@ -791,8 +791,8 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     const message = vnodeText(confirmSpy.mock.calls[0][0])
     expect(message).toContain('稽核蓋章鑰（HMAC） v0')
     expect(message).toContain('稽核蓋章鑰（HMAC） v1')
-    expect(message).toContain('資料加密鑰（DEK） v1')
-    expect(message).toContain('資料加密鑰（DEK） v2')
+    expect(message).toContain('資料加密金鑰（DEK） v1')
+    expect(message).toContain('資料加密金鑰（DEK） v2')
   })
 
   it('確認框的候選清單與表格同序（兩份清單要能逐項對照）', async () => {
@@ -813,8 +813,8 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     const labels = {
       'audit_integrity v1': '稽核蓋章鑰（HMAC） v1',
       'audit_integrity v0': '稽核蓋章鑰（HMAC） v0',
-      'data v2': '資料加密鑰（DEK） v2',
-      'data v1': '資料加密鑰（DEK） v1',
+      'data v2': '資料加密金鑰（DEK） v2',
+      'data v1': '資料加密金鑰（DEK） v1',
     }
     const positions = tableOrder.map((key) => message.indexOf(labels[key]))
     expect(positions.every((p) => p >= 0), '候選清單須列出全部退役列').toBe(true)
@@ -835,7 +835,7 @@ describe('KeyManagement 系統管理金鑰退役列治理', () => {
     // 重包待切換會禁用輪替與清理：改以無 pending 的清冊再跑另外兩處
     getInventoryMock.mockResolvedValue(rotatedInventory())
     const wrapper2 = await mountPage()
-    await findButton(wrapper2, '輪替資料加密鑰').trigger('click')
+    await findButton(wrapper2, '輪替資料加密金鑰').trigger('click')
     await flushPromises()
     await findButton(wrapper2, '清理退役資料').trigger('click')
     await flushPromises()

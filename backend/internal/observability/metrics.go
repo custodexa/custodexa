@@ -143,7 +143,7 @@ func New() *Metrics {
 		// 而那正是本指標存在的唯一理由
 		auditDropped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "custodexa_audit_dropped_total",
-			Help: "未能直接入庫的審計列數（佇列滿載，或關機排空逾時），依處置方式分。",
+			Help: "未能直接入庫的稽核列數（佇列滿載，或關機排空逾時），依處置方式分。",
 		}, []string{"reason"}),
 
 		httpRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -414,7 +414,7 @@ func (m *Metrics) RegisterStage2() {
 
 		m.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "custodexa_audit_queue_depth",
-			Help: "審計非同步寫入佇列的目前深度。",
+			Help: "稽核非同步寫入佇列的目前深度。",
 		}, func() float64 {
 			m.mu.RLock()
 			src := m.auditQueueSource

@@ -345,7 +345,7 @@ func (s *AuditFailureService) NotifyOngoing(event notifycat.Event, params map[st
 // 起點誠實註記：補列的 StartedAt 為補列時刻而非真實失效起點（真實起點在
 // Report 寫庫失敗時已無從取得）——Details 明載，避免稽核把 T0–T1 失效期
 // 誤讀為未發生
-const failureEventBackfillDetails = "補列事件：原始上報時寫入失敗，起始時間為補列時刻而非實際失效起點"
+const failureEventBackfillDetails = "補列事件：原始回報時寫入失敗，起始時間為補列時刻而非實際失效起點"
 
 func (s *AuditFailureService) EnsureEventRow(mechanism, causeCode string, params map[string]string) {
 	s.mu.Lock()
@@ -386,7 +386,7 @@ func (s *AuditFailureService) ReconcileOnStartup() {
 		Where("ended_at IS NULL AND mechanism NOT IN ?", []string{model.MechanismKEKRetirement, model.MechanismPrincipalStateIntegrity}).
 		Updates(map[string]any{
 			"ended_at": time.Now(),
-			"details":  "進程重啟時回填；實際恢復時間不精確（重啟前的失效狀態不跨進程保存）",
+			"details":  "行程重啟時回填；實際恢復時間不精確（重啟前的失效狀態不跨行程保存）",
 		})
 	if res.Error != nil {
 		log.Printf("[AuditFailure] 啟動回填遺留事件失敗: %v", res.Error)

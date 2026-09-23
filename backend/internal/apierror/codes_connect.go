@@ -20,7 +20,7 @@ var (
 	CodeConnectionNotAuthorized = register("AUTH_CONNECTION_NOT_AUTHORIZED", Descriptor{
 		ZhFallback: "此 token 不可用於建立連線"})
 	CodeAssetConnectDenied = register("AUTH_ASSET_CONNECT_DENIED", Descriptor{
-		ZhFallback: "您沒有連線此資產的權限，請聯繫管理員"})
+		ZhFallback: "您沒有連線此資產的權限，請聯絡管理員"})
 	CodeMonitorRoleRequired = register("AUTH_MONITOR_ROLE_REQUIRED", Descriptor{
 		ZhFallback: "僅管理員與稽核員可監看會話"})
 	CodeSessionStatsDenied = register("AUTH_SESSION_STATS_DENIED", Descriptor{

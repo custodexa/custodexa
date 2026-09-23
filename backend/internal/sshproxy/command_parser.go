@@ -825,7 +825,7 @@ func (p *CommandParser) noteReplayOverflow() {
 		return
 	}
 	p.overflowLogged = true
-	log.Printf("[SSHProxy] 指令審計降級：重放佇列達上限 %d bytes，其後抵達的輸入不再排隊（本連線僅記錄一次）", replayQueueMax)
+	log.Printf("[SSHProxy] 指令稽核降級：重放佇列達上限 %d bytes，其後抵達的輸入不再排隊（本連線僅記錄一次）", replayQueueMax)
 }
 
 // noteAltScreenRound 「當輪落在 alternate screen 標記區間內」的可觀測訊號。
@@ -836,7 +836,7 @@ func (p *CommandParser) noteAltScreenRound() {
 		return
 	}
 	p.altScreenLog = true
-	log.Print("[SSHProxy] 指令審計降級：對端處於 alternate screen 標記區間，該輪不以指令結算（本連線僅記錄一次）")
+	log.Print("[SSHProxy] 指令稽核降級：對端處於 alternate screen 標記區間，該輪不以指令結算（本連線僅記錄一次）")
 }
 
 // noteEmptyRound 結算文字為空的兩種情形，**只有其中一種是降級**。
@@ -876,7 +876,7 @@ func (p *CommandParser) noteUnanchored() {
 		return
 	}
 	p.unanchorLogged = true
-	log.Print("[SSHProxy] 指令審計降級：結算行無法錨定到提示符（螢幕曾被全螢幕重繪），該輪不入庫（本連線僅記錄一次）")
+	log.Print("[SSHProxy] 指令稽核降級：結算行無法錨定到提示符（螢幕曾被全螢幕重繪），該輪不入庫（本連線僅記錄一次）")
 }
 
 // noteTaintedDrop 「當輪回顯是全螢幕重繪，故不以輸入位元組結算」的可觀測訊號。
@@ -886,7 +886,7 @@ func (p *CommandParser) noteTaintedDrop() {
 		return
 	}
 	p.taintedLogged = true
-	log.Print("[SSHProxy] 指令審計降級：當輪回顯為全螢幕重繪，該輪的輸入不以指令結算（本連線僅記錄一次）")
+	log.Print("[SSHProxy] 指令稽核降級：當輪回顯為全螢幕重繪，該輪的輸入不以指令結算（本連線僅記錄一次）")
 }
 
 // noteReplayFallback 錨定失敗的可觀測訊號，並把下一筆入庫文字標為**受限定**。
@@ -901,7 +901,7 @@ func (p *CommandParser) noteReplayFallback() {
 		return
 	}
 	p.fallbackLogged = true
-	log.Print("[SSHProxy] 指令審計降級：重放輪未能在輸出中定位自身回顯，改以使用者送出的輸入位元組結算（本連線僅記錄一次）")
+	log.Print("[SSHProxy] 指令稽核降級：重放輪未能在輸出中定位自身回顯，改以使用者送出的輸入位元組結算（本連線僅記錄一次）")
 }
 
 // discardFullScreenQueue 在「當輪確為全螢幕重繪且錨全部落空」被證實的那一刻，

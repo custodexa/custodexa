@@ -102,13 +102,13 @@ func (s *AssetAuthorizationService) CheckPermission(
 	if ok {
 		// 2. Admin 自動擁有所有權限
 		if role == model.RoleAdmin {
-			log.Printf("[CheckPermission] 用戶 %d 擁有 admin 角色，自動授予權限", userID)
+			log.Printf("[CheckPermission] 使用者 %d 擁有 admin 角色，自動授予權限", userID)
 			return true, nil
 		}
 		// Auditor 稽核唯讀：僅非連線權限（view）自動放行；connect 不短路，
 		// 落正常授權查詢——顯式授予某資產 connect 者仍可連
 		if role == model.RoleAuditor && requiredPerm != model.PermissionConnect {
-			log.Printf("[CheckPermission] 用戶 %d 擁有 auditor 角色，自動授予 %s（非連線）權限", userID, requiredPerm)
+			log.Printf("[CheckPermission] 使用者 %d 擁有 auditor 角色，自動授予 %s（非連線）權限", userID, requiredPerm)
 			return true, nil
 		}
 	}
@@ -134,7 +134,7 @@ func (s *AssetAuthorizationService) CheckPermission(
 		hasPermission = covered
 	}
 
-	log.Printf("[CheckPermission] 用戶 %d 對資產 %d 的 %s 權限檢查結果: %v", userID, assetID, requiredPerm, hasPermission)
+	log.Printf("[CheckPermission] 使用者 %d 對資產 %d 的 %s 權限檢查結果: %v", userID, assetID, requiredPerm, hasPermission)
 	return hasPermission, nil
 }
 
@@ -245,7 +245,7 @@ func (s *AssetAuthorizationService) validateGrantRefs(spec GrantSpec) error {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("%w: ID=%d", ErrGrantUserNotFound, *spec.UserID)
 			}
-			return fmt.Errorf("查詢用戶失敗: %w", err)
+			return fmt.Errorf("查詢使用者失敗: %w", err)
 		}
 	}
 	if spec.UserGroupID != nil {
@@ -653,7 +653,7 @@ func (s *AssetAuthorizationService) ListUserAuthorizations(
 
 	authorizations, total, err := s.repo.List(filters, page, pageSize)
 	if err != nil {
-		log.Printf("[ListUserAuthorizations] 查詢用戶授權失敗: userID=%d, error=%v", userID, err)
+		log.Printf("[ListUserAuthorizations] 查詢使用者授權失敗: userID=%d, error=%v", userID, err)
 		return nil, 0, err
 	}
 
@@ -739,7 +739,7 @@ func (s *AssetAuthorizationService) GetAuthorizedAssets(
 			return nil, fmt.Errorf("查詢資產失敗: %w", err)
 		}
 
-		log.Printf("[GetAuthorizedAssets] Admin/Auditor 用戶 %d 獲取所有資產: total=%d", userID, len(assets))
+		log.Printf("[GetAuthorizedAssets] Admin/Auditor 使用者 %d 取得所有資產: total=%d", userID, len(assets))
 		result := make([]*AuthorizedAssetDTO, len(assets))
 		for i, a := range assets {
 			result[i] = &AuthorizedAssetDTO{Asset: *a}
@@ -779,7 +779,7 @@ func (s *AssetAuthorizationService) GetAuthorizedAssets(
 		}
 	}
 
-	log.Printf("[GetAuthorizedAssets] 用戶 %d 的可視資產: total=%d, permission=%s",
+	log.Printf("[GetAuthorizedAssets] 使用者 %d 的可視資產: total=%d, permission=%s",
 		userID, len(result), permission)
 	return result, nil
 }
