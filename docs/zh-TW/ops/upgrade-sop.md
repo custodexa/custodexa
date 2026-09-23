@@ -176,9 +176,9 @@ bind mount 情境下映像內的權限設定不生效，主機端目錄權限由
 
 **回退要兩樣東西，缺一樣都退不回去：升級前的備份，以及舊版的映像。**
 備份見 §2.1；映像這一格特別容易漏——三顆映像的參照都是 `custodexa/*:latest`，
-新版一建置或一拉取就把同名 tag 覆蓋掉，舊版映像沒有另一個名字就找不回來了。
-自行建置者見 §2.2 的另存 tag，以交付映像部署者請先確認舊版映像檔仍在手上
-（或該版本在貴方的 registry 上仍取得到）。
+新版一建置、或一載入交付的映像檔，就把同名 tag 覆蓋掉，舊版映像沒有另一個名字就找不回來了。
+這些映像不經任何 registry 發佈，來源只有原始碼樹的建置或交付的映像檔。
+自行建置者見 §2.2 的另存 tag，以交付映像部署者請先確認舊版映像檔仍在手上。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
 > （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的二十八條見下 §2.5）；
@@ -374,8 +374,7 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
 > docker images | grep pre-upgrade    # 三行都在，才往下建置
 > ```
 >
-> 以交付映像部署者同理：**保留舊版映像檔或確認 registry 上該版本仍取得到**，
-> 不要只靠 `:latest`。
+> 以交付映像部署者同理：**保留舊版映像檔**，不要只靠 `:latest`。
 
 於專案根對正式版 compose 的全部 build 目標執行一次真實建置，任一目標失敗即不得部署：
 
@@ -508,7 +507,7 @@ docker compose exec -T backend \
 ### 2.5 部署新版本
 
 ```bash
-docker compose -f docker-compose.yml pull    # 或依交付方式載入新映像
+docker compose -f docker-compose.yml pull    # 只更新上游映像（postgres、tls-init、tls-proxy）
 docker compose -f docker-compose.yml up -d
 ```
 
@@ -518,6 +517,14 @@ docker compose -f docker-compose.yml up -d
 仍在保留期內、要保住的報告產物，升級前請先確認該目錄已掛載，或確認離機儲存已啟用，
 或於升級前把產物下載取走。證據包產物的保留期只有 24 小時，通常不受此影響；
 報告產物的保留期由排程設定，可長達數年，是這一步真正要顧的對象。
+
+**`pull` 不會動到本產品自建的三顆映像。** compose 檔對 `custodexa/backend`、`custodexa/frontend`、
+`custodexa/guacd` 標了 `pull_policy: never`，compose 預設不會從 registry 拉取它們。
+在指令列強制拉取時（`docker compose pull --policy always`、`up -d --pull always`），
+compose 仍會嘗試拉取這些映像，因此對本產品自建的映像不要使用這類旗標。
+`up -d` 直接使用本機已有的同名映像，只有本機沒有時才從原始碼樹建置，已存在的映像不會重建。
+因此新版映像來自 §2.2 的建置，這一步之前必須已經跑過。以交付映像部署、手上沒有原始碼樹者，
+先載入新版映像檔，`up -d` 即以載入的映像啟動。
 
 資料庫 migration 於後端啟動時自動執行。**啟動日誌是判斷 migration 是否成功的唯一依據**，
 不要在沒看日誌的情況下宣告升級完成。
@@ -1599,9 +1606,15 @@ token 名稱快照與加密存放的原始引數留在原處，橫向移動規�
    docker image inspect custodexa/backend:latest --format '{{.Id}}'   # 與舊版映像 ID 相同才往下做
    ```
 
-   §2.2 沒先存 tag、舊版映像也已經被覆蓋掉的話，回退前得先把舊版重建或重新取得
-   （自 registry 拉該版本、或以舊版原始碼樹重跑一次建置）；**沒有舊版映像就沒有回退**。
+   §2.2 沒先存 tag、舊版映像也已經被覆蓋掉的話，回退前得先把舊版重建
+   （以舊版原始碼樹重跑一次建置）；**沒有舊版映像就沒有回退**。
    以交付映像部署者：改為重新載入舊版映像檔並確認 compose 參照到它。
+
+   **直接 `up -d` 就會用剛掛回去的映像啟動。** compose 檔對自建的三顆映像標了 `pull_policy: never`：
+   compose 使用本機已有的同名映像，只有本機沒有時才從原始碼樹建置，所以即使在放著新版原始碼樹的目錄裡，
+   掛回 `:latest` 的舊版映像也不會被重建蓋掉。若想在回退期間確保 compose 一律不建置，可在每一次 `up -d`
+   加上 `--no-build`，包括步驟 4 還原程序裡的那兩次（`docker compose up -d --no-build postgres`，
+   再 `docker compose up -d --no-build`）。
 3. **從 1.4.0 回退到不含內建代理的舊版時，先用新版的 compose 檔停一次**
    （`docker compose -f docker-compose.yml down`）：舊版 compose 檔不認得 `tls-init`
    與 `tls-proxy`，用它 `down` 會把這兩個容器留著，繼續佔住對外的 http 與 https 埠。

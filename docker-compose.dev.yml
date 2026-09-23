@@ -32,6 +32,7 @@ services:
   # 只硬化正式版會讓「本機好好的、上線才壞」變成常態。
   guacd:
     image: custodexa/guacd:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/guacd/Dockerfile
@@ -83,6 +84,7 @@ services:
         hard: 0
       memlock: -1 # Allow locking all current and future process memory.
     image: custodexa/backend:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev
@@ -207,6 +209,7 @@ services:
   # Vue 前端服務（開發模式，支援 HMR）
   frontend:
     image: custodexa/frontend:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
@@ -261,6 +264,7 @@ services:
   # 供帳號切換與授權範圍驗證，與 ssh-test 並存）
   ssh-multi-test:
     image: custodexa/ssh-multi-test:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/ssh-multi-test/Dockerfile
@@ -277,6 +281,7 @@ services:
   # RDP 測試容器（用於開發和測試）
   rdp-test:
     image: custodexa/rdp-test:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/rdp-test/Dockerfile
@@ -321,6 +326,7 @@ services:
   # VNC 測試容器（用於開發和測試）
   vnc-test:
     image: custodexa/vnc-test:dev
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/vnc-test/Dockerfile

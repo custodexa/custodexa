@@ -2,6 +2,28 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.12.2 — self-built images come only from the source tree (2026-09-24)
+
+No schema change. No migration runs.
+
+### What changes for deployers
+
+- In `docker-compose.yml`, the three images this product builds (`custodexa/backend`,
+  `custodexa/frontend`, `custodexa/guacd`) now carry `pull_policy: never`. By default Compose does
+  not look for them in a registry, and `docker compose pull` skips them. A pull forced on the
+  command line (`docker compose pull --policy always`, `up -d --pull always`) still makes Compose
+  try to fetch them, so do not use such flags for these images. `docker compose up -d` starts the
+  image of that name already on the host and builds it from the source tree only when it is missing. When
+  upgrading, run the build step of the upgrade procedure before `up -d`; without it, `up -d` keeps
+  using the old image already on the host.
+- The `docker compose pull` step of the upgrade procedure now updates only the upstream images:
+  `postgres`, `alpine/openssl`, and `nginx`.
+
+### Fixes
+
+- The upgrade procedure no longer says the product's images can be obtained from a registry. They
+  come from a build of the source tree or from delivered image files.
+
 ## 1.12.1 — setting up Microsoft Entra ID as a sign-in source (2026-09-24)
 
 No schema change. No migration runs.

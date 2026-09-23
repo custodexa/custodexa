@@ -39,6 +39,7 @@ services:
   # 仍然生效（見 docker/guacd/Dockerfile 檔首）。
   guacd:
     image: custodexa/guacd:latest
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/guacd/Dockerfile
@@ -97,6 +98,7 @@ services:
         hard: 0
       memlock: -1 # Allow locking all current and future process memory.
     image: custodexa/backend:latest
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/backend/Dockerfile
@@ -140,6 +142,7 @@ services:
   # Nginx + Vue 前端服務（生產模式）
   frontend:
     image: custodexa/frontend:latest
+    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile

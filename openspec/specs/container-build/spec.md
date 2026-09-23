@@ -1,7 +1,9 @@
 ## Purpose
 
 容器建置契約：全服務單一 build context 基準與 COPY 路徑慣例、context 傳輸範圍排除、開發版與正式版 image 命名分離、建置基底版本對齊、建置驗證在操作流程中的位置。
+
 ## Requirements
+
 ### Requirement: 單一 build context 基準
 
 所有服務的 compose build 定義 SHALL 以專案根（`.`）為 context，並以 `docker/<service>/Dockerfile` 指定 Dockerfile；Dockerfile 內所有 `COPY` 來源路徑 SHALL 以專案根為基準書寫。SHALL NOT 存在以子目錄為 context 的服務定義，亦 SHALL NOT 出現以 `../` 跳脫 context 的 dockerfile 路徑。
@@ -151,3 +153,23 @@ Dockerfile 內安裝語言套件管理器依賴的步驟 SHALL 使用鎖定解�
 - **WHEN** 為符合本要求而加上腳本抑制旗標
 - **THEN** 以正式版建置實跑成功作為通過依據，安裝步驟退出 0 不足以判定通過
 
+### Requirement: 自建服務只從本機原始碼建置
+
+正式版與開發版編排檔中，映像由本專案原始碼建置的服務 SHALL 明示永不從 registry 拉取該映像（Compose 的 `pull_policy: never`）：映像不存在時由本機原始碼建置，已存在時沿用本機映像，SHALL NOT 在未明示的情況下從任何 registry 拉取同名映像。不採「每次啟動皆重建」的策略——回退時放回的舊映像會被當下原始碼重建蓋掉。映像名稱不帶 registry 前綴時預設指向公開 registry，同名映像的內容不受本專案控制；拉取優先的預設行為會讓部署者在不知情下執行非本專案建置的映像。
+
+營運文件 SHALL NOT 指示部署者以拉取指令取得本專案自建的映像，直到本專案以帶完整 registry 前綴的名稱正式發佈映像為止。
+
+#### Scenario: 同名映像存在於 registry 時仍以本機建置
+
+- **WHEN** registry 上存在與自建服務同名同標籤的映像，而部署者執行 `docker compose up -d` 或 `docker compose pull`
+- **THEN** 自建服務不從 registry 拉取該映像；本機無該映像時由原始碼建置，已有時沿用
+
+#### Scenario: 已有映像時啟動不重建
+
+- **WHEN** 本機已存在自建服務的映像（例如回退時放回的舊版映像）而部署者執行 `docker compose up -d`
+- **THEN** 服務以該映像啟動，不以當下原始碼重建
+
+#### Scenario: 升級文件的拉取指令只涉及上游映像
+
+- **WHEN** 部署者照升級程序更新映像
+- **THEN** 文件所列的拉取步驟只更新上游映像，自建映像由建置步驟產生

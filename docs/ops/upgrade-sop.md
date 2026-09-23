@@ -135,8 +135,8 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 **There is exactly one rollback path when an upgrade fails: restore the backup** (procedure in section 4). The cost is losing all data produced after the last backup, so decide the backup point and the downtime window accordingly, and do not discover halfway through an upgrade that there is no way back.
 
 **A rollback needs two things, and misses without either: the pre-upgrade backup, and the old version's images.**
-The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and one build or pull of the new version overwrites that tag, after which the old image has no name to reach it by.
-If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image file (or that the version is still obtainable from your registry).
+The backup is §2.1; the images are the easy square to miss, because all three images are referenced as `custodexa/*:latest`, and building the new version, or loading its delivered image files, overwrites that tag, after which the old image has no name to reach it by.
+These images are not published to any registry: they come from a build of the source tree or from delivered image files. If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image files.
 
 > **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the twenty-eight in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
@@ -279,7 +279,7 @@ Confirm at the same time:
 > docker images | grep pre-upgrade    # only go on to the build with all three lines present
 > ```
 >
-> The same applies if you deploy delivered images: **keep the old version's image file or confirm the version is still obtainable from the registry**, rather than relying on `:latest`.
+> The same applies if you deploy delivered images: **keep the old version's image files**, rather than relying on `:latest`.
 
 From the project root, run one real build of every build target of the production compose file. If any target fails, do not deploy:
 
@@ -386,11 +386,13 @@ docker compose exec -T backend \
 ### 2.5 Deploy the new version
 
 ```bash
-docker compose -f docker-compose.yml pull    # or load the new images however they were delivered
+docker compose -f docker-compose.yml pull    # updates the upstream images only (postgres, tls-init, tls-proxy)
 docker compose -f docker-compose.yml up -d
 ```
 
 **Before rebuilding the containers, confirm the export directory is mounted or already offsite.** The two lines above rebuild the backend container, and if the export staging directory (`EXPORT_ARTIFACT_PATH`, default `/var/lib/custodexa/exports`) is not mounted as a volume or a bind mount, the artifacts in it disappear with the rebuild. For report artifacts still within their retention period that you want to keep, confirm before the upgrade that the directory is mounted, or that offsite storage is enabled, or download the artifacts beforehand. Evidence package artifacts have a retention period of only 24 hours and are usually unaffected; report artifacts, whose retention period comes from the schedule and can run to years, are what this step is really about.
+
+**`pull` leaves the three images this product builds untouched.** The compose file marks `custodexa/backend`, `custodexa/frontend`, and `custodexa/guacd` with `pull_policy: never`, so compose does not fetch them from a registry by default. A pull forced on the command line (`docker compose pull --policy always`, `up -d --pull always`) still makes compose try to fetch them, so do not use such flags for these images. `up -d` starts the image of that name already present on the host and builds one from the source tree only when none exists; it does not rebuild an image that is already there. The new version's images therefore come from the §2.2 build, which has to have run before this step. If you deploy delivered images without a source tree, load the new image files first; `up -d` then starts the loaded images.
 
 Database migrations run automatically when the backend starts. **The startup log is the only basis for judging whether the migrations succeeded**, so do not declare the upgrade complete without reading it. The server writes these log lines in Traditional Chinese, and they are reproduced verbatim below so you can match them.
 
@@ -1330,7 +1332,9 @@ A database from across a baseline generation cannot even start the new version (
    docker image inspect custodexa/backend:latest --format '{{.Id}}'   # only go on if this matches the old image ID
    ```
 
-   If you did not save the tags in §2.2 and the old images have already been overwritten, the old version has to be rebuilt or obtained again before the rollback (pull that version from a registry, or run the build once from the old source tree); **no old image means no rollback**. If you deploy delivered images, load the old version's image file again instead and confirm compose references it.
+   If you did not save the tags in §2.2 and the old images have already been overwritten, the old version has to be rebuilt before the rollback (run the build once from the old source tree); **no old image means no rollback**. If you deploy delivered images, load the old version's image files again instead and confirm compose references them.
+
+   **A plain `up -d` starts the images you just put back.** The compose file marks the three self-built images with `pull_policy: never`: compose uses the image of that name already present on the host and builds from the source tree only when none exists, so the old images on `:latest` are not rebuilt over, even in a directory holding the new source tree. If you want compose not to build under any circumstance during the rollback, you may add `--no-build` to each `up -d`, including those of the restore procedure in step 4 (`docker compose up -d --no-build postgres`, then `docker compose up -d --no-build`).
 3. **When rolling back from 1.4.0 to a release without the built-in proxy, run one `down` with the new compose file first** (`docker compose -f docker-compose.yml down`): the old compose file does not know `tls-init` and `tls-proxy`, so a `down` with it leaves those two containers up, still holding the external http and https ports. **Keep the `tls/` directory, do not delete it**: upgrading again later can then keep the original CA, with no redistribution to client machines. The external entry point returns to the old release's ports, and the firewall rules and `PUBLIC_BASE_URL` change back with it.
 4. Restore the pre-upgrade backup per [Backup and Restore §5](./backup-and-restore.md#5-restore-procedure).
 5. Run all ten items of the [post-restore verification checklist](./backup-and-restore.md#6-post-restore-verification-checklist) (item 10 applies only with offsite storage enabled).
