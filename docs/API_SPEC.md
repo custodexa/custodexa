@@ -1,6 +1,6 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-23（帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
+> 最後更新：2026-09-23（OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
 > `backend/internal/sshproxy/handler.go`, `backend/internal/proxy/handler.go`,
@@ -1244,6 +1244,10 @@ POST   /api/v1/oidc-providers/discovery-preview
   帶 `risk_acknowledged: true` 重送即存下，確認一併留痕。理由是多數提供者要在授權請求帶
   `groups` scope 才發出群組宣告，而宣告缺席會被判為空集合——症狀是規則列在頁上、狀態是啟用、
   卻沒有人拿到角色。有些提供者改由權杖設定發出群組而不需該 scope，故不能一律擋。
+  **例外：issuer 主機為 `login.microsoftonline.com`（Microsoft Entra ID）時不觸發此確認**，
+  建立以請求的 issuer、更新以既有列的 issuer 判定（issuer 建後不可變），
+  狀態彙總亦不回 `MAPPING_GROUPS_SCOPE_MISSING`。Entra 的群組宣告由其權杖設定決定，
+  且它不接受名為 `groups` 的 scope，帶了會使登入被拒。
   附加 scope 允許清單為 `profile`／`email`／`groups`（`offline_access` 仍不在清單）。
 
 **單筆詳情** `GET /oidc-providers/:id`：回單一 provider 的完整形狀（同上，含 `redirect_uri`

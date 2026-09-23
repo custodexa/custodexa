@@ -3939,7 +3939,7 @@
     "secretSet": "Set",
     "secretUnset": "Not set",
     "scopes": "Additional scopes",
-    "scopesHint": "openid is always sent by the system and cannot be removed; only profile and email may be added.",
+    "scopesHint": "openid is always sent by the system and cannot be removed; profile, email and groups may be added.",
     "namePlaceholder": "Name shown on the sign-in page, e.g. Azure AD",
     "nameRequired": "Please enter a display name",
     "issuerRequired": "Please enter the issuer",
@@ -4219,11 +4219,21 @@
       "displayNameClaim": "Display name",
       "claimDefaultHint": "With all three left empty the behavior is exactly what it was before these settings existed.",
       "groupsClaim": "Groups claim name",
-      "groupsClaimHint": "Empty turns group mapping off. Most providers also need the groups claim enabled in their token configuration.",
+      "groupsClaimHint": "The name of the ID token claim that carries the group list, commonly groups. Leave empty to turn group mapping off. Most providers also need the groups claim enabled in their token configuration.",
       "groupsScopeHint": "When a groups claim name is set, most providers only emit group claims if the groups scope is requested.",
       "admissionHint": "Who may sign in through this source.",
       "groupsScopeAutoAdded": "The groups scope has been selected as well; adjust it under Advanced.",
-      "groupsScopeMissingHint": "The groups scope is not requested, so most providers will not emit group claims."
+      "groupsScopeMissingHint": "The groups scope is not requested, so most providers will not emit group claims.",
+      "entra": {
+        "issuer": "Entra: App registrations → your application → Overview. Copy the Directory (tenant) ID and enter https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0.",
+        "clientId": "Entra: the Application (client) ID on the same Overview page, not the Object ID below it.",
+        "secret": "Entra: Certificates & secrets → Client secrets → New client secret. Copy the Value column, not the Secret ID next to it. The value is shown only once, right after it is created.",
+        "groupsClaim": "Entra: Token configuration → Add groups claim. Select Security groups, save, and enter groups here. Entra does not need the groups scope and does not accept it.",
+        "groupsScopeRejected": "Entra does not support the groups scope; with it selected, sign-in is rejected (AADSTS650053). Enable groups in Entra's Token configuration instead and clear this checkbox.",
+        "tid": "Entra: enter the Directory (tenant) ID from the Overview page.",
+        "emailVerified": "Entra ID tokens do not carry email_verified, so turning this on rejects everyone. Use the tenant ID (tid) rule instead.",
+        "emailDomain": "This rule also requires email_verified, which Entra does not send, so it never passes. Use the tenant ID (tid) rule instead."
+      }
     },
     "ldap": {
       "connectionHint": "The directory server address and the service account this system searches with.",
@@ -4237,12 +4247,12 @@
       "subtitle": "This system searches the directory with a service account and verifies passwords on the user's behalf."
     },
     "mapping": {
-      "sectionHint": "A matched group grants the role directly. Administrator assignments are kept; mapping only adds, never removes. Group changes take effect at the user's next sign-in.",
+      "sectionHint": "A matched group grants the mapped role; roles an administrator assigned by hand are not affected. Mappings take effect at the user's next sign-in: when a user is removed from the group, or the rule is disabled or deleted, the role granted by the mapping is also revoked at their next sign-in.",
       "matchDn": "Group DN",
       "matchDnPlaceholder": "Paste the group's full distinguished name",
       "matchDnHint": "Copy the distinguished name exactly as the directory returns it: attribute type case does not affect matching, but value case does.",
       "matchClaimValue": "Group value",
-      "matchClaimValuePlaceholder": "Paste the group object identifier or name",
+      "matchClaimValuePlaceholder": "Paste the group Object ID or name",
       "matchClaimValueHint": "The provider side is compared verbatim, so enter the value exactly as it appears in the token.",
       "role": "Grants role",
       "rolePlaceholder": "Select a role",
@@ -4263,7 +4273,8 @@
       "adminNote": "A rule that maps to the administrator role requires risk confirmation and is recorded in the audit log. The approver role only grants eligibility; approval scopes still have to be created per person.",
       "filterRole": "Filter by role",
       "filterRoleAll": "All roles",
-      "emptyFiltered": "No mapping rule grants this role"
+      "emptyFiltered": "No mapping rule grants this role",
+      "entraMatchHint": "Entra: Entra ID → Groups → All groups → open the group → Properties, and copy the Object ID. Entra sends group object IDs by default, not group names."
     },
     "preflight": {
       "title": "Before you connect",
@@ -4281,13 +4292,14 @@
       "oidc": {
         "redirect": "Register the redirect URI",
         "redirectUnset": "The public base URL is not set, so the redirect URI cannot be derived",
-        "logoutRedirect": "Register the post-logout redirect URI",
         "appType": "Choose the Web application type and the right account type",
         "appTypeHint": "The wrong choice keeps some people from signing in.",
         "groupsClaim": "Enable the groups claim at the provider",
         "groupsClaimHint": "When groups are synchronized from a directory, some providers need an expression to emit them.",
         "secret": "Record the client secret and its expiry",
-        "secretHint": "Providers usually show it only once."
+        "secretHint": "Providers usually show it only once.",
+        "entraRedirect": "Entra: Authentication (shown as Authentication (Preview) in the new experience) → Redirect URI configuration → Add Redirect URI → Web. In the old experience: Add a platform → Web.",
+        "entraGroupsClaim": "Entra: Token configuration → Add groups claim → Security groups. When a person belongs to more than 200 groups, Entra leaves the group list out and the system keeps that person's existing mapped roles; large organizations should consider Groups assigned to the application instead."
       },
       "ldap": {
         "readGroupAttr": "The service account can read each user's group attribute",
@@ -4349,7 +4361,7 @@
     "unbindAndDisableConfirm": "About to unbind \"{name}\" from provider \"{provider}\" and disable the account at the same time. All sessions are signed out immediately and the account cannot sign in until an admin re-enables it.",
     "unbindAndDisableDone": "Unbound and account disabled",
     "bindTitle": "Bind a new external identity",
-    "bindHint": "The subject must match exactly what the identity provider issued (case-sensitive; never normalized). Binding only adds a login path and does not invalidate existing credentials.",
+    "bindHint": "The subject must match exactly what the identity provider issued (case-sensitive; never normalized). Binding adds a login path and does not invalidate existing credentials.",
     "bindProvider": "Identity provider",
     "bindProviderPlaceholder": "Select an identity provider",
     "bindSubject": "Subject",

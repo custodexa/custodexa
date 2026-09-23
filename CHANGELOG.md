@@ -2,6 +2,40 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.12.1 — setting up Microsoft Entra ID as a sign-in source (2026-09-24)
+
+No schema change. No migration runs.
+
+### What changes for deployers
+
+- An OIDC source whose issuer is on `login.microsoftonline.com` is treated as Microsoft Entra ID,
+  and the settings page no longer selects or requires the `groups` scope for it. Saving such a
+  source with a groups claim name and without that scope needs no risk confirmation, and its status
+  panel no longer warns that the scope is missing.
+- Entra rejects a sign-in that requests the `groups` scope. If an Entra source has `groups` selected
+  under Advanced, clear it; the settings page now shows a warning beside the scope list while it is
+  selected. Entra puts groups into the ID token through the groups claim in its Token configuration.
+
+### Fixes
+
+- On an Entra source, the settings page says where in Entra each value comes from: the issuer, the
+  client ID, the client secret, the tenant ID admission rule, the groups claim name, the group
+  values in group mapping, and the redirect URI and groups claim items under Before you connect.
+  Menu and field names follow Microsoft's own wording in each language.
+- On an Entra source, entering a groups claim name leaves the scopes as they are, and the hint that
+  most providers need the `groups` scope is not shown.
+- On an Entra source, the Require verified email and Email domain admission rules say that they
+  cannot pass, because Entra ID tokens do not carry `email_verified`.
+- The groups claim name field no longer shows `groups` as placeholder text, which looked like a
+  value already filled in. The hint below the field says what to enter.
+- Before you connect no longer asks for a post-logout redirect URI to be registered, since the
+  system does not use one. The quick start states that signing out ends the sign-in to this system
+  only.
+- The group mapping section describes both sides of mapping: a matched group grants its role at the
+  user's next sign-in, and that role is revoked at the next sign-in after the user leaves the group
+  or the rule is disabled or deleted. Roles an administrator assigned by hand are not affected.
+- The scope hint lists `groups` among the scopes that can be added.
+
 ## 1.12.0 — tool call arguments kept as evidence (2026-09-23)
 
 ### New capabilities

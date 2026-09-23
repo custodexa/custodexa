@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
+import i18n from '@/i18n'
 import GroupMappingSection from '../GroupMappingSection.vue'
 
 enableAutoUnmount(afterEach)
@@ -73,5 +74,36 @@ describe('GroupMappingSection 依目標角色篩選', () => {
     wrapper.vm.roleFilter = ''
     await flushPromises()
     expect(wrapper.vm.visibleRules).toHaveLength(3)
+  })
+})
+
+// Entra 預設發出群組的物件識別碼而非名稱：提示只在 Entra 來源出現，目錄頁不變
+describe('GroupMappingSection Entra 群組值提示', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getSourceMappingsMock.mockResolvedValue({ data: [] })
+    getRoleListMock.mockResolvedValue({ data: [] })
+  })
+
+  const mountOidc = (props) =>
+    mount(GroupMappingSection, {
+      props: { type: 'oidc', sourceId: 5, attrSet: true, ...props },
+      global: { plugins: [ElementPlus] },
+    })
+
+  it('entra 為真時顯示取得物件識別碼的位置', async () => {
+    const wrapper = mountOidc({ entra: true })
+    await flushPromises()
+
+    const hint = wrapper.find('[data-test="mapping-entra-hint"]')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toBe(i18n.global.t('identitySources.mapping.entraMatchHint'))
+  })
+
+  it('未傳 entra 時不顯示', async () => {
+    const wrapper = mountOidc({})
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="mapping-entra-hint"]').exists()).toBe(false)
   })
 })

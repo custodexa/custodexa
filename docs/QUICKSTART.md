@@ -392,6 +392,8 @@ variables below, plus one **operational prerequisite you have to settle before e
   so it **stays alive**, governed by the idle timeout (`SSH_IDLE_TIMEOUT_MINUTES`) and the maximum
   session lifetime; an access token already issued also lives until it expires (a fixed 15
   minutes). What deactivation at the IdP actually does is reject the next sign-in.
+- Signing out ends the sign-in to this system only. The browser is not redirected to the IdP's
+  sign-out, so the session at the IdP stays signed in.
 
 **Known limits of a multi-replica deployment** (single-instance deployments are unaffected):
 

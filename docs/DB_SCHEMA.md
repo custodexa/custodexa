@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
+> **最後更新**：2026-09-23（群組宣告名與 `groups` scope 段：Entra issuer 不觸發確認與狀態警告，無 migration）
+> 前次更新：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
 > 前次更新：2026-09-23（agent_tool_calls 新增 args_sealed／args_retained、command_alerts.kind 加 sensitive_reveal；agent 帳本／報告／探測事件、v3 檢查點、規則主體與 16 條種子；agent_token_name 快照）
 > 前次更新：2026-09-21（多項存取任務：access_request_items、執行者／關閉時刻、逐項票證與核准記錄）
 > 前次更新：2026-09-21（users 主體欄、agent_tokens、sessions 關聯；稽核 action 擴為 varchar(32)）
@@ -2305,6 +2306,8 @@ CAS 轉 approved 並建立其 ticket；整單仍有 pending 項時維持 pending
 （附加 scope 允許清單因此含 `groups`）。設了宣告名卻沒帶該 scope 時，宣告缺席會被判為空集合，
 症狀是規則列在頁上、狀態是啟用、卻沒有人拿到角色。系統對這一格的處置是**警告加確認、不阻擋**：
 儲存時未確認即以機器碼回拒，確認後放行並留痕，狀態彙總亦回同一個警告。
+例外是 issuer 主機為 `login.microsoftonline.com`（Microsoft Entra ID）的列：Entra 的群組宣告由其權杖設定決定，
+且它不接受名為 `groups` 的 scope（帶了會使登入被拒），故儲存不要求確認、狀態彙總也不回此警告。
 
 **准入模式常數**:
 ```go

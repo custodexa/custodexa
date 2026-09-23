@@ -3939,7 +3939,7 @@
     "secretSet": "已設定",
     "secretUnset": "未設定",
     "scopes": "附加 scope",
-    "scopesHint": "openid 由系統固定帶入且不可移除；附加項僅開放 profile 與 email。",
+    "scopesHint": "openid 由系統固定帶入且不可移除；附加項開放 profile、email 與 groups。",
     "namePlaceholder": "顯示於登入頁的名稱，例如 Azure AD",
     "nameRequired": "請輸入顯示名稱",
     "issuerRequired": "請輸入 issuer",
@@ -4219,11 +4219,21 @@
       "displayNameClaim": "顯示名稱",
       "claimDefaultHint": "三欄留空時的行為與未設定此功能前完全相同。",
       "groupsClaim": "群組 claim 名稱",
-      "groupsClaimHint": "留空即關閉群組映射。多數提供者需另行在權杖設定開啟群組宣告。",
+      "groupsClaimHint": "身分權杖裡放群組清單的宣告名稱，常見為 groups。留空即關閉群組映射。多數提供者需另行在其權杖設定開啟群組宣告。",
       "groupsScopeHint": "設定群組 claim 名稱時，多數提供者需一併索取 groups 範圍才會發出群組宣告。",
       "admissionHint": "誰可以經此來源登入。",
       "groupsScopeAutoAdded": "已一併勾選 groups 範圍（在進階段可調整）。",
-      "groupsScopeMissingHint": "授權範圍不含 groups，多數提供者因此不會發出群組宣告。"
+      "groupsScopeMissingHint": "授權範圍不含 groups，多數提供者因此不會發出群組宣告。",
+      "entra": {
+        "issuer": "Entra：應用程式註冊 → 你的應用程式 → 概觀，複製「目錄 (租用戶) 識別碼」，填成 https://login.microsoftonline.com/<目錄 (租用戶) 識別碼>/v2.0。",
+        "clientId": "Entra：同一個概觀頁的「應用程式 (用戶端) 識別碼」，不是下方的「物件識別碼」。",
+        "secret": "Entra：憑證及祕密 → 用戶端密碼 → 新增用戶端密碼，複製「值」欄位，不是旁邊那串 ID。值只在建立當下顯示一次。",
+        "groupsClaim": "Entra：權杖設定 → 新增群組宣告，勾選「安全性群組」後儲存，這裡填 groups。Entra 不需要 groups 授權範圍，也不接受。",
+        "groupsScopeRejected": "Entra 不支援 groups 授權範圍，勾選後登入會被拒絕（AADSTS650053）。群組請改在 Entra 的權杖設定開啟，並取消此勾選。",
+        "tid": "Entra：填概觀頁的「目錄 (租用戶) 識別碼」。",
+        "emailVerified": "Entra 的身分權杖不帶 email_verified，開啟後所有人都會被拒。請改用租戶識別（tid）。",
+        "emailDomain": "此規則一併要求 email_verified，Entra 不帶此宣告，因此不會通過。請改用租戶識別（tid）。"
+      }
     },
     "ldap": {
       "connectionHint": "目錄伺服器位址，以及供本系統搜尋使用者用的服務帳號。",
@@ -4237,12 +4247,12 @@
       "subtitle": "本系統以服務帳號查目錄並代為驗證密碼。"
     },
     "mapping": {
-      "sectionHint": "命中的群組直接賦予角色；管理者的指派保留，映射只加不減。群組變動於使用者下次登入時生效。",
+      "sectionHint": "命中的群組賦予對應角色，管理者手動指派的角色不受影響。映射於使用者下次登入時生效：被移出群組、或規則被停用或刪除後，映射給的角色也在其下次登入時收回。",
       "matchDn": "群組 DN",
       "matchDnPlaceholder": "貼上群組的完整辨識名稱",
       "matchDnHint": "請照目錄實際回傳的辨識名稱逐字填寫：屬性型別的大小寫不影響命中，值的大小寫會影響。",
       "matchClaimValue": "群組值",
-      "matchClaimValuePlaceholder": "貼上群組物件識別或名稱",
+      "matchClaimValuePlaceholder": "貼上群組物件識別碼或名稱",
       "matchClaimValueHint": "提供者側逐字比對，請照權杖內實際出現的值填寫。",
       "role": "賦予角色",
       "rolePlaceholder": "選擇角色",
@@ -4263,7 +4273,8 @@
       "adminNote": "映射到管理員角色的規則儲存時需確認風險並留痕。審核者角色只給資格，審核範圍仍需管理者逐人建立。",
       "filterRole": "依角色篩選",
       "filterRoleAll": "全部角色",
-      "emptyFiltered": "此角色下沒有映射規則"
+      "emptyFiltered": "此角色下沒有映射規則",
+      "entraMatchHint": "Entra：Entra ID → 群組 → 所有群組 → 點進群組 → 屬性，複製「物件識別碼」。Entra 預設發出物件識別碼，不是群組名稱。"
     },
     "preflight": {
       "title": "接通前確認",
@@ -4281,13 +4292,14 @@
       "oidc": {
         "redirect": "登記回呼網址",
         "redirectUnset": "尚未設定對外基準網址，回呼網址無法算出",
-        "logoutRedirect": "登記登出後的回呼網址",
         "appType": "應用類型選「網頁」，帳號類型選對租戶",
         "appTypeHint": "選錯會讓特定使用者登不進來。",
         "groupsClaim": "在提供者端開啟群組宣告",
         "groupsClaimHint": "群組來自目錄同步時，部分提供者需以運算式取得。",
         "secret": "記下密鑰與其到期日",
-        "secretHint": "提供者端通常只顯示一次。"
+        "secretHint": "提供者端通常只顯示一次。",
+        "entraRedirect": "Entra：Authentication（新版顯示為 Authentication (Preview)）→ 重新導向 URI 設定 → 新增重新導向 URI → Web。舊版介面為新增平台 → Web。",
+        "entraGroupsClaim": "Entra：權杖設定 → 新增群組宣告 → 安全性群組。一個人所屬群組超過 200 個時，Entra 不帶群組清單，系統會保留其既有映射角色；大型組織建議改選「指派給應用程式的群組」。"
       },
       "ldap": {
         "readGroupAttr": "服務帳號可讀取使用者的群組屬性",

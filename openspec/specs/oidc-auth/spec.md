@@ -5,7 +5,9 @@
 外部身分提供者（OIDC）整合契約：provider 實例管理、authorization code 登入流程與 token 驗證強度、
 准入控制與影子供應、外部身分對應、登入 gate chain 匯流、provider 停用／密鑰輪替的全面失效，
 以及登入頁 SSO 入口與流程供應的濫用防護。
+
 ## Requirements
+
 ### Requirement: OIDC provider 實例管理
 系統 SHALL 支援多個 OIDC provider 實例並存（同一部署可同時啟用 Azure AD、Okta、Google 等），每個實例含顯示名稱、issuer、client_id、client_secret、scopes、admission 模式與啟用狀態，由 admin 經 API 與管理頁 CRUD。client_secret SHALL 以信封加密落庫且為 write-only：任何讀取回應 SHALL NOT 含明文或密文，更新時空值 SHALL 沿用既有 secret 不覆寫。
 
@@ -430,7 +432,6 @@ OIDC 流程的**逐筆**失敗留痕 SHALL 具備來源位址、路徑、方法�
 
 ### Requirement: 群組宣告的讀取與設定
 
-
 provider SHALL 可設定其身分權杖中攜帶群組資訊的宣告名稱。未設定 SHALL 等同該 provider 的群組映射關閉——登入路徑 SHALL NOT 對未設定者做任何群組解析或角色重算。該 provider 已有啟用中的映射規則時，登入 SHALL 依映射能力的規定寫入跳過事件。
 
 已設定時，callback 階段 SHALL 自已驗證的身分權杖讀取該宣告，並 SHALL 區分三種情形：鍵存在且為字串陣列（取其值）、鍵不存在（視為空集合）、鍵存在但其值為提供者的溢出指示（視為未知）。型別不符 SHALL 視為未知而非空集合——本規格對 claim 的既有立場是不做寬鬆轉型。
@@ -461,7 +462,6 @@ provider SHALL 可設定其身分權杖中攜帶群組資訊的宣告名稱。�
 
 ### Requirement: 身分屬性的宣告對應設定
 
-
 provider SHALL 可分別設定使用者名稱、電子郵件與顯示名稱各取自身分權杖的哪一個宣告。任一項未設定 SHALL 沿用系統既有的預設宣告與其既有的回退規則——本要求是把既有的隱含規則變成可設定且可見的值，SHALL NOT 改變未設定時的解析結果。
 
 設定值 SHALL 僅影響身分屬性的讀取，SHALL NOT 影響外部身分的對應鍵：帳號的對應依據仍為 issuer 與 subject，SHALL NOT 因宣告對應變更而改寫既有身分關聯（否則改一個顯示欄位就會使既有使用者被認成新帳號）。
@@ -484,7 +484,6 @@ provider SHALL 可分別設定使用者名稱、電子郵件與顯示名稱各�
 - **THEN** 該使用者仍對應到原有帳號，SHALL NOT 另建帳號
 
 ### Requirement: 管理端的探索預覽
-
 
 系統 SHALL 提供管理端唯讀的探索預覽：輸入 issuer 即回其探索文件所宣告的端點與其支援的宣告清單，供管理者在儲存設定前確認位址正確。
 
@@ -511,7 +510,6 @@ provider SHALL 可分別設定使用者名稱、電子郵件與顯示名稱各�
 
 ### Requirement: 回呼網址的揭露
 
-
 provider 的詳情 SHALL 回傳本系統的回呼網址，供管理者複製到身分提供者端登記。該值 SHALL 由對外基準網址算出，SHALL NOT 由前端自行以瀏覽器當下的位址推導——管理者所用的位址可能是內部位址或反向代理之後的位址，與提供者實際會導回的位址不同。
 
 對外基準網址未設定時，詳情 SHALL 回可辨識的未設定狀態並於介面說明其後果（登入流程將無法組出回呼網址），SHALL NOT 回空字串或猜測值。
@@ -525,3 +523,47 @@ provider 的詳情 SHALL 回傳本系統的回呼網址，供管理者複製到�
 
 - **WHEN** 系統未設定對外基準網址而管理者開啟 provider 詳情
 - **THEN** 回呼網址呈現為可辨識的未設定狀態，並說明登入流程屆時無法完成
+
+### Requirement: Microsoft Entra 來源的設定引導
+
+issuer 主機為 `login.microsoftonline.com` 的 provider SHALL 被辨識為 Microsoft Entra 來源（不分大小寫、不限路徑，租戶專屬與多租戶端點皆屬之）。
+
+Entra 來源的設定頁 SHALL 於 issuer、用戶端識別、用戶端密碼、准入規則的租戶識別、群組宣告名稱各欄，以及群組映射的群組值欄，另行標示該值在 Entra 管理介面中的取得位置。提示中的選單與欄位名稱 SHALL 與提供者介面的實際字串一致，查無介面字串者 SHALL NOT 自行翻譯後冒充介面用語。准入規則中 Entra 身分權杖不會攜帶其所需宣告者（要求 Email 已驗證、Email 網域），SHALL 於 Entra 來源下明示該規則不會通過。
+
+Entra 不接受名為 `groups` 的授權範圍（群組宣告由其權杖設定決定，與授權範圍無關）。故 Entra 來源：
+- 設定群組宣告名稱時 SHALL NOT 自動加入 `groups` 授權範圍；
+- 授權範圍含 `groups` 時設定頁 SHALL 警告該設定將使登入被拒；
+- 儲存時 SHALL NOT 因授權範圍缺 `groups` 要求風險確認，狀態彙總 SHALL NOT 因此發出缺範圍警告。
+
+非 Entra 來源的上述行為 SHALL 維持不變。
+
+群組宣告名稱欄 SHALL NOT 以看似已填值的預設字樣呈現；應填內容由說明文字交代。
+
+#### Scenario: 租戶專屬 issuer 被辨識為 Entra
+
+- **WHEN** provider 的 issuer 為 `https://login.microsoftonline.com/<租戶識別>/v2.0`
+- **THEN** 設定頁顯示各欄在 Entra 的取得位置
+
+#### Scenario: Entra 不自動索取 groups 範圍
+
+- **WHEN** 管理者於 Entra 來源輸入群組宣告名稱
+- **THEN** 授權範圍不被自動加入 `groups`，儲存不要求風險確認，狀態彙總不出現缺範圍警告
+
+#### Scenario: Entra 已勾 groups 範圍時警告
+
+- **WHEN** Entra 來源的授權範圍含 `groups`
+- **THEN** 設定頁顯示該範圍將使 Entra 拒絕登入的警告
+
+#### Scenario: 非 Entra 行為不變
+
+- **WHEN** 非 Entra provider 設定群組宣告名稱而授權範圍不含 `groups`
+- **THEN** 儲存仍回可辨識的確認要求，狀態彙總仍發出缺範圍警告
+
+### Requirement: 接通前確認清單只列系統實際使用的登記項
+
+身分來源設定頁的接通前確認清單 SHALL 只列出本系統實際會使用的提供者端登記項。本系統未實作的協定能力（例如登出時導向提供者的登出端點）SHALL NOT 以登記項的形式出現——要管理者登記一個系統不會使用的位址，會使其誤以為對應能力存在。
+
+#### Scenario: 不要求登記登出後回呼位址
+
+- **WHEN** 管理者檢視 OIDC 來源的接通前確認清單
+- **THEN** 清單不含「登記登出後的回呼網址」項

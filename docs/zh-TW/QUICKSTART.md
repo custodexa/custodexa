@@ -340,6 +340,7 @@ provider 本身的設定（issuer／client_id／secret／准入規則）由管�
   back-channel logout，本版未實作）。既有的 SSH／RDP／VNC 等協議連線建立後不再使用憑證，
   因此會**繼續存活**，由閒置逾時（`SSH_IDLE_TIMEOUT_MINUTES`）與最大連線時長治理；
   已簽發的 access token 亦會存活至到期（固定 15 分鐘）。IdP 端停權的實際效果是「下次登入被拒」。
+- 登出只結束本系統的登入，不會導向身分提供者登出，IdP 端的登入狀態維持不變。
 
 **多副本部署的已知邊界**（單實例部署不受影響）：
 

@@ -341,11 +341,12 @@ func scopesContainGroups(scopes string) bool {
 
 // requireGroupsScopeAck 設了群組宣告名卻沒帶 groups 授權範圍時要求確認。
 //
-// 不阻擋（確認即放行）：Entra 走權杖設定，不需要這個範圍，逕行阻擋會把一個
+// 不阻擋（確認即放行）：部分提供者走權杖設定而不需要這個範圍，逕行阻擋會把一個
 // 合法組態鎖在門外。但也不能靜默——多數提供者缺了它就不發群組宣告，
 // 而鍵缺席依既有判準是「空集合」，於是全體映射角色被撤，且沒有任何訊號。
-func requireGroupsScopeAck(groupsClaim, scopes string, acknowledged bool) error {
-	if groupsClaim == "" || scopesContainGroups(scopes) || acknowledged {
+// Entra issuer 不要求確認：它根本不接受這個範圍，要求確認只會把人推向錯的設定
+func requireGroupsScopeAck(issuer, groupsClaim, scopes string, acknowledged bool) error {
+	if acknowledged || !groupsScopeMissing(issuer, groupsClaim, scopes) {
 		return nil
 	}
 	return &MappingAckRequiredError{Warnings: []string{mappingWarningGroupsScopeMissing}}
@@ -449,7 +450,7 @@ func (s *OIDCProviderService) Create(req *OIDCProviderRequest) (*OIDCProviderDTO
 	if err != nil {
 		return nil, err
 	}
-	if err := requireGroupsScopeAck(claims.groups, scopes, req.RiskAcknowledged); err != nil {
+	if err := requireGroupsScopeAck(issuer, claims.groups, scopes, req.RiskAcknowledged); err != nil {
 		return nil, err
 	}
 
@@ -533,7 +534,8 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	}
 
 	// 群組宣告名與 groups 授權範圍是一組，判定吃的是**套用之後**的值：
-	// 只改其中一欄的請求也必須以合併後的結果判斷，否則分兩次送就繞過了確認
+	// 只改其中一欄的請求也必須以合併後的結果判斷，否則分兩次送就繞過了確認。
+	// issuer 建後不可變，故取既有列的值
 	effScopes := p.Scopes
 	if v, ok := updates["scopes"].(string); ok {
 		effScopes = v
@@ -542,7 +544,7 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	if v, ok := updates["groups_claim"].(string); ok {
 		effGroupsClaim = v
 	}
-	if err := requireGroupsScopeAck(effGroupsClaim, effScopes, req.RiskAcknowledged); err != nil {
+	if err := requireGroupsScopeAck(p.Issuer, effGroupsClaim, effScopes, req.RiskAcknowledged); err != nil {
 		return nil, err
 	}
 

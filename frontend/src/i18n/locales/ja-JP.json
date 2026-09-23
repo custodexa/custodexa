@@ -3422,7 +3422,7 @@
     "NOTFOUND_USER_GROUP": "ユーザーグループが存在しません",
     "OIDC_DISCOVERY_PREVIEW_FAILED": "その issuer からディスカバリー文書を取得できませんでした。アドレスとネットワーク到達性を確認してください",
     "OIDC_PROVIDER_HAS_MAPPINGS": "このプロバイダーにはグループマッピング規則が残っています。規則を削除してからプロバイダーを削除してください",
-    "POLICY_GROUP_BUILTIN_READONLY": "組み込みポリシーグループの内容は編集できません。有効・無効の切り替えと自組織メモの追加のみ可能です",
+    "POLICY_GROUP_BUILTIN_READONLY": "組み込みポリシーグループの内容は編集できません。有効・無効の切り替えと自組織メモの追加だけが可能です",
     "POLICY_GROUP_DUPLICATE_CODE": "そのポリシーグループコードは既に使われています。別のコードを指定してください",
     "POLICY_GROUP_NOT_FOUND": "指定されたポリシーグループが見つかりません",
     "RULE_ACCESS_APPROVAL_REQUIRED": "この資産のアクセスポリシーでは、接続前に申請の承認が必要です",
@@ -3939,7 +3939,7 @@
     "secretSet": "設定済み",
     "secretUnset": "未設定",
     "scopes": "追加スコープ",
-    "scopesHint": "openid は常にシステムが付与し、削除できません。追加できるのは profile と email のみです。",
+    "scopesHint": "openid は常にシステムが付与し、削除できません。追加できるのは profile、email、groups です。",
     "namePlaceholder": "ログイン画面に表示する名称（例: Azure AD）",
     "nameRequired": "表示名を入力してください",
     "issuerRequired": "issuer を入力してください",
@@ -4219,11 +4219,21 @@
       "displayNameClaim": "表示名",
       "claimDefaultHint": "3 項目を空欄にした場合の挙動は、この設定が無かったときと同一です。",
       "groupsClaim": "グループ claim 名",
-      "groupsClaimHint": "空欄にするとグループマッピングを無効にします。多くのプロバイダーではトークン設定側でもグループクレームを有効にする必要があります。",
+      "groupsClaimHint": "ID トークン内でグループ一覧を格納する claim 名で、一般的には groups です。空欄にするとグループマッピングを無効にします。多くのプロバイダーではトークン設定側でもグループクレームを有効にする必要があります。",
       "groupsScopeHint": "グループ claim 名を設定する場合、多くのプロバイダーは groups スコープを要求しないとグループクレームを発行しません。",
       "admissionHint": "このソース経由でサインインできる対象。",
       "groupsScopeAutoAdded": "groups スコープも併せて選択しました（「詳細設定」で変更できます）。",
-      "groupsScopeMissingHint": "groups スコープが要求されていないため、多くのプロバイダーはグループクレームを発行しません。"
+      "groupsScopeMissingHint": "groups スコープが要求されていないため、多くのプロバイダーはグループクレームを発行しません。",
+      "entra": {
+        "issuer": "Entra：アプリの登録 → 対象のアプリ → 概要 で「ディレクトリ (テナント) ID」をコピーし、https://login.microsoftonline.com/<ディレクトリ (テナント) ID>/v2.0 の形式で入力します。",
+        "clientId": "Entra：同じ概要ページの「アプリケーション (クライアント) ID」です。その下の「オブジェクト ID」ではありません。",
+        "secret": "Entra：証明書とシークレット → クライアント シークレット → 新しいクライアント シークレット で作成し、「値」列をコピーします。隣の「シークレット ID」ではありません。値は作成直後に一度しか表示されません。",
+        "groupsClaim": "Entra：トークン構成 → グループ要求の追加 で「セキュリティ グループ」を選択して保存し、ここには groups と入力します。Entra では groups スコープは不要で、受け付けられません。",
+        "groupsScopeRejected": "Entra は groups スコープに対応していないため、選択したままではサインインが拒否されます（AADSTS650053）。グループは Entra のトークン構成で有効にし、このチェックを外してください。",
+        "tid": "Entra：概要ページの「ディレクトリ (テナント) ID」を入力します。",
+        "emailVerified": "Entra の ID トークンには email_verified が含まれないため、有効にすると全員が拒否されます。テナント ID（tid）のルールを使ってください。",
+        "emailDomain": "このルールは email_verified も必須としますが、Entra はこの claim を送らないため通過しません。テナント ID（tid）のルールを使ってください。"
+      }
     },
     "ldap": {
       "connectionHint": "ディレクトリサーバーのアドレスと、本システムが検索に使うサービスアカウントです。",
@@ -4237,12 +4247,12 @@
       "subtitle": "本システムがサービスアカウントでディレクトリを検索し、パスワードを代理検証します。"
     },
     "mapping": {
-      "sectionHint": "一致したグループがロールを直接付与します。管理者による割り当ては保持され、マッピングは追加のみで削除はしません。グループの変更は次回サインイン時に反映されます。",
+      "sectionHint": "一致したグループに対応するロールを付与します。管理者が手動で割り当てたロールには影響しません。マッピングは利用者の次回サインイン時に反映されます。グループから外された場合や、ルールが無効化または削除された場合も、マッピングで付与されたロールはその利用者の次回サインイン時に取り消されます。",
       "matchDn": "グループ DN",
       "matchDnPlaceholder": "グループの完全な識別名を貼り付けます",
       "matchDnHint": "ディレクトリが返す識別名をそのまま入力してください。属性型の大文字小文字は一致に影響しませんが、値の大文字小文字は影響します。",
       "matchClaimValue": "グループ値",
-      "matchClaimValuePlaceholder": "グループのオブジェクト識別子または名前を貼り付けます",
+      "matchClaimValuePlaceholder": "グループのオブジェクト ID または名前を貼り付けます",
       "matchClaimValueHint": "プロバイダー側は文字どおり比較されるため、トークンに実際に現れる値を入力してください。",
       "role": "付与するロール",
       "rolePlaceholder": "ロールを選択",
@@ -4263,7 +4273,8 @@
       "adminNote": "管理者ロールへのマッピング規則は保存時にリスク確認が必要で、監査記録に残ります。承認者ロールは資格のみを与えるもので、承認範囲は引き続き利用者ごとに作成が必要です。",
       "filterRole": "ロールで絞り込み",
       "filterRoleAll": "すべてのロール",
-      "emptyFiltered": "このロールを付与するマッピング規則はありません"
+      "emptyFiltered": "このロールを付与するマッピング規則はありません",
+      "entraMatchHint": "Entra：Entra ID → Groups → All groups → 対象のグループ → プロパティ で「オブジェクト ID」をコピーします。Entra が既定で送るのはグループ名ではなくオブジェクト ID です。"
     },
     "preflight": {
       "title": "接続前の確認",
@@ -4281,13 +4292,14 @@
       "oidc": {
         "redirect": "リダイレクト URI を登録する",
         "redirectUnset": "外部公開のベース URL が未設定のため、リダイレクト URI を算出できません",
-        "logoutRedirect": "サインアウト後のリダイレクト URI を登録する",
         "appType": "アプリケーション種別は「Web」、アカウント種別は対象テナントを選ぶ",
         "appTypeHint": "選択を誤ると一部の利用者がサインインできません。",
         "groupsClaim": "プロバイダー側でグループクレームを有効にする",
         "groupsClaimHint": "グループがディレクトリ同期由来の場合、式による取得が必要なプロバイダーもあります。",
         "secret": "クライアントシークレットと有効期限を控える",
-        "secretHint": "プロバイダー側では通常 1 度しか表示されません。"
+        "secretHint": "プロバイダー側では通常 1 度しか表示されません。",
+        "entraRedirect": "Entra：Authentication → リダイレクト URI 構成 → リダイレクト URI の追加 → Web。旧画面では 認証 → プラットフォームの追加 → Web。",
+        "entraGroupsClaim": "Entra：トークン構成 → グループ要求の追加 → セキュリティ グループ。所属グループが 200 を超える利用者には Entra がグループ一覧を送らず、本システムはその利用者の既存のマッピングロールを保持します。大規模な組織では「アプリケーションに割り当てられたグループ」を推奨します。"
       },
       "ldap": {
         "readGroupAttr": "サービスアカウントが利用者のグループ属性を読み取れる",
@@ -4349,7 +4361,7 @@
     "unbindAndDisableConfirm": "「{name}」とプロバイダー「{provider}」のバインドを解除し、同時にアカウントを無効化します。全セッションは直ちにログアウトされ、管理者が再度有効化するまでログインできません。",
     "unbindAndDisableDone": "バインドを解除しアカウントを無効化しました",
     "bindTitle": "新しい外部 ID をバインド",
-    "bindHint": "subject は ID プロバイダーが発行した値と完全に一致する必要があります（大文字小文字を区別し、正規化しません）。バインドはログイン手段の追加のみで、既存の資格情報は失効しません。",
+    "bindHint": "subject は ID プロバイダーが発行した値と完全に一致する必要があります（大文字小文字を区別し、正規化しません）。バインドはログイン手段を増やすだけで、既存の資格情報は失効しません。",
     "bindProvider": "ID プロバイダー",
     "bindProviderPlaceholder": "ID プロバイダーを選択",
     "bindSubject": "Subject",

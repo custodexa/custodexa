@@ -235,8 +235,9 @@ func (s *IdentitySourceService) ProviderStatus(providerID uint) (*SourceStatus, 
 	}
 	// 設了群組宣告名卻沒帶 groups 授權範圍：多數提供者因此不發群組宣告，
 	// 鍵缺席依既有判準視為空集合，症狀是全體映射角色被撤且無訊號。
-	// 這一格沒有登入側的跳過事件可依靠（那一格是「宣告名沒設」），故在此亮黃燈
-	if p.GroupsClaim != "" && !scopesContainGroups(p.Scopes) {
+	// 這一格沒有登入側的跳過事件可依靠（那一格是「宣告名沒設」），故在此亮黃燈。
+	// Entra 不需要也不接受這個範圍，不亮
+	if groupsScopeMissing(p.Issuer, p.GroupsClaim, p.Scopes) {
 		out.Warnings = append(out.Warnings,
 			SourceStatusWarning{Code: mappingWarningGroupsScopeMissing})
 	}

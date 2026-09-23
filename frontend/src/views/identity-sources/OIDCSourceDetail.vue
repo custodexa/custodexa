@@ -80,6 +80,12 @@
             >
               {{ azureMultiTenantWarning }}
             </div>
+            <div
+              v-if="isEntra"
+              class="field-hint"
+            >
+              {{ $t('identitySources.oidc.entra.issuer') }}
+            </div>
           </el-form-item>
         </div>
 
@@ -94,6 +100,12 @@
               :disabled="isEdit"
               :placeholder="$t('oidcProviders.clientIdPlaceholder')"
             />
+            <div
+              v-if="isEntra"
+              class="field-hint"
+            >
+              {{ $t('identitySources.oidc.entra.clientId') }}
+            </div>
           </el-form-item>
           <!-- 密鑰兩態：已設定時不再以空輸入框暗示未設定 -->
           <el-form-item
@@ -137,6 +149,12 @@
             </template>
             <div class="field-hint">
               {{ $t('identitySources.oidc.secretHint') }}
+            </div>
+            <div
+              v-if="isEntra"
+              class="field-hint"
+            >
+              {{ $t('identitySources.oidc.entra.secret') }}
             </div>
           </el-form-item>
         </div>
@@ -232,18 +250,26 @@
           type="oidc"
           :source-id="providerId"
           :attr-set="Boolean(form.groups_claim)"
+          :entra="isEntra"
         >
           <template #attr>
             <el-form-item
               class="field-narrow"
               :label="$t('identitySources.oidc.groupsClaim')"
             >
+              <!-- 不放預設字樣：灰字 groups 看起來像已填值，實際上是空的 -->
               <el-input
                 v-model="form.groups_claim"
-                placeholder="groups"
+                data-test="groups-claim-input"
               />
               <div class="field-hint">
                 {{ $t('identitySources.oidc.groupsClaimHint') }}
+              </div>
+              <div
+                v-if="isEntra"
+                class="field-hint"
+              >
+                {{ $t('identitySources.oidc.entra.groupsClaim') }}
               </div>
               <!-- 多數提供者只在請求該授權範圍時才發出群組宣告：設了宣告名就把
                    範圍一併勾上，並說出剛才替使用者做了什麼（沉默地改設定不算提示） -->
@@ -254,7 +280,7 @@
                 {{ $t('identitySources.oidc.groupsScopeAutoAdded') }}
               </div>
               <div
-                v-else-if="form.groups_claim && !form.scopeExtras.includes('groups')"
+                v-else-if="!isEntra && form.groups_claim && !form.scopeExtras.includes('groups')"
                 class="field-warning"
               >
                 {{ $t('identitySources.oidc.groupsScopeMissingHint') }}
@@ -319,6 +345,12 @@
                 :reserve-keyword="false"
                 :placeholder="$t('oidcProviders.ruleListPlaceholder')"
               />
+              <div
+                v-if="isEntra"
+                class="field-hint"
+              >
+                {{ $t('identitySources.oidc.entra.tid') }}
+              </div>
             </el-form-item>
             <el-form-item
               class="field-row__item"
@@ -334,6 +366,12 @@
                 :reserve-keyword="false"
                 :placeholder="$t('oidcProviders.ruleListPlaceholder')"
               />
+              <div
+                v-if="isEntra"
+                class="field-hint"
+              >
+                {{ $t('identitySources.oidc.entra.emailDomain') }}
+              </div>
             </el-form-item>
           </div>
           <div class="field-row">
@@ -359,6 +397,12 @@
               <el-switch v-model="form.rules.email_verified" />
               <div class="field-hint">
                 {{ $t('oidcProviders.ruleEmailVerifiedHint') }}
+              </div>
+              <div
+                v-if="isEntra"
+                class="field-hint"
+              >
+                {{ $t('identitySources.oidc.entra.emailVerified') }}
               </div>
             </el-form-item>
           </div>
@@ -392,8 +436,19 @@
           <div class="field-hint">
             {{ $t('oidcProviders.scopesHint') }}
           </div>
-          <div class="field-hint">
+          <div
+            v-if="!isEntra"
+            class="field-hint"
+            data-test="groups-scope-hint"
+          >
             {{ $t('identitySources.oidc.groupsScopeHint') }}
+          </div>
+          <div
+            v-if="isEntra && form.scopeExtras.includes('groups')"
+            class="field-warning"
+            data-test="entra-groups-scope-warning"
+          >
+            {{ $t('identitySources.oidc.entra.groupsScopeRejected') }}
           </div>
         </el-form-item>
       </SourceSection>
@@ -406,7 +461,7 @@
         :source-id="providerId"
         :redirect-uri="redirectUri"
         :redirect-uri-state="redirectUriState"
-        :logout-redirect-uri="logoutRedirectUri"
+        :entra="isEntra"
         :discovering="discovering"
         @rediscover="runDiscovery"
         @status="applyStatus"
@@ -427,6 +482,7 @@ import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'
 import { withRiskGate } from '@/utils/mappingRiskGate'
+import { isEntraIssuer } from '@/utils/entraIssuer'
 import { apiErrorSummary } from '@/api/redact'
 import { resolveApiError } from '@/api/error'
 import { createOIDCProvider, updateOIDCProvider } from '@/api/oidc'
@@ -525,15 +581,8 @@ const lastSavedText = computed(() =>
   savedAt.value ? t('identitySources.lastSaved', { time: formatDateTime(savedAt.value) }) : ''
 )
 
-// 登出後的回呼位址即登入頁本身；由回呼網址的來源推得，不另行宣稱後端有此設定
-const logoutRedirectUri = computed(() => {
-  if (!redirectUri.value) return ''
-  try {
-    return `${new URL(redirectUri.value).origin}/login`
-  } catch {
-    return ''
-  }
-})
+// Entra 來源：各欄追加「去 Entra 哪裡取值」，且不索取 groups 授權範圍
+const isEntra = computed(() => isEntraIssuer(form.issuer))
 
 const azureMultiTenantWarning = computed(() =>
   AZURE_MULTI_TENANT.test(form.issuer || '') ? t('oidcProviders.azureMultiTenantWarning') : ''
@@ -576,6 +625,8 @@ watch(
   (next, prev) => {
     if (applyingView.value) return
     if (!next || prev) return
+    // Entra 不接受 groups 範圍（帶了登入即被拒），群組宣告改由其權杖設定開啟
+    if (isEntra.value) return
     if (form.scopeExtras.includes('groups')) return
     form.scopeExtras = [...form.scopeExtras, 'groups']
     groupsScopeAutoAdded.value = true

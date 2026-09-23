@@ -202,6 +202,40 @@ func TestSourceStatusSummaryWarnsUnsetAttrWithRules(t *testing.T) {
 	}
 }
 
+// TestSourceStatusSummaryEntraSkipsGroupsScopeWarning Entra 來源設了宣告名、
+// 沒帶 groups 授權範圍時不亮缺範圍黃燈：Entra 的群組宣告由其權杖設定決定，
+// 且它不接受這個範圍，亮燈只會把人推向讓登入被拒的設定。
+func TestSourceStatusSummaryEntraSkipsGroupsScopeWarning(t *testing.T) {
+	db := setupMappingDB(t)
+	svc := mappingService(db, audit.NewTxSink())
+
+	entra := &model.OIDCProvider{
+		Name: "entra", Issuer: "https://login.microsoftonline.com/tenant-a/v2.0", ClientID: "cid-entra",
+		Scopes: "openid profile email", GroupsClaim: "groups", Enabled: true,
+		AdmissionMode: model.AdmissionPreboundOnly, ClientSecretEnc: "enc",
+	}
+	if err := db.Create(entra).Error; err != nil {
+		t.Fatalf("seed provider: %v", err)
+	}
+	status, err := svc.ProviderStatus(entra.ID)
+	if err != nil {
+		t.Fatalf("提供者狀態: %v", err)
+	}
+	if hasStatusWarning(status.Warnings, "MAPPING_GROUPS_SCOPE_MISSING") {
+		t.Fatalf("Entra 來源 warnings = %v，不應含 MAPPING_GROUPS_SCOPE_MISSING", status.Warnings)
+	}
+
+	// 同條件的非 Entra 來源仍亮燈
+	other := seedMappingProvider(t, db, "groups", "openid profile email")
+	status, err = svc.ProviderStatus(other.ID)
+	if err != nil {
+		t.Fatalf("提供者狀態: %v", err)
+	}
+	if !hasStatusWarning(status.Warnings, "MAPPING_GROUPS_SCOPE_MISSING") {
+		t.Fatalf("非 Entra 來源 warnings = %v，want 含 MAPPING_GROUPS_SCOPE_MISSING", status.Warnings)
+	}
+}
+
 // TestProviderDetailCarriesRedirectURI 詳情帶回呼網址（要登記到提供者端的值）。
 func TestProviderDetailCarriesRedirectURI(t *testing.T) {
 	db := setupMappingDB(t)

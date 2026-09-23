@@ -37,6 +37,13 @@
         >
           {{ item.hint }}
         </div>
+        <div
+          v-if="item.entraHint"
+          class="panel__item-hint"
+          data-test="preflight-entra-hint"
+        >
+          {{ item.entraHint }}
+        </div>
       </div>
       <el-button
         v-if="item.copyable"
@@ -144,7 +151,8 @@ const props = defineProps({
   // 回呼網址由對外基準網址算出，隨來源詳情回；未設基準網址時是可辨識的狀態而非空字串
   redirectUri: { type: String, default: '' },
   redirectUriState: { type: String, default: '' },
-  logoutRedirectUri: { type: String, default: '' },
+  // Entra 來源：回呼網址與群組宣告兩項追加「在 Entra 的哪裡設定」
+  entra: { type: Boolean, default: false },
   discovering: { type: Boolean, default: false },
   testing: { type: Boolean, default: false },
 })
@@ -185,18 +193,15 @@ const checklist = computed(() => {
     : props.redirectUriState === 'base_url_unset'
       ? t('identitySources.preflight.oidc.redirectUnset')
       : pendingValue.value
+  // 只列本系統實際會用到的登記項：列一個系統不會使用的位址，會讓管理者
+  // 以為對應的能力存在
   return [
     {
       key: 'redirect',
       title: t('identitySources.preflight.oidc.redirect'),
       value: redirect,
       copyable: Boolean(props.redirectUri),
-    },
-    {
-      key: 'logout',
-      title: t('identitySources.preflight.oidc.logoutRedirect'),
-      value: props.logoutRedirectUri || pendingValue.value,
-      copyable: Boolean(props.logoutRedirectUri),
+      entraHint: props.entra ? t('identitySources.preflight.oidc.entraRedirect') : '',
     },
     {
       key: 'app_type',
@@ -207,6 +212,7 @@ const checklist = computed(() => {
       key: 'groups_claim',
       title: t('identitySources.preflight.oidc.groupsClaim'),
       hint: t('identitySources.preflight.oidc.groupsClaimHint'),
+      entraHint: props.entra ? t('identitySources.preflight.oidc.entraGroupsClaim') : '',
     },
     {
       key: 'secret',

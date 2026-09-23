@@ -226,6 +226,13 @@
     <div class="mapping__hint">
       {{ matchHint }}
     </div>
+    <div
+      v-if="entra && !isDirectory"
+      class="mapping__hint"
+      data-test="mapping-entra-hint"
+    >
+      {{ $t('identitySources.mapping.entraMatchHint') }}
+    </div>
     <div class="mapping__hint">
       {{ $t('identitySources.mapping.adminNote') }}
     </div>
@@ -255,6 +262,8 @@ const props = defineProps({
   sourceId: { type: [Number, String], default: null },
   // 群組屬性名或群組宣告名是否已設定：未設定時新增規則要先確認
   attrSet: { type: Boolean, default: true },
+  // Entra 來源：群組值欄追加「去 Entra 哪裡取群組的物件識別碼」
+  entra: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['count-change'])
