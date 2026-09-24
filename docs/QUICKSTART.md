@@ -639,7 +639,8 @@ chain of trust is established by you distributing the CA to the machines that co
 
    ```bash
    TLS_DOMAIN=jumper.example.internal
-   TLS_IP_SAN=10.0.0.5            # Fill in when connecting by IP has to work too, comma-separated; leave empty if not
+   # Fill in when connecting by IP has to work too, comma-separated; leave empty if not
+   TLS_IP_SAN=10.0.0.5
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
@@ -658,8 +659,8 @@ chain of trust is established by you distributing the CA to the machines that co
    as trusted. The CA certificate is public data; the CA private key stays on the host under
    `tls/ca-private/` and never enters the proxy container.
 
-4. To move to a certificate from an institutional or public CA later: delete the files in `tls/`,
-   set `TLS_MODE=provided`, put the new certificate in place (see the next subsection) and restart.
+4. To move to another host name, or to a certificate from an institutional or public CA, later:
+   follow "Switching to your own domain or certificate" below.
 
 Until the CA is distributed, browsers show a certificate warning and an external identity provider
 used for OIDC refuses the callback -- a self-signed leaf certificate at that point suits testing
@@ -702,6 +703,64 @@ one; the proxy does not come up with half a configuration:
 ```bash
 docker compose logs tls-init
 ```
+
+#### Switching to your own domain or certificate
+
+`bash scripts/quickstart.sh` fills in `TLS_DOMAIN`, `TLS_IP_SAN` and `PUBLIC_BASE_URL` from this
+machine's host name and addresses, and the first start signs a certificate for them in `tls/`. To
+serve the system under a host name of your own afterwards:
+
+1. Edit `.env`. `TLS_DOMAIN` goes into the certificate and becomes the proxy's `server_name` at
+   startup, so the proxy configuration needs no editing. `PUBLIC_BASE_URL` takes the same host
+   name, because the OIDC redirect_uri is built from it; with SSO configured, register the new
+   redirect_uri at the identity provider too (see "OIDC / SSO deployment notes"). Update or
+   empty `TLS_IP_SAN` if people will not connect by those addresses.
+
+   ```bash
+   TLS_DOMAIN=bastion.example.com
+   PUBLIC_BASE_URL=https://bastion.example.com
+   ```
+
+2. Replace the certificate. A certificate already in `tls/` is reused as it is, so changing
+   `TLS_DOMAIN` alone leaves the old one in service.
+   - Staying on `TLS_MODE=selfsigned`: delete `tls/fullchain.pem` and `tls/privkey.pem`, and the
+     next start signs a new certificate for the new name. Keep `tls/ca-public/` and
+     `tls/ca-private/`: the new certificate comes from the same CA, so machines that already
+     trust it need nothing new.
+   - Your own certificate: set `TLS_MODE=provided` and overwrite `tls/fullchain.pem` (leaf
+     certificate first, then the intermediates) and `tls/privkey.pem` with yours. The host name on
+     the certificate has to match `TLS_DOMAIN`.
+
+3. Apply the change:
+
+   ```bash
+   docker compose up -d                                       # applies the .env change
+   docker compose up -d --force-recreate tls-init tls-proxy   # re-runs the certificate step, restarts the proxy on the new files
+   ```
+
+   Use the second command again whenever you later renew only the certificate files. The proxy
+   mounts the two files one by one, and a running container keeps the file it started with once
+   that file is replaced by a new one (`mv`, or an editor that writes a new file); nginx also reads
+   the certificate only when it starts. The first command also recreates the backend, which reads
+   the whole of `.env`: under the default key mode it comes back sealed and waits for the master
+   key on the unseal page, as after any restart.
+
+4. Check which certificate is being served (put the `TLS_HTTPS_PORT` value in place of `443` if
+   you changed it):
+
+   ```bash
+   docker compose logs tls-init
+   openssl s_client -connect bastion.example.com:443 -servername bastion.example.com </dev/null 2>/dev/null \
+     | openssl x509 -noout -text | grep -E 'Subject:|Issuer:|Not After|DNS:|IP Address:'
+   ```
+
+   The `tls-init` log shows only its latest run, the one from the second command: in self-signed
+   mode it normally reports that the certificate already in `tls/` is reused (the new one was
+   signed by the first command), and in provided mode that the files are in place. Go by the
+   `openssl` output: `Subject:` and the `DNS:` line should carry the new host name, and in
+   self-signed mode `Issuer:` is `Custodexa Internal CA`. `curl -vI https://bastion.example.com`
+   prints the same certificate details during the handshake (add
+   `--cacert tls/ca-public/custodexa-ca.crt` in self-signed mode).
 
 #### Leaving it to your own ingress (external ingress overlay)
 

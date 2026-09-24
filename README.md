@@ -3,7 +3,7 @@
 </div>
 
 <p align="center"><b>English</b> | <a href="docs/zh-TW/README.md">繁體中文</a> | <a href="docs/ja/README.md">日本語</a> | <a href="docs/README.md">More languages →</a></p>
-<p align="center"><a href="https://custodexa.org/en/">Website</a> · <a href="https://custodexa.org/en/docs/quickstart/">Documentation</a></p>
+<p align="center"><a href="#quick-start">Quick Start</a> · <a href="https://custodexa.org/en/">Website</a> · <a href="https://custodexa.org/en/docs/quickstart/">Documentation</a></p>
 <p align="center">
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=alert_status" alt="Quality Gate"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=security_rating" alt="Security Rating"></a>
@@ -27,6 +27,62 @@ offline.
     <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; every session leaves a recording, a command log, and an Ed25519-notarized audit chain." src="docs/assets/architecture-light.svg" width="920">
   </picture>
 </p>
+
+## Quick Start
+
+```bash
+git clone https://github.com/custodexa/custodexa.git
+cd custodexa
+bash scripts/quickstart.sh --up
+```
+
+The script checks `.env` (creating it from the template on first run), generates any
+missing secrets with a CSPRNG, starts the stack, waits for the backend to become
+healthy, and finishes with the URL and admin login info. Values you have already set
+are never touched.
+
+By default the platform's own master key never touches disk. Your first visit opens
+the **master-key initialization page**; the key is generated locally in your browser.
+Save it — every restart stays sealed until it is entered again. Unattended deployments
+can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
+`.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
+On Windows, run the script inside WSL.
+
+The stack serves https on port 443, with 80 redirecting to it, so the address carries no
+port number; a host already running something there takes a different pair through
+`TLS_HTTPS_PORT` and `TLS_HTTP_PORT` in `.env`. Out of the box it uses
+a certificate it generated itself, so the address the script prints opens with a browser
+warning until you install the accompanying certificate authority: download it from
+`/custodexa-ca.crt` and hand it to the machines that connect. Leaving TLS to a load
+balancer you already run is covered in [docs/QUICKSTART.md](docs/QUICKSTART.md).
+
+To serve it under your own host name, put that name in `.env`; the proxy configuration picks it up
+at startup. The certificate from the first start stays in `tls/` until you remove or replace it;
+[Switching to your own domain or certificate](docs/QUICKSTART.md#switching-to-your-own-domain-or-certificate)
+covers that and how to apply the change.
+
+```bash
+TLS_DOMAIN=bastion.example.com
+PUBLIC_BASE_URL=https://bastion.example.com
+# Only with your own tls/fullchain.pem and tls/privkey.pem:
+TLS_MODE=provided
+```
+
+Log in as `admin` with the initial password you set. The first login walks you through a
+mandatory password change, after which you can start adding assets and opening
+connections.
+
+There are no factory-default passwords or keys. `JWT_SECRET`, `DB_PASSWORD` and
+`ADMIN_INITIAL_PASSWORD` in `.env` must hold values of your own (the script generates any that are
+missing), and the master key comes from the initialization page by default, or from
+`ENCRYPTION_KEY` or a KMS in the other key modes. This is deliberate: a bastion host should never
+go live with default credentials.
+Full configuration options, development mode, and troubleshooting are covered in
+[docs/QUICKSTART.md](docs/QUICKSTART.md).
+
+**Want to hack on it?** Uncomment `COMPOSE_FILE=docker-compose.dev.yml` in `.env` to
+switch to the development stack (hot reload for both frontend and backend, plus test
+target machines to connect to). Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Why Custodexa
 
@@ -55,8 +111,8 @@ Every session takes the same path, and the evidence is made along the way.
 **Truly open source, single edition.** No enterprise tier and no paywalled features.
 What you see is all there is, under AGPL-3.0.
 
-**Simple to deploy.** One docker compose command, four containers in production, https
-served out of the box, and no outbound network needed once running.
+**Simple to deploy.** One docker compose command, https served out of the box, and no
+outbound network needed once running.
 
 ## How this compares
 
@@ -82,48 +138,6 @@ differ. The reading criteria and the verification date for every cell are on the
 
 Top-left to bottom-right: dashboard overview, workspace web terminal (with user
 watermark), session replay with per-session command log, cross-session command audit.
-
-## Quick Start
-
-```bash
-git clone https://github.com/custodexa/custodexa.git
-cd custodexa
-bash scripts/quickstart.sh --up
-```
-
-The script checks `.env` (creating it from the template on first run), generates any
-missing secrets with a CSPRNG, starts the stack, waits for the backend to become
-healthy, and finishes with the URL and admin login info. Values you have already set
-are never touched.
-
-By default the platform's own master key never touches disk. Your first visit opens
-the **master-key initialization page**; the key is generated locally in your browser.
-Save it — every restart stays sealed until it is entered again. Unattended deployments
-can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
-`.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
-On Windows, run the script inside WSL.
-
-The stack serves https on port 443, with 80 redirecting to it, so the address carries no
-port number; a host already running something there takes a different pair through
-`TLS_HTTPS_PORT` and `TLS_HTTP_PORT` in `.env`. Out of the box it uses
-a certificate it generated itself, so the address the script prints opens with a browser
-warning until you install the accompanying certificate authority: download it from
-`/custodexa-ca.crt` and hand it to the machines that connect. Bringing your own
-certificate, or leaving TLS to a load balancer you already run, takes one setting each
-and is covered in [docs/QUICKSTART.md](docs/QUICKSTART.md).
-
-Log in as `admin` with the initial password you set. The first login walks you through a
-mandatory password change, after which you can start adding assets and opening
-connections.
-
-There are no factory-default passwords; all four secrets must be set by you. This is
-deliberate: a bastion host should never go live with default credentials.
-Full configuration options, development mode, and troubleshooting are covered in
-[docs/QUICKSTART.md](docs/QUICKSTART.md).
-
-**Want to hack on it?** Uncomment `COMPOSE_FILE=docker-compose.dev.yml` in `.env` to
-switch to the development stack (hot reload for both frontend and backend, plus test
-target machines for every protocol). Start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Architecture
 

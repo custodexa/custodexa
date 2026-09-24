@@ -12,7 +12,7 @@
 
 工具呼叫的主體 SHALL 只由 token 決定：請求本體所帶的任何使用者、主體或角色欄位 SHALL 被忽略，SHALL NOT 用於任何授權判定。
 
-系統 SHALL 另提供 `custodexa-mcp` 可執行檔的 stdio 模式，供只支援 stdio 傳輸的客戶端使用。該模式 SHALL 為薄客戶端：它 SHALL 把工具呼叫反向送至同一個 HTTP 端點，SHALL NOT 自行實作任何授權判定、連線建立或審計寫入。兩種傳輸下的工具名稱、參數與回傳 SHALL 完全一致。
+只支援 stdio 傳輸的宿主 SHALL 經獨立發行的 `custodexa-mcp` 轉接頭接入（發行面見 `mcp-client-distribution`）。轉接頭 SHALL 為薄客戶端：它 SHALL 把工具呼叫原樣送至同一個 HTTP 端點，SHALL NOT 自行實作任何授權判定、連線建立或審計寫入。經轉接頭與直連 HTTP 兩種途徑取得的工具名稱、參數與回傳 SHALL 完全一致。服務端 SHALL NOT 依賴轉接頭的存在：所有授權、連線、審計與遮罩語義 SHALL 在直連 HTTP 時即完整成立。
 
 #### Scenario: 以人類 JWT 呼叫被拒
 
@@ -26,8 +26,13 @@
 
 #### Scenario: 兩種傳輸的工具面一致
 
-- **WHEN** 分別經 streamable HTTP 與 `custodexa-mcp` stdio 模式列出工具
+- **WHEN** 分別經直連 streamable HTTP 與 `custodexa-mcp` 轉接頭列出工具
 - **THEN** 兩者回傳的工具名稱、參數結構與回傳欄位完全相同
+
+#### Scenario: 直連即具備完整語義
+
+- **WHEN** 宿主不經轉接頭、以 agent token 直連 `/api/v1/mcp` 完成一次申請、建線、執行與收尾
+- **THEN** 帳本、錄影、遮罩與審計的產出與經轉接頭時相同
 
 ### Requirement: v1 工具面為封閉集合
 
@@ -337,3 +342,28 @@ SHALL NOT 對工作階段送出任何位元組。這是工具層唯一能真正�
 
 - **WHEN** 執行者未呼叫 `close_task`，而該任務的全部任務項皆已到期
 - **THEN** 任務被關閉並記錄關閉時刻，其名下仍進行中的工作階段被終止，其後對該句柄的呼叫回已終止狀態
+
+### Requirement: 對外文件說明接入方式與開放邊界
+
+主產品對外文件 SHALL 於說明文件首頁提供 agent 接入一節，並 SHALL 於快速入門提供接上第一個宿主的最短路徑。該節 SHALL 依序說明：
+
+1. MCP 服務端即本產品後端的 `POST /api/v1/mcp` 端點，隨產品部署即存在，無另外需要部署的服務端。
+2. 兩種接法：支援 streamable HTTP 的宿主以 agent token 直連；只支援 stdio 的宿主安裝 `custodexa-mcp` 轉接頭，並指向其公開 repo。
+3. 開放邊界：agent 主體的自助建立出廠為關閉；agent token 必須設定到期時刻，明文只在建立時顯示一次；agent 只能連線經 `request_access` 申請並核准的資產；每一次工具呼叫寫入帳本；回傳給 agent 的內容經遮罩，而錄影保留原始畫面。
+
+對外文件 SHALL NOT 指示使用者從主產品原始碼或服務端容器映像取得轉接頭。
+
+#### Scenario: 讀者分得清服務端與轉接頭
+
+- **WHEN** 讀者閱讀說明文件首頁的 agent 接入一節
+- **THEN** 可得知服務端已在產品內、何種宿主需要轉接頭、轉接頭從哪裡取得
+
+#### Scenario: 開放邊界明列
+
+- **WHEN** 讀者評估是否開放 agent 通道
+- **THEN** 該節列出自助建立預設關閉、token 必設到期、只能連經核准的資產、呼叫留帳本與遮罩語義
+
+#### Scenario: 不再指向已移除的取得方式
+
+- **WHEN** 檢索主產品全部對外文件中提及轉接頭的段落
+- **THEN** 無任何段落指示自主產品原始碼建置或自服務端映像執行轉接頭

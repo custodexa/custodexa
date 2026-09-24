@@ -3,7 +3,7 @@
 </div>
 
 <p align="center"><a href="../../README.md">English</a> | <b>繁體中文</b> | <a href="../ja/README.md">日本語</a> | <a href="../README.md">其他語言 →</a></p>
-<p align="center"><a href="https://custodexa.org/">官方網站</a> · <a href="https://custodexa.org/docs/quickstart/">線上文件</a></p>
+<p align="center"><a href="#快速開始">快速開始</a> · <a href="https://custodexa.org/">官方網站</a> · <a href="https://custodexa.org/docs/quickstart/">線上文件</a></p>
 <p align="center">
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=alert_status" alt="Quality Gate"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=security_rating" alt="Security Rating"></a>
@@ -25,6 +25,49 @@
     <img alt="架構圖：操作者用瀏覽器經 Custodexa 閘道（認證閘、政策引擎、協議代理、稽核、證據出口）連向 SSH、RDP/VNC、資料庫與 Kubernetes 靶機，靶機零安裝；每一場會話都留下錄影、指令記錄與 Ed25519 存證的稽核鏈。" src="../assets/architecture-light.svg" width="920">
   </picture>
 </p>
+
+## 快速開始
+
+```bash
+git clone https://github.com/custodexa/custodexa.git
+cd custodexa
+bash scripts/quickstart.sh --up
+```
+
+腳本會檢查 `.env`（沒有就從範本建立）、用 CSPRNG 生成缺少的機密、啟動服務並等待
+後端健康，最後輸出連線網址與 admin 登入資訊；你已經填好的值一律不動。
+
+出貨預設下，平台自身的根金鑰**永不落地**。首次造訪會先進入**主金鑰初始化頁**，
+金鑰在你的瀏覽器本地生成。務必保存好：之後每次重啟都停在已封存狀態，要再輸入才解封。
+接著才是登入與強制改密。無人值守的部署可在 `.env` 改用 env 或 KMS 金鑰模式。想手動設定？照
+`.env.example` 內的逐項說明複製編輯後 `docker compose up -d` 即可。
+Windows 請在 WSL 內執行腳本。
+
+服務對外走 https，埠為 443（80 會導向它），網址不必帶埠號；主機上這兩個埠已經有別的
+服務時，在 `.env` 以 `TLS_HTTPS_PORT` 與 `TLS_HTTP_PORT` 改成另一組。出貨預設用產品自己產生的憑證，
+故在你安裝隨附的憑證授權單位之前，瀏覽器會顯示警告：從 `/custodexa-ca.crt` 下載它，
+派發到會連進來的機器即可。要把 TLS 交給既有的負載平衡器，做法見 [docs/QUICKSTART.md](../QUICKSTART.md)。
+
+要改用自己的主機名，把它寫進 `.env`，代理設定會在啟動時帶入。首次啟動產生的憑證會留在 `tls/`，
+直到你刪除或換掉它；做法與套用指令見[改用自己的網域或憑證](QUICKSTART.md#改用自己的網域或憑證)。
+
+```bash
+TLS_DOMAIN=bastion.example.com
+PUBLIC_BASE_URL=https://bastion.example.com
+# 僅在自備 tls/fullchain.pem 與 tls/privkey.pem 時：
+TLS_MODE=provided
+```
+
+以 `admin` 加上你設定的初始密碼登入，首次登入會先引導你改密，
+之後就能開始加資產、發起連線。
+
+沒有出廠預設的密碼或金鑰。`.env` 的 `JWT_SECRET`、`DB_PASSWORD` 與 `ADMIN_INITIAL_PASSWORD`
+都必須是你自己的值（缺的由腳本生成）；主金鑰在預設模式下來自初始化頁，其他金鑰模式則來自
+`ENCRYPTION_KEY` 或 KMS。這是刻意的：堡壘機不該帶著預設憑證上線。
+完整設定選項、開發模式與故障排除見 [docs/QUICKSTART.md](../QUICKSTART.md)。
+
+**想參與開發？** 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解即切到開發版
+（前後端熱重載，並附可供連線測試的靶機），入口見 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
 ## 為什麼需要它
 
@@ -49,7 +92,7 @@
 **真正開源，單一版本。** 沒有企業版，也沒有付費解鎖的功能。
 你看到的就是全部，授權為 AGPL-3.0。
 
-**部署簡單。** docker compose 一條指令，正式版四個容器，出廠即走 https，
+**部署簡單。** docker compose 一條指令，出廠即走 https，
 啟動後不需要對外網路。
 
 ## 怎麼跟現有做法比
@@ -74,38 +117,6 @@
 | ![會話錄影回放與指令記錄](../../screenshots/session-playback.png) | ![指令稽核](../../screenshots/command-audit.png) |
 
 左上起：儀表板總覽、工作區網頁終端（含使用者浮水印）、會話錄影回放與指令記錄、指令稽核搜尋。
-
-## 快速開始
-
-```bash
-git clone https://github.com/custodexa/custodexa.git
-cd custodexa
-bash scripts/quickstart.sh --up
-```
-
-腳本會檢查 `.env`（沒有就從範本建立）、用 CSPRNG 生成缺少的機密、啟動服務並等待
-後端健康，最後輸出連線網址與 admin 登入資訊；你已經填好的值一律不動。
-
-出貨預設下，平台自身的根金鑰**永不落地**。首次造訪會先進入**主金鑰初始化頁**，
-金鑰在你的瀏覽器本地生成。務必保存好：之後每次重啟都停在已封存狀態，要再輸入才解封。
-接著才是登入與強制改密。無人值守的部署可在 `.env` 改用 env 或 KMS 金鑰模式。想手動設定？照
-`.env.example` 內的逐項說明複製編輯後 `docker compose up -d` 即可。
-Windows 請在 WSL 內執行腳本。
-
-服務對外走 https，埠為 443（80 會導向它），網址不必帶埠號；主機上這兩個埠已經有別的
-服務時，在 `.env` 以 `TLS_HTTPS_PORT` 與 `TLS_HTTP_PORT` 改成另一組。出貨預設用產品自己產生的憑證，
-故在你安裝隨附的憑證授權單位之前，瀏覽器會顯示警告：從 `/custodexa-ca.crt` 下載它，
-派發到會連進來的機器即可。要換成自己的憑證，或把 TLS 交給既有的負載平衡器，
-各只需改一個設定，做法見 [docs/QUICKSTART.md](../QUICKSTART.md)。
-
-以 `admin` 加上你設定的初始密碼登入，首次登入會先引導你改密，
-之後就能開始加資產、發起連線。
-
-沒有出廠預設密碼。四項機密都要你自己設，這是刻意的：堡壘機不該帶著預設憑證上線。
-完整設定選項、開發模式與故障排除見 [docs/QUICKSTART.md](../QUICKSTART.md)。
-
-**想參與開發？** 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解即切到開發版
-（前後端熱重載，並附各協議的測試靶機），入口見 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 
 ## 技術架構
 

@@ -540,7 +540,8 @@ docker compose logs backend | grep "refresh cookie"
 
    ```bash
    TLS_DOMAIN=jumper.example.internal
-   TLS_IP_SAN=10.0.0.5            # IP でも接続できるようにする場合に記入、カンマ区切り。不要なら空のまま
+   # IP でも接続できるようにする場合に記入、カンマ区切り。不要なら空のまま
+   TLS_IP_SAN=10.0.0.5
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
@@ -557,8 +558,8 @@ docker compose logs backend | grep "refresh cookie"
    システムの信頼されたルート証明書ストアへ手動でインポートします。配布が完了すれば、ブラウザは信頼された接続として表示します。
    CA 証明書は公開してよいデータです。CA の秘密鍵はホストの `tls/ca-private/` 配下に残り、プロキシのコンテナには入りません。
 
-4. あとから組織の CA や公的 CA が発行した証明書に切り替えたい場合は、`tls/` 内のファイルを削除し、`TLS_MODE=provided` に変更して
-   新しい証明書を置き（次の節を参照）、再起動すれば完了です。
+4. あとからホスト名を変える場合や、組織の CA や公的 CA が発行した証明書に切り替える場合は、下の
+   「自分のドメインと証明書へ切り替える」の手順に従います。
 
 CA を配布するまでは、ブラウザに証明書の警告が表示され、OIDC を使う外部の ID プロバイダーもコールバックを拒否します——
 この段階の自己署名リーフ証明書は、テスト用途にしか適しません。
@@ -597,6 +598,62 @@ CA 証明書をバックエンドのコンテナのトラストストアに追�
 ```bash
 docker compose logs tls-init
 ```
+
+#### 自分のドメインと証明書へ切り替える
+
+`bash scripts/quickstart.sh` はこのマシンのホスト名と IP から `TLS_DOMAIN`、`TLS_IP_SAN`、
+`PUBLIC_BASE_URL` を記入し、初回起動でそれに対応する証明書を `tls/` に発行します。そのあとで
+自分のホスト名に切り替える手順は次のとおりです。
+
+1. `.env` を編集します。`TLS_DOMAIN` は証明書に書き込まれ、起動時にプロキシの `server_name` にも
+   なるため、プロキシの設定ファイルを編集する必要はありません。OIDC の redirect_uri は
+   `PUBLIC_BASE_URL` から組み立てられるので、こちらも同じホスト名にします。SSO を設定している場合は、
+   ID プロバイダー側に登録した redirect_uri も変更してください（「OIDC／SSO デプロイの注意」を参照）。
+   利用者がそれらの IP で接続しないなら、`TLS_IP_SAN` も書き換えるか空にします。
+
+   ```bash
+   TLS_DOMAIN=bastion.example.com
+   PUBLIC_BASE_URL=https://bastion.example.com
+   ```
+
+2. 証明書を差し替えます。`tls/` にある証明書はそのまま使い続けられるため、`TLS_DOMAIN` だけを
+   変えても、提供されるのは古い証明書のままです。
+   - `TLS_MODE=selfsigned` のまま使う場合：`tls/fullchain.pem` と `tls/privkey.pem` を削除すると、
+     次の起動で新しいホスト名の証明書が発行されます。`tls/ca-public/` と `tls/ca-private/` は
+     残してください。新しい証明書も同じ CA が署名するため、その CA をすでに信頼しているマシンに
+     配布し直す必要はありません。
+   - 自分の証明書を使う場合：`TLS_MODE=provided` にし、`tls/fullchain.pem`（リーフ証明書が先頭、
+     続いて中間証明書）と `tls/privkey.pem` を自分のファイルで上書きします。証明書のホスト名は
+     `TLS_DOMAIN` と一致させます。
+
+3. 変更を反映します：
+
+   ```bash
+   docker compose up -d                                       # .env の変更を反映
+   docker compose up -d --force-recreate tls-init tls-proxy   # 証明書の手順を再実行し、新しいファイルでプロキシを起動し直す
+   ```
+
+   あとで証明書ファイルだけを更新するときも、2 つ目のコマンドを使います。プロキシはこの 2 つの
+   ファイルを個別にマウントしており、ファイルが新しいファイルに置き換えられると（`mv` や、
+   別ファイルとして保存するエディター）、実行中のコンテナは起動時のファイルを読み続けます。nginx も
+   証明書を読み込むのは起動時だけです。1 つ目のコマンドは、`.env` 全体を読み込むバックエンドも
+   再作成します。既定の鍵モードではシールされた状態で起動し、どの再起動のあととも同じく、アンシール
+   ページでマスターキーの入力を待ちます。
+
+4. 提供されている証明書を確認します（`TLS_HTTPS_PORT` を変更した場合は `443` をその値に置き換えます）：
+
+   ```bash
+   docker compose logs tls-init
+   openssl s_client -connect bastion.example.com:443 -servername bastion.example.com </dev/null 2>/dev/null \
+     | openssl x509 -noout -text | grep -E 'Subject:|Issuer:|Not After|DNS:|IP Address:'
+   ```
+
+   `tls-init` のログに残るのは直近の実行、つまり 2 つ目のコマンドの分だけです。自己署名モードでは
+   通常は `tls/` にある証明書を使い続けると表示され（新しい証明書は 1 つ目のコマンドで発行済みです）、
+   provided モードでは証明書と秘密鍵がそろっていると表示されます。判断は `openssl` の出力で行います。
+   `Subject:` と `DNS:` の行に新しいホスト名が入っていれば成功で、自己署名モードでは `Issuer:` が
+   `Custodexa Internal CA` になります。`curl -vI https://bastion.example.com` でも、ハンドシェイクの
+   出力に同じ証明書の情報が表示されます（自己署名モードでは `--cacert tls/ca-public/custodexa-ca.crt` を付けます）。
 
 #### 自前の ingress に任せる（external ingress overlay）
 

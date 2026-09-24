@@ -3,7 +3,7 @@
 </div>
 
 <p align="center"><a href="../../README.md">English</a> | <a href="../zh-TW/README.md">繁體中文</a> | <b>日本語</b> | <a href="../README.md">他の言語 →</a></p>
-<p align="center"><a href="https://custodexa.org/ja/">公式サイト</a> · <a href="https://custodexa.org/ja/docs/quickstart/">オンラインドキュメント</a></p>
+<p align="center"><a href="#クイックスタート">クイックスタート</a> · <a href="https://custodexa.org/ja/">公式サイト</a> · <a href="https://custodexa.org/ja/docs/quickstart/">オンラインドキュメント</a></p>
 <p align="center">
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=alert_status" alt="Quality Gate"></a>
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=security_rating" alt="Security Rating"></a>
@@ -26,6 +26,56 @@
     <img alt="アーキテクチャ図。運用担当者はブラウザから Custodexa ゲートウェイ（認証ゲート、ポリシーエンジン、プロトコルプロキシ、監査、証拠エクスポート）を経由して、SSH、RDP/VNC、データベース、Kubernetes の各ターゲットへ接続します。ターゲット側へのエージェント導入は不要で、すべてのセッションが録画、コマンドログ、Ed25519 で保全された監査チェーンを残します。" src="../assets/architecture-light.svg" width="920">
   </picture>
 </p>
+
+## クイックスタート
+
+```bash
+git clone https://github.com/custodexa/custodexa.git
+cd custodexa
+bash scripts/quickstart.sh --up
+```
+
+このスクリプトは `.env` を確認し（初回はテンプレートから作成します）、未設定のシークレットを
+CSPRNG で生成し、スタックを起動し、バックエンドが healthy になるまで待ってから、URL と管理者の
+ログイン情報を表示します。すでに記入済みの値には手を触れません。
+
+既定では、プラットフォーム自身のマスターキーがディスクへ書き出されることはありません。最初に
+アクセスすると**マスターキー初期化ページ**が開き、キーはお使いのブラウザ内で生成されます。
+必ず保管してください。再起動のたびに、再入力するまでシールされた状態が続きます。無人での運用が
+必要な場合は、`.env` で `env` モードまたは KMS モードへ切り替えられます。手作業で進めたい場合は、
+`.env.example` を `.env` へコピーし、ファイル内の注記に従ってから `docker compose up -d` を
+実行してください。Windows では WSL の中でスクリプトを実行してください。
+
+スタックはポート 443 で https を提供し、80 はそこへリダイレクトするため、アドレスにポート番号は
+付きません。そのポートを別のサービスがすでに使っているホストでは、`.env` の `TLS_HTTPS_PORT` と
+`TLS_HTTP_PORT` で別の組を指定します。初期状態では自身で生成した証明書を使うため、スクリプトが表示するアドレスは、付属の認証局をインストールするまで
+ブラウザの警告を伴って開きます。認証局は `/custodexa-ca.crt` からダウンロードし、接続元の
+マシンへ配布してください。すでに運用しているロードバランサーへ TLS を任せる方法は
+[QUICKSTART.md](QUICKSTART.md) を参照してください。
+
+自分のホスト名で提供するには、その名前を `.env` に書きます。プロキシの設定には起動時に反映されます。
+初回起動で生成された証明書は、削除するか差し替えるまで `tls/` に残ります。その手順と反映方法は
+[自分のドメインと証明書へ切り替える](QUICKSTART.md#自分のドメインと証明書へ切り替える)を参照してください。
+
+```bash
+TLS_DOMAIN=bastion.example.com
+PUBLIC_BASE_URL=https://bastion.example.com
+# 自分の tls/fullchain.pem と tls/privkey.pem を使う場合のみ：
+TLS_MODE=provided
+```
+
+`admin` と、ご自身で設定した初期パスワードでログインします。初回ログインでは必須のパスワード
+変更を求められ、その後に資産の登録と接続の開始へ進めます。
+
+工場出荷時のパスワードや鍵は存在しません。`.env` の `JWT_SECRET`、`DB_PASSWORD`、
+`ADMIN_INITIAL_PASSWORD` にはご自身の値が必要です（未設定のものはスクリプトが生成します）。
+マスターキーは、既定では初期化ページから、その他の鍵モードでは `ENCRYPTION_KEY` または KMS から
+供給されます。これは意図的な設計です。踏み台ホストが初期資格情報のまま稼働してよいことはありません。
+設定項目の全体、開発モード、トラブルシューティングは [QUICKSTART.md](QUICKSTART.md) が扱います。
+
+**開発に参加したい場合。** `.env` の `COMPOSE_FILE=docker-compose.dev.yml` のコメントを外すと
+開発スタックへ切り替わります（フロントエンドとバックエンドのホットリロードに加え、接続を
+試せるテスト用ターゲットが含まれます）。まずは [CONTRIBUTING.md](CONTRIBUTING.md) からお読みください。
 
 ## Custodexa を使う理由
 
@@ -53,7 +103,7 @@
 **完全なオープンソース、単一エディション。** エンタープライズ版も、有料で解放される機能もありません。
 見えているものがすべてで、ライセンスは AGPL-3.0 です。
 
-**導入は簡単。** docker compose のコマンドひとつ、本番構成はコンテナ四つ、出荷時から https、
+**導入は簡単。** docker compose のコマンドひとつ、出荷時から https、
 起動後は外向きのネットワークを必要としません。
 
 ## 既存のやり方との比較
@@ -81,44 +131,6 @@
 左上から右下の順に、ダッシュボード、ワークスペースの Web ターミナル（利用者の
 ウォーターマーク付き）、セッション単位のコマンドログを伴う再生画面、セッションを横断した
 コマンド監査です。
-
-## クイックスタート
-
-```bash
-git clone https://github.com/custodexa/custodexa.git
-cd custodexa
-bash scripts/quickstart.sh --up
-```
-
-このスクリプトは `.env` を確認し（初回はテンプレートから作成します）、未設定のシークレットを
-CSPRNG で生成し、スタックを起動し、バックエンドが healthy になるまで待ってから、URL と管理者の
-ログイン情報を表示します。すでに記入済みの値には手を触れません。
-
-既定では、プラットフォーム自身のマスターキーがディスクへ書き出されることはありません。最初に
-アクセスすると**マスターキー初期化ページ**が開き、キーはお使いのブラウザ内で生成されます。
-必ず保管してください。再起動のたびに、再入力するまでシールされた状態が続きます。無人での運用が
-必要な場合は、`.env` で `env` モードまたは KMS モードへ切り替えられます。手作業で進めたい場合は、
-`.env.example` を `.env` へコピーし、ファイル内の注記に従ってから `docker compose up -d` を
-実行してください。Windows では WSL の中でスクリプトを実行してください。
-
-スタックはポート 443 で https を提供し、80 はそこへリダイレクトするため、アドレスにポート番号は
-付きません。そのポートを別のサービスがすでに使っているホストでは、`.env` の `TLS_HTTPS_PORT` と
-`TLS_HTTP_PORT` で別の組を指定します。初期状態では自身で生成した証明書を使うため、スクリプトが表示するアドレスは、付属の認証局をインストールするまで
-ブラウザの警告を伴って開きます。認証局は `/custodexa-ca.crt` からダウンロードし、接続元の
-マシンへ配布してください。自前の証明書を持ち込む場合や、すでに運用しているロードバランサーへ
-TLS を任せる場合は、それぞれ設定ひとつで済みます。詳細は [QUICKSTART.md](QUICKSTART.md) を
-参照してください。
-
-`admin` と、ご自身で設定した初期パスワードでログインします。初回ログインでは必須のパスワード
-変更を求められ、その後に資産の登録と接続の開始へ進めます。
-
-工場出荷時のパスワードは存在せず、4 つのシークレットはすべてご自身で設定する必要があります。
-これは意図的な設計です。踏み台ホストが初期資格情報のまま稼働してよいことはありません。
-設定項目の全体、開発モード、トラブルシューティングは [QUICKSTART.md](QUICKSTART.md) が扱います。
-
-**開発に参加したい場合。** `.env` の `COMPOSE_FILE=docker-compose.dev.yml` のコメントを外すと
-開発スタックへ切り替わります（フロントエンドとバックエンドのホットリロードに加え、各プロトコルの
-テスト用ターゲットが含まれます）。まずは [CONTRIBUTING.md](CONTRIBUTING.md) からお読みください。
 
 ## アーキテクチャ
 

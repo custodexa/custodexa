@@ -531,7 +531,8 @@ docker compose logs backend | grep "refresh cookie"
 
    ```bash
    TLS_DOMAIN=jumper.example.internal
-   TLS_IP_SAN=10.0.0.5            # 也要能用 IP 連時填，逗號分隔；不需要就留空
+   # 也要能用 IP 連時填，逗號分隔；不需要就留空
+   TLS_IP_SAN=10.0.0.5
    PUBLIC_BASE_URL=https://jumper.example.internal
    ```
 
@@ -548,8 +549,7 @@ docker compose logs backend | grep "refresh cookie"
    系統的受信任根憑證存放區。派發完成後瀏覽器即顯示為受信任的連線。
    CA 憑證是公開資料；CA 私鑰留在主機的 `tls/ca-private/` 下，不進代理容器。
 
-4. 之後想換成機構或公開 CA 簽發的憑證：刪掉 `tls/` 內的檔案，改 `TLS_MODE=provided`
-   並放進新憑證（見下一節），重啟即可。
+4. 之後想換主機名，或換成機構或公開 CA 簽發的憑證：照下方「改用自己的網域或憑證」操作。
 
 未派發 CA 之前，瀏覽器會顯示憑證警告，走 OIDC 的外部識別提供者也會拒絕回呼——
 此時的自簽葉憑證只適合測試用途。
@@ -588,6 +588,54 @@ openssl req -newkey rsa:2048 -nodes -keyout tls/privkey.pem \
 ```bash
 docker compose logs tls-init
 ```
+
+#### 改用自己的網域或憑證
+
+`bash scripts/quickstart.sh` 會依本機主機名與 IP 填好 `TLS_DOMAIN`、`TLS_IP_SAN` 與
+`PUBLIC_BASE_URL`，首次啟動就在 `tls/` 簽出對應的憑證。之後要改用自己的主機名時：
+
+1. 改 `.env`。`TLS_DOMAIN` 會寫進憑證，啟動時也成為代理的 `server_name`，代理設定檔不必動手改。
+   `PUBLIC_BASE_URL` 用同一個主機名，因為 OIDC 的 redirect_uri 由它組成；已設定 SSO 的話，
+   識別提供者那邊登記的 redirect_uri 也要跟著改（見「OIDC／SSO 部署注意」）。
+   使用者不會用那些 IP 連線時，`TLS_IP_SAN` 一併改掉或清空。
+
+   ```bash
+   TLS_DOMAIN=bastion.example.com
+   PUBLIC_BASE_URL=https://bastion.example.com
+   ```
+
+2. 換憑證。`tls/` 內已有的憑證會原樣沿用，所以只改 `TLS_DOMAIN` 時，上線的仍是舊憑證。
+   - 繼續用 `TLS_MODE=selfsigned`：刪掉 `tls/fullchain.pem` 與 `tls/privkey.pem`，下次啟動會替
+     新主機名簽一張新憑證。`tls/ca-public/` 與 `tls/ca-private/` 保留：新憑證由同一把 CA 簽發，
+     已經信任它的機器不必重新派發。
+   - 用自己的憑證：設 `TLS_MODE=provided`，以你的檔案覆蓋 `tls/fullchain.pem`（葉憑證在前，
+     接著中繼憑證）與 `tls/privkey.pem`。憑證上的主機名要與 `TLS_DOMAIN` 一致。
+
+3. 套用：
+
+   ```bash
+   docker compose up -d                                       # 套用 .env 的變更
+   docker compose up -d --force-recreate tls-init tls-proxy   # 重跑憑證步驟，代理以新檔重新啟動
+   ```
+
+   之後只更新憑證檔時，同樣用第二條指令。代理是逐一掛載這兩個檔案，檔案若被換成新檔
+   （`mv`，或另存新檔的編輯器），執行中的容器仍讀到啟動時那一份；nginx 也只在啟動時載入憑證。
+   第一條指令也會重建讀取整份 `.env` 的後端；預設金鑰模式下它會回到封存狀態，
+   要再輸入主金鑰解封，和任何一次重啟相同。
+
+4. 確認上線的是哪張憑證（改過 `TLS_HTTPS_PORT` 的話，把 `443` 換成那個值）：
+
+   ```bash
+   docker compose logs tls-init
+   openssl s_client -connect bastion.example.com:443 -servername bastion.example.com </dev/null 2>/dev/null \
+     | openssl x509 -noout -text | grep -E 'Subject:|Issuer:|Not After|DNS:|IP Address:'
+   ```
+
+   `tls-init` 的日誌只留最近一次執行，也就是第二條指令那一次：自簽模式通常顯示沿用 `tls/` 內已有的
+   憑證（新憑證在第一條指令時已簽好），provided 模式則顯示憑證與私鑰就位。以 `openssl` 的輸出為準：
+   `Subject:` 與 `DNS:` 那一行應為新主機名，自簽模式下 `Issuer:` 是 `Custodexa Internal CA`。
+   `curl -vI https://bastion.example.com` 在交握輸出中也會列出同樣的憑證資訊
+   （自簽模式加 `--cacert tls/ca-public/custodexa-ca.crt`）。
 
 #### 交給自家 ingress（external ingress overlay）
 
