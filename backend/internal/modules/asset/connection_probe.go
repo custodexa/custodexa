@@ -70,7 +70,7 @@ const (
 //
 // 驗證深度逐協議不同，spec（asset-connection-test）已逐條寫明：
 //
-//	ssh                     完整登入（host key 驗證 + 密碼認證）
+//	ssh                     完整登入（host key 驗證 + 帳號認證，私鑰或密碼，規則同正式連線）
 //	rdp / vnc               guacd 完成協議連線握手
 //	mysql/postgres/redis/mssql  僅 TCP 埠可達（刻意不做握手與認證）
 //	k8s                     API server 可達 + TLS 通過 + token 具 pods/exec 權限

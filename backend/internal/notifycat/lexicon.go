@@ -57,6 +57,17 @@ const (
 	// 產物上——報告的語言由排程或請求指定，而三語齊備由既有守衛保證。
 	// 後端零散文出站的原則在此同樣適用：Go 檔內不得出現這些字面。
 	LexiconRotationReport Lexicon = "rotation_report"
+	// LexiconAlertKind 非規則類告警的白話標題（值域＝model 中 rule 以外的 AlertKind* 常數）。
+	//
+	// 這些類別沒有規則名可顯示：rule_name 存的是機器碼、指令欄刻意為空。
+	// 通知若照規則類版型組字，收件人會看到機器碼標題與空的指令區塊。
+	LexiconAlertKind Lexicon = "alert_kind"
+	// LexiconAlertKindText 非規則類告警的說明句：發生了什麼、去哪裡看（值域同上）。
+	LexiconAlertKindText Lexicon = "alert_kind_text"
+	// LexiconDegradeReason 指令降級原因碼的白話情境句（值域＝model.Degrade* 常數）。
+	//
+	// 只描述事實，不斷言成因（例如「沒有回顯」不等於「對端關閉了回顯」）。
+	LexiconDegradeReason Lexicon = "degrade_reason"
 )
 
 // 實體標籤的詞庫鍵（值域即 lexicons/*.json 的 entity 區塊鍵集，受守衛比對）。
@@ -64,6 +75,8 @@ const (
 	EntitySession = "session"
 	EntityUser    = "user"
 	EntityAsset   = "asset"
+	// EntitySourceIP 來源位址標籤（新來源位址告警的說明行用）
+	EntitySourceIP = "source_ip"
 )
 
 // AlertStateBlocked 阻斷型告警標示鍵（command_alert Slack 呈現用）。
@@ -156,7 +169,8 @@ func Phrase(lang string, lex Lexicon, key string) string {
 // Lexicons 已宣告的詞庫清單（守衛與診斷用）。
 func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
-		LexiconEntity, LexiconRotationReport}
+		LexiconEntity, LexiconRotationReport, LexiconAlertKind, LexiconAlertKindText,
+		LexiconDegradeReason}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

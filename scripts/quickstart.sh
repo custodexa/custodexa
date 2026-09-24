@@ -341,14 +341,60 @@ port_listener() {
   printf '%s' "${out}"
 }
 
+# ---------- recordings directory ----------
+# guacd writes graphical recordings into ${DATA_PATH}/recordings as uid 1000 with no
+# capabilities; the backend renames, plays back and expires them as uid 0 without the
+# capabilities that bypass file permissions. So the directory is owner 1000 (guacd), group 0
+# (the backend), mode 2770. The setgid bit makes each new file inherit group 0, which is how
+# the backend reads a file guacd created with mode 0640.
+#
+# A throwaway container does the work as root, so the result is the same whether a docker
+# group member or sudo runs this script. It uses the image of the tls-init service in
+# docker-compose.yml; the default form pulls that image anyway, while with the external
+# ingress overlay tls-init does not run and this is one extra image to pull. Safe to repeat:
+# files guacd left in group 1000 move to group 0, and the directory change takes effect on a
+# running stack without restarting it.
+RECORDINGS_PREP_IMAGE=alpine/openssl:3.5.4
+prepare_recordings_dir() {
+  local dir
+  case "${data_path}" in
+    /*) dir="${data_path}/recordings" ;;
+    *)  dir="${PWD}/${data_path#./}/recordings" ;;
+  esac
+  docker run --rm --network none -v "${dir}:/r" --entrypoint /bin/sh "${RECORDINGS_PREP_IMAGE}" -c \
+    'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} + && stat -c "%u:%g %a" /r'
+}
+
+# published_by_this_stack succeeds when service $1 of this compose project is running and
+# publishes its container port $2 on host port $3. Re-running the script on a deployment that is
+# up finds the stack's own proxy on the public ports; that is not a conflict. The answer comes
+# from compose itself (this project, this compose file), not from the listener's process name:
+# every published container port shows up as docker-proxy, whichever project it belongs to.
+published_by_this_stack() {
+  local service="$1" target="$2" port="$3" bound
+  bound=$(docker compose port "${service}" "${target}" 2>/dev/null) || return 1
+  printf '%s\n' "${bound}" | grep -q ":${port}\$"
+}
+
 PORTS_UNCHECKED=0
 require_port_free() {
-  local port="$1" label="$2" who
+  local port="$1" label="$2" service="$3" target="$4" who holders
   if ! who=$(port_listener "${port}"); then
     PORTS_UNCHECKED=1
     return 0
   fi
   [ -z "${who}" ] && return 0
+  if published_by_this_stack "${service}" "${target}" "${port}"; then
+    report "port ${port}" "held by this stack's own ${service} service, left as is"
+    return 0
+  fi
+  # docker-proxy on its own does not say whose port it is; name the container as well.
+  case "${who}" in
+    *docker-proxy*)
+      holders=$(docker ps --filter "publish=${port}" --format '{{.Names}}' 2>/dev/null | paste -sd, -)
+      [ -n "${holders}" ] && who="${who}, publishing it for container ${holders}"
+      ;;
+  esac
   say ""
   say "ERROR: port ${port} (${label}) is already in use by ${who}." >&2
   say "Set TLS_HTTPS_PORT and TLS_HTTP_PORT in ${ENV_FILE} to ports nothing else holds (8443 and" >&2
@@ -362,10 +408,10 @@ if [ "${RUN_UP}" = 1 ]; then
   command -v docker >/dev/null 2>&1 || fail "docker is required for --up"
   case "${compose_file}" in
     docker-compose.dev.yml) ;;
-    *external-ingress*) require_port_free "${http_port}" "http, published by the frontend" ;;
+    *external-ingress*) require_port_free "${http_port}" "http, published by the frontend" frontend 80 ;;
     *)
-      require_port_free "${https_port}" "https"
-      require_port_free "${http_port}" "http, redirected to https"
+      require_port_free "${https_port}" "https" tls-proxy 443
+      require_port_free "${http_port}" "http, redirected to https" tls-proxy 80
       ;;
   esac
   if [ "${PORTS_UNCHECKED}" = 1 ]; then
@@ -378,6 +424,10 @@ if [ "${RUN_UP}" = 1 ]; then
   docker compose build
   say ""
   say "[3/${TOTAL}] Starting containers"
+  if [ "${compose_file}" != "docker-compose.dev.yml" ]; then
+    perms=$(prepare_recordings_dir) || fail "could not prepare ${data_path}/recordings (the docker error is shown above)"
+    report "recordings directory" "${data_path}/recordings is ${perms} (uid:gid mode)"
+  fi
   docker compose up -d
   say ""
   say "[4/${TOTAL}] Waiting for the backend to become healthy (up to ${HEALTH_TIMEOUT}s)"
@@ -401,5 +451,9 @@ else
   say ""
   say "Preparation complete. Next:"
   say "    docker compose up -d     # first run builds the images (5-10 minutes)"
+  if [ "${compose_file}" != "docker-compose.dev.yml" ]; then
+    say "  Before the first start, prepare the recordings directory with the command under"
+    say "  \"Start the services\" in docs/QUICKSTART.md, or run this script with --up, which does it."
+  fi
   print_login_info
 fi

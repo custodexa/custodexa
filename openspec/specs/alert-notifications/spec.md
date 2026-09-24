@@ -3,7 +3,9 @@
 ## Purpose
 
 命令告警經通知通道外送（webhook 通用 JSON+HMAC 簽章、slack mrkdwn）：重試、失敗不影響告警持久化與會話。
+
 ## Requirements
+
 ### Requirement: Webhook channel management
 Admins SHALL manage notification channels (name, type, url, optional secret, enabled) and trigger a test delivery. Invalid URLs MUST be rejected. Channel type SHALL be one of `webhook` or `slack`; unknown types SHALL be rejected. The secret SHALL never be returned to clients; on update, an empty secret SHALL preserve the existing value, and clearing the secret SHALL require an explicit `clear_secret` flag. The secret and HMAC signature SHALL apply only to `webhook` channels; `slack` channels SHALL NOT send a signature and their secret SHALL be forced empty on create/update (has_secret always false).
 
@@ -40,13 +42,15 @@ The stored secret and the channel url SHALL be envelope-encrypted at rest (data 
 ### Requirement: Alert push delivery
 When a command alert is created, the system SHALL asynchronously POST a payload to every enabled channel, formatted per channel type, retrying up to 3 times with backoff. `webhook` channels SHALL receive a JSON payload (alert, rule, session context) signed with HMAC-SHA256 in X-OT-Signature when a secret is set. `slack` channels SHALL receive a Slack-compatible message body (`text` field with severity, rule, command, and session context) and SHALL NOT include a signature header. Slack `text` content SHALL escape mrkdwn control characters (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`) so that command text containing shell redirection/operators renders correctly. Delivery failures MUST NOT affect alert persistence or sessions.
 
+Alerts whose source kind is not a rule (command audit degraded, new source address, sensitive content access, agent probe breaker) carry a machine identifier in `rule_name` and an intentionally empty command. For these kinds the `slack` text SHALL use a plain-language title for the kind and a plain-language line stating what happened and where to look, both rendered in the channel language; it SHALL NOT show the machine identifier as the title and SHALL NOT render an empty command block. For the command audit degraded kind, the text SHALL state that the input could not be reliably reconstructed as command text and SHALL point the reader to the session recording; when the degrade reason of the rounds that opened the alert can be resolved, the text SHALL add one plain-language line describing the circumstance, and when it cannot be resolved the line SHALL be omitted rather than guessed. The text SHALL NOT characterize the event as an attack or as benign, and the severity SHALL remain as recorded. Rule-kind alerts (including legacy rows without a kind and test notifications) SHALL keep their existing `slack` rendering. The `webhook` payload and syslog forwarding SHALL keep every machine field (`kind`, `reason_code`, `rule_name`, `command` and the rest) unchanged in name and value; the plain-language text exists only in the `slack` body.
+
 #### Scenario: Signed webhook delivery
 - **WHEN** an alert triggers and a webhook channel has a secret
 - **THEN** the receiver gets the JSON payload with a valid HMAC signature header
 
 #### Scenario: Slack-formatted delivery
 - **WHEN** an alert triggers and a `slack` channel is enabled
-- **THEN** Slack receives a `{"text": ...}` body rendering severity, rule name, command and session context, with no signature header
+- **THEN** Slack receives a `{"text": ...}` body rendering severity, rule name, command and session context, with no signature header; for alerts whose kind is not a rule, the plain-language title and explanation take the place of the rule name and command, as described in the requirement text
 
 #### Scenario: Slack command text with shell metacharacters
 - **WHEN** an alert for a command containing `>` `<` or `&` is pushed to a `slack` channel
@@ -55,6 +59,22 @@ When a command alert is created, the system SHALL asynchronously POST a payload 
 #### Scenario: Receiver down
 - **WHEN** the webhook endpoint is unreachable
 - **THEN** the alert is still persisted and retries are logged without session impact
+
+#### Scenario: Command audit degraded alert reads in plain language
+- **WHEN** a command audit degraded alert is pushed to a `slack` channel whose language is `zh-TW`
+- **THEN** the title is a plain-language phrase meaning the command could not be reconstructed, followed by the severity, and the next line tells the reader the input could not be reliably reconstructed and to check the session recording; the text contains neither the machine identifier `audit_degraded_span` nor an empty code block
+
+#### Scenario: Degrade reason is shown only when resolvable
+- **WHEN** the rounds that opened a degraded alert were recorded inside a full-screen program
+- **THEN** the Slack text adds one plain-language line saying so; and **WHEN** no degrade reason can be resolved for the alert, **THEN** that line is absent and the rest of the message is unchanged
+
+#### Scenario: Other non-rule kinds read in plain language
+- **WHEN** a new source address alert or a sensitive content access alert is pushed to a `slack` channel
+- **THEN** each shows a plain-language title for its kind and a plain-language explanation line, with no machine identifier as the title and no empty code block; a new source address alert also shows the source address when it is known
+
+#### Scenario: Rule alerts and machine fields unchanged
+- **WHEN** a rule-kind alert is pushed to `slack` and any alert is pushed to `webhook` or forwarded to syslog
+- **THEN** the rule alert's Slack text is identical to its rendering before this change, and the webhook and syslog payloads carry the same field names and values as before, including `rule_name: "audit_degraded_span"` for a degraded alert
 
 ### Requirement: 通知通道傳輸政策門
 通知通道建立與更新 SHALL 受通知傳輸政策約束：warn 檔下 URL 為 http 時，儲存 SHALL 要求管理員附風險確認聲明，確認入審計；strict 檔下 http URL SHALL 被拒絕存檔並回明確原因。off 檔（預設）行為與現狀一致（http/https 皆可存）。既有 http 通道在政策收緊後 SHALL 不被自動停用，但 SHALL 在通道列表與通道清冊標示偏離。
@@ -198,4 +218,3 @@ When a command alert is created, the system SHALL asynchronously POST a payload 
 
 - **WHEN** 既有 webhook 收端接收帶主體名稱的告警 payload
 - **THEN** 既有欄位的名稱、型別與語義不變，新增欄位為可選，收端無需修改即可繼續解析
-

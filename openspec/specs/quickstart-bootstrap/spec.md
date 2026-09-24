@@ -6,7 +6,9 @@ CSPRNG 生成、冪等性、KEK 模式尊重、破壞性操作護欄、機密回
 的進度回報與登入資訊輸出。腳本是既有部署驗證規則（deployment-hardening／
 deployment-configuration）的消費者：生成值必須通過既有 fail-close 驗證，
 不修改任何產品行為。
+
 ## Requirements
+
 ### Requirement: 機密缺項判定與生成
 `scripts/quickstart.sh` SHALL 對四項機密逐一檢查：值為空、或等於範本出貨值
 （`JWT_SECRET=change-me-in-production-dev-secret`、
@@ -95,3 +97,31 @@ deployment-configuration）的消費者：生成值必須通過既有 fail-close
 - **WHEN** `.env` 內 `EXTERNAL_DB_HOST` 有值且 `DB_PASSWORD` 為空或仍為範本出貨值，執行腳本
 - **THEN** 腳本以非零狀態結束，訊息指名 `DB_PASSWORD` 須填入外部伺服器的密碼；`.env` 未被改寫
 
+### Requirement: 錄影目錄的擁有者與權限
+正式版堆疊中，guacd 以 uid 1000 寫入圖形錄影，backend 以 uid 0、經由群組 0 讀取、改名與刪除這些檔案。
+`--up` 模式 SHALL 在啟動容器之前，把 `${DATA_PATH:-./data}/recordings` 收斂為擁有者 uid 1000、群組 gid 0、
+模式 2770（含 setgid，使新檔繼承群組 0），並 SHALL 把該目錄根層群組為 1000 的既有一般檔案改為群組 0。
+此步驟 SHALL 以一次性容器、root 身分執行，結果 SHALL 與執行腳本者的身分無關（docker 群組內的一般使用者
+與 sudo 結果相同，一般使用者不需要 sudo）。所用映像 SHALL 為正式版 compose 已宣告的上游映像，不新增 compose 以外的映像依賴。
+此步驟 SHALL 可重複執行：已收斂時再跑不報錯、不改變目錄與檔案的擁有者、群組與模式；目錄收斂本身
+SHALL 對執行中的堆疊立即生效，不需重啟任何服務；映像未變時重跑 `--up` SHALL NOT 重建執行中的容器。步驟失敗 SHALL 以非零狀態結束並指名該目錄。
+開發版形態（`COMPOSE_FILE=docker-compose.dev.yml`）SHALL 略過此步驟。
+不帶 `--up` 時，收尾指引 SHALL 指出首次啟動前要準備錄影目錄，並指向文件中的指令或 `--up`。
+
+#### Scenario: 一般使用者從零部署
+- **WHEN** docker 群組內的一般使用者在全新目錄執行 `bash scripts/quickstart.sh --up`
+- **THEN** `${DATA_PATH}/recordings` 為 `1000:0`、模式 `2770`；之後的 RDP／VNC 會話留下 `session-<id>.guac`，
+  會話的錄影路徑已寫入，回放串流與下載皆回 200
+
+#### Scenario: 以 sudo 從零部署
+- **WHEN** 在全新目錄執行 `sudo bash scripts/quickstart.sh --up`
+- **THEN** 錄影目錄的擁有者、群組與模式與一般使用者執行時相同，圖形錄影與回放同樣成功
+
+#### Scenario: 既有部署的錯誤狀態被修正且不需重啟
+- **WHEN** 堆疊執行中且映像未變，錄影目錄為 `0:0 0755`，或為 `1000:1000` 且根層有群組 1000 的錄影檔，重跑 `--up`
+- **THEN** 目錄收斂為 `1000:0 2770`，群組 1000 的根層檔案改為群組 0；backend 與 guacd 未重啟，
+  新的圖形錄影成功，原本讀不到的既有錄影回放轉為 200
+
+#### Scenario: 連跑兩次狀態不變
+- **WHEN** 已收斂後再執行 `--up`
+- **THEN** 腳本不報錯，錄影目錄與其中檔案的擁有者、群組與模式前後相同

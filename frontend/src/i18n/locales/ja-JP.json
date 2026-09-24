@@ -3452,6 +3452,7 @@
     "RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE": "ホストキー検証が設定されていません",
     "RULE_ASSET_TEST_NAMESPACE_NOT_FOUND": "対象の namespace が存在しません",
     "RULE_ASSET_TEST_NO_ACCOUNT": "この資産には利用可能なアカウント資格情報がないため、テストできません",
+    "RULE_ASSET_TEST_PRIVATE_KEY_INVALID": "秘密鍵を解析できません。形式が正しく、パスフレーズが設定されていないことを確認してください",
     "RULE_ASSET_TEST_PROTOCOL_ERROR": "プロトコルのハンドシェイクに失敗しました",
     "RULE_ASSET_TEST_PROTOCOL_UNSUPPORTED": "このプロトコルは接続テストに未対応です",
     "RULE_ASSET_TEST_TIMEOUT": "接続がタイムアウトしました",

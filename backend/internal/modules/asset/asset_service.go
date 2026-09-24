@@ -1812,7 +1812,7 @@ func (s *AssetService) testConnection(ctx context.Context, assetID uint, timeout
 }
 
 // testSSHDirect SSH 資產直連測試（test-connection 修復：guacd 退場後 SSH 撥測走原生路徑）。
-// 吃 AssetCredentials 而非拆散的 asset+password：username 與密碼必須同帳號。
+// 吃 AssetCredentials 而非拆散的 asset+秘密：username 與密碼、私鑰必須同帳號。
 // 由 connectionProbes["ssh"] 呼叫；timeout 已於分派前夾制。
 func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	defer creds.Destroy()
@@ -1826,18 +1826,21 @@ func (s *AssetService) testSSHDirect(assetID uint, creds *AssetCredentials, time
 		timeout = 10
 	}
 
-	// 空密碼不包成 ssh.Password("")：對允許空密碼的伺服器，
-	// 空密碼認證可能「成功」而讓 UI 顯示資產可連——那是假象，不是可用憑證。
-	// 撥測只走密碼認證（金鑰撥測未實作），故無密碼即無從測起，直接判失敗
-	if creds.Password.IsEmpty() {
-		result.setFailure(apierror.CodeAssetTestNoAccount, ErrorCodeNoUsableAccount)
-		return result
-	}
-
+	// 認證方式與正式終端連線一致（私鑰先、密碼後、同一次交握），規則見 sshProbeAuthMethods。
+	// 無任何秘密、或私鑰無法解析時都不撥號：前者無從測起，後者正式連線同樣會失敗
 	start := time.Now()
 	password := sshmaterial.NewPassword(creds.Password)
-	client, err := dialSSHProbe(context.Background(), fmt.Sprintf("%s:%d", asset.Host, asset.Port), creds.Username, password, s.hostKeys.Callback(assetID), time.Duration(timeout)*time.Second)
+	client, err := dialSSHProbe(context.Background(), fmt.Sprintf("%s:%d", asset.Host, asset.Port), creds.Username, password, creds.PrivateKey, s.hostKeys.Callback(assetID), time.Duration(timeout)*time.Second)
 	creds.Destroy()
+	switch {
+	case errors.Is(err, errProbeNoSecret):
+		result.setFailure(apierror.CodeAssetTestNoAccount, ErrorCodeNoUsableAccount)
+		return result
+	case errors.Is(err, errProbePrivateKeyInvalid):
+		result.setFailure(apierror.CodeAssetTestPrivateKeyInvalid, ErrorCodePrivateKeyInvalid)
+		log.Printf("[TestConnection] SSH 私鑰無法解析: ID=%d err=%v", assetID, err)
+		return result
+	}
 	result.LatencyMs = time.Since(start).Milliseconds()
 	if err != nil {
 		// 碼化：host key 變更與認證失敗直接复用 RULE_SSH_*（同一事實同一文案）
@@ -1884,7 +1887,14 @@ func (s *AssetService) updateOwnedPrivateKey(assetID, accountID uint, username s
 	return s.commitBindingSecret(assetID, accountID, username, model.ChangeSecretTypeSSHKey, "", encrypted, "private_key", "更新帳號私鑰失敗")
 }
 
-func dialSSHProbe(ctx context.Context, addr, user string, password *sshmaterial.Password, hostKey ssh.HostKeyCallback, timeout time.Duration) (*ssh.Client, error) {
+// dialSSHProbe 撥測撥號：password 與 privateKey 的所有權移交本函式，返回前一律銷毀。
+// 認證清單組不出來（無秘密、私鑰無法解析）時不建立任何連線，錯誤以 errors.Is 辨識。
+func dialSSHProbe(ctx context.Context, addr, user string, password *sshmaterial.Password, privateKey *material.Secret, hostKey ssh.HostKeyCallback, timeout time.Duration) (*ssh.Client, error) {
 	defer password.Destroy()
-	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: []ssh.AuthMethod{ssh.PasswordCallback(password.Callback)}, HostKeyCallback: hostKey, Timeout: timeout})
+	defer privateKey.Destroy()
+	methods, err := sshProbeAuthMethods(password, privateKey)
+	if err != nil {
+		return nil, err
+	}
+	return sshmaterial.Dial(ctx, addr, &ssh.ClientConfig{User: user, Auth: methods, HostKeyCallback: hostKey, Timeout: timeout})
 }

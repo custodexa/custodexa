@@ -2,6 +2,62 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.12.3 — recordings on Linux hosts, key sign-in for the SSH connection test, and plain alert titles (2026-09-24)
+
+No schema change. No migration runs.
+
+### What changes for deployers
+
+- On a Linux host, RDP and VNC recordings are written and played back only when
+  `${DATA_PATH}/recordings` is owned by `1000:0` with mode `2770`. guacd writes the recordings as
+  uid 1000, and the backend reads, renames and expires them through group 0.
+  `bash scripts/quickstart.sh --up` now sets this before it starts the stack and prints the result
+  on a `recordings directory` line. For a deployment by hand, the command is under "Start the
+  services" in `docs/QUICKSTART.md`; run it before the first `docker compose up -d`. The command
+  runs in the `alpine/openssl:3.5.4` image, which an offline host, or one using the external
+  ingress overlay, has to have available.
+- A Linux host deployed with 1.12.2 or earlier usually still has the recordings directory as Docker
+  created it, `root:root 0755`. Run the command from §1.3 of `docs/ops/upgrade-sop.md` once. It
+  takes effect on the running stack with no restart and no unseal, before or after the upgrade. The
+  note on these hosts in §2.0 covers setting it through `quickstart.sh --up` instead, which
+  recreates the containers whose images changed and, with `KEK_PROVIDER=ui`, needs an unseal.
+- On a Linux host the quick start now has you run the script with sudo
+  (`sudo bash scripts/quickstart.sh --up`). `.env` then belongs to root, so later `docker compose`
+  commands run with sudo as well.
+- Step 4 of the restore procedure in `docs/ops/backup-and-restore.md` (§5) extracts the data as
+  root and then runs the same command on the recordings directory.
+- With this ownership, a host account with uid 1000 can read RDP and VNC recordings without going
+  through the product; keep that uid for the people who administer the system. §3.6 of
+  `docs/ops/backup-and-restore.md` suggests keeping `DATA_PATH` itself owned by root with mode
+  `0750` or stricter.
+- `POST /api/v1/assets/:id/test-connection` has a new result code,
+  `RULE_ASSET_TEST_PRIVATE_KEY_INVALID` (`error_code` `private_key_invalid`), for an SSH account
+  whose private key cannot be parsed, such as a key protected by a passphrase. It is returned even
+  when the account also holds a password, and the test then opens no connection.
+  `RULE_ASSET_TEST_NO_ACCOUNT` is returned for an asset with no account, or an account that holds
+  neither a private key nor a password.
+
+- Slack notifications for alerts that do not come from a rule (a command that could not be
+  reconstructed, an account connecting from a new source address, a view of sensitive original
+  text) now carry a plain-language title and say where to look, instead of an internal code and
+  an empty command block. Webhook and syslog fields are unchanged; a Slack filter keyed on those
+  codes needs to move to the webhook or syslog output.
+
+### Fixes
+
+- The SSH connection test signs in the way a connection does, with the account's private key first
+  and its password second in one handshake.
+- The README opens with the quick start, and the link row at the top points to it. It names the
+  three `.env` settings that need values of your own, `JWT_SECRET`, `DB_PASSWORD` and
+  `ADMIN_INITIAL_PASSWORD`, and where the master key comes from in each key mode.
+- `docs/QUICKSTART.md` has a new section, "Switching to your own domain or certificate": the `.env`
+  values to change, how to replace the certificate in self-signed and provided mode, the commands
+  that apply the change, and how to check which certificate is served.
+- `bash scripts/quickstart.sh --up` can run again on a deployment that is up. Ports held by this
+  deployment's own proxy (or, with the external ingress overlay, its frontend) no longer count as in
+  use. A port held by another program or by another project's container still stops the script,
+  and the message now names that container.
+
 ## 1.12.2 — self-built images come only from the source tree (2026-09-24)
 
 No schema change. No migration runs.

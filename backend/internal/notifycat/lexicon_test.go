@@ -275,6 +275,63 @@ func TestSeverityLexiconMatchesModel(t *testing.T) {
 	}
 }
 
+// TestAlertKindLexiconsMatchModel 非規則類告警的標題與說明詞庫，鍵集皆等於 model 中
+// rule 以外的 AlertKind* 常數值。
+//
+// 新增一個告警來源類別卻沒補白話標題時，通知會退回機器碼標題——這支測試讓它在
+// 合併前就紅，而不是等收件人看到。
+func TestAlertKindLexiconsMatchModel(t *testing.T) {
+	want := modelConstValues(t, "AlertKind", func(name string) bool {
+		// 規則類有規則名可當標題，不走這兩個詞庫
+		return name != "AlertKindRule"
+	})
+	if len(want) == 0 {
+		t.Fatal("model 套件找不到任何非規則類 AlertKind* 常數——比對基準失效（防假綠）")
+	}
+	assertLexiconKeysEqual(t, want, LexiconAlertKind, LexiconAlertKindText)
+}
+
+// TestDegradeReasonLexiconMatchesModel degrade_reason 詞庫鍵集等於 model 的 Degrade* 常數值。
+func TestDegradeReasonLexiconMatchesModel(t *testing.T) {
+	want := modelConstValues(t, "Degrade", func(string) bool { return true })
+	if len(want) == 0 {
+		t.Fatal("model 套件找不到任何 Degrade* 常數——比對基準失效（防假綠）")
+	}
+	assertLexiconKeysEqual(t, want, LexiconDegradeReason)
+}
+
+// assertLexiconKeysEqual 參考語系下各詞庫的鍵集必須等於 want（三語一致由
+// TestLexiconCompleteness 負責）。
+func assertLexiconKeysEqual(t *testing.T, want map[string]bool, lexicons ...Lexicon) {
+	t.Helper()
+	for _, lex := range lexicons {
+		got := map[string]bool{}
+		for k := range lexiconCat[DefaultLang][lex] {
+			got[k] = true
+		}
+		if !sameSet(want, got) {
+			t.Errorf("%s 詞庫鍵集與 model 常數不一致:\n  model: %v\n  詞庫: %v",
+				lex, sortedKeys(want), sortedKeys(got))
+		}
+	}
+}
+
+// TestAlertKindLexiconGuardSensitivity 值域比對確實會抓到漏譯：刪掉一個鍵必須不相等。
+func TestAlertKindLexiconGuardSensitivity(t *testing.T) {
+	want := modelConstValues(t, "AlertKind", func(name string) bool { return name != "AlertKindRule" })
+	got := map[string]bool{}
+	for k := range lexiconCat[DefaultLang][LexiconAlertKind] {
+		got[k] = true
+	}
+	for k := range got {
+		delete(got, k)
+		break
+	}
+	if sameSet(want, got) {
+		t.Fatal("刪掉一個標題鍵後鍵集仍判為相等——值域守衛失效")
+	}
+}
+
 // modelConstValues 以 go/types 取 model 套件中指定前綴的字串常數值集合。
 func modelConstValues(t *testing.T, prefix string, keep func(name string) bool) map[string]bool {
 	t.Helper()

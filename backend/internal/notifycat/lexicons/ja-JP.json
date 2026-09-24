@@ -51,7 +51,8 @@
   "entity": {
     "session": "セッション",
     "user": "ユーザー",
-    "asset": "資産"
+    "asset": "資産",
+    "source_ip": "送信元アドレス"
   },
   "rotation_report": {
     "account_deleted": "削除済み",
@@ -152,5 +153,28 @@
     "value_no": "いいえ",
     "value_none": "—",
     "value_yes": "はい"
+  },
+  "alert_kind": {
+    "audit_degraded": "コマンド内容を復元できません",
+    "new_source_ip": "アカウントが新しい送信元アドレスから接続",
+    "sensitive_reveal": "機密原文が閲覧されました",
+    "agent_breaker_tripped": "反復的な探索により自動化トークンを停止"
+  },
+  "alert_kind_text": {
+    "audit_degraded": "この入力はコマンド文字列として確実に復元できませんでした。実際の内容はセッションの録画で確認してください。",
+    "new_source_ip": "このアカウントがこのアドレスから接続したのは初めてです。確認が必要な場合は、このアドレスで当日の記録を確認してください。",
+    "sensitive_reveal": "詳細はその閲覧の監査記録を確認してください。",
+    "agent_breaker_tripped": "見えない資産への参照が繰り返されたため、このトークンを停止しました。責任者または管理者による確認が必要です。"
+  },
+  "degrade_reason": {
+    "altscreen_round": "当時、画面は全画面プログラム（エディタやページャなど）の中でした。",
+    "redraw_unanchored": "画面全体が再描画されたため、画面上の文字を入力と対応付けられませんでした。",
+    "fullscreen_input": "このキー入力は全画面プログラムに送られました。",
+    "queue_discarded": "画面の再描画時に、対応付け前の入力を対応付けられなくなりました。",
+    "queue_discarded_at_close": "接続終了時に、対応付け前の入力を対応付けられなくなりました。",
+    "queue_uncounted": "対応付け前の入力を対応付けられなくなりました。実際の回数は記録より多い可能性があります。",
+    "queue_overflow": "対応付け待ちの入力が上限に達し、その後の入力は対応付けの対象になりませんでした。",
+    "input_without_echo": "入力は送信されましたが、出力に復元できる文字がありません。接続先でエコーが無効な場合、録画にもこの内容は残りません。",
+    "input_without_command": "この接続では入力がありましたが、復元できたコマンドはありません。"
   }
 }

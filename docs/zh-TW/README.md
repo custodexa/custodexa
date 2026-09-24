@@ -41,6 +41,7 @@ bash scripts/quickstart.sh --up
 金鑰在你的瀏覽器本地生成。務必保存好：之後每次重啟都停在已封存狀態，要再輸入才解封。
 接著才是登入與強制改密。無人值守的部署可在 `.env` 改用 env 或 KMS 金鑰模式。想手動設定？照
 `.env.example` 內的逐項說明複製編輯後 `docker compose up -d` 即可。
+Linux 主機在第一次 `up` 之前要先準備錄影目錄，做法見[啟動服務](QUICKSTART.md#3-啟動服務)。
 Windows 請在 WSL 內執行腳本。
 
 服務對外走 https，埠為 443（80 會導向它），網址不必帶埠號；主機上這兩個埠已經有別的

@@ -51,7 +51,8 @@
   "entity": {
     "session": "session",
     "user": "user",
-    "asset": "asset"
+    "asset": "asset",
+    "source_ip": "source address"
   },
   "rotation_report": {
     "account_deleted": "Deleted",
@@ -152,5 +153,28 @@
     "value_no": "No",
     "value_none": "-",
     "value_yes": "Yes"
+  },
+  "alert_kind": {
+    "audit_degraded": "Command could not be reconstructed",
+    "new_source_ip": "Account connected from a new source address",
+    "sensitive_reveal": "Sensitive content was viewed",
+    "agent_breaker_tripped": "Agent token suspended after repeated probing"
+  },
+  "alert_kind_text": {
+    "audit_degraded": "This input could not be reliably reconstructed as command text. Check the session recording for what actually happened.",
+    "new_source_ip": "This is the account's first connection from this address. To confirm, review that day's records for this address.",
+    "sensitive_reveal": "See the audit record of that access for details.",
+    "agent_breaker_tripped": "The token repeatedly referenced assets it cannot see and was suspended. The owner or an administrator needs to review it."
+  },
+  "degrade_reason": {
+    "altscreen_round": "The screen was inside a full-screen program at the time (such as an editor or pager).",
+    "redraw_unanchored": "The whole screen was redrawn, so the text on screen could not be matched to the input.",
+    "fullscreen_input": "These keystrokes went to a full-screen program.",
+    "queue_discarded": "Input not yet matched could no longer be matched when the screen was redrawn.",
+    "queue_discarded_at_close": "Input not yet matched could no longer be matched when the connection ended.",
+    "queue_uncounted": "Input not yet matched could no longer be matched, and the actual number of inputs may be higher than recorded.",
+    "queue_overflow": "Pending input reached its limit, and later input was not queued for matching.",
+    "input_without_echo": "Input was sent, but the output contains no text that can be reconstructed. If the remote side turned off echo, the recording will not show it either.",
+    "input_without_command": "This connection received input, but no command could be reconstructed from it."
   }
 }

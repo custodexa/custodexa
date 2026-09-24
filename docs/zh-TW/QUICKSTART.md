@@ -35,7 +35,9 @@ cd custodexa
 > **快速路徑**：`bash scripts/quickstart.sh` 會自動完成本節：檢查 `.env`（沒有就從
 > 範本建立）、缺的機密用 CSPRNG 生成；已填的值一律不動，重跑安全。加 `--up` 連啟動
 > 一起做：分階段回報進度、等後端健康，最後輸出連線網址與 admin 登入資訊
-> （輸出為英文）。Windows 請在 WSL 內執行。
+> （輸出為英文）。Linux 主機請以 sudo 執行（`sudo bash scripts/quickstart.sh --up`），
+> `.env` 會因此歸 root 所有，之後的 `docker compose` 指令也以 sudo 執行。
+> Windows 請在 WSL 內執行。
 > 想了解各值的語義或手動設定，繼續往下讀。
 
 先複製範本再依環境編輯。
@@ -83,6 +85,18 @@ DATA_PATH=/opt/custodexa/data
 > `rm -rf ./data/*`。`./data/` 已列入 `.gitignore`，不會誤入版控。
 
 ### 3. 啟動服務
+
+首次啟動前先準備錄影目錄（`bash scripts/quickstart.sh --up` 會代為完成）。guacd 以 uid 1000
+寫入 RDP 與 VNC 錄影，後端經由群組 0 讀取、改名與依保留期刪除這些檔案，所以目錄的擁有者為
+`1000:0`、模式為 `2770`；開頭的 2 是 setgid，讓新檔沿用群組 0。少了這一步，Linux 主機只錄得到
+SSH，錄不到 RDP 與 VNC。指令在一次性容器內以 root 執行，docker 群組的成員不需要 sudo；
+可以重複執行，對執行中的服務立即生效，不必重啟。`DATA_PATH` 改過的話，把 `$PWD/data`
+換成該路徑。
+
+```bash
+docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+  'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
+```
 
 ```bash
 # 背景執行（無既存映像時會先自動建置——正式版建置就是部署流程的第一步）
@@ -187,9 +201,9 @@ docker compose logs -f frontend
 | 連線政策 | 逐資產的連線管控。預設「跟隨全域設定」並回顯目前的全域值，需要對這筆資產特別放寬或收緊時才改 |
 | 描述 | 選填，供列表辨識 |
 
-資產列表的「狀態」欄是連通性撥測資訊（新建資產尚未撥測時顯示「-」）；
-撥測目前只驗密碼認證，僅設私鑰的資產撥測會失敗，但不代表實際連線不可用；
-能不能連，以下一步的「連線」為準。
+資產列表的「狀態」欄是連通性撥測資訊（新建資產尚未撥測時顯示「-」）。
+SSH 資產的撥測與實際連線採用相同的認證方式，私鑰優先、密碼次之；
+私鑰無法解析（格式不符或設有 passphrase）時，撥測會明確指出是私鑰的問題。
 
 ### 3. 發起連線
 
@@ -271,6 +285,7 @@ release 模式對這些值 **fail-close**（不合格即拒絕啟動，非警告
 ### 2. 啟動
 
 ```bash
+# 先準備錄影目錄（指令見上方「3. 啟動服務」）。
 # 無既存映像時 up 會先建置正式版映像（建置就是部署流程的第一步）。
 docker compose up -d
 ```

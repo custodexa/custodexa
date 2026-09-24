@@ -3452,6 +3452,7 @@
     "RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE": "host key 驗證未設定",
     "RULE_ASSET_TEST_NAMESPACE_NOT_FOUND": "目標 namespace 不存在",
     "RULE_ASSET_TEST_NO_ACCOUNT": "資產未設定可用帳號憑證，無法測試",
+    "RULE_ASSET_TEST_PRIVATE_KEY_INVALID": "私鑰無法解析，請確認格式正確且未設定 passphrase",
     "RULE_ASSET_TEST_PROTOCOL_ERROR": "協議交握失敗",
     "RULE_ASSET_TEST_PROTOCOL_UNSUPPORTED": "此協議尚未支援連線測試",
     "RULE_ASSET_TEST_TIMEOUT": "連線逾時",

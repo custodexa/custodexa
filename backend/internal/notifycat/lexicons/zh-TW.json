@@ -51,7 +51,8 @@
   "entity": {
     "session": "會話",
     "user": "使用者",
-    "asset": "資產"
+    "asset": "資產",
+    "source_ip": "來源位址"
   },
   "rotation_report": {
     "account_deleted": "已刪除",
@@ -152,5 +153,28 @@
     "value_no": "否",
     "value_none": "—",
     "value_yes": "是"
+  },
+  "alert_kind": {
+    "audit_degraded": "無法還原指令內容",
+    "new_source_ip": "帳號自新的來源位址連線",
+    "sensitive_reveal": "有人調閱了敏感原文",
+    "agent_breaker_tripped": "自動化權杖因反覆探測已停用"
+  },
+  "alert_kind_text": {
+    "audit_degraded": "這段輸入無法可靠還原成指令文字。實際內容請查看該會話的錄影。",
+    "new_source_ip": "這個帳號首次自這個位址建立連線。如需確認，請以這個位址查看當日的紀錄。",
+    "sensitive_reveal": "詳情請查看該筆調閱的稽核紀錄。",
+    "agent_breaker_tripped": "這個權杖反覆引用它看不到的資產，已被停用，請負責人或管理員處置。"
+  },
+  "degrade_reason": {
+    "altscreen_round": "當時畫面在全螢幕程式中（例如編輯器、分頁器）。",
+    "redraw_unanchored": "當時畫面整段重繪，無法把畫面上的文字對應回輸入。",
+    "fullscreen_input": "這段按鍵送給了全螢幕程式。",
+    "queue_discarded": "畫面重繪時，還沒對應完成的輸入無法再對應。",
+    "queue_discarded_at_close": "連線結束時，還沒對應完成的輸入無法再對應。",
+    "queue_uncounted": "還沒對應完成的輸入無法再對應，實際次數可能比紀錄多。",
+    "queue_overflow": "等待對應的輸入達到上限，之後的輸入沒有排入對應。",
+    "input_without_echo": "有送出輸入，但畫面輸出中沒有可還原的文字；若對端關閉了回顯，錄影也看不到這段內容。",
+    "input_without_command": "這條連線有送出輸入，但沒有任何一筆可還原的指令。"
   }
 }

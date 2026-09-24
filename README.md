@@ -46,6 +46,8 @@ the **master-key initialization page**; the key is generated locally in your bro
 Save it — every restart stays sealed until it is entered again. Unattended deployments
 can switch to the `env` or KMS key mode in `.env`. Prefer doing it by hand? Copy
 `.env.example` to `.env`, follow its inline notes, then `docker compose up -d`.
+On a Linux host, prepare the recordings directory before that first `up`, as described in
+[Start the services](docs/QUICKSTART.md#3-start-the-services).
 On Windows, run the script inside WSL.
 
 The stack serves https on port 443, with 80 redirecting to it, so the address carries no

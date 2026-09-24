@@ -106,6 +106,9 @@ type alertSubjectNames struct {
 	// 名字叫 subjectNames 而它不是名字——放在這裡是因為它與兩個名稱同源、
 	// 同一次解析取得、同樣「查不到就降級不報錯」
 	ClientIP string
+	// DegradeReason 指令稽核降級告警所屬那一段的降級原因碼（僅該類告警查詢；
+	// 查不到即空字串）。只用於 Slack 的白話說明行，不進 webhook payload。
+	DegradeReason string
 }
 
 // buildAlertPayload 將告警組裝為推送 payload
@@ -177,6 +180,10 @@ func severityEmoji(severity string) string {
 // 使用者資料（規則名、指令）原樣呈現只做 slackEscape——翻譯目錄不碰使用者資料。
 // 分隔以「·」而非各語系全形括號：標點不是文案，不進翻譯目錄
 func buildSlackText(lang, event string, alert model.CommandAlert, names alertSubjectNames) string {
+	// 非規則類告警沒有規則名與指令可呈現，改走白話版型；規則類的組字路徑不變
+	if event != alertEventTest && !isRuleKindAlert(alert.Kind) {
+		return buildNonRuleSlackText(lang, alert, names)
+	}
 	var header string
 	if event == alertEventTest {
 		title, text := notifycat.Render(lang, notifycat.EventTest,
@@ -484,6 +491,7 @@ func (n *AlertNotifier) resolveSubjectNames(alert model.CommandAlert) alertSubje
 			Scan(&ip).Error
 		out.ClientIP = ip
 	}
+	out.DegradeReason = lookupDegradeReason(n.db, alert)
 	return out
 }
 

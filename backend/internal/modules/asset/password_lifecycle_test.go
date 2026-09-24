@@ -20,7 +20,7 @@ func callbackCases(t *testing.T, integration bool) {
 				var err error
 				switch point {
 				case "probe":
-					c, err = dialSSHProbe(ctx, addr, user, p, key, 5*time.Second)
+					c, err = dialSSHProbe(ctx, addr, user, p, nil, key, 5*time.Second)
 				case "rotation_password":
 					c, err = dialSSHPassword(ctx, addr, user, p, key)
 				case "rotation_key":

@@ -39,6 +39,8 @@ cd custodexa
 > CSPRNG; values you already filled in are never touched, so re-running is safe. Add `--up` to
 > start the stack as well: it reports progress by stage, waits for the backend to become
 > healthy, and prints the address to open along with the admin sign-in details.
+> On a Linux host, run it with sudo (`sudo bash scripts/quickstart.sh --up`); `.env` then
+> belongs to root, so later `docker compose` commands also run with sudo.
 > On Windows, run it inside WSL.
 > To understand what each value means, or to set them by hand, read on.
 
@@ -99,6 +101,20 @@ DATA_PATH=/opt/custodexa/data
 > version control.
 
 ### 3. Start the services
+
+Before the first start, prepare the recordings directory (`bash scripts/quickstart.sh --up`
+does this for you). guacd writes RDP and VNC recordings as uid 1000, and the backend reads,
+renames and expires them through group 0, so the directory is owned by `1000:0` with mode
+`2770`; the setgid bit (the leading 2) keeps new files in group 0. Without this step a Linux
+host records SSH sessions but not RDP or VNC. The command runs as root inside a throwaway
+container, so it needs no sudo from a member of the docker group; it is safe to repeat and
+takes effect on a running stack without a restart. With a custom `DATA_PATH`, put that path in
+place of `$PWD/data`.
+
+```bash
+docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+  'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
+```
 
 ```bash
 # In the background (with no existing images it builds first -- building the production images is step one of deployment)
@@ -218,9 +234,9 @@ Assets → New Asset. The fields:
 | Description | Optional, to help identify the asset in the list |
 
 The "Status" column in the asset list carries reachability probe information (an asset that has
-not been probed yet shows "-"). The probe currently only tests password authentication, so it
-fails for an asset that has only a private key, which does not mean the real connection is
-unavailable; whether it connects is settled by "Connect" in the next step.
+not been probed yet shows "-"). For an SSH asset the probe logs in the same way a real connection
+does, private key first and then password. If the private key cannot be parsed (a wrong format or
+a passphrase-protected key), the probe reports that the private key is the problem.
 
 ### 3. Start a connection
 
@@ -310,6 +326,7 @@ Release mode is **fail-close** on these values: it refuses to start rather than 
 ### 2. Start
 
 ```bash
+# Prepare the recordings directory first (the command is under "3. Start the services" above).
 # With no existing images, up builds the production images first (building is step one of deployment).
 docker compose up -d
 ```

@@ -76,6 +76,15 @@ Under a bind mount, permission settings inside the image do not apply, and the h
 
 > **If you skip it**: any local account on the host can read every session recording.
 
+**The recordings directory has one required owner and mode**: `${DATA_PATH}/recordings` is `1000:0` with mode `2770`. guacd writes RDP and VNC recordings as uid 1000, and the backend reads, renames and expires them through group 0; the setgid bit keeps new files in group 0. Owned by anyone else, the directory takes no RDP or VNC recording. Without group 0 on the directory, the backend can neither rename those recordings nor play them back; without the setgid bit, it renames them but cannot play them back, because new files then carry guacd's group 1000. `bash scripts/quickstart.sh --up` sets this before it starts the stack. By hand, from the deployment directory (put your `DATA_PATH` in place of `$PWD/data`):
+
+```bash
+docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+  'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
+```
+
+The command is safe to repeat and takes effect on a running stack without a restart.
+
 **If you intend to enable offsite evidence storage**, prepare a storage identity dedicated to this system, with permissions no broader than this minimum set:
 
 - **Upload**: write objects under the prefix you specify.
@@ -145,6 +154,10 @@ These images are not published to any registry: they come from a build of the so
 > Confirm your source version before planning the upgrade.
 
 > **What the single-instance guard guarantees**: as of this release, a second application instance started against the same database is stopped and asked to confirm (§2.6b). That mutual exclusion **only holds between guard-bearing releases**: older releases without the guard hold no lock, so on the first upgrade from a release without the guard, the new release acquiring the lock **does not mean** the old one has stopped. Step 5 of §2.3 is the first-upgrade check that exists for exactly this, and it must not be skipped.
+
+#### Linux hosts deployed with 1.12.2 or earlier
+
+On these hosts the recordings directory is normally the one Docker created at the first start, `root:root 0755`, where RDP and VNC sessions leave no recording while SSH recording works. Set the directory once as described in §1.3. Run on its own, the command there takes effect at once on the running stack, with no restart and no unseal, and it can go before or after the upgrade. `sudo bash scripts/quickstart.sh --up` sets the directory too, but it also builds the images from the current source tree and starts the stack: after the source tree has been updated for an upgrade, it recreates the containers whose images changed, like any upgrade, and a `KEK_PROVIDER=ui` deployment has to be unsealed again.
 
 #### Upgrading to 1.11.1
 

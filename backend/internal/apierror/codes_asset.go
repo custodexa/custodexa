@@ -107,6 +107,10 @@ var (
 	CodeAssetTestExecForbidden       = register("RULE_ASSET_TEST_EXEC_FORBIDDEN", Descriptor{ZhFallback: "憑證無此 namespace 的 pods/exec 權限"})
 	CodeAssetTestNamespaceNotFound   = register("RULE_ASSET_TEST_NAMESPACE_NOT_FOUND", Descriptor{ZhFallback: "目標 namespace 不存在"})
 	CodeAssetTestTLSFailed           = register("RULE_ASSET_TEST_TLS_FAILED", Descriptor{ZhFallback: "TLS 憑證驗證失敗，請確認 CA 憑證設定"})
+
+	// SSH 撥測：帳號私鑰存在但無法解析（格式錯誤或受 passphrase 保護）。
+	// 與「無可用帳號」分開——憑證有設定，要換的是私鑰本身
+	CodeAssetTestPrivateKeyInvalid = register("RULE_ASSET_TEST_PRIVATE_KEY_INVALID", Descriptor{ZhFallback: "私鑰無法解析，請確認格式正確且未設定 passphrase"})
 )
 
 // --- INTERNAL_*（5xx／502；成因僅落伺服端日誌）---

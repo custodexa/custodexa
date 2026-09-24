@@ -3452,6 +3452,7 @@
     "RULE_ASSET_TEST_HOST_KEY_UNAVAILABLE": "Host key verification is not configured",
     "RULE_ASSET_TEST_NAMESPACE_NOT_FOUND": "The target namespace does not exist",
     "RULE_ASSET_TEST_NO_ACCOUNT": "The asset has no usable account credentials, so it cannot be tested",
+    "RULE_ASSET_TEST_PRIVATE_KEY_INVALID": "The private key could not be parsed; check that it is in a valid format and not protected by a passphrase",
     "RULE_ASSET_TEST_PROTOCOL_ERROR": "Protocol handshake failed",
     "RULE_ASSET_TEST_PROTOCOL_UNSUPPORTED": "Connection testing is not supported for this protocol yet",
     "RULE_ASSET_TEST_TIMEOUT": "Connection timed out",

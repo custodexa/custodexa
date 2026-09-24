@@ -4,6 +4,7 @@
 資產撥測（test-connection）的分派、驗證深度、時限與失敗分類語義。與 asset-management 的分工：本 capability 界定「撥測本身怎麼做、成功代表什麼」，asset-management 界定「結果如何持久化與呈現」。
 
 ## Requirements
+
 ### Requirement: 撥測分派以顯式對照表決定，未登記協議一律拒絕
 
 資產撥測 SHALL 依「協議 → 撥測方式」的顯式對照表分派，SHALL NOT 以否定式分支（判斷少數協議、其餘落入單一 fallback 中介）決定撥測路徑。對照表未登記的協議 SHALL 立即以失敗結果返回，攜帶「協議不支援撥測」的機器碼與粗分類 `protocol_unsupported`，SHALL NOT 轉送任何協議代理或中介。
@@ -29,7 +30,7 @@
 
 撥測 SHALL 對每種協議採用該協議適用的驗證方式，且驗證深度 SHALL 明確定義如下，SHALL NOT 讓「撥測成功」被解讀為超出該深度的保證：
 
-- `ssh`：直連目標並完成 host key 驗證與密碼認證，成功代表可登入。
+- `ssh`：直連目標並完成 host key 驗證與帳號認證（認證方式與正式終端連線一致，見「SSH 撥測的認證方式與正式連線一致」），成功代表可登入。
 - `rdp`、`vnc`：經 guacd 完成協議連線握手，成功代表 guacd 能建立到目標的協議連線。
 - `mysql`、`postgres`、`redis`、`mssql`：TCP 可達性探測，成功**僅**代表目標 host:port 的 TCP 連線可建立；SHALL NOT 進行任何協議握手或認證，SHALL NOT 在目標端產生認證嘗試記錄。
 - `k8s`：對目標 API server 送出 exec 權限預檢，成功代表 API server 可達、TLS 驗證通過、且該資產憑證具備目標 namespace 的 pods/exec 權限。**成功 SHALL NOT 被解讀為目標 namespace 確實存在**——SelfSubjectAccessReview 不檢查資源存在性，本系統亦不主動偵測 namespace 是否存在。
@@ -62,6 +63,11 @@
 
 - **WHEN** 管理者對 mssql 資產執行撥測且目標 1433 埠可建立 TCP 連線
 - **THEN** 撥測成功並回報延遲；目標資料庫未收到任何登入嘗試記錄
+
+#### Scenario: ssh 金鑰憑證的撥測完成登入
+
+- **WHEN** 管理者對 ssh 資產執行撥測，其預設帳號的就位版本只有私鑰、沒有密碼，且目標接受該金鑰
+- **THEN** 撥測成功並回報延遲，不回報「無可用帳號」
 
 ### Requirement: 撥測在有界時間內返回
 
@@ -118,3 +124,36 @@
 
 - **WHEN** 撥測因協議未登記而失敗
 - **THEN** 該資產記錄為不可達，並保留該次測試時間
+
+### Requirement: SSH 撥測的認證方式與正式連線一致
+
+SSH 撥測 SHALL 以預設帳號就位版本中的秘密，採用與正式終端連線相同的認證方式：就位版本有私鑰時提供公鑰認證、有密碼時提供密碼認證，兩者皆有時 SHALL 在**同一次交握**內依「私鑰優先、密碼次之」提供，SHALL NOT 分成多次連線輪流嘗試，也 SHALL NOT 改試其他秘密版本。
+
+就位版本既無私鑰也無密碼時，撥測 SHALL 回失敗結果（機器碼 `RULE_ASSET_TEST_NO_ACCOUNT`、粗分類 `no_usable_account`），且 SHALL NOT 撥號；空密碼 SHALL NOT 被當成可用的密碼認證送出。
+
+就位版本含私鑰但該私鑰無法解析（格式錯誤、受 passphrase 保護等）時，撥測 SHALL 回失敗結果並以專屬機器碼 `RULE_ASSET_TEST_PRIVATE_KEY_INVALID`（粗分類 `private_key_invalid`）說明原因，SHALL NOT 回報為「無可用帳號」，且 SHALL NOT 撥號——即使同一版本另有密碼，結果亦同，因為正式連線在此情形下同樣無法建立。私鑰與密碼明文 SHALL 僅存在於行程內，撥測結束即銷毀，且 SHALL NOT 出現於回應或日誌。
+
+#### Scenario: 只有私鑰的帳號撥測成功
+
+- **WHEN** 管理者對 ssh 資產執行撥測，預設帳號的就位版本只有私鑰，目標的授權金鑰清單含對應公鑰
+- **THEN** 撥測成功（`success=true`）並回報延遲
+
+#### Scenario: 只有密碼的帳號撥測成功
+
+- **WHEN** 管理者對 ssh 資產執行撥測，預設帳號的就位版本只有密碼且密碼正確
+- **THEN** 撥測成功（`success=true`）並回報延遲
+
+#### Scenario: 無任何秘密時不撥號
+
+- **WHEN** 管理者對 ssh 資產執行撥測，預設帳號已掛載但就位版本既無私鑰也無密碼
+- **THEN** 撥測失敗，機器碼為 `RULE_ASSET_TEST_NO_ACCOUNT`、粗分類為 `no_usable_account`，目標未收到任何連線
+
+#### Scenario: 私鑰無法解析時說出原因
+
+- **WHEN** 管理者對 ssh 資產執行撥測，預設帳號的私鑰內容無法解析或受 passphrase 保護
+- **THEN** 撥測失敗，機器碼為 `RULE_ASSET_TEST_PRIVATE_KEY_INVALID`、粗分類為 `private_key_invalid`，目標未收到任何連線
+
+#### Scenario: 金鑰被目標拒絕歸為認證失敗
+
+- **WHEN** 管理者對 ssh 資產執行撥測，私鑰可解析但目標不接受該金鑰
+- **THEN** 撥測失敗且歸為認證失敗，與「無可用帳號」「私鑰無法解析」明確區分

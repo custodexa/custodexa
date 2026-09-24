@@ -233,9 +233,11 @@ Backup content includes encrypted asset credentials, wrapped keys, and all audit
 
 **Under a bind mount, directory permissions set inside the image do not apply**; the actual permissions come from the host-side directory. The deployment has to ensure that `DATA_PATH` and its three subdirectories are **not world-readable**.
 
-Recording files contain everything the user typed on the target host, including passwords they entered on the target side. Recording files have `0600` permissions, but file permissions are only one layer, and directory permissions are the necessary second one.
+Recording files contain everything the user typed on the target host, including passwords they entered on the target side. Text (SSH) recordings are `0600` files owned by root, inside per-day directories that the backend creates and keeps at `0700`. Graphical (RDP and VNC) recordings are `0640` files owned by `1000:0` in the top level of the recordings directory, written by guacd running as uid 1000. The recordings directory itself is `1000:0` with mode `2770` ([Deployment and Upgrade SOP §1.3](./upgrade-sop.md#13-check-the-file-permissions-on-data_path)): guacd writes into it as its owner, and the backend, which runs as root without the capabilities that bypass file permissions, reads, renames and expires graphical recordings through group 0. Do not change that owner, group or mode. It follows that a host account with uid 1000 can read graphical recordings, and rename or move anything in the top level of the recordings directory, without going through the product; keep that uid for the people who administer this system. File permissions are only one layer, and directory permissions are the necessary second one.
 
-Suggested: set the `DATA_PATH` directory to `0750` or stricter, owned by the user the containers run as.
+Suggested: keep the `DATA_PATH` directory itself owned by root with mode `0750` or stricter. The containers mount only its subdirectories, so a root-owned data root does not stand in their way.
+
+**After a restore, set the recordings directory again.** Extraction keeps owners and modes only when it runs as root, and a backup taken on a host deployed with 1.12.2 or earlier may carry the owner Docker gave the directory there (`root:root 0755`), with which RDP and VNC sessions leave no recording. Step 4 of the restore procedure (§5) therefore runs the preparation command from SOP §1.3 right after extracting the data. Rerunning `sudo bash scripts/quickstart.sh --up` does the same, but it also starts the whole stack, so use it only once the restore is otherwise complete.
 
 **The equivalent protection on the object storage side is the deployment's to carry.** The recordings and evidence packages uploaded into the bucket are as sensitive as the originals under `DATA_PATH`, but the permission model there is not in the product's hands: bucket access control (who can list, who can read, who can delete) and encryption at rest both have to be configured by the deployment on the bucket. The product **does not encrypt object content**, so unless the bucket does encryption at rest itself, objects are plaintext on the storage side. Suggested minimum: a dedicated least-privilege identity (able to write and read, with **no need for delete permission**, which the product does not use), public access blocked, encryption at rest on, and versioning and retention rules set according to your retention requirements.
 
@@ -390,8 +392,13 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 # 4. Restore the file locations. Before extracting, print the absolute path of the extraction target and check it once
 #    (if the directory does not exist, or DATA_PATH was not obtained, this line fails and tar is never reached)
 ( cd "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}" && pwd )
+#    Extract as root (sudo). Extracted by any other account, the per-day recording directories, the text recordings
+#    and the audit files end up owned by that account, and the preparation command below does not change them back.
 tar -xzf "custodexa-files-${STAMP}.tar.gz" \
   -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
+#    Set the recordings directory back to 1000:0 2770 (§3.6); safe to run even when extraction already kept it
+docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+  'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
 #    Restore the TLS certificate directory into the project directory (without it, self-signed mode generates a new CA and certificate at startup,
 #    and the CA has to be distributed to every client machine again)
 tar -xzf "custodexa-tls-${STAMP}.tar.gz"
