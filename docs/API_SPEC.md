@@ -1,6 +1,6 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-23（OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
+> 最後更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
 > `backend/internal/sshproxy/handler.go`, `backend/internal/proxy/handler.go`,
@@ -925,6 +925,13 @@ Authorization: Bearer <token>
 前端的自助改密與密碼到期提示一律依此欄泛化——**不可續用 `is_ldap`**，OIDC 影子帳號的
 `is_ldap` 為 `false`）與 `provisioning_origin`（`local`／`ldap`／`oidc`，建立後不可變）。
 兩者分離是刻意的：混合帳號（OIDC 供應但保有本地密碼）兩者不同值。
+
+另含「我的 agent」入口資格兩欄（登入回應的 `user` 同樣帶）：`owns_agents`（名下至少有一個
+agent 主體，已刪除者不計）與 `can_self_create_agent`（安全政策 `agent_self_create_enabled`
+目前為開）。前端以「兩者任一為真」決定「我的 agent」的選單與路由是否開放，**不看角色**；
+值與 `GET /my/agents` 回應的自建狀態同源。兩欄只供顯示，查詢失敗時皆為 `false`，
+`/my/agents` 與鑰匙端點各自的守衛才是強制點。與 `is_approver` 相同，它們在登入時與每次
+`GET /auth/me` 時現算，建立或轉移 agent 後重新整理頁面即反映。
 
 ### 自助更新個人資料
 
@@ -3018,7 +3025,7 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
   "roles": ["user"]
 }
 ```
-（`username` 3-50 字元、`email` 需合法、用戶名重複回 400；`password` 除 binding 下限外，
+（`username` 3-50 字元、用戶名重複回 400；`email` 依 `kind` 區分：human 必填且需合法，agent 選填（省略或空字串存 NULL），有帶仍須合法；`password` 除 binding 下限外，
 另過密碼政策 validator——預設最小長度 12、須含字母與數字，違規回 400 附可讀原因）
 
 建立的 human 帳號一律標記 `must_change_password`：使用者以此處設定的初始密碼首次登入時，
@@ -3035,14 +3042,16 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 `allowed_cidrs_families`（見下段）。
 
 注意：登入/`/auth/me` 回應用的是精簡 `UserInfo`（`id/username/email/full_name/local_display_name/
-display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver`），
+display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver/
+owns_agents/can_self_create_agent`），
 不含上述欄位；完整欄位僅見於 `/users` 管理端點。
 
 ### Agent 主體與 token
 
 `User` 另含 `kind`（`human`／`agent`，省略預設 human）、`owner_user_id`（agent 必填）、
 `breaker_pending_at`（只讀、可空）。POST `/users` 建 agent 時須省略 `password`，指定啟用中的
-human owner，例如 `{"username":"automation-worker","email":"worker@example.test","kind":"agent","owner_user_id":12,"roles":["user"]}`。
+human owner，例如 `{"username":"automation-worker","kind":"agent","owner_user_id":12,"roles":["user"]}`；
+`email` 對 agent 選填，省略時以 NULL 儲存，多個無 email 的 agent 可並存。
 agent 不能登入、改密、使用 MFA，也不能取得 admin／auditor／approver 角色或審核範圍。
 `kind` 建立後不可變；PUT `/users/:id` 可更換 agent 的 owner，仍須為啟用中的 human。
 owner 仍有 agent 時刪除回 409，附 `agent_ids`。列表預設排除 agent，顯式 `include_agents=true` 才合併列出。

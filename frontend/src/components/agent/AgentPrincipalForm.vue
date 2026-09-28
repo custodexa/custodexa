@@ -94,8 +94,20 @@ async function submit() {
   if (username.value.trim().length < 3) { error.value = t('users.usernameLength'); return }
   busy.value = true
   try {
-    const result = await createAgentPrincipal({ username: username.value.trim(), owner_user_id: ownerId.value, roles: ['user'] })
-    if (!disposed) emit('created', result)
+    const name = username.value.trim()
+    const result = await createAgentPrincipal({ username: name, owner_user_id: ownerId.value, roles: ['user'] })
+    // 帶出新 agent 本身（id、名稱、負責人帳號），讓父層接著顯示「下一步：發鑰匙」
+    // 並直接打開它的鑰匙抽屜。負責人帳號取自剛選的名單，後端回應不一定帶
+    const created = result?.data && typeof result.data === 'object' ? result.data : (result || {})
+    const owner = owners.value.find(item => item.id === ownerId.value)
+    const agent = {
+      ...created,
+      kind: 'agent',
+      username: created.username || name,
+      owner_user_id: created.owner_user_id ?? ownerId.value,
+      owner_username: created.owner_username || owner?.username || '',
+    }
+    if (!disposed) emit('created', agent)
   } catch (cause) { if (!disposed) error.value = resolveApiError(cause?.response?.data, cause?.response?.status) }
   finally { if (!disposed) busy.value = false }
 }

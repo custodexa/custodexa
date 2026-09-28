@@ -162,9 +162,13 @@ type CreateUserRequest struct {
 	OwnerUserID      *uint              `json:"owner_user_id"`
 	Username         string             `json:"username" binding:"required,min=3,max=50"`
 	Password         string             `json:"password" binding:"required_unless=Kind agent,omitempty,min=6"`
-	Email            string             `json:"email" binding:"required,email"`
-	FullName         string             `json:"full_name"`
-	Roles            []string           `json:"roles"` // 角色名稱列表
+	// Email 對 human 必填且驗格式；agent 不收信、不登入，選填（有帶仍驗格式）。
+	// 未帶或空字串經 normalizeEmail 存 NULL——存空字串會讓第二個無 email 的
+	// agent 撞 email 唯一索引。管理端建 agent 的表單不送 email
+	// （契約見 api/testdata/agent_create_payload.json）
+	Email    string   `json:"email" binding:"required_unless=Kind agent,omitempty,email"`
+	FullName string   `json:"full_name"`
+	Roles    []string `json:"roles"` // 角色名稱列表
 	// AllowedCIDRs 允許來源網段清單；省略＝不限。逐項驗證與正規化由
 	// sourceip 單一實作承載，任一項不合法整體拒絕
 	AllowedCIDRs []string `json:"allowed_cidrs"`

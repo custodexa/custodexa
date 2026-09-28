@@ -178,45 +178,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-// 側欄選單 icon 一律取自 lucide-vue-next（ISC；已入第三方授權清單）：
-// 語彙比 Element Plus 內建集合寬，讓每個選單項有專屬 icon、同視角下不重複
+// header 用到的 icon；側欄選單的宣告（含其 icon）在 ./sidebarMenu.js
 import {
   ChevronDown,
-  ClipboardCheck,
-  Gauge,
-  Scale,
-  SquareTerminal,
-  Server,
-  TicketCheck,
-  RotateCcwKey,
-  Layers,
-  MonitorPlay,
-  Cable,
-  ClipboardList,
-  Stamp,
-  TextSearch,
-  FileClock,
-  HardDriveDownload,
-  ScrollText,
-  Terminal,
-  BellRing,
-  ShieldCheck,
-  ListChecks,
-  User,
-  UserCog,
-  Users,
-  UserCheck,
-  IdCard,
-  Shield,
-  SlidersHorizontal,
-  KeyRound,
-  KeySquare,
-  Waypoints,
-  CloudUpload,
   CircleUserRound,
   PanelLeftOpen,
   PanelLeftClose,
-  Bot,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
@@ -228,6 +195,8 @@ import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
 import { clearSession } from '@/utils/session'
 import { detailSubject } from '@/utils/detailTitle'
+import { canEnter, entryRuleFor, entrySubject } from '@/router/entryRules'
+import { MENU_GROUPS } from './sidebarMenu'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -241,248 +210,30 @@ const isAdmin = ref(false)
 const userRoles = ref([])
 const isCollapsed = ref(localStorage.getItem(COLLAPSE_KEY) === 'true')
 
-// 選單資料只存 i18n key；譯文在 visibleGroups computed
-// 內以 t() 解出——computed 追蹤 locale，切語言即時重繪
-const menuGroups = [
-  {
-    labelKey: 'menu.group.overview',
-    items: [
-      { path: '/dashboard', titleKey: 'menu.dashboard', icon: Gauge },
-      // 工作區入口：同分頁導航，工作區「◀」返回；
-      // 工作區本體為純連線面，不因此新增任何門戶功能
-      { path: '/workspace', titleKey: 'menu.workspace', icon: SquareTerminal },
-    ],
-  },
-  {
-    labelKey: 'menu.group.assets',
-    items: [
-      // 一般 user 視角顯示「我的資產」：同一頁面、僅文案分角色
-      {
-        path: '/assets',
-        titleKey: 'menu.assets',
-        userTitleKey: 'menu.myAssets',
-        icon: Server,
-      },
-      { path: '/credentials', titleKey: 'menu.credentials', icon: KeySquare, adminOnly: true },
-      { path: '/authorizations', titleKey: 'menu.authorizations', icon: TicketCheck, adminOnly: true },
-      { path: '/change-secret-plans', titleKey: 'menu.changeSecretPlans', icon: RotateCcwKey, adminOnly: true },
-      { path: '/change-secret-batches', titleKey: 'menu.changeSecretBatches', icon: Layers, adminOnly: true },
-    ],
-  },
-  {
-    labelKey: 'menu.group.sessions',
-    items: [
-      // session 管理視圖收斂為稽核職能；
-      // 一般 user 走自助「我的連線」，以「不具 admin/auditor」判定（非 roles 含 user）
-      {
-        path: '/sessions',
-        titleKey: 'menu.sessions',
-        icon: MonitorPlay,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        path: '/my-connections',
-        titleKey: 'menu.myConnections',
-        icon: Cable,
-        hideRoles: ['admin', 'auditor'],
-      },
-      {
-        // 我的申請：申請人自助頁，
-        // 與我的連線同屬一般 user 自助入口
-        path: '/my-requests',
-        titleKey: 'menu.myRequests',
-        icon: ClipboardList,
-        hideRoles: ['admin', 'auditor'],
-      },
-      { path: '/my-agents', titleKey: 'menu.myAgents', icon: ClipboardList, hideRoles: ['admin', 'auditor'] },
-    ],
-  },
-  {
-    labelKey: 'menu.group.approval',
-    items: [
-      // 審核中心。**不做 admin 兜底**
-      // ——僅具 admin 者對審核端點一律 403，留著入口只會把他導向一個假空態頁面。
-      // `approver` 述詞由 effectiveApprover（/auth/me 的 is_approver）判定，
-      // 與路由守衛、badge 輪詢同一來源
-      {
-        path: '/approvals',
-        titleKey: 'menu.approvals',
-        icon: Stamp,
-        roles: ['approver'],
-        badge: 'approvals',
-      },
-    ],
-  },
-  {
-    labelKey: 'menu.group.audit',
-    items: [
-      {
-        // 稽核調查工作台（auditor-workbench）：置於審計群**首項**——
-        // 調查是最高頻入口，其餘六頁承載的是審閱、簽核、監看等作業，
-        // 工作台與它們並存而非取代
-        path: '/audit/workbench',
-        titleKey: 'menu.auditWorkbench',
-        icon: TextSearch,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        // 任務聚合與工作台共用稽核權限。
-        path: '/audit/agent-tasks',
-        titleKey: 'agentTasks.title',
-        icon: TextSearch,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        path: '/rotation-evidence',
-        titleKey: 'menu.rotationEvidence',
-        icon: FileClock,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        // 下載中心：緊接工作台——證據包由工作台發起、
-        // 在這裡取件，兩者是同一條動線的前後兩段
-        path: '/audit/exports',
-        titleKey: 'menu.auditExports',
-        icon: HardDriveDownload,
-        roles: ['admin', 'auditor'],
-      },
-      // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
-      {
-        path: '/audit-logs',
-        titleKey: 'menu.auditLogs',
-        icon: ScrollText,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        path: '/commands',
-        titleKey: 'menu.commands',
-        icon: Terminal,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        path: '/alerts',
-        titleKey: 'menu.alerts',
-        icon: BellRing,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        // 檢查點驗證（audit-checkpoint-chain）：序列完整性證明，稽核職能
-        path: '/checkpoint-verification',
-        titleKey: 'menu.checkpointVerification',
-        icon: ShieldCheck,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        // 存取複審：稽核職能歸審計區
-        path: '/access-reviews',
-        titleKey: 'menu.accessReviews',
-        icon: ListChecks,
-        roles: ['admin', 'auditor'],
-      },
-      {
-        // 合規對照：設定對各政策組的判定結果，唯讀。放稽核區而非設定區——
-        // 它回答的是「符不符」而不是「怎麼設」，讀者是稽核人員
-        path: '/compliance-map',
-        titleKey: 'menu.complianceMap',
-        icon: ClipboardCheck,
-        roles: ['admin', 'auditor'],
-      },
-    ],
-  },
-  // 系統管理拆兩組：身分自成領域、政策開關收設定域
-  {
-    labelKey: 'menu.group.identity',
-    adminOnly: true,
-    items: [
-      { path: '/users', titleKey: 'menu.users', icon: User, adminOnly: true },
-      // AI agent 主體自成一個入口：從側欄走到某個 agent 的鑰匙，原本要先進
-      // 使用者管理、再拉類型下拉、再挑人。預篩後只剩「進來、按鑰匙」兩步
-      { path: '/users?kind=agent', titleKey: 'menu.agentPrincipals', icon: Bot, adminOnly: true },
-      { path: '/roles', titleKey: 'menu.roles', icon: UserCog, adminOnly: true },
-      { path: '/user-groups', titleKey: 'menu.userGroups', icon: Users, adminOnly: true },
-      { path: '/approver-scopes', titleKey: 'menu.approverScopes', icon: UserCheck, adminOnly: true },
-      {
-        // 身分來源：目錄與身分提供者合併為一項。兩者是同一件事的兩種接法，
-        // 分成兩個選單項會逼設定者先判斷「我要接的算哪一種」才找得到頁
-        path: '/identity-sources',
-        titleKey: 'menu.identitySources',
-        icon: IdCard,
-        adminOnly: true,
-      },
-    ],
-  },
-  {
-    labelKey: 'menu.group.settings',
-    adminOnly: true,
-    items: [
-      {
-        path: '/security-policies',
-        titleKey: 'menu.securityPolicies',
-        icon: Shield,
-        adminOnly: true,
-      },
-      {
-        // 政策組：條文與要求的維護面。緊接安全政策——
-        // 設定值與它要對照的條文是同一件事的兩面
-        path: '/policy-groups',
-        titleKey: 'menu.policyGroups',
-        icon: Scale,
-        adminOnly: true,
-      },
-      {
-        path: '/access-control',
-        titleKey: 'menu.accessControl',
-        icon: SlidersHorizontal,
-        adminOnly: true,
-      },
-      {
-        path: '/key-management',
-        titleKey: 'menu.keyManagement',
-        icon: KeyRound,
-        adminOnly: true,
-      },
-      {
-        path: '/transmission-inventory',
-        titleKey: 'menu.transmissionInventory',
-        icon: Waypoints,
-        adminOnly: true,
-      },
-      {
-        // 離機儲存：證據副本的落點設定與上傳佇列。
-        // 緊接金鑰管理與傳輸清冊——三者同屬「證據放哪裡、怎麼過去、誰解得開」
-        path: '/offsite-storage',
-        titleKey: 'menu.offsiteStorage',
-        icon: CloudUpload,
-        adminOnly: true,
-      },
-    ],
-  },
-]
-
 // 有效審核資格（群組即資格）：roles 快取蓋不到
 // 「審核方群組成員」——以 /auth/me 的 is_approver 判定（後端即時計算）。
 // 初值先取登入時寫入 localStorage 的 is_approver，避免首屏閃爍；掛載後以
 // /auth/me 覆蓋（角色/群組變更即時反映）
 const effectiveApprover = ref(false)
+// 「我的 agent」入口資格的兩個成分（負責至少一個 agent／政策允許自建），
+// 與 is_approver 同一條路徑取得：登入快取先用、掛載後以 /auth/me 覆蓋並回寫
+const ownsAgents = ref(false)
+const canSelfCreateAgent = ref(false)
 
-// 項目可見性：adminOnly 僅 admin；roles 列表需與使用者角色有交集；
-// **`approver` 例外——不從 roles 快取比對，一律走 effectiveApprover**
-//（僅具 admin 者沒有審核資格，群組審核方沒有 approver 角色卻有資格。
-// 兩個方向都證明 roles 陣列不是這個述詞的正確來源）；
-// hideRoles 命中任一即隱藏（自助入口「不具 admin/auditor 才顯示」）
+// 選單可見性與路由守衛**同一個判斷**（router/entryRules.js 的 canEnter）：
+// 同一份規則、同一種身分正規化，選單看得到的就是網址進得去的。
+// 規則表查不到的項目 fail-closed 不顯示
+const subject = computed(() =>
+  entrySubject({
+    roles: userRoles.value,
+    is_approver: effectiveApprover.value,
+    owns_agents: ownsAgents.value,
+    can_self_create_agent: canSelfCreateAgent.value,
+  })
+)
 const isItemVisible = (item) => {
-  if (item.adminOnly && !isAdmin.value) return false
-  if (item.roles) {
-    const staticRoles = item.roles.filter((role) => role !== 'approver')
-    const allowed =
-      staticRoles.some((role) => userRoles.value.includes(role)) ||
-      (item.roles.includes('approver') && effectiveApprover.value)
-    if (!allowed) return false
-  }
-  if (item.hideRoles && item.hideRoles.some((role) => userRoles.value.includes(role))) {
-    return false
-  }
-  return true
+  const rule = entryRuleFor(item.path)
+  return Boolean(rule) && canEnter(rule, subject.value)
 }
 
 // 非特權角色以 userTitle 覆寫顯示名（我的資產）；判定與自助入口同口徑（不具 admin/auditor）
@@ -491,8 +242,7 @@ const isPrivileged = computed(
 )
 
 const visibleGroups = computed(() =>
-  menuGroups
-    .filter((group) => !group.adminOnly || isAdmin.value)
+  MENU_GROUPS
     .map((group) => ({
       ...group,
       label: t(group.labelKey),
@@ -671,16 +421,26 @@ const startApprovalBadgePolling = () => {
   badgeTimer = setInterval(refreshApprovalBadge, BADGE_POLL_MS)
 }
 
-// 審核資格的權威判定（群組即資格、admin 不兜底）：/auth/me 現算。
+// 入口資格的權威判定：/auth/me 現算的 is_approver（群組即資格、admin 不兜底）
+// 與「我的 agent」兩欄（owns_agents／can_self_create_agent）。
 // 查失敗靜默——沿用 localStorage 快取值（後端守衛才是強制點）。
-// **回寫 localStorage**：路由守衛是同步的、只讀得到快取，不回寫的話
-// 「剛被指派 approver 的人」選單會亮但直接進頁被守衛擋掉（兩套述詞的老毛病）
-const refreshEffectiveApprover = async () => {
+// **回寫 localStorage**：路由守衛是同步讀快取的，不回寫的話
+// 「剛被指派 approver 的人」或「剛成為 agent 負責人的人」選單會亮、
+// 直接進頁卻被守衛擋掉（兩套述詞的老毛病）
+const refreshEntryFlags = async () => {
   try {
     const me = await getCurrentUser()
+    const info = me?.data && typeof me.data === 'object' && !Array.isArray(me.data) ? me.data : me
     const wasApprover = effectiveApprover.value
     effectiveApprover.value = !!(me?.is_approver ?? me?.data?.is_approver)
-    persistApproverFlag(effectiveApprover.value)
+    // agent 兩欄只在回應帶了才採信：缺欄（例如舊版後端）不把快取改成 false
+    const updates = { is_approver: effectiveApprover.value }
+    for (const key of ['owns_agents', 'can_self_create_agent']) {
+      if (info && typeof info[key] === 'boolean') updates[key] = info[key]
+    }
+    if ('owns_agents' in updates) ownsAgents.value = updates.owns_agents
+    if ('can_self_create_agent' in updates) canSelfCreateAgent.value = updates.can_self_create_agent
+    persistEntryFlags(updates)
     if (effectiveApprover.value && !wasApprover && !badgeTimer) {
       startApprovalBadgePolling()
     }
@@ -698,14 +458,16 @@ const refreshEffectiveApprover = async () => {
   }
 }
 
-// 把現算的 is_approver 寫回使用者快取，讓同步的路由守衛與選單同源
-const persistApproverFlag = (value) => {
+// 把現算的入口資格寫回使用者快取，讓同步的路由守衛與選單同源。
+// 值未變時不寫、不廣播（避免無謂喚醒下游）
+const persistEntryFlags = (updates) => {
   const user = localStorage.getItem('user')
   if (!user) return
   try {
     const userData = JSON.parse(user)
-    if (userData.is_approver === value) return
-    userData.is_approver = value
+    const changed = Object.entries(updates).filter(([key, value]) => userData[key] !== value)
+    if (changed.length === 0) return
+    for (const [key, value] of changed) userData[key] = value
     localStorage.setItem('user', JSON.stringify(userData))
     // 同分頁的其他元件（儀表板待審卡）沒有別的管道知道資格變了：
     // storage 事件不在同分頁觸發，故沿用自助更新那條自訂事件。
@@ -726,8 +488,11 @@ const syncUserFromStorage = () => {
     const roles = userData.roles || []
     userRoles.value = roles
     isAdmin.value = roles.includes('admin')
-    // 首屏先用登入時寫入的 is_approver，避免 /auth/me 回來前選單閃爍
-    effectiveApprover.value = userData.is_approver === true
+    // 首屏先用登入時寫入的入口資格，避免 /auth/me 回來前選單閃爍
+    const cached = entrySubject(userData)
+    effectiveApprover.value = cached.isApprover
+    ownsAgents.value = cached.ownsAgents
+    canSelfCreateAgent.value = cached.canSelfCreateAgent
   } catch (e) {
     console.error('解析使用者資料失敗:', e)
   }
@@ -749,7 +514,7 @@ onMounted(() => {
   window.addEventListener('ot-user-updated', syncUserFromStorage)
   window.addEventListener('ot-approvals-changed', onApprovalsChanged)
   startApprovalBadgePolling()
-  refreshEffectiveApprover()
+  refreshEntryFlags()
   startInstanceGuardPolling()
 })
 </script>

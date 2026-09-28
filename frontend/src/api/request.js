@@ -107,6 +107,7 @@ request.interceptors.response.use(
 
       if (status === 401 && shouldRefresh401(data, config.url)) {
         // access token 失效：未重試過先透明刷新後重試原請求；終敗才清憑證導向
+        let transportFailure = false
         if (!config._retried) {
           const staleToken = (config.headers?.Authorization || '').replace(
             'Bearer ',
@@ -122,14 +123,22 @@ request.interceptors.response.use(
           } catch (refreshError) {
             // 刷新回應帶新的 access token，同樣不得印本體
             console.error('會話刷新失敗:', redactAxiosError(refreshError))
+            // 沒有回應（傳輸失敗、逾時、頁面導向中）不是認證結論：不清會話、不導向。
+            // 頁面開始導向時續期請求在本頁先被拒、實際仍在背景完成，此時清掉同源
+            // 共享的登入跡象或改導登入頁，等於把一次導向變成登出
+            transportFailure = !refreshError?.response
             // 刷新終敗：若本分頁從未成功續期過且頁面走 http，登入頁要能回答
             // 「為什麼又要我登入」。條件判定在 reloginContext 內，
             // 寫入必須發生在 clearSessionAndRedirect 之前（那是整頁載入）
-            recordInsecureTransportRelogin()
+            if (!transportFailure) recordInsecureTransportRelogin()
           }
         }
-        message = t('api.sessionExpired')
-        clearSessionAndRedirect()
+        if (transportFailure) {
+          message = t('api.networkError')
+        } else {
+          message = t('api.sessionExpired')
+          clearSessionAndRedirect()
+        }
       } else {
         // 業務 401 與所有非 401：code 三層降級（code 譯文 → 後端 error → 通用語），
         // 不刷新、不導向——業務錯誤刷新無用，且不該把帳密/驗證碼錯當 session 過期

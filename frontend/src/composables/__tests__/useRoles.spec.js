@@ -47,7 +47,7 @@ describe('useRoles（角色判定唯一入口）', () => {
   })
 
   it('矛盾快取：is_approver 明確為 false 壓過殘留的 approver 角色', () => {
-    // persistApproverFlag 只改 is_approver、不動 roles，撤角色後兩者會並存且矛盾。
+    // persistEntryFlags 只改 is_approver、不動 roles，撤角色後兩者會並存且矛盾。
     // 權威值是 is_approver（後端現算），寫成 OR 會讓過期角色復活資格並打出必敗請求。
     setUser(['user', 'approver'], false)
     const r = useRoles()

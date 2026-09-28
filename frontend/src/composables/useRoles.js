@@ -34,7 +34,7 @@ export function hasRole(list, name) {
  * 三態而非 OR：`is_approver` 存在時它就是權威值，缺欄時才退回角色判定。
  * 寫成 `is_approver === true || roles.includes('approver')` 會在
  * 「/auth/me 已回寫 is_approver:false、roles 快取仍留著撤銷前的 approver」時判成真
- * ——那正是 persistApproverFlag 的寫法造成的狀態（它只改 is_approver、不動 roles）。
+ * ——那正是 persistEntryFlags 的寫法造成的狀態（它只改 is_approver、不動 roles）。
  */
 export function effectiveApproverFrom(parsed) {
   if (!parsed) return false

@@ -13,7 +13,7 @@
 // 本模組若回頭 import 它就構成模組環，而環在 bundler 下的求值順序不是我們能
 // 保證的東西（沿封印相位模組的既有理由）。續期請求也因此不經攔截器，
 // 它自己的 401 不會遞迴觸發續期。
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 import {
   markRefreshSucceeded,
   recordInsecureTransportRelogin,
@@ -36,6 +36,13 @@ const LOGIN_PATH = '/login'
 // 無需 withCredentials）；憑證不可讀也就無從由 JS 帶入請求本文
 const REFRESH_URL = '/api/v1/auth/refresh'
 const REFRESH_TIMEOUT_MS = 10000
+
+// 在途標記的鍵。值只有時戳與隨機識別，**不含任何憑證**（理由同 SIGNAL_KEY）
+const INFLIGHT_KEY = 'ot-refresh-inflight'
+// 前一位持鎖者於請求途中消失時，給它的回應多久時間落地。
+// 取與自身逾時相同的預算：本分頁自己送出時也只等這麼久
+const ORPHAN_REFRESH_WAIT_MS = REFRESH_TIMEOUT_MS
+const ORPHAN_POLL_MS = 100
 
 // 唯一的持有處：模組閉包變數，不掛 window、不落任何儲存
 let accessToken = ''
@@ -111,23 +118,159 @@ export function announceLogin() {
   broadcastSignal(SIGNAL_LOGIN)
 }
 
-const postRefresh = () =>
-  axios.post(REFRESH_URL, {}, { timeout: REFRESH_TIMEOUT_MS })
+// —— 回應遺失 ——
+//
+// 後端在回應送達前就已提交輪替：舊憑證標為已輪替、新憑證只存在於回應的
+// Set-Cookie 裡。回應若沒有落地，瀏覽器的 cookie 停在舊憑證，而下一次換發
+// 帶著它上門，後端無從分辨它與竊得憑證的重放，於是撤銷整個家族、所有分頁登出。
+// 回應遺失的來源有三：
+// - 分頁在請求途中重新載入、導向或關閉：一般請求隨頁面卸載被中止；
+// - 呼叫端逾時而中止請求；
+// - 持鎖者消失時鎖隨之釋放，排隊者立刻以舊 cookie 送出，而前一個回應還在路上。
+// 對應的三個做法：keepalive 傳輸（卸載後請求照常完成、cookie 照常寫回）、
+// 逾時只通知呼叫端而不中止請求（鎖持有到請求落地）、在途標記（見 waitForOrphanedRefresh）。
+// 網路在回應途中斷線這一種，前端無從補救。
 
-const doRefresh = async (staleToken) => {
-  // 同頁短路：自助改密剛換過 token，而某個以舊 token 發出的請求此刻才回 401。
-  // 記憶體裡已經是新的，直接沿用即可，不必再輪替一次憑證。
-  // staleToken 取不到（原請求無 Authorization header）時不可短路，
-  // 否則會誤判「已更新」而拿同一個失效 token 重試
-  if (staleToken && accessToken && accessToken !== staleToken) {
-    return accessToken
+const noop = () => {}
+
+// keepalive 傳輸：自訂 axios adapter，讓呼叫端仍拿到 axios 形狀的回應與錯誤。
+// 不掛中止訊號：中止＝丟棄回應＝cookie 停在已輪替的舊憑證
+const keepaliveRefreshAdapter = async (config) => {
+  const res = await fetch(config.url, {
+    method: 'POST',
+    keepalive: true,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  let data = null
+  try {
+    data = await res.json()
+  } catch {
+    data = null
   }
-  // 無「本地有沒有憑證」的前置檢查：cookie 對 script 不可見，有無一律交給
-  // 後端回答——沒帶 cookie 時後端回 401，呼叫端據以導向登入
-  const { data } = await postRefresh()
-  setAccessToken(data.token)
-  markRefreshSucceeded()
-  return data.token
+  const response = {
+    data,
+    status: res.status,
+    statusText: res.statusText,
+    headers: {},
+    config,
+    request: null,
+  }
+  if (res.ok) return response
+  throw new AxiosError(
+    `Request failed with status code ${res.status}`,
+    AxiosError.ERR_BAD_RESPONSE,
+    config,
+    null,
+    response
+  )
+}
+
+const postRefresh = () =>
+  axios.post(REFRESH_URL, {}, { adapter: keepaliveRefreshAdapter })
+
+const withTimeout = (promise, ms) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error(`refresh timeout of ${ms}ms exceeded`)
+      err.code = 'ECONNABORTED'
+      reject(err)
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const readInflightMarker = () => {
+  try {
+    const parsed = JSON.parse(window.localStorage?.getItem(INFLIGHT_KEY) || 'null')
+    return typeof parsed?.at === 'number' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const writeInflightMarker = () => {
+  const id = Math.random().toString(36).slice(2)
+  try {
+    window.localStorage?.setItem(INFLIGHT_KEY, JSON.stringify({ at: Date.now(), id }))
+  } catch {
+    // 忽略：儲存被封鎖時退回無標記的行為
+  }
+  return id
+}
+
+// 只清自己寫的標記：無 Web Locks 的瀏覽器裡，他分頁可能已寫上它自己的
+const clearInflightMarker = (id) => {
+  try {
+    if (readInflightMarker()?.id === id) window.localStorage?.removeItem(INFLIGHT_KEY)
+  } catch {
+    // 忽略
+  }
+}
+
+/**
+ * 在途標記由持鎖者於送出前寫入、請求落地後清除，全程在鎖內。
+ * 因此新的持鎖者一接手就看到標記，只有一種可能：前一位持鎖者在請求途中消失
+ * （頁面卸載使鎖釋放），它的回應可能還在路上。等標記清除或預算用盡再送出，
+ * 讓那個回應先把 cookie 寫回。預算自標記時戳起算，逾時已久的標記不造成等待。
+ */
+const waitForOrphanedRefresh = async () => {
+  for (;;) {
+    const marker = readInflightMarker()
+    if (!marker) return
+    const remaining = marker.at + ORPHAN_REFRESH_WAIT_MS - Date.now()
+    if (remaining <= 0) return
+    await sleep(Math.min(ORPHAN_POLL_MS, remaining))
+  }
+}
+
+/**
+ * 鎖內的一次換發。回傳兩個 promise：
+ * - result：交給呼叫端的新 token，逾時即拒絕（呼叫端照舊據以導向登入）；
+ * - settled：請求本身落地（或根本沒有送出）才完成，鎖持有到此刻。
+ */
+const runRefresh = (staleToken) => {
+  let networkSettled = Promise.resolve()
+  const result = (async () => {
+    // 同頁短路：自助改密剛換過 token，而某個以舊 token 發出的請求此刻才回 401。
+    // 記憶體裡已經是新的，直接沿用即可，不必再輪替一次憑證。
+    // staleToken 取不到（原請求無 Authorization header）時不可短路，
+    // 否則會誤判「已更新」而拿同一個失效 token 重試
+    if (staleToken && accessToken && accessToken !== staleToken) {
+      return accessToken
+    }
+    await waitForOrphanedRefresh()
+    // 無「本地有沒有憑證」的前置檢查：cookie 對 script 不可見，有無一律交給
+    // 後端回答——沒帶 cookie 時後端回 401，呼叫端據以導向登入
+    const markerId = writeInflightMarker()
+    const request = postRefresh()
+    // 標記只在拿到回應後清除（成功或 HTTP 錯誤皆是）。沒有回應的拒絕——
+    // 頁面開始導向時 keepalive 請求在本頁的 promise 會先被拒——請求可能仍在
+    // 背景送完、後端照樣輪替，標記留給下一位持鎖者等待
+    networkSettled = request.then(
+      () => clearInflightMarker(markerId),
+      (error) => {
+        if (error?.response) clearInflightMarker(markerId)
+      }
+    )
+    const { data } = await withTimeout(request, REFRESH_TIMEOUT_MS)
+    setAccessToken(data.token)
+    markRefreshSucceeded()
+    return data.token
+  })()
+  const settled = result.then(noop, noop).then(() => networkSettled)
+  return { result, settled }
 }
 
 /**
@@ -138,15 +281,29 @@ const doRefresh = async (staleToken) => {
  */
 export function refreshAccessToken(staleToken) {
   if (!refreshInFlight) {
+    let resolveDelivered
+    let handedOver = false
+    const delivered = new Promise((resolve) => {
+      resolveDelivered = resolve
+    })
+    const critical = () => {
+      const { result, settled } = runRefresh(staleToken)
+      handedOver = true
+      resolveDelivered(result)
+      return settled
+    }
     // Web Locks 可用時跨分頁序列化：兩個分頁同時以同一枚續期憑證輪替會觸發
     // 重放偵測而全部登出。不支援的瀏覽器退回單頁去重，不另做相容分支
-    const run =
+    const lockAvailable =
       typeof navigator !== 'undefined' && navigator.locks?.request
-        ? navigator.locks.request('custodexa-token-refresh', () =>
-            doRefresh(staleToken)
-          )
-        : doRefresh(staleToken)
-    refreshInFlight = Promise.resolve(run).finally(() => {
+    const run = lockAvailable
+      ? navigator.locks.request('custodexa-token-refresh', critical)
+      : Promise.resolve().then(critical)
+    // 取鎖本身失敗時 critical 不會執行；把錯誤交給呼叫端，而非讓它永遠等下去
+    Promise.resolve(run).catch((error) => {
+      if (!handedOver) resolveDelivered(Promise.reject(error))
+    })
+    refreshInFlight = delivered.finally(() => {
       refreshInFlight = null
     })
   }
@@ -164,7 +321,10 @@ export function ensureSession() {
   if (!restoreInFlight) {
     restoreInFlight = refreshAccessToken('')
       .then(() => true)
-      .catch(() => {
+      .catch((error) => {
+        // 沒有回應（傳輸失敗、逾時、頁面導向中）不是認證結論：登入跡象同源共享，
+        // 在此清掉會讓他分頁與導向後的新頁面都直接判定未登入
+        if (!error?.response) return false
         // 續期終敗：登入頁要能回答「為什麼又要我登入」。條件判定在該模組內，
         // 且寫入必須發生在導向之前
         recordInsecureTransportRelogin()

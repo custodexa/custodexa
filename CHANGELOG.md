@@ -2,6 +2,49 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.12.4 — interrupted session renewals, agent creation from user management, and one rule for menus and direct links (2026-09-28)
+
+No schema change. No migration runs.
+
+### What changes for deployers
+
+- The `user` object in the login response and the response of `GET /api/v1/auth/me` have two new
+  boolean fields. `owns_agents` is true when the account owns at least one agent that has not been
+  deleted. `can_self_create_agent` is true when the policy setting `agent_self_create_enabled` is
+  on. The server does not use either field to allow or refuse a request; the web UI reads them to
+  decide whether My agents is in the sidebar and whether `/my-agents` opens.
+- Each sidebar item and its address follow the same rule: when an item is not in someone's sidebar,
+  opening its address takes them to the dashboard. My connections and My requests stay in the
+  sidebar only for accounts with neither the `admin` nor the `auditor` role, and an account with
+  either role that opens `/my-connections` or `/my-requests` directly now lands on the dashboard.
+- My agents is in the sidebar for anyone who owns at least one agent, whatever their roles, and for
+  everyone who signs in while `agent_self_create_enabled` is on. An administrator or auditor who
+  owns an agent now sees it. Someone who owns no agent does not see it while the setting is off, as
+  it is at the factory, and `/my-agents` takes them to the dashboard.
+- When someone is given an agent, loses their last one, or the setting changes, My agents appears
+  or disappears for them after they reload the page.
+- `POST /api/v1/users` no longer requires `email` when `kind` is `agent`. An agent created without
+  an email, or with an empty one, is stored with none, and several such agents can exist side by
+  side. An email that is given is still checked for format. Human accounts, including requests that
+  leave out `kind`, still need a valid email.
+
+### Fixes
+
+- Reloading, leaving or closing a tab while it renews the session, or a renewal that takes longer
+  than 10 seconds, no longer signs every tab out. The browser now finishes the renewal after the
+  page is gone and keeps the renewed sign-in; in Firefox this needs version 133 or later. A tab
+  reloaded during a renewal waits up to 10 seconds before it restores the session.
+- While the UI is in use, a session renewal that gets no response, such as on a network failure or
+  a time-out, shows a network error and keeps the session. A renewal answered with an error status,
+  including a 502, 503 or 504 from the proxy, still ends the session and returns to the sign-in
+  page.
+- Creating an agent from Users (New User, principal type AI agent) failed with "Invalid request
+  parameters" whatever was entered. It now creates the agent.
+- After an agent is created there, the dialog stays open with the agent's name, its owner and the
+  next step. Issue key now opens the agent's keys, and Issue later closes the dialog.
+- In Users, editing an agent that has no email no longer asks for one.
+- My agents no longer shares its sidebar icon with My requests.
+
 ## 1.12.3 — recordings on Linux hosts, key sign-in for the SSH connection test, and plain alert titles (2026-09-24)
 
 No schema change. No migration runs.

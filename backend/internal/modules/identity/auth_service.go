@@ -278,6 +278,13 @@ type UserInfo struct {
 	// 具 approver 角色 OR 屬任一審核方群組——前端審核中心入口/badge 依此判定
 	//（roles 陣列蓋不到群組成員的情形）
 	IsApprover bool `json:"is_approver"`
+	// OwnsAgents：名下至少有一個 agent 主體（已刪除者不計）。
+	// CanSelfCreateAgent：安全政策目前允許自行建立 agent。
+	// 兩欄合起來就是「我的 agent」入口的資格（負責至少一個，或允許自建），
+	// **不看角色**——前端選單與路由守衛讀同一組值，比照 IsApprover 的做法。
+	// 值與 GET /my/agents 的自建狀態同源（MyAgentCreationStatus）；查失敗兩欄皆 false
+	OwnsAgents         bool `json:"owns_agents"`
+	CanSelfCreateAgent bool `json:"can_self_create_agent"`
 	// SourceIP 本人這次請求的來源位址，**僅由 `GET /auth/me` 填寫、僅供顯示**
 	// （允許網段表單的「你目前的來源」）。不參與任何判定——落入與否一律問
 	// 判定端點，前端自算必與強制點分歧。
@@ -1082,6 +1089,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 	if err != nil {
 		isApprover = false
 	}
+	ownsAgents, canSelfCreate := agentEntryFlags(database.DB, user.ID)
 
 	userInfo := &UserInfo{
 		ID:                 user.ID,
@@ -1097,6 +1105,8 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 		ExternalCredential: user.ExternalCredential,
 		ProvisioningOrigin: user.ProvisioningOrigin,
 		IsApprover:         isApprover,
+		OwnsAgents:         ownsAgents,
+		CanSelfCreateAgent: canSelfCreate,
 	}
 
 	return &LoginResponse{
@@ -1312,6 +1322,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 	if err != nil {
 		isApprover = false
 	}
+	ownsAgents, canSelfCreate := agentEntryFlags(database.DB, user.ID)
 
 	return &UserInfo{
 		ID:                 user.ID,
@@ -1327,6 +1338,8 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 		ExternalCredential: user.ExternalCredential,
 		ProvisioningOrigin: user.ProvisioningOrigin,
 		IsApprover:         isApprover,
+		OwnsAgents:         ownsAgents,
+		CanSelfCreateAgent: canSelfCreate,
 	}, nil
 }
 

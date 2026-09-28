@@ -2,7 +2,9 @@
 
 ## Purpose
 管理員對使用者帳號的管理語義：email 唯一性衝突以友善訊息呈現、未知 email 以 NULL 表示，使用者更新採欄位級審計差異，帳號標註供應來源並管理外部身分綁定與解綁的失效語義，角色變更即時失效相關憑證。
+
 ## Requirements
+
 ### Requirement: Admin user email uniqueness conflict is friendly
 When an administrator updates a user's `email` via `PUT /api/v1/users/:id` to a value already held by another live account, the system SHALL return `409 Conflict` with a machine-recognizable conflict code, not a generic `500` internal error. Email SHALL be trimmed and case-normalized before the uniqueness comparison.
 
@@ -110,7 +112,6 @@ SHALL NOT 使任何帳號失去全部可用登入途徑。判準為「操作後�
 - **THEN** 操作被拒絕並回明確錯誤，帳號狀態不變
 
 ### Requirement: 角色變更的憑證失效
-
 
 管理端**替換**使用者角色集的操作，於「有效角色集有列被移除」時 SHALL 於**同一交易**內完成三件事：替換角色、推進該使用者的憑證世代、撤銷其全部刷新憑證。SHALL NOT 停在「角色已變更但世代未推進」的中間態——該中間態使降權在憑證層完全不生效。
 
@@ -431,3 +432,64 @@ agent 主體 SHALL 帶「有未處置熔斷事件」的時刻旗標（未設即�
 - **WHEN** human 查 GET /my/agents
 - **THEN** 依已認證 id 回 self_create 的 enabled、max_per_owner、current 與同值的布林旗標，不接受 client owner 參數
 - **AND** 政策開或關皆回 200 與本人名下清單；受政策鍵限制的只有建立端點，清單範圍恆為呼叫者本人擁有的主體
+
+### Requirement: 帳號 email 依主體種類區分
+
+管理員經使用者管理端點建立帳號時，email 的要求 SHALL 依主體種類區分：
+
+- `kind=human`（含省略種類）的建立請求 SHALL 帶 email，且 SHALL 為合法 email 格式；缺 email、空字串或格式不合法 SHALL 以 400 與可辨識機器碼拒絕，SHALL NOT 建立帳號。
+- `kind=agent` 的建立請求 SHALL NOT 被要求 email。未帶 email 或帶空字串時 SHALL 以 NULL 儲存，SHALL NOT 以空字串儲存；多個無 email 的 agent 主體 SHALL 可並存。agent 帶非空 email 時 SHALL 驗證格式，不合法 SHALL 以 400 拒絕。
+- 管理介面建立 agent 主體時實際送出的請求本體 SHALL 可被建立端點接受；前端送出的本體與後端驗收所用的請求本體 SHALL 取自同一份測試資料，任一側變動時另一側的測試 SHALL 失敗或以新形狀重新驗收。
+
+管理介面編輯帳號時，email 的必填檢查 SHALL 依該帳號的主體種類：編輯 agent 主體時 email SHALL 可留空（留空不改動既有值），有填仍 SHALL 驗證格式；編輯 human 帳號時 email 維持必填。
+
+#### Scenario: 管理介面原樣送出的 agent 建立請求成功
+
+- **WHEN** 管理員以管理介面建立 agent 主體時送出的請求本體（名稱、負責人、角色、主體種類，不含 email）呼叫建立端點
+- **THEN** 回 201，所建帳號種類為 `agent`，其 email 以 NULL 儲存
+
+#### Scenario: 多個無 email 的 agent 並存
+
+- **WHEN** 連續建立兩個不帶 email 的 agent 主體（其中一個帶空字串 email）
+- **THEN** 兩者皆建立成功，email 皆為 NULL，唯一性約束不拒絕
+
+#### Scenario: human 仍須帶合法 email
+
+- **WHEN** 建立 human 帳號（省略種類、顯式 `human` 或 email 為空字串）而未帶有效 email
+- **THEN** 回 400 並帶可辨識機器碼，無帳號被建立；同一請求補上合法 email 即建立成功
+
+#### Scenario: agent 帶不合法 email 被拒
+
+- **WHEN** 建立 agent 主體並帶格式不合法的 email
+- **THEN** 回 400 並帶可辨識機器碼，無帳號被建立
+
+#### Scenario: 前端送出本體變動時契約測試失敗
+
+- **WHEN** 管理介面建立 agent 時送出的請求本體與共用測試資料不一致
+- **THEN** 前端契約測試失敗，直到共用測試資料同步；共用測試資料更新後，後端以新形狀重新驗收建立結果
+
+#### Scenario: 編輯無 email 的 agent 可送出
+
+- **WHEN** 管理員在管理介面編輯一個 email 為 NULL 的 agent 主體，只修改全名後送出
+- **THEN** 更新請求送出且 email 維持不變；同樣情境換成 email 為 NULL 的 human 帳號時，介面以 email 必填擋下送出
+
+### Requirement: 目前使用者資訊附帶 agent 入口資格
+
+登入成功回應中的使用者資訊與目前使用者資訊端點（`GET /auth/me`）SHALL 附帶兩個布林欄位：`owns_agents`（呼叫者名下至少有一個未刪除的 agent 主體）與 `can_self_create_agent`（自行建立 agent 的安全政策鍵目前為開啟）。兩欄 SHALL 在每次登入與每次呼叫目前使用者資訊端點時由資料庫現算，其值 SHALL 與名下 agent 清單端點回報的自建狀態及名下主體計數同源，SHALL NOT 依角色而異。
+
+兩欄僅供介面決定入口顯示；計算失敗時兩欄 SHALL 為 `false`，SHALL NOT 使登入或目前使用者資訊端點失敗。名下 agent 清單、自助建立與鑰匙管理端點 SHALL 維持各自的授權判定，SHALL NOT 依這兩欄放行。
+
+#### Scenario: 名下沒有 agent 且政策關閉
+
+- **WHEN** 名下沒有 agent 主體的 human 帳號在自行建立政策關閉時登入並讀取目前使用者資訊
+- **THEN** 登入回應與目前使用者資訊的 `owns_agents`、`can_self_create_agent` 皆為 `false`
+
+#### Scenario: 名下有 agent，不論角色
+
+- **WHEN** 名下有一個 agent 主體的帳號（含具系統管理者角色者）登入並讀取目前使用者資訊
+- **THEN** 兩處的 `owns_agents` 皆為 `true`；該 agent 被刪除後再次讀取時為 `false`
+
+#### Scenario: 政策開啟
+
+- **WHEN** 自行建立政策開啟時，名下沒有 agent 主體的帳號登入並讀取目前使用者資訊
+- **THEN** 兩處的 `can_self_create_agent` 皆為 `true`，`owns_agents` 為 `false`

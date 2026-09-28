@@ -3,7 +3,9 @@
 ## Purpose
 
 管理介面的導覽結構與選單組織：側邊欄採分組資訊架構、可收合並標示目前位置，各頁採一致的頁面骨架；導覽依角色（persona）調整可見項與儀表板卡片；總覽群組含工作區入口（工作區維持純連線介面），審計群組含檢查點驗證與稽核工作台入口。
+
 ## Requirements
+
 ### Requirement: Grouped sidebar information architecture
 
 The main layout sidebar SHALL organize navigation into labeled groups: 總覽 (Dashboard, Workspace entry), 資產 (Assets — shown as「我的資產」to non-admin/auditor roles, Credentials「帳號憑證庫」, Authorizations, Change Secret Plans, Change Secret Batches「批次改密」), 連線 (Sessions, My Connections, My Requests), 審核 (Approvals), 審計 (Audit Logs, Commands, Alerts, Access Reviews), 身分與權限 (Users, Roles, User Groups, Approver Scopes「審核範圍」, Identity Sources「身分來源」), 系統設定 (Security Policies, Access Control, Key Management, Transmission Security, Offsite Storage「離機儲存」). The former single 系統管理 group SHALL be split into 身分與權限 and 系統設定 with all route paths unchanged; the former 會話 group label SHALL be renamed 連線. Test-only pages (RDP recording test, connection test) MUST NOT appear in the production navigation.
@@ -202,3 +204,43 @@ change secret plans entry keeps its path and label.
 - **WHEN** an admin reviews the sidebar against the Grouped sidebar information architecture requirement
 - **THEN** all pre-existing entries keep their group, label and path; only the credential library entry is added
 
+### Requirement: 入口可見性與路由放行同源
+
+側邊欄每個入口是否顯示，與直接輸入該頁網址是否放行，SHALL 由同一份規則、同一個判斷函式決定：選單看得到的頁面 SHALL 可經網址進入，選單看不到的頁面經網址進入時 SHALL 被導回儀表板。原則是入口依「這個人在這件事上有沒有事可做」顯示。各入口的規則如下：
+
+- 管理類入口（身分與權限、系統設定兩群，以及資產群的帳號憑證庫、資產授權、改密計畫、批次改密）：具系統管理者角色。
+- 稽核類入口（連線管理與稽核群各項）：具系統管理者或稽核人員角色。
+- 審核中心：後端現算的有效審核資格（`is_approver`），系統管理者角色 SHALL NOT 作為兜底。
+- 我的連線、我的申請：不具系統管理者、也不具稽核人員角色。
+- 我的 agent：名下至少有一個 agent 主體，或安全政策目前允許自行建立 agent；SHALL NOT 以角色判斷。
+
+詳情頁 SHALL 沿用所屬列表頁的規則。選單項目在規則表中查無規則時 SHALL NOT 顯示。
+
+判斷所需的資格 SHALL 取自登入回應與目前使用者資訊端點回傳的 `is_approver`、`owns_agents`、`can_self_create_agent` 與角色清單；缺欄 SHALL 視為不具資格。側邊欄載入時 SHALL 以目前使用者資訊端點的結果覆蓋登入時的快取值並回寫快取，使路由守衛讀到同一份值；`owns_agents`、`can_self_create_agent` 兩欄，端點未回傳時 SHALL NOT 以預設值覆寫快取中的該欄。`is_approver` 一律以回應值回寫快取（缺欄視為不具資格）。
+
+「我的 agent」入口的圖示 SHALL 與「我的 agent」頁空白狀態的機器人圖示相同，SHALL NOT 與「我的申請」共用圖示。
+
+#### Scenario: 系統管理者負責 agent 時看得到我的 agent
+
+- **WHEN** 名下有一個 agent 主體的系統管理者登入或重新整理頁面
+- **THEN** 側邊欄連線群組出現「我的 agent」，點入或直接輸入其網址皆可進入並看到該 agent
+
+#### Scenario: 沒有 agent 且不允許自建時看不到也進不去
+
+- **WHEN** 名下沒有 agent 主體、且自行建立 agent 的政策為關閉的使用者（不論是一般使用者、系統管理者或稽核人員）開啟任一頁面，並直接輸入「我的 agent」的網址
+- **THEN** 側邊欄沒有「我的 agent」，直接輸入網址被導回儀表板
+
+#### Scenario: 允許自建時不論角色都看得到我的 agent
+
+- **WHEN** 自行建立 agent 的政策為開啟，名下沒有 agent 主體的一般使用者、系統管理者或稽核人員重新整理頁面
+- **THEN** 側邊欄出現「我的 agent」，直接輸入其網址可進入
+
+#### Scenario: 系統管理者與稽核人員直接輸入自助頁網址被導回
+
+- **WHEN** 系統管理者或稽核人員直接輸入「我的連線」或「我的申請」的網址
+- **THEN** 被導回儀表板，與側邊欄不顯示這兩項一致
+
+#### Scenario: 每個身分的選單與放行逐項一致
+
+- **WHEN** 對每一種身分組合（一般使用者、系統管理者、稽核人員，各自疊加審核資格、審核群組成員、多角色，以及負責 agent 與否、自建政策開關）逐一比對所有側邊欄選單項目
+- **THEN** 每一項的「選單是否顯示」與「路由是否放行」結論相同，無任何一項選單不可見而路由放行、或選單可見而路由擋下

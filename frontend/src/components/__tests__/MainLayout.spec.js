@@ -329,6 +329,42 @@ describe('MainLayout sidebar', () => {
     wrapper.unmount()
   })
 
+  // 「我的 agent」入口資格走同一條路：登入後才成為負責人（管理者剛替他建了 agent），
+  // 重新整理時 /auth/me 回 owns_agents=true，選單要出現、快取要回寫讓守衛放行
+  it('/auth/me 回報成為 agent 負責人時顯示我的 agent 並回寫快取', async () => {
+    const { getCurrentUser } = await import('@/api/auth')
+    setUser(['admin'])
+    getCurrentUser.mockResolvedValue({ is_approver: false, owns_agents: true, can_self_create_agent: false })
+    const heard = vi.fn()
+    window.addEventListener('ot-user-updated', heard)
+
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    const cached = JSON.parse(localStorage.getItem('user'))
+    expect(cached.owns_agents).toBe(true)
+    expect(cached.can_self_create_agent).toBe(false)
+    expect(heard).toHaveBeenCalled()
+    const paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
+    expect(paths).toContain('/my-agents')
+    window.removeEventListener('ot-user-updated', heard)
+    wrapper.unmount()
+  })
+
+  it('/auth/me 沒帶 agent 兩欄時沿用快取，不改寫成 false', async () => {
+    const { getCurrentUser } = await import('@/api/auth')
+    localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['user'], is_approver: false, owns_agents: true }))
+    getCurrentUser.mockResolvedValue({ is_approver: false })
+
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    expect(JSON.parse(localStorage.getItem('user')).owns_agents).toBe(true)
+    const paths = wrapper.findAllComponents({ name: 'ElMenuItem' }).map((m) => m.props('index'))
+    expect(paths).toContain('/my-agents')
+    wrapper.unmount()
+  })
+
   // 快取說有資格、/auth/me 說沒有（撤角色或移出審核方群組後的第一次載入）：
   // 掛載時已起的輪詢必須停掉，否則它每 30 秒對必敗端點打一次直到整個 layout 卸載。
   it('/auth/me 判定失去審核資格時停止待審輪詢', async () => {
@@ -627,7 +663,9 @@ describe('MainLayout 政策組與合規對照的選單入口', () => {
 it('我的 agent 導覽位於一般使用者我的申請同層', async () => {
   localStorage.clear(); resetSessionForTests(); vi.clearAllMocks()
   getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
-  setUser(['user'])
+  // 我的 agent 只對「負責至少一個 agent 或允許自建」的人出現；
+  // 本案例驗的是位置，故以負責人身分掛載。可見性的完整矩陣在 router/__tests__/entry-consistency.spec.js
+  localStorage.setItem('user', JSON.stringify({ username: 'tester', roles: ['user'], is_approver: false, owns_agents: true }))
   const w = mountLayout(); await flushPromises()
   const menus = w.findAllComponents({ name: 'ElMenuItem' })
   const paths = menus.map(m => m.props('index'))

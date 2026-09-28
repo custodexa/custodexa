@@ -557,218 +557,274 @@
       width="560px"
       :close-on-click-modal="false"
     >
+      <!-- 建立 agent 後的下一步：不直接關閉對話框，告訴管理者建好了、
+           負責人是誰、下一步是發鑰匙。起因是建好 agent 後找不到發鑰匙的地方 -->
       <div
-        v-if="!isEdit"
-        class="principal-kind-choice"
+        v-if="createdAgent"
+        class="agent-created"
+        role="status"
+        data-test="agent-created"
       >
-        <span>{{ $t('agentPrincipals.kind') }}</span>
-        <el-radio-group
-          v-model="createKind"
-          :aria-label="$t('agentPrincipals.kind')"
-          data-test="create-kind"
-        >
-          <el-radio value="human">
-            {{ $t('agentPrincipals.human') }}
-          </el-radio>
-          <el-radio value="agent">
-            {{ $t('agentPrincipals.agent') }}
-          </el-radio>
-        </el-radio-group>
-      </div>
-      <AgentPrincipalForm
-        v-if="dialogVisible && !isEdit && createKind === 'agent'"
-        @created="agentCreated"
-        @cancel="dialogVisible = false"
-      />
-      <el-form
-        v-else
-        ref="formRef"
-        :model="form"
-        :rules="formRules"
-        label-position="top"
-      >
-        <el-form-item
-          :label="$t('common.username')"
-          prop="username"
-        >
-          <el-input
-            v-model="form.username"
-            :placeholder="$t('users.usernamePlaceholder')"
-            :disabled="isEdit"
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="!isEdit"
-          :label="$t('common.password')"
-          prop="password"
-        >
-          <el-input
-            v-model="form.password"
-            type="password"
-            :placeholder="$t('users.passwordPlaceholder')"
-            show-password
-          />
-        </el-form-item>
-        <el-form-item
-          label="Email"
-          prop="email"
-        >
-          <el-input
-            v-model="form.email"
-            :placeholder="$t('users.emailPlaceholder')"
-          />
-        </el-form-item>
-        <el-form-item
-          :label="$t('users.fullName')"
-          prop="full_name"
-        >
-          <el-input
-            v-model="form.full_name"
-            :placeholder="$t('users.fullNamePlaceholder')"
-          />
-        </el-form-item>
-        <!-- 允許來源網段（來源限定功能）。
-             前端只做**格式層**的就近提示；正規化、有效涵蓋狀態與「你進不進得來」
-             一律由判定端點回覆——前端自己解析 CIDR 必與強制點分歧，而分歧的那一側
-             正是自鎖警告會說錯話的地方。
-             全部警示皆為 warning 級、**不阻擋送出**：管理者可能刻意設定一個
-             尚未切換過去的網段 -->
-        <el-form-item :label="$t('users.allowedCidrs')">
-          <div class="cidr-field">
-            <div
-              v-if="form.allowed_cidrs.length"
-              class="cidr-tags"
-              data-test="cidr-tags"
-            >
-              <el-tag
-                v-for="(item, index) in form.allowed_cidrs"
-                :key="`${item}-${index}`"
-                size="small"
-                closable
-                :type="itemErrorKey(item) ? 'danger' : 'info'"
-                :aria-label="$t('users.allowedCidrsRemove', { value: item })"
-                @close="removeCidr(index)"
-              >
-                {{ item }}
-              </el-tag>
+        <div class="agent-created__head">
+          <el-icon
+            class="agent-created__icon"
+            aria-hidden="true"
+          >
+            <CircleCheck />
+          </el-icon>
+          <div class="agent-created__summary">
+            <div class="agent-created__title">
+              {{ $t('agentPrincipals.createdTitle', { name: createdAgent.username }) }}
             </div>
-            <el-input
-              v-model="cidrDraft"
-              :placeholder="$t('users.allowedCidrsPlaceholder')"
-              data-test="cidr-input"
-              @keyup.enter="addCidr"
-              @blur="onCidrBlur"
-            >
-              <template #append>
-                <el-button
-                  data-test="cidr-add"
-                  @click="addCidr"
-                >
-                  {{ $t('users.allowedCidrsAdd') }}
-                </el-button>
-              </template>
-            </el-input>
-
-            <p class="cidr-hint">
-              {{ $t('users.allowedCidrsHint', { max: SOURCE_POLICY_MAX_ENTRIES }) }}
-            </p>
-            <!-- 「你目前的來源」是**管理者自己**的位址（`/auth/me`）。編輯別人的
-                 帳號時它與那份清單毫無關係，卻緊挨在清單旁邊——累了的人會讀成
-                 「這個帳號的來源」而照著它填。故只在編輯自己的帳號時出現，
-                 那時「你」與被編輯的帳號是同一個人，句子才成立 -->
-            <p
-              v-if="currentSourceLine"
-              class="cidr-hint"
-              data-test="cidr-current-source"
-            >
-              {{ currentSourceLine }}
-            </p>
-
-            <!-- 就近紅字：格式層（本地）與端點層（逐項 error_code）分開呈現，
-                 前者說「看起來不像」，後者說「後端解析不了」 -->
-            <p
-              v-if="cidrDraftError"
-              class="cidr-error"
-              data-test="cidr-format-error"
-            >
-              {{ cidrDraftError }}
-            </p>
-            <p
-              v-for="err in itemErrors"
-              :key="err.input"
-              class="cidr-error"
-              data-test="cidr-item-error"
-            >
-              {{ err.text }}
-            </p>
-
-            <p
-              v-if="cidrChecking"
-              class="cidr-hint"
-              data-test="cidr-checking"
-            >
-              {{ $t('users.allowedCidrsChecking') }}
-            </p>
-            <p
-              v-else-if="cidrCheckFailed"
-              class="cidr-warning"
-              data-test="cidr-check-failed"
-            >
-              {{ $t('users.allowedCidrsCheckFailed') }}
-            </p>
-            <template v-else>
-              <p
-                v-if="normalizedPreview"
-                class="cidr-hint"
-                data-test="cidr-normalized"
-              >
-                {{ $t('users.allowedCidrsNormalized', { list: normalizedPreview }) }}
-              </p>
-              <p
-                v-if="effectiveUnrestrictedLine"
-                class="cidr-warning"
-                data-test="cidr-effective-warning"
-              >
-                {{ effectiveUnrestrictedLine }}
-              </p>
-              <template v-if="selfLockLine">
-                <p
-                  class="cidr-warning"
-                  data-test="cidr-self-lock"
-                >
-                  {{ selfLockLine }}
-                </p>
-                <p class="cidr-hint">
-                  {{ $t('users.allowedCidrsSelfLockRecovery') }}
-                </p>
-              </template>
-            </template>
+            <div class="agent-created__owner">
+              {{ $t('agentPrincipals.ownerValue', { owner: createdAgent.owner_username || $t('agentPrincipals.unavailable') }) }}
+            </div>
           </div>
-        </el-form-item>
-        <el-form-item
+        </div>
+        <div class="agent-created__next">
+          <div class="agent-created__next-title">
+            {{ $t('agentPrincipals.nextStepTitle') }}
+          </div>
+          <p class="agent-created__next-body">
+            {{ $t('agentPrincipals.nextStepBody') }}
+          </p>
+          <p class="agent-created__next-hint">
+            {{ $t('agentPrincipals.nextStepOwnerHint') }}
+          </p>
+        </div>
+      </div>
+      <template v-else>
+        <div
           v-if="!isEdit"
-          :label="$t('common.role')"
-          prop="roles"
+          class="principal-kind-choice"
         >
-          <!-- 由 /roles API 生成（補遺）：勿硬編碼 -->
-          <el-checkbox-group v-model="form.roles">
-            <el-checkbox
-              v-for="role in assignableRoles"
-              :key="role.name"
-              :label="role.name"
-            >
-              {{ roleLabel(role.name) }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-      </el-form>
+          <span>{{ $t('agentPrincipals.kind') }}</span>
+          <el-radio-group
+            v-model="createKind"
+            :aria-label="$t('agentPrincipals.kind')"
+            data-test="create-kind"
+          >
+            <el-radio value="human">
+              {{ $t('agentPrincipals.human') }}
+            </el-radio>
+            <el-radio value="agent">
+              {{ $t('agentPrincipals.agent') }}
+            </el-radio>
+          </el-radio-group>
+        </div>
+        <AgentPrincipalForm
+          v-if="dialogVisible && !isEdit && createKind === 'agent'"
+          @created="agentCreated"
+          @cancel="dialogVisible = false"
+        />
+        <el-form
+          v-else
+          ref="formRef"
+          :model="form"
+          :rules="formRules"
+          label-position="top"
+        >
+          <el-form-item
+            :label="$t('common.username')"
+            prop="username"
+          >
+            <el-input
+              v-model="form.username"
+              :placeholder="$t('users.usernamePlaceholder')"
+              :disabled="isEdit"
+            />
+          </el-form-item>
+          <el-form-item
+            v-if="!isEdit"
+            :label="$t('common.password')"
+            prop="password"
+          >
+            <el-input
+              v-model="form.password"
+              type="password"
+              :placeholder="$t('users.passwordPlaceholder')"
+              show-password
+            />
+          </el-form-item>
+          <el-form-item
+            label="Email"
+            prop="email"
+          >
+            <el-input
+              v-model="form.email"
+              :placeholder="$t('users.emailPlaceholder')"
+            />
+          </el-form-item>
+          <el-form-item
+            :label="$t('users.fullName')"
+            prop="full_name"
+          >
+            <el-input
+              v-model="form.full_name"
+              :placeholder="$t('users.fullNamePlaceholder')"
+            />
+          </el-form-item>
+          <!-- 允許來源網段（來源限定功能）。
+               前端只做**格式層**的就近提示；正規化、有效涵蓋狀態與「你進不進得來」
+               一律由判定端點回覆——前端自己解析 CIDR 必與強制點分歧，而分歧的那一側
+               正是自鎖警告會說錯話的地方。
+               全部警示皆為 warning 級、**不阻擋送出**：管理者可能刻意設定一個
+               尚未切換過去的網段 -->
+          <el-form-item :label="$t('users.allowedCidrs')">
+            <div class="cidr-field">
+              <div
+                v-if="form.allowed_cidrs.length"
+                class="cidr-tags"
+                data-test="cidr-tags"
+              >
+                <el-tag
+                  v-for="(item, index) in form.allowed_cidrs"
+                  :key="`${item}-${index}`"
+                  size="small"
+                  closable
+                  :type="itemErrorKey(item) ? 'danger' : 'info'"
+                  :aria-label="$t('users.allowedCidrsRemove', { value: item })"
+                  @close="removeCidr(index)"
+                >
+                  {{ item }}
+                </el-tag>
+              </div>
+              <el-input
+                v-model="cidrDraft"
+                :placeholder="$t('users.allowedCidrsPlaceholder')"
+                data-test="cidr-input"
+                @keyup.enter="addCidr"
+                @blur="onCidrBlur"
+              >
+                <template #append>
+                  <el-button
+                    data-test="cidr-add"
+                    @click="addCidr"
+                  >
+                    {{ $t('users.allowedCidrsAdd') }}
+                  </el-button>
+                </template>
+              </el-input>
+
+              <p class="cidr-hint">
+                {{ $t('users.allowedCidrsHint', { max: SOURCE_POLICY_MAX_ENTRIES }) }}
+              </p>
+              <!-- 「你目前的來源」是**管理者自己**的位址（`/auth/me`）。編輯別人的
+                   帳號時它與那份清單毫無關係，卻緊挨在清單旁邊——累了的人會讀成
+                   「這個帳號的來源」而照著它填。故只在編輯自己的帳號時出現，
+                   那時「你」與被編輯的帳號是同一個人，句子才成立 -->
+              <p
+                v-if="currentSourceLine"
+                class="cidr-hint"
+                data-test="cidr-current-source"
+              >
+                {{ currentSourceLine }}
+              </p>
+
+              <!-- 就近紅字：格式層（本地）與端點層（逐項 error_code）分開呈現，
+                   前者說「看起來不像」，後者說「後端解析不了」 -->
+              <p
+                v-if="cidrDraftError"
+                class="cidr-error"
+                data-test="cidr-format-error"
+              >
+                {{ cidrDraftError }}
+              </p>
+              <p
+                v-for="err in itemErrors"
+                :key="err.input"
+                class="cidr-error"
+                data-test="cidr-item-error"
+              >
+                {{ err.text }}
+              </p>
+
+              <p
+                v-if="cidrChecking"
+                class="cidr-hint"
+                data-test="cidr-checking"
+              >
+                {{ $t('users.allowedCidrsChecking') }}
+              </p>
+              <p
+                v-else-if="cidrCheckFailed"
+                class="cidr-warning"
+                data-test="cidr-check-failed"
+              >
+                {{ $t('users.allowedCidrsCheckFailed') }}
+              </p>
+              <template v-else>
+                <p
+                  v-if="normalizedPreview"
+                  class="cidr-hint"
+                  data-test="cidr-normalized"
+                >
+                  {{ $t('users.allowedCidrsNormalized', { list: normalizedPreview }) }}
+                </p>
+                <p
+                  v-if="effectiveUnrestrictedLine"
+                  class="cidr-warning"
+                  data-test="cidr-effective-warning"
+                >
+                  {{ effectiveUnrestrictedLine }}
+                </p>
+                <template v-if="selfLockLine">
+                  <p
+                    class="cidr-warning"
+                    data-test="cidr-self-lock"
+                  >
+                    {{ selfLockLine }}
+                  </p>
+                  <p class="cidr-hint">
+                    {{ $t('users.allowedCidrsSelfLockRecovery') }}
+                  </p>
+                </template>
+              </template>
+            </div>
+          </el-form-item>
+          <el-form-item
+            v-if="!isEdit"
+            :label="$t('common.role')"
+            prop="roles"
+          >
+            <!-- 由 /roles API 生成（補遺）：勿硬編碼 -->
+            <el-checkbox-group v-model="form.roles">
+              <el-checkbox
+                v-for="role in assignableRoles"
+                :key="role.name"
+                :label="role.name"
+              >
+                {{ roleLabel(role.name) }}
+              </el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+        </el-form>
+      </template>
       <!-- 頁尾按鈕一律 `mousedown.prevent`：**按下時不讓來源網段輸入框失焦**。
            失焦會就地觸發一次判定，「檢查中」那行插進對話框內容後把整個頁尾往下推
            一行；按下與放開之間按鈕已離開游標，瀏覽器不產生 click——使用者看到的是
            「按了沒反應」。不失焦即無重排。輸入框裡還沒收進清單的那一項改由
            handleSubmit 自己收攏，不倚賴失焦的副作用 -->
       <template
-        v-if="isEdit || createKind === 'human'"
+        v-if="createdAgent"
+        #footer
+      >
+        <el-button
+          data-test="agent-created-later"
+          @click="dialogVisible = false"
+        >
+          {{ $t('agentPrincipals.issueLater') }}
+        </el-button>
+        <el-button
+          type="primary"
+          data-test="agent-created-issue"
+          @click="issueKeyForCreated"
+        >
+          {{ $t('agentPrincipals.issueNow') }}
+        </el-button>
+      </template>
+      <template
+        v-else-if="isEdit || createKind === 'human'"
         #footer
       >
         <el-button
@@ -1242,6 +1298,8 @@ const dialogVisible = ref(false)
 const roleDialogVisible = ref(false)
 const passwordDialogVisible = ref(false)
 const isEdit = ref(false)
+// 編輯中帳號的主體類型：agent 的 email 選填（管理端建立時不帶 email，存 NULL）
+const editKind = ref('human')
 const submitting = ref(false)
 const formRef = ref(null)
 const passwordFormRef = ref(null)
@@ -1526,7 +1584,8 @@ const formRules = computed(() => ({
     { required: true, message: t('users.passwordPlaceholder'), trigger: 'blur' },
   ],
   email: [
-    { required: true, message: t('users.emailPlaceholder'), trigger: 'blur' },
+    // agent 不收信、不登入：email 選填，有填仍驗格式；human 必填
+    { required: !(isEdit.value && editKind.value === 'agent'), message: t('users.emailPlaceholder'), trigger: 'blur' },
     { type: 'email', message: t('users.emailInvalid'), trigger: 'blur' },
   ],
 }))
@@ -1685,6 +1744,7 @@ const resetForm = () => {
 // 處理創建
 const handleCreate = () => {
   tokenDrawerVisible.value = false
+  createdAgent.value = null
   createKind.value = 'human'
   loadAssignableRoles()
   resetForm()
@@ -1698,6 +1758,7 @@ const handleEdit = (row) => {
   tokenDrawerVisible.value = false
   resetForm()
   isEdit.value = true
+  editKind.value = row.kind === 'agent' ? 'agent' : 'human'
   form.id = row.id
   form.username = row.username
   form.email = row.email || ''
@@ -2194,10 +2255,23 @@ function openTokenDrawer(row) {
   tokenPrincipal.value = row
   tokenDrawerVisible.value = true
 }
-function agentCreated() {
-  dialogVisible.value = false
+// 建立 agent 後停在同一個對話框顯示下一步，而不是直接關掉：
+// 管理者要的下一件事幾乎一定是發鑰匙，關掉後得自己在列表裡找那一列
+const createdAgent = ref(null)
+function agentCreated(agent) {
+  createdAgent.value = agent?.id ? agent : null
+  if (!createdAgent.value) dialogVisible.value = false
   fetchUserList()
 }
+// 「現在發鑰匙」：關掉對話框、直接打開這個 agent 的鑰匙抽屜。
+// 列表刷新回來就用列表那一列（欄位最完整），還沒回來就用建立回應
+function issueKeyForCreated() {
+  const agent = createdAgent.value
+  if (!agent) return
+  const row = userList.value.find(user => user.id === agent.id)
+  openTokenDrawer(row ? { ...row, owner_username: row.owner_username || agent.owner_username } : agent)
+}
+watch(dialogVisible, open => { if (!open) createdAgent.value = null })
 watch([dialogVisible, roleDialogVisible, passwordDialogVisible, scopeDialogVisible, identityDrawerVisible], values => {
   if (values.some(Boolean)) tokenDrawerVisible.value = false
 })
@@ -2222,6 +2296,17 @@ onMounted(async () => {
 
 <style scoped>
 .principal-kind-choice { display: flex; align-items: center; gap: var(--ot-space-md); margin-bottom: var(--ot-space-md); }
+/* 建立 agent 後的下一步：主要資訊（名稱、下一步）用主要文字色，說明句至多一行次級色 */
+.agent-created { display: flex; flex-direction: column; gap: var(--ot-space-lg); }
+.agent-created__head { display: flex; gap: var(--ot-space-sm); align-items: flex-start; }
+.agent-created__icon { color: var(--ot-success); font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+.agent-created__summary { display: flex; flex-direction: column; gap: var(--ot-space-xs); }
+.agent-created__title { font-size: var(--ot-font-size-md); font-weight: 600; color: var(--ot-text-primary); }
+.agent-created__owner { font-size: var(--ot-font-size-sm); color: var(--ot-text-secondary); }
+.agent-created__next { background: var(--ot-bg-page); border: 1px solid var(--ot-border-subtle); border-radius: var(--ot-radius-md); padding: var(--ot-space-md); display: flex; flex-direction: column; gap: var(--ot-space-xs); }
+.agent-created__next-title { font-weight: 600; color: var(--ot-text-primary); }
+.agent-created__next-body { margin: 0; line-height: 1.6; color: var(--ot-text-primary); }
+.agent-created__next-hint { margin: 0; font-size: var(--ot-font-size-sm); line-height: 1.6; color: var(--ot-text-secondary); }
 /* 允許來源網段：tag 清單 + 輸入框 + 逐條就近提示。
    提示一律在欄位下方就近呈現（C6），不彈對話框、不擋送出 */
 .cidr-field {

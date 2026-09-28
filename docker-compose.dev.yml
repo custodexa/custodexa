@@ -228,6 +228,10 @@ services:
       # 來源網段共用測試向量唯讀掛載：前端格式提示不得拒絕任何後端判為合法的
       # 向量（sourcePolicyFormat.spec.js 的 /repo 路徑；無此掛載該案例 skip）
       - ./backend/internal/sourceip/testdata:/repo/backend/internal/sourceip/testdata:ro
+      # 建立 agent 的前後端共用 payload fixture 唯讀掛載：前端送出的 body 須與
+      # 後端 handler 測試所用的同一份 fixture 相等
+      # （AgentPrincipalForm.contract.spec.js 的 /repo 路徑；無此掛載該案例 skip）
+      - ./backend/internal/api/testdata:/repo/backend/internal/api/testdata:ro
       # 離機保管的狀態值域唯讀掛載：前端十態對照表直讀 Go 常數雙向比對
       # （offsite.spec.js 的 /repo 路徑；無此掛載該案例 skip）
       - ./backend/internal/offsite:/repo/backend/internal/offsite:ro

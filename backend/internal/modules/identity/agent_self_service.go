@@ -124,3 +124,15 @@ func (s *UserService) MyAgentCreationStatus(ownerID uint) (*AgentSelfCreateStatu
 	err = s.db.Model(&model.User{}).Where("kind = ? AND owner_user_id = ?", model.KindAgent, ownerID).Count(&out.Current).Error
 	return out, err
 }
+
+// agentEntryFlags 計算「我的 agent」入口資格的兩個成分，供登入回應與 GET /auth/me 共用。
+// 重用 MyAgentCreationStatus，讓入口資格與「我的 agent」頁實際看到的清單、自建狀態同源。
+// 查失敗（含呼叫者不是啟用中的 human）一律回 false/false：這是顯示性欄位，
+// 真正的強制點在 /my/agents 與鑰匙端點各自的守衛，不因入口判錯而放寬。
+func agentEntryFlags(db *gorm.DB, userID uint) (ownsAgents, canSelfCreate bool) {
+	status, err := NewUserService(db, nil).MyAgentCreationStatus(userID)
+	if err != nil || status == nil {
+		return false, false
+	}
+	return status.Current > 0, status.Enabled
+}

@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import * as agents from '../agents'
 const request = vi.hoisted(() => vi.fn())
 vi.mock('../request', () => ({ default: request }))
+// createAgentPrincipal 的完整送出 body 另由 components/agent/__tests__/AgentPrincipalForm.contract.spec.js
+// 對照後端共用 fixture（backend/internal/api/testdata/agent_create_payload.json）
 describe('agents API 呼叫路徑與參數', () => {
   it.each([
     ['listAgentPrincipals', [{ page: 2 }], { url: '/users', method: 'get', params: { page: 2, include_agents: true } }],

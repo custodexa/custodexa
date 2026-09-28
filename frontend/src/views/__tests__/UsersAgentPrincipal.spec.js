@@ -5,8 +5,8 @@ import Users from '../Users.vue'
 import PrincipalBadge from '../../components/agent/PrincipalBadge.vue'
 import AgentPrincipalForm from '../../components/agent/AgentPrincipalForm.vue'
 import i18n, { t } from '@/i18n'
-const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn() }))
-vi.mock('@/api/user', async original => ({ ...(await original()), getUserList: api.list, getUserDetail: vi.fn().mockResolvedValue({ data: {}, role_sets: { manual: [], mapped: [] } }), getRoleList: vi.fn().mockResolvedValue({ data: [{ name: 'admin' }, { name: 'user' }, { name: 'auditor' }, { name: 'approver' }] }) }))
+const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn() }))
+vi.mock('@/api/user', async original => ({ ...(await original()), getUserList: api.list, updateUser: api.update, getUserDetail: vi.fn().mockResolvedValue({ data: {}, role_sets: { manual: [], mapped: [] } }), getRoleList: vi.fn().mockResolvedValue({ data: [{ name: 'admin' }, { name: 'user' }, { name: 'auditor' }, { name: 'approver' }] }) }))
 vi.mock('@/api/agents', () => ({ createAgentPrincipal: api.create, getAgentTokens: vi.fn().mockResolvedValue({ data: [] }) }))
 vi.mock('@/api/auth', () => ({ getCurrentUser: vi.fn().mockResolvedValue({ data: { id: 1 } }) }))
 class Observer { observe() {} disconnect() {} takeRecords() { return [] } }
@@ -42,7 +42,8 @@ describe('Users agent principal', () => {
     api.create.mockResolvedValue({ data: { id: 7 } })
     await form.get('[data-test="agent-submit"]').trigger('click'); await flushPromises()
     expect(api.create).toHaveBeenCalledWith({ username: 'worker', owner_user_id: 1, roles: ['user'] })
-    expect(w.vm.dialogVisible).toBe(false)
+    // 建立後停在同一對話框顯示「下一步：發鑰匙」（見 UsersAgentCreated.spec.js）
+    expect(w.find('[data-test="agent-created"]').exists()).toBe(true)
   })
   it('缺負責人時顯示對應錯誤文字', async () => {
     const w = mount(AgentPrincipalForm, { global }); await flushPromises()
@@ -78,4 +79,23 @@ it('polish 1–3：副標、姓名投影與篩選回顯', async () => {
   expect(select.attributes('style')).toContain('width: 160px')
   w.vm.openTokenDrawer(w.vm.userList[0]); await flushPromises()
   expect(w.getComponent({ name: 'TokenDrawer' }).props('ownerName')).toBe('responsible')
+})
+
+// 管理端建立的 agent 不帶 email（存 NULL）：編輯對話框不得因 email 空白擋下送出，
+// 否則無 email 的 agent 無法改全名或來源網段。human 仍須填 email。
+// 建立端契約見 components/agent/__tests__/AgentPrincipalForm.contract.spec.js
+it.each([
+  ['agent', true],
+  ['human', false],
+])('編輯無 email 的 %s：送出與否依主體類型', async (kind, saved) => {
+  api.update.mockResolvedValue({ data: {} })
+  const w = mount(Users, { global }); await flushPromises()
+  w.vm.handleEdit({ id: 5, username: 'worker', kind, email: null, full_name: '', roles: [] }); await flushPromises()
+  w.vm.form.full_name = 'Nightly Worker'
+  await w.vm.handleSubmit().catch(() => {}); await flushPromises()
+  if (saved) {
+    expect(api.update).toHaveBeenCalledWith(5, { email: '', full_name: 'Nightly Worker' })
+  } else {
+    expect(api.update).not.toHaveBeenCalled()
+  }
 })

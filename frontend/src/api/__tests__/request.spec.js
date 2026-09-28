@@ -223,6 +223,24 @@ describe('response interceptor - token refresh', () => {
     expect(window.location.href).toContain('/login')
   })
 
+  it('keeps the session and does not redirect when refresh fails without a response', async () => {
+    // A transport failure (no HTTP response) is not an authentication verdict.
+    // When the page starts navigating while a refresh is in flight, the request's
+    // promise rejects here even though the request completes in the background.
+    // Clearing the shared session hint or redirecting at this point turns a
+    // navigation into a logout.
+    setAccessToken('stale-jwt')
+    localStorage.setItem('user', '{"username":"admin"}')
+    vi.spyOn(axios, 'post').mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(
+      responseHandler.rejected(make401('/users'))
+    ).rejects.toBeTruthy()
+
+    expect(localStorage.getItem('user')).not.toBeNull()
+    expect(window.location.href).not.toContain('/login')
+  })
+
   it('does not refresh again for an already-retried request', async () => {
     const postSpy = vi.spyOn(axios, 'post')
 
@@ -512,7 +530,7 @@ describe('刷新終敗的登入頁脈絡（決策 3 觸發矩陣）', () => {
 
   it('http + 本分頁首次續期就失敗 → 寫入脈絡供登入頁讀', async () => {
     setAccessToken('stale-jwt')
-    vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'))
+    vi.spyOn(axios, 'post').mockRejectedValue(make401('/auth/refresh'))
 
     await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
 
@@ -525,7 +543,7 @@ describe('刷新終敗的登入頁脈絡（決策 3 觸發矩陣）', () => {
     const postSpy = vi
       .spyOn(axios, 'post')
       .mockResolvedValueOnce({ data: { token: 'fresh-jwt' } })
-      .mockRejectedValueOnce(new Error('refresh failed'))
+      .mockRejectedValueOnce(make401('/auth/refresh'))
 
     // 第一次：刷新成功（旗標寫入）
     await responseHandler.rejected(make401())
@@ -544,7 +562,7 @@ describe('刷新終敗的登入頁脈絡（決策 3 觸發矩陣）', () => {
   it('https 頁面刷新終敗 → 不寫入（不是協定問題）', async () => {
     window.location.href = 'https://console.example.test/dashboard'
     setAccessToken('stale-jwt')
-    vi.spyOn(axios, 'post').mockRejectedValue(new Error('refresh failed'))
+    vi.spyOn(axios, 'post').mockRejectedValue(make401('/auth/refresh'))
 
     await expect(responseHandler.rejected(make401())).rejects.toBeTruthy()
 

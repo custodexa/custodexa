@@ -10,6 +10,7 @@ import {
   ensureSealPhase,
 } from '../utils/sealPhase'
 import { ensureSession } from '../utils/session'
+import { canEnter, entryMeta, entrySubject, hasEntryRule } from './entryRules'
 
 const routes = [
   {
@@ -57,7 +58,7 @@ const routes = [
         name: 'Sessions',
         component: () => import('../views/Sessions.vue'),
         // session 管理視圖含他人連線紀錄，收斂為稽核職能
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/sessions') },
       },
       {
         // 連線詳情掛在 Layout 之內：掛在外面時整頁沒有側欄、麵包屑與語言切換，
@@ -66,12 +67,13 @@ const routes = [
         name: 'SessionDetail',
         component: () => import('../views/SessionDetail.vue'),
         // 與列表頁同步收斂：詳情含指令流與錄影入口
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/sessions') },
       },
       {
         path: 'my-connections',
         name: 'MyConnections',
         component: () => import('../views/MyConnections.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/my-connections') },
       },
       {
         // 個人資料：全角色自助頁——基本資料/自助改密/MFA 管理
@@ -85,18 +87,19 @@ const routes = [
         path: 'my-requests',
         name: 'MyRequests',
         component: () => import('../views/MyRequests.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/my-requests') },
       },
       {
         path: 'audit/agent-tasks',
         name: 'AgentTasks',
         component: () => import('../views/AgentTasks.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/audit/agent-tasks') },
       },
       {
         path: 'audit/agent-tasks/:requestId',
         name: 'AgentTaskDetail',
         component: () => import('../views/AgentTaskDetail.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/audit/agent-tasks') },
       },
       {
         path: 'agent-breakers',
@@ -108,6 +111,7 @@ const routes = [
         path: 'my-agents',
         name: 'MyAgents',
         component: () => import('../views/MyAgents.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/my-agents') },
       },
       {
         // 審核中心。**不做 admin 兜底**
@@ -117,7 +121,7 @@ const routes = [
         path: 'approvals',
         name: 'Approvals',
         component: () => import('../views/Approvals.vue'),
-        meta: { requiresAuth: true, roles: ['approver'] },
+        meta: { requiresAuth: true, ...entryMeta('/approvals') },
       },
       {
         // 稽核調查工作台（auditor-workbench）：以人／資產為樞紐，把六類
@@ -126,7 +130,7 @@ const routes = [
         path: 'audit/workbench',
         name: 'AuditWorkbench',
         component: () => import('../views/AuditWorkbench.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/audit/workbench') },
       },
       {
         // 輪替證據：資產帳號憑證輪替的合規現況與報告產出。
@@ -135,7 +139,7 @@ const routes = [
         path: 'rotation-evidence',
         name: 'RotationEvidence',
         component: () => import('../views/RotationEvidence.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/rotation-evidence') },
       },
       {
         // 下載中心：證據包走非同步交付後，產物不再隨
@@ -145,14 +149,14 @@ const routes = [
         path: 'audit/exports',
         name: 'AuditExports',
         component: () => import('../views/AuditExports.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/audit/exports') },
       },
       {
         path: 'audit-logs',
         name: 'AuditLogs',
         component: () => import('../views/AuditLogs.vue'),
         // 最小權限（7.2.x）：審計屬稽核職能，僅 admin/auditor
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/audit-logs') },
       },
       {
         // 檢查點驗證（audit-checkpoint-chain）：**獨立成頁**而非
@@ -161,7 +165,7 @@ const routes = [
         path: 'checkpoint-verification',
         name: 'CheckpointVerification',
         component: () => import('../views/CheckpointVerification.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/checkpoint-verification') },
       },
       {
         // 合規對照：安全設定對每一個政策組的判定結果。**唯讀**——
@@ -170,7 +174,7 @@ const routes = [
         path: 'compliance-map',
         name: 'ComplianceMap',
         component: () => import('../views/ComplianceMap.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/compliance-map') },
       },
       {
         path: 'access-reviews',
@@ -178,43 +182,43 @@ const routes = [
         component: () => import('../views/AccessReviews.vue'),
         // 存取複審：稽核職能自授權頁遷出，
         // admin＋auditor 可見；簽核 admin only 由頁內與後端雙重控制
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/access-reviews') },
       },
       {
         path: 'commands',
         name: 'Commands',
         component: () => import('../views/Commands.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/commands') },
       },
       {
         path: 'alerts',
         name: 'Alerts',
         component: () => import('../views/Alerts.vue'),
-        meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+        meta: { requiresAuth: true, ...entryMeta('/alerts') },
       },
       {
         path: 'authorizations',
         name: 'Authorizations',
         component: () => import('../views/Authorizations.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/authorizations') },
       },
       {
         path: 'users',
         name: 'Users',
         component: () => import('../views/Users.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/users') },
       },
       {
         path: 'roles',
         name: 'Roles',
         component: () => import('../views/Roles.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/roles') },
       },
       {
         path: 'user-groups',
         name: 'UserGroups',
         component: () => import('../views/UserGroups.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/user-groups') },
       },
       {
         // 身分來源：目錄與身分提供者合併為一份清單，映射規則成為各來源詳情頁
@@ -222,7 +226,7 @@ const routes = [
         path: 'identity-sources',
         name: 'IdentitySources',
         component: () => import('../views/identity-sources/IdentitySources.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/identity-sources') },
       },
       {
         // 新增流程只問型別，選定即進詳情頁；靜態段 `new` 的比對分數高於
@@ -230,13 +234,13 @@ const routes = [
         path: 'identity-sources/new/:type',
         name: 'IdentitySourceCreate',
         component: () => import('../views/identity-sources/SourceDetail.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/identity-sources') },
       },
       {
         path: 'identity-sources/:type/:id',
         name: 'IdentitySourceDetail',
         component: () => import('../views/identity-sources/SourceDetail.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/identity-sources') },
       },
       {
         // 兩個前身頁的深連結仍須可用（沿「改名後深連結仍可用」的既有立場）：
@@ -252,13 +256,13 @@ const routes = [
         path: 'approver-scopes',
         name: 'ApproverScopes',
         component: () => import('../views/ApproverScopes.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/approver-scopes') },
       },
       {
         path: 'security-policies',
         name: 'SecurityPolicies',
         component: () => import('../views/SecurityPolicies.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/security-policies') },
       },
       {
         // 政策組：條文與要求的維護面，也是政策組**所有寫入的唯一入口**。
@@ -266,25 +270,25 @@ const routes = [
         path: 'policy-groups',
         name: 'PolicyGroups',
         component: () => import('../views/PolicyGroups.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/policy-groups') },
       },
       {
         path: 'access-control',
         name: 'AccessControl',
         component: () => import('../views/AccessControl.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/access-control') },
       },
       {
         path: 'key-management',
         name: 'KeyManagement',
         component: () => import('../views/KeyManagement.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/key-management') },
       },
       {
         path: 'transmission-inventory',
         name: 'TransmissionInventory',
         component: () => import('../views/TransmissionInventory.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/transmission-inventory') },
       },
       {
         // 離機儲存（evidence-offsite-storage）：儲存端連線設定、憑證世代、
@@ -293,19 +297,19 @@ const routes = [
         path: 'offsite-storage',
         name: 'OffsiteStorage',
         component: () => import('../views/OffsiteStorage.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/offsite-storage') },
       },
       {
         path: 'change-secret-plans',
         name: 'ChangeSecretPlans',
         component: () => import('../views/ChangeSecretPlans.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/change-secret-plans') },
       },
       {
         path: 'change-secret-batches',
         name: 'AccountBatchRotation',
         component: () => import('../views/AccountBatchRotation.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/change-secret-batches') },
       },
       {
         // 帳號憑證庫：登入憑證的單一管理面（範圍、掛載、整組改密）。
@@ -314,7 +318,7 @@ const routes = [
         path: 'credentials',
         name: 'CredentialLibrary',
         component: () => import('../views/CredentialLibrary.vue'),
-        meta: { requiresAuth: true, roles: ['admin'] },
+        meta: { requiresAuth: true, ...entryMeta('/credentials') },
       },
       // （TestConnection 手動連線頁已隨連線收口移除：手動輸入任意主機帳密屬繞過資產管理的旁路；
       //  RDPRecordingTest POC 頁已隨 JWT query fallback 移除，
@@ -343,7 +347,7 @@ const routes = [
     path: '/sessions/:id/monitor',
     name: 'SessionMonitor',
     component: () => import('../views/SessionMonitor.vue'),
-    meta: { requiresAuth: true, roles: ['admin', 'auditor'] },
+    meta: { requiresAuth: true, ...entryMeta('/sessions') },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -419,9 +423,14 @@ export function createAuthGuard() {
       next('/login')
     } else if (to.path === '/login' && authed) {
       next('/dashboard')
-    } else if (to.meta.roles) {
-      // Check role-based access（fail-closed：user 資料缺失視同未登入，
-      // 不得跳過角色檢查放行——原實作在 token 在、user 缺時 fail-open）
+    } else if (hasEntryRule(to.meta)) {
+      // 入口規則與側欄選單同一個來源（router/entryRules.js 的 canEnter）：
+      // 選單看不到的頁面，直接輸入網址也進不去，一律導回 /dashboard。
+      // fail-closed：user 資料缺失視同未登入，不得跳過規則放行——
+      // 原實作在 token 在、user 缺時 fail-open。
+      // `approver` 以後端算出的 is_approver 裁決（不看 roles 快取），
+      // 「我的 agent」以後端算出的 owns_agents／can_self_create_agent 裁決（不看角色），
+      // 兩者都由 MainLayout 掛載時以 /auth/me 回寫快取
       const user = localStorage.getItem('user')
       if (!user) {
         next('/login')
@@ -429,19 +438,8 @@ export function createAuthGuard() {
       }
       try {
         const userData = JSON.parse(user)
-        const userRoles = userData.roles || []
-
-        // `approver` 是**唯一以 is_approver 裁決的述詞**：
-        // 它不從 roles 快取比對——群組審核方的 roles 不含 approver 卻有資格
-        // 而僅具 admin 者 roles 有 admin 卻**沒有**審核資格。故把它從
-        // 靜態角色比對中排除，改由後端算出的 is_approver 單一來源決定，
-        // 與選單可見性、badge 輪詢同源；其餘角色述詞維持 roles 交集判定
-        const staticRoles = to.meta.roles.filter(role => role !== 'approver')
-        const hasPermission = staticRoles.some(role => userRoles.includes(role))
-        const approverEligible =
-          to.meta.roles.includes('approver') && userData.is_approver === true
-
-        if (!hasPermission && !approverEligible) {
+        if (!userData || typeof userData !== 'object') throw new Error('invalid user cache')
+        if (!canEnter(to.meta, entrySubject(userData))) {
           next('/dashboard')
           return
         }
