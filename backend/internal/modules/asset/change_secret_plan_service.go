@@ -282,21 +282,45 @@ func (s *ChangeSecretPlanService) Create(req *ChangeSecretPlanRequest) (*model.C
 	}
 	plan := &model.ChangeSecretPlan{Enabled: enabled}
 	applyPlanFields(plan, req, fields)
-	if err := s.db.Create(plan).Error; err != nil {
+	// Enabled 與兩個密碼策略布林都帶 default:true：gorm 會把零值排除在 INSERT 外並
+	// 回填 DB 預設值，故請求為 false 的欄位要在同一交易內以明確欄位補寫——否則
+	// 建立即停用的計劃會以啟用狀態進排程，「不含符號」的計劃會產生含符號的密碼
+	wanted := map[string]bool{
+		"enabled":                    enabled,
+		"password_include_symbol":    plan.PasswordIncludeSymbol,
+		"password_exclude_ambiguous": plan.PasswordExcludeAmbiguous,
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(plan).Error; err != nil {
+			return err
+		}
+		return restoreFalseDefaults(tx, &model.ChangeSecretPlan{}, plan.ID, wanted)
+	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || dberr.IsUniqueViolation(err) {
 			return nil, ErrPlanNameExists
 		}
 		return nil, err
 	}
-	// Enabled 帶 default:true：gorm 會把零值排除在 INSERT 外並回填 DB 預設值，
-	// 故建立即停用的計劃要再以明確欄位更新落庫，否則會以啟用狀態進排程
-	if !enabled {
-		if err := s.db.Model(plan).UpdateColumn("enabled", false).Error; err != nil {
-			return nil, err
-		}
-		plan.Enabled = false
-	}
+	plan.Enabled = enabled
+	plan.PasswordIncludeSymbol = wanted["password_include_symbol"]
+	plan.PasswordExcludeAmbiguous = wanted["password_exclude_ambiguous"]
 	return plan, nil
+}
+
+// restoreFalseDefaults 建立後補寫請求為 false、但因欄位帶 default:true 而被
+// DB 預設值蓋掉的布林欄。只寫值為 false 的欄位；全為 true 時不發任何語句。
+// 必須在建立的同一交易內呼叫：中間失敗不得留下一列與請求不符的資料
+func restoreFalseDefaults(tx *gorm.DB, table any, id uint, wanted map[string]bool) error {
+	updates := map[string]any{}
+	for column, value := range wanted {
+		if !value {
+			updates[column] = false
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return tx.Model(table).Where("id = ?", id).UpdateColumns(updates).Error
 }
 
 // Update 更新計劃

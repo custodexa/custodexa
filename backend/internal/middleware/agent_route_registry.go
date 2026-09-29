@@ -36,6 +36,8 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return true, true
 	case "GET /api/v1/agent-tool-calls", "GET /api/v1/agent-tool-calls/:id/arguments":
 		return false, true
+	case "POST /api/v1/compliance/report-jobs":
+		return false, true
 	case "POST /api/v1/users/:id/agent-breaker/release":
 		return false, true
 	case "POST /api/v1/mcp":

@@ -1,0 +1,19 @@
+[FAIL] 新版接到的是一個空的資料庫，已立即停止所有服務
+
+  新版把資料庫當成全新安裝建立了（使用者 1、連線紀錄 0；
+  升級前是 42 與 18,305）。原本資料所在的路徑
+  /opt/custodexa/data 沒有被這次升級改寫或刪除。
+  最常見的原因是 .env 的 DATA_PATH 指到了別的地方：
+    目前 DATA_PATH=/opt/custodexa-new/data
+    升級前資料在 /opt/custodexa/data
+
+  請不要登入，也不要初始化主金鑰，也先不要刪除任何目錄。
+  1. 請維運人員核對新舊兩個資料路徑：確認
+     /opt/custodexa-new/data 只含這次誤建的資料（使用者 1、連線
+     紀錄 0），且 /opt/custodexa/data 仍是原本的資料
+  2. 核對後，把 .env 的 DATA_PATH 改回 /opt/custodexa/data
+  3. 確認沒有問題後再刪除 /opt/custodexa-new/data
+  4. 要回到升級前的版本，請用升級前的備份照「備份與還原」
+     第 5 節「還原程序」手動還原
+
+  紀錄檔 /opt/custodexa/logs/upgrade-20260930-101502.log

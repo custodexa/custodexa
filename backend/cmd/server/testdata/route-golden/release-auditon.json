@@ -983,6 +983,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/compliance/report-jobs",
+      "handler": "github.com/custodexa/backend/internal/api.(*ComplianceHandler).CreateReportJob-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/connect-tokens",
       "handler": "github.com/custodexa/backend/internal/sshproxy.(*Handler).HandleCreateConnectToken-fm"
     },
@@ -5650,6 +5655,22 @@
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).RegisterRoutes.RequirePermission.func3",
         "github.com/custodexa/backend/internal/api.(*CommandAlertHandler).Review-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compliance/report-jobs",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).RegisterRoutes.RequireAnyRole.func2",
+        "github.com/custodexa/backend/internal/api.(*ComplianceHandler).CreateReportJob-fm"
       ]
     },
     {

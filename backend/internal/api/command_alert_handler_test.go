@@ -6,6 +6,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,11 @@ func (m *MockCommandAlertService) List(filter *audit.CommandAlertFilter) (*audit
 }
 
 func (m *MockCommandAlertService) Review(alertID, reviewerID uint, disposition, note string) error {
+	args := m.Called(alertID, reviewerID, disposition, note)
+	return args.Error(0)
+}
+
+func (m *MockCommandAlertService) ReviewInBatch(alertID, reviewerID uint, disposition, note string) error {
 	args := m.Called(alertID, reviewerID, disposition, note)
 	return args.Error(0)
 }
@@ -197,6 +203,38 @@ func TestCommandAlertHandler_List(t *testing.T) {
 
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 		mockService.AssertExpectations(t)
+	})
+
+	// ids 查詢（批次審閱中斷後查回）：至多 50 個、每個須為正整數，否則整筆 400 不查
+	t.Run("ids 上限 50 與格式", func(t *testing.T) {
+		ids := func(n int) string {
+			parts := make([]string, n)
+			for i := range parts {
+				parts[i] = strconv.Itoa(i + 1)
+			}
+			return strings.Join(parts, ",")
+		}
+		get := func(svc *MockCommandAlertService, query string) int {
+			router := setupTestRouter()
+			router.GET("/command-alerts", NewCommandAlertHandler(svc).List)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", "/command-alerts?ids="+query, nil))
+			return w.Code
+		}
+
+		ok := new(MockCommandAlertService)
+		ok.On("List", mock.MatchedBy(func(f *audit.CommandAlertFilter) bool {
+			return len(f.IDs) == 50 && f.PageSize >= 50
+		})).Return(emptyAlertResponse(), nil)
+		assert.Equal(t, http.StatusOK, get(ok, ids(50)))
+		ok.AssertExpectations(t)
+
+		for _, query := range []string{ids(51), "1,0", "0"} {
+			rejected := new(MockCommandAlertService)
+			rejected.On("List", mock.Anything).Return(emptyAlertResponse(), nil).Maybe()
+			assert.Equal(t, http.StatusBadRequest, get(rejected, query), "ids=%.20s", query)
+			rejected.AssertNotCalled(t, "List", mock.Anything)
+		}
 	})
 }
 

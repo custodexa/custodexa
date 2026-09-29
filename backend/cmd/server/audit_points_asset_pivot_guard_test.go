@@ -88,6 +88,8 @@ type assetPivotEntry struct {
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
 	"AP-105": {pivotFilled, false, "帳本原文調閱的同步審計：有會話時解析資產主體；無會話的工具呼叫維持空資產"},
+	"AP-106": {pivotNotAsset, false, "通知通道推送門檻的前後值留痕，主體是通知通道"},
+	"AP-107": {pivotNotAsset, false, "合規報告手動產出：主體是下載中心工作單，報告涵蓋政策組而非資產"},
 	"AP-99":  {pivotFilled, false, "探測拒絕資產 ID，同步填入 AssetID"},
 	"AP-100": {pivotNotAsset, true, "雖有觸發資產 ID，跳閘作用於 token 與跨資產會話，資產引用另由 AP-99 留痕"},
 	"AP-101": {pivotNotAsset, false, "任務報告可跨資產，ResourceID 為任務 ID"},

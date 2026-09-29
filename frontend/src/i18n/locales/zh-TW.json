@@ -594,7 +594,8 @@
     "zeroRetention": "0 = 永久保留",
     "zeroKeyReminder": "0 = 不提醒",
     "zeroConsentTtl": "0 = 永不過期",
-    "zeroDisable": "0 = 停用"
+    "zeroDisable": "0 = 停用",
+    "zeroFormat": "{value}（{meaning}）"
   },
   "policyDomain": {
     "security": "安全政策",
@@ -702,6 +703,12 @@
     "signReviewButton": "簽核今日審閱",
     "reviewWaitingHint": "今日尚未完成審閱簽核，待稽核人員確認上列計數後簽核。",
     "reviewSignedSuccess": "今日審閱已簽核",
+    "signReviewForDate": "簽核 {date} 的審閱",
+    "reviewSignedSuccessForDate": "{date} 的審閱已簽核",
+    "reviewWaitingHintForDate": "{date} 的審閱尚未簽核，待稽核人員確認上列計數後簽核。",
+    "reviewHistoryLink": "歷次簽核",
+    "reviewHistoryLinkSigned": "檢視歷次簽核",
+    "reviewTitleLinkLabel": "每日安全審閱：前往歷次簽核",
     "quickActions": "快速操作",
     "actionWorkspace": "開啟工作區",
     "actionWorkspaceDesc": "進入多分頁連線工作區",
@@ -1263,6 +1270,16 @@
     "channelDeleted": "已刪除通道",
     "channelLanguage": "訊息語言",
     "channelLanguageHint": "僅影響 Slack 訊息的語言；Webhook 型通道送出的是機器碼與參數，設定後不生效。",
+    "channelPushColumn": "推送",
+    "channelMinSeverityLabel": "推送哪些告警",
+    "channelMinSeverity": {
+      "low": "全部告警",
+      "medium": "中、高等級",
+      "high": "只有高等級"
+    },
+    "channelMinSeverityLowHint": "高、中、低等級都推送（預設）",
+    "channelMinSeverityScopeHint": "被略過的中、低等級告警仍記在告警頁。啟用中的通道仍會收到系統事件（例如申請核准、稽核失效）、「測試發送」與無法判定等級的告警，不受此設定影響。",
+    "channelEnabledToggle": "啟用通道「{name}」",
     "blockedTag": "已阻斷",
     "languageColumn": "語言",
     "noCommandText": "此告警未附指令文字",
@@ -1283,7 +1300,40 @@
     "subjectKind": "適用主體",
     "subjectAll": "全體",
     "subjectHuman": "人類",
-    "subjectAgent": "自動化主體"
+    "subjectAgent": "自動化主體",
+    "batch": {
+      "selectAll": "全選本頁可批次審閱的告警",
+      "selectRow": "選取告警：{label}",
+      "selfTriggeredTip": "自己連線觸發的告警請逐筆審閱",
+      "reviewedTip": "已審閱的告警請逐筆重新審閱",
+      "selectedCount": "已選 {n} 筆未審閱告警",
+      "clear": "取消選取",
+      "open": "批次審閱",
+      "limitHint": "一次最多 {limit} 筆，其餘請下一批處理",
+      "dialogTitle": "批次審閱 {n} 筆告警",
+      "resultTitle": "批次審閱結果",
+      "noteLabel": "理由（必填，套用到每一筆）",
+      "notePlaceholder": "說明這幾筆告警共同的判斷依據",
+      "partialHint": "送出後逐筆處理，可能部分完成：每筆各自檢查權限、各自留下稽核紀錄；送出時已有審閱結果的那筆會被拒絕，不會蓋掉既有處置。",
+      "selfHint": "自己連線觸發的告警不會納入批次，請逐筆審閱。",
+      "submit": "逐筆送出 {n} 筆",
+      "progress": "第 {i}／{n} 筆",
+      "summary": "成功 {success} 筆 · 被拒 {rejected} 筆 · 未送出 {notSent} 筆 · 待確認 {unconfirmed} 筆",
+      "checking": "正在向伺服器查詢實際狀態",
+      "unconfirmedHint": "待確認的告警可能已經生效。請先按「重新查詢」確認，再決定要不要重送。",
+      "recheck": "重新查詢",
+      "done": "完成",
+      "markedBenign": "已標記無害",
+      "markedEscalated": "已標記需升級處理",
+      "rejectedWith": "被拒：{reason}",
+      "alreadyReviewed": "已有審閱結果",
+      "state": {
+        "queued": "排隊中",
+        "inflight": "送出中",
+        "notSent": "未送出",
+        "unconfirmed": "待確認：沒有收到伺服器回應"
+      }
+    }
   },
   "transmission": {
     "headerDesc": "傳輸強制政策與通道加密清冊（原「通道加密清冊」頁）：政策等級每項標示 PCI 建議值；清冊彙整全通道加密狀態與偏離，匯出快照帶時間戳與產生者，可作稽核 inventory",
@@ -1941,7 +1991,66 @@
     "approveSuccess": "已核准，申請人現在可以在核准時間內連線",
     "rejectSuccess": "已拒絕並通知申請人",
     "revokeSuccess": "已撤銷該限時連線",
-    "reviewSuccess": "已完成補審"
+    "reviewSuccess": "已完成補審",
+    "batch": {
+      "selectAllSheets": "全選本頁的申請",
+      "selectSheet": "選取任務 {id}",
+      "selectAllReviews": "全選本頁待補審的緊急連線",
+      "selectReview": "選取 {user} 的緊急連線",
+      "selectedCount": "已選 {n} 張申請",
+      "reviewSelectedCount": "已選 {n} 筆緊急連線",
+      "clear": "取消選取",
+      "rejectOpen": "拒絕所選",
+      "approveOpen": "核准所選",
+      "reviewOpen": "確認無誤（所選）",
+      "limitHintSheets": "一次最多 {limit} 張，其餘請下一批處理",
+      "limitHintItems": "一次最多 {limit} 筆，其餘請下一批處理",
+      "approveTitle": "核准 {n} 張申請",
+      "approveHint": "批次核准一律照申請內容；要調整請逐張處理",
+      "partialHint": "送出後逐張處理，可能部分完成：每張仍各自檢查審核範圍與「不能核准自己或自己執行的申請」，結果逐項列出。",
+      "rejectPartialHint": "送出後逐張處理，可能部分完成：每張仍各自檢查審核範圍，只拒絕該張尚未決定的項目，結果逐張列出。",
+      "approveSubmit": "核准 {n} 張",
+      "rejectTitle": "拒絕 {n} 張申請",
+      "rejectNoteLabel": "拒絕理由（必填，申請人會看到，套用到每一張）",
+      "rejectSubmit": "拒絕 {n} 張",
+      "requestLine": "任務 {id} · {user}",
+      "itemLine": "{asset} · {accounts} · {duration}",
+      "approveResultTitle": "批次核准結果",
+      "rejectResultTitle": "批次拒絕結果",
+      "progressSheets": "第 {i}／{n} 張",
+      "progressItems": "第 {i}／{n} 筆",
+      "summarySheets": "成功 {success} 張 · 被拒 {rejected} 張 · 未送出 {notSent} 張 · 待確認 {unconfirmed} 張",
+      "summarySheetsWaiting": "成功 {success} 張（其中 {waiting} 張仍需其他審核人）· 被拒 {rejected} 張 · 未送出 {notSent} 張 · 待確認 {unconfirmed} 張",
+      "summaryItems": "成功 {success} 筆 · 被拒 {rejected} 筆 · 未送出 {notSent} 筆 · 待確認 {unconfirmed} 筆",
+      "approved": "已核准",
+      "votedWaiting": "已投票（{received}／{required}），等其他審核人",
+      "votedWaitingPlain": "已投票，等其他審核人",
+      "partlyApproved": "已核准 {approved} 項；{pending} 項已投票，等其他審核人",
+      "rejectedDone": "已拒絕",
+      "rejectedWith": "被拒：{reason}",
+      "notEligible": "有資產不在你的審核範圍，整張未生效",
+      "selfApproval": "這張是你自己申請或由你執行的，請由其他審核人處理",
+      "handledByOther": "已由其他審核人處理",
+      "unconfirmedCheckHistory": "待確認：請到「歷史」分頁確認這張的結果",
+      "checking": "正在向伺服器查詢實際狀態",
+      "unconfirmedHint": "待確認的項目可能已經生效。請先按「重新查詢」確認，再決定要不要重送。",
+      "recheck": "重新查詢",
+      "done": "完成",
+      "reviewTitle": "批次補審 {n} 筆緊急連線",
+      "reviewHint": "批次只提供「確認無誤」；判定為「違規」必須逐筆處理並各自說明。",
+      "reviewNoteLabel": "補審理由（必填，套用到每一筆）",
+      "reviewPartialHint": "送出後逐筆處理，可能部分完成：每筆各自檢查審核範圍；自己發起的緊急連線不會出現在清單中。",
+      "reviewSubmit": "逐筆送出 {n} 筆",
+      "reviewResultTitle": "批次補審結果",
+      "reviewConfirmed": "已確認無誤",
+      "reviewLine": "{user} · {asset} · {time}",
+      "state": {
+        "queued": "排隊中",
+        "inflight": "送出中",
+        "notSent": "未送出",
+        "unconfirmed": "待確認：沒有收到伺服器回應"
+      }
+    }
   },
   "authorizations": {
     "title": "資產授權管理",
@@ -3608,6 +3717,7 @@
     "VALIDATION_BREAK_GLASS_FIELDS": "請求參數錯誤：資產與事由必填",
     "VALIDATION_CHANGE_PASSWORD_FIELDS": "請求格式錯誤：需提供 old_password 與 new_password",
     "VALIDATION_CHANNEL_LANGUAGE": "語系必須為 zh-TW、en-US 或 ja-JP",
+    "VALIDATION_CHANNEL_MIN_SEVERITY": "推送等級必須為 low、medium 或 high",
     "VALIDATION_CHANNEL_TYPE": "通道類型必須為 webhook 或 slack",
     "VALIDATION_CHANNEL_URL": "URL 必須為 http 或 https",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "範圍參數格式不正確（seq 為正整數、日期為 YYYY-MM-DD）",
@@ -3775,7 +3885,10 @@
     "KEY_TOPOLOGY_INVALID": "保管處設定沒有通過驗證，整筆未變更。請修正這些欄位：{fields}",
     "KEY_TOPOLOGY_NOT_EDITABLE": "這個保管處沒有可在此修改的欄位。",
     "VALIDATION_ALERT_DIRECTION": "direction 必須為 input/output",
-    "VALIDATION_ALERT_OUTPUT_BLOCK": "輸出面不支援阻斷：位元組送達之後無從收回。"
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "輸出面不支援阻斷：位元組送達之後無從收回。",
+    "CONFLICT_ALERT_ALREADY_REVIEWED": "送出時已有審閱結果",
+    "RULE_ALERT_BATCH_SELF_TRIGGERED": "自己連線觸發的告警不納入批次，請逐筆審閱",
+    "VALIDATION_ALERT_BATCH_NOTE": "審閱理由不得超過 500 字，批次審閱另須填寫理由"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "此提供者設定了群組 claim 名稱，但授權範圍不含 groups。多數提供者因此不會發出群組宣告，映射規則將無人命中，已依規則取得的角色也會被撤回。",
@@ -4892,7 +5005,9 @@
       "expires": "保留期限",
       "actions": "操作",
       "reportSource": "產出來源",
-      "reportScope": "範圍與區間"
+      "reportScope": "範圍與區間",
+      "reportGroup": "政策組",
+      "reportGenerated": "產出者與時刻"
     },
     "kind": {
       "auditExport": "稽核證據包"
@@ -4940,10 +5055,17 @@
     "shaTip": "產物指紋 SHA-256：{sha}",
     "tab": {
       "mine": "我的匯出",
-      "reports": "輪替報告"
+      "reports": "報告"
     },
-    "reportsSharedNote": "輪替報告不含錄影、剪貼簿內容或任何秘密材料，因此對所有具稽核檢視權限的帳號是同一份清單，不限發起者本人。",
+    "reportsSharedNote": "報告不含錄影、剪貼簿內容或任何秘密材料，因此對所有具稽核檢視權限的帳號是同一份清單，不限發起者本人。",
     "reportsEmpty": "目前沒有輪替報告。到輪替證據頁按「產出報告」，或由管理員設定排程，產物會出現在這裡。",
+    "reportsEmptyCompliance": "目前沒有合規報告。到合規對照頁按「產出報告」，產物會出現在這裡。",
+    "reportKind": {
+      "rotation": "輪替報告",
+      "compliance": "合規報告"
+    },
+    "reportLanguage": "語言：{lang}",
+    "reportGeneratedAt": "產出於 {time}",
     "reportManual": "手動產出",
     "reportManualBy": "手動產出（{user}）",
     "reportScope": {
@@ -4968,7 +5090,7 @@
     "generate": "產出報告",
     "generateTitle": "產出輪替證據報告",
     "generateSubmit": "產出",
-    "generateAccepted": "已受理，報告會在下載中心的「輪替報告」分頁取件。",
+    "generateAccepted": "已受理，報告會在下載中心的「報告」分頁取件。",
     "bucket": {
       "compliant": "合規",
       "overdue": "逾期",
@@ -5458,6 +5580,7 @@
     "above_maximum": "高於要求的上限",
     "value_mismatch": "與要求的值不同",
     "disabled_by_zero": "設為 0 等於停用，未達要求",
+    "disabled_by_zero_retention": "設為 0 表示永久保留，未設定明確的保留期限；這一組要求設定明確期限",
     "value_not_comparable": "目前的值無法與要求比較",
     "reference_value_unconfirmed": "這一組給的是參考值，尚未由機構確認",
     "reference_value_confirmed": "這一組給的是參考值，機構已確認",
@@ -5827,12 +5950,27 @@
     "asideOriginalLocale": "條文為機構原文（{locale}），系統不翻譯",
     "asideHow": "怎麼判定的",
     "asideHowBody": "把每一條條文對到的設定，拿目前的值和條文寫的要求比對。條文只說要有、沒有給值的，系統只列出目前值，由稽核人員判讀。機構備註不影響判定。",
-    "asideAuto": "自動產出摘要",
-    "asideAutoNone": "尚未設定",
     "asideRecent": "最近產出",
     "asideRecentNone": "目前沒有產出記錄",
     "generateReport": "產出報告",
-    "generateReportDisabled": "報告產出下一期開放"
+    "recentExpiresOn": "下載中心到期日 {date}",
+    "recentAll": "到下載中心查看報告狀態與檔案",
+    "recentStatus": {
+      "generating": "產出中",
+      "failed": "產出失敗",
+      "expired": "已過期"
+    },
+    "report": {
+      "title": "產出合規報告",
+      "group": "政策組",
+      "groupHint": "預設為目前檢視的政策組，一份報告對應一個政策組。",
+      "language": "報告語言",
+      "retention": "保留天數",
+      "retentionHint": "到期後從下載中心移除，請在期限內下載保存。您另行下載保存的檔案不受此期限影響。",
+      "note": "報告內容為產出當下的設定狀態，不回推過去的設定。送出後可在此頁「最近產出」或下載中心查看狀態，顯示「下載」時即可取件。檔案為 ZIP，內含 PDF 報告、CSV 明細與完整性驗證檔。",
+      "submit": "產出",
+      "accepted": "已受理，產出後可在「最近產出」或下載中心取件"
+    }
   },
   "policyGroups": {
     "headerDesc": "維護政策組與條文。政策組的變更都在這一頁，合規對照頁只呈現結果。",

@@ -11,7 +11,7 @@
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=reliability_rating" alt="Reliability Rating"></a>
   <a href="https://github.com/custodexa/custodexa/releases"><img src="https://img.shields.io/github/v/release/custodexa/custodexa" alt="Latest release"></a>
   <a href="https://github.com/custodexa/custodexa/commits"><img src="https://img.shields.io/github/last-commit/custodexa/custodexa" alt="Last commit"></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="License: AGPL-3.0-only"></a>
 </p>
 
 **誰が何に接続し、何をしたのか。録画が答えます。**
@@ -28,6 +28,28 @@
 </p>
 
 ## クイックスタート
+
+Linux サーバーにはインストールパッケージでインストールします。リリースページから `custodexa-<バージョン>.tar.gz`、
+`SHA256SUMS`、`SHA256SUMS.sigstore.json` を同じフォルダーにダウンロードし、検証してから展開してインストールします
+（`1.13.0` はダウンロードしたバージョンに置き換えてください）。
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  SHA256SUMS
+sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo /opt/custodexa/custodexa.sh install
+```
+
+`install` は何かを書き込む前にホストを確認し、シークレットを生成して `.env` を作成し、イメージを取得して
+リリースマニフェストのダイジェストと 1 つずつ照合し、スタックを起動してバックエンドが準備完了を報告するまで待ち、
+最後に URL と管理者のログイン情報を表示します。すでに記入済みの値には手を触れません。
+`custodexa.sh status` は何も変更せずにデプロイの状態を表示します。オフラインのホスト、各ステップの確認内容、
+フォルダー構成は[インストールパッケージからのインストール](QUICKSTART.md#インストールパッケージからのインストール)を参照してください。
+
+macOS や Windows で評価する場合、または開発に参加する場合は、ソースから実行します。
 
 ```bash
 git clone https://github.com/custodexa/custodexa.git
@@ -65,11 +87,11 @@ PUBLIC_BASE_URL=https://bastion.example.com
 TLS_MODE=provided
 ```
 
-`admin` と、ご自身で設定した初期パスワードでログインします。初回ログインでは必須のパスワード
+`admin` と初期パスワード（インストール時に表示されたもの、または `.env` で設定したもの）でログインします。初回ログインでは必須のパスワード
 変更を求められ、その後に資産の登録と接続の開始へ進めます。
 
 工場出荷時のパスワードや鍵は存在しません。`.env` の `JWT_SECRET`、`DB_PASSWORD`、
-`ADMIN_INITIAL_PASSWORD` にはご自身の値が必要です（未設定のものはスクリプトが生成します）。
+`ADMIN_INITIAL_PASSWORD` にはご自身の値が必要です（未設定のものはどちらのスクリプトも生成します）。
 マスターキーは、既定では初期化ページから、その他の鍵モードでは `ENCRYPTION_KEY` または KMS から
 供給されます。これは意図的な設計です。踏み台ホストが初期資格情報のまま稼働してよいことはありません。
 設定項目の全体、開発モード、トラブルシューティングは [QUICKSTART.md](QUICKSTART.md) が扱います。
@@ -102,7 +124,7 @@ TLS_MODE=provided
 | **05 録画と監査** | すべてのプロトコルで全セッションを録画し、再生（シーク、速度調整）できます。コマンドと文の記録は vim のような全画面プログラムも正しく扱います。Webhook 通知、区間を保全するチェックポイントチェーン、マニフェストと署名を収めた証拠パッケージ、オブジェクトストレージへの遠隔地コピーを備えます。 |
 
 **完全なオープンソース、単一エディション。** エンタープライズ版も、有料で解放される機能もありません。
-見えているものがすべてで、ライセンスは AGPL-3.0 です。
+見えているものがすべてで、ライセンスは AGPL-3.0-only です。
 
 **導入は簡単。** docker compose のコマンドひとつ、出荷時から https、
 起動後は外向きのネットワークを必要としません。
@@ -120,7 +142,7 @@ TLS_MODE=provided
 | **データベースの文の監査** | 管轄の外にある | ネットワーク層までが範囲で、文は解析しない | 実装により、一部のプロトコルを扱う | バージョンにより、備えるものもある | 実行の前に記録し、危険な文はその場でブロックできます |
 | **証拠のパッケージ化** | ログから自分でまとめる | 接続ログを自分でまとめる | 記録と録画の書き出しを備える | レポートと書き出しを備える | 一つの ZIP にマニフェストと署名が入り、ファイルごとのハッシュをオフラインで検証できます |
 | **資格情報のローテーション** | 人手で管理する | ディレクトリサービスに任せる | 実装により、人手で管理する | スケジュールでのローテーションを備える | Linux と Windows をスケジュールで変更し、ローテーション証跡レポートが付きます |
-| **ライセンス** | OS に含まれるコンポーネントのライセンスをそのまま使う | 実装により、オープンソースと商用が並ぶ | オープンソースのライセンスが中心 | 商用の購読または買い切りライセンス | オープンソース、AGPL-3.0、コードを自分で確認できます |
+| **ライセンス** | OS に含まれるコンポーネントのライセンスをそのまま使う | 実装により、オープンソースと商用が並ぶ | オープンソースのライセンスが中心 | 商用の購読または買い切りライセンス | オープンソース、AGPL-3.0-only、コードを自分で確認できます |
 
 ## スクリーンショット
 
@@ -179,6 +201,53 @@ agent チャネルで許される範囲は次のとおりです。
 token のローテーション、インシデント対応、agent の承認設定は
 [ops/deployment-topology-limits.md](ops/deployment-topology-limits.md) を参照してください。
 
+## ビルド済みイメージ
+
+1.13.0 から、リリースタグごとに CI が backend と frontend のイメージをビルドし、
+`linux/amd64` と `linux/arm64` 向けに公開しています。
+
+| レジストリ | イメージ |
+|---|---|
+| GitHub Container Registry（主） | `ghcr.io/custodexa/backend`、`ghcr.io/custodexa/frontend` |
+| Docker Hub（ミラー、digest は同一） | `docker.io/custodexa/backend`、`docker.io/custodexa/frontend` |
+
+タグはリリースのバージョンに従います。
+
+- 正式リリース `vX.Y.Z` のタグは `X.Y.Z` です。その minor 系列で最も高いリリースであれば `X.Y` も付き、
+  GitHub Container Registry では、すべての正式リリースの中で最も高いときに `latest` も付きます。
+- Docker Hub には `X.Y.Z` と `X.Y` だけがあり、`latest` タグが付くことはありません。
+- プレリリースは完全なバージョン番号だけで GitHub Container Registry に公開され、Docker Hub へはミラーされません。
+- 公開済みの `X.Y.Z` が上書きされることはありません。修正は新しいパッチリリースとして出します。
+
+各イメージには本リポジトリのリリース workflow による署名があり、ビルドの来歴証明（provenance）と
+SPDX 形式の SBOM attestation が付いています。確認するときは、次のコマンド中の `1.13.0` をすべて
+取得したバージョンに置き換えてください。
+
+```bash
+cosign verify ghcr.io/custodexa/backend:1.13.0 \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa \
+  --predicate-type https://spdx.dev/Document/v2.3
+```
+
+1 つ目は署名を、2 つ目はビルドの来歴証明を、3 つ目は SBOM を検証します。SBOM にはイメージ内の
+パッケージとそのバージョンが載っています。同じコマンドは `frontend` にも、`docker.io/custodexa/` の
+Docker Hub ミラーにも使えます。
+
+各イメージは `/usr/share/doc/custodexa/` に本プロジェクトの `LICENSE`、`NOTICE`、
+`THIRD-PARTY-LICENSES.md`、`licenses/` を含み、`org.opencontainers.image.licenses=AGPL-3.0-only`
+のラベルが付いています。guacd のイメージは公開していません。compose ファイルは公式の
+`guacamole/guacd:1.6.0` を digest で固定してそのまま使います。
+
+インストールパッケージはこれらのイメージを実行します。管理スクリプトはリリースマニフェストに記録された
+ダイジェストで各イメージを取得し、レジストリにもオフラインバンドルにもない場合に限ってソースからビルドし、
+起動後に各コンテナーが確認済みのイメージで動いていることを確かめます。
+ソースからの実行はこれまでどおり使えます。リポジトリの compose ファイルは公開イメージを参照しません。
+`scripts/quickstart.sh` は引き続きソースツリーから `custodexa/backend:latest` と `custodexa/frontend:latest` を
+ビルドし、これらを pull することはありません（`pull_policy: never`）。
+
 ## ドキュメント
 
 > README と主要な運用文書は英語・繁体字中国語・日本語で提供しています。API リファレンスなどの
@@ -212,10 +281,10 @@ token のローテーション、インシデント対応、agent の承認設�
 
 ## ライセンス
 
-本プロジェクトは **GNU Affero General Public License v3.0（AGPL-3.0）** のもとで公開されています。
+本プロジェクトは **GNU Affero General Public License バージョン 3 のみ（AGPL-3.0-only）** のもとで公開されています。
 全文は [LICENSE](../../LICENSE) を参照してください。
 
-AGPL-3.0 のネットワーク条項（第 13 条）は、本ソフトウェアを改変してネットワークサービスとして
+AGPL のネットワーク条項（第 13 条）は、本ソフトウェアを改変してネットワークサービスとして
 提供する場合、その改変版に対応する完全なソースコードを、当該サービスの利用者へも提供することを
 求めています。
 
@@ -226,7 +295,7 @@ AGPL-3.0 のネットワーク条項（第 13 条）は、本ソフトウェア�
 
 ### サードパーティコンポーネント
 
-配布物には 218 件のサードパーティコンポーネントが含まれ、それぞれが元のライセンスを保持して
+配布物には 219 件のサードパーティコンポーネントが含まれ、それぞれが元のライセンスを保持して
 います。一覧は [THIRD-PARTY-LICENSES.md](../../THIRD-PARTY-LICENSES.md)、Apache License 2.0 の
 帰属表示は [NOTICE](../../NOTICE)、ライセンス本文の写しは [`licenses/`](../../licenses/) にあります。
 

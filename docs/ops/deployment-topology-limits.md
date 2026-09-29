@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/deployment-topology-limits.md) | [日本語](../ja/ops/deployment-topology-limits.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.0.
+> Applies to: Custodexa 1.0. The package deployment section applies from 1.13.0.
 
 ## Topologies supported in this release
 
@@ -28,6 +28,71 @@ The following three architectures are specifically excluded:
 
 > **Connection pool mode.** The application must connect to postgres directly, or through a pool in session pooling mode. Transaction pooling lets the lock drift between sessions, and the guard will repeatedly report losing and retaking it. That topology is not supported.
 
+## Package deployments and the management script
+
+A deployment installed from the release package is operated by its management script,
+`custodexa.sh`. What the script supports in this release:
+
+- **Linux only**, on x86_64 or aarch64. On any other operating system it stops before doing
+  anything and points to running from source for evaluation.
+- **One deployment per host.** The containers have fixed names (`custodexa-backend` and so on),
+  so a second deployment on the same host cannot coexist with the first. `install` refuses to run
+  when it finds a deployment already there: a state file in the folder, a `custodexa-backend`
+  container belonging to another folder, or a git working tree of the source.
+- **The deployment folder path** may contain letters, digits and `. _ / -` only; it is written
+  into `.env` and the state file without escaping. `install` checks this before writing anything.
+- **One command at a time.** Commands that change the deployment take a lock on the folder; a
+  second one started meanwhile stops with exit code 3. `status` takes no lock and changes nothing.
+- **Compose is always called with the same project.** The script names the project `custodexa`,
+  the deployment folder as the project directory and the compose files of the current release.
+  `install` also writes `COMPOSE_FILE` and `COMPOSE_PROJECT_NAME` into `.env`, so `docker compose
+  ps` or `logs` typed in the deployment folder reach the same services. `up` and `config` typed
+  by hand also need `--project-directory .`; without it they look for `.env` in the wrong place and
+  stop without touching any container.
+- **Upgrades and backups go through the script as well.** `upgrade` stops the service, backs it up
+  and switches to the new release; `backup` takes the same stopped backup on its own. Neither is a
+  rolling update, and there is no rollback command: going back means restoring the backup by hand.
+  See the [upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script) and
+  [Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments).
+  A deployment running 1.12.4 from a `git clone` of the source is converted to this layout once, by
+  the 1.13.0 upgrade.
+
+### Folder layout
+
+The package unpacks to `custodexa/`, which is the deployment folder. After `install`, with the
+default `DATA_PATH`:
+
+```
+custodexa/
+  custodexa.sh -> current/custodexa.sh   the management script
+  current -> releases/<version>          the running release
+  releases/<version>/                    one release as shipped: the script, the compose files,
+                                         MANIFEST.json, VERSION, .env.example, reverse-proxy/,
+                                         source/; install adds images.env and image-ids.env
+  .env                                   settings and secrets (mode 600)
+  state.json                             what is installed, written only by the script
+  logs/                                  one log per command that changed something (mode 700);
+                                         secret values from .env are never written to it
+  backups/<timestamp>/                   backups taken by the script (mode 700; secrets included)
+  tls/                                   certificates of the built-in TLS proxy
+  data/postgres/                         the database (bundled database only)
+  data/recordings/                       session recordings (owner 1000, group 0, mode 2770)
+  data/audit/                            audit log files
+  data/exports/                          artifacts of asynchronous exports
+```
+
+Everything the deployment keeps between versions is at the top of the folder (`.env`,
+`state.json`, `tls/`, `data/`, `backups/`); a release under `releases/` holds what was shipped plus the image
+references `install` recorded for it.
+
+`data/exports/` is kept across container rebuilds but is **not covered by backups**: evidence
+package artifacts in it hold decrypted plaintext. Exclude it from any backup that copies the whole
+of `DATA_PATH`; see [Backup and Restore §2](./backup-and-restore.md#2-where-persistent-data-lives).
+
+`state.json` is read line by line against one fixed format. If it is damaged, the commands that
+read it, `status` included, stop with exit code 5, name the line, and point at the previous copy,
+`state.json.prev`, kept next to it.
+
 ## Keeping sign-in state when the service is exposed over plain HTTP
 
 **A deployment still exposed over http must turn off the security policy "Keep sign-in only on https connections."** Sign-in state is kept in a single HttpOnly cookie, and while that policy key is at its default (on), the browser only stores and returns it over an https connection; over plain http it is never stored at all. Users can still sign in, but reloading the page, opening a new tab, or closing a tab and coming back all return to the sign-in page; nothing usable for restoring the session was left on the browser side (the access token exists only in the page's runtime memory and is never written to browser storage).
@@ -50,7 +115,7 @@ Credential changes are initiated by the backend container towards the target hos
 
 **The base system of the guacd container used for RDP and VNC no longer receives security updates.**
 
-This project's guacd image is built on the official Apache Guacamole image, whose base is Alpine 3.18, past its official support period. **This is not a choice made by this project**: the official `latest` and `1.6.0` are the same `alpine-minirootfs-3.18.12`, and upstream has not yet provided a newer base.
+The guacd service uses the official Apache Guacamole image `guacamole/guacd:1.6.0` directly and unmodified (the compose files pin it by version and digest), and its base is Alpine 3.18, past its official support period. **This is not a choice made by this project**: the official `latest` and `1.6.0` are the same `alpine-minirootfs-3.18.12`, and upstream has not yet provided a newer base.
 
 Two consequences matter for your deployment planning:
 
@@ -62,7 +127,7 @@ Structural mitigations already in place (in effect with the default deployment, 
 - guacd **exposes no port at all**; it exists only on the compose internal network, and the only thing that can reach it is this system's backend service.
 - The recording directory is its only shared mount point. **Enabling offsite storage does not change this**: guacd still writes directly into the local recording directory, and the upload is performed separately by the backend **after the session ends**. guacd never touches object storage and holds no storage credentials. For the same reason, **recordings left behind on a crash path do not go offsite**: for a file whose session ended abnormally without a completed write confirmation, the system creates no upload tracking, and the existing local cleanup mechanism handles it. Offsite retention covers recordings that ended normally and were confirmed written. On retrieval, the staging area the file lands in is **a cache local to the backend container** (with a lifetime and a total size cap), which likewise is not shared with guacd.
 - The container **runs with minimum privileges**, and these are set by the shipped compose definition rather than by the image: every Linux capability is dropped, privilege escalation through setuid files is refused, and the root filesystem is read-only. Two small in-memory writable areas are kept because the workload measurably needs them: the per-connection staging directory used by RDP drive redirection, and the writable home directory the RDP library requires in order to start. The staging area holds whatever a user is transferring at that moment, so no size cap is set on it; a deployment that wants one edits that tmpfs line in the shipped `docker-compose.yml` directly, for example `/tmp:size=512m` (a compose override file cannot do it: compose appends tmpfs entries rather than replacing them, and the same mount point declared twice is rejected). The RDP library's trust store for known hosts lives in one of those in-memory areas and is therefore empty again after every container restart; how this system treats a target host's certificate is decided by the asset's certificate verification setting, not by that store surviving a restart. The read-only root and the two in-memory areas, which are mounted noexec, mean that a break-in arriving through the protocol can neither alter the container's configuration nor execute anything from the staging areas; the shared recording directory remains writable and executable, which is what writing recordings requires.
-- **You may replace this image with one you build or select yourself.** What this system requires of the container is only three things: that it speak the guacd protocol on port 4822, that it be able to write to the recording directory the compose definition mounts into it, and that it contain `sh` and `nc`, which the health check applied by the compose definition runs to decide whether the container is ready. Everything above is a runtime attribute of the container, not a property of the image, so the minimum-privilege settings continue to apply to whatever image you put there.
+- **You may replace this image with one you build or select yourself**, by changing the guacd `image:` line in the compose file. What this system requires of the container is only three things: that it speak the guacd protocol on port 4822, that it be able to write to the recording directory the compose definition mounts into it, and that it contain `sh` and `nc`, which the health check applied by the compose definition runs to decide whether the container is ready. Everything above is a runtime attribute of the container, not a property of the image, so the minimum-privilege settings continue to apply to whatever image you put there.
 
 **Mitigation is not the absence of risk**: if the backend is compromised, or a managed remote desktop host attacks back through the protocol, that path still exists. **If your vulnerability management policy requires every component's base system to be within its support period, put this image into an exception assessment before deployment.**
 
@@ -155,7 +220,7 @@ Nothing new to store. Allowed source ranges and the source address baseline both
 
 ## Effect on upgrades
 
-Upgrades must be performed with downtime; rolling updates are not permitted. For the procedure, see the [Deployment and Upgrade SOP](./upgrade-sop.md).
+Upgrades must be performed with downtime; rolling updates are not permitted. For the procedure, see the [Deployment and Upgrade SOP](./upgrade-sop.md). In a package deployment the management script runs the upgrade with the same stop-and-backup order.
 
 As of this release, **there is one more reason a new instance may fail to come up: the old instance is still running, or its database session is left over**. A leftover only happens when the lock holder's host crashes or a network partition leaves the TCP connection half open; postgres reclaims that session according to the operating system's TCP keepalive (the postgres container sets nothing of its own, so the Linux default of roughly 2 hours applies). The startup log prints the lock holder's fingerprint and the confirmation code; for the recovery procedure, see [Deployment and Upgrade SOP §2.6b](./upgrade-sop.md#26b-if-the-backend-is-stopped-and-reports-that-the-single-instance-lock-is-held-by-another-database-session). **Recovery requires no operation on the database.**
 

@@ -100,7 +100,7 @@
 
 ### Requirement: 公開 repo 的必備內容
 
-該 repo SHALL 以 AGPL-3.0 授權，並 SHALL 具備：授權全文、NOTICE、說明文件、貢獻指南（採 DCO）、DCO 全文、安全問題回報政策、變更紀錄、第三方授權彙整（逐一列出隨二進位散布的依賴及其授權）。
+該 repo SHALL 以 AGPL-3.0-only 授權，並 SHALL 具備：授權全文、NOTICE、說明文件、貢獻指南（採 DCO）、DCO 全文、安全問題回報政策、變更紀錄、第三方授權彙整（逐一列出隨二進位散布的依賴及其授權）。
 
 說明文件 SHALL 在開頭寫明轉接頭的定位：MCP 服務端即 Custodexa 本體的端點，本工具只為只支援 stdio 的宿主轉接；支援 streamable HTTP 的宿主可直連服務端而無需本工具。說明文件 SHALL 列出安裝途徑、兩個環境變數、宿主設定範例，並 SHALL 指示 token 只經環境變數提供。
 

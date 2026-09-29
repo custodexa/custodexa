@@ -594,7 +594,8 @@
     "zeroRetention": "0 = 永久保持",
     "zeroKeyReminder": "0 = 通知なし",
     "zeroConsentTtl": "0 = 無期限",
-    "zeroDisable": "0 = 無効"
+    "zeroDisable": "0 = 無効",
+    "zeroFormat": "{value}（{meaning}）"
   },
   "policyDomain": {
     "security": "セキュリティポリシー",
@@ -702,6 +703,12 @@
     "signReviewButton": "本日のレビューに署名",
     "reviewWaitingHint": "本日のレビュー署名はまだ完了していません。監査担当者が上記の集計を確認後に署名します。",
     "reviewSignedSuccess": "本日のレビューに署名しました",
+    "signReviewForDate": "{date} のレビューに署名",
+    "reviewSignedSuccessForDate": "{date} のレビューに署名しました",
+    "reviewWaitingHintForDate": "{date} のレビュー署名はまだ完了していません。監査担当者が上記の集計を確認後に署名します。",
+    "reviewHistoryLink": "過去の署名",
+    "reviewHistoryLinkSigned": "過去の署名を見る",
+    "reviewTitleLinkLabel": "日次セキュリティレビュー：過去の署名へ",
     "quickActions": "クイック操作",
     "actionWorkspace": "ワークスペースを開く",
     "actionWorkspaceDesc": "マルチタブの接続ワークスペースに入ります",
@@ -1263,6 +1270,16 @@
     "channelDeleted": "チャネルを削除しました",
     "channelLanguage": "メッセージ言語",
     "channelLanguageHint": "Slack メッセージの言語のみに影響します。Webhook 型チャネルは機械コードとパラメータを送信するため、この設定は適用されません。",
+    "channelPushColumn": "通知対象",
+    "channelMinSeverityLabel": "通知するアラート",
+    "channelMinSeverity": {
+      "low": "すべてのアラート",
+      "medium": "中・高レベル",
+      "high": "高レベルのみ"
+    },
+    "channelMinSeverityLowHint": "高・中・低すべてのレベルを通知します（既定）",
+    "channelMinSeverityScopeHint": "ここで除外された中・低レベルのアラートも、アラート画面には記録されます。有効なチャネルは、この設定に関係なく、システムイベント（申請の承認、監査の失敗など）、テスト送信、レベルを判定できないアラートを受信します。",
+    "channelEnabledToggle": "チャネル「{name}」を有効化",
     "blockedTag": "ブロック済み",
     "languageColumn": "言語",
     "noCommandText": "この警告にはコマンド文字列がありません",
@@ -1283,7 +1300,40 @@
     "subjectKind": "対象主体",
     "subjectAll": "すべて",
     "subjectHuman": "人間",
-    "subjectAgent": "自動化主体"
+    "subjectAgent": "自動化主体",
+    "batch": {
+      "selectAll": "このページで一括レビューできるアラートをすべて選択",
+      "selectRow": "アラートを選択：{label}",
+      "selfTriggeredTip": "自分の接続で発生したアラートは 1 件ずつレビューしてください",
+      "reviewedTip": "レビュー済みのアラートは 1 件ずつ再レビューしてください",
+      "selectedCount": "未レビューのアラートを {n} 件選択中",
+      "clear": "選択を解除",
+      "open": "一括レビュー",
+      "limitHint": "1 回の上限は {limit} 件です。残りは次の回で処理してください",
+      "dialogTitle": "アラート {n} 件を一括レビュー",
+      "resultTitle": "一括レビューの結果",
+      "noteLabel": "理由（必須。各アラートに適用）",
+      "notePlaceholder": "これらのアラートに共通する判断の根拠を記入してください",
+      "partialHint": "送信後は 1 件ずつ処理され、一部だけ完了することがあります。権限の確認と監査記録はアラートごとに行われます。送信時点でレビュー結果があるアラートは拒否され、既存の処置は上書きされません。",
+      "selfHint": "自分の接続で発生したアラートは一括処理の対象外です。1 件ずつレビューしてください。",
+      "submit": "{n} 件を 1 件ずつ送信",
+      "progress": "{i}／{n} 件目",
+      "summary": "成功 {success} 件 · 拒否 {rejected} 件 · 未送信 {notSent} 件 · 確認待ち {unconfirmed} 件",
+      "checking": "サーバーで実際の状態を確認しています",
+      "unconfirmedHint": "確認待ちのアラートはすでに反映されている可能性があります。再送信する前に「再確認」で状態を確かめてください。",
+      "recheck": "再確認",
+      "done": "完了",
+      "markedBenign": "無害として記録済み",
+      "markedEscalated": "エスカレーションとして記録済み",
+      "rejectedWith": "拒否：{reason}",
+      "alreadyReviewed": "すでにレビュー結果があります",
+      "state": {
+        "queued": "待機中",
+        "inflight": "送信中",
+        "notSent": "未送信",
+        "unconfirmed": "確認待ち：サーバーから応答がありません"
+      }
+    }
   },
   "transmission": {
     "headerDesc": "通信強制ポリシーとチャネル暗号化インベントリ（旧「チャネル暗号化インベントリ」ページ）：ポリシーレベルには各項目に PCI 推奨値を表示します。インベントリは全チャネルの暗号化状態と乖離を集約し、エクスポートするスナップショットにはタイムスタンプと生成者が付くため、監査用インベントリとして利用できます",
@@ -1941,7 +1991,66 @@
     "approveSuccess": "承認しました。申請者は承認された時間内に接続できます",
     "rejectSuccess": "却下し、申請者に通知しました",
     "revokeSuccess": "この期限付き接続を取り消しました",
-    "reviewSuccess": "事後承認が完了しました"
+    "reviewSuccess": "事後承認が完了しました",
+    "batch": {
+      "selectAllSheets": "このページの申請をすべて選択",
+      "selectSheet": "タスク {id} を選択",
+      "selectAllReviews": "このページの事後承認待ちの緊急接続をすべて選択",
+      "selectReview": "{user}の緊急接続を選択",
+      "selectedCount": "申請を {n} 件選択中",
+      "reviewSelectedCount": "緊急接続を {n} 件選択中",
+      "clear": "選択を解除",
+      "rejectOpen": "選択した申請を却下",
+      "approveOpen": "選択した申請を承認",
+      "reviewOpen": "問題なしと確認（選択分）",
+      "limitHintSheets": "1 回の上限は {limit} 件です。残りは次の回で処理してください",
+      "limitHintItems": "1 回の上限は {limit} 件です。残りは次の回で処理してください",
+      "approveTitle": "申請 {n} 件を承認",
+      "approveHint": "一括承認は申請内容のとおりに承認します。調整が必要な申請は個別に処理してください",
+      "partialHint": "送信後は 1 件ずつ処理され、一部だけ完了することがあります。各申請で承認範囲と「自分の申請や自分が実行する申請は承認できない」ルールを個別に確認し、結果は項目ごとに表示します。",
+      "rejectPartialHint": "送信後は 1 件ずつ処理され、一部だけ完了することがあります。各申請で承認範囲を個別に確認し、未決定の項目のみ却下します。結果は申請ごとに表示します。",
+      "approveSubmit": "{n} 件を承認",
+      "rejectTitle": "申請 {n} 件を却下",
+      "rejectNoteLabel": "却下理由（必須。申請者に表示され、各申請に適用）",
+      "rejectSubmit": "{n} 件を却下",
+      "requestLine": "タスク {id} · {user}",
+      "itemLine": "{asset} · {accounts} · {duration}",
+      "approveResultTitle": "一括承認の結果",
+      "rejectResultTitle": "一括却下の結果",
+      "progressSheets": "{i}／{n} 件目",
+      "progressItems": "{i}／{n} 件目",
+      "summarySheets": "成功 {success} 件 · 拒否 {rejected} 件 · 未送信 {notSent} 件 · 確認待ち {unconfirmed} 件",
+      "summarySheetsWaiting": "成功 {success} 件（うち {waiting} 件は他の承認者待ち）· 拒否 {rejected} 件 · 未送信 {notSent} 件 · 確認待ち {unconfirmed} 件",
+      "summaryItems": "成功 {success} 件 · 拒否 {rejected} 件 · 未送信 {notSent} 件 · 確認待ち {unconfirmed} 件",
+      "approved": "承認済み",
+      "votedWaiting": "投票済み（{received}／{required}）。他の承認者を待っています",
+      "votedWaitingPlain": "投票済み。他の承認者を待っています",
+      "partlyApproved": "{approved} 項目を承認済み。{pending} 項目は投票済みで他の承認者を待っています",
+      "rejectedDone": "却下済み",
+      "rejectedWith": "拒否：{reason}",
+      "notEligible": "承認範囲外のアセットが含まれるため、この申請は反映されていません",
+      "selfApproval": "自分の申請または自分が実行する申請です。他の承認者が処理してください",
+      "handledByOther": "他の承認者が処理済みです",
+      "unconfirmedCheckHistory": "確認待ち：「履歴」タブでこの申請の結果を確認してください",
+      "checking": "サーバーで実際の状態を確認しています",
+      "unconfirmedHint": "確認待ちの項目はすでに反映されている可能性があります。再送信する前に「再確認」で状態を確かめてください。",
+      "recheck": "再確認",
+      "done": "完了",
+      "reviewTitle": "緊急接続 {n} 件を一括で事後承認",
+      "reviewHint": "一括処理では「問題なし」の確認のみ行えます。「違反」と判断する場合は 1 件ずつ処理し、それぞれ理由を記入してください。",
+      "reviewNoteLabel": "事後承認の理由（必須。各接続に適用）",
+      "reviewPartialHint": "送信後は 1 件ずつ処理され、一部だけ完了することがあります。承認範囲は接続ごとに確認されます。自分が開始した緊急接続は一覧に表示されません。",
+      "reviewSubmit": "{n} 件を 1 件ずつ送信",
+      "reviewResultTitle": "一括事後承認の結果",
+      "reviewConfirmed": "問題なしと確認済み",
+      "reviewLine": "{user} · {asset} · {time}",
+      "state": {
+        "queued": "待機中",
+        "inflight": "送信中",
+        "notSent": "未送信",
+        "unconfirmed": "確認待ち：サーバーから応答がありません"
+      }
+    }
   },
   "authorizations": {
     "title": "資産権限付与の管理",
@@ -3608,6 +3717,7 @@
     "VALIDATION_BREAK_GLASS_FIELDS": "リクエストパラメータが不正です：アセットと理由は必須です",
     "VALIDATION_CHANGE_PASSWORD_FIELDS": "リクエストの形式が正しくありません：old_password と new_password を指定してください",
     "VALIDATION_CHANNEL_LANGUAGE": "言語は zh-TW、en-US、ja-JP のいずれかを指定してください",
+    "VALIDATION_CHANNEL_MIN_SEVERITY": "通知レベルは low、medium、high のいずれかを指定してください",
     "VALIDATION_CHANNEL_TYPE": "通知チャネルの種類は webhook または slack を指定してください",
     "VALIDATION_CHANNEL_URL": "URL は http または https を指定してください",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "範囲パラメータの形式が不正です（seq は正の整数、日付は YYYY-MM-DD）",
@@ -3775,7 +3885,10 @@
     "KEY_TOPOLOGY_INVALID": "保管先設定が検証を通過せず、変更は行われていません。次の項目を修正してください：{fields}",
     "KEY_TOPOLOGY_NOT_EDITABLE": "この保管先には、ここで変更できる項目がありません。",
     "VALIDATION_ALERT_DIRECTION": "direction は input/output を指定してください",
-    "VALIDATION_ALERT_OUTPUT_BLOCK": "送信済みのバイトは取り消せないため、出力はブロックできません。"
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "送信済みのバイトは取り消せないため、出力はブロックできません。",
+    "CONFLICT_ALERT_ALREADY_REVIEWED": "送信時点ですでにレビュー結果があります",
+    "RULE_ALERT_BATCH_SELF_TRIGGERED": "自分の接続で発生したアラートは一括処理の対象外です。1 件ずつレビューしてください",
+    "VALIDATION_ALERT_BATCH_NOTE": "レビュー理由は 500 文字以内で入力してください。一括レビューでは理由が必須です"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "このプロバイダーにはグループ claim 名が設定されていますが、groups スコープが要求されていません。多くのプロバイダーはグループクレームを発行しないため、マッピング規則は誰にも一致せず、規則で付与済みのロールも取り消されます。",
@@ -4892,7 +5005,9 @@
       "expires": "保存期限",
       "actions": "操作",
       "reportSource": "生成元",
-      "reportScope": "範囲と期間"
+      "reportScope": "範囲と期間",
+      "reportGroup": "ポリシーグループ",
+      "reportGenerated": "生成者と日時"
     },
     "kind": {
       "auditExport": "監査証拠パッケージ"
@@ -4940,10 +5055,17 @@
     "shaTip": "成果物のフィンガープリント SHA-256：{sha}",
     "tab": {
       "mine": "自分のエクスポート",
-      "reports": "ローテーションレポート"
+      "reports": "レポート"
     },
-    "reportsSharedNote": "ローテーションレポートには録画、クリップボード内容、秘密情報が含まれないため、監査閲覧権限を持つすべてのアカウントが同じ一覧を参照します（申請者本人に限りません）。",
+    "reportsSharedNote": "レポートには録画、クリップボード内容、秘密情報が含まれないため、監査閲覧権限を持つすべてのアカウントが同じ一覧を参照します（申請者本人に限りません）。",
     "reportsEmpty": "ローテーションレポートはまだありません。ローテーション証跡ページの「レポート生成」を使うか、管理者にスケジュール設定を依頼してください。生成物はここに表示されます。",
+    "reportsEmptyCompliance": "コンプライアンスレポートはまだありません。コンプライアンス対照ページの「レポートを出力」を使うと、生成物がここに表示されます。",
+    "reportKind": {
+      "rotation": "ローテーションレポート",
+      "compliance": "コンプライアンスレポート"
+    },
+    "reportLanguage": "言語：{lang}",
+    "reportGeneratedAt": "生成 {time}",
     "reportManual": "手動生成",
     "reportManualBy": "手動生成（{user}）",
     "reportScope": {
@@ -4968,7 +5090,7 @@
     "generate": "レポート生成",
     "generateTitle": "ローテーション証跡レポートの生成",
     "generateSubmit": "生成",
-    "generateAccepted": "受け付けました。ダウンロードセンターの「ローテーションレポート」タブから取得してください。",
+    "generateAccepted": "受け付けました。ダウンロードセンターの「レポート」タブから取得してください。",
     "bucket": {
       "compliant": "適合",
       "overdue": "期限超過",
@@ -5458,6 +5580,7 @@
     "above_maximum": "要求の上限を超えています",
     "value_mismatch": "要求された値と異なります",
     "disabled_by_zero": "0 は無効化を意味し、要求を満たしません",
+    "disabled_by_zero_retention": "0 は無期限保存を意味し、明確な保存期限がありません。このグループは期限の設定を求めています",
     "value_not_comparable": "現在の値は要求と比較できません",
     "reference_value_unconfirmed": "このグループは参考値を示しており、組織の確認がまだです",
     "reference_value_confirmed": "このグループは参考値を示しており、組織が確認済みです",
@@ -5827,12 +5950,27 @@
     "asideOriginalLocale": "条文は組織の原文（{locale}）のまま表示し、システムは翻訳しません",
     "asideHow": "判定のしかた",
     "asideHowBody": "各条文が指す設定について、現在の値と条文の要求を比べます。要求はあるが値が示されていない条文は、現在の値だけを示し、監査人が判断します。組織の注記は判定に影響しません。",
-    "asideAuto": "自動出力の設定",
-    "asideAutoNone": "未設定",
     "asideRecent": "最近の出力",
     "asideRecentNone": "出力の記録はありません",
     "generateReport": "レポートを出力",
-    "generateReportDisabled": "レポート出力は次期に対応します"
+    "recentExpiresOn": "ダウンロードセンターの期限 {date}",
+    "recentAll": "ダウンロードセンターでレポートの状態とファイルを確認",
+    "recentStatus": {
+      "generating": "生成中",
+      "failed": "生成失敗",
+      "expired": "期限切れ"
+    },
+    "report": {
+      "title": "コンプライアンスレポートを出力",
+      "group": "ポリシーグループ",
+      "groupHint": "既定では表示中のポリシーグループが選ばれます。1 つのレポートは 1 つのポリシーグループに対応します。",
+      "language": "レポートの言語",
+      "retention": "保存日数",
+      "retentionHint": "期限を過ぎるとダウンロードセンターから削除されます。期限内にダウンロードして保存してください。ダウンロード済みのファイルはこの期限の影響を受けません。",
+      "note": "レポートの内容は出力時点の設定状態で、過去の設定をさかのぼって再現するものではありません。送信後はこのページの「最近の出力」またはダウンロードセンターで状態を確認でき、「ダウンロード」が表示されたら取得できます。ファイルは ZIP 形式で、PDF レポート、CSV 明細、完全性検証ファイルを含みます。",
+      "submit": "出力",
+      "accepted": "受け付けました。生成後は「最近の出力」またはダウンロードセンターから取得できます。"
+    }
   },
   "policyGroups": {
     "headerDesc": "ポリシーグループと条文を管理します。ポリシーグループの変更はこのページだけで行い、コンプライアンス対照ページは結果のみを表示します。",

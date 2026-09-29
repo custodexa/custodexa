@@ -594,7 +594,8 @@
     "zeroRetention": "0 = keep forever",
     "zeroKeyReminder": "0 = no reminder",
     "zeroConsentTtl": "0 = never expires",
-    "zeroDisable": "0 = disabled"
+    "zeroDisable": "0 = disabled",
+    "zeroFormat": "{value} ({meaning})"
   },
   "policyDomain": {
     "security": "Security Policies",
@@ -702,6 +703,12 @@
     "signReviewButton": "Sign Today's Review",
     "reviewWaitingHint": "Today's review has not been signed yet; an auditor signs off after confirming the counts above.",
     "reviewSignedSuccess": "Today's review signed",
+    "signReviewForDate": "Sign the review for {date}",
+    "reviewSignedSuccessForDate": "Review for {date} signed",
+    "reviewWaitingHintForDate": "The review for {date} has not been signed yet; an auditor signs off after confirming the counts above.",
+    "reviewHistoryLink": "Past sign-offs",
+    "reviewHistoryLinkSigned": "View past sign-offs",
+    "reviewTitleLinkLabel": "Daily Security Review: go to past sign-offs",
     "quickActions": "Quick Actions",
     "actionWorkspace": "Open Workspace",
     "actionWorkspaceDesc": "Enter the multi-tab session workspace",
@@ -1263,6 +1270,16 @@
     "channelDeleted": "Channel deleted",
     "channelLanguage": "Message language",
     "channelLanguageHint": "Applies to Slack messages only; webhook channels send machine codes and parameters, so this setting has no effect on them.",
+    "channelPushColumn": "Push",
+    "channelMinSeverityLabel": "Alerts to push",
+    "channelMinSeverity": {
+      "low": "All alerts",
+      "medium": "Medium and high",
+      "high": "High only"
+    },
+    "channelMinSeverityLowHint": "High, medium, and low alerts are all pushed (default)",
+    "channelMinSeverityScopeHint": "Medium and low alerts skipped here are still recorded on the Alerts page. An enabled channel still receives system events (such as request approvals and audit failures), test sends, and alerts whose level cannot be determined, regardless of this setting.",
+    "channelEnabledToggle": "Enable channel \"{name}\"",
     "blockedTag": "Blocked",
     "languageColumn": "Language",
     "noCommandText": "This alert carries no command text",
@@ -1283,7 +1300,40 @@
     "subjectKind": "Subject",
     "subjectAll": "All",
     "subjectHuman": "Human",
-    "subjectAgent": "Agent"
+    "subjectAgent": "Agent",
+    "batch": {
+      "selectAll": "Select all alerts on this page that can be batch reviewed",
+      "selectRow": "Select alert: {label}",
+      "selfTriggeredTip": "Review alerts triggered by your own sessions one at a time",
+      "reviewedTip": "Re-review reviewed alerts one at a time",
+      "selectedCount": "Unreviewed alerts selected: {n}",
+      "clear": "Clear selection",
+      "open": "Batch review",
+      "limitHint": "Up to {limit} per batch; handle the rest in the next batch",
+      "dialogTitle": "Batch review of selected alerts ({n})",
+      "resultTitle": "Batch review results",
+      "noteLabel": "Reason (required, applied to each alert)",
+      "notePlaceholder": "Explain the shared basis for this decision",
+      "partialHint": "After you submit, alerts are processed one at a time and the batch may only partly complete. Each alert is permission-checked and audited on its own; an alert that already has a review result when it is sent is rejected, and its existing disposition is kept.",
+      "selfHint": "Alerts triggered by your own sessions are not included in a batch. Review them one at a time.",
+      "submit": "Send one by one ({n})",
+      "progress": "Item {i} of {n}",
+      "summary": "Succeeded {success} · Rejected {rejected} · Not sent {notSent} · Unconfirmed {unconfirmed}",
+      "checking": "Checking the actual status with the server",
+      "unconfirmedHint": "Unconfirmed alerts may already have taken effect. Use \"Check again\" before deciding whether to send them again.",
+      "recheck": "Check again",
+      "done": "Done",
+      "markedBenign": "Marked benign",
+      "markedEscalated": "Marked for escalation",
+      "rejectedWith": "Rejected: {reason}",
+      "alreadyReviewed": "Already has a review result",
+      "state": {
+        "queued": "Queued",
+        "inflight": "Sending",
+        "notSent": "Not sent",
+        "unconfirmed": "Unconfirmed: no response from the server"
+      }
+    }
   },
   "transmission": {
     "headerDesc": "Transmission enforcement policy and channel encryption inventory (formerly the Channel Encryption Inventory page): each policy level is annotated with its PCI recommendation; the inventory aggregates encryption status and deviations across all channels, and exported snapshots carry a timestamp and generator for use as an audit inventory",
@@ -1941,7 +1991,66 @@
     "approveSuccess": "Approved; the requester can now connect within the granted time",
     "rejectSuccess": "Rejected and the requester has been notified",
     "revokeSuccess": "The time-limited connection has been revoked",
-    "reviewSuccess": "Review completed"
+    "reviewSuccess": "Review completed",
+    "batch": {
+      "selectAllSheets": "Select all requests on this page",
+      "selectSheet": "Select task {id}",
+      "selectAllReviews": "Select all emergency connections awaiting review on this page",
+      "selectReview": "Select {user}'s emergency connection",
+      "selectedCount": "Requests selected: {n}",
+      "reviewSelectedCount": "Emergency connections selected: {n}",
+      "clear": "Clear selection",
+      "rejectOpen": "Reject selected",
+      "approveOpen": "Approve selected",
+      "reviewOpen": "Confirm as justified (selected)",
+      "limitHintSheets": "Up to {limit} requests per batch; handle the rest in the next batch",
+      "limitHintItems": "Up to {limit} per batch; handle the rest in the next batch",
+      "approveTitle": "Approve selected requests ({n})",
+      "approveHint": "A batch approval grants exactly what was requested. To adjust a request, handle it on its own.",
+      "partialHint": "After you submit, requests are processed one at a time and the batch may only partly complete. Each request is still checked against your approver scope and the rule that you cannot approve a request you made or will execute; results are listed per item.",
+      "rejectPartialHint": "After you submit, requests are processed one at a time and the batch may only partly complete. Each request is still checked against your approver scope, only its undecided items are rejected, and results are listed per request.",
+      "approveSubmit": "Approve ({n})",
+      "rejectTitle": "Reject selected requests ({n})",
+      "rejectNoteLabel": "Rejection reason (required, visible to the requester, applied to each request)",
+      "rejectSubmit": "Reject ({n})",
+      "requestLine": "Task {id} · {user}",
+      "itemLine": "{asset} · {accounts} · {duration}",
+      "approveResultTitle": "Batch approval results",
+      "rejectResultTitle": "Batch rejection results",
+      "progressSheets": "Request {i} of {n}",
+      "progressItems": "Item {i} of {n}",
+      "summarySheets": "Succeeded {success} · Rejected {rejected} · Not sent {notSent} · Unconfirmed {unconfirmed}",
+      "summarySheetsWaiting": "Succeeded {success} (still awaiting other approvers: {waiting}) · Rejected {rejected} · Not sent {notSent} · Unconfirmed {unconfirmed}",
+      "summaryItems": "Succeeded {success} · Rejected {rejected} · Not sent {notSent} · Unconfirmed {unconfirmed}",
+      "approved": "Approved",
+      "votedWaiting": "Vote recorded ({received}/{required}); awaiting other approvers",
+      "votedWaitingPlain": "Vote recorded; awaiting other approvers",
+      "partlyApproved": "Approved: {approved}; vote recorded and awaiting other approvers: {pending}",
+      "rejectedDone": "Rejected",
+      "rejectedWith": "Rejected: {reason}",
+      "notEligible": "An asset is outside your approver scope, so nothing on this request took effect",
+      "selfApproval": "You made this request or are its executor; another approver must handle it",
+      "handledByOther": "Already handled by another approver",
+      "unconfirmedCheckHistory": "Unconfirmed: check the result of this request on the History tab",
+      "checking": "Checking the actual status with the server",
+      "unconfirmedHint": "Unconfirmed items may already have taken effect. Use \"Check again\" before deciding whether to send them again.",
+      "recheck": "Check again",
+      "done": "Done",
+      "reviewTitle": "Batch review of emergency connections ({n})",
+      "reviewHint": "A batch can only confirm connections as justified. A violation must be recorded one connection at a time, each with its own explanation.",
+      "reviewNoteLabel": "Review reason (required, applied to each connection)",
+      "reviewPartialHint": "After you submit, connections are processed one at a time and the batch may only partly complete. Each one is checked against your approver scope; emergency connections you started yourself are not listed.",
+      "reviewSubmit": "Send one by one ({n})",
+      "reviewResultTitle": "Batch review results",
+      "reviewConfirmed": "Confirmed as justified",
+      "reviewLine": "{user} · {asset} · {time}",
+      "state": {
+        "queued": "Queued",
+        "inflight": "Sending",
+        "notSent": "Not sent",
+        "unconfirmed": "Unconfirmed: no response from the server"
+      }
+    }
   },
   "authorizations": {
     "title": "Asset Authorization Management",
@@ -3608,6 +3717,7 @@
     "VALIDATION_BREAK_GLASS_FIELDS": "Invalid request parameters: asset and reason are required",
     "VALIDATION_CHANGE_PASSWORD_FIELDS": "Malformed request: old_password and new_password are required",
     "VALIDATION_CHANNEL_LANGUAGE": "Language must be zh-TW, en-US, or ja-JP",
+    "VALIDATION_CHANNEL_MIN_SEVERITY": "Push level must be low, medium, or high",
     "VALIDATION_CHANNEL_TYPE": "Channel type must be webhook or slack",
     "VALIDATION_CHANNEL_URL": "URL must be http or https",
     "VALIDATION_CHECKPOINT_RANGE_FORMAT": "Invalid range parameters (seq must be a positive integer, dates must be YYYY-MM-DD)",
@@ -3775,7 +3885,10 @@
     "KEY_TOPOLOGY_INVALID": "The custodian settings did not pass validation and nothing was changed. Correct these fields: {fields}",
     "KEY_TOPOLOGY_NOT_EDITABLE": "This custodian has no fields that can be edited here.",
     "VALIDATION_ALERT_DIRECTION": "direction must be input/output",
-    "VALIDATION_ALERT_OUTPUT_BLOCK": "Output cannot be blocked after bytes have been delivered."
+    "VALIDATION_ALERT_OUTPUT_BLOCK": "Output cannot be blocked after bytes have been delivered.",
+    "CONFLICT_ALERT_ALREADY_REVIEWED": "This alert already had a review result when the request was sent",
+    "RULE_ALERT_BATCH_SELF_TRIGGERED": "Alerts triggered by your own sessions are not included in a batch; review them one at a time",
+    "VALIDATION_ALERT_BATCH_NOTE": "The review reason must be at most 500 characters, and a batch review requires one"
   },
   "warnings": {
     "MAPPING_GROUPS_SCOPE_MISSING": "This provider has a groups claim name set, but the groups scope is not requested. Most providers will not emit group claims, so no mapping rule will match and roles already granted by rules are revoked.",
@@ -4892,7 +5005,9 @@
       "expires": "Retention",
       "actions": "Actions",
       "reportSource": "Source",
-      "reportScope": "Scope and period"
+      "reportScope": "Scope and period",
+      "reportGroup": "Policy group",
+      "reportGenerated": "Generated by"
     },
     "kind": {
       "auditExport": "Audit evidence bundle"
@@ -4940,10 +5055,17 @@
     "shaTip": "Artifact fingerprint SHA-256: {sha}",
     "tab": {
       "mine": "My exports",
-      "reports": "Rotation reports"
+      "reports": "Reports"
     },
-    "reportsSharedNote": "Rotation reports contain no recordings, clipboard content or secret material, so every account with audit view permission sees the same list, not only the requester.",
+    "reportsSharedNote": "Reports contain no recordings, clipboard content or secret material, so every account with audit view permission sees the same list, not only the requester.",
     "reportsEmpty": "No rotation reports yet. Use \"Generate report\" on the rotation evidence page, or have an administrator set up a schedule; artifacts appear here.",
+    "reportsEmptyCompliance": "No compliance reports yet. Use \"Generate report\" on the Compliance map page; artifacts appear here.",
+    "reportKind": {
+      "rotation": "Rotation reports",
+      "compliance": "Compliance reports"
+    },
+    "reportLanguage": "Language: {lang}",
+    "reportGeneratedAt": "Generated {time}",
     "reportManual": "Manual",
     "reportManualBy": "Manual ({user})",
     "reportScope": {
@@ -4968,7 +5090,7 @@
     "generate": "Generate report",
     "generateTitle": "Generate rotation evidence report",
     "generateSubmit": "Generate",
-    "generateAccepted": "Accepted. Collect the report from the \"Rotation reports\" tab of the download center.",
+    "generateAccepted": "Accepted. Collect the report from the \"Reports\" tab of the download center.",
     "bucket": {
       "compliant": "Compliant",
       "overdue": "Overdue",
@@ -5410,7 +5532,7 @@
     "none": "No policy group in effect covers this setting.",
     "compliant": "Requires {expectation}. It is {current} now, {verdict}.",
     "deviating": "Requires {expectation}. It is {current} now, {verdict}.",
-    "needsReviewUnconfirmed": "Offers {expected} as a reference value rather than a fixed requirement, and your organisation has not confirmed it yet.",
+    "needsReviewUnconfirmed": "Offers {expected} as a reference value rather than a fixed requirement, and your organization has not confirmed it yet.",
     "needsReviewConfirmed": "Offers {expected} as a reference value rather than a fixed requirement; confirmed by {who} on {time}.",
     "auditReview": "Has a clause covering this setting but names no value. It is {current} now, {verdict}.",
     "clauseNo": "Clause {no}",
@@ -5458,9 +5580,10 @@
     "above_maximum": "Above the required maximum",
     "value_mismatch": "Not the required value",
     "disabled_by_zero": "0 turns this off, which does not meet the requirement",
+    "disabled_by_zero_retention": "0 means records are kept forever with no set retention limit; this group requires a set limit",
     "value_not_comparable": "The current value cannot be compared with the requirement",
-    "reference_value_unconfirmed": "This group gives a reference value; your organisation has not confirmed it",
-    "reference_value_confirmed": "This group gives a reference value; your organisation has confirmed it",
+    "reference_value_unconfirmed": "This group gives a reference value; your organization has not confirmed it",
+    "reference_value_confirmed": "This group gives a reference value; your organization has confirmed it",
     "expectation_unspecified": "Required but no value is named; an auditor judges it",
     "no_control": "This group does not cover this setting"
   },
@@ -5827,12 +5950,27 @@
     "asideOriginalLocale": "Clauses appear in the organization's own wording ({locale}); the system does not translate them",
     "asideHow": "How results are decided",
     "asideHowBody": "For every clause, the settings it points to are compared against the value the clause asks for. When a clause asks for something without naming a value, the system only lists the current value and leaves the judgement to the auditor. Organization notes never change a result.",
-    "asideAuto": "Scheduled output",
-    "asideAutoNone": "Not set up",
     "asideRecent": "Recent output",
     "asideRecentNone": "No output yet",
     "generateReport": "Generate report",
-    "generateReportDisabled": "Report output arrives in the next release"
+    "recentExpiresOn": "Expires from Downloads on {date}",
+    "recentAll": "View report status and files in Downloads",
+    "recentStatus": {
+      "generating": "Generating",
+      "failed": "Failed",
+      "expired": "Expired"
+    },
+    "report": {
+      "title": "Generate compliance report",
+      "group": "Policy group",
+      "groupHint": "Defaults to the policy group you are viewing. Each report covers one policy group.",
+      "language": "Report language",
+      "retention": "Days to keep",
+      "retentionHint": "After this many days the file is removed from Downloads, so download and keep it before then. Files you have already downloaded are not affected.",
+      "note": "The report shows the settings as they stand when it is generated and does not reconstruct earlier settings. After you submit, check its status under \"Recent output\" on this page or in Downloads; once \"Download\" appears, the file is ready. The file is a ZIP containing a PDF report, CSV details and integrity verification files.",
+      "submit": "Generate",
+      "accepted": "Request accepted. Once it is ready, download it from \"Recent output\" or Downloads."
+    }
   },
   "policyGroups": {
     "headerDesc": "Maintain policy groups and their clauses. Every change to a policy group happens here; the compliance map only shows results.",

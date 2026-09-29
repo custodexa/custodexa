@@ -33,16 +33,37 @@ services:
 
   # Guacamole Daemon
   #
+  # **直接引用 Apache Guacamole 官方映像，不經本專案重新包裝**（2026-09-29 查證）：
+  # 本專案不修改這顆映像的內容，故由部署端直接向上游拉取。版本釘 1.6.0，並以 index
+  # digest 釘住內容——上游曾重建同名 tag，digest 保證拉到的就是本專案驗證過的那一份
+  # （amd64＋arm64 多架構 index）。1.6.0 是官方 releases 頁上的最新正式版（無 1.6.1）。
+  # 釘版理由（AGPL 對應源碼／離線包／漏洞公告需可指名版本）見 docker/backend/Dockerfile 檔首。
+  #
+  # **已知風險，未解決（不要當成已修）**：
+  # 1. 本映像基底為 **Alpine 3.18.12，該分支已 EOL**（3.18 於 2025-05-09 停止支援）。
+  #    上游沒有任何較新基底的 tag 可換。唯一的真正解法是上游出新版，或自建 guacd 映像；
+  #    兩者目前都未做。
+  # 2. trivy 對本映像回報 0 項 HIGH/CRITICAL，**那是「沒有資料」不是「沒有漏洞」**：
+  #    (a) EOL 分支不再有安全資料庫更新；(b) guacd 本體是 `/opt/guacamole` 下的 C
+  #    二進位（libguac.so.25 等），不在 apk 套件資料庫內，套件掃描器看不見它。
+  # 3. guacd 解析的是**目標主機送來的 RDP／VNC 協議資料**，而目標主機正是威脅模型裡
+  #    假設可能已被入侵的一方——這是本產品最不能靠掃描器代勞的暴露面。
+  #    人工追蹤點：https://guacamole.apache.org/security/ ，發版前比對 `guacd -v` 與上游最新版。
+  #
+  # **追蹤點（2026-09-29 查證）**：上游 1.6.1 尚未發布，正式 tag 出現後即把下方 `image:`
+  # 的版本與 digest 換過去並複查基底層；換版本身是一行改動，不需要動程式碼。
+  #
+  # **部署方可將 `image:` 換成自建或自選映像**：本專案對這顆容器的要求只有三件——
+  # 在 4822 提供 guacd 協議、能寫入編排檔掛入的錄影目錄（`/var/lib/custodexa/recordings`）、
+  # 內含 `sh` 與 `nc` 供下方健康檢查（`nc -z 127.0.0.1 4822`）執行；缺第三項的映像會
+  # 停在 `starting`，而 backend 以 `service_healthy` 為啟動前提，於是整套起不來。
+  # 三者保留即可替換，映像的基底、建置方式與元件版本由部署方自行決定。
+  #
   # 最小權限執行：guacd 解析的是被納管主機送回的 RDP／VNC 協議資料，而那一端在
   # 威脅模型裡就假設可能已被入侵，故這顆容器不保留任何非必要的能力。下列設定
-  # 都是**執行期屬性**，與映像內容物無關——部署方把 FROM 換成自建或自選映像後
-  # 仍然生效（見 docker/guacd/Dockerfile 檔首）。
+  # 都是**執行期屬性**，與映像內容物無關——換成自建或自選映像後仍然生效。
   guacd:
-    image: custodexa/guacd:latest
-    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
-    build:
-      context: .
-      dockerfile: docker/guacd/Dockerfile
+    image: guacamole/guacd:1.6.0@sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f
     container_name: custodexa-guacd
     # guacd 主程序以映像內的非特權身分執行，只需 bind/connect 與讀寫既有掛載點，
     # 不需任何 Linux capability。
@@ -124,12 +145,20 @@ services:
       GUACD_PORT: 4822
       AUDIT_LOG_PATH: /var/log/custodexa/audit
       RECORDING_PATH: /var/lib/custodexa/recordings
+      # 非同步匯出產物（證據包、輪替證據報告、合規報告）的落點。與下方掛載成對：
+      # 報告的保留期可長達數年，產物必須撐過容器重建（含每次升級）。
+      # 顯式寫在這裡而非沿用程式預設，讓路徑與掛載點在同一份檔案裡對得上。
+      EXPORT_ARTIFACT_PATH: /var/lib/custodexa/exports
       # 離機取回暫存根（容器本地快取、非 volume——刻意不掛出：內容是已驗證的
       # 明文副本，容器重建即消失、不進備份範圍）
       OFFSITE_SPOOL_PATH: /var/lib/custodexa/offsite-spool
     volumes:
       - ${DATA_PATH:-./data}/audit:/var/log/custodexa/audit
       - ${DATA_PATH:-./data}/recordings:/var/lib/custodexa/recordings
+      # 匯出產物目錄：只有 backend 讀寫（以容器內 root 執行），啟動時由程式把目錄權限
+      # 設為 0700、產物檔為 0600，主機端不需事先建立或 chown。證據包產物含解密後的
+      # 明文，故這個目錄不列入備份指令的預設範圍（見 docs/ops/backup-and-restore.md §2）。
+      - ${DATA_PATH:-./data}/exports:/var/lib/custodexa/exports
     depends_on:
       postgres:
         condition: service_healthy
@@ -213,7 +242,7 @@ services:
       - custodexa-network
     restart: always
 
-# audit/recordings/postgres 皆改 ${DATA_PATH:-./data} bind mount，無 named volume
+# audit/recordings/exports/postgres 皆改 ${DATA_PATH:-./data} bind mount，無 named volume
 networks:
   custodexa-network:
     driver: bridge

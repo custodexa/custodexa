@@ -117,4 +117,42 @@ func TestPlanCreateDisabledPersists(t *testing.T) {
 	if reloaded.Enabled {
 		t.Fatal("persisted plan should be disabled, got enabled")
 	}
+
+	// 同一欄位型態的另外兩欄：密碼生成策略的兩個布林同樣帶資料庫預設值 true，
+	// 建成「不含符號」若靜默變成含符號，排程產生的就是另一種密碼
+	for _, tc := range []struct {
+		name string
+		val  *bool
+		want bool
+	}{
+		{"帶_false_存成關閉", boolPtr(false), false},
+		{"未帶預設開啟", nil, true},
+		{"帶_true_存成開啟", boolPtr(true), true},
+	} {
+		t.Run("密碼策略旗標/"+tc.name, func(t *testing.T) {
+			svc := setupPlanDB(t)
+			plan, err := svc.Create(&ChangeSecretPlanRequest{
+				Name: "policy", AssetIDs: []uint{1},
+				PasswordIncludeSymbol: tc.val, PasswordExcludeAmbiguous: tc.val,
+			})
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if plan.PasswordIncludeSymbol != tc.want || plan.PasswordExcludeAmbiguous != tc.want {
+				t.Errorf("回傳 include_symbol=%v exclude_ambiguous=%v，want 皆為 %v",
+					plan.PasswordIncludeSymbol, plan.PasswordExcludeAmbiguous, tc.want)
+			}
+			reloaded, err := svc.Get(plan.ID)
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if reloaded.PasswordIncludeSymbol != tc.want || reloaded.PasswordExcludeAmbiguous != tc.want {
+				t.Errorf("落庫 include_symbol=%v exclude_ambiguous=%v，want 皆為 %v",
+					reloaded.PasswordIncludeSymbol, reloaded.PasswordExcludeAmbiguous, tc.want)
+			}
+			if !reloaded.Enabled {
+				t.Error("未帶 enabled 應維持預設啟用")
+			}
+		})
+	}
 }

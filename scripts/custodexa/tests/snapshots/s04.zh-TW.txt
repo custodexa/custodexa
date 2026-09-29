@@ -1,0 +1,28 @@
+[ ?? ] 這次只確認了檔案沒有損壞，沒有確認發行者
+
+  [ OK ] 校驗和     安裝包與映像和發行清單一致
+  [SKIP] 發行者簽章 這台主機沒有安裝 cosign
+  [SKIP] 建置出處   這台主機沒有安裝 gh
+
+  校驗和能確認檔案在傳輸中沒有損壞，但不能確認檔案出自 Custodexa。
+  若你的單位要求確認來源，請先選 N；請維運人員在已安裝 cosign、gh
+  且可上網的電腦，使用下面列出的完整摘要驗證，通過後再重新執行
+  這個指令：
+
+    cosign verify ghcr.io/custodexa/backend@sha256:3f9a00000000000000000000000000000000000000000000000000000000c21e \
+      --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+    gh attestation verify oci://ghcr.io/custodexa/backend@sha256:3f9a00000000000000000000000000000000000000000000000000000000c21e \
+      --repo custodexa/custodexa
+
+    cosign verify ghcr.io/custodexa/frontend@sha256:5b0700000000000000000000000000000000000000000000000000000000e911 \
+      --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+    gh attestation verify oci://ghcr.io/custodexa/frontend@sha256:5b0700000000000000000000000000000000000000000000000000000000e911 \
+      --repo custodexa/custodexa
+
+  驗了哪幾層會寫進紀錄檔。
+
+繼續嗎？[y/N]

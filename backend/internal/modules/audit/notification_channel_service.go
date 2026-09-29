@@ -23,6 +23,9 @@ var (
 	// ErrInvalidChannelLanguage 語系非白名單三值；
 	// Update 顯式給空字串或白名單外值都回此錯——省略（nil）才是「保留舊值」
 	ErrInvalidChannelLanguage = errors.New("語系必須為 zh-TW、en-US 或 ja-JP")
+	// ErrInvalidChannelMinSeverity 推送門檻非 low／medium／high；
+	// 語義同 language：省略（nil）＝保留舊值，顯式空字串或白名單外都拒
+	ErrInvalidChannelMinSeverity = errors.New("推送門檻必須為 low、medium 或 high")
 )
 
 // NotificationChannelRequest 通道建立/更新請求（Create 與 Update 欄位相同，共用一個結構）。
@@ -41,6 +44,11 @@ type NotificationChannelRequest struct {
 	// nil＝省略＝Create 預設 zh-TW／Update 保留舊值；非 nil 一律驗證，
 	// 空字串或白名單外值都拒（ErrInvalidChannelLanguage），不可能靜默留下非法值
 	Language *string `json:"language"`
+
+	// MinSeverity 推送門檻。語義同 Language：nil＝省略＝Create 預設 low／
+	// Update 保留舊值（列表的啟用開關只送 name、type、enabled，不得因此重設門檻）；
+	// 非 nil 一律驗證，空字串或白名單外都拒（ErrInvalidChannelMinSeverity）
+	MinSeverity *string `json:"min_severity"`
 
 	// RiskAcknowledged 傳輸風險確認聲明：
 	// warn 檔存 http URL 時必須為 true，聲明入審計
@@ -122,6 +130,47 @@ func (s *NotificationChannelService) auditAcknowledgment(req *NotificationChanne
 	}
 	if err := s.db.Create(entry).Error; err != nil {
 		log.Printf("[NotificationChannel] 傳輸確認聲明稽核寫入失敗: %v", err)
+	}
+}
+
+// channelSettingChange 變更詳情的單筆形狀（沿安全政策端點的 changes[] 慣例）
+type channelSettingChange struct {
+	Field string `json:"field"`
+	Old   string `json:"old"`
+	New   string `json:"new"`
+}
+
+// auditMinSeverityChange 推送門檻改動的前後值留痕。
+//
+// 中介層的請求本文只記新值，答不出「這次從哪一檔改到哪一檔」（例如收窄到只有高等級
+// 的那一刻關掉了哪些等級），故由持有舊值的 service 另寫一列。門檻未變時不寫。
+// 寫入走根 DB、失敗只記 log（fail-open）：已生效的設定不因留痕失敗回捲，
+// 同一檔 auditAcknowledgment 與安全政策端點的取捨。details 無 URL 與 secret
+func (s *NotificationChannelService) auditMinSeverityChange(req *NotificationChannelRequest, channelID uint, oldValue, newValue string) {
+	details, err := json.Marshal(map[string]interface{}{
+		"event": "channel_min_severity_change",
+		"name":  req.Name,
+		"changes": []channelSettingChange{
+			{Field: "min_severity", Old: oldValue, New: newValue},
+		},
+	})
+	if err != nil {
+		details = []byte(`{"event":"channel_min_severity_change"}`)
+	}
+	id := channelID
+	entry := &model.AuditLog{
+		Action:     model.ActionUpdate,
+		Resource:   model.ResourceNotifyChannel,
+		ResourceID: &id,
+		Status:     model.StatusSuccess,
+		UserID:     req.ActorID,
+		Username:   req.ActorName,
+		ClientIP:   req.ActorIP,
+		ErrorMsg:   fmt.Sprintf("min_severity old=%s new=%s", oldValue, newValue),
+		Details:    string(details),
+	}
+	if err := s.db.Create(entry).Error; err != nil {
+		log.Printf("[NotificationChannel] 推送門檻變更稽核寫入失敗 (channel_id=%d): %v", channelID, err)
 	}
 }
 
@@ -212,6 +261,15 @@ func validateChannelLanguage(lang string) error {
 	return nil
 }
 
+// validateChannelMinSeverity 推送門檻合法性檢查：嚴格匹配 low／medium／high，
+// 呼叫端以 *string 是否為 nil 判別省略與顯式提供（同 validateChannelLanguage）
+func validateChannelMinSeverity(v string) error {
+	if !model.ValidNotificationChannelMinSeverity(v) {
+		return ErrInvalidChannelMinSeverity
+	}
+	return nil
+}
+
 // List 列出所有通道（量級個位數到數十，不分頁）；url 一律遮罩
 func (s *NotificationChannelService) List() ([]model.NotificationChannel, error) {
 	var channels []model.NotificationChannel
@@ -280,6 +338,13 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		}
 		language = *req.Language
 	}
+	minSeverity := model.NotificationChannelMinSeverityDefault
+	if req.MinSeverity != nil {
+		if err := validateChannelMinSeverity(*req.MinSeverity); err != nil {
+			return nil, err
+		}
+		minSeverity = *req.MinSeverity
+	}
 
 	channelType := req.Type
 	if channelType == "" {
@@ -308,14 +373,28 @@ func (s *NotificationChannelService) Create(req *NotificationChannelRequest) (*m
 		return nil, fmt.Errorf("加密通道 secret 失敗: %w", err)
 	}
 	channel := model.NotificationChannel{
-		Name:     req.Name,
-		Type:     channelType,
-		URL:      sealedURL,
-		Secret:   sealedSecret,
-		Enabled:  enabled,
-		Language: language,
+		Name:        req.Name,
+		Type:        channelType,
+		URL:         sealedURL,
+		Secret:      sealedSecret,
+		Enabled:     enabled,
+		Language:    language,
+		MinSeverity: minSeverity,
 	}
-	if err := s.db.Create(&channel).Error; err != nil {
+	// `Enabled` 欄帶 default:true，而 GORM 對帶 default 的欄位遇零值會改用預設值
+	// ——直接 Create 會讓「建立時就停用」靜默變成啟用、照常推送。落庫後在同一交易內
+	// 補寫請求值（沿 rotation_report_schedule_service.Create 的作法）
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&channel).Error; err != nil {
+			return err
+		}
+		if enabled {
+			return nil
+		}
+		channel.Enabled = false
+		return tx.Model(&model.NotificationChannel{}).Where("id = ?", channel.ID).
+			Update("enabled", false).Error
+	}); err != nil {
 		return nil, fmt.Errorf("建立通知通道失敗: %w", err)
 	}
 
@@ -339,6 +418,12 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 	// language：nil＝省略＝保留舊值；非 nil 一律驗證（空字串或白名單外都拒）
 	if req.Language != nil {
 		if err := validateChannelLanguage(*req.Language); err != nil {
+			return nil, err
+		}
+	}
+	// min_severity：同 language 語義（nil＝保留；啟用開關不帶此欄）
+	if req.MinSeverity != nil {
+		if err := validateChannelMinSeverity(*req.MinSeverity); err != nil {
 			return nil, err
 		}
 	}
@@ -400,8 +485,16 @@ func (s *NotificationChannelService) Update(id uint, req *NotificationChannelReq
 	if req.Language != nil {
 		updates["language"] = *req.Language
 	}
+	// 門檻前值須在 Updates 之前取：Updates 會把新值寫回 channel
+	previousMinSeverity := channel.MinSeverity
+	if req.MinSeverity != nil {
+		updates["min_severity"] = *req.MinSeverity
+	}
 	if err := s.db.Model(channel).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("更新通知通道失敗: %w", err)
+	}
+	if req.MinSeverity != nil && *req.MinSeverity != previousMinSeverity {
+		s.auditMinSeverityChange(req, channel.ID, previousMinSeverity, *req.MinSeverity)
 	}
 
 	// channel 欄位在 Updates 後反映新落庫值（沿用時保留 getStored 讀到的舊值）

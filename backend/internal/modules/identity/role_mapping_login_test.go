@@ -569,6 +569,52 @@ func TestLDAPLoginRecomputesMappedRoles(t *testing.T) {
 	if rows := roleMappingAuditRows(t, db, RoleMappingEventApplied); len(rows) != 1 {
 		t.Errorf("套用事件筆數 = %d, want 1", len(rows))
 	}
+
+	// 上面是啟用規則的正向對照；這一格走管理面真實的建立路徑建一條「停用」規則，
+	// 證明它在登入重算時不授予角色。直接插列的夾具會繞過建立路徑本身，
+	// 驗不到「建立時的停用旗標有沒有真的落庫」
+	t.Run("經管理面建成停用的規則不授予角色", func(t *testing.T) {
+		authService, _, db := setupRoleMappingEnv(t)
+		user := roleMappingUser(t, db, "testldap")
+		dir := &model.LDAPDirectory{
+			Singleton: 1, Name: "corp", URL: "ldaps://ldap.example.org:636",
+			BaseDN: "dc=example,dc=org", UserFilter: "(uid=%s)", AttrGroup: "memberOf",
+			Enabled: true, BindPasswordEnc: "enc",
+		}
+		if err := db.Create(dir).Error; err != nil {
+			t.Fatalf("建目錄設定列: %v", err)
+		}
+		disabled := false
+		admin := NewIdentitySourceService(db, audit.NewTxSink())
+		if _, err := admin.CreateMapping(model.RoleMappingChannelKindDirectory, dir.ID,
+			GroupRoleMappingInput{
+				MatchValue: roleMappingInnerGroup, Role: model.RoleAuditor, Enabled: &disabled,
+				RiskAcknowledged: true, Actor: GroupRoleMappingActor{ID: 1, Name: "admin"},
+			}); err != nil {
+			t.Fatalf("經管理面建規則: %v", err)
+		}
+		// 前提：規則列確實存在，只是停用——否則「沒授予」可能只是規則根本沒建起來
+		total, enabled, err := CountMappings(db, model.RoleMappingChannelKindDirectory, dir.ID)
+		if err != nil {
+			t.Fatalf("計數: %v", err)
+		}
+		if total != 1 || enabled != 0 {
+			t.Fatalf("規則數 total=%d enabled=%d，want 1／0", total, enabled)
+		}
+		authService.SetLDAPResolver(mappingResolver(dir.ID, "memberOf",
+			ldapInfoWithGroups("testldap", roleMappingInnerGroup)))
+
+		resp, err := authService.Login(&LoginRequest{Username: "testldap", Password: "pass"})
+		if err != nil {
+			t.Fatalf("登入: %v", err)
+		}
+		if roles := effectiveRoles(t, db, user.ID); hasRole(roles, model.RoleAuditor) {
+			t.Fatalf("角色集 = %v，停用規則不得授予 %s", roles, model.RoleAuditor)
+		}
+		if hasRole(resp.User.Roles, model.RoleAuditor) {
+			t.Errorf("登入回應的角色 = %v，停用規則不得授予 %s", resp.User.Roles, model.RoleAuditor)
+		}
+	})
 }
 
 // TestLDAPLoginShrinkBumpsEpoch 移出群組後再次登入＝失去角色、推進世代、撤刷新憑證。

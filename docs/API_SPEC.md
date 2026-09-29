@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
+> 最後更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`）
+> 前次更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
 > `backend/internal/sshproxy/handler.go`, `backend/internal/proxy/handler.go`,
@@ -203,6 +204,7 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/command-alerts` | always |
 | POST | `/api/v1/command-alerts/:id/review` | always |
 | GET | `/api/v1/commands` | always |
+| POST | `/api/v1/compliance/report-jobs` | always |
 | GET | `/api/v1/compliance/snapshot` | always |
 | GET | `/api/v1/connect` | always |
 | POST | `/api/v1/connect-tokens` | always |
@@ -2461,7 +2463,7 @@ GET /api/v1/command-alerts
 
 **權限**: `audit:view`
 **Query 參數**: `severity`（非法值直接 400）、`kind`（來源類別，見下文五類）、`user_id`、`asset_id`、`session_id`（正整數，只列該會話的告警）、`blocked`（`true`／`false`，只列被阻斷／未阻斷的指令告警；會話詳情以 `session_id`＋`blocked=true` 取被擋指令）、`start_time`/`end_time`、
-`unreviewed`（`=true` 僅列未審閱＝`reviewed_at IS NULL`，供每日審閱走查，PCI 10.4.1）、`page`/`page_size`。`session_id` 非正整數或 `blocked` 非 `true`／`false` 回 400 `VALIDATION_BAD_PARAMS`；各條件 AND 合併。
+`unreviewed`（`=true` 僅列未審閱＝`reviewed_at IS NULL`，供每日審閱走查，PCI 10.4.1）、`ids`（逗號分隔的告警 id，至多 50 個，供批次審閱中斷後查回每筆的實際處置；格式不合或超過 50 個回 400 `VALIDATION_INVALID_ALERT_ID`）、`page`/`page_size`。`session_id` 非正整數或 `blocked` 非 `true`／`false` 回 400 `VALIDATION_BAD_PARAMS`；各條件 AND 合併。
 
 **回應** (200): `{data, total, page, page_size}`；data 項為 CommandAlert + `username`/`asset_name`，
 `rule_name`/`severity` 為觸發當下快照（規則後續改名/刪除不影響歷史）。
@@ -2500,19 +2502,27 @@ POST /api/v1/command-alerts/:id/review
 
 **請求**:
 ```json
-{"disposition": "benign", "note": "誤報，屬例行維運"}
+{"disposition": "benign", "note": "誤報，屬例行維運", "batch_id": "6f1c2a0e-8a4b-4c1d-9e2f-0a1b2c3d4e5f"}
 ```
-（`disposition` 必填，僅接受 `benign`＝誤報/無害 或 `escalated`＝升級處理；`note` 選填）
+（`disposition` 必填，僅接受 `benign`＝誤報/無害 或 `escalated`＝升級處理；`note` 選填，不超過 500 字（超過回 400 `VALIDATION_ALERT_BATCH_NOTE`）；`batch_id` 選填，UUID 格式）
+
+`note` 與 `batch_id` 原樣記入請求的稽核列。
+
+**批次審閱**：前端批次審閱對同一批的每筆告警逐筆呼叫本端點，帶同一個 `batch_id`。帶 `batch_id` 時另有三個條件：
+`note` 去除空白後不得為空且不超過 500 字（400 `VALIDATION_ALERT_BATCH_NOTE`）；審閱者自己連線觸發的告警不收
+（403 `RULE_ALERT_BATCH_SELF_TRIGGERED`，請改用單筆審閱）；只處置送出當下仍未審閱的告警，已有審閱結果者回
+409 `CONFLICT_ALERT_ALREADY_REVIEWED` 且既有處置不變。不帶 `batch_id` 時維持上述冪等語義。批次是逐筆處理，
+可能部分完成；`batch_id` 只讓同批送出的各筆稽核列可辨認，未送出的項目不會有紀錄。
 
 **回應** (200): `{"success": true}`
 
-**錯誤**: 400 無效告警 ID 或 `disposition` 非 `benign`/`escalated`、404 告警不存在、500 內部錯誤。
+**錯誤**: 400 無效告警 ID、`disposition` 非 `benign`/`escalated`、`batch_id` 非 UUID、`note` 超過 500 字或批次理由不合、403 批次中的本人觸發告警、404 告警不存在、409 批次送出時已有審閱結果、500 內部錯誤。
 
 ---
 
 ## 通知通道 API（admin only）
 
-告警產生時異步推送 JSON payload 至所有啟用通道；設定 secret 時以
+告警產生時異步推送 JSON payload 至推送門檻放行的啟用通道（見下方 `min_severity`）；設定 secret 時以
 HMAC-SHA256 簽名（`X-OT-Signature` header）。失敗重試 3 次（1s/2s/4s）後放棄並記 log。
 
 | 方法 | 路徑 | 說明 |
@@ -2523,7 +2533,7 @@ HMAC-SHA256 簽名（`X-OT-Signature` header）。失敗重試 3 次（1s/2s/4s�
 | DELETE | `/notification-channels/:id` | 刪除 |
 | POST | `/notification-channels/:id/test` | 同步測試發送 |
 
-**請求**: `{"name": "...", "type": "webhook", "url": "https://...", "secret": "", "enabled": true, "language": "zh-TW"}`
+**請求**: `{"name": "...", "type": "webhook", "url": "https://...", "secret": "", "enabled": true, "language": "zh-TW", "min_severity": "low"}`
 （`type` 為 `webhook`／`slack`，未傳預設 webhook；`enabled` 未傳預設啟用；
 Update 另可傳 `clear_secret: true` 顯式清除簽名密鑰，Create 忽略此欄）
 
@@ -2531,6 +2541,12 @@ Update 另可傳 `clear_secret: true` 顯式清除簽名密鑰，Create 忽略�
 Create 未傳預設 `zh-TW`；Update **省略＝保留舊值**，顯式傳空字串或白名單外值一律拒
 （400＋`VALIDATION_CHANNEL_LANGUAGE`）。僅影響 Slack 通道的伺服端組字語言
 （webhook 通道可設但目前無作用，UI 已註明）；列表與詳情回應皆帶此欄。
+
+**`min_severity`（推送門檻）**: 三值 `low`（全部告警）／`medium`（中、高等級）／`high`（只有高等級），
+Create 未傳預設 `low`；Update **省略＝保留舊值**，顯式傳空字串或白名單外值一律拒
+（400＋`VALIDATION_CHANNEL_MIN_SEVERITY`）。只作用於告警推送：告警等級不低於門檻才推送到該通道，
+等級為空或不在三值內照送；系統事件推送與測試發送不受影響。列表與詳情回應皆帶此欄。
+門檻實際改變時另寫一筆稽核列（`resource=notify_channel`、details 帶 `changes[]{field,old,new}`）。
 
 **測試回應**:
 - 送達對端 (200): `{"success": true, "status_code": 200}`（對端 2xx 才算 success）
@@ -3570,6 +3586,48 @@ GET /api/v1/compliance/snapshot?group=<code>
 `unmapped` 格。**它們不得併入符合數**——沒有人對照過的設定，與「有人對照且達到要求」
 是兩件事；偏離數的分母也不含它們。
 
+#### 產出報告
+
+```
+POST /api/v1/compliance/report-jobs
+```
+
+**權限**: admin 與 auditor（與快照同閘；其他角色 403）。建一張下載中心工作單（`kind=compliance_report`），
+不改動任何條文、要求或設定值。
+
+**請求**: `{"group": "pci-dss", "language": "zh-TW", "retention_days": 90}`
+
+| 欄位 | 說明 |
+|---|---|
+| `group` | 政策組代號，必填；須存在且生效 |
+| `language` | 報告語言，`zh-TW`／`en-US`／`ja-JP`，省略為 `zh-TW` |
+| `retention_days` | 產物在下載中心的保留天數，1–3650，省略為 90 |
+
+沒有期間參數：報告的資料時點是**打包當下**的判定快照（截至現在，不回推）。
+
+**回應** (202): `{"data": {"id": <job id>, "status": "pending"}}`。去重鍵＝種類＋（政策組、語言、保留天數），
+不含發起者：同參數的工作單仍在 `pending`／`running` 時回同一張。
+
+**錯誤**: 缺 `group` 或 JSON 格式錯、政策組未生效 → 400 `VALIDATION_BAD_PARAMS`；保留天數越界 → 400
+`VALIDATION_ROTATION_SCHEDULE_BAD_RETENTION`；語言不支援 → 400 `VALIDATION_ROTATION_REPORT_BAD_LANGUAGE`（沿輪替報告的語言碼）；政策組不存在 → 404
+（同快照）；進行中額度已滿 → 409 `CONFLICT_EXPORT_JOB_LIMIT`。受理與被拒皆入稽核
+（`resource=compliance_map`，訊息 `compliance_report.job_created`，帶組代號、語言、保留天數或拒絕理由）。
+
+**產物**（下載中心取件，`GET /audit-export/jobs/:id/download`，`audit:view` 即可、不綁申請者）：ZIP 依序為
+
+- `report.pdf`：第 1 頁封面與摘要（組名、版本、來源、資料時點、產出時刻、產出者、工作單編號、範圍聲明、
+  條文與設定兩組摘要、不在本組對照範圍的設定數、由產品承擔的條文逐條列條號與標題），其後例外清單
+  （偏離、待人工確認、待稽核判讀）、由機構自行確認的條文、判定口徑、附表 A。每頁頁尾帶工作單編號、產出時刻與頁碼。
+- `clauses.csv`：UTF-8 BOM、CRLF、公式注入轉義；首行為 `# as_of=<RFC3339>` 註解列，其後一列一個（條文，設定鍵）
+  判定，另加由機構自行確認與由產品承擔的條文各一列。PDF 摘要數字＝本檔依結果欄分組的列數。
+- `manifest.json`：`kind`／`mode`＝`compliance_report`、`job_id`、`exported_by`、`exported_at`（打包時刻）、
+  `job_requested_at`、`filter`（`group`、`group_version`、`language`、`retention_days`、`as_of`、
+  `csv_as_of_prefix`、`product_version`）、逐檔 SHA-256。
+- `manifest.sig`：Ed25519 簽章（離線驗簽見〈離線驗簽〉）。
+
+**保留期**: 打包完成時刻加 `retention_days`，逾期從下載中心移除（410）。產物落在 `EXPORT_ARTIFACT_PATH`
+（容器本機、不在備份範圍），保留天數是下載中心的到期日，不是保管承諾；需要長期留存者請下載保存。
+
 ### 安全政策列表的判定投影
 
 `GET /security-policies` 的每一項在原有 `PolicyView` 欄位之外附 **`verdicts`**：該鍵對各生效組
@@ -4015,10 +4073,10 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 | GET | `/access-requests/history` | 歷史（一律依審核範圍過濾；分頁）→ `{data, total, page, page_size}` |
 | GET | `/access-requests/tickets` | 有效限時連線（審核視角，帶 `request_id` 回鏈供撤銷）→ `{data, total}` |
 | GET | `/access-requests/reviews/pending` | 待補審破窗單（範圍過濾＋排除本人單）→ `{data, total}` |
-| POST | `/access-requests/:id/approve` | 核准（quorum 逐票）；body 可空（照申請值），或 `{item_id?, accounts?, duration_minutes?(僅可下修), date_start?(僅可推遲), remove?, note?}`／`{items:[{item_id,accounts?,duration_minutes?,date_start?,remove?}],note?}`；核准數達 `access_request_min_approvals` 門檻的那一票才同交易建 ticket 授權並回填 `authorization_id`，未達門檻回 pending 單＋進度；同人重複核准 409 |
-| POST | `/access-requests/:id/reject` | 拒絕，body `{item_id?,note}`，note 必填；省略 item_id 拒絕全部 pending 項，指定時只拒該項；任一具資格者即拒（既有核准記錄留存供稽核） |
+| POST | `/access-requests/:id/approve` | 核准（quorum 逐票）；body 可空（照申請值），或 `{item_id?, accounts?, duration_minutes?(僅可下修), date_start?(僅可推遲), remove?, note?}`／`{items:[{item_id,accounts?,duration_minutes?,date_start?,remove?}],note?}`；三種形態皆可另帶 `batch_id`（UUID，批次核決的關聯碼，原樣記入稽核列，不改變核決語義）；核准數達 `access_request_min_approvals` 門檻的那一票才同交易建 ticket 授權並回填 `authorization_id`，未達門檻回 pending 單＋進度；同人重複核准 409 |
+| POST | `/access-requests/:id/reject` | 拒絕，body `{item_id?,note,batch_id?}`，note 必填；省略 item_id 拒絕全部 pending 項，指定時只拒該項；任一具資格者即拒（既有核准記錄留存供稽核） |
 | POST | `/access-requests/:id/revoke` | 提前撤銷限時連線，body `{item_id?,note}`，note 必填；省略 item_id 撤整單，指定時只撤該項；軟刪票證＋撤銷附註，其他項不受影響。agent 無條件收線，人類沿撤銷斷線政策。**守衛為 `RequireRevokeEligibility`（admin OR 有效審核者），與上列審核端點分離** |
-| POST | `/access-requests/:id/review` | 破窗事後補審，body `{disposition(confirmed\|violation), note?}`；破窗人自審 403、CAS 防重複 |
+| POST | `/access-requests/:id/review` | 破窗事後補審，body `{disposition(confirmed\|violation), note?, batch_id?}`；破窗人自審 403、CAS 防重複 |
 
 **裁決資格**（雙側聯集）: 資產側範圍命中（直配資產 OR 經節點含子樹）**OR**
 申請人側範圍命中（申請人本人 OR 其所屬使用者群組）；**admin 身分不再兜底**，範圍未命中即
@@ -4315,9 +4373,12 @@ GET  /api/v1/audit-export/jobs/:id/download   下載產物（綁申請者本人�
 
 **GET `/audit-export/jobs`**（清單）：`page`（預設 1）／`page_size`（預設 20），id 降冪穩定排序。
 **僅列申請者本人**的 job（與下載授權同判準）。回應 `{"data": [ExportJob], "total": N, "page": P, "page_size": S}`。
-另接受 `kind`（`evidence_bundle`｜`rotation_report`），**缺省 `evidence_bundle`**，故既有呼叫端行為不變；
-閉集外的值回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field=kind`）。`kind=rotation_report`
-不加申請者條件——該種類的判定與例外的成立條件見〈輪替證據報告 API〉的產物與下載段。
+另接受 `kind`（`evidence_bundle`｜`rotation_report`｜`compliance_report`），**缺省 `evidence_bundle`**，故既有呼叫端行為不變；
+閉集外的值回 400 `VALIDATION_INVALID_QUERY_PARAM`（`params.field=kind`）。`kind=rotation_report` 與
+`kind=compliance_report` 不加申請者條件——兩種報告的例外成立條件見〈輪替證據報告 API〉的產物與下載段、
+〈合規判定快照〉的產出報告段。報告列帶 `report`（參數的顯示投影）而非 `filter`：輪替報告為範圍與區間，
+合規報告為 `group`、`group_name`、`language`、`retention_days`、`generated_by`。報告的下載同樣只需 `audit:view`，
+檔名 `rotation-report-job-<id>.zip`／`compliance-report-job-<id>.zip`。
 
 **GET `/audit-export/jobs/:id/download`**（下載）：認證＋`audit:view` 由路由群承擔，本端點另加**申請者本人**。
 - 成功回產物 ZIP（`attachment; filename="audit-evidence-job-<id>.zip"`），下載入稽核（誰、何時、哪個包＋SHA-256）。

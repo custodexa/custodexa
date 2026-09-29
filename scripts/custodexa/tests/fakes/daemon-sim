@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# A small simulated Docker daemon for the image tests, installed as the fake docker's hook. It keeps
+# state in files so that pull, load, build and later inspect calls agree with each other, and it
+# gives image IDs the way the two image stores do (measured on Docker 29 with throw-away daemons):
+#   pull by index digest   classic: Id = config digest      containerd: Id = index digest
+#   docker load            classic: Id = sha256 of the config blob named by manifest.json
+#                          containerd: Id = sha256 of the manifest blob named by index.json
+# State in $SIM (default $FAKE_DOCKER_REPLAY/sim):
+#   store          classic | containerd
+#   images         "<full reference> <image ID>" per line (tags and repository@digest)
+#   registry       "<full repository>@<index digest> <config digest>": what a pull can fetch
+#   down.<host>    pulls from that registry host fail with this text on stderr
+#   load-swap      after `docker load`, the backend tag carries another image ID
+#   containers     "<container name> <image ID>"
+# Exit 99: not handled here, the replay files answer.
+set -u
+sim=${SIM:-$FAKE_DOCKER_REPLAY/sim}
+mkdir -p "$sim"
+touch "$sim/images" "$sim/registry" "$sim/containers"
+store=$(cat "$sim/store" 2>/dev/null || echo classic)
+
+norm() {
+  local r=$1 name rest=""
+  if [[ $r == *@* ]]; then
+    name=${r%%@*} rest=@${r#*@}
+  else
+    name=$r
+    if [[ ${r##*/} == *:* ]]; then name=${r%:*} rest=:${r##*:}; fi
+  fi
+  case $name in
+    *.*/* | localhost/*) ;;
+    */*) name=docker.io/$name ;;
+    *) name=docker.io/library/$name ;;
+  esac
+  printf '%s%s' "$name" "$rest"
+}
+set_image() { # <full reference> <id>
+  awk -v r="$1" '$1 != r' "$sim/images" >"$sim/images.new"
+  printf '%s %s\n' "$1" "$2" >>"$sim/images.new"
+  mv "$sim/images.new" "$sim/images"
+}
+last() { eval "printf '%s' \"\${$#}\""; }
+
+case "${1:-}" in
+  info)
+    [[ $* == *DriverStatus* ]] || exit 99
+    if [ "$store" = containerd ]; then
+      echo '[["driver-type","io.containerd.snapshotter.v1"]]'
+    else
+      echo '[["Backing Filesystem","extfs"],["Supports d_type","true"]]'
+    fi
+    ;;
+  image)
+    [ "${2:-}" = inspect ] || exit 99
+    ref=$(norm "$(last "$@")")
+    id=$(awk -v r="$ref" '$1 == r { print $2; exit }' "$sim/images")
+    if [ -z "$id" ]; then
+      echo "Error response from daemon: No such image: $(last "$@")" >&2
+      exit 1
+    fi
+    echo "$id"
+    ;;
+  pull)
+    ref=$(norm "$(last "$@")")
+    host=${ref%%/*}
+    if [ -f "$sim/down.$host" ]; then
+      cat "$sim/down.$host" >&2
+      exit 1
+    fi
+    cfg=$(awk -v r="$ref" '$1 == r { print $2; exit }' "$sim/registry")
+    if [ -z "$cfg" ]; then
+      echo "Error response from daemon: manifest unknown: $ref" >&2
+      exit 1
+    fi
+    if [ "$store" = containerd ]; then set_image "$ref" "${ref#*@}"; else set_image "$ref" "$cfg"; fi
+    echo "$ref"
+    ;;
+  load)
+    tar=$(last "$@")
+    t=$(mktemp -d)
+    tar -xf "$tar" -C "$t" || exit 1
+    while IFS=$'\t' read -r name dig; do
+      if [ "$store" = containerd ]; then
+        id=sha256:$(sha256sum "$t/blobs/sha256/${dig#sha256:}" | cut -d' ' -f1)
+      else
+        fam=${name#docker.io/}; fam=${fam#library/}
+        cfg=$(jq -r --arg a "$fam" --arg b "$name" '.[] | select(.RepoTags | index($a) or index($b)) | .Config' "$t/manifest.json" | head -n1)
+        id=sha256:$(sha256sum "$t/$cfg" | cut -d' ' -f1)
+      fi
+      # load-swap: the daemon ends up with other content under the backend tag.
+      [[ ! -f $sim/load-swap || $name != */backend:* ]] || id=sha256:0bad000000000000000000000000000000000000000000000000000000000000
+      set_image "$(norm "$name")" "$id"
+      echo "Loaded image: $name"
+    done < <(jq -r '.manifests[] | [.annotations["io.containerd.image.name"], .digest] | @tsv' "$t/index.json")
+    rm -rf "$t"
+    ;;
+  inspect)
+    id=$(awk -v c="$(last "$@")" '$1 == c { print $2; exit }' "$sim/containers")
+    [ -n "$id" ] || { echo "Error: No such object: $(last "$@")" >&2; exit 1; }
+    echo "$id"
+    ;;
+  compose)
+    [[ " $* " == *" build "* ]] || exit 99
+    svc=$(last "$@")
+    var=CUSTODEXA_IMAGE_${svc^^}
+    ref=${!var:-}
+    [ -n "$ref" ] || { echo "no image name for $svc" >&2; exit 1; }
+    [ ! -f "$sim/build-fails" ] || { echo "build failed" >&2; exit 1; }
+    set_image "$(norm "$ref")" "sha256:$(printf 'built %s' "$ref" | sha256sum | cut -d' ' -f1)"
+    ;;
+  *) exit 99 ;;
+esac

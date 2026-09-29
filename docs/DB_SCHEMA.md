@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-23（群組宣告名與 `groups` scope 段：Entra issuer 不觸發確認與狀態警告，無 migration）
+> **最後更新**：2026-09-29（`notification_channels` 加 `min_severity` 推送門檻欄與 CHECK，migration `20260929_notification_channel_min_severity`；ER 圖補 `language`、`min_severity`；migration 總數 30）
+> 前次更新：2026-09-23（群組宣告名與 `groups` scope 段：Entra issuer 不觸發確認與狀態警告，無 migration）
 > 前次更新：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
 > 前次更新：2026-09-23（agent_tool_calls 新增 args_sealed／args_retained、command_alerts.kind 加 sensitive_reveal；agent 帳本／報告／探測事件、v3 檢查點、規則主體與 16 條種子；agent_token_name 快照）
 > 前次更新：2026-09-21（多項存取任務：access_request_items、執行者／關閉時刻、逐項票證與核准記錄）
@@ -73,7 +74,7 @@
 | SessionCommand | `session_commands` | baseline（CHECK `session_commands_degraded_no_text`）＋增量 `20260826_db_query_console`（十一個結果事實欄、三條 CHECK、三個部分索引） | 指令與查詢語句稽核記錄（文字終端重組列＋查詢主控台執行單位列，以 `result_status` 是否為空區分） |
 | AlertRule | `alert_rules` | baseline（CHECK action／severity；`uniq_alert_rules_name` 唯一索引＝種子 `ON CONFLICT` 的衝突目標）＋`baseline_seed.go` baseline 12 條輸入＋direction 增量 2 條輸出，再加 subject 增量 2 條 agent/input/block，共 16 條內建規則 | 輸入指令告警/阻斷與輸出敏感資料告警規則 |
 | CommandAlert | `command_alerts` | baseline（CHECK severity／kind／kind↔rule_id；**刻意無 FK**——rule_id/session_id 為觸發快照冗餘，規則改名或刪除不得破壞歷史告警） | 危險指令告警記錄（含審閱處置欄位） |
-| NotificationChannel | `notification_channels` | baseline（CHECK type／language） | 告警 webhook 通知通道 |
+| NotificationChannel | `notification_channels` | baseline（CHECK type／language）＋`20260929_notification_channel_min_severity`（`min_severity`＋CHECK） | 告警 webhook 通知通道 |
 | ClipboardEvent | `clipboard_events` | baseline | RDP/VNC 剪貼簿內容留存（內容信封加密，`content_enc` 登記於 `envelopeMigrationTargets`；另存 `content_length`／`content_status`） |
 | AssetHostKey | `asset_host_keys` | baseline | SSH host key TOFU 記錄 |
 | Snippet | `snippets` | baseline | 使用者命令片段 |
@@ -128,7 +129,7 @@
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含二十八條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含二十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -139,7 +140,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共二十九條：baseline 加二十八條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共三十條：baseline 加二十九條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -482,6 +483,8 @@ erDiagram
         string url
         string secret
         bool enabled
+        string language
+        string min_severity
     }
 
     clipboard_events {
@@ -1528,7 +1531,8 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 **表名**: `notification_channels`
 **檔案**: `backend/internal/model/notification_channel.go`
 **建表方式**: baseline（`baseline_schema_platform.go`），含 `type`（`webhook`／`slack`）與
-`language`（三語）兩條 CHECK
+`language`（三語）兩條 CHECK；`min_severity` 與其 CHECK `notification_channels_min_severity_check`
+由增量 migration `20260929_notification_channel_min_severity` 加入
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
@@ -1539,12 +1543,14 @@ Schema 等價比對不涵蓋種子資料，16 條終態另由資料層測試核�
 | `Secret` | string | `type:text` | `-` | HMAC-SHA256 簽名密鑰（`X-OT-Signature`），空字串=不簽名 |
 | `Enabled` | bool | `not null;default:true` | `enabled` | 啟用狀態 |
 | `Language` | string | `size:8;not null;default:zh-TW` | `language` | per-channel 語系，CHECK 約束限 `zh-TW`/`en-US`/`ja-JP`。 |
+| `MinSeverity` | string | `size:10;not null;default:low` | `min_severity` | 推送門檻（最低推送等級），CHECK 約束限 `low`/`medium`/`high`；`low`＝全部告警（預設）、`medium`＝中、高等級、`high`＝只有高等級 |
 | `CreatedAt` | time.Time | - | `created_at` | 建立時間 |
 | `UpdatedAt` | time.Time | - | `updated_at` | 更新時間 |
 
 **設計說明**:
 - secret 存明文：通道整組 admin only 且需原文計算 HMAC 簽名無法雜湊；與資產憑證不同（憑證有 AES 加密），首版信任 DB 邊界（其後 改為 `url`/`secret` 信封加密落庫）
 - `language` 語義：Create 未給＝預設 `zh-TW`；Update **省略＝保留舊值**，顯式空字串或白名單外值一律拒（API 層 `VALIDATION_CHANNEL_LANGUAGE`＋DB CHECK 雙層，同 `type` 欄慣例）。只影響 Slack 通道的伺服端組字語言（`internal/notifycat` 渲染），webhook 型可設但目前無作用
+- `min_severity` 語義：Create 未給＝預設 `low`；Update **省略＝保留舊值**（列表的啟用開關只送 name、type、enabled），顯式空字串或白名單外值一律拒（`VALIDATION_CHANNEL_MIN_SEVERITY`＋DB CHECK）。只作用於告警佇列的推送：等級不低於門檻才推送，等級為空或不在三值內照送；系統事件與測試發送不受影響，告警的入庫與 syslog 轉發與門檻無關。門檻實際改變時 service 另寫一筆稽核列，details 帶 `changes[]{field,old,new}`。沒有「全部不推送」的值——要完全不收請停用通道
 
 ---
 
@@ -2474,7 +2480,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共二十九條**——baseline 一條，其後的增量二十八條
+**現行 migration 共三十條**——baseline 一條，其後的增量二十九條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2508,10 +2514,11 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260923_agent_lateral_rule_pattern` | **純資料 migration，無 DDL**：把 `alert_rules` 內名為「Agent 橫向移動阻斷」且 pattern 仍等於 1.11.0 兩個出廠值之一的那一列，改寫為現行 pattern（以整行原文比對、不做 shell 分詞，名稱出現在引數位置也會命中；讀取 `~/.ssh` 這類路徑不再誤觸）並更新 `updated_at`。出廠規則只在建表時以 `ON CONFLICT DO NOTHING` 插種子，既有站點升級時那條 INSERT 不生效，故需要這一條。**pattern 不等於任何歷史出廠值者一律不動**——那是管理員調校過的規則，升級不覆寫站點自己的判斷。新值與兩個歷史值同出 `baseline_seed.go` 的常數，種子與本條不得各抄一份 | `rollbackAgentLateralRulePattern` 為 **no-op**：舊 pattern 是已知的誤判來源，回寫等於把誤觸阻斷裝回去；且此處分不出「本次升級改的」與「管理員升級後自行改回舊值的」，一律回寫會覆蓋後者。退版＝部署回舊版映像並還原升級前備份 |
 | `20260924_agent_tool_call_args_retained` | `agent_tool_calls` 加 `args_sealed bytea` 可空欄與 `args_retained boolean NOT NULL DEFAULT false`（第 60 節），共 **2 條 DDL**，無回填；存量列以 default 成為 `false`，即「參數當時整欄遮罩、原文不存在」 | `rollbackAgentToolCallArgsRetained` 為 **no-op**（回傳成功、不刪欄）：應用回退後，證據與既有已簽章的帳本列保留 |
 | `20260924_sensitive_reveal_alert` | 重建 `command_alerts_kind_check`，值域加 `sensitive_reveal`，共 **2 條 DDL**（DROP＋ADD CONSTRAINT），不加欄、無回填 | `rollbackSensitiveRevealAlert`：**一律回拒絕錯誤**。保留告警證據，停用改由政策設定達成、不刪記錄 |
+| `20260929_notification_channel_min_severity` | `notification_channels` 加 `min_severity character varying(10) DEFAULT 'low' NOT NULL` 與 CHECK `notification_channels_min_severity_check`（`low`／`medium`／`high`；見第 11 節），共 **2 條 DDL**，無回填；既有通道以 default 取得 `low`（全部告警），升級後推送行為不變 | `rollbackNotificationChannelMinSeverity`：卸 CHECK 與欄位。**有損但方向安全**：門檻設定沒有第二處存放，回退後一律回到全部推送 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的二十八條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的二十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
 > - **讀寫存量資料列，耗時隨對應表的列數成長（4 條）**：
@@ -2522,12 +2529,12 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 >   `asset_authorizations` 與 `access_request_approvals`）。
 > - **只寫固定少量的列，不隨存量成長（3 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
 >   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）。
-> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（21 條）**。其中 9 條在既有表上建索引或加 CHECK／外鍵：
+> - **只有 DDL，Up 不含讀寫資料列的 DML 語句（22 條）**。其中 10 條在既有表上建索引或加 CHECK／外鍵：
 >   `20260825_evidence_offsite`（`sessions`）、`20260826_db_query_console`（`session_commands`）、
 >   `20260903_rotation_evidence_report`（`asset_accounts`、`audit_export_jobs`）、`20260905_account_batch_rotation`（`change_secret_records`）、
 >   `20260921_identity_agent_principal`（`users`、`sessions`）、`20260921_principal_integrity`（`audit_failure_events`）、
 >   `20260921_agent_audit_ledger`（`sessions`、`alert_rules`）、`20260921_agent_breaker_alert` 與 `20260924_sensitive_reveal_alert`
->   （`command_alerts`）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
+>   （`command_alerts`）、`20260929_notification_channel_min_severity`（`notification_channels`，另加一個帶常數預設的欄）。依 PostgreSQL 的一般行為，這類語句需掃描該表的既有列，耗時可能隨其列數增加，但不改寫資料列。
 >   另外 12 條只建新表、加帶常數預設或可空的欄、放寬欄位型別，或卸欄與卸索引：
 >   `20260824_audit_export_jobs`、`20260903_security_policies_value_text`、`20260904_windows_local_account_rotation`、
 >   `20260906_credential_library_contract`、`20260908_role_state_checkpoint`、`20260908_group_role_mapping`、

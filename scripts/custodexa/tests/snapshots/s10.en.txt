@@ -1,0 +1,10 @@
+Upgrade 1.13.0 -> 1.13.2
+Log file /opt/custodexa/logs/upgrade-20260930-101502.log
+
+[ OK ]  1/13  Check the environment                         3s
+[ OK ]  2/13  Get and verify the new images                 41s
+[ OK ]  3/13  Confirmed
+[ OK ]  4/13  Wait for audit records to be written (0 left)  4s
+[ OK ]  5/13  Stop the services (database keeps running)    11s
+[ OK ]  6/13  Confirm the old version has fully stopped
+              (0 database connections)

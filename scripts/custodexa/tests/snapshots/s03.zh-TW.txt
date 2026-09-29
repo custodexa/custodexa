@@ -1,0 +1,17 @@
+[ .. ] 3/7  取得程式映像
+       依序嘗試：這台主機 → 離線包 → GHCR → Docker Hub → 用原始碼建置
+       backend 1.13.0
+         [SKIP] 這台主機：還沒有這個版本
+         [SKIP] 離線包：沒有找到 custodexa-images-1.13.0-amd64.tar
+                （找過 /opt/custodexa 與 /home/ops/downloads）
+         [WARN] GHCR ghcr.io/custodexa/backend：連線逾時（30 秒），
+                已改從 Docker Hub 取得並核對內容
+         [ OK ] Docker Hub docker.io/custodexa/backend@sha256:3f9a...c21e
+                已下載，內容摘要與發行清單相符
+       frontend 1.13.0
+         [ OK ] 這台主機：已有，內容摘要相符
+       guacd 1.6.0（上游 guacamole/guacd）
+         [ OK ] Docker Hub docker.io/guacamole/guacd@sha256:8974...8f4f 已下載
+       postgres、alpine/openssl、nginx
+         [ OK ] 這台主機：已有，內容摘要相符
+[ OK ] 3/7  取得程式映像（6 個，校驗和、簽章、出處證明都已驗證）  1 分 12 秒

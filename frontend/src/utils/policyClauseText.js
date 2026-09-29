@@ -10,7 +10,7 @@
  * 判定本身一律由後端計算；本檔只把後端給的機器碼換成人看得懂的字。
  */
 import i18n, { t } from '@/i18n'
-import { formatKeyValue, policyLabel } from '@/utils/policyFormat'
+import { formatKeyValue, policyLabel, zeroMeaningVariant } from '@/utils/policyFormat'
 import { translated } from '@/utils/i18nDisplay'
 
 // 判定結果的機器碼 → 譯文鍵。條文層的兩種狀態（機構自述、系統內建保護）
@@ -53,10 +53,20 @@ export function resultTagType(result) {
  *
  * 理由碼的譯文住 `verdictReason.*`（設定頁抽屜與本頁共用）。查無譯文時回原碼
  * 而不是空字串：稽核場景寧可看到一個機器碼，也不要一個沒有理由的判定。
+ *
+ * 保留天數類設 0 的理由另有一句：那裡的 0 是永久保留而不是停用，偏離的原因是
+ * 沒有明確的保留期限。哪些鍵屬於保留天數類沿零值語義的逐鍵登記，理由碼本身不變。
+ *
+ * @param {string} reason 理由碼
+ * @param {string} [policyKey] 政策鍵
  */
-export function reasonLabel(reason) {
+export function reasonLabel(reason, policyKey) {
   if (!reason) return ''
-  const key = `verdictReason.${reason}`
+  const code =
+    reason === 'disabled_by_zero' && zeroMeaningVariant(policyKey) === 'retention'
+      ? 'disabled_by_zero_retention'
+      : reason
+  const key = `verdictReason.${code}`
   return i18n.global.te(key) ? t(key) : reason
 }
 

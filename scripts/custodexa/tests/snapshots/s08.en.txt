@@ -1,0 +1,36 @@
+Custodexa upgrade preview (nothing has been changed yet)
+
+  Installed    1.12.4 (git clone deployment, /data/custodexa)
+  Upgrade to   1.13.0
+  This host still runs a git clone deployment. This is the first
+  upgrade with the management script, so the deployment folder is
+  reorganized first and the upgrade is then completed.
+
+What will happen, in order
+  1. Wait until all audit records are in the database
+  2. Stop the services with the existing
+     /data/custodexa/docker-compose.yml (the database keeps running)
+  3. Full backup, about 6.2 GB; 150 GB free where backups go
+  4. Remove the old containers (the data in data/ is not touched)
+     and reorganize the folder
+  5. Switch to 1.13.0, start it, check the version, data and keys
+
+Folder reorganization
+  Stays in place   .env, tls/, data/
+  Moves to         releases/1.12.4/ (the old version, kept)
+                   the product files tracked by git, and .git
+  Copied out       report exports in the old container -> data/exports/
+  Setting change   .env line 68   DATA_PATH=./data
+                              ->  DATA_PATH=/data/custodexa/data
+                   .env line 28   # COMPOSE_FILE=docker-compose.dev.yml
+                              ->  COMPOSE_FILE=current/compose.yml
+                   one new line: COMPOSE_PROJECT_NAME
+                   .env is copied aside before the change
+
+Good to know
+  - Expect 7 to 14 minutes of downtime
+  - This version changes the database structure. Going back to
+    1.12.4 means restoring this backup; anything recorded after the
+    backup is lost
+  - Afterwards, manage it with /data/custodexa/custodexa.sh.
+    /data/custodexa is no longer a git folder: do not use git pull

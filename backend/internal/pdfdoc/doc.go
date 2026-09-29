@@ -72,6 +72,10 @@ type Options struct {
 	// Subject 文件屬性中的主旨。
 	Subject string
 	Footer  Footer
+	// Bullet 說明區塊逐條前的項目符號；空字串為「・」。
+	//
+	// 項目符號隨語言而異（中日文慣用「・」，英文慣用「•」），由呼叫端依報告語言給。
+	Bullet string
 }
 
 // Doc 建構中的文件。非併發安全：一份文件由一個 goroutine 從頭寫到尾。
@@ -79,6 +83,10 @@ type Doc struct {
 	pdf *fpdf.Fpdf
 	// tableHeader 目前正在繪製的表格表頭；非 nil 時換頁會自動重畫。
 	tableHeader func()
+	// tableTop 最近一次畫完表頭時的 Y（據此判斷本頁是否已有資料列）。
+	tableTop float64
+	// bullet 說明區塊的項目符號
+	bullet string
 }
 
 // New 開一份文件並載入字型。回傳後即可開始下區塊（首頁已開好）。
@@ -101,7 +109,10 @@ func New(opt Options) (*Doc, error) {
 		return nil, fmt.Errorf("載入內嵌字型失敗: %w", err)
 	}
 
-	d := &Doc{pdf: pdf}
+	d := &Doc{pdf: pdf, bullet: opt.Bullet}
+	if d.bullet == "" {
+		d.bullet = "・"
+	}
 	pdf.SetHeaderFunc(func() {
 		if d.tableHeader != nil {
 			d.tableHeader()
@@ -225,10 +236,27 @@ func (d *Doc) truncate(s string, width float64) string {
 	return ellipsis
 }
 
-// ensureSpace 若剩餘高度不足即換頁。
+// ensureSpace 若剩餘高度不足即換頁（沿用目前頁向）。
 func (d *Doc) ensureSpace(h float64) {
-	_, ph := d.pdf.GetPageSize()
-	if d.pdf.GetY()+h > ph-marginBottom {
-		d.pdf.AddPage()
+	if h > d.remainingHeight() {
+		d.addPageLikeCurrent()
 	}
+}
+
+// remainingHeight 目前位置到本頁下緣可用範圍的高度。
+func (d *Doc) remainingHeight() float64 {
+	_, ph := d.pdf.GetPageSize()
+	return ph - marginBottom - d.pdf.GetY()
+}
+
+// addPageLikeCurrent 換到與目前頁同頁向的新頁。
+//
+// fpdf 的 AddPage 一律回到文件建立時的預設頁向（直式）：橫式段落裡由區塊自行
+// 判斷換頁時，新頁會變成直式，而按橫式版心算好的欄寬會整欄超出頁面右緣。
+func (d *Doc) addPageLikeCurrent() {
+	if w, h := d.pdf.GetPageSize(); w > h {
+		d.NewLandscapePage()
+		return
+	}
+	d.NewPage()
 }

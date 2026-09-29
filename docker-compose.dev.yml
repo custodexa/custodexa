@@ -30,12 +30,10 @@ services:
   # 硬化設定與正式版逐字相同（`docker-compose.yml` 的 guacd 段有完整理由）。
   # 兩邊維持一致是刻意的：唯讀根與 cap_drop 造成的失敗要在開發環境就看得到，
   # 只硬化正式版會讓「本機好好的、上線才壞」變成常態。
+  # 映像與正式版相同：直接引用上游官方映像並以 digest 釘版（版本選擇理由、已知風險與
+  # 替換契約見 `docker-compose.yml` 的 guacd 段）。
   guacd:
-    image: custodexa/guacd:dev
-    pull_policy: never # Never pulled from a registry; built from this repository's source when the image is absent.
-    build:
-      context: .
-      dockerfile: docker/guacd/Dockerfile
+    image: guacamole/guacd:1.6.0@sha256:8974eaa9ba32f713daf311e7cc8cd7e4cdfba1edea39eed75524e78ef4b08f4f
     container_name: custodexa-guacd-dev
     cap_drop:
       - ALL

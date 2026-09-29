@@ -41,7 +41,7 @@ func (d *Doc) Paragraph(text string) {
 	d.setFont(sizeBody)
 	d.setInk(colorInk)
 	d.pdf.SetX(marginLeft)
-	d.pdf.MultiCell(d.ContentWidth(), lineBody, text, "", "L", false)
+	d.multiLine(d.ContentWidth(), lineBody, text)
 	d.pdf.Ln(1)
 }
 
@@ -51,17 +51,28 @@ type KV struct {
 	Value string
 }
 
-// KeyValues 鍵值區：左欄鍵、右欄值，逐列排。
+// KeyValues 鍵值區：左欄鍵、右欄值，逐列排。鍵與值都自動折行（鍵名在英文等
+// 較長的語言裡會超過左欄寬，裁成刪節號的話讀者看不出那一列是什麼）。
 func (d *Doc) KeyValues(rows []KV) {
 	const keyWidth = 42.0
 	d.setFont(sizeBody)
 	for _, r := range rows {
-		d.ensureSpace(lineBody + 1)
-		d.pdf.SetX(marginLeft)
+		keyLines := d.wrapLines(r.Key, keyWidth-2*d.pdf.GetCellMargin())
+		keyHeight := float64(len(keyLines)) * lineBody
+		d.ensureSpace(keyHeight + 1)
+		top, page := d.pdf.GetY(), d.pdf.PageNo()
 		d.setInk(colorMuted)
-		d.pdf.CellFormat(keyWidth, lineBody, d.truncate(r.Key, keyWidth-2), "", 0, "L", false, 0, "")
+		for k, ln := range keyLines {
+			d.pdf.SetXY(marginLeft, top+float64(k)*lineBody)
+			d.pdf.CellFormat(keyWidth, lineBody, ln, "", 0, "L", false, 0, "")
+		}
 		d.setInk(colorInk)
-		d.pdf.MultiCell(d.ContentWidth()-keyWidth, lineBody, r.Value, "", "L", false)
+		d.pdf.SetXY(marginLeft+keyWidth, top)
+		d.multiLine(d.ContentWidth()-keyWidth, lineBody, r.Value)
+		// 值較短時，下一列從鍵的最後一行之下起算（值跨頁時以值為準）
+		if d.pdf.PageNo() == page && d.pdf.GetY() < top+keyHeight {
+			d.pdf.SetY(top + keyHeight)
+		}
 	}
 	d.pdf.Ln(1)
 }
@@ -156,7 +167,7 @@ func (d *Doc) NoteBlock(title string, lines []string) {
 	d.setInk(colorMuted)
 	for _, ln := range lines {
 		d.pdf.SetXY(marginLeft+4, y)
-		d.pdf.MultiCell(d.ContentWidth()-8, 4.2, "・"+ln, "", "L", false)
+		d.multiLine(d.ContentWidth()-8, 4.2, d.bullet+ln)
 		y = d.pdf.GetY()
 	}
 	d.pdf.SetXY(marginLeft, top+height)
@@ -165,13 +176,11 @@ func (d *Doc) NoteBlock(title string, lines []string) {
 	d.pdf.Ln(2)
 }
 
-// lineCount 概估一段文字在給定寬度下佔幾行（區塊預留高度用）。
+// lineCount 一段文字在給定寬度下佔幾行（區塊預留高度用）。
+//
+// 與實際繪製走同一個折行函式，預留高度才會與畫出來的行數一致。
 func (d *Doc) lineCount(s string, width float64) int {
-	if s == "" {
-		return 1
-	}
-	n := int(d.pdf.GetStringWidth("・"+s)/width) + 1
-	return n
+	return len(d.wrapLines(d.bullet+s, width-2*d.pdf.GetCellMargin()))
 }
 
 // rule 一條版心寬的細線。

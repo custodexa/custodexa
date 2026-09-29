@@ -1,0 +1,27 @@
+Custodexa 管理腳本 1.13.0
+
+用法：custodexa.sh <子命令> [選項]
+
+子命令
+  install              第一次安裝：檢查主機、產生設定、取得映像、啟動
+  upgrade              查詢有沒有新版（不做任何變更）
+  upgrade <版本>        下載並升級到指定版本（會停機、會先備份）
+  upgrade <安裝包路徑>  用已下載的安裝包升級（離線可用）
+  status               顯示版本、服務、備份與上次升級的狀態（不做任何變更）
+  backup               完整備份（會暫停服務約十幾分鐘）
+  load <離線包>         載入離線映像包（不啟動服務）
+
+選項
+  --yes                不詢問確認，自動化時使用
+  --backup-ref <識別>  （upgrade）已自行備份，填入快照名稱，腳本不再備份
+  --backup-time <時間> （upgrade）與 --backup-ref 並用：快照開始時間，須晚於停機
+  --backup-restore <位置>（upgrade）與 --backup-ref 並用：還原程序的文件位置
+  --images <路徑>      （install、upgrade）指定離線映像包
+  --lang <語言>         zh-TW、ja、en；預設依系統語系
+  --no-color           不使用顏色
+  --version            顯示腳本版本
+  -h, --help           顯示說明；custodexa.sh <子命令> --help 只顯示該子命令
+
+部署目錄是本腳本所在的目錄；要指定別處，設定環境變數 CUSTODEXA_HOME。
+每次執行的紀錄在 <部署目錄>/logs/。
+詳細程序見「部署與升級 SOP」與「備份與還原」。

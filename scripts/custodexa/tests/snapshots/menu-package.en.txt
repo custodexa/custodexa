@@ -1,0 +1,11 @@
+Custodexa management script 1.13.0    Deployment directory /opt/custodexa
+Status: installed 1.13.2 (package deployment)
+
+  [1] Show status
+  [2] Upgrade
+  [3] Back up (pauses the service for ten minutes or more)
+  [4] Load an offline image bundle
+  [5] Help
+  [0] Quit
+
+Choose [0-5]: 

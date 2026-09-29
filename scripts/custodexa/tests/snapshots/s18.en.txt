@@ -1,0 +1,20 @@
+Load the offline image bundle
+  File   /media/usb/custodexa-images-1.13.0-amd64.tar (2.3 GB)
+
+[ OK ] Checksum matches SHA256SUMS
+[ OK ] Architecture amd64, same as this host
+[ OK ] 6 images loaded                                      1m 05s
+[ OK ] Every image digest matches the release manifest (MANIFEST)
+[SKIP] Publisher signature: offline, the signing service is
+       unreachable
+
+  The images are loaded but the publisher is not verified. If your
+  organization requires that, have operations verify with the full
+  digest on a computer with cosign, gh and internet access (the
+  verification commands are shown when you run install or upgrade),
+  then run the command below.
+
+The images are ready; no service was started. Next:
+    sudo /opt/custodexa/custodexa.sh install
+or, to upgrade:
+    sudo /opt/custodexa/custodexa.sh upgrade /media/usb/custodexa-1.13.0.tar.gz

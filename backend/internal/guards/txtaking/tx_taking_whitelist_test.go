@@ -127,7 +127,7 @@ var txTakingWhitelist = []txTakingEntry{
 				"evidence-offsite-storage 新增的排隊點）",
 		},
 		Reason: "與 session 的排隊點同型、同理由，差別在證據包的本機副本更脆弱：" +
-			"產物目錄未掛 volume，容器重建即消失（離機動機本身）。" +
+			"產物目錄不在備份範圍內，主機遺失即消失（離機動機本身）。" +
 			"「job 已 done 而沒排隊」的窗口內，那份證據包只有一個隨時會蒸發的副本，" +
 			"且下載窗口只有 24 小時、過後本機檔被清掃刪除——回填掃描補得回帳冊列，" +
 			"補不回已經不存在的檔案。audit 不得擁有 offsite_objects，故只能交出交易句柄。",

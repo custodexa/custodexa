@@ -1,5 +1,7 @@
 import request from './request'
 
+const skipToast = (options) => (options.skipErrorToast === true ? { skipErrorToast: true } : {})
+
 /**
  * 查詢指令告警記錄（audit:view 權限）
  * @param {Object} params - 查詢參數
@@ -10,27 +12,38 @@ import request from './request'
  * @param {string} params.end_time - 結束時間（RFC3339 格式）
  * @param {number} params.page - 頁碼（從 1 開始）
  * @param {number} params.page_size - 每頁大小
+ * @param {string} [params.ids] - 指定告警 ID（逗號分隔，上限 50 個）：批次審閱收尾時
+ *   查回這幾筆的現況（reviewed_at／reviewed_by／disposition／note）
+ * @param {Object} [options] - { skipErrorToast }：呼叫端自行呈現錯誤時關閉全域 toast
  * @returns {Promise} { data: [{ id, rule_id, rule_name, session_id, user_id, asset_id, command, severity, triggered_at }], total, page, page_size }
  */
-export function searchAlerts(params) {
+export function searchAlerts(params, options = {}) {
   return request({
     url: '/command-alerts',
     method: 'get',
     params,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
 /**
  * 審閱處置一筆告警（audit-workflows，alert:manage 權限）
+ * 批次審閱逐筆呼叫同一端點：data 多帶 batch_id（UUID v4，同批共用）且 note 必填；
+ * 送出時已有審閱結果回 409 CONFLICT_ALERT_ALREADY_REVIEWED、自己連線觸發者回
+ * 403 RULE_ALERT_BATCH_SELF_TRIGGERED。
  * @param {number} id - 告警 ID
- * @param {Object} data - { disposition: 'benign'|'escalated', note?: string }
+ * @param {Object} data - { disposition: 'benign'|'escalated', note?: string, batch_id?: string }
+ * @param {Object} [options] - { skipErrorToast }
  * @returns {Promise}
  */
-export function reviewAlert(id, data) {
+export function reviewAlert(id, data, options = {}) {
   return request({
     url: `/command-alerts/${id}/review`,
     method: 'post',
     data,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 

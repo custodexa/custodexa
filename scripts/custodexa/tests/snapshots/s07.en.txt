@@ -1,0 +1,29 @@
+Custodexa upgrade preview (nothing has been changed yet)
+
+  Installed          1.13.0
+  Upgrade to         1.13.2
+  Deployment         /opt/custodexa
+  Master key mode    entered in the browser
+
+What will happen
+  1. Wait until all audit records are in the database, then stop the
+     services (the database keeps running)
+  2. Full backup: database, recordings, audit files, settings,
+     certificates. About 18.4 GB; 211 GB free where backups go
+  3. Switch to 1.13.2 and start it
+  4. Check the version, that it is the same data as before, and that
+     the keys did not change
+
+Good to know
+  - Expect 15 to 30 minutes of downtime. Nobody can connect meanwhile,
+    and open connections will be cut (2 are open now)
+  - This version changes the database structure once. Rolling back
+    afterwards means restoring this backup; anything recorded after
+    the backup is lost
+  - After the upgrade the system stays sealed until someone enters
+    the master key on the unseal page
+  - Image checksums, signatures and build provenance are verified
+  - Have someone familiar with operating this host run it inside a
+    terminal tool that keeps the session alive (such as tmux or
+    screen), to reduce the risk that a dropped SSH connection stops
+    the upgrade

@@ -17,16 +17,14 @@
         >
           {{ $t('common.refresh') }}
         </el-button>
-        <!-- 停用態的入口仍要說得出「為什麼按不下去」：
-             title 掛在外層 span，停用的按鈕本身收不到滑鼠事件 -->
-        <span
-          class="report-slot"
-          :title="$t('complianceMap.generateReportDisabled')"
+        <!-- 報告是產物而非寫入：稽核角色與管理者都能發起，產出後的清單也是同一份 -->
+        <el-button
+          type="primary"
+          data-test="compliance-generate-report"
+          @click="openReport"
         >
-          <el-button disabled>
-            {{ $t('complianceMap.generateReport') }}
-          </el-button>
-        </span>
+          {{ $t('complianceMap.generateReport') }}
+        </el-button>
       </template>
     </PageHeader>
 
@@ -229,7 +227,7 @@
                         {{ resultLabel(verdictOf(clause, control).result) }}
                       </el-tag>
                       <span class="verdict-reason">
-                        {{ reasonLabel(verdictOf(clause, control).reason) }}
+                        {{ reasonLabel(verdictOf(clause, control).reason, control.policy_key) }}
                       </span>
                     </td>
                     <td>
@@ -327,32 +325,147 @@
           </p>
         </div>
 
-        <div class="panel">
-          <div class="panel-title">
-            {{ $t('complianceMap.asideAuto') }}
-          </div>
-          <p class="aside-body">
-            {{ $t('complianceMap.asideAutoNone') }}
-          </p>
+        <div
+          class="panel"
+          data-test="compliance-recent"
+        >
           <div class="panel-title">
             {{ $t('complianceMap.asideRecent') }}
           </div>
-          <p class="aside-body">
+          <p
+            v-if="!recentReports.length"
+            class="aside-body"
+            data-test="compliance-recent-empty"
+          >
             {{ $t('complianceMap.asideRecentNone') }}
           </p>
+          <div
+            v-else
+            class="recent-list"
+          >
+            <div
+              v-for="job in recentReports"
+              :key="job.id"
+              class="recent-item"
+              :data-test="`compliance-recent-${job.id}`"
+            >
+              <div class="recent-head">
+                <span class="recent-name">{{ recentGroupName(job) }}</span>
+                <el-button
+                  v-if="canDownloadReport(job)"
+                  link
+                  type="primary"
+                  :loading="downloadingId === job.id"
+                  :data-test="`compliance-recent-download-${job.id}`"
+                  @click="downloadReport(job)"
+                >
+                  {{ $t('auditExports.download') }}
+                </el-button>
+                <span
+                  v-else
+                  class="recent-sub"
+                  :data-test="`compliance-recent-status-${job.id}`"
+                >{{ recentStatusText(job) }}</span>
+              </div>
+              <div class="recent-sub">
+                {{ recentTimeText(job) }}<template v-if="canDownloadReport(job)">
+                  · {{ $t('complianceMap.recentExpiresOn', { date: formatDate(job.expires_at) }) }}
+                </template>
+              </div>
+            </div>
+          </div>
+          <router-link
+            class="record-link recent-all"
+            :to="RECENT_ALL_TARGET"
+            data-test="compliance-recent-all"
+          >
+            {{ $t('complianceMap.recentAll') }}
+          </router-link>
         </div>
       </aside>
     </div>
+
+    <el-dialog
+      v-model="reportVisible"
+      :title="$t('complianceMap.report.title')"
+      width="560px"
+    >
+      <div data-test="compliance-report-dialog">
+        <el-form label-width="110px">
+          <el-form-item :label="$t('complianceMap.report.group')">
+            <el-select
+              v-model="reportForm.group"
+              class="full-width"
+              data-test="compliance-report-group"
+            >
+              <el-option
+                v-for="group in enabledGroups"
+                :key="group.code"
+                :label="group.name"
+                :value="group.code"
+              />
+            </el-select>
+            <span class="field-hint">{{ $t('complianceMap.report.groupHint') }}</span>
+          </el-form-item>
+          <el-form-item :label="$t('complianceMap.report.language')">
+            <el-select
+              v-model="reportForm.language"
+              class="full-width"
+              data-test="compliance-report-language"
+            >
+              <el-option
+                v-for="lang in SUPPORTED_LOCALES"
+                :key="lang"
+                :label="LOCALE_LABELS[lang] || lang"
+                :value="lang"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="$t('complianceMap.report.retention')">
+            <el-input-number
+              v-model="reportForm.retention_days"
+              :min="RETENTION_MIN"
+              :max="RETENTION_MAX"
+              :step="1"
+              step-strictly
+              data-test="compliance-report-retention"
+            />
+            <span class="field-hint">{{ $t('complianceMap.report.retentionHint') }}</span>
+          </el-form-item>
+        </el-form>
+        <p class="report-note">
+          {{ $t('complianceMap.report.note') }}
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="reportVisible = false">
+          {{ $t('common.cancel') }}
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="reportSubmitting"
+          :disabled="!canSubmitReport"
+          data-test="compliance-report-submit"
+          @click="submitReport"
+        >
+          {{ $t('complianceMap.report.submit') }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import { getComplianceSnapshot } from '@/api/compliance'
-import { formatDateTime } from '@/utils/format'
+import { createReportJob, getComplianceSnapshot } from '@/api/compliance'
+import { downloadAuditExportJob, listAuditExportJobs } from '@/api/auditExport'
+import { LOCALE_LABELS, SUPPORTED_LOCALES } from '@/i18n'
+import { downloadBlob } from '@/utils/download'
+import { formatDate, formatDateTime } from '@/utils/format'
 import {
   clauseResult,
   clauseSummary,
@@ -370,10 +483,11 @@ import {
 // 這一頁回答的是「現在這一刻，設定對每一個政策組符不符」，而它的讀者是稽核人員。
 // 頁上不放任何寫入元件——條文改在政策組頁、設定值改在安全政策頁，各自留下自己的
 // 記錄；把寫入混進來，「這條要求是誰改的」就會分裂成兩套說法。
+// 「產出報告」不在此限：它產出的是一份唯讀產物，不改任何設定或條文。
 //
 // 資訊層級以非專業人士為先：標題與結果在前，條號退為列尾小字。
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const loading = ref(false)
 const snapshot = ref({})
@@ -582,6 +696,127 @@ const resetSearch = () => {
 const recordHref = (key) =>
   `/audit-logs?resource=security_policy&key=${encodeURIComponent(key)}`
 
+// —— 合規報告 ——
+//
+// 報告是非同步產物：送出只換到一張工作單，產物掛在下載中心的報告清單，
+// 與輪替報告同為共用清單（不綁申請者）。右欄只列最近幾張，要看全部去下載中心
+const REPORT_KIND = 'compliance_report'
+const RECENT_REPORT_LIMIT = 5
+const RECENT_ALL_TARGET = {
+  path: '/audit/exports',
+  query: { tab: 'reports', kind: REPORT_KIND },
+}
+const RETENTION_MIN = 1
+const RETENTION_MAX = 3650
+const DEFAULT_REPORT_RETENTION_DAYS = 90
+
+const recentReports = ref([])
+const downloadingId = ref(0)
+
+const recentGroupName = (job) => job?.report?.group_name || job?.report?.group || ''
+
+// 可下載＝已完成且產物還在（與下載中心同一判準，以到期時刻為準）
+const canDownloadReport = (job) =>
+  job?.status === 'done' &&
+  (!job.expires_at || new Date(job.expires_at).getTime() > Date.now())
+
+// 已完成但已過到期時刻的列，清掃尚未跑到時狀態仍是 done，畫面照實說已過期
+const recentStatusText = (job) => {
+  const status = job?.status
+  if (status === 'pending' || status === 'running') return t('complianceMap.recentStatus.generating')
+  if (status === 'failed') return t('complianceMap.recentStatus.failed')
+  if (status === 'expired' || status === 'done') return t('complianceMap.recentStatus.expired')
+  return status || ''
+}
+
+// 完成的列印產出時刻；尚未完成的沒有產出時刻，改印受理時刻
+const recentTimeText = (job) =>
+  job?.status === 'done' && job.packaged_at
+    ? formatDateTime(job.packaged_at)
+    : t('auditExports.requestedAt', { time: formatDateTime(job?.requested_at) })
+
+const loadRecentReports = async () => {
+  try {
+    const res = await listAuditExportJobs({
+      kind: REPORT_KIND,
+      page: 1,
+      page_size: RECENT_REPORT_LIMIT,
+    })
+    recentReports.value = (res?.data || []).slice(0, RECENT_REPORT_LIMIT)
+  } catch (_e) {
+    recentReports.value = []
+  }
+}
+
+const downloadReport = async (job) => {
+  if (downloadingId.value) return
+  downloadingId.value = job.id
+  try {
+    const blob = await downloadAuditExportJob(job.id)
+    downloadBlob(blob, `compliance-report-job-${job.id}.zip`)
+  } catch (_e) {
+    ElMessage.error(t('auditExports.downloadFailed'))
+  } finally {
+    downloadingId.value = 0
+  }
+}
+
+// 只列生效組：未生效組的判定快照不含該組，產出來會是一份全未對照的報告
+const enabledGroups = computed(() => groups.value.filter((g) => g.enabled))
+
+const reportVisible = ref(false)
+const reportSubmitting = ref(false)
+const reportForm = ref({
+  group: '',
+  language: 'zh-TW',
+  retention_days: DEFAULT_REPORT_RETENTION_DAYS,
+})
+
+const canSubmitReport = computed(() => {
+  const f = reportForm.value
+  const days = Number(f.retention_days)
+  return (
+    enabledGroups.value.some((g) => g.code === f.group) &&
+    SUPPORTED_LOCALES.includes(f.language) &&
+    Number.isInteger(days) &&
+    days >= RETENTION_MIN &&
+    days <= RETENTION_MAX
+  )
+})
+
+// 預設值取讀者眼前的狀態：目前檢視的組、目前介面語言
+const openReport = () => {
+  const current = enabledGroups.value.some((g) => g.code === activeGroup.value)
+    ? activeGroup.value
+    : (enabledGroups.value[0] || {}).code || ''
+  reportForm.value = {
+    group: current,
+    language: SUPPORTED_LOCALES.includes(locale.value) ? locale.value : 'zh-TW',
+    retention_days: DEFAULT_REPORT_RETENTION_DAYS,
+  }
+  reportVisible.value = true
+}
+
+const submitReport = async () => {
+  if (!canSubmitReport.value) return
+  const f = reportForm.value
+  reportSubmitting.value = true
+  try {
+    await createReportJob({
+      group: f.group,
+      language: f.language,
+      retention_days: Number(f.retention_days),
+    })
+    reportVisible.value = false
+    ElMessage.success(t('complianceMap.report.accepted'))
+    await loadRecentReports()
+  } catch (_e) {
+    // 全域攔截器已依機器碼提示原因；此處不重複
+  } finally {
+    reportSubmitting.value = false
+  }
+}
+
 const load = async () => {
   loading.value = true
   try {
@@ -603,7 +838,10 @@ const load = async () => {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadRecentReports()
+})
 </script>
 
 <style scoped>
@@ -845,6 +1083,64 @@ onMounted(load)
 
 .aside-body {
   margin: var(--ot-space-sm) 0 0;
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-secondary);
+  line-height: 1.6;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ot-space-sm);
+  margin-top: var(--ot-space-sm);
+}
+
+.recent-item + .recent-item {
+  padding-top: var(--ot-space-sm);
+  border-top: 1px solid var(--ot-border-subtle);
+}
+
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ot-space-sm);
+}
+
+.recent-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--ot-font-size-sm);
+  color: var(--ot-text-primary);
+}
+
+.recent-sub {
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+  line-height: 1.6;
+}
+
+.recent-all {
+  display: inline-block;
+  margin-top: var(--ot-space-sm);
+  font-size: var(--ot-font-size-sm);
+}
+
+.full-width {
+  width: 100%;
+}
+
+.field-hint {
+  display: block;
+  width: 100%;
+  margin-top: var(--ot-space-xs);
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+  line-height: 1.5;
+}
+
+.report-note {
+  margin: 0;
   font-size: var(--ot-font-size-sm);
   color: var(--ot-text-secondary);
   line-height: 1.6;

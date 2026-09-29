@@ -1,0 +1,220 @@
+# shellcheck shell=bash
+# The main menu: custodexa.sh without a command, on a terminal, in a package deployment.
+# It lists what can be done in the deployment's state, asks only for what the chosen action needs
+# and runs the matching command as its own process; the command's own confirmations stay as they
+# are and the menu adds none. After the command the menu starts again from the script the
+# deployment points at, so the state (and, after an upgrade, the script) is read afresh.
+# Options stay for automation: without a terminal, custodexa.sh prints the help instead.
+
+# The latest version to upgrade to comes from the check itself (lib/upgrade_query.sh cx_q_latest).
+# shellcheck source=lib/version_rules.sh
+. "${BASH_SOURCE[0]%/*}/version_rules.sh"
+# shellcheck source=lib/upgrade_query.sh
+. "${BASH_SOURCE[0]%/*}/upgrade_query.sh"
+
+CX_MENU_SELF=""   # the script as it was started (<root>/custodexa.sh follows current/ after an upgrade)
+CX_MENU_KIND=""   # none | package
+CX_MENU_VERSION=""
+CX_MENU_FLAGS=()  # passed on to every command: the language, and --no-color when given
+CX_MENU_PICK=""
+CX_MENU_FILE=""
+
+# cx_menu_applies <script as started>: 0 when the menu is for this deployment. A git clone
+# deployment, or a folder that is no deployment root, keeps the help (the caller prints it).
+cx_menu_applies() {
+  local ver
+  CX_MENU_SELF=$1
+  cx_check_platform 2>/dev/null || return 1
+  CX_ROOT=$(cx_resolve_root "$CX_MENU_SELF" 2>/dev/null) || return 1
+  cx_check_root_path "$CX_ROOT" || return 1
+  cx_state_load "$CX_ROOT/state.json"
+  [ "$(cx_state_get current.kind)" != legacy-git-clone ] || return 1
+  ver=$(cx_state_get current.version)
+  if [ -z "$ver" ]; then
+    CX_MENU_KIND=none
+  else
+    CX_MENU_KIND=package
+  fi
+  CX_MENU_VERSION=$ver
+}
+
+# The actions of each state, in menu order; the label of <action> is MSG_menu_<action>.
+cx_menu_actions() {
+  case $CX_MENU_KIND in
+    none) printf '%s' "install load_first help" ;;
+    package) printf '%s' "status upgrade backup load help" ;;
+  esac
+}
+
+cx_menu_item() { # <number> <label>
+  printf '  [%s] %s\n' "$1" "${2//$'\n'/$'\n'      }"
+}
+
+# cx_menu_read <variable>: one answer, surrounding blanks removed. End of input (Ctrl-D) quits.
+cx_menu_read() {
+  if ! read -r "$1"; then
+    printf '\n'
+    exit "$CX_EXIT_OK"
+  fi
+}
+
+# cx_menu_pick <count>: CX_MENU_PICK in 1..count; 1 = Enter, back to the main menu.
+cx_menu_pick() {
+  local a
+  while :; do
+    printf '%s' "$(cx_msg menu_choose_sub "$1")"
+    cx_menu_read a
+    [ -n "$a" ] || return 1
+    if [[ $a =~ ^[1-9][0-9]*$ ]] && [ "$a" -le "$1" ]; then
+      CX_MENU_PICK=$a
+      return 0
+    fi
+    cx_line WARN "$(cx_msg menu_invalid)"
+  done
+}
+
+# cx_menu_files <bundle | package>: the matching files in the current folder, in name order.
+cx_menu_files() {
+  local f
+  if [ "$1" = bundle ]; then
+    for f in custodexa-images-*.tar; do
+      if [ -f "$f" ]; then printf '%s\n' "$f"; fi
+    done
+  else
+    for f in custodexa-[0-9]*.tar.gz; do
+      if [ -f "$f" ]; then printf '%s\n' "$f"; fi
+    done
+  fi
+}
+
+# cx_menu_pick_file <bundle | package>: CX_MENU_FILE, an absolute path; 1 = back to the main menu.
+cx_menu_pick_file() {
+  local kind=$1 f i n
+  local -a files=()
+  mapfile -t files < <(cx_menu_files "$kind")
+  n=${#files[@]}
+  if [ "$n" -gt 0 ]; then
+    printf '\n%s\n' "$(cx_msg "menu_${kind}_found" "$PWD")"
+    for ((i = 0; i < n; i++)); do cx_menu_item $((i + 1)) "${files[i]}"; done
+    cx_menu_item $((n + 1)) "$(cx_msg menu_other_path)"
+    printf '\n'
+    cx_menu_pick $((n + 1)) || return 1
+    if [ "$CX_MENU_PICK" -le "$n" ]; then
+      CX_MENU_FILE=$PWD/${files[CX_MENU_PICK - 1]}
+      return 0
+    fi
+  else
+    printf '\n%s\n' "$(cx_msg "menu_${kind}_none" "$PWD" "$(cx_script_version)")"
+  fi
+  printf '%s' "$(cx_msg "menu_ask_$kind")"
+  cx_menu_read f
+  [ -n "$f" ] || return 1
+  case $f in
+    /*) CX_MENU_FILE=$f ;;
+    *) CX_MENU_FILE=$PWD/$f ;;
+  esac
+}
+
+# cx_menu_again: the menu once more, from the script the deployment points at now.
+cx_menu_again() {
+  printf '\n'
+  exec "$BASH" "$CX_MENU_SELF" "${CX_MENU_FLAGS[@]}"
+}
+
+# cx_menu_run <command> [arguments...]: the command as its own process, then the menu again.
+cx_menu_run() {
+  "$BASH" "$CX_MENU_SELF" "$@" "${CX_MENU_FLAGS[@]}" || true
+  cx_menu_again
+}
+
+# Upgrade to the latest: the query shows what is available; the version it suggests
+# (cx_q_latest) is then upgraded to, which shows its own preview and asks its own question.
+cx_menu_upgrade_latest() {
+  local ver
+  "$BASH" "$CX_MENU_SELF" upgrade "${CX_MENU_FLAGS[@]}" || true
+  ver=$(cx_q_latest) || ver=""
+  [ -z "$ver" ] || cx_menu_run upgrade "$ver"
+  cx_menu_again
+}
+
+cx_menu_upgrade() {
+  local v
+  printf '\n%s\n' "$(cx_msg menu_up_title)"
+  cx_menu_item 1 "$(cx_msg menu_up_latest)"
+  cx_menu_item 2 "$(cx_msg menu_up_version)"
+  cx_menu_item 3 "$(cx_msg menu_up_package)"
+  printf '\n'
+  cx_menu_pick 3 || return 1
+  case $CX_MENU_PICK in
+    1) cx_menu_upgrade_latest ;;
+    2)
+      printf '%s' "$(cx_msg menu_ask_version)"
+      cx_menu_read v
+      [ -n "$v" ] || return 1
+      cx_menu_run upgrade "$v"
+      ;;
+    3)
+      cx_menu_pick_file package || return 1
+      cx_menu_run upgrade "$CX_MENU_FILE"
+      ;;
+  esac
+}
+
+# cx_menu_do <action>: returns only to show the main menu again (a question answered with Enter).
+cx_menu_do() {
+  case $1 in
+    install) cx_menu_run install ;;
+    status) cx_menu_run status ;;
+    backup) cx_menu_run backup ;;
+    upgrade) cx_menu_upgrade || return 0 ;;
+    load | load_first)
+      cx_menu_pick_file bundle || return 0
+      cx_menu_run load "$CX_MENU_FILE"
+      ;;
+    help)
+      printf '\n'
+      cx_help ""
+      ;;
+  esac
+}
+
+cx_menu_show() {
+  local a i=0
+  local -a actions
+  read -r -a actions <<<"$(cx_menu_actions)"
+  printf '%s\n' "$(cx_msg menu_title "$(cx_script_version)" "$CX_ROOT")"
+  if [ "$CX_MENU_KIND" = package ]; then
+    printf '%s\n\n' "$(cx_msg menu_state_package "$CX_MENU_VERSION")"
+  else
+    printf '%s\n\n' "$(cx_msg menu_state_none)"
+  fi
+  for a in "${actions[@]}"; do
+    i=$((i + 1))
+    cx_menu_item "$i" "$(cx_msg "menu_$a")"
+  done
+  cx_menu_item 0 "$(cx_msg menu_quit)"
+  printf '\n'
+  CX_MENU_ACTIONS=("${actions[@]}")
+}
+
+# cx_menu: after cx_menu_applies. Never returns: quits with 0, or starts itself again.
+CX_MENU_ACTIONS=()
+cx_menu() {
+  local a n
+  CX_MENU_FLAGS=(--lang "$CX_LANG")
+  if [ "${CX_NO_COLOR:-0}" = 1 ]; then CX_MENU_FLAGS+=(--no-color); fi
+  while :; do
+    cx_menu_show
+    n=${#CX_MENU_ACTIONS[@]}
+    while :; do
+      printf '%s' "$(cx_msg menu_choose "$n")"
+      cx_menu_read a
+      [ -n "$a" ] || continue
+      [ "$a" != 0 ] || exit "$CX_EXIT_OK"
+      if [[ $a =~ ^[1-9][0-9]*$ ]] && [ "$a" -le "$n" ]; then break; fi
+      cx_line WARN "$(cx_msg menu_invalid)"
+    done
+    cx_menu_do "${CX_MENU_ACTIONS[a - 1]}"
+    printf '\n'
+  done
+}

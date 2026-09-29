@@ -975,6 +975,12 @@ func safeAuditSubstanceFields() map[string]bool {
 		"severity":  true,
 		"protocols": true,
 
+		// ── 通知通道的推送門檻 ─────────────────────────────────────────
+		// 收窄到只有高等級＝該通道從此收不到中、低等級告警，是「關掉通知」的變體；
+		// 值域 low／medium／high 的枚舉。前後值另由 service 自寫專屬列（改動前值只有
+		// 它知道），本登記讓請求本文至少讀得出設定後的值，而非 ***MASKED***
+		"min_severity": true,
+
 		// ── 資產帳號的特權標記與認證類型 ───────────────────────────────
 		// privileged 是「這是特權帳號」的標記本身（覆核與報表據以分類）；
 		// auth_method 是認證類型枚舉（憑證本體 password／private_key 仍遮）
@@ -1198,8 +1204,15 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 	switch endpoint {
 	case "POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release":
 		return map[string]bool{"reason": true}
-	case "POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/revoke", "POST /api/v1/access-requests/:id/review":
+	case "POST /api/v1/access-requests/:id/revoke":
 		return map[string]bool{"note": true}
+	// 可批次處理的審閱與核決端點：`note` 是處置依據；`batch_id` 是
+	// 前端為同一批逐筆送出所產生的關聯碼（UUID 格式由綁定層驗證），讓稽核面辨認同批。
+	// 它不構成完整的批次紀錄：未送出的項目不會有任何一列。告警審閱的 `note` 原先
+	// 不在任何放行集而被遮罩，稽核列只剩處置分類、答不出依據。
+	case "POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
+		"POST /api/v1/command-alerts/:id/review":
+		return map[string]bool{"note": true, "batch_id": true}
 	case "POST /api/v1/users/:id/agent-tokens":
 		// 憑證有效期限屬課責事實，明文與雜湊仍不放行。
 		return map[string]bool{"expires_at": true}
@@ -1243,7 +1256,9 @@ func EndpointAuditFieldNames(endpoint string) []string {
 func AuditMaskEndpoints() []string {
 	return []string{
 		"POST /api/v1/access-requests", "POST /api/v1/access-requests/break-glass", "POST /api/v1/users/:id/agent-breaker/release",
-		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/revoke", "POST /api/v1/access-requests/:id/review",
+		"POST /api/v1/access-requests/:id/revoke",
+		"POST /api/v1/access-requests/:id/approve", "POST /api/v1/access-requests/:id/reject", "POST /api/v1/access-requests/:id/review",
+		"POST /api/v1/command-alerts/:id/review",
 		"POST /api/v1/users/:id/agent-tokens",
 		"PUT /api/v1/ldap-directory",
 		"PUT /api/v1/keys/topology",

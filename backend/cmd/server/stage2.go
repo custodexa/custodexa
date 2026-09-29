@@ -1166,7 +1166,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	// 輪替證據報告的打包者：種類分派在 worker，報告的資料與版面在 asset 模組，
 	// 兩者只以介面相接，audit 不因此認識任何一種報告
 	auditExportJobWorker.RegisterPackager(asset.NewRotationReportPackager(
-		rotationReportBuilder, exportSigning, Version))
+		rotationReportBuilder, exportSigning, Version), audit.NewComplianceReportPackager(policy.NewComplianceService(policyService, policy.NewPolicyGroupRepository(database.DB)), exportSigning, Version))
 	starts[8].start, starts[8].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
 
 	rotationReportScheduler := scheduler.NewRotationReportScheduler(rotationReportSchedules)
@@ -1592,7 +1592,7 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 		complianceService, policyGroupRepo)
 	// 政策組管理（讀取 admin＋auditor，寫入 admin）與合規對照（唯讀）
 	policyGroupHandler := api.NewPolicyGroupHandler(policyGroupRepo, complianceService, s.auditService)
-	complianceHandler := api.NewComplianceHandler(complianceService, policyGroupRepo)
+	complianceHandler := api.NewComplianceHandler(complianceService, policyGroupRepo, s.auditExportJobs, s.auditService)
 	// 排程時刻預覽（admin）：無依賴，解析與排程器同一組欄位
 	scheduleHandler := api.NewScheduleHandler()
 

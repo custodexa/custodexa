@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Fake docker for the custodexa.sh tests. Records each call and replays canned output.
+#   log line: ARGS<TAB>arg1 arg2 ...<TAB>IMG_BACKEND=<$CUSTODEXA_IMAGE_BACKEND>
+#   replay:   $FAKE_DOCKER_REPLAY/<key>.out / .rc where key is the arguments joined by '_'
+#             with '/' and ' ' replaced; the longest matching prefix wins.
+#   hook:     $FAKE_DOCKER_REPLAY/hook, when present and executable, answers first (see below).
+log=${FAKE_DOCKER_LOG:-/dev/null}
+printf 'ARGS\t%s\tIMG_BACKEND=%s\n' "$*" "${CUSTODEXA_IMAGE_BACKEND:-}" >>"$log"
+dir=${FAKE_DOCKER_REPLAY:-}
+[ -n "$dir" ] || exit 0
+# A test may simulate a daemon with state: $dir/hook gets the arguments; exit 99 means "not mine".
+if [ -x "$dir/hook" ]; then
+  "$dir/hook" "$@"
+  rc=$?
+  [ "$rc" -eq 99 ] || exit "$rc"
+fi
+key=""; best=""
+for a in "$@"; do
+  key="${key:+${key}_}$(printf '%s' "$a" | tr '/ :@' '----')"
+  [ -e "$dir/$key.out" ] || [ -e "$dir/$key.rc" ] && best=$key
+done
+[ -n "$best" ] || exit 0
+[ -e "$dir/$best.out" ] && cat "$dir/$best.out"
+[ -e "$dir/$best.rc" ] && exit "$(cat "$dir/$best.rc")"
+exit 0

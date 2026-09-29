@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -154,6 +155,53 @@ func TestGroupRoleMappingCRUDAudit(t *testing.T) {
 	}
 	if total != 0 {
 		t.Fatalf("審計失敗後規則列數 = %d，want 0（整筆回滾）", total)
+	}
+
+	// 建立時的啟用旗標必須原樣落庫：模型欄位帶資料庫預設值 true，而 ORM 對帶預設值
+	// 的欄位遇零值會交給資料庫預設——「建成停用」若靜默變成啟用，那條規則會在下一次
+	// 登入就把角色授出去。回傳值、落庫列、審計列三者要說同一句話
+	for _, tc := range []struct {
+		name    string
+		enabled *bool
+		want    bool
+	}{
+		{"帶_false_存成停用", boolPtr(false), false},
+		{"未帶預設啟用", nil, true},
+		{"帶_true_存成啟用", boolPtr(true), true},
+	} {
+		t.Run("建立時啟用旗標/"+tc.name, func(t *testing.T) {
+			db := setupMappingDB(t)
+			svc := mappingService(db, audit.NewTxSink())
+			dir := seedDirectory(t, db, "memberOf")
+			in := mappingInput("cn=flag,ou=groups,dc=example,dc=com", model.RoleUser, false)
+			in.Enabled = tc.enabled
+			view, err := svc.CreateMapping(model.RoleMappingChannelKindDirectory, dir.ID, in)
+			if err != nil {
+				t.Fatalf("建立規則: %v", err)
+			}
+			if view.Enabled != tc.want {
+				t.Errorf("回傳 enabled = %v，want %v", view.Enabled, tc.want)
+			}
+			var row model.GroupRoleMapping
+			if err := db.First(&row, view.ID).Error; err != nil {
+				t.Fatalf("讀規則列: %v", err)
+			}
+			if row.Enabled != tc.want {
+				t.Errorf("落庫 enabled = %v，want %v", row.Enabled, tc.want)
+			}
+			var logRow model.AuditLog
+			if err := db.Where("details LIKE ?", "%\""+identity.MappingAuditEventCreate+"\"%").
+				Order("id DESC").First(&logRow).Error; err != nil {
+				t.Fatalf("讀建立審計列: %v", err)
+			}
+			var details map[string]any
+			if err := json.Unmarshal([]byte(logRow.Details), &details); err != nil {
+				t.Fatalf("解析審計細節: %v", err)
+			}
+			if got, _ := details["enabled"].(bool); got != tc.want {
+				t.Errorf("審計列 enabled = %v，want %v（與落庫不一致）", details["enabled"], tc.want)
+			}
+		})
 	}
 }
 

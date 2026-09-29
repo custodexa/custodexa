@@ -1,0 +1,26 @@
+Custodexa status    /opt/custodexa    2026-10-02 09:30
+
+Version
+  Installed  1.13.2    package deployment, upgraded 2026-09-30
+  Previous   1.13.0    kept in releases/
+Services
+  [ OK ] 6 service processes started (tls-init runs once and has
+         finished)
+  [ OK ] Backend healthy, version 1.13.2
+  [WARN] The system is still sealed and not yet serving users.
+         Someone must enter the master key at
+         https://10.0.0.12/unseal
+Images
+  [ OK ] From GHCR; checksums, signatures and build provenance verified
+Backup
+  [ OK ] Latest 2026-09-30 02:17 (automatic, before the upgrade;
+         2 days ago)
+         /opt/custodexa/backups/20260930-021504/    18.1 GB
+Last upgrade
+  [ OK ] 1.13.0 -> 1.13.2 succeeded, 2026-09-30 02:31
+Disk
+  [ OK ] data/ 16.9 GB, backups/ 36.4 GB; 175 GB free
+Reminders
+  [WARN] .env still holds the initial admin password
+         (ADMIN_INITIAL_PASSWORD). Once the admin has changed the
+         password, delete that line.

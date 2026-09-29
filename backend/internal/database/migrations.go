@@ -208,6 +208,14 @@ var migrations = []Migration{
 	{Version: "20260923_agent_lateral_rule_pattern", Name: "agent_lateral_rule_pattern", Up: applyAgentLateralRulePattern, Down: rollbackAgentLateralRulePattern},
 	{Version: "20260924_agent_tool_call_args_retained", Name: "agent_tool_call_args_retained", Up: applyAgentToolCallArgsRetained, Down: rollbackAgentToolCallArgsRetained},
 	{Version: "20260924_sensitive_reveal_alert", Name: "sensitive_reveal_alert", Up: applySensitiveRevealAlert, Down: rollbackSensitiveRevealAlert},
+	{
+		// 通知通道推送門檻：min_severity＋CHECK，既有列取 low（行為不變）。
+		// Down 有損但方向安全（回到全部推送；見 migration_notification_channel_min_severity.go）
+		Version: "20260929_notification_channel_min_severity",
+		Name:    "notification_channel_min_severity",
+		Up:      applyNotificationChannelMinSeverity,
+		Down:    rollbackNotificationChannelMinSeverity,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -241,7 +249,8 @@ func schemaDDLStatements() []string {
 	out = append(out, agentBreakerAlertDDL()...)
 	out = append(out, agentVisibilityExposuresDDL()...)
 	out = append(out, sensitiveRevealAlertDDL()...)
-	return append(out, agentSessionTokenNameDDL()...)
+	out = append(out, agentSessionTokenNameDDL()...)
+	return append(out, notificationChannelMinSeverityDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

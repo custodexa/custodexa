@@ -287,3 +287,41 @@ func TestChannelSlackForcesEmptySecret(t *testing.T) {
 		}
 	})
 }
+
+// TestChannelCreateHonorsEnabledFlag 建立時的啟用狀態照請求值落庫（雙向）：
+// 帶 enabled=false 必須存成停用（否則管理員建立的「停用」通道會照常推送）；
+// 未帶 enabled 維持預設啟用；帶 true 存成啟用。以 GetByID 讀回 DB 值判定，
+// 不看 Create 回傳的記憶體 struct。
+func TestChannelCreateHonorsEnabledFlag(t *testing.T) {
+	f, tr := false, true
+	cases := []struct {
+		name    string
+		enabled *bool
+		want    bool
+	}{
+		{"帶 false 存成停用", &f, false},
+		{"未帶預設啟用", nil, true},
+		{"帶 true 存成啟用", &tr, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := setupChannelDB(t)
+			created, err := svc.Create(&NotificationChannelRequest{
+				Name: "ops", URL: "https://hooks.example.com/x", Enabled: tc.enabled,
+			})
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if created.Enabled != tc.want {
+				t.Fatalf("Create 回傳 enabled=%v，期望 %v", created.Enabled, tc.want)
+			}
+			stored, err := svc.GetByID(created.ID)
+			if err != nil {
+				t.Fatalf("GetByID: %v", err)
+			}
+			if stored.Enabled != tc.want {
+				t.Fatalf("落庫 enabled=%v，期望 %v", stored.Enabled, tc.want)
+			}
+		})
+	}
+}

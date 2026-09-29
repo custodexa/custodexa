@@ -1,0 +1,3 @@
+[ .. ]  4/13  Wait for audit records to be written
+        214 left ... 87 left ... 12 left ... 0 left
+[ OK ]  4/13  Wait for audit records to be written (0 left)  9s

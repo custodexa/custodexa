@@ -5,6 +5,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/custodexa/backend/internal/apierror"
@@ -18,7 +19,11 @@ import (
 type CommandAlertServiceInterface interface {
 	List(filter *audit.CommandAlertFilter) (*audit.CommandAlertListResponse, error)
 	Review(alertID, reviewerID uint, disposition, note string) error
+	ReviewInBatch(alertID, reviewerID uint, disposition, note string) error
 }
+
+// maxAlertIDsQuery `ids` 查詢參數的個數上限（與前端批次上限同量級）
+const maxAlertIDsQuery = 50
 
 // CommandAlertHandler 告警查詢 API handler（command-alerts，audit:view）
 type CommandAlertHandler struct {
@@ -100,6 +105,26 @@ func (h *CommandAlertHandler) List(c *gin.Context) {
 		filter.Unreviewed = true
 	}
 
+	// 指定 id 清單（批次審閱）：批次中斷後查回每筆實際處置
+	if raw := c.Query("ids"); raw != "" {
+		parts := strings.Split(raw, ",")
+		if len(parts) > maxAlertIDsQuery {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidCommandAlertID, nil)
+			return
+		}
+		for _, p := range parts {
+			id, err := strconv.ParseUint(strings.TrimSpace(p), 10, 32)
+			if err != nil || id == 0 {
+				apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidCommandAlertID, nil)
+				return
+			}
+			filter.IDs = append(filter.IDs, uint(id))
+		}
+		if filter.PageSize < len(filter.IDs) {
+			filter.PageSize = len(filter.IDs)
+		}
+	}
+
 	if page, err := strconv.Atoi(c.Query("page")); err == nil && page > 0 {
 		filter.Page = page
 	}
@@ -126,6 +151,10 @@ func (h *CommandAlertHandler) Review(c *gin.Context) {
 	var req struct {
 		Disposition string `json:"disposition" binding:"required"`
 		Note        string `json:"note"`
+		// BatchID 批次關聯碼：同一批逐筆送出的每筆帶同一個值，
+		// 經稽核放行集原樣進該筆的稽核列。帶了才套批次條件（理由必填、不收本人
+		// 觸發、不覆蓋已審閱）；不帶則維持單筆語義（含重新審閱）
+		BatchID string `json:"batch_id" binding:"omitempty,uuid"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidReviewRequest, nil)
@@ -133,12 +162,22 @@ func (h *CommandAlertHandler) Review(c *gin.Context) {
 	}
 
 	reviewerID, _ := middleware.GetCurrentUserID(c)
-	if err := h.alertService.Review(uint(id), reviewerID, req.Disposition, req.Note); err != nil {
+	review := h.alertService.Review
+	if req.BatchID != "" {
+		review = h.alertService.ReviewInBatch
+	}
+	if err := review(uint(id), reviewerID, req.Disposition, req.Note); err != nil {
 		switch err {
 		case audit.ErrAlertNotFound:
 			apierror.Respond(c, http.StatusNotFound, apierror.CodeCommandAlertNotFound, nil)
 		case audit.ErrInvalidDisposition:
 			apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidDisposition, nil)
+		case audit.ErrAlertBatchNote, audit.ErrAlertNoteTooLong:
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeAlertBatchNote, nil)
+		case audit.ErrAlertSelfTriggered:
+			apierror.Respond(c, http.StatusForbidden, apierror.CodeAlertBatchSelfTriggered, nil)
+		case audit.ErrAlertAlreadyReviewed:
+			apierror.Respond(c, http.StatusConflict, apierror.CodeAlertAlreadyReviewed, nil)
 		default:
 			apierror.RespondInternal(c, http.StatusInternalServerError, apierror.CodeInternalAlertReview, err)
 		}

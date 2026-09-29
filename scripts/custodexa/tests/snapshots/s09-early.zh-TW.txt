@@ -1,0 +1,10 @@
+[FAIL] 快照時間 02:10 早於停機時間 02:16:13
+  這份快照沒有停機前最後寫入的紀錄，用它還原會少資料。
+  請重新做快照，或改選 [1] 由腳本備份。服務目前仍停止，沒有其他
+  變更。
+
+  若要取消升級，請恢復全部服務並確認：
+    sudo sh -c 'set -a; . /opt/custodexa/current/images.env; exec \
+      docker compose -p custodexa --project-directory /opt/custodexa \
+      -f /opt/custodexa/current/compose.yml up -d'
+    sudo /opt/custodexa/custodexa.sh status

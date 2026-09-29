@@ -58,7 +58,10 @@ EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 # 建置階段（版本釘選與版本線選擇的說明見檔首，兩個 stage 須同版）
-FROM node:26.8.2-alpine AS builder
+#
+# **固定在建置平台執行（多架構映像）**：建置產物是靜態檔，與目標架構無關；
+# 多架構建置時本階段只跑一次、不經 QEMU 模擬，各平台映像拿到的是同一份 dist。
+FROM --platform=$BUILDPLATFORM node:26.8.2-alpine AS builder
 
 WORKDIR /app
 
@@ -87,6 +90,11 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # 複製 nginx 配置
 COPY docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+# 授權文件與授權標註（理由見 docker/backend/Dockerfile 的 production 階段）
+COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /usr/share/doc/custodexa/
+COPY licenses/ /usr/share/doc/custodexa/licenses/
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 EXPOSE 80
 

@@ -2,6 +2,7 @@ package asset
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"sync"
@@ -274,6 +275,37 @@ func TestCredentialRotationStartSnapshotsAllBindings(t *testing.T) {
 	state, err := f.rotations.AggregateState(credID)
 	require.NoError(t, err)
 	assert.Equal(t, CredentialAggregateQueued, state)
+
+	// 輪替列記下的密碼策略必須是本輪實際採用的那一組：兩個布林欄帶資料庫預設值
+	// true，ORM 對帶預設值的欄位遇零值會交給資料庫預設，於是「不含符號」的一輪會被
+	// 記成含符號。整組與拆分兩個起始入口各自建列，兩條都驗
+	starts := map[string]func(*rotationFixture, uint, StartRotationRequest) (*model.CredentialRotation, error){
+		"整組": func(f *rotationFixture, id uint, req StartRotationRequest) (*model.CredentialRotation, error) {
+			return f.rotations.Start(adminCtx(), id, req)
+		},
+		"拆分": func(f *rotationFixture, id uint, req StartRotationRequest) (*model.CredentialRotation, error) {
+			return f.rotations.StartSplit(adminCtx(), id, req)
+		},
+	}
+	for mode, start := range starts {
+		for _, want := range []bool{false, true} {
+			t.Run(fmt.Sprintf("密碼策略落庫/%s/%v", mode, want), func(t *testing.T) {
+				f := setupRotationFixture(t)
+				credID, _ := f.sharedOn(t, "共用策略", "ops", "old-shared", "10.9.1.1", "10.9.1.2")
+				rot, err := start(f, credID, StartRotationRequest{Policy: PasswordPolicy{
+					Length: 20, IncludeSymbol: want, ExcludeAmbiguous: want,
+				}})
+				require.NoError(t, err)
+				assert.Equal(t, want, rot.PasswordIncludeSymbol, "回傳 include_symbol")
+				assert.Equal(t, want, rot.PasswordExcludeAmbiguous, "回傳 exclude_ambiguous")
+				saved, err := loadRotation(f.db, rot.ID)
+				require.NoError(t, err)
+				assert.Equal(t, want, saved.PasswordIncludeSymbol, "落庫 include_symbol")
+				assert.Equal(t, want, saved.PasswordExcludeAmbiguous, "落庫 exclude_ambiguous")
+				assert.Equal(t, 20, saved.PasswordLength)
+			})
+		}
+	}
 }
 
 // --- 4.2／4.3 成員狀態轉移表（守衛） ---

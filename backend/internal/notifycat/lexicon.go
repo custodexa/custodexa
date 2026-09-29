@@ -57,6 +57,10 @@ const (
 	// 產物上——報告的語言由排程或請求指定，而三語齊備由既有守衛保證。
 	// 後端零散文出站的原則在此同樣適用：Go 檔內不得出現這些字面。
 	LexiconRotationReport Lexicon = "rotation_report"
+	// LexiconComplianceReport 合規對照報告的版面文案（封面、範圍聲明、摘要、
+	// 表頭、結果與條文型別的說法、口徑）。理由同 LexiconRotationReport：印在會
+	// 離開系統的產物上，語言由請求指定，三語齊備由既有守衛保證。
+	LexiconComplianceReport Lexicon = "compliance_report"
 	// LexiconAlertKind 非規則類告警的白話標題（值域＝model 中 rule 以外的 AlertKind* 常數）。
 	//
 	// 這些類別沒有規則名可顯示：rule_name 存的是機器碼、指令欄刻意為空。
@@ -166,11 +170,23 @@ func Phrase(lang string, lex Lexicon, key string) string {
 	return key
 }
 
+// LexiconEntries 某語系某詞庫的全部詞條（複本；語系未支援即 DefaultLang）。
+//
+// 供產物層的措辭守衛逐條掃描（例如報告不得出現某類說法）；呼叫端改動回傳值
+// 不影響詞庫本身。
+func LexiconEntries(lang string, lex Lexicon) map[string]string {
+	out := map[string]string{}
+	for k, v := range lexiconCat[resolveLang(lang)][lex] {
+		out[k] = v
+	}
+	return out
+}
+
 // Lexicons 已宣告的詞庫清單（守衛與診斷用）。
 func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
-		LexiconEntity, LexiconRotationReport, LexiconAlertKind, LexiconAlertKindText,
-		LexiconDegradeReason}
+		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
+		LexiconAlertKindText, LexiconDegradeReason}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

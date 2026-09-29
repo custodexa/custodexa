@@ -1,0 +1,18 @@
+Custodexa 1.13.0 install    Deployment directory /opt/custodexa
+
+[FAIL] 1/7  Check this host
+       [ OK ] Docker 27.3.1, Compose v2.29.7
+       [ OK ] Architecture amd64
+       [FAIL] Port 443 is already in use by nginx (pid 1203)
+       [ OK ] 212 GB free (6 GB needed)
+
+Nothing was changed.
+
+Port 443 is already in use by nginx (pid 1203). Ask the host
+administrator to resolve the port conflict, then run again:
+    sudo /opt/custodexa/custodexa.sh install
+To use different ports instead, first make sure
+/opt/custodexa/.env exists and is set up, then set TLS_HTTPS_PORT
+and TLS_HTTP_PORT to ports nothing else uses (8443 and 8088 are
+common). The address people type will then include the port, for
+example https://10.0.0.12:8443

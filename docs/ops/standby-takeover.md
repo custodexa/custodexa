@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/standby-takeover.md) | [日本語](../ja/ops/standby-takeover.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.12.4.
+> Applies to: Custodexa 1.13.0, in the `git clone` layout; §8 says what differs for a package deployment.
 >
 > **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
 >
@@ -141,7 +141,7 @@ The database is shared; the host's file system is not. After a takeover, whateve
 |---|---|---|
 | Recording files under `${DATA_PATH}/recordings` | The session records are in the database, but playback needs the file. A recording whose file the standby does not have plays only if a copy was uploaded to offsite storage (it is retrieved on first playback) | Offsite evidence storage; copying the directory from the primary's disk when it is recoverable (§4.4) |
 | Audit fallback files and the seal-period journal under `${DATA_PATH}/audit` | Audit rows that could not reach the database at the time stay in those files; the seal journal of `KEK_PROVIDER=ui` mode too | Copying the directory when the disk is recoverable; low volume under normal conditions, since rows go to the database first |
-| Export artifacts (evidence packages, rotation evidence reports) in the container's `/var/lib/custodexa/exports` | Their downloads stop working. The job rows are in the database; export again on the standby | Offsite storage keeps copies of completed artifacts within their retention period; otherwise nothing, the directory is container-local on every host |
+| Export artifacts (evidence packages, rotation evidence reports, compliance reports) under `${DATA_PATH}/exports` | Their downloads stop working. The job rows are in the database; export again on the standby | Offsite storage keeps copies of completed artifacts within their retention period; otherwise nothing: the directory is local to each host and not in the backup |
 | The offsite retrieval cache (`OFFSITE_SPOOL_PATH`) | Recordings are retrieved again on first playback | Nothing needed; it is a cache |
 | Sessions in progress and their recordings' unwritten tail | Every protocol session ends when the host fails, and the recording of a session that ends this way is not uploaded (offsite storage uploads only recordings that ended normally). On the standby's first start those sessions are closed out with `end_reason=backend_restart` | Nothing; see §7 |
 
@@ -325,6 +325,7 @@ Nothing in the list above is recovered by the product on its own. What the datab
 
 - **Backup** ([Backup and Restore](./backup-and-restore.md)): the database is backed up on the database server, with `pg_dump` against it instead of `docker compose exec postgres`; the recordings and audit directories are backed up from **every application host that has files**, which after a takeover means both; `.env` and `tls/` from both hosts. The restore procedure's step of starting postgres and loading the dump happens on the database server. The consistency requirement (database and file locations from the same point in time) is unchanged and harder to meet across machines; stop the active application host for the backup window.
 - **Upgrade** ([Deployment and Upgrade SOP](./upgrade-sop.md)): an upgrade is performed with the active host stopped, as before; then **both** hosts get the new images and files, and only one is started. A standby that is not upgraded in step is a standby that cannot take over (§2.2 step 1). The rolling update the SOP excludes is also excluded here: never start the standby to "cover" the upgrade of the primary.
+- **Package deployments** (from 1.13.0): the management script backs up nothing in this shape. `backup` refuses, and an upgrade takes your own backup, which has to include a backup of the database started after the services stopped ([upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)). The script upgrades only the host it runs on: bringing the standby to the same release is still part of this procedure (§2.2 step 1), and that pairing has not been rehearsed with the script.
 - **Topology** ([Deployment Topology Limits](./deployment-topology-limits.md)): this procedure adds no topology. At every moment exactly one application instance runs against the database, which is what the single-instance guard requires, and the guard is what tells you when that is not the case.
 
 ## Sensitive output detection: scope and operational checks

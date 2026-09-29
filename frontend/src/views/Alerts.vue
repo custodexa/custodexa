@@ -101,12 +101,62 @@
         </div>
 
         <div class="list-card">
+          <!-- 批次審閱列：勾選後出現；只收未審閱且非本人觸發的告警 -->
+          <BatchSelectionBar
+            v-if="canReview && alertSelection.selected.value.length"
+            :count-text="$t('alerts.batch.selectedCount', { n: alertSelection.selected.value.length })"
+            :clear-text="$t('alerts.batch.clear')"
+            :limit-text="alertBatchLimitText"
+            @clear="alertSelection.clear()"
+          >
+            <el-button
+              type="primary"
+              data-test="batch-open"
+              @click="alertBatchDialogRef?.open()"
+            >
+              {{ $t('alerts.batch.open') }}
+            </el-button>
+          </BatchSelectionBar>
           <el-table
             v-loading="alertsLoading"
             :data="alerts"
             stripe
             style="width: 100%"
           >
+            <el-table-column
+              v-if="canReview"
+              width="48"
+              fixed="left"
+            >
+              <template #header>
+                <BatchCheckbox
+                  test-id="batch-select-all"
+                  :checked="alertPageState.checked"
+                  :indeterminate="alertPageState.indeterminate"
+                  :disabled="alertPageState.disabled"
+                  :label="$t('alerts.batch.selectAll')"
+                  @change="alertSelection.toggleAll(alerts, isAlertBatchSelectable)"
+                />
+              </template>
+              <template #default="{ row }">
+                <!-- 不可勾的原因（本人觸發、已審閱）同時給滑鼠提示與讀屏名稱 -->
+                <el-tooltip
+                  :content="alertSelectBlockedReason(row)"
+                  :disabled="!alertSelectBlockedReason(row)"
+                  placement="right"
+                >
+                  <BatchCheckbox
+                    test-id="batch-select-cell"
+                    :data-id="row.id"
+                    :checked="alertSelection.isSelected(row)"
+                    :disabled="!alertSelection.canToggle(row, isAlertBatchSelectable)"
+                    :label="alertSelectBlockedReason(row) || $t('alerts.batch.selectRow', { label: alertBatchLabel(row) })"
+                    @change="(checked) => alertSelection.toggle(row, checked)"
+                  />
+                </el-tooltip>
+              </template>
+            </el-table-column>
+
             <el-table-column
               prop="triggered_at"
               :label="$t('common.time')"
@@ -505,12 +555,23 @@
               </template>
             </el-table-column>
             <el-table-column
+              :label="$t('alerts.channelPushColumn')"
+              width="130"
+            >
+              <template #default="{ row }">
+                <span :class="isNarrowedMinSeverity(row.min_severity) ? 'push-narrowed' : 'field-muted'">
+                  {{ channelMinSeverityLabel(row.min_severity) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column
               :label="$t('common.enabled')"
               width="90"
             >
               <template #default="{ row }">
                 <el-switch
                   :model-value="row.enabled"
+                  :aria-label="$t('alerts.channelEnabledToggle', { name: row.name })"
                   @change="(val) => handleChannelToggle(row, val)"
                 />
               </template>
@@ -629,6 +690,16 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 告警批次審閱：逐筆呼叫單筆審閱端點（非原子），結果逐筆列出 -->
+    <AlertBatchReviewDialog
+      v-if="canReview"
+      ref="alertBatchDialogRef"
+      :alerts="alertSelection.selected.value"
+      :current-user-id="currentUserId"
+      :label-for="alertBatchLabel"
+      @finished="handleAlertBatchFinished"
+    />
 
     <!-- 新增 / 編輯通道對話框 -->
     <el-dialog
@@ -757,6 +828,30 @@
           </el-select>
           <div class="field-hint">
             {{ $t('alerts.channelLanguageHint') }}
+          </div>
+        </el-form-item>
+        <el-form-item
+          :label="$t('alerts.channelMinSeverityLabel')"
+          prop="minSeverity"
+        >
+          <el-radio-group
+            v-model="channelForm.minSeverity"
+            class="min-severity-group"
+          >
+            <el-radio
+              v-for="level in CHANNEL_MIN_SEVERITY_VALUES"
+              :key="level"
+              :value="level"
+            >
+              {{ channelMinSeverityLabel(level) }}
+              <span
+                v-if="level === CHANNEL_MIN_SEVERITY_DEFAULT"
+                class="field-muted"
+              >{{ $t('alerts.channelMinSeverityLowHint') }}</span>
+            </el-radio>
+          </el-radio-group>
+          <div class="field-hint">
+            {{ $t('alerts.channelMinSeverityScopeHint') }}
           </div>
         </el-form-item>
         <el-form-item :label="$t('common.enabled')">
@@ -955,6 +1050,10 @@ import {
 } from '@/api/alerts'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import BatchSelectionBar from '@/components/batch-review/BatchSelectionBar.vue'
+import BatchCheckbox from '@/components/batch-review/BatchCheckbox.vue'
+import AlertBatchReviewDialog from '@/components/batch-review/AlertBatchReviewDialog.vue'
+import { useBatchSelection } from '@/composables/useBatchReview'
 import { formatDateTime } from '@/utils/format'
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
@@ -971,6 +1070,8 @@ import {
   CHANNEL_LANGUAGE_VALUES,
   CHANNEL_LANGUAGE_DEFAULT,
   channelLanguageLabel,
+  CHANNEL_MIN_SEVERITY_VALUES,
+  CHANNEL_MIN_SEVERITY_DEFAULT,
 } from '@/constants/notification-channels'
 
 const router = useRouter()
@@ -1001,7 +1102,7 @@ const kindOptions = computed(() => Object.entries(KIND_LABELS)
 const activeTab = ref('alerts')
 
 // 規則管理頁籤僅 admin 顯示；審閱處置權限 alert:manage（admin/auditor 有，user 無）——與後端一致
-const { isAdmin, isPrivileged: canReview } = useRoles()
+const { isAdmin, isPrivileged: canReview, currentUserId } = useRoles()
 
 // --- 告警記錄 ---
 const alerts = ref([])
@@ -1061,6 +1162,36 @@ const submitReview = async () => {
     reviewSubmitting.value = false
   }
 }
+// --- 批次審閱（勾選多筆 → 共用理由 → 逐筆送出） ---
+// 只收未審閱、且不是自己連線觸發的告警；目前使用者不明時一律不給勾（後端也會擋）
+const alertSelection = useBatchSelection()
+const alertBatchDialogRef = ref(null)
+const isAlertBatchSelectable = (row) =>
+  !row.reviewed_at && currentUserId.value != null && row.user_id !== currentUserId.value
+const alertSelectBlockedReason = (row) => {
+  if (row.reviewed_at) return t('alerts.batch.reviewedTip')
+  if (currentUserId.value != null && row.user_id === currentUserId.value) return t('alerts.batch.selfTriggeredTip')
+  return ''
+}
+const alertPageState = computed(() => alertSelection.pageState(alerts.value, isAlertBatchSelectable))
+const alertBatchLimitText = computed(() =>
+  alertSelection.atLimit.value || alertSelection.truncated.value
+    ? t('alerts.batch.limitHint', { limit: alertSelection.limit })
+    : '')
+// 規則名稱欄的同一套散文：非規則類告警的 rule_name 是機器碼，不直接顯示
+const alertRuleText = (row) => {
+  if (isDegradedAlert(row)) return t('alerts.kindAuditDegraded')
+  if (isNewSourceIPAlert(row)) return t('alerts.kindNewSourceIP')
+  if (isAgentBreakerAlert(row)) return t('alerts.kindAgentBreaker')
+  if (row.kind === 'sensitive_reveal') return t('alerts.kindSensitiveReveal')
+  return row.rule_name
+}
+const alertBatchLabel = (row) => `${alertRuleText(row)} · ${formatDateTime(row.triggered_at)}`
+const handleAlertBatchFinished = () => {
+  alertSelection.clear()
+  fetchAlerts()
+}
+
 const pagination = ref({
   page: 1,
   page_size: 20,
@@ -1069,6 +1200,8 @@ const pagination = ref({
 
 const fetchAlerts = async () => {
   alertsLoading.value = true
+  // 列表換了（翻頁、篩選、重新整理）：勾選只對本頁有效，一併清掉
+  alertSelection.clear()
   try {
     const params = {
       page: pagination.value.page,
@@ -1284,6 +1417,14 @@ const severityTagType = (severity) => SEVERITY_TAG_TYPES[severity] || 'info'
 const severityLabel = (severity) =>
   SEVERITY_VALUES.includes(severity) ? t(`enum.alertLevel.${severity}`) : severity
 
+// 通道推送門檻：缺值（後端尚未回此欄）視同預設「全部告警」；未知值原樣顯示
+const channelMinSeverityLabel = (level) => {
+  const v = level || CHANNEL_MIN_SEVERITY_DEFAULT
+  return CHANNEL_MIN_SEVERITY_VALUES.includes(v) ? t(`alerts.channelMinSeverity.${v}`) : v
+}
+// 限縮（中、高等級／只有高等級）以警示色提示此通道會略過部分告警
+const isNarrowedMinSeverity = (level) => !!level && level !== CHANNEL_MIN_SEVERITY_DEFAULT
+
 
 onMounted(() => {
   fetchAlerts()
@@ -1299,7 +1440,7 @@ const channelDialogVisible = ref(false)
 const channelSaving = ref(false)
 const editingChannelId = ref(null)
 const channelFormRef = ref(null)
-const channelForm = ref({ name: '', type: 'webhook', url: '', secret: '', clearSecret: false, hasSecret: false, enabled: true, language: CHANNEL_LANGUAGE_DEFAULT })
+const channelForm = ref({ name: '', type: 'webhook', url: '', secret: '', clearSecret: false, hasSecret: false, enabled: true, language: CHANNEL_LANGUAGE_DEFAULT, minSeverity: CHANNEL_MIN_SEVERITY_DEFAULT })
 
 // 編輯時 URL 留空＝沿用既有值，僅建立時必填
 const channelFormRules = computed(() => ({
@@ -1340,8 +1481,8 @@ const openChannelDialog = (row = null) => {
   // 編輯時 secret 與 url 皆留空＝沿用既有（後端回應的 url 已遮罩，
   // 回填會把遮罩字串存成真 URL）；maskedUrl 僅供顯示
   channelForm.value = row
-    ? { name: row.name, type: row.type || 'webhook', url: '', maskedUrl: row.url, secret: '', clearSecret: false, hasSecret: !!row.has_secret, enabled: row.enabled, language: row.language || CHANNEL_LANGUAGE_DEFAULT }
-    : { name: '', type: 'webhook', url: '', maskedUrl: '', secret: '', clearSecret: false, hasSecret: false, enabled: true, language: CHANNEL_LANGUAGE_DEFAULT }
+    ? { name: row.name, type: row.type || 'webhook', url: '', maskedUrl: row.url, secret: '', clearSecret: false, hasSecret: !!row.has_secret, enabled: row.enabled, language: row.language || CHANNEL_LANGUAGE_DEFAULT, minSeverity: row.min_severity || CHANNEL_MIN_SEVERITY_DEFAULT }
+    : { name: '', type: 'webhook', url: '', maskedUrl: '', secret: '', clearSecret: false, hasSecret: false, enabled: true, language: CHANNEL_LANGUAGE_DEFAULT, minSeverity: CHANNEL_MIN_SEVERITY_DEFAULT }
   channelDialogVisible.value = true
 }
 
@@ -1376,6 +1517,8 @@ const handleSaveChannel = async () => {
       // 通道語系：Create 未給＝後端預設 zh-TW、Update 省略＝保留，
       // 表單恆有值故一律送出（白名單外由後端 VALIDATION 碼擋）
       language: f.language,
+      // 推送門檻：表單恆有值故一律送出；列表的啟用開關刻意不送（後端省略＝保留）
+      min_severity: f.minSeverity,
     }
     let acknowledged = false
     for (;;) {
@@ -1594,6 +1737,22 @@ const handleTabChange = (tab) => {
 
 .blocked-tag {
   margin-left: 6px;
+}
+
+/* 推送門檻：三個單選直排；限縮檔在列表以警示色標示 */
+.min-severity-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.min-severity-group .field-muted {
+  margin-left: 6px;
+}
+
+.push-narrowed {
+  color: var(--ot-warning);
+  font-weight: 600;
 }
 </style>
 

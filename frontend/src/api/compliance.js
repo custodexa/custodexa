@@ -18,3 +18,24 @@ export function getComplianceSnapshot(params) {
     params,
   })
 }
+
+/**
+ * 發起合規報告產出（POST /compliance/report-jobs，admin 與 auditor）。
+ *
+ * 非同步：受理即回 202，產物由背景產出後掛在下載中心的報告清單
+ *（`listAuditExportJobs({ kind: 'compliance_report' })`），下載走共用的
+ * job 下載端點。報告內容是產出當下的設定狀態，沒有區間參數。
+ *
+ * @param {Object} payload
+ * @param {string} payload.group 政策組代號（必填，須為生效中的組）
+ * @param {'zh-TW'|'en-US'|'ja-JP'} payload.language 報告語言
+ * @param {number} payload.retention_days 產物在下載中心的保留天數（1–3650）
+ * @returns {Promise<{data:{id:number, status:string}}>}
+ */
+export function createReportJob({ group, language, retention_days }) {
+  return request({
+    url: '/compliance/report-jobs',
+    method: 'post',
+    data: { group, language, retention_days },
+  })
+}

@@ -1,0 +1,23 @@
+# Custodexa package deployment, external database overlay: the bundled postgres does not start and
+# the backend connects to your own PostgreSQL server.
+#
+# custodexa.sh adds this file with -f when the deployment uses an external database, and writes it
+# into COMPOSE_FILE in .env (together with the ingress overlay when both are used).
+#
+# .env must provide EXTERNAL_DB_HOST (the server address; start is refused without it) and may set
+# EXTERNAL_DB_PORT (default 5432). DB_NAME / DB_USER / DB_PASSWORD / DB_SSLMODE describe the database
+# and account on that server. Across a network set DB_SSLMODE to require or verify-full. The database
+# and account must exist beforehand; the backend creates the schema on first start.
+services:
+  postgres:
+    profiles: ["bundled-db"]
+
+  backend:
+    environment:
+      # compose.yml fixes DB_HOST to the service name postgres; this points it at the external server.
+      DB_HOST: ${EXTERNAL_DB_HOST:?set EXTERNAL_DB_HOST in .env to the address of your PostgreSQL server}
+      DB_PORT: ${EXTERNAL_DB_PORT:-5432}
+    # The only start condition left is guacd; the database is not part of this stack.
+    depends_on: !override
+      guacd:
+        condition: service_healthy

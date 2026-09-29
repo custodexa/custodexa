@@ -1,0 +1,41 @@
+Custodexa 1.13.0 install    Deployment directory /opt/custodexa
+
+[ OK ] 1/7  Check this host                                 2s
+[ OK ] 2/7  Create the settings file .env
+       Sign-in signing key, database password and initial admin
+       password generated
+       Master key mode: entered in the browser (not written to the
+       server's disk)
+       Address: https://10.0.0.12 (edit PUBLIC_BASE_URL in .env to change)
+[ OK ] 3/7  Get the program images (6; checksums, signatures and
+            build provenance verified)                      48s
+[ OK ] 4/7  Prepare the recordings folder (1000:0, mode 2770)
+[ OK ] 5/7  Start the services (running the images just
+            obtained)                                       9s
+[ OK ] 6/7  Wait until ready (backend version 1.13.0)       21s
+[ OK ] 7/7  Done
+
+==========================================================
+ Installed. Finish the setup in your browser.
+
+   Address   https://10.0.0.12/
+   Account   admin
+   Password  Xk82mQ0pLr7sWv3nB9ty
+   (also stored as ADMIN_INITIAL_PASSWORD in /opt/custodexa/.env)
+
+ 1. The first visit opens the master key setup page. The master
+    key is created in the browser; Custodexa does not save it to
+    the server's disk. Keep a copy yourself, safely. After every
+    restart, someone has to enter it on the unseal page before
+    the system serves users.
+ 2. Authorize the setup with the account above, then sign in.
+    The first sign-in asks for a new password; after that, delete
+    the ADMIN_INITIAL_PASSWORD line from .env.
+ 3. This site uses a certificate it created itself. Download
+    https://10.0.0.12/custodexa-ca.crt
+    and install it on the computers that connect, so browsers
+    show the site as secure.
+
+ Status     sudo /opt/custodexa/custodexa.sh status
+ Log file   /opt/custodexa/logs/install-20260930-101502.log
+==========================================================

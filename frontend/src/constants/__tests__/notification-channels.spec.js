@@ -9,6 +9,8 @@ import {
   CHANNEL_LANGUAGE_VALUES,
   CHANNEL_LANGUAGE_DEFAULT,
   channelLanguageLabel,
+  CHANNEL_MIN_SEVERITY_VALUES,
+  CHANNEL_MIN_SEVERITY_DEFAULT,
 } from '../notification-channels'
 import { SUPPORTED_LOCALES } from '@/i18n'
 
@@ -68,6 +70,33 @@ describe('通知通道語系值域（前後端一致）', () => {
       expect(parsed.sort()).toEqual([...BACKEND_LANGUAGES].sort())
       // 後端預設值改別名（例：改指 EnUS）時，前端預設必須跟著改
       expect(parseBackendDefaultAlias(src)).toBe('ZhTW')
+    }
+  )
+})
+
+// 推送門檻值域＝後端告警等級三值（model/alert_rule.go 的 AlertSeverity*），
+// 預設＝NotificationChannelMinSeverityDefault 指向的別名
+const ALERT_RULE_PATHS = BACKEND_SOURCE_PATHS.map((p) => p.replace('notification_channel.go', 'alert_rule.go'))
+const alertRuleSourcePath = ALERT_RULE_PATHS.find((p) => existsSync(p))
+
+describe('通知通道推送門檻值域（前後端一致）', () => {
+  it.skipIf(!backendSourcePath || !alertRuleSourcePath)(
+    '推送門檻值域與後端等級常數雙向等同，且預設值與後端別名一致',
+    () => {
+      const severities = [
+        ...new Set(
+          [...readFileSync(alertRuleSourcePath, 'utf8').matchAll(/^\s*AlertSeverity\w+\s*=\s*"(\w+)"/gm)].map((m) => m[1])
+        ),
+      ]
+      expect(severities.length, '未從後端原始碼抽到等級常數（正則失效？）').toBeGreaterThanOrEqual(3)
+      expect([...CHANNEL_MIN_SEVERITY_VALUES].sort()).toEqual([...severities].sort())
+      // 由低到高排列：畫面選項依此順序對應「全部告警／中、高等級／只有高等級」
+      expect(CHANNEL_MIN_SEVERITY_VALUES).toEqual(['low', 'medium', 'high'])
+
+      const alias = readFileSync(backendSourcePath, 'utf8')
+        .match(/NotificationChannelMinSeverityDefault\s*=\s*AlertSeverity(\w+)/)?.[1]
+      expect(alias, '後端未宣告 NotificationChannelMinSeverityDefault').toBeTruthy()
+      expect(CHANNEL_MIN_SEVERITY_DEFAULT).toBe(alias.toLowerCase())
     }
   )
 })

@@ -15,3 +15,12 @@ export const CHANNEL_LANGUAGE_DEFAULT = 'zh-TW'
 
 /** 通道語系原生名；未知值原樣回傳（後端加值而前端未跟上時不吞資訊） */
 export const channelLanguageLabel = (v) => LOCALE_LABELS[v] || v
+
+/**
+ * 通道推送門檻（最低推送等級），由低到高：low＝全部告警（預設）、medium＝中、高等級、
+ * high＝只有高等級。值域＝後端告警等級三值，由 notification-channels.spec.js 直讀
+ * model/alert_rule.go 雙向斷言。只作用於告警推送；系統事件與測試發送不受影響。
+ */
+export const CHANNEL_MIN_SEVERITY_VALUES = ['low', 'medium', 'high']
+
+export const CHANNEL_MIN_SEVERITY_DEFAULT = 'low'

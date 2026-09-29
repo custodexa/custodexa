@@ -1,0 +1,28 @@
+[ OK ] The new version has started: 1.13.2. Unsealing and the checks
+       below are still required before users can connect
+
+Checks
+  [ OK ] Version         the backend reports 1.13.2
+  [ OK ] Same data       42 users and 18,305 connection records, as
+                         before; 1,204,551 audit records (1,204,540
+                         before, 11 added at startup)
+  [ OK ] Database        1 structure change applied:
+                         20261010_report_schedule
+  [ OK ] Keys            all four key fingerprints are unchanged
+  [ OK ] Single instance this backend holds the database lock
+
+Still to do
+  1. The system is sealed. Enter the master key at
+     https://10.0.0.12/unseal
+  2. After unsealing, and before letting users connect, check by hand
+     (the script cannot do these):
+     - The audit chain verification passes
+     - A recording from before the upgrade plays
+     - Open a test connection, run a few commands, and confirm they
+       show up in the audit records (do not skip this: a working
+       connection does not prove audit records are being written)
+
+  Roll back    restore the backup below by hand, as in "Backup and
+               Restore", section 5 "Restore procedure"
+  Backup       /opt/custodexa/backups/20260930-101502/
+  Log file     /opt/custodexa/logs/upgrade-20260930-101502.log

@@ -26,7 +26,7 @@ docker compose exec frontend npm run test      # 前端測試
 
 ## DCO 簽署（必要）
 
-本專案以 **AGPL-3.0** 發佈，貢獻採 **DCO**：不用簽任何協議，
+本專案以 **AGPL-3.0-only** 發佈，貢獻採 **DCO**：不用簽任何協議，
 只要每個 commit 帶一行簽署：
 
 ```bash

@@ -1,0 +1,25 @@
+[FAIL] The new version found an empty database. All services were
+       stopped right away
+
+  It set up the database as a fresh install (1 user, 0 connection
+  records; before the upgrade: 42 and 18,305). The path holding the
+  original data, /opt/custodexa/data, was not rewritten or deleted
+  by this upgrade. The usual cause is DATA_PATH in .env pointing
+  elsewhere:
+    DATA_PATH now          /opt/custodexa-new/data
+    data before upgrade    /opt/custodexa/data
+
+  Do not sign in, do not set up a master key, and do not delete any
+  folder yet.
+  1. Have operations check both data paths: confirm
+     /opt/custodexa-new/data holds only the data this run created
+     by mistake (1 user, 0 connection records), and
+     /opt/custodexa/data still has the original data
+  2. Once checked, set DATA_PATH in .env back to
+     /opt/custodexa/data
+  3. Only delete /opt/custodexa-new/data once you are sure
+  4. To go back to the previous version, restore the pre-upgrade
+     backup by hand, as in "Backup and Restore", section 5 "Restore
+     procedure"
+
+  Log file /opt/custodexa/logs/upgrade-20260930-101502.log

@@ -1,7 +1,8 @@
 Custodexa
 Copyright 2026 The Custodexa Authors
 
-This product is licensed under the GNU Affero General Public License v3.0.
+This product is licensed under the GNU Affero General Public License,
+version 3 only (SPDX: AGPL-3.0-only).
 See the LICENSE file for the full text.
 
 This product includes third-party software. A complete inventory of the
@@ -21,7 +22,10 @@ THIRD-PARTY-LICENSES.md.
 Components that run as separate processes inside the container images are
 covered by section 3 of THIRD-PARTY-LICENSES.md, not by the count above. Of
 those, the only one that ships a NOTICE file upstream is Apache Guacamole
-(guacamole-server / guacd); it is reproduced as the last entry below. The
+(guacamole-server / guacd), which runs from the unmodified upstream image
+guacamole/guacd. Deployments that pull that image receive it from upstream;
+its notice is reproduced as the last entry below for when that image is
+delivered together with this product, such as in an offline bundle. The
 Alpine Linux packages and the other libraries built into the guacd image
 (FreeRDP, LibVNCServer, libssh2, libtelnet, libwebsockets) carry no NOTICE
 file, so section 4(d) does not apply to them either.
@@ -150,7 +154,8 @@ limitations under the License.
 
 ================================================================================
 Apache Guacamole -- guacamole-server / guacd
-(distributed inside the custodexa/guacd container image)
+(inside the upstream guacamole/guacd container image; applies when that
+image is delivered together with this product, such as in an offline bundle)
 ================================================================================
 
 Apache Guacamole

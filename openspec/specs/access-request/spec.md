@@ -3,7 +3,9 @@
 ## Purpose
 
 連線申請與核准流：申請提出/去重/撤回/超時作廢、核准於同一交易產生時窗內臨時授權、`reason` 段位自動核准、approver 可疊加角色與審核範圍（審核方個人 XOR 群組 × 客體四維、群組即資格、自核硬擋、admin 非審核者）、最少核准人數 quorum（逐票記錄、兼具 admin 身分者不單票繞過）、審核範圍矩陣總覽頁、「我的申請」自助頁與審核中心事件通知。
+
 ## Requirements
+
 ### Requirement: 申請提出與去重
 使用者 SHALL 能對政策段位非 `open` 且可視的資產提出連線申請：事由必填、時長必填且 SHALL NOT 超過政策上限、可預約起始時間（空＝立即）。同一申請人對同一資產 SHALL 僅允許一張 pending 在途單，重複申請 SHALL 被拒（409）並回在途單識別。申請動作 SHALL 入審計。
 
@@ -375,7 +377,6 @@
 
 由 agent 執行的任務項 SHALL 對**任何段位**的資產都存在——`open` 段位不構成免單的例外，系統 SHALL 視同 `reason` 段位即時自動核准（決定者記 system、帶自動核准標記），使每一條 agent 連線都可回溯到一個任務 id。輔助模式下人類為 agent 執行者對 `open` 段位資產建立的項 SHALL 同樣建立並自動核准。
 
-
 #### Scenario: agent 自主開單
 - **WHEN** agent 主體對其可視、`approval` 段位的資產提交申請
 - **THEN** 建立 pending 單，`executor_user_id` 為 NULL，審核範圍命中的 approver 於審核中心可見該單並可辨識申請人為 agent
@@ -521,3 +522,18 @@ agent 主體的開單 SHALL 受兩個政策鍵約束：`agent_request_rate_per_h
 - **THEN** 每單增加 executor 的 id、username、kind、owner_user_id、owner_username；每項增加 decision_bounds 的 max_duration、earliest_start、accounts
 - **AND** 界線沿 decisionValues 的原申請上限與 max(now, requested_start)，帳號 @ALL 沿原 sentinel，不是具名帳號；此投影不授予審核權限，提交時仍檢查即時範圍
 - **AND** agent 的 mine 忽略 client requester_id，只回自己提出的單；不洩漏其他人的申請
+
+### Requirement: 審核中心批次核決
+審核中心待審清單 SHALL 允許審核人勾選多張申請後批次核准或批次拒絕。系統 SHALL 對每張申請各呼叫一次既有的核准或拒絕端點，逐張處理、可能部分完成；每張仍各自檢查審核範圍與「不得核決自己的申請或自己執行的申請」。勾選的申請 SHALL 去重。
+
+批次核准 SHALL 一律照申請值（不下修時長、不調整帳號範圍），請求 SHALL 明列該張所有待決項目；核准前的確認 SHALL 逐張逐項列出資產、帳號與時長。任一項超出審核範圍時該張整張不生效。批次拒絕 SHALL 要求一個共用理由（申請人可見），套用到每一張的所有待決項目。
+
+結果 SHALL 逐張逐項呈現：已核准、已投票待其他審核人、或被拒原因（範圍外、本人或本人執行、已投過票、狀態已變更）；未達核准門檻的項目 SHALL NOT 被概括為已核准。每張申請的批次核決各產生一則事件通知，與項目數無關。同一批每筆請求 SHALL 帶同一個批次關聯碼並記入審計；中斷後重新打開頁面 SHALL 以待審與歷史清單查回待確認項目的實際狀態。
+
+#### Scenario: 批次核准含範圍外申請
+- **WHEN** 審核人勾選三張申請批次核准，其中一張的資產不在其審核範圍
+- **THEN** 另兩張照申請值核准或記票，範圍外那張整張不生效並逐張列出原因
+
+#### Scenario: 批次拒絕
+- **WHEN** 審核人勾選多張申請、填寫共用理由後批次拒絕
+- **THEN** 每張申請的所有待決項目被拒絕，申請人看得到該理由，結果逐張列出

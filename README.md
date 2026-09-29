@@ -11,7 +11,7 @@
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=reliability_rating" alt="Reliability Rating"></a>
   <a href="https://github.com/custodexa/custodexa/releases"><img src="https://img.shields.io/github/v/release/custodexa/custodexa" alt="Latest release"></a>
   <a href="https://github.com/custodexa/custodexa/commits"><img src="https://img.shields.io/github/last-commit/custodexa/custodexa" alt="Last commit"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="License: AGPL-3.0-only"></a>
 </p>
 
 **Who connected to what, and what they did. The recording decides.**
@@ -29,6 +29,29 @@ offline.
 </p>
 
 ## Quick Start
+
+On a Linux server, install from the release package. Download `custodexa-<version>.tar.gz`,
+`SHA256SUMS` and `SHA256SUMS.sigstore.json` from the release page into one folder, verify them,
+then unpack and install (replace `1.13.0` with the version you downloaded):
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  SHA256SUMS
+sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo /opt/custodexa/custodexa.sh install
+```
+
+`install` checks the host before writing anything, creates `.env` with generated secrets,
+obtains the images and checks each one against the digests in the release manifest, starts the
+stack, waits for the backend to report ready, and finishes with the URL and admin login info.
+Values you have already set are never touched. `custodexa.sh status` shows how the deployment is
+doing without changing anything. Offline hosts, the checks in each step, and the folder layout are
+covered in [Install from the release package](docs/QUICKSTART.md#install-from-the-release-package).
+
+To evaluate on macOS or Windows, or to work on the code, run from source instead:
 
 ```bash
 git clone https://github.com/custodexa/custodexa.git
@@ -70,12 +93,13 @@ PUBLIC_BASE_URL=https://bastion.example.com
 TLS_MODE=provided
 ```
 
-Log in as `admin` with the initial password you set. The first login walks you through a
+Log in as `admin` with the initial password: the one the install printed, or the one you set in
+`.env`. The first login walks you through a
 mandatory password change, after which you can start adding assets and opening
 connections.
 
 There are no factory-default passwords or keys. `JWT_SECRET`, `DB_PASSWORD` and
-`ADMIN_INITIAL_PASSWORD` in `.env` must hold values of your own (the script generates any that are
+`ADMIN_INITIAL_PASSWORD` in `.env` must hold values of your own (both scripts generate any that are
 missing), and the master key comes from the initialization page by default, or from
 `ENCRYPTION_KEY` or a KMS in the other key modes. This is deliberate: a bastion host should never
 go live with default credentials.
@@ -111,7 +135,7 @@ Every session takes the same path, and the evidence is made along the way.
 | **05 Recording and audit** | Full-session recording with replay (seek, speed control) for every protocol, a command and statement trail that handles full-screen programs like vim correctly, webhook alerts, a checkpoint chain that notarizes intervals, and evidence bundles carrying a manifest and a signature, with offsite copies to object storage. |
 
 **Truly open source, single edition.** No enterprise tier and no paywalled features.
-What you see is all there is, under AGPL-3.0.
+What you see is all there is, under AGPL-3.0-only.
 
 **Simple to deploy.** One docker compose command, https served out of the box, and no
 outbound network needed once running.
@@ -129,7 +153,7 @@ differ. The reading criteria and the verification date for every cell are on the
 | **Database statement auditing** | Mostly out of reach | No parsing above the network layer | Mostly some protocols | Depends on the edition | Recorded before execution, dangerous ones blocked live |
 | **Evidence packaging** | Assembled from logs by hand | Connection logs by hand | Mostly record and recording export | Mostly reports and exports | One ZIP with a manifest and a signature, verifiable offline |
 | **Credential rotation** | Mostly by hand | Mostly a directory service | Mostly by hand | Mostly scheduled rotation | Scheduled for Linux and Windows, with a rotation report |
-| **License** | Follows the operating system components | Open source and commercial both exist | Mostly open source | Commercial subscription or perpetual | AGPL-3.0, source you can review yourself |
+| **License** | Follows the operating system components | Open source and commercial both exist | Mostly open source | Commercial subscription or perpetual | AGPL-3.0-only, source you can review yourself |
 
 ## Screenshots
 
@@ -190,6 +214,55 @@ The ten tools and how they behave are described in the MCP section of
 settings for agents are in
 [docs/ops/deployment-topology-limits.md](docs/ops/deployment-topology-limits.md).
 
+## Prebuilt images
+
+From 1.13.0, each release tag builds the backend and frontend images in CI and publishes
+them for `linux/amd64` and `linux/arm64`:
+
+| Registry | Images |
+|---|---|
+| GitHub Container Registry (primary) | `ghcr.io/custodexa/backend`, `ghcr.io/custodexa/frontend` |
+| Docker Hub (mirror, same digests) | `docker.io/custodexa/backend`, `docker.io/custodexa/frontend` |
+
+Tags follow the release version:
+
+- A release `vX.Y.Z` is tagged `X.Y.Z`. It also takes `X.Y` when it is the highest release
+  in that minor line, and on GitHub Container Registry it takes `latest` when it is the
+  highest release overall.
+- Docker Hub carries `X.Y.Z` and `X.Y` only. It never carries a `latest` tag.
+- A pre-release is published on GitHub Container Registry under its full version only,
+  and is not mirrored to Docker Hub.
+- A published `X.Y.Z` is never overwritten; a fix ships as a new patch release.
+
+Each image is signed by this repository's release workflow and carries a build
+provenance attestation and an SPDX SBOM attestation. To check them, replace every
+`1.13.0` below with the version you pulled:
+
+```bash
+cosign verify ghcr.io/custodexa/backend:1.13.0 \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa \
+  --predicate-type https://spdx.dev/Document/v2.3
+```
+
+The first command checks the signature, the second the build provenance, and the third
+the SBOM, which lists the packages in the image and their versions. The same commands
+work for `frontend`, and for the Docker Hub copies under `docker.io/custodexa/`.
+
+Each image contains this project's `LICENSE`, `NOTICE`, `THIRD-PARTY-LICENSES.md` and
+`licenses/` under `/usr/share/doc/custodexa/`, and is labeled
+`org.opencontainers.image.licenses=AGPL-3.0-only`. No guacd image is published: the
+compose files use the official `guacamole/guacd:1.6.0` image, pinned by digest.
+
+The install package runs these images: its management script obtains each one by the digest
+recorded in the release manifest, builds from source only when no registry or offline bundle
+has it, and after start confirms that every container runs the image it checked. Running
+from source works as before. The repository's compose files do not reference the published
+images: `scripts/quickstart.sh` builds `custodexa/backend:latest` and `custodexa/frontend:latest`
+from the source tree and never pulls them (`pull_policy: never`).
+
 ## Documentation
 
 The quick start, the operations guides, and the security and contributing notes are
@@ -222,10 +295,10 @@ Worth knowing before you deploy:
 
 ## License
 
-This project is released under the **GNU Affero General Public License v3.0
-(AGPL-3.0)**; see [LICENSE](LICENSE) for the full text.
+This project is released under the **GNU Affero General Public License, version 3
+only (AGPL-3.0-only)**; see [LICENSE](LICENSE) for the full text.
 
-The network clause of AGPL-3.0 (Section 13) requires that if you modify this software
+The network clause of the AGPL (Section 13) requires that if you modify this software
 and offer it as a network service, you must also offer the complete corresponding source
 of your modified version to the users of that service.
 
@@ -237,7 +310,7 @@ contributions under a closed-source license.
 
 ### Third-Party Components
 
-The distribution also contains 218 third-party components, each retaining its original
+The distribution also contains 219 third-party components, each retaining its original
 license; see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for the inventory,
 [NOTICE](NOTICE) for Apache License 2.0 attribution notices, and [`licenses/`](licenses/)
 for copies of the license texts.

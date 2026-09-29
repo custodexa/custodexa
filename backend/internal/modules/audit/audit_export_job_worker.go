@@ -96,15 +96,15 @@ func NewAuditExportJobWorker(db *gorm.DB, exporter jobBundleExporter,
 	}
 }
 
-// RegisterPackager 掛上一個報告種類的打包者（組裝根呼叫；同種類後者覆蓋前者）。
-func (w *AuditExportJobWorker) RegisterPackager(p ReportPackager) {
-	if p == nil {
-		return
+// RegisterPackager 掛上報告種類的打包者（組裝根呼叫；同種類後者覆蓋前者）。
+//
+// 可一次掛多個：組裝根在同一處把全部報告種類交給 worker，新增種類時只多一個
+// 引數，worker 啟動前的註冊點始終只有這一處（lifecycle manifest 以它為錨）。
+// nil 略過。
+func (w *AuditExportJobWorker) RegisterPackager(ps ...ReportPackager) {
+	for _, p := range ps {
+		w.registerPackager(p)
 	}
-	if w.packagers == nil {
-		w.packagers = map[string]ReportPackager{}
-	}
-	w.packagers[p.Kind()] = p
 }
 
 // OffsiteEnqueuer 離機保管帳冊的排隊面（消費者側窄介面）。
@@ -391,7 +391,7 @@ func (w *AuditExportJobWorker) finishJob(job *model.AuditExportJob, tempPath str
 // **未設定離機（`offsite_profiles` 零列）時不開交易、欄位集合逐字不變**
 // （機械保證；沿 session 側 UpdateRecording 的同一形態）。
 // 啟用時任一步失敗整筆回滾——「產物已 done 而沒排隊」的窗口內，那份證據包只有
-// 本機唯一副本，而產物目錄未掛 volume，容器重建即消失。
+// 本機唯一副本，而產物目錄不在備份範圍內，主機遺失即消失。
 func (w *AuditExportJobWorker) completeJob(jobID uint, updates map[string]any) error {
 	if w.offsite == nil {
 		return w.db.Model(&model.AuditExportJob{}).Where("id = ?", jobID).Updates(updates).Error
@@ -511,4 +511,15 @@ func (w *AuditExportJobWorker) removeArtifacts(jobID uint) error {
 		}
 	}
 	return nil
+}
+
+// registerPackager 單一打包者的註冊（RegisterPackager 的逐一落點）。
+func (w *AuditExportJobWorker) registerPackager(p ReportPackager) {
+	if p == nil {
+		return
+	}
+	if w.packagers == nil {
+		w.packagers = map[string]ReportPackager{}
+	}
+	w.packagers[p.Kind()] = p
 }

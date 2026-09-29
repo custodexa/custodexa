@@ -1,0 +1,17 @@
+載入離線映像包
+  檔案   /media/usb/custodexa-images-1.13.0-amd64.tar（2.3 GB）
+
+[ OK ] 校驗和與 SHA256SUMS 相符
+[ OK ] 架構 amd64，和這台主機相同
+[ OK ] 已載入 6 個映像                                      1 分 05 秒
+[ OK ] 每個映像的內容摘要都和發行清單（MANIFEST）相符
+[SKIP] 發行者簽章：離線，連不到簽章服務
+
+  映像已載入但來源尚未驗證。若單位要求驗證來源，請先請維運人員在
+  已安裝 cosign、gh 且可上網的電腦，用完整摘要驗證（執行 install
+  或 upgrade 時會列出驗證指令），通過後再執行下面的指令。
+
+映像已就緒，還沒有啟動任何服務。接下來：
+    sudo /opt/custodexa/custodexa.sh install
+或升級：
+    sudo /opt/custodexa/custodexa.sh upgrade /media/usb/custodexa-1.13.0.tar.gz

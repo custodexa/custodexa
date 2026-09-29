@@ -141,11 +141,14 @@ const ZERO_MEANING_KEYS = {
   transport_consent_ttl_days: 'consentTtl',
 }
 
+// zeroMeaningVariant 某鍵的 0 屬於哪一種語義（未登記者為 disabled）。
+// 判定理由也據此分流：保留天數類的 0 是永久保留，偏離的原因是沒有明確期限而非停用。
+export const zeroMeaningVariant = (key) => ZERO_MEANING_KEYS[key] || 'disabled'
+
 // zeroMeaning 某鍵的 0 是什麼意思；沒有停用語義的鍵回空字串
 export const zeroMeaning = (key, zeroDisables) => {
   if (!zeroDisables) return ''
-  const variant = ZERO_MEANING_KEYS[key] || 'disabled'
-  return t(`policyZero.${variant}`)
+  return t(`policyZero.${zeroMeaningVariant(key)}`)
 }
 
 // formatKeyValue 只知道鍵與一個字串值時的人話呈現（判定結果與條文要求共用）。
@@ -166,7 +169,7 @@ export const formatKeyValue = (key, raw, meta = {}) => {
   const withUnit = unit ? `${text} ${unit}` : text
   if (text !== '0') return withUnit
   const meaning = zeroMeaning(key, meta.zero_disables)
-  return meaning ? `${withUnit}（${meaning}）` : withUnit
+  return meaning ? t('policyValue.zeroFormat', { value: withUnit, meaning }) : withUnit
 }
 
 // policyMin 數值輸入框的下界。

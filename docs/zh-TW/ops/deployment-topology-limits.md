@@ -2,7 +2,7 @@
 
 [English](../../ops/deployment-topology-limits.md) | **繁體中文** | [日本語](../../ja/ops/deployment-topology-limits.md) | [其他語言 →](../../README.md)
 
-> 適用版本：Custodexa 1.0。
+> 適用版本：Custodexa 1.0。安裝包部署一節自 1.13.0 起適用。
 
 ## 本版支援的部署形態
 
@@ -43,6 +43,61 @@
 
 > **連線池模式。** 應用須直連 postgres，或經 session pooling 模式的連線池。transaction pooling
 > 會讓鎖在工作階段間漂移，守衛會反覆回報失鎖再重取——該拓撲不受支援。
+
+## 安裝包部署與管理腳本
+
+用安裝包安裝的部署，由它的管理腳本 `custodexa.sh` 維運。本版腳本支援的範圍：
+
+- **只支援 Linux**（x86_64 或 aarch64）。其他作業系統在做任何事之前就停下，並指向以原始碼執行的評估方式。
+- **一台主機一套部署。** 容器名稱是固定的（`custodexa-backend` 等），同一台主機上無法並存第二套部署。
+  `install` 發現已有部署時拒絕執行：目錄裡有狀態檔、有屬於別的目錄的 `custodexa-backend` 容器，
+  或部署目錄是原始碼的 git 工作樹。
+- **部署目錄的路徑**只能含英文字母、數字與 `. _ / -`；這個路徑會不經跳脫寫進 `.env` 與狀態檔。
+  `install` 在寫入任何檔案前就檢查它。
+- **一次只跑一個子命令。** 會改變部署的子命令先取得目錄上的鎖；期間再啟動的第二個以結束碼 3 停下。
+  `status` 不取鎖，也不做任何變更。
+- **呼叫 Compose 時一律用同一個專案。** 腳本明定專案名稱為 `custodexa`、以部署目錄為專案目錄、
+  並指定目前版本的 compose 檔。`install` 也會把 `COMPOSE_FILE` 與 `COMPOSE_PROJECT_NAME` 寫進 `.env`，
+  所以在部署目錄手動輸入的 `docker compose ps`、`logs` 指向的是同一組服務。
+  手動輸入 `up`、`config` 時要另帶 `--project-directory .`；少了它會到錯的位置找 `.env`，
+  指令會停下，不會動到任何容器。
+- **升級與備份同樣經由腳本。** `upgrade` 停止服務、備份，再換到新版；`backup` 單獨做同樣的停機備份。
+  兩者都不是滾動更新，也沒有回退指令：回到舊版就是手動還原備份。見
+  [升級 SOP](./upgrade-sop.md#以管理腳本升級) 與
+  [備份與還原 §3.8](./backup-and-restore.md#38-管理腳本做的備份安裝包部署)。
+  以 `git clone` 原始碼運作、版本為 1.12.4 的部署，由 1.13.0 的升級一次轉換成這個結構。
+
+### 目錄結構
+
+安裝包解開後是 `custodexa/`，就是部署目錄。`install` 完成後（`DATA_PATH` 為預設值）：
+
+```
+custodexa/
+  custodexa.sh -> current/custodexa.sh   管理腳本
+  current -> releases/<版本>             執行中的版本
+  releases/<版本>/                       出貨時的一個版本：腳本、compose 檔、MANIFEST.json、
+                                         VERSION、.env.example、reverse-proxy/、source/；
+                                         install 另加入 images.env 與 image-ids.env
+  .env                                   設定與機密（權限 600）
+  state.json                             安裝了什麼，只由腳本寫入
+  logs/                                  每個改變部署的子命令一份紀錄（權限 700）；
+                                         不會寫入 .env 的機密值
+  backups/<時間戳>/                      腳本所做的備份（權限 700；含機密）
+  tls/                                   內建 TLS 代理的憑證
+  data/postgres/                         資料庫（僅限內建資料庫）
+  data/recordings/                       會話錄影（擁有者 1000、群組 0、權限 2770）
+  data/audit/                            稽核紀錄檔
+  data/exports/                          非同步匯出的產物
+```
+
+部署跨版本保留的東西都在目錄頂層（`.env`、`state.json`、`tls/`、`data/`、`backups/`）；`releases/` 底下的版本只放出貨內容，
+加上 `install` 為它記下的映像參照。
+
+`data/exports/` 跨容器重建保留，但**不在備份範圍內**：其中的證據包產物含解密後的明文。
+複製整個 `DATA_PATH` 的備份請把它排除在外，見[備份與還原 §2](./backup-and-restore.md#2-持久化資料的落點)。
+
+`state.json` 逐行以固定格式讀取。檔案損壞時，會讀取它的子命令（包括 `status`）都以結束碼 5 停下，指出第幾行，
+並指向放在旁邊的前一份副本 `state.json.prev`。
 
 ## 對外走純 HTTP 時的登入狀態保存
 
@@ -88,8 +143,8 @@ WinRM 的傳輸層**不讀取 proxy 環境變數、不跟隨 HTTP 轉址**，只
 
 **RDP／VNC 用的 guacd 容器，其基礎系統已停止安全更新。**
 
-本專案的 guacd 映像以 Apache Guacamole 官方映像為基底，該基底為 Alpine 3.18，
-已過官方支援期。**這不是本專案的選擇**：官方的 `latest` 與 `1.6.0`
+guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`、不做任何修改
+（編排檔以版本加 digest 釘定），其基底為 Alpine 3.18，已過官方支援期。**這不是本專案的選擇**：官方的 `latest` 與 `1.6.0`
 是同一顆 `alpine-minirootfs-3.18.12`，上游尚未提供較新的基底。
 
 對你的部署規劃有兩點實質影響：
@@ -118,7 +173,7 @@ WinRM 的傳輸層**不讀取 proxy 環境變數、不跟隨 HTTP 轉址**，只
   由資產的憑證驗證設定決定，不依賴該信任庫的跨重啟持續性。
   唯讀根與兩塊掛載為 noexec 的記憶體區，使循協議進來的入侵無法改寫容器設定、也無法自暫存區執行；
   共享的錄影目錄仍是可寫且可執行的，那是錄影落地所需。
-- **你可以把這顆映像換成自建或自選的。** 本系統對這顆容器的要求只有三件：在 4822 埠提供 guacd 協議、
+- **你可以把這顆映像換成自建或自選的**，改編排檔中 guacd 的 `image:` 行即可。本系統對這顆容器的要求只有三件：在 4822 埠提供 guacd 協議、
   能寫入編排定義掛給它的錄影目錄、映像內含 `sh` 與 `nc` 供編排施加的健康檢查判定是否就緒。
   上面那些都是容器的執行期屬性、不是映像的性質，所以換成任何映像之後，最小權限設定仍然生效。
 
@@ -248,7 +303,7 @@ WinRM 的傳輸層**不讀取 proxy 環境變數、不跟隨 HTTP 轉址**，只
 
 ## 對升級的影響
 
-升級必須停機進行，不得滾動更新。程序見[部署與升級 SOP](./upgrade-sop.md)。
+升級必須停機進行，不得滾動更新。程序見[部署與升級 SOP](./upgrade-sop.md)。安裝包部署由管理腳本執行升級，同樣是先停機、再備份的順序。
 
 本版起，**新實例起不來的原因多一項：舊實例仍在執行，或它的資料庫工作階段殘留**。
 殘留只發生在持鎖主機當機或網路分割造成的 TCP 半開；postgres 依作業系統的 TCP keepalive

@@ -1,0 +1,9 @@
+Custodexa management script 1.13.0    Deployment directory /opt/custodexa
+Status: not installed
+
+  [1] Install
+  [2] Load an offline image bundle (first, if this host has no internet)
+  [3] Help
+  [0] Quit
+
+Choose [0-3]: 

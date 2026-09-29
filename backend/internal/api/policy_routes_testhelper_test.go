@@ -36,6 +36,7 @@ func registerComplianceTestRoutes(v1 *gin.RouterGroup, h *ComplianceHandler) {
 	g := v1.Group("/compliance")
 	g.Use(middleware.RequireAnyRole(model.RoleAdmin, model.RoleAuditor))
 	g.GET("/snapshot", h.Snapshot)
+	g.POST("/report-jobs", h.CreateReportJob)
 }
 
 func registerSecurityPolicyTestRoutes(v1 *gin.RouterGroup, h *SecurityPolicyHandler) {

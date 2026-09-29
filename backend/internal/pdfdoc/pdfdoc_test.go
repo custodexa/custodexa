@@ -64,6 +64,80 @@ func TestPdfDocTableSpansPages(t *testing.T) {
 	if got := countHeaderFills(t, &buf); got < pages {
 		t.Errorf("表頭底色填充 %d 次 < 頁數 %d，表示有頁面缺表頭", got, pages)
 	}
+
+	// 橫式頁上由區塊自行判斷「剩餘高度不足」而換的頁，必須仍是橫式：
+	// 換成直式的話，按橫式版心算好的欄寬會整欄超出頁面右緣
+	ld := newTestDoc(t)
+	ld.NewLandscapePage()
+	_, ph := ld.pdf.GetPageSize()
+	for ld.pdf.GetY() < ph-marginBottom-lineTableRow*2 {
+		ld.Paragraph("填滿本頁")
+	}
+	ld.Table(Table{Columns: cols[:2], Rows: rows[:5]})
+	var lbuf bytes.Buffer
+	if err := ld.Output(&lbuf); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	if got, want := bytes.Count(lbuf.Bytes(), []byte("/MediaBox [0 0 841.89 595.28]")), ld.PageCount()-1; got != want {
+		t.Errorf("橫式頁 %d 頁，want %d（封面之外全部橫式）", got, want)
+	}
+
+	// 折行表格：列高隨內容增長、比一整頁還高的列逐頁分段，每頁都有表頭、
+	// 每一格的文字一個不少、沒有刪節號，且換頁維持橫式
+	wd := newTestDoc(t)
+	wd.NewLandscapePage()
+	ww := wd.FitColumns([]float64{1, 1, 6})
+	wcols := []Column{{Title: "很長的欄名要在表頭裡折成兩行才放得下", Width: ww[0]}, {Title: "設定鍵", Width: ww[1]},
+		{Title: "說明", Width: ww[2]}}
+	tall := strings.Repeat("確認說明逐字保留，", 400)
+	var wrows [][]string
+	for i := 0; i < 60; i++ {
+		note := fmt.Sprintf("第 %d 列：retention_session_command_days 2026-09-20 03:04:00 (UTC+08:00)", i)
+		if i == 30 {
+			note = tall
+		}
+		wrows = append(wrows, []string{fmt.Sprintf("條文-%d", i), fmt.Sprintf("key_%d", i), note})
+	}
+	wd.Table(Table{Columns: wcols, Rows: wrows, Zebra: true, Wrap: true})
+	var wbuf bytes.Buffer
+	if err := wd.Output(&wbuf); err != nil {
+		t.Fatalf("Output: %v", err)
+	}
+	wpages := wd.PageCount()
+	if wpages < 4 {
+		t.Fatalf("超高列應跨多頁，只產出 %d 頁", wpages)
+	}
+	if got, want := bytes.Count(wbuf.Bytes(), []byte("/MediaBox [0 0 841.89 595.28]")), wpages-1; got != want {
+		t.Errorf("折行表格：橫式頁 %d 頁，want %d", got, want)
+	}
+	if got := countHeaderFills(t, &wbuf); got < wpages-1 {
+		t.Errorf("折行表格：表頭底色填充 %d 次 < 表格頁數 %d", got, wpages-1)
+	}
+	// 分段列在換頁處夾著上一頁的頁尾與新頁的表頭；比對整列文字前先拿掉這兩者
+	chrome := []string{"job-1", "2026-09-02T12:00:00+08:00", "完整性以清單檔與簽章為準"}
+	for _, c := range wcols {
+		chrome = append(chrome, c.Title)
+	}
+	pageNo := regexp.MustCompile(`^\d+ / \d+$`)
+	var body []string
+	for _, ln := range extractTextLines(t, wbuf.Bytes()) {
+		if strings.Contains(ln, "…") {
+			t.Fatalf("折行表格出現刪節號：%q", ln)
+		}
+		isChrome := pageNo.MatchString(ln)
+		for _, c := range chrome {
+			isChrome = isChrome || (ln != "" && strings.Contains(c, ln))
+		}
+		if !isChrome {
+			body = append(body, ln)
+		}
+	}
+	joined := stripSpace(strings.Join(body, ""))
+	for _, r := range wrows {
+		if !strings.Contains(joined, stripSpace(strings.Join(r, ""))) {
+			t.Fatalf("折行表格缺一列或列內掉字：%.40s…", r[2])
+		}
+	}
 }
 
 // headerFillOp 表頭底色的填色指令（灰階 238/240/242 轉為 0–1 的浮點）。

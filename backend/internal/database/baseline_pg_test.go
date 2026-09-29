@@ -137,8 +137,8 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	if got.Indexes != 235 {
 		t.Errorf("索引數 = %d, want 235（exposures 複合主鍵 1 ＋ 既有 212 ＋ agent 前置 14 ＋ agent 通道 8；原 212：舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條 ＋ 政策組的 5 條 ＋ kek_topologies 的 2 條）", got.Indexes)
 	}
-	if got.Checks != 33 {
-		t.Errorf("CHECK 約束數 = %d, want 33（breaker session CHECK 1 ＋ 既有 21 ＋ agent 前置 2 ＋ agent 通道 9；原 21：13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一 ＋ kek_topologies singleton ＋ alert_rules direction）", got.Checks)
+	if got.Checks != 34 {
+		t.Errorf("CHECK 約束數 = %d, want 34（通道推送門檻 CHECK 1 ＋ breaker session CHECK 1 ＋ 既有 21 ＋ agent 前置 2 ＋ agent 通道 9；原 21：13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一 ＋ kek_topologies singleton ＋ alert_rules direction）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。

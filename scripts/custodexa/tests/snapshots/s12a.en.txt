@@ -1,0 +1,30 @@
+[FAIL] The upgrade stopped at step 8/13 (reorganize the folder):
+       moving backend failed
+
+  Where things stand
+    - The services are stopped
+    - The pre-upgrade backup is complete:
+      /data/custodexa/backups/20260930-101502/
+    - The folder is partly reorganized
+
+  Run these commands in order to put the git clone layout back. If
+  any of them fails, stop and hand the log file to operations:
+    sudo find /data/custodexa/releases/1.12.4 -mindepth 1 -maxdepth 1 \
+      -exec mv -n -t /data/custodexa {} +
+    sudo rmdir /data/custodexa/releases/1.12.4
+    sudo rm -rf /data/custodexa/releases /data/custodexa/state.json \
+      /data/custodexa/state.json.prev
+    sudo cp /data/custodexa/backups/20260930-101502/env-before-convert.bak \
+      /data/custodexa/.env
+
+  Check that git lists nothing but backups/ and .custodexa.lock:
+    sudo git -c safe.directory=/data/custodexa -C /data/custodexa \
+      status --porcelain
+
+  Only when that check lists nothing else, start the old version:
+    sudo docker compose -p custodexa --project-directory /data/custodexa \
+      -f /data/custodexa/docker-compose.yml up -d
+  The master key is entered in the browser, so unseal once more
+  after it starts.
+
+  Log file /data/custodexa/logs/upgrade-20260930-101502.log

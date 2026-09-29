@@ -8,7 +8,7 @@
 
 - Docker 20.10+
 - Docker Compose 2.0+
-- Git
+- Git (only for running from source)
 
 Verify the installation:
 ```bash
@@ -16,9 +16,134 @@ docker --version
 docker compose version
 ```
 
+There are two ways to deploy, and both run the same services:
+
+- **The release package** (the main path for Linux servers): a download from the release page,
+  verified before it is unpacked, installed and then operated by its management script
+  `custodexa.sh`. See [Install from the release package](#install-from-the-release-package).
+- **From source**: `git clone`, then `scripts/quickstart.sh` or `docker compose` directly. Use
+  it to evaluate on macOS or Windows (WSL), and to work on the code. See
+  [Startup steps](#startup-steps).
+
+## Install from the release package
+
+The management script runs on Linux only (x86_64 or aarch64), and a host runs one deployment.
+Run it as root (`sudo`) or as an account in the `docker` group that can write the deployment
+folder.
+
+### 1. Download
+
+Each release page lists these files:
+
+| File | What it is |
+|---|---|
+| `custodexa-<version>.tar.gz` | The install package: the management script, the compose files and the source of that release |
+| `SHA256SUMS` | Checksums of every file in this list |
+| `SHA256SUMS.sigstore.json` | The signature of `SHA256SUMS`, made by this repository's release workflow |
+| `MANIFEST.json` | The release manifest: the image digests the package installs (the same file is inside the package) |
+| `custodexa-images-<version>-amd64.tar`, `custodexa-images-<version>-arm64.tar` | All images of the release for one architecture, for hosts without registry access |
+
+Download the package, `SHA256SUMS` and `SHA256SUMS.sigstore.json` into one folder. The image
+bundles are only needed offline (see [Hosts without registry access](#hosts-without-registry-access)).
+
+### 2. Verify before unpacking
+
+The script checks everything it obtains later, but it cannot vouch for itself: a package that was
+tampered with brings a script that was tampered with. Check the package before you unpack it.
+Replace `1.13.0` with the version you downloaded:
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  SHA256SUMS
+```
+
+The first command must print `OK` for every file you downloaded, and the second must finish
+without an error. If either fails, do not unpack the package. Without `cosign` on this host, run
+the second command on a computer that has it, with the same two files.
+
+### 3. Unpack and install
+
+```bash
+sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo /opt/custodexa/custodexa.sh install
+```
+
+You can also run `sudo /opt/custodexa/custodexa.sh` without a command and work from its menu.
+
+The package unpacks to one folder, `custodexa/`, which becomes the deployment folder. Its path
+may contain letters, digits and `. _ / -` only. `install` goes through seven steps, each on its
+own line:
+
+1. **Check this host**: Linux, Docker and Compose reachable, a supported architecture,
+   `openssl`, no existing deployment, the HTTPS and HTTP ports free, enough disk space, and a
+   writable deployment folder. A failed check names the cause, and nothing has been written yet.
+2. **Create `.env`** from the template in the package: the sign-in signing key, the database
+   password and the initial admin password are generated (and the encryption key when
+   `KEK_PROVIDER=env`); values already set are never changed.
+   `.env` is readable by its owner only.
+3. **Get the program images**, trying in order this host, an offline bundle, GitHub Container
+   Registry, Docker Hub, and building from source. Every image must match the digest in the
+   release manifest. When `cosign` and `gh` are installed and the signing services can be
+   reached, the publisher signature and the build provenance of the project's own images are
+   verified as well. When they cannot be, the script shows what was and was not checked, prints
+   the verification commands with the full digests to run elsewhere, and asks whether to go on;
+   without a terminal it stops unless `--yes` is given.
+4. **Prepare the recordings folder** (owner `1000`, group `0`, mode `2770`).
+5. **Start the services**, then confirm that each running container runs the image checked in step 3.
+6. **Wait until the backend reports ready** with this release's version, for up to 180 seconds.
+   If it does not, the services stay up and the script prints the command that shows the backend log.
+7. **Record the deployment** and print the address, the `admin` account, the initial password and
+   what to do first in the browser for the master key mode in `.env`.
+
+A generated initial password is shown on the screen once, at the end of the run that generated it, and is
+not written to the log (if that run stopped early, the next run's closing block points to `.env` instead).
+It stays in `.env` as `ADMIN_INITIAL_PASSWORD`; the first sign-in requires a new password, after which delete that
+line. First use in the browser is described in
+[First use: from sign-in to the first connection](#first-use-from-sign-in-to-the-first-connection).
+
+If a step fails, the run stops and keeps what was done. Running `install` again starts from step 1
+and leaves in place what is already there: values in `.env`, images already obtained, services
+already running.
+
+### Hosts without registry access
+
+Download the image bundle for the host's architecture as well (`uname -m`: `x86_64` is `amd64`,
+`aarch64` is `arm64`), keep it next to `SHA256SUMS`, and after unpacking the package load it
+before installing:
+
+```bash
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.13.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh install
+```
+
+`load` checks the bundle against `SHA256SUMS` and the release manifest before loading it, and
+compares every loaded image with the manifest afterwards. It starts nothing. Without network access
+the publisher signature cannot be verified; `install` then asks for the confirmation described in
+step 3.
+
+### Check the deployment
+
+```bash
+sudo /opt/custodexa/custodexa.sh status
+```
+
+`status` shows the version, the services, whether the system is still sealed, where the images came
+from and which checks they passed, the latest backup, the last upgrade, disk usage and reminders. It
+changes nothing. Its exit code is `0` when all is well, `4` when any line is a warning (for
+monitoring), and `5` when the state file of the deployment is damaged, in which case it names the
+line and the previous copy. A new deployment has no backup on record yet, which is a warning, so
+`status` returns `4` until the first backup is recorded. `custodexa.sh --help` lists every command.
+
+The deployment folder layout and what the script supports are in
+[Deployment Topology Limits](ops/deployment-topology-limits.md#package-deployments-and-the-management-script).
+
 ## Startup steps
 
-Deploying for your own use and joining development follow the **same path**; the default
+These are the steps for running from source. Deploying for your own use and joining development
+follow the **same path**; the default
 `docker-compose.yml` is the production stack (nginx serves the compiled frontend, the backend
 is a slim binary, no test targets). Developers take one extra step: uncomment
 `COMPOSE_FILE=docker-compose.dev.yml` in `.env`, and every later `docker compose` command

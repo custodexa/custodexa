@@ -87,11 +87,13 @@ export function createAuditExportJob(params) {
  * `kind` **缺省為 `evidence_bundle`**：證據包的清單範圍與下載授權同判準
  * ——只列本人，後端沒有跨帳號的檢視面，前端也不該演一個「全部使用者」的篩選出來。
  *
- * `kind=rotation_report` 是顯式例外且**只適用於該種類**：輪替證據報告不含錄影、
- * 剪貼簿內容或任何秘密材料，故對所有具稽核檢視權限者是同一份清單，不綁申請者。
+ * `kind=rotation_report` 與 `kind=compliance_report` 是顯式例外且**只適用於這兩種**：
+ * 輪替證據報告與合規報告都不含錄影、剪貼簿內容或任何秘密材料，故對所有具稽核
+ * 檢視權限者是同一份清單，不綁申請者。合規報告列另帶 `report` 段
+ *（group／group_name／language／retention_days／generated_by）。
  * 種類閉集外的值由後端回 400。
  *
- * @param {Object} params - { kind?: 'evidence_bundle'|'rotation_report', page?, page_size? }
+ * @param {Object} params - { kind?: 'evidence_bundle'|'rotation_report'|'compliance_report', page?, page_size? }
  * @returns {Promise<{data:Array, total:number, page:number, page_size:number}>}
  */
 export function listAuditExportJobs(params) {

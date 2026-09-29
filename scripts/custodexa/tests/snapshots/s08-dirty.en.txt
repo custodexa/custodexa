@@ -1,0 +1,7 @@
+[FAIL] The git work tree in /data/custodexa has changes, so
+       the folder cannot be reorganized. Restore, move away or commit the
+       items below until git status prints nothing, then run it again:
+     M docker-compose.yml
+    ?? notes.txt
+
+Nothing was changed.

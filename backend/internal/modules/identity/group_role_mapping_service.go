@@ -316,10 +316,21 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 		row.OIDCProviderID = &id
 	}
 	// 建列與審計同交易：外部群組被授予角色的規則被建立卻無審計紀錄，
-	// 不是可接受的終局（沿目錄設定服務的同一裁決）
+	// 不是可接受的終局（沿目錄設定服務的同一裁決）。
+	// `Enabled` 欄帶 default:true，而 GORM 對帶 default 的欄位遇零值會改用預設值
+	// （並回寫到記憶體內的結構）——直接 Create 會讓「建立時就停用」的規則靜默變成
+	// 啟用，下一次登入重算即授出角色。落庫後在同一交易內補寫請求值，審計列隨後
+	// 讀同一個結構，記下的即實際落庫值
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(row).Error; err != nil {
 			return fmt.Errorf("建立群組映射規則失敗: %w", err)
+		}
+		if !enabled {
+			row.Enabled = false
+			if err := tx.Model(&model.GroupRoleMapping{}).Where("id = ?", row.ID).
+				Update("enabled", false).Error; err != nil {
+				return fmt.Errorf("建立群組映射規則失敗: %w", err)
+			}
 		}
 		return s.auditMapping(tx, in.Actor, model.ActionCreate, MappingAuditEventCreate,
 			kind, sourceID, row, role.Name, in.RiskAcknowledged, source)

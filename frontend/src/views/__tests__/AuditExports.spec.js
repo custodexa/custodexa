@@ -37,6 +37,14 @@ vi.mock('@/api/auditExport', () => ({
   createAuditExportJob: (...args) => createJobMock(...args),
 }))
 
+// 落地分頁與報告種類由 query 決定：以可變的 route 物件模擬深連結。
+// 預設空 query＝一般進站，既有案例的行為一字不變
+const routeMock = { query: {} }
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useRoute: () => routeMock,
+}))
+
 const HOUR = 3600 * 1000
 const future = (ms) => new Date(Date.now() + ms).toISOString()
 const past = (ms) => new Date(Date.now() - ms).toISOString()
@@ -64,6 +72,7 @@ const mountPage = async (payload) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeMock.query = {}
   downloadMock.mockResolvedValue(new Blob(['zip'], { type: 'application/zip' }))
   createJobMock.mockResolvedValue({ data: { id: 9, status: 'pending' }, deduplicated: false })
 })
@@ -406,5 +415,74 @@ describe('輪替報告分頁', () => {
     await flushPromises()
     await openReportsTab(wrapper)
     expect(wrapper.find('[data-test="reports-empty"]').exists()).toBe(true)
+  })
+})
+
+describe('報告分頁的種類切換', () => {
+  const complianceJob = (over = {}) => ({
+    id: 51,
+    kind: 'compliance_report',
+    status: 'done',
+    requester: 'auditor1',
+    requested_at: '2026-09-20T01:00:00+08:00',
+    packaged_at: '2026-09-20T01:02:00+08:00',
+    expires_at: future(48 * HOUR),
+    artifact_size: 20480,
+    offsite_status: 'uploaded',
+    report: {
+      group: 'pci_dss_4_0_1',
+      group_name: 'PCI DSS 4.0.1',
+      language: 'en-US',
+      retention_days: 90,
+      generated_by: 'auditor1',
+    },
+    ...over,
+  })
+
+  const byKind = (params) =>
+    Promise.resolve(
+      params?.kind === 'compliance_report'
+        ? { data: [complianceJob()], total: 1 }
+        : { data: [], total: 0 }
+    )
+
+  // 擋：合規對照頁的「到下載中心查看」深連結落地後停在輪替報告，
+  // 使用者看不到剛送出的合規報告而以為沒產出；分頁名仍寫輪替報告會讓人不往這裡找
+  it('分頁名為「報告」；深連結帶合規報告種類時直達並以該種類查詢，列上有政策組、語言與產出者', async () => {
+    routeMock.query = { tab: 'reports', kind: 'compliance_report' }
+    listMock.mockImplementation(byKind)
+    const wrapper = mount(AuditExports, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+
+    const tabs = wrapper.findAll('.el-tabs__item')
+    expect(tabs[tabs.length - 1].text()).toBe('報告')
+    expect(listMock).toHaveBeenCalledWith({ kind: 'compliance_report', page: 1, page_size: 20 })
+    expect(listMock).not.toHaveBeenCalledWith(expect.objectContaining({ kind: 'rotation_report' }))
+
+    const group = wrapper.find('[data-test="report-group-51"]')
+    expect(group.text()).toContain('PCI DSS 4.0.1')
+    expect(group.text()).toContain('English')
+    expect(wrapper.find('[data-test="report-generated-51"]').text()).toContain('auditor1')
+    expect(wrapper.find('[data-test="report-offsite-51"]').exists()).toBe(true)
+
+    await wrapper.find('[data-test="report-download-51"]').trigger('click')
+    await flushPromises()
+    expect(downloadMock).toHaveBeenCalledWith(51)
+  })
+
+  // 擋：切換種類後仍以舊種類查詢，畫面標著合規報告、列出來的卻是輪替報告
+  it('在報告分頁切換種類改以對應種類重新查詢', async () => {
+    routeMock.query = { tab: 'reports' }
+    listMock.mockImplementation(byKind)
+    const wrapper = mount(AuditExports, { global: { plugins: [ElementPlus] } })
+    await flushPromises()
+    // 未指定種類時維持輪替報告（既有深連結的行為不變）
+    expect(listMock).toHaveBeenLastCalledWith({ kind: 'rotation_report', page: 1, page_size: 20 })
+
+    const options = wrapper.findAll('[data-test="reports-kind"] input')
+    await options[1].setValue(true)
+    await flushPromises()
+    expect(listMock).toHaveBeenLastCalledWith({ kind: 'compliance_report', page: 1, page_size: 20 })
+    expect(wrapper.find('[data-test="report-group-51"]').exists()).toBe(true)
   })
 })

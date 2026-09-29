@@ -1,0 +1,625 @@
+# Build, verify, sign and publish the container images for a release tag.
+#
+# Flow: build (both platforms, pushed by digest without tags) -> verify (each platform
+# checked against the image contract) -> publish (tags, signatures, provenance and SBOM
+# attestations, verification with the same commands deployers use) -> mirror (Docker Hub,
+# same digest, never "latest").
+#
+# Images: ghcr.io/<namespace>/{backend,frontend}. <namespace> is the repository variable
+# IMAGE_NAMESPACE when set, otherwise the repository owner. A rehearsal repository in the same
+# organization sets IMAGE_NAMESPACE (for example <org>/rehearsal) so that it never creates the
+# release packages: a package is linked to the repository that first pushes it. The build job
+# stops any repository other than custodexa/custodexa that resolves to the release namespace.
+# Attestations run only in public repositories; a private repository skips them.
+# Keyless signatures and attestations write the workflow identity (repository, workflow path, tag)
+# into the public Sigstore transparency log, where it stays. Only custodexa/custodexa signs and
+# attests; any other repository (a rehearsal copy, a fork) builds, verifies, tags and packages the
+# same way but unsigned, and says so in the job summary.
+# The Docker Hub mirror runs only for final releases and only when the repository variable
+# DOCKERHUB_NAMESPACE is set; its credentials live in the "release" environment.
+#
+# Every action is pinned to a full commit SHA; the comment names the release it resolved from.
+name: release-images
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CRANE_VERSION: v0.22.1
+  GO_TOOLCHAIN: "1.26.6"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      stable: ${{ steps.tags.outputs.stable }}
+      version: ${{ steps.tags.outputs.version }}
+      ghcr_tags: ${{ steps.tags.outputs.ghcr_tags }}
+      dockerhub_tags: ${{ steps.tags.outputs.dockerhub_tags }}
+      namespace: ${{ steps.tags.outputs.namespace }}
+      official: ${{ steps.official.outputs.official }}
+      backend_digest: ${{ steps.build.outputs.backend_digest }}
+      frontend_digest: ${{ steps.build.outputs.frontend_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test the tag rules
+        run: bash .github/scripts/test_image_tags.sh
+
+      - name: Derive version and tags
+        id: tags
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          existing="$(git tag -l 'v*')"
+          bash .github/scripts/image-tags.sh "$GIT_TAG" "$(cat VERSION)" "$existing" | tee -a "$GITHUB_OUTPUT"
+          namespace="${IMAGE_NAMESPACE:-$OWNER}"
+          namespace="${namespace,,}"
+          [[ "$namespace" =~ ^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$ ]] \
+            || { echo "::error::invalid image namespace '${namespace}'"; exit 1; }
+          echo "namespace=${namespace}" | tee -a "$GITHUB_OUTPUT"
+
+      # Organization variables are inherited by every repository in the organization. Any other
+      # repository (a rehearsal copy, a fork) that resolves to the release namespace would create
+      # the release packages and link them to itself, so it stops here before anything is built.
+      - name: Release namespace only from the release repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+          NAMESPACE: ${{ steps.tags.outputs.namespace }}
+          RELEASE_REPOSITORY: custodexa/custodexa
+          RELEASE_NAMESPACE: custodexa
+        run: |
+          set -euo pipefail
+          lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+          if [ "$(lower "$REPOSITORY")" != "$(lower "$RELEASE_REPOSITORY")" ] \
+            && [ "$(lower "$NAMESPACE")" = "$(lower "$RELEASE_NAMESPACE")" ]; then
+            echo "::error::${REPOSITORY} resolves to the release namespace '${NAMESPACE}'; set the repository variable IMAGE_NAMESPACE to another namespace"
+            exit 1
+          fi
+          echo "image namespace '${NAMESPACE}' for ${REPOSITORY}"
+
+      # Signing and attesting leave the repository name and workflow path in the public Sigstore
+      # transparency log for good, so only the release repository does either. Every signing,
+      # attesting and signature-verifying step checks this output; "false" leaves them out.
+      - name: Sign only in the release repository
+        id: official
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_REPOSITORY: custodexa/custodexa
+        run: |
+          set -euo pipefail
+          lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+          if [ "$(lower "$REPOSITORY")" = "$(lower "$RELEASE_REPOSITORY")" ]; then
+            official=true
+          else
+            official=false
+          fi
+          echo "official=${official}" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pushed by digest only: nothing can pull these images by tag until verify has passed.
+      # buildx attestations stay off so the index holds exactly the two platform manifests;
+      # provenance and SBOM are attached by the publish job.
+      - name: Build and push by digest
+        id: build
+        env:
+          NAMESPACE: ${{ steps.tags.outputs.namespace }}
+          VERSION_ARG: ${{ steps.tags.outputs.version_build_arg }}
+          VERSION: ${{ steps.tags.outputs.version }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            build_args=()
+            if [ "$component" = backend ] && [ -n "$VERSION_ARG" ]; then
+              build_args+=(--build-arg "VERSION=${VERSION_ARG}")
+            fi
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --file "docker/${component}/Dockerfile" \
+              --target production \
+              "${build_args[@]}" \
+              --label "org.opencontainers.image.source=${SOURCE_URL}" \
+              --label "org.opencontainers.image.revision=${REVISION}" \
+              --label "org.opencontainers.image.version=${VERSION}" \
+              --label "org.opencontainers.image.title=custodexa-${component}" \
+              --annotation "index:org.opencontainers.image.source=${SOURCE_URL}" \
+              --annotation "index:org.opencontainers.image.revision=${REVISION}" \
+              --annotation "index:org.opencontainers.image.version=${VERSION}" \
+              --annotation "index:org.opencontainers.image.licenses=AGPL-3.0-only" \
+              --annotation "index:org.opencontainers.image.description=Custodexa ${component}" \
+              --provenance=false \
+              --sbom=false \
+              --metadata-file "meta-${component}.json" \
+              --output "type=image,name=ghcr.io/${NAMESPACE}/${component},push-by-digest=true,name-canonical=true,push=true" \
+              .
+            digest="$(jq -r '."containerimage.digest"' "meta-${component}.json")"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no digest for ${component}"; exit 1; }
+            echo "${component}_digest=${digest}" | tee -a "$GITHUB_OUTPUT"
+          done
+
+  verify:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: The index holds exactly linux/amd64 and linux/arm64
+        env:
+          IMAGE: ghcr.io/${{ needs.build.outputs.namespace }}/${{ matrix.component }}
+          DIGEST: ${{ matrix.component == 'backend' && needs.build.outputs.backend_digest || needs.build.outputs.frontend_digest }}
+        run: |
+          set -euo pipefail
+          platforms="$(docker buildx imagetools inspect --raw "${IMAGE}@${DIGEST}" \
+            | jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)"' | sort | paste -sd' ')"
+          echo "platforms: ${platforms}"
+          [ "$platforms" = "linux/amd64 linux/arm64" ] || { echo "::error::unexpected platforms: ${platforms}"; exit 1; }
+
+      - name: Verify the image contract
+        env:
+          IMAGE: ghcr.io/${{ needs.build.outputs.namespace }}/${{ matrix.component }}
+          DIGEST: ${{ matrix.component == 'backend' && needs.build.outputs.backend_digest || needs.build.outputs.frontend_digest }}
+          COMPONENT: ${{ matrix.component }}
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ needs.build.outputs.version }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          bash .github/scripts/verify-image.sh --pull \
+            --component "$COMPONENT" --platform "$PLATFORM" --version "$VERSION" \
+            --revision "$REVISION" --source "$SOURCE_URL" \
+            "${IMAGE}@${DIGEST}"
+
+  publish:
+    needs: [build, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      NAMESPACE: ${{ needs.build.outputs.namespace }}
+      VERSION: ${{ needs.build.outputs.version }}
+      GHCR_TAGS: ${{ needs.build.outputs.ghcr_tags }}
+      BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+      FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+      # Attestations need a public repository on the Free, Pro and Team plans; a private
+      # repository (used for rehearsals) skips them and keeps the SBOM as a workflow artifact.
+      ATTEST: ${{ github.event.repository.private && 'false' || 'true' }}
+      OFFICIAL: ${{ needs.build.outputs.official }}
+      SIGNER_IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_TOOLCHAIN }}
+          cache: false
+
+      # Built from source through the Go module proxy and checksum database.
+      - name: Install crane
+        run: go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        id: syft
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Full version tags are never overwritten (mirror-image.sh stops when X.Y.Z exists with
+      # another digest); X.Y and latest move.
+      - name: Tag
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            digest_var="${component^^}_DIGEST"
+            digest="${!digest_var}"
+            repo="ghcr.io/${NAMESPACE}/${component}"
+            fixed=()
+            for tag in $GHCR_TAGS; do
+              [ "$tag" = latest ] || fixed+=("$tag")
+            done
+            bash .github/scripts/mirror-image.sh "$repo" "$repo" "$digest" "${fixed[@]}"
+            if [[ " $GHCR_TAGS " == *" latest "* ]]; then
+              crane tag "${repo}@${digest}" latest
+              [ "$(crane digest "${repo}:latest")" = "$digest" ] || { echo "::error::latest does not resolve to ${digest}"; exit 1; }
+            fi
+          done
+
+      - name: Sign
+        if: env.OFFICIAL == 'true'
+        run: |
+          set -euo pipefail
+          cosign sign --yes --recursive "ghcr.io/${NAMESPACE}/backend@${BACKEND_DIGEST}"
+          cosign sign --yes --recursive "ghcr.io/${NAMESPACE}/frontend@${FRONTEND_DIGEST}"
+
+      - name: Generate SBOMs
+        id: sbom
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+        run: |
+          set -euo pipefail
+          mkdir -p sbom
+          for component in backend frontend; do
+            digest_var="${component^^}_DIGEST"
+            for arch in amd64 arm64; do
+              "$SYFT" scan "registry:ghcr.io/${NAMESPACE}/${component}@${!digest_var}" \
+                --platform "linux/${arch}" -o "spdx-json=sbom/${component}-${arch}.spdx.json"
+            done
+          done
+          predicate="https://spdx.dev/Document/v$(jq -r '.spdxVersion' sbom/backend-amd64.spdx.json | sed 's/^SPDX-//')"
+          echo "predicate_type=${predicate}" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+
+      - name: Attest backend provenance
+        if: env.OFFICIAL == 'true' && env.ATTEST == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ env.NAMESPACE }}/backend
+          subject-digest: ${{ env.BACKEND_DIGEST }}
+          push-to-registry: true
+          create-storage-record: ${{ github.event.repository.owner.type == 'Organization' }}
+
+      - name: Attest frontend provenance
+        if: env.OFFICIAL == 'true' && env.ATTEST == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ env.NAMESPACE }}/frontend
+          subject-digest: ${{ env.FRONTEND_DIGEST }}
+          push-to-registry: true
+          create-storage-record: ${{ github.event.repository.owner.type == 'Organization' }}
+
+      - name: Attest backend SBOM
+        if: env.OFFICIAL == 'true' && env.ATTEST == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ env.NAMESPACE }}/backend
+          subject-digest: ${{ env.BACKEND_DIGEST }}
+          sbom-path: sbom/backend-amd64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest frontend SBOM
+        if: env.OFFICIAL == 'true' && env.ATTEST == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ env.NAMESPACE }}/frontend
+          subject-digest: ${{ env.FRONTEND_DIGEST }}
+          sbom-path: sbom/frontend-amd64.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # The same commands a deployer runs. A signature from any other workflow must not verify.
+      - name: Verify as a deployer would
+        if: env.OFFICIAL == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PREDICATE_TYPE: ${{ steps.sbom.outputs.predicate_type }}
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            ref="ghcr.io/${NAMESPACE}/${component}:${VERSION}"
+            cosign verify "$ref" \
+              --certificate-identity "$SIGNER_IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            echo "signature verified: ${ref}"
+            if cosign verify "$ref" \
+                --certificate-identity "${SIGNER_IDENTITY%%@*}-not-this-workflow@${SIGNER_IDENTITY#*@}" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1; then
+              echo "::error::${ref} verified under a foreign identity"
+              exit 1
+            fi
+            echo "foreign identity rejected: ${ref}"
+            if [ "$ATTEST" = true ]; then
+              gh attestation verify "oci://${ref}" --repo "$REPOSITORY"
+              gh attestation verify "oci://${ref}" --repo "$REPOSITORY" --predicate-type "$PREDICATE_TYPE"
+            else
+              echo "attestations skipped (private repository): ${ref}"
+            fi
+          done
+
+      - name: Note an unsigned build
+        if: env.OFFICIAL != 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "Not signed: ${REPOSITORY} is not the release repository, so no signature, attestation or provenance was published and nothing was verified against one." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record digests
+        run: |
+          set -euo pipefail
+          guacd="$(grep -oE 'guacamole/guacd:[0-9.]+@sha256:[0-9a-f]{64}' docker-compose.yml | head -n1)"
+          [ -n "$guacd" ] || { echo "::error::guacd reference not found in docker-compose.yml"; exit 1; }
+          jq -n \
+            --arg version "$VERSION" \
+            --arg tag "$GITHUB_REF_NAME" \
+            --arg revision "$GITHUB_SHA" \
+            --arg ns "$NAMESPACE" \
+            --arg backend "$BACKEND_DIGEST" \
+            --arg frontend "$FRONTEND_DIGEST" \
+            --arg guacd "$guacd" \
+            --arg tags "$GHCR_TAGS" \
+            '{version: $version, git_tag: $tag, revision: $revision,
+              ghcr_tags: ($tags | split(" ")),
+              images: {
+                backend: {digest: $backend, ghcr: "ghcr.io/\($ns)/backend@\($backend)"},
+                frontend: {digest: $frontend, ghcr: "ghcr.io/\($ns)/frontend@\($frontend)"}
+              },
+              upstream: {guacd: $guacd}}' > image-digests.json
+          cat image-digests.json
+          {
+            echo '### Published images'
+            echo '```json'
+            cat image-digests.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-digests
+          path: image-digests.json
+          if-no-files-found: error
+
+  mirror:
+    needs: [build, publish]
+    if: vars.DOCKERHUB_NAMESPACE != '' && needs.build.outputs.stable == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    env:
+      NAMESPACE: ${{ needs.build.outputs.namespace }}
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+      DOCKERHUB_TAGS: ${{ needs.build.outputs.dockerhub_tags }}
+      VERSION: ${{ needs.build.outputs.version }}
+      BACKEND_DIGEST: ${{ needs.build.outputs.backend_digest }}
+      FRONTEND_DIGEST: ${{ needs.build.outputs.frontend_digest }}
+      OFFICIAL: ${{ needs.build.outputs.official }}
+      SIGNER_IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_TOOLCHAIN }}
+          cache: false
+
+      - name: Install crane
+        run: go install "github.com/google/go-containerregistry/cmd/crane@${CRANE_VERSION}"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Copy to Docker Hub with the same digest
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            digest_var="${component^^}_DIGEST"
+            # shellcheck disable=SC2086 # DOCKERHUB_TAGS is a space-separated list
+            bash .github/scripts/mirror-image.sh \
+              "ghcr.io/${NAMESPACE}/${component}" "docker.io/${DOCKERHUB_NAMESPACE}/${component}" \
+              "${!digest_var}" $DOCKERHUB_TAGS
+          done
+
+      - name: Sign the Docker Hub copies
+        if: env.OFFICIAL == 'true'
+        run: |
+          set -euo pipefail
+          cosign sign --yes --recursive "docker.io/${DOCKERHUB_NAMESPACE}/backend@${BACKEND_DIGEST}"
+          cosign sign --yes --recursive "docker.io/${DOCKERHUB_NAMESPACE}/frontend@${FRONTEND_DIGEST}"
+
+      - name: Verify the mirror
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            digest_var="${component^^}_DIGEST"
+            ref="docker.io/${DOCKERHUB_NAMESPACE}/${component}:${VERSION}"
+            [ "$(crane digest "$ref")" = "${!digest_var}" ] || { echo "::error::${ref} digest differs from GHCR"; exit 1; }
+            status="$(curl -s -o /dev/null -w '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/${DOCKERHUB_NAMESPACE}/${component}/tags/latest")"
+            [ "$status" = 404 ] || { echo "::error::Docker Hub ${component}:latest answered ${status}, expected 404"; exit 1; }
+            echo "mirror verified: ${ref} (no latest tag)"
+          done
+
+      - name: Verify the mirror signatures
+        if: env.OFFICIAL == 'true'
+        run: |
+          set -euo pipefail
+          for component in backend frontend; do
+            ref="docker.io/${DOCKERHUB_NAMESPACE}/${component}:${VERSION}"
+            cosign verify "$ref" \
+              --certificate-identity "$SIGNER_IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+            echo "signature verified: ${ref}"
+          done
+
+      - name: Note an unsigned mirror
+        if: env.OFFICIAL != 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "Not signed: ${REPOSITORY} is not the release repository, so the Docker Hub copies carry no signature." >> "$GITHUB_STEP_SUMMARY"
+
+  # Install package, offline image bundles, MANIFEST, SHA256SUMS and its keyless signature, attached
+  # to a draft release. Publishing the release is left to a person. Before that, the draft is
+  # downloaded again and checked with the same code deployers run (scripts/custodexa/lib/verify.sh).
+  package:
+    needs: [build, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+      packages: read
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      STABLE: ${{ needs.build.outputs.stable }}
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+      OFFICIAL: ${{ needs.build.outputs.official }}
+      SIGNER_IDENTITY: ${{ github.server_url }}/${{ github.workflow_ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-digests
+          path: ${{ runner.temp }}/digests
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The source/ folder of the package is this checkout: the public tree of the tagged commit.
+      - name: Build the install package and the offline bundles
+        run: |
+          set -euo pipefail
+          mirror=()
+          if [ "$STABLE" = true ] && [ -n "$DOCKERHUB_NAMESPACE" ]; then
+            mirror=(--mirror-namespace "$DOCKERHUB_NAMESPACE")
+          fi
+          dist="$RUNNER_TEMP/dist"
+          bash scripts/release/build-package.sh --digests "$RUNNER_TEMP/digests/image-digests.json" \
+            --source . --out "$dist" "${mirror[@]}"
+          for arch in amd64 arm64; do
+            bash scripts/release/build-package.sh offline --manifest "$dist/MANIFEST.json" --arch "$arch" --out "$dist"
+          done
+          ls -l "$dist"
+
+      - name: Checksums
+        working-directory: ${{ runner.temp }}/dist
+        run: |
+          set -euo pipefail
+          sha256sum "custodexa-${VERSION}.tar.gz" "custodexa-images-${VERSION}-amd64.tar" \
+            "custodexa-images-${VERSION}-arm64.tar" MANIFEST.json > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Sign the checksums
+        if: env.OFFICIAL == 'true'
+        working-directory: ${{ runner.temp }}/dist
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS > /dev/null
+
+      # A draft only. A release that is already published is never touched.
+      - name: Attach to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=("$RUNNER_TEMP"/dist/*)
+          if draft="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            [ "$draft" = true ] || { echo "::error::release ${GITHUB_REF_NAME} is already published"; exit 1; }
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+          else
+            prerelease=()
+            [ "$STABLE" = true ] || prerelease=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+              "${prerelease[@]}" --title "Custodexa ${VERSION}" --notes "" "${files[@]}"
+          fi
+
+      - name: Verify the draft as a deployer would
+        if: env.OFFICIAL == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          check="$RUNNER_TEMP/check"
+          mkdir "$check"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir "$check"
+          # shellcheck source=/dev/null
+          . scripts/custodexa/lib/verify.sh
+          cx_verify_release_assets "$check" "$SIGNER_IDENTITY" "$RUNNER_TEMP/digests/image-digests.json"
+          if cx_verify_release_assets "$check" "${SIGNER_IDENTITY%%@*}-not-this-workflow@${SIGNER_IDENTITY#*@}" > /dev/null 2>&1; then
+            echo "::error::the release assets verified under a foreign identity"
+            exit 1
+          fi
+          echo "foreign identity rejected"
+
+      - name: Note an unsigned package
+        if: env.OFFICIAL != 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "Not signed: ${REPOSITORY} is not the release repository, so SHA256SUMS has no signature bundle and the draft was not verified as a deployer would." >> "$GITHUB_STEP_SUMMARY"

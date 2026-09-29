@@ -2,7 +2,7 @@
 
 [English](../../ops/upgrade-sop.md) | **繁體中文** | [日本語](../../ja/ops/upgrade-sop.md) | [其他語言 →](../../README.md)
 
-> 適用版本：Custodexa 1.0。
+> 適用版本：Custodexa 1.0。第 2 節的管理腳本小節自 1.13.0 起適用。
 >
 > 本文涵蓋兩件事：**新裝交付的必做檢核**，與**既有部署的版本升級程序**。
 >
@@ -15,6 +15,8 @@
 > 交由自家 ingress 承載 TLS 的部署（`docker-compose.external-ingress.yml`）一律帶兩個 `-f`
 > （`-f docker-compose.yml -f docker-compose.external-ingress.yml`），或在 `.env` 設
 > `COMPOSE_FILE` 讓它成為預設；只帶一個會以內建 TLS 代理的形態啟動。
+> 安裝包部署由管理腳本升級（第 2 節第一小節）；在其部署目錄下手打 compose 指令時，見
+> [備份與還原 §2.3](./backup-and-restore.md#23-本文-shell-指令如何取得部署變數動手前先讀)。
 
 ---
 
@@ -178,19 +180,134 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ## 2. 版本升級程序
 
+以安裝包部署的系統用管理腳本升級，見下方第一小節。以 `git clone` 原始碼運作的部署依手動程序（§2.0 到 §2.8）升級；
+1.12.4 的 clone 也可以改由 1.13.0 的腳本一次轉換成安裝包結構（第一小節末段）。手動程序保留原本的節號，
+因為其他文件引用這些節號；對安裝包部署而言，它說明了腳本每一步在做什麼。
+
+### 以管理腳本升級
+
+> 適用於安裝包部署，自 1.13.0 起。
+
+**開始之前**
+
+1. 讀 §2.0。其中適用於你這個部署的檢查照樣適用；腳本的預覽會提醒委託金鑰（`KEK_PROVIDER=kms`）
+   要準備的事，但不會代為完成。
+2. 規劃停機。停止服務會結束所有進行中的連線；預覽會顯示目前有幾條連線、預計停機多久。
+   先公告維護時段，讓連線結束。
+3. 在主機上的 `tmux` 或 `screen` 內執行升級，SSH 斷線時升級才不會中斷。
+
+**開始升級。** 執行 `sudo /opt/custodexa/custodexa.sh`，在選單選「**升級**」，再選最新版、指定版本，
+或已下載的安裝包（主機無法連網時）。回答預覽之前不會有任何變更。自動化時可用對應的指令：
+
+```bash
+sudo /opt/custodexa/custodexa.sh upgrade                 # 只查詢有沒有新版，不做任何變更
+sudo /opt/custodexa/custodexa.sh upgrade 1.13.2          # 下載、驗證並升級
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SHA256SUMS 放在同一處
+```
+
+`--yes` 代為回答確認，但不會略過稽核佇列的檢查。主機無法連到映像倉庫時，以 `--images <映像包>`
+指定離線映像包，或先用 `load` 載入。已安裝的腳本只負責取得安裝包、以 `SHA256SUMS` 核對，
+有 `cosign` 時再驗 `SHA256SUMS` 的簽章，然後解到 `releases/<版本>/`，交給新版的腳本執行升級。
+降版、升到目前已安裝的版本、以及目前版本低於新版要求的最低來源版本，都會以結束碼 3 拒絕且不做任何變更；
+最後一種情形畫面會列出須先升到的版本。
+
+**腳本做什麼**
+
+| 步 | 內容 | 對應的手動步驟 |
+|---|---|---|
+| 1 | 檢查：上述版本規則、上次沒有完成的升級、備份與新映像所需的空間 | §2.0 |
+| 2 | 取得並驗證新版映像 | §2.2 |
+| 3 | 預覽與確認；在此之前沒有任何變更 | |
+| 4 | 最多等 120 秒讓稽核佇列歸 0。讀不到佇列時，只有系統回報已封存、且這個容器啟動後從未解封過才放行；其他情形一律停下，服務照常運作、沒有任何變更 | §2.3 步驟 3、§2.4 |
+| 5 | 停止 backend、guacd、frontend（資料庫保持運作），並從後端日誌檢查有無排空逾時 | §2.3 步驟 4、§3.1 |
+| 6 | 確認舊實例已完全停止：應用帳號的連線數為 0 | §2.3 步驟 5 |
+| 7 | 記下快照並備份（見下） | §2.1 |
+| 8 | 僅首次轉換：整理目錄（本小節末段） | |
+| 9 | 把 `current` 指到新版，準備錄影目錄 | §1.3、§2.5 |
+| 10 | 啟動服務 | §2.5 |
+| 11 | 最多等 180 秒，直到後端回應健康檢查 | §2.5 |
+| 12 | 核對：版本、執行中的映像 ID、空資料庫、`schema_migrations` 仍包含升級前每一筆、`users` 與 `sessions` 筆數不變且 `audit_logs` 不減、四個金鑰指紋、單實例鎖、對外入口 | §2.5「升級後第一件事」、§2.7 |
+| 13 | 記錄這次升級並印出結果 | §2.7 |
+
+第 12 步若發現空資料庫（日誌有 baseline migration，或使用者數由多於一個降到一個以下），
+會立即停止所有服務（含資料庫），且不改動任何資料目錄；畫面會說明要核對什麼，與 §2.5 相同。
+
+升級成功後，畫面會列出留給人做的事：主金鑰模式需要時的解封，以及腳本做不到的 §2.7 檢查——
+稽核鏈驗證、播放一段升級前的錄影、建一條測試連線並確認其指令出現在稽核紀錄。最後一項不可省略。
+這些做完再讓使用者連線。
+
+**第 7 步的備份。** 預設由腳本做停機備份，內容見
+[備份與還原 §3.8](./backup-and-restore.md#38-管理腳本做的備份安裝包部署)。在終端機上執行時會先詢問，
+你也可以改用自己的備份，例如虛擬機或儲存設備快照：
+
+- 畫面會列出稽核佇列確認清空的時間與服務停止的時間。請在此時做快照：快照必須在停止之後開始，
+  並涵蓋資料目錄、`.env` 與 `tls/`；外接資料庫形態另須有停止之後開始的資料庫備份。
+- 依序輸入快照名稱、開始時間、還原程序寫在哪裡，再以 `yes` 確認。開始時間早於停止時間會被拒絕；
+  服務維持停止，畫面會印出重新啟動的指令。腳本無法檢查快照的內容。
+- 沒有終端機時，三個參數一起給：`--backup-ref <名稱> --backup-time "YYYY-MM-DD HH:MM" --backup-restore <位置>`。
+  這只在你於執行前、依 §2.4 確認稽核佇列後自行停止了服務時才接受；服務仍在執行就拒絕。
+  時間必須晚於後端停止的時間，且後端日誌不能有排空逾時。
+- 外接資料庫形態下腳本不做任何備份，只提供這條路徑。
+
+**停下來時**
+
+| 停在哪 | 狀態 | 怎麼做 |
+|---|---|---|
+| 第 1 到 4 步 | 舊版照常運作，沒有任何變更 | 排除畫面指出的原因後再執行一次升級 |
+| 第 5 到 7 步 | 服務已停止；版本與資料都沒變 | 用畫面上的指令啟動舊版，或排除原因後再執行一次升級 |
+| 第 8 步 | 首次轉換做到一半 | 依序執行畫面上的指令：把目錄放回原狀並啟動舊版 |
+| 第 9 到 12 步 | 新版已經換上 | 用畫面上的指令查看後端日誌。要回到舊版，請依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)還原畫面列出的備份；在依該節放回腳本的紀錄之前，腳本會拒絕再次升級並重印同樣的指引 |
+
+被 Ctrl-C 或斷線中斷的升級也照此處理：下次執行時會印出它停下那一步的指引。中斷在第 1 到 4 步，
+或中斷在第 5 到 7 步但舊版已重新啟動時，下次升級會先警告再從頭開始。這些畫面上的指令都帶完整路徑、
+專案名稱與 compose 檔，在任何目錄下都能執行。
+
+**回到舊版。** 本版沒有回退指令。要回到升級前的版本，請依
+[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)還原該次升級所做的備份；
+備份之後記錄的一切都會遺失。
+
+**`git clone` 部署的首次轉換。** 以 `git clone` 原始碼運作、版本為 1.12.4 的部署，可以由 1.13.0 的腳本
+一次轉換成安裝包結構；轉換是該次升級的第 8 步，在備份之後。
+
+- **條件**：主機上有 `git`、部署用的不是開發版 compose 檔，且 git 工作樹乾淨。`git status --porcelain`
+  除了腳本自己的檔案（例如 `backups/`）之外不能有任何輸出；否則在預覽之前就停下、列出項目，且不做任何變更。
+  請先提交、還原或移走它們。
+- **會改變什麼**：`.git` 與 git 追蹤的每個頂層項目搬到 `releases/1.12.4/`。`.env`、`tls/`、資料目錄、
+  `backups/`、`logs/` 留在原位。`.env` 先複製到備份資料夾成為 `env-before-convert.bak`，接著
+  `DATA_PATH` 改成絕對路徑，並設定 `COMPOSE_FILE` 與 `COMPOSE_PROJECT_NAME`：`.env` 裡有該鍵的註解行就寫在那一行，否則新增一行。預覽會列出每一處改動的行與新舊值。
+- **匯出產物**：1.12.4 的後端把它們放在容器內。轉換在移除那個容器之前，先把它們複製到 `data/exports`
+  （1.13.0 起保存的位置）；檔案權限不變，資料夾設為 `0700`。
+- **執行方式**：照[快速開始](../QUICKSTART.md#2-解開前先驗證)下載並驗證 1.13.0 的安裝包，
+  解到部署目錄以外的地方，再讓腳本指向部署目錄：
+
+  ```bash
+  mkdir /tmp/custodexa-1.13.0
+  tar -xzf custodexa-1.13.0.tar.gz -C /tmp/custodexa-1.13.0
+  sudo env CUSTODEXA_HOME=/data/custodexa /tmp/custodexa-1.13.0/custodexa/custodexa.sh upgrade
+  ```
+
+  `git clone` 部署沒有選單；這道指令直接進入轉換預覽。沒有終端機時要寫明版本（`upgrade 1.13.0 --yes`）；
+  只寫 `upgrade --yes` 會被拒絕。
+- **完成之後**：改用 `/data/custodexa/custodexa.sh` 管理這個部署。這個目錄已不是 git 工作目錄，
+  不要再用 `git pull` 更新。要回到 1.12.4 請見
+  [備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)，該節也會把目錄放回原狀。
+
 ### 2.0 先確定回退方案，確認前提成立，並做升級前預檢
 
 **升級失敗時的回退路徑只有一條：還原備份**（程序見第 4 節）。代價是遺失最近一次備份
 之後產生的全部資料，請據此決定備份時點與停機視窗，不要升級到一半才發現沒有退路。
 
 **回退要兩樣東西，缺一樣都退不回去：升級前的備份，以及舊版的映像。**
-備份見 §2.1；映像這一格特別容易漏——三顆映像的參照都是 `custodexa/*:latest`，
+備份見 §2.1；映像這一格特別容易漏——本專案自建的 backend、frontend 兩顆映像，參照都是 `custodexa/*:latest`，
 新版一建置、或一載入交付的映像檔，就把同名 tag 覆蓋掉，舊版映像沒有另一個名字就找不回來了。
-這些映像不經任何 registry 發佈，來源只有原始碼樹的建置或交付的映像檔。
+1.13.0 起這兩顆映像也發佈到 GitHub Container Registry，並鏡像到 Docker Hub（見 [README](../README.md#預建映像)「預建映像」一節），
+但 repo 內的編排檔不引用已發佈的映像：照本 SOP 部署者，映像來源仍是原始碼樹的建置或交付的映像檔。
 自行建置者見 §2.2 的另存 tag，以交付映像部署者請先確認舊版映像檔仍在手上。
+guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引用官方映像 `guacamole/guacd:1.6.0`，
+舊版映像保有自己的名字。以映像檔交付時，交付的映像也包含這顆官方映像。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的二十八條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的二十九條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -348,8 +465,25 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
 **適用對象是自行建置映像者**：此步驟需要完整的原始碼樹（`docker-compose.yml` 與各 Dockerfile
 都在建置範圍內）。以交付的映像部署、手上沒有原始碼樹者，此步驟不適用，跳到 §2.3。
 
+> **部署目錄本身是原始碼的 `git clone`、原地升級時：先把原始碼樹切到發版 tag。**
+> QUICKSTART 的安裝方式就是這種配置。新版的原始碼（含 compose 檔）是在同一個目錄裡
+> checkout 發版 tag 取得的，這一步要在下面的映像改名留存與建置之前做。這段期間服務照常運作，
+> 執行中的容器要到 §2.5 才受影響。
+>
+> ```bash
+> git status --short               # 必須沒有任何輸出：沒有被改過的受版控檔案
+> git fetch --tags origin
+> git checkout v<新版號>           # 發版 tag，例如 v1.13.0
+> git status --short --ignored     # 應只剩被忽略的項目：`!! .env`、`!! data/`、`!! tls/` 之類
+> ```
+>
+> `.env`、`data/`（`DATA_PATH` 的預設值）與 `tls/` 都被 git 忽略，checkout 不會動到它們。
+> 第一個 `git status` 若列出被改過的受版控檔案（例如手改過的 compose 檔或範本），checkout 前先處理：
+> 該檔在兩個版本之間有差異時，`git checkout` 會拒絕切換；沒有差異時，你的修改會被默默帶過去。
+> 本地調整請放在自己的 compose override 檔裡，不要改隨附的檔案。
+
 > **新版原始碼樹放在另一個目錄時，先處理 `.env` 裡的相對路徑。**
-> 正式版 compose 的三個資料落點（`postgres`／`recordings`／`audit`）全是
+> 正式版 compose 的四個資料落點（`postgres`／`recordings`／`audit`／`exports`）全是
 > `${DATA_PATH:-./data}` 的 **bind mount，沒有任何 named volume**；而 `docker compose`
 > 解析相對路徑的基準是**該 compose 檔所在的目錄**。
 > 因此把既有部署的 `.env` 原封複製到另一個目錄下的新原始碼樹之後，`DATA_PATH=./data`
@@ -376,16 +510,18 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
 > ```
 
 > **建置會覆蓋同名 tag：先把現行映像另存一份，否則沒有東西可回退。**
-> 三顆映像的參照都是 `:latest`（`custodexa/backend:latest`、`custodexa/frontend:latest`、
-> `custodexa/guacd:latest`），新版建置一跑，現行運作中的那三顆就不再有名字可指。
+> 本專案自建的兩顆映像參照都是 `:latest`（`custodexa/backend:latest`、`custodexa/frontend:latest`），
+> 新版建置一跑，現行運作中的那兩顆就不再有名字可指。
 > 回退程序（§4.2 步驟 2）要的正是它們。**在下面的 `build` 之前**先執行：
 >
 > ```bash
-> for img in backend frontend guacd; do
+> for img in backend frontend; do
 >   docker tag "custodexa/${img}:latest" "custodexa/${img}:pre-upgrade"
 > done
-> docker images | grep pre-upgrade    # 三行都在，才往下建置
+> docker images | grep pre-upgrade    # 兩行都在，才往下建置
 > ```
+>
+> guacd 不需要這一步：建置不會動到它，舊版所用的映像以原本的名字留在主機上。
 >
 > 以交付映像部署者同理：**保留舊版映像檔**，不要只靠 `:latest`。
 
@@ -411,19 +547,21 @@ done
 
 **沒有任何 `FAIL` 輸出**才算通過；印出 FAIL 代表該建置的映像不符本版的執行環境前提。
 
+正式版 backend 映像刻意不含 `/bin/sh`。管理員要進入執行中的 backend 容器排查時，請用 `docker exec -it custodexa-backend /bin/busybox sh`。
+
 **改動了 Dockerfile、`.dockerignore` 或 compose 的 build 區塊後，此步驟為必跑。**
 
 #### 換基底映像版本時，授權文件要跟著改
 
-全部出貨基底皆已釘到具體版本（`alpine:3.24.1`、`nginx:1.31.3-alpine3.24`、
-`guacamole/guacd:1.6.0`、`postgres:16.15-alpine3.24`）。
+全部出貨基底皆已釘到具體版本：Dockerfile 內的 `alpine:3.24.1`、`nginx:1.31.3-alpine3.24`，
+編排檔內的 `guacamole/guacd:1.6.0`（連同 digest）與 `postgres:16.15-alpine3.24`。
 `THIRD-PARTY-LICENSES.md` 第 3 節對外承諾「提供這些映像內 GPL／LGPL 元件的對應源碼」，
 而「對應」的前提是版本可指名。基底一浮動，承諾就無法履行。
 
-因此**動了任何 `FROM` 行的版本，同一個 commit 內必須連帶更新**：
+因此**動了任何 `FROM` 行、或編排檔中 guacd 的 `image:` 行的版本，同一個 commit 內必須連帶更新**：
 
 1. `THIRD-PARTY-LICENSES.md` §3.1 的版本表——三欄都要重讀，不可只改一欄：
-   Dockerfile 內的釘定值、映像內 `/etc/alpine-release` 實測值、GPL／LGPL 套件數。
+   Dockerfile 或編排檔內的釘定值、映像內 `/etc/alpine-release` 實測值、GPL／LGPL 套件數。
    實測指令（三個映像各跑一次，`<img>` 換成 `custodexa/backend:latest` 等）：
 
    ```bash
@@ -439,7 +577,7 @@ done
 3. §2.8 的發佈存檔（新版本＝新的一份清單，舊版本的三年期不因升級而終止）。
 
 > **換基底後須重新做一次授權盤點。** 請以貴方既有的 SBOM／授權掃描工具
-> （如 `syft`＋`grype`、`trivy`）對三顆正式版映像各執行一次，
+> （如 `syft`＋`grype`、`trivy`）對正式版堆疊所用的 backend、frontend、guacd 三個映像各執行一次，
 > 判準是「每個套件至少有一個 OSI 認可的授權選項」，確認新基底沒有引入
 > 不符該判準的套件。
 >
@@ -454,8 +592,18 @@ done
 
 1. **停止新連線進入**（於前端反向代理層擋掉，或公告維護視窗）。
 2. **等待進行中的會話結束**，或依營運判斷主動終止。
-3. **確認稽核佇列已排空**（見 §2.4）。
-4. 送出停止指令：`docker compose stop`（會送 SIGTERM，走優雅關閉路徑）。
+3. **趁 backend 還在跑，確認稽核佇列已排空。** 這項檢查要從 backend 容器內讀取指標，
+   所以必須在第 4 步停機之前做。預設設定下的指令如下；`METRICS_TOKEN` 有設值時的寫法與判讀方式見 §2.4。
+
+   ```bash
+   docker compose exec -T backend \
+     wget -qO- http://localhost:8080/metrics | grep custodexa_audit_queue_depth
+   ```
+
+4. 只停應用服務、讓資料庫繼續跑：`docker compose -f docker-compose.yml stop backend guacd frontend`
+   （會送 SIGTERM，走優雅關閉路徑）。postgres 保持運作，因為第 5 步要向它查連線數；
+   它由 §2.5 的 `up -d` 與其他服務一併處理。若下的是不帶服務名的 `docker compose stop`，
+   postgres 也會一起停掉，第 5 步的查詢就會以 `service "postgres" is not running` 失敗。
 5. **首次升級到守衛版的檢核**（來源版本不含單實例守衛時必做；之後每次升級照做也無害）。
    守衛在這個窗口**不提供保護**：舊版不持鎖，新版起來一定取得到鎖。兩項都要成立才能進 §2.5：
    - `docker compose ps` 沒有 backend 在跑。曾在其他主機、或以另一個 compose project
@@ -476,6 +624,8 @@ done
    - 判讀：**新版起來後取得鎖，不能當作舊版已停的證據。** 這一步的證據只有上面兩項。
 
 ### 2.4 停機前確認稽核佇列已排空
+
+**何時做**：在 §2.3 的第 3 步、backend 還在跑的時候。第 4 步把 backend 停掉之後，這條指令就沒有容器可以執行。
 
 指標 `custodexa_audit_queue_depth` 曝露稽核非同步寫入佇列的目前深度。
 
@@ -520,24 +670,40 @@ docker compose exec -T backend \
 ### 2.5 部署新版本
 
 ```bash
-docker compose -f docker-compose.yml pull    # 只更新上游映像（postgres、tls-init、tls-proxy）
+docker compose -f docker-compose.yml pull    # 只更新上游映像（postgres、guacd、tls-init、tls-proxy）
 docker compose -f docker-compose.yml up -d
 ```
 
-**重建容器前先確認匯出目錄已掛載或已離機。** 上面這兩行會重建後端容器，
-而匯出暫存目錄（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`）
-若未掛載為 volume 或 bind mount，其中的產物會隨容器重建消失。
-仍在保留期內、要保住的報告產物，升級前請先確認該目錄已掛載，或確認離機儲存已啟用，
-或於升級前把產物下載取走。證據包產物的保留期只有 24 小時，通常不受此影響；
-報告產物的保留期由排程設定，可長達數年，是這一步真正要顧的對象。
+**執行上面兩行之前：若要被取代的 backend 容器沒有掛載匯出目錄，先把匯出產物搬出來一次。**
+正式版 compose 把匯出目錄（`EXPORT_ARTIFACT_PATH`，容器內 `/var/lib/custodexa/exports`）
+掛載到 `${DATA_PATH}/exports`，產物因此撐得過這一次與之後每一次容器重建。
+以沒有這個掛載的 compose 檔建立的 backend 容器，產物存在容器裡面，`up -d` 會連同容器一起丟掉。
+這一步真正要顧的是報告產物：它們的保留期可長達數年，證據包則 24 小時就到期。
+§2.3 停下的 backend 容器還在，現在就從裡面把產物複製出來
+（`DATA_PATH` 的取法見[備份與還原 §2.3](./backup-and-restore.md#23-本文-shell-指令如何取得部署變數動手前先讀)）：
 
-**`pull` 不會動到本產品自建的三顆映像。** compose 檔對 `custodexa/backend`、`custodexa/frontend`、
-`custodexa/guacd` 標了 `pull_policy: never`，compose 預設不會從 registry 拉取它們。
+```bash
+docker inspect custodexa-backend --format '{{range .Mounts}}{{println .Destination}}{{end}}'
+# 只有在上面沒有列出 /var/lib/custodexa/exports 時才執行：
+mkdir -p "${DATA_PATH:?}/exports"
+docker compose -f docker-compose.yml cp backend:/var/lib/custodexa/exports/. "${DATA_PATH:?}/exports/"
+```
+
+已經列出 `/var/lib/custodexa/exports` 時，產物本來就在主機上，不需要複製。
+複製出來的檔案保持 `0600`，backend 啟動時會把目錄設為 `0700`。其中包括含解密明文的證據包，
+該目錄的處置方式見[備份與還原 §4](./backup-and-restore.md#4-加密金鑰的災難復原前提部署前必讀)。
+啟用離機儲存時，不論如何，已完成的產物在保留期內另有一份遠端副本。
+
+**`pull` 不會動到本產品自建的兩顆映像。** compose 檔對 `custodexa/backend`、`custodexa/frontend`
+標了 `pull_policy: never`，compose 預設不會從 registry 拉取它們。
 在指令列強制拉取時（`docker compose pull --policy always`、`up -d --pull always`），
 compose 仍會嘗試拉取這些映像，因此對本產品自建的映像不要使用這類旗標。
 `up -d` 直接使用本機已有的同名映像，只有本機沒有時才從原始碼樹建置，已存在的映像不會重建。
 因此新版映像來自 §2.2 的建置，這一步之前必須已經跑過。以交付映像部署、手上沒有原始碼樹者，
 先載入新版映像檔，`up -d` 即以載入的映像啟動。
+
+guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，並以 digest 引用，
+因此 `pull` 取得的一定是那一份映像內容，不會是更新的版本。
 
 資料庫 migration 於後端啟動時自動執行。**啟動日誌是判斷 migration 是否成功的唯一依據**，
 不要在沒看日誌的情況下宣告升級完成。
@@ -552,7 +718,7 @@ compose 仍會嘗試拉取這些映像，因此對本產品自建的映像不要
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的二十八條增量對應的日誌行逐字為：
+本版的二十九條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -583,6 +749,7 @@ compose 仍會嘗試拉取這些映像，因此對本產品自建的映像不要
   執行 migration: 20260923_agent_lateral_rule_pattern (agent_lateral_rule_pattern)
   執行 migration: 20260924_agent_tool_call_args_retained (agent_tool_call_args_retained)
   執行 migration: 20260924_sensitive_reveal_alert (sensitive_reveal_alert)
+  執行 migration: 20260929_notification_channel_min_severity (notification_channel_min_severity)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -741,6 +908,10 @@ AppRole 角色識別與服務區域，以及最後變更者與變更時間。保
 管理員開啟之前行為不變。既有告警不變。依 PostgreSQL 的一般行為，重建值域約束會使資料庫掃描
 告警表既有列以檢查，耗時可能隨列數增加，但不改寫任何列。**它的 `Down` 拒絕執行**，見 §4.1。
 
+`20260929_notification_channel_min_severity` 在通知通道表加一個推送門檻欄與值域約束（`low`、`medium`、`high`）。
+**既有通道取得 `low`，即全部告警，因此每個通道推送的內容與升級前完全相同**；不回填。
+通道表只有少數幾列，約束檢查瞬間完成。**它的 `Down` 有損**，見 §4.1。
+
 #### 查詢主控台（本版新增的功能，影響升級決策的部分）
 
 本版對既有的 mysql／postgres／mssql 資產多開一個**入口**：除了原本的命令列連線之外，
@@ -807,7 +978,7 @@ AppRole 角色識別與服務區域，以及最後變更者與變更時間。保
   且排程產出的報告沒有自然人申請者可綁，故**具稽核檢視權限者皆可列出與下載**。
   證據包的規則一字未動。每次下載照常留稽核。
 - **報告產物與證據包產物落在同一個目錄**（`EXPORT_ARTIFACT_PATH`，預設 `/var/lib/custodexa/exports`），
-  **備份範圍不變**：該目錄仍是暫存、非備份對象。報告陳述的事實全部來自資料庫
+  **備份範圍不變**：該目錄仍非備份對象。報告陳述的事實全部來自資料庫
   （帳號、改密記錄、政策設定），備份含這些事實；重新產出得到的是新的一份報告，
   帶新的產出時刻與新的簽章，不是同一份文件。
   差別在保留期：證據包固定 24 小時，報告的保留期由排程設定（1 至 3650 天），故該目錄的
@@ -816,6 +987,8 @@ AppRole 角色識別與服務區域，以及最後變更者與變更時間。保
   預設的 compose 設定不為該目錄掛載 volume 或 bind mount，容器重建（含本 SOP 的升級步驟）
   會清掉其中的產物。要讓報告確實留到排程設定的保留期，請把該目錄掛載為 volume 或 bind mount，
   或啟用離機儲存；兩者都沒有時，保留期只在容器存活期間有效。
+  自 1.13.0 起，預設的 compose 設定已把該目錄掛載到 `${DATA_PATH}/exports`；
+  從較早版本升級時，依 §2.5 把既有產物搬出一次。
 - **報告的口徑有兩處邊界，稽核讀報告前要先知道。** 一是母體只含**登記於系統的**資產帳號，
   系統不探勘目標主機；二是「共用憑證」標記來自憑證庫：帳號以共用憑證登入即標為共用，不論那筆憑證是管理者
   建立、批次改密產生，還是本版的一次性轉換把證明持有同一組秘密的帳號合併而成；
@@ -1231,22 +1404,31 @@ WHERE l.locktype = 'advisory'
 VERSION=<本次發佈的 tag>
 mkdir -p "release-archive/$VERSION"
 
-# 1. 三個映像的完整套件清單（含版本）——「對應源碼」對應的是哪些套件，由這份清單定義
-for img in custodexa/backend custodexa/frontend custodexa/guacd; do
+# 1. 本專案自建的兩個映像的完整套件清單（含版本）——「對應源碼」對應的是哪些套件，由這份清單定義
+for img in custodexa/backend custodexa/frontend; do
   cid=$(docker create "$img:$VERSION")
   docker cp "$cid":/lib/apk/db/installed - | tar -xO > "release-archive/$VERSION/${img##*/}-apk-installed.txt"
   docker rm "$cid"
 done
 
+# 1b. guacd 是未經修改的上游映像。只有你自己連同上面兩個映像一併交付它時才需記錄
+#     （例如以映像檔交付離線安裝）；自上游拉取的部署，是從上游取得它，不是從你這裡。
+cid=$(docker create guacamole/guacd:1.6.0)
+docker cp "$cid":/lib/apk/db/installed - | tar -xO > "release-archive/$VERSION/guacd-apk-installed.txt"
+docker rm "$cid"
+
 # 2. 對應的 aports commit（版本鎖定的錨；分支會前進，commit 不會）
-#    兩條分支都要記：3.24-stable 對應 backend／frontend 映像的 Alpine 基底，
-#    3.18-stable 對應 guacd 的上游基底（見「部署形態限制」）。漏記一條，
+#    3.24-stable 對應 backend／frontend 映像的 Alpine 基底，3.18-stable 對應 guacd 的
+#    上游基底（見「部署形態限制」），有記 1b 時就要記。漏記一條，
 #    該顆映像就沒有可指名的對應源碼。
 for br in 3.24-stable 3.18-stable; do
   git ls-remote https://gitlab.alpinelinux.org/alpine/aports.git "refs/heads/$br" \
     >> "release-archive/$VERSION/aports-refs.txt"
 done
 ```
+
+本專案 1.13.0 起發佈的映像，每一版另附 SPDX 格式的 SBOM attestation，列出各映像內的套件與版本
+（見 [README](../README.md#預建映像)「預建映像」一節）；上面的清單則是留在你自己存檔裡的那一份。
 
 **為什麼記這兩樣就夠**：
 
@@ -1384,11 +1566,14 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 
 ## 4. 回退路徑
 
+安裝包部署，以及由 1.13.0 腳本轉換過的部署，依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)
+用腳本所做的備份回退。§4.1 與 §4.3 的考量同樣適用；§4.2 的步驟則是給手動升級的 `git clone` 部署。
+
 ### 4.1 回退的唯一手段是還原備份
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的二十八條增量
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的二十九條增量
 （`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
@@ -1398,7 +1583,8 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 `20260921_principal_integrity`、`20260921_access_request_items`、`20260921_access_request_item_decisions`、
 `20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、
 `20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、
-`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`）。
+`20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、
+`20260929_notification_channel_min_severity`）。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；
@@ -1560,6 +1746,10 @@ docker compose -f docker-compose.yml exec -T postgres \
 兩條內建輸出規則也因名稱已存在而不會重新插入，於是這些規則改去比對鍵入的內容，而不是畫面輸出的內容。
 它的生產退路同樣是部署回舊版映像並還原升級前的備份（§4.2）。
 
+**`20260929_notification_channel_min_severity` 的 `Down` 有損。** 它刪掉推送門檻欄與其約束，
+每個通道回到推送全部告警；已設定的門檻沒有第二個來源，日後再升級，該欄會以 `low` 回到每個通道上。
+它的生產退路同樣是部署回舊版映像並還原升級前的備份（§4.2）。打算日後再升級的話，**先把各通道的門檻抄下來**。
+
 **以下十條增量的 `Down` 拒絕執行並回傳錯誤**：
 `20260921_agent_audit_actions`、`20260921_identity_agent_principal`、`20260921_principal_integrity`、
 `20260921_access_request_items`、`20260921_access_request_item_decisions`、`20260921_agent_audit_ledger`、
@@ -1608,12 +1798,12 @@ token 名稱快照與加密存放的原始引數留在原處，橫向移動規�
 2. **部署回舊版本的映像／二進位**（先做這一步；還原的資料庫結構要配上對應的程式碼）。
 
    **自行建置者：把舊版映像掛回 `:latest`。** compose 參照的是 `custodexa/*:latest`，
-   而 §2.2 的新版建置已經把這三個 tag 覆蓋成新版產物——不做這一步，`up -d` 起來的
+   而 §2.2 的新版建置已經把這兩個 tag 覆蓋成新版產物——不做這一步，`up -d` 起來的
    會是**新版程式碼配舊版資料庫**，也就是 §2.6 fail-close 要擋的那種組合。
    用 §2.2 事先另存的 tag：
 
    ```bash
-   for img in backend frontend guacd; do
+   for img in backend frontend; do
      docker tag "custodexa/${img}:pre-upgrade" "custodexa/${img}:latest"
    done
    docker image inspect custodexa/backend:latest --format '{{.Id}}'   # 與舊版映像 ID 相同才往下做
@@ -1623,7 +1813,10 @@ token 名稱快照與加密存放的原始引數留在原處，橫向移動規�
    （以舊版原始碼樹重跑一次建置）；**沒有舊版映像就沒有回退**。
    以交付映像部署者：改為重新載入舊版映像檔並確認 compose 參照到它。
 
-   **直接 `up -d` 就會用剛掛回去的映像啟動。** compose 檔對自建的三顆映像標了 `pull_policy: never`：
+   guacd 這裡不必處理：舊版的 compose 檔指名的是舊版所用的 guacd 映像，升級並未把它從主機移除。
+   回退到 1.12.x 以前的版本時，那是該版自行建置的 guacd 映像；若之後已被刪除，以舊版原始碼樹重跑一次建置。
+
+   **直接 `up -d` 就會用剛掛回去的映像啟動。** compose 檔對自建的映像標了 `pull_policy: never`：
    compose 使用本機已有的同名映像，只有本機沒有時才從原始碼樹建置，所以即使在放著新版原始碼樹的目錄裡，
    掛回 `:latest` 的舊版映像也不會被重建蓋掉。若想在回退期間確保 compose 一律不建置，可在每一次 `up -d`
    加上 `--no-build`，包括步驟 4 還原程序裡的那兩次（`docker compose up -d --no-build postgres`，

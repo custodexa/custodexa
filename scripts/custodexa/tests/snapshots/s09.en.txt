@@ -1,0 +1,36 @@
+[ ?? ] Backup before the upgrade
+
+  [1] Let the script make a full backup (recommended)
+      Database, recordings, audit files, settings, certificates.
+      About 18.4 GB, roughly 12 minutes
+  [2] Use my own backup
+      For example a virtual machine or storage snapshot
+
+Choose [1/2]: 2
+
+[WARN] You chose to use your own backup
+
+  All audit records were confirmed written at 02:16:02 and the
+  services stopped at 02:16:13. Take the snapshot now. It must start
+  after the services stop, and cover the data folder, .env and the
+  certificates folder in the same restorable backup.
+
+  The snapshot must include
+    Data folder      /opt/custodexa/data (database, recordings,
+                     audit files)
+    Settings file    /opt/custodexa/.env
+    Certificates     /opt/custodexa/tls/
+
+  The script cannot check what is in the snapshot. If you roll back
+  later and this version changed the database structure, the script
+  will not restore it for you: it stops before the restore and lists
+  the steps to restore from this snapshot.
+
+  When the snapshot is done, enter (this goes into the upgrade record):
+  Snapshot name or ID                   > vm-snap-custodexa-20260930-0218
+  Snapshot start time (YYYY-MM-DD HH:MM) > 2026-09-30 02:18
+  [ OK ] 02:18 is after the stop time 02:16:13
+  Where is the restore procedure (document name or location)
+                                        > Virtualization platform manual, chapter 4
+  Does the snapshot include every item above, and can it be
+  restored with that procedure? Type yes > yes

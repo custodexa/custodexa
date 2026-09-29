@@ -313,14 +313,14 @@ func (s *AuditExportJobService) List(requesterID uint, kind string, page, pageSi
 // **白名單反向寫**：只有明列為共用的種類才放寬，其餘（含未知值）一律綁本人。
 // 新增一個種類而忘了想清楚授權，落點是「較嚴」那一邊。
 func bindsRequester(kind string) bool {
-	return kind != model.ExportJobKindRotationReport
+	return kind != model.ExportJobKindRotationReport && kind != model.ExportJobKindComplianceReport
 }
 
 // GetForDownload 下載目標解析：種類決定是否要求申請者本人。
 //
 // 證據包：以 (jobID, requesterID) 單一受權查詢，不存在與非申請者收斂為同一個
 // ErrExportJobNotFound——存在性細節不對外。
-// 輪替報告：只以 jobID 取件（呼叫端的稽核檢視權限閘已是全部的授權判準）。
+// 輪替報告與合規報告：只以 jobID 取件（呼叫端的稽核檢視權限閘已是全部的授權判準）。
 func (s *AuditExportJobService) GetForDownload(jobID, requesterID uint) (*model.AuditExportJob, error) {
 	var job model.AuditExportJob
 	if err := s.db.Where("id = ?", jobID).First(&job).Error; err != nil {

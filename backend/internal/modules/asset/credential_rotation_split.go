@@ -172,8 +172,8 @@ func (s *CredentialRotationService) startSplitRotation(ctx context.Context, cred
 			PasswordExcludeAmbiguous: policy.ExcludeAmbiguous,
 			StartedAt:                time.Now(),
 		}
-		if err := tx.Create(rot).Error; err != nil {
-			return fmt.Errorf("建立輪替失敗: %w", err)
+		if err := createRotationRow(tx, rot); err != nil {
+			return err
 		}
 		if err := snapshotRotationMembers(tx, rot, bindings, nil); err != nil {
 			return err

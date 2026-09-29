@@ -1,0 +1,33 @@
+Custodexa 升級預覽（還沒有做任何變更）
+
+  目前版本     1.12.4（git clone 部署，/data/custodexa）
+  升級到       1.13.0
+  這台主機還是 git clone 部署。這是第一次用管理腳本升級，會先把
+  部署目錄整理成新的結構，再完成升級。
+
+會做的事（依序）
+  1. 等稽核紀錄全部寫進資料庫
+  2. 用原本的 /data/custodexa/docker-compose.yml 停止服務
+     （資料庫保持運作）
+  3. 完整備份，預估 6.2 GB；備份位置還有 150 GB
+  4. 移除舊容器（資料在 data/，不受影響），整理目錄
+  5. 換成 1.13.0 並啟動，核對版本、資料、金鑰
+
+目錄整理
+  留在原位     .env、tls/、data/
+  搬到         releases/1.12.4/（保留舊版）
+               git 追蹤的產品檔，以及 .git
+  複製出來     舊容器裡的報表匯出檔 → data/exports/
+  改寫設定     .env 第 68 行  DATA_PATH=./data
+                          →  DATA_PATH=/data/custodexa/data
+               .env 第 28 行  # COMPOSE_FILE=docker-compose.dev.yml
+                          →  COMPOSE_FILE=current/compose.yml
+               新增一行 COMPOSE_PROJECT_NAME
+               改寫前先另存一份 .env
+
+需要知道的事
+  - 預計停機 7 到 14 分鐘
+  - 這次有資料庫結構變更。回到 1.12.4 必須還原這次的備份，
+    備份之後產生的紀錄會遺失
+  - 完成後請改用 /data/custodexa/custodexa.sh 管理；
+    /data/custodexa 不再是 git 目錄，不要再用 git pull 更新

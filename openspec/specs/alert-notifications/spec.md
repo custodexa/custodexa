@@ -40,7 +40,7 @@ The stored secret and the channel url SHALL be envelope-encrypted at rest (data 
 - **THEN** both values are stored as envelope ciphertext (version-prefixed), not plaintext
 
 ### Requirement: Alert push delivery
-When a command alert is created, the system SHALL asynchronously POST a payload to every enabled channel, formatted per channel type, retrying up to 3 times with backoff. `webhook` channels SHALL receive a JSON payload (alert, rule, session context) signed with HMAC-SHA256 in X-OT-Signature when a secret is set. `slack` channels SHALL receive a Slack-compatible message body (`text` field with severity, rule, command, and session context) and SHALL NOT include a signature header. Slack `text` content SHALL escape mrkdwn control characters (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`) so that command text containing shell redirection/operators renders correctly. Delivery failures MUST NOT affect alert persistence or sessions.
+When a command alert is created, the system SHALL asynchronously POST a payload to every enabled channel whose push threshold admits the alert's severity (see Requirement: 通道推送等級門檻), formatted per channel type, retrying up to 3 times with backoff. `webhook` channels SHALL receive a JSON payload (alert, rule, session context) signed with HMAC-SHA256 in X-OT-Signature when a secret is set. `slack` channels SHALL receive a Slack-compatible message body (`text` field with severity, rule, command, and session context) and SHALL NOT include a signature header. Slack `text` content SHALL escape mrkdwn control characters (`&`→`&amp;`, `<`→`&lt;`, `>`→`&gt;`) so that command text containing shell redirection/operators renders correctly. Delivery failures MUST NOT affect alert persistence or sessions.
 
 Alerts whose source kind is not a rule (command audit degraded, new source address, sensitive content access, agent probe breaker) carry a machine identifier in `rule_name` and an intentionally empty command. For these kinds the `slack` text SHALL use a plain-language title for the kind and a plain-language line stating what happened and where to look, both rendered in the channel language; it SHALL NOT show the machine identifier as the title and SHALL NOT render an empty command block. For the command audit degraded kind, the text SHALL state that the input could not be reliably reconstructed as command text and SHALL point the reader to the session recording; when the degrade reason of the rounds that opened the alert can be resolved, the text SHALL add one plain-language line describing the circumstance, and when it cannot be resolved the line SHALL be omitted rather than guessed. The text SHALL NOT characterize the event as an attack or as benign, and the severity SHALL remain as recorded. Rule-kind alerts (including legacy rows without a kind and test notifications) SHALL keep their existing `slack` rendering. The `webhook` payload and syslog forwarding SHALL keep every machine field (`kind`, `reason_code`, `rule_name`, `command` and the rest) unchanged in name and value; the plain-language text exists only in the `slack` body.
 
@@ -218,3 +218,50 @@ Alerts whose source kind is not a rule (command audit degraded, new source addre
 
 - **WHEN** 既有 webhook 收端接收帶主體名稱的告警 payload
 - **THEN** 既有欄位的名稱、型別與語義不變，新增欄位為可選，收端無需修改即可繼續解析
+
+### Requirement: 通道推送等級門檻
+每個通知通道 SHALL 具備推送門檻欄 `min_severity`，值域為 `low`／`medium`／`high`（依序對應畫面的「全部告警」「中、高等級」「只有高等級」），並以資料庫 CHECK 約束保障。建立通道未指定門檻時 SHALL 預設 `low`；既有通道升級後 SHALL 取得 `low`，推送行為與升級前相同。更新時**省略該欄 SHALL 保留既有值**；傳入空值或白名單以外的值 SHALL 以 `VALIDATION_CHANNEL_MIN_SEVERITY` 機器碼拒絕（嚴格匹配）。不提供「全部不推送」的檔位；要完全不收，停用通道。
+
+門檻 SHALL 只作用於告警推送（命令告警與其他以告警形式推送的事件）：告警等級為 `high`／`medium`／`low` 之一時，等級不低於通道門檻才推送到該通道；等級為空或不在三值內的告警 SHALL 照送。系統事件（無等級）與測試發送 SHALL NOT 受門檻影響，照常送到啟用中的通道。門檻 SHALL NOT 改變告警的入庫與 syslog 轉發：兩者在排入推送之前即已依既有規則處理，與任何通道的門檻無關。某則告警沒有任何通道收時，系統 MAY 略過僅供推送內容使用的查詢。
+
+門檻實際改變時，系統 SHALL 寫一筆稽核紀錄，記錄操作者、通道識別與改動前後的門檻值；通道設定端點的請求本文稽核 SHALL 原樣記錄 `min_severity` 的值，SHALL NOT 以遮罩值取代。UI SHALL 在設定旁說明：被略過的中、低等級告警仍記在告警頁；啟用中的通道仍會收到系統事件、測試發送與無法判定等級的告警。
+
+#### Scenario: 預設全部告警
+- **WHEN** 管理員建立通道未提供 `min_severity`，或系統自未有此欄的版本升級
+- **THEN** 該通道的門檻為 `low`，high、medium、low 三種等級的告警都推送到該通道
+
+#### Scenario: 只有高等級的通道略過 medium
+- **WHEN** 一則 medium 告警排入推送，通道甲門檻為 `high`、通道乙門檻為 `low`，兩者皆啟用
+- **THEN** 通道乙收到該告警，通道甲沒有收到
+
+#### Scenario: 只有高等級的通道仍收 high
+- **WHEN** 一則 high 告警排入推送，通道門檻為 `high`
+- **THEN** 該通道收到該告警
+
+#### Scenario: 中、高等級的通道
+- **WHEN** 通道門檻為 `medium`，先後有 low、medium、high 告警各一則排入推送
+- **THEN** 該通道收到 medium 與 high 兩則，沒有收到 low
+
+#### Scenario: 無法判定等級的告警照送
+- **WHEN** 一則等級為空或不在三值內的告警排入推送，通道門檻為 `high`
+- **THEN** 該通道收到該告警
+
+#### Scenario: 系統事件與測試發送不受門檻影響
+- **WHEN** 通道門檻為 `high` 且已啟用，系統發出一則系統事件（例如申請核准），管理員對該通道按下測試發送
+- **THEN** 該通道收到系統事件與測試訊息
+
+#### Scenario: 被略過的告警仍在告警頁
+- **WHEN** 一則 medium 的規則告警被門檻 `high` 的通道略過
+- **THEN** 該告警照常入庫並出現在告警列表，syslog 轉發照常進行
+
+#### Scenario: 更新省略門檻保留原值
+- **WHEN** 管理員更新一個門檻為 `high` 的通道，請求只含 name、type、enabled（例如切換啟用開關）
+- **THEN** 門檻仍為 `high`
+
+#### Scenario: 空值與白名單外值被拒
+- **WHEN** 管理員送出 `min_severity: ""` 或 `min_severity: "critical"`
+- **THEN** 請求以 4xx＋`VALIDATION_CHANNEL_MIN_SEVERITY` 被拒，通道不被寫入
+
+#### Scenario: 門檻改動留下前後值
+- **WHEN** 管理員把通道門檻由 `low` 改為 `high`
+- **THEN** 稽核紀錄中有一筆可讀出操作者、通道、改動前 `low` 與改動後 `high`；門檻未改變的更新不產生這筆紀錄

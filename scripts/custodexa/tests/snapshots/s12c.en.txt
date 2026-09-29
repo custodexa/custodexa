@@ -1,0 +1,19 @@
+[FAIL] The upgrade stopped at step 11/13: the backend did not report
+       ready within 180 seconds
+
+  Where things stand
+    - Switched to 1.13.2; the services started but the backend is
+      not ready
+    - The pre-upgrade backup is complete:
+      /opt/custodexa/backups/20260930-101502/
+    - The script does not roll back on its own
+
+  Check the backend log for the reason first:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  If you still cannot tell why, hand this log and the upgrade log
+  file to operations.
+
+  To go back to 1.13.0, restore the backup above by hand as described
+  in "Backup and Restore", section 5 "Restore procedure".
+
+  Log file /opt/custodexa/logs/upgrade-20260930-101502.log

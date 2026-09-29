@@ -1,0 +1,15 @@
+[FAIL] 升級停在第 11/13 步：後端在 180 秒內沒有回報就緒
+
+  目前狀態
+    - 已切換到 1.13.2，服務已啟動，但後端沒有就緒
+    - 升級前的備份完整：/opt/custodexa/backups/20260930-101502/
+    - 腳本不會自動回退
+
+  先查看後端日誌找原因：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  若仍無法判斷，請將這份日誌與升級紀錄檔交給維運人員。
+
+  決定回到 1.13.0 時，請用上面的備份，照「備份與還原」
+  第 5 節「還原程序」手動還原。
+
+  紀錄檔 /opt/custodexa/logs/upgrade-20260930-101502.log

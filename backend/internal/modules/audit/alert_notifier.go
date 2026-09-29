@@ -495,17 +495,54 @@ func (n *AlertNotifier) resolveSubjectNames(alert model.CommandAlert) alertSubje
 	return out
 }
 
-// notify 推送單筆告警至所有啟用通道（worker 呼叫；測試亦可直接同步呼叫）。
-// 任何失敗僅 log——投遞不持久化追蹤（proposal non-goal）
+// severityRank 告警等級的序位（low < medium < high）；不在三值內回 0
+func severityRank(s string) int {
+	switch s {
+	case model.AlertSeverityLow:
+		return 1
+	case model.AlertSeverityMedium:
+		return 2
+	case model.AlertSeverityHigh:
+		return 3
+	default:
+		return 0
+	}
+}
+
+// channelAdmitsSeverity 通道推送門檻是否放行此等級的告警。
+//   - 告警等級為空或不在三值內：照送——無法分類的告警不應被門檻靜默略過；
+//   - 通道門檻為空或不在三值內（DB CHECK 之下只會出現在繞過 DB 的測試路徑）：
+//     視同 low（全部告警），即門檻欄存在前的行為。
+func channelAdmitsSeverity(minSeverity, severity string) bool {
+	alertRank := severityRank(severity)
+	if alertRank == 0 {
+		return true
+	}
+	return alertRank >= severityRank(minSeverity)
+}
+
+// notify 推送單筆告警至門檻放行的啟用通道（worker 呼叫；測試亦可直接同步呼叫）。
+// 任何失敗僅 log——投遞不持久化追蹤（proposal non-goal）。
+//
+// **推送門檻只在這裡生效**：NotifyEvent（系統事件，無等級）與 SendTestNotification
+// 刻意不套——前者套了會讓「只有高等級」的通道收不到申請核准、稽核失效，
+// 後者套了會讓管理員測不到該通道。告警的入庫與 syslog 轉發在排入本佇列之前
+// 已完成（alert_sink），與門檻無關
 func (n *AlertNotifier) notify(alert model.CommandAlert) {
-	channels := n.snapshotChannels()
+	snapshot := n.snapshotChannels()
+	channels := make([]model.NotificationChannel, 0, len(snapshot))
+	for i := range snapshot {
+		if channelAdmitsSeverity(snapshot[i].MinSeverity, alert.Severity) {
+			channels = append(channels, snapshot[i])
+		}
+	}
 	if len(channels) == 0 {
 		return
 	}
 
 	// 主體名稱在此解析而非入庫時快照：本函式由 worker 呼叫，
 	// 不在告警入庫路徑上；且每則告警只查一次，所有通道共用同一份結果。
-	// channels 為空時已提前返回，不會產生無用查詢。
+	// 沒有任何通道收（無啟用通道或全被門檻略過）時已提前返回，不會產生無用查詢。
 	names := n.resolveSubjectNames(alert)
 
 	// per-channel 建 body：不同類型格式不同（webhook JSON / slack text），

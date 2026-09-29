@@ -586,3 +586,32 @@ func TestExportJobListRejectsUnknownKindWithField(t *testing.T) {
 		t.Fatalf("訊息未帶欄位顯示名: %q", body.Error)
 	}
 }
+
+// TestExportJobListAcceptsComplianceReportKind 列表的 kind 閉集收下 compliance_report，
+// 且該種類是共用產物：他人列得到、下載得到，範圍摘要走報告參數的顯示投影。
+// 擋 A 類：閉集漏加即 400，合規對照頁的「最近產出」與下載中心分頁永遠是空的。
+func TestExportJobListAcceptsComplianceReportKind(t *testing.T) {
+	env := newExportJobTestEnv(t)
+	job, _, err := env.jobs.CreateReportJob(model.ExportJobKindComplianceReport,
+		`{"group":"inhouse","group_name":"內規","language":"zh-TW","retention_days":90,"generated_by":"auditor01"}`,
+		"", "auditor01", 1, nil, nil)
+	if err != nil {
+		t.Fatalf("建工作單: %v", err)
+	}
+	w := env.do("GET", "/api/v1/audit-export/jobs?kind=compliance_report", "9", "auditor")
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	out := w.Body.String()
+	for _, want := range []string{`"kind":"compliance_report"`, `"group":"inhouse"`, `"group_name":"內規"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("清單缺 %s：%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"filter"`) {
+		t.Errorf("合規報告列不得走證據包的篩選投影：%s", out)
+	}
+	if job.RequesterID == 9 {
+		t.Fatal("fixture 應由他人發起")
+	}
+}

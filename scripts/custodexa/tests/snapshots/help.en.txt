@@ -1,0 +1,37 @@
+Custodexa management script 1.13.0
+
+Usage: custodexa.sh <command> [options]
+
+Commands
+  install                First install: check the host, create settings,
+                         get the images, start
+  upgrade                Check for a newer version (changes nothing)
+  upgrade <version>      Download and upgrade to that version (stops the
+                         service and backs up first)
+  upgrade <package>      Upgrade from a package you downloaded (works
+                         offline)
+  status                 Show version, services, backups and the last
+                         upgrade (changes nothing)
+  backup                 Full backup (pauses the service for ten minutes
+                         or more)
+  load <bundle>          Load an offline image bundle (starts nothing)
+
+Options
+  --yes                  Do not ask for confirmation (for automation)
+  --backup-ref <id>      (upgrade) You made your own backup; give the
+                         snapshot name and the script makes none
+  --backup-time <time>   (upgrade) With --backup-ref: when the snapshot
+                         started; must be after the services stopped
+  --backup-restore <doc> (upgrade) With --backup-ref: where the restore
+                         procedure is documented
+  --images <path>        (install, upgrade) Offline image bundle to use
+  --lang <language>      zh-TW, ja or en; defaults to the system language
+  --no-color             No colors
+  --version              Show the script version
+  -h, --help             This help; custodexa.sh <command> --help shows
+                         one command
+
+The deployment folder is the folder this script is in; set the
+environment variable CUSTODEXA_HOME to use another one. Each run is
+logged under <deployment folder>/logs/. For the full procedures see the
+Deployment and Upgrade SOP and Backup and Restore.

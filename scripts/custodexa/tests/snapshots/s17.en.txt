@@ -1,0 +1,27 @@
+Backup preview (nothing has been changed yet)
+
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running) and start again when the
+  backup is done.
+  [WARN] The master key is entered in the browser: after the backup
+         the system is sealed until someone enters the master key on
+         the unseal page.
+  About 18.4 GB; 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/6  Stop the services (database keeps running)      11s
+[ OK ] 2/6  Database                                        1m 40s
+[ OK ] 3/6  Recordings and audit files                      8m 02s
+[ OK ] 4/6  Settings and certificates
+[ OK ] 5/6  Start the services                              9s
+[ OK ] 6/6  Check the backup can be read                    38s
+
+[ OK ] Backup done: /opt/custodexa/backups/20260930-101502/ (18.1 GB)
+  Contains: database, recordings, audit files, settings file .env,
+  certificates tls/
+  [WARN] This backup holds sensitive data and sits on the same host
+         as .env. Encrypt it, store it elsewhere, and keep it apart
+         from the master key material.
+  [WARN] The system is sealed; unseal it at https://10.0.0.12/unseal
+  Log file /opt/custodexa/logs/backup-20260930-101502.log

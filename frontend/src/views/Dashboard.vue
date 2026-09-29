@@ -217,23 +217,49 @@
       v-if="reviewStatus.enabled"
       class="review-card"
     >
+      <!-- 歷次簽核入口一律是真連結（href 同目標）：原生可 Tab 聚焦、Enter 觸發，
+           修飾鍵點擊交還瀏覽器開新分頁 -->
       <div class="review-head">
-        <span class="review-title">{{ $t('dashboard.reviewTitle') }}</span>
-        <span class="review-date">{{ reviewSnapshot.date || '' }}</span>
-        <el-tag
-          v-if="reviewStatus.signed"
-          type="success"
-          size="small"
-        >
-          {{ $t('dashboard.reviewSignedTag') }}
-        </el-tag>
-        <el-tag
-          v-else
-          type="warning"
-          size="small"
-        >
-          {{ $t('dashboard.reviewPendingTag') }}
-        </el-tag>
+        <div class="review-head-main">
+          <a
+            class="review-title review-link"
+            :href="REVIEW_HISTORY_HREF"
+            :aria-label="$t('dashboard.reviewTitleLinkLabel')"
+            @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
+          >
+            {{ $t('dashboard.reviewTitle') }}
+            <ChevronRight
+              class="review-title-icon"
+              :size="16"
+              aria-hidden="true"
+            />
+          </a>
+          <span class="review-date">{{ reviewSnapshot.date || '' }}</span>
+        </div>
+        <div class="review-head-actions">
+          <a
+            v-if="!reviewStatus.signed"
+            class="review-link"
+            :href="REVIEW_HISTORY_HREF"
+            @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
+          >
+            {{ $t('dashboard.reviewHistoryLink') }}
+          </a>
+          <el-tag
+            v-if="reviewStatus.signed"
+            type="success"
+            size="small"
+          >
+            {{ $t('dashboard.reviewSignedTag') }}
+          </el-tag>
+          <el-tag
+            v-else
+            type="warning"
+            size="small"
+          >
+            {{ $t('dashboard.reviewPendingTag') }}
+          </el-tag>
+        </div>
       </div>
 
       <div class="review-counts">
@@ -245,7 +271,7 @@
           @keydown.enter.space.prevent="$router.push('/audit-logs')"
         >
           <div class="review-count-value">
-            {{ reviewSnapshot.login_failures ?? 0 }}
+            {{ reviewCount('login_failures') }}
           </div>
           <div class="review-count-label">
             {{ $t('common.loginFailures') }}
@@ -259,7 +285,7 @@
           @keydown.enter.space.prevent="$router.push('/alerts')"
         >
           <div class="review-count-value">
-            {{ reviewSnapshot.unreviewed_alerts ?? 0 }}
+            {{ reviewCount('unreviewed_alerts') }}
           </div>
           <div class="review-count-label">
             {{ $t('common.unreviewedAlerts') }}
@@ -273,7 +299,7 @@
           @keydown.enter.space.prevent="$router.push('/audit-logs')"
         >
           <div class="review-count-value">
-            {{ reviewSnapshot.high_risk_ops ?? 0 }}
+            {{ reviewCount('high_risk_ops') }}
           </div>
           <div class="review-count-label">
             {{ $t('common.highRiskOps') }}
@@ -285,11 +311,20 @@
         v-if="reviewStatus.signed"
         class="review-signed"
       >
-        {{ $t('dashboard.reviewSignedBy', {
-          name: reviewStatus.review?.reviewer_name,
-          time: formatDateTime(reviewStatus.review?.created_at),
-        }) }}
-        <span v-if="reviewStatus.review?.note">{{ $t('dashboard.reviewSignedNote', { note: reviewStatus.review.note }) }}</span>
+        <span class="review-signed-text">
+          {{ $t('dashboard.reviewSignedBy', {
+            name: reviewStatus.review?.reviewer_name,
+            time: formatDateTime(reviewStatus.review?.created_at),
+          }) }}
+          <span v-if="reviewStatus.review?.note">{{ $t('dashboard.reviewSignedNote', { note: reviewStatus.review.note }) }}</span>
+        </span>
+        <a
+          class="review-link"
+          :href="REVIEW_HISTORY_HREF"
+          @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
+        >
+          {{ $t('dashboard.reviewHistoryLinkSigned') }}
+        </a>
       </div>
       <div
         v-else-if="canSign"
@@ -306,14 +341,18 @@
           :loading="signing"
           @click="handleSignReview"
         >
-          {{ $t('dashboard.signReviewButton') }}
+          {{ reviewSnapshot.date
+            ? $t('dashboard.signReviewForDate', { date: reviewSnapshot.date })
+            : $t('dashboard.signReviewButton') }}
         </el-button>
       </div>
       <div
         v-else
         class="review-hint"
       >
-        {{ $t('dashboard.reviewWaitingHint') }}
+        {{ reviewSnapshot.date
+          ? $t('dashboard.reviewWaitingHintForDate', { date: reviewSnapshot.date })
+          : $t('dashboard.reviewWaitingHint') }}
       </div>
     </div>
 
@@ -463,6 +502,7 @@ import {
   MonitorPlay,
   ScrollText,
   RefreshCw,
+  ChevronRight,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import { BRAND } from '@/brand'
@@ -782,22 +822,39 @@ const reviewStatus = ref({ enabled: false })
 const reviewNote = ref('')
 const signing = ref(false)
 
+// 歷次簽核在操作日誌頁的「每日簽核」分頁；該頁只認白名單內的 tab 值
+const REVIEW_HISTORY_ROUTE = Object.freeze({ path: '/audit-logs', query: Object.freeze({ tab: 'reviews' }) })
+const REVIEW_HISTORY_HREF = '/audit-logs?tab=reviews'
+
 // 簽核權限 alert:manage（admin/auditor＝isPrivileged）——與後端一致；其他角色唯讀計數
 const canSign = isPrivileged
 
-// 快照計數：未簽時 status 直接帶 snapshot；已簽回應以 review.snapshot_json 備援
-const reviewSnapshot = computed(() => {
-  if (reviewStatus.value.snapshot) return reviewStatus.value.snapshot
-  const raw = reviewStatus.value.review?.snapshot_json
-  if (raw) {
-    try {
-      return typeof raw === 'string' ? JSON.parse(raw) : raw
-    } catch {
-      return {}
-    }
+const parseFrozenSnapshot = (raw) => {
+  if (!raw) return {}
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
   }
-  return {}
+}
+
+// 卡片計數來源：狀態端點每次都回即時的 snapshot，已簽時另帶 review.snapshot_json
+// （簽核當下固化的計數，歷次簽核頁顯示的也是它）。已簽只認後者，否則簽核後新增的
+// 事件會讓卡片與歷次簽核那筆對不上；待簽才用即時計數。
+const reviewSnapshot = computed(() => {
+  const status = reviewStatus.value
+  if (!status.signed) return status.snapshot || {}
+  const frozen = parseFrozenSnapshot(status.review?.snapshot_json)
+  return { ...frozen, date: status.review?.review_date || frozen.date || '' }
 })
+
+// 已簽快照缺少的計數照實顯示「—」，不拿即時值或 0 填
+const reviewCount = (key) => {
+  const value = reviewSnapshot.value[key]
+  if (typeof value === 'number') return value
+  return reviewStatus.value.signed ? '—' : 0
+}
 
 const loadReviewStatus = async () => {
   // 狀態查詢掛 audit:view（admin/auditor）——一般 user 不發請求，
@@ -818,8 +875,13 @@ const loadReviewStatus = async () => {
 const handleSignReview = async () => {
   signing.value = true
   try {
-    await signDailyReview({ note: reviewNote.value })
-    ElMessage.success(t('dashboard.reviewSignedSuccess'))
+    const signedDate = reviewSnapshot.value.date
+    const res = await signDailyReview({ note: reviewNote.value })
+    // 以伺服器實際寫入的審閱日為準，缺時退回卡片所示日期
+    const date = res?.data?.review_date || signedDate
+    ElMessage.success(date
+      ? t('dashboard.reviewSignedSuccessForDate', { date })
+      : t('dashboard.reviewSignedSuccess'))
     reviewNote.value = ''
     await loadReviewStatus()
   } catch (error) {
@@ -987,21 +1049,59 @@ onUnmounted(() => {
 
 .review-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 8px 12px;
   margin-bottom: 12px;
 }
 
+.review-head-main,
+.review-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+/* 連結樣式：品牌主色＋底線於 hover／焦點出現，與一般文字可區分 */
+.review-link {
+  color: var(--ot-primary);
+  font-size: 13px;
+  text-decoration: none;
+  border-radius: 2px;
+}
+
+.review-link:hover,
+.review-link:focus-visible {
+  color: var(--ot-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.review-link:focus-visible {
+  outline: 2px solid var(--ot-primary);
+  outline-offset: 2px;
+}
+
+/* 標題本身維持標題字色，靠右側箭頭與 hover 底線表明可點 */
 .review-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-weight: 600;
   font-size: 14px;
   color: var(--ot-text-primary);
 }
 
+.review-title-icon {
+  color: var(--ot-primary);
+  flex-shrink: 0;
+}
+
 .review-date {
   font-size: 13px;
   color: var(--ot-text-secondary);
-  margin-right: auto;
 }
 
 .review-counts {
@@ -1048,10 +1148,26 @@ onUnmounted(() => {
   max-width: 420px;
 }
 
+/* 按鈕文字帶日期，窄欄時允許換行而不溢出卡片 */
+.review-sign :deep(.el-button) {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+}
+
 .review-signed,
 .review-hint {
   font-size: 13px;
   color: var(--el-text-color-regular);
+}
+
+.review-signed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
 }
 
 .quick-actions {

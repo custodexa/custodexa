@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElMessage } from 'element-plus'
 import Dashboard from '../Dashboard.vue'
 
 // 逐測卸載：本檔掛載元件後不卸載，殘留元件在 document 上累積會使單測耗時隨測試序
@@ -430,13 +430,131 @@ describe('Dashboard', () => {
     expect(text).toContain('高危操作')
     expect(text).toContain('待簽核')
 
-    // 三計數可點導向對應頁面
+    // 三計數可點（亦可鍵盤 Enter）導向各自原有頁面，不因卡片新增歷次簽核入口而改變
     const counts = wrapper.findAll('.review-count')
     expect(counts).toHaveLength(3)
-    await counts[0].trigger('click')
-    expect(routerPushMock).toHaveBeenCalledWith('/audit-logs')
-    await counts[1].trigger('click')
-    expect(routerPushMock).toHaveBeenCalledWith('/alerts')
+    // 待簽：計數即時（status.snapshot），簽核者據此確認後才簽
+    expect(wrapper.findAll('.review-count-value').map((v) => v.text())).toEqual(['2', '1', '3'])
+    const expected = ['/audit-logs', '/alerts', '/audit-logs']
+    for (const [i, target] of expected.entries()) {
+      routerPushMock.mockClear()
+      await counts[i].trigger('click')
+      expect(routerPushMock.mock.calls).toEqual([[target]])
+      routerPushMock.mockClear()
+      await counts[i].trigger('keydown', { key: 'Enter' })
+      expect(routerPushMock.mock.calls).toEqual([[target]])
+    }
+  })
+
+  const REVIEW_HISTORY_ROUTE = { path: '/audit-logs', query: { tab: 'reviews' } }
+
+  // 防：入口導向錯頁（例如只推 '/audit-logs' 落在操作日誌分頁）——使用者仍找不到
+  // 歷次簽核；或入口不是真連結，鍵盤使用者按不到
+  it('待簽時卡片標題與「歷次簽核」連結導向每日簽核分頁，按鈕帶卡片日期', async () => {
+    setUserRoles(['auditor'])
+    getDailyReviewStatusMock.mockResolvedValue({ data: enabledStatus })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    const title = wrapper.find('a.review-title')
+    const headLink = wrapper.find('.review-head-actions a.review-link')
+    for (const link of [title, headLink]) {
+      expect(link.exists()).toBe(true)
+      // 真連結：原生可 Tab 聚焦、Enter 觸發，新分頁開啟也落在同一頁
+      expect(link.attributes('href')).toBe('/audit-logs?tab=reviews')
+      routerPushMock.mockClear()
+      await link.trigger('click')
+      expect(routerPushMock.mock.calls).toEqual([[REVIEW_HISTORY_ROUTE]])
+    }
+    expect(title.text()).toContain('每日安全審閱')
+    expect(headLink.text()).toBe('歷次簽核')
+
+    // 按鈕日期與卡片所示日期同源：卡片日期是前一日時，不得寫成「今日」
+    const signButton = wrapper.find('.review-sign button')
+    expect(signButton.text()).toBe('簽核 2026-07-13 的審閱')
+    expect(wrapper.find('.review-date').text()).toBe('2026-07-13')
+  })
+
+  // 防：簽核成功提示幾秒即消失，若已簽狀態沒有常駐入口，剛簽完的人找不到剛留下的記錄
+  it('已簽狀態列提供「檢視歷次簽核」連結並導向每日簽核分頁', async () => {
+    setUserRoles(['admin'])
+    getDailyReviewStatusMock.mockResolvedValue({
+      data: {
+        enabled: true,
+        signed: true,
+        review: {
+          reviewer_name: 'auditor01',
+          created_at: '2026-07-14T00:36:00Z',
+          note: '',
+          snapshot_json:
+            '{"date":"2026-07-13","login_failures":2,"unreviewed_alerts":1,"high_risk_ops":3}',
+        },
+      },
+    })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    // 已簽時標題列不再重複放「歷次簽核」，改由狀態列承擔
+    expect(wrapper.find('.review-head-actions a.review-link').exists()).toBe(false)
+    const link = wrapper.find('.review-signed a.review-link')
+    expect(link.exists()).toBe(true)
+    expect(link.text()).toBe('檢視歷次簽核')
+    expect(link.attributes('href')).toBe('/audit-logs?tab=reviews')
+    await link.trigger('click')
+    expect(routerPushMock.mock.calls).toEqual([[REVIEW_HISTORY_ROUTE]])
+    expect(wrapper.find('.review-signed').text()).toContain('auditor01')
+  })
+
+  // 防：已簽卡片若顯示即時計數，簽核後新增的事件會讓卡片數字與歷次簽核那筆
+  // 不一致——稽核者看到兩個數字，無從判斷簽核者當時看到的是哪一個
+  it('已簽狀態顯示簽核當時的快照計數，不取即時計數', async () => {
+    setUserRoles(['auditor'])
+    getDailyReviewStatusMock.mockResolvedValue({
+      data: {
+        enabled: true,
+        signed: true,
+        // 狀態端點每次都帶即時計數；簽核後又多了事件
+        snapshot: { date: '2026-07-13', login_failures: 420, unreviewed_alerts: 9, high_risk_ops: 50 },
+        review: {
+          review_date: '2026-07-13',
+          reviewer_name: 'auditor01',
+          created_at: '2026-07-14T00:36:00Z',
+          snapshot_json:
+            '{"date":"2026-07-13","login_failures":352,"unreviewed_alerts":1,"high_risk_ops":3}',
+        },
+      },
+    })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(wrapper.findAll('.review-count-value').map((v) => v.text())).toEqual(['352', '1', '3'])
+    expect(wrapper.find('.review-counts').text()).not.toContain('420')
+    expect(wrapper.find('.review-date').text()).toBe('2026-07-13')
+  })
+
+  it('已簽快照缺少某個計數時照實呈現「—」，不以即時值或 0 填補', async () => {
+    setUserRoles(['auditor'])
+    getDailyReviewStatusMock.mockResolvedValue({
+      data: {
+        enabled: true,
+        signed: true,
+        snapshot: { date: '2026-07-13', login_failures: 420, unreviewed_alerts: 9, high_risk_ops: 50 },
+        review: {
+          review_date: '2026-07-13',
+          reviewer_name: 'auditor01',
+          created_at: '2026-07-14T00:36:00Z',
+          snapshot_json: '{"date":"2026-07-13","login_failures":352,"unreviewed_alerts":1}',
+        },
+      },
+    })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    expect(wrapper.findAll('.review-count-value').map((v) => v.text())).toEqual(['352', '1', '—'])
   })
 
   it('signs review with note and switches to signed state', async () => {
@@ -448,13 +566,17 @@ describe('Dashboard', () => {
           ...enabledStatus,
           signed: true,
           review: {
+            review_date: '2026-07-13',
             reviewer_name: 'admin',
             created_at: '2026-07-13T09:30:00Z',
             note: '一切正常',
+            snapshot_json:
+              '{"date":"2026-07-13","login_failures":2,"unreviewed_alerts":1,"high_risk_ops":3}',
           },
         },
       })
-    signDailyReviewMock.mockResolvedValue({})
+    signDailyReviewMock.mockResolvedValue({ data: { review_date: '2026-07-13' } })
+    const successSpy = vi.spyOn(ElMessage, 'success')
 
     const wrapper = mountDashboard()
     await flushPromises()
@@ -462,17 +584,35 @@ describe('Dashboard', () => {
     wrapper.vm.reviewNote = '一切正常'
     const signButton = wrapper
       .findAll('button')
-      .find((button) => button.text().includes('簽核今日審閱'))
+      .find((button) => button.text().includes('簽核 2026-07-13 的審閱'))
     expect(signButton).toBeTruthy()
 
     await signButton.trigger('click')
     await flushPromises()
 
     expect(signDailyReviewMock).toHaveBeenCalledWith({ note: '一切正常' })
+    // 成功提示帶被簽核的日期，與按鈕說法一致（卡片是前一日時不得寫「今日」）
+    expect(successSpy).toHaveBeenCalledWith('2026-07-13 的審閱已簽核')
+    successSpy.mockRestore()
     const text = wrapper.text()
     expect(text).toContain('已簽核')
     expect(text).toContain('admin')
     expect(text).toContain('一切正常')
+  })
+
+  it('非簽核者提示帶卡片日期，不寫「今日」', async () => {
+    // 目前卡片只對 admin／auditor 取數且兩者皆可簽，此提示是 canSign 與取數權限
+    // 分離時的防線；直接注入狀態驗其文案
+    setUserRoles(['user'])
+    const wrapper = mountDashboard()
+    await flushPromises()
+    wrapper.vm.reviewStatus = enabledStatus
+    await flushPromises()
+
+    const hint = wrapper.find('.review-hint')
+    expect(hint.exists()).toBe(true)
+    expect(hint.text()).toContain('2026-07-13')
+    expect(hint.text()).not.toContain('今日')
   })
 
   it('refreshes status when sign conflicts with 409 (他人已先簽核)', async () => {

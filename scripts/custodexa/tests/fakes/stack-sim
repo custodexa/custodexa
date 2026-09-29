@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# The services of one deployment on the simulated daemon, for the install tests. Installed as the
+# fake docker's hook (a symlink, so daemon-sim is found next to this file); everything about images
+# is passed on to daemon-sim. State in $SIM, next to daemon-sim's:
+#   containers     "<container name> <image ID>", written by `compose up` from the CUSTODEXA_IMAGE_*
+#                  references compose was given: a reference not on the daemon fails like
+#                  pull_policy: never does
+#   workdir        the --project-directory of the last `compose up` (the compose label)
+#   published      "<port> <container name>" for the ports the built-in proxy publishes
+# Switches (files in $SIM): up-fails, up-swap (backend runs another image), echo-env (up prints the
+# .env it reads), health-fails, health-version (the version /health reports), run-fails, run-mode,
+# stopped (container names that are not running, one per line), seal-state (what the backend's
+# seal status reports; unsealed when absent), seal-init (initialization still required), seal-fails.
+# tls-init is a one-off: once started it shows as exited with code 0.
+set -u
+here=$(dirname "$(readlink -f "$0")")
+sim=${SIM:-$FAKE_DOCKER_REPLAY/sim}
+mkdir -p "$sim"
+touch "$sim/containers" "$sim/published"
+last() { eval "printf '%s' \"\${$#}\""; }
+image_id() { "$here/daemon-sim" image inspect --format '{{.Id}}' "$1" 2>/dev/null; }
+container() {
+  case $1 in
+    openssl) printf 'custodexa-tls-init' ;;
+    nginx) printf 'custodexa-tls-proxy' ;;
+    *) printf 'custodexa-%s' "$1" ;;
+  esac
+}
+
+case "${1:-}" in
+  container)
+    [ "${2:-}" = inspect ] || exit 99
+    c=$(last "$@")
+    grep -q "^$c " "$sim/containers" || { echo "Error: No such container: $c" >&2; exit 1; }
+    if [[ " $* " == *".State.Status"* ]]; then
+      if grep -qx "$c" "$sim/stopped" 2>/dev/null; then echo "exited 137"
+      elif [ "$c" = custodexa-tls-init ]; then echo "exited 0"
+      else echo "running 0"; fi
+      exit 0
+    fi
+    printf '{"com.docker.compose.project":"custodexa","com.docker.compose.project.working_dir":"%s"}\n' "$(cat "$sim/workdir")"
+    ;;
+  ps)
+    port="" dir=""
+    for a in "$@"; do
+      case $a in
+        publish=*) port=${a#publish=} ;;
+        label=com.docker.compose.project.working_dir=*) dir=${a#label=com.docker.compose.project.working_dir=} ;;
+      esac
+    done
+    [ -z "$dir" ] || [ "$dir" = "$(cat "$sim/workdir" 2>/dev/null)" ] || exit 0
+    awk -v p="$port" '$1 == p { print $2 }' "$sim/published"
+    ;;
+  run)
+    vol="" img=""
+    shift
+    while [ $# -gt 0 ]; do
+      case $1 in
+        -v) vol=$2; shift ;;
+        --pull | --network | --user | --entrypoint) shift ;;
+        -c) shift ;;
+        -*) ;;
+        *) [ -n "$img" ] || img=$1 ;;
+      esac
+      shift
+    done
+    image_id "$img" >/dev/null || { echo "docker: Error response from daemon: No such image: $img" >&2; exit 125; }
+    [ ! -f "$sim/run-fails" ] || { echo "chown: /r: Operation not permitted" >&2; exit 1; }
+    mkdir -p "${vol%%:*}"
+    cat "$sim/run-mode" 2>/dev/null || echo "1000:0 2770"
+    ;;
+  exec)
+    # exec custodexa-backend wget -qO- http://localhost:8080/<path>
+    [ "${2:-}" = custodexa-backend ] || exit 99
+    # The production backend image has no shell; only /bin/busybox is left.
+    case ${3:-} in sh | /bin/sh) echo 'exec: "sh": executable file not found in $PATH' >&2; exit 127 ;; esac
+    grep -q '^custodexa-backend ' "$sim/containers" && ! grep -qx custodexa-backend "$sim/stopped" 2>/dev/null ||
+      { echo "Error response from daemon: container custodexa-backend is not running" >&2; exit 1; }
+    case $(last "$@") in
+      */health)
+        [ ! -f "$sim/health-fails" ] || exit 1
+        printf '{"database":"connected","service":"custodexa-backend","status":"ok","version":"%s"}\n' \
+          "$(cat "$sim/health-version" 2>/dev/null || echo 1.13.0)"
+        ;;
+      */api/v1/seal/status)
+        [ ! -f "$sim/seal-fails" ] || { echo "wget: server returned error: HTTP/1.1 403 Forbidden" >&2; exit 1; }
+        st=$(cat "$sim/seal-state" 2>/dev/null || echo unsealed)
+        # As the backend answers: keys in alphabetical order, so the instance_guard object and its
+        # own "state" come before the seal state.
+        ig='"instance_guard":{"state":"held","since":"2026-09-30T01:00:00Z","reason":"","peers":0}'
+        if [ "$st" = unsealed ]; then
+          printf '{"authorization_required":true,"generation":1,%s,"mode":"ui","state":"unsealed"}\n' "$ig"
+        else
+          printf '{"authorization_required":true,"generation":1,"initialization_required":%s,%s,"mode":"ui","state":"%s"}\n' \
+            "$([ -f "$sim/seal-init" ] && echo true || echo false)" "$ig" "$st"
+        fi
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  compose)
+    dir=""
+    for a in "$@"; do
+      [ "${prev:-}" = --project-directory ] && dir=$a
+      prev=$a
+    done
+    if [[ " $* " == *" up "* ]]; then
+      [ ! -f "$sim/up-fails" ] || { echo "Error response from daemon: driver failed programming external connectivity" >&2; exit 1; }
+      [ ! -f "$sim/echo-env" ] || { cat "$dir/.env"; sed 's/^/warn /' "$dir/.env" >&2; }
+      : >"$sim/containers.new"
+      : >"$sim/published"
+      for n in postgres guacd backend frontend openssl nginx; do
+        var=CUSTODEXA_IMAGE_${n^^}
+        ref=${!var:-}
+        [ -n "$ref" ] || continue
+        id=$(image_id "$ref") || { echo "Error response from daemon: No such image: $ref" >&2; exit 1; }
+        [ "$n" != backend ] || [ ! -f "$sim/up-swap" ] || id=sha256:0bad000000000000000000000000000000000000000000000000000000000000
+        printf '%s %s\n' "$(container "$n")" "$id" >>"$sim/containers.new"
+        echo " Container $(container "$n")  Started"
+      done
+      mv "$sim/containers.new" "$sim/containers"
+      if grep -q '^custodexa-tls-proxy ' "$sim/containers"; then
+        printf '443 custodexa-tls-proxy\n80 custodexa-tls-proxy\n' >"$sim/published"
+      fi
+      printf '%s' "$dir" >"$sim/workdir"
+      exit 0
+    fi
+    if [[ " $* " == *" exec "* ]]; then
+      [ ! -f "$sim/health-fails" ] || exit 1
+      grep -q '^custodexa-backend ' "$sim/containers" || { echo "service \"backend\" is not running" >&2; exit 1; }
+      printf '{"database":"connected","service":"custodexa-backend","status":"ok","version":"%s"}\n' \
+        "$(cat "$sim/health-version" 2>/dev/null || echo 1.13.0)"
+      exit 0
+    fi
+    exec "$here/daemon-sim" "$@"
+    ;;
+  *) exec "$here/daemon-sim" "$@" ;;
+esac

@@ -11,7 +11,7 @@
   <a href="https://sonarcloud.io/summary/new_code?id=custodexa_custodexa"><img src="https://sonarcloud.io/api/project_badges/measure?project=custodexa_custodexa&metric=reliability_rating" alt="Reliability Rating"></a>
   <a href="https://github.com/custodexa/custodexa/releases"><img src="https://img.shields.io/github/v/release/custodexa/custodexa" alt="Latest release"></a>
   <a href="https://github.com/custodexa/custodexa/commits"><img src="https://img.shields.io/github/last-commit/custodexa/custodexa" alt="Last commit"></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--only-blue" alt="License: AGPL-3.0-only"></a>
 </p>
 
 **誰連了什麼、做了什麼，錄影說了算。**
@@ -27,6 +27,26 @@
 </p>
 
 ## 快速開始
+
+Linux 伺服器請用安裝包安裝。從發行頁把 `custodexa-<版本>.tar.gz`、`SHA256SUMS`、
+`SHA256SUMS.sigstore.json` 下載到同一個目錄，先驗證，再解開並安裝（`1.13.0` 換成你下載的版本）：
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  SHA256SUMS
+sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo /opt/custodexa/custodexa.sh install
+```
+
+`install` 會在寫入任何檔案前先檢查主機，產生 `.env` 與其中的機密，取得映像並逐一與發行清單的摘要核對，
+啟動服務並等待後端回報就緒，最後輸出連線網址與 admin 登入資訊；你已經填好的值一律不動。
+`custodexa.sh status` 可查看部署狀態，不做任何變更。離線主機、每一步的檢查與目錄結構，
+見[用安裝包安裝](QUICKSTART.md#用安裝包安裝)。
+
+要在 macOS、Windows 上評估，或參與開發，改從原始碼執行：
 
 ```bash
 git clone https://github.com/custodexa/custodexa.git
@@ -59,11 +79,11 @@ PUBLIC_BASE_URL=https://bastion.example.com
 TLS_MODE=provided
 ```
 
-以 `admin` 加上你設定的初始密碼登入，首次登入會先引導你改密，
+以 `admin` 加上初始密碼登入（安裝時畫面印出的那組，或你在 `.env` 設定的值），首次登入會先引導你改密，
 之後就能開始加資產、發起連線。
 
 沒有出廠預設的密碼或金鑰。`.env` 的 `JWT_SECRET`、`DB_PASSWORD` 與 `ADMIN_INITIAL_PASSWORD`
-都必須是你自己的值（缺的由腳本生成）；主金鑰在預設模式下來自初始化頁，其他金鑰模式則來自
+都必須是你自己的值（缺的由兩支腳本生成）；主金鑰在預設模式下來自初始化頁，其他金鑰模式則來自
 `ENCRYPTION_KEY` 或 KMS。這是刻意的：堡壘機不該帶著預設憑證上線。
 完整設定選項、開發模式與故障排除見 [docs/QUICKSTART.md](../QUICKSTART.md)。
 
@@ -91,7 +111,7 @@ TLS_MODE=provided
 | **05 錄影與稽核** | 全協議錄影回放（可快轉、拖進度條），指令與語句軌跡經虛擬螢幕重組，能處理 vim 這類全螢幕程式；webhook 告警；檢查點鏈定期存證；證據包內含清單檔與簽章，異地副本存到物件儲存。 |
 
 **真正開源，單一版本。** 沒有企業版，也沒有付費解鎖的功能。
-你看到的就是全部，授權為 AGPL-3.0。
+你看到的就是全部，授權為 AGPL-3.0-only。
 
 **部署簡單。** docker compose 一條指令，出廠即走 https，
 啟動後不需要對外網路。
@@ -108,7 +128,7 @@ TLS_MODE=provided
 | **資料庫語句稽核** | 不在管轄內 | 以網路層為界，不解析語句 | 依實作，涵蓋部分協定 | 依版本，部分具備 | 語句先留痕再執行，危險語句可即時阻斷 |
 | **證據封裝** | 自行從日誌彙整 | 連線日誌自行彙整 | 提供紀錄與錄影匯出 | 提供報表與匯出 | 單一 ZIP 內含清單檔與簽章，逐檔雜湊可離線驗證 |
 | **憑證輪替** | 人工維護 | 交由目錄服務維護 | 依實作，以人工維護 | 具備排程輪替 | Linux 與 Windows 排程改密，附輪替證據報告 |
-| **授權條款** | 沿用作業系統既有元件的授權 | 依實作，開源與商用並存 | 開源授權為主 | 商用訂閱或永久授權 | 開源，AGPL-3.0，程式碼可自行查核 |
+| **授權條款** | 沿用作業系統既有元件的授權 | 依實作，開源與商用並存 | 開源授權為主 | 商用訂閱或永久授權 | 開源，AGPL-3.0-only，程式碼可自行查核 |
 
 ## 畫面
 
@@ -157,6 +177,47 @@ agent 通道開放到哪裡：
 十項工具與其行為見 [docs/API_SPEC.md](../API_SPEC.md) 的 MCP 章；token 輪替、事件處置與
 agent 的核准設定見 [ops/deployment-topology-limits.md](ops/deployment-topology-limits.md)。
 
+## 預建映像
+
+自 1.13.0 起，每個版本 tag 都由 CI 建置 backend 與 frontend 映像並發佈，
+架構為 `linux/amd64` 與 `linux/arm64`：
+
+| Registry | 映像 |
+|---|---|
+| GitHub Container Registry（主） | `ghcr.io/custodexa/backend`、`ghcr.io/custodexa/frontend` |
+| Docker Hub（鏡像，digest 相同） | `docker.io/custodexa/backend`、`docker.io/custodexa/frontend` |
+
+tag 跟著版本號走：
+
+- 正式版 `vX.Y.Z` 的 tag 為 `X.Y.Z`。它是該 minor 線最高的版本時一併取得 `X.Y`；
+  在 GitHub Container Registry 上，它是全部正式版中最高的版本時再取得 `latest`。
+- Docker Hub 只有 `X.Y.Z` 與 `X.Y`，永遠沒有 `latest` tag。
+- 預發版只以完整版號發佈在 GitHub Container Registry，不鏡像到 Docker Hub。
+- 已發佈的 `X.Y.Z` 不會被覆寫；修正一律以新的修訂版發出。
+
+每顆映像都由本 repo 的發佈 workflow 簽章，並附建置出處證明（provenance）與 SPDX 格式的
+SBOM attestation。驗證時把下列指令中的 `1.13.0` 全部換成你拉取的版本：
+
+```bash
+cosign verify ghcr.io/custodexa/backend:1.13.0 \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa
+gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/custodexa \
+  --predicate-type https://spdx.dev/Document/v2.3
+```
+
+第一條驗簽章，第二條驗建置出處證明，第三條驗 SBOM，SBOM 列出映像內的套件與版本。
+同樣的指令也適用於 `frontend`，以及 `docker.io/custodexa/` 下的 Docker Hub 鏡像。
+
+每顆映像在 `/usr/share/doc/custodexa/` 內附本專案的 `LICENSE`、`NOTICE`、
+`THIRD-PARTY-LICENSES.md` 與 `licenses/`，並標註 `org.opencontainers.image.licenses=AGPL-3.0-only`。
+本專案不發佈 guacd 映像：編排檔直接使用官方的 `guacamole/guacd:1.6.0`，以 digest 釘定。
+
+安裝包執行的就是這些映像：它的管理腳本依發行清單記錄的摘要取得每個映像，只有在映像倉庫與離線包都
+取不到時才用原始碼建置，啟動後再確認每個容器跑的都是它核對過的映像。從原始碼執行的方式不變。repo 內的編排檔不引用這些已發佈的映像：`scripts/quickstart.sh`
+仍從原始碼樹建置 `custodexa/backend:latest` 與 `custodexa/frontend:latest`，且永不拉取（`pull_policy: never`）。
+
 ## 文檔地圖
 
 三語文件索引在[文件索引](../README.md)。
@@ -184,9 +245,9 @@ agent 的核准設定見 [ops/deployment-topology-limits.md](ops/deployment-topo
 
 ## 授權
 
-本專案以 **GNU Affero General Public License v3.0（AGPL-3.0）** 授權發佈，全文見 [LICENSE](../../LICENSE)。
+本專案以 **GNU Affero General Public License 第 3 版（僅此版本，AGPL-3.0-only）** 授權發佈，全文見 [LICENSE](../../LICENSE)。
 
-AGPL-3.0 的網路服務條款（第 13 條）要求：若你修改本軟體並透過網路提供服務給使用者，
+AGPL 的網路服務條款（第 13 條）要求：若你修改本軟體並透過網路提供服務給使用者，
 須同時向這些使用者提供修改後的完整原始碼。
 
 **單一版本，不分級。** 沒有企業版、沒有付費解鎖的功能、也沒有另行授權的模組。
@@ -195,7 +256,7 @@ AGPL-3.0 的網路服務條款（第 13 條）要求：若你修改本軟體並�
 
 ### 第三方元件
 
-散布物另含 218 個第三方元件，各自保留其原授權，清單見
+散布物另含 219 個第三方元件，各自保留其原授權，清單見
 [THIRD-PARTY-LICENSES.md](../../THIRD-PARTY-LICENSES.md)；
 Apache License 2.0 元件的歸屬聲明見 [NOTICE](../../NOTICE)；授權正文副本在 [`licenses/`](../../licenses/)。
 

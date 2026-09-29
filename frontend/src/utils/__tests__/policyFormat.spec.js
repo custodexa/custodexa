@@ -5,6 +5,7 @@ import {
   policyMin,
   policyUnit,
   formatValue,
+  formatKeyValue,
   expectationText,
 } from '@/utils/policyFormat'
 
@@ -66,6 +67,12 @@ describe('policyUnit — unit_key 查譯 + 降級不回空字串', () => {
   it('formatValue int 型用 policyUnit', () => {
     setLocale('en-US')
     expect(formatValue({ type: 'int', unit_key: 'minutes', unit: '分鐘' }, 30)).toBe('30 minutes')
+    // 0 值的語義說明：英文用半形括號，中日文沿全形
+    const zeroMeta = { unit_key: 'days', zero_disables: true }
+    expect(formatKeyValue('retention_audit_log_days', '0', zeroMeta)).toBe('0 days (kept forever)')
+    expect(formatKeyValue('password_max_age_days', '0', zeroMeta)).not.toMatch(/[（）]/)
+    setLocale('zh-TW')
+    expect(formatKeyValue('retention_audit_log_days', '0', zeroMeta)).toBe('0 天（永久保留）')
   })
 })
 

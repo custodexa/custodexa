@@ -1,0 +1,8 @@
+[FAIL]  4/13  Wait for audit records to be written: 1,530 still
+              waiting after 120 seconds
+
+  The services are still running. Nothing was changed.
+  This usually means the database is busy or writing slowly. Try the
+  upgrade again when usage is low. To check the number yourself:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml exec -T backend \
+      wget -qO- http://localhost:8080/metrics | grep custodexa_audit_queue_depth

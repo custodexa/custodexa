@@ -1,5 +1,7 @@
 import request from './request'
 
+const skipToast = (options) => (options.skipErrorToast === true ? { skipErrorToast: true } : {})
+
 /**
  * 連線申請與審核 API
  * 申請人側：提出/我的申請/撤回；審核側：待審/歷史/核准/拒絕（approver 或 admin）；
@@ -43,11 +45,16 @@ export function cancelAccessRequest(id) {
   })
 }
 
-/** 待審列表（approver 依審核範圍、admin 全部） */
-export function getPendingAccessRequests() {
+/**
+ * 待審列表（approver 依審核範圍、admin 全部）
+ * @param {Object} [options] - { skipErrorToast }：批次收尾查詢自行處理錯誤
+ */
+export function getPendingAccessRequests(options = {}) {
   return request({
     url: '/access-requests/pending',
     method: 'get',
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
@@ -60,12 +67,18 @@ export function getPendingAccessRequestCount(options = {}) {
   })
 }
 
-/** 申請歷史（已決定的單） */
-export function getAccessRequestHistory(params) {
+/**
+ * 申請歷史（已決定的單）
+ * @param {Object} params - { page, page_size }
+ * @param {Object} [options] - { skipErrorToast }
+ */
+export function getAccessRequestHistory(params, options = {}) {
   return request({
     url: '/access-requests/history',
     method: 'get',
     params,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
@@ -79,27 +92,37 @@ export function getActiveTickets() {
 
 /**
  * 核准申請（可縮短時長/延後開始，不可放寬）
+ * 批次核准逐張呼叫同一端點：data 為 { items: [{ item_id }], batch_id }（照申請值，
+ * 不帶時長／帳號修改；舊式無項目單只送 { batch_id }）
  * @param {number} id
- * @param {Object} data - { item_id?, items?, accounts?, remove?, duration_minutes?, date_start?, note? }
+ * @param {Object} data - { item_id?, items?, accounts?, remove?, duration_minutes?, date_start?, note?, batch_id? }
+ * @param {Object} [options] - { skipErrorToast }
  */
-export function approveAccessRequest(id, data = {}) {
+export function approveAccessRequest(id, data = {}, options = {}) {
   return request({
     url: `/access-requests/${id}/approve`,
     method: 'post',
     data,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
 /**
- * 拒絕申請（必須填理由）
+ * 拒絕申請（必須填理由）；不帶 item_id＝整張所有待決項
  * @param {number} id
  * @param {string} note
+ * @param {Object} [options] - { batchId?, skipErrorToast? }：批次拒絕帶同批共用的 batch_id
  */
-export function rejectAccessRequest(id, note) {
+export function rejectAccessRequest(id, note, options = {}) {
+  const data = { note }
+  if (options.batchId) data.batch_id = options.batchId
   return request({
     url: `/access-requests/${id}/reject`,
     method: 'post',
-    data: { note },
+    data,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
@@ -163,20 +186,30 @@ export function revokeAccessRequest(id, note) {
  * @param {number} id
  * @param {string} disposition - confirmed | violation
  * @param {string} note
+ * @param {Object} [options] - { batchId?, skipErrorToast? }：批次補審（僅 confirmed）帶 batch_id
  */
-export function reviewBreakGlass(id, disposition, note) {
+export function reviewBreakGlass(id, disposition, note, options = {}) {
+  const data = { disposition, note }
+  if (options.batchId) data.batch_id = options.batchId
   return request({
     url: `/access-requests/${id}/review`,
     method: 'post',
-    data: { disposition, note },
+    data,
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 
-/** 待補審破窗單清單（審核中心） */
-export function getPendingReviews() {
+/**
+ * 待補審破窗單清單（審核中心）
+ * @param {Object} [options] - { skipErrorToast }
+ */
+export function getPendingReviews(options = {}) {
   return request({
     url: '/access-requests/reviews/pending',
     method: 'get',
+    // 只在呼叫端要求時才帶旗標：既有呼叫的請求設定維持原樣
+    ...skipToast(options),
   })
 }
 

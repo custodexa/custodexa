@@ -44,7 +44,7 @@ func NewNotificationChannelHandler(channelService NotificationChannelServiceInte
 }
 
 // respondChannelError 將 service 錯誤映射為 HTTP 狀態：
-// 輸入問題（URL/type/language 非法）回 400 並附機器碼，找不到回 404，
+// 輸入問題（URL/type/language/min_severity 非法）回 400 並附機器碼，找不到回 404，
 // 傳輸閘拒絕回 400＋風險項（前端據此顯示確認聲明或政策原因），其餘 500
 func respondChannelError(c *gin.Context, err error) {
 	var gateErr *policy.TransmissionGateError
@@ -58,6 +58,8 @@ func respondChannelError(c *gin.Context, err error) {
 	case errors.Is(err, audit.ErrInvalidChannelLanguage):
 		// 既有的語系 sentinel：空值／白名單外皆走此碼
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelLanguage, nil)
+	case errors.Is(err, audit.ErrInvalidChannelMinSeverity):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidChannelMinSeverity, nil)
 	case errors.Is(err, audit.ErrChannelNotFound):
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeChannelNotFound, nil)
 	default:

@@ -1,0 +1,11 @@
+[FAIL] The snapshot time 02:10 is before the stop time 02:16:13
+  That snapshot misses the last records written before the stop;
+  restoring it would lose data. Take a new snapshot, or choose [1]
+  and let the script back up. The services are still stopped;
+  nothing else was changed.
+
+  To cancel the upgrade, start all the services again and confirm:
+    sudo sh -c 'set -a; . /opt/custodexa/current/images.env; exec \
+      docker compose -p custodexa --project-directory /opt/custodexa \
+      -f /opt/custodexa/current/compose.yml up -d'
+    sudo /opt/custodexa/custodexa.sh status

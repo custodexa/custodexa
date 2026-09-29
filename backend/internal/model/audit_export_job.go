@@ -30,6 +30,9 @@ const (
 	// 下載。**不綁申請者本人是對證據包規則的顯式例外**，成立的前提是報告不含
 	// 錄影、剪貼簿或任何秘密材料——這個前提改變時，例外必須一併撤除
 	ExportJobKindRotationReport = "rotation_report"
+	// ExportJobKindComplianceReport 合規對照報告：與輪替證據報告同為共用產物，
+	// 前提相同——報告只含設定值、條文與操作者名，不含錄影、剪貼簿或秘密材料
+	ExportJobKindComplianceReport = "compliance_report"
 )
 
 // job 失敗摘要的機器碼（後端零散文出站；細節只進伺服器 log 與審計）。

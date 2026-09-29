@@ -45,7 +45,13 @@ CMD ["go", "run", "cmd/server/main.go"]
 # 生產環境構建階段
 #
 # **正式版二進位由本階段建出，故 stdlib 漏洞的實際修復點就在這一行**（版本選擇理由見檔首）。
-FROM golang:1.26.6-alpine AS builder
+#
+# **交叉編譯（多架構映像）**：本階段固定在建置平台（BUILDPLATFORM）上執行，
+# 以 GOARCH=$TARGETARCH 產出目標架構的二進位——多架構建置時 arm64 的 Go 編譯不經
+# QEMU 模擬。單一平台的本機建置 BUILDPLATFORM＝TARGETPLATFORM，行為與原生建置相同。
+# 產物架構由發佈前驗證以 `go version -m` 核對（.github/scripts/verify-image.sh）。
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS builder
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -78,7 +84,8 @@ COPY VERSION /VERSION
 # 空白／換行以 tr 去除——VERSION 檔是人工維護的文字檔，尾隨換行是常態。
 RUN VERSION_VALUE="${VERSION:-$(tr -d ' \t\r\n' < /VERSION)}" \
     && test -n "${VERSION_VALUE}" \
-    && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo \
+    && test -n "${TARGETARCH}" \
+    && CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" go build -a -installsuffix cgo \
        -ldflags "-w -s -X main.Version=${VERSION_VALUE}" -o /bin/custodexa ./cmd/server
 
 # MSSQL CLI（sqlcmd）建置階段（database-protocol「mssql 協議 CLI」）
@@ -98,13 +105,25 @@ RUN VERSION_VALUE="${VERSION:-$(tr -d ' \t\r\n' < /VERSION)}" \
 # **main 套件是 cmd/modern，不是 cmd/sqlcmd**（後者為旗標定義的函式庫套件，
 # go install 會回 "not a main package"）。此為上游官方建置腳本的同一目標：
 # build/build.cmd:45 `go build -o ..\sqlcmd.exe -ldflags="-X main.version=..." ..\cmd\modern`。
-# go install 產出的檔名取自套件目錄故為 `modern`，於 COPY 時更名為 sqlcmd。
-FROM golang:1.26.6-alpine AS sqlcmd-builder
+# go install 產出的檔名取自套件目錄故為 `modern`，正規化時更名為 sqlcmd。
+#
+# 交叉編譯同 builder 階段（在 BUILDPLATFORM 執行、GOARCH=$TARGETARCH）。**路徑陷阱**：
+# go install 交叉編譯時產物落在 `$GOPATH/bin/<GOOS>_<GOARCH>/`，原生時落在 `$GOPATH/bin/`
+# （`go help install`：「Cross compiled binaries are installed in $GOOS_$GOARCH
+# subdirectories」）。故安裝後以「恰好一個」斷言找出產物、複製到固定路徑 /out/sqlcmd；
+# 找到零個或多個皆使建置失敗，不讓 COPY 撿到錯的檔或空手而回。
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS sqlcmd-builder
 ARG SQLCMD_VERSION=v1.10.0
+ARG TARGETARCH
 RUN apk add --no-cache git \
-    && CGO_ENABLED=0 go install -trimpath \
+    && test -n "${TARGETARCH}" \
+    && CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" go install -trimpath \
        -ldflags "-w -s -X main.version=${SQLCMD_VERSION}" \
-       github.com/microsoft/go-sqlcmd/cmd/modern@${SQLCMD_VERSION}
+       github.com/microsoft/go-sqlcmd/cmd/modern@${SQLCMD_VERSION} \
+    && found="$(find "$(go env GOPATH)/bin" -type f -name modern)" \
+    && test "$(printf '%s\n' "${found}" | grep -c .)" -eq 1 \
+    && mkdir -p /out \
+    && cp "${found}" /out/sqlcmd
 
 # 生產環境運行階段
 #
@@ -130,7 +149,15 @@ COPY --from=builder /bin/custodexa .
 # MSSQL CLI：Alpine 無現成套件（微軟的 ODBC 版 mssql-tools18 受 EULA 約束），
 # 故由上方 sqlcmd-builder 階段自建後複製。0755 非 setuid、非全域可寫，
 # prod_build_check.sh 的兩項掃描自動涵蓋。
-COPY --from=sqlcmd-builder /go/bin/modern /usr/local/bin/sqlcmd
+COPY --from=sqlcmd-builder /out/sqlcmd /usr/local/bin/sqlcmd
+
+# 授權文件（container-build「交付映像內含授權文件與授權標註」）：只取得映像、未取得
+# 原始碼樹的人，也能在映像內讀到本專案授權與第三方聲明。以 COPY 放入、不需 shell；
+# 內容與建置所用原始碼樹逐位元組相同，由發佈前驗證比對 sha256。
+COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /usr/share/doc/custodexa/
+COPY licenses/ /usr/share/doc/custodexa/licenses/
+# SPDX 運算式：只表示本專案作品的授權，映像內其他元件的授權以上列檔案為準。
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 
 # 創建必要的目錄（0700：只有後端本體 root 可進，資料庫 CLI 身分連目錄都列不出）
 RUN mkdir -p /var/log/custodexa /var/lib/custodexa/recordings \

@@ -16,6 +16,7 @@ import (
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
 	"github.com/custodexa/backend/internal/modules/audit"
+	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/internal/offsite"
 	"github.com/custodexa/backend/internal/sourceip"
 	"github.com/gin-gonic/gin"
@@ -49,6 +50,8 @@ func exportJobView(j *model.AuditExportJob, offsiteSHA256 string) gin.H {
 	// **兩者的快照格式不同**，用錯一方會靜默少一個欄位而不是報錯
 	if j.Kind == model.ExportJobKindRotationReport {
 		v["report"] = asset.ReportJobDisplay(j.FilterJSON)
+	} else if j.Kind == model.ExportJobKindComplianceReport {
+		v["report"] = policy.ComplianceReportJobDisplay(j.FilterJSON)
 	} else if filter, err := audit.ParseExportFilterSnapshot(j.FilterJSON); err == nil {
 		v["filter"] = filter.DisplayMap()
 	}
@@ -134,8 +137,8 @@ func (h *AuditExportHandler) CreateJob(c *gin.Context) {
 // ListJobs 下載中心的清單（GET /audit-export/jobs，分頁、id 降冪穩定排序）。
 //
 // `kind` 缺省為證據包，此時清單範圍與下載授權同判準：只列本人，無跨帳號檢視面。
-// `kind=rotation_report` 列全部報告工作單——報告是共用產物，且排程產出的沒有
-// 人類申請者。種類值域為閉集，其餘值回 400。
+// `kind=rotation_report`／`kind=compliance_report` 列該種類的全部工作單——報告是
+// 共用產物，且排程產出的沒有人類申請者。種類值域為閉集，其餘值回 400。
 func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 	page, ok := parsePositiveIntQuery(c, "page", 1)
 	if !ok {
@@ -150,7 +153,8 @@ func (h *AuditExportHandler) ListJobs(c *gin.Context) {
 		// 缺省維持既有呼叫端行為：這個端點在種類欄出現之前只有證據包
 		kind = model.ExportJobKindEvidenceBundle
 	}
-	if kind != model.ExportJobKindEvidenceBundle && kind != model.ExportJobKindRotationReport {
+	if kind != model.ExportJobKindEvidenceBundle && kind != model.ExportJobKindRotationReport &&
+		kind != model.ExportJobKindComplianceReport {
 		respondInvalidQueryParam(c, "kind")
 		return
 	}
@@ -213,15 +217,22 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 			apierror.Respond(c, http.StatusConflict, code, nil)
 			return
 		}
+		reason := "artifact_unreadable"
+		if errors.Is(offsiteErr, errExportArtifactMissing) {
+			reason = "artifact_missing"
+		}
 		h.auditJob(c, model.ActionRead, model.StatusFailure, &job.ID,
-			"download_failed reason=artifact_unreadable")
+			"download_failed reason="+reason)
 		apierror.Respond(c, http.StatusGone, apierror.CodeExportArtifactUnavailable, nil)
 		return
 	}
 
 	filename := fmt.Sprintf("audit-evidence-job-%d.zip", job.ID)
-	if job.Kind == model.ExportJobKindRotationReport {
+	switch job.Kind {
+	case model.ExportJobKindRotationReport:
 		filename = fmt.Sprintf("rotation-report-job-%d.zip", job.ID)
+	case model.ExportJobKindComplianceReport:
+		filename = fmt.Sprintf("compliance-report-job-%d.zip", job.ID)
 	}
 	c.FileAttachment(artifactPath, filename)
 	if c.Writer.Status() != http.StatusOK {
@@ -233,6 +244,9 @@ func (h *AuditExportHandler) DownloadJob(c *gin.Context) {
 	h.auditJob(c, model.ActionRead, model.StatusSuccess, &job.ID,
 		fmt.Sprintf("download job=%d sha256=%s size=%d", job.ID, job.ArtifactSHA256, job.ArtifactSize))
 }
+
+// errExportArtifactMissing 本機產物檔已不存在、且沒有可取回的離機副本（對外收斂 410）。
+var errExportArtifactMissing = errors.New("匯出產物檔已不存在且無離機副本")
 
 // OffsiteArtifactRetriever 證據包產物的離機取回面（消費者側窄介面）。
 //
@@ -250,13 +264,22 @@ func (h *AuditExportHandler) SetOffsiteRetriever(r OffsiteArtifactRetriever) { h
 // **逾期語義不受影響**：本函式只在「已通過可下載判定」之後被呼叫——逾期者早已在
 // 上面回 410，即使遠端物件仍在。下載窗口＝該工作單自身的保留期（證據包 24 小時，
 // 報告依排程設定的天數）；遠端副本的角色是
-// 窗口內的耐久性（產物目錄未掛 volume，容器重建即消失）與組織的證據寄存。
+// 窗口內的耐久性（本機產物檔可能隨主機或未持久化的目錄一起消失）與組織的證據寄存。
 //
 // 回傳的 error 非 nil＝**不得交付**（不退回「盡力給本機那個壞掉的檔」）。
+// 本機檔已不在且沒有離機副本可取回時回 errExportArtifactMissing，由呼叫端收斂為
+// 與其他不可下載態相同的 410——不可把缺檔路徑交給 FileAttachment，那會回框架的純文字 404。
 func (h *AuditExportHandler) resolveArtifact(c *gin.Context, job *model.AuditExportJob) (string, error) {
 	info, statErr := os.Stat(job.ArtifactPath)
 	localOK := statErr == nil && (job.ArtifactSize == 0 || info.Size() == job.ArtifactSize)
-	if localOK || h.offsite == nil || job.OffsiteObjectID == nil {
+	if localOK {
+		return job.ArtifactPath, nil
+	}
+	if h.offsite == nil || job.OffsiteObjectID == nil {
+		if statErr != nil {
+			return "", errExportArtifactMissing
+		}
+		// 本機檔在但大小與紀錄不符、又無離機帳冊：既有行為，交付本機那一份
 		return job.ArtifactPath, nil
 	}
 	fetched, err := h.offsite.Fetch(c.Request.Context(), *job.OffsiteObjectID)

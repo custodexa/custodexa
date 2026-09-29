@@ -1,0 +1,7 @@
+[FAIL] Cannot upgrade to 1.12.4: it is older than the installed 1.13.0
+
+  To go back to an older version, restore the backup taken before the
+  upgrade by hand, as in "Backup and Restore", section 5 "Restore
+  procedure".
+
+Nothing was changed.

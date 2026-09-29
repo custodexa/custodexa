@@ -1,0 +1,22 @@
+# Custodexa package deployment, external ingress overlay: the built-in TLS proxy does not start
+# and the frontend publishes the HTTP port for your own ingress.
+#
+# custodexa.sh adds this file with -f when the deployment uses its own ingress, and writes
+# COMPOSE_FILE=current/compose.yml:current/compose.external-ingress.yml into .env so that
+# `docker compose ps` / `logs` typed at the deployment root use the same form.
+#
+# Your ingress then carries TLS: TLS 1.2 or later, a trusted certificate, HTTP to HTTPS redirect,
+# HSTS and WebSocket upgrade forwarding (terminals and graphical streams use wss). Set
+# TRUSTED_PROXIES in .env to the ingress address so source addresses are attributed to clients.
+services:
+  tls-init:
+    profiles: ["builtin-tls"]
+  tls-proxy:
+    profiles: ["builtin-tls"]
+
+  frontend:
+    # The Host header forwarded by your ingress must carry the external port when it is not 443:
+    # the backend compares Origin with Host, and a missing port makes credentialed requests
+    # look cross-origin.
+    ports:
+      - "${HTTP_PORT:-80}:80"

@@ -1,0 +1,17 @@
+Custodexa 1.13.0 安裝    部署目錄 /opt/custodexa
+
+[FAIL] 1/7  檢查這台主機
+       [ OK ] Docker 27.3.1、Compose v2.29.7
+       [ OK ] 架構 amd64
+       [FAIL] 對外埠 443 已被使用：nginx（pid 1203）
+       [ OK ] 磁碟可用 212 GB（至少需要 6 GB）
+
+沒有做任何變更。
+
+對外埠 443 已被 nginx（pid 1203）使用。請先請主機管理者處理埠衝突，
+再重新執行：
+    sudo /opt/custodexa/custodexa.sh install
+若要改用其他埠，請先確認 /opt/custodexa/.env 已存在並完成設定，
+再把 TLS_HTTPS_PORT 和 TLS_HTTP_PORT 改成沒人用的埠（常用 8443 和
+8088）。改了之後，使用者要輸入的網址會帶埠號，例如
+https://10.0.0.12:8443

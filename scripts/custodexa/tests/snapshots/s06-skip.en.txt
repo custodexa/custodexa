@@ -1,0 +1,7 @@
+[FAIL] 1.14.0 cannot be installed directly over 1.12.9; it needs 1.13.0
+       or later
+
+  Upgrade to 1.13.0 first, check that it works, then upgrade to 1.14.0:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.13.0
+
+Nothing was changed.

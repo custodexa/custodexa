@@ -5,6 +5,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -360,6 +361,8 @@ type approveAccessRequestReq struct {
 	DurationMinutes *int                 `json:"duration_minutes" binding:"omitempty,min=1"`
 	DateStart       *time.Time           `json:"date_start"`
 	Note            string               `json:"note" binding:"max=1000"`
+	// BatchID 批次關聯碼：只供稽核列辨認同批，不改變核決語義
+	BatchID string `json:"batch_id" binding:"omitempty,uuid"`
 }
 
 // Approve POST /access-requests/:id/approve 核准（可下修時長/推遲起始）
@@ -373,13 +376,13 @@ func (h *AccessRequestHandler) Approve(c *gin.Context) {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidAccessRequestID, nil)
 		return
 	}
-	// 允許空 body（照申請值核准）；帶 body 則須合法
+	// 允許空 body（照申請值核准）；帶 body 則須合法。空與否以實際讀到的內容判定
+	// （解碼得 io.EOF＝沒有內容），不看 Content-Length：分塊傳輸的長度是 -1，
+	// 以長度判斷會把有內容的 body 當成空的而略過驗證
 	var req approveAccessRequestReq
-	if c.Request.ContentLength > 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
-			return
-		}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
 	}
 	decided, err := h.requests.Approve(userID, notEffectiveAdmin, uint(id), authz.DecideInput{
 		ItemID: req.ItemID, Items: req.Items, Accounts: req.Accounts, Remove: req.Remove,
@@ -397,6 +400,8 @@ func (h *AccessRequestHandler) Approve(c *gin.Context) {
 type rejectAccessRequestReq struct {
 	ItemID uint   `json:"item_id"`
 	Note   string `json:"note" binding:"required,max=1000"`
+	// BatchID 批次關聯碼：只供稽核列辨認同批，不改變核決語義
+	BatchID string `json:"batch_id" binding:"omitempty,uuid"`
 }
 
 // Reject POST /access-requests/:id/reject 拒絕（事由必填）
@@ -501,6 +506,8 @@ func (h *AccessRequestHandler) Revoke(c *gin.Context) {
 type reviewAccessRequestReq struct {
 	Disposition string `json:"disposition" binding:"required"`
 	Note        string `json:"note" binding:"max=1000"`
+	// BatchID 批次關聯碼：只供稽核列辨認同批，不改變核決語義
+	BatchID string `json:"batch_id" binding:"omitempty,uuid"`
 }
 
 // Review POST /access-requests/:id/review 破窗事後補審（處置 confirmed/violation；

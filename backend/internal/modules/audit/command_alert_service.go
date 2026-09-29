@@ -3,7 +3,9 @@ package audit
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
 	"gorm.io/gorm"
@@ -14,7 +16,19 @@ var (
 	ErrAlertNotFound = errors.New("告警不存在")
 	// ErrInvalidDisposition 處置分類不合法
 	ErrInvalidDisposition = errors.New("處置分類不合法")
+	// ErrAlertAlreadyReviewed 批次審閱送出時該告警已有審閱結果（不覆蓋）
+	ErrAlertAlreadyReviewed = errors.New("告警已有審閱結果")
+	// ErrAlertSelfTriggered 批次審閱不收審閱者自己連線觸發的告警
+	ErrAlertSelfTriggered = errors.New("自己觸發的告警須逐筆審閱")
+	// ErrAlertBatchNote 批次審閱的理由為空或超過上限
+	ErrAlertBatchNote = errors.New("批次審閱理由不合法")
+	// ErrAlertNoteTooLong 單筆審閱的理由超過上限
+	ErrAlertNoteTooLong = errors.New("審閱理由超過字數上限")
 )
+
+// maxAlertBatchNoteRunes 審閱理由的字數上限（與單筆對話框的輸入上限一致）。
+// 批次與單筆共用：理由會原樣進入稽核列，兩條路徑都不收超過上限的內容
+const maxAlertBatchNoteRunes = 500
 
 // CommandAlertFilter 告警查詢條件（與 SessionCommandFilter 同形：審計查詢一致體驗）
 type CommandAlertFilter struct {
@@ -27,6 +41,7 @@ type CommandAlertFilter struct {
 	StartTime  *time.Time // 觸發時間（起）
 	EndTime    *time.Time // 觸發時間（迄）
 	Unreviewed bool       // 僅列未審閱（reviewed_at IS NULL），供每日審閱走查（10.4.1）
+	IDs        []uint     // 指定 id 清單（批次中斷後查回每筆實際處置）；空＝不篩選
 	Page       int        // 頁碼（從 1 開始）
 	PageSize   int        // 每頁大小
 }
@@ -121,6 +136,9 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 	if filter.Unreviewed {
 		query = query.Where("command_alerts.reviewed_at IS NULL")
 	}
+	if len(filter.IDs) > 0 {
+		query = query.Where("command_alerts.id IN ?", filter.IDs)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -161,10 +179,14 @@ func (s *CommandAlertService) List(filter *CommandAlertFilter) (*CommandAlertLis
 
 // Review 審閱處置一筆告警（PCI 10.4.1）：記複審者/時間/處置分類/備註。
 // disposition 僅接受 benign/escalated（pending 是未審閱狀態，不可主動設回）。
-// 冪等：重覆審閱同一告警視為更新處置（可修正誤判），reviewed_at 刷新為最新
+// 冪等：重覆審閱同一告警視為更新處置（可修正誤判），reviewed_at 刷新為最新。
+// 理由選填，但不超過 maxAlertBatchNoteRunes（與批次同一上限）
 func (s *CommandAlertService) Review(alertID, reviewerID uint, disposition, note string) error {
 	if disposition != model.AlertDispositionBenign && disposition != model.AlertDispositionEscalated {
 		return ErrInvalidDisposition
+	}
+	if utf8.RuneCountInString(note) > maxAlertBatchNoteRunes {
+		return ErrAlertNoteTooLong
 	}
 
 	res := s.db.Model(&model.CommandAlert{}).
@@ -182,4 +204,48 @@ func (s *CommandAlertService) Review(alertID, reviewerID uint, disposition, note
 		return ErrAlertNotFound
 	}
 	return nil
+}
+
+// ReviewInBatch 批次審閱中的一筆。
+//
+// 與單筆 Review 的差別只在三個前置條件，其餘（處置分類、寫入欄位）相同：
+//   - 理由必填且不超過 maxAlertBatchNoteRunes：同一個理由套到多筆，空白理由答不出每筆依據；
+//   - 審閱者自己連線觸發的告警不收：這類告警須逐筆說明；
+//   - 只處置送出當下仍未審閱者（`reviewed_at IS NULL` 條件更新）：已被審閱的那筆回
+//     ErrAlertAlreadyReviewed，既有處置原樣保留。單筆路徑保留「重新審閱」修正誤判的語義。
+func (s *CommandAlertService) ReviewInBatch(alertID, reviewerID uint, disposition, note string) error {
+	if disposition != model.AlertDispositionBenign && disposition != model.AlertDispositionEscalated {
+		return ErrInvalidDisposition
+	}
+	if strings.TrimSpace(note) == "" || utf8.RuneCountInString(note) > maxAlertBatchNoteRunes {
+		return ErrAlertBatchNote
+	}
+
+	res := s.db.Model(&model.CommandAlert{}).
+		Where("id = ? AND reviewed_at IS NULL AND user_id <> ?", alertID, reviewerID).
+		Updates(map[string]interface{}{
+			"reviewed_by": reviewerID,
+			"reviewed_at": time.Now(),
+			"disposition": disposition,
+			"note":        note,
+		})
+	if res.Error != nil {
+		return fmt.Errorf("審閱告警失敗: %w", res.Error)
+	}
+	if res.RowsAffected == 1 {
+		return nil
+	}
+
+	// 沒有更新到：判明是哪一個條件不成立，逐筆回報給呼叫端
+	var current model.CommandAlert
+	if err := s.db.Select("id", "user_id", "reviewed_at").First(&current, alertID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrAlertNotFound
+		}
+		return fmt.Errorf("查詢告警失敗: %w", err)
+	}
+	if current.UserID == reviewerID {
+		return ErrAlertSelfTriggered
+	}
+	return ErrAlertAlreadyReviewed
 }

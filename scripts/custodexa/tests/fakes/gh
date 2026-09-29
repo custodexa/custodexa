@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Fake gh for the custodexa.sh tests: only `attestation verify oci://<ref> --repo R`, answering by
+# $FAKE_GH: ok (default; R must be custodexa/custodexa), offline, login, bad.
+[ "${1:-} ${2:-}" = "attestation verify" ] || { echo "fake gh: unsupported: $*" >&2; exit 9; }
+repo=""
+while [ $# -gt 0 ]; do [ "$1" = --repo ] && repo=$2; shift; done
+case ${FAKE_GH:-ok} in
+  offline) echo 'error: Get "https://api.github.com/": dial tcp: lookup api.github.com: no such host' >&2; exit 1 ;;
+  login) echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4 ;;
+  bad) echo 'Error: verifying with issuer "sigstore.dev": no matching attestations' >&2; exit 1 ;;
+esac
+[ "$repo" = custodexa/custodexa ] || { echo "Error: no attestations for $repo" >&2; exit 1; }
+echo "Loaded 1 attestation from GitHub API"

@@ -2,7 +2,8 @@
 
 > 第 1 節表格為機器生成；獨立複核方式見第 4 節。
 
-本產品以 AGPL-3.0 授權（全文見 [LICENSE](LICENSE)）。散布物中另含下列第三方元件，
+本產品以 GNU Affero General Public License 第 3 版（僅此版本，SPDX：`AGPL-3.0-only`）授權
+（全文見 [LICENSE](LICENSE)）。散布物中另含下列第三方元件，
 各自保留其原授權。Apache License 2.0 元件的歸屬聲明（該授權第 4(d) 條）見 [NOTICE](NOTICE)。
 
 授權正文副本置於 [`licenses/`](licenses/)，來源與雜湊見第 2.1 節。
@@ -275,7 +276,7 @@ SSH 連線與密碼雜湊來自 `golang.org/x/crypto`，
 | `licenses/LGPL-2.1.txt` | 第 3 節映像內的 LGPL-2.0-or-later／LGPL-2.1-or-later 元件 | Debian 12 `/usr/share/common-licenses/LGPL-2.1`（FSF 原文） | `dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551` |
 | `licenses/LGPL-3.0.txt` | 第 3 節映像內的 LGPL-3.0-or-later 元件 | Debian 12 `/usr/share/common-licenses/LGPL-3`（FSF 原文） | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` |
 
-AGPL-3.0 正文即本專案自身的 [LICENSE](LICENSE)，不另置副本。
+`AGPL-3.0-only` 的正文即本專案自身的 [LICENSE](LICENSE)，不另置副本。
 
 交叉查核：`Apache-2.0.txt` 與 Debian 12 的
 `/usr/share/common-licenses/Apache-2.0` 位元組相同；`GPL-3.0.txt` 與 Debian 12 的
@@ -296,37 +297,42 @@ MIT、BSD-2-Clause、BSD-3-Clause、ISC 都要求再散布時**保留原著作�
   第 1 節的表格提供「有哪些、各是什麼授權」的索引。
 - **容器映像形態**：後端二進位是 `CGO_ENABLED=0` 靜態編譯的單一執行檔
   （`docker/backend/Dockerfile:63`），**映像內不含**這些套件的授權檔；
-  前端產物同理。**這是一個尚未關閉的缺口**，不是已履行的義務。
+  前端產物同理。映像內附有本檔（見 2.3），但本檔只是第 1 節的索引，
+  不含逐套件的著作權聲明。**這是一個尚未關閉的缺口**，不是已履行的義務。
   關閉它的作法是在發佈流程把全部 build／prod 套件的授權全文匯出成單一檔案
   並複製進映像；本版本尚未實作，列為已知缺口，後續版本關閉。
 
-### 2.3 本檔、`NOTICE` 與 `licenses/` 目前只存在於原始碼樹
+### 2.3 本檔、`NOTICE` 與 `licenses/` 隨映像散布（已關閉）
 
-同一個界線也適用於本檔自身：`LICENSE`、`NOTICE`、`THIRD-PARTY-LICENSES.md`、
-`licenses/` **尚未複製進容器映像**。拿到原始碼樹的人取得的是完整的一份；
-只拿到映像的人取得的不是。
+自 1.13.0 起，本專案建置的兩顆映像（`custodexa/backend`、`custodexa/frontend`）在
+`/usr/share/doc/custodexa/` 內附 `LICENSE`、`NOTICE`、`THIRD-PARTY-LICENSES.md` 與
+`licenses/`，內容取自建置時的原始碼樹；映像並標註
+`org.opencontainers.image.licenses=AGPL-3.0-only`。發佈流程在映像上 tag 之前，
+逐一比對這些檔案與該 commit 原始檔的 sha256，不一致即不發佈。
+只拿到映像的人，因此也取得與原始碼樹相同的一份。
 
-以 `docker export` 逐一列舉三個映像的實測結果：
-`custodexa/backend` 內無任何授權或聲明檔；`custodexa/frontend` 只有基底 nginx 映像自帶的
-`/usr/share/licenses/nginx*/COPYRIGHT`（6 份）；`custodexa/guacd` 只有
-`/usr/share/licenses/font-liberation-sans-narrow/License.txt`。
-三者皆**不含**本專案的 AGPL-3.0 全文、`NOTICE` 或本檔。
+可自行從映像取出查看，不需要 shell：
 
-對第 3 節的書面 offer 而言，這是實務上的弱點而非致命傷——offer 的內容公開可得，
-且映像的來源即本 repository。**把授權檔複製進映像列為已知缺口，後續版本關閉。**
+    cid=$(docker create ghcr.io/custodexa/backend:1.13.0)
+    docker cp "$cid":/usr/share/doc/custodexa - | tar -t
+    docker rm "$cid"
+
+guacd 服務使用的是上游映像原樣（見第 3 節），不含上述檔案。
 
 ---
 
 ## 3. 容器映像內的 GPL／LGPL 元件與對應源碼
 
-本產品的容器映像（`custodexa/backend`、`custodexa/frontend`、`custodexa/guacd`）以
+本專案建置並散布的容器映像（`custodexa/backend`、`custodexa/frontend`；發佈於
+`ghcr.io/custodexa/*`，並鏡像至 `docker.io/custodexa/*`），以及 RDP／VNC 所用、
+直接引用上游的 guacd 映像（`guacamole/guacd:1.6.0`，散布形態見 3.1），皆以
 Alpine Linux 為基礎系統，映像內含若干以 GNU General Public License（GPL）或
 GNU Lesser General Public License（LGPL）授權的元件。
 
 **這些元件不與本產品連結成單一作品。** 後端為靜態編譯的 Go 執行檔（`CGO_ENABLED=0`），
 映像內其餘元件皆為獨立可執行檔或共用函式庫，由本產品以子行程呼叫（資料庫 CLI、`kubectl`）
 或以獨立行程經 TCP 通訊（guacd）。就 GPL 而言，這屬於 mere aggregation：
-各元件保留自身授權，不因同處一個映像而併入本產品的 AGPL-3.0 作品。
+各元件保留自身授權，不因同處一個映像而併入本產品以 `AGPL-3.0-only` 授權的作品。
 
 **但散布映像即散布這些二進位，因此本專案承擔 GPL-2.0 第 3 條／GPL-3.0 第 6 條的
 源碼提供義務。** 以下為履行方式。
@@ -335,14 +341,24 @@ GNU Lesser General Public License（LGPL）授權的元件。
 
 下表版本號皆自建置定義與映像本體讀出。
 
-| 我方映像 | 基礎映像（Dockerfile 內釘定值） | 映像內 `/etc/alpine-release` | 含 GPL／LGPL 的 apk 套件數 |
+| 映像 | 基礎映像（釘定值） | 映像內 `/etc/alpine-release` | 含 GPL／LGPL 的 apk 套件數 |
 |---|---|---|---|
-| `custodexa/backend` | `alpine:3.24.1` | 3.24.1 | 19 |
-| `custodexa/frontend` | `nginx:1.31.3-alpine3.24` | 3.24.1 | 19 |
-| `custodexa/guacd` | `guacamole/guacd:1.6.0` | 3.18.12 | 43 |
+| `custodexa/backend` | `alpine:3.24.1`（Dockerfile） | 3.24.1 | 19 |
+| `custodexa/frontend` | `nginx:1.31.3-alpine3.24`（Dockerfile） | 3.24.1 | 19 |
+| guacd 服務 | `guacamole/guacd:1.6.0`（編排檔以 tag 加 digest 釘定，上游原樣） | 3.18.12 | 43 |
+
+**guacd 映像的散布形態**：編排檔直接引用 Apache Guacamole 官方映像
+`guacamole/guacd:1.6.0`（無 `build:`），本專案不修改其內容。線上部署由部署端自上游直接拉取，
+本專案不重新散布，這種情形與下方的 postgres 相同；**若本專案連同映像檔一併交付這顆映像
+（例如隨離線包交付），本節與 3.4 的義務即適用**。表中列出它的版本與套件數，
+是為了讓後一種情形的對應源碼可以指名。
 
 `postgres:16.15-alpine3.24` 由使用者自 Docker Hub 直接拉取，不經本專案重新散布，
 故不在本節義務範圍內（見 `docker-compose.yml` 的 `postgres` 服務：只有 `image:`，沒有 `build:`）。
+
+自 1.13.0 起，本專案發佈的每一版 backend／frontend 映像另附 SBOM attestation（SPDX 格式），
+列出映像內確切的套件與版本，可作為每版套件清單；驗證指令見 [README](README.md#prebuilt-images)
+的「Prebuilt images」一節。
 
 各映像實際安裝的套件與版本可由映像自身查得，**不需要信任本文件**：
 
@@ -351,11 +367,11 @@ GNU Lesser General Public License（LGPL）授權的元件。
       | awk '/^P:/{p=substr($0,3)} /^V:/{v=substr($0,3)} /^L:/{printf "%s %s %s\n", p, v, substr($0,3)}'
     docker rm "$cid"
 
-**關於 `custodexa/guacd` 的兩點揭露：**
+**關於 guacd 映像的兩點揭露：**
 
 1. 其基礎系統為 **Alpine 3.18**（上游 `guacamole-server` 1.6.0 的 Dockerfile 以
-   `ARG ALPINE_BASE_IMAGE=3.18` 建置），該分支已停止安全維護。本專案未修改該映像內容
-   （`docker/guacd/Dockerfile` 只宣告 `EXPOSE`），亦無較新基底的上游 tag 可換。
+   `ARG ALPINE_BASE_IMAGE=3.18` 建置），該分支已停止安全維護。本專案直接引用該映像、
+   未修改其內容，亦無較新基底的上游 tag 可換。
 2. guacd 的協議函式庫**不在 apk 套件資料庫內**，因此上面的 apk 查詢看不到它們——
    上游是從原始碼建置後安裝到 `/opt/guacamole`。實測該目錄內含：
 
@@ -377,7 +393,7 @@ GNU Lesser General Public License（LGPL）授權的元件。
 
 - **建置腳本（APKBUILD）與 patch**：`https://gitlab.alpinelinux.org/alpine/aports`
   - `custodexa/backend`、`custodexa/frontend` → 分支 `3.24-stable`
-  - `custodexa/guacd` → 分支 `3.18-stable`
+  - `guacamole/guacd:1.6.0`（guacd 服務）→ 分支 `3.18-stable`
   - 每個套件位於該分支的 `main/<套件名>/` 或 `community/<套件名>/`
 - **上游原始碼壓縮檔**：`https://distfiles.alpinelinux.org/distfiles/`
   （分版目錄 `.../distfiles/v3.24/`、`.../distfiles/v3.18/`）
@@ -429,7 +445,8 @@ assist in obtaining it or provide it directly.
 
 **為什麼採指向式**：
 
-GPLv3 §6 列有數種履行對應源碼義務的方式。本產品經容器 registry 散布，
+GPLv3 §6 列有數種履行對應源碼義務的方式。本產品經容器 registry 散布
+（GitHub Container Registry 的 `ghcr.io/custodexa/*`，並鏡像至 Docker Hub 的 `docker.io/custodexa/*`），
 適用的是 **§6(d)**——自指定地點提供目標碼存取，且對應源碼可自同一地點以同樣方式取得；
 GPLv2 則對應其 §3 末段的同址提供。
 （§6(b) 的書面 offer 其構成要件為「隨實體產品或實體媒介交付目標碼」，
@@ -437,10 +454,12 @@ GPLv2 則對應其 §3 末段的同址提供。
 
 §3.2 的對應資訊與上方的協助管道，即為此種履行方式的內容。
 
-### 3.4 `custodexa/guacd` 內非 apk 元件的對應源碼
+### 3.4 guacd 映像內非 apk 元件的對應源碼
 
-`custodexa/guacd` 建置自 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`，
-本專案未對其內容做任何修改。3.1 表列的 `/opt/guacamole` 元件由上游自原始碼建置，
+guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`，
+本專案未對其內容做任何修改。本節適用於本專案連同映像檔一併交付這顆映像的情形
+（例如隨離線包交付）；線上部署由部署端自上游拉取時，本專案不重新散布（見 3.1）。
+3.1 表列的 `/opt/guacamole` 元件由上游自原始碼建置，
 其對應源碼取得管道如下（本版本發行時實測均回應 HTTP 200）：
 
 - **Apache Guacamole 1.6.0 源碼發佈物**：
@@ -455,7 +474,7 @@ GPLv2 則對應其 §3 末段的同址提供。
 - **libtelnet**：`https://github.com/seanmiddleditch/libtelnet`
 - **libwebsockets**：`https://github.com/warmcat/libwebsockets`
 
-3.3 的書面 offer 同樣涵蓋本節元件。
+3.3 的協助管道同樣涵蓋本節元件。
 
 ---
 
@@ -470,7 +489,7 @@ GPLv2 則對應其 §3 末段的同址提供。
     # 前端相依（於 frontend/ 執行）
     npx --yes license-checker --production --summary
 
-    # 映像層（任一 SBOM 工具，對三顆正式版映像各跑一次）
+    # 映像層（任一 SBOM 工具，對 backend、frontend 與 guacd 三個映像各跑一次）
     syft custodexa/backend:latest -o spdx-json | jq -r '.packages[].licenseConcluded' | sort -u
 
 判準與本清單相同：**每個套件至少有一個 OSI 認可的授權選項**。

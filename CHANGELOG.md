@@ -2,6 +2,126 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.13.0 — an install package with a menu-driven management script, compliance reports, batch review, push levels per channel, and past sign-offs from the dashboard (2026-09-29)
+
+### New capabilities
+
+#### Past daily sign-offs from the dashboard
+
+- The title of the Daily Security Review card, and a link on the card before and after sign-off,
+  open the Daily Review tab of Operation Logs, which lists every past sign-off.
+- The sign button and the confirmation after signing name the date of the review, as in "Sign the
+  review for 2026-09-28".
+
+#### Push levels per notification channel
+
+- Each notification channel has a new setting, Alerts to push: All alerts, Medium and high, or High
+  only, shown in a new Push column. Each change is audited with its old and new value.
+- Test sends, system events such as request approvals, and alerts whose severity cannot be
+  determined still reach every enabled channel. Alerts about a failed credential rotation are high,
+  so every setting pushes them.
+- An alert a channel skips still appears on the Alerts page and is still forwarded to syslog.
+
+#### Compliance reports
+
+- Generate report on the Compliance map page is open to administrators and auditors. A report covers
+  one active policy group as it stands when the report is generated, in Traditional Chinese, English
+  or Japanese, and stays in Downloads for a chosen 1 to 3650 days, 90 by default.
+- Reports appear under Recent output on that page and on the Reports tab of Downloads, where every
+  account with audit view permission can download them.
+- The download is a ZIP of `report.pdf`, `clauses.csv` with one row per clause and setting, and a
+  manifest of their SHA-256 values, signed with the evidence package key that
+  `GET /api/v1/audit-export/public-key` returns. The PDF opens with the policy group, when the data
+  was taken, a scope statement and the summary counts, then the deviations and every clause.
+
+#### Reviewing several items at once
+
+- Alert Records on the Alerts page, and the Pending and Post-review tabs of the Approval Center,
+  have checkboxes and a batch bar. Up to 50 selected items take one decision and one reason and
+  are sent one at a time, each checked and audited as a single decision, with the batch ID in its
+  audit record. A batch can partly complete: the result lists every item as succeeded, rejected,
+  not sent or unconfirmed, and after a reload the page asks the server for the state of
+  unconfirmed items.
+- On the Alerts page a batch takes unreviewed alerts and a reason of up to 500 characters. An alert
+  triggered by the reviewer's own session is reviewed on its own, and an alert that already has a
+  review result when its turn comes keeps that result. The audit record of every alert review,
+  single or batch, now shows the reason.
+- In the Approval Center a batch approval grants each request as requested, after a confirmation
+  that lists every asset, account and duration. A request with any asset outside the approver's
+  scope does not take effect. A batch rejection takes one reason, which each requester sees.
+- On the Post-review tab a batch confirms emergency connections as justified. A violation is
+  recorded one connection at a time.
+
+### Prebuilt images
+
+- Each release tag builds the backend and frontend images for `linux/amd64` and `linux/arm64` and
+  publishes them as `ghcr.io/custodexa/backend` and `ghcr.io/custodexa/frontend`, mirrored with the
+  same digests to Docker Hub under `docker.io/custodexa/`.
+- A release `X.Y.Z` is tagged `X.Y.Z`, and also `X.Y` while it is the highest release of that minor
+  line. On GitHub Container Registry the highest release is also tagged `latest`; Docker Hub has no
+  `latest` tag. A published `X.Y.Z` is never replaced.
+- The release workflow signs each image and attaches build provenance and an SPDX SBOM. "Prebuilt
+  images" in the README has the commands to check them.
+- Each image carries the license files under `/usr/share/doc/custodexa/` and the label
+  `org.opencontainers.image.licenses=AGPL-3.0-only`, the license the README now states.
+- The compose files in the repository still build the backend and frontend from the source tree.
+- The guacd service runs the official `guacamole/guacd:1.6.0` image, pinned by digest; earlier
+  releases built guacd from it with no layers added. Hosts pull it from Docker Hub, an offline host
+  needs it delivered with the other images, and a rollback to 1.12.x uses the earlier
+  `custodexa/guacd:latest`, which stays on the host.
+
+### Release package and management script
+
+- Each release page offers an install package with `SHA256SUMS`, its signature and an image bundle
+  per architecture for hosts without registry access. The Quickstart and README now start with it.
+  The management script in the package runs on Linux, x86_64 or aarch64.
+- Run on a terminal without a command, `custodexa.sh` shows a menu: install or load an offline image
+  bundle, and once installed, show status, upgrade or back up. Each entry is also a command with
+  flags for automation, listed by `custodexa.sh --help`.
+- `install` checks the host, creates `.env` with generated secrets, obtains the images and starts
+  the services. It takes each image from the host, an offline bundle, GitHub Container Registry or
+  Docker Hub, checked against the digest in the release manifest, and builds the backend and
+  frontend from the source in the package when none of these has them.
+- `upgrade` waits for the audit queue to empty, stops the services, takes a stopped backup or
+  records one you take while they are stopped, switches to the new release and checks the version,
+  the running images, record counts and key fingerprints. A failed step stops the run and shows
+  what to do. Going back after the switch means restoring that backup, as §5.1 of
+  `docs/ops/backup-and-restore.md` describes.
+- A 1.12.4 deployment running from a `git clone` with no changed or untracked files converts to the
+  package layout with one `upgrade` by the 1.13.0 script, leaving the data folder, `.env` and `tls/`
+  in place, as "Upgrading with the management script" in `docs/ops/upgrade-sop.md` describes.
+
+### What changes for deployers
+
+- One migration runs. It adds the push level to notification channels and sets existing channels to
+  All alerts, so they push what they pushed before. §2.5 of `docs/ops/upgrade-sop.md` lists it.
+- `POST /api/v1/compliance/report-jobs` is new, and the notification channel, alert and access
+  request endpoints take new fields. `docs/API_SPEC.md` lists them with their error codes.
+- `POST /api/v1/command-alerts/:id/review` refuses a reason longer than 500 characters, the limit
+  the review dialog already has.
+- Export artifacts now live in `${DATA_PATH}/exports`, which the backup commands leave out (§2 of
+  `docs/ops/backup-and-restore.md`). In a manual upgrade, copy them out of the old backend container
+  first (§2.5 of `docs/ops/upgrade-sop.md`); a conversion by `custodexa.sh` does it itself.
+
+### Fixes
+
+- Export artifacts were kept inside the backend container, so recreating it, as every upgrade does,
+  lost the evidence packages and reports already generated. They are now kept on the host.
+- A group mapping, alert rule or notification channel created disabled was saved enabled, and the
+  mapping still granted its role. Batch rotations and Secret Rotation plans created with Include
+  symbols or Exclude ambiguous characters cleared still applied them. Each is now saved as set.
+- Downloading an export whose file is gone, with no offsite copy, answered a plain 404. It now
+  answers 410, as for any other export that cannot be downloaded.
+- A retention setting at 0, which keeps records forever, was explained on the Compliance map page
+  as turning the setting off. The reason now says that no retention limit is set.
+- Once signed, the Daily Security Review card showed live counts. It now shows the counts recorded
+  at sign-off, as that day's entry in past sign-offs does, and a dash for a count it did not record.
+- Rotation evidence reports in Traditional Chinese and Japanese lost a character at many automatic
+  line breaks, and so did Chinese text such as an asset name in an English report. Every character
+  now appears, and punctuation no longer starts a line.
+- In rotation evidence reports, a section heading or table that no longer fit on a landscape page
+  continued on a portrait page. It now continues in landscape.
+
 ## 1.12.4 — interrupted session renewals, agent creation from user management, and one rule for menus and direct links (2026-09-28)
 
 No schema change. No migration runs.

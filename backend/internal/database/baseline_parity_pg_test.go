@@ -265,6 +265,8 @@ var baselineCheckConstraints = map[string]string{
 	"ldap_directories_singleton_check":     "ldap_directories",
 	"notification_channels_language_check": "notification_channels",
 	"notification_channels_type_check":     "notification_channels",
+	// 通知通道推送門檻三值（增量 migration 加入）
+	"notification_channels_min_severity_check": "notification_channels",
 	// evidence-offsite-storage：現行世代唯一性的常數載體，
 	// 以及 credential_mode 三值與密文空否的等價約束。後者是安全審查的阻斷點——
 	// 「空密文」若同時代表「用預設鏈」與「已撤銷」，撤銷後仍可能靜默走預設鏈取回

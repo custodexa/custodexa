@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/backup-and-restore.md) | [日本語](../ja/ops/backup-and-restore.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.0.
+> Applies to: Custodexa 1.0. §3.8 and §5.1 describe the management script of package deployments, from 1.13.0.
 >
 > **Verification status of this procedure**: the steps below were written by deriving them from the actual data location settings and program behavior.
 > **A full walk-through test of backup, restore into a clean environment, and the service coming up
@@ -15,7 +15,7 @@
 
 ## 1. Backups are performed by the deployment using standard tools
 
-Backup and restore use `pg_dump`, `pg_restore`, and `tar`. This document gives the full procedure; no script ships with the product. Where backups are kept, for how long, and how they are encrypted and replicated off site all belong to the deployment's data governance.
+Backup and restore use `pg_dump`, `pg_restore`, and `tar`. This document gives the full procedure. In a deployment installed from the release package, the management script `custodexa.sh` runs the stopped backup of §3.2 for you (§3.8); a restore is always done by hand, with section 5. Where backups are kept, for how long, and how they are encrypted and replicated off site all belong to the deployment's data governance.
 
 ---
 
@@ -29,26 +29,29 @@ In a `docker compose` deployment, all persistent data lives under a **single dat
 | `${DATA_PATH}/postgres` | `/var/lib/postgresql/data` | The PostgreSQL data directory (all business data, audit records, encrypted credentials, and wrapped keys) | postgres |
 | `${DATA_PATH}/recordings` | `/var/lib/custodexa/recordings` | Session recording files | backend, guacd (shared mount) |
 | `${DATA_PATH}/audit` | `/var/log/custodexa/audit` | Audit fallback files, the seal-period journal | backend |
+| `${DATA_PATH}/exports` | `/var/lib/custodexa/exports` | Artifacts of asynchronous exports (evidence packages, rotation evidence reports, compliance reports). **Kept across container rebuilds, but not covered by the backup commands** (see below) | backend |
 | **Object storage** (optional) | Not in a container filesystem | **Offsite evidence copies**: uploaded copies of recordings and evidence packages | Uploaded by the offsite storage feature; **lives outside the data root** |
 
 > **The last row is not part of the data root, and the backup procedure does not cover it.** Once offsite storage is enabled, copies of recordings and evidence packages are uploaded to the deployment's own object storage bucket, and the backup, retention, and recovery of that copy **belong entirely to the deployment's storage governance**; neither `tar` nor `pg_dump` can reach it. The converse is worth remembering too: **offsite is not the same as backed up.** It is a second copy that shortens the exposure window, not a replacement for the backup procedure (see §3.3).
 > The custody ledger in the database (which copy of which recording is in which bucket, under which key, with what hash at upload time) **travels with the database backup**, so whether the ledger matches the remote objects depends on whether the two points in time line up (see §3.1).
 
-**The first three rows above are all bind mounts; there are no named volumes.** Two direct consequences:
+**The first four rows above are all bind mounts; there are no named volumes.** Two direct consequences:
 
 - `docker compose down -v` **does not** clear the data (`-v` only clears named volumes).
 - Conversely, deleting or overwriting the `DATA_PATH` directory itself deletes all the data, with no second copy.
 
 An asset's credential change channel settings (including the CA certificate uploaded for a WinRM channel) live in the asset table in the database and are backed up with the first row above; there is no separate location for them.
 
-**A temporary directory that is not a backup target**: the artifacts of asynchronous exports land in `/var/lib/custodexa/exports`
-(`EXPORT_ARTIFACT_PATH`, the path inside the container), which evidence packages and rotation evidence reports share.
-**It is temporary and not a backup target**, but the retention period and the way to retrieve the artifact differ between the two kinds:
+**A directory that is kept but is not a backup target**: the artifacts of asynchronous exports land in `/var/lib/custodexa/exports`
+(`EXPORT_ARTIFACT_PATH`, the path inside the container), which evidence packages, rotation evidence reports and compliance reports share.
+The production compose file mounts it at `${DATA_PATH}/exports`. **It is not a backup target**, and the retention period and the way to retrieve the artifact differ between the kinds:
 
 - **Evidence packages**: the artifact is cleared automatically by the system after its retention period (24h), and the download stops working once it expires. Backing it up serves no purpose; its content can be retrieved by the requester starting a new export.
 - **Rotation evidence reports**: the artifact's retention period comes from the schedule settings (1 to 3650 days), and it is likewise cleared on expiry with the download no longer working. A scheduled report has no natural person as its requester, so there is no "the requester starts it again" path; anyone with audit view permission can produce another one, but that is a new report, with a new production time and a new signature, not the same delivered document. The facts stated in a report come from the database (accounts, credential change records, policy settings), and the backup contains those facts.
+- **Compliance reports**: produced by hand from the compliance mapping page. The requester sets the retention period (1 to 3650 days, 90 by default), and the artifact is cleared on expiry with the download no longer working. The report states the settings as they were when it was packaged; producing it again gives a new report with a new data time, not the same document. The settings, clauses and confirmation records it draws on are in the database and in the backup.
 
-This directory **has no bind mount by default** (it is not one of the three bind-mounted locations in the table above) and is stored for the lifetime of the container. Do not set up a separate backup for it, and do not expect it to survive a container rebuild. **This matters especially for reports**: a schedule can set a retention period of years, but while that directory is not mounted as a volume or bind mount, the retention period only holds while the container lives, and any container rebuild (including a version upgrade) empties the artifacts in it. To have reports survive their retention period, mount that directory as a volume or a bind mount, enable offsite storage, or download them within the retention period yourself.
+Because the directory is a bind mount, artifacts survive a container rebuild, a version upgrade included, and stay downloadable until their retention period ends. **The backup commands in §3 deliberately leave it out**: the `tar` there names `recordings` and `audit` only, for the sensitivity reason below. A backup that copies the whole of `DATA_PATH` (a filesystem snapshot, for instance) takes this directory along; exclude `exports` from it. The consequence after a restore: the job rows come back with the database, but their artifacts do not. Downloading such a job answers 410 (`RULE_EXPORT_ARTIFACT_UNAVAILABLE`), while the job list still shows it as done. **This matters especially for reports**, whose retention period can run to years: to have them outlive the loss of the host, enable offsite storage, or download them within the retention period yourself.
+A deployment that runs its own compose file instead of the shipped one has to mount this path itself. Without a mount, the directory lives only as long as the container, and any container rebuild empties it.
 **Mind its sensitivity**: evidence package artifacts contain **decrypted clipboard plaintext** and the recordings themselves
 (see §4 and the export documentation), so files in that directory have `0700` and `0600` permissions and should not be pulled into a general backup flow that would spread plaintext copies around.
 
@@ -130,6 +133,7 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 >   `DATA_PATH="$(cd "${DATA_PATH:?}" && pwd)"`. If the directory does not exist, `cd` prints an error and `DATA_PATH` becomes an empty string, which does not pass silently, because the `${DATA_PATH:?...}` in the later commands aborts on an empty value just the same (verified: `tar` does not run).
 > - If any of the three prints empty, `ENV_FILE` points at the wrong file. **Do not continue.**
 > - The `docker compose` commands in this document all assume they run in the deployment project directory (for a production deployment, `docker-compose.yml`). On a machine that also has the development compose file, always add an explicit `-f docker-compose.yml`.
+> - In a package deployment (§3.8), run them in the deployment folder. Its `.env` names the compose files under `current/` in `COMPOSE_FILE`, so no `-f` is needed, but `up` and `down` need `--project-directory .`, as written in section 5; §5.1 says what else to set first.
 > - For a deployment where your own ingress terminates TLS (`docker-compose.external-ingress.yml`): every `docker compose` command in this document needs both `-f` flags (`-f docker-compose.yml -f docker-compose.external-ingress.yml`), or set `COMPOSE_FILE` in `.env` so that becomes the default. With only one of them the stack starts in the built-in TLS proxy shape.
 
 ---
@@ -231,9 +235,11 @@ Backup content includes encrypted asset credentials, wrapped keys, and all audit
 
 ### 3.6 File permissions on `DATA_PATH` (the deployment's responsibility)
 
-**Under a bind mount, directory permissions set inside the image do not apply**; the actual permissions come from the host-side directory. The deployment has to ensure that `DATA_PATH` and its three subdirectories are **not world-readable**.
+**Under a bind mount, directory permissions set inside the image do not apply**; the actual permissions come from the host-side directory. The deployment has to ensure that `DATA_PATH` and its four subdirectories are **not world-readable**.
 
 Recording files contain everything the user typed on the target host, including passwords they entered on the target side. Text (SSH) recordings are `0600` files owned by root, inside per-day directories that the backend creates and keeps at `0700`. Graphical (RDP and VNC) recordings are `0640` files owned by `1000:0` in the top level of the recordings directory, written by guacd running as uid 1000. The recordings directory itself is `1000:0` with mode `2770` ([Deployment and Upgrade SOP §1.3](./upgrade-sop.md#13-check-the-file-permissions-on-data_path)): guacd writes into it as its owner, and the backend, which runs as root without the capabilities that bypass file permissions, reads, renames and expires graphical recordings through group 0. Do not change that owner, group or mode. It follows that a host account with uid 1000 can read graphical recordings, and rename or move anything in the top level of the recordings directory, without going through the product; keep that uid for the people who administer this system. File permissions are only one layer, and directory permissions are the necessary second one.
+
+The export directory needs no preparation: the backend sets `${DATA_PATH}/exports` to `0700` each time it starts and writes every artifact as a `0600` file, both owned by root as the container sees them. Evidence package artifacts in it hold decrypted plaintext (§4).
 
 Suggested: keep the `DATA_PATH` directory itself owned by root with mode `0750` or stricter. The containers mount only its subdirectories, so a root-owned data root does not stand in their way.
 
@@ -272,6 +278,31 @@ Decide whether to turn these on, and for how long, according to your retention r
 - **Least-privilege service account role**: being able to create and read objects is enough (the `objectCreator` plus `objectViewer` level), plus permission to read the bucket configuration for the disclosure. **No delete permission is needed.**
 - **No HMAC key is needed**: this product uses the native GCS API and connects with a service account JSON or application default credentials. Environments where organization policy restricts HMAC are unaffected.
 
+### 3.8 Backups taken by the management script (package deployments)
+
+In a deployment installed from the release package, `custodexa.sh` runs the stopped backup of §3.2. It does so when asked, from the menu (**Back up**) or with `sudo ./custodexa.sh backup` in the deployment folder, and on its own at step 7 of every upgrade ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)).
+
+- **What it runs**: the steps of §3.2 in order. It stops backend, guacd and frontend while the database keeps running, dumps the database with `pg_dump -Fc`, packs `recordings` and `audit`, copies `.env`, packs `tls/`, starts the services again, and confirms that the dump lists with `pg_restore --list` and both archives list with `tar -tzf`. Free space is checked before anything is stopped. Within an upgrade the services are not started again, because the next step changes the version. With `KEK_PROVIDER=ui` the preview says that the system comes back sealed (the mode B note in §3.2).
+- **Where**: `backups/<STAMP>/` in the deployment folder, where `<STAMP>` is `YYYYMMDD-HHMMSS` (seconds included, unlike §3.2) and is also the suffix of the files inside. `backups/` and each backup folder are mode `0700`. `status` shows the latest backup.
+
+| File | Content |
+|---|---|
+| `custodexa-db-<STAMP>.dump` | The database (§3.2 step 2) |
+| `custodexa-files-<STAMP>.tar.gz` | `recordings` and `audit` under `DATA_PATH` (step 3); not `exports` (§2) |
+| `custodexa-env-<STAMP>.bak` | `.env`, secrets included (step 4) |
+| `custodexa-tls-<STAMP>.tar.gz` | `tls/` (step 4) |
+| `snapshot.txt` | What the database held once the services had stopped (below) |
+| `state.json` | Only in the backup of an upgrade of a package deployment: the script's record as it was when that upgrade began (§5.1 F) |
+| `SHA256SUMS` | Checksums of the files above: in the folder, `sha256sum -c SHA256SUMS` |
+| `env-before-convert.bak` | Only in the backup of the first conversion: `.env` as it was before the folder was reorganized; written after the checksums, so `SHA256SUMS` does not list it |
+| `INCOMPLETE` | Present only when the backup failed. A folder with this file is not a backup to restore from |
+
+**`snapshot.txt`** holds one `key=value` per line: the row counts of `users`, `sessions` and `audit_logs`; one `migration=` line per applied row of `schema_migrations`; the four fingerprints of §6 item 6 (`fp.jwt`, `fp.kek`, `fp.export_signing`, `fp.checkpoint_signing`), computed with the algorithm of the Key Management page; and `usable=true` or `usable=false`. It is `false`, with the reason on the `unusable=` line, when a fingerprint could not be computed or its source is not unique; the checks after an upgrade then leave the keys to a manual comparison on the Key Management page. Taking it needs neither an unseal nor a sign-in. Keep it with the backup: it is the "values recorded before the backup" that §6 compares against.
+
+**Keeping it**: the folder holds everything §3.5 describes, `.env` in plaintext included, and it sits on the same host as the running `.env`. Copy it elsewhere encrypted, and keep it apart from the KEK material. The script never deletes a backup: remove the ones you no longer need yourself, and count `backups/` in the disk planning.
+
+**Not covered by the script**: the no-downtime backup of §3.3, and deployments in the external database shape (`compose.external-database.yml`), where `backup` refuses because the database is not part of the deployment. Back that database up with your own procedure; an upgrade of such a deployment takes your own backup (see the SOP).
+
 ---
 
 ## 4. Disaster recovery prerequisites for encryption keys (read before deployment)
@@ -282,8 +313,8 @@ The system protects asset credentials, the bind password for the directory integ
 > **Clipboard audit content depends on the KEK just the same**: clipboard content is stored envelope encrypted
 > (`clipboard_events.content_enc`), so **losing the key means clipboard audit content cannot be read**, on the same terms as every other envelope-encrypted field such as asset credentials, with no exception for being audit data. The **factual side** of a clipboard event (time, direction, content length, status) is not encrypted and remains readable after a restore, but the **full content** cannot be decrypted without the KEK. Disaster recovery planning has to put clipboard content in the "depends on the KEK" category and must not assume it can still be reviewed without the key.
 >
-> **Evidence package artifacts contain plaintext**: an evidence package export **decrypts** the clipboard content and packs it, together with the recordings themselves, into a ZIP that lands in the temporary export directory
-> (`/var/lib/custodexa/exports`, not a backup target, see §2). This is one of the few places in the system where plaintext secrets exist, and its data exposure surface has to be treated as being on par with the production database: directory and file permissions `0700` and `0600`, downloads bound to the requester in person, and the artifact cleared automatically after 24h. **Never** pull that directory into a general backup or copy it anywhere outside key custody; doing so scatters plaintext secrets into places without equivalent protection.
+> **Evidence package artifacts contain plaintext**: an evidence package export **decrypts** the clipboard content and packs it, together with the recordings themselves, into a ZIP that lands in the export directory
+> (`/var/lib/custodexa/exports` in the container, `${DATA_PATH}/exports` on the host; not a backup target, see §2). This is one of the few places in the system where plaintext secrets exist, and its data exposure surface has to be treated as being on par with the production database: directory and file permissions `0700` and `0600`, downloads bound to the requester in person, and the artifact cleared automatically after 24h. **Never** pull that directory into a general backup or copy it anywhere outside key custody; doing so scatters plaintext secrets into places without equivalent protection.
 
 The KEK has three custody modes, declared by the environment variable `KEK_PROVIDER`. **The disaster recovery prerequisites of the three modes are completely different, and the mode has to be chosen and understood before deployment.**
 
@@ -355,6 +386,8 @@ Both the connection parameters and the **credentials** for offsite storage live 
 
 ## 5. Restore procedure
 
+**Going back after an upgrade by the management script** (its screens point here): read §5.1 first. It says what to do before and after the steps below, and how to fill them in from a folder under `backups/`.
+
 **One point where the order differs from §3.2**: `.env` is restored first, and the variables are obtained after. The reason is in the note on step 2.
 
 Below, `STAMP` carries the timestamp of the set of backup files to restore (the file name suffix produced in §3.2). **Set it to the actual value before running anything**:
@@ -365,18 +398,21 @@ Below, `STAMP` carries the timestamp of the set of backup files to restore (the 
 #
 #    The timestamp of the set of backup files to restore. **The value on the line below must be changed to the actual file name suffix**;
 #    if you forget, the three commands after it fail because the files do not exist (they will not restore the wrong thing).
+#    A backup taken by the management script uses YYYYMMDD-HHMMSS, the name of its folder under backups/ (§3.8).
 STAMP=YYYYMMDD-HHMM
+#    The folder that holds the backup files: . when they are in this directory, backups/<STAMP> for a script backup
+BACKUP_DIR=.
 
 # 1. Stop all services. ${DATA_PATH}/postgres in the target environment must be an empty directory
 #    (the postgres container only initializes a clean database when the data directory is empty);
 #    confirm this machine is the one meant for the restore, then empty that directory
-docker compose down
+docker compose --project-directory . down
 
 # 2. Restore the deployment-layer settings first (required for KEK mode A; mode B contains no material, mode C contains no KMS credentials).
 #    This comes before obtaining the values because it overwrites .env entirely. If you obtained the values first and overwrote afterwards,
 #    the DATA_PATH, DB_USER, and DB_NAME you hold would be the old pre-overwrite values, inconsistent with what the service actually uses.
 ENV_FILE="${ENV_FILE:-./.env}"
-cp "custodexa-env-${STAMP}.bak" "$ENV_FILE"
+cp "${BACKUP_DIR:?}/custodexa-env-${STAMP}.bak" "$ENV_FILE"
 #    Note: what you restored is the .env of the *source* machine. If this machine's data root differs from
 #    the source machine's, change DATA_PATH in .env to this machine's actual path now, before going on.
 
@@ -394,14 +430,14 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 ( cd "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}" && pwd )
 #    Extract as root (sudo). Extracted by any other account, the per-day recording directories, the text recordings
 #    and the audit files end up owned by that account, and the preparation command below does not change them back.
-tar -xzf "custodexa-files-${STAMP}.tar.gz" \
+tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
   -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
 #    Set the recordings directory back to 1000:0 2770 (§3.6); safe to run even when extraction already kept it
-docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" -c \
   'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
 #    Restore the TLS certificate directory into the project directory (without it, self-signed mode generates a new CA and certificate at startup,
 #    and the CA has to be distributed to every client machine again)
-tar -xzf "custodexa-tls-${STAMP}.tar.gz"
+tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
 
 # 5. Start postgres only, and load the logical backup **after it can really accept connections**.
 #    `up -d` only guarantees the container started, not that postgres is ready; and on first startup (empty data directory),
@@ -409,7 +445,7 @@ tar -xzf "custodexa-tls-${STAMP}.tar.gz"
 #    During that period `pg_isready` over the socket reports ready, but the target database **does not exist yet**,
 #    and loading the backup then gives `database "..." does not exist`, so the whole restore comes to nothing.
 #    So the criterion here is both **TCP** (`-h 127.0.0.1`, not listened on during initialization) and **actually connecting to the target database** holding at the same time.
-docker compose up -d postgres
+docker compose --project-directory . up -d postgres
 for _ in $(seq 1 60); do
   docker compose exec -T postgres \
     pg_isready -h 127.0.0.1 -U "${DB_USER:?DB_USER not obtained, run step 3 first}" >/dev/null 2>&1 \
@@ -424,13 +460,68 @@ docker compose exec -T postgres psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c 'sel
 docker compose exec -T postgres \
   pg_restore -U "${DB_USER:?DB_USER not obtained, run step 3 first}" \
              -d "${DB_NAME:?DB_NAME not obtained, run step 3 first}" --clean --if-exists \
-  < "custodexa-db-${STAMP}.dump"
+  < "${BACKUP_DIR:?}/custodexa-db-${STAMP}.dump"
 
 # 6. Start the remaining services
-docker compose up -d
+docker compose --project-directory . up -d
 ```
 
 A KEK mode B deployment is still sealed after step 6, and only starts serving once the material is entered at `/unseal`. **A mode C deployment is sealed after step 6 as well**: its custodian settings came back with the database, but the credentials were in no backup, so someone signs in at `/unseal`, checks the custodian on screen, and supplies them again (§4.3). Until then every business route answers 503, which is expected rather than a failed restore.
+
+### 5.1 Going back to the previous version after an upgrade by the management script
+
+The management script does not roll back by itself. When an upgrade stops after it switched to the new version (steps 9 to 12), or when you decide after a finished upgrade to return to the previous version, restore the backup the upgrade took at its step 7. The upgrade screen, and the preview before it, name that folder. **Everything recorded after that backup is lost**, which is why the backup was taken with the services stopped.
+
+A failure before step 9 does not need this section: at steps 1 to 7 the screen prints the command that starts the old version again, and at step 8 (the first conversion) it prints the commands that put the folder back.
+
+Work as root in the deployment folder, and fill in the three values from the screen:
+
+```bash
+sudo -s
+cd /opt/custodexa                      # the deployment folder
+OLD=1.13.0                             # the version before the upgrade
+STAMP=YYYYMMDD-HHMMSS                  # the name of the backup folder
+BACKUP_DIR="backups/${STAMP}"
+
+# A. The backup has to be complete: no INCOMPLETE file, and every checksum OK
+test ! -e "${BACKUP_DIR}/INCOMPLETE" && ( cd "${BACKUP_DIR}" && sha256sum -c SHA256SUMS )
+
+# B. Stop and remove the new version's containers (the data in DATA_PATH is not touched)
+docker compose --project-directory . down
+
+# C. Keep the database the new version used, instead of emptying it (section 5, step 1)
+DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' .env | tail -n 1)"
+( cd "${DATA_NOW:?}" && pwd )           # look at it: this deployment's data root
+mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP}"
+mkdir -m 700 "${DATA_NOW:?}/postgres"
+```
+
+**D. Put the previous version's files back in place.** Which commands depends on what ran before the upgrade.
+
+When it was a package deployment, point `current` back to the previous release and load that release's image references into this shell (the script loads them before every compose call; section 5's commands need them too):
+
+```bash
+ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
+set -a; . ./current/images.env; set +a
+```
+
+When the upgrade was the first conversion of a `git clone` deployment, undo the reorganization. These are the commands the step 8 screen prints, plus the two links that step 9 added:
+
+```bash
+rm -f current custodexa.sh
+find "releases/${OLD}" -mindepth 1 -maxdepth 1 -exec mv -n -t . {} +
+rmdir "releases/${OLD}"                 # fails when anything is left: stop and look
+rm -rf releases state.json state.json.prev
+cp "${BACKUP_DIR}/env-before-convert.bak" .env
+git -c safe.directory="$PWD" status --porcelain
+# only backups/ and .custodexa.lock may be listed; anything else: stop and look
+```
+
+**E. Run section 5 from step 2 to step 6** in this shell, with `STAMP` and `BACKUP_DIR` as set above. `docker compose` then starts the previous version: its compose files through `current` in a package deployment, the root `docker-compose.yml` after a conversion was undone. Then go through section 6. Compare item 6 with the fingerprints in `${BACKUP_DIR}/snapshot.txt`, and the counts of `users` and `sessions` with that file too.
+
+**F. Afterwards.** Delete `postgres.before-restore-${STAMP}` once section 6 has passed and you are sure you will not need the new version's data. The previous version's images have to be on the host, because the script does not delete images; the upgrade preview warned when some were missing.
+
+In a package deployment the script's own record, `state.json`, still describes the newer version and the upgrade: `status` shows that version, and `upgrade` refuses to run and prints the same instructions again. Put back the record as it was before the upgrade, which the upgrade kept in its backup folder: `cp -p "${BACKUP_DIR}/state.json" state.json`. This release has no command that corrects the record otherwise. After an undone conversion there is no `state.json`: the folder is a `git clone` deployment again, and a later upgrade with the script converts it again.
 
 ---
 

@@ -40,11 +40,22 @@ func ValidNotificationChannelLanguage(s string) bool {
 	}
 }
 
+// 通道推送門檻：最低推送等級，值域沿用告警等級三值（AlertSeverity*），
+// 故前端可直讀同一組常數做雙向比對。low＝全部告警（預設）、medium＝中、高等級、
+// high＝只有高等級。刻意沒有「全部不推送」：改密告警寫死 high 且推送是唯一出口，
+// 要完全不收請停用通道。DB CHECK 約束同 type／language 欄雙層驗證慣例
+const NotificationChannelMinSeverityDefault = AlertSeverityLow
+
+// ValidNotificationChannelMinSeverity 檢查推送門檻是否為合法值（嚴格匹配三值）
+func ValidNotificationChannelMinSeverity(s string) bool {
+	return ValidAlertSeverity(s)
+}
+
 // NotificationChannel 告警通知通道（alert-notifications）
 // secret 用於 HMAC-SHA256 簽名（X-OT-Signature），非空時推送會附簽名 header；
 // 整組端點 admin only；secret 不隨 JSON 回傳（json:"-"）。
 // Update 時空 secret＝沿用既有值，清除簽名需顯式 clear_secret（見 notification_channel_service.Update）
-// 注意：本表由 migration v7.10 以原生 SQL 建立，不走 AutoMigrate，
+// 注意：本表由 baseline 以原生 SQL 建立（min_severity 由增量 migration 加欄），不走 AutoMigrate，
 // 欄位定義需與 migration 保持一致
 type NotificationChannel struct {
 	ID      uint   `gorm:"primarykey" json:"id"`
@@ -57,6 +68,10 @@ type NotificationChannel struct {
 	// Language per-channel 語系：Create 未給預設 zh-TW，
 	// 嚴格匹配三值（CHECK 約束同 type 欄慣例）
 	Language string `gorm:"size:8;not null;default:zh-TW" json:"language"`
+
+	// MinSeverity 推送門檻（最低推送等級）：Create 未給預設 low（全部告警），
+	// 只作用於告警佇列的推送；系統事件與測試發送不受影響（見 alert_notifier.notify）
+	MinSeverity string `gorm:"size:10;not null;default:low" json:"min_severity"`
 
 	// HasSecret 供前端顯示「是否已設定簽名密鑰」狀態（secret 本身不回傳）；
 	// 非 DB 欄位，由 service 讀取時依 Secret 是否為空填入

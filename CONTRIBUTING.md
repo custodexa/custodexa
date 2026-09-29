@@ -28,7 +28,7 @@ pitfalls, and guard-test discipline, see [`docs/dev/testing.md`](docs/dev/testin
 
 ## DCO sign-off (required)
 
-The project is licensed under **AGPL-3.0** and accepts contributions under the
+The project is licensed under **AGPL-3.0-only** and accepts contributions under the
 **DCO**. There is no agreement to sign, just one line per commit:
 
 ```bash

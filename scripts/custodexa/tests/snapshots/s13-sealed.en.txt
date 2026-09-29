@@ -1,0 +1,2 @@
+[ OK ]  4/13  Wait for audit records to be written: the system is
+              sealed, so audit writing has not started; nothing to wait for

@@ -53,7 +53,7 @@ func newPolicyTestEnv(t *testing.T) *policyTestEnv {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.PolicyGroup{}, &model.PolicyClause{},
 		&model.PolicyClauseControl{}, &model.PolicyClauseAnnotation{},
-		&model.SecurityPolicy{}, &model.AuditLog{}); err != nil {
+		&model.SecurityPolicy{}, &model.AuditLog{}, &model.AuditExportJob{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -70,7 +70,7 @@ func newPolicyTestEnv(t *testing.T) *policyTestEnv {
 		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false})
 
 	groupHandler := NewPolicyGroupHandler(repo, compliance, auditSvc)
-	complianceHandler := NewComplianceHandler(compliance, repo)
+	complianceHandler := NewComplianceHandler(compliance, repo, audit.NewAuditExportJobService(db), auditSvc)
 	policyHandler := NewSecurityPolicyHandler(policyService, auditSvc, compliance, repo)
 	scheduleHandler := NewScheduleHandler()
 

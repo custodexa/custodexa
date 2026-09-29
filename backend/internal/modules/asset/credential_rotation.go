@@ -269,8 +269,8 @@ func (s *CredentialRotationService) Start(ctx context.Context, credentialID uint
 			PasswordExcludeAmbiguous: req.Policy.ExcludeAmbiguous,
 			StartedAt:                time.Now(),
 		}
-		if err := tx.Create(rot).Error; err != nil {
-			return fmt.Errorf("建立輪替失敗: %w", err)
+		if err := createRotationRow(tx, rot); err != nil {
+			return err
 		}
 		if err := snapshotRotationMembers(tx, rot, bindings, &version.ID); err != nil {
 			return err
@@ -347,6 +347,27 @@ func normalizeRotationPolicy(p PasswordPolicy) PasswordPolicy {
 		p.Length = model.PasswordLengthDefault
 	}
 	return p
+}
+
+// createRotationRow 建立輪替列，並保證兩個密碼策略欄記下的是本輪實際採用的值。
+//
+// 兩欄帶 default:true：gorm 對零值改用 DB 預設值並回填到 rot，於是「不含符號」的
+// 一輪會被記成含符號（密碼本身依請求策略產生，錯的是紀錄）。整組與拆分兩個起始
+// 入口共用本函式，須在起始交易內呼叫
+func createRotationRow(tx *gorm.DB, rot *model.CredentialRotation) error {
+	wanted := map[string]bool{
+		"password_include_symbol":    rot.PasswordIncludeSymbol,
+		"password_exclude_ambiguous": rot.PasswordExcludeAmbiguous,
+	}
+	if err := tx.Create(rot).Error; err != nil {
+		return fmt.Errorf("建立輪替失敗: %w", err)
+	}
+	if err := restoreFalseDefaults(tx, &model.CredentialRotation{}, rot.ID, wanted); err != nil {
+		return fmt.Errorf("建立輪替失敗: %w", err)
+	}
+	rot.PasswordIncludeSymbol = wanted["password_include_symbol"]
+	rot.PasswordExcludeAmbiguous = wanted["password_exclude_ambiguous"]
+	return nil
 }
 
 // snapshotRotationMembers 把當下的全部掛載快照成成員列。

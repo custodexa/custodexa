@@ -2,7 +2,7 @@
 
 [English](../../ops/backup-and-restore.md) | **繁體中文** | [日本語](../../ja/ops/backup-and-restore.md) | [其他語言 →](../../README.md)
 
-> 適用版本：Custodexa 1.0。
+> 適用版本：Custodexa 1.0。§3.8 與 §5.1 說明安裝包部署的管理腳本，自 1.13.0 起適用。
 >
 > **本程序的驗證狀態**：以下步驟由實際的資料落點設定與程式行為推導撰寫。
 > **但完整的「備份 → 乾淨環境還原 → 服務起得來」
@@ -16,7 +16,8 @@
 
 ## 1. 備份由部署方以標準工具執行
 
-備份與還原走 `pg_dump`、`pg_restore` 與 `tar`，本文提供完整程序，產品不隨附腳本。
+備份與還原走 `pg_dump`、`pg_restore` 與 `tar`，本文提供完整程序。以安裝包部署時，管理腳本 `custodexa.sh`
+會代為執行 §3.2 的停機備份（§3.8）；還原一律依第 5 節手動進行。
 備份的保存位置、保留週期、加密與異地複製屬部署方的資料治理範圍。
 
 ---
@@ -31,6 +32,7 @@
 | `${DATA_PATH}/postgres` | `/var/lib/postgresql/data` | PostgreSQL 資料目錄（全部業務資料、稽核紀錄、加密後的憑證與金鑰包裹） | postgres |
 | `${DATA_PATH}/recordings` | `/var/lib/custodexa/recordings` | 會話錄影檔 | backend、guacd（共掛） |
 | `${DATA_PATH}/audit` | `/var/log/custodexa/audit` | 稽核降級檔案、封存期留痕 journal | backend |
+| `${DATA_PATH}/exports` | `/var/lib/custodexa/exports` | 非同步匯出的產物（證據包、輪替證據報告、合規報告）。**跨容器重建保留，但不在備份指令範圍內**（見下文） | backend |
 | **物件儲存**（可選） | 不在容器檔案系統內 | **離機證據副本**：錄影與證據包的上傳副本 | 由離機儲存功能上傳；**落在資料根之外** |
 
 > **最後一列不是資料根的一部分，備份程序也不涵蓋它。** 離機儲存功能一旦啟用，
@@ -40,16 +42,16 @@
 > 資料庫裡的保管帳冊（哪一份錄影的副本在哪個儲存桶、哪個 key、上傳當下的雜湊）
 > **隨資料庫備份一起走**，所以帳冊與遠端物件的對應，取決於兩者的時點是否對得上（見 §3.1）。
 
-**上表前三列全部為 bind mount，無 named volume**。兩個直接後果：
+**上表前四列全部為 bind mount，無 named volume**。兩個直接後果：
 
 - `docker compose down -v` **不會**清掉資料（`-v` 只清 named volume）。
 - 反過來說，刪除或覆蓋 `DATA_PATH` 目錄本身，就是刪除全部資料，沒有第二份。
 
 資產的改密通道設定（含 WinRM 通道上傳的 CA 憑證）存在資料庫的資產表內，隨上表第一列一起備份，沒有另外的落點。
 
-**不屬備份對象的暫存目錄**：非同步匯出的產物落於 `/var/lib/custodexa/exports`
-（`EXPORT_ARTIFACT_PATH`，容器內路徑），證據包與輪替證據報告共用這一個目錄。
-**它是暫存、非備份對象**，但兩種產物的保留期與取回方式不同：
+**有保留、但不屬備份對象的目錄**：非同步匯出的產物落於 `/var/lib/custodexa/exports`
+（`EXPORT_ARTIFACT_PATH`，容器內路徑），證據包、輪替證據報告與合規報告共用這一個目錄。
+正式版 compose 把它掛載到 `${DATA_PATH}/exports`。**它不是備份對象**，且各種產物的保留期與取回方式不同：
 
 - **證據包**：產物於保留期（24h）後由系統自動清除，過期即下載失效。備份它沒有意義，
   其內容可由申請者重新發起匯出取回。
@@ -57,12 +59,18 @@
   排程產出的報告沒有自然人申請者，沒有「由申請者重新發起」這條路；具稽核檢視權限者可以再產一份，
   但重產的是新的一份報告，帶新的產出時刻與新的簽章，不是同一份已交付的文件。
   報告所陳述的事實來自資料庫（帳號、改密記錄、政策設定），備份含這些事實。
+- **合規報告**：由合規對照頁手動產出，保留期由發起者設定（1 至 3650 天，預設 90 天），到期同樣清除、下載失效。
+  報告陳述的是打包當下的設定；重新產出得到的是帶新資料時點的新報告，不是同一份文件。
+  報告所依據的設定、條文與確認記錄在資料庫內，備份涵蓋它們。
 
-本目錄**預設不掛 bind mount**（不在上表三個 bind mount 落點內），隨容器生命週期存放；不要為它另設定備份，
-也不要期待它跨容器重建後仍在。**這一點對報告特別要緊**：排程可以設出長達數年的保留期，
-但該目錄未掛載為 volume 或 bind mount 時，那個保留期只在容器存活期間有效，
-任何一次容器重建（含版本升級）都會清空目錄內的產物。要讓報告留到保留期，
-請把該目錄掛載為 volume 或 bind mount，或啟用離機儲存，或於保留期內自行下載取走。
+該目錄是 bind mount，產物跨容器重建（含版本升級）仍在，保留期內都下載得到。
+**§3 的備份指令刻意不含它**：那裡的 `tar` 只列 `recordings` 與 `audit`，理由是下面的敏感度。
+把整個 `DATA_PATH` 一起複製的備份（例如檔案系統快照）會把這個目錄帶進去，請把 `exports` 排除在外。
+還原後的結果是：工作單的資料列隨資料庫回來，產物不會回來；下載這類工作單回 410
+（`RULE_EXPORT_ARTIFACT_UNAVAILABLE`），清單上仍顯示為完成。**這一點對報告特別要緊**，
+報告的保留期可長達數年：要讓報告撐過主機遺失，請啟用離機儲存，或於保留期內自行下載取走。
+不用隨附 compose 檔、自行撰寫 compose 檔的部署，要自己掛載這個路徑；沒有掛載時，
+該目錄只隨容器存在，任何一次容器重建都會把它清空。
 **注意其敏感度**：證據包產物含**解密後的剪貼簿明文**與錄影本體
 （見 §4 與匯出說明），故該目錄的檔案權限為 `0700`／`0600`，且不應被納入一般備份流而擴散明文副本。
 
@@ -183,6 +191,9 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 > - 交由自家 ingress 承載 TLS 的部署（`docker-compose.external-ingress.yml`）：本文每一道
 >   `docker compose` 指令都要帶兩個 `-f`（`-f docker-compose.yml -f docker-compose.external-ingress.yml`），
 >   或在 `.env` 設 `COMPOSE_FILE` 讓它成為預設；只帶一個會以內建 TLS 代理的形態啟動。
+> - 安裝包部署（§3.8）請在部署目錄下執行。該處 `.env` 的 `COMPOSE_FILE` 已指向 `current/` 下的
+>   compose 檔，不需要 `-f`；但 `up` 與 `down` 要帶 `--project-directory .`（第 5 節的指令已帶上），
+>   其他須先設定的事項見 §5.1。
 
 ---
 
@@ -310,10 +321,12 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 ### 3.6 `DATA_PATH` 的檔案權限（部署方責任）
 
 **bind mount 情境下，映像內設定的目錄權限不會生效**，實際權限由主機端目錄決定。
-部署方須自行確保 `DATA_PATH` 及其下三個子目錄**不是世界可讀**。
+部署方須自行確保 `DATA_PATH` 及其下四個子目錄**不是世界可讀**。
 
 錄影檔中含使用者在目標主機上鍵入的完整內容（包含他們在目標端輸入的密碼）。
 文字（SSH）錄影是 root 擁有的 `0600` 檔，放在後端建立並維持為 `0700` 的日期目錄內。圖形（RDP 與 VNC）錄影是擁有者 `1000:0` 的 `0640` 檔，位於錄影目錄根層，由以 uid 1000 執行的 guacd 寫入。錄影目錄本身為 `1000:0`、模式 `2770`（[部署與升級 SOP §1.3](./upgrade-sop.md#13-檢查-data_path-的檔案權限)）：guacd 以擁有者身分寫入；後端以 root 執行但沒有繞過檔案權限的 capability，經由群組 0 讀取、改名與依保留期刪除圖形錄影。這組擁有者、群組與模式不要更動。由此可知，主機上 uid 1000 的帳號不經產品就能讀取圖形錄影，也能改名或搬走錄影目錄根層的任何項目；這個 uid 只留給管理本系統的人。檔案權限只是其中一層，目錄權限是必要的第二層。
+
+匯出目錄不需要事先準備：後端每次啟動都會把 `${DATA_PATH}/exports` 設為 `0700`，每個產物都寫成 `0600` 檔，從容器內看兩者都由 root 擁有。其中的證據包產物含解密後的明文（§4）。
 
 建議：`DATA_PATH` 目錄本身由 root 擁有，權限 `0750` 或更嚴。各容器只掛載它底下的子目錄，資料根歸 root 並不妨礙容器運作。
 
@@ -380,6 +393,47 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 - **不需要 HMAC key**：本產品走 GCS 原生 API，以服務帳號 JSON 或應用預設憑證連線。
   組織政策限制 HMAC 的環境不受影響。
 
+### 3.8 管理腳本做的備份（安裝包部署）
+
+以安裝包部署時，`custodexa.sh` 會執行 §3.2 的停機備份。時機有兩種：你要求時（選單的「**備份**」，
+或在部署目錄執行 `sudo ./custodexa.sh backup`），以及每次升級的第 7 步
+（[升級 SOP](./upgrade-sop.md#以管理腳本升級)）。
+
+- **做了什麼**：依序照 §3.2 的步驟——資料庫保持運作、停止 backend／guacd／frontend，以
+  `pg_dump -Fc` 匯出資料庫，打包 `recordings` 與 `audit`，複製 `.env`，打包 `tls/`，重新啟動服務，
+  再以 `pg_restore --list` 與 `tar -tzf` 確認備份可讀。停止任何服務之前先檢查空間。
+  升級中的備份不會重新啟動服務，因為下一步就要換版。`KEK_PROVIDER=ui` 時，預覽會說明備份後
+  系統回到已封存（§3.2 關於模式 B 的說明）。
+- **位置**：部署目錄下的 `backups/<STAMP>/`。`<STAMP>` 是 `YYYYMMDD-HHMMSS`（含秒，與 §3.2 不同），
+  也是資料夾內各檔的後綴。`backups/` 與每個備份資料夾的權限都是 `0700`。`status` 會顯示最近一次備份。
+
+| 檔案 | 內容 |
+|---|---|
+| `custodexa-db-<STAMP>.dump` | 資料庫（§3.2 步驟 2） |
+| `custodexa-files-<STAMP>.tar.gz` | `DATA_PATH` 下的 `recordings` 與 `audit`（步驟 3）；不含 `exports`（§2） |
+| `custodexa-env-<STAMP>.bak` | `.env`，含機密值（步驟 4） |
+| `custodexa-tls-<STAMP>.tar.gz` | `tls/`（步驟 4） |
+| `snapshot.txt` | 服務停止後資料庫的狀態（見下） |
+| `state.json` | 只出現在安裝包部署升級時的備份：那次升級開始時腳本的紀錄（§5.1 F） |
+| `SHA256SUMS` | 以上各檔的校驗和：在該資料夾內執行 `sha256sum -c SHA256SUMS` |
+| `env-before-convert.bak` | 只出現在首次轉換的備份：整理目錄之前的 `.env`；寫在校驗和之後，所以 `SHA256SUMS` 不含此檔 |
+| `INCOMPLETE` | 只在備份失敗時存在。有這個檔的資料夾不是可以拿來還原的備份 |
+
+**`snapshot.txt`** 一行一個 `key=value`：`users`、`sessions`、`audit_logs` 三張表的筆數；
+`schema_migrations` 每一筆已套用的版本各一行 `migration=`；§6 第 6 項的四個指紋
+（`fp.jwt`、`fp.kek`、`fp.export_signing`、`fp.checkpoint_signing`），以金鑰管理頁的算法計算；
+以及 `usable=true` 或 `usable=false`。任一指紋算不出或來源不唯一時為 `false`，原因寫在
+`unusable=` 那一行；此時升級後的核對會把金鑰改為到金鑰管理頁人工比對。產生它不需要解封，
+也不需要登入。請與備份放在一起：§6 要比對的「備份前記下的值」就是它。
+
+**保管**：這個資料夾含 §3.5 所列的全部內容，包括明文的 `.env`，而且和運作中的 `.env` 在同一台主機。
+請加密後另存到別處，並與 KEK 材料分開保管。腳本從不刪除備份：不再需要的請自行刪除，
+並把 `backups/` 計入磁碟規劃。
+
+**腳本不涵蓋**：§3.3 的不停機備份；以及外接資料庫形態（`compose.external-database.yml`）——
+資料庫不在部署之內，`backup` 會拒絕執行。該資料庫請以自己的程序備份；這種部署升級時改用
+自備備份（見 SOP）。
+
 ---
 
 ## 4. 加密金鑰的災難復原前提（部署前必讀）
@@ -395,8 +449,8 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 > 不加密，還原後仍可讀；但**內容全文**在無 KEK 時解不開。災難復原規劃須把剪貼簿內容納入「取決於 KEK」
 > 的那一類，不得假設它在缺金鑰時仍可調閱。
 >
-> **證據包產物含明文**：證據包匯出會把剪貼簿內容**解密**、連同錄影本體打包成 ZIP，落於暫存匯出目錄
->（`/var/lib/custodexa/exports`，非備份對象，見 §2）。這是系統內少數存在明文機密的落點之一，其資料外洩面
+> **證據包產物含明文**：證據包匯出會把剪貼簿內容**解密**、連同錄影本體打包成 ZIP，落於匯出目錄
+>（容器內 `/var/lib/custodexa/exports`，主機上 `${DATA_PATH}/exports`；非備份對象，見 §2）。這是系統內少數存在明文機密的落點之一，其資料外洩面
 > 須與生產資料庫同級看待：目錄權限 `0700`／`0600`、下載綁申請者本人、產物 24h 後自動清除。**切勿**把該目錄
 > 納入一般備份或複製到金鑰保管處以外的位置——那等於把明文機密散佈到未受同級保護的地方。
 
@@ -523,6 +577,9 @@ KEK_KMS_PROVIDER=aws
 
 ## 5. 還原程序
 
+**以管理腳本升級後要回到舊版**（腳本畫面會指到這裡）：請先讀 §5.1。它說明下列步驟之前與之後要做什麼，
+以及如何用 `backups/` 下的資料夾填入這些步驟。
+
 **步驟順序與 §3.2 不同的一點**：`.env` 先還原、變數後取值。理由見步驟 2 的說明。
 
 下方以 `STAMP` 承接要還原的那一組備份檔的時間戳（即 §3.2 產出的檔名後綴），
@@ -534,18 +591,21 @@ KEK_KMS_PROVIDER=aws
 #
 #    要還原的那一組備份檔的時間戳。**下面這行的值必須改成實際檔名的後綴**；
 #    忘了改的話，後續三道指令會因為檔案不存在而失敗（不會還原到錯的東西）
+#    管理腳本做的備份是 YYYYMMDD-HHMMSS，即它在 backups/ 下的資料夾名稱（§3.8）
 STAMP=YYYYMMDD-HHMM
+#    備份檔所在的資料夾：檔案就在目前目錄時為 .，腳本做的備份為 backups/<STAMP>
+BACKUP_DIR=.
 
 # 1. 停掉全部服務。目標環境的 ${DATA_PATH}/postgres 必須為空目錄
 #    （postgres 容器只有在資料目錄為空時才會初始化出乾淨的資料庫）；
 #    確認這台是還原用的環境，再清空該目錄
-docker compose down
+docker compose --project-directory . down
 
 # 2. 先還原部署層設定（KEK 模式 A 必要；模式 B 不含材料，模式 C 不含 KMS 憑證）。
 #    這一步排在取值之前，是因為它會整份覆蓋 .env——若先取值再覆蓋，
 #    手上的 DATA_PATH／DB_USER／DB_NAME 會是被覆蓋前的舊值，與服務實際會用的不一致。
 ENV_FILE="${ENV_FILE:-./.env}"
-cp "custodexa-env-${STAMP}.bak" "$ENV_FILE"
+cp "${BACKUP_DIR:?}/custodexa-env-${STAMP}.bak" "$ENV_FILE"
 #    注意：還原進來的是「來源機」的 .env。若這台的資料根與來源機不同，
 #    請現在就把 .env 裡的 DATA_PATH 改成本機的實際路徑，再往下做。
 
@@ -563,14 +623,14 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 ( cd "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}" && pwd )
 #    以 root（sudo）解壓。以其他帳號解壓時，錄影的日期目錄、文字錄影與稽核檔都會歸該帳號所有，
 #    下方的準備指令不會把它們改回來。
-tar -xzf "custodexa-files-${STAMP}.tar.gz" \
+tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
   -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}"
 #    把錄影目錄收斂回 1000:0 2770（§3.6）；解壓已保留權限時執行也無妨
-docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
+docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" -c \
   'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
 #    TLS 憑證目錄還原到專案目錄下（不還原它，自簽模式會在啟動時產生新的 CA 與憑證，
 #    全部使用者端都要重新派發 CA）
-tar -xzf "custodexa-tls-${STAMP}.tar.gz"
+tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
 
 # 5. 只起 postgres，**等它真的可以接受連線之後**再灌入邏輯備份。
 #    `up -d` 只保證容器起了，不保證 postgres 已就緒；而且首次啟動（資料目錄為空）時，
@@ -578,7 +638,7 @@ tar -xzf "custodexa-tls-${STAMP}.tar.gz"
 #    這段期間 `pg_isready` 走 socket 會回報就緒，但目標資料庫**還不存在**，
 #    此時灌備份會得到 `database "..." does not exist` 而整份還原落空。
 #    故這裡以 **TCP**（`-h 127.0.0.1`，初始化期間不監聽）＋**實際連上目標資料庫**兩個條件同時成立為準。
-docker compose up -d postgres
+docker compose --project-directory . up -d postgres
 for _ in $(seq 1 60); do
   docker compose exec -T postgres \
     pg_isready -h 127.0.0.1 -U "${DB_USER:?未取得 DB_USER，請先執行步驟 3}" >/dev/null 2>&1 \
@@ -593,16 +653,83 @@ docker compose exec -T postgres psql -U "${DB_USER:?}" -d "${DB_NAME:?}" -c 'sel
 docker compose exec -T postgres \
   pg_restore -U "${DB_USER:?未取得 DB_USER，請先執行步驟 3}" \
              -d "${DB_NAME:?未取得 DB_NAME，請先執行步驟 3}" --clean --if-exists \
-  < "custodexa-db-${STAMP}.dump"
+  < "${BACKUP_DIR:?}/custodexa-db-${STAMP}.dump"
 
 # 6. 起其餘服務
-docker compose up -d
+docker compose --project-directory . up -d
 ```
 
 KEK 模式 B 的部署在步驟 6 之後仍處於已封存，須到 `/unseal` 輸入材料才會開始服務。
 **模式 C 的部署在步驟 6 之後同樣是已封存**：保管處設定隨資料庫回來了，憑證則不在任何備份裡，
 所以要有人到 `/unseal` 核對畫面上的保管處，再重新提供憑證（§4.3）。
 在那之前業務路由一律回 503，那是預期行為，不是還原失敗。
+
+### 5.1 以管理腳本升級後，回到升級前的版本
+
+管理腳本不會自行回退。升級在換到新版之後停下（第 9 到 12 步），或升級完成後你決定回到上一版時，
+請還原升級第 7 步所做的備份；升級畫面與之前的預覽都會列出那個資料夾。**該次備份之後記錄的一切都會遺失**，
+這也是備份在服務停止時進行的原因。
+
+第 9 步之前的失敗不需要本節：第 1 到 7 步的畫面會印出重新啟動舊版的指令，第 8 步（首次轉換）
+的畫面會印出把目錄放回原狀的指令。
+
+以 root 在部署目錄下操作，並依畫面填入三個值：
+
+```bash
+sudo -s
+cd /opt/custodexa                      # 部署目錄
+OLD=1.13.0                             # 升級前的版本
+STAMP=YYYYMMDD-HHMMSS                  # 備份資料夾的名稱
+BACKUP_DIR="backups/${STAMP}"
+
+# A. 備份必須完整：沒有 INCOMPLETE 檔，且每個校驗和都是 OK
+test ! -e "${BACKUP_DIR}/INCOMPLETE" && ( cd "${BACKUP_DIR}" && sha256sum -c SHA256SUMS )
+
+# B. 停止並移除新版的容器（DATA_PATH 內的資料不受影響）
+docker compose --project-directory . down
+
+# C. 保留新版用過的資料庫目錄，而不是清空它（第 5 節步驟 1）
+DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' .env | tail -n 1)"
+( cd "${DATA_NOW:?}" && pwd )           # 看清楚：這是本部署的資料根
+mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP}"
+mkdir -m 700 "${DATA_NOW:?}/postgres"
+```
+
+**D. 把上一版的檔案放回原位。** 指令依升級前的部署方式而定。
+
+升級前就是安裝包部署時，把 `current` 指回上一版，並把該版的映像參照載入這個 shell
+（腳本每次呼叫 compose 前都會載入；第 5 節的指令同樣需要）：
+
+```bash
+ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
+set -a; . ./current/images.env; set +a
+```
+
+這次升級是 `git clone` 部署的首次轉換時，把目錄整理還原。以下是第 8 步畫面會印的指令，
+再加上第 9 步建立的兩個連結：
+
+```bash
+rm -f current custodexa.sh
+find "releases/${OLD}" -mindepth 1 -maxdepth 1 -exec mv -n -t . {} +
+rmdir "releases/${OLD}"                 # 有殘留就會失敗：停下來檢查
+rm -rf releases state.json state.json.prev
+cp "${BACKUP_DIR}/env-before-convert.bak" .env
+git -c safe.directory="$PWD" status --porcelain
+# 只能列出 backups/ 與 .custodexa.lock；列出其他項目就停下來檢查
+```
+
+**E. 在同一個 shell 執行第 5 節的步驟 2 到 6**，`STAMP` 與 `BACKUP_DIR` 沿用上面的設定。
+此時 `docker compose` 啟動的是上一版：安裝包部署經由 `current` 取得該版的 compose 檔，
+轉換還原後則用根目錄的 `docker-compose.yml`。接著逐項完成第 6 節；第 6 項的指紋，以及
+`users`、`sessions` 的筆數，都與 `${BACKUP_DIR}/snapshot.txt` 比對。
+
+**F. 之後。** 第 6 節全部通過、也確定不再需要新版的資料後，再刪除 `postgres.before-restore-${STAMP}`。
+上一版的映像必須還在主機上；腳本不會刪除映像，缺少時升級預覽已經警告過。
+
+安裝包部署時，腳本自己的紀錄 `state.json` 仍描述較新的版本與那次升級：`status` 顯示的是新版，
+`upgrade` 會拒絕執行並再印一次同樣的指引。請從該次備份資料夾放回升級前的紀錄：
+`cp -p "${BACKUP_DIR}/state.json" state.json`。本版沒有其他指令能更正這份紀錄。轉換還原後沒有 `state.json`：
+目錄重新成為 `git clone` 部署，之後再以腳本升級時會重新轉換。
 
 ---
 

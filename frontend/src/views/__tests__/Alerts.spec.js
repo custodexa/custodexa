@@ -354,6 +354,8 @@ describe('Alerts', () => {
         risk_acknowledged: false,
         // 表單恆有語系值，未動時沿用列上的既有設定
         language: 'zh-TW',
+        // 推送門檻同理：列上缺值時回填預設「全部告警」
+        min_severity: 'low',
       },
       { skipErrorToast: true }
     )
@@ -486,6 +488,55 @@ describe('Alerts', () => {
     wrapper.vm.openChannelDialog({ id: 6, name: 'legacy', type: 'webhook', url: '***', enabled: true })
     await flushPromises()
     expect(wrapper.vm.channelForm.language).toBe('zh-TW')
+  })
+
+  // 推送門檻（依等級過濾通知）
+  it('channel min_severity is sent from the dialog and never by the enable toggle', async () => {
+    setUserRoles(['admin'])
+    createChannelMock.mockResolvedValue({})
+    updateChannelMock.mockResolvedValue({})
+    getChannelsMock.mockResolvedValue({
+      data: [{ id: 11, name: 'p1-oncall', type: 'slack', url: '***', enabled: true, language: 'zh-TW', min_severity: 'high' }],
+    })
+
+    const wrapper = mountAlerts()
+    await flushPromises()
+
+    // 新增：預設全部告警，選項與範圍說明照畫稿
+    wrapper.vm.openChannelDialog()
+    await flushPromises()
+    expect(wrapper.vm.channelForm.minSeverity).toBe('low')
+    const dialogText = wrapper.text() + document.body.textContent
+    for (const label of ['推送哪些告警', '全部告警', '中、高等級', '只有高等級', '被略過的中、低等級告警仍記在告警頁']) {
+      expect(dialogText, `對話框缺「${label}」`).toContain(label)
+    }
+    wrapper.vm.channelForm.name = 'p1'
+    wrapper.vm.channelForm.url = 'https://hooks.example.com/p1'
+    wrapper.vm.channelForm.minSeverity = 'high'
+    await wrapper.vm.handleSaveChannel()
+    await flushPromises()
+    expect(createChannelMock).toHaveBeenCalledWith(
+      expect.objectContaining({ min_severity: 'high' }),
+      expect.anything(),
+    )
+
+    // 編輯：自列回填
+    wrapper.vm.openChannelDialog({ id: 11, name: 'p1-oncall', type: 'slack', url: '***', enabled: true, min_severity: 'medium' })
+    await flushPromises()
+    expect(wrapper.vm.channelForm.minSeverity).toBe('medium')
+
+    // 列表的啟用開關只送 name／type／enabled：帶了 min_severity 就會把門檻重設
+    const row = { id: 11, name: 'p1-oncall', type: 'slack', enabled: true, min_severity: 'high' }
+    await wrapper.vm.handleChannelToggle(row, false)
+    await flushPromises()
+    const togglePayload = updateChannelMock.mock.calls.at(-1)[1]
+    expect(togglePayload).not.toHaveProperty('min_severity')
+
+    // 列表「推送」欄
+    await wrapper.vm.fetchChannels()
+    await flushPromises()
+    expect(wrapper.vm.channelMinSeverityLabel('high')).toBe('只有高等級')
+    expect(wrapper.vm.channelMinSeverityLabel(undefined)).toBe('全部告警')
   })
 
   it('shows empty state when no alerts exist', async () => {

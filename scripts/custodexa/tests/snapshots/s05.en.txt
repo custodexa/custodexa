@@ -1,0 +1,14 @@
+Installed   1.13.0 (package deployment, /opt/custodexa)
+Latest      1.13.2 (released 2026-10-20)
+
+  [ OK ] Direct upgrade is possible (1.13.2 accepts 1.12.4 or later)
+  [WARN] 1 database structure change will be applied. Rolling back
+         after the upgrade means restoring the pre-upgrade backup
+
+  [ OK ] Release manifest checksum and publisher signature verified
+  Release notes  https://github.com/custodexa/custodexa/releases/tag/v1.13.2
+
+To upgrade, run:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.13.2
+
+This only checked for updates. Nothing was changed.

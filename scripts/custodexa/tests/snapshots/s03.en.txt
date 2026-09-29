@@ -1,0 +1,20 @@
+[ .. ] 3/7  Get the program images
+       Trying in order: this host, offline bundle, GHCR, Docker Hub,
+       build from source
+       backend 1.13.0
+         [SKIP] This host: not present yet
+         [SKIP] Offline bundle: custodexa-images-1.13.0-amd64.tar not found
+                (looked in /opt/custodexa and /home/ops/downloads)
+         [WARN] GHCR ghcr.io/custodexa/backend: connection timed out (30s),
+                switched to Docker Hub and verified
+         [ OK ] Docker Hub docker.io/custodexa/backend@sha256:3f9a...c21e
+                downloaded; content digest matches the release manifest
+       frontend 1.13.0
+         [ OK ] This host: present, content digest matches
+       guacd 1.6.0 (upstream guacamole/guacd)
+         [ OK ] Docker Hub docker.io/guacamole/guacd@sha256:8974...8f4f
+                downloaded
+       postgres, alpine/openssl, nginx
+         [ OK ] This host: present, content digest matches
+[ OK ] 3/7  Get the program images (6; checksums, signatures and
+            build provenance verified)                      1m 12s

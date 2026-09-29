@@ -41,6 +41,10 @@ var (
 	// （語系空值或白名單外皆拒，服務層不區分兩種成因）
 	CodeInvalidChannelLanguage = register("VALIDATION_CHANNEL_LANGUAGE", Descriptor{
 		ZhFallback: "語系必須為 zh-TW、en-US 或 ja-JP"})
+	// CodeInvalidChannelMinSeverity 映射 service.ErrInvalidChannelMinSeverity sentinel
+	// （推送門檻空值或白名單外皆拒）
+	CodeInvalidChannelMinSeverity = register("VALIDATION_CHANNEL_MIN_SEVERITY", Descriptor{
+		ZhFallback: "推送等級必須為 low、medium 或 high"})
 	CodeInvalidChannelID = register("VALIDATION_INVALID_CHANNEL_ID", Descriptor{
 		ZhFallback: "無效的通道 ID"})
 
@@ -108,6 +112,15 @@ var (
 
 	CodeCommandAlertNotFound = register("NOTFOUND_COMMAND_ALERT", Descriptor{
 		ZhFallback: "告警不存在"})
+
+	// 批次審閱：逐筆送出時每筆各自的被拒原因。
+	// 理由碼另供單筆審閱的字數上限共用（兩條路徑同一上限）
+	CodeAlertBatchNote = register("VALIDATION_ALERT_BATCH_NOTE", Descriptor{
+		ZhFallback: "審閱理由不得超過 500 字，批次審閱另須填寫理由"})
+	CodeAlertBatchSelfTriggered = register("RULE_ALERT_BATCH_SELF_TRIGGERED", Descriptor{
+		ZhFallback: "自己連線觸發的告警不納入批次，請逐筆審閱"})
+	CodeAlertAlreadyReviewed = register("CONFLICT_ALERT_ALREADY_REVIEWED", Descriptor{
+		ZhFallback: "送出時已有審閱結果"})
 
 	CodeInternalCommandAlertQuery = register("INTERNAL_COMMAND_ALERT_QUERY", Descriptor{
 		ZhFallback: "查詢告警記錄失敗"})

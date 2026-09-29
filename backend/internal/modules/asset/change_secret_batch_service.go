@@ -235,9 +235,23 @@ func (s *ChangeSecretBatchService) Create(req *ChangeSecretBatchRequest, request
 	}
 	batch.SharedCredentialName = credentialName
 	applyBatchPasswordPolicy(batch, req)
-	if err := s.db.Create(batch).Error; err != nil {
+	// 兩個密碼策略布林帶 default:true：gorm 對零值改用 DB 預設值並回填到 batch，
+	// 而執行器讀的正是這個結構——不補寫，「不含符號」的一批會產生含符號的密碼。
+	// 意圖先記下，同一交易內補寫落庫，再還原到回傳的結構上
+	wanted := map[string]bool{
+		"password_include_symbol":    batch.PasswordIncludeSymbol,
+		"password_exclude_ambiguous": batch.PasswordExcludeAmbiguous,
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(batch).Error; err != nil {
+			return err
+		}
+		return restoreFalseDefaults(tx, &model.ChangeSecretBatch{}, batch.ID, wanted)
+	}); err != nil {
 		return nil, nil, err
 	}
+	batch.PasswordIncludeSymbol = wanted["password_include_symbol"]
+	batch.PasswordExcludeAmbiguous = wanted["password_exclude_ambiguous"]
 
 	assetIDs := make([]uint, 0, len(targets))
 	for i := range targets {

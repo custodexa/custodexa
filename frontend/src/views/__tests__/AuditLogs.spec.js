@@ -379,6 +379,25 @@ describe('AuditLogs', () => {
     expect(wrapper.find('.integrity-stat-danger').exists()).toBe(true)
   })
 
+  // 儀表板每日審閱卡片的「歷次簽核」入口以 ?tab=reviews 連進本頁。落地若停在
+  // 操作日誌分頁，使用者會以為沒有簽核記錄——入口形同不存在
+  it('帶 ?tab=reviews 進頁即落在每日簽核分頁，且只取簽核資料', async () => {
+    setUserRoles(['auditor'])
+    routeState.query = { tab: 'reviews' }
+    getDailyReviewsMock.mockResolvedValue({
+      data: { items: sampleReviews, total: 1 },
+    })
+
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+
+    expect(wrapper.vm.activeTab).toBe('reviews')
+    expect(wrapper.find('.el-tabs__item.is-active').text()).toBe('每日簽核')
+    expect(getDailyReviewsMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
+    expect(getAuditLogsMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('auditor1')
+  })
+
   // 三步追證的最後一步：由設定名的記錄連結落地，這一頁要直接只看那個設定的變更。
   // 不預填的話連結會停在一份未篩選的日誌上，最後一步變成一場搜尋。
   it('帶 resource 與 key query 進頁即預填篩選並查詢', async () => {

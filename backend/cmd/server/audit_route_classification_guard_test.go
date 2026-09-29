@@ -395,6 +395,7 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"PUT", "/api/v1/policy-groups/:code/clauses/:clause_no/annotation"}:             {classResource, model.ResourcePolicyGroup, "命中分類器段 `policy-groups`；機構備註不影響判定，寫入仍留痕"},
 	{"POST", "/api/v1/policy-groups/:code/clauses/:clause_no/confirm"}:               {classResource, model.ResourcePolicyGroup, "命中分類器段 `policy-groups`；人工確認的操作者與時間留痕"},
 	{"GET", "/api/v1/compliance/snapshot"}:                                           {classResource, model.ResourceComplianceMap, "命中分類器段 `compliance`；唯讀，無寫入面"},
+	{"POST", "/api/v1/compliance/report-jobs"}:                                       {classResource, model.ResourceComplianceMap, "命中分類器段 `compliance`；合規報告手動產出，建下載中心工作單、不改對照內容；另有 handler 側審計（AP-107）含組代號、語言與保留天數，中介層本列為請求層留痕、兩者並存"},
 	{"POST", "/api/v1/schedules/next-runs"}:                                          {classResource, model.ResourceSchedule, "命中分類器段 `schedules`；無狀態預覽，不讀寫任何資料表"},
 	{"GET", "/api/v1/sessions"}:                                                      {classResource, model.ResourceSession, "命中分類器段 `sessions`"},
 	{"GET", "/api/v1/sessions/:id"}:                                                  {classResource, model.ResourceSession, "命中分類器段 `sessions`"},

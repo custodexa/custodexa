@@ -166,7 +166,20 @@ func (s *AlertRuleService) Create(req *AlertRuleRequest) (*model.AlertRule, erro
 		Protocols:   protocols,
 		Enabled:     enabled,
 	}
-	if err := s.db.Create(&rule).Error; err != nil {
+	// `Enabled` 欄帶 default:true，而 GORM 對帶 default 的欄位遇零值會改用預設值
+	// ——直接 Create 會讓「建立時就停用」的規則靜默變成啟用，阻斷規則建立當下即開始
+	// 擋命令。落庫後在同一交易內補寫請求值（沿 rotation_report_schedule_service.Create 的作法）
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&rule).Error; err != nil {
+			return err
+		}
+		if enabled {
+			return nil
+		}
+		rule.Enabled = false
+		return tx.Model(&model.AlertRule{}).Where("id = ?", rule.ID).
+			Update("enabled", false).Error
+	}); err != nil {
 		if isNameConflict(err) {
 			// 轉哨兵而非原樣上拋：驅動訊息含表名／索引名／SQL 片段，
 			// 那些是內部實作細節，不得經由 API 回應外洩（handler 只取碼）

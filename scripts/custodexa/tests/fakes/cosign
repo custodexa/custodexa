@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Fake cosign for the custodexa.sh tests: only `verify-blob --bundle B --certificate-identity I
+# --certificate-oidc-issuer O FILE`. The fake bundle is two lines, "identity <I>" and "sha256 <hex>":
+# verification passes only for that identity, the GitHub issuer, and a file with that checksum.
+# `verify <ref> --certificate-identity I --certificate-oidc-issuer O` (image signatures) answers by
+# $FAKE_COSIGN_VERIFY: ok (default; the signer must be $FAKE_COSIGN_SIGNER when set), offline, bad.
+if [ "${1:-}" = verify ]; then
+  id=""
+  while [ $# -gt 0 ]; do [ "$1" = --certificate-identity ] && id=$2; shift; done
+  case ${FAKE_COSIGN_VERIFY:-ok} in
+    offline) echo 'Error: GET https://ghcr.io/v2/: dial tcp: lookup ghcr.io: no such host' >&2; exit 1 ;;
+    bad) echo 'Error: no matching signatures: none of the expected identities matched' >&2; exit 1 ;;
+  esac
+  if [ -n "${FAKE_COSIGN_SIGNER:-}" ] && [ "$id" != "$FAKE_COSIGN_SIGNER" ]; then
+    echo 'Error: no matching signatures: none of the expected identities matched' >&2; exit 1
+  fi
+  echo '[{"critical":{}}]'
+  exit 0
+fi
+[ "${1:-}" = verify-blob ] || { echo "fake cosign: unsupported: $*" >&2; exit 9; }
+shift
+bundle="" identity="" issuer="" file=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --bundle) bundle=$2; shift ;;
+    --certificate-identity) identity=$2; shift ;;
+    --certificate-oidc-issuer) issuer=$2; shift ;;
+    -*) echo "fake cosign: unknown flag $1" >&2; exit 9 ;;
+    *) file=$1 ;;
+  esac
+  shift
+done
+[ -f "$bundle" ] && [ -f "$file" ] || exit 1
+[ "$issuer" = https://token.actions.githubusercontent.com ] || exit 1
+grep -qxF "identity $identity" "$bundle" || { echo "fake cosign: identity mismatch" >&2; exit 1; }
+grep -qxF "sha256 $(sha256sum "$file" | cut -d' ' -f1)" "$bundle" || { echo "fake cosign: signature does not match" >&2; exit 1; }

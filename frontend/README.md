@@ -74,4 +74,4 @@ docker compose exec frontend npm run lint     # ESLint（--fix）
 
 ## 授權
 
-AGPL-3.0，全文見 [LICENSE](../LICENSE)。
+GNU Affero General Public License 第 3 版（僅此版本，`AGPL-3.0-only`），全文見 [LICENSE](../LICENSE)。

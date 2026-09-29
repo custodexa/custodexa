@@ -256,6 +256,23 @@
           :title="$t('auditExports.reportsSharedNote')"
         />
 
+        <!-- 報告種類切換：兩種報告同屬共用清單，只是範圍欄位不同。
+             預設輪替報告，未帶種類的既有深連結落地行為不變 -->
+        <el-radio-group
+          v-model="reportKind"
+          class="report-kind"
+          data-test="reports-kind"
+          @change="onReportKindChange"
+        >
+          <el-radio-button
+            v-for="kind in REPORT_KINDS"
+            :key="kind"
+            :value="kind"
+          >
+            {{ $t(`auditExports.reportKind.${REPORT_KIND_KEYS[kind]}`) }}
+          </el-radio-button>
+        </el-radio-group>
+
         <el-alert
           v-if="reportLoadFailed"
           type="error"
@@ -269,18 +286,61 @@
           <el-empty
             v-if="!reportJobs.length && !reportLoading"
             data-test="reports-empty"
-            :description="$t('auditExports.reportsEmpty')"
+            :description="isComplianceKind
+              ? $t('auditExports.reportsEmptyCompliance')
+              : $t('auditExports.reportsEmpty')"
           />
+          <!-- key 隨種類：兩種報告的前兩欄不同，換種類時整表重建，
+               欄位順序才不會被動態欄位打亂 -->
           <el-table
             v-else
+            :key="reportKind"
             :data="reportJobs"
             style="width: 100%"
             stripe
             row-key="id"
           >
+            <!-- 合規報告：一份報告對應一個政策組，政策組與語言是讀者第一個要分辨的事 -->
+            <el-table-column
+              v-if="isComplianceKind"
+              :label="$t('auditExports.column.reportGroup')"
+            >
+              <template #default="{ row }">
+                <div :data-test="`report-group-${row.id}`">
+                  <div>{{ complianceGroupText(row) }}</div>
+                  <div class="artifact-sub">
+                    {{ $t('auditExports.reportLanguage', { lang: languageText(row?.report?.language) }) }}
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column
+              v-if="isComplianceKind"
+              :label="$t('auditExports.column.reportGenerated')"
+              width="220"
+            >
+              <template #default="{ row }">
+                <div :data-test="`report-generated-${row.id}`">
+                  {{ row?.report?.generated_by || row.requester || '—' }}
+                </div>
+                <div class="artifact-sub">
+                  {{ complianceTimeText(row) }}
+                </div>
+                <div
+                  v-if="row.artifact_sha256"
+                  class="artifact-sub artifact-sha"
+                  :title="$t('auditExports.shaTip', { sha: row.artifact_sha256 })"
+                >
+                  {{ row.artifact_sha256.slice(0, 12) }}…
+                </div>
+              </template>
+            </el-table-column>
+
             <!-- 來源欄同時承載「誰產的」與「什麼時候產的」：排程名缺席即手動產出。
                  兩件事併一欄是為了讓整表在 1280 內收得下，不必橫捲 -->
             <el-table-column
+              v-if="!isComplianceKind"
               :label="$t('auditExports.column.reportSource')"
               width="200"
             >
@@ -301,7 +361,10 @@
               </template>
             </el-table-column>
 
-            <el-table-column :label="$t('auditExports.column.reportScope')">
+            <el-table-column
+              v-if="!isComplianceKind"
+              :label="$t('auditExports.column.reportScope')"
+            >
               <template #default="{ row }">
                 <div :data-test="`report-scope-${row.id}`">
                   {{ reportScopeText(row) }}
@@ -430,6 +493,7 @@ import {
 } from '@/api/auditExport'
 import { TIMELINE_TYPES, typeLabel } from '@/components/audit/timelineSummary'
 import { OFFSITE_EXPORT_ROW_STATUSES } from '@/constants/offsite'
+import { LOCALE_LABELS } from '@/i18n'
 import { formatBytes, formatDateTime, formatUptimeSeconds } from '@/utils/format'
 import { downloadBlob } from '@/utils/download'
 
@@ -470,10 +534,14 @@ const autoRefreshStopped = computed(() => ticks.value >= MAX_TICKS)
 
 const hasActive = computed(() => jobs.value.some((j) => ACTIVE_STATES.includes(j.status)))
 
-// 「輪替報告」分頁。**清單規則與證據包相反**（不綁申請者），故自成一組狀態，
+// 「報告」分頁。**清單規則與證據包相反**（不綁申請者），故自成一組狀態，
 // 不與上面的 jobs 共用——共用會讓「這一列適用哪一條規則」在程式碼裡也講不清楚。
-// 種類參數只有這一頁帶：缺省種類的查詢一字未動
-const REPORT_KIND = 'rotation_report'
+// 種類參數只有這一頁帶：缺省種類的查詢一字未動。
+// 分頁內再分輪替報告與合規報告兩種，查詢的 kind 跟著切換值走；預設輪替報告
+const REPORT_KINDS = ['rotation_report', 'compliance_report']
+const REPORT_KIND_KEYS = { rotation_report: 'rotation', compliance_report: 'compliance' }
+const reportKind = ref(REPORT_KINDS[0])
+const isComplianceKind = computed(() => reportKind.value === 'compliance_report')
 const activeTab = ref('mine')
 const reportJobs = ref([])
 const reportTotal = ref(0)
@@ -487,7 +555,7 @@ const fetchReportJobs = async () => {
   reportLoading.value = true
   try {
     const res = await listAuditExportJobs({
-      kind: REPORT_KIND,
+      kind: reportKind.value,
       page: reportPage.value,
       page_size: reportPageSize.value,
     })
@@ -507,6 +575,14 @@ const fetchReportJobs = async () => {
 // 證據包，替他先打一支他不會看的查詢沒有意義
 const onTabChange = (name) => {
   if (name === 'reports' && !reportLoaded.value) fetchReportJobs()
+}
+
+// 換種類＝換一份清單：頁碼回第一頁，舊種類的列不留在畫面上等新結果
+const onReportKindChange = () => {
+  reportPage.value = 1
+  reportJobs.value = []
+  reportTotal.value = 0
+  fetchReportJobs()
 }
 
 const refreshActive = () => (activeTab.value === 'reports' ? fetchReportJobs() : fetchJobs())
@@ -550,9 +626,11 @@ const onTick = () => {
 onMounted(() => {
   fetchJobs()
   // 深連結 ?tab=reports：輪替證據頁發起產出後把人帶到取件的地方，
-  // 落地即在報告分頁上，而不是讓他自己再點一次
+  // 落地即在報告分頁上，而不是讓他自己再點一次。
+  // 再帶 kind（例：合規對照頁的 &kind=compliance_report）即直達該種類
   if (route?.query?.tab === 'reports') {
     activeTab.value = 'reports'
+    if (REPORT_KINDS.includes(route.query.kind)) reportKind.value = route.query.kind
     fetchReportJobs()
   }
   timer = setInterval(onTick, POLL_MS)
@@ -722,12 +800,31 @@ const reportPeriodText = (row) => {
   })
 }
 
+// —— 合規報告列的呈現 ——
+const complianceGroupText = (row) =>
+  row?.report?.group_name || row?.report?.group || t('auditExports.scopeUnknown')
+
+const languageText = (lang) => LOCALE_LABELS[lang] || lang || '—'
+
+// 完成的列印產出時刻；尚未完成的沒有產出時刻，改印受理時刻
+const complianceTimeText = (row) =>
+  row?.status === 'done' && row.packaged_at
+    ? t('auditExports.reportGeneratedAt', { time: formatDateTime(row.packaged_at) })
+    : t('auditExports.requestedAt', { time: formatDateTime(row?.requested_at) })
+
+// 檔名沿後端的產物命名（<種類>-job-<id>.zip）
+const REPORT_FILE_PREFIX = {
+  rotation_report: 'rotation-report',
+  compliance_report: 'compliance-report',
+}
+
 const downloadReport = async (row) => {
   if (busyId.value) return
   busyId.value = row.id
   try {
     const blob = await downloadAuditExportJob(row.id)
-    downloadBlob(blob, `rotation-report-job-${row.id}.zip`)
+    const prefix = REPORT_FILE_PREFIX[row.kind] || REPORT_FILE_PREFIX[reportKind.value]
+    downloadBlob(blob, `${prefix}-job-${row.id}.zip`)
   } catch (_e) {
     ElMessage.error(t('auditExports.downloadFailed'))
   } finally {
@@ -804,6 +901,10 @@ const retry = async (row) => {
 
 .muted {
   color: var(--ot-text-secondary);
+}
+
+.report-kind {
+  margin: var(--ot-space-md) 0;
 }
 
 .pagination {

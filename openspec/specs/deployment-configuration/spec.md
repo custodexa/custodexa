@@ -68,6 +68,8 @@
 
 `.env.example` SHALL 以註解形式提供 `COMPOSE_FILE=docker-compose.dev.yml` 並說明其用途；該行 SHALL NOT 為生效狀態——若範本帶生效值，複製範本者將取得開發版，與本要求相反。
 
+**安裝包部署根**（`custodexa.sh` 建立的部署，其根目錄沒有 `docker-compose.yml`）：管理腳本 SHALL 在根目錄 `.env` 寫入生效的 `COMPOSE_FILE`（`current/compose.yml`，依部署形態以 `:` 接上 overlay）與 `COMPOSE_PROJECT_NAME`（固定值），使維運在根目錄執行、不帶 `-f` 的 `docker compose ps`、`logs`、`exec`、`restart` 作用於現行版本的正式版定義與固定專案。需要重新解析整份定義的指令（`up`、`config`）在根目錄手動執行時須另帶 `--project-directory .`；文件 SHALL 如此標明，SHALL NOT 主張它們不帶該選項即可使用。腳本自身的每次呼叫仍 SHALL 顯式帶 `-p`、`--project-directory` 與 `-f`。`.env.example` 的 `COMPOSE_FILE` 仍 SHALL 為註解狀態——生效值只由腳本寫進部署端 `.env`。
+
 註：`COMPOSE_FILE` 由 compose CLI 消費而非應用程式讀取；env 漂移守衛為單向（僅斷言程式碼消費的 key 皆記載於範本），故此變數不影響守衛結果，註解狀態的理由純為上述部署語義。
 
 #### Scenario: 複製範本後預設取得正式版
@@ -81,6 +83,10 @@
 #### Scenario: 顯式 -f 覆蓋 COMPOSE_FILE
 - **WHEN** 已設 `COMPOSE_FILE` 的開發者執行帶顯式 `-f docker-compose.yml` 的指令
 - **THEN** 指令作用於正式版定義，使正式版仍可於開發機驗證
+
+#### Scenario: 安裝包部署根的手動指令
+- **WHEN** 維運在 `custodexa.sh install` 建立的部署根目錄執行不帶 `-f` 的 `docker compose ps` 或 `docker compose logs backend`
+- **THEN** 指令作用於 `current/compose.yml`（含該部署的 overlay）與固定專案名的容器；升級切換 `current` 後同一指令自動指向新版定義，`.env` 不需修改
 
 ### Requirement: 測試專用掛載不入正式版 compose
 
@@ -135,8 +141,9 @@
 
 ### Requirement: 首次部署指示與實際啟動路徑一致
 
-專案 README 之快速開始 SHALL 逐步對應**預設 compose 指令實際走的那條路徑**，
-SHALL NOT 描述任何在該路徑上不成立的步驟、位址或憑證。具體 SHALL 涵蓋：
+專案 README 與快速開始文件的**主要安裝路徑 SHALL 為安裝包路徑**：取得並驗證安裝包、解開、執行 `custodexa.sh install`；文件 SHALL 逐步對應該腳本實際走的路徑（前置檢查、`.env` 產生、映像取得與驗證、啟動、首次引導），SHALL NOT 描述任何在該路徑上不成立的步驟、位址或憑證。原始碼部署（`git clone`＋`quickstart.sh` 或預設 compose 指令）在移除前 SHALL 列為並存路徑並標明其定位，該路徑的說明仍 SHALL 逐步對應預設 compose 指令實際走的那條路徑。
+
+原始碼部署路徑的說明具體 SHALL 涵蓋：
 
 - **範本複製步驟 SHALL 明列**（`cp .env.example .env`）——正式版 compose 以 `env_file`
   消費專案根 `.env`，缺檔即在啟動第一步失敗。
@@ -153,7 +160,7 @@ SHALL NOT 描述任何在該路徑上不成立的步驟、位址或憑證。具�
 SHALL NOT 僅記載於數十行外之其他段落——讀者在選擇點看不到的代價等同未告知。
 
 #### Scenario: 照快速開始實走全新安裝
-- **WHEN** 於全新環境取得專案樹並照 README 快速開始逐步執行
+- **WHEN** 於全新環境取得專案樹並照 README 快速開始的原始碼部署路徑逐步執行
 - **THEN** MUST 能啟動至登入畫面，MUST NOT 於任一步因範本缺檔、缺必填機密、
   埠或憑證與實際不符而中斷
 
@@ -162,6 +169,10 @@ SHALL NOT 僅記載於數十行外之其他段落——讀者在選擇點看不�
 - **THEN** `env` 與 `ui` 兩模式之代價 MUST 並列於該段（前者材料以明文存於磁碟、重啟免人
   介入；後者材料永不落地、但每次行程重啟都停在封印狀態須有人再輸入），
   MUST NOT 僅以「不落地」一詞帶過而將重啟後果留在他段
+
+#### Scenario: 照快速開始以安裝包全新安裝
+- **WHEN** 於全新 Linux 主機照快速開始的安裝包路徑取得、驗證、解開安裝包並執行 `custodexa.sh install`
+- **THEN** MUST 能啟動至首次引導畫面；文件所列的每一步、網址與登入方式與腳本實際輸出一致，MUST NOT 要求使用者手動複製範本或手填腳本已產生的機密
 
 ### Requirement: KEK 出貨預設模式
 `.env.example` SHALL 出貨 `KEK_PROVIDER=ui`（材料鍵 `ENCRYPTION_KEY` SHALL 維持註解狀態

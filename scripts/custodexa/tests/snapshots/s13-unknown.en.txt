@@ -1,0 +1,12 @@
+[FAIL]  4/13  Wait for audit records to be written: cannot confirm
+              Neither the number of waiting records nor the sealed
+              state could be read (the request was blocked by the
+              source address limit, or the backend did not answer).
+
+  Since the number of pending records could not be confirmed, the
+  script stopped the upgrade; the services are still running and
+  nothing was changed.
+  Run sudo /opt/custodexa/custodexa.sh status first to check the
+  backend. If it still cannot be read, hand this error and the
+  upgrade log file to operations to check the source address limit
+  (SEAL_UNSEAL_ALLOWED_CIDRS) before trying again.

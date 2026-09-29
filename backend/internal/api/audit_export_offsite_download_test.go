@@ -12,13 +12,14 @@ import (
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/offsite"
 )
 
 // 證據包下載的離機退路。
 //
-// 情境是**容器重建**：產物目錄未掛 volume，job 列還在 DB、`expires_at` 尚未到，
-// 但 zip 已隨容器消失。修法前這是一個 410——申請者在下載窗口內卻拿不到東西；
+// 情境是**本機產物檔不在**（產物目錄未持久化時的容器重建、主機遺失後自備份還原等）：
+// job 列還在 DB、`expires_at` 尚未到，但 zip 已不在本機。修法前這是一個 410——申請者在下載窗口內卻拿不到東西；
 // 有離機副本時應取回並驗過後交付。
 
 // jobRetriever 產物取回面的替身。
@@ -276,5 +277,53 @@ func TestListJobsOmitsOffsiteSHA256WhenNotWired(t *testing.T) {
 	row := listOneJob(t, env)
 	if _, ok := row["offsite_sha256"]; ok {
 		t.Fatalf("未組裝離機時不應輸出離機雜湊，實得 %v", row["offsite_sha256"])
+	}
+}
+
+// TestDownloadMissingLocalArtifactIsGone 產物檔已不在本機（且沒有可取回的離機副本）：
+// 回文件承諾的 410＋機器碼，與其他不可下載態同一回應；報告種類同一判準。
+// 失敗交付必須留痕，且不得退回框架的純文字 404。
+func TestDownloadMissingLocalArtifactIsGone(t *testing.T) {
+	for _, kind := range []string{model.ExportJobKindEvidenceBundle, model.ExportJobKindComplianceReport} {
+		t.Run(kind, func(t *testing.T) {
+			env := newExportJobTestEnv(t)
+			pendingSID := uint(51)
+			pending, _, err := env.jobs.CreateJob(9, "user-9", &audit.ExportFilter{SessionID: &pendingSID})
+			if err != nil {
+				t.Fatalf("seed pending: %v", err)
+			}
+			ref := env.do("GET", fmt.Sprintf("/api/v1/audit-export/jobs/%d/download", pending.ID), "9", "auditor")
+
+			job := env.seedDoneJob(t, 9, "ZIPBYTES")
+			if err := env.db.Model(&model.AuditExportJob{}).Where("id = ?", job.ID).
+				Update("kind", kind).Error; err != nil {
+				t.Fatalf("設定種類: %v", err)
+			}
+			var reloaded model.AuditExportJob
+			if err := env.db.First(&reloaded, job.ID).Error; err != nil {
+				t.Fatalf("讀回 job: %v", err)
+			}
+			if err := os.Remove(reloaded.ArtifactPath); err != nil {
+				t.Fatalf("刪產物: %v", err)
+			}
+
+			w := env.do("GET", fmt.Sprintf("/api/v1/audit-export/jobs/%d/download", job.ID), "9", "auditor")
+			if w.Code != http.StatusGone || respCode(t, w) != "RULE_EXPORT_ARTIFACT_UNAVAILABLE" {
+				t.Fatalf("產物缺檔應回 410 RULE_EXPORT_ARTIFACT_UNAVAILABLE，實得 %d %q", w.Code, w.Body.String())
+			}
+			if w.Body.String() != ref.Body.String() {
+				t.Fatalf("缺檔與其他不可下載態的回應可被分辨: missing=%q pending=%q",
+					w.Body.String(), ref.Body.String())
+			}
+			var failures int64
+			if err := env.db.Model(&model.AuditLog{}).
+				Where("resource = ? AND status = ?", string(model.ResourceAuditExport),
+					string(model.StatusFailure)).Count(&failures).Error; err != nil {
+				t.Fatalf("查審計: %v", err)
+			}
+			if failures == 0 {
+				t.Fatal("缺檔的下載失敗必須留痕")
+			}
+		})
 	}
 }

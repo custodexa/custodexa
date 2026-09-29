@@ -37,6 +37,31 @@
         name="pending"
       >
         <div class="list-panel">
+          <!-- 批次列：勾選後出現。批次核准一律照申請內容，要調整請逐張處理 -->
+          <BatchSelectionBar
+            v-if="pendingSelection.selected.value.length"
+            test-id="pending-batch-bar"
+            :count-text="$t('approvals.batch.selectedCount', { n: pendingSelection.selected.value.length })"
+            :clear-text="$t('approvals.batch.clear')"
+            :limit-text="limitText(pendingSelection, 'approvals.batch.limitHintSheets')"
+            @clear="pendingSelection.clear()"
+          >
+            <el-button
+              type="danger"
+              plain
+              data-test="batch-reject-open"
+              @click="pendingBatchRef?.open('reject')"
+            >
+              {{ $t('approvals.batch.rejectOpen') }}
+            </el-button>
+            <el-button
+              type="primary"
+              data-test="batch-approve-open"
+              @click="pendingBatchRef?.open('approve')"
+            >
+              {{ $t('approvals.batch.approveOpen') }}
+            </el-button>
+          </BatchSelectionBar>
           <el-table
             ref="pendingTableRef"
             v-loading="loading"
@@ -58,12 +83,32 @@
               </template>
             </el-table-column>
             <!-- 四位數的任務編號在 70px 下被裁成「任務 100 ..」：
-                 這欄是這張表的主鍵欄，寬度取三語最長者 -->
+                 這欄是這張表的主鍵欄，寬度取三語最長者，另加批次勾選框的 22px。
+                 勾選框併在主鍵欄而不另開一欄：整表欄寬預算不變 -->
             <el-table-column
-              :label="$t('multiRequest.task')"
-              min-width="140"
+              min-width="162"
             >
+              <template #header>
+                <BatchCheckbox
+                  class="batch-select"
+                  test-id="pending-select-all"
+                  :checked="pendingPageState.checked"
+                  :indeterminate="pendingPageState.indeterminate"
+                  :disabled="pendingPageState.disabled"
+                  :label="$t('approvals.batch.selectAllSheets')"
+                  @change="pendingSelection.toggleAll(pendingRequests, selectAny)"
+                />{{ $t('multiRequest.task') }}
+              </template>
               <template #default="{ row }">
+                <BatchCheckbox
+                  class="batch-select"
+                  test-id="pending-select-cell"
+                  :data-id="row.id"
+                  :checked="pendingSelection.isSelected(row)"
+                  :disabled="!pendingSelection.canToggle(row, selectAny)"
+                  :label="$t('approvals.batch.selectSheet', { id: row.id })"
+                  @change="(checked) => pendingSelection.toggle(row, checked)"
+                />
                 <!-- el-table 內建的展開圖示是 div，Tab 到不了、Enter 也按不下去。
                      逐項審核的唯一入口不能只有滑鼠可用 -->
                 <el-button
@@ -442,12 +487,51 @@
         name="reviews"
       >
         <div class="list-panel">
+          <!-- 批次只提供「確認無誤」；判定違規請逐筆補審 -->
+          <BatchSelectionBar
+            v-if="reviewSelection.selected.value.length"
+            test-id="reviews-batch-bar"
+            :count-text="$t('approvals.batch.reviewSelectedCount', { n: reviewSelection.selected.value.length })"
+            :clear-text="$t('approvals.batch.clear')"
+            :limit-text="limitText(reviewSelection, 'approvals.batch.limitHintItems')"
+            @clear="reviewSelection.clear()"
+          >
+            <el-button
+              type="primary"
+              data-test="batch-review-open"
+              @click="reviewBatchRef?.open()"
+            >
+              {{ $t('approvals.batch.reviewOpen') }}
+            </el-button>
+          </BatchSelectionBar>
           <el-table
             v-loading="loading"
             :data="pendingReviews"
             style="width: 100%"
             stripe
           >
+            <el-table-column width="48">
+              <template #header>
+                <BatchCheckbox
+                  test-id="reviews-select-all"
+                  :checked="reviewPageState.checked"
+                  :indeterminate="reviewPageState.indeterminate"
+                  :disabled="reviewPageState.disabled"
+                  :label="$t('approvals.batch.selectAllReviews')"
+                  @change="reviewSelection.toggleAll(pendingReviews, selectAny)"
+                />
+              </template>
+              <template #default="{ row }">
+                <BatchCheckbox
+                  test-id="reviews-select-cell"
+                  :data-id="row.id"
+                  :checked="reviewSelection.isSelected(row)"
+                  :disabled="!reviewSelection.canToggle(row, selectAny)"
+                  :label="$t('approvals.batch.selectReview', { user: row.requester?.username || `#${row.requester_id}` })"
+                  @change="(checked) => reviewSelection.toggle(row, checked)"
+                />
+              </template>
+            </el-table-column>
             <el-table-column
               :label="$t('common.user')"
               width="130"
@@ -519,6 +603,20 @@
         disabled
       />
     </el-tabs>
+
+    <!-- 批次處理（逐張呼叫既有單張端點，非原子）：待審核准／拒絕、待補審確認無誤 -->
+    <AccessRequestBatchDialog
+      ref="pendingBatchRef"
+      :requests="pendingSelection.selected.value"
+      :current-user-id="currentUserId"
+      @finished="afterPendingBatch"
+    />
+    <BreakGlassBatchReviewDialog
+      ref="reviewBatchRef"
+      :reviews="reviewSelection.selected.value"
+      :current-user-id="currentUserId"
+      @finished="afterReviewBatch"
+    />
 
     <!-- 核准對話框：時長只能縮短、開始時間只能延後（放寬會被拒絕） -->
     <el-dialog
@@ -754,6 +852,11 @@ import EmptyState from '@/components/EmptyState.vue'
 import PrincipalBadge from '@/components/agent/PrincipalBadge.vue'
 import RequestItems from '@/components/access-request/RequestItems.vue'
 import PerItemApproval from '@/components/access-request/PerItemApproval.vue'
+import BatchSelectionBar from '@/components/batch-review/BatchSelectionBar.vue'
+import BatchCheckbox from '@/components/batch-review/BatchCheckbox.vue'
+import AccessRequestBatchDialog from '@/components/batch-review/AccessRequestBatchDialog.vue'
+import BreakGlassBatchReviewDialog from '@/components/batch-review/BreakGlassBatchReviewDialog.vue'
+import { useBatchSelection } from '@/composables/useBatchReview'
 import { formatDateTime } from '@/utils/format'
 import { useRoles } from '@/composables/useRoles'
 import { t } from '@/i18n'
@@ -844,8 +947,29 @@ const markFetchOk = () => {
 const emptyTitleFor = (key) =>
   loadFailed.value ? t('approvals.loadFailed') : t(key)
 
+// --- 批次處理：勾選以 id 去重、上限 BATCH_LIMIT；列表重讀即清空勾選 ---
+const pendingSelection = useBatchSelection()
+const reviewSelection = useBatchSelection()
+const pendingBatchRef = ref(null)
+const reviewBatchRef = ref(null)
+// 待審清單已排除本人申請、待補審已排除本人破窗；其餘資格由伺服端逐張判定
+const selectAny = () => true
+const pendingPageState = computed(() => pendingSelection.pageState(pendingRequests.value, selectAny))
+const reviewPageState = computed(() => reviewSelection.pageState(pendingReviews.value, selectAny))
+const limitText = (selection, key) =>
+  selection.atLimit.value || selection.truncated.value ? t(key, { limit: selection.limit }) : ''
+const afterPendingBatch = () => {
+  window.dispatchEvent(new CustomEvent('ot-approvals-changed'))
+  fetchPending()
+}
+const afterReviewBatch = () => {
+  window.dispatchEvent(new CustomEvent('ot-approvals-changed'))
+  fetchReviews()
+}
+
 const fetchPending = async () => {
   loading.value = true
+  pendingSelection.clear()
   try {
     const res = await getPendingAccessRequests()
     pendingRequests.value = res.data || []
@@ -894,6 +1018,7 @@ const fetchTickets = async () => {
 
 const fetchReviews = async () => {
   loading.value = true
+  reviewSelection.clear()
   try {
     const res = await getPendingReviews()
     pendingReviews.value = res.data || []
@@ -1158,6 +1283,10 @@ onMounted(async () => {
 .sub-text {
   font-size: var(--ot-font-size-xs);
   color: var(--ot-text-secondary);
+}
+/* 主鍵欄內的批次勾選框：與任務編號同一行，不另佔一欄 */
+.batch-select {
+  margin-right: var(--ot-space-sm);
 }
 .pending-table :deep(.cell) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
 .pending-table :deep(.el-button) { margin: var(--ot-space-xs); }

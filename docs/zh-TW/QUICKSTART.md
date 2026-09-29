@@ -8,7 +8,7 @@
 
 - Docker 20.10+
 - Docker Compose 2.0+
-- Git
+- Git（只有從原始碼執行才需要）
 
 驗證安裝：
 ```bash
@@ -16,9 +16,112 @@ docker --version
 docker compose version
 ```
 
+部署有兩條路徑，跑起來的服務相同：
+
+- **安裝包**（Linux 伺服器的主要路徑）：從發行頁下載，解開前先驗證，再由安裝包內的管理腳本
+  `custodexa.sh` 安裝與維運。見[用安裝包安裝](#用安裝包安裝)。
+- **從原始碼執行**：`git clone` 後用 `scripts/quickstart.sh` 或直接 `docker compose`。
+  適合在 macOS、Windows（WSL）上評估，以及參與開發。見[啟動步驟](#啟動步驟)。
+
+## 用安裝包安裝
+
+管理腳本只支援 Linux（x86_64 或 aarch64），一台主機放一套部署。請以 root（`sudo`）執行，
+或以 `docker` 群組內、可寫入部署目錄的帳號執行。
+
+### 1. 下載
+
+每個發行頁都有以下檔案：
+
+| 檔案 | 內容 |
+|---|---|
+| `custodexa-<版本>.tar.gz` | 安裝包：管理腳本、compose 檔與該版原始碼 |
+| `SHA256SUMS` | 本表每個檔案的校驗和 |
+| `SHA256SUMS.sigstore.json` | `SHA256SUMS` 的簽章，由本 repo 的發行工作流程簽署 |
+| `MANIFEST.json` | 發行清單：安裝包要安裝的映像摘要（安裝包內也有同一份） |
+| `custodexa-images-<版本>-amd64.tar`、`custodexa-images-<版本>-arm64.tar` | 單一架構的全部映像，給連不到映像倉庫的主機 |
+
+把安裝包、`SHA256SUMS`、`SHA256SUMS.sigstore.json` 下載到同一個目錄。映像離線包只有離線時
+才需要（見[連不到映像倉庫的主機](#連不到映像倉庫的主機)）。
+
+### 2. 解開前先驗證
+
+腳本會驗證它之後取得的每樣東西，但無法替自己擔保：被竄改的安裝包，帶的也是被竄改的腳本。
+所以要在解開前先驗安裝包。把 `1.13.0` 換成你下載的版本：
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  SHA256SUMS
+```
+
+第一個指令要對每個下載的檔案都印出 `OK`，第二個指令要無錯誤結束。任一個不成立就不要解開。
+這台主機沒有 `cosign` 時，把同樣兩個檔案拿到有 `cosign` 的電腦上執行第二個指令。
+
+### 3. 解開並安裝
+
+```bash
+sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo /opt/custodexa/custodexa.sh install
+```
+
+也可以直接執行 `sudo /opt/custodexa/custodexa.sh`（不帶子命令），用選單操作。
+
+安裝包解開後是一個 `custodexa/` 目錄，就是部署目錄。它的路徑只能含英文字母、數字與
+`. _ / -`。`install` 分七步，每步一行：
+
+1. **檢查這台主機**：Linux、連得到 Docker 與 Compose、支援的架構、有 `openssl`、沒有既有部署、
+   HTTPS 與 HTTP 埠沒被占用、磁碟空間足夠、部署目錄可寫入。檢查不通過時會說出原因，此時還沒有寫入任何檔案。
+2. **產生 `.env`**（以安裝包內的範本為底）：產生登入簽章金鑰、資料庫密碼與初始管理者密碼
+   （`KEK_PROVIDER=env` 時另產生加密金鑰）；已設定的值一律不動。`.env` 只有擁有者可讀。
+3. **取得程式映像**，依序嘗試這台主機、離線包、GitHub Container Registry、Docker Hub、用原始碼建置。
+   每個映像都必須與發行清單的摘要相符。這台主機有 `cosign` 與 `gh`、且連得到簽章服務時，另驗本專案
+   自家映像的發行者簽章與建置出處。驗不了時，腳本會列出驗了什麼、沒驗什麼，印出帶完整摘要、可在別台
+   電腦執行的驗證指令，並詢問是否繼續；沒有終端機時，除非加上 `--yes`，否則停下。
+4. **準備錄影目錄**（擁有者 `1000`、群組 `0`、權限 `2770`）。
+5. **啟動服務**，並確認每個執行中的容器跑的就是第 3 步核對過的映像。
+6. **等待後端回報就緒**且版本為這一版，最多 180 秒。逾時的話服務維持啟動，腳本會印出查看後端紀錄的指令。
+7. **記下這個部署**，並印出網址、`admin` 帳號、初始密碼，以及依 `.env` 的主金鑰模式在瀏覽器上的第一步。
+
+腳本產生的初始密碼只在產生它的那次執行結尾顯示一次，不寫進紀錄檔（那次執行中途停下時，下一次執行的結尾改為指向
+`.env`）；它留在 `.env` 的 `ADMIN_INITIAL_PASSWORD`。
+第一次登入會要求改密碼，改完後請刪除那一行。瀏覽器上的首次使用見
+[首次使用：從登入到第一條連線](#首次使用從登入到第一條連線)。
+
+任一步失敗時，腳本停下並保留已完成的部分。再執行一次 `install` 會從第 1 步重來，已就位的東西
+不會變動：`.env` 裡的值、已取得的映像、已在執行的服務。
+
+### 連不到映像倉庫的主機
+
+另外下載這台主機架構的映像離線包（`uname -m` 為 `x86_64` 對應 `amd64`、`aarch64` 對應 `arm64`），
+和 `SHA256SUMS` 放在同一個目錄；解開安裝包後，先載入再安裝：
+
+```bash
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.13.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh install
+```
+
+`load` 在載入前以 `SHA256SUMS` 與發行清單核對離線包，載入後再逐一比對每個映像與發行清單，不啟動
+任何服務。沒有網路時無法驗證發行者簽章，`install` 會照第 3 步的說明要求確認。
+
+### 查看部署狀態
+
+```bash
+sudo /opt/custodexa/custodexa.sh status
+```
+
+`status` 列出版本、服務、系統是否仍封存、映像來源與通過了哪些驗證、最近一次備份、上次升級、磁碟
+用量與提醒，不做任何變更。結束碼：一切正常為 `0`；任一行是警告為 `4`（可供監控使用）；部署的
+狀態檔損壞為 `5`，此時會指出第幾行與前一份副本的位置。剛安裝的部署還沒有備份紀錄，這一行是警告，
+所以在第一次備份記錄下來之前，`status` 都回傳 `4`。`custodexa.sh --help` 列出全部子命令。
+
+部署目錄的結構與管理腳本支援的範圍，見
+[部署形態限制](ops/deployment-topology-limits.md#安裝包部署與管理腳本)。
+
 ## 啟動步驟
 
-部署自用與參與開發走**同一條流程**；預設的 `docker-compose.yml` 即正式版
+以下是從原始碼執行的步驟。部署自用與參與開發走**同一條流程**；預設的 `docker-compose.yml` 即正式版
 （nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者只多一步：
 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解，之後所有 `docker compose`
 指令自動指向開發版（前端 Vite HMR、後端 Air 熱重載，並帶起各協議的測試靶機），無須每次打 `-f`。

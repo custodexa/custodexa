@@ -1,0 +1,29 @@
+[ ?? ] Files were checked for damage, but the publisher was not verified
+
+  [ OK ] Checksums             package and images match the release list
+  [SKIP] Publisher signature   cosign is not installed on this host
+  [SKIP] Build provenance      gh is not installed on this host
+
+  Checksums show the files were not damaged in transit. They do not
+  show the files came from Custodexa. If your organization requires
+  that, choose N here; have operations verify with the full digest
+  shown below, on a computer with cosign, gh and internet access,
+  then run this command again:
+
+    cosign verify ghcr.io/custodexa/backend@sha256:3f9a00000000000000000000000000000000000000000000000000000000c21e \
+      --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+    gh attestation verify oci://ghcr.io/custodexa/backend@sha256:3f9a00000000000000000000000000000000000000000000000000000000c21e \
+      --repo custodexa/custodexa
+
+    cosign verify ghcr.io/custodexa/frontend@sha256:5b0700000000000000000000000000000000000000000000000000000000e911 \
+      --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+    gh attestation verify oci://ghcr.io/custodexa/frontend@sha256:5b0700000000000000000000000000000000000000000000000000000000e911 \
+      --repo custodexa/custodexa
+
+  Which checks ran is recorded in the log file.
+
+Continue? [y/N]

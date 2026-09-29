@@ -8,9 +8,23 @@ enableAutoUnmount(afterEach)
 
 const getComplianceSnapshotMock = vi.fn()
 const getSecurityPoliciesMock = vi.fn()
+const createReportJobMock = vi.fn()
+const listJobsMock = vi.fn()
+const downloadJobMock = vi.fn()
+const downloadBlobMock = vi.fn()
 
 vi.mock('@/api/compliance', () => ({
   getComplianceSnapshot: (...a) => getComplianceSnapshotMock(...a),
+  createReportJob: (...a) => createReportJobMock(...a),
+}))
+
+vi.mock('@/api/auditExport', () => ({
+  listAuditExportJobs: (...a) => listJobsMock(...a),
+  downloadAuditExportJob: (...a) => downloadJobMock(...a),
+}))
+
+vi.mock('@/utils/download', () => ({
+  downloadBlob: (...a) => downloadBlobMock(...a),
 }))
 
 vi.mock('@/api/securityPolicies', () => ({
@@ -223,6 +237,9 @@ describe('ComplianceMap 合規對照頁（稽核視角、唯讀）', () => {
     vi.clearAllMocks()
     localStorage.clear()
     getComplianceSnapshotMock.mockResolvedValue(snapshotResponse())
+    createReportJobMock.mockResolvedValue({ data: { id: 31, status: 'pending' } })
+    listJobsMock.mockResolvedValue({ data: [], total: 0 })
+    downloadJobMock.mockResolvedValue(new Blob(['zip'], { type: 'application/zip' }))
     getSecurityPoliciesMock.mockResolvedValue({
       data: [
         {
@@ -403,6 +420,61 @@ describe('ComplianceMap 合規對照頁（稽核視角、唯讀）', () => {
     const second = mountPage()
     await flushPromises()
     expect(second.text()).toContain('never_seen_before_code')
+    second.unmount()
+
+    // 保留天數設 0 是永久保留、不是停用：理由改說「未設定明確的保留期限」；
+    // 其餘 0 有停用語義的鍵仍用原句（雙向各一鍵）
+    getComplianceSnapshotMock.mockResolvedValue({
+      ...snapshotResponse(),
+      data: {
+        ...snapshotResponse().data,
+        verdicts: [
+          {
+            key: 'retention_audit_log_days',
+            group_code: 'pci_dss_4_0_1',
+            clause_no: '10.5.1',
+            result: 'deviating',
+            reason: 'disabled_by_zero',
+            current: '0',
+            expected: '365',
+            comparator: 'min',
+            unit_key: 'days',
+            zero_disables: true,
+          },
+          { ...VERDICTS[2], result: 'deviating', reason: 'disabled_by_zero', current: '0' },
+        ],
+      },
+      clauses: [
+        ...CLAUSES,
+        {
+          group_code: 'pci_dss_4_0_1',
+          clause_no: '10.5.1',
+          title: '稽核記錄保留',
+          summary: '',
+          kind: 'setting',
+          removed_in_version: '',
+          controls: [
+            {
+              id: 9,
+              group_code: 'pci_dss_4_0_1',
+              clause_no: '10.5.1',
+              policy_key: 'retention_audit_log_days',
+              comparator: 'min',
+              expected_value: '365',
+              reference_only: false,
+            },
+          ],
+        },
+      ],
+    })
+    const zero = mountPage()
+    await flushPromises()
+    const retentionRow = zero.find('[data-test="key-row-retention_audit_log_days"]').text()
+    expect(retentionRow).toContain('設為 0 表示永久保留，未設定明確的保留期限；這一組要求設定明確期限')
+    expect(retentionRow).not.toContain('設為 0 等於停用')
+    const otherRow = zero.find('[data-test="key-row-password_max_age_days"]').text()
+    expect(otherRow).toContain('設為 0 等於停用，未達要求')
+    expect(otherRow).not.toContain('保留期限')
   })
 
   it('機構備註與確認資訊隨條文呈現', async () => {
@@ -439,14 +511,110 @@ describe('ComplianceMap 合規對照頁（稽核視角、唯讀）', () => {
     expect(wrapper.text()).toContain('未生效')
   })
 
-  it('產出報告入口為停用態並說明尚未開放', async () => {
-    setUser(['admin'])
+  // 擋：入口停用或只對其中一種角色開放時，稽核端產不出報告；送出漏帶任一欄位時
+  // 後端以參數不合法拒絕，使用者只看到一則錯誤而拿不到報告
+  it.each(['admin', 'auditor'])(
+    '%s 按產出報告開對話框，送出帶政策組、語言與保留天數',
+    async (role) => {
+      setUser([role])
+      const wrapper = mountPage()
+      await flushPromises()
+      expect(wrapper.find('.report-slot').exists()).toBe(false)
+
+      const btn = wrapper.find('[data-test="compliance-generate-report"]')
+      expect(btn.exists()).toBe(true)
+      expect(btn.attributes('disabled')).toBeUndefined()
+      await btn.trigger('click')
+      await flushPromises()
+
+      const dialog = wrapper.find('[data-test="compliance-report-dialog"]')
+      expect(dialog.exists()).toBe(true)
+      expect(wrapper.find('.el-dialog').text()).toContain('產出合規報告')
+
+      await wrapper.find('[data-test="compliance-report-submit"]').trigger('click')
+      await flushPromises()
+      expect(createReportJobMock).toHaveBeenCalledWith({
+        group: 'pci_dss_4_0_1',
+        language: 'zh-TW',
+        retention_days: 90,
+      })
+      // 受理後重新載入最近產出，剛送出的那一張才看得到
+      expect(listJobsMock).toHaveBeenCalledTimes(2)
+    }
+  )
+
+  // 擋：最近產出查錯種類會把輪替報告混進合規頁；對尚未產出完成的列掛下載鈕，
+  // 按下去必然失敗；保留的「自動產出摘要」段會讓讀者以為有排程在跑
+  it('最近產出以合規報告種類查詢：完成列可下載、產出中列不給下載，且不再有自動產出摘要', async () => {
+    setUser(['auditor'])
+    listJobsMock.mockResolvedValue({
+      data: [
+        {
+          id: 41,
+          status: 'done',
+          kind: 'compliance_report',
+          requested_at: '2026-09-20T01:00:00Z',
+          packaged_at: '2026-09-20T01:01:00Z',
+          expires_at: new Date(Date.now() + 30 * 86400 * 1000).toISOString(),
+          artifact_size: 1024,
+          requester: 'auditor1',
+          report: { group: 'pci_dss_4_0_1', group_name: 'PCI DSS 4.0.1', language: 'zh-TW', retention_days: 90, generated_by: 'auditor1' },
+        },
+        {
+          id: 42,
+          status: 'pending',
+          kind: 'compliance_report',
+          requested_at: '2026-09-21T01:00:00Z',
+          artifact_size: 0,
+          requester: 'auditor1',
+          report: { group: 'pci_dss_4_0_1', group_name: 'PCI DSS 4.0.1', language: 'en-US', retention_days: 90, generated_by: 'auditor1' },
+        },
+      ],
+      total: 2,
+    })
     const wrapper = mountPage()
     await flushPromises()
 
-    const slot = wrapper.find('.report-slot')
-    expect(slot.attributes('title')).toContain('下一期')
-    expect(slot.find('button').attributes('disabled')).toBeDefined()
+    expect(listJobsMock).toHaveBeenCalledWith({ kind: 'compliance_report', page: 1, page_size: 5 })
+    expect(wrapper.text()).not.toContain('自動產出摘要')
+
+    const done = wrapper.find('[data-test="compliance-recent-41"]')
+    expect(done.text()).toContain('PCI DSS 4.0.1')
+    expect(done.text()).toContain('下載中心到期日')
+    const dl = wrapper.find('[data-test="compliance-recent-download-41"]')
+    expect(dl.exists()).toBe(true)
+    await dl.trigger('click')
+    await flushPromises()
+    expect(downloadJobMock).toHaveBeenCalledWith(41)
+    expect(downloadBlobMock).toHaveBeenCalledWith(expect.any(Blob), 'compliance-report-job-41.zip')
+
+    expect(wrapper.find('[data-test="compliance-recent-download-42"]').exists()).toBe(false)
+    const pending = wrapper.find('[data-test="compliance-recent-status-42"]')
+    expect(pending.text()).toContain('產出中')
+    expect(wrapper.find('[data-test="compliance-recent-42"]').text()).not.toContain('下載中心到期日')
+
+    const all = wrapper.findComponent('[data-test="compliance-recent-all"]')
+    expect(all.props('to')).toEqual({
+      path: '/audit/exports',
+      query: { tab: 'reports', kind: 'compliance_report' },
+    })
+  })
+
+  // 擋：對話框文案主張系統不具備的能力（可選期間、回推過去設定、完成後通知、長期保管），
+  // 客戶會據此做保存與稽核決策
+  it('對話框文案不承諾期間、回推、通知或長期保存', async () => {
+    setUser(['auditor'])
+    const wrapper = mountPage()
+    await flushPromises()
+    await wrapper.find('[data-test="compliance-generate-report"]').trigger('click')
+    await flushPromises()
+
+    const text = wrapper.find('.el-dialog').text()
+    expect(text).toContain('不回推過去的設定')
+    expect(text).toContain('您另行下載保存的檔案不受此期限影響')
+    for (const banned of ['期間', '通知', '長期', '永久', '保留至', '離機']) {
+      expect(text).not.toContain(banned)
+    }
   })
 
   // 三步追證的第二步：最後變更取自判定結果本身，兩種角色讀的是同一份結果。

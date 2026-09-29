@@ -1,0 +1,14 @@
+目前版本   1.13.0（安裝包部署，/opt/custodexa）
+最新版本   1.13.2（2026-10-20 發佈）
+
+  [ OK ] 可以直接升級（1.13.2 接受從 1.12.4 以上的版本直接升級）
+  [WARN] 會套用 1 項資料庫結構變更。升級後如果要回退，
+         必須還原升級前的備份
+
+  [ OK ] 發行清單（MANIFEST）的校驗和與發行者簽章已驗證
+  版本說明  https://github.com/custodexa/custodexa/releases/tag/v1.13.2
+
+要升級，請執行：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.13.2
+
+這個指令只查詢，沒有做任何變更。

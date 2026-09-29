@@ -274,6 +274,43 @@ func TestBatchPerTargetModeUsesDistinctPasswords(t *testing.T) {
 	assert.Equal(t, 2, got.SuccessCount)
 	assert.NotNil(t, got.FinishedAt)
 	assert.Equal(t, uint(7), got.RequestedBy)
+
+	// 建立時的密碼策略旗標必須原樣落庫並原樣交給執行器：兩欄帶資料庫預設值 true，
+	// ORM 對帶預設值的欄位遇零值會交給資料庫預設，並把該值回填到呼叫端手上的結構——
+	// 執行器讀的正是那個結構，於是「不含符號」的一批產生的是含符號的密碼
+	for _, tc := range []struct {
+		name string
+		val  *bool
+		want bool
+	}{
+		{"帶_false_不含符號", boolPtr(false), false},
+		{"未帶預設含符號", nil, true},
+	} {
+		t.Run("密碼策略旗標/"+tc.name, func(t *testing.T) {
+			f := setupBatchFixture(t)
+			f.addHost(t, "h1", "10.2.9.1", "ops")
+			rec := newSecretRecorder()
+			f.useExecutor(rec)
+			req := batchRequest("ops", model.BatchPasswordPerTarget, true)
+			req.PasswordIncludeSymbol, req.PasswordExcludeAmbiguous = tc.val, tc.val
+			batch, assetIDs, err := f.batches.Create(req, 7, "admin")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, batch.PasswordIncludeSymbol, "回傳 include_symbol")
+			assert.Equal(t, tc.want, batch.PasswordExcludeAmbiguous, "回傳 exclude_ambiguous")
+			saved := f.reload(t, batch.ID)
+			assert.Equal(t, tc.want, saved.PasswordIncludeSymbol, "落庫 include_symbol")
+			assert.Equal(t, tc.want, saved.PasswordExcludeAmbiguous, "落庫 exclude_ambiguous")
+
+			records := f.runner.RunBatch(batch, assetIDs)
+			require.Len(t, records, 1)
+			require.Equal(t, model.ChangeSecretSuccess, records[0].Status, "錯誤: %s", records[0].Error)
+			secret := rec.secretOf("10.2.9.1")
+			require.NotEmpty(t, secret)
+			// 產生器對每個必要字類至少取一個字元，故含符號策略下必有符號
+			assert.Equal(t, tc.want, strings.ContainsAny(secret, passwordSymbol),
+				"產生的密碼含符號與否須與建立時的策略一致")
+		})
+	}
 }
 
 // 整批同一組：系統建立一筆具名共用憑證，兩台改綁到它並就位同一版本；
