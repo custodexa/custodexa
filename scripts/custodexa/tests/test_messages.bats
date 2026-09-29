@@ -249,3 +249,36 @@ C
   printf 'install \nload /media/usb/b.tar\n' | diff "$CX_CALLS" - || return 1
   [[ $output == *"（檔名像 custodexa-images-1.13.0-amd64.tar）。"* && $output == *"用法：custodexa.sh <子命令> [選項]"* ]] || { echo "$output"; return 1; }
 }
+
+# Threat: the screens come up in English (sudo often resets the system language) and the reader
+# never learns that --lang switches them. Every help, the menu's included, ends with the switch.
+@test "every help and the menu's help show how to choose the language, in each language" {
+  # has_switch <label>: the output names --lang for each language and the sudo alternative.
+  has_switch() {
+    [[ $output == *"custodexa.sh --lang zh-TW "*"繁體中文"* && $output == *"custodexa.sh --lang ja "*"日本語"* ]] \
+      && [[ $output == *"custodexa.sh --lang en "* && $output == *"sudo env LANG="*"custodexa.sh"* ]] \
+      || { echo "no language switch in: $1"; echo "$output"; return 1; }
+  }
+  for l in $LANGS; do
+    run "$ROOT/custodexa.sh" --help --lang "$l"
+    has_switch "--help $l"
+    for c in install upgrade status backup load; do
+      run "$ROOT/custodexa.sh" "$c" --help --lang "$l"
+      has_switch "$c --help $l"
+    done
+  done
+  # The English help names the other two languages in their own script too.
+  run "$ROOT/custodexa.sh" --help --lang en
+  [[ $output == *"Traditional Chinese"* && $output == *"Japanese"* ]] || { echo "$output"; return 1; }
+  # The menu's Help: [3] when not installed, [5] when installed.
+  fake_commands
+  menu_run en $'3\n0'
+  has_switch "menu help, not installed"
+  package_state
+  for l in $LANGS; do
+    menu_run "$l" $'5\n0'
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    has_switch "menu help $l"
+  done
+  [ ! -s "$CX_CALLS" ]
+}

@@ -23,7 +23,7 @@
 | Audit stamping key | Database (wrapped by the KEK) | Key Management (`POST /keys/rotate`) | Immediately | No | — |
 | `ENCRYPTION_KEY` (KEK material, mode A) | `.env` | Through the KEK rewrap wizard, not by editing env directly | After the rewrap and a restart | Yes (restart) | — |
 | KEK material (mode B, `KEK_PROVIDER=ui`) | Memory only (entered at unseal) | Through the KEK rewrap wizard | After the rewrap, a restart, and an unseal | Yes (restart, and service resumes only once someone unseals) | — |
-| `JWT_SECRET` | `.env` | Edit env, then restart | After the restart | **Yes, everyone is signed out** | — |
+| `JWT_SECRET` | `.env` | Edit env, then restart | After the restart | Restart ends active protocol connections; browser sign-ins may continue through refresh cookies | — |
 | Ed25519 export signing key | Database (envelope encrypted private key) | System-managed; through the data layer if required (see §8) | — | — | **Yes, the public key must be redistributed** |
 | Ed25519 checkpoint signing key | Database (envelope encrypted private key) | System-managed; the related endpoints are read-only (see §9) | — | — | **Yes, the public key must be redistributed** |
 | `METRICS_TOKEN` | `.env` | Edit env, then restart | After the restart | No (the collector must be updated in step) | The collector must be updated in step |
@@ -209,8 +209,7 @@ For the error guidance when a retired KEK is set by mistake, see [Backup and Res
 
 **When it takes effect: after the restart.**
 
-> **It interrupts every user: all existing tokens become invalid immediately and everyone has to sign in again.**
-> Old tokens were signed with the old key and no longer verify after the change, which is inherent to rotating a signing key.
+> Restart ends active protocol connections. Existing JWT access tokens signed with the old key stop verifying after the restart. Refresh tokens stored in the database remain valid and can issue access tokens signed with the new key, so existing browser sign-ins may continue without another login. Changing `JWT_SECRET` alone does not force every user to sign in again.
 > Schedule a maintenance window and notify users in advance.
 
 In release mode the system detects whether `JWT_SECRET` is still the factory placeholder value and refuses to start if it has not been changed.

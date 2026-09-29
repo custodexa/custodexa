@@ -605,3 +605,19 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
 
 - **WHEN** 以 agent token 呼叫建立主體或建立 token 的端點
 - **THEN** 回 403，無論目標主體是誰
+
+### Requirement: 登入後的使用者資訊帶產品版本
+
+登入成功回應的 `user` 物件，以及目前使用者資訊端點（`GET /auth/me`）與自助更新端點（`PATCH /auth/me`）回應的使用者資訊，SHALL 附帶 `product_version` 欄位。其值 SHALL 為建置時注入的產品版本號，並與健康檢查端點揭露的版本同源；後端 SHALL NOT 另外持有版本字面值。開發建置的預設值 SHALL 原樣轉出，不改寫。未注入版本時，該欄位 SHALL 不出現。此欄位 SHALL 只出現在認證通過後的回應；受限票證分支（MFA 第一階段、強制改密、強制綁定 MFA）不帶使用者物件，因此也不帶此欄。本需求 SHALL NOT 新增端點，也 SHALL NOT 改變路由。
+
+#### Scenario: 目前使用者資訊帶版本
+- **WHEN** 已登入的使用者呼叫 `GET /auth/me`，且伺服器以版本 1.13.0 建置
+- **THEN** 回應的 `product_version` 為 `1.13.0`，與健康檢查端點的 `version` 相同
+
+#### Scenario: 登入回應與目前使用者資訊同形
+- **WHEN** 使用者登入成功
+- **THEN** 回應 `user` 物件的 `product_version` 與隨後 `GET /auth/me` 回應的值相同
+
+#### Scenario: 開發建置原樣轉出
+- **WHEN** 伺服器未帶版本建置（預設值 `dev`）
+- **THEN** `product_version` 為 `dev`，不冒充任何已發布版本

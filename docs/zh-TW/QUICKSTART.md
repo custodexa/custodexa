@@ -67,6 +67,8 @@ sudo /opt/custodexa/custodexa.sh install
 ```
 
 也可以直接執行 `sudo /opt/custodexa/custodexa.sh`（不帶子命令），用選單操作。
+`sudo` 常會重設系統語系，畫面就會是英文；在這些指令（含選單）加上 `--lang zh-TW` 即為繁體中文，
+`--lang ja` 為日文。
 
 安裝包解開後是一個 `custodexa/` 目錄，就是部署目錄。它的路徑只能含英文字母、數字與
 `. _ / -`。`install` 分七步，每步一行：

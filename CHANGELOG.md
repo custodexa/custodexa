@@ -2,6 +2,38 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.13.1 — the product version in the web UI, language choice in the management script, and corrected operations documents (2026-09-29)
+
+No schema change. No migration runs. A 1.13.0 package deployment upgrades with
+`custodexa.sh upgrade`.
+
+### What changes for deployers
+
+- The bottom of the sidebar shows the product version, for example `Custodexa 1.13.1`, to everyone
+  who is signed in; with the sidebar collapsed it shows the number alone. The `user` object in the
+  login response and the responses of `GET` and `PATCH /api/v1/auth/me` have a new
+  `product_version` field with the same value that `/health` reports. A build without an injected
+  version reports `dev`, and the sidebar then shows no version line.
+- The `custodexa.sh` main menu has a line under the status that shows how to switch to the other two
+  languages with `--lang`. Every help screen ends with a Language section that lists
+  `--lang zh-TW`, `--lang ja` and `--lang en`, and the way to keep the system language under
+  `sudo`. The README and the quickstart explain the same.
+
+### Documentation
+
+- Standby takeover: audit fallback files recovered from a failed host are kept for investigation;
+  the product does not import their rows into the database. Audit rows still queued in memory when
+  a host fails abruptly may reach neither the database nor a fallback file.
+- Privileged credential rotation: changing `JWT_SECRET` ends active protocol connections at the
+  restart and invalidates existing access tokens, while refresh tokens stored in the database keep
+  browser sign-ins going, so it does not sign everyone out.
+- Deployment topology limits: disabling or deleting an account at an external identity source stops
+  its next sign-in there; browser sessions already open in Custodexa continue until they expire or
+  the account is disabled in Custodexa.
+- README: command logs cover the text protocols, while RDP and VNC sessions are recorded as video.
+  Offsite storage, single sign-on and an external key service need outbound connections. The
+  feature overview lists the 1.13.0 additions.
+
 ## 1.13.0 — an install package with a menu-driven management script, compliance reports, batch review, push levels per channel, and past sign-offs from the dashboard (2026-09-29)
 
 ### New capabilities

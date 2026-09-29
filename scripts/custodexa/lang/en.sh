@@ -61,7 +61,7 @@ MSG_help_opt_backup_time='  --backup-time <time>   (upgrade) With --backup-ref: 
 MSG_help_opt_backup_restore='  --backup-restore <doc> (upgrade) With --backup-ref: where the restore
                          procedure is documented'
 MSG_help_opt_images='  --images <path>        (install, upgrade) Offline image bundle to use'
-MSG_help_opt_lang='  --lang <language>      zh-TW, ja or en; defaults to the system language'
+MSG_help_opt_lang='  --lang <language>      zh-TW, ja or en; see Language below'
 MSG_help_opt_no_color='  --no-color             No colors'
 MSG_help_opt_version='  --version              Show the script version'
 MSG_help_opt_help='  -h, --help             This help; custodexa.sh <command> --help shows
@@ -70,6 +70,15 @@ MSG_help_footer='The deployment folder is the folder this script is in; set the
 environment variable CUSTODEXA_HOME to use another one. Each run is
 logged under <deployment folder>/logs/. For the full procedures see the
 Deployment and Upgrade SOP and Backup and Restore.'
+MSG_help_language='Language
+  Screens follow the system language (LC_ALL, LC_MESSAGES or LANG); sudo
+  often resets it, and the screens are then in English. To choose one, add
+  --lang, with or without a command:
+    custodexa.sh --lang zh-TW          繁體中文 (Traditional Chinese)
+    custodexa.sh --lang ja             日本語 (Japanese)
+    custodexa.sh --lang en             English
+  Or keep the system language under sudo:
+    sudo env LANG=zh_TW.UTF-8 custodexa.sh'
 
 # ---- release manifest, install title, durations ----
 MSG_manifest_missing='The release manifest %s is missing. The package may be incomplete;
@@ -778,6 +787,7 @@ folder yet.
 MSG_menu_title='Custodexa management script %s    Deployment directory %s'
 MSG_menu_state_none='Status: not installed'
 MSG_menu_state_package='Status: installed %s (package deployment)'
+MSG_menu_language='Language: --lang zh-TW 繁體中文, --lang ja 日本語'
 MSG_menu_install='Install'
 MSG_menu_load_first='Load an offline image bundle (first, if this host has no internet)'
 MSG_menu_status='Show status'

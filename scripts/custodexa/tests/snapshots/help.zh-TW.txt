@@ -17,7 +17,7 @@ Custodexa 管理腳本 1.13.0
   --backup-time <時間> （upgrade）與 --backup-ref 並用：快照開始時間，須晚於停機
   --backup-restore <位置>（upgrade）與 --backup-ref 並用：還原程序的文件位置
   --images <路徑>      （install、upgrade）指定離線映像包
-  --lang <語言>         zh-TW、ja、en；預設依系統語系
+  --lang <語言>         zh-TW、ja、en；見下方「顯示語言」
   --no-color           不使用顏色
   --version            顯示腳本版本
   -h, --help           顯示說明；custodexa.sh <子命令> --help 只顯示該子命令
@@ -25,3 +25,12 @@ Custodexa 管理腳本 1.13.0
 部署目錄是本腳本所在的目錄；要指定別處，設定環境變數 CUSTODEXA_HOME。
 每次執行的紀錄在 <部署目錄>/logs/。
 詳細程序見「部署與升級 SOP」與「備份與還原」。
+
+顯示語言
+  畫面語言依系統語系（LC_ALL、LC_MESSAGES 或 LANG）；sudo 常會重設語系，
+  畫面就會是英文。要指定語言，加上 --lang（帶不帶子命令都可以）：
+    custodexa.sh --lang zh-TW          繁體中文
+    custodexa.sh --lang ja             日本語
+    custodexa.sh --lang en             English
+  或在 sudo 下保留系統語系：
+    sudo env LANG=zh_TW.UTF-8 custodexa.sh

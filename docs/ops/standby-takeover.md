@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/standby-takeover.md) | [日本語](../ja/ops/standby-takeover.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.13.0, in the `git clone` layout; §8 says what differs for a package deployment.
+> Applies to: Custodexa 1.13.1, in the `git clone` layout; §8 says what differs for a package deployment.
 >
 > **Verification status of this procedure**: the project rehearsed it once on a single machine, with two compose projects standing in for the two application hosts and a third one for the database; the guard behaviour, the confirmation path and the sign-in on the standby were exercised in that rehearsal. It has not been rehearsed across two physical hosts. Rehearse it in your own environment before relying on it, and keep the record.
 >
@@ -265,7 +265,7 @@ The primary's host may come back later, repaired or rebooted. Its stack is still
   rsync -a /mnt/primary-disk/custodexa/data/audit/      standby:${DATA_PATH}/audit/
   ```
 
-  Recordings of sessions that were in progress at the crash come across as files but were never confirmed written; whether they play depends on how far the file got. Audit fallback files are replayed by the existing procedure ([Backup and Restore §7.3](./backup-and-restore.md#73-recovering-audit-fallback-files-after-a-restore)).
+  Recordings of sessions that were in progress at the crash come across as files but were never confirmed written; whether they play depends on how far the file got. Preserve recovered audit fallback files for investigation. The product does not import their rows into the database ([Backup and Restore §7.3](./backup-and-restore.md#73-recovering-audit-fallback-files-after-a-restore)).
 
 Once the standby is `held` and you have decided the primary is to return to service, going back is a planned switchover (§6). The primary's `.env` may still contain an old `INSTANCE_GUARD_ACK` line from an earlier takeover; it is inert (the holder has changed), and should be removed anyway.
 
@@ -312,7 +312,8 @@ This is the boundary of the procedure, stated so that it can go into a recovery 
 - **The recordings of those sessions are cut at the failure.** The file, up to the moment of the crash, is on the failed host's disk; it is not uploaded to offsite storage (uploads cover recordings that ended normally), and it is not on the standby. On the standby, those session records show `end_reason=backend_restart` and no playable recording. If the disk is recovered, the files can be copied over (§4.4), and play as far as they were written.
 - **Recordings that ended normally but had not finished uploading** exist only on the failed host's disk until it is recovered. The exposure window is the upload queue at the moment of failure (text recordings queue within seconds of the session end, graphical ones after at least a minute; anything waiting for an unreachable storage endpoint waits longer).
 - **With offsite storage not enabled, no recording made on the primary is playable on the standby** until the primary's disk is recovered and copied over.
-- **Audit rows that had fallen back to files** on the failed host (written while the database was unreachable) are not in the database and not on the standby until the files are recovered and replayed.
+- **Audit rows that had fallen back to files** on the failed host (written while the database was unreachable) are not in the database or on the standby. Recover the files for investigation; copying them does not import those rows into the database.
+- **Audit rows still buffered in memory** when the host fails abruptly may never reach the database or a fallback file. Graceful shutdown drains the audit queue, but an abrupt host failure cannot run that path.
 - **Export artifacts** that were being produced or had not been downloaded are gone from their download links; they are re-exportable on the standby, and completed ones may still be retrievable from offsite storage within their retention period.
 - **Browser sign-ins are kept, not lost**: the two hosts share `JWT_SECRET`, so in the project's rehearsal an access token issued by the primary was accepted by the standby as it was. What users lose is the protocol session, not the sign-in.
 - **The confirmation, when it was made on the halt page, is attributed to the administrator account that made it; when it came from `INSTANCE_GUARD_ACK`, it is attributed to `operator via env`**, not to a person. Either way, what led to the decision is on your ticket, not in the product.

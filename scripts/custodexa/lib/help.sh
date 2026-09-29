@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # --help. The full help lists every command and option; `<command> --help` prints the same
-# blocks limited to that command and the options it accepts. The blocks live in lang/<lang>.sh.
+# blocks limited to that command and the options it accepts. Every help ends with how to choose
+# the language. The blocks live in lang/<lang>.sh.
 
 # Options each command accepts, in the order of the full help. Kept next to the parser's list
 # so the test suite can check both against each other.
@@ -33,4 +34,6 @@ cx_help_print() {
     printf '%s\n' "$(cx_msg "help_opt_$o")"
   done
   printf '\n%s\n' "$(cx_msg help_footer)"
+  # Last, so it stays on screen: under sudo the system language is often reset to English.
+  printf '\n%s\n' "$(cx_msg help_language)"
 }

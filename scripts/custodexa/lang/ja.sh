@@ -59,7 +59,7 @@ MSG_help_opt_backup_time='  --backup-time <時刻>   （upgrade）--backup-ref �
                          開始時刻。サービス停止より後であること'
 MSG_help_opt_backup_restore='  --backup-restore <場所>（upgrade）--backup-ref と併用：復元手順の文書の場所'
 MSG_help_opt_images='  --images <パス>        （install、upgrade）使うオフラインイメージバンドル'
-MSG_help_opt_lang='  --lang <言語>          zh-TW、ja、en。既定はシステムの言語'
+MSG_help_opt_lang='  --lang <言語>          zh-TW、ja、en。下の「表示言語」を参照'
 MSG_help_opt_no_color='  --no-color             色を使わない'
 MSG_help_opt_version='  --version              スクリプトのバージョンを表示'
 MSG_help_opt_help='  -h, --help             このヘルプ。custodexa.sh <サブコマンド> --help は
@@ -68,6 +68,15 @@ MSG_help_footer='配置フォルダーはこのスクリプトがあるフォル
 環境変数 CUSTODEXA_HOME を設定してください。実行ごとの記録は
 <配置フォルダー>/logs/ に残ります。詳しい手順は「デプロイとアップグレードの
 SOP」と「バックアップとリストア」を参照してください。'
+MSG_help_language='表示言語
+  画面の言語はシステムの言語（LC_ALL、LC_MESSAGES または LANG）に従います。
+  sudo ではこれがリセットされることが多く、その場合は英語になります。
+  言語を選ぶには --lang を付けます（サブコマンドの有無は問いません）：
+    custodexa.sh --lang ja             日本語
+    custodexa.sh --lang zh-TW          繁體中文
+    custodexa.sh --lang en             English
+  sudo でシステムの言語を保つ場合：
+    sudo env LANG=ja_JP.UTF-8 custodexa.sh'
 
 # ---- リリースマニフェスト、インストール見出し、所要時間 ----
 MSG_manifest_missing='リリースマニフェスト %s がありません。パッケージが不完全な
@@ -781,6 +790,7 @@ MSG_pc_empty_same_do='ログインしないでください。マスターキー�
 MSG_menu_title='Custodexa 管理スクリプト %s    配置フォルダー %s'
 MSG_menu_state_none='現在の状態：未インストール'
 MSG_menu_state_package='現在の状態：インストール済み %s（パッケージ配置）'
+MSG_menu_language='言語：--lang en English、--lang zh-TW 繁體中文'
 MSG_menu_install='インストール'
 MSG_menu_load_first='オフラインイメージバンドルを読み込む（ネット接続がない場合は先に）'
 MSG_menu_status='状態を表示'

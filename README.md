@@ -17,14 +17,14 @@
 **Who connected to what, and what they did. The recording decides.**
 
 An open-source privileged access gateway. The browser is the entrance, target hosts
-install nothing, and every connection passes policy before it opens. What comes back is
-a recording and a trail of commands, packaged with a signature an auditor can verify
-offline.
+install nothing, and every connection passes policy before it opens. Sessions produce
+recordings; text terminals also produce command or statement records. Evidence bundles
+carry a signature an auditor can verify offline.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
-    <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; every session leaves a recording, a command log, and an Ed25519-notarized audit chain." src="docs/assets/architecture-light.svg" width="920">
+    <img alt="Architecture: operators connect from a browser through the Custodexa gateway (auth gate, policy engine, protocol proxy, audit, evidence export) to SSH, RDP/VNC, database, and Kubernetes targets with zero agents installed; session recording covers every protocol, command and statement logs cover text terminals, and an Ed25519 checkpoint chain protects audit intervals." src="docs/assets/architecture-light.svg" width="920">
   </picture>
 </p>
 
@@ -50,6 +50,10 @@ stack, waits for the backend to report ready, and finishes with the URL and admi
 Values you have already set are never touched. `custodexa.sh status` shows how the deployment is
 doing without changing anything. Offline hosts, the checks in each step, and the folder layout are
 covered in [Install from the release package](docs/QUICKSTART.md#install-from-the-release-package).
+
+The script's screens follow the system language, and `sudo` often resets it, so they come up in
+English. For Traditional Chinese or Japanese, add `--lang zh-TW` or `--lang ja` to any
+`custodexa.sh` command, or run `sudo /opt/custodexa/custodexa.sh --lang zh-TW` for the menu.
 
 To evaluate on macOS or Windows, or to work on the code, run from source instead:
 
@@ -134,11 +138,17 @@ Every session takes the same path, and the evidence is made along the way.
 | **04 Credential rotation** | Scheduled password changes for Linux and Windows local accounts, verified on the target and rolled back there on failure. The rotation evidence report says, per account, how long it has gone without a change. |
 | **05 Recording and audit** | Full-session recording with replay (seek, speed control) for every protocol, a command and statement trail that handles full-screen programs like vim correctly, webhook alerts, a checkpoint chain that notarizes intervals, and evidence bundles carrying a manifest and a signature, with offsite copies to object storage. |
 
+Batch review handles alerts, access requests, and emergency connection reviews with a result for each item.
+The dashboard links to past daily security sign-offs in Operation Logs.
+Each notification channel can push all alerts, medium and high alerts, or high alerts only; all alerts is the default.
+The Compliance map generates signed reports available in Downloads for the selected retention period.
+
 **Truly open source, single edition.** No enterprise tier and no paywalled features.
 What you see is all there is, under AGPL-3.0-only.
 
-**Simple to deploy.** One docker compose command, https served out of the box, and no
-outbound network needed once running.
+**Simple to deploy.** One docker compose command and https served out of the box.
+The backend needs network access to target hosts and to any configured external identity
+provider, key custodian, notification channel, or offsite storage.
 
 ## How this compares
 
@@ -319,4 +329,3 @@ Container images are based on Alpine Linux and contain GPL/LGPL components runni
 separate processes. The version table and how to obtain their corresponding source are in Section 3 of
 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md); open a repository issue if a
 source cannot be reached.
-

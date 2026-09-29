@@ -1,6 +1,6 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`）
+> 最後更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`；登入回應與 `/auth/me` 的 `UserInfo` 加產品版本欄 `product_version`）
 > 前次更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
@@ -934,6 +934,11 @@ agent 主體，已刪除者不計）與 `can_self_create_agent`（安全政策 `
 值與 `GET /my/agents` 回應的自建狀態同源。兩欄只供顯示，查詢失敗時皆為 `false`，
 `/my/agents` 與鑰匙端點各自的守衛才是強制點。與 `is_approver` 相同，它們在登入時與每次
 `GET /auth/me` 時現算，建立或轉移 agent 後重新整理頁面即反映。
+
+另含 `product_version`（**可選欄，`omitempty`**；登入回應的 `user` 與 `PATCH /auth/me` 的回應同樣帶）：
+產品版本號，與 `/health` 的 `version` 是同一個建置時注入的值，介面側欄底部據此顯示版本。
+值原樣轉出：開發建置為 `dev`，是否顯示由前端判定（只顯示發布版號形狀的值）。
+此欄只出現在登入後才讀得到的回應裡。
 
 ### 自助更新個人資料
 
@@ -3059,7 +3064,7 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 
 注意：登入/`/auth/me` 回應用的是精簡 `UserInfo`（`id/username/email/full_name/local_display_name/
 display_name/active/roles/totp_enabled/is_ldap/external_credential/provisioning_origin/is_approver/
-owns_agents/can_self_create_agent`），
+owns_agents/can_self_create_agent/product_version`），
 不含上述欄位；完整欄位僅見於 `/users` 管理端點。
 
 ### Agent 主體與 token

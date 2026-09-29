@@ -72,6 +72,11 @@
           </el-menu-item>
         </template>
       </el-menu>
+      <!-- 產品版本行：在選單捲動區之外，值來自下方 refreshEntryFlags 已在打的 /auth/me -->
+      <SidebarVersion
+        :raw="productVersion"
+        :collapsed="isCollapsed"
+      />
     </el-aside>
 
     <el-container>
@@ -193,6 +198,7 @@ import { getCurrentUser } from '@/api/auth'
 import { logout } from '@/api/auth'
 import { getSealStatus } from '@/api/seal'
 import InstanceGuardBanner from './InstanceGuardBanner.vue'
+import SidebarVersion from './SidebarVersion.vue'
 import { clearSession } from '@/utils/session'
 import { detailSubject } from '@/utils/detailTitle'
 import { canEnter, entryRuleFor, entrySubject } from '@/router/entryRules'
@@ -219,6 +225,8 @@ const effectiveApprover = ref(false)
 // 與 is_approver 同一條路徑取得：登入快取先用、掛載後以 /auth/me 覆蓋並回寫
 const ownsAgents = ref(false)
 const canSelfCreateAgent = ref(false)
+// 側欄底部的產品版本（/auth/me 的 product_version 原值；顯示判定在 SidebarVersion）
+const productVersion = ref('')
 
 // 選單可見性與路由守衛**同一個判斷**（router/entryRules.js 的 canEnter）：
 // 同一份規則、同一種身分正規化，選單看得到的就是網址進得去的。
@@ -440,6 +448,8 @@ const refreshEntryFlags = async () => {
     }
     if ('owns_agents' in updates) ownsAgents.value = updates.owns_agents
     if ('can_self_create_agent' in updates) canSelfCreateAgent.value = updates.can_self_create_agent
+    // 版本行與入口資格共用這一次 /auth/me，不另打請求；取不到就維持空字串（不顯示）
+    if (info && typeof info.product_version === 'string') productVersion.value = info.product_version
     persistEntryFlags(updates)
     if (effectiveApprover.value && !wasApprover && !badgeTimer) {
       startApprovalBadgePolling()

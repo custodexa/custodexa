@@ -440,6 +440,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	authService.SetTransmissionPolicy(transmissionPolicy)
 	// 角色映射事件的交易內審計：與角色變動同生共死，寫不進去即整筆回滾
 	authService.SetRoleMappingAuditSink(auditTxSink)
+	// 產品版本號：與 /health 同一個 Version 變數（建置時注入，單一事實源），
+	// 經登入回應與 GET /auth/me 帶給介面側欄——只給登入後的人看
+	authService.SetProductVersion(Version)
 	mark("authService")
 
 	// 初始化資產服務（憑證加解密走信封 key manager）

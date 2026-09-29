@@ -1,5 +1,6 @@
 Custodexa management script 1.13.0    Deployment directory /opt/custodexa
 Status: not installed
+Language: --lang zh-TW 繁體中文, --lang ja 日本語
 
   [1] Install
   [2] Load an offline image bundle (first, if this host has no internet)

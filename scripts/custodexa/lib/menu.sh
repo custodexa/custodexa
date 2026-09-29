@@ -184,10 +184,11 @@ cx_menu_show() {
   read -r -a actions <<<"$(cx_menu_actions)"
   printf '%s\n' "$(cx_msg menu_title "$(cx_script_version)" "$CX_ROOT")"
   if [ "$CX_MENU_KIND" = package ]; then
-    printf '%s\n\n' "$(cx_msg menu_state_package "$CX_MENU_VERSION")"
+    printf '%s\n' "$(cx_msg menu_state_package "$CX_MENU_VERSION")"
   else
-    printf '%s\n\n' "$(cx_msg menu_state_none)"
+    printf '%s\n' "$(cx_msg menu_state_none)"
   fi
+  printf '%s\n\n' "$(cx_msg menu_language)"
   for a in "${actions[@]}"; do
     i=$((i + 1))
     cx_menu_item "$i" "$(cx_msg "menu_$a")"

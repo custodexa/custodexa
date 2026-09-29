@@ -25,7 +25,7 @@ Options
   --backup-restore <doc> (upgrade) With --backup-ref: where the restore
                          procedure is documented
   --images <path>        (install, upgrade) Offline image bundle to use
-  --lang <language>      zh-TW, ja or en; defaults to the system language
+  --lang <language>      zh-TW, ja or en; see Language below
   --no-color             No colors
   --version              Show the script version
   -h, --help             This help; custodexa.sh <command> --help shows
@@ -35,3 +35,13 @@ The deployment folder is the folder this script is in; set the
 environment variable CUSTODEXA_HOME to use another one. Each run is
 logged under <deployment folder>/logs/. For the full procedures see the
 Deployment and Upgrade SOP and Backup and Restore.
+
+Language
+  Screens follow the system language (LC_ALL, LC_MESSAGES or LANG); sudo
+  often resets it, and the screens are then in English. To choose one, add
+  --lang, with or without a command:
+    custodexa.sh --lang zh-TW          繁體中文 (Traditional Chinese)
+    custodexa.sh --lang ja             日本語 (Japanese)
+    custodexa.sh --lang en             English
+  Or keep the system language under sudo:
+    sudo env LANG=zh_TW.UTF-8 custodexa.sh

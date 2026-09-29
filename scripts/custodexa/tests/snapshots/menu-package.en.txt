@@ -1,5 +1,6 @@
 Custodexa management script 1.13.0    Deployment directory /opt/custodexa
 Status: installed 1.13.2 (package deployment)
+Language: --lang zh-TW 繁體中文, --lang ja 日本語
 
   [1] Show status
   [2] Upgrade

@@ -47,13 +47,21 @@ MSG_help_opt_backup_ref='  --backup-ref <識別>  （upgrade）已自行備份�
 MSG_help_opt_backup_time='  --backup-time <時間> （upgrade）與 --backup-ref 並用：快照開始時間，須晚於停機'
 MSG_help_opt_backup_restore='  --backup-restore <位置>（upgrade）與 --backup-ref 並用：還原程序的文件位置'
 MSG_help_opt_images='  --images <路徑>      （install、upgrade）指定離線映像包'
-MSG_help_opt_lang='  --lang <語言>         zh-TW、ja、en；預設依系統語系'
+MSG_help_opt_lang='  --lang <語言>         zh-TW、ja、en；見下方「顯示語言」'
 MSG_help_opt_no_color='  --no-color           不使用顏色'
 MSG_help_opt_version='  --version            顯示腳本版本'
 MSG_help_opt_help='  -h, --help           顯示說明；custodexa.sh <子命令> --help 只顯示該子命令'
 MSG_help_footer='部署目錄是本腳本所在的目錄；要指定別處，設定環境變數 CUSTODEXA_HOME。
 每次執行的紀錄在 <部署目錄>/logs/。
 詳細程序見「部署與升級 SOP」與「備份與還原」。'
+MSG_help_language='顯示語言
+  畫面語言依系統語系（LC_ALL、LC_MESSAGES 或 LANG）；sudo 常會重設語系，
+  畫面就會是英文。要指定語言，加上 --lang（帶不帶子命令都可以）：
+    custodexa.sh --lang zh-TW          繁體中文
+    custodexa.sh --lang ja             日本語
+    custodexa.sh --lang en             English
+  或在 sudo 下保留系統語系：
+    sudo env LANG=zh_TW.UTF-8 custodexa.sh'
 
 # ---- 發行清單、安裝標題、時間 ----
 MSG_manifest_missing='找不到發行清單 %s。安裝包可能不完整，請重新下載。'
@@ -643,6 +651,7 @@ MSG_pc_empty_same_do='請不要登入，也不要初始化主金鑰，也先不�
 MSG_menu_title='Custodexa 管理腳本 %s    部署目錄 %s'
 MSG_menu_state_none='目前狀態：尚未安裝'
 MSG_menu_state_package='目前狀態：已安裝 %s（安裝包部署）'
+MSG_menu_language='語言：--lang en English、--lang ja 日本語'
 MSG_menu_install='安裝'
 MSG_menu_load_first='載入離線映像包（主機不能上網時，先做這一步）'
 MSG_menu_status='查看狀態'

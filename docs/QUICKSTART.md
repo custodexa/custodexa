@@ -72,6 +72,8 @@ sudo /opt/custodexa/custodexa.sh install
 ```
 
 You can also run `sudo /opt/custodexa/custodexa.sh` without a command and work from its menu.
+Screens are in English when `sudo` resets the system language; add `--lang zh-TW` (Traditional
+Chinese) or `--lang ja` (Japanese) to any of these commands, the menu included.
 
 The package unpacks to one folder, `custodexa/`, which becomes the deployment folder. Its path
 may contain letters, digits and `. _ / -` only. `install` goes through seven steps, each on its

@@ -17,12 +17,12 @@
 **誰連了什麼、做了什麼，錄影說了算。**
 
 開源特權存取閘道。瀏覽器就是入口，靶機零安裝，每一次連線先過政策再開通。
-留下的是錄影與一條指令軌跡，打包成稽核人員能離線驗證的簽章證據包。
+會話留下錄影；文字終端另留下指令或語句紀錄。證據包附有可供稽核人員離線驗證的簽章。
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../assets/architecture-dark.svg">
-    <img alt="架構圖：操作者用瀏覽器經 Custodexa 閘道（認證閘、政策引擎、協議代理、稽核、證據出口）連向 SSH、RDP/VNC、資料庫與 Kubernetes 靶機，靶機零安裝；每一場會話都留下錄影、指令記錄與 Ed25519 存證的稽核鏈。" src="../assets/architecture-light.svg" width="920">
+    <img alt="架構圖：操作者用瀏覽器經 Custodexa 閘道（認證閘、政策引擎、協議代理、稽核、證據出口）連向 SSH、RDP/VNC、資料庫與 Kubernetes 靶機，靶機零安裝；全協議支援會話錄影，文字終端另有指令或語句紀錄，稽核區間由 Ed25519 檢查點鏈存證。" src="../assets/architecture-light.svg" width="920">
   </picture>
 </p>
 
@@ -45,6 +45,10 @@ sudo /opt/custodexa/custodexa.sh install
 啟動服務並等待後端回報就緒，最後輸出連線網址與 admin 登入資訊；你已經填好的值一律不動。
 `custodexa.sh status` 可查看部署狀態，不做任何變更。離線主機、每一步的檢查與目錄結構，
 見[用安裝包安裝](QUICKSTART.md#用安裝包安裝)。
+
+腳本畫面依系統語系顯示，而 `sudo` 常會重設語系，畫面就會是英文。要繁體中文或日文畫面，
+在任何 `custodexa.sh` 指令加上 `--lang zh-TW` 或 `--lang ja`；要用選單則執行
+`sudo /opt/custodexa/custodexa.sh --lang zh-TW`。
 
 要在 macOS、Windows 上評估，或參與開發，改從原始碼執行：
 
@@ -110,11 +114,17 @@ TLS_MODE=provided
 | **04 憑證輪替** | Linux 與 Windows 本機帳號排程改密，新密碼在靶機端自驗，失敗在靶機端回滾。輪替證據報告逐帳號列出多久沒換過。 |
 | **05 錄影與稽核** | 全協議錄影回放（可快轉、拖進度條），指令與語句軌跡經虛擬螢幕重組，能處理 vim 這類全螢幕程式；webhook 告警；檢查點鏈定期存證；證據包內含清單檔與簽章，異地副本存到物件儲存。 |
 
+告警、待核准申請與緊急連線事後審閱可批次處理，並逐筆顯示結果。
+儀表板可連到操作日誌，查看歷次每日安全簽核。
+每個通知通道可選擇推送全部告警、中高等級告警或僅高等級告警，預設推送全部告警。
+合規對照頁可產生簽章報告，並於選定的保存期限內從下載中心取得。
+
 **真正開源，單一版本。** 沒有企業版，也沒有付費解鎖的功能。
 你看到的就是全部，授權為 AGPL-3.0-only。
 
-**部署簡單。** docker compose 一條指令，出廠即走 https，
-啟動後不需要對外網路。
+**部署簡單。** docker compose 一條指令，出廠即走 https。
+後端須能連線至目標主機，以及已設定的外部身分提供者、金鑰託管服務、
+通知通道或離機儲存服務。
 
 ## 怎麼跟現有做法比
 
@@ -264,4 +274,3 @@ Apache License 2.0 元件的歸屬聲明見 [NOTICE](../../NOTICE)；授權正�
 其版本表與對應源碼的取得方式（依 GPL-3.0 §6(d)／GPL-2.0 §3 末段，以指向公開源碼庫的方式提供，
 取不到時可開 issue 由我們協助取得），見
 [THIRD-PARTY-LICENSES.md](../../THIRD-PARTY-LICENSES.md) 第 3 節。
-

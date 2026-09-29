@@ -90,6 +90,16 @@ type AuthService struct {
 	// 變動卻沒有任何紀錄，正是這個功能最不能出的錯。未設群組屬性名的部署
 	// 根本走不到這裡（完全短路），故未接線不影響任何既有部署
 	mappingAudit port.TxSink
+	// productVersion 產品版本號，**由組裝根注入**（cmd/server 的 main.Version，
+	// 與 /health 同一個變數；本套件不持有任何版本字面值）。空字串＝未注入，
+	// UserInfo.ProductVersion 因 omitempty 不出現——測試建構路徑的回應形狀不變
+	productVersion string
+}
+
+// SetProductVersion 注入產品版本號，供登入回應與 GET /auth/me 的使用者資訊帶出
+// （介面側欄底部的版本行）。只在登入後的回應出現，不擴大未認證可讀面。
+func (s *AuthService) SetProductVersion(v string) {
+	s.productVersion = v
 }
 
 // SetRoleMappingAuditSink 接上角色映射事件的交易內審計落地面。
@@ -292,6 +302,11 @@ type UserInfo struct {
 	// omitempty 是刻意的：登入回應共用本型別，該路徑不填此欄，
 	// 既有回應的欄位集因此逐字不變
 	SourceIP string `json:"source_ip,omitempty"`
+	// ProductVersion 產品版本號（介面側欄底部顯示）。值原樣轉出組裝根注入的版本，
+	// 開發建置為 "dev"——要不要顯示由前端判定，後端不改寫。
+	// 由 UserInfo 的兩個組裝點（登入回應、GetUserByID）一併填寫，
+	// 故登入回應、GET 與 PATCH /auth/me 的 user 物件同形。未注入時 omitempty 不出現
+	ProductVersion string `json:"product_version,omitempty"`
 }
 
 // Login 使用者登入。gate chain（登入狀態機，順序固定）：
@@ -1107,6 +1122,7 @@ func (s *AuthService) buildLoginResponse(user *model.User, authCtx crypto.AuthCo
 		IsApprover:         isApprover,
 		OwnsAgents:         ownsAgents,
 		CanSelfCreateAgent: canSelfCreate,
+		ProductVersion:     s.productVersion,
 	}
 
 	return &LoginResponse{
@@ -1340,6 +1356,7 @@ func (s *AuthService) GetUserByID(userID uint) (*UserInfo, error) {
 		IsApprover:         isApprover,
 		OwnsAgents:         ownsAgents,
 		CanSelfCreateAgent: canSelfCreate,
+		ProductVersion:     s.productVersion,
 	}, nil
 }
 

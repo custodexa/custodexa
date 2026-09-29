@@ -1,5 +1,6 @@
 Custodexa 管理腳本 1.13.0    部署目錄 /opt/custodexa
 目前狀態：已安裝 1.13.2（安裝包部署）
+語言：--lang en English、--lang ja 日本語
 
   [1] 查看狀態
   [2] 升級
