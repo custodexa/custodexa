@@ -55,7 +55,7 @@ cx_br_resume() {
     for f in $CX_UP_OLD_FILES; do files+="${files:+ }-f $f"; done
     cx_cmd "sudo docker compose -p $CX_UP_OLD_PROJECT --project-directory $CX_ROOT \\"
     cx_cmd "  $files up -d"
-    cx_cmd "sudo env CUSTODEXA_HOME=$CX_ROOT $CX_DIR/custodexa.sh status"
+    cx_cmd "sudo env CUSTODEXA_HOME=$CX_ROOT $CX_DIR/custodexa.sh status$(cx_status_lang_arg)"
     return 0
   fi
   files="-f $CX_ROOT/current/compose.yml"
@@ -63,7 +63,14 @@ cx_br_resume() {
   cx_cmd "sudo sh -c 'set -a; . $CX_ROOT/current/images.env; exec \\"
   cx_cmd "  docker compose -p $CX_PROJECT --project-directory $CX_ROOT \\"
   cx_cmd "  $files up -d'"
-  cx_cmd "sudo $CX_ROOT/custodexa.sh status"
+  cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
+}
+
+cx_br_refused() {
+  printf '\n'
+  cx_line FAIL "$(cx_msg br_not_confirmed)"
+  cx_br_resume
+  return 1
 }
 
 # cx_br_time_early <entered HH:MM>: the refusal for a snapshot older than the stop.
@@ -101,7 +108,7 @@ cx_br_choose() {
   printf '\n'
   while :; do
     printf '%s' "$(cx_msg br_choose)"
-    IFS= read -r a || return 1
+    IFS= read -r a || { cx_br_refused; return 1; }
     case $a in
       1 | 2) CX_BR_CHOICE=$a; return 0 ;;
     esac
@@ -137,12 +144,13 @@ cx_br_interactive() {
   cx_br_par "$(cx_msg br_enter)"
   cx_br_ask br_ask_ref
   CX_BR_REF=$CX_BR_ANSWER
+  [ -n "$CX_BR_REF" ] || { cx_br_refused; return 1; }
   while :; do
     cx_br_ask br_ask_time
+    [ -n "$CX_BR_ANSWER" ] || { cx_br_refused; return 1; }
     if t=$(cx_br_parse_time "$CX_BR_ANSWER"); then
       break
     fi
-    [ -n "$CX_BR_ANSWER" ] || return 1
     cx_br_ind WARN "$(cx_msg br_time_format)"
   done
   if ! cx_br_after_stop "$t"; then
@@ -154,11 +162,10 @@ cx_br_interactive() {
   cx_br_ind OK "$(cx_msg br_time_ok "${CX_BR_TIME#* }" "$CX_BR_STOP_SHOWN")"
   cx_br_ask br_ask_restore
   CX_BR_RESTORE=$CX_BR_ANSWER
+  [ -n "$CX_BR_RESTORE" ] || { cx_br_refused; return 1; }
   cx_br_ask br_ask_yes
-  if [ "$CX_BR_ANSWER" != yes ] || [ -z "$CX_BR_REF" ] || [ -z "$CX_BR_RESTORE" ]; then
-    printf '\n'
-    cx_line FAIL "$(cx_msg br_not_confirmed)"
-    cx_br_resume
+  if [ "$CX_BR_ANSWER" != yes ]; then
+    cx_br_refused
     return 1
   fi
 }

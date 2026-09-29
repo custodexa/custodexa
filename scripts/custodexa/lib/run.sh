@@ -52,10 +52,10 @@ cx_recovery_hint() {
       if [ -n "$bundle" ]; then
         cx_cmd "sudo $CX_ROOT/custodexa.sh load $bundle"
       else
-        cx_cmd "sudo $CX_ROOT/custodexa.sh status"
+        cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
       fi
       ;;
-    *) cx_cmd "sudo $CX_ROOT/custodexa.sh status" ;;
+    *) cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)" ;;
   esac
 }
 

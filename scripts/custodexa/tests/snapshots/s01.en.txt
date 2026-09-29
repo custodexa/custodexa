@@ -36,6 +36,6 @@ Custodexa 1.13.0 install    Deployment directory /opt/custodexa
     and install it on the computers that connect, so browsers
     show the site as secure.
 
- Status     sudo /opt/custodexa/custodexa.sh status
+ Status     sudo /opt/custodexa/custodexa.sh status --lang en
  Log file   /opt/custodexa/logs/install-20260930-101502.log
 ==========================================================

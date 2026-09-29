@@ -261,6 +261,6 @@ cx_pre_hint_sudo() {
 }
 cx_pre_hint_existing() {
   printf '%s\n' "$(cx_msg text_pre_existing)"
-  cx_cmd "sudo $CX_ROOT/custodexa.sh status"
+  cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
   cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade"
 }

@@ -15,7 +15,7 @@
 CX_MENU_SELF=""   # the script as it was started (<root>/custodexa.sh follows current/ after an upgrade)
 CX_MENU_KIND=""   # none | package
 CX_MENU_VERSION=""
-CX_MENU_FLAGS=()  # passed on to every command: the language, and --no-color when given
+CX_MENU_FLAGS=()  # passed on to every command: an explicit language, and --no-color when given
 CX_MENU_PICK=""
 CX_MENU_FILE=""
 
@@ -202,7 +202,8 @@ cx_menu_show() {
 CX_MENU_ACTIONS=()
 cx_menu() {
   local a n
-  CX_MENU_FLAGS=(--lang "$CX_LANG")
+  CX_MENU_FLAGS=()
+  [ -z "${CX_LANG_FLAG:-}" ] || CX_MENU_FLAGS+=(--lang "$CX_LANG_FLAG")
   if [ "${CX_NO_COLOR:-0}" = 1 ]; then CX_MENU_FLAGS+=(--no-color); fi
   while :; do
     cx_menu_show

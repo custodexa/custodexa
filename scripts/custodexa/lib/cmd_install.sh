@@ -162,7 +162,7 @@ cmd_install_guide() {
       printf ' %s. %s\n' "$n" "$(cx_msg "$p" | sed '2,$s/^/    /')"
     fi
   done
-  printf '\n %s\n' "$(cx_msg done_status "sudo $CX_ROOT/custodexa.sh status")"
+  printf '\n %s\n' "$(cx_msg done_status "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)")"
   printf ' %s\n' "$(cx_msg done_log "$CX_LOG_FILE")"
   printf '%s\n' "$CX_RULE"
 }

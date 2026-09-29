@@ -6,7 +6,7 @@
   Since the number of pending records could not be confirmed, the
   script stopped the upgrade; the services are still running and
   nothing was changed.
-  Run sudo /opt/custodexa/custodexa.sh status first to check the
+  Run sudo /opt/custodexa/custodexa.sh status --lang en first to check the
   backend. If it still cannot be read, hand this error and the
   upgrade log file to operations to check the source address limit
   (SEAL_UNSEAL_ALLOWED_CIDRS) before trying again.

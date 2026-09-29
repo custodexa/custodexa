@@ -525,7 +525,7 @@ MSG_dg_unknown_detail='        讀不到待寫入筆數，也讀不到系統是�
         限制擋下，或後端沒有回應）。'
 MSG_dg_unknown_what='因無法確認待寫入紀錄，腳本已停止升級，服務仍在運作，沒有做任何
 變更。
-請先執行 sudo %s status 確認後端狀態；
+請先執行 sudo %s status%s 確認後端狀態；
 若仍讀不到，請將這則錯誤與升級紀錄檔交給維運人員，檢查來源位址
 限制（SEAL_UNSEAL_ALLOWED_CIDRS）後再重試。'
 # ---------- upgrade: stopping the old version ----------

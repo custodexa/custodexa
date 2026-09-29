@@ -616,7 +616,7 @@ MSG_dg_unknown_detail='              Neither the number of waiting records nor t
 MSG_dg_unknown_what='Since the number of pending records could not be confirmed, the
 script stopped the upgrade; the services are still running and
 nothing was changed.
-Run sudo %s status first to check the
+Run sudo %s status%s first to check the
 backend. If it still cannot be read, hand this error and the
 upgrade log file to operations to check the source address limit
 (SEAL_UNSEAL_ALLOWED_CIDRS) before trying again.'

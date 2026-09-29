@@ -209,7 +209,7 @@ with_answers() {
 }
 
 own_interactive() { # <lang> <answers as lines>: choose, then the questions
-  run bash -c 'CX_LANG_FLAG=$1; . "$2/lib/common.sh"; cx_load_libs "$2"; . "$2/lib/backup_ref.sh"
+  run bash -c 'CX_LANG_FLAG="" LANG=$1; . "$2/lib/common.sh"; cx_load_libs "$2"; . "$2/lib/backup_ref.sh"
     cx_br_set_stop 2026-09-30T02:16:13Z
     cx_br_choose "18.4 GB" 12 0 && [ "$CX_BR_CHOICE" = 2 ] && cx_br_interactive 02:16:02 0' _ "$1" "$SRC" <<<"$2"
 }
@@ -260,6 +260,61 @@ own_interactive() { # <lang> <answers as lines>: choose, then the questions
   [ "$status" -eq 1 ] || return 1
   own_interactive en $'2\nsnap\n2026-09-30 02:18\n\nyes'
   [ "$status" -eq 1 ]
+}
+
+@test "own backup: empty or EOF answers print refusal and commands to resume the old service" {
+  own_setup
+  local answers
+  for answers in $'2\nsnap\n' $'2\nsnap' $'2\n' $'2\nsnap\n2026-09-30 02:18\n'; do
+    own_interactive en "$answers"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ $output == *"[FAIL] The snapshot was not confirmed"* ]] || { echo "$output"; return 1; }
+    [[ $output == *"current/compose.yml up -d"* && $output == *"custodexa.sh status"* ]] \
+      || { echo "$output"; return 1; }
+  done
+}
+
+@test "own backup: EOF at the backup choice prints refusal and commands to resume" {
+  own_setup
+  run bash -c 'LANG=en; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
+    CX_ROOT=$2 CX_UP_KIND=package; cx_br_choose "18.4 GB" 12 0' _ "$SRC" "$ROOT" </dev/null
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] The snapshot was not confirmed"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"current/compose.yml up -d"* && $output == *"custodexa.sh status"* ]]
+}
+
+@test "recovery status commands carry only an explicitly requested language" {
+  own_setup
+  for kind in package convert; do
+    run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
+      CX_ROOT=$2 CX_DIR=/tmp/custodexa-1.13.0/custodexa CX_UP_KIND=$3
+      CX_UP_OLD_PROJECT=custodexa_old CX_UP_OLD_FILES=$2/docker-compose.yml; cx_br_resume' _ "$SRC" "$ROOT" "$kind"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ $output == *"custodexa.sh status --lang zh-TW"* ]] || { echo "$output"; return 1; }
+  done
+  run bash -c 'CX_LANG_FLAG=""; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
+    CX_ROOT=$2 CX_UP_KIND=package; cx_br_resume' _ "$SRC" "$ROOT"
+  [[ $output == *"custodexa.sh status"* && $output != *"custodexa.sh status --lang"* ]]
+}
+
+@test "stopped upgrade recovery starts the old services and checks status in the chosen language" {
+  own_setup
+  run bash -c 'CX_LANG_FLAG=ja; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/upgrade_output.sh"; . "$1/lib/stop_check.sh"
+    CX_ROOT=$2 CX_UP_KIND=package CX_BK_SERVICES="backend guacd frontend"; cx_up_resume_cmd' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"start backend guacd frontend"* && $output == *"custodexa.sh status --lang ja"* ]]
+}
+
+@test "stopped conversion recovery checks status through the package script" {
+  own_setup
+  run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/upgrade_output.sh"; . "$1/lib/stop_check.sh"
+    CX_ROOT=$2 CX_DIR=/tmp/custodexa-1.13.0/custodexa CX_UP_KIND=convert
+    CX_UP_OLD_HINT="-p custodexa_old --project-directory $2 -f $2/docker-compose.yml"
+    CX_BK_SERVICES="backend guacd frontend"; cx_up_resume_cmd' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"sudo env CUSTODEXA_HOME=$ROOT /tmp/custodexa-1.13.0/custodexa/custodexa.sh status --lang zh-TW"* ]]
 }
 
 # own_flags <expected status> [--backup-ref x] ...: cx_br_noninteractive with those options.
@@ -339,7 +394,7 @@ own_flags() {
 
 # resume_of <kind> [old project] [old files]: cx_br_resume as the upgrade calls it.
 resume_of() {
-  run bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
+  run bash -c 'CX_LANG_FLAG="" LANG=en; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
     CX_ROOT=$2 CX_UP_KIND=$3 CX_UP_OLD_PROJECT=${4:-} CX_UP_OLD_FILES=${5:-} CX_DIR=/tmp/custodexa-1.13.0/custodexa
     cx_br_resume' _ "$SRC" "$ROOT" "$@"
 }

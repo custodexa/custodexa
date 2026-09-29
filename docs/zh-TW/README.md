@@ -230,7 +230,7 @@ gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/cu
 
 ## 文檔地圖
 
-三語文件索引在[文件索引](../README.md)。
+快速入門、維運指南、安全說明與貢獻指南均提供英文、繁體中文及日文版本；API 與資料庫參考文件維持單一語言。所有文件的索引見[文件索引](../README.md)。
 
 | 你想做什麼 | 讀這些 |
 |------|------|

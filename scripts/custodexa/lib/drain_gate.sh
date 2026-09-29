@@ -103,7 +103,7 @@ cx_dg_wait() {
       fi
       cx_up_step_line FAIL "$n" "$(cx_msg dg_unknown)"
       printf '%s\n\n' "$(cx_msg dg_unknown_detail)"
-      cx_up_par "$(cx_msg dg_unknown_what "$CX_ROOT/custodexa.sh")"
+      cx_up_par "$(cx_msg dg_unknown_what "$CX_ROOT/custodexa.sh" "$(cx_status_lang_arg)")"
       return 1
     fi
     cx_log DRAIN "queue depth=$depth"

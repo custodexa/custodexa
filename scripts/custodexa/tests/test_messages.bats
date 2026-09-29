@@ -250,6 +250,29 @@ C
   [[ $output == *"（檔名像 custodexa-images-1.13.0-amd64.tar）。"* && $output == *"用法：custodexa.sh <子命令> [選項]"* ]] || { echo "$output"; return 1; }
 }
 
+@test "menu passes --lang to commands and restarted menus only when the user supplied it" {
+  package_state
+  cat >"$ROOT/releases/1.13.0/lib/cmd_status.sh" <<'STATUS'
+cmd_status() {
+  printf 'child-lang=%s\n' "$CX_LANG"
+  cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
+}
+STATUS
+  run env LANG=zh_TW.UTF-8 script -qec "bash $ROOT/custodexa.sh" /dev/null <<<$'1\n1\n0'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  local clean
+  clean=$(printf '%s\n' "$output" | tr -d '\r')
+  [ "$(grep -o 'child-lang=zh-TW' <<<"$clean" | wc -l)" -eq 2 ] || { echo "$clean"; return 1; }
+  [ "$(grep -c "custodexa.sh status$" <<<"$clean")" -eq 2 ] || { echo "$clean"; return 1; }
+  [[ $clean != *"custodexa.sh status --lang"* ]] || { echo "$clean"; return 1; }
+
+  run env LANG=zh_TW.UTF-8 script -qec "bash $ROOT/custodexa.sh --lang ja" /dev/null <<<$'1\n0'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  clean=$(printf '%s\n' "$output" | tr -d '\r')
+  [[ $clean == *"child-lang=ja"* && $clean == *"custodexa.sh status --lang ja"* ]] \
+    || { echo "$clean"; return 1; }
+}
+
 # Threat: the screens come up in English (sudo often resets the system language) and the reader
 # never learns that --lang switches them. Every help, the menu's included, ends with the switch.
 @test "every help and the menu's help show how to choose the language, in each language" {

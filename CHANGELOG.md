@@ -2,6 +2,27 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.13.2 — clearer ways out of an interrupted upgrade in the management script (2026-09-30)
+
+No schema change. No migration runs. A 1.13.x package deployment upgrades with
+`custodexa.sh upgrade 1.13.2`.
+
+### Fixes
+
+- During an upgrade with your own backup, leaving the backup choice, the snapshot name, its start
+  time or the restore location empty, or ending the input, now prints the refusal together with the
+  commands that start the old version again and check its status. Before, the script ended without
+  a message and left the services stopped.
+- The recovery commands after a stop now include the command that checks the status.
+- Commands the script prints for you to run next, such as `custodexa.sh status`, carry `--lang`
+  only when you gave `--lang` yourself, with the same value. The main menu passes on only a language
+  you gave.
+
+### Documentation
+
+- The Traditional Chinese and Japanese READMEs describe the same set of translated documents as the
+  English one.
+
 ## 1.13.1 — the product version in the web UI, language choice in the management script, and corrected operations documents (2026-09-29)
 
 No schema change. No migration runs. A 1.13.0 package deployment upgrades with

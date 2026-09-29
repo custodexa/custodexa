@@ -4,6 +4,6 @@
 
   因無法確認待寫入紀錄，腳本已停止升級，服務仍在運作，沒有做任何
   變更。
-  請先執行 sudo /opt/custodexa/custodexa.sh status 確認後端狀態；
+  請先執行 sudo /opt/custodexa/custodexa.sh status --lang zh-TW 確認後端狀態；
   若仍讀不到，請將這則錯誤與升級紀錄檔交給維運人員，檢查來源位址
   限制（SEAL_UNSEAL_ALLOWED_CIDRS）後再重試。

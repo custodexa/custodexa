@@ -29,6 +29,6 @@ Custodexa 1.13.0 安裝    部署目錄 /opt/custodexa
     https://10.0.0.12/custodexa-ca.crt
     安裝到要連線的電腦上，瀏覽器才會顯示為安全連線。
 
- 查看狀態   sudo /opt/custodexa/custodexa.sh status
+ 查看狀態   sudo /opt/custodexa/custodexa.sh status --lang zh-TW
  紀錄檔     /opt/custodexa/logs/install-20260930-101502.log
 ==========================================================

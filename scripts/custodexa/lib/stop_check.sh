@@ -72,6 +72,11 @@ cx_up_resume_cmd() {
     cx_cmd "sudo docker compose -p $CX_PROJECT --project-directory $CX_ROOT $files \\"
   fi
   cx_cmd "  start $CX_BK_SERVICES"
+  if [ "$CX_UP_KIND" = convert ]; then
+    cx_cmd "sudo env CUSTODEXA_HOME=$CX_ROOT $CX_DIR/custodexa.sh status$(cx_status_lang_arg)"
+  else
+    cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
+  fi
 }
 
 # cx_up_stop <step>: step 5. 0 = stopped and drained; 1 = failed (the screen says why).

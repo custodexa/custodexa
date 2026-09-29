@@ -106,6 +106,30 @@ s08_head() { # <lang> <installed> <target> <root>
   ! grep -q ' stop \| down \| up ' "$FAKE_DOCKER_LOG"
 }
 
+@test "upgrade rejected before confirmation does not create a lock; a leftover flock file is reusable" {
+  backup_host ui
+  upgrade_run en 1.13.0
+  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+  [ ! -e "$ROOT/.custodexa.lock" ] || return 1
+  printf '%s\n' 99999 >"$ROOT/.custodexa.lock"
+  upgrade_run en 1.13.0
+  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+  exec 8>>"$ROOT/.custodexa.lock"
+  flock -n 8 || return 1
+  exec 8>&-
+}
+
+@test "upgrade handoff preserves whether --lang was explicitly supplied" {
+  backup_host ui
+  run bash -c 'CX_LANG_FLAG="" LANG=ja_JP.UTF-8; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/cmd_upgrade.sh"; cx_up_handoff_args; [ ${#CX_UP_ARGS[@]} -eq 0 ]' _ "$SRC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/cmd_upgrade.sh"; cx_up_handoff_args
+    [ ${#CX_UP_ARGS[@]} -eq 2 ] && [ "${CX_UP_ARGS[0]}" = --lang ] && [ "${CX_UP_ARGS[1]}" = zh-TW ]' _ "$SRC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
+
 @test "package deployment, the check: unverified said so, a checksum mismatch gives no answer, offline" {
   backup_host ui
   fake_github

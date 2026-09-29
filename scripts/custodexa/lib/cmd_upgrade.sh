@@ -77,7 +77,8 @@ cx_up_no_deployment() {
 
 # cx_up_handoff_args: the options to pass to the target script (language and the run's answers).
 cx_up_handoff_args() {
-  CX_UP_ARGS=(--lang "$CX_LANG")
+  CX_UP_ARGS=()
+  [ -z "${CX_LANG_FLAG:-}" ] || CX_UP_ARGS+=(--lang "$CX_LANG_FLAG")
   [ "${CX_YES:-0}" != 1 ] || CX_UP_ARGS+=(--yes)
   [ "${CX_NO_COLOR:-0}" != 1 ] || CX_UP_ARGS+=(--no-color)
   [ -z "${CX_IMAGES:-}" ] || CX_UP_ARGS+=(--images "$CX_IMAGES")

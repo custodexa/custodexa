@@ -269,6 +269,7 @@ SCREEN
   To start the old version again:
     sudo docker compose -p custodexa --project-directory /opt/custodexa -f /opt/custodexa/current/compose.yml \
       start backend guacd frontend
+    sudo /opt/custodexa/custodexa.sh status --lang en
 SCREEN
   # Only the log of the run that just ended counts: an older line is not this stop's.
   : >"$DG/logs.since"

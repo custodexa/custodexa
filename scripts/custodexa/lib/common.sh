@@ -63,6 +63,14 @@ cx_line() {
   printf '%s %s\n' "$(cx_mark "$m")" "${text//$'\n'/$'\n'       }"
 }
 
+# Suffix for a printed status command: preserve --lang only when the caller supplied it.
+cx_status_lang_arg() {
+  if [ -n "${CX_LANG_FLAG:-}" ]; then
+    printf ' --lang %q' "$CX_LANG_FLAG"
+  fi
+  return 0
+}
+
 # cx_width <text>: display columns of one line. Characters outside ASCII in the messages are CJK
 # (two columns, three bytes in UTF-8); counted from the bytes, so the host locale does not matter.
 cx_width() {

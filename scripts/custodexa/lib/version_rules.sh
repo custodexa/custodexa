@@ -82,7 +82,7 @@ cx_vr_check() {
     0)
       cx_line FAIL "$(cx_msg vr_same "$tgt")"
       printf '\n%s\n' "$(cx_msg vr_same_detail | sed 's/^/  /')"
-      cx_cmd "sudo $CX_ROOT/custodexa.sh status"
+      cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
       printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
       return 3
       ;;
