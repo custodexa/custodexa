@@ -285,13 +285,10 @@ own_interactive() { # <lang> <answers as lines>: choose, then the questions
 
 @test "recovery status commands carry only an explicitly requested language" {
   own_setup
-  for kind in package convert; do
-    run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
-      CX_ROOT=$2 CX_DIR=/tmp/custodexa-1.13.0/custodexa CX_UP_KIND=$3
-      CX_UP_OLD_PROJECT=custodexa_old CX_UP_OLD_FILES=$2/docker-compose.yml; cx_br_resume' _ "$SRC" "$ROOT" "$kind"
-    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    [[ $output == *"custodexa.sh status --lang zh-TW"* ]] || { echo "$output"; return 1; }
-  done
+  run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
+    CX_ROOT=$2; cx_br_resume' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"custodexa.sh status --lang zh-TW"* ]] || { echo "$output"; return 1; }
   run bash -c 'CX_LANG_FLAG=""; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
     CX_ROOT=$2 CX_UP_KIND=package; cx_br_resume' _ "$SRC" "$ROOT"
   [[ $output == *"custodexa.sh status"* && $output != *"custodexa.sh status --lang"* ]]
@@ -306,24 +303,13 @@ own_interactive() { # <lang> <answers as lines>: choose, then the questions
   [[ $output == *"start backend guacd frontend"* && $output == *"custodexa.sh status --lang ja"* ]]
 }
 
-@test "stopped conversion recovery checks status through the package script" {
-  own_setup
-  run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"
-    . "$1/lib/upgrade_output.sh"; . "$1/lib/stop_check.sh"
-    CX_ROOT=$2 CX_DIR=/tmp/custodexa-1.13.0/custodexa CX_UP_KIND=convert
-    CX_UP_OLD_HINT="-p custodexa_old --project-directory $2 -f $2/docker-compose.yml"
-    CX_BK_SERVICES="backend guacd frontend"; cx_up_resume_cmd' _ "$SRC" "$ROOT"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"sudo env CUSTODEXA_HOME=$ROOT /tmp/custodexa-1.13.0/custodexa/custodexa.sh status --lang zh-TW"* ]]
-}
-
-# own_flags <expected status> [--backup-ref x] ...: cx_br_noninteractive with those options.
-own_flags() {
+own_flags() { # <expected status> <ref> <time> <restore>
   local want=$1
   shift
-  run bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
-    CX_BACKUP_REF=$2 CX_BACKUP_TIME=$3 CX_BACKUP_RESTORE=$4; cx_br_noninteractive' _ "$SRC" "$@"
-  [ "$status" -eq "$want" ] || { echo "want $want got $status for: $*"; echo "$output"; return 1; }
+  run env CX_BACKUP_REF="$1" CX_BACKUP_TIME="$2" CX_BACKUP_RESTORE="$3" bash -c '
+    . "$1/lib/common.sh"; CX_LANG_FLAG=en; cx_load_libs "$1"
+    . "$1/lib/backup_ref.sh"; CX_ROOT=$2; cx_br_noninteractive' _ "$SRC" "$ROOT"
+  [ "$status" -eq "$want" ] || { echo "$output"; return 1; }
 }
 
 @test "own backup, --backup-ref: the two companion options are required" {
@@ -392,11 +378,10 @@ own_flags() {
                      after 02:16:13"* ]]
 }
 
-# resume_of <kind> [old project] [old files]: cx_br_resume as the upgrade calls it.
+# resume_of: cx_br_resume as the upgrade calls it.
 resume_of() {
   run bash -c 'CX_LANG_FLAG="" LANG=en; . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/backup_ref.sh"
-    CX_ROOT=$2 CX_UP_KIND=$3 CX_UP_OLD_PROJECT=${4:-} CX_UP_OLD_FILES=${5:-} CX_DIR=/tmp/custodexa-1.13.0/custodexa
-    cx_br_resume' _ "$SRC" "$ROOT" "$@"
+    CX_ROOT=$2; cx_br_resume' _ "$SRC" "$ROOT"
 }
 
 # The command lines of the output, as typed without sudo.
@@ -406,7 +391,7 @@ typed_cmds() { printf '%s\n' "$output" | grep '^    ' | sed 's/^    //; s/^sudo 
   mkdir -p "$ROOT/current"
   printf '%s\n' CUSTODEXA_IMAGE_BACKEND=ghcr.io/custodexa/backend:1.13.0 \
     CUSTODEXA_IMAGE_FRONTEND=ghcr.io/custodexa/frontend:1.13.0 >"$ROOT/current/images.env"
-  resume_of package
+  resume_of
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(printf '%s\n' "$output" | sed "s#$ROOT#/opt/custodexa#g" | sed -n '/^  To cancel/,$p')" = "$(sed -n '/^  To cancel/,$p' "$TESTS_DIR/snapshots/s09-early.en.txt")" ] \
     || { echo "$output"; return 1; }
@@ -414,20 +399,4 @@ typed_cmds() { printf '%s\n' "$output" | grep '^    ' | sed 's/^    //; s/^sudo 
   (eval "$(typed_cmds | head -n 3)") || { typed_cmds; return 1; }
   grep -qxF "$(printf 'ARGS\tcompose -p custodexa --project-directory %s -f %s/current/compose.yml up -d\tIMG_BACKEND=ghcr.io/custodexa/backend:1.13.0' "$ROOT" "$ROOT")" \
     "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-}
-
-@test "own backup refused during the first conversion: the cancel command starts the old project with its root compose file" {
-  resume_of convert custodexa_old "$ROOT/docker-compose.yml"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  diff <(printf '%s\n' "$output" | sed -n '/^  To cancel/,$p') - <<EXPECTED || { echo "$output"; return 1; }
-  To cancel the upgrade, start all the services again and confirm:
-    sudo docker compose -p custodexa_old --project-directory $ROOT \\
-      -f $ROOT/docker-compose.yml up -d
-    sudo env CUSTODEXA_HOME=$ROOT /tmp/custodexa-1.13.0/custodexa/custodexa.sh status
-EXPECTED
-  : >"$FAKE_DOCKER_LOG"
-  (eval "$(typed_cmds | head -n 2)") || { typed_cmds; return 1; }
-  grep -qF "$(printf 'ARGS\tcompose -p custodexa_old --project-directory %s -f %s/docker-compose.yml up -d' "$ROOT" "$ROOT")" \
-    "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  ! grep -q current/ "$FAKE_DOCKER_LOG"
 }

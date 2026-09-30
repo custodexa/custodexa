@@ -606,6 +606,7 @@ func (s *LDAPDirectoryService) upsertLocked(
 		oldURL = existing.URL
 	}
 
+	oldMappingSourceEnabled := existing != nil && existing.Enabled
 	row.Name = input.Name
 	row.URL = input.URL
 	row.BindDN = input.BindDN
@@ -625,6 +626,11 @@ func (s *LDAPDirectoryService) upsertLocked(
 		}
 	} else if err := tx.Save(row).Error; err != nil {
 		return LDAPDirectoryView{}, nil, err
+	}
+	if oldMappingSourceEnabled && !row.Enabled {
+		if err := revokeMappingSupportsLocked(tx, s.auditTx, model.RoleMappingChannelKindDirectory, row.ID, "source", 0); err != nil {
+			return LDAPDirectoryView{}, nil, err
+		}
 	}
 
 	// 審計與寫列同事務：外部認證來源被建立／改指向卻無審計紀錄，不是可接受的
@@ -655,12 +661,11 @@ func (s *LDAPDirectoryService) Delete(ctx context.Context, actor LDAPDirectoryAc
 		// 仍有映射規則者拒刪（鎖內判定：鎖外預讀會讓一次併發的規則建立漏掉）。
 		// 目錄的刪除是軟刪、重建走新列換到新識別，不擋的話「刪掉重設」之後
 		// 全部目錄映射規則變孤兒，而來源詳情頁的映射區段看不出異常
-		total, _, err := CountMappings(tx, model.RoleMappingChannelKindDirectory, row.ID)
-		if err != nil {
+		if err := cleanupMappingHistoryForSourceLocked(tx, s.auditTx, model.RoleMappingChannelKindDirectory, row.ID); err != nil {
+			if errors.Is(err, ErrMappingSourceHasRules) {
+				return ErrLDAPDirectoryHasMappings
+			}
 			return err
-		}
-		if total > 0 {
-			return ErrLDAPDirectoryHasMappings
 		}
 		if ldapDirectoryPreWriteHook != nil {
 			ldapDirectoryPreWriteHook()

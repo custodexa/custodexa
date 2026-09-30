@@ -140,7 +140,7 @@ services:
     # Used only when custodexa.sh builds from the bundled source (last step of the image order);
     # it then points CUSTODEXA_IMAGE_BACKEND at a custodexa-local/ name, never at the published one.
     build:
-      context: ./current/source
+      context: ${CUSTODEXA_BUILD_SOURCE:-./current/source}
       dockerfile: docker/backend/Dockerfile
       target: production
       args:
@@ -188,7 +188,7 @@ services:
     image: ${CUSTODEXA_IMAGE_FRONTEND:-ghcr.io/custodexa/frontend:@@VERSION@@@sha256:@@FRONTEND_DIGEST@@}
     pull_policy: never
     build:
-      context: ./current/source
+      context: ${CUSTODEXA_BUILD_SOURCE:-./current/source}
       dockerfile: docker/frontend/Dockerfile
       target: production
     container_name: custodexa-frontend

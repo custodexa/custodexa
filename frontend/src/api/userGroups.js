@@ -57,11 +57,11 @@ export function deleteUserGroup(id) {
  * @param {number} id
  * @param {number[]} userIds
  */
-export function replaceUserGroupMembers(id, userIds) {
+export function replaceUserGroupMembers(id, manualUserIds) {
   return request({
     url: `/user-groups/${id}/members`,
     method: 'put',
-    data: { user_ids: userIds },
+    data: { manual_user_ids: manualUserIds },
   })
 }
 

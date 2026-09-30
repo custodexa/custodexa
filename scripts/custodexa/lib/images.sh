@@ -80,24 +80,22 @@ cx_img_needed() {
 }
 
 # ---------- per-image output ----------
-# Lines of the image being resolved; printed as one block when it is done.
-declare -ga CX_IMG_LINES=()
 readonly CX_IMG_ONCE="img_offline_bad img_build_note"
 cx_img_say() { # <mark> <message id> [args...]
-  local mark=$1 id=$2
+  local mark=$1 id=$2 message
   shift 2
   # Skips, and the notes that concern every image alike, are said once per run.
   if [ "$mark" = SKIP ] || [[ " $CX_IMG_ONCE " == *" $id "* ]]; then
     [ -z "${CX_IMG_SAID[$id]+x}" ] || return 0
     CX_IMG_SAID[$id]=1
   fi
-  CX_IMG_LINES+=("$mark" "$(cx_msg "$id" "$@")")
+  message=$(cx_msg "$id" "$@")
+  printf '         %s %s\n' "$(cx_mark "$mark")" "${message//$'\n'/$'\n'                }"
 }
-cx_img_print_lines() {
-  local i
-  for ((i = 0; i < ${#CX_IMG_LINES[@]}; i += 2)); do
-    printf '         %s %s\n' "$(cx_mark "${CX_IMG_LINES[i]}")" "${CX_IMG_LINES[i + 1]//$'\n'/$'\n'                }"
-  done
+cx_img_wait() { # <message id> [args...]: visible before a Docker call can block
+  local id=$1
+  shift
+  printf '         %s %s\n' "$(cx_mark RUN)" "$(cx_msg "$id" "$@")"
 }
 
 # cx_img_reason <docker error text>: why a registry attempt failed, in words.
@@ -113,6 +111,7 @@ cx_img_reason() {
 # ---------- 1. this host ----------
 cx_img_try_local() {
   local n=$1 ref d tag id want r
+  cx_img_wait img_wait_local "$n"
   ref=$(cx_mf "images.$n.ref") d=$(cx_mf "images.$n.index_digest") tag=$(cx_mf "images.$n.tag")
   want=$(cx_img_registry_id "$n")
   for r in "$ref" $(cx_mf "images.$n.mirror"); do
@@ -258,6 +257,7 @@ cx_bundle_check() {
 cx_bundle_load() {
   local b=$1 rc
   CX_IMG_BUNDLE=$b
+  cx_img_wait img_wait_bundle_check "$b"
   cx_bundle_sha_ok "$b" && rc=0 || rc=$?
   case $rc in
     1) CX_BUNDLE_ERR=$(cx_msg img_bundle_no_sums "$(dirname -- "$b")") ;;
@@ -276,6 +276,7 @@ cx_bundle_load() {
     cx_log IMAGE "bundle=$b FAIL reason=\"$CX_BUNDLE_ERR\""
     return 1
   fi
+  cx_img_wait img_wait_bundle_load "$b"
   if ! cx_log_run docker load -q -i "$b" >/dev/null; then
     CX_BUNDLE_ERR=$(cx_msg img_bundle_load_failed)
     CX_IMG_BUNDLE_STATE=bad
@@ -373,15 +374,19 @@ cx_img_try_registry() {
     cx_log IMAGE "$n source=$host SKIP reason=\"unreachable earlier in this run\""
     return 1
   fi
+  cx_img_wait img_wait_registry "$n" "$(cx_img_label "$repo")"
   if ! err=$(docker pull -q --platform "linux/$CX_IMG_ARCH" "$repo@$d" 2>&1 >/dev/null); then
     local why
     why=$(cx_img_reason "$err")
     [ "$why" != "$(cx_msg img_reason_timeout)" ] || CX_IMG_DOWN[$host]=$why
-    CX_IMG_LAST_WARN=${#CX_IMG_LINES[@]}
     cx_img_say WARN img_try_failed "$(cx_img_label "$repo")" "$repo" "$why"
+    if ! cx_img_upstream "$n" && [ "$host" = ghcr.io ]; then
+      printf '         %s %s\n' "$(cx_mark WARN)" "$(cx_msg img_wait_fallback "$why")"
+    fi
     cx_log IMAGE "$n source=$host ref=$repo@$d WARN reason=\"$(printf '%s' "$err" | tail -n1)\""
     return 1
   fi
+  cx_img_wait img_wait_digest "$n"
   id=$(cx_img_id "$repo@$d") || id=""
   if [ "$id" != "$(cx_img_registry_id "$n")" ]; then
     cx_img_say FAIL img_pulled_mismatch "$(cx_img_label "$repo")" "$repo@$(cx_img_short "$d")"
@@ -398,20 +403,23 @@ cx_img_try_registry() {
 
 # ---------- 5. build from source ----------
 cx_img_try_build() {
-  local n=$1 ver want got ref id
+  local n=$1 ver want got ref id release
+  release=${CX_DIR:-$CX_ROOT/current}
   ver=$(cx_mf version)
   ref=$CX_LOCAL_PREFIX/$n:$ver
   want=$(cx_mf source.sha256)
-  got=$(cx_tree_sha256 "$CX_ROOT/current/source" 2>/dev/null) || got=""
+  [ "${CX_IMAGES_FROM:-auto}" != auto ] || cx_img_wait img_source_check
+  got=$(cx_tree_sha256 "$release/source" 2>/dev/null) || got=""
   if [ -z "$want" ] || [ "$got" != "$want" ]; then
     cx_img_say FAIL img_build_source_bad
     cx_log IMAGE "$n source=build FAIL reason=\"source checksum\""
     return 2
   fi
   cx_img_say RUN img_build_note
+  cx_img_wait img_wait_build "$n"
   CX_IMG_REF[$n]=$ref
-  cx_images_write_env "$CX_ROOT/current/images.env"
-  if ! cx_compose build "$n" >>"${CX_LOG_FILE:-/dev/null}" 2>&1; then
+  cx_images_write_env "$release/images.env"
+  if ! cx_compose_release "$release" build "$n" >>"${CX_LOG_FILE:-/dev/null}" 2>&1; then
     unset 'CX_IMG_REF[$n]'
     cx_img_say FAIL img_build_failed
     return 1
@@ -425,41 +433,47 @@ cx_img_try_build() {
 # cx_images_resolve <overlays>: resolve every image the deployment runs; prints the step body
 # (between the "[ .. ] 3/7" line and the closing line). Returns 1 when some image has no source.
 cx_images_resolve() {
-  local n ver failed=0 ref tag
-  local -a up_local=()
+  local n ver failed=0 ref tag want got release
+  release=${CX_DIR:-$CX_ROOT/current}
   CX_IMG_ARCH=$(cx_arch) || return 1
   CX_IMG_REF=() CX_IMG_ID=() CX_IMG_SRC=() CX_IMG_SAID=() CX_IMG_DOWN=()
   CX_IMG_BUNDLE_STATE="" CX_IMG_BUNDLE="" CX_IMG_BUNDLE_INTEGRITY_BAD=0 CX_IMG_INTEGRITY_BAD=0
   cx_img_needed "$1"
   ver=$(cx_mf version)
-  printf '       %s\n' "$(cx_msg img_order | sed '2,$s/^/       /')"
+  if [ "${CX_IMAGES_FROM:-auto}" = source ]; then
+    printf '       %s\n' "$(cx_msg img_source_mode)"
+    cx_sub RUN "$(cx_msg img_source_check)"
+    want=$(cx_mf source.sha256)
+    got=$(cx_tree_sha256 "$release/source" 2>/dev/null) || got=""
+    if [ -z "$want" ] || [ "$want" != "$got" ]; then
+      cx_sub FAIL "$(cx_msg img_build_source_bad)"
+      cx_log IMAGE 'source=build FAIL reason="source checksum"'
+      return 1
+    fi
+    cx_sub OK "$(cx_msg img_source_ok)"
+  else
+    printf '       %s\n' "$(cx_msg img_order | sed '2,$s/^/       /')"
+  fi
   for n in "${CX_IMG_NAMES[@]}"; do
-    CX_IMG_LINES=()
-    cx_img_resolve_one "$n" || failed=1
     ref=$(cx_mf "images.$n.ref") tag=$(cx_mf "images.$n.tag")
     if cx_img_upstream "$n"; then
-      # Upstream images already on this host are listed together at the end.
-      if [ "${CX_IMG_SRC[$n]:-}" = local ] && [ "${#CX_IMG_LINES[@]}" -eq 2 ]; then
-        up_local+=("$(cx_img_familiar "$ref")")
-        continue
-      fi
       printf '       %s\n' "$(cx_msg img_head_upstream "$n" "$tag" "$(cx_img_familiar "$ref")")"
     else
       printf '       %s\n' "$(cx_msg img_head_own "$n" "$ver")"
     fi
-    cx_img_print_lines
+    cx_img_resolve_one "$n" || failed=1
     [ "$CX_IMG_INTEGRITY_BAD" != 1 ] || break
   done
-  if [ "${#up_local[@]}" -gt 0 ]; then
-    printf '       %s\n' "$(cx_join "$(cx_msg pre_list_sep)" "${up_local[@]}")"
-    printf '         %s %s\n' "$(cx_mark OK)" "$(cx_msg img_local_ok)"
-  fi
   return "$failed"
 }
 
 cx_img_resolve_one() {
   local n=$1 k rc
-  CX_IMG_LAST_WARN=""
+  if [ "${CX_IMAGES_FROM:-auto}" = source ] && ! cx_img_upstream "$n"; then
+    cx_img_try_build "$n" && return 0
+    CX_IMG_INTEGRITY_BAD=1
+    return 1
+  fi
   cx_img_try_local "$n" && return 0
   cx_img_try_offline "$n" && return 0
   rc=$?
@@ -470,7 +484,6 @@ cx_img_resolve_one() {
     [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
     for k in $(cx_mf "images.$n.mirror"); do
       if cx_img_try_registry "$n" "$k"; then
-        cx_img_switched "$n"
         return 0
       else
         rc=$?
@@ -487,13 +500,6 @@ cx_img_resolve_one() {
   fi
   cx_img_say FAIL img_none "$n"
   return 1
-}
-
-# The registry that failed before the one that worked also says where the image came from instead.
-CX_IMG_LAST_WARN=""
-cx_img_switched() {
-  [ -n "$CX_IMG_LAST_WARN" ] || return 0
-  CX_IMG_LINES[CX_IMG_LAST_WARN + 1]+=$(cx_msg img_switched "$(cx_img_label "${CX_IMG_REF[$1]}")")
 }
 
 # cx_images_write_env <file>: CUSTODEXA_IMAGE_<NAME>=<reference>, the references checked above.

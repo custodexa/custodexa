@@ -927,3 +927,5 @@ worker 停止處理殘留 queue，在 defer 經既有 AuditLogService 留 AP-94�
 
 | G-212 | var:internal/agentmcp/tools.go:descriptions | descriptions | internal/agentmcp/tools.go:8 | 包級全域／只讀工具描述表 | agentmcp 交付層 | W4-1 | NewServer 逐項註冊封閉十工具；無 I/O 或啟停順序，建構後不改表；不得在工具註冊後再改描述以致列舉與實作漂移。 |
 | G-213 | var:internal/database/baseline_seed.go:agentLateralLegacyPatterns | agentLateralLegacyPatterns | internal/database/baseline_seed.go:77 | 包級全域／不可變查表 | infra | 1.11.1 資料 migration | 出廠「Agent 橫向移動阻斷」規則的歷史 pattern 清單，只供 `20260923_agent_lateral_rule_pattern` 的 UPDATE WHERE 比對；無序、無 I/O。守衛：migration 測試以此表逐值驗證更新與保留；若改了 `AgentLateralRulePattern` 而未把舊值加進此表，已安裝站點的舊規則不會被更新。 |
+
+| H-141 | hook:cmd/server/stage2.go:oidcProviderService.SetMappingAuditSink | `oidcProviderService.SetMappingAuditSink(auditTxSink)` | cmd/server/stage2.go:682 | setter 後綁定 | identity ← audit | OIDC 來源停用的映射支持撤回與審計 | 必須早於 OIDC 來源管理路由掛載；若順序反了，停用時撤回支持的交易內稽核缺席，操作會 fail-close 而無法完成。 |

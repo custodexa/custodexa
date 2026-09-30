@@ -221,6 +221,14 @@
         :title="$t('identitySources.section.groupMapping')"
         :hint="$t('identitySources.mapping.sectionHint')"
       >
+        <router-link
+          v-if="directoryId"
+          :to="`/identity-sources/ldap/${directoryId}/group-mappings`"
+        >
+          <el-button type="primary">
+            {{ $t('identityGroupMappings.openPage') }}
+          </el-button>
+        </router-link>
         <GroupMappingSection
           type="ldap"
           :source-id="directoryId"
@@ -347,6 +355,7 @@ import { apiErrorSummary } from '@/api/redact'
 import { resolveApiError } from '@/api/error'
 import { riskLabel } from '@/utils/transportDisplay'
 import { sameLdapEndpoint } from '@/utils/ldapUrl'
+import { getIdentitySources } from '@/api/identitySources'
 import {
   getLDAPDirectory,
   updateLDAPDirectory,
@@ -574,9 +583,20 @@ const handleSave = async (nextEnabled) => {
     if (!valid) return
   }
   if (savedEnabled.value && !nextEnabled) {
+    let preview
+    try {
+      const sources = await getIdentitySources()
+      const current = (sources.data || []).find(row => row.type === 'ldap' && String(row.id) === String(directoryId.value))
+      if (!current || ['mapped_user_count', 'effective_role_loss_count', 'effective_member_loss_count'].some(key => typeof current[key] !== 'number')) throw new Error('mapping preview unavailable')
+      preview = current
+    } catch (error) {
+      ElMessage.error(t('identityGroupMappings.loadFailed'))
+      logFailure('identity_source_mapping_count_failed', error)
+      return
+    }
     try {
       await confirmDestructive(
-        t('identitySources.ldap.disableConfirm'),
+        `${t('identitySources.ldap.disableConfirm')}\n${t('identityGroupMappings.sourceDisableConfirm', { count: preview.mapped_user_count, roles: preview.effective_role_loss_count, members: preview.effective_member_loss_count })}`,
         t('oidcProviders.disableConfirmTitle'),
         {
           confirmButtonText: t('common.confirm'),

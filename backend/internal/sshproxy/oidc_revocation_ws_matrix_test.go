@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
-	"github.com/gorilla/websocket"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/session"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -46,7 +46,10 @@ func wsMatrixDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.RefreshToken{}, &model.OIDCProvider{},
-		&model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{}); err != nil {
+		&model.UserExternalIdentity{}, &model.Session{}, &model.UserRole{},
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
+		&model.GroupUserGroupMapping{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

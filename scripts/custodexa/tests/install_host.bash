@@ -60,6 +60,7 @@ host_full() {
   mkdir -p "$SIM"
   ln -sf "$TESTS_DIR/fakes/stack-sim" "$FAKE_DOCKER_REPLAY/hook"
   fixture_release
+  cp "$SRC/../../packaging/compose.yml" "$ROOT/current/compose.yml"
 }
 
 # install_run <lang> [options...]: the real script, as an operator runs it, without a terminal.

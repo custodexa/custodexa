@@ -60,7 +60,13 @@ type IdentitySourceRow struct {
 	// LastLoginAt 此來源最近一次成功登入的時間（無登入即 null）
 	LastLoginAt *time.Time `json:"last_login_at"`
 	// MappingRuleCount 此來源的映射規則條數
-	MappingRuleCount int64 `json:"mapping_rule_count"`
+	MappingRuleCount          int64 `json:"mapping_rule_count"`
+	RoleMappingRuleCount      int64 `json:"role_mapping_rule_count"`
+	UserGroupMappingRuleCount int64 `json:"user_group_mapping_rule_count"`
+	MappedUserCount           int64 `json:"mapped_user_count"`
+	GroupAttributeConfigured  bool  `json:"group_attribute_configured"`
+	EffectiveRoleLossCount    int64 `json:"effective_role_loss_count"`
+	EffectiveMemberLossCount  int64 `json:"effective_member_loss_count"`
 }
 
 // ListSources 合併列表：目錄（單例，至多一列）與全部提供者。
@@ -83,9 +89,23 @@ func (s *IdentitySourceService) ListSources() ([]IdentitySourceRow, error) {
 		if err != nil {
 			return nil, err
 		}
+		groupCount, err := countUserGroupMappings(s.db, model.RoleMappingChannelKindDirectory, dir.ID)
+		if err != nil {
+			return nil, err
+		}
+		mappedCount, err := mappedUsersForSource(s.db, model.RoleMappingChannelKindDirectory, dir.ID)
+		if err != nil {
+			return nil, err
+		}
+		preview, err := previewMappingRevocation(s.db, model.RoleMappingChannelKindDirectory, dir.ID, "source", 0)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, IdentitySourceRow{
 			Type: "ldap", ID: dir.ID, Name: dir.Name, Address: dir.URL,
 			Enabled: dir.Enabled, LastLoginAt: lastLogin, MappingRuleCount: total,
+			RoleMappingRuleCount: total, UserGroupMappingRuleCount: groupCount, MappedUserCount: mappedCount,
+			GroupAttributeConfigured: dir.AttrGroup != "", EffectiveRoleLossCount: preview.EffectiveRoleLossCount, EffectiveMemberLossCount: preview.EffectiveMemberLossCount,
 		})
 	}
 
@@ -103,9 +123,23 @@ func (s *IdentitySourceService) ListSources() ([]IdentitySourceRow, error) {
 		if err != nil {
 			return nil, err
 		}
+		groupCount, err := countUserGroupMappings(s.db, model.RoleMappingChannelKindProvider, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		mappedCount, err := mappedUsersForSource(s.db, model.RoleMappingChannelKindProvider, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		preview, err := previewMappingRevocation(s.db, model.RoleMappingChannelKindProvider, p.ID, "source", 0)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, IdentitySourceRow{
 			Type: "oidc", ID: p.ID, Name: p.Name, Address: p.Issuer,
 			Enabled: p.Enabled, LastLoginAt: lastLogin, MappingRuleCount: total,
+			RoleMappingRuleCount: total, UserGroupMappingRuleCount: groupCount, MappedUserCount: mappedCount,
+			GroupAttributeConfigured: p.GroupsClaim != "", EffectiveRoleLossCount: preview.EffectiveRoleLossCount, EffectiveMemberLossCount: preview.EffectiveMemberLossCount,
 		})
 	}
 	return out, nil

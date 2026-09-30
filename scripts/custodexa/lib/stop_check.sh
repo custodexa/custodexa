@@ -1,5 +1,4 @@
 # shellcheck shell=bash
-# CX_UP_OLD_* and CX_BK_COMPOSE are read by the backup library and the rest of the upgrade.
 # shellcheck disable=SC2034
 # Steps 5 and 6 of upgrade: stop the old version, then prove it is gone.
 #   5  stop backend, guacd and frontend (SIGTERM: the graceful shutdown drains the audit queue;
@@ -10,73 +9,22 @@
 #      guide, excluding its own). Anything else, a query that fails included, stops the upgrade.
 # The services stay stopped after a failure here; the command that starts the old version again is
 # printed in full (project, folder, files), never relying on the current directory.
-# A git clone deployment that is not converted yet runs under its own project name and its own
-# compose files at the root; every compose call then goes through the exception entry
-# (lib/compose.sh cx_compose_explicit) with those, including the backup's (CX_BK_COMPOSE).
 
 readonly CX_UP_DRAIN_TIMEOUT_MARK='稽核佇列排空逾時'
 
-CX_UP_OLD_PROJECT="" CX_UP_OLD_FILES="" CX_UP_OLD_HINT=""
-
-# cx_up_legacy_compose: the project and compose files the git clone deployment runs under. The
-# project is the one compose put on the running backend container; the files are COMPOSE_FILE in
-# .env (colon-separated, relative to the root) or docker-compose.yml. Fails when the project name
-# is not one compose accepts.
-cx_up_legacy_compose() {
-  local cf f
-  local -a list=()
-  CX_UP_OLD_PROJECT=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' \
-    custodexa-backend 2>/dev/null) || CX_UP_OLD_PROJECT=""
-  # No backend container to ask: the name compose itself gives the project (COMPOSE_PROJECT_NAME
-  # in .env, else the folder name in lower case).
-  if [ -z "$CX_UP_OLD_PROJECT" ]; then
-    CX_UP_OLD_PROJECT=$(cx_env_get "$CX_ROOT/.env" COMPOSE_PROJECT_NAME)
-    [ -n "$CX_UP_OLD_PROJECT" ] || CX_UP_OLD_PROJECT=$(basename -- "$CX_ROOT" | tr '[:upper:]' '[:lower:]')
-  fi
-  [[ $CX_UP_OLD_PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { CX_UP_OLD_PROJECT=""; return 1; }
-  cf=$(cx_env_get "$CX_ROOT/.env" COMPOSE_FILE)
-  IFS=: read -ra list <<<"${cf:-docker-compose.yml}"
-  CX_UP_OLD_FILES=""
-  for f in "${list[@]}"; do
-    [ -n "$f" ] || continue
-    case $f in /*) ;; *) f=$CX_ROOT/${f#./} ;; esac
-    cx_check_root_path "$f" || return 1
-    CX_UP_OLD_FILES+="${CX_UP_OLD_FILES:+ }$f"
-  done
-  [ -n "$CX_UP_OLD_FILES" ] || return 1
-  CX_UP_OLD_HINT="-p $CX_UP_OLD_PROJECT --project-directory $CX_ROOT"
-  for f in $CX_UP_OLD_FILES; do CX_UP_OLD_HINT+=" -f $f"; done
-  CX_BK_COMPOSE=cx_up_compose
-}
-
 # cx_up_compose <compose arguments...>: compose on the version that runs now.
-cx_up_compose() {
-  if [ "$CX_UP_KIND" = convert ]; then
-    # shellcheck disable=SC2086 # the file list holds checked paths without spaces
-    cx_compose_explicit "$CX_UP_OLD_PROJECT" "$CX_ROOT" $CX_UP_OLD_FILES -- "$@"
-  else
-    cx_compose "$@"
-  fi
-}
+cx_up_compose() { cx_compose "$@"; }
 
 # cx_up_resume_cmd: how to start the old version's services again.
 cx_up_resume_cmd() {
   local files=""
   printf '%s\n' "$(cx_up_par "$(cx_msg st_resume)")"
-  if [ "$CX_UP_KIND" = convert ]; then
-    cx_cmd "sudo docker compose $CX_UP_OLD_HINT \\"
-  else
-    files="-f $CX_ROOT/current/compose.yml"
-    local ov
-    for ov in ${CX_OVERLAYS:-}; do files+=" -f $CX_ROOT/current/compose.$ov.yml"; done
-    cx_cmd "sudo docker compose -p $CX_PROJECT --project-directory $CX_ROOT $files \\"
-  fi
+  files="-f $CX_ROOT/current/compose.yml"
+  local ov
+  for ov in ${CX_OVERLAYS:-}; do files+=" -f $CX_ROOT/current/compose.$ov.yml"; done
+  cx_cmd "sudo docker compose -p $CX_PROJECT --project-directory $CX_ROOT $files \\"
   cx_cmd "  start $CX_BK_SERVICES"
-  if [ "$CX_UP_KIND" = convert ]; then
-    cx_cmd "sudo env CUSTODEXA_HOME=$CX_ROOT $CX_DIR/custodexa.sh status$(cx_status_lang_arg)"
-  else
-    cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
-  fi
+  cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
 }
 
 # cx_up_stop <step>: step 5. 0 = stopped and drained; 1 = failed (the screen says why).

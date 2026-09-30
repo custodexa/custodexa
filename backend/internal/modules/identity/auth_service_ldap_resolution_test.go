@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -62,7 +62,9 @@ func setupLDAPResolutionEnv(t *testing.T) (*AuthService, *policy.SecurityPolicyS
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.RefreshToken{},
 		&model.AuditLog{}, &model.SecurityPolicy{}, &model.PasswordHistory{}, &model.UserRole{},
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
+		&model.GroupUserGroupMapping{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Create(&model.Role{Name: model.RoleUser}).Error; err != nil {

@@ -565,6 +565,7 @@ jobs:
           for arch in amd64 arm64; do
             bash scripts/release/build-package.sh offline --manifest "$dist/MANIFEST.json" --arch "$arch" --out "$dist"
           done
+          cp scripts/get-custodexa.sh "$dist/get-custodexa.sh"
           ls -l "$dist"
 
       - name: Checksums
@@ -572,7 +573,7 @@ jobs:
         run: |
           set -euo pipefail
           sha256sum "custodexa-${VERSION}.tar.gz" "custodexa-images-${VERSION}-amd64.tar" \
-            "custodexa-images-${VERSION}-arm64.tar" MANIFEST.json > SHA256SUMS
+            "custodexa-images-${VERSION}-arm64.tar" MANIFEST.json get-custodexa.sh > SHA256SUMS
           cat SHA256SUMS
 
       - name: Sign the checksums
@@ -608,6 +609,8 @@ jobs:
           check="$RUNNER_TEMP/check"
           mkdir "$check"
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir "$check"
+          [ -f "$check/get-custodexa.sh" ] || { echo "::error::get-custodexa.sh is missing from the draft"; exit 1; }
+          (cd "$check" && sha256sum --check --strict --quiet SHA256SUMS)
           # shellcheck source=/dev/null
           . scripts/custodexa/lib/verify.sh
           cx_verify_release_assets "$check" "$SIGNER_IDENTITY" "$RUNNER_TEMP/digests/image-digests.json"

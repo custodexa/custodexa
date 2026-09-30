@@ -5,11 +5,11 @@
 
 # Options each command accepts, in the order of the full help. Kept next to the parser's list
 # so the test suite can check both against each other.
-readonly CX_HELP_OPTIONS="yes backup_ref backup_time backup_restore images lang no_color version help"
+readonly CX_HELP_OPTIONS="yes backup_ref backup_time backup_restore images images_from lang no_color version help"
 cx_help_options_for() {
   case $1 in
-    install) printf '%s' "yes images lang no_color version help" ;;
-    upgrade) printf '%s' "yes backup_ref backup_time backup_restore images lang no_color version help" ;;
+    install) printf '%s' "yes images images_from lang no_color version help" ;;
+    upgrade) printf '%s' "yes backup_ref backup_time backup_restore images images_from lang no_color version help" ;;
     status) printf '%s' "lang no_color version help" ;;
     backup | load) printf '%s' "yes lang no_color version help" ;;
     *) printf '%s' "$CX_HELP_OPTIONS" ;;

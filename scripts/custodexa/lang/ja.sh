@@ -14,14 +14,23 @@ MSG_root_path_chars='配置フォルダー %s に使えない文字が含まれ�
 MSG_images_env_bad_line='%s の %s 行目が CUSTODEXA_IMAGE_<名前>=<イメージ参照> の形に
 なっていません。サービスは起動していません。'
 MSG_overlay_unknown='state.json に不明な配置形態「%s」が記録されています。'
-MSG_compose_explicit_incomplete='内部エラー：プロジェクト名、プロジェクトフォルダー、compose ファイルの
-いずれかが欠けた呼び出しを拒否しました。'
 MSG_state_bad='状態ファイル %s の %s 行目が壊れています。何も変更していません。'
 MSG_state_bad_prev='一つ前の版は %s にあります。内容を確認し、正しければ
 次のコマンドで戻してください：'
 MSG_usage_unknown_command='不明なサブコマンド「%s」です。custodexa.sh --help を参照してください。'
 MSG_usage_unknown_option='不明なオプション「%s」です。custodexa.sh --help を参照してください。'
 MSG_usage_missing_value='オプション %s には値が必要です。'
+MSG_usage_images_from_value='不明なイメージ取得元「%s」です。auto または source を指定してください。'
+MSG_usage_images_from_command='--images-from は install または対象を指定した upgrade だけで使えます。'
+MSG_usage_images_from_conflict='--images-from source と --images は併用できません。'
+MSG_legacy_refused='これは旧 git clone 配置です。このディレクトリでは custodexa.sh による
+インストールやアップグレードはできません。
+配置ファイルとサービスは変更していません。
+
+先にバックアップと配置設定を確認してください。
+アップグレード手順書の手動移行、または別の空ディレクトリへの
+パッケージ導入後にバックアップと復元の手順で手動復元してください。
+既存のデータディレクトリで install を実行しないでください。'
 MSG_command_not_in_build='このバージョンのスクリプトには「%s」サブコマンドがありません。'
 MSG_lock_busy='この配置では別の custodexa.sh が実行中です（PID %s）。
 終了するまで待ってください。'
@@ -59,6 +68,9 @@ MSG_help_opt_backup_time='  --backup-time <時刻>   （upgrade）--backup-ref �
                          開始時刻。サービス停止より後であること'
 MSG_help_opt_backup_restore='  --backup-restore <場所>（upgrade）--backup-ref と併用：復元手順の文書の場所'
 MSG_help_opt_images='  --images <パス>        （install、upgrade）使うオフラインイメージバンドル'
+MSG_help_opt_images_from='  --images-from <方式>   （install、対象を指定した upgrade）auto または source。
+                         既定は auto。source は同梱ソースから
+                         自社イメージをビルド'
 MSG_help_opt_lang='  --lang <言語>          zh-TW、ja、en。下の「表示言語」を参照'
 MSG_help_opt_no_color='  --no-color             色を使わない'
 MSG_help_opt_version='  --version              スクリプトのバージョンを表示'
@@ -141,6 +153,16 @@ MSG_env_db_external='外部データベース（EXTERNAL_DB_HOST）が設定さ�
 MSG_step_images='プログラムのイメージを取得'
 MSG_img_order='順に試行：このホスト → オフラインバンドル → GHCR → Docker Hub →
 ソースからビルド'
+MSG_img_source_mode='イメージ取得元：同梱ソースからビルド。上流イメージは別途取得します'
+MSG_img_source_check='同梱ソースのチェックサムを確認しています…'
+MSG_img_source_ok='ソースのチェックサムはリリースマニフェストと一致します'
+MSG_img_wait_local='このホストの %s を確認しています…'
+MSG_img_wait_bundle_check='オフラインバンドル %s を確認しています…'
+MSG_img_wait_bundle_load='オフラインバンドル %s を読み込んでいます…'
+MSG_img_wait_registry='%s を取得しています（取得元：%s）…'
+MSG_img_wait_digest='%s の内容ダイジェストを確認しています…'
+MSG_img_wait_build='ソースから %s をビルドしています。初回は数分かかる場合があります…'
+MSG_img_wait_fallback='GHCR が失敗しました（%s）。Docker Hub を試します'
 MSG_img_head_own='%s %s'
 MSG_img_head_upstream='%s %s（上流 %s）'
 MSG_img_and=' と '
@@ -348,9 +370,6 @@ MSG_status_label_previous='一つ前'
 MSG_status_kind_installed='パッケージ配置、%s にインストール'
 MSG_status_kind_upgraded='パッケージ配置、%s にアップグレード'
 MSG_status_previous_kept='releases/ に保存'
-MSG_status_legacy='git clone 配置、まだ変換していません'
-MSG_status_legacy_next='次に custodexa.sh upgrade を実行すると、先にフォルダーを
-新しい構成に整理します'
 MSG_status_not_installed='まだインストールされていません。インストールするには：'
 MSG_status_install_unfinished='インストールが完了していません（ステップ %s で停止）。
 完了するには：'
@@ -515,16 +534,7 @@ MSG_up_title='Custodexa アップグレードのプレビュー（まだ何も�
 MSG_up_row_installed='  現在のバージョン   %s'
 MSG_up_row_target='  アップグレード先   %s'
 MSG_up_row_root='  配置ディレクトリ   %s'
-MSG_up_row_installed_legacy='  現在のバージョン   %s（git clone 配置、%s）'
-MSG_up_row_target_legacy='  アップグレード先   %s'
-MSG_up_legacy_intro='  このホストはまだ git clone 配置です。管理スクリプトでの初めての
-  アップグレードなので、先に配置ディレクトリを新しい構成に整理し、
-  それからアップグレードを完了します。'
 MSG_up_confirm='アップグレードを開始しますか？[y/N]'
-MSG_up_confirm_convert='開始しますか？[y/N]'
-MSG_up_yes_needs_target='このホストは git clone 配置で、初回のアップグレードで配置ディレクトリを
-整理します。--yes を付けるときは、アップグレード先のバージョンまたは
-パッケージのパスを指定してください。例：'
 MSG_up_not_target='「%s」はバージョンでもパッケージファイル（custodexa-<バージョン>.tar.gz）
 でもありません'
 MSG_up_incoming_failed='一時ディレクトリ %s を作成できません'
@@ -620,10 +630,6 @@ MSG_up_know_old_images='  - 現在のバージョンのイメージの一部が�
 MSG_up_know_tmux='  - ホスト操作に慣れた担当者が、セッションを維持できる端末ツール
     （tmux や screen など）の中で実行してください。SSH の切断で
     アップグレードが中断する危険を減らせます'
-MSG_up_dev_form='このデプロイは開発版の compose ファイル（COMPOSE_FILE=%s）を
-使っています。デプロイ形態ではないため、管理スクリプトでは
-アップグレードしません'
-# ---------- upgrade: waiting for the audit queue ----------
 MSG_dg_step='監査記録の書き込み完了を待つ'
 MSG_dg_left_first='残り %s 件'
 MSG_dg_left_next=' ... %s 件'
@@ -693,14 +699,12 @@ MSG_up_bk_db='データベース   %s  %s'
 MSG_up_bk_files='録画と監査ファイル  %s  %s'
 MSG_up_unseal_after='マスターキーはブラウザで入力する方式のため、サービス再開後に
 もう一度封印解除が必要です。'
-MSG_up_step_convert_skip='ディレクトリの整理（不要）'
 MSG_up_step_switch='%s に切り替え'
 MSG_up_step_start='起動'
 MSG_up_step_ready='準備完了を待つ'
 MSG_up_step_check='確認'
 MSG_up_step_record='記録'
 MSG_up_failed_at='前回のアップグレードはステップ %s で停止しました。'
-MSG_up_legacy_compose_unknown='%s の compose プロジェクト名または compose ファイルを確認できません'
 MSG_up_know_verified='  - イメージのチェックサム、署名、来歴証明はすべて検証済みです'
 MSG_up_fail_switch='アップグレードはステップ 9/13 で停止しました：新バージョンに
 切り替えられませんでした'
@@ -841,68 +845,23 @@ MSG_menu_package_none='ダウンロード済みのパッケージでアップグ
 （ファイル名の例：custodexa-%s.tar.gz）。'
 MSG_menu_ask_package='パッケージのパス（Enter でメインメニューに戻る）> '
 
-# upgrade: git clone デプロイの初回変換（プレビュー、ステップ 8、失敗時と次回実行時）
-MSG_cv_will='実行する内容（順番に）'
-MSG_cv_will_1='  1. 監査記録がすべてデータベースに書き込まれるのを待つ'
-MSG_cv_will_2='  2. 既存の %s でサービスを停止
-     （データベースは動かしたまま）'
-MSG_cv_will_3='  3. 完全バックアップ（約 %s。バックアップ先の空きは %s）'
-MSG_cv_will_3_external='  3. データベースはこのデプロイに含まれないため、ご自身でバックアップ
-     （サービス停止後に確認します）'
-MSG_cv_will_4='  4. 古いコンテナを削除し（data/ のデータには影響なし）、
-     ディレクトリを整理'
-MSG_cv_will_5='  5. %s に切り替えて起動し、バージョン・データ・鍵を確認'
-MSG_cv_dir='ディレクトリの整理'
-MSG_cv_stays='  そのまま     .env、tls/、data/'
-MSG_cv_moves='  移動先       releases/%s/（旧バージョンとして保持）
-               git 管理下の製品ファイルと .git'
-MSG_cv_copies='  コピー       旧コンテナ内のレポートのエクスポート → data/exports/'
-MSG_cv_env_label='  設定の書換   '
-MSG_cv_env_indent='               '
-MSG_cv_env_row='.env %s 行目  %s=%s'
-MSG_cv_env_row_raw='.env %s 行目  %s'
-MSG_cv_env_to='                          →  %s=%s'
-MSG_cv_env_to_comment='                          →  コメントアウト（新バージョンは同梱の
-                             テンプレートを使用）'
-MSG_cv_env_sep='、'
-MSG_cv_env_add_1='%s の 1 行を追加'
-MSG_cv_env_add_2='%s の 2 行を追加'
-MSG_cv_env_add_n='%s 行を追加：%s'
-MSG_cv_env_saved='書き換える前に .env の写しを保存'
-MSG_cv_compose_dropped='.env の COMPOSE_FILE が %s を使っていますが、
-新バージョンには引き継がれません'
-MSG_cv_know_pause='  - 停止時間はおよそ %s〜%s 分'
-MSG_cv_know_mig='  - 今回はデータベース構造の変更があります。%s に戻すには今回の
-    バックアップのリストアが必要で、バックアップ以降の記録は失われます'
-MSG_cv_know_manage='  - 完了後は %s/custodexa.sh で管理してください。
-    %s は git ディレクトリではなくなるため、
-    git pull で更新しないでください'
-MSG_cv_step='ディレクトリの整理'
-MSG_cv_fail='アップグレードは 8/13（ディレクトリの整理）で停止しました：%s'
-MSG_cv_why_env_copy='.env を %s に保存できません'
-MSG_cv_why_down='古いコンテナを削除できません'
-MSG_cv_why_exports='レポートのエクスポートを旧バックエンドコンテナからコピーできません'
-MSG_cv_why_move='%s の移動に失敗しました'
-MSG_cv_why_env='.env を書き換えられません'
-MSG_cv_why_copy='%s を releases/ に置けません'
-MSG_cv_why_state='state.json を書き込めません'
-MSG_cv_why_signal='実行が中断されました'
-MSG_cv_stopped='サービスは停止しています'
-MSG_cv_dir_same='ディレクトリはまだ変更していません'
-MSG_cv_dir_part='ディレクトリは途中まで整理されています'
-MSG_cv_start_old='旧バージョンを起動：'
-MSG_cv_revert_title='次のコマンドを順に実行し、元の git clone の構成に戻してください。
-どれかが失敗したらそこで止め、ログファイルを運用担当者に渡してください：'
-MSG_cv_revert_check='git の表示が backups/ と .custodexa.lock だけであることを確認：'
-MSG_cv_start_old_after='上の確認でほかに何も表示されなかった場合のみ、旧バージョンを起動：'
-MSG_cv_unseal='マスターキーはブラウザで入力する方式のため、起動後に
-もう一度封印解除が必要です。'
-MSG_cv_hint='ディレクトリの整理が途中で、サービスは停止しています。'
-MSG_cv_interrupted='前回のアップグレードはディレクトリの整理中に中断されました。'
-MSG_cv_no_git='git コマンドがないため、%s の製品ファイルが変更されたか確認できません'
-MSG_cv_git_failed='%s で git status を実行できません'
-MSG_cv_dirty='%s の git 作業ツリーに変更があるため、ディレクトリを整理できません。
-下の項目を元に戻すか移動するかコミットし、git status が何も表示しなく
-なってから再実行してください：'
 MSG_up_restore_guide='%s に戻す場合は、上のバックアップを「バックアップとリストア」
 第 5 節「リストアの手順」に沿って手動でリストアしてください。'
+MSG_menu_images_install='イメージ取得元'
+MSG_menu_images_upgrade='%s へのアップグレードで使うイメージ取得元'
+MSG_menu_images_auto='  [1] 自動（既定）：このホスト、オフラインバンドル、GHCR、Docker Hub、
+      最後にソースからビルド'
+MSG_menu_images_source='  [2] 同梱ソースからビルド（時間がかかります。上流イメージは別途取得）'
+MSG_menu_images_choose='[1-2] を選択。Enter で自動：'
+MSG_q_wait_download='最新版の %s をダウンロードしています…'
+MSG_q_download_ok='%s をダウンロードしました'
+MSG_q_optional_signature_missing='署名ファイルを取得できません。発行元は未確認です'
+MSG_q_wait_checksum='リリースマニフェストと SHA256SUMS のチェックサムを確認しています…'
+MSG_q_checksum_ok='リリースマニフェストのチェックサムは一致します'
+MSG_q_wait_signature='リリースマニフェストの署名を検証しています…'
+MSG_up_wait_download='%s をダウンロードしています…'
+MSG_up_download_ok='%s をダウンロードしました'
+MSG_up_wait_checksum='%s と SHA256SUMS のチェックサムを確認しています…'
+MSG_up_checksum_ok='%s のチェックサムは一致します'
+MSG_up_wait_signature='リリースマニフェストの署名を検証しています…'
+MSG_up_step_reserved='このステップで行う処理はありません'

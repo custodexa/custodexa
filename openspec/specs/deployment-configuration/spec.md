@@ -141,38 +141,34 @@
 
 ### Requirement: 首次部署指示與實際啟動路徑一致
 
-專案 README 與快速開始文件的**主要安裝路徑 SHALL 為安裝包路徑**：取得並驗證安裝包、解開、執行 `custodexa.sh install`；文件 SHALL 逐步對應該腳本實際走的路徑（前置檢查、`.env` 產生、映像取得與驗證、啟動、首次引導），SHALL NOT 描述任何在該路徑上不成立的步驟、位址或憑證。原始碼部署（`git clone`＋`quickstart.sh` 或預設 compose 指令）在移除前 SHALL 列為並存路徑並標明其定位，該路徑的說明仍 SHALL 逐步對應預設 compose 指令實際走的那條路徑。
+專案 README、快速開始與營運程序文件的正式安裝及升級路徑 SHALL 為 Linux 安裝包與 `custodexa.sh`：取得並核對安裝包、解開、執行 `custodexa.sh install`，之後以 `custodexa.sh upgrade` 升級。文件 SHALL 逐步對應腳本實際走的前置檢查、`.env` 產生、映像來源選擇與驗證、啟動、首次引導、升級前備份及失敗時的手動還原界線；SHALL NOT 描述該路徑上不存在的自動轉換或自動回退。文件 SHALL 說明 `--images-from auto|source` 與選單的相同選擇：auto 為預設取得順序；source 建置安裝包內自家原始碼，較慢，所需上游映像與建置依賴仍須取得。
 
-原始碼部署路徑的說明具體 SHALL 涵蓋：
+`git clone`、`scripts/quickstart.sh` 與直接 `docker compose` SHALL 僅列為開發者與 macOS／Windows 試用路徑，明載非正式部署入口；此路徑的既有指令仍 SHALL 對應其實際執行的拓撲。舊 git clone 部署的轉入 SHALL 列為人工遷移或在另一個乾淨目錄安裝後手動還原，不得宣稱 `custodexa.sh` 會一次性轉換。三語 README、QUICKSTART 與相關 ops 鏡射 SHALL 保持指令、步驟及恢復邊界對等。
 
-- **範本複製步驟 SHALL 明列**（`cp .env.example .env`）——正式版 compose 以 `env_file`
-  消費專案根 `.env`，缺檔即在啟動第一步失敗。
-- **無出廠預設值而必須自行填入之機密鍵 SHALL 逐項列名**——照抄範本無法啟動者
-  （KEK 材料、JWT 簽章鑰、初始管理員密碼、資料庫密碼）SHALL 於快速開始即點名，
-  SHALL NOT 只寫「依需求調整」。
-- **存取位址與登入方式 SHALL 為該指令實際產出的拓撲**——正式版與開發版之發佈埠不同時，
-  SHALL 標明何者屬何拓撲；初始管理員憑證 SHALL 描述現行機制（由環境變數設定＋首登強制
-  改密），SHALL NOT 保留任何已失效之預設帳密。
+原始碼試用途徑的說明具體 SHALL 涵蓋：
+
+- **範本複製步驟 SHALL 明列**（`cp .env.example .env`），正式版 compose 以 `env_file` 消費專案根 `.env`，缺檔即在啟動第一步失敗。
+- **無出廠預設值而必須自行填入之機密鍵 SHALL 逐項列名**，照抄範本無法啟動者（KEK 材料、JWT 簽章鑰、初始管理員密碼、資料庫密碼）SHALL 於快速開始即點名。
+- **存取位址與登入方式 SHALL 為該指令實際產出的拓撲**，正式版與開發版之發佈埠不同時 SHALL 標明；初始管理員憑證 SHALL 描述由環境變數設定與首登強制改密的現行機制。
 - **指令形式 SHALL 為現行 CLI**（`docker compose`）。
 
-`.env.example` 之模式選擇型設定，其**營運後果 SHALL 揭露於選擇點**：凡不同取值會改變
-「是否需要人為介入才能恢復服務」或「機密是否落於磁碟」者，該代價 SHALL 與選項並列，
-SHALL NOT 僅記載於數十行外之其他段落——讀者在選擇點看不到的代價等同未告知。
+`.env.example` 之模式選擇型設定，其營運後果 SHALL 揭露於選擇點：凡不同取值會改變是否需要人為介入才能恢復服務或機密是否落於磁碟者，該代價 SHALL 與選項並列。
 
 #### Scenario: 照快速開始實走全新安裝
-- **WHEN** 於全新環境取得專案樹並照 README 快速開始的原始碼部署路徑逐步執行
-- **THEN** MUST 能啟動至登入畫面，MUST NOT 於任一步因範本缺檔、缺必填機密、
-  埠或憑證與實際不符而中斷
+- **WHEN** 開發者取得專案樹並依原始碼試用途徑逐步執行
+- **THEN** 文件明確標示非正式部署入口，所列範本、必填機密、位址及憑證與實際啟動拓撲一致
 
 #### Scenario: 本機 KEK 兩模式之代價並列於選擇點
 - **WHEN** 檢視 `.env.example` 之 `KEK_PROVIDER` 段
-- **THEN** `env` 與 `ui` 兩模式之代價 MUST 並列於該段（前者材料以明文存於磁碟、重啟免人
-  介入；後者材料永不落地、但每次行程重啟都停在封印狀態須有人再輸入），
-  MUST NOT 僅以「不落地」一詞帶過而將重啟後果留在他段
+- **THEN** `env` 與 `ui` 兩模式之代價 MUST 並列於該段（前者材料以明文存於磁碟、重啟免人介入；後者材料不由伺服器持久保存、行程重啟後須有人再輸入），MUST NOT 只列其中一面的代價
 
 #### Scenario: 照快速開始以安裝包全新安裝
-- **WHEN** 於全新 Linux 主機照快速開始的安裝包路徑取得、驗證、解開安裝包並執行 `custodexa.sh install`
-- **THEN** MUST 能啟動至首次引導畫面；文件所列的每一步、網址與登入方式與腳本實際輸出一致，MUST NOT 要求使用者手動複製範本或手填腳本已產生的機密
+- **WHEN** 於全新 Linux 主機照快速開始的安裝包路徑取得、核對、解開安裝包並執行 `custodexa.sh install`
+- **THEN** MUST 能啟動至首次引導畫面；文件所列每一步、網址與登入方式與腳本實際輸出一致，MUST NOT 要求使用者手動複製範本或手填腳本已產生的機密
+
+#### Scenario: 舊 git clone 部署規劃遷移
+- **WHEN** 維運查閱升級與備份還原文件，準備從舊 git clone 部署轉入安裝包形態
+- **THEN** 文件指向人工遷移或全新安裝後手動還原的可操作程序，不把一次性腳本轉換列為可用路徑
 
 ### Requirement: KEK 出貨預設模式
 `.env.example` SHALL 出貨 `KEK_PROVIDER=ui`（材料鍵 `ENCRYPTION_KEY` SHALL 維持註解狀態

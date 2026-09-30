@@ -2,6 +2,50 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.14.0 — external group mappings and a clearer deployment path (2026-10-01)
+
+Schema changes. Upgrading runs the `20260930_identity_group_mappings` migration. Existing
+user group members remain as manual members. Existing mapped roles are attributed to every
+enabled rule for the same identity source and role, regardless of observed group
+membership. Old role mappings with no eligible rule are removed and audited. The migration
+does not sign users out.
+
+The first upgrade from a 1.13.x package runs the installed 1.13.x `custodexa.sh`, which does
+not accept `--images-from`; that upgrade uses automatic image sourcing.
+
+### New capabilities
+
+- The renamed External group mappings page has Group → Role and Group → User group tabs for
+  LDAP and OIDC. A shared optional note appears above each copyable group identifier.
+- External groups can add users to Custodexa user groups. Each successful sign-in through
+  that source with known group data synchronizes mapped memberships and keeps manual members.
+- Mapping to a user group that is used for asset access, approval, or request scope shows
+  its current use counts and requires explicit confirmation before saving.
+- `custodexa.sh install` and upgrades with a target version or package offer
+  `--images-from auto|source`. The `source` option checks the packaged source and builds
+  Custodexa images locally; other required images are retrieved separately.
+- On Linux, run
+  `curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash`.
+  For a new deployment, the script downloads the latest package, checks its checksum,
+  unpacks it, and hands control to `custodexa.sh`. If the target directory contains an
+  installed deployment, it hands control to that deployment's script.
+- Downloads, verification, image retrieval, and builds show what is running before each
+  long step and report the result when it finishes.
+
+### What changes for deployers
+
+- Disabling or deleting a group mapping rule, or disabling its identity source, immediately
+  withdraws the roles and user group memberships that no longer have any other support.
+- Use the release package's `custodexa.sh` for production installation and upgrades.
+  `scripts/quickstart.sh` serves development and macOS or Windows evaluation.
+- For an older git clone deployment, `custodexa.sh` stops before changing deployment files
+  or services and shows manual migration guidance.
+
+### Fixes
+
+- The menu's upgrade to the latest version checks the release once and no longer prints the
+  command-line instructions meant for a query run.
+
 ## 1.13.3 — closed terminal windows leave the active session list (2026-09-30)
 
 No schema change. No migration runs. A 1.13.x package deployment upgrades with

@@ -1017,6 +1017,41 @@
           />
         </template>
       </div>
+      <div
+        v-if="mappedRolesLoaded"
+        class="mapped-roles-block"
+        data-test="user-group-sources"
+      >
+        <div class="mapped-roles-block__title">
+          {{ $t('identityGroupMappings.accountGroups') }}
+        </div>
+        <div
+          v-if="!accountGroups.length"
+          class="dialog-hint"
+        >
+          {{ $t('identityGroupMappings.accountGroupsEmpty') }}
+        </div>
+        <div
+          v-for="group in accountGroups"
+          :key="group.id"
+          class="mapped-role-row"
+        >
+          <span>{{ group.name }}</span>
+          <el-tag
+            v-if="group.manual"
+            size="small"
+          >
+            {{ $t('identityGroupMappings.memberManual') }}
+          </el-tag>
+          <el-tag
+            v-if="group.mapped"
+            size="small"
+            type="info"
+          >
+            {{ $t('identityGroupMappings.memberMapped') }}
+          </el-tag>
+        </div>
+      </div>
       <!-- 群組觀測快照：唯讀。「我在群組裡卻沒拿到角色」的唯一診斷線索，
            存的是外部來源自報的原始值。**單獨成塊、逐字照列**——與本系統自有的
            識別值混排會讓人把它讀成已驗證的身分資料，而它不是任何授權判定的依據 -->
@@ -1255,6 +1290,7 @@ import {
   buildGroupPaths,
 } from '@/utils/approver-scope'
 import { getAssetGroups } from '@/api/assets'
+import { getUserGroups } from '@/api/userGroups'
 import {
   getApproverScopes,
   deleteApproverScope,
@@ -2017,6 +2053,7 @@ const needsApproverScope = (row) => {
 
 // 對話框內的兩份集合
 const mappedRoles = ref([])
+const accountGroups = ref([])
 const manualRoleSet = ref(new Set())
 const mappedRolesLoaded = ref(false)
 const roleSetsFailed = ref(false)
@@ -2072,9 +2109,23 @@ const handleAssignRoles = async (row) => {
   roleSetsFailed.value = false
   pinningRole.value = ''
   groupSnapshot.value = null
+  accountGroups.value = []
   loadAssignableRoles()
   roleDialogVisible.value = true
-  await refreshRoleSetsForDialog(row.id)
+  await Promise.all([refreshRoleSetsForDialog(row.id), loadAccountGroups(row.id)])
+}
+
+const loadAccountGroups = async (userId) => {
+  try {
+    const response = await getUserGroups()
+    if (currentUser.id !== userId) return
+    accountGroups.value = (response.data || []).flatMap(group => {
+      const source = (group.member_sources || []).find(member => member.user_id === userId)
+      return source ? [{ id: group.id, name: group.name, manual: source.manual, mapped: source.mapped }] : []
+    })
+  } catch (error) {
+    logFailure('user_group_sources_failed', error)
+  }
 }
 
 // 重讀對話框的兩份集合。**送出用的是這一份**：以列表的有效角色集送出等於

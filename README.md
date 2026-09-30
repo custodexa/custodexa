@@ -30,22 +30,42 @@ carry a signature an auditor can verify offline.
 
 ## Quick Start
 
-On a Linux server, install from the release package. Download `custodexa-<version>.tar.gz`,
+For a supported Linux server, the release package and `custodexa.sh` are the installation, backup and upgrade path. `scripts/quickstart.sh` is for development and macOS or Windows evaluation.
+
+From 1.14.0, the release download guide fetches the latest package and `SHA256SUMS`, checks the package SHA-256, unpacks it to `/opt/custodexa`, and opens the management menu:
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+To choose the version and deployment folder:
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+To inspect the guide first, run `curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh` and then `sudo bash get-custodexa.sh`. An existing deployment is handed to its own `custodexa.sh` without overwriting it. The guide checks SHA-256 only; package signature verification is the manual procedure below, and `custodexa.sh` handles image signatures.
+
+In Bash or Zsh, `set -o pipefail` makes a failed guide download give the whole pipeline a nonzero status. In the download-then-run form, run the second command only after the download succeeds. `CX_GET_RELEASE_BASE` can point to another release endpoint; doing so trusts that source for both the package and `SHA256SUMS`. A matching hash alone does not verify the publisher.
+
+For manual package signature verification, download `custodexa-<version>.tar.gz`,
 `SHA256SUMS` and `SHA256SUMS.sigstore.json` from the release page into one folder, verify them,
-then unpack and install (replace `1.13.0` with the version you downloaded):
+then unpack and install (replace `1.14.0` with the version you downloaded):
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
 `install` checks the host before writing anything, creates `.env` with generated secrets,
-obtains the images and checks each one against the digests in the release manifest, starts the
+obtains release images and checks their manifest digests (or checks packaged source before a local build), starts the
 stack, waits for the backend to report ready, and finishes with the URL and admin login info.
 Values you have already set are never touched. `custodexa.sh status` shows how the deployment is
 doing without changing anything. Offline hosts, the checks in each step, and the folder layout are
@@ -54,6 +74,12 @@ covered in [Install from the release package](docs/QUICKSTART.md#install-from-th
 The script's screens follow the system language, and `sudo` often resets it, so they come up in
 English. For Traditional Chinese or Japanese, add `--lang zh-TW` or `--lang ja` to any
 `custodexa.sh` command, or run `sudo /opt/custodexa/custodexa.sh --lang zh-TW` for the menu.
+
+`install --images-from source` builds the package's backend and frontend locally after checking the packaged source checksum. It is slower; upstream images, base images and build dependencies still have to be obtained, so this is not a fully offline option. The default `auto` tries this host, an offline bundle, GHCR, Docker Hub, then local build. Use an architecture-matched image bundle and `custodexa.sh load` for a host without registry access.
+
+For an installed package, run `sudo /opt/custodexa/custodexa.sh upgrade` to check for a newer version without changing the deployment. Run `sudo /opt/custodexa/custodexa.sh upgrade <version>` to upgrade, or choose Upgrade in the menu. The script previews the downtime, stops services, takes a backup when it owns the database, and does not roll back automatically; restoring the pre-upgrade backup is a manual procedure. See the [Upgrade SOP](docs/ops/upgrade-sop.md#upgrading-with-the-management-script). An older git clone deployment is refused by `custodexa.sh`; plan its move using the [manual migration section](docs/ops/upgrade-sop.md#manual-migration-of-an-older-source-deployment).
+
+For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 1.13.x script does not accept `--images-from`; run without that flag and the target uses `auto`. After 1.14.0 is installed, later upgrades can select source building.
 
 To evaluate on macOS or Windows, or to work on the code, run from source instead:
 
@@ -266,9 +292,10 @@ Each image contains this project's `LICENSE`, `NOTICE`, `THIRD-PARTY-LICENSES.md
 `org.opencontainers.image.licenses=AGPL-3.0-only`. No guacd image is published: the
 compose files use the official `guacamole/guacd:1.6.0` image, pinned by digest.
 
-The install package runs these images: its management script obtains each one by the digest
-recorded in the release manifest, builds from source only when no registry or offline bundle
-has it, and after start confirms that every container runs the image it checked. Running
+In the default `auto` mode, the install package checks release images against the manifest
+digests and builds its own images from checked package source only when other sources fail.
+With `--images-from source`, it builds its own images directly; upstream images are still
+obtained separately. After start, it checks every running container against its recorded image ID. Running
 from source works as before. The repository's compose files do not reference the published
 images: `scripts/quickstart.sh` builds `custodexa/backend:latest` and `custodexa/frontend:latest`
 from the source tree and never pulls them (`pull_policy: never`).

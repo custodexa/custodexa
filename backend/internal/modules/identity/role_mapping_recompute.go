@@ -56,6 +56,8 @@ const (
 	RoleMappingSkipSourceAttrUnset = "role_mapping_source_attr_unset"
 	// RoleMappingSkipGroupsUnknown 群組資料這次讀不到，既有映射保留
 	RoleMappingSkipGroupsUnknown = "role_mapping_groups_unknown"
+	UserGroupMappingEventApplied = "user_group_mapping_applied"
+	MappingSkipSourceDisabled    = "group_mapping_source_disabled"
 )
 
 // GroupObservation 一次登入對某條途徑的群組觀測。
@@ -138,7 +140,19 @@ func RecomputeMappedRoles(db *gorm.DB, auditSink port.TxSink, user *model.User,
 	case GroupObservationUnconfigured:
 		// 短路：不開交易、不寫審計；此前建快照時至多做過一次規則表計數。
 		// 「未啟用映射的部署只多一次索引計數」這句話的實際內容就是這一行
-		if !obs.HasActiveRules {
+		active := obs.HasActiveRules
+		if !active && obs.SourceID != 0 {
+			column, err := roleMappingSourceColumn(obs.Kind)
+			if err != nil {
+				return RoleMappingOutcome{}, err
+			}
+			var n int64
+			if err := db.Model(&model.GroupUserGroupMapping{}).Where(column+"=? AND enabled=?", obs.SourceID, true).Count(&n).Error; err != nil {
+				return RoleMappingOutcome{}, err
+			}
+			active = n > 0
+		}
+		if !active {
 			return RoleMappingOutcome{}, nil
 		}
 		return skipRoleMapping(db, auditSink, user, obs, RoleMappingSkipSourceAttrUnset)
@@ -147,11 +161,66 @@ func RecomputeMappedRoles(db *gorm.DB, auditSink port.TxSink, user *model.User,
 	}
 
 	outcome := RoleMappingOutcome{}
-	err := WithUserCredentialLock(db, user.ID, func(tx *gorm.DB) error {
+	apply := func(tx *gorm.DB) error {
+		// The source lock must precede the user lock. Re-read enabled state while
+		// holding it, so a login waiting behind disable cannot restore support.
+		var enabled bool
+		// Some SQLite unit fixtures inject an external resolver without storing
+		// its source row. PostgreSQL deployments always require the source row.
+		if tx.Dialector.Name() == "sqlite" {
+			table := "ldap_directories"
+			if obs.Kind == model.RoleMappingChannelKindProvider {
+				table = "oidc_providers"
+			}
+			if !tx.Migrator().HasTable(table) {
+				enabled = true
+			}
+		}
+		if obs.Kind == model.RoleMappingChannelKindDirectory {
+			if tx.Migrator().HasTable(&model.LDAPDirectory{}) {
+				var rows []model.LDAPDirectory
+				if err := tx.Select("id,enabled").Where("id=?", obs.SourceID).Limit(1).Find(&rows).Error; err != nil {
+					return err
+				}
+				if len(rows) > 0 {
+					enabled = rows[0].Enabled
+				} else if tx.Dialector.Name() != "sqlite" {
+					return ErrMappingSourceNotFound
+				} else {
+					enabled = true
+				}
+			}
+		} else {
+			if tx.Migrator().HasTable(&model.OIDCProvider{}) {
+				var rows []model.OIDCProvider
+				if err := tx.Select("id,enabled").Where("id=?", obs.SourceID).Limit(1).Find(&rows).Error; err != nil {
+					return err
+				}
+				if len(rows) > 0 {
+					enabled = rows[0].Enabled
+				} else if tx.Dialector.Name() != "sqlite" {
+					return ErrMappingSourceNotFound
+				} else {
+					enabled = true
+				}
+			}
+		}
+		if !enabled {
+			outcome.Skipped = MappingSkipSourceDisabled
+			return nil
+		}
 		var lerr error
-		outcome, lerr = applyRoleMappingLocked(tx, auditSink, user, obs)
-		return lerr
-	})
+		return withUserCredentialLockTx(tx, user.ID, func(locked *gorm.DB) error {
+			outcome, lerr = applyRoleMappingLocked(locked, auditSink, user, obs)
+			return lerr
+		})
+	}
+	var err error
+	if obs.Kind == model.RoleMappingChannelKindDirectory {
+		err = WithLDAPDirectoryLock(db, apply)
+	} else {
+		err = WithOIDCProviderLock(db, obs.SourceID, apply)
+	}
 	if err != nil {
 		return RoleMappingOutcome{}, err
 	}
@@ -173,6 +242,7 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 	matcher := groupMatcherFor(obs.Kind)
 	matchedRoleIDs := make([]uint, 0, len(rules))
 	matchedNames := map[uint]string{}
+	var desiredRoleSupports []mappingSupport
 	hitGroups := map[string]struct{}{}
 	seen := map[uint]struct{}{}
 	var badRules []string
@@ -187,6 +257,7 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 		for _, g := range hits {
 			hitGroups[g] = struct{}{}
 		}
+		desiredRoleSupports = append(desiredRoleSupports, mappingSupport{rule.RoleID, rule.ID})
 		if _, dup := seen[rule.RoleID]; dup {
 			continue
 		}
@@ -212,6 +283,14 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 	}
 
 	now := time.Now()
+	roleSupportChanges, err := syncRoleRuleSupports(tx, user.ID, obs.Channel(), desiredRoleSupports)
+	if err != nil {
+		return RoleMappingOutcome{}, err
+	}
+	groupSupportChanges, removedGroupIDs, err := syncGroupRuleSupports(tx, user.ID, obs)
+	if err != nil {
+		return RoleMappingOutcome{}, err
+	}
 	var addedIDs []uint
 	for _, roleID := range matchedRoleIDs {
 		granted, err := GrantMappedRole(tx, user.ID, roleID, obs.Channel(), now)
@@ -238,7 +317,7 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 	// **判準是「有列被移除」而不是「集合變了」**：純追加不撤走任何憑證已賦予的
 	// 能力，推進世代只是把人無故踢下線；而角色從一個換成另一個時數量不變、
 	// 確有撤除，不推進即漏撤
-	if len(removedIDs) > 0 {
+	if len(removedIDs) > 0 || len(removedGroupIDs) > 0 {
 		if err := BumpCredentialEpoch(tx, user.ID, "role_mapping_recomputed"); err != nil {
 			return RoleMappingOutcome{}, err
 		}
@@ -250,16 +329,26 @@ func applyRoleMappingLocked(tx *gorm.DB, auditSink port.TxSink, user *model.User
 
 	// **無變動不寫列**：目錄使用者每天登入好幾次，每次都留一筆「什麼都沒變」
 	// 會把真正的權限變動淹掉，而每日高危計數也會跟著虛高
-	if !outcome.Changed() {
+	if len(groupSupportChanges) > 0 {
+		if err := writeRoleMappingAudit(tx, auditSink, user, obs, UserGroupMappingEventApplied, map[string]any{
+			"channel": obs.Channel(), "groups_removed": removedGroupIDs, "epoch_bumped": outcome.EpochBumped,
+			"support_changes": groupSupportChanges,
+		}); err != nil {
+			return RoleMappingOutcome{}, err
+		}
+	}
+	if !outcome.Changed() && len(roleSupportChanges) == 0 {
 		return outcome, nil
 	}
 	if err := writeRoleMappingAudit(tx, auditSink, user, obs, RoleMappingEventApplied,
 		map[string]any{
-			"channel":       obs.Channel(),
-			"matched_group": sortedGroupValues(hitGroups),
-			"roles_added":   outcome.Added,
-			"roles_removed": outcome.Removed,
-			"epoch_bumped":  outcome.EpochBumped,
+			"channel":          obs.Channel(),
+			"matched_group":    sortedGroupValues(hitGroups),
+			"roles_added":      outcome.Added,
+			"roles_removed":    outcome.Removed,
+			"epoch_bumped":     outcome.EpochBumped,
+			"supports_changed": len(roleSupportChanges) > 0,
+			"support_changes":  roleSupportChanges,
 		}); err != nil {
 		return RoleMappingOutcome{}, err
 	}

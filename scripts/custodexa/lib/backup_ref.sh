@@ -46,18 +46,10 @@ cx_br_after_stop() { [ "$1" -ge "$CX_BR_STOP_EPOCH" ]; }
 
 # cx_br_resume: how to cancel: bring every service back and check. A package deployment starts
 # current/ with the image references of that release (images.env, as the script loads it before
-# every compose call); a git clone deployment before its conversion has no current/ yet: its own
-# project and root compose files, and the status of this script pointed at it.
+# every compose call).
 cx_br_resume() {
-  local ov f files=""
+  local ov files=""
   printf '\n%s\n' "$(cx_br_par "$(cx_msg br_cancel_hint)")"
-  if [ "${CX_UP_KIND:-}" = convert ]; then
-    for f in $CX_UP_OLD_FILES; do files+="${files:+ }-f $f"; done
-    cx_cmd "sudo docker compose -p $CX_UP_OLD_PROJECT --project-directory $CX_ROOT \\"
-    cx_cmd "  $files up -d"
-    cx_cmd "sudo env CUSTODEXA_HOME=$CX_ROOT $CX_DIR/custodexa.sh status$(cx_status_lang_arg)"
-    return 0
-  fi
   files="-f $CX_ROOT/current/compose.yml"
   for ov in ${CX_OVERLAYS:-}; do files+=" -f $CX_ROOT/current/compose.$ov.yml"; done
   cx_cmd "sudo sh -c 'set -a; . $CX_ROOT/current/images.env; exec \\"
@@ -221,10 +213,9 @@ cx_br_noninteractive() {
   cx_line WARN "$(cx_msg br_ref_used "$CX_BR_REF" "${CX_BR_TIME#* }" "$CX_BR_STOP_SHOWN")"
 }
 
-# cx_br_record <id> [nostate]: the accepted own backup: backups/<id>/external.txt (the answers as
+# cx_br_record <id>: the accepted own backup: backups/<id>/external.txt (the answers as
 # given, any language) and last_backup.* in state.json. A value state.json cannot hold (not
-# printable ASCII) is kept in the file only and state.json points there. With nostate (a git clone
-# deployment before its conversion, which has no state.json yet) only the file and the log.
+# printable ASCII) is kept in the file only and state.json points there.
 cx_br_record() {
   local id=$1 dir=$CX_ROOT/backups/$1 k v ptr
   (umask 077 && mkdir -p "$CX_ROOT/backups" "$dir") || return 1
@@ -234,10 +225,6 @@ cx_br_record() {
     printf 'ref=%s\ntime=%s\nrestore=%s\nstopped_at=%s\n' \
       "$CX_BR_REF" "$CX_BR_TIME" "$CX_BR_RESTORE" "$CX_BR_STOP_ISO" >"$dir/external.txt"
   ) || return 1
-  if [ "${2:-}" = nostate ]; then
-    cx_log BACKUP "kind=external id=$id time=\"$CX_BR_TIME\" stopped_at=$CX_BR_STOP_ISO"
-    return 0
-  fi
   ptr="see backups/$id/external.txt"
   cx_state_set last_backup.id "$id"
   cx_state_set last_backup.kind external

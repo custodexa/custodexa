@@ -131,14 +131,14 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 無 CHECK、無外鍵（掛靠關係由資料存取層維持）。
 	// 委託拓撲增 1 表、2 索引、1 CHECK；輸出規則增量再增 1 CHECK。
 	// Agent 前置兩表＋agent 通道三表；前置增 14 索引／2 CHECK，agent 通道增 8 索引／9 CHECK。
-	if got.Tables != 70 {
-		t.Errorf("表數 = %d, want 70（exposures 1 ＋ 既有 64 ＋ agent 前置兩表 ＋ agent 通道三表；原 64：47 ＋ audit_export_jobs ＋ user_source_ips ＋ 離機兩表 ＋ rotation_report_schedules ＋ change_secret_batches ＋ 憑證庫四表 ＋ 群組映射兩表 ＋ 政策組四表 ＋ kek_topologies）", got.Tables)
+	if got.Tables != 74 {
+		t.Errorf("表數 = %d, want 74（既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表）", got.Tables)
 	}
-	if got.Indexes != 235 {
-		t.Errorf("索引數 = %d, want 235（exposures 複合主鍵 1 ＋ 既有 212 ＋ agent 前置 14 ＋ agent 通道 8；原 212：舊鏈 162 ＋ uniq_alert_rules_name ＋ audit_export_jobs 的 4 條 ＋ source_ip_forensics 的 3 條 ＋ 離機的 9 條 ＋ 查詢主控台的 3 條 ＋ 輪替證據報告的 4 條 ＋ 批次改密的 3 條 ＋ 憑證庫的 12 條 － 收縮卸下的憑證群組索引 1 條 ＋ 群組映射的 5 條 ＋ 政策組的 5 條 ＋ kek_topologies 的 2 條）", got.Indexes)
+	if got.Indexes != 248 {
+		t.Errorf("索引數 = %d, want 248（既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4）", got.Indexes)
 	}
-	if got.Checks != 34 {
-		t.Errorf("CHECK 約束數 = %d, want 34（通道推送門檻 CHECK 1 ＋ breaker session CHECK 1 ＋ 既有 21 ＋ agent 前置 2 ＋ agent 通道 9；原 21：13 ＋ offsite_profiles 的兩條 ＋ 查詢主控台的三條 ＋ 群組映射規則的來源恰一 ＋ kek_topologies singleton ＋ alert_rules direction）", got.Checks)
+	if got.Checks != 37 {
+		t.Errorf("CHECK 約束數 = %d, want 37（既有 34 ＋ 外部群組來源、備註長度、使用者群組規則來源）", got.Checks)
 	}
 
 	// schema_migrations 恰好為「baseline＋全部增量」，且**不含** LDAP 執行期 marker。

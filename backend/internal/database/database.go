@@ -101,6 +101,11 @@ var schemaParityModels = []interface{}{
 	// 外部群組對角色映射：規則表與映射事實表
 	&model.GroupRoleMapping{},
 	&model.UserRoleMapping{},
+	&model.ExternalGroup{},
+	&model.GroupUserGroupMapping{},
+	&model.UserRoleMappingRuleSupport{},
+	&model.UserGroupMappingRuleSupport{},
+	&model.UserGroupMember{},
 	&model.Asset{},
 	&model.AssetGroup{},
 	&model.Session{},

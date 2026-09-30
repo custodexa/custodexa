@@ -57,7 +57,7 @@
                 size="small"
                 class="member-tag"
               >
-                {{ u.username }}
+                {{ u.username }} · {{ memberSourceLabel(row, u.id) }}
               </el-tag>
               <span
                 v-if="(row.users || []).length > 5"
@@ -178,6 +178,16 @@
         filterable
         :filter-placeholder="$t('userGroups.searchUsersPlaceholder')"
       />
+      <div class="mapped-members">
+        <strong>{{ $t('identityGroupMappings.mappedMembers') }}</strong>
+        <div
+          v-for="user in mappedUsers"
+          :key="user.id"
+        >
+          {{ user.username }} · {{ memberSourceLabel(activeGroup, user.id) }}
+        </div>
+        <span v-if="!mappedUsers.length">{{ $t('identityGroupMappings.noMappedMembers') }}</span>
+      </div>
       <template #footer>
         <el-button @click="membersDialogVisible = false">
           {{ $t('common.cancel') }}
@@ -232,6 +242,15 @@ const memberIds = ref([])
 const transferUsers = computed(() =>
   userList.value.map(u => ({ key: u.id, label: u.username }))
 )
+const mappedUsers = computed(() => (activeGroup.value?.users || []).filter(user =>
+  (activeGroup.value?.mapped_user_ids || []).includes(user.id)
+))
+const memberSourceLabel = (group, userId) => {
+  const row = (group?.member_sources || []).find(item => item.user_id === userId)
+  if (row?.manual && row?.mapped) return t('identityGroupMappings.memberBoth')
+  if (row?.mapped) return t('identityGroupMappings.memberMapped')
+  return t('identityGroupMappings.memberManual')
+}
 
 const fetchGroups = async () => {
   loading.value = true
@@ -297,7 +316,7 @@ const submitForm = async () => {
 
 const openMembersDialog = (row) => {
   activeGroup.value = row
-  memberIds.value = (row.users || []).map(u => u.id)
+  memberIds.value = [...(row.manual_user_ids || (row.users || []).map(u => u.id))]
   membersDialogVisible.value = true
 }
 
@@ -383,5 +402,11 @@ onMounted(() => {
 
 .member-empty {
   color: var(--ot-text-disabled);
+}
+
+.mapped-members {
+  margin-top: var(--ot-space-md);
+  color: var(--ot-text-secondary);
+  line-height: 1.8;
 }
 </style>

@@ -25,6 +25,7 @@ setup() {
   export PATH="$FAKES:$PATH"
   unset LC_ALL LC_MESSAGES LANG NO_COLOR CUSTODEXA_HOME
   fixture_release
+  cp "$SRC/../../packaging/compose.yml" "$ROOT/current/compose.yml"
 }
 manifest() { release_manifest; }
 

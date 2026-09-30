@@ -57,7 +57,7 @@ func runPrincipalIntegrityHTTP(t *testing.T) {
 		sqlDB.SetMaxOpenConns(1)
 		t.Cleanup(func() { sqlDB.Close() })
 	}
-	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.UserRole{}, &model.AgentToken{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Asset{}, &model.AssetAuthorization{}, &model.RefreshToken{}, &model.PasswordHistory{}); err != nil {
+	if err := db.AutoMigrate(&model.AgentToolCall{}, &model.User{}, &model.Role{}, &model.UserRole{}, &model.AgentToken{}, &model.AuditLog{}, &model.AuditCheckpoint{}, &model.AuditCheckpointTrim{}, &model.IntegrityBaseline{}, &model.AuditFailureEvent{}, &model.SecurityPolicy{}, &model.NotificationChannel{}, &model.UserGroup{}, &model.ApproverScope{}, &model.Asset{}, &model.AssetAuthorization{}, &model.RefreshToken{}, &model.PasswordHistory{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatal(err)
 	}
 	if dsn != "" {

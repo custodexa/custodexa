@@ -3485,6 +3485,9 @@
     "INTERNAL_USER_UPDATE": "Failed to update user",
     "LDAP_DIRECTORY_HAS_MAPPINGS": "This directory still has group mapping rules. Remove the rules before deleting the directory settings",
     "MAPPING_ACK_REQUIRED": "This rule requires risk confirmation before it can be saved",
+    "MAPPING_USAGE_ACK_REQUIRED": "Confirm this mapping's existing access or approval uses",
+    "EXTERNAL_GROUP_NOT_FOUND": "The specified external group was not found",
+    "VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG": "The external group note must be at most 200 characters",
     "MAPPING_RULE_NOT_FOUND": "The specified mapping rule was not found",
     "NOTFOUND_ACCESS_REQUEST": "Access request not found",
     "NOTFOUND_ACCESS_REVIEW": "Access review record not found",
@@ -4256,6 +4259,73 @@
     "testPassedNoMatch": "Connection test passed, but the search settings matched no users",
     "noMatchConsequence": "The search base and filter currently find no users at all: if these settings are enabled as they are, every directory user will fail to sign in. Check that the search base (base DN) covers the branch the users live in and that the filter uses the attribute names the directory actually has."
   },
+  "identityGroupMappings": {
+    "title": "External group mappings",
+    "subtitle": "Sync system roles and user groups from verified identity source groups.",
+    "backToSource": "Back to source settings",
+    "verifiedSourceHint": "Group values come from verified sign-in data.",
+    "tabs": {
+      "roles": "Group → Role",
+      "userGroups": "Group → User group"
+    },
+    "columns": {
+      "externalGroup": "External group",
+      "targetRole": "Target system role",
+      "targetUserGroup": "Target user group",
+      "usage": "Current uses",
+      "createdBy": "Created by",
+      "updatedAt": "Updated"
+    },
+    "fields": {
+      "note": "Note / display name"
+    },
+    "empty": {
+      "roles": "No role mappings for this source yet",
+      "userGroups": "No user group mappings for this source yet"
+    },
+    "openPage": "External group mappings",
+    "roleCount": "Role mapping rules",
+    "userGroupCount": "User group mapping rules",
+    "filterTarget": "Filter target",
+    "add": "Add rule",
+    "edit": "Edit rule",
+    "editNote": "Edit note",
+    "noteSharedHint": "The note is shared across both tabs and updates in both.",
+    "copyIdentifier": "Copy identifier",
+    "expandIdentifier": "Expand identifier",
+    "collapseIdentifier": "Collapse identifier",
+    "identifierCopied": "Identifier copied",
+    "copyFailed": "Could not copy identifier",
+    "sourceAttrMissingHint": "This source has no group field configured. Sign-ins will not sync mappings; you can create rules now, but configure the group field before enabling them.",
+    "unknownObservationRule": "If sign-in cannot confirm a user’s groups, their existing mapped access is kept.",
+    "currentUsage": "Asset access {asset_authorizations}, approver scopes {approver_scopes}, requester scopes {requester_scopes}",
+    "confirmUsage": "I understand this mapping may grant asset access or approval rights",
+    "editIdentityHint": "Old access is removed now; the new rule applies at next sign-in.",
+    "revokeConfirm": "{action} immediately removes mapped access with no remaining support. {count} accounts are affected; up to {roles} effective role assignments and {members} user group memberships may be lost.",
+    "confirmTitle": "Confirm mapping change",
+    "enable": "Enable",
+    "disable": "Disable",
+    "saved": "Rule saved",
+    "loadFailed": "Could not load mapping data",
+    "saveFailed": "The mapping change was not saved. Try again.",
+    "mappedMembers": "Mapped members",
+    "noMappedMembers": "No mapped members",
+    "memberManual": "Manual",
+    "memberMapped": "Mapped",
+    "memberBoth": "Manual and mapped",
+    "sourceDisableConfirm": "Disabling this source immediately removes both types of mapping support for {count} accounts. Up to {roles} effective role assignments and {members} user group memberships may be lost; re-enabling applies at the next sign-in.",
+    "accountGroups": "User group membership sources",
+    "accountGroupsEmpty": "This account is not in a user group",
+    "events": {
+      "group_user_group_mapping_create": "User group mapping created",
+      "group_user_group_mapping_update": "User group mapping updated",
+      "group_user_group_mapping_delete": "User group mapping deleted",
+      "external_group_note_update": "External group note updated",
+      "user_group_mapping_applied": "User group mapping applied",
+      "group_mapping_rule_revoked": "Mapping rule support revoked",
+      "group_mapping_source_revoked": "Source mapping support revoked"
+    }
+  },
   "identitySources": {
     "title": "Identity sources",
     "headerDesc": "Connect your organization's directory or an OIDC identity provider so people sign in with their organization account; groups can decide roles directly.",
@@ -4275,14 +4345,14 @@
     "column": {
       "type": "Type",
       "address": "Address",
-      "mappings": "Group mapping"
+      "mappings": "Role group mappings"
     },
     "lastLoginAt": "Last successful sign-in {time}",
     "neverLoggedIn": "No successful sign-in yet",
     "lastSaved": "Last saved {time}",
     "ruleCount": "Rules: {count}",
     "ruleCountUnknown": "—",
-    "listNote": "Mapping rules are maintained on each source's settings page; group changes take effect at the user's next sign-in. At most one directory can be configured.",
+    "listNote": "Manage rules on each source's External group mappings page. External group changes apply at the next sign-in; disabling a rule or source removes its mapped support immediately. At most one directory can be configured.",
     "loadFailedTitle": "The identity source list could not be read",
     "loadFailedDesc": "What is on screen does not reflect the current state. Refresh later; check the server if it keeps failing.",
     "mergedUnavailableTitle": "The combined list is not available yet",
@@ -4305,7 +4375,7 @@
     "section": {
       "connection": "Connection",
       "userMapping": "User mapping",
-      "groupMapping": "Group mapping",
+      "groupMapping": "Role group mappings",
       "admission": "Admission",
       "advanced": "Advanced"
     },
@@ -4361,7 +4431,7 @@
       "subtitle": "This system searches the directory with a service account and verifies passwords on the user's behalf."
     },
     "mapping": {
-      "sectionHint": "A matched group grants the mapped role; roles an administrator assigned by hand are not affected. Mappings take effect at the user's next sign-in: when a user is removed from the group, or the rule is disabled or deleted, the role granted by the mapping is also revoked at their next sign-in.",
+      "sectionHint": "External groups can map to system roles and user groups. Known group changes are synced at the next sign-in; disabling or deleting a rule removes its support immediately.",
       "matchDn": "Group DN",
       "matchDnPlaceholder": "Paste the group's full distinguished name",
       "matchDnHint": "Copy the distinguished name exactly as the directory returns it: attribute type case does not affect matching, but value case does.",
@@ -4381,7 +4451,7 @@
       "loadFailed": "The mapping rules for this source could not be read",
       "saveFailed": "The mapping rule could not be saved",
       "deleteFailed": "The mapping rule could not be deleted",
-      "deleteConfirm": "Delete the rule mapping \"{value}\" to the role \"{role}\"? Members of that group lose the role at their next sign-in.",
+      "deleteConfirm": "Delete the rule mapping \"{value}\" to the role \"{role}\"? Mapped roles with no remaining support are removed immediately. {count} accounts are affected.",
       "riskTitle": "Confirm the risk",
       "riskConfirm": "Understood, save anyway",
       "adminNote": "A rule that maps to the administrator role requires risk confirmation and is recorded in the audit log. The approver role only grants eligibility; approval scopes still have to be created per person.",

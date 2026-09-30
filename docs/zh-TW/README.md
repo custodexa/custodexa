@@ -28,20 +28,40 @@
 
 ## 快速開始
 
-Linux 伺服器請用安裝包安裝。從發行頁把 `custodexa-<版本>.tar.gz`、`SHA256SUMS`、
-`SHA256SUMS.sigstore.json` 下載到同一個目錄，先驗證，再解開並安裝（`1.13.0` 換成你下載的版本）：
+受支援的 Linux 伺服器以安裝包與 `custodexa.sh` 安裝、備份及升級；`scripts/quickstart.sh` 用於開發和 macOS／Windows 試用。
+
+從 1.14.0 起，發行版的下載引導腳本會取得最新版安裝包與 `SHA256SUMS`、核對安裝包 SHA-256、解壓到 `/opt/custodexa`，再開啟管理選單：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+指定版本及部署目錄時：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+若要先檢視引導腳本，先執行 `curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh`，再執行 `sudo bash get-custodexa.sh`。已有部署時不會覆寫，會交給現有的 `custodexa.sh`。引導腳本只核對 SHA-256；安裝包簽章請依下方步驟手動驗證，映像簽章由 `custodexa.sh` 處理。
+
+在 Bash 或 Zsh 先執行 `set -o pipefail`，引導腳本下載失敗時整段管線才會回報非零結束碼。先下載再執行時，請確認下載成功後才執行第二行。將 `CX_GET_RELEASE_BASE` 指向其他發行端點，表示同時信任該來源的安裝包與 `SHA256SUMS`；雜湊相符本身不證明發行者身分。
+
+若要手動驗證安裝包簽章，從發行頁把 `custodexa-<版本>.tar.gz`、`SHA256SUMS`、
+`SHA256SUMS.sigstore.json` 下載到同一個目錄，先驗證，再解開並安裝（`1.14.0` 換成你下載的版本）：
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
-`install` 會在寫入任何檔案前先檢查主機，產生 `.env` 與其中的機密，取得映像並逐一與發行清單的摘要核對，
+`install` 會在寫入任何檔案前先檢查主機，產生 `.env` 與其中的機密，取得發行映像並與發行清單摘要核對（本機建置時則先核對安裝包原始碼），
 啟動服務並等待後端回報就緒，最後輸出連線網址與 admin 登入資訊；你已經填好的值一律不動。
 `custodexa.sh status` 可查看部署狀態，不做任何變更。離線主機、每一步的檢查與目錄結構，
 見[用安裝包安裝](QUICKSTART.md#用安裝包安裝)。
@@ -49,6 +69,12 @@ sudo /opt/custodexa/custodexa.sh install
 腳本畫面依系統語系顯示，而 `sudo` 常會重設語系，畫面就會是英文。要繁體中文或日文畫面，
 在任何 `custodexa.sh` 指令加上 `--lang zh-TW` 或 `--lang ja`；要用選單則執行
 `sudo /opt/custodexa/custodexa.sh --lang zh-TW`。
+
+`install --images-from source` 先核對安裝包內原始碼校驗和，再於本機建置 backend 與 frontend；速度較慢，上游映像、基底映像與建置依賴仍須取得，並非完全離線。預設 `auto` 依序嘗試本機、離線包、GHCR、Docker Hub、最後本機建置。無法連到映像倉庫的主機請用對應架構的映像包與 `custodexa.sh load`。
+
+已安裝的部署可用 `sudo /opt/custodexa/custodexa.sh upgrade` 只查詢新版，不變更部署；用 `sudo /opt/custodexa/custodexa.sh upgrade <版本>` 或選單中的升級開始升級。腳本會預覽停機、停止服務，並在自管資料庫時備份；不會自動回退，回到舊版須手動還原升級前備份。見[升級 SOP](../ops/upgrade-sop.md#以管理腳本升級)。舊版 git clone 部署會被 `custodexa.sh` 拒絕；請依[人工遷移段](../ops/upgrade-sop.md#舊原始碼部署的手動遷移)規劃。
+
+從 1.13.x 安裝包部署第一次升到 1.14.0 時，已安裝的 1.13.x 腳本不接受 `--images-from`；不帶此旗標執行，目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可選原始碼建置。
 
 要在 macOS、Windows 上評估，或參與開發，改從原始碼執行：
 
@@ -224,8 +250,8 @@ gh attestation verify oci://ghcr.io/custodexa/backend:1.13.0 --repo custodexa/cu
 `THIRD-PARTY-LICENSES.md` 與 `licenses/`，並標註 `org.opencontainers.image.licenses=AGPL-3.0-only`。
 本專案不發佈 guacd 映像：編排檔直接使用官方的 `guacamole/guacd:1.6.0`，以 digest 釘定。
 
-安裝包執行的就是這些映像：它的管理腳本依發行清單記錄的摘要取得每個映像，只有在映像倉庫與離線包都
-取不到時才用原始碼建置，啟動後再確認每個容器跑的都是它核對過的映像。從原始碼執行的方式不變。repo 內的編排檔不引用這些已發佈的映像：`scripts/quickstart.sh`
+預設 `auto` 模式先用發行清單摘要核對發行映像，只有其他來源失敗時才從已核對的安裝包原始碼建置自家映像。
+`--images-from source` 會直接建置自家映像，上游映像仍另行取得。啟動後逐一核對執行中容器與記錄的 image ID。從原始碼執行的方式不變。repo 內的編排檔不引用這些已發佈的映像：`scripts/quickstart.sh`
 仍從原始碼樹建置 `custodexa/backend:latest` 與 `custodexa/frontend:latest`，且永不拉取（`pull_policy: never`）。
 
 ## 文檔地圖

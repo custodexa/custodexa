@@ -4,15 +4,13 @@
 # The checks of upgrade that come before its preview, and the preview itself. Nothing here
 # writes a file or stops a service: a refusal exits 3 (1 for too little space) with nothing changed.
 #   an earlier run left unfinished   refused; its recovery command is printed
-#   the development compose file     refused (a git clone deployment run from docker-compose.dev.yml)
 #   the backend                      running: its version is noted; not running: the preview says
 #                                    the audit queue cannot be checked and the services stop directly
 #   master key mode                  a preview row, and what is needed after the upgrade
 #   the installed version's images   their IDs are noted for a rollback; missing ones are a warning
 #   space                            the backup estimate plus the new images, against the free space
 #                                    where backups go; too little stops the run here
-#   report exports                   not said: from 1.13.0 on they are kept in <data>/exports on the
-#                                    host (a first conversion copies them there, lib/convert.sh)
+#   report exports                   kept in <data>/exports on the host
 # The seal state and the audit queue are read by the drain gate (lib/drain_gate.sh), after the
 # preview is answered.
 # Needs lib/backup.sh (sourced by lib/upgrade_query.sh) loaded first.
@@ -40,7 +38,7 @@ cx_up_pre_unfinished() {
     [[ $key == *.result ]] || continue
     prefix=${key%.result}
     step=${CX_STATE[$prefix.step]:-?}
-    # An upgrade that failed from the conversion on changed the deployment: the same as interrupted.
+    # An upgrade that failed after the backup changed the deployment: the same as interrupted.
     if [ "$key" = last_upgrade.result ] && [ "${CX_STATE[$key]}" = failed ] && [[ $step =~ ^[0-9]+$ ]] \
       && [ "$step" -ge 8 ]; then
       cx_line FAIL "$(cx_msg up_failed_at "$step")"
@@ -82,7 +80,7 @@ cx_up_rerun_ok() {
 
 # cx_up_recovery_hint <state prefix> <step>: what to do after an interrupted run. For an upgrade,
 # the commands of the step it stopped at (stopped and unchanged,
-# conversion under way, switched to the new version); other commands: status and the log.
+# switched to the new version); other commands: status and the log.
 cx_up_recovery_hint() {
   local step=$2
   if [ "$1" != last_upgrade ] || ! [[ $step =~ ^[0-9]+$ ]]; then
@@ -91,10 +89,7 @@ cx_up_recovery_hint() {
     return 0
   fi
   CX_OVERLAYS=$(cx_state_get current.overlays)
-  if [ "$step" -eq 8 ] && [ "$(cx_state_get current.kind)" = legacy-git-clone ]; then
-    cx_cv_hint "$(cx_state_get conversion.from)" "$CX_ROOT/$(cx_state_get conversion.env_backup)" \
-      "$(cx_state_get conversion.old_project)" "$(cx_state_get conversion.old_files)"
-  elif [ "$step" -le 8 ]; then
+  if [ "$step" -le 8 ]; then
     cx_up_par "$(cx_msg up_hint_stopped)"
     cx_up_resume_cmd
     cx_up_par "$(cx_msg up_hint_again)"
@@ -106,21 +101,6 @@ cx_up_recovery_hint() {
       || cx_up_par "$(cx_msg up_hint_backup "$CX_ROOT/$(cx_state_get last_backup.dir)/")"
     cx_up_par "$(cx_msg up_restore_guide "$(cx_state_get previous.version)")"
   fi
-}
-
-# cx_up_pre_form: a git clone deployment started from the development compose file is not a
-# deployment form and is not upgraded.
-cx_up_pre_form() {
-  local cf
-  [ "$CX_UP_KIND" = convert ] || return 0
-  cf=$(cx_env_get "$CX_ROOT/.env" COMPOSE_FILE)
-  case $cf in
-    *docker-compose.dev.yml*)
-      cx_line FAIL "$(cx_msg up_dev_form "$cf")"
-      printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
-      return "$CX_EXIT_REFUSED"
-      ;;
-  esac
 }
 
 # cx_up_pre_backend: the backend container's state and, when it runs, the version it reports.
@@ -139,9 +119,7 @@ cx_up_pre_old_images() {
   local line name ref id
   local -a refs=()
   CX_UP_PRE_OLD_IDS="" CX_UP_PRE_OLD_MISSING=0
-  if [ "$CX_UP_KIND" = convert ]; then
-    refs=(backend=custodexa/backend:latest frontend=custodexa/frontend:latest guacd=custodexa/guacd:latest)
-  elif [ -f "$CX_ROOT/current/images.env" ]; then
+  if [ -f "$CX_ROOT/current/images.env" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       [[ $line =~ ^CUSTODEXA_IMAGE_([A-Z0-9_]+)=(.+)$ ]] || continue
       name=${BASH_REMATCH[1],,}
@@ -194,22 +172,9 @@ cx_up_pre_counts() {
 cx_up_preflight() {
   local rc=0
   # cx_up_pre_unfinished runs first of all, in cx_up_run.
-  cx_up_pre_form || return "$?"
   CX_OVERLAYS=$(cx_state_get current.overlays)
-  # A git clone deployment: a clean work tree first, then the overlays its COMPOSE_FILE names.
-  if [ "$CX_UP_KIND" = convert ]; then
-    cx_cv_check || return "$?"
-    cx_cv_plan
-    CX_OVERLAYS=$CX_CV_OVERLAYS
-  fi
   case " $CX_OVERLAYS " in *" external-database "*) CX_UP_PRE_EXTERNAL_DB=1 ;; esac
   cx_bk_vars
-  # A git clone deployment is stopped and backed up under its own project and compose files.
-  if [ "$CX_UP_KIND" = convert ] && ! cx_up_legacy_compose; then
-    cx_line FAIL "$(cx_msg up_legacy_compose_unknown "$CX_ROOT")"
-    printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
-    return "$CX_EXIT_FAILED"
-  fi
   cx_up_pre_backend
   # The operator's own backup given on the command line: only when the services already stopped
   # before this run; checked now, so a refusal changes nothing.

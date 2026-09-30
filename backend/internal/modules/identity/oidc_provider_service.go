@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/audit/port"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
 	"gorm.io/gorm"
@@ -119,9 +120,10 @@ func normalizeClaimName(raw string) (string, error) {
 //     API 可繞過 UI）。它們是外部身分的鍵，變更即等同換身分域，會使既有使用者全數失聯
 //   - 停用、刪除、密鑰輪替皆推進 auth_epoch，使既簽憑證立即失效且重新啟用不復活
 type OIDCProviderService struct {
-	agentTokens *AgentTokenService
-	db          *gorm.DB
-	codec       crypto.ColumnCodec
+	agentTokens    *AgentTokenService
+	db             *gorm.DB
+	mappingAuditTx port.TxSink
+	codec          crypto.ColumnCodec
 	// egress 出站信任邊界（issuer 形狀與 scheme 驗證）
 	egress *OIDCEgressPolicy
 	// deployDedicatedIssuers 部署層宣告的專屬 issuer（OIDC_DEDICATED_ISSUERS）。
@@ -139,6 +141,10 @@ type OIDCProviderService struct {
 	// recordingTokens 錄影 token 撤銷（in-memory 且不做世代比對，唯一失效途徑）
 	recordingTokens ProviderRecordingTokenRevoker
 }
+
+// SetMappingAuditSink binds the transactional audit writer used by source
+// disable revocation. It is configured alongside the login mapping sink.
+func (s *OIDCProviderService) SetMappingAuditSink(sink port.TxSink) { s.mappingAuditTx = sink }
 
 // NewOIDCProviderService 建立 provider 設定服務
 func NewOIDCProviderService(db *gorm.DB, codec crypto.ColumnCodec, egress *OIDCEgressPolicy,
@@ -591,7 +597,6 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	}
 
 	// 停用：推進世代（重新啟用不回退，故舊憑證永久失效）
-	disabling := req.Enabled != nil && !*req.Enabled && p.Enabled
 	if req.Enabled != nil {
 		// **啟用時重驗 issuer scheme**（spec L67-69）：issuer 建後不可變，
 		// 但 AllowInsecureHosts 是部署層狀態——dev 建立的 http provider 在同一份
@@ -610,11 +615,20 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 	// **世代推進與掃描標記一律走 invalidateProviderLocked**（3.8a）：
 	// 早期版本把 `auth_epoch + 1` 混進 updates map，那使推進與收線分屬兩個時刻，
 	// 中間的窗口正是 design 行 266 的 TOCTOU
-	needsInvalidation := disabling || secretRotated
+	var disabling, needsInvalidation bool
 	var plan *providerRevocationPlan
-	reason := invalidationReason(disabling, secretRotated)
+	var reason string
 
 	err = WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+		// The initial read is only for request validation. A concurrent enable
+		// may commit before this transaction acquires the source lock.
+		var current model.OIDCProvider
+		if err := tx.First(&current, id).Error; err != nil {
+			return err
+		}
+		disabling = req.Enabled != nil && !*req.Enabled && current.Enabled
+		needsInvalidation = disabling || secretRotated
+		reason = invalidationReason(disabling, secretRotated)
 		if len(updates) > 0 {
 			if err := tx.Model(&model.OIDCProvider{}).Where("id = ?", id).
 				Updates(updates).Error; err != nil {
@@ -623,6 +637,11 @@ func (s *OIDCProviderService) Update(id uint, req *OIDCProviderRequest) (*OIDCPr
 		}
 		if !needsInvalidation {
 			return nil
+		}
+		if disabling {
+			if err := revokeMappingSupportsLocked(tx, s.mappingAuditTx, model.RoleMappingChannelKindProvider, id, "source", 0); err != nil {
+				return err
+			}
 		}
 		var perr error
 		plan, perr = s.invalidateProviderLocked(tx, id, reason)
@@ -694,15 +713,7 @@ func (s *OIDCProviderService) Delete(id uint) error {
 	if linked > 0 {
 		return ErrOIDCProviderInUse
 	}
-	// 仍有映射規則者拒刪：不擋的話「刪掉重設」之後全部規則變孤兒，
-	// 而來源詳情頁的映射區段看不出異常（同目錄側的裁決）
-	total, _, err := CountMappings(s.db, model.RoleMappingChannelKindProvider, id)
-	if err != nil {
-		return err
-	}
-	if total > 0 {
-		return ErrOIDCProviderHasMappings
-	}
+	// Rule existence is checked again while holding the provider lock below.
 	// 刪除亦走**完整**失效流程（design 行 64）：推進世代 → 撤 refresh → 終斷協議
 	// 連線 → 收線監看訂閱 → 撤銷錄影 token，與停用同一套。
 	// 只推進世代不夠：「外部身分已全數解綁、但先前建立的協議連線仍在」的狀態下
@@ -711,7 +722,13 @@ func (s *OIDCProviderService) Delete(id uint) error {
 	// 軟刪與失效同鎖同交易：分開做會留下「已刪除但尚未收線」的中間態，
 	// 而該態下任何殘留的兌換都不再有 provider 列可鎖
 	var plan *providerRevocationPlan
-	err = WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+	err := WithOIDCProviderLock(s.db, id, func(tx *gorm.DB) error {
+		if err := cleanupMappingHistoryForSourceLocked(tx, s.mappingAuditTx, model.RoleMappingChannelKindProvider, id); err != nil {
+			if errors.Is(err, ErrMappingSourceHasRules) {
+				return ErrOIDCProviderHasMappings
+			}
+			return err
+		}
 		var perr error
 		plan, perr = s.invalidateProviderLocked(tx, id, "provider_deleted")
 		if perr != nil {

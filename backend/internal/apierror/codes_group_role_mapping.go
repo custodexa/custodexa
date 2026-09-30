@@ -47,6 +47,12 @@ var (
 	// CodeMappingRuleNotFound 指定的映射規則不存在（或不屬於這個來源）
 	CodeMappingRuleNotFound = register("MAPPING_RULE_NOT_FOUND",
 		Descriptor{ZhFallback: "找不到指定的映射規則"})
+	CodeMappingUsageAckRequired = register("MAPPING_USAGE_ACK_REQUIRED",
+		Descriptor{ZhFallback: "此映射涉及既有授權或審核用途，請先確認"})
+	CodeExternalGroupNotFound = register("EXTERNAL_GROUP_NOT_FOUND",
+		Descriptor{ZhFallback: "找不到指定的外部群組"})
+	CodeExternalGroupNoteTooLong = register("VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG",
+		Descriptor{ZhFallback: "外部群組備註不得超過 200 字"})
 
 	// CodeLDAPDirectoryHasMappings 目錄仍有映射規則，拒刪（409）
 	CodeLDAPDirectoryHasMappings = register("LDAP_DIRECTORY_HAS_MAPPINGS",

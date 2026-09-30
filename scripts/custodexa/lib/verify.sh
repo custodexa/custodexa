@@ -23,7 +23,7 @@ cx_tree_sha256() {
 # One release is one set of files, checked as a whole before it is published and again by whoever
 # downloads it:
 #   custodexa-<ver>.tar.gz  custodexa-images-<ver>-amd64.tar  custodexa-images-<ver>-arm64.tar
-#   MANIFEST.json  SHA256SUMS  SHA256SUMS.sigstore.json
+#   MANIFEST.json  get-custodexa.sh  SHA256SUMS  SHA256SUMS.sigstore.json
 readonly CX_SIGSTORE_ISSUER=https://token.actions.githubusercontent.com
 
 # cx_verify_release_assets <dir> <signer identity> [<image-digests.json>]
@@ -44,7 +44,7 @@ cx_verify_release_assets() {
     fi
     ver=${pkgs[0]#custodexa-}
     ver=${ver%.tar.gz}
-    expected="SHA256SUMS SHA256SUMS.sigstore.json MANIFEST.json custodexa-$ver.tar.gz custodexa-images-$ver-amd64.tar custodexa-images-$ver-arm64.tar"
+    expected="SHA256SUMS SHA256SUMS.sigstore.json MANIFEST.json get-custodexa.sh custodexa-$ver.tar.gz custodexa-images-$ver-amd64.tar custodexa-images-$ver-arm64.tar"
     for f in $expected; do
       [ -f "$f" ] || bad "missing: $f"
     done

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -61,7 +61,9 @@ func setupRecordingTokenEnv(t *testing.T) *recTokenEnv {
 		&model.OIDCProvider{}, &model.UserExternalIdentity{}, &model.Session{},
 		&model.AuditLog{}, &model.UserRole{},
 		// provider 刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.UserGroup{}, &model.UserGroupMember{}, &model.UserRoleMapping{},
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	oldDB := database.DB

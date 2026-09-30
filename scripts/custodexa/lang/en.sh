@@ -15,14 +15,22 @@ Nothing was changed.'
 MSG_images_env_bad_line='%s line %s is not CUSTODEXA_IMAGE_<NAME>=<image reference>.
 Nothing was started.'
 MSG_overlay_unknown='Unknown deployment form "%s" in state.json.'
-MSG_compose_explicit_incomplete='Internal error: a compose call without project name, project folder
-or compose file was refused.'
 MSG_state_bad='The state file %s is damaged at line %s. Nothing was changed.'
 MSG_state_bad_prev='The previous copy is %s. Check it, and if it is correct,
 restore it with:'
 MSG_usage_unknown_command='Unknown command "%s". See: custodexa.sh --help'
 MSG_usage_unknown_option='Unknown option "%s". See: custodexa.sh --help'
 MSG_usage_missing_value='Option %s needs a value.'
+MSG_usage_images_from_value='Unknown image source "%s"; choose auto or source.'
+MSG_usage_images_from_command='--images-from is only for install or upgrade with a target.'
+MSG_usage_images_from_conflict='--images-from source cannot be combined with --images.'
+MSG_legacy_refused='This is an older git clone deployment. custodexa.sh cannot install
+or upgrade here. Deployment files and services are unchanged.
+
+Check backups and deployment settings first. Follow the manual migration
+section in the Upgrade SOP, or install the package in a separate clean
+directory and restore by hand using Backup and Restore. Do not install
+against the existing data directory.'
 MSG_command_not_in_build='The command "%s" is not part of this build.'
 MSG_lock_busy='Another custodexa.sh is running on this deployment (PID %s).
 Wait for it to finish.'
@@ -61,6 +69,8 @@ MSG_help_opt_backup_time='  --backup-time <time>   (upgrade) With --backup-ref: 
 MSG_help_opt_backup_restore='  --backup-restore <doc> (upgrade) With --backup-ref: where the restore
                          procedure is documented'
 MSG_help_opt_images='  --images <path>        (install, upgrade) Offline image bundle to use'
+MSG_help_opt_images_from='  --images-from <mode>   (install, upgrade with target) auto or source;
+                         auto is the default, source builds own images locally'
 MSG_help_opt_lang='  --lang <language>      zh-TW, ja or en; see Language below'
 MSG_help_opt_no_color='  --no-color             No colors'
 MSG_help_opt_version='  --version              Show the script version'
@@ -144,6 +154,16 @@ into %s and run again (nothing was generated).'
 MSG_step_images='Get the program images'
 MSG_img_order='Trying in order: this host, offline bundle, GHCR, Docker Hub,
 build from source'
+MSG_img_source_mode='Image source: package source build; obtain upstream images separately'
+MSG_img_source_check='Checking the checksum of the package source…'
+MSG_img_source_ok='Source checksum matches the release manifest'
+MSG_img_wait_local='Checking this host for %s…'
+MSG_img_wait_bundle_check='Checking offline bundle %s…'
+MSG_img_wait_bundle_load='Loading offline bundle %s…'
+MSG_img_wait_registry='Obtaining %s from %s…'
+MSG_img_wait_digest='Checking the content digest of %s…'
+MSG_img_wait_build='Building %s from source; the first build may take minutes…'
+MSG_img_wait_fallback='GHCR failed (%s); trying Docker Hub'
 MSG_img_head_own='%s %s'
 MSG_img_head_upstream='%s %s (upstream %s)'
 MSG_img_and=' and '
@@ -340,8 +360,6 @@ MSG_status_label_previous='Previous'
 MSG_status_kind_installed='package deployment, installed %s'
 MSG_status_kind_upgraded='package deployment, upgraded %s'
 MSG_status_previous_kept='kept in releases/'
-MSG_status_legacy='git clone deployment, not converted yet'
-MSG_status_legacy_next='The next custodexa.sh upgrade reorganizes the folder first'
 MSG_status_not_installed='Not installed yet. To install:'
 MSG_status_install_unfinished='The install did not finish (it stopped at step %s). To finish it:'
 MSG_status_services_ok_oneshot='%s service processes started (tls-init runs once and has finished)'
@@ -500,16 +518,7 @@ MSG_up_title='Custodexa upgrade preview (nothing has been changed yet)'
 MSG_up_row_installed='  Installed          %s'
 MSG_up_row_target='  Upgrade to         %s'
 MSG_up_row_root='  Deployment         %s'
-MSG_up_row_installed_legacy='  Installed    %s (git clone deployment, %s)'
-MSG_up_row_target_legacy='  Upgrade to   %s'
-MSG_up_legacy_intro='  This host still runs a git clone deployment. This is the first
-  upgrade with the management script, so the deployment folder is
-  reorganized first and the upgrade is then completed.'
 MSG_up_confirm='Start the upgrade? [y/N]'
-MSG_up_confirm_convert='Start? [y/N]'
-MSG_up_yes_needs_target='This host runs a git clone deployment; its first upgrade reorganizes
-the deployment folder. With --yes, name the version or the package to
-upgrade to, for example:'
 MSG_up_not_target='"%s" is neither a version nor a package file (custodexa-<version>.tar.gz)'
 MSG_up_incoming_failed='Could not create the temporary folder %s'
 MSG_up_download_failed='Could not download the %s package from GitHub. To upgrade offline,
@@ -597,10 +606,6 @@ MSG_up_know_tmux='  - Have someone familiar with operating this host run it insi
     terminal tool that keeps the session alive (such as tmux or
     screen), to reduce the risk that a dropped SSH connection stops
     the upgrade'
-MSG_up_dev_form='This deployment uses the development compose file (COMPOSE_FILE=%s).
-That is not a deployment form; the management script does not
-upgrade it'
-# ---------- upgrade: waiting for the audit queue ----------
 MSG_dg_step='Wait for audit records to be written'
 MSG_dg_left_first='%s left'
 MSG_dg_left_next=' ... %s left'
@@ -671,14 +676,12 @@ MSG_up_bk_db='Database   %s  %s'
 MSG_up_bk_files='Recordings and audit files  %s  %s'
 MSG_up_unseal_after='The master key is entered in the browser, so unseal once more
 after the services start.'
-MSG_up_step_convert_skip='Reorganize the folder (not needed)'
 MSG_up_step_switch='Switch to %s'
 MSG_up_step_start='Start'
 MSG_up_step_ready='Wait until ready'
 MSG_up_step_check='Check'
 MSG_up_step_record='Record'
 MSG_up_failed_at='The last upgrade stopped at step %s.'
-MSG_up_legacy_compose_unknown='Cannot tell the compose project name or files of %s'
 MSG_up_know_verified='  - Image checksums, signatures and build provenance are verified'
 MSG_up_fail_switch='The upgrade stopped at step 9/13: could not switch to the new
 version'
@@ -819,69 +822,24 @@ MSG_menu_package_none='Upgrade from a downloaded package. No package in the curr
 (named like custodexa-%s.tar.gz).'
 MSG_menu_ask_package='Package path, or press Enter for the main menu > '
 
-# upgrade: the first conversion of a git clone deployment (preview, step 8, failure, next run)
-MSG_cv_will='What will happen, in order'
-MSG_cv_will_1='  1. Wait until all audit records are in the database'
-MSG_cv_will_2='  2. Stop the services with the existing
-     %s (the database keeps running)'
-MSG_cv_will_3='  3. Full backup, about %s; %s free where backups go'
-MSG_cv_will_3_external='  3. The database is not part of this deployment: you back it up
-     yourself (asked for once the services are stopped)'
-MSG_cv_will_4='  4. Remove the old containers (the data in data/ is not touched)
-     and reorganize the folder'
-MSG_cv_will_5='  5. Switch to %s, start it, check the version, data and keys'
-MSG_cv_dir='Folder reorganization'
-MSG_cv_stays='  Stays in place   .env, tls/, data/'
-MSG_cv_moves='  Moves to         releases/%s/ (the old version, kept)
-                   the product files tracked by git, and .git'
-MSG_cv_copies='  Copied out       report exports in the old container -> data/exports/'
-MSG_cv_env_label='  Setting change   '
-MSG_cv_env_indent='                   '
-MSG_cv_env_row='.env line %s   %s=%s'
-MSG_cv_env_row_raw='.env line %s   %s'
-MSG_cv_env_to='                              ->  %s=%s'
-MSG_cv_env_to_comment='                              ->  commented out (the new version
-                                  uses its built-in template)'
-MSG_cv_env_sep=', '
-MSG_cv_env_add_1='one new line: %s'
-MSG_cv_env_add_2='two new lines: %s'
-MSG_cv_env_add_n='%s new lines: %s'
-MSG_cv_env_saved='.env is copied aside before the change'
-MSG_cv_compose_dropped='COMPOSE_FILE in .env uses %s; the new version does not'
-MSG_cv_know_pause='  - Expect %s to %s minutes of downtime'
-MSG_cv_know_mig='  - This version changes the database structure. Going back to
-    %s means restoring this backup; anything recorded after the
-    backup is lost'
-MSG_cv_know_manage='  - Afterwards, manage it with %s/custodexa.sh.
-    %s is no longer a git folder: do not use git pull'
-MSG_cv_step='Reorganize the folder'
-MSG_cv_fail='The upgrade stopped at step 8/13 (reorganize the folder):
-%s'
-MSG_cv_why_env_copy='cannot copy .env to %s'
-MSG_cv_why_down='cannot remove the old containers'
-MSG_cv_why_exports='cannot copy the report exports out of the old backend container'
-MSG_cv_why_move='moving %s failed'
-MSG_cv_why_env='cannot rewrite .env'
-MSG_cv_why_copy='cannot put %s into releases/'
-MSG_cv_why_state='cannot write state.json'
-MSG_cv_why_signal='the run was interrupted'
-MSG_cv_stopped='The services are stopped'
-MSG_cv_dir_same='The folder is not changed yet'
-MSG_cv_dir_part='The folder is partly reorganized'
-MSG_cv_start_old='Start the old version:'
-MSG_cv_revert_title='Run these commands in order to put the git clone layout back. If
-any of them fails, stop and hand the log file to operations:'
-MSG_cv_revert_check='Check that git lists nothing but backups/ and .custodexa.lock:'
-MSG_cv_start_old_after='Only when that check lists nothing else, start the old version:'
-MSG_cv_unseal='The master key is entered in the browser, so unseal once more
-after it starts.'
-MSG_cv_hint='The folder is partly reorganized and the services are stopped.'
-MSG_cv_interrupted='The last upgrade was interrupted while reorganizing the folder.'
-MSG_cv_no_git='The git command is not on this host, so whether the product files
-in %s were edited cannot be told'
-MSG_cv_git_failed='git status failed in %s'
-MSG_cv_dirty='The git work tree in %s has changes, so
-the folder cannot be reorganized. Restore, move away or commit the
-items below until git status prints nothing, then run it again:'
 MSG_up_restore_guide='To go back to %s, restore the backup above by hand as described
 in "Backup and Restore", section 5 "Restore procedure".'
+MSG_menu_images_install='Image source'
+MSG_menu_images_upgrade='Image source for upgrade to %s'
+MSG_menu_images_auto='  [1] Auto (default): this host, offline bundle, GHCR, Docker Hub,
+      then build from source'
+MSG_menu_images_source='  [2] Build from the source in the package (slower; upstream images
+      still have to be obtained)'
+MSG_menu_images_choose='Choose [1-2], or press Enter for Auto: '
+MSG_q_wait_download='Downloading %s for the latest release…'
+MSG_q_download_ok='Downloaded %s'
+MSG_q_optional_signature_missing='Signature bundle is unavailable; publisher unverified'
+MSG_q_wait_checksum='Checking the release manifest checksum against SHA256SUMS…'
+MSG_q_checksum_ok='Release manifest checksum matches'
+MSG_q_wait_signature='Verifying the release manifest signature…'
+MSG_up_wait_download='Downloading %s…'
+MSG_up_download_ok='Downloaded %s'
+MSG_up_wait_checksum='Checking the package checksum for %s against SHA256SUMS…'
+MSG_up_checksum_ok='Checksum matches for %s'
+MSG_up_wait_signature='Verifying the release manifest signature…'
+MSG_up_step_reserved='No action at this step'

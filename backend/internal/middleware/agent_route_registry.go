@@ -6,6 +6,18 @@ package middleware
 // Asset reads are metadata and pod listings, never file contents/downloads.
 func AgentRouteDecision(method, path string) (allowed, registered bool) {
 	switch method + " " + path {
+	case "GET /api/v1/identity-sources/:type/:sourceId/role-mappings",
+		"POST /api/v1/identity-sources/:type/:sourceId/role-mappings",
+		"PUT /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+		"DELETE /api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+		"GET /api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+		"POST /api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+		"PUT /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+		"DELETE /api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+		"GET /api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId",
+		"GET /api/v1/identity-sources/:type/:sourceId/external-groups",
+		"PUT /api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId":
+		return false, true
 	case "GET /api/v1/agent-tasks/:requestId", "GET /api/v1/agent-tasks", "GET /api/v1/users/:id/agent-breaker/events":
 		return false, true
 	case "GET /api/v1/my/agents", "POST /api/v1/my/agents":

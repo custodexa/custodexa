@@ -18,6 +18,7 @@ CX_MENU_VERSION=""
 CX_MENU_FLAGS=()  # passed on to every command: an explicit language, and --no-color when given
 CX_MENU_PICK=""
 CX_MENU_FILE=""
+CX_MENU_IMAGE_FLAG=()
 
 # cx_menu_applies <script as started>: 0 when the menu is for this deployment. A git clone
 # deployment, or a folder that is no deployment root, keeps the help (the caller prints it).
@@ -28,7 +29,6 @@ cx_menu_applies() {
   CX_ROOT=$(cx_resolve_root "$CX_MENU_SELF" 2>/dev/null) || return 1
   cx_check_root_path "$CX_ROOT" || return 1
   cx_state_load "$CX_ROOT/state.json"
-  [ "$(cx_state_get current.kind)" != legacy-git-clone ] || return 1
   ver=$(cx_state_get current.version)
   if [ -z "$ver" ]; then
     CX_MENU_KIND=none
@@ -127,13 +127,32 @@ cx_menu_run() {
   cx_menu_again
 }
 
-# Upgrade to the latest: the query shows what is available; the version it suggests
-# (cx_q_latest) is then upgraded to, which shows its own preview and asks its own question.
+cx_menu_pick_images() { # [target version]: 0 auto/source selected, 1 EOF
+  local answer title
+  if [ -n "${1:-}" ]; then
+    title=$(cx_msg menu_images_upgrade "$1")
+  else
+    title=$(cx_msg menu_images_install)
+  fi
+  printf '\n%s\n%s\n%s\n\n' "$title" "$(cx_msg menu_images_auto)" "$(cx_msg menu_images_source)"
+  while :; do
+    printf '%s' "$(cx_msg menu_images_choose)"
+    if ! read -r answer; then printf '\n'; return 1; fi
+    case $answer in
+      '' | 1) CX_MENU_IMAGE_FLAG=(--images-from auto); return 0 ;;
+      2) CX_MENU_IMAGE_FLAG=(--images-from source); return 0 ;;
+      *) cx_line WARN "$(cx_msg menu_invalid)" ;;
+    esac
+  done
+}
+
+# Upgrade to the latest using the verified target from the one query.
 cx_menu_upgrade_latest() {
-  local ver
-  "$BASH" "$CX_MENU_SELF" upgrade "${CX_MENU_FLAGS[@]}" || true
-  ver=$(cx_q_latest) || ver=""
-  [ -z "$ver" ] || cx_menu_run upgrade "$ver"
+  cx_up_query_core menu || { cx_menu_again; return; }
+  if [ -n "$CX_Q_TARGET" ]; then
+    cx_menu_pick_images "$CX_Q_TARGET" || return 1
+    cx_menu_run upgrade "$CX_Q_TARGET" "${CX_MENU_IMAGE_FLAG[@]}"
+  fi
   cx_menu_again
 }
 
@@ -151,11 +170,15 @@ cx_menu_upgrade() {
       printf '%s' "$(cx_msg menu_ask_version)"
       cx_menu_read v
       [ -n "$v" ] || return 1
-      cx_menu_run upgrade "$v"
+      cx_menu_pick_images "$v" || return 1
+      cx_menu_run upgrade "$v" "${CX_MENU_IMAGE_FLAG[@]}"
       ;;
     3)
       cx_menu_pick_file package || return 1
-      cx_menu_run upgrade "$CX_MENU_FILE"
+      v=${CX_MENU_FILE##*/custodexa-}
+      v=${v%.tar.gz}
+      cx_menu_pick_images "$v" || return 1
+      cx_menu_run upgrade "$CX_MENU_FILE" "${CX_MENU_IMAGE_FLAG[@]}"
       ;;
   esac
 }
@@ -163,7 +186,10 @@ cx_menu_upgrade() {
 # cx_menu_do <action>: returns only to show the main menu again (a question answered with Enter).
 cx_menu_do() {
   case $1 in
-    install) cx_menu_run install ;;
+    install)
+      cx_menu_pick_images || return 0
+      cx_menu_run install "${CX_MENU_IMAGE_FLAG[@]}"
+      ;;
     status) cx_menu_run status ;;
     backup) cx_menu_run backup ;;
     upgrade) cx_menu_upgrade || return 0 ;;

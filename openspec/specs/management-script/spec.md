@@ -21,7 +21,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 部署根目錄與 compose 呼叫固定
 
-管理腳本 SHALL 以自身實際路徑（追符號連結）或 `CUSTODEXA_HOME` 解析部署根，並確認根目錄含 `state.json` 或 `releases/`。每一次 compose 呼叫 SHALL 顯式帶固定專案名、`--project-directory <根>` 與 `-f <根>/current/compose.yml`（加上部署形態的 overlay）；首次轉換時 SHALL 改以記下的舊專案名、舊專案目錄與舊 compose 檔呼叫，三者 SHALL NOT 省略。部署根的絕對路徑 SHALL 只含 `[A-Za-z0-9._/-]`，不合即拒絕執行。本版 SHALL 只支援 Linux，其他作業系統拒絕並指向原始碼部署路徑。
+管理腳本 SHALL 以自身實際路徑（追符號連結）或 `CUSTODEXA_HOME` 解析安裝包部署根，並確認根目錄含 `state.json` 或 `releases/`。每一次 compose 呼叫 SHALL 顯式帶固定專案名、`--project-directory <根>` 與 `-f <根>/current/compose.yml`（加上部署形態的 overlay）。部署根的絕對路徑 SHALL 只含 `[A-Za-z0-9._/-]`，不合即拒絕執行。管理腳本 SHALL 只支援 Linux；其他作業系統拒絕並指向開發者與本機試用文件。辨識到舊的 git clone 部署時，所有入口 SHALL 在寫入鎖、狀態、備份或變更服務之前拒絕，說明手動遷移或在另一個乾淨目錄安裝後手動還原的文件路徑；SHALL NOT 進行首次轉換。
 
 #### Scenario: 由符號連結呼叫
 - **WHEN** 維運經 `/usr/local/bin/custodexa.sh` 這類符號連結執行腳本
@@ -31,9 +31,27 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 - **WHEN** 部署根位於含空白或引號的路徑
 - **THEN** 前置檢查以 FAIL 停下並說明原因，未寫入任何檔
 
+#### Scenario: 舊 git clone 部署拒絕
+- **WHEN** 腳本在含 `.git`、`VERSION` 與根目錄 `docker-compose.yml` 的舊部署樹執行 install、upgrade、status 或不帶子命令
+- **THEN** 以拒絕結束碼 3 說明人工處理路徑，沒有建立鎖、備份、狀態檔或更動服務
+
 ### Requirement: 映像取得順序與啟動後核對
 
-腳本 SHALL 對每顆映像依序嘗試本機已有、離線包、GHCR、Docker Hub、本地建置，每一步 SHALL 印出實際路徑或位址與失敗原因。取得後 SHALL 以 MANIFEST 比對內容（registry 來源比 index digest，離線來源比該架構 config digest），並記下本機 image ID；compose 引用的實際參照寫入該版本的 `images.env`，compose 的拉取政策 SHALL 為永不拉取。本地建置產物 SHALL 使用本機專用名稱，SHALL NOT 使用對外發佈的映像名稱。服務啟動後，每個容器正在執行的 image ID SHALL 等於記下的 ID，不等即視為失敗。
+`install` 與帶目標的 `upgrade` SHALL 接受 `--images-from auto|source`，未指定為 `auto`；無目標的唯讀 `upgrade` 查詢 SHALL 不接受此旗標。`auto` SHALL 對每顆映像依序嘗試本機已有、離線包、GHCR、Docker Hub、本地建置。`source` SHALL 對安裝包自家映像先核對 MANIFEST 的原始碼 checksum，再直接以安裝包內原始碼建置，不嘗試該映像的本機、離線包或 registry 發行映像；上游映像仍 SHALL 依本機、離線包、其來源 registry 取得並核對。`--images-from source` 與 `--images <離線包>` 同時給定 SHALL 於取得前拒絕。兩種模式的每一步 SHALL 在耗時呼叫前印出正在做的事與對象，完成後印出實際來源或位址及失敗原因。
+
+取得的發行映像 SHALL 以 MANIFEST 比對內容（registry 來源比 index digest，離線來源比該架構 config digest）；自建映像 SHALL 記錄已核對的原始碼 checksum、本機來源與實際 image ID，不得標成已驗發行者映像簽章。所有映像的本機 image ID SHALL 記錄；compose 引用的實際參照寫入該版本的 `images.env`，compose 的拉取政策 SHALL 為永不拉取。本地建置產物 SHALL 使用本機專用名稱，SHALL NOT 使用對外發佈的映像名稱。服務啟動後，每個容器正在執行的 image ID SHALL 等於記下的 ID，不等即視為失敗。
+
+#### Scenario: 預設自動模式
+- **WHEN** 維運未指定 `--images-from` 執行 install
+- **THEN** 每顆映像依原有順序取得，並記錄實際來源與 image ID
+
+#### Scenario: 指定原始碼建置
+- **WHEN** 維運執行 `install --images-from source` 且安裝包原始碼 checksum 正確
+- **THEN** 自家映像直接以本機專用名稱建置，上游依賴另行取得；畫面與 state 不將自建映像稱為發行簽章已驗證
+
+#### Scenario: 原始碼 checksum 不符
+- **WHEN** 選擇 `source`，安裝包內原始碼 checksum 與 MANIFEST 不同
+- **THEN** 腳本以 FAIL 停止並提示重新下載，不改用 registry 或已載入的自家映像
 
 #### Scenario: 離線載入後啟動
 - **WHEN** 主機無法連 registry，維運以離線包安裝，且主機使用 classic 或 containerd 任一種 image store
@@ -45,11 +63,15 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 完整性驗證分層並明示未驗項
 
-校驗和驗證 SHALL 不可略過；主機有 cosign 或 gh 時 SHALL 自動驗發行清單簽章、映像簽章與出處證明；缺工具或離線時 SHALL 明示「未驗發行者」並附可在其他電腦執行的手動驗證指令，繼續前 SHALL 經確認。驗了哪幾層 SHALL 寫入狀態檔與紀錄。`load` 使用離線包旁的發行清單時，只有該清單經 `SHA256SUMS` 的簽章驗證通過，畫面才 SHALL 標示發行者已驗證；無法驗證時 SHALL 標為略過並說明原因；簽章驗了且不符時 SHALL 停止且不載入。
+校驗和與映像摘要驗證 SHALL 不可略過；SHA256SUMS、MANIFEST、原始碼 checksum 或映像摘要不符 SHALL 以 `[FAIL]` 停止並提示重新下載。主機能執行來源驗證時 SHALL 驗發行清單簽章、映像簽章與出處證明；缺工具、缺簽章檔、離線或簽章驗證不符時 SHALL 以 `[WARN]` 說明來源未經證實並繼續，不新增確認關卡。驗證結果 SHALL 如實寫入 log 與 state，不符 SHALL 記為 mismatch 或同義值，不得記成已驗證。`load` 使用離線包旁的發行清單或已解開安裝包內的清單時，只有清單的相應簽章已驗證，畫面才 SHALL 標示發行者已驗證；無法驗證或不符 SHALL 警告並記錄真實原因，內容校驗不符仍停止。
 
 #### Scenario: 主機沒有 cosign
 - **WHEN** 在沒有 cosign 的主機安裝
-- **THEN** 畫面標示簽章層為略過並附手動指令，互動時要求確認，非互動時須帶 `--yes` 且紀錄寫明略過原因
+- **THEN** 畫面以 WARN 說明簽章未驗與原因，繼續執行並在驗證紀錄中標示未驗
+
+#### Scenario: 簽章驗證不符
+- **WHEN** 發行清單或映像的簽章驗證完成但身分或簽章不符
+- **THEN** 畫面以 WARN 說明簽章不符、來源未經證實，繼續執行，log 與 state 記 mismatch
 
 ### Requirement: 狀態檔格式受限且原子更新
 
@@ -105,7 +127,9 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 終端機下不帶子命令顯示主選單
 
-stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、載入離線包、說明、離開；已安裝時列查看狀態、升級、備份、載入離線包、說明、離開。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。任一端不是終端機、部署目錄判定不出、或是舊的 git clone 部署時，SHALL 維持印出說明並以結束碼 2 結束。
+stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、載入離線包、說明、離開；已安裝時列查看狀態、升級、備份、載入離線包、說明、離開。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。
+
+選單選「升級到最新版」SHALL 只顯示版本、可否升級及必要的驗證與資料變更警告，不顯示唯讀查詢專用的執行指令或「只查詢」尾段；同一次查詢的已核對目標用於後續升級。校驗和不符 SHALL 不給升級結論。任一端不是終端機或部署目錄判定不出時，SHALL 印出說明並以結束碼 2 結束；舊 git clone 部署 SHALL 依「部署根目錄與 compose 呼叫固定」拒絕。
 
 #### Scenario: 自動化不帶子命令
 - **WHEN** 在沒有終端機的環境（stdin 或 stdout 不是終端機）不帶子命令執行腳本
@@ -115,6 +139,66 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 - **WHEN** 維運在終端機的已安裝部署選「載入離線映像包」並選目前目錄列出的離線包
 - **THEN** 腳本以該離線包的絕對路徑執行 `load`，結束後回到主選單
 
+#### Scenario: 最新版接著升級
+- **WHEN** 維運從主選單選「升級到最新版」，查到可直接升級的目標版
+- **THEN** 畫面只顯示可否升級及相關警告，詢問映像來源後進入升級預覽，不印唯讀查詢專用尾段
+
 #### Scenario: 舊的 git clone 部署不進選單
 - **WHEN** 在終端機對舊的 git clone 部署目錄不帶子命令執行腳本
-- **THEN** 印出說明並以結束碼 2 結束
+- **THEN** 說明人工遷移或新安裝後還原的文件路徑，以結束碼 3 拒絕，不顯示選單
+
+### Requirement: 發行版下載引導腳本核對安裝包後交棒
+
+從 1.14.0 起，Release SHALL 以固定檔名提供 `get-custodexa.sh`，並將其列入已簽章的 `SHA256SUMS`；發行流程 SHALL 核對從 draft Release 下載的腳本與其餘附件。引導腳本 SHALL 僅在 Linux x86_64／aarch64 以 root 執行，預設使用 `https://github.com/custodexa/custodexa/releases`，由最新版 Release 的 `MANIFEST.json` 解析三段數字版本；`--version X.Y.Z` SHALL 改用指定版本，`--dir` SHALL 指定部署目錄，預設 `/opt/custodexa`。版本與部署目錄參數不合格式時 SHALL 在下載或寫入前拒絕。
+
+引導腳本 SHALL 下載該版本安裝包與 `SHA256SUMS`，在解壓前核對安裝包 SHA-256；缺少對應項或雜湊不符時 SHALL 停止、提示重新下載，且不建立部署目錄。核對通過後 SHALL 確認安裝包頂層為 `custodexa/`，放入指定目錄，並 `exec` 該目錄的 `custodexa.sh`。引導腳本只核對 SHA-256；安裝包簽章由文件指示手動驗證，映像簽章交由 `custodexa.sh` 處理。已有部署時 SHALL 不下載、不解壓、不覆寫，直接交給其現有的 `custodexa.sh`。除引導腳本自身的 `--version`、`--dir` 外，其餘參數 SHALL 依原順序轉交；無參數 SHALL 交給管理選單。
+
+交棒前 SHALL 確認部署目錄、其父目錄及實際執行的普通腳本檔由 root 擁有，且群組與其他人不可寫；部署目錄及其父目錄若為符號連結 SHALL 拒絕。安裝包既有的固定包內相對連結 `current -> releases/<版本>` 與根目錄 `custodexa.sh -> current/custodexa.sh` MAY 保留，但 SHALL 確認連結由 root 擁有、指向包內固定位置，最終腳本為同一部署樹內的普通檔案且符合上述權限；其他連結成員或外部連結 SHALL 在執行前拒絕。新安裝 SHALL 在目標父目錄下以私有暫存目錄解壓與檢查，通過後在同一檔案系統以 rename 發佈，失敗時清理暫存，不留下部分部署。
+
+以 `curl | bash` 或等價管線執行時，若 stdin 不是終端機但 `/dev/tty` 可用，交棒前 SHALL 將子腳本 stdin 接至 `/dev/tty`。沒有可用終端機且未帶子命令時 SHALL 立即拒絕並提示 `install --yes` 等明確子命令，不得等待管線輸入。`CX_GET_RELEASE_BASE` 若由呼叫環境覆寫，SHALL 作為所有 Release 下載的來源；呼叫者設定此值即信任該來源提供的版本、安裝包及 `SHA256SUMS`，腳本的雜湊比對不證明其發行者身分。
+
+三語安裝文件 SHALL 在引導腳本的管線指令旁給出可傳遞首次下載失敗結束碼的用法，並明示 `CX_GET_RELEASE_BASE` 覆寫等於同時信任該來源的安裝包與 `SHA256SUMS`。
+
+#### Scenario: 解析最新版
+- **WHEN** 維運未帶 `--version` 執行引導腳本，最新版 Release 的 `MANIFEST.json` 含有效的 `X.Y.Z` 版本
+- **THEN** 腳本下載該版安裝包及 `SHA256SUMS`，核對後解壓到預設或指定部署目錄並交棒
+
+#### Scenario: 指定版本與部署目錄
+- **WHEN** 維運帶 `--version 1.14.0 --dir /srv/custodexa` 執行引導腳本
+- **THEN** 腳本只取得 1.14.0 的安裝包與校驗和，核對後將包內 `custodexa/` 放到 `/srv/custodexa`；非三段數字版本在下載前拒絕
+
+#### Scenario: 安裝包雜湊不符
+- **WHEN** 下載的安裝包與 `SHA256SUMS` 中對應的 SHA-256 不同或清單未列該包
+- **THEN** 腳本在解壓前停止並提示重新下載，目標部署目錄未建立
+
+#### Scenario: 已有部署交棒
+- **WHEN** `--dir` 指向已有 `custodexa.sh` 的安裝包部署，且帶入 `upgrade 1.14.1 --yes`
+- **THEN** 引導腳本不下載或覆寫檔案，`exec` 現有管理腳本並以原順序傳入 `upgrade 1.14.1 --yes`
+
+#### Scenario: 既有部署路徑可被他人寫入
+- **WHEN** 部署目錄、其父目錄或實際執行腳本不是 root 擁有，或群組／其他人可寫，或部署目錄／父目錄是符號連結
+- **THEN** 引導腳本在交棒前說明擁有者與權限問題並拒絕，不執行該腳本
+
+#### Scenario: 安裝包連結只留在包內
+- **WHEN** 安裝包包含 `current -> releases/<版本>` 及根 `custodexa.sh -> current/custodexa.sh` 的固定相對連結
+- **THEN** 引導腳本核對兩個連結與解析後包內普通腳本的擁有者及權限後交棒；任何外部或其他連結成員在解壓與發佈前拒絕
+
+#### Scenario: 解壓或發佈失敗
+- **WHEN** 已核對雜湊的安裝包在解壓、結構檢查或同檔案系統 rename 時失敗
+- **THEN** 私有暫存目錄被清理，目標部署目錄不留半套檔案
+
+#### Scenario: 管線執行時讀取終端機
+- **WHEN** 引導腳本從管線讀取自身內容、stdin 不是終端機而 `/dev/tty` 可用，且未帶子命令
+- **THEN** 核對及交棒後，`custodexa.sh` 的選單從 `/dev/tty` 讀取輸入，不再讀取腳本管線
+
+#### Scenario: 無終端機也未帶子命令
+- **WHEN** 引導腳本的 stdin 不是終端機、`/dev/tty` 不可用，且沒有要轉交的子命令
+- **THEN** 腳本立即拒絕並提示 `install --yes` 等可用形式，不等待輸入；帶有子命令時則將參數原樣轉交
+
+#### Scenario: 覆寫 Release 來源
+- **WHEN** 呼叫環境設定 `CX_GET_RELEASE_BASE` 指向其他端點
+- **THEN** 腳本從該端點取得版本清單、安裝包及 `SHA256SUMS` 並核對其內容；該端點及其清單被視為呼叫者信任的來源，畫面不宣稱發行者簽章已驗證
+
+#### Scenario: 文件中的首次下載失敗
+- **WHEN** 維運照三語快速開始中的管線範例執行，而取得 `get-custodexa.sh` 的下載失敗
+- **THEN** 文件提供的 `pipefail` 用法使整段管線回報非零結束碼，且相鄰說明揭露覆寫來源的信任邊界

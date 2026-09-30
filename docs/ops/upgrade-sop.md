@@ -77,7 +77,7 @@ Under a bind mount, permission settings inside the image do not apply, and the h
 
 > **If you skip it**: any local account on the host can read every session recording.
 
-**The recordings directory has one required owner and mode**: `${DATA_PATH}/recordings` is `1000:0` with mode `2770`. guacd writes RDP and VNC recordings as uid 1000, and the backend reads, renames and expires them through group 0; the setgid bit keeps new files in group 0. Owned by anyone else, the directory takes no RDP or VNC recording. Without group 0 on the directory, the backend can neither rename those recordings nor play them back; without the setgid bit, it renames them but cannot play them back, because new files then carry guacd's group 1000. `bash scripts/quickstart.sh --up` sets this before it starts the stack. By hand, from the deployment directory (put your `DATA_PATH` in place of `$PWD/data`):
+**The recordings directory has one required owner and mode**: `${DATA_PATH}/recordings` is `1000:0` with mode `2770`. guacd writes RDP and VNC recordings as uid 1000, and the backend reads, renames and expires them through group 0; the setgid bit keeps new files in group 0. Owned by anyone else, the directory takes no RDP or VNC recording. Without group 0 on the directory, the backend can neither rename those recordings nor play them back; without the setgid bit, it renames them but cannot play them back, because new files then carry guacd's group 1000. In the source-tree layout, `bash scripts/quickstart.sh --up` sets this before starting the stack. Package `install` prepares it in step 4. By hand, from the deployment directory (put your `DATA_PATH` in place of `$PWD/data`):
 
 ```bash
 docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
@@ -140,7 +140,7 @@ Run the five steps in the "deployment verification" section of `docs/QUICKSTART.
 
 ## 2. Version upgrade procedure
 
-A deployment installed from the release package upgrades with its management script, as described in the first subsection below. A deployment that runs from a `git clone` of the source upgrades with the manual procedure (§2.0 to §2.8); a clone on 1.12.4 can instead be converted once to the package layout by the 1.13.0 script (end of the first subsection). The manual procedure keeps its section numbers because other documents refer to them, and for a package deployment it explains what each step of the script does.
+A package deployment uses `custodexa.sh upgrade` for the formal upgrade path. The numbered manual procedure below remains a reference for an older source deployment and explains the script's checks; it is not a script conversion path. `custodexa.sh` refuses an older git clone tree before writing or stopping services. Plan its move under [Manual migration of an older source deployment](#manual-migration-of-an-older-source-deployment).
 
 ### Upgrading with the management script
 
@@ -152,13 +152,19 @@ A deployment installed from the release package upgrades with its management scr
 2. Plan the downtime. Stopping the services ends every session in progress; the preview shows how many connections are open and how long the service is expected to be down. Announce the window and let sessions end.
 3. Run the upgrade on the host inside `tmux` or `screen`, so that a dropped SSH connection does not interrupt it.
 
-**Starting it.** Run `sudo /opt/custodexa/custodexa.sh` and choose **Upgrade** in the menu, then the latest version, a version you name, or a package you downloaded (for a host without internet access). Nothing changes until you answer the preview. For automation the same is available as commands:
+**Starting it.** Run `sudo /opt/custodexa/custodexa.sh` and choose **Upgrade** in the menu, then the latest version, a version you name, or a package you downloaded (for a host without internet access). The running services are not stopped before you answer the preview; package files may already have been downloaded and verified. For automation the same is available as commands:
 
 ```bash
 sudo /opt/custodexa/custodexa.sh upgrade                 # only checks for a newer version; changes nothing
-sudo /opt/custodexa/custodexa.sh upgrade 1.13.2          # downloads, verifies and upgrades
-sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SHA256SUMS next to it
+sudo /opt/custodexa/custodexa.sh upgrade 1.14.0          # downloads, verifies and upgrades
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SHA256SUMS next to it
 ```
+
+From 1.14.0, rerunning `get-custodexa.sh` with the existing deployment's `--dir` hands control to its installed `custodexa.sh` without replacing files. Choose Upgrade there or use the installed script's `upgrade` command above.
+
+When the installed script is 1.14.0 or later, the menu asks for an image source after a target is chosen; Enter selects `auto`. On the command line, omitting `--images-from` selects `auto` and tries this host, an offline bundle, GHCR, Docker Hub, then local build. `--images-from source` checks the new package's source checksum, then builds its backend and frontend locally; it is slower, and upstream images, base images and build dependencies still have to be obtained. It is not a fully offline choice and cannot be combined with `--images <bundle>`. A bare `upgrade` is a read-only query and does not accept `--images-from`.
+
+For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 1.13.x script starts the upgrade and does not accept `--images-from`; its menu does not offer an image-source choice. Run the upgrade without that flag. The 1.14.0 target uses `auto`. After 1.14.0 is installed, later upgrades can choose source building in the menu or with `--images-from source`.
 
 `--yes` answers the confirmations; it does not skip the audit queue check. On a host without registry access, give the image bundle with `--images <bundle>` or load it first with `load`. The installed script only fetches the package, checks it against `SHA256SUMS` and, with `cosign` installed, the signature of `SHA256SUMS`, unpacks it into `releases/<version>/` and hands over to the new version's script, which runs the upgrade. A downgrade, the installed version itself, and an installed version below the new release's minimum source version are refused with exit code 3 and nothing changed; in the last case the screen names the version to upgrade to first.
 
@@ -168,12 +174,12 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SH
 |---|---|---|
 | 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the backup and the new images | §2.0 |
 | 2 | Obtains and verifies the new images | §2.2 |
-| 3 | Preview and confirmation; nothing has changed before this | |
+| 3 | Preview and confirmation; the running services have not been stopped yet | |
 | 4 | Waits up to 120 seconds for the audit queue to reach 0. When the queue cannot be read, it passes only a system that reports itself sealed and was not unsealed since its container started; anything else stops the run with the service still running and nothing changed | §2.3 step 3, §2.4 |
 | 5 | Stops backend, guacd and frontend (the database keeps running) and reads the backend log for a drain timeout | §2.3 step 4, §3.1 |
 | 6 | Confirms the old instance is gone: 0 connections of the application account | §2.3 step 5 |
 | 7 | Records the snapshot and takes the backup (below) | §2.1 |
-| 8 | First conversion only: reorganizes the folder (end of this subsection) | |
+| 8 | Reserved for historical step numbering; no conversion or file move is performed | |
 | 9 | Points `current` at the new release and prepares the recordings folder | §1.3, §2.5 |
 | 10 | Starts the services | §2.5 |
 | 11 | Waits up to 180 seconds for the backend to answer its health check | §2.5 |
@@ -197,28 +203,24 @@ After a successful upgrade the screen lists what is left to people: unsealing, w
 |---|---|---|
 | Steps 1 to 4 | The old version runs; nothing changed | Fix the cause the screen names and run the upgrade again |
 | Steps 5 to 7 | The services are stopped; version and data unchanged | Start the old version with the command on the screen, or fix the cause and run the upgrade again |
-| Step 8 | The first conversion stopped part way | Run the commands on the screen, in order: they put the folder back and start the old version |
+| Step 8 | No conversion action runs in this release | Continue according to the result shown by the script |
 | Steps 9 to 12 | The new version is in place | Read the backend log with the command on the screen. To go back, restore the backup the screen names, as in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script); until the script's record is put back as described there, it refuses another upgrade and prints the same instructions |
 
 An upgrade interrupted by Ctrl-C or a dropped connection is handled the same way: the next run prints the instructions for the step it had reached. Interrupted at steps 1 to 4, or at steps 5 to 7 once the old version runs again, the next upgrade starts over with a warning. Every command on these screens carries the full path, the project name and the compose files, so it works from any directory.
 
 **Going back.** This release has no rollback command. To return to the version before an upgrade, restore the backup it took, as described in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script). Everything recorded after that backup is lost.
 
-**The first conversion of a `git clone` deployment.** A deployment running 1.12.4 from a `git clone` of the source can be converted once to the package layout by the 1.13.0 script; the conversion is step 8 of that upgrade, after the backup.
+### Manual migration of an older source deployment
 
-- **Conditions**: `git` is installed, the deployment is not the development compose file, and the git work tree is clean. `git status --porcelain` must print nothing other than the script's own files, such as `backups/`; anything else stops the run before the preview, with the entries listed and nothing changed. Commit, restore or move them away first.
-- **What changes**: `.git` and every top-level item tracked by git move to `releases/1.12.4/`. `.env`, `tls/`, the data folder, `backups/` and `logs/` stay where they are. `.env` is first copied into the backup folder as `env-before-convert.bak`; then `DATA_PATH` becomes an absolute path, and `COMPOSE_FILE` and `COMPOSE_PROJECT_NAME` are set, each on its commented-out line when `.env` has one, else on a new line. The preview shows each changed line with its old and new value.
-- **Export artifacts**: the 1.12.4 backend keeps them inside its container. Before the conversion removes that container, it copies them into `data/exports`, where 1.13.0 keeps them; the files keep their modes and the folder is made `0700`.
-- **Running it**: download and verify the 1.13.0 package as in the [Quickstart](../QUICKSTART.md#2-verify-before-unpacking), unpack it outside the deployment folder, and point the script at the deployment folder:
+An older deployment rooted in a git clone cannot be installed or upgraded in place by `custodexa.sh`. The script refuses it before changing files or services. Choose one of these planned paths: coordinate a manual migration after checking the topology and backups against this SOP, or install the release package in a separate clean directory and manually restore using [Backup and Restore](./backup-and-restore.md). Neither path is an automatic conversion, and neither is a command sequence supplied by the management script.
 
-  ```bash
-  mkdir /tmp/custodexa-1.13.0
-  tar -xzf custodexa-1.13.0.tar.gz -C /tmp/custodexa-1.13.0
-  sudo env CUSTODEXA_HOME=/data/custodexa /tmp/custodexa-1.13.0/custodexa/custodexa.sh upgrade
-  ```
+1. Record the running version, target version, database shape, storage paths and image availability. Check that the target accepts the source version and database schema before scheduling a cutover.
+2. Plan downtime and prevent both environments from writing to the same database. Stop the old application services and confirm all sessions and the audit queue have drained before taking a consistent backup.
+3. Back up the database, recordings, audit files, `.env` and `tls/` from the same stopped point. Record external database and storage locations separately, and keep the KEK material, other key custody and restore instructions available. Do not treat exported evidence artifacts as part of the routine backup.
+4. For the clean-directory path, verify and install the package in a different deployment directory. Stop its application services before restoring data. Adapt paths and deployment settings to the chosen topology; do not reuse the old tree's compose commands as package commands.
+5. Restore with the relevant database and file procedure in [Backup and Restore](./backup-and-restore.md), then check version compatibility, schema migrations, row counts, key fingerprints, recordings and the public entry point before reopening service. Keep the old instance stopped throughout.
 
-  There is no menu in a `git clone` deployment; the command goes straight to the conversion preview. Without a terminal, name the version (`upgrade 1.13.0 --yes`); a bare `upgrade --yes` is refused.
-- **Afterwards**: manage the deployment with `/data/custodexa/custodexa.sh`. The folder is no longer a git working tree, so do not update it with `git pull`. Going back to 1.12.4 is [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script), which also puts the folder back.
+The exact file, database and compose commands depend on the old version and deployment topology. Validate the sequence in an isolated copy before applying it to a running deployment. A package deployment that was converted by an earlier release remains a package deployment; its existing state and backups are still read.
 
 ### 2.0 Decide on the rollback plan, confirm the prerequisites, and run the pre-upgrade checks
 
@@ -229,7 +231,7 @@ The backup is §2.1; the images are the easy square to miss, because the two ima
 From 1.13.0 these two images are also published to GitHub Container Registry, with a Docker Hub mirror (see "Prebuilt images" in the [README](../../README.md#prebuilt-images)), but the compose files in the repository do not reference the published images: a deployment that follows this SOP still gets them from a build of the source tree or from delivered image files. If you build the images yourself, see the tag-aside step in §2.2; if you deploy delivered images, confirm first that you still hold the old version's image files.
 The guacd service is not built by this project: from 1.13.0 the compose files reference the official `guacamole/guacd:1.6.0` image by version and digest, so its old image keeps its own name. When images are delivered as files, the delivered set includes that official image as well.
 
-> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the twenty-nine in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
+> **What this section applies to**: the database schema of `Custodexa 1.0` starts from a single baseline (`20260816_schema_baseline`) and evolves through **incremental migrations** (the thirty in this release are listed in §2.5 below). This section therefore applies to version changes within the 1.0 baseline generation, that is, to deployments whose database has had that baseline applied.
 >
 > If the database's `schema_migrations` table contains version values this release's code does not recognize while the baseline has not been applied, the backend refuses to start (see §2.6). Treat such an upgrade across baseline generations as a new installation plus a data migration project; the scope and tooling of that migration have to be agreed separately with the delivering party and are outside this SOP.
 >
@@ -316,7 +318,7 @@ The production compose of 1.4.0 has a built-in TLS-terminating reverse proxy (th
 
 - **The external ports become 443 (https) and 80 (http)**, and frontend and backend no longer publish host ports. A host already running something on those ports takes a different pair: set `TLS_HTTPS_PORT` and `TLS_HTTP_PORT` in `.env` (8443 and 8088 are the usual choice) before the upgrade, and the external address then carries the port. Firewall rules, user bookmarks, and the SSO callback URL (`PUBLIC_BASE_URL`) all have to match the new external address.
 - **The http port only redirects**: anything arriving on the http port gets a 301 to the external https port, and no content is served there.
-- **`TRUSTED_PROXIES` covers the built-in proxy**: with it unset, every request is attributed to the proxy's own address, which is what the audit log records and what the sign-in rate limit counts against. `bash scripts/quickstart.sh` fills it in with the Docker subnet for the built-in form; deployments with their own ingress put that ingress address here instead.
+- **`TRUSTED_PROXIES` covers the built-in proxy**: with it unset, every request is attributed to the proxy's own address, which is what the audit log records and what the sign-in rate limit counts against. The source-tree `bash scripts/quickstart.sh` and package `custodexa.sh install` fill it in with the Docker subnet for the built-in form; deployments with their own ingress put that ingress address here instead.
 - **Stop the proxy container you started yourself first**: a reverse proxy started by hand per the older guide is not in the compose lifecycle, `docker compose down` does not stop it, and leaving it up makes it contend with the built-in proxy for ports and certificate files. Stop and remove it before the upgrade.
 - **Deployments with their own ingress switch to the overlay**: add `-f docker-compose.yml -f docker-compose.external-ingress.yml` to every compose command after the upgrade (or set `COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml` in `.env`); the built-in proxy does not start and frontend gets its external http port back (80 by default, changed via `HTTP_PORT` in `.env`). Two settings then belong to your ingress: forward the Host header with the port people actually connect to (the backend compares `Origin` against `Host` to recognise a same-origin request, and a `Host` without the port makes an authenticated request look cross-origin), and set `TRUSTED_PROXIES` to the ingress address.
 
@@ -534,7 +536,7 @@ When upgrading to a version that **introduces no new migration** (the database h
 所有 migrations 都已執行，無需更新
 ```
 
-**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's twenty-nine increments read verbatim:
+**When upgrading to a version that introduces new incremental migrations**, each one applied adds a line `執行 migration: <version> (<name>)`, and that increment is applied within a single transaction. A missing line means that increment **did not run** (usually because the source version already contained it), which is not an anomaly. The log lines for this release's thirty increments read verbatim:
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -566,6 +568,7 @@ When upgrading to a version that **introduces no new migration** (the database h
   執行 migration: 20260924_agent_tool_call_args_retained (agent_tool_call_args_retained)
   執行 migration: 20260924_sensitive_reveal_alert (sensitive_reveal_alert)
   執行 migration: 20260929_notification_channel_min_severity (notification_channel_min_severity)
+  執行 migration: 20260930_identity_group_mappings (identity_group_mappings)
 ```
 
 `20260825_evidence_offsite` creates the two offsite storage tables (the settings generation table and the custody ledger) and adds two columns each to sessions and export jobs. **It is purely additive, with no data backfill and no codec dependency**, so its duration is independent of how much data you hold.
@@ -766,6 +769,9 @@ table, with a value range constraint (`low`, `medium`, `high`). **Existing chann
 all alerts, so every channel keeps pushing exactly what it pushed before the upgrade**; nothing is
 backfilled. The channel table holds a handful of rows, so the constraint check is immediate.
 **Its `Down` is lossy**; see §4.1.
+
+
+`20260930_identity_group_mappings` creates the shared external-group dictionary, user-group mapping rules, and per-rule role and user-group support tables. It also adds the manual flag to effective user-group members and links existing role rules to dictionary entries. Existing members are marked manual. Existing role mapping facts gain support from every enabled rule for the same source and role; facts with no such rule are removed and recorded in migration audit. The migration does not advance credential epochs, revoke refresh credentials, or force sign-out. Stop the service and take the required backup before starting the new backend. A failed migration rolls back and prevents startup; repeat runs are idempotent. After startup, review the migration report for over-attributed support and facts removed without a rule. The next successful sign-in recalculates actual group support. Restore the pre-upgrade backup for rollback.
 
 #### The query console (a feature new in this release, the parts that affect upgrade decisions)
 
@@ -1264,13 +1270,13 @@ The events go through asynchronous audit (at most once), and when the database c
 
 ## 4. Rollback path
 
-A package deployment, and a deployment the 1.13.0 script converted, goes back with [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script), using the backup the script took. The considerations in §4.1 and §4.3 apply to it as well; the steps in §4.2 are for a `git clone` deployment upgraded by hand.
+A package deployment, including one converted by an earlier release, goes back with [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script), using the backup the script took. The considerations in §4.1 and §4.3 apply to it as well; the steps in §4.2 are for a `git clone` deployment upgraded by hand.
 
 ### 4.1 The only means of rollback is restoring a backup
 
 To go back to an older version after an upgrade, you deploy the old version's images and then restore the pre-upgrade backup; the procedure is §4.2.
 
-This release's database has the schema baseline (`20260816_schema_baseline`) and the twenty-nine increments after it
+This release's database has the schema baseline (`20260816_schema_baseline`) and the thirty increments after it
 (`20260824_audit_export_jobs`, `20260825_evidence_offsite`, `20260826_source_ip_forensics`,
 `20260826_db_query_console`, `20260903_security_policies_value_text`,
 `20260903_rotation_evidence_report`, `20260904_windows_local_account_rotation`, `20260905_account_batch_rotation`, `20260906_credential_library`,
@@ -1281,7 +1287,7 @@ This release's database has the schema baseline (`20260816_schema_baseline`) and
 `20260921_agent_audit_ledger`, `20260921_agent_breaker_alert`, `20260921_agent_visibility_exposures`,
 `20260921_agent_subject_rules`, `20260922_agent_session_token_name`, `20260923_agent_lateral_rule_pattern`,
 `20260924_agent_tool_call_args_retained`, `20260924_sensitive_reveal_alert`,
-`20260929_notification_channel_min_severity`).
+`20260929_notification_channel_min_severity`, `20260930_identity_group_mappings`).
 
 **The `Down` of an incremental migration is not a production rollback method**, which is this product's consistent position and does not change as versions come and go: `Down` restores **structure**, not data. Whatever was in the columns and tables it drops has no second source afterwards; on a later upgrade those columns reappear empty, which looks like they came back while in fact it is a new, empty structure. The only option that belongs in a rollback plan is **restoring the pre-upgrade backup**. The specific cost of each is below.
 

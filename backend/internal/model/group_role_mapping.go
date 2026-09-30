@@ -36,7 +36,9 @@ type GroupRoleMapping struct {
 	OIDCProviderID *uint `gorm:"column:oidc_provider_id;uniqueIndex:idx_group_role_mappings_oidc,where:deleted_at IS NULL" json:"oidc_provider_id,omitempty"`
 
 	// MatchValue 群組的比對值（原樣存，見本結構的說明）
-	MatchValue string `gorm:"size:500;not null;uniqueIndex:idx_group_role_mappings_ldap;uniqueIndex:idx_group_role_mappings_oidc" json:"match_value"`
+	MatchValue      string         `gorm:"size:500;not null;uniqueIndex:idx_group_role_mappings_ldap;uniqueIndex:idx_group_role_mappings_oidc" json:"match_value"`
+	ExternalGroupID uint           `gorm:"not null" json:"external_group_id"`
+	ExternalGroup   *ExternalGroup `gorm:"foreignKey:ExternalGroupID" json:"external_group,omitempty"`
 
 	// RoleID 命中該群組時賦予的角色
 	RoleID uint `gorm:"not null;uniqueIndex:idx_group_role_mappings_ldap;uniqueIndex:idx_group_role_mappings_oidc" json:"role_id"`

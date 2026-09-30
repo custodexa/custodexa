@@ -68,6 +68,16 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteUserGroupMapping-fm"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/v1/keys/retired-material",
       "handler": "github.com/custodexa/backend/internal/api.(*KeyManagementHandler).CleanupRetired-fm"
     },
@@ -493,8 +503,28 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/external-groups",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListExternalGroups-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
       "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListUserGroupMappings-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UserGroupMappingUsage-fm"
     },
     {
       "method": "GET",
@@ -1043,6 +1073,16 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateUserGroupMapping-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/instance-guard/ack",
       "handler": "github.com/custodexa/backend/internal/api.(*InstanceGuardHaltHandler).Ack-fm"
     },
@@ -1338,8 +1378,23 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateExternalGroupNote-fm"
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
       "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+      "handler": "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateUserGroupMapping-fm"
     },
     {
       "method": "PUT",
@@ -1729,6 +1784,38 @@
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteMapping-fm"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).DeleteUserGroupMapping-fm"
       ]
     },
     {
@@ -3537,6 +3624,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/external-groups",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListExternalGroups-fm"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/identity-sources/:type/:sourceId/mappings",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -3549,6 +3652,54 @@
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListMappings-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).ListUserGroupMappings-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UserGroupMappingUsage-fm"
       ]
     },
     {
@@ -5877,6 +6028,38 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateMapping-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).CreateUserGroupMapping-fm"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/instance-guard/ack",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -7029,6 +7212,22 @@
     },
     {
       "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateExternalGroupNote-fm"
+      ]
+    },
+    {
+      "method": "PUT",
       "path": "/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId",
       "chain_stable": [
         "github.com/gin-gonic/gin.LoggerWithConfig.func1",
@@ -7041,6 +7240,38 @@
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
         "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateMapping-fm"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "github.com/custodexa/backend/internal/middleware.AuditLogMiddleware.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).RegisterRoutes.RequireRole.func2",
+        "github.com/custodexa/backend/internal/api.(*IdentitySourceHandler).UpdateUserGroupMapping-fm"
       ]
     },
     {

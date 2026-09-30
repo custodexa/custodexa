@@ -448,6 +448,14 @@ const saveEdit = async (row) => {
 }
 
 const toggleRule = async (row, next) => {
+  if (next !== true) {
+    try {
+      await confirmDestructive(t('identityGroupMappings.revokeConfirm', {
+        action: t('identityGroupMappings.disable'), count: row.affected_user_count || 0,
+        roles: row.effective_role_loss_count || 0, members: row.effective_member_loss_count || 0,
+      }), t('identityGroupMappings.confirmTitle'))
+    } catch { await fetchRules(); return }
+  }
   const ok = await submitUpdate(row, {
     match_value: row.match_value,
     role: row.role,
@@ -460,10 +468,14 @@ const toggleRule = async (row, next) => {
 const removeRule = async (row) => {
   try {
     await confirmDestructive(
-      t('identitySources.mapping.deleteConfirm', {
+      `${t('identitySources.mapping.deleteConfirm', {
         value: row.match_value,
         role: roleLabel(row.role),
-      }),
+        count: row.affected_user_count || 0,
+      })}\n${t('identityGroupMappings.revokeConfirm', {
+        action: t('common.delete'), count: row.affected_user_count || 0,
+        roles: row.effective_role_loss_count || 0, members: row.effective_member_loss_count || 0,
+      })}`,
       t('common.deleteConfirmTitle'),
       {
         confirmButtonText: t('common.deleteConfirmButton'),

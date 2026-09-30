@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -28,7 +28,8 @@ func setupUserGroupDB(t *testing.T) (*UserGroupService, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{}); err != nil {
+		&model.ApproverScope{}, &model.AuditLog{}, &model.UserRole{},
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}, &model.UserGroupMember{}, &model.RefreshToken{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return NewUserGroupService(db, audit.NewTxSink(), authz.NewAssetAuthorizationService(db)), db
@@ -78,7 +79,10 @@ func TestUserGroupReplaceMembers(t *testing.T) {
 
 	// 全量替換：u1+u2
 	got, err := svc.ReplaceMembers(g.ID, []uint{users[0].ID, users[1].ID})
-	if err != nil || len(got.Users) != 2 {
+	if err != nil {
+		t.Fatalf("ReplaceMembers: %v", err)
+	}
+	if len(got.Users) != 2 {
 		t.Fatalf("ReplaceMembers = %d members, %v", len(got.Users), err)
 	}
 

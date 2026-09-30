@@ -16,6 +16,8 @@ docker --version
 docker compose version
 ```
 
+The release package is the supported Linux installation, backup and upgrade path. The source-tree commands below are for developers and macOS or Windows evaluation; they do not manage or upgrade a package deployment.
+
 There are two ways to deploy, and both run the same services:
 
 - **The release package** (the main path for Linux servers): a download from the release page,
@@ -23,13 +25,46 @@ There are two ways to deploy, and both run the same services:
   `custodexa.sh`. See [Install from the release package](#install-from-the-release-package).
 - **From source**: `git clone`, then `scripts/quickstart.sh` or `docker compose` directly. Use
   it to evaluate on macOS or Windows (WSL), and to work on the code. See
-  [Startup steps](#startup-steps).
+  [Source-tree startup](#source-tree-startup-for-development-and-evaluation).
 
 ## Install from the release package
 
 The management script runs on Linux only (x86_64 or aarch64), and a host runs one deployment.
 Run it as root (`sudo`) or as an account in the `docker` group that can write the deployment
 folder.
+
+From 1.14.0, the release includes a fixed-name download guide. On a Linux host, run:
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+It downloads the latest package and `SHA256SUMS`, checks the package SHA-256 before unpacking to
+`/opt/custodexa`, then opens the `custodexa.sh` menu. To pin a release and folder:
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+To inspect the guide first, download and run the same file:
+
+```bash
+curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh
+sudo bash get-custodexa.sh
+```
+
+In a Bash or Zsh terminal, `set -o pipefail` makes the pipeline return a nonzero status when
+the initial script download fails. If you use the two-line form, run the second line only after
+the download succeeds. Setting `CX_GET_RELEASE_BASE` to another release endpoint makes the guide
+trust that endpoint for both the package and `SHA256SUMS`; their matching hash alone does not
+verify the publisher. Use an endpoint you trust.
+
+On a host without an interactive terminal, pass a command such as `install --yes` after `--`.
+For an existing deployment, the guide does not overwrite files; it hands control to that
+deployment's `custodexa.sh`. It checks SHA-256 only. Package signature verification remains a
+manual step below; the management script handles image signatures.
 
 ### 1. Download
 
@@ -38,6 +73,7 @@ Each release page lists these files:
 | File | What it is |
 |---|---|
 | `custodexa-<version>.tar.gz` | The install package: the management script, the compose files and the source of that release |
+| `get-custodexa.sh` | Fixed-name download guide, available from 1.14.0 |
 | `SHA256SUMS` | Checksums of every file in this list |
 | `SHA256SUMS.sigstore.json` | The signature of `SHA256SUMS`, made by this repository's release workflow |
 | `MANIFEST.json` | The release manifest: the image digests the package installs (the same file is inside the package) |
@@ -50,12 +86,12 @@ bundles are only needed offline (see [Hosts without registry access](#hosts-with
 
 The script checks everything it obtains later, but it cannot vouch for itself: a package that was
 tampered with brings a script that was tampered with. Check the package before you unpack it.
-Replace `1.13.0` with the version you downloaded:
+Replace `1.14.0` with the version you downloaded:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -70,7 +106,7 @@ You can run the second command on another computer with `cosign` and the same tw
 ### 3. Unpack and install
 
 ```bash
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -90,8 +126,8 @@ own line:
    `KEK_PROVIDER=env`); values already set are never changed.
    `.env` is readable by its owner only.
 3. **Get the program images**, trying in order this host, an offline bundle, GitHub Container
-   Registry, Docker Hub, and building from source. Every image must match the digest in the
-   release manifest. When `cosign` and `gh` are installed and the signing services can be
+   Registry, Docker Hub, and building from source. Release images must match the digest in the release manifest; a locally built
+   image is tied to the checked package source and its recorded image ID. When `cosign` and `gh` are installed and the signing services can be
    reached, the publisher signature and the build provenance of the project's own images are
    verified as well. When either check is unavailable or mismatches, the script shows a warning,
    records the result, prints verification commands with full digests, and continues.
@@ -112,6 +148,8 @@ If a step fails, the run stops and keeps what was done. Running `install` again 
 and leaves in place what is already there: values in `.env`, images already obtained, services
 already running.
 
+Choose `--images-from source` on `install` to check the packaged source checksum and build backend and frontend locally instead. This is slower; upstream images, base images and build dependencies still have to be obtained, so it is not a fully offline installation. The default `auto` follows the order above. The menu asks the same question; Enter selects `auto`. `--images-from source` cannot be combined with `--images <bundle>`.
+
 ### Hosts without registry access
 
 Download the image bundle for the host's architecture as well (`uname -m`: `x86_64` is `amd64`,
@@ -119,7 +157,7 @@ Download the image bundle for the host's architecture as well (`uname -m`: `x86_
 before installing:
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.13.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -143,12 +181,17 @@ line and the previous copy. A new deployment has no backup on record yet, which 
 The deployment folder layout and what the script supports are in
 [Deployment Topology Limits](ops/deployment-topology-limits.md#package-deployments-and-the-management-script).
 
-## Startup steps
+## Upgrade a package deployment
 
-These are the steps for running from source. Deploying for your own use and joining development
-follow the **same path**; the default
-`docker-compose.yml` is the production stack (nginx serves the compiled frontend, the backend
-is a slim binary, no test targets). Developers take one extra step: uncomment
+Run `sudo /opt/custodexa/custodexa.sh upgrade` to check for a newer version without changing the deployment. The read-only query does not accept `--images-from`. To upgrade, select a target in the menu or run `sudo /opt/custodexa/custodexa.sh upgrade <version>`; a downloaded package path is also accepted. With an installed 1.14.0 or later script, the menu offers `auto` or `source` for the target, and a command can use `--images-from source` to build the new package's backend and frontend locally. An offline image bundle may be loaded first or passed with `--images <bundle>` when using `auto`.
+
+On the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 1.13.x script starts the upgrade and does not accept `--images-from`; its menu has no image-source choice. Run without that flag and the 1.14.0 target uses `auto`. Source building can be selected for later upgrades after 1.14.0 is installed. The upgrade previews the downtime, stops the application services, and takes a pre-upgrade backup when it owns the database; an external database requires your own consistent backup. There is no automatic rollback. Follow [Upgrade SOP](ops/upgrade-sop.md#upgrading-with-the-management-script) and [Backup and Restore](ops/backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script) before starting. An older git clone deployment is refused; use the [manual migration planning section](ops/upgrade-sop.md#manual-migration-of-an-older-source-deployment).
+
+## Source-tree startup for development and evaluation
+
+These steps run the source tree for local evaluation or development. The default
+`docker-compose.yml` starts the regular application stack (nginx serves the compiled frontend,
+the backend is a slim binary, and there are no test targets). Developers can take one extra step: uncomment
 `COMPOSE_FILE=docker-compose.dev.yml` in `.env`, and every later `docker compose` command
 targets the development stack (Vite HMR for the frontend, Air hot reload for the backend, plus
 test targets for each protocol) without `-f`.
@@ -428,9 +471,9 @@ and pass the endpoint and token through the environment:
 Examples for specific hosts are in the
 [custodexa-mcp README](https://github.com/custodexa/custodexa-mcp#readme).
 
-## Production deployment notes
+## Source-tree configuration notes for development and evaluation
 
-The production stack is the default compose file (see the startup steps above); this section adds
+The regular application stack is the default compose file (see the startup steps above); this section adds
 the settings release mode requires and the deployment verification that goes with it.
 What the production stack does: no published DB or guacd ports, `restart: always`, a compiled
 binary for the backend (no source mount, `GIN_MODE=release`), and only the TLS proxy's `443`
@@ -696,7 +739,7 @@ files and pointed at the same database takes over when the first one is down. Th
 what the standby host needs in advance, what a takeover does not preserve, and what changes for
 backups in this shape are in [Application Host Standby Takeover](ops/standby-takeover.md).
 
-## Deployer responsibilities and behavioral limits in production
+## Source-tree operator responsibilities and behavioral limits
 
 Before serving external traffic, the items below are **the deployer's responsibility**. The
 product deliberately does not do them for you and does not pretend it does. Two behavioral notes

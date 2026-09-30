@@ -19,13 +19,14 @@ setup() {
   tar -C "$BATS_TEST_TMPDIR/pkg" -czf "$R/custodexa-1.13.0.tar.gz" custodexa
   printf 'amd64 images\n' >"$R/custodexa-images-1.13.0-amd64.tar"
   printf 'arm64 images\n' >"$R/custodexa-images-1.13.0-arm64.tar"
+  printf '#!/usr/bin/env bash\n' >"$R/get-custodexa.sh"
   printf '{"version": "1.13.0", "images": {"backend": {"digest": "sha256:%064d"}, "frontend": {"digest": "sha256:%064d"}}}\n' 1 2 \
     >"$BATS_TEST_TMPDIR/image-digests.json"
   sums
   sign "$IDENTITY"
 }
 
-sums() { (cd "$R" && sha256sum custodexa-1.13.0.tar.gz custodexa-images-1.13.0-amd64.tar custodexa-images-1.13.0-arm64.tar MANIFEST.json >SHA256SUMS); }
+sums() { (cd "$R" && sha256sum custodexa-1.13.0.tar.gz custodexa-images-1.13.0-amd64.tar custodexa-images-1.13.0-arm64.tar MANIFEST.json get-custodexa.sh >SHA256SUMS); }
 sign() { printf 'identity %s\nsha256 %s\n' "$1" "$(sha256sum "$R/SHA256SUMS" | cut -d' ' -f1)" >"$R/SHA256SUMS.sigstore.json"; }
 
 # check_fails <what the message must name>
@@ -39,6 +40,16 @@ check_fails() {
   run cx_verify_release_assets "$R" "$IDENTITY" "$BATS_TEST_TMPDIR/image-digests.json"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *"release 1.13.0"* ]]
+}
+
+@test "the fixed-name guide must be listed, present, and unchanged" {
+  sed -i '/get-custodexa.sh/d' "$R/SHA256SUMS"
+  sign "$IDENTITY"
+  check_fails "does not list get-custodexa.sh"
+  sums
+  sign "$IDENTITY"
+  printf '# modified\n' >>"$R/get-custodexa.sh"
+  check_fails "get-custodexa.sh: FAILED"
 }
 
 @test "the standalone MANIFEST differs from the packaged one by one byte, signed again: fails" {

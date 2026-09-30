@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/sourceip"
+	"github.com/gin-gonic/gin"
 )
 
 // UserGroupServiceInterface 使用者群組服務接口（用於測試注入）
@@ -145,13 +145,27 @@ func (h *UserGroupHandler) ReplaceMembers(c *gin.Context) {
 		return
 	}
 	var req struct {
-		UserIDs []uint `json:"user_ids"`
+		UserIDs       *[]uint `json:"user_ids"`
+		ManualUserIDs *[]uint `json:"manual_user_ids"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
 		return
 	}
-	group, err := h.groups.ReplaceMembers(id, req.UserIDs)
+	var group *model.UserGroup
+	var err error
+	if detailed, ok := h.groups.(interface {
+		ReplaceMembersDetailed(uint, *[]uint, *[]uint, uint, string, string) (*model.UserGroup, error)
+	}); ok {
+		actorID, _ := middleware.GetCurrentUserID(c)
+		actorName, _ := middleware.GetCurrentUsername(c)
+		group, err = detailed.ReplaceMembersDetailed(id, req.ManualUserIDs, req.UserIDs, actorID, actorName, sourceip.Of(c))
+	} else if req.UserIDs != nil && req.ManualUserIDs == nil {
+		group, err = h.groups.ReplaceMembers(id, *req.UserIDs)
+	} else {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+		return
+	}
 	if err != nil {
 		respondUserGroupError(c, apierror.CodeInternalUserGroupMembersUpdate, err)
 		return

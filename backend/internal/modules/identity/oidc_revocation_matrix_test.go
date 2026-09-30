@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -52,6 +52,10 @@ func revMatrixDB(t *testing.T) *gorm.DB {
 		&model.ApproverScope{}, &model.SecurityPolicy{}, &model.PasswordHistory{},
 		&model.RefreshToken{}, &model.OIDCProvider{}, &model.UserExternalIdentity{},
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.Session{},
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{},
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
+		&model.UserRoleMappingRuleSupport{},
+		&model.UserGroupMember{},
 		// audit_logs：角色指派與其審計列同交易寫入（role-assignment-integrity）
 		&model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)

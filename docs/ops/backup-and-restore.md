@@ -243,7 +243,7 @@ The export directory needs no preparation: the backend sets `${DATA_PATH}/export
 
 Suggested: keep the `DATA_PATH` directory itself owned by root with mode `0750` or stricter. The containers mount only its subdirectories, so a root-owned data root does not stand in their way.
 
-**After a restore, set the recordings directory again.** Extraction keeps owners and modes only when it runs as root, and a backup taken on a host deployed with 1.12.2 or earlier may carry the owner Docker gave the directory there (`root:root 0755`), with which RDP and VNC sessions leave no recording. Step 4 of the restore procedure (§5) therefore runs the preparation command from SOP §1.3 right after extracting the data. Rerunning `sudo bash scripts/quickstart.sh --up` does the same, but it also starts the whole stack, so use it only once the restore is otherwise complete.
+**After a restore, set the recordings directory again.** Extraction keeps owners and modes only when it runs as root, and a backup taken on a host deployed with 1.12.2 or earlier may carry the owner Docker gave the directory there (`root:root 0755`), with which RDP and VNC sessions leave no recording. Step 4 of the restore procedure (§5) therefore runs the preparation command from SOP §1.3 right after extracting the data. For a package deployment, use the preparation step in this procedure; `scripts/quickstart.sh` belongs to the source-tree evaluation path and must not be run against a package deployment.
 
 **The equivalent protection on the object storage side is the deployment's to carry.** The recordings and evidence packages uploaded into the bucket are as sensitive as the originals under `DATA_PATH`, but the permission model there is not in the product's hands: bucket access control (who can list, who can read, who can delete) and encryption at rest both have to be configured by the deployment on the bucket. The product **does not encrypt object content**, so unless the bucket does encryption at rest itself, objects are plaintext on the storage side. Suggested minimum: a dedicated least-privilege identity (able to write and read, with **no need for delete permission**, which the product does not use), public access blocked, encryption at rest on, and versioning and retention rules set according to your retention requirements.
 
@@ -294,7 +294,6 @@ In a deployment installed from the release package, `custodexa.sh` runs the stop
 | `snapshot.txt` | What the database held once the services had stopped (below) |
 | `state.json` | Only in the backup of an upgrade of a package deployment: the script's record as it was when that upgrade began (§5.1 F) |
 | `SHA256SUMS` | Checksums of the files above: in the folder, `sha256sum -c SHA256SUMS` |
-| `env-before-convert.bak` | Only in the backup of the first conversion: `.env` as it was before the folder was reorganized; written after the checksums, so `SHA256SUMS` does not list it |
 | `INCOMPLETE` | Present only when the backup failed. A folder with this file is not a backup to restore from |
 
 **`snapshot.txt`** holds one `key=value` per line: the row counts of `users`, `sessions` and `audit_logs`; one `migration=` line per applied row of `schema_migrations`; the four fingerprints of §6 item 6 (`fp.jwt`, `fp.kek`, `fp.export_signing`, `fp.checkpoint_signing`), computed with the algorithm of the Key Management page; and `usable=true` or `usable=false`. It is `false`, with the reason on the `unusable=` line, when a fingerprint could not be computed or its source is not unique; the checks after an upgrade then leave the keys to a manual comparison on the Key Management page. Taking it needs neither an unseal nor a sign-in. Keep it with the backup: it is the "values recorded before the backup" that §6 compares against.
@@ -472,7 +471,7 @@ A KEK mode B deployment is still sealed after step 6, and only starts serving on
 
 The management script does not roll back by itself. When an upgrade stops after it switched to the new version (steps 9 to 12), or when you decide after a finished upgrade to return to the previous version, restore the backup the upgrade took at its step 7. The upgrade screen, and the preview before it, name that folder. **Everything recorded after that backup is lost**, which is why the backup was taken with the services stopped.
 
-A failure before step 9 does not need this section: at steps 1 to 7 the screen prints the command that starts the old version again, and at step 8 (the first conversion) it prints the commands that put the folder back.
+A failure before the version switch does not require this rollback procedure. At steps 1 to 7 the screen prints the command for restarting the old version; step 8 is reserved and performs no conversion.
 
 Work as root in the deployment folder, and fill in the three values from the screen:
 
@@ -505,23 +504,11 @@ ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
 set -a; . ./current/images.env; set +a
 ```
 
-When the upgrade was the first conversion of a `git clone` deployment, undo the reorganization. These are the commands the step 8 screen prints, plus the two links that step 9 added:
-
-```bash
-rm -f current custodexa.sh
-find "releases/${OLD}" -mindepth 1 -maxdepth 1 -exec mv -n -t . {} +
-rmdir "releases/${OLD}"                 # fails when anything is left: stop and look
-rm -rf releases state.json state.json.prev
-cp "${BACKUP_DIR}/env-before-convert.bak" .env
-git -c safe.directory="$PWD" status --porcelain
-# only backups/ and .custodexa.lock may be listed; anything else: stop and look
-```
-
-**E. Run section 5 from step 2 to step 6** in this shell, with `STAMP` and `BACKUP_DIR` as set above. `docker compose` then starts the previous version: its compose files through `current` in a package deployment, the root `docker-compose.yml` after a conversion was undone. Then go through section 6. Compare item 6 with the fingerprints in `${BACKUP_DIR}/snapshot.txt`, and the counts of `users` and `sessions` with that file too.
+**E. Run section 5 from step 2 to step 6** in this shell, with `STAMP` and `BACKUP_DIR` as set above. `docker compose` then starts the previous package release through `current`. Then go through section 6. Compare item 6 with the fingerprints in `${BACKUP_DIR}/snapshot.txt`, and the counts of `users` and `sessions` with that file too.
 
 **F. Afterwards.** Delete `postgres.before-restore-${STAMP}` once section 6 has passed and you are sure you will not need the new version's data. The previous version's images have to be on the host, because the script does not delete images; the upgrade preview warned when some were missing.
 
-In a package deployment the script's own record, `state.json`, still describes the newer version and the upgrade: `status` shows that version, and `upgrade` refuses to run and prints the same instructions again. Put back the record as it was before the upgrade, which the upgrade kept in its backup folder: `cp -p "${BACKUP_DIR}/state.json" state.json`. This release has no command that corrects the record otherwise. After an undone conversion there is no `state.json`: the folder is a `git clone` deployment again, and a later upgrade with the script converts it again.
+In a package deployment the script's own record, `state.json`, still describes the newer version and the upgrade: `status` shows that version, and `upgrade` refuses to run and prints the same instructions again. Put back the record as it was before the upgrade, which the upgrade kept in its backup folder: `cp -p "${BACKUP_DIR}/state.json" state.json`. This release has no command that corrects the record otherwise.
 
 ---
 

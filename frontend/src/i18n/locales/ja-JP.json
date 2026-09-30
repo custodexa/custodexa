@@ -3485,6 +3485,9 @@
     "INTERNAL_USER_UPDATE": "ユーザーの更新に失敗しました",
     "LDAP_DIRECTORY_HAS_MAPPINGS": "このディレクトリにはグループマッピング規則が残っています。規則を削除してからディレクトリ設定を削除してください",
     "MAPPING_ACK_REQUIRED": "この規則を保存するには、先にリスクの確認が必要です",
+    "MAPPING_USAGE_ACK_REQUIRED": "このマッピングの既存のアクセス権または承認用途を確認してください",
+    "EXTERNAL_GROUP_NOT_FOUND": "指定された外部グループが見つかりません",
+    "VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG": "外部グループの備考は 200 文字以内にしてください",
     "MAPPING_RULE_NOT_FOUND": "指定されたマッピング規則が見つかりません",
     "NOTFOUND_ACCESS_REQUEST": "申請が存在しません",
     "NOTFOUND_ACCESS_REVIEW": "レビュー記録が存在しません",
@@ -4256,6 +4259,73 @@
     "testPassedNoMatch": "接続テストには成功しましたが、検索条件に一致するユーザーがいません",
     "noMatchConsequence": "現在の検索起点とフィルターではユーザーが 1 件も見つかりません：この設定のまま有効にすると、ディレクトリのユーザーは全員ログインに失敗します。検索起点（base DN）がユーザーの存在する枝を含んでいるか、フィルターの属性名がディレクトリの実際の項目と一致しているか確認してください。"
   },
+  "identityGroupMappings": {
+    "title": "外部グループのマッピング",
+    "subtitle": "検証済みの認証ソースのグループからシステムロールとユーザーグループを同期します。",
+    "backToSource": "ソース設定に戻る",
+    "verifiedSourceHint": "グループ値は検証済みのログインデータから取得します。",
+    "tabs": {
+      "roles": "グループ → ロール",
+      "userGroups": "グループ → ユーザーグループ"
+    },
+    "columns": {
+      "externalGroup": "外部グループ",
+      "targetRole": "対象システムロール",
+      "targetUserGroup": "対象ユーザーグループ",
+      "usage": "現在の用途",
+      "createdBy": "作成者",
+      "updatedAt": "更新日時"
+    },
+    "fields": {
+      "note": "備考／表示名"
+    },
+    "empty": {
+      "roles": "このソースにはロールマッピングがまだありません",
+      "userGroups": "このソースにはユーザーグループのマッピングがまだありません"
+    },
+    "openPage": "外部グループのマッピング",
+    "roleCount": "ロールマッピング規則",
+    "userGroupCount": "ユーザーグループマッピング規則",
+    "filterTarget": "対象で絞り込む",
+    "add": "規則を追加",
+    "edit": "規則を編集",
+    "editNote": "備考を編集",
+    "noteSharedHint": "備考は両タブで共有され、変更は両方に反映されます。",
+    "copyIdentifier": "識別子をコピー",
+    "expandIdentifier": "識別子を展開",
+    "collapseIdentifier": "識別子を折りたたむ",
+    "identifierCopied": "識別子をコピーしました",
+    "copyFailed": "識別子をコピーできませんでした",
+    "sourceAttrMissingHint": "このソースにはグループ項目が設定されていません。ログイン時には同期されません。規則は先に作成できますが、有効化する前にグループ項目を設定してください。",
+    "unknownObservationRule": "ログイン時にユーザーの外部グループを確認できない場合、既存のマッピング権限を維持します。",
+    "currentUsage": "資産アクセス {asset_authorizations} 件、承認者範囲 {approver_scopes} 件、申請者範囲 {requester_scopes} 件",
+    "confirmUsage": "このマッピングにより資産アクセス権や承認権限が付与される可能性を理解しました",
+    "editIdentityHint": "旧ルールの権限は直ちに取り消され、新ルールは次回ログイン時に適用されます。",
+    "revokeConfirm": "{action}すると、他の根拠がないマッピング権限を直ちに取り消します。影響するアカウントは {count} 件で、有効なロール割り当て {roles} 件とユーザーグループ所属 {members} 件が失われる可能性があります。",
+    "confirmTitle": "マッピング変更の確認",
+    "enable": "有効化",
+    "disable": "無効化",
+    "saved": "規則を保存しました",
+    "loadFailed": "マッピングデータを読み込めません",
+    "saveFailed": "マッピングの変更は保存されませんでした。再試行してください。",
+    "mappedMembers": "マッピングされたメンバー",
+    "noMappedMembers": "マッピングされたメンバーはいません",
+    "memberManual": "手動",
+    "memberMapped": "マッピング",
+    "memberBoth": "手動とマッピング",
+    "sourceDisableConfirm": "このソースを無効にすると、{count} 件のアカウントの両種のマッピング根拠を直ちに取り消します。有効なロール割り当て {roles} 件とユーザーグループ所属 {members} 件が失われる可能性があります。再有効化後は次回のサインイン時に適用されます。",
+    "accountGroups": "ユーザーグループの所属元",
+    "accountGroupsEmpty": "このアカウントはユーザーグループに所属していません",
+    "events": {
+      "group_user_group_mapping_create": "ユーザーグループのマッピングを作成",
+      "group_user_group_mapping_update": "ユーザーグループのマッピングを更新",
+      "group_user_group_mapping_delete": "ユーザーグループのマッピングを削除",
+      "external_group_note_update": "外部グループの備考を更新",
+      "user_group_mapping_applied": "ユーザーグループのマッピングを適用",
+      "group_mapping_rule_revoked": "マッピング規則の根拠を取り消し",
+      "group_mapping_source_revoked": "ソースのマッピング根拠を取り消し"
+    }
+  },
   "identitySources": {
     "title": "アイデンティティソース",
     "headerDesc": "組織のディレクトリまたは OIDC アイデンティティプロバイダーに接続し、組織アカウントでサインインできるようにします。グループでロールを直接決められます。",
@@ -4275,14 +4345,14 @@
     "column": {
       "type": "種別",
       "address": "アドレス",
-      "mappings": "グループマッピング"
+      "mappings": "ロールグループのマッピング"
     },
     "lastLoginAt": "直近の成功サインイン {time}",
     "neverLoggedIn": "成功したサインインはまだありません",
     "lastSaved": "最終保存 {time}",
     "ruleCount": "規則 {count} 件",
     "ruleCountUnknown": "—",
-    "listNote": "マッピング規則は各ソースの設定ページで管理します。グループの変更は次回サインイン時に反映されます。ディレクトリは 1 つまでです。",
+    "listNote": "規則は各ソースの「外部グループのマッピング」ページで管理します。外部グループの変更は次回ログイン時に反映され、規則またはソースを無効化すると、そのマッピングの根拠は直ちに取り消されます。ディレクトリは 1 つまでです。",
     "loadFailedTitle": "アイデンティティソース一覧を読み取れません",
     "loadFailedDesc": "画面の内容は現状を表していません。後ほど再読み込みし、続く場合はサーバーの状態を確認してください。",
     "mergedUnavailableTitle": "統合一覧はまだ提供されていません",
@@ -4305,7 +4375,7 @@
     "section": {
       "connection": "接続",
       "userMapping": "ユーザー対応付け",
-      "groupMapping": "グループマッピング",
+      "groupMapping": "ロールグループのマッピング",
       "admission": "受け入れ",
       "advanced": "詳細"
     },
@@ -4361,7 +4431,7 @@
       "subtitle": "本システムがサービスアカウントでディレクトリを検索し、パスワードを代理検証します。"
     },
     "mapping": {
-      "sectionHint": "一致したグループに対応するロールを付与します。管理者が手動で割り当てたロールには影響しません。マッピングは利用者の次回サインイン時に反映されます。グループから外された場合や、ルールが無効化または削除された場合も、マッピングで付与されたロールはその利用者の次回サインイン時に取り消されます。",
+      "sectionHint": "外部グループをシステムロールとユーザーグループにマッピングできます。確認されたグループ変更は次回ログイン時に同期し、規則の無効化または削除は根拠を直ちに取り消します。",
       "matchDn": "グループ DN",
       "matchDnPlaceholder": "グループの完全な識別名を貼り付けます",
       "matchDnHint": "ディレクトリが返す識別名をそのまま入力してください。属性型の大文字小文字は一致に影響しませんが、値の大文字小文字は影響します。",
@@ -4381,7 +4451,7 @@
       "loadFailed": "このソースのマッピング規則を読み取れません",
       "saveFailed": "マッピング規則を保存できませんでした",
       "deleteFailed": "マッピング規則を削除できませんでした",
-      "deleteConfirm": "「{value}」をロール「{role}」に対応付ける規則を削除しますか。そのグループのメンバーは次回サインイン時にこのロールを失います。",
+      "deleteConfirm": "「{value}」からロール「{role}」への規則を削除しますか？他の根拠がないマッピングロールは直ちに取り消されます。影響するアカウントは {count} 件です。",
       "riskTitle": "リスクの確認",
       "riskConfirm": "理解した上で保存する",
       "adminNote": "管理者ロールへのマッピング規則は保存時にリスク確認が必要で、監査記録に残ります。承認者ロールは資格のみを与えるもので、承認範囲は引き続き利用者ごとに作成が必要です。",

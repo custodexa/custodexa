@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -66,7 +66,9 @@ func setupLDAPDirectoryEnv(t *testing.T) (*gin.Engine, *crypto.JWTManager, *poli
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
 		&model.SecurityPolicy{}, &model.User{}, &model.Role{}, &model.UserRole{},
 		// 目錄刪除會先查有無群組映射規則（仍有規則者拒刪），缺表即 fail-close
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.UserGroup{}, &model.UserGroupMember{}, &model.UserRoleMapping{},
+		&model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 

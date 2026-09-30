@@ -17,6 +17,8 @@ Custodexa 管理腳本 1.13.0
   --backup-time <時間> （upgrade）與 --backup-ref 並用：快照開始時間，須晚於停機
   --backup-restore <位置>（upgrade）與 --backup-ref 並用：還原程序的文件位置
   --images <路徑>      （install、upgrade）指定離線映像包
+  --images-from <模式> （install、帶目標的 upgrade）auto 或 source；
+                       預設 auto；source 從安裝包原始碼建置自家映像
   --lang <語言>         zh-TW、ja、en；見下方「顯示語言」
   --no-color           不使用顏色
   --version            顯示腳本版本

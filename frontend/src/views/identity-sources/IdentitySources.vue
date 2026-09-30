@@ -126,12 +126,12 @@
           </template>
         </el-table-column>
         <el-table-column
-          :label="$t('identitySources.column.mappings')"
-          width="140"
+          :label="$t('identityGroupMappings.roleCount')"
+          width="150"
         >
           <template #default="{ row }">
-            <span v-if="typeof row.mapping_rule_count === 'number'">
-              {{ $t('identitySources.ruleCount', { count: row.mapping_rule_count }) }}
+            <span v-if="typeof row.role_mapping_rule_count === 'number'">
+              {{ row.role_mapping_rule_count }}
             </span>
             <span
               v-else
@@ -140,8 +140,20 @@
           </template>
         </el-table-column>
         <el-table-column
-          :label="$t('common.actions')"
+          :label="$t('identityGroupMappings.userGroupCount')"
           width="180"
+        >
+          <template #default="{ row }">
+            <span v-if="typeof row.user_group_mapping_rule_count === 'number'">{{ row.user_group_mapping_rule_count }}</span>
+            <span
+              v-else
+              class="cell-unknown"
+            >{{ $t('identitySources.ruleCountUnknown') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          :label="$t('common.actions')"
+          width="245"
         >
           <template #default="{ row }">
             <el-button
@@ -151,6 +163,14 @@
               @click="$router.push(detailPath(row))"
             >
               {{ $t('identitySources.configure') }}
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              link
+              @click="$router.push(`${detailPath(row)}/group-mappings`)"
+            >
+              {{ $t('identityGroupMappings.openPage') }}
             </el-button>
             <el-button
               type="danger"

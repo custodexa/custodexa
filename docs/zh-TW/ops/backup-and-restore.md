@@ -330,7 +330,7 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 
 建議：`DATA_PATH` 目錄本身由 root 擁有，權限 `0750` 或更嚴。各容器只掛載它底下的子目錄，資料根歸 root 並不妨礙容器運作。
 
-**還原後要重新設定錄影目錄。** 解壓只有以 root 執行時才會保留擁有者與模式；以 1.12.2 或更早版本部署的主機做出的備份，也可能帶著 Docker 當初給的 `root:root 0755`，這種權限下 RDP 與 VNC 會話錄不到。因此還原程序（§5）的步驟 4 在解壓資料後隨即執行 SOP §1.3 的準備指令。重跑 `sudo bash scripts/quickstart.sh --up` 效果相同，但它會把整套服務啟動，只在其餘還原步驟都完成後使用。
+**還原後要重新設定錄影目錄。** 解壓只有以 root 執行時才會保留擁有者與模式；以 1.12.2 或更早版本部署的主機做出的備份，也可能帶著 Docker 當初給的 `root:root 0755`，這種權限下 RDP 與 VNC 會話錄不到。因此還原程序（§5）的步驟 4 在解壓資料後隨即執行 SOP §1.3 的準備指令。安裝包部署請用本程序的準備步驟；`scripts/quickstart.sh` 只屬於原始碼樹試用路徑，不可用在安裝包部署。
 
 **物件儲存端的等價保護由部署方承擔。** 上傳到儲存桶裡的錄影與證據包，其內容敏感度與 `DATA_PATH`
 下的原件相同，但那裡的權限模型不在產品手上：儲存桶的存取控管（誰能列出、誰能讀、誰能刪）與
@@ -416,7 +416,6 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 | `snapshot.txt` | 服務停止後資料庫的狀態（見下） |
 | `state.json` | 只出現在安裝包部署升級時的備份：那次升級開始時腳本的紀錄（§5.1 F） |
 | `SHA256SUMS` | 以上各檔的校驗和：在該資料夾內執行 `sha256sum -c SHA256SUMS` |
-| `env-before-convert.bak` | 只出現在首次轉換的備份：整理目錄之前的 `.env`；寫在校驗和之後，所以 `SHA256SUMS` 不含此檔 |
 | `INCOMPLETE` | 只在備份失敗時存在。有這個檔的資料夾不是可以拿來還原的備份 |
 
 **`snapshot.txt`** 一行一個 `key=value`：`users`、`sessions`、`audit_logs` 三張表的筆數；
@@ -670,8 +669,7 @@ KEK 模式 B 的部署在步驟 6 之後仍處於已封存，須到 `/unseal` �
 請還原升級第 7 步所做的備份；升級畫面與之前的預覽都會列出那個資料夾。**該次備份之後記錄的一切都會遺失**，
 這也是備份在服務停止時進行的原因。
 
-第 9 步之前的失敗不需要本節：第 1 到 7 步的畫面會印出重新啟動舊版的指令，第 8 步（首次轉換）
-的畫面會印出把目錄放回原狀的指令。
+切換版本前的失敗不需依本節回退。第 1 到 7 步的畫面會印出重新啟動舊版的指令；第 8 步保留編號，不執行轉換。
 
 以 root 在部署目錄下操作，並依畫面填入三個值：
 
@@ -705,31 +703,14 @@ ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
 set -a; . ./current/images.env; set +a
 ```
 
-這次升級是 `git clone` 部署的首次轉換時，把目錄整理還原。以下是第 8 步畫面會印的指令，
-再加上第 9 步建立的兩個連結：
-
-```bash
-rm -f current custodexa.sh
-find "releases/${OLD}" -mindepth 1 -maxdepth 1 -exec mv -n -t . {} +
-rmdir "releases/${OLD}"                 # 有殘留就會失敗：停下來檢查
-rm -rf releases state.json state.json.prev
-cp "${BACKUP_DIR}/env-before-convert.bak" .env
-git -c safe.directory="$PWD" status --porcelain
-# 只能列出 backups/ 與 .custodexa.lock；列出其他項目就停下來檢查
-```
-
-**E. 在同一個 shell 執行第 5 節的步驟 2 到 6**，`STAMP` 與 `BACKUP_DIR` 沿用上面的設定。
-此時 `docker compose` 啟動的是上一版：安裝包部署經由 `current` 取得該版的 compose 檔，
-轉換還原後則用根目錄的 `docker-compose.yml`。接著逐項完成第 6 節；第 6 項的指紋，以及
-`users`、`sessions` 的筆數，都與 `${BACKUP_DIR}/snapshot.txt` 比對。
+**E. 在同一個 shell 執行第 5 節的步驟 2 到 6**，`STAMP` 與 `BACKUP_DIR` 沿用上面的設定。`docker compose` 經由 `current` 啟動上一個安裝包版本。接著逐項完成第 6 節；第 6 項的指紋，以及 `users`、`sessions` 的筆數，都與 `${BACKUP_DIR}/snapshot.txt` 比對。
 
 **F. 之後。** 第 6 節全部通過、也確定不再需要新版的資料後，再刪除 `postgres.before-restore-${STAMP}`。
 上一版的映像必須還在主機上；腳本不會刪除映像，缺少時升級預覽已經警告過。
 
 安裝包部署時，腳本自己的紀錄 `state.json` 仍描述較新的版本與那次升級：`status` 顯示的是新版，
 `upgrade` 會拒絕執行並再印一次同樣的指引。請從該次備份資料夾放回升級前的紀錄：
-`cp -p "${BACKUP_DIR}/state.json" state.json`。本版沒有其他指令能更正這份紀錄。轉換還原後沒有 `state.json`：
-目錄重新成為 `git clone` 部署，之後再以腳本升級時會重新轉換。
+`cp -p "${BACKUP_DIR}/state.json" state.json`。本版沒有其他指令能更正這份紀錄。
 
 ---
 

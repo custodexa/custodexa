@@ -56,22 +56,33 @@ cx_compose() {
   )
 }
 
-# cx_compose_explicit <project> <project dir> <file>... -- <compose arguments...>
-# Exception entry for the first conversion and for rolling back to the pre-conversion version:
-# those act on the old project with its old files. None of the three may be left out.
-cx_compose_explicit() {
-  local project=$1 dir=$2
-  shift 2 || true
-  local -a f=()
-  while [ $# -gt 0 ] && [ "$1" != -- ]; do
-    [ -n "$1" ] && f+=(-f "$1")
-    shift
-  done
-  [ "${1:-}" = -- ] && shift
-  if [ -z "$project" ] || [ -z "$dir" ] || [ ${#f[@]} -eq 0 ]; then
-    cx_line FAIL "$(cx_msg compose_explicit_incomplete)" >&2
+# cx_compose_release <release dir> <compose arguments...>: build from a verified target release.
+# CUSTODEXA_BUILD_SOURCE overrides the compose build context so an upgrade never reads current/source.
+cx_compose_release() {
+  local release=$1 files
+  shift
+  if [ -z "${CX_ROOT:-}" ] || [ ! -f "$release/compose.yml" ]; then
+    cx_line FAIL "cx_compose_release: release compose unavailable" >&2
     return 1
   fi
-  cx_log CMD "docker compose -p $project --project-directory $dir ${f[*]} $*"
-  docker compose -p "$project" --project-directory "$dir" "${f[@]}" "$@"
+  files=$(cx_compose_files_for "$release") || return 1
+  local -a f
+  mapfile -t f <<<"$files"
+  (
+    cx_images_env_export "$release/images.env" || exit 1
+    export CUSTODEXA_BUILD_SOURCE="$release/source"
+    cx_log CMD "docker compose -p $CX_PROJECT --project-directory $CX_ROOT ${f[*]} $*"
+    docker compose -p "$CX_PROJECT" --project-directory "$CX_ROOT" "${f[@]}" "$@"
+  )
+}
+
+cx_compose_files_for() {
+  local release=$1 ov
+  printf '%s\n' '-f' "$release/compose.yml"
+  for ov in ${CX_OVERLAYS:-}; do
+    case " $CX_OVERLAY_NAMES " in
+      *" $ov "*) printf '%s\n' '-f' "$release/compose.$ov.yml" ;;
+      *) cx_line FAIL "$(cx_msg overlay_unknown "$ov")" >&2; return 1 ;;
+    esac
+  done
 }

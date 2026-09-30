@@ -87,6 +87,9 @@ type assetPivotEntry struct {
 // 搬家、行號漂移都不會使本表失準；反之若以 file:line 為鍵，每次無關的編輯都會製造
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
+	"AP-110": {pivotNotAsset, false, "外部群組字典備註更新，主體是外部群組，不指定資產"},
+	"AP-108": {pivotNotAsset, false, "使用者群組映射規則管理，主體是規則與目標使用者群組，不指定資產"},
+	"AP-109": {pivotNotAsset, false, "手動使用者群組成員調整，主體是群組與帳號，不指定資產"},
 	"AP-105": {pivotFilled, false, "帳本原文調閱的同步審計：有會話時解析資產主體；無會話的工具呼叫維持空資產"},
 	"AP-106": {pivotNotAsset, false, "通知通道推送門檻的前後值留痕，主體是通知通道"},
 	"AP-107": {pivotNotAsset, false, "合規報告手動產出：主體是下載中心工作單，報告涵蓋政策組而非資產"},

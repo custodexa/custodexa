@@ -29,22 +29,42 @@
 
 ## クイックスタート
 
-Linux サーバーにはインストールパッケージでインストールします。リリースページから `custodexa-<バージョン>.tar.gz`、
+対応する Linux サーバーではインストールパッケージと `custodexa.sh` でインストール、バックアップ、アップグレードを行います。`scripts/quickstart.sh` は開発と macOS／Windows での評価用です。
+
+1.14.0 以降のリリースに含まれるダウンロード案内スクリプトは、最新版のパッケージと `SHA256SUMS` を取得し、パッケージの SHA-256 を照合して `/opt/custodexa` に展開した後、管理メニューを開きます。
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+バージョンと導入先を指定する場合：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+先にスクリプトを確認する場合は `curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh` の後に `sudo bash get-custodexa.sh` を実行します。既存のデプロイは上書きせず、その `custodexa.sh` に引き継ぎます。案内スクリプトは SHA-256 のみ確認します。パッケージ署名は以下の手順で手動確認し、イメージ署名は `custodexa.sh` が扱います。
+
+Bash または Zsh で先に `set -o pipefail` を実行すると、案内スクリプトのダウンロードに失敗した場合にパイプライン全体がゼロ以外の終了コードを返します。ダウンロード後に実行する場合は、最初のコマンドが成功してから次を実行してください。`CX_GET_RELEASE_BASE` を別のリリース端点に設定すると、その端点のパッケージと `SHA256SUMS` の両方を信頼することになります。ハッシュの一致だけでは発行元の身元は確認できません。
+
+パッケージ署名を手動確認するには、リリースページから `custodexa-<バージョン>.tar.gz`、
 `SHA256SUMS`、`SHA256SUMS.sigstore.json` を同じフォルダーにダウンロードし、検証してから展開してインストールします
-（`1.13.0` はダウンロードしたバージョンに置き換えてください）。
+（`1.14.0` はダウンロードしたバージョンに置き換えてください）。
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
 `install` は何かを書き込む前にホストを確認し、シークレットを生成して `.env` を作成し、イメージを取得して
-リリースマニフェストのダイジェストと 1 つずつ照合し、スタックを起動してバックエンドが準備完了を報告するまで待ち、
+リリースイメージのマニフェストダイジェストを確認し（ローカルビルド時はパッケージソースを先に確認）、スタックを起動してバックエンドが準備完了を報告するまで待ち、
 最後に URL と管理者のログイン情報を表示します。すでに記入済みの値には手を触れません。
 `custodexa.sh status` は何も変更せずにデプロイの状態を表示します。オフラインのホスト、各ステップの確認内容、
 フォルダー構成は[インストールパッケージからのインストール](QUICKSTART.md#インストールパッケージからのインストール)を参照してください。
@@ -52,6 +72,12 @@ sudo /opt/custodexa/custodexa.sh install
 スクリプトの画面はシステムの言語で表示されますが、`sudo` ではその設定がリセットされることが多く、その場合は
 英語になります。日本語または繁体字中国語で表示するには、`custodexa.sh` の各コマンドに `--lang ja` または
 `--lang zh-TW` を付けます。メニューを使う場合は `sudo /opt/custodexa/custodexa.sh --lang ja` を実行します。
+
+`install --images-from source` はパッケージ内のソースのチェックサムを確認してから backend と frontend をローカルでビルドします。時間がかかり、上流イメージ、ベースイメージ、ビルド依存関係は別途取得するため、完全なオフライン手段ではありません。既定の `auto` はホスト、オフラインバンドル、GHCR、Docker Hub、ローカルビルドの順に試します。レジストリーに接続できないホストでは、対応するアーキテクチャのバンドルと `custodexa.sh load` を使います。
+
+パッケージのデプロイでは `sudo /opt/custodexa/custodexa.sh upgrade` は新しいバージョンを照会するだけで、デプロイを変更しません。`sudo /opt/custodexa/custodexa.sh upgrade <バージョン>` またはメニューのアップグレードから開始します。スクリプトは停止時間をプレビューし、サービスを停止し、内蔵データベースを使う場合はバックアップを取ります。自動ロールバックはなく、以前のバージョンに戻すにはアップグレード前のバックアップを手動でリストアします。[アップグレード SOP](../ops/upgrade-sop.md#管理スクリプトによるアップグレード)を参照してください。古い git clone デプロイは `custodexa.sh` に拒否されるため、[手動移行の節](../ops/upgrade-sop.md#古いソースデプロイの手動移行)に従って計画してください。
+
+1.13.x のパッケージデプロイから初めて 1.14.0 にアップグレードする場合、インストール済みの 1.13.x スクリプトは `--images-from` を受け付けません。フラグを付けずに実行すると、1.14.0 側は `auto` を使います。1.14.0 のインストール後、以降のアップグレードではソースからのビルドを選べます。
 
 macOS や Windows で評価する場合、または開発に参加する場合は、ソースから実行します。
 
@@ -251,9 +277,9 @@ Docker Hub ミラーにも使えます。
 のラベルが付いています。guacd のイメージは公開していません。compose ファイルは公式の
 `guacamole/guacd:1.6.0` を digest で固定してそのまま使います。
 
-インストールパッケージはこれらのイメージを実行します。管理スクリプトはリリースマニフェストに記録された
-ダイジェストで各イメージを取得し、レジストリにもオフラインバンドルにもない場合に限ってソースからビルドし、
-起動後に各コンテナーが確認済みのイメージで動いていることを確かめます。
+既定の `auto` では、リリースイメージをマニフェストのダイジェストで確認し、ほかの取得元が失敗した場合だけ
+確認済みのパッケージソースから自身のイメージをビルドします。`--images-from source` では自身のイメージを
+直接ビルドし、上流イメージは別に取得します。起動後は各コンテナーのイメージ ID を記録と照合します。
 ソースからの実行はこれまでどおり使えます。リポジトリの compose ファイルは公開イメージを参照しません。
 `scripts/quickstart.sh` は引き続きソースツリーから `custodexa/backend:latest` と `custodexa/frontend:latest` を
 ビルドし、これらを pull することはありません（`pull_policy: never`）。

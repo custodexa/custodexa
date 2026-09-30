@@ -16,17 +16,50 @@ docker --version
 docker compose version
 ```
 
+安裝包與 `custodexa.sh` 是受支援的 Linux 安裝、備份與升級路徑。下方原始碼樹的指令僅供開發者及 macOS／Windows 試用，不能管理或升級安裝包部署。
+
 部署有兩條路徑，跑起來的服務相同：
 
 - **安裝包**（Linux 伺服器的主要路徑）：從發行頁下載，解開前先驗證，再由安裝包內的管理腳本
   `custodexa.sh` 安裝與維運。見[用安裝包安裝](#用安裝包安裝)。
 - **從原始碼執行**：`git clone` 後用 `scripts/quickstart.sh` 或直接 `docker compose`。
-  適合在 macOS、Windows（WSL）上評估，以及參與開發。見[啟動步驟](#啟動步驟)。
+  適合在 macOS、Windows（WSL）上評估，以及參與開發。見[原始碼樹啟動步驟](#原始碼樹的開發與試用啟動步驟)。
 
 ## 用安裝包安裝
 
 管理腳本只支援 Linux（x86_64 或 aarch64），一台主機放一套部署。請以 root（`sudo`）執行，
 或以 `docker` 群組內、可寫入部署目錄的帳號執行。
+
+從 1.14.0 起，發行附件提供固定檔名的下載引導腳本。在 Linux 主機執行：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+腳本下載最新版安裝包與 `SHA256SUMS`，解壓前核對安裝包 SHA-256，放入 `/opt/custodexa`，
+然後開啟 `custodexa.sh` 選單。若要指定版本與目錄：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+若要先檢視腳本，可先下載再執行同一檔案：
+
+```bash
+curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh
+sudo bash get-custodexa.sh
+```
+
+在 Bash 或 Zsh 終端機先執行 `set -o pipefail`，首次下載失敗時整段管線才會回報非零結束碼。
+若使用兩行下載後執行的寫法，請確認第一行成功後再執行第二行。將 `CX_GET_RELEASE_BASE`
+設成其他發行端點，表示同時信任該端點提供的安裝包與 `SHA256SUMS`；兩者雜湊相符本身
+不證明發行者身分。請使用你信任的端點。
+
+沒有互動終端機時，請在 `--` 後帶入 `install --yes` 等子命令。若目錄已有部署，
+腳本不覆寫檔案，會交給現有的 `custodexa.sh`。引導腳本只核對 SHA-256；安裝包簽章仍須依下文手動驗證，
+映像簽章由管理腳本處理。
 
 ### 1. 下載
 
@@ -35,6 +68,7 @@ docker compose version
 | 檔案 | 內容 |
 |---|---|
 | `custodexa-<版本>.tar.gz` | 安裝包：管理腳本、compose 檔與該版原始碼 |
+| `get-custodexa.sh` | 固定檔名的下載引導腳本，從 1.14.0 起提供 |
 | `SHA256SUMS` | 本表每個檔案的校驗和 |
 | `SHA256SUMS.sigstore.json` | `SHA256SUMS` 的簽章，由本 repo 的發行工作流程簽署 |
 | `MANIFEST.json` | 發行清單：安裝包要安裝的映像摘要（安裝包內也有同一份） |
@@ -46,12 +80,12 @@ docker compose version
 ### 2. 解開前先驗證
 
 腳本會驗證它之後取得的每樣東西，但無法替自己擔保：被竄改的安裝包，帶的也是被竄改的腳本。
-所以要在解開前先驗安裝包。把 `1.13.0` 換成你下載的版本：
+所以要在解開前先驗安裝包。把 `1.14.0` 換成你下載的版本：
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -64,7 +98,7 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 ### 3. 解開並安裝
 
 ```bash
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -80,7 +114,7 @@ sudo /opt/custodexa/custodexa.sh install
 2. **產生 `.env`**（以安裝包內的範本為底）：產生登入簽章金鑰、資料庫密碼與初始管理者密碼
    （`KEK_PROVIDER=env` 時另產生加密金鑰）；已設定的值一律不動。`.env` 只有擁有者可讀。
 3. **取得程式映像**，依序嘗試這台主機、離線包、GitHub Container Registry、Docker Hub、用原始碼建置。
-   每個映像都必須與發行清單的摘要相符。這台主機有 `cosign` 與 `gh`、且連得到簽章服務時，另驗本專案
+   發行映像須與發行清單摘要相符；本機建置映像則須核對安裝包原始碼並記錄 image ID。這台主機有 `cosign` 與 `gh`、且連得到簽章服務時，另驗本專案
    自家映像的發行者簽章與建置出處。無法驗證或驗證不符時，腳本會顯示警告、記錄結果、印出帶完整摘要的驗證指令，然後繼續。
 4. **準備錄影目錄**（擁有者 `1000`、群組 `0`、權限 `2770`）。
 5. **啟動服務**，並確認每個執行中的容器跑的就是第 3 步核對過的映像。
@@ -95,13 +129,15 @@ sudo /opt/custodexa/custodexa.sh install
 任一步失敗時，腳本停下並保留已完成的部分。再執行一次 `install` 會從第 1 步重來，已就位的東西
 不會變動：`.env` 裡的值、已取得的映像、已在執行的服務。
 
+在 `install` 加上 `--images-from source`，可先核對安裝包原始碼校驗和，再於本機建置 backend 與 frontend。這較慢；上游映像、基底映像與建置依賴仍須取得，因此並非完全離線安裝。預設 `auto` 依上述順序尋找。選單也會詢問，按 Enter 選 `auto`。`--images-from source` 不可與 `--images <映像包>` 同用。
+
 ### 連不到映像倉庫的主機
 
 另外下載這台主機架構的映像離線包（`uname -m` 為 `x86_64` 對應 `amd64`、`aarch64` 對應 `arm64`），
 和 `SHA256SUMS` 放在同一個目錄；解開安裝包後，先載入再安裝：
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.13.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -122,10 +158,16 @@ sudo /opt/custodexa/custodexa.sh status
 部署目錄的結構與管理腳本支援的範圍，見
 [部署形態限制](ops/deployment-topology-limits.md#安裝包部署與管理腳本)。
 
-## 啟動步驟
+## 升級安裝包部署
 
-以下是從原始碼執行的步驟。部署自用與參與開發走**同一條流程**；預設的 `docker-compose.yml` 即正式版
-（nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者只多一步：
+`sudo /opt/custodexa/custodexa.sh upgrade` 只查詢新版，不變更部署；唯讀查詢不接受 `--images-from`。要升級，請在選單選目標，或執行 `sudo /opt/custodexa/custodexa.sh upgrade <版本>`；也可指定下載好的安裝包路徑。已安裝的腳本為 1.14.0 或更新版時，選單可對目標版選 `auto` 或 `source`；指令可加 `--images-from source`，讓新版安裝包的 backend 與 frontend 在本機建置。使用 `auto` 時可先載入離線映像包，或以 `--images <映像包>` 指定。
+
+從 1.13.x 安裝包部署第一次升到 1.14.0 時，由已安裝的 1.13.x 腳本啟動升級；該腳本不接受 `--images-from`，選單也沒有映像來源選項。不帶此旗標執行，1.14.0 目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可選原始碼建置。升級會預覽停機、停止應用服務，自管資料庫時製作升級前備份；外接資料庫必須自行取得一致的備份。腳本不會自動回退。開始前請閱讀[升級 SOP](ops/upgrade-sop.md#以管理腳本升級)與[備份與還原](ops/backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)。舊 git clone 部署會被拒絕；請依[人工遷移規劃段](ops/upgrade-sop.md#舊原始碼部署的手動遷移)處理。
+
+## 原始碼樹的開發與試用啟動步驟
+
+以下是原始碼樹本機試用或開發的步驟。預設的 `docker-compose.yml` 啟動一般應用服務
+（nginx 供編譯後前端、backend 為精簡二進位、不含測試靶機）。參與開發者可多做一步：
 在 `.env` 取消 `COMPOSE_FILE=docker-compose.dev.yml` 的註解，之後所有 `docker compose`
 指令自動指向開發版（前端 Vite HMR、後端 Air 熱重載，並帶起各協議的測試靶機），無須每次打 `-f`。
 
@@ -367,7 +409,7 @@ SSH 資產的撥測與實際連線採用相同的認證方式，私鑰優先、�
 
 各宿主的設定範例見 [custodexa-mcp 的 README](https://github.com/custodexa/custodexa-mcp#readme)。
 
-## 正式部署補充
+## 原始碼樹的開發與試用設定補充
 
 正式版就是預設 compose（見上方啟動步驟），本節補充 release 特有的必設項與部署驗證。
 正式版特性：不對外開放 DB／guacd 埠、`restart: always`、後端走編譯後的二進位（無原始碼掛載、
@@ -580,7 +622,7 @@ docker compose ps        # backend、frontend、guacd、tls-proxy；沒有 postg
 在第一台停機時接手。接手程序、備援主機事先要備妥的東西、接手保不住的東西、以及此形態下備份對象的變化，
 見[應用主機備援接手](ops/standby-takeover.md)。
 
-## 生產環境的部署方責任與行為邊界
+## 原始碼樹部署方的責任與行為邊界
 
 正式對外服務前，下列事項屬於**部署方責任**，本產品刻意不代勞，也不假裝有做；
 連同兩項行為說明一併集中在此，部署上線前逐項過一遍。

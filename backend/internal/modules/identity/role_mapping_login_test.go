@@ -242,8 +242,13 @@ func setupRoleMappingEnvRecording(t *testing.T) (
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{},
 		&model.RefreshToken{}, &model.AuditLog{}, &model.SecurityPolicy{},
 		&model.PasswordHistory{}, &model.GroupRoleMapping{}, &model.UserRoleMapping{},
-		&model.LDAPDirectory{}); err != nil {
+		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.LDAPDirectory{}, &model.OIDCProvider{}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.Create(&model.OIDCProvider{Name: "corp", Issuer: "https://idp.example.org", ClientID: "test", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
 	}
 	for _, name := range []string{model.RoleUser, model.RoleAuditor, model.RoleAdmin} {
 		if err := db.Create(&model.Role{Name: name}).Error; err != nil {
@@ -582,7 +587,7 @@ func TestLDAPLoginRecomputesMappedRoles(t *testing.T) {
 			Enabled: true, BindPasswordEnc: "enc",
 		}
 		if err := db.Create(dir).Error; err != nil {
-			t.Fatalf("建目錄設定列: %v", err)
+			t.Fatal(err)
 		}
 		disabled := false
 		admin := NewIdentitySourceService(db, audit.NewTxSink())

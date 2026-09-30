@@ -27,14 +27,8 @@ cx_up_num() {
 cx_up_par() { printf '%s\n' "$1" | sed 's/^/  /'; }
 
 # cx_up_compose_hint: the -p and -f arguments of this deployment, for commands people copy.
-# A git clone deployment that is not converted yet names its own project and file (lib/stop_check.sh
-# sets CX_UP_OLD_HINT).
 cx_up_compose_hint() {
   local ov out="-p $CX_PROJECT -f $CX_ROOT/current/compose.yml"
-  if [ -n "${CX_UP_OLD_HINT:-}" ]; then
-    printf '%s' "$CX_UP_OLD_HINT"
-    return 0
-  fi
   for ov in ${CX_OVERLAYS:-}; do out+=" -f $CX_ROOT/current/compose.$ov.yml"; done
   printf '%s' "$out"
 }

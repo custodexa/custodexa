@@ -577,6 +577,20 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 		"[歸屬：無留痕] 存活探針，不掛認證，無稽核語義（豁免表 `exemptProbe`）"},
 }
 
+func init() {
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/role-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"POST", "/api/v1/identity-sources/:type/:sourceId/role-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"PUT", "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"DELETE", "/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "角色映射明確別名；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"POST", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"PUT", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"DELETE", "/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId"}] = routeAuditEntry{classResource, model.ResourceAuth, "使用者群組映射管理；來源與規則識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId"}] = routeAuditEntry{classResource, model.ResourceAuth, "目標群組現有授權及審核用途查詢；識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"GET", "/api/v1/identity-sources/:type/:sourceId/external-groups"}] = routeAuditEntry{classResource, model.ResourceAuth, "來源外部群組字典查詢；識別不填 resource_id"}
+	auditRouteRegistry[[2]string{"PUT", "/api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId"}] = routeAuditEntry{classResource, model.ResourceAuth, "外部群組共用備註更新；自由文字不入請求審計白名單"}
+}
+
 // minIdentityScanFiles 方向 5 前提錨點的掃描下界（現況 361 個非測試 .go）。
 const minIdentityScanFiles = 250
 

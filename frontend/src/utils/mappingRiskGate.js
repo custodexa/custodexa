@@ -28,9 +28,8 @@ export function warningText(code) {
 /**
  * 從錯誤回應取出警告碼清單；不是「需要確認」的回應一律回 null。
  *
- * 回應本體的形狀兩種都認：契約文件把警告包在 `error` 物件內，
- * 實作回的是扁平物件。差一層外框就漏接等於整條確認流程失效，
- * 故此處以「兩種都試」換取形狀無關。
+ * 回應可為頂層或 error 物件，警告清單可在 meta.warnings 或舊頂層
+ * warnings。兩種入口都讀，避免確認流程因封包層次而漏接。
  * @param {Error} error axios 錯誤
  * @returns {string[]|null} 警告碼清單（可能為空陣列）；非確認型錯誤回 null
  */
@@ -40,17 +39,17 @@ export function ackWarningCodes(error) {
   const nested = resp?.data?.error
   const body = nested && typeof nested === 'object' ? nested : resp?.data
   if (body?.code !== ACK_REQUIRED_CODE) return null
-  return (body.warnings || []).map((w) => w?.code).filter(Boolean)
+  return (body.meta?.warnings || body.warnings || []).map((w) => w?.code).filter(Boolean)
 }
 
 /**
  * 顯示警告並取得使用者確認。
  * @param {string[]} codes 警告機器碼
- * @returns {Promise<boolean>} 使用者是否確認；無可顯示的警告時視為已確認
+ * @returns {Promise<boolean>} 使用者是否確認；警告無法顯示時不視為已確認
  */
 export async function confirmWarnings(codes) {
   const lines = codes.map(warningText).filter(Boolean)
-  if (lines.length === 0) return true
+  if (lines.length === 0 || lines.length !== codes.length) return false
   try {
     await confirmDestructive(
       // 各條警告本身即完整句子（自帶句號），直接相接；對話框不渲染換行

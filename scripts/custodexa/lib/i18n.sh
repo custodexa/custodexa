@@ -40,5 +40,5 @@ cx_msg() {
     return 0
   fi
   # shellcheck disable=SC2059
-  printf "${!var}" "$@"
+  printf -- "${!var}" "$@"
 }

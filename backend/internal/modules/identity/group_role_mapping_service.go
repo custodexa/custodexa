@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
@@ -46,6 +47,7 @@ var (
 	ErrMappingSourceKind = errors.New("未知的身分來源種類")
 	// ErrMappingServiceUnavailable 服務未接線（nil DB）
 	ErrMappingServiceUnavailable = errors.New("身分來源管理服務未接線")
+	ErrMappingSourceHasRules     = errors.New("身分來源仍有群組映射規則")
 )
 
 // mappingMatchValueMaxLen 比對值長度上限（與欄位寬度一致）
@@ -76,6 +78,7 @@ type GroupRoleMappingActor struct {
 // 「沒送這一欄」與「停用」同形，一次部分更新就會把規則靜默關掉。
 type GroupRoleMappingInput struct {
 	MatchValue       string `json:"match_value"`
+	Note             string `json:"note"`
 	Role             string `json:"role"`
 	Enabled          *bool  `json:"enabled"`
 	RiskAcknowledged bool   `json:"risk_acknowledged"`
@@ -86,13 +89,20 @@ type GroupRoleMappingInput struct {
 
 // GroupRoleMappingView 對外呈現一條規則
 type GroupRoleMappingView struct {
-	ID         uint      `json:"id"`
-	MatchValue string    `json:"match_value"`
-	Role       string    `json:"role"`
-	Enabled    bool      `json:"enabled"`
-	CreatedBy  string    `json:"created_by"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID                       uint      `json:"id"`
+	SourceType               string    `json:"source_type"`
+	SourceID                 uint      `json:"source_id"`
+	ExternalGroupID          uint      `json:"external_group_id"`
+	MatchValue               string    `json:"match_value"`
+	Note                     string    `json:"note"`
+	Role                     string    `json:"role"`
+	Enabled                  bool      `json:"enabled"`
+	CreatedBy                string    `json:"created_by"`
+	CreatedAt                time.Time `json:"created_at"`
+	UpdatedAt                time.Time `json:"updated_at"`
+	AffectedUserCount        int64     `json:"affected_user_count"`
+	EffectiveRoleLossCount   int64     `json:"effective_role_loss_count"`
+	EffectiveMemberLossCount int64     `json:"effective_member_loss_count"`
 }
 
 // 映射規則的審計事件碼（Details.event）
@@ -117,6 +127,50 @@ func MappingSourceKind(sourceType string) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: %q", ErrMappingSourceKind, sourceType)
 	}
+}
+
+func withMappingSourceLock(db *gorm.DB, kind string, sourceID uint, fn func(*gorm.DB) error) error {
+	switch kind {
+	case model.RoleMappingChannelKindDirectory:
+		return WithLDAPDirectoryLock(db, fn)
+	case model.RoleMappingChannelKindProvider:
+		return WithOIDCProviderLock(db, sourceID, fn)
+	default:
+		return ErrMappingSourceKind
+	}
+}
+
+func ensureExternalGroup(tx *gorm.DB, kind string, sourceID uint, matchValue string) (uint, error) {
+	return ensureExternalGroupWithNote(tx, kind, sourceID, matchValue, "")
+}
+
+func ensureExternalGroupWithNote(tx *gorm.DB, kind string, sourceID uint, matchValue, note string) (uint, error) {
+	if utf8.RuneCountInString(note) > 200 {
+		return 0, ErrExternalGroupNoteTooLong
+	}
+	var id uint
+	switch kind {
+	case model.RoleMappingChannelKindDirectory:
+		if err := tx.Exec("INSERT INTO external_groups (ldap_directory_id,match_value,note) VALUES (?,?,?) ON CONFLICT DO NOTHING", sourceID, matchValue, note).Error; err != nil {
+			return 0, err
+		}
+		if err := tx.Raw("SELECT id FROM external_groups WHERE ldap_directory_id=? AND match_value=?", sourceID, matchValue).Scan(&id).Error; err != nil {
+			return 0, err
+		}
+	case model.RoleMappingChannelKindProvider:
+		if err := tx.Exec("INSERT INTO external_groups (oidc_provider_id,match_value,note) VALUES (?,?,?) ON CONFLICT DO NOTHING", sourceID, matchValue, note).Error; err != nil {
+			return 0, err
+		}
+		if err := tx.Raw("SELECT id FROM external_groups WHERE oidc_provider_id=? AND match_value=?", sourceID, matchValue).Scan(&id).Error; err != nil {
+			return 0, err
+		}
+	default:
+		return 0, ErrMappingSourceKind
+	}
+	if id == 0 {
+		return 0, fmt.Errorf("外部群組字典寫入後查無資料")
+	}
+	return id, nil
 }
 
 // sourceAttrState 一個來源的群組讀取設定現況
@@ -216,7 +270,7 @@ func mappingRowsOf(tx *gorm.DB, kind string, sourceID uint) ([]model.GroupRoleMa
 		return nil, err
 	}
 	var rows []model.GroupRoleMapping
-	if err := tx.Preload("Role").Where(column+" = ?", sourceID).
+	if err := tx.Preload("Role").Preload("ExternalGroup").Where(column+" = ?", sourceID).
 		Order("id").Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("讀取群組映射規則失敗: %w", err)
 	}
@@ -231,7 +285,14 @@ func (s *IdentitySourceService) viewsOf(rows []model.GroupRoleMapping) ([]GroupR
 	}
 	out := make([]GroupRoleMappingView, 0, len(rows))
 	for i := range rows {
-		out = append(out, mappingViewOf(&rows[i], names[rows[i].CreatedBy]))
+		view := mappingViewOf(&rows[i], names[rows[i].CreatedBy])
+		kind, sourceID := mappingViewSource(rows[i].LDAPDirectoryID, rows[i].OIDCProviderID)
+		preview, err := previewMappingRevocation(s.db, kind, sourceID, "role", rows[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		view.AffectedUserCount, view.EffectiveRoleLossCount, view.EffectiveMemberLossCount = preview.AffectedUserCount, preview.EffectiveRoleLossCount, preview.EffectiveMemberLossCount
+		out = append(out, view)
 	}
 	return out, nil
 }
@@ -261,18 +322,32 @@ func (s *IdentitySourceService) creatorNames(rows []model.GroupRoleMapping) (map
 }
 
 func mappingViewOf(row *model.GroupRoleMapping, creator string) GroupRoleMappingView {
+	kind, sourceID := mappingViewSource(row.LDAPDirectoryID, row.OIDCProviderID)
+	sourceType := "oidc"
+	if kind == model.RoleMappingChannelKindDirectory {
+		sourceType = "ldap"
+	}
 	roleName := ""
 	if row.Role != nil {
 		roleName = row.Role.Name
 	}
 	return GroupRoleMappingView{
-		ID:         row.ID,
-		MatchValue: row.MatchValue,
-		Role:       roleName,
-		Enabled:    row.Enabled,
-		CreatedBy:  creator,
-		CreatedAt:  row.CreatedAt,
-		UpdatedAt:  row.UpdatedAt,
+		ID:              row.ID,
+		SourceType:      sourceType,
+		SourceID:        sourceID,
+		ExternalGroupID: row.ExternalGroupID,
+		MatchValue:      row.MatchValue,
+		Note: func() string {
+			if row.ExternalGroup != nil {
+				return row.ExternalGroup.Note
+			}
+			return ""
+		}(),
+		Role:      roleName,
+		Enabled:   row.Enabled,
+		CreatedBy: creator,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
 	}
 }
 
@@ -321,7 +396,15 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 	// （並回寫到記憶體內的結構）——直接 Create 會讓「建立時就停用」的規則靜默變成
 	// 啟用，下一次登入重算即授出角色。落庫後在同一交易內補寫請求值，審計列隨後
 	// 讀同一個結構，記下的即實際落庫值
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if _, err := resolveSource(tx, kind, sourceID); err != nil {
+			return err
+		}
+		groupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, matchValue, in.Note)
+		if err != nil {
+			return err
+		}
+		row.ExternalGroupID = groupID
 		if err := tx.Create(row).Error; err != nil {
 			return fmt.Errorf("建立群組映射規則失敗: %w", err)
 		}
@@ -338,6 +421,9 @@ func (s *IdentitySourceService) CreateMapping(kind string, sourceID uint,
 		return nil, err
 	}
 	row.Role = role
+	if err := s.db.Preload("ExternalGroup").First(row, row.ID).Error; err != nil {
+		return nil, err
+	}
 	view := mappingViewOf(row, in.Actor.Name)
 	return &view, nil
 }
@@ -367,19 +453,54 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 	if warnings := mappingWarningsOf(role.Name, source.attrSet); len(warnings) > 0 && !in.RiskAcknowledged {
 		return nil, &MappingAckRequiredError{Warnings: warnings}
 	}
+	oldMatch, oldRole, oldEnabled := row.MatchValue, row.RoleID, row.Enabled
 	row.MatchValue = matchValue
 	row.RoleID = role.ID
 	if in.Enabled != nil {
 		row.Enabled = *in.Enabled
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.GroupRoleMapping{}).Where("id = ?", row.ID).
-			Updates(map[string]any{
-				"match_value": row.MatchValue,
-				"role_id":     row.RoleID,
-				"enabled":     row.Enabled,
-			}).Error; err != nil {
-			return fmt.Errorf("更新群組映射規則失敗: %w", err)
+	if err := withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if _, err := resolveSource(tx, kind, sourceID); err != nil {
+			return err
+		}
+		current, err := mappingRowOf(tx, kind, sourceID, ruleID)
+		if err != nil {
+			return err
+		}
+		if current.MatchValue != oldMatch || current.RoleID != oldRole || current.Enabled != oldEnabled {
+			return fmt.Errorf("映射規則已被並行修改，請重試")
+		}
+		identityChanged := oldMatch != matchValue || oldRole != role.ID
+		if identityChanged {
+			groupID, err := ensureExternalGroupWithNote(tx, kind, sourceID, matchValue, in.Note)
+			if err != nil {
+				return err
+			}
+			next := &model.GroupRoleMapping{LDAPDirectoryID: current.LDAPDirectoryID, OIDCProviderID: current.OIDCProviderID, ExternalGroupID: groupID, MatchValue: matchValue, RoleID: role.ID, Enabled: row.Enabled, CreatedBy: in.Actor.ID}
+			if err := tx.Create(next).Error; err != nil {
+				return err
+			}
+			if !row.Enabled {
+				if err := tx.Model(next).Update("enabled", false).Error; err != nil {
+					return err
+				}
+			}
+			if err := revokeMappingSupportsLocked(tx, s.auditTx, kind, sourceID, "role", current.ID); err != nil {
+				return err
+			}
+			if err := tx.Delete(current).Error; err != nil {
+				return err
+			}
+			row = next
+		} else {
+			if oldEnabled && !row.Enabled {
+				if err := revokeMappingSupportsLocked(tx, s.auditTx, kind, sourceID, "role", row.ID); err != nil {
+					return err
+				}
+			}
+			if err := tx.Model(&model.GroupRoleMapping{}).Where("id=?", row.ID).Update("enabled", row.Enabled).Error; err != nil {
+				return err
+			}
 		}
 		return s.auditMapping(tx, in.Actor, model.ActionUpdate, MappingAuditEventUpdate,
 			kind, sourceID, row, role.Name, in.RiskAcknowledged, source)
@@ -387,16 +508,23 @@ func (s *IdentitySourceService) UpdateMapping(kind string, sourceID, ruleID uint
 		return nil, err
 	}
 	row.Role = role
+	if err := s.db.Preload("ExternalGroup").First(row, row.ID).Error; err != nil {
+		return nil, err
+	}
 	names, err := s.creatorNames([]model.GroupRoleMapping{*row})
 	if err != nil {
 		return nil, err
 	}
 	view := mappingViewOf(row, names[row.CreatedBy])
+	preview, err := previewMappingRevocation(s.db, kind, sourceID, "role", row.ID)
+	if err != nil {
+		return nil, err
+	}
+	view.AffectedUserCount, view.EffectiveRoleLossCount, view.EffectiveMemberLossCount = preview.AffectedUserCount, preview.EffectiveRoleLossCount, preview.EffectiveMemberLossCount
 	return &view, nil
 }
 
-// DeleteMapping 刪除一條規則（軟刪；規則列的軟刪不影響已賦予的角色，
-// 那些角色在該來源的下一次登入重算時才被收回——時效見營運文件）
+// DeleteMapping soft-deletes the rule after revoking its supports atomically.
 func (s *IdentitySourceService) DeleteMapping(kind string, sourceID, ruleID uint,
 	actor GroupRoleMappingActor) error {
 	if s == nil || s.db == nil {
@@ -414,7 +542,16 @@ func (s *IdentitySourceService) DeleteMapping(kind string, sourceID, ruleID uint
 	if row.Role != nil {
 		roleName = row.Role.Name
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return withMappingSourceLock(s.db, kind, sourceID, func(tx *gorm.DB) error {
+		if _, err := resolveSource(tx, kind, sourceID); err != nil {
+			return err
+		}
+		if _, err := mappingRowOf(tx, kind, sourceID, ruleID); err != nil {
+			return err
+		}
+		if err := revokeMappingSupportsLocked(tx, s.auditTx, kind, sourceID, "role", ruleID); err != nil {
+			return err
+		}
 		if err := tx.Delete(&model.GroupRoleMapping{}, row.ID).Error; err != nil {
 			return fmt.Errorf("刪除群組映射規則失敗: %w", err)
 		}

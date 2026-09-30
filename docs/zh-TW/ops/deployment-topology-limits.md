@@ -65,7 +65,7 @@
   兩者都不是滾動更新，也沒有回退指令：回到舊版就是手動還原備份。見
   [升級 SOP](./upgrade-sop.md#以管理腳本升級) 與
   [備份與還原 §3.8](./backup-and-restore.md#38-管理腳本做的備份安裝包部署)。
-  以 `git clone` 原始碼運作、版本為 1.12.4 的部署，由 1.13.0 的升級一次轉換成這個結構。
+  舊 git clone 部署會在檔案或服務變動前被所有 `custodexa.sh` 入口拒絕。請規劃[人工遷移](./upgrade-sop.md#舊原始碼部署的手動遷移)，或在另一個乾淨目錄安裝後手動還原；腳本不轉換舊樹。`--images-from source` 只在核對原始碼校驗和後本機建置安裝包自家映像；上游映像與建置依賴仍須取得，不是完全離線選項。
 
 ### 目錄結構
 
@@ -221,7 +221,7 @@ guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`�
 - 調查工作台的來源位址樞紐、稽核列與會話列的來源位址欄，全部記成代理位址。
 - 新來源位址告警只在代理位址改變時才會響。
 
-**預設部署自帶代理，`bash scripts/quickstart.sh` 會把 `TRUSTED_PROXIES` 填成該代理所在的 Docker 子網。** 自己跑 ingress 時這份清單由你來寫：填該 ingress 的位址，或它連進來的網段。
+**預設部署自帶代理；原始碼樹的 `bash scripts/quickstart.sh` 與安裝包的 `custodexa.sh install` 會把 `TRUSTED_PROXIES` 填成該代理所在的 Docker 子網。** 自己跑 ingress 時這份清單由你來寫：填該 ingress 的位址，或它連進來的網段。
 
 **要按真實來源判定與留痕，就得先設 `TRUSTED_PROXIES` 把代理鏈顯式列出來。**
 這個決定要在啟用來源限定**之前**做：先設好清單再去改代理設定，會讓已經生效的清單

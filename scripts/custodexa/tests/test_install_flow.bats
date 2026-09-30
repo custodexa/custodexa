@@ -181,6 +181,27 @@ state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
   [ "$(stat -c %a "$ROOT/.env")" = 600 ]
 }
 
+@test "source install records built IDs and does not claim publisher verification" {
+  host_full
+  fresh_host
+  : >"$SIM/images"
+  install_run en --images-from source
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $(state current.image_source) == *"backend=build"* && $(state current.image_source) == *"frontend=build"* ]] || return 1
+  [ "$(state current.verification)" = 'checksum=ok signature=skip-local-build provenance=skip-local-build' ] || return 1
+  grep -qxF 'CUSTODEXA_IMAGE_BACKEND=custodexa-local/backend:1.13.0' "$ROOT/current/images.env"
+  grep -qxF 'CUSTODEXA_IMAGE_FRONTEND=custodexa-local/frontend:1.13.0' "$ROOT/current/images.env"
+  for n in backend frontend; do
+    id=$(sed -n "s/^$n=//p" "$ROOT/current/image-ids.env")
+    [[ " $(state current.image_ids) " == *" $n=$id "* ]] || return 1
+    [ -n "$id" ]
+  done
+  ! grep -Eq $'\tpull .*custodexa/(backend|frontend)' "$FAKE_DOCKER_LOG"
+  run bash "$ROOT/custodexa.sh" status --lang en
+  [ "$status" -eq 0 ] || [ "$status" -eq 4 ] || { echo "$output"; return 1; }
+  [[ $output == *"a build from source"* ]] || { echo "$output"; return 1; }
+}
+
 @test "a container running another image stops the install at step 5; running install again finishes it" {
   host_full
   touch "$SIM/up-swap"
@@ -463,7 +484,7 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
   install_run en
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
-  [ "$(grep -c 'This host: present, content digest matches' <<<"$output")" -eq 3 ] || { echo "$output"; return 1; }
+  [ "$(grep -c 'This host: present, content digest matches' <<<"$output")" -eq 6 ] || { echo "$output"; return 1; }
   ! grep -q $'\tpull ' "$FAKE_DOCKER_LOG" || return 1
   [ "$(state current.image_ids)" = "$(state load.image_ids)" ] || { echo "$(state current.image_ids) / $(state load.image_ids)"; return 1; }
   [ "$(state current.verification)" = "checksum=ok signature=skip-offline provenance=ok" ] || { echo "$(state current.verification)"; return 1; }
@@ -613,34 +634,6 @@ recordings_ready() { chown 1000:0 "$1" && chmod 2770 "$1"; }
   status_run en
   [ "$status" -eq 4 ] && [[ $output == *"  [WARN] The backend reports version 1.13.1"* ]] || { echo "$output"; return 1; }
   status_calls_read_only
-}
-
-@test "status on a git clone deployment: not converted yet, word for word; other commands still refuse that folder" {
-  host_full
-  local old=/data/custodexa
-  rm -rf "$old"
-  mkdir -p "$old/.git" "$old/data/recordings"
-  recordings_ready "$old/data/recordings"
-  echo 1.12.4 >"$old/VERSION"
-  : >"$old/docker-compose.yml"
-  printf 'DATA_PATH=./data\nPUBLIC_BASE_URL=https://10.0.0.12\n' >"$old/.env"
-  for c in postgres guacd backend frontend tls-init tls-proxy; do echo "custodexa-$c sha256:0$c"; done >"$SIM/containers"
-  echo 1.12.4 >"$SIM/health-version"
-  local before
-  before=$(tree_print "$old")
-  export CUSTODEXA_HOME=$old
-  status_run zh-TW
-  [ "$status" -eq 4 ] || { echo "exit $status"; echo "$output"; return 1; }
-  [[ $output == *$'\n  目前       1.12.4    git clone 部署，尚未轉換\n             下次用 custodexa.sh upgrade 升級時，會先把目錄整理成新結構\n'* ]] || { echo "$output"; return 1; }
-  [[ $output == *"  [ OK ] 後端回報正常，版本 1.12.4"* && $output != *"映像"* ]] || { echo "$output"; return 1; }
-  status_run en
-  [[ $output == *$'\n  Installed  1.12.4    git clone deployment, not converted yet\n             The next custodexa.sh upgrade reorganizes the folder first\n'* ]] || { echo "$output"; return 1; }
-  [ "$(tree_print "$old")" = "$before" ] || return 1
-  status_calls_read_only
-  # Only status reads a git clone deployment; commands that write stop before touching it.
-  run bash "$ROOT/custodexa.sh" load /media/none.tar --lang en </dev/null
-  [ "$status" -eq 1 ] && [[ $output == *"CUSTODEXA_HOME=$old"* ]] || { echo "$output"; return 1; }
-  [ "$(tree_print "$old")" = "$before" ]
 }
 
 @test "status with a damaged state.json stops with exit code 5 and points at the previous copy" {

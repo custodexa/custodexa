@@ -404,6 +404,9 @@ func TestChannelScopedRecomputeDoesNotClearOtherChannel(t *testing.T) {
 	user := roleMappingUser(t, db, "testldap")
 
 	const providerID = 7
+	if err := db.Create(&model.OIDCProvider{ID: providerID, Name: "secondary", Issuer: "https://secondary.example.org", ClientID: "secondary", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	seedProviderMappingRule(t, db, providerID, oidcMappingGroup, model.RoleAuditor)
 	if _, err := RecomputeMappedRoles(db, audit.NewTxSink(), user, GroupObservation{
 		Kind: model.RoleMappingChannelKindProvider, SourceID: providerID,

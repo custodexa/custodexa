@@ -21,13 +21,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/authz"
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/glebarez/sqlite"
 	"github.com/pquerna/otp/totp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -155,7 +155,9 @@ func setupUserGroupDB(t *testing.T) (*identity.UserGroupService, *gorm.DB) {
 	}
 	if err := db.AutoMigrate(&model.User{}, &model.UserGroup{}, &model.Asset{},
 		&model.AssetGroup{}, &model.AssetNode{}, &model.AssetAuthorization{},
-		&model.ApproverScope{}, &model.AuditLog{}); err != nil {
+		&model.ApproverScope{}, &model.AuditLog{}, &model.GroupUserGroupMapping{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserGroupMember{},
+		&model.RefreshToken{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return identity.NewUserGroupService(db, audit.NewTxSink(), authz.NewAssetAuthorizationService(db)), db
@@ -227,7 +229,9 @@ func setupOIDCEnv(t *testing.T) (*identity.OIDCLoginService, *identity.OIDCProvi
 		&model.OIDCFlowState{}, &model.OIDCLoginTicket{}, &model.UserRole{},
 		// 群組映射兩表：登入路徑在 provider 未設群組宣告名時會對規則表做一次
 		// 索引計數（缺表即 fail-close）
-		&model.GroupRoleMapping{}, &model.UserRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{},
+		&model.ExternalGroup{}, &model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{},
+		&model.UserGroupMappingRuleSupport{}, &model.UserGroup{}, &model.UserGroupMember{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	// 角色指派關聯表由 model 建（單一定義來源）：手寫兩欄 DDL 會在加欄之後

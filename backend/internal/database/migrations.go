@@ -216,6 +216,7 @@ var migrations = []Migration{
 		Up:      applyNotificationChannelMinSeverity,
 		Down:    rollbackNotificationChannelMinSeverity,
 	},
+	{Version: "20260930_identity_group_mappings", Name: "identity_group_mappings", Up: applyIdentityGroupMappings, Down: rollbackIdentityGroupMappings},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -250,7 +251,8 @@ func schemaDDLStatements() []string {
 	out = append(out, agentVisibilityExposuresDDL()...)
 	out = append(out, sensitiveRevealAlertDDL()...)
 	out = append(out, agentSessionTokenNameDDL()...)
-	return append(out, notificationChannelMinSeverityDDL()...)
+	out = append(out, notificationChannelMinSeverityDDL()...)
+	return append(out, identityGroupMappingsDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

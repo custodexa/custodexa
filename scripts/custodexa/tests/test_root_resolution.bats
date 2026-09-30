@@ -36,7 +36,7 @@ setup() {
   [ "$output" = "$ROOT" ]
 }
 
-@test "a root holding state.json but no releases/ still resolves (converted layout)" {
+@test "a root holding state.json but no releases/ still resolves" {
   mkdir -p "$T/srv/cx"
   cp -R "$SRC/custodexa.sh" "$SRC/lib" "$SRC/lang" "$T/srv/cx/"
   printf '{\n  "format": "2"\n}\n' >"$T/srv/cx/state.json"

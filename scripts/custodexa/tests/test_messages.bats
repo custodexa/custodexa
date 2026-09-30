@@ -148,17 +148,21 @@ help_options() { "$ROOT/custodexa.sh" --help --lang en | grep -oE -- '--[a-z][a-
 # menu choice runs a different command than the one it names.
 
 # fake_commands: every cmd_<name> of the deployment only records how it was called; the check the
-# menu asks for the version to upgrade to (cx_q_latest) answers 1.14.0.
+# menu asks for the version to upgrade to (cx_up_query_core) answers 1.14.0.
 fake_commands() {
   local c
   export CX_CALLS=$BATS_TEST_TMPDIR/calls
   : >"$CX_CALLS"
+  export CX_QUERIES=$BATS_TEST_TMPDIR/queries
+  : >"$CX_QUERIES"
   for c in install status backup load; do
     printf 'cmd_%s() { printf "%%s\\n" "%s $*" >>"$CX_CALLS"; }\n' "$c" "$c" >"$ROOT/releases/1.13.0/lib/cmd_$c.sh"
   done
-  printf '%s\n' 'cmd_upgrade() { printf "%s\n" "upgrade $*" >>"$CX_CALLS"; [ $# -gt 0 ] || printf "    sudo %s/custodexa.sh upgrade 1.14.0\n" "$CX_ROOT"; }' \
+  printf '%s\n' 'cmd_install() { printf "install --images-from %s\n" "$CX_IMAGES_FROM" >>"$CX_CALLS"; }' \
+    >"$ROOT/releases/1.13.0/lib/cmd_install.sh"
+  printf '%s\n' 'cmd_upgrade() { printf "upgrade %s --images-from %s\n" "$*" "$CX_IMAGES_FROM" >>"$CX_CALLS"; }' \
     >"$ROOT/releases/1.13.0/lib/cmd_upgrade.sh"
-  printf '%s\n' 'cx_q_latest() { printf 1.14.0; }' >"$ROOT/releases/1.13.0/lib/upgrade_query.sh"
+  printf '%s\n' 'cx_up_query_core() { printf "query\n" >>"$CX_QUERIES"; CX_Q_TARGET=1.14.0; }' >"$ROOT/releases/1.13.0/lib/upgrade_query.sh"
 }
 package_state() { printf '{\n  "format": "2",\n  "current.version": "1.13.2"\n}\n' >"$ROOT/state.json"; }
 # menu_run <lang> <typed lines> [folder to start in]: on a terminal (stdin and stdout).
@@ -205,14 +209,14 @@ menu_screen() {
   # Both a terminal: the menu, not the help.
   menu_run en 0
   [ "$status" -eq 0 ] && [[ $output == *"Choose [0-3]: "* && $output != *"Usage:"* ]] || { echo "$output"; return 1; }
-  # A git clone deployment, on a terminal: no menu, the help and exit 2 as before.
+  # A git clone deployment, on a terminal: refuse before displaying the menu.
   local old=$BATS_TEST_TMPDIR/old
   mkdir -p "$old/.git"
   echo 1.12.4 >"$old/VERSION"
   : >"$old/docker-compose.yml"
   export CUSTODEXA_HOME=$old
   menu_run en 0
-  [ "$status" -eq 2 ] && [[ $output == *"Usage: custodexa.sh <command> [options]"* && $output != *"Choose ["* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 3 ] && [[ $output == *"older git clone deployment"* && $output != *"Choose ["* ]] || { echo "$output"; return 1; }
   [ ! -s "$CX_CALLS" ]
 }
 
@@ -227,16 +231,15 @@ menu_screen() {
   # status; backup; upgrade to a named version; load the second bundle listed; upgrade to the
   # latest (the query, then the version it names); upgrade from the package listed; load from a
   # typed relative path; a choice not listed; Enter in a question goes back; quit.
-  menu_run en $'1\n3\n2\n2\n1.13.2\n4\n2\n2\n1\n2\n3\n1\n4\n3\nsub/x.tar\n9\n2\n\n0' "$dir"
+  menu_run en $'1\n3\n2\n2\n1.13.2\n2\n4\n2\n2\n1\n1\n2\n3\n1\n\n4\n3\nsub/x.tar\n9\n2\n\n0' "$dir"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   diff "$CX_CALLS" - <<C || { echo "$output"; return 1; }
 status 
 backup 
-upgrade 1.13.2
+upgrade 1.13.2 --images-from source
 load $dir/custodexa-images-1.13.2-amd64.tar
-upgrade 
-upgrade 1.14.0
-upgrade $dir/custodexa-1.13.2.tar.gz
+upgrade 1.14.0 --images-from auto
+upgrade $dir/custodexa-1.13.2.tar.gz --images-from auto
 load $dir/sub/x.tar
 C
   [[ $output == *"[WARN]"*" No such choice; type one of the numbers in brackets."* ]] || { echo "$output"; return 1; }
@@ -244,9 +247,9 @@ C
   # Not installed: install; load with nothing in the folder asks for the path; help; quit.
   rm -f "$ROOT/state.json"
   : >"$CX_CALLS"
-  menu_run zh-TW $'1\n2\n/media/usb/b.tar\n3\n0'
+  menu_run zh-TW $'1\n\n2\n/media/usb/b.tar\n3\n0'
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  printf 'install \nload /media/usb/b.tar\n' | diff "$CX_CALLS" - || return 1
+  printf 'install --images-from auto\nload /media/usb/b.tar\n' | diff "$CX_CALLS" - || return 1
   [[ $output == *"（檔名像 custodexa-images-1.13.0-amd64.tar）。"* && $output == *"用法：custodexa.sh <子命令> [選項]"* ]] || { echo "$output"; return 1; }
 }
 
@@ -257,6 +260,7 @@ cmd_status() {
   printf 'child-lang=%s\n' "$CX_LANG"
   cx_cmd "sudo $CX_ROOT/custodexa.sh status$(cx_status_lang_arg)"
 }
+
 STATUS
   run env LANG=zh_TW.UTF-8 script -qec "bash $ROOT/custodexa.sh" /dev/null <<<$'1\n1\n0'
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -271,6 +275,35 @@ STATUS
   clean=$(printf '%s\n' "$output" | tr -d '\r')
   [[ $clean == *"child-lang=ja"* && $clean == *"custodexa.sh status --lang ja"* ]] \
     || { echo "$clean"; return 1; }
+}
+
+@test "menu latest queries once and image source EOF starts no command" {
+  fake_commands
+  package_state
+  menu_run en $'2\n1\n2\n0'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(wc -l <"$CX_QUERIES")" -eq 1 ]
+  grep -qxF 'upgrade 1.14.0 --images-from source' "$CX_CALLS"
+  : >"$CX_CALLS"
+  run bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/menu.sh"; CX_ROOT=$2
+    cx_menu_pick_images 1.14.0' _ "$SRC" "$ROOT" </dev/null
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [ ! -s "$CX_CALLS" ]
+}
+
+@test "menu install passes auto, source and Enter defaults" {
+  fake_commands
+  for answer in 1 2 ''; do
+    : >"$CX_CALLS"
+    menu_run en $'1\n'"$answer"$'\n0'
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    if [ "$answer" = 2 ]; then
+      grep -qxF 'install --images-from source' "$CX_CALLS"
+    else
+      grep -qxF 'install --images-from auto' "$CX_CALLS"
+    fi
+  done
 }
 
 # Threat: the screens come up in English (sudo often resets the system language) and the reader

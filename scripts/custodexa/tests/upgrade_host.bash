@@ -5,8 +5,6 @@
 #       that release as GitHub serves it ($REL/v<ver>/: package, SHA256SUMS, signature bundle,
 #       MANIFEST.json); `latest` points at the last one published
 #   fake curl: serves $REL; $REL/offline makes every download fail
-#   legacy_host: a 1.12.4 git clone deployment at $LROOT (a clean git work tree: the product files
-#       committed, .env, data/ and tls/ ignored) and the 1.13.0 package unpacked at $PKG
 
 UP_IDENTITY_PREFIX="https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v"
 
@@ -90,45 +88,9 @@ no_cosign() {
   export PATH="$FAKES:$bin:${PATH//$TESTS_DIR\/fakes:/}"
 }
 
-legacy_host() {
-  LROOT=$BATS_TEST_TMPDIR/data/custodexa
-  PKG=$BATS_TEST_TMPDIR/tmp/custodexa
-  use_fake_docker
-  FAKES=$BATS_TEST_TMPDIR/host
-  mkdir -p "$FAKES" "$LROOT/data" "$LROOT/tls" "$LROOT/backend" "$LROOT/docker/reverse-proxy"
-  export PATH="$FAKES:$PATH"
-  unset LC_ALL LC_MESSAGES LANG NO_COLOR CUSTODEXA_HOME
-  printf '1.12.4\n' >"$LROOT/VERSION"
-  printf 'services: {}\n' >"$LROOT/docker-compose.yml"
-  printf 'module custodexa\n' >"$LROOT/backend/go.mod"
-  printf 'server {}\n' >"$LROOT/docker/reverse-proxy/nginx-tls.conf.template"
-  printf '%s\n' .env /data/ /tls/ logs/ >"$LROOT/.gitignore"
-  git -C "$LROOT" init -q
-  git -C "$LROOT" add -A
-  git -C "$LROOT" -c user.name=test -c user.email=test@example.invalid commit -qm 1.12.4
-  (umask 077 && printf '%s\n' "DATA_PATH=./data" "JWT_SECRET=jwt-test-value-for-masking-0001" >"$LROOT/.env")
-  # Its database, for the backup estimate of the preview (tests/backup_host.bash).
-  export DB=$BATS_TEST_TMPDIR/db
-  mkdir -p "$DB"
-  : >"$DB/events"
-  db_default
-  write_db_hook
-  host_free / 221249536
-  package_release "$PKG/releases/1.13.0" 1.13.0 1.12.4
-  ln -s releases/1.13.0 "$PKG/current"
-  ln -s current/custodexa.sh "$PKG/custodexa.sh"
-}
-
 # tree_of <dir>: every path with its type, mode and content checksum, to show nothing changed.
 tree_of() {
   (cd "$1" && find . -printf '%y %m %p\n' | sort && find . -type f -print0 | sort -z | xargs -0 -r sha256sum)
-}
-
-# legacy_run <lang> [arguments...]: the 1.13.0 package script on the clone, with CUSTODEXA_HOME set as the upgrade guide says.
-legacy_run() {
-  local l=$1
-  shift
-  run env CUSTODEXA_HOME="$LROOT" bash "$PKG/custodexa.sh" upgrade --lang "$l" "$@" </dev/null
 }
 
 # upgrade_run <lang> [arguments...]: the deployment's own script.
@@ -163,7 +125,7 @@ upgrade_stack() {
 #!/bin/bash
 all=" $* "
 ev() { printf '%s\n' "$1" >>"$DB/events"; }
-# What ran while state.json existed (a clone must have none before its conversion).
+# Record commands issued while state.json existed.
 [ -e "$ROOT/state.json" ] && printf '%s\n' "$*" >>"$UP/with_state"
 case $1 in
   exec)

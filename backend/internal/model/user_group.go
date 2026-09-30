@@ -19,7 +19,15 @@ type UserGroup struct {
 	Description string `gorm:"size:500" json:"description"`
 
 	// 成員多對多（一人可屬多群），join 表 user_group_members
-	Users []User `gorm:"many2many:user_group_members;" json:"users,omitempty"`
+	Users         []User `gorm:"many2many:user_group_members;" json:"users,omitempty"`
+	ManualUserIDs []uint `gorm:"-" json:"manual_user_ids"`
+	MappedUserIDs []uint `gorm:"-" json:"mapped_user_ids"`
+	UserIDs       []uint `gorm:"-" json:"user_ids"`
+	MemberSources []struct {
+		UserID uint `json:"user_id"`
+		Manual bool `json:"manual"`
+		Mapped bool `json:"mapped"`
+	} `gorm:"-" json:"member_sources"`
 }
 
 // TableName 指定表名

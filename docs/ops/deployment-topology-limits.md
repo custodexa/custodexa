@@ -54,8 +54,7 @@ A deployment installed from the release package is operated by its management sc
   rolling update, and there is no rollback command: going back means restoring the backup by hand.
   See the [upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script) and
   [Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments).
-  A deployment running 1.12.4 from a `git clone` of the source is converted to this layout once, by
-  the 1.13.0 upgrade.
+  An older git clone deployment is refused by every `custodexa.sh` entry before files or services change. Plan a [manual migration](./upgrade-sop.md#manual-migration-of-an-older-source-deployment) or install in a separate clean directory and restore by hand; the script does not convert the old tree. `--images-from source` builds only the package's own images locally after checking their source checksum. Upstream images and build dependencies still have to be obtained, so this is not a fully offline option.
 
 ### Folder layout
 
@@ -164,7 +163,7 @@ Not trusting headers by default is deliberate: those headers are controlled by t
 - The source address pivot in the Investigation Workbench, and the source address column on audit rows and session rows, all record the proxy address.
 - The new source address alert only fires when the proxy address changes.
 
-**The default deployment brings its own proxy, and `bash scripts/quickstart.sh` fills `TRUSTED_PROXIES` in with the Docker subnet that proxy runs on.** Run an ingress of your own and the list is yours to write: put the ingress address, or the range it connects from, there.
+**The default deployment brings its own proxy. Source-tree `bash scripts/quickstart.sh` and package `custodexa.sh install` fill `TRUSTED_PROXIES` with the Docker subnet that proxy runs on.** Run an ingress of your own and the list is yours to write: put the ingress address, or the range it connects from, there.
 
 **To evaluate and record the real source, you must first set `TRUSTED_PROXIES` and list the proxy chain explicitly.** Make this decision **before** enabling source restrictions: setting up the list first and then changing the proxy configuration makes an already-effective list suddenly apply to a different set of addresses.
 

@@ -9,18 +9,15 @@
 #   7  the snapshot, then the script's backup or the operator's own (lib/backup.sh, backup_ref.sh);
 #      the backup folder also gets state.json as it was when the upgrade began, which is what
 #      going back by hand puts in place again
-#   8  the first conversion of a git clone deployment (lib/convert.sh); nothing on a package one
+#   8  reserved to retain the recorded step numbers of older upgrades
 #   9  state.json: previous.* <- current.*, current.* <- the target; then current -> the target
 #      release and the recordings folder prepared
 #   10 start   11 ready within 180 seconds   12 the checks (lib/post_checks.sh)   13 the record
-# A git clone deployment has no state.json before its conversion writes one: until step 8 its run
-# only locks and logs; from there on it runs as a package deployment. A failure stops where it is and prints what the upgrade guide says for that
+# A failure stops where it is and prints what the upgrade guide says for that
 # step; nothing is rolled back on its own. A failure from step 8 on is recorded with its step, and
 # the next upgrade refuses with the same commands (lib/upgrade_preflight.sh).
 # shellcheck source=lib/post_checks.sh
 . "${BASH_SOURCE[0]%/*}/post_checks.sh"
-# shellcheck source=lib/convert.sh
-. "${BASH_SOURCE[0]%/*}/convert.sh"
 
 readonly CX_UP_READY_TRIES=60 CX_UP_READY_WAIT=3 # up to 180 seconds
 CX_UP_D1="" CX_UP_D2="" CX_UP_DRAINED="" CX_UP_SNAP="" CX_UP_BACKUP_DIR="" CX_UP_BACKUP_KIND=""
@@ -29,22 +26,12 @@ CX_UP_STATE0="" # state.json as the upgrade found it, byte for byte (a trailing 
 
 # cx_up_at <n> <name>: the step now running (state.json once there is one, the log always).
 cx_up_at() {
-  if [ "$CX_UP_KIND" = package ]; then
-    cx_step "$1" "$CX_UP_STEPS" "$2"
-  else
-    CX_RUN_STEP=$1
-    cx_log STEP "$1/$CX_UP_STEPS $2"
-  fi
+  cx_step "$1" "$CX_UP_STEPS" "$2"
 }
 
 # cx_up_end <succeeded|failed>: the end of the run, in state.json when there is one.
 cx_up_end() {
-  if [ "$CX_UP_KIND" = package ]; then
-    cx_finish "$1"
-  else
-    cx_log END "result=$1 step=$CX_RUN_STEP"
-    trap - INT TERM HUP
-  fi
+  cx_finish "$1"
 }
 
 cx_up_fail_exit() { cx_up_end failed; exit "$CX_EXIT_FAILED"; }
@@ -60,48 +47,31 @@ cx_up_again() {
 # them; a layer that could not run asks first (the same screen as install). Nothing is written in
 # the deployment folder here.
 cx_up_images() {
-  local t0 out
+  local t0
   t0=$(cx_now)
-  out=$(mktemp)
-  if ! cx_images_resolve "$CX_OVERLAYS" >"$out" 2>&1; then
+  if ! cx_images_resolve "$CX_OVERLAYS"; then
     cx_up_step_line FAIL 2 "$(cx_msg up_step_images)"
-    cat "$out"
-    rm -f "$out"
     cx_up_again
     return "$CX_EXIT_FAILED"
   fi
   cx_trust_check
-  rm -f "$out"
   CX_UP_D2=$(cx_duration $(($(cx_now) - t0)))
   cx_trust_screen
 }
 
 # cx_up_begin: step 3, once the preview is answered.
 cx_up_begin() {
-  if [ "$CX_UP_KIND" = package ]; then
-    CX_UP_STATE0=$(cat -- "$CX_ROOT/state.json" && printf x) || CX_UP_STATE0=""
-    # An earlier run that may start over (lib/upgrade_preflight.sh) is closed first.
-    if [ "$CX_UP_RERUN" = 1 ]; then
-      cx_state_set last_upgrade.result interrupted
-      cx_state_save "$CX_ROOT/state.json"
-    fi
-    cx_begin upgrade
-    cx_state_set last_upgrade.from "$CX_UP_CURRENT"
-    cx_state_set last_upgrade.to "$CX_UP_TARGET"
-    if [ -n "${CX_UP_PACKAGE_VERIFICATION:-}" ]; then
-      cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
-    fi
-  else
-    CX_RUN_CMD=upgrade
-    cx_lock
-    cx_secrets_from_env "$CX_ROOT/.env"
-    cx_log_open upgrade
-    cx_log BEGIN "upgrade (git clone deployment) lang=${CX_LANG:-en} script=$CX_SELF"
-    # Read back when a conversion stopped before state.json was written (lib/convert.sh).
-    cx_log CONVERT "project=$CX_UP_OLD_PROJECT files=$CX_UP_OLD_FILES"
-    CX_UP_STARTED=$(date '+%Y-%m-%dT%H:%M:%S%z')
-    exec {CX_SIGNAL_FD}>&2
-    trap 'cx_on_signal' INT TERM HUP
+  CX_UP_STATE0=$(cat -- "$CX_ROOT/state.json" && printf x) || CX_UP_STATE0=""
+  # An earlier run that may start over (lib/upgrade_preflight.sh) is closed first.
+  if [ "$CX_UP_RERUN" = 1 ]; then
+    cx_state_set last_upgrade.result interrupted
+    cx_state_save "$CX_ROOT/state.json"
+  fi
+  cx_begin upgrade
+  cx_state_set last_upgrade.from "$CX_UP_CURRENT"
+  cx_state_set last_upgrade.to "$CX_UP_TARGET"
+  if [ -n "${CX_UP_PACKAGE_VERIFICATION:-}" ]; then
+    cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
   fi
   [ -z "${CX_UP_PACKAGE_VERIFICATION:-}" ] || cx_log VERIFY "package $CX_UP_PACKAGE_VERIFICATION"
   cx_log UPGRADE "from=$CX_UP_CURRENT to=$CX_UP_TARGET kind=$CX_UP_KIND"
@@ -155,7 +125,7 @@ cx_up_own_backup() {
     cx_br_interactive "$CX_UP_DRAINED" "$CX_UP_PRE_EXTERNAL_DB" || return 1
   fi
   id=$(date '+%Y%m%d-%H%M%S')
-  if [ "$CX_UP_KIND" = package ]; then cx_br_record "$id" || rc=1; else cx_br_record "$id" nostate || rc=1; fi
+  cx_br_record "$id" || rc=1
   [ "$rc" = 0 ] || { cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"; return 1; }
   CX_UP_BACKUP_DIR=$CX_ROOT/backups/$id CX_UP_BACKUP_KIND=external
   cx_up_keep_state "$CX_UP_BACKUP_DIR" || { cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"; return 1; }
@@ -197,8 +167,7 @@ cx_up_backup() {
   cx_up_keep_state "$CX_BK_DIR" || { cx_up_bk_failed; return 1; }
   cx_up_snapshot "$CX_BK_DIR/snapshot.txt" || { cx_up_bk_failed; return 1; }
   cx_bk_take upgrade cx_up_bk_cb || { cx_up_bk_failed; return 1; }
-  # A git clone deployment has no state.json yet: the conversion records the backup (step 8).
-  [ "$CX_UP_KIND" != package ] || cx_bk_record
+  cx_bk_record
 }
 
 # cx_up_bk_failed: the backup did not finish: what is there, how to start the old version again.
@@ -211,28 +180,14 @@ cx_up_bk_failed() {
 
 # ---------- steps 8 to 11 ----------
 
-# cx_up_convert <n>: step 8. A package deployment has nothing to reorganize.
-cx_up_convert() {
-  if [ "$CX_UP_KIND" = package ]; then
-    cx_up_step_line SKIP "$1" "$(cx_msg up_step_convert_skip)"
-    return 0
-  fi
-  cx_cv_run "$1"
-}
-
 # cx_up_record_switch: state.json before current moves: what runs now becomes previous.*, the
-# target becomes current.* (a rollback reads previous.*). The clone a conversion came from ran under
-# its own project and files.
+# target becomes current.* (a rollback reads previous.*).
 cx_up_record_switch() {
   local k n src="" proj=$CX_PROJECT
   for k in version kind overlays release_dir images_env image_ids image_source verification since; do
     cx_state_set "previous.$k" "$(cx_state_get "current.$k")"
   done
   cx_state_set previous.image_ids "$CX_UP_PRE_OLD_IDS"
-  if [ "$(cx_state_get current.kind)" = legacy-git-clone ]; then
-    proj=$(cx_state_get conversion.old_project)
-    cx_state_set previous.compose_files "$(cx_state_get conversion.old_files)"
-  fi
   cx_state_set previous.compose_project "$proj"
   cx_state_set current.kind package
   cx_state_set current.overlays "$CX_OVERLAYS"
@@ -361,8 +316,8 @@ cx_up_main() {
   cx_up_gone 6 || cx_up_fail_exit
   cx_up_at 7 backup
   cx_up_backup 7 || cx_up_fail_exit
-  cx_up_at 8 convert
-  cx_up_convert 8 || cx_up_fail_exit
+  cx_up_at 8 reserved
+  cx_up_step_line SKIP 8 "$(cx_msg up_step_reserved)"
   cx_up_at 9 switch
   cx_up_switch 9 || { cx_up_fail_switched up_fail_switch; cx_up_fail_exit; }
   cx_up_at 10 start

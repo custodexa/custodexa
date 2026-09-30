@@ -1222,6 +1222,8 @@ func endpointAuditFieldSet(endpoint string) map[string]bool {
 	// 同表的 `bind_password_enc` 一類憑證欄不在此，仍受全域 default-deny 遮蔽。
 	case "PUT /api/v1/ldap-directory":
 		return map[string]bool{"url": true}
+	case "PUT /api/v1/user-groups/:id/members":
+		return map[string]bool{"manual_user_ids": true}
 
 	// 委託拓撲：位址、服務區域與角色識別皆為非秘密，且它們承載的正是
 	// 「上鎖的資料金鑰送去哪裡解」——只記「拓撲已變更」不成立。
@@ -1261,6 +1263,7 @@ func AuditMaskEndpoints() []string {
 		"POST /api/v1/command-alerts/:id/review",
 		"POST /api/v1/users/:id/agent-tokens",
 		"PUT /api/v1/ldap-directory",
+		"PUT /api/v1/user-groups/:id/members",
 		"PUT /api/v1/keys/topology",
 	}
 }

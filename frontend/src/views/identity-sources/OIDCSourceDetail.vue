@@ -246,6 +246,14 @@
         :title="$t('identitySources.section.groupMapping')"
         :hint="$t('identitySources.mapping.sectionHint')"
       >
+        <router-link
+          v-if="providerId"
+          :to="`/identity-sources/oidc/${providerId}/group-mappings`"
+        >
+          <el-button type="primary">
+            {{ $t('identityGroupMappings.openPage') }}
+          </el-button>
+        </router-link>
         <GroupMappingSection
           type="oidc"
           :source-id="providerId"
@@ -488,6 +496,7 @@ import { resolveApiError } from '@/api/error'
 import { createOIDCProvider, updateOIDCProvider } from '@/api/oidc'
 import {
   getOIDCProviderDetail,
+  getIdentitySources,
   previewOIDCDiscovery,
   isNotImplemented,
 } from '@/api/identitySources'
@@ -744,9 +753,20 @@ const handleSave = async (nextEnabled) => {
     return
   }
   if (savedEnabled.value && !nextEnabled) {
+    let preview
+    try {
+      const sources = await getIdentitySources()
+      const current = (sources.data || []).find(row => row.type === 'oidc' && String(row.id) === String(providerId.value))
+      if (!current || ['mapped_user_count', 'effective_role_loss_count', 'effective_member_loss_count'].some(key => typeof current[key] !== 'number')) throw new Error('mapping preview unavailable')
+      preview = current
+    } catch (error) {
+      ElMessage.error(t('identityGroupMappings.loadFailed'))
+      logFailure('identity_source_mapping_count_failed', error)
+      return
+    }
     try {
       await confirmDestructive(
-        t('oidcProviders.disableConfirm', { name: form.name }),
+        `${t('oidcProviders.disableConfirm', { name: form.name })}\n${t('identityGroupMappings.sourceDisableConfirm', { count: preview.mapped_user_count, roles: preview.effective_role_loss_count, members: preview.effective_member_loss_count })}`,
         t('oidcProviders.disableConfirmTitle'),
         {
           confirmButtonText: t('common.confirm'),

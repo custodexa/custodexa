@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`；登入回應與 `/auth/me` 的 `UserInfo` 加產品版本欄 `product_version`）
+> 最後更新：2026-09-30（外部群組映射新增角色明確路由、使用者群組規則、共用字典備註、用途確認及兩類計數）
+> 前次更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`；登入回應與 `/auth/me` 的 `UserInfo` 加產品版本欄 `product_version`）
 > 前次更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
@@ -21,7 +22,7 @@
 | OIDC 登入 | 4 | `/api/v1/auth/methods`, `/api/v1/auth/oidc` | 登入方法清單（公開）、SSO 發起／IdP 回呼／交棒憑證兌換 |
 | OIDC provider | 7 | `/api/v1/oidc-providers` | 身分提供者 CRUD＋單筆詳情＋狀態彙總＋探索預覽（admin；secret write-only，身分域建後不可變） |
 | LDAP 目錄 | 5 | `/api/v1/ldap-directory` | 目錄設定 singleton 資源＋連線測試＋狀態彙總（admin；bind 密碼 write-only，設定自 env 遷入 DB） |
-| 身分來源與群組映射 | 5 | `/api/v1/identity-sources` | 目錄與提供者的合併列表＋各來源的群組對角色映射規則 CRUD（admin） |
+| 身分來源與外部群組映射 | 16 | `/api/v1/identity-sources` | 來源列表、角色映射相容及明確路由、使用者群組映射、字典備註與用途查詢（admin） |
 | 安全政策 | 6 | `/api/v1/security-policies`, `/api/v1/auth/banner` | 安全政策查詢/批次更新、單一設定鍵的定義查詢、草稿判定與套用預覽（admin）＋登入前告示讀取（公開） |
 | 政策組 | 10 | `/api/v1/policy-groups` | 政策組與條文對照的維護：組建立/更名/生效開關/刪除、條文與要求整批取代、機構備註與人工確認（讀 admin＋auditor，寫 admin） |
 | 合規對照 | 1 | `/api/v1/compliance` | 設定現值對各生效政策組的判定快照（唯讀，admin＋auditor） |
@@ -228,10 +229,21 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | GET | `/api/v1/db-console` | always |
 | GET | `/api/v1/db-console/sessions/:id/results/:event_id/export` | always |
 | GET | `/api/v1/identity-sources` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/external-groups` | always |
+| PUT | `/api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId` | always |
 | GET | `/api/v1/identity-sources/:type/:sourceId/mappings` | always |
 | POST | `/api/v1/identity-sources/:type/:sourceId/mappings` | always |
 | DELETE | `/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId` | always |
 | PUT | `/api/v1/identity-sources/:type/:sourceId/mappings/:ruleId` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/role-mappings` | always |
+| POST | `/api/v1/identity-sources/:type/:sourceId/role-mappings` | always |
+| DELETE | `/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` | always |
+| PUT | `/api/v1/identity-sources/:type/:sourceId/role-mappings/:ruleId` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings` | always |
+| POST | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings` | always |
+| DELETE | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId` | always |
+| PUT | `/api/v1/identity-sources/:type/:sourceId/user-group-mappings/:ruleId` | always |
+| GET | `/api/v1/identity-sources/:type/:sourceId/user-group-usage/:userGroupId` | always |
 | GET | `/api/v1/instance-guard` | always |
 | POST | `/api/v1/instance-guard/ack` | always |
 | GET | `/api/v1/instance-guard/halt` | always |
@@ -1434,9 +1446,9 @@ operational log，需主機營運權限才能對照。出站政策拒絕另立 `
 **設定來源與降版**：`.env` 的 `LDAP_*` 九鍵僅供首次啟動 seed，之後以本 API 為唯一事實源；
 降版至舊版本前須將現行設定回填 `.env`，見 QUICKSTART.md。
 
-### 身分來源與群組映射（admin only）
+### 身分來源與外部群組映射（admin only）
 
-把目錄與身分提供者合併成一份列表，並在各來源底下維護「外部群組 → 本系統角色」的映射規則。
+把目錄與身分提供者合併成一份列表，在各來源底下分別維護「外部群組 → 系統角色」及「外部群組 → 使用者群組」規則。
 
 ```
 GET    /api/v1/identity-sources
@@ -1455,18 +1467,24 @@ DELETE /api/v1/identity-sources/:type/:sourceId/mappings/:ruleId
 ```json
 {"type": "oidc", "id": 2, "name": "公司 Entra ID",
  "address": "https://login.microsoftonline.com/<tenant-id>/v2.0",
- "enabled": true, "last_login_at": "2026-09-08T08:47:03Z", "mapping_rule_count": 3}
+ "enabled": true, "last_login_at": "2026-09-08T08:47:03Z", "mapping_rule_count": 3,
+ "role_mapping_rule_count": 3, "user_group_mapping_rule_count": 2, "mapped_user_count": 4,
+ "group_attribute_configured": true, "effective_role_loss_count": 2,
+ "effective_member_loss_count": 1}
 ```
 
 `address` 是目錄的位址或提供者的 issuer；`last_login_at` 可為 null（該來源尚無成功登入）；
-`mapping_rule_count` 含停用中的規則。目錄至多一列；兩者皆未設定時回空陣列。
+`mapping_rule_count` 保持舊契約，只計角色規則；兩類規則計數均包含停用列。`mapped_user_count` 為此來源兩類現有規則支持涉及的去重帳號數。`group_attribute_configured` 表示來源已設定群組欄位；兩個 `effective_*_loss_count` 是按目前支持與手動成員計算的來源停用預覽，實際異動以提交時狀態為準。目錄至多一列；兩者皆未設定時回空陣列。
 
 **規則的形狀**：
 
 ```json
 RuleInput: {"match_value": "cn=PAM-Admins,ou=groups,dc=example,dc=com",
             "role": "admin", "enabled": true, "risk_acknowledged": false}
-Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
+Rule:      {"id": 7, "source_type": "oidc", "source_id": 2,
+            "match_value": "…", "role": "admin", "enabled": true,
+            "affected_user_count": 4, "effective_role_loss_count": 2,
+            "effective_member_loss_count": 0,
             "created_by": "admin", "created_at": "…", "updated_at": "…"}
 ```
 
@@ -1476,6 +1494,7 @@ Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
   `VALIDATION_MAPPING_MATCH_VALUE_DN`。提供者側非空即可，比對是**逐字**的、不做任何正規化
   （兩家提供者的官方文件皆未定義比對規則，故取嚴）。
 - `enabled: false` 的規則在登入重算時**視同不存在**，用來暫停一條映射而不必刪掉它。
+- 角色與使用者群組規則新增時皆可帶選填 `note`；若相同來源與群組值已有字典列，新增規則不覆寫既有備註，請用獨立字典 API 修改。
 - 建立成功回 201，更新回 200，刪除回 204。規則不存在回 `MAPPING_RULE_NOT_FOUND`。
 
 **警告加確認，不阻擋**：以下情形且 `risk_acknowledged` 為 false 時回 **422**
@@ -1484,8 +1503,8 @@ Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
 ```json
 {"error": "…",
  "code": "MAPPING_ACK_REQUIRED",
- "warnings": [{"code": "MAPPING_TARGETS_ADMIN_ROLE"},
-              {"code": "MAPPING_SOURCE_ATTR_UNSET"}]}
+ "meta": {"warnings": [{"code": "MAPPING_TARGETS_ADMIN_ROLE"},
+                       {"code": "MAPPING_SOURCE_ATTR_UNSET"}]}}
 ```
 
 - `MAPPING_TARGETS_ADMIN_ROLE`：這條規則會把管理員角色交給一個外部群組決定。
@@ -1498,9 +1517,7 @@ Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
 **來源刪除的相依**：仍有規則掛著的目錄或提供者不可刪除，回 409
 `LDAP_DIRECTORY_HAS_MAPPINGS`／`OIDC_PROVIDER_HAS_MAPPINGS`；先移除規則再刪來源。
 
-**規則怎麼變成角色**：規則不會即時改動任何人的角色。**每次登入時對該條途徑重算一次**——
-命中就取得對應角色，不再命中就收回。故改規則的生效時點是當事人的下一次登入，
-而收回會使有效角色集縮減、推進該帳號的憑證世代（既有會話因此失效）。
+**規則怎麼變成角色**：每次登入對該通道的已知群組觀測重算逐規則支持。建立或啟用規則待下次登入授予；停用、刪除或改變群組值／目標時，舊規則支持立即收回。失去全部支持的有效角色被移除時，同交易推進憑證世代並撤刷新憑證。
 群組資料的三種狀態各有不同處置：來源未設定要從哪裡讀群組時**完全不重算**；
 設定了卻這次讀不到時**保留現狀並留痕**（不當成「沒有群組」而把角色全撤）；
 讀到了（**空集合也算讀到**）才依規則重算。
@@ -1508,6 +1525,12 @@ Rule:      {"id": 7, "match_value": "…", "role": "admin", "enabled": true,
 **稽核**：映射造成的角色異動逐次留痕，可回答「誰、經哪條途徑、命中哪些群組、動了哪些角色、
 憑證世代是否推進」；跳過重算的兩種情形（來源未設定屬性／宣告名、群組讀不到）各有自己的
 機器碼。留痕失敗即整筆回滾——角色改了而稽核沒記下來，是本系統不接受的結果。
+
+**明確路由與使用者群組規則**：上述 `/mappings` 四條舊路由仍只代表角色；同樣的四個方法可用 `/role-mappings`。`/user-group-mappings` 提供 GET、POST、PUT、DELETE，列表回 `data`，建立回 201、更新回 200、刪除回 204。請求含 `match_value`、`user_group_id`、`enabled`、`risk_acknowledged`、`source_config_acknowledged`，新增字典值時可帶選填 `note`。回應列含來源型別與 ID、`external_group_id`、`note`、`user_group_name`、`usage`、`affected_user_count`、兩種有效權限收回預覽、建立者與時間。來源未設群組欄位時沿用 `MAPPING_ACK_REQUIRED` 警告，須另送 `source_config_acknowledged: true`，用途確認不得代替來源設定確認。目標群組有資產授權、審核方或申請人範圍時，未確認回 409 `MAPPING_USAGE_ACK_REQUIRED`，`meta.usage` 分別列出 `asset_authorizations`、`approver_scopes`、`requester_scopes`；確認後送 `risk_acknowledged: true`。
+
+`GET /user-group-usage/:userGroupId` 回上述三種用途實數。`GET /external-groups` 回來源內的共用群組字典；`PUT /external-groups/:externalGroupId` 以 `{ "note": "顯示名稱" }` 更新選填的 200 字備註，兩類規則同步顯示。字典不存在回 `EXTERNAL_GROUP_NOT_FOUND`，過長回 `VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG`。備註全文不進通用請求稽核欄，獨立稽核只記前後長度。
+
+使用者群組成員 GET 分列 `manual_user_ids`、`mapped_user_ids`、`member_sources`；PUT 帶 `manual_user_ids` 只替換手動成員。舊 `user_ids` 仍可送，代表期望有效全集，不會把僅由映射支持的成員轉為手動。LDAP 與 OIDC 已知群組觀測均在登入交易重算本來源兩類支持；未知與未設定保留既有支持並留痕。停用規則或來源即時收回該規則或來源的支持，仍有其他支持的有效權限保留。
 
 ---
 

@@ -3485,6 +3485,9 @@
     "INTERNAL_USER_UPDATE": "更新使用者失敗",
     "LDAP_DIRECTORY_HAS_MAPPINGS": "此目錄仍有群組映射規則，請先移除規則再刪除目錄設定",
     "MAPPING_ACK_REQUIRED": "這條規則需要先確認風險才能儲存",
+    "MAPPING_USAGE_ACK_REQUIRED": "此映射涉及既有授權或審核用途，請先確認",
+    "EXTERNAL_GROUP_NOT_FOUND": "找不到指定的外部群組",
+    "VALIDATION_EXTERNAL_GROUP_NOTE_TOO_LONG": "外部群組備註不得超過 200 字",
     "MAPPING_RULE_NOT_FOUND": "找不到指定的映射規則",
     "NOTFOUND_ACCESS_REQUEST": "申請單不存在",
     "NOTFOUND_ACCESS_REVIEW": "複審紀錄不存在",
@@ -4256,6 +4259,73 @@
     "testPassedNoMatch": "連線測試通過，但搜尋條件未命中任何使用者",
     "noMatchConsequence": "搜尋起點與 filter 目前找不到任何使用者：維持此設定並啟用後，所有目錄使用者都會登入失敗。請確認搜尋起點（base DN）涵蓋使用者所在分支，且 filter 的屬性名與目錄一致。"
   },
+  "identityGroupMappings": {
+    "title": "外部群組映射",
+    "subtitle": "依已驗證的身分來源群組同步系統角色與使用者群組。",
+    "backToSource": "返回來源設定",
+    "verifiedSourceHint": "群組值取自已驗證的登入資料。",
+    "tabs": {
+      "roles": "群組 → 角色",
+      "userGroups": "群組 → 使用者群組"
+    },
+    "columns": {
+      "externalGroup": "外部群組",
+      "targetRole": "目標系統角色",
+      "targetUserGroup": "目標使用者群組",
+      "usage": "目前用途",
+      "createdBy": "建立者",
+      "updatedAt": "更新時間"
+    },
+    "fields": {
+      "note": "備註／顯示名稱"
+    },
+    "empty": {
+      "roles": "此來源尚無角色映射規則",
+      "userGroups": "此來源尚無使用者群組映射規則"
+    },
+    "openPage": "外部群組映射",
+    "roleCount": "角色映射規則",
+    "userGroupCount": "使用者群組映射規則",
+    "filterTarget": "篩選目標",
+    "add": "新增規則",
+    "edit": "編輯規則",
+    "editNote": "修改備註",
+    "noteSharedHint": "備註由兩個分頁共用，修改後會同步顯示。",
+    "copyIdentifier": "複製識別碼",
+    "expandIdentifier": "展開識別碼",
+    "collapseIdentifier": "收合識別碼",
+    "identifierCopied": "識別碼已複製",
+    "copyFailed": "無法複製識別碼",
+    "sourceAttrMissingHint": "此來源尚未設定群組欄位。登入時不會同步；可先建立規則，啟用前請設定群組欄位。",
+    "unknownObservationRule": "若登入時無法確認使用者所屬的外部群組，會保留其既有映射權限。",
+    "currentUsage": "資產授權 {asset_authorizations} 筆、審核方 {approver_scopes} 處、申請人範圍 {requester_scopes} 處",
+    "confirmUsage": "我了解此映射可能賦予資產存取或審核資格",
+    "editIdentityHint": "舊規則立即收回；新規則於下次登入生效。",
+    "revokeConfirm": "{action}後將立即收回失去全部支持的映射權限，涉及 {count} 名帳號，可能失去 {roles} 筆有效角色指派及 {members} 筆有效群組成員關係。",
+    "confirmTitle": "確認映射異動",
+    "enable": "啟用",
+    "disable": "停用",
+    "saved": "規則已儲存",
+    "loadFailed": "無法讀取映射資料",
+    "saveFailed": "映射異動未提交，請重試。",
+    "mappedMembers": "映射成員",
+    "noMappedMembers": "目前沒有映射成員",
+    "memberManual": "手動",
+    "memberMapped": "映射",
+    "memberBoth": "手動與映射",
+    "sourceDisableConfirm": "停用此來源會立即收回兩類映射支持，涉及 {count} 名帳號，可能失去 {roles} 筆有效角色指派及 {members} 筆有效群組成員關係。重新啟用後須待下次登入才會重新授予。",
+    "accountGroups": "使用者群組成員來源",
+    "accountGroupsEmpty": "此帳號未加入使用者群組",
+    "events": {
+      "group_user_group_mapping_create": "建立使用者群組映射",
+      "group_user_group_mapping_update": "更新使用者群組映射",
+      "group_user_group_mapping_delete": "刪除使用者群組映射",
+      "external_group_note_update": "更新外部群組備註",
+      "user_group_mapping_applied": "套用使用者群組映射",
+      "group_mapping_rule_revoked": "收回映射規則支持",
+      "group_mapping_source_revoked": "收回來源映射支持"
+    }
+  },
   "identitySources": {
     "title": "身分來源",
     "headerDesc": "接組織的目錄或 OIDC 身分提供者，使用者以組織帳號登入；群組可直接決定角色。",
@@ -4275,14 +4345,14 @@
     "column": {
       "type": "型別",
       "address": "位址",
-      "mappings": "群組映射"
+      "mappings": "角色群組映射"
     },
     "lastLoginAt": "最近成功登入 {time}",
     "neverLoggedIn": "尚無成功登入",
     "lastSaved": "上次儲存 {time}",
     "ruleCount": "規則 {count} 條",
     "ruleCountUnknown": "—",
-    "listNote": "群組映射的規則在各來源的設定頁內維護；群組變動於使用者下次登入時生效。目錄型別最多一個。",
+    "listNote": "規則在各來源的「外部群組映射」頁管理。外部群組變動於下次登入時生效；停用規則或來源則立即收回其映射支持。目錄型別最多一個。",
     "loadFailedTitle": "讀不到身分來源清單",
     "loadFailedDesc": "畫面上的內容不代表現況。請稍後重新整理；持續失敗時查看伺服器狀態。",
     "mergedUnavailableTitle": "合併清單尚未提供",
@@ -4305,7 +4375,7 @@
     "section": {
       "connection": "連線",
       "userMapping": "使用者對應",
-      "groupMapping": "群組映射",
+      "groupMapping": "角色群組映射",
       "admission": "准入",
       "advanced": "進階"
     },
@@ -4361,7 +4431,7 @@
       "subtitle": "本系統以服務帳號查目錄並代為驗證密碼。"
     },
     "mapping": {
-      "sectionHint": "命中的群組賦予對應角色，管理者手動指派的角色不受影響。映射於使用者下次登入時生效：被移出群組、或規則被停用或刪除後，映射給的角色也在其下次登入時收回。",
+      "sectionHint": "外部群組可映射到系統角色及使用者群組。已知的群組變動於下次登入同步；停用或刪除規則時立即收回其支持。",
       "matchDn": "群組 DN",
       "matchDnPlaceholder": "貼上群組的完整辨識名稱",
       "matchDnHint": "請照目錄實際回傳的辨識名稱逐字填寫：屬性型別的大小寫不影響命中，值的大小寫會影響。",
@@ -4381,7 +4451,7 @@
       "loadFailed": "讀不到此來源的映射規則",
       "saveFailed": "映射規則儲存失敗",
       "deleteFailed": "映射規則刪除失敗",
-      "deleteConfirm": "確定刪除「{value}」對應角色「{role}」的規則？該群組成員在下次登入時失去此角色。",
+      "deleteConfirm": "確定刪除「{value}」對應角色「{role}」的規則？失去全部支持的映射角色將立即收回，涉及 {count} 名帳號。",
       "riskTitle": "確認風險",
       "riskConfirm": "了解，仍要儲存",
       "adminNote": "映射到管理員角色的規則儲存時需確認風險並留痕。審核者角色只給資格，審核範圍仍需管理者逐人建立。",

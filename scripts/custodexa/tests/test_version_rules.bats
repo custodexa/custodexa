@@ -200,14 +200,6 @@ interrupted_at() {
   interrupted_at 8 'false 2026-09-30T02:15:30Z' || return 1
   printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
   [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
-  # During a conversion that already wrote state.json: the commands that put the clone back.
-  printf '{\n  "format": "2",\n  "current.version": "1.12.4",\n  "current.kind": "legacy-git-clone",\n  "conversion.from": "1.12.4",\n  "conversion.old_project": "custodexa",\n  "conversion.old_files": "%s/docker-compose.yml",\n  "conversion.env_backup": "backups/20260930-021504/env-before-convert.bak",\n  "last_upgrade.result": "in_progress",\n  "last_upgrade.step": "8"\n}\n' "$ROOT" >"$ROOT/state.json"
-  run bash "$ROOT/releases/1.13.2/custodexa.sh" upgrade --lang en </dev/null
-  [ "$status" -eq 3 ] && [[ $output == "[FAIL] The last upgrade run was interrupted at step 8."* ]] || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF "    sudo rmdir $ROOT/releases/1.12.4" || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF "    sudo cp $ROOT/backups/20260930-021504/env-before-convert.bak \\" || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF "      -f $ROOT/docker-compose.yml up -d" || { echo "$output"; return 1; }
-  [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
   # Switched to the new version, running or not: the log, the backup and how to restore it by
   # hand; never over again.
   interrupted_at 10 || return 1
@@ -218,18 +210,6 @@ interrupted_at() {
   [[ $output != *"custodexa.sh rollback"* ]] || { echo "$output"; return 1; }
   [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
   ! grep -q ' stop \| down \| up \| start ' "$FAKE_DOCKER_LOG"
-}
-
-@test "the development compose file on a git clone: refused, exit 3, nothing changed" {
-  legacy_host
-  printf '%s\n' COMPOSE_FILE=docker-compose.dev.yml >>"$LROOT/.env"
-  tree_of "$LROOT" >"$BATS_TEST_TMPDIR/before"
-  legacy_run en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] This deployment uses the development compose file (COMPOSE_FILE=docker-compose.dev.yml)."* ]] \
-    || { echo "$output"; return 1; }
-  [[ $output != *"upgrade preview"* ]] || return 1
-  diff "$BATS_TEST_TMPDIR/before" <(tree_of "$LROOT")
 }
 
 @test "too little space for the backup and the new images: FAIL before the preview, nothing stopped" {

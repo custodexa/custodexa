@@ -17,7 +17,7 @@ CX_SNAP_REASONS=""
 
 # cx_snap_sql <sql>: run one query in the postgres container, unaligned, tuples only.
 cx_snap_sql() {
-  cx_bk_compose exec -T postgres psql -U "$CX_BK_DBUSER" -d "$CX_BK_DBNAME" -AtX -v ON_ERROR_STOP=1 -c "$1"
+  cx_compose exec -T postgres psql -U "$CX_BK_DBUSER" -d "$CX_BK_DBNAME" -AtX -v ON_ERROR_STOP=1 -c "$1"
 }
 
 # cx_snap_fp <text>: the fingerprint of the bytes of text.

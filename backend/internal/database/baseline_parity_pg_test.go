@@ -282,9 +282,12 @@ var baselineCheckConstraints = map[string]string{
 	// 外部群組對角色映射：一條規則掛在目錄或身分提供者上，恰一。
 	// 被放寬時兩欄可同時為空（規則指不到任何來源，永遠不會被重算讀到）
 	// 或同時非空（同一條規則被兩條途徑各自認領，重算互相覆蓋）
-	"users_kind_check":              "users",
-	"users_owner_check":             "users",
-	"chk_group_role_mapping_source": "group_role_mappings",
+	"users_kind_check":                    "users",
+	"users_owner_check":                   "users",
+	"chk_group_role_mapping_source":       "group_role_mappings",
+	"chk_external_group_source":           "external_groups",
+	"chk_external_group_note_length":      "external_groups",
+	"chk_group_user_group_mapping_source": "group_user_group_mappings",
 	// 委託拓撲的單列常數載體：拓撲是「上鎖的資料金鑰送去哪裡解」的唯一事實源，
 	// 兩列並存時讀取順序決定目的地，而那是一個沒有訊號的錯誤
 	"kek_topologies_singleton_check": "kek_topologies",

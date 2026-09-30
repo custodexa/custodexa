@@ -820,10 +820,9 @@ func (s *AuthService) authenticateLDAP(
 	return resolved, nil
 }
 
-// recomputeLDAPRoleMapping 目錄途徑的映射重算，並在有變動時重載角色集。
+// recomputeLDAPRoleMapping 目錄途徑的映射重算，角色集或憑證世代變動時重載使用者。
 //
-// **有變動才重載**：重載是一次帶關聯的查詢，而絕大多數登入什麼都沒變。
-// 沒變的時候呼叫端手上的物件本來就是對的。
+// 重載是一次帶關聯的查詢；只有支持變動且有效角色與世代均未變時可沿用原物件。
 //
 // 錯誤一律上拋（fail-close）：映射管線壞掉時讓目錄使用者鎖在門外，是刻意選的
 // 方向——反面是「權限算錯了但還是放你進來」。逃生口寫在營運程序：
@@ -839,7 +838,7 @@ func (s *AuthService) recomputeLDAPRoleMapping(user *model.User, info *LDAPUserI
 	if outcome.EpochBumped && s.agentTokens != nil {
 		s.agentTokens.finishSuspendedOwner(user.ID)
 	}
-	if !outcome.Changed() {
+	if !outcome.Changed() && !outcome.EpochBumped {
 		return nil
 	}
 	var reloaded model.User

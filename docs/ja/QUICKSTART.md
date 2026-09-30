@@ -16,18 +16,52 @@ docker --version
 docker compose version
 ```
 
+インストールパッケージと `custodexa.sh` が、対応する Linux のインストール、バックアップ、アップグレード手段です。以下のソースツリーのコマンドは開発者と macOS／Windows での評価用であり、パッケージのデプロイを管理・アップグレードしません。
+
 デプロイの方法は 2 つあり、どちらも同じサービスが動きます。
 
 - **インストールパッケージ**（Linux サーバーでの主な方法）：リリースページからダウンロードし、
   展開する前に検証してから、パッケージに含まれる管理スクリプト `custodexa.sh` でインストール・運用します。
   [インストールパッケージからのインストール](#インストールパッケージからのインストール)を参照してください。
 - **ソースから実行**：`git clone` の後、`scripts/quickstart.sh` または `docker compose` を直接使います。
-  macOS や Windows（WSL）での評価、および開発への参加に向いています。[起動手順](#起動手順)を参照してください。
+  macOS や Windows（WSL）での評価、および開発への参加に向いています。[ソースツリーの起動手順](#開発評価用ソースツリーの起動手順)を参照してください。
 
 ## インストールパッケージからのインストール
 
 管理スクリプトは Linux（x86_64 または aarch64）専用で、1 台のホストに置けるデプロイは 1 つです。
 root（`sudo`）で実行するか、`docker` グループに属しデプロイフォルダーに書き込めるアカウントで実行してください。
+
+1.14.0 以降のリリースには、固定ファイル名のダウンロード案内スクリプトが含まれます。Linux ホストで実行します。
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash
+```
+
+最新版のパッケージと `SHA256SUMS` を取得し、展開前にパッケージの SHA-256 を照合して
+`/opt/custodexa` に配置し、`custodexa.sh` のメニューを開きます。バージョンとフォルダーを指定する場合：
+
+```bash
+set -o pipefail
+curl -fsSL https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh | sudo bash -s -- --version 1.14.0 --dir /srv/custodexa
+```
+
+スクリプトを先に確認する場合は、同じファイルをダウンロードしてから実行します。
+
+```bash
+curl -fsSLO https://github.com/custodexa/custodexa/releases/latest/download/get-custodexa.sh
+sudo bash get-custodexa.sh
+```
+
+Bash または Zsh の端末で先に `set -o pipefail` を実行すると、最初のダウンロードが失敗した
+場合にパイプライン全体がゼロ以外の終了コードを返します。2 行でダウンロード後に実行する場合は、
+1 行目が成功してから 2 行目を実行してください。`CX_GET_RELEASE_BASE` を別のリリース端点に
+設定すると、その端点が提供するパッケージと `SHA256SUMS` の両方を信頼することになります。
+両者のハッシュが一致するだけでは発行元の身元は確認できません。信頼する端点を使用してください。
+
+対話端末がない場合は `--` の後に `install --yes` などのサブコマンドを指定してください。
+既存のデプロイは上書きせず、その `custodexa.sh` に引き継ぎます。案内スクリプトが確認するのは
+SHA-256 のみです。パッケージの署名は以下の手順で手動確認し、イメージ署名は管理スクリプトが扱います。
 
 ### 1. ダウンロード
 
@@ -36,6 +70,7 @@ root（`sudo`）で実行するか、`docker` グループに属しデプロイ�
 | ファイル | 内容 |
 |---|---|
 | `custodexa-<バージョン>.tar.gz` | インストールパッケージ：管理スクリプト、compose ファイル、そのリリースのソース |
+| `get-custodexa.sh` | 固定ファイル名のダウンロード案内スクリプト。1.14.0 以降で提供 |
 | `SHA256SUMS` | この表のすべてのファイルのチェックサム |
 | `SHA256SUMS.sigstore.json` | `SHA256SUMS` の署名。このリポジトリのリリースワークフローが署名したもの |
 | `MANIFEST.json` | リリースマニフェスト：パッケージがインストールするイメージのダイジェスト（パッケージ内にも同じファイルがあります） |
@@ -48,12 +83,12 @@ root（`sudo`）で実行するか、`docker` グループに属しデプロイ�
 
 スクリプトは後で取得するものをすべて検証しますが、自分自身を保証することはできません。改ざんされた
 パッケージには改ざんされたスクリプトが入っています。そのため展開する前にパッケージを検証します。
-`1.13.0` はダウンロードしたバージョンに置き換えてください。
+`1.14.0` はダウンロードしたバージョンに置き換えてください。
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0" \
+  --certificate-identity "https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.14.0" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   SHA256SUMS
 ```
@@ -68,7 +103,7 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
 ### 3. 展開してインストールする
 
 ```bash
-sudo tar -xzf custodexa-1.13.0.tar.gz -C /opt
+sudo tar -xzf custodexa-1.14.0.tar.gz -C /opt
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -85,7 +120,7 @@ sudo /opt/custodexa/custodexa.sh install
 2. **`.env` を作成**（パッケージ内のテンプレートをもとにします）：ログイン署名鍵、データベースのパスワード、初期管理者
    パスワードを生成します（`KEK_PROVIDER=env` の場合は暗号化鍵も）。設定済みの値は変更しません。`.env` は所有者だけが読めます。
 3. **プログラムのイメージを取得**：このホスト、オフラインバンドル、GitHub Container Registry、Docker Hub、ソースから
-   のビルドの順に試します。どのイメージもリリースマニフェストのダイジェストと一致する必要があります。`cosign` と `gh`
+   のビルドの順に試します。リリースイメージはマニフェストのダイジェストと一致する必要があります。ローカルビルドのイメージはパッケージソースを確認し、イメージ ID を記録します。`cosign` と `gh`
    があり署名サービスに接続できる場合は、このプロジェクト自身のイメージについて発行元の署名とビルド来歴も検証します。
    検証できない場合や検証結果が一致しない場合は、警告と記録を残し、完全なダイジェスト付きの検証コマンドを表示して続行します。
 4. **録画フォルダーを準備**（所有者 `1000`、グループ `0`、権限 `2770`）。
@@ -103,13 +138,15 @@ sudo /opt/custodexa/custodexa.sh install
 いずれかのステップが失敗すると、スクリプトは停止し、完了した部分はそのまま残します。`install` をもう一度実行すると
 ステップ 1 からやり直し、すでにあるもの（`.env` の値、取得済みのイメージ、実行中のサービス）は変更しません。
 
+`install` に `--images-from source` を付けると、パッケージ内のソースのチェックサムを確認してから backend と frontend をローカルでビルドします。時間がかかり、上流イメージ、ベースイメージ、ビルド依存関係は別途取得するため、完全なオフラインインストールではありません。既定の `auto` は上記の順に探します。メニューも同じ選択を尋ね、Enter は `auto` です。`--images-from source` と `--images <バンドル>` は併用できません。
+
 ### イメージレジストリに接続できないホスト
 
 このホストのアーキテクチャのオフラインバンドルもダウンロードし（`uname -m` が `x86_64` なら `amd64`、`aarch64` なら
 `arm64`）、`SHA256SUMS` と同じフォルダーに置きます。パッケージを展開した後、インストールの前に読み込みます。
 
 ```bash
-sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.13.0-amd64.tar
+sudo /opt/custodexa/custodexa.sh load /path/to/custodexa-images-1.14.0-amd64.tar
 sudo /opt/custodexa/custodexa.sh install
 ```
 
@@ -132,11 +169,17 @@ sudo /opt/custodexa/custodexa.sh status
 デプロイフォルダーの構成と管理スクリプトの対応範囲は
 [デプロイ形態の制限](ops/deployment-topology-limits.md#インストールパッケージによるデプロイと管理スクリプト)を参照してください。
 
-## 起動手順
+## パッケージのデプロイをアップグレードする
 
-以下はソースから実行する場合の手順です。自分の環境で運用する場合も、開発に参加する場合も**同じ手順**です。既定の `docker-compose.yml`
-がそのまま本番スタックで、nginx がビルド済みのフロントエンドを配信し、backend はスリムなバイナリ、
-テストターゲットは含まれません。開発に参加する方は 1 ステップだけ追加で、`.env` の
+`sudo /opt/custodexa/custodexa.sh upgrade` は新しいバージョンを照会するだけで、デプロイを変更しません。この照会には `--images-from` を指定できません。アップグレードするにはメニューで対象を選ぶか、`sudo /opt/custodexa/custodexa.sh upgrade <バージョン>` を実行します。ダウンロード済みのパッケージのパスも指定できます。インストール済みのスクリプトが 1.14.0 以降の場合、メニューで対象の `auto` または `source` を選べます。コマンドに `--images-from source` を付けると、新しいパッケージの backend と frontend をローカルでビルドします。`auto` ではオフラインバンドルを事前に読み込むか、`--images <バンドル>` で指定できます。
+
+1.13.x のパッケージデプロイから初めて 1.14.0 にアップグレードする場合、インストール済みの 1.13.x スクリプトがアップグレードを開始します。このスクリプトは `--images-from` を受け付けず、メニューにもイメージの取得元の選択肢はありません。フラグを付けずに実行すると、1.14.0 側は `auto` を使います。1.14.0 のインストール後、以降のアップグレードではソースからのビルドを選べます。アップグレードは停止時間をプレビューし、アプリケーションサービスを止め、内蔵データベースを使う場合は事前バックアップを取ります。外部データベースでは一貫したバックアップを自分で用意します。自動ロールバックはありません。開始前に[アップグレード SOP](ops/upgrade-sop.md#管理スクリプトによるアップグレード)と[バックアップとリストア](ops/backup-and-restore.md#51-管理スクリプトでアップグレードした後アップグレード前のバージョンに戻す)を読んでください。古い git clone デプロイは拒否されるため、[手動移行の計画](ops/upgrade-sop.md#古いソースデプロイの手動移行)に従ってください。
+
+## 開発・評価用ソースツリーの起動手順
+
+以下はソースツリーをローカルで評価・開発する手順です。既定の `docker-compose.yml` は通常のアプリケーション
+スタックを起動し、nginx がビルド済みのフロントエンドを配信し、backend はスリムなバイナリで、
+テストターゲットは含まれません。開発に参加する方は追加で、`.env` の
 `COMPOSE_FILE=docker-compose.dev.yml` のコメントを外します。以降すべての `docker compose` コマンドが
 開発スタック（フロントエンドは Vite HMR、バックエンドは Air のホットリロード、各プロトコルのテストターゲット付き）を対象とし、毎回 `-f` を付ける必要はありません。
 
@@ -388,7 +431,7 @@ stdio にしか対応しないホストは、代わりにアダプターを起�
 
 ホストごとの設定例は [custodexa-mcp の README](https://github.com/custodexa/custodexa-mcp#readme) にあります。
 
-## 本番デプロイの補足
+## 開発・評価用ソースツリーの設定補足
 
 本番スタックは既定の compose そのものです（上の起動手順を参照）。本節では release 特有の必須設定項目とデプロイの検証を補足します。
 本番スタックの特徴：DB／guacd のポートを外部に公開しない、`restart: always`、バックエンドはビルド済みバイナリで動作
@@ -600,7 +643,7 @@ docker compose ps        # backend、frontend、guacd、tls-proxy。postgres は
 1 台目の停止時に引き継ぎます。その手順、スタンバイホストに事前に必要なもの、切り替えで保たれないもの、この形態でバックアップの対象がどう変わるかは
 [アプリケーションホストのスタンバイ切り替え](ops/standby-takeover.md)を参照してください。
 
-## 本番環境におけるデプロイ担当者の責任と挙動の境界
+## ソースツリーのデプロイ担当者の責任と挙動の境界
 
 外部に向けてサービスを提供する前に、次の事項は**デプロイ担当者の責任**です。本製品は意図的に肩代わりせず、やっているふりもしません。
 あわせて 2 つの挙動の説明もここにまとめてあります。本番稼働の前に一項ずつ確認してください。

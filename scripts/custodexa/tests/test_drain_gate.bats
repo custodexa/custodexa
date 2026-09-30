@@ -228,14 +228,13 @@ no_stop() { ! grep -q ' stop \| down ' "$FAKE_DOCKER_LOG"; }
 
 # ---------- after the gate: the stop, and the old version gone ----------
 
-# stop_steps <lang> [convert]: steps 5 and 6 of this deployment, or of a git clone deployment.
+# stop_steps <lang>: steps 5 and 6 of this deployment.
 stop_steps() {
   run bash -c 'CX_LANG_FLAG=$1; . "$2/lib/common.sh"; cx_load_libs "$2"; . "$2/lib/backup.sh"
     . "$2/lib/backup_ref.sh"; . "$2/lib/upgrade_output.sh"; . "$2/lib/stop_check.sh"
-    CX_ROOT=$3 CX_UP_KIND=${4:-package} CX_OVERLAYS=""
+    CX_ROOT=$3 CX_UP_KIND=package CX_OVERLAYS=""
     cx_bk_vars
-    if [ "$CX_UP_KIND" = convert ]; then cx_up_legacy_compose || { echo "no old compose"; exit 9; }; fi
-    cx_up_stop 5 && cx_up_gone 6' _ "$1" "$SRC" "$ROOT" "${2:-}"
+    cx_up_stop 5 && cx_up_gone 6' _ "$1" "$SRC" "$ROOT"
 }
 
 DRAIN_LINE='2026/09/30 02:15:30 稽核佇列排空逾時：37 列未確認落地（已降級寫檔 30 列、worker 持有中未回報 5 列、確定遺失 2 列）'
@@ -289,20 +288,4 @@ SCREEN
   [ "$status" -eq 1 ] && [[ $output == *"[FAIL]  6/13  The connections of the application account could not be read"* ]] \
     || { echo "$output"; return 1; }
   ! grep -q ' start \| up ' "$FAKE_DOCKER_LOG"
-}
-
-@test "a git clone deployment: stop and check run on its own project and root compose files" {
-  printf '%s\n' COMPOSE_FILE=docker-compose.yml:docker-compose.external-ingress.yml >>"$ROOT/.env"
-  docker_says inspect_--format 'custodexa_old'
-  stop_steps en convert
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  old="-p custodexa_old --project-directory $ROOT -f $ROOT/docker-compose.yml -f $ROOT/docker-compose.external-ingress.yml"
-  grep -qF "compose $old stop backend guacd frontend" "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  grep -qF "compose $old exec -T postgres psql" "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  ! grep -q 'current/compose.yml' "$FAKE_DOCKER_LOG" || return 1
-  # The command to start the old version again names the old project and files as well.
-  printf '%s\n' "$DRAIN_LINE" >"$DG/logs.since"
-  stop_steps en convert
-  [ "$status" -eq 1 ] || return 1
-  [[ $output == *"sudo docker compose $old \\"* ]] || { echo "$output"; return 1; }
 }

@@ -46,7 +46,154 @@ func (h *IdentitySourceHandler) RegisterRoutes(r *gin.RouterGroup, authService *
 		g.POST("/:type/:sourceId/mappings", h.CreateMapping)
 		g.PUT("/:type/:sourceId/mappings/:ruleId", h.UpdateMapping)
 		g.DELETE("/:type/:sourceId/mappings/:ruleId", h.DeleteMapping)
+		g.GET("/:type/:sourceId/role-mappings", h.ListMappings)
+		g.POST("/:type/:sourceId/role-mappings", h.CreateMapping)
+		g.PUT("/:type/:sourceId/role-mappings/:ruleId", h.UpdateMapping)
+		g.DELETE("/:type/:sourceId/role-mappings/:ruleId", h.DeleteMapping)
+		g.GET("/:type/:sourceId/user-group-mappings", h.ListUserGroupMappings)
+		g.GET("/:type/:sourceId/user-group-usage/:userGroupId", h.UserGroupMappingUsage)
+		g.POST("/:type/:sourceId/user-group-mappings", h.CreateUserGroupMapping)
+		g.PUT("/:type/:sourceId/user-group-mappings/:ruleId", h.UpdateUserGroupMapping)
+		g.DELETE("/:type/:sourceId/user-group-mappings/:ruleId", h.DeleteUserGroupMapping)
+		g.GET("/:type/:sourceId/external-groups", h.ListExternalGroups)
+		g.PUT("/:type/:sourceId/external-groups/:externalGroupId", h.UpdateExternalGroupNote)
 	}
+}
+
+func (h *IdentitySourceHandler) ListUserGroupMappings(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	rows, err := h.sources.ListUserGroupMappings(kind, sourceID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
+func (h *IdentitySourceHandler) UserGroupMappingUsage(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("userGroupId"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, nil)
+		return
+	}
+	usage, err := h.sources.UserGroupMappingUsage(kind, sourceID, uint(id))
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": usage})
+}
+
+func (h *IdentitySourceHandler) CreateUserGroupMapping(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	var req identity.UserGroupMappingInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	req.Actor = currentMappingActor(c)
+	row, err := h.sources.CreateUserGroupMapping(kind, sourceID, req)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	view, err := h.sources.UserGroupMappingView(kind, sourceID, row.ID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": view})
+}
+
+func (h *IdentitySourceHandler) UpdateUserGroupMapping(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	ruleID, ok := mappingRuleID(c)
+	if !ok {
+		return
+	}
+	var req identity.UserGroupMappingInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	req.Actor = currentMappingActor(c)
+	row, err := h.sources.UpdateUserGroupMapping(kind, sourceID, ruleID, req)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	view, err := h.sources.UserGroupMappingView(kind, sourceID, row.ID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": view})
+}
+
+func (h *IdentitySourceHandler) DeleteUserGroupMapping(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	ruleID, ok := mappingRuleID(c)
+	if !ok {
+		return
+	}
+	if err := h.sources.DeleteUserGroupMapping(kind, sourceID, ruleID, currentMappingActor(c)); err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *IdentitySourceHandler) ListExternalGroups(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	rows, err := h.sources.ListExternalGroups(kind, sourceID)
+	if err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rows})
+}
+
+func (h *IdentitySourceHandler) UpdateExternalGroupNote(c *gin.Context) {
+	kind, sourceID, ok := mappingScope(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseUint(c.Param("externalGroupId"), 10, 32)
+	if err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeInvalidID, nil)
+		return
+	}
+	var req struct {
+		Note string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadRequestFormat, nil)
+		return
+	}
+	if err := h.sources.UpdateExternalGroupNote(kind, sourceID, uint(id), req.Note, currentMappingActor(c)); err != nil {
+		respondMappingError(c, kind, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"id": uint(id), "note": req.Note}})
 }
 
 // currentMappingActor 由已認證脈絡取操作者（不自請求 body 取，理由同目錄設定）
@@ -184,11 +331,22 @@ func respondMappingError(c *gin.Context, kind string, err error) {
 		}
 		apierror.Write(c, http.StatusUnprocessableEntity, apierror.ErrorResponse{
 			Code: apierror.CodeMappingAckRequired,
-			Meta: map[string]any{"warnings": warnings},
+			Meta: map[string]any{"meta": map[string]any{"warnings": warnings}},
 		})
 		return
 	}
+	var usageErr *identity.UserGroupMappingUsageAckError
+	if errors.As(err, &usageErr) {
+		apierror.Write(c, http.StatusConflict, apierror.ErrorResponse{Code: apierror.CodeMappingUsageAckRequired, Meta: map[string]any{"meta": map[string]any{"usage": usageErr.UserGroupMappingUsage}}})
+		return
+	}
 	switch {
+	case errors.Is(err, identity.ErrExternalGroupNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeExternalGroupNotFound, nil)
+	case errors.Is(err, identity.ErrExternalGroupNoteTooLong):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeExternalGroupNoteTooLong, nil)
+	case errors.Is(err, identity.ErrUserGroupNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeUserGroupNotFound, nil)
 	case errors.Is(err, identity.ErrMappingSourceNotFound):
 		// 來源不存在的碼依型別分：介面要能分辨「目錄還沒設定」與「這個提供者不在了」
 		code := apierror.CodeNotFoundOIDCProvider

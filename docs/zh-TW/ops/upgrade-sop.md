@@ -96,7 +96,7 @@ bind mount 情境下映像內的權限設定不生效，主機端目錄權限由
 
 > **不做的話**：主機上任何本地帳號都能讀取全部會話錄影。
 
-**錄影目錄的擁有者與模式是固定的**：`${DATA_PATH}/recordings` 為 `1000:0`、模式 `2770`。guacd 以 uid 1000 寫入 RDP 與 VNC 錄影，後端經由群組 0 讀取、改名與依保留期刪除；setgid 讓新檔沿用群組 0。目錄歸其他擁有者時，RDP 與 VNC 錄不到。目錄少了群組 0，後端既不能改名也不能回放這些錄影；少了 setgid，後端能改名但無法回放，因為新檔會帶著 guacd 的群組 1000。`bash scripts/quickstart.sh --up` 會在啟動前設定好。手動設定時在部署目錄執行（`DATA_PATH` 改過的話，把 `$PWD/data` 換成該路徑）：
+**錄影目錄的擁有者與模式是固定的**：`${DATA_PATH}/recordings` 為 `1000:0`、模式 `2770`。guacd 以 uid 1000 寫入 RDP 與 VNC 錄影，後端經由群組 0 讀取、改名與依保留期刪除；setgid 讓新檔沿用群組 0。目錄歸其他擁有者時，RDP 與 VNC 錄不到。目錄少了群組 0，後端既不能改名也不能回放這些錄影；少了 setgid，後端能改名但無法回放，因為新檔會帶著 guacd 的群組 1000。原始碼樹的 `bash scripts/quickstart.sh --up` 會在啟動前設定好；安裝包的 `install` 於第 4 步準備。手動設定時在部署目錄執行（`DATA_PATH` 改過的話，把 `$PWD/data` 換成該路徑）：
 
 ```bash
 docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh alpine/openssl:3.5.4 -c \
@@ -180,9 +180,7 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 
 ## 2. 版本升級程序
 
-以安裝包部署的系統用管理腳本升級，見下方第一小節。以 `git clone` 原始碼運作的部署依手動程序（§2.0 到 §2.8）升級；
-1.12.4 的 clone 也可以改由 1.13.0 的腳本一次轉換成安裝包結構（第一小節末段）。手動程序保留原本的節號，
-因為其他文件引用這些節號；對安裝包部署而言，它說明了腳本每一步在做什麼。
+安裝包部署的正式升級入口是 `custodexa.sh upgrade`。下方保留編號的手動程序供舊原始碼部署參考，並說明腳本的檢查；它不是腳本轉換路徑。`custodexa.sh` 在寫入或停機前就會拒絕舊 git clone 樹。轉入安裝包請依[舊原始碼部署的手動遷移](#舊原始碼部署的手動遷移)規劃。
 
 ### 以管理腳本升級
 
@@ -197,13 +195,19 @@ docker run --rm --network none -v "$PWD/data/recordings:/r" --entrypoint /bin/sh
 3. 在主機上的 `tmux` 或 `screen` 內執行升級，SSH 斷線時升級才不會中斷。
 
 **開始升級。** 執行 `sudo /opt/custodexa/custodexa.sh`，在選單選「**升級**」，再選最新版、指定版本，
-或已下載的安裝包（主機無法連網時）。回答預覽之前不會有任何變更。自動化時可用對應的指令：
+或已下載的安裝包（主機無法連網時）。回答預覽之前不會停止執行中的服務；安裝包檔案可能已下載並核對。自動化時可用對應的指令：
 
 ```bash
 sudo /opt/custodexa/custodexa.sh upgrade                 # 只查詢有沒有新版，不做任何變更
-sudo /opt/custodexa/custodexa.sh upgrade 1.13.2          # 下載、驗證並升級
-sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SHA256SUMS 放在同一處
+sudo /opt/custodexa/custodexa.sh upgrade 1.14.0          # 下載、驗證並升級
+sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.14.0.tar.gz   # SHA256SUMS 放在同一處
 ```
+
+從 1.14.0 起，重新執行 `get-custodexa.sh` 並以 `--dir` 指向既有部署時，腳本不會覆寫檔案，而是交給已安裝的 `custodexa.sh`。請在其選單選升級，或使用上方已安裝腳本的 `upgrade` 指令。
+
+已安裝的腳本為 1.14.0 或更新版時，選定目標後選單會詢問映像來源；Enter 選 `auto`。指令未帶 `--images-from` 時使用 `auto`，依序嘗試本機、離線包、GHCR、Docker Hub、最後本機建置。`--images-from source` 先核對新版安裝包原始碼校驗和，再於本機建置 backend 與 frontend；較慢，且上游映像、基底映像與建置依賴仍須取得，不是完全離線選項，也不能與 `--images <映像包>` 同用。不帶目標的 `upgrade` 只查詢，不接受 `--images-from`。
+
+從 1.13.x 安裝包部署第一次升到 1.14.0 時，由已安裝的 1.13.x 腳本啟動升級；該腳本不接受 `--images-from`，選單也沒有映像來源選項。執行時不帶此旗標，1.14.0 目標版會使用 `auto`。安裝 1.14.0 後，後續升級才可在選單或以 `--images-from source` 選擇原始碼建置。
 
 `--yes` 代為回答確認，但不會略過稽核佇列的檢查。主機無法連到映像倉庫時，以 `--images <映像包>`
 指定離線映像包，或先用 `load` 載入。已安裝的腳本只負責取得安裝包、以 `SHA256SUMS` 核對，
@@ -217,12 +221,12 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SH
 |---|---|---|
 | 1 | 檢查：上述版本規則、上次沒有完成的升級、備份與新映像所需的空間 | §2.0 |
 | 2 | 取得並驗證新版映像 | §2.2 |
-| 3 | 預覽與確認；在此之前沒有任何變更 | |
+| 3 | 預覽與確認；在此之前尚未停止執行中的服務 | |
 | 4 | 最多等 120 秒讓稽核佇列歸 0。讀不到佇列時，只有系統回報已封存、且這個容器啟動後從未解封過才放行；其他情形一律停下，服務照常運作、沒有任何變更 | §2.3 步驟 3、§2.4 |
 | 5 | 停止 backend、guacd、frontend（資料庫保持運作），並從後端日誌檢查有無排空逾時 | §2.3 步驟 4、§3.1 |
 | 6 | 確認舊實例已完全停止：應用帳號的連線數為 0 | §2.3 步驟 5 |
 | 7 | 記下快照並備份（見下） | §2.1 |
-| 8 | 僅首次轉換：整理目錄（本小節末段） | |
+| 8 | 為舊版狀態保留步驟編號；不執行轉換或搬移檔案 | |
 | 9 | 把 `current` 指到新版，準備錄影目錄 | §1.3、§2.5 |
 | 10 | 啟動服務 | §2.5 |
 | 11 | 最多等 180 秒，直到後端回應健康檢查 | §2.5 |
@@ -255,7 +259,7 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SH
 |---|---|---|
 | 第 1 到 4 步 | 舊版照常運作，沒有任何變更 | 排除畫面指出的原因後再執行一次升級 |
 | 第 5 到 7 步 | 服務已停止；版本與資料都沒變 | 用畫面上的指令啟動舊版，或排除原因後再執行一次升級 |
-| 第 8 步 | 首次轉換做到一半 | 依序執行畫面上的指令：把目錄放回原狀並啟動舊版 |
+| 第 8 步 | 本版不執行轉換動作 | 依腳本顯示的結果繼續 |
 | 第 9 到 12 步 | 新版已經換上 | 用畫面上的指令查看後端日誌。要回到舊版，請依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)還原畫面列出的備份；在依該節放回腳本的紀錄之前，腳本會拒絕再次升級並重印同樣的指引 |
 
 被 Ctrl-C 或斷線中斷的升級也照此處理：下次執行時會印出它停下那一步的指引。中斷在第 1 到 4 步，
@@ -266,31 +270,17 @@ sudo /opt/custodexa/custodexa.sh upgrade /path/to/custodexa-1.13.2.tar.gz   # SH
 [備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)還原該次升級所做的備份；
 備份之後記錄的一切都會遺失。
 
-**`git clone` 部署的首次轉換。** 以 `git clone` 原始碼運作、版本為 1.12.4 的部署，可以由 1.13.0 的腳本
-一次轉換成安裝包結構；轉換是該次升級的第 8 步，在備份之後。
+### 舊原始碼部署的手動遷移
 
-- **條件**：主機上有 `git`、部署用的不是開發版 compose 檔，且 git 工作樹乾淨。`git status --porcelain`
-  除了腳本自己的檔案（例如 `backups/`）之外不能有任何輸出；否則在預覽之前就停下、列出項目，且不做任何變更。
-  請先提交、還原或移走它們。
-- **會改變什麼**：`.git` 與 git 追蹤的每個頂層項目搬到 `releases/1.12.4/`。`.env`、`tls/`、資料目錄、
-  `backups/`、`logs/` 留在原位。`.env` 先複製到備份資料夾成為 `env-before-convert.bak`，接著
-  `DATA_PATH` 改成絕對路徑，並設定 `COMPOSE_FILE` 與 `COMPOSE_PROJECT_NAME`：`.env` 裡有該鍵的註解行就寫在那一行，否則新增一行。預覽會列出每一處改動的行與新舊值。
-- **匯出產物**：1.12.4 的後端把它們放在容器內。轉換在移除那個容器之前，先把它們複製到 `data/exports`
-  （1.13.0 起保存的位置）；檔案權限不變，資料夾設為 `0700`。
-- **執行方式**：照[快速開始](../QUICKSTART.md#2-解開前先驗證)下載並驗證 1.13.0 的安裝包，
-  解到部署目錄以外的地方，再讓腳本指向部署目錄：
+以 git clone 為根的舊部署不能由 `custodexa.sh` 就地安裝或升級；腳本會在變更檔案或服務前拒絕。請規劃兩條路徑之一：核對本 SOP 的拓撲與備份後人工遷移；或在另一個乾淨目錄安裝發行包，再依[備份與還原](./backup-and-restore.md)手動還原。兩者都不是自動轉換，管理腳本也不提供可照抄的遷移命令。
 
-  ```bash
-  mkdir /tmp/custodexa-1.13.0
-  tar -xzf custodexa-1.13.0.tar.gz -C /tmp/custodexa-1.13.0
-  sudo env CUSTODEXA_HOME=/data/custodexa /tmp/custodexa-1.13.0/custodexa/custodexa.sh upgrade
-  ```
+1. 記下現行版、目標版、資料庫形態、儲存路徑與映像取得方式；排定切換前先確認來源版本和資料庫結構與目標版相容。
+2. 規劃停機，禁止兩個環境同時寫同一資料庫。停止舊應用服務，確認連線與稽核佇列排空後，才取得一致備份。
+3. 在同一停機時點備份資料庫、錄影、稽核檔、`.env` 與 `tls/`；另記外接資料庫與儲存位置，保管好 KEK 材料、其他金鑰與還原程序。例行備份不包含已匯出的證據產物。
+4. 選另一乾淨目錄時，先核對並安裝發行包，還原資料前停止新應用服務。依目標拓撲調整路徑與部署設定；不可將舊樹的 compose 命令直接套到安裝包目錄。
+5. 依[備份與還原](./backup-and-restore.md)對應的資料庫與檔案程序還原，再核對版本相容性、schema migration、資料筆數、金鑰指紋、錄影及對外入口，確認後才重新開放服務。期間舊實例保持停止。
 
-  `git clone` 部署沒有選單；這道指令直接進入轉換預覽。沒有終端機時要寫明版本（`upgrade 1.13.0 --yes`）；
-  只寫 `upgrade --yes` 會被拒絕。
-- **完成之後**：改用 `/data/custodexa/custodexa.sh` 管理這個部署。這個目錄已不是 git 工作目錄，
-  不要再用 `git pull` 更新。要回到 1.12.4 請見
-  [備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)，該節也會把目錄放回原狀。
+具體檔案、資料庫與 compose 指令取決於舊版與部署拓撲；先在隔離副本驗證整套步驟，再用於運作中的部署。先前版本已完成轉換的安裝包部署仍是安裝包部署，其既有狀態與備份會繼續讀取。
 
 ### 2.0 先確定回退方案，確認前提成立，並做升級前預檢
 
@@ -307,7 +297,7 @@ guacd 服務不由本專案建置：1.13.0 起編排檔以版本加 digest 引�
 舊版映像保有自己的名字。以映像檔交付時，交付的映像也包含這顆官方映像。
 
 > **本節的適用範圍**：`Custodexa 1.0` 的資料庫 schema 以單一 baseline
-> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的二十九條見下 §2.5）；
+> （`20260816_schema_baseline`）為起點，其後以**增量 migration** 演進（本版的三十條見下 §2.5）；
 > 因此本節適用於同屬 1.0 baseline 世代的版本更替，
 > 也就是資料庫已套用過該 baseline 的部署。
 >
@@ -419,8 +409,7 @@ Web 會話刷新 cookie 要不要只在 https 連線保存，由安全政策
   防火牆規則、使用者書籤與 SSO 回呼網址（`PUBLIC_BASE_URL`）都要對上新的對外網址。
 - **http 埠只做轉向**：http 埠收到的請求一律 301 到 https 的對外埠，不再提供內容。
 - **`TRUSTED_PROXIES` 要涵蓋內建代理**：沒設它時每一筆請求都算在代理自己的位址上，
-  稽核記到的與登入限流算到的都是那個位址。內建形態由 `bash scripts/quickstart.sh`
-  填入 Docker 子網；自帶 ingress 的部署改填該 ingress 的位址。
+  稽核記到的與登入限流算到的都是那個位址。原始碼樹的 `bash scripts/quickstart.sh` 與安裝包的 `custodexa.sh install` 會填入 Docker 子網；自帶 ingress 的部署改填該 ingress 的位址。
 - **先停掉自己起的代理容器**：依舊版指南手動起的反向代理不在 compose 生命週期內，
   `docker compose down` 不會停它；留著會與內建代理搶埠與憑證檔。升級前先停止並移除它。
 - **自帶 ingress 的部署改用 overlay**：升級後的每一道 compose 指令都加上
@@ -718,7 +707,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
 
 **升級到引入新增量 migration 的版本時**，每套用一條就多出一行 `執行 migration: <版本> (<名稱>)`，
 該增量在同一交易內套用；未見對應行即代表該增量**未跑**（多半是來源版本已含它），非異常。
-本版的二十九條增量對應的日誌行逐字為：
+本版的三十條增量對應的日誌行逐字為：
 
 ```
   執行 migration: 20260824_audit_export_jobs (audit_export_jobs)
@@ -750,6 +739,7 @@ guacd 服務沒有 build 區塊，映像是官方的 `guacamole/guacd:1.6.0`，�
   執行 migration: 20260924_agent_tool_call_args_retained (agent_tool_call_args_retained)
   執行 migration: 20260924_sensitive_reveal_alert (sensitive_reveal_alert)
   執行 migration: 20260929_notification_channel_min_severity (notification_channel_min_severity)
+  執行 migration: 20260930_identity_group_mappings (identity_group_mappings)
 ```
 
 `20260825_evidence_offsite` 建立離機儲存的兩張表（設定世代表與保管帳冊）並對會話與匯出 job
@@ -911,6 +901,9 @@ AppRole 角色識別與服務區域，以及最後變更者與變更時間。保
 `20260929_notification_channel_min_severity` 在通知通道表加一個推送門檻欄與值域約束（`low`、`medium`、`high`）。
 **既有通道取得 `low`，即全部告警，因此每個通道推送的內容與升級前完全相同**；不回填。
 通道表只有少數幾列，約束檢查瞬間完成。**它的 `Down` 有損**，見 §4.1。
+
+
+`20260930_identity_group_mappings` 建立共用外部群組字典、使用者群組映射規則及兩類逐規則支持表，並為有效使用者群組成員加入手動旗標、讓既有角色規則參照字典。既有成員標為手動；既有角色映射事實依同來源、同角色的所有啟用規則建立支持。沒有可歸屬規則的事實會撤除並記遷移稽核。遷移本身不推進憑證世代、不撤刷新憑證，也不迫使登出。依本節流程停妥服務並完成升級前備份，再由新版後端啟動執行；失敗整筆回滾且啟動失敗，重跑具有冪等性。啟動後核對遷移報表中過度歸屬支持與無規則撤除筆數；相關使用者下次成功登入時按實際群組重算。回退須還原升級前備份。
 
 #### 查詢主控台（本版新增的功能，影響升級決策的部分）
 
@@ -1566,14 +1559,14 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 
 ## 4. 回退路徑
 
-安裝包部署，以及由 1.13.0 腳本轉換過的部署，依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)
+安裝包部署（包含先前版本已轉換的部署）依[備份與還原 §5.1](./backup-and-restore.md#51-以管理腳本升級後回到升級前的版本)
 用腳本所做的備份回退。§4.1 與 §4.3 的考量同樣適用；§4.2 的步驟則是給手動升級的 `git clone` 部署。
 
 ### 4.1 回退的唯一手段是還原備份
 
 升級後若要退回舊版本，走的是「部署回舊版映像，再還原升級前的備份」，程序見 §4.2。
 
-本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的二十九條增量
+本版的資料庫有 schema baseline（`20260816_schema_baseline`）與其後的三十條增量
 （`20260824_audit_export_jobs`、`20260825_evidence_offsite`、`20260826_source_ip_forensics`、
 `20260826_db_query_console`、`20260903_security_policies_value_text`、
 `20260903_rotation_evidence_report`、`20260904_windows_local_account_rotation`、`20260905_account_batch_rotation`、`20260906_credential_library`、
@@ -1584,7 +1577,7 @@ worker 持有中、確定遺失）。只看到第一行，表示稽核排空已�
 `20260921_agent_audit_ledger`、`20260921_agent_breaker_alert`、`20260921_agent_visibility_exposures`、
 `20260921_agent_subject_rules`、`20260922_agent_session_token_name`、`20260923_agent_lateral_rule_pattern`、
 `20260924_agent_tool_call_args_retained`、`20260924_sensitive_reveal_alert`、
-`20260929_notification_channel_min_severity`）。
+`20260929_notification_channel_min_severity`、`20260930_identity_group_mappings`）。
 
 **增量 migration 的 `Down` 不作為生產回退手段**，這是本產品的一貫立場，不隨版本增減而改變：
 `Down` 還原的是**結構**，不是資料。它刪掉的欄位與資料表裡有什麼，執行後就沒有第二個來源可補；

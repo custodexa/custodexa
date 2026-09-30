@@ -14,6 +14,7 @@
 [ -n "${CX_UP_DOWNLOAD+x}" ] || readonly CX_UP_DOWNLOAD=https://github.com/custodexa/custodexa/releases
 CX_Q_VR=0 # 0 checksum and signature verified, 1 checksum only
 CX_Q_REASON=""
+CX_Q_TARGET=""
 
 # cx_q_ind <mark> <text>: a status line 2 columns in, later lines under the text.
 cx_q_ind() { printf '  %s %s\n' "$(cx_mark "$1")" "${2//$'\n'/$'\n'         }"; }
@@ -36,9 +37,11 @@ cx_q_pending() {
 # 3 signature mismatch.
 cx_q_verify() {
   local dir=$1 want got ver
+  cx_line RUN "$(cx_msg q_wait_checksum)"
   want=$(awk '$2 == "MANIFEST.json" || $2 == "*MANIFEST.json" { print $1; exit }' "$dir/SHA256SUMS")
   got=$(sha256sum -- "$dir/MANIFEST.json" | cut -d' ' -f1)
   [ -n "$want" ] && [ "$want" = "$got" ] || return 2
+  cx_line OK "$(cx_msg q_checksum_ok)"
   if ! command -v cosign >/dev/null 2>&1; then
     CX_Q_REASON=no-cosign
     return 1
@@ -48,6 +51,7 @@ cx_q_verify() {
     return 1
   fi
   ver=$(sed -n 's/^  "version": "\([^"]*\)",\{0,1\}$/\1/p' "$dir/MANIFEST.json" | head -n 1)
+  cx_line RUN "$(cx_msg q_wait_signature)"
   cosign verify-blob --bundle "$dir/SHA256SUMS.sigstore.json" \
     --certificate-identity "https://github.com/$CX_SIGNER_REPO/$CX_SIGNER_WORKFLOW@refs/tags/v$ver" \
     --certificate-oidc-issuer "$CX_SIGSTORE_ISSUER" "$dir/SHA256SUMS" >/dev/null 2>&1 || return 3
@@ -61,9 +65,17 @@ cx_q_fetch() {
   CX_Q_REASON=""
   tmp=$(mktemp -d)
   for f in MANIFEST.json SHA256SUMS; do
+    cx_line RUN "$(cx_msg q_wait_download "$f")"
     curl -fsSL --retry 2 -o "$tmp/$f" "$CX_UP_DOWNLOAD/latest/download/$f" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+    cx_line OK "$(cx_msg q_download_ok "$f")"
   done
-  curl -fsSL --retry 2 -o "$tmp/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/latest/download/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$tmp/SHA256SUMS.sigstore.json"
+  cx_line RUN "$(cx_msg q_wait_download SHA256SUMS.sigstore.json)"
+  if curl -fsSL --retry 2 -o "$tmp/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/latest/download/SHA256SUMS.sigstore.json" 2>/dev/null; then
+    cx_line OK "$(cx_msg q_download_ok SHA256SUMS.sigstore.json)"
+  else
+    rm -f "$tmp/SHA256SUMS.sigstore.json"
+    cx_line WARN "$(cx_msg q_optional_signature_missing)"
+  fi
   cx_q_verify "$tmp" || CX_Q_VR=$?
   if [ "$CX_Q_VR" -eq 2 ]; then
     rm -rf "$tmp"
@@ -96,25 +108,28 @@ cx_q_latest() {
   cx_q_target "$(cx_state_get current.version)"
 }
 
-cx_up_query() {
-  local rc=0 vr latest cur min pending r target
+cx_up_query_core() { # <cli|menu>: facts shared; CLI gets copyable command and query-only footer
+  local mode=$1 rc=0 vr latest cur min pending r target
+  CX_Q_TARGET=""
   cur=$(cx_state_get current.version)
   cx_q_fetch || rc=$?
   case $rc in
     0) ;;
     1)
       cx_line FAIL "$(cx_msg q_offline)"
-      cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade /path/custodexa-<version>.tar.gz"
-      printf '\n%s\n' "$(cx_msg q_only)"
-      exit "$CX_EXIT_FAILED"
+      if [ "$mode" = cli ]; then
+        cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade /path/custodexa-<version>.tar.gz"
+        printf '\n%s\n' "$(cx_msg q_only)"
+      fi
+      return "$CX_EXIT_FAILED"
       ;;
     2)
       printf '%s\n\n' "$(cx_msg q_installed "$cur" "$CX_ROOT")"
       cx_q_ind FAIL "$(cx_msg "q_verify_fail_$rc")"
-      printf '\n%s\n' "$(cx_msg q_only)"
-      exit "$CX_EXIT_FAILED"
+      [ "$mode" != cli ] || printf '\n%s\n' "$(cx_msg q_only)"
+      return "$CX_EXIT_FAILED"
       ;;
-    *) exit "$CX_EXIT_FAILED" ;;
+    *) return "$CX_EXIT_FAILED" ;;
   esac
   vr=$CX_Q_VR
   latest=$(cx_mf version) min=$(cx_mf min_source_version)
@@ -128,6 +143,7 @@ cx_up_query() {
     cx_q_ind FAIL "$(cx_msg vr_skip "$latest" "$cur" "$min")"
   else
     cx_q_ind OK "$(cx_msg q_direct "$latest" "${min:-$cur}")"
+    CX_Q_TARGET=$latest
     if ! pending=$(cx_q_pending); then
       cx_q_ind WARN "$(cx_msg q_migrations_unknown)"
     elif [ "$pending" -eq 0 ]; then
@@ -148,10 +164,14 @@ cx_up_query() {
   else
     cx_q_ind WARN "$(cx_msg q_unverified)"
   fi
-  printf '%s\n' "$(cx_msg q_notes "https://github.com/custodexa/custodexa/releases/tag/v$latest")"
-  if target=$(cx_q_target "$cur"); then
-    printf '\n%s\n' "$(cx_msg q_run)"
-    cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade $target"
+  if [ "$mode" = cli ]; then
+    printf '%s\n' "$(cx_msg q_notes "https://github.com/custodexa/custodexa/releases/tag/v$latest")"
+    if target=$(cx_q_target "$cur"); then
+      printf '\n%s\n' "$(cx_msg q_run)"
+      cx_cmd "sudo $CX_ROOT/custodexa.sh upgrade $target"
+    fi
+    printf '\n%s\n' "$(cx_msg q_only)"
   fi
-  printf '\n%s\n' "$(cx_msg q_only)"
 }
+
+cx_up_query() { cx_up_query_core cli; }

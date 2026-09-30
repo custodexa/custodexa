@@ -43,21 +43,6 @@ setup() {
   [ ! -s "$FAKE_DOCKER_LOG" ]
 }
 
-@test "exception entry: old project name, old directory and old files are all passed" {
-  cx_compose_explicit terminal-audit /srv/old /srv/old/docker-compose.yml /srv/old/docker-compose.external-ingress.yml -- stop backend
-  grep -qF $'ARGS\tcompose -p terminal-audit --project-directory /srv/old -f /srv/old/docker-compose.yml -f /srv/old/docker-compose.external-ingress.yml stop backend' "$FAKE_DOCKER_LOG"
-}
-
-@test "exception entry refuses a missing project name, directory or file list" {
-  run cx_compose_explicit "" /srv/old /srv/old/docker-compose.yml -- stop
-  [ "$status" -ne 0 ]
-  run cx_compose_explicit old "" /srv/old/docker-compose.yml -- stop
-  [ "$status" -ne 0 ]
-  run cx_compose_explicit old /srv/old -- stop
-  [ "$status" -ne 0 ]
-  [ ! -s "$FAKE_DOCKER_LOG" ]
-}
-
 @test "no code path calls docker compose except through lib/compose.sh" {
   # Messages may show commands for people to type; code may not. Comments are skipped.
   run bash -c "grep -nE '(^|[^#]*[;&|(]|^[[:space:]]*)docker[[:space:]]+compose|docker-compose[[:space:]]' '$SRC/custodexa.sh' '$SRC'/lib/*.sh | grep -v '^$SRC/lib/compose.sh:' | grep -vE ':[0-9]+:[[:space:]]*#'"

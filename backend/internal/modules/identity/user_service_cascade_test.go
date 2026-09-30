@@ -23,7 +23,9 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 	//（2.8 起），缺表會讓刪除以「撤銷刷新憑證失敗」整筆回滾
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{},
-		&model.RefreshToken{}, &model.UserRole{}); err != nil {
+		&model.RefreshToken{}, &model.UserRole{}, &model.UserRoleMapping{},
+		&model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{},
+		&model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))

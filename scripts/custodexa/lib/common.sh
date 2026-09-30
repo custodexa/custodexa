@@ -193,10 +193,7 @@ cx_is_root() {
 }
 
 # cx_is_legacy_root <dir>: a deployment from a git clone of the source, from before the package
-# layout (the first upgrade converts it). Only the commands in CX_LEGACY_ROOT_COMMANDS accept it as
-# the root (CX_ROOT_LEGACY_OK, set by custodexa.sh): the ones that change nothing, and upgrade, which
-# writes nothing there before its conversion preview is answered (a file written there would change
-# how it is detected).
+# layout. Root resolution recognizes it so the entry point can refuse it without writing anything.
 cx_is_legacy_root() {
   [ -e "$1/.git" ] && [ -f "$1/VERSION" ] && [ -f "$1/docker-compose.yml" ]
 }

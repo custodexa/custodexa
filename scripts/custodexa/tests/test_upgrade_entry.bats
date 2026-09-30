@@ -1,9 +1,6 @@
 #!/usr/bin/env bats
-# Threat (A): the first conversion cannot be entered (a git clone deployment falls into the
-# check-only branch, so it can never be converted by the script), or a call that should only check
-# changes something. On a clone, a bare `upgrade`, a version and a package all lead to the conversion
-# preview and nothing is written before it is answered; `--yes` alone is refused. On a package
-# deployment the bare call only checks, and says whether the release manifest was verified; a
+# Threat (A): a call that should only check changes something. On a package deployment the bare
+# call only checks, and says whether the release manifest was verified; a
 # checksum mismatch gives no answer about upgrading. A version or a package is verified before the
 # target version's script takes over.
 
@@ -11,85 +8,6 @@ load helper
 load install_host
 load backup_host
 load upgrade_host
-
-s08_head() { # <lang> <installed> <target> <root>
-  case $1 in
-    zh-TW) printf '%s\n' 'Custodexa 升級預覽（還沒有做任何變更）' '' "  目前版本     $2（git clone 部署，$4）" \
-      "  升級到       $3" '  這台主機還是 git clone 部署。這是第一次用管理腳本升級，會先把' \
-      '  部署目錄整理成新的結構，再完成升級。' ;;
-    en) printf '%s\n' 'Custodexa upgrade preview (nothing has been changed yet)' '' \
-      "  Installed    $2 (git clone deployment, $4)" "  Upgrade to   $3" \
-      '  This host still runs a git clone deployment. This is the first' \
-      '  upgrade with the management script, so the deployment folder is' \
-      '  reorganized first and the upgrade is then completed.' ;;
-  esac
-}
-
-@test "clone, bare upgrade: the conversion preview for this script's version, never the check" {
-  legacy_host
-  fake_github
-  tree_of "$LROOT" >"$BATS_TEST_TMPDIR/before"
-  for l in zh-TW en; do
-    legacy_run "$l"
-    # No terminal and no --yes: the preview is shown, the question cannot be asked, exit 3.
-    [ "$status" -eq 3 ] || { echo "$l: status $status"; echo "$output"; return 1; }
-    diff <(printf '%s\n' "$output" | head -n 7 | grep -v '^$' ) <(s08_head "$l" 1.12.4 1.13.0 "$LROOT" | grep -v '^$') \
-      || { echo "$output"; return 1; }
-  done
-  [ ! -e "$REL/requests" ] || { echo "downloaded:"; cat "$REL/requests"; return 1; }
-  ! grep -q ' stop \| down ' "$FAKE_DOCKER_LOG" || return 1
-  diff "$BATS_TEST_TMPDIR/before" <(tree_of "$LROOT")
-}
-
-@test "clone, bare upgrade --yes: refused (exit 3), nothing written" {
-  legacy_host
-  tree_of "$LROOT" >"$BATS_TEST_TMPDIR/before"
-  legacy_run zh-TW --yes
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"加上 --yes 時請寫明要升級到的版本或安裝包路徑"* ]] || { echo "$output"; return 1; }
-  [[ $output == *"sudo $PKG/releases/1.13.0/custodexa.sh upgrade 1.13.0 --yes"* ]] || { echo "$output"; return 1; }
-  [[ $output != *"升級預覽"* ]] || return 1
-  diff "$BATS_TEST_TMPDIR/before" <(tree_of "$LROOT")
-}
-
-@test "clone, this script's version or another one: both reach the conversion preview" {
-  legacy_host
-  fake_github
-  legacy_run en 1.13.0
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  diff <(printf '%s\n' "$output" | head -n 7 | grep -v '^$') <(s08_head en 1.12.4 1.13.0 "$LROOT" | grep -v '^$') || return 1
-  [ ! -e "$REL/requests" ] || return 1
-  # Another version: downloaded and verified by this script, then that version's script takes over
-  # and shows the conversion preview in the language asked for.
-  publish 1.13.2 1.12.4
-  legacy_run en 1.13.2
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ OK ] custodexa-1.13.2.tar.gz: checksum and publisher signature verified"* ]] || { echo "$output"; return 1; }
-  diff <(printf '%s\n' "$output" | sed -n '2,$p' | head -n 7 | grep -v '^$') <(s08_head en 1.12.4 1.13.2 "$LROOT" | grep -v '^$') \
-    || { echo "$output"; return 1; }
-  grep -qx 'https://github.com/custodexa/custodexa/releases/download/v1.13.2/custodexa-1.13.2.tar.gz' "$REL/requests" || return 1
-  # A package given by path: the same.
-  legacy_run zh-TW "$REL/v1.13.2/custodexa-1.13.2.tar.gz"
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"  升級到       1.13.2"* && $output == *"git clone 部署，$LROOT"* ]] || { echo "$output"; return 1; }
-}
-
-@test "clone, a package with bad checksum stops; mismatched signature warns and previews" {
-  legacy_host
-  fake_github
-  publish 1.13.2 1.12.4
-  printf 'tampered\n' >>"$REL/v1.13.2/custodexa-1.13.2.tar.gz"
-  legacy_run en 1.13.2
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [[ $output == *"The checksum of custodexa-1.13.2.tar.gz does not match SHA256SUMS"* ]] || { echo "$output"; return 1; }
-  [[ $output != *"upgrade preview"* ]] || return 1
-  [ -z "$(ls -A "$LROOT" | grep incoming)" ] || { ls -A "$LROOT"; return 1; }
-  # Signed by someone else: warn, then reach the normal preview confirmation.
-  publish 1.13.2 1.12.4
-  sed -i 's#refs/tags/v1.13.2#refs/tags/v9.9.9#' "$REL/v1.13.2/SHA256SUMS.sigstore.json"
-  legacy_run en 1.13.2
-  [ "$status" -eq 3 ] && [[ $output == *"[WARN] custodexa-1.13.2.tar.gz: signature mismatch, publisher unverified"* && $output == *"upgrade preview"* ]] || { echo "$output"; return 1; }
-}
 
 @test "package deployment, bare upgrade: only checks, nothing changed" {
   backup_host ui
@@ -104,6 +22,80 @@ s08_head() { # <lang> <installed> <target> <root>
   done
   diff "$BATS_TEST_TMPDIR/before" <(tree_of "$ROOT") || return 1
   ! grep -q ' stop \| down \| up ' "$FAKE_DOCKER_LOG"
+}
+
+@test "menu query returns the verified target without CLI-only command or second fetch" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4
+  run bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"
+    CX_ROOT=$2; cx_state_load "$CX_ROOT/state.json"
+    . "$1/lib/version_rules.sh"; . "$1/lib/upgrade_query.sh"
+    cx_up_query_core menu || exit 1
+    printf "target=%s\n" "$CX_Q_TARGET"' _ "$SRC" "$ROOT"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"target=1.13.2"* && $output != *"To upgrade, run:"* && $output != *"This only checked"* ]] || { echo "$output"; return 1; }
+  [ "$(wc -l <"$REL/requests")" -eq 3 ]
+}
+
+@test "query shows download and signature progress before slow tools return" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4
+  local out=$BATS_TEST_TMPDIR/query-progress pid
+  mv "$FAKES/curl" "$FAKES/curl-real"
+  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
+  chmod +x "$FAKES/curl"
+  bash "$ROOT/custodexa.sh" upgrade --lang en >"$out" 2>&1 &
+  pid=$!
+  /bin/sleep 0.2
+  grep -q 'Downloading MANIFEST.json' "$out" || { cat "$out"; wait "$pid"; return 1; }
+  wait "$pid" || { cat "$out"; return 1; }
+  mv "$FAKES/curl-real" "$FAKES/curl"
+  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$TESTS_DIR/fakes/cosign" >"$FAKES/cosign"
+  chmod +x "$FAKES/cosign"
+  bash "$ROOT/custodexa.sh" upgrade --lang en >"$out" 2>&1 &
+  pid=$!
+  /bin/sleep 0.2
+  grep -q 'Verifying the release manifest signature' "$out" || { cat "$out"; wait "$pid"; return 1; }
+  wait "$pid" || { cat "$out"; return 1; }
+}
+
+@test "optional signature bundle download has an immediate result for present and absent files" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4
+  upgrade_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *$'[ .. ] Downloading SHA256SUMS.sigstore.json for the latest release…\n[ OK ] Downloaded SHA256SUMS.sigstore.json'* ]] || {
+    echo "present bundle has no immediate OK result: $output"
+    return 1
+  }
+  rm "$REL/v1.13.2/SHA256SUMS.sigstore.json"
+  upgrade_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *$'[ .. ] Downloading SHA256SUMS.sigstore.json for the latest release…\n[WARN] Signature bundle is unavailable; publisher unverified'* ]] || {
+    echo "absent bundle has no immediate WARN result: $output"
+    return 1
+  }
+}
+
+@test "package download progress is visible before slow curl returns" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4
+  local out=$BATS_TEST_TMPDIR/package-progress dir=$BATS_TEST_TMPDIR/package-download pid
+  mkdir -p "$dir"
+  mv "$FAKES/curl" "$FAKES/curl-real"
+  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
+  chmod +x "$FAKES/curl"
+  bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"
+    . "$1/lib/cmd_upgrade.sh"; cx_up_download 1.13.2 "$2"' _ "$SRC" "$dir" >"$out" 2>&1 &
+  pid=$!
+  /bin/sleep 0.2
+  grep -q 'Downloading custodexa-1.13.2.tar.gz' "$out" || { cat "$out"; wait "$pid"; return 1; }
+  wait "$pid" || { cat "$out"; return 1; }
+  [ -f "$dir/custodexa-1.13.2.tar.gz" ]
 }
 
 @test "upgrade rejected before confirmation does not create a lock; a leftover flock file is reusable" {
@@ -127,6 +119,16 @@ s08_head() { # <lang> <installed> <target> <root>
   run bash -c 'CX_LANG_FLAG=zh-TW; . "$1/lib/common.sh"; cx_load_libs "$1"
     . "$1/lib/cmd_upgrade.sh"; cx_up_handoff_args
     [ ${#CX_UP_ARGS[@]} -eq 2 ] && [ "${CX_UP_ARGS[0]}" = --lang ] && [ "${CX_UP_ARGS[1]}" = zh-TW ]' _ "$SRC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  run bash -c 'CX_LANG_FLAG=ja; CX_IMAGES_FROM=source; CX_IMAGES_FROM_GIVEN=1
+    . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/cmd_upgrade.sh"
+    cx_up_handoff_args
+    [ "${CX_UP_ARGS[*]}" = "--lang ja --images-from source" ]' _ "$SRC"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  run bash -c 'CX_LANG_FLAG=""; CX_IMAGES_FROM=auto; CX_IMAGES_FROM_GIVEN=1
+    . "$1/lib/common.sh"; cx_load_libs "$1"; . "$1/lib/cmd_upgrade.sh"
+    cx_up_handoff_args
+    [ "${CX_UP_ARGS[*]}" = "--images-from auto" ]' _ "$SRC"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
 
@@ -175,11 +177,11 @@ s08_head() { # <lang> <installed> <target> <root>
 }
 
 @test "package checksum mismatch still fails with a redownload instruction" {
-  legacy_host
+  backup_host ui
   fake_github
   publish 1.13.2 1.12.4
   printf 'tampered\n' >>"$REL/v1.13.2/custodexa-1.13.2.tar.gz"
-  legacy_run en 1.13.2
+  upgrade_run en 1.13.2
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
   [[ $output == *"[FAIL]"* && $output == *"incomplete or damaged; download it again"* ]] || { echo "$output"; return 1; }
 }
@@ -203,12 +205,16 @@ s08_head() { # <lang> <installed> <target> <root>
 }
 
 @test "an unpacked package with no deployment here says where the running one is" {
-  legacy_host
-  docker_says inspect_--format "$LROOT"
-  run bash "$PKG/custodexa.sh" upgrade --lang en </dev/null
+  backup_host ui
+  local pkg=$BATS_TEST_TMPDIR/package
+  package_release "$pkg/releases/1.13.0" 1.13.0
+  ln -s releases/1.13.0 "$pkg/current"
+  ln -s current/custodexa.sh "$pkg/custodexa.sh"
+  docker_says inspect_--format "$ROOT"
+  run bash "$pkg/custodexa.sh" upgrade --lang en </dev/null
   [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"There is no deployment here: $PKG"* ]] || { echo "$output"; return 1; }
-  [[ $output == *"CUSTODEXA_HOME=$LROOT sudo -E $PKG/releases/1.13.0/custodexa.sh upgrade"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"There is no deployment here: $pkg"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"CUSTODEXA_HOME=$ROOT sudo -E $pkg/releases/1.13.0/custodexa.sh upgrade"* ]] || { echo "$output"; return 1; }
 }
 
 # ---- the upgrade itself: the 13 steps, and where each failure leaves the services ----
@@ -317,38 +323,6 @@ events_in_order() { # <event>... : each event appears, in this order
   printf '%s\n' "$output" | grep -qxF '  To go back to 1.13.0, restore the backup above by hand as described' || { echo "$output"; return 1; }
   [[ $output != *"custodexa.sh rollback"* ]] || { echo "$output"; return 1; }
   ! grep -q '^stop\|^pg_dump\|^up' "$DB/events"
-}
-
-@test "a git clone deployment: stopped, backed up and its containers removed on its own project and root compose file, no state.json before the conversion" {
-  legacy_host
-  fake_github
-  export ROOT=$LROOT
-  mkdir -p "$LROOT/data/recordings" "$LROOT/data/audit"
-  upgrade_stack 1.13.0
-  docker_says inspect_--format 'custodexa_old'
-  run env CUSTODEXA_HOME="$LROOT" bash "$PKG/custodexa.sh" upgrade 1.13.0 --yes --lang en </dev/null
-  [ "$status" -eq 0 ] && [[ $output == *"[ OK ]  8/13"* ]] || { echo "$output"; return 1; }
-  old="-p custodexa_old --project-directory $LROOT -f $LROOT/docker-compose.yml"
-  grep -qF "compose $old stop backend guacd frontend" "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  grep -qF "compose $old exec -T postgres pg_dump" "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  grep -qF "compose $old down" "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
-  # Until the old containers are gone, never the release's compose file.
-  sed -n "1,/compose $old down/p" "$FAKE_DOCKER_LOG" | grep -q 'current/compose.yml' && { cat "$FAKE_DOCKER_LOG"; return 1; }
-  # state.json is written by the conversion: nothing before it ran while one existed.
-  ! grep -q ' stop \| down\|pg_dump' "$UP/with_state" 2>/dev/null || { echo "state.json written before the conversion"; cat "$UP/with_state"; return 1; }
-  ls "$LROOT"/backups/*/SHA256SUMS >/dev/null && grep -qx up "$DB/events"
-}
-
-@test "first conversion records handed-over package signature mismatch in log and state" {
-  legacy_host
-  export ROOT=$LROOT CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=mismatch'
-  mkdir -p "$LROOT/data/recordings" "$LROOT/data/audit"
-  upgrade_stack 1.13.0
-  docker_says inspect_--format 'custodexa_old'
-  run env CUSTODEXA_HOME="$LROOT" bash "$PKG/custodexa.sh" upgrade 1.13.0 --yes --lang en </dev/null
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(jq -r '."last_upgrade.package_verification" // ""' "$LROOT/state.json")" = 'checksum=ok signature=mismatch' ] || { cat "$LROOT/state.json"; return 1; }
-  grep -q 'VERIFY package checksum=ok signature=mismatch' "$LROOT"/logs/upgrade-*.log
 }
 
 @test "the version the check suggests, alone (the main menu upgrades to it): newest, a required step first, none" {

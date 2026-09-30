@@ -23,12 +23,6 @@ readonly CX_BK_SLACK=1073741824 # 1 GB on top of the estimate; the compression r
 CX_BK_TS="" CX_BK_DIR="" CX_BK_DATA="" CX_BK_DBUSER="" CX_BK_DBNAME="" CX_BK_KEK=""
 CX_BK_NEED=0 CX_BK_FREE=0 CX_BK_FAILED_STEP=""
 
-# cx_bk_compose <compose arguments...>: compose for the backup and the snapshot. A git clone
-# deployment being converted has no current/compose.yml yet: the upgrade points CX_BK_COMPOSE at
-# its exception entry (lib/stop_check.sh cx_up_compose, the old project and files).
-CX_BK_COMPOSE=""
-cx_bk_compose() { "${CX_BK_COMPOSE:-cx_compose}" "$@"; }
-
 # cx_bk_env <key>: the value in this deployment's .env as compose reads it (lib/env.sh cx_env_get).
 cx_bk_env() { cx_env_get "$CX_ROOT/.env" "$1"; }
 
@@ -103,13 +97,13 @@ cx_bk_open() {
 
 # The steps. Each returns non-zero on failure and leaves the files it wrote.
 # shellcheck disable=SC2086
-cx_bk_stop() { cx_bk_compose stop $CX_BK_SERVICES >/dev/null 2>&1; }
+cx_bk_stop() { cx_compose stop $CX_BK_SERVICES >/dev/null 2>&1; }
 # shellcheck disable=SC2086
-cx_bk_start() { cx_bk_compose start $CX_BK_SERVICES >/dev/null 2>&1; }
+cx_bk_start() { cx_compose start $CX_BK_SERVICES >/dev/null 2>&1; }
 
 cx_bk_db() {
   (umask 077 && cx_bk_quiet "$CX_BK_DIR/custodexa-db-$CX_BK_TS.dump" \
-    cx_bk_compose exec -T postgres pg_dump -U "$CX_BK_DBUSER" -d "$CX_BK_DBNAME" -Fc) || return 1
+    cx_compose exec -T postgres pg_dump -U "$CX_BK_DBUSER" -d "$CX_BK_DBNAME" -Fc) || return 1
   [ -s "$CX_BK_DIR/custodexa-db-$CX_BK_TS.dump" ] || return 1
   cx_snap_take "$CX_BK_DIR/snapshot.txt" "$(cx_bk_env JWT_SECRET)" || return 1
   cx_log SNAPSHOT "usable=$CX_SNAP_USABLE${CX_SNAP_REASONS:+ reasons=\"$CX_SNAP_REASONS\"}"
@@ -132,7 +126,7 @@ cx_bk_conf() {
 cx_bk_verify() {
   local listing f sums
   listing=$(mktemp)
-  cx_bk_quiet "$listing" cx_bk_compose exec -T postgres pg_restore --list \
+  cx_bk_quiet "$listing" cx_compose exec -T postgres pg_restore --list \
     <"$CX_BK_DIR/custodexa-db-$CX_BK_TS.dump" || { rm -f "$listing"; return 1; }
   grep -q . "$listing" || { rm -f "$listing"; return 1; }
   rm -f "$listing"

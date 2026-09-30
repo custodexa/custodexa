@@ -98,8 +98,9 @@ var freeTextKeys = map[string]bool{
 // 清單**不得**用來塞「懶得判斷」的端點：`TestNoStaleAccountabilityVoidEntries`
 // 會擋下已經不再空白的登記，逼它下架。
 var knownAccountabilityVoids = map[string]string{
-	"POST /api/v1/access-requests/:id/reports | api.(*AccessRequestHandler).SubmitReport":  "報告正文可能含敏感內容，HTTP 本文保持遮罩；報告版本、任務、body_hash 由 AP-101 同交易專屬列課責，正文依任務報告讀取權限提供",
-	"DELETE /api/v1/users/:id/agent-tokens/:tokenId | api.(*UserHandler).RevokeAgentToken": "note 為自由文字，可能含秘密，維持遮蔽；撤銷對象及結果由 agent_token revoke／agent_token_revoked 與 agent_sessions_terminated 專屬列課責",
+	"PUT /api/v1/identity-sources/:type/:sourceId/external-groups/:externalGroupId | api.(*IdentitySourceHandler).UpdateExternalGroupNote": "note 為自由文字且可能含秘密，HTTP 本文保持遮罩；AP-110 同交易專屬列記字典識別與前後長度，不記原文",
+	"POST /api/v1/access-requests/:id/reports | api.(*AccessRequestHandler).SubmitReport":                                                  "報告正文可能含敏感內容，HTTP 本文保持遮罩；報告版本、任務、body_hash 由 AP-101 同交易專屬列課責，正文依任務報告讀取權限提供",
+	"DELETE /api/v1/users/:id/agent-tokens/:tokenId | api.(*UserHandler).RevokeAgentToken":                                                 "note 為自由文字，可能含秘密，維持遮蔽；撤銷對象及結果由 agent_token revoke／agent_token_revoked 與 agent_sessions_terminated 專屬列課責",
 	// ── 本文全為機密 ──────────────────────────────────────────────
 	"POST /api/v1/auth/change-password | api.(*AuthHandler).ChangePassword": "old_password／new_password 皆為密碼本體",
 	// Logout／Refresh 不再綁定任何 request body

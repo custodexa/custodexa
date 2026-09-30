@@ -13,10 +13,10 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/keyvault"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -88,7 +88,9 @@ func newLDAPDirectoryDB(t *testing.T) *gorm.DB {
 	sqlDB.SetMaxOpenConns(1)
 	// group_role_mappings：撥號快照要回答「本來源有沒有啟用中的映射規則」
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
@@ -725,7 +727,9 @@ func TestLDAPDirectoryConcurrentUpsert(t *testing.T) {
 	sqlDB.SetMaxOpenConns(2)
 	// group_role_mappings：撥號快照要回答「本來源有沒有啟用中的映射規則」
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewLDAPDirectoryService(db, aesColumnCodec(t, kmTestKey(0x42)), audit.NewTxSink())

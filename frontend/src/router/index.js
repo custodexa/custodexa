@@ -243,6 +243,12 @@ const routes = [
         meta: { requiresAuth: true, ...entryMeta('/identity-sources') },
       },
       {
+        path: 'identity-sources/:type/:id/group-mappings',
+        name: 'ExternalGroupMappings',
+        component: () => import('../views/identity-sources/ExternalGroupMappings.vue'),
+        meta: { requiresAuth: true, ...entryMeta('/identity-sources') },
+      },
+      {
         // 兩個前身頁的深連結仍須可用（沿「改名後深連結仍可用」的既有立場）：
         // 書籤、文件與外部連結都指向舊路徑，直接移除等於製造 404
         path: 'oidc-providers',

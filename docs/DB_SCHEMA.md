@@ -1,6 +1,7 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-29（`notification_channels` 加 `min_severity` 推送門檻欄與 CHECK，migration `20260929_notification_channel_min_severity`；ER 圖補 `language`、`min_severity`；migration 總數 30）
+> **最後更新**：2026-09-30（`20260930_identity_group_mappings` 加外部群組字典、使用者群組規則與兩類逐規則支持；`user_group_members.manual` 與角色規則字典外鍵）
+> 前次更新：2026-09-29（`notification_channels` 加 `min_severity` 推送門檻欄與 CHECK，migration `20260929_notification_channel_min_severity`；ER 圖補 `language`、`min_severity`；migration 總數 30）
 > 前次更新：2026-09-23（群組宣告名與 `groups` scope 段：Entra issuer 不觸發確認與狀態警告，無 migration）
 > 前次更新：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
 > 前次更新：2026-09-23（agent_tool_calls 新增 args_sealed／args_retained、command_alerts.kind 加 sensitive_reveal；agent 帳本／報告／探測事件、v3 檢查點、規則主體與 16 條種子；agent_token_name 快照）
@@ -55,7 +56,7 @@
 | Role | `roles` | baseline | 角色定義 |
 | UserRole | `user_roles` | baseline＋增量 `20260908_group_role_mapping` 加 `source` 欄 | 用戶-角色關聯表（M2M，由 baseline 顯式建表；`source` 記這一列是管理者指派、外部群組映射賦予，還是兩者並存） |
 | UserGroup | `user_groups` | baseline | 使用者群組（授權主體分組，與 RBAC 角色正交） |
-| - | `user_group_members` | baseline | 用戶-群組關聯表（一人可屬多群；同上，現由 baseline 顯式建表） |
+| UserGroupMember | `user_group_members` | baseline＋`20260930_identity_group_mappings` 加 `manual` | 用戶-群組有效成員投影；手動與逐規則映射支持的聯集 |
 | Asset | `assets` | baseline（`idx_assets_name` partial unique）＋增量 `20260826_db_query_console` 加 `allowed_databases` 欄＋增量 `20260904_windows_local_account_rotation` 加改密通道六欄 | 遠端資產（SSH/RDP/VNC/DB CLI/K8s） |
 | AssetAccount | `asset_accounts` | baseline（`idx_asset_accounts_default`＝一資產至多一預設、`idx_asset_accounts_username`＝軟刪列不佔名，兩條 partial unique）＋增量 `20260903_rotation_evidence_report` 加 `credential_group` 欄與其索引＋增量 `20260906_credential_library` 加 `credential_id`／`effective_version_id` 與 `idx_asset_accounts_credential` partial unique＋增量 `20260906_credential_library_contract` 卸下兩個密文欄與群組索引 | 憑證掛載列（這台以哪筆憑證登入、就位在哪一版；本表不再持有密文，至多一 default） |
 | Credential | `credentials` | **增量 `20260906_credential_library`（非 baseline）**（`idx_credentials_shared_name` partial unique＝共用名稱唯一且軟刪後可重用） | 登入秘密的唯一真相（範圍、帳號名、秘密型別、協定族、輪替指標） |
@@ -115,21 +116,25 @@
 | LDAPDirectory | `ldap_directories` | baseline（CHECK `singleton = 1` ＋ `idx_ldap_directories_singleton` partial unique）＋增量 `20260908_group_role_mapping` 加 `attr_group` 欄 | LDAP 目錄設定（設定面自 env 遷入 DB）；`bind_password_enc` 登記於 `envelopeMigrationTargets` |
 | GroupRoleMapping | `group_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（CHECK `chk_group_role_mapping_source`＝來源恰一；`idx_group_role_mappings_ldap`／`idx_group_role_mappings_oidc` 兩條 partial unique） | 外部群組對角色的映射規則（管理者維護；規則掛在目錄 XOR 身分提供者上） |
 | UserRoleMapping | `user_role_mappings` | **增量 `20260908_group_role_mapping`（非 baseline）**（複合主鍵 `(user_id, role_id, channel)`，除主鍵外不另建索引） | 某條登入途徑於最近一次重算後認定的映射事實（每次登入重算，通道進主鍵故兩條途徑各自成列） |
+| ExternalGroup | `external_groups` | 增量 `20260930_identity_group_mappings` | 來源內共用外部群組字典及選填備註 |
+| GroupUserGroupMapping | `group_user_group_mappings` | 增量 `20260930_identity_group_mappings` | 外部群組對使用者群組的規則 |
+| UserRoleMappingRuleSupport | `user_role_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 角色逐規則支持 |
+| UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **67 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **23 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **71 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **27 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
-群組映射兩表 `group_role_mappings`／`user_role_mappings`，
+群組映射六表 `group_role_mappings`／`user_role_mappings`／`external_groups`／`group_user_group_mappings`／`user_role_mapping_rule_supports`／`user_group_mapping_rule_supports`，
 政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，
 `kek_topologies`，`agent_tokens`，`access_request_items`，
 與 agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_events`／`agent_visibility_exposures`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **70 張**表
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **74 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含二十九條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含三十條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -2116,20 +2121,15 @@ per user×asset 一列（唯一索引冪等更新）。不存 `expires_at`——
 ### 29b. user_group_members（用戶×群組關聯表）
 
 **表名**: `user_group_members`
-**檔案**: **無 model 檔**——僅由 `model.User.Groups` 與 `model.UserGroup.Users` 的
-`gorm:"many2many:user_group_members;"` tag 隱含（`user.go:113`、`user_group.go:22`）
+**檔案**: `backend/internal/model/identity_group_mapping.go`；使用者與群組的多對多關聯由此表承載。
 **建表方式**: baseline（`baseline_schema_identity.go`），複合主鍵 `(user_group_id, user_id)`，
-兩條外鍵 `fk_user_group_members_user`→`users(id)`、`fk_user_group_members_user_group`→`user_groups(id)`；無其他索引
-**維護陷阱（沒有守衛會提醒你）**: 本表無 model 結構，**不在 `schemaParityModels` 的射程內**，
-兩層 parity 守衛都不檢查它；改 model 不會動到它，也不會有測試變紅。
-要改形狀只能直接改 `baseline_schema_identity.go`（或新增一條增量 migration）。
-**姊妹表 `user_roles` 已不再如此**——它在加欄時一併有了 `model.UserRole`、已進 parity 射程（見 [2b](#2b-user_roles用戶角色關聯表)）；
-本表要加欄時走同一條路，先補 model 結構再動 DDL，才不會落在守衛射程外。
+兩條外鍵 `fk_user_group_members_user`→`users(id)`、`fk_user_group_members_user_group`→`user_groups(id)`；`20260930_identity_group_mappings` 加 `manual boolean NOT NULL DEFAULT true`。本表有明確 model，納入 schema parity。
 
 | 欄位（baseline） | 類型 | 說明 |
 |------------------|------|------|
 | `user_group_id` | bigint NOT NULL | 群組；複合主鍵之一 |
 | `user_id` | bigint NOT NULL | 使用者；複合主鍵之一 |
+| `manual` | boolean NOT NULL DEFAULT true | 既有成員回填為手動；手動支持或任一映射規則支持存在時保留有效列 |
 
 無 `created_at`／`deleted_at`：關聯為硬刪——刪群組與刪使用者皆以
 `DELETE FROM user_group_members`（`modules/identity/user_group_service.go:125`、`user_service.go:557`）
@@ -2515,18 +2515,19 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260924_agent_tool_call_args_retained` | `agent_tool_calls` 加 `args_sealed bytea` 可空欄與 `args_retained boolean NOT NULL DEFAULT false`（第 60 節），共 **2 條 DDL**，無回填；存量列以 default 成為 `false`，即「參數當時整欄遮罩、原文不存在」 | `rollbackAgentToolCallArgsRetained` 為 **no-op**（回傳成功、不刪欄）：應用回退後，證據與既有已簽章的帳本列保留 |
 | `20260924_sensitive_reveal_alert` | 重建 `command_alerts_kind_check`，值域加 `sensitive_reveal`，共 **2 條 DDL**（DROP＋ADD CONSTRAINT），不加欄、無回填 | `rollbackSensitiveRevealAlert`：**一律回拒絕錯誤**。保留告警證據，停用改由政策設定達成、不刪記錄 |
 | `20260929_notification_channel_min_severity` | `notification_channels` 加 `min_severity character varying(10) DEFAULT 'low' NOT NULL` 與 CHECK `notification_channels_min_severity_check`（`low`／`medium`／`high`；見第 11 節），共 **2 條 DDL**，無回填；既有通道以 default 取得 `low`（全部告警），升級後推送行為不變 | `rollbackNotificationChannelMinSeverity`：卸 CHECK 與欄位。**有損但方向安全**：門檻設定沒有第二處存放，回退後一律回到全部推送 |
+| `20260930_identity_group_mappings` | 新增 `external_groups`、`group_user_group_mappings` 及兩種逐規則支持表，角色規則加字典外鍵，有效群組成員加 `manual`；舊角色事實依同來源同角色的啟用規則建立支持，無規則事實撤除並記遷移稽核，舊成員標為手動；不推進憑證世代 | `rollbackIdentityGroupMappings`：拒絕執行；回退以升級前備份還原 |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的二十九條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的三十條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
-> - **讀寫存量資料列，耗時隨對應表的列數成長（4 條）**：
+> - **讀寫存量資料列，耗時隨對應表的列數成長（5 條）**：
 >   `20260826_source_ip_forensics`（冷啟動回填，以 `INSERT … SELECT` 彙整 `sessions` 與 `audit_logs` 的登入成功列）、
 >   `20260906_credential_library`（逐筆把存活的 `asset_accounts` 列轉為專用憑證，帳號數通常遠小於會話與稽核的存量）、
 >   `20260921_access_request_items`（以 `INSERT … SELECT` 為每張未軟刪的 `access_requests` 回填一項）、
 >   `20260921_access_request_item_decisions`（三段 `UPDATE`，連結 `access_request_items`、`access_requests`、
->   `asset_authorizations` 與 `access_request_approvals`）。
+>   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）。
 > - **只寫固定少量的列，不隨存量成長（3 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
 >   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）。
 > - **只有 DDL，Up 不含讀寫資料列的 DML 語句（22 條）**。其中 10 條在既有表上建索引或加 CHECK／外鍵：
@@ -3424,6 +3425,7 @@ pending → uploading → uploaded → local_purged
 | `OIDCProviderID` | *uint | `column:oidc_provider_id;uniqueIndex:idx_group_role_mappings_oidc,where:deleted_at IS NULL` | `oidc_provider_id,omitempty` | 身分提供者來源（外鍵 → `oidc_providers`）；同上 |
 | `MatchValue` | string | `size:500;not null;uniqueIndex:…（兩條）` | `match_value` | 群組的比對值，**原樣存、不做正規化**，亦不另存正規化欄 |
 | `RoleID` | uint | `not null;uniqueIndex:…（兩條）` | `role_id` | 命中該群組時賦予的角色（外鍵 → `roles`） |
+| `ExternalGroupID` | uint | `not null` | `external_group_id` | `20260930_identity_group_mappings` 新增，外鍵 → `external_groups`，與舊來源及比對值欄保持一致 |
 | `Enabled` | bool | `not null;default:true` | `enabled` | 停用的規則於重算時視同不存在（不刪規則即可暫停一條映射） |
 | `CreatedBy` | uint | `not null` | `created_by` | 建立這條規則的管理者（外鍵 → `users`） |
 | `Role` | *Role | `foreignKey:RoleID` | `role,omitempty` | 關聯（Preload 用；管理端列表要顯示角色名） |
@@ -3447,6 +3449,16 @@ pending → uploading → uploaded → local_purged
   在規則本身回答得出來。
 - **來源刪除的相依**：仍有規則掛著的目錄或提供者不可刪除（服務層回衝突），先移除規則再刪來源。
 
+### 52a. 外部群組字典與逐規則支持（`20260930_identity_group_mappings`）
+
+`external_groups` 以來源二選一外鍵與原始 `match_value` 唯一識別外部群組；`note varchar(200)` 是兩類規則共用的顯示備註。LDAP 與 OIDC 各有 `(source_id, match_value)` 唯一索引。`group_role_mappings.external_group_id` 指向字典，原 `match_value` 與來源欄維持舊契約並由交易校驗一致。
+
+`group_user_group_mappings` 保存來源、`external_group_id`、目標 `user_group_id`、`enabled`、`created_by`、時間與軟刪欄；未刪規則的 `(external_group_id,user_group_id)` 唯一。來源、字典、目標群組與建立者均有外鍵。規則與字典來源不一致由服務交易檢查。
+
+`user_role_mapping_rule_supports` 的主鍵是 `(user_id,role_id,channel,rule_id)`；`user_group_mapping_rule_supports` 的主鍵是 `(user_id,user_group_id,channel,rule_id)`。兩表均有使用者、目標及規則外鍵，並建立 `(rule_id,user_id)`、`(channel,user_id)` 索引；群組支持另有 `(user_group_id,user_id)` 索引。`user_role_mappings` 保持逐通道聚合投影，`user_group_members` 是有效成員投影；逐規則支持決定停用或刪除規則時要收回哪些列。規則軟刪後的歷史列仍引用字典，故字典只在無任何歷史規則引用時刪除。
+
+遷移將既有角色規則去重建字典；舊角色映射事實依同來源、同角色的所有啟用規則建立支持。無啟用規則者撤除舊事實並記遷移稽核；遷移本身不推進憑證世代或撤刷新憑證。舊使用者群組成員全部標為手動。服務停妥及備份後由新版啟動執行遷移，失敗整筆回滾。
+
 ---
 
 ### 53. UserRoleMapping（映射事實）
@@ -3466,7 +3478,7 @@ pending → uploading → uploaded → local_purged
 無 `created_at`／`deleted_at`：本表是「最近一次重算後的認定」，不是歷史帳；歷史在稽核列裡。
 
 **設計說明**:
-- **本表是映射的事實源**。有效角色集＝角色指派關聯表的手動列，聯集本表去重後的角色；
+- **本表是逐通道聚合投影**；逐規則事實源為 `user_role_mapping_rule_supports`。有效角色集＝角色指派關聯表的手動列，聯集本表去重後的角色；
   `user_roles.source` 是由兩者推導的投影，不一致時以本表為準。
 - **通道必須進主鍵**。關聯表的主鍵是（角色，帳號），同一個角色被兩條途徑同時命中時，
   單一個通道欄只表達得了其中一條。不分通道的後果是具體的：同一人交替經兩條途徑登入時，

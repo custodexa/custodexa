@@ -22,6 +22,9 @@ Custodexa 管理スクリプト 1.13.0
                          開始時刻。サービス停止より後であること
   --backup-restore <場所>（upgrade）--backup-ref と併用：復元手順の文書の場所
   --images <パス>        （install、upgrade）使うオフラインイメージバンドル
+  --images-from <方式>   （install、対象を指定した upgrade）auto または source。
+                         既定は auto。source は同梱ソースから
+                         自社イメージをビルド
   --lang <言語>          zh-TW、ja、en。下の「表示言語」を参照
   --no-color             色を使わない
   --version              スクリプトのバージョンを表示

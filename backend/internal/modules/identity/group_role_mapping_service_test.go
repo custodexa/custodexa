@@ -54,7 +54,9 @@ func setupMappingDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserRole{},
 		&model.AuditLog{}, &model.LDAPDirectory{}, &model.OIDCProvider{},
 		&model.UserExternalIdentity{}, &model.RefreshToken{}, &model.Session{},
-		&model.GroupRoleMapping{}, &model.UserRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.UserRoleMapping{}, &model.ExternalGroup{},
+		&model.GroupUserGroupMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{},
+		&model.UserGroup{}, &model.UserGroupMember{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, model.RoleUser, "auditor"} {
@@ -127,15 +129,16 @@ func TestGroupRoleMappingCRUDAudit(t *testing.T) {
 		t.Fatalf("建立事件審計列數 = %d，want 1", got)
 	}
 
-	if _, err := svc.UpdateMapping(model.RoleMappingChannelKindDirectory, dir.ID, created.ID,
-		mappingInput("cn=ops,ou=groups,dc=example,dc=com", "auditor", false)); err != nil {
+	updated, err := svc.UpdateMapping(model.RoleMappingChannelKindDirectory, dir.ID, created.ID,
+		mappingInput("cn=ops,ou=groups,dc=example,dc=com", "auditor", false))
+	if err != nil {
 		t.Fatalf("更新規則: %v", err)
 	}
 	if got := countAuditEvent(t, db, identity.MappingAuditEventUpdate); got != 1 {
 		t.Fatalf("更新事件審計列數 = %d，want 1", got)
 	}
 
-	if err := svc.DeleteMapping(model.RoleMappingChannelKindDirectory, dir.ID, created.ID,
+	if err := svc.DeleteMapping(model.RoleMappingChannelKindDirectory, dir.ID, updated.ID,
 		mappingTestActor); err != nil {
 		t.Fatalf("刪除規則: %v", err)
 	}

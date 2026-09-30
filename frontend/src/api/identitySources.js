@@ -60,6 +60,24 @@ export const CODE_LDAP_DIRECTORY_NOT_FOUND = 'NOTFOUND_LDAP_DIRECTORY'
 const mappingBase = (type, id) =>
   `/identity-sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}/mappings`
 
+const sourceBase = (type, id) =>
+  `/identity-sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}`
+const mappingPath = (type, id, target) => `${sourceBase(type, id)}/${target}`
+
+export const getRoleMappings = (type, id) => request({ url: mappingPath(type, id, 'role-mappings'), method: 'get' })
+export const createRoleMapping = (type, id, data) => request({ url: mappingPath(type, id, 'role-mappings'), method: 'post', data })
+export const updateRoleMapping = (type, id, ruleId, data) => request({ url: `${mappingPath(type, id, 'role-mappings')}/${encodeURIComponent(ruleId)}`, method: 'put', data })
+export const deleteRoleMapping = (type, id, ruleId) => request({ url: `${mappingPath(type, id, 'role-mappings')}/${encodeURIComponent(ruleId)}`, method: 'delete' })
+
+export const getUserGroupMappings = (type, id) => request({ url: mappingPath(type, id, 'user-group-mappings'), method: 'get' })
+export const getUserGroupMappingUsage = (type, id, groupId) => request({ url: `${mappingPath(type, id, 'user-group-usage')}/${encodeURIComponent(groupId)}`, method: 'get' })
+export const createUserGroupMapping = (type, id, data) => request({ url: mappingPath(type, id, 'user-group-mappings'), method: 'post', data })
+export const updateUserGroupMapping = (type, id, ruleId, data) => request({ url: `${mappingPath(type, id, 'user-group-mappings')}/${encodeURIComponent(ruleId)}`, method: 'put', data })
+export const deleteUserGroupMapping = (type, id, ruleId) => request({ url: `${mappingPath(type, id, 'user-group-mappings')}/${encodeURIComponent(ruleId)}`, method: 'delete' })
+
+export const getExternalGroups = (type, id) => request({ url: mappingPath(type, id, 'external-groups'), method: 'get' })
+export const updateExternalGroupNote = (type, id, groupId, note) => request({ url: `${mappingPath(type, id, 'external-groups')}/${encodeURIComponent(groupId)}`, method: 'put', data: { note } })
+
 /**
  * 合併列表：目錄與提供者同列。
  * @returns {Promise} { data: SourceRow[] }

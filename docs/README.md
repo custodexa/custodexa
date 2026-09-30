@@ -1,5 +1,11 @@
 # Documentation Index
 
+For supported Linux servers, use the release package and `custodexa.sh` for installation, backup and upgrade. The source-tree `scripts/quickstart.sh` instructions in each language are for developers and macOS／Windows evaluation.
+
+受支援的 Linux 伺服器請以安裝包和 `custodexa.sh` 安裝、備份及升級；各語言原始碼樹的 `scripts/quickstart.sh` 指令供開發者與 macOS／Windows 試用。
+
+対応する Linux サーバーではパッケージと `custodexa.sh` でインストール、バックアップ、アップグレードします。各言語のソースツリーにある `scripts/quickstart.sh` の手順は開発者と macOS／Windows での評価用です。
+
 Custodexa's main documents are available in three languages. Pick a language below.
 
 ## English

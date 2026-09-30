@@ -584,7 +584,9 @@ func newLDAPSeedBackstopDB(t *testing.T) *gorm.DB {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := db.Exec("CREATE TABLE schema_migrations (version varchar(50) PRIMARY KEY, applied_at datetime NOT NULL)").Error; err != nil {
@@ -748,7 +750,9 @@ func newLDAPDirectoryBackstopDB(t *testing.T) *gorm.DB {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	if err := db.AutoMigrate(&model.LDAPDirectory{}, &model.AuditLog{},
-		&model.GroupRoleMapping{}); err != nil {
+		&model.GroupRoleMapping{}, &model.ExternalGroup{}, &model.GroupUserGroupMapping{},
+		&model.User{}, &model.Role{}, &model.UserGroup{}, &model.UserGroupMember{},
+		&model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db

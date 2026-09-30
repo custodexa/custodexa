@@ -125,3 +125,15 @@ SHALL 對執行中的堆疊立即生效，不需重啟任何服務；映像未�
 #### Scenario: 連跑兩次狀態不變
 - **WHEN** 已收斂後再執行 `--up`
 - **THEN** 腳本不報錯，錄影目錄與其中檔案的擁有者、群組與模式前後相同
+
+### Requirement: quickstart.sh 的適用範圍
+
+`scripts/quickstart.sh` SHALL 保留其現有環境設定、建置與啟動行為，供開發者及 macOS／Windows 本機試用。對外文件 SHALL 明載此路徑非正式部署入口；正式 Linux 安裝、備份與升級 SHALL 以安裝包的 `custodexa.sh` 及對應營運程序說明。`quickstart.sh` SHALL NOT 被描述成能管理安裝包部署或執行其升級與還原。
+
+#### Scenario: 開發者於 macOS 試用
+- **WHEN** 開發者依 QUICKSTART 的試用段落執行 `scripts/quickstart.sh --up`
+- **THEN** 文件清楚說明這是本機試用，腳本既有 `.env` 產生與啟動行為仍可使用
+
+#### Scenario: 正式部署尋找升級入口
+- **WHEN** 維運從 README 或 QUICKSTART 查詢 Linux 正式部署的升級方式
+- **THEN** 文件指向 `custodexa.sh upgrade` 及升級操作程序，不以 `quickstart.sh` 或 git pull 作為正式升級步驟

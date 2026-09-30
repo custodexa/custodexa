@@ -718,6 +718,15 @@ func (s *UserService) Delete(id uint) error {
 			if err := s.authzRevoker.RevokeByUser(tx, id); err != nil {
 				return err
 			}
+			if err := tx.Exec("DELETE FROM user_role_mapping_rule_supports WHERE user_id=?", id).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("DELETE FROM user_group_mapping_rule_supports WHERE user_id=?", id).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("DELETE FROM user_role_mappings WHERE user_id=?", id).Error; err != nil {
+				return err
+			}
 			if err := tx.Exec("DELETE FROM user_group_members WHERE user_id = ?", id).Error; err != nil {
 				return fmt.Errorf("清除使用者群組成員關係失敗: %w", err)
 			}

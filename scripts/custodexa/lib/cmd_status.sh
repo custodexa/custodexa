@@ -85,21 +85,12 @@ cmd_status_data_path() {
 }
 
 # ---------- version ----------
-CX_STATUS_KIND="" # package | legacy | none
+CX_STATUS_KIND="" # package | none
 CX_STATUS_VERSION=""
 cmd_status_version() {
   local st ver since kind prev
   cmd_status_section version
   ver=$(cx_state_get current.version)
-  if [ "$(cx_state_get current.kind)" = legacy-git-clone ] || { [ -z "$ver" ] && cx_is_legacy_root "$CX_ROOT"; }; then
-    CX_STATUS_KIND=legacy
-    [ -n "$ver" ] || ver=$(tr -d '[:space:]' <"$CX_ROOT/VERSION")
-    CX_STATUS_VERSION=$ver
-    cmd_status_row status_label_current "$ver" "$(cx_msg status_legacy)"
-    cx_msg status_legacy_next | sed 's/^/             /'
-    printf '\n'
-    return 0
-  fi
   if [ -z "$ver" ]; then
     CX_STATUS_KIND=none
     st=$(cx_state_get install.result)

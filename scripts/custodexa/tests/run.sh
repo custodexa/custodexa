@@ -19,7 +19,7 @@ docker run --rm -v "$repo:/src:ro" ${extra[@]+"${extra[@]}"} "$img" bash -c '
   echo "== versions: $(bats --version); shellcheck $(shellcheck --version | sed -n "s/^version: //p"); $(jq --version)"
   bats --print-output-on-failure "$@"; b=$?
   echo "== shellcheck -S style"
-  shellcheck -S style -x -P scripts/custodexa scripts/custodexa/custodexa.sh scripts/custodexa/lib/*.sh scripts/custodexa/lang/*.sh; s=$?
+  shellcheck -S style -x -P scripts/custodexa scripts/get-custodexa.sh scripts/custodexa/custodexa.sh scripts/custodexa/lib/*.sh scripts/custodexa/lang/*.sh; s=$?
   [ $s -eq 0 ] && echo "shellcheck: no findings"
   echo "== bats exit=$b shellcheck exit=$s"
   [ $b -eq 0 ] && [ $s -eq 0 ]

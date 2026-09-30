@@ -1,6 +1,0 @@
-[FAIL] /data/custodexa 的 git 工作樹有改動，不能整理目錄。
-       請先還原、移走或提交下列項目，讓 git status 沒有輸出後再執行：
-     M docker-compose.yml
-    ?? notes.txt
-
-沒有做任何變更。

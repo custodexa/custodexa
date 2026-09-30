@@ -443,7 +443,7 @@ func (s *OIDCLoginService) callback(ctx context.Context, state, code string,
 	return &CallbackResult{Ticket: ticket, RedirectNext: flow.RedirectNext}, nil
 }
 
-// recomputeMappedRoles 提供者途徑的映射重算，並在有變動時重載角色集。
+// recomputeMappedRoles 提供者途徑的映射重算，角色集或憑證世代變動時重載使用者。
 //
 // 錯誤一律上拋（fail-close）：映射管線壞掉時讓外部使用者鎖在門外，是刻意選的
 // 方向——反面是「權限算錯了但還是放你進來」。逃生口寫在營運程序：停用該來源的
@@ -466,11 +466,10 @@ func (s *OIDCLoginService) recomputeMappedRoles(p *model.OIDCProvider, user *mod
 	if outcome.EpochBumped && s.auth != nil && s.auth.agentTokens != nil {
 		s.auth.agentTokens.finishSuspendedOwner(user.ID)
 	}
-	if !outcome.Changed() {
+	if !outcome.Changed() && !outcome.EpochBumped {
 		return nil
 	}
-	// **有變動才重載**：重載是一次帶關聯的查詢，而絕大多數登入什麼都沒變。
-	// 有變動時則非重載不可——兌換階段組出的登入回應讀的是這個物件
+	// 角色或世代變動都須重載：兌換階段組出的登入回應讀的是這個物件。
 	var reloaded model.User
 	if err := s.db.Preload("Roles").First(&reloaded, user.ID).Error; err != nil {
 		return fmt.Errorf("重算後重載使用者角色失敗: %w", err)

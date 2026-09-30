@@ -679,6 +679,7 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	}
 	oidcProviderService := identity.NewOIDCProviderService(
 		database.DB, keyManager, oidcEgress, cfg.OIDC.DedicatedIssuers, cfg.OIDC.PublicBaseURL)
+	oidcProviderService.SetMappingAuditSink(auditTxSink)
 	oidcDiscovery := identity.NewOIDCDiscoveryService(oidcEgress)
 	oidcLoginService := identity.NewOIDCLoginService(
 		database.DB, oidcProviderService, oidcDiscovery, authService, auditService)

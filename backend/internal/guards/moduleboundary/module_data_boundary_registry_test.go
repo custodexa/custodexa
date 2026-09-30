@@ -54,8 +54,12 @@ var tableOwner = map[string]string{
 	// 映射事實的不變式（通道分域、重算只動本通道）都由 identity 定義與維護，
 	// 與 user_roles 是同一組語義的兩半。**登記的實質效果**：其他模組直接以
 	// gorm 或 SQL 碰這兩張表即判跨界紅
-	"group_role_mappings": "identity",
-	"user_role_mappings":  "identity",
+	"group_role_mappings":              "identity",
+	"user_role_mappings":               "identity",
+	"external_groups":                  "identity",
+	"group_user_group_mappings":        "identity",
+	"user_role_mapping_rule_supports":  "identity",
+	"user_group_mapping_rule_supports": "identity",
 	// authz
 	"asset_authorizations":     "authz",
 	"access_request_items":     "authz",

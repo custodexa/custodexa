@@ -54,11 +54,25 @@ func activeGroupRoleMappings(tx *gorm.DB, kind string, sourceID uint) ([]model.G
 		return nil, err
 	}
 	var rules []model.GroupRoleMapping
-	if err := tx.Preload("Role").
+	if err := tx.Preload("Role").Preload("ExternalGroup").
 		Where(column+" = ? AND enabled = ?", sourceID, true).
 		Order("id").
 		Find(&rules).Error; err != nil {
 		return nil, fmt.Errorf("讀取群組映射規則失敗: %w", err)
+	}
+	for _, r := range rules {
+		if r.ExternalGroupID == 0 {
+			continue
+		} // pre-migration SQLite fixtures only
+		if r.ExternalGroup == nil || r.ExternalGroup.MatchValue != r.MatchValue {
+			return nil, fmt.Errorf("角色規則 %d 的外部群組字典不一致", r.ID)
+		}
+		if kind == model.RoleMappingChannelKindDirectory && (r.ExternalGroup.LDAPDirectoryID == nil || *r.ExternalGroup.LDAPDirectoryID != sourceID) {
+			return nil, fmt.Errorf("角色規則 %d 的來源與字典不一致", r.ID)
+		}
+		if kind == model.RoleMappingChannelKindProvider && (r.ExternalGroup.OIDCProviderID == nil || *r.ExternalGroup.OIDCProviderID != sourceID) {
+			return nil, fmt.Errorf("角色規則 %d 的來源與字典不一致", r.ID)
+		}
 	}
 	return rules, nil
 }

@@ -25,6 +25,8 @@ Options
   --backup-restore <doc> (upgrade) With --backup-ref: where the restore
                          procedure is documented
   --images <path>        (install, upgrade) Offline image bundle to use
+  --images-from <mode>   (install, upgrade with target) auto or source;
+                         auto is the default, source builds own images locally
   --lang <language>      zh-TW, ja or en; see Language below
   --no-color             No colors
   --version              Show the script version

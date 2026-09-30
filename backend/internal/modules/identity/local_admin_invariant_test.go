@@ -28,7 +28,8 @@ func localAdminMigrate(t *testing.T, db *gorm.DB) {
 	// 自動建出的關聯表只有兩欄——缺這一個 model，計數會敗在「no such column」
 	if err := db.AutoMigrate(&model.User{}, &model.Role{}, &model.UserGroup{},
 		&model.ApproverScope{}, &model.RefreshToken{}, &model.AuditLog{},
-		&model.UserRole{}); err != nil {
+		&model.UserRole{}, &model.UserRoleMapping{}, &model.UserRoleMappingRuleSupport{},
+		&model.GroupUserGroupMapping{}, &model.UserGroupMappingRuleSupport{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, name := range []string{model.RoleAdmin, "user"} {
