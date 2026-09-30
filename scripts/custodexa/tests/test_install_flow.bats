@@ -251,20 +251,13 @@ state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
   [[ $output == *" 2. 用上面的帳號密碼登入。"* && $output != *"custodexa-ca.crt"* && $output != *" 3. "* ]] || { echo "$output"; return 1; }
 }
 
-@test "publisher not verified: no answer, no install; with --yes it goes on and says what was checked" {
+@test "publisher not verified: WARN and install continues without a confirmation" {
   host_full
   no_publisher_tools
   install_run en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ ?? ] Files were checked for damage"* && $output == *"[FAIL] This step needs a confirmation"* ]] || { echo "$output"; return 1; }
-  ! grep -q $'\tcompose .* up ' "$FAKE_DOCKER_LOG" || return 1
-  [ "$(state install.result)" = cancelled ] || return 1
-  # Asked on a terminal and answered N: stopped the same way.
-  run script -qec "bash $ROOT/custodexa.sh install --lang en" /dev/null <<<"n"
-  [ "$status" -eq 3 ] && [[ $output == *"Stopped as you chose; no service was started"* ]] || { echo "$output"; return 1; }
-  ! grep -q $'\tcompose .* up ' "$FAKE_DOCKER_LOG" || return 1
-  install_run en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Files were checked for damage"* && $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
+  [ "$(state install.result)" = succeeded ] || return 1
   [[ $output == *"[ OK ] 3/7  Get the program images (6; content digests checked;"* ]] || { echo "$output"; return 1; }
   [ "$(state current.verification)" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ] || return 1
 }
@@ -322,7 +315,7 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
   release_manifest >"$ROOT/current/MANIFEST.json"
   load_run en "$tar"
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] The bundle does not match the release manifest; nothing was loaded:"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] The bundle does not match the release manifest;"* && $output == *"download it again. Nothing was loaded:"* ]] || { echo "$output"; return 1; }
   ! grep -q $'\tload ' "$FAKE_DOCKER_LOG" || return 1
   [ "$(state load.result)" = failed ] && [ -z "$(state load.image_ids)" ] || return 1
   # Loaded, but the daemon then holds other content under the tag: refused, no IDs recorded.
@@ -349,25 +342,22 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
   release_manifest >/media/usb/MANIFEST.json
   (cd /media/usb && sha256sum MANIFEST.json >>SHA256SUMS)
   sums=$(sha256sum /media/usb/SHA256SUMS | cut -d' ' -f1)
-  # Signed, but the signature does not verify for the release workflow of this version: a check
-  # that ran and failed stops, as in install and upgrade; nothing loaded, no IDs recorded.
+  # A signer mismatch warns and the loaded images remain marked unverified.
   printf 'identity %s\nsha256 %s\n' "${id/v1.13.0/v1.12.4}" "$sums" >/media/usb/SHA256SUMS.sigstore.json
   load_run en "$tar"
   flat=$(printf '%s' "$output" | tr '\n' ' ' | tr -s ' ')
-  [ "$status" -eq 1 ] && [[ $flat == *"[FAIL] The signature over SHA256SUMS in /media/usb does not verify"* ]] || { echo "$output"; return 1; }
-  [[ $output != *"verified"* ]] || { echo "$output"; return 1; }
-  ! grep -q $'\tload ' "$FAKE_DOCKER_LOG" || return 1
-  [ "$(state load.result)" = failed ] && [ -z "$(state load.image_ids)" ] || return 1
+  [ "$status" -eq 0 ] && [[ $flat == *"[WARN] Publisher signature: signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+  [ "$(state load.result)" = succeeded ] && [[ $(state load.verification) == *"signature=mismatch"* ]] || return 1
   rm /media/usb/SHA256SUMS.sigstore.json
   # SHA256SUMS without a signature: loaded as before, the publisher shown as not verified.
   load_run en "$tar"
   flat=$(printf '%s' "$output" | tr '\n' ' ' | tr -s ' ')
   [ "$status" -eq 0 ] && [ "$(state load.result)" = succeeded ] || { echo "$output"; return 1; }
   [[ $output != *"Publisher signature and build provenance verified"* ]] || { echo "$output"; return 1; }
-  [[ $flat == *"[SKIP] Publisher signature: the release manifest next to the bundle is not verified (no SHA256SUMS.sigstore.json next to it)"* ]] || { echo "$output"; return 1; }
+  [[ $flat == *"[WARN] Publisher signature: the release manifest next to the bundle is not verified (no SHA256SUMS.sigstore.json next to it)"* ]] || { echo "$output"; return 1; }
   [[ $flat == *"the publisher is not verified"* ]] || { echo "$output"; return 1; }
   load_run zh-TW "$tar"
-  [ "$status" -eq 0 ] && [[ $output != *"都已驗證"* && $output == *"[SKIP] 發行者簽章：離線包旁的發行清單未經驗證"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output != *"都已驗證"* && $output == *"[WARN] 發行者簽章：離線包旁的發行清單未經驗證"* ]] || { echo "$output"; return 1; }
   # Signed by the release workflow of this version: the manifest is the publisher's, and so is
   # the content that matches it.
   printf 'identity %s\nsha256 %s\n' "$id" "$sums" >/media/usb/SHA256SUMS.sigstore.json
@@ -379,6 +369,58 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
   release_manifest >"$ROOT/current/MANIFEST.json"
   load_run en "$tar"
   [ "$status" -eq 0 ] && [[ $output == *"[ OK ] Publisher signature and build provenance verified"* ]] || { echo "$output"; return 1; }
+}
+
+@test "load continues on a mismatched manifest signature and records it" {
+  host_full
+  mkdir -p /media/usb
+  local tar=/media/usb/custodexa-images-1.13.0-amd64.tar
+  rm "$ROOT/current/MANIFEST.json"
+  make_bundle "$tar" classic
+  release_manifest >/media/usb/MANIFEST.json
+  (cd /media/usb && sha256sum MANIFEST.json >>SHA256SUMS)
+  printf 'identity %s\nsha256 %s\n' \
+    'https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v9.9.9' \
+    "$(sha256sum /media/usb/SHA256SUMS | cut -d' ' -f1)" >/media/usb/SHA256SUMS.sigstore.json
+  load_run en "$tar"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  local flat
+  flat=$(printf '%s' "$output" | tr '\n' ' ' | tr -s ' ')
+  [[ $flat == *"[WARN]"* && $flat == *"signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+  [[ $(state load.verification) == *"signature=mismatch"* ]] || { echo "$(state load.verification)"; return 1; }
+}
+
+@test "load preserves a mismatched package signature for that release" {
+  host_full
+  mkdir -p /media/usb
+  local tar=/media/usb/custodexa-images-1.13.0-amd64.tar
+  make_bundle "$tar" classic
+  printf '{\n  "format": "2",\n  "last_upgrade.to": "1.13.0",\n  "last_upgrade.package_verification": "checksum=ok signature=mismatch"\n}\n' >"$ROOT/state.json"
+  load_run en "$tar"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature: signature mismatch"* ]] || { echo "$output"; return 1; }
+  [[ $(state load.verification) == *"signature=mismatch"* ]] || { echo "$(state load.verification)"; return 1; }
+  grep -q 'VERIFY manifest signature MISMATCH' "$ROOT"/logs/load-*.log
+  state_put last_upgrade.package_verification 'checksum=ok signature=skip-no-cosign'
+  load_run en "$tar"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature: the package signature was not verified"* ]] || { echo "$output"; return 1; }
+  [[ $(state load.verification) == *"signature=skip-package-no-cosign"* ]] || { echo "$(state load.verification)"; return 1; }
+}
+
+@test "load rejects a manifest checksum mismatch before loading and asks for a fresh download" {
+  host_full
+  mkdir -p /media/usb
+  local tar=/media/usb/custodexa-images-1.13.0-amd64.tar
+  rm "$ROOT/current/MANIFEST.json"
+  make_bundle "$tar" classic
+  release_manifest >/media/usb/MANIFEST.json
+  (cd /media/usb && sha256sum MANIFEST.json >>SHA256SUMS)
+  printf ' ' >>/media/usb/MANIFEST.json
+  load_run en "$tar"
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] Release manifest checksum does not match SHA256SUMS"* && $output == *"download it again"* ]] || { echo "$output"; return 1; }
+  ! grep -q $'\tload ' "$FAKE_DOCKER_LOG" || return 1
 }
 
 @test "an interrupted load holds nothing up: status says so, load runs again, install goes on" {
@@ -415,16 +457,12 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
   mkdir -p /media/usb
   make_bundle /media/usb/custodexa-images-1.13.0-amd64.tar containerd
   load_run en /media/usb/custodexa-images-1.13.0-amd64.tar
-  [ "$status" -eq 0 ] && [[ $output == *"[SKIP] Publisher signature: offline"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Publisher signature: offline"* ]] || { echo "$output"; return 1; }
   cd /tmp
-  # load let the unverified publisher pass without a question; install still asks, whatever load recorded.
+  # Install carries on with the warning and records the unverified publisher.
   install_run en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ ?? ] "* && $output == *"[FAIL] This step needs a confirmation"* ]] || { echo "$output"; return 1; }
-  ! grep -q $'\tcompose .* up ' "$FAKE_DOCKER_LOG" || return 1
-  [ "$(state install.result)" = cancelled ] && [ -z "$(state current.version)" ] || return 1
-  install_run en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
   [ "$(grep -c 'This host: present, content digest matches' <<<"$output")" -eq 3 ] || { echo "$output"; return 1; }
   ! grep -q $'\tpull ' "$FAKE_DOCKER_LOG" || return 1
   [ "$(state current.image_ids)" = "$(state load.image_ids)" ] || { echo "$(state current.image_ids) / $(state load.image_ids)"; return 1; }
@@ -436,6 +474,30 @@ status_run() { # <lang> [options...]
   local l=$1
   shift
   run bash "$ROOT/custodexa.sh" status --lang "$l" "$@" </dev/null
+}
+
+@test "status warns when an installed image signature mismatched and state stays honest" {
+  host_full
+  export FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0
+  install_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $(state current.verification) == *"signature=mismatch"* ]] || { echo "$(state current.verification)"; return 1; }
+  grep -q 'image_sig MISMATCH' "$ROOT"/logs/install-*.log || return 1
+  status_run en
+  [ "$status" -eq 4 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] From GHCR; signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+}
+
+@test "status warns about a recorded package signature mismatch" {
+  host_full
+  install_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  state_put last_upgrade.result succeeded last_upgrade.from 1.12.4 last_upgrade.to 1.13.0 \
+    last_upgrade.finished_at 2026-09-30T02:00:00+08:00 \
+    last_upgrade.package_verification 'checksum=ok signature=mismatch'
+  status_run en
+  [ "$status" -eq 4 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Package signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
 }
 # status_at <YYYY-mm-dd HH:MM>: the time status reads as now.
 status_at() {

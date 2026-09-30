@@ -162,9 +162,11 @@ MSG_img_bundle_manifest_bad='the manifest of %s does not match its digest'
 MSG_img_bundle_config_bad='the config digest of %s does not match the release manifest'
 MSG_img_bundle_no_sums='no SHA256SUMS in %s to check the checksum against'
 MSG_img_bundle_not_listed='SHA256SUMS does not list this bundle'
-MSG_img_bundle_sum_bad='checksum does not match SHA256SUMS (the file may be damaged)'
+MSG_img_bundle_sum_bad='checksum does not match SHA256SUMS;
+the file may be incomplete or damaged; download it again'
 MSG_img_bundle_load_failed='docker load failed (full output in the log file)'
-MSG_img_bundle_id_bad='after loading, the image ID of %s differs from the one checked'
+MSG_img_bundle_id_bad='after loading, the image ID of %s differs from the one checked;
+the file may be incomplete or damaged; download it again'
 MSG_img_try_failed='%s %s: %s'
 MSG_img_switched=',
 switched to %s and verified'
@@ -176,11 +178,12 @@ downloaded; content digest matches the release manifest'
 MSG_img_pulled_up='%s %s
 downloaded'
 MSG_img_pulled_mismatch='%s %s downloaded, but its content digest differs;
-not used'
+the file may be incomplete or damaged; download it again. Not used'
 MSG_img_build_note='Building from source needs access to Go modules, npm and the base
 images; the first build takes about 5 to 10 minutes'
-MSG_img_build_source_bad='Build from source: the source does not match the release manifest
-checksum; not building'
+MSG_img_build_source_bad='Build from source: the source checksum does not match the release
+manifest. Files may be incomplete or damaged; download them again.
+Not building'
 MSG_img_build_failed='Build from source failed (full output in the log file)'
 MSG_img_build_ok='Built from source as %s
 (a local build; it carries no publisher signature)'
@@ -202,22 +205,16 @@ MSG_trust_offline='offline, the signing service is unreachable'
 MSG_trust_gh_login='gh is not signed in (gh auth login)'
 MSG_trust_local_build='images built from source carry no publisher signature'
 MSG_trust_mf_unverified='the release manifest next to the bundle is not verified (%s)'
+MSG_trust_pkg_unverified='the package signature was not verified (%s)'
 MSG_trust_mf_no_sig='no SHA256SUMS.sigstore.json next to it'
-MSG_load_mf_sig_bad='The signature over SHA256SUMS in %s does not verify; the signer
-must be %s
-Nothing was loaded.'
-MSG_text_trust_explain='  Checksums show the files were not damaged in transit. They do not
-  show the files came from Custodexa. If your organization requires
-  that, choose N here; have operations verify with the full digest
-  shown below, on a computer with cosign, gh and internet access,
-  then run this command again:'
+MSG_trust_mismatch='signature mismatch, publisher unverified'
+MSG_trust_prov_mismatch='build provenance mismatch, publisher unverified'
+MSG_ver_sig_mismatch='signature mismatch, publisher unverified'
+MSG_ver_prov_mismatch='build provenance mismatch, publisher unverified'
+MSG_text_trust_explain='  Checksums confirm the file contents match the release list. The
+  publisher is unverified. Verify the full digests below independently
+  if your organization requires publisher verification:'
 MSG_trust_recorded='  Which checks ran is recorded in the log file.'
-MSG_trust_continue='Continue? [y/N]'
-MSG_trust_sig_bad='Image signature check failed; the signer must be
-%s
-Stopped; no service was started.'
-MSG_trust_prov_bad='Build provenance check failed (expected from %s).
-Stopped; no service was started.'
 MSG_ver_sig_only='checksums and signatures verified;
 build provenance not verified'
 MSG_ver_checksum_only='content digests checked;
@@ -294,18 +291,21 @@ MSG_load_bad_name='%s is not named like an offline image bundle
 (custodexa-images-<version>-<architecture>.tar).'
 MSG_load_no_manifest='The release manifest of version %s was not found: not in this
 deployment, and no MANIFEST.json listed in SHA256SUMS in %s.'
+MSG_load_manifest_sum_bad='Release manifest checksum does not match SHA256SUMS.
+The file may be incomplete or damaged; download it again.'
 MSG_load_title='Load the offline image bundle'
 MSG_load_file='  File   %s (%s GB)'
 MSG_load_sum_ok='Checksum matches SHA256SUMS'
 MSG_load_sum_none='No SHA256SUMS in %s to check the bundle against.
 Copy it from the same release next to the bundle. Nothing was loaded.'
 MSG_load_sum_unlisted='SHA256SUMS in %s does not list this bundle. Nothing was loaded.'
-MSG_load_sum_bad='Checksum does not match SHA256SUMS; the file may be damaged.
-Copy it again. Nothing was loaded.'
+MSG_load_sum_bad='Checksum does not match SHA256SUMS; the file may be incomplete
+or damaged; download it again. Nothing was loaded.'
 MSG_load_arch_ok='Architecture %s, same as this host'
 MSG_load_arch_bad='The bundle is for %s, this host is %s; use %s.
 Nothing was loaded.'
-MSG_load_check_bad='The bundle does not match the release manifest; nothing was loaded:
+MSG_load_check_bad='The bundle does not match the release manifest; the file may be
+incomplete or damaged; download it again. Nothing was loaded:
 %s'
 MSG_load_empty='The bundle holds no image of version %s. Nothing was loaded.'
 MSG_load_failed='docker load failed (full output in the log file).'
@@ -331,6 +331,8 @@ MSG_status_sec_services='Services'
 MSG_status_sec_images='Images'
 MSG_status_sec_backup='Backup'
 MSG_status_sec_upgrade='Last upgrade'
+MSG_status_pkg_sig_mismatch='Package signature mismatch, publisher unverified'
+MSG_status_pkg_sig_unverified='Package signature was not checked, publisher unverified'
 MSG_status_sec_disk='Disk'
 MSG_status_sec_reminders='Reminders'
 MSG_status_label_current='Installed'
@@ -513,9 +515,10 @@ MSG_up_incoming_failed='Could not create the temporary folder %s'
 MSG_up_download_failed='Could not download the %s package from GitHub. To upgrade offline,
 give the path of a downloaded package:'
 MSG_up_pkg_no_sums='%s is missing. Keep the package in the same folder as its SHA256SUMS'
-MSG_up_pkg_sum_bad='The checksum of %s does not match SHA256SUMS; the package is not used'
-MSG_up_pkg_sig_bad='%s: the publisher signature over SHA256SUMS does not verify; the
-package is not used'
+MSG_up_pkg_sum_bad='The checksum of %s does not match SHA256SUMS; the file may be
+incomplete or damaged; download it again'
+MSG_up_pkg_sig_bad='%s: signature mismatch, publisher unverified'
+MSG_up_pkg_sig_missing='%s: no signature file; publisher unverified'
 MSG_up_pkg_sig_skip='%s: only the checksum was checked, not the publisher signature
 (cosign is not installed)'
 MSG_up_pkg_ok='%s: checksum and publisher signature verified'
@@ -539,11 +542,13 @@ structure changes is not known'
 MSG_q_verified='Release manifest checksum and publisher signature verified'
 MSG_q_unverified='Only the release manifest checksum was checked, not the publisher
 signature (cosign is not installed); the result below is unverified'
-MSG_q_verify_fail_2='The release manifest checksum does not match SHA256SUMS. Whether
-you can upgrade is not known; try again later or use a downloaded package'
-MSG_q_verify_fail_3='The publisher signature of the release manifest does not verify.
-Whether you can upgrade is not known; try again later or use a
-downloaded package'
+MSG_q_no_sig='Release manifest signature file is absent; publisher unverified.
+The upgrade result uses the checksum-checked manifest'
+MSG_q_verify_fail_2='The release manifest checksum does not match SHA256SUMS.
+The file may be incomplete or damaged; download it again.
+Whether you can upgrade is not known'
+MSG_q_verify_fail_3='Release manifest signature mismatch, publisher unverified.
+The upgrade result uses the checksum-checked manifest'
 MSG_q_notes='  Release notes  %s'
 MSG_q_run='To upgrade, run:'
 MSG_q_only='This only checked for updates. Nothing was changed.'

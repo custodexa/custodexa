@@ -427,6 +427,7 @@ func (b *bridge) pumpOutput() {
 // pumpInput WS → SSH stdin，並處理 resize / ping 控制訊息
 func (b *bridge) pumpInput() {
 	defer b.stop()
+	touchWS := startWSKeepalive(b.ws, &b.wsWriteMu, b.stopChan, b.stop)
 
 	for {
 		select {
@@ -442,6 +443,7 @@ func (b *bridge) pumpInput() {
 			}
 			return
 		}
+		touchWS()
 
 		msg, err := DecodeMessage(raw)
 		if err != nil {

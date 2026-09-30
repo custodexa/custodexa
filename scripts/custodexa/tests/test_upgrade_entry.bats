@@ -74,7 +74,7 @@ s08_head() { # <lang> <installed> <target> <root>
   [[ $output == *"  升級到       1.13.2"* && $output == *"git clone 部署，$LROOT"* ]] || { echo "$output"; return 1; }
 }
 
-@test "clone, a package that does not verify: not used, not unpacked" {
+@test "clone, a package with bad checksum stops; mismatched signature warns and previews" {
   legacy_host
   fake_github
   publish 1.13.2 1.12.4
@@ -84,11 +84,11 @@ s08_head() { # <lang> <installed> <target> <root>
   [[ $output == *"The checksum of custodexa-1.13.2.tar.gz does not match SHA256SUMS"* ]] || { echo "$output"; return 1; }
   [[ $output != *"upgrade preview"* ]] || return 1
   [ -z "$(ls -A "$LROOT" | grep incoming)" ] || { ls -A "$LROOT"; return 1; }
-  # Signed by someone else: refused as well.
+  # Signed by someone else: warn, then reach the normal preview confirmation.
   publish 1.13.2 1.12.4
   sed -i 's#refs/tags/v1.13.2#refs/tags/v9.9.9#' "$REL/v1.13.2/SHA256SUMS.sigstore.json"
   legacy_run en 1.13.2
-  [ "$status" -eq 1 ] && [[ $output == *"publisher signature over SHA256SUMS does not verify"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 3 ] && [[ $output == *"[WARN] custodexa-1.13.2.tar.gz: signature mismatch, publisher unverified"* && $output == *"upgrade preview"* ]] || { echo "$output"; return 1; }
 }
 
 @test "package deployment, bare upgrade: only checks, nothing changed" {
@@ -149,6 +149,39 @@ s08_head() { # <lang> <installed> <target> <root>
   touch "$REL/offline"
   upgrade_run zh-TW
   [ "$status" -eq 1 ] && [[ $output == *"連不到 GitHub；離線升級請指定安裝包路徑"* ]] || { echo "$output"; return 1; }
+}
+
+@test "query answers with WARN when the publisher signature mismatches" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x
+  sed -i 's#refs/tags/v1.13.2#refs/tags/v9.9.9#' "$REL/v1.13.2/SHA256SUMS.sigstore.json"
+  upgrade_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"Latest      1.13.2"* && $output == *"[WARN]"* && $output == *"signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+}
+
+@test "query and package preview warn when the signature file is absent" {
+  backup_host ui
+  fake_github
+  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x
+  rm "$REL/v1.13.2/SHA256SUMS.sigstore.json"
+  upgrade_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"Latest      1.13.2"* && $output == *"[WARN]"* && $output == *"signature file is absent; publisher unverified"* ]] || { echo "$output"; return 1; }
+  upgrade_run en 1.13.2
+  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] custodexa-1.13.2.tar.gz: no signature file; publisher unverified"* && $output == *"upgrade preview"* ]] || { echo "$output"; return 1; }
+}
+
+@test "package checksum mismatch still fails with a redownload instruction" {
+  legacy_host
+  fake_github
+  publish 1.13.2 1.12.4
+  printf 'tampered\n' >>"$REL/v1.13.2/custodexa-1.13.2.tar.gz"
+  legacy_run en 1.13.2
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL]"* && $output == *"incomplete or damaged; download it again"* ]] || { echo "$output"; return 1; }
 }
 
 @test "package deployment, a version: verified, put in releases/, that version's script takes over" {
@@ -216,6 +249,15 @@ events_in_order() { # <event>... : each event appears, in this order
   [ -s "$ROOT/backups/20260930-101502/SHA256SUMS" ] && [ ! -e "$ROOT/backups/20260930-101502/INCOMPLETE" ] || return 1
   events_in_order "stop backend guacd frontend" pg_dump pg_restore up || return 1
   ! grep -qx stop-all "$DB/events"
+}
+
+@test "upgrade records a handed-over package signature mismatch in state and log" {
+  fresh ui
+  export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=mismatch'
+  full_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(st last_upgrade.package_verification)" = 'checksum=ok signature=mismatch' ] || { echo "$(st last_upgrade.package_verification)"; return 1; }
+  grep -q 'VERIFY package checksum=ok signature=mismatch' "$ROOT"/logs/upgrade-*.log
 }
 
 @test "a failure before the switch: the services as the upgrade guide says, never started on the new version" {
@@ -295,6 +337,18 @@ events_in_order() { # <event>... : each event appears, in this order
   # state.json is written by the conversion: nothing before it ran while one existed.
   ! grep -q ' stop \| down\|pg_dump' "$UP/with_state" 2>/dev/null || { echo "state.json written before the conversion"; cat "$UP/with_state"; return 1; }
   ls "$LROOT"/backups/*/SHA256SUMS >/dev/null && grep -qx up "$DB/events"
+}
+
+@test "first conversion records handed-over package signature mismatch in log and state" {
+  legacy_host
+  export ROOT=$LROOT CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=mismatch'
+  mkdir -p "$LROOT/data/recordings" "$LROOT/data/audit"
+  upgrade_stack 1.13.0
+  docker_says inspect_--format 'custodexa_old'
+  run env CUSTODEXA_HOME="$LROOT" bash "$PKG/custodexa.sh" upgrade 1.13.0 --yes --lang en </dev/null
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(jq -r '."last_upgrade.package_verification" // ""' "$LROOT/state.json")" = 'checksum=ok signature=mismatch' ] || { cat "$LROOT/state.json"; return 1; }
+  grep -q 'VERIFY package checksum=ok signature=mismatch' "$LROOT"/logs/upgrade-*.log
 }
 
 @test "the version the check suggests, alone (the main menu upgrades to it): newest, a required step first, none" {

@@ -5,7 +5,7 @@ Load the offline image bundle
 [ OK ] Architecture amd64, same as this host
 [ OK ] 6 images loaded                                      1m 05s
 [ OK ] Every image digest matches the release manifest (MANIFEST)
-[SKIP] Publisher signature: offline, the signing service is
+[WARN] Publisher signature: offline, the signing service is
        unreachable
 
   The images are loaded but the publisher is not verified. If your

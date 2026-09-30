@@ -5,13 +5,12 @@
 # of that, when the tools are on this host and the signing services can be reached:
 #   signature    cosign verify <ghcr ref>@<index digest>, signer = the release workflow of this tag
 #   provenance   gh attestation verify oci://<ghcr ref>@<index digest> --repo custodexa/custodexa
-# A layer that cannot run is skipped and said so, with the commands to run elsewhere; a layer that
-# runs and fails stops the install. Only the project's own images carry these; upstream images are
+# A layer that cannot run or does not verify is warned about. Only the project's own images carry these; upstream images are
 # pinned by digest.
 
 readonly CX_SIGNER_REPO=custodexa/custodexa
 readonly CX_SIGNER_WORKFLOW=.github/workflows/release-images.yml
-CX_TRUST_SIG=""   # ok | skip:<reason> | fail
+CX_TRUST_SIG=""   # ok | skip:<reason> | mismatch
 CX_TRUST_PROV=""
 declare -ga CX_TRUST_IMAGES=() # own images obtained from a publisher source (not built here)
 
@@ -42,13 +41,13 @@ cx_trust_run() {
       else
         err=$(gh attestation verify "oci://$ref@$d" --repo "$CX_SIGNER_REPO" 2>&1 >/dev/null) && continue
       fi
-      cx_log VERIFY "$layer $n FAIL $(printf '%s' "$err" | tail -n1)"
       if cx_trust_offline "$err"; then
         result=skip:offline
       elif [ "$layer" = prov ] && [[ $err == *"gh auth login"* || $err == *"GH_TOKEN"* ]]; then
         result=skip:gh-login
       else
-        result=fail
+        result=mismatch
+        cx_log VERIFY "$layer $n MISMATCH $(printf '%s' "$err" | tail -n1)"
         break
       fi
     done
@@ -72,8 +71,8 @@ cx_trust_check() {
 cx_trust_logword() {
   case $1 in
     ok) printf 'OK' ;;
-    fail) printf 'FAIL' ;;
-    skip:*) printf 'SKIP reason=%s' "${1#skip:}" ;;
+    mismatch) printf 'MISMATCH' ;;
+    skip:*) printf 'WARN reason=%s' "${1#skip:}" ;;
   esac
 }
 
@@ -82,7 +81,11 @@ cx_trust_state() { printf 'checksum=ok signature=%s provenance=%s' "${CX_TRUST_S
 
 # cx_trust_summary: the words in the closing line of step 3.
 cx_trust_summary() {
-  if [ "$CX_TRUST_SIG" = ok ] && [ "$CX_TRUST_PROV" = ok ]; then
+  if [ "$CX_TRUST_SIG" = mismatch ]; then
+    cx_msg ver_sig_mismatch
+  elif [ "$CX_TRUST_PROV" = mismatch ]; then
+    cx_msg ver_prov_mismatch
+  elif [ "$CX_TRUST_SIG" = ok ] && [ "$CX_TRUST_PROV" = ok ]; then
     cx_msg ver_all
   elif [ "$CX_TRUST_SIG" = ok ]; then
     cx_msg ver_sig_only
@@ -92,12 +95,14 @@ cx_trust_summary() {
 }
 
 cx_trust_reason() { # <skip:reason>
+  [ "$1" != mismatch ] || { cx_msg trust_mismatch; return; }
   case ${1#skip:} in
     no-cosign) cx_msg trust_no_cosign ;;
     no-gh) cx_msg trust_no_gh ;;
     offline) cx_msg trust_offline ;;
     gh-login) cx_msg trust_gh_login ;;
     local-build) cx_msg trust_local_build ;;
+    package-*) cx_msg trust_pkg_unverified "$(cx_trust_mf_why "${1#skip:package-}")" ;;
     mf-*) cx_msg trust_mf_unverified "$(cx_trust_mf_why "${1#skip:mf-}")" ;;
   esac
 }
@@ -109,23 +114,12 @@ cx_trust_mf_why() { # why the release manifest next to an offline bundle is not 
   esac
 }
 
-# cx_trust_failed: a layer ran and did not verify: print why and return 0.
-cx_trust_failed() {
-  [ "$CX_TRUST_SIG" = fail ] || [ "$CX_TRUST_PROV" = fail ] || return 1
-  if [ "$CX_TRUST_SIG" = fail ]; then
-    cx_sub FAIL "$(cx_msg trust_sig_bad "$(cx_trust_identity)")"
-  else
-    cx_sub FAIL "$(cx_msg trust_prov_bad "$CX_SIGNER_REPO")"
-  fi
-  return 0
-}
-
-# cx_trust_screen: when a layer was skipped, say what was and was not checked, list the commands
-# to run elsewhere with full digests, and ask whether to go on. Returns 0 to go on.
+# cx_trust_screen: warn when a layer was unavailable or mismatched, and list commands
+# to run elsewhere with full digests.
 cx_trust_screen() {
   local n ref d
   case "$CX_TRUST_SIG $CX_TRUST_PROV" in "ok ok") return 0 ;; esac
-  printf '\n%s %s\n\n' "$(cx_mark ASK)" "$(cx_msg trust_title)"
+  printf '\n%s %s\n\n' "$(cx_mark WARN)" "$(cx_msg trust_title)"
   printf '  %s %s\n' "$(cx_mark OK)" "$(cx_msg trust_row_checksum)"
   cx_trust_row sig "$CX_TRUST_SIG"
   cx_trust_row prov "$CX_TRUST_PROV"
@@ -143,14 +137,16 @@ cx_trust_screen() {
     fi
   done
   printf '\n%s\n\n' "$(cx_msg trust_recorded)"
-  cx_confirm trust_continue
+  return 0
 }
 cx_trust_row() { # <sig|prov> <result>
   local label
   label=$(cx_msg "trust_label_$1")
   if [ "$2" = ok ]; then
     printf '  %s %s%s\n' "$(cx_mark OK)" "$label" "$(cx_msg trust_verified)"
+  elif [ "$1" = prov ] && [ "$2" = mismatch ]; then
+    printf '  %s %s%s\n' "$(cx_mark WARN)" "$label" "$(cx_msg trust_prov_mismatch)"
   else
-    printf '  %s %s%s\n' "$(cx_mark SKIP)" "$label" "$(cx_trust_reason "$2")"
+    printf '  %s %s%s\n' "$(cx_mark WARN)" "$label" "$(cx_trust_reason "$2")"
   fi
 }

@@ -18,23 +18,37 @@
 # names; the loaded content is tied to them only through that manifest. So the publisher is shown
 # as verified only when the manifest itself is the publisher's: the one of the unpacked package
 # (verified before unpacking), or the one next to the bundle when SHA256SUMS, which lists it, passes
-# cosign verify-blob for the release workflow of that version. When that cannot be checked (no
-# cosign, no signature bundle, offline) both layers are shown as skipped, with the reason, and the
-# load goes on; a signature that is checked and does not verify stops the load.
+# cosign verify-blob for the release workflow of that version. Unavailable or mismatched signatures
+# are warned about and recorded; checksum and content mismatches still stop the load.
 
 CX_LOAD_MF=""       # the release manifest used
-CX_LOAD_MF_TRUST="" # package | signed | not verified: no-cosign, no-sig, offline | sig-bad (stops)
+CX_LOAD_MF_TRUST="" # package | signed | no-cosign | no-sig | offline | sig-bad
+
+# A package manifest inherits the package signature result recorded for this version's upgrade.
+cmd_load_package_trust() { # <version>: called after cx_begin loads the state under the lock
+  local record
+  [ "$CX_LOAD_MF_TRUST" = package ] || return 0
+  [ "$(cx_state_get last_upgrade.to)" = "$1" ] || return 0
+  record=$(cx_state_get last_upgrade.package_verification)
+  case $record in
+    *"signature=mismatch"*) CX_LOAD_MF_TRUST=sig-bad ;;
+    *"signature=skip-no-cosign"*) CX_LOAD_MF_TRUST=package-no-cosign ;;
+    *"signature=skip-no-sig"*) CX_LOAD_MF_TRUST=package-no-sig ;;
+  esac
+}
 
 # cmd_load_manifest <version> <bundle folder>: the release manifest of that version, from the
 # unpacked package, else the one published next to the bundle (checked against SHA256SUMS there,
 # and SHA256SUMS against its signature when cosign is on this host). Returns 1 when there is none.
 cmd_load_manifest() {
-  local ver=$1 dir=$2 err
+  local ver=$1 dir=$2 err rc
   if [ -f "$CX_ROOT/releases/$ver/MANIFEST.json" ]; then
     CX_LOAD_MF=$CX_ROOT/releases/$ver/MANIFEST.json CX_LOAD_MF_TRUST=package
     return 0
   fi
-  [ -f "$dir/MANIFEST.json" ] && cx_bundle_sha_ok "$dir/MANIFEST.json" || return 1
+  [ -f "$dir/MANIFEST.json" ] || return 1
+  cx_bundle_sha_ok "$dir/MANIFEST.json" && rc=0 || rc=$?
+  [ "$rc" -eq 0 ] || { [ "$rc" -ne 3 ] && return 1; return 2; }
   CX_LOAD_MF=$dir/MANIFEST.json
   if ! command -v cosign >/dev/null 2>&1; then
     CX_LOAD_MF_TRUST=no-cosign
@@ -69,20 +83,21 @@ cmd_load() {
     cx_die "$CX_EXIT_USAGE" load_bad_name "$base"
   fi
   ver=${BASH_REMATCH[1]} arch=${BASH_REMATCH[2]}
-  if ! cmd_load_manifest "$ver" "${b%/*}"; then
-    cx_die "$CX_EXIT_FAILED" load_no_manifest "$ver" "${b%/*}"
-  fi
+  cmd_load_manifest "$ver" "${b%/*}" && rc=0 || rc=$?
+  case $rc in
+    0) ;;
+    2) cx_die "$CX_EXIT_FAILED" load_manifest_sum_bad ;;
+    *) cx_die "$CX_EXIT_FAILED" load_no_manifest "$ver" "${b%/*}" ;;
+  esac
   mf=$CX_LOAD_MF
   cx_manifest_load "$mf" || exit "$CX_EXIT_FAILED"
 
   cx_begin load
+  cmd_load_package_trust "$ver"
   # For the recovery command after an interruption; a path the state file cannot hold is left out.
   cx_state_set load.bundle "$b" 2>/dev/null || true
   cx_log VERIFY "manifest $mf $CX_LOAD_MF_TRUST"
-  # A signature that could be checked and does not verify stops, as in install and upgrade.
-  if [ "$CX_LOAD_MF_TRUST" = sig-bad ]; then
-    cmd_load_fail load_mf_sig_bad "${b%/*}" "https://github.com/$CX_SIGNER_REPO/$CX_SIGNER_WORKFLOW@refs/tags/v$ver"
-  fi
+  [ "$CX_LOAD_MF_TRUST" != sig-bad ] || cx_log VERIFY "manifest signature MISMATCH source unverified"
   size=$(stat -c %s -- "$b")
   printf '%s\n%s\n\n' "$(cx_msg load_title)" "$(cx_msg load_file "$b" "$(awk -v s="$size" 'BEGIN { printf "%.1f", s / 1073741824 }')")"
 
@@ -128,21 +143,28 @@ cmd_load() {
 
   cx_step 6
   cx_trust_check
-  if [ "$CX_TRUST_SIG" = fail ]; then
-    cmd_load_fail trust_sig_bad "$(cx_trust_identity)"
-  elif [ "$CX_TRUST_PROV" = fail ]; then
-    cmd_load_fail trust_prov_bad "$CX_SIGNER_REPO"
-  fi
   # A manifest that is not the publisher's cannot tie the checks above to what was loaded.
   case $CX_LOAD_MF_TRUST in
     package | signed) ;;
+    sig-bad)
+      CX_TRUST_SIG=mismatch
+      [ "$CX_TRUST_PROV" = mismatch ] || CX_TRUST_PROV=skip:mf-sig-bad
+      cx_log VERIFY "manifest signature MISMATCH | image_sig $(cx_trust_logword "$CX_TRUST_SIG") | provenance $(cx_trust_logword "$CX_TRUST_PROV")"
+      ;;
+    package-*)
+      [ "$CX_TRUST_SIG" = mismatch ] || CX_TRUST_SIG=skip:$CX_LOAD_MF_TRUST
+      [ "$CX_TRUST_PROV" = mismatch ] || CX_TRUST_PROV=skip:$CX_LOAD_MF_TRUST
+      cx_log VERIFY "package signature not verified ($CX_LOAD_MF_TRUST): publisher checks not tied to the loaded images"
+      ;;
     *)
-      CX_TRUST_SIG=skip:mf-$CX_LOAD_MF_TRUST CX_TRUST_PROV=skip:mf-$CX_LOAD_MF_TRUST
+      [ "$CX_TRUST_SIG" = mismatch ] || CX_TRUST_SIG=skip:mf-$CX_LOAD_MF_TRUST
+      [ "$CX_TRUST_PROV" = mismatch ] || CX_TRUST_PROV=skip:mf-$CX_LOAD_MF_TRUST
       cx_log VERIFY "manifest not verified ($CX_LOAD_MF_TRUST): publisher checks not tied to the loaded images"
       ;;
   esac
   cx_state_set load.version "$ver"
   cx_state_set load.image_ids "$ids"
+  cx_state_set load.verification "$(cx_trust_state)"
   cx_finish succeeded
 
   local pkg=${b%/*}/custodexa-$ver.tar.gz
@@ -150,9 +172,9 @@ cmd_load() {
     cx_line OK "$(cx_msg load_trust_ok)"
   else
     if [ "$CX_TRUST_SIG" != ok ]; then
-      cx_line SKIP "$(cx_wrap "$CX_WRAP" "$(cx_msg load_trust_skip "$(cx_msg trust_name_sig)" "$(cx_trust_reason "$CX_TRUST_SIG")")")"
+      cx_line WARN "$(cx_wrap "$CX_WRAP" "$(cx_msg load_trust_skip "$(cx_msg trust_name_sig)" "$(cx_trust_reason "$CX_TRUST_SIG")")")"
     else
-      cx_line SKIP "$(cx_wrap "$CX_WRAP" "$(cx_msg load_trust_skip "$(cx_msg trust_name_prov)" "$(cx_trust_reason "$CX_TRUST_PROV")")")"
+      cx_line WARN "$(cx_wrap "$CX_WRAP" "$(cx_msg load_trust_skip "$(cx_msg trust_name_prov)" "$(cx_trust_reason "$CX_TRUST_PROV")")")"
     fi
     printf '\n%s\n' "$(cx_msg text_load_unverified)"
   fi

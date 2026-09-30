@@ -2,6 +2,25 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.13.3 — closed terminal windows leave the active session list (2026-09-30)
+
+No schema change. No migration runs. A 1.13.x package deployment upgrades with
+`custodexa.sh upgrade 1.13.3`.
+
+### Fixes
+
+- Text terminals, including the database command lines, and the browser query console now ping
+  their WebSocket connections every 30 seconds and close a connection that receives nothing for 90
+  seconds. A window closed or a network dropped without the browser telling the server used to leave
+  the session under active sessions until the idle limit, 60 minutes by default. Graphical sessions
+  already worked this way.
+
+### Management script
+
+- `install`, `upgrade` and `load` show a warning, record the result in the log and continue when a
+  publisher signature or build provenance cannot be verified or does not match. A checksum or digest
+  mismatch in a downloaded or loaded file still stops the run and asks for a fresh copy.
+
 ## 1.13.2 — clearer ways out of an interrupted upgrade in the management script (2026-09-30)
 
 No schema change. No migration runs. A 1.13.x package deployment upgrades with

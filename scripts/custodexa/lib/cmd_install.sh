@@ -214,16 +214,7 @@ cmd_install() {
   cx_images_write_env "$root/current/images.env"
   cx_images_write_ids "$root/current/image-ids.env"
   cx_trust_check
-  if cx_trust_failed; then
-    cmd_install_stop 3 step_images
-  fi
-  if ! cx_trust_screen; then
-    printf '\n%s\n' "$(cx_msg install_declined)"
-    cx_cmd "sudo $root/custodexa.sh install"
-    cx_log VERIFY "declined at the confirmation"
-    cx_finish cancelled
-    exit "$CX_EXIT_REFUSED"
-  fi
+  cx_trust_screen
   cx_step_line OK "3/$CX_INSTALL_STEPS" \
     "$(cx_msg step_images_done "${#CX_IMG_NAMES[@]}" "$(cx_trust_summary)")" "$(cmd_install_elapsed "$t0")"
 

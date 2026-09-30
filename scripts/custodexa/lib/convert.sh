@@ -268,6 +268,7 @@ cx_cv_state_init() {
   cx_state_set last_upgrade.started_at "$CX_UP_STARTED"
   cx_state_set last_upgrade.from "$CX_UP_CURRENT"
   cx_state_set last_upgrade.to "$CX_UP_TARGET"
+  [ -z "${CX_UP_PACKAGE_VERIFICATION:-}" ] || cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
   if [ "$CX_UP_BACKUP_KIND" = external ]; then
     cx_br_record "${CX_UP_BACKUP_DIR##*/}" || return 1
   else

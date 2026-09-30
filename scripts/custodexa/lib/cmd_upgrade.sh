@@ -201,16 +201,17 @@ cx_up_place_release() {
   CX_UP_PKG_DIR=$dst
 }
 
-# cx_up_download <version> <dir>: the package, SHA256SUMS and its signature bundle from the release.
+# cx_up_download <version> <dir>: the package, SHA256SUMS and optional signature bundle.
 cx_up_download() {
   local ver=$1 dir=$2 f
-  for f in "custodexa-$ver.tar.gz" SHA256SUMS SHA256SUMS.sigstore.json; do
+  for f in "custodexa-$ver.tar.gz" SHA256SUMS; do
     if ! curl -fsSL --retry 2 -o "$dir/$f" "$CX_UP_DOWNLOAD/download/v$ver/$f" 2>/dev/null; then
       cx_line FAIL "$(cx_msg up_download_failed "$ver")"
       cx_cmd "sudo $CX_SELF upgrade /path/custodexa-$ver.tar.gz"
       return 1
     fi
   done
+  curl -fsSL --retry 2 -o "$dir/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/download/v$ver/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$dir/SHA256SUMS.sigstore.json"
 }
 
 # cx_up_verify_package <package> <dir with SHA256SUMS> <version>: layer 1 (the checksum, always) and
@@ -229,16 +230,26 @@ cx_up_verify_package() {
     return 1
   fi
   if ! command -v cosign >/dev/null 2>&1; then
+    export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=skip-no-cosign'
     cx_line WARN "$(cx_msg up_pkg_sig_skip "$name")"
-    cx_log VERIFY "package $name checksum OK | signature SKIP reason=no-cosign"
+    cx_log VERIFY "package $name checksum OK | signature WARN reason=no-cosign"
+    return 0
+  fi
+  if [ ! -f "$dir/SHA256SUMS.sigstore.json" ]; then
+    export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=skip-no-sig'
+    cx_line WARN "$(cx_msg up_pkg_sig_missing "$name")"
+    cx_log VERIFY "package $name checksum OK | signature WARN reason=no-sig"
     return 0
   fi
   identity="https://github.com/$CX_SIGNER_REPO/$CX_SIGNER_WORKFLOW@refs/tags/v$ver"
   if ! cosign verify-blob --bundle "$dir/SHA256SUMS.sigstore.json" --certificate-identity "$identity" \
     --certificate-oidc-issuer "$CX_SIGSTORE_ISSUER" "$dir/SHA256SUMS" >/dev/null 2>&1; then
-    cx_line FAIL "$(cx_msg up_pkg_sig_bad "$name")"
-    return 1
+    export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=mismatch'
+    cx_line WARN "$(cx_msg up_pkg_sig_bad "$name")"
+    cx_log VERIFY "package $name checksum OK | signature MISMATCH"
+    return 0
   fi
+  export CX_UP_PACKAGE_VERIFICATION='checksum=ok signature=ok'
   cx_line OK "$(cx_msg up_pkg_ok "$name")"
 }
 

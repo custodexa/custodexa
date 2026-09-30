@@ -136,9 +136,10 @@ MSG_img_bundle_manifest_bad='%s 的 manifest 內容與它的摘要不符'
 MSG_img_bundle_config_bad='%s 的設定摘要與發行清單不符'
 MSG_img_bundle_no_sums='%s 裡沒有 SHA256SUMS，無法核對校驗和'
 MSG_img_bundle_not_listed='SHA256SUMS 沒有列出這個離線包'
-MSG_img_bundle_sum_bad='校驗和與 SHA256SUMS 不符（檔案可能損壞）'
+MSG_img_bundle_sum_bad='校驗和與 SHA256SUMS 不符；檔案可能下載不完整或損壞，請重新下載'
 MSG_img_bundle_load_failed='docker load 失敗（完整輸出在紀錄檔）'
-MSG_img_bundle_id_bad='載入後 %s 的映像 ID 與載入前核對的不同'
+MSG_img_bundle_id_bad='載入後 %s 的映像 ID 與載入前核對的不同。
+檔案可能下載不完整或損壞，請重新下載'
 MSG_img_try_failed='%s %s：%s'
 MSG_img_switched='，
 已改從 %s 取得並核對內容'
@@ -148,10 +149,12 @@ MSG_img_reason_other='失敗（%s）'
 MSG_img_pulled_own='%s %s
 已下載，內容摘要與發行清單相符'
 MSG_img_pulled_up='%s %s 已下載'
-MSG_img_pulled_mismatch='%s %s 下載後的內容摘要不符，不使用'
+MSG_img_pulled_mismatch='%s %s 下載後的內容摘要不符，不使用。
+檔案可能下載不完整或損壞，請重新下載'
 MSG_img_build_note='用原始碼建置需要能連到 Go 模組、npm 與基底映像的來源，
 第一次約 5 到 10 分鐘'
-MSG_img_build_source_bad='用原始碼建置：原始碼與發行清單的校驗和不符，不建置'
+MSG_img_build_source_bad='用原始碼建置：原始碼與發行清單的校驗和不符。
+檔案可能下載不完整或損壞，請重新下載；不會建置'
 MSG_img_build_failed='用原始碼建置失敗（完整輸出在紀錄檔）'
 MSG_img_build_ok='用原始碼建置 %s
 已建置（本機產物，沒有發行者簽章）'
@@ -172,21 +175,15 @@ MSG_trust_offline='離線，連不到簽章服務'
 MSG_trust_gh_login='gh 尚未登入（gh auth login）'
 MSG_trust_local_build='用原始碼建置的映像沒有發行者簽章'
 MSG_trust_mf_unverified='離線包旁的發行清單未經驗證（%s）'
+MSG_trust_pkg_unverified='安裝包簽章未驗證（%s）'
 MSG_trust_mf_no_sig='旁邊沒有 SHA256SUMS.sigstore.json'
-MSG_load_mf_sig_bad='%s 裡 SHA256SUMS 的簽章驗證不通過，簽署者應為
-%s
-沒有載入任何映像。'
-MSG_text_trust_explain='  校驗和能確認檔案在傳輸中沒有損壞，但不能確認檔案出自 Custodexa。
-  若你的單位要求確認來源，請先選 N；請維運人員在已安裝 cosign、gh
-  且可上網的電腦，使用下面列出的完整摘要驗證，通過後再重新執行
-  這個指令：'
+MSG_trust_mismatch='簽章不符，來源未經證實'
+MSG_trust_prov_mismatch='建置出處不符，來源未經證實'
+MSG_ver_sig_mismatch='簽章不符，來源未經證實'
+MSG_ver_prov_mismatch='建置出處不符，來源未經證實'
+MSG_text_trust_explain='  校驗和確認檔案內容與發行清單一致，來源仍未經證實。若單位要求
+  驗證來源，請另外核對下列完整摘要：'
 MSG_trust_recorded='  驗了哪幾層會寫進紀錄檔。'
-MSG_trust_continue='繼續嗎？[y/N]'
-MSG_trust_sig_bad='映像簽章驗證失敗，簽署者應為
-%s
-已停止，沒有啟動任何服務。'
-MSG_trust_prov_bad='建置出處驗證失敗（應出自 %s）。
-已停止，沒有啟動任何服務。'
 MSG_ver_sig_only='校驗和、簽章已驗證，未驗出處證明'
 MSG_ver_checksum_only='已核對校驗和，未驗發行者'
 MSG_usage_extra_args='多了一個參數「%s」。請看：custodexa.sh --help'
@@ -254,18 +251,21 @@ MSG_load_bad_name='%s 的檔名不是離線映像包的格式
 （custodexa-images-<版本>-<架構>.tar）。'
 MSG_load_no_manifest='找不到版本 %s 的發行清單：這個部署裡沒有，%s 的
 SHA256SUMS 也沒有列出 MANIFEST.json。'
+MSG_load_manifest_sum_bad='發行清單的校驗和與 SHA256SUMS 不符。
+檔案可能下載不完整或損壞，請重新下載。'
 MSG_load_title='載入離線映像包'
 MSG_load_file='  檔案   %s（%s GB）'
 MSG_load_sum_ok='校驗和與 SHA256SUMS 相符'
 MSG_load_sum_none='%s 沒有 SHA256SUMS，無法核對校驗和。請把同一版的 SHA256SUMS
 放在離線包旁邊。沒有載入任何映像。'
 MSG_load_sum_unlisted='%s 的 SHA256SUMS 沒有列出這個離線包。沒有載入任何映像。'
-MSG_load_sum_bad='校驗和與 SHA256SUMS 不符，檔案可能已損壞，請重新複製。
+MSG_load_sum_bad='校驗和與 SHA256SUMS 不符，檔案可能下載不完整或損壞，請重新下載。
 沒有載入任何映像。'
 MSG_load_arch_ok='架構 %s，和這台主機相同'
 MSG_load_arch_bad='這個離線包是 %s 架構，這台主機是 %s；請改用 %s。
 沒有載入任何映像。'
-MSG_load_check_bad='離線包和發行清單不符，沒有載入任何映像：
+MSG_load_check_bad='離線包和發行清單不符。檔案可能下載不完整或損壞，
+請重新下載。沒有載入任何映像：
 %s'
 MSG_load_empty='離線包裡沒有版本 %s 的映像。沒有載入任何映像。'
 MSG_load_failed='docker load 失敗（完整輸出在紀錄檔）。'
@@ -289,6 +289,8 @@ MSG_status_sec_services='服務'
 MSG_status_sec_images='映像'
 MSG_status_sec_backup='備份'
 MSG_status_sec_upgrade='上次升級'
+MSG_status_pkg_sig_mismatch='安裝包簽章不符，來源未經證實'
+MSG_status_pkg_sig_unverified='安裝包簽章未驗證，來源未經證實'
 MSG_status_sec_disk='磁碟'
 MSG_status_sec_reminders='提醒'
 MSG_status_label_current='目前'
@@ -446,8 +448,9 @@ MSG_up_not_target='「%s」不是版本號，也不是安裝包檔案（custodex
 MSG_up_incoming_failed='無法建立暫存目錄 %s'
 MSG_up_download_failed='無法從 GitHub 下載 %s 的安裝包。離線升級請指定已下載的安裝包：'
 MSG_up_pkg_no_sums='找不到 %s。安裝包要和它的 SHA256SUMS 放在同一個資料夾'
-MSG_up_pkg_sum_bad='%s 的校驗和與 SHA256SUMS 不符，不使用這個安裝包'
-MSG_up_pkg_sig_bad='%s：SHA256SUMS 的發行者簽章驗證失敗，不使用這個安裝包'
+MSG_up_pkg_sum_bad='%s 的校驗和與 SHA256SUMS 不符，檔案可能下載不完整或損壞，請重新下載'
+MSG_up_pkg_sig_bad='%s：簽章不符，來源未經證實'
+MSG_up_pkg_sig_missing='%s：沒有簽章檔，來源未經證實'
 MSG_up_pkg_sig_skip='%s 只驗了校驗和，沒有驗發行者簽章（這台主機沒有 cosign）'
 MSG_up_pkg_ok='%s 的校驗和與發行者簽章已驗證'
 MSG_up_pkg_layout='%s 不是 %s 版的安裝包（找不到該版的管理腳本或版本檔）'
@@ -467,10 +470,12 @@ MSG_q_migrations_unknown='讀不到資料庫目前的結構版本，無法算出
 MSG_q_verified='發行清單（MANIFEST）的校驗和與發行者簽章已驗證'
 MSG_q_unverified='發行清單只驗了校驗和，沒有驗發行者簽章（這台主機沒有
 cosign），以下結果未經來源驗證'
+MSG_q_no_sig='沒有發行清單簽章檔，來源未經證實。
+升級查詢結果依據已核對校驗和的發行清單'
 MSG_q_verify_fail_2='發行清單（MANIFEST）的校驗和與 SHA256SUMS 不符。
-無法判斷能不能升級，請稍後再試或改用已下載的安裝包'
-MSG_q_verify_fail_3='發行清單的發行者簽章驗證失敗。
-無法判斷能不能升級，請稍後再試或改用已下載的安裝包'
+檔案可能下載不完整或損壞，請重新下載。
+無法判斷能不能升級'
+MSG_q_verify_fail_3='發行清單簽章不符，來源未經證實。升級查詢結果依據已核對校驗和的發行清單'
 MSG_q_notes='  版本說明  %s'
 MSG_q_run='要升級，請執行：'
 MSG_q_only='這個指令只查詢，沒有做任何變更。'

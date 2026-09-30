@@ -3,16 +3,17 @@
 # shellcheck disable=SC2034
 # `custodexa.sh upgrade` without an argument on a package deployment: what the newest release is and
 # whether this deployment can go to it directly. Changes nothing.
-# The release's MANIFEST.json, SHA256SUMS and its signature bundle are downloaded to a temporary
+# The release's MANIFEST.json, SHA256SUMS and optional signature bundle are downloaded to a temporary
 # folder. The MANIFEST's checksum must match SHA256SUMS, or no answer about upgrading is given at all;
-# with cosign on this host the signature over SHA256SUMS is verified too, and without it the result
-# says it is unverified. The number of structure changes is the MANIFEST's migrations that this
+# signature checks that cannot run or do not match warn while the query still answers. The number
+# of structure changes is the MANIFEST's migrations that this
 # database has not applied yet.
 # shellcheck source=lib/backup.sh
 . "${BASH_SOURCE[0]%/*}/backup.sh"
 
 [ -n "${CX_UP_DOWNLOAD+x}" ] || readonly CX_UP_DOWNLOAD=https://github.com/custodexa/custodexa/releases
 CX_Q_VR=0 # 0 checksum and signature verified, 1 checksum only
+CX_Q_REASON=""
 
 # cx_q_ind <mark> <text>: a status line 2 columns in, later lines under the text.
 cx_q_ind() { printf '  %s %s\n' "$(cx_mark "$1")" "${2//$'\n'/$'\n'         }"; }
@@ -31,14 +32,21 @@ cx_q_pending() {
   printf '%s' "$n"
 }
 
-# cx_q_verify <dir>: 0 checksum and signature, 1 checksum only (no cosign), 2 checksum mismatch,
-# 3 signature failed.
+# cx_q_verify <dir>: 0 checksum and signature, 1 checksum only, 2 checksum mismatch,
+# 3 signature mismatch.
 cx_q_verify() {
   local dir=$1 want got ver
   want=$(awk '$2 == "MANIFEST.json" || $2 == "*MANIFEST.json" { print $1; exit }' "$dir/SHA256SUMS")
   got=$(sha256sum -- "$dir/MANIFEST.json" | cut -d' ' -f1)
   [ -n "$want" ] && [ "$want" = "$got" ] || return 2
-  command -v cosign >/dev/null 2>&1 || return 1
+  if ! command -v cosign >/dev/null 2>&1; then
+    CX_Q_REASON=no-cosign
+    return 1
+  fi
+  if [ ! -f "$dir/SHA256SUMS.sigstore.json" ]; then
+    CX_Q_REASON=no-sig
+    return 1
+  fi
   ver=$(sed -n 's/^  "version": "\([^"]*\)",\{0,1\}$/\1/p' "$dir/MANIFEST.json" | head -n 1)
   cosign verify-blob --bundle "$dir/SHA256SUMS.sigstore.json" \
     --certificate-identity "https://github.com/$CX_SIGNER_REPO/$CX_SIGNER_WORKFLOW@refs/tags/v$ver" \
@@ -46,16 +54,18 @@ cx_q_verify() {
 }
 
 # cx_q_fetch: the newest release's MANIFEST.json, checked (CX_Q_VR) and loaded. Returns 1 offline,
-# 2 checksum mismatch, 3 signature failed, 4 the manifest does not load (it says why).
+# 2 checksum mismatch, 4 the manifest does not load (it says why).
 cx_q_fetch() {
   local tmp f rc=0
   CX_Q_VR=0
+  CX_Q_REASON=""
   tmp=$(mktemp -d)
-  for f in MANIFEST.json SHA256SUMS SHA256SUMS.sigstore.json; do
+  for f in MANIFEST.json SHA256SUMS; do
     curl -fsSL --retry 2 -o "$tmp/$f" "$CX_UP_DOWNLOAD/latest/download/$f" 2>/dev/null || { rm -rf "$tmp"; return 1; }
   done
+  curl -fsSL --retry 2 -o "$tmp/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/latest/download/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$tmp/SHA256SUMS.sigstore.json"
   cx_q_verify "$tmp" || CX_Q_VR=$?
-  if [ "$CX_Q_VR" -ge 2 ]; then
+  if [ "$CX_Q_VR" -eq 2 ]; then
     rm -rf "$tmp"
     return "$CX_Q_VR"
   fi
@@ -80,7 +90,7 @@ cx_q_target() {
 }
 
 # cx_q_latest: the version the check suggests, printed alone, for the main menu. Nothing and
-# non-zero when there is none: up to date, offline, or the release manifest does not verify.
+# non-zero when there is none: up to date, offline, or the release manifest checksum mismatches.
 cx_q_latest() {
   cx_q_fetch >/dev/null 2>&1 || return 1
   cx_q_target "$(cx_state_get current.version)"
@@ -98,7 +108,7 @@ cx_up_query() {
       printf '\n%s\n' "$(cx_msg q_only)"
       exit "$CX_EXIT_FAILED"
       ;;
-    2 | 3)
+    2)
       printf '%s\n\n' "$(cx_msg q_installed "$cur" "$CX_ROOT")"
       cx_q_ind FAIL "$(cx_msg "q_verify_fail_$rc")"
       printf '\n%s\n' "$(cx_msg q_only)"
@@ -131,6 +141,10 @@ cx_up_query() {
   printf '\n'
   if [ "$vr" -eq 0 ]; then
     cx_q_ind OK "$(cx_msg q_verified)"
+  elif [ "$vr" -eq 3 ]; then
+    cx_q_ind WARN "$(cx_msg q_verify_fail_3)"
+  elif [ "$CX_Q_REASON" = no-sig ]; then
+    cx_q_ind WARN "$(cx_msg q_no_sig)"
   else
     cx_q_ind WARN "$(cx_msg q_unverified)"
   fi

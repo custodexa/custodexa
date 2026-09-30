@@ -232,11 +232,10 @@ cmd_status_images() {
   sig=${ver#*signature=} sig=${sig%% *}
   prov=${ver#*provenance=} prov=${prov%% *}
   cmd_status_section images
-  # cx_trust_summary words what was verified. A publisher not verified was accepted at install
-  # (confirmed or --yes): status says so with [SKIP] and does not warn about it again.
+  # cx_trust_summary describes the recorded verification result.
   # shellcheck disable=SC2034
   CX_TRUST_SIG=$sig CX_TRUST_PROV=$prov
-  mark=SKIP
+  mark=WARN
   [ "$sig" != ok ] || [ "$prov" != ok ] || mark=OK
   cmd_status_line "$mark" "$(cx_msg status_images "$src" "$(cx_trust_summary)")" keep
 }
@@ -278,7 +277,7 @@ cmd_status_backup() {
 
 # ---------- last upgrade ----------
 cmd_status_upgrade() {
-  local res from to log
+  local res from to log pkg
   res=$(cx_state_get last_upgrade.result)
   [ -n "$res" ] || return 0
   from=$(cx_state_get last_upgrade.from) to=$(cx_state_get last_upgrade.to)
@@ -286,7 +285,6 @@ cmd_status_upgrade() {
   case $res in
     succeeded)
       cmd_status_line OK "$(cx_msg status_upgrade_ok "$from" "$to" "$(cmd_status_minute "$(cx_state_get last_upgrade.finished_at)")")"
-      return 0
       ;;
     failed)
       cmd_status_line FAIL "$(cx_msg status_upgrade_failed "$from" "$to" "$(cx_state_get last_upgrade.step)" \
@@ -294,6 +292,12 @@ cmd_status_upgrade() {
       ;;
     *) cmd_status_line WARN "$(cx_msg status_upgrade_unfinished "$from" "$to" "$(cx_state_get last_upgrade.step)")" ;;
   esac
+  pkg=$(cx_state_get last_upgrade.package_verification)
+  case $pkg in
+    *signature=mismatch*) cmd_status_line WARN "$(cx_msg status_pkg_sig_mismatch)" ;;
+    *signature=skip-*) cmd_status_line WARN "$(cx_msg status_pkg_sig_unverified)" ;;
+  esac
+  [ "$res" != succeeded ] || return 0
   log=$(cx_state_get last_upgrade.log)
   [ -z "$log" ] || cmd_status_under "$CX_ROOT/$log"
 }

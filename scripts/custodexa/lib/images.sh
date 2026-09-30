@@ -264,7 +264,14 @@ cx_bundle_load() {
     2) CX_BUNDLE_ERR=$(cx_msg img_bundle_not_listed) ;;
     3) CX_BUNDLE_ERR=$(cx_msg img_bundle_sum_bad) ;;
   esac
-  if [ "$rc" -ne 0 ] || ! cx_bundle_check "$b"; then
+  if [ "$rc" -ne 0 ]; then
+    [ "$rc" -ne 3 ] || CX_IMG_BUNDLE_INTEGRITY_BAD=1
+    CX_IMG_BUNDLE_STATE=bad
+    cx_log IMAGE "bundle=$b FAIL reason=\"$CX_BUNDLE_ERR\""
+    return 1
+  fi
+  if ! cx_bundle_check "$b"; then
+    CX_IMG_BUNDLE_INTEGRITY_BAD=1
     CX_IMG_BUNDLE_STATE=bad
     cx_log IMAGE "bundle=$b FAIL reason=\"$CX_BUNDLE_ERR\""
     return 1
@@ -275,6 +282,7 @@ cx_bundle_load() {
     return 1
   fi
   if ! cx_bundle_verify_loaded; then
+    CX_IMG_BUNDLE_INTEGRITY_BAD=1
     CX_IMG_BUNDLE_STATE=bad
     return 1
   fi
@@ -328,6 +336,10 @@ cx_img_try_offline() {
       return 1
       ;;
     bad)
+      if [ "${CX_IMG_BUNDLE_INTEGRITY_BAD:-0}" = 1 ]; then
+        cx_img_say FAIL img_offline_bad "$CX_IMG_BUNDLE" "$CX_BUNDLE_ERR"
+        return 2
+      fi
       cx_img_say WARN img_offline_bad "$CX_IMG_BUNDLE" "$CX_BUNDLE_ERR"
       return 1
       ;;
@@ -374,7 +386,7 @@ cx_img_try_registry() {
   if [ "$id" != "$(cx_img_registry_id "$n")" ]; then
     cx_img_say FAIL img_pulled_mismatch "$(cx_img_label "$repo")" "$repo@$(cx_img_short "$d")"
     cx_log IMAGE "$n source=$host FAIL id=$id want=$(cx_img_registry_id "$n")"
-    return 1
+    return 2
   fi
   cx_img_found "$n" "$host" "$repo@$d" "$id"
   if cx_img_upstream "$n"; then
@@ -394,7 +406,7 @@ cx_img_try_build() {
   if [ -z "$want" ] || [ "$got" != "$want" ]; then
     cx_img_say FAIL img_build_source_bad
     cx_log IMAGE "$n source=build FAIL reason=\"source checksum\""
-    return 1
+    return 2
   fi
   cx_img_say RUN img_build_note
   CX_IMG_REF[$n]=$ref
@@ -417,7 +429,7 @@ cx_images_resolve() {
   local -a up_local=()
   CX_IMG_ARCH=$(cx_arch) || return 1
   CX_IMG_REF=() CX_IMG_ID=() CX_IMG_SRC=() CX_IMG_SAID=() CX_IMG_DOWN=()
-  CX_IMG_BUNDLE_STATE="" CX_IMG_BUNDLE=""
+  CX_IMG_BUNDLE_STATE="" CX_IMG_BUNDLE="" CX_IMG_BUNDLE_INTEGRITY_BAD=0 CX_IMG_INTEGRITY_BAD=0
   cx_img_needed "$1"
   ver=$(cx_mf version)
   printf '       %s\n' "$(cx_msg img_order | sed '2,$s/^/       /')"
@@ -436,6 +448,7 @@ cx_images_resolve() {
       printf '       %s\n' "$(cx_msg img_head_own "$n" "$ver")"
     fi
     cx_img_print_lines
+    [ "$CX_IMG_INTEGRITY_BAD" != 1 ] || break
   done
   if [ "${#up_local[@]}" -gt 0 ]; then
     printf '       %s\n' "$(cx_join "$(cx_msg pre_list_sep)" "${up_local[@]}")"
@@ -445,21 +458,32 @@ cx_images_resolve() {
 }
 
 cx_img_resolve_one() {
-  local n=$1 k
+  local n=$1 k rc
   CX_IMG_LAST_WARN=""
   cx_img_try_local "$n" && return 0
   cx_img_try_offline "$n" && return 0
+  rc=$?
+  [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
   if ! cx_img_upstream "$n"; then
     cx_img_try_registry "$n" "$(cx_mf "images.$n.ref")" && return 0
+    rc=$?
+    [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
     for k in $(cx_mf "images.$n.mirror"); do
       if cx_img_try_registry "$n" "$k"; then
         cx_img_switched "$n"
         return 0
+      else
+        rc=$?
+        [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
       fi
     done
     cx_img_try_build "$n" && return 0
+    rc=$?
+    [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
   else
     cx_img_try_registry "$n" "$(cx_mf "images.$n.ref")" && return 0
+    rc=$?
+    [ "$rc" -ne 2 ] || { CX_IMG_INTEGRITY_BAD=1; return 1; }
   fi
   cx_img_say FAIL img_none "$n"
   return 1

@@ -109,6 +109,39 @@ step3() { # <lang> [overlays]
   ! grep -q $'\tload' "$FAKE_DOCKER_LOG" || return 1
 }
 
+@test "damaged offline bundle fails without falling back to a registry" {
+  store classic
+  make_bundle "$ROOT/custodexa-images-1.13.0-amd64.tar" classic
+  printf 'damaged' >>"$ROOT/custodexa-images-1.13.0-amd64.tar"
+  step3 en
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] Offline bundle"* && $output == *"download it again"* ]] || { echo "$output"; return 1; }
+  ! grep -q $'\tpull ' "$FAKE_DOCKER_LOG" || return 1
+}
+
+@test "loaded bundle image ID mismatch fails without trying a registry" {
+  store classic
+  make_bundle "$ROOT/custodexa-images-1.13.0-amd64.tar" classic
+  touch "$SIM/load-swap"
+  step3 en
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] Offline bundle"* && $output == *"download it again"* ]] || { echo "$output"; return 1; }
+  ! grep -q $'\tpull ' "$FAKE_DOCKER_LOG" || return 1
+}
+
+@test "downloaded image content digest mismatch stops before trying a mirror" {
+  store classic
+  awk -v ref="${REF[backend]}@${IDX[backend]}" \
+    '$1 == ref { $2 = "sha256:0bad000000000000000000000000000000000000000000000000000000000000" } { print }' \
+    "$SIM/registry" >"$SIM/registry.new"
+  mv "$SIM/registry.new" "$SIM/registry"
+  step3 en
+  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+  [[ $output == *"[FAIL] GHCR"* && $output == *"content digest differs"* ]] || { echo "$output"; return 1; }
+  ! grep -q $'\tpull .*docker.io/custodexa/backend' "$FAKE_DOCKER_LOG" || return 1
+  ! grep -q $'\tpull .*frontend' "$FAKE_DOCKER_LOG" || return 1
+}
+
 @test "a bundle whose manifest was swapped, index.json unchanged, is refused before loading" {
   down ghcr.io
   down docker.io
@@ -172,7 +205,7 @@ step3() { # <lang> [overlays]
   : >"$FAKE_DOCKER_LOG"
   : >"$SIM/images"
   step3 en
-  [ "$status" -eq 1 ] && [[ $output == *"the source does not match the release manifest"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 1 ] && [[ $output == *"source checksum does not match the release"* && $output == *"download them again"* ]] || { echo "$output"; return 1; }
   ! grep -q 'build' "$FAKE_DOCKER_LOG" || return 1
 }
 
@@ -209,29 +242,45 @@ trust() { # <lang> [--yes]
     cx_images_resolve "" >/dev/null || exit 9
     cx_trust_check
     printf "%s\n%s\n" "$(cx_trust_state)" "$(cx_trust_summary)" >"$2"
-    if cx_trust_failed; then exit 1; fi
     cx_trust_screen </dev/null || exit 3' _ "$SRC" "$BATS_TEST_TMPDIR/trust.out"
 }
 
-@test "publisher not verified: the screen word for word with full digests; no --yes, no terminal: stop" {
+@test "no cosign warns without a confirmation and records unverified trust" {
+  store classic
+  tools none
+  trust en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature"* && $output != *"[SKIP] Publisher signature"* ]] || { echo "$output"; return 1; }
+  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ]
+}
+
+@test "wrong image signer warns and records mismatch without stopping" {
+  store classic
+  tools cosign gh
+  export FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0
+  trust en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature"* && $output == *"signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=mismatch provenance=ok" ]
+}
+
+@test "publisher not verified: WARN screen with full digests and no confirmation" {
   store classic
   tools none
   for l in zh-TW en; do
     trust "$l" --yes
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    diff <(printf '%s\n' "$output" | sed '1{/^$/d}' | trim) <(sed '$d' "$TESTS_DIR/snapshots/s04.$l.txt" | trim) ||
+    diff <(printf '%s\n' "$output" | sed '1{/^$/d}' | trim) <(trim <"$TESTS_DIR/snapshots/s04.$l.txt") ||
       { echo "[$l] differs from the reviewed screen"; return 1; }
-    [ "$(CX_LANG_FLAG=$l bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; cx_msg trust_continue' _ "$SRC")" = "$(tail -n1 "$TESTS_DIR/snapshots/s04.$l.txt")" ]
   done
   [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ]
   [ "$(sed -n 2p "$BATS_TEST_TMPDIR/trust.out")" = "content digests checked;" ]
-  grep -q ' VERIFY checksum OK | image_sig SKIP reason=no-cosign | provenance SKIP reason=no-gh$' "$ROOT"/logs/install-*.log
+  grep -q ' VERIFY checksum OK | image_sig WARN reason=no-cosign | provenance WARN reason=no-gh$' "$ROOT"/logs/install-*.log
   trust en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] This step needs a confirmation"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
 }
 
-@test "publisher checks that run: verified skips the screen, offline is said, a wrong signer stops" {
+@test "publisher checks that run: verified skips the screen, unavailable or mismatched warns" {
   store containerd
   tools cosign gh
   export FAKE_COSIGN_SIGNER="https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v1.13.0"
@@ -241,25 +290,21 @@ trust() { # <lang> [--yes]
   # Signing service unreachable: said as such, and only the layer that did not run gets commands.
   FAKE_COSIGN_VERIFY=offline trust en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[SKIP] Publisher signature   offline, the signing service is unreachable"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature   offline, the signing service is unreachable"* ]] || { echo "$output"; return 1; }
   [[ $output == *"[ OK ] Build provenance      verified"* && $output == *"cosign verify ghcr.io/custodexa/frontend@"* ]] || { echo "$output"; return 1; }
   [[ $output != *"gh attestation verify"* ]] || { echo "$output"; return 1; }
   FAKE_GH=login trust en --yes
-  [[ $output == *"[SKIP] Build provenance      gh is not signed in (gh auth login)"* ]] || { echo "$output"; return 1; }
-  # A layer skipped because the service is unreachable or gh is not signed in is never passed
-  # silently: the screen asks, and without --yes and without a terminal the run stops (exit 3).
+  [[ $output == *"[WARN] Build provenance      gh is not signed in (gh auth login)"* ]] || { echo "$output"; return 1; }
+  # Unavailable checks warn without requiring a terminal.
   FAKE_COSIGN_VERIFY=offline trust en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ ?? ] Files were checked for damage"* && $output == *"[FAIL] This step needs a confirmation"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Files were checked for damage"* ]] || { echo "$output"; return 1; }
   FAKE_GH=login trust en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ ?? ] Files were checked for damage"* && $output == *"[FAIL] This step needs a confirmation"* ]] || { echo "$output"; return 1; }
-  # A signature by anyone else, or provenance that does not verify, stops before any screen.
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Files were checked for damage"* ]] || { echo "$output"; return 1; }
+  # A signature by anyone else, or provenance that does not verify, remains unverified.
   FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0 trust en --yes
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] Image signature check failed"* && $output != *"[ ?? ]"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Publisher signature   signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
   FAKE_GH=bad trust en --yes
-  [ "$status" -eq 1 ] && [[ $output == *"[FAIL] Build provenance check failed"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[WARN] Build provenance      build provenance mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
   # Images built here have nothing to verify; the screen says why.
   down ghcr.io
   down docker.io
@@ -267,7 +312,7 @@ trust() { # <lang> [--yes]
   for n in postgres guacd openssl nginx; do have "${REF[$n]}@${IDX[$n]}" "${IDX[$n]}"; done
   trust en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[SKIP] Publisher signature   images built from source carry no publisher signature"* ]] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] Publisher signature   images built from source carry no publisher signature"* ]] || { echo "$output"; return 1; }
 }
 
 @test "the manifest as build-package writes it (notes keyed by language tag) is read" {

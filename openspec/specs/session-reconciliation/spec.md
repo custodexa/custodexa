@@ -3,7 +3,9 @@
 ## Purpose
 
 session 持久化狀態與實際連線的一致性收斂：確保 DB 中 status=active 的 session 始終對應一條真實活連線。連線層的閒置/最大時長逾時（session-timeout）只治理「有活連線」的會話，無法收斂後端重啟殘留與純 DB 孤兒列——這些會永久卡 active，使「我的連線」顯示假進行中、自助終止對它們失效。本能力以啟動清掃＋週期孤兒偵測雙機制補齊。單一後端實例前提（多實例部署需重設計）。
+
 ## Requirements
+
 ### Requirement: 啟動狀態收斂
 後端啟動時，系統 SHALL 將持久化狀態為 active 的全部殘留 session 一次收斂為已結束，`end_reason` SHALL 記為 `backend_restart`，並補寫 `end_time` 與時長。此收斂 SHALL 在開始受理新連線前完成（單一後端實例前提：重啟後不可能存在存活連線，無誤殺面）。
 
@@ -105,3 +107,27 @@ session 持久化狀態與實際連線的一致性收斂：確保 DB 中 status=
 - **WHEN** 圖形會話正常關閉後立即查詢連線註冊表計數
 - **THEN** 該會話已不計入；持久化狀態來源的並發統計於下一輪刷新亦不計入，
   其落後上界為指標刷新週期，SHALL NOT 額外疊加保活週期
+
+### Requirement: 文字與查詢會話的 WebSocket 半開存活探測
+
+文字終端共用 bridge（SSH、K8s 與資料庫 CLI）及瀏覽器資料庫查詢主控台的 WebSocket 連線 SHALL 每 30 秒由伺服端送出 ping，並 SHALL 將讀取期限設為 90 秒；收到 pong 或客戶端訊息 SHALL 刷新期限。客戶端不再回應而讀取逾時，或 ping 寫入失敗時，系統 SHALL 經各自既有收線流程結束連線、註銷 ConnectionRegistry，並把持久化 session 收為非 active。應用程式資料寫入與保活 ping SHALL 共用同一把寫鎖；此約束不要求 gorilla 的 `WriteControl`、`Close` 或預設 close／pong 回覆另行取得應用程式寫鎖。gorilla 文件要求資料寫入維持單一併發 writer，允許 `WriteControl` 與 `Close` 和其他方法並行，並說明預設 close／ping handler 會回覆 close／pong（[Concurrency](https://pkg.go.dev/github.com/gorilla/websocket#hdr-Concurrency)、[Control Messages](https://pkg.go.dev/github.com/gorilla/websocket#hdr-Control_Messages)）。此探測 SHALL 僅適用於 WebSocket，不得影響行程內傳輸。正常關閉訊號 SHALL 立即收線，不等待探測週期。協議層存活探測 SHALL NOT 當成使用者輸入而重置政策閒置計時。
+
+#### Scenario: 文字終端半開連線逾期
+
+- **WHEN** SSH、K8s 或資料庫 CLI 的 WebSocket 客戶端不再回覆伺服端 ping，且讀取期限到期
+- **THEN** bridge 收線，Registry 反註冊，該 session 不再是 active
+
+#### Scenario: 查詢主控台半開連線逾期
+
+- **WHEN** 查詢主控台 WebSocket 客戶端不再回覆伺服端 ping，且讀取期限到期
+- **THEN** 主控台沿既有執行單位收尾順序收線，Registry 反註冊，該 session 不再是 active
+
+#### Scenario: 正常 pong 維持連線
+
+- **WHEN** WebSocket 客戶端持續正常回覆 pong
+- **THEN** 超過一個讀取期限後連線仍維持 active，直到正常關閉或其他既有收線原因發生
+
+#### Scenario: 行程內傳輸維持原有行為
+
+- **WHEN** 文字 bridge 或查詢主控台使用行程內傳輸
+- **THEN** 不送 WebSocket ping，不設定 WebSocket 讀取期限，既有收線與政策逾時行為不變

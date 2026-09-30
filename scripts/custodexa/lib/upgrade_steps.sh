@@ -71,19 +71,9 @@ cx_up_images() {
     return "$CX_EXIT_FAILED"
   fi
   cx_trust_check
-  if cx_trust_failed >"$out"; then
-    cx_up_step_line FAIL 2 "$(cx_msg up_step_images)"
-    cat "$out"
-    rm -f "$out"
-    cx_up_again
-    return "$CX_EXIT_FAILED"
-  fi
   rm -f "$out"
   CX_UP_D2=$(cx_duration $(($(cx_now) - t0)))
-  if ! cx_trust_screen; then
-    printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
-    return "$CX_EXIT_REFUSED"
-  fi
+  cx_trust_screen
 }
 
 # cx_up_begin: step 3, once the preview is answered.
@@ -98,6 +88,9 @@ cx_up_begin() {
     cx_begin upgrade
     cx_state_set last_upgrade.from "$CX_UP_CURRENT"
     cx_state_set last_upgrade.to "$CX_UP_TARGET"
+    if [ -n "${CX_UP_PACKAGE_VERIFICATION:-}" ]; then
+      cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
+    fi
   else
     CX_RUN_CMD=upgrade
     cx_lock
@@ -110,6 +103,7 @@ cx_up_begin() {
     exec {CX_SIGNAL_FD}>&2
     trap 'cx_on_signal' INT TERM HUP
   fi
+  [ -z "${CX_UP_PACKAGE_VERIFICATION:-}" ] || cx_log VERIFY "package $CX_UP_PACKAGE_VERIFICATION"
   cx_log UPGRADE "from=$CX_UP_CURRENT to=$CX_UP_TARGET kind=$CX_UP_KIND"
   cx_log VERIFY "images $(cx_trust_state)"
   cx_up_at 3 confirmed

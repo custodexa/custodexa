@@ -67,6 +67,8 @@ type consoleSession struct {
 	grant proxy.ConnectGrant
 	ws    Transport
 	sess  *model.Session
+	// WebSocket ping 與 writePump 共用這把鎖，維持單一併發 writer。
+	wsWriteMu sync.Mutex
 	// dialectMu 守著 dialect 本身的替換：PostgreSQL 的切庫是換一條連線，
 	// 而 `cancel` 與匯出可能同時在讀它
 	dialectMu sync.RWMutex
@@ -220,10 +222,13 @@ func (s *consoleSession) sessionID() uint {
 func (s *consoleSession) writePump() {
 	defer s.ws.Close()
 	for raw := range s.out {
+		s.wsWriteMu.Lock()
 		if timed, ok := s.ws.(interface{ SetWriteDeadline(time.Time) error }); ok {
 			_ = timed.SetWriteDeadline(time.Now().Add(dbconsole.WriteDeadline))
 		}
-		if err := s.ws.WriteMessage(websocket.TextMessage, raw); err != nil {
+		err := s.ws.WriteMessage(websocket.TextMessage, raw)
+		s.wsWriteMu.Unlock()
+		if err != nil {
 			if isWriteTimeout(err) {
 				log.Printf("[DBConsole] 單則寫入逾期，關閉會話 (SessionID=%d)", s.sessionID())
 				s.auditCtx.auditConnectionClosed(consoleClosedSlowConsumer)
@@ -390,6 +395,7 @@ func (s *consoleSession) nextSeq() int {
 func (s *consoleSession) run() {
 	done := make(chan struct{})
 	defer close(done)
+	touchWS := startWSKeepalive(s.ws, &s.wsWriteMu, done, func() { _ = s.ws.Close() })
 
 	idle, max := s.handler.sessionTimeouts()
 	s.touch()
@@ -404,6 +410,7 @@ func (s *consoleSession) run() {
 		if err != nil {
 			return
 		}
+		touchWS()
 		s.touch()
 
 		var msg consoleClientMessage

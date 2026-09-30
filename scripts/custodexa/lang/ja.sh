@@ -159,9 +159,13 @@ MSG_img_bundle_manifest_bad='%s の manifest の内容がダイジェストと�
 MSG_img_bundle_config_bad='%s の設定ダイジェストがリリースマニフェストと一致しません'
 MSG_img_bundle_no_sums='%s に SHA256SUMS がなく、チェックサムを確認できません'
 MSG_img_bundle_not_listed='SHA256SUMS にこのバンドルがありません'
-MSG_img_bundle_sum_bad='チェックサムが SHA256SUMS と一致しません（ファイル破損の可能性）'
+MSG_img_bundle_sum_bad='チェックサムが SHA256SUMS と一致しません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください'
 MSG_img_bundle_load_failed='docker load に失敗しました（全出力はログファイル）'
-MSG_img_bundle_id_bad='読み込み後の %s のイメージ ID が確認済みのものと異なります'
+MSG_img_bundle_id_bad='読み込み後の %s のイメージ ID が確認済みのものと
+異なります。ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください'
 MSG_img_try_failed='%s %s：%s'
 MSG_img_switched='、
 %s から取得して内容を確認しました'
@@ -172,11 +176,16 @@ MSG_img_pulled_own='%s %s
 ダウンロード済み、内容ダイジェストはリリースマニフェストと一致'
 MSG_img_pulled_up='%s %s ダウンロード済み'
 MSG_img_pulled_mismatch='%s %s はダウンロード後の内容ダイジェストが
-一致しないため使いません'
+一致しないため使いません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください'
 MSG_img_build_note='ソースからのビルドには Go モジュール、npm、ベースイメージの
 取得元への接続が必要です。初回は 5〜10 分ほどかかります'
-MSG_img_build_source_bad='ソースからビルド：ソースのチェックサムがリリースマニフェストと
-一致しないため、ビルドしません'
+MSG_img_build_source_bad='ソースからビルド：ソースのチェックサムが
+リリースマニフェストと一致しません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください。
+ビルドしません'
 MSG_img_build_failed='ソースからのビルドに失敗しました（全出力はログファイル）'
 MSG_img_build_ok='ソースから %s としてビルド
 （ローカルビルドのため発行者の署名はありません）'
@@ -197,23 +206,16 @@ MSG_trust_offline='オフラインのため署名サービスに接続できま�
 MSG_trust_gh_login='gh にログインしていません（gh auth login）'
 MSG_trust_local_build='ソースからビルドしたイメージには発行者の署名がありません'
 MSG_trust_mf_unverified='パッケージ横のリリースマニフェストは未検証です（%s）'
+MSG_trust_pkg_unverified='パッケージの署名は未検証です（%s）'
 MSG_trust_mf_no_sig='横に SHA256SUMS.sigstore.json がありません'
-MSG_load_mf_sig_bad='%s の SHA256SUMS の署名の検証に失敗しました。署名者は次である
-必要があります：
-%s
-イメージは読み込んでいません。'
-MSG_text_trust_explain='  チェックサムで転送中の破損がないことは確認できますが、
-  Custodexa が発行したことは確認できません。発行元の確認が必要なら
-  ここで N を選び、cosign と gh があり、インターネットに接続できる
-  コンピューターで、下に示す完全なダイジェストを使って運用担当者に
-  検証してもらってから、このコマンドを再実行してください：'
+MSG_trust_mismatch='署名が一致せず、発行元は未確認です'
+MSG_trust_prov_mismatch='ビルド来歴が一致せず、発行元は未確認です'
+MSG_ver_sig_mismatch='署名が一致せず、発行元は未確認です'
+MSG_ver_prov_mismatch='ビルド来歴が一致せず、発行元は未確認です'
+MSG_text_trust_explain='  チェックサムはファイル内容とリリース一覧の一致を示します。
+  発行元は未確認です。必要に応じて以下の完全なダイジェストを
+  別途検証してください：'
 MSG_trust_recorded='  どの検証を行ったかはログファイルに記録されます。'
-MSG_trust_continue='続行しますか？[y/N]'
-MSG_trust_sig_bad='イメージ署名の検証に失敗しました。署名者は次のはずです：
-%s
-停止しました。サービスは起動していません。'
-MSG_trust_prov_bad='ビルド来歴の検証に失敗しました（%s のはず）。
-停止しました。サービスは起動していません。'
 MSG_ver_sig_only='チェックサム・署名を検証済み、ビルド来歴は未検証'
 MSG_ver_checksum_only='チェックサムを確認済み、発行元は未検証'
 MSG_usage_extra_args='余分な引数「%s」があります。参照：custodexa.sh --help'
@@ -287,6 +289,10 @@ MSG_load_bad_name='%s はオフラインイメージパッケージの名前の�
 （custodexa-images-<バージョン>-<アーキテクチャ>.tar）。'
 MSG_load_no_manifest='バージョン %s のリリースマニフェストが見つかりません。この配置に
 なく、%s の SHA256SUMS にも MANIFEST.json がありません。'
+MSG_load_manifest_sum_bad='リリースマニフェストのチェックサムが
+SHA256SUMS と一致しません。ダウンロードが不完全か、
+ファイルが破損している可能性があります。
+再ダウンロードしてください。'
 MSG_load_title='オフラインイメージパッケージを読み込み'
 MSG_load_file='  ファイル  %s（%s GB）'
 MSG_load_sum_ok='チェックサムが SHA256SUMS と一致'
@@ -295,13 +301,17 @@ MSG_load_sum_none='%s に SHA256SUMS がなく、チェックサムを確認で�
 何も読み込んでいません。'
 MSG_load_sum_unlisted='%s の SHA256SUMS にこのパッケージがありません。
 何も読み込んでいません。'
-MSG_load_sum_bad='チェックサムが SHA256SUMS と一致しません。ファイルが破損している
-可能性があります。コピーし直してください。何も読み込んでいません。'
+MSG_load_sum_bad='チェックサムが SHA256SUMS と一致しません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください。
+何も読み込んでいません。'
 MSG_load_arch_ok='アーキテクチャ %s、このホストと同じ'
 MSG_load_arch_bad='このパッケージは %s 用で、このホストは %s です。%s を使って
 ください。何も読み込んでいません。'
-MSG_load_check_bad='パッケージがリリースマニフェストと一致しません。何も読み込んで
-いません：
+MSG_load_check_bad='パッケージがリリースマニフェストと一致しません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください。
+何も読み込んでいません：
 %s'
 MSG_load_empty='パッケージにバージョン %s のイメージがありません。何も読み込んで
 いません。'
@@ -329,6 +339,8 @@ MSG_status_sec_services='サービス'
 MSG_status_sec_images='イメージ'
 MSG_status_sec_backup='バックアップ'
 MSG_status_sec_upgrade='前回のアップグレード'
+MSG_status_pkg_sig_mismatch='パッケージの署名が一致せず、発行元は未確認です'
+MSG_status_pkg_sig_unverified='パッケージの署名は未検証で、発行元は未確認です'
 MSG_status_sec_disk='ディスク'
 MSG_status_sec_reminders='お知らせ'
 MSG_status_label_current='現在'
@@ -520,8 +532,11 @@ MSG_up_download_failed='GitHub から %s のパッケージをダウンロード
 アップグレードするには、ダウンロード済みのパッケージを指定してください：'
 MSG_up_pkg_no_sums='%s が見つかりません。
 パッケージは SHA256SUMS と同じフォルダに置いてください'
-MSG_up_pkg_sum_bad='%s のチェックサムが SHA256SUMS と一致しません。このパッケージは使いません'
-MSG_up_pkg_sig_bad='%s：SHA256SUMS の発行者署名を検証できません。このパッケージは使いません'
+MSG_up_pkg_sum_bad='%s のチェックサムが SHA256SUMS と一致しません。
+ダウンロードが不完全か、ファイルが破損している
+可能性があります。再ダウンロードしてください'
+MSG_up_pkg_sig_bad='%s：署名が一致せず、発行元は未確認です'
+MSG_up_pkg_sig_missing='%s：署名ファイルがなく、発行元は未確認です'
 MSG_up_pkg_sig_skip='%s はチェックサムのみ検証し、発行者署名は検証していません
 （このホストに cosign がありません）'
 MSG_up_pkg_ok='%s のチェックサムと発行者署名を検証しました'
@@ -547,12 +562,17 @@ MSG_q_verified='リリースマニフェスト（MANIFEST）のチェックサ�
 MSG_q_unverified='リリースマニフェストはチェックサムのみ検証し、発行者署名は検証して
 いません（このホストに cosign がありません）。
 以下の結果は出所が未検証です'
-MSG_q_verify_fail_2='リリースマニフェスト（MANIFEST）のチェックサムが SHA256SUMS と一致
-しません。アップグレードできるか判断できません。後で再試行するか、
-ダウンロード済みのパッケージを使ってください'
-MSG_q_verify_fail_3='リリースマニフェストの発行者署名を検証できません。アップグレードできるか
-判断できません。後で再試行するか、ダウンロード済みのパッケージを
-使ってください'
+MSG_q_no_sig='リリースマニフェストの署名ファイルがなく、
+発行元は未確認です。アップグレード確認には
+チェックサムを確認済みのマニフェストを使用します'
+MSG_q_verify_fail_2='リリースマニフェスト（MANIFEST）のチェックサムが
+SHA256SUMS と一致しません。ダウンロードが不完全か、
+ファイルが破損している可能性があります。
+再ダウンロードしてください。
+アップグレードできるか判断できません'
+MSG_q_verify_fail_3='リリースマニフェストの署名が一致せず、
+発行元は未確認です。アップグレード確認には
+チェックサムを確認済みのマニフェストを使用します'
 MSG_q_notes='  リリースノート  %s'
 MSG_q_run='アップグレードするには、次を実行します：'
 MSG_q_only='この操作は確認のみで、何も変更していません。'

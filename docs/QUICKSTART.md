@@ -60,9 +60,12 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \
   SHA256SUMS
 ```
 
-The first command must print `OK` for every file you downloaded, and the second must finish
-without an error. If either fails, do not unpack the package. Without `cosign` on this host, run
-the second command on a computer that has it, with the same two files.
+The first command must print `OK` for every file you downloaded. If a checksum differs, the file
+may be incomplete or damaged; download it again before unpacking. If the second command cannot
+run or the signature does not match, this package's publisher is unverified. This is a manual
+check before unpacking. `install` does not read its result or check the package signature; it
+checks image digests separately and verifies image signatures and provenance when possible.
+You can run the second command on another computer with `cosign` and the same two files.
 
 ### 3. Unpack and install
 
@@ -90,9 +93,8 @@ own line:
    Registry, Docker Hub, and building from source. Every image must match the digest in the
    release manifest. When `cosign` and `gh` are installed and the signing services can be
    reached, the publisher signature and the build provenance of the project's own images are
-   verified as well. When they cannot be, the script shows what was and was not checked, prints
-   the verification commands with the full digests to run elsewhere, and asks whether to go on;
-   without a terminal it stops unless `--yes` is given.
+   verified as well. When either check is unavailable or mismatches, the script shows a warning,
+   records the result, prints verification commands with full digests, and continues.
 4. **Prepare the recordings folder** (owner `1000`, group `0`, mode `2770`).
 5. **Start the services**, then confirm that each running container runs the image checked in step 3.
 6. **Wait until the backend reports ready** with this release's version, for up to 180 seconds.
@@ -123,8 +125,7 @@ sudo /opt/custodexa/custodexa.sh install
 
 `load` checks the bundle against `SHA256SUMS` and the release manifest before loading it, and
 compares every loaded image with the manifest afterwards. It starts nothing. Without network access
-the publisher signature cannot be verified; `install` then asks for the confirmation described in
-step 3.
+the publisher signature cannot be verified; `install` shows the warning described in step 3 and continues.
 
 ### Check the deployment
 
