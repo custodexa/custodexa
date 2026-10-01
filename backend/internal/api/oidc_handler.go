@@ -11,12 +11,12 @@ import (
 	"github.com/custodexa/backend/internal/modules/audit"
 	"github.com/custodexa/backend/internal/modules/identity"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
 )
 
 // OIDCHandler OIDC provider 管理與登入流程端點
@@ -89,10 +89,10 @@ func NewOIDCHandler(providers *identity.OIDCProviderService, login *identity.OID
 		sink = login
 	}
 	return &OIDCHandler{
-		providers:     providers,
-		login:         login,
-		frontend:      strings.TrimRight(baseURL, "/"),
-		audit:         auditService,
+		providers:      providers,
+		login:          login,
+		frontend:       strings.TrimRight(baseURL, "/"),
+		audit:          auditService,
 		beginGuard:     newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
 		callbackGuard:  newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
 		exchangeGuard:  newSourceAbuseGuard(defaultOIDCGuardParams(), trustProxy, sink),
@@ -340,6 +340,12 @@ func (h *OIDCHandler) Callback(c *gin.Context) {
 	defer release()
 
 	if errParam := c.Query("error"); errParam != "" {
+		event, err := h.login.ProviderError(c.Query("state"), errParam, c.Query("error_description"))
+		if err != nil {
+			h.callbackGuard.record(oidcEventCallbackStateInvalid, ip)
+		} else {
+			h.writeOIDCAudit(c, []identity.OIDCAuditEvent{event}, http.StatusFound)
+		}
 		h.redirectToLogin(c, "oidc_provider_error")
 		return
 	}

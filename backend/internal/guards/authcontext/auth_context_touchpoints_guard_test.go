@@ -185,7 +185,9 @@ var authContextTouchpoints = []authContextTouchpoint{
 	{symbol: "Exchange", file: "internal/api/oidc_handler.go", fn: "OIDCHandler.Exchange", count: 1,
 		source: "ticket 兌換正式會話：binding 驗證＋世代比對＋原子 consume"},
 	{symbol: "consumeFlowState", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.callback", count: 1,
-		source: "flow state 的唯一消費點（未過期才成立，一次性）。fn 改名理由同 issueTicket 那一列"},
+		source: "正常授權碼回呼的 flow state 消費點（未過期才成立，一次性）。fn 改名理由同 issueTicket 那一列"},
+	{symbol: "consumeFlowState", file: "internal/modules/identity/oidc_login_service.go", fn: "OIDCLoginService.ProviderError", count: 1,
+		source: "提供者 error 回呼的驗證側貫穿點：原子消費未過期的一次性 flow state，僅由該 flow 取得可信 provider ID；無效或重放 state 不產生逐筆拒絕稽核，也不簽發 ticket"},
 
 	// ── 驗證側：路由掛載認證中介層 ───────────────────────────────
 	// 以下每項皆為「該路由群組經 AuthMiddleware 驗證 access token 與世代」；

@@ -931,5 +931,6 @@ worker 停止處理殘留 queue，在 defer 經既有 AuditLogService 留 AP-94�
 | G-217 | var:internal/modules/asset/asset_import.go:importDefaultPorts | importDefaultPorts | internal/modules/asset/asset_import.go:61 | 包級全域／不可變查表 | asset | —（資產批次匯入（1.15.0） 新增） | 批次匯入埠留空時的協定預設埠；只讀、無 I/O、無啟停順序。值須與前端 `utils/protocol.js` 的預設埠一致。 |
 | G-218 | var:internal/modules/asset/asset_import.go:importSecretFieldNames | importSecretFieldNames | internal/modules/asset/asset_import.go:74 | 包級全域／不可變查表 | asset | —（資產批次匯入（1.15.0） 新增） | 批次匯入拒收的秘密或帳號名欄名（CSV 表頭與 JSON 未知欄位共用）；只讀、無啟停順序。漏一項即該欄改以「未知欄」或格式錯誤拒收，仍整份拒收但提示失準。 |
 | G-219 | var:internal/modules/asset/asset_import_csv.go:importColumns | importColumns | internal/modules/asset/asset_import_csv.go:23 | 包級全域／不可變查表 | asset | —（資產批次匯入（1.15.0） 新增） | CSV 範本的 13 個機器欄名（表頭白名單）；只讀、無啟停順序。 |
+| G-220 | var:internal/modules/identity/oidc_login_service.go:oidcSecretFragment | oidcSecretFragment | internal/modules/identity/oidc_login_service.go:379 | 包級全域／不可變正規式 | identity | — | 載入期先編譯、再供 OIDC 提供者錯誤訊息遮蔽使用；若順序反了，在正規式尚未就緒時處理回呼錯誤，可能使含 code／state／token 的原文進入審計或錯誤訊息。拆包時須讓遮蔽函式使用同一份已初始化的正規式。 |
 
 | H-141 | hook:cmd/server/stage2.go:oidcProviderService.SetMappingAuditSink | `oidcProviderService.SetMappingAuditSink(auditTxSink)` | cmd/server/stage2.go:682 | setter 後綁定 | identity ← audit | OIDC 來源停用的映射支持撤回與審計 | 必須早於 OIDC 來源管理路由掛載；若順序反了，停用時撤回支持的交易內稽核缺席，操作會 fail-close 而無法完成。 |

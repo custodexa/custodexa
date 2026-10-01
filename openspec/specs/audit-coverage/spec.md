@@ -378,3 +378,27 @@ SHALL NOT 落入資產分類（其路徑識別字指向憑證而非資產，落�
 
 - **WHEN** 某次寫入無法判定所屬端點
 - **THEN** MUST 只套用全域放行集，MUST NOT 因端點未知而放行更多欄位
+
+### Requirement: 稽核中介層有界擷取請求本文
+
+全域稽核中介層對非 GET／DELETE 請求 SHALL 最多擷取前 65,536 bytes 供留痕；為判斷截斷 MAY 額外讀 1 byte，但 SHALL 將所有已讀位元組與未讀串流按原順序交給後續 handler，並保留原本文的關閉語義。端點既有大小限制與上傳行為 SHALL 維持。本文超過上限或預讀出錯時，審計 `request_body` SHALL 僅記固定標記，SHALL NOT 記任何原文；完整 JSON 方可沿既有路由感知遮罩留痕，非 JSON 沿既有空留痕語義。
+
+#### Scenario: 大本文先經稽核再到端點
+- **WHEN** 非 GET／DELETE 請求帶超過 65,536 bytes 的 JSON 或 multipart 本文
+- **THEN** 中介層預讀記憶體受上限約束，handler 收到位元組不變的完整本文，審計只留固定截斷標記而無本文原文
+
+#### Scenario: 上限內的完整 JSON
+- **WHEN** 本文為上限內的完整 JSON 且含敏感欄位
+- **THEN** 既有全域與伺服端路由感知遮罩仍作用，敏感值不進審計列
+
+### Requirement: OIDC 提供者錯誤回呼留下拒絕事件
+
+OIDC 回呼帶 `error=` 時，系統 SHALL 在限流後以有效、未過期、一次性的 flow state 判定該次流程及提供者，寫入一筆 `auth`／`login`／`denied` 稽核列，記錄經收口的提供者錯誤碼與描述、來源位址、方法、路徑及 302 狀態。描述 SHALL 去除控制字元與可攜帶秘密的片段並截斷；驗證或清理失敗 SHALL NOT 把原始 query 字串寫入稽核。無效或重放 state SHALL 沿既有聚合稽核，不逐筆建立可由匿名請求任意製造的 provider 拒絕列。
+
+#### Scenario: 提供者明示拒絕
+- **WHEN** 有效流程的回呼帶 `error=access_denied` 及提供者描述
+- **THEN** 登入仍導回既有錯誤頁，一筆 denied 稽核含受控錯誤碼與消毒後描述，且不含 code、state、token 等原文
+
+#### Scenario: 偽造或重放回呼
+- **WHEN** 缺失、未知或已消費的 state 帶 `error=` 回呼
+- **THEN** 不產生逐筆的 provider 拒絕列，僅依現行限流及無效 state 聚合路徑留痕

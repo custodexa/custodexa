@@ -2,6 +2,22 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.15.1 — bounded audit capture and OIDC denial records (2026-10-01)
+
+No schema change. No migration runs. A 1.14.x or 1.15.0 package deployment upgrades with
+`custodexa.sh upgrade 1.15.1`.
+
+### Fixes
+
+- Audit records store a truncation marker for request bodies over 64 KiB. The complete body
+  still reaches the endpoint, subject to its own size limits.
+- When an OIDC callback reports an error for a valid sign-in flow, the audit log records a
+  denied sign-in with the provider error code, if the code is in the accepted format.
+- Kubernetes file uploads and downloads report that the asset has no usable account
+  credentials when none are available.
+- Release download URLs must start with HTTPS. Downloads through curl also refuse redirects
+  to HTTP; the package download script's wget fallback checks only the first request.
+
 ## 1.15.0 — bulk asset import and service start and stop (2026-10-01)
 
 No schema change. No migration runs. A 1.14.x package deployment upgrades with

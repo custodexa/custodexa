@@ -324,11 +324,11 @@ export function ensureSession() {
       .catch((error) => {
         // 沒有回應（傳輸失敗、逾時、頁面導向中）不是認證結論：登入跡象同源共享，
         // 在此清掉會讓他分頁與導向後的新頁面都直接判定未登入
-        if (!error?.response) return false
-        // 續期終敗：登入頁要能回答「為什麼又要我登入」。條件判定在該模組內，
-        // 且寫入必須發生在導向之前
-        recordInsecureTransportRelogin()
-        clearSession()
+        if (error?.response) {
+          // 續期終敗：登入頁要能回答「為什麼又要我登入」。
+          recordInsecureTransportRelogin()
+          clearSession()
+        }
         return false
       })
       .finally(() => {

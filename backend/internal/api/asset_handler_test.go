@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/custodexa/backend/internal/modules/authz"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/custodexa/backend/internal/k8sproxy"
 	"github.com/custodexa/backend/internal/middleware"
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/asset"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -1435,5 +1436,76 @@ func TestAssetHandler_ErrorEnvelope(t *testing.T) {
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 		assert.Equal(t, "VALIDATION_TAG_TOO_LONG", decode(w)["code"])
+	})
+}
+
+func TestK8sCopyNoAccountReason(t *testing.T) {
+	for _, direction := range []string{"upload", "download"} {
+		t.Run(direction, func(t *testing.T) {
+			svc := new(MockAssetService)
+			auth := new(MockAssetAuthorizationService)
+			handler := NewAssetHandler(svc, auth, nil)
+			r := setupTestRouter()
+			r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); handler.DownloadK8sFile(c) })
+			r.POST("/assets/:id/k8s/upload", func(c *gin.Context) { c.Set("userID", uint(7)); handler.UploadK8sFile(c) })
+			var req *http.Request
+			if direction == "download" {
+				svc.On("K8sCopyFromPod", mock.Anything, uint(7), "mypod", "myctr", "/tmp/file", mock.AnythingOfType("string")).Return(asset.ErrAssetNoUsableAccount).Once()
+				req = httptest.NewRequest("GET", "/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil)
+			} else {
+				var body bytes.Buffer
+				mw := multipart.NewWriter(&body)
+				_ = mw.WriteField("pod", "mypod")
+				_ = mw.WriteField("container", "myctr")
+				file, err := mw.CreateFormFile("file", "file")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = file.Write([]byte("contents"))
+				_ = mw.Close()
+				svc.On("K8sCopyToPod", mock.Anything, uint(7), "mypod", "myctr", "/tmp/file", mock.AnythingOfType("string")).Return(asset.ErrAssetNoUsableAccount).Once()
+				req = httptest.NewRequest("POST", "/assets/7/k8s/upload", &body)
+				req.Header.Set("Content-Type", mw.FormDataContentType())
+			}
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			var resp map[string]any
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != 400 || resp["code"] != "RULE_ACCOUNT_NONE_USABLE" {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			svc.AssertExpectations(t)
+		})
+	}
+	t.Run("other copy failure stays 502", func(t *testing.T) {
+		svc := new(MockAssetService)
+		svc.On("K8sCopyFromPod", mock.Anything, uint(7), "mypod", "myctr", "/tmp/file", mock.AnythingOfType("string")).Return(errors.New("copy failed")).Once()
+		handler := NewAssetHandler(svc, new(MockAssetAuthorizationService), nil)
+		r := setupTestRouter()
+		r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); handler.DownloadK8sFile(c) })
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil))
+		var resp map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if w.Code != http.StatusBadGateway || resp["code"] != "INTERNAL_K8S_COPY" {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		svc.AssertExpectations(t)
+	})
+	t.Run("permission precedes copy", func(t *testing.T) {
+		svc := new(MockAssetService)
+		handler := NewAssetHandler(svc, new(MockAssetAuthorizationService), nil)
+		r := setupTestRouter()
+		r.GET("/assets/:id/k8s/download", func(c *gin.Context) { c.Set("userID", uint(7)); c.Set("role", "user") }, middleware.RequirePermission(middleware.PermAssetUpdate), handler.DownloadK8sFile)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest("GET", "/assets/7/k8s/download?pod=mypod&container=myctr&path=/tmp/file", nil))
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		svc.AssertNotCalled(t, "K8sCopyFromPod", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }

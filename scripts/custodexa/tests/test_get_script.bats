@@ -22,10 +22,17 @@ CHILD
   (cd "$FAKE_RELEASE_DIR/download/v1.14.0" && sha256sum custodexa-1.14.0.tar.gz >SHA256SUMS)
   cat >"$BATS_TEST_TMPDIR/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
-out='' url=''
+out='' url='' proto=0 redir=0
 while [ "$#" -gt 0 ]; do
-  case $1 in -o) out=$2; shift 2 ;; http*) url=$1; shift ;; *) shift ;; esac
+  case $1 in
+    -o) out=$2; shift 2 ;;
+    --proto) [ "$2" = '=https' ] || exit 98; proto=1; shift 2 ;;
+    --proto-redir) [ "$2" = '=https' ] || exit 98; redir=1; shift 2 ;;
+    http*) url=$1; shift ;;
+    *) shift ;;
+  esac
 done
+[ "$proto" -eq 1 ] && [ "$redir" -eq 1 ] || { echo "HTTPS redirect guard missing" >&2; exit 98; }
 src="$FAKE_RELEASE_DIR/${url#"$CX_GET_RELEASE_BASE"/}"
 [ -f "$src" ] || { echo "curl: (22) HTTP 404 for $url" >&2; exit 22; }
 cp "$src" "$out"
@@ -237,4 +244,49 @@ FAKE
     grep -Fq 'CX_GET_RELEASE_BASE' "$doc" || { echo "missing trust boundary: $doc"; return 1; }
     grep -Fq 'set -o pipefail' "$doc" || { echo "missing pipeline status guidance: $doc"; return 1; }
   done
+}
+
+@test "TestReleaseDownloadHTTPSOnly checks curl redirects and HTTPS first hops" {
+  run bash "$GET" --version 1.14.0 --dir "$DEST" install --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  export CX_GET_RELEASE_BASE=http://fixture.example/releases
+  run bash "$GET" --version 1.14.0 --dir "$BATS_TEST_TMPDIR/http-target" install --yes
+  [ "$status" -ne 0 ] && [[ $output == *'HTTPS'* ]] || { echo "$output"; return 1; }
+  [ ! -e "$BATS_TEST_TMPDIR/http-target" ]
+  [ "$(grep -c -- "curl -fsSL --proto '=https' --proto-redir '=https'" "$SRC/lib/upgrade_query.sh")" -eq 2 ]
+  [ "$(grep -c -- "curl -fsSL --proto '=https' --proto-redir '=https'" "$SRC/lib/cmd_upgrade.sh")" -eq 2 ]
+  grep -Fq 'wget -q -O' "$GET"
+  ! grep -Fq -- '--https-only' "$GET"
+
+  # A PATH without curl forces the wget branch; reject the GNU-only flag like busybox does.
+  mkdir -p "$BATS_TEST_TMPDIR/wget-bin"
+  for tool in bash uname stat readlink sha256sum tar gzip mktemp rm mkdir mv cp; do
+    ln -s "$(command -v "$tool")" "$BATS_TEST_TMPDIR/wget-bin/$tool"
+  done
+  cat >"$BATS_TEST_TMPDIR/wget-bin/wget" <<'FAKE_WGET'
+#!/usr/bin/env bash
+out='' url=''
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --https-only) echo 'wget: unrecognized option: https-only' >&2; exit 98 ;;
+    -q) shift ;;
+    -O) out=$2; shift 2 ;;
+    http*) url=$1; shift ;;
+    *) exit 98 ;;
+  esac
+done
+[[ $url == https://* ]] || exit 98
+src="$FAKE_RELEASE_DIR/${url#"$CX_GET_RELEASE_BASE"/}"
+[ -f "$src" ] || exit 22
+cp "$src" "$out"
+FAKE_WGET
+  chmod +x "$BATS_TEST_TMPDIR/wget-bin/wget"
+  export CX_GET_RELEASE_BASE=https://fixture.example/releases
+  run env PATH="$BATS_TEST_TMPDIR/wget-bin" /bin/bash "$GET" --version 1.14.0 --dir "$BATS_TEST_TMPDIR/wget-target" install --yes
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -f "$BATS_TEST_TMPDIR/wget-target/custodexa.sh" ]
+  export CX_GET_RELEASE_BASE=http://fixture.example/releases
+  run env PATH="$BATS_TEST_TMPDIR/wget-bin" /bin/bash "$GET" --version 1.14.0 --dir "$BATS_TEST_TMPDIR/wget-http-target" install --yes
+  [ "$status" -ne 0 ] && [[ $output == *'HTTPS'* ]] || { echo "$output"; return 1; }
+  [ ! -e "$BATS_TEST_TMPDIR/wget-http-target" ]
 }

@@ -69,8 +69,21 @@ sign_release() {
 fake_github() {
   export REL=$BATS_TEST_TMPDIR/github
   mkdir -p "$REL"
-  fake curl 'out="" url=""
-while [ $# -gt 0 ]; do case $1 in -o) out=$2; shift ;; -*) ;; *) url=$1 ;; esac; shift; done
+  # The single-quoted program is written to the fake curl executable for later expansion.
+  # shellcheck disable=SC2016
+  fake curl 'out="" url="" proto=0 redir=0
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) out=$2; shift 2 ;;
+    --proto) [ "$2" = "=https" ] || exit 98; proto=1; shift 2 ;;
+    --proto-redir) [ "$2" = "=https" ] || exit 98; redir=1; shift 2 ;;
+    -*) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+case $url in https://github.com/custodexa/custodexa/releases/*)
+  [ "$proto" -eq 1 ] && [ "$redir" -eq 1 ] || exit 98 ;;
+esac
 printf "%s\n" "$url" >>'"$REL"'/requests
 [ -e '"$REL"'/offline ] && { echo "curl: (6) Could not resolve host: github.com" >&2; exit 6; }
 case $url in https://127.0.0.1*|http://127.0.0.1*) [ -e '"$REL"'/entry.rc ] && exit 7; printf 200; exit 0 ;; esac

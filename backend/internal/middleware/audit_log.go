@@ -17,6 +17,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const auditBodyLimit = 65536
+
+type auditReplayBody struct {
+	io.Reader
+	original io.ReadCloser
+}
+
+func (b *auditReplayBody) Close() error { return b.original.Close() }
+
 // auditLogOption 審計中介層的內部可調項。
 //
 // **刻意用未匯出型別**：這些旋鈕（時鐘、限流參數）只為 middleware 包內的測試存在，
@@ -57,18 +66,24 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		requestID := uuid.New().String()
 		c.Set("request_id", requestID)
 
-		// 讀取 request body（需要處理 body 只能讀一次的問題）
+		// 有界預讀並回放；關閉回放本文時仍須關閉原串流。
 		var bodyBytes []byte
 		var bodyData map[string]interface{}
+		bodyMarker := ""
 
-		if c.Request.Method != "GET" && c.Request.Method != "DELETE" {
-			// 讀取 body
-			bodyBytes, _ = io.ReadAll(c.Request.Body)
-			// 恢復 body，讓後續 handler 能讀取
-			c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		if c.Request.Method != "GET" && c.Request.Method != "DELETE" && c.Request.Body != nil {
+			original := c.Request.Body
+			var readErr error
+			bodyBytes, readErr = io.ReadAll(io.LimitReader(original, auditBodyLimit+1))
+			c.Request.Body = &auditReplayBody{Reader: io.MultiReader(bytes.NewReader(bodyBytes), original), original: original}
+			if readErr != nil {
+				bodyMarker = "[AUDIT CAPTURE READ ERROR]"
+			} else if len(bodyBytes) > auditBodyLimit {
+				bodyMarker = "[TRUNCATED: audit capture limit 65536 bytes]"
+			}
 
 			// 解析 JSON（忽略錯誤，可能不是 JSON）
-			if len(bodyBytes) > 0 {
+			if bodyMarker == "" && len(bodyBytes) > 0 {
 				json.Unmarshal(bodyBytes, &bodyData)
 			}
 		}
@@ -145,8 +160,8 @@ func AuditLogMiddleware(auditService *audit.AuditLogService, opts ...auditLogOpt
 		status := determineStatus(c.Writer.Status())
 
 		// 脫敏敏感欄位
-		maskedBody := ""
-		if bodyData != nil {
+		maskedBody := bodyMarker
+		if bodyMarker == "" && bodyData != nil {
 			// 端點取自**伺服端的路由註冊事實**（gin 的路由樣板＋方法），
 			// 不取自 URL 路徑字串、更不取自請求的任何欄位——否則呼叫端只要
 			// 宣告一個寬鬆端點，就能讓自己的憑證原樣寫進刪不掉的審計列。

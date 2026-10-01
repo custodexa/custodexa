@@ -176,7 +176,7 @@ cx_up_download() {
   local ver=$1 dir=$2 f
   for f in "custodexa-$ver.tar.gz" SHA256SUMS; do
     cx_line RUN "$(cx_msg up_wait_download "$f")"
-    if ! curl -fsSL --retry 2 -o "$dir/$f" "$CX_UP_DOWNLOAD/download/v$ver/$f" 2>/dev/null; then
+    if ! curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 -o "$dir/$f" "$CX_UP_DOWNLOAD/download/v$ver/$f" 2>/dev/null; then
       cx_line FAIL "$(cx_msg up_download_failed "$ver")"
       cx_cmd "sudo $CX_SELF upgrade /path/custodexa-$ver.tar.gz"
       return 1
@@ -184,7 +184,7 @@ cx_up_download() {
     cx_line OK "$(cx_msg up_download_ok "$f")"
   done
   cx_line RUN "$(cx_msg up_wait_download SHA256SUMS.sigstore.json)"
-  curl -fsSL --retry 2 -o "$dir/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/download/v$ver/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$dir/SHA256SUMS.sigstore.json"
+  curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 -o "$dir/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/download/v$ver/SHA256SUMS.sigstore.json" 2>/dev/null || rm -f "$dir/SHA256SUMS.sigstore.json"
 }
 
 # cx_up_verify_package <package> <dir with SHA256SUMS> <version>: layer 1 (the checksum, always) and

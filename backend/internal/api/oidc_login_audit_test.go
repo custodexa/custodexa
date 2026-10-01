@@ -7,12 +7,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
@@ -20,6 +19,8 @@ import (
 	"github.com/custodexa/backend/internal/modules/identity"
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/pkg/crypto"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -282,7 +283,7 @@ func TestOIDCExchangeMFAPendingIsNotCountedAsSuccessfulLogin(t *testing.T) {
 // 本測試使兩條路徑的對稱性不再靠人盯。
 //
 // 突變自檢：把 `Exchange` 的 `h.auditOIDCLogin(c, resp)` 移回來源閘之前 → 本測試紅
-//（列數 2、且其中一列 status=success），其餘各格全綠。
+// （列數 2、且其中一列 status=success），其餘各格全綠。
 func TestOIDCExchangeSourceDeniedWritesNoSuccessRow(t *testing.T) {
 	env := setupOIDCAuditEnv(t)
 	// 清單不涵蓋本次請求來源（fixture 的 RemoteAddr 為 203.0.113.9）
@@ -414,5 +415,67 @@ func TestOIDCAuditDisabledWritesNothing(t *testing.T) {
 	}
 	if rows := env.rows(t); len(rows) != 0 {
 		t.Fatalf("審計停用時不得寫入，實得 %d 筆", len(rows))
+	}
+}
+
+func TestOIDCProviderErrorCallbackAudit(t *testing.T) {
+	env := setupOIDCAuditEnv(t)
+	flow := model.OIDCFlowState{State: "provider-state", Nonce: "n", PKCEVerifier: "v", ProviderID: env.provider.ID, AuthEpoch: env.provider.AuthEpoch, ExpiresAt: time.Now().Add(time.Minute)}
+	if err := env.db.Create(&flow).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := gin.New()
+	r.GET("/api/v1/auth/oidc/callback", env.h.Callback)
+	request := func(query string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?"+query, nil)
+		req.RemoteAddr = oidcAuditRemoteAddr
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		return w
+	}
+	w := request("state=provider-state&error=access_denied&error_description=Denied%0ABearer%20hidden-token%20secret%3Ftoken%3Dabc")
+	if w.Code != http.StatusFound || !strings.Contains(w.Header().Get("Location"), "oidc_provider_error") {
+		t.Fatalf("redirect=%d %s", w.Code, w.Header().Get("Location"))
+	}
+	rows := env.rows(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d", len(rows))
+	}
+	row := rows[0]
+	if row.Action != model.ActionLogin || row.Resource != model.ResourceAuth || row.Status != model.StatusDenied {
+		t.Fatalf("event=%+v", row)
+	}
+	assertRequestContext(t, row, "/api/v1/auth/oidc/callback", http.StatusFound)
+	var details map[string]any
+	if err := json.Unmarshal([]byte(row.Details), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["event"] != "oidc_provider_denied" || details["provider_error"] != "access_denied" || details["provider_id"] != float64(env.provider.ID) {
+		t.Fatalf("details=%v", details)
+	}
+	if strings.Contains(row.Details, "abc") || strings.Contains(row.Details, "hidden-token") || strings.Contains(row.Details, "provider-state") || strings.Contains(row.Details, "%0A") {
+		t.Fatalf("secret in details: %s", row.Details)
+	}
+	request("state=provider-state&error=access_denied")
+	request("state=forged&error=access_denied")
+	if len(env.rows(t)) != 1 {
+		t.Fatal("replayed/forged state wrote an individual row")
+	}
+	flow.State = "second-state"
+	if err := env.db.Create(&flow).Error; err != nil {
+		t.Fatal(err)
+	}
+	longDescription := strings.Repeat("界", 100) + "\nBearer hidden-token"
+	request("state=second-state&error=" + strings.Repeat("x", 65) + "&error_description=" + url.QueryEscape(longDescription))
+	rows = env.rows(t)
+	if len(rows) != 2 {
+		t.Fatalf("second valid flow rows=%d", len(rows))
+	}
+	if err := json.Unmarshal([]byte(rows[1].Details), &details); err != nil {
+		t.Fatal(err)
+	}
+	clean, _ := details["provider_error_description"].(string)
+	if details["provider_error"] != "unknown" || len(clean) > 256 || strings.Contains(clean, "hidden-token") || strings.Contains(clean, "\n") {
+		t.Fatalf("provider fields not sanitized: %v", details)
 	}
 }

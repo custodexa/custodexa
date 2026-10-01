@@ -900,6 +900,10 @@ func (h *AssetHandler) UploadK8sFile(c *gin.Context) {
 		return
 	}
 	if err := h.assetService.K8sCopyToPod(c.Request.Context(), uint(id), pod, container, destPath, tmpPath); err != nil {
+		if errors.Is(err, asset.ErrAssetNoUsableAccount) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountNoneUsable, nil)
+			return
+		}
 		apierror.RespondInternal(c, http.StatusBadGateway, apierror.CodeK8sCopy, err)
 		return
 	}
@@ -940,6 +944,10 @@ func (h *AssetHandler) DownloadK8sFile(c *gin.Context) {
 	_ = os.Remove(tmpPath)
 	defer os.Remove(tmpPath)
 	if err := h.assetService.K8sCopyFromPod(c.Request.Context(), uint(id), pod, container, srcPath, tmpPath); err != nil {
+		if errors.Is(err, asset.ErrAssetNoUsableAccount) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeAccountNoneUsable, nil)
+			return
+		}
 		apierror.RespondInternal(c, http.StatusBadGateway, apierror.CodeK8sCopy, err)
 		return
 	}

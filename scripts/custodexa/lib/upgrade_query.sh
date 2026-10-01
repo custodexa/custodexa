@@ -12,6 +12,7 @@
 . "${BASH_SOURCE[0]%/*}/backup.sh"
 
 [ -n "${CX_UP_DOWNLOAD+x}" ] || readonly CX_UP_DOWNLOAD=https://github.com/custodexa/custodexa/releases
+case $CX_UP_DOWNLOAD in https://*) ;; *) printf "[FAIL] Release download URL must use HTTPS\n" >&2; return 1 ;; esac
 CX_Q_VR=0 # 0 checksum and signature verified, 1 checksum only
 CX_Q_REASON=""
 CX_Q_TARGET=""
@@ -66,11 +67,11 @@ cx_q_fetch() {
   tmp=$(mktemp -d)
   for f in MANIFEST.json SHA256SUMS; do
     cx_line RUN "$(cx_msg q_wait_download "$f")"
-    curl -fsSL --retry 2 -o "$tmp/$f" "$CX_UP_DOWNLOAD/latest/download/$f" 2>/dev/null || { rm -rf "$tmp"; return 1; }
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 -o "$tmp/$f" "$CX_UP_DOWNLOAD/latest/download/$f" 2>/dev/null || { rm -rf "$tmp"; return 1; }
     cx_line OK "$(cx_msg q_download_ok "$f")"
   done
   cx_line RUN "$(cx_msg q_wait_download SHA256SUMS.sigstore.json)"
-  if curl -fsSL --retry 2 -o "$tmp/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/latest/download/SHA256SUMS.sigstore.json" 2>/dev/null; then
+  if curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 -o "$tmp/SHA256SUMS.sigstore.json" "$CX_UP_DOWNLOAD/latest/download/SHA256SUMS.sigstore.json" 2>/dev/null; then
     cx_line OK "$(cx_msg q_download_ok SHA256SUMS.sigstore.json)"
   else
     rm -f "$tmp/SHA256SUMS.sigstore.json"

@@ -2,7 +2,9 @@
 
 ## Purpose
 規範 Kubernetes 容器 exec 連線能力：namespace 資產與連線時選 pod、namespace 級授權與 API server RBAC 邊界、session 不可變 pod 快照、control plane TLS 驗證、四種連線模態的審計語義、容器檔案進出的傳輸控管，以及審計鏈沿用。
+
 ## Requirements
+
 ### Requirement: namespace 資產與連線時選 pod
 K8s 資產 SHALL 綁定 namespace（非固定 pod）；連線時系統 SHALL 列出該 namespace 的活 pod 供使用者選定 pod 與 container，再以 `kubectl exec` 進入。namespace SHALL 取自資產（伺服端可信），SHALL NOT 由客端傳入；選定的 pod/container SHALL 經注入防護驗證（禁 `-` 開頭與控制字元）。
 
@@ -38,6 +40,8 @@ K8s 資產 SHALL 支援選填 CA cert（PEM），連線時 SHALL 以其驗證 AP
 ### Requirement: 四連線模態與審計語義
 系統 SHALL 支援 interactive-exec、logs（`kubectl logs -f` 唯讀）、kubectl cp（檔案進出）模態；one-shot（單指令）在 argv 側指令審計與阻斷實裝前 SHALL 由後端一律拒絕（避免單指令繞過審計/阻斷）。指令審計與阻斷 SHALL 適用於 interactive-exec；logs SHALL 走相同錄製但跳過指令解析/阻斷並標記 logs 模態，且 SHALL 唯讀（停用終端輸入，不誤導可輸入）。kubectl cp SHALL 以獨立 exec-tar 審計擷取檔名/大小/方向並落 audit_log；傳檔進/出容器 SHALL 需寫級權限（PermAssetUpdate）；下載容器內不存在的檔案 SHALL 回錯誤（不串流空檔偽裝成功）。
 
+K8s 檔案上傳與下載若因資產沒有可用掛載憑證而於連目標前拒絕，SHALL 回既有 `RULE_ACCOUNT_NONE_USABLE` 與相應 4xx 原因；其他複製失敗 SHALL 保持既有分類。此要求 SHALL NOT 改變檔案權限、傳輸政策或連目標前的拒絕順序。
+
 #### Scenario: 看容器日誌（唯讀）
 - **WHEN** 使用者對 K8s 資產選擇 logs 模態
 - **THEN** 唯讀串流容器日誌、會話被錄製、不套用指令阻斷，且終端停用輸入
@@ -53,6 +57,10 @@ K8s 資產 SHALL 支援選填 CA cert（PEM），連線時 SHALL 以其驗證 AP
 #### Scenario: one-shot 後端拒絕
 - **WHEN** 以 API 對 K8s 資產要求 one-shot 模態或夾帶單指令
 - **THEN** 後端拒絕該連線（argv 審計/阻斷實裝前不開放）
+
+#### Scenario: 待配憑證資產的容器檔案進出
+- **WHEN** 有權使用 K8s 檔案端點者對零可用掛載資產上傳或下載
+- **THEN** 連目標前拒絕，回 `RULE_ACCOUNT_NONE_USABLE`，不以 502 檔案傳輸失敗表達
 
 ### Requirement: 原生級選擇器與錯誤可懂
 pod 選擇器 SHALL 提供即時清單、pod 狀態色（Running/Pending/CrashLoopBackOff/Terminating）、前端即時篩選、隱藏 Completed job pod，並顯示 Ready/Age/重啟次數/image。多 container 時 SHALL 讀 `default-container` annotation 預選；distroless 無 shell 時 SHALL 攔截並以繁中提示改選 container 或看 logs。列 pod 與連線錯誤 SHALL 分類為：不可達 / TLS 失敗 / token 401 / 無 list RBAC 403 / namespace 404。
@@ -111,4 +119,3 @@ K8s 容器檔案進出端點（`kubectl cp` 的上傳與下載）SHALL 受資料
 #### Scenario: 同資產多 pod 可區分
 - **WHEN** 使用者自同一 K8s 資產開啟兩個不同 pod
 - **THEN** 兩分頁分別以各自 pod 名標示，可區分
-

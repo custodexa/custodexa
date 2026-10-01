@@ -10,8 +10,11 @@ import (
 	"fmt"
 	"github.com/custodexa/backend/internal/modules/audit"
 	"log"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
 	"github.com/custodexa/backend/internal/modules/audit/port"
@@ -371,6 +374,50 @@ func (s *OIDCLoginService) Callback(ctx context.Context, state, code string) (*C
 	}
 	res.AuditEvents = trail.events
 	return res, nil
+}
+
+var oidcSecretFragment = regexp.MustCompile(`(?i)(?:\?[^\s]*|\b(?:bearer|token|code|state)(?:\s*[:=]\s*|\s+)[^\s&]+)`)
+
+// ProviderError 消費有效的一次性 state，回傳供 handler 補 HTTP 脈絡的拒絕事件。
+func (s *OIDCLoginService) ProviderError(state, providerCode, description string) (OIDCAuditEvent, error) {
+	flow, err := s.consumeFlowState(state)
+	if err != nil {
+		return OIDCAuditEvent{}, err
+	}
+	code := "unknown"
+	if len(providerCode) > 0 && len(providerCode) <= 64 {
+		valid := true
+		for i := 0; i < len(providerCode); i++ {
+			b := providerCode[i]
+			if !((b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_' || b == '.' || b == '-') {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			code = providerCode
+		}
+	}
+	details := map[string]any{"event": "oidc_provider_denied", "provider_id": flow.ProviderID, "provider_error": code}
+	if utf8.ValidString(description) {
+		clean := strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return ' '
+			}
+			return r
+		}, description)
+		clean = oidcSecretFragment.ReplaceAllString(clean, "[redacted]")
+		if len(clean) > 256 {
+			clean = clean[:256]
+			for !utf8.ValidString(clean) {
+				clean = clean[:len(clean)-1]
+			}
+		}
+		if clean != "" {
+			details["provider_error_description"] = clean
+		}
+	}
+	return OIDCAuditEvent{Action: model.ActionLogin, Resource: model.ResourceAuth, Status: model.StatusDenied, Details: details}, nil
 }
 
 // callback 流程本體。**所有 return 路徑的審計意向都掛在 trail 上**——外層統一

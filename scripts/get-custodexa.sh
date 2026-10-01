@@ -5,6 +5,7 @@ set -euo pipefail
 set +o xtrace
 
 release_base=${CX_GET_RELEASE_BASE:-https://github.com/custodexa/custodexa/releases}
+case $release_base in https://*) ;; *) printf "[FAIL] Release download URL must use HTTPS\n" >&2; exit 1 ;; esac
 target=/opt/custodexa
 version=''
 forward=()
@@ -220,7 +221,7 @@ download() {
   local label=$1 url=$2 out=$3
   line '[ .. ]' "$(msg download "$label")"
   if [ "$downloader" = curl ]; then
-    curl -fsSL --retry 2 -o "$out" "$url" >/dev/null 2>&1 || fail download_fail "$label"
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 2 -o "$out" "$url" >/dev/null 2>&1 || fail download_fail "$label"
   else
     wget -q -O "$out" "$url" >/dev/null 2>&1 || fail download_fail "$label"
   fi

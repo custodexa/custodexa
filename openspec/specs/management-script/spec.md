@@ -167,6 +167,8 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 
 三語安裝文件 SHALL 在引導腳本的管線指令旁給出可傳遞首次下載失敗結束碼的用法，並明示 `CX_GET_RELEASE_BASE` 覆寫等於同時信任該來源的安裝包與 `SHA256SUMS`。
 
+引導腳本與管理腳本從 Release 取得清單、安裝包、校驗和及選用簽章附件時，curl 下載的首跳與每次轉址 SHALL 僅使用 HTTPS；僅有 wget 時首跳 SHALL 限 HTTPS，轉址不受限，下載內容仍 SHALL 以 `SHA256SUMS` 核對。覆寫 Release 主機的環境變數 SHALL NOT 使首跳協定降級為 HTTP。此協定約束 SHALL 保留既有離線測試下載替身及附件校驗語義。
+
 #### Scenario: 解析最新版
 - **WHEN** 維運未帶 `--version` 執行引導腳本，最新版 Release 的 `MANIFEST.json` 含有效的 `X.Y.Z` 版本
 - **THEN** 腳本下載該版安裝包及 `SHA256SUMS`，核對後解壓到預設或指定部署目錄並交棒
@@ -204,12 +206,16 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 - **THEN** 腳本立即拒絕並提示 `install --yes` 等可用形式，不等待輸入；帶有子命令時則將參數原樣轉交
 
 #### Scenario: 覆寫 Release 來源
-- **WHEN** 呼叫環境設定 `CX_GET_RELEASE_BASE` 指向其他端點
+- **WHEN** 呼叫環境設定 `CX_GET_RELEASE_BASE` 指向其他 HTTPS 端點
 - **THEN** 腳本從該端點取得版本清單、安裝包及 `SHA256SUMS` 並核對其內容；該端點及其清單被視為呼叫者信任的來源，畫面不宣稱發行者簽章已驗證
 
 #### Scenario: 文件中的首次下載失敗
 - **WHEN** 維運照三語快速開始中的管線範例執行，而取得 `get-custodexa.sh` 的下載失敗
 - **THEN** 文件提供的 `pipefail` 用法使整段管線回報非零結束碼，且相鄰說明揭露覆寫來源的信任邊界
+
+#### Scenario: 發行附件被轉址至 HTTP
+- **WHEN** Release 下載來源回應指向 HTTP 的轉址，或覆寫來源使用 HTTP
+- **THEN** 使用 curl 的引導腳本與升級腳本拒絕 HTTP 轉址；僅有 wget 的引導腳本拒絕 HTTP 覆寫來源，但 wget 轉址不受限，下載的安裝包仍須通過 `SHA256SUMS` 核對
 
 ### Requirement: 已安裝部署可控制整組服務
 

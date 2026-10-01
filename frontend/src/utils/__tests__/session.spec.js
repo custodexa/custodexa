@@ -593,3 +593,36 @@ describe('會話模組：跨分頁訊號', () => {
     expect(getAccessToken()).toBe('jwt')
   })
 })
+
+describe('TestEnsureSessionFailureBranches', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    resetReloginContext()
+    vi.restoreAllMocks()
+  })
+
+  it('preserves the hint on transport failure', async () => {
+    localStorage.setItem('user', '{"username":"admin"}')
+    const post = vi.spyOn(axios, 'post').mockRejectedValue(new Error('offline'))
+    await expect(ensureSession()).resolves.toBe(false)
+    expect(localStorage.getItem('user')).not.toBeNull()
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the hint on an HTTP response', async () => {
+    localStorage.setItem('user', '{"username":"admin"}')
+    const post = vi.spyOn(axios, 'post').mockRejectedValue({ response: { status: 401 } })
+    await expect(ensureSession()).resolves.toBe(false)
+    expect(localStorage.getItem('user')).toBeNull()
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns true on success', async () => {
+    localStorage.setItem('user', '{"username":"admin"}')
+    const post = vi.spyOn(axios, 'post').mockResolvedValue({ data: { token: 'restored' } })
+    await expect(ensureSession()).resolves.toBe(true)
+    expect(getAccessToken()).toBe('restored')
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+})
