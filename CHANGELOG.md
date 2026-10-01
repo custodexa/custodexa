@@ -2,10 +2,10 @@
 
 All notable changes to Custodexa will be documented in this file.
 
-## 1.14.2 — complete structure change counts before upgrading (2026-10-01)
+## 1.14.3 — complete structure change counts before upgrading (2026-10-01)
 
 No schema change. No migration runs. A 1.14.x package deployment upgrades with
-`custodexa.sh upgrade 1.14.2`.
+`custodexa.sh upgrade 1.14.3`.
 
 ### Fixes
 
