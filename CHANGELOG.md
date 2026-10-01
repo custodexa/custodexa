@@ -2,6 +2,18 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.14.1 — edit group notes in the rule dialog (2026-10-01)
+
+No schema change. No migration runs. A 1.14.0 package deployment upgrades with
+`custodexa.sh upgrade 1.14.1`.
+
+### Fixes
+
+- On the External group mappings page, the add and edit rule dialog now lets you change the
+  note of an existing external group. A changed note is saved with the rule and appears on
+  both tabs. If the rule is saved but the note is not, the page says so.
+- The identity source settings page now labels its mapping section External group mappings.
+
 ## 1.14.0 — external group mappings and a clearer deployment path (2026-10-01)
 
 Schema changes. Upgrading runs the `20260930_identity_group_mappings` migration. Existing

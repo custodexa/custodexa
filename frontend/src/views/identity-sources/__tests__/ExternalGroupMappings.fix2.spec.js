@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, enableAutoUnmount } from '@vue/test-utils'
-import ElementPlus, { ElMessageBox } from 'element-plus'
+import ElementPlus, { ElMessage, ElMessageBox } from 'element-plus'
 import i18n from '@/i18n'
 import ExternalGroupMappings from '../ExternalGroupMappings.vue'
 
@@ -14,19 +14,19 @@ class MutationObserverStub {
 vi.stubGlobal('MutationObserver', MutationObserverStub)
 
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { type: 'oidc', id: '7' } }) }))
-const api = vi.hoisted(() => ({ createGroup: vi.fn(), updateGroup: vi.fn(), updateRole: vi.fn(), getSources: vi.fn() }))
+const api = vi.hoisted(() => ({ createGroup: vi.fn(), updateGroup: vi.fn(), updateRole: vi.fn(), updateNote: vi.fn(), getSources: vi.fn(), getExternalGroups: vi.fn() }))
 const confirmWarningsMock = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('@/utils/mappingRiskGate', () => ({ confirmWarnings: (...a) => confirmWarningsMock(...a) }))
 vi.mock('@/api/identitySources', () => ({
   getIdentitySources: (...a) => api.getSources(...a),
   getRoleMappings: vi.fn(async () => ({ data: [{ id: 9, match_value: 'CN=Ops,OU=Long,DC=example,DC=test', role: 'user', enabled: true, affected_user_count: 1 }] })),
   getUserGroupMappings: vi.fn(async () => ({ data: [] })),
-  getExternalGroups: vi.fn(async () => ({ data: [] })),
+  getExternalGroups: (...a) => api.getExternalGroups(...a),
   getUserGroupMappingUsage: vi.fn(async () => ({ data: { asset_authorizations: 0, approver_scopes: 0, requester_scopes: 0 } })),
   createUserGroupMapping: (...a) => api.createGroup(...a),
   updateUserGroupMapping: (...a) => api.updateGroup(...a), deleteUserGroupMapping: vi.fn(),
   createRoleMapping: vi.fn(), updateRoleMapping: (...a) => api.updateRole(...a), deleteRoleMapping: vi.fn(),
-  updateExternalGroupNote: vi.fn(),
+  updateExternalGroupNote: (...a) => api.updateNote(...a),
   errorCode: error => error?.response?.data?.code || error?.response?.data?.error?.code || '',
 }))
 vi.mock('@/api/user', () => ({ getRoleList: vi.fn(async () => ({ data: [{ name: 'user' }] })) }))
@@ -46,6 +46,54 @@ describe('ExternalGroupMappings fix2 interactions', () => {
     api.createGroup.mockResolvedValue({ data: { id: 11 } })
     api.updateGroup.mockResolvedValue({ data: { id: 11 } })
     api.updateRole.mockResolvedValue({ data: { id: 19 } })
+    api.updateNote.mockResolvedValue({ data: {} })
+    api.getExternalGroups.mockResolvedValue({ data: [] })
+  })
+
+  it('updates a changed note once after saving an existing group rule', async () => {
+    api.getExternalGroups.mockResolvedValue({ data: [{ id: 44, match_value: 'ops', note: 'Old note' }] })
+    const wrapper = await open()
+    wrapper.vm.openEdit({ id: 9, match_value: 'ops', note: 'Old note', role: 'user', enabled: true })
+    await flushPromises()
+    const sel = 'input[data-test="rule-note-input"], [data-test="rule-note-input"] input'
+    const noteInput = wrapper.element.querySelector(sel) || document.body.querySelector(sel)
+    expect(noteInput).not.toBeNull()
+    expect(noteInput.disabled).toBe(false)
+    noteInput.value = 'New note'
+    noteInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.vm.draft.note).toBe('New note')
+    await wrapper.vm.save()
+    expect(api.updateRole).toHaveBeenCalledTimes(1)
+    expect(api.updateRole.mock.calls[0][3]).not.toHaveProperty('note')
+    expect(api.updateNote).toHaveBeenCalledTimes(1)
+    expect(api.updateNote).toHaveBeenCalledWith('oidc', '7', 44, 'New note')
+  })
+
+  it('does not update an unchanged note when saving an existing group rule', async () => {
+    api.getExternalGroups.mockResolvedValue({ data: [{ id: 44, match_value: 'ops', note: 'Old note' }] })
+    const wrapper = await open()
+    wrapper.vm.openEdit({ id: 9, match_value: 'ops', note: 'Old note', role: 'user', enabled: true })
+    await flushPromises()
+    await wrapper.vm.save()
+    expect(api.updateRole).toHaveBeenCalledTimes(1)
+    expect(api.updateNote).not.toHaveBeenCalled()
+  })
+
+  it('reports a note failure while keeping a successfully saved rule closed', async () => {
+    api.getExternalGroups.mockResolvedValue({ data: [{ id: 44, match_value: 'ops', note: 'Old note' }] })
+    api.updateNote.mockRejectedValue(new Error('note update failed'))
+    const message = vi.spyOn(ElMessage, 'error').mockImplementation(() => {})
+    const wrapper = await open()
+    wrapper.vm.openEdit({ id: 9, match_value: 'ops', note: 'Old note', role: 'user', enabled: true })
+    await flushPromises()
+    wrapper.vm.draft.note = 'New note'
+    await wrapper.vm.save()
+    expect(api.updateRole).toHaveBeenCalledTimes(1)
+    expect(api.updateNote).toHaveBeenCalledTimes(1)
+    expect(wrapper.vm.dialogOpen).toBe(false)
+    expect(message).toHaveBeenCalledWith(i18n.global.t('identityGroupMappings.ruleSavedNoteFailed'))
+    message.mockRestore()
   })
 
   it('409 updates real usage and requires an explicit checkbox before HTTP retry', async () => {

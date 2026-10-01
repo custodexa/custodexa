@@ -4290,7 +4290,7 @@
     "add": "規則を追加",
     "edit": "規則を編集",
     "editNote": "備考を編集",
-    "noteSharedHint": "備考は両タブで共有され、変更は両方に反映されます。",
+    "noteSharedHint": "この備考は両方のタブで共有され、変更すると両方に反映されます。",
     "copyIdentifier": "識別子をコピー",
     "expandIdentifier": "識別子を展開",
     "collapseIdentifier": "識別子を折りたたむ",
@@ -4306,6 +4306,7 @@
     "enable": "有効化",
     "disable": "無効化",
     "saved": "規則を保存しました",
+    "ruleSavedNoteFailed": "規則は保存しましたが、備考を更新できませんでした。「備考を編集」から再試行してください。",
     "loadFailed": "マッピングデータを読み込めません",
     "saveFailed": "マッピングの変更は保存されませんでした。再試行してください。",
     "mappedMembers": "マッピングされたメンバー",
@@ -4344,8 +4345,7 @@
     },
     "column": {
       "type": "種別",
-      "address": "アドレス",
-      "mappings": "ロールグループのマッピング"
+      "address": "アドレス"
     },
     "lastLoginAt": "直近の成功サインイン {time}",
     "neverLoggedIn": "成功したサインインはまだありません",
@@ -4375,7 +4375,7 @@
     "section": {
       "connection": "接続",
       "userMapping": "ユーザー対応付け",
-      "groupMapping": "ロールグループのマッピング",
+      "groupMapping": "外部グループのマッピング",
       "admission": "受け入れ",
       "advanced": "詳細"
     },

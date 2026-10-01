@@ -4290,7 +4290,7 @@
     "add": "新增規則",
     "edit": "編輯規則",
     "editNote": "修改備註",
-    "noteSharedHint": "備註由兩個分頁共用，修改後會同步顯示。",
+    "noteSharedHint": "這個備註由兩個分頁共用，修改後兩邊會同步更新。",
     "copyIdentifier": "複製識別碼",
     "expandIdentifier": "展開識別碼",
     "collapseIdentifier": "收合識別碼",
@@ -4306,6 +4306,7 @@
     "enable": "啟用",
     "disable": "停用",
     "saved": "規則已儲存",
+    "ruleSavedNoteFailed": "規則已儲存，但備註更新失敗。請用「修改備註」重試。",
     "loadFailed": "無法讀取映射資料",
     "saveFailed": "映射異動未提交，請重試。",
     "mappedMembers": "映射成員",
@@ -4344,8 +4345,7 @@
     },
     "column": {
       "type": "型別",
-      "address": "位址",
-      "mappings": "角色群組映射"
+      "address": "位址"
     },
     "lastLoginAt": "最近成功登入 {time}",
     "neverLoggedIn": "尚無成功登入",
@@ -4375,7 +4375,7 @@
     "section": {
       "connection": "連線",
       "userMapping": "使用者對應",
-      "groupMapping": "角色群組映射",
+      "groupMapping": "外部群組映射",
       "admission": "准入",
       "advanced": "進階"
     },

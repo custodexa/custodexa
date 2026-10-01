@@ -4290,7 +4290,7 @@
     "add": "Add rule",
     "edit": "Edit rule",
     "editNote": "Edit note",
-    "noteSharedHint": "The note is shared across both tabs and updates in both.",
+    "noteSharedHint": "This note is shared by both tabs. Changes appear in both.",
     "copyIdentifier": "Copy identifier",
     "expandIdentifier": "Expand identifier",
     "collapseIdentifier": "Collapse identifier",
@@ -4306,6 +4306,7 @@
     "enable": "Enable",
     "disable": "Disable",
     "saved": "Rule saved",
+    "ruleSavedNoteFailed": "Rule saved, but the note could not be updated. Use Edit note to try again.",
     "loadFailed": "Could not load mapping data",
     "saveFailed": "The mapping change was not saved. Try again.",
     "mappedMembers": "Mapped members",
@@ -4344,8 +4345,7 @@
     },
     "column": {
       "type": "Type",
-      "address": "Address",
-      "mappings": "Role group mappings"
+      "address": "Address"
     },
     "lastLoginAt": "Last successful sign-in {time}",
     "neverLoggedIn": "No successful sign-in yet",
@@ -4375,7 +4375,7 @@
     "section": {
       "connection": "Connection",
       "userMapping": "User mapping",
-      "groupMapping": "Role group mappings",
+      "groupMapping": "External group mappings",
       "admission": "Admission",
       "advanced": "Advanced"
     },

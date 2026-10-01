@@ -218,8 +218,8 @@
         <el-form-item :label="$t('identityGroupMappings.fields.note')">
           <el-input
             v-model="draft.note"
+            data-test="rule-note-input"
             maxlength="200"
-            :disabled="Boolean(matchingExternalGroup)"
           />
           <div
             v-if="matchingExternalGroup"
@@ -437,10 +437,21 @@ const save = async () => {
         const payload = { match_value: draft.value.match_value.trim(), enabled: draft.value.enabled, risk_acknowledged: acknowledged, source_config_acknowledged: sourceConfigAcknowledged }
         if (tab.value === 'roles') payload.role = draft.value.role
         else payload.user_group_id = draft.value.user_group_id
-        if (!matchingExternalGroup.value) payload.note = draft.value.note
+        const existingGroup = matchingExternalGroup.value
+        if (!existingGroup) payload.note = draft.value.note
         await persist(payload)
         dialogOpen.value = false
-        ElMessage.success(t('identityGroupMappings.saved'))
+        let noteFailed = false
+        if (existingGroup && draft.value.note !== (existingGroup.note || '')) {
+          try {
+            await updateExternalGroupNote(sourceType.value, sourceId.value, existingGroup.id, draft.value.note)
+          } catch (error) {
+            noteFailed = true
+            console.error('external_group_note_update_failed', error)
+          }
+        }
+        if (noteFailed) ElMessage.error(t('identityGroupMappings.ruleSavedNoteFailed'))
+        else ElMessage.success(t('identityGroupMappings.saved'))
         await loadAll()
         return
       } catch (error) {
