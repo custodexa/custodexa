@@ -135,12 +135,16 @@ if [ -n "$notes" ]; then
   jq -e 'type == "object" and all(.[]; type == "array")' "$notes" >/dev/null || die "--notes must map language -> list"
 fi
 
-# The package ships the public tree only. In the public tree this script is the only file in its
-# folder; a tree with more there, or with a live .env, is a working tree and is refused.
+# The package ships the public tree only. In the public tree this folder holds only this script
+# and the migration reader it sources; a tree with more there, or with a live .env, is a working
+# tree and is refused.
 [ -e "$source/.env" ] && die "--source holds .env: that is not the public tree"
 for f in "$source"/scripts/release/* "$source"/scripts/release/.[!.]*; do
   [ -e "$f" ] || continue
-  [ "${f##*/}" = build-package.sh ] || die "--source is not the public tree (it holds scripts/release/${f##*/})"
+  case ${f##*/} in
+    build-package.sh | migrations-json.sh) ;;
+    *) die "--source is not the public tree (it holds scripts/release/${f##*/})" ;;
+  esac
 done
 
 sha_re='^sha256:[0-9a-f]{64}$'
