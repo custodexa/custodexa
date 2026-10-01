@@ -90,7 +90,7 @@ func setupCredentialAPIEnv(t *testing.T) *credentialAPIFixture {
 
 	// 兩台資產各帶一個專用憑證的預設掛載
 	for _, spec := range []struct{ name, host string }{{"alpha", "10.9.0.1"}, {"beta", "10.9.0.2"}} {
-		a, cerr := assetSvc.Create(&asset.CreateAssetRequest{
+		a, cerr := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
 			Name: spec.name, Protocol: model.ProtocolSSH, Host: spec.host, Port: 22,
 			Username: "ops", Password: "dedicated-pw", CreatedBy: 1,
 		})

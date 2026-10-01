@@ -287,7 +287,7 @@ state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
 load_run() { # <lang> <bundle>
   run bash "$ROOT/custodexa.sh" load "$2" --lang "$1" </dev/null
 }
-s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<size>)/'; }
+s18_view() { sed -E 's/（[0-9.]+ (KB|MB|GB)）$/（<size>）/; s/ \([0-9.]+ (KB|MB|GB)\)$/ (<size>)/'; }
 
 @test "load: the reviewed screen word for word; checked, loaded, nothing started, IDs recorded" {
   host_full
@@ -303,6 +303,9 @@ s18_view() { sed -E 's/（[0-9.]+ GB）$/（<size>）/; s/ \([0-9.]+ GB\)$/ (<si
       clock 0 65
       load_run "$l" "$tar"
       [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+      local shown
+      shown=$(bash -c '. "$1/lib/common.sh"; cx_size_human "$2"' _ "$SRC" "$(stat -c %s "$tar")")
+      [[ $output == *"$tar"*"$shown"* ]] || { echo "$output"; return 1; }
       diff <(printf '%s\n' "$output" | s18_view) <(s18_view <"$TESTS_DIR/snapshots/s18.$l.txt") ||
         { echo "[$s $l] differs from the reviewed screen"; return 1; }
     done

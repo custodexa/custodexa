@@ -356,6 +356,10 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "POST /api/v1/assets":
 		return false, true
+	case "POST /api/v1/assets/import":
+		return false, true
+	case "POST /api/v1/assets/import/preview":
+		return false, true
 	case "POST /api/v1/assets/:id/accounts":
 		return false, true
 	case "POST /api/v1/assets/:id/accounts/:accountId/set-default":

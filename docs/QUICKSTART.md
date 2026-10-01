@@ -178,6 +178,11 @@ monitoring), and `5` when the state file of the deployment is damaged, in which 
 line and the previous copy. A new deployment has no backup on record yet, which is a warning, so
 `status` returns `4` until the first backup is recorded. `custodexa.sh --help` lists every command.
 
+To stop or start the whole deployment, run `sudo /opt/custodexa/custodexa.sh stop` or `start`.
+`stop` asks for confirmation (pass `--yes` in automation), waits until audit records are written,
+then stops every service; open user sessions are disconnected. `start` brings every service up and
+waits up to 180 seconds for the backend. A sealed system still needs unsealing after `start`.
+
 The deployment folder layout and what the script supports are in
 [Deployment Topology Limits](ops/deployment-topology-limits.md#package-deployments-and-the-management-script).
 
@@ -408,6 +413,10 @@ The "Status" column in the asset list carries reachability probe information (an
 not been probed yet shows "-"). For an SSH asset the probe logs in the same way a real connection
 does, private key first and then password. If the private key cannot be parsed (a wrong format or
 a passphrase-protected key), the probe reports that the private key is the problem.
+
+For many assets, use **Bulk add** to enter several in **Enter online** or choose **Upload CSV**; the page provides **Download CSV template** and **Field reference**.
+For the login credential, enter its ID from the credential library; only shared credentials are accepted. Leave it blank to create the asset first, marked **Credential needed**, then set one under **Edit → Accounts**.
+The CSV file must not contain password or private key columns. Select **Check** first; the whole batch is created only when every row passes.
 
 ### 3. Start a connection
 

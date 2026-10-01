@@ -2,6 +2,42 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.15.0 — bulk asset import and service start and stop (2026-10-01)
+
+No schema change. No migration runs. A 1.14.x package deployment upgrades with
+`custodexa.sh upgrade 1.15.0`.
+
+### New capabilities
+
+- Administrators can add many assets at once from Bulk add on the Assets page, either by
+  entering rows in an online table or by uploading a CSV file made from the downloadable
+  template. The check reports problems by row and field, and the import creates the whole
+  batch only if every row still passes when it is saved.
+- Each row takes the number of a shared credential from the credential library. Left blank,
+  the asset is created without a login credential, appears as Credential needed in the asset
+  list, and cannot be connected to until a credential is assigned under Edit → Accounts.
+  Import files do not accept passwords or private keys.
+- The credential library shows each credential's number, and search matches it.
+- `custodexa.sh start` and `custodexa.sh stop`, also in the menu, start or stop the whole
+  deployment. `stop` asks for confirmation and waits until pending audit records are written;
+  `start` waits for the backend to become ready.
+
+### What changes for deployers
+
+- `POST /api/v1/assets` without any credential source creates an asset without a login
+  credential when its other required fields are valid. Asset list responses include
+  `credential_pending`, and administrators and auditors can filter on it.
+- `POST /api/v1/assets/import/preview` and `POST /api/v1/assets/import` are added and require
+  the asset creation permission.
+
+### Fixes
+
+- Asset creation audit records identify the user who created the asset, including assets
+  created by a bulk import.
+- Creating an asset under an unknown node returns not found. A Kubernetes asset without a
+  namespace, or a login credential that needs a user name and has none, returns a field error.
+- Backup, database and image bundle sizes are shown in KB, MB or GB.
+
 ## 1.14.3 — complete structure change counts before upgrading (2026-10-01)
 
 No schema change. No migration runs. A 1.14.x package deployment upgrades with

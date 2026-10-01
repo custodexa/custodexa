@@ -43,6 +43,28 @@
       </div>
 
       <dl class="kv">
+        <dt>{{ t('credentials.colId') }}</dt>
+        <dd
+          class="mono id-row"
+          data-test="detail-id"
+        >
+          <span>#{{ credential.id }}</span>
+          <el-tooltip
+            :content="t('credentials.copyId')"
+            placement="top"
+          >
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :aria-label="t('credentials.copyId')"
+              data-test="detail-copy-id"
+              @click="copyId"
+            >
+              <el-icon><Copy /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </dd>
         <dt>{{ t('credentials.detailUsername') }}</dt>
         <dd class="mono">
           {{ credential.username }}
@@ -232,6 +254,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { Copy } from 'lucide-vue-next'
 import EmptyState from '@/components/EmptyState.vue'
 import CredentialBindingList from './CredentialBindingList.vue'
 import CredentialRotationProgress from './CredentialRotationProgress.vue'
@@ -352,6 +375,17 @@ const blockedReasons = computed(() => {
 watch(() => props.credential?.id, () => {
   startedRotationId.value = null
 })
+
+// 編號是批次匯入時 credential_id 欄要填的值：複製失敗（非安全來源、權限被拒）
+// 時明說，讓使用者改用手動選取，而不是以為已經在剪貼簿裡
+async function copyId() {
+  try {
+    await navigator.clipboard.writeText(String(props.credential.id))
+    ElMessage.success(t('profile.copiedToClipboard'))
+  } catch {
+    ElMessage.error(t('common.copyFailed'))
+  }
+}
 
 function onRotationStarted(rotation) {
   if (rotation?.id) startedRotationId.value = rotation.id
@@ -532,6 +566,12 @@ defineExpose({
 .mono {
   font-family: var(--ot-font-mono);
   font-size: var(--ot-font-size-xs);
+}
+
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ot-space-xs);
 }
 
 .actions {

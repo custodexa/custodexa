@@ -17,7 +17,7 @@ CX_DIR=${CX_SELF%/*}
 . "$CX_DIR/lib/common.sh"
 
 # Commands the script knows. The ones without lib/cmd_<name>.sh in this build say so and stop.
-readonly CX_COMMANDS="install upgrade status backup load"
+readonly CX_COMMANDS="install upgrade status start stop backup load"
 # Recognize an older tree so every command can refuse it before writing anything.
 CX_ROOT_LEGACY_OK=1
 
@@ -150,6 +150,9 @@ cx_main() {
   if [ "$CX_IMAGES_FROM" = source ] && [ -n "$CX_IMAGES" ]; then
     cx_die "$CX_EXIT_USAGE" usage_images_from_conflict
   fi
+  if [[ $CX_COMMAND == start || $CX_COMMAND == stop ]] && [ "$CX_SHOW_VERSION" = 1 ]; then
+    cx_die "$CX_EXIT_USAGE" usage_unknown_option --version
+  fi
   if [ "$CX_SHOW_VERSION" = 1 ]; then
     cx_script_version
     printf '\n'
@@ -178,6 +181,12 @@ cx_main() {
       exit "$CX_EXIT_USAGE"
       ;;
   esac
+
+  if [[ $CX_COMMAND == start || $CX_COMMAND == stop ]]; then
+    if [ -n "$CX_IMAGES$CX_BACKUP_REF$CX_BACKUP_TIME$CX_BACKUP_RESTORE" ] || [ "$CX_IMAGES_FROM_GIVEN" = 1 ]; then
+      cx_die "$CX_EXIT_USAGE" usage_unknown_option "${CX_FLAGS_TEXT# }"
+    fi
+  fi
 
   cx_check_platform || exit "$CX_EXIT_FAILED"
   CX_ROOT=$(cx_resolve_root "$0") || exit "$CX_EXIT_FAILED"

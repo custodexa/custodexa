@@ -130,6 +130,9 @@ func TestCreate(t *testing.T) {
 
 	// 插入資產
 	mock.ExpectBegin()
+	// 持名稱鎖時交易內再查一次名稱
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets" WHERE name`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(`INSERT INTO "assets"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	// AfterCreate hook 會在新的 session 中插入 audit log
@@ -152,7 +155,7 @@ func TestCreate(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(req)
+	asset, err := service.Create(context.Background(), req)
 	assert.NoError(t, err)
 	assert.NotNil(t, asset)
 	assert.Equal(t, req.Name, asset.Name)
@@ -186,6 +189,9 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 		WillReturnError(gorm.ErrRecordNotFound)
 
 	mock.ExpectBegin()
+	// 持名稱鎖時交易內再查一次名稱
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets" WHERE name`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(`INSERT INTO "assets"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
@@ -206,7 +212,7 @@ func TestCreate_PasswordEncrypted(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(req)
+	asset, err := service.Create(context.Background(), req)
 	assert.NoError(t, err)
 
 	// 核心驗證：密文改落 default 帳號（見 asset_accounts INSERT 期望），
@@ -238,6 +244,9 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 		WillReturnError(gorm.ErrRecordNotFound)
 
 	mock.ExpectBegin()
+	// 持名稱鎖時交易內再查一次名稱
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets" WHERE name`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(`INSERT INTO "assets"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	// AfterCreate hook 會插入 audit log (使用 RETURNING)
@@ -258,7 +267,7 @@ func TestCreate_WithPrivateKey(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
 	mock.ExpectCommit()
 
-	asset, err := service.Create(req)
+	asset, err := service.Create(context.Background(), req)
 	assert.NoError(t, err)
 	assert.True(t, asset.HasPrivateKey)
 	assert.Empty(t, asset.PrivateKeyEnc, "內嵌私鑰欄位不再寫入（密文落 default 帳號）")
@@ -285,7 +294,7 @@ func TestCreate_DuplicateName(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM "assets" WHERE name`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 
-	asset, err := service.Create(req)
+	asset, err := service.Create(context.Background(), req)
 	assert.Error(t, err)
 	assert.Equal(t, ErrAssetNameExists, err)
 	assert.Nil(t, asset)
@@ -307,7 +316,7 @@ func TestCreate_InvalidProtocol(t *testing.T) {
 		CreatedBy: 1,
 	}
 
-	asset, err := service.Create(req)
+	asset, err := service.Create(context.Background(), req)
 	assert.Error(t, err)
 	assert.Equal(t, ErrInvalidProtocol, err)
 	assert.Nil(t, asset)
@@ -479,6 +488,9 @@ func TestUpdate(t *testing.T) {
 
 	// Save
 	mock.ExpectBegin()
+	// 改名：持名稱鎖時交易內再查一次（排除自己）
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "assets" WHERE name = .+ AND id <>`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectExec(`UPDATE "assets" SET`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	// AfterUpdate hook 在交易內插入 audit_log（GORM/Postgres 用 RETURNING，走 Query）
@@ -660,6 +672,9 @@ func TestAsset_List(t *testing.T) {
 					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
+				// 待配憑證旗標：一次批次存在查詢
+				mock.ExpectQuery(`SELECT DISTINCT .+ FROM "asset_accounts"`).
+					WillReturnRows(sqlmock.NewRows([]string{"asset_id"}))
 			},
 			wantTotal: 5,
 			wantSize:  20,
@@ -685,6 +700,9 @@ func TestAsset_List(t *testing.T) {
 					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
+				// 待配憑證旗標：一次批次存在查詢
+				mock.ExpectQuery(`SELECT DISTINCT .+ FROM "asset_accounts"`).
+					WillReturnRows(sqlmock.NewRows([]string{"asset_id"}))
 			},
 			wantTotal: 3,
 			wantSize:  10,
@@ -709,6 +727,9 @@ func TestAsset_List(t *testing.T) {
 					// fillAssetNodeInfo：成員空集即早退不查路徑
 				mock.ExpectQuery(`SELECT .+ FROM "asset_nodes"`).
 					WillReturnRows(sqlmock.NewRows([]string{"id", "asset_id", "node_id"}))
+				// 待配憑證旗標：一次批次存在查詢
+				mock.ExpectQuery(`SELECT DISTINCT .+ FROM "asset_accounts"`).
+					WillReturnRows(sqlmock.NewRows([]string{"asset_id"}))
 			},
 			wantTotal: 2,
 			wantSize:  20,
@@ -824,7 +845,7 @@ func TestCreateRejectsInvalidDBTLSMode(t *testing.T) {
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 	assert.NoError(t, err)
 
-	_, err = service.Create(&CreateAssetRequest{
+	_, err = service.Create(context.Background(), &CreateAssetRequest{
 		Name:      "bad-tls-mode",
 		Protocol:  model.ProtocolPostgres,
 		Host:      "db.example.com",

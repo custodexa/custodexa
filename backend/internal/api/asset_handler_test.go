@@ -32,6 +32,22 @@ func (m *MockAssetService) List(filter *asset.AssetFilter) (*asset.AssetListResp
 	return args.Get(0).(*asset.AssetListResponse), args.Error(1)
 }
 
+func (m *MockAssetService) PreviewImport(_ context.Context, batch *asset.ImportBatch) (*asset.ImportPreview, error) {
+	args := m.Called(batch)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*asset.ImportPreview), args.Error(1)
+}
+
+func (m *MockAssetService) ImportAssets(_ context.Context, batch *asset.ImportBatch, createdBy uint, createdByName string) (*asset.ImportResult, error) {
+	args := m.Called(batch, createdBy, createdByName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*asset.ImportResult), args.Error(1)
+}
+
 func (m *MockAssetService) GetByID(id uint) (*model.Asset, error) {
 	args := m.Called(id)
 	if args.Get(0) == nil {
@@ -40,7 +56,7 @@ func (m *MockAssetService) GetByID(id uint) (*model.Asset, error) {
 	return args.Get(0).(*model.Asset), args.Error(1)
 }
 
-func (m *MockAssetService) Create(req *asset.CreateAssetRequest) (*model.Asset, error) {
+func (m *MockAssetService) Create(_ context.Context, req *asset.CreateAssetRequest) (*model.Asset, error) {
 	args := m.Called(req)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

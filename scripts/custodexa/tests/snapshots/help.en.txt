@@ -12,6 +12,8 @@ Commands
                          offline)
   status                 Show version, services, backups and the last
                          upgrade (changes nothing)
+  start                  Start all services and wait for backend readiness
+  stop                   Confirm and stop all services
   backup                 Full backup (pauses the service for ten minutes
                          or more)
   load <bundle>          Load an offline image bundle (starts nothing)

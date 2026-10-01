@@ -11,6 +11,8 @@ cx_help_options_for() {
     install) printf '%s' "yes images images_from lang no_color version help" ;;
     upgrade) printf '%s' "yes backup_ref backup_time backup_restore images images_from lang no_color version help" ;;
     status) printf '%s' "lang no_color version help" ;;
+    start) printf '%s' "lang no_color help" ;;
+    stop) printf '%s' "yes lang no_color help" ;;
     backup | load) printf '%s' "yes lang no_color version help" ;;
     *) printf '%s' "$CX_HELP_OPTIONS" ;;
   esac

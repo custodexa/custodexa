@@ -56,11 +56,11 @@ cmd_backup() {
   printf '%s\n\n' "$(cx_msg bk_title)"
   cmd_backup_par "$(cx_msg bk_pause "$(cx_bk_minutes)")"
   [ "$CX_BK_KEK" != ui ] || cmd_backup_ind WARN "$(cx_msg bk_warn_seal)"
-  cmd_backup_par "$(cx_msg bk_size "$(cx_bk_gb "$CX_BK_NEED")" "$(cx_bk_gb "$CX_BK_FREE")")"
+  cmd_backup_par "$(cx_msg bk_size "$(cx_size_human "$CX_BK_NEED")" "$(cx_size_human "$CX_BK_FREE")")"
   printf '\n'
   cx_log PREVIEW "need=$CX_BK_NEED free=$CX_BK_FREE kek_provider=$CX_BK_KEK"
   if [ "$CX_BK_NEED" -gt "$CX_BK_FREE" ]; then
-    cx_line FAIL "$(cx_msg bk_no_space "$(cx_bk_gb "$CX_BK_NEED")" "$CX_ROOT/backups" "$(cx_bk_gb "$CX_BK_FREE")")"
+    cx_line FAIL "$(cx_msg bk_no_space "$(cx_size_human "$CX_BK_NEED")" "$CX_ROOT/backups" "$(cx_size_human "$CX_BK_FREE")")"
     cx_finish failed
     exit "$CX_EXIT_FAILED"
   fi
@@ -93,7 +93,7 @@ cmd_backup() {
   cx_finish succeeded
 
   printf '\n'
-  cx_line OK "$(cx_msg bk_done "$CX_BK_DIR/" "$(cx_bk_gb "$(cx_bk_du "$CX_BK_DIR")")")"
+  cx_line OK "$(cx_msg bk_done "$CX_BK_DIR/" "$(cx_size_human "$(cx_bk_du "$CX_BK_DIR")")")"
   cmd_backup_contents
   [ "$CX_SNAP_USABLE" = true ] || cmd_backup_ind WARN "$(cx_msg bk_warn_snapshot)"
   cmd_backup_ind WARN "$(cx_msg bk_warn_keep)"

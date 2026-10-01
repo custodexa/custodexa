@@ -99,7 +99,7 @@ cmd_load() {
   cx_log VERIFY "manifest $mf $CX_LOAD_MF_TRUST"
   [ "$CX_LOAD_MF_TRUST" != sig-bad ] || cx_log VERIFY "manifest signature MISMATCH source unverified"
   size=$(stat -c %s -- "$b")
-  printf '%s\n%s\n\n' "$(cx_msg load_title)" "$(cx_msg load_file "$b" "$(awk -v s="$size" 'BEGIN { printf "%.1f", s / 1073741824 }')")"
+  printf '%s\n%s\n\n' "$(cx_msg load_title)" "$(cx_msg load_file "$b" "$(cx_size_human "$size")")"
 
   cx_step 1
   cx_bundle_sha_ok "$b" && rc=0 || rc=$?

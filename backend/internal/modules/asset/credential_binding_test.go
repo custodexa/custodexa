@@ -95,7 +95,7 @@ func TestCredentialBindRequiresProtocolFamilyMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	// windows 族涵蓋 RDP 資產：族別由資產協定與改密通道推導，不是逐協定一族
-	rdpAsset, err := assets.Create(&CreateAssetRequest{
+	rdpAsset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "rdp-target", Protocol: model.ProtocolRDP, Host: "10.3.1.2", Port: 3389,
 		Username: "seed", Password: "pw", CreatedBy: 1,
 	})
@@ -508,7 +508,7 @@ func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	versionsBefore := credentialVersionIDs(t, db, shared.ID)
 	require.Len(t, versionsBefore, 1)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "created-with-shared", Protocol: model.ProtocolSSH, Host: "10.3.10.1", Port: 22,
 		CredentialID: shared.ID, CreatedBy: 1,
 	})
@@ -535,7 +535,7 @@ func TestAssetCreateWithSharedCredentialBinds(t *testing.T) {
 	assert.True(t, secretMatches(t, got.Password, "shared-pw"), "resolved secret mismatch")
 
 	// 二擇一：同時給共用憑證與直填欄位一律拒絕
-	_, err = assets.Create(&CreateAssetRequest{
+	_, err = assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "ambiguous", Protocol: model.ProtocolSSH, Host: "10.3.10.2", Port: 22,
 		CredentialID: shared.ID, Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -547,7 +547,7 @@ func TestAssetCreateWithInlineCredentialCreatesDedicated(t *testing.T) {
 	db := setupCredentialDB(t)
 	assets, _, creds := newCredentialServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "inline-host", Protocol: model.ProtocolSSH, Host: "10.3.11.1", Port: 22,
 		Credential: &InlineCredential{Username: "root", Password: "inline-pw"},
 		CreatedBy:  1,
@@ -571,7 +571,7 @@ func TestAssetCreateWithInlineCredentialCreatesDedicated(t *testing.T) {
 	assert.True(t, secretMatches(t, got.Password, "inline-pw"), "resolved secret mismatch")
 
 	// 內嵌物件與頂層簡寫二擇一
-	_, err = assets.Create(&CreateAssetRequest{
+	_, err = assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "inline-ambiguous", Protocol: model.ProtocolSSH, Host: "10.3.11.2", Port: 22,
 		Username:   "root",
 		Credential: &InlineCredential{Username: "root", Password: "x"},

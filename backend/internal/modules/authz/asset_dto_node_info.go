@@ -28,9 +28,14 @@ func (s *AssetAuthorizationService) FillNodeInfoForDTOs(dtos []*AuthorizedAssetD
 	if err := asset.FillNodeInfo(database.DB, assets); err != nil {
 		return err
 	}
+	// 待配憑證旗標與節點資訊同一批填入（一般使用者列表的連線入口要據此停用）
+	if err := asset.FillCredentialPending(database.DB, assets); err != nil {
+		return err
+	}
 	for i := range dtos {
 		dtos[i].Asset.NodeIDs = assets[i].NodeIDs
 		dtos[i].Asset.NodePaths = assets[i].NodePaths
+		dtos[i].Asset.CredentialPending = assets[i].CredentialPending
 	}
 	return nil
 }

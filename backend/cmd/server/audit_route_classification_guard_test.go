@@ -239,6 +239,8 @@ var auditRouteRegistry = map[[2]string]routeAuditEntry{
 	{"GET", "/api/v1/asset-groups/tree"}:                                             {classResource, model.ResourceAssetGroup, "命中分類器段 `asset-groups`（新增常數接線）；設定變更（非審計資料讀取），不入 auditSensitiveResources；`:id` 指向分組列，非資產 id"},
 	{"GET", "/api/v1/assets"}:                                                        {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"POST", "/api/v1/assets"}:                                                       {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
+	{"POST", "/api/v1/assets/import"}:                                                {classResource, model.ResourceAsset, "命中分類器段 `assets`；批次寫入，逐台建立列由交易內寫入"},
+	{"POST", "/api/v1/assets/import/preview"}:                                        {classResource, model.ResourceAsset, "命中分類器段 `assets`；唯讀預檢，不寫任何資料"},
 	{"DELETE", "/api/v1/assets/:id"}:                                                 {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"GET", "/api/v1/assets/:id"}:                                                    {classResource, model.ResourceAsset, "命中分類器段 `assets`"},
 	{"PUT", "/api/v1/assets/:id"}:                                                    {classResource, model.ResourceAsset, "命中分類器段 `assets`"},

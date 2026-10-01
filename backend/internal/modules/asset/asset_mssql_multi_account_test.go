@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ func TestMSSQLAssetSupportsMultipleAccounts(t *testing.T) {
 	db := setupCredentialDB(t)
 	assets, accounts, creds := newCredentialServices(t)
 
-	a, err := assets.Create(&CreateAssetRequest{
+	a, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "mssql-multi", Protocol: model.ProtocolMSSQL, Host: "10.8.0.1", Port: 1433,
 		Username: "sa", Password: "sa-pw", CreatedBy: 1, CreatedByName: "admin",
 	})

@@ -51,6 +51,11 @@ func jobFilterOf(t *testing.T, job *model.AuditExportJob) *ReportJobFilter {
 	return f
 }
 
+func nextMonthlyTrigger(anchor time.Time) time.Time {
+	utc := anchor.UTC()
+	return time.Date(utc.Year(), utc.Month()+1, 1, 1, 0, 0, 0, time.UTC)
+}
+
 func TestRotationScheduleAnchorAdvancesOnRun(t *testing.T) {
 	f := newScheduleFixture(t)
 	row := f.create(t, "月報")
@@ -109,8 +114,8 @@ func TestRotationScheduleConsecutivePeriodsContiguous(t *testing.T) {
 	f := newScheduleFixture(t)
 	row := f.create(t, "月報")
 
-	first := time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC)
-	second := time.Date(2026, 11, 1, 1, 0, 0, 0, time.UTC)
+	first := nextMonthlyTrigger(row.PeriodAnchor)
+	second := first.AddDate(0, 1, 0)
 
 	j1, err := f.svc.Trigger(row.ID, first)
 	require.NoError(t, err)
@@ -132,21 +137,23 @@ func TestRotationScheduleOneInflightPerSchedule(t *testing.T) {
 	f := newScheduleFixture(t)
 	a := f.create(t, "月報-甲")
 	b := f.create(t, "月報-乙")
+	first := nextMonthlyTrigger(a.PeriodAnchor)
+	second := first.AddDate(0, 0, 1)
 
-	_, err := f.svc.Trigger(a.ID, time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC))
+	_, err := f.svc.Trigger(a.ID, first)
 	require.NoError(t, err)
 
-	_, err = f.svc.Trigger(a.ID, time.Date(2026, 10, 2, 1, 0, 0, 0, time.UTC))
+	_, err = f.svc.Trigger(a.ID, second)
 	require.ErrorIs(t, err, ErrReportScheduleInflight,
 		"同一排程至多一張進行中的工作單")
 
 	after, err := f.svc.Get(a.ID)
 	require.NoError(t, err)
-	assert.Equal(t, time.Date(2026, 10, 1, 1, 0, 0, 0, time.UTC).UTC(), after.PeriodAnchor.UTC(),
+	assert.Equal(t, first, after.PeriodAnchor.UTC(),
 		"被擋下的觸發不得推進錨點，否則那一段期間沒有任何報告涵蓋")
 
 	// 另一個排程不受影響
-	_, err = f.svc.Trigger(b.ID, time.Date(2026, 10, 2, 1, 0, 0, 0, time.UTC))
+	_, err = f.svc.Trigger(b.ID, second)
 	require.NoError(t, err)
 }
 

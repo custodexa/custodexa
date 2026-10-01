@@ -113,7 +113,7 @@ func setupCandidateLeakEnv(t *testing.T) (*ChangeSecretHandler, *CredentialHandl
 	// 第二台資產走**真的 runner**：帳號憑證經 asset service 加密落庫，
 	// 主機指向保證連不上的位址，runner 因而產生自己的新秘密、建候選、
 	// 失敗後寫 record.error。這條路徑才驗得到「runner 產生的秘密不外洩」
-	target, err := assetSvc.Create(&asset.CreateAssetRequest{
+	target, err := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
 		Name: "runner-target", Protocol: model.ProtocolSSH,
 		Host: "127.0.0.1", Port: 1, Username: "root",
 		Password: leakProbeAssetPassword, CreatedBy: 1,

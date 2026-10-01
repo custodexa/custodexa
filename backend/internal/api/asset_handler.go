@@ -28,7 +28,7 @@ import (
 type AssetServiceInterface interface {
 	List(filter *asset.AssetFilter) (*asset.AssetListResponse, error)
 	GetByID(id uint) (*model.Asset, error)
-	Create(req *asset.CreateAssetRequest) (*model.Asset, error)
+	Create(ctx context.Context, req *asset.CreateAssetRequest) (*model.Asset, error)
 	Update(ctx context.Context, id uint, req *asset.UpdateAssetRequest) (*model.Asset, error)
 	Delete(id uint) error
 	TestConnection(ctx context.Context, id uint, timeout int) (*asset.ConnectionTestResult, error)
@@ -39,6 +39,8 @@ type AssetServiceInterface interface {
 	ListTags() ([]asset.TagCount, error)
 	RenameTag(ctx context.Context, from, to string) (int64, error)
 	DeleteTag(ctx context.Context, name string) (int64, error)
+	PreviewImport(ctx context.Context, batch *asset.ImportBatch) (*asset.ImportPreview, error)
+	ImportAssets(ctx context.Context, batch *asset.ImportBatch, createdBy uint, createdByName string) (*asset.ImportResult, error)
 }
 
 // AssetAuthorizationServiceInterface 資產授權服務接口（用於測試注入）
@@ -211,6 +213,17 @@ func respondAssetError(c *gin.Context, internalCode apierror.ErrCode, err error)
 		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialRotationActive, nil)
 	case errors.Is(err, asset.ErrCredentialUsernameImmutable):
 		apierror.Respond(c, http.StatusBadRequest, apierror.CodeCredentialUsernameImmutable, nil)
+	case errors.Is(err, asset.ErrCredentialOutOfSync):
+		apierror.Respond(c, http.StatusConflict, apierror.CodeCredentialOutOfSync, nil)
+	// 建立／更新的欄位規則：原本未映射而落到 500
+	case errors.Is(err, asset.ErrUsernameRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetUsernameRequired, nil)
+	case errors.Is(err, asset.ErrK8sTargetRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetK8sNamespaceRequired, nil)
+	case errors.Is(err, asset.ErrSftpUsernameRequired):
+		apierror.Respond(c, http.StatusBadRequest, apierror.CodeAssetSftpUsernameRequired, nil)
+	case errors.Is(err, asset.ErrNodeNotFound):
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNodeNotFound, nil)
 	default:
 		apierror.RespondInternal(c, http.StatusInternalServerError, internalCode, err)
 	}
@@ -324,6 +337,17 @@ func (h *AssetHandler) List(c *gin.Context) {
 		tagFilters = parsed
 	}
 
+	// 待配憑證篩選：僅 admin/auditor 全量分支；一般使用者帶參數明確拒 400
+	//（比照標籤篩選：參數被靜默忽略＝篩選對一般 user 失效而無人察覺）
+	credentialPending := false
+	if raw := c.Query("credential_pending"); raw != "" {
+		if !isPrivilegedRole(c) {
+			apierror.Respond(c, http.StatusBadRequest, apierror.CodeBadParams, nil)
+			return
+		}
+		credentialPending = raw == "true"
+	}
+
 	if authorizedOnly {
 		// 獲取目前用戶
 		userID, exists := middleware.GetCurrentUserID(c)
@@ -429,6 +453,8 @@ func (h *AssetHandler) List(c *gin.Context) {
 		IncludeSubtree: includeSubtree,
 		Ungrouped:      ungrouped,
 		Tags:           tagFilters,
+
+		CredentialPending: credentialPending,
 	}
 
 	// 解析啟用狀態
@@ -535,6 +561,12 @@ func requireAdminRole(c *gin.Context) bool {
 
 // tagGovernanceContext 將操作者身分注入 ctx（審計 hook 取用）
 func tagGovernanceContext(c *gin.Context) context.Context {
+	return operatorRequestContext(c)
+}
+
+// operatorRequestContext 將已驗證的操作者身分（userID／username）注入請求 ctx，
+// 供服務層交易與 GORM 稽核 hook 取用
+func operatorRequestContext(c *gin.Context) context.Context {
 	ctx := c.Request.Context()
 	if userID, exists := middleware.GetCurrentUserID(c); exists {
 		ctx = context.WithValue(ctx, "userID", userID)
@@ -625,8 +657,8 @@ func (h *AssetHandler) Create(c *gin.Context) {
 		}
 	}
 
-	// 創建資產
-	assetRow, err := h.assetService.Create(&req)
+	// 創建資產：ctx 帶已驗證的操作者，建立稽核列記到操作者而非 system
+	assetRow, err := h.assetService.Create(operatorRequestContext(c), &req)
 	if err != nil {
 		respondAssetError(c, apierror.CodeInternalAssetCreate, err)
 		return
@@ -943,6 +975,9 @@ func (h *AssetHandler) RegisterRoutes(r *gin.RouterGroup, authService *identity.
 	assets.POST("/tags/rename", middleware.RequirePermission(middleware.PermAssetUpdate), h.RenameTag)
 	assets.POST("/tags/delete", middleware.RequirePermission(middleware.PermAssetUpdate), h.DeleteTag)
 	assets.POST("", middleware.RequirePermission(middleware.PermAssetCreate), h.Create)
+	// 批次新增：預檢（唯讀）與整批寫入，權限同單筆建立
+	assets.POST("/import/preview", middleware.RequirePermission(middleware.PermAssetCreate), h.PreviewImport)
+	assets.POST("/import", middleware.RequirePermission(middleware.PermAssetCreate), h.Import)
 	assets.GET("/:id", middleware.RequirePermission(middleware.PermAssetView), visible, h.Get)
 	assets.PUT("/:id", middleware.RequirePermission(middleware.PermAssetUpdate), h.Update)
 	assets.DELETE("/:id", middleware.RequirePermission(middleware.PermAssetDelete), h.Delete)

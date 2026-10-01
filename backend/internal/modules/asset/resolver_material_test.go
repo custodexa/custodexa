@@ -68,7 +68,7 @@ func tracedAssets(t *testing.T) (*AssetService, *materialTrace, uint, uint) {
 	t.Helper()
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
-	row, err := assets.Create(&CreateAssetRequest{Name: "owned", Protocol: model.ProtocolSSH, Host: "127.0.0.1", Port: 22, Username: "ops", Password: "password-fixture", PrivateKey: "key-fixture", CreatedBy: 1})
+	row, err := assets.Create(context.Background(), &CreateAssetRequest{Name: "owned", Protocol: model.ProtocolSSH, Host: "127.0.0.1", Port: 22, Username: "ops", Password: "password-fixture", PrivateKey: "key-fixture", CreatedBy: 1})
 	require.NoError(t, err)
 	var account model.AssetAccount
 	require.NoError(t, db.Where("asset_id = ?", row.ID).First(&account).Error)

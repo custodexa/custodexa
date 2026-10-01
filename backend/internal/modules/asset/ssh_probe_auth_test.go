@@ -41,7 +41,7 @@ func setupSSHProbeFixture(t *testing.T) *sshProbeFixture {
 // sshAsset 建一台指向靶機（或指定位址）的 SSH 資產，秘密依參數決定
 func (f *sshProbeFixture) sshAsset(t *testing.T, name, host string, port int, password, privateKey string) uint {
 	t.Helper()
-	a, err := f.assets.Create(&CreateAssetRequest{
+	a, err := f.assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: port,
 		Username: "root", Password: password, PrivateKey: privateKey, CreatedBy: 1,
 	})

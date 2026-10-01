@@ -144,6 +144,7 @@ cx_confirm() {
     cx_line FAIL "$(cx_msg confirm_needs_yes)" >&2
     # A run that stops here did nothing unfinished: record it as cancelled, not in progress.
     [ -z "$CX_RUN_CMD" ] || cx_finish cancelled
+    [ -z "${CX_SVC_COMMAND:-}" ] || cx_svc_finish cancelled
     exit "$CX_EXIT_REFUSED"
   fi
   printf '%s ' "$(cx_msg "$@")"

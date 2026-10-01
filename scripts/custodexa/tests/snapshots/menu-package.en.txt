@@ -3,10 +3,12 @@ Status: installed 1.13.2 (package deployment)
 Language: --lang zh-TW 繁體中文, --lang ja 日本語
 
   [1] Show status
-  [2] Upgrade
-  [3] Back up (pauses the service for ten minutes or more)
-  [4] Load an offline image bundle
-  [5] Help
+  [2] Start services
+  [3] Stop services
+  [4] Upgrade
+  [5] Back up (pauses the service for ten minutes or more)
+  [6] Load an offline image bundle
+  [7] Help
   [0] Quit
 
-Choose [0-5]: 
+Choose [0-7]: 

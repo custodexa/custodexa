@@ -118,6 +118,12 @@ help_options() { "$ROOT/custodexa.sh" --help --lang en | grep -oE -- '--[a-z][a-
   [[ $output == *"--images"* && $output != *"--confirm-data-loss"* && $output != *"  rollback "* ]]
   run "$ROOT/custodexa.sh" backup --help --lang en
   [[ $output == *"  backup "* && $output == *"--yes"* && $output != *"--backup-ref"* && $output != *"--images"* ]]
+  for l in $LANGS; do
+    run "$ROOT/custodexa.sh" start --help --lang "$l"
+    [ "$status" -eq 0 ] && [[ $output == *"  start "* && $output != *"  stop "* && $output != *"--yes"* && $output != *"--images"* ]] || return 1
+    run "$ROOT/custodexa.sh" stop --help --lang "$l"
+    [ "$status" -eq 0 ] && [[ $output == *"  stop "* && $output != *"  start "* && $output == *"--yes"* && $output != *"--images"* ]] || return 1
+  done
 }
 
 @test "marks are the same ASCII in every language; no color without a terminal or with NO_COLOR" {
@@ -155,8 +161,11 @@ fake_commands() {
   : >"$CX_CALLS"
   export CX_QUERIES=$BATS_TEST_TMPDIR/queries
   : >"$CX_QUERIES"
-  for c in install status backup load; do
+  for c in install status start stop backup load; do
     printf 'cmd_%s() { printf "%%s\\n" "%s $*" >>"$CX_CALLS"; }\n' "$c" "$c" >"$ROOT/releases/1.13.0/lib/cmd_$c.sh"
+  done
+  for c in start stop; do
+    printf 'cmd_%s() { printf "%%s\\n" "%s" >>"$CX_CALLS"; }\n' "$c" "$c" >"$ROOT/releases/1.13.0/lib/cmd_$c.sh"
   done
   printf '%s\n' 'cmd_install() { printf "install --images-from %s\n" "$CX_IMAGES_FROM" >>"$CX_CALLS"; }' \
     >"$ROOT/releases/1.13.0/lib/cmd_install.sh"
@@ -189,7 +198,7 @@ menu_screen() {
   done
   # Japanese has the same entries (the key set test keeps the texts in step).
   menu_run ja 0
-  [ "$status" -eq 0 ] && [[ $output == *"[3] バックアップ（サービスを十数分停止する）"* ]] || { echo "$output"; return 1; }
+  [ "$status" -eq 0 ] && [[ $output == *"[5] バックアップ（サービスを十数分停止する）"* ]] || { echo "$output"; return 1; }
   [ ! -s "$CX_CALLS" ]
 }
 
@@ -231,10 +240,12 @@ menu_screen() {
   # status; backup; upgrade to a named version; load the second bundle listed; upgrade to the
   # latest (the query, then the version it names); upgrade from the package listed; load from a
   # typed relative path; a choice not listed; Enter in a question goes back; quit.
-  menu_run en $'1\n3\n2\n2\n1.13.2\n2\n4\n2\n2\n1\n1\n2\n3\n1\n\n4\n3\nsub/x.tar\n9\n2\n\n0' "$dir"
+  menu_run en $'1\n2\n3\n5\n4\n2\n1.13.2\n2\n6\n2\n4\n1\n1\n4\n3\n1\n\n6\n3\nsub/x.tar\n9\n4\n\n0' "$dir"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   diff "$CX_CALLS" - <<C || { echo "$output"; return 1; }
 status 
+start
+stop
 backup 
 upgrade 1.13.2 --images-from source
 load $dir/custodexa-images-1.13.2-amd64.tar
@@ -280,7 +291,7 @@ STATUS
 @test "menu latest queries once and image source EOF starts no command" {
   fake_commands
   package_state
-  menu_run en $'2\n1\n2\n0'
+  menu_run en $'4\n1\n2\n0'
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(wc -l <"$CX_QUERIES")" -eq 1 ]
   grep -qxF 'upgrade 1.14.0 --images-from source' "$CX_CALLS"
@@ -318,7 +329,7 @@ STATUS
   for l in $LANGS; do
     run "$ROOT/custodexa.sh" --help --lang "$l"
     has_switch "--help $l"
-    for c in install upgrade status backup load; do
+    for c in install upgrade status start stop backup load; do
       run "$ROOT/custodexa.sh" "$c" --help --lang "$l"
       has_switch "$c --help $l"
     done
@@ -326,13 +337,13 @@ STATUS
   # The English help names the other two languages in their own script too.
   run "$ROOT/custodexa.sh" --help --lang en
   [[ $output == *"Traditional Chinese"* && $output == *"Japanese"* ]] || { echo "$output"; return 1; }
-  # The menu's Help: [3] when not installed, [5] when installed.
+  # The menu's Help: [3] when not installed, [7] when installed.
   fake_commands
   menu_run en $'3\n0'
   has_switch "menu help, not installed"
   package_state
   for l in $LANGS; do
-    menu_run "$l" $'5\n0'
+    menu_run "$l" $'7\n0'
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     has_switch "menu help $l"
   done

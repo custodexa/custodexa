@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,7 +91,7 @@ func setupPlanErrorEnv(t *testing.T) *planErrorFixture {
 		{"shared-host", "10.8.0.1", &f.sharedAssetID},
 		{"plain-host", "10.8.0.2", &f.plainAssetID},
 	} {
-		a, cerr := assetSvc.Create(&asset.CreateAssetRequest{
+		a, cerr := assetSvc.Create(context.Background(), &asset.CreateAssetRequest{
 			Name: spec.name, Protocol: model.ProtocolSSH, Host: spec.host, Port: 22,
 			Username: "ops", Password: "dedicated-pw", CreatedBy: 1,
 		})

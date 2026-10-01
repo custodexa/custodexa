@@ -109,7 +109,7 @@ func sharedBatchRequest(username, credentialName string, ids ...uint) *ChangeSec
 // addHost 建一台 ssh 資產（含預設帳號憑證），回傳資產 id 與帳號 id
 func (f *batchFixture) addHost(t *testing.T, name, host, username string) (uint, uint) {
 	t.Helper()
-	a, err := f.assets.Create(&CreateAssetRequest{
+	a, err := f.assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: username, Password: "old-" + name, CreatedBy: 1,
 	})

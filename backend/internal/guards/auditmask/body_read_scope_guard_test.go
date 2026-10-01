@@ -20,6 +20,9 @@ import (
 var rawRequestBodyReaders = map[string]string{
 	"internal/agentmcp/entry.go":       "MCP JSON-RPC preflight restores the bounded request body for the SDK; HTTP middleware retains default-deny body masking, entry details include only tool/reason/time, and the tool ledger independently strips secrets before Redact",
 	"internal/middleware/audit_log.go": "審計中介層本體——它就是那個讀 body 再套遮罩的地方",
+	"internal/api/asset_import_handler.go": "POST /assets/import 與 /assets/import/preview：JSON 列須 DisallowUnknownFields" +
+		"（夾帶秘密或帳號名欄即整批拒收，gin binding 表達不了），預檢另收 CSV 原文；" +
+		"課責不靠 request_body 而靠交易內逐台的建立稽核列，加上 handler 補的 import_source／import_count",
 	"internal/api/key_management_handler.go": "POST /keys/rewrap：KEK 材料不進 gin binding" +
 		"（避免明文停留在結構體），本文全為金鑰材料，遮罩後無可放行內容",
 	"internal/api/seal_handler.go": "POST /seal/unseal：解封材料早於認證系統可用，" +

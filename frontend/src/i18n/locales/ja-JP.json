@@ -962,7 +962,138 @@
     "rotationSshPort": "変更用 SSH ポート",
     "rotationSshPortHint": "このホストの OpenSSH 経由で PowerShell によるパスワード変更を行う際の接続ポート（既定 22）",
     "windowsSsh": "Windows OpenSSH（PowerShell）",
-    "windowsSshNote": "このホストは Windows：パスワード変更は OpenSSH 経由で PowerShell を実行します。オフ＝POSIX コマンドで変更"
+    "windowsSshNote": "このホストは Windows：パスワード変更は OpenSSH 経由で PowerShell を実行します。オフ＝POSIX コマンドで変更",
+    "bulk": {
+      "entry": "一括追加",
+      "title": "資産の一括追加",
+      "stepFill": "資産を入力",
+      "stepCheck": "チェック",
+      "stepDone": "完了",
+      "modeForm": "オンライン入力",
+      "modeCsv": "CSV をアップロード",
+      "fieldHelp": "項目の説明",
+      "footerCount": "計 {total} 台 · うち {pending} 台はログイン資格情報が未指定",
+      "addRow": "行を追加",
+      "addRows10": "10 行追加",
+      "duplicateRow": "行を複製",
+      "portDefault": "{port}（既定）",
+      "credentialLater": "後で指定（作成後に設定）",
+      "credentialCleared": "クリアしました：新しいプロトコルと互換性がありません",
+      "notApplicable": "—",
+      "downloadTemplate": "CSV テンプレートをダウンロード",
+      "templateHint": "Excel で入力し、「CSV UTF-8（コンマ区切り）」で保存してください。",
+      "credentialHint": "ログイン資格情報には資格情報ライブラリの「ID」を入力します。空欄の場合は後で指定します。",
+      "noSecretHint": "ファイルにパスワードや秘密鍵の列を含めないでください。",
+      "dropzone": "CSV ファイルをここにドロップ、またはクリックして選択",
+      "dropzoneLimit": ".csv のみ、1 MB 以内、最大 500 台",
+      "loadedBanner": "{file} から {count} 行を読み込みました。表で直接修正してから「チェック」を押してください。",
+      "replaceConfirm": "表の {count} 行が置き換えられます。新しいファイルを読み込みますか？",
+      "replace": "置き換える",
+      "check": "チェック",
+      "checking": "チェック中…",
+      "allPassed": "{total} 台すべてチェックに合格しました。うち {pending} 台はログイン資格情報が未指定のため、設定するまで接続できません。",
+      "hasErrors": "{total} 台中 {invalid} 台に修正が必要です。修正後にもう一度「チェック」を押してください。すべて合格するまで一部だけ取り込まれることはありません。",
+      "stale": "内容が変更されました。再チェックしてください",
+      "filterAll": "すべて {n}",
+      "filterInvalid": "要修正 {n}",
+      "filterValid": "合格 {n}",
+      "errorList": "問題一覧",
+      "colLine": "行",
+      "colField": "項目",
+      "colValue": "入力値",
+      "colProblem": "問題",
+      "downloadErrors": "問題一覧をダウンロード（CSV）",
+      "importN": "{total} 台の資産を取り込む",
+      "confirm": "{total} 台の資産を作成します（うち {pending} 台はログイン資格情報が未指定）。一括で処理され、1 台でも失敗した場合は何も作成されません。",
+      "confirmOk": "取り込む",
+      "importing": "取り込み中…ウィンドウを閉じないでください",
+      "done": "{total} 台の資産を作成しました。",
+      "donePending": "{pending} 台はログイン資格情報が未指定です",
+      "viewPending": "資格情報未指定の資産を表示",
+      "stateChanged": "チェック後にデータが変更されました（同名の資産が作成された等）。資産は作成されていません。表示された行を修正して再チェックしてください。",
+      "emptyTable": "資産を 1 台以上入力してください",
+      "closeConfirm": "閉じると入力済みの {count} 行が失われます。閉じますか？",
+      "fieldCleared": "クリアしました：このプロトコルでは使用しません",
+      "dbTlsDefault": "クライアント既定",
+      "dbTlsDisable": "暗号化しない",
+      "dbTlsRequire": "暗号化（証明書を検証しない）",
+      "dbTlsVerifyCa": "暗号化し証明書を検証",
+      "dbTlsVerifyFull": "暗号化し証明書とホスト名を検証",
+      "rdpSecurityAuto": "自動ネゴシエーション",
+      "rdpSecurityNla": "NLA",
+      "rdpSecurityTls": "TLS",
+      "caAfterImport": "サーバーが自己署名またはプライベート CA を使用している場合は、取り込み後に編集画面で CA 証明書を貼り付けてください。貼り付けないと証明書の検証で接続に失敗します。",
+      "doneCaHint": "{count} 台は CA 未設定のまま証明書検証が有効です。プライベート CA の場合は編集画面で追加してください。",
+      "stepDownload": "テンプレートをダウンロード",
+      "stepUpload": "ファイルをアップロード",
+      "viewFieldHelp": "項目の説明を表示",
+      "helpColumn": "列名",
+      "helpRequired": "必須",
+      "helpDesc": "説明",
+      "helpExample": "例",
+      "requiredYes": "はい",
+      "requiredNo": "いいえ",
+      "requiredK8s": "k8s は必須",
+      "back": "戻る",
+      "fields": {
+        "name": {
+          "desc": "100 文字以内。既存の資産やファイル内の他の行と同じ名前は使えません",
+          "example": "web-prod-01"
+        },
+        "protocol": {
+          "desc": "ssh rdp vnc mysql postgres redis mssql k8s。大文字小文字は区別せず、小文字で保存",
+          "example": "ssh"
+        },
+        "host": {
+          "desc": "255 文字以内。mssql ではカンマ不可",
+          "example": "10.0.1.15"
+        },
+        "port": {
+          "desc": "整数 1–65535。空欄はプロトコル既定のポート（ssh 22、rdp 3389、vnc 5900、mysql 3306、postgres 5432、redis 6379、mssql 1433、k8s 6443）",
+          "example": "22"
+        },
+        "credential_id": {
+          "desc": "共有資格情報の ID（正の整数、先頭に # を 1 つ付けても可、#12＝12）。空欄は後で設定",
+          "example": "12"
+        },
+        "tags": {
+          "desc": "カンマ区切り（引用符は Excel が付けます）。既存のタグ規則と上限が適用されます",
+          "example": "prod,web"
+        },
+        "nodes": {
+          "desc": "ノードのフルパス。階層は「 / 」で区切ります（一覧の表示と同じ）。複数のノードは ; で区切り、既存ノードと完全一致が必要です",
+          "example": "本社 / ルームA;アプリ"
+        },
+        "description": {
+          "desc": "500 文字以内",
+          "example": "公開サイト"
+        },
+        "access_policy": {
+          "desc": "open、reason、approval のいずれか。空欄はグローバル設定に従います",
+          "example": "approval"
+        },
+        "db_name": {
+          "desc": "mysql、postgres、redis、mssql 用。128 文字以内",
+          "example": "appdb"
+        },
+        "k8s_namespace": {
+          "desc": "k8s 用。空欄不可",
+          "example": "prod"
+        },
+        "rdp_security": {
+          "desc": "rdp 用。nla または tls。空欄は従来どおり自動ネゴシエーション",
+          "example": "nla"
+        },
+        "db_tls_mode": {
+          "desc": "mysql、postgres、redis、mssql 用。disable、require、verify-ca、verify-full のいずれか。空欄はクライアント既定。verify-ca または verify-full で自己署名またはプライベート CA のサーバーは、取り込み後に編集画面で CA 証明書を貼り付けてください",
+          "example": "require"
+        }
+      }
+    },
+    "credentialPending": "資格情報未設定",
+    "credentialPendingTooltip": "ログイン資格情報が未設定です。管理者に「編集 → アカウント」での設定を依頼してください。",
+    "credentialPendingTooltipAdmin": "ログイン資格情報が未設定です。「編集 → アカウント」で共有資格情報を選ぶか、この資産専用のアカウントを追加してください。",
+    "filterCredentialPending": "資格情報未設定のみ"
   },
   "sessions": {
     "headerDesc": "アクティブな接続の監視と履歴の確認。AI エージェントは人に代わって操作する自動化プログラムです。",
@@ -2828,7 +2959,7 @@
   "credentials": {
     "description": "ログイン認証情報はすべてここにあります。専用のものは資産とともに作られ、共用のものはここで名前を付けて複数の資産に割り当てます。",
     "create": "共用認証情報を追加",
-    "searchPlaceholder": "名称またはアカウント名",
+    "searchPlaceholder": "名前・ユーザー名・ID で検索",
     "scope": "種別",
     "colName": "名称",
     "colScope": "種別",
@@ -2982,7 +3113,10 @@
     "usernameUnset": "（未設定）",
     "filterSecretType": "形式",
     "filterRotationState": "変更状況",
-    "filterSearch": "検索"
+    "filterSearch": "検索",
+    "colId": "ID",
+    "colIdTooltip": "資産の一括取り込みでは「credential_id」列にこの ID を入力します",
+    "copyId": "ID をコピー"
   },
   "notFound": {
     "title": "ページが見つかりません",
@@ -3225,6 +3359,25 @@
     "CONFLICT_ALERT_RULE_NAME": "アラートルール名は既に存在します",
     "CONFLICT_APPROVER_SCOPE_EXISTS": "承認範囲は既に存在します",
     "CONFLICT_ASSET_NAME": "資産名は既に存在します",
+    "VALIDATION_ASSET_IMPORT_ENCODING": "ファイルが UTF-8 ではありません。「CSV UTF-8（コンマ区切り）」で保存し直してからアップロードしてください",
+    "VALIDATION_ASSET_IMPORT_TOO_LARGE": "取り込み内容が上限の 1 MB を超えています",
+    "VALIDATION_ASSET_IMPORT_TOO_MANY_ROWS": "取り込みデータが上限の {max} 行を超えています",
+    "VALIDATION_ASSET_IMPORT_EMPTY": "取り込むデータ行がありません",
+    "VALIDATION_ASSET_IMPORT_CSV_MALFORMED": "CSV の形式に誤りがあります（{line} 行目付近）。引用符が対になっているか確認してください",
+    "VALIDATION_ASSET_IMPORT_HEADER": "見出しの列「{column}」は使用できません（不明、重複、または必須列の欠落）。テンプレートに合わせて見出しを修正してください",
+    "VALIDATION_ASSET_IMPORT_SECRET_FIELD": "取り込みデータにパスワード・秘密鍵・ユーザー名の列（「{column}」）は含められません。その列を削除してから送信し直してください",
+    "VALIDATION_ASSET_IMPORT_ROWS_INVALID": "チェックに合格しなかった行があります。資産は作成されていません",
+    "CONFLICT_ASSET_IMPORT_STATE_CHANGED": "チェック後にデータが変更されました。資産は作成されていません。再チェックしてください",
+    "VALIDATION_ASSET_IMPORT_FIELD_REQUIRED": "この項目は必須です",
+    "VALIDATION_ASSET_IMPORT_FIELD_TOO_LONG": "長すぎます（最大 {max} 文字）",
+    "VALIDATION_ASSET_IMPORT_PORT": "ポートは 1〜65535 の整数で指定してください",
+    "VALIDATION_ASSET_IMPORT_FIELD_FORMAT": "形式が正しくありません（制御文字は使用できません。資格情報 ID は正の整数です）",
+    "VALIDATION_ASSET_IMPORT_FIELD_NOT_APPLICABLE": "この項目はこのプロトコルでは使用しません。空欄にしてください",
+    "CONFLICT_ASSET_IMPORT_NAME_IN_BATCH": "{other_line} 行目と名前が重複しています",
+    "NOTFOUND_ASSET_IMPORT_NODE_PATH": "パス「{path}」に一致するノードが一つに定まりません",
+    "VALIDATION_ASSET_USERNAME_REQUIRED": "このプロトコルにはユーザー名が必要です",
+    "VALIDATION_ASSET_K8S_NAMESPACE_REQUIRED": "K8s 資産には namespace が必要です",
+    "VALIDATION_ASSET_SFTP_USERNAME_REQUIRED": "SFTP ファイル転送を有効にするには、対象ホストの SSH ユーザー名が必要です",
     "CONFLICT_ASSET_NODE_NAME": "同じ階層に同名のノードが既に存在します",
     "CONFLICT_AUTHORIZATION_EXISTS": "この権限はすでに存在します",
     "CONFLICT_BREAK_GLASS_ALREADY_REVIEWED": "この緊急接続の事後レビューは完了しています",

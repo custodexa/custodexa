@@ -56,7 +56,7 @@ func newCredentialServices(t *testing.T) (*AssetService, *AssetAccountService, *
 // newSSHAsset 建一台不帶任何憑證來源的 SSH 資產（零掛載）。
 func newSSHAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	a, err := assets.Create(&CreateAssetRequest{
+	a, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: "seed", Password: "seed-pw", CreatedBy: 1,
 	})
@@ -67,7 +67,7 @@ func newSSHAsset(t *testing.T, assets *AssetService, name, host string) *model.A
 // newBareAsset 建一台零掛載的資產（VNC 不強制 username）。
 func newBareAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	a, err := assets.Create(&CreateAssetRequest{
+	a, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolVNC, Host: host, Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)

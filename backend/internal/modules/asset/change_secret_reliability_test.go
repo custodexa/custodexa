@@ -67,7 +67,7 @@ func setupChangeSecretFixture(t *testing.T, username, password string) *csFixtur
 	assets, err := NewAssetService(codec, "localhost", 4822, audit.NewTxSink())
 	require.NoError(t, err)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "target", Protocol: model.ProtocolSSH, Host: host, Port: port,
 		Username: username, Password: password, CreatedBy: 1,
 	})

@@ -87,7 +87,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 改狀態的子命令互斥且不在中斷時自行復原
 
-會改變狀態的子命令 SHALL 互斥執行，取不到鎖即以拒絕結束。中斷（Ctrl-C、終端斷線）時腳本 SHALL 只記錄步驟並印出恢復指令，SHALL NOT 自動回退或復原；下次執行發現上次中斷時 SHALL 先印出能完成該次中斷的恢復指令，該子命令在處理前拒絕再跑（install 冪等，得直接重跑）。`load` 只載入並比對映像，中斷的 `load` SHALL NOT 阻擋任何子命令，包含再次執行 `load`；`status` SHALL 在提醒中列出中斷的 `load` 與重跑指令。stdin 不是終端又未帶 `--yes` 時，任何確認點 SHALL 以拒絕結束而不等待。
+會改變狀態的子命令（包含 `start`／`stop`）SHALL 互斥執行，取不到鎖即以拒絕結束。中斷（Ctrl-C、終端斷線）時腳本 SHALL 只記錄步驟並印出恢復指令，SHALL NOT 自動回退或復原；下次執行發現上次中斷時 SHALL 先印出能完成該次中斷的恢復指令，該子命令在處理前拒絕再跑（install 冪等，得直接重跑）。`load` 只載入並比對映像，中斷的 `load` SHALL NOT 阻擋任何子命令，包含再次執行 `load`；`status` SHALL 在提醒中列出中斷的 `load` 與重跑指令。`start`／`stop` SHALL 記錄獨立操作 log；其中斷 SHALL 顯示 `status` 與恢復用的 `start` 指令，但不得在 state 中留下會封鎖 `start` 的 in_progress 欄位。未完成的 install／upgrade／backup SHALL 在啟停前被拒並顯示既有恢復指令。stdin 不是終端又未帶 `--yes` 時，任何確認點 SHALL 以拒絕結束而不等待。
 
 #### Scenario: 非互動缺旗標
 - **WHEN** 在排程或管線中執行需要確認的子命令而未帶 `--yes`
@@ -96,6 +96,10 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 #### Scenario: load 中斷後
 - **WHEN** `load` 在 `docker load` 期間被中斷，之後執行 `status`、再執行同一個 `load`
 - **THEN** `status` 以警告列出中斷的 `load` 與重跑指令，重跑的 `load` 照常完成，其後的 `install` 不因該次中斷而被拒
+
+#### Scenario: stop 中斷後可恢復
+- **WHEN** `stop` 在部分容器停止後中斷，維運再執行 `start`
+- **THEN** `start` 不受 stop 的 in_progress 狀態阻擋，仍受互斥鎖保護並可使整組服務恢復
 
 ### Requirement: install 冪等並拒絕覆蓋既有部署
 
@@ -127,7 +131,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 終端機下不帶子命令顯示主選單
 
-stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、載入離線包、說明、離開；已安裝時列查看狀態、升級、備份、載入離線包、說明、離開。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。
+stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、載入離線包、說明、離開；已安裝時依序列查看狀態、啟動服務、停止服務、升級、備份、載入離線包、說明、離開。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。
 
 選單選「升級到最新版」SHALL 只顯示版本、可否升級及必要的驗證與資料變更警告，不顯示唯讀查詢專用的執行指令或「只查詢」尾段；同一次查詢的已核對目標用於後續升級。校驗和不符 SHALL 不給升級結論。任一端不是終端機或部署目錄判定不出時，SHALL 印出說明並以結束碼 2 結束；舊 git clone 部署 SHALL 依「部署根目錄與 compose 呼叫固定」拒絕。
 
@@ -146,6 +150,10 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 舊的 git clone 部署不進選單
 - **WHEN** 在終端機對舊的 git clone 部署目錄不帶子命令執行腳本
 - **THEN** 說明人工遷移或新安裝後還原的文件路徑，以結束碼 3 拒絕，不顯示選單
+
+#### Scenario: 選單啟停整組服務
+- **WHEN** 維運在已安裝部署的主選單選「停止服務」或「啟動服務」
+- **THEN** 選單執行對應子命令，沿用子命令的確認與檢查，結束後重新顯示主選單
 
 ### Requirement: 發行版下載引導腳本核對安裝包後交棒
 
@@ -202,3 +210,27 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 文件中的首次下載失敗
 - **WHEN** 維運照三語快速開始中的管線範例執行，而取得 `get-custodexa.sh` 的下載失敗
 - **THEN** 文件提供的 `pipefail` 用法使整段管線回報非零結束碼，且相鄰說明揭露覆寫來源的信任邊界
+
+### Requirement: 已安裝部署可控制整組服務
+
+已安裝的安裝包部署 SHALL 提供 `start` 與 `stop` 子命令，只作用於目前版本的整組服務，使用固定專案名、專案目錄、目前 compose 與部署 overlays。`stop` SHALL 先提示現有連線會中斷並要求確認；確認後沿用升級的稽核佇列排空判定，未知或逾時 SHALL 不停止服務。排空後 SHALL 停止整組服務並確認結果。`start` SHALL 啟動目前整組服務，最多等待 180 秒確認後端 `/health` 可回應；失敗 SHALL 提示查 `status` 與後端 log，不自動回退。已全部停止／已全部執行且後端就緒時，重複指令 SHALL 提示現狀並成功結束。兩者 SHALL 不切換版本、不執行備份、不變更容量門檻。
+
+#### Scenario: stop 前稽核佇列未知
+- **WHEN** 維運確認 `stop`，但無法判定仍在執行的後端之稽核佇列是否排空
+- **THEN** 指令失敗並指出服務未停止，不呼叫 compose stop
+
+#### Scenario: start 健康檢查逾時
+- **WHEN** `start` 已啟動容器，但後端在 180 秒內沒有健康回應
+- **THEN** 指令以失敗結束並提示 `status` 與 log，不自動停止容器
+
+### Requirement: 檔案大小按量級顯示
+
+管理腳本 SHALL 以共用的 bytes 顯示函式，對備份、升級、狀態和離線包大小自動選 KB／MB／GB；1024 為級距，GB 的換算與精度沿用既有狀態畫面。大小的字串格式 SHALL 只用於顯示，剩餘空間、備份估算及其門檻 SHALL 仍用原本的 bytes 數值比較。
+
+#### Scenario: 小型部署升級備份
+- **WHEN** 升級備份的資料庫檔為 MB 級
+- **THEN** 完成行顯示如 `0.3 MB`，不顯示 `0.0 GB`
+
+#### Scenario: 大型備份與空間判斷
+- **WHEN** 升級備份檔為 18.4 GiB，且備份位置可用 bytes 少於估算所需 bytes
+- **THEN** 大小顯示 `18.4 GB`，空間不足仍依 bytes 比較而拒絕

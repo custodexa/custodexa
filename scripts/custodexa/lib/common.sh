@@ -13,6 +13,18 @@ readonly CX_PROJECT=custodexa
 readonly CX_RECORDINGS_MODE="1000:0 2770"
 readonly CX_OVERLAY_NAMES="external-ingress external-database"
 
+# Display bytes using the existing GiB-as-GB convention. Switch to MB once a
+# tenth of a MB is visible, so a small backup can read "0.3 MB".
+cx_size_human() {
+  awk -v b="${1:-0}" 'BEGIN {
+    if (b >= 1073741824) { n = b / 1073741824; unit = "GB" }
+    else if (b >= 104858) { n = b / 1048576; unit = "MB" }
+    else { n = b / 1024; unit = "KB" }
+    if (n >= 100) printf "%.0f %s", n, unit
+    else printf "%.1f %s", n, unit
+  }'
+}
+
 # cx_load_libs <script dir>: source the other libraries next to this one.
 cx_load_libs() {
   local dir=$1 f

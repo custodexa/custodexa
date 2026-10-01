@@ -24,6 +24,29 @@
         <span v-else />
       </template>
 
+      <!-- 編號＝憑證主鍵：批次匯入資產時 credential_id 欄填的就是它，故放最左、等寬字 -->
+      <el-table-column
+        prop="id"
+        width="88"
+        sortable
+        data-test="credential-col-id"
+      >
+        <template #header>
+          <el-tooltip
+            :content="t('credentials.colIdTooltip')"
+            placement="top"
+          >
+            <span data-test="credential-col-id-header">{{ t('credentials.colId') }}</span>
+          </el-tooltip>
+        </template>
+        <template #default="{ row }">
+          <span
+            class="mono"
+            :data-test="`credential-id-${row.id}`"
+          >#{{ row.id }}</span>
+        </template>
+      </el-table-column>
+
       <el-table-column
         :label="t('credentials.colName')"
         min-width="130"

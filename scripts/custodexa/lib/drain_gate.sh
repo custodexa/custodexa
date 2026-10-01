@@ -77,30 +77,34 @@ cx_dg_manual() {
   cx_cmd "  wget -qO- ${hdr}http://localhost:8080/metrics | grep custodexa_audit_queue_depth"
 }
 
-# cx_dg_wait <step number>: the gate. 0 = go on; 1 = stopped here (the screen says why).
+# cx_dg_wait <step number> [service]: shared decision loop with the caller's progress text.
 cx_dg_wait() {
-  local n=$1 t0 depth last="" shown=0
+  local n=$1 mode=${2:-upgrade} t0 depth last="" shown=0
   t0=$(cx_now)
   case $(cx_br_backend) in
     stopped\ *)
       cx_log DRAIN "backend stopped: no queue"
-      cx_up_step_line SKIP "$n" "$(cx_msg dg_stopped)"
+      if [ "$mode" = service ]; then cx_line OK "$(cx_msg svc_drain_done)"
+      else cx_up_step_line SKIP "$n" "$(cx_msg dg_stopped)"; fi
       return 0
       ;;
     absent)
       cx_log DRAIN "backend container not found: no queue"
-      cx_up_step_line WARN "$n" "$(cx_msg dg_stopped)"
+      if [ "$mode" = service ]; then cx_line OK "$(cx_msg svc_drain_done)"
+      else cx_up_step_line WARN "$n" "$(cx_msg dg_stopped)"; fi
       return 0
       ;;
   esac
   while :; do
     if ! depth=$(cx_dg_depth); then
       cx_log DRAIN "metrics http=${CX_DG_CODE:-none} unreadable"
-      [ "$shown" = 0 ] || printf '\n'
+      [ "$shown" = 0 ] || { [ "$mode" = service ] || printf '\n'; }
       if cx_dg_sealed_empty; then
-        cx_up_step_line OK "$n" "$(cx_msg dg_sealed)"
+        if [ "$mode" = service ]; then cx_line OK "$(cx_msg svc_drain_done)"
+        else cx_up_step_line OK "$n" "$(cx_msg dg_sealed)"; fi
         return 0
       fi
+      if [ "$mode" = service ]; then cx_line FAIL "$(cx_msg svc_drain_fail)"; return 1; fi
       cx_up_step_line FAIL "$n" "$(cx_msg dg_unknown)"
       printf '%s\n\n' "$(cx_msg dg_unknown_detail)"
       cx_up_par "$(cx_msg dg_unknown_what "$CX_ROOT/custodexa.sh" "$(cx_status_lang_arg)")"
@@ -108,11 +112,16 @@ cx_dg_wait() {
     fi
     cx_log DRAIN "queue depth=$depth"
     if [ "$depth" = 0 ]; then
-      [ "$shown" = 0 ] || printf '%s\n' "$(cx_msg dg_left_next 0)"
-      cx_up_step_line OK "$n" "$(cx_msg dg_done)" "$(cx_duration $(($(cx_now) - t0)))"
+      if [ "$mode" = service ]; then cx_line OK "$(cx_msg svc_drain_done)"
+      else
+        [ "$shown" = 0 ] || printf '%s\n' "$(cx_msg dg_left_next 0)"
+        cx_up_step_line OK "$n" "$(cx_msg dg_done)" "$(cx_duration $(($(cx_now) - t0)))"
+      fi
       return 0
     fi
-    if [ "$shown" = 0 ]; then
+    if [ "$mode" = service ]; then
+      shown=1
+    elif [ "$shown" = 0 ]; then
       cx_up_step_line RUN "$n" "$(cx_msg dg_step)"
       printf '        %s' "$(cx_msg dg_left_first "$(cx_up_num "$depth")")"
       shown=1
@@ -121,8 +130,9 @@ cx_dg_wait() {
     fi
     last=$depth
     if [ $(($(cx_now) - t0)) -ge "$CX_DG_LIMIT" ]; then
-      printf '\n'
+      [ "$mode" = service ] || printf '\n'
       cx_log DRAIN "timeout depth=$depth"
+      if [ "$mode" = service ]; then cx_line FAIL "$(cx_msg svc_drain_fail)"; return 1; fi
       cx_up_step_line FAIL "$n" "$(cx_msg dg_timeout "$(cx_up_num "$depth")")"
       printf '\n'
       cx_up_par "$(cx_msg dg_timeout_what)"

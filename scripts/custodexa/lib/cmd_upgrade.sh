@@ -24,6 +24,8 @@
 . "${BASH_SOURCE[0]%/*}/drain_gate.sh"
 # shellcheck source=lib/stop_check.sh
 . "${BASH_SOURCE[0]%/*}/stop_check.sh"
+# shellcheck source=lib/health.sh
+. "${BASH_SOURCE[0]%/*}/health.sh"
 # shellcheck source=lib/upgrade_steps.sh
 . "${BASH_SOURCE[0]%/*}/upgrade_steps.sh"
 

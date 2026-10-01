@@ -23,6 +23,7 @@ func setupTagsDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(
 		&model.Asset{}, &model.AuditLog{}, &model.AssetGroup{}, &model.AssetNode{},
+		&model.AssetAccount{}, // 列表填待配憑證旗標會查掛載表
 	))
 	oldDB := database.DB
 	database.DB = db

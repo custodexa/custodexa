@@ -962,7 +962,138 @@
     "rotationSshPort": "改密 SSH 埠",
     "rotationSshPortHint": "經此主機的 OpenSSH 執行 PowerShell 改密時的連線埠（預設 22）",
     "windowsSsh": "Windows OpenSSH（PowerShell）",
-    "windowsSshNote": "此主機為 Windows：改密經 OpenSSH 執行 PowerShell。關閉＝以 POSIX 指令改密"
+    "windowsSshNote": "此主機為 Windows：改密經 OpenSSH 執行 PowerShell。關閉＝以 POSIX 指令改密",
+    "bulk": {
+      "entry": "批次新增",
+      "title": "批次新增資產",
+      "stepFill": "填寫資產",
+      "stepCheck": "檢查",
+      "stepDone": "完成",
+      "modeForm": "線上填寫",
+      "modeCsv": "上傳 CSV",
+      "fieldHelp": "欄位說明",
+      "footerCount": "共 {total} 台 · 其中 {pending} 台未指定登入憑證",
+      "addRow": "新增一列",
+      "addRows10": "新增 10 列",
+      "duplicateRow": "複製此列",
+      "portDefault": "{port}（預設）",
+      "credentialLater": "稍後指定（建立後於線上設定）",
+      "credentialCleared": "已清除：與新協定不相容",
+      "notApplicable": "—",
+      "downloadTemplate": "下載 CSV 範本",
+      "templateHint": "以 Excel 開啟填寫，存檔時選「CSV UTF-8（逗號分隔）」。",
+      "credentialHint": "登入憑證請填憑證庫中的「編號」，留空表示稍後再指定。",
+      "noSecretHint": "檔案不可含密碼或私鑰欄位。",
+      "dropzone": "拖曳 CSV 檔到這裡，或點擊選擇檔案",
+      "dropzoneLimit": "僅限 .csv，1 MB 以內，最多 500 台",
+      "loadedBanner": "已從 {file} 載入 {count} 列。可直接在表格中修正，修正後再按「檢查」。",
+      "replaceConfirm": "目前表格中的 {count} 列將被取代，確定要載入新檔案？",
+      "replace": "取代",
+      "check": "檢查",
+      "checking": "檢查中…",
+      "allPassed": "{total} 台全部通過檢查。其中 {pending} 台未指定登入憑證，建立後需於線上指定才能連線。",
+      "hasErrors": "{total} 台中有 {invalid} 台需要修正，修正後請再按「檢查」。全部通過才會匯入，不會只匯入一部分。",
+      "stale": "內容已變更，請重新檢查",
+      "filterAll": "全部 {n}",
+      "filterInvalid": "需修正 {n}",
+      "filterValid": "通過 {n}",
+      "errorList": "錯誤清單",
+      "colLine": "列",
+      "colField": "欄位",
+      "colValue": "填寫內容",
+      "colProblem": "問題",
+      "downloadErrors": "下載錯誤清單（CSV）",
+      "importN": "匯入 {total} 台資產",
+      "confirm": "將建立 {total} 台資產（其中 {pending} 台未指定登入憑證）。此操作會整批完成，任一台失敗則全部不建立。",
+      "confirmOk": "確認匯入",
+      "importing": "匯入中…請勿關閉視窗",
+      "done": "已建立 {total} 台資產。",
+      "donePending": "{pending} 台尚未指定登入憑證",
+      "viewPending": "查看未指定憑證的資產",
+      "stateChanged": "檢查後有資料被其他人變更（例如同名資產已建立），本次未建立任何資產。請依下列標示修正後重新檢查。",
+      "emptyTable": "請至少填寫一台資產",
+      "closeConfirm": "關閉後已填寫的 {count} 列將遺失，確定關閉？",
+      "fieldCleared": "已清除：不適用此協定",
+      "dbTlsDefault": "沿用預設",
+      "dbTlsDisable": "不加密",
+      "dbTlsRequire": "加密，不驗憑證",
+      "dbTlsVerifyCa": "加密並驗證憑證",
+      "dbTlsVerifyFull": "加密並驗證憑證與主機名",
+      "rdpSecurityAuto": "自動協商",
+      "rdpSecurityNla": "NLA",
+      "rdpSecurityTls": "TLS",
+      "caAfterImport": "伺服器若使用自簽或私有 CA，請於匯入後在編輯中貼上 CA 憑證，否則連線會在憑證驗證時失敗。",
+      "doneCaHint": "{count} 台設定為驗證憑證但未提供 CA，若使用私有 CA 請於編輯中補上。",
+      "stepDownload": "下載範本",
+      "stepUpload": "上傳檔案",
+      "viewFieldHelp": "查看欄位說明",
+      "helpColumn": "欄名",
+      "helpRequired": "必填",
+      "helpDesc": "說明",
+      "helpExample": "範例",
+      "requiredYes": "是",
+      "requiredNo": "否",
+      "requiredK8s": "k8s 必填",
+      "back": "返回",
+      "fields": {
+        "name": {
+          "desc": "≤100 字元；不得與既有資產或同批其他列同名",
+          "example": "web-prod-01"
+        },
+        "protocol": {
+          "desc": "ssh rdp vnc mysql postgres redis mssql k8s；不分大小寫，存小寫",
+          "example": "ssh"
+        },
+        "host": {
+          "desc": "≤255 字元；mssql 不得含逗號",
+          "example": "10.0.1.15"
+        },
+        "port": {
+          "desc": "整數 1–65535；留空＝協定預設埠（ssh 22、rdp 3389、vnc 5900、mysql 3306、postgres 5432、redis 6379、mssql 1433、k8s 6443）",
+          "example": "22"
+        },
+        "credential_id": {
+          "desc": "共用憑證編號，正整數，可帶一個前置 #（#12＝12）；留空＝待配憑證",
+          "example": "12"
+        },
+        "tags": {
+          "desc": "逗號分隔（Excel 會自動加引號）；套既有標籤正規化與上限",
+          "example": "prod,web"
+        },
+        "nodes": {
+          "desc": "節點全路徑，層級以「 / 」分隔（與列表顯示同形）；多個節點以 ; 分隔；須完全比對既有節點",
+          "example": "總部 / 機房A;應用"
+        },
+        "description": {
+          "desc": "≤500 字元",
+          "example": "前台網站"
+        },
+        "access_policy": {
+          "desc": "open reason approval；留空＝跟隨全域預設",
+          "example": "approval"
+        },
+        "db_name": {
+          "desc": "適用 mysql、postgres、redis、mssql。≤128 字元",
+          "example": "appdb"
+        },
+        "k8s_namespace": {
+          "desc": "適用 k8s。非空字串",
+          "example": "prod"
+        },
+        "rdp_security": {
+          "desc": "適用 rdp。nla 或 tls；留空＝沿現狀（自動協商）",
+          "example": "nla"
+        },
+        "db_tls_mode": {
+          "desc": "適用 mysql、postgres、redis、mssql。disable require verify-ca verify-full；留空＝沿用用戶端預設。選 verify-ca 或 verify-full 時，伺服器若使用自簽或私有 CA，請於匯入後在編輯中貼上 CA 憑證",
+          "example": "require"
+        }
+      }
+    },
+    "credentialPending": "待配憑證",
+    "credentialPendingTooltip": "尚未設定登入憑證。請管理員在「編輯 → 帳號」中指定。",
+    "credentialPendingTooltipAdmin": "尚未設定登入憑證。請在「編輯 → 帳號」中指定共用憑證或填寫這台專用的帳號。",
+    "filterCredentialPending": "只看待配憑證"
   },
   "sessions": {
     "headerDesc": "監控活動連線與檢視歷史記錄。AI agent 指代人操作的自動化程式。",
@@ -2828,7 +2959,7 @@
   "credentials": {
     "description": "所有登入憑證都在這裡。專用憑證隨資產建立，共用憑證在此命名後掛到多台資產。",
     "create": "新增共用憑證",
-    "searchPlaceholder": "名稱或帳號名",
+    "searchPlaceholder": "搜尋名稱、帳號名或編號",
     "scope": "範圍",
     "colName": "名稱",
     "colScope": "範圍",
@@ -2982,7 +3113,10 @@
     "usernameUnset": "（未設定）",
     "filterSecretType": "型別",
     "filterRotationState": "輪替狀態",
-    "filterSearch": "搜尋"
+    "filterSearch": "搜尋",
+    "colId": "編號",
+    "colIdTooltip": "批次匯入資產時，在「credential_id」欄填這個編號",
+    "copyId": "複製編號"
   },
   "notFound": {
     "title": "找不到您要的頁面",
@@ -3225,6 +3359,25 @@
     "CONFLICT_ALERT_RULE_NAME": "告警規則名稱已存在",
     "CONFLICT_APPROVER_SCOPE_EXISTS": "審核範圍已存在",
     "CONFLICT_ASSET_NAME": "資產名稱已存在",
+    "VALIDATION_ASSET_IMPORT_ENCODING": "檔案不是 UTF-8 編碼，請以「CSV UTF-8（逗號分隔）」格式另存後重新上傳",
+    "VALIDATION_ASSET_IMPORT_TOO_LARGE": "匯入內容超過 1 MB 上限",
+    "VALIDATION_ASSET_IMPORT_TOO_MANY_ROWS": "匯入資料超過 {max} 列上限",
+    "VALIDATION_ASSET_IMPORT_EMPTY": "沒有可匯入的資料列",
+    "VALIDATION_ASSET_IMPORT_CSV_MALFORMED": "CSV 格式錯誤（第 {line} 列附近），請檢查引號是否成對",
+    "VALIDATION_ASSET_IMPORT_HEADER": "表頭欄位「{column}」無法使用（無法辨識、重複或缺少必填欄），請依範本修正表頭",
+    "VALIDATION_ASSET_IMPORT_SECRET_FIELD": "匯入資料不可包含密碼、私鑰或帳號名欄位（「{column}」），請刪除該欄後重新送出",
+    "VALIDATION_ASSET_IMPORT_ROWS_INVALID": "有資料列未通過檢查，未建立任何資產",
+    "CONFLICT_ASSET_IMPORT_STATE_CHANGED": "檢查後資料已被變更，本次未建立任何資產，請重新檢查",
+    "VALIDATION_ASSET_IMPORT_FIELD_REQUIRED": "此欄為必填",
+    "VALIDATION_ASSET_IMPORT_FIELD_TOO_LONG": "長度超過上限（至多 {max} 字元）",
+    "VALIDATION_ASSET_IMPORT_PORT": "埠須為 1 至 65535 的整數",
+    "VALIDATION_ASSET_IMPORT_FIELD_FORMAT": "格式不正確（不可含控制字元；憑證編號須為正整數）",
+    "VALIDATION_ASSET_IMPORT_FIELD_NOT_APPLICABLE": "此欄不適用於該協定，請留空",
+    "CONFLICT_ASSET_IMPORT_NAME_IN_BATCH": "與第 {other_line} 列名稱重複",
+    "NOTFOUND_ASSET_IMPORT_NODE_PATH": "找不到唯一對應的節點路徑「{path}」",
+    "VALIDATION_ASSET_USERNAME_REQUIRED": "此協定需要使用者名稱",
+    "VALIDATION_ASSET_K8S_NAMESPACE_REQUIRED": "K8s 資產需要 namespace",
+    "VALIDATION_ASSET_SFTP_USERNAME_REQUIRED": "啟用 SFTP 檔案傳輸需要目標主機的 SSH 使用者名稱",
     "CONFLICT_ASSET_NODE_NAME": "同層已有同名節點",
     "CONFLICT_AUTHORIZATION_EXISTS": "授權已存在",
     "CONFLICT_BREAK_GLASS_ALREADY_REVIEWED": "此破窗連線已完成補審",

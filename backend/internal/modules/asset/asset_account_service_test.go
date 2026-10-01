@@ -57,7 +57,7 @@ func TestCreateAssetWritesDefaultAccountOnly(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-1", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
@@ -91,7 +91,7 @@ func TestCreateAssetWithoutCredentialsHasNoAccount(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "vnc-1", Protocol: model.ProtocolVNC, Host: "10.0.0.2", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestUpdateAssetWritesThroughToDefaultAccount(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-2", Protocol: model.ProtocolSSH, Host: "10.0.0.3", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
@@ -138,7 +138,7 @@ func TestUpdateAssetCreatesDefaultAccountWhenMissing(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "vnc-2", Protocol: model.ProtocolVNC, Host: "10.0.0.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func TestAccountCRUDAndDefaultInvariants(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-3", Protocol: model.ProtocolSSH, Host: "10.0.0.5", Port: 22,
 		Username: "root", Password: "rootpw", CreatedBy: 1,
 	})
@@ -221,12 +221,12 @@ func TestGetCredentialsRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	a1, err := assets.Create(&CreateAssetRequest{
+	a1, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "a1", Protocol: model.ProtocolSSH, Host: "10.0.0.8", Port: 22,
 		Username: "root", Password: "pw1", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	a2, err := assets.Create(&CreateAssetRequest{
+	a2, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "a2", Protocol: model.ProtocolSSH, Host: "10.0.0.9", Port: 22,
 		Username: "root", Password: "pw2", CreatedBy: 1,
 	})
@@ -254,7 +254,7 @@ func TestAccountUsernameValidation(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-4", Protocol: model.ProtocolSSH, Host: "10.0.0.10", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -275,7 +275,7 @@ func TestAccountAuditNeverContainsSecrets(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-5", Protocol: model.ProtocolSSH, Host: "10.0.0.11", Port: 22,
 		Username: "root", Password: "plain-secret", CreatedBy: 1,
 	})
@@ -323,7 +323,7 @@ func TestUpdatePasswordPinsAccountAcrossDefaultSwitch(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-6", Protocol: model.ProtocolSSH, Host: "10.0.0.12", Port: 22,
 		Username: "root", Password: "old-root-pw", CreatedBy: 1,
 	})
@@ -367,12 +367,12 @@ func TestUpdatePasswordRejectsForeignAccount(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	a1, err := assets.Create(&CreateAssetRequest{
+	a1, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "p1", Protocol: model.ProtocolSSH, Host: "10.0.0.13", Port: 22,
 		Username: "root", Password: "pw1", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	a2, err := assets.Create(&CreateAssetRequest{
+	a2, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "p2", Protocol: model.ProtocolSSH, Host: "10.0.0.14", Port: 22,
 		Username: "root", Password: "pw2", CreatedBy: 1,
 	})

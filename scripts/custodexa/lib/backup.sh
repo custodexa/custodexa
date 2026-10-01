@@ -26,11 +26,6 @@ CX_BK_NEED=0 CX_BK_FREE=0 CX_BK_FAILED_STEP=""
 # cx_bk_env <key>: the value in this deployment's .env as compose reads it (lib/env.sh cx_env_get).
 cx_bk_env() { cx_env_get "$CX_ROOT/.env" "$1"; }
 
-# cx_bk_gb <bytes>: "18.4 GB", "211 GB" (GiB, as status shows sizes).
-cx_bk_gb() {
-  awk -v b="${1:-0}" 'BEGIN { g = b / 1073741824; if (g >= 100) printf "%.0f GB", g; else printf "%.1f GB", g }'
-}
-
 cx_bk_du() { # <path>: bytes used, 0 when absent
   local out
   [ -e "$1" ] || { printf '0'; return 0; }

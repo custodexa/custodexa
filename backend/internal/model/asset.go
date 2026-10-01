@@ -75,6 +75,10 @@ type Asset struct {
 	NodeIDs   []uint   `gorm:"-" json:"node_ids,omitempty"`
 	NodePaths []string `gorm:"-" json:"node_paths,omitempty"`
 
+	// CredentialPending 待配憑證（唯讀推導，不落庫）：資產沒有任何未刪除的掛載。
+	// 列表以一次批次存在查詢填入（asset.FillCredentialPending）
+	CredentialPending bool `gorm:"-" json:"credential_pending"`
+
 	// 存取政策段位：open/reason/approval；
 	// NULL＝走全域預設政策鍵 access_policy_default。政策掛資產本身，
 	// 與分組/節點等組織結構徹底解耦（多歸屬樹化前提）

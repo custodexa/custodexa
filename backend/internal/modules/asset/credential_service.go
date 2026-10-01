@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
@@ -437,12 +438,16 @@ func (s *CredentialService) List(_ context.Context, filter CredentialFilter) ([]
 	}
 	if filter.Search != "" {
 		pattern := "%" + strings.ToLower(filter.Search) + "%"
+		// 編號比對：輸入為純數字或「#數字」時同時比對憑證 id（批次匯入填的就是這個編號）。
+		// 非數字輸入以 0 帶入，id 恆不為 0，該條件不會命中
+		idTerm := credentialSearchID(filter.Search)
 		q = q.Where(`LOWER(credentials.name) LIKE ? OR LOWER(credentials.username) LIKE ?
+			OR credentials.id = ?
 			OR (credentials.scope = ? AND credentials.id IN (
 				SELECT aa.credential_id FROM asset_accounts aa
 				JOIN assets a ON a.id = aa.asset_id AND a.deleted_at IS NULL
 				WHERE aa.deleted_at IS NULL AND LOWER(a.name) LIKE ?))`,
-			pattern, pattern, model.CredentialScopeDedicated, pattern)
+			pattern, pattern, idTerm, model.CredentialScopeDedicated, pattern)
 	}
 	var creds []model.Credential
 	if err := q.Order("scope ASC, username ASC, id ASC").Find(&creds).Error; err != nil {
@@ -732,6 +737,19 @@ func assertSharedNameFree(tx *gorm.DB, name string, exceptID uint) error {
 		return ErrCredentialNameExists
 	}
 	return nil
+}
+
+// credentialSearchID 搜尋字串為純數字或「#數字」時回傳該編號，否則回 0
+func credentialSearchID(search string) uint64 {
+	term := strings.TrimPrefix(strings.TrimSpace(search), "#")
+	if term == "" {
+		return 0
+	}
+	id, err := strconv.ParseUint(term, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return id
 }
 
 // assertNoActiveRotation 輪替進行中一律拒絕操作者宣告與管理類寫入路徑。

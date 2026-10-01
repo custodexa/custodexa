@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"testing"
 
 	"github.com/custodexa/backend/internal/model"
@@ -18,7 +19,7 @@ func TestCreateMSSQLRequiresUsername(t *testing.T) {
 	service, err := NewAssetService(aesColumnCodec(t, key), "localhost", 4822, audit.NewTxSink())
 	assert.NoError(t, err)
 
-	_, err = service.Create(&CreateAssetRequest{
+	_, err = service.Create(context.Background(), &CreateAssetRequest{
 		Name:      "mssql-no-user",
 		Protocol:  model.ProtocolMSSQL,
 		Host:      "10.0.0.9",

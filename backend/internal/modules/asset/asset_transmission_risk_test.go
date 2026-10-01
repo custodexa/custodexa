@@ -23,7 +23,7 @@ func newTransmissionRiskAssetDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Asset{}, &model.AssetGroup{}, &model.AssetNode{}, &model.SecurityPolicy{},
+	if err := db.AutoMigrate(&model.Asset{}, &model.AssetAccount{}, &model.AssetGroup{}, &model.AssetNode{}, &model.SecurityPolicy{},
 		&model.SyslogSetting{}, &model.NotificationChannel{}, &model.AuditLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

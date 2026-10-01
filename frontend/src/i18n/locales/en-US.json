@@ -962,7 +962,138 @@
     "rotationSshPort": "Rotation SSH port",
     "rotationSshPortHint": "Port used when rotating through this host's OpenSSH with PowerShell (default 22)",
     "windowsSsh": "Windows OpenSSH (PowerShell)",
-    "windowsSshNote": "This host is Windows: rotation runs PowerShell over OpenSSH. Off = rotate with POSIX commands"
+    "windowsSshNote": "This host is Windows: rotation runs PowerShell over OpenSSH. Off = rotate with POSIX commands",
+    "bulk": {
+      "entry": "Bulk add",
+      "title": "Bulk add assets",
+      "stepFill": "Enter assets",
+      "stepCheck": "Check",
+      "stepDone": "Done",
+      "modeForm": "Enter online",
+      "modeCsv": "Upload CSV",
+      "fieldHelp": "Field reference",
+      "footerCount": "{total} assets · {pending} without a login credential",
+      "addRow": "Add row",
+      "addRows10": "Add 10 rows",
+      "duplicateRow": "Duplicate row",
+      "portDefault": "{port} (default)",
+      "credentialLater": "Set later (after creation)",
+      "credentialCleared": "Cleared: not compatible with the new protocol",
+      "notApplicable": "—",
+      "downloadTemplate": "Download CSV template",
+      "templateHint": "Fill it in with Excel and save as \"CSV UTF-8 (Comma delimited)\".",
+      "credentialHint": "For the login credential, enter its ID from the credential library. Leave it blank to set it later.",
+      "noSecretHint": "The file must not contain password or private key columns.",
+      "dropzone": "Drop a CSV file here, or click to choose",
+      "dropzoneLimit": ".csv only, up to 1 MB and 500 assets",
+      "loadedBanner": "Loaded {count} rows from {file}. Fix anything directly in the table, then select Check.",
+      "replaceConfirm": "The {count} rows in the table will be replaced. Load the new file?",
+      "replace": "Replace",
+      "check": "Check",
+      "checking": "Checking…",
+      "allPassed": "All {total} assets passed. {pending} have no login credential and can't be connected until one is set.",
+      "hasErrors": "{invalid} of {total} assets need fixing. Fix them and select Check again. Nothing is imported until every row passes.",
+      "stale": "Content changed. Check again.",
+      "filterAll": "All {n}",
+      "filterInvalid": "Needs fixing {n}",
+      "filterValid": "Passed {n}",
+      "errorList": "Problems",
+      "colLine": "Row",
+      "colField": "Field",
+      "colValue": "Entered value",
+      "colProblem": "Problem",
+      "downloadErrors": "Download problems (CSV)",
+      "importN": "Import {total} assets",
+      "confirm": "This creates {total} assets ({pending} without a login credential). It runs as one batch: if any asset fails, none are created.",
+      "confirmOk": "Import",
+      "importing": "Importing… keep this window open",
+      "done": "Created {total} assets.",
+      "donePending": "{pending} still need a login credential",
+      "viewPending": "View assets without a credential",
+      "stateChanged": "Something changed after the check (for example, an asset with the same name was created). No assets were created. Fix the marked rows and check again.",
+      "emptyTable": "Enter at least one asset",
+      "closeConfirm": "Close and discard {count} rows?",
+      "fieldCleared": "Cleared: not used by this protocol",
+      "dbTlsDefault": "Client default",
+      "dbTlsDisable": "No encryption",
+      "dbTlsRequire": "Encrypt, don't verify certificate",
+      "dbTlsVerifyCa": "Encrypt and verify certificate",
+      "dbTlsVerifyFull": "Encrypt, verify certificate and hostname",
+      "rdpSecurityAuto": "Negotiate automatically",
+      "rdpSecurityNla": "NLA",
+      "rdpSecurityTls": "TLS",
+      "caAfterImport": "If the server uses a self-signed or private CA, paste the CA certificate in Edit after importing. Otherwise connections fail certificate verification.",
+      "doneCaHint": "{count} assets verify certificates without a CA set. Add one in Edit if they use a private CA.",
+      "stepDownload": "Download the template",
+      "stepUpload": "Upload the file",
+      "viewFieldHelp": "View field reference",
+      "helpColumn": "Column",
+      "helpRequired": "Required",
+      "helpDesc": "Description",
+      "helpExample": "Example",
+      "requiredYes": "Yes",
+      "requiredNo": "No",
+      "requiredK8s": "Required for k8s",
+      "back": "Back",
+      "fields": {
+        "name": {
+          "desc": "Up to 100 characters; must not match an existing asset or another row in the file",
+          "example": "web-prod-01"
+        },
+        "protocol": {
+          "desc": "ssh rdp vnc mysql postgres redis mssql k8s; case-insensitive, stored in lowercase",
+          "example": "ssh"
+        },
+        "host": {
+          "desc": "Up to 255 characters; no commas for mssql",
+          "example": "10.0.1.15"
+        },
+        "port": {
+          "desc": "Integer 1–65535; blank uses the protocol default (ssh 22, rdp 3389, vnc 5900, mysql 3306, postgres 5432, redis 6379, mssql 1433, k8s 6443)",
+          "example": "22"
+        },
+        "credential_id": {
+          "desc": "Shared credential ID, a positive integer, optionally prefixed with # (#12 = 12); blank means the credential is set later",
+          "example": "12"
+        },
+        "tags": {
+          "desc": "Comma-separated (Excel adds the quotes); the usual tag rules and limits apply",
+          "example": "prod,web"
+        },
+        "nodes": {
+          "desc": "Full node path with levels separated by \" / \" (as shown in the list); separate several nodes with ;; must match an existing node exactly",
+          "example": "HQ / Room A;Apps"
+        },
+        "description": {
+          "desc": "Up to 500 characters",
+          "example": "Public website"
+        },
+        "access_policy": {
+          "desc": "open, reason, or approval; blank follows the global setting",
+          "example": "approval"
+        },
+        "db_name": {
+          "desc": "For mysql, postgres, redis, mssql. Up to 128 characters",
+          "example": "appdb"
+        },
+        "k8s_namespace": {
+          "desc": "For k8s. Must not be blank",
+          "example": "prod"
+        },
+        "rdp_security": {
+          "desc": "For rdp. nla or tls; blank keeps automatic negotiation",
+          "example": "nla"
+        },
+        "db_tls_mode": {
+          "desc": "For mysql, postgres, redis, mssql. disable, require, verify-ca, or verify-full; blank uses the client default. With verify-ca or verify-full, if the server uses a self-signed or private CA, paste the CA certificate in Edit after importing",
+          "example": "require"
+        }
+      }
+    },
+    "credentialPending": "Credential needed",
+    "credentialPendingTooltip": "No login credential yet. Ask an administrator to set one under Edit → Accounts.",
+    "credentialPendingTooltipAdmin": "No login credential yet. Under Edit → Accounts, pick a shared credential or add one for this asset.",
+    "filterCredentialPending": "Only assets needing a credential"
   },
   "sessions": {
     "headerDesc": "Monitor active sessions and review history. An AI agent is an automated program acting for a person.",
@@ -2828,7 +2959,7 @@
   "credentials": {
     "description": "Every login credential lives here. Dedicated credentials come with an asset; shared credentials are named here and then attached to several assets.",
     "create": "New shared credential",
-    "searchPlaceholder": "Name or account name",
+    "searchPlaceholder": "Search name, username, or ID",
     "scope": "Scope",
     "colName": "Name",
     "colScope": "Scope",
@@ -2982,7 +3113,10 @@
     "usernameUnset": "(not set)",
     "filterSecretType": "Type",
     "filterRotationState": "Rotation",
-    "filterSearch": "Search"
+    "filterSearch": "Search",
+    "colId": "ID",
+    "colIdTooltip": "When bulk importing assets, put this ID in the \"credential_id\" column",
+    "copyId": "Copy ID"
   },
   "notFound": {
     "title": "Page not found",
@@ -3225,6 +3359,25 @@
     "CONFLICT_ALERT_RULE_NAME": "Alert rule name already exists",
     "CONFLICT_APPROVER_SCOPE_EXISTS": "Approver scope already exists",
     "CONFLICT_ASSET_NAME": "Asset name already exists",
+    "VALIDATION_ASSET_IMPORT_ENCODING": "The file isn't UTF-8 encoded. Save it as \"CSV UTF-8 (Comma delimited)\" and upload it again.",
+    "VALIDATION_ASSET_IMPORT_TOO_LARGE": "The import is larger than the 1 MB limit.",
+    "VALIDATION_ASSET_IMPORT_TOO_MANY_ROWS": "The import has more than the {max}-row limit.",
+    "VALIDATION_ASSET_IMPORT_EMPTY": "There are no rows to import.",
+    "VALIDATION_ASSET_IMPORT_CSV_MALFORMED": "The CSV is malformed near row {line}. Check that quotes are paired.",
+    "VALIDATION_ASSET_IMPORT_HEADER": "The header column \"{column}\" can't be used (unrecognized, duplicated, or a required column is missing). Fix the header to match the template.",
+    "VALIDATION_ASSET_IMPORT_SECRET_FIELD": "Imports can't include password, private key, or username columns (\"{column}\"). Remove that column and try again.",
+    "VALIDATION_ASSET_IMPORT_ROWS_INVALID": "Some rows didn't pass the check. No assets were created.",
+    "CONFLICT_ASSET_IMPORT_STATE_CHANGED": "Data changed after the check. No assets were created. Check again.",
+    "VALIDATION_ASSET_IMPORT_FIELD_REQUIRED": "This field is required.",
+    "VALIDATION_ASSET_IMPORT_FIELD_TOO_LONG": "Too long (up to {max} characters).",
+    "VALIDATION_ASSET_IMPORT_PORT": "The port must be a whole number from 1 to 65535.",
+    "VALIDATION_ASSET_IMPORT_FIELD_FORMAT": "Invalid format (no control characters; the credential ID must be a positive whole number).",
+    "VALIDATION_ASSET_IMPORT_FIELD_NOT_APPLICABLE": "This field doesn't apply to this protocol. Leave it blank.",
+    "CONFLICT_ASSET_IMPORT_NAME_IN_BATCH": "Same name as row {other_line}.",
+    "NOTFOUND_ASSET_IMPORT_NODE_PATH": "No single node matches the path \"{path}\".",
+    "VALIDATION_ASSET_USERNAME_REQUIRED": "This protocol requires a username.",
+    "VALIDATION_ASSET_K8S_NAMESPACE_REQUIRED": "K8s assets require a namespace.",
+    "VALIDATION_ASSET_SFTP_USERNAME_REQUIRED": "Turning on SFTP file transfer requires the target host's SSH username.",
     "CONFLICT_ASSET_NODE_NAME": "A node with the same name already exists at this level",
     "CONFLICT_AUTHORIZATION_EXISTS": "This authorization already exists",
     "CONFLICT_BREAK_GLASS_ALREADY_REVIEWED": "This break-glass session has already been reviewed",

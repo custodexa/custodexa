@@ -42,7 +42,7 @@ cx_menu_applies() {
 cx_menu_actions() {
   case $CX_MENU_KIND in
     none) printf '%s' "install load_first help" ;;
-    package) printf '%s' "status upgrade backup load help" ;;
+    package) printf '%s' "status start stop upgrade backup load help" ;;
   esac
 }
 
@@ -191,6 +191,8 @@ cx_menu_do() {
       cx_menu_run install "${CX_MENU_IMAGE_FLAG[@]}"
       ;;
     status) cx_menu_run status ;;
+    start) cx_menu_run start ;;
+    stop) cx_menu_run stop ;;
     backup) cx_menu_run backup ;;
     upgrade) cx_menu_upgrade || return 0 ;;
     load | load_first)

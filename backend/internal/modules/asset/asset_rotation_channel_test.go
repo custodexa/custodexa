@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -149,14 +150,14 @@ func TestRotationChannelValidationRejectedAtServiceBoundary(t *testing.T) {
 	setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	_, err := svc.Create(&CreateAssetRequest{
+	_, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "mysql-winrm", Protocol: model.ProtocolMySQL, Host: "10.0.0.9", Port: 3306,
 		Username: "app", RotationChannel: model.RotationChannelWindowsWinRM,
 		WinrmScheme: model.WinrmSchemeHTTP,
 	})
 	require.ErrorIs(t, err, ErrInvalidRotationChannel, "mysql 資產不得設定 Windows 改密通道")
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "rdp-a", Protocol: model.ProtocolRDP, Host: "10.0.0.10", Port: 3389,
 		Username: "Administrator",
 	})
@@ -183,7 +184,7 @@ func TestRotationChannelClearedOnProtocolChange(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "win-1", Protocol: model.ProtocolRDP, Host: "10.0.0.11", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
@@ -253,7 +254,7 @@ func TestRotationChannelExplicitClearIsNotReportedAsServerCleared(t *testing.T) 
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "win-2", Protocol: model.ProtocolRDP, Host: "10.0.0.12", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTP,
@@ -287,7 +288,7 @@ func TestAssetListNeverExposesWinrmCA(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "win-3", Protocol: model.ProtocolRDP, Host: "10.0.0.13", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,
@@ -295,7 +296,7 @@ func TestAssetListNeverExposesWinrmCA(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = svc.Create(&CreateAssetRequest{
+	_, err = svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "ssh-3", Protocol: model.ProtocolSSH, Host: "10.0.0.14", Port: 22,
 		Username: "root",
 	})
@@ -368,7 +369,7 @@ func TestCreateAndUpdateResponsesCarryRotationProjection(t *testing.T) {
 	svc := newAllowedDBService(t)
 	ca := testCAPEM(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "win-proj", Protocol: model.ProtocolRDP, Host: "10.0.0.21", Port: 3389,
 		Username:        "Administrator",
 		RotationChannel: model.RotationChannelWindowsWinRM, WinrmScheme: model.WinrmSchemeHTTPS,

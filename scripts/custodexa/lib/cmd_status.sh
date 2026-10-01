@@ -59,9 +59,6 @@ cmd_status_days_ago() { # <recorded time>: whole days until now, empty when unre
   t=$(date -d "$1" +%s 2>/dev/null) || return 0
   printf '%s' $(((CX_STATUS_NOW - t) / 86400))
 }
-cmd_status_gb() { # <bytes>: "16.9 GB", "175 GB"
-  awk -v b="${1:-0}" 'BEGIN { g = b / 1073741824; if (g >= 100) printf "%.0f GB", g; else printf "%.1f GB", g }'
-}
 cmd_status_du() { # <folder>: bytes used, 0 when absent; a part that cannot be read is left out
   local out
   [ -d "$1" ] || { printf '0'; return 0; }
@@ -262,7 +259,7 @@ cmd_status_backup() {
     cmd_status_under "$(cx_state_get last_backup.external_ref)"
   else
     size=$(cx_state_get last_backup.size_bytes)
-    cmd_status_under "$CX_ROOT/$(cx_state_get last_backup.dir)/${size:+    $(cmd_status_gb "$size")}"
+    cmd_status_under "$CX_ROOT/$(cx_state_get last_backup.dir)/${size:+    $(cx_size_human "$size")}"
   fi
 }
 
@@ -300,8 +297,8 @@ cmd_status_disk() {
   free=$(cx_free_bytes "$CX_ROOT")
   [ "${free:-0}" -ge $((CX_STATUS_MIN_FREE * CX_GIB)) ] || mark=WARN
   cmd_status_section disk
-  cmd_status_line "$mark" "$(cx_msg status_disk "$(cmd_status_gb "$(cmd_status_du "$data")")" \
-    "$(cmd_status_gb "$(cmd_status_du "$CX_ROOT/backups")")" "$(cmd_status_gb "${free:-0}")")"
+  cmd_status_line "$mark" "$(cx_msg status_disk "$(cx_size_human "$(cmd_status_du "$data")")" \
+    "$(cx_size_human "$(cmd_status_du "$CX_ROOT/backups")")" "$(cx_size_human "${free:-0}")")"
 }
 
 # ---------- reminders ----------

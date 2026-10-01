@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ func TestSFTPConnectRejectsZeroAccountAsset(t *testing.T) {
 	setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	vnc, err := assets.Create(&asset.CreateAssetRequest{
+	vnc, err := assets.Create(context.Background(), &asset.CreateAssetRequest{
 		Name: "vnc-zero-sftp", Protocol: model.ProtocolVNC, Host: "10.0.1.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)

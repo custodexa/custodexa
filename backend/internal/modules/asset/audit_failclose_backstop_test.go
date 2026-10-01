@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -602,7 +603,7 @@ func TestFailCloseAssetCreateRollsBackOnAuditFailure(t *testing.T) {
 	inj.attach(db)
 
 	inj.control("建立資產（含預設帳號）", func() error {
-		_, err := assets.Create(&CreateAssetRequest{
+		_, err := assets.Create(context.Background(), &CreateAssetRequest{
 			Name: "srv-ok", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 			Username: "root", Password: "s3cret", CreatedBy: 1,
 		})
@@ -613,7 +614,7 @@ func TestFailCloseAssetCreateRollsBackOnAuditFailure(t *testing.T) {
 	}
 
 	inj.arm()
-	_, err := assets.Create(&CreateAssetRequest{
+	_, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "srv-boom", Protocol: model.ProtocolSSH, Host: "10.0.0.2", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})
@@ -1043,7 +1044,7 @@ func TestAsyncSinkSubstitutionMakesFailCloseTestsGreen(t *testing.T) {
 
 func mustCreateAsset(t *testing.T, assets *AssetService, name, host string) *model.Asset {
 	t.Helper()
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: name, Protocol: model.ProtocolSSH, Host: host, Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})

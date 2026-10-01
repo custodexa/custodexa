@@ -1,8 +1,8 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-09-30（外部群組映射新增角色明確路由、使用者群組規則、共用字典備註、用途確認及兩類計數）
+> 最後更新：2026-10-01（資產批次新增：`POST /assets/import/preview` 預檢與 `POST /assets/import` 整批建立；資產列表加 `credential_pending` 欄與同名篩選參數；單筆建立完全沒有憑證來源時建零掛載資產）
+> 前次更新：2026-09-30（外部群組映射新增角色明確路由、使用者群組規則、共用字典備註、用途確認及兩類計數）
 > 前次更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`；登入回應與 `/auth/me` 的 `UserInfo` 加產品版本欄 `product_version`）
-> 前次更新：2026-09-28（登入回應與 `/auth/me` 的 `UserInfo` 加「我的 agent」入口資格兩欄；建立使用者的 email 依主體種類區分，agent 選填；OIDC 提供者：Entra issuer 不觸發 groups scope 確認；帳本參數留存規則與調閱端點、sensitive_reveal 告警與政策鍵；規則主體、agent 稽核／報告／熔斷、審核歷史與指令完整性；agent 前端佔位／解除路由；agent 通道唯讀契約及前端接線）
 
 > 資料來源：`backend/cmd/server/main.go`（組裝根）, `backend/cmd/server/stage1.go`／`stage2.go`（兩段啟動）, `backend/internal/api/*.go`,
 > `backend/internal/sshproxy/handler.go`, `backend/internal/proxy/handler.go`,
@@ -28,7 +28,7 @@
 | 合規對照 | 1 | `/api/v1/compliance` | 設定現值對各生效政策組的判定快照（唯讀，admin＋auditor） |
 | 排程時刻預覽 | 1 | `/api/v1/schedules` | 由後端解析排程字串並回下次幾個執行時刻（admin；不讀寫任何資料） |
 | 金鑰管理 | 4 | `/api/v1/keys` | 金鑰清冊/DEK 輪替/KEK 重包/退役材料清理（admin） |
-| 資產 | 17 | `/api/v1/assets` | CRUD、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
+| 資產 | 19 | `/api/v1/assets` | CRUD、批次新增（預檢與整批建立）、連線測試、K8s pod 列表與檔案進出、標籤清單與治理、資產帳號 CRUD＋設預設 |
 | 帳號憑證庫 | 15 | `/api/v1/credentials`、`/api/v1/assets/:id/accounts/:accountId/credential` | 憑證 CRUD、範圍轉換、直接寫入密文、掛載與卸載、更換掛載憑證、整組改密與逐台補跑、單台脫離共用（全數 admin＋`credential:manage`） |
 | Host Key | 2 | `/api/v1/assets/:id/host-key` | TOFU host key 檢視/重置 |
 | 檔案管理（SFTP） | 5 | `/api/v1/assets/:id/files` | SSH 資產檔案列表/上下傳/建目錄/刪除 |
@@ -146,6 +146,8 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/assets/:id/k8s/upload` | always |
 | POST | `/api/v1/assets/:id/test-connection` | always |
 | GET | `/api/v1/assets/:id/transfer-capabilities` | always |
+| POST | `/api/v1/assets/import` | always |
+| POST | `/api/v1/assets/import/preview` | always |
 | GET | `/api/v1/assets/tags` | always |
 | POST | `/api/v1/assets/tags/delete` | always |
 | POST | `/api/v1/assets/tags/rename` | always |
@@ -1563,10 +1565,15 @@ GET /api/v1/assets
 | `include_subtree` | bool | 含子樹（預設 true；顯式 `false` 僅直掛） |
 | `ungrouped` | bool | 僅列未掛載任何節點的資產 |
 | `tags` | string | 標籤篩選（逗號分隔多值 AND；整詞比對、大小寫不敏感、`%`/`_`/`\` 跳脫不作萬用字元；空 token 丟棄、超 20 個 400；**僅 admin/auditor**——非特權角色帶此參數 400，不靜默忽略） |
+| `credential_pending` | bool | `true`＝只列待配憑證資產（沒有任何未刪除的掛載列）；**僅 admin/auditor**——非特權角色帶此參數回 400 `VALIDATION_BAD_PARAMS`，不靜默忽略 |
 | `page` | int | 頁碼（從 1 開始，預設 1） |
 | `page_size` | int | 每頁數量（預設 20） |
 
 **回應** (200): `{"data": [Asset], "total": N, "page": 1, "page_size": 20}`（兩分支同格式，篩選與分頁在授權分支同樣生效）
+
+**待配憑證**：兩分支的每筆 Asset 皆帶唯讀推導欄 `credential_pending`（bool）——該資產沒有任何未刪除的掛載列時為 `true`，
+不落庫、以一次批次存在查詢填入。待配憑證資產的連線、撥測、檔案傳輸一律以既有的「無可用帳號」語義拒絕；
+於資產編輯掛上共用憑證或建立專用帳號後即恢復為 `false`。建立回應同樣帶此欄；`GET /assets/:id` 不填（恆為 `false`）。
 
 ### 標籤清單與治理
 
@@ -1682,8 +1689,9 @@ POST /api/v1/assets
 要設定它請走資產帳號端點 `POST /assets/:id/accounts`。掛載列的語義見「資產帳號（憑證掛載列）」。
 
 **協議別驗證**:
-- `username` 必填於 ssh/rdp/mysql/postgres/mssql；vnc/redis/k8s 僅密碼（K8s 為 Bearer Token，走 `password` 欄加密儲存）。
-  掛既有共用憑證時，帳號名取自該憑證，不必也不得在頂層另給
+- `username`：有登入秘密時必填於 ssh/rdp/mysql/postgres/mssql（缺則 400 `VALIDATION_ASSET_USERNAME_REQUIRED`）；vnc/redis/k8s 僅密碼（K8s 為 Bearer Token，走 `password` 欄加密儲存）。
+  掛既有共用憑證時，帳號名取自該憑證，不必也不得在頂層另給。**完全沒有憑證來源**（`credential_id`、內嵌 `credential`、
+  頂層 `username`／`password`／`private_key` 皆空）時任何協定皆可建立，結果為零掛載的待配憑證資產
 - mssql 的 `host` **不得含逗號**（`-S host,port` 的分隔語義），違反回 `VALIDATION_ASSET_MSSQL_HOST_COMMA`
 - `protocol=k8s` 時 `k8s_namespace` 必填（連線時選 pod；`k8s_pod`/`k8s_container` 為相容舊資料的選填）
 - `db_name` 僅 mysql/postgres/redis/mssql 有意義（空＝連預設庫）；`db_tls_mode`: `''`/`disable`/`require`/`verify-ca`/`verify-full`
@@ -1712,6 +1720,111 @@ POST /api/v1/assets
   **列表、建立與更新的回應都不回 `winrm_ca_cert` 本體**，只有 `GET /assets/:id` 回傳（供編輯表單回填）。改密的執行語義見改密 API。
 
 **回應** (201): Asset JSON。**錯誤**: 400 協議無效、409 名稱重複。
+
+### 批次新增（預檢與整批建立）
+
+```
+POST /api/v1/assets/import/preview   （唯讀預檢）
+POST /api/v1/assets/import           （整批建立）
+```
+
+**權限**: `asset:create`（admin）；agent 主體一律拒絕。兩端點的逐列規則同一套，預檢與寫入呼叫同一個驗證函式，
+每列最後再走一次單筆建立的規則——批次不另立較寬或較嚴的建立條件（唯一例外見下方「不適用欄」）。
+
+**預檢請求**（本文上限 1 MiB、資料列上限 500）：
+- `Content-Type: text/csv`：CSV 原文。編碼須為 UTF-8（檔首 BOM 可有可無），非 UTF-8 整份拒收、不猜編碼；
+  逗號分隔、RFC 4180 雙引號；第 1 列為表頭，比對時去前後空白、不分大小寫、容欄名前綴 `*`（範本以 `*` 標必填）；
+  全空列略過；列號採 Excel 列號：表頭＝第 1 列，之後每筆記錄（含全空列）各佔一列，儲存格內換行不另計。欄名即下表 13 欄，
+  `credential_id` 欄可帶一個前置 `#`，`nodes` 欄以 `;` 分隔多個節點全路徑。
+- `Content-Type: application/json`：`{"source": "csv" | "form", "rows": [ImportRow]}`；`source` 省略＝`form`，只用於稽核標記。
+
+**ImportRow**（未知欄位整批拒收）:
+| 欄位 | 型別 | 規則 |
+|------|------|------|
+| `line` | int\|null | 畫面列號；null 時以陣列序（自 1 起）回報 |
+| `name` | string | 必填；≤100 字元、不含控制字元；不得與既有資產或同批其他列同名 |
+| `protocol` | string | 必填；`ssh`/`rdp`/`vnc`/`mysql`/`postgres`/`redis`/`mssql`/`k8s`，不分大小寫、存小寫 |
+| `host` | string | 必填；≤255 字元、不含控制字元；mssql 不得含逗號 |
+| `port` | int\|null | 1–65535；null＝協定預設埠（ssh 22、rdp 3389、vnc 5900、mysql 3306、postgres 5432、redis 6379、mssql 1433、k8s 6443） |
+| `credential_id` | int\|null | 共用憑證編號（憑證主鍵）；null＝待配憑證，建出零掛載資產 |
+| `tags` | string | 逗號分隔；先依全庫既有寫法、再依同批第一次出現的寫法歸一，最後套標籤上限 |
+| `node_ids` | int[] | 節點 id |
+| `node_paths` | string[] | 選填；以全路徑（層級以 ` / ` 分隔）指定節點，須完全比對唯一的既有節點。與 `node_ids` 同時帶時以路徑為準，且解析結果須與 `node_ids` 一致 |
+| `description` | string | ≤500 字元 |
+| `access_policy` | string | `open`/`reason`/`approval`；空＝跟隨全域預設 |
+| `db_name` | string | 僅 mysql/postgres/redis/mssql；≤128 字元 |
+| `k8s_namespace` | string | 僅 k8s，k8s 時必填 |
+| `rdp_security` | string | 僅 rdp；空/`nla`/`tls`，須小寫 |
+| `db_tls_mode` | string | 僅 mysql/postgres/redis/mssql；空/`disable`/`require`/`verify-ca`/`verify-full`，須小寫。驗證檔位不附 CA 允許（CSV 不收 PEM，CA 於匯入後在資產編輯中補；補上前連線在憑證驗證失敗，不會降級為不驗證） |
+
+**不適用欄**：欄位不適用該列協定卻有值，回列錯誤 `VALIDATION_ASSET_IMPORT_FIELD_NOT_APPLICABLE`。單筆建立對此寬鬆（存了不生效），
+批次刻意從嚴——試算表裡非適用欄出現值多半是整列錯欄或協定填錯，靜默忽略會讓使用者以為設了其實沒生效。
+
+**不收秘密**：CSV 表頭或 JSON 列帶 `password`、`private_key`、`passphrase`、`secret`、`token`、`username`、`credential`
+（或欄名含這些片段者）即整份 400 `VALIDATION_ASSET_IMPORT_SECRET_FIELD`，`params.column` 為欄名、不回顯值，不寫任何資料。
+帳號名一律取自所指的共用憑證。
+
+**預檢回應** (200，唯讀，只留一筆請求稽核):
+```json
+{
+  "ok": false,
+  "summary": { "total": 3, "valid": 1, "invalid": 2, "credential_pending": 1 },
+  "rows": [
+    {
+      "index": 1, "line": 3,
+      "values": { "line": 3, "name": "db-01", "protocol": "mysql", "host": "10.0.0.21", "port": null,
+                  "credential_id": null, "tags": "", "node_ids": [], "description": "", "access_policy": "",
+                  "db_name": "", "k8s_namespace": "", "rdp_security": "", "db_tls_mode": "" },
+      "raw": { "port": "33o6" },
+      "resolved": { "port_defaulted": false, "node_paths": [], "tags": "" },
+      "errors": [ { "field": "port", "code": "VALIDATION_ASSET_IMPORT_PORT", "params": {} } ]
+    }
+  ]
+}
+```
+- `values`：型別化後的值。埠留空時已代入協定預設埠，並以 `resolved.port_defaulted=true` 標示；CSV 中無法轉型的格（非整數的埠或憑證編號）在 `values` 為 null、原文放 `raw`。
+- `resolved`：系統將如何解讀這一列——`credential`（所指憑證的 `id`／`name`／`username`，不含秘密；憑證存在時才有）、`node_paths`（節點解析後的全路徑）、`tags`（實際會落庫的寫法）。
+- 同列多錯全部列出；`errors[].field` 為欄名（節點錯誤為 `nodes`），`code` 為機器碼、`params` 依碼而定（如同批重名帶 `other_line`、節點路徑帶 `path`、長度帶 `max`）。
+- `summary.credential_pending` 計 `credential_id` 為 null 的列數（不論該列是否有錯）。
+
+**寫入請求**：只收 `application/json`，形狀同預檢。以預檢回應每列的 `values` 送回，節點同時帶 `node_ids` 與 `node_paths`
+（以選擇器指定節點的列，`node_paths` 取 `resolved.node_paths`）：帶路徑的列在交易內以當下全路徑重算比對，
+預檢後節點被改名或搬移即整批不建立。
+
+**交易語義**（無半成功）:
+1. 交易外逐列完整重驗（與預檢同一函式）。預檢後才出現的同名資產等狀態變更若在此被發現，與其他列錯誤一樣回 400 `VALIDATION_ASSET_IMPORT_ROWS_INVALID`，回應另帶 `summary` 與 `rows`（與預檢同形的逐列報告），不開交易、零寫入。
+2. 依固定順序持資產名稱鎖（與單筆建立、改名共用）與節點樹結構鎖，開**單一交易**；交易內依憑證 id 遞增鎖定所指憑證列，逐列重驗名稱唯一、節點存在與路徑、憑證（存在、共用範圍、協定族相容、未在改密、上一輪已收斂），再寫入資產、預設掛載、帳號稽核、節點掛載與節點稽核。
+3. 交易內重驗遇到競態 → 整筆回滾，409 `CONFLICT_ASSET_IMPORT_STATE_CHANGED`，`rows` 只含出事的列（列形狀同預檢，`errors` 標原因）。兩種回應皆零寫入；畫面皆回「檢查」步驟並標示錯誤列，供修正後重新檢查。
+4. 成功 → 201 `{"created": 37, "credential_pending": 12, "asset_ids": [101, 102, …]}`。
+
+**稽核**：每台資產各一筆建立稽核、掛共用憑證者另有帳號建立稽核、有節點者另有節點掛載稽核——與單筆建立同形，操作者為呼叫者；
+整批請求列另帶 `import_source`（`csv`／`form`）與 `import_count`（建立台數，失敗為 0）。失敗（400／409）只留請求列。
+
+**錯誤碼**:
+| 碼 | HTTP | 層級 | 說明 |
+|----|------|------|------|
+| `VALIDATION_ASSET_IMPORT_ENCODING` | 400 | 檔案 | 非 UTF-8 |
+| `VALIDATION_ASSET_IMPORT_TOO_LARGE` | 400 | 檔案 | 本文超過 1 MiB |
+| `VALIDATION_ASSET_IMPORT_TOO_MANY_ROWS` | 400 | 檔案 | 超過 500 列（`params.max`） |
+| `VALIDATION_ASSET_IMPORT_EMPTY` | 400 | 檔案 | 沒有資料列 |
+| `VALIDATION_ASSET_IMPORT_CSV_MALFORMED` | 400 | 檔案 | 引號不成對等（`params.line`） |
+| `VALIDATION_ASSET_IMPORT_HEADER` | 400 | 檔案 | 表頭欄位無法使用（`params.column`；原因 `unknown`／`duplicate`／`missing` 在回應頂層 `reason`） |
+| `VALIDATION_ASSET_IMPORT_SECRET_FIELD` | 400 | 檔案 | 帶秘密或帳號名欄（`params.column`） |
+| `VALIDATION_BAD_REQUEST` | 400 | 檔案 | JSON 格式錯誤、未知的非秘密欄、`source` 值域外、或寫入端點非 JSON |
+| `VALIDATION_ASSET_IMPORT_ROWS_INVALID` | 400 | 寫入 | 有列未通過，附逐列報告 |
+| `CONFLICT_ASSET_IMPORT_STATE_CHANGED` | 409 | 寫入 | 交易內重驗失敗，已整筆回滾，附出事的列 |
+| `VALIDATION_ASSET_IMPORT_FIELD_REQUIRED` | — | 列 | 必填欄空白 |
+| `VALIDATION_ASSET_IMPORT_FIELD_TOO_LONG` | — | 列 | 超過長度（`params.max`） |
+| `VALIDATION_ASSET_IMPORT_PORT` | — | 列 | 埠非整數或不在 1–65535 |
+| `VALIDATION_ASSET_IMPORT_FIELD_FORMAT` | — | 列 | 含控制字元，或 `credential_id` 不是正整數 |
+| `VALIDATION_ASSET_IMPORT_FIELD_NOT_APPLICABLE` | — | 列 | 欄位不適用該協定 |
+| `CONFLICT_ASSET_IMPORT_NAME_IN_BATCH` | — | 列 | 同批重名，兩列都標（`params.other_line`） |
+| `NOTFOUND_ASSET_IMPORT_NODE_PATH` | — | 列 | 節點路徑查無、不唯一或與 `node_ids` 不符（`params.path`） |
+
+列層級另沿用單筆建立的既有碼：`CONFLICT_ASSET_NAME`、`VALIDATION_ASSET_PROTOCOL`、`VALIDATION_ASSET_ACCESS_POLICY`、
+`VALIDATION_ASSET_RDP_SECURITY`、`VALIDATION_ASSET_DB_TLS_MODE`、`VALIDATION_ASSET_MSSQL_HOST_COMMA`、`VALIDATION_ASSET_K8S_NAMESPACE_REQUIRED`、
+`VALIDATION_TAG_*`、`NOTFOUND_ASSET_NODE`、`NOTFOUND_CREDENTIAL`、`RULE_CREDENTIAL_DEDICATED_SINGLE_BINDING`、
+`RULE_CREDENTIAL_PROTOCOL_MISMATCH`、`RULE_CREDENTIAL_ROTATION_ACTIVE`、`RULE_CREDENTIAL_OUT_OF_SYNC`。
 
 ### 詳情 / 更新 / 刪除
 

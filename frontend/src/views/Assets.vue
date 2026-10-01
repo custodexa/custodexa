@@ -20,6 +20,14 @@
         </el-button>
         <el-button
           v-if="isAdmin"
+          data-test="bulk-entry"
+          @click="bulkVisible = true"
+        >
+          <el-icon><Rows3 /></el-icon>
+          {{ $t('assets.bulk.entry') }}
+        </el-button>
+        <el-button
+          v-if="isAdmin"
           type="primary"
           @click="handleCreate"
         >
@@ -141,6 +149,14 @@
               :value="name"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="isAdminOrAuditor">
+          <el-switch
+            v-model="filterForm.credential_pending"
+            :active-text="$t('assets.filterCredentialPending')"
+            data-test="filter-credential-pending"
+            @change="handleFilter"
+          />
         </el-form-item>
         <el-form-item>
           <el-button
@@ -328,16 +344,27 @@
           <el-table-column
             v-if="isAdminOrAuditor"
             :label="$t('common.status')"
-            width="100"
+            width="150"
           >
             <template #default="{ row }">
               <div class="status-stack">
-                <el-tag
-                  size="small"
-                  :type="row.active ? 'success' : 'info'"
-                >
-                  {{ row.active ? $t('common.enabled') : $t('common.disabled') }}
-                </el-tag>
+                <!-- 待配憑證是待辦不是故障：中性灰，不用警示色 -->
+                <div class="status-tags">
+                  <el-tag
+                    size="small"
+                    :type="row.active ? 'success' : 'info'"
+                  >
+                    {{ row.active ? $t('common.enabled') : $t('common.disabled') }}
+                  </el-tag>
+                  <el-tag
+                    v-if="row.credential_pending"
+                    size="small"
+                    class="ot-tag-neutral"
+                    data-test="credential-pending-tag"
+                  >
+                    {{ $t('assets.credentialPending') }}
+                  </el-tag>
+                </div>
                 <span
                   v-if="isTesting(row.id)"
                   class="conn-badge testing"
@@ -397,6 +424,14 @@
               >
                 {{ $t('assets.noPermission') }}
               </el-tag>
+              <el-tag
+                v-if="row.active !== false && row.credential_pending"
+                size="small"
+                class="ot-tag-neutral pending-tag"
+                data-test="credential-pending-tag"
+              >
+                {{ $t('assets.credentialPending') }}
+              </el-tag>
             </template>
           </el-table-column>
           <!-- 操作欄一律 fixed right：一般 user 欄寬總和逾 1140px，常見視窗下
@@ -411,8 +446,28 @@
             <template #default="{ row }">
               <!-- 連線入口三態：狀態由伺服端
                  access_state 單一事實源；按鈕僅是提示，點擊後仍以政策閘回應為準 -->
+              <!-- 待配憑證：沒有任何掛載，執行期必被零帳號閘拒絕——
+                 對所有角色（含 admin 的角色短路）停用連線與申請入口。
+                 成因優先序：停用 > 待配憑證 > 權限 -->
+              <el-tooltip
+                v-if="isCredentialPending(row)"
+                :content="credentialPendingTooltip"
+                placement="top"
+              >
+                <span data-test="connect-credential-pending">
+                  <el-button
+                    type="primary"
+                    size="small"
+                    link
+                    disabled
+                  >
+                    <el-icon><Cable /></el-icon>
+                    {{ $t('common.connect') }}
+                  </el-button>
+                </span>
+              </el-tooltip>
               <el-button
-                v-if="isPendingRequest(row)"
+                v-else-if="isPendingRequest(row)"
                 type="warning"
                 size="small"
                 link
@@ -577,6 +632,16 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 批次新增：線上填寫與上傳 CSV 共用一張表，檢查通過才整批匯入 -->
+    <AssetBulkDialog
+      v-if="isAdmin"
+      v-model="bulkVisible"
+      :node-options="nodeSelectOptions"
+      :tag-names="tagOptions.map((tag) => tag.name)"
+      @imported="onBulkImported"
+      @view-pending="showCredentialPending"
+    />
 
     <!-- 編輯資產：右側抽屜，帳號表內嵌（帳號與憑證都在同一個畫面上處理完） -->
     <el-drawer
@@ -777,6 +842,7 @@ import {
   CircleAlert,
   Tag,
   LoaderCircle,
+  Rows3,
 } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -795,6 +861,7 @@ import AssetBasicFields from '@/components/asset/AssetBasicFields.vue'
 import AssetCredentialSection from '@/components/asset/AssetCredentialSection.vue'
 import AssetAdvancedFields from '@/components/asset/AssetAdvancedFields.vue'
 import AssetEditDrawerContent from '@/components/asset/AssetEditDrawerContent.vue'
+import AssetBulkDialog from '@/components/asset/bulk/AssetBulkDialog.vue'
 import { createAccessRequest, breakGlassConnect } from '@/api/accessRequests'
 import { accessPolicyEnumLabels } from '@/utils/policyFormat'
 import { riskLabel } from '@/utils/transportDisplay'
@@ -833,6 +900,8 @@ const filterForm = reactive({
   protocol: '',
   active: '',
   tags: [],
+  // 只看待配憑證（僅 admin／auditor；一般 user 帶此參數伺服端 400）
+  credential_pending: false,
 })
 
 // 標籤：清單供篩選/表單/治理共用；
@@ -1239,6 +1308,8 @@ const fetchAssetList = async () => {
         isAdminOrAuditor.value && filterForm.tags.length
           ? filterForm.tags.join(',')
           : undefined,
+      credential_pending:
+        isAdminOrAuditor.value && filterForm.credential_pending ? true : undefined,
     }
 
     // 節點過濾
@@ -1271,6 +1342,7 @@ const handleResetFilter = () => {
   filterForm.protocol = ''
   filterForm.active = ''
   filterForm.tags = []
+  filterForm.credential_pending = false
   pagination.page = 1
   fetchAssetList()
 }
@@ -1309,6 +1381,10 @@ const canConnect = (asset) => {
   if (asset.active === false) {
     return false
   }
+  // 待配憑證先於角色短路：沒有掛載的資產誰都連不上
+  if (asset.credential_pending) {
+    return false
+  }
   // 僅 Admin 保留角色短路（政策豁免帶審計、角色自動 connect 為真語義）；
   // auditor 執行期無角色自動 connect，落列表 permission 欄判定
   //（無顯式 grant 即禁用，不再顯示假入口）
@@ -1330,6 +1406,14 @@ const needsRequest = (asset) =>
 
 const isPendingRequest = (asset) =>
   isAccessPending(asset, { isPrivileged: isAdminOrAuditor.value })
+
+// 待配憑證（停用優先：停用資產沿停用成因呈現）
+const isCredentialPending = (asset) => asset.active !== false && !!asset.credential_pending
+
+// admin 能自己去「編輯 → 帳號」補；其他角色只能請管理員處理
+const credentialPendingTooltip = computed(() =>
+  isAdmin.value ? t('assets.credentialPendingTooltipAdmin') : t('assets.credentialPendingTooltip')
+)
 
 // 連線入口提示三態：停用 > 可連 > 無權限。
 // 停用優先——canConnect 對停用資產無條件早退，若先判權限，admin 會看到
@@ -1376,6 +1460,18 @@ const resetForm = () => {
   resetRotationChannel('ssh')
   activeFormRef()?.clearValidate()
   activeAdvancedRef()?.clearServerError()
+}
+
+// 批次新增：完成後重整列表與標籤（匯入可能帶進新標籤）
+const bulkVisible = ref(false)
+const onBulkImported = () => {
+  fetchAssetList()
+  loadTagOptions()
+}
+// 完成畫面「查看未指定憑證的資產」：直接套上待配憑證篩選
+const showCredentialPending = () => {
+  filterForm.credential_pending = true
+  handleFilter()
 }
 
 // 處理創建
@@ -2028,6 +2124,16 @@ async function openEditFromQuery() {
 }
 
 /* 狀態欄縱排：啟用 tag＋連測徽章 */
+.status-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ot-space-xs);
+}
+
+.pending-tag {
+  margin-left: var(--ot-space-xs);
+}
+
 .status-stack {
   display: flex;
   flex-direction: column;

@@ -102,7 +102,7 @@ func TestCreateAssetRejectsAllowedDatabasesOnNonConsoleProtocol(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	_, err := svc.Create(&CreateAssetRequest{
+	_, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "ssh-with-list", Protocol: model.ProtocolSSH, Host: "10.0.0.1", Port: 22,
 		Username: "root", AllowedDatabases: model.StringList{"app"},
 	})
@@ -119,7 +119,7 @@ func TestUpdateAssetRejectsAllowedDatabasesOnNonConsoleProtocol(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "mysql-a", Protocol: model.ProtocolMySQL, Host: "10.0.0.2", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app"},
 	})
@@ -149,7 +149,7 @@ func TestAllowedDatabasesStoredWithoutDialing(t *testing.T) {
 	svc := newAllowedDBService(t)
 
 	start := time.Now()
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "mysql-blackhole", Protocol: model.ProtocolMySQL, Host: "192.0.2.1", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"does-not-exist-on-target"},
 	})
@@ -170,7 +170,7 @@ func TestAllowedDatabasesClearedOnProtocolSwitch(t *testing.T) {
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "mysql-b", Protocol: model.ProtocolMySQL, Host: "10.0.0.3", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app", "report", "staging"},
 	})
@@ -234,7 +234,7 @@ func TestAllowedDatabasesExplicitClearIsNotReportedAsServerCleared(t *testing.T)
 	db := setupAllowedDBTestDB(t)
 	svc := newAllowedDBService(t)
 
-	created, err := svc.Create(&CreateAssetRequest{
+	created, err := svc.Create(context.Background(), &CreateAssetRequest{
 		Name: "mysql-c", Protocol: model.ProtocolMySQL, Host: "10.0.0.4", Port: 3306,
 		Username: "app", AllowedDatabases: model.StringList{"app"},
 	})

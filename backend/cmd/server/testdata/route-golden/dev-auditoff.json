@@ -893,6 +893,16 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/assets/import",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).Import-fm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/import/preview",
+      "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).PreviewImport-fm"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/assets/tags/delete",
       "handler": "github.com/custodexa/backend/internal/api.(*AssetHandler).DeleteTag-fm"
     },
@@ -1575,7 +1585,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func10",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func12",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Delete-fm"
       ]
     },
@@ -2511,7 +2521,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func10",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisible.func2",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Get-fm"
       ]
@@ -2620,7 +2630,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func14",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func16",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).DownloadK8sFile-fm"
       ]
     },
@@ -2645,7 +2655,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func12",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func14",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequireAssetVisible.func2",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).ListK8sPods-fm"
       ]
@@ -4929,7 +4939,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func13",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func15",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).UploadK8sFile-fm"
       ]
     },
@@ -4953,8 +4963,38 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func11",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func13",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).TestConnection-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/import",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func9",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).Import-fm"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assets/import/preview",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func8",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).PreviewImport-fm"
       ]
     },
     {
@@ -6615,7 +6655,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func9",
+        "github.com/custodexa/backend/internal/api.(*AssetHandler).RegisterRoutes.RequirePermission.func11",
         "github.com/custodexa/backend/internal/api.(*AssetHandler).Update-fm"
       ]
     },

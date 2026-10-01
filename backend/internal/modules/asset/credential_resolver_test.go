@@ -64,7 +64,7 @@ func TestCredentialResolverUsesEffectiveVersionOnly(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "eff-1", Protocol: model.ProtocolVNC, Host: "10.0.9.1", Port: 5901,
 		CreatedBy: 1,
 	})
@@ -102,7 +102,7 @@ func TestCredentialResolverNilEffectiveIsUnusable(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "eff-2", Protocol: model.ProtocolVNC, Host: "10.0.9.2", Port: 5901,
 		CreatedBy: 1,
 	})
@@ -136,12 +136,12 @@ func TestCredentialResolverRejectsForeignBinding(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	a1, err := assets.Create(&CreateAssetRequest{
+	a1, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "eff-3a", Protocol: model.ProtocolSSH, Host: "10.0.9.3", Port: 22,
 		Username: "root", Password: "pw-a1", CreatedBy: 1,
 	})
 	require.NoError(t, err)
-	a2, err := assets.Create(&CreateAssetRequest{
+	a2, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "eff-3b", Protocol: model.ProtocolSSH, Host: "10.0.9.4", Port: 22,
 		Username: "root", Password: "pw-a2", CreatedBy: 1,
 	})
@@ -174,7 +174,7 @@ func TestUpdateSecretAppendsVersionNotOverwrite(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "append-1", Protocol: model.ProtocolSSH, Host: "10.0.9.5", Port: 22,
 		Username: "root", Password: "old-pw", CreatedBy: 1,
 	})
@@ -225,7 +225,7 @@ func TestUpdatePrivateKeyKeepsExistingPassword(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "append-2", Protocol: model.ProtocolSSH, Host: "10.0.9.6", Port: 22,
 		Username: "root", Password: "keep-me", CreatedBy: 1,
 	})

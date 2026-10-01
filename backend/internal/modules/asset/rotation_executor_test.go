@@ -70,7 +70,7 @@ func (c *channelRecorder) sawChannel(channel string) bool {
 func (f *csFixture) addRotationAsset(t *testing.T, req *CreateAssetRequest) uint {
 	t.Helper()
 	req.CreatedBy = 1
-	asset, err := f.assets.Create(req)
+	asset, err := f.assets.Create(context.Background(), req)
 	require.NoError(t, err)
 	var acct model.AssetAccount
 	require.NoError(t, f.db.Where("asset_id = ?", asset.ID).First(&acct).Error)

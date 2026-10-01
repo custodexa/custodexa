@@ -419,6 +419,9 @@ func TestCredentialOnlyLockSitesAreEnumerated(t *testing.T) {
 		// 新建資產的掛載：那一列此刻還不存在，資產列鎖無物可鎖（見
 		// lockAssetForAccountMutation 的註解），互斥由建立本身的唯一性承擔
 		"AssetService.Create": "掛載列於本交易內才建立，無既有列可鎖",
+		// 批次匯入同理：整批的新資產與其掛載都在本交易內才建立；
+		// 取鎖依憑證 id 遞增（與 lockCredentialRowsOrdered 同序）
+		"lockImportCredentials": "批次匯入的掛載列於本交易內才建立，無既有列可鎖",
 	}
 	got := map[string]bool{}
 	for _, path := range lockOrderSources(t) {

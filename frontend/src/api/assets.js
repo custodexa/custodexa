@@ -101,6 +101,39 @@ export function createAsset(data) {
 }
 
 /**
+ * 批次新增預檢（唯讀，不寫任何資料）。
+ * CSV 以原文送出（`text/csv`，伺服端判定編碼、表頭與列號）；線上填寫送列 JSON。
+ * 錯誤由呼叫端就地顯示（檔案層錯誤在上傳區下方、列錯誤在表格格內），不走全域 toast
+ * @param {Blob|Object} data - CSV 檔案本體，或 { source, rows }
+ * @param {{ csv?: boolean }} [options]
+ * @returns {Promise} { ok, summary, rows }
+ */
+export function previewAssetImport(data, { csv = false } = {}) {
+  return request({
+    url: '/assets/import/preview',
+    method: 'post',
+    data,
+    headers: { 'Content-Type': csv ? 'text/csv' : 'application/json' },
+    skipErrorToast: true,
+  })
+}
+
+/**
+ * 批次新增寫入：全部列通過才於單一交易建立，任一列失敗整批不建立。
+ * 400 ROWS_INVALID／409 STATE_CHANGED 的 `rows` 由呼叫端標回表格
+ * @param {Object} data - { source, rows }（rows 的 node_ids／node_paths 原樣帶回預檢結果）
+ * @returns {Promise} { created, credential_pending, asset_ids }
+ */
+export function importAssets(data) {
+  return request({
+    url: '/assets/import',
+    method: 'post',
+    data,
+    skipErrorToast: true,
+  })
+}
+
+/**
  * 更新資產
  * @param {number} id - 資產 ID
  * @param {Object} data - 更新資料（部分更新）

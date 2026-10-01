@@ -21,7 +21,7 @@ func TestUpdatePasswordFailsWhenAccountRemovedMidFlight(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "atomic-1", Protocol: model.ProtocolSSH, Host: "10.0.1.1", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
@@ -47,7 +47,7 @@ func TestUpdatePasswordFailsWhenAccountRenamedMidFlight(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "atomic-2", Protocol: model.ProtocolSSH, Host: "10.0.1.2", Port: 22,
 		Username: "root", Password: "old", CreatedBy: 1,
 	})
@@ -74,7 +74,7 @@ func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, _ := newAccountServices(t)
 
-	k8s, err := assets.Create(&CreateAssetRequest{
+	k8s, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "k8s-zero", Protocol: model.ProtocolK8s, Host: "10.0.1.3", Port: 6443,
 		K8sNamespace: "default", CreatedBy: 1,
 	})
@@ -85,7 +85,7 @@ func TestZeroAccountAssetRejectedByServicePaths(t *testing.T) {
 	_, err = assets.k8sTarget(k8s.ID, "pod", "c")
 	assert.ErrorIs(t, err, ErrAssetNoUsableAccount)
 
-	vnc, err := assets.Create(&CreateAssetRequest{
+	vnc, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "vnc-zero", Protocol: model.ProtocolVNC, Host: "10.0.1.4", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestConcurrentSetDefaultAndDeleteKeepsInvariants(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "race-1", Protocol: model.ProtocolSSH, Host: "10.0.1.5", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -152,7 +152,7 @@ func TestConcurrentCreateFirstAccountKeepsSingleDefault(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "race-2", Protocol: model.ProtocolVNC, Host: "10.0.1.6", Port: 5901, CreatedBy: 1,
 	})
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestConcurrentNoteUpdateDoesNotRollbackRotatedSecret(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "race-3", Protocol: model.ProtocolSSH, Host: "10.0.1.7", Port: 22,
 		Username: "root", Password: "old-pw", CreatedBy: 1,
 	})
@@ -221,7 +221,7 @@ func TestDeleteLastAccountClearsAssetIdentityMirror(t *testing.T) {
 	db := setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "mirror-1", Protocol: model.ProtocolSSH, Host: "10.0.1.8", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})
@@ -242,7 +242,7 @@ func TestAccountUsernameRejectsAllControlChars(t *testing.T) {
 	_ = setupAccountDB(t)
 	assets, accounts := newAccountServices(t)
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "ctl-1", Protocol: model.ProtocolSSH, Host: "10.0.1.11", Port: 22,
 		Username: "root", Password: "pw", CreatedBy: 1,
 	})

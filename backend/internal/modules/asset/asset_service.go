@@ -7,6 +7,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"log"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -100,6 +101,8 @@ type AssetService struct {
 	// 介面而非直接依賴 SessionService，避免 service 相互耦合（沿 identity.SessionTerminator 形狀）。
 	// **nil 即不收線**：測試建構路徑可略，生產組裝一律注入
 	sessions SessionTerminator
+	// importPreTxHook 測試用接縫（見 SetImportPreTxHookForTest）；正式組裝恆為 nil
+	importPreTxHook func()
 }
 
 // SessionTerminator 停用資產時強制終斷該資產上全部進行中協議會話。
@@ -179,6 +182,10 @@ type AssetFilter struct {
 	// 標籤篩選：整詞比對、多標籤 AND；
 	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
 	Tags []string
+
+	// CredentialPending 只列待配憑證（沒有任何未刪除掛載）的資產；
+	// 僅 admin/auditor 全量分支使用（一般 user 帶參數由 handler 拒 400）
+	CredentialPending bool
 }
 
 // AssetListResponse 資產列表回應
@@ -406,12 +413,95 @@ func validateMSSQLHost(protocol model.ProtocolType, host string) error {
 	return nil
 }
 
-// Create 創建資產
-func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
-	// ctx 僅供 codec 的取消／逾時語義（同 GetWithCredentialsForAccount 註解）：
-	// AAD 綁 (table, column) 不綁 pk，故 create 路徑無須「先 insert 取得 pk 再回寫密文」
-	// 的兩階段寫入——這正是 AAD 綁欄位而非綁主鍵的主要收益
-	ctx := context.Background()
+// assetNameMu 資產名稱互斥鎖：單筆建立、改名、批次匯入在「查名稱＋寫入」期間
+// 持同一把鎖，交易內再查一次。`assets.name` 沒有唯一鍵，交易外的無鎖檢查擋不住
+// 並發的同名建立；只有主節點服務寫入，程序內鎖足以涵蓋。
+//
+// **固定鎖序**：名稱鎖 → treeStructMu → 交易內憑證列鎖（依憑證 id 遞增），
+// 三者皆持有至交易結束。單筆建立、改名、匯入一律照此順序取鎖，不得倒置
+var assetNameMu sync.Mutex
+
+// preparedAsset 交易外驗證與組裝完成、待交易內寫入的一台資產。
+// 單筆建立與批次匯入共用：交易外的驗證只供提早回報，交易內以鎖住的當下狀態重驗
+type preparedAsset struct {
+	asset              *model.Asset
+	nodeIDs            []uint
+	sharedCredentialID uint
+	passwordEnc        string
+	privateKeyEnc      string
+	createdBy          uint
+	createdByName      string
+}
+
+// operatorContext 確保交易 context 帶操作者身分（GORM hook 由此取操作者）。
+// 呼叫端已放入的值優先；缺者以請求上的建立者補上
+func operatorContext(ctx context.Context, userID uint, username string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Value("userID").(uint); !ok && userID != 0 {
+		ctx = context.WithValue(ctx, "userID", userID) //nolint:staticcheck // 沿用既有審計 context 慣例
+	}
+	if _, ok := ctx.Value("username").(string); !ok && username != "" {
+		ctx = context.WithValue(ctx, "username", username) //nolint:staticcheck // 同上
+	}
+	return ctx
+}
+
+// requiresUsername 協定是否以帳號名登入（VNC／Redis／K8s 僅密碼或 Token）
+func requiresUsername(protocol model.ProtocolType) bool {
+	return protocol != model.ProtocolVNC && protocol != model.ProtocolRedis && protocol != model.ProtocolK8s
+}
+
+// Create 創建資產。ctx 須帶已驗證的操作者（userID／username），交易以該 ctx
+// 開啟，使 AfterCreate 稽核列記到操作者而非 system
+func (s *AssetService) Create(ctx context.Context, req *CreateAssetRequest) (*model.Asset, error) {
+	ctx = operatorContext(ctx, req.CreatedBy, req.CreatedByName)
+	p, err := s.prepareCreate(ctx, req, prepareOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// 固定鎖序：名稱鎖 → treeStructMu → 交易內憑證列鎖
+	assetNameMu.Lock()
+	defer assetNameMu.Unlock()
+	// 節點驗證在交易內＋treeStructMu 互斥（驗證後節點被並發刪除會留下懸掛成員，無 FK 兜底）
+	treeStructMu.Lock()
+	defer treeStructMu.Unlock()
+	accountCreated := false
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		creds, lerr := lockCredentialRowsOrdered(tx, p.sharedCredentialID)
+		if lerr != nil {
+			return lerr
+		}
+		created, cerr := s.createPreparedTx(ctx, tx, p, creds)
+		accountCreated = created
+		return cerr
+	})
+	if err != nil {
+		return nil, err
+	}
+	asset := p.asset
+	asset.NodeIDs = p.nodeIDs
+	asset.CredentialPending = !accountCreated
+	// 回應與列表同形：帶推導欄位、抹去 CA 憑證本體。建立方剛送出 PEM，回聲沒有用處；
+	// 本體只在編輯回填（單筆讀取）時回傳
+	fillRotationProjection(asset, true)
+
+	return asset, nil
+}
+
+// prepareOptions 交易外準備的可略步驟（批次匯入已於整批驗證時做過者）
+type prepareOptions struct {
+	// skipNameCheck 名稱已由整批驗證查過（交易內仍會再查）
+	skipNameCheck bool
+	// tagsNormalized Tags 已是整批正規化後的落庫寫法，不再逐列掃全庫標籤
+	tagsNormalized bool
+}
+
+// prepareCreate 交易外驗證與組裝：協定與各欄值域、憑證來源、名稱（提早回報）、
+// 標籤、改密通道、秘密加密。不寫任何資料
+func (s *AssetService) prepareCreate(ctx context.Context, req *CreateAssetRequest, opts prepareOptions) (*preparedAsset, error) {
 	// 驗證協議
 	if err := s.validateProtocol(req.Protocol); err != nil {
 		return nil, err
@@ -467,9 +557,12 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		username = cred.Username
 	}
 
-	// SSH/RDP/MySQL/Postgres 需要 username；VNC/Redis/K8s 僅密碼（Token）認證
-	if req.Protocol != model.ProtocolVNC && req.Protocol != model.ProtocolRedis &&
-		req.Protocol != model.ProtocolK8s && username == "" {
+	// 以帳號名登入的協定：**有登入秘密卻沒有帳號名**是填寫錯誤，拒絕。
+	// 完全沒有憑證來源（共用憑證、內嵌物件、頂層帳號名／密碼／私鑰皆無）時任何協定
+	// 都允許建立，結果為零掛載（待配憑證）——連線、撥測、改密皆由既有零帳號閘 fail-close
+	noCredentialSource := req.CredentialID == 0 && req.Credential == nil &&
+		username == "" && password == "" && privateKey == ""
+	if requiresUsername(req.Protocol) && username == "" && !noCredentialSource {
 		return nil, ErrUsernameRequired
 	}
 
@@ -478,18 +571,24 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		return nil, ErrK8sTargetRequired
 	}
 
-	// 檢查名稱是否重複
-	var existing model.Asset
-	result := database.DB.Where("name = ?", req.Name).First(&existing)
-	if result.Error == nil {
-		return nil, ErrAssetNameExists
+	// 名稱重複的提早回報（權威檢查在交易內、持名稱鎖時）
+	if !opts.skipNameCheck {
+		var existing model.Asset
+		result := database.DB.Where("name = ?", req.Name).First(&existing)
+		if result.Error == nil {
+			return nil, ErrAssetNameExists
+		}
 	}
 
 	// 標籤正規化：trim/去空/canonical 去重/
 	// 歸一至既有書寫形＋文法驗證
-	normalizedTags, err := s.NormalizeTagsForWrite(req.Tags)
-	if err != nil {
-		return nil, err
+	normalizedTags := req.Tags
+	if !opts.tagsNormalized {
+		var err error
+		normalizedTags, err = s.NormalizeTagsForWrite(req.Tags)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 創建資產
@@ -551,18 +650,10 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		asset.HasPrivateKey = true
 	}
 
-	// 掛既有共用憑證：協定族相容性以組裝後的資產判定，顯示旗標取自該憑證的現行版本
+	// 掛既有共用憑證：協定族相容性以組裝後的資產提早判定（交易內鎖列後完整重驗）
 	if sharedCredential != nil {
 		if err := assertProtocolFamilyMatch(sharedCredential, asset); err != nil {
 			return nil, err
-		}
-		if sharedCredential.CurrentVersionID != nil {
-			flags, ferr := versionSecretFlags(database.DB, []uint{*sharedCredential.CurrentVersionID})
-			if ferr != nil {
-				return nil, ferr
-			}
-			f := flags[*sharedCredential.CurrentVersionID]
-			asset.HasPassword, asset.HasPrivateKey = f.HasPassword, f.HasPrivateKey
 		}
 	}
 
@@ -587,92 +678,148 @@ func (s *AssetService) Create(req *CreateAssetRequest) (*model.Asset, error) {
 		}
 	}
 
-	// 儲存到資料庫（節點掛載同交易——建資產與掛節點不可分離；
-	// 新資產必無舊成員，僅 insert 不清除）。節點驗證移入交易＋treeStructMu
-	// 互斥（驗證後節點被並發刪除會留下懸掛成員，無 FK 兜底）
-	treeStructMu.Lock()
-	err = database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := validateNodeIDsTx(tx, nodeIDs); err != nil {
-			return err
-		}
-		if err := tx.Create(asset).Error; err != nil {
-			return fmt.Errorf("建立資產失敗: %w", err)
-		}
-		// 建立表單的單帳號快速欄位透明成為 default 帳號：與資產同交易——
-		// 建了資產卻沒建帳號，該資產自階段 2 起即為「無身分可連」的死資產。
-		// 建帳判準與階段 1 migration 一致：username／密碼／私鑰三者全空才算
-		// 零帳號資產（靠 SSH agent 等免密路徑者仍需帳號承載 username）
-		if sharedCredential != nil || asset.Username != "" || passwordEnc != "" || privateKeyEnc != "" {
-			// 直填的登入憑證＝操作者宣告的密文：同一交易建專用憑證與其 v1 版本，
-			// 並把憑證的現行版本與該掛載的就位版本一併指向它。
-			// 少了這一步，掛載建得起來卻連不上——就位版本為空即無密文可取
-			account := &model.AssetAccount{
-				AssetID:   asset.ID,
-				Username:  asset.Username,
-				IsDefault: true,
-			}
-			if sharedCredential != nil {
-				// 掛既有共用憑證：不建新密文版本，就位版本設為該憑證當下的現行版本。
-				// 交易內重取憑證列鎖，使「選定當下」與「寫入當下」之間的改密無從交錯
-				cred, cerr := lockCredentialRow(tx, sharedCredential.ID)
-				if cerr != nil {
-					return cerr
-				}
-				if aerr := assertNoActiveRotation(cred); aerr != nil {
-					return aerr
-				}
-				// 上一輪未收斂時同樣不得掛上（判準與 CredentialService.Bind 一致）：
-				// 此刻掛上去的新機器會取到現行版本，而那正是上一輪沒換成功的舊秘密，
-				// 且它不在任何一輪的成員清單裡——補跑補不到它
-				if cerr := assertCredentialConverged(tx, cred); cerr != nil {
-					return cerr
-				}
-				account.AuthMethod = cred.AuthMethod
-				account.CredentialID = cred.ID
-				account.EffectiveVersionID = cred.CurrentVersionID
-			} else if err := bindNewDedicatedCredential(tx, account, asset, "",
-				passwordEnc, privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
-				return err
-			}
-			if err := tx.Create(account).Error; err != nil {
-				return fmt.Errorf("建立預設帳號失敗: %w", err)
-			}
-			credID, credScope := credentialAuditRef(tx, account.CredentialID)
-			if err := writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
-				AssetID:         asset.ID,
-				AccountID:       account.ID,
-				Username:        account.Username,
-				Operation:       model.AccountOpCreate,
-				Fields:          changedSecretFields(passwordEnc != "", privateKeyEnc != "", true),
-				CredentialID:    credID,
-				CredentialScope: credScope,
-			}, req.CreatedBy, req.CreatedByName); err != nil {
-				return fmt.Errorf("記錄預設帳號建立稽核失敗: %w", err)
-			}
-		}
-		for _, nodeID := range nodeIDs {
-			if err := tx.Create(&model.AssetNode{AssetID: asset.ID, NodeID: nodeID}).Error; err != nil {
-				return fmt.Errorf("掛載節點失敗: %w", err)
-			}
-		}
-		// 初始掛載留痕（AfterCreate hook 只記建立事件無 node_ids 明細）
-		if len(nodeIDs) > 0 && req.CreatedBy != 0 {
-			if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, nil, nodeIDs, req.CreatedBy, ""); err != nil {
-				log.Printf("記錄初始節點掛載失敗: %v", err)
-			}
-		}
-		return nil
-	})
-	treeStructMu.Unlock()
-	if err != nil {
-		return nil, err
+	p := &preparedAsset{
+		asset:         asset,
+		nodeIDs:       nodeIDs,
+		passwordEnc:   passwordEnc,
+		privateKeyEnc: privateKeyEnc,
+		createdBy:     req.CreatedBy,
+		createdByName: req.CreatedByName,
 	}
-	asset.NodeIDs = nodeIDs
-	// 回應與列表同形：帶推導欄位、抹去 CA 憑證本體。建立方剛送出 PEM，回聲沒有用處；
-	// 本體只在編輯回填（單筆讀取）時回傳
-	fillRotationProjection(asset, true)
+	if sharedCredential != nil {
+		p.sharedCredentialID = sharedCredential.ID
+	}
+	return p, nil
+}
 
-	return asset, nil
+// assertAssetNameFreeTx 交易內的名稱唯一檢查（持名稱鎖時呼叫）。
+// excludeID 非零＝改名路徑排除自己
+func assertAssetNameFreeTx(tx *gorm.DB, name string, excludeID uint) error {
+	q := tx.Model(&model.Asset{}).Where("name = ?", name)
+	if excludeID != 0 {
+		q = q.Where("id <> ?", excludeID)
+	}
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return fmt.Errorf("檢查資產名稱失敗: %w", err)
+	}
+	if n > 0 {
+		return ErrAssetNameExists
+	}
+	return nil
+}
+
+// assertSharedCredentialBindable 共用憑證可否掛到這台資產的完整判定：存在、
+// 範圍為共用、協定族相容、未在改密、上一輪已收斂。交易外呼叫只供提早回報；
+// 交易內以**鎖住的當下列**再呼叫一次才是權威判定
+func assertSharedCredentialBindable(db *gorm.DB, cred *model.Credential, asset *model.Asset) error {
+	if cred == nil {
+		return ErrCredentialNotFound
+	}
+	if cred.Scope != model.CredentialScopeShared {
+		return ErrCredentialDedicatedSingleBinding
+	}
+	if err := assertProtocolFamilyMatch(cred, asset); err != nil {
+		return err
+	}
+	if err := assertNoActiveRotation(cred); err != nil {
+		return err
+	}
+	// 上一輪未收斂時同樣不得掛上（判準與 CredentialService.Bind 一致）：
+	// 此刻掛上去的新機器會取到現行版本，而那正是上一輪沒換成功的舊秘密，
+	// 且它不在任何一輪的成員清單裡——補跑補不到它
+	return assertCredentialConverged(db, cred)
+}
+
+// createPreparedTx 交易內寫入一台已準備好的資產（單筆建立與批次匯入共用）：
+// 驗節點、再查名稱、以鎖住的憑證列完整重驗後寫資產、預設掛載、帳號稽核、
+// 節點掛載與節點稽核。creds 為呼叫端已依 id 遞增鎖住的憑證列。
+// 回傳是否建立了掛載（false＝待配憑證）。任一稽核寫入失敗即回錯使交易回滾
+func (s *AssetService) createPreparedTx(ctx context.Context, tx *gorm.DB, p *preparedAsset,
+	creds map[uint]*model.Credential) (bool, error) {
+
+	asset := p.asset
+	if err := validateNodeIDsTx(tx, p.nodeIDs); err != nil {
+		return false, err
+	}
+	if err := assertAssetNameFreeTx(tx, asset.Name, 0); err != nil {
+		return false, err
+	}
+	var cred *model.Credential
+	if p.sharedCredentialID != 0 {
+		cred = creds[p.sharedCredentialID]
+		if err := assertSharedCredentialBindable(tx, cred, asset); err != nil {
+			return false, err
+		}
+		// 顯示旗標取自鎖住當下的現行版本（與掛載的就位版本同一版）
+		asset.HasPassword, asset.HasPrivateKey = false, false
+		if cred.CurrentVersionID != nil {
+			flags, ferr := versionSecretFlags(tx, []uint{*cred.CurrentVersionID})
+			if ferr != nil {
+				return false, ferr
+			}
+			f := flags[*cred.CurrentVersionID]
+			asset.HasPassword, asset.HasPrivateKey = f.HasPassword, f.HasPrivateKey
+		}
+	}
+
+	// 交易以帶操作者的 ctx 寫入：AfterCreate hook 由此取操作者
+	if err := tx.WithContext(ctx).Create(asset).Error; err != nil {
+		return false, fmt.Errorf("建立資產失敗: %w", err)
+	}
+	// 建立表單的單帳號快速欄位透明成為 default 帳號：與資產同交易——
+	// 建了資產卻沒建帳號，該資產自階段 2 起即為「無身分可連」的死資產。
+	// 建帳判準與階段 1 migration 一致：username／密碼／私鑰三者全空才算
+	// 零帳號資產（靠 SSH agent 等免密路徑者仍需帳號承載 username）
+	accountCreated := false
+	if cred != nil || asset.Username != "" || p.passwordEnc != "" || p.privateKeyEnc != "" {
+		// 直填的登入憑證＝操作者宣告的密文：同一交易建專用憑證與其 v1 版本，
+		// 並把憑證的現行版本與該掛載的就位版本一併指向它。
+		// 少了這一步，掛載建得起來卻連不上——就位版本為空即無密文可取
+		account := &model.AssetAccount{
+			AssetID:   asset.ID,
+			Username:  asset.Username,
+			IsDefault: true,
+		}
+		if cred != nil {
+			// 掛既有共用憑證：不建新密文版本，就位版本設為鎖住當下的現行版本
+			account.AuthMethod = cred.AuthMethod
+			account.CredentialID = cred.ID
+			account.EffectiveVersionID = cred.CurrentVersionID
+		} else if err := bindNewDedicatedCredential(tx, account, asset, "",
+			p.passwordEnc, p.privateKeyEnc, model.CredentialVersionReasonManual); err != nil {
+			return false, err
+		}
+		if err := tx.Create(account).Error; err != nil {
+			return false, fmt.Errorf("建立預設帳號失敗: %w", err)
+		}
+		accountCreated = true
+		credID, credScope := credentialAuditRef(tx, account.CredentialID)
+		if err := writeAssetAccountAudit(s.auditTx, tx, model.AssetAccountAudit{
+			AssetID:         asset.ID,
+			AccountID:       account.ID,
+			Username:        account.Username,
+			Operation:       model.AccountOpCreate,
+			Fields:          changedSecretFields(p.passwordEnc != "", p.privateKeyEnc != "", true),
+			CredentialID:    credID,
+			CredentialScope: credScope,
+		}, p.createdBy, p.createdByName); err != nil {
+			return false, fmt.Errorf("記錄預設帳號建立稽核失敗: %w", err)
+		}
+	}
+	for _, nodeID := range p.nodeIDs {
+		if err := tx.Create(&model.AssetNode{AssetID: asset.ID, NodeID: nodeID}).Error; err != nil {
+			return false, fmt.Errorf("掛載節點失敗: %w", err)
+		}
+	}
+	// 初始掛載留痕（AfterCreate hook 只記建立事件無 node_ids 明細）。
+	// 寫不了稽核就不做：失敗回錯使整筆回滾
+	if len(p.nodeIDs) > 0 && p.createdBy != 0 {
+		if err := writeAssetNodeChangeAudit(s.auditTx, tx, asset.ID, nil, p.nodeIDs, p.createdBy, p.createdByName); err != nil {
+			return false, fmt.Errorf("記錄初始節點掛載稽核失敗: %w", err)
+		}
+	}
+	return accountCreated, nil
 }
 
 // List 列出資產（支援分頁與過濾）
@@ -699,6 +846,11 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 	// 多標籤疊 AND；與其餘條件同 query，COUNT 與分頁前生效
 	for _, tag := range filter.Tags {
 		query = query.Where(tagWholeWordCondition, tagWholeWordPattern(tag))
+	}
+
+	// 待配憑證：沒有任何未刪除的掛載（與零帳號閘同一判準）
+	if filter.CredentialPending {
+		query = query.Where("NOT EXISTS (SELECT 1 FROM asset_accounts aa WHERE aa.asset_id = assets.id AND aa.deleted_at IS NULL)")
 	}
 
 	// 節點過濾：含子樹＝節點自身＋全部後代的掛載聯集
@@ -748,6 +900,10 @@ func (s *AssetService) List(filter *AssetFilter) (*AssetListResponse, error) {
 
 	// 節點掛載資訊：批次填 NodeIDs 與全路徑
 	if err := FillNodeInfo(database.DB, assets); err != nil {
+		return nil, err
+	}
+	// 待配憑證旗標：一次批次存在查詢
+	if err := FillCredentialPending(database.DB, assets); err != nil {
 		return nil, err
 	}
 
@@ -1330,12 +1486,24 @@ func (s *AssetService) Update(ctx context.Context, id uint, req *UpdateAssetRequ
 	userID, _ := ctx.Value("userID").(uint)
 	username, _ := ctx.Value("username").(string)
 
+	// 固定鎖序：名稱鎖 → treeStructMu → 交易。改名時持名稱鎖至交易結束，
+	// 與單筆建立、批次匯入序列化「查名稱＋寫入」
+	if req.Name != nil {
+		assetNameMu.Lock()
+		defer assetNameMu.Unlock()
+	}
 	// 使用事務來記錄變更（涉節點掛載時以 treeStructMu 與樹結構變更互斥）
 	if req.NodeIDs != nil {
 		treeStructMu.Lock()
 		defer treeStructMu.Unlock()
 	}
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// 改名：持名稱鎖時再查一次（交易外的檢查只供提早回報）
+		if req.Name != nil {
+			if err := assertAssetNameFreeTx(tx, asset.Name, id); err != nil {
+				return err
+			}
+		}
 		// 在 context 中傳遞用戶資訊
 		txCtx := context.WithValue(ctx, "userID", userID)
 		txCtx = context.WithValue(txCtx, "username", username)
@@ -1587,6 +1755,31 @@ func FillNodeInfo(db *gorm.DB, assets []model.Asset) error {
 			}
 		}
 		assets[i].NodePaths = nodePaths
+	}
+	return nil
+}
+
+// FillCredentialPending 批次填資產的待配憑證旗標：以一次 `asset_id IN (…)` 查出
+// 有未刪除掛載的資產，其餘即待配憑證。判準與連線的零帳號閘一致（沒有任何掛載）
+func FillCredentialPending(db *gorm.DB, assets []model.Asset) error {
+	if len(assets) == 0 {
+		return nil
+	}
+	ids := make([]uint, 0, len(assets))
+	for i := range assets {
+		ids = append(ids, assets[i].ID)
+	}
+	var mounted []uint
+	if err := db.Model(&model.AssetAccount{}).Where("asset_id IN ?", ids).
+		Distinct("asset_id").Pluck("asset_id", &mounted).Error; err != nil {
+		return fmt.Errorf("查詢資產掛載失敗: %w", err)
+	}
+	has := make(map[uint]bool, len(mounted))
+	for _, id := range mounted {
+		has[id] = true
+	}
+	for i := range assets {
+		assets[i].CredentialPending = !has[assets[i].ID]
 	}
 	return nil
 }

@@ -316,7 +316,7 @@ SHA256SUMS と一致しません。ダウンロードが不完全か、
 ファイルが破損している可能性があります。
 再ダウンロードしてください。'
 MSG_load_title='オフラインイメージパッケージを読み込み'
-MSG_load_file='  ファイル  %s（%s GB）'
+MSG_load_file='  ファイル  %s（%s）'
 MSG_load_sum_ok='チェックサムが SHA256SUMS と一致'
 MSG_load_sum_none='%s に SHA256SUMS がなく、チェックサムを確認できません。
 同じリリースの SHA256SUMS をパッケージの横に置いてください。
@@ -865,3 +865,36 @@ MSG_up_wait_checksum='%s と SHA256SUMS のチェックサムを確認してい�
 MSG_up_checksum_ok='%s のチェックサムは一致します'
 MSG_up_wait_signature='リリースマニフェストの署名を検証しています…'
 MSG_up_step_reserved='このステップで行う処理はありません'
+
+# Whole-deployment service controls.
+MSG_menu_start='サービスを起動'
+MSG_menu_stop='サービスを停止'
+MSG_help_cmd_start='  start                  全サービスを起動し、バックエンドの準備完了を待つ'
+MSG_help_cmd_stop='  stop                   確認して全サービスを停止'
+MSG_svc_stop_title='サービスを停止'
+MSG_svc_stop_warn='現在の接続は切断されます。利用者に通知してください。
+監査キューの排出後に停止します。'
+MSG_svc_stop_confirm='全サービスを停止しますか？[y/N]'
+MSG_svc_stop_done='サービスを停止しました'
+MSG_svc_stop_already='サービスはすでに停止しています。'
+MSG_svc_start_title='サービスを起動'
+MSG_svc_start_done='起動しました。状態を確認し、必要なら封印を解除してください。'
+MSG_svc_start_already='サービスは稼働中で、バックエンドも準備完了です。'
+MSG_svc_drain_run='監査記録の書き込みを待機'
+MSG_svc_drain_done='監査キューの排出が完了'
+MSG_svc_drain_fail='監査キューの排出を確認できません。サービスは稼働中です。'
+MSG_svc_stop_run='全サービスを停止中'
+MSG_svc_start_run='全サービスを起動中'
+MSG_svc_ready_run='バックエンドの準備完了を待機（最大 180 秒）'
+MSG_svc_stop_failed='停止が完了しませんでした。状態を確認してください。'
+MSG_svc_start_failed='起動が完了しませんでした。状態を確認してください。'
+MSG_svc_ready_failed='180 秒以内にバックエンドが準備完了になりませんでした。
+状態を確認してください。'
+MSG_svc_cancelled='サービスは変更されていません。'
+MSG_svc_status_hint='次のコマンドで状態を確認してください：'
+MSG_svc_containers_up='コンテナーを起動しました'
+MSG_svc_ready_done='バックエンドの準備が完了しました'
+MSG_svc_not_installed='未インストールのため、サービスを操作できません。'
+MSG_svc_resume_hint='サービスの状態が一部だけ変更された可能性があります。
+状態を確認し、start で全サービスを復旧してください：'
+MSG_svc_pending_run='前回の %s が完了していません。先に復旧コマンドに従ってください。'

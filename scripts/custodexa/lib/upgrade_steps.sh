@@ -19,7 +19,6 @@
 # shellcheck source=lib/post_checks.sh
 . "${BASH_SOURCE[0]%/*}/post_checks.sh"
 
-readonly CX_UP_READY_TRIES=60 CX_UP_READY_WAIT=3 # up to 180 seconds
 CX_UP_D1="" CX_UP_D2="" CX_UP_DRAINED="" CX_UP_SNAP="" CX_UP_BACKUP_DIR="" CX_UP_BACKUP_KIND=""
 CX_UP_HEALTH_VER="" CX_UP_STARTED=""
 CX_UP_STATE0="" # state.json as the upgrade found it, byte for byte (a trailing x keeps the last newline)
@@ -105,7 +104,7 @@ cx_up_bk_cb() { # <OK|FAIL> <n> <total> <step id> <start>
       files) f=custodexa-files-$CX_BK_TS.tar.gz ;;
       *) f="" ;;
     esac
-    [ -z "$f" ] || text=$(cx_msg "up_bk_$4" "$f" "$(cx_bk_gb "$(cx_bk_du "$CX_BK_DIR/$f")")")
+    [ -z "$f" ] || text=$(cx_msg "up_bk_$4" "$f" "$(cx_size_human "$(cx_bk_du "$CX_BK_DIR/$f")")")
   fi
   cx_up_sub "$1" "$text"
 }
@@ -152,7 +151,7 @@ cx_up_backup() {
   if [ "$CX_UP_PRE_EXTERNAL_DB" = 1 ] || cx_br_flags_given; then
     own=1
   elif [ -t 0 ] && [ "${CX_YES:-0}" != 1 ]; then
-    cx_br_choose "$(cx_bk_gb "$CX_BK_NEED")" "$(cx_bk_minutes)" 0 || return 1
+    cx_br_choose "$(cx_size_human "$CX_BK_NEED")" "$(cx_bk_minutes)" 0 || return 1
     [ "$CX_BR_CHOICE" = 1 ] || own=1
   fi
   if [ "$own" = 1 ]; then
@@ -250,19 +249,12 @@ cx_up_start() {
 
 # cx_up_ready <n>: step 11. /health answers within 180 seconds (its version is checked in step 12).
 cx_up_ready() {
-  local t0 tries=0 health
+  local t0
   t0=$(cx_now)
-  until health=$(cx_compose exec -T backend wget -qO- http://localhost:8080/health 2>/dev/null); do
-    tries=$((tries + 1))
-    if [ "$tries" -ge "$CX_UP_READY_TRIES" ]; then
-      cx_up_step_line FAIL "$1" "$(cx_msg up_step_ready)"
-      return 1
-    fi
-    sleep "$CX_UP_READY_WAIT"
-  done
-  CX_UP_HEALTH_VER=""
-  [[ $health =~ \"version\":\ ?\"([^\"]*)\" ]] && CX_UP_HEALTH_VER=${BASH_REMATCH[1]}
-  cx_log CHECK "health version=${CX_UP_HEALTH_VER:-none}"
+  if ! cx_wait_backend_health; then
+    cx_up_step_line FAIL "$1" "$(cx_msg up_step_ready)"
+    return 1
+  fi
   cx_up_step_line OK "$1" "$(cx_msg up_step_ready)" "$(cx_duration $(($(cx_now) - t0)))"
 }
 

@@ -149,7 +149,7 @@ cx_up_pre_space() {
   fi
   images=$(cx_mf_needed_bytes "$(cx_arch 2>/dev/null || printf amd64)")
   if [ $((CX_BK_NEED + images)) -gt "$CX_BK_FREE" ]; then
-    cx_line FAIL "$(cx_msg bk_no_space "$(cx_bk_gb $((CX_BK_NEED + images)))" "$CX_ROOT/backups" "$(cx_bk_gb "$CX_BK_FREE")")"
+    cx_line FAIL "$(cx_msg bk_no_space "$(cx_size_human $((CX_BK_NEED + images)))" "$CX_ROOT/backups" "$(cx_size_human "$CX_BK_FREE")")"
     printf '\n%s\n' "$(cx_msg pre_nothing_changed)"
     return "$CX_EXIT_FAILED"
   fi
@@ -199,7 +199,7 @@ cx_up_preview_body() {
     printf '%s\n' "$(cx_msg up_will_2_external)"
     m=1
   else
-    printf '%s\n' "$(cx_msg up_will_2 "$(cx_bk_gb "$CX_BK_NEED")" "$(cx_bk_gb "$CX_BK_FREE")")"
+    printf '%s\n' "$(cx_msg up_will_2 "$(cx_size_human "$CX_BK_NEED")" "$(cx_size_human "$CX_BK_FREE")")"
     m=$(cx_bk_minutes)
   fi
   printf '%s\n%s\n' "$(cx_msg up_will_3 "$CX_UP_TARGET")" "$(cx_msg up_will_4)"

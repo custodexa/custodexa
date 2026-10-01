@@ -25,7 +25,7 @@ func TestSessionAccountSnapshotImmutable(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.Session{}))
 	assets, accounts := newAccountServices(t)
 
-	assetRow, err := assets.Create(&asset.CreateAssetRequest{
+	assetRow, err := assets.Create(context.Background(), &asset.CreateAssetRequest{
 		Name: "srv-snap", Protocol: model.ProtocolSSH, Host: "10.0.0.9", Port: 22,
 		Username: "root", Password: "s3cret", CreatedBy: 1,
 	})

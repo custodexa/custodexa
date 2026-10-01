@@ -1,6 +1,7 @@
 package asset
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -55,7 +56,7 @@ func TestAccountAuditCarriesCredentialRef(t *testing.T) {
 	assets, accounts, creds := newCredentialServices(t)
 	_ = creds
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "audit-cred", Protocol: model.ProtocolSSH, Host: "10.7.0.1", Port: 22,
 		Username: "root", Password: "pw0", CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -114,7 +115,7 @@ func TestAccountAuditCredentialScopeShared(t *testing.T) {
 	assets, accounts, creds := newCredentialServices(t)
 	_ = creds
 
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "audit-shared", Protocol: model.ProtocolSSH, Host: "10.7.0.2", Port: 22,
 		Username: "root", Password: "pw0", CreatedBy: 1, CreatedByName: "admin",
 	})
@@ -149,7 +150,7 @@ func TestAccountAuditRecordsPrivateKeyFieldName(t *testing.T) {
 	const key = "test-private-key-material-rotated"
 
 	// (a) 建立事件：資產建立時直接帶私鑰
-	asset, err := assets.Create(&CreateAssetRequest{
+	asset, err := assets.Create(context.Background(), &CreateAssetRequest{
 		Name: "pk-audit", Protocol: model.ProtocolSSH, Host: "10.7.0.3", Port: 22,
 		Username: "root", PrivateKey: key, CreatedBy: 1, CreatedByName: "admin",
 	})
