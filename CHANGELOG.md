@@ -2,6 +2,18 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.14.2 — complete structure change counts before upgrading (2026-10-01)
+
+No schema change. No migration runs. A 1.14.x package deployment upgrades with
+`custodexa.sh upgrade 1.14.2`.
+
+### Fixes
+
+- The release `MANIFEST.json` lists every database migration in the order it runs. The
+  upgrade query and the upgrade preview count the structure changes a deployment still needs
+  from that list, so the count now covers every change the target version applies.
+- The web console uses axios 1.20.0.
+
 ## 1.14.1 — edit group notes in the rule dialog (2026-10-01)
 
 No schema change. No migration runs. A 1.14.0 package deployment upgrades with

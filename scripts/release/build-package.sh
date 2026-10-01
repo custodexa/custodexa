@@ -195,21 +195,8 @@ ln -s current/custodexa.sh "$root/custodexa.sh"
 
 # ---- MANIFEST.json ----
 # Migration ids in the order they run, from the migrations slice in the Go source.
-migrations_json() {
-  local go=$source/backend/internal/database
-  local ids id base
-  base=$(sed -n 's/^const BaselineVersion = "\([^"]*\)"$/\1/p' "$go"/*.go)
-  ids=$(sed -n '/^var migrations = \[\]Migration{$/,/^}$/p' "$go/migrations.go" |
-    sed -n 's/^[[:space:]]*Version:[[:space:]]*\([^,]*\),$/\1/p')
-  [ -n "$ids" ] || die "no migrations found in $go/migrations.go"
-  while IFS= read -r id; do
-    case $id in
-      BaselineVersion) [ -n "$base" ] || die "BaselineVersion not found"; printf '%s\n' "$base" ;;
-      \"*\") id=${id#\"}; printf '%s\n' "${id%\"}" ;;
-      *) die "migration version is neither a literal nor BaselineVersion: $id" ;;
-    esac
-  done <<<"$ids" | jq -R . | jq -s .
-}
+# shellcheck source=scripts/release/migrations-json.sh
+. "$here/migrations-json.sh"
 
 raw() { docker buildx imagetools inspect --raw "$1"; }
 
@@ -271,7 +258,7 @@ done <"$rel/compose.yml"
 
 notes_json='{"zh-TW": [], "en": [], "ja": []}'
 [ -n "$notes" ] && notes_json=$(cat "$notes")
-mig=$(migrations_json)
+mig=$(migrations_json "$source")
 src_sha=$(cx_tree_sha256 "$rel/source")
 jq -n --arg v "$version" --arg min "$min_source" --arg at "$released_at" \
   --argjson mig "$mig" --argjson img "$images" \
