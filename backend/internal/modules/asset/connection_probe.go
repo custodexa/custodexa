@@ -89,9 +89,8 @@ var connectionProbes = map[model.ProtocolType]connectionProbe{
 
 // probeGuacd rdp／vnc 撥測：經 guacd 完成協議握手（自舊 testConnection 原樣抽出）。
 //
-// 誠實邊界：params.Timeout 只涵蓋 TCP 撥號，guacd 讀取路徑無 deadline
-// （pkg/guacamole/client.go 刻意移除，列為 backlog）。本 change 不宣稱此路徑有
-// 逾時保障——它只是不再收到 guacd 不支援的協議。
+// params.Timeout 涵蓋 guacd 撥號及整個握手；各階段共用絕對期限，
+// 呼叫端較早的期限或取消同樣會解除讀寫阻塞並關閉連線。
 func (s *AssetService) probeGuacd(ctx context.Context, creds *AssetCredentials, timeout int) *ConnectionTestResult {
 	asset := creds.Asset
 	defer creds.Destroy()

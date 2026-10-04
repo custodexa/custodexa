@@ -3124,6 +3124,10 @@
     "backHome": "Back to home"
   },
   "guacClient": {
+    "policyNoticeTitle": "Clipboard policy notice",
+    "policyNoticeDescription": "The clipboard policy now differs from the policy checked before connecting. Reconnect to apply it.",
+    "policyNoticeReconnectHint": "Use Reconnect in the tab menu, or disconnect and connect again.",
+    "policyNoticeDismiss": "Dismiss notice",
     "connectTo": "Connect to {name}",
     "assetFallback": "Asset #{id}",
     "disconnect": "Disconnect",

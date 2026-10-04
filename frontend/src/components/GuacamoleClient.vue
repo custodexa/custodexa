@@ -80,6 +80,36 @@
       >{{ assetLabel }}</span>
     </div>
 
+    <div
+      v-if="showPolicyNotice"
+      :key="observedClipboard"
+      class="policy-notice"
+      role="status"
+      aria-live="polite"
+    >
+      <Info
+        class="policy-notice-icon"
+        :size="16"
+        aria-hidden="true"
+      />
+      <div class="policy-notice-content">
+        <strong>{{ $t('guacClient.policyNoticeTitle') }}</strong>
+        <p>{{ $t('guacClient.policyNoticeDescription') }}</p>
+        <p class="policy-notice-hint">
+          {{ $t('guacClient.policyNoticeReconnectHint') }}
+        </p>
+      </div>
+      <button
+        class="policy-notice-dismiss"
+        type="button"
+        @click="dismissPolicyNotice"
+        @keydown.enter.prevent="dismissPolicyNotice"
+        @keyup.space.prevent="dismissPolicyNotice"
+      >
+        {{ $t('guacClient.policyNoticeDismiss') }}
+      </button>
+    </div>
+
     <!-- 調試信息：僅開發模式顯示，正式環境保持乾淨介面 -->
     <div
       v-if="isDev"
@@ -113,8 +143,9 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { createConnectTokenWithConsent } from '@/api/connect'
-import { useTransferCapabilities } from '@/composables/useTransferCapabilities'
+import { useTransferCapabilities, TRANSFER_ACTIONS } from '@/composables/useTransferCapabilities'
 import { ElMessage } from 'element-plus'
+import { Info } from 'lucide-vue-next'
 import { t } from '@/i18n'
 import { resolveApiError } from '@/api/error'
 
@@ -196,10 +227,111 @@ const statusText = computed(() => {
 // 資料傳輸有效能力（data-transfer-control 6.2／6.3）：**呈現用，非強制點**。
 // 剪貼簿的實際強制在 guacd 連線參數（disable-copy／disable-paste），檔案上傳的
 // 實際強制在 tunnel 攔截；此處只決定鈕亮不亮與滑過去看到什麼原因
-const { load: loadCapabilities, allows: allowsTransfer } = useTransferCapabilities()
-const canClipboardSend = computed(() => allowsTransfer('clipboard_send'))
-const canClipboardRecv = computed(() => allowsTransfer('clipboard_recv'))
-const canFileUpload = computed(() => allowsTransfer('file_upload'))
+const { load: readCapabilities } = useTransferCapabilities()
+const connectionCapabilities = ref(null)
+const fileCapabilities = ref(null)
+const capabilitiesStale = ref(false)
+let connectionEpoch = 0
+let fileReadSequence = 0
+let committedFileRead = 0
+const canClipboardSend = computed(() => connectionCapabilities.value?.clipboard_send !== false)
+const canClipboardRecv = computed(() => connectionCapabilities.value?.clipboard_recv !== false)
+// Upload/download directions also have handshake parameters. Relaxation cannot
+// enable a direction that was disabled at the pre-connect baseline.
+const canFileUpload = computed(() => connectionCapabilities.value?.file_upload !== false && fileCapabilities.value?.file_upload !== false)
+const canFileDownload = computed(() => connectionCapabilities.value?.file_download !== false && fileCapabilities.value?.file_download !== false)
+const canFileDelete = computed(() => fileCapabilities.value?.file_delete !== false)
+
+async function loadCapabilities(epoch) {
+  const sequence = ++fileReadSequence
+  const result = await readCapabilities(props.assetId)
+  if (epoch !== connectionEpoch) return null
+  if (!result || !TRANSFER_ACTIONS.every(key => typeof result[key] === 'boolean')) {
+    capabilitiesStale.value = true
+    return null
+  }
+  const snapshot = Object.fromEntries(TRANSFER_ACTIONS.map(key => [key, result[key]]))
+  capabilitiesStale.value = false
+  if (sequence > committedFileRead) {
+    committedFileRead = sequence
+    fileCapabilities.value = Object.fromEntries(['file_upload', 'file_download', 'file_delete'].map(key => [key, snapshot[key]]))
+  }
+  return snapshot
+}
+
+const observedClipboard = ref(null)
+const dismissedClipboard = ref(null)
+const clipboardTuple = caps => `${caps.clipboard_send}:${caps.clipboard_recv}`
+const showPolicyNotice = computed(() => connected.value && connectionCapabilities.value !== null &&
+  observedClipboard.value !== null && observedClipboard.value !== clipboardTuple(connectionCapabilities.value) &&
+  observedClipboard.value !== dismissedClipboard.value)
+let policyTimer = null
+let focusPolicyTimer = null
+let policyInFlight = null
+let lastPolicyStarted = -Infinity
+const POLICY_INTERVAL_MS = 30000
+const POLICY_FOCUS_INTERVAL_MS = 5000
+
+function dismissPolicyNotice() {
+  dismissedClipboard.value = observedClipboard.value
+}
+
+function stopPolicyObservation() {
+  connectionEpoch++
+  clearInterval(policyTimer)
+  clearTimeout(focusPolicyTimer)
+  policyTimer = null
+  focusPolicyTimer = null
+  policyInFlight = null
+  lastPolicyStarted = -Infinity
+  observedClipboard.value = null
+  dismissedClipboard.value = null
+  window.removeEventListener('focus', checkPolicyOnFocus)
+  document.removeEventListener('visibilitychange', checkPolicyWhenVisible)
+  window.removeEventListener('focus', syncClipboardOnFocus)
+}
+
+function observePolicy() {
+  if (!connected.value) return
+  if (policyInFlight) return policyInFlight
+  const epoch = connectionEpoch
+  lastPolicyStarted = Date.now()
+  clearTimeout(focusPolicyTimer)
+  focusPolicyTimer = null
+  const request = loadCapabilities(epoch).then(snapshot => {
+    if (!snapshot || epoch !== connectionEpoch || !connected.value) return
+    observedClipboard.value = clipboardTuple(snapshot)
+    if (connectionCapabilities.value && observedClipboard.value === clipboardTuple(connectionCapabilities.value)) {
+      dismissedClipboard.value = null
+    }
+  }).finally(() => {
+    if (policyInFlight === request) policyInFlight = null
+  })
+  policyInFlight = request
+  return request
+}
+
+function checkPolicyOnFocus() {
+  if (!connected.value || policyInFlight) return
+  const remaining = POLICY_FOCUS_INTERVAL_MS - (Date.now() - lastPolicyStarted)
+  if (remaining <= 0) {
+    observePolicy()
+  } else if (focusPolicyTimer === null) {
+    focusPolicyTimer = setTimeout(observePolicy, remaining)
+  }
+}
+
+function checkPolicyWhenVisible() {
+  if (document.visibilityState === 'visible') checkPolicyOnFocus()
+}
+
+function startPolicyObservation() {
+  if (policyTimer !== null) return
+  window.addEventListener('focus', checkPolicyOnFocus)
+  document.addEventListener('visibilitychange', checkPolicyWhenVisible)
+  policyTimer = setInterval(observePolicy, POLICY_INTERVAL_MS)
+  observePolicy()
+}
 
 // 資產顯示名（無名稱時回退到「資產 {id}」）；連線鈕與資訊列共用
 const assetLabel = computed(
@@ -372,14 +504,19 @@ function connect() {
 }
 
 async function doConnect(containerWidth, containerHeight) {
+  stopPolicyObservation()
+  const epoch = connectionEpoch
+  connectionCapabilities.value = null
+  fileCapabilities.value = null
+  capabilitiesStale.value = false
   try {
     connecting.value = true
-    // 傳輸能力快照（data-transfer-control 6.2）：**剪貼簿兩鍵是連線參數**，
-    // 由 guacd 於握手時吃下，連線期間改政策不影響本條連線。故此處取的值就是
-    // 這條連線的實際能力，之後不再刷新——刷新反而會讓按鈕狀態與連線實況不符
-    // （政策改開＝按鈕亮但 guacd 仍擋；政策改關＝按鈕暗但其實還能貼）。
-    // 檔案上傳走 tunnel 逐次判定，另於開檔案挑選器時重取（見 triggerFilePicker）
-    await loadCapabilities(props.assetId)
+    // This is a pre-connect policy reading, not the server's handshake snapshot.
+    // Keep an independent baseline; subsequent reads only update file presentation
+    // and the policy notice. A failed first read leaves the baseline unknown.
+    const baseline = await loadCapabilities(epoch)
+    if (epoch !== connectionEpoch) return
+    connectionCapabilities.value = baseline
     console.log('[GuacamoleClient] 開始連線...', `${containerWidth}x${containerHeight}`)
     displayWidth.value = containerWidth
     displayHeight.value = containerHeight
@@ -389,9 +526,12 @@ async function doConnect(containerWidth, containerHeight) {
     let connectToken
     try {
       const resp = await createConnectTokenWithConsent(props.assetId, props.accountId)
+      if (epoch !== connectionEpoch) return
       connectToken = resp.connect_token
     } catch (err) {
+      if (epoch !== connectionEpoch) return
       console.error('[GuacamoleClient] 取得連線 token 失敗:', err)
+      stopPolicyObservation()
       connecting.value = false
       emit('status-change', 'closed')
       return
@@ -430,6 +570,7 @@ async function doConnect(containerWidth, containerHeight) {
 
     // 遠端檔案系統掛載（RDP 重導磁碟／VNC SFTP 側車）——捕獲 filesystem 物件供上傳
     guacClient.onfilesystem = (object, name) => {
+      if (epoch !== connectionEpoch) return
       remoteFs = object
       hasRemoteFs.value = true
       console.log('[GuacamoleClient] 遠端檔案系統已掛載:', name)
@@ -439,6 +580,7 @@ async function doConnect(containerWidth, containerHeight) {
 
     // 設定狀態處理器（不干擾指令處理鏈）
     guacClient.onstatechange = function(state) {
+      if (epoch !== connectionEpoch) return
       console.log('[GuacamoleClient v6.1] Client state:', state)
 
       const stateNames = {
@@ -462,6 +604,7 @@ async function doConnect(containerWidth, containerHeight) {
         // 本機 → 遠端剪貼簿：視窗回焦時同步
         window.addEventListener('focus', syncClipboardOnFocus)
         syncClipboardOnFocus()
+        startPolicyObservation()
         console.log('[GuacamoleClient v6.1] 連線成功')
 
         // RDP 連線首幀黑屏：nudge 重繪（與 resize 放大黑屏同根因，共用 triggerRdpRepaint）
@@ -470,6 +613,7 @@ async function doConnect(containerWidth, containerHeight) {
         console.log('[GuacamoleClient v6.1] 正在連線...')
         debugLastMessage.value = t('guacClient.debugConnecting')
       } else if (state === Guacamole.Client.State.DISCONNECTED) {
+        stopPolicyObservation()
         connected.value = false
         connecting.value = false
         emit('status-change', 'closed')
@@ -480,12 +624,15 @@ async function doConnect(containerWidth, containerHeight) {
 
     // 錯誤處理
     guacClient.onerror = function(error) {
+      if (epoch !== connectionEpoch) return
+      stopPolicyObservation()
       console.error('[GuacamoleClient v6.1] Client error:', error)
       const message = guacErrorMessage(error)
       debugLastMessage.value = t('guacClient.debugError', { message })
       ElMessage.error(t('guacClient.connectError', { message }))
       connecting.value = false
       connected.value = false
+      emit('status-change', 'closed')
     }
 
     // 開始連線 - 使用可用版本的方式
@@ -494,10 +641,13 @@ async function doConnect(containerWidth, containerHeight) {
     guacClient.connect()
 
   } catch (err) {
+    if (epoch !== connectionEpoch) return
+    stopPolicyObservation()
     console.error('[GuacamoleClient v6.1] 連線失敗:', err)
     ElMessage.error(t('guacClient.connectFailed', { message: err.message }))
     connecting.value = false
     connected.value = false
+    emit('status-change', 'closed')
   }
 }
 
@@ -539,9 +689,8 @@ async function copyRemoteToLocal() {
 
 // 上傳本機檔案到遠端（RDP 走 guacd "file" 串流→重導磁碟）
 function triggerFilePicker() {
-  // 檔案能力於 tunnel 側逐次判定（即時生效），開挑選器前重取一次，
-  // 使呈現跟得上會話進行中的政策改動；剪貼簿不重取（見 doConnect 註解）
-  loadCapabilities(props.assetId)
+  // Refresh only file presentation; clipboard observation has its own schedule.
+  loadCapabilities(connectionEpoch)
   fileInputRef.value?.click()
 }
 
@@ -601,10 +750,9 @@ async function syncClipboardOnFocus() {
     pendingRemoteClipboard = null
     navigator.clipboard.writeText(pending).catch(() => {})
   }
-  // 這條連線不允許把本機剪貼簿送到遠端時，自動同步一律不送。
-  // 內容本來就進不了遠端（連線參數已擋），但送出動作會在審計留下一筆
-  // 「有把內容傳進資產」的紀錄，事後查紀錄的人會以為真的發生過傳輸。
-  // 只擋自動同步這條路；顯式點擊由按鈕的不可用狀態擋住，不重複判定。
+  // Automatic send uses the pre-connect presentation baseline. The server's
+  // handshake parameters remain the enforcement point; this read is not proof
+  // of the exact values adopted during the handshake.
   if (!canClipboardSend.value) return
   await pasteToRemote(true)
 }
@@ -664,11 +812,18 @@ function setupInput() {
   }
 
   // 連線鍵盤事件
+  const noticeKeys = new Set()
   keyboard.onkeydown = function(keysym) {
+    // Keep the notice's native keyboard control local to the browser.
+    if (noticeKeys.has(keysym) || document.activeElement?.closest('.policy-notice')) {
+      noticeKeys.add(keysym)
+      return true
+    }
     guacClient.sendKeyEvent(1, keysym)
   }
 
   keyboard.onkeyup = function(keysym) {
+    if (noticeKeys.delete(keysym) || document.activeElement?.closest('.policy-notice')) return
     guacClient.sendKeyEvent(0, keysym)
   }
 
@@ -682,6 +837,9 @@ function disconnect() {
 
 function cleanup() {
   console.log('[GuacamoleClient v6.1] Cleaning up...')
+  const wasActive = connected.value || connecting.value
+  stopPolicyObservation()
+  pendingConnect.value = false
 
   // 解除剪貼簿同步監聽
   window.removeEventListener('focus', syncClipboardOnFocus)
@@ -718,6 +876,8 @@ function cleanup() {
   // 重置所有狀態變數
   connected.value = false
   connecting.value = false
+  // The disposed client's callbacks are ignored, so publish closure here.
+  if (wasActive) emit('status-change', 'closed')
   debugClientState.value = t('guacClient.debugUninitialized')
   debugLastMessage.value = t('guacClient.debugWaitingConnect')
 }
@@ -733,7 +893,8 @@ defineExpose({
   canClipboardSend,
   canClipboardRecv,
   canFileUpload,
-  loadCapabilities,
+  canFileDownload,
+  canFileDelete,
   __test__setConnectedClient(client) {
     guacClient = client
     connected.value = true
@@ -765,6 +926,49 @@ defineExpose({
   font-size: 12px;
   margin-left: auto;
 }
+
+.policy-notice {
+  display: flex;
+  align-items: flex-start;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ot-border);
+  background: var(--ot-bg-elevated);
+  color: var(--ot-text-primary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.policy-notice-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--ot-primary);
+}
+
+.policy-notice-content {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.policy-notice-content strong { color: var(--ot-primary); }
+.policy-notice-content p { margin: 0; }
+.policy-notice-hint { color: var(--ot-text-secondary); }
+
+.policy-notice-dismiss {
+  flex-shrink: 0;
+  border: 1px solid var(--ot-border);
+  border-radius: 3px;
+  padding: 1px 8px;
+  background: transparent;
+  color: var(--ot-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.policy-notice-dismiss:hover { color: var(--ot-text-primary); }
+.policy-notice-dismiss:focus-visible { outline: 2px solid var(--ot-primary); outline-offset: 2px; }
 
 .display-container {
   flex: 1;

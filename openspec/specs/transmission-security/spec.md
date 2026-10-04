@@ -2,7 +2,9 @@
 
 ## Purpose
 傳輸層安全政策的分通道治理：六個通道各以 off／warn／strict 三段階梯設定強制程度，連線類通道於連線前要求風險同意並留痕（同意可記憶且有效期），認證類通道設 LDAP 登入傳輸閘，設定類通道於存檔前確認，資產列常駐傳輸風險徽章，並提供通道加密清冊的稽核匯出。出廠預設六通道皆 off，不改變既有連線、登入與存檔行為。
+
 ## Requirements
+
 ### Requirement: 傳輸強制階梯（per 通道三段）
 系統 SHALL 對六個傳輸通道各提供獨立的強制等級政策：`off`（不限制，出廠預設，行為與現狀完全一致）、`warn`（警告留痕）、`strict`（嚴格拒絕）。通道與判定條件：RDP＝guacd 參數未啟憑證驗證（ignore-cert=true 或 security 低於 NLA）、VNC＝協議本身未加密（恆命中）、DB＝資產 `db_tls_mode` 為空或 `disable`、LDAP＝目錄連線非 ldaps 或跳過憑證驗證（SkipTLSVerify）、syslog＝轉發傳輸非 TLS、通知＝通道 URL 為 http。政策變更 SHALL 入審計。
 
@@ -112,3 +114,23 @@ syslog／通知通道／LDAP 目錄設定在 warn 檔下，存檔含不安全傳
 
 - **WHEN** 資產設定 https 且 TLS 模式 `ca`
 - **THEN** 清冊對 winrm 通道顯示已加密且無風險鍵
+
+### Requirement: 傳輸同意端點的資產資格與不存在回應
+
+`POST /api/v1/transmission-consents` SHALL 沿既有主體與 connect 授權判斷立據資格。合法請求中的資產不存在或請求者無 connect 權限時，系統 SHALL 回同一 404 `{"code":"NOTFOUND_ASSET","error":"資產不存在"}`，本文僅含 `code` 與 `error`，相關內容、快取、驗證與跨來源等標頭 SHALL 相同，SHALL NOT 回傳風險、資產、帳號或權限原因資料。資格判斷 SHALL 先於風險評估與同意寫入。admin 的既有 connect 例外與 auditor 須具 connect 授權的條件 SHALL 保留。前端 SHALL 使用既有資產不存在文案並中止該次流程。
+
+#### Scenario: 資產不存在與未授權的立據等價拒絕
+- **WHEN** 同一已登入且可連線的主體，以相同合法 risk_keys 對不存在資產與存在但無 connect 權限資產立據
+- **THEN** 兩者狀態、機器碼、訊息、完整欄位及相關標頭皆相同，均為 404 `NOTFOUND_ASSET`，不記錄同意或揭露風險
+
+#### Scenario: 合法同意保留既有結果
+- **WHEN** 使用者具該資產的 connect 權限，所確認風險與當下政策及風險一致
+- **THEN** 仍記錄同意並回 200 與 consented_at；原同意內容、記憶效期及留痕不變
+
+#### Scenario: 通過授權後的風險不符
+- **WHEN** 使用者已通過資產 connect 授權，但提交的風險項與當下不符，或不符合原可立據條件
+- **THEN** 分別保留原風險變動409及不適用／無風險400，不被不存在404取代
+
+#### Scenario: 確認風險後資產撤權
+- **WHEN** 前端已因簽發428顯示風險，使用者確認後的同意請求因資產撤權回404
+- **THEN** 前端呈現既有資產不存在文案並中止，不再重試簽發；正常同意流程仍可於成功立據後重試一次

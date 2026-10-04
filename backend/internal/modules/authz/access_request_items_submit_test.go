@@ -219,7 +219,7 @@ func TestSubmitExecutorVisibilityIntersection(t *testing.T) {
 			r, e := s.Submit(1, "human", model.RoleUser, in)
 			switch side {
 			case "inactive", "human_executor":
-				if !errors.Is(e, ErrExecutorNotAgent) {
+				if !errors.Is(e, ErrAccessRequestNotFound) {
 					t.Fatal(e)
 				}
 			case "requester", "executor":

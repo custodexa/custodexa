@@ -31,14 +31,22 @@ func NewConnection(protocol string, params map[string]string) *Connection {
 
 // Connect 連線到 guacd 並執行握手流程
 func (c *Connection) Connect(guacdHost string, guacdPort int) error {
+	return c.ConnectContext(context.Background(), guacdHost, guacdPort)
+}
+
+// ConnectContext shares one deadline across dialing and the complete handshake.
+func (c *Connection) ConnectContext(ctx context.Context, guacdHost string, guacdPort int) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	defer clearCredentialParams(c.Params)
+	ctx, cancel := context.WithTimeout(ctx, guacamole.HandshakeTimeout)
+	defer cancel()
+	c.Ready = false
 
 	log.Printf("[Connection] 開始連線到 guacd %s:%d...", guacdHost, guacdPort)
 
 	// 1. 建立 TCP 連線到 guacd
-	client, err := guacamole.NewClient(guacdHost, guacdPort)
+	client, err := guacamole.NewClientContext(ctx, guacdHost, guacdPort)
 	if err != nil {
 		return fmt.Errorf("連線 guacd 失敗: %w", err)
 	}
@@ -47,7 +55,7 @@ func (c *Connection) Connect(guacdHost string, guacdPort int) error {
 	log.Printf("[Connection] 已連線到 guacd，開始交握流程...")
 
 	// 2. 執行完整握手流程
-	if err := c.handshake(); err != nil {
+	if err := client.WithHandshakeDeadline(ctx, c.handshake); err != nil {
 		c.GuacClient.Close()
 		c.GuacClient = nil
 		return fmt.Errorf("交握失敗: %w", err)
@@ -230,5 +238,5 @@ func connectWithMaterial(ctx context.Context, conn *Connection, host string, por
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return conn.Connect(host, port)
+	return conn.ConnectContext(ctx, host, port)
 }

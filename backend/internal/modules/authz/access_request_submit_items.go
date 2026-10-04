@@ -113,21 +113,14 @@ func (s *AccessRequestService) submitItems(requesterID uint, username, role stri
 		}
 		seen[item.AssetID] = true
 	}
-	var executor model.User
-	if input.ExecutorUserID != nil {
-		if err := s.db.First(&executor, *input.ExecutorUserID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, ErrExecutorNotAgent
-			}
-			return nil, err
-		}
-		if executor.Kind != model.KindAgent || !executor.Active {
-			return nil, ErrExecutorNotAgent
-		}
+	if input.ExecutorUserID != nil && *input.ExecutorUserID == 0 {
+		return nil, ErrRequestItemsShape
 	}
-	prepared := make([]preparedRequestItem, 0, len(items))
+	// Resolve every requester's item before inspecting the executor or exposing
+	// item-specific policy and account validation results.
+	assets := make([]model.Asset, 0, len(items))
 	requesterKind := ""
-	for itemIndex, item := range items {
+	for _, item := range items {
 		// Fold the trusted requester kind into the pre-existing asset fetch: no
 		// separate kind/rate query is added to the human path.
 		var found struct {
@@ -142,15 +135,43 @@ func (s *AccessRequestService) submitItems(requesterID uint, username, role stri
 			return nil, err
 		}
 		requesterKind = found.RequesterKind
-		visible, err := s.RequestItemVisible(requesterID, input.ExecutorUserID, item.AssetID)
+		visible, err := s.RequestItemVisible(requesterID, nil, item.AssetID)
 		if err != nil {
 			return nil, err
 		}
 		if !visible {
 			return nil, ErrAccessRequestNotFound
 		}
+		assets = append(assets, found.Asset)
+	}
+	if input.ExecutorUserID != nil {
+		var executor model.User
+		if err := s.db.First(&executor, *input.ExecutorUserID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrAccessRequestNotFound
+			}
+			return nil, err
+		}
+		if executor.Kind != model.KindAgent || !executor.Active {
+			return nil, ErrAccessRequestNotFound
+		}
+		// Complete the current visibility intersection for all items before any
+		// account validation, so item order cannot distinguish executor eligibility.
+		for _, item := range items {
+			visible, err := s.RequestItemVisible(requesterID, input.ExecutorUserID, item.AssetID)
+			if err != nil {
+				return nil, err
+			}
+			if !visible {
+				return nil, ErrAccessRequestNotFound
+			}
+		}
+	}
+	prepared := make([]preparedRequestItem, 0, len(items))
+	for itemIndex, item := range items {
+		assetRow := &assets[itemIndex]
 		agentExec := requesterKind == model.KindAgent || input.ExecutorUserID != nil
-		segment := s.accessPolicy.AccessPolicyOf(&found.Asset)
+		segment := s.accessPolicy.AccessPolicyOf(assetRow)
 		if segment == model.AccessPolicyOpen && !agentExec {
 			return nil, ErrPolicyOpenNoRequest
 		}
@@ -178,7 +199,7 @@ func (s *AccessRequestService) submitItems(requesterID uint, username, role stri
 				}
 			}
 		}
-		prepared = append(prepared, preparedRequestItem{found.Asset, scope, segment})
+		prepared = append(prepared, preparedRequestItem{*assetRow, scope, segment})
 	}
 	maxDuration := s.policies.GetInt(policy.PolicyAccessRequestMaxDurationMinutes)
 	if input.DurationMinutes < 1 || input.DurationMinutes > maxDuration {

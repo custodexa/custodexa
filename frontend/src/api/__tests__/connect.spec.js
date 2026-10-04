@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import i18n from '@/i18n'
 
 // 連線前同意流程（428→對話框→立據→重試）
 
@@ -91,6 +92,78 @@ describe('createConnectTokenWithConsent', () => {
 
     await expect(createConnectTokenWithConsent(9)).rejects.toBe(err)
     expect(messageErrorMock).toHaveBeenCalledWith('傳輸安全政策（嚴格）拒絕連線')
+  })
+
+  it('存在性 404 與既有政策回應正確分流', async () => {
+    const localeBefore = i18n.global.locale.value
+    const { default: actualRequest } = await vi.importActual('../request')
+    const { setAccessToken, getAccessToken, resetSessionForTests } = await import('@/utils/session')
+    const interceptor = actualRequest.interceptors.response.handlers[0]
+    const codes = ['NOTFOUND_ASSET', 'NOTFOUND_SESSION', 'NOTFOUND_ACCESS_REQUEST']
+    const translations = {
+      'zh-TW': ['資產不存在', 'Session 不存在', '申請單不存在'],
+      'en-US': ['Asset not found', 'Session not found', 'Access request not found'],
+      'ja-JP': ['アセットが存在しません', 'セッションが存在しません', '申請が存在しません'],
+    }
+    const risks = [{ key: 'vnc_unencrypted', label: 'VNC' }]
+    try {
+      for (const [locale, messages] of Object.entries(translations)) {
+        i18n.global.locale.value = locale
+        for (const mode of ['missing', 'consent-revoked', 'reason', 'approval', 'consent']) {
+          for (const mock of [requestMock, confirmMock, alertMock, promptMock, messageErrorMock]) mock.mockReset()
+          const missing = Object.assign(new Error('not found'), {
+            response: { status: 404, data: { code: 'NOTFOUND_ASSET', error: '資產不存在' } },
+          })
+          const policy = Object.assign(new Error('policy'), {
+            response: { status: 403, data: { reason: `${mode}_required` } },
+          })
+          confirmMock.mockResolvedValue('confirm')
+          alertMock.mockResolvedValue('ok')
+          promptMock.mockResolvedValue({ value: 'maintenance' })
+          if (mode === 'missing') requestMock.mockRejectedValueOnce(missing)
+          if (mode === 'consent-revoked') requestMock.mockRejectedValueOnce(gate428(risks)).mockRejectedValueOnce(missing)
+          if (mode === 'reason') requestMock.mockRejectedValueOnce(policy).mockResolvedValueOnce({}).mockResolvedValueOnce({ connect_token: 'ct' })
+          if (mode === 'approval') requestMock.mockRejectedValueOnce(policy)
+          if (mode === 'consent') requestMock.mockRejectedValueOnce(gate428(risks)).mockResolvedValueOnce({}).mockResolvedValueOnce({ connect_token: 'ct' })
+
+          if (['missing', 'consent-revoked'].includes(mode)) {
+            await expect(createConnectTokenWithConsent(9)).rejects.toBe(missing)
+          } else if (mode === 'approval') {
+            await expect(createConnectTokenWithConsent(9)).rejects.toBe(policy)
+          } else {
+            await expect(createConnectTokenWithConsent(9)).resolves.toEqual({ connect_token: 'ct' })
+          }
+          const paths = requestMock.mock.calls.map(([config]) => config.url)
+          expect(paths).toEqual({
+            missing: ['/connect-tokens'],
+            'consent-revoked': ['/connect-tokens', '/transmission-consents'],
+            reason: ['/connect-tokens', '/access-requests', '/connect-tokens'],
+            approval: ['/connect-tokens'],
+            consent: ['/connect-tokens', '/transmission-consents', '/connect-tokens'],
+          }[mode])
+          expect(promptMock).toHaveBeenCalledTimes(mode === 'reason' ? 1 : 0)
+          expect(alertMock).toHaveBeenCalledTimes(mode === 'approval' ? 1 : 0)
+          expect(confirmMock).toHaveBeenCalledTimes(mode.startsWith('consent') ? 1 : 0)
+          if (mode === 'missing') expect(messageErrorMock).toHaveBeenCalledExactlyOnceWith(messages[0])
+          else expect(messageErrorMock).not.toHaveBeenCalled()
+        }
+        // The real interceptor presents consent/share/report errors and keeps login state.
+        setAccessToken('existence-probe-test-token')
+        const locationBefore = window.location.href
+        for (const [index, code] of codes.entries()) {
+          messageErrorMock.mockClear()
+          const error = { config: { url: '/fixture' }, response: { status: 404, data: { code, error: 'fallback' } } }
+          await expect(interceptor.rejected(error)).rejects.toBe(error)
+          expect(messageErrorMock).toHaveBeenCalledExactlyOnceWith(messages[index])
+          expect(getAccessToken()).toBe('existence-probe-test-token')
+          expect(window.location.href).toBe(locationBefore)
+        }
+      }
+    } finally {
+      i18n.global.locale.value = localeBefore
+      resetSessionForTests()
+      for (const mock of [requestMock, confirmMock, alertMock, promptMock, messageErrorMock]) mock.mockReset()
+    }
   })
 })
 

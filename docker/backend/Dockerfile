@@ -199,5 +199,6 @@ EXPOSE 8080
 # This image expects the orchestrator to apply capability restrictions.
 # SETUID and SETGID switch DB CLI children to their dedicated identity.
 # CHOWN transfers temporary CA files to that identity.
+# KILL permits terminating DB CLI children running as a different user.
 # IPC_LOCK allows process memory locking without the memlock limit.
 CMD ["./custodexa"]

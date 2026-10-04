@@ -2,6 +2,60 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.15.2 — consistent not-found answers, clipboard policy notices and bounded remote desktop setup (2026-10-05)
+
+No schema change. No migration runs. A 1.14.x or 1.15.x package deployment upgrades with
+`custodexa.sh upgrade 1.15.2`.
+
+### What changes for deployers
+
+- The denials listed below now get the same answer as a request for a resource that does not
+  exist. Update API clients that branch on these status or error codes:
+
+  | Request | Before | Now |
+  | --- | --- | --- |
+  | `POST /api/v1/connect-tokens` without connect permission on the asset | 403 `AUTH_ASSET_CONNECT_DENIED` | 404 `NOTFOUND_ASSET` |
+  | `POST /api/v1/transmission-consents` without connect permission on the asset | 403 `AUTH_ASSET_CONNECT_DENIED` | 404 `NOTFOUND_ASSET` |
+  | `GET /api/v1/ssh/sessions/:id/stats` by someone other than the session owner, an administrator or an auditor | 403 `AUTH_SESSION_STATS_DENIED` | 404 `NOTFOUND_SESSION` |
+  | `POST` or `DELETE /api/v1/sessions/:id/share` by someone other than the session owner | 403 `AUTH_SESSION_SHARE_OWNER_ONLY` | 404 `NOTFOUND_SESSION` |
+  | `GET /api/v1/access-requests/:id/reports` without read access | 403 `AUTH_AGENT_FORBIDDEN_ROUTE` | 404 `NOTFOUND_ACCESS_REQUEST` |
+  | `POST /api/v1/access-requests` with `executor_user_id` identifying an account that does not exist, is disabled or is not an agent | 400 `VALIDATION_EXECUTOR_NOT_AGENT` | 404 `NOTFOUND_ACCESS_REQUEST` |
+  | `POST /api/v1/access-requests` with `executor_user_id` set to 0 | 400 `VALIDATION_EXECUTOR_NOT_AGENT` | 400 `VALIDATION_BAD_PARAMS` |
+
+- `POST /api/v1/access-requests` checks that both the requester and the selected executor can
+  view every requested asset before it checks accounts and policy. When either cannot, the
+  answer is 404 `NOTFOUND_ACCESS_REQUEST`.
+- The backend container in the stock Compose files adds the `KILL` capability, so it can end
+  database command line programs that run as a separate user. `custodexa.sh upgrade` applies
+  it. Deployments that run the Compose files directly need to recreate the backend container,
+  because a restart keeps the old capabilities. Custom deployments need to add `KILL` to the
+  backend service.
+- A remote desktop connection now has 30 seconds to finish its setup with the remote
+  desktop gateway. A connection that takes longer fails with the usual connection error
+  instead of waiting forever. Remote desktop connection tests keep their configured time
+  limit for the whole test.
+
+### Fixes
+
+- Connected RDP and VNC sessions check the transfer policy every 30 seconds and when the
+  window regains focus, at most once every five seconds. When a successful check finds a
+  clipboard policy that differs from the one read before connecting, the toolbar shows a
+  notice that can be dismissed and says to reconnect to apply it. Policy caching and browser
+  scheduling can delay the notice. The clipboard buttons, including after opening file upload,
+  keep the state they had when the session started.
+- The upload button turns off when a successful policy check reports that uploads are
+  blocked. If uploads were blocked before connecting, a later policy that allows them applies
+  after reconnecting.
+- SSH, database command line and database query console sessions record the transfer policy
+  that applied when they started. The record states that clipboard use in these sessions is
+  not controlled by the server.
+- Closing the browser tab of a database command line session, or ending the session as an
+  administrator, now ends the command line program and closes the session right away. Before,
+  the program kept running, the session stayed active and ending it as an administrator did
+  not return.
+- Cancelling a remote desktop connection or connection test stops it and releases its
+  resources right away.
+
 ## 1.15.1 — bounded audit capture and OIDC denial records (2026-10-01)
 
 No schema change. No migration runs. A 1.14.x or 1.15.0 package deployment upgrades with

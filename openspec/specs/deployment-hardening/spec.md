@@ -363,8 +363,9 @@ SHALL NOT 另行發明判定方式。backend SHALL 等待該容器通過健康�
 ### Requirement: backend 容器與行程以受限能力執行
 
 專案交付的編排定義 SHALL 使 backend 容器以受限能力執行：丟棄全部 Linux capability，只保留
-資料庫 CLI 子程序換身分所需的 `SETUID`、`SETGID`、`CHOWN` 與鎖頁所需的 `IPC_LOCK` 四項；
-拒絕經 setuid 檔案提權；core dump 大小上限為零；鎖頁上限不設限。保留的四項 SHALL 各自對應
+資料庫 CLI 子程序換身分所需的 `SETUID`、`SETGID`、暫存檔所有權交接所需的 `CHOWN`、
+終止不同 UID 子程序所需的 `KILL` 與鎖頁所需的 `IPC_LOCK` 五項；
+拒絕經 setuid 檔案提權；core dump 大小上限為零；鎖頁上限不設限。保留的五項 SHALL 各自對應
 一個既有且可指認的用途，SHALL NOT 預防性保留。開發版編排 SHALL 施加與正式版相同的設定。
 
 backend 行程 SHALL 在讀取任何組態之前自行施加三項硬化：標記行程不可傾印、將 core dump 上限
@@ -376,7 +377,7 @@ backend 行程 SHALL 在讀取任何組態之前自行施加三項硬化：標�
 行程的記憶體與環境變數。編排層保證該能力不存在，故兩層合起來的效果是：進入容器取得 shell
 不足以取走金鑰材料。
 
-正式版建置驗證流程 SHALL 對編排定義實跑核對：capability 集合恰為上述四項、禁止提權旗標生效、
+正式版建置驗證流程 SHALL 對編排定義實跑核對：capability 集合恰為上述五項、禁止提權旗標生效、
 core 上限為零；正式版與開發版兩份定義逐項相同。任一不成立即失敗。行程啟動後不可傾印
 屬執行期性質，由行程層守衛測試（呼叫硬化函式後核對傾印旗標、core 上限與鎖頁量）與
 實跑場景核對，不由建置驗證流程核對——該流程不啟動完整堆疊。
@@ -404,7 +405,7 @@ SHALL NOT 使用「container hardened」或「最小權限 runtime」等未逐�
 
 #### Scenario: 正式版建置驗證核對能力集合
 
-- **WHEN** 執行正式版建置驗證，而編排定義的 backend capability 集合多於或少於上述四項、
+- **WHEN** 執行正式版建置驗證，而編排定義的 backend capability 集合多於或少於上述五項、
   或禁止提權旗標缺失、或 core 上限非零
 - **THEN** 驗證失敗並指出不符的一項
 

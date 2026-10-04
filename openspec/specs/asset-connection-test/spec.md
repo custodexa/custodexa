@@ -71,7 +71,9 @@
 
 ### Requirement: 撥測在有界時間內返回
 
-撥測 SHALL 在有界時間內返回結果。請求可指定的逾時 SHALL 夾制於 1 至 30 秒（未指定或非法值時採預設 10 秒），且所指定的時限 SHALL 涵蓋撥測全程（ssh 的認證階段、資料庫的 TCP 撥號、k8s 的 API 呼叫），SHALL NOT 僅涵蓋傳輸層撥號而讓後續階段無限等待。
+撥測 SHALL 在有界時間內返回結果。請求可指定的逾時 SHALL 夾制於 1 至 30 秒（未指定或非法值時採預設 10 秒），且所指定的時限 SHALL 涵蓋撥測全程（ssh 的認證階段、資料庫的 TCP 撥號、k8s 的 API 呼叫，以及 rdp／vnc 經 guacd 的 TCP 撥號、select／args、能力宣告／connect 與 ready 階段），SHALL NOT 僅涵蓋傳輸層撥號而讓後續階段無限等待。
+
+rdp／vnc 的 guacd 撥測 SHALL 自開始撥測採單一絕對期限，各階段共用剩餘時間，SHALL NOT 在等待 ready 時重新給完整預算；若呼叫端 deadline 更早，SHALL 採較早者。請求取消或期限到期 SHALL 解除阻塞 I/O 並於返回前關閉 socket、結束取消監視與該次工作，不遺留背景撥測。逾時結果 SHALL 沿用 `success=false`、機器碼 `RULE_ASSET_TEST_TIMEOUT` 與粗分類 `timeout`，並維持既有結果結構與持久化流程。
 
 前端發起撥測時 SHALL 使用大於後端逾時上界的請求等待時間，SHALL NOT 因用戶端先行逾時而使已完成的撥測結果無法呈現。
 
@@ -89,6 +91,21 @@
 
 - **WHEN** 撥測在後端耗時接近逾時上界後回傳結果
 - **THEN** 前端仍收到並呈現該結果，不因請求等待時間不足而顯示為傳輸失敗
+
+#### Scenario: guacd 不回 args 時撥測仍返回
+
+- **WHEN** 對 rdp 或 vnc 資產撥測，guacd 接受 TCP 後不回 args
+- **THEN** 撥測在整程預算耗盡時返回既有逾時失敗結果並關閉 socket，不持續等待；HTTP 回應維持 200 的結果形狀
+
+#### Scenario: args 與 ready 共用一次預算
+
+- **WHEN** guacd 的 args 已耗用部分撥測時間，ready 在原期限之前未到達
+- **THEN** ready 只使用剩餘預算，期限到期即以既有逾時分類返回並清理，不從 args 完成時重新計時
+
+#### Scenario: 較早期限或請求取消解除撥測
+
+- **WHEN** 撥測在 guacd 讀寫階段尚未完成，呼叫端的較早期限到期或請求被取消
+- **THEN** 該次網路工作解除阻塞並清理，不等到較晚的撥測期限；已斷開的呼叫端無回應送達保證
 
 ### Requirement: 撥測失敗以機器碼分類，原始訊息不外洩
 

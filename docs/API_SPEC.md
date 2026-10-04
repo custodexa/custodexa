@@ -2760,10 +2760,13 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
 | 方法 | 路徑 | 說明 |
 |---|---|---|
 | POST | `/connect-tokens` | 簽發前經停用硬擋：資產 `active=false`→**403＋`{reason: "asset_disabled"}`**（授權檢查之後、政策閘之前；admin 不豁免——停用是資產態非權限態，須先重新啟用留稽核）；再經傳輸閘：strict 命中→400＋`{channel, level, risks}`；warn 無有效同意→428＋`{channel, level, risks}`（與 strict 同一 body 形狀）；off/無風險→照常簽發。SFTP 檔案端點同收口（停用資產 403 `asset_disabled`）；token 兌換點（`/ssh`、`/connect`）建線前重查 active——簽發後停用者殘窗內同 403。停用硬擋後另經**錄影前置檢查**（偵測/告警恆做；政策鍵 `recording_failclose_enabled` 開啟且錄影目錄不可寫→**403＋`{reason: "recording_unavailable"}`**，admin 唯一例外放行＋稽核豁免標記 `recording_exemption`） |
-| POST | `/transmission-consents` | 傳輸風險同意立據（authenticate＋checkPermission 同簽發邊界） |
+| POST | `/transmission-consents` | 傳輸風險同意立據（主體可連線與 connect 授權，同簽發資產邊界） |
+
+以上兩個 POST 的資產不存在或無 connect 權限，皆回 **404** `{"code":"NOTFOUND_ASSET","error":"資產不存在"}`，本文只有這兩欄，相關標頭相同，不回風險或權限原因；兩者均先判資產資格，才進各自後續的政策／風險處理。admin 沿既有 connect 例外，auditor 仍須具 connect 授權。已授權後的 `reason_required`／`approval_required` 403、傳輸同意428及其他政策回應維持。
 
 **同意請求**: `{"asset_id": 9, "risk_keys": ["vnc_unencrypted"]}`（`risk_keys`＝使用者看到的風險項 key 集合）
 - 成功 (200): `{"consented_at": "..."}`；同意入稽核（誰／何時／資產／風險項）；per user×asset 冪等更新
+- 資產不存在或無 connect 權限 (404): 同上 `NOTFOUND_ASSET` 封套，不寫同意；前端顯示既有資產不存在文案並中止，不再重試簽發
 - 風險已變 (409): `{"error": "風險項已變更，請重新確認"}`（TOCTOU 守衛：立據集合與當下不符）
 - strict 檔／無風險 (400): 不受理立據（strict 不吃同意、off 無需同意）
 
@@ -4167,13 +4170,14 @@ subject 顯式參數解析（不自 request context 推導），來源六種聯�
 | POST | `/access-requests/:id/cancel` | 撤回自己的 pending 單（他人單 403、非 pending 409） |
 
 **錯誤**: 409 同資產已有在途單（帶在途單資訊；若在途單實已逾時，伺服端就地作廢後重試建單）、
-400 時長超過 `access_request_max_duration_minutes`／open 段位、404 資產不可視（非授權資產不洩漏存在性）。
+400 時長超過 `access_request_max_duration_minutes`／open 段位；資產不存在、不可視或指定 executor 不可用時，均回404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`，本文僅有這兩欄，相關標頭相同，不回候選狀態或項目細節。
 
 **多項任務**：新形狀 `items` 限 1–20 個不同資產，不可同時帶外層 `asset_id`／`accounts`。
 `reason` 必填、至多 1000 字；`duration_minutes` ≥1 且不超過政策上限。舊單資產形狀仍建立一項。
 每項以執行者判定政策與帳號範圍；agent 執行項必須指定具體帳號，不接受省略、空集合或 `@ALL`。
-`executor_user_id` 只在建立時可指定，必須為啟用中的 agent；省略時由申請人執行。
-輔助模式在建單與每次連線判定現查申請人、執行者的可視交集。
+`executor_user_id` 只在建立時可指定，必須為正整數且指向啟用中的 agent；省略或null時由申請人執行。
+不存在、停用、非agent或不具全部項目可視交集的executor均回上述404 `NOTFOUND_ACCESS_REQUEST`，不再以400 `VALIDATION_EXECUTOR_NOT_AGENT` 區分。形狀錯誤仍400：明示0為 `VALIDATION_BAD_PARAMS`；負數、字串、非整數等綁定失敗為 `VALIDATION_ACCESS_REQUEST_FIELDS`；items的互斥、數量及重複限制維持原400。
+建立時先驗純形狀，再確認全部項目的申請人可視與executor資格／雙方可視交集，全部成立才驗帳號、政策及建立單與項，避免項目排序改變拒絕結果；拒絕不建立部分單、項或票證。輔助模式在建單與每次連線判定現查交集，委派不要求申請人為agent owner。
 
 回應保留所有既有欄位與省略規則，新增 `items[]`、可空省略的 `executor_user_id`／`closed_at`。
 `asset_id`、`accounts`、`authorization_id` 為第一項鏡像；每項帶 `id,request_id,requester_id,asset_id,accounts,status`、
@@ -4185,8 +4189,7 @@ JSON 物件 `policy_snapshot`（`segment,required_approvals`，自動核准另�
 全部已授權項到期或被撤銷且無 pending 項時，首次寫入 `closed_at`，並收線任務名下殘存會話。
 
 **新增錯誤**：400 `VALIDATION_BAD_PARAMS`（新舊形狀混用／項數／重複資產等）、
-`VALIDATION_ACCOUNT_NOT_ON_ASSET`（帳號未掛載於該資產）、`VALIDATION_AGENT_ACCOUNTS_REQUIRED`、
-`VALIDATION_EXECUTOR_NOT_AGENT`；409 重複 pending 項附 top-level `request_id,item_id`；
+`VALIDATION_ACCOUNT_NOT_ON_ASSET`（帳號未掛載於該資產）、`VALIDATION_AGENT_ACCOUNTS_REQUIRED`；409 重複 pending 項附 top-level `request_id,item_id`；
 429 `RULE_AGENT_REQUEST_RATE`（agent 每小時建單／同時 pending 上限，預設 30／5）。
 人類不受 agent 速率鍵限制。agent 嘗試審核或拒絕回 403 `AUTH_AGENT_FORBIDDEN_ROUTE`。
 
@@ -5433,8 +5436,10 @@ Authorization: Bearer <token>
 **請求**: `{"asset_id": 1, "account_id": 3, "access_request_id": 12}`（`account_id` 選填，省略／0＝該資產的預設帳號）
 **回應** (200): `{"connect_token": "<hex>", "expires_in": 60}`
 
-簽發時完成資產存在性與連線授權檢查（資產不存在 404、無授權 403）；
+簽發時完成資產存在性與連線授權檢查；資產不存在與無connect授權皆回 **404** `{"code":"NOTFOUND_ASSET","error":"資產不存在"}`，不簽票。本文只含code與error，兩種結果的相關標頭相同，不帶reason、帳號或風險資訊；前端顯示既有不存在文案並中止。
 token 綁定 user+asset+account，Resolve 即焚。guacd 與原生 SSH 兩路徑共用同一 token 管理器。
+
+這項404回應僅用於本REST簽發的資產授權拒絕；行程內簽發、token兌換及重撥維持原拒絕語義。已通過資產授權後的reason_required／approval_required 403及傳輸同意428不變。存在性拒絕的相關標頭包括內容型別、長度（存在時）、快取、驗證挑戰、重新導向及跨來源設定；逐請求的時間與追蹤識別不表示資源狀態差異。
 
 `access_request_id` 對人類選填，帶入時於簽發及 SSH／圖形／DB console 兌換現查任務主體、
 資產、解析後的帳號、核准時窗、撤銷及關閉狀態；不符回 403 `AUTH_REQUEST_ITEM_MISMATCH`，
@@ -5493,6 +5498,8 @@ Upgrade: websocket
 | POST | `/sessions/share/token` | 任何已登入用戶以分享碼換一次性觀看票（JWT）；body: `{"code": "..."}` → `{"connect_token": "...", "expires_in": 60}`。碼走請求本體而非路徑——請求路徑會進入操作日誌，而分享碼是短期憑證 |
 | GET | `/sessions/share/:code/ws?connect_token=<觀看票>` | 持票加入唯讀觀看（WS）；加入與拒絕皆留痕 |
 
+**建立／撤銷錯誤**：POST與DELETE在會話不存在或非本人時，皆回404 `{"code":"NOTFOUND_SESSION","error":"Session 不存在"}`，本文僅這兩欄，相關標頭相同；admin／auditor對他人會話也不豁免。拒絕先於在線或分享狀態判斷，不建立、替換或撤銷分享；畫面沿用會話不存在文案，不提示擁有者資格。本人通過資格後，POST非活躍會話仍400 `RULE_SESSION_SHARE_NOT_ACTIVE`；DELETE無有效分享仍404 `NOTFOUND_SESSION_SHARE`，成功仍200 `{"revoked":true}`。
+
 觀看票綁定簽票者與該分享碼，短效且單次；分享碼的有效性於加入時判定，簽票後才失效或
 被撤銷者加入回 404。票證相關的拒絕與監看同形（401，成因只進稽核）。
 
@@ -5505,7 +5512,7 @@ GET /api/v1/ssh/sessions/:id/stats
 Authorization: Bearer <token>
 ```
 
-**授權**: 會話本人或 admin/auditor；非活躍會話回 404（`會話不在線上`）。
+**授權**: 會話本人或 admin/auditor。會話不存在或不具上述資格時皆回404 `{"code":"NOTFOUND_SESSION","error":"Session 不存在"}`，本文僅這兩欄，相關標頭相同，不揭露是否在線或採集能力；前端沿用會話不存在文案。通過資格後，非活躍會話仍回404 `RULE_SESSION_NOT_ONLINE`（`會話不在線上`）。
 僅 SSH 會話支援（DB CLI/K8s 無 SSH channel）；目標主機需支援 `/proc`（否則 502）。
 
 **回應** (200，`SessionStats`；counters 為原始值，CPU%/網速由前端兩次輪詢差分):
@@ -5559,7 +5566,7 @@ Authorization: Bearer <token>
 | GET `/agent-tool-calls` | admin／auditor；查詢 user_id、access_request_id、from／to（RFC3339）、decision、offset／limit。回 `{data,total}`，含 result_digest／result_excerpt／masked_count；另由會話投影 `asset_name`／`account_username`（唯讀，會話外的呼叫或無資產的會話留空）；decision=pending 表示已記錄，是否送出與結果皆未知，非成功（契約 §9.13）。|
 | GET `/agent-tool-calls/:id/arguments` | admin／auditor（`audit:view`）；query `reason` **必填**（1–1000 bytes，空白視同缺漏 → 400 `VALIDATION_BAD_PARAMS`）。回 `{data:{id, session_id, access_request_id, arguments}}`，`arguments` 為該列參數的**未遮罩原文**物件（憑證欄仍為指紋）；回應帶 `Cache-Control: no-store`。500 `INTERNAL_TOOL_CALL_ARGUMENTS`（解密失敗、稽核不可用等，原因只進伺服器 log 與告警鏈）。伺服器端**先寫調閱稽核列**（action `agent_tool_call_args_viewed`，details 含帳本列 id、會話、任務、理由）**再解密交付**；稽核寫入不可用即拒絕並回收斂錯誤（fail-close）。列不存在、或該列沒有加密原文（參數未命中機敏規則、或本版本前寫入）一律 404 `NOTFOUND_TOOL_CALL_ARGUMENTS`，不可用回應差異探測某列是否含機敏。agent token 一律 403。政策 `alert_on_sensitive_reveal` 開啟時另發 `sensitive_reveal` 告警（見告警 API）。|
 | POST `/access-requests/:id/reports` | 任務原執行 agent 提交 `{body}`，201 回不可變的新版本；任務關閉後 24 小時內可補交／修訂；時鐘以持久化 closed_at 為準。人類或其他 agent 為 403、超窗 409、本文錯誤 400。|
-| GET `/access-requests/:id/reports` | admin／auditor、執行者、申請者或 owner；回 latest、versions、closed_at、missing_report_at_close。關閉時沒有版本即缺報告，後續補交不改該事實。|
+| GET `/access-requests/:id/reports` | admin／auditor、原執行者、申請者或執行者當前owner；成功200回 latest、versions、closed_at、missing_report_at_close，無報告仍為200空版本列表。任務不存在或無讀取資格皆404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`，本文僅這兩欄且相關標頭相同，不回版本、缺報告或執行者資訊；前端沿用申請單不存在文案。關閉時沒有版本即缺報告，後續補交不改該事實。此GET拒絕不改上列POST的400／403／409與作者限制。|
 | GET `/access-requests/history` | 即時有效審核者 OR auditor。auditor 跨範圍唯讀；其他審核者維持原核准範圍。approve／reject／revoke／review 沿原資格，純 auditor 仍 403。|
 | POST `/users/:id/agent-breaker/release` | owner 或 admin，必填 `{reason}`（API 上限 1000 字元，服務層另限制 1000 bytes）；成功 204，原因入稽核。清除未處置旗標，不復活已停用 token；須重新核發。錯誤：400 `VALIDATION_BAD_PARAMS`（reason 缺漏、空白或超長）、403 `AUTH_PERMISSION_DENIED`（非 owner 亦非 admin、呼叫者非人類、或目標非 agent 主體）、409 `CONFLICT_AGENT_BREAKER_NOT_PENDING`（該主體目前沒有待處置熔斷——此端點只清旗標，沒有旗標即無事可清）。|
 

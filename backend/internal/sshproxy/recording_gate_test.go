@@ -47,10 +47,10 @@ func TestRecordingFailCloseGate(t *testing.T) {
 		h.RecordingPath = unwritableRecordingPath(t)
 		h.RecordingFailClose = failCloseOn
 
-		// auditor 稽核唯讀：connect 授權閘（早於錄影閘）即回 403，走不到錄影
+		// auditor 稽核唯讀：HTTP connect 授權拒絕（早於錄影閘）回 404，走不到錄影
 		// 前置檢查。錄影閘的非 admin 不豁免由上方 user case 覆蓋
 		code, resp, _ := issueToken(h, 3, model.RoleAuditor, 1)
-		if code != http.StatusForbidden || resp["reason"] == "recording_unavailable" {
+		if code != http.StatusNotFound || resp["reason"] == "recording_unavailable" {
 			t.Fatalf("auditor 應在授權閘被擋（非 recording_unavailable）: code=%d resp=%v", code, resp)
 		}
 	})

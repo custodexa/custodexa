@@ -4,13 +4,16 @@
 package localpty
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 )
@@ -18,6 +21,8 @@ import (
 // CLIUser 資料庫 CLI 子程序的專用降權身分（image 內建，見 docker/backend/Dockerfile）。
 // 該身分非 root、無 capability、無可寫路徑、HOME 為唯讀空目錄。
 const CLIUser = "dbcli"
+
+const closeWaitTimeout = time.Second
 
 // Options 子程序執行環境選項
 type Options struct {
@@ -75,9 +80,11 @@ func parseSystemID(s string) (int, error) {
 
 // Conn 一條已啟動的本地 CLI PTY 連線
 type Conn struct {
-	cmd     *exec.Cmd
-	ptmx    *os.File
-	onClose func() // 連線結束時的清理（如刪除 TLS CA 暫存檔），冪等由呼叫端保證
+	process   childProcess
+	pid       int
+	ptmx      *os.File
+	onClose   func() // 連線結束時的清理（如刪除 TLS CA 暫存檔）
+	closeOnce sync.Once
 
 	// writeMu 序列化寫入 ptmx：提示注入由 Read 的 goroutine 觸發，
 	// 與前端輸入的 pump goroutine 並行
@@ -86,7 +93,12 @@ type Conn struct {
 	auth *promptAuth
 }
 
-// SetOnClose 註冊連線關閉時的清理回呼（Close 時呼叫一次）
+type childProcess interface {
+	Kill() error
+	Wait() (*os.ProcessState, error)
+}
+
+// SetOnClose 在連線交予 bridge 前註冊清理回呼（Close 時呼叫一次）。
 func (c *Conn) SetOnClose(fn func()) {
 	c.onClose = fn
 }
@@ -144,7 +156,7 @@ func StartWithOptions(prog string, args, env []string, cols, rows int, opt Optio
 	if err != nil {
 		return nil, fmt.Errorf("啟動本地終端程式失敗: %w", err)
 	}
-	c := &Conn{cmd: cmd, ptmx: ptmx}
+	c := &Conn{process: cmd.Process, pid: cmd.Process.Pid, ptmx: ptmx}
 	if opt.Auth != nil && !opt.Auth.Password.IsEmpty() && opt.Auth.Prompt != "" {
 		c.auth = newPromptAuth(*opt.Auth, ptmx, c.Write)
 		handedOff = true
@@ -160,13 +172,10 @@ func (c *Conn) HasPasswordPrompt() bool {
 	return c.auth != nil
 }
 
-// Pid 子程序 PID（0＝尚未啟動或已回收）。供診斷與環境不變式測試查
+// Pid 子程序啟動時的 PID（0＝尚未啟動）。供診斷與環境不變式測試查
 // /proc/<pid>/status 核對執行身分與 capability。
 func (c *Conn) Pid() int {
-	if c.cmd == nil || c.cmd.Process == nil {
-		return 0
-	}
-	return c.cmd.Process.Pid
+	return c.pid
 }
 
 // Read 讀取 CLI 輸出（程序結束時回 EOF/EIO，bridge 據此收線）。
@@ -191,20 +200,37 @@ func (c *Conn) WindowChange(rows, cols int) error {
 	return pty.Setsize(c.ptmx, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 }
 
-// Close 關閉 PTY 並終止子程序（冪等；Wait 回收避免殭屍程序）
+// Close 關閉 PTY 並終止子程序；等待回收有上限，並行呼叫亦只清理一次。
+// 逾時後保留唯一的 Wait，子程序最終退出時仍會回收。
 func (c *Conn) Close() {
-	if c.auth != nil {
-		c.auth.cfg.Password.Destroy()
-	}
-	if c.ptmx != nil {
-		c.ptmx.Close()
-	}
-	if c.cmd != nil && c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
-		_, _ = c.cmd.Process.Wait()
-	}
-	if c.onClose != nil {
-		c.onClose()
-		c.onClose = nil
-	}
+	c.closeOnce.Do(func() {
+		if c.auth != nil {
+			c.auth.cfg.Password.Destroy()
+		}
+		if c.ptmx != nil {
+			_ = c.ptmx.Close()
+		}
+		if c.process != nil {
+			if err := c.process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				log.Printf("[LocalPTY] kill failed: pid=%d: %v", c.pid, err)
+			}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if _, err := c.process.Wait(); err != nil {
+					log.Printf("[LocalPTY] wait failed: pid=%d: %v", c.pid, err)
+				}
+			}()
+			timer := time.NewTimer(closeWaitTimeout)
+			defer timer.Stop()
+			select {
+			case <-done:
+			case <-timer.C:
+				log.Printf("[LocalPTY] wait timed out: pid=%d after %s; reaping continues in background", c.pid, closeWaitTimeout)
+			}
+		}
+		if c.onClose != nil {
+			c.onClose()
+		}
+	})
 }

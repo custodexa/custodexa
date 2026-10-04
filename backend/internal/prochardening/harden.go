@@ -8,6 +8,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Harden applies process memory controls. The orchestrator separately retains
+// SETUID, SETGID, CHOWN and KILL for DB CLI lifecycle operations, and IPC_LOCK
+// for memory locking; all other capabilities remain dropped.
 func Harden() error {
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
 		return fmt.Errorf("PR_SET_DUMPABLE failed (check security_opt and ulimits.core deployment settings): %w", err)

@@ -3124,6 +3124,10 @@
     "backHome": "ホームに戻る"
   },
   "guacClient": {
+    "policyNoticeTitle": "クリップボードポリシーのお知らせ",
+    "policyNoticeDescription": "現在取得したクリップボードポリシーは接続前と異なります。再接続後に適用されます。",
+    "policyNoticeReconnectHint": "タブメニューの「再接続」、または切断してから接続し直してください。",
+    "policyNoticeDismiss": "通知を閉じる",
     "connectTo": "{name}に接続",
     "assetFallback": "資産 #{id}",
     "disconnect": "切断",

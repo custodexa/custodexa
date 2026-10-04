@@ -3,7 +3,9 @@
 ## Purpose
 
 連線憑證收口：前端零接觸明文憑證，後端記憶體解密注入，全協議一致。
+
 ## Requirements
+
 ### Requirement: Asset-gated connections
 All protocol connections (SSH, RDP, VNC) SHALL be initiated with an authentication token and an asset identifier only. The backend MUST resolve connection targets and decrypt credentials in memory; connection endpoints MUST NOT accept hostname, username, or password parameters from the client.
 
@@ -40,13 +42,15 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 
 行程內兌換 SHALL NOT 使兌換點的來源位址判定退化：判定所用的位址 SHALL 為發起該次 MCP 呼叫的呼叫端位址，SHALL NOT 為迴路位址。票證仍 SHALL NOT 攜帶位址——位址 SHALL 由行程內的呼叫脈絡直接傳遞至兌換點，而非寫入票證後再讀回。兌換點 SHALL 仍於兌換當下現讀允許來源網段清單，SHALL NOT 信任簽發時的判定結果。
 
+REST 簽發對資產不存在與無 connect 授權 SHALL 回相同的 404 封套，SHALL NOT 附加原因、權限、資產名稱、帳號、任務或風險資訊。封套 SHALL 僅含 `code` 與 `error`；兩種結果的相關標頭 SHALL 相同，包括內容型別、長度（存在時）、快取、驗證挑戰、重新導向及跨來源設定。與目標無關的逐請求時間或追蹤識別不作為資源拒絕差異。系統 SHALL 保留既有主體及來源檢查順序、admin 的 connect 例外與 auditor 須具 connect 授權的條件。只有這個 REST 資產授權拒絕改用不存在封套；行程內簽發、各兌換入口及重撥的拒絕語義 SHALL 維持。
+
 #### Scenario: 正常兩段式連線
 - **WHEN** 前端以 JWT 換取 connect token 後開啟 WS（SSH 或 guacd）
 - **THEN** 連線建立，且同一 token 再次使用被拒
 
 #### Scenario: 無授權資產
-- **WHEN** 使用者對無連線權限的資產請求 token
-- **THEN** 回 403，不簽發 token
+- **WHEN** 已通過認證與來源限制的使用者對無連線權限的資產呼叫 REST token 簽發端點
+- **THEN** 回 404，本文為 `{"code":"NOTFOUND_ASSET","error":"資產不存在"}`，與不存在資產的狀態、機器碼、訊息、欄位及相關標頭相同，不簽發 token
 
 #### Scenario: 過期 token
 - **WHEN** 以超過 60 秒的 token 開啟 WS
@@ -83,6 +87,22 @@ The system SHALL NOT provide a user-facing path to open proxied connections to a
 #### Scenario: 行程內兌換的來源位址不退化為迴路
 - **WHEN** 主體的允許來源網段清單非空，執行者自清單外的位址經 MCP 服務請求建立連線
 - **THEN** 兌換被拒（`source_not_allowed`），判定所用位址為該執行者的呼叫端位址；清單內位址的同一請求則正常建線
+
+#### Scenario: 不存在與無權限資產的完整回應等價
+- **WHEN** 同一已登入且符合來源限制的使用者，以相同有效請求形狀分別對不存在資產及存在但無 connect 權限的資產呼叫 REST token 簽發
+- **THEN** 兩者皆回 404 及相同的 `NOTFOUND_ASSET` 封套與相關標頭，無其他欄位，且不簽發 token、不建立會話
+
+#### Scenario: 已授權後的政策流程維持
+- **WHEN** 使用者已通過資產 connect 授權，但尚待填理由、取得核准或確認傳輸風險
+- **THEN** 理由及核准流程仍各回原 `reason_required`／`approval_required` 403，同意流程仍回原 428 與風險欄位，不被轉換成不存在
+
+#### Scenario: 資產權限拒絕的前端呈現
+- **WHEN** REST token 簽發回 404 `NOTFOUND_ASSET`
+- **THEN** 前端以既有資產不存在文案呈現並中止，不發申請、不開理由／核准／風險對話框、不重試或登出
+
+#### Scenario: 行程內與兌換拒絕語義保留
+- **WHEN** 行程內簽發判定無 connect 權限，或 token 簽發後授權遭撤銷而在兌換時被拒
+- **THEN** 仍依各路徑原有 403 資產授權拒絕語義拒絕，不因 REST 的不存在封套轉換而改變
 
 ### Requirement: 不安全通道連線前同意閘
 connect-token 簽發 SHALL 依傳輸安全政策對 RDP／VNC／DB 連線加閘：該通道為 warn 且申請者對該資產無有效同意記憶時，簽發 SHALL 被拒並回須同意之風險項；該通道為 strict 且資產命中風險判定時，簽發 SHALL 無條件拒絕。off 檔 SHALL 完全不影響簽發。閘檢查 SHALL 位於簽發端點（授權檢查之後），確保所有連線入口（含直呼 API）一致受閘。

@@ -41,7 +41,7 @@ func appendUserRole(t *testing.T, db *gorm.DB, userID uint, roleName string) {
 // 撤權殘窗歸零。fixture 中 user2 具 admin 角色但對 asset1 無顯式 grant（僅 user1 有），
 // 其連線能力純來自 admin 角色短路，故降權後即失去連線資格，是最乾淨的觀測點。
 func TestConnectRoleUsesLiveDBRole(t *testing.T) {
-	t.Run("簽發點：JWT admin 但 DB 已降為 user、無授權→簽發 403、不產 token", func(t *testing.T) {
+	t.Run("簽發點：JWT admin 但 DB 已降為 user、無授權→簽發 404、不產 token", func(t *testing.T) {
 		h, db, _ := setupPolicyGateTest(t)
 		seedGateFixture(t, db)
 		setGroupPolicy(t, db, 1, model.AccessPolicyOpen)
@@ -50,8 +50,8 @@ func TestConnectRoleUsesLiveDBRole(t *testing.T) {
 		// issueToken 仍以 admin mock role 呼叫，模擬「JWT 攜帶 admin 快照」——
 		// 簽發點 SHALL 以 DB 現況（user）判定，不套用 admin 短路
 		code, resp, _ := issueToken(h, 2, model.RoleAdmin, 1)
-		if code != http.StatusForbidden || resp["connect_token"] != nil {
-			t.Fatalf("DB 降權後簽發應 403、不產 token（不信 JWT 角色快照）: code=%d resp=%v", code, resp)
+		if code != http.StatusNotFound || resp["connect_token"] != nil {
+			t.Fatalf("DB 降權後簽發應 404、不產 token（不信 JWT 角色快照）: code=%d resp=%v", code, resp)
 		}
 	})
 

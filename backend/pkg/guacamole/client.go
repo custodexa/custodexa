@@ -2,6 +2,7 @@ package guacamole
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,13 +18,23 @@ type Client struct {
 	writer    *bufio.Writer
 	mu        sync.Mutex
 	connected bool
+	closed    bool
 }
+
+// HandshakeTimeout bounds a complete guacd handshake.
+const HandshakeTimeout = 30 * time.Second
 
 // NewClient 建立新的 Guacamole 客戶端並連線到 guacd
 func NewClient(host string, port int) (*Client, error) {
+	return NewClientContext(context.Background(), host, port)
+}
+
+// NewClientContext dials with the caller's context and a maximum of ten seconds.
+func NewClientContext(ctx context.Context, host string, port int) (*Client, error) {
 	address := fmt.Sprintf("%s:%d", host, port)
 
-	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("連線到 guacd 失敗: %w", err)
 	}
@@ -44,8 +55,7 @@ func (c *Client) ReadInstruction() (*Instruction, error) {
 		return nil, fmt.Errorf("連線已關閉")
 	}
 
-	// 移除讀取超時，讓連接可以長時間等待
-	// guacd 需要時間來建立實際的 SSH/RDP/VNC 連接
+	// Deadlines belong to the handshake lifecycle; established reads may wait indefinitely.
 
 	// 依協議規範逐 rune 讀取一個完整指令（guacamole-protocol-conformance）。
 	// **不可再用 `ReadString(';')`**：協議的值可以合法含有 `;`（檔名、log、error 文字），
@@ -94,10 +104,11 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if !c.connected {
+	if c.closed {
 		return nil
 	}
 
+	c.closed = true
 	c.connected = false
 	return c.conn.Close()
 }
@@ -111,6 +122,64 @@ func (c *Client) IsConnected() bool {
 
 // Handshake 執行 Guacamole 握手協議
 func (c *Client) Handshake(protocol string, params map[string]string) error {
+	return c.HandshakeContext(context.Background(), protocol, params)
+}
+
+// HandshakeContext uses one budget for all handshake reads and writes.
+func (c *Client) HandshakeContext(ctx context.Context, protocol string, params map[string]string) error {
+	ctx, cancel := context.WithTimeout(ctx, HandshakeTimeout)
+	defer cancel()
+	return c.WithHandshakeDeadline(ctx, func() error {
+		return c.handshake(protocol, params)
+	})
+}
+
+// WithHandshakeDeadline runs a handshake using the context's absolute deadline.
+// The caller must provide a deadline and exclusively own the client until return.
+// Failure closes the connection; success clears both deadlines before handoff.
+func (c *Client) WithHandshakeDeadline(ctx context.Context, handshake func() error) (err error) {
+	conn := c.conn
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		_ = c.Close()
+		return fmt.Errorf("handshake context requires a deadline")
+	}
+	if err = conn.SetDeadline(deadline); err != nil {
+		_ = c.Close()
+		return fmt.Errorf("set handshake deadline: %w", err)
+	}
+
+	callbackDone := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		defer close(callbackDone)
+		// Close the captured socket directly: handshake writes may hold c.mu.
+		_ = conn.Close()
+	})
+	defer func() {
+		if !stop() {
+			<-callbackDone
+		}
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		} else if !time.Now().Before(deadline) {
+			err = context.DeadlineExceeded
+		}
+		if err == nil {
+			if clearErr := conn.SetDeadline(time.Time{}); clearErr != nil {
+				err = fmt.Errorf("clear handshake deadline: %w", clearErr)
+			}
+		}
+		if err != nil {
+			_ = c.Close()
+		}
+	}()
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	return handshake()
+}
+
+func (c *Client) handshake(protocol string, params map[string]string) error {
 	// 1. 發送 select 指令選擇協議
 	if err := c.WriteInstruction(NewSelectInstruction(protocol)); err != nil {
 		return fmt.Errorf("發送 select 指令失敗: %w", err)

@@ -227,11 +227,11 @@ func TestPolicyGate_Matrix(t *testing.T) {
 		seedGateFixture(t, db)
 		setGroupPolicy(t, db, 1, model.AccessPolicyApproval)
 
-		// auditor 稽核唯讀：connect 授權閘（早於 policy gate）即回 403，根本
+		// auditor 稽核唯讀：HTTP connect 授權拒絕（早於 policy gate）回 404，根本
 		// 到不了 approval 段位——比一般 user 更早被擋。policy gate 的非 admin
 		// 不豁免由上方 user case 覆蓋
 		code, resp, _ := issueToken(h, 3, model.RoleAuditor, 1)
-		if code != http.StatusForbidden || resp["reason"] == "approval_required" {
+		if code != http.StatusNotFound || resp["reason"] == "approval_required" {
 			t.Fatalf("auditor 應在授權閘被擋（非 approval_required）: code=%d resp=%v", code, resp)
 		}
 	})

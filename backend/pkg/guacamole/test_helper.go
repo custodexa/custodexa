@@ -3,6 +3,7 @@ package guacamole
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -52,39 +53,50 @@ func TestGuacamoleConnection(ctx context.Context, guacdHost string, guacdPort in
 	if params.Timeout == 0 {
 		params.Timeout = 10 * time.Second
 	}
+	ctx, cancel := context.WithDeadline(ctx, start.Add(params.Timeout))
+	defer cancel()
 
 	// 1. 連接到 guacd
 	conn, err := connectToGuacd(ctx, guacdHost, guacdPort, params.Timeout)
 	if err != nil {
+		errorType := ErrorTypeConnectionRefused
+		if ctx.Err() != nil || classifyError(err) == ErrorTypeTimeout {
+			errorType = ErrorTypeTimeout
+		}
 		return TestResult{
 			Success:   false,
 			Latency:   time.Since(start),
 			Message:   fmt.Sprintf("無法連接到 guacd: %v", err),
-			ErrorType: ErrorTypeConnectionRefused,
+			ErrorType: errorType,
 		}
 	}
-	defer conn.Close()
+	client := &Client{
+		conn:      conn,
+		reader:    bufio.NewReader(conn),
+		writer:    bufio.NewWriter(conn),
+		connected: true,
+	}
+	defer client.Close()
 
-	// 2. 執行握手
-	client, err := performHandshake(conn, params)
+	// Handshake and ready share the same reader and the original absolute deadline.
+	err = client.WithHandshakeDeadline(ctx, func() error {
+		if err := performHandshake(client, params); err != nil {
+			return err
+		}
+		if err := waitForReady(client); err != nil {
+			return fmt.Errorf("未收到 ready 指令: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		errorType := classifyError(err)
+		if ctx.Err() != nil {
+			errorType = ErrorTypeTimeout
+		}
 		return TestResult{
 			Success:   false,
 			Latency:   time.Since(start),
 			Message:   err.Error(),
-			ErrorType: errorType,
-		}
-	}
-
-	// 3. 等待 ready 指令
-	err = waitForReady(conn, client, params.Timeout)
-	if err != nil {
-		errorType := classifyError(err)
-		return TestResult{
-			Success:   false,
-			Latency:   time.Since(start),
-			Message:   fmt.Sprintf("未收到 ready 指令: %v", err),
 			ErrorType: errorType,
 		}
 	}
@@ -182,56 +194,47 @@ func connectToGuacd(ctx context.Context, host string, port int, timeout time.Dur
 	return conn, nil
 }
 
-// performHandshake 執行 Guacamole 握手流程；回傳已初始化的 client
-// 供 ready 階段共用（reader 緩衝不可跨實例，否則 ready 指令可能遺失）
-func performHandshake(conn net.Conn, params TestConnectionParams) (*Client, error) {
-	// 完整初始化（修復：裸構造缺 writer/reader/connected，寫入即「連線已關閉」）
-	client := &Client{
-		conn:      conn,
-		reader:    bufio.NewReader(conn),
-		writer:    bufio.NewWriter(conn),
-		connected: true,
-	}
-
+// performHandshake 與 ready 階段共用同一 client，保留 reader 的預讀資料。
+func performHandshake(client *Client, params TestConnectionParams) error {
 	// 1. 發送 select 指令
 	selectInst := NewSelectInstruction(params.Protocol)
 	if err := client.WriteInstruction(selectInst); err != nil {
-		return nil, fmt.Errorf("發送 select 失敗: %w", err)
+		return fmt.Errorf("發送 select 失敗: %w", err)
 	}
 
 	// 2. 接收 args 指令
 	argsInst, err := client.ReadInstruction()
 	if err != nil {
-		return nil, fmt.Errorf("接收 args 失敗: %w", err)
+		return fmt.Errorf("接收 args 失敗: %w", err)
 	}
 
 	if argsInst.Opcode != "args" {
-		return nil, fmt.Errorf("預期收到 args，實際收到: %s", argsInst.Opcode)
+		return fmt.Errorf("預期收到 args，實際收到: %s", argsInst.Opcode)
 	}
 
 	// 3. 發送客戶端能力聲明
 	// 3.1 size
 	sizeInst := NewSizeInstruction(params.Width, params.Height)
 	if err := client.WriteInstruction(sizeInst); err != nil {
-		return nil, fmt.Errorf("發送 size 失敗: %w", err)
+		return fmt.Errorf("發送 size 失敗: %w", err)
 	}
 
 	// 3.2 audio
 	audioInst := NewAudioInstruction()
 	if err := client.WriteInstruction(audioInst); err != nil {
-		return nil, fmt.Errorf("發送 audio 失敗: %w", err)
+		return fmt.Errorf("發送 audio 失敗: %w", err)
 	}
 
 	// 3.3 video
 	videoInst := NewVideoInstruction()
 	if err := client.WriteInstruction(videoInst); err != nil {
-		return nil, fmt.Errorf("發送 video 失敗: %w", err)
+		return fmt.Errorf("發送 video 失敗: %w", err)
 	}
 
 	// 3.4 image
 	imageInst := NewImageInstruction("image/png", "image/jpeg")
 	if err := client.WriteInstruction(imageInst); err != nil {
-		return nil, fmt.Errorf("發送 image 失敗: %w", err)
+		return fmt.Errorf("發送 image 失敗: %w", err)
 	}
 
 	// 4. 構建並發送 connect 指令
@@ -253,17 +256,14 @@ func performHandshake(conn net.Conn, params TestConnectionParams) (*Client, erro
 
 	connectInst := NewInstruction("connect", connectArgs...)
 	if err := client.WriteInstruction(connectInst); err != nil {
-		return nil, fmt.Errorf("發送 connect 失敗: %w", err)
+		return fmt.Errorf("發送 connect 失敗: %w", err)
 	}
 
-	return client, nil
+	return nil
 }
 
 // waitForReady 等待 ready 指令
-func waitForReady(conn net.Conn, client *Client, timeout time.Duration) error {
-	conn.SetReadDeadline(time.Now().Add(timeout))
-	defer conn.SetReadDeadline(time.Time{})
-
+func waitForReady(client *Client) error {
 	readyInst, err := client.ReadInstruction()
 	if err != nil {
 		return fmt.Errorf("讀取 ready 失敗: %w", err)
@@ -289,6 +289,11 @@ func waitForReady(conn net.Conn, client *Client, timeout time.Duration) error {
 
 // classifyError 錯誤分類
 func classifyError(err error) string {
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		(errors.As(err, &netErr) && netErr.Timeout()) {
+		return ErrorTypeTimeout
+	}
 	errStr := strings.ToLower(err.Error())
 
 	switch {

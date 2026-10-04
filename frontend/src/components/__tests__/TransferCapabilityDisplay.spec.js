@@ -39,6 +39,8 @@ vi.hoisted(() => {
   }
 })
 
+vi.mock('@/api/connect', () => ({ createConnectTokenWithConsent: vi.fn(() => new Promise(() => {})) }))
+
 import FileManager from '../FileManager.vue'
 import GuacamoleClient from '../GuacamoleClient.vue'
 import { listFiles, getTransferCapabilities } from '@/api/files'
@@ -158,9 +160,11 @@ describe('FileManager 依有效能力呈現不可用（6.2）', () => {
 })
 
 describe('GuacamoleClient 剪貼簿與上傳鈕依能力呈現（6.3）', () => {
+  let resizeCallback
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { resizeCallback = callback }
       observe() {}
       disconnect() {}
     })
@@ -179,7 +183,7 @@ describe('GuacamoleClient 剪貼簿與上傳鈕依能力呈現（6.3）', () => 
   it('剪貼簿雙向與檔案上傳各自對應一個鍵，允許時皆可用', async () => {
     getTransferCapabilities.mockResolvedValue(caps())
     const wrapper = mountClient()
-    await wrapper.vm.loadCapabilities(77)
+    resizeCallback([{ contentRect: { width: 800, height: 600 } }])
     await flushPromises()
 
     expect(wrapper.vm.canClipboardSend).toBe(true)
@@ -190,7 +194,7 @@ describe('GuacamoleClient 剪貼簿與上傳鈕依能力呈現（6.3）', () => 
   it('禁止貼入資產只關貼上鈕，取遠端剪貼簿不受影響（方向不得混淆）', async () => {
     getTransferCapabilities.mockResolvedValue(caps({ clipboard_send: false }))
     const wrapper = mountClient()
-    await wrapper.vm.loadCapabilities(77)
+    resizeCallback([{ contentRect: { width: 800, height: 600 } }])
     await flushPromises()
 
     expect(wrapper.vm.canClipboardSend).toBe(false)
@@ -200,7 +204,7 @@ describe('GuacamoleClient 剪貼簿與上傳鈕依能力呈現（6.3）', () => 
   it('禁止自資產抄出只關取遠端剪貼簿鈕，貼上不受影響（反向同驗）', async () => {
     getTransferCapabilities.mockResolvedValue(caps({ clipboard_recv: false }))
     const wrapper = mountClient()
-    await wrapper.vm.loadCapabilities(77)
+    resizeCallback([{ contentRect: { width: 800, height: 600 } }])
     await flushPromises()
 
     expect(wrapper.vm.canClipboardRecv).toBe(false)
@@ -210,7 +214,7 @@ describe('GuacamoleClient 剪貼簿與上傳鈕依能力呈現（6.3）', () => 
   it('禁止檔案上傳時圖形通道的上傳鈕不可用', async () => {
     getTransferCapabilities.mockResolvedValue(caps({ file_upload: false }))
     const wrapper = mountClient()
-    await wrapper.vm.loadCapabilities(77)
+    resizeCallback([{ contentRect: { width: 800, height: 600 } }])
     await flushPromises()
 
     expect(wrapper.vm.canFileUpload).toBe(false)

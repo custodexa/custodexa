@@ -250,7 +250,7 @@ func gateIssueCells() []gateIssueCell {
 		{
 			name: "G-I5 無連線授權（auditor 不自動放行）", gate: "G-I5",
 			userID: 3, role: model.RoleAuditor, assetID: 1,
-			wantStatus: http.StatusForbidden, wantCode: apierror.CodeAssetConnectDenied,
+			wantStatus: http.StatusNotFound, wantCode: apierror.CodeAssetNotFound,
 		},
 		{
 			name: "G-I6 資產停用（admin 亦不豁免）", gate: "G-I6",

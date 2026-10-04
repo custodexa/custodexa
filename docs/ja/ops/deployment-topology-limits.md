@@ -108,17 +108,19 @@ guacd サービスは Apache Guacamole の公式イメージ `guacamole/guacd:1.
 
 **バックエンドは引き続き root で実行されます。** 配布されるデプロイ設定と起動コードは、次の設定を適用します。
 
-- `cap_drop: [ALL]` ですべての capability を削除した後、`cap_add: [SETUID, SETGID, CHOWN, IPC_LOCK]` で四つだけを付与します。`SETUID` と `SETGID` は DB CLI 子プロセスを専用ユーザーとグループに切り替え、`CHOWN` は一時 CA ファイルの所有権をそのユーザーに移し、`IPC_LOCK` はロック対象メモリのリソース上限を超えるメモリロックを許可します。
+- `cap_drop: [ALL]` ですべての capability を削除した後、`cap_add: [SETUID, SETGID, CHOWN, KILL, IPC_LOCK]` で五つだけを付与します。`SETUID` と `SETGID` は DB CLI 子プロセスを専用ユーザーとグループに切り替え、`CHOWN` は一時 CA ファイルの所有権をそのユーザーに移します。`KILL` はコンテナの PID namespace 内で異なる UID のプロセス（DB CLI 子プロセスを含む）へのシグナル送信を許可し、`IPC_LOCK` はロック対象メモリのリソース上限を超えるメモリロックを許可します。
 - `security_opt: [no-new-privileges:true]` は、setuid ファイルやファイル capability を通じた実行時の権限追加を禁止します。
 - `ulimits.core` は `soft: 0`、`hard: 0` ともにゼロです。バックエンド自身も `RLIMIT_CORE` をゼロに設定します。
 - `PR_SET_DUMPABLE=0` はバックエンドプロセスをダンプ不可にします。`SYS_PTRACE` が付与されていないことと合わせて、コンテナ内の他のプロセスは、その `/proc/<pid>/environ` と `/proc/<pid>/mem` を読み取れません。この capability 制限下の root プロセスも対象です。
 - `ulimits.memlock: -1` と `mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT)` は、常駐ページをロックし、他のマッピング済みページも常駐時にロックすることで、それらのページのスワップアウトを防ぎます。
 
-2026-09-12（Asia/Taipei）の測定では、バックエンドに上記の設定を適用し、15 の開発サービス（Air を含む backend、dex、fake-gcs、frontend、guacd、k3s-test、ldap-test、localstack、mssql-test、mysql-test、postgres、rdp-test、ssh-multi-test、ssh-test、vnc-test）、測定用クライアントおよびサービスのバックグラウンド処理が同時に動作し、他の Go テストやエンドツーエンドの smoke テストは実行していない状態で、アクティブな SSH セッションが 0 本のときはバックエンドの VmRSS 68616 kB／VmLck 1369796 kB、ssh-test への同時 SSH セッション 20 本を 120×30 の端末で echo 実行後に 45 秒間開いたままにしたときは VmRSS 76952 kB／VmLck 1370060 kB であり、これらの単一サンプルは参考測定値であってメモリ上限の保証ではありません。
+2026-09-12（Asia/Taipei）の測定では、バックエンドに上記のメモリ保護設定を適用し、15 の開発サービス（Air を含む backend、dex、fake-gcs、frontend、guacd、k3s-test、ldap-test、localstack、mssql-test、mysql-test、postgres、rdp-test、ssh-multi-test、ssh-test、vnc-test）、測定用クライアントおよびサービスのバックグラウンド処理が同時に動作し、他の Go テストやエンドツーエンドの smoke テストは実行していない状態で、アクティブな SSH セッションが 0 本のときはバックエンドの VmRSS 68616 kB／VmLck 1369796 kB、ssh-test への同時 SSH セッション 20 本を 120×30 の端末で echo 実行後に 45 秒間開いたままにしたときは VmRSS 76952 kB／VmLck 1370060 kB であり、これらの単一サンプルは参考測定値であってメモリ上限の保証ではありません。
 
 **鍵素材は引き続きバックエンドプロセスのメモリに存在します。** これらの設定が制限するのは、それを読み取れる他のプロセスです。鍵素材を除去するものではなく、バックエンド自身のアクセスも妨げません。ホストを管理する権限やデプロイの権限設定を変更する権限を持つ管理者から鍵素材を保護するものではありません。
 
-**独自の編成でも、これらの設定が必要です。** すべての capability を削除してから `SETUID`、`SETGID`、`CHOWN`、`IPC_LOCK` だけを付与し、上記の権限およびリソース制限も適用してください。Compose でメモリロックに必要な設定は、`IPC_LOCK` を含む `cap_add` と `ulimits.memlock: -1` です。他の編成ツールでも同等の capability とリソース制限が必要です。起動時の制御を適用できない場合、バックエンドは終了します。メモリロックの失敗時には `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)` と表示されます。このエラーを調べる際は、これらの設定名を確認してください。
+**独自の編成でも、これらの設定が必要です。** すべての capability を削除してから `SETUID`、`SETGID`、`CHOWN`、`KILL`、`IPC_LOCK` だけを付与し、上記の権限およびリソース制限も適用してください。Compose でメモリロックに必要な設定は、`IPC_LOCK` を含む `cap_add` と `ulimits.memlock: -1` です。他の編成ツールでも同等の capability とリソース制限が必要です。起動時の制御を適用できない場合、バックエンドは終了します。メモリロックの失敗時には `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)` と表示されます。このエラーを調べる際は、これらの設定名を確認してください。
+
+capability を変更した後は backend コンテナを再作成してください。再起動だけでは新しい capability 集合は適用されません。`custodexa.sh upgrade` は新しいリリースを起動する際にコンテナを再作成します。パッケージのデプロイフォルダーで手動で再作成する場合は `docker compose --project-directory . up -d --force-recreate backend` を、その他の Compose デプロイでは `docker compose up -d --force-recreate backend` を実行します。`KILL` がない場合、backend は DB CLI 子プロセスを終了できないことがあります。ローカル端末の切断処理は子プロセスの回収を最大 1 秒待ち、終了・待機の失敗やタイムアウトをログに記録して、接続の後処理を続行します。単一のバックグラウンド待機が、後から終了する子プロセスを回収します。capability がない場合、子プロセスが動作し続ける可能性は残ります。
 
 ## 許可送信元範囲がデプロイに与える影響
 

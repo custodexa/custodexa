@@ -72,6 +72,7 @@ services:
       - SETUID # Switch DB CLI children to the dedicated user.
       - SETGID # Switch DB CLI children to the dedicated group.
       - CHOWN # Transfer temporary CA files to the DB CLI user.
+      - KILL # Terminate DB CLI children running as a different user.
       - IPC_LOCK # Lock process memory without the memlock limit.
     # Prevent privilege gains through setuid executables.
     security_opt: [no-new-privileges:true]

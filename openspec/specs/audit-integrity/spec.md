@@ -2,7 +2,9 @@
 
 ## Purpose
 審計紀錄的完整性與可辨識性保證：audit_logs 逐列 HMAC 蓋章與版本化蓋章鑰、匯出 manifest 的 Ed25519 簽章與離線驗證、審計表刪改守衛，以及審計資源讀取的正確分類與留痕（含取證端點留痕、資產主體專屬欄位、路由分類完備性守衛與樞紐查詢涵蓋），並明載兩層完整性（列級 HMAC 與檢查點鏈）各自的證明力邊界。
+
 ## Requirements
+
 ### Requirement: audit_logs 逐列 HMAC
 
 系統 SHALL 於每筆**入庫**的 audit_log 寫入時（經 model BeforeCreate hook，覆蓋 middleware 批次以外的全部直寫入庫路徑）計算關鍵欄位的 HMAC-SHA256 存入 integrity_hmac 欄，並記錄所用蓋章鑰版本於 key_version 欄；SHALL 於首次啟動持久化完整性啟用基準，基準 SHALL 錨定當下 audit_logs 最大列 id（max_log_id）；SHALL 提供 admin 驗證端點，對指定時間範圍掃描並回報：通過筆數、不符筆數（含列 ID）、基準前無 HMAC 的歷史列筆數（獨立計數，不計為不符）。歷史列判定 SHALL 以列 id 與基準 max_log_id 比較，SHALL NOT 以 created_at 判定——created_at 可隨列回填偽裝歷史列，自增 id 不可。
@@ -518,3 +520,27 @@ SHALL NOT 因留痕需求而改變回應內容。
 - **THEN** 認證與原稽核角色守衛保持，agent token 與無角色之他人主體請求回 403；未認證回 401
 - **AND** 單筆詳情回申請單、項目、最小 executor、session_ids 與 report versions；核准票以 approval_offset 分頁，會話 id／版本以 offset 分頁，limit 上限 100；會話列表帶任務 query 時 page_size 上限 100，total 共用篩選
 - **AND** 同次 HTTP 審計列含任務 id 與遮罩 query；未知或非 agent 申請單不回詳情，缺報告旗標按關閉時刻全版本判定，不受版本分頁影響
+
+### Requirement: 任務報告讀取資格與不存在回應
+
+`GET /api/v1/access-requests/:id/reports` SHALL 保留 admin、auditor、任務原執行者、申請者及執行者當前 owner 的讀取資格。目標任務不存在或呼叫者不具讀取資格時 SHALL 回同一 404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`；本文 SHALL 只有 `code` 與 `error`，相關內容、快取、驗證與跨來源等標頭 SHALL 相同。系統 SHALL 在列出報告前判斷資格，SHALL NOT 回報告版本、缺報告狀態、任務或執行者資訊。前端 SHALL 沿用申請單不存在文案。此讀取回應 SHALL NOT 改變報告 POST 的提交資格、修訂時窗、錯誤分類或留存要求。
+
+#### Scenario: 外人與不存在任務的完整回應等價
+- **WHEN** 同一已登入的一般使用者，分別查詢不存在任務及存在但不具任一讀取資格的任務報告
+- **THEN** 兩者皆回相同404 `NOTFOUND_ACCESS_REQUEST`，狀態、機器碼、訊息、完整欄位及相關標頭相同；已有報告或尚無報告均不改變外人的拒絕結果
+
+#### Scenario: 既有讀取資格保留
+- **WHEN** admin、auditor、原執行者、申請者或執行者當前owner查詢存在任務的報告
+- **THEN** 依原契約回200，保留latest、versions、closed_at及missing_report_at_close的既有內容與省略規則
+
+#### Scenario: 有資格且尚無報告
+- **WHEN** 具讀取資格的使用者查詢一個存在但尚未提交報告的任務
+- **THEN** 仍成功回應空版本列表及原缺報告狀態，不把空報告視為不存在任務
+
+#### Scenario: 報告提交的既有拒絕保留
+- **WHEN** 他人POST報告、原執行者於修訂窗外POST，或POST本文不合法
+- **THEN** 分別保留原403、409或400與原錯誤封套，不沿用GET的不存在轉換；已留存版本不變
+
+#### Scenario: 報告讀取的內部故障保留
+- **WHEN** 報告讀取遇到非缺列、非資格拒絕的內部錯誤
+- **THEN** 保留原500泛化錯誤，不回不存在404或原始資料庫錯誤

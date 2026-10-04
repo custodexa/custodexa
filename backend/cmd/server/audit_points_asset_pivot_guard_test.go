@@ -87,6 +87,7 @@ type assetPivotEntry struct {
 // 搬家、行號漂移都不會使本表失準；反之若以 file:line 為鍵，每次無關的編輯都會製造
 // 假紅，最終誘使有人把守衛關掉。
 var assetPivotRegistry = map[string]assetPivotEntry{
+	"AP-111": {pivotFilled, false, "文字會話建立時的傳輸政策快照，AssetID 取成功建立會話的資產識別"},
 	"AP-110": {pivotNotAsset, false, "外部群組字典備註更新，主體是外部群組，不指定資產"},
 	"AP-108": {pivotNotAsset, false, "使用者群組映射規則管理，主體是規則與目標使用者群組，不指定資產"},
 	"AP-109": {pivotNotAsset, false, "手動使用者群組成員調整，主體是群組與帳號，不指定資產"},

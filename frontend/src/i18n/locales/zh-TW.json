@@ -3124,6 +3124,10 @@
     "backHome": "返回首頁"
   },
   "guacClient": {
+    "policyNoticeTitle": "剪貼簿政策提示",
+    "policyNoticeDescription": "目前查得的剪貼簿政策與連線前不同，重新連線後套用。",
+    "policyNoticeReconnectHint": "可使用頁籤選單的「重新連線」，或先斷線再連線。",
+    "policyNoticeDismiss": "關閉提示",
     "connectTo": "連線到 {name}",
     "assetFallback": "資產 #{id}",
     "disconnect": "斷線",

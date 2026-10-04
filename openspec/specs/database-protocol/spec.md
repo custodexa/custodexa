@@ -30,7 +30,9 @@ web 為唯一入口，繞道面不存在（前提：DB 網路層僅對本系統�
 - DBMS 廣度：需求驅動逐個加（CLI 模態新增一 DBMS≈新增一 client），不設固定目標數。
 - 報表範本廣度：接受為定位差異結案（審計頁＋證據匯出＋API 已覆蓋稽核核心，
   不追範本數量堆疊）。
+
 ## Requirements
+
 ### Requirement: 資料庫 CLI 代理連線
 系統 SHALL 以本地 CLI 子程序（psql/mariadb/redis-cli/sqlcmd）代理資料庫資產連線；憑證 SHALL 由後端記憶體組裝，SHALL NOT 出現於 argv、子程序環境或前端（詳見「明文憑證於 CLI 子程序內不得可讀」），SHALL 於 client 索取時經 PTY 注入：mariadb SHALL 以不帶值的 `-p` 觸發提示（帶值即落 argv），redis-cli SHALL 以 `--askpass` 觸發，psql 不設 `PGPASSWORD` 時即自行提示，**sqlcmd 在給定 `-U` 而不給 `-P` 且未設 `SQLCMDPASSWORD` 時即自行提示**。子程序環境 SHALL 最小化，SHALL NOT 繼承後端程序的機密環境變數。MySQL 連線 SHALL 使用 `mariadb`（非 deprecated 別名 `mysql`）並具備 caching_sha2_password client plugin，以連線 MySQL 8 預設認證。
 
@@ -489,3 +491,24 @@ mssql 會話的 web CLI SHALL 在連線成功後呈現一則協議專屬提示�
 - **WHEN** 指定 `auth_method` 為值域外的字串
 - **THEN** 系統回 400 與機器碼
 
+### Requirement: CLI 子程序有界收線與回收
+
+資料庫命令列會話在客戶端 WebSocket 關閉或管理員強制中斷時，系統 SHALL 關閉 PTY 並嘗試終止及回收子程序。專案交付的編排 SHALL 允許 backend 終止專用非 root UID 的子程序；正常收線後 SHALL 不遺留該子程序或殭屍程序。
+
+本地終端 Close SHALL 冪等，即使多個呼叫同時發生亦僅執行一次終止、回收與清理回呼。Close 等待子程序回收 SHALL 最多一秒；終止失敗或回收延遲 SHALL NOT 使連線收尾無限等待。終止錯誤（已結束除外）、回收錯誤及等待逾時 SHALL 記錄 PID 與診斷，不含憑證、argv 或環境內容。逾時後 SHALL 保留單一背景等待以回收最終退出的子程序；SHALL NOT 將缺少終止權限的情況宣稱為已成功終止。
+
+#### Scenario: 關閉頁籤而未輸入 exit
+- **WHEN** 使用者關閉已連線的資料庫 CLI 頁籤，WebSocket 已關閉且未向 CLI 輸入 exit
+- **THEN** 在專案交付的編排下，CLI 子程序結束並被回收，會話完成既有正常收線
+
+#### Scenario: 管理員強制中斷活躍 CLI
+- **WHEN** 管理員強制中斷活躍的資料庫 CLI 會話
+- **THEN** 子程序被終止及回收，WS 關閉，HTTP 回覆沿用既有成功形狀；子程序等待不超過一秒
+
+#### Scenario: 終止失敗仍有界收線
+- **WHEN** 發送終止訊號失敗且子程序仍未退出
+- **THEN** Close 等待回收至多一秒後執行清理回呼並返回，記錄錯誤與逾時；子程序最終退出時由唯一背景等待回收
+
+#### Scenario: 重複或並行 Close
+- **WHEN** 多個 Close 呼叫處理同一連線，或程序已自行結束後再次 Close
+- **THEN** 終止、回收與清理回呼至多執行一次，既有已結束狀態不導致卡死

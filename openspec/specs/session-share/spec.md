@@ -3,17 +3,35 @@
 ## Purpose
 
 會話分享碼的建立/撤銷與唯讀加入。
+
 ## Requirements
+
 ### Requirement: 分享碼建立與撤銷
-會話擁有者 SHALL 能對自己的活躍 SSH 會話建立分享碼（TTL 1-60 分鐘，預設 10）；再次建立 SHALL 使舊碼失效；擁有者 SHALL 能撤銷分享；非擁有者建立回 403。
+會話擁有者 SHALL 能對自己的活躍 SSH 會話建立分享碼（TTL 1-60 分鐘，預設 10）；再次建立 SHALL 使舊碼失效；擁有者 SHALL 能撤銷分享；非擁有者建立或撤銷，以及目標會話不存在，SHALL 回相同的 404 `NOTFOUND_SESSION` 封套。管理或稽核角色 SHALL NOT 豁免會話本人限制；資格判斷 SHALL 先於會話狀態、分享存在性及分享變更。
 
 #### Scenario: 建立分享
 - **WHEN** 擁有者 POST /sessions/:id/share
 - **THEN** 回傳分享碼與過期時間，舊碼（如有）即刻失效
 
 #### Scenario: 非擁有者被拒
-- **WHEN** 其他用戶對該會話建立分享
-- **THEN** 回 403 統一錯誤封套
+- **WHEN** 其他用戶對該會話建立或撤銷分享
+- **THEN** 回 404，本文為 `{"code":"NOTFOUND_SESSION","error":"Session 不存在"}`，與不存在會話的狀態、機器碼、訊息、欄位及相關標頭相同，分享狀態不變
+
+#### Scenario: 兩個方法皆不揭露存在性
+- **WHEN** 同一非擁有者分別對不存在會話與他人的會話執行 POST 或 DELETE /sessions/:id/share，後者可能在線、離線、已分享或未分享
+- **THEN** 各方法的兩種目標皆回相同 404 `NOTFOUND_SESSION`；本文只有 `code` 與 `error`，內容、快取、驗證與跨來源等相關標頭相同，不建立、替換或撤銷分享；前端使用會話不存在文案，不顯示擁有者資格提示
+
+#### Scenario: 非本人管理與稽核角色
+- **WHEN** admin 或 auditor 嘗試管理他人的會話分享
+- **THEN** 同樣回 404 `NOTFOUND_SESSION`，角色不擴大分享資格
+
+#### Scenario: 本人撤銷分享
+- **WHEN** 會話擁有者 DELETE /sessions/:id/share 且該會話有有效分享
+- **THEN** 撤銷成功回 200 與 `{"revoked":true}`，原分享碼失效
+
+#### Scenario: 資格通過後的狀態結果
+- **WHEN** 擁有者對非活躍會話建立分享，或對存在但無有效分享的會話撤銷分享
+- **THEN** 前者仍回 400 `RULE_SESSION_SHARE_NOT_ACTIVE`，後者仍回 404 `NOTFOUND_SESSION_SHARE`，這些結果不對非擁有者揭露
 
 ### Requirement: 持碼唯讀加入
 任何已登入用戶 SHALL 能以有效分享碼加入會話唯讀觀看；過期或已撤銷的碼 SHALL 回 404；加入者輸入 SHALL 被忽略；會話結束 SHALL 自動斷開觀看。
@@ -74,4 +92,3 @@
 
 - **WHEN** 以失效或不存在的分享碼嘗試加入而被拒
 - **THEN** 拒絕事件留痕，含來源位址與嘗試時間
-

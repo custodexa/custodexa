@@ -62,6 +62,10 @@ func (h *AccessRequestHandler) ReportVersions(c *gin.Context) {
 	actor := agentTokenActor(c)
 	result, err := h.reports.Versions(c.Request.Context(), uint(id), actor.UserID, c.GetString("role"))
 	if err != nil {
+		if errors.Is(err, audit.ErrAgentReportForbidden) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeAccessRequestNotFound, nil)
+			return
+		}
 		reportError(c, err)
 		return
 	}

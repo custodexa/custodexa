@@ -377,6 +377,10 @@
 
 由 agent 執行的任務項 SHALL 對**任何段位**的資產都存在——`open` 段位不構成免單的例外，系統 SHALL 視同 `reason` 段位即時自動核准（決定者記 system、帶自動核准標記），使每一條 agent 連線都可回溯到一個任務 id。輔助模式下人類為 agent 執行者對 `open` 段位資產建立的項 SHALL 同樣建立並自動核准。
 
+建立時指定的 `executor_user_id` SHALL 為正整數並指向啟用中的 agent；省略或 null SHALL 保留原自行執行語義。系統 SHALL 先檢查純請求形狀，再檢查全部項目的申請人可視，繼而判定 executor 與全部項目的雙方可視交集，全部資格成立才進入帳號、政策及建單業務判斷。executor 不存在、停用、非 agent，或任一項不可委派時 SHALL 回相同 404 `{"code":"NOTFOUND_ACCESS_REQUEST","error":"申請單不存在"}`；資產不存在或申請人不可視亦 SHALL 使用此封套。狀態、機器碼、訊息、完整欄位及相關標頭 SHALL 相同，SHALL NOT 增加 executor 或項目原因資料。系統 SHALL NOT 以 agent owner 關係新增委派限制。
+
+純形狀錯誤 SHALL 保持 400，SHALL NOT 依 executor 是否存在而改變。明示 executor 為 0 SHALL 在查庫前回 400 `VALIDATION_BAD_PARAMS`；不符合整數型別或無法綁定的本文 SHALL 沿用 400 `VALIDATION_ACCESS_REQUEST_FIELDS`；混用單資產／items、重複或非法項集合 SHALL 沿用既有 400。資源資格不成立時 SHALL NOT 建立任何申請單、項或票證。非缺列的內部查詢錯誤 SHALL 保留原 500 語義，不當成 executor 無效。
+
 #### Scenario: agent 自主開單
 - **WHEN** agent 主體對其可視、`approval` 段位的資產提交申請
 - **THEN** 建立 pending 單，`executor_user_id` 為 NULL，審核範圍命中的 approver 於審核中心可見該單並可辨識申請人為 agent
@@ -400,6 +404,26 @@
 #### Scenario: agent 不得核准
 - **WHEN** agent 主體對任一 pending 單執行核准或拒絕
 - **THEN** 一律回 403，單不受影響、不計票
+
+#### Scenario: 無效執行者的完整回應等價
+- **WHEN** 同一一般申請人以其他欄位相同的合法請求，分別指定不存在、停用、非 agent 及啟用但不可委派的 executor
+- **THEN** 均回相同 404 `NOTFOUND_ACCESS_REQUEST`，本文只有 `code` 與 `error`，內容、快取、驗證與跨來源等相關標頭相同，不透露候選型別或啟用狀態、不建單或項，前端沿用申請單不存在文案
+
+#### Scenario: 不可視項目先於執行者細節
+- **WHEN** 申請人對至少一個請求項目不可視，並改用不同存在性、型別或啟用狀態的合法 executor ID
+- **THEN** 每次皆回相同 404 `NOTFOUND_ACCESS_REQUEST`，不因候選狀態改成欄位驗證訊息
+
+#### Scenario: 項目排序不改變委派資格拒絕
+- **WHEN** 多項申請有一項不在申請人與 executor 的可視交集，其他項另有帳號或政策業務錯誤，且呼叫端交換項目順序
+- **THEN** 所有排列皆先以同一 404 `NOTFOUND_ACCESS_REQUEST` 拒絕，不揭露前項的業務錯誤、不部分建立項目
+
+#### Scenario: 形狀錯誤不查候選存在性
+- **WHEN** executor_user_id 為 0、負數、字串或非整數，或請求違反既有項目形狀約束
+- **THEN** 在資源查詢前依對應形狀錯誤回 400，而不是 404 或候選狀態資訊
+
+#### Scenario: 非擁有者的合法委派
+- **WHEN** 人類申請人指定由另一人擁有的啟用 agent，所有項目均在申請人與 executor 的當前可視交集，且其他業務條件成立
+- **THEN** 申請照常建立，on_behalf_of 仍為申請人，不能因申請人不是 agent owner 而拒絕
 
 ### Requirement: 任務關閉的時點與其效力
 

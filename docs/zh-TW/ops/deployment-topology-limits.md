@@ -184,17 +184,19 @@ guacd 服務直接使用 Apache Guacamole 官方映像 `guacamole/guacd:1.6.0`�
 
 **backend 仍以 root 執行。** 交付的部署設定與啟動程式逐項施加以下設定：
 
-- `cap_drop: [ALL]` 丟棄能力集合，再以 `cap_add: [SETUID, SETGID, CHOWN, IPC_LOCK]` 僅加回四項能力：`SETUID` 與 `SETGID` 將 DB CLI 子行程切換至專用使用者與群組；`CHOWN` 將 CA 暫存檔的擁有權交給該使用者；`IPC_LOCK` 允許鎖頁超過鎖定記憶體的資源上限。
+- `cap_drop: [ALL]` 丟棄能力集合，再以 `cap_add: [SETUID, SETGID, CHOWN, KILL, IPC_LOCK]` 僅加回五項能力：`SETUID` 與 `SETGID` 將 DB CLI 子行程切換至專用使用者與群組；`CHOWN` 將 CA 暫存檔的擁有權交給該使用者；`KILL` 允許對容器 PID namespace 內不同 UID 的行程發送訊號，包括 DB CLI 子行程；`IPC_LOCK` 允許鎖頁超過鎖定記憶體的資源上限。
 - `security_opt: [no-new-privileges:true]` 禁止透過執行 setuid 檔案或檔案能力取得額外權限。
 - `ulimits.core` 的 `soft: 0` 與 `hard: 0` 均為零；backend 也將自身的 `RLIMIT_CORE` 設為零。
 - `PR_SET_DUMPABLE=0` 將 backend 行程設為不可傾印。配合未授予 `SYS_PTRACE`，容器內其他行程（包括受這組能力限制的 root 行程）無法讀取其 `/proc/<pid>/environ` 與 `/proc/<pid>/mem`。
 - `ulimits.memlock: -1` 與 `mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT)` 鎖住已駐留的記憶體頁，其他映射頁則在駐留時鎖住，防止這些頁被換出至 swap。
 
-2026-09-12（Asia/Taipei）量測時，backend 使用上述設定，同時執行 15 個開發服務（backend 含 Air、dex、fake-gcs、frontend、guacd、k3s-test、ldap-test、localstack、mssql-test、mysql-test、postgres、rdp-test、ssh-multi-test、ssh-test、vnc-test）、量測用 client 與服務背景工作，沒有其他 Go 測試或端對端 smoke 測試，backend 在 0 條 active SSH 會話時為 VmRSS 68616 kB／VmLck 1369796 kB，在對 ssh-test 的 20 條並發 SSH 會話以 120×30 終端執行 echo 後保持開啟 45 秒時為 VmRSS 76952 kB／VmLck 1370060 kB；這兩次單點樣本是參考量測，不是保證的記憶體上限。
+2026-09-12（Asia/Taipei）量測時，backend 使用上述記憶體控制，同時執行 15 個開發服務（backend 含 Air、dex、fake-gcs、frontend、guacd、k3s-test、ldap-test、localstack、mssql-test、mysql-test、postgres、rdp-test、ssh-multi-test、ssh-test、vnc-test）、量測用 client 與服務背景工作，沒有其他 Go 測試或端對端 smoke 測試，backend 在 0 條 active SSH 會話時為 VmRSS 68616 kB／VmLck 1369796 kB，在對 ssh-test 的 20 條並發 SSH 會話以 120×30 終端執行 echo 後保持開啟 45 秒時為 VmRSS 76952 kB／VmLck 1370060 kB；這兩次單點樣本是參考量測，不是保證的記憶體上限。
 
 **金鑰材料仍在 backend 行程記憶體中。** 這些設定限制的是哪些其他行程讀得到它，並未移除金鑰材料，也不妨礙 backend 自身存取。它們無法防止控制主機或能變更部署權限的管理者讀取金鑰材料。
 
-**自訂編排必須提供這些設定。** 丟棄全部能力後僅加回 `SETUID`、`SETGID`、`CHOWN`、`IPC_LOCK`，並施加上述權限與資源限制。在 Compose 中，鎖頁所需設定為 `cap_add` 包含 `IPC_LOCK`，以及 `ulimits.memlock: -1`；其他編排工具須提供對應的能力與資源限制。任何啟動控制無法施加時，backend 都會退出；鎖頁失敗會回報 `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)`。排查此錯誤時，請核對這些同名設定。
+**自訂編排必須提供這些設定。** 丟棄全部能力後僅加回 `SETUID`、`SETGID`、`CHOWN`、`KILL`、`IPC_LOCK`，並施加上述權限與資源限制。在 Compose 中，鎖頁所需設定為 `cap_add` 包含 `IPC_LOCK`，以及 `ulimits.memlock: -1`；其他編排工具須提供對應的能力與資源限制。任何啟動控制無法施加時，backend 都會退出；鎖頁失敗會回報 `mlockall failed (check cap_add IPC_LOCK and ulimits.memlock)`。排查此錯誤時，請核對這些同名設定。
+
+變更 capability 後必須重建 backend 容器，僅重新啟動不會套用新能力集合。`custodexa.sh upgrade` 啟動新版本時會重建它。在安裝包的部署資料夾手動重建時執行 `docker compose --project-directory . up -d --force-recreate backend`；其他 Compose 部署執行 `docker compose up -d --force-recreate backend`。缺少 `KILL` 時，backend 可能無法終止 DB CLI 子行程。本地終端收線等待子行程回收最多一秒；終止或等待失敗、等待逾時會記錄日誌，接著繼續連線清理。單一背景等待會在子行程最終退出時回收它；缺少能力仍可能留下持續運行的子行程。
 
 ## 允許來源網段對部署的影響
 

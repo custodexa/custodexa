@@ -751,6 +751,7 @@ func (h *Handler) createSession(userID, assetID uint, protocol model.ProtocolTyp
 		log.Printf("[SSHProxy] 建立 Session 失敗: %v（呼叫點將 fail-close 拒連）", err)
 		return nil
 	}
+	h.auditTextTransferSnapshot(sess)
 	return sess
 }
 
@@ -784,7 +785,7 @@ func (h *Handler) HandleStats(c *gin.Context) {
 		return
 	}
 	if sess.UserID != userID && role != model.RoleAdmin && role != model.RoleAuditor {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeSessionStatsDenied, nil)
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
 		return
 	}
 
@@ -821,7 +822,7 @@ func (h *Handler) HandleCreateShare(c *gin.Context) {
 		return
 	}
 	if sess.UserID != userID {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeSessionShareOwnerOnly, nil)
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
 		return
 	}
 	if sess.Status != model.SessionStatusActive {
@@ -867,7 +868,7 @@ func (h *Handler) HandleRevokeShare(c *gin.Context) {
 		return
 	}
 	if sess.UserID != userID {
-		apierror.Respond(c, http.StatusForbidden, apierror.CodeSessionShareOwnerOnly, nil)
+		apierror.Respond(c, http.StatusNotFound, apierror.CodeSessionNotFound, nil)
 		return
 	}
 	if !h.Shares.Revoke(uint(sessionID)) {
@@ -1113,6 +1114,12 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 	}
 	grant, out := h.IssueConnectGrant(c, subj, nil)
 	if out != nil {
+		// Keep resource denials indistinguishable at this HTTP entry point.
+		// In-process issuance and redemption retain their original outcomes.
+		if out.Internal == nil && out.Status == http.StatusForbidden && out.Decision.Code == string(apierror.CodeAssetConnectDenied) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+			return
+		}
 		h.writeOutcome(c, out)
 		return
 	}
@@ -1134,7 +1141,7 @@ func (h *Handler) HandleCreateConnectToken(c *gin.Context) {
 
 // HandleCreateTransmissionConsent 處理 POST /api/v1/transmission-consents
 // 使用者對資產的傳輸風險立據。
-// 與簽發同一授權邊界（authenticate＋checkPermission）；body 帶使用者
+// 與簽發同一授權邊界（authenticate＋connectPermissionOutcome）；body 帶使用者
 // 實際看到的風險項 key，與當下不符即 409 要求重新確認
 func (h *Handler) HandleCreateTransmissionConsent(c *gin.Context) {
 	userID, role, ok := h.authenticate(c)
@@ -1160,7 +1167,12 @@ func (h *Handler) HandleCreateTransmissionConsent(c *gin.Context) {
 		apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
 		return
 	}
-	if !h.checkPermission(c, userID, role, req.AssetID) {
+	if out := h.connectPermissionOutcome(c, userID, role, req.AssetID); out != nil {
+		if out.Internal == nil && out.Status == http.StatusForbidden && out.Decision.Code == string(apierror.CodeAssetConnectDenied) {
+			apierror.Respond(c, http.StatusNotFound, apierror.CodeAssetNotFound, nil)
+			return
+		}
+		h.writeOutcome(c, out)
 		return
 	}
 	if h.TransmissionConsent == nil {
