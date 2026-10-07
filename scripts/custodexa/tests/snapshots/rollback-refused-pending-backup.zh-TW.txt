@@ -1,0 +1,2 @@
+[WARN] 上次的 backup 在第 2 步中斷。
+    sudo /opt/custodexa/custodexa.sh status --lang zh-TW

@@ -1,0 +1,17 @@
+Back to the previous version: preview (nothing has been changed yet)
+
+  Installed      1.16.2
+  Go back to     1.16.1 (the version before the upgrade)
+  Database       no structure change since the upgrade; it matches the
+                 record taken before the upgrade
+  So only the version is switched back; the data, the settings file and
+  the certificates stay as they are, and no restore is needed.
+  Old images     all 4 are on this host; the running containers are
+                 checked against them after the start
+
+  Steps: stop the services, check the database again and switch back
+  to 1.16.1, start, check the version and the running images.
+  Everything recorded since the upgrade is kept.
+
+[FAIL] Audit queue could not be confirmed empty; services remain running.
+Nothing was changed.

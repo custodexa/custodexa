@@ -1,0 +1,31 @@
+Back to the previous version: preview (nothing has been changed yet)
+
+  Installed      1.16.2
+  Go back to     1.16.1 (the version before the upgrade)
+  Database       no structure change since the upgrade; it matches the
+                 record taken before the upgrade
+  So only the version is switched back; the data, the settings file and
+  the certificates stay as they are, and no restore is needed.
+  Old images     all 4 are on this host; the running containers are
+                 checked against them after the start
+
+  Steps: stop the services, check the database again and switch back
+  to 1.16.1, start, check the version and the running images.
+  Everything recorded since the upgrade is kept.
+
+[ OK ] 1/4  Stop the services
+[ OK ] 2/4  Check the database again, switch back to 1.16.1
+[ OK ] 3/4  Start the services
+[FAIL] 4/4  Check: the running version or images differ from the record: backend
+
+  Current state
+    - Version: 1.16.1
+    - Running services: postgres guacd backend frontend
+    - The data, the settings file and the certificates were not changed
+  Check the backend log for the reason first:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  Once the cause is fixed, finish going back to the previous version:
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang en
+  Or return to 1.16.2, the version after the upgrade:
+    sudo /opt/custodexa/custodexa.sh rollback --revert --lang en
+  Log file /opt/custodexa/logs/rollback-20260930-101502.log

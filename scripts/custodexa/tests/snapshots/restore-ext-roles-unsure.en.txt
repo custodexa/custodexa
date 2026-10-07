@@ -1,0 +1,4 @@
+[FAIL] Some grant statements cannot be told apart from the ones for the
+       missing roles, so the script cannot skip just those.
+       Create the roles on the server first, then restore.
+Nothing has been changed.

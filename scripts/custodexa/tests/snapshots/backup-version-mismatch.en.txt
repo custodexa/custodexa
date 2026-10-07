@@ -1,0 +1,6 @@
+==== --yes, current/MANIFEST.json is 1.13.1 ====
+[FAIL] state.json says 1.13.0 is installed, but current/MANIFEST.json is
+       1.13.1, so the version of this backup cannot be told. Nothing was
+       stopped. Check with:
+  sudo /opt/custodexa/custodexa.sh status --lang en
+==== exit 3 ====

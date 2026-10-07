@@ -1,0 +1,7 @@
+[FAIL] 主金鑰核對不符：解封後讀到的識別是 0c0c0c0c0c0c0c0c，備份記下的是 5a5a5a5a5a5a5a5a。
+  已停止服務，還原沒有完成。
+  請照文件「備份與還原」第 6 節第 6 項核對金鑰清冊，再決定：
+  重跑接續：重新啟動服務，等有人以正確的主金鑰解封之後再核對一次
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  或用安全備份還原回去：
+    sudo /opt/custodexa/custodexa.sh restore --revert

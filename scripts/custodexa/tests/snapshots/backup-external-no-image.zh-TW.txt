@@ -1,0 +1,4 @@
+[FAIL] 這台主機沒有外接資料庫用的匯出工具映像（PostgreSQL 16／17／18 客戶端，
+       應在安裝或升級時取得）。沒有停止任何服務。請載入這個版本（1.13.0）的
+       離線映像包：
+  sudo /opt/custodexa/custodexa.sh load custodexa-images-1.13.0-amd64.tar

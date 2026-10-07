@@ -1,0 +1,14 @@
+  回到 1.16.2（這次指回開始之前的版本）
+[ OK ] 1/4  停止服務
+[ OK ] 2/4  換回 1.16.2
+[FAIL] 3/4  啟動服務
+
+  目前狀態
+    - 已換回 1.16.2，服務沒有全部啟動
+    - 執行中的服務：無
+    - 資料、設定檔與憑證都沒有被改動
+  先查看後端日誌找原因：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  接續回到升級後的 1.16.2：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang zh-TW
+  紀錄檔 /opt/custodexa/logs/rollback-20260930-101502-0.log

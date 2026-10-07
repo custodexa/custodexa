@@ -1,0 +1,3 @@
+This backup file is encrypted. Enter the passphrase set when the backup
+was made (it is not shown as you type):
+Passphrase: 

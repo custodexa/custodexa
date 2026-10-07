@@ -1,0 +1,19 @@
+==== --yes, KEK_PROVIDER=ui with an ENCRYPTION_KEY ====
+[FAIL] KEK_PROVIDER in .env is ui, but ENCRYPTION_KEY has a value. That is a
+       contradictory setting the backend also refuses at its next start, and
+       the backup would carry it out as a master key, so nothing is done.
+       Nothing was stopped. Decide which mode you use and clear the other.
+==== exit 3 ====
+==== --yes, neither KEK_PROVIDER nor ENCRYPTION_KEY ====
+[FAIL] .env sets neither KEK_PROVIDER nor ENCRYPTION_KEY, so the master key
+       mode cannot be told. The backend refuses this at its next start.
+       Nothing was stopped.
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=env without ENCRYPTION_KEY ====
+[FAIL] KEK_PROVIDER in .env is env, but ENCRYPTION_KEY is empty. The
+       backend refuses this at its next start. Nothing was stopped.
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=UI ====
+[FAIL] KEK_PROVIDER in .env has a value that is not recognized (only env,
+       ui, kms and hsm, in lower case). Nothing was stopped.
+==== exit 3 ====

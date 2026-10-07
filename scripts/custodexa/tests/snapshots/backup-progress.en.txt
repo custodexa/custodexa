@@ -1,0 +1,62 @@
+==== on a terminal, env: recordings 2, Enter, y ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: in the settings file
+  Database 17.4 GB, audit files 12.0 MB, recordings 2.0 GB; 211 GB free
+  where backups go
+
+[ ?? ] Put the recordings in the backup file?
+
+  [1] No (default): a file of about 17.4 GB, services paused about 12 minutes
+  [2] Yes: a file of about 19.4 GB, services paused about 14 minutes
+      Without them, keep the recordings folder some other way.
+
+Choose [1-2], or press Enter for the default: 2
+
+[ ?? ] Encrypt the backup file with a passphrase?
+
+  Without encryption the file holds the database password, the master
+  key, certificate private keys and other sensitive data, readable by
+  anyone who has it.
+
+  [1] No (default): the file opens with tar as it is
+  [2] Yes: a restore needs the same passphrase. If the passphrase is
+      lost the backup cannot be restored, by the script or by anyone.
+
+Choose [1-2], or press Enter for the default:
+
+  Recordings: included
+  Encryption: none
+  The backend, connection service and web pages pause for about
+  14 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 14 more minutes.
+  Needs 37.8 GB (a file of about 19.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Recordings and audit files                      2s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         41s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file and read it back          3m 12s
+
+[ OK ] Backup done (17.4 GB)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
+  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.sha256 (same folder)
+  Contains: database, recordings, audit files, settings file .env
+  (includes the master key), certificates tls/
+  Version 1.13.0; bundled database; master key: in the settings file
+  The master key is in the .env inside the backup file (fingerprint
+  5a5a5a5a5a5a5a5a) and comes back with a restore.
+  [WARN] This file is not encrypted and holds the master key and other
+         sensitive data (database password, sign-in token secret,
+         certificate private keys). Whoever has it can decrypt every stored
+         credential. Store it elsewhere with limited access; a backup can
+         also be encrypted with a passphrase.
+  [ OK ] The services are back.
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====

@@ -1,0 +1,11 @@
+[WARN]  9/10  サービスを起動して準備完了を待機：180 秒以内に完了しませんでした
+
+復元は完了していません。サービスは起動しましたが、バックエンドが
+準備完了を返していないため、まだ接続できない可能性があります。
+  状態を確認：
+    sudo /opt/custodexa/custodexa.sh status
+  対処後に再開してください（サービスの稼働を確認してから
+  準備完了を待ちます）：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  または安全バックアップを使って元に戻します：
+    sudo /opt/custodexa/custodexa.sh restore --revert

@@ -1,0 +1,6 @@
+[FAIL] The backup's data has a structure change that 1.16.0 does not know,
+       so it cannot be restored with 1.16.0:
+  20261103_session_tags (not in the 1.16.0 release manifest)
+  This means a newer version had already changed the data when the backup
+  was made. The script does not put newer data under an older version.
+Nothing has been changed.

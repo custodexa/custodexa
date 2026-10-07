@@ -1,0 +1,37 @@
+Restore preview: this new host (nothing has been changed yet)
+
+  Backup file    /srv/transfer/custodexa-backup-1.16.0-20261005-101502.tar.enc
+                 taken 2026-10-05 10:15 on bastion-a.example.internal;
+                 encrypted
+                 backup file internal integrity: checked
+  Data version   1.16.0 (this management script is 1.16.2)
+  Installs first 1.16.0
+                 package custodexa-1.16.0.tar.gz: checksum matches
+                 publisher signature: not checked, cosign is not on
+                 this host
+                 release manifest identical to the one in the backup
+                 9 images, from the offline bundle
+                 custodexa-images-1.16.0-x86_64.tar
+  Deployment     bundled database; self-signed certificate; master key:
+                 entered in the browser
+  Restores       database 17.4 GB, audit files 12 MB, settings file
+                 .env, certificates tls/
+  Recordings     not in the backup file (212 GB at the source); a list of
+                 the recordings to bring over comes at the end
+  Host values    DATA_PATH        /opt/custodexa/data
+                 TLS_DOMAIN       bastion-b.example.internal
+                 TLS_IP_SAN       10.0.0.31
+                 PUBLIC_BASE_URL  https://10.0.0.31
+                 The address differs from the source: the backup's
+                 certificate authority is kept, and a server certificate
+                 for this host's address is issued
+  Safety backup  not needed: this host has no data yet
+  Space          needs 41 GB; 180 GB free on /opt
+  [WARN] The master key is entered in the browser: to finish the restore,
+         someone enters the master key on the unseal page and signs in
+         with an administrator account from the backup. Its fingerprint
+         has to be 5a5a5a5a5a5a5a5a.
+  Once it is done and checked, the latest version is looked up and you
+  are asked whether to upgrade (1.16.2 is already on this host).
+
+Start the restore? [y/N] 

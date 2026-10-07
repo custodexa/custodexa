@@ -1,0 +1,3 @@
+[FAIL] 還原還沒有完成（已匯入、等待解封後核對；2026-10-12 09:30 開始），不能升級。
+  解封之後完成核對：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

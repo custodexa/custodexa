@@ -1,0 +1,49 @@
+==== --yes, ui, the next backup after one interrupted at step 3 ====
+[WARN] The last backup (2026-09-30 10:15) did not finish; the temporary
+       folder /opt/custodexa/backups/.partial-20260930-101502/ can be deleted.
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: entered in the browser
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  [WARN] The master key is entered in the browser: after the restart the
+         system is sealed until someone enters the master key on the
+         unseal page, and users cannot connect until then.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Audit files                                     2s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         41s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file and read it back          3m 12s
+
+[ OK ] Backup done (20.0 KB)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101503.tar
+  Checksum file custodexa-backup-1.13.0-20260930-101503.tar.sha256 (same folder)
+  Contains: database, audit files, settings file .env, certificates tls/
+  Version 1.13.0; bundled database; master key: entered in the browser
+  The master key is not in the backup file (fingerprint 5a5a5a5a5a5a5a5a).
+  After a restore, whoever holds the unseal material enters it on the
+  unseal page; the fingerprint has to match.
+  [WARN] The recordings are not in the backup file. They are in
+         /opt/custodexa/data/recordings/; keep them some other way, or
+         back up again and choose to include them.
+  [WARN] This file is not encrypted and holds sensitive data (database
+         password, sign-in token secret, certificate private keys), and it
+         sits on the same host as .env. Store it elsewhere with limited
+         access; a backup can also be encrypted with a passphrase.
+  [WARN] The services are started and waiting to be unsealed: enter the
+         master key at https://10.0.0.12/unseal
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====

@@ -1,0 +1,14 @@
+[FAIL] The data in this backup belongs to 1.13.0, which is older than
+       1.16.0, and the script cannot restore it.
+  /srv/transfer/backup.tar
+  is the backup an upgrade took of the 1.13.0 deployment.
+  Versions before 1.16.0 do not report the master key ID after unsealing,
+  so the script cannot confirm the master key after a restore and will
+  not start one. Restore it by hand following "Backup and Restore":
+    first take the files out as "Taking the files out of a single backup
+    file" describes;
+    to go back to the version before the upgrade on this host, continue
+    with "Going back to the previous version after an upgrade by the
+    management script";
+    to restore onto another host, continue with "Restore procedure".
+Nothing has been changed.

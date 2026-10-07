@@ -72,7 +72,9 @@ cx_compose_release() {
     cx_images_env_export "$release/images.env" || exit 1
     export CUSTODEXA_BUILD_SOURCE="$release/source"
     cx_log CMD "docker compose -p $CX_PROJECT --project-directory $CX_ROOT ${f[*]} $*"
-    docker compose -p "$CX_PROJECT" --project-directory "$CX_ROOT" "${f[@]}" "$@"
+    local -a env_args=()
+    [ -z "${CX_COMPOSE_ENV:-}" ] || env_args=(--env-file "$CX_COMPOSE_ENV")
+    docker compose -p "$CX_PROJECT" --project-directory "$CX_ROOT" "${env_args[@]}" "${f[@]}" "$@"
   )
 }
 

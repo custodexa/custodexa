@@ -1,0 +1,3 @@
+[FAIL] This backup's master key mode is hsm. This release has no working
+       HSM implementation, so the script cannot restore it.
+Nothing has been changed.

@@ -1,0 +1,4 @@
+還原
+  [WARN] 還原未完成：已匯入、等待解封後核對（2026-10-12 09:30 開始，資料版本 1.16.0）
+         來源 custodexa-backup-1.16.0-20261005-101502.tar.enc
+         接續：sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

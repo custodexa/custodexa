@@ -419,3 +419,17 @@ SHALL NOT 使用「container hardened」或「最小權限 runtime」等未逐�
 
 - **WHEN** 比對兩份編排定義的 backend 區塊
 - **THEN** capability 集合、禁止提權旗標、core 與鎖頁上限四項逐項相同
+
+### Requirement: 產品 nginx 設定不揭露版本號
+
+隨產品出貨的 nginx 設定——前端容器的站台設定與內建 TLS 代理的範本——SHALL 關閉伺服器版本揭露（`server_tokens off`），使回應的 `Server` 標頭與 nginx 產生的錯誤頁不含版本號。指令 SHALL 置於 http 層級，涵蓋檔內全部 server 區塊。日常測試 SHALL 含一道讀取兩份設定的守衛：指令缺失或值不為 `off` 即失敗。部署方自行加在前方的代理層不在本要求範圍內。
+
+#### Scenario: 前端容器回應不帶版本號
+
+- **WHEN** 以產品的前端站台設定啟動 nginx 並送出任一請求
+- **THEN** 回應的 `Server` 標頭 MUST 為不含版本號的 `nginx`
+
+#### Scenario: 守衛擋下指令缺失或改值
+
+- **WHEN** 任一份產品 nginx 設定缺少 `server_tokens off;`，或其值被改為 `off` 以外
+- **THEN** 守衛測試 MUST 失敗並指出是哪一份設定

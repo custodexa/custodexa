@@ -1,0 +1,19 @@
+[ .. ] 正在取得 custodexa-1.16.3.tar.gz…
+[ OK ] 已取得 custodexa-1.16.3.tar.gz
+[ .. ] 正在取得 SHA256SUMS…
+[ OK ] 已取得 SHA256SUMS
+[ .. ] 正在取得 SHA256SUMS.sigstore.json…
+[ .. ] 正在核對 custodexa-1.16.3.tar.gz 與 SHA256SUMS 的校驗和…
+[ OK ] custodexa-1.16.3.tar.gz 的校驗和相符
+[ .. ] 正在驗證發行清單簽章…
+[ OK ] custodexa-1.16.3.tar.gz 的校驗和與發行者簽章已驗證
+[FAIL] 上次的 upgrade 在第 11 步中斷。
+  已經切換到新版。先查看後端日誌找原因：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  升級前的備份：/opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar
+  決定回到 1.16.1 時執行下面的指令。腳本會先確認資料庫沒有被新版改過，
+  才直接換回 1.16.1；改過的話會告訴你怎麼用上面的備份還原。
+  停機之前會先問你：
+    sudo /opt/custodexa/custodexa.sh rollback --lang zh-TW
+
+沒有做任何變更。

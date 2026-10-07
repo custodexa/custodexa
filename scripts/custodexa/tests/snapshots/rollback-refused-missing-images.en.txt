@@ -1,0 +1,9 @@
+[FAIL] Going back to 1.16.1 needs the images from before the upgrade, but
+       2 of them are not on this host or differ from before. Nothing was
+       changed.
+  backend    not on this host
+  frontend   the image on this host differs from the one recorded before
+             the upgrade: before sha256:bc2cb7012bc96824e1beecb6bdbe47726879b8b5a8c6b53c0afda52758c7b52b, now sha256:8810ad581e59f2bc3928b261707a71308f7e139eb04820366dc4d5c18d980225
+  Load the 1.16.1 offline image bundle, then run again:
+    sudo /opt/custodexa/custodexa.sh load <custodexa-images-1.16.1-arm64.tar> --lang en
+    sudo /opt/custodexa/custodexa.sh rollback --lang en

@@ -230,7 +230,7 @@ cmd_status_images() {
 
 # ---------- backup ----------
 cmd_status_backup() {
-  local taken kind id days what when mark=OK size
+  local taken kind id days what when mark=OK size file line
   cmd_status_section backup
   taken=$(cx_state_get last_backup.taken_at)
   if [ -z "$taken" ]; then
@@ -255,39 +255,81 @@ cmd_status_backup() {
   esac
   [ -z "$days" ] || [ "$days" -le "$CX_STATUS_BACKUP_DAYS" ] || mark=WARN
   cmd_status_line "$mark" "$(cx_msg status_backup "$(cmd_status_minute "$taken")" "$what" "${when:-?}")"
+  size=$(cx_state_get last_backup.size_bytes)
+  file=$(cx_state_get last_backup.file)
   if [ "$kind" = external ]; then
     cmd_status_under "$(cx_state_get last_backup.external_ref)"
+  elif [ -n "$file" ]; then
+    line="$CX_ROOT/$file${size:+    $(cx_size_human "$size")}"
+    [ "$(cx_state_get last_backup.encrypted)" != true ] || line=$(cx_msg status_backup_encrypted "$line")
+    cmd_status_under "$line"
   else
-    size=$(cx_state_get last_backup.size_bytes)
     cmd_status_under "$CX_ROOT/$(cx_state_get last_backup.dir)/${size:+    $(cx_size_human "$size")}"
   fi
 }
 
 # ---------- last upgrade ----------
 cmd_status_upgrade() {
-  local res from to log pkg
+  local res from to log pkg at line mark="" settled=""
   res=$(cx_state_get last_upgrade.result)
   [ -n "$res" ] || return 0
   from=$(cx_state_get last_upgrade.from) to=$(cx_state_get last_upgrade.to)
   cmd_status_section upgrade
   case $res in
+    rolled_back)
+      # The version gone back to is given before and after the time: each language uses the one
+      # that suits its word order (%.0s skips the other).
+      cmd_status_line OK "$(cx_msg status_upgrade_rolled_back "$from" "$to" "$from" \
+        "$(cmd_status_minute "$(cx_state_get last_upgrade.rolled_back_at)")" "$from")"
+      ;;
     succeeded)
       cmd_status_line OK "$(cx_msg status_upgrade_ok "$from" "$to" "$(cmd_status_minute "$(cx_state_get last_upgrade.finished_at)")")"
       ;;
     failed)
-      cmd_status_line FAIL "$(cx_msg status_upgrade_failed "$from" "$to" "$(cx_state_get last_upgrade.step)" \
-        "$(cmd_status_minute "$(cx_state_get last_upgrade.finished_at)")")"
+      at=$(cx_state_get last_upgrade.finished_at)
+      [ -n "$at" ] || at=$(cx_state_get last_upgrade.handed_at)
+      pkg=status_upgrade_failed
+      [ "$(cx_state_get last_upgrade.handed_to)" != restore ] || pkg=status_upgrade_failed_handed
+      # A restore that finished settled it (lib/run.sh): the failure is shown as it was, no longer
+      # as a fault, with the restore that dealt with it under the log path.
+      mark=FAIL
+      [ "$(cx_state_get last_upgrade.settled_by)" != restore ] || mark=OK settled=$(cx_state_get last_upgrade.settled_at)
+      cmd_status_line "$mark" "$(cx_msg "$pkg" "$from" "$to" "$(cx_state_get last_upgrade.step)" \
+        "$(cmd_status_minute "$at")")"
       ;;
     *) cmd_status_line WARN "$(cx_msg status_upgrade_unfinished "$from" "$to" "$(cx_state_get last_upgrade.step)")" ;;
+  esac
+  # The log path right under the line that ends with its label.
+  log=$(cx_state_get last_upgrade.log)
+  [ "$res" = succeeded ] || [ -z "$log" ] || cmd_status_under "$CX_ROOT/$log"
+  if [ "$mark" = OK ]; then
+    while IFS= read -r line; do
+      cmd_status_under "$line"
+    done <<<"$(cmd_status_text "$(cx_msg status_upgrade_settled "$(cmd_status_minute "$settled")")")"
+  fi
+  case $(cx_state_get last_rollback.result) in
+    in_progress)
+      if [ "$(cx_state_get last_rollback.direction)" = revert ]; then
+        cmd_status_line WARN "$(cx_msg status_rollback_reverting "$(cx_state_get last_rollback.target)" \
+          "$(cx_state_get last_rollback.step)")"
+      else
+        cmd_status_line WARN "$(cx_msg status_rollback_unfinished "$(cx_state_get last_rollback.from)" \
+          "$(cx_state_get last_rollback.to)" "$(cx_state_get last_rollback.step)")"
+      fi
+      cx_recovery_hint rollback
+      ;;
+    reverted) cmd_status_line OK "$(cx_msg status_rollback_reverted "$(cx_state_get last_rollback.from)")" ;;
+    refused)
+      pkg=status_rollback_refused
+      [ "$(cx_state_get last_rollback.refusal_reason)" != unreadable ] || pkg=status_rollback_unreadable
+      cmd_status_line WARN "$(cx_msg "$pkg" "$(cx_state_get last_rollback.from)" "$(cx_state_get current.version)")"
+      ;;
   esac
   pkg=$(cx_state_get last_upgrade.package_verification)
   case $pkg in
     *signature=mismatch*) cmd_status_line WARN "$(cx_msg status_pkg_sig_mismatch)" ;;
     *signature=skip-*) cmd_status_line WARN "$(cx_msg status_pkg_sig_unverified)" ;;
   esac
-  [ "$res" != succeeded ] || return 0
-  log=$(cx_state_get last_upgrade.log)
-  [ -z "$log" ] || cmd_status_under "$CX_ROOT/$log"
 }
 
 # ---------- disk ----------
@@ -329,6 +371,9 @@ cmd_status_reminders() {
   printf '%s\n' "$out"
 }
 
+# shellcheck source=lib/restore_status.sh
+. "${BASH_SOURCE[0]%/*}/restore_status.sh"
+
 cmd_status() {
   [ $# -eq 0 ] || cx_die "$CX_EXIT_USAGE" usage_extra_args "$1"
   cx_state_load "$CX_ROOT/state.json"
@@ -339,6 +384,7 @@ cmd_status() {
   cmd_status_images
   cmd_status_backup
   cmd_status_upgrade
+  cmd_status_restore
   cmd_status_disk
   cmd_status_reminders
   [ "$CX_STATUS_WARNED" = 0 ] || exit "$CX_EXIT_WARN"

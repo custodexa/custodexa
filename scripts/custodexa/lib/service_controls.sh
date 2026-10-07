@@ -21,27 +21,31 @@ cx_svc_resume() {
 cx_svc_log_hint() {
   cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
 }
+# cx_svc_signal: the handler may run inside a command's redirection (stderr to /dev/null), so it
+# writes to the terminal as it was when the command began.
 cx_svc_signal() {
   trap - INT TERM HUP
   cx_log END "result=interrupted command=$CX_SVC_COMMAND"
-  printf '\n' >&2
-  cx_svc_resume >&2
+  printf '\n' >&"${CX_SIGNAL_FD:-2}"
+  cx_svc_resume >&"${CX_SIGNAL_FD:-2}"
   exit "$CX_EXIT_FAILED"
 }
 cx_svc_finish() {
   cx_log END "result=$1 command=$CX_SVC_COMMAND"
   trap - INT TERM HUP
 }
+# cx_svc_pending: an unfinished install or upgrade comes first; an unfinished backup only gets its
+# WARN (lib/run.sh): starting or stopping is what it may need.
 cx_svc_pending() {
   local key cmd
-  for key in install.result last_upgrade.result last_backup.result; do
+  for key in install.result last_upgrade.result; do
     [ "$(cx_state_get "$key")" = in_progress ] || continue
     cmd=$(cx_run_command_of "${key%.result}")
     cx_line FAIL "$(cx_msg svc_pending_run "$cmd")"
     cx_recovery_hint "$cmd"
     return 1
   done
-  return 0
+  cx_run_backup_warn
 }
 cx_svc_prepare() {
   CX_SVC_COMMAND=$1
@@ -63,6 +67,7 @@ cx_svc_prepare() {
   cx_secrets_from_env "$CX_ROOT/.env"
   cx_log_open "$1" || return "$CX_EXIT_FAILED"
   cx_log BEGIN "$1 lang=${CX_LANG:-en} script=${CX_SELF#"$CX_ROOT"/} flags=\"${CX_FLAGS_TEXT# }\""
+  exec {CX_SIGNAL_FD}>&2
   trap 'cx_svc_signal' INT TERM HUP
 }
 # Compose lists the services of the current deployment, including stopped containers. The

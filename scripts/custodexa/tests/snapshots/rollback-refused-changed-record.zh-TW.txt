@@ -1,0 +1,4 @@
+[FAIL] 沒有可以回到的上一版，沒有做任何變更。
+  上次升級之後，版本紀錄已經改變。
+  查看這個部署的狀態：
+    sudo /opt/custodexa/custodexa.sh status --lang zh-TW

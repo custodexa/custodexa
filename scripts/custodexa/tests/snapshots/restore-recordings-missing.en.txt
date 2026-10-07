@@ -1,0 +1,6 @@
+  [WARN] The recordings were not restored from the backup: 1,204 of the
+         recordings the system knows about have no file on this host.
+         The list is in
+         /opt/custodexa/restore/20261012-093015/missing-recordings.txt;
+         copy them over from /data/custodexa/recordings/ on the source
+         host.

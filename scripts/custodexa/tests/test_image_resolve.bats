@@ -190,6 +190,31 @@ step3() { # <lang> [overlays]
   [ "$(env_line BACKEND)" = "${REF[backend]}:1.13.0" ]
 }
 
+# An offline bundle that install loaded on the containerd store leaves its images under IDs of
+# their own, which install records (current.image_ids); the same release resolved again on this
+# host (a restore of its own backup) takes them, another release does not.
+@test "containerd: the IDs install recorded for this release are taken for its tags, not for another release" {
+  local n i=0 ids=""
+  store containerd
+  down ghcr.io
+  down docker.io
+  touch "$SIM/build-fails"
+  for n in backend frontend postgres guacd openssl nginx; do
+    i=$((i + 1))
+    have "${REF[$n]}:$(jq -r ".images.$n.tag" "$ROOT/current/MANIFEST.json")" "sha256:0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0$i"
+    ids+="${ids:+ }$n=sha256:0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0$i"
+  done
+  [ -f "$ROOT/state.json" ] || printf '{"format": "2"}\n' >"$ROOT/state.json"
+  jq --arg ids "$ids" '. + {format: "2", "current.version": "1.12.9", "current.image_ids": $ids}' \
+    "$ROOT/state.json" >"$ROOT/state.json.new" && /usr/bin/mv "$ROOT/state.json.new" "$ROOT/state.json"
+  step3 en
+  [ "$status" -eq 1 ] && [[ $output == *"[WARN] This host: ghcr.io/custodexa/backend:1.13.0 has a different content digest; not used"* ]] || { echo "$output"; return 1; }
+  jq '."current.version" = "1.13.0"' "$ROOT/state.json" >"$ROOT/state.json.new" && /usr/bin/mv "$ROOT/state.json.new" "$ROOT/state.json"
+  step3 en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(env_line BACKEND)" = "${REF[backend]}:1.13.0" ] && [ "$(id_line backend)" = sha256:0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e01 ]
+}
+
 @test "build from source: only under custodexa-local/, only when the source matches" {
   store classic
   down ghcr.io

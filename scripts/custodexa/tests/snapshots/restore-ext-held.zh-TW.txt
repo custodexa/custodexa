@@ -1,0 +1,7 @@
+[FAIL]  2/10  停止服務（外接資料庫不受影響）：停止之後，仍有 1 個其他連線
+              在使用 custodexa（來自 10.0.0.45，應用程式 psql）。
+還原停在第 2 步。還沒有覆蓋任何資料；服務維持停止。
+  請找出並結束這個連線（確認不是備援主機接手），再重跑接續：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  或放棄還原、啟動原本的服務：
+    sudo /opt/custodexa/custodexa.sh restore --revert

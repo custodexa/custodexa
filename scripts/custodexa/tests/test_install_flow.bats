@@ -318,6 +318,10 @@ s18_view() { sed -E 's/（[0-9.]+ (KB|MB|GB)）$/（<size>）/; s/ \([0-9.]+ (KB
           '.manifests[] | select(.annotations["io.containerd.image.name"] == $r) | .digest' | cut -d: -f2)
       fi
       [[ " $(state load.image_ids) " == *" $n=$want "* ]] || { echo "[$s] $n: $(state load.image_ids)"; return 1; }
+      # Next to the ID, the index digest the release manifest names (another release naming the
+      # same digest can use the same image).
+      want=$(jq -r --arg n "$n" '.images[$n].index_digest' "$ROOT/releases/1.13.0/MANIFEST.json")
+      [[ $want == sha256:* && " $(state load.index_digests) " == *" $n=$want "* ]] || { echo "[$s] $n: $(state load.index_digests)"; return 1; }
     done
   done
   [ -z "$(state current.version)" ] && [ "$(readlink "$ROOT/current")" = releases/1.13.0 ] || return 1

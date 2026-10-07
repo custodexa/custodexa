@@ -1,0 +1,6 @@
+[FAIL] This backup has no master key fingerprint (a single one could not
+       be read when it was made), so the script cannot confirm the master
+       key after a restore and will not start one.
+  Restore it by hand following section 5 of "Backup and Restore", and
+  check the key inventory item by item as section 6 describes.
+Nothing has been changed.

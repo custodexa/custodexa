@@ -1,0 +1,6 @@
+[FAIL] 不能直接回到 1.16.1：升級後資料庫可能已被 1.16.2 改過。
+       沒有做任何變更，服務仍在執行。
+  原因       讀不到資料庫目前的結構，無法確認升級後有沒有變更
+  要回到 1.16.1，請用升級前的備份還原。還原會先讓你確認，
+  再把資料與版本都回到升級前；升級之後產生的資料會被取代。
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar --lang zh-TW

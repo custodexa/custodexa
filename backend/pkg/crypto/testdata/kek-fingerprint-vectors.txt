@@ -1,0 +1,9 @@
+# Known answer vectors of the master key fingerprint: the first 8 bytes of SHA-256 over the raw
+# key bytes, as lowercase hex (16 characters). Locked by the backend test TestKEKFingerprintVectors
+# (backend/pkg/crypto), which fails when this file and the backend algorithm differ; read by the
+# management script tests to check the script side computes the same value.
+# Line format: <label> <key bytes in base64> <fingerprint>
+zeros AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= 66687aadf862bd77
+ascending AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8= 630dcd2966c43366
+ff //////////////////////////////////////////8= af9613760f72635f
+fill5a WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo= 60bf07c488aad18f

@@ -274,8 +274,12 @@ func runVaultWizard(t *testing.T, j *vaultWizardJournal, scenario string) {
 		t.Helper()
 		// 解封自本版起先過帳密：/seal/unseal 收的是 SealGrant 脈絡而非業務權杖
 		// （見 vault_owner_test.go 的 sealGrantRequest）。其餘端點維持 Bearer。
-		w := sealGrantRequest(t, e, method, path, body)
-		if path != "/api/v1/seal/unseal" {
+		// 只有解封走帳密授權：已解封時 /seal/authorize 即回 409、不再簽發脈絡，
+		// 故其餘端點不得先打它一次。
+		var w *httptest.ResponseRecorder
+		if path == "/api/v1/seal/unseal" {
+			w = sealGrantRequest(t, e, method, path, body)
+		} else {
 			w = modeRequestMethod(t, e, method, path, body, token)
 		}
 		j.step(t, "handler %s %s HTTP=%d", method, path, w.Code)
@@ -823,8 +827,11 @@ func vaultBackupRecovery(t *testing.T, j *vaultWizardJournal, e *sealIntegration
 	ctx := context.Background()
 	call := func(env *sealIntegrationEnv, method, path, body string) {
 		t.Helper()
-		w := sealGrantRequest(t, env, method, path, body)
-		if path != "/api/v1/seal/unseal" {
+		// 只有解封走帳密授權（理由同 runVaultWizard 的 call）。
+		var w *httptest.ResponseRecorder
+		if path == "/api/v1/seal/unseal" {
+			w = sealGrantRequest(t, env, method, path, body)
+		} else {
 			w = modeRequestMethod(t, env, method, path, body, token)
 		}
 		j.step(t, "handler %s %s HTTP=%d", method, path, w.Code)

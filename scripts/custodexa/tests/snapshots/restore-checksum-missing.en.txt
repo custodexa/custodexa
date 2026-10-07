@@ -1,0 +1,4 @@
+[FAIL] The checksum file custodexa-backup-1.16.0-20261005-101502.tar.enc.sha256
+       is not there. To go on without it when nobody is at the terminal, add
+       --no-checksum-file.
+Nothing has been changed.

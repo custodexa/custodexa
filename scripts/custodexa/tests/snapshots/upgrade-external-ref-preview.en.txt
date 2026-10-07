@@ -1,0 +1,21 @@
+What will happen
+  1. Wait until all audit records are in the database, then stop the
+     services (the database keeps running)
+  2. Use the backup of your own given with --backup-ref; the script
+     makes none this time
+  3. Switch to 1.13.2 and start it
+  4. Check the version, that it is the same data as before, and that
+     the keys did not change
+
+Good to know
+  - Expect 4 to 8 minutes of downtime. Nobody can connect meanwhile,
+    and open connections will be cut
+  - The backend is not running, so the audit queue cannot be checked;
+    the services are stopped directly
+  - After the upgrade the system stays sealed until someone enters
+    the master key on the unseal page
+  - Image checksums, signatures and build provenance are verified
+  - Have someone familiar with operating this host run it inside a
+    terminal tool that keeps the session alive (such as tmux or
+    screen), to reduce the risk that a dropped SSH connection stops
+    the upgrade

@@ -1,0 +1,6 @@
+[FAIL] Not enough space; the restore will not start:
+  /opt (working folder and safety backup) needs 56 GB, has 40 GB
+  /data (data folder) needs 23 GB, has 300 GB
+  The figures include a 10 to 20 percent margin; the sizes in the backup
+  file are estimates from when it was made.
+Nothing has been changed.

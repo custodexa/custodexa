@@ -7,14 +7,29 @@ Custodexa 管理腳本 1.13.0
   upgrade              查詢有沒有新版（不做任何變更）
   upgrade <版本>        下載並升級到指定版本（會停機、會先備份）
   upgrade <安裝包路徑>  用已下載的安裝包升級（離線可用）
+  rollback             回到升級前的版本：資料庫沒有被新版改過時，只換回舊版，
+                       資料不動；改過時不做任何變更，並告訴你怎麼還原
+  rollback --resume    接續上一次沒有完成的回到上一版
+  rollback --revert    放棄上一次沒有完成的回到上一版，回到升級後的版本
   status               顯示版本、服務、備份與上次升級的狀態（不做任何變更）
   start                啟動整組服務並等待後端就緒
   stop                 確認並停止整組服務
-  backup               完整備份（會暫停服務約十幾分鐘）
+  backup               備份成單一檔案（會暫停服務；檔案可搬到其他主機）
   load <離線包>         載入離線映像包（不啟動服務）
+  restore <備份檔>     從可攜備份檔還原。已安裝的主機：先做安全備份，
+                       再取代現有資料。尚未安裝的主機：先安裝備份當時的
+                       版本，再還原
+  restore --resume     接續上一次沒有完成的還原，包括解封後的主金鑰核對
+  restore --revert     用還原前的安全備份還原回去
+  restore --abandon    放棄新主機上沒有完成的還原，回到尚未安裝
 
 選項
   --yes                不詢問確認，自動化時使用
+  --resume             （rollback、restore）接續未完成的作業
+  --revert             （rollback、restore）撤回未完成的作業
+  --with-recordings    （backup）錄影一併放進備份檔（預設不放）
+  --passphrase-file <檔案>（backup）以檔案第一行為通行密語加密備份檔；
+                       檔案須為 0600、屬於你或 root。不要把密語直接寫在指令上
   --backup-ref <識別>  （upgrade）已自行備份，填入快照名稱，腳本不再備份
   --backup-time <時間> （upgrade）與 --backup-ref 並用：快照開始時間，須晚於停機
   --backup-restore <位置>（upgrade）與 --backup-ref 並用：還原程序的文件位置
@@ -25,6 +40,28 @@ Custodexa 管理腳本 1.13.0
   --no-color           不使用顏色
   --version            顯示腳本版本
   -h, --help           顯示說明；custodexa.sh <子命令> --help 只顯示該子命令
+
+restore 的選項
+  --same-host | --new-host     沒有終端機時必須指明是哪一種還原
+  --confirm-data-loss          沒有終端機時確認會覆蓋現有資料（與 --yes 一起用）
+  --passphrase-file <檔>       加密備份的通行密語檔（權限規則與 backup 相同）
+  --no-checksum-file           沒有 .sha256 校驗檔也繼續（仍逐一核對檔內雜湊）
+  --package <安裝包>           備份版本的安裝包，同一目錄要有 SHA256SUMS
+                               （離線用）
+  --images <離線包>            備份版本的離線映像包
+  --backup-ref、--backup-time、--backup-restore
+                               以服務停止後的自備備份代替安全備份
+                               （安全備份沒完成時也可以加在 --resume）
+  --data-path、--tls-domain、--tls-ip-san、--public-base-url
+                               新主機的主機值（不給時用這台的建議值）
+  --db-client-cert、--db-client-key
+                               外接資料庫的用戶端憑證與私鑰
+  --accept-grant-loss          外接資料庫缺少角色時，略過授權給這些角色的項目
+  --nginx-template <路徑>      他機上自訂 nginx 範本的新位置（原路徑不可用時）
+
+  建立密語檔（不會留在指令歷史）：
+    sudo install -m 600 -o root /dev/null /root/cx-pass
+    sudo bash -c 'IFS= read -r -s p && printf "%s\n" "$p" > /root/cx-pass'
 
 部署目錄是本腳本所在的目錄；要指定別處，設定環境變數 CUSTODEXA_HOME。
 每次執行的紀錄在 <部署目錄>/logs/。

@@ -1,0 +1,11 @@
+[FAIL] 戻せる前のバージョンがありません。何も変更していません。
+  前回のアップグレードは手順 7 で停止しています。
+  まだ新しいバージョンに切り替えていないため、戻す必要はありません。
+  サービスは停止中です。バージョンとデータは変わっていません。
+  旧バージョンを再開してから、もう一度アップグレードしてください。
+  旧バージョンのサービスを再開するには：
+    sudo docker compose -p custodexa --project-directory /opt/custodexa -f /opt/custodexa/current/compose.yml \
+      start backend guacd frontend
+    sudo /opt/custodexa/custodexa.sh status --lang ja
+  もう一度アップグレードするには：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.16.2

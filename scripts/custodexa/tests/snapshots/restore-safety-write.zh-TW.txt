@@ -1,0 +1,13 @@
+[FAIL]  3/10  安全備份                                                 2 分 05 秒
+       備份位置寫入失敗（No space left on device）。
+
+還原前的安全備份沒有完成，所以不會開始覆蓋。資料沒有任何變更；
+服務維持停止。
+  處理之後，重跑接續（從安全備份開始）：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  或放棄還原、啟動原本的服務：
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  也可以改用服務停止之後取得的自備備份：互動接續時選 [2]，
+  或在接續指令加上三個旗標：
+    sudo /opt/custodexa/custodexa.sh restore --resume --backup-ref <識別> --backup-time <時間> --backup-restore <程序>
+  自備備份的時間不能早於這次還原停止服務的 2026-10-12 09:31。

@@ -1,0 +1,4 @@
+Last upgrade
+  [ OK ] Last upgrade 1.16.1 → 1.16.2, rolled back to 1.16.1 on
+         2026-11-05 09:30
+         /opt/custodexa/logs/upgrade-20260930-101502.log

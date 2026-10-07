@@ -1,0 +1,10 @@
+[FAIL] Cannot go straight back to 1.16.1: 1.16.2 has already changed the
+       database. Nothing was changed; the services are still running.
+  Why            the database structure changed after the upgrade
+                 (new_structure), and 1.16.1 cannot work
+                 correctly with the changed database
+  To go back to 1.16.1, restore the backup taken before the upgrade. The
+  restore asks you first, then returns both the data and the version to
+  how they were before the upgrade; the data created since the upgrade is
+  replaced.
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar --lang en

@@ -1,0 +1,22 @@
+[ OK ] Master key: the ID read after unseal, 5a5a5a5a5a5a5a5a, matches
+       the backup
+[ OK ] Restore done (1.16.0)
+  From         custodexa-backup-1.16.0-20261005-101502.tar.enc (2026-10-05 10:15)
+  Address      https://10.0.0.31
+  Master key   entered in the browser; the ID read after unseal,
+               5a5a5a5a5a5a5a5a, matches the backup
+  [WARN] The recordings were not restored from the backup: 1,204 of the
+         recordings the system knows about have no file on this host.
+         The list is in
+         /opt/custodexa/restore/20261012-093015/missing-recordings.txt;
+         copy them over from /data/custodexa/recordings/ on the source
+         host.
+  [WARN] The public address is now https://10.0.0.31. If an external
+         sign-in (OIDC) is connected, update the callback address at the
+         identity provider.
+  Go through section 6 of "Backup and Restore" item by item before
+  handing the system to users.
+  Log file /opt/custodexa/logs/restore-20261012-093015.log
+
+  Back on the version from before the upgrade (1.16.0). To upgrade later:
+    sudo /opt/custodexa/custodexa.sh upgrade

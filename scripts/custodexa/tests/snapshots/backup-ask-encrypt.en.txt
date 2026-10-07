@@ -1,0 +1,40 @@
+==== on a terminal, env: Enter, Enter, n ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: in the settings file
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+
+[ ?? ] Put the recordings in the backup file?
+
+  [1] No (default): a file of about 17.4 GB, services paused about 12 minutes
+  [2] Yes: a file of about 229 GB, services paused about 2 hours 37 minutes
+      Needs 442 GB, more than is free; this choice will be refused
+      Without them, keep the recordings folder some other way.
+
+Choose [1-2], or press Enter for the default:
+
+[ ?? ] Encrypt the backup file with a passphrase?
+
+  Without encryption the file holds the database password, the master
+  key, certificate private keys and other sensitive data, readable by
+  anyone who has it.
+
+  [1] No (default): the file opens with tar as it is
+  [2] Yes: a restore needs the same passphrase. If the passphrase is
+      lost the backup cannot be restored, by the script or by anyone.
+
+Choose [1-2], or press Enter for the default:
+
+  Recordings: not included
+  Encryption: none
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] n
+Nothing was changed.
+==== exit 3 ====

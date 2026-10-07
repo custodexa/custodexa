@@ -1,0 +1,19 @@
+# Images a scenario can ask for with its "# images:" line, loaded into its integration host.
+#   <key> registry <ref:tag@digest>   pulled once by digest for this architecture, then kept as a tar
+#   <key> build <tag> <Dockerfile>    built on this machine (path relative to this folder)
+# pg16 and openssl-3.5.4 must be the pins of packaging/compose.yml; run.sh refuses a drift.
+# A server of a major the release has no client for (a restore must refuse it before any stop).
+pg15          registry postgres:15.19-alpine3.24@sha256:f7d23353e1b15400d22ebe31189f4d314b87a4c129cc400c8c2d8d4ca127bf81
+pg16          registry postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+pg17          registry postgres:17.11-alpine3.24@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+pg18          registry postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+openssl-3.5.4 registry alpine/openssl:3.5.4@sha256:42c7389ef077aed0eb4e96d0abbd094083d701bbaff1313073b061c0c9cd8278
+openssl-3.5.7 build    custodexa-it-testimage:1 ../Dockerfile
+openssl-1.1.1 build    custodexa-it-openssl111:1 openssl111.Dockerfile
+# Only for the -saltlen probe of the encrypt scenario (which OpenSSL line first has the option).
+openssl-3.0   build    custodexa-it-openssl30:1 openssl30.Dockerfile
+openssl-3.1   registry alpine/openssl:3.1.4@sha256:63b044fac594e2940b36d341804554b38f8f702641fea00a62a557689bff3795
+openssl-3.2   build    custodexa-it-openssl32:1 openssl32.Dockerfile
+openssl-3.3   registry alpine/openssl:3.3.0@sha256:627ba19f0d7bcdd2452a75b08e59c893f4a7be7d94cefc9a22faa4359cd6b41d
+# Vault in dev mode, given a TLS listener: the key service of the kms master key mode.
+vault         registry hashicorp/vault:2.1.0@sha256:5520cc26271c024e6ffa45cdf95255bd26b70d71ba4b7e0bc18925bef4128adb

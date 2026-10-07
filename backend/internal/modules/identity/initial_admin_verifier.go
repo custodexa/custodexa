@@ -35,8 +35,16 @@ var ErrSealInitialAdminInvalid = errors.New("初始管理員憑證不符")
 // VerifyInitialAdminCredential 驗證初始管理員憑證（初始化解封專用）。
 //
 // **段 1 簡化路徑，刻意不套用既有帳號鎖定政策**：SecurityPolicyService 於段 2
-// 才建構，此處取用不到；其防爆破由解封退避／冷卻承擔。
-// 此界線必須明說，免得被誤解為已享有既有帳號鎖定保護。
+// 才建構，此處取用不到；其防爆破由解封退避／冷卻承擔。本函式不新增、不寫入
+// 失敗計數。此界線必須明說，免得被誤解為已享有既有帳號鎖定保護。
+//
+// **但尊重已寫入的鎖定期限**：`locked_until` 未到期的帳號一律拒絕，即使密碼
+// 正確。這是唯讀判斷（不寫回任何欄位，故在攔下期「零資料庫寫入」的約束下同樣
+// 成立）；鎖定是既有的爆破防護，不因為走的是解封或攔下確認而豁免。
+//
+// 呼叫端：初始化解封（`cmd/server/sealwire.go`）、委託模式的全新安裝
+// （`cmd/server/seal_delegated.go`）、守衛攔下頁確認
+// （`cmd/server/instance_guard_halt_wiring.go`），以及 VerifySealAdminCredential。
 //
 // **SHALL NOT 觸碰 MustChangePassword**：驗證通過即受理解封，該帳號的
 // 「首次登入強制改密」狀態維持不變、SHALL NOT 因通過解封而被清除或視為已完成。
@@ -49,15 +57,25 @@ var ErrSealInitialAdminInvalid = errors.New("初始管理員憑證不符")
 // 傳遞，字串化會產生不可覆寫的副本（見 api.SealUnsealPayload.Zeroize 的誠實
 // 邊界）。bcrypt 直接吃 []byte，故此處零轉換。
 func VerifyInitialAdminCredential(db *gorm.DB, username string, password []byte) error {
+	_, err := verifyLocalAdminCredential(db, username, password)
+	return err
+}
+
+// verifyLocalAdminCredential 是兩個公開驗證器共用的本體，回傳通過驗證的帳號。
+//
+// 錯誤只有兩種：ErrSealInitialAdminInvalid（帳號不存在、外部身分、停用、非管理
+// 角色、鎖定中、密碼不符一律同一個），與讀不到使用者表的包裝錯誤——後者 SHALL
+// NOT 以憑證錯誤頂替（攔下頁據此指向環境變數路徑）。
+func verifyLocalAdminCredential(db *gorm.DB, username string, password []byte) (*model.User, error) {
 	if username == "" || len(password) == 0 {
-		return ErrSealInitialAdminInvalid
+		return nil, ErrSealInitialAdminInvalid
 	}
 	var user model.User
 	if err := db.Preload("Roles").Where("username = ?", username).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrSealInitialAdminInvalid
+			return nil, ErrSealInitialAdminInvalid
 		}
-		return fmt.Errorf("查詢初始管理員失敗: %w", err)
+		return nil, fmt.Errorf("查詢初始管理員失敗: %w", err)
 	}
 	// 外部身分帳號（LDAP／OIDC）的 password 欄位是隨機填充值，不可作為本地憑證來源；
 	// 且外部認證需要段 2 才建構的 authenticator/provider，封印期一律不可用。
@@ -66,7 +84,7 @@ func VerifyInitialAdminCredential(db *gorm.DB, username string, password []byte)
 	// is_ldap 為 false，只認該欄會讓它落到 bcrypt 比對——雖然隨機密碼必不匹配，
 	// 但那是靠巧合擋住，語義不明確；欄位語義一旦調整即可能真的放行
 	if user.IsExternal() || !user.Active || user.Password == "" {
-		return ErrSealInitialAdminInvalid
+		return nil, ErrSealInitialAdminInvalid
 	}
 	hasAdmin := false
 	for _, r := range user.Roles {
@@ -76,12 +94,18 @@ func VerifyInitialAdminCredential(db *gorm.DB, username string, password []byte)
 		}
 	}
 	if !hasAdmin {
-		return ErrSealInitialAdminInvalid
+		return nil, ErrSealInitialAdminInvalid
 	}
-	if crypto.DefaultPasswordVerifier().Verify(user.Password, password) != nil {
-		return ErrSealInitialAdminInvalid
+	// 密碼比對照做再判鎖定：鎖定中的帳號與密碼錯誤回同一個錯誤，且兩者都付出
+	// 一次雜湊比對的成本，回應時間不因鎖定與否而不同。
+	pwErr := crypto.DefaultPasswordVerifier().Verify(user.Password, password)
+	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+		return nil, ErrSealInitialAdminInvalid
 	}
-	return nil
+	if pwErr != nil {
+		return nil, ErrSealInitialAdminInvalid
+	}
+	return &user, nil
 }
 
 // VerifySealAdminCredential 驗證解封流程的管理員帳密（封存期專用）。
@@ -104,15 +128,10 @@ func VerifyInitialAdminCredential(db *gorm.DB, username string, password []byte)
 //
 // 回傳通過驗證的使用者識別，供授權脈絡與審計記錄「是誰要求解封」。
 func VerifySealAdminCredential(db *gorm.DB, username string, password []byte) (uint, error) {
-	if err := VerifyInitialAdminCredential(db, username, password); err != nil {
-		return 0, ErrSealInitialAdminInvalid
-	}
-	var user model.User
-	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
-		return 0, ErrSealInitialAdminInvalid
-	}
-	// 鎖定期內一律拒絕：鎖定是既有的爆破防護，不因為走的是解封頁而豁免。
-	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
+	// 鎖定期內一律拒絕（判定在共用本體內）：鎖定是既有的爆破防護，不因為走的
+	// 是解封頁而豁免。
+	user, err := verifyLocalAdminCredential(db, username, password)
+	if err != nil {
 		return 0, ErrSealInitialAdminInvalid
 	}
 	return user.ID, nil

@@ -1,0 +1,21 @@
+==== no terminal, no --yes ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: entered in the browser
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  [WARN] The master key is entered in the browser: after the restart the
+         system is sealed until someone enters the master key on the
+         unseal page, and users cannot connect until then.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+[FAIL] This step needs a confirmation, and there is no terminal to ask on.
+       Run again with --yes.
+==== exit 3 ====

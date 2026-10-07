@@ -1,0 +1,11 @@
+[ ?? ] The restore overwrites this host's data, so the current data is
+       backed up first.
+
+  [1] The script backs it up (default): after stopping the services it
+      backs up the database, audit files, settings and certificates,
+      about 12 minutes, without recordings (the restore does not touch
+      them)
+  [2] I will back it up myself once the services are stopped (a storage
+      snapshot, for example) and then enter what identifies it
+
+Choose [1-2], or press Enter for the default: 

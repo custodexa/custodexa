@@ -1,0 +1,4 @@
+[WARN] The system is still sealed, so the restore cannot finish yet.
+       Nothing was changed.
+  Unseal it at https://10.0.0.31/unseal, then run this again:
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

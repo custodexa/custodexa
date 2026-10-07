@@ -1,0 +1,24 @@
+  restore <備份檔>     從可攜備份檔還原。已安裝的主機：先做安全備份，
+                       再取代現有資料。尚未安裝的主機：先安裝備份當時的
+                       版本，再還原
+  restore --resume     接續上一次沒有完成的還原，包括解封後的主金鑰核對
+  restore --revert     用還原前的安全備份還原回去
+  restore --abandon    放棄新主機上沒有完成的還原，回到尚未安裝
+
+restore 的選項
+  --same-host | --new-host     沒有終端機時必須指明是哪一種還原
+  --confirm-data-loss          沒有終端機時確認會覆蓋現有資料（與 --yes 一起用）
+  --passphrase-file <檔>       加密備份的通行密語檔（權限規則與 backup 相同）
+  --no-checksum-file           沒有 .sha256 校驗檔也繼續（仍逐一核對檔內雜湊）
+  --package <安裝包>           備份版本的安裝包，同一目錄要有 SHA256SUMS
+                               （離線用）
+  --images <離線包>            備份版本的離線映像包
+  --backup-ref、--backup-time、--backup-restore
+                               以服務停止後的自備備份代替安全備份
+                               （安全備份沒完成時也可以加在 --resume）
+  --data-path、--tls-domain、--tls-ip-san、--public-base-url
+                               新主機的主機值（不給時用這台的建議值）
+  --db-client-cert、--db-client-key
+                               外接資料庫的用戶端憑證與私鑰
+  --accept-grant-loss          外接資料庫缺少角色時，略過授權給這些角色的項目
+  --nginx-template <路徑>      他機上自訂 nginx 範本的新位置（原路徑不可用時）

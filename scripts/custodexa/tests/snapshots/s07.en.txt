@@ -9,13 +9,13 @@ What will happen
   1. Wait until all audit records are in the database, then stop the
      services (the database keeps running)
   2. Full backup: database, recordings, audit files, settings,
-     certificates. About 18.4 GB; 211 GB free where backups go
+     certificates. About 35.8 GB; 211 GB free where backups go
   3. Switch to 1.13.2 and start it
   4. Check the version, that it is the same data as before, and that
      the keys did not change
 
 Good to know
-  - Expect 15 to 30 minutes of downtime. Nobody can connect meanwhile,
+  - Expect 27 to 54 minutes of downtime. Nobody can connect meanwhile,
     and open connections will be cut (2 are open now)
   - This version changes the database structure once. Rolling back
     afterwards means restoring this backup; anything recorded after

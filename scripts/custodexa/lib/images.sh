@@ -19,7 +19,7 @@
 # The config digest is always compared with the MANIFEST before anything is loaded.
 
 declare -gA CX_IMG_REF=() CX_IMG_ID=() CX_IMG_SRC=()
-declare -ga CX_IMG_NAMES=()
+declare -ga CX_IMG_NAMES=() CX_TOOL_NAMES=() CX_IMG_ALL=()
 CX_IMG_STORE=""
 CX_IMG_ARCH=""
 CX_IMG_BUNDLE=""        # the offline bundle in use, once found
@@ -66,18 +66,47 @@ cx_img_registry_id() {
   fi
 }
 
-# cx_img_needed <overlays>: the images the deployment form runs (MANIFEST order).
+# cx_img_needed <overlays> [all]: the images to obtain for the deployment form, in MANIFEST order:
+#   CX_IMG_NAMES   service images: the form runs a container of each, checked after the start
+#   CX_TOOL_NAMES  tool images: images of the release this script runs itself, which the form does
+#                  not run as a service: openssl (backup encryption) when the form has no
+#                  certificate initializer (external ingress), and the PostgreSQL clients
+#                  (pgclientNN, the backup of an external database) when the database is external.
+#                  Obtained and checked like the others, recorded in current.tool_image_ids, never
+#                  checked as a container.
+#   CX_IMG_ALL     both, the ones to obtain
+# With "all" every image of the MANIFEST is named (an offline bundle holds them all, and load
+# checks each one it loads): the PostgreSQL clients as service names too.
 cx_img_needed() {
-  local ov=" $1 " n
-  CX_IMG_NAMES=()
+  local ov=" $1 " n every=${2:-}
+  CX_IMG_NAMES=() CX_TOOL_NAMES=() CX_IMG_ALL=()
   for n in "${CX_MF_IMAGES[@]}"; do
     case $n in
       postgres) [[ $ov == *" external-database "* ]] && continue ;;
-      openssl | nginx) [[ $ov == *" external-ingress "* ]] && continue ;;
+      nginx) [[ $ov == *" external-ingress "* ]] && continue ;;
+      openssl)
+        if [[ $ov == *" external-ingress "* ]]; then
+          CX_TOOL_NAMES+=("$n")
+          CX_IMG_ALL+=("$n")
+          continue
+        fi
+        ;;
+      pgclient[0-9]*)
+        if [ "$every" != all ]; then
+          [[ $ov == *" external-database "* ]] || continue
+          CX_TOOL_NAMES+=("$n")
+          CX_IMG_ALL+=("$n")
+          continue
+        fi
+        ;;
     esac
     CX_IMG_NAMES+=("$n")
+    CX_IMG_ALL+=("$n")
   done
 }
+
+# cx_img_is_tool <name>: the image is a tool image of this deployment form (cx_img_needed).
+cx_img_is_tool() { [[ " ${CX_TOOL_NAMES[*]+"${CX_TOOL_NAMES[*]}"} " == *" $1 "* ]]; }
 
 # ---------- per-image output ----------
 readonly CX_IMG_ONCE="img_offline_bad img_build_note"
@@ -123,10 +152,10 @@ cx_img_try_local() {
     fi
   done
   # A tag alone proves nothing: it must carry the content the MANIFEST names (on containerd, the
-  # content recorded when the offline bundle was checked and loaded).
+  # content recorded when the offline bundle was checked and loaded, or installed for this release).
   if id=$(cx_img_id "$ref:$tag"); then
     if [ "$id" = "$(cx_mf "images.$n.platforms.$CX_IMG_ARCH.config_digest")" ] ||
-      { [ "$(cx_img_store)" = containerd ] && [ "$id" = "$(cx_img_loaded_id "$n")" ]; }; then
+      { [ "$(cx_img_store)" = containerd ] && [[ " $(cx_img_loaded_id "$n") $(cx_img_installed_ids "$n") " == *" $id "* ]]; }; then
       cx_img_found "$n" local "$ref:$tag" "$id"
       cx_img_say OK img_local_ok
       return 0
@@ -148,6 +177,80 @@ cx_img_loaded_id() {
     [ "${kv%%=*}" = "$1" ] && printf '%s' "${kv#*=}"
   done
   return 0
+}
+# The Id install or upgrade recorded for an image of this host's current release, or of the release
+# an upgrade left (previous.*: a restore of the upgrade's backup reads that release), when the loaded
+# MANIFEST is that release's (state keys <current|previous>.image_ids, .tool_image_ids).
+cx_img_installed_ids() {
+  local kv at
+  for at in current previous; do
+    [ "$(cx_state_get "$at.version")" = "$(cx_mf version)" ] || continue
+    for kv in $(cx_state_get "$at.image_ids") $(cx_state_get "$at.tool_image_ids"); do
+      [ "${kv%%=*}" = "$1" ] && printf '%s ' "${kv#*=}"
+    done
+  done
+  return 0
+}
+
+# cx_img_held_id <name>: the ID of image <name> of the loaded release manifest when this host holds
+# exactly that content (CX_IMG_ARCH set), found by ID alone, without a word on screen: the index
+# digest (pulled on the containerd image store) or this architecture's config digest (the classic
+# store); on the containerd store also the ID recorded when `load` checked and loaded this
+# release's bundle, or by install or upgrade for this host's current release. An image loaded
+# from an offline bundle on containerd has an ID of its own, which no digest of the manifest finds.
+# An ID recorded for another release counts when that release's manifest names the same index
+# digest for the image: the same image (cx_img_peer_ids).
+cx_img_held_id() {
+  local n=$1
+  cx_img_held_try "$(cx_mf "images.$n.index_digest")" "$(cx_mf "images.$n.platforms.$CX_IMG_ARCH.config_digest")" && return 0
+  [ "$(cx_img_store)" = containerd ] || return 1
+  # shellcheck disable=SC2046 # one ID per word
+  cx_img_held_try "$(cx_img_loaded_id "$n")" $(cx_img_installed_ids "$n") $(cx_img_peer_ids "$n")
+}
+
+# cx_img_peer_ids <name>: the IDs `load` (load.image_ids) and install or upgrade (current.image_ids,
+# current.tool_image_ids) recorded for image <name> of a release other than the loaded manifest's,
+# when that release's manifest names the index digest the loaded manifest names for <name>. That
+# release's manifest is the unpacked package's (releases/<version>/MANIFEST.json); for a load, else
+# the index digests `load` recorded from the manifest it checked the bundle against.
+cx_img_peer_ids() {
+  local n=$1 want v kv
+  want=$(cx_mf "images.$n.index_digest")
+  [[ $want =~ ^sha256:[0-9a-f]{64}$ ]] || return 0
+  v=$(cx_state_get load.version)
+  if [ -n "$v" ] && [ "$v" != "$(cx_mf version)" ] && [ "$(cx_img_peer_digest "$v" "$n" load)" = "$want" ]; then
+    for kv in $(cx_state_get load.image_ids); do
+      [ "${kv%%=*}" = "$n" ] && printf '%s ' "${kv#*=}"
+    done
+  fi
+  v=$(cx_state_get current.version)
+  if [ -n "$v" ] && [ "$v" != "$(cx_mf version)" ] && [ "$(cx_img_peer_digest "$v" "$n" current)" = "$want" ]; then
+    for kv in $(cx_state_get current.image_ids) $(cx_state_get current.tool_image_ids); do
+      [ "${kv%%=*}" = "$n" ] && printf '%s ' "${kv#*=}"
+    done
+  fi
+  return 0
+}
+cx_img_peer_digest() { # <version> <name> <load|current>: index digest of <name> in that release's manifest
+  local v=$1 n=$2 f=$CX_ROOT/releases/$1/MANIFEST.json kv
+  if [ -f "$f" ]; then
+    # A subshell: the loaded manifest (CX_MF) stays the caller's.
+    (cx_manifest_load "$f" >/dev/null 2>&1 && [ "$(cx_mf version)" = "$v" ] && cx_mf "images.$n.index_digest")
+    return 0
+  fi
+  [ "$3" = load ] || return 0
+  for kv in $(cx_state_get load.index_digests); do
+    [ "${kv%%=*}" = "$n" ] && printf '%s' "${kv#*=}"
+  done
+  return 0
+}
+cx_img_held_try() { # <ID>...: print the first one this host has as an image of that ID
+  local id
+  for id in "$@"; do
+    [[ $id =~ ^sha256:[0-9a-f]{64}$ ]] || continue
+    if [ "$(cx_img_id "$id")" = "$id" ]; then printf '%s' "$id"; return 0; fi
+  done
+  return 1
 }
 
 cx_img_found() { # <name> <source> <reference> <id>
@@ -209,7 +312,7 @@ cx_bundle_check() {
     [[ $entry =~ \"io.containerd.image.name\":\"([^\"]+)\" ]] || continue
     mdig[${BASH_REMATCH[1]}]=$m
   done < <(grep -oE '"digest":"sha256:[0-9a-f]{64}"[^{}]*"annotations":\{[^{}]*\}' "$tmp/index.json")
-  for n in "${CX_IMG_NAMES[@]}"; do
+  for n in "${CX_IMG_ALL[@]}"; do
     ref=$(cx_mf "images.$n.ref") tag=$(cx_mf "images.$n.tag")
     [ -n "${mdig[$ref:$tag]+x}" ] || continue
     want=$(cx_mf "images.$n.platforms.$CX_IMG_ARCH.config_digest")
@@ -217,7 +320,7 @@ cx_bundle_check() {
   done
   [ "${#members[@]}" -eq 0 ] || tar -xf "$b" -C "$tmp" "${members[@]}" 2>/dev/null
   mjson=$(tr -d ' \n\t' <"$tmp/manifest.json")
-  for n in "${CX_IMG_NAMES[@]}"; do
+  for n in "${CX_IMG_ALL[@]}"; do
     ref=$(cx_mf "images.$n.ref") tag=$(cx_mf "images.$n.tag")
     [ -n "${mdig[$ref:$tag]+x}" ] || continue
     name=$(cx_img_familiar "$ref"):$tag
@@ -295,7 +398,7 @@ cx_bundle_load() {
 CX_BUNDLE_BAD=""
 cx_bundle_verify_loaded() {
   local n ref tag id
-  for n in "${CX_IMG_NAMES[@]}"; do
+  for n in "${CX_IMG_ALL[@]}"; do
     [ -n "${CX_IMG_BUNDLE_ID[$n]+x}" ] || continue
     ref=$(cx_mf "images.$n.ref") tag=$(cx_mf "images.$n.tag")
     id=$(cx_img_id "$ref:$tag") || id=""
@@ -430,10 +533,12 @@ cx_img_try_build() {
 }
 
 # ---------- all images ----------
-# cx_images_resolve <overlays>: resolve every image the deployment runs; prints the step body
+# cx_images_resolve <overlays> [name...]: resolve every image the deployment runs (or only the
+# images named: upgrade obtains the PostgreSQL clients before its checks); prints the step body
 # (between the "[ .. ] 3/7" line and the closing line). Returns 1 when some image has no source.
 cx_images_resolve() {
   local n ver failed=0 ref tag want got release
+  local -a only=("${@:2}")
   release=${CX_DIR:-$CX_ROOT/current}
   CX_IMG_ARCH=$(cx_arch) || return 1
   CX_IMG_REF=() CX_IMG_ID=() CX_IMG_SRC=() CX_IMG_SAID=() CX_IMG_DOWN=()
@@ -454,7 +559,8 @@ cx_images_resolve() {
   else
     printf '       %s\n' "$(cx_msg img_order | sed '2,$s/^/       /')"
   fi
-  for n in "${CX_IMG_NAMES[@]}"; do
+  [ "${#only[@]}" -gt 0 ] || only=("${CX_IMG_ALL[@]}")
+  for n in "${only[@]}"; do
     ref=$(cx_mf "images.$n.ref") tag=$(cx_mf "images.$n.tag")
     if cx_img_upstream "$n"; then
       printf '       %s\n' "$(cx_msg img_head_upstream "$n" "$tag" "$(cx_img_familiar "$ref")")"
@@ -502,23 +608,27 @@ cx_img_resolve_one() {
   return 1
 }
 
-# cx_images_write_env <file>: CUSTODEXA_IMAGE_<NAME>=<reference>, the references checked above.
+# cx_images_write_env <file>: CUSTODEXA_IMAGE_<NAME>=<reference>, the references checked above, for
+# compose: the service images only.
 cx_images_write_env() {
   local f=$1 n tmp
   tmp=$(mktemp "$f.tmp-XXXXXX") || return 1
   for n in "${CX_MF_IMAGES[@]}"; do
     [ -n "${CX_IMG_REF[$n]:-}" ] || continue
+    ! cx_img_is_tool "$n" || continue
     printf 'CUSTODEXA_IMAGE_%s=%s\n' "${n^^}" "${CX_IMG_REF[$n]}"
   done >"$tmp"
   mv -f "$tmp" "$f"
 }
 
-# cx_images_write_ids <file>: <name>=<image ID>, compared with the running containers after start.
+# cx_images_write_ids <file>: <name>=<image ID> of the service images, compared with the running
+# containers after start.
 cx_images_write_ids() {
   local f=$1 n tmp
   tmp=$(mktemp "$f.tmp-XXXXXX") || return 1
   for n in "${CX_MF_IMAGES[@]}"; do
     [ -n "${CX_IMG_ID[$n]:-}" ] || continue
+    ! cx_img_is_tool "$n" || continue
     printf '%s=%s\n' "$n" "${CX_IMG_ID[$n]}"
   done >"$tmp"
   mv -f "$tmp" "$f"
@@ -531,6 +641,27 @@ cx_images_ids_text() {
     [ -n "${CX_IMG_ID[$n]:-}" ] && out+="${out:+ }$n=${CX_IMG_ID[$n]}"
   done
   printf '%s' "$out"
+}
+
+# cx_tools_ids_text: "openssl=sha256:..." for state.json (current.tool_image_ids); "" when the
+# form has no tool image.
+cx_tools_ids_text() {
+  local n out=""
+  for n in "${CX_TOOL_NAMES[@]+"${CX_TOOL_NAMES[@]}"}"; do
+    [ -n "${CX_IMG_ID[$n]:-}" ] && out+="${out:+ }$n=${CX_IMG_ID[$n]}"
+  done
+  printf '%s' "$out"
+}
+
+# cx_tools_record <prefix>: <prefix>.tool_image_ids in the state, or no such key without tools.
+cx_tools_record() {
+  local ids
+  ids=$(cx_tools_ids_text)
+  if [ -n "$ids" ]; then
+    cx_state_set "$1.tool_image_ids" "$ids"
+  else
+    cx_state_unset "$1.tool_image_ids"
+  fi
 }
 
 # Container of each image, for the check after start.

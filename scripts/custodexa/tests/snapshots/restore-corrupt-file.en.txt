@@ -1,0 +1,7 @@
+[FAIL] The backup file is incomplete or has been changed, and cannot be
+       restored:
+  The checksum of db.dump differs from the one written when the backup
+  was made.
+  Use another backup, or copy this file again from where it came from
+  (with its .sha256).
+Nothing has been changed.

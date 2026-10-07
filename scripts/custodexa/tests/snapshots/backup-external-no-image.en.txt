@@ -1,0 +1,5 @@
+[FAIL] This host does not have the export tool images for the external
+       database (PostgreSQL 16/17/18 clients, obtained at install or
+       upgrade). Nothing was stopped. Load the offline image bundle of this
+       release (1.13.0):
+  sudo /opt/custodexa/custodexa.sh load custodexa-images-1.13.0-amd64.tar

@@ -1,0 +1,14 @@
+[WARN] A safety backup the script takes of this host could not be restored
+       automatically with restore --revert:
+  a single master key ID cannot be read from the current database (2 were
+  found), and such a backup has no master key fingerprint.
+  So this time the safety backup has to be one you take yourself after the
+  services stop (a storage snapshot, for example).
+  The services have not been stopped; nothing has been changed.
+[ ?? ] The restore overwrites this host's data, so the current data is
+       backed up first.
+
+  [2] I will back it up myself once the services are stopped (a storage
+      snapshot, for example) and then enter what identifies it
+
+Choose [2]: 

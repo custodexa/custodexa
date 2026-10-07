@@ -1,0 +1,11 @@
+[WARN] The data is imported and the services are started; waiting for
+       unseal to check the master key (1.16.0)
+  The restore is not finished yet. The master key is entered in the
+  browser: someone signs in on the unseal page with an administrator
+  account from the backup, then enters the master key:
+    https://10.0.0.31/unseal
+  Its fingerprint has to be 5a5a5a5a5a5a5a5a.
+  After the unseal, run the command below to finish the check; until then
+  the system cannot be upgraded or backed up:
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume
+  Log file /opt/custodexa/logs/restore-20261012-093015.log

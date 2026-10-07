@@ -87,7 +87,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 改狀態的子命令互斥且不在中斷時自行復原
 
-會改變狀態的子命令（包含 `start`／`stop`）SHALL 互斥執行，取不到鎖即以拒絕結束。中斷（Ctrl-C、終端斷線）時腳本 SHALL 只記錄步驟並印出恢復指令，SHALL NOT 自動回退或復原；下次執行發現上次中斷時 SHALL 先印出能完成該次中斷的恢復指令，該子命令在處理前拒絕再跑（install 冪等，得直接重跑）。`load` 只載入並比對映像，中斷的 `load` SHALL NOT 阻擋任何子命令，包含再次執行 `load`；`status` SHALL 在提醒中列出中斷的 `load` 與重跑指令。`start`／`stop` SHALL 記錄獨立操作 log；其中斷 SHALL 顯示 `status` 與恢復用的 `start` 指令，但不得在 state 中留下會封鎖 `start` 的 in_progress 欄位。未完成的 install／upgrade／backup SHALL 在啟停前被拒並顯示既有恢復指令。stdin 不是終端又未帶 `--yes` 時，任何確認點 SHALL 以拒絕結束而不等待。
+會改變狀態的子命令（包含 `start`／`stop`）SHALL 互斥執行，取不到鎖即以拒絕結束。中斷（Ctrl-C、終端斷線）時腳本 SHALL 只記錄步驟並印出恢復指令，SHALL NOT 自動回退或復原；下次執行發現上次中斷時 SHALL 先印出能完成該次中斷的恢復指令，該子命令在處理前拒絕再跑（install 與 backup 冪等，得直接重跑；重跑 backup 時前一次記為中斷）。`load` 只載入並比對映像，中斷的 `load` SHALL NOT 阻擋任何子命令，包含再次執行 `load`；`status` SHALL 在提醒中列出中斷的 `load` 與重跑指令。`start`／`stop` SHALL 記錄獨立操作 log；其中斷 SHALL 顯示 `status` 與恢復用的 `start` 指令，但不得在 state 中留下會封鎖 `start` 的 in_progress 欄位。未完成的 install／upgrade SHALL 在啟停前被拒並顯示既有恢復指令。未完成的 backup SHALL NOT 阻擋 `start`、`stop` 與再次執行 `backup`，這些子命令照常進行並先以 WARN 說明上次備份未完成與其暫存目錄；未完成的 backup SHALL 在 `upgrade` 處理前被拒，直到重跑的 `backup` 完成為止；`start` 只恢復服務，SHALL NOT 解除這個阻擋。拒絕畫面 SHALL 說明必要時先 `start`、重跑 `backup` 完成後才能 `upgrade`，並印出這兩條指令。stdin 不是終端又未帶 `--yes` 時，任何確認點 SHALL 以拒絕結束而不等待。
 
 #### Scenario: 非互動缺旗標
 - **WHEN** 在排程或管線中執行需要確認的子命令而未帶 `--yes`
@@ -100,6 +100,14 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 #### Scenario: stop 中斷後可恢復
 - **WHEN** `stop` 在部分容器停止後中斷，維運再執行 `start`
 - **THEN** `start` 不受 stop 的 in_progress 狀態阻擋，仍受互斥鎖保護並可使整組服務恢復
+
+#### Scenario: backup 在停機中被中斷後可恢復
+- **WHEN** `backup` 在服務停止期間被中斷，維運接著執行 `start`，之後再執行 `backup`
+- **THEN** `start` 先以 WARN 說明上次備份未完成，再照常啟動並等待就緒；再次執行的 `backup` 把前一次記為中斷並完成新的備份
+
+#### Scenario: 未完成的 backup 擋下升級
+- **WHEN** 上次 `backup` 未完成，維運先執行 `start`，再執行 `upgrade`
+- **THEN** `start` 照常恢復服務；`upgrade` 仍在任何變更前被拒，畫面說明重跑 `backup` 完成後才能升級並印出指令；重跑 `backup` 成功後，`upgrade` 不再因此被拒
 
 ### Requirement: install 冪等並拒絕覆蓋既有部署
 
@@ -131,7 +139,7 @@ MANIFEST SHALL 記載版號、最低可直接升級的來源版本、各映像�
 
 ### Requirement: 終端機下不帶子命令顯示主選單
 
-stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、載入離線包、說明、離開；已安裝時依序列查看狀態、啟動服務、停止服務、升級、備份、載入離線包、說明、離開。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。
+stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 SHALL 在安裝包部署（含尚未安裝的安裝包目錄）顯示主選單：尚未安裝時列安裝、從備份檔還原到這台新主機、載入離線包、說明、離開；已安裝時依序列查看狀態、啟動服務、停止服務、升級、備份、從備份檔還原、載入離線包、說明、離開；有未完成的還原時，改列接續還原、查看狀態、（服務已由還原啟動時）啟動服務、停止服務、用安全備份還原回去（新主機為放棄這次還原）、說明、離開；還原回去或放棄做到一半時，第一項改為把它做完。選單 SHALL 在安裝及實際升級前詢問映像來源，Enter 預設 auto，明選 source 時將 `--images-from source` 傳給同一子命令；EOF 回主選單。選單 SHALL 只以問答或編號取得流程需要的輸入，再以子命令呼叫既有實作，SHALL NOT 另加確認或跳過子命令自己的確認；子命令結束後回到主選單並重新判斷部署狀態。選還原項時，選單 SHALL 列出部署根 `backups/` 與目前目錄中檔名符合可攜備份檔的檔案供選擇，並可輸入其他路徑。
 
 選單選「升級到最新版」SHALL 只顯示版本、可否升級及必要的驗證與資料變更警告，不顯示唯讀查詢專用的執行指令或「只查詢」尾段；同一次查詢的已核對目標用於後續升級。校驗和不符 SHALL 不給升級結論。任一端不是終端機或部署目錄判定不出時，SHALL 印出說明並以結束碼 2 結束；舊 git clone 部署 SHALL 依「部署根目錄與 compose 呼叫固定」拒絕。
 
@@ -154,6 +162,14 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 選單啟停整組服務
 - **WHEN** 維運在已安裝部署的主選單選「停止服務」或「啟動服務」
 - **THEN** 選單執行對應子命令，沿用子命令的確認與檢查，結束後重新顯示主選單
+
+#### Scenario: 新主機從選單還原
+- **WHEN** 維運在尚未安裝的部署根選「從備份檔還原到這台新主機」並選 `backups/` 列出的備份檔
+- **THEN** 選單以該檔的絕對路徑執行 `restore`，問答與確認都由子命令進行，結束後回到主選單
+
+#### Scenario: 還原未完成時的選單
+- **WHEN** 還原停在待解封核對時，維運在終端機不帶子命令執行腳本
+- **THEN** 主選單顯示還原未完成的狀態與接續還原項，不列升級與備份
 
 ### Requirement: 發行版下載引導腳本核對安裝包後交棒
 
@@ -240,3 +256,23 @@ stdin 與 stdout 都是終端機、且未帶子命令與 `--help` 時，腳本 S
 #### Scenario: 大型備份與空間判斷
 - **WHEN** 升級備份檔為 18.4 GiB，且備份位置可用 bytes 少於估算所需 bytes
 - **THEN** 大小顯示 `18.4 GB`，空間不足仍依 bytes 比較而拒絕
+
+### Requirement: 還原未完成時其他子命令互鎖
+
+還原從開始到核對完成，狀態檔 SHALL 記為進行中。這段期間 `upgrade` 與 `backup` SHALL 在任何變更前被拒；`install` 與另一次 `restore <檔>` SHALL 被拒並指向接續、回去或放棄；資料尚未核對時 `start` SHALL 被拒；資料已核對並放好、但服務尚未由還原啟動時，`start` SHALL 被拒並指向接續（啟動與核對由接續做）；`status`、`load`、`stop` 照常；服務已由還原啟動（含待解封核對）時 `start` 照常。還原回去或放棄正在進行時，除 `status`、`load`、`stop` 與同一個退出指令外 SHALL 被拒。拒絕畫面 SHALL 印出能完成或結束這次還原的指令；執行還原的管理腳本版本與部署目前版本不同時，指令 SHALL 使用執行還原那一版腳本的完整路徑。早於 1.16.0 的腳本以既有的「未完成即拒絕」規則擋下改狀態的子命令。
+
+#### Scenario: 待解封時升級被拒
+- **WHEN** 還原停在待解封核對時執行 `upgrade`
+- **THEN** 腳本在任何變更前拒絕，說明還原尚未完成，印出 `restore --resume` 的完整指令
+
+#### Scenario: 資料未核對時不能啟動
+- **WHEN** 同機還原在匯入資料庫時失敗，維運接著執行 `start`
+- **THEN** 腳本拒絕並印出接續與用安全備份還原回去兩條指令，服務維持停止
+
+#### Scenario: 資料已放好但尚未由還原啟動
+- **WHEN** 還原停在資料已放回、服務尚未啟動的階段時執行 `start`
+- **THEN** 腳本拒絕並印出 `restore --resume`，服務沒有被啟動
+
+#### Scenario: 待解封時可以重啟服務
+- **WHEN** 還原停在待解封核對時執行 `stop` 再執行 `start`
+- **THEN** 兩者照常完成，還原狀態仍是待解封核對

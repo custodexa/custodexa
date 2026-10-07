@@ -1,0 +1,5 @@
+[FAIL] The external database runs PostgreSQL 15.8; this release carries
+       export tools for 16, 17 and 18, and the script only uses the tool
+       of the server's own major version. Nothing was stopped. Use your
+       own database backup procedure; an upgrade can take your own backup
+       instead (--backup-ref).

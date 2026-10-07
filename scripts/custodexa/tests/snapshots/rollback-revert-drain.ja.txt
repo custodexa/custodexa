@@ -1,0 +1,12 @@
+  1.16.2 に戻す（このロールバックを開始する前のバージョン）
+[FAIL] 監査キューの排出を確認できません。サービスは稼働中です。
+
+  現在の状態
+    - 現在のバージョン：1.16.1
+    - 実行中のサービス：postgres guacd backend frontend
+    - データ、設定ファイル、証明書は変更していません
+  まずバックエンドのログで原因を確認してください：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  アップグレード後のバージョン 1.16.2 に戻す処理を再開してください：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang ja
+  ログファイル /opt/custodexa/logs/rollback-20260930-101502-0.log

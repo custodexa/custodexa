@@ -7,6 +7,9 @@
 #      with the counts from that line and where the fallback file is.
 #   6  the application account has no connection left on the database (the query of the upgrade
 #      guide, excluding its own). Anything else, a query that fails included, stops the upgrade.
+#      An external database is asked through the client the checks chose (lib/dbext.sh); without
+#      one (the operator's own backup this time) nothing can ask it: the stopped services are taken
+#      as the answer, with a warning to make sure no other host is connected to that database.
 # The services stay stopped after a failure here; the command that starts the old version again is
 # printed in full (project, folder, files), never relying on the current directory.
 
@@ -58,9 +61,15 @@ cx_up_stop() {
   cx_up_step_line OK "$n" "$(cx_msg bk_step_stop)" "$(cx_duration $(($(cx_now) - t0)))"
 }
 
-# cx_up_gone <step>: step 6. 0 = no connection of the application account is left.
+# cx_up_gone <step>: step 6. 0 = no connection of the application account is left (or, for an
+# external database without a client, the services are stopped and the screen warns).
 cx_up_gone() {
   local n=$1 count
+  if ! cx_db_ready; then
+    cx_log CHECK "old instance connections=unchecked (external database, no client chosen)"
+    cx_up_step_line WARN "$n" "$(cx_msg st_gone_unchecked)"
+    return 0
+  fi
   count=$(cx_snap_sql "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND usename = current_user AND pid <> pg_backend_pid()" 2>/dev/null) || count=""
   cx_log CHECK "old instance connections=${count:-unknown}"
   if [ "$count" = 0 ]; then
@@ -73,8 +82,15 @@ cx_up_gone() {
     cx_up_step_line FAIL "$n" "$(cx_msg st_conn_unknown)"
   fi
   printf '%s\n' "$(cx_up_par "$(cx_msg st_conn_detail)")"
-  cx_cmd "sudo docker compose $(cx_up_compose_hint) exec -T postgres \\"
-  cx_cmd "  psql -U $CX_BK_DBUSER -d $CX_BK_DBNAME -tAc \"SELECT count(*) FROM pg_stat_activity"
+  if cx_db_external; then
+    local port
+    port=$(cx_bk_env EXTERNAL_DB_PORT)
+    cx_cmd "psql -h $(cx_bk_env EXTERNAL_DB_HOST) -p ${port:-5432} -U $CX_BK_DBUSER -d $CX_BK_DBNAME \\"
+    cx_cmd "  -tAc \"SELECT count(*) FROM pg_stat_activity"
+  else
+    cx_cmd "sudo docker compose $(cx_up_compose_hint) exec -T postgres \\"
+    cx_cmd "  psql -U $CX_BK_DBUSER -d $CX_BK_DBNAME -tAc \"SELECT count(*) FROM pg_stat_activity"
+  fi
   cx_cmd "  WHERE datname = current_database() AND usename = current_user"
   cx_cmd "  AND pid <> pg_backend_pid()\""
   cx_up_resume_cmd

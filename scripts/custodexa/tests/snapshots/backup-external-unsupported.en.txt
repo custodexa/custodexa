@@ -1,0 +1,9 @@
+[FAIL] The external database has settings this backup does not support; on
+       a new database server they could not be rebuilt as they are:
+         - Custom tablespace: fast_ssd (3 objects)
+         - Owners other than custodexa_app: report_owner (12 objects)
+         - Extension: pg_trgm 1.6
+         - DB_SSLMODE=verify-ca, but the export tool has no system CA file to
+           check the server the same way
+       Nothing was stopped. Use your own database backup procedure, or
+       change the items above first.

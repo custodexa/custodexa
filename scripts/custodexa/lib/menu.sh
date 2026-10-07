@@ -35,14 +35,28 @@ cx_menu_applies() {
   else
     CX_MENU_KIND=package
   fi
+  if [ "$(cx_state_get last_restore.result)" = in_progress ]; then CX_MENU_KIND=restore; fi
   CX_MENU_VERSION=$ver
 }
 
 # The actions of each state, in menu order; the label of <action> is MSG_menu_<action>.
 cx_menu_actions() {
   case $CX_MENU_KIND in
-    none) printf '%s' "install load_first help" ;;
-    package) printf '%s' "status start stop upgrade backup load help" ;;
+    restore)
+      case $(cx_rs_exit_action) in
+        revert) printf '%s' 'rs_finish_revert status stop help' ;;
+        abandon) printf '%s' 'rs_finish_abandon status stop help' ;;
+        *)
+          if [ "$(cx_state_get last_restore.phase)" = awaiting_unseal ]; then printf 'rs_unseal '
+          else printf 'rs_resume '; fi
+          printf 'status '
+          ! cx_rs_start_allowed || printf 'start '
+          if [ "$(cx_rs_return_action)" = revert ] && [ "$(cx_state_get last_restore.safety)" = db-dump ]; then
+            printf 'stop rs_revert_export help'
+          else printf 'stop rs_%s help' "$(cx_rs_return_action)"; fi ;;
+      esac ;;
+    none) printf '%s' "install restore_new load_first help" ;;
+    package) printf '%s' "status start stop upgrade backup restore load help" ;;
   esac
 }
 
@@ -107,6 +121,72 @@ cx_menu_pick_file() {
     printf '\n%s\n' "$(cx_msg "menu_${kind}_none" "$PWD" "$(cx_script_version)")"
   fi
   printf '%s' "$(cx_msg "menu_ask_$kind")"
+  cx_menu_read f
+  [ -n "$f" ] || return 1
+  case $f in
+    /*) CX_MENU_FILE=$f ;;
+    *) CX_MENU_FILE=$PWD/$f ;;
+  esac
+}
+
+# cx_menu_backups: the backup files the restore items offer, from the deployment's backups/ and
+# the current folder, named as the backup command names them (custodexa-backup-*.tar and .tar.enc),
+# newest first. One absolute path per line. The time in the name only tells the files apart; the
+# version that counts is the one the restore reads inside the file.
+cx_menu_backups() {
+  local d f name key first=""
+  local -a rows=()
+  for d in "$CX_ROOT/backups" "$PWD"; do
+    d=$(cd -P -- "$d" 2>/dev/null && pwd) || continue
+    if [ "$d" = "$first" ] || [[ $d == *$'\n'* ]]; then continue; fi
+    first=${first:-$d}
+    for f in "$d"/custodexa-backup-*.tar "$d"/custodexa-backup-*.tar.enc; do
+      [ -f "$f" ] || continue
+      name=${f##*/}
+      [[ $name != *[$'\t\n']* ]] || continue
+      key=00000000000000
+      if [[ $name =~ -([0-9]{8})-([0-9]{6})\.tar(\.enc)?$ ]]; then key=${BASH_REMATCH[1]}${BASH_REMATCH[2]}; fi
+      rows+=("$key"$'\t'"$name"$'\t'"$f")
+    done
+  done
+  [ "${#rows[@]}" -gt 0 ] || return 0
+  printf '%s\n' "${rows[@]}" | sort -t $'\t' -k1,1r -k2,2 | cut -f3-
+}
+
+# cx_menu_pick_backup: CX_MENU_FILE, an absolute path, from the files found or typed; 1 = back to
+# the main menu. Each file shows its size, the time in its name, and whether it is encrypted.
+cx_menu_pick_backup() {
+  local f i n w=0 sw=0 name t enc
+  local -a files=() sizes=()
+  mapfile -t files < <(cx_menu_backups)
+  n=${#files[@]}
+  for ((i = 0; i < n; i++)); do
+    name=${files[i]##*/}
+    [ "${#name}" -le "$w" ] || w=${#name}
+    sizes[i]=$(cx_size_human "$(stat -c %s -- "${files[i]}" 2>/dev/null || echo 0)")
+    [ "${#sizes[i]}" -le "$sw" ] || sw=${#sizes[i]}
+  done
+  if [ "$n" -gt 0 ]; then
+    printf '\n%s\n\n' "$(cx_msg menu_restore_found "$CX_ROOT/backups/" "$PWD")"
+  else
+    printf '\n%s\n\n' "$(cx_msg menu_restore_none "$CX_ROOT/backups/" "$PWD")"
+  fi
+  for ((i = 0; i < n; i++)); do
+    name=${files[i]##*/} t="" enc=""
+    if [[ $name =~ -([0-9]{4})([0-9]{2})([0-9]{2})-([0-9]{2})([0-9]{2})[0-9]{2}\.tar(\.enc)?$ ]]; then
+      t="  ${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]}"
+    fi
+    [[ $name != *.enc ]] || enc=$(cx_msg menu_restore_encrypted)
+    cx_menu_item $((i + 1)) "$(printf '%-*s%*s%s%s' $((w + 4)) "$name" "$sw" "${sizes[i]}" "$t" "$enc")"
+  done
+  cx_menu_item $((n + 1)) "$(cx_msg menu_other_path)"
+  printf '\n'
+  cx_menu_pick $((n + 1)) || return 1
+  if [ "$CX_MENU_PICK" -le "$n" ]; then
+    CX_MENU_FILE=${files[CX_MENU_PICK - 1]}
+    return 0
+  fi
+  printf '%s' "$(cx_msg menu_ask_restore)"
   cx_menu_read f
   [ -n "$f" ] || return 1
   case $f in
@@ -190,10 +270,25 @@ cx_menu_do() {
       cx_menu_pick_images || return 0
       cx_menu_run install "${CX_MENU_IMAGE_FLAG[@]}"
       ;;
+    rs_resume|rs_unseal|rs_revert|rs_revert_export|rs_abandon|rs_finish_revert|rs_finish_abandon)
+      local action=${1#rs_}
+      action=${action#finish_}; action=${action%_export}; [ "$action" != unseal ] || action=resume
+      "$BASH" "$(cx_rs_engine_path)" restore "--$action" "${CX_MENU_FLAGS[@]}" || true
+      cx_menu_again ;;
     status) cx_menu_run status ;;
     start) cx_menu_run start ;;
     stop) cx_menu_run stop ;;
     backup) cx_menu_run backup ;;
+    # The item chose the kind of restore: the flag says it, and the restore refuses it if the
+    # deployment has changed since the menu was shown. Its questions and confirmation are its own.
+    restore_new)
+      cx_menu_pick_backup || return 0
+      cx_menu_run restore "$CX_MENU_FILE" --new-host
+      ;;
+    restore)
+      cx_menu_pick_backup || return 0
+      cx_menu_run restore "$CX_MENU_FILE" --same-host
+      ;;
     upgrade) cx_menu_upgrade || return 0 ;;
     load | load_first)
       cx_menu_pick_file bundle || return 0
@@ -211,7 +306,10 @@ cx_menu_show() {
   local -a actions
   read -r -a actions <<<"$(cx_menu_actions)"
   printf '%s\n' "$(cx_msg menu_title "$(cx_script_version)" "$CX_ROOT")"
-  if [ "$CX_MENU_KIND" = package ]; then
+  if [ "$CX_MENU_KIND" = restore ]; then
+    if [ -n "$(cx_rs_exit_action)" ]; then printf '%s\n' "$(cx_msg "menu_rs_state_$(cx_rs_exit_action)")"
+    else printf '%s\n' "$(cx_msg menu_rs_state "$(cx_rs_phase_text)" "$(cx_state_get last_restore.product_version)")"; fi
+  elif [ "$CX_MENU_KIND" = package ]; then
     printf '%s\n' "$(cx_msg menu_state_package "$CX_MENU_VERSION")"
   else
     printf '%s\n' "$(cx_msg menu_state_none)"

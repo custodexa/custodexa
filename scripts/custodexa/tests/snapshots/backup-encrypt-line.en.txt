@@ -1,0 +1,58 @@
+==== on a terminal with --passphrase-file, ui: Enter, y ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: entered in the browser
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+
+[ ?? ] Put the recordings in the backup file?
+
+  [1] No (default): a file of about 17.4 GB, services paused about 12 minutes
+  [2] Yes: a file of about 229 GB, services paused about 2 hours 37 minutes
+      Needs 442 GB, more than is free; this choice will be refused
+      Without them, keep the recordings folder some other way.
+
+Choose [1-2], or press Enter for the default:
+
+  Recordings: not included
+  Encryption: with the passphrase in /root/cx-pass
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  [WARN] The master key is entered in the browser: after the restart the
+         system is sealed until someone enters the master key on the
+         unseal page, and users cannot connect until then.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Audit files                                     2s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         41s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file, encrypt it and read it back  3m 40s
+
+[ OK ] Backup done (17.4 GB, encrypted)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar.enc
+  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.enc.sha256 (same folder)
+  Contains: database, audit files, settings file .env, certificates tls/
+  Version 1.13.0; bundled database; master key: entered in the browser
+  The master key is not in the backup file (fingerprint 5a5a5a5a5a5a5a5a).
+  After a restore, whoever holds the unseal material enters it on the
+  unseal page; the fingerprint has to match.
+  [WARN] A restore needs the same passphrase. If it is lost the backup
+         cannot be restored; keep the passphrase apart from the file.
+  [WARN] The recordings are not in the backup file. They are in
+         /opt/custodexa/data/recordings/; keep them some other way, or
+         back up again and choose to include them.
+  [WARN] The file sits on the same host as .env; store it elsewhere.
+  [WARN] The services are started and waiting to be unsealed: enter the
+         master key at https://10.0.0.12/unseal
+  Encryption: AES-256-CBC, key derived from the passphrase with
+  PBKDF2-SHA256, 600,000 rounds
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====

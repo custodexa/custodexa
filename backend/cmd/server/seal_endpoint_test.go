@@ -431,14 +431,41 @@ func TestSealStatusExposesFaultAndTimeoutHint(t *testing.T) {
 }
 
 // TestUnsealRejectsWhenAlreadyUnsealed 已解封時回 409 且不重跑初始化。
+//
+// 已解封時 `/seal/authorize` 本身即回 409（不再簽發脈絡），故本案的脈絡直接由
+// 脈絡表簽發——要守的是「持有效脈絡者在已解封時送出解封」這條狀態機格 3 的路徑，
+// 不是取得脈絡的那一步。
 func TestUnsealRejectsWhenAlreadyUnsealed(t *testing.T) {
 	m := seal.NewUnsealed(&fakeGraph{})
 	h := api.NewSealHandler(m, nil)
 	// 授權恆成立：本案守的是「已解封時的解封請求回 409」，不是授權（另有專屬測試）。
-	h.SetSealAuthorization(api.NewSealGrantStore(0), func(string, []byte) (uint, error) { return 1, nil })
+	grants := api.NewSealGrantStore(0)
+	h.SetSealAuthorization(grants, func(string, []byte) (uint, error) { return 1, nil })
 	r := sealEndpointRouter(t, h)
 
-	w := postUnseal(r, `{"kek":"x"}`, "")
+	// 取得脈絡的第一步在已解封時即回 409。
+	if grant := endpointSealGrant(r, ""); grant != "" {
+		t.Fatal("已解封時 /seal/authorize 不得簽發脈絡")
+	}
+	authz := httptest.NewRequest(http.MethodPost, "/api/v1/seal/authorize",
+		strings.NewReader(`{"username":"admin","password":"fixture"}`))
+	authz.Header.Set("Content-Type", "application/json")
+	wa := httptest.NewRecorder()
+	r.ServeHTTP(wa, authz)
+	if wa.Code != http.StatusConflict || bodyCode(t, wa.Body.Bytes()) != string(apierror.CodeSealAlreadyUnsealed) {
+		t.Fatalf("已解封時 /seal/authorize 回 %d/%s，期望 409/SEAL_ALREADY_UNSEALED",
+			wa.Code, bodyCode(t, wa.Body.Bytes()))
+	}
+
+	grant, _, err := grants.Issue(1, "admin")
+	if err != nil {
+		t.Fatalf("issue grant: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/seal/unseal", strings.NewReader(`{"kek":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "SealGrant "+grant)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
 	if w.Code != http.StatusConflict || bodyCode(t, w.Body.Bytes()) != string(apierror.CodeSealAlreadyUnsealed) {
 		t.Fatalf("已解封時回 %d/%s，期望 409/SEAL_ALREADY_UNSEALED",
 			w.Code, bodyCode(t, w.Body.Bytes()))

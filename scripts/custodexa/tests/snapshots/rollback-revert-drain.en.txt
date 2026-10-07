@@ -1,0 +1,12 @@
+  Back on 1.16.2 (the version before this rollback started)
+[FAIL] Audit queue could not be confirmed empty; services remain running.
+
+  Current state
+    - Version: 1.16.1
+    - Running services: postgres guacd backend frontend
+    - The data, the settings file and the certificates were not changed
+  Check the backend log for the reason first:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  Finish returning to 1.16.2, the version after the upgrade:
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang en
+  Log file /opt/custodexa/logs/rollback-20260930-101502-0.log

@@ -1,0 +1,23 @@
+回到上一版：預覽（還沒有做任何變更）
+
+  目前版本   1.16.2
+  回到       1.16.1（升級前的版本）
+  資料庫     升級後沒有結構變更，和升級前的紀錄相同
+  所以只換回舊版，資料、設定檔與憑證保持不動，不需要還原備份。
+  舊版映像   4 個都在這台主機，啟動後會核對執行中的就是它們
+
+  會做的事：停止服務 → 再確認資料庫沒有變動後換回 1.16.1 →
+  啟動 → 核對版本與執行中的映像
+  升級之後產生的紀錄都會保留。
+
+[FAIL] 1/4  停止服務
+
+  目前狀態
+    - 還沒有換版，仍是 1.16.2
+    - 執行中的服務：postgres guacd backend frontend
+    - 資料、設定檔與憑證都沒有被改動
+  先查看後端日誌找原因：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  查明原因後，接續完成這次回到上一版：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang zh-TW
+  紀錄檔 /opt/custodexa/logs/rollback-20260930-101502.log

@@ -1,0 +1,4 @@
+復元
+  [WARN] 復元は未完了：インポート済み、封印解除後のマスター鍵照合待ち（2026-10-12 09:30 開始、データ版 1.16.0）
+         復元元 custodexa-backup-1.16.0-20261005-101502.tar.enc
+         再開：sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

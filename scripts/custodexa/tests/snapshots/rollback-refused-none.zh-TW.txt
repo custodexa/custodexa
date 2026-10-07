@@ -1,0 +1,4 @@
+[FAIL] 沒有可以回到的上一版，沒有做任何變更。
+  這個部署沒有由腳本升級過。
+  查看這個部署的狀態：
+    sudo /opt/custodexa/custodexa.sh status --lang zh-TW

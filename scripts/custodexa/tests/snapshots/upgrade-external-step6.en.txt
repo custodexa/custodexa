@@ -1,0 +1,4 @@
+[WARN]  6/13  Old version stopped (its services are stopped; the
+              script cannot count connections on the external
+              database: make sure no backend on another host,
+              such as a standby, is connected to it)

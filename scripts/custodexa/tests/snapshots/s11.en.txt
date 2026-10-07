@@ -24,5 +24,5 @@ Still to do
 
   Roll back    restore the backup below by hand, as in "Backup and
                Restore", section 5 "Restore procedure"
-  Backup       /opt/custodexa/backups/20260930-101502/
+  Backup       /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
   Log file     /opt/custodexa/logs/upgrade-20260930-101502.log

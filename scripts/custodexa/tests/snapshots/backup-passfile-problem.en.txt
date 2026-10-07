@@ -1,0 +1,26 @@
+==== --yes --passphrase-file, no such file ====
+[FAIL] Cannot read the passphrase file /root/cx-pass (missing, not a regular
+       file, a symbolic link, or not readable). Nothing was stopped.
+==== exit 3 ====
+==== --yes --passphrase-file, mode 0644 ====
+[FAIL] Other accounts can read or write the passphrase file /root/cx-pass
+       (mode 0644), or it is owned by someone other than you or root, or it
+       has an extra access control list. Nothing was stopped. Fix it and
+       run again:
+  sudo chown root /root/cx-pass
+  sudo chmod 600 /root/cx-pass
+==== exit 3 ====
+==== --yes --passphrase-file, mode 0600 with an extended ACL ====
+[FAIL] Other accounts can read or write the passphrase file /root/cx-pass
+       (mode 0600), or it is owned by someone other than you or root, or it
+       has an extra access control list. Nothing was stopped. Fix it and
+       run again:
+  sudo chown root /root/cx-pass
+  sudo chmod 600 /root/cx-pass
+  sudo setfacl -b /root/cx-pass
+==== exit 3 ====
+==== --yes --passphrase-file, a first line of 11 characters ====
+[FAIL] The first line of the passphrase file /root/cx-pass does not fit the
+       rules: 12 to 256 characters; letters, digits, spaces and symbols from
+       a US keyboard only. Nothing was stopped.
+==== exit 3 ====

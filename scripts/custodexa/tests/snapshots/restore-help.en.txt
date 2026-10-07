@@ -1,0 +1,38 @@
+  restore <backup file>   Restore from a portable backup file. On an installed
+                          host: take a safety backup, then replace the data.
+                          On a host not yet installed: install the backup's
+                          version first, then restore
+  restore --resume        Carry on with a restore that did not finish,
+                          including the master key check after unseal
+  restore --revert        Go back with the safety backup taken before the
+                          restore
+  restore --abandon       Give up on an unfinished restore on a new host and
+                          return to not installed
+
+Options for restore
+  --same-host | --new-host     Required without a terminal: which kind of
+                               restore this is
+  --confirm-data-loss          Without a terminal, confirm that existing data
+                               is overwritten (with --yes)
+  --passphrase-file <file>     Passphrase file of an encrypted backup (same
+                               permission rules as backup)
+  --no-checksum-file           Go on without the .sha256 file (every checksum
+                               inside is still checked)
+  --package <package>          Package of the backup's version, with
+                               SHA256SUMS in the same folder (offline)
+  --images <bundle>            Offline image bundle of the backup's version
+  --backup-ref, --backup-time, --backup-restore
+                               Use your own backup taken after the services
+                               stopped instead of the safety backup (also
+                               with --resume when the safety backup did not
+                               finish)
+  --data-path, --tls-domain, --tls-ip-san, --public-base-url
+                               Host values on a new host (this host's
+                               suggestions when not given)
+  --db-client-cert, --db-client-key
+                               Client certificate and private key for an
+                               external database
+  --accept-grant-loss          External database lacks roles: skip the grants
+                               to those roles
+  --nginx-template <path>      Where the custom nginx template goes on a new
+                               host (when its original path cannot be used)

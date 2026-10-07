@@ -1,0 +1,4 @@
+[WARN] システムはまだ封印中のため、復元を完了できません。
+       何も変更していません。
+  https://10.0.0.31/unseal で封印を解除してから再実行してください：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

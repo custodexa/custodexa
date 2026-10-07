@@ -17,6 +17,14 @@ CX_BR_STOP_EPOCH="" CX_BR_STOP_SHOWN="" CX_BR_STOP_ISO=""
 cx_br_par() { printf '%s\n' "$1" | sed 's/^/  /'; }
 cx_br_ind() { printf '  %s %s\n' "$(cx_mark "$1")" "${2//$'\n'/$'\n'         }"; }
 
+# cx_br_has_tls: the deployment has a certificates folder (as cx_bk_has_tls tells it; a link counts,
+# as tar would take it). A deployment behind its own ingress has none.
+cx_br_has_tls() { [ -e "$CX_ROOT/tls" ] || [ -L "$CX_ROOT/tls" ]; }
+
+# cx_br_notls: the suffix of the texts that name no certificates ("_notls"), or nothing when the
+# deployment has a certificates folder.
+cx_br_notls() { cx_br_has_tls || printf '_notls'; }
+
 # cx_br_backend: "running", "stopped <FinishedAt>", or "absent" for the backend container.
 cx_br_backend() {
   local out
@@ -94,7 +102,7 @@ cx_br_choose() {
   cx_line ASK "$(cx_msg br_title)"
   printf '\n'
   cx_br_par "$(cx_msg br_opt1)"
-  cx_br_par "$(cx_msg br_opt1_detail "$1" "$2")" | sed 's/^/    /'
+  cx_br_par "$(cx_msg "br_opt1_detail$(cx_br_notls)" "$1" "$2")" | sed 's/^/    /'
   cx_br_par "$(cx_msg br_opt2)"
   cx_br_par "$(cx_msg br_opt2_detail)" | sed 's/^/    /'
   printf '\n'
@@ -115,15 +123,19 @@ cx_br_interactive() {
   printf '\n'
   cx_line WARN "$(cx_msg br_chosen)"
   printf '\n'
-  cx_br_par "$(cx_msg br_times "$drained" "$CX_BR_STOP_SHOWN")"
+  cx_br_par "$(cx_msg "br_times$(cx_br_notls)" "$drained" "$CX_BR_STOP_SHOWN")"
   printf '\n'
   cx_br_par "$(cx_msg br_must)"
   {
     cx_msg br_item_data "$(cx_br_data_path)"
     printf '\n'
     cx_msg br_item_env "$CX_ROOT/.env"
-    printf '\n'
-    cx_msg br_item_tls "$CX_ROOT/tls/"
+    # The certificates folder only when the deployment has one: a deployment behind its own
+    # ingress has none to take.
+    if cx_br_has_tls; then
+      printf '\n'
+      cx_msg br_item_tls "$CX_ROOT/tls/"
+    fi
     if [ "$ext" = 1 ]; then
       printf '\n'
       cx_msg br_item_db "$CX_BR_STOP_SHOWN"
@@ -226,6 +238,9 @@ cx_br_record() {
       "$CX_BR_REF" "$CX_BR_TIME" "$CX_BR_RESTORE" "$CX_BR_STOP_ISO" >"$dir/external.txt"
   ) || return 1
   ptr="see backups/$id/external.txt"
+  # A portable file recorded earlier is not this backup.
+  cx_state_unset last_backup.file
+  cx_state_unset last_backup.encrypted
   cx_state_set last_backup.id "$id"
   cx_state_set last_backup.kind external
   cx_state_set last_backup.dir "backups/$id"

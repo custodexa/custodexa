@@ -1,0 +1,10 @@
+# Known answer vector of the backup encryption scheme cx-enc-1, read by test_portable_encrypt.bats.
+# cx-enc-1-vector.tar.enc was made on 2026-10-05 with the openssl image the release pins
+# (alpine/openssl:3.5.4, sha256:42c7389ef077aed0eb4e96d0abbd094083d701bbaff1313073b061c0c9cd8278):
+#   printf '%s\n' "$passphrase" | openssl enc -e -aes-256-cbc -salt -saltlen 8 -pbkdf2 -md sha256 \
+#     -iter 600000 -pass stdin -in vector.tar -out cx-enc-1-vector.tar.enc
+# The plaintext is a GNU tar of one file, vector.txt. Its SHA-256 below was taken from the plaintext
+# before encryption with shasum (macOS) and Python's hashlib, not by the script under test.
+passphrase=cx-enc-1 test vector passphrase only
+plaintext_sha256=e2e585319fbb7f1685174eb0795da5fd120340527bc903d624952ff1e3989613
+plaintext_member=vector.txt

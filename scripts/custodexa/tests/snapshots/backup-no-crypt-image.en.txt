@@ -1,0 +1,8 @@
+==== --yes --passphrase-file, no openssl image recorded ====
+[FAIL] This host does not have the openssl image used for encryption (it
+       is obtained at install or upgrade). Nothing was stopped. Load the
+       offline image bundle of this release (1.13.0), or choose no
+       encryption. The bundle is named like custodexa-images-1.13.0-amd64.tar
+       and is on the same release page as the package:
+  sudo /opt/custodexa/custodexa.sh load custodexa-images-1.13.0-amd64.tar --lang en
+==== exit 3 ====

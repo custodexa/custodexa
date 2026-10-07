@@ -1,0 +1,22 @@
+以下四項依這台主機設定，其餘設定一律沿用備份。
+
+[ ?? ] 資料目錄 DATA_PATH
+       備份來源  /data/custodexa
+       這台建議  /opt/custodexa/data
+直接按 Enter 用建議值，輸入 - 沿用備份來源的值，
+或輸入其他絕對路徑 > 
+
+[ ?? ] 憑證主機名 TLS_DOMAIN
+       備份來源  bastion-a.example.internal
+       這台建議  bastion-b.example.internal
+直接按 Enter 用建議值，輸入 - 沿用備份來源的值，或輸入其他值 > 
+
+[ ?? ] 憑證 IP TLS_IP_SAN
+       備份來源  10.0.0.12
+       這台建議  10.0.0.31
+直接按 Enter 用建議值，輸入 - 沿用備份來源的值，或輸入其他值 > 
+
+[ ?? ] 對外網址 PUBLIC_BASE_URL
+       備份來源  https://10.0.0.12
+       這台建議  https://10.0.0.31
+直接按 Enter 用建議值，輸入 - 沿用備份來源的值，或輸入其他值 > 

@@ -1,0 +1,13 @@
+[FAIL]  3/10  Safety backup                                 2m 05s
+       The safety backup is whole, but this script cannot restore from it
+       automatically (a single master key ID cannot be read from the
+       current database)
+
+The safety backup before the restore did not finish, so nothing will be
+overwritten. No data has changed; the services stay stopped.
+  Carry on with a backup of your own:
+    sudo /opt/custodexa/custodexa.sh restore --resume --backup-ref <id> --backup-time <time> --backup-restore <procedure>
+  Or give up and start the original services:
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  The backup has to be no older than 2026-10-12 09:31, when this restore
+  stopped the services.

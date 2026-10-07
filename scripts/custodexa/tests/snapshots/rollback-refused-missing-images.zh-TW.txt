@@ -1,0 +1,8 @@
+[FAIL] 回到 1.16.1 需要升級前的映像，但其中 2 個不在這台主機或與升級前不同，
+       沒有做任何變更。
+  backend    不在這台主機
+  frontend   這台的映像與升級前記錄不同
+             升級前 sha256:bc2cb7012bc96824e1beecb6bdbe47726879b8b5a8c6b53c0afda52758c7b52b  目前 sha256:8810ad581e59f2bc3928b261707a71308f7e139eb04820366dc4d5c18d980225
+  請載入 1.16.1 的離線映像包後再執行一次：
+    sudo /opt/custodexa/custodexa.sh load <custodexa-images-1.16.1-arm64.tar> --lang zh-TW
+    sudo /opt/custodexa/custodexa.sh rollback --lang zh-TW

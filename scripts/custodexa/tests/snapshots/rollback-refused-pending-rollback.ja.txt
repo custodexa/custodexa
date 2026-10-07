@@ -1,0 +1,5 @@
+[WARN] 前回の rollback はステップ 4 で中断されました。
+  原因を解消したら、前のバージョンに戻す処理を再開してください：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang ja
+  または、アップグレード後のバージョン 1.16.2 に戻してください：
+    sudo /opt/custodexa/custodexa.sh rollback --revert --lang ja

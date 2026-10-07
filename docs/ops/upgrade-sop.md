@@ -172,12 +172,12 @@ For the first upgrade from a 1.13.x package deployment to 1.14.0, the installed 
 
 | Step | What happens | Manual counterpart |
 |---|---|---|
-| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the backup and the new images | §2.0 |
+| 1 | Checks: the version rules above, an earlier upgrade that did not finish, free space for the backup and the new images. With an external database, first the database itself (below) | §2.0 |
 | 2 | Obtains and verifies the new images | §2.2 |
 | 3 | Preview and confirmation; the running services have not been stopped yet | |
 | 4 | Waits up to 120 seconds for the audit queue to reach 0. When the queue cannot be read, it passes only a system that reports itself sealed and was not unsealed since its container started; anything else stops the run with the service still running and nothing changed | §2.3 step 3, §2.4 |
 | 5 | Stops backend, guacd and frontend (the database keeps running) and reads the backend log for a drain timeout | §2.3 step 4, §3.1 |
-| 6 | Confirms the old instance is gone: 0 connections of the application account | §2.3 step 5 |
+| 6 | Confirms the old instance is gone: 0 connections of the application account. With an external database and no client this time, a warning instead (below) | §2.3 step 5 |
 | 7 | Records the snapshot and takes the backup (below) | §2.1 |
 | 8 | Reserved for historical step numbering; no conversion or file move is performed | |
 | 9 | Points `current` at the new release and prepares the recordings folder | §1.3, §2.5 |
@@ -190,12 +190,21 @@ An empty database at step 12 (the baseline migration in the log, or the user cou
 
 After a successful upgrade the screen lists what is left to people: unsealing, when the master key mode needs it, and the §2.7 checks the script cannot make: audit chain verification, playing a recording from before the upgrade, and a test connection whose commands appear in the audit record. That last check is not optional. Do these before users connect again.
 
-**The backup at step 7.** By default the script takes the stopped backup described in [Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments). On a terminal it asks first, and you can choose your own backup instead, for example a virtual machine or storage snapshot:
+**The backup at step 7.** By default the script takes the stopped backup described in [Backup and Restore §3.8](./backup-and-restore.md#38-backups-taken-by-the-management-script-package-deployments): a single backup file in `backups/` that holds the recordings and the script's record as the upgrade found it, and is not encrypted ([The backup an upgrade takes](./backup-and-restore.md#the-backup-an-upgrade-takes)). It asks no questions about the recordings or encryption. On a terminal the script asks first whether it should take this backup, and you can choose your own backup instead, for example a virtual machine or storage snapshot:
 
 - The screen shows when the audit queue was confirmed empty and when the services stopped. Take the snapshot now: it has to start after the stop, and cover the data folder, `.env` and `tls/`; in the external database shape, a backup of the database started after the stop as well.
 - Enter the snapshot's name, its start time, and where its restore procedure is written, then confirm with `yes`. A start time before the stop is refused; the services stay stopped and the screen prints the command that starts them again. The script cannot look inside the snapshot.
 - Without a terminal, give `--backup-ref <name> --backup-time "YYYY-MM-DD HH:MM" --backup-restore <where>` together. This is accepted only when you stopped the services yourself before the run, after the audit queue check of §2.4: with the services running it is refused. The time has to be after the backend stopped, and the backend log must not show a drain timeout.
-- In the external database shape the script backs up nothing and only this path is offered.
+
+**With an external database.** The script backs up the external database as `backup` does ([Backup and Restore §3.8](./backup-and-restore.md#deployments-with-an-external-database)), and step 7 offers both choices. To do that, before the other checks of step 1, the upgrade obtains the target release's PostgreSQL 16, 17 and 18 client images from the same sources as the other images (this host, an offline bundle, a registry), checks them against the target's manifest, and checks the database with them. The first upgrade to 1.16.0 obtains them as well; on a host without registry access, give the target's offline image bundle with `--images <bundle>` or load it first. When the database can be backed up, free space for the backup and the row counts are then checked as for a bundled database.
+
+When the script cannot back up the database this time, because the client images could not be obtained, the server cannot be reached, the release has no client of its major version, or the database has a setting the backup does not support:
+
+- On a terminal, without `--yes`, the upgrade goes on. The preview says why, and step 7 offers only your own backup.
+- Without a terminal, or with `--yes`, and without `--backup-ref`, the upgrade refuses with exit code 3 before anything stops, and prints what to do, in order: stop the services with `stop`, which drains the audit queue first; check with `status` that they are stopped; after the stop, start your own backup of the external database, the data folder, `.env` and `tls/` (when the deployment has one), and note when it started; then run the upgrade again with `--backup-ref`, `--backup-time` and `--backup-restore`.
+- With `--backup-ref`, the upgrade neither obtains the client images nor checks the database.
+
+Step 6 counts the connections of the application account through the same client, and when some are left it stops as for a bundled database, printing the `psql` command for the external server. Without a client this time (your own backup is the only choice, or `--backup-ref` was given), the script cannot count them: step 6 is marked WARN and the upgrade goes on with the services stopped. Make sure then that no backend on another host, a standby for instance, is connected to the database. Without a client the checks at step 12 also cannot compare the database with its state before the upgrade; make those comparisons yourself (§2.5).
 
 **When it stops**
 
@@ -204,11 +213,11 @@ After a successful upgrade the screen lists what is left to people: unsealing, w
 | Steps 1 to 4 | The old version runs; nothing changed | Fix the cause the screen names and run the upgrade again |
 | Steps 5 to 7 | The services are stopped; version and data unchanged | Start the old version with the command on the screen, or fix the cause and run the upgrade again |
 | Step 8 | No conversion action runs in this release | Continue according to the result shown by the script |
-| Steps 9 to 12 | The new version is in place | Read the backend log with the command on the screen. To go back, restore the backup the screen names, as in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script); until the script's record is put back as described there, it refuses another upgrade and prints the same instructions |
+| Steps 9 to 12 | The new version is in place | Read the backend log with the command on the screen. To go back, run `sudo /opt/custodexa/custodexa.sh rollback`, as described in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script); another upgrade is refused, with the same instructions, until the deployment is back on the previous version: a `rollback` that finished, or a `restore` that finished (the one a refused rollback prints, for example). Abandoning a rollback with `rollback --revert` returns to the new version, and the upgrade stays refused |
 
 An upgrade interrupted by Ctrl-C or a dropped connection is handled the same way: the next run prints the instructions for the step it had reached. Interrupted at steps 1 to 4, or at steps 5 to 7 once the old version runs again, the next upgrade starts over with a warning. Every command on these screens carries the full path, the project name and the compose files, so it works from any directory.
 
-**Going back.** This release has no rollback command. To return to the version before an upgrade, restore the backup it took, as described in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script). Everything recorded after that backup is lost.
+**Going back.** To return to the version before an upgrade, start with `sudo /opt/custodexa/custodexa.sh rollback`. When the new version has not changed the database, it points the deployment back to the previous version and keeps the data. When it has, `rollback` changes nothing and the screen prints the `restore` command or the manual procedure to run instead. Only a restore of the backup the upgrade took loses what was recorded after that backup. Details are in [Backup and Restore §5.1](./backup-and-restore.md#51-going-back-to-the-previous-version-after-an-upgrade-by-the-management-script).
 
 ### Manual migration of an older source deployment
 

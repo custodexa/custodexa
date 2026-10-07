@@ -12,7 +12,7 @@ cmd_start() {
   fi
   printf '%s\n' "$(cx_msg svc_start_title)"
   cx_line RUN "$(cx_msg svc_start_run)"
-  if ! cx_compose up -d --remove-orphans >/dev/null 2>&1; then
+  if ! cx_new_started_mark || ! cx_compose up -d --remove-orphans >/dev/null 2>&1; then
     cx_line FAIL "$(cx_msg svc_start_failed)"
     cx_svc_resume
     cx_svc_log_hint

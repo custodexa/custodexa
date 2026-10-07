@@ -151,11 +151,16 @@ W
   [ "$rc" -eq 1 ]
   grep -q '"last_backup.result": "in_progress"' "$ROOT/state.json"
   grep -q '"last_backup.step": "2"' "$ROOT/state.json"
-  run_script "$D/j.sh" 'cx_begin backup; echo started'
+  run_script "$D/j.sh" 'cx_begin install; echo started'
   run bash "$D/j.sh"
   [ "$status" -eq 3 ]
   [[ "$output" == *"custodexa.sh status"* ]]
   [[ "$output" != *started* ]]
+  # Another backup is the one command that goes on: it says first that the last one did not finish.
+  run_script "$D/j2.sh" 'cx_begin backup; echo started'
+  run bash "$D/j2.sh"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$output" == "[WARN] The last backup ("*") did not finish."$'\n'started ]] || { echo "$output"; return 1; }
 }
 
 @test "an interrupted install does not block install: it starts over" {

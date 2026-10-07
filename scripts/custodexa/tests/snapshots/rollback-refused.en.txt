@@ -1,0 +1,30 @@
+Back to the previous version: preview (nothing has been changed yet)
+
+  Installed      1.16.2
+  Go back to     1.16.1 (the version before the upgrade)
+  Database       no structure change since the upgrade; it matches the
+                 record taken before the upgrade
+  So only the version is switched back; the data, the settings file and
+  the certificates stay as they are, and no restore is needed.
+  Old images     all 4 are on this host; the running containers are
+                 checked against them after the start
+
+  Steps: stop the services, check the database again and switch back
+  to 1.16.1, start, check the version and the running images.
+  Everything recorded since the upgrade is kept.
+
+[ OK ] 1/4  Stop the services
+[FAIL] Cannot go straight back to 1.16.1: a second check after the services
+       stopped found that 1.16.2 has changed the database. The version was
+       not switched; the application services are stopped and the database
+       is still running.
+  Why            the database structure changed after the upgrade
+                 (late_structure), and 1.16.1 cannot work
+                 correctly with the changed database
+  To go back to 1.16.1, restore the backup taken before the upgrade. The
+  restore asks you first, then returns both the data and the version to
+  how they were before the upgrade; the data created since the upgrade is
+  replaced.
+    sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar --lang en
+  To keep 1.16.2 running instead of restoring:
+    sudo /opt/custodexa/custodexa.sh start --lang en

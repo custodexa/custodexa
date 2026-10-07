@@ -1,0 +1,18 @@
+Give up on this restore (this host goes back to not installed)
+
+  Services       the services this restore started are stopped first
+                 (4 running now); nothing else happens until they are
+  Renamed, kept  what this restore put in place is renamed and kept, not
+                 deleted:
+                 /opt/custodexa/data/postgres.abandoned-20261012-093015
+                 /opt/custodexa/data/audit.abandoned-20261012-093015
+                 /opt/custodexa/tls.abandoned-20261012-093015
+                 /opt/custodexa/.env.abandoned-20261012-093015
+  Not touched    the recordings folder /opt/custodexa/data/recordings: it
+                 may hold files this restore put back and files you copied
+                 in yourself; none are deleted
+  Version        current points back to 1.16.2; releases/1.16.0 is kept
+  Working files  the plaintext database and settings in the working
+                 folder are deleted
+
+Give up? [y/N] 

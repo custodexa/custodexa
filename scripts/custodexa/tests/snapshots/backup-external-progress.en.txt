@@ -1,0 +1,7 @@
+[ OK ] 1/7  Stop the services (the external database is not touched)  0s
+[ OK ] 2/7  Database                                        0s
+[ OK ] 3/7  Audit files                                     0s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         0s
+[ OK ] 6/7  Check each part can be read                     0s
+[ OK ] 7/7  Build the single file and read it back          0s

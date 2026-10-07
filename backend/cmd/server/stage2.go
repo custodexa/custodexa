@@ -172,6 +172,18 @@ func (g *appGraph) Release(ctx context.Context) error {
 	return g.bag.Release(ctx)
 }
 
+// 編譯期守衛：方法簽章一旦漂移，/seal/status 會靜默不回 kek_id（介面斷言失敗即省略）。
+var _ api.RuntimeKEKIdentity = (*appGraph)(nil)
+
+// RuntimeKEKID 實作 api.RuntimeKEKIdentity：本代服務圖實際持有的 KEK 識別，
+// 與金鑰清冊的 kek_id 同源（同一個 KeyManagerService 的 provider）。
+func (g *appGraph) RuntimeKEKID() string {
+	if g == nil || g.keyManager == nil {
+		return ""
+	}
+	return g.keyManager.KEKKeyID()
+}
+
 // ServiceNames 回傳實際建構的服務名，供清單完備性守衛比對。
 func (g *appGraph) ServiceNames() []string {
 	if g == nil {

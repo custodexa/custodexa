@@ -1,0 +1,4 @@
+[FAIL] The target database server lacks 1 role the backup grants rights
+       to: "report reader".
+       Create it first, or add --accept-grant-loss to skip its grants.
+Nothing has been changed.

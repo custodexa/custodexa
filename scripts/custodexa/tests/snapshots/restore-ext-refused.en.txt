@@ -1,0 +1,7 @@
+[FAIL] The external database cannot be restored yet, because:
+  - 2 other connections are using custodexa (from 10.0.0.12, application
+    custodexa-backend). Stop the services on the original host first,
+    and make sure no standby host has taken this database over.
+  - The object public.report_cache is owned by analyst, not custodexa;
+    the script can only empty objects that custodexa owns.
+Nothing has been changed.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/material"
+	"github.com/custodexa/backend/internal/seal"
 )
 
 // 解封流程的第一段：管理員帳號與密碼驗證。
@@ -139,8 +140,9 @@ func (h *SealHandler) SetSealAuthorization(grants *SealGrantStore, verify SealCr
 
 // Authorize 驗證管理員帳密並簽發解封授權脈絡。
 //
-// **不做任何材料判斷、不觸及狀態機**：本端點的產物只是「這個人是管理員」這個
-// 事實的短效憑據，解封本身仍走 `/seal/unseal` 的既有臨界區。
+// **不做任何材料判斷、不改變狀態機**（只讀其狀態以拒絕已解封時的請求）：本端點
+// 的產物只是「這個人是管理員」這個事實的短效憑據，解封本身仍走 `/seal/unseal`
+// 的既有臨界區。
 func (h *SealHandler) Authorize(c *gin.Context) {
 	if h.unsealRelocated {
 		apierror.Respond(c, http.StatusForbidden, apierror.CodeSealSourceNotAllowed, nil)
@@ -148,6 +150,18 @@ func (h *SealHandler) Authorize(c *gin.Context) {
 	}
 	if !h.sourceAllowed(c) {
 		apierror.Respond(c, http.StatusForbidden, apierror.CodeSealSourceNotAllowed, nil)
+		return
+	}
+	// 已解封即拒，且在讀請求體之前：授權脈絡只服務解封，已解封時沒有任何
+	// 後續步驟用得到它。若照常驗證，本端點在正常運作期間就成了一個不經動態
+	// 驗證碼、不計入帳號失敗次數的管理員密碼校驗入口。
+	//
+	// 回應只取決於狀態：不讀請求體、不呼叫驗證器、不計入退避，故帳密對錯、
+	// 帳號是否存在都產生逐字相同的回應。機器碼與 `/seal/unseal` 在同一狀態下
+	// 的回應相同，揭露的只有 `/seal/status` 本就公開的「已解封」。
+	if h.machine != nil && h.machine.Snapshot().State == seal.StateUnsealed {
+		h.logAuthorizeAttempt(false)
+		apierror.Respond(c, http.StatusConflict, apierror.CodeSealAlreadyUnsealed, nil)
 		return
 	}
 	if h.grants == nil || h.verifyCredential == nil {

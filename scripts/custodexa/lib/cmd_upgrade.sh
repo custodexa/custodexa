@@ -29,6 +29,11 @@
 # shellcheck source=lib/upgrade_steps.sh
 . "${BASH_SOURCE[0]%/*}/upgrade_steps.sh"
 
+# shellcheck source=lib/rollback_check.sh
+. "${BASH_SOURCE[0]%/*}/rollback_check.sh"
+# shellcheck source=lib/rollback_output.sh
+. "${BASH_SOURCE[0]%/*}/rollback_output.sh"
+
 # CX_UP_DOWNLOAD (the releases address) is set by lib/upgrade_query.sh.
 CX_UP_KIND=package
 CX_UP_CURRENT="" # the version running now
@@ -106,6 +111,11 @@ cmd_upgrade() {
     cx_up_run
     return
   fi
+  if [ "$(cx_state_get last_rollback.result)" = in_progress ]; then
+    cx_line FAIL "$(cx_msg run_interrupted rollback "$(cx_state_get last_rollback.step)")"
+    cx_recovery_hint rollback
+    return "$CX_EXIT_REFUSED"
+  fi
   cx_up_fetch "$arg" || exit "$?"
   cx_up_handoff
 }
@@ -157,9 +167,18 @@ cx_up_fetch() {
 # cx_up_place_release <incoming dir> <version>: move the unpacked release to releases/<v>/. One that
 # is there already (an earlier attempt) is used only when it holds exactly the same files.
 cx_up_place_release() {
-  local inc=$1 ver=$2 dst=$CX_ROOT/releases/$2
+  local inc=$1 ver=$2 dst=$CX_ROOT/releases/$2 f
+  local -a generated=()
+  # The upgrade records resolved service references beside the release. A later upgrade
+  # to the same package (after rollback) must still compare all shipped content, without
+  # treating these locally generated regular files as a modified release.
+  for f in images.env image-ids.env; do
+    if [ ! -e "$inc/custodexa/releases/$ver/$f" ] && [ ! -L "$inc/custodexa/releases/$ver/$f" ]; then
+      generated+=(! -path "./$f")
+    fi
+  done
   if [ -e "$dst" ]; then
-    if [ "$(cx_tree_sha256 "$dst")" != "$(cx_tree_sha256 "$inc/custodexa/releases/$ver")" ]; then
+    if [ "$(cx_up_release_sha "$dst" "${generated[@]}")" != "$(cx_up_release_sha "$inc/custodexa/releases/$ver" "${generated[@]}")" ]; then
       cx_line FAIL "$(cx_msg up_release_differs "$dst")"
       rm -rf "$inc"
       return "$CX_EXIT_FAILED"
@@ -169,6 +188,21 @@ cx_up_place_release() {
   fi
   rm -rf "$inc"
   CX_UP_PKG_DIR=$dst
+}
+
+# Hash the same regular files on both sides; symlinks always remain part of the check.
+cx_up_release_sha() {
+  (
+    cd "$1" || exit 1
+    shift
+    export LC_ALL=C
+    {
+      find . -type f "$@" -print0 | sort -z | xargs -0 -r sha256sum
+      find . -type l -print0 | sort -z | while IFS= read -r -d '' link; do
+        printf '%s  %s -> \n' "$(readlink "$link")" "$link"
+      done
+    } | sha256sum | cut -d' ' -f1
+  )
 }
 
 # cx_up_download <version> <dir>: the package, SHA256SUMS and optional signature bundle.

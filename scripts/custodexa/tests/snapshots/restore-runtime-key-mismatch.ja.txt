@@ -1,0 +1,10 @@
+[FAIL] マスター鍵が一致しません。封印解除後の識別は 0c0c0c0c0c0c0c0c、
+       バックアップの記録は 5a5a5a5a5a5a5a5a です。
+  サービスを停止しました。復元は完了していません。
+  「バックアップとリストア」の第 6 節、項目 6 に従って
+  鍵台帳を確認してから判断してください。
+  再開：サービスを再起動し、正しいマスター鍵で封印を解除した後、
+  再度確認します
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  または安全バックアップを使って元に戻します：
+    sudo /opt/custodexa/custodexa.sh restore --revert

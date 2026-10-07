@@ -1,0 +1,6 @@
+Last upgrade
+  [ OK ] 1.16.1 -> 1.16.2 failed at step 11, 2026-11-05 09:30,
+         handed over to restore afterwards. Log:
+         /opt/custodexa/logs/upgrade-20260930-101502.log
+         The restore on 2026-11-05 09:30 dealt with this failure;
+         you can upgrade again

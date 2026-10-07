@@ -1,0 +1,8 @@
+[FAIL] The external database has settings this backup does not support; on
+       a new database server they could not be rebuilt as they are:
+         - CA file PGSSLROOTCERT=/etc/ssl/db-ca.pem is not where the script
+           can find it
+         - Client private key PGSSLKEY is inside the audit folder, which is
+           packed into the backup
+       Nothing was stopped. Use your own database backup procedure, or
+       change the items above first.

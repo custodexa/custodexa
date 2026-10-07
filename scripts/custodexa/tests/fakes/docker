@@ -4,6 +4,8 @@
 #   replay:   $FAKE_DOCKER_REPLAY/<key>.out / .rc where key is the arguments joined by '_'
 #             with '/' and ' ' replaced; the longest matching prefix wins.
 #   hook:     $FAKE_DOCKER_REPLAY/hook, when present and executable, answers first (see below).
+#   strict:   FAKE_DOCKER_STRICT=1 makes a call that neither the hook nor a replay file answers exit
+#             99 instead of 0, so a call nobody expected shows as a failure.
 log=${FAKE_DOCKER_LOG:-/dev/null}
 printf 'ARGS\t%s\tIMG_BACKEND=%s\n' "$*" "${CUSTODEXA_IMAGE_BACKEND:-}" >>"$log"
 dir=${FAKE_DOCKER_REPLAY:-}
@@ -19,7 +21,11 @@ for a in "$@"; do
   key="${key:+${key}_}$(printf '%s' "$a" | tr '/ :@' '----')"
   [ -e "$dir/$key.out" ] || [ -e "$dir/$key.rc" ] && best=$key
 done
-[ -n "$best" ] || exit 0
+if [ -z "$best" ]; then
+  [ "${FAKE_DOCKER_STRICT:-0}" = 1 ] || exit 0
+  printf 'fake docker: unexpected call: %s\n' "$*" >&2
+  exit 99
+fi
 [ -e "$dir/$best.out" ] && cat "$dir/$best.out"
 [ -e "$dir/$best.rc" ] && exit "$(cat "$dir/$best.rc")"
 exit 0

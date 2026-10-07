@@ -621,3 +621,24 @@ refresh 憑證在瀏覽器端的唯一載體 SHALL 為 `HttpOnly` cookie：
 #### Scenario: 開發建置原樣轉出
 - **WHEN** 伺服器未帶版本建置（預設值 `dev`）
 - **THEN** `product_version` 為 `dev`，不冒充任何已發布版本
+
+### Requirement: 登入帳號字串的字元層驗證
+
+本地密碼登入的帳號字串含控制字元（C0、DEL、C1，含 NUL、換行與定位字元）或不是合法 UTF-8 時，系統 SHALL 於查詢帳號之前即以憑證錯誤拒絕，回應 SHALL 與「帳號不存在」逐字相同（`401` 憑證錯誤），SHALL NOT 回伺服器內部錯誤，SHALL NOT 將該字串送入資料庫或目錄查詢。此判定 SHALL 只依輸入本身，不涉及任何帳號狀態，故不構成帳號存在性的訊號；亦 SHALL NOT 計入任何帳號的失敗次數。字元層判定 SHALL NOT 限制長度或其他字元集：非 ASCII 的帳號名稱照常受理。
+
+該筆失敗 SHALL 照常寫入登入失敗稽核列；稽核列的帳號欄 SHALL 以 U+FFFD 取代無法存放的字元，使稽核列得以落庫並保留「送出了含控制字元的帳號」這個事實。
+
+#### Scenario: 帳號含 NUL 回憑證錯誤
+
+- **WHEN** 未認證者以含 NUL（或換行、DEL、C1 控制字元）的帳號字串登入，不論密碼為何
+- **THEN** 回應 MUST 為 `401` 憑證錯誤且與不存在帳號的回應逐字相同，MUST NOT 為 `500`；帳號查詢 MUST NOT 發生
+
+#### Scenario: 拒絕仍留稽核列
+
+- **WHEN** 上述登入被拒
+- **THEN** MUST 寫入恰好一筆登入失敗稽核列，其帳號欄 MUST 不含控制字元且非空
+
+#### Scenario: 非 ASCII 帳號不受影響
+
+- **WHEN** 帳號名稱為非 ASCII 字元（例如中文）的使用者以正確密碼登入
+- **THEN** 登入 MUST 成功；以錯誤密碼登入 MUST 回一般憑證錯誤

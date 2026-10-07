@@ -1,0 +1,13 @@
+Go back with the safety backup (nothing has been changed yet)
+
+  Safety backup  backups/custodexa-backup-1.16.0-20261012-093015.tar
+                 2026-10-12 09:31, checked restorable before the restore
+  Back to        1.16.0, as it was before this restore started
+  Unfinished     what this restore put in place is renamed and kept, not
+                 deleted:
+                 /opt/custodexa/data/postgres.partial-restore-20261012-093015
+                 and 2 more places
+  Downtime       about 23 minutes
+
+To confirm, type the version, 1.16.0:
+> 

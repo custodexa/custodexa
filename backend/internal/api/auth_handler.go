@@ -265,7 +265,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 		// 審計 middleware 在登入前無用戶 context 會跳過，
 		// 登入失敗（暴力破解偵測的關鍵訊號）必須在此記錄
-		h.auditLogin(c, 0, req.Username, model.StatusFailure, status, err.Error())
+		h.auditLogin(c, 0, auditableLoginUsername(req.Username), model.StatusFailure, status, err.Error())
 
 		if status >= http.StatusInternalServerError {
 			apierror.Respond(c, status, apierror.CodeInternalLogin, nil)

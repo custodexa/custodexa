@@ -1,0 +1,5 @@
+  [WARN] The recordings were not restored from the backup: it has none,
+         and the recordings already here stay where they are. They may not
+         match the backup's point in time: recordings made after the backup
+         stay on disk but the system no longer lists them, and recordings
+         cleared after the backup do not come back.

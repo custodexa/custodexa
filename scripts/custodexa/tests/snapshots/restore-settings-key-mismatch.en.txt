@@ -1,0 +1,8 @@
+[FAIL] The master key in the settings file does not belong to this
+       backup's data:
+  Fingerprint of the key in the settings file   1f2e3d4c5b6a7980
+  Fingerprint recorded with the backup          5a5a5a5a5a5a5a5a
+  Restored with this key, none of the stored credentials could be
+  decrypted, so the restore will not start.
+  Use another, complete backup.
+Nothing has been changed.

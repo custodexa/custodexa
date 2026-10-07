@@ -1,0 +1,6 @@
+Last upgrade
+  [WARN] 1.16.1 -> 1.16.2 did not finish; it stopped at step 11.
+         Log:
+         /opt/custodexa/logs/upgrade-20260930-101502.log
+  [WARN] The last rollback stopped before the switch:
+         1.16.2 had changed the database; still on 1.16.2

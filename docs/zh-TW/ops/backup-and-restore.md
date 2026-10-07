@@ -2,7 +2,7 @@
 
 [English](../../ops/backup-and-restore.md) | **繁體中文** | [日本語](../../ja/ops/backup-and-restore.md) | [其他語言 →](../../README.md)
 
-> 適用版本：Custodexa 1.0。§3.8 與 §5.1 說明安裝包部署的管理腳本，自 1.13.0 起適用。
+> 適用版本：Custodexa 1.0。§3.8 與 §5.1 說明安裝包部署的管理腳本，自 1.13.0 起適用；§3.8、§5.2 與 §5.3 的單一備份檔、升級所做的備份檔、外接資料庫部署的備份，§5.1 的 `rollback`，以及 §5 的 `restore`，自 1.16.0 起適用。
 >
 > **本程序的驗證狀態**：以下步驟由實際的資料落點設定與程式行為推導撰寫。
 > **但完整的「備份 → 乾淨環境還原 → 服務起得來」
@@ -283,8 +283,9 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 >   [升級 SOP §2.4](./upgrade-sop.md#24-停機前確認稽核佇列已排空) 的「值為 0 再停機」在此狀態下取不到值。
 >   那不是指標壞了；先解封，再做那項確認。
 >
-> 模式 A（`KEK_PROVIDER=env`）與模式 C（`KEK_PROVIDER=kms`）不受影響：材料由部署層或 KMS 供給，
-> 重啟即自行取得，服務隨步驟 5 恢復。判斷本部署是哪一種，見第 4 節。
+> 模式 A（`KEK_PROVIDER=env`）不受影響：材料由部署層供給，重啟即自行取得，服務隨步驟 5 恢復。
+> 模式 C（`KEK_PROVIDER=kms`）與模式 B 一樣會回到已封存：保管處憑證只存在記憶體，要到解封頁重新提供（§4.3），
+> 上面兩點同樣適用。判斷本部署是哪一種，見第 4 節。
 
 ### 3.3 不停機備份（可接受有界不一致時）
 
@@ -317,6 +318,12 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 生產系統。`.env` 備份更直接含有 KEK 材料與 `JWT_SECRET` 的明文。
 備份檔一律加密後保管，且**不得與 KEK 材料存放在同一處**；把兩者放在一起，等於把
 信封加密降級成沒有加密。
+
+管理腳本做的備份檔（§3.8）把上述內容收在同一個檔案裡，`.env` 以 `env.bak` 的名稱在其中：
+
+- **模式 A（`KEK_PROVIDER=env`，§4.1）：備份檔含主金鑰。** `env.bak` 帶著 `ENCRYPTION_KEY`，KEK 材料和它保護的資料放在一起，拿到未加密副本的人就能解開所有加密保存的憑證。完成畫面會把 `.env` 標成含主金鑰。備份時選擇以通行密語加密（§3.8），或在檔案離開主機前自行加密，並把密語或金鑰與檔案分開保管。
+- **模式 B 與 C（§4.2、§4.3）：外部材料不在檔內。** 模式 B 的解封材料與模式 C 的保管處憑證不在任何檔案或資料表裡，腳本也不另外蒐集；備份檔只記主金鑰的指紋或金鑰識別，供還原後比對。這兩種模式下 `ENCRYPTION_KEY` 必須是空的，有值時備份會拒絕開始。
+- **`.env` 逐位元組照抄，寫在裡面的其他東西都會跟著進備份。** 不要把雲端憑證寫進 `.env`，例如模式 C 保管處的存取金鑰、服務帳戶金鑰檔或 Vault 密鑰，不論寫成值還是註解。產品從不讀 `.env` 裡的保管處憑證（§4.3），腳本也分不出它們和其他文字。
 
 ### 3.6 `DATA_PATH` 的檔案權限（部署方責任）
 
@@ -395,28 +402,159 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 
 ### 3.8 管理腳本做的備份（安裝包部署）
 
-以安裝包部署時，`custodexa.sh` 會執行 §3.2 的停機備份。時機有兩種：你要求時（選單的「**備份**」，
-或在部署目錄執行 `sudo ./custodexa.sh backup`），以及每次升級的第 7 步
-（[升級 SOP](./upgrade-sop.md#以管理腳本升級)）。
+以安裝包部署時，`custodexa.sh` 會執行 §3.2 的停機備份。時機有兩種：你要求時（選單的「**備份成單一檔案**」，或在部署目錄執行 `sudo ./custodexa.sh backup`），以及每次升級的第 7 步（[升級 SOP](./upgrade-sop.md#以管理腳本升級)）。兩者都寫出格式相同的單一備份檔，可以複製到其他主機；升級所做的備份只在內容上不同（見本節末）。外接資料庫的部署以同樣方式備份，只是以發行版附的 PostgreSQL 用戶端取代內建資料庫（見下）。
 
-- **做了什麼**：依序照 §3.2 的步驟——資料庫保持運作、停止 backend／guacd／frontend，以
-  `pg_dump -Fc` 匯出資料庫，打包 `recordings` 與 `audit`，複製 `.env`，打包 `tls/`，重新啟動服務，
-  再以 `pg_restore --list` 與 `tar -tzf` 確認備份可讀。停止任何服務之前先檢查空間。
-  升級中的備份不會重新啟動服務，因為下一步就要換版。`KEK_PROVIDER=ui` 時，預覽會說明備份後
-  系統回到已封存（§3.2 關於模式 B 的說明）。
-- **位置**：部署目錄下的 `backups/<STAMP>/`。`<STAMP>` 是 `YYYYMMDD-HHMMSS`（含秒，與 §3.2 不同），
-  也是資料夾內各檔的後綴。`backups/` 與每個備份資料夾的權限都是 `0700`。`status` 會顯示最近一次備份。
+#### `backup` 寫出的備份檔
+
+- **做了什麼**：七個步驟，編號與畫面相同。(1) 停止 backend、guacd、frontend，資料庫保持運作。(2) 以 `pg_dump -Fc` 匯出資料庫並取 `snapshot.txt`。(3) 打包 `audit`，選擇放入錄影時另包 `recordings`。(4) 複製 `.env`；部署有 `tls/` 時打包 `tls/`；設了 `TLS_NGINX_TEMPLATE` 時複製它指向的代理範本；複製兩份發行清單。(5) 啟動服務，最多等 180 秒讓後端就緒。(6) 以 `pg_restore --list` 確認匯出檔、以 `tar -tzf` 確認每個封存都列得出來。(7) 組成單一檔案（選擇加密時一併加密）並讀回核對。服務只在第 1 到 5 步暫停；預覽會分別列出兩段時間。
+- **停止任何服務之前先檢查**：空間（檔案大小、組裝時最大一個部分的暫存，再加 1 GB 餘裕）；主金鑰設定（§4：模式 A 的 `ENCRYPTION_KEY` 有值，模式 B 與 C 為空，`KEK_PROVIDER` 是後端接受的值；拒絕時只點名鍵名，不印出值）；`state.json` 記載的版本與 `current/MANIFEST.json` 相同；`.env` 設了 `TLS_NGINX_TEMPLATE` 時，它指向的是讀得到的一般檔案，而且路徑沒有清單記不下的字元：雙引號、反斜線、Tab 等控制字元，或中文等非 ASCII 字元（還原時要照這個路徑放回範本）；選擇加密時，還有密語檔與 openssl 映像。被拒絕時不會停止任何服務。
+- **第 5 步之後**：模式 A 的完成畫面說服務已恢復。模式 B 與 C 重新啟動後系統回到已封存（§3.2 關於模式 B 的說明，以及 §4.3）：預覽會先警告，完成畫面給出解封頁。後端 180 秒內沒有就緒時，第 5 步標為 WARN，備份仍會做完，完成畫面印出 `status` 與 `start` 指令。
+- **問答與旗標**：在終端機執行且沒帶 `--yes` 時，腳本會問兩題，預設都是「不要」：錄影要不要放進檔案、要不要以通行密語加密。`--with-recordings` 直接放入錄影、不問；`--passphrase-file <檔案>` 直接加密、不問（見下）。帶 `--yes` 而兩個旗標都沒帶時，檔案不含錄影也不加密，預覽會指出各自的旗標。沒有終端機時必須帶 `--yes`。只有 `backup` 接受這兩個旗標。
+- **位置**：部署目錄下的 `backups/custodexa-backup-<版本>-<STAMP>.tar`（加密時為 `.tar.enc`），旁邊是同名加 `.sha256` 的校驗檔。`<版本>` 是已安裝的版本，`<STAMP>` 是 `YYYYMMDD-HHMMSS`（含秒，與 §3.2 不同）。`backups/` 的權限是 `0700`，備份檔與校驗檔是 `0600`。腳本不會覆寫任何備份：檔名已被占用時改用下一秒，最多再換兩次，三個檔名都被占用就在停止任何服務前拒絕。`status` 會顯示最近一次備份與大小，加密的會註明。
+
+校驗檔是 `sha256sum` 格式、只記檔名不含路徑，所以把兩個檔一起複製到別的資料夾或主機後，在該資料夾執行 `sha256sum -c <檔名>.sha256` 就能核對副本。
+
+備份檔是未壓縮的 tar，成員都是封存根層的一般檔案，每個至多出現一次：
+
+| 成員 | 內容 |
+|---|---|
+| `backup-manifest.json` | 這份備份的描述（見下），不含任何機密值 |
+| `release-MANIFEST.json` | 已安裝版本的發行清單原檔（`current/MANIFEST.json`） |
+| `tool-MANIFEST.json` | 寫出這個檔的腳本所屬版本的發行清單 |
+| `snapshot.txt` | 服務停止後資料庫的狀態（見下） |
+| `db.dump` | 資料庫，`pg_dump -Fc`（§3.2 步驟 2） |
+| `audit.tar.gz` | `DATA_PATH` 下的 `audit` |
+| `recordings.tar.gz` | `DATA_PATH` 下的 `recordings`；只在選擇放入時存在 |
+| `env.bak` | `.env` 原樣，含機密值；模式 A 時也含主金鑰（§3.5） |
+| `tls.tar.gz` | `tls/`；只在部署有這個目錄時存在（由自己的入口終結 TLS 時沒有） |
+| `nginx-tls.conf.template` | `.env` 的 `TLS_NGINX_TEMPLATE` 指向的代理範本，原樣；只在有設時存在 |
+| `db-ca.pem` | 外接資料庫時：`.env` 的 `PGSSLROOTCERT` 指向的 CA 檔，原樣；只在它指向某個檔案時存在 |
+| `state.json` | 只在升級所做的備份裡：那次升級開始時腳本的紀錄（§5.1） |
+| `SHA256SUMS` | 其他每個成員的校驗和 |
+
+`exports` 一律不收（§2）。錄影除非選擇放入，否則不收，因為它通常佔了大部分容量；這時完成畫面會指出錄影目錄。若另外保存錄影，請在備份完成之後再複製，讓錄影是較新的一方（§3.1）。
+
+**`backup-manifest.json`** 一行一個 `"鍵": "值"`。手動還原時要看的鍵：`product.version`（資料所屬的版本；還原目標要執行這個版本，§5 步驟 0）、`created_at`（服務停止的時間）、`kek.provider`（後端實際使用的主金鑰模式：模式 A 為 `env`、B 為 `ui`、C 為 `kms`）、`kek.material_included`（只有模式 A 為 `true`）、`kek.fingerprint`（主金鑰指紋或金鑰識別，與 `snapshot.txt` 的 `fp.kek` 相同）、`encryption.enabled` 與 `encryption.scheme`、`contents.recordings`、`contents.tls`（部署沒有 `tls/` 時為 `false`，檔案裡就沒有 `tls.tar.gz`，這不算缺漏），`contents.nginx_template` 與 `source.tls_nginx_template`（代理範本是否在檔案裡，以及 `.env` 寫的路徑）、`trigger`（`backup` 為 `manual`，升級所做的備份為 `upgrade`，只有後者的 `contents.state` 為 `true`），以及 `db.location`（`bundled`，或 `external` 並附下方「外接資料庫的部署」的各鍵）。清單也記載 PostgreSQL 伺服器與 `pg_dump` 的版本、資料庫編碼、使用中的 overlay，以及來源主機的名稱、部署目錄、`DATA_PATH`、`TLS_DOMAIN`、`TLS_IP_SAN` 與 `PUBLIC_BASE_URL`。
+
+**備份檔何時算完成**：腳本在 `backups/.partial-<STAMP>/`（權限 `0700`）組出檔案，整檔讀回並以 `SHA256SUMS` 逐一核對每個成員，先把校驗檔放進 `backups/`，最後才給備份檔正式名稱。所以凡是以正式名稱存在的備份檔，都已完整讀回核對過一次。之後腳本才把它記進 `state.json`，再刪除 `.partial-<STAMP>/`。失敗或中斷（Ctrl-C、關掉終端機、TERM 訊號）會留下什麼，看備份進行到哪裡：
+
+- **`.partial-<STAMP>/` 建立之前**（還在檢查、什麼都還沒停）：備份取消。沒有停止或寫入任何東西，沒有要刪的檔，之後的指令也不受影響。
+- **`.partial-<STAMP>/` 已建立、備份檔還沒取得正式名稱**：沒有備份檔，`state.json` 仍指向上一份備份。`.partial-<STAMP>/` 會留下：它不能用來還原、含機敏明文，查明原因後請刪除。只有 `.sha256` 而沒有對應的備份檔，也是這種情形，可以刪除。服務可能還停著時，畫面會印出啟動服務的指令。
+- **備份檔已取得正式名稱、`state.json` 還沒記下它**：畫面說明檔案有效、`state.json` 沒有更新，所以 `status` 仍顯示上一份備份；`.partial-<STAMP>/` 請手動刪除。
+- **`state.json` 已記下它**：只剩刪除 `.partial-<STAMP>/` 沒做完。畫面說明檔案有效，請手動刪除該資料夾。這次備份算是完成。
+
+第二或第三種情形若是被中斷，`state.json` 會把這次備份記為未完成：`start`、`stop` 與 `backup` 照常執行，只是會先警告；`upgrade` 則會拒絕，直到有一次備份完成為止，單獨執行 `start` 不會解除。停電或行程被強制結束時腳本攔不到，處理方式相同；這時 `.partial-<STAMP>/` 可能不存在，警告只會說上次備份沒有完成。
+
+#### 外接資料庫的部署
+
+在外接資料庫形態（`compose.external-database.yml`）下，`backup` 與升級第 7 步的備份，會對 `.env` 指定的伺服器（`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`DB_NAME`、`DB_USER`、`DB_SSLMODE`）匯出資料庫。步驟、檔案、成員與問答都與上文相同；第 1 步停止 backend、guacd 與 frontend，不動資料庫。
+
+- **匯出工具。** 發行版附有 PostgreSQL 16、17、18 的用戶端，以發行清單釘住的映像提供。這個形態下 `install`、`upgrade` 與 `load` 會取得它們，並對照發行清單檢查；它們是腳本執行的工具而不是服務，所以 `status` 不會把它們列為容器。停止任何服務之前，腳本先向伺服器查詢版本，之後只使用與伺服器主版本相同的用戶端，匯出與 `snapshot.txt` 都是如此。其他主版本的伺服器，例如 15 或 19，即使另一個用戶端讀得了也會被拒絕。清單以 `tool.dump_image`（`pgclient16`、`pgclient17` 或 `pgclient18`）記錄所用的用戶端，其摘要見 `tool-MANIFEST.json`。
+- **停止任何服務之前先檢查**，除了上述的檢查之外，各有各的訊息：用戶端映像在這台主機上（沒有就以 `load` 載入發行版的離線映像包）、伺服器連得上且接受登入（失敗原因在紀錄檔）、發行版有伺服器主版本的用戶端，以及下列各項所述的設定。被拒絕時不會停止任何服務。
+- **匯出檔不帶什麼。** `pg_dump` 不寫角色與資料表空間，所以搬到新伺服器時需要它們的資料庫會被拒絕，並指出查到什麼：自訂資料表空間、由 `DB_USER` 以外的角色擁有的物件，或 `plpgsql` 以外的擴充套件。`public` 結構描述由內建角色 `pg_database_owner` 擁有（PostgreSQL 建立時就是如此）不算另一位擁有者；其中的物件仍須由 `DB_USER` 擁有。
+- **授予其他角色的權限**不會被拒絕。物件把權限授予 `DB_USER`、`PUBLIC` 與內建 `pg_` 角色以外的角色時，例如監控帳號，備份照常完成，完成畫面會警告並點名這些角色，清單把它們列在 `db.extra_grant_roles_hex`：每個名稱以其 UTF-8 位元組的小寫十六進位表示，以空白分隔（§5.3 會印成名稱）。新的資料庫伺服器在還原之前要先有這些角色，否則還原後的權限會不同。
+- **TLS。** 用戶端檢查伺服器的程度，與後端在同一份 `.env` 下完全相同，不多也不少，預覽會顯示模式與伺服器如何被檢查。`DB_SSLMODE` 未設或為空表示 `disable`，與後端一致。
+
+  | `DB_SSLMODE` | `PGSSLROOTCERT` | 如何檢查伺服器（後端與備份相同） |
+  |---|---|---|
+  | `disable`、`allow`、`prefer`、`require` | 未設 | 不檢查 |
+  | `verify-ca` | 未設 | 以系統信任的憑證機構檢查，不檢查主機名稱；備份端是用戶端映像的 CA 檔，沒有就拒絕備份 |
+  | `verify-full` | 未設 | 以系統信任的憑證機構檢查 |
+  | 任一值 | `system` | 以系統信任的憑證機構檢查，同 `verify-full` |
+  | `disable`、`allow`、`prefer` | 一個檔案 | 不檢查；CA 檔仍會放進備份 |
+  | `require`、`verify-ca` | 一個檔案 | 以該 CA 檔檢查，不檢查主機名稱 |
+  | `verify-full` | 一個檔案 | 以該 CA 檔檢查 |
+
+  後端與用戶端映像各有自己的信任機構清單。用戶端的清單缺少簽發伺服器憑證的機構時，連線會在停止任何服務之前失敗；備份不會退而改成較寬鬆的檢查。
+- **TLS 檔案。** `PGSSLROOTCERT`、`PGSSLCERT` 與 `PGSSLKEY` 寫的是後端容器內的路徑。腳本透過後端的掛載在主機上讀這些檔案，所以它們必須在 `/var/log/custodexa/audit`、`/var/lib/custodexa/recordings` 或 `/var/lib/custodexa/exports` 之下（即 `DATA_PATH` 下的 `audit`、`recordings`、`exports`）；放在其他位置的檔案會被拒絕。CA 檔是公開的，以 `db-ca.pem` 放進備份（`contents.db_ca`）。用戶端憑證用於連線並記為 `db.tls_client_cert` `true`，但**它的私鑰不會放進備份檔**：請與部署的其他機密一起保管，因為還原時還要用到。備份會打包的稽核或錄影資料夾裡若有私鑰，會被拒絕。
+- **資料庫密碼**以權限 `0600` 的檔案交給用戶端，放在 `backups/` 下的私有資料夾（權限 `0700`）內：備份各步驟執行期間在 `backups/.partial-<STAMP>/`，各步驟以外的資料庫檢查（停止任何服務之前，以及升級的第 6、12 步）在 `backups/.db-client-<PID>/`。這個檔案在每次呼叫後以及中斷時都會刪除，`.db-client-<PID>/` 也一併刪除。它不會出現在任何命令列或環境變數。
+- **備份期間不能有其他寫入者。** 停止這台主機的服務，並不會阻止另一台主機寫入同一個資料庫。備份進行時不要讓備援主機接手資料庫（[應用主機備援接手](./standby-takeover.md)），否則資料庫與檔案落點會來自不同時點（§3.1）；預覽也會這樣提醒。
+
+#### 以通行密語加密備份檔
+
+在問答中選擇，或帶 `--passphrase-file <檔案>`。通行密語 12 到 256 個字元，只能用半形英文字母、數字、空白與半形符號（可列印 ASCII），空白也算在密語裡。問答時輸入兩次、不回顯。用 `--passphrase-file` 時，密語是檔案的第一行；該檔必須是一般檔案（不是符號連結）、擁有者是你或 root、群組與其他人沒有讀寫權限，也沒有額外的存取控制清單（ACL），否則備份會在停止任何服務前拒絕，並印出修正用的 `chown`、`chmod`、`setfacl` 指令。建立這種檔案、又不讓密語留在指令歷史：
+
+```bash
+sudo install -m 600 -o root /dev/null /root/cx-pass
+sudo bash -c 'IFS= read -r -s p && printf "%s\n" "$p" > /root/cx-pass'
+```
+
+加密在發行清單釘選並核對過的 openssl 映像內執行，不用主機上的工具。腳本在每種部署形態的安裝與升級時都會取得這個映像；缺少時，備份在停止任何服務前拒絕，並提示載入該版的離線映像包。密語經標準輸入交給 openssl：不出現在任何指令列、環境變數與紀錄檔，也不寫進 `state.json`，腳本不建立任何含密語的檔案。未加密的整份 tar 不寫到磁碟，而是直接串流進 openssl；`backups/.partial-<STAMP>/` 裡的各部分在備份檔完成、它們被刪除之前都是明文。
+
+加密方案名為 `cx-enc-1`（清單中的 `encryption.scheme`），參數固定：
+
+| 項目 | 值 |
+|---|---|
+| 加密演算法 | AES-256-CBC，PKCS#7 填補 |
+| 金鑰與 IV | PBKDF2-HMAC-SHA256，600,000 次，導出 32 位元組金鑰與 16 位元組 IV |
+| 鹽 | 8 個隨機位元組 |
+| 檔案格式 | ASCII `Salted__`（8 位元組），接著是鹽（8 位元組）與密文，即 `openssl enc` 的格式 |
+| 密語 | 輸入的位元組，或檔案第一行的位元組，不含行尾換行 |
+
+加密的備份檔名以 `.tar.enc` 結尾、開頭是 `Salted__`。打開它只需要 OpenSSL 1.1.1 以上與 tar，指令見下。
+
+> **通行密語遺失，加密的備份就無法還原。** 檔案裡沒有任何由密語導出的值，腳本不留存密語，腳本與開發者都救不回來。請把密語和檔案分開保管，並確認除了你之外還有人取得得到。
+
+加密讓拿到檔案的人讀不到內容，但不能證明檔案是誰做的：AES-256-CBC 沒有驗證標籤，校驗和抓得到損壞，抓不到有人改了內容又重算校驗和。請把備份檔放在只有系統管理者能寫入的地方。
+
+**核對檔案與密語。** 備份完成後盡快做一次，別讓災難復原成為第一次用到密語的時候。先以不回顯的方式讀入密語；之後它經標準輸入交給 openssl，不出現在指令列上。
+
+```bash
+FILE=backups/custodexa-backup-1.16.0-YYYYMMDD-HHMMSS.tar.enc   # 改成實際檔名
+IFS= read -r -s -p 'Passphrase: ' CX_PASS; echo
+```
+
+接著執行符合手上 openssl 的那一道指令，每一道都會列出成員。`enc` 從 OpenSSL 3.2 起才有 `-saltlen`，1.1.1、3.0、3.1 都沒有；以 `openssl enc -help` 實際列出的為準，不看版本號。`openssl enc -help` 有列出 `-saltlen` 的 OpenSSL（3.2 起）：
+
+```bash
+printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -tvf -
+```
+
+OpenSSL 1.1.1、3.0、3.1，或 `openssl enc -help` 沒有列出 `-saltlen` 的版本（這些版本的鹽固定是 8 位元組）：
+
+```bash
+printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -tvf -
+```
+
+不用主機的 openssl、改用發行版的 openssl 映像時，在部署目錄執行：
+
+```bash
+printf '%s\n' "$CX_PASS" | docker run --rm -i --network none \
+  --mount "type=bind,src=$(realpath "${FILE:?}"),dst=/backup.tar.enc,readonly" \
+  "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" \
+  enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in /backup.tar.enc | tar -tvf -
+```
+
+做完執行 `unset CX_PASS`。密語錯誤時，openssl 會回報 `bad decrypt`，或 tar 回報輸入看起來不是 tar 封存。不要改用其他參數重試：上面就是這個方案唯一的一組參數。
+
+#### 升級所做的備份
+
+升級第 7 步寫出與 `backup` 相同的備份檔：`backups/custodexa-backup-<版本>-<STAMP>.tar` 與它的 `.sha256`，其中 `<版本>` 是升級前的版本。服務此時已停止，也不會重新啟動，因為下一步就要換版，所以上述七步中它只做 2、3、4、6、7。它不問任何問題，內容是固定的：
+
+- 一律含錄影。
+- 一律不加密（`encryption.enabled` 為 `false`）。離開這台主機之前，請加密它或它的副本（§3.5）。
+- 含那次升級開始時的 `state.json`（`trigger` 為 `upgrade`，`contents.state` 為 `true`）；§5.1 會把那份紀錄放回去。
+- 與任何備份檔一樣含 `.env`、部署有 `tls/` 時含 `tls/`，以及 `TLS_NGINX_TEMPLATE` 指向的代理範本。讀不到該範本，或它的路徑有清單記不下的字元時，升級會在停止任何服務前拒絕。升級只能做你自備的備份時，這項檢查會略過：帶了 `--backup-ref`，或這次腳本無法備份外接資料庫。
+- 外接資料庫時，以發行版的用戶端製作，如上所述。這次做不到時，升級只提供自備備份（[升級 SOP](./upgrade-sop.md#以管理腳本升級)）。
+
+`snapshot.txt` 最先取得。除了檔案裡的成員，腳本還在升級紀錄檔旁留一份副本 `logs/upgrade-<STAMP>.before.txt`，第 12 步的核對就是與這份副本比對。檔案做成之後，它就是 `status` 顯示的最近一次備份，升級的紀錄也會記下它；升級畫面會印出它的完整路徑。備份失敗時不會留下備份檔，只留下如上所述的 `backups/.partial-<STAMP>/`，畫面會印出重新啟動舊版的指令。第 1 步會檢查這個檔案（含錄影）所需的空間，預覽的停機時間估計也包含組出並讀回這個檔案。
+
+升級到 1.16.0 之前的版本時，這份備份是一個資料夾：`backups/<STAMP>/`（權限 `0700`），`<STAMP>` 也是資料夾內各檔的後綴；§5.1 仍可從這樣的資料夾還原：
 
 | 檔案 | 內容 |
 |---|---|
 | `custodexa-db-<STAMP>.dump` | 資料庫（§3.2 步驟 2） |
 | `custodexa-files-<STAMP>.tar.gz` | `DATA_PATH` 下的 `recordings` 與 `audit`（步驟 3）；不含 `exports`（§2） |
 | `custodexa-env-<STAMP>.bak` | `.env`，含機密值（步驟 4） |
-| `custodexa-tls-<STAMP>.tar.gz` | `tls/`（步驟 4） |
+| `custodexa-tls-<STAMP>.tar.gz` | `tls/`（步驟 4）；部署沒有 `tls/` 時（由自己的入口終結 TLS）不會有這個檔 |
 | `snapshot.txt` | 服務停止後資料庫的狀態（見下） |
-| `state.json` | 只出現在安裝包部署升級時的備份：那次升級開始時腳本的紀錄（§5.1 F） |
+| `state.json` | 那次升級開始時腳本的紀錄（§5.1 F） |
 | `SHA256SUMS` | 以上各檔的校驗和：在該資料夾內執行 `sha256sum -c SHA256SUMS` |
 | `INCOMPLETE` | 只在備份失敗時存在。有這個檔的資料夾不是可以拿來還原的備份 |
+
+這樣的資料夾不含 `TLS_NGINX_TEMPLATE` 指向的代理範本；以 §5.1 退回時，那個檔案留在原處。
+
+第 7 步選擇自備備份時，腳本也會記錄在 `backups/<STAMP>/` 資料夾：裡面有那次升級開始時的 `state.json`，以及腳本能取得時的 `snapshot.txt`，但沒有資料。
 
 **`snapshot.txt`** 一行一個 `key=value`：`users`、`sessions`、`audit_logs` 三張表的筆數；
 `schema_migrations` 每一筆已套用的版本各一行 `migration=`；§6 第 6 項的四個指紋
@@ -425,13 +563,11 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 `unusable=` 那一行；此時升級後的核對會把金鑰改為到金鑰管理頁人工比對。產生它不需要解封，
 也不需要登入。請與備份放在一起：§6 要比對的「備份前記下的值」就是它。
 
-**保管**：這個資料夾含 §3.5 所列的全部內容，包括明文的 `.env`，而且和運作中的 `.env` 在同一台主機。
-請加密後另存到別處，並與 KEK 材料分開保管。腳本從不刪除備份：不再需要的請自行刪除，
-並把 `backups/` 計入磁碟規劃。
+**保管**：備份檔或資料夾含 §3.5 所列的全部內容，除非檔案已加密，否則也包括明文的 `.env`，而且和運作中的 `.env` 在同一台主機。
+請加密後另存到別處。模式 B 與 C 要與 KEK 材料分開保管；模式 A 的 KEK 材料就在檔內，所以要與加密它的密語或金鑰分開保管。
+腳本從不刪除備份：不再需要的請自行刪除，並把 `backups/` 計入磁碟規劃。
 
-**腳本不涵蓋**：§3.3 的不停機備份；以及外接資料庫形態（`compose.external-database.yml`）——
-資料庫不在部署之內，`backup` 會拒絕執行。該資料庫請以自己的程序備份；這種部署升級時改用
-自備備份（見 SOP）。
+**腳本不涵蓋**：§3.3 的不停機備份。
 
 ---
 
@@ -466,6 +602,8 @@ KEK 有三種保管模式，由環境變數 `KEK_PROVIDER` 宣告。**三種模�
   全部信封加密欄位都解不開**，服務也會拒絕啟動。
 - **保管責任**：部署方。
 - **注意**：本模式的 KEK 材料鍵只有 `ENCRYPTION_KEY` 一個，系統不讀取其他任何鍵名。
+- **`KEK_PROVIDER` 未設定或為空時**：只要 `ENCRYPTION_KEY` 有值，後端就以本模式執行，本節全部適用。
+- **`backup` 寫出的備份檔（§3.8）**：`env.bak` 是 `.env` 原樣，含 `ENCRYPTION_KEY`，清單記 `kek.material_included=true`。所以未加密的檔，或以密語解開後的加密檔，還原時就能取回金鑰；未加密的副本一旦外流，單靠它就能解開所有加密保存的憑證。請以通行密語或其他方式加密（§3.5）。`.tar.enc` 檔仍需要原本的密語。
 
 ### 4.2 模式 B：`KEK_PROVIDER=ui`（介面填鑰，不落地）
 
@@ -576,8 +714,142 @@ KEK_KMS_PROVIDER=aws
 
 ## 5. 還原程序
 
+自 1.16.0 起，安裝包部署以管理腳本還原單一備份檔（§3.8）：在部署目錄執行 `sudo ./custodexa.sh restore <備份檔>`，或在選單選「從備份檔還原」（尚未安裝的主機是「從備份檔還原到這台新主機」）。它會核對檔案、需要時安裝備份當時的版本、保留被取代的資料，並且要等資料、版本與主金鑰都核對過，才算還原完成。下方「以 `restore` 還原」說明內建資料庫部署的做法，其後的「外接資料庫部署的還原」說明資料庫在部署之外的伺服器上時有哪些不同。
+
+腳本拒絕的情形，照下方「手動還原」處理。這些情形都在停止任何服務、下載任何東西之前就拒絕，畫面會指出是哪一種：
+
+- **不是單一備份檔的備份**：§3.2 的那組檔案，或升級到 1.16.0 之前的發行版時留下的 `backups/<STAMP>/` 資料夾（§3.8）。這類備份沒有 `backup-manifest.json`。請在原主機手動還原，或先把原主機升級到 1.16.0 以上，再重新備份。
+- **資料屬於 1.16.0 之前版本的備份檔**（`product.version`）：也就是升級時替 1.13 到 1.15 的部署做的升級前備份。這些版本解封後不會回報主金鑰識別，腳本無法確認還原後的主金鑰是否正確。請先照 §5.2 取出各檔；要在這台回到那個版本，接著照 §5.1；要還原到另一台主機，接著照下方的步驟。
+- **沒有主金鑰指紋的備份檔**（`kek.fingerprint_status` 不是 `ok`，備份當時讀不到唯一的值）。請手動還原，並照 §6 第 6 項核對金鑰清冊。
+- **主金鑰模式是 `hsm` 的備份檔**：本版沒有可用的 HSM 實作。
+- **內建資料庫授權給 `DB_USER`、`PUBLIC` 與內建 `pg_` 角色以外的角色**：新的資料庫只有 `DB_USER`。拒絕訊息會列出這些角色。
+
+不是由發行安裝包安裝的部署沒有管理腳本，同樣手動還原。
+
+#### 以 `restore` 還原
+
+**走哪一種還原**由主機決定，不由檔案決定：
+
+| 主機 | `restore` 做什麼 |
+|---|---|
+| 已安裝（`status` 顯示版本） | 取代這台的資料。開始覆蓋之前先備份目前的資料（安全備份，見下）。在這台還原別台主機做的備份也是同一種做法，預覽會警告備份來自另一台主機 |
+| 尚未安裝 | 先安裝備份當時的版本，再還原進去。這台必須是空的：所選 `DATA_PATH` 下沒有 `postgres` 與 `audit`，或只是空資料夾。`recordings` 裡已有的檔案不影響，保持原樣 |
+
+沒有終端機時，依主機狀態帶 `--same-host`（已安裝）或 `--new-host`（尚未安裝），並帶 `--yes`；已安裝的主機另需 `--confirm-data-loss`。1.16.0 之前的部署沒有 `restore`：先升級到 1.16.0 以上。
+
+**在新主機上**，先以 `get-custodexa.sh` 放好發行安裝包，版本是備份當時的版本或更新的任一版，再用它放好的 `custodexa.sh` 執行 `restore`。腳本的版本不能舊於備份的版本。腳本較新時，會把備份的版本放到 `releases/<版本>/`，還原後部署執行的就是那個版本。離線時另外帶上備份版本的安裝包與它的 `SHA256SUMS`（`--package`）、那個版本的離線映像包（`--images`）；備份檔有加密時，還要腳本自身發行版的離線映像包，因為解密在它的 openssl 映像裡執行。兩個版本相同時，一份安裝包與一份映像包就夠。預覽會列出缺少哪一樣。
+
+**停止任何服務之前核對的項目。**這個階段的拒絕不會變更任何東西。
+
+- 這份複本完整：旁邊的 `.sha256` 必須回報 OK。沒有這個檔時，腳本會在終端機上要你確認，或需要 `--no-checksum-file`；檔案內的校驗和不論如何都會核對。
+- 加密檔（`.tar.enc`）：通行密語問一次，總共可以試三次，或從 `--passphrase-file` 讀取，檔案條件與 `backup` 相同（§3.8）。
+- 成員、校驗和與清單，照 §3.8 的說明。
+- 資料版本與主金鑰，見上方清單。模式 A 時，備份裡 `.env` 的主金鑰指紋必須等於 `kek.fingerprint`。`snapshot.txt` 有 `fp.jwt` 時，備份裡 `.env` 的登入簽章金鑰 `JWT_SECRET` 必須與它相符。備份裡的 `.env` 必須有 `JWT_SECRET`、`DB_PASSWORD` 的實際值，模式 A 另需 `ENCRYPTION_KEY`；腳本不會補上新值。
+- 資料裡沒有備份版本不認得的資料結構變更。有不認得的變更，表示資料被較新的版本改過，腳本不會把較新的資料放進較舊的版本。
+- 備份的版本：已在這台時，它的發行清單必須與備份裡的 `release-MANIFEST.json` 完全相同。不在這台時，安裝包取自 `--package`（同一資料夾要有 `SHA256SUMS`）或下載取得。校驗和必須相符，發行者簽章的核對與升級相同：沒有 `cosign`、沒有簽章或簽章不符都只是警告。沒有發行附檔的版本即拒絕；腳本不會改裝別的版本。
+- 那個版本的映像（取自這台、`--images` 或 registry），以及暫存目錄、安全備份與還原後資料所需的空間。
+
+接著預覽說明會還原什麼、會取代與保留什麼、停機時間與空間，以及主金鑰需要什麼。已安裝的主機以輸入還原後的版本號確認；新主機回答 `y`。
+
+**主機值。**`DATA_PATH`、`TLS_DOMAIN`、`TLS_IP_SAN` 與 `PUBLIC_BASE_URL` 描述的是主機；`.env` 的其他值一律取自備份，密鑰也包括在內。
+
+- 已安裝的主機，這四項保留這台目前的值，預覽列出與備份不同的項目。
+- 新主機逐項詢問，並顯示備份的值與這台的建議值：直接按 Enter 用建議值，輸入 `-` 沿用備份的值。沒有終端機時以 `--data-path`、`--tls-domain`、`--tls-ip-san`、`--public-base-url` 指定，沒給的用建議值。由自有入口終結 TLS 的部署（備份裡沒有 `tls/`）不問 `TLS_DOMAIN` 與 `TLS_IP_SAN`。
+- 自簽憑證且名稱或位址改變時，沿用還原回來的憑證機構，啟動時替新的值簽發伺服器憑證；原本的伺服器憑證移到 `tls/` 裡的另一處保留。已信任該憑證機構的用戶端照樣信任。自行提供的憑證不會被更動：它不涵蓋新的名稱或位址時，預覽與完成畫面會警告。
+- `PUBLIC_BASE_URL` 改變時，完成畫面會提醒到外部登入（OIDC）的身分提供者更新回呼位址。
+- `TLS_NGINX_TEMPLATE` 指定的代理範本（備份裡有時）放回原路徑。新主機上原路徑不能用時（上層資料夾不存在、是符號連結，或位於 `releases/`、`current/` 之下），腳本會詢問另一個絕對路徑，或取用 `--nginx-template <路徑>`，並把 `.env` 改指向它。目的地已有內容不同的檔時，改名為 `<檔名>.before-restore-<STAMP>` 保留。
+
+**安全備份**（已安裝的主機）。開始覆蓋之前，腳本先把目前的資料備份成 `backups/custodexa-backup-<版本>-<STAMP>.tar`：資料庫、稽核檔、設定與憑證，不含錄影、不加密。為此會停止服務，且不會重新啟動，資料庫保持運作。接著腳本把這個檔讀回，以還原輸入的標準完整核對一次，通過才往下做。它也把還原前的 `state.json` 與 `.env` 複製到暫存目錄。
+
+也可以改用服務停止之後自己取得的備份，例如儲存快照：在詢問時選擇，或帶 `--backup-ref`、`--backup-time`、`--backup-restore`（與升級相同，[升級 SOP](./upgrade-sop.md#以管理腳本升級)）；`--backup-time` 不能早於服務停止的時間。腳本做出的安全備份之後無法由 `restore --revert` 還原時，只提供自備備份，畫面會說明原因，例如目前的資料庫讀不到唯一的主金鑰識別，或目前版本的映像已不在這台。
+
+**會取代與會保留的。**
+
+- `DATA_PATH` 下目前的 `postgres`、`audit`，以及部署目錄的 `tls/`，改名為 `*.before-restore-<STAMP>` 保留，不刪除：第 6 節核對無誤後請自行刪除。
+- 錄影：備份不含錄影時，不動 `recordings` 資料夾。已安裝的主機上，錄影因此可能與備份時點不一致：備份之後新錄的仍在磁碟上，但系統不會再列出；備份之後被清掉的不會回來。新主機上，完成畫面列出還原後資料庫記錄、但檔案不在這台的錄影數，清單是暫存目錄裡的 `missing-recordings.txt`；請從來源主機 `DATA_PATH` 下的 `recordings` 複製過來。已上傳到異地儲存的錄影，播放時會從異地取回。備份含錄影時會放回，已有同名檔案的保留，不覆蓋。
+- 版本隨資料一起回去：已安裝的主機還原後的版本是備份的版本，即使這台原本執行較新的版本。
+
+**步驟。**已安裝的主機有十步：放置備份的版本與映像；停止服務（資料庫保持運作）；安全備份；確認安全備份可以還原；停止資料庫並把目前的資料改名保留；匯入資料庫；核對資料庫；放回稽核檔、憑證與設定檔；啟動服務並等待就緒；核對主金鑰。新主機有八步，沒有安全備份，並多一步依備份寫入設定檔。核對資料庫時，比對匯入後的 migration、`users`、`sessions`、`audit_logs` 的筆數與主金鑰識別是否與備份記錄的相同。啟動之後，腳本核對執行中的映像是記錄下來的那些、後端回報的是備份的版本；等待後端就緒最多 180 秒。
+
+**主金鑰，以及何時算還原完成。**
+
+- **模式 A**：後端以 `.env` 裡的金鑰自行解封。腳本讀取後端解封後回報的主金鑰識別，與 `kek.fingerprint` 比對，相符即還原完成。
+- **模式 B 與 C**：腳本啟動服務後以結束碼 4 結束：資料已匯入，系統等待解封。要有人以備份裡的管理者帳號登入解封頁並輸入主金鑰（模式 B），或核對畫面上隨資料庫一起還原的保管處，再重新提供保管處憑證（模式 C；這台的位址要在保管處允許的來源內）。之後執行 `restore --resume`，它讀取主金鑰識別並完成還原。系統仍是已封存時，它會如實說明、不變更任何東西，並再以結束碼 4 結束。
+- 主金鑰核對之前，還原不算完成：`upgrade` 與 `backup` 會拒絕執行。
+- **識別不符時**，腳本停止服務，還原沒有完成。請照 §6 第 6 項核對金鑰清冊，再決定接續（模式 A 先重新核對 `.env` 裡的金鑰，仍不符就不啟動服務；模式 B 與 C 重新啟動服務，等有人以正確的主金鑰解封後再核對一次），或照下方說明還原回去或放棄。
+
+**完成時**，完成畫面列出還原的來源備份、保留的資料夾與安全備份、網址、主金鑰核對結果、錄影與各項警告，並指向仍待完成的第 6 節（見下）。部署目錄 `restore/` 下的暫存目錄（權限 `0700`）會刪除資料庫、`.env` 與各封存檔的明文複本；保留缺少的錄影清單，以及還原前 `state.json` 與 `.env` 的複本（`state-before.json`、`env-before-restore`，權限 `0600`，含密鑰）。有終端機時，腳本接著以與選單相同的方式查詢最新版本，並詢問要不要升級，預設否；沒有終端機時只印指令。備份是升級時做的那份（`trigger` 為 `upgrade`）時，不查詢也不詢問：它說明部署已回到升級前的版本，並印出升級指令。
+
+#### `restore` 中途停下時
+
+失敗或中斷（Ctrl-C、關閉終端機、TERM 訊號）時，還原停在原地，不會自動回復。服務維持停止，已改名的資料維持保留，暫存目錄與這次還原的紀錄都留著。畫面印出兩條指令，路徑是啟動這次還原的腳本的完整路徑；新主機上腳本比備份的版本新時，那是 `releases/<腳本版本>/custodexa.sh`，請照畫面印出的路徑執行。
+
+- `restore --resume` 從沒有完成的那一步接續。
+- 已安裝的主機，`restore --revert` 還原回去。還沒有覆蓋任何資料時，它清掉這次還原的紀錄並啟動原本的服務，服務就緒後才算完成。已開始覆蓋時，它以同樣的步驟還原安全備份，不再另做安全備份；這次還原放進來的資料改名為 `*.partial-restore-<STAMP>` 保留。改用自備備份時，它印出你登記的還原程序。
+- 新主機，`restore --abandon` 放棄這次還原。它停止這次還原啟動的服務，把放進來的資料（`postgres`、`audit`、`tls/` 與 `.env`）改名為 `*.abandoned-<STAMP>`，`current` 指回腳本的版本、保留 `releases/<版本>/`，並刪除暫存目錄裡的明文。它不動 `recordings` 資料夾，那裡可能有你先複製過來的檔案。之後這台回到尚未安裝。
+
+安全備份沒有完成時，還沒有覆蓋任何資料：可以接續重做安全備份、改用自備備份接續（在終端機上選擇，或在 `restore --resume` 加上 `--backup-ref`、`--backup-time`、`--backup-restore`；時間不能早於這次還原停止服務的時間），或還原回去。還原回去或放棄本身被中斷時，再執行一次同一條指令即可接著做完。
+
+`--revert` 只處理沒有完成的還原。要取回已完成那次還原之前的資料，以 `restore` 還原它的安全備份檔：那是一次新的還原，會先替目前的資料做安全備份。
+
+腳本無法判斷自己對部署做的某項變更（資料夾改名、放入檔案）是否已完成時，會指出該項變更與相關路徑，不變更任何東西並停下。動任何東西之前先查看這些路徑：保留為 `*.before-restore-<STAMP>` 的資料與安全備份不受影響。無法分辨哪一份是哪一份時，照下方「手動還原」從備份檔還原。已開始覆蓋後暫存目錄遺失時，`restore --resume` 會拒絕，仍可用 `restore --revert` 或 `restore --abandon`。
+
+還原沒有完成時，`status` 會在「還原」段顯示它與接續的指令，選單只提供接續、還原回去或放棄、查看狀態、啟動與停止服務、說明。`status`、`load` 與 `stop` 照常執行。`start` 要等還原自己啟動過服務（等待解封，或逾時未就緒）才能執行。`backup`、`upgrade`、`install` 與另一次 `restore` 會拒絕，並印出接續、還原回去或放棄的指令。
+
+#### 外接資料庫部署的還原
+
+備份清單的 `db.location` 為 `external`（§3.8）時，`restore` 會清空那台伺服器上的資料庫，再把備份匯入，步驟同上，差異如下。
+
+**開始之前。**
+
+- 新主機還原時，先停止原主機的服務，並確認沒有備援主機接手這個資料庫（[應用主機備援接手](./standby-takeover.md)）。在還原完成之前都要維持這樣：腳本會在下列幾個時點檢查其他連線，這段期間不得有人啟動原主機或備援主機。
+- 資料庫伺服器需要約兩倍資料庫大小的可用空間，因為匯入提交之前新舊資料會同時存在。預覽會以警告列出這個數字；腳本量不到伺服器的磁碟，請先確認。
+- 匯入進行時，暫存目錄還會放匯入用的 SQL 文字，約等於資料庫未壓縮的大小。新主機的資料庫原本已有資料時，暫存目錄還會放安全匯出（見下）。部署目錄的可用空間請把兩者都算進去。
+- 連線取自備份：`EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`、`DB_SSLMODE`，以及 `PGSSLROOTCERT`、`PGSSLCERT`、`PGSSLKEY` 的路徑，兩種主機都取備份的 `.env` 裡的值。新主機只問四個主機值。要換到另一台資料庫伺服器或另一個資料庫，請照 §5.3 手動還原，在那裡把 `.env` 的連線改成新伺服器的值。
+
+**停止任何服務之前的檢查**，以備份的連線，和本發行版中與伺服器主版本相同的 PostgreSQL 用戶端進行。拒絕時列出找到的全部原因，以結束碼 3 結束，不變更任何東西。
+
+- 伺服器是 PostgreSQL 16、17 或 18，也就是本發行版附有用戶端的主版本，且該版本的用戶端映像在這台主機上（沒有的話，先以 `load` 載入本發行版的離線映像包）。伺服器的主版本不低於備份來源伺服器的主版本，用戶端的主版本不低於產生匯出檔的工具的主版本。
+- 用戶端能連線並通過認證，且檢查伺服器憑證的程度與備份當時完全相同（§3.8 的 TLS 對照表），不會較低。
+- `DB_USER` 擁有資料庫 `DB_NAME`（重建 `public` schema 需要資料庫擁有者），也擁有其中系統 schema 以外的全部物件。`public` schema 本身可以維持 PostgreSQL 給它的擁有者 `pg_database_owner`。拒絕訊息會列出物件與擁有者。
+- 資料庫沒有 `plpgsql` 以外的擴充套件。
+- 資料庫的編碼、排序規則與字元類型和備份相同（`db.encoding`、`db.collate`、`db.ctype`）。不同時畫面會印出這些設定，由資料庫管理者以這些設定建立資料庫：腳本不建立資料庫，也不建立角色。
+- 沒有其他連線在用這個資料庫。新主機上這項是嚴格檢查：拒絕訊息列出來源位址、應用程式名稱與連線數。已安裝的主機此時自己的後端還連著，所以預覽只列出這些連線；嚴格檢查在服務停止之後（見下）。
+- 備份授權過的角色在伺服器上都存在（見下）。
+- 資料庫是否為空：系統 schema 以外沒有任何物件。
+
+**伺服器上缺少的角色。**這些角色取自 `db.extra_grant_roles_hex` 與匯出檔裡的授權項，扣掉 `DB_USER`、`PUBLIC` 與內建的 `pg_` 角色。有終端機時，腳本列出缺少的角色並提供兩個選擇：`[1]` 先去建立這些角色（預設；結束還原，沒有變更任何資料），或 `[2]` 略過這些角色的授權，繼續還原：只有授權給這些角色的項目不會還原，其餘照常還原。沒有終端機時，沒帶 `--accept-grant-loss` 就拒絕。要能略過，每一句授權語句都必須是「只涉及缺少的角色」或「完全不涉及」；有語句無法這樣區分時，腳本要求先建立角色，不變更任何東西。預覽會寫明略過了哪些授權，完成畫面列出略過的數量與清單檔，也就是暫存目錄裡的 `skipped-grants.txt`。
+
+**CA 檔與用戶端憑證。**備份裡的 CA 檔（`db-ca.pem`）放到 `PGSSLROOTCERT` 指定的路徑，位於 `DATA_PATH` 之下（§3.8 的 TLS 檔案）；那裡已有內容不同的檔時拒絕。備份時的連線使用用戶端憑證（`db.tls_client_cert` 為 `true`）時，以 `--db-client-cert` 與 `--db-client-key` 提供憑證與私鑰，或在終端機詢問時輸入兩個路徑；這台主機上 `PGSSLCERT` 與 `PGSSLKEY` 指定的路徑已有檔案時直接使用，內容不同的檔則拒絕。私鑰不在備份檔裡（§3.8），請和部署的其他密鑰一起保管。確認之後，這些檔以權限 `0600` 複製到上述路徑；私鑰直接放到那裡，不經過暫存目錄，也不寫進紀錄檔。
+
+**清空的範圍。**`DB_NAME` 中系統 schema（`pg_catalog`、`information_schema` 與 PostgreSQL 的 toast、暫存 schema）以外的全部物件。`public` schema 刪除後，依 PostgreSQL 15 起的預設重建：擁有者為 `pg_database_owner`，`PUBLIC` 有 `USAGE`。其他資料庫、角色與表空間不動。預覽列出伺服器、資料庫與其 PostgreSQL 版本、使用的用戶端、伺服器如何被檢查，以及每個會清空的 schema 內的物件數。資料庫是空的就不需要清空，預覽也會寫明。
+
+**同一個交易。**腳本先把匯入用的 SQL 寫成暫存目錄裡的檔案，逐一確認完整；確認之後，才把清空與匯入當成同一個交易送到伺服器。交易失敗時整筆撤回，資料庫保持原狀。
+
+**確認。**資料庫不是空的時，確認方式改為輸入資料庫名稱，取代已安裝主機上的輸入版本、新主機上的 `y`。沒有終端機時，兩種主機都要帶 `--yes` 與 `--confirm-data-loss`。
+
+**已安裝的主機**，安全備份也包含外接資料庫：腳本以與伺服器主版本相同的用戶端把它匯出到同一個備份檔。沒有 `postgres` 目錄可以改名：資料庫是原地清空並匯入，原本的內容在安全備份裡。其他連線在三個時點嚴格檢查：服務停止之後（第 2 步「停止服務（外接資料庫不受影響）」）、這台的任何東西改名之前（第 5 步「確認沒有其他連線」），以及送出交易之前（第 6 步「清空並匯入資料庫（同一個交易）」）。找到其他連線時，該步失敗並列出來源與應用程式名稱，服務維持停止，外接資料庫沒有被變更。請找出並結束那個連線（確認不是備援主機接手），再執行 `restore --resume`，或以 `restore --revert` 還原回去。已開始覆蓋之後，`restore --revert` 照上面的說明還原安全備份，其中的資料庫同樣以一個交易匯回。
+
+**新主機**的安全備份取決於資料庫：
+
+- **空的**：預覽寫明不需要安全備份，也不會產生。共八步，同上。
+- **不是空的**：裡面的內容是那份資料唯一的副本。寫入設定檔之後，第 3 步再確認一次沒有其他連線，以與伺服器主版本相同的用戶端把資料庫匯出到暫存目錄裡的 `safety-db.dump`。匯出檔會完整讀回一遍，資料庫在匯出前後各量一次；兩次不同表示匯出期間有人寫入，這份匯出不採用。只有完整且期間沒有變動的匯出，還原才會往下做。共九步。
+
+**匯入中途停下時。**伺服器回報錯誤時，交易已撤回，外接資料庫保持原狀。結果無法確認時（匯入被強制結束，或連線中斷），`restore --resume` 會先量資料庫：與匯入前相同表示沒有提交，重新匯入；核對資料庫那一步的項目全部通過表示已提交，往下做。兩者都不是時，腳本停下、列出兩次的量測結果，不會重新匯入。接著照畫面上的指令處理：以安全備份或安全匯出還原回去，或在資料庫原本為空的新主機上，請資料庫管理者查看資料庫。
+
+**新主機上還原回去或放棄。**
+
+- **資料庫原本不是空的**：`restore --revert` 先要求確認（或帶 `--yes`），停止服務，以一個交易把安全匯出匯回外接資料庫，量得資料庫與匯出時相同才算完成；之後這台照 `--abandon` 的方式回到尚未安裝。匯回失敗時保留 `safety-db.dump`，可以再執行一次同一條指令。清空與匯入一旦送到伺服器，`restore --abandon` 會以結束碼 3 拒絕，並印出 `restore --revert`。在那之前外接資料庫沒有被動過，可以放棄；`safety-db.dump` 保留，畫面列出它的路徑，確認不需要之後請自行刪除。
+- **資料庫原本是空的**：`restore --abandon` 不會清空它。這次匯入的資料留在資料庫裡，畫面也會說明；需要清空時請由資料庫管理者處理。之後再還原時，會把這個資料庫當成非空的目標，先做安全匯出。
+
+腳本只在 `restore --revert` 完成時刪除 `safety-db.dump`。其他情形它都留在暫存目錄，包括還原已完成之後；它是資料庫的明文，第 6 節核對無誤後請自行刪除。
+
+#### 手動還原
+
 **以管理腳本升級後要回到舊版**（腳本畫面會指到這裡）：請先讀 §5.1。它說明下列步驟之前與之後要做什麼，
 以及如何用 `backups/` 下的資料夾填入這些步驟。
+
+**從單一備份檔還原**（`backup` 或升級寫出的 `custodexa-backup-<版本>-<STAMP>.tar` 或 `.tar.enc`，§3.8）：先依 §5.2 取出其中的檔案。§5.2 會替下列步驟設好 `STAMP` 與 `BACKUP_DIR`。備份當時的資料庫是外接的（`db.location` 為 `external`）時，以 §5.3 取代步驟 5。
 
 **步驟順序與 §3.2 不同的一點**：`.env` 先還原、變數後取值。理由見步驟 2 的說明。
 
@@ -590,15 +862,22 @@ KEK_KMS_PROVIDER=aws
 #
 #    要還原的那一組備份檔的時間戳。**下面這行的值必須改成實際檔名的後綴**；
 #    忘了改的話，後續三道指令會因為檔案不存在而失敗（不會還原到錯的東西）
-#    管理腳本做的備份是 YYYYMMDD-HHMMSS，即它在 backups/ 下的資料夾名稱（§3.8）
+#    管理腳本的備份資料夾是 YYYYMMDD-HHMMSS，即它在 backups/ 下的資料夾名稱（§3.8）
+#    單一備份檔已由 §5.2 設好 STAMP 與 BACKUP_DIR：跳過下面兩行賦值
 STAMP=YYYYMMDD-HHMM
-#    備份檔所在的資料夾：檔案就在目前目錄時為 .，腳本做的備份為 backups/<STAMP>
+#    備份檔所在的資料夾：檔案就在目前目錄時為 .，腳本的備份資料夾為 backups/<STAMP>
 BACKUP_DIR=.
 
 # 1. 停掉全部服務。目標環境的 ${DATA_PATH}/postgres 必須為空目錄
-#    （postgres 容器只有在資料目錄為空時才會初始化出乾淨的資料庫）；
-#    確認這台是還原用的環境，再清空該目錄
+#    （postgres 容器只有在資料目錄為空時才會初始化出乾淨的資料庫）。
+#    沒清空時，postgres 沿用目錄裡原有的資料庫，不會初始化。在另一台主機上，那個資料庫的密碼（與帳號）是那台安裝時設的，
+#    和還原回來的 .env 對不上，後端連不進資料庫；在同一台主機上，備份裡沒有的資料表等物件會留在資料庫裡。
+#    確認這台是還原用的環境。下面幾行把現有的資料庫移到旁邊，不刪除；第 6 節通過後再刪 postgres.before-restore-<STAMP>。
 docker compose --project-directory . down
+DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' "${ENV_FILE:-./.env}" | tail -n 1)"
+( cd "${DATA_NOW:?.env 裡找不到 DATA_PATH；不要繼續}" && pwd )
+[ ! -d "${DATA_NOW:?}/postgres" ] || mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP:?}"
+mkdir -m 700 "${DATA_NOW:?}/postgres"
 
 # 2. 先還原部署層設定（KEK 模式 A 必要；模式 B 不含材料，模式 C 不含 KMS 憑證）。
 #    這一步排在取值之前，是因為它會整份覆蓋 .env——若先取值再覆蓋，
@@ -622,14 +901,32 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 ( cd "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}" && pwd )
 #    以 root（sudo）解壓。以其他帳號解壓時，錄影的日期目錄、文字錄影與稽核檔都會歸該帳號所有，
 #    下方的準備指令不會把它們改回來。
-tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
-  -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}"
+#    備份資料夾把錄影與稽核放在同一個封存；單一備份檔（§5.2）有 audit.tar.gz，
+#    放入錄影時才另有 recordings.tar.gz。
+if [ -e "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" ]; then
+  tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
+    -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}"
+else
+  tar -xzf "${BACKUP_DIR:?}/audit.tar.gz" \
+    -C "${DATA_PATH:?未取得 DATA_PATH，請先執行步驟 3；切勿以預設值繼續}"
+  if [ -e "${BACKUP_DIR:?}/recordings.tar.gz" ]; then
+    tar -xzf "${BACKUP_DIR:?}/recordings.tar.gz" -C "${DATA_PATH:?}"
+  fi
+fi
 #    把錄影目錄收斂回 1000:0 2770（§3.6）；解壓已保留權限時執行也無妨
 docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" -c \
   'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
 #    TLS 憑證目錄還原到專案目錄下（不還原它，自簽模式會在啟動時產生新的 CA 與憑證，
-#    全部使用者端都要重新派發 CA）
-tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
+#    全部使用者端都要重新派發 CA）。由自己的入口終結 TLS 的部署，備份裡沒有 tls 封存
+#    （清單的 contents.tls 為 false），沒有東西要還原。
+if [ -e "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz" ]; then
+  tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
+fi
+#    .env 的 TLS_NGINX_TEMPLATE 指向的代理範本：備份檔裡有時（§3.8），放回那個路徑
+if [ -e "${BACKUP_DIR:?}/nginx-tls.conf.template" ]; then
+  CX_TPL="$(env_get TLS_NGINX_TEMPLATE)"
+  install -D -m 644 "${BACKUP_DIR:?}/nginx-tls.conf.template" "${CX_TPL:?.env 沒有設 TLS_NGINX_TEMPLATE}"
+fi
 
 # 5. 只起 postgres，**等它真的可以接受連線之後**再灌入邏輯備份。
 #    `up -d` 只保證容器起了，不保證 postgres 已就緒；而且首次啟動（資料目錄為空）時，
@@ -665,28 +962,104 @@ KEK 模式 B 的部署在步驟 6 之後仍處於已封存，須到 `/unseal` �
 
 ### 5.1 以管理腳本升級後，回到升級前的版本
 
-管理腳本不會自行回退。升級在換到新版之後停下（第 9 到 12 步），或升級完成後你決定回到上一版時，
-請還原升級第 7 步所做的備份；升級畫面與之前的預覽都會列出那個資料夾。**該次備份之後記錄的一切都會遺失**，
+自 1.16.0 起，請先用 `rollback` 指令。它在停止任何服務之前，先判斷能不能直接回到升級前的版本：
+能的話只換回版本，資料保持不動；不能的話不做任何變更，並印出下一步。它不會自行還原備份。
+
+切換版本前的失敗不需要回到上一版。第 1 到 7 步的畫面會印出重新啟動舊版的指令；第 8 步保留編號，不執行轉換。
+在這個狀態下執行 `rollback`，它會說明升級停在換版之前，並印出同樣的指令。
+
+#### `rollback` 可以直接回到上一版的條件
+
+下列四項都要成立：
+
+- 這個安裝包部署最近一次的版本變動，是腳本做的升級，而且已經走到換成新版（第 9 步以後）。升級可以已經完成，也可以在那之後失敗或中斷。
+- 升級前的版本不早於 1.16.0。
+- 新版沒有改過資料庫。三項依據有一項成立即可：新版從沒有啟動過；資料庫目前的 migration 與升級前的紀錄相同；新版的發行清單註明可以直接回到上一版。讀不到資料庫時，視為已經改過。
+- 上一版的每個映像都還在這台主機，而且 image ID 與升級前的紀錄相同。腳本只看這台主機；缺少的映像怎麼載入，見下方表格。
+
+前兩項成立時，升級畫面會印出這道指令，例如 `需要回到 1.16.1    sudo /opt/custodexa/custodexa.sh rollback`。
+後兩項由 `rollback` 自己判斷。
+
+#### 以 `rollback` 回到上一版
+
+```bash
+sudo /opt/custodexa/custodexa.sh rollback
+```
+
+它先顯示預覽：目前版本、要回到的版本、資料庫為什麼算沒有變動、找到的舊版映像。這時還沒有做任何變更，畫面問「開始嗎？[y/N]」。
+自動化時加上 `--yes` 略過確認。接著依序做四步：
+
+1. **停止服務。** 和 `stop` 一樣，先等稽核紀錄都寫進資料庫，再停止內建資料庫以外的服務。
+   無法確認時不停止任何服務：新執行的一次以「沒有做任何變更」結束，接續中的一次維持未完成。
+2. **再確認資料庫沒有變動，換回上一版。** 應用服務都停止後，再判斷一次新版有沒有改過資料庫，因為預覽等待期間新版仍可能改動它。
+   仍然沒有變動時，停止資料庫，把 `current` 指向 `releases/<上一版>`，並互換腳本對兩個版本的紀錄。
+3. **啟動服務**，用的是上一版的映像。
+4. **核對**後端回報的是上一版，且執行中的映像就是升級前記錄的那些。
+
+資料、`.env` 與憑證都不動，也不還原備份，所以升級之後產生的紀錄都會保留。部署啟動後處於封存狀態時（KEK 模式 B 或 C，§4.2、§4.3），
+最後一行會列出 `/unseal` 的位址。此後部署目錄下的 `custodexa.sh` 是上一版的腳本，`status` 會顯示上次升級已經回到上一版。
+每次執行各有一份紀錄檔 `logs/rollback-<時間>.log`。
+
+#### `rollback` 中途停下時
+
+任一步失敗或執行被中斷時，這次回到上一版維持未完成。畫面會說明目前狀態，印出查看後端日誌的指令，再印出接續的指令：
+
+```bash
+sudo /opt/custodexa/custodexa.sh rollback --resume   # 查明原因後，接續完成這次回到上一版
+sudo /opt/custodexa/custodexa.sh rollback --revert   # 或回到升級後的版本
+```
+
+- `--resume` 從停下的那一步接著做；結果已經就位的步驟會略過。
+- `--revert` 放棄這次回到上一版，以同樣的四步回到升級後的版本，不做資料庫的再確認。停在第 1 步時還沒有換版，畫面只印 `--resume`。
+- `--revert` 開始之後，未完成的就是回到升級後版本的這一次。之後的畫面只印 `rollback --resume`，用來完成這次撤回。撤回完成後要再回到上一版，重新執行 `rollback`。
+- 回到上一版未完成時，`upgrade`、`backup`、`restore` 會拒絕執行，並印出同樣的指令；`start`、`stop`、`status` 照常可用。
+
+#### 只能退一版
+
+`rollback` 只退一版。回到上一版完成後再執行一次 `rollback`，會以「沒有可以回到的上一版」拒絕，不做任何變更。
+要回到升級後的版本，請照常再升級一次（[升級 SOP](./upgrade-sop.md#以管理腳本升級)）。
+
+#### `rollback` 不能直接回到上一版時
+
+任一條件不成立時，`rollback` 在停止任何服務之前以結束碼 3 結束，不做任何變更。唯一的例外是第 2 步的再確認：
+預覽等待期間新版改了資料庫時，不換版，應用服務維持停止，內建資料庫仍在執行，結束碼為 1。
+這個畫面另外印出讓新版繼續服務的 `sudo /opt/custodexa/custodexa.sh start`，但升級本身仍未完成時不印。
+
+下一步依畫面所說：
+
+| 畫面所說 | 下一步 |
+|---|---|
+| 新版已經改過資料庫，或讀不到資料庫，並印出 `restore` 指令 | 照印出的指令執行。它指名升級所做的備份檔，例如 `sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-<STAMP>.tar`。該次備份之後記錄的一切都會被取代。還原完成後，失敗的那次升級不再擋住 `upgrade`，可以照常再升級。還原的說明見第 5 節。 |
+| 腳本只能回到 1.16.0 以後的版本，或指向第 5 節的手動還原 | 依下方「手動回到上一版」操作，畫面會列出備份的位置。升級前的版本早於 1.16.0，或第 7 步選擇了自備備份時，就是這種情形。 |
+| 上一版的映像不在這台主機，或與紀錄不同 | 以畫面印出的 `load` 指令載入上一版的離線映像包，再執行一次 `rollback`。 |
+| 沒有可以回到的上一版 | 沒有可以退回的變動：這個部署沒有由腳本升級過、上一次版本變動已經是回到上一版、升級之後版本紀錄已經改變，或目前執行的版本與紀錄不一致。以 `status` 查看狀態。 |
+
+#### 手動回到上一版
+
+本程序還原升級第 7 步所做的備份。升級畫面會列出它：腳本做了備份時是備份檔 `backups/custodexa-backup-<版本>-<STAMP>.tar`；升級的是 1.16.0 之前的版本時是資料夾 `backups/<STAMP>/`（§3.8）。**該次備份之後記錄的一切都會遺失**，
 這也是備份在服務停止時進行的原因。
 
-切換版本前的失敗不需依本節回退。第 1 到 7 步的畫面會印出重新啟動舊版的指令；第 8 步保留編號，不執行轉換。
+第 7 步選擇了自備備份時，請以你為它記下的程序還原，取代下面的 A 與 E；B、D、F 仍然適用，`BACKUP_DIR` 是腳本為它記錄的資料夾。
 
-以 root 在部署目錄下操作，並依畫面填入三個值：
+以 root 在部署目錄下操作，並依畫面填入各個值：
 
 ```bash
 sudo -s
 cd /opt/custodexa                      # 部署目錄
 OLD=1.13.0                             # 升級前的版本
-STAMP=YYYYMMDD-HHMMSS                  # 備份資料夾的名稱
-BACKUP_DIR="backups/${STAMP}"
+STAMP=YYYYMMDD-HHMMSS                  # 備份檔或備份資料夾名稱中的時間戳
+BACKUP_DIR="backups/${STAMP}"          # 備份資料夾；備份檔則由 §5.2 在 E 設定
 
-# A. 備份必須完整：沒有 INCOMPLETE 檔，且每個校驗和都是 OK
+# A. 備份資料夾必須完整：沒有 INCOMPLETE 檔，且每個校驗和都是 OK。
+#    備份檔由 §5.2 在 E 核對；備份檔請跳過這一行。
 test ! -e "${BACKUP_DIR}/INCOMPLETE" && ( cd "${BACKUP_DIR}" && sha256sum -c SHA256SUMS )
 
 # B. 停止並移除新版的容器（DATA_PATH 內的資料不受影響）
 docker compose --project-directory . down
 
-# C. 保留新版用過的資料庫目錄，而不是清空它（第 5 節步驟 1）
+# C. 保留新版用過的資料庫目錄，而不是清空它（第 5 節步驟 1）。
+#    外接資料庫沒有 postgres 目錄：跳過下面四行，並依 §5.3 的說明
+#    把新版的資料庫保留在伺服器上。
 DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' .env | tail -n 1)"
 ( cd "${DATA_NOW:?}" && pwd )           # 看清楚：這是本部署的資料根
 mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP}"
@@ -703,14 +1076,172 @@ ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
 set -a; . ./current/images.env; set +a
 ```
 
-**E. 在同一個 shell 執行第 5 節的步驟 2 到 6**，`STAMP` 與 `BACKUP_DIR` 沿用上面的設定。`docker compose` 經由 `current` 啟動上一個安裝包版本。接著逐項完成第 6 節；第 6 項的指紋，以及 `users`、`sessions` 的筆數，都與 `${BACKUP_DIR}/snapshot.txt` 比對。
+**E. 備份檔請先依 §5.2 取出其中的檔案**（在這個 shell 執行，不要做它的 `sudo -s`）。它的步驟 G 會檢查 `current` 現在指向的版本就是備份的版本，並設好 `STAMP` 與 `BACKUP_DIR`。**接著，兩種備份都在同一個 shell 執行第 5 節的步驟 2 到 6**，`STAMP` 與 `BACKUP_DIR` 沿用設好的值；不要從步驟 1 開始，因為 B 與 C 已經做了它的事。外接資料庫時，以 §5.3 取代步驟 5。`docker compose` 經由 `current` 啟動上一個安裝包版本。接著逐項完成第 6 節；第 6 項的指紋，以及 `users`、`sessions` 的筆數，都與 `${BACKUP_DIR}/snapshot.txt` 比對。
 
-**F. 之後。** 第 6 節全部通過、也確定不再需要新版的資料後，再刪除 `postgres.before-restore-${STAMP}`。
+**F. 之後。** 第 6 節全部通過、也確定不再需要新版的資料後，再刪除 `postgres.before-restore-${STAMP}`（外接資料庫時是留在伺服器上的那個資料庫）。
 上一版的映像必須還在主機上；腳本不會刪除映像，缺少時升級預覽已經警告過。
 
 安裝包部署時，腳本自己的紀錄 `state.json` 仍描述較新的版本與那次升級：`status` 顯示的是新版，
-`upgrade` 會拒絕執行並再印一次同樣的指引。請從該次備份資料夾放回升級前的紀錄：
-`cp -p "${BACKUP_DIR}/state.json" state.json`。本版沒有其他指令能更正這份紀錄。
+`upgrade` 會拒絕執行並再印一次同樣的指引。請從該次升級的備份放回升級前的紀錄（§5.2 取出的 `state.json` 成員，或備份資料夾裡的檔案）：
+`cp -p "${BACKUP_DIR}/state.json" state.json`。本版沒有其他指令能更正這份紀錄。之後依 §5.2 的說明刪除它建立的資料夾：裡面有明文的資料庫、`.env` 與私鑰。
+
+### 5.2 從單一備份檔取出各檔
+
+自 1.16.0 起，`restore` 會自行取出各檔（§5）。下列步驟用於手動還原，適用 §5 列出的情形。
+
+`backup` 或升級寫出的備份檔（§3.8）要先解到一個資料夾，才能走第 5 節。下列步驟會核對檔案、取出成員、改成第 5 節使用的檔名、載入已安裝版本的映像參照，並替第 5 節設好 `STAMP` 與 `BACKUP_DIR`。做完後在同一個 shell 從第 5 節步驟 1 接著做；步驟 0 除了那兩行賦值之外仍然適用。
+
+| 成員 | 用在哪裡 |
+|---|---|
+| `backup-manifest.json` | 下方步驟 E：§5 步驟 0 要的版本，以及主金鑰模式（第 4 節） |
+| `env.bak` | §5 步驟 2，在步驟 F 改名為 `custodexa-env-<STAMP>.bak` |
+| `audit.tar.gz`、`recordings.tar.gz` | §5 步驟 4，沒有 `custodexa-files-<STAMP>.tar.gz` 時兩者都會解開 |
+| `tls.tar.gz` | §5 步驟 4，在步驟 F 改名為 `custodexa-tls-<STAMP>.tar.gz`；部署沒有 `tls/` 時檔案裡沒有它（`contents.tls` 為 `false`） |
+| `nginx-tls.conf.template` | §5 步驟 4，放回 `.env` 的 `TLS_NGINX_TEMPLATE` 指向的路徑；只在當時有設時存在（`contents.nginx_template`） |
+| `db.dump` | §5 步驟 5，在步驟 F 改名為 `custodexa-db-<STAMP>.dump` |
+| `db-ca.pem` | §5.3，外接資料庫時：`PGSSLROOTCERT` 指向的 CA 檔（`contents.db_ca`） |
+| `state.json` | §5.1 F，升級所做的備份裡才有（`contents.state`） |
+| `snapshot.txt` | 第 6 節：第 6 項的指紋，以及 `users`、`sessions` 的筆數 |
+| `release-MANIFEST.json`、`tool-MANIFEST.json`、`SHA256SUMS` | 只用於核對 |
+
+還原目標是 `product.version` 那個版本的安裝包部署；在另一台主機上，就先在那裡安裝這個版本。以 root **在目標的部署目錄**操作，因為第 5 節要在那裡執行 `docker compose`、寫入 `.env`、解開 `tls/`。備份檔與其 `.sha256` 放在哪裡都可以：`FILE` 請寫絕對路徑。
+
+下列每一段只在前一段成功時才會執行，結尾印出做到哪裡。**最後一段印出 `5.2: ready` 才能接著做第 5 節。**印出其他內容，表示核對、解密或改名失敗：就此停下，看那一行上方的錯誤，刪除 `BACKUP_DIR`（`rm -rf "${BACKUP_DIR:?}"`）後從第一段重來。
+
+```bash
+sudo -s
+cd /opt/custodexa                                     # 目標的部署目錄
+FILE=/path/to/custodexa-backup-1.16.0-YYYYMMDD-HHMMSS.tar   # 絕對路徑；加密時以 .tar.enc 結尾
+STAMP=YYYYMMDD-HHMMSS                                 # 檔名中的時間戳
+BACKUP_DIR="$(pwd)/backups/restore-${STAMP}"          # 放成員的新資料夾，絕對路徑
+CX_52=start
+
+# A. 副本完整：旁邊的校驗檔必須回報 OK
+# B. 只有 root 能開的新資料夾（已存在時 mkdir 會失敗）
+( cd "$(dirname "${FILE:?}")" && sha256sum -c "$(basename "${FILE:?}").sha256" ) \
+  && { [ -d backups ] || mkdir -m 700 backups; } \
+  && mkdir -m 700 "${BACKUP_DIR:?}" \
+  && CX_52=B
+echo "5.2: ${CX_52}"
+```
+
+C. 取出成員。未加密的檔案（`.tar`）：
+
+```bash
+[ "${CX_52}" = B ] && tar -xf "${FILE:?}" -C "${BACKUP_DIR:?}" && CX_52=C
+echo "5.2: ${CX_52}"
+```
+
+加密的檔案（`.tar.enc`）：用 §3.8「核對檔案與密語」中符合手上 openssl 的那道指令，把 `tar -tvf -` 換成 `tar -xf - -C "${BACKUP_DIR:?}"`。整條管線的結束碼會在清除密語之前先存下來，三個都是 0 才算成功。`openssl enc -help` 有列出 `-saltlen` 的 OpenSSL（3.2 起）：
+
+```bash
+if [ "${CX_52}" = B ]; then
+  IFS= read -r -s -p 'Passphrase: ' CX_PASS; echo
+  printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -xf - -C "${BACKUP_DIR:?}"
+  CX_RC="${PIPESTATUS[*]}"
+  unset CX_PASS
+  echo "exit codes (printf openssl tar): ${CX_RC}"
+  [ "${CX_RC}" = "0 0 0" ] && CX_52=C
+fi
+echo "5.2: ${CX_52}"
+```
+
+接著，不論哪一種：
+
+```bash
+# D. 每個成員都與做備份時寫下的校驗和相符
+# E. 這份備份是什麼：要還原到的版本、主金鑰模式與指紋、是否含錄影、tls/ 與代理範本、資料庫原本在哪裡
+# F. 改成第 5 節使用的檔名
+# G. 已安裝的版本就是備份的版本；載入它的映像參照給 docker compose 使用
+[ "${CX_52}" = C ] \
+  && ( cd "${BACKUP_DIR:?}" && sha256sum -c SHA256SUMS ) \
+  && grep -E '"(product\.version|created_at|kek\.provider|kek\.material_included|kek\.fingerprint|contents\.recordings|contents\.tls|contents\.nginx_template|source\.tls_nginx_template|db\.location)"' \
+       "${BACKUP_DIR:?}/backup-manifest.json" \
+  && ( cd "${BACKUP_DIR:?}" && mv db.dump "custodexa-db-${STAMP}.dump" \
+       && mv env.bak "custodexa-env-${STAMP}.bak" \
+       && { [ ! -e tls.tar.gz ] || mv tls.tar.gz "custodexa-tls-${STAMP}.tar.gz"; } ) \
+  && CX_VER="$(sed -n 's/^ *"product\.version": "\([^"]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json")" \
+  && echo "backup ${CX_VER}, installed $(tr -d '[:space:]' < current/VERSION)" \
+  && [ "$(tr -d '[:space:]' < current/VERSION)" = "${CX_VER:?}" ] \
+  && set -a && . ./current/images.env && set +a \
+  && CX_52=ready
+echo "5.2: ${CX_52}"
+```
+
+步驟 G 把 `current/images.env`（已安裝版本在安裝時記下的映像參照）載入這個 shell，和腳本每次呼叫 `docker compose` 前做的一樣；第 5 節是自己執行 `docker compose`，少了它可能找不到主機上已有的映像。印出的兩個版本不同時，先安裝備份的版本。
+
+接著做第 5 節之前：
+
+- **主金鑰**：`kek.provider` 為 `env` 時，金鑰會在 §5 步驟 2 隨 `.env` 回來。為 `ui` 或 `kms` 時，備份檔裡沒有它：請備妥解封材料或保管處憑證。兩種情形下，第 6 節第 6 項都會拿還原後的主金鑰與 `kek.fingerprint` 比對，它與 `snapshot.txt` 的 `fp.kek` 是同一個值。
+- **另一台主機**：備份裡的 `.env` 描述的是做出備份的那台主機。§5 步驟 2 做完、往下做之前，把描述主機的四個值改成這台的：`DATA_PATH`（步驟 2 的說明）、`TLS_DOMAIN`、`TLS_IP_SAN` 與 `PUBLIC_BASE_URL`。清單的 `source.data_path`、`source.tls_domain`、`source.tls_ip_san`、`source.public_base_url` 保存來源主機的值，可以拿來比對。備份裡有代理範本時，§5 步驟 4 會把它放到 `TLS_NGINX_TEMPLATE` 指向的位置；那個路徑不適合這台時一併改掉（`source.tls_nginx_template` 是來源主機的值）。
+- **新名稱或位址的憑證**：改這些值不會改到 §5 步驟 4 還原的憑證。只要 `tls/fullchain.pem` 與 `tls/privkey.pem` 都在，內建 TLS 代理就沿用它們。名稱或位址不同時，請在步驟 4 之後、步驟 6 之前備妥相符的憑證。`TLS_MODE=selfsigned` 時，刪除這兩個檔、保留 `tls/ca-private/` 與 `tls/ca-public/`：步驟 6 會以還原回來的 CA，依 `.env` 現在的值簽一張新的伺服器憑證，已信任這把 CA 的使用者端不必重新派發。`TLS_MODE=provided` 時，把符合新名稱與位址的憑證鏈與私鑰放進這兩個檔。由自己的入口終結 TLS 時，憑證由入口管理。
+- **外接資料庫**：步驟 E 印出 `"db.location": "external"` 時，第 5 節步驟 5 不適用；改由 §5.3 載入資料庫。
+- **之後**：`BACKUP_DIR` 裡有明文的資料庫、`.env` 與私鑰。第 6 節全部通過後請刪除它。
+
+### 5.3 載入外接資料庫部署的資料庫
+
+自 1.16.0 起，`restore` 會自行載入這類資料庫（第 5 節「外接資料庫部署的還原」）。下面的載入用於手動還原（第 5 節列出的情形），以及換到另一台資料庫伺服器或另一個資料庫。
+
+清單的 `db.location` 為 `external` 的備份檔，裝的是部署之外某台伺服器上的資料庫匯出檔（§3.8）。對它而言，第 5 節步驟 5（啟動並載入內建資料庫）改為下面的載入；然後接著做步驟 6。這個形態下步驟 1 只停止服務：它準備的 `postgres` 目錄用不到。
+
+載入之前，營運資料庫伺服器的人要先備妥：
+
+- **版本**：`db.server_major` 那個主版本的 PostgreSQL。匯出檔要以同一主版本的 `pg_restore` 載入，發行版中該版本的用戶端映像就有（下方第二段使用它）。
+- **資料庫**：一個名為 `DB_NAME` 的空資料庫，擁有者是 `DB_USER`，密碼是 `.env` 裡的那個，以 `db.encoding`、`db.collate` 與 `db.ctype` 的編碼、排序與字元類型建立。要保留被取代的那個資料庫（升級後退回時是新版的資料庫），請把它改名而不是刪除，並在第 6 節通過後再刪。
+- **角色**：下方第一段依 `db.extra_grant_roles_hex` 列出的角色，載入之前先建立。沒有它們時，`pg_restore` 會針對它們的授權回報錯誤並以結束碼 1 結束，那些權限也不會回來；後端本身只以 `DB_USER` 連線。匯出檔不需要其他角色、資料表空間或擴充套件：備份在執行之前就拒絕了這些情形（§3.8）。
+
+在部署這一側，第 5 節步驟 4 之後：
+
+- **另一台伺服器**：備份裡的 `.env` 寫的是來源的伺服器。資料庫要放到另一台時，在第 5 節步驟 2 之後立刻把 `.env` 的 `EXTERNAL_DB_HOST`、`EXTERNAL_DB_PORT`、`DB_SSLMODE` 與 `PGSSLROOTCERT` 改成適合它的值。清單的 `db.external_host`、`db.external_port` 與 `db.sslmode` 保存來源的值。
+- **CA 檔**：`.env` 的 `PGSSLROOTCERT` 指向某個檔案時，後端會在那個路徑讀它。位於 `/var/log/custodexa/audit` 或 `/var/lib/custodexa/recordings` 之下的路徑，在備份含它們時已隨第 5 節步驟 4 回來；位於 `/var/lib/custodexa/exports` 之下的不會，因為任何備份都不含 `exports`（§2）。檔案不在時，把 `BACKUP_DIR` 裡的 `db-ca.pem` 放到那裡（`DATA_PATH` 之下）。
+- **用戶端憑證**（`db.tls_client_cert` 為 `true`）：它的私鑰不在備份檔裡。把憑證與私鑰放回 `PGSSLCERT` 與 `PGSSLKEY` 指定的位置；要用它們載入時，把兩者都掛進下面的容器，並在 `CX_CONN` 加上 `sslcert=` 與 `sslkey=`。
+
+第一，備份裡的資料庫需要什麼：
+
+```bash
+# 備份裡的資料庫需要什麼（BACKUP_DIR 沿用 §5.2 設好的值）
+grep -E '"(db\.location|db\.server_version|db\.server_major|db\.name|db\.user|db\.encoding|db\.collate|db\.ctype|db\.external_host|db\.external_port|db\.sslmode|db\.tls_trust|db\.tls_verify|db\.tls_client_cert|contents\.db_ca|tool\.dump_image)"' \
+  "${BACKUP_DIR:?}/backup-manifest.json"
+# 另外持有權限的角色，每行一個名稱（沒有時不印出任何東西）
+for h in $(sed -n 's/^ *"db\.extra_grant_roles_hex": "\([0-9a-f ]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json"); do
+  printf '%b\n' "$(printf '%s' "$h" | sed 's/../\\x&/g')"
+done
+```
+
+接著載入，從部署目錄、在第 5 節的 shell 裡進行（`env_get`、`DB_USER`、`DB_NAME`、`STAMP` 與 `BACKUP_DIR` 沿用那裡設好的值）。它執行發行版中伺服器主版本的用戶端（這個形態的安裝已取得），並依 `.env` 以備份當時的方式連線：即 §3.8 的表，CA 檔用備份裡的 `db-ca.pem`。只有結束碼 0 才算數；其他結果都表示資料庫不完整，不要接著做步驟 6。
+
+```bash
+# 發行版中伺服器主版本的用戶端，依安裝或升級時記下的映像 ID
+CX_MAJOR="$(sed -n 's/^ *"db\.server_major": "\([0-9]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json")"
+CX_PGIMG="$(sed -n 's/^ *"current\.tool_image_ids": "\([^"]*\)".*/\1/p' state.json | tr ' ' '\n' | sed -n "s/^pgclient${CX_MAJOR:?}=//p")"
+echo "PostgreSQL ${CX_MAJOR} client: ${CX_PGIMG:?state.json 沒有記錄這個用戶端}"
+
+# 依 .env 連線，檢查伺服器的方式與後端相同（§3.8 的表）
+CX_PORT="$(env_get EXTERNAL_DB_PORT)"
+CX_MODE="$(env_get DB_SSLMODE)"; CX_MODE="${CX_MODE:-disable}"
+CX_ROOT="$(env_get PGSSLROOTCERT)"
+CX_TLS=""
+case "${CX_ROOT}" in
+  "")
+    case "${CX_MODE}" in
+      verify-full) CX_TLS="sslrootcert=system" ;;
+      verify-ca) CX_TLS="sslrootcert=/etc/ssl/certs/ca-certificates.crt" ;;
+    esac ;;
+  system) CX_MODE=verify-full CX_TLS="sslrootcert=system" ;;
+  *)
+    case "${CX_MODE}" in
+      require | verify-ca | verify-full) CX_TLS="sslrootcert=/backup/db-ca.pem" ;;
+    esac ;;
+esac
+CX_CONN="host=$(env_get EXTERNAL_DB_HOST) port=${CX_PORT:-5432} dbname=${DB_NAME:?} user=${DB_USER:?} sslmode=${CX_MODE} ${CX_TLS}"
+echo "${CX_CONN}"
+
+# 載入匯出檔；pg_restore 會詢問 DB_USER 的密碼
+docker run --rm -it --network host \
+  --mount "type=bind,src=$(cd "${BACKUP_DIR:?}" && pwd),dst=/backup,readonly" \
+  "${CX_PGIMG:?}" pg_restore --dbname="${CX_CONN}" "/backup/custodexa-db-${STAMP:?}.dump"
+echo "pg_restore exit code: $?"
+```
 
 ---
 
@@ -718,12 +1249,14 @@ set -a; . ./current/images.env; set +a
 
 **逐項確認，任一項失敗就不要把系統交回線上使用。**
 
+**以 `restore` 還原之後**（§5），這份清單有一部分腳本已經核對過：全部服務以記錄下來的映像運作（第 1 項）、後端已就緒並回報備份的版本（第 2 項）。第 6 項中，它比對過主金鑰識別與 `kek.fingerprint`，以及 `JWT_SECRET` 的指紋與 `snapshot.txt` 的 `fp.jwt`（有記錄時）。它也比對過匯入後的資料庫與備份：migration、`users`、`sessions`、`audit_logs` 的筆數，以及主金鑰識別。仍要人工完成的是：第 3 到 5 項、第 6 項中的匯出簽章金鑰與檢查點簽章金鑰，以及第 7 到 10 項。
+
 | # | 檢查 | 做法 | 通過判準 |
 |---|---|---|---|
-| 1 | 全部服務起來 | `docker compose ps` | 各服務為執行中，postgres 為 healthy |
+| 1 | 全部服務起來 | `docker compose ps` | 各服務為執行中，postgres 為 healthy（外接資料庫時沒有 postgres 服務） |
 | 2 | 後端健康檢查 | `docker compose exec backend wget -qO- http://localhost:8080/health` | 回應正常（backend 不對外開埠，須自容器內打） |
 | 3 | 啟動日誌無 fatal | `docker compose logs backend \| tail -50` | 無拒絕啟動訊息。**KEK 不符會在這裡明白說出來** |
-| 4 | 前端可達 | `curl -I http://localhost/` | 回應 200 |
+| 4 | 前端可達 | 內建 TLS 代理：`curl -skI https://localhost/`。由自己的入口終結 TLS：在這台執行 `curl -I http://localhost:${HTTP_PORT:-80}/`，再從入口的網址開一次 | 回應 200。內建代理的 `http://` 會回 301 並導向 HTTPS，這是正常的 |
 | 5 | 登入鏈路通 | 以既有管理員帳號登入 | 取得 token；能進入主控台 |
 | 6 | **金鑰清冊指紋比對** | 管理端「金鑰管理」頁 | env 側四項——`ENCRYPTION_KEY (KEK)`、`JWT_SECRET`、`匯出簽章鑰 (Ed25519)`、`檢查點簽章鑰 (Ed25519)`——的指紋**與備份前記錄的值相同** |
 | 7 | 加密欄位可解 | 開啟任一具憑證的資產、或觸發一次 LDAP 登入 | 不出現解密失敗 |

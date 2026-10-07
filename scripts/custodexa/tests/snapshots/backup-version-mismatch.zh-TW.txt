@@ -1,0 +1,6 @@
+==== --yes, current/MANIFEST.json is 1.13.1 ====
+[FAIL] 狀態檔記載已安裝 1.13.0，但 current/MANIFEST.json 是 1.13.1，
+       無法確定這份備份屬於哪個版本。沒有停止任何服務。
+       請先執行下列指令查看：
+  sudo /opt/custodexa/custodexa.sh status --lang zh-TW
+==== exit 3 ====

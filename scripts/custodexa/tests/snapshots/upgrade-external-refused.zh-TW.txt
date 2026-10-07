@@ -1,0 +1,15 @@
+[FAIL] 無法由腳本備份外接資料庫（外接資料庫是 PostgreSQL 15.8，這個版本沒有
+       同主版本的匯出工具），而這次是非互動執行（沒有終端機，或帶了 --yes），
+       無法改選自備備份。沒有做任何變更。請依序：
+  1. 排空稽核紀錄並停止服務：
+       sudo /opt/custodexa/custodexa.sh stop --yes
+  2. 確認服務已停止：
+       sudo /opt/custodexa/custodexa.sh status
+  3. 在停機之後開始你自己的備份，涵蓋外接資料庫、資料目錄、.env 與 tls/，
+     記下備份開始的時間。
+  4. 以下列旗標重跑升級：
+       sudo /opt/custodexa/custodexa.sh upgrade 1.13.2 --yes \
+         --backup-ref <快照名稱> --backup-time "YYYY-MM-DD HH:MM" \
+         --backup-restore <還原程序位置>
+
+  紀錄檔 /opt/custodexa/logs/upgrade-20260930-101502.log

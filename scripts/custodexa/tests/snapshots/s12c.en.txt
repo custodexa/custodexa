@@ -5,7 +5,7 @@
     - Switched to 1.13.2; the services started but the backend is
       not ready
     - The pre-upgrade backup is complete:
-      /opt/custodexa/backups/20260930-101502/
+      /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
     - The script does not roll back on its own
 
   Check the backend log for the reason first:

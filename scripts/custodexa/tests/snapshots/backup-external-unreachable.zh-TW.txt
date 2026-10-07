@@ -1,0 +1,8 @@
+[FAIL] 連不上外接資料庫 db.example.internal:5432（使用 .env 的 DB_USER、
+       DB_NAME、DB_SSLMODE）。原因記在紀錄檔。沒有停止任何服務。
+  可依序檢查：
+    1. 這台主機能否連到該位址與連接埠（名稱解析、防火牆）
+    2. 後端目前能否連上資料庫：sudo /opt/custodexa/custodexa.sh status --lang zh-TW
+    3. DB_SSLMODE 與伺服器的 TLS 設定是否相符
+    4. DB_USER 的密碼是否在資料庫端被改過
+  紀錄檔 /opt/custodexa/logs/backup-20260930-101502.log

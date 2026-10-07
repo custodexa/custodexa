@@ -23,6 +23,8 @@ MSG_usage_missing_value='オプション %s には値が必要です。'
 MSG_usage_images_from_value='不明なイメージ取得元「%s」です。auto または source を指定してください。'
 MSG_usage_images_from_command='--images-from は install または対象を指定した upgrade だけで使えます。'
 MSG_usage_images_from_conflict='--images-from source と --images は併用できません。'
+MSG_usage_backup_only='オプション %s は backup 専用です。
+custodexa.sh --help を参照してください。'
 MSG_legacy_refused='これは旧 git clone 配置です。このディレクトリでは custodexa.sh による
 インストールやアップグレードはできません。
 配置ファイルとサービスは変更していません。
@@ -40,6 +42,12 @@ MSG_run_recover_first='先に前回の中断に対処してください。状態
 MSG_run_recover_install='先に前回の install を完了してください。再実行しても安全です：'
 MSG_run_load_rerun='load はイメージの読み込みと照合だけを行うため、再実行しても
 安全です。'
+MSG_run_backup_unfinished='前回のバックアップ（%s）は完了していません。一時フォルダー
+%s は削除してかまいません。'
+MSG_run_backup_unfinished_nodir='前回のバックアップ（%s）は完了していません。'
+MSG_run_backup_upgrade='前回のバックアップ（%s）は完了していません。アップグレードの前に
+完了したバックアップが必要です。サービスが停止したままなら起動し、
+もう一度バックアップして、完了してからアップグレードしてください：'
 MSG_run_signal='ステップ %s で中断されました。元に戻す処理は行っていません。
 続けるには次を実行してください：'
 MSG_confirm_needs_yes='この手順には確認が必要ですが、確認を求める端末がありません。
@@ -58,10 +66,18 @@ MSG_help_cmd_upgrade='  upgrade                新しいバージョンの有無
   upgrade <パッケージ>   ダウンロード済みのパッケージで更新（オフライン可）'
 MSG_help_cmd_status='  status                 バージョン、サービス、バックアップ、前回の更新の
                          状態を表示（何も変更しない）'
-MSG_help_cmd_backup='  backup                 完全バックアップ（サービスを十数分停止する）'
+MSG_help_cmd_backup='  backup                 単一ファイルにバックアップ（サービスを停止する。
+                         ファイルは他のホストへ移せる）'
 MSG_help_cmd_load='  load <バンドル>        オフラインイメージバンドルを読み込む（起動しない）'
 MSG_help_options='オプション'
 MSG_help_opt_yes='  --yes                  確認を求めない（自動化用）'
+MSG_help_opt_with_recordings='  --with-recordings      （backup）録画もバックアップファイルに含める
+                         （既定では含めない）'
+MSG_help_opt_passphrase_file='  --passphrase-file <ファイル>
+                         （backup）ファイルの 1 行目をパスフレーズとして
+                         バックアップファイルを暗号化する。ファイルは 0600 で、
+                         所有者があなたか root であること。パスフレーズを
+                         コマンドラインに直接書かないこと'
 MSG_help_opt_backup_ref='  --backup-ref <識別子>  （upgrade）自分でバックアップ済み。スナップショット
                          名を指定すると、スクリプトはバックアップしない'
 MSG_help_opt_backup_time='  --backup-time <時刻>   （upgrade）--backup-ref と併用：スナップショットの
@@ -76,6 +92,10 @@ MSG_help_opt_no_color='  --no-color             色を使わない'
 MSG_help_opt_version='  --version              スクリプトのバージョンを表示'
 MSG_help_opt_help='  -h, --help             このヘルプ。custodexa.sh <サブコマンド> --help は
                          そのサブコマンドだけを表示'
+# shellcheck disable=SC2016 # the commands as they are typed
+MSG_help_passphrase_file_make='  パスフレーズファイルの作り方（シェルの履歴に残りません）：
+    sudo install -m 600 -o root /dev/null /root/cx-pass
+    sudo bash -c '"'"'IFS= read -r -s p && printf "%%s\\n" "$p" > /root/cx-pass'"'"''
 MSG_help_footer='配置フォルダーはこのスクリプトがあるフォルダーです。別の場所を使うには、
 環境変数 CUSTODEXA_HOME を設定してください。実行ごとの記録は
 <配置フォルダー>/logs/ に残ります。詳しい手順は「デプロイとアップグレードの
@@ -399,6 +419,7 @@ MSG_status_backup_upgrade='アップグレード前の自動バックアップ'
 MSG_status_backup_script='custodexa.sh backup'
 MSG_status_backup_external='自前のバックアップ'
 MSG_status_backup_none='バックアップの記録がありません'
+MSG_status_backup_encrypted='%s（暗号化済み）'
 MSG_status_days_0='今日'
 MSG_status_days_1='1 日前'
 MSG_status_days_n='%s 日前'
@@ -419,19 +440,12 @@ Docker 内のイメージだけです。再実行すれば完了します：'
 
 # ---- backup (used by upgrade and rollback) ----
 MSG_bk_title='バックアップのプレビュー（まだ何も変更していません）'
-MSG_bk_pause='バックエンド、接続サービス、Web 画面を約 %s 分間停止します
-（データベースは動作したまま）。バックアップが終わると自動で起動します。'
-MSG_bk_warn_seal='マスターキーはブラウザーで入力する方式です。バックアップ後はシステムが
-封印状態に戻り、封印解除ページでマスターキーを入力するまで使えません。'
-MSG_bk_size='推定 %s、バックアップ先の空き %s'
 MSG_bk_confirm='バックアップを開始しますか？[y/N]'
 MSG_bk_step_stop='サービスを停止（データベースは動作したまま）'
 MSG_bk_step_db='データベース'
 MSG_bk_step_files='録画と監査ファイル'
 MSG_bk_step_conf='設定ファイルと証明書'
-MSG_bk_step_start='サービスを起動'
 MSG_bk_step_verify='バックアップを読み取れるか確認'
-MSG_bk_done='バックアップ完了：%s（%s）'
 MSG_bk_contents='内容：%s'
 MSG_bk_item_sep='、'
 MSG_bk_item_db='データベース'
@@ -440,33 +454,249 @@ MSG_bk_item_audit='監査ファイル'
 MSG_bk_item_env='設定ファイル .env'
 MSG_bk_item_env_kek='設定ファイル .env（マスターキーを含む）'
 MSG_bk_item_tls='証明書 tls/'
-MSG_bk_warn_keep='このバックアップは機密データを含み、いまは .env と同じホストにあります。
-暗号化して別の場所に保管し、マスターキーの材料とは分けてください。'
-MSG_bk_warn_sealed='システムは封印されています。
-%s で封印を解除してください。'
+MSG_pb_item_tpl='プロキシテンプレート %s'
 MSG_bk_log='ログファイル %s'
-MSG_bk_warn_snapshot='鍵の指紋 4 つのうち取得できないものがありました。
-このバックアップでは鍵を自動照合できません。
-アップグレード後は鍵一覧ページで照合してください。
-理由は snapshot.txt に記録しています。'
-MSG_bk_external_db='この配置は外部データベースを使っているため、このスクリプトは
-データベースをバックアップしません。各自の手順でバックアップし、
-データフォルダー、.env、tls/ も一緒に保管してください。'
 MSG_bk_db_unreachable='データベースのサイズを取得できず、必要な容量を見積もれません。
 データベースのコンテナーが動作しているか確認してください。
 サービスは停止していません。'
-MSG_bk_no_space='バックアップ先の空き容量が足りません：約 %s 必要ですが、
-%s の空きは %s です。サービスは停止していません。'
 MSG_bk_dir_failed='%s にバックアップフォルダーを作成できません。
 サービスは停止していません。'
 MSG_bk_failed='バックアップは完了していません。途中までのファイルは %s にあり、
 そこにある INCOMPLETE が使えないバックアップであることを示します。'
 MSG_bk_start_again='サービスが停止したままの可能性があります。サービスを起動するには：'
 
+# ---- portable backup (custodexa.sh backup) ----
+MSG_pb_step_audit='監査ファイル'
+MSG_pb_step_start='サービスを起動して準備完了を待つ'
+MSG_pb_step_verify='各部分を読み取れるか確認'
+MSG_pb_step_pack='単一ファイルにまとめ、読み戻して確認'
+MSG_pb_done='バックアップ完了（%s）'
+MSG_pb_sidecar='チェックサムファイル（同じフォルダー）：
+%s'
+MSG_pb_summary='バージョン %s、%s、マスターキー：%s'
+MSG_pb_db_bundled='内蔵データベース'
+MSG_pb_mode_env='設定ファイル'
+MSG_pb_mode_ui='ブラウザーで入力'
+MSG_pb_mode_kms='鍵管理サービス（%s）'
+MSG_pb_mode_hsm='ハードウェアセキュリティモジュール（HSM）'
+MSG_pb_kek_in='マスターキーはバックアップファイル内の .env にあり、
+復元時に一緒に戻ります（指紋 %s）。'
+MSG_pb_kek_out='マスターキーはバックアップファイルに含まれません。
+指紋：%s
+復元後、封印解除の材料を持つ人が封印解除ページで入力します。
+指紋が一致する必要があります。'
+MSG_pb_kek_kms='マスターキーは鍵管理サービス（%s）が保管し、バックアップファイルには
+含まれません。鍵 ID：
+%s
+復元後、封印解除ページで保管先の認証情報を改めて入力してください。
+鍵 ID が一致する必要があり、新しいホストからもサービスに
+接続できる必要があります。'
+MSG_pb_kek_in_nofp='マスターキーはバックアップファイル内の .env にあり、
+復元時に一緒に戻ります。'
+MSG_pb_kek_out_nofp='マスターキーはバックアップファイルに含まれません。
+復元後、封印解除の材料を持つ人が封印解除ページで入力します。
+指紋が一致する必要があります。'
+MSG_pb_kek_kms_nofp='マスターキーは鍵管理サービス（%s）が保管し、バックアップファイルには
+含まれません。
+復元後、封印解除ページで保管先の認証情報を改めて入力してください。
+鍵 ID が一致する必要があり、新しいホストからもサービスに
+接続できる必要があります。'
+MSG_pb_warn_kek_fp='マスターキーの指紋を取得できなかったため、復元時にマスターキーを
+自動照合できません。理由はバックアップファイル内の snapshot.txt に
+記録しています。'
+MSG_pb_warn_fps='鍵の指紋 4 つのうち取得できないものがありました（マスターキーの
+指紋は取得済み）。復元後、ほかの鍵は鍵一覧ページで照合してください。
+理由はバックアップファイル内の snapshot.txt に記録しています。'
+MSG_pb_warn_rec='録画はバックアップファイルに含まれていません。録画は
+%s にあります。別の方法で保管するか、
+録画を含めてもう一度バックアップしてください。'
+MSG_pb_warn_plain='このバックアップファイルは暗号化されておらず、機密データ（データベースの
+パスワード、サインイン用トークンの署名鍵、証明書の秘密鍵）を含み、
+いまは .env と同じホストにあります。アクセスを制限した別の場所に
+保管してください。バックアップ時にパスフレーズで暗号化することも
+できます。'
+MSG_pb_warn_plain_kek='このバックアップファイルは暗号化されておらず、マスターキーと
+ほかの機密データ（データベースのパスワード、サインイン用トークンの
+署名鍵、証明書の秘密鍵）を含みます。このファイルがあれば保存済みの
+認証情報をすべて復号できます。アクセスを制限した別の場所に保管して
+ください。バックアップ時にパスフレーズで暗号化することもできます。'
+MSG_pb_svc_back='サービスは復旧しました。'
+MSG_pb_svc_ui='サービスは起動し、封印解除待ちです：%s で
+マスターキーを入力してください。'
+MSG_pb_svc_kms='サービスは起動し、封印解除待ちです。
+ローカル管理者アカウントで次のページを開いてください：
+%s
+保管先の情報を確認してから認証情報を入力してください。'
+MSG_pb_svc_timeout='バックエンドが %s 秒以内に準備完了になりませんでした。利用者はまだ
+接続できない可能性があります。バックアップは続行します。状態を確認し、
+必要ならもう一度起動してください：'
+MSG_pb_failed='バックアップは完了しておらず、バックアップファイルは作成されていません。
+途中までのデータは次の場所にあります：
+%s
+復元には使えず、機密データを平文で含みます。
+原因を確認したら削除してください。'
+MSG_pb_valid='バックアップファイルは有効です：'
+MSG_pb_after_both='ただし後続の処理が完了していません：state.json は更新されておらず
+（status は前回のバックアップを表示します）、一時フォルダー
+%s は削除されていません。
+ディスク容量と権限を確認してから一時フォルダーを手動で削除してください。
+次回のバックアップで state.json が更新されます。'
+MSG_pb_after_state='ただし後続の処理が完了していません：state.json は更新されていません
+（status は前回のバックアップを表示します）。ディスク容量と権限を
+確認してください。次回のバックアップで state.json が更新されます。'
+MSG_pb_after_partial='ただし後続の処理が完了していません：一時フォルダー
+%s は削除されていません。
+ディスク容量と権限を確認してから、手動で削除してください。'
+MSG_pb_sig_valid='バックアップは最後の処理中に中断されましたが、バックアップファイルは
+完成しており有効です：'
+MSG_pb_sig_both='state.json は更新されておらず（status は前回のバックアップを表示）、
+一時フォルダー %s は
+削除されていません。手動で削除してください。'
+MSG_pb_sig_partial='一時フォルダー %s は
+削除されていません。手動で削除してください。'
+MSG_pb_sig_timeout='バックエンドが %s 秒以内に準備完了になりませんでした。利用者はまだ
+接続できない可能性があります。状態を確認し、
+必要ならもう一度起動してください：'
+MSG_pb_version_mismatch='state.json のインストール済みバージョンは %s ですが、
+current/MANIFEST.json は %s です。
+このバックアップのバージョンを判断できません。
+サービスは停止していません。次のコマンドで確認してください：'
+MSG_pb_tool_version='このスクリプトのリリースマニフェスト %s は %s 用ですが、
+スクリプトは %s です。バックアップを作成したツールを記録できません。
+サービスは停止していません。'
+MSG_pb_kek_material='.env の KEK_PROVIDER は %s ですが、ENCRYPTION_KEY に値があります。
+矛盾した設定で、バックエンドも次回の起動時に拒否します。バックアップ
+するとマスターキーとして持ち出すことになるため、実行しません。
+サービスは停止していません。どちらの方式を使うか決めて、
+もう一方を消してください。'
+MSG_pb_kek_none='.env に KEK_PROVIDER も ENCRYPTION_KEY もないため、マスターキーの
+方式を判断できません。バックエンドは次回の起動時に拒否します。
+サービスは停止していません。'
+MSG_pb_kek_env_empty='.env の KEK_PROVIDER は env ですが、ENCRYPTION_KEY が空です。
+バックエンドは次回の起動時に拒否します。サービスは停止していません。'
+MSG_pb_kek_unknown='.env の KEK_PROVIDER の値を認識できません（env、ui、kms、hsm のみ、
+小文字で指定）。サービスは停止していません。'
+MSG_pb_tpl_missing='.env の TLS_NGINX_TEMPLATE の指定先：
+%s
+読み取れるファイルではありません。バックアップにはこのファイルも含める
+ため、実行しません。サービスは停止していません。パスを直すか、この行を
+消して同梱のテンプレートを使うようにしてから、もう一度実行してください。'
+MSG_pb_tpl_chars='.env の TLS_NGINX_TEMPLATE は %s ですが、
+このパスにはバックアップファイルに記録できない文字（二重引用符、
+バックスラッシュ、タブ、日本語などの非 ASCII 文字）が含まれています。
+復元時にテンプレートを元の場所へ戻すためにパスを記録するので、
+実行しません。サービスは停止していません。これらの文字を含まないパスに
+テンプレートを置くか、この行を消して同梱のテンプレートを使うように
+してから、もう一度実行してください。'
+MSG_pb_ts_taken='%s にはこの時刻（%s）のバックアップファイルか
+一時フォルダーがすでにあります。サービスは停止していません。
+数秒後にもう一度実行してください。'
+MSG_pb_need='必要な空き %s（バックアップファイル約 %s、
+組み立て中の一時領域と 1 GB の余裕を含む）。
+バックアップ先の空き %s'
+MSG_pb_no_space='バックアップ先の空き容量が足りません：%s 必要です（組み立て中の
+一時領域と 1 GB の余裕を含む）が、%s の空きは %s です。
+サービスは停止していません。'
+MSG_pb_no_space_hint='古いバックアップファイルを別の場所へ移してからここで削除するか、
+（録画を含めた場合は）録画を含めずにもう一度実行してください。'
+MSG_pb_no_space_ls='現在のバックアップファイル：%s'
+MSG_pb_sig_failed='バックアップはステップ %s で中断され、バックアップファイルは作成されて
+いません。起動したツールのプロセスは停止しました。途中までのデータは
+%s にあります。
+復元には使えず、機密データを平文で含みます。削除してください。'
+MSG_pb_sig_again='もう一度バックアップするには、再実行してください：'
+MSG_pb_sizes='データベース %s、監査ファイル %s、録画 %s。 バックアップ先の空き %s'
+MSG_pb_rec_q='録画をバックアップファイルに含めますか？'
+MSG_pb_rec_no='含めない（既定）：ファイル約 %s、サービス停止 約 %s'
+MSG_pb_rec_yes='含める：ファイル約 %s、サービス停止 約 %s'
+MSG_pb_rec_short='必要な空き：%s。容量不足のため、この選択肢では実行できません'
+MSG_pb_rec_keep='含めない場合は、録画フォルダーを別の方法で保管してください。'
+MSG_pb_choose='[1-2] を選んでください。Enter で既定を使います：'
+MSG_pb_enc_q='バックアップファイルをパスフレーズで暗号化しますか？'
+MSG_pb_enc_why='暗号化しないファイルにはデータベースのパスワード、証明書の秘密鍵などの
+機密データが含まれ、ファイルを手にした人ならだれでも読めます。'
+MSG_pb_enc_why_env='暗号化しないファイルにはデータベースのパスワード、マスターキー、
+証明書の秘密鍵などの機密データが含まれ、ファイルを手にした人なら
+だれでも読めます。'
+MSG_pb_enc_no='暗号化しない（既定）：ファイルはそのまま tar で開けます'
+MSG_pb_enc_yes='暗号化する：復元には同じパスフレーズが必要です。
+パスフレーズを失うと、スクリプトでも開発者でも
+このバックアップから復元することはできません。'
+MSG_pb_pass_rules='パスフレーズ：12～256 文字。半角の英字、数字、空白、半角記号のみ
+使えます。空白もパスフレーズの一部として数えます。'
+MSG_pb_pass_prompt='パスフレーズ  > '
+MSG_pb_pass_again='もう一度入力  > '
+MSG_pb_pass_match='2 回の入力は一致しました'
+MSG_pb_tries_n='あと %s 回'
+MSG_pb_tries_1='あと 1 回'
+MSG_pb_pass_differ='2 回の入力が一致しません。もう一度入力してください（%s）。'
+MSG_pb_pass_short='パスフレーズは 12 文字以上必要です。もう一度入力してください（%s）。'
+MSG_pb_pass_chars='パスフレーズに使えない文字（日本語や全角記号など）が含まれています。
+もう一度入力してください（%s）。'
+MSG_pb_pass_long='パスフレーズは 256 文字以内にしてください。
+もう一度入力してください（%s）。'
+MSG_pb_pass_cancel='3 回試してもパスフレーズを設定できなかったため、バックアップを
+取り消しました。何も変更していません。'
+MSG_pb_rec_line_no='録画：含めない'
+MSG_pb_rec_line_yes='録画：含める'
+MSG_pb_rec_line_hint='録画：含めない（含めるには --with-recordings を付ける）'
+MSG_pb_enc_line_no='暗号化：しない'
+MSG_pb_enc_line_yes='暗号化：パスフレーズで暗号化（AES-256）'
+MSG_pb_enc_line_hint='暗号化：しない（暗号化するには --passphrase-file <ファイル> を付ける）'
+MSG_pb_enc_line_file='暗号化：パスフレーズファイル %s で暗号化'
+MSG_pb_pause='バックエンド、接続サービス、Web 画面を約 %s停止します（データベースは
+動作したまま）。データを取り終えると自動で起動して準備完了を待ち、
+その後さらに約 %sかけてファイルをまとめて確認します。'
+MSG_pb_warn_seal_ui='マスターキーはブラウザーで入力する方式です。再起動後はシステムが封印
+状態に戻り、だれかが封印解除ページでマスターキーを入力するまで利用者は
+接続できません。'
+MSG_pb_warn_seal_kms='マスターキーは鍵管理サービスが保管しています。再起動後はシステムが
+封印状態に戻り、だれかが封印解除ページで保管先の認証情報を改めて入力
+するまで利用者は接続できません。'
+MSG_pb_warn_seal_hsm='マスターキーはハードウェアセキュリティモジュールが保管しています。
+再起動後はシステムが封印状態に戻り、だれかが封印解除ページで封印を
+解除するまで利用者は接続できません。'
+MSG_pb_dur_m='%s 分'
+MSG_pb_dur_m1='1 分'
+MSG_pb_dur_h='%s 時間'
+MSG_pb_dur_h1='1 時間'
+MSG_pb_dur_more_m='%s 分'
+MSG_pb_dur_more_m1='1 分'
+MSG_pb_dur_more_h='%s'
+MSG_pb_step_pack_enc='単一ファイルにまとめて暗号化し、読み戻して確認'
+MSG_pb_done_enc='バックアップ完了（%s、暗号化済み）'
+MSG_pb_warn_pass='復元には同じパスフレーズが必要です。失うと復元できません。
+パスフレーズはバックアップファイルとは別に保管してください。'
+MSG_pb_warn_enc_host='このファイルはいま .env と同じホストにあります。
+別の場所に保管してください。'
+MSG_pb_enc_scheme='暗号化方式：AES-256-CBC。鍵はパスフレーズから
+PBKDF2-SHA256（60 万回）で導出'
+MSG_pb_no_openssl='このホストには暗号化に使う openssl イメージがありません
+（インストールまたはアップグレードのときに取得されます）。
+サービスは停止していません。このリリース（%s）のオフライン
+イメージバンドルを読み込むか、暗号化しない設定でやり直してください。
+バンドルのファイル名は %s のような形で、
+インストールパッケージと同じリリースページにあります：'
+MSG_pb_pf_read='パスフレーズファイル %s を読み取れません（存在しない、通常の
+ファイルではない、シンボリックリンクである、または読み取り権限が
+ない）。サービスは停止していません。'
+MSG_pb_pf_perm='パスフレーズファイル：%s
+次のいずれかに該当します：
+- ほかのアカウントが読み取りまたは書き込み可能（権限 %s）
+- 所有者があなたでも root でもない
+- 追加のアクセス制御リストが設定されている
+サービスは停止していません。
+修正してからもう一度実行してください：'
+MSG_pb_pf_line='パスフレーズファイル %s の 1 行目が規則に合いません：12～256 文字で、
+半角の英字、数字、空白、半角記号のみ使えます。
+サービスは停止していません。'
+
 # ---- own backup (used by upgrade and rollback) ----
 MSG_br_title='アップグレード前のバックアップ'
 MSG_br_opt1='[1] スクリプトで完全バックアップを取る（推奨）'
 MSG_br_opt1_detail='データベース、録画、監査ファイル、設定ファイル、証明書。
+推定 %s、約 %s 分'
+MSG_br_opt1_detail_notls='データベース、録画、監査ファイル、設定ファイル。
 推定 %s、約 %s 分'
 MSG_br_opt2='[2] 自分のバックアップを使う'
 MSG_br_opt2_detail='例：仮想マシンのスナップショット、ストレージのスナップショット'
@@ -477,6 +707,10 @@ MSG_br_times='監査記録は %s にすべて書き込み済みを確認し、
 いまスナップショットを取ってください。停止後に開始し、データフォルダー、
 .env、証明書フォルダーが同じ復元可能なバックアップに含まれることを
 確認してください。'
+MSG_br_times_notls='監査記録は %s にすべて書き込み済みを確認し、
+サービスは %s に停止しました。
+いまスナップショットを取ってください。停止後に開始し、データフォルダーと
+.env が同じ復元可能なバックアップに含まれることを確認してください。'
 MSG_br_must='スナップショットに含めるもの'
 MSG_br_item_data='データフォルダー  %s（データベース、録画、監査ファイル）'
 MSG_br_item_env='設定ファイル      %s'
@@ -599,9 +833,11 @@ MSG_up_will_1='  1. 監査記録がすべてデータベースに書き込まれ
      サービスを停止します（データベースは動作したまま）'
 MSG_up_will_2='  2. 完全バックアップ：データベース、録画、監査ファイル、設定、
      証明書。見込み %s、バックアップ先の空き %s'
-MSG_up_will_2_external='  2. データベースはこのデプロイの外にあるため、スクリプトは
-     バックアップしません。停止後、停止より後に取った自前の
-     バックアップを確認していただきます'
+MSG_up_will_2_ref='  2. --backup-ref で指定した自前のバックアップを使います。
+     スクリプトは今回バックアップを作りません'
+MSG_up_will_2_own='  2. 今回は外部データベースをスクリプトでバックアップできません
+     （理由は下記）。停止後、停止より後に取った自前のバックアップを
+     確認していただきます'
 MSG_up_will_3='  3. %s に切り替えて起動します'
 MSG_up_will_4='  4. 確認：バージョン、元と同じデータか、鍵が変わっていないか'
 MSG_up_know='知っておくこと'
@@ -695,8 +931,8 @@ MSG_up_step_images='新バージョンのイメージの取得と検証'
 MSG_up_step_confirmed='開始を確認済み'
 MSG_up_step_backup='バックアップ'
 MSG_up_bk_snap='アップグレード前の件数と鍵のフィンガープリントを記録'
-MSG_up_bk_db='データベース   %s  %s'
-MSG_up_bk_files='録画と監査ファイル  %s  %s'
+MSG_up_bk_db='データベース        %s'
+MSG_up_bk_files='録画と監査ファイル  %s'
 MSG_up_unseal_after='マスターキーはブラウザで入力する方式のため、サービス再開後に
 もう一度封印解除が必要です。'
 MSG_up_step_switch='%s に切り替え'
@@ -819,7 +1055,7 @@ MSG_menu_install='インストール'
 MSG_menu_load_first='オフラインイメージバンドルを読み込む（ネット接続がない場合は先に）'
 MSG_menu_status='状態を表示'
 MSG_menu_upgrade='アップグレード'
-MSG_menu_backup='バックアップ（サービスを十数分停止する）'
+MSG_menu_backup='単一ファイルにバックアップ（他のホストへ移せる。サービスを停止する）'
 MSG_menu_load='オフラインイメージバンドルを読み込む'
 MSG_menu_help='ヘルプ'
 MSG_menu_quit='終了'
@@ -898,3 +1134,1660 @@ MSG_svc_not_installed='未インストールのため、サービスを操作で
 MSG_svc_resume_hint='サービスの状態が一部だけ変更された可能性があります。
 状態を確認し、start で全サービスを復旧してください：'
 MSG_svc_pending_run='前回の %s が完了していません。先に復旧コマンドに従ってください。'
+
+# The backup of an external database (lib/dbext.sh, lib/backup_external.sh).
+MSG_pb_summary_ext='バージョン %s
+外部データベース %s（PostgreSQL %s）
+マスターキー：%s'
+MSG_pb_ext_tool='エクスポートツール：PostgreSQL %s クライアント（同梱・確認済み）'
+MSG_pb_ext_conn='接続：%s、%s'
+MSG_pb_ext_mode_system='verify-full（PGSSLROOTCERT=system による。バックエンドと同じ）'
+MSG_pb_ext_verify_none_none='サーバー証明書を検証しない'
+MSG_pb_ext_verify_none_file='サーバー証明書を検証しない（CA ファイルはバックアップに含める）'
+MSG_pb_ext_verify_ca_system='システムが信頼する認証局でサーバー証明書を検証、ホスト名は照合しない'
+MSG_pb_ext_verify_ca_file='CA ファイルでサーバー証明書を検証、ホスト名は照合しない
+CA ファイルはバックアップに含める'
+MSG_pb_ext_verify_full_system='システムが信頼する認証局でサーバーを検証'
+MSG_pb_ext_verify_full_file='CA ファイルでサーバーを検証（CA はバックアップに含める）'
+MSG_pb_ext_standby='バックアップ中は待機ホストにこのデータベースを引き継がせないでください。
+バックアップの内容が不整合になるおそれがあります。'
+MSG_pb_pause_ext='バックエンド、接続サービス、Web 画面を
+約 %s停止します（外部データベースには影響しません）。
+データを取り終えると自動で起動し、準備完了を待ちます。
+その後、さらに約 %sかけてファイルをまとめて確認します。'
+MSG_pb_step_stop_ext='サービスを停止（外部データベースには影響しない）'
+MSG_pb_ext_and='、'
+MSG_pb_ext_no_tool='外部データベースは PostgreSQL %s です。
+このリリースのエクスポートツールは %s のみです。
+サーバーと同じメジャーバージョンのツールしか使いません。
+何も停止していません。
+各自のデータベースのバックアップ手順を使ってください。
+アップグレードでは自前のバックアップ
+（--backup-ref）を使えます。'
+MSG_pb_ext_unreachable='外部データベース %s に接続できません。
+.env の DB_USER、DB_NAME、DB_SSLMODE を使用しています。
+原因はログファイルにあります。何も停止していません。'
+MSG_pb_ext_unreachable_hint='次の順に確認してください：
+  1. このホストからそのアドレスとポートに届くか
+     （名前解決、ファイアウォール）
+  2. バックエンドが今データベースに接続できているか：
+     %s
+  3. DB_SSLMODE がサーバーの TLS 設定と合っているか
+  4. DB_USER のパスワードがデータベース側で変更されていないか'
+MSG_pb_ext_no_image='このホストには外部データベース用のエクスポートツールのイメージ
+（PostgreSQL 16／17／18 クライアント。インストールかアップグレードで
+取得するもの）がありません。何も停止していません。このリリース（%s）
+のオフラインイメージバンドルを読み込んでください：'
+MSG_pb_ext_unsupported='外部データベースに、このバックアップが対応しない設定があります。新しい
+データベースサーバーではそのまま再構築できません：
+%s
+何も停止していません。各自のデータベースのバックアップ手順を使うか、
+先に上の項目を変更してください。'
+MSG_pb_ext_dep_ts='カスタムテーブルスペース：%s（%s 個のオブジェクト）'
+MSG_pb_ext_dep_owner='%s 以外の所有者：%s（%s 個のオブジェクト）'
+MSG_pb_ext_dep_ext='拡張機能：%s'
+MSG_pb_ext_dep_ca='CA ファイルがスクリプトから見つからない場所にある：
+PGSSLROOTCERT=%s'
+MSG_pb_ext_dep_cert='クライアント証明書がスクリプトから見つからない場所にある：
+PGSSLCERT=%s'
+MSG_pb_ext_dep_keypath='クライアント秘密鍵がスクリプトから見つからない場所にある：
+PGSSLKEY=%s'
+MSG_pb_ext_dep_key='クライアント秘密鍵 PGSSLKEY がバックアップ対象の監査フォルダーにある'
+MSG_pb_ext_dep_key_rec='クライアント秘密鍵 PGSSLKEY がバックアップ対象の録画フォルダーにある'
+MSG_pb_ext_dep_sysca='DB_SSLMODE=verify-ca ですが、エクスポートツールに
+システムの CA ファイルがなく、同じ方法でサーバーを
+検証できない'
+MSG_pb_ext_roles='外部データベースに、ほかのロールへ付与された権限があります：
+%s
+新しいデータベースサーバーでは、先にこれらのロールを
+作成しないと、復元後の権限が変わります。'
+
+# ---- upgrade of an external database, and step 7 as one backup file ----
+MSG_up_bk_file='バックアップファイル
+%s  %s'
+MSG_up_bk_unrecorded='バックアップファイルは完成しました：
+%s
+ただし state.json を更新できませんでした。
+アップグレードは止まり、サービスは停止したままです。
+バージョンも切り替えていません。'
+MSG_st_gone_unchecked='旧バージョンの停止を確認（サービスは停止済み。外部
+データベースの接続数はスクリプトから数えられません。
+待機ホストなど他のホストのバックエンドが
+接続していないことを確認してください）'
+MSG_up_no_space_hint='古いバックアップファイルを別の場所へ移してから、
+ここで削除してください。'
+MSG_up_ext_major_sep='／'
+MSG_up_ext_own_version='今回は外部データベースをスクリプトでバックアップできません。
+外部データベースは PostgreSQL %s で、このリリースには同じメジャー
+バージョンのエクスポートツールがありません。手順 7 では自分の
+バックアップしか使えません。'
+MSG_up_ext_own_image='今回は外部データベースをスクリプトでバックアップできません。
+エクスポートツールのイメージ（PostgreSQL %s クライアント）を取得
+できませんでした（理由はログファイルにあります）。手順 7 では自分の
+バックアップしか使えません。'
+MSG_up_ext_own_connect='今回は外部データベースをスクリプトでバックアップできません。
+外部データベースに接続できませんでした：
+%s
+理由はログファイルにあります。
+手順 7 では自分のバックアップしか使えません。'
+MSG_up_ext_own_unsupported='今回は外部データベースをスクリプトでバックアップできないため、
+手順 7 では自分のバックアップしか使えません。外部データベースに、
+このバックアップが対応していない設定があります：'
+MSG_up_ext_ni_version='スクリプトで外部データベースをバックアップできません（外部データベースは
+PostgreSQL %s で、このリリースには同じメジャーバージョンの
+エクスポートツールがありません）。さらに今回は非対話の実行（端末なし、
+または --yes 指定）のため、自分のバックアップを選べません。何も変更して
+いません。次の順に進めてください：'
+MSG_up_ext_ni_image='スクリプトで外部データベースをバックアップできません。
+エクスポートツール（PostgreSQL %s クライアント）の
+イメージを取得できませんでした。理由はログファイルにあります。
+今回は非対話の実行（端末なし、または --yes 指定）のため、
+この実行中に自分のバックアップへ切り替えることはできません。
+何も変更していません。次の順に進めてください：'
+MSG_up_ext_ni_connect='スクリプトで外部データベースをバックアップできません。
+外部データベースに接続できませんでした：
+%s
+理由はログファイルにあります。
+今回は非対話の実行（端末なし、または --yes 指定）のため、
+この実行中に自分のバックアップへ切り替えることはできません。
+何も変更していません。次の順に進めてください：'
+MSG_up_ext_ni_unsupported='スクリプトで外部データベースをバックアップできません（このバックアップが
+対応していない下記の設定があります）。さらに今回は非対話の実行
+（端末なし、または --yes 指定）のため、自分のバックアップを選べません。
+何も変更していません。'
+MSG_up_ext_ni_order='次の順に進めてください：'
+MSG_up_ext_ni_1='1. 監査記録の書き込み完了を待ってから、サービスを停止：'
+MSG_up_ext_ni_2='2. サービスが停止したことを確認：'
+MSG_up_ext_ni_3='3. 停止後に自分のバックアップを開始し、外部データベース、データ
+   フォルダー、.env と tls/ を含め、開始時刻を控える。'
+MSG_up_ext_ni_3_notls='3. 停止後に自分のバックアップを開始し、外部データベース、データ
+   フォルダーと .env を含め、開始時刻を控える。'
+MSG_up_ext_ni_4='4. 次のオプションを付けてアップグレードを再実行：'
+MSG_up_ext_ni_flags='--backup-ref <スナップショット名> --backup-time "YYYY-MM-DD HH:MM" \\
+--backup-restore <復元手順の場所>'
+
+# ---------- restore：入口、オプション、復元の種類 ----------
+MSG_help_cmd_restore='  restore <バックアップファイル>
+                       ポータブルバックアップファイルから復元する。
+                       導入済みのホスト：安全バックアップを取ってから
+                       データを置き換える。未導入のホスト：バックアップ時の
+                       バージョンを先に導入してから復元する
+  restore --resume     完了しなかった復元を続ける（封印解除後の
+                       マスターキー照合を含む）
+  restore --revert     復元前に取った安全バックアップで元に戻す
+  restore --abandon    新しいホストで完了しなかった復元を取りやめ、
+                       未導入の状態に戻す'
+MSG_help_restore_options='restore のオプション
+  --same-host | --new-host     端末がないときは必須：どちらの復元かを指定
+  --confirm-data-loss          端末がないとき、既存データの上書きを確認する
+                               （--yes と併用）
+  --passphrase-file <ファイル> 暗号化バックアップのパスフレーズファイル
+                               （権限の規則は backup と同じ）
+  --no-checksum-file           .sha256 がなくても続ける（中のチェックサムは
+                               すべて照合する）
+  --package <パッケージ>       バックアップ時のバージョンのパッケージ
+                               （同じフォルダーに SHA256SUMS、オフライン用）
+  --images <バンドル>          バックアップ時のバージョンのオフライン
+                               イメージバンドル
+  --backup-ref、--backup-time、--backup-restore
+                               安全バックアップの代わりに、サービス停止後に
+                               自分で取ったバックアップを使う（安全バック
+                               アップが完了しなかったときは --resume にも
+                               付けられる）
+  --data-path、--tls-domain、--tls-ip-san、--public-base-url
+                               新しいホストのホスト値（指定しないときは
+                               このホストの推奨値）
+  --db-client-cert、--db-client-key
+                               外部データベースのクライアント証明書と秘密鍵
+  --accept-grant-loss          外部データベースにロールがないとき、それらの
+                               ロールへの権限付与を省く
+  --nginx-template <パス>      新しいホストでカスタム nginx テンプレートを
+                               置く場所（元のパスが使えないとき）'
+MSG_usage_restore_only='オプション %s は restore 専用です。参照：custodexa.sh --help'
+MSG_rs_no_file='バックアップファイルを指定してください：
+custodexa.sh restore <バックアップファイル>。
+参照：custodexa.sh restore --help'
+MSG_rs_option_with='オプション %s は %s と一緒に使えません。
+参照：custodexa.sh restore --help'
+MSG_rs_flow_both='--same-host と --new-host は同時に指定できません。'
+MSG_rs_flow_needed_same='端末がないときは、どちらの復元かを指定してください。このホストは
+導入済みで、データはバックアップで置き換えられます：--same-host を
+付けてください。'
+MSG_rs_flow_needed_new='端末がないときは、どちらの復元かを指定してください。このホストは
+未導入です：--new-host を付けてください。'
+MSG_rs_flow_wrong_same='このホストは未導入なので、新しいホストへの復元です：--same-host
+ではなく --new-host を使ってください。'
+MSG_rs_flow_wrong_new='このホストは導入済みで、データが置き換えられます：--new-host
+ではなく --same-host を使ってください。'
+# Going back after an upgrade.
+MSG_rb_flags_only='--resume と --revert は rollback と restore 専用です。'
+MSG_rb_flags_conflict='--resume と --revert は同時に指定できません。'
+MSG_rb_no_pending='再開する未完了のロールバックはありません。何も変更していません。'
+MSG_rb_confirm='開始しますか？[y/N]'
+MSG_rb_preview='前のバージョンに戻す：確認（まだ何も変更していません）'
+MSG_rb_versions='現在のバージョン   %s
+戻すバージョン     %s（アップグレード前のバージョン）'
+MSG_rb_basis_same='データベース   アップグレード後の構造変更はなく、
+               アップグレード前の記録と一致しています'
+MSG_rb_basis_not_started='データベース   新しいバージョンは一度も起動していないため、
+               データベースは変更されていません'
+MSG_rb_basis_compatible='データベース   アップグレード後に %s 件の構造変更がありますが、
+               %s のリリースマニフェストには %s に直接戻せると
+               記載されています（リリース前に検証済み）'
+MSG_rb_basis_compatible_one='データベース   アップグレード後に %s 件の構造変更がありますが、
+               %s のリリースマニフェストには %s に直接戻せると
+               記載されています（リリース前に検証済み）'
+MSG_rb_keep_data='バージョンだけを戻します。データ、設定ファイル、証明書は
+そのまま維持されるため、バックアップの復元は不要です。'
+MSG_rb_images='旧バージョンのイメージ   全 %s 個がこのホストにあります。
+起動後、実行中のコンテナがそのイメージを使用しているか確認します。'
+MSG_rb_steps='手順：サービス停止 → データベースを再確認して %s に戻す →
+起動 → バージョンと実行中のイメージを確認'
+MSG_rb_keep_records='アップグレード後に作成された記録はすべて保持されます。'
+MSG_rb_step_stop='サービスを停止'
+MSG_rb_step_stopped='サービスは停止済み'
+MSG_rb_step_switch='データベースを再確認し、%s に戻す'
+MSG_rb_step_revert='%s に戻す'
+MSG_rb_step_start='サービスを起動'
+MSG_rb_step_check='確認：バックエンドの応答は %s。実行中のイメージは
+アップグレード前のものと一致'
+MSG_rb_check_health='確認：%s 秒以内にバックエンドが準備完了になりませんでした'
+MSG_rb_check_diff='確認：実行中のバージョンまたはイメージが記録と異なります：%s'
+MSG_rb_done='%s に戻りました。'
+MSG_rb_unseal='システムはシールされています。%s でシールを解除してください。'
+MSG_rb_upgrade_later='再度アップグレードする場合は、通常どおり upgrade を実行してください。'
+MSG_rb_revert_title='%s に戻す（このロールバックを開始する前のバージョン）'
+MSG_rb_state_title='現在の状態'
+MSG_rb_state_version='現在のバージョン：%s'
+MSG_rb_state_links='記録上のバージョン：%s、current のリンク先：%s'
+MSG_rb_state_services='実行中のサービス：%s'
+MSG_rb_unchanged_data='データ、設定ファイル、証明書は変更していません'
+MSG_rb_resume='原因を解消したら、前のバージョンに戻す処理を再開してください：'
+MSG_rb_revert='または、アップグレード後のバージョン %s に戻してください：'
+MSG_rb_resume_revert='アップグレード後のバージョン %s に戻す処理を再開してください：'
+MSG_rb_refused='%s に直接戻せません。アップグレード後に %s が
+データベースを変更しています。何も変更していません。%s。'
+MSG_rb_services_running='サービスは引き続き実行中です'
+MSG_rb_services_stopped='サービスは停止したままです'
+MSG_rb_refused_after='%s に直接戻せません。サービス停止後の再確認で、%s が
+データベースを変更したことが分かりました。バージョンは
+切り替えていません。アプリケーションは停止済みで、
+データベースは引き続き実行中です。'
+MSG_rb_reason_changed='理由   アップグレード後に %s 件の構造変更（%s）があり、
+       %s は変更後のデータベースを正しく使用できません'
+MSG_rb_reason_unreadable='理由   データベースの現在の構造を読み取れず、
+       アップグレード後に変更されたか確認できません'
+MSG_rb_more='、ほか %s 件'
+MSG_rb_restore='%s に戻すには、アップグレード前のバックアップを復元してください。
+復元は確認を求めてから、データとバージョンの両方を
+アップグレード前に戻します。アップグレード後のデータは置き換わります。'
+MSG_rb_keep_new='復元せずに %s でサービスを続ける場合：'
+MSG_rb_too_old='%s に直接戻せません。このスクリプトで戻せるのは
+1.16.0 以降のバージョンです。何も変更していません。'
+MSG_rb_no_previous='戻せる前のバージョンがありません。何も変更していません。'
+MSG_rb_premise_none='このデプロイはスクリプトでアップグレードされていません。'
+MSG_rb_premise_changed='前回のアップグレード後にバージョンの記録が変わっています。'
+MSG_rb_premise_link='実行中のバージョンが記録と一致していません。'
+MSG_rb_already='前回のバージョン変更はロールバックでした（%s、%s から %s）。
+戻せるのは 1 つ前のバージョンだけです。%s に戻すには、
+通常どおり upgrade を実行してください。'
+MSG_rb_before_switch='前回のアップグレードは手順 %s で停止しています。
+まだ新しいバージョンに切り替えていないため、戻す必要はありません。'
+MSG_rb_status_hint='このデプロイの状態を確認してください：'
+MSG_rb_images_bad='%s に戻すにはアップグレード前のイメージが必要ですが、
+%s 個がこのホストにないか、以前と異なります。何も変更していません。'
+MSG_rb_image_missing='%s  このホストにありません'
+MSG_rb_image_diff='%s  ホストのイメージが記録と異なります
+           以前 %s、現在 %s'
+MSG_rb_load='%s のオフラインイメージバンドルを読み込んでから再実行してください：'
+MSG_rb_upgrade_hint='%s に戻すには、次のコマンドを実行してください。スクリプトは
+新しいバージョンがデータベースを変更していないことを確認してから、
+%s に直接戻します。変更されていた場合は、上記のバックアップの
+復元方法を案内します。サービス停止前に確認を求めます：'
+MSG_rb_upgrade_done='%s に戻す   sudo %s/custodexa.sh rollback%s'
+MSG_status_upgrade_rolled_back='前回のアップグレード %s → %s。%s にロールバック済み（%s）%.0s'
+MSG_status_rollback_unfinished='前のバージョンに戻す処理が未完了です
+（%s から %s、手順 %s で停止）'
+MSG_status_rollback_reverting='アップグレード後のバージョンに戻す処理が未完了です
+（%s に戻す途中、手順 %s で停止）'
+MSG_status_rollback_reverted='前回のロールバックを取り消し、%s に戻りました'
+MSG_status_rollback_refused='前回のロールバックは切り替え前に停止しました。%s が
+データベースを変更していたため、%s のままです'
+MSG_status_upgrade_failed_handed='%s → %s はステップ %s で失敗、%s。
+その後、復元処理に引き継ぎました。ログ：'
+MSG_help_cmd_rollback='  rollback             アップグレード前のバージョンに戻す。新しいバージョンが
+                       データベースを変更していなければ、データを保持して
+                       バージョンだけを戻す。変更されていれば何も変更せず、
+                       復元方法を案内する
+  rollback --resume    未完了のロールバックを再開する
+  rollback --revert    未完了のロールバックを取り消し、
+                       アップグレード後のバージョンに戻す'
+MSG_help_opt_resume='  --resume               （rollback、restore）未完了の処理を再開する'
+MSG_help_opt_revert='  --revert               （rollback、restore）未完了の処理を取り消す'
+
+MSG_rb_refused_unreadable='%s に直接戻せません。アップグレード後に %s がデータベースを
+変更した可能性があります。何も変更していません。%s。'
+
+MSG_rb_refused_unreadable_after='%s に直接戻せません。サービス停止後の再確認で、%s が
+データベースを変更していないことを確認できませんでした。
+バージョンは切り替えていません。アプリケーションは停止済みで、
+データベースは引き続き実行中です。'
+
+MSG_rb_image_unrecorded='%s  アップグレード前のイメージ ID の記録がありません'
+
+MSG_rb_state_not_ready='%s に戻してサービスを起動しましたが、
+バックエンドは準備完了になっていません'
+
+MSG_rb_state_before='まだバージョンを切り替えていません。%s のままです'
+
+MSG_rb_state_start_failed='%s に戻しましたが、一部のサービスが起動していません'
+
+MSG_rb_reverted='%s に戻りました（このロールバックを開始する前のバージョン）'
+
+MSG_rb_no_services='なし'
+
+MSG_rb_basis_compatible_unreadable='データベース   現在の構造を読み取れませんが、%s のリリース
+               マニフェストには %s に直接戻せると記載されています
+               （リリース前に検証済み）'
+
+MSG_rb_step_check_revert='確認：バックエンドの応答は %s。実行中のイメージは
+このロールバックを開始する前のものと一致'
+
+MSG_status_rollback_unreadable='前回のロールバックは切り替え前に停止しました。%s が
+データベースを変更した可能性があり、%s のままです'
+
+MSG_rb_images_unverified='%s に戻すために必要なリリース情報、またはアップグレード前の
+イメージ ID の記録を確認できません。必要なイメージがすべて
+アップグレード前のものと一致するか確認できないため、
+何も変更していません。'
+
+MSG_rb_release_unverified='必要なリリース情報を読み取れません。'
+
+# Reading a portable backup before a restore.
+MSG_rs_unchanged='データは何も変更していません。'
+
+MSG_rs_bad='バックアップファイルが不完全か変更されているため、復元できません：'
+
+MSG_rs_copy_again='別のバックアップを使用するか、元の場所からこのファイルを
+.sha256 と一緒にコピーし直してください。'
+
+MSG_rs_bad_sidecar='チェックサムファイルがバックアップファイルと一致しません。'
+
+MSG_rs_bad_members='余分な構成ファイル、欠落、または重複があります。'
+
+MSG_rs_bad_type='構成ファイルがディレクトリ、リンク、またはパス付きです。'
+
+MSG_rs_bad_manifest='バックアップマニフェストの項目が欠落しているか無効です：%s。'
+
+MSG_rs_bad_sums='構成ファイルの一覧と SHA256SUMS が一致しません。'
+
+MSG_rs_bad_hash='%s のチェックサムがバックアップ作成時の記録と異なります。'
+
+MSG_rs_bad_cross='リリースマニフェスト、migration、マスター鍵のフィンガープリント、
+または記録されたバージョンがバックアップマニフェストと一致しません。'
+
+MSG_rs_bad_inner='内側のアーカイブに許可されていないパスまたはリンクがあります。'
+
+MSG_rs_bad_name='ファイル名と暗号化ファイルのヘッダーが一致しません。'
+
+MSG_rs_bad_decrypt='暗号化ファイルが途中で切れているか、長さが無効です。'
+
+MSG_rs_bad_read='バックアップファイルを読み取れません。'
+
+MSG_rs_bad_grants='内蔵データベースが他のロールに権限を付与しています：%s。
+「バックアップとリストア」の第 5 節に従って手動で復元してください。'
+
+MSG_rs_bad_grants_read='データベースのダンプから権限付与の項目を読み取れません。'
+
+MSG_rs_reading='バックアップファイル %s を読み取ります'
+
+MSG_rs_sum_ok='チェックサムファイルが一致しました'
+
+MSG_rs_sum_absent='チェックサムファイルがないため、ファイル内のチェックサムで照合します'
+
+MSG_rs_no_sum='チェックサムファイル %s がありません。
+非対話実行でこのファイルなしに続行するには、
+--no-checksum-file を付けてください。'
+
+MSG_rs_missing_sum='チェックサムファイル %s がないため、
+転送中にファイルが破損しなかったか確認できません。'
+
+MSG_rs_missing_sum_checks='続行する場合、内部の各ファイルがバックアップ作成時のチェックサムと
+一致し、記録同士も一致していることを確認してから次に進みます。
+一つでも一致しなければ、何も変更せずに復元を中止します。'
+
+MSG_rs_missing_sum_enc='このファイルは暗号化されています。チェックサムファイルがない場合、
+復号できない原因がパスフレーズの誤りか破損かを区別できません。'
+
+MSG_rs_missing_sum_ask='チェックサムファイルなしで続行しますか？[y/N]'
+
+MSG_rs_pass_intro='このバックアップファイルは暗号化されています。作成時に設定した
+パスフレーズを入力してください（入力中は表示されません）：'
+
+MSG_rs_pass_prompt='パスフレーズ： '
+
+MSG_rs_pass_needed='このバックアップは暗号化されています。非対話実行では
+--passphrase-file を使用してください。'
+
+MSG_rs_decrypt_matched='復号できません：パスフレーズが違います（ファイル自体の完全性は
+確認済みです）。あと %s 回試せます。'
+
+MSG_rs_decrypt_absent='復号できません：パスフレーズが違うか、ファイルが破損しています
+（チェックサムファイルがないため区別できません）。あと %s 回試せます。'
+
+MSG_rs_decrypt_cancel='3 回とも復号できなかったため、復元を中止しました。
+データは何も変更していません。'
+
+MSG_rs_no_openssl='このホストにはリリース %s の openssl ツールイメージがありません。
+復元に必要です。
+このリリースのオフラインイメージを先に読み込んでください。'
+
+MSG_rs_parts='各構成ファイルを照合しました（%s 個）'
+
+MSG_rs_manifest='バックアップマニフェスト：形式 1、バージョン %s、作成日時 %s'
+
+MSG_rs_cross_ok='相互照合：リリースマニフェスト、migration、マスター鍵の
+フィンガープリントが一致しました'
+
+MSG_rs_old_file='これは 1.16.0 以降で作成されたバックアップファイルではないため、
+スクリプトでは復元できません。'
+
+MSG_rs_old_folder='%s は 1.16.0 より前のバックアップフォルダーです。
+バックアップマニフェストがないため、バージョンと構成が不明です。'
+
+MSG_rs_no_manifest='このファイルにはバックアップマニフェストがありません。'
+
+MSG_rs_old_guide='この形式は作成元のホストで「バックアップとリストア」の第 5 節に従って
+手動で復元してください。または、作成元を 1.16.0 以降にアップグレードし、
+バックアップを作成し直してください。'
+
+
+# Checking the data and keys before a restore.
+MSG_rs_data_old='このバックアップのデータは %s のもので、1.16.0 より前のため、
+スクリプトでは復元できません。'
+
+MSG_rs_data_old_guide='は、アップグレード時に %s の環境から作成したバックアップです。
+1.16.0 より前のバージョンは封印解除後にマスター鍵 ID を返さないため、
+復元後のマスター鍵を確認できず、復元を開始しません。
+「バックアップとリストア」に従って手動で復元してください：
+  まず「単一のバックアップファイルから各ファイルを取り出す」に従います。
+  このホストをアップグレード前のバージョンに戻す場合は、続いて
+  「管理スクリプトでアップグレードした後、
+  アップグレード前のバージョンに戻す」に従います。
+  別のホストに復元する場合は、続いて「リストアの手順」に従います。'
+
+MSG_rs_engine_old='この管理スクリプトは %s ですが、バックアップのデータは
+より新しい %s のものです。'
+
+MSG_rs_engine_old_guide='復元にはバックアップ以上のバージョンの管理スクリプトが必要です。
+新しいホスト：get-custodexa.sh で %s 以降を取得して復元してください。
+インストール済みのホスト：先に %s 以降にアップグレードしてから、
+復元してください。'
+
+MSG_rs_fp_missing='このバックアップにはマスター鍵のフィンガープリントがありません
+（作成時に一意の値を読み取れませんでした）。復元後のマスター鍵を
+確認できないため、復元を開始しません。'
+
+MSG_rs_fp_manual='「バックアップとリストア」の第 5 節に従って手動で復元し、
+第 6 節に従って鍵台帳を項目ごとに確認してください。'
+
+MSG_rs_hsm='このバックアップのマスター鍵モードは hsm です。このリリースには
+動作する HSM 実装がないため、スクリプトでは復元できません。'
+
+MSG_rs_external='これは外部データベースを使う構成のバックアップです。
+このビルドのスクリプトではまだ復元できません。'
+
+MSG_rs_key_mismatch='設定ファイルのマスター鍵がこのバックアップのデータと一致しません：'
+
+MSG_rs_key_fingerprints='設定ファイルの鍵のフィンガープリント   %s
+バックアップに記録された値           %s'
+
+MSG_rs_key_wrong='この鍵で復元すると保存済みの認証情報を復号できないため、
+復元を開始しません。別の完全なバックアップを使用してください。'
+
+MSG_rs_key_ok='設定ファイルのマスター鍵のフィンガープリント %s が記録と一致しました'
+
+MSG_rs_jwt_ok='設定ファイルのログイントークン署名鍵のフィンガープリントが
+バックアップのスナップショットと一致しました'
+
+MSG_rs_jwt_unknown='設定ファイルのログイントークン署名鍵：スナップショットに
+フィンガープリントが記録されていないため、未照合です'
+
+MSG_rs_bad_jwt='設定ファイルのログイントークン署名鍵のフィンガープリントが
+バックアップのスナップショットと一致しません。'
+
+MSG_rs_bad_secret='設定ファイルに必要な鍵がないか、使用できないテンプレート値です：%s。'
+
+MSG_rs_extracted='作業フォルダー %s に取り出しました'
+
+
+MSG_rs_bad_release='リリースマニフェストのハッシュまたはバージョンが記録と一致しません。'
+
+MSG_rs_bad_migrations='migration のハッシュまたは件数がバックアップマニフェストと一致しません。'
+
+MSG_rs_bad_fingerprint='マスター鍵のフィンガープリントがスナップショットと一致しません。'
+
+MSG_rs_bad_state='state.json のバージョンがバックアップマニフェストと一致しません。'
+
+MSG_rs_parts_enc='復号し、各構成ファイルを照合しました（%s 個）'
+
+MSG_rs_bad_decrypt_tool='復号ツールを実行できません。'
+
+# Obtaining the backup version and checking its data structure.
+MSG_rs_release_absent='%s のリリースファイルがないため、バックアップ作成時の
+バージョンをこのホストに導入できません。'
+
+MSG_rs_release_absent_guide='このバックアップのデータは %s のもので、同じバージョンでのみ
+復元できます。スクリプトは別のバージョンを導入しません。
+custodexa-%s.tar.gz と同じフォルダーの SHA256SUMS が手元にある場合は、
+次のように指定してください：'
+
+MSG_rs_release_other='それ以外の場合は、別のバージョンのバックアップを使用してください。'
+
+MSG_rs_release_download='%s のパッケージをダウンロードできませんでした
+（github.com に接続できません）。'
+
+MSG_rs_release_offline='このホストからインターネットに接続できない場合は、
+custodexa-%s.tar.gz と SHA256SUMS を同じフォルダーに置き、
+--package で指定してください。%s のオフラインイメージは
+--images で指定してください。'
+
+MSG_rs_release_manifest='%s のパッケージ内のリリースマニフェストが、
+バックアップ作成時の記録と一致しません。'
+
+MSG_rs_release_manifest_guide='公開されたパッケージではない可能性があります。
+スクリプトはこのパッケージで復元しません。'
+
+MSG_rs_migration_bad='バックアップのデータには %s が認識しない構造変更があるため、
+%s では復元できません：'
+
+MSG_rs_migration_unknown='%s（%s のリリースマニフェストにありません）'
+
+MSG_rs_migration_missing='%s（%s で必要ですが、バックアップのスナップショットにありません）'
+
+MSG_rs_migration_guide='バックアップ作成時点で、より新しいバージョンがデータを変更していた
+ことを意味します。新しいデータを古いバージョンには戻しません。'
+
+MSG_rs_migration_missing_guide='このバージョンに必要な構造変更がバックアップにないため、
+スクリプトでは復元しません。'
+
+
+# Host values and the custom template destination.
+MSG_rs_host_intro='以下の四つの値をこのホストに合わせます。
+それ以外の設定はすべてバックアップを引き継ぎます。'
+
+MSG_rs_host_intro_external='以下のデータフォルダーと公開 URL をこのホストに合わせます。
+それ以外の設定はすべてバックアップを引き継ぎます。'
+
+MSG_rs_host_data_path='データフォルダー DATA_PATH'
+
+MSG_rs_host_tls_domain='証明書のホスト名 TLS_DOMAIN'
+
+MSG_rs_host_tls_ip_san='証明書の IP TLS_IP_SAN'
+
+MSG_rs_host_public_base_url='公開 URL PUBLIC_BASE_URL'
+
+MSG_rs_host_values='       バックアップの値  %s
+       このホストの推奨値  %s'
+
+MSG_rs_host_ask_path='Enter で推奨値、- でバックアップの値を使います。
+または別の絶対パスを入力してください > '
+
+MSG_rs_host_ask='Enter で推奨値、- でバックアップの値を使います。
+または別の値を入力してください > '
+
+MSG_rs_data_absolute='DATA_PATH は絶対パスで指定してください。'
+
+MSG_rs_data_nonempty='新しいホストでは、ここにデータベースや監査データを置けません：%s。'
+
+MSG_rs_host_tls_nginx_template='カスタム nginx テンプレート TLS_NGINX_TEMPLATE'
+
+MSG_rs_template_source='       バックアップの値  %s
+         （このホストでは %s 内の元の場所を使えません）'
+
+MSG_rs_template_ask='このホストでテンプレートを置く絶対パスを入力してください。
+設定ファイルの参照先を変更します > '
+
+MSG_rs_template_needed='このホストではテンプレートの元の場所を使えません：%s。
+--nginx-template で新しい絶対パスを指定してください。'
+
+MSG_rs_template_invalid='テンプレートは親フォルダーがある絶対パスで指定してください。
+リンク、ディレクトリ、リリース管理下のパスは使えません：%s。'
+
+
+# Space estimates before a restore.
+MSG_rs_space_bad='空き容量が不足しているため、復元を開始しません：'
+
+MSG_rs_space_row='%s（%s）：必要 %s GB、空き %s GB'
+
+MSG_rs_space_margin='数値には 10%%～20%% の余裕を含みます。バックアップファイル内の
+サイズは、バックアップ作成時の推定値です。'
+
+MSG_rs_space_work='作業フォルダー'
+
+MSG_rs_space_safety='復元前のバックアップ'
+
+MSG_rs_space_data='データフォルダー'
+
+MSG_rs_space_images='イメージ'
+
+MSG_rs_space_unknown='%s の空き容量を取得できないため、復元を開始しません。'
+
+MSG_rs_space_estimate='復元前のバックアップに必要な現在のデータベース容量を
+推定できないため、復元を開始しません。'
+
+# Restore preview and confirmation.
+MSG_rs_label_backup='  バックアップ   '
+MSG_rs_label_data_version='  データ版       '
+MSG_rs_label_install='  先に導入       '
+MSG_rs_label_version='  バージョン     '
+MSG_rs_label_deployment='  配置形態       '
+MSG_rs_label_restores='  復元対象       '
+MSG_rs_label_recordings='  録画           '
+MSG_rs_label_host='  ホストの値     '
+MSG_rs_label_replaced='  置換対象       '
+MSG_rs_label_safety='  事前の保存     '
+MSG_rs_label_kept='  保管           '
+MSG_rs_label_downtime='  停止時間       '
+MSG_rs_label_space='  容量           '
+
+MSG_rs_preview_new='復元プレビュー：この新しいホスト（まだ何も変更していません）'
+
+MSG_rs_preview_same='このホストのデータをバックアップで置き換えます。
+バックアップ後の記録はすべて失われます'
+
+MSG_rs_preview_encrypted='暗号化済み'
+
+MSG_rs_preview_plain='暗号化なし'
+
+MSG_rs_backup_here='%s にこのホスト
+（%s）で作成'
+
+MSG_rs_backup_source='%s に %s で作成；
+%s'
+
+MSG_rs_backup_integrity='バックアップファイル内部の整合性：確認済み'
+
+MSG_rs_data_engine='%s（この管理スクリプトは %s）'
+
+MSG_rs_versions='現在 %s、復元後 %s'
+
+MSG_rs_versions_changed='現在 %s、復元後 %s
+（バージョンもデータとともにバックアップ時点に戻ります）'
+
+MSG_rs_other_host='[WARN] このバックアップの作成元は別のホスト %s です。
+       このホストのデータを置き換えます。'
+
+MSG_rs_package_checked='パッケージ %s：チェックサム一致'
+
+MSG_rs_package_local='パッケージのチェックサム：再確認なし。本機のリリースを使用'
+
+MSG_rs_signature_ok='発行者の署名：検証済み'
+
+MSG_rs_signature_no_cosign='発行者の署名：このホストに cosign がないため未検証'
+
+MSG_rs_signature_no_bundle='発行者の署名：署名ファイルがないため未検証'
+
+MSG_rs_signature_bad='[WARN] 発行者の署名が一致しません'
+
+MSG_rs_signature_local='発行者の署名：本機のリリースは再検証していません'
+
+MSG_rs_manifest_identical='リリースマニフェストはバックアップ内の記録とバイト単位で一致'
+
+MSG_rs_preview_images_offline='イメージ %s 個、オフラインバンドル
+%s から取得'
+
+MSG_rs_preview_images_local='イメージ %s 個、本機に配置済み'
+
+MSG_rs_preview_images_source='イメージ %s 個。プログラムのイメージはソースからビルド'
+
+MSG_rs_preview_images_auto='イメージ %s 個。不足分は本機のオフラインバンドル、
+レジストリー、ソースビルドの順で取得'
+
+MSG_rs_deployment='内蔵データベース；%s；マスター鍵：
+%s'
+
+MSG_rs_tls_selfsigned='自己署名証明書'
+
+MSG_rs_tls_provided='持ち込み証明書'
+
+MSG_rs_tls_external='外部の入口'
+
+MSG_rs_provider_ui='ブラウザーで入力'
+
+MSG_rs_provider_env='設定ファイルで指定'
+
+MSG_rs_provider_kms='鍵管理サービスで保管'
+
+MSG_rs_restores_new='データベース %s、監査ファイル %s、設定ファイル
+.env'
+
+MSG_rs_restores_same='データベース、監査ファイル'
+
+MSG_rs_restores_tls='、証明書 tls/'
+
+MSG_rs_settings_same='設定ファイル .env は、ログイン署名鍵やデータベースの
+パスワードなどの秘密情報を含めてバックアップ時点に戻ります。
+DATA_PATH、TLS_DOMAIN、TLS_IP_SAN、PUBLIC_BASE_URL は
+このホストの現在の値を保持します'
+
+MSG_rs_settings_same_external='設定ファイル .env は、ログイン署名鍵やデータベースの
+パスワードなどの秘密情報を含めてバックアップ時点に戻ります。
+DATA_PATH と PUBLIC_BASE_URL はこのホストの現在の値を保持します'
+
+MSG_rs_preview_template='カスタム nginx テンプレート → %s'
+
+MSG_rs_template_repointed='（設定ファイルの参照先を変更）'
+
+MSG_rs_template_keep='既存ファイルは名前を変えて保管します：
+%s'
+
+MSG_rs_recordings_restore='バックアップから戻します。同名の既存ファイルは保持し、
+上書きしません'
+
+MSG_rs_recordings_kept='このバックアップに録画はありません。現在の録画をそのまま保持し、
+削除も上書きもしません'
+
+MSG_rs_recordings_missing='バックアップに含まれません（作成元に %s）。
+持ち込む録画の一覧を完了後に表示します'
+
+MSG_rs_host_differences='ホストの値がバックアップと異なります：'
+
+MSG_rs_host_difference='%s：バックアップ %s；このホスト %s'
+
+MSG_rs_reissue='作成元とアドレスが異なります。バックアップの認証局を保持し、
+このホストのアドレス用にサーバー証明書を再発行します'
+
+MSG_rs_cert_mismatch='[WARN] 持ち込み証明書がこのホストのアドレスを含みません。
+       対応する証明書に交換してください。ここでは変更しません。'
+
+MSG_rs_cert_unknown='[WARN] 持ち込み証明書のアドレスを確認できません。
+       手動で確認してください。証明書は変更しません。'
+
+MSG_rs_replaced='このホストの現在のデータと設定をすべて置き換えます。
+ユーザー、資産、権限、ポリシーはバックアップ時点に戻ります：'
+
+MSG_rs_counts_current='現在の監査記録 %s 件、接続記録 %s 件'
+
+MSG_rs_counts_backup='、
+バックアップでは %s 件、%s 件'
+
+MSG_rs_counts_caution='件数の差は参考値であり、失われる件数ではありません。
+削除、変更、別のホストのデータはこの差からは分かりません'
+
+MSG_rs_counts_unknown='現在の件数を取得できません'
+
+MSG_rs_safety_own='持ち込みバックアップ：%s
+作成日時 %s'
+
+MSG_rs_safety_script='上書きする前に現在のデータを次のファイルにバックアップします：
+%s
+録画は含みません。読み戻して検証に通った後に処理を続けます'
+
+MSG_rs_safety_none='不要：このホストにはまだデータがありません'
+
+MSG_rs_kept='現在のデータベース、監査、証明書のフォルダーを
+削除せず、名前を変えて保管します：'
+
+MSG_rs_downtime='約 %s 分（復元前バックアップ %s 分、インポート %s 分、
+起動と確認 5 分）'
+
+MSG_rs_preview_space_same='必要 %s GB（%s）、空き %s GB'
+
+MSG_rs_preview_env='マスター鍵は設定ファイル内にあります。
+フィンガープリント %s は照合済みです'
+
+MSG_rs_preview_ui_same='[WARN] マスター鍵はブラウザーで入力します。復元後は封印されるため、
+       封印解除ページでマスター鍵を入力する必要があります。
+       フィンガープリントは %s でなければなりません。'
+
+MSG_rs_preview_ui_new='[WARN] マスター鍵はブラウザーで入力します。復元を完了するには、
+       封印解除ページでマスター鍵を入力し、バックアップ内の管理者
+       アカウントで認証します。フィンガープリントは
+       %s でなければなりません。'
+
+MSG_rs_preview_kms='[WARN] マスター鍵は鍵管理サービスにあります。復元を完了するには、
+       封印解除ページでサービスを確認し、認証情報を再入力します。
+       このホストのアドレスがサービス側で許可されている必要があります。'
+
+MSG_rs_after_noninteractive='完了して確認が済んだら、最新バージョンを調べるコマンドを表示します。
+自動ではアップグレードしません。'
+
+MSG_rs_after_same_version='完了して確認が済んだら、最新バージョンを調べ、
+アップグレードするかどうかを尋ねます。'
+
+MSG_rs_after_newer_engine='完了して確認が済んだら、最新バージョンを調べ、
+アップグレードするかどうかを尋ねます（本機に %s は配置済み）。'
+
+MSG_rs_confirm_version='確認するには、復元後のバージョン %s を入力してください：'
+
+MSG_rs_confirm_cancel='入力が %s と異なるため、復元を中止しました。
+データは何も変更していません。'
+
+MSG_rs_confirm_new='復元を開始しますか？[y/N] '
+
+MSG_rs_confirm_flags='バージョン入力なしでこのホストのデータを置き換えるには、
+--yes と --confirm-data-loss の両方が必要です。'
+
+MSG_rs_confirm_new_flags='非対話実行では --yes で復元を確認してください。'
+
+MSG_rs_preview_space_new='必要 %s GB（%s）、空き %s GB'
+
+MSG_rs_kept_no_tls='現在のデータベースと監査ファイルのディレクトリを
+削除せず、名前を変えて保管します：'
+
+MSG_rs_control_revert='復元前に戻す処理が進行中です。先に完了してください。'
+
+MSG_rs_control_abandon='この復元を中止する処理が進行中です。先に完了してください。'
+
+MSG_rs_control_engine='この復元を開始した管理スクリプトで処理を続けてください。'
+
+MSG_rs_control_placed='復元データは配置済みですが、サービスの起動は再開処理で行います。
+実行中のイメージとマスター鍵を照合するためです。'
+
+MSG_rs_control_before='復元ではまだデータを上書きしていません。
+元のサービスを起動するには --revert を使ってください。'
+
+MSG_rs_control_unchecked='復元は手順 %s で停止し、データの照合が済んでいません。
+サービスは起動できません。'
+
+MSG_rs_control_choices='処理を再開するか、復元前バックアップで元に戻してください：'
+
+MSG_rs_control_after_unseal='封印解除後に照合を完了してください：'
+
+MSG_rs_control_previous='前回の復元が終わっていません。先に再開するか、
+復元前に戻すか、中止してください。'
+
+MSG_rs_control_own='登録した復元手順に従い、用意したバックアップ %s を使ってください：'
+
+MSG_rs_status_title='復元'
+
+MSG_rs_status_pending='復元は未完了：%s（%s 開始、データ版 %s）'
+
+MSG_rs_status_from='復元元 %s'
+
+MSG_rs_status_resume='再開：%s'
+
+MSG_rs_status_failed='復元は手順 %s で停止しました（失敗）'
+
+MSG_rs_status_done='前回の復元：%s に完了、復元元
+%s'
+
+MSG_rs_status_kept='復元前のフォルダーを %s か所保管しています。
+第 6 節の確認が済んだら削除できます'
+
+MSG_rs_status_retained='フォルダーを %s か所保管しています'
+
+MSG_rs_status_reverted='前回の復元：%s に復元前へ戻しました'
+
+MSG_rs_status_abandoned='前回の復元：%s に中止し、未インストールの状態に戻りました'
+
+MSG_rs_status_revert='復元前に戻す処理がまだ完了していません'
+
+MSG_rs_status_abandon='復元の中止処理がまだ完了していません'
+
+MSG_menu_rs_state='状態：復元は未完了（%s、データ版 %s）'
+
+MSG_menu_rs_state_revert='状態：復元前に戻す処理が未完了'
+
+MSG_menu_rs_state_abandon='状態：復元の中止処理が未完了'
+
+MSG_menu_rs_resume='復元を再開'
+
+MSG_menu_rs_unseal='復元を再開（封印解除後に照合を完了）'
+
+MSG_menu_rs_revert='復元前バックアップで元に戻す'
+
+MSG_menu_rs_abandon='この復元を中止して未インストールの状態に戻す'
+
+MSG_menu_rs_finish_revert='復元前に戻す処理を完了'
+
+MSG_menu_rs_finish_abandon='復元の中止処理を完了'
+
+MSG_rs_control_upgrade='復元がまだ完了していません（%s、%s 開始）。
+アップグレードは実行できません。'
+
+MSG_rs_control_backup='復元がまだ完了していません（%s、%s 開始）。
+バックアップは実行できません。'
+
+MSG_rs_control_rollback='復元がまだ完了していません（%s、%s 開始）。
+ロールバックは実行できません。'
+
+MSG_rs_phase_checked='検査済み、リリース配置待ち'
+
+MSG_rs_phase_prepared='リリース準備済み、復元前バックアップ待ち'
+
+MSG_rs_phase_safety='復元前バックアップ準備済み'
+
+MSG_rs_phase_stopped='サービス停止済み'
+
+MSG_rs_phase_swapped='元データ保管済み、インポート待ち'
+
+MSG_rs_phase_imported='インポート済み、データ照合待ち'
+
+MSG_rs_phase_db_checked='データベース照合済み、ファイル配置待ち'
+
+MSG_rs_phase_placed='データ配置済み、再開によるサービス起動待ち'
+
+MSG_rs_phase_started='サービス起動済み、準備完了とマスター鍵照合待ち'
+
+MSG_rs_phase_awaiting_unseal='インポート済み、封印解除後のマスター鍵照合待ち'
+
+MSG_rs_phase_done='照合・復元完了'
+
+MSG_rs_control_choices_new='処理を再開するか、この復元を中止してください：'
+
+# 1 arguments
+MSG_rs_safety_reason_fingerprint='現在のデータベースから一意のマスターキー識別子を読み取れません（%s 個）。
+このバックアップにはマスターキーの指紋が含まれません。'
+
+# 0 arguments
+MSG_rs_safety_reason_hsm='現在のマスターキーモードは hsm です。'
+
+# 0 arguments
+MSG_rs_safety_reason_key='設定ファイルのマスターキーの指紋がデータベースと一致しません。'
+
+# 1 arguments
+MSG_rs_safety_reason_secret='設定ファイルに必要なキーがありません：%s。'
+
+# 1 arguments
+MSG_rs_safety_reason_engine='この管理スクリプトは現在のバージョンより古いものです。
+%s を使ってください。'
+
+# 1 arguments
+MSG_rs_safety_reason_old='現在のバージョン %s は 1.16.0 より古いため、
+バックアップは手動で復元してください。'
+
+# 1 arguments
+MSG_rs_safety_reason_manifest='リリースマニフェストがないか、current/MANIFEST.json と異なります：
+%s'
+
+# 1 arguments
+MSG_rs_safety_reason_images='現在のバージョンのイメージがローカルにありません：%s。
+先に load でそのバージョンのオフラインイメージを読み込んでください。'
+
+# 0 arguments
+MSG_rs_safety_preflight_warn='このホストでスクリプトが作成する安全バックアップは、
+restore --revert で自動復元できません：'
+
+# 0 arguments
+MSG_rs_safety_preflight_own='今回はサービス停止後に自分で取得したバックアップ
+（ストレージスナップショットなど）を安全バックアップに使ってください。
+サービスはまだ停止していません。何も変更していません。'
+
+# 1 arguments
+MSG_rs_safety_preflight_fail='スクリプトが作成する安全バックアップは自動復元できません
+（%s）。
+端末なしで実行する場合は、サービス停止後に取得したバックアップを
+--backup-ref、--backup-time、--backup-restore で登録してください。'
+
+# 0 arguments
+MSG_rs_safety_choose_title='復元はこのホストのデータを上書きするため、
+先に現在のデータをバックアップします。'
+
+# 0 arguments
+MSG_rs_safety_choose_again='前回の安全バックアップは完了していません。
+今回は現在のデータをどう保存しますか？'
+
+# 1 arguments
+MSG_rs_safety_choose_script='[1] スクリプトで保存（既定）：サービス停止後にデータベース、
+    監査ファイル、設定と証明書を保存します。約 %s 分、
+    録画は含みません（復元で変更しません）。'
+
+# 1 arguments
+MSG_rs_safety_choose_retry='[1] スクリプトで再保存（既定）：サービス停止後にデータベース、
+    監査ファイル、設定と証明書を保存します。約 %s 分、
+    録画は含みません（復元で変更しません）。'
+
+# 0 arguments
+MSG_rs_safety_choose_own='[2] サービス停止後に自分でバックアップを取得し
+    （ストレージスナップショットなど）、その識別情報を入力します'
+
+# 0 arguments
+MSG_rs_safety_choose_prompt='[1-2] を選択してください。Enter で既定値を使います：'
+
+# 0 arguments
+MSG_rs_safety_choose_only='[2] を選択してください：'
+
+# 0 arguments
+MSG_rs_safety_id='識別'
+
+# 0 arguments
+MSG_rs_safety_time='時刻'
+
+# 0 arguments
+MSG_rs_safety_procedure='手順'
+
+# 0 arguments
+MSG_rs_safety_failed_title='3/10  安全バックアップ'
+
+# 0 arguments
+MSG_rs_safety_failed_write='バックアップ先への書き込みに失敗しました（No space left on device）。'
+
+# 0 arguments
+MSG_rs_safety_failed_read='安全バックアップの読み戻し検証に失敗したため、復元には使えません'
+
+# 1 arguments
+MSG_rs_safety_failed_unusable='安全バックアップは完全ですが、このスクリプトでは自動復元できません（%s）'
+
+# 0 arguments
+MSG_rs_safety_failed_body='復元前の安全バックアップが完了しなかったため、上書きは開始しません。
+データは変更していません。サービスは停止したままです。'
+
+# 0 arguments
+MSG_rs_safety_resume='原因を解消してから、安全バックアップから再開してください：'
+
+# 0 arguments
+MSG_rs_safety_resume_own='自前のバックアップで再開してください：'
+
+# 0 arguments
+MSG_rs_safety_revert='または復元を取りやめ、元のサービスを起動してください：'
+
+# 0 arguments
+MSG_rs_safety_use_own='サービス停止後に取得した自前のバックアップも使えます。
+端末での再開時に [2] を選ぶか、
+再開コマンドに次の 3 つのオプションを付けてください：'
+
+# 1 arguments
+MSG_rs_safety_stop_time='自前のバックアップの時刻は、
+この復元がサービスを停止した %s 以降が必要です。'
+
+# 0 arguments
+MSG_rs_safety_restarted='サービスが稼働中、記録した停止後に起動済み、または停止を確認できません。
+restore --revert を実行してからやり直してください。'
+
+# 0 arguments
+MSG_rs_safety_flags_phase='自前のバックアップの 3 オプションは、
+安全バックアップを待っている再開時に、
+上書きが始まる前だけ指定できます。'
+
+# 0 arguments
+MSG_rs_safety_enter='スナップショットが完了したら入力してください（復元記録に保存されます）：'
+
+# 0 arguments
+MSG_rs_safety_setup_failed='安全バックアップ用のフォルダーを作成できません。'
+
+# 0 arguments
+MSG_rs_safety_failed_operation='安全バックアップを書き込めません。詳細は復元ログを確認してください。'
+
+MSG_rs_safety_reason_fingerprint_short='現在のデータベースから一意のマスターキー識別子を読み取れません'
+
+MSG_rs_journal_uncertain='復元操作が完了したか判断できません：%s。'
+
+MSG_rs_journal_guide='ここで停止してください。これらのパスを変更する前に、
+「バックアップとリストア」の手動復元手順を確認してください。'
+
+MSG_rs_journal_missing='データの上書きは始まっていますが、操作記録がありません。
+--revert で安全バックアップから復元してください。'
+
+MSG_rs_import_start='データベースサービスを起動できませんでした。'
+
+MSG_rs_import_ready='TCP 接続で対象データベースに接続できる状態になりませんでした。'
+
+MSG_rs_import_encoding='データベースのエンコーディング、照合順序、文字分類が
+バックアップと異なるため、インポートを停止しました。'
+
+MSG_rs_import_failed='データベースのインポートに失敗しました。再開時に未完成のデータを
+保持し、空のデータベースに再インポートします。'
+
+# ---------- メインメニュー：復元の項目とバックアップファイルの選択。復元後の録画 ----------
+# 0 arguments
+MSG_menu_restore_new='バックアップファイルからこの新しいホストへ復元
+（バックアップ時のバージョンを先にインストール）'
+
+# 0 arguments
+MSG_menu_restore='バックアップファイルから復元（このホストのデータを置き換える。
+サービスを停止する）'
+
+# 2 arguments: the backups folder, the current folder
+MSG_menu_restore_found='バックアップファイルから復元します。%s と
+現在のフォルダー %s にあるバックアップファイル：'
+
+# 2 arguments: the backups folder, the current folder
+MSG_menu_restore_none='バックアップファイルから復元します。%s と
+現在のフォルダー %s にバックアップファイルがありません。'
+
+# 0 arguments
+MSG_menu_restore_encrypted='（暗号化済み）'
+
+# 0 arguments
+MSG_menu_ask_restore='バックアップファイルのパス（Enter でメインメニューに戻る）> '
+
+# 1 argument: the number of files
+MSG_rs_rec_put_back='録画：バックアップから %s 個のファイルを戻しました。同名の既存ファイルは
+保持し、上書きしていません'
+
+# 0 arguments
+MSG_rs_rec_same_kept='録画はバックアップから復元されていません。このバックアップに録画はなく、
+現在の録画はそのまま保持しています。録画はバックアップ時点と一致しない
+ことがあります。バックアップ後に録画したものはディスクに残りますが、
+システムには表示されません。バックアップ後に削除したものは戻りません。'
+
+# 0 arguments
+MSG_rs_rec_all_here='録画：システムに記録された録画のファイルはすべてこのホストにあります'
+
+# 3 arguments: how many, the list file, the recordings folder of the source host
+MSG_rs_rec_missing='録画はバックアップから復元されていません。システムに記録された録画の
+うち %s 件のファイルがこのホストにありません。
+一覧は次のファイルにあります：
+%s
+作成元ホストの %s から
+コピーしてください。'
+
+# 0 arguments
+MSG_rs_rec_offsite='オフサイト保管にアップロード済みの録画は、再生時にそこから取得されます。'
+
+# ---------- restore: the external database, checked before anything stops ----------
+# 0 arguments
+MSG_rs_ext_refused='外部データベースはまだ復元できません。理由：'
+# 4 arguments: count, database, sources, applications
+MSG_rs_ext_conns='%s 件の別の接続が %s を使用しています（接続元 %s、
+アプリケーション %s）。先に元のホストのサービスを停止し、待機系ホストが
+このデータベースを引き継いでいないことを確認してください。'
+# 3 arguments: database, source, application
+MSG_rs_ext_conns_one='1 件の別の接続が %s を使用しています（接続元 %s、
+アプリケーション %s）。先に元のホストのサービスを停止し、待機系ホストが
+このデータベースを引き継いでいないことを確認してください。'
+# 0 arguments
+MSG_rs_ext_from_local='ローカルソケット'
+# 4 arguments: object, its owner, DB_USER, DB_USER
+MSG_rs_ext_owner='オブジェクト %s の所有者は %s で、%s ではありません。
+スクリプトが空にできるのは %s が所有するオブジェクトだけです。'
+# 1 argument: DB_USER
+MSG_rs_ext_owner_more='%s 以外が所有するオブジェクトはほかにもあります。'
+# 2 arguments: server version, client majors
+MSG_rs_ext_no_client='サーバーは PostgreSQL %s で、対応するクライアントがありません。
+このリリースのクライアントは PostgreSQL %s です。'
+# 2 arguments: server version, the server major of the backup
+MSG_rs_ext_server_old='サーバーは PostgreSQL %s で、バックアップ元の PostgreSQL %s より
+古いです。'
+# 2 arguments: client major, the tool that made the dump
+MSG_rs_ext_client_old='このリリースの PostgreSQL %s クライアントは、バックアップを作成した
+ツール（%s）より古いです。'
+# 2 arguments: DB_USER, DB_NAME
+MSG_rs_ext_not_owner='%s はデータベース %s の所有者ではありません。schema public の
+再作成にはデータベースの所有者が必要です。'
+# 1 argument: the extensions
+MSG_rs_ext_extension='データベースに plpgsql 以外の拡張機能があります（%s）。
+スクリプトは拡張機能を空にすることも復元することもしません。'
+# 3 arguments: encoding, collation, character type
+MSG_rs_ext_encoding='データベースのエンコーディングまたは照合順序がバックアップと
+異なります。同じ設定でデータベースを作成してください：
+ENCODING '"'"'%s'"'"' LC_COLLATE '"'"'%s'"'"' LC_CTYPE '"'"'%s'"'"''
+# 2 arguments: host:port, log file
+MSG_rs_ext_unreachable='外部データベース %s に接続できないか、ログインに失敗しました。
+原因は %s に記録されています。'
+# 2 arguments: the check now, the check the backup recorded
+MSG_rs_ext_tls_lower='サーバー証明書の検証がバックアップ時より弱くなります（現在 %s、
+バックアップ時 %s）。'
+# 1 argument: path
+MSG_rs_ext_ca_conflict='CA ファイルの配置先 %s に内容の異なるファイルがあります。
+先に移動してください。'
+# 0 arguments
+MSG_rs_ext_client_missing='バックアップのデータベース接続はクライアント証明書を使います。
+--db-client-cert と --db-client-key で証明書と秘密鍵を指定してください。'
+# 1 argument: path
+MSG_rs_ext_client_unreadable='%s を読み取れません。'
+# 1 argument: path
+MSG_rs_ext_client_conflict='%s に内容の異なるファイルがあります。先に移動するか、
+同じファイルを指定してください。'
+# 2 arguments: client major, release
+MSG_rs_ext_no_image='このホストに PostgreSQL %s クライアントイメージ（%s 同梱）が
+ありません。復元に必要です。先にこのリリースのオフラインイメージ
+バンドルを読み込んでください。'
+# 0 arguments
+MSG_rs_ext_ask_cert='クライアント証明書ファイルのパス > '
+# 0 arguments
+MSG_rs_ext_ask_key='クライアント秘密鍵ファイルのパス > '
+# 2 arguments: count, roles
+MSG_rs_ext_roles_missing='対象のデータベースサーバーに、バックアップで権限を付与している
+%s 個のロールがありません：%s。
+先にロールを作成するか、--accept-grant-loss を付けてその権限付与を省いて
+ください。'
+# 1 argument: the role
+MSG_rs_ext_roles_missing_one='対象のデータベースサーバーに、バックアップで権限を付与している
+1 個のロールがありません：%s。
+先にこのロールを作成するか、--accept-grant-loss を付けてその権限付与を
+省いてください。'
+# 0 arguments
+MSG_rs_ext_step_stop='サービスを停止（外部データベースには影響しません）'
+# 0 arguments
+MSG_rs_ext_step_quiet='他の接続がないことを確認'
+# 4 arguments: count, database, sources, applications
+MSG_rs_ext_still='：停止後も %s 件の別の接続が
+%s を使用しています（接続元 %s、アプリケーション %s）。'
+# 3 arguments: database, source, application
+MSG_rs_ext_still_one='：停止後も 1 件の別の接続が
+%s を使用しています（接続元 %s、アプリケーション %s）。'
+# 1 argument: step
+MSG_rs_ext_stopped_at='復元はステップ %s で止まりました。まだ何も上書きしていません。
+サービスは停止したままです。'
+# 0 arguments
+MSG_rs_ext_end_conn='その接続を見つけて終了し（待機系ホストの引き継ぎでないことを
+確認）、再開してください：'
+
+# Imported data checks and recovery instructions.
+# 1 arguments
+MSG_rs_db_check_migrations='データベースを確認：取り込み後の migration がバックアップと
+       異なります（%s）'
+# 2 arguments
+MSG_rs_db_extra='追加 %s 件：%s'
+# 2 arguments
+MSG_rs_db_missing='不足 %s 件：%s'
+# 3 arguments
+MSG_rs_db_check_counts='データベースを確認：%s の行数が異なります
+       （取り込み後 %s、バックアップ %s）'
+# 2 arguments
+MSG_rs_db_check_kek='データベースを確認：active マスター鍵 ID が異なります
+       （取り込み後 %s、バックアップ %s）'
+# 0 arguments
+MSG_rs_db_check_read='データベースを確認：取り込み後のデータを読み取れません'
+# 1 arguments
+MSG_rs_failure_stopped='復元はステップ %s で停止しました。サービスは停止したままで、
+自動的に元に戻してはいません。'
+# 1 arguments
+MSG_rs_failure_running='復元はステップ %s で停止しました。サービスの一部または全部が
+起動している可能性があり、復元は未確認です。'
+# 1 arguments
+MSG_rs_failure_unknown='復元はステップ %s で停止しました。サービス状態を読み取れません。'
+# 0 arguments
+MSG_rs_failure_no_safety='このホストには元のデータがなかったため、安全バックアップはありません。'
+# 0 arguments
+MSG_rs_failure_uncovered='データはまだ上書きしていません。'
+# 3 arguments
+MSG_rs_failure_kept='復元前のデータは名前を変更して %s
+ほか %s か所に保持しています。安全バックアップ
+%s は復元可能と確認済みです。'
+# 1 arguments
+MSG_rs_failure_resume='原因を解決したら、ステップ %s から再開してください：'
+# 0 arguments
+MSG_rs_failure_revert='または安全バックアップを使って元に戻します：'
+# 0 arguments
+MSG_rs_failure_abandon='または今回の復元を中止して未インストールに戻します
+（配置したデータは名前を変更して保持し、削除しません）：'
+# 3 arguments
+MSG_rs_failure_own='または登録した手順で元に戻します：%s（バックアップ %s、%s）'
+# 1 arguments
+MSG_rs_failure_plaintext='作業フォルダー %s にはデータベースと
+設定の平文があります。復元の完了または元に戻した後で消去します。'
+# 1 arguments
+MSG_rs_failure_log='ログファイル %s'
+
+# Startup and runtime master-key checks.
+# 1 arguments
+MSG_rs_unseal_wait='データを取り込み、サービスを起動しました。封印解除後の
+マスター鍵確認を待っています（%s）'
+# 0 arguments
+MSG_rs_unseal_ui='復元はまだ完了していません。マスター鍵はブラウザーで入力します。
+封印解除ページでバックアップ内の管理者アカウントで認証し、
+マスター鍵を入力してください：'
+# 0 arguments
+MSG_rs_unseal_kms='復元はまだ完了していません。マスター鍵は鍵管理サービスにあります。
+封印解除ページでバックアップ内の管理者として認証し、
+表示されたサービス（設定はデータベースと共に復元済み）を確認して
+認証情報を再入力してください。このホストのアドレスを
+鍵管理サービスの許可元に含めてください：'
+# 1 arguments
+MSG_rs_unseal_fingerprint='マスター鍵の指紋は %s である必要があります。'
+# 0 arguments
+MSG_rs_unseal_finish='封印解除後、次のコマンドで確認を完了してください。
+確認が済むまでアップグレードとバックアップはできません：'
+# 0 arguments
+MSG_rs_unseal_still='システムはまだ封印中のため、復元を完了できません。
+何も変更していません。'
+# 1 arguments
+MSG_rs_unseal_again='%s で封印を解除してから再実行してください：'
+# 0 arguments
+MSG_rs_unseal_unreadable='封印状態または実行時のマスター鍵 ID を読み取れません。
+復元は未確認です。状態を確認してから再開してください：'
+# 2 arguments
+MSG_rs_runtime_mismatch='マスター鍵が一致しません。封印解除後の識別は %s、
+バックアップの記録は %s です。'
+# 0 arguments
+MSG_rs_runtime_stopped='サービスを停止しました。復元は完了していません。'
+# 0 arguments
+MSG_rs_runtime_guide='「バックアップとリストア」の第 6 節、項目 6 に従って
+鍵台帳を確認してから判断してください。'
+# 0 arguments
+MSG_rs_runtime_resume='再開：サービスを再起動し、正しいマスター鍵で封印を解除した後、
+再度確認します'
+# 0 arguments
+MSG_rs_runtime_resume_env='再開：まず設定ファイルのマスター鍵を再確認します。
+一致しなければサービスを起動しません'
+# 1 arguments
+MSG_rs_ready_timeout='サービスを起動して準備完了を待機：%s 秒以内に完了しませんでした'
+# 0 arguments
+MSG_rs_ready_body='復元は完了していません。サービスは起動しましたが、バックエンドが
+準備完了を返していないため、まだ接続できない可能性があります。'
+# 0 arguments
+MSG_rs_ready_status='状態を確認：'
+# 0 arguments
+MSG_rs_ready_resume='対処後に再開してください（サービスの稼働を確認してから
+準備完了を待ちます）：'
+# 1 argument
+MSG_rs_runtime_match='マスター鍵：封印解除後に読み取った ID %s は
+バックアップと一致しました'
+# 1 argument
+MSG_rs_restore_done='復元が完了しました（%s）'
+# 1 argument
+MSG_rs_resume_original='元のバックアップ %s が必要です。
+復元開始時と同じチェックサムである必要があります。'
+# 1 argument
+MSG_rs_resume_changed='復元の作業ファイルが変更されています：%s。再開を停止しました。'
+# 1 arguments
+MSG_rs_interrupted_stopped='復元は手順 %s で中断されました。起動したツールを停止しました。
+サービスは停止したままで、自動的に元に戻してはいません。'
+# 1 arguments
+MSG_rs_interrupted_running='復元は手順 %s で中断されました。起動したツールを停止しました。
+サービスの一部または全部が稼働中の可能性があり、復元は未確認です。'
+# 1 arguments
+MSG_rs_interrupted_unknown='復元は手順 %s で中断されました。起動したツールを停止しました。
+サービスの状態を読み取れません。'
+# 0 arguments
+MSG_rs_revert_start_failed='元のサービスが準備完了を返していません。元に戻す処理は未完了です。
+原因に対処してから --revert を再実行してください：'
+# 1 arguments
+MSG_rs_revert_done='安全バックアップに戻りました（%s）'
+# 1 argument
+MSG_rs_revert_original_done='元のサービスを再開しました（%s）。'
+
+# Restore recovery and exit confirmation.
+# 0 arguments
+MSG_rs_exit_yes='端末がない場合は --yes を付けて操作を確認してください。'
+# 1 arguments
+MSG_rs_exit_confirm_original='まだデータは上書きされていません。今回の復元の記録を片付け、
+%s で元のサービスを起動します。続けますか？[y/N] '
+# 0 arguments
+MSG_rs_exit_cancelled='操作を取り消しました。'
+# 0 arguments
+MSG_rs_revert_title='安全バックアップで元に戻す（まだ何も変更していません）'
+# 3 arguments
+MSG_rs_revert_details='安全バックアップ  %s
+                  %s、復元前に復元可能と確認済み
+戻す先            %s、今回の復元を始める前の状態'
+# 2 arguments
+MSG_rs_revert_partial='未完了のデータ    今回配置したデータは名前を変えて残します。
+                  削除しません：
+                  %s
+                  ほか %s か所'
+# 1 arguments
+MSG_rs_revert_downtime='停止時間          約 %s 分'
+# 1 arguments
+MSG_rs_revert_confirm_version='確認のため、バージョン %s を入力してください：'
+# 1 arguments
+MSG_rs_exit_wrong='この復元の種類では --%s は使えません。'
+# 0 arguments
+MSG_rs_no_pending='未完了の復元はありません。'
+# 1 arguments
+MSG_rs_revert_finished='前回の復元は完了しています（%s）。--revert は
+未完了の復元だけを扱います。'
+# 0 arguments
+MSG_rs_revert_fresh='復元前のデータに戻すには、そのときの安全バックアップで復元します。
+これは新しい復元で、まず現在のデータの安全バックアップを作成します：'
+
+# Restore completion.
+# 1 arguments
+MSG_rs_finish_title='復元が完了し、サービスが復旧しました（%s）'
+# 2 arguments
+MSG_rs_finish_from='復元元        %s（%s）'
+# 1 arguments
+MSG_rs_finish_address='アドレス      %s'
+# 1 arguments
+MSG_rs_finish_key_env='マスターキー  設定ファイル内。封印解除後に読んだ識別子
+              %s はバックアップと一致'
+# 1 arguments
+MSG_rs_finish_key_ui='マスターキー  ブラウザーで入力。封印解除後に読んだ識別子
+              %s はバックアップと一致'
+# 1 arguments
+MSG_rs_finish_key_kms='マスターキー  キー管理サービスで保管。封印解除後に読んだ識別子
+              %s はバックアップと一致'
+# 3 arguments
+MSG_rs_finish_kept='保持          復元前のデータは名前を変えて残しています：
+              %s
+              ほか %s か所。安全バックアップ：
+              %s。
+              第 6 節の確認後、不要な保持フォルダーは手動で削除できます。'
+# 3 arguments
+MSG_rs_finish_kept_own='保持          %s、ほか %s か所。
+              自分で用意したバックアップ：%s。'
+# 1 arguments
+MSG_rs_finish_oidc='公開 URL が %s に変わりました。外部ログイン
+（OIDC）を使う場合は、ID プロバイダーでコールバック URL を
+更新してください。'
+# 0 arguments
+MSG_rs_finish_checklist='「バックアップとリストア」第 6 節を項目ごとに確認してから、
+利用者にシステムを引き渡してください。'
+# 1 arguments
+MSG_rs_upgrade_existing='このホストには %s があり、アップグレードできます：'
+# 1 arguments
+MSG_rs_upgrade_before='アップグレード前のバージョン（%s）に戻りました。
+後でアップグレードするには：'
+# 0 arguments
+MSG_rs_upgrade_later='後で最新版を調べてアップグレードするには：'
+# 0 arguments
+MSG_rs_upgrade_lookup='最新版を調べています：'
+# 0 arguments
+MSG_rs_upgrade_unknown='最新バージョンを確認できませんでした。'
+# 0 arguments
+MSG_rs_upgrade_lookup_later='後で最新版を調べるには：'
+# 1 arguments
+MSG_rs_upgrade_ask='今すぐ %s にアップグレードしますか？サービスを停止して
+バックアップを取ってから、バージョンを切り替えます。[y/N] '
+# 0 arguments
+MSG_rs_upgrade_declined='後でアップグレードするには：'
+# 1 arguments
+MSG_rs_upgrade_current='%s は最新バージョンです'
+
+# Giving up an unfinished new-host restore.
+# 0 arguments
+MSG_rs_abandon_title='今回の復元を断念する（このホストを未インストールに戻します）'
+# 1 arguments
+MSG_rs_abandon_services='サービス          今回起動したサービスを先に停止します
+                  （現在 %s 個が稼働中）。停止を確認してから進みます'
+# 0 arguments
+MSG_rs_abandon_stopped='サービス          稼働中のサービスはありません'
+# 0 arguments
+MSG_rs_abandon_kept='名前を変えて保持  今回配置したデータは名前を変えて残します。
+                  削除しません：'
+# 1 arguments
+MSG_rs_abandon_path='                  %s'
+# 0 arguments
+MSG_rs_abandon_old_env='                  以前のインストール失敗時の .env を元の場所に戻します'
+# 1 arguments
+MSG_rs_abandon_old_template='                  %s：元のファイルを元の場所に戻します'
+# 3 arguments
+MSG_rs_abandon_tail='変更しないもの    録画フォルダー %s：今回復元した
+                  ファイルと事前にコピーしたファイルがある場合が
+                  あります。いずれも削除しません
+バージョン        current は %s に戻し、releases/%s は残します
+作業ファイル      作業フォルダー内の平文のデータベースと設定を削除します'
+# 0 arguments
+MSG_rs_exit_confirm_abandon='断念しますか？[y/N] '
+# 0 arguments
+MSG_rs_abandon_done='復元を断念し、このホストは未インストールに戻りました。
+名前を変えたフォルダーは、不要と確認してから手動で削除してください。'
+# 0 arguments
+MSG_rs_abandon_stop_failed='全サービスの停止を確認できず、名前は変更していません。
+原因を解消して --abandon をもう一度実行してください：'
+
+# 1 argument
+MSG_rs_failure_new_stopped='復元はステップ %s で停止しました。サービスは起動していません。
+自動で元には戻していません。'
+
+# ---------- restore: the external database, roles the server lacks ----------
+# 2 arguments: count, the role names (one per line, indented)
+MSG_rs_ext_roles_ask='バックアップでは次の %s 個のロールに権限を付与していますが、対象の
+データベースサーバーにこれらのロールがありません：
+%s
+省く場合、これらのロールへの権限付与だけが復元されず、ほかはすべて
+復元されます。'
+# 1 argument: the role name (indented)
+MSG_rs_ext_roles_ask_one='バックアップでは次の 1 個のロールに権限を付与していますが、対象の
+データベースサーバーにこのロールがありません：
+%s
+省く場合、このロールへの権限付与だけが復元されず、ほかはすべて
+復元されます。'
+# 0 arguments
+MSG_rs_ext_roles_create='[1] 先にこれらのロールを作成する（既定。復元を終了し、何も変更
+    しません）'
+# 0 arguments
+MSG_rs_ext_roles_create_one='[1] 先にこのロールを作成する（既定。復元を終了し、何も変更
+    しません）'
+# 0 arguments
+MSG_rs_ext_roles_skip='[2] これらのロールへの権限付与を省いて続ける'
+# 0 arguments
+MSG_rs_ext_roles_skip_one='[2] このロールへの権限付与を省いて続ける'
+# 0 arguments
+MSG_rs_ext_grants_unsure='欠けているロールだけに関わるのか判別できない権限付与文があり、
+スクリプトではそれらだけを省けません。
+先にサーバーでこれらのロールを作成してから復元してください。'
+# 1 argument: count
+MSG_rs_ext_skipped_row='これら %s 個のロールへの権限付与は復元されません'
+# 0 arguments
+MSG_rs_ext_skipped_row_one='この 1 個のロールへの権限付与は復元されません'
+# 0 arguments
+MSG_rs_label_skipped='  省く権限付与   '
+
+# Restore execution progress and database client diagnostics.
+MSG_rs_space_join='%sと%s'
+MSG_rs_space_short_row='%s（%s）：必要 %s GB、空き %s GB'
+MSG_rs_progress_release_same='%s とイメージを配置'
+MSG_rs_progress_release_new='%s をインストール：リリースとイメージを配置'
+MSG_rs_progress_stop='サービスを停止（データベースは稼働を継続）'
+MSG_rs_progress_safety='復元前のバックアップ %s'
+MSG_rs_progress_own='自前のバックアップ %s（%s）'
+MSG_rs_progress_verify='復元前のバックアップから復元できることを確認'
+MSG_rs_progress_swap='データベースを停止し、現在のデータを改名して保持'
+MSG_rs_progress_settings='設定ファイルを書き込み（バックアップを引き継ぎ、
+ホスト値はこのホストに合わせる）'
+MSG_rs_progress_import='データベースをインポート'
+MSG_rs_progress_check='データベースを照合：%s 件の migration、行数、
+マスター鍵 ID がバックアップと一致'
+MSG_rs_progress_files_same='監査ファイル、証明書、設定ファイルを戻す'
+MSG_rs_progress_files_new='監査ファイルと証明書を戻す'
+MSG_rs_progress_files_new_reissue='監査ファイルと証明書を戻し、このホストのアドレス用に
+サーバー証明書を再発行'
+MSG_rs_progress_start_same='サービスを起動して準備完了を待機：
+バックエンドの応答は %s'
+MSG_rs_progress_start_new='サービスを起動し、実行中のイメージを確認'
+MSG_rs_progress_ready='準備完了を待機：バックエンドの応答は %s'
+MSG_rs_progress_key_wait='マスター鍵：封印解除後に照合'
+MSG_rs_import_error='pg_restore がエラーを返しました（詳細はログに記録）。'
+MSG_rs_import_error_detail='pg_restore がエラーを返しました（詳細はログに記録）：'
+
+# ---------- restore: the external database, emptied and imported in one transaction ----------
+# 0 arguments
+MSG_rs_ext_step_import='データベースを空にしてインポート（1 つのトランザクション）'
+# 1 argument: the log file
+MSG_rs_ext_import_unreachable='外部データベースに接続できません。インポートはまだ始まっていません。
+原因は %s に記録されています。'
+# 1 argument: the log file
+MSG_rs_ext_import_make='インポート用の SQL を作成または検証できませんでした。トランザクション
+は開始しておらず、外部データベースは変更されていません。
+原因は %s に記録されています。'
+# 0 arguments
+MSG_rs_ext_import_rolled_back='データベースのインポートに失敗しました。今回の消去とインポートは
+まとめて取り消され、外部データベースは元のままです。'
+# 0 arguments
+MSG_rs_ext_import_unknown='インポートがコミットされたかどうか確認できません。続行すると、
+まず外部データベースを確認してから、再インポートするか先へ進むかを
+決めます。'
+# 2 arguments: the digest before the import, the digest now
+MSG_rs_ext_import_unknown_stop='外部データベースはインポート前の状態でも、インポート完了後の状態
+でもないため、前回のインポートがコミットされたか判断できません。
+再インポートはしません。
+  インポート前：%s
+  現在：        %s'
+
+# ---------- restore: reading the backup, the data release's database tool image ----------
+# 1 argument: the data release
+MSG_rs_no_dbtool='このホストにはリリース %s のデータベースツールイメージがありません。
+バックアップの読み取りに必要です。
+このリリースのオフラインイメージを先に読み込んでください。'
+
+# ---------- restore: a new host's external database, exported before it is emptied ----------
+# 0 arguments
+MSG_rs_ext_step_export='現在の外部データベースを安全バックアップとしてエクスポート'
+# 1 argument: the log file
+MSG_rs_ext_export_failed='外部データベースをエクスポートして全体を読み戻すことができませんでした。
+外部データベースは変更していません。原因は %s に記録されています。'
+# 1 argument: the export file
+MSG_rs_ext_revert_confirm='%s から外部データベースを戻し、この復元を中止しますか？[y/N] '
+# 1 argument: the export file
+MSG_rs_ext_revert_failed='外部データベースをエクスポート時の内容に戻せませんでした。
+%s は残してあります。同じコマンドをもう一度実行してください：'
+# 0 arguments
+MSG_rs_ext_revert_done='外部データベースは復元前にエクスポートした内容に戻りました。
+この復元は中止しました。'
+
+# ---------- restore: the external database in the preview, the steps, a failure and giving up ----------
+# 0 arguments
+MSG_rs_label_database='  データベース   '
+# 2 arguments: the certificate setup, the master key mode
+MSG_rs_deployment_external='外部データベース；%s；マスター鍵：
+%s'
+# 3 arguments: host:port, database, server version
+MSG_rs_ext_preview_server='外部 %s／%s
+（PostgreSQL %s）'
+# 2 arguments: client major, the management script's release
+MSG_rs_ext_preview_tool='インポートツール：PostgreSQL %s クライアント（%s に同梱、
+確認済み）'
+# 1 argument each: the sslmode in effect
+MSG_rs_ext_conn_full_system='接続：%s、システムが信頼する認証局でサーバーを検証'
+MSG_rs_ext_conn_full_file='接続：%s、バックアップの CA ファイルでサーバーを検証'
+MSG_rs_ext_conn_ca_system='接続：%s、システムが信頼する認証局でサーバー証明書を検証、
+ホスト名は確認しない'
+MSG_rs_ext_conn_ca_file='接続：%s、バックアップの CA ファイルでサーバー証明書を検証、
+ホスト名は確認しない'
+MSG_rs_ext_conn_none_none='接続：%s、サーバー証明書は検証しない'
+MSG_rs_ext_conn_none_file='接続：%s、サーバー証明書は検証しない'
+# 1 argument: DB_USER
+MSG_rs_ext_preview_rights='権限：%s がこのデータベースとその中のすべてを所有；
+他の接続なし'
+# 4 arguments: DB_USER, count, sources, applications
+MSG_rs_ext_preview_rights_listed='権限：%s がこのデータベースとその中のすべてを所有；
+現在 %s 個の他の接続（%s から、アプリケーション %s）、
+サービス停止後にもう一度確認'
+# 2 arguments: schema, count (en: count, schema)
+MSG_rs_ext_objects='スキーマ %s の %s 個のオブジェクト'
+# 1 argument: the objects of each schema
+MSG_rs_ext_preview_emptied='消去：%sを、インポートと
+同じトランザクションで消去。失敗時はすべて取り消され、
+データベースは元のまま。他のデータベース、ロール、
+テーブルスペースには触れない。'
+# 0 arguments
+MSG_rs_ext_preview_empty='対象データベースは空のため、消去は不要'
+# 1 argument: the export file
+MSG_rs_ext_preview_export='現在のデータベースをまず
+%s
+にエクスポートし、全体を読み戻して使えることを確認してから進む'
+# 1 argument: GB
+MSG_rs_ext_preview_space='インポートが終わるまで、データベースサーバー上に新旧のデータが
+両方あり、約 %s GB の空きが必要です。スクリプトはサーバーの
+ディスクを確認できないため、先に確認してください。'
+# 0 arguments
+MSG_rs_kept_external='現在の監査、証明書のフォルダーを
+削除せず、名前を変えて保管します：'
+# 0 arguments
+MSG_rs_kept_external_no_tls='現在の監査ファイルのディレクトリを
+削除せず、名前を変えて保管します：'
+# 1 argument: database
+MSG_rs_confirm_db='確認のため、消去するデータベース名 %s を入力してください：'
+# 0 arguments
+MSG_rs_ext_import_error='psql がエラーを報告しました（全文はログにあります）。'
+# 0 arguments
+MSG_rs_ext_import_error_detail='psql がエラーを報告しました（全文はログにあります）：'
+# 0 arguments
+MSG_rs_ext_failure_rolled_back='今回の消去とインポートはまとめて取り消され、外部データベースは
+元のままです。'
+# 1 argument: the export file
+MSG_rs_ext_failure_rolled_back_export='今回の消去とインポートはまとめて取り消され、外部データベースは
+元のままです。事前のエクスポートは %s にあります。'
+# 1 argument: the export file
+MSG_rs_ext_failure_unknown_export='インポートがコミットされたかどうか確認できません。続行すると、
+まず外部データベースを確認してから、再インポートするか先へ進むかを
+決めます。事前のエクスポートは %s にあります。'
+# 1 argument: the export file
+MSG_rs_ext_failure_committed_export='インポートはコミット済みで、外部データベースは今バックアップの内容です。
+事前のエクスポートは %s にあります。'
+# 1 argument: the export file
+MSG_rs_ext_failure_unsent_export='外部データベースは変更されていません。
+事前のエクスポートは %s にあります。'
+# 0 arguments
+MSG_rs_ext_failure_revert='または事前のエクスポートで外部データベースを戻し、今回の復元を
+中止します：'
+# 0 arguments
+MSG_rs_ext_failure_abandon='または今回の復元を中止して未インストールに戻します
+（配置したデータは名前を変更して保持し、削除しません。外部データベースに
+今回インポートしたデータは消去しません）：'
+# 0 arguments
+MSG_menu_rs_revert_export='事前のエクスポートで外部データベースを戻し、今回の復元を中止する'
+# 2 arguments: host:port, database
+MSG_rs_ext_abandon_kept='外部データベース  %s／%s に今回インポートした
+                  データは消去しません。必要なら
+                  データベース管理者が消去してください。次回の復元では
+                  空でない対象として先にエクスポートします'
+# 2 arguments: host:port, database
+MSG_rs_ext_abandon_maybe='外部データベース  %s／%s には今回インポートした
+                  データがある可能性があります。消去はしません。必要なら
+                  データベース管理者が消去してください'
+# 1 argument: the export file
+MSG_rs_ext_abandon_export='事前のエクスポート %s
+                  は削除せず保持します。不要と確認できたら自分で削除して
+                  ください'
+# 0 arguments
+MSG_rs_ext_abandon_refused='外部データベースの消去とインポートが始まっているため、そのまま
+中止することはできません。事前のエクスポートで戻してください
+（完了するとこのホストも未インストールに戻ります）：'
+# 2 arguments: count, the list file
+MSG_rs_ext_finish_skipped='権限付与      サーバーにないロールへの権限付与 %s 文は復元して
+              いません。一覧は %s'
+# 1 argument: the export file
+MSG_rs_ext_finish_export='エクスポート  外部データベースの復元前の内容（平文）を残しています：
+              %s
+              第 6 節の確認後、自分で削除してください。'
+
+# ---------- status: a failed upgrade that a restore which finished has settled ----------
+# 1 argument: when the restore settled it
+MSG_status_upgrade_settled='この失敗は %s の復元で対処済みです。
+再度アップグレードできます'

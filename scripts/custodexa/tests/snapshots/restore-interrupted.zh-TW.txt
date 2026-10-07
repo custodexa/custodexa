@@ -1,0 +1,11 @@
+[FAIL] 還原在第 6 步被中斷，已停止這次啟動的工具程序。
+       服務維持停止，沒有自動回復。
+  還原前的資料改名保留在 /opt/custodexa/data/postgres.before-restore-20261012-093015 等 3 處；
+  安全備份 backups/custodexa-backup-1.16.0-20261012-093015.tar 已確認可以還原。
+  查明原因後，重跑接續（從第 6 步開始）：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  或用安全備份還原回去：
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  暫存目錄 /opt/custodexa/restore/20261012-093015/ 有資料庫與設定檔的明文，
+  完成或還原回去之後會清掉。
+  紀錄檔 /opt/custodexa/logs/restore-20261012-093015.log

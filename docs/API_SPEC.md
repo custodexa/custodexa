@@ -1,6 +1,8 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-01（資產批次新增：`POST /assets/import/preview` 預檢與 `POST /assets/import` 整批建立；資產列表加 `credential_pending` 欄與同名篩選參數；單筆建立完全沒有憑證來源時建零掛載資產）
+> 最後更新：2026-10-06（`POST /seal/authorize` 在已解封時一律回 409 `SEAL_ALREADY_UNSEALED`；`POST /auth/login` 的帳號含控制字元時回 401 而非 500）
+> 前次更新：2026-10-06（`GET /seal/status` 在已解封時多回現行 KEK 識別 `kek_id`）
+> 前次更新：2026-10-01（資產批次新增：`POST /assets/import/preview` 預檢與 `POST /assets/import` 整批建立；資產列表加 `credential_pending` 欄與同名篩選參數；單筆建立完全沒有憑證來源時建零掛載資產）
 > 前次更新：2026-09-30（外部群組映射新增角色明確路由、使用者群組規則、共用字典備註、用途確認及兩類計數）
 > 前次更新：2026-09-29（告警審閱與三個核決端點加批次關聯碼 `batch_id`、告警批次審閱的三個條件與錯誤碼、告警列表 `ids` 查詢；通知通道加 `min_severity` 推送門檻欄與 `VALIDATION_CHANNEL_MIN_SEVERITY`；合規報告手動產出 `POST /compliance/report-jobs`，下載中心 `kind` 閉集加 `compliance_report`；登入回應與 `/auth/me` 的 `UserInfo` 加產品版本欄 `product_version`）
 
@@ -572,6 +574,7 @@ admin JWT 失效時，env 部署可修正來源後重啟；ui 以 KEK 材料解�
 | `generation` | 世代號（受理封存或取得解封持有權時遞增） |
 | `mode` | `ui`／`env`／`kms`；決定解封的材料形態及授權方式 |
 | `fault_code` | 僅 `sealed-faulted` 時出現，為失敗機器碼 |
+| `kek_id` | 僅 `unsealed` 時出現，為行程實際持有的現行 KEK 識別：本地模式（`ui`／`env`）是材料的單向指紋，委託模式是金鑰 ID。值取自執行中的金鑰提供者，與金鑰清冊（`GET /keys`）的 `kek_id` 同源，不重讀設定或資料庫。`sealed`／`unsealing`／`sealed-faulted` 時不出現。只是識別、不含任何金鑰材料或憑證；部署工具在還原後據此核對實際解封所用的主金鑰，不必經手管理者帳密 |
 | `cooldown_until` | 全域冷卻到期時間（RFC3339）；冷卻期滿自動恢復，**不需重啟行程** |
 | `cleanup_pending` / `cleanup_generation` / `cleanup_reason` / `cleanup_started_at` | 前代持有者待收束狀態 |
 | `journal_faulted` | 封存期留痕 I/O 故障（fail-close 拒收新嘗試，修復後自動恢復） |
@@ -603,6 +606,17 @@ admin JWT 失效時，env 部署可修正來源後重啟；ui 以 KEK 材料解�
 鎖定中與請求體格式錯的回應逐字相同**（可區分即帳號枚舉）。退避與冷卻分別回 429
 `SEAL_BACKOFF_ACTIVE` 與 `SEAL_COOLDOWN_ACTIVE`；被擋下的嘗試不驗證、不計入失敗計數、
 不刷新到期時間。
+
+**已解封時一律回 409 `SEAL_ALREADY_UNSEALED`**（與同一狀態下的 `POST /seal/unseal` 同碼）：
+授權脈絡只服務解封，已解封時沒有後續步驟用得到它。此判定在讀取請求體之前，不驗帳密、
+不計入退避，故帳密對錯、帳號是否存在都得到逐字相同的回應；揭露的只有 `GET /seal/status`
+本就公開的狀態。來源網段不符仍先回 403 `SEAL_SOURCE_NOT_ALLOWED`。已解封時取不到脈絡，故照兩步流程
+送出的 `POST /seal/unseal` 會回 401 `SEAL_GRANT_REQUIRED`；下表的 409 `SEAL_ALREADY_UNSEALED` 只在
+持有效脈絡者送出時出現。客戶端判斷「是否已解封」以第一步的 409 或 `GET /seal/status` 為準。
+
+帳密驗證**尊重帳號已寫入的鎖定期限**：鎖定未到期即回 401 `SEAL_AUTHORIZE_REJECTED`（與密碼錯不可區分），
+但本端點的失敗**不寫入**帳號的失敗次數與鎖定期限。初始化解封與委託模式全新安裝請求本文內的
+初始管理員帳密、以及守衛攔下頁的確認帳密，適用同一條鎖定判定。
 
 （以下為 ui 模式；**所有模式**都要求標頭 `Authorization: SealGrant <grant>`，缺或無效回 401
 `SEAL_GRANT_REQUIRED`／`SEAL_GRANT_INVALID`）：
@@ -779,7 +793,7 @@ POST /api/v1/instance-guard/ack
 | 機器碼 | 狀態碼 | 情境 |
 |---|---|---|
 | `INSTANCE_GUARD_ACK_INCOMPLETE` | 400 | 三要件缺一或請求體不可解析（不逐項回報缺哪一項） |
-| `INSTANCE_GUARD_ACK_UNAUTHORIZED` | 401 | 管理員憑證驗證失敗（**不區分**帳號不存在／密碼錯／非管理員／已停用，避免帳號列舉） |
+| `INSTANCE_GUARD_ACK_UNAUTHORIZED` | 401 | 管理員憑證驗證失敗（**不區分**帳號不存在／密碼錯／非管理員／已停用／鎖定中，避免帳號列舉；鎖定只讀判斷，攔下期不寫入帳號欄位） |
 | `INSTANCE_GUARD_HOLDER_CHANGED` | 409 | 重打的碼不等於**當下**持鎖者的碼；回應體另平鋪 `state`／`holder`／`retry_interval_seconds`，操作者才有新碼可重打 |
 | `INSTANCE_GUARD_NOT_HALTED` | 409 | 本實例不在攔下模式（鎖已取得或服務已上線） |
 | `INSTANCE_GUARD_ACK_LOCKED` | 429 | 憑證失敗達上限，冷卻期內暫不受理 |
@@ -827,6 +841,10 @@ MFA 分流（驗證或強制註冊）→ 強制改密 → 發正式 token**。
 錯誤——三者回應**完全相同**（`401` ＋ `AUTH_INVALID_CREDENTIALS`），使未認證者
 無法藉回應差異枚舉帳號是否存在。憑證正確而帳號已停用者才回 `403` ＋
 `AUTH_USER_INACTIVE`（此時請求者已證明持有該帳號憑證，告知不構成洩漏）。
+
+**帳號字串含控制字元（含 NUL、換行、定位字元與 C1 控制字元）或非法 UTF-8 時**，在查詢帳號
+之前即回與「帳號不存在」相同的 `401` 回應；判定只看輸入本身，不涉及任何帳號狀態。
+這筆失敗照常入登入稽核，稽核列的帳號欄以 U+FFFD 取代無法存放的字元。
 
 **允許來源網段判定也在憑證驗證之後**，且位於「發正式會話／發受限票證」的分岔之前，
 故一次涵蓋正式會話、強制註冊票證與強制改密票證三條出口。不落使用者

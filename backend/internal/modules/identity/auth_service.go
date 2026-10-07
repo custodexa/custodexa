@@ -445,6 +445,10 @@ func (s *AuthService) passwordExpired(user *model.User) bool {
 // verifyCredentials 認證前段：鎖定 gate + 密碼/LDAP 驗證 + 失敗計數。
 // 回傳已驗證的用戶與認證來源
 func (s *AuthService) verifyCredentials(req *LoginRequest) (*model.User, string, error) {
+	// 含控制字元或非法 UTF-8 的帳號在查詢前即拒，回應同查無帳號（理由見 LoginUsernameAcceptable）
+	if !LoginUsernameAcceptable(req.Username) {
+		return nil, "", ErrInvalidCredentials
+	}
 	var user model.User
 	result := database.DB.Preload("Roles").Where("username = ?", req.Username).First(&user)
 

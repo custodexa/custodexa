@@ -72,8 +72,15 @@ custodexa/
   state.json                             what is installed, written only by the script
   logs/                                  one log per command that changed something (mode 700);
                                          secret values from .env are never written to it
-  backups/<timestamp>/                   backups taken by the script (mode 700; secrets included)
+  backups/custodexa-backup-<version>-<timestamp>.tar
+                                         a backup taken with `backup`: one file (.tar.enc when
+                                         encrypted) and its .sha256, mode 600; secrets included.
+                                         While it is built, its parts are in
+                                         backups/.partial-<timestamp>/ (mode 700)
+  backups/<timestamp>/                   the backup an upgrade takes: a folder (mode 700;
+                                         secrets included)
   tls/                                   certificates of the built-in TLS proxy
+  restore/<timestamp>-<suffix>/          working folder of one `restore` run (mode 700)
   data/postgres/                         the database (bundled database only)
   data/recordings/                       session recordings (owner 1000, group 0, mode 2770)
   data/audit/                            audit log files
@@ -87,6 +94,10 @@ references `install` recorded for it.
 `data/exports/` is kept across container rebuilds but is **not covered by backups**: evidence
 package artifacts in it hold decrypted plaintext. Exclude it from any backup that copies the whole
 of `DATA_PATH`; see [Backup and Restore §2](./backup-and-restore.md#2-where-persistent-data-lives).
+
+`restore` also leaves two kinds of folders behind; once a restore has started, the script deletes neither. The first is the working folder under `restore/`, created for each run (mode 700). While a run is going the working folder holds plaintext copies of the database, `.env` and the archives, and needs about 1.1 times the size of the backup file on the file system of the deployment folder. When the restore finishes, those copies are removed; what stays is small: the list of recordings the database knows about but this host does not have, and the copies of `state.json` and `.env` from before the restore (secrets included, mode 600). A restore that stopped partway keeps the whole folder, because `restore --resume`, `--revert` and `--abandon` read from it: leave it until the restore is finished or given up. After that, the folder can be deleted. A run refused before any service is stopped leaves nothing behind: it removes the working folder it created. With an external database, the working folder also holds the SQL text of the import while it runs, about the size of the database uncompressed, and keeps the list of skipped grants (`skipped-grants.txt`) when grants were skipped. On a new host whose external database already held data, it keeps the safety export `safety-db.dump`, a plaintext copy of that database, even after the restore finishes; only a finished `restore --revert` deletes it, so delete it yourself once you no longer need it.
+
+The second kind is the data a restore replaced. The current database and audit files under `DATA_PATH`, and `tls/`, are renamed `postgres.before-restore-<timestamp>`, `audit.before-restore-<timestamp>` and `tls.before-restore-<timestamp>` and kept in place, so each needs as much space as the data it was renamed from, until you remove it. A restore that goes back leaves the data it had put in place as `*.partial-restore-<timestamp>`, and one that is given up on a new host leaves `*.abandoned-<timestamp>` (plan for the same space). They hold the full previous contents, secrets and recorded evidence included, so keep them with the same access rules as the live data. Delete them yourself once the checks in [Backup and Restore §6](./backup-and-restore.md#6-post-restore-verification-checklist) have passed and you no longer need to go back; the safety backup under `backups/` is a separate file with its own retention. With an external database there is no `postgres` folder to rename: the database is emptied and imported in place on its server, and what it held before is in the safety backup, or on a new host in the safety export. The steps are in [Backup and Restore §5](./backup-and-restore.md#5-restore-procedure).
 
 `state.json` is read line by line against one fixed format. If it is damaged, the commands that
 read it, `status` included, stop with exit code 5, name the line, and point at the previous copy,

@@ -1,0 +1,7 @@
+[FAIL] This management script is 1.16.0, and the backup's data belongs
+       to the newer 1.16.2.
+  A restore needs a management script no older than the backup.
+  On a new host: get 1.16.2 or later with get-custodexa.sh and restore
+  with it.
+  On an installed host: upgrade to 1.16.2 or later first, then restore.
+Nothing has been changed.

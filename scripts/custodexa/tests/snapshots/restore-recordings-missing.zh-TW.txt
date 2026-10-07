@@ -1,0 +1,3 @@
+  [WARN] 錄影沒有從備份還原：系統記錄的錄影中有 1,204 段的檔案不在這台。
+         清單在 /opt/custodexa/restore/20261012-093015/missing-recordings.txt，
+         請從來源主機的 /data/custodexa/recordings/ 複製過來。

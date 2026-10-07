@@ -1,0 +1,12 @@
+[WARN]  9/10  Start the services and wait until ready: not ready within
+              180 seconds
+
+The restore is not finished. The services are started, but the backend
+has not reported ready, so users may not be able to connect yet.
+  Check the status:
+    sudo /opt/custodexa/custodexa.sh status
+  Once that is dealt with, carry on (it checks that the services are
+  running, then waits):
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  Or go back with the safety backup:
+    sudo /opt/custodexa/custodexa.sh restore --revert

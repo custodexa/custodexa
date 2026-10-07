@@ -1,0 +1,3 @@
+[FAIL] 找不到校驗檔 custodexa-backup-1.16.0-20261005-101502.tar.enc.sha256。
+       非互動執行要在沒有校驗檔時繼續，請加 --no-checksum-file。
+沒有變更任何資料。

@@ -1,0 +1,6 @@
+  [WARN] 録画はバックアップから復元されていません。システムに記録された録画の
+         うち 1,204 件のファイルがこのホストにありません。
+         一覧は次のファイルにあります：
+         /opt/custodexa/restore/20261012-093015/missing-recordings.txt
+         作成元ホストの /data/custodexa/recordings/ から
+         コピーしてください。

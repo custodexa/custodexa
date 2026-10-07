@@ -1,0 +1,5 @@
+Restore
+  [WARN] A restore has not finished: imported, waiting for unseal to check
+         the master key (started 2026-10-12 09:30, data version 1.16.0)
+         From custodexa-backup-1.16.0-20261005-101502.tar.enc
+         To carry on: sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

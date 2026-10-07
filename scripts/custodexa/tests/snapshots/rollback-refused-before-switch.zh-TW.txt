@@ -1,0 +1,9 @@
+[FAIL] 沒有可以回到的上一版，沒有做任何變更。
+  上次的升級停在第 7 步，還沒有換到新版，不需要回到上一版。
+  服務目前停止，版本與資料都沒有換過。先恢復舊版服務，再執行一次升級。
+  恢復舊版服務：
+    sudo docker compose -p custodexa --project-directory /opt/custodexa -f /opt/custodexa/current/compose.yml \
+      start backend guacd frontend
+    sudo /opt/custodexa/custodexa.sh status --lang zh-TW
+  再執行一次升級：
+    sudo /opt/custodexa/custodexa.sh upgrade 1.16.2

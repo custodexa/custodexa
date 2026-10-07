@@ -25,6 +25,7 @@
   "pkg/crypto/jwt_test.go": "5ae7de9a53a71422710a9f40a07f2dff44675b24e54a901cd1c10f72bb5176d9",
   "pkg/crypto/jwt_validation_hardening_test.go": "80504833f04b68e3293aedd0b8e2abf820e20a61aeea613f6eb073a2946c1093",
   "pkg/crypto/kek.go": "383e067b19dace6dbc864f348dbd676912baf3942408b5560e04cbd92191bd98",
+  "pkg/crypto/kek_fingerprint_vectors_test.go": "09829867f2abc0caaf13fa770e0e6be0129d275fe5b060a635a1912ce22f3043",
   "pkg/crypto/kek_material.go": "1bdacdd256484d03f9dc588545e900886031708e9ca49833a0ebb56b6c303d3b",
   "pkg/crypto/kek_material_test.go": "b435a89391dc4ddb4b736fc809c3e333afb55ef36788f1ad38a110d3b0a51c3a",
   "pkg/crypto/kek_test.go": "b0b6614d2011986bffd4dbfad277272cbb605732522842e7b28d8b6bdb85632c",
@@ -46,6 +47,7 @@
   "pkg/crypto/password_hasher_test.go": "6ab6d43707a9e711456f0d6420cfd026cda06a53eecba90fbf311e1c5757a250",
   "pkg/crypto/password_hasher_testing.go": "8d072ca0835228f19876cf7c32bb0c0107263eba055c5f0de41637231883d571",
   "pkg/crypto/password_rehash_test.go": "bc2d943c0f8d015689e8a8a8dfb9564d15f0714603d382fb88a9cc48826c574c",
+  "pkg/crypto/testdata/kek-fingerprint-vectors.txt": "6b3583823b8f2918e1e5d8b48af2f0429f0e308684cdc89e45162b36639c8a40",
   "pkg/crypto/vaulttransit/auth_context_fake_test.go": "490a4dd86b8727b08c634fca6532de8cfa6e608c04f13cf84344e34df23a7ff0",
   "pkg/crypto/vaulttransit/auth_context_integration_test.go": "b0a9a592b0c2ec5beac19827f921f48df6ab149e0e2c3bb0f663cf8d59210e84",
   "pkg/crypto/vaulttransit/client.go": "37129dab7525409e81b93048570d81e0282996322436f4e382b7c6cae721e074",
@@ -62,6 +64,6 @@
   "pkg/crypto/vaulttransit/wizard_http_test.go": "d2c07fb8d5035800f532dd8fb085945b34886e509114690e528927452d2ec5bd",
   "pkg/crypto/wrapped_key.go": "0b9c665322cf8fee66751884b6dc37cf55c676e98f808ee503397af3c33b9c13"
  },
- "revision": "1.11.1-stdio-relay-allowlist-removed",
- "notes": "2026-09-23 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：stdio 轉接頭已移出本 repo，endpointWriteAllowlist 刪除 stdio MCP 客戶端 main.go 的 relay 條目及其註解（放行面只減不增）；守衛程式碼與斷言逐字未動。 2026-09-22 備版：pkg/crypto/kms/endpoint_gate_test.go 只改一行註解措辭（去除內部設計文件代號），程式碼與斷言逐字未動，基準隨之刷新。 2026-09-14 引用可解析性清理：pkg/crypto/kms/hardening_test.go 與 pkg/crypto/gcpkms/endpoint_gate_test.go 的檔頭註解把內部提案識別字改寫成描述該行為的句子（公開樹讀者查不到那個識別字），兩檔的程式碼、斷言與測試射程逐字未動，僅註解文字有變動。 2026-09-22 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：endpointWriteAllowlist 新增 internal/modules/audit/agent_probe_breaker.go 的 RecordDenied——AgentProbeEvent.Endpoint 是同名審計欄位而非 KMS 目的地覆寫，守衛程式碼與斷言逐字未動；基準於 agent 主體自助建立收工時一併登記。 2026-09-22 再只動同一檔：endpointWriteAllowlist 新增 stdio MCP 客戶端 main.go 的 relay，即 MCP 客戶端目的地 URL，與 KMS Settings、DEK 或金鑰材料無關；守衛程式碼與斷言逐字未動。"
+ "revision": "1.16.0-kek-fingerprint-vectors",
+ "notes": "2026-10-06 相對前一基準只新增兩檔、既有檔逐字未動：pkg/crypto/kek_fingerprint_vectors_test.go（主金鑰指紋的已知答案向量測試）與其讀取的 pkg/crypto/testdata/kek-fingerprint-vectors.txt（同一組向量的文字檔，供管理腳本測試核對腳本端算出相同指紋）。向量材料皆為全零、遞增、全 ff 等合成位元組，不含任何真實金鑰；被測的指紋演算法本身未變。 2026-09-23 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：stdio 轉接頭已移出本 repo，endpointWriteAllowlist 刪除 stdio MCP 客戶端 main.go 的 relay 條目及其註解（放行面只減不增）；守衛程式碼與斷言逐字未動。 2026-09-22 備版：pkg/crypto/kms/endpoint_gate_test.go 只改一行註解措辭（去除內部設計文件代號），程式碼與斷言逐字未動，基準隨之刷新。 2026-09-14 引用可解析性清理：pkg/crypto/kms/hardening_test.go 與 pkg/crypto/gcpkms/endpoint_gate_test.go 的檔頭註解把內部提案識別字改寫成描述該行為的句子（公開樹讀者查不到那個識別字），兩檔的程式碼、斷言與測試射程逐字未動，僅註解文字有變動。 2026-09-22 相對前一基準只有 pkg/crypto/kms/endpoint_gate_test.go 一檔變動：endpointWriteAllowlist 新增 internal/modules/audit/agent_probe_breaker.go 的 RecordDenied——AgentProbeEvent.Endpoint 是同名審計欄位而非 KMS 目的地覆寫，守衛程式碼與斷言逐字未動；基準於 agent 主體自助建立收工時一併登記。 2026-09-22 再只動同一檔：endpointWriteAllowlist 新增 stdio MCP 客戶端 main.go 的 relay，即 MCP 客戶端目的地 URL，與 KMS Settings、DEK 或金鑰材料無關；守衛程式碼與斷言逐字未動。"
 }

@@ -1,0 +1,10 @@
+[FAIL]  3/8  匯入資料庫                                                 4 分 12 秒
+       pg_restore 回報錯誤（完整訊息在紀錄檔）。
+
+還原停在第 3 步。服務沒有啟動，沒有自動回復。
+  這台原本沒有資料，所以沒有安全備份。
+  查明原因後，重跑接續（從第 3 步開始）：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume
+  或放棄這次還原，回到尚未安裝（這次放進來的資料改名保留，不刪除）：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --abandon
+  紀錄檔 /opt/custodexa/logs/restore-20261012-093015.log

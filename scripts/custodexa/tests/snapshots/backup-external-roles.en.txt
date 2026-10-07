@@ -1,0 +1,3 @@
+  [WARN] The external database grants privileges to other roles:
+         monitor, "report reader". On a new database server those roles have
+         to exist first, or the restored privileges will differ.

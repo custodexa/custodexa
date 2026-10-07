@@ -1,0 +1,5 @@
+[WARN] 上次的 rollback 在第 4 步中斷。
+  查明原因後，接續完成這次回到上一版：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang zh-TW
+  或回到升級後的 1.16.2：
+    sudo /opt/custodexa/custodexa.sh rollback --revert --lang zh-TW

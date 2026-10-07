@@ -1,0 +1,2 @@
+[WARN] 前回の backup はステップ 2 で中断されました。
+    sudo /opt/custodexa/custodexa.sh status --lang ja

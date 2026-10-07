@@ -1,0 +1,12 @@
+[ OK ]  1/10  Put 1.16.0 and its images in place                      41s
+[ OK ]  2/10  Stop the services (database keeps running)               11s
+[ OK ]  3/10  Safety backup backups/custodexa-backup-1.16.0-20261012-093015.tar   11m 52s
+[ OK ]  4/10  Check the safety backup can be restored                  3m 10s
+[ OK ]  5/10  Stop the database; rename and keep the current data      4s
+[ OK ]  6/10  Import the database                                      17m 38s
+[ OK ]  7/10  Check the database: 57 migrations, row counts and master
+              key ID match the backup                                  6s
+[ OK ]  8/10  Put back audit files, certificates and settings
+[ OK ]  9/10  Start the services and wait until ready: the backend
+              reports 1.16.0                                           44s
+[WARN] 10/10  Master key: to be checked after unseal

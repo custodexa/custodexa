@@ -4,6 +4,7 @@
 #   build-package.sh --digests image-digests.json --source <public tree> --out <dir>
 #                    [--min-source 1.12.4] [--released-at <ISO time>] [--mirror-namespace <ns>]
 #                    [--notes <json file>]
+#                    [--rollback-compatible <version>[,<version>...] --rehearsals-dir <dir>]
 #   build-package.sh offline --manifest MANIFEST.json --arch <amd64|arm64> --out <dir>
 #
 # Output in <dir>: custodexa-<version>.tar.gz and MANIFEST.json (the same bytes as the copy
@@ -20,7 +21,7 @@
 # files is refused. Needs GNU tar, gzip, jq, sha256sum.
 set -euo pipefail
 
-here=$(cd "$(dirname "$0")" && pwd)
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 # shellcheck source=scripts/custodexa/lib/verify.sh
 . "$repo/scripts/custodexa/lib/verify.sh"
@@ -42,24 +43,27 @@ familiar() {
 }
 
 # check_bundle <tar> <MANIFEST.json> <arch>: the bundle holds the MANIFEST's images and nothing else.
+# Two names of the MANIFEST may share one image (a PostgreSQL client is the database image of its
+# version): the bundle holds it once, and both names must find the same config in it.
 check_bundle() {
-  local tar=$1 manifest=$2 arch=$3 index name ref tag cfg entry got want
+  local tar=$1 manifest=$2 arch=$3 index name ref tag cfg entry got want distinct
   index=$(tar -xOf "$tar" manifest.json) || die "$tar has no manifest.json"
-  [ "$(jq 'length' <<<"$index")" -eq "$(jq '.images | length' "$manifest")" ] \
-    || die "$tar holds $(jq 'length' <<<"$index") images, the MANIFEST lists $(jq '.images | length' "$manifest")"
   for name in $(jq -r '.images | keys[]' "$manifest"); do
     ref=$(jq -r --arg n "$name" '.images[$n].ref' "$manifest")
     tag=$(jq -r --arg n "$name" '.images[$n].tag' "$manifest")
     want=$(jq -r --arg n "$name" --arg a "$arch" '.images[$n].platforms[$a].config_digest' "$manifest")
     entry=$(jq -c --arg t "$(familiar "$ref"):$tag" '[.[] | select(.RepoTags | index($t))] | if length == 1 then .[0] else empty end' <<<"$index")
-    [ -n "$entry" ] || die "$tar: no single image tagged $(familiar "$ref"):$tag"
+    [ -n "$entry" ] || die "$tar: $name: no single image tagged $(familiar "$ref"):$tag"
     cfg=$(jq -r '.Config' <<<"$entry")
     got=${cfg##*/}
     got=sha256:${got%.json}
     [ "$got" = "$want" ] || die "$tar: $name config digest $got, MANIFEST $arch lists $want"
     [ "$(tar -xOf "$tar" "$cfg" | jq -r '.architecture')" = "$arch" ] || die "$tar: $name is not $arch"
-    printf '  %-9s %s:%s %s\n' "$name" "$(familiar "$ref")" "$tag" "$got"
+    printf '  %-10s %s:%s %s\n' "$name" "$(familiar "$ref")" "$tag" "$got"
   done
+  distinct=$(jq '[.images[] | "\(.ref):\(.tag)"] | unique | length' "$manifest")
+  [ "$(jq 'length' <<<"$index")" -eq "$distinct" ] \
+    || die "$tar holds $(jq 'length' <<<"$index") images, the MANIFEST lists $distinct"
 }
 
 offline() {
@@ -85,6 +89,8 @@ offline() {
     ref=$(jq -er --arg n "$name" '.images[$n].ref' "$manifest")
     tag=$(jq -er --arg n "$name" '.images[$n].tag' "$manifest")
     digest=$(jq -er --arg n "$name" '.images[$n].index_digest' "$manifest")
+    # A name sharing its image with one pulled already (a PostgreSQL client): saved once.
+    [[ " ${tags[*]+"${tags[*]}"} " != *" $ref:$tag "* ]] || continue
     # A classic image store keeps one platform per repository digest and refuses to pull a second
     # one over it ("cannot overwrite digest"), so a copy left by the other architecture goes first.
     docker image rm "$ref:$tag" "$ref@$digest" >/dev/null 2>&1 || true
@@ -100,13 +106,15 @@ offline() {
   mv -f "$offline_tmp" "$final"
   echo "build-package: $final"
 }
+# Sourced (the tests call check_bundle directly): the functions only.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 if [ "${1:-}" = offline ]; then
   shift
   offline "$@"
   exit 0
 fi
 
-digests="" source="" out="" min_source=1.12.4 released_at="" mirror_ns="" notes=""
+digests="" source="" out="" min_source=1.12.4 released_at="" mirror_ns="" notes="" rollback_compat="" rehearsals_dir=""
 while [ $# -gt 0 ]; do
   case $1 in
     --digests) digests=${2:-} ;;
@@ -116,6 +124,8 @@ while [ $# -gt 0 ]; do
     --released-at) released_at=${2:-} ;;
     --mirror-namespace) mirror_ns=${2:-} ;;
     --notes) notes=${2:-} ;;
+    --rollback-compatible) rollback_compat=${2:-} ;;
+    --rehearsals-dir) rehearsals_dir=${2:-} ;;
     -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -167,6 +177,57 @@ frontend_digest=$(own_digest frontend)
 backend_repo=$(own_repo backend)
 frontend_repo=$(own_repo frontend)
 
+# ---- rollback_compatible: earlier versions this release may go straight back to ----
+# Each one needs the record of a rehearsal of exactly these images (<this>-from-<earlier>.txt in the
+# folder --rehearsals-dir names; without that folder no version is listed): the first line PASS, then one "key: value" per line, each key
+# once and none empty. A listed version lets a deployment whose database this release changed go
+# back without a restore, so a record that is incomplete or tested other images stops the build.
+rehearsal_keys="date operator from to to_backend_digest to_frontend_digest step1_upgrade step2_write step3_rollback step4_old_readwrite"
+version_lt() { # <a> <b>: a is older than b
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" ]
+}
+check_rehearsal() { # <earlier version>
+  local from=$1 file key line val n=0
+  local -A seen=()
+  file=$rehearsals_dir/$version-from-$from.txt
+  [ -f "$file" ] || die "--rollback-compatible $from: no rehearsal record $file"
+  [ "$(head -n 1 "$file")" = PASS ] || die "$file: the first line is not PASS"
+  while IFS= read -r line || [ -n "$line" ]; do
+    n=$((n + 1))
+    [ "$n" -gt 1 ] && [ -n "$line" ] || continue
+    [[ $line =~ ^([a-z0-9_]+):\ ?(.*)$ ]] || die "$file: line $n is not \"key: value\""
+    key=${BASH_REMATCH[1]} val=${BASH_REMATCH[2]}
+    [[ " $rehearsal_keys " == *" $key "* ]] || die "$file: unknown field $key"
+    [ -z "${seen[$key]+x}" ] || die "$file: field $key appears twice"
+    seen[$key]=$val
+  done <"$file"
+  for key in $rehearsal_keys; do
+    [ -n "${seen[$key]:-}" ] || die "$file: field $key is missing or empty"
+  done
+  [[ ${seen[date]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "$file: field date is not YYYY-MM-DD"
+  [ "${seen[from]}" = "$from" ] || die "$file: field from is ${seen[from]}, the build lists $from"
+  [ "${seen[to]}" = "$version" ] || die "$file: field to is ${seen[to]}, this build is $version"
+  for key in step1_upgrade step2_write step3_rollback step4_old_readwrite; do
+    [[ ${seen[$key]} == "PASS "* ]] || die "$file: field $key does not start with PASS"
+  done
+  [ "${seen[to_backend_digest]}" = "$backend_digest" ] \
+    || die "$file: field to_backend_digest is not the backend image of this build ($backend_digest)"
+  [ "${seen[to_frontend_digest]}" = "$frontend_digest" ] \
+    || die "$file: field to_frontend_digest is not the frontend image of this build ($frontend_digest)"
+}
+compat_json='[]'
+if [ -n "$rollback_compat" ]; then
+  [ -n "$rehearsals_dir" ] || die "--rollback-compatible needs --rehearsals-dir <folder of the rehearsal records>"
+  [ -d "$rehearsals_dir" ] || die "--rehearsals-dir: no such folder: $rehearsals_dir"
+  IFS=, read -r -a compat_list <<<"$rollback_compat"
+  for v in "${compat_list[@]}"; do
+    [[ $v =~ $semver ]] || die "--rollback-compatible: not a version: $v"
+    version_lt "$v" "$version" || die "--rollback-compatible: $v is not older than $version"
+    check_rehearsal "$v"
+    compat_json=$(jq -c --arg v "$v" '. + [$v] | unique' <<<"$compat_json")
+  done
+fi
+
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 root=$stage/custodexa
@@ -201,6 +262,54 @@ ln -s current/custodexa.sh "$root/custodexa.sh"
 # Migration ids in the order they run, from the migrations slice in the Go source.
 # shellcheck source=scripts/release/migrations-json.sh
 . "$here/migrations-json.sh"
+
+# >>> runtime markers (the test suite reads this block by its markers)
+# Rows the backend writes into schema_migrations that are not migrations, with the first release
+# a database could hold each one in. A restore uses the version to tell a marker of newer data
+# from one its release knows. Every id of runtimeMarkerVersions in the Go source has exactly one
+# row here and every row is in the Go source; a row is never removed and its version never
+# changed, since older databases keep the marker.
+runtime_marker_first_versions='20260804_ldap_env_seeded 1.0.0
+20260825_offsite_env_seeded 1.1.0
+20260906_credential_secrets_converted 1.6.0'
+
+runtime_markers_json() { # <source tree>
+  local go=$1/backend/internal/database names name val ids="" id ver row out
+  names=$(awk '
+    /^var runtimeMarkerVersions = \[\]string\{$/ { slice = 1; found = 1; next }
+    slice && /^}$/ { ended = 1; exit }
+    slice {
+      line = $0
+      sub(/\/\/.*/, "", line)
+      gsub(/[[:space:]]/, "", line)
+      if (line == "") next
+      if (line !~ /^[A-Za-z_][A-Za-z0-9_]*,$/) { print "unrecognized runtime marker entry: " line > "/dev/stderr"; exit 1 }
+      sub(/,$/, "", line)
+      print line
+    }
+    END { if (!found || !ended) { print "runtimeMarkerVersions not found or unfinished" > "/dev/stderr"; exit 1 } }
+  ' "$go/migrations.go") || die "cannot read runtimeMarkerVersions from $go/migrations.go"
+  [ -n "$names" ] || die "no runtime markers found in $go/migrations.go"
+  for name in $names; do
+    val=$(sed -n "s/^const $name = \"\([^\"]*\)\"$/\1/p" "$go"/*.go)
+    [ -n "$val" ] && [ "$(printf '%s\n' "$val" | wc -l)" -eq 1 ] || die "runtime marker $name is not one string constant"
+    ids+="$val"$'\n'
+  done
+  out=""
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    row=$(awk -v id="$id" '$1 == id' <<<"$runtime_marker_first_versions")
+    [ "$(printf '%s\n' "$row" | grep -c .)" -eq 1 ] || die "runtime marker $id needs one row in runtime_marker_first_versions"
+    ver=${row#* }
+    [[ $ver =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "runtime marker $id has no version"
+    out+="$id $ver"$'\n'
+  done <<<"$ids"
+  while read -r id ver; do
+    grep -qxF -- "$id" <<<"$ids" || die "runtime marker $id is listed but not in the Go source"
+  done <<<"$runtime_marker_first_versions"
+  printf '%s' "$out" | jq -R 'split(" ") | {id: .[0], first_version: .[1]}' | jq -s .
+}
+# <<< runtime markers
 
 raw() { docker buildx imagetools inspect --raw "$1"; }
 
@@ -258,17 +367,41 @@ while IFS= read -r line; do
     --argjson p "$plat" '{ref: $ref, tag: $tag, index_digest: $d, upstream: true, platforms: $p}')
   images=$(jq --arg c "$name" --argjson e "$entry" '.[$c] = $e' <<<"$images")
 done <"$rel/compose.yml"
-[ "$(jq 'length' <<<"$images")" -eq 6 ] || die "expected 6 images, found: $(jq -c 'keys' <<<"$images")"
+# The PostgreSQL clients the backup of an external database runs: tool images, never services, one
+# per server major version the backup supports, pinned by index digest. The one of the bundled
+# database's major is the bundled database image itself (the same pin as compose.yml).
+tool_pins="
+pgclient16 postgres:16.15-alpine3.24@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+pgclient17 postgres:17.11-alpine3.24@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+pgclient18 postgres:18.6-alpine3.24@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+"
+while read -r name ref; do
+  [ -n "$name" ] || continue
+  [[ $ref =~ ^([^@]+):([^:@/]+)@(sha256:[0-9a-f]{64})$ ]] || die "tool image $name is not pinned by digest: $ref"
+  tag=${BASH_REMATCH[2]}
+  digest=${BASH_REMATCH[3]}
+  repo_u=$(normalize "${BASH_REMATCH[1]}")
+  plat=$(platforms "$repo_u" "$digest")
+  entry=$(jq -n --arg ref "$repo_u" --arg tag "$tag" --arg d "$digest" \
+    --argjson p "$plat" '{ref: $ref, tag: $tag, index_digest: $d, upstream: true, platforms: $p}')
+  images=$(jq --arg c "$name" --argjson e "$entry" '.[$c] = $e' <<<"$images")
+done <<<"$tool_pins"
+[ "$(jq 'length' <<<"$images")" -eq 9 ] || die "expected 9 images, found: $(jq -c 'keys' <<<"$images")"
+# One reference, one content: names that share an image must pin the same digest.
+shared=$(jq -r 'to_entries | group_by("\(.value.ref):\(.value.tag)")[] | select(map(.value.index_digest) | unique | length > 1)
+  | map(.key) | join(" ")' <<<"$images")
+[ -z "$shared" ] || die "these images name one tag with different digests: $shared"
 
 notes_json='{"zh-TW": [], "en": [], "ja": []}'
 [ -n "$notes" ] && notes_json=$(cat "$notes")
 mig=$(migrations_json "$source")
+markers=$(runtime_markers_json "$source")
 src_sha=$(cx_tree_sha256 "$rel/source")
 jq -n --arg v "$version" --arg min "$min_source" --arg at "$released_at" \
-  --argjson mig "$mig" --argjson img "$images" \
-  --arg src "$src_sha" --argjson notes "$notes_json" \
+  --argjson mig "$mig" --argjson markers "$markers" --argjson img "$images" \
+  --arg src "$src_sha" --argjson notes "$notes_json" --argjson compat "$compat_json" \
   '{format: 1, version: $v, min_source_version: $min, released_at: $at, migrations: $mig,
-    images: $img, rollback_compatible: [], source: {path: "source/", sha256: $src}, notes: $notes}' \
+    runtime_markers: $markers, images: $img, rollback_compatible: $compat, source: {path: "source/", sha256: $src}, notes: $notes}' \
   >"$rel/MANIFEST.json"
 
 # ---- tarball: fixed order, owner and times, so the same inputs give the same bytes ----

@@ -1,0 +1,26 @@
+The four values below are set for this host; every other setting is
+taken from the backup.
+
+[ ?? ] Data folder DATA_PATH
+       From the backup   /data/custodexa
+       For this host     /opt/custodexa/data
+Press Enter for this host's value, type - to keep the backup's, or type
+another absolute path > 
+
+[ ?? ] Certificate host name TLS_DOMAIN
+       From the backup   bastion-a.example.internal
+       For this host     bastion-b.example.internal
+Press Enter for this host's value, type - to keep the backup's, or type
+another value > 
+
+[ ?? ] Certificate IP TLS_IP_SAN
+       From the backup   10.0.0.12
+       For this host     10.0.0.31
+Press Enter for this host's value, type - to keep the backup's, or type
+another value > 
+
+[ ?? ] Public address PUBLIC_BASE_URL
+       From the backup   https://10.0.0.12
+       For this host     https://10.0.0.31
+Press Enter for this host's value, type - to keep the backup's, or type
+another value > 

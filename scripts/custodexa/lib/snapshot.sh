@@ -12,13 +12,14 @@
 # read as it is. Nothing here needs the system to be unsealed or anyone to sign in.
 # A snapshot that is not usable is never taken for a match: the key checks become manual.
 
+# shellcheck source=lib/dbclient.sh
+. "${BASH_SOURCE[0]%/*}/dbclient.sh"
+
 CX_SNAP_USABLE=false
 CX_SNAP_REASONS=""
 
-# cx_snap_sql <sql>: run one query in the postgres container, unaligned, tuples only.
-cx_snap_sql() {
-  cx_compose exec -T postgres psql -U "$CX_BK_DBUSER" -d "$CX_BK_DBNAME" -AtX -v ON_ERROR_STOP=1 -c "$1"
-}
+# cx_snap_sql <sql>: run one query through the database client, unaligned, tuples only.
+cx_snap_sql() { cx_db sql "$1"; }
 
 # cx_snap_fp <text>: the fingerprint of the bytes of text.
 cx_snap_fp() {

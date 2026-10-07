@@ -1,0 +1,5 @@
+[WARN] The last rollback run was interrupted at step 4.
+  Once the cause is fixed, finish going back to the previous version:
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang en
+  Or return to 1.16.2, the version after the upgrade:
+    sudo /opt/custodexa/custodexa.sh rollback --revert --lang en

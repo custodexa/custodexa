@@ -1,0 +1,6 @@
+Last upgrade
+  [ OK ] 1.16.1 -> 1.16.2 succeeded, 2026-11-05 09:30
+  [WARN] Returning to the version after the upgrade
+         did not finish (back to 1.16.2, stopped at step 4)
+  Finish returning to 1.16.2, the version after the upgrade:
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang en

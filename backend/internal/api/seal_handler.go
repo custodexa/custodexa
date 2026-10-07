@@ -267,6 +267,12 @@ func (h *SealHandler) Status(c *gin.Context) {
 	if snap.State == seal.StateSealedFaulted && snap.FaultCode != "" {
 		body["fault_code"] = snap.FaultCode
 	}
+	// 現行 KEK 識別：只在已解封時回，且取自**同一次快照**的服務圖。
+	// 狀態與服務圖讀自同一次指標載入，故不會出現「狀態已解封、識別卻屬於
+	// 另一代」的撕裂；其他狀態沒有服務圖，自然不回。
+	if id, ok := runtimeKEKID(snap); ok {
+		body["kek_id"] = id
+	}
 	if !snap.CooldownUntil.IsZero() {
 		body["cooldown_until"] = snap.CooldownUntil.UTC().Format(time.RFC3339)
 	}
@@ -296,6 +302,30 @@ func (h *SealHandler) Status(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, body)
+}
+
+// RuntimeKEKIdentity 由段 2 服務圖實作：回報行程實際持有的 KEK provider 的識別
+// （本地模式為材料的單向指紋、委託模式為金鑰 ID），與金鑰清冊的 kek_id 同源。
+//
+// 以服務圖上的可選介面取得，而非另注入探針：值必須屬於快照當下那一代的
+// provider；另接一條探針會讓兩個監聽面各自接線，漏接一邊就靜默缺欄。
+// SHALL NOT 重讀環境變數或資料庫欄位——部署工具要核對的是「實際解封成功的
+// 是哪一把」，不是組態或資料寫了哪一把。
+type RuntimeKEKIdentity interface {
+	RuntimeKEKID() string
+}
+
+// runtimeKEKID 只在已解封且服務圖提供識別時回 ok=true。
+func runtimeKEKID(snap seal.Snapshot) (string, bool) {
+	if snap.State != seal.StateUnsealed || snap.Services == nil {
+		return "", false
+	}
+	src, ok := snap.Services.(RuntimeKEKIdentity)
+	if !ok {
+		return "", false
+	}
+	id := src.RuntimeKEKID()
+	return id, id != ""
 }
 
 func (h *SealHandler) journalFaulted() bool {

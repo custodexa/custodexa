@@ -1,0 +1,16 @@
+[FAIL]  6/10  データベースをインポート                                 4 分 12 秒
+       pg_restore がエラーを返しました（詳細はログに記録）：
+       ERROR:  could not extend file "base/16384/24576": No space left on device
+
+復元はステップ 6 で停止しました。サービスは停止したままで、
+自動的に元に戻してはいません。
+  復元前のデータは名前を変更して /opt/custodexa/data/postgres.before-restore-20261012-093015
+  ほか 2 か所に保持しています。安全バックアップ
+  backups/custodexa-backup-1.16.0-20261012-093015.tar は復元可能と確認済みです。
+  原因を解決したら、ステップ 6 から再開してください：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  または安全バックアップを使って元に戻します：
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  作業フォルダー /opt/custodexa/restore/20261012-093015/ にはデータベースと
+  設定の平文があります。復元の完了または元に戻した後で消去します。
+  ログファイル /opt/custodexa/logs/restore-20261012-093015.log

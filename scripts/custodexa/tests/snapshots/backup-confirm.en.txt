@@ -1,0 +1,42 @@
+==== on a terminal, kms: recordings 2, Enter, n ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: key custody service (aws)
+  Database 17.4 GB, audit files 12.0 MB, recordings 2.0 GB; 211 GB free
+  where backups go
+
+[ ?? ] Put the recordings in the backup file?
+
+  [1] No (default): a file of about 17.4 GB, services paused about 12 minutes
+  [2] Yes: a file of about 19.4 GB, services paused about 14 minutes
+      Without them, keep the recordings folder some other way.
+
+Choose [1-2], or press Enter for the default: 2
+
+[ ?? ] Encrypt the backup file with a passphrase?
+
+  Without encryption the file holds the database password, certificate
+  private keys and other sensitive data, readable by anyone who has it.
+
+  [1] No (default): the file opens with tar as it is
+  [2] Yes: a restore needs the same passphrase. If the passphrase is
+      lost the backup cannot be restored, by the script or by anyone.
+
+Choose [1-2], or press Enter for the default:
+
+  Recordings: included
+  Encryption: none
+  The backend, connection service and web pages pause for about
+  14 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 14 more minutes.
+  [WARN] The master key is held by a key custody service: after the
+         restart the system is sealed until someone provides the custody
+         credentials on the unseal page again, and users cannot connect
+         until then.
+  Needs 37.8 GB (a file of about 19.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] n
+Nothing was changed.
+==== exit 3 ====

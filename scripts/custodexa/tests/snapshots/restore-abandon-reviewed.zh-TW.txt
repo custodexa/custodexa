@@ -1,0 +1,15 @@
+放棄這次還原（這台會回到尚未安裝）
+
+  服務       先停止這次還原啟動的服務（目前 4 個在運作），
+             確認停止後才往下做
+  改名保留   這次放進來的資料改名保留，不刪除：
+             /opt/custodexa/data/postgres.abandoned-20261012-093015
+             /opt/custodexa/data/audit.abandoned-20261012-093015
+             /opt/custodexa/tls.abandoned-20261012-093015
+             /opt/custodexa/.env.abandoned-20261012-093015
+  不動       錄影目錄 /opt/custodexa/data/recordings：可能有這次放回的檔，
+             也可能有你先複製過來的檔，一律不刪除
+  版本       current 指回 1.16.2；releases/1.16.0 保留
+  暫存       刪除暫存目錄裡的資料庫與設定檔明文
+
+確認放棄嗎？[y/N]

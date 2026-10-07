@@ -1,0 +1,6 @@
+[FAIL] 外接資料庫還不能還原，原因：
+  - 有 2 個其他連線正在使用 custodexa（來自 10.0.0.12，應用程式 custodexa-backend）。
+    請先停止原主機的服務，並確認沒有備援主機接手這個資料庫。
+  - 物件 public.report_cache 的擁有者是 analyst，不是 custodexa；
+    腳本只能清空 custodexa 擁有的物件。
+沒有變更任何資料。

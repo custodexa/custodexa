@@ -1,0 +1,2 @@
+  [ OK ] Recordings: 8,412 files put back from the backup; existing files
+         with the same name are kept, not overwritten

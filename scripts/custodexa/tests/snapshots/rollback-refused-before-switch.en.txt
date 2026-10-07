@@ -1,0 +1,11 @@
+[FAIL] There is no previous version to go back to. Nothing was changed.
+  The last upgrade stopped at step 7, before the switch to the
+  new version; there is nothing to go back from.
+  The services are stopped; the version and the data were not changed.
+  Start the old version again, then run the upgrade once more.
+  To start the old version again:
+    sudo docker compose -p custodexa --project-directory /opt/custodexa -f /opt/custodexa/current/compose.yml \
+      start backend guacd frontend
+    sudo /opt/custodexa/custodexa.sh status --lang en
+  Run the upgrade again:
+    sudo /opt/custodexa/custodexa.sh upgrade 1.16.2

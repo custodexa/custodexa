@@ -1,0 +1,5 @@
+[FAIL] Cannot go straight back to 1.15.2: the script can only go back to
+       1.16.0 or later. Nothing was changed.
+  To go back to 1.15.2, restore the backup above by hand as described
+  in "Backup and Restore", section 5 "Restore procedure".
+  Backup       /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar

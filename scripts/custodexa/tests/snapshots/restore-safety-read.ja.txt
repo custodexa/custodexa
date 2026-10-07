@@ -1,0 +1,15 @@
+[FAIL]  3/10  安全バックアップ                              2 分 05 秒
+       安全バックアップの読み戻し検証に失敗したため、復元には使えません
+
+復元前の安全バックアップが完了しなかったため、上書きは開始しません。
+データは変更していません。サービスは停止したままです。
+  原因を解消してから、安全バックアップから再開してください：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  または復元を取りやめ、元のサービスを起動してください：
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  サービス停止後に取得した自前のバックアップも使えます。
+  端末での再開時に [2] を選ぶか、
+  再開コマンドに次の 3 つのオプションを付けてください：
+    sudo /opt/custodexa/custodexa.sh restore --resume --backup-ref <識別> --backup-time <時刻> --backup-restore <手順>
+  自前のバックアップの時刻は、
+  この復元がサービスを停止した 2026-10-12 09:31 以降が必要です。

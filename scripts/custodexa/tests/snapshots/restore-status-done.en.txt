@@ -1,0 +1,5 @@
+Restore
+  [ OK ] Last restore: finished 2026-10-12 09:58, from
+         custodexa-backup-1.16.0-20261005-101502.tar.enc
+         3 folders from before the restore are kept; delete them once
+         section 6 checks out

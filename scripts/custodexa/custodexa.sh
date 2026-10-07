@@ -17,13 +17,15 @@ CX_DIR=${CX_SELF%/*}
 . "$CX_DIR/lib/common.sh"
 
 # Commands the script knows. The ones without lib/cmd_<name>.sh in this build say so and stop.
-readonly CX_COMMANDS="install upgrade status start stop backup load"
+readonly CX_COMMANDS="install upgrade rollback status start stop backup load restore"
 # Recognize an older tree so every command can refuse it before writing anything.
 CX_ROOT_LEGACY_OK=1
 
 CX_COMMAND=""
 CX_ARGS=()
 CX_YES=0
+CX_RESUME=0
+CX_REVERT=0
 CX_HELP=0
 CX_IMAGES=""
 CX_IMAGES_FROM=auto
@@ -31,7 +33,14 @@ CX_IMAGES_FROM_GIVEN=0
 CX_BACKUP_REF=""
 CX_BACKUP_TIME=""
 CX_BACKUP_RESTORE=""
+CX_WITH_RECORDINGS=0
+CX_PASSPHRASE_FILE=""
 CX_LANG_FLAG=""
+# restore only (lib/cmd_restore.sh): the action, the kind of restore and the values it is given.
+CX_RS_ACTION="" CX_RS_SAME=0 CX_RS_NEW=0 CX_RS_CONFIRM_LOSS=0 CX_RS_NO_CHECKSUM=0 CX_RS_ACCEPT_GRANT_LOSS=0
+CX_RS_PACKAGE="" CX_RS_DATA_PATH="" CX_RS_TLS_DOMAIN="" CX_RS_TLS_IP_SAN="" CX_RS_PUBLIC_URL=""
+CX_RS_NGINX_TEMPLATE="" CX_RS_DB_CLIENT_CERT="" CX_RS_DB_CLIENT_KEY=""
+CX_RS_GIVEN="" # the restore-only options given, in order, for the refusal of any other command
 CX_NO_COLOR=0
 CX_SHOW_VERSION=0
 CX_USAGE_ERROR=""
@@ -40,7 +49,9 @@ CX_FLAGS_TEXT="" # the options as given, for the BEGIN line of the log
 cx_parse_args() {
   while [ $# -gt 0 ]; do
     case $1 in
-      --lang | --images | --images-from | --backup-ref | --backup-time | --backup-restore) CX_FLAGS_TEXT+=" $1 ${2:-}" ;;
+      --lang | --images | --images-from | --backup-ref | --backup-time | --backup-restore | --passphrase-file | --package | --data-path | --tls-domain | --tls-ip-san | --public-base-url | --nginx-template | --db-client-cert | --db-client-key)
+        CX_FLAGS_TEXT+=" $1 ${2:-}"
+        ;;
       -*) CX_FLAGS_TEXT+=" $1" ;;
     esac
     case $1 in
@@ -48,7 +59,26 @@ cx_parse_args() {
       --no-color) CX_NO_COLOR=1 ;;
       -h | --help) CX_HELP=1 ;;
       --version) CX_SHOW_VERSION=1 ;;
-      --lang | --images | --images-from | --backup-ref | --backup-time | --backup-restore)
+      --with-recordings) CX_WITH_RECORDINGS=1 ;;
+      --same-host) CX_RS_SAME=1 CX_RS_GIVEN+=" $1" ;;
+      --new-host) CX_RS_NEW=1 CX_RS_GIVEN+=" $1" ;;
+      --confirm-data-loss) CX_RS_CONFIRM_LOSS=1 CX_RS_GIVEN+=" $1" ;;
+      --no-checksum-file) CX_RS_NO_CHECKSUM=1 CX_RS_GIVEN+=" $1" ;;
+      --accept-grant-loss) CX_RS_ACCEPT_GRANT_LOSS=1 CX_RS_GIVEN+=" $1" ;;
+      --resume | --revert | --abandon)
+        # --resume and --revert are shared by rollback and restore; --abandon is restore's alone
+        case $1 in
+          --resume) CX_RESUME=1 ;;
+          --revert) CX_REVERT=1 ;;
+          --abandon) CX_RS_GIVEN+=" $1" ;;
+        esac
+        if [ -n "$CX_RS_ACTION" ] && [ "$CX_RS_ACTION" != "${1#--}" ]; then
+          CX_USAGE_ERROR="rs_option_with $1 --$CX_RS_ACTION"
+          return 0
+        fi
+        CX_RS_ACTION=${1#--}
+        ;;
+      --lang | --images | --images-from | --backup-ref | --backup-time | --backup-restore | --passphrase-file | --package | --data-path | --tls-domain | --tls-ip-san | --public-base-url | --nginx-template | --db-client-cert | --db-client-key)
         if [ $# -lt 2 ] || [ -z "$2" ] || [[ $2 == -* ]]; then
           CX_USAGE_ERROR="usage_missing_value $1"
           return 0
@@ -60,6 +90,18 @@ cx_parse_args() {
           --backup-ref) CX_BACKUP_REF=$2 ;;
           --backup-time) CX_BACKUP_TIME=$2 ;;
           --backup-restore) CX_BACKUP_RESTORE=$2 ;;
+          --passphrase-file) CX_PASSPHRASE_FILE=$2 ;;
+          --package) CX_RS_PACKAGE=$2 ;;
+          --data-path) CX_RS_DATA_PATH=$2 ;;
+          --tls-domain) CX_RS_TLS_DOMAIN=$2 ;;
+          --tls-ip-san) CX_RS_TLS_IP_SAN=$2 ;;
+          --public-base-url) CX_RS_PUBLIC_URL=$2 ;;
+          --nginx-template) CX_RS_NGINX_TEMPLATE=$2 ;;
+          --db-client-cert) CX_RS_DB_CLIENT_CERT=$2 ;;
+          --db-client-key) CX_RS_DB_CLIENT_KEY=$2 ;;
+        esac
+        case $1 in
+          --package | --data-path | --tls-domain | --tls-ip-san | --public-base-url | --nginx-template | --db-client-cert | --db-client-key) CX_RS_GIVEN+=" $1" ;;
         esac
         shift
         ;;
@@ -138,11 +180,18 @@ cx_main() {
     cx_line FAIL "$(cx_msg $CX_USAGE_ERROR)" >&2
     exit "$CX_EXIT_USAGE"
   fi
+  if [ "$CX_RESUME" = 1 ] || [ "$CX_REVERT" = 1 ]; then
+    case $CX_COMMAND in
+      rollback) [ "$CX_RESUME$CX_REVERT" != 11 ] || cx_die "$CX_EXIT_USAGE" rb_flags_conflict ;;
+      restore) ;;
+      *) cx_die "$CX_EXIT_USAGE" rb_flags_only ;;
+    esac
+  fi
   if [ "$CX_IMAGES_FROM_GIVEN" = 1 ]; then
     if [[ $CX_IMAGES_FROM != auto && $CX_IMAGES_FROM != source ]]; then
       cx_die "$CX_EXIT_USAGE" usage_images_from_value "$CX_IMAGES_FROM"
     fi
-    if [[ $CX_COMMAND != install && $CX_COMMAND != upgrade ]] ||
+    if [[ $CX_COMMAND != install && $CX_COMMAND != upgrade && $CX_COMMAND != restore ]] ||
       { [ "$CX_COMMAND" = upgrade ] && [ "${#CX_ARGS[@]}" -eq 0 ] && [ "$CX_HELP" = 0 ]; }; then
       cx_die "$CX_EXIT_USAGE" usage_images_from_command
     fi
@@ -181,8 +230,19 @@ cx_main() {
       exit "$CX_EXIT_USAGE"
       ;;
   esac
+  # The recordings are a choice of the backup alone, the passphrase file of the backup and the
+  # restore; the restore's own options belong to it alone. Any other command stops before it does
+  # anything.
+  if [ "$CX_COMMAND" != backup ]; then
+    [ "$CX_WITH_RECORDINGS" = 0 ] || cx_die "$CX_EXIT_USAGE" usage_backup_only --with-recordings
+    [ -z "$CX_PASSPHRASE_FILE" ] || [ "$CX_COMMAND" = restore ] || cx_die "$CX_EXIT_USAGE" usage_backup_only --passphrase-file
+  fi
+  if [ "$CX_COMMAND" != restore ] && [ -n "$CX_RS_GIVEN" ]; then
+    local first=${CX_RS_GIVEN# }
+    cx_die "$CX_EXIT_USAGE" usage_restore_only "${first%% *}"
+  fi
 
-  if [[ $CX_COMMAND == start || $CX_COMMAND == stop ]]; then
+  if [[ $CX_COMMAND == start || $CX_COMMAND == stop || $CX_COMMAND == rollback ]]; then
     if [ -n "$CX_IMAGES$CX_BACKUP_REF$CX_BACKUP_TIME$CX_BACKUP_RESTORE" ] || [ "$CX_IMAGES_FROM_GIVEN" = 1 ]; then
       cx_die "$CX_EXIT_USAGE" usage_unknown_option "${CX_FLAGS_TEXT# }"
     fi
@@ -196,6 +256,8 @@ cx_main() {
   fi
   export CX_ROOT
   cx_refuse_legacy_root
+  cx_state_load "$CX_ROOT/state.json"
+  cx_run_restore_guard "$CX_COMMAND" "$CX_RS_ACTION" || exit "$CX_EXIT_REFUSED"
 
   if [ ! -f "$CX_DIR/lib/cmd_$CX_COMMAND.sh" ]; then
     cx_line FAIL "$(cx_msg command_not_in_build "$CX_COMMAND")" >&2

@@ -1,0 +1,14 @@
+[ OK ] 還原完成，服務已恢復（1.16.0）
+  來源     custodexa-backup-1.16.0-20261005-101502.tar.enc（2026-10-05 10:15）
+  網址     https://10.0.0.31
+  主金鑰   本機設定檔；解封後讀到的識別 5a5a5a5a5a5a5a5a 與備份相同
+  [WARN] 錄影沒有從備份還原：系統記錄的錄影中有 1,204 段的檔案不在這台。
+         清單在 /opt/custodexa/restore/20261012-093015/missing-recordings.txt，
+         請從來源主機的 /data/custodexa/recordings/ 複製過來。
+  [WARN] 對外網址改成了 https://10.0.0.31。有接外部登入（OIDC）的話，
+         請到身分提供者更新回呼位址。
+  請照文件「備份與還原」第 6 節逐項核對，確認無誤再交給使用者。
+  紀錄檔 /opt/custodexa/logs/restore-20261012-093015.log
+
+  已回到升級前的版本（1.16.0）。之後要升級時：
+    sudo /opt/custodexa/custodexa.sh upgrade

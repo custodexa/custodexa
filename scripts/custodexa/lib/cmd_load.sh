@@ -13,6 +13,8 @@
 #   6 who published the images, when the tools and the signing services can be reached
 # The IDs are recorded as load.version and load.image_ids in state.json: on the containerd image
 # store a loaded tag can only be recognised later by that ID (lib/images.sh, cx_img_try_local).
+# load.index_digests keeps the index digest the manifest names for each, so a release that names
+# the same digest can use the same image (lib/images.sh, cx_img_peer_ids).
 #
 # The signature checks of step 6 are made on the registry's index digests that the release manifest
 # names; the loaded content is tied to them only through that manifest. So the publisher is shown
@@ -72,7 +74,7 @@ cmd_load_fail() { # <message id> [args...]: one FAIL line; the run is recorded a
 }
 
 cmd_load() {
-  local b=${1:-} base ver arch host mf rc t0 n count=0 ids="" size
+  local b=${1:-} base ver arch host mf rc t0 n count=0 ids="" digs="" size
   [ -n "$b" ] || cx_die "$CX_EXIT_USAGE" load_usage
   if [ ! -f "$b" ]; then
     cx_die "$CX_EXIT_FAILED" load_missing "$b"
@@ -117,10 +119,17 @@ cmd_load() {
 
   cx_step 3
   CX_IMG_ARCH=$arch
-  cx_img_needed ""
+  cx_img_needed "" all
   cx_bundle_check "$b" || cmd_load_fail load_check_bad "$CX_BUNDLE_ERR"
+  # Two names may share one image (a PostgreSQL client is the database image of its version):
+  # each image of the bundle counts once.
+  local seen=" " key
   for n in "${CX_IMG_NAMES[@]}"; do
-    [ -n "${CX_IMG_BUNDLE_ID[$n]+x}" ] && count=$((count + 1))
+    [ -n "${CX_IMG_BUNDLE_ID[$n]+x}" ] || continue
+    key="$(cx_mf "images.$n.ref"):$(cx_mf "images.$n.tag")"
+    [[ $seen == *" $key "* ]] && continue
+    seen+="$key "
+    count=$((count + 1))
   done
   [ "$count" -gt 0 ] || cmd_load_fail load_empty "$ver"
 
@@ -138,6 +147,7 @@ cmd_load() {
     loaded+=("$n")
     CX_IMG_SRC["$n"]=offline
     ids+="${ids:+ }$n=${CX_IMG_BUNDLE_ID[$n]}"
+    digs+="${digs:+ }$n=$(cx_mf "images.$n.index_digest")"
   done
   CX_IMG_NAMES=("${loaded[@]}")
 
@@ -164,6 +174,7 @@ cmd_load() {
   esac
   cx_state_set load.version "$ver"
   cx_state_set load.image_ids "$ids"
+  cx_state_set load.index_digests "$digs"
   cx_state_set load.verification "$(cx_trust_state)"
   cx_finish succeeded
 

@@ -25,44 +25,63 @@ cx_state_reset() {
   CX_STATE_KEYS=()
 }
 
-# cx_state_load <file>: read and check the whole file. Any deviation stops the program (exit 5).
-cx_state_load() {
+# cx_flat_parse <file> <map name> <keys name>: read a file of this shape into the associative
+# array and the key list named, nothing else (no format check, no global state touched). Returns 1
+# at the first deviation with CX_FLAT_BAD set to the line to report; a missing file is empty.
+# The backup manifest (lib/portable.sh) uses the same shape and is read with this too.
+CX_FLAT_BAD=0
+cx_flat_parse() {
   local file=$1 n=0 line key val total last_comma=1 re
+  local -n cxf_map=$2 cxf_keys=$3
   local -a lines=()
-  cx_state_reset
-  if [ ! -f "$file" ]; then
-    return 0
-  fi
+  cxf_map=()
+  cxf_keys=()
+  CX_FLAT_BAD=0
+  [ -f "$file" ] || return 0
   mapfile -t lines <"$file"
   total=${#lines[@]}
   re='^  "([a-z0-9_.]+)": "([^"\\]*)"(,?)$'
   if [ "$total" -lt 2 ] || [ "${lines[0]}" != "{" ]; then
-    cx_state_bad "$file" 1
+    CX_FLAT_BAD=1
+    return 1
   fi
   for ((n = 1; n < total - 1; n++)); do
     line=${lines[n]}
     if [ "$last_comma" != 1 ]; then
-      cx_state_bad "$file" "$n"
+      CX_FLAT_BAD=$n
+      return 1
     fi
     if ! LC_ALL=C cx_state_match "$line" "$re"; then
-      cx_state_bad "$file" $((n + 1))
+      CX_FLAT_BAD=$((n + 1))
+      return 1
     fi
     key=${BASH_REMATCH[1]}
     val=${BASH_REMATCH[2]}
     last_comma=0
     [ -n "${BASH_REMATCH[3]}" ] && last_comma=1
-    if ! cx_state_valid_value "$val" || [ -n "${CX_STATE[$key]+x}" ]; then
-      cx_state_bad "$file" $((n + 1))
+    if ! cx_state_valid_value "$val" || [ -n "${cxf_map[$key]+x}" ]; then
+      CX_FLAT_BAD=$((n + 1))
+      return 1
     fi
-    CX_STATE[$key]=$val
-    CX_STATE_KEYS+=("$key")
+    cxf_map["$key"]=$val
+    cxf_keys+=("$key")
   done
   if [ "${lines[total - 1]}" != "}" ]; then
-    cx_state_bad "$file" "$total"
+    CX_FLAT_BAD=$total
+    return 1
   fi
   if [ "$total" -gt 2 ] && [ "$last_comma" = 1 ]; then
-    cx_state_bad "$file" $((total - 1))
+    CX_FLAT_BAD=$((total - 1))
+    return 1
   fi
+}
+
+# cx_state_load <file>: read and check the whole file. Any deviation stops the program (exit 5).
+cx_state_load() {
+  local file=$1
+  cx_state_reset
+  [ -f "$file" ] || return 0
+  cx_flat_parse "$file" CX_STATE CX_STATE_KEYS || cx_state_bad "$file" "$CX_FLAT_BAD"
   if [ "${CX_STATE[format]:-}" != "$CX_STATE_FORMAT" ]; then
     cx_state_bad "$file" 2
   fi
@@ -91,6 +110,18 @@ cx_state_set() {
   fi
   [ -n "${CX_STATE[$key]+x}" ] || CX_STATE_KEYS+=("$key")
   CX_STATE[$key]=$val
+}
+
+# cx_state_unset <key>: drop the key (a pointer that no longer describes the record).
+cx_state_unset() {
+  local key=$1 k
+  local -a keep=()
+  [ -n "${CX_STATE[$key]+x}" ] || return 0
+  unset 'CX_STATE[$key]'
+  for k in "${CX_STATE_KEYS[@]}"; do
+    [ "$k" = "$key" ] || keep+=("$k")
+  done
+  CX_STATE_KEYS=("${keep[@]}")
 }
 
 # cx_state_save <file>: write every key in insertion order; format first.

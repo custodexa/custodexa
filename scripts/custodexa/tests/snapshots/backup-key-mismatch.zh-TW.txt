@@ -1,0 +1,17 @@
+==== --yes, KEK_PROVIDER=ui with an ENCRYPTION_KEY ====
+[FAIL] .env 的 KEK_PROVIDER 是 ui，但 ENCRYPTION_KEY 有值。這是矛盾的設定，
+       後端下次啟動也會拒絕；備份會把它當成主金鑰帶出去，所以不做。
+       沒有停止任何服務。請確認要用哪種模式，再把另一邊清掉。
+==== exit 3 ====
+==== --yes, neither KEK_PROVIDER nor ENCRYPTION_KEY ====
+[FAIL] .env 沒有設定 KEK_PROVIDER，也沒有 ENCRYPTION_KEY，無法判定主金鑰模式。
+       後端下次啟動會拒絕。沒有停止任何服務。
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=env without ENCRYPTION_KEY ====
+[FAIL] .env 的 KEK_PROVIDER 是 env，但 ENCRYPTION_KEY 是空的。
+       後端下次啟動會拒絕。沒有停止任何服務。
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=UI ====
+[FAIL] .env 的 KEK_PROVIDER 值不認得（只接受 env、ui、kms、hsm，大小寫須相同）。
+       沒有停止任何服務。
+==== exit 3 ====

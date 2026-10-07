@@ -1,0 +1,9 @@
+[FAIL]  2/10  サービスを停止（外部データベースには影響しません）：停止後も 1 件の別の接続が
+              custodexa を使用しています（接続元 10.0.0.45、アプリケーション psql）。
+復元はステップ 2 で止まりました。まだ何も上書きしていません。
+サービスは停止したままです。
+  その接続を見つけて終了し（待機系ホストの引き継ぎでないことを
+  確認）、再開してください：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  または復元を取りやめ、元のサービスを起動してください：
+    sudo /opt/custodexa/custodexa.sh restore --revert

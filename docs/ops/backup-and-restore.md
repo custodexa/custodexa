@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/ops/backup-and-restore.md) | [日本語](../ja/ops/backup-and-restore.md) | [More languages →](../README.md)
 
-> Applies to: Custodexa 1.0. §3.8 and §5.1 describe the management script of package deployments, from 1.13.0.
+> Applies to: Custodexa 1.0. §3.8 and §5.1 describe the management script of package deployments, from 1.13.0; the single backup file of §3.8, §5.2 and §5.3, the backup file an upgrade takes, the backup of a deployment with an external database, `rollback` in §5.1 and `restore` in §5 are from 1.16.0.
 >
 > **Verification status of this procedure**: the steps below were written by deriving them from the actual data location settings and program behavior.
 > **A full walk-through test of backup, restore into a clean environment, and the service coming up
@@ -211,7 +211,7 @@ tar -tzf "custodexa-files-${STAMP}.tar.gz" | head
 > - **Scheduling a backup means scheduling a service interruption**, lasting from step 5 until someone goes and unseals. A backup that runs in the middle of the night usually has nobody watching. Either schedule the backup for a time when someone is around, or accept that interruption and have monitoring alert on the sealed state.
 > - During the seal period `/metrics` **does not carry** `custodexa_audit_queue_depth` (asynchronous audit belongs to stage 2, which is assembled only after unseal), so the "wait for the value to be 0 before stopping" step in [Upgrade SOP §2.4](./upgrade-sop.md#24-confirm-the-audit-queue-has-drained-before-stopping) has no value to read in this state. That is not a broken metric; unseal first, then do that check.
 >
-> Mode A (`KEK_PROVIDER=env`) and mode C (`KEK_PROVIDER=kms`) are unaffected: the material is supplied by the deployment layer or by KMS and is obtained on its own at restart, so the service comes back with step 5. To determine which one this deployment uses, see section 4.
+> Mode A (`KEK_PROVIDER=env`) is unaffected: the material is supplied by the deployment layer and is obtained on its own at restart, so the service comes back with step 5. Mode C (`KEK_PROVIDER=kms`) comes back sealed like mode B, because its custodian credentials are held only in memory and are supplied again on the unseal page (§4.3); the two consequences above apply to it too. To determine which one this deployment uses, see section 4.
 
 ### 3.3 Backup without downtime (when bounded inconsistency is acceptable)
 
@@ -232,6 +232,12 @@ Run step 0 above (obtaining the values, equally not optional) and steps 2 throug
 ### 3.5 Protecting the backup files themselves
 
 Backup content includes encrypted asset credentials, wrapped keys, and all audit records, and is no less sensitive than the production system. The `.env` backup contains the KEK material and `JWT_SECRET` in plaintext outright. Always keep backup files encrypted, and **never store them in the same place as the KEK material**; putting the two together downgrades envelope encryption to no encryption.
+
+A backup file written by the management script (§3.8) holds all of this in one file, `.env` included as `env.bak`:
+
+- **Mode A (`KEK_PROVIDER=env`, §4.1): the backup file contains the master key.** `env.bak` carries `ENCRYPTION_KEY`, so the KEK material and the data it protects travel together, and whoever has an unencrypted copy can decrypt every stored credential. The completion screen marks `.env` as including the master key. Encrypt the file with a passphrase when it is made (§3.8), or encrypt it by other means before it leaves the host, and keep the passphrase or key apart from the file.
+- **Modes B and C (§4.2, §4.3): the external material is not in the file.** The unseal material of mode B and the custodian credentials of mode C live in no file and no table, and the script collects none of them; the file records only the master key fingerprint or key ID, for comparison after a restore. In these modes `ENCRYPTION_KEY` has to be empty, and the backup refuses to start when it has a value.
+- **`.env` is copied byte for byte, so whatever else is written in it travels with the backup.** Do not put cloud credentials into `.env`, such as the access keys, service account key file or Vault secret of a mode C custodian, whether as a value or in a comment. The product never reads custodian credentials from `.env` (§4.3), and the script cannot tell them apart from other text.
 
 ### 3.6 File permissions on `DATA_PATH` (the deployment's responsibility)
 
@@ -280,27 +286,165 @@ Decide whether to turn these on, and for how long, according to your retention r
 
 ### 3.8 Backups taken by the management script (package deployments)
 
-In a deployment installed from the release package, `custodexa.sh` runs the stopped backup of §3.2. It does so when asked, from the menu (**Back up**) or with `sudo ./custodexa.sh backup` in the deployment folder, and on its own at step 7 of every upgrade ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)).
+In a deployment installed from the release package, `custodexa.sh` runs the stopped backup of §3.2. It does so when asked, from the menu (**Back up to a single file**) or with `sudo ./custodexa.sh backup` in the deployment folder, and on its own at step 7 of every upgrade ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)). Both write a single backup file in the same format, which can be copied to another host; the backup an upgrade takes differs only in what it holds (end of this section). A deployment with an external database is backed up the same way, with the release's PostgreSQL client in place of the bundled database (below).
 
-- **What it runs**: the steps of §3.2 in order. It stops backend, guacd and frontend while the database keeps running, dumps the database with `pg_dump -Fc`, packs `recordings` and `audit`, copies `.env`, packs `tls/`, starts the services again, and confirms that the dump lists with `pg_restore --list` and both archives list with `tar -tzf`. Free space is checked before anything is stopped. Within an upgrade the services are not started again, because the next step changes the version. With `KEK_PROVIDER=ui` the preview says that the system comes back sealed (the mode B note in §3.2).
-- **Where**: `backups/<STAMP>/` in the deployment folder, where `<STAMP>` is `YYYYMMDD-HHMMSS` (seconds included, unlike §3.2) and is also the suffix of the files inside. `backups/` and each backup folder are mode `0700`. `status` shows the latest backup.
+#### The backup file written by `backup`
+
+- **What it runs**: seven steps, numbered as on the screen. (1) Stop backend, guacd and frontend; the database keeps running. (2) Dump the database with `pg_dump -Fc` and take `snapshot.txt`. (3) Pack `audit`, and `recordings` when chosen. (4) Copy `.env`, pack `tls/` when the deployment has one, copy the proxy template that `TLS_NGINX_TEMPLATE` names when it is set, and copy the two release manifests. (5) Start the services and wait up to 180 seconds for the backend to be ready. (6) Confirm that the dump lists with `pg_restore --list` and each archive with `tar -tzf`. (7) Build the single file, encrypting it when chosen, and read it back. The services are paused for steps 1 to 5 only; the preview gives both durations.
+- **Checked before anything stops**: free space (the size of the file, room for its largest part while the file is built, and 1 GB spare); the master key settings (§4: in mode A `ENCRYPTION_KEY` has a value, in modes B and C it is empty, and `KEK_PROVIDER` is a value the backend accepts; the refusal names the keys and never prints their values); that the version recorded in `state.json` is the one in `current/MANIFEST.json`; when `TLS_NGINX_TEMPLATE` in `.env` is set, that it names a regular file that can be read, and that its path has no character the manifest cannot record: a double quote, a backslash, a tab or other control character, or a character outside ASCII (a restore puts the template back at that path); and, when encrypting, the passphrase file and the openssl image. A refusal stops nothing.
+- **After step 5**: in mode A the final screen says the services are back. In modes B and C the system comes back sealed (the mode B note in §3.2, and §4.3): the preview warns about it and the final screen gives the unseal page. If the backend is not ready within 180 seconds, step 5 is marked WARN and the backup still finishes; the final screen prints the `status` and `start` commands.
+- **Questions and flags**: run in a terminal without `--yes`, the script asks two questions, both answered no by default: whether to put the recordings in the file, and whether to encrypt the file with a passphrase. `--with-recordings` puts the recordings in without asking; `--passphrase-file <file>` encrypts without asking (below). With `--yes` and neither flag, the file holds no recordings and is not encrypted, and the preview names the flag for each. Without a terminal, `--yes` is required. Only `backup` accepts these two flags.
+- **Where**: `backups/custodexa-backup-<version>-<STAMP>.tar` in the deployment folder (`.tar.enc` when encrypted), with a checksum file of the same name plus `.sha256` next to it. `<version>` is the installed version and `<STAMP>` is `YYYYMMDD-HHMMSS` (seconds included, unlike §3.2). `backups/` is mode `0700`, and the backup file and its checksum file are `0600`. The script never overwrites a backup: when the name is taken it moves to the next second, at most twice, and when all three names are taken it refuses before anything stops. `status` shows the latest backup with its size, and says when it is encrypted.
+
+The checksum file is in `sha256sum` format and names the file without a path, so after copying both files to another folder or host, `sha256sum -c <name>.sha256` in that folder checks the copy.
+
+The backup file is an uncompressed tar. Its members are plain files at the top level, each present at most once:
+
+| Member | Content |
+|---|---|
+| `backup-manifest.json` | What the backup is (below). It holds no secret values |
+| `release-MANIFEST.json` | The release manifest of the installed version, as it was (`current/MANIFEST.json`) |
+| `tool-MANIFEST.json` | The release manifest of the script that wrote the file |
+| `snapshot.txt` | What the database held once the services had stopped (below) |
+| `db.dump` | The database, `pg_dump -Fc` (§3.2 step 2) |
+| `audit.tar.gz` | `audit` under `DATA_PATH` |
+| `recordings.tar.gz` | `recordings` under `DATA_PATH`; only when chosen |
+| `env.bak` | `.env` as it was, secrets included; in mode A that includes the master key (§3.5) |
+| `tls.tar.gz` | `tls/`; only when the deployment has one (behind your own ingress it has none) |
+| `nginx-tls.conf.template` | The proxy template that `TLS_NGINX_TEMPLATE` in `.env` names, as it was; only when that is set |
+| `db-ca.pem` | With an external database: the CA file that `PGSSLROOTCERT` in `.env` names, as it was; only when that names a file |
+| `state.json` | Only in the backup an upgrade takes: the script's record as it was when that upgrade began (§5.1) |
+| `SHA256SUMS` | The checksums of every other member |
+
+`exports` is never included (§2). The recordings are left out unless chosen, because they are usually most of the size; the final screen then names the recordings folder. If you keep the recordings another way, copy them after the backup has finished, so that the recordings are the newer side (§3.1).
+
+**`backup-manifest.json`** holds one `"key": "value"` per line. The keys to read when restoring by hand: `product.version` (the version the data belongs to; the target of a restore runs this version, §5 step 0), `created_at` (when the services stopped), `kek.provider` (the master key mode the backend actually uses: `env` for mode A, `ui` for mode B, `kms` for mode C), `kek.material_included` (`true` only in mode A), `kek.fingerprint` (the master key fingerprint or key ID, equal to `fp.kek` in `snapshot.txt`), `encryption.enabled` with `encryption.scheme`, `contents.recordings`, `contents.tls` (`false` when the deployment had no `tls/`: the file then has no `tls.tar.gz`, and nothing is missing), `contents.nginx_template` with `source.tls_nginx_template` (whether the proxy template is in the file, and the path `.env` gave for it), `trigger` (`manual` for `backup`, `upgrade` for the backup an upgrade takes, which alone has `contents.state` `true`), and `db.location` (`bundled`, or `external` with the keys in "Deployments with an external database" below). It also records the PostgreSQL server and `pg_dump` versions, the database encoding, the overlays in use, and the source host's name, deployment folder, `DATA_PATH`, `TLS_DOMAIN`, `TLS_IP_SAN` and `PUBLIC_BASE_URL`.
+
+**When a backup file counts as made**: the script builds it in `backups/.partial-<STAMP>/` (mode `0700`), reads it back and compares every member with `SHA256SUMS`, puts the checksum file in `backups/`, and only then gives the backup file its final name. A backup file under its final name has therefore been read back once in full. After that the script records it in `state.json` and removes `.partial-<STAMP>/`. What a failure or an interruption (Ctrl-C, a closed terminal, a TERM signal) leaves depends on how far the backup got:
+
+- **Before `.partial-<STAMP>/` exists** (while the checks run, before anything stops): the backup is cancelled. Nothing was stopped or written, there is nothing to delete, and nothing later is held up by it.
+- **After `.partial-<STAMP>/` exists, before the backup file has its final name**: there is no backup file, and `state.json` still points at the previous backup. `.partial-<STAMP>/` stays: it cannot be restored from and holds sensitive plaintext, so delete it once you know the cause. A `.sha256` whose backup file is missing comes from the same situation and can be deleted. The screen prints the command to start the services when they may still be stopped.
+- **After the backup file has its final name, before `state.json` records it**: the screen says the file is valid and that `state.json` was not updated, so `status` still shows the previous backup; delete `.partial-<STAMP>/` by hand.
+- **After `state.json` records it**: only removing `.partial-<STAMP>/` is left. The screen says the file is valid; delete the folder by hand. The backup counts as finished.
+
+When a backup was interrupted in the second or third case, `state.json` still holds it as unfinished: `start`, `stop` and `backup` run as usual and first warn about it, and `upgrade` refuses until a backup has finished; `start` alone does not lift that. The same applies after a power loss or a killed process, which the script cannot catch; `.partial-<STAMP>/` may then be missing, and the warning says only that the last backup did not finish.
+
+#### Deployments with an external database
+
+In the external database shape (`compose.external-database.yml`), `backup` and the backup at step 7 of an upgrade dump the database from the server that `.env` names (`EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT`, `DB_NAME`, `DB_USER`, `DB_SSLMODE`). The steps, the file, its members and the questions are those above; step 1 stops backend, guacd and frontend and does not touch the database.
+
+- **The export tool.** The release ships PostgreSQL 16, 17 and 18 clients as images pinned in its manifest. In this shape `install`, `upgrade` and `load` obtain them and check them against the manifest; they are tools the script runs, not services, so `status` does not list them as containers. Before anything stops, the script asks the server for its version and then uses only the client of the server's own major version, for the dump and for `snapshot.txt`. A server of any other major version, such as 15 or 19, is refused, even where another client could read it. The manifest records the client in `tool.dump_image` (`pgclient16`, `pgclient17` or `pgclient18`) and its digest, as listed in `tool-MANIFEST.json`.
+- **Checked before anything stops**, besides the checks above, each with its own message: that the client images are on this host (if not, load the release's offline image bundle with `load`), that the server can be reached and accepts the sign-in (the reason for a failure is in the log file), that the release has a client of the server's major version, and the settings the items below describe. A refusal stops nothing.
+- **What a dump does not carry.** `pg_dump` writes neither roles nor tablespaces, so a database that would need them on a new server is refused, with what was found: a custom tablespace, objects owned by a role other than `DB_USER`, or an extension other than `plpgsql`. The `public` schema owned by the built-in role `pg_database_owner`, as PostgreSQL creates it, is not another owner; the objects in it still have to be owned by `DB_USER`.
+- **Privileges granted to other roles** are not refused. When objects grant privileges to roles other than `DB_USER`, `PUBLIC` and the built-in `pg_` roles, a monitoring account for instance, the backup finishes, its final screen warns and names those roles, and the manifest lists them in `db.extra_grant_roles_hex`: each name as the lower-case hex of its UTF-8 bytes, separated by spaces (§5.3 prints them as names). A new database server needs those roles before the restore, or the restored privileges differ.
+- **TLS.** The client checks the server exactly as much as the backend does with the same `.env`, never less and never more, and the preview shows the mode and how the server is checked. `DB_SSLMODE` unset or empty means `disable`, as it does for the backend.
+
+  | `DB_SSLMODE` | `PGSSLROOTCERT` | How the server is checked, by the backend and the backup alike |
+  |---|---|---|
+  | `disable`, `allow`, `prefer`, `require` | not set | Not checked |
+  | `verify-ca` | not set | Against the system's trusted certificate authorities, host name not checked; on the backup's side these are the CA file of the client image, and without one the backup is refused |
+  | `verify-full` | not set | Against the system's trusted certificate authorities |
+  | any | `system` | Against the system's trusted certificate authorities, as `verify-full` |
+  | `disable`, `allow`, `prefer` | a file | Not checked; the CA file still goes into the backup |
+  | `require`, `verify-ca` | a file | Against the CA file, host name not checked |
+  | `verify-full` | a file | Against the CA file |
+
+  The backend and the client image each have their own list of trusted authorities. When the client's list lacks the authority that signed the server's certificate, the connection fails before anything stops; the backup does not fall back to checking less.
+- **TLS files.** `PGSSLROOTCERT`, `PGSSLCERT` and `PGSSLKEY` hold paths inside the backend container. The script reads these files on the host through the backend's mounts, so they have to be under `/var/log/custodexa/audit`, `/var/lib/custodexa/recordings` or `/var/lib/custodexa/exports` (`audit`, `recordings` and `exports` under `DATA_PATH`); a file anywhere else is refused. The CA file, which is public, goes into the backup as `db-ca.pem` (`contents.db_ca`). A client certificate is used for the connection and recorded as `db.tls_client_cert` `true`, but **its private key never goes into the backup file**: keep it with the deployment's other secrets, because a restore needs it again. A private key inside the audit or recordings folder, which the backup packs, is refused.
+- **The database password** reaches the client in a file of mode `0600` inside a private folder (mode `0700`) under `backups/`: `backups/.partial-<STAMP>/` while the backup's steps run, and `backups/.db-client-<PID>/` for the database checks outside them (before anything stops, and at steps 6 and 12 of an upgrade). The file is removed after each call and on an interruption, and `.db-client-<PID>/` with it. It is on no command line and in no environment variable.
+- **No other writer during the backup.** Stopping this host's services does not stop another host from writing to the same database. Do not let a standby host take over the database while the backup runs ([Application Host Standby Takeover](./standby-takeover.md)), or the database and the file locations come from different points in time (§3.1); the preview says so as well.
+
+#### Encrypting the backup file with a passphrase
+
+Choose it at the question, or pass `--passphrase-file <file>`. The passphrase has 12 to 256 characters: letters, digits, spaces and the symbols of a US keyboard (printable ASCII), and spaces count as part of it. At the question it is typed twice and not shown. With `--passphrase-file` it is the first line of the file, and the file has to be a regular file (not a symbolic link) owned by you or root, with no read or write permission for group or others and no extended ACL; otherwise the backup refuses before anything stops and prints the `chown`, `chmod` and `setfacl` commands that fix it. To create such a file without the passphrase reaching the shell history:
+
+```bash
+sudo install -m 600 -o root /dev/null /root/cx-pass
+sudo bash -c 'IFS= read -r -s p && printf "%s\n" "$p" > /root/cx-pass'
+```
+
+The encryption runs in the openssl image that the release manifest pins, checked against it, not with tools on the host. The script obtains that image at install and upgrade in every deployment shape; if it is missing, the backup refuses before anything stops and points at loading the release's offline image bundle. The passphrase reaches openssl on its standard input: it is on no command line, in no environment variable, in no log and not in `state.json`, and the script writes no file that holds it. The unencrypted tar is never written to disk, as it streams straight into openssl; the parts in `backups/.partial-<STAMP>/` are plaintext until the file is made and they are removed.
+
+The scheme is named `cx-enc-1` (`encryption.scheme` in the manifest), and its parameters are fixed:
+
+| Item | Value |
+|---|---|
+| Cipher | AES-256-CBC, PKCS#7 padding |
+| Key and IV | PBKDF2-HMAC-SHA256, 600,000 iterations, giving a 32-byte key and a 16-byte IV |
+| Salt | 8 random bytes |
+| File layout | ASCII `Salted__` (8 bytes), then the salt (8 bytes), then the ciphertext: the `openssl enc` format |
+| Passphrase | The bytes as typed, or as on the first line of the file, without the line ending |
+
+An encrypted backup file has a name ending in `.tar.enc` and starts with `Salted__`. Opening it needs only OpenSSL 1.1.1 or later and tar, with the commands below.
+
+> **If the passphrase is lost, the encrypted backup cannot be restored.** The file holds nothing derived from the passphrase, the script keeps no copy of it, and neither the script nor its developers can recover it. Keep the passphrase apart from the file, and make sure that someone besides you can obtain it.
+
+The encryption keeps the content from whoever gets hold of the file. It does not show who made the file: AES-256-CBC carries no authentication tag, and the checksums detect damage, not a change made by someone who also recomputes them. Keep backup files where only the people who administer the system can write.
+
+**Checking a file and its passphrase.** Do this once soon after a backup, so that a recovery is not the first time the passphrase is used. Read the passphrase without echo; it then reaches openssl on its standard input and appears on no command line.
+
+```bash
+FILE=backups/custodexa-backup-1.16.0-YYYYMMDD-HHMMSS.tar.enc   # change to the actual name
+IFS= read -r -s -p 'Passphrase: ' CX_PASS; echo
+```
+
+Then run the one command that fits the openssl you have; each lists the members. `enc` has `-saltlen` from OpenSSL 3.2 on; 1.1.1, 3.0 and 3.1 do not have it. What `openssl enc -help` lists decides, whatever the version number says. With an OpenSSL whose `openssl enc -help` lists `-saltlen` (3.2 and later):
+
+```bash
+printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -tvf -
+```
+
+With OpenSSL 1.1.1, 3.0 or 3.1, or any version whose `openssl enc -help` does not list `-saltlen` (the salt is always 8 bytes there):
+
+```bash
+printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -tvf -
+```
+
+With the release's openssl image instead of an openssl on the host, from the deployment folder:
+
+```bash
+printf '%s\n' "$CX_PASS" | docker run --rm -i --network none \
+  --mount "type=bind,src=$(realpath "${FILE:?}"),dst=/backup.tar.enc,readonly" \
+  "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" \
+  enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in /backup.tar.enc | tar -tvf -
+```
+
+Afterwards run `unset CX_PASS`. A wrong passphrase ends with openssl reporting `bad decrypt`, or tar reporting that the input does not look like a tar archive. Do not try other parameters: the ones above are the only ones the scheme uses.
+
+#### The backup an upgrade takes
+
+At step 7 of an upgrade the script writes a backup file like the one `backup` writes: `backups/custodexa-backup-<version>-<STAMP>.tar` with its `.sha256`, where `<version>` is the version before the upgrade. The services are already stopped and are not started again, because the next step changes the version, so of the seven steps above it runs 2, 3, 4, 6 and 7. It asks nothing, and what it holds is fixed:
+
+- The recordings are always in it.
+- It is never encrypted (`encryption.enabled` is `false`). Encrypt it, or a copy, before it leaves the host (§3.5).
+- It holds `state.json` as it was when the upgrade began (`trigger` is `upgrade`, `contents.state` is `true`); §5.1 puts that record back.
+- `.env`, `tls/` when the deployment has one, and the proxy template that `TLS_NGINX_TEMPLATE` names, as in any backup file. When that template cannot be read, or its path has a character the manifest cannot record, the upgrade refuses before anything stops. This check is left out when the upgrade can only take your own backup: `--backup-ref` was given, or the external database cannot be backed up by the script this time.
+- With an external database it is made with the release's client, as described above. When that is not possible this time, the upgrade offers your own backup only ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)).
+
+`snapshot.txt` is taken first. Besides the member in the file, the script keeps a copy next to the upgrade's log, `logs/upgrade-<STAMP>.before.txt`, and the checks at step 12 compare against that copy. Once the file is made it is the latest backup in `status`, and the upgrade's record names it; the upgrade screens print its full path. A backup that fails leaves no backup file, only `backups/.partial-<STAMP>/` as described above, and the screen prints the command that starts the old version again. Free space is checked at step 1 for this file, recordings included, and the preview's downtime estimate includes building and reading back the file.
+
+An upgrade to a release before 1.16.0 took this backup as a folder, `backups/<STAMP>/` (mode `0700`), with `<STAMP>` also the suffix of the files inside; §5.1 still restores from such a folder:
 
 | File | Content |
 |---|---|
 | `custodexa-db-<STAMP>.dump` | The database (§3.2 step 2) |
 | `custodexa-files-<STAMP>.tar.gz` | `recordings` and `audit` under `DATA_PATH` (step 3); not `exports` (§2) |
 | `custodexa-env-<STAMP>.bak` | `.env`, secrets included (step 4) |
-| `custodexa-tls-<STAMP>.tar.gz` | `tls/` (step 4) |
+| `custodexa-tls-<STAMP>.tar.gz` | `tls/` (step 4); not there when the deployment has no `tls/` (behind your own ingress) |
 | `snapshot.txt` | What the database held once the services had stopped (below) |
-| `state.json` | Only in the backup of an upgrade of a package deployment: the script's record as it was when that upgrade began (§5.1 F) |
+| `state.json` | The script's record as it was when that upgrade began (§5.1 F) |
 | `SHA256SUMS` | Checksums of the files above: in the folder, `sha256sum -c SHA256SUMS` |
 | `INCOMPLETE` | Present only when the backup failed. A folder with this file is not a backup to restore from |
 
+Such a folder does not hold the proxy template that `TLS_NGINX_TEMPLATE` names; going back with §5.1 leaves that file where it is.
+
+When you choose your own backup at step 7, the script records it in a folder `backups/<STAMP>/` too: that folder holds `state.json` as it was when the upgrade began and, when the script could take it, `snapshot.txt`, but no data.
+
 **`snapshot.txt`** holds one `key=value` per line: the row counts of `users`, `sessions` and `audit_logs`; one `migration=` line per applied row of `schema_migrations`; the four fingerprints of §6 item 6 (`fp.jwt`, `fp.kek`, `fp.export_signing`, `fp.checkpoint_signing`), computed with the algorithm of the Key Management page; and `usable=true` or `usable=false`. It is `false`, with the reason on the `unusable=` line, when a fingerprint could not be computed or its source is not unique; the checks after an upgrade then leave the keys to a manual comparison on the Key Management page. Taking it needs neither an unseal nor a sign-in. Keep it with the backup: it is the "values recorded before the backup" that §6 compares against.
 
-**Keeping it**: the folder holds everything §3.5 describes, `.env` in plaintext included, and it sits on the same host as the running `.env`. Copy it elsewhere encrypted, and keep it apart from the KEK material. The script never deletes a backup: remove the ones you no longer need yourself, and count `backups/` in the disk planning.
+**Keeping it**: a backup file or folder holds everything §3.5 describes, `.env` in plaintext included unless the file is encrypted, and it sits on the same host as the running `.env`. Copy it elsewhere, encrypted. In modes B and C keep it apart from the KEK material; in mode A the KEK material is inside it, so keep it apart from the passphrase or key that encrypts it. The script never deletes a backup: remove the ones you no longer need yourself, and count `backups/` in the disk planning.
 
-**Not covered by the script**: the no-downtime backup of §3.3, and deployments in the external database shape (`compose.external-database.yml`), where `backup` refuses because the database is not part of the deployment. Back that database up with your own procedure; an upgrade of such a deployment takes your own backup (see the SOP).
+**Not covered by the script**: the no-downtime backup of §3.3.
 
 ---
 
@@ -323,6 +467,8 @@ The KEK has three custody modes, declared by the environment variable `KEK_PROVI
 - **Recovery prerequisite**: `.env` itself must be backed up off the machine. **Restoring only the database, without `ENCRYPTION_KEY`, leaves every envelope-encrypted field undecryptable**, and the service also refuses to start.
 - **Custody responsibility**: the deployment's.
 - **Note**: this mode has exactly one KEK material key, `ENCRYPTION_KEY`; the system reads no other key name.
+- **When `KEK_PROVIDER` is not set or empty**: with `ENCRYPTION_KEY` holding a value, the backend runs in this mode, and everything in this section applies.
+- **In a backup file written by `backup` (§3.8)**: `env.bak` is `.env` as it was, `ENCRYPTION_KEY` included, and the manifest records `kek.material_included=true`. An unencrypted file, or an encrypted one once decrypted with its passphrase, therefore brings the key back in a restore; an unencrypted copy that leaks is enough to decrypt every stored credential. Encrypt it with a passphrase or by other means (§3.5). A `.tar.enc` file still needs its original passphrase.
 
 ### 4.2 Mode B: `KEK_PROVIDER=ui` (key entered in the interface, never written to disk)
 
@@ -385,7 +531,141 @@ Both the connection parameters and the **credentials** for offsite storage live 
 
 ## 5. Restore procedure
 
+From 1.16.0, a package deployment restores a single backup file (§3.8) with the management script: `sudo ./custodexa.sh restore <backup file>` in the deployment folder, or **Restore from a backup file** in the menu (**Restore a backup file onto this new host** on a host not yet installed). It checks the file, installs the backup's version when needed, keeps the data it replaces, and counts the restore as finished only once the data, the version and the master key have been checked. "Restoring with `restore`" below describes it for a deployment with the bundled database, and "Restoring a deployment with an external database" after it gives what differs when the database is on a server outside the deployment.
+
+Restore by hand, with "Restoring by hand" below, in the cases the script refuses. It refuses them before it stops a service or downloads anything, and the screen names the case:
+
+- **A backup that is not a single backup file**: the files of §3.2, or a folder `backups/<STAMP>/` from an upgrade to a release before 1.16.0 (§3.8). Such a backup has no `backup-manifest.json`. Restore it by hand on the host that made it, or upgrade that host to 1.16.0 or later and back up again.
+- **A backup file whose data belongs to a version before 1.16.0** (`product.version`): the backup an upgrade takes of a deployment of 1.13 to 1.15. Those versions do not report the master key ID after unsealing, so the script cannot confirm the master key after a restore. Take its files out with §5.2, then go on with §5.1 to go back to that version on this host, or with the steps below to restore onto another host.
+- **A backup file without a master key fingerprint** (`kek.fingerprint_status` is not `ok`, because a single value could not be read when it was made). Restore it by hand and compare the key inventory as §6 item 6 describes.
+- **A backup file whose master key mode is `hsm`**: this release has no working HSM implementation.
+- **A bundled database that grants privileges to roles other than `DB_USER`**, `PUBLIC` and the built-in `pg_` roles: the new database has only `DB_USER`. The refusal names the roles.
+
+A deployment that was not installed from the release package has no management script and restores by hand as well.
+
+#### Restoring with `restore`
+
+**Which restore it is** depends on the host, not on the file:
+
+| Host | What `restore` does |
+|---|---|
+| Installed (`status` shows a version) | Replaces the data on this host. It backs up the current data first (the safety backup, below). A backup made on another host is restored the same way, and the preview warns that it comes from another host |
+| Not yet installed | Installs the backup's version, then restores into it. The host has to be empty: no `postgres` or `audit` under the chosen `DATA_PATH`, or only empty folders. Files already in `recordings` are allowed and left as they are |
+
+Without a terminal, give `--same-host` (installed host) or `--new-host` (host not yet installed), matching the host, and `--yes`; on an installed host also `--confirm-data-loss`. A deployment older than 1.16.0 has no `restore`: upgrade it to 1.16.0 or later first.
+
+**On a new host**, first put a release package there with `get-custodexa.sh`, of the backup's version or any later one, and run `restore` with the `custodexa.sh` it placed. The script has to be no older than the backup's version. When it is newer, the script puts the backup's version under `releases/<version>/`, and the deployment runs that version after the restore. Offline, also bring the package of the backup's version with its `SHA256SUMS` (`--package`) and the offline image bundle of that version (`--images`); for an encrypted backup file, the offline image bundle of the script's own release as well, since the decryption runs in its openssl image. When the two versions are the same, one package and one image bundle are enough. The preview lists what is missing.
+
+**What is checked before anything stops.** A refusal at this point changes nothing.
+
+- The copy is whole: the `.sha256` file next to it has to report OK. Without one, the script asks for a confirmation at the terminal, or needs `--no-checksum-file`; the checksums inside the file are checked either way.
+- An encrypted file (`.tar.enc`): the passphrase is asked once, with three tries in all, or read from `--passphrase-file`, which follows the rules of `backup` (§3.8).
+- The members, their checksums and the manifest, as §3.8 describes them.
+- The data version and the master key, as listed above. In mode A, the master key in the backup's `.env` has to have the fingerprint `kek.fingerprint`. When `snapshot.txt` holds `fp.jwt`, the sign-in token key `JWT_SECRET` in the backup's `.env` has to match it. The backup's `.env` has to hold real values for `JWT_SECRET` and `DB_PASSWORD`, and in mode A for `ENCRYPTION_KEY`; the script does not make up new ones.
+- The data has no data structure change that the backup's version does not know. One that it does not know means a newer version changed the data, and the script does not put newer data into an older version.
+- The backup's version: when it is already on this host, its release manifest has to be identical to `release-MANIFEST.json` in the backup. Otherwise the package comes from `--package` (with `SHA256SUMS` in the same folder) or is downloaded. Its checksum has to match, and the publisher signature is checked as in an upgrade: a missing `cosign`, a missing signature or a signature that does not match gives a warning. A version without release files is refused; the script never installs another version in its place.
+- The images of that version, from this host, `--images` or the registry, and the free space for the working folder, the safety backup and the restored data.
+
+Then the preview says what is restored, what is replaced and kept, the downtime and the space, and what the master key needs. On an installed host, confirm by typing the version after the restore; on a new host, answer `y`.
+
+**Host values.** `DATA_PATH`, `TLS_DOMAIN`, `TLS_IP_SAN` and `PUBLIC_BASE_URL` describe the host; every other value in `.env` comes from the backup, secrets included.
+
+- On an installed host, the four keep this host's current values, and the preview lists those that differ from the backup.
+- On a new host, the script asks for each, showing the backup's value and a value for this host: Enter takes the value for this host, `-` keeps the backup's. Without a terminal, `--data-path`, `--tls-domain`, `--tls-ip-san` and `--public-base-url` give them, and those not given take the value for this host. Behind your own ingress (no `tls/` in the backup), `TLS_DOMAIN` and `TLS_IP_SAN` are not asked.
+- With a self-signed certificate and a different name or address, the restored certificate authority is kept and a server certificate for the new values is issued at startup; the previous server certificate is moved aside inside `tls/`. Clients that trust that certificate authority keep trusting it. A certificate you provided is not changed: the preview and the final screen warn when it does not cover the new name or address.
+- When `PUBLIC_BASE_URL` changes, the final screen reminds you to update the callback address at the identity provider of an external sign-in (OIDC).
+- The proxy template that `TLS_NGINX_TEMPLATE` names (when the backup holds one) goes back to its path. On a new host, when that path cannot be used there (its parent folder is missing, it is a symbolic link, or it is under `releases/` or `current/`), the script asks for another absolute path, or takes `--nginx-template <path>`, and points `.env` at it. A different file already at the destination is renamed `<name>.before-restore-<STAMP>` and kept.
+
+**The safety backup** (installed host). Before anything is overwritten, the script backs up the current data into `backups/custodexa-backup-<version>-<STAMP>.tar`: database, audit files, settings and certificates, without recordings and not encrypted. The services are stopped for it and not started again, and the database keeps running. The script then reads the file back and checks it as it would check a backup to restore, and goes on only when it passes. It also copies `state.json` and `.env` as they were into the working folder.
+
+Instead, you can use your own backup taken after the services stop, a storage snapshot for example: choose it at the question, or give `--backup-ref`, `--backup-time` and `--backup-restore` (as for an upgrade, [Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)); `--backup-time` cannot be earlier than the moment the services stopped. When a safety backup made by the script could not later be restored by `restore --revert`, only your own backup is offered, and the screen says why: for example when a single master key ID cannot be read from the current database, or the images of the current version are no longer on this host.
+
+**What is replaced and what is kept.**
+
+- The current `postgres` and `audit` under `DATA_PATH`, and `tls/` in the deployment folder, are renamed `*.before-restore-<STAMP>` and kept. They are not deleted: remove them yourself once section 6 has passed.
+- Recordings: when the backup has none, the `recordings` folder is not touched. On an installed host the recordings may then not match the backup's point in time: recordings made after the backup stay on disk but are no longer listed, and recordings cleared after the backup do not come back. On a new host, the final screen gives the number of recordings the restored database knows about whose file is not on this host, and the list is in `missing-recordings.txt` in the working folder; copy them over from `recordings` under the source host's `DATA_PATH`. A recording already uploaded to offsite storage is fetched from there when played. When the backup has recordings, they are put back, and a file already there with the same name is kept, not overwritten.
+- The version goes back with the data: on an installed host the version after the restore is the backup's, even when the host runs a newer one.
+
+**The steps.** On an installed host there are ten: put the backup's version and its images in place; stop the services (the database keeps running); the safety backup; check that it can be restored; stop the database and rename the current data; import the database; check the database; put back the audit files, certificates and settings; start the services and wait until ready; check the master key. On a new host there are eight, without the safety backup and with the settings file written from the backup. The database check compares the imported migrations, the row counts of `users`, `sessions` and `audit_logs`, and the master key ID with what the backup recorded. After startup, the script checks that the running images are the recorded ones and that the backend reports the backup's version; it waits up to 180 seconds for the backend to be ready.
+
+**The master key and when the restore counts as finished.**
+
+- **Mode A**: the backend unseals itself with the key in `.env`. The script reads the master key ID the backend reports after unsealing and compares it with `kek.fingerprint`. When they match, the restore is finished.
+- **Modes B and C**: the script starts the services and ends with exit code 4: the data is imported and the system waits for the unseal. Someone signs in on the unseal page with an administrator account from the backup and enters the master key (mode B), or checks the custodian shown there, which came back with the database, and supplies the custodian credentials again (mode C; this host's address has to be among the sources the custodian accepts). Then run `restore --resume`: it reads the master key ID and finishes. While the system is still sealed it says so, changes nothing, and ends with exit code 4 again.
+- Until the master key has been checked, the restore is not finished: `upgrade` and `backup` refuse to run.
+- **When the ID does not match**, the script stops the services and the restore is not finished. Check the key inventory as §6 item 6 describes, then either carry on (in mode A the key in `.env` is checked again first, and the services are not started while it still does not match; in modes B and C the services start again and the check runs once someone unseals with the right key), or go back or give up as described below.
+
+**When it has finished**, the final screen gives the backup it came from, the folders kept and the safety backup, the address, the master key check, the recordings and any warning, and points to section 6, which is still to be done (below). The working folder under `restore/` in the deployment folder (mode `0700`) loses its plaintext copies of the database, `.env` and the archives; it keeps the list of missing recordings and the copies of `state.json` and `.env` from before the restore (`state-before.json`, `env-before-restore`, mode `0600`, secrets included). At a terminal the script then looks up the latest version as the menu does and asks whether to upgrade, no by default; without a terminal it prints the commands only. When the backup was the one an upgrade took (`trigger` is `upgrade`), it neither looks up nor asks: it says the deployment is back on the version from before the upgrade and prints the upgrade command.
+
+#### When `restore` stops partway
+
+A failure or an interruption (Ctrl-C, a closed terminal, a TERM signal) stops the restore where it is, and nothing is undone automatically. The services stay stopped, the data that was renamed stays kept, and the working folder and the record of the restore remain. The screen prints two commands, with the full path of the script that started the restore; on a new host whose script is newer than the backup's version that is `releases/<script version>/custodexa.sh`, so use the path as printed.
+
+- `restore --resume` carries on from the step that did not finish.
+- On an installed host, `restore --revert` goes back. When nothing has been overwritten yet, it clears the record of the restore and starts the original services, and counts as done once they are ready. Once overwriting has begun, it restores the safety backup with the same steps, without taking another safety backup; the data this restore had put in place is renamed `*.partial-restore-<STAMP>` and kept. With your own backup instead of the safety backup, it prints the restore procedure you registered.
+- On a new host, `restore --abandon` gives up. It stops the services the restore started, renames what it put in place (`postgres`, `audit`, `tls/` and `.env`) to `*.abandoned-<STAMP>`, points `current` back to the script's version and keeps `releases/<version>/`, and deletes the plaintext in the working folder. It does not touch the `recordings` folder, which may hold files you copied there yourself. The host is then not installed again.
+
+When the safety backup did not finish, nothing has been overwritten: carry on to take it again, carry on with your own backup (choose it at the terminal, or add `--backup-ref`, `--backup-time` and `--backup-restore` to `restore --resume`; the time cannot be earlier than the moment this restore stopped the services), or go back. A going back or giving up that is itself interrupted continues when the same command is run again.
+
+`--revert` handles only an unfinished restore. To get the data from before a finished restore back, restore its safety backup file with `restore`: that is a new restore, and it takes a safety backup of the current data first.
+
+When the script cannot tell whether one of its own changes to the deployment took place (a folder rename, a file it put in place), it names that change and the paths involved, changes nothing, and stops. Look at those paths before changing anything: the data kept as `*.before-restore-<STAMP>` and the safety backup are not affected. When you cannot tell which copy is which, restore by hand from the backup file with "Restoring by hand" below. When the working folder has been lost after overwriting began, `restore --resume` refuses, and `restore --revert` or `restore --abandon` remain.
+
+While a restore has not finished, `status` shows it in a Restore section with the command to carry on, and the menu offers only carrying on, going back or giving up, the status, starting and stopping the services, and help. `status`, `load` and `stop` run as usual. `start` runs only once the restore has started the services itself (waiting for the unseal, or not ready in time). `backup`, `upgrade`, `install` and another `restore` refuse and print the commands to carry on, go back or give up.
+
+#### Restoring a deployment with an external database
+
+When the backup's manifest has `db.location` `external` (§3.8), `restore` empties the database on that server and imports the backup into it, with the steps above and the differences below.
+
+**Before you start.**
+
+- On a new host, stop the services on the original host first, and make sure no standby host has taken the database over ([Application Host Standby Takeover](./standby-takeover.md)). Keep it that way until the restore has finished: the script checks for other connections at the points below, and nobody else may start the original host or a standby host in between.
+- The database server needs free space for about twice the size of the database, because the old and the new data are both on it until the import is committed. The preview gives the figure with a warning; the script cannot see the server's disk, so check it first.
+- While the import runs, the working folder also holds the SQL text of the import, about the size of the database uncompressed. On a new host whose database already holds data, it also holds the safety export (below). Plan the free space of the deployment folder for both.
+- The connection is the backup's: `EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` and the paths in `PGSSLROOTCERT`, `PGSSLCERT` and `PGSSLKEY` come from the backup's `.env` on either kind of host. A new host asks only for the four host values. To move to another database server or another database, restore by hand with §5.3, where the connection in `.env` is set to fit the new server.
+
+**What is checked before anything stops**, with the backup's connection and the release's PostgreSQL client of the server's major version. A refusal gives every reason found, ends with exit code 3, and changes nothing.
+
+- The server runs PostgreSQL 16, 17 or 18, the major versions this release carries a client for, and the client image of that version is on this host (if not, load the release's offline image bundle with `load`). The server's major version is not lower than that of the server the backup was taken from, and the client's is not lower than that of the tool that made the dump.
+- The client connects and signs in, and the server certificate is checked exactly as much as when the backup was taken (the TLS table in §3.8), never less.
+- `DB_USER` owns the database `DB_NAME`, because rebuilding the `public` schema needs the owner of the database, and owns every object in its schemas other than the system ones. The `public` schema itself may keep the owner PostgreSQL gives it, `pg_database_owner`. The refusal lists the objects with their owners.
+- The database has no extension other than `plpgsql`.
+- Its encoding, collation and character type are the backup's (`db.encoding`, `db.collate`, `db.ctype`). Otherwise the screen prints the settings, and the database administrator creates the database with them: the script creates neither databases nor roles.
+- No other connection uses the database. On a new host this is strict: the refusal lists the source addresses, the application names and the number of connections. On an installed host its own backend is still connected at this point, so the preview only lists the connections; the strict check comes once the services have stopped (below).
+- The roles the backup grants privileges to exist on the server (below).
+- Whether the database is empty: no object in a schema other than the system ones.
+
+**Roles the server lacks.** The roles come from `db.extra_grant_roles_hex` and from the grants in the dump, apart from `DB_USER`, `PUBLIC` and the built-in `pg_` roles. At a terminal the script names the missing roles and offers two choices: `[1]` create these roles first (the default; the restore ends and nothing has been changed), or `[2]` skip the grants to these roles and go on, which leaves out only those grants and restores everything else. Without a terminal it refuses unless `--accept-grant-loss` is given. Skipping needs each grant statement to concern either missing roles only or none of them; when a statement cannot be told apart that way, the script asks for the roles to be created first and changes nothing. The preview says which grants are skipped, and the final screen gives their number and the list, `skipped-grants.txt` in the working folder.
+
+**The CA file and the client certificate.** The CA file from the backup (`db-ca.pem`) is put at the path `PGSSLROOTCERT` names, under `DATA_PATH` (the TLS files in §3.8); a file with other content already there is refused. When the backup's connection used a client certificate (`db.tls_client_cert` is `true`), give the certificate and its private key with `--db-client-cert` and `--db-client-key`, or type the two paths when the terminal asks for them; files already at the paths `PGSSLCERT` and `PGSSLKEY` name on this host are used as they are, and a file with other content there is refused. The private key is not in the backup file (§3.8), so keep it with the deployment's other secrets. After the confirmation the files are copied to those paths with mode `0600`; the private key goes there directly, never through the working folder or into the log.
+
+**What is emptied.** Every object in the schemas of `DB_NAME` other than the system ones (`pg_catalog`, `information_schema` and PostgreSQL's toast and temporary schemas). The `public` schema is dropped and created again as PostgreSQL 15 and later create it: owned by `pg_database_owner`, with `USAGE` for `PUBLIC`. Other databases, roles and tablespaces are not touched. The preview gives the server, the database and its PostgreSQL version, the client used, how the server is checked, and the number of objects in each schema that is emptied. An empty database needs no emptying, and the preview says so.
+
+**One transaction.** The script first writes the SQL of the import to files in the working folder and checks that each one is complete. Only then does it send the emptying and the import to the server as a single transaction. When the transaction fails, all of it is rolled back and the database stays as it was.
+
+**Confirmation.** When the database is not empty, the confirmation is to type its name, in place of the version on an installed host or `y` on a new host. Without a terminal, give `--yes` and `--confirm-data-loss` on either kind of host.
+
+**On an installed host** the safety backup holds the external database as well: the script exports it with the client of the server's major version into the same backup file. There is no `postgres` folder to rename: the database is emptied and imported in place, and what it held before is in the safety backup. Other connections are checked strictly at three points: once the services have stopped (step 2, "Stop the services (the external database is not affected)"), before anything here is renamed (step 5, "Make sure no other connection is open"), and right before the transaction (step 6, "Empty and import the database (one transaction)"). When one is found, the step fails with its source and application name, the services stay stopped, and the external database has not been changed. Find and end that connection, making sure it is not a standby host taking over, then run `restore --resume`, or go back with `restore --revert`. Once overwriting has begun, `restore --revert` restores the safety backup as described above, and its database goes back in one transaction as well.
+
+**On a new host** the safety backup depends on the database:
+
+- **Empty**: the preview says no safety backup is needed, and none is made. Eight steps, as above.
+- **Not empty**: its content is the only copy of that data. After the settings are written, step 3 checks again that no other connection is open and exports the database with the client of the server's major version to `safety-db.dump` in the working folder. The export is read back in full, and the database is measured before and after it; when the two measurements differ, something wrote to the database during the export, and the export is not used. Only a complete, unchanged export lets the restore go on. Nine steps.
+
+**When the import stops partway.** When the server reported an error, the transaction was rolled back and the external database is as it was. When the result cannot be known (the import was killed, or the connection was lost), `restore --resume` measures the database first: unchanged means nothing was committed, and the import runs again; the checks of the database step all passing means it was committed, and the restore goes on. When it is neither, the script stops, shows both measurements, and does not import again. Then follow the commands on the screen: go back with the safety backup or the safety export, or, on a new host whose database was empty, have the database administrator look at the database.
+
+**Going back or giving up on a new host.**
+
+- **The database was not empty**: `restore --revert` asks for a confirmation (or takes `--yes`), stops the services, puts the safety export back into the external database in one transaction, and finishes only once the database measures as it did at the export; the host then returns to not installed, as `--abandon` leaves it. When putting the export back fails, `safety-db.dump` is kept and the same command can be run again. Once the emptying and import have been sent to the server, `restore --abandon` is refused with exit code 3 and prints `restore --revert`. Before that point the external database has not been touched and giving up is allowed; `safety-db.dump` is kept and the screen gives its path, for you to delete once it is not needed.
+- **The database was empty**: `restore --abandon` does not empty it. The data this restore imported stays in the database, and the screen says so; have the database administrator empty it if needed. A later restore treats that database as not empty and exports it first.
+
+The script deletes `safety-db.dump` only when `restore --revert` has finished. In every other case it stays in the working folder, including after a restore that finished, and holds the database in plaintext: delete it yourself once section 6 has passed.
+
+#### Restoring by hand
+
 **Going back after an upgrade by the management script** (its screens point here): read §5.1 first. It says what to do before and after the steps below, and how to fill them in from a folder under `backups/`.
+
+**Restoring from a single backup file** (`custodexa-backup-<version>-<STAMP>.tar` or `.tar.enc`, written by `backup` or by an upgrade, §3.8): take its files out with §5.2 first. §5.2 sets `STAMP` and `BACKUP_DIR` for the steps below. When its database was external (`db.location` is `external`), §5.3 takes the place of step 5.
 
 **One point where the order differs from §3.2**: `.env` is restored first, and the variables are obtained after. The reason is in the note on step 2.
 
@@ -397,15 +677,24 @@ Below, `STAMP` carries the timestamp of the set of backup files to restore (the 
 #
 #    The timestamp of the set of backup files to restore. **The value on the line below must be changed to the actual file name suffix**;
 #    if you forget, the three commands after it fail because the files do not exist (they will not restore the wrong thing).
-#    A backup taken by the management script uses YYYYMMDD-HHMMSS, the name of its folder under backups/ (§3.8).
+#    A backup folder of the management script uses YYYYMMDD-HHMMSS, the name of the folder under backups/ (§3.8).
+#    For a single backup file, §5.2 has already set STAMP and BACKUP_DIR: skip the two assignments below.
 STAMP=YYYYMMDD-HHMM
-#    The folder that holds the backup files: . when they are in this directory, backups/<STAMP> for a script backup
+#    The folder that holds the backup files: . when they are in this directory, backups/<STAMP> for a script backup folder
 BACKUP_DIR=.
 
 # 1. Stop all services. ${DATA_PATH}/postgres in the target environment must be an empty directory
-#    (the postgres container only initializes a clean database when the data directory is empty);
-#    confirm this machine is the one meant for the restore, then empty that directory
+#    (the postgres container only initializes a clean database when the data directory is empty).
+#    Left as it is, postgres keeps the database it holds and skips the initialization. On another host that database
+#    has the password (and user) of that host's install, which the restored .env does not match, so the backend
+#    cannot sign in to the database; on the same host, objects the backup does not hold stay in the database.
+#    Confirm this machine is the one meant for the restore. The lines below move the current database aside
+#    instead of deleting it; delete postgres.before-restore-<STAMP> once section 6 has passed.
 docker compose --project-directory . down
+DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' "${ENV_FILE:-./.env}" | tail -n 1)"
+( cd "${DATA_NOW:?DATA_PATH not found in .env; do not go on}" && pwd )
+[ ! -d "${DATA_NOW:?}/postgres" ] || mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP:?}"
+mkdir -m 700 "${DATA_NOW:?}/postgres"
 
 # 2. Restore the deployment-layer settings first (required for KEK mode A; mode B contains no material, mode C contains no KMS credentials).
 #    This comes before obtaining the values because it overwrites .env entirely. If you obtained the values first and overwrote afterwards,
@@ -429,14 +718,32 @@ printf 'ENV_FILE=%s\nDATA_PATH=%s\nDB_USER=%s\nDB_NAME=%s\n' \
 ( cd "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}" && pwd )
 #    Extract as root (sudo). Extracted by any other account, the per-day recording directories, the text recordings
 #    and the audit files end up owned by that account, and the preparation command below does not change them back.
-tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
-  -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
+#    A backup folder has one archive for recordings and audit. A single backup file (§5.2) has audit.tar.gz,
+#    and recordings.tar.gz only when the recordings were put in it.
+if [ -e "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" ]; then
+  tar -xzf "${BACKUP_DIR:?}/custodexa-files-${STAMP}.tar.gz" \
+    -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
+else
+  tar -xzf "${BACKUP_DIR:?}/audit.tar.gz" \
+    -C "${DATA_PATH:?DATA_PATH not obtained, run step 3 first; do not continue with a default}"
+  if [ -e "${BACKUP_DIR:?}/recordings.tar.gz" ]; then
+    tar -xzf "${BACKUP_DIR:?}/recordings.tar.gz" -C "${DATA_PATH:?}"
+  fi
+fi
 #    Set the recordings directory back to 1000:0 2770 (§3.6); safe to run even when extraction already kept it
 docker run --rm --network none -v "$(cd "${DATA_PATH:?}" && pwd)/recordings:/r" --entrypoint /bin/sh "${CUSTODEXA_IMAGE_OPENSSL:-alpine/openssl:3.5.4}" -c \
   'chown 1000:0 /r && chmod 2770 /r && find /r -mindepth 1 -maxdepth 1 -type f -group 1000 -exec chgrp 0 {} +'
 #    Restore the TLS certificate directory into the project directory (without it, self-signed mode generates a new CA and certificate at startup,
-#    and the CA has to be distributed to every client machine again)
-tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
+#    and the CA has to be distributed to every client machine again). A backup of a deployment behind your own ingress
+#    has no tls archive (contents.tls is false in its manifest), and there is nothing to restore.
+if [ -e "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz" ]; then
+  tar -xzf "${BACKUP_DIR:?}/custodexa-tls-${STAMP}.tar.gz"
+fi
+#    The proxy template that TLS_NGINX_TEMPLATE in .env names, when the backup file holds one (§3.8): back to that path
+if [ -e "${BACKUP_DIR:?}/nginx-tls.conf.template" ]; then
+  CX_TPL="$(env_get TLS_NGINX_TEMPLATE)"
+  install -D -m 644 "${BACKUP_DIR:?}/nginx-tls.conf.template" "${CX_TPL:?TLS_NGINX_TEMPLATE is not set in .env}"
+fi
 
 # 5. Start postgres only, and load the logical backup **after it can really accept connections**.
 #    `up -d` only guarantees the container started, not that postgres is ready; and on first startup (empty data directory),
@@ -469,26 +776,92 @@ A KEK mode B deployment is still sealed after step 6, and only starts serving on
 
 ### 5.1 Going back to the previous version after an upgrade by the management script
 
-The management script does not roll back by itself. When an upgrade stops after it switched to the new version (steps 9 to 12), or when you decide after a finished upgrade to return to the previous version, restore the backup the upgrade took at its step 7. The upgrade screen, and the preview before it, name that folder. **Everything recorded after that backup is lost**, which is why the backup was taken with the services stopped.
+From 1.16.0, start with the `rollback` command. Before it stops anything, it decides whether it can go straight back to the version before the upgrade. When it can, it switches back only the version and keeps the data. When it cannot, it changes nothing and prints the next step. It never restores a backup by itself.
 
-A failure before the version switch does not require this rollback procedure. At steps 1 to 7 the screen prints the command for restarting the old version; step 8 is reserved and performs no conversion.
+A failure before the version switch does not require going back. At steps 1 to 7 the screen prints the command for restarting the old version; step 8 is reserved and performs no conversion. Run in that state, `rollback` says the upgrade stopped before the switch and prints the same commands.
 
-Work as root in the deployment folder, and fill in the three values from the screen:
+#### When `rollback` can go straight back
+
+All four of these have to hold:
+
+- The last version change of this package deployment was an upgrade by the script that reached the switch to the new version (step 9 or later). The upgrade may have finished, failed, or been interrupted after that point.
+- The version before the upgrade is 1.16.0 or later.
+- The new version has not changed the database. One of three grounds is enough: the new version never started; the database holds the same migrations as the record taken before the upgrade; or the manifest of the new release lists the previous version as one it can go straight back to. A database that cannot be read counts as changed.
+- Every image of the previous version is still on this host, with the image ID recorded before the upgrade. The script checks this host only; the table below says how to load a missing image.
+
+When the first two hold, the upgrade screens print the command, for example `Back to 1.16.1   sudo /opt/custodexa/custodexa.sh rollback`. Whether the other two hold is decided by `rollback` itself.
+
+#### Going back with `rollback`
+
+```bash
+sudo /opt/custodexa/custodexa.sh rollback
+```
+
+It first shows a preview: the installed version, the version it goes back to, why the database counts as unchanged, and the old images it found. Nothing has been changed at that point, and it asks `Start? [y/N]`. Add `--yes` to skip the question in automation. Then it runs four steps:
+
+1. **Stop the services.** As `stop` does, it first waits until the audit records are in the database, then stops every service except the bundled database. When that wait cannot be confirmed, it stops nothing: a new run ends with nothing changed, and a resumed one stays unfinished.
+2. **Check the database again and switch back.** With the application services stopped, it decides again whether the new version has changed the database, because the new version could still change it while the preview waited. If the database is still unchanged, it stops the database, points `current` to `releases/<previous version>`, and swaps the script's records of the two versions.
+3. **Start the services** with the images of the previous version.
+4. **Check** that the backend reports the previous version and that the running images are the ones recorded before the upgrade.
+
+The data, `.env` and the certificates are not touched and no backup is restored, so everything recorded since the upgrade is kept. When the deployment comes up sealed (KEK mode B or C, §4.2 and §4.3), the closing line gives the `/unseal` address. From then on the `custodexa.sh` in the deployment folder is the script of the previous version, and `status` shows that the last upgrade was rolled back. Each run writes its own log file, `logs/rollback-<time>.log`.
+
+#### When `rollback` stops partway
+
+When a step fails or the run is interrupted, the rollback stays unfinished. The screen describes the current state, prints the command for reading the backend log, and then the commands to continue:
+
+```bash
+sudo /opt/custodexa/custodexa.sh rollback --resume   # once the cause is fixed, finish going back
+sudo /opt/custodexa/custodexa.sh rollback --revert   # or return to the version after the upgrade
+```
+
+- `--resume` carries on from the step where the run stopped. Steps whose result is already in place are passed over.
+- `--revert` abandons the rollback and returns to the version after the upgrade with the same four steps, without the database check. When the run stopped at step 1, nothing has been switched yet and the screen prints only `--resume`.
+- Once a `--revert` has started, the unfinished run is a return to the version after the upgrade. Its screens print only `rollback --resume`, which finishes that return. To go back to the previous version after it completes, run `rollback` again.
+- While a rollback is unfinished, `upgrade`, `backup` and `restore` refuse to run and print the same commands. `start`, `stop` and `status` still work.
+
+#### One version back only
+
+`rollback` goes back one version. After a finished rollback, a second `rollback` is refused with "There is no previous version to go back to" and nothing changes. To return to the version after the upgrade, upgrade to it again as usual ([Upgrade SOP](./upgrade-sop.md#upgrading-with-the-management-script)).
+
+#### When `rollback` cannot go straight back
+
+When one of the conditions does not hold, `rollback` ends with exit code 3 before it stops any service, and nothing is changed. The one exception is the second check in step 2: when the new version changed the database while the preview waited, the version is not switched, the application services stay stopped, the bundled database keeps running, and the exit code is 1. That screen also prints `sudo /opt/custodexa/custodexa.sh start` for keeping the new version in service, unless the upgrade itself is still unfinished.
+
+The next step follows what the screen says:
+
+| The screen says | Next step |
+|---|---|
+| The new version has changed the database, or it could not be read, and it prints a `restore` command | Run that command as printed. It names the backup file the upgrade took, for example `sudo /opt/custodexa/custodexa.sh restore /opt/custodexa/backups/custodexa-backup-1.16.1-<STAMP>.tar`. Everything recorded after that backup is replaced. Once the restore finishes, the failed upgrade no longer stands in the way: `upgrade` runs again as usual. Restoring is described in section 5. |
+| The script can only go back to 1.16.0 or later, or it points to the manual restore in section 5 | Go back by hand as below. The screen shows where the backup is. This is the case when the version before the upgrade is older than 1.16.0, or when you chose your own backup at step 7. |
+| Images of the previous version are not on this host, or differ from the record | Load the offline image bundle of the previous version with the `load` command it prints, then run `rollback` again. |
+| There is no previous version to go back to | There is nothing to go back from: the deployment was not upgraded by the script, the last change was already a rollback, the version record has changed since the upgrade, or the running version does not match the record. Check the state with `status`. |
+
+#### Going back by hand
+
+This procedure restores the backup the upgrade took at its step 7. The upgrade screens name it: a backup file, `backups/custodexa-backup-<version>-<STAMP>.tar`, when the script took it; a folder `backups/<STAMP>/` when the upgrade was to a release before 1.16.0 (§3.8). **Everything recorded after that backup is lost**, which is why the backup was taken with the services stopped.
+
+When you chose your own backup at step 7, restore it with the procedure you recorded for it, in place of A and E below; B, D and F still apply, with `BACKUP_DIR` the folder the script recorded for it.
+
+Work as root in the deployment folder, and fill in the values from the screen:
 
 ```bash
 sudo -s
 cd /opt/custodexa                      # the deployment folder
 OLD=1.13.0                             # the version before the upgrade
-STAMP=YYYYMMDD-HHMMSS                  # the name of the backup folder
-BACKUP_DIR="backups/${STAMP}"
+STAMP=YYYYMMDD-HHMMSS                  # the timestamp in the name of the backup file or folder
+BACKUP_DIR="backups/${STAMP}"          # a backup folder; for a backup file, §5.2 sets it in E
 
-# A. The backup has to be complete: no INCOMPLETE file, and every checksum OK
+# A. A backup folder has to be complete: no INCOMPLETE file, and every checksum OK.
+#    A backup file is checked by §5.2 in E; skip this line for it.
 test ! -e "${BACKUP_DIR}/INCOMPLETE" && ( cd "${BACKUP_DIR}" && sha256sum -c SHA256SUMS )
 
 # B. Stop and remove the new version's containers (the data in DATA_PATH is not touched)
 docker compose --project-directory . down
 
-# C. Keep the database the new version used, instead of emptying it (section 5, step 1)
+# C. Keep the database the new version used, instead of emptying it (section 5, step 1).
+#    With an external database there is no postgres folder: skip the four lines below, and
+#    keep the new version's database on the server as §5.3 says.
 DATA_NOW="$(sed -n 's/^[[:space:]]*DATA_PATH=//p' .env | tail -n 1)"
 ( cd "${DATA_NOW:?}" && pwd )           # look at it: this deployment's data root
 mv "${DATA_NOW:?}/postgres" "${DATA_NOW:?}/postgres.before-restore-${STAMP}"
@@ -504,11 +877,169 @@ ln -sfn "releases/${OLD}" current.new && mv -Tf current.new current
 set -a; . ./current/images.env; set +a
 ```
 
-**E. Run section 5 from step 2 to step 6** in this shell, with `STAMP` and `BACKUP_DIR` as set above. `docker compose` then starts the previous package release through `current`. Then go through section 6. Compare item 6 with the fingerprints in `${BACKUP_DIR}/snapshot.txt`, and the counts of `users` and `sessions` with that file too.
+**E. For a backup file, take its files out with §5.2** in this shell (leave out its `sudo -s`). Its step G checks that the release `current` now points at is the backup's version, and it sets `STAMP` and `BACKUP_DIR`. **Then, for either kind, run section 5 from step 2 to step 6** in this shell, with `STAMP` and `BACKUP_DIR` as set; not from step 1, because B and C did its work. With an external database, §5.3 takes the place of step 5. `docker compose` then starts the previous package release through `current`. Then go through section 6. Compare item 6 with the fingerprints in `${BACKUP_DIR}/snapshot.txt`, and the counts of `users` and `sessions` with that file too.
 
-**F. Afterwards.** Delete `postgres.before-restore-${STAMP}` once section 6 has passed and you are sure you will not need the new version's data. The previous version's images have to be on the host, because the script does not delete images; the upgrade preview warned when some were missing.
+**F. Afterwards.** Delete `postgres.before-restore-${STAMP}` (with an external database, the database kept aside on the server) once section 6 has passed and you are sure you will not need the new version's data. The previous version's images have to be on the host, because the script does not delete images; the upgrade preview warned when some were missing.
 
-In a package deployment the script's own record, `state.json`, still describes the newer version and the upgrade: `status` shows that version, and `upgrade` refuses to run and prints the same instructions again. Put back the record as it was before the upgrade, which the upgrade kept in its backup folder: `cp -p "${BACKUP_DIR}/state.json" state.json`. This release has no command that corrects the record otherwise.
+In a package deployment the script's own record, `state.json`, still describes the newer version and the upgrade: `status` shows that version, and `upgrade` refuses to run and prints the same instructions again. Put back the record as it was before the upgrade, which the upgrade kept in its backup (the `state.json` member that §5.2 took out, or the file in the backup folder): `cp -p "${BACKUP_DIR}/state.json" state.json`. This release has no command that corrects the record otherwise. After that, delete the folder §5.2 made, as §5.2 says: it holds the database, `.env` and the private keys in plaintext.
+
+### 5.2 Taking the files out of a single backup file
+
+From 1.16.0, `restore` takes the files out by itself (§5). The steps below are for restoring by hand, in the cases §5 lists.
+
+A backup file written by `backup` or by an upgrade (§3.8) is unpacked into a folder before section 5. The steps below check it, take its members out, give them the names section 5 uses, load the image references of the installed release, and set `STAMP` and `BACKUP_DIR` for section 5. After them, run section 5 from step 1 in the same shell; step 0 still applies, apart from its two assignments.
+
+| Member | Where it is used |
+|---|---|
+| `backup-manifest.json` | Step E below: the version for §5 step 0, and the master key mode (section 4) |
+| `env.bak` | §5 step 2, renamed to `custodexa-env-<STAMP>.bak` in step F |
+| `audit.tar.gz`, `recordings.tar.gz` | §5 step 4, which extracts both when there is no `custodexa-files-<STAMP>.tar.gz` |
+| `tls.tar.gz` | §5 step 4, renamed to `custodexa-tls-<STAMP>.tar.gz` in step F; not in the file when the deployment had no `tls/` (`contents.tls` is `false`) |
+| `nginx-tls.conf.template` | §5 step 4, put back at the path that `TLS_NGINX_TEMPLATE` in `.env` names; only when that was set (`contents.nginx_template`) |
+| `db.dump` | §5 step 5, renamed to `custodexa-db-<STAMP>.dump` in step F |
+| `db-ca.pem` | §5.3, with an external database: the CA file `PGSSLROOTCERT` names (`contents.db_ca`) |
+| `state.json` | §5.1 F, in the backup an upgrade takes (`contents.state`) |
+| `snapshot.txt` | Section 6: the fingerprints for item 6, and the row counts of `users` and `sessions` |
+| `release-MANIFEST.json`, `tool-MANIFEST.json`, `SHA256SUMS` | Checking only |
+
+The target is a package deployment of the version in `product.version`; on another host, install that version there first. Work as root **in the deployment folder of the target**, because section 5 runs `docker compose`, writes `.env` and extracts `tls/` there. The backup file and its `.sha256` can be anywhere: give `FILE` as an absolute path.
+
+Each block below runs only when the one before it succeeded, and ends by printing how far it got. **Go on to section 5 only when the last block prints `5.2: ready`.** Anything else means a check, the decryption or a rename failed: stop there, read the error above that line, delete `BACKUP_DIR` (`rm -rf "${BACKUP_DIR:?}"`) and start again from the first block.
+
+```bash
+sudo -s
+cd /opt/custodexa                                     # the deployment folder of the target
+FILE=/path/to/custodexa-backup-1.16.0-YYYYMMDD-HHMMSS.tar   # absolute path; it ends in .tar.enc when encrypted
+STAMP=YYYYMMDD-HHMMSS                                 # the timestamp in that name
+BACKUP_DIR="$(pwd)/backups/restore-${STAMP}"          # a new folder for the members, as an absolute path
+CX_52=start
+
+# A. The copy is whole: the checksum file next to it has to report OK
+# B. A new folder that only root can open (mkdir fails if it exists already)
+( cd "$(dirname "${FILE:?}")" && sha256sum -c "$(basename "${FILE:?}").sha256" ) \
+  && { [ -d backups ] || mkdir -m 700 backups; } \
+  && mkdir -m 700 "${BACKUP_DIR:?}" \
+  && CX_52=B
+echo "5.2: ${CX_52}"
+```
+
+C. Take the members out. For an unencrypted file (`.tar`):
+
+```bash
+[ "${CX_52}" = B ] && tar -xf "${FILE:?}" -C "${BACKUP_DIR:?}" && CX_52=C
+echo "5.2: ${CX_52}"
+```
+
+For an encrypted file (`.tar.enc`), use the openssl command from "Checking a file and its passphrase" in §3.8 that fits your openssl, with `tar -xf - -C "${BACKUP_DIR:?}"` in place of `tar -tvf -`. The exit codes of the whole pipeline are kept before the passphrase is cleared, and only all three at 0 count. With an OpenSSL whose `openssl enc -help` lists `-saltlen` (3.2 and later):
+
+```bash
+if [ "${CX_52}" = B ]; then
+  IFS= read -r -s -p 'Passphrase: ' CX_PASS; echo
+  printf '%s\n' "$CX_PASS" | openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 -pass stdin -in "${FILE:?}" | tar -xf - -C "${BACKUP_DIR:?}"
+  CX_RC="${PIPESTATUS[*]}"
+  unset CX_PASS
+  echo "exit codes (printf openssl tar): ${CX_RC}"
+  [ "${CX_RC}" = "0 0 0" ] && CX_52=C
+fi
+echo "5.2: ${CX_52}"
+```
+
+Then, for either kind:
+
+```bash
+# D. Every member matches the checksums written when the file was made
+# E. What the backup is: the version to restore onto, the master key mode and fingerprint, whether recordings, tls/ and a proxy template are in it, where the database was
+# F. The names section 5 uses
+# G. The installed release is the backup's version; load its image references for docker compose
+[ "${CX_52}" = C ] \
+  && ( cd "${BACKUP_DIR:?}" && sha256sum -c SHA256SUMS ) \
+  && grep -E '"(product\.version|created_at|kek\.provider|kek\.material_included|kek\.fingerprint|contents\.recordings|contents\.tls|contents\.nginx_template|source\.tls_nginx_template|db\.location)"' \
+       "${BACKUP_DIR:?}/backup-manifest.json" \
+  && ( cd "${BACKUP_DIR:?}" && mv db.dump "custodexa-db-${STAMP}.dump" \
+       && mv env.bak "custodexa-env-${STAMP}.bak" \
+       && { [ ! -e tls.tar.gz ] || mv tls.tar.gz "custodexa-tls-${STAMP}.tar.gz"; } ) \
+  && CX_VER="$(sed -n 's/^ *"product\.version": "\([^"]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json")" \
+  && echo "backup ${CX_VER}, installed $(tr -d '[:space:]' < current/VERSION)" \
+  && [ "$(tr -d '[:space:]' < current/VERSION)" = "${CX_VER:?}" ] \
+  && set -a && . ./current/images.env && set +a \
+  && CX_52=ready
+echo "5.2: ${CX_52}"
+```
+
+Step G loads `current/images.env`, the image references the installed release recorded at install, into this shell, as the script does before every `docker compose` call; section 5 runs `docker compose` itself, so without them it may not find the images that are on the host. When the two versions printed differ, install the backup's version first.
+
+Before going on to section 5:
+
+- **Master key**: with `kek.provider` `env`, the key comes back with `.env` in §5 step 2. With `ui` or `kms`, the backup file does not contain it: have the unseal material or the custodian credentials ready. Either way, section 6 item 6 compares the master key after the restore with `kek.fingerprint`, which is the same value as `fp.kek` in `snapshot.txt`.
+- **Another host**: `.env` from the backup describes the host that made it. Right after §5 step 2, before going on, set the four values that describe a host to this host's: `DATA_PATH` (the note in step 2), `TLS_DOMAIN`, `TLS_IP_SAN` and `PUBLIC_BASE_URL`. The manifest's `source.data_path`, `source.tls_domain`, `source.tls_ip_san` and `source.public_base_url` hold the source host's values for comparison. When the backup holds a proxy template, `TLS_NGINX_TEMPLATE` names where §5 step 4 puts it: change it as well if that path does not suit this host (`source.tls_nginx_template` holds the source host's value).
+- **Certificates for a new name or address**: changing those values does not change the certificate restored in §5 step 4. The built-in TLS proxy keeps using `tls/fullchain.pem` and `tls/privkey.pem` as long as both exist. When the name or address differs, prepare a matching certificate after step 4 and before step 6. With `TLS_MODE=selfsigned`, delete those two files and keep `tls/ca-private/` and `tls/ca-public/`: at step 6 a new server certificate is issued from the restored CA for the values now in `.env`, and clients that already trust that CA keep trusting it. With `TLS_MODE=provided`, put a certificate chain and key that match the new name and address in those two files. Behind your own ingress, the certificate is the ingress's.
+- **External database**: when step E printed `"db.location": "external"`, section 5 step 5 does not apply; §5.3 loads the database in its place.
+- **Afterwards**: `BACKUP_DIR` holds the database, `.env` and the private keys in plaintext. Delete it once section 6 has passed.
+
+### 5.3 Loading the database of a deployment with an external database
+
+From 1.16.0, `restore` loads such a database by itself ("Restoring a deployment with an external database" in section 5). The load below is for restoring by hand, in the cases section 5 lists, and for moving to another database server or another database.
+
+A backup file whose manifest has `db.location` `external` holds a dump of a database on a server outside the deployment (§3.8). For it, section 5 step 5, which starts and loads the bundled database, is replaced by the load below; then go on with step 6. In this shape step 1 only stops the services: the `postgres` folder it prepares is not used.
+
+Before the load, whoever runs the database server prepares it:
+
+- **The version**: PostgreSQL of the major version in `db.server_major`. The dump is loaded with `pg_restore` of that same major version, which the release's client image of that version has (the second block below uses it).
+- **The database**: an empty database named `DB_NAME`, owned by `DB_USER` with the password in `.env`, created with the encoding, collation and character type in `db.encoding`, `db.collate` and `db.ctype`. To keep the database it replaces (the new version's, when going back after an upgrade), rename that one instead of dropping it, and drop it once section 6 has passed.
+- **The roles** the first block below lists from `db.extra_grant_roles_hex`, created before the load. Without them `pg_restore` reports an error for their grants and ends with exit code 1, and those privileges are missing; the backend itself connects only as `DB_USER`. The dump needs no other role, tablespace or extension: the backup refused those before it ran (§3.8).
+
+On the deployment side, after section 5 step 4:
+
+- **Another server**: `.env` from the backup names the source's server. When the database goes to another one, set `EXTERNAL_DB_HOST`, `EXTERNAL_DB_PORT`, `DB_SSLMODE` and `PGSSLROOTCERT` in `.env` to fit it, right after section 5 step 2. The manifest's `db.external_host`, `db.external_port` and `db.sslmode` hold the source's values.
+- **The CA file**: when `PGSSLROOTCERT` in `.env` names a file, the backend reads it at that path. A path under `/var/log/custodexa/audit` or `/var/lib/custodexa/recordings` came back with section 5 step 4 when those were in the backup; a path under `/var/lib/custodexa/exports` did not, since no backup holds `exports` (§2). Put `db-ca.pem` from `BACKUP_DIR` there, under `DATA_PATH`, when the file is missing.
+- **A client certificate** (`db.tls_client_cert` is `true`): its private key is not in the backup file. Put the certificate and the key back where `PGSSLCERT` and `PGSSLKEY` name, and to load with them, mount both into the container below and add `sslcert=` and `sslkey=` to `CX_CONN`.
+
+First, what the database in the backup needs:
+
+```bash
+# What the database in this backup needs (BACKUP_DIR as §5.2 set it)
+grep -E '"(db\.location|db\.server_version|db\.server_major|db\.name|db\.user|db\.encoding|db\.collate|db\.ctype|db\.external_host|db\.external_port|db\.sslmode|db\.tls_trust|db\.tls_verify|db\.tls_client_cert|contents\.db_ca|tool\.dump_image)"' \
+  "${BACKUP_DIR:?}/backup-manifest.json"
+# The other roles that hold privileges, one name per line (none printed when there are none)
+for h in $(sed -n 's/^ *"db\.extra_grant_roles_hex": "\([0-9a-f ]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json"); do
+  printf '%b\n' "$(printf '%s' "$h" | sed 's/../\\x&/g')"
+done
+```
+
+Then the load, from the deployment folder, in the shell of section 5 (`env_get`, `DB_USER`, `DB_NAME`, `STAMP` and `BACKUP_DIR` as set there). It runs the release's client of the server's major version, which the install of this shape obtained, and connects from `.env` the way the backup did: the table in §3.8, with `db-ca.pem` from the backup as the CA file. Only exit code 0 counts; anything else means the database is not complete, so do not go on to step 6.
+
+```bash
+# The release's client of the server's major version, by the image ID recorded at install or upgrade
+CX_MAJOR="$(sed -n 's/^ *"db\.server_major": "\([0-9]*\)".*/\1/p' "${BACKUP_DIR:?}/backup-manifest.json")"
+CX_PGIMG="$(sed -n 's/^ *"current\.tool_image_ids": "\([^"]*\)".*/\1/p' state.json | tr ' ' '\n' | sed -n "s/^pgclient${CX_MAJOR:?}=//p")"
+echo "PostgreSQL ${CX_MAJOR} client: ${CX_PGIMG:?no such client recorded in state.json}"
+
+# The connection from .env, checking the server as the backend does (the table in §3.8)
+CX_PORT="$(env_get EXTERNAL_DB_PORT)"
+CX_MODE="$(env_get DB_SSLMODE)"; CX_MODE="${CX_MODE:-disable}"
+CX_ROOT="$(env_get PGSSLROOTCERT)"
+CX_TLS=""
+case "${CX_ROOT}" in
+  "")
+    case "${CX_MODE}" in
+      verify-full) CX_TLS="sslrootcert=system" ;;
+      verify-ca) CX_TLS="sslrootcert=/etc/ssl/certs/ca-certificates.crt" ;;
+    esac ;;
+  system) CX_MODE=verify-full CX_TLS="sslrootcert=system" ;;
+  *)
+    case "${CX_MODE}" in
+      require | verify-ca | verify-full) CX_TLS="sslrootcert=/backup/db-ca.pem" ;;
+    esac ;;
+esac
+CX_CONN="host=$(env_get EXTERNAL_DB_HOST) port=${CX_PORT:-5432} dbname=${DB_NAME:?} user=${DB_USER:?} sslmode=${CX_MODE} ${CX_TLS}"
+echo "${CX_CONN}"
+
+# Load the dump; pg_restore asks for the password of DB_USER
+docker run --rm -it --network host \
+  --mount "type=bind,src=$(cd "${BACKUP_DIR:?}" && pwd),dst=/backup,readonly" \
+  "${CX_PGIMG:?}" pg_restore --dbname="${CX_CONN}" "/backup/custodexa-db-${STAMP:?}.dump"
+echo "pg_restore exit code: $?"
+```
 
 ---
 
@@ -516,12 +1047,14 @@ In a package deployment the script's own record, `state.json`, still describes t
 
 **Confirm every item; if any of them fails, do not hand the system back into service.**
 
+**After `restore`** (§5), part of this list has already been checked by the script: every service running with the recorded images (item 1), and the backend ready and reporting the backup's version (item 2). For item 6 it compared the master key ID with `kek.fingerprint`, and the fingerprint of `JWT_SECRET` with `fp.jwt` in `snapshot.txt` when that holds one. It also compared the imported database with the backup: the migrations, the row counts of `users`, `sessions` and `audit_logs`, and the master key ID. Still to be done by hand: items 3 to 5, item 6 for the export signing key and the checkpoint signing key, and items 7 to 10.
+
 | # | Check | How | Pass criterion |
 |---|---|---|---|
-| 1 | All services are up | `docker compose ps` | Each service is running, postgres is healthy |
+| 1 | All services are up | `docker compose ps` | Each service is running, postgres is healthy (with an external database there is no postgres service) |
 | 2 | Backend health check | `docker compose exec backend wget -qO- http://localhost:8080/health` | A normal response (backend publishes no port, so it has to be called from inside the container) |
 | 3 | No fatal in the startup log | `docker compose logs backend \| tail -50` | No refusal-to-start message. **A KEK mismatch says so plainly here** |
-| 4 | The frontend is reachable | `curl -I http://localhost/` | Responds 200 |
+| 4 | The frontend is reachable | With the built-in TLS proxy: `curl -skI https://localhost/`. Behind your own ingress: `curl -I http://localhost:${HTTP_PORT:-80}/` on this host, then the address people use through the ingress | Responds 200. With the built-in proxy, `http://` answers 301 and points to HTTPS; that is expected, not a failure |
 | 5 | The sign-in path works | Sign in with an existing administrator account | A token is obtained; the console can be entered |
 | 6 | **Compare the fingerprints in the key inventory** | The "Key Management" page on the admin side | The fingerprints of the four env-side items, `ENCRYPTION_KEY (KEK)`, `JWT_SECRET`, the export signing key (Ed25519), and the checkpoint signing key (Ed25519), **are the same as the values recorded before the backup** |
 | 7 | Encrypted fields decrypt | Open any asset that has credentials, or trigger one LDAP sign-in | No decryption failure appears |

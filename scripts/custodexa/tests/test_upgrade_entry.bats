@@ -250,10 +250,14 @@ events_in_order() { # <event>... : each event appears, in this order
   [ "$(readlink "$ROOT/current")" = releases/1.13.2 ] || return 1
   [ "$(st current.version)" = 1.13.2 ] && [ "$(st previous.version)" = 1.13.0 ] || { cat "$ROOT/state.json"; return 1; }
   [ "$(st last_upgrade.result)" = succeeded ] && [ "$(st last_upgrade.step)" = 13 ] || return 1
-  [ "$(st last_upgrade.backup)" = backups/20260930-101502 ] && [ "$(st last_backup.kind)" = script ] || return 1
+  # Step 7 makes one backup file of the version it came from (rewritten from the backup folder of
+  # earlier releases: the upgrade's backup is now the portable file).
+  local f=backups/custodexa-backup-1.13.0-20260930-101502.tar
+  [ "$(st last_upgrade.backup)" = "$f" ] && [ "$(st last_backup.file)" = "$f" ] && [ "$(st last_backup.kind)" = script ] || return 1
   [ -n "$(st previous.image_ids)" ] && [[ $(st current.image_ids) == *backend=sha256:* ]] || { cat "$ROOT/state.json"; return 1; }
-  [ -s "$ROOT/backups/20260930-101502/SHA256SUMS" ] && [ ! -e "$ROOT/backups/20260930-101502/INCOMPLETE" ] || return 1
-  events_in_order "stop backend guacd frontend" pg_dump pg_restore up || return 1
+  [ -s "$ROOT/$f" ] && (cd "$ROOT/backups" && /usr/bin/sha256sum -c --quiet "${f#backups/}.sha256") || return 1
+  ! compgen -G "$ROOT/backups/.partial-*" >/dev/null || return 1
+  events_in_order "stop backend guacd frontend" pg_dump pg_restore "tar pack ${f#backups/}" up || return 1
   ! grep -qx stop-all "$DB/events"
 }
 
@@ -282,13 +286,15 @@ events_in_order() { # <event>... : each event appears, in this order
   [ "$status" -eq 1 ] && [[ $output == *"[FAIL]  5/13"* ]] || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
   ! grep -q '^pg_dump\|^up' "$DB/events" || return 1
-  # 7: the backup fails: INCOMPLETE stays, the old version's start command, unseal again (ui).
+  # 7: the backup fails: what it took stays in its temporary folder and there is no backup file
+  # (rewritten: the folder of earlier releases marked itself INCOMPLETE; the portable file is only
+  # ever put in place whole), the old version's start command, unseal again (ui).
   fresh ui
   printf '1\n' >"$DB/pg_dump.rc"
   full_run zh-TW
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
   [[ $output == *"        [FAIL] 資料庫"* ]] || { echo "$output"; return 1; }
-  [ -e "$ROOT/backups/20260930-101502/INCOMPLETE" ] || return 1
+  [ -d "$ROOT/backups/.partial-20260930-101502" ] && ! compgen -G "$ROOT/backups/custodexa-backup-*" >/dev/null || return 1
   printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
   [[ $output == *"主金鑰模式是網頁輸入，服務恢復後要再解封一次。"* ]] || { echo "$output"; return 1; }
   ! grep -qx up "$DB/events" || return 1
@@ -319,7 +325,8 @@ events_in_order() { # <event>... : each event appears, in this order
   rm "$UP/up.rc"
   full_run en 1.13.2
   [ "$status" -eq 3 ] && [[ $output == "[FAIL] The last upgrade stopped at step 10."* ]] || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF "  Pre-upgrade backup: $ROOT/backups/20260930-101502/" || { echo "$output"; return 1; }
+  # The backup file of the upgrade (rewritten from the folder).
+  printf '%s\n' "$output" | grep -qxF "  Pre-upgrade backup: $ROOT/backups/custodexa-backup-1.13.0-20260930-101502.tar" || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF '  To go back to 1.13.0, restore the backup above by hand as described' || { echo "$output"; return 1; }
   [[ $output != *"custodexa.sh rollback"* ]] || { echo "$output"; return 1; }
   ! grep -q '^stop\|^pg_dump\|^up' "$DB/events"
@@ -350,15 +357,51 @@ events_in_order() { # <event>... : each event appears, in this order
   [ "$status" -ne 0 ] && [ -z "$output" ] || { echo "offline: $status $output"; return 1; }
 }
 
-@test "the upgrade keeps the state.json it started from in its backup folder (0600), for going back by hand" {
+# Rewritten with the portable file: state.json as the upgrade found it is a
+# member of the upgrade's backup file now, not a file in a backup folder.
+@test "the upgrade keeps the state.json it started from in its backup file (0600), for going back by hand" {
   fresh ui
   cp -p "$ROOT/state.json" "$BATS_TEST_TMPDIR/state-before"
   full_run en
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  bk=$ROOT/$(st last_upgrade.backup)
-  cmp "$BATS_TEST_TMPDIR/state-before" "$bk/state.json" || { diff "$BATS_TEST_TMPDIR/state-before" "$bk/state.json"; return 1; }
-  [ "$(stat -c %a "$bk/state.json")" = 600 ] || return 1
-  # Part of the backup's checksums, like every other file in it.
-  grep -q ' state.json$' "$bk/SHA256SUMS" || { cat "$bk/SHA256SUMS"; return 1; }
-  ! cmp -s "$ROOT/state.json" "$bk/state.json"
+  BK_FILE=$ROOT/$(st last_upgrade.backup)
+  [ -f "$BK_FILE" ] || { cat "$ROOT/state.json"; return 1; }
+  cmp "$BATS_TEST_TMPDIR/state-before" <(bk_member state.json) || return 1
+  [ "$(/usr/bin/tar -tvf "$BK_FILE" state.json | cut -c1-10)" = -rw------- ] || return 1
+  # Part of the backup's checksums, like every other member of it.
+  bk_member SHA256SUMS | grep -q ' state.json$' || { bk_member SHA256SUMS; return 1; }
+  [ "$(bk_mf contents.state)" = true ] && [ "$(bk_mf trigger)" = upgrade ] || return 1
+  ! cmp -s "$ROOT/state.json" <(bk_member state.json)
+}
+
+# Rewritten (the upgrade's backup was a folder beside the portable files of the backup command):
+# the upgrade's backup is a file of its own, and it becomes the last backup on record.
+@test "the upgrade's backup after an encrypted manual backup: its own file, the last backup on record, status shows it" {
+  fresh ui
+  # A manual backup first, recorded the way an encrypted one is (its file named .tar.enc).
+  run bash "$ROOT/custodexa.sh" backup --lang en --yes </dev/null
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  local f
+  f=$(st last_backup.file)
+  [ -n "$f" ] && [ -f "$ROOT/$f" ] || { cat "$ROOT/state.json"; return 1; }
+  mv "$ROOT/$f" "$ROOT/$f.enc"
+  jq --arg f "$f.enc" '."last_backup.file" = $f | ."last_backup.encrypted" = "true"' "$ROOT/state.json" >"$BATS_TEST_TMPDIR/s" \
+    && cp "$BATS_TEST_TMPDIR/s" "$ROOT/state.json"
+  clock 0 3 0 41 0 4 0 11
+  : >"$DB/events"
+  full_run en
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  diff <(s10_of) "$TESTS_DIR/snapshots/s10.en.txt" || { echo "$output"; return 1; }
+  # The manual backup took this second: the upgrade's file has the next one, the earlier file stays.
+  local u=backups/custodexa-backup-1.13.0-20260930-101503.tar
+  [ -f "$ROOT/$u" ] && [ -f "$ROOT/$f.enc" ] || { ls -lA "$ROOT/backups"; return 1; }
+  [ "$(st last_upgrade.backup)" = "$u" ] && [ "$(st last_backup.file)" = "$u" ] && [ "$(st last_backup.encrypted)" = false ] \
+    || { cat "$ROOT/state.json"; return 1; }
+  [ "$(jq -r 'has("last_backup.dir") or has("last_backup.external_ref") or has("last_backup.partial")' "$ROOT/state.json")" = false ] \
+    || { cat "$ROOT/state.json"; return 1; }
+  ! grep -q '^start backend' "$DB/events" || { cat "$DB/events"; return 1; }
+  run bk_status
+  [[ $output == *"Latest $(date -d "$(st last_backup.taken_at)" '+%Y-%m-%d %H:%M') ("* ]] || { echo "$output"; return 1; }
+  [[ $output == *"/opt/custodexa/$u"* ]] || { echo "$output"; return 1; }
+  [[ $output != *".tar.enc"* && $output != *"encrypted"* ]] || { echo "$output"; return 1; }
 }

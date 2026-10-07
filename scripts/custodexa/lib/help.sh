@@ -5,15 +5,19 @@
 
 # Options each command accepts, in the order of the full help. Kept next to the parser's list
 # so the test suite can check both against each other.
-readonly CX_HELP_OPTIONS="yes backup_ref backup_time backup_restore images images_from lang no_color version help"
+readonly CX_HELP_OPTIONS="yes resume revert with_recordings passphrase_file backup_ref backup_time backup_restore images images_from lang no_color version help"
 cx_help_options_for() {
   case $1 in
     install) printf '%s' "yes images images_from lang no_color version help" ;;
     upgrade) printf '%s' "yes backup_ref backup_time backup_restore images images_from lang no_color version help" ;;
+    rollback) printf '%s' "yes resume revert lang no_color help" ;;
     status) printf '%s' "lang no_color version help" ;;
     start) printf '%s' "lang no_color help" ;;
     stop) printf '%s' "yes lang no_color help" ;;
-    backup | load) printf '%s' "yes lang no_color version help" ;;
+    backup) printf '%s' "yes with_recordings passphrase_file lang no_color version help" ;;
+    load) printf '%s' "yes lang no_color version help" ;;
+    # The rest of what restore takes is in its own block (help_restore_options).
+    restore) printf '%s' "yes lang no_color version help" ;;
     *) printf '%s' "$CX_HELP_OPTIONS" ;;
   esac
 }
@@ -35,6 +39,10 @@ cx_help_print() {
   for o in $opts; do
     printf '%s\n' "$(cx_msg "help_opt_$o")"
   done
+  [[ " $cmds " != *" restore "* ]] || printf '\n%s\n' "$(cx_msg help_restore_options)"
+  # How to make a passphrase file without the passphrase reaching the shell history.
+  [[ " $opts " != *" passphrase_file "* && " $cmds " != *" restore "* ]] ||
+    printf '\n%s\n' "$(cx_msg help_passphrase_file_make)"
   printf '\n%s\n' "$(cx_msg help_footer)"
   # Last, so it stays on screen: under sudo the system language is often reset to English.
   printf '\n%s\n' "$(cx_msg help_language)"

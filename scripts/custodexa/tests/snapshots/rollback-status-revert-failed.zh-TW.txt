@@ -1,0 +1,5 @@
+上次升級
+  [ OK ] 1.16.1 → 1.16.2 成功，2026-11-05 09:30
+  [WARN] 回到升級後的版本沒有完成（回到 1.16.2，停在第 3 步）
+  接續回到升級後的 1.16.2：
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang zh-TW

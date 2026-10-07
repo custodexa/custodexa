@@ -1,0 +1,10 @@
+[FAIL] Cannot reach the external database db.example.internal:5432 (with
+       DB_USER, DB_NAME and DB_SSLMODE from .env). The reason is in the
+       log file. Nothing was stopped.
+  Check in this order:
+    1. This host can reach that address and port (name lookup, firewall)
+    2. The backend can reach the database now:
+       sudo /opt/custodexa/custodexa.sh status --lang en
+    3. DB_SSLMODE matches the server's TLS setup
+    4. The password of DB_USER was not changed on the database side
+  Log file /opt/custodexa/logs/backup-20260930-101502.log

@@ -1,0 +1,3 @@
+[WARN] 系統仍是「已封存」，還沒有解封，還原還不能完成。沒有變更任何東西。
+  到 https://10.0.0.31/unseal 解封之後，再執行一次：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

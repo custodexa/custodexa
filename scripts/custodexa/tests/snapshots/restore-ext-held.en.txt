@@ -1,0 +1,10 @@
+[FAIL]  2/10  Stop the services (the external database is not affected):
+              once they stopped, 1 other connection is still using
+              custodexa (from 10.0.0.45, application psql).
+The restore stopped at step 2. Nothing has been overwritten; the
+services stay stopped.
+  Find and end that connection (make sure no standby host has taken
+  over), then carry on:
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  Or give up and start the original services:
+    sudo /opt/custodexa/custodexa.sh restore --revert

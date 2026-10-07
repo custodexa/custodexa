@@ -1,0 +1,14 @@
+  Back on 1.16.2 (the version before this rollback started)
+[ OK ] 1/4  Stop the services
+[ OK ] 2/4  Switch back to 1.16.2
+[FAIL] 3/4  Start the services
+
+  Current state
+    - Switched back to 1.16.2; not all services have started
+    - Running services: none
+    - The data, the settings file and the certificates were not changed
+  Check the backend log for the reason first:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  Finish returning to 1.16.2, the version after the upgrade:
+    sudo /opt/custodexa/custodexa.sh rollback --resume --lang en
+  Log file /opt/custodexa/logs/rollback-20260930-101502-0.log

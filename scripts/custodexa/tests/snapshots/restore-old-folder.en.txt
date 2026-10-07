@@ -1,0 +1,9 @@
+[FAIL] This is not a backup file made by 1.16.0 or later, and the script
+       cannot restore it.
+  /opt/custodexa/backups/20260930-021504 is a backup folder from before
+  1.16.0. It has no backup manifest, so its version and deployment form
+  are unknown.
+  Such a backup can only be restored by hand on the host that made it,
+  following section 5 of "Backup and Restore", or after upgrading that
+  host to 1.16.0 or later and backing up again.
+Nothing has been changed.

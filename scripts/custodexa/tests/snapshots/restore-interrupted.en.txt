@@ -1,0 +1,16 @@
+[FAIL] The restore was interrupted at step 6; the tool processes it started
+       have been stopped. The services stay stopped; nothing was undone
+       automatically.
+  The data from before the restore is renamed and kept in
+  /opt/custodexa/data/postgres.before-restore-20261012-093015 and 2 more
+  places; the safety backup
+  backups/custodexa-backup-1.16.0-20261012-093015.tar checked as
+  restorable.
+  Once the cause is fixed, carry on from step 6:
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  Or go back with the safety backup:
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  The working folder /opt/custodexa/restore/20261012-093015/ holds the
+  database and settings in plaintext; it is cleared once the restore
+  finishes or goes back.
+  Log file /opt/custodexa/logs/restore-20261012-093015.log

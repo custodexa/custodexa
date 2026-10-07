@@ -1,0 +1,21 @@
+==== --yes --passphrase-file, no such file ====
+[FAIL] 讀不到通行密語檔 /root/cx-pass（不存在、不是一般檔案、是符號連結
+       或沒有讀取權限）。沒有停止任何服務。
+==== exit 3 ====
+==== --yes --passphrase-file, mode 0644 ====
+[FAIL] 通行密語檔 /root/cx-pass 其他帳號也能讀寫（權限 0644），或不屬於你或
+       root，或設有額外的存取控制清單。沒有停止任何服務。修正後再執行：
+  sudo chown root /root/cx-pass
+  sudo chmod 600 /root/cx-pass
+==== exit 3 ====
+==== --yes --passphrase-file, mode 0600 with an extended ACL ====
+[FAIL] 通行密語檔 /root/cx-pass 其他帳號也能讀寫（權限 0600），或不屬於你或
+       root，或設有額外的存取控制清單。沒有停止任何服務。修正後再執行：
+  sudo chown root /root/cx-pass
+  sudo chmod 600 /root/cx-pass
+  sudo setfacl -b /root/cx-pass
+==== exit 3 ====
+==== --yes --passphrase-file, a first line of 11 characters ====
+[FAIL] 通行密語檔 /root/cx-pass 的第一行不符規則：需要 12 到 256 個字元，
+       只能用半形英文字母、數字、空白與半形符號。沒有停止任何服務。
+==== exit 3 ====

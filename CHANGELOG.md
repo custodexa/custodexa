@@ -2,6 +2,100 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.16.0 — portable backups, restore and going back after an upgrade (2026-10-07)
+
+No schema change. No migration runs. A 1.14.x or 1.15.x package deployment upgrades with
+`custodexa.sh upgrade 1.16.0`.
+
+### New capabilities
+
+- `custodexa.sh backup`, also in the menu as Back up to a single file, writes one backup file
+  that can be copied to another host: `backups/custodexa-backup-<version>-<time>.tar`, with a
+  `.sha256` checksum file next to it. It holds the database, the audit files, `.env`, the TLS
+  certificate folder when the deployment has one, and the custom proxy template that
+  `TLS_NGINX_TEMPLATE` names. The backend, guacd and frontend pause while the data is copied.
+  `status` shows the latest backup.
+- The recordings go into the backup file when chosen at the prompt or with `--with-recordings`.
+- A backup file can be encrypted with a passphrase of 12 to 256 characters, chosen at the prompt
+  or read from `--passphrase-file <file>`. The encrypted file ends in `.tar.enc` and opens with
+  OpenSSL 1.1.1 or later and tar. Without the passphrase it cannot be restored.
+- Deployments with an external database are backed up the same way. The release carries
+  PostgreSQL 16, 17 and 18 clients and uses the one that matches the server's major version.
+  The database CA file goes into the backup and a client private key does not, so keep that key
+  with the deployment's other secrets.
+- `custodexa.sh restore <backup file>`, also in the menu, restores a backup file whose data
+  belongs to 1.16.0 or later. On an installed host it first takes a safety backup of the current
+  data and keeps the replaced data folders under `*.before-restore-<time>` names. The deployment
+  then runs the backup's version.
+- To restore onto a host not yet installed, place a release package of the backup's version or
+  later with `get-custodexa.sh` and run `restore` with the script it placed. It installs the
+  backup's version and restores into it, and asks for this host's data path, TLS name and
+  address, and public URL.
+- A restore finishes once the master key the backend unsealed with matches the one recorded in
+  the backup. With `KEK_PROVIDER=env` this happens at startup. With `ui` or `kms` the command
+  ends with exit code 4 after the import; unseal on the unseal page, then run
+  `restore --resume` to finish.
+- A restore that fails or is interrupted stops where it is and undoes nothing.
+  `restore --resume` carries on, `restore --revert` goes back with the safety backup on an
+  installed host, and `restore --abandon` returns a new host to not installed.
+- Deployments with an external database restore with the same command, on the same host or
+  another one. The restore uses the database server and database named in the backup, which has
+  to run PostgreSQL 16, 17 or 18, at the backup server's major version or later. It empties that
+  database and imports the backup in one transaction, so a failed import leaves the database as
+  it was. When the backup's connection used a client certificate, give the certificate and its
+  private key with `--db-client-cert` and `--db-client-key`. When the server lacks roles that the
+  backup grants privileges to, create them first, or skip only those grants at the prompt or
+  with `--accept-grant-loss`. On a new host whose database already holds data, the restore
+  exports it first and `restore --revert` puts that export back. When the database was empty,
+  `restore --abandon` leaves the imported data in it.
+- Backups that are not a single backup file, and backup files whose data belongs to a version
+  before 1.16.0, are restored by hand with section 5 of `docs/ops/backup-and-restore.md`.
+- `custodexa.sh rollback` returns to the version before the last upgrade when the new version
+  has not changed the database. It switches the version back and keeps the data, `.env` and the
+  certificates. When the database has changed, it does not switch the version and prints how
+  to restore the backup that upgrade took. `rollback --resume` finishes an interrupted rollback
+  and `rollback --revert` returns to the upgraded version. It goes back one version, to 1.16.0 or
+  later.
+- When an upgrade fails after its backup, `upgrade` runs again once a `restore` has finished,
+  and `status` shows that the restore dealt with the failure.
+
+### Upgrading
+
+- The backup an upgrade takes before switching versions is a single backup file like the one
+  `backup` writes. It always holds the recordings and is not encrypted.
+- With an external database, that backup now covers the database, made with the release's
+  PostgreSQL client. The upgrade obtains the client images and checks the database before
+  anything stops. An upgrade run with `--backup-ref` skips both and records your own backup.
+- To go back from 1.16.0 to 1.15.x, restore the backup the upgrade took by hand, as section 5.1
+  of `docs/ops/backup-and-restore.md` describes.
+
+### What changes for deployers
+
+- The requests below get a different answer. Update API clients that branch on these status or
+  error codes:
+
+  | Request | Before | Now |
+  | --- | --- | --- |
+  | `POST /api/v1/seal/authorize` on a system that is already unsealed | Credentials checked: 200 with a grant, or 401 `SEAL_AUTHORIZE_REJECTED` | 409 `SEAL_ALREADY_UNSEALED` |
+  | `POST /api/v1/seal/unseal` on a system that is already unsealed, following the two-step flow | 409 `SEAL_ALREADY_UNSEALED` | 401 `SEAL_GRANT_REQUIRED` |
+  | `POST /api/v1/auth/login` with a username that contains a NUL character | 500 `INTERNAL_LOGIN` | 401 `AUTH_INVALID_CREDENTIALS` |
+
+- `GET /api/v1/seal/status` includes `kek_id` once the system is unsealed: the identifier of
+  the master key in use, the same value as `kek_id` in `GET /api/v1/keys`. It holds no key
+  material.
+- The stock nginx configurations leave the nginx version out of response headers and error
+  pages. A custom template named by `TLS_NGINX_TEMPLATE` replaces the stock one, so add
+  `server_tokens off;` to it for the same result.
+
+### Fixes
+
+- The takeover confirmation on the guard page, the first unseal that initializes the keys, and
+  the first installation in delegated key mode refuse the credentials of a locked administrator
+  account, with the same answer as a wrong password.
+- A sign-in whose username contains a control character or is not valid UTF-8 is refused before
+  the account lookup, with the same answer as an unknown account, and is recorded in the audit
+  log.
+
 ## 1.15.2 — consistent not-found answers, clipboard policy notices and bounded remote desktop setup (2026-10-05)
 
 No schema change. No migration runs. A 1.14.x or 1.15.x package deployment upgrades with

@@ -1,0 +1,18 @@
+  Database       external db.example.internal:5432/custodexa
+                 (PostgreSQL 17.6)
+                 Import tool: PostgreSQL 17 client (shipped with 1.16.2,
+                 verified)
+                 Connection: verify-full, server checked against the
+                 system's trusted certificate authorities
+                 Rights: custodexa owns this database and everything in
+                 it; no other connections
+                 Emptied: the 214 objects in schema public, in the same
+                 transaction as the import; on failure all of it is
+                 rolled back and the database stays as it was. Other
+                 databases, roles and tablespaces are not touched.
+  Safety backup  the current database is first exported to
+                 /opt/custodexa/restore/20261012-093015/safety-db.dump,
+                 read back in full and checked usable
+  [WARN] Until the import finishes, the old and new data are both on the
+         database server, which needs about 35 GB free; the script cannot
+         see the server's disk, so check it first.

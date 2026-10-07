@@ -1,0 +1,5 @@
+[FAIL] Not enough space for the backup: 35.8 GB needed (including room to
+       build the file and 1 GB spare), /opt/custodexa/backups has 18.0 GB
+       free. Nothing was stopped.
+  You can move older backup files elsewhere and delete them here.
+  The backup files now: ls -l /opt/custodexa/backups/

@@ -1,0 +1,21 @@
+[ .. ] custodexa-1.16.3.tar.gz をダウンロードしています…
+[ OK ] custodexa-1.16.3.tar.gz をダウンロードしました
+[ .. ] SHA256SUMS をダウンロードしています…
+[ OK ] SHA256SUMS をダウンロードしました
+[ .. ] SHA256SUMS.sigstore.json をダウンロードしています…
+[ .. ] custodexa-1.16.3.tar.gz と SHA256SUMS のチェックサムを確認しています…
+[ OK ] custodexa-1.16.3.tar.gz のチェックサムは一致します
+[ .. ] リリースマニフェストの署名を検証しています…
+[ OK ] custodexa-1.16.3.tar.gz のチェックサムと発行者署名を検証しました
+[FAIL] 前回の upgrade はステップ 11 で中断されました。
+  新バージョンへの切り替えは済んでいます。先にバックエンドのログで
+  原因を確認してください：
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  アップグレード前のバックアップ：/opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar
+  1.16.1 に戻すには、次のコマンドを実行してください。スクリプトは
+  新しいバージョンがデータベースを変更していないことを確認してから、
+  1.16.1 に直接戻します。変更されていた場合は、上記のバックアップの
+  復元方法を案内します。サービス停止前に確認を求めます：
+    sudo /opt/custodexa/custodexa.sh rollback --lang ja
+
+何も変更していません。

@@ -1,0 +1,20 @@
+==== --yes, KEK_PROVIDER=ui with an ENCRYPTION_KEY ====
+[FAIL] .env の KEK_PROVIDER は ui ですが、ENCRYPTION_KEY に値があります。
+       矛盾した設定で、バックエンドも次回の起動時に拒否します。バックアップ
+       するとマスターキーとして持ち出すことになるため、実行しません。
+       サービスは停止していません。どちらの方式を使うか決めて、
+       もう一方を消してください。
+==== exit 3 ====
+==== --yes, neither KEK_PROVIDER nor ENCRYPTION_KEY ====
+[FAIL] .env に KEK_PROVIDER も ENCRYPTION_KEY もないため、マスターキーの
+       方式を判断できません。バックエンドは次回の起動時に拒否します。
+       サービスは停止していません。
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=env without ENCRYPTION_KEY ====
+[FAIL] .env の KEK_PROVIDER は env ですが、ENCRYPTION_KEY が空です。
+       バックエンドは次回の起動時に拒否します。サービスは停止していません。
+==== exit 3 ====
+==== --yes, KEK_PROVIDER=UI ====
+[FAIL] .env の KEK_PROVIDER の値を認識できません（env、ui、kms、hsm のみ、
+       小文字で指定）。サービスは停止していません。
+==== exit 3 ====

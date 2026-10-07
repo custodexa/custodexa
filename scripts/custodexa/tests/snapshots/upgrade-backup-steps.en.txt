@@ -1,0 +1,7 @@
+[ .. ]  7/13  Back up
+        [ OK ] Record row counts and key fingerprints
+        [ OK ] Database                    0.0 KB
+        [ OK ] Recordings and audit files  0.3 KB
+        [ OK ] Settings and certificates
+        [ OK ] Check each part can be read
+        [ OK ] Backup file  custodexa-backup-1.13.0-20260930-101502.tar  20.0 KB

@@ -1,0 +1,9 @@
+Reading the backup file /srv/transfer/custodexa-backup-1.16.0-20261005-101502.tar.enc
+[ OK ] The checksum file matches
+[ OK ] Decrypted and checked every part (11 parts)              3m 02s
+[ OK ] Backup manifest: format 1, version 1.16.0, taken 2026-10-05 10:15
+[ OK ] Cross-checks: release manifest, migrations and master key
+       fingerprint agree
+[ OK ] The sign-in token key fingerprint in the settings file matches the
+       backup's snapshot
+[ OK ] Taken out to the working folder /opt/custodexa/restore/20261012-093015/   2m 47s

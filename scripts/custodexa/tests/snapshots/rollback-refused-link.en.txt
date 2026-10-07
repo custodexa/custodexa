@@ -1,0 +1,4 @@
+[FAIL] There is no previous version to go back to. Nothing was changed.
+  The running version does not match the record.
+  Check this deployment's state:
+    sudo /opt/custodexa/custodexa.sh status --lang en

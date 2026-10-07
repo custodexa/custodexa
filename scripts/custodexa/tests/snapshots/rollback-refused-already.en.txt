@@ -1,0 +1,6 @@
+[FAIL] There is no previous version to go back to. Nothing was changed.
+  The last version change was already a rollback (2026-11-05 09:30, from
+  1.16.2 back to 1.16.1). The script goes back one version only; to
+  return to 1.16.2, run upgrade as usual.
+  Check this deployment's state:
+    sudo /opt/custodexa/custodexa.sh status --lang en

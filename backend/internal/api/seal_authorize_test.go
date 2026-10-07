@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -22,13 +23,21 @@ import (
 //	(3) 脈絡不是業務憑證——否則「解封」就順手變成一次不受 MFA 約束的登入；
 //	(4) 解封端點無脈絡即拒且**不觸及材料**——秘密欄位在驗證之後才該被送出。
 
-// sealAuthorizeHandler 建一個接好授權面的 handler。
+// sealAuthorizeHandler 建一個接好授權面的 handler，狀態機停在封存中。
+//
+// 授權只在封存期受理（已解封即拒，由 TestSealAuthorizeRejectedWhenUnsealed 守），
+// 故本檔其餘案例的前提必須是封存中的狀態機。
 func sealAuthorizeHandler(t *testing.T, verify SealCredentialVerifier) (*SealHandler, *SealGrantStore) {
 	t.Helper()
-	h := NewSealHandler(seal.NewUnsealed(nil), nil)
+	h := NewSealHandler(newKEKStatusMachine(t, plainGraphStage2), nil)
 	grants := NewSealGrantStore(0)
 	h.SetSealAuthorization(grants, verify)
 	return h, grants
+}
+
+// plainGraphStage2 段 2 直接回一張不帶任何資源的服務圖。
+func plainGraphStage2(context.Context, seal.VerifiedMaterial) (seal.ServiceGraph, error) {
+	return plainGraph{}, nil
 }
 
 func postAuthorize(t *testing.T, h *SealHandler, body string) *httptest.ResponseRecorder {
@@ -83,6 +92,85 @@ func TestSealAuthorizeRejectionsAreIndistinguishable(t *testing.T) {
 			t.Fatalf("案例 %d 的回應與第一例不同——可區分即帳號枚舉\n第一例: %s\n本例: %s",
 				i, first, w.Body.String())
 		}
+	}
+}
+
+// TestSealAuthorizeRejectedWhenUnsealed 已解封時一律拒絕，且回應只取決於狀態。
+//
+// 授權脈絡只服務解封；已解封時照常驗證，本端點就成了正常運作期間一個不經動態
+// 驗證碼、不計入帳號失敗次數的管理員密碼校驗入口。守三件事：
+//
+//	(a) 正確帳密、錯誤帳密、不存在的帳號、格式不合的請求體，回應逐字相同；
+//	(b) 驗證器一次都沒被呼叫（不比對密碼，就沒有可觀察的時間差）；
+//	(c) 不計入退避——反覆送出仍是同一個回應，而不是轉成 429。
+func TestSealAuthorizeRejectedWhenUnsealed(t *testing.T) {
+	calls := 0
+	verify := func(u string, p []byte) (uint, error) {
+		calls++
+		if u == "admin" && string(p) == "correct" {
+			return 7, nil
+		}
+		return 0, errors.New("rejected")
+	}
+	h := NewSealHandler(seal.NewUnsealed(plainGraph{}), nil)
+	grants := NewSealGrantStore(0)
+	h.SetSealAuthorization(grants, verify)
+
+	bodies := []string{
+		`{"username":"admin","password":"correct"}`,
+		`{"username":"admin","password":"wrong"}`,
+		`{"username":"nobody","password":"correct"}`,
+		`{"username":"admin"}`,
+		`not json`,
+	}
+	var first string
+	for round := 0; round < 3; round++ {
+		for _, body := range bodies {
+			w := postAuthorize(t, h, body)
+			if w.Code != http.StatusConflict || codeOf(t, w) != string(apierror.CodeSealAlreadyUnsealed) {
+				t.Fatalf("已解封時應回 409/SEAL_ALREADY_UNSEALED，得 %d %s（body=%s）", w.Code, w.Body.String(), body)
+			}
+			if first == "" {
+				first = w.Body.String()
+			} else if w.Body.String() != first {
+				t.Fatalf("已解封時的回應因輸入而不同：\n%s\n%s", first, w.Body.String())
+			}
+			if w.Header().Get("Cache-Control") == "no-store" {
+				t.Fatalf("已解封的拒絕不應走到簽發分支（出現 no-store）")
+			}
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("已解封時不得呼叫帳密驗證器，實際呼叫 %d 次", calls)
+	}
+}
+
+// TestSealAuthorizeFollowsLiveState 判定讀的是當下狀態：封存中受理，解封後即拒。
+//
+// 只用「恆 unsealed」的狀態機測拒絕，分不出「讀當下狀態」與「看建構方式」——
+// 同一台狀態機從封存走到解封，才證明判定跟著狀態走。
+func TestSealAuthorizeFollowsLiveState(t *testing.T) {
+	m := newKEKStatusMachine(t, plainGraphStage2)
+	h := NewSealHandler(m, nil)
+	h.SetSealAuthorization(NewSealGrantStore(0), func(u string, p []byte) (uint, error) {
+		if u == "admin" && string(p) == "correct" {
+			return 7, nil
+		}
+		return 0, errors.New("rejected")
+	})
+
+	if w := postAuthorize(t, h, `{"username":"admin","password":"correct"}`); w.Code != http.StatusOK {
+		t.Fatalf("封存中正確帳密應回 200，得 %d %s", w.Code, w.Body.String())
+	}
+	if err := unsealOnce(t, m, "10.0.0.7"); err != nil {
+		t.Fatalf("前置：解封失敗: %v", err)
+	}
+	if st := m.Snapshot().State; st != seal.StateUnsealed {
+		t.Fatalf("前置：狀態為 %s，期望 unsealed", st)
+	}
+	w := postAuthorize(t, h, `{"username":"admin","password":"correct"}`)
+	if w.Code != http.StatusConflict || codeOf(t, w) != string(apierror.CodeSealAlreadyUnsealed) {
+		t.Fatalf("解封後應回 409/SEAL_ALREADY_UNSEALED，得 %d %s", w.Code, w.Body.String())
 	}
 }
 

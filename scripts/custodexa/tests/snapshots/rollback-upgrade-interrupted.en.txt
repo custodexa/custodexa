@@ -1,0 +1,21 @@
+[ .. ] Downloading custodexa-1.16.3.tar.gz…
+[ OK ] Downloaded custodexa-1.16.3.tar.gz
+[ .. ] Downloading SHA256SUMS…
+[ OK ] Downloaded SHA256SUMS
+[ .. ] Downloading SHA256SUMS.sigstore.json…
+[ .. ] Checking the package checksum for custodexa-1.16.3.tar.gz against SHA256SUMS…
+[ OK ] Checksum matches for custodexa-1.16.3.tar.gz
+[ .. ] Verifying the release manifest signature…
+[ OK ] custodexa-1.16.3.tar.gz: checksum and publisher signature verified
+[FAIL] The last upgrade run was interrupted at step 11.
+  The new version is already in place. Check the backend log for the
+  reason first:
+    sudo docker compose -p custodexa -f /opt/custodexa/current/compose.yml logs --tail 50 backend
+  Pre-upgrade backup: /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar
+  To go back to 1.16.1, run the command below. The script first makes sure
+  the new version has not changed the database, and only then switches
+  straight back to 1.16.1; if it has, the script tells you how to restore
+  the backup above. You are asked before anything stops:
+    sudo /opt/custodexa/custodexa.sh rollback --lang en
+
+Nothing was changed.

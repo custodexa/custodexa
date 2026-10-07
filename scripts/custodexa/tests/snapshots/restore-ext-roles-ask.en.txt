@@ -1,0 +1,11 @@
+[ ?? ] The backup grants rights to the 1 role below, and the target
+       database server does not have it:
+         "report reader"
+       If you skip it, only the grants to this role are left out;
+       everything else is restored.
+
+  [1] Create this role first (default; ends the restore with nothing
+      changed)
+  [2] Skip the grants to this role and go on
+
+Choose [1-2], or press Enter for the default: Nothing has been changed.

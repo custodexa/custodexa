@@ -10,6 +10,8 @@
 # one added to .env later, is treated as a secret; forgetting a key costs readability, never a leak.
 
 CX_LOG_FILE=""
+CX_LOG_HOLD=""  # while cx_log_hold is on: a private temporary file collecting the lines
+CX_LOG_HELD=""  # the lines kept that way, once the holding ended, until cx_log_open
 declare -gA CX_SECRETS=()
 
 # .env keys whose values are not secrets and may appear in the log and in state.json. Reviewed one by
@@ -17,11 +19,11 @@ declare -gA CX_SECRETS=()
 readonly CX_ENV_SHOWN="DATA_PATH COMPOSE_FILE COMPOSE_PROJECT_NAME
   TLS_HTTPS_PORT TLS_HTTP_PORT HTTP_PORT EXTERNAL_DB_PORT
   TLS_DOMAIN TLS_IP_SAN PUBLIC_BASE_URL TRUSTED_PROXIES DOCKER_SUBNET EXTERNAL_DB_HOST
-  TLS_MODE KEK_PROVIDER DB_NAME DB_USER DB_SSLMODE
+  TLS_MODE TLS_NGINX_TEMPLATE KEK_PROVIDER DB_NAME DB_USER DB_SSLMODE
   FEATURE_AUDIT_LOG_ENABLED FEATURE_ASYNC_AUDIT_ENABLED FEATURE_AUDIT_FALLBACK_TO_FILE
   FEATURE_ANOMALY_DETECTION_ENABLED FEATURE_ALERTING_ENABLED AUTH_REFRESH_COOKIE_SECURE
   LDAP_ENABLED LDAP_SKIP_TLS_VERIFY SSH_IDLE_TIMEOUT_MINUTES SSH_MAX_SESSION_MINUTES
-  RECORDING_RETENTION_DAYS"
+  RECORDING_RETENTION_DAYS PGSSLROOTCERT PGSSLCERT PGSSLKEY"
 
 # cx_env_value_shown <key>: true only for the keys listed above.
 cx_env_value_shown() {
@@ -80,20 +82,46 @@ cx_has_secret() {
 cx_log_now() { date '+%Y-%m-%dT%H:%M:%S%:z'; }
 
 # cx_log_open <command>: start this run's log file; prints nothing. The folder is private (0700).
+# Lines kept by cx_log_hold before it come first, with their own times.
 cx_log_open() {
   local dir="$CX_ROOT/logs"
   (umask 077 && mkdir -p "$dir") || return 1
   CX_LOG_FILE="$dir/$1-$(date '+%Y%m%d-%H%M%S').log"
-  (umask 077 && : >>"$CX_LOG_FILE")
+  (umask 077 && : >>"$CX_LOG_FILE") || return 1
+  if [ -n "$CX_LOG_HOLD" ]; then
+    cat -- "$CX_LOG_HOLD" >>"$CX_LOG_FILE" 2>/dev/null
+    rm -f -- "$CX_LOG_HOLD"
+    CX_LOG_HOLD=""
+  fi
+  [ -z "$CX_LOG_HELD" ] || printf '%s\n' "$CX_LOG_HELD" >>"$CX_LOG_FILE"
+  CX_LOG_HELD=""
 }
 
-# cx_log <EVENT> <text...>: append one line; a no-op until cx_log_open.
+# cx_log_hold: from now on and until cx_log_hold_end, the lines written before cx_log_open are kept
+# (in a private temporary file, so lines from subshells too) instead of dropped. Masked as they are
+# written: load the secrets first (cx_secrets_from_env).
+cx_log_hold() {
+  [ -z "$CX_LOG_FILE" ] || return 0
+  CX_LOG_HOLD=$(umask 077 && mktemp 2>/dev/null) || CX_LOG_HOLD=""
+}
+
+# cx_log_hold_end: stop keeping; the lines kept wait in memory for cx_log_open, and the temporary
+# file is removed.
+cx_log_hold_end() {
+  [ -n "$CX_LOG_HOLD" ] || return 0
+  [ -n "$CX_LOG_FILE" ] || CX_LOG_HELD+=$(cat -- "$CX_LOG_HOLD" 2>/dev/null)
+  rm -f -- "$CX_LOG_HOLD"
+  CX_LOG_HOLD=""
+}
+
+# cx_log <EVENT> <text...>: append one line; a no-op until cx_log_open, unless cx_log_hold keeps it.
 cx_log() {
-  [ -n "$CX_LOG_FILE" ] || return 0
+  local to=${CX_LOG_FILE:-$CX_LOG_HOLD}
+  [ -n "$to" ] || return 0
   local ev=$1 text
   shift
   text=$(cx_mask "$*")
-  printf '%s %-5s %s\n' "$(cx_log_now)" "$ev" "${text//$'\n'/ }" >>"$CX_LOG_FILE"
+  printf '%s %-5s %s\n' "$(cx_log_now)" "$ev" "${text//$'\n'/ }" >>"$to"
 }
 
 # cx_log_run <command...>: log the command (CMD) and each output line (OUT, stderr included),

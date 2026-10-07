@@ -1,0 +1,4 @@
+[FAIL] 備份空間不足：需要 35.8 GB（含組裝時的暫存與 1 GB 餘裕），
+       /opt/custodexa/backups 只剩 18.0 GB。沒有停止任何服務。
+  可以：把舊的備份檔搬到別處後刪除。
+  目前的備份檔：ls -l /opt/custodexa/backups/

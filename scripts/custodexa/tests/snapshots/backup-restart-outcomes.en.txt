@@ -1,0 +1,145 @@
+==== --yes, env, ready at once ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: in the settings file
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Audit files                                     2s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         41s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file and read it back          3m 12s
+
+[ OK ] Backup done (17.4 GB)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
+  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.sha256 (same folder)
+  Contains: database, audit files, settings file .env (includes the
+  master key), certificates tls/
+  Version 1.13.0; bundled database; master key: in the settings file
+  The master key is in the .env inside the backup file (fingerprint
+  5a5a5a5a5a5a5a5a) and comes back with a restore.
+  [WARN] The recordings are not in the backup file. They are in
+         /opt/custodexa/data/recordings/; keep them some other way, or
+         back up again and choose to include them.
+  [WARN] This file is not encrypted and holds the master key and other
+         sensitive data (database password, sign-in token secret,
+         certificate private keys). Whoever has it can decrypt every stored
+         credential. Store it elsewhere with limited access; a backup can
+         also be encrypted with a passphrase.
+  [ OK ] The services are back.
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====
+==== --yes, kms, ready at once ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: key custody service (aws)
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  [WARN] The master key is held by a key custody service: after the
+         restart the system is sealed until someone provides the custody
+         credentials on the unseal page again, and users cannot connect
+         until then.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Audit files                                     2s
+[ OK ] 4/7  Settings and certificates
+[ OK ] 5/7  Start the services and wait until ready         41s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file and read it back          3m 12s
+
+[ OK ] Backup done (17.4 GB)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
+  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.sha256 (same folder)
+  Contains: database, audit files, settings file .env, certificates tls/
+  Version 1.13.0; bundled database; master key: key custody service (aws)
+  The master key is held by the key custody service (aws) and is not in
+  the backup file. Key ID:
+  5a5a5a5a5a5a5a5a
+  After a restore, provide the custody credentials on the unseal page
+  again; the key ID has to match, and a new host must reach the service.
+  [WARN] The recordings are not in the backup file. They are in
+         /opt/custodexa/data/recordings/; keep them some other way, or
+         back up again and choose to include them.
+  [WARN] This file is not encrypted and holds sensitive data (database
+         password, sign-in token secret, certificate private keys), and it
+         sits on the same host as .env. Store it elsewhere with limited
+         access; a backup can also be encrypted with a passphrase.
+  [WARN] The services are started and waiting to be unsealed: open
+         https://10.0.0.12/unseal with the local administrator account,
+         check the key custody details and provide the credentials.
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====
+==== --yes, ui, never ready (60 tries) ====
+Backup preview (nothing has been changed yet)
+
+  Version 1.13.0; bundled database; master key: entered in the browser
+  Database 17.4 GB, audit files 12.0 MB, recordings 212 GB; 211 GB free
+  where backups go
+  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)
+  The backend, connection service and web pages pause for about
+  12 minutes (the database keeps running). They start again once the
+  data is taken and the script waits until they are ready; building
+  and checking the file takes about 12 more minutes.
+  [WARN] The master key is entered in the browser: after the restart the
+         system is sealed until someone enters the master key on the
+         unseal page, and users cannot connect until then.
+  Needs 35.8 GB (a file of about 17.4 GB, room to build it and 1 GB
+  spare); 211 GB free where backups go
+
+Start the backup? [y/N] y
+
+[ OK ] 1/7  Stop the services (database keeps running)      11s
+[ OK ] 2/7  Database                                        1m 40s
+[ OK ] 3/7  Audit files                                     2s
+[ OK ] 4/7  Settings and certificates
+[WARN] 5/7  Start the services and wait until ready         3m 00s
+[ OK ] 6/7  Check each part can be read                     38s
+[ OK ] 7/7  Build the single file and read it back          3m 12s
+
+[ OK ] Backup done (17.4 GB)
+  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
+  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.sha256 (same folder)
+  Contains: database, audit files, settings file .env, certificates tls/
+  Version 1.13.0; bundled database; master key: entered in the browser
+  The master key is not in the backup file (fingerprint 5a5a5a5a5a5a5a5a).
+  After a restore, whoever holds the unseal material enters it on the
+  unseal page; the fingerprint has to match.
+  [WARN] The recordings are not in the backup file. They are in
+         /opt/custodexa/data/recordings/; keep them some other way, or
+         back up again and choose to include them.
+  [WARN] This file is not encrypted and holds sensitive data (database
+         password, sign-in token secret, certificate private keys), and it
+         sits on the same host as .env. Store it elsewhere with limited
+         access; a backup can also be encrypted with a passphrase.
+  [WARN] The backend was not ready within 180 seconds, so users may not be
+         able to connect yet. The backup goes on. Check the status, and
+         start again if needed:
+    sudo /opt/custodexa/custodexa.sh status --lang en
+    sudo /opt/custodexa/custodexa.sh start --lang en
+  Log file /opt/custodexa/logs/backup-20260930-101502.log
+==== exit 0 ====

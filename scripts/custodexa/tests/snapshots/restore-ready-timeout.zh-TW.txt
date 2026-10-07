@@ -1,0 +1,9 @@
+[WARN]  9/10  啟動服務並等待就緒：180 秒內沒有就緒
+
+還原還沒有完成。服務已啟動，但後端沒有回報就緒，使用者可能還不能連線。
+  查看狀態：
+    sudo /opt/custodexa/custodexa.sh status
+  處理之後，重跑接續（先確認服務在運作，再等待就緒）：
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  或用安全備份還原回去：
+    sudo /opt/custodexa/custodexa.sh restore --revert

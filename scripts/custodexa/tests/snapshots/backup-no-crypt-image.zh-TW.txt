@@ -1,0 +1,6 @@
+==== --yes --passphrase-file, no openssl image recorded ====
+[FAIL] 這台主機沒有加密用的 openssl 映像（應在安裝或升級時取得）。
+       沒有停止任何服務。請載入這個版本（1.13.0）的離線映像包，或改選不加密。
+       離線映像包檔名像 custodexa-images-1.13.0-amd64.tar，與安裝包放在同一個發行頁：
+  sudo /opt/custodexa/custodexa.sh load custodexa-images-1.13.0-amd64.tar --lang zh-TW
+==== exit 3 ====

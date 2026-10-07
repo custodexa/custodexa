@@ -1,0 +1,5 @@
+[FAIL] The release manifest in the 1.16.0 package differs from the one
+       recorded with the backup.
+  The package may not be the published one; the script will not restore
+  with it.
+Nothing has been changed.

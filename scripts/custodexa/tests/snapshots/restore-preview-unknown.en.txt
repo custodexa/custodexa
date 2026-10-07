@@ -1,0 +1,45 @@
+[WARN] The restore replaces this host's data; everything recorded after
+       the backup is lost
+
+  Backup file    /opt/custodexa/backups/custodexa-backup-1.16.0-20261005-101502.tar
+                 taken 2026-10-05 10:15 on this host
+                 (bastion-a.example.internal)
+                 backup file internal integrity: checked
+  Version        now 1.16.0, after the restore 1.16.0
+                 package custodexa-1.16.0.tar.gz: checksum matches
+                 publisher signature: not checked, cosign is not on
+                 this host
+                 release manifest identical to the one in the backup
+                 9 images, from the offline bundle
+                 custodexa-images-1.16.0-x86_64.tar
+  Deployment     bundled database; self-signed certificate; master key:
+                 entered in the browser
+  Restores       database, audit files, certificates tls/
+                 The settings file .env returns to its content at backup
+                 time, secrets included (sign-in token key, database
+                 password); DATA_PATH, TLS_DOMAIN, TLS_IP_SAN and
+                 PUBLIC_BASE_URL keep this host's current values
+  Recordings     this backup has none: the recordings here stay where they
+                 are, neither deleted nor overwritten
+  Replaced       all the data and settings on this host now (users,
+                 assets, grants and policies go back to backup time):
+                 the current counts could not be read
+  Safety backup  before anything is overwritten, the current data is
+                 backed up to
+                 backups/custodexa-backup-1.16.0-20261012-093015.tar
+                 (without recordings), and the restore goes on only once
+                 it reads back correctly
+  Kept           the current database, audit and certificate folders are
+                 renamed and kept, not deleted:
+                 /opt/custodexa/data/postgres.before-restore-20261012-093015
+                 /opt/custodexa/data/audit.before-restore-20261012-093015
+                 /opt/custodexa/tls.before-restore-20261012-093015
+  Downtime       about 35 minutes (safety backup 12, import 18, start and
+                 checks 5)
+  Space          needs 56 GB on /opt; 211 GB free
+  [WARN] The master key is entered in the browser: after the restore the
+         system is sealed until someone enters the master key on the
+         unseal page; its fingerprint has to be 5a5a5a5a5a5a5a5a.
+
+To confirm, type the version after the restore, 1.16.0:
+> 

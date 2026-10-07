@@ -1,0 +1,6 @@
+[FAIL] A safety backup the script takes of this host could not be restored
+       automatically (a single master key ID cannot be read from the
+       current database). Without a terminal, register a backup of your
+       own taken after the services stop with --backup-ref, --backup-time
+       and --backup-restore.
+Nothing has been changed.

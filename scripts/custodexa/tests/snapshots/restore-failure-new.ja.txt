@@ -1,0 +1,12 @@
+[FAIL]  3/8  データベースをインポート                                  4 分 12 秒
+       pg_restore がエラーを返しました（詳細はログに記録）。
+
+復元はステップ 3 で停止しました。サービスは起動していません。
+自動で元には戻していません。
+  このホストには元のデータがなかったため、安全バックアップはありません。
+  原因を解決したら、ステップ 3 から再開してください：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume
+  または今回の復元を中止して未インストールに戻します
+  （配置したデータは名前を変更して保持し、削除しません）：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --abandon
+  ログファイル /opt/custodexa/logs/restore-20261012-093015.log

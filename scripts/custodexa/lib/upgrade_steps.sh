@@ -6,9 +6,11 @@
 #   3  begin: lock, log, last_upgrade in progress; the checked image references go next to the
 #      target release (images.env, image-ids.env)
 #   4  the drain gate (lib/drain_gate.sh)        5, 6  stop and prove gone (lib/stop_check.sh)
-#   7  the snapshot, then the script's backup or the operator's own (lib/backup.sh, backup_ref.sh);
-#      the backup folder also gets state.json as it was when the upgrade began, which is what
-#      going back by hand puts in place again
+#   7  the snapshot, then the script's backup or the operator's own (lib/portable.sh,
+#      backup_ref.sh). The script's backup is one portable file (trigger=upgrade, recordings in,
+#      not encrypted) holding state.json as it was when the upgrade began, which is what going back
+#      by hand puts in place again; the snapshot the checks of step 12 compare with is kept beside
+#      the log (<log>.before.txt) as well, since packing the file removes its members
 #   8  reserved to retain the recorded step numbers of older upgrades
 #   9  state.json: previous.* <- current.*, current.* <- the target; then current -> the target
 #      release and the recordings folder prepared
@@ -20,6 +22,7 @@
 . "${BASH_SOURCE[0]%/*}/post_checks.sh"
 
 CX_UP_D1="" CX_UP_D2="" CX_UP_DRAINED="" CX_UP_SNAP="" CX_UP_BACKUP_DIR="" CX_UP_BACKUP_KIND=""
+CX_UP_BACKUP="" # the backup of this upgrade as recorded: backups/<file>, or backups/<id> for an own one
 CX_UP_HEALTH_VER="" CX_UP_STARTED=""
 CX_UP_STATE0="" # state.json as the upgrade found it, byte for byte (a trailing x keeps the last newline)
 
@@ -69,6 +72,11 @@ cx_up_begin() {
   cx_begin upgrade
   cx_state_set last_upgrade.from "$CX_UP_CURRENT"
   cx_state_set last_upgrade.to "$CX_UP_TARGET"
+  # The keys an earlier upgrade left that describe that run only.
+  local k
+  for k in new_started_at backup_kind snapshot rolled_back_at handed_to handed_at settled_by settled_at; do
+    cx_state_unset "last_upgrade.$k"
+  done
   if [ -n "${CX_UP_PACKAGE_VERIFICATION:-}" ]; then
     cx_state_set last_upgrade.package_verification "$CX_UP_PACKAGE_VERIFICATION"
   fi
@@ -94,17 +102,25 @@ cx_up_keep_state() {
 # cx_up_sub <mark> <text>: a line under step 7, 8 columns in.
 cx_up_sub() { printf '        %s %s\n' "$(cx_mark "$1")" "${2//$'\n'/$'\n'               }"; }
 
-# cx_up_bk_cb: the callback of cx_bk_take: one line per part of the backup.
+# cx_up_bk_cb: the callback of cx_bk_take: one line per part of the backup file.
 cx_up_bk_cb() { # <OK|FAIL> <n> <total> <step id> <start>
-  local f text
-  text=$(cx_msg "bk_step_$4")
+  local text
+  case $4 in
+    db) text=$(cx_msg bk_step_db) ;;
+    files) text=$(cx_msg bk_step_files) ;;
+    conf) text=$(cx_msg bk_step_conf) ;;
+    verify) text=$(cx_msg pb_step_verify) ;;
+    *) text=$(cx_msg pb_step_pack) ;;
+  esac
   if [ "$1" = OK ]; then
     case $4 in
-      db) f=custodexa-db-$CX_BK_TS.dump ;;
-      files) f=custodexa-files-$CX_BK_TS.tar.gz ;;
-      *) f="" ;;
+      db) text=$(cx_msg up_bk_db "$(cx_size_human "$(cx_bk_du "$CX_BK_DIR/db.dump")")") ;;
+      files)
+        text=$(cx_msg up_bk_files "$(cx_size_human $(($(cx_bk_du "$CX_BK_DIR/audit.tar.gz") \
+          + $(cx_bk_du "$CX_BK_DIR/recordings.tar.gz"))))")
+        ;;
+      pack) text=$(cx_msg up_bk_file "$CX_PB_NAME" "$(cx_size_human "$CX_PB_SIZE")") ;;
     esac
-    [ -z "$f" ] || text=$(cx_msg "up_bk_$4" "$f" "$(cx_size_human "$(cx_bk_du "$CX_BK_DIR/$f")")")
   fi
   cx_up_sub "$1" "$text"
 }
@@ -126,10 +142,11 @@ cx_up_own_backup() {
   id=$(date '+%Y%m%d-%H%M%S')
   cx_br_record "$id" || rc=1
   [ "$rc" = 0 ] || { cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"; return 1; }
-  CX_UP_BACKUP_DIR=$CX_ROOT/backups/$id CX_UP_BACKUP_KIND=external
+  CX_UP_BACKUP_DIR=$CX_ROOT/backups/$id CX_UP_BACKUP_KIND=external CX_UP_BACKUP=backups/$id
   cx_up_keep_state "$CX_UP_BACKUP_DIR" || { cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"; return 1; }
-  # The database of an external-database deployment is not reachable from here: no snapshot.
-  [ "$CX_UP_PRE_EXTERNAL_DB" = 0 ] || return 0
+  # An external database is reachable only through the client the checks chose: without one, no
+  # snapshot (the checks after the start then say the data cannot be compared).
+  cx_db_ready || return 0
   cx_up_snapshot "$CX_UP_BACKUP_DIR/snapshot.txt"
 }
 
@@ -140,15 +157,17 @@ cx_up_snapshot() {
     return 1
   fi
   CX_UP_SNAP=$1
-  cx_log SNAPSHOT "usable=$CX_SNAP_USABLE${CX_SNAP_REASONS:+ reasons=\"$CX_SNAP_REASONS\"}"
+  cx_log SNAPSHOT "file=${1#"$CX_ROOT"/} usable=$CX_SNAP_USABLE${CX_SNAP_REASONS:+ reasons=\"$CX_SNAP_REASONS\"}"
   cx_up_sub OK "$(cx_msg up_bk_snap)"
 }
 
-# cx_up_backup <n>: step 7. The services are stopped (step 5).
+# cx_up_backup <n>: step 7. The services are stopped (step 5). The operator's own backup when it
+# was given on the command line, chosen at [2], or the only one possible (an external database the
+# script cannot back up this time, lib/upgrade_preflight.sh); otherwise the script's file.
 cx_up_backup() {
   local n=$1 own=0
   cx_up_step_line RUN "$n" "$(cx_msg up_step_backup)"
-  if [ "$CX_UP_PRE_EXTERNAL_DB" = 1 ] || cx_br_flags_given; then
+  if [ "$CX_UP_OWN_ONLY" = 1 ] || cx_br_flags_given; then
     own=1
   elif [ -t 0 ] && [ "${CX_YES:-0}" != 1 ]; then
     cx_br_choose "$(cx_size_human "$CX_BK_NEED")" "$(cx_bk_minutes)" 0 || return 1
@@ -158,15 +177,44 @@ cx_up_backup() {
     cx_up_own_backup
     return
   fi
-  if ! cx_bk_open; then
-    cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"
+  cx_up_script_backup
+}
+
+# cx_up_script_backup: the portable file (lib/portable.sh): the snapshot first, beside the log and
+# in the temporary folder, then state.json as the upgrade found it, then the steps up to the commit;
+# state.json then points at the file (last_backup.*).
+cx_up_script_backup() {
+  local rc=0
+  CX_PB_TRIGGER=upgrade CX_PB_STATE=1 CX_PB_WITH_REC=1 CX_PB_ENC=0
+  cx_pb_open upgrade || rc=$?
+  if [ "$rc" != 0 ]; then
+    if [ "$rc" = 2 ]; then
+      cx_up_sub FAIL "$(cx_msg pb_ts_taken "$CX_ROOT/backups" "$CX_BK_TS")"
+    else
+      cx_up_sub FAIL "$(cx_msg bk_dir_failed "$CX_ROOT/backups")"
+    fi
+    cx_up_resume_cmd
     return 1
   fi
   CX_UP_BACKUP_DIR=$CX_BK_DIR CX_UP_BACKUP_KIND=script
+  CX_PB_CREATED_AT=$(date '+%Y-%m-%dT%H:%M:%S%z')
   cx_up_keep_state "$CX_BK_DIR" || { cx_up_bk_failed; return 1; }
-  cx_up_snapshot "$CX_BK_DIR/snapshot.txt" || { cx_up_bk_failed; return 1; }
+  cx_up_snapshot "${CX_LOG_FILE%.log}.before.txt" || { cx_up_bk_failed; return 1; }
+  if ! (umask 077 && cp -- "$CX_UP_SNAP" "$CX_BK_DIR/snapshot.txt") || ! chmod 0600 "$CX_BK_DIR/snapshot.txt"; then
+    cx_up_bk_failed
+    return 1
+  fi
   cx_bk_take upgrade cx_up_bk_cb || { cx_up_bk_failed; return 1; }
-  cx_bk_record
+  CX_UP_BACKUP=backups/$CX_PB_NAME
+  cx_pb_record_file
+  if ! cx_state_save "$CX_ROOT/state.json"; then
+    cx_log FAIL "state.json not written after the commit"
+    printf '\n'
+    cx_line FAIL "$(cx_msg up_bk_unrecorded "$CX_PB_FINAL")"
+    cx_up_resume_cmd
+    return 1
+  fi
+  cx_pb_cleanup || cx_log WARN "temporary folder ${CX_BK_DIR#"$CX_ROOT"/} not removed"
 }
 
 # cx_up_bk_failed: the backup did not finish: what is there, how to start the old version again.
@@ -187,6 +235,11 @@ cx_up_record_switch() {
     cx_state_set "previous.$k" "$(cx_state_get "current.$k")"
   done
   cx_state_set previous.image_ids "$CX_UP_PRE_OLD_IDS"
+  if [ -n "$(cx_state_get current.tool_image_ids)" ]; then
+    cx_state_set previous.tool_image_ids "$(cx_state_get current.tool_image_ids)"
+  else
+    cx_state_unset previous.tool_image_ids
+  fi
   cx_state_set previous.compose_project "$proj"
   cx_state_set current.kind package
   cx_state_set current.overlays "$CX_OVERLAYS"
@@ -196,21 +249,17 @@ cx_up_record_switch() {
   cx_state_set current.release_dir "releases/$CX_UP_TARGET"
   cx_state_set current.images_env "releases/$CX_UP_TARGET/images.env"
   cx_state_set current.image_ids "$(cx_images_ids_text)"
+  cx_tools_record current
   cx_state_set current.image_source "$src"
   cx_state_set current.verification "$(cx_trust_state)"
   cx_state_save "$CX_ROOT/state.json"
 }
 
-# cx_up_link <link> <target>: point a symlink at target in one rename.
-cx_up_link() {
-  [ "$(readlink -- "$1" 2>/dev/null)" != "$2" ] || return 0
-  ln -sfn -- "$2" "$1.new" && mv -Tf -- "$1.new" "$1"
-}
-
 # cx_up_recordings: the recordings folder as install prepares it (owner 1000, group 0, 2770).
 cx_up_recordings() {
   local dir=$CX_BK_DATA/recordings img out
-  img=${CX_IMG_REF[openssl]:-${CX_IMG_REF[guacd]:-}}
+  img=${CX_IMG_REF[guacd]:-}
+  cx_img_is_tool openssl || img=${CX_IMG_REF[openssl]:-$img}
   mkdir -p "$dir" || return 1
   # shellcheck disable=SC2016 # the script runs inside the container
   out=$(cx_log_run docker run --rm --pull never --network none --user 0:0 -v "$dir:/r" \
@@ -222,7 +271,7 @@ cx_up_recordings() {
 
 # cx_up_switch <n>: step 9.
 cx_up_switch() {
-  cx_up_record_switch
+  cx_up_record_switch || return 1
   if ! cx_up_link "$CX_ROOT/current" "releases/$CX_UP_TARGET" \
     || ! cx_up_link "$CX_ROOT/custodexa.sh" current/custodexa.sh; then
     cx_up_step_line FAIL "$1" "$(cx_msg up_step_switch "$CX_UP_TARGET")"
@@ -240,7 +289,7 @@ cx_up_switch() {
 cx_up_start() {
   local t0
   t0=$(cx_now)
-  if ! cx_log_run cx_compose up -d --remove-orphans >/dev/null 2>&1; then
+  if ! cx_new_started_mark || ! cx_log_run cx_compose up -d --remove-orphans >/dev/null 2>&1; then
     cx_up_step_line FAIL "$1" "$(cx_msg up_step_start)"
     return 1
   fi
@@ -275,7 +324,12 @@ cx_up_fail_switched() {
   printf '\n%s\n' "$(cx_up_par "$(cx_msg up_logs_first)")"
   cx_cmd "sudo docker compose $(cx_up_compose_hint) logs --tail 50 backend"
   cx_up_par "$(cx_msg up_logs_more)"
-  printf '\n%s\n' "$(cx_up_par "$(cx_msg up_restore_guide "$CX_UP_CURRENT")")"
+  printf '\n'
+  if cx_rb_hint_ok; then
+    cx_rb_hint
+  else
+    cx_up_par "$(cx_msg up_restore_guide "$CX_UP_CURRENT")"
+  fi
   printf '\n%s\n' "$(cx_up_par "$(cx_msg bk_log "$CX_LOG_FILE")")"
 }
 
@@ -286,7 +340,7 @@ cx_up_bullet_backup() {
   if [ "$CX_UP_BACKUP_KIND" = external ]; then
     cx_up_bullet "$(cx_msg up_state_backup_own "$CX_UP_BACKUP_DIR/external.txt")"
   else
-    cx_up_bullet "$(cx_msg up_state_backup "$CX_UP_BACKUP_DIR/")"
+    cx_up_bullet "$(cx_msg up_state_backup "$CX_ROOT/$CX_UP_BACKUP")"
   fi
 }
 
@@ -308,6 +362,15 @@ cx_up_main() {
   cx_up_gone 6 || cx_up_fail_exit
   cx_up_at 7 backup
   cx_up_backup 7 || cx_up_fail_exit
+  # On record from here: a failure of steps 9 to 12 points at this backup as the way back, and a
+  # rollback compares the database with the snapshot taken while the old version was stopped.
+  cx_state_set last_upgrade.backup "$CX_UP_BACKUP"
+  cx_state_set last_upgrade.backup_kind "$CX_UP_BACKUP_KIND"
+  if [ -n "$CX_UP_SNAP" ]; then
+    cx_state_set last_upgrade.snapshot "${CX_UP_SNAP#"$CX_ROOT"/}"
+  else
+    cx_state_unset last_upgrade.snapshot
+  fi
   cx_up_at 8 reserved
   cx_up_step_line SKIP 8 "$(cx_msg up_step_reserved)"
   cx_up_at 9 switch
@@ -319,7 +382,6 @@ cx_up_main() {
   cx_up_at 12 check
   cx_up_post_checks 12 || cx_up_fail_exit
   cx_up_at 13 record
-  cx_state_set last_upgrade.backup "${CX_UP_BACKUP_DIR#"$CX_ROOT"/}"
   cx_up_end succeeded
   cx_up_step_line OK 13 "$(cx_msg up_step_record)"
   cx_up_done

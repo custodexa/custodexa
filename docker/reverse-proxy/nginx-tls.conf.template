@@ -42,6 +42,9 @@
 # 主機安裝 nginx 的變體沒有 127.0.0.11，改用固定位址即可（見上方第 4 點）。
 resolver 127.0.0.11 valid=30s ipv6=off;
 
+# 回應標頭與錯誤頁不帶 nginx 版本號。本檔展開後位於 http 層級，故對下方兩個 server 皆生效。
+server_tokens off;
+
 # $public_host：使用者實際連上的「主機名＋對外埠」，也就是瀏覽器會放進 Origin 的那一段。
 # 對外埠為 443 時省略埠號（https 的預設埠不出現在 Origin 裡），其餘一律帶上。
 #

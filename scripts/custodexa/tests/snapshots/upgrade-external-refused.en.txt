@@ -1,0 +1,16 @@
+[FAIL] The script cannot back up the external database (it runs PostgreSQL
+       15.8, and this release has no export tool of that major version), and
+       this run is non-interactive (no terminal, or --yes was given), so your
+       own backup cannot be chosen here. Nothing was changed. In this order:
+  1. Drain the audit queue and stop the services:
+       sudo /opt/custodexa/custodexa.sh stop --yes
+  2. Check that the services are stopped:
+       sudo /opt/custodexa/custodexa.sh status
+  3. After the stop, start your own backup of the external database, the
+     data folder, .env and tls/, and note when the backup started.
+  4. Run the upgrade again with:
+       sudo /opt/custodexa/custodexa.sh upgrade 1.13.2 --yes \
+         --backup-ref <snapshot name> --backup-time "YYYY-MM-DD HH:MM" \
+         --backup-restore <restore procedure>
+
+  Log file /opt/custodexa/logs/upgrade-20260930-101502.log

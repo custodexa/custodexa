@@ -1,0 +1,2 @@
+[WARN] The last backup run was interrupted at step 2.
+    sudo /opt/custodexa/custodexa.sh status --lang en

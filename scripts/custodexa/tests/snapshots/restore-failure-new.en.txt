@@ -1,0 +1,12 @@
+[FAIL]  3/8  Import the database                                        4m 12s
+       pg_restore reported an error (the full message is in the log).
+
+The restore stopped at step 3. The services were not started; nothing
+was undone automatically.
+  This host had no data before, so there is no safety backup.
+  Once the cause is fixed, carry on from step 3:
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume
+  Or give up on this restore and return to not installed (what it put in
+  place is renamed and kept, not deleted):
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --abandon
+  Log file /opt/custodexa/logs/restore-20261012-093015.log

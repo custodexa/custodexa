@@ -1,0 +1,5 @@
+[FAIL] A restore has not finished (imported, waiting for unseal to check
+       the master key; started 2026-10-12 09:30), so the system cannot be
+       upgraded.
+  After the unseal, finish the check:
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume

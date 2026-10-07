@@ -1,0 +1,10 @@
+[FAIL] The master key does not match: the ID read after unseal is
+       0c0c0c0c0c0c0c0c, and the backup recorded 5a5a5a5a5a5a5a5a.
+  The services have been stopped; the restore is not finished.
+  Check the key inventory as item 6 of section 6 of "Backup and Restore"
+  describes, then decide.
+  Carry on: the services start again, and once someone unseals with the
+  right master key the check runs again
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  Or go back with the safety backup:
+    sudo /opt/custodexa/custodexa.sh restore --revert

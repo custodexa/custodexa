@@ -17,5 +17,5 @@
        （這一項不可省略：連線正常不代表稽核有寫進去）
 
   需要回退    用下列備份，照「備份與還原」第 5 節「還原程序」手動還原
-  備份        /opt/custodexa/backups/20260930-101502/
+  備份        /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
   紀錄檔      /opt/custodexa/logs/upgrade-20260930-101502.log

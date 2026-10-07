@@ -1,0 +1,92 @@
+       Trying in order: this host, offline bundle, GHCR, Docker Hub,
+       build from source
+       backend 1.16.2
+         [ .. ] Checking this host for backend…
+         [ OK ] This host: present, content digest matches
+       frontend 1.16.2
+         [ .. ] Checking this host for frontend…
+         [ OK ] This host: present, content digest matches
+       postgres 1.16.2 (upstream postgres)
+         [ .. ] Checking this host for postgres…
+         [ OK ] This host: present, content digest matches
+       guacd 1.16.2 (upstream guacamole/guacd)
+         [ .. ] Checking this host for guacd…
+         [ OK ] This host: present, content digest matches
+Custodexa upgrade preview (nothing has been changed yet)
+
+  Installed          1.16.1
+  Upgrade to         1.16.2
+  Deployment         /opt/custodexa
+  Master key mode    entered in the browser
+
+What will happen
+  1. Wait until all audit records are in the database, then stop the
+     services (the database keeps running)
+  2. Full backup: database, recordings, audit files, settings,
+     certificates. About 3.0 GB; 211 GB free where backups go
+  3. Switch to 1.16.2 and start it
+  4. Check the version, that it is the same data as before, and that
+     the keys did not change
+
+Good to know
+  - Expect 5 to 10 minutes of downtime. Nobody can connect meanwhile,
+    and open connections will be cut (2 are open now)
+  - This version does not change the database structure
+  - After the upgrade the system stays sealed until someone enters
+    the master key on the unseal page
+  - Image checksums, signatures and build provenance are verified
+  - Have someone familiar with operating this host run it inside a
+    terminal tool that keeps the session alive (such as tmux or
+    screen), to reduce the risk that a dropped SSH connection stops
+    the upgrade
+
+Start the upgrade? [y/N] y
+
+Upgrade 1.16.1 -> 1.16.2
+Log file /opt/custodexa/logs/upgrade-20260930-101502.log
+
+[ OK ]  1/13  Check the environment                         3s
+[ OK ]  2/13  Get and verify the new images                 41s
+[ OK ]  3/13  Confirmed
+[ OK ]  4/13  Wait for audit records to be written (0 left)  4s
+[ OK ]  5/13  Stop the services (database keeps running)    11s
+[ OK ]  6/13  Confirm the old version has fully stopped
+              (0 database connections)
+[ .. ]  7/13  Back up
+        [ OK ] Record row counts and key fingerprints
+        [ OK ] Database                    0.0 KB
+        [ OK ] Recordings and audit files  0.3 KB
+        [ OK ] Settings and certificates
+        [ OK ] Check each part can be read
+        [ OK ] Backup file  custodexa-backup-1.16.1-20260930-101502.tar  20.0 KB
+[SKIP]  8/13  No action at this step
+[ OK ]  9/13  Switch to 1.16.2
+[ OK ] 10/13  Start                                         0s
+[ OK ] 11/13  Wait until ready                              0s
+[FAIL] 12/13  Check
+
+[FAIL] The new version found an empty database. All services were
+       stopped right away
+
+  It set up the database as a fresh install (0 user, 42 connection
+  records; before the upgrade: 5 and 42). The data path /opt/custodexa/data
+  was not rewritten or deleted by this upgrade; the new version may
+  be connected to another database.
+
+  Do not sign in, do not set up a master key, and do not delete any
+  folder yet.
+  1. Have operations check the database settings in .env and the
+     backend log for why the new version did not find the data
+  2. Once checked, to go back to the previous version, restore the
+     pre-upgrade backup by hand, as in "Backup and Restore", section 5
+     "Restore procedure"
+
+    - The pre-upgrade backup is complete:
+      /opt/custodexa/backups/custodexa-backup-1.16.1-20260930-101502.tar
+  To go back to 1.16.1, run the command below. The script first makes sure
+  the new version has not changed the database, and only then switches
+  straight back to 1.16.1; if it has, the script tells you how to restore
+  the backup above. You are asked before anything stops:
+    sudo /opt/custodexa/custodexa.sh rollback --lang en
+
+  Log file /opt/custodexa/logs/upgrade-20260930-101502.log

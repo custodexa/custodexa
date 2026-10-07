@@ -10,16 +10,43 @@ Commands
                          service and backs up first)
   upgrade <package>      Upgrade from a package you downloaded (works
                          offline)
+  rollback             Go back to the version before the upgrade. When the
+                       new version has not changed the database, only the
+                       version is switched back and the data is kept;
+                       otherwise nothing is changed and you are told how to
+                       restore
+  rollback --resume    Finish an unfinished rollback
+  rollback --revert    Abandon an unfinished rollback and return to the
+                       version after the upgrade
   status                 Show version, services, backups and the last
                          upgrade (changes nothing)
   start                  Start all services and wait for backend readiness
   stop                   Confirm and stop all services
-  backup                 Full backup (pauses the service for ten minutes
-                         or more)
+  backup                 Back up to a single file (pauses the service;
+                         the file can be moved to another host)
   load <bundle>          Load an offline image bundle (starts nothing)
+  restore <backup file>   Restore from a portable backup file. On an installed
+                          host: take a safety backup, then replace the data.
+                          On a host not yet installed: install the backup's
+                          version first, then restore
+  restore --resume        Carry on with a restore that did not finish,
+                          including the master key check after unseal
+  restore --revert        Go back with the safety backup taken before the
+                          restore
+  restore --abandon       Give up on an unfinished restore on a new host and
+                          return to not installed
 
 Options
   --yes                  Do not ask for confirmation (for automation)
+  --resume               (rollback, restore) Carry on with the unfinished one
+  --revert               (rollback, restore) Undo the unfinished one
+  --with-recordings      (backup) Put the recordings in the backup file
+                         (left out by default)
+  --passphrase-file <file>
+                         (backup) Encrypt the backup file with the
+                         passphrase on the first line of the file; the file
+                         must be mode 0600 and owned by you or root. Do not
+                         put the passphrase itself on the command line
   --backup-ref <id>      (upgrade) You made your own backup; give the
                          snapshot name and the script makes none
   --backup-time <time>   (upgrade) With --backup-ref: when the snapshot
@@ -34,6 +61,38 @@ Options
   --version              Show the script version
   -h, --help             This help; custodexa.sh <command> --help shows
                          one command
+
+Options for restore
+  --same-host | --new-host     Required without a terminal: which kind of
+                               restore this is
+  --confirm-data-loss          Without a terminal, confirm that existing data
+                               is overwritten (with --yes)
+  --passphrase-file <file>     Passphrase file of an encrypted backup (same
+                               permission rules as backup)
+  --no-checksum-file           Go on without the .sha256 file (every checksum
+                               inside is still checked)
+  --package <package>          Package of the backup's version, with
+                               SHA256SUMS in the same folder (offline)
+  --images <bundle>            Offline image bundle of the backup's version
+  --backup-ref, --backup-time, --backup-restore
+                               Use your own backup taken after the services
+                               stopped instead of the safety backup (also
+                               with --resume when the safety backup did not
+                               finish)
+  --data-path, --tls-domain, --tls-ip-san, --public-base-url
+                               Host values on a new host (this host's
+                               suggestions when not given)
+  --db-client-cert, --db-client-key
+                               Client certificate and private key for an
+                               external database
+  --accept-grant-loss          External database lacks roles: skip the grants
+                               to those roles
+  --nginx-template <path>      Where the custom nginx template goes on a new
+                               host (when its original path cannot be used)
+
+  To create a passphrase file (it does not end up in the shell history):
+    sudo install -m 600 -o root /dev/null /root/cx-pass
+    sudo bash -c 'IFS= read -r -s p && printf "%s\n" "$p" > /root/cx-pass'
 
 The deployment folder is the folder this script is in; set the
 environment variable CUSTODEXA_HOME to use another one. Each run is

@@ -68,7 +68,8 @@ cmd_install_generated() {
 cmd_install_recordings() {
   local dir img out
   dir=$(cx_env_get "$CX_ROOT/.env" DATA_PATH)/recordings
-  img=${CX_IMG_REF[openssl]:-${CX_IMG_REF[guacd]:-}}
+  img=${CX_IMG_REF[guacd]:-}
+  cx_img_is_tool openssl || img=${CX_IMG_REF[openssl]:-$img}
   mkdir -p "$dir" || return 1
   # shellcheck disable=SC2016 # the script runs inside the container
   out=$(cx_log_run docker run --rm --pull never --network none --user 0:0 -v "$dir:/r" \
@@ -125,6 +126,7 @@ cmd_install_record() {
   cx_state_set current.overlays "$CX_ENV_OVERLAYS"
   cx_state_set current.images_env "releases/$ver/images.env"
   cx_state_set current.image_ids "$(cx_images_ids_text)"
+  cx_tools_record current
   cx_state_set current.image_source "$src"
   cx_state_set current.verification "$(cx_trust_state)"
 }
@@ -216,7 +218,7 @@ cmd_install() {
   cx_trust_check
   cx_trust_screen
   cx_step_line OK "3/$CX_INSTALL_STEPS" \
-    "$(cx_msg step_images_done "${#CX_IMG_NAMES[@]}" "$(cx_trust_summary)")" "$(cmd_install_elapsed "$t0")"
+    "$(cx_msg step_images_done "${#CX_IMG_ALL[@]}" "$(cx_trust_summary)")" "$(cmd_install_elapsed "$t0")"
 
   # 4: recordings folder.
   cx_step 4 "$CX_INSTALL_STEPS" recordings

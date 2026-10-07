@@ -1,0 +1,4 @@
+Last upgrade
+  [ OK ] 1.16.1 -> 1.16.2 succeeded, 2026-11-05 09:30
+  [WARN] The last rollback stopped before the switch:
+         1.16.2 had changed the database; still on 1.16.2

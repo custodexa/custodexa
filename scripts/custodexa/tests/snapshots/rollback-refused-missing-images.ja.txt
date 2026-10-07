@@ -1,0 +1,8 @@
+[FAIL] 1.16.1 に戻すにはアップグレード前のイメージが必要ですが、
+       2 個がこのホストにないか、以前と異なります。何も変更していません。
+  backend    このホストにありません
+  frontend   ホストのイメージが記録と異なります
+             以前 sha256:bc2cb7012bc96824e1beecb6bdbe47726879b8b5a8c6b53c0afda52758c7b52b、現在 sha256:8810ad581e59f2bc3928b261707a71308f7e139eb04820366dc4d5c18d980225
+  1.16.1 のオフラインイメージバンドルを読み込んでから再実行してください：
+    sudo /opt/custodexa/custodexa.sh load <custodexa-images-1.16.1-arm64.tar> --lang ja
+    sudo /opt/custodexa/custodexa.sh rollback --lang ja

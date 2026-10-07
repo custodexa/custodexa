@@ -1,0 +1,11 @@
+[ OK ]  1/8  Install 1.16.0: put the release and its images in place    2m 05s
+[ OK ]  2/8  Write the settings file (from the backup, host values for
+             this host)
+[ OK ]  3/8  Import the database                                        17m 38s
+[ OK ]  4/8  Check the database: 57 migrations, row counts and master
+             key ID match the backup                                    6s
+[ OK ]  5/8  Put back audit files and certificates; issue a server
+             certificate for this host's address                        5s
+[ OK ]  6/8  Start the services and check the running images            38s
+[ OK ]  7/8  Wait until ready: the backend reports 1.16.0               21s
+[WARN]  8/8  Master key: to be checked after unseal

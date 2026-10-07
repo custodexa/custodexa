@@ -1,0 +1,10 @@
+--- a/backend/internal/database/migrations.go
++++ b/backend/internal/database/migrations.go
+@@ -217,6 +217,7 @@
+ 		Down:    rollbackNotificationChannelMinSeverity,
+ 	},
+ 	{Version: "20260930_identity_group_mappings", Name: "identity_group_mappings", Up: applyIdentityGroupMappings, Down: rollbackIdentityGroupMappings},
++	{Version: "it_rollback_probe", Name: "it_rollback_probe", Up: func(*gorm.DB) error { return nil }, Down: func(*gorm.DB) error { return nil }},
+ }
+
+ // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。

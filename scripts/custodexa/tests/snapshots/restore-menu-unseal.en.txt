@@ -1,0 +1,14 @@
+Custodexa management script 1.16.2    Deployment directory /opt/custodexa
+Status: a restore has not finished (imported, waiting for unseal to check
+the master key; data version 1.16.0)
+Language: --lang zh-TW 繁體中文, --lang ja 日本語
+
+  [1] Carry on with the restore (finish the check after unseal)
+  [2] Show status
+  [3] Start services
+  [4] Stop services
+  [5] Give up on this restore and return to not installed
+  [6] Help
+  [0] Quit
+
+Choose [0-6]: 

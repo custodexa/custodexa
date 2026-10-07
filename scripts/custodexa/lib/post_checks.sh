@@ -147,10 +147,12 @@ cx_up_post_checks() {
   CX_PC_ROWS=() CX_PC_FAIL=0 CX_PC_AFTER=""
   started=$(docker container inspect --format '{{.State.StartedAt}}' custodexa-backend 2>/dev/null) || started=""
   CX_PC_LOG=$(docker logs ${started:+--since "$started"} custodexa-backend 2>&1) || CX_PC_LOG=""
-  if [ "$CX_UP_PRE_EXTERNAL_DB" = 0 ]; then
+  # Taken through the database client: the bundled service, or the external database's client once
+  # one was chosen (lib/dbext.sh); without one there is no snapshot after.
+  if cx_db_ready; then
     tmp=$(mktemp)
     if cx_snap_take "$tmp" "$(cx_bk_env JWT_SECRET)"; then
-      # Kept next to the log: the backup folder stays as its SHA256SUMS describes it.
+      # Kept next to the log, beside the snapshot from before (<log>.before.txt).
       CX_PC_AFTER=${CX_LOG_FILE%.log}.after.txt
       mv -f "$tmp" "$CX_PC_AFTER" 2>/dev/null || CX_PC_AFTER=$tmp
     else
@@ -212,6 +214,11 @@ cx_pc_empty_screen() {
     printf '\n'
     cx_up_par "$(cx_msg pc_empty_same_do)"
   fi
+  if cx_rb_hint_ok; then
+    printf '\n'
+    cx_up_bullet_backup
+    cx_rb_hint
+  fi
   printf '\n'
   cx_up_par "$(cx_msg bk_log "$CX_LOG_FILE")"
 }
@@ -241,11 +248,15 @@ cx_up_done() {
     cx_up_point 1 "$(cx_msg up_todo_manual)"
   fi
   printf '\n'
-  cx_up_par "$(cx_msg up_done_rollback)"
+  if cx_rb_hint_ok; then
+    cx_up_par "$(cx_msg rb_upgrade_done "$(cx_state_get last_upgrade.from)" "$CX_ROOT" "$(cx_status_lang_arg)")"
+  else
+    cx_up_par "$(cx_msg up_done_rollback)"
+  fi
   if [ "$CX_UP_BACKUP_KIND" = external ]; then
     cx_up_par "$(cx_msg up_done_backup "$CX_UP_BACKUP_DIR/external.txt")"
   else
-    cx_up_par "$(cx_msg up_done_backup "$CX_UP_BACKUP_DIR/")"
+    cx_up_par "$(cx_msg up_done_backup "$CX_ROOT/$CX_UP_BACKUP")"
   fi
   cx_up_par "$(cx_msg up_done_log "$CX_LOG_FILE")"
 }

@@ -1,0 +1,16 @@
+[FAIL]  3/10  Safety backup                                 2m 05s
+       The safety backup did not check out when read back and cannot be
+       restored from
+
+The safety backup before the restore did not finish, so nothing will be
+overwritten. No data has changed; the services stay stopped.
+  Once that is dealt with, carry on from the safety backup:
+    sudo /opt/custodexa/custodexa.sh restore --resume
+  Or give up and start the original services:
+    sudo /opt/custodexa/custodexa.sh restore --revert
+  You can also use a backup of your own taken after the services stopped:
+  choose [2] when carrying on at the terminal, or add the three options to
+  the command that carries on:
+    sudo /opt/custodexa/custodexa.sh restore --resume --backup-ref <id> --backup-time <time> --backup-restore <procedure>
+  The backup has to be no older than 2026-10-12 09:31, when this restore
+  stopped the services.

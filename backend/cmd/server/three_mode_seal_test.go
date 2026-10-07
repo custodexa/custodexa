@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/custodexa/backend/config"
+	"github.com/custodexa/backend/internal/apierror"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/material"
 	"github.com/custodexa/backend/internal/modules/identity"
@@ -198,11 +199,23 @@ func TestUnsealedRejectsWithoutRerunningInit(t *testing.T) {
 		t.Fatalf("initial HTTP=%d", w.Code)
 	}
 	before := *reads
-	if w := modeRequest(t, e, "/api/v1/seal/unseal", "{}", token); w.Code != 409 {
-		t.Fatalf("repeat HTTP=%d", w.Code)
+	// 已解封時解封流程的第一步（帳密驗證）即回 409，不簽發脈絡；照解封頁的兩步
+	// 走下去，第二步因無脈絡而被拒（modeRequest 帶著 Bearer 標頭，故為「脈絡無效」而非
+	// 「缺脈絡」）。兩步都不得觸及部署來源。
+	if w := e.do(http.MethodPost, "/api/v1/seal/authorize",
+		fmt.Sprintf(`{"username":%q,"password":%q}`, testAdminUser, testAdminPassword)); w.Code != http.StatusConflict ||
+		bodyCode(t, w.Body.Bytes()) != string(apierror.CodeSealAlreadyUnsealed) {
+		t.Fatalf("repeat authorize HTTP=%d code=%s", w.Code, bodyCode(t, w.Body.Bytes()))
+	}
+	if w := modeRequest(t, e, "/api/v1/seal/unseal", "{}", token); w.Code != http.StatusUnauthorized ||
+		bodyCode(t, w.Body.Bytes()) != string(apierror.CodeSealGrantInvalid) {
+		t.Fatalf("repeat HTTP=%d code=%s", w.Code, bodyCode(t, w.Body.Bytes()))
 	}
 	if *reads != before {
 		t.Fatal("unsealed reran source")
+	}
+	if st := e.machine.Snapshot().State; st != seal.StateUnsealed {
+		t.Fatalf("repeat changed state to %s", st)
 	}
 	t.Log("already-unsealed request rejected before source access")
 }

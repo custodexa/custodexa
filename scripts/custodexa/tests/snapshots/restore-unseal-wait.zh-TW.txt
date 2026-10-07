@@ -1,0 +1,8 @@
+[WARN] 資料已匯入、服務已啟動，等待解封後核對（1.16.0）
+  還原還沒有完成。主金鑰模式是網頁輸入：請有人到解封頁，以備份裡的
+  管理者帳號登入授權後輸入主金鑰：
+    https://10.0.0.31/unseal
+  主金鑰指紋必須是 5a5a5a5a5a5a5a5a。
+  解封之後執行下面的指令完成核對；核對完成之前不能升級，也不能備份：
+    sudo /opt/custodexa/releases/1.16.2/custodexa.sh restore --resume
+  紀錄檔 /opt/custodexa/logs/restore-20261012-093015.log

@@ -154,8 +154,10 @@ preview_of() {
   tree_of "$ROOT" >"$BATS_TEST_TMPDIR/before"
   run bash "$ROOT/releases/1.13.2/custodexa.sh" upgrade --lang en </dev/null
   [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] The last last_backup run was interrupted at step 3."* ]] || { echo "$output"; return 1; }
-  [[ $output == *"sudo $ROOT/custodexa.sh status"* ]] || { echo "$output"; return 1; }
+  # An unfinished backup: the upgrade waits for a finished one, with the commands to get there.
+  [[ $output == "[FAIL] The last backup (?) did not finish, and an upgrade"* ]] || { echo "$output"; return 1; }
+  printf '%s\n' "$output" | grep -qxF "  sudo $ROOT/custodexa.sh start --lang en" || { echo "$output"; return 1; }
+  printf '%s\n' "$output" | grep -qxF "  sudo $ROOT/custodexa.sh backup --lang en" || { echo "$output"; return 1; }
   [[ $output != *"upgrade preview"* ]] || { echo "$output"; return 1; }
   diff "$BATS_TEST_TMPDIR/before" <(tree_of "$ROOT")
 }
@@ -214,10 +216,17 @@ interrupted_at() {
 
 @test "too little space for the backup and the new images: FAIL before the preview, nothing stopped" {
   up_host
-  host_free / 18874368 # 18 GB in KiB, under the 18.4 GB estimate
+  # 18 GB in KiB, under the 35.8 GB the backup file needs (the file, its largest member again and
+  # 1 GB: rewritten from 18.4 GB when step 7 started packing one portable file)
+  host_free / 18874368
   upgrade_run zh-TW 1.13.2
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] 備份空間不足：預估需要 18.4 GB，$ROOT/backups 只剩 18.0 GB。"* ]] || { echo "$output"; return 1; }
+  # The screen of the backup command, without its hint about the recordings (always in this file).
+  [[ $output == *"[FAIL] 備份空間不足：需要 35.8 GB（含組裝時的暫存與 1 GB 餘裕），
+       $ROOT/backups 只剩 18.0 GB。沒有停止任何服務。
+  可以：把舊的備份檔搬到別處後刪除。
+  目前的備份檔：ls -l $ROOT/backups/"* ]] || { echo "$output"; return 1; }
+  [[ $output != *"錄影"* ]] || { echo "$output"; return 1; }
   [[ $output != *"升級預覽"* ]] || return 1
   [ ! -e "$ROOT/backups" ] || return 1
   ! grep -q ' stop \| down \| up ' "$FAKE_DOCKER_LOG"
