@@ -2,6 +2,17 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.16.1 — HTTPS-only downloads in the integration tests (2026-10-10)
+
+No schema change. No migration runs. A 1.14.x, 1.15.x or 1.16.0 package deployment upgrades
+with `custodexa.sh upgrade 1.16.1`.
+
+### Fixes
+
+- The integration tests that download earlier releases accept HTTPS only, also after a
+  redirect. Only the test scripts in the source tree change; deployments run the same code as
+  1.16.0.
+
 ## 1.16.0 — portable backups, restore and going back after an upgrade (2026-10-07)
 
 No schema change. No migration runs. A 1.14.x or 1.15.x package deployment upgrades with

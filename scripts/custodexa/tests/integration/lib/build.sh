@@ -69,7 +69,7 @@ it_release_meta() {
   [ -f "$d/MANIFEST.json" ] && return 0
   mkdir -p "$d.tmp-$$"
   for f in MANIFEST.json SHA256SUMS; do
-    curl -fsSL --retry 3 -o "$d.tmp-$$/$f" "$IT_RELEASES/v$v/$f" || it_die "cannot download $f of v$v"
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -o "$d.tmp-$$/$f" "$IT_RELEASES/v$v/$f" || it_die "cannot download $f of v$v"
   done
   (cd "$d.tmp-$$" && grep ' MANIFEST.json$' SHA256SUMS | sha256sum -c --quiet) || it_die "MANIFEST.json of v$v does not match its SHA256SUMS"
   rm -rf "$d"
@@ -88,10 +88,10 @@ it_published() {
   fi
   rm -rf "$d.tmp-$$"
   mkdir -p "$d.tmp-$$"
-  curl -fsSL --retry 3 -o "$d.tmp-$$/SHA256SUMS.release" "$IT_RELEASES/v$v/SHA256SUMS" || it_die "cannot download SHA256SUMS of v$v"
+  curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -o "$d.tmp-$$/SHA256SUMS.release" "$IT_RELEASES/v$v/SHA256SUMS" || it_die "cannot download SHA256SUMS of v$v"
   for f in "${files[@]}"; do
     it_step "download $f of v$v"
-    curl -fsSL --retry 3 -o "$d.tmp-$$/$f" "$IT_RELEASES/v$v/$f" || it_die "cannot download $f of v$v"
+    curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 -o "$d.tmp-$$/$f" "$IT_RELEASES/v$v/$f" || it_die "cannot download $f of v$v"
     grep -E "^[0-9a-f]{64}  $f\$" "$d.tmp-$$/SHA256SUMS.release" >>"$d.tmp-$$/SHA256SUMS" || it_die "SHA256SUMS of v$v does not list $f"
   done
   rm -f "$d.tmp-$$/SHA256SUMS.release"
