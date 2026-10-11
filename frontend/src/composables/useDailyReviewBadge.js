@@ -25,12 +25,12 @@ async function refresh() {
 }
 
 const onChanged = () => {
-  if (timer) refresh()
+  if (timer) void refresh()
 }
 
 function start() {
   if (timer) return
-  refresh()
+  void refresh()
   timer = setInterval(refresh, DAILY_REVIEW_BADGE_POLL_MS)
   if (!listening) {
     window.addEventListener(DAILY_REVIEWS_CHANGED, onChanged)

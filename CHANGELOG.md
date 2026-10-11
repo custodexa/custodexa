@@ -2,6 +2,17 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.1 — daily review badge polling cleanup (2026-10-11)
+
+No schema change. No migration runs. A 1.14.x, 1.15.x, 1.16.x or 1.17.0 package deployment
+upgrades with `custodexa.sh upgrade 1.17.1`.
+
+### Fixes
+
+- The sidebar badge that counts days awaiting daily review sign-off marks its background
+  refresh calls as fire-and-forget. Behavior is unchanged: a failed refresh keeps the last count
+  and retries on the next poll.
+
 ## 1.17.0 — daily review sign-off by completed day (2026-10-11)
 
 Schema changes. Upgrading runs the `20261012_daily_review_signoff` migration. It adds columns to
