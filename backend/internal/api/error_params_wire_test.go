@@ -67,9 +67,9 @@ func TestDurationExceedsPolicyParamsOnWire(t *testing.T) {
 	}
 }
 
-// setupDailyReviewRouter 每日審閱 handler 測試環境：真 sqlite＋真政策服務，
-// 僅省略 JWT middleware。
-func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
+// setupDailyReviewRouter 每日審閱 handler 測試環境：真 sqlite＋真政策服務＋固定時鐘，
+// 僅省略 JWT middleware。業務時區 Asia/Taipei、自 2026-10-01 起啟用，現在是 2026-10-11 09:00
+func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB, time.Time) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
@@ -80,15 +80,39 @@ func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.DailyReviewLog{}, &model.AuditLog{},
-		&model.CommandAlert{}, &model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.DailyReviewLog{}, &model.AuditLog{}, &model.SecurityPolicy{},
+		&model.SecurityPolicyHistory{}, &model.AuditRetentionWatermark{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	policies := policy.NewSecurityPolicyService(db)
-	if _, err := policies.Update(policy.PolicyDailyReviewEnabled, "true", "test"); err != nil {
-		t.Fatalf("啟用每日審閱: %v", err)
+	// command_alerts 生產為 timestamptz，sqlite 以 datetime 等價表手建（scan 才讀得回 time.Time）
+	if err := db.Exec(`CREATE TABLE command_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER, rule_name TEXT NOT NULL DEFAULT 'r', session_id INTEGER NOT NULL DEFAULT 0,
+		user_id INTEGER NOT NULL DEFAULT 3, asset_id INTEGER, command TEXT NOT NULL DEFAULT '',
+		severity TEXT NOT NULL DEFAULT 'high', triggered_at DATETIME NOT NULL, reviewed_by INTEGER, reviewed_at DATETIME,
+		disposition TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '', blocked BOOLEAN NOT NULL DEFAULT 0,
+		kind TEXT NOT NULL DEFAULT 'rule', reason_code TEXT NOT NULL DEFAULT '')`).Error; err != nil {
+		t.Fatalf("建表: %v", err)
 	}
-	handler := NewDailyReviewHandler(audit.NewDailyReviewService(db, policies, nil))
+	taipei, _ := time.LoadLocation("Asia/Taipei")
+	since := time.Date(2026, 10, 1, 0, 0, 0, 0, taipei)
+	for _, h := range []model.SecurityPolicyHistory{
+		{PolicyKey: policy.PolicyDailyReviewTimezone, NewValue: "Asia/Taipei", ChangedAt: since.Add(-time.Hour).UTC(), ChangedBy: "m", Source: model.PolicyHistorySourceMigrationUpgrade},
+		{PolicyKey: policy.PolicyDailyReviewEnabled, OldValue: "false", NewValue: "true", ChangedAt: since.UTC(), ChangedBy: "admin", Source: model.PolicyHistorySourcePolicyUpdate},
+	} {
+		h := h
+		if err := db.Create(&h).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k, v := range map[string]string{policy.PolicyDailyReviewTimezone: "Asia/Taipei", policy.PolicyDailyReviewEnabled: "true"} {
+		if err := db.Create(&model.SecurityPolicy{Key: k, Value: v, UpdatedBy: "admin", UpdatedAt: since}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 10, 11, 9, 0, 0, 0, taipei)
+	svc := audit.NewDailyReviewService(db, policy.NewSecurityPolicyService(db), nil)
+	svc.SetClock(func() time.Time { return now })
+	handler := NewDailyReviewHandler(svc)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -97,31 +121,26 @@ func setupDailyReviewRouter(t *testing.T) (*gin.Engine, *gorm.DB) {
 		c.Set("username", "auditor-b")
 		handler.Sign(c)
 	})
-	return r, db
+	r.GET("/daily-reviews/days/:date", handler.Day)
+	return r, db, now
 }
 
-// TestDailyReviewAlreadySignedParamsOnWire 重複簽核帶出既有簽核的時刻與簽核者。
+// TestDailyReviewAlreadySignedParamsOnWire 搶先簽核：409 帶出既有紀錄的所屬日、簽核者、
+// 完整簽核時刻（RFC3339）與時區
 func TestDailyReviewAlreadySignedParamsOnWire(t *testing.T) {
-	r, db := setupDailyReviewRouter(t)
+	r, db, now := setupDailyReviewRouter(t)
 
-	signedAt := time.Now()
+	signedAt := now.Add(-time.Hour).Truncate(time.Second)
 	existing := model.DailyReviewLog{
-		ReviewDate:   signedAt.Format("2006-01-02"),
-		ReviewerID:   7,
-		ReviewerName: "auditor-a",
-		SnapshotJSON: "{}",
+		ReviewDate: "2026-10-10", ReviewerID: 7, ReviewerName: "auditor-a", SnapshotJSON: "{}",
+		SignedAt: signedAt, Timezone: "Asia/Taipei", WindowStart: now, WindowEnd: now, DueAt: now,
+		Coverage: model.DailyReviewCoverageFullDay, SourceStatus: model.DailyReviewSourceComplete, EnabledBasis: model.DailyReviewBasisRecorded,
 	}
 	if err := db.Create(&existing).Error; err != nil {
 		t.Fatalf("預置既有簽核: %v", err)
 	}
-	// CreatedAt 由 gorm 自動填；以落庫後的實際值算出預期 HH:MM
-	var stored model.DailyReviewLog
-	if err := db.First(&stored, existing.ID).Error; err != nil {
-		t.Fatalf("讀回既有簽核: %v", err)
-	}
-	wantTime := stored.CreatedAt.Format("15:04")
 
-	w := doJSON(r, "POST", "/daily-reviews", map[string]interface{}{"note": "n"})
+	w := doJSON(r, "POST", "/daily-reviews", map[string]interface{}{"review_date": "2026-10-10", "note": "n"})
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409 (body=%s)", w.Code, w.Body.String())
 	}
@@ -129,14 +148,36 @@ func TestDailyReviewAlreadySignedParamsOnWire(t *testing.T) {
 	if code != "CONFLICT_DAILY_REVIEW_SIGNED" {
 		t.Errorf("code = %q", code)
 	}
-	if params["signer"] != "auditor-a" {
-		t.Errorf("params[signer] = %v, want auditor-a", params["signer"])
+	if params["signer"] != "auditor-a" || params["date"] != "2026-10-10" || params["timezone"] != "Asia/Taipei" {
+		t.Errorf("params = %v", params)
 	}
-	if params["time"] != wantTime {
-		t.Errorf("params[time] = %v, want %s", params["time"], wantTime)
+	got, err := time.Parse(time.RFC3339, params["signed_at"].(string))
+	if err != nil || !got.Equal(signedAt) {
+		t.Errorf("params[signed_at] = %v, want RFC3339 %v", params["signed_at"], signedAt)
 	}
 	if !strings.Contains(errText, "auditor-a") {
 		t.Errorf("zh fallback 未插入簽核者: %q", errText)
+	}
+}
+
+// TestDailyReviewSignIgnoresForgedSignedAt 擋：請求夾帶較早的簽核時刻即可倒填
+func TestDailyReviewSignIgnoresForgedSignedAt(t *testing.T) {
+	r, db, now := setupDailyReviewRouter(t)
+	w := doJSON(r, "POST", "/daily-reviews", map[string]interface{}{
+		"review_date": "2026-10-10", "note": "n", "signed_at": "2026-10-01T00:00:00Z",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d (body=%s)", w.Code, w.Body.String())
+	}
+	var stored model.DailyReviewLog
+	if err := db.Where("review_date = ?", "2026-10-10").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.SignedAt.Equal(now) {
+		t.Errorf("signed_at = %v, want 伺服器受理時刻 %v（請求夾帶的值不得生效）", stored.SignedAt, now)
+	}
+	if stored.ReviewDate != "2026-10-10" || stored.Late {
+		t.Errorf("所屬日 %s late=%v", stored.ReviewDate, stored.Late)
 	}
 }
 
@@ -150,7 +191,7 @@ func setupSecurityPolicyRouter(t *testing.T) *gin.Engine {
 	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(1)
 	}
-	if err := db.AutoMigrate(&model.SecurityPolicy{}); err != nil {
+	if err := db.AutoMigrate(&model.SecurityPolicy{}, &model.SecurityPolicyHistory{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	policySvc := policy.NewSecurityPolicyService(db)
@@ -235,4 +276,23 @@ func TestPolicyErrorKeyOnWire(t *testing.T) {
 			t.Errorf("不合法的值回顯到 wire: %s", w.Body.String())
 		}
 	})
+}
+
+// TestPolicyInvalidTimezoneKeepsKeyParam 擋：非法時區的錯誤回應丟掉 key 參數，
+// 畫面說不出是哪個設定（新鍵未進 policyKeyZhLabels 允許清單時，params 會被整組丟棄）
+func TestPolicyInvalidTimezoneKeepsKeyParam(t *testing.T) {
+	for _, bad := range []string{"Mars/Olympus", "Local", ""} {
+		r := setupSecurityPolicyRouter(t)
+		w := putPolicies(t, r, map[string]string{policy.PolicyDailyReviewTimezone: bad})
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%q: status = %d, want 400 (body=%s)", bad, w.Code, w.Body.String())
+		}
+		code, params, _ := decodeEnvelope(t, w)
+		if code != "VALIDATION_POLICY_INVALID_VALUE" {
+			t.Errorf("%q: code = %q", bad, code)
+		}
+		if params["key"] != policy.PolicyDailyReviewTimezone {
+			t.Errorf("%q: params = %v, want key=daily_review_timezone", bad, params)
+		}
+	}
 }

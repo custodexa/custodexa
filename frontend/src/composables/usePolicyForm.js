@@ -19,7 +19,10 @@ const DRAFT_DEBOUNCE_MS = 300
 //
 // 符合性判定一律由後端供給：列表回應帶每鍵對各生效組的判定，未儲存的編輯改打
 // 草稿判定端點。前端不自己算一份——兩套邏輯會漂移，而分歧不會有任何一處報錯。
-export function usePolicyForm(sections, { includeRest = false } = {}) {
+//
+// beforeSave(changed, { formValues, savedValues }) → Promise<boolean>：頁面專屬的儲存前
+// 確認（例如業務時區的生效日說明）；回 false 即不送出。afterSave()：儲存成功後的刷新
+export function usePolicyForm(sections, { includeRest = false, beforeSave = null, afterSave = null } = {}) {
   const loading = ref(false)
   const saving = ref(false)
   const policies = ref([])
@@ -355,11 +358,14 @@ export function usePolicyForm(sections, { includeRest = false } = {}) {
       }
     }
 
+    if (beforeSave && !(await beforeSave(changed, { formValues, savedValues }))) return
+
     saving.value = true
     try {
       applyResponse(await updateSecurityPolicies(changed))
       appliedPreview.value = null
       ElMessage.success(t('policyForm.saved'))
+      if (afterSave) await afterSave()
     } catch (error) {
       console.error('儲存安全政策失敗:', error)
     } finally {

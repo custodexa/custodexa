@@ -56,6 +56,7 @@
       :policy="policy"
       :value="formValues[policy.key]"
       :deviating="deviatingKeys.has(policy.key)"
+      :form-values="formValues"
       @update:value="(key, value) => $emit('update:value', key, value)"
       @info="openDrawer(policy)"
     />

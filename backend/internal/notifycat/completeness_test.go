@@ -124,8 +124,18 @@ func checkCatalog(
 			if p.Kind != KindEnum && len(p.Enum) > 0 {
 				add(vSpecInvalid, "%s 參數 %s 非 enum 卻帶允許清單", ev, p.Name)
 			}
-			if p.Kind != KindEnum && p.Kind != KindInt && p.Kind != KindOpaque {
+			if p.Kind != KindEnum && p.Kind != KindInt && p.Kind != KindOpaque && p.Kind != KindDateList {
 				add(vSpecInvalid, "%s 參數 %s 種類 %q 不合法", ev, p.Name, p.Kind)
+			}
+		}
+		for _, p := range spec.Params {
+			if p.Total == "" {
+				continue
+			}
+			if p.Kind != KindDateList {
+				add(vSpecInvalid, "%s 參數 %s 非日期清單卻宣告總數參數", ev, p.Name)
+			} else if tp, ok := spec.param(p.Total); !ok || tp.Kind != KindInt {
+				add(vSpecInvalid, "%s 參數 %s 的總數參數 %s 須為已宣告的 int 參數", ev, p.Name, p.Total)
 			}
 		}
 		if spec.VariantParam != "" {

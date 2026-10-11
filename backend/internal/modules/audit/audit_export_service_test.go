@@ -14,6 +14,7 @@ import (
 	"github.com/custodexa/backend/config"
 	"github.com/custodexa/backend/internal/database"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -53,7 +54,16 @@ func setupExportEnv(t *testing.T) (*AuditExportService, *gorm.DB) {
 
 	auditSvc := NewAuditLogService(&config.FeatureFlags{AuditLogEnabled: true})
 	svc := NewAuditExportService(db, auditSvc, NewSessionCommandService(db), emptyRecordings{})
+	// 每日簽核段的來源（證據包固定段；本檔的包不驗它，給一個空清單）
+	svc.SetDailyReviewLedger(emptyDailyReviewLedger{})
 	return svc, db
+}
+
+// emptyDailyReviewLedger 範圍內沒有任何所屬日的每日簽核來源替身
+type emptyDailyReviewLedger struct{}
+
+func (emptyDailyReviewLedger) DailyReviewLedger(*time.Time, *time.Time, int) ([]policy.SignoffDay, int, bool, error) {
+	return []policy.SignoffDay{}, 0, false, nil
 }
 
 // emptyRecordings 無錄影檔的 RecordingReader 替身（C↔E 環反轉配套）。

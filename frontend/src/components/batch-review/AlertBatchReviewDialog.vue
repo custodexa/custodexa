@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { t } from '@/i18n'
 import { reviewAlert, searchAlerts } from '@/api/alerts'
 import { useBatchReview, BATCH_STATE } from '@/composables/useBatchReview'
@@ -136,7 +136,9 @@ const props = defineProps({
   // 列上的「規則名稱 · 時間」：沿用表格對非規則類告警的散文
   labelFor: { type: Function, required: true },
 })
-const emit = defineEmits(['finished'])
+// settled：這一批已全部送出（或收尾查詢完成），結果列已出現——呼叫端可在使用者按「完成」前
+// 就先重取現況；finished：使用者按下「完成」、對話框收起
+const emit = defineEmits(['settled', 'finished'])
 
 const formOpen = ref(false)
 const form = ref({ disposition: 'benign', note: '' })
@@ -169,6 +171,10 @@ const { phase, batch, items, current, total, summary, run, recover, recheck, fin
   useBatchReview({ surface: 'alerts', userId, reconcile })
 
 const visible = computed(() => formOpen.value || phase.value !== 'idle')
+
+watch(phase, (next) => {
+  if (next === 'result') emit('settled')
+})
 const title = computed(() => {
   if (phase.value === 'idle') return t('alerts.batch.dialogTitle', { n: props.alerts.length })
   return t('alerts.batch.resultTitle')

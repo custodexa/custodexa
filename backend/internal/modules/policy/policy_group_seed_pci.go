@@ -60,7 +60,7 @@ func pciPolicyGroupSeed() policyGroupSeed {
 					atLeast(PolicyRetentionRecordingDays, "365"),
 				}},
 			{ClauseNo: "10.4.1", Title: "每日審閱簽核",
-				Controls: []policyControlSeed{mustBe(PolicyDailyReviewEnabled, "true")}},
+				Controls: []policyControlSeed{signedOffDaily()}},
 			{ClauseNo: "10.7.2", Title: "稽核失效告警",
 				Controls: []policyControlSeed{mustBe(PolicyFailureAlertEnabled, "true")}},
 			{ClauseNo: "10.2", Title: "錄影失敗擋連線",

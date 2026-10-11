@@ -359,3 +359,17 @@ describe('發起成功導引至下載中心', () => {
     )
   })
 })
+
+// 擋：證據包收了每日簽核紀錄而對話框沒說，或事件報告也宣稱有（它不收）
+describe('證據包內容清單的每日簽核紀錄', () => {
+  it('只在證據包模式列出，並說明未簽的日子也列出', async () => {
+    const wrapper = await mountDialog()
+    expect(wrapper.find('[data-test="export-proves-bundle_daily_reviews"]').exists()).toBe(false)
+    await pickBundle(wrapper)
+    const line = wrapper.find('[data-test="export-proves-bundle_daily_reviews"]')
+    expect(line.exists()).toBe(true)
+    expect(line.text()).toContain('每日簽核紀錄')
+    expect(line.text()).toContain('未簽')
+  })
+})
+

@@ -131,11 +131,12 @@ func TestBaselineOnEmptySchemaPostgres(t *testing.T) {
 	// 無 CHECK、無外鍵（掛靠關係由資料存取層維持）。
 	// 委託拓撲增 1 表、2 索引、1 CHECK；輸出規則增量再增 1 CHECK。
 	// Agent 前置兩表＋agent 通道三表；前置增 14 索引／2 CHECK，agent 通道增 8 索引／9 CHECK。
-	if got.Tables != 74 {
-		t.Errorf("表數 = %d, want 74（既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表）", got.Tables)
+	// 每日簽核改版增 1 表（security_policy_history）、2 索引（pkey ＋ (policy_key, changed_at)），無 CHECK。
+	if got.Tables != 75 {
+		t.Errorf("表數 = %d, want 75（既有 70 ＋ 外部群組字典、使用者群組規則、兩張逐規則支持表 ＋ 政策變更歷史）", got.Tables)
 	}
-	if got.Indexes != 248 {
-		t.Errorf("索引數 = %d, want 248（既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4）", got.Indexes)
+	if got.Indexes != 250 {
+		t.Errorf("索引數 = %d, want 250（既有 235 ＋ 外部群組字典 3、使用者群組規則 3、角色支持 3、群組支持 4 ＋ 政策變更歷史 2）", got.Indexes)
 	}
 	if got.Checks != 37 {
 		t.Errorf("CHECK 約束數 = %d, want 37（既有 34 ＋ 外部群組來源、備註長度、使用者群組規則來源）", got.Checks)

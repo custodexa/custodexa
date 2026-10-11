@@ -158,6 +158,9 @@ type ExportManifest struct {
 	// #R2-2）：讀者據此分得出「收了幾筆事件」與「其中幾筆真的帶內容、
 	// 幾筆是留存失敗的缺口」——只給一個總數會讓缺口與可用混同
 	Clipboard *ExportClipboardStats `json:"clipboard,omitempty"`
+	// DailyReviews 證據包每日簽核段（daily_reviews.csv）：收錄與範圍內列數、截斷、
+	// 不隨類別篩選與樞紐、兩層保留覆蓋與推定列數。事件報告缺席
+	DailyReviews *ExportDailyReviewStats `json:"daily_reviews,omitempty"`
 	// Coverage 逐類別的保留覆蓋狀態（與工作台畫面同一判定來源）。
 	// **沒有這段，一段空白會被讀成「這段期間沒發生過這類事」**
 	Coverage []ExportCoverage `json:"coverage,omitempty"`
@@ -189,6 +192,8 @@ type AuditExportService struct {
 	// 證據包裝入剪貼簿明文時解密 content_enc。nil 時遇到可用內容即整包失敗
 	// ——「宣稱帶內容的包靜默缺內容」是對收包方說謊，fail-close
 	clipboardCodec crypto.ColumnCodec
+	// dailyReviews 每日簽核逐日清單的來源（SetDailyReviewLedger 注入）；nil 時證據包整包失敗
+	dailyReviews DailyReviewLedgerSource
 }
 
 // SetSigning 注入 manifest 簽章服務
@@ -224,7 +229,7 @@ func (hw *hashingWriter) Write(p []byte) (int, error) {
 }
 
 // Export 串流 ZIP 證據包到 w，回傳 manifest（含每檔 SHA-256、截斷標記）。
-// 寫入順序：操作日誌 → 指令流 → 剪貼簿內容 → 錄影 → manifest
+// 寫入順序：操作日誌 → 指令流 → 剪貼簿內容 → 錄影 → 事實段 → 每日簽核 → manifest
 // （manifest 最後寫，含前面各檔雜湊，本身不入雜湊）
 func (s *AuditExportService) Export(w io.Writer, filter *ExportFilter, exporterID uint, exporterName string) (*ExportManifest, error) {
 	if filter.IsEventReport() {
@@ -291,6 +296,10 @@ func (s *AuditExportService) exportBundle(w io.Writer, filter *ExportFilter,
 	}
 	// 5. 無本體之類別（告警、檔案傳輸）以事件事實 csv 列入
 	if err := s.writeBundleFactSections(zw, filter, manifest); err != nil {
+		return nil, err
+	}
+	// 5b. 每日簽核紀錄 → daily_reviews.csv（不隨類別篩選與樞紐，未簽日也是一列）
+	if err := s.writeDailyReviews(zw, filter, manifest); err != nil {
 		return nil, err
 	}
 	// 6. 逐類別的保留覆蓋狀態與範圍內真實筆數（spec「清單檔內容」要求兩者，

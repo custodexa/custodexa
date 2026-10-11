@@ -44,6 +44,7 @@
               size="small"
               effect="light"
               class="requirement-result"
+              :class="line.tagClass"
               :data-test="`requirement-result-${line.groupCode}`"
             >
               {{ line.resultLabel }}
@@ -66,6 +67,15 @@
               <template v-else>{{ part.text }}</template>
             </template>
           </span>
+          <!-- 每日審閱條文因未簽而偏離：開關已開，改設定解決不了，入口指向補簽 -->
+          <router-link
+            v-if="line.signoffDate"
+            class="audit-link"
+            :to="{ path: '/audit-logs', query: { tab: 'reviews', date: line.signoffDate } }"
+            :data-test="`requirement-go-sign-${line.groupCode}`"
+          >
+            {{ $t('complianceMap.signoff.goSign') }}
+          </router-link>
         </div>
         <p
           v-if="requirementLines.length === 0"
@@ -109,7 +119,7 @@
 import { computed } from 'vue'
 import { formatDateTime } from '@/utils/format'
 import { expectationText, formatValue, policyLabel, policyNote } from '@/utils/policyFormat'
-import { resultLabel, resultTagType } from '@/utils/policyClauseText'
+import { resultLabel, resultTagClass, resultTagType } from '@/utils/policyClauseText'
 import { t } from '@/i18n'
 import { translated } from '@/utils/i18nDisplay'
 
@@ -155,7 +165,36 @@ const expectation = (verdict) =>
 const MARK = '\u0000'
 const mark = (kind) => `${MARK}${kind}${MARK}`
 
+// 以運作紀錄判定（PCI 10.4.1）的句型：要求的是近 30 天每天都有簽核，開關開著
+// 仍可能偏離——句子要說出未簽的天數，否則管理者看到「開啟、未達要求」會困惑。
+// 符合與開關關閉兩種沿用一般句型（要求句已含「近 30 天每天都有簽核」）
+const signoffSentenceSpec = (verdict) => {
+  const values = { expectation: expectation(verdict) }
+  switch (verdict.reason) {
+    case 'signoff_unsigned_days':
+      return {
+        key: 'complianceMap.signoff.drawerUnsigned',
+        values: {
+          ...values,
+          n: verdict.signoff?.unsigned ?? 0,
+          date: verdict.signoff?.earliest_unsigned || '',
+        },
+        verdictWord: t('policyDrawer.verdictDeviating'),
+      }
+    case 'signoff_insufficient_data':
+      return { key: 'complianceMap.signoff.drawerInsufficient', values }
+    case 'signoff_source_unavailable':
+      return { key: 'complianceMap.signoff.drawerUnavailable', values }
+    default:
+      return null
+  }
+}
+
 const sentenceSpec = (verdict) => {
+  if (verdict.comparator === 'signoff_record') {
+    const spec = signoffSentenceSpec(verdict)
+    if (spec) return spec
+  }
   const current = formatValue(props.policy, verdict.current)
   const expected = formatValue(props.policy, verdict.expected)
   switch (verdict.result) {
@@ -221,7 +260,10 @@ const requirementLines = computed(() =>
         result: v.result,
         resultLabel: resultLabel(v.result),
         tagType: resultTagType(v.result),
+        tagClass: resultTagClass(v.result),
         parts,
+        signoffDate:
+          v.reason === 'signoff_unsigned_days' ? v.signoff?.earliest_unsigned || '' : '',
         text: [groupName(v.group_code), ...parts.map((p) => p.text)].join(''),
       }
     })

@@ -15,9 +15,16 @@ const CODE_GRAMMAR = /^[A-Z][A-Z0-9_]{0,63}$/
 
 // param key → 前端 enum 標籤 getter 的固定映射。
 // 數值型 param 無 getter，原樣帶入；未知 key 亦原樣（後端已 schema 驗、值受控）。
+// field：每日簽核的文字欄（note／delay_reason）譯成欄位名；其他碼的 field
+// （例如查詢參數名）不在對照內，原樣帶入
+const DAILY_REVIEW_FIELDS = ['note', 'delay_reason']
+const fieldLabel = (value) =>
+  DAILY_REVIEW_FIELDS.includes(value) ? t(`dailyReview.field.${value}`) : value
+
 const PARAM_ENUM_GETTERS = {
   resource: auditResourceLabel,
   role: roleLabel,
+  field: fieldLabel,
 }
 
 function translateParams(params) {

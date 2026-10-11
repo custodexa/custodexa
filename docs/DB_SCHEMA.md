@@ -1,6 +1,8 @@
 # Custodexa - 資料庫規格文件
 
-> **最後更新**：2026-09-30（`20260930_identity_group_mappings` 加外部群組字典、使用者群組規則與兩類逐規則支持；`user_group_members.manual` 與角色規則字典外鍵）
+> **最後更新**：2026-10-11（`policy_clause_controls.comparator` 值域加 `signoff_record`（只供內建組，PCI DSS 10.4.1 改用）；不加表、不加 migration）
+> 前次更新：2026-10-11（`20261012_daily_review_signoff`：`daily_review_logs` 加所屬日起訖、簽核時刻、時區、準時期限、遲簽與延遲原因、涵蓋方式、來源狀態、啟用依據等 11 欄並回填；新表 `security_policy_history`；政策鍵 `daily_review_timezone`；migration 總數 32、全庫 75 張表）
+> 前次更新：2026-09-30（`20260930_identity_group_mappings` 加外部群組字典、使用者群組規則與兩類逐規則支持；`user_group_members.manual` 與角色規則字典外鍵）
 > 前次更新：2026-09-29（`notification_channels` 加 `min_severity` 推送門檻欄與 CHECK，migration `20260929_notification_channel_min_severity`；ER 圖補 `language`、`min_severity`；migration 總數 30）
 > 前次更新：2026-09-23（群組宣告名與 `groups` scope 段：Entra issuer 不觸發確認與狀態警告，無 migration）
 > 前次更新：2026-09-23（Migration 版本一覽依 `migrations` 陣列補齊為 29 列並按執行序排列；增量建表數更正為 23 張、全庫 70 張；升級耗時依各條 Up 的實際動作重新分類）
@@ -92,7 +94,8 @@
 | PasswordHistory | `password_histories` | baseline | 密碼歷史，防重用（PCI 8.3.7） |
 | RefreshToken | `refresh_tokens` | baseline | Web 會話 refresh 憑證（PCI 8.2.8） |
 | AccessReview | `access_reviews` | baseline | 週期性存取複審簽核（不可變，PCI 7.2.4） |
-| DailyReviewLog | `daily_review_logs` | baseline | 每日審閱簽核（PCI 10.4.1） |
+| DailyReviewLog | `daily_review_logs` | baseline＋增量 `20261012_daily_review_signoff` 加 11 欄並回填 | 每日審閱簽核（PCI 10.4.1）；所屬日與簽核時刻分欄 |
+| SecurityPolicyHistory | `security_policy_history` | 增量 `20261012_daily_review_signoff` | 標了「保留歷史」的安全政策鍵（`daily_review_enabled`、`daily_review_timezone`）的每一次變更 |
 | AuditFailureEvent | `audit_failure_events` | baseline（`idx_failure_events_single_open`＝一機制至多一未結案失敗區間，partial unique） | 稽核機制失效事件（PCI 10.7.2/10.7.3） |
 | SyslogSetting | `syslog_settings` | baseline | syslog 轉發設定（PCI 10.3.3） |
 | ExportSigningKey | `export_signing_keys` | baseline | 匯出簽章金鑰（PCI 10.3.4） |
@@ -122,19 +125,20 @@
 | UserGroupMappingRuleSupport | `user_group_mapping_rule_supports` | 增量 `20260930_identity_group_mappings` | 使用者群組逐規則支持 |
 | SchemaMigration | `schema_migrations` | **`RunMigrations` 的 bootstrap DDL**（見下） | migration 版本追蹤（框架內部） |
 
-應用資料表共 **71 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
-再加 **27 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
+應用資料表共 **72 張**（46 張 baseline 建的表，扣掉關聯表 `user_roles`／`user_group_members`＝44，
+再加 **28 張由 baseline 之後的增量 migration 建的表**，依各增量檔的 `CREATE TABLE` 計：`audit_export_jobs`、`offsite_profiles`、
 `offsite_objects`、`user_source_ips`、`rotation_report_schedules`、`change_secret_batches`，
 憑證庫四表 `credentials`／`credential_secret_versions`／`credential_rotations`／`credential_rotation_members`，
 群組映射六表 `group_role_mappings`／`user_role_mappings`／`external_groups`／`group_user_group_mappings`／`user_role_mapping_rule_supports`／`user_group_mapping_rule_supports`，
 政策組四表 `policy_groups`／`policy_clauses`／`policy_clause_controls`／`policy_clause_annotations`，
 `kek_topologies`，`agent_tokens`，`access_request_items`，
-與 agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_events`／`agent_visibility_exposures`）；
-連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **74 張**表
+agent 稽核四表 `agent_tool_calls`／`agent_task_reports`／`agent_probe_events`／`agent_visibility_exposures`，
+與 `security_policy_history`）；
+連同兩張關聯表與 `schema_migrations`，全新安裝的資料庫共 **75 張**表
 （守衛基準見 `baseline_pg_test.go` 的 `TestBaselineOnEmptySchemaPostgres`）。
 baseline 的 DDL 總數為 **188 條**（46 建表 ＋ 26 外鍵 ＋ 116 索引），
 另有 **162 條索引**（116 條顯式 `CREATE INDEX` ＋ 46 條主鍵）與 **13 條 CHECK**——**上述三個數字皆只計 baseline，
-不含三十條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
+不含三十一條增量 migration**。各條增量各自新增的表、索引、欄位與 CHECK 逐條見「Migration 版本一覽」，
 全新安裝的最終形狀以守衛基準為準。
 
 **`schema_migrations` 是唯一不由 baseline 建立的表**，也是產品程式碼中唯一的 `IF NOT EXISTS`：
@@ -145,7 +149,7 @@ DDL 見 `backend/internal/database/migrations.go` 的 `schemaMigrationsBootstrap
 **開機不跑 `AutoMigrate`**。啟動順序
 （`backend/cmd/server/stage1.go`）：`InitDatabase()` → `RunMigrations()` → `SeedDatabase()`。
 `RunMigrations` 只做四件事：建 `schema_migrations` → 讀已套用集合 → **fail-close 判定**（見下）
-→ 套用未執行的 migration（現況共三十條：baseline 加二十九條增量，清單見「Migration 版本一覽」）。
+→ 套用未執行的 migration（現況共三十二條：baseline 加三十一條增量，清單見「Migration 版本一覽」）。
 
 守衛：
 - `backend/cmd/server/schema_source_guard_test.go` 的 `TestNoAutoMigrateInProductionCode`
@@ -1800,7 +1804,8 @@ const (
 | `retention_session_command_days` | int | `0` | min | 指令流保留天數（同上） |
 | `retention_alert_days` | int | `0` | min | 告警記錄保留天數（同上） |
 | `retention_recording_days` | int | `90` | min | 會話錄影保留天數（初始值由 `RECORDING_RETENTION_DAYS` 播種） |
-| `daily_review_enabled` | bool | `false` | - | 每日審閱簽核 |
+| `daily_review_enabled` | bool | `false` | - | 每日審閱簽核（保留變更歷史，見 `security_policy_history`） |
+| `daily_review_timezone` | timezone | `UTC` | - | 每日簽核的業務時區（IANA 名稱，以 `time.LoadLocation` 驗證，拒 `Local` 與空字串；首次啟動依 `TZ` → `/etc/localtime` → `UTC` 播種，已有列不覆蓋；改後自下一個日期生效；保留變更歷史；不對照任何條文） |
 | `failure_alert_enabled` | bool | `false` | - | 稽核失效告警通知（失效事件記錄恆開，此鍵僅控通知） |
 | `key_cryptoperiod_reminder_days` | int | `0` | max | 金鑰輪替提醒天數（0=不提醒；純提醒不觸發動作） |
 | `dek_cache_ttl_seconds` | int | 空 | max | 資料金鑰快取存活期（空=不限期；0=用時現解不留快取；N=固定期限不續期；空值合法為本鍵獨有） |
@@ -1931,17 +1936,52 @@ const (
 
 **表名**: `daily_review_logs`
 **檔案**: `backend/internal/model/daily_review.go`
-**建表方式**: baseline（`baseline_schema_audit.go`，PCI 10.4.1/10.4.1.1）
+**建表方式**: baseline（`baseline_schema_audit.go`，PCI 10.4.1/10.4.1.1）＋增量 `20261012_daily_review_signoff` 加 11 欄並回填
+
+每個所屬日至多一筆。**所屬日與簽核時刻分欄**：`review_date` 是審哪一天，`signed_at` 是哪個時刻簽的，後者只由伺服器寫入。切日時區、該日起訖與準時期限存在列上，之後改業務時區不會改變已簽的紀錄。
 
 | 欄位 | 類型 | GORM Tags | JSON | 說明 |
 |------|------|-----------|------|------|
 | `ID` | uint | `primarykey` | `id` | 主鍵 |
-| `ReviewDate` | string | `type:varchar(10);not null;uniqueIndex` | `review_date` | 審閱日（YYYY-MM-DD；每日至多一筆） |
+| `ReviewDate` | string | `type:varchar(10);not null;uniqueIndex` | `review_date` | 所屬日（業務時區的 YYYY-MM-DD；每日至多一筆） |
 | `ReviewerID` | uint | `not null` | `reviewer_id` | 簽核者 ID |
 | `ReviewerName` | string | `type:varchar(100);not null` | `reviewer_name` | 簽核者名稱（反正規化） |
-| `SnapshotJSON` | string | `type:text;not null` | `snapshot_json` | 簽核當下事件計數快照（登入失敗/未審閱告警/高危操作） |
-| `Note` | string | `type:text` | `note` | 備註（選填） |
-| `CreatedAt` | time.Time | - | `created_at` | 簽核時間 |
+| `SnapshotJSON` | string | `type:text;not null` | `snapshot_json` | 簽核當下的事件計數快照。新列為 `{date, login_failures, login_failures_source, high_risk_ops, high_risk_ops_source, unreviewed_alerts, alerts_total, alerts_benign, alerts_escalated, alerts_source}`，來源已清除的項目計數為 null；升級前的列維持 `{date, login_failures, unreviewed_alerts, high_risk_ops}` |
+| `Note` | string | `type:text` | `note` | 備註（選填，至多 500 字） |
+| `CreatedAt` | time.Time | - | `created_at` | 列的建立時刻（ORM 慣例欄）；對外的簽核時刻讀 `signed_at` |
+| `SignedAt` | time.Time | `not null`（timestamptz） | `signed_at` | 簽核時刻，伺服器受理時取當下時間；升級前的列回填為 `created_at` |
+| `Timezone` | string | `type:varchar(64);not null` | `timezone` | 切出這一天所用的 IANA 時區 |
+| `TimezoneInferred` | bool | `not null;default:false` | `timezone_inferred` | 時區是升級時推定的（升級前的列為 true） |
+| `WindowStart` | time.Time | `not null`（timestamptz） | `window_start` | 該日起點（含） |
+| `WindowEnd` | time.Time | `not null`（timestamptz） | `window_end` | 該日終點（不含）；改時區的轉換日可能不是 24 小時 |
+| `DueAt` | time.Time | `not null`（timestamptz） | `due_at` | 準時期限：所屬日加兩個日曆日在同一時區的 00:00 |
+| `Late` | bool | `not null` | `late` | 是否遲簽（`signed_at >= due_at`） |
+| `DelayReason` | *string | `type:text` | `delay_reason` | 延遲原因；只在遲簽時保存（至多 500 字），準時為 NULL |
+| `Coverage` | string | `type:varchar(16);not null` | `coverage` | 時間窗涵蓋方式：`full_day`，或 `until_signed`（升級前的列，快照只涵蓋到簽核時刻） |
+| `SourceStatus` | string | `type:varchar(16);not null` | `source_status` | 簽核當下三類來源中最差的完整性狀態：`complete`／`partial`／`purged` |
+| `EnabledBasis` | string | `type:varchar(16);not null;default:recorded` | `enabled_basis` | 這一天在啟用範圍內的依據，簽核時固化：`recorded`，或 `presumed_purged`／`presumed_gap`／`presumed_tail`（升級時無法證明、推定為開） |
+
+---
+
+### 21a. SecurityPolicyHistory（安全政策變更歷史）
+
+**表名**: `security_policy_history`
+**檔案**: `backend/internal/model/security_policy.go`
+**建表方式**: 增量 `20261012_daily_review_signoff`
+
+只記錄標了「保留歷史」的政策鍵（`daily_review_enabled`、`daily_review_timezone`）。寫入在政策更新的同一交易內，先取交易級鎖再讀舊值，同值不寫；每日簽核的行事曆（各所屬日的時區、起訖與是否在啟用範圍）由這張表重播得出。
+
+| 欄位 | 類型 | GORM Tags | JSON | 說明 |
+|------|------|-----------|------|------|
+| `ID` | uint | `primarykey`（bigserial） | `id` | 主鍵 |
+| `PolicyKey` | string | `type:varchar(64);not null;index:idx_security_policy_history_key_at,priority:1` | `policy_key` | 政策鍵 |
+| `OldValue` | string | `type:text;not null` | `old_value` | 變更前的值（升級寫入的時區初值列為空字串；首次啟動播種列為該鍵的出廠預設值） |
+| `NewValue` | string | `type:text;not null` | `new_value` | 變更後的值 |
+| `ChangedAt` | time.Time | `not null;index:idx_security_policy_history_key_at,priority:2`（timestamptz） | `changed_at` | 變更時刻 |
+| `ChangedBy` | string | `type:varchar(100);not null` | `changed_by` | 變更者 |
+| `Source` | string | `type:varchar(32);not null` | `source` | 來源：`policy_update`（管理端寫入）、`seed`（首次啟動播種）、`migration_upgrade`（升級時的時區初值）、`migration_audit_log`、`migration_policy_row`、`migration_sign_record`、`migration_presumed_purged`、`migration_presumed_gap`、`migration_presumed_tail`（升級時重建的啟用歷史；後三者表示推定為開） |
+
+索引：`idx_security_policy_history_key_at` `(policy_key, changed_at)`。
 
 ---
 
@@ -2480,7 +2520,7 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 
 ## Migration 版本一覽
 
-**現行 migration 共三十條**——baseline 一條，其後的增量二十九條
+**現行 migration 共三十二條**——baseline 一條，其後的增量三十一條
 （`backend/internal/database/migrations.go` 的 `migrations` 陣列，依序執行）：
 
 | 版本 | 內容 | Down |
@@ -2516,18 +2556,19 @@ CHECK 釘在同檔的 `baselineCheckConstraints`
 | `20260924_sensitive_reveal_alert` | 重建 `command_alerts_kind_check`，值域加 `sensitive_reveal`，共 **2 條 DDL**（DROP＋ADD CONSTRAINT），不加欄、無回填 | `rollbackSensitiveRevealAlert`：**一律回拒絕錯誤**。保留告警證據，停用改由政策設定達成、不刪記錄 |
 | `20260929_notification_channel_min_severity` | `notification_channels` 加 `min_severity character varying(10) DEFAULT 'low' NOT NULL` 與 CHECK `notification_channels_min_severity_check`（`low`／`medium`／`high`；見第 11 節），共 **2 條 DDL**，無回填；既有通道以 default 取得 `low`（全部告警），升級後推送行為不變 | `rollbackNotificationChannelMinSeverity`：卸 CHECK 與欄位。**有損但方向安全**：門檻設定沒有第二處存放，回退後一律回到全部推送 |
 | `20260930_identity_group_mappings` | 新增 `external_groups`、`group_user_group_mappings` 及兩種逐規則支持表，角色規則加字典外鍵，有效群組成員加 `manual`；舊角色事實依同來源同角色的啟用規則建立支持，無規則事實撤除並記遷移稽核，舊成員標為手動；不推進憑證世代 | `rollbackIdentityGroupMappings`：拒絕執行；回退以升級前備份還原 |
+| `20261012_daily_review_signoff` | 每日簽核改版：`daily_review_logs` 加 11 欄（`signed_at`、`timezone`、`timezone_inferred`、`window_start`、`window_end`、`due_at`、`late`、`delay_reason`、`coverage`、`source_status`、`enabled_basis`；見第 21 節），建 `security_policy_history` 與 `idx_security_policy_history_key_at`（`(policy_key, changed_at)`；見第 21a 節），共 **21 條 DDL**（11 加欄、1 建表、1 索引、8 條回填後的 `SET NOT NULL`）。**回填既有簽核列**：`signed_at=created_at`；`timezone` 為升級當下偵測的伺服器時區並標 `timezone_inferred=true`；起訖、準時期限依該時區計算，`late=false`；`coverage=until_signed`（舊快照只涵蓋到簽核時刻）；`source_status=complete`；`enabled_basis=recorded`；`review_date` 與 `snapshot_json` 不動。**重建啟用歷史**：由操作日誌中的政策變更紀錄重播 `daily_review_enabled`，無法證明開關狀態的區段（審計已清除、前後銜接不上、與現值不一致）一律推定為開並以 `migration_presumed_*` 來源標明，推定區段以 baseline 建立時刻為起點；有簽核紀錄的日子一律在範圍內（`migration_sign_record`）。時區歷史寫一筆初值（`migration_upgrade`），政策列尚無 `daily_review_timezone` 時寫入同一偵測值。回填量與 `daily_review_logs` 列數及政策變更審計列數成正比。DDL 沿 baseline 紀律：無條件、無 `IF NOT EXISTS` | `rollbackDailyReviewSignoff`：刪 11 欄與 `security_policy_history`。**Down 有損、開發庫限定**：失去延遲原因、切日時區、遲簽標示與全部變更歷史。**生產沒有回滾入口**：回退＝部署回舊版映像並還原升級前備份（見 `docs/ops/upgrade-sop.md` §4） |
 
 執行序仍由 `migrations` 陣列的順序決定；日後新增增量 migration 時照舊。
 
-> **升級注意**：baseline 之後的三十條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
+> **升級注意**：baseline 之後的三十一條增量於既有部署升級時自動套用（段 1，無 codec 依賴），
 > 依 `migrations` 陣列的順序在同一次啟動內跑完。依各條 Up 對既有資料列做了什麼，分三類：
 >
-> - **讀寫存量資料列，耗時隨對應表的列數成長（5 條）**：
+> - **讀寫存量資料列，耗時隨對應表的列數成長（6 條）**：
 >   `20260826_source_ip_forensics`（冷啟動回填，以 `INSERT … SELECT` 彙整 `sessions` 與 `audit_logs` 的登入成功列）、
 >   `20260906_credential_library`（逐筆把存活的 `asset_accounts` 列轉為專用憑證，帳號數通常遠小於會話與稽核的存量）、
 >   `20260921_access_request_items`（以 `INSERT … SELECT` 為每張未軟刪的 `access_requests` 回填一項）、
 >   `20260921_access_request_item_decisions`（三段 `UPDATE`，連結 `access_request_items`、`access_requests`、
->   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）。
+>   `asset_authorizations` 與 `access_request_approvals`）、`20260930_identity_group_mappings`（既有角色規則與映射事實建立字典及逐規則支持，既有群組成員標為手動）、`20261012_daily_review_signoff`（回填既有 `daily_review_logs` 列，並逐列讀取政策變更的 `audit_logs` 列重建每日審閱的啟用歷史）。
 > - **只寫固定少量的列，不隨存量成長（3 條）**：`20260921_alert_rule_direction`（種入 2 條輸出規則）、
 >   `20260921_agent_subject_rules`（種入 2 條 agent 規則）、`20260923_agent_lateral_rule_pattern`（以唯一的規則名稱改寫至多 1 列）。
 > - **只有 DDL，Up 不含讀寫資料列的 DML 語句（22 條）**。其中 10 條在既有表上建索引或加 CHECK／外鍵：
@@ -3574,12 +3615,12 @@ pending → uploading → uploaded → local_purged
 | `GroupCode` | string | `size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:1` | `group_code` | 所屬政策組（**無 FK**） |
 | `ClauseNo` | string | `size:64;not null` | `clause_no` | 所屬條文的條號 |
 | `PolicyKey` | string | `size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:2` | `policy_key` | 要求指向的安全設定鍵。**指向的是設定鍵的定義（在程式碼裡）而非 `security_policies` 的資料列**——沒有政策列時該鍵以出廠預設參與判定 |
-| `Comparator` | string | `size:16;not null` | `comparator` | 比較方式：`min`／`max`／`equals`／`review`（見下），合法值域依鍵型別受限 |
+| `Comparator` | string | `size:16;not null` | `comparator` | 比較方式：`min`／`max`／`equals`／`review`，內建組另有 `signoff_record`（見下），合法值域依鍵型別受限 |
 | `ExpectedValue` | string | `type:text;not null` | `expected_value` | 要求值，以字串存放（型別語義由設定鍵的定義決定，與設定值本身同一套）；`review` 時為空字串 |
 | `ReferenceOnly` | bool | `not null;default:false` | `reference_only` | 要求值是參考值而非規範明定值，為真時該要求產生「待人工確認」而不是符合或偏離 |
 | `CreatedAt` / `UpdatedAt` | time.Time | - | `created_at` / `updated_at` | 時間戳 |
 
-**`comparator` 四值**:
+**`comparator` 五值**:
 
 | 值 | 語義 | 適用的鍵型別 |
 |---|---|---|
@@ -3587,6 +3628,10 @@ pending → uploading → uploaded → local_purged
 | `max` | 現值須不大於要求值 | 整數 |
 | `equals` | 現值須等於要求值 | 開關、選項 |
 | `review` | 條文涉及這個鍵但**未定值**，要求值留空 | 整數、開關、選項 |
+| `signoff_record` | 以每日簽核的運作紀錄判定：開關須為 `true`，且近 30 天沒有應簽而未簽的日子；累計未滿 7 天或取不到紀錄時判「資料不足」。**只供內建組**（目前即 PCI DSS 的 10.4.1），自建組的寫入端拒收；要求值固定 `true` | 僅 `daily_review_enabled` |
+
+升級時內建組的種子同步把 PCI DSS 10.4.1 由 `equals` 改為 `signoff_record`（14 字元，欄寬 16 內；
+逐鍵 upsert，機構對該條文的備註與確認不受影響）。
 
 **索引與約束**:
 - `policy_clause_controls_pkey`＝`(id)`。

@@ -341,6 +341,10 @@ func parseRoute(c *gin.Context) (model.AuditAction, model.AuditResource, *uint) 
 		// 輸入去算」兩種語義，只有路徑分得出來，故在此顯式訂正為讀取。
 		// 「查了什麼」由 handler 經 audit_details 補上（形狀而非明文，見該處註解）。
 		action = model.ActionRead
+	} else if path == "/api/v1/security-policies/apply-preview" || path == "/api/v1/security-policies/compliance/preview" {
+		// 安全政策的套用預覽與草稿回饋同屬唯讀試算（寫入走 PUT 批次更新），
+		// 記成 create 會讓例行的表單試算與真正的政策變更同形，並灌大每日簽核的高危操作數
+		action = model.ActionRead
 	}
 
 	// 提取 resource_id（從 path params）

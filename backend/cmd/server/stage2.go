@@ -14,6 +14,7 @@ import (
 	"github.com/custodexa/backend/internal/modules/policy"
 	"github.com/custodexa/backend/pkg/gatewayapi"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -268,6 +269,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		policyService.SeedValue(policy.PolicyRefreshCookieSecure,
 			strconv.FormatBool(d.Secure), d.Source)
 	}
+	// 每日簽核的業務時區：尚無設定時以偵測到的伺服器時區播種（TZ → /etc/localtime
+	// → UTC）；升級時遷移已寫入同一偵測值，有列即不動
+	policyService.SeedDailyReviewTimezone(os.Getenv, func() (string, error) { return os.Readlink("/etc/localtime") })
 	// refresh cookie 的 Secure 現值與其來源歸因（決策 2）。
 	//
 	// **落在這裡而非 main 的啟動橫幅**：生效值住在政策服務裡，而封印啟動
@@ -930,6 +934,9 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 		audit.NewSessionCommandService(database.DB), recordingService)
 	auditExportService.SetSigning(exportSigning)
 	auditExportService.SetClipboardCodec(keyManager)
+	// 每日簽核紀錄段（daily_reviews.csv）的逐日清單來源：未注入時證據包整包失敗，
+	// 不產出缺審閱證據卻看似完整的包
+	auditExportService.SetDailyReviewLedger(dailyReviewService)
 	auditExportJobService := audit.NewAuditExportJobService(database.DB)
 
 	// 輪替證據報告：資料集建構者與排程服務。
@@ -1181,8 +1188,12 @@ func runStage2(ctx context.Context, s1 *stage1, kek crypto.KEKProvider, credenti
 	auditExportJobWorker.SetOffsiteEnqueuer(offsiteLedger)
 	// 輪替證據報告的打包者：種類分派在 worker，報告的資料與版面在 asset 模組，
 	// 兩者只以介面相接，audit 不因此認識任何一種報告
+	// 合規報告的判定與每日審閱段讀同一份每日簽核運作紀錄：未注入時 10.4.1 判為
+	// 資料不足（不退回只看開關而判符合）
+	reportCompliance := policy.NewComplianceService(policyService, policy.NewPolicyGroupRepository(database.DB))
+	reportCompliance.SetSignoffSource(dailyReviewService)
 	auditExportJobWorker.RegisterPackager(asset.NewRotationReportPackager(
-		rotationReportBuilder, exportSigning, Version), audit.NewComplianceReportPackager(policy.NewComplianceService(policyService, policy.NewPolicyGroupRepository(database.DB)), exportSigning, Version))
+		rotationReportBuilder, exportSigning, Version), audit.NewComplianceReportPackager(reportCompliance, exportSigning, Version))
 	starts[8].start, starts[8].stop = auditExportJobWorker.Start, auditExportJobWorker.Stop
 
 	rotationReportScheduler := scheduler.NewRotationReportScheduler(rotationReportSchedules)
@@ -1602,6 +1613,9 @@ func buildRouteDeps(cfg *config.Config, s routeServices) (routeDeps, error) {
 	// 一份不會壞掉，但同一時點的三個畫面會各算各的，而分歧不會有任何一處報錯
 	policyGroupRepo := policy.NewPolicyGroupRepository(database.DB)
 	complianceService := policy.NewComplianceService(s.policyService, policyGroupRepo)
+	// PCI 10.4.1 以每日簽核的運作紀錄判定：**必須在 handler 建構前注入**，
+	// 否則路由開放後的第一批判定都會是資料不足（signoff_source_unavailable）
+	complianceService.SetSignoffSource(s.dailyReviewService)
 
 	// 安全政策管理路由（admin；變更入審計，PCI 10.2.2）
 	securityPolicyHandler := api.NewSecurityPolicyHandler(s.policyService, s.auditService,

@@ -217,6 +217,16 @@ var migrations = []Migration{
 		Down:    rollbackNotificationChannelMinSeverity,
 	},
 	{Version: "20260930_identity_group_mappings", Name: "identity_group_mappings", Up: applyIdentityGroupMappings, Down: rollbackIdentityGroupMappings},
+	{
+		// 每日簽核改版：daily_review_logs 加所屬日與簽核時刻分欄所需的欄位並回填，
+		// 新表 security_policy_history 與升級前啟用歷史的重建。
+		// **Down 有損**（失去延遲原因、時區、遲簽標示與變更歷史，生產無回滾入口；
+		// 見 migration_daily_review_signoff.go 檔頭的 Down 契約）
+		Version: "20261012_daily_review_signoff",
+		Name:    "daily_review_signoff",
+		Up:      applyDailyReviewSignoff,
+		Down:    rollbackDailyReviewSignoff,
+	},
 }
 
 // schemaDDLStatements 全部 schema DDL：baseline ＋ baseline 之後的增量建表／加欄／刪欄。
@@ -252,7 +262,8 @@ func schemaDDLStatements() []string {
 	out = append(out, sensitiveRevealAlertDDL()...)
 	out = append(out, agentSessionTokenNameDDL()...)
 	out = append(out, notificationChannelMinSeverityDDL()...)
-	return append(out, identityGroupMappingsDDL()...)
+	out = append(out, identityGroupMappingsDDL()...)
+	return append(out, dailyReviewSignoffDDL()...)
 }
 
 // applyMigrationsAfterBaseline 依序執行 baseline 之後的全部增量（pg parity

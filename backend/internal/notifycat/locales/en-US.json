@@ -69,8 +69,8 @@
   },
   "daily_review_overdue": {
     "default": {
-      "title": "Daily review overdue",
-      "text": "The security event review for {date} has not been signed off (PCI 10.4.1 requires a daily review); please complete it on the dashboard."
+      "title": "Daily review overdue (earliest unsigned: {date})",
+      "text": "{pending_count} days of security event review are not signed off, {overdue_count} of them past the on-time deadline (PCI 10.4.1 requires a daily review). The earliest unsigned day is {earliest_pending_date}; days are cut in the business time zone {timezone}. Unsigned days:{pending_dates}\nPlease sign them off on the Daily Review tab of the Operation Logs page."
     }
   },
   "test": {

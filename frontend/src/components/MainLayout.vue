@@ -56,6 +56,7 @@
             v-for="item in group.items"
             :key="item.path"
             :index="item.path"
+            :route="menuRouteFor(item)"
           >
             <el-icon><component :is="item.icon" /></el-icon>
             <template #title>
@@ -66,6 +67,14 @@
                   :value="approvalPendingCount"
                   :max="99"
                   class="menu-badge"
+                />
+                <el-badge
+                  v-else-if="item.badge === 'dailyReviews' && canSignDailyReview && dailyReviewBadge.count.value > 0"
+                  :value="dailyReviewBadge.count.value"
+                  :max="99"
+                  :title="t('dailyReview.badge.title', { n: dailyReviewBadge.count.value })"
+                  :class="['menu-badge', dailyReviewBadge.overdueCount.value > 0 ? 'daily-review-badge--danger' : 'daily-review-badge--warning']"
+                  data-test="daily-review-badge"
                 />
               </span>
             </template>
@@ -203,6 +212,7 @@ import { clearSession } from '@/utils/session'
 import { detailSubject } from '@/utils/detailTitle'
 import { canEnter, entryRuleFor, entrySubject } from '@/router/entryRules'
 import { MENU_GROUPS } from './sidebarMenu'
+import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
 
 const COLLAPSE_KEY = 'ot-sidebar-collapsed'
 
@@ -264,6 +274,16 @@ const visibleGroups = computed(() =>
     }))
     .filter((group) => group.items.length > 0)
 )
+
+// 每日簽核待簽天數：只對具簽核權限（alert:manage＝admin／auditor）者輪詢與顯示。
+// 沒有權限的人每 30 秒打一次用不到的端點，只會多出審計讀取列
+const dailyReviewBadge = useDailyReviewBadge()
+const canSignDailyReview = isPrivileged
+// 有待簽天數時點「操作日誌」直接進每日簽核分頁；沒有時維持原路徑
+const menuRouteFor = (item) =>
+  item.badge === 'dailyReviews' && canSignDailyReview.value && dailyReviewBadge.count.value > 0
+    ? { path: item.path, query: { tab: 'reviews' } }
+    : undefined
 
 const sidebarWidth = computed(() =>
   isCollapsed.value
@@ -516,6 +536,7 @@ onUnmounted(() => {
   if (instanceGuardTimer) clearInterval(instanceGuardTimer)
   window.removeEventListener('ot-user-updated', syncUserFromStorage)
   window.removeEventListener('ot-approvals-changed', onApprovalsChanged)
+  dailyReviewBadge.stop()
 })
 
 onMounted(() => {
@@ -524,12 +545,22 @@ onMounted(() => {
   window.addEventListener('ot-user-updated', syncUserFromStorage)
   window.addEventListener('ot-approvals-changed', onApprovalsChanged)
   startApprovalBadgePolling()
+  if (canSignDailyReview.value) dailyReviewBadge.start()
   refreshEntryFlags()
   startInstanceGuardPolling()
 })
 </script>
 
 <style scoped>
+/* 每日簽核徽章：只有期限內的日子用警示色，有任一天逾期轉危險色 */
+.daily-review-badge--warning :deep(.el-badge__content) {
+  background-color: var(--ot-warning);
+}
+
+.daily-review-badge--danger :deep(.el-badge__content) {
+  background-color: var(--ot-danger);
+}
+
 .layout-container {
   height: 100vh;
 }
@@ -626,9 +657,18 @@ onMounted(() => {
   gap: var(--ot-space-sm);
 }
 
+/* 選單列 line-height 40px：徽章外框若沿用 inline-block，sup 會落在 40px 行框的基線上，
+   看起來像貼在文字右下的上標。改成 flex 收成徽章本身的高度，與文字垂直置中 */
+.menu-badge {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
 .menu-badge :deep(.el-badge__content) {
   position: static;
   transform: none;
+  vertical-align: middle;
 }
 
 .sidebar-menu :deep(.el-menu-item) {

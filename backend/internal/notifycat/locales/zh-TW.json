@@ -69,8 +69,8 @@
   },
   "daily_review_overdue": {
     "default": {
-      "title": "每日審閱逾期",
-      "text": "{date} 的安全事件審閱尚未簽核（PCI 10.4.1 要求每日審閱），請至儀表板完成。"
+      "title": "每日審閱逾期（最早未簽 {date}）",
+      "text": "尚有 {pending_count} 天的安全事件審閱未簽核，其中 {overdue_count} 天已過準時期限（PCI 10.4.1 要求每日審閱）。最早未簽日為 {earliest_pending_date}，日期以業務時區 {timezone} 切分。未簽日：{pending_dates}\n請至操作日誌的「每日簽核」分頁補簽。"
     }
   },
   "test": {

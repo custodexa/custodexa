@@ -50,6 +50,12 @@ const (
 	// 數字或開關值可以代表它。系統不替條文發明一個值（那會讓稽核以為那個門檻
 	// 有出處），改為連同目前值列出，由稽核人員判讀設定是否合理
 	PolicyControlComparatorReview = "review"
+	// PolicyControlComparatorSignoffRecord 以每日簽核的運作紀錄判定（要求值固定為 true）：
+	// 開關要開著，且近 30 天沒有應簽而未簽的日子。
+	//
+	// **只有內建組用得到**：判定要讀每日簽核的期間統計，而那份紀錄只對
+	// 「每日審閱簽核」這一個鍵有意義；自建組選了它也拿不到運作紀錄的語義
+	PolicyControlComparatorSignoffRecord = "signoff_record"
 )
 
 // PolicyGroup 政策組：一組對照條文的容器。
@@ -115,7 +121,7 @@ type PolicyClauseControl struct {
 	GroupCode string `gorm:"size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:1" json:"group_code"`
 	ClauseNo  string `gorm:"size:64;not null" json:"clause_no"`
 	PolicyKey string `gorm:"size:64;not null;uniqueIndex:idx_policy_clause_controls_group_key,priority:2" json:"policy_key"`
-	// Comparator 比較方式（min／max／equals），依鍵型別受限
+	// Comparator 比較方式（min／max／equals／review，內建組另有 signoff_record），依鍵型別受限
 	Comparator string `gorm:"size:16;not null" json:"comparator"`
 	// ExpectedValue 要求值，以字串存放（型別語義由設定鍵的定義決定，與設定值本身同一套）
 	ExpectedValue string `gorm:"type:text;not null" json:"expected_value"`

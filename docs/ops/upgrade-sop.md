@@ -1135,6 +1135,13 @@ Then three more checks specific to an upgrade:
 
 > When verifying the production stack on a development machine, add an explicit `-f docker-compose.yml` to every command above (overriding `COMPOSE_FILE` in `.env`).
 
+#### Daily review sign-off after upgrading to 1.17.0
+
+Two checks for deployments upgrading from a release before 1.17.0.
+
+1. **Confirm the business time zone.** Daily review now cuts each day at 00:00 in a business time zone, set by the security policy `daily_review_timezone` ("Daily review business time zone", in the Log Retention and Review section of the security policy page). The upgrade fills it with the time zone detected on the server at that moment: the `TZ` environment variable if it names a loadable zone, then the zone that `/etc/localtime` points to, otherwise `UTC`. A container started without `TZ` usually ends up with `UTC`. If that is not the time zone your organization reviews in, change it. A change takes effect from the next date, never the current one; sign-off records that already exist keep the time zone and day boundaries they were signed with. Days before the upgrade are cut with the detected value and are marked as having an inferred time zone; changing the setting now does not re-cut them.
+2. **Review the pending days whose enabled state is presumed.** The upgrade rebuilds the on/off history of daily review from the policy change records in the audit log. Where it cannot prove the state, because those records were purged under the retention settings, two adjacent records do not line up, or the rebuilt history disagrees with the current value, it treats the feature as enabled for that stretch, starting no earlier than the date this database was first installed. Days with an existing sign-off record always count as enabled on the strength of that record. With the feature enabled, open the Daily Review tab of the Operation Logs page: the presumed days are listed as pending and marked as presumed. They count toward the sign-off statistics, and while the feature is enabled they appear in the overdue reminder. Most are past the on-time deadline, so signing one is a late sign-off and requires a delay reason. Write down what actually happened, for example that the enabled state of that day could not be confirmed from records after the upgrade and the day's events were reviewed afterwards. The presumed mark stays on the sign-off record.
+
 ### 2.8 Recording GPL corresponding source at release time (for those who distribute images)
 
 **Who this applies to: anyone who hands self-built images to a third party** (this project's publisher, and anyone who builds and then redistributes). It does not apply to those who deploy only inside their own data center and deliver no images.

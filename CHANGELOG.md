@@ -2,6 +2,115 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.0 — daily review sign-off by completed day (2026-10-11)
+
+Schema changes. Upgrading runs the `20261012_daily_review_signoff` migration. It adds columns to
+the daily review records and fills them in for existing sign-offs, creates a change history for
+the daily review settings, and rebuilds from the audit log the periods in which daily review was
+enabled. A 1.14.x, 1.15.x or 1.16.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.0`. Once 1.17.0 has started, `custodexa.sh rollback` does not switch
+back and prints how to restore the backup the upgrade took.
+
+### New capabilities
+
+- Daily review sign-off moves to the Daily Review tab of the Operation Logs page. The tab shows
+  the sign-off rate and the on-time, late and unsigned days for the last 30 days, the last 90
+  days or a custom range, then the days awaiting sign-off from the earliest, then the sign-off
+  records from the newest, which can be limited to late ones.
+- A sign-off covers one completed day in the business time zone, from 00:00 to the next 00:00.
+  The current day cannot be signed. A day can be signed from 30 minutes after it ends, so that
+  records written around midnight are in place first.
+- Signing happens in a drawer that lists the day's unreviewed alerts and the earliest 20 login
+  failures and high-risk operations, with a link to the Operation Logs filtered to that day. A
+  day cannot be signed while any of its alerts is unreviewed. The alerts can be reviewed in the
+  drawer, one at a time or several together.
+- Missed days can be signed later, with no time limit. The record keeps the reviewed day and the
+  time of signing apart, and the server sets the time of signing. A sign-off at or after the
+  on-time deadline, the end of the day after the reviewed day, is recorded as late with the
+  number of days and requires a delay reason. Notes and delay reasons take up to 500 characters.
+- The security policy `daily_review_timezone` (Daily review business time zone), below the daily
+  review switch on the security policy page, sets where days begin and end, the on-time deadline
+  and the time of the overdue reminder. A change takes effect from the next date. The page asks
+  for confirmation first and then shows the date the new time zone starts. Existing sign-offs
+  keep the time zone they were signed in. The backend carries its own time zone data, so any IANA
+  time zone can be set on images without one.
+- The overdue reminder goes out once a day after 09:00 in the business time zone while any day is
+  past its on-time deadline; a restart can send it a second time that day. It gives the number of
+  unsigned days, lists the earliest 31 of them and stops once all are signed.
+- The dashboard card shows yesterday's counts and the unsigned days, or the signer and the 30-day
+  sign-off rate once all days are signed. Its buttons and dates open the day's drawer on the
+  Daily Review tab, and signing no longer happens on the card. For users who can sign, the
+  Operation Logs item in the sidebar and the Daily Review tab show the number of days awaiting
+  sign-off, in red once one is overdue.
+- The Operation Logs page accepts `?date=` to open a day's drawer and `?start_time=` and
+  `?end_time=` to fill in the time filter.
+- Evidence packages contain `daily_reviews.csv`, with one row for every day in the time window
+  on which daily review was enabled, including unsigned days and days not yet due. It is
+  included whatever the data type filter or pivot. Counts from sources already purged under the
+  retention settings are left empty instead of 0. The manifest describes the file in a
+  `daily_reviews` section, and the file holds at most 3660 rows.
+- PCI DSS 10.4.1 on the Compliance map is judged on actual sign-offs over the 30 days ending
+  yesterday. It is compliant when no required day is unsigned and deviating otherwise, with the
+  number of unsigned days, the earliest one and a link to sign it. Late sign-offs are counted and
+  shown without changing the result. Before daily review has been on for 7 days, or when the
+  sign-off records cannot be read, the result is Not enough data, a new result counted
+  separately in the summary.
+- The compliance report for PCI DSS adds a daily review sign-off section to the PDF, with the
+  required, signed, late and unsigned days of the same 30 days and a day-by-day extract. The
+  report now includes signer names, delay reasons and notes.
+
+### What changes for deployers
+
+- The migration keeps the reviewed day and the counts of existing sign-offs. It records them as
+  cut in the time zone detected on the server during the upgrade, marked as inferred, and as
+  covering the day only up to the moment of signing.
+- Where the audit log cannot prove whether daily review was enabled, because the records were
+  purged under the retention settings, two records do not connect, or the rebuilt history
+  disagrees with the current setting, the migration presumes it was enabled, starting no earlier
+  than the date the database was installed. These days are marked as presumed. With daily review
+  enabled, many days may therefore be awaiting sign-off right after the upgrade, most of them past
+  their deadline. Days with an existing sign-off stay in range.
+- On upgrade or first start, `daily_review_timezone` is set to the server's time zone: `TZ` when
+  it names a loadable zone, then the zone `/etc/localtime` points to, otherwise UTC. A container
+  started without `TZ` usually gets UTC. Check the value after upgrading, as the daily review
+  section of `docs/ops/upgrade-sop.md` describes.
+- The `daily_review_overdue` notification keeps `date`, now the earliest unsigned day, and adds
+  `pending_dates` (a JSON array of up to 31 dates, earliest first), `pending_count`,
+  `overdue_count`, `earliest_pending_date` and `timezone`. An unsigned yesterday alone no longer
+  sends it.
+- `POST /api/v1/security-policies/apply-preview` and
+  `POST /api/v1/security-policies/compliance/preview` are recorded in the audit log as `read`
+  instead of `create`.
+- For security policy, syslog settings and audit export, the daily high-risk operation count
+  now includes only create, update and delete actions, plus `GET /api/v1/audit-export`. Reading
+  those settings, previews and syslog connection tests are no longer counted. Counts already
+  stored in earlier sign-offs are not recalculated.
+- New endpoints, all readable with `audit:view`: `GET /api/v1/daily-reviews/pending`,
+  `GET /api/v1/daily-reviews/pending/count`, `GET /api/v1/daily-reviews/days/:date` and
+  `GET /api/v1/daily-reviews/stats`.
+- The requests below change. Update API clients that use them:
+
+  | Request | Change |
+  | --- | --- |
+  | `GET /api/v1/daily-reviews/status` | Returns `enabled`, `timezone_state`, `yesterday`, `pending_count`, `overdue_count`, `earliest_pending_date`, `pending_dates` and `stats_30d` instead of `signed`, `snapshot` and `review` |
+  | `POST /api/v1/daily-reviews` | Requires `review_date` (`YYYY-MM-DD`) and takes `delay_reason` next to `note`. New 400 errors: `VALIDATION_DAILY_REVIEW_DATE_INVALID`, `VALIDATION_DAILY_REVIEW_TEXT_TOO_LONG`, `VALIDATION_DAILY_REVIEW_DELAY_REASON_REQUIRED`, `RULE_DAILY_REVIEW_DAY_NOT_ENDED`, `RULE_DAILY_REVIEW_DAY_SETTLING`, `RULE_DAILY_REVIEW_DAY_OUT_OF_SCOPE` and `RULE_DAILY_REVIEW_ALERTS_PENDING`. The 409 `CONFLICT_DAILY_REVIEW_SIGNED` params are `date`, `signer`, `signed_at` and `timezone` instead of `time` and `signer` |
+  | `GET /api/v1/daily-reviews` | Each record adds `signed_at`, `timezone`, `timezone_inferred`, `window_start`, `window_end`, `due_at`, `late`, `late_days`, `delay_reason`, `coverage`, `source_status` and `enabled_basis`. `late_only=true` lists late sign-offs only |
+  | `GET /api/v1/audit-logs` | Accepts `end_before`, an exclusive end time |
+  | `GET /api/v1/compliance/snapshot` | `result` can be `insufficient_data`, each summary adds `insufficient_data`, and the PCI DSS 10.4.1 verdict carries a `signoff` object |
+  | `POST /api/v1/security-policies/apply-preview` | Adds `notes`, listing deviations that applying settings cannot resolve |
+
+- `GET /api/v1/daily-reviews/days/:date` refuses a date later than tomorrow with 400
+  `RULE_DAILY_REVIEW_DAY_NOT_ENDED`.
+- The compliance report ZIP for PCI DSS contains `daily_reviews.csv` after `clauses.csv`, with
+  the same columns as in the evidence package, and `manifest.json` gives its row count in
+  `counts.daily_reviews`.
+
+### Fixes
+
+- The overdue reminder leads to the Daily Review tab, where past days can be signed. It used to
+  point to the dashboard, which could sign only the current day.
+- Changing `?tab=` in the address while on the Operation Logs page switches the tab.
+
 ## 1.16.1 — HTTPS-only downloads in the integration tests (2026-10-10)
 
 No schema change. No migration runs. A 1.14.x, 1.15.x or 1.16.0 package deployment upgrades

@@ -182,6 +182,7 @@
                   <el-tag
                     size="small"
                     :type="resultTagType(clauseResultOf(clause))"
+                    :class="resultTagClass(clauseResultOf(clause))"
                   >
                     {{ resultLabel(clauseResultOf(clause)) }}
                   </el-tag>
@@ -195,6 +196,12 @@
               >
                 {{ clauseSummary(clause) }}
               </p>
+              <SignoffRecordFacts
+                v-if="signoffVerdictOf(clause)"
+                :verdict="signoffVerdictOf(clause)"
+                :built-at="snapshot.built_at"
+                @refresh="load()"
+              />
 
               <table
                 v-if="clause.controls.length"
@@ -223,6 +230,7 @@
                       <el-tag
                         size="small"
                         :type="resultTagType(verdictOf(clause, control).result)"
+                        :class="resultTagClass(verdictOf(clause, control).result)"
                       >
                         {{ resultLabel(verdictOf(clause, control).result) }}
                       </el-tag>
@@ -461,6 +469,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import SignoffRecordFacts from '@/components/compliance/SignoffRecordFacts.vue'
 import { createReportJob, getComplianceSnapshot } from '@/api/compliance'
 import { downloadAuditExportJob, listAuditExportJobs } from '@/api/auditExport'
 import { LOCALE_LABELS, SUPPORTED_LOCALES } from '@/i18n'
@@ -474,6 +483,7 @@ import {
   expectationText,
   reasonLabel,
   resultLabel,
+  resultTagClass,
   resultTagType,
   settingLabel,
 } from '@/utils/policyClauseText'
@@ -607,6 +617,9 @@ const summaryGroups = computed(() => [
         hint: '',
         note: '',
       },
+      // 資料不足為 0 時也顯示：摘要格數不隨資料而變
+      { key: 'insufficientData', label: t('complianceMap.summaryInsufficientData'),
+        value: activeSummary.value.insufficient_data ?? 0, hint: '', note: '' },
     ],
   },
 ])
@@ -618,6 +631,10 @@ const verdictOf = (clause, control) =>
       v.clause_no === clause.clause_no &&
       v.key === control.policy_key
   ) || {}
+
+// 以運作紀錄判定（10.4.1）的那一筆：條文列下方攤開近 30 天紀錄
+const signoffVerdictOf = (clause) => verdicts.value.find((v) => v.group_code === clause.group_code &&
+  v.clause_no === clause.clause_no && v.comparator === 'signoff_record')
 
 // 顯示中繼資料（單位、零值語義）跟著判定結果回來：這一頁是唯讀的稽核視角，
 // 讀不到管理端的設定清單，缺了就只能少印單位，不能自己猜一個
@@ -825,6 +842,9 @@ const load = async () => {
     groups.value = res.groups || []
     summaries.value = res.summaries || []
     clauses.value = res.clauses || []
+    // 運作紀錄判定的條文預設展開：簽核率與未簽天數是這一條要讀的答案
+    openClauses.value = [...new Set([...openClauses.value,
+      ...clauses.value.filter(signoffVerdictOf).map((c) => c.clause_no)])]
     const stillValid = groups.value.some(
       (g) => g.code === activeGroup.value && g.enabled
     )

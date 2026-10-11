@@ -212,149 +212,13 @@
       </el-col>
     </el-row>
 
-    <!-- 每日安全審閱簽核卡（PCI 10.4.1）：功能未啟用時完全不渲染 -->
-    <div
-      v-if="reviewStatus.enabled"
-      class="review-card"
-    >
-      <!-- 歷次簽核入口一律是真連結（href 同目標）：原生可 Tab 聚焦、Enter 觸發，
-           修飾鍵點擊交還瀏覽器開新分頁 -->
-      <div class="review-head">
-        <div class="review-head-main">
-          <a
-            class="review-title review-link"
-            :href="REVIEW_HISTORY_HREF"
-            :aria-label="$t('dashboard.reviewTitleLinkLabel')"
-            @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
-          >
-            {{ $t('dashboard.reviewTitle') }}
-            <ChevronRight
-              class="review-title-icon"
-              :size="16"
-              aria-hidden="true"
-            />
-          </a>
-          <span class="review-date">{{ reviewSnapshot.date || '' }}</span>
-        </div>
-        <div class="review-head-actions">
-          <a
-            v-if="!reviewStatus.signed"
-            class="review-link"
-            :href="REVIEW_HISTORY_HREF"
-            @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
-          >
-            {{ $t('dashboard.reviewHistoryLink') }}
-          </a>
-          <el-tag
-            v-if="reviewStatus.signed"
-            type="success"
-            size="small"
-          >
-            {{ $t('dashboard.reviewSignedTag') }}
-          </el-tag>
-          <el-tag
-            v-else
-            type="warning"
-            size="small"
-          >
-            {{ $t('dashboard.reviewPendingTag') }}
-          </el-tag>
-        </div>
-      </div>
-
-      <div class="review-counts">
-        <div
-          class="review-count"
-          role="button"
-          tabindex="0"
-          @click="$router.push('/audit-logs')"
-          @keydown.enter.space.prevent="$router.push('/audit-logs')"
-        >
-          <div class="review-count-value">
-            {{ reviewCount('login_failures') }}
-          </div>
-          <div class="review-count-label">
-            {{ $t('common.loginFailures') }}
-          </div>
-        </div>
-        <div
-          class="review-count"
-          role="button"
-          tabindex="0"
-          @click="$router.push('/alerts')"
-          @keydown.enter.space.prevent="$router.push('/alerts')"
-        >
-          <div class="review-count-value">
-            {{ reviewCount('unreviewed_alerts') }}
-          </div>
-          <div class="review-count-label">
-            {{ $t('common.unreviewedAlerts') }}
-          </div>
-        </div>
-        <div
-          class="review-count"
-          role="button"
-          tabindex="0"
-          @click="$router.push('/audit-logs')"
-          @keydown.enter.space.prevent="$router.push('/audit-logs')"
-        >
-          <div class="review-count-value">
-            {{ reviewCount('high_risk_ops') }}
-          </div>
-          <div class="review-count-label">
-            {{ $t('common.highRiskOps') }}
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="reviewStatus.signed"
-        class="review-signed"
-      >
-        <span class="review-signed-text">
-          {{ $t('dashboard.reviewSignedBy', {
-            name: reviewStatus.review?.reviewer_name,
-            time: formatDateTime(reviewStatus.review?.created_at),
-          }) }}
-          <span v-if="reviewStatus.review?.note">{{ $t('dashboard.reviewSignedNote', { note: reviewStatus.review.note }) }}</span>
-        </span>
-        <a
-          class="review-link"
-          :href="REVIEW_HISTORY_HREF"
-          @click.exact.prevent="$router.push(REVIEW_HISTORY_ROUTE)"
-        >
-          {{ $t('dashboard.reviewHistoryLinkSigned') }}
-        </a>
-      </div>
-      <div
-        v-else-if="canSign"
-        class="review-sign"
-      >
-        <el-input
-          v-model="reviewNote"
-          class="review-note-input"
-          :placeholder="$t('dashboard.reviewNotePlaceholder')"
-          maxlength="500"
-        />
-        <el-button
-          type="primary"
-          :loading="signing"
-          @click="handleSignReview"
-        >
-          {{ reviewSnapshot.date
-            ? $t('dashboard.signReviewForDate', { date: reviewSnapshot.date })
-            : $t('dashboard.signReviewButton') }}
-        </el-button>
-      </div>
-      <div
-        v-else
-        class="review-hint"
-      >
-        {{ reviewSnapshot.date
-          ? $t('dashboard.reviewWaitingHintForDate', { date: reviewSnapshot.date })
-          : $t('dashboard.reviewWaitingHint') }}
-      </div>
-    </div>
+    <!-- 每日安全審閱卡（PCI 10.4.1）：只提醒與提供入口，簽核在操作日誌頁的抽屜完成。
+         只對 admin／auditor 取數與顯示（狀態端點掛 audit:view） -->
+    <DailyReviewCard
+      v-if="isPrivileged && reviewStatus"
+      :status="reviewStatus"
+      :is-admin="isAdmin"
+    />
 
     <div class="quick-actions">
       <h2 class="section-title">
@@ -486,7 +350,6 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import {
   Server,
   Cable,
@@ -502,18 +365,18 @@ import {
   MonitorPlay,
   ScrollText,
   RefreshCw,
-  ChevronRight,
 } from 'lucide-vue-next'
 import PageHeader from '@/components/PageHeader.vue'
 import { BRAND } from '@/brand'
 import EmptyState from '@/components/EmptyState.vue'
-import { formatDateTime, formatRelativeTime, formatBytes } from '@/utils/format'
+import { formatRelativeTime, formatBytes } from '@/utils/format'
 import { useRoles, readEffectiveApprover } from '@/composables/useRoles'
 import { getAssetList } from '@/api/assets'
 import { getSessionStatistics, getActiveSessions, getRecordingStats } from '@/api/sessions'
 import { getMyConnections } from '@/api/myConnections'
 import { searchAlerts } from '@/api/alerts'
-import { getDailyReviewStatus, signDailyReview } from '@/api/dailyReviews'
+import { getDailyReviewStatus } from '@/api/dailyReviews'
+import DailyReviewCard from '@/components/daily-review/DailyReviewCard.vue'
 import {
   getMyAccessRequests,
   getPendingAccessRequestCount,
@@ -817,81 +680,23 @@ const loadRecordingStorage = async () => {
   }
 }
 
-// —— 每日安全審閱簽核（PCI 10.4.1）——
-const reviewStatus = ref({ enabled: false })
-const reviewNote = ref('')
-const signing = ref(false)
-
-// 歷次簽核在操作日誌頁的「每日簽核」分頁；該頁只認白名單內的 tab 值
-const REVIEW_HISTORY_ROUTE = Object.freeze({ path: '/audit-logs', query: Object.freeze({ tab: 'reviews' }) })
-const REVIEW_HISTORY_HREF = '/audit-logs?tab=reviews'
-
-// 簽核權限 alert:manage（admin/auditor＝isPrivileged）——與後端一致；其他角色唯讀計數
-const canSign = isPrivileged
-
-const parseFrozenSnapshot = (raw) => {
-  if (!raw) return {}
-  try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-// 卡片計數來源：狀態端點每次都回即時的 snapshot，已簽時另帶 review.snapshot_json
-// （簽核當下固化的計數，歷次簽核頁顯示的也是它）。已簽只認後者，否則簽核後新增的
-// 事件會讓卡片與歷次簽核那筆對不上；待簽才用即時計數。
-const reviewSnapshot = computed(() => {
-  const status = reviewStatus.value
-  if (!status.signed) return status.snapshot || {}
-  const frozen = parseFrozenSnapshot(status.review?.snapshot_json)
-  return { ...frozen, date: status.review?.review_date || frozen.date || '' }
-})
-
-// 已簽快照缺少的計數照實顯示「—」，不拿即時值或 0 填
-const reviewCount = (key) => {
-  const value = reviewSnapshot.value[key]
-  if (typeof value === 'number') return value
-  return reviewStatus.value.signed ? '—' : 0
-}
+// —— 每日安全審閱卡（PCI 10.4.1）——
+// null＝尚未取得或無權取得：卡片不渲染
+const reviewStatus = ref(null)
 
 const loadReviewStatus = async () => {
   // 狀態查詢掛 audit:view（admin/auditor）——一般 user 不發請求，
   // 否則必 403 且全域攔截器會 toast「權限不足」
   if (!isPrivileged.value) {
-    reviewStatus.value = { enabled: false }
+    reviewStatus.value = null
     return
   }
   try {
     const res = await getDailyReviewStatus()
-    reviewStatus.value = res.data || { enabled: false }
+    reviewStatus.value = res.data || null
   } catch (error) {
     console.error('載入每日審閱狀態失敗:', error)
-    reviewStatus.value = { enabled: false }
-  }
-}
-
-const handleSignReview = async () => {
-  signing.value = true
-  try {
-    const signedDate = reviewSnapshot.value.date
-    const res = await signDailyReview({ note: reviewNote.value })
-    // 以伺服器實際寫入的審閱日為準，缺時退回卡片所示日期
-    const date = res?.data?.review_date || signedDate
-    ElMessage.success(date
-      ? t('dashboard.reviewSignedSuccessForDate', { date })
-      : t('dashboard.reviewSignedSuccess'))
-    reviewNote.value = ''
-    await loadReviewStatus()
-  } catch (error) {
-    console.error('簽核每日審閱失敗:', error)
-    // 409（他人已先簽核）：全域攔截器已 toast 後端訊息，此處刷新為已簽狀態
-    if (error.response?.status === 409) {
-      await loadReviewStatus()
-    }
-  } finally {
-    signing.value = false
+    reviewStatus.value = null
   }
 }
 
@@ -1037,137 +842,6 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.review-card {
-  margin-top: 16px;
-  padding: 14px 16px;
-  background: var(--ot-bg-surface);
-  border: 1px solid var(--ot-border-subtle);
-  border-radius: 6px;
-}
-
-.review-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
-  margin-bottom: 12px;
-}
-
-.review-head-main,
-.review-head-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-
-/* 連結樣式：品牌主色＋底線於 hover／焦點出現，與一般文字可區分 */
-.review-link {
-  color: var(--ot-primary);
-  font-size: 13px;
-  text-decoration: none;
-  border-radius: 2px;
-}
-
-.review-link:hover,
-.review-link:focus-visible {
-  color: var(--ot-primary-hover);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.review-link:focus-visible {
-  outline: 2px solid var(--ot-primary);
-  outline-offset: 2px;
-}
-
-/* 標題本身維持標題字色，靠右側箭頭與 hover 底線表明可點 */
-.review-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--ot-text-primary);
-}
-
-.review-title-icon {
-  color: var(--ot-primary);
-  flex-shrink: 0;
-}
-
-.review-date {
-  font-size: 13px;
-  color: var(--ot-text-secondary);
-}
-
-.review-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.review-count {
-  flex: 1;
-  min-width: 120px;
-  padding: 10px;
-  text-align: center;
-  border: 1px solid var(--ot-border-subtle);
-  border-radius: var(--ot-radius-md);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-.review-count:hover {
-  border-color: var(--ot-primary);
-}
-
-.review-count-value {
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--ot-text-primary);
-  line-height: 1.3;
-}
-
-.review-count-label {
-  font-size: var(--ot-font-size-sm);
-  color: var(--ot-text-secondary);
-}
-
-.review-sign {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.review-note-input {
-  max-width: 420px;
-}
-
-/* 按鈕文字帶日期，窄欄時允許換行而不溢出卡片 */
-.review-sign :deep(.el-button) {
-  max-width: 100%;
-  height: auto;
-  min-height: 32px;
-  white-space: normal;
-}
-
-.review-signed,
-.review-hint {
-  font-size: 13px;
-  color: var(--el-text-color-regular);
-}
-
-.review-signed {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 12px;
 }
 
 .quick-actions {

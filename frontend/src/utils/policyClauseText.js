@@ -20,6 +20,8 @@ const RESULT_LABEL_KEYS = {
   deviating: 'complianceMap.resultDeviating',
   needs_review: 'complianceMap.resultNeedsReview',
   review: 'complianceMap.resultReview',
+  // 以運作紀錄判定（PCI 10.4.1）而紀錄期間不足或取不到：不併入符合或偏離
+  insufficient_data: 'complianceMap.resultInsufficientData',
   unmapped: 'complianceMap.resultUnmapped',
   self_attested: 'complianceMap.resultSelfAttested',
   builtin_protection: 'complianceMap.resultBuiltinProtection',
@@ -32,6 +34,7 @@ const RESULT_TAG_TYPES = {
   deviating: 'danger',
   needs_review: 'warning',
   review: 'warning',
+  insufficient_data: 'info',
   unmapped: 'info',
   self_attested: 'info',
   builtin_protection: 'info',
@@ -46,6 +49,15 @@ export function resultLabel(result) {
 /** resultTagType 判定結果的標籤色 */
 export function resultTagType(result) {
   return RESULT_TAG_TYPES[result] || 'info'
+}
+
+// 改用中性灰框標籤的結果。EP 的 info 在暗色主題下是品牌青，與「符合」的綠
+// 並排時肉眼難分；「資料不足」既不是符合也不是偏離，畫面上要一眼看出它是第三種
+const NEUTRAL_RESULTS = new Set(['insufficient_data'])
+
+/** resultTagClass 判定結果標籤的附加 class；中性結果套 ot-tag-neutral（tokens 灰框） */
+export function resultTagClass(result) {
+  return NEUTRAL_RESULTS.has(result) ? 'ot-tag-neutral' : ''
 }
 
 /**
@@ -104,6 +116,8 @@ export function expectationText(control, meta = {}) {
   if (!control) return t('complianceMap.expectNone')
   const value = displayPolicyValue(control.policy_key, control.expected_value, meta)
   if (control.comparator === 'review') return t('complianceMap.expectReview')
+  // 運作紀錄判定：要求的不只是開關，還有近 30 天每天都有簽核
+  if (control.comparator === 'signoff_record') return t('complianceMap.expectSignoffRecord')
   if (control.reference_only) return t('complianceMap.expectReference', { value })
   if (control.comparator === 'min') return t('complianceMap.expectMin', { value })
   if (control.comparator === 'max') return t('complianceMap.expectMax', { value })
@@ -169,7 +183,7 @@ export function clauseSummary(clause) {
  * 取最嚴的一個：一條條文對三個鍵，只要有一個偏離，這一條就是偏離——
  * 取多數或取第一個都會讓偏離在條文層消失，而稽核人員是從條文層開始讀的。
  */
-const RESULT_SEVERITY = ['deviating', 'needs_review', 'review', 'compliant']
+const RESULT_SEVERITY = ['deviating', 'insufficient_data', 'needs_review', 'review', 'compliant']
 
 export function clauseResult(clause, verdicts) {
   if (!clause) return ''

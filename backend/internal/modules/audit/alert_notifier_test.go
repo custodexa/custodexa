@@ -342,12 +342,22 @@ func TestNotifyEvent(t *testing.T) {
 			{ID: 1, Name: "ops", Type: model.NotificationChannelTypeWebhook, URL: url, Enabled: true},
 		})
 
-		n.NotifyEvent(notifycat.EventDailyReviewOverdue, map[string]string{"date": "2026-07-31"})
+		n.NotifyEvent(notifycat.EventDailyReviewOverdue,
+			OverdueParams([]string{"2026-07-29", "2026-07-30", "2026-07-31"}, 2, "Asia/Taipei"))
 
+		body := awaitBody(t, received)
+		t.Logf("webhook payload: %s", body)
 		var got notifyEventPayload
-		assert.NoError(t, json.Unmarshal(awaitBody(t, received), &got))
+		assert.NoError(t, json.Unmarshal(body, &got))
 		assert.Equal(t, "daily_review_overdue", got.Event)
-		assert.Equal(t, map[string]string{"date": "2026-07-31"}, got.Params)
+		assert.Equal(t, map[string]any{
+			"date":                  "2026-07-29",
+			"pending_dates":         []any{"2026-07-29", "2026-07-30", "2026-07-31"},
+			"pending_count":         "3",
+			"overdue_count":         "2",
+			"earliest_pending_date": "2026-07-29",
+			"timezone":              "Asia/Taipei",
+		}, got.Params)
 		assert.False(t, got.Degraded)
 		assert.NotEmpty(t, got.SentAt)
 	})
@@ -385,7 +395,8 @@ func TestNotifyEvent(t *testing.T) {
 				Enabled: true, Language: model.NotificationChannelLanguageJaJP},
 		})
 
-		n.NotifyEvent(notifycat.EventDailyReviewOverdue, map[string]string{"date": "2026-07-31"})
+		n.NotifyEvent(notifycat.EventDailyReviewOverdue,
+			OverdueParams([]string{"2026-07-30", "2026-07-31"}, 1, "Asia/Taipei"))
 
 		texts := make([]string, 0, 2)
 		for i := 0; i < 2; i++ {

@@ -88,16 +88,20 @@
     />
 
     <SyslogForwardCard />
+
+    <DailyReviewTimezoneConfirm ref="timezoneConfirmRef" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import PolicyGroupStrip from '@/components/PolicyGroupStrip.vue'
 import PolicyKeySections from '@/components/PolicyKeySections.vue'
 import ApplyPreviewDialog from '@/components/ApplyPreviewDialog.vue'
 import SyslogForwardCard from '@/components/SyslogForwardCard.vue'
+import DailyReviewTimezoneConfirm from '@/components/daily-review/DailyReviewTimezoneConfirm.vue'
+import { useTimezoneState } from '@/components/daily-review/timezoneState'
 import { usePolicyForm } from '@/composables/usePolicyForm'
 import {
   POLICY_DOMAINS,
@@ -105,6 +109,23 @@ import {
   SECURITY_SECTIONS,
   sectionKeys,
 } from '@/constants/policyDomains'
+
+// 業務時區：值改變時先說明生效日再送出；取消則把欄位還原、不送任何更新。
+// 分界資訊（今天、目前生效、待生效）取自後端，儲存後重取
+const TIMEZONE_KEY = 'daily_review_timezone'
+const timezoneConfirmRef = ref(null)
+const timezoneState = useTimezoneState()
+
+async function confirmTimezoneChange(changed, { formValues: values, savedValues: saved }) {
+  if (!(TIMEZONE_KEY in changed) || !timezoneConfirmRef.value) return true
+  const ok = await timezoneConfirmRef.value.ask({
+    from: saved.value[TIMEZONE_KEY],
+    to: changed[TIMEZONE_KEY],
+    state: timezoneState.state.value,
+  })
+  if (!ok) values.value[TIMEZONE_KEY] = saved.value[TIMEZONE_KEY]
+  return ok
+}
 
 const {
   loading,
@@ -127,7 +148,11 @@ const {
   resetForm,
   save,
   setRestExclude,
-} = usePolicyForm(SECURITY_SECTIONS, { includeRest: true })
+} = usePolicyForm(SECURITY_SECTIONS, {
+  includeRest: true,
+  beforeSave: confirmTimezoneChange,
+  afterSave: () => timezoneState.load(),
+})
 
 // 已歸其他域的鍵不落本頁「其他」區塊（它們在各自頁面呈現）
 setRestExclude(

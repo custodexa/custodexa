@@ -77,6 +77,23 @@
         </p>
       </section>
 
+      <!-- 套用改不了的偏離（每日審閱條文因未簽而偏離）：開關已開，該鍵不在變更表上；
+           不另說一行，管理者按下套用後偏離仍在，卻看不出原因在未簽的日子 -->
+      <p
+        v-for="note in signoffNotes"
+        :key="`${note.group}-${note.key}`"
+        class="preview-signoff-note"
+        :data-test="`preview-signoff-note-${note.key}`"
+      >
+        {{ $t('complianceMap.signoff.applyNote', {
+          group: groupName(note.group), clause: note.clause_no,
+          n: note.unsigned, date: note.earliest_unsigned,
+        }) }}
+        <router-link :to="{ path: '/audit-logs', query: { tab: 'reviews', date: note.earliest_unsigned } }">
+          {{ $t('complianceMap.signoff.goSign') }}
+        </router-link>
+      </p>
+
       <div class="preview-counts">
         <span data-test="preview-compliant">{{ $t('applyPreview.compliant', { n: compliantCount }) }}</span>
         <span
@@ -134,10 +151,11 @@ const byKey = computed(() =>
 
 const changes = computed(() => props.preview?.changes || [])
 const conflicts = computed(() => props.preview?.conflicts || [])
+const signoffNotes = computed(() => props.preview?.notes || [])
 
 // 一個鍵對多組可能有多份判定；一份偏離就不算符合，一份待判讀就還沒有結論。
 // 取最嚴的一個，與條文層的收斂方式一致
-const KEY_RESULT_SEVERITY = ['deviating', 'needs_review', 'review', 'compliant']
+const KEY_RESULT_SEVERITY = ['deviating', 'insufficient_data', 'needs_review', 'review', 'compliant']
 
 const keyResult = (key) => {
   const verdicts = (props.verdictsByKey[key] || []).filter(
@@ -249,6 +267,20 @@ const confirm = () => {
 .preview-conflicts p {
   margin: 0;
   line-height: 1.6;
+}
+
+.preview-signoff-note {
+  margin: 0;
+  padding: var(--ot-space-sm);
+  line-height: 1.6;
+  border-left: 3px solid var(--ot-warning);
+  background-color: var(--ot-bg-elevated);
+  border-radius: var(--ot-radius-sm);
+}
+
+.preview-signoff-note a {
+  margin-left: var(--ot-space-xs);
+  color: var(--ot-primary);
 }
 
 .change-warning {

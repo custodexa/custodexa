@@ -153,6 +153,8 @@ var policyKeyZhLabels = identityLabels(
 	// 單輪清理刪除上限：調小才危險，下界由 Min 承擔
 	"retention_max_per_run",
 	"daily_review_enabled",
+	// 每日簽核業務時區（IANA 名稱，不合法時沿用 INVALID_VALUE 指名本鍵）
+	"daily_review_timezone",
 	"failure_alert_enabled",
 	"recording_failclose_enabled",
 	// 離機儲存（evidence-offsite-storage）：本機副本的快取期，不是保留期

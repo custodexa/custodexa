@@ -313,7 +313,7 @@ func (h *SecurityPolicyHandler) LoginBanner(c *gin.Context) {
 func policyChangeAuditFields(key, oldValue, newValue string) (details, errorMsg string) {
 	def := policy.FindPolicyDef(key)
 	if def == nil || def.Type != policy.PolicyTypeText {
-		return "", fmt.Sprintf("policy=%s old=%s new=%s", key, oldValue, newValue)
+		return "", model.PolicyChangeAuditMessage(key, oldValue, newValue)
 	}
 	payload := struct {
 		Changes []policyChangeDetail `json:"changes"`

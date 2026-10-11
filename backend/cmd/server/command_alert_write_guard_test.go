@@ -38,7 +38,7 @@ var commandAlertLiteralAllowlist = map[string]string{
 		"「漏 tee」的結構性解法本體",
 	"internal/modules/audit/alert_notifier.go":        "SendTestNotification 的測試 payload：只序列化後送 webhook，不入庫（無 GORM 寫入）",
 	"internal/modules/audit/command_alert_service.go": "`Model(&model.CommandAlert{})` 查詢／審閱更新的型別標記，非資料列",
-	"internal/modules/audit/daily_review_service.go":  "同上，未審閱計數查詢的型別標記",
+	"internal/modules/audit/daily_review_scope.go":    "同上，每日簽核告警計數與明細查詢範圍的型別標記",
 	"internal/modules/audit/audit_export_report.go": "同上：" +
 		"`Model(&model.CommandAlert{})` 是事件報告匯出取窗的**查詢型別標記**，" +
 		"writeReportAlerts 只 Find 後寫進 CSV，函式內零 GORM 寫入呼叫——" +
@@ -54,7 +54,7 @@ var commandAlertLiteralAllowlist = map[string]string{
 const commandAlertWriteFile = "internal/modules/audit/alert_sink.go"
 
 // minCommandAlertLiteralSites 現況實測 8 處（alert_sink 1／alert_notifier 1／
-// command_alert_service 2／daily_review_service 1／audit_export_report 1／
+// command_alert_service 2／daily_review_scope 1／audit_export_report 1／
 // change_secret_runner 1／change_secret_retry_runner 1）。
 // timeline_service 的兩處已隨位址樞紐消失——`Model(&model.CommandAlert{})` 改為
 // `Table("command_alerts AS sc")` 加 LEFT JOIN sessions 取建線當下的來源位址，

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount, flushPromises, enableAutoUnmount, DOMWrapper } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import SecurityPolicies from '../SecurityPolicies.vue'
 
@@ -20,6 +20,12 @@ vi.mock('@/api/securityPolicies', () => ({
   // 判定與套用預覽端點：判定一律由後端供給，前端不自己算一份
   previewCompliance: (...args) => previewComplianceMock(...args),
   previewApplyPolicies: (...args) => previewApplyMock(...args),
+}))
+
+// 業務時區欄位的分界資訊取自每日簽核摘要
+const getDailyReviewStatusMock = vi.fn(() => Promise.resolve({ data: { enabled: false, timezone_state: null } }))
+vi.mock('@/api/dailyReviews', () => ({
+  getDailyReviewStatus: (...args) => getDailyReviewStatusMock(...args),
 }))
 
 // 頁面掛載即載入 syslog 設定；本檔只驗政策流，syslog 細節見
@@ -331,5 +337,74 @@ describe('SecurityPolicies — 明文連線建議提示', () => {
 
     expect(wrapper.find('.insecure-transport-alert').exists()).toBe(false)
     expect(wrapper.text()).toContain('登入失敗鎖定次數上限')
+  })
+})
+
+// —— 業務時區：儲存前確認、取消還原、儲存後的分界說明取自後端 ——
+describe('SecurityPolicies — 業務時區', () => {
+  const tzState = (pending = null) => ({
+    active: 'Asia/Taipei',
+    today: { date: '2026-10-11', window_start: '2026-10-10T16:00:00Z', window_end: '2026-10-11T16:00:00Z' },
+    pending,
+  })
+  const tzFixture = (value = 'Asia/Taipei') => ({
+    data: [
+      { key: 'daily_review_enabled', type: 'bool', default: 'false', label: '每日審閱簽核', value: 'true', verdicts: [] },
+      { key: 'daily_review_timezone', type: 'timezone', default: 'UTC', label: '業務時區', value, verdicts: [] },
+    ],
+    groups: [],
+  })
+  const body = () => new DOMWrapper(document.body)
+  const saveButton = (wrapper) => wrapper.findAll('button').find((b) => b.text() === '儲存')
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPoliciesMock.mockResolvedValue(tzFixture())
+    previewComplianceMock.mockResolvedValue({ data: { draft: true, verdicts: [] } })
+    getSyslogMock.mockResolvedValue({ data: { dropped: 0, setting: { enabled: false, host: '', port: 514, protocol: 'udp', tls_ca: '' } } })
+    getDailyReviewStatusMock.mockResolvedValue({ data: { enabled: true, timezone_state: tzState() } })
+  })
+
+  it('時區欄位在每日審閱簽核開關正下方', async () => {
+    const wrapper = await mountPage()
+    const rows = wrapper.findAll('.policy-row').map((r) => r.text())
+    const enabledAt = rows.findIndex((t) => t.includes('每日審閱簽核'))
+    expect(enabledAt).toBeGreaterThanOrEqual(0)
+    expect(rows[enabledAt + 1]).toContain('業務時區')
+    expect(wrapper.find('[data-test="dr-tz-field"]').exists()).toBe(true)
+  })
+
+  it('改時區先確認；取消則還原且不送出任何更新', async () => {
+    const wrapper = await mountPage()
+    wrapper.findComponent({ name: 'DailyReviewTimezoneField' }).vm.$emit('update:value', 'UTC')
+    await flushPromises()
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+
+    const dialog = body().find('[data-test="dr-tz-confirm"]')
+    expect(dialog.text()).toContain('從 2026-10-12 這一天起，以 UTC 切。')
+    await body().find('[data-test="dr-tz-confirm-cancel"]').trigger('click')
+    await flushPromises()
+
+    expect(updatePoliciesMock).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'DailyReviewTimezoneField' }).props('value')).toBe('Asia/Taipei')
+  })
+
+  it('確認後送出一次，並重取後端分界資訊顯示分界句', async () => {
+    updatePoliciesMock.mockResolvedValue(tzFixture('UTC'))
+    const wrapper = await mountPage()
+    wrapper.findComponent({ name: 'DailyReviewTimezoneField' }).vm.$emit('update:value', 'UTC')
+    await flushPromises()
+    getDailyReviewStatusMock.mockResolvedValue({
+      data: { enabled: true, timezone_state: tzState({ value: 'UTC', effective_date: '2026-10-12', effective_at: '2026-10-11T16:00:00Z' }) },
+    })
+    await saveButton(wrapper).trigger('click')
+    await flushPromises()
+    await body().find('[data-test="dr-tz-confirm-ok"]').trigger('click')
+    await flushPromises()
+
+    expect(updatePoliciesMock).toHaveBeenCalledTimes(1)
+    expect(updatePoliciesMock).toHaveBeenCalledWith({ daily_review_timezone: 'UTC' })
+    expect(wrapper.find('[data-test="dr-tz-boundary"]').text()).toContain('自 2026-10-12 起以 UTC 切日')
   })
 })

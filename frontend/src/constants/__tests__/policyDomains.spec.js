@@ -46,6 +46,7 @@ const BACKEND_POLICY_KEYS = [
   'audit_chain_verify_rows_per_hour',
   'retention_max_per_run',
   'daily_review_enabled',
+  'daily_review_timezone',
   'failure_alert_enabled',
   'recording_failclose_enabled',
   // 離機儲存（evidence-offsite-storage）：本機副本快取期

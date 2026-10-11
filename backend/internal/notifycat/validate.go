@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrUnregisteredEvent 事件未註冊的哨兵。
@@ -30,6 +31,7 @@ const (
 	ReasonMissingRequired = "missing_required"
 	ReasonEnumOutOfRange  = "enum_out_of_range"
 	ReasonNotAnInteger    = "not_an_integer"
+	ReasonNotADateList    = "not_a_date_list"
 )
 
 // ParamError 單一參數違規。
@@ -103,6 +105,13 @@ func Validate(event Event, params map[string]string) (map[string]string, error) 
 				continue
 			}
 			out[k] = v
+		case KindDateList:
+			if !validDateList(v) {
+				errs = append(errs, &ParamError{event, k, ReasonNotADateList})
+				rejected[k] = true
+				continue
+			}
+			out[k] = v
 		case KindInt:
 			if _, err := strconv.ParseInt(v, 10, 64); err != nil {
 				errs = append(errs, &ParamError{event, k, ReasonNotAnInteger})
@@ -170,4 +179,52 @@ func containsString(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// validDateList 逗號串接的 YYYY-MM-DD 清單，1 至 MaxDateList 個
+func validDateList(v string) bool {
+	parts := strings.Split(v, ",")
+	if len(parts) == 0 || len(parts) > MaxDateList {
+		return false
+	}
+	for _, d := range parts {
+		t, err := time.Parse(dateListFormat, d)
+		if err != nil || t.Format(dateListFormat) != d {
+			return false
+		}
+	}
+	return true
+}
+
+const dateListFormat = "2006-01-02"
+
+// DateList 把日期清單編成 KindDateList 的參數值：只帶最早的 MaxDateList 個
+// （呼叫端傳入的順序即先後），真實總數由另一個 int 參數表達
+func DateList(dates []string) string {
+	if len(dates) > MaxDateList {
+		dates = dates[:MaxDateList]
+	}
+	return strings.Join(dates, ",")
+}
+
+// WireParams webhook 輸出用的參數：KindDateList 展開成字串陣列，其餘原樣。
+// 輸入應為 Validate 或 FilterDeclared 的回傳值
+func WireParams(event Event, params map[string]string) map[string]any {
+	spec := registry[event]
+	out := make(map[string]any, len(params))
+	for k, v := range params {
+		if p, ok := spec.param(k); ok && p.Kind == KindDateList {
+			out[k] = splitDateList(v)
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func splitDateList(v string) []string {
+	if v == "" {
+		return []string{}
+	}
+	return strings.Split(v, ",")
 }

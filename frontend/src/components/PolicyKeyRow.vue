@@ -4,7 +4,7 @@
        管理者就要多讀一次才知道自己在設什麼 -->
   <div
     class="policy-row"
-    :class="{ 'policy-row-text': policy.type === 'text' }"
+    :class="{ 'policy-row-text': policy.type === 'text' || policy.type === 'timezone' }"
   >
     <div class="policy-label">
       <!-- 偏離標示不只靠顏色：點是視覺，title 與 aria-label 是文字，
@@ -34,6 +34,14 @@
         :placeholder="allowsEmpty(policy) ? $t('policyValue.unset') : ''"
         :aria-label="label"
         @update:model-value="$emit('update:value', policy.key, $event)"
+      />
+      <!-- 時區型（業務時區）：可搜尋的時區選單與切日說明。開關關閉時仍可設定 -->
+      <DailyReviewTimezoneField
+        v-else-if="policy.type === 'timezone'"
+        :value="value"
+        :label="label"
+        :enabled="formValues.daily_review_enabled !== false"
+        @update:value="$emit('update:value', policy.key, $event)"
       />
       <el-switch
         v-else-if="policy.type === 'bool'"
@@ -108,6 +116,7 @@
 import { computed } from 'vue'
 import { Info } from 'lucide-vue-next'
 import { allowsEmpty, enumLabel, policyLabel, policyMin, policyUnit } from '@/utils/policyFormat'
+import DailyReviewTimezoneField from './daily-review/DailyReviewTimezoneField.vue'
 
 const props = defineProps({
   policy: { type: Object, required: true },
@@ -115,6 +124,8 @@ const props = defineProps({
   value: { type: [String, Number, Boolean], default: '' },
   // 對任一生效政策組偏離（同一鍵偏離多組只算一次，父層已收斂）
   deviating: { type: Boolean, default: false },
+  // 同頁其他鍵的編輯中值（只讀）：少數控制項的呈現取決於相鄰設定
+  formValues: { type: Object, default: () => ({}) },
 })
 
 defineEmits(['update:value', 'info'])

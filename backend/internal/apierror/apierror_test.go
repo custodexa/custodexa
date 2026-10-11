@@ -106,15 +106,15 @@ func TestWriteRejectsUnknownOrDisallowedParams(t *testing.T) {
 func TestParamOpaqueTravelsOnWire(t *testing.T) {
 	c, w := testCtx()
 	Respond(c, http.StatusConflict, CodeDailyReviewAlreadySigned,
-		map[string]any{"time": "09:30", "signer": "auditor-a"})
+		map[string]any{"date": "2026-10-10", "signed_at": "2026-10-11T09:30:00+08:00", "timezone": "Asia/Taipei", "signer": "auditor-a"})
 
 	body := decode(t, w)
-	if body["error"] != "當日已完成簽核（09:30 由 auditor-a 簽核）" {
+	if body["error"] != "2026-10-10 已由 auditor-a 於 2026-10-11T09:30:00+08:00（Asia/Taipei）簽核" {
 		t.Errorf("error = %v", body["error"])
 	}
 	p, ok := body["params"].(map[string]any)
-	if !ok || p["time"] != "09:30" || p["signer"] != "auditor-a" {
-		t.Errorf("params = %v, want {time: 09:30, signer: auditor-a}", body["params"])
+	if !ok || p["signed_at"] != "2026-10-11T09:30:00+08:00" || p["signer"] != "auditor-a" || p["date"] != "2026-10-10" || p["timezone"] != "Asia/Taipei" {
+		t.Errorf("params = %v, want {date, signer, signed_at, timezone}", body["params"])
 	}
 }
 
@@ -132,7 +132,7 @@ func TestParamOpaqueSanitizesContent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, w := testCtx()
 			Respond(c, http.StatusConflict, CodeDailyReviewAlreadySigned,
-				map[string]any{"time": "09:30", "signer": tc.in})
+				map[string]any{"date": "2026-10-10", "signed_at": "2026-10-11T09:30:00+08:00", "timezone": "Asia/Taipei", "signer": tc.in})
 
 			body := decode(t, w)
 			p, ok := body["params"].(map[string]any)
@@ -153,7 +153,7 @@ func TestParamOpaqueTruncatesOverLimit(t *testing.T) {
 	c, w := testCtx()
 	long := strings.Repeat("漢", 300)
 	Respond(c, http.StatusConflict, CodeDailyReviewAlreadySigned,
-		map[string]any{"time": "09:30", "signer": long})
+		map[string]any{"date": "2026-10-10", "signed_at": "2026-10-11T09:30:00+08:00", "timezone": "Asia/Taipei", "signer": long})
 
 	body := decode(t, w)
 	p, ok := body["params"].(map[string]any)
@@ -174,7 +174,7 @@ func TestParamOpaqueTruncatesOverLimit(t *testing.T) {
 func TestParamOpaqueValueCannotForgePlaceholder(t *testing.T) {
 	c, w := testCtx()
 	Respond(c, http.StatusConflict, CodeDailyReviewAlreadySigned,
-		map[string]any{"time": "09:30", "signer": "{signer}{bogus}"})
+		map[string]any{"date": "2026-10-10", "signed_at": "2026-10-11T09:30:00+08:00", "timezone": "Asia/Taipei", "signer": "{signer}{bogus}"})
 
 	body := decode(t, w)
 	errText, _ := body["error"].(string)
@@ -186,7 +186,7 @@ func TestParamOpaqueValueCannotForgePlaceholder(t *testing.T) {
 func TestParamOpaqueRejectsNonString(t *testing.T) {
 	c, w := testCtx()
 	Respond(c, http.StatusConflict, CodeDailyReviewAlreadySigned,
-		map[string]any{"time": "09:30", "signer": 42})
+		map[string]any{"date": "2026-10-10", "signed_at": "2026-10-11T09:30:00+08:00", "timezone": "Asia/Taipei", "signer": 42})
 
 	body := decode(t, w)
 	if _, has := body["params"]; has {

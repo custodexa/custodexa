@@ -36,15 +36,17 @@ var (
 	CodeBreakGlassAlreadyReviewed = register("CONFLICT_BREAK_GLASS_ALREADY_REVIEWED", Descriptor{ZhFallback: "此破窗連線已完成補審"})
 	CodeAccessTicketNotActive     = register("CONFLICT_ACCESS_TICKET_NOT_ACTIVE", Descriptor{ZhFallback: "無有效臨時授權可撤銷"})
 	CodeApproverScopeExists       = register("CONFLICT_APPROVER_SCOPE_EXISTS", Descriptor{ZhFallback: "審核範圍已存在"})
-	// 「誰在幾點簽的」是使用者判斷「不是我漏簽、無須再追」的必需資訊，故以
-	// params 還原（service.AlreadySignedError 提供具名欄位）。兩者皆為
-	// ParamOpaque：簽核者是自由字串（顯示名／帳號），時刻是格式化後的字面值，
-	// 值域皆不可枚舉，走淨化不走允許清單。
+	// 「誰、在什麼時刻簽的」是使用者判斷「不是我漏簽、無須再追」的必需資訊，故以
+	// params 還原（audit.AlreadySignedError 提供具名欄位）。四者皆為 ParamOpaque：
+	// 所屬日與簽核時刻（RFC3339）是格式化後的字面值、簽核者是自由字串、時區是
+	// IANA 名稱，值域皆不可枚舉，走淨化不走允許清單。
 	CodeDailyReviewAlreadySigned = register("CONFLICT_DAILY_REVIEW_SIGNED", Descriptor{
-		ZhFallback: "當日已完成簽核（{time} 由 {signer} 簽核）",
+		ZhFallback: "{date} 已由 {signer} 於 {signed_at}（{timezone}）簽核",
 		Params: []ParamSpec{
-			{Key: "time", Kind: ParamOpaque},
+			{Key: "date", Kind: ParamOpaque},
 			{Key: "signer", Kind: ParamOpaque},
+			{Key: "signed_at", Kind: ParamOpaque},
+			{Key: "timezone", Kind: ParamOpaque},
 		},
 	})
 )
@@ -78,6 +80,20 @@ var (
 
 	CodeScopeNotApproverRole = register("RULE_APPROVER_SCOPE_NOT_APPROVER_ROLE", Descriptor{ZhFallback: "目標使用者不具 approver 角色"})
 	CodeDailyReviewDisabled  = register("RULE_DAILY_REVIEW_DISABLED", Descriptor{ZhFallback: "每日審閱功能未啟用"})
+
+	// 每日簽核的日界規則：進行中的當天不能簽；日終後的落庫寬限內也不能簽，
+	// 可簽時刻（RFC3339，帶業務時區位移）是使用者知道「幾點再來」的必需資訊
+	CodeDailyReviewDayNotEnded = register("RULE_DAILY_REVIEW_DAY_NOT_ENDED", Descriptor{ZhFallback: "該日尚未結束，結束後才能簽核"})
+	CodeDailyReviewDaySettling = register("RULE_DAILY_REVIEW_DAY_SETTLING", Descriptor{
+		ZhFallback: "該日剛結束，資料仍在入庫，{signable_at} 起可簽核",
+		Params:     []ParamSpec{{Key: "signable_at", Kind: ParamOpaque}},
+	})
+	CodeDailyReviewDayOutOfScope = register("RULE_DAILY_REVIEW_DAY_OUT_OF_SCOPE", Descriptor{ZhFallback: "該日不在每日審閱的啟用範圍內，不需簽核"})
+	// 簽核前須處置該日全部告警；筆數讓使用者知道還剩多少
+	CodeDailyReviewAlertsPending = register("RULE_DAILY_REVIEW_ALERTS_PENDING", Descriptor{
+		ZhFallback: "該日仍有 {count} 筆告警尚未審閱，處置後才能簽核",
+		Params:     []ParamSpec{{Key: "count", Kind: ParamInt}},
+	})
 )
 
 // --- VALIDATION_* ---
@@ -99,6 +115,16 @@ var (
 
 	CodeScopeTargetInvalid = register("VALIDATION_APPROVER_SCOPE_TARGET", Descriptor{ZhFallback: "審核範圍客體必須恰一（asset_id/asset_group_id/subject_user_id/subject_group_id 四擇一）"})
 	CodeScopeActorInvalid  = register("VALIDATION_APPROVER_SCOPE_ACTOR", Descriptor{ZhFallback: "審核方必須恰一（approver_id/approver_group_id 二擇一）"})
+
+	CodeDailyReviewDateInvalid         = register("VALIDATION_DAILY_REVIEW_DATE_INVALID", Descriptor{ZhFallback: "日期格式須為 YYYY-MM-DD"})
+	CodeDailyReviewDelayReasonRequired = register("VALIDATION_DAILY_REVIEW_DELAY_REASON_REQUIRED", Descriptor{ZhFallback: "已過準時期限，補簽須填寫延遲原因"})
+	CodeDailyReviewPeriodInvalid       = register("VALIDATION_DAILY_REVIEW_PERIOD_INVALID", Descriptor{ZhFallback: "統計期間不合法（起訖顛倒、超過 366 天或晚於今天）"})
+	// 兩個文字欄共用上限與同一個使用者動作（縮短後重送），{field} 指出是哪一欄
+	CodeDailyReviewTextTooLong = register("VALIDATION_DAILY_REVIEW_TEXT_TOO_LONG", Descriptor{
+		ZhFallback: "{field}超過 500 字上限",
+		Params: []ParamSpec{{Key: "field", Kind: ParamEnum, EnumNS: "dailyReviewField",
+			ZhLabels: map[string]string{"note": "備註", "delay_reason": "延遲原因"}}},
+	})
 )
 
 // --- INTERNAL_*（action-scoped 泛化 5xx）---
@@ -131,7 +157,10 @@ var (
 	// 快照損壞是策劃過的 sentinel（可安全回顯的具體原因），與泛化 500 區隔。
 	CodeAccessReviewSnapshotCorrupted = register("INTERNAL_ACCESS_REVIEW_SNAPSHOT_CORRUPTED", Descriptor{ZhFallback: "複審快照損壞，無法解析"})
 
-	CodeInternalDailyReviewStatusQuery = register("INTERNAL_DAILY_REVIEW_STATUS_QUERY", Descriptor{ZhFallback: "取得審閱狀態失敗"})
-	CodeInternalDailyReviewSign        = register("INTERNAL_DAILY_REVIEW_SIGN", Descriptor{ZhFallback: "簽核失敗"})
-	CodeInternalDailyReviewListQuery   = register("INTERNAL_DAILY_REVIEW_LIST_QUERY", Descriptor{ZhFallback: "查詢簽核歷史失敗"})
+	CodeInternalDailyReviewStatusQuery  = register("INTERNAL_DAILY_REVIEW_STATUS_QUERY", Descriptor{ZhFallback: "取得審閱狀態失敗"})
+	CodeInternalDailyReviewSign         = register("INTERNAL_DAILY_REVIEW_SIGN", Descriptor{ZhFallback: "簽核失敗"})
+	CodeInternalDailyReviewListQuery    = register("INTERNAL_DAILY_REVIEW_LIST_QUERY", Descriptor{ZhFallback: "查詢簽核歷史失敗"})
+	CodeInternalDailyReviewPendingQuery = register("INTERNAL_DAILY_REVIEW_PENDING_QUERY", Descriptor{ZhFallback: "查詢待簽日失敗"})
+	CodeInternalDailyReviewDayQuery     = register("INTERNAL_DAILY_REVIEW_DAY_QUERY", Descriptor{ZhFallback: "查詢單日明細失敗"})
+	CodeInternalDailyReviewStatsQuery   = register("INTERNAL_DAILY_REVIEW_STATS_QUERY", Descriptor{ZhFallback: "查詢簽核統計失敗"})
 )

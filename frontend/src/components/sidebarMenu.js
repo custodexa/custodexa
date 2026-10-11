@@ -98,7 +98,8 @@ export const MENU_GROUPS = [
       { path: '/rotation-evidence', titleKey: 'menu.rotationEvidence', icon: FileClock },
       // 下載中心：緊接工作台——證據包由工作台發起、在這裡取件
       { path: '/audit/exports', titleKey: 'menu.auditExports', icon: HardDriveDownload },
-      { path: '/audit-logs', titleKey: 'menu.auditLogs', icon: ScrollText },
+      // 每日簽核待簽天數徽章：只對具簽核權限者輪詢與顯示（MainLayout 判定）
+      { path: '/audit-logs', titleKey: 'menu.auditLogs', icon: ScrollText, badge: 'dailyReviews' },
       { path: '/commands', titleKey: 'menu.commands', icon: Terminal },
       { path: '/alerts', titleKey: 'menu.alerts', icon: BellRing },
       // 檢查點驗證：序列完整性證明，稽核職能

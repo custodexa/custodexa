@@ -16,7 +16,7 @@ import (
 // 合規對照報告的打包者（滿足 ReportPackager）。
 //
 // 資料集與版面在 policy 模組（依賴矩陣只允許 audit→policy）；本檔只負責把
-// 兩個資料檔寫進 ZIP、逐檔算雜湊，最後寫清單檔與簽章——清單檔最後寫入，中途
+// 資料檔（PDF、clauses.csv，含每日審閱條文的組另加 daily_reviews.csv）寫進 ZIP、逐檔算雜湊，最後寫清單檔與簽章——清單檔最後寫入，中途
 // 中斷的包沒有清單檔，依既有判準即不完整。
 
 // 產物內的檔名（固定，收包方的解析對象）。
@@ -108,6 +108,19 @@ func (p *ComplianceReportPackager) Package(w io.Writer, filterJSON string,
 	}{
 		{complianceReportFilePDF, func(dst io.Writer) error { return policy.RenderComplianceReportPDF(dst, rep) }},
 		{complianceReportFileCSV, func(dst io.Writer) error { return policy.WriteComplianceReportCSV(dst, rep) }},
+	}
+	// 含每日審閱條文的組另加近 30 天逐日清單（與 PDF 段落、判定同一份紀錄）；
+	// 其他組的 ZIP 結構不變
+	if rep.Signoff != nil {
+		var days []policy.SignoffDay
+		if rep.Signoff.Record != nil {
+			days = rep.Signoff.Record.Days
+		}
+		manifest.Counts["daily_reviews"] = len(days)
+		writers = append(writers, struct {
+			name  string
+			write func(io.Writer) error
+		}{policy.DailyReviewsCSVName, func(dst io.Writer) error { return policy.WriteDailyReviewsCSV(dst, days) }})
 	}
 	for _, item := range writers {
 		entry, err := zw.Create(item.name)

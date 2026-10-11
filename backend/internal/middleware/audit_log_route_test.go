@@ -534,3 +534,48 @@ func TestSourcePolicyCheckAuditedAsRead(t *testing.T) {
 		})
 	}
 }
+
+// TestSecurityPolicyPreviewAuditedAsRead 擋：安全政策的套用預覽與草稿回饋是唯讀試算，
+// 卻記成 create，與真正的政策變更同形，並被每日簽核當成高危操作計數
+func TestSecurityPolicyPreviewAuditedAsRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := installClipboardAuditDB(t)
+
+	svc := audit.NewAuditLogService(&config.FeatureFlags{
+		AuditLogEnabled: true, AsyncAuditEnabled: false, AuditFallbackToFile: false,
+	})
+	r := gin.New()
+	r.Use(AuditLogMiddleware(svc))
+	r.Use(func(c *gin.Context) {
+		c.Set("userID", uint(9))
+		c.Set("username", "admin")
+		c.Next()
+	})
+	ok := func(c *gin.Context) { c.JSON(200, gin.H{}) }
+	r.POST("/api/v1/security-policies/apply-preview", ok)
+	r.POST("/api/v1/security-policies/compliance/preview", ok)
+	r.PUT("/api/v1/security-policies", ok)
+
+	cases := []struct {
+		method, reqURL string
+		want           model.AuditAction
+	}{
+		{"POST", "/api/v1/security-policies/apply-preview", model.ActionRead},
+		{"POST", "/api/v1/security-policies/compliance/preview", model.ActionRead},
+		{"PUT", "/api/v1/security-policies", model.ActionUpdate},
+	}
+	for _, tc := range cases {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(tc.method, tc.reqURL, nil))
+		if w.Code != 200 {
+			t.Fatalf("%s %s 應被受理，得 %d", tc.method, tc.reqURL, w.Code)
+		}
+		row := latestAuditRow(t, db)
+		if row.Path != tc.reqURL {
+			t.Fatalf("讀回的不是本次請求的列（path=%s，期望 %s）", row.Path, tc.reqURL)
+		}
+		if row.Action != tc.want || row.Resource != model.ResourceSecurityPolicy {
+			t.Errorf("%s %s 記成 %s／%s, want %s／security_policy", tc.method, tc.reqURL, row.Action, row.Resource, tc.want)
+		}
+	}
+}

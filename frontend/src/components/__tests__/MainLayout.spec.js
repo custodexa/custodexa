@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import ElementPlus from 'element-plus'
 import MainLayout from '../MainLayout.vue'
@@ -46,6 +48,15 @@ vi.mock('@/api/seal', () => ({
 }))
 vi.mock('@/api/instanceGuard', () => ({
   getInstanceGuard: (...args) => getInstanceGuardMock(...args),
+}))
+
+// 每日簽核待簽天數徽章：只對具簽核權限者輪詢。mock 掉以免打真網路，
+// 各案以 mockResolvedValue 指定回應
+const getDailyReviewPendingCountMock = vi.fn(() =>
+  Promise.resolve({ data: { count: 0, overdue_count: 0 } })
+)
+vi.mock('@/api/dailyReviews', () => ({
+  getDailyReviewPendingCount: (...args) => getDailyReviewPendingCountMock(...args),
 }))
 
 const GUARD_HELD = { state: 'held', since: '2026-08-25T09:22:39Z', reason: '', peers: 0 }
@@ -679,4 +690,117 @@ it('任務入口沿 audit:view 角色，普通人不見', async () => {
     const entries = w.findAllComponents({ name: 'ElMenuItem' }).map(item => item.props('index'))
     expect(entries.includes('/audit/agent-tasks')).toBe(roles.includes('auditor')); w.unmount()
   }
+})
+
+// —— 每日簽核站內提醒（側欄徽章）——
+describe('MainLayout 每日簽核徽章', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetSessionForTests()
+    vi.clearAllMocks()
+    getSealStatusMock.mockResolvedValue(sealStatusWith(GUARD_HELD))
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 0, overdue_count: 0 } })
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const badge = (wrapper) => wrapper.find('[data-test="daily-review-badge"]')
+
+  // 防：每位沒有簽核權限的使用者每 30 秒打一次用不到的端點並產生審計列
+  it('無簽核權限不輪詢待簽天數', async () => {
+    setUser(['user'])
+    const wrapper = mountLayout()
+    await flushPromises()
+    vi.advanceTimersByTime(90000)
+    await flushPromises()
+    expect(getDailyReviewPendingCountMock).not.toHaveBeenCalled()
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  it('有逾期時徽章帶危險色，只有期限內的日子帶警示色，0 時不顯示', async () => {
+    setUser(['auditor'])
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 4, overdue_count: 3 } })
+    let wrapper = mountLayout()
+    await flushPromises()
+    expect(getDailyReviewPendingCountMock).toHaveBeenCalledWith({ skipErrorToast: true })
+    expect(badge(wrapper).text()).toBe('4')
+    expect(badge(wrapper).classes()).toContain('daily-review-badge--danger')
+    wrapper.unmount()
+
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 1, overdue_count: 0 } })
+    wrapper = mountLayout()
+    await flushPromises()
+    expect(badge(wrapper).text()).toBe('1')
+    expect(badge(wrapper).classes()).toContain('daily-review-badge--warning')
+    wrapper.unmount()
+
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 0, overdue_count: 0 } })
+    wrapper = mountLayout()
+    await flushPromises()
+    expect(badge(wrapper).exists()).toBe(false)
+  })
+
+  // 防：徽章外框沿用 inline-block，在 40px 行高的選單列裡落到基線，像貼在文字右下的上標。
+  // 測試環境不算版面，只能守住樣式規則本身；實際排版另以瀏覽器截圖對照
+  it('選單徽章以 flex 與文字垂直置中', () => {
+    const source = readFileSync(join(process.cwd(), 'src', 'components', 'MainLayout.vue'), 'utf8')
+    const rule = source.match(/\n\.menu-badge \{([^}]*)\}/)
+    expect(rule).not.toBeNull()
+    expect(rule[1]).toMatch(/display:\s*inline-flex;/)
+    expect(rule[1]).toMatch(/align-items:\s*center;/)
+    const content = source.match(/\.menu-badge :deep\(\.el-badge__content\) \{([^}]*)\}/)
+    expect(content[1]).toMatch(/position:\s*static;/)
+    expect(content[1]).toMatch(/transform:\s*none;/)
+  })
+
+  it('每 30 秒輪詢；失敗靜默不提示', async () => {
+    const { ElMessage } = await import('element-plus')
+    const errorSpy = vi.spyOn(ElMessage, 'error')
+    setUser(['admin'])
+    getDailyReviewPendingCountMock.mockRejectedValue(new Error('network down'))
+    mountLayout()
+    await flushPromises()
+    vi.advanceTimersByTime(30000)
+    await flushPromises()
+    expect(getDailyReviewPendingCountMock).toHaveBeenCalledTimes(2)
+    expect(errorSpy).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it('簽核或處置告警後派事件，徽章立即重算', async () => {
+    setUser(['auditor'])
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 2, overdue_count: 1 } })
+    const wrapper = mountLayout()
+    await flushPromises()
+    expect(getDailyReviewPendingCountMock).toHaveBeenCalledTimes(1)
+
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 1, overdue_count: 0 } })
+    window.dispatchEvent(new Event('ot-daily-reviews-changed'))
+    await flushPromises()
+    expect(getDailyReviewPendingCountMock).toHaveBeenCalledTimes(2)
+    expect(badge(wrapper).text()).toBe('1')
+  })
+
+  it('有徽章時點操作日誌直接進每日簽核分頁，沒有時維持原路徑', async () => {
+    setUser(['auditor'])
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 2, overdue_count: 0 } })
+    const wrapper = mountLayout()
+    await flushPromises()
+    const item = wrapper
+      .findAllComponents({ name: 'ElMenuItem' })
+      .find((c) => c.props('index') === '/audit-logs')
+    expect(item.props('route')).toEqual({ path: '/audit-logs', query: { tab: 'reviews' } })
+    wrapper.unmount()
+
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 0, overdue_count: 0 } })
+    const plain = mountLayout()
+    await flushPromises()
+    const plainItem = plain
+      .findAllComponents({ name: 'ElMenuItem' })
+      .find((c) => c.props('index') === '/audit-logs')
+    expect(plainItem.props('route')).toBeUndefined()
+  })
 })

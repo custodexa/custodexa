@@ -119,6 +119,8 @@ export const formatValue = (policy, raw) => {
 // 說法，管理者會以為它們指的不是同一條規則。整數型才有方向（至少／至多），
 // 開關與枚舉只能是明確值；未定值（review）沒有可寫的要求，由呼叫端另外處理
 export const expectationText = (policy, comparator, expected) => {
+  // 運作紀錄判定（PCI 10.4.1）：要求是開著且近 30 天每天都有簽核，不只是開關值
+  if (comparator === 'signoff_record') return t('complianceMap.expectSignoffRecord')
   const value = formatValue(policy, expected)
   if (comparator === 'min') return t('policyDrawer.expectMin', { value })
   if (comparator === 'max') return t('policyDrawer.expectMax', { value })

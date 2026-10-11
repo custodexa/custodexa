@@ -9,7 +9,17 @@
 // 沒跟上，畫面上是英日語使用者看到中文，不會有任何錯誤訊息。
 import { describe, it, expect, afterEach } from 'vitest'
 import i18n, { DEFAULT_LOCALE } from '@/i18n'
-import { clauseLocaleKey, clauseSummary, clauseTitle } from '@/utils/policyClauseText'
+import {
+  clauseLocaleKey,
+  clauseResult,
+  clauseSummary,
+  clauseTitle,
+  expectationText,
+  reasonLabel,
+  resultLabel,
+  resultTagClass,
+  resultTagType,
+} from '@/utils/policyClauseText'
 import zhTW from '@/i18n/locales/zh-TW.json'
 import enUS from '@/i18n/locales/en-US.json'
 import jaJP from '@/i18n/locales/ja-JP.json'
@@ -183,5 +193,54 @@ describe('clauseTitle 與 clauseSummary 的查譯與回落', () => {
     expect(clauseTitle(null)).toBe('')
     expect(clauseTitle({})).toBe('')
     expect(clauseSummary({ group_code: PCI_GROUP })).toBe('')
+  })
+})
+
+// 擋：每日審閱條文改以運作紀錄判定後，要求句仍寫成「須為 開啟」而讓讀者以為只看開關；
+// 「資料不足」被當成未知碼原樣印出、或被併進符合或偏離。
+describe('signoff_record 的要求句與資料不足標籤', () => {
+  const control = {
+    policy_key: 'daily_review_enabled',
+    comparator: 'signoff_record',
+    expected_value: 'true',
+    reference_only: false,
+  }
+
+  it('要求句說的是近 30 天每天都有簽核，三語各有譯文', () => {
+    const want = {
+      'zh-TW': '須開啟，且近 30 天每天都有簽核',
+      'en-US': 'on, with every day of the last 30 signed off',
+      'ja-JP': '有効であり、直近 30 日のすべての日に承認があること',
+    }
+    for (const [locale, text] of Object.entries(want)) {
+      setLocale(locale)
+      expect(expectationText(control)).toBe(text)
+    }
+  })
+
+  it('資料不足有自己的標籤與中性色，四個理由碼都有人話', () => {
+    expect(resultLabel('insufficient_data')).toBe('資料不足')
+    expect(resultTagType('insufficient_data')).toBe('info')
+    // 中性灰框：與「符合」「偏離」一眼可分，不吃品牌青
+    expect(resultTagClass('insufficient_data')).toBe('ot-tag-neutral')
+    for (const other of ['compliant', 'deviating', 'needs_review', 'unmapped', '']) {
+      expect(resultTagClass(other)).toBe('')
+    }
+    for (const reason of [
+      'daily_review_disabled',
+      'signoff_source_unavailable',
+      'signoff_insufficient_data',
+      'signoff_unsigned_days',
+    ]) {
+      expect(reasonLabel(reason, 'daily_review_enabled')).not.toBe(reason)
+    }
+  })
+
+  it('條文層：資料不足不被併成符合（偏離仍最優先）', () => {
+    const clause = { group_code: PCI_GROUP, clause_no: '10.4.1', kind: 'setting' }
+    const v = (result) => ({ group_code: PCI_GROUP, clause_no: '10.4.1', result })
+    expect(clauseResult(clause, [v('insufficient_data')])).toBe('insufficient_data')
+    expect(clauseResult(clause, [v('compliant'), v('insufficient_data')])).toBe('insufficient_data')
+    expect(clauseResult(clause, [v('insufficient_data'), v('deviating')])).toBe('deviating')
   })
 })

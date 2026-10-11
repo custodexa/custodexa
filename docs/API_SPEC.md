@@ -1,6 +1,8 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-06（`POST /seal/authorize` 在已解封時一律回 409 `SEAL_ALREADY_UNSEALED`；`POST /auth/login` 的帳號含控制字元時回 401 而非 500）
+> 最後更新：2026-10-11（PCI DSS 10.4.1 改以每日簽核的運作紀錄判定：判定結果加 `insufficient_data`、摘要加同名格、四個理由碼、判定上的 `signoff` 運作紀錄；套用預覽加 `notes`；證據包加 `daily_reviews.csv` 與清單檔 `daily_reviews` 段；合規報告 ZIP 對含此條文的組加 `daily_reviews.csv`；高危操作白名單只計寫入類動作、安全政策預覽改記為讀取；升級前的簽核 `alerts_after_sign` 為 `null`。路由未變）
+> 前次更新：2026-10-11（每日審閱簽核改版：依業務時區切日、可補簽指定所屬日、新增待簽清單／單日明細／期間統計端點與 11 個錯誤碼；`GET /audit-logs` 加 `end_before`；`daily_review_overdue` 通知改列出全部未簽日）
+> 前次更新：2026-10-06（`POST /seal/authorize` 在已解封時一律回 409 `SEAL_ALREADY_UNSEALED`；`POST /auth/login` 的帳號含控制字元時回 401 而非 500）
 > 前次更新：2026-10-06（`GET /seal/status` 在已解封時多回現行 KEK 識別 `kek_id`）
 > 前次更新：2026-10-01（資產批次新增：`POST /assets/import/preview` 預檢與 `POST /assets/import` 整批建立；資產列表加 `credential_pending` 欄與同名篩選參數；單筆建立完全沒有憑證來源時建零掛載資產）
 > 前次更新：2026-09-30（外部群組映射新增角色明確路由、使用者群組規則、共用字典備註、用途確認及兩類計數）
@@ -229,6 +231,10 @@ docker compose run --rm --no-deps -v ./docs:/app/cmd/server/testdata/docs-rw bac
 | POST | `/api/v1/credentials/:id/secret` | always |
 | GET | `/api/v1/daily-reviews` | always |
 | POST | `/api/v1/daily-reviews` | always |
+| GET | `/api/v1/daily-reviews/days/:date` | always |
+| GET | `/api/v1/daily-reviews/pending` | always |
+| GET | `/api/v1/daily-reviews/pending/count` | always |
+| GET | `/api/v1/daily-reviews/stats` | always |
 | GET | `/api/v1/daily-reviews/status` | always |
 | GET | `/api/v1/db-console` | always |
 | GET | `/api/v1/db-console/sessions/:id/results/:event_id/export` | always |
@@ -2743,8 +2749,22 @@ webhook 通道分兩型。**指令告警**（`event` 為 `command_alert`；測�
   `access_request.approval_progress`／`access_request.rejected`／`break_glass_used`／
   `ticket_revoked`／`break_glass_review_overdue`／`audit_failure`／`audit_failure_resolved`／
   `audit_failure_ongoing`／`daily_review_overdue`／`test`）。
-- `params`：結構化參數，每個 event 由 `EventSpec` 宣告值層契約（`enum`／`int`／`opaque` 三 kind）；
+- `params`：結構化參數，每個 event 由 `EventSpec` 宣告值層契約（`enum`／`int`／`opaque`／`date_list` 四 kind）；
   opaque 值原樣傳遞不翻譯，經淨化（限長 128 rune、去換行/ANSI/控制字元，超限可見截斷）。
+  `date_list` 在 webhook payload 中是 `YYYY-MM-DD` 字串的 JSON 陣列，其餘 kind 的值都是字串。
+- `daily_review_overdue` 的 params：`date`（最早未簽日，與 `earliest_pending_date` 同值）、
+  `pending_dates`（`date_list`，由最早排起，至多 31 個）、`pending_count`（未簽日的真實總數，可大於清單長度）、
+  `overdue_count`（其中已過準時期限的天數）、`earliest_pending_date`、`timezone`（切日的業務時區）。例：
+
+  ```json
+  {"event": "daily_review_overdue",
+   "params": {"date": "2026-07-29", "pending_dates": ["2026-07-29", "2026-07-30", "2026-07-31"],
+              "pending_count": "3", "overdue_count": "2", "earliest_pending_date": "2026-07-29",
+              "timezone": "Asia/Taipei"},
+   "sent_at": "2026-08-01T01:00:00Z"}
+  ```
+
+  Slack 通道把日期逐行列出，總數多於清單時加一行「另有 N 天未列出」。
   去識別紅線不變：事由全文與底層錯誤原文（forensic detail）**不入出站 payload**。
 - `degraded`（可選布林）：event 未註冊或 params 不合契約時降級投遞並附此旗標——
   合規告警不因目錄問題靜默消失。
@@ -3690,7 +3710,8 @@ GET /api/v1/compliance/snapshot?group=<code>
   },
   "groups":    [ PolicyGroup ],
   "summaries": [ {"group_code": "...", "compliant": 9, "deviating": 15, "needs_review": 1,
-                  "audit_review": 6, "unmapped": 24, "builtin_protection": 0} ],
+                  "audit_review": 6, "insufficient_data": 0, "unmapped": 24,
+                  "builtin_protection": 0} ],
   "clauses":   [ ClauseView ]
 }
 ```
@@ -3702,7 +3723,7 @@ GET /api/v1/compliance/snapshot?group=<code>
 - **判定只吃生效的組與未標記移除的條文**，且 `self_attested` 與 `builtin_protection` 型的條文
   不產生鍵層判定。政策列不存在的設定鍵以其出廠預設判定。
 
-**`result` 五值**：
+**`result` 六值**：
 
 | 值 | 語義 |
 |---|---|
@@ -3710,6 +3731,7 @@ GET /api/v1/compliance/snapshot?group=<code>
 | `deviating` | 現值未達要求 |
 | `needs_review` | 該組以參考值呈現、未給規範明定值，待機構人工確認 |
 | `review` | 該組有條文涉及該鍵但條文未定值，附目前值待稽核判讀 |
+| `insufficient_data` | 該組以運作紀錄判定該鍵（`comparator=signoff_record`），而紀錄期間不足或取不到紀錄；不計入符合或偏離 |
 | `unmapped` | 該鍵不在任何生效組的條文內 |
 
 `current`（判定當下的設定值）**每一種結果都帶**：待稽核判讀要靠它才判讀得出設定是否合理，
@@ -3736,12 +3758,42 @@ GET /api/v1/compliance/snapshot?group=<code>
 | `reference_value_confirmed` | 參考值，機構已確認 |
 | `expectation_unspecified` | 條文涉及這個鍵但未定值 |
 | `no_control` | 沒有任何生效組對照這個鍵 |
+| `daily_review_disabled` | 運作紀錄判定：每日審閱簽核未開啟（結果為 `deviating`） |
+| `signoff_source_unavailable` | 運作紀錄判定：取不到每日簽核紀錄（結果為 `insufficient_data`） |
+| `signoff_insufficient_data` | 運作紀錄判定：目前這段連續啟用累計未滿 7 天（結果為 `insufficient_data`） |
+| `signoff_unsigned_days` | 運作紀錄判定：近 30 天有應簽而未簽的日子（結果為 `deviating`） |
 
-**摘要六格**（`summaries` 的每一列）：前五格 `compliant`／`deviating`／`needs_review`／
-`audit_review`／`unmapped` 數的是**設定鍵**，**合計恆等於 `key_count`**。
-第六格 `builtin_protection` 數的是**條文**（該組由產品無條件承擔、沒有可調設定值的條數），
-**不進上面五格的合計**——把條文數加進去會讓分母憑空長大。同一組的條數另由
+**摘要七格**（`summaries` 的每一列）：前六格 `compliant`／`deviating`／`needs_review`／
+`audit_review`／`insufficient_data`／`unmapped` 數的是**設定鍵**，**合計恆等於 `key_count`**。
+第七格 `builtin_protection` 數的是**條文**（該組由產品無條件承擔、沒有可調設定值的條數），
+**不進上面六格的合計**——把條文數加進去會讓分母憑空長大。同一組的條數另由
 `data.builtin_protection_clauses` 依組代號給出。
+
+**每日審閱條文的運作紀錄判定**：內建 PCI DSS 組的 10.4.1 以比較方式 `signoff_record`
+對照 `daily_review_enabled`（要求值固定 `true`），不只看開關。依序：開關未開 → `deviating`
+／`daily_review_disabled`；取不到紀錄 → `insufficient_data`／`signoff_source_unavailable`
+（**不退回只看開關而判符合**）；目前這段連續啟用累計未滿 7 天 → `insufficient_data`／
+`signoff_insufficient_data`；近 30 天未簽 0 天 → `compliant`（遲簽只計數，不影響結果）；
+否則 `deviating`／`signoff_unsigned_days`。啟用狀態由升級遷移推定而來的日子照樣計入應簽，
+不另成資料不足的理由。其他內建組對同一鍵維持 `equals`（只看開關）。自建組不可選用
+`signoff_record`（寫入回 400 `VALIDATION_POLICY_GROUP_COMPARATOR`）。
+
+此類判定另帶 **`signoff`**（開關未開或取不到紀錄時**缺席**，畫面不以任何預設值推算）：
+
+| 欄位 | 說明 |
+|---|---|
+| `from`／`to` | 近 30 天起訖（業務時區日期，截至昨日；今天不屬於期間） |
+| `as_of` | 紀錄的計算時點 |
+| `timezone` | 期間末日的切日時區 |
+| `required` | 應簽天數：期間內在啟用範圍內（含推定為啟用者）且準時期限已過的日子，至多 29 |
+| `on_time`／`late`／`unsigned` | 應簽之中準時、遲簽、未簽的天數 |
+| `sign_rate_percent` | （準時＋遲簽）／應簽，無條件捨去到整數；應簽為 0 時 `null` |
+| `inferred_days` | 應簽之中啟用狀態由推定而來的天數（只用於呈現） |
+| `enabled_since`／`enabled_since_inferred` | 目前這段連續啟用的起點與其是否為推定 |
+| `enabled_days` | 自啟用起點所屬日至昨日的所屬日數（7 天門檻的依據） |
+| `earliest_unsigned` | 計入統計且未簽的最早日期（`omitempty`） |
+
+期間、應簽與累計天數與 `GET /daily-reviews/stats` 的近 30 天出自同一支計算。
 
 **未對照的分母規則**：不在任何生效組對照範圍內的鍵，在 `verdicts` 內各有一列
 （`group_code` 為空、`result` 為 `unmapped`），同時列在 `unmapped_keys`，並計入該組摘要的
@@ -3778,13 +3830,22 @@ POST /api/v1/compliance/report-jobs
 **產物**（下載中心取件，`GET /audit-export/jobs/:id/download`，`audit:view` 即可、不綁申請者）：ZIP 依序為
 
 - `report.pdf`：第 1 頁封面與摘要（組名、版本、來源、資料時點、產出時刻、產出者、工作單編號、範圍聲明、
-  條文與設定兩組摘要、不在本組對照範圍的設定數、由產品承擔的條文逐條列條號與標題），其後例外清單
-  （偏離、待人工確認、待稽核判讀）、由機構自行確認的條文、判定口徑、附表 A。每頁頁尾帶工作單編號、產出時刻與頁碼。
+  條文與設定兩組摘要（設定組含資料不足格）、不在本組對照範圍的設定數、由產品承擔的條文逐條列條號與標題），其後例外清單
+  （偏離、每日審閱簽核段、待人工確認、待稽核判讀）、由機構自行確認的條文、判定口徑、附表 A。每頁頁尾帶工作單編號、產出時刻與頁碼。
+  每日審閱簽核段只在本組含 `signoff_record` 條文時出現：結果與理由、近 30 天起訖（業務時區與位移）、資料時點、
+  應簽／已簽（簽核率）／其中補簽／未簽、推定日天數（大於 0 時）、逐日表節錄（未簽、補簽與未到期全列，準時至多 5 列），
+  段末聲明之後的補簽不會回寫已產出的報告。數字只彙總 `daily_reviews.csv` 中 `counts_toward_stats=true` 的列。
 - `clauses.csv`：UTF-8 BOM、CRLF、公式注入轉義；首行為 `# as_of=<RFC3339>` 註解列，其後一列一個（條文，設定鍵）
   判定，另加由機構自行確認與由產品承擔的條文各一列。PDF 摘要數字＝本檔依結果欄分組的列數。
+- `daily_reviews.csv`（僅含 `signoff_record` 條文的組，即 PCI DSS）：近 30 天每一個在啟用範圍內（或有簽核紀錄）
+  的所屬日一列，欄位與證據包的同名檔相同（見〈稽核證據匯出〉）。與判定、PDF 段落讀同一份運作紀錄。
 - `manifest.json`：`kind`／`mode`＝`compliance_report`、`job_id`、`exported_by`、`exported_at`（打包時刻）、
   `job_requested_at`、`filter`（`group`、`group_version`、`language`、`retention_days`、`as_of`、
-  `csv_as_of_prefix`、`product_version`）、逐檔 SHA-256。
+  `csv_as_of_prefix`、`product_version`）、逐檔 SHA-256；含 `daily_reviews.csv` 時 `counts.daily_reviews` 為其列數。
+
+ZIP 檔序：`report.pdf`、`clauses.csv`、（含該條文時）`daily_reviews.csv`、`manifest.json`、`manifest.sig`。
+報告的共用前提（不綁發起者）：內容只有設定值、條文、操作者名，以及每日簽核紀錄（所屬日、簽核時刻、簽核者名、
+稽核人員自填的延遲原因與備註）；不含錄影、剪貼簿或秘密材料。
 - `manifest.sig`：Ed25519 簽章（離線驗簽見〈離線驗簽〉）。
 
 **保留期**: 打包完成時刻加 `retention_days`，逾期從下載中心移除（410）。產物落在 `EXPORT_ARTIFACT_PATH`
@@ -3818,7 +3879,7 @@ GET /api/v1/security-policies/defs/:key
 |---|---|
 | `key`／`type`／`label`／`unit`／`unit_key`／`default` | 設定鍵定義（`type` ∈ `int`／`bool`／`enum`／`text`） |
 | `value` | 目前生效值（無政策列時為出廠預設） |
-| `comparators` | 可選的比較方式：`int` → `["min","max","review"]`；`bool`／`enum` → `["equals","review"]`；`text` → `[]`（不可作為要求對象） |
+| `comparators` | 可選的比較方式：`int` → `["min","max","review"]`；`bool`／`enum` → `["equals","review"]`；`text` → `[]`（不可作為要求對象）。運作紀錄判定 `signoff_record` 只供內建組，不在此列 |
 | `min`／`max`／`zero_disables`／`max_length`／`multiline` | 值域欄位，`omitempty`（`max` 為 0 表示沿用共用上界） |
 | `enum_order` | 選項的可選值（弱→強），僅 `enum` 型 |
 | `updated_by`／`updated_at` | 最後一次變更（`omitempty`） |
@@ -3830,6 +3891,7 @@ POST /api/v1/security-policies/compliance/preview?group=<code>
 ```
 
 **權限**: admin，**唯讀、不寫入任何東西**。body `{"draft": {"<key>": "<value>", ...}}`。
+**稽核語義為讀取**（`action=read`）：POST 的動詞推導預設會記成建立，中介層依路徑訂正為讀取。
 回 `{"data": <同快照的 data>}`，其中 `draft` 為 `true`。
 
 草稿由後端重算而不是前端自己算：前端算一份會與伺服器的判定漂移，而兩者的分歧不會有任何
@@ -3842,7 +3904,7 @@ POST /api/v1/security-policies/compliance/preview?group=<code>
 POST /api/v1/security-policies/apply-preview
 ```
 
-**權限**: admin，**只算不寫**。body：
+**權限**: admin，**只算不寫**。**稽核語義為讀取**（`action=read`），理由同上。body：
 
 ```json
 {"scope": ["password_min_length", "..."], "mode": "group", "group_code": "<code>",
@@ -3857,8 +3919,15 @@ POST /api/v1/security-policies/apply-preview
 {"data": {"mode": "group", "group_code": "<code>",
           "changes": [{"key": "...", "current": "8", "proposed": "12", "source_group": "<code>"}],
           "conflicts": [{"key": "...", "reasons": [{"group": "<code>", "expected": "12", "comparator": "min"}]}],
-          "unchanged_count": 30, "unmapped_count": 19}}
+          "unchanged_count": 30, "unmapped_count": 19,
+          "notes": [{"key": "daily_review_enabled", "group": "<code>", "clause_no": "10.4.1",
+                     "reason": "signoff_unsigned_days", "unsigned": 4, "earliest_unsigned": "2026-10-06"}]}}
 ```
+
+`notes` 列出**套用設定解決不了**的偏離（目前只有一種：以運作紀錄判定的每日審閱條文，開關已開而因
+未簽偏離）。該鍵不在 `changes`、計入 `unchanged_count`；畫面據 `notes` 另說一行「需到每日簽核補簽」並給入口。
+`signoff_record` 在設定值這一層等同「開關須為 `true`」：開關關閉時照常列為 `changes`（改為 `true`）。
+指定單組時只列該組的說明；範圍外的鍵不列。恆為陣列（沒有時為 `[]`）。
 
 `mode`／`group_code` 是回聲欄位，送出前重打一次預覽時拿來比對是同一種套用。
 **確認套用只把 `changes` 填進表單**，儲存仍走 `PUT /security-policies` 的既有流程與稽核
@@ -3903,14 +3972,115 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 
 ### 每日審閱簽核（10.4.1；查詢 `audit:view`、簽核 `alert:manage`）
 
+每一天以**業務時區**（安全政策 `daily_review_timezone`）切成一個「所屬日」，起訖為該時區的 00:00 至隔日 00:00（`window_start` 含、`window_end` 不含）。改時區自下一個日期生效：轉換日的起點接在前一天的結束時刻，所以那一天可能長於或短於 24 小時；兩時區差過大時，被跳過的日期不列入。所屬日結束後列入待簽，結束後 30 分鐘（`signable_at`）起可簽；準時期限（`due_at`）是所屬日加兩個日曆日在該時區的 00:00，期限之後簽核為遲簽，須填延遲原因。簽核時刻一律由伺服器寫入，請求夾帶的時刻欄位被忽略。
+
+功能開啟期間（任一時刻開著即算）的日子都在範圍內，從開啟當天起算。升級時無法由紀錄證明當天開著的日子一律當作開啟並標示推定（`enabled_basis` 為 `presumed_purged`／`presumed_gap`／`presumed_tail`；有紀錄證明者為 `recorded`），這些日子照樣列入待簽、可簽、計入統計與逾期提醒。
+
 | 方法 | 路徑 | 說明 |
 |---|---|---|
-| GET | `/daily-reviews/status` | 今日狀態 → `{data: {enabled, signed?, snapshot?: {date, login_failures, unreviewed_alerts, high_risk_ops}, review?}}`（功能關閉時僅 `{enabled: false}`） |
-| POST | `/daily-reviews` | 簽核今日審閱，body `{"note": "..."}`；快照於簽核時刻固化；每日至多一筆，衝突回 409 含既有簽核者；400 功能未啟用；簽核入稽核（`resource=daily_review`） |
-| GET | `/daily-reviews` | 簽核歷史（`page`/`page_size`）→ `{data: {items: [{review_date, reviewer_name, snapshot_json, note, created_at}], total}}` |
+| GET | `/daily-reviews/status` | 卡片摘要（見下） |
+| GET | `/daily-reviews/pending` | 待簽日清單，由最早排起；`page`／`page_size`（每頁至多 31，超出或不合法時取 31）→ `{data: {items: [PendingDay], total, page, page_size}}` |
+| GET | `/daily-reviews/pending/count` | 側欄徽章 → `{data: {count, overdue_count}}` |
+| GET | `/daily-reviews/days/:date` | 單日明細（見下）；`:date` 為 `YYYY-MM-DD`，格式不合回 400 `VALIDATION_DAILY_REVIEW_DATE_INVALID`，晚於明天回 400 `RULE_DAILY_REVIEW_DAY_NOT_ENDED` |
+| GET | `/daily-reviews/stats` | 期間統計（見下） |
+| GET | `/daily-reviews` | 已簽紀錄，新到舊；`page`／`page_size`、`late_only=true` 只列遲簽 → `{data: {items: [Review], total}}` |
+| POST | `/daily-reviews` | 簽核指定所屬日，body `{"review_date": "YYYY-MM-DD", "note": "...", "delay_reason": "..."}` → `{data: 簽核列}`（Review 的欄位，不含 `late_days`）；簽核入稽核（`action=create`、`resource=daily_review`） |
 
-高危操作計數白名單：任何資源的 delete、`security_policy`/`syslog_setting`/`audit_export` 的寫入、
-`user` 的 create/update。逾期提醒：政策啟用且昨日未簽核，每日 09:00 經通知通道發送。
+全部查詢端點（六支 GET）的權限檢查在處理之前：無權者對任何日期都得到同一個 403。
+
+**`GET /daily-reviews/status`**：
+
+```json
+{"data": {
+  "enabled": true,
+  "timezone_state": {
+    "active": "Asia/Taipei",
+    "today": {"date": "2026-10-11", "window_start": "2026-10-11T00:00:00+08:00", "window_end": "2026-10-12T00:00:00+08:00"},
+    "pending": null
+  },
+  "yesterday": {"date": "2026-10-10", "timezone": "Asia/Taipei", "window_start": "…", "window_end": "…",
+                "due_at": "…", "signable_at": "…", "signable": true, "in_scope": true, "enabled_basis": "recorded",
+                "signed": false, "review": null, "counts": {…}, "counts_fixed": false},
+  "pending_count": 3, "overdue_count": 1, "earliest_pending_date": "2026-10-08",
+  "pending_dates": ["2026-10-08", "2026-10-09", "2026-10-10"],
+  "stats_30d": {…}
+}}
+```
+
+- `timezone_state.pending`：已儲存但尚未生效的時區變更 `{value, effective_date, effective_at}`，沒有時為 `null`。
+- `yesterday.counts`：未簽時為即時計數，已簽時為簽核時固化的計數（`counts_fixed=true`）。
+- `pending_dates` 至多 10 個（由最早排起）；`stats_30d` 同 `GET /daily-reviews/stats?period=30d`。
+- 功能關閉時 `enabled=false`，仍回 `timezone_state`；`pending_count`／`overdue_count` 為 0、`pending_dates` 為空陣列，`yesterday`／`earliest_pending_date`／`stats_30d` 為 `null`。
+
+**PendingDay**：`{date, timezone, timezone_inferred, window_start, window_end, due_at, signable_at, signable, overdue, late_days, enabled_basis, counts}`。`timezone_inferred=true` 表示該日的切日時區是升級時以當時設定推得的。`counts` 見下方計數物件。
+
+**計數物件**（`counts`，與簽核快照同形）：`{date, login_failures, login_failures_source, high_risk_ops, high_risk_ops_source, unreviewed_alerts, alerts_total, alerts_benign, alerts_escalated, alerts_source}`。`*_source` 為 `complete`／`partial`／`purged`：依保留期清除的水位判定，`purged` 時該項計數為 `null`（不以 0 冒充），`partial` 時計數是下限。
+
+**`GET /daily-reviews/days/:date`**：
+
+```json
+{"data": {
+  "date": "2026-10-10", "status": "pending",
+  "timezone": "Asia/Taipei", "timezone_inferred": false,
+  "window_start": "…", "window_end": "…", "due_at": "…", "signable_at": "…",
+  "enabled_basis": "recorded", "overdue": false, "late_days": 0,
+  "sources": {"audit_log": "complete", "command_alert": "complete"},
+  "counts": {…},
+  "unreviewed_alerts": [{"id": 12, "rule_name": "…", "kind": "rule", "severity": "high", "command": "…",
+                         "user_id": 3, "asset_id": 5, "triggered_at": "…", "disposition": "pending"}],
+  "login_failures": {"total": 25, "items": [Event], "source_status": "complete"},
+  "high_risk_ops": {"total": 7, "items": [Event], "source_status": "complete"},
+  "review": null, "signed_snapshot": null, "alerts_after_sign": null
+}}
+```
+
+- `status`：`pending`（待簽）、`settling`（已結束、寬限內）、`signed`、`out_of_scope`（不在範圍或改時區時被跳過的日期；功能關閉時，所有尚未簽核的日子都回此值，已簽日仍回 `signed`）、`not_ended`（今天或明天）。
+- `unreviewed_alerts` 全部列出；`login_failures`／`high_risk_ops` 各列前 20 筆，`total` 是此刻查得到的筆數（來源已清除時為 0，並以 `source_status=purged` 標示）。Event 為 `{id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg}`。明細與計數使用同一組查詢條件。
+- 已簽日：時區、起訖與 `enabled_basis` 取簽核時固化的值；`review` 為簽核紀錄，`signed_snapshot` 為簽核時固化的計數，`alerts_after_sign` 為簽核後才出現、觸發時刻屬於該日的未審閱告警數，只對 `coverage=full_day` 的簽核計算（簽核當時該日未審閱告警必須為 0，此刻仍未審閱者必然是事後寫入）。`coverage=until_signed` 的升級前簽核不檢查告警處置，無法區分簽核前後，`alerts_after_sign` 一律為 `null`；此刻仍未審閱的告警照常列在 `unreviewed_alerts`。
+
+**`GET /daily-reviews/stats`**：`period=30d`（預設）或 `90d`；或以 `from`／`to`（業務時區日期，含頭尾，最長 366 天，`to` 不得晚於今天）自訂。不合法回 400 `VALIDATION_DAILY_REVIEW_PERIOD_INVALID`。近 N 天以昨天為 `to`；今天尚未結束，不計入。
+
+```json
+{"data": {
+  "from": "2026-09-11", "to": "2026-10-10", "as_of": "2026-10-11T12:00:00+08:00", "timezone": "Asia/Taipei",
+  "required": 26, "on_time": 23, "late": 2, "unsigned": 1,
+  "sign_rate": 0.9615, "sign_rate_percent": 96, "inferred_days": 0,
+  "enabled_since": "2026-08-01T00:00:00+08:00", "enabled_since_inferred": false, "enabled_days": 71,
+  "days": [{"date": "2026-10-10", "result": "not_due", "counts_toward_stats": false, "enabled_basis": "recorded", "late_days": 0}]
+}}
+```
+
+- 應簽（`required`）只計期間內在範圍內且準時期限已過的日子；`result=not_due` 的日子不計。推定日照樣計入，`inferred_days` 為其中推定日的天數。
+- `sign_rate_percent` 無條件捨去；`required=0` 時 `sign_rate`／`sign_rate_percent` 為 `null`。
+- `enabled_since` 為目前這段連續啟用的起點（目前未啟用時為 `null`），`enabled_since_inferred=true` 表示起點是升級時推定的。
+
+**Review**（簽核紀錄）：`{id, review_date, reviewer_id, reviewer_name, snapshot_json, note, created_at, signed_at, timezone, timezone_inferred, window_start, window_end, due_at, late, late_days, delay_reason, coverage, source_status, enabled_basis}`。`coverage` 為 `full_day`，升級前的舊紀錄為 `until_signed`（快照只涵蓋到簽核時刻）；`delay_reason` 只在遲簽時有值；`late_days` 為簽核日期與所屬日隔天相差的天數。
+
+**簽核錯誤**（`POST /daily-reviews`）：
+
+| HTTP | code | 條件 |
+|---|---|---|
+| 400 | `VALIDATION_DAILY_REVIEW_DATE_INVALID` | `review_date` 不是 `YYYY-MM-DD` |
+| 400 | `VALIDATION_DAILY_REVIEW_TEXT_TOO_LONG` | `note` 或 `delay_reason` 超過 500 字；params `{field}`（`note`／`delay_reason`） |
+| 400 | `RULE_DAILY_REVIEW_DAY_NOT_ENDED` | 該日尚未結束（今天或未來） |
+| 400 | `RULE_DAILY_REVIEW_DAY_SETTLING` | 結束後的 30 分鐘寬限內；params `{signable_at}`（RFC3339） |
+| 409 | `CONFLICT_DAILY_REVIEW_SIGNED` | 該日已有人簽核；params `{date, signer, signed_at, timezone}`（`signed_at` 為 RFC3339，以該日的切日時區呈現） |
+| 400 | `RULE_DAILY_REVIEW_DAY_OUT_OF_SCOPE` | 該日不在啟用範圍內，或是改時區時被跳過的日期 |
+| 400 | `VALIDATION_DAILY_REVIEW_DELAY_REASON_REQUIRED` | 遲簽而延遲原因為空白 |
+| 400 | `RULE_DAILY_REVIEW_ALERTS_PENDING` | 該日仍有未審閱的告警；params `{count}` |
+| 400 | `RULE_DAILY_REVIEW_DISABLED` | 功能未啟用 |
+
+查詢端點的內部錯誤分別為 `INTERNAL_DAILY_REVIEW_PENDING_QUERY`、`INTERNAL_DAILY_REVIEW_DAY_QUERY`、`INTERNAL_DAILY_REVIEW_STATS_QUERY`（500）。
+
+簽核的稽核列 details 為 `{review_date, timezone, signed_at, late, late_days, snapshot}`，不含備註與延遲原因全文。
+
+高危操作計數白名單（以審計列的 `action` 判斷，不看 HTTP 方法）：任何資源的 `delete`；`security_policy`／`syslog_setting`／`audit_export` 的
+`create`／`update`／`delete`；同步匯出（`GET /api/v1/audit-export`，審計記為 `read`＋`audit_export`，因為它把稽核證據帶出系統而收錄）；
+`user` 的 `create`／`update`。上述三類資源的讀取（政策清單、條文定義、syslog 設定、匯出清單、公鑰、匯出產物下載）、
+預覽（`apply-preview`、`compliance/preview`，審計記為 `read`；舊版本記為 `create` 的列以路徑排除）與 syslog 連線測試（`execute`）都不計入。
+此口徑自 1.17.0 起生效：已固化的簽核快照不重算，只影響之後的新簽核、即時計數與單日明細，因此同一天在升級前後簽核的數字可能不同。
+
+逾期提醒：每 15 分鐘檢查一次，業務時區當地時間過了 09:00、當天尚未送過、且至少一天已過準時期限時，經通知通道送一則 `daily_review_overdue`，列出全部未簽日（見「通知通道」的系統訊息）；只有昨天未簽（仍在準時期限內）、全部補齊或功能關閉時不送。
 
 ### 稽核失效事件（10.7.2/10.7.3；`audit:view`）
 
@@ -4299,7 +4469,8 @@ GET /api/v1/audit-logs
 | `status` | string | success/failure/denied |
 | `client_ip` | string | 客戶端 IP |
 | `key` | string | 只看某一個安全政策設定鍵的變更列（例：`password_min_length`）；與 `resource` 併用為 AND |
-| `start_time`, `end_time` | RFC3339 | 時間範圍 |
+| `start_time`, `end_time` | RFC3339 | 時間範圍（含頭尾） |
+| `end_before` | RFC3339／RFC3339Nano | 排他的尾端（`created_at < end_before`），用於以所屬日的 `window_start`／`window_end` 查一整天；與 `end_time` 並存時兩條件都套用 |
 | `page`, `page_size` | int | 分頁 |
 | `sort_by` | string | 排序欄位（預設 created_at） |
 | `sort_order` | string | asc/desc（預設 desc） |
@@ -4466,9 +4637,23 @@ GET /api/v1/audit-export
 - `clipboard_contents.json` — 剪貼簿**解密全文**，逐筆含 `record_ref`／`id`／`session_id`／`occurred_at`／`direction`／`content_status`／`content_length`／`content`（缺口列 `content_status=failed`、`content` 鍵缺席）〔類別 `clipboard`〕
 - `recordings/session-<id>.<ext>` — 有錄影的會話本體（`.cast`/`.guac`；逐檔跳過缺失，不阻斷整包）〔類別 `session`〕
 - `alerts.csv`／`file_transfers.csv` — 無本體之類別以**事件事實**列入（重用事件報告的寫入器）〔類別 `alert`／`file_transfer`〕
+- `daily_reviews.csv` — 每日簽核紀錄，**不隨類別篩選、不隨樞紐改變**（每日審閱涵蓋全部安全事件），事件報告不收。
+  時間窗內、起訖與時間窗有交集且已結束的所屬日，凡在啟用範圍內或有簽核紀錄者各一列——**未簽與尚未到期的日子也是一列**。
+  欄位：`review_date`、`timezone`、`timezone_inferred`、`enabled_basis`（`recorded`，或 `presumed_purged`／
+  `presumed_gap`／`presumed_tail` 表示啟用狀態由升級遷移推定及其成因；已簽列取簽核時固化的值）、`window_start`、
+  `window_end`、`due_at`、`status`（`on_time`／`late`／`unsigned`／`not_due`）、`counts_toward_stats`（已到期才為
+  `true`；昨日即使已簽也為 `false`）、`signed_at`、`signer`、`late_days`、`delay_reason`、`note`、`coverage`、
+  `audit_log_source`／`command_alert_source`（`complete`／`partial`／`purged`）、`login_failures`、`alerts_total`、
+  `alerts_benign`、`alerts_escalated`、`high_risk_ops`、`alerts_after_sign`、`review_ref`（`daily_review:<id>`）。
+  已簽列的計數取簽核時固化的值，未簽列為匯出當下的即時計數；**來源已清除的計數留空，不是 0**。
+  `coverage=until_signed`（升級前的簽核）列另有兩處留空，與資料是否清除無關：`alerts_total`／`alerts_benign`／
+  `alerts_escalated` 留空，因為升級前的簽核只記下未審閱告警數，沒有記錄告警總數與處置分布；`alerts_after_sign` 留空，
+  因為升級前的簽核不檢查告警處置，無法區分此刻未審閱的告警出現在簽核之前或之後。這類列的 `command_alert_source`
+  仍可能是 `complete`，代表告警來源沒有被清除。
+  與合規報告的同名檔為同一支寫法：UTF-8 BOM、CRLF、公式注入轉義（本檔是包內 CSV 形態的例外）
 - `manifest.json`（＋ `manifest.sig`）
 
-**CSV 儲存格轉義（兩種模式的每一個 CSV）**：首字元為 `=`、`+`、`-`、`@`、Tab、CR 之一的儲存格前置單引號，以防試算表公式注入；純數值字面（可帶負號、小數、指數）豁免。這是檔案內容與原始事實之間的一處改寫，manifest `disclosures[]` 以 `export.limit.csv_formula_escape` 揭露；需要逐字原文時以 `record_ref` 回系統查對原始紀錄。JSON 檔不套用。形態維持 UTF-8 無 BOM、LF。
+**CSV 儲存格轉義（兩種模式的每一個 CSV）**：首字元為 `=`、`+`、`-`、`@`、Tab、CR 之一的儲存格前置單引號，以防試算表公式注入；純數值字面（可帶負號、小數、指數）豁免。這是檔案內容與原始事實之間的一處改寫，manifest `disclosures[]` 以 `export.limit.csv_formula_escape` 揭露；需要逐字原文時以 `record_ref` 回系統查對原始紀錄。JSON 檔不套用。形態維持 UTF-8 無 BOM、LF（`daily_reviews.csv` 例外，見上）。
 
 **manifest.json 欄位**:
 | 欄位 | 說明 |
@@ -4486,6 +4671,7 @@ GET /api/v1/audit-export
 | `totals` | 範圍內**真實**筆數（逐類別，不受上限影響）。與 `counts` 不等即代表截斷 |
 | `truncated` | 逐類別截斷旗標 |
 | `clipboard` | 證據包剪貼簿段三數：`events`（事件總數）／`content_available`（內容可用）／`content_failed`（留存失敗） |
+| `daily_reviews` | 證據包每日簽核段：`rows`（收錄）／`in_range`（範圍內真實列數）／`truncated`、`not_filtered_by_type`＝`true`（不隨類別篩選）、`pivot_independent`＝`true`（樞紐不改變收錄）、保留覆蓋兩層——`signoff_retention`＝`not_retained`（簽核紀錄本身不受自動清除）與 `source_partial_rows`／`source_purged_rows`（任一事件來源為部分清除／已清除的列數）——以及 `presumed_rows`（啟用依據為推定的列數）。`counts`／`totals`／`truncated` 另有 `daily_reviews` 鍵 |
 | `coverage[]` | 逐類別保留覆蓋三態（`present`／`purged`／`not_retained`）＋保留天數、清除截止與最近清除時刻、`archive_unit_range`（封存單位編號區間）、`note_code`＋`note_params` |
 | `signed`／`signed_reason` | 是否已簽章；未簽時給機器碼原因（**不靜默省略**） |
 | `disclosures[]` | 這個包能證明什麼、不能證明什麼（`code`＋選用 `params`；`export.proves.*` 全數排在 `export.limit.*` 之前）；兩種模式恆含 `export.limit.csv_formula_escape`（CSV 儲存格已轉義）。證據包含明文剪貼簿內容時，**明載本包含明文內容**（僅 `content_available>0` 時寫入——全缺口包不宣告，宣告即假警報） |
@@ -4497,7 +4683,7 @@ GET /api/v1/audit-export
 需要可讀說明時請在系統介面上檢視同一組碼的說明。
 
 **上限**（超過即截斷並於 manifest 標明，不靜默截斷）:
-證據包＝操作日誌 50000、指令 50000、錄影 100 檔；事件報告＝**每一類別各自** 50000 列
+證據包＝操作日誌 50000、指令 50000、錄影 100 檔、每日簽核 3660 列（十年）；事件報告＝**每一類別各自** 50000 列
 （刻意不共用總上限，否則「哪一類被截斷」不可辨識）。
 
 **完整性判準**: `manifest.json` 是最後寫入的檔案。**包內若無 `manifest.json`，

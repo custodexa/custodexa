@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -114,6 +115,10 @@ func renderValues(lang string, event Event, params map[string]string) map[string
 		}
 		if p, ok := spec.param(k); ok && p.Lexicon != "" {
 			out[k] = slackEscape(SanitizeOpaque(Phrase(lang, p.Lexicon, v)))
+			continue
+		}
+		if p, ok := spec.param(k); ok && p.Kind == KindDateList {
+			out[k] = renderDateList(lang, p, v, params)
 			continue
 		}
 		out[k] = slackEscape(SanitizeOpaque(v))
@@ -229,4 +234,22 @@ func indexRuneFrom(runes []rune, from int, target rune) int {
 		}
 	}
 	return -1
+}
+
+// renderDateList Slack 的逐行清單；總數多於清單元素時加「另有 N 天」（通道語系）
+func renderDateList(lang string, p ParamSpec, v string, params map[string]string) string {
+	items := splitDateList(v)
+	var b strings.Builder
+	for _, d := range items {
+		b.WriteString("\n• ")
+		b.WriteString(slackEscape(SanitizeOpaque(d)))
+	}
+	if p.Total != "" {
+		if total, err := strconv.Atoi(params[p.Total]); err == nil && total > len(items) {
+			more := strings.ReplaceAll(Phrase(lang, LexiconDateList, DateListKeyMore), "{n}", strconv.Itoa(total-len(items)))
+			b.WriteString("\n")
+			b.WriteString(slackEscape(SanitizeOpaque(more)))
+		}
+	}
+	return b.String()
 }

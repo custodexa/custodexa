@@ -172,6 +172,25 @@ describe('Alerts 批次審閱', () => {
     expect(summary.text()).toContain('成功 2 筆')
   })
 
+  // 防：嵌在每日簽核抽屜時，結果列已出現，呼叫端卻要等使用者按「完成」才知道該重取現況
+  it('結果列出現時發 settled、按完成才發 finished', async () => {
+    const wrapper = mountAlerts()
+    await flushPromises()
+    await selectAndOpen(wrapper, [2, 3])
+    const batch = wrapper.findComponent({ name: 'AlertBatchReviewDialog' })
+    expect(batch.emitted('settled')).toBeUndefined()
+
+    await fillAndSubmit(wrapper)
+    expect(dialog(wrapper).find('[data-test="batch-summary"]').text()).toContain('成功 2 筆')
+    expect(batch.emitted('settled')).toHaveLength(1)
+    expect(batch.emitted('finished')).toBeUndefined()
+
+    await dialog(wrapper).find('[data-test="batch-done"]').trigger('click')
+    await flushPromises()
+    expect(batch.emitted('finished')).toHaveLength(1)
+    expect(batch.emitted('settled')).toHaveLength(1)
+  })
+
   it('部分失敗（409／403）不影響其他筆，逐筆呈現原因', async () => {
     searchAlertsMock.mockResolvedValue(listResponse([...sampleAlerts, alertRow(5)]))
     reviewAlertMock

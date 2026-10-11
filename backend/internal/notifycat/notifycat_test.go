@@ -1,9 +1,12 @@
 package notifycat
 
 import (
+	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -96,6 +99,12 @@ func TestValidateRejections(t *testing.T) {
 			ReasonNotAnInteger},
 		{"opaque 全為控制字元視同缺值", EventDailyReviewOverdue,
 			map[string]string{"date": "\x00\x07"}, ReasonMissingRequired},
+		{"date_list 含非日期值", EventDailyReviewOverdue,
+			withParam(overdueParams("2026-07-31"), "pending_dates", "2026-07-31,yesterday"), ReasonNotADateList},
+		{"date_list 日期不存在", EventDailyReviewOverdue,
+			withParam(overdueParams("2026-07-31"), "pending_dates", "2026-02-30"), ReasonNotADateList},
+		{"date_list 超過 31 個", EventDailyReviewOverdue,
+			withParam(overdueParams("2026-07-31"), "pending_dates", strings.Join(consecutiveDates(32), ",")), ReasonNotADateList},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -134,8 +143,31 @@ func TestValidateUnregisteredEvent(t *testing.T) {
 	}
 }
 
+// overdueParams daily_review_overdue 的完整參數（六個必要鍵）
+func overdueParams(dates ...string) map[string]string {
+	return map[string]string{
+		"date":                  dates[0],
+		"pending_dates":         DateList(dates),
+		"pending_count":         strconv.Itoa(len(dates)),
+		"overdue_count":         strconv.Itoa(len(dates)),
+		"earliest_pending_date": dates[0],
+		"timezone":              "Asia/Taipei",
+	}
+}
+
+// consecutiveDates 自 2026-08-01 起連續 n 天的 YYYY-MM-DD
+func consecutiveDates(n int) []string {
+	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	out := make([]string, n)
+	for i := range out {
+		out[i] = start.AddDate(0, 0, i).Format("2006-01-02")
+	}
+	return out
+}
+
 func TestValidateDoesNotMutateInput(t *testing.T) {
-	in := map[string]string{"date": "2026-07-31\n"}
+	in := overdueParams("2026-07-31")
+	in["date"] = "2026-07-31\n"
 	if _, err := Validate(EventDailyReviewOverdue, in); err != nil {
 		t.Fatalf("預期通過: %v", err)
 	}
@@ -554,4 +586,77 @@ func TestRenderOngoingBacklog(t *testing.T) {
 		"reported_at": "t", "backlog": "十二"}); err == nil {
 		t.Fatal("backlog 非整數應被拒（KindInt 值域）")
 	}
+}
+
+// withParam 回傳覆寫單一鍵的新 map（不改動輸入）
+func withParam(in map[string]string, k, v string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, val := range in {
+		out[key] = val
+	}
+	out[k] = v
+	return out
+}
+
+// TestDailyReviewOverdueDateList 逾期提醒的日期清單參數（擋：清單被截斷而收端以為
+// 只有幾天未簽、webhook 收到的是逗號字串而非陣列、Slack 沒交代還有未列出的日子）
+func TestDailyReviewOverdueDateList(t *testing.T) {
+	t.Run("31 個日期全帶", func(t *testing.T) {
+		dates := consecutiveDates(31)
+		out, err := Validate(EventDailyReviewOverdue, overdueParams(dates...))
+		if err != nil {
+			t.Fatalf("31 個日期應通過: %v", err)
+		}
+		wire := WireParams(EventDailyReviewOverdue, out)
+		got, ok := wire["pending_dates"].([]string)
+		if !ok || len(got) != 31 || got[0] != dates[0] || got[30] != dates[30] {
+			t.Fatalf("webhook 應帶 31 個日期的陣列，實得 %#v", wire["pending_dates"])
+		}
+		_, text := Render("zh-TW", EventDailyReviewOverdue, out)
+		if strings.Contains(text, "另有") {
+			t.Fatalf("全部列出時不得出現「另有」，實得 %q", text)
+		}
+		for _, d := range []string{dates[0], dates[30]} {
+			if !strings.Contains(text, "• "+d) {
+				t.Fatalf("Slack 應逐行列出 %s，實得 %q", d, text)
+			}
+		}
+	})
+
+	t.Run("32 個日期只帶最早 31 個且 pending_count=32", func(t *testing.T) {
+		dates := consecutiveDates(32)
+		params := overdueParams(dates...)
+		if params["pending_count"] != "32" {
+			t.Fatalf("pending_count 應為真實總數 32，實得 %s", params["pending_count"])
+		}
+		out, err := Validate(EventDailyReviewOverdue, params)
+		if err != nil {
+			t.Fatalf("應通過: %v", err)
+		}
+		wire := WireParams(EventDailyReviewOverdue, out)
+		got := wire["pending_dates"].([]string)
+		if len(got) != 31 || got[0] != dates[0] || got[30] != dates[30] {
+			t.Fatalf("應只帶最早 31 個，實得 %d 個 %v", len(got), got)
+		}
+		if wire["date"] != dates[0] || wire["earliest_pending_date"] != dates[0] {
+			t.Fatalf("date 與 earliest_pending_date 應為最早未簽日，實得 %v / %v", wire["date"], wire["earliest_pending_date"])
+		}
+		body, _ := json.Marshal(wire)
+		if !strings.Contains(string(body), `"pending_dates":["2026-08-01",`) {
+			t.Fatalf("webhook JSON 的 pending_dates 應為陣列，實得 %s", body)
+		}
+		_, zh := Render("zh-TW", EventDailyReviewOverdue, out)
+		if !strings.Contains(zh, "另有 1 天") {
+			t.Fatalf("Slack 應含「另有 1 天」，實得 %q", zh)
+		}
+		if strings.Contains(zh, dates[31]) {
+			t.Fatalf("第 32 個日期不得出現在清單，實得 %q", zh)
+		}
+		for _, lang := range []string{"en-US", "ja-JP"} {
+			_, text := Render(lang, EventDailyReviewOverdue, out)
+			if !strings.Contains(text, "1") || strings.Contains(text, "{n}") || strings.Contains(text, "{pending_dates}") {
+				t.Fatalf("%s 渲染不完整: %q", lang, text)
+			}
+		}
+	})
 }

@@ -70,7 +70,7 @@ func seedControlLiterals() map[string]string {
 		pciGroupCode + "|" + PolicyBreakGlassDurationMinutes:    "7.2 max \"60\" ref=false",
 		pciGroupCode + "|" + PolicyBreakGlassEnabled:            "7.2 equals \"false\" ref=false",
 		pciGroupCode + "|" + PolicyBreakGlassReviewTimeoutHours: "7.2 max \"24\" ref=false",
-		pciGroupCode + "|" + PolicyDailyReviewEnabled:           "10.4.1 equals \"true\" ref=false",
+		pciGroupCode + "|" + PolicyDailyReviewEnabled:           "10.4.1 signoff_record \"true\" ref=false",
 		pciGroupCode + "|" + PolicyFailureAlertEnabled:          "10.7.2 equals \"true\" ref=false",
 		pciGroupCode + "|" + PolicyForceChangeOnReset:           "8.3.5 equals \"true\" ref=false",
 		pciGroupCode + "|" + PolicyInactiveDisableDays:          "8.2.6 max \"90\" ref=false",
@@ -173,7 +173,14 @@ func TestPolicyGroupSeedMatchesPolicyDefs(t *testing.T) {
 					t.Errorf("組 %s 收了未定義的設定鍵 %s", seed.Code, key)
 					continue
 				}
-				if err := assertComparatorFitsType(def, exp.Comparator); err != nil {
+				// 運作紀錄判定只走種子專屬檢查（自建組的寫入端拒收它）
+				if exp.Comparator == model.PolicyControlComparatorSignoffRecord {
+					if err := assertSignoffRecordSeed(policyControlSeed{Key: key,
+						Comparator: exp.Comparator, ExpectedValue: exp.ExpectedValue,
+						ReferenceOnly: exp.ReferenceOnly}); err != nil {
+						t.Errorf("組 %s 的設定鍵 %s: %v", seed.Code, key, err)
+					}
+				} else if err := assertComparatorFitsType(def, exp.Comparator); err != nil {
 					t.Errorf("組 %s 的設定鍵 %s: %v", seed.Code, key, err)
 				}
 				if exp.Comparator == model.PolicyControlComparatorReview {
@@ -241,7 +248,7 @@ func TestPolicyGroupSeedMatchesPolicyDefs(t *testing.T) {
 	t.Run("PCI 組的分母", func(t *testing.T) {
 		assertSeedShape(t, db, pciGroupCode, seedShape{
 			Clauses:       map[string]int{model.PolicyClauseKindSetting: 16},
-			Comparators:   map[string]int{"min": 7, "max": 9, "equals": 9, "review": 6},
+			Comparators:   map[string]int{"min": 7, "max": 9, "equals": 8, "review": 6, "signoff_record": 1},
 			ReferenceOnly: 1,
 		})
 	})

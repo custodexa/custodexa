@@ -13,7 +13,8 @@ import (
 // 上的分歧不會有任何一處報錯——管理者與稽核人員在同一時點看到不同的答案，
 // 而系統沒有訊號。
 
-// 鍵層判定的四種結果。字串即對外契約（API 與前端直接使用這些值）。
+// 鍵層判定的結果。字串即對外契約（API 與前端直接使用這些值）。
+// 第六種「資料不足」只出現在以運作紀錄判定的條文，見 compliance_signoff.go。
 const (
 	// ComplianceResultCompliant 現值達到該組對該鍵的要求
 	ComplianceResultCompliant = "compliant"
@@ -97,7 +98,10 @@ func compareOrderedExpectation(def *PolicyDef, value, comparator, expected strin
 	if !ok || !baseOK {
 		return false, ComplianceReasonNotComparable
 	}
-	if comparator == model.PolicyControlComparatorEquals {
+	// 運作紀錄判定在設定值這一層就是「開關須為 true」（簽核紀錄另由
+	// buildSignoffVerdict 判）：套用預覽據此提出開啟，已開啟則不列為待變更
+	if comparator == model.PolicyControlComparatorEquals ||
+		comparator == model.PolicyControlComparatorSignoffRecord {
 		if value == expected {
 			return true, ComplianceReasonMeets
 		}

@@ -41,6 +41,21 @@ type ApplyConflict struct {
 	Reasons []ApplyConflictReason `json:"reasons"`
 }
 
+// ApplyNote 套用設定解決不了的偏離（目前只有一種：每日審閱條文因未簽而偏離）。
+//
+// **要另列一行**：開關已經開著，套用不會改任何東西，該鍵因此落在「不變動」；
+// 不說明的話，管理者按下套用後偏離仍在，卻看不出原因在未簽的日子
+type ApplyNote struct {
+	Key      string `json:"key"`
+	Group    string `json:"group"`
+	ClauseNo string `json:"clause_no"`
+	// Reason 理由碼（目前恆為 signoff_unsigned_days）
+	Reason string `json:"reason"`
+	// Unsigned 近 30 天未簽天數；EarliestUnsigned 最早未簽日（前往補簽的入口用）
+	Unsigned         int    `json:"unsigned"`
+	EarliestUnsigned string `json:"earliest_unsigned"`
+}
+
 // ApplyPreview 套用預覽的完整結果。
 type ApplyPreview struct {
 	Mode      string `json:"mode"`
@@ -53,6 +68,8 @@ type ApplyPreview struct {
 	UnchangedCount int `json:"unchanged_count"`
 	// UnmappedCount 範圍內不屬於任何生效政策組的鍵數
 	UnmappedCount int `json:"unmapped_count"`
+	// Notes 套用設定無法解決的偏離（需到每日簽核補簽）
+	Notes []ApplyNote `json:"notes"`
 }
 
 // keyExpectation 單一鍵上的一條要求。
@@ -129,7 +146,7 @@ func resolveBounds(def *PolicyDef, exps []keyExpectation) (expectationBounds, bo
 			raiseLower(&bounds, end)
 		case model.PolicyControlComparatorMax:
 			pressUpper(&bounds, end)
-		case model.PolicyControlComparatorEquals:
+		case model.PolicyControlComparatorEquals, model.PolicyControlComparatorSignoffRecord:
 			raiseLower(&bounds, end)
 			pressUpper(&bounds, end)
 		default:
@@ -234,11 +251,12 @@ func candidateFor(def *PolicyDef, current string,
 func buildApplyPreview(defs []PolicyDef, values map[string]string, snap ComplianceSnapshot,
 	scope []string, mode, groupCode string) ApplyPreview {
 
-	preview := ApplyPreview{Mode: mode, GroupCode: groupCode}
+	preview := ApplyPreview{Mode: mode, GroupCode: groupCode, Notes: []ApplyNote{}}
 	inScope := keySet(scope)
 	if inScope == nil {
 		return preview
 	}
+	preview.Notes = signoffApplyNotes(snap, inScope, mode, groupCode)
 	unmapped := keySet(snap.UnmappedKeys)
 	expectations := expectationsByKey(snap, mode, groupCode)
 
@@ -270,6 +288,25 @@ func buildApplyPreview(defs []PolicyDef, values map[string]string, snap Complian
 		}
 	}
 	return preview
+}
+
+// signoffApplyNotes 範圍內因未簽而偏離的每日審閱條文（指定單組時只看該組）。
+func signoffApplyNotes(snap ComplianceSnapshot, inScope map[string]bool, mode, groupCode string) []ApplyNote {
+	notes := []ApplyNote{}
+	for _, v := range snap.Verdicts {
+		if v.Reason != ComplianceReasonSignoffUnsignedDays || !inScope[v.Key] {
+			continue
+		}
+		if mode == ApplyModeGroup && v.GroupCode != groupCode {
+			continue
+		}
+		note := ApplyNote{Key: v.Key, Group: v.GroupCode, ClauseNo: v.ClauseNo, Reason: v.Reason}
+		if v.Signoff != nil {
+			note.Unsigned, note.EarliestUnsigned = v.Signoff.Unsigned, v.Signoff.EarliestUnsigned
+		}
+		notes = append(notes, note)
+	}
+	return notes
 }
 
 // expectationsByKey 取出可自動套用的要求。

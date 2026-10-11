@@ -74,6 +74,7 @@ export const SECURITY_SECTIONS = [
     // 保留政策實質失效），下界由後端 Min 承擔
     'retention_max_per_run',
     'daily_review_enabled',
+    'daily_review_timezone',
     'failure_alert_enabled',
     'recording_failclose_enabled',
   ]),

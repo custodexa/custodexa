@@ -48,6 +48,7 @@ func reportFixture(t *testing.T, lang string) *ComplianceReport {
 		{GroupCode: "g", ClauseNo: "8", Title: "已移除的條文", Kind: model.PolicyClauseKindBuiltinProtection,
 			RemovedInVersion: "2.0"},
 		testClause("g", "9", model.PolicyClauseKindSetting, ""),
+		testClause("g", "10", model.PolicyClauseKindSetting, ""),
 	}
 	controls := []model.PolicyClauseControl{
 		testControl("g", "1", testKeyPwdLen, model.PolicyControlComparatorMin, "14", false),
@@ -55,6 +56,8 @@ func reportFixture(t *testing.T, lang string) *ComplianceReport {
 		testControl("g", "3", testKeyTransport, model.PolicyControlComparatorReview, "", false),
 		testControl("g", "4", testKeyClipboard, model.PolicyControlComparatorEquals, "false", true),
 		testControl("g", "9", PolicyRetentionSessionCommandDays, model.PolicyControlComparatorMin, "730", false),
+		// 運作紀錄判定、未帶紀錄：資料不足（取不到紀錄）
+		testControl("g", "10", PolicyDailyReviewEnabled, model.PolicyControlComparatorSignoffRecord, "true", false),
 	}
 	confirmedAt := time.Date(2026, 9, 20, 3, 4, 0, 0, time.UTC)
 	annotations := []model.PolicyClauseAnnotation{
@@ -62,12 +65,12 @@ func reportFixture(t *testing.T, lang string) *ComplianceReport {
 			ConfirmationNote: "剪貼簿依內規放行"},
 		{GroupCode: "g", ClauseNo: "5", Note: "由資安室每季檢視"},
 	}
-	defs := append(testComplianceDefs(), *findDef(PolicyRetentionSessionCommandDays))
+	defs := append(testComplianceDefs(), *findDef(PolicyRetentionSessionCommandDays), *findDef(PolicyDailyReviewEnabled))
 	changes := map[string]PolicyKeyChange{}
 	for _, d := range defs {
 		changes[d.Key] = PolicyKeyChange{UpdatedBy: "bob", UpdatedAt: &reportFixtureChangedAt}
 	}
-	snap := BuildSnapshot(defs, map[string]string{PolicyRetentionSessionCommandDays: "0"}, changes,
+	snap := BuildSnapshot(defs, map[string]string{PolicyRetentionSessionCommandDays: "0", PolicyDailyReviewEnabled: "true"}, changes,
 		[]model.PolicyGroup{group}, clauses, controls, annotations)
 	return BuildComplianceReport(snap, group, clauses, annotations, ComplianceReportMeta{
 		GeneratedBy: "auditor01",
@@ -131,6 +134,8 @@ func TestComplianceReportOutputsSameSource(t *testing.T) {
 			ph("metric_deviating"):    strconv.Itoa(byResult[ph("result_deviating")]),
 			ph("metric_needs_review"): strconv.Itoa(byResult[ph("result_needs_review")]),
 			ph("metric_audit_review"): strconv.Itoa(byResult[ph("result_review")]),
+			ph("metric_insufficient_data"): strconv.Itoa(
+				byResult[ph("result_insufficient_data")]),
 		}
 		metrics := complianceReportMetrics(rep, ph)
 		if len(metrics) != len(want) {
@@ -318,7 +323,7 @@ func TestComplianceReportPdfReadsInFull(t *testing.T) {
 			joined := stripReportSpace(strings.Join(lines, ""))
 
 			confirmedAt := time.Date(2026, 9, 20, 3, 4, 0, 0, time.UTC)
-			for _, want := range []string{"alice", reportTime(confirmedAt), "剪貼簿依內規放行",
+			for _, want := range []string{"alice", reportTime(confirmedAt, rep.Meta.Timezone), "剪貼簿依內規放行",
 				zeroDisplay[lang], disabledByZeroRetentionOracle[lang], minDisplay[lang]} {
 				if !strings.Contains(joined, stripReportSpace(want)) {
 					t.Errorf("PDF 缺「%s」", want)
@@ -336,7 +341,7 @@ func TestComplianceReportPdfReadsInFull(t *testing.T) {
 					exceptions++
 				}
 			}
-			stamp := stripReportSpace(reportTime(reportFixtureChangedAt))
+			stamp := stripReportSpace(reportTime(reportFixtureChangedAt, rep.Meta.Timezone))
 			if got, want := strings.Count(joined, stamp), len(rep.Rows)+exceptions; got < want {
 				t.Errorf("帶位移的最後變更時刻「%s」只出現 %d 次，want ≥ %d", stamp, got, want)
 			}

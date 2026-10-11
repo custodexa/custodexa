@@ -72,7 +72,13 @@ const (
 	//
 	// 只描述事實，不斷言成因（例如「沒有回顯」不等於「對端關閉了回顯」）。
 	LexiconDegradeReason Lexicon = "degrade_reason"
+	// LexiconDateList 日期清單參數的附註（清單只帶最早的若干個時，「另有 N 天」）。
+	// 短語內的 {n} 由渲染端代入，不經事件模板的插值
+	LexiconDateList Lexicon = "date_list"
 )
+
+// DateListKeyMore 「另有 N 天」的詞庫鍵
+const DateListKeyMore = "more"
 
 // 實體標籤的詞庫鍵（值域即 lexicons/*.json 的 entity 區塊鍵集，受守衛比對）。
 const (
@@ -186,7 +192,7 @@ func LexiconEntries(lang string, lex Lexicon) map[string]string {
 func Lexicons() []Lexicon {
 	return []Lexicon{LexiconCause, LexiconSeverity, LexiconAlertState, LexiconDegraded,
 		LexiconEntity, LexiconRotationReport, LexiconComplianceReport, LexiconAlertKind,
-		LexiconAlertKindText, LexiconDegradeReason}
+		LexiconAlertKindText, LexiconDegradeReason, LexiconDateList}
 }
 
 // CauseCodes 全部失效原因碼（順序穩定；守衛與診斷用）。

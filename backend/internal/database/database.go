@@ -192,6 +192,9 @@ var schemaParityModels = []interface{}{
 	// **全部欄位明文且不得改為信封加密欄**——讀取時點在已封存狀態，
 	// 受信封保護的欄位在那個時點解不出來（見 migration_kek_topology.go 檔頭）
 	&model.KEKTopology{},
+	// 政策變更歷史（每日簽核的開關與業務時區）。由增量 migration
+	// 20261012_daily_review_signoff 建表，走 schemaDDLStatements() 受兩層 parity 守衛
+	&model.SecurityPolicyHistory{},
 }
 
 // SchemaParityModels 回傳 schemaParityModels 的副本。

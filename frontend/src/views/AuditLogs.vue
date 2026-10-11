@@ -98,8 +98,19 @@
                 format="YYYY-MM-DD HH:mm"
                 value-format="YYYY-MM-DDTHH:mm:ssZ"
                 style="width: 360px"
-                @change="handleSearch"
+                @change="onTimeRangeChange"
               />
+              <!-- 由每日簽核抽屜帶入的起訖：尾端是排他條件（隔天 00:00 那一刻屬於下一天）。
+                   使用者手動改時間後回到含尾端的一般篩選，這個標示一起消失 -->
+              <el-tag
+                v-if="endBefore"
+                class="end-before-tag"
+                type="info"
+                effect="plain"
+                data-test="end-before-tag"
+              >
+                {{ $t('dailyReview.logsFilter.endExclusive') }}
+              </el-tag>
             </el-form-item>
 
             <el-form-item>
@@ -266,85 +277,27 @@
         </div>
       </el-tab-pane>
 
-      <!-- 頁籤二：每日簽核歷史（PCI 10.4.1） -->
+      <!-- 頁籤二：每日簽核工作區（PCI 10.4.1）。lazy：切到這個分頁才掛載與取數 -->
       <el-tab-pane
-        :label="$t('auditLogs.tabReviews')"
         name="reviews"
+        lazy
       >
-        <div class="list-card">
-          <el-table
-            v-loading="reviewsLoading"
-            :data="reviews"
-            stripe
-            style="width: 100%"
-          >
-            <el-table-column
-              :label="$t('auditLogs.dateColumn')"
-              width="120"
-            >
-              <template #default="{ row }">
-                {{ (row.review_date || '').slice(0, 10) }}
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              prop="reviewer_name"
-              :label="$t('auditLogs.reviewerColumn')"
-              width="140"
-            />
-
-            <el-table-column
-              :label="$t('auditLogs.snapshotCountsColumn')"
-              min-width="300"
-            >
-              <template #default="{ row }">
-                <template v-if="snapshotCounts(row).length">
-                  <span
-                    v-for="item in snapshotCounts(row)"
-                    :key="item.label"
-                    class="snapshot-count"
-                  >{{ item.label }} {{ item.value }}</span>
-                </template>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column
-              prop="note"
-              :label="$t('auditLogs.noteColumn')"
-              min-width="160"
-              show-overflow-tooltip
-            />
-
-            <el-table-column
-              :label="$t('auditLogs.reviewTimeColumn')"
-              width="180"
-            >
-              <template #default="{ row }">
-                {{ formatDateTime(row.created_at) }}
-              </template>
-            </el-table-column>
-
-            <template #empty>
-              <EmptyState
-                :title="$t('auditLogs.emptyReviewsTitle')"
-                :hint="$t('auditLogs.emptyReviewsHint')"
-              />
-            </template>
-          </el-table>
-
-          <div class="pagination">
-            <el-pagination
-              v-model:current-page="reviewsPagination.page"
-              v-model:page-size="reviewsPagination.page_size"
-              :page-sizes="[10, 20, 50]"
-              :total="reviewsPagination.total"
-              layout="total, sizes, prev, pager, next, jumper"
-              @size-change="fetchReviews"
-              @current-change="fetchReviews"
-            />
-          </div>
-        </div>
+        <template #label>
+          <span class="tab-label-with-badge">
+            {{ $t('auditLogs.tabReviews') }}
+            <span
+              v-if="canSign && reviewBadge.count.value > 0"
+              :class="['tab-badge', reviewBadge.overdueCount.value > 0 ? 'tab-badge--danger' : 'tab-badge--warning']"
+              data-test="reviews-tab-badge"
+            >{{ reviewBadge.count.value }}</span>
+          </span>
+        </template>
+        <DailyReviewWorkspace
+          ref="workspaceRef"
+          :can-sign="canSign"
+          :is-admin="isAdmin"
+          :open-date="reviewDate"
+        />
       </el-tab-pane>
 
       <!-- 頁籤三：審計機制失效事件（PCI 10.7.3） -->
@@ -747,17 +700,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
 import { getAuditLogs } from '@/api/audit'
 import { exportAuditEvidence } from '@/api/auditExport'
-import { getDailyReviews } from '@/api/dailyReviews'
 import { getAuditFailures } from '@/api/auditFailures'
 import { verifyAuditIntegrity } from '@/api/auditIntegrity'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import DailyReviewWorkspace from '@/components/daily-review/DailyReviewWorkspace.vue'
+import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
 import { formatDateTime } from '@/utils/format'
 import {
   AUDIT_ACTIONS,
@@ -775,8 +729,15 @@ import { t } from '@/i18n'
 const route = useRoute()
 const activeTab = ref('logs')
 
-// 完整性驗證僅 admin（後端 admin only）
-const { isAdmin } = useRoles()
+// 完整性驗證僅 admin（後端 admin only）；簽核權限 alert:manage＝admin／auditor
+const { isAdmin, isPrivileged: canSign } = useRoles()
+// 分頁標籤的待簽天數：與側欄同一份數字（側欄負責輪詢）
+const reviewBadge = useDailyReviewBadge()
+const workspaceRef = ref(null)
+// 網址帶入的所屬日（?date=），交給工作區開抽屜
+const reviewDate = ref('')
+// 排他尾端（?end_before=）：只由每日簽核抽屜的連結帶入
+const endBefore = ref(null)
 
 // 響應式資料
 const logs = ref([])
@@ -815,10 +776,12 @@ const fetchLogs = async () => {
     if (filters.value.status) params.status = filters.value.status
     if (filters.value.key) params.key = filters.value.key
 
-    // 時間範圍
+    // 時間範圍。帶入排他尾端時送 end_before、不送 end_time：每日區間是半開區間，
+    // 含尾端會把恰在下一日起點的事件也列進來
     if (timeRange.value && timeRange.value.length === 2) {
       params.start_time = timeRange.value[0]
-      params.end_time = timeRange.value[1]
+      if (endBefore.value) params.end_before = endBefore.value
+      else params.end_time = timeRange.value[1]
     }
 
     const response = await getAuditLogs(params)
@@ -846,6 +809,13 @@ const handleReset = () => {
     key: null,
   }
   timeRange.value = []
+  endBefore.value = null
+  handleSearch()
+}
+
+// 手動改時間＝回到既有的含尾端篩選
+const onTimeRangeChange = () => {
+  endBefore.value = null
   handleSearch()
 }
 
@@ -862,7 +832,7 @@ const clearKeyFilter = () => {
 
 // 重新整理：依目前頁籤重載對應資料（C4）
 const handleRefresh = () => {
-  if (activeTab.value === 'reviews') fetchReviews()
+  if (activeTab.value === 'reviews') workspaceRef.value?.refresh()
   else if (activeTab.value === 'failures') fetchFailures()
   else fetchLogs()
 }
@@ -977,45 +947,6 @@ const getStatusTagType = (status) => {
   return map[status] || 'info'
 }
 
-// —— 每日簽核歷史（PCI 10.4.1）——
-const reviews = ref([])
-const reviewsLoading = ref(false)
-const reviewsPagination = ref({ page: 1, page_size: 20, total: 0 })
-
-const fetchReviews = async () => {
-  reviewsLoading.value = true
-  try {
-    const res = await getDailyReviews({
-      page: reviewsPagination.value.page,
-      page_size: reviewsPagination.value.page_size,
-    })
-    reviews.value = res.data?.items || []
-    reviewsPagination.value.total = res.data?.total || 0
-  } catch (error) {
-    console.error('查詢每日簽核歷史失敗:', error)
-  } finally {
-    reviewsLoading.value = false
-  }
-}
-
-// 解析簽核快照 JSON 為三計數（解析失敗回空陣列，顯示 -）
-const snapshotCounts = (row) => {
-  let snap = row.snapshot_json
-  if (!snap) return []
-  if (typeof snap === 'string') {
-    try {
-      snap = JSON.parse(snap)
-    } catch {
-      return []
-    }
-  }
-  return [
-    { label: t('common.loginFailures'), value: snap.login_failures ?? 0 },
-    { label: t('common.unreviewedAlerts'), value: snap.unreviewed_alerts ?? 0 },
-    { label: t('common.highRiskOps'), value: snap.high_risk_ops ?? 0 },
-  ]
-}
-
 // —— 審計機制失效事件（PCI 10.7.3）——
 const failures = ref([])
 const failuresLoading = ref(false)
@@ -1076,7 +1007,8 @@ const runIntegrityVerify = async () => {
 
 // tab 切換即 refetch（C8：資料新鮮優先，對齊 Sessions 模式）
 const handleTabChange = (tab) => {
-  if (tab === 'reviews') fetchReviews()
+  // 工作區首次掛載時自己取數；之後切回來才由這裡重取
+  if (tab === 'reviews') workspaceRef.value?.refresh()
   else if (tab === 'failures') fetchFailures()
   else fetchLogs()
 }
@@ -1091,8 +1023,15 @@ const handleTabChange = (tab) => {
 // 分類只認既有值域內的值；鍵是設定鍵，長度以政策鍵欄位寬度為界。
 const TAB_FROM_QUERY = ['logs', 'reviews', 'failures']
 const POLICY_KEY_MAX_LENGTH = 64
-onMounted(() => {
-  const query = route?.query || {}
+const REVIEW_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+// RFC3339：日期、T、時刻與位移（或 Z）；格式不符一律忽略
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+const isRFC3339 = (value) =>
+  typeof value === 'string' && RFC3339_RE.test(value) && Number.isFinite(Date.parse(value))
+
+// 網址參數監聽：初次與之後每次變更都套用。側欄徽章、儀表板卡片與抽屜內的
+// 「在操作日誌查看全部」都是同頁改 query，只在掛載時讀一次的話這些入口都會失效
+const applyQuery = (query = {}) => {
   const tab = query.tab
   if (typeof tab === 'string' && TAB_FROM_QUERY.includes(tab)) {
     activeTab.value = tab
@@ -1112,8 +1051,26 @@ onMounted(() => {
   ) {
     filters.value.key = query.key
   }
+  // 時間篩選只在操作日誌分頁有效；帶了就整組取代舊的時間篩選
+  if (activeTab.value === 'logs' && isRFC3339(query.start_time)) {
+    if (isRFC3339(query.end_before)) {
+      timeRange.value = [query.start_time, query.end_before]
+      endBefore.value = query.end_before
+    } else if (isRFC3339(query.end_time)) {
+      timeRange.value = [query.start_time, query.end_time]
+      endBefore.value = null
+    }
+    pagination.value.page = 1
+  }
+  // 所屬日只在每日簽核分頁有效，格式不符忽略
+  reviewDate.value =
+    activeTab.value === 'reviews' && typeof query.date === 'string' && REVIEW_DATE_RE.test(query.date)
+      ? query.date
+      : ''
   handleTabChange(activeTab.value)
-})
+}
+
+watch(() => route?.query, (query) => applyQuery(query || {}), { immediate: true })
 </script>
 
 <style scoped>
@@ -1155,11 +1112,33 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.snapshot-count {
-  display: inline-block;
-  margin-right: var(--ot-space-md);
-  font-size: var(--ot-font-size-sm);
-  color: var(--ot-text-primary);
+.end-before-tag {
+  margin-left: var(--ot-space-sm);
+}
+
+.tab-label-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 待簽天數：只有期限內的日子用警示色，有任一天逾期轉危險色 */
+.tab-badge {
+  min-width: 18px;
+  padding: 0 6px;
+  font-size: var(--ot-font-size-xs);
+  line-height: 18px;
+  text-align: center;
+  border-radius: 9px;
+  color: var(--ot-text-inverse);
+}
+
+.tab-badge--warning {
+  background-color: var(--ot-warning);
+}
+
+.tab-badge--danger {
+  background-color: var(--ot-danger);
 }
 
 .integrity-result {

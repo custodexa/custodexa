@@ -45,17 +45,26 @@ func complianceReportColumns() []string {
 	}
 }
 
-// reportTime 封面與表格的時刻：本機時區、到秒、附 UTC 位移。
-func reportTime(t time.Time) string {
+// reportTime 封面、頁尾與表格的時刻：業務時區、到秒、標明時區名與 UTC 位移
+// （「2026-10-11 12:00:00 (Asia/Taipei, UTC+08:00)」）。稽核人員對照的是同一份
+// 業務時區下的每日簽核與逐日表，封面若改用伺服器時區，同一時點會在一份報告裡
+// 出現兩種寫法。tz 空白或無法載入時退回伺服器時區，只附位移。
+func reportTime(t time.Time, tz string) string {
+	if tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			local := t.In(loc)
+			return local.Format("2006-01-02 15:04:05") + " (" + tz + ", UTC" + local.Format("-07:00") + ")"
+		}
+	}
 	local := t.In(time.Local)
 	return local.Format("2006-01-02 15:04:05") + " (UTC" + local.Format("-07:00") + ")"
 }
 
-func reportTimePtr(t *time.Time) string {
+func reportTimePtr(t *time.Time, tz string) string {
 	if t == nil {
 		return ""
 	}
-	return reportTime(*t)
+	return reportTime(*t, tz)
 }
 
 func csvTimePtr(t *time.Time) string {
@@ -155,7 +164,7 @@ func WriteComplianceReportCSV(w io.Writer, rep *ComplianceReport) error {
 	return cw.Error()
 }
 
-// complianceReportMetrics 封面摘要六格：前兩格單位是條文，後四格是設定鍵。
+// complianceReportMetrics 封面摘要七格：前兩格單位是條文，後五格是設定鍵。
 func complianceReportMetrics(rep *ComplianceReport, ph reportPhraseFn) []pdfdoc.Metric {
 	s := rep.Summary
 	return []pdfdoc.Metric{
@@ -165,6 +174,7 @@ func complianceReportMetrics(rep *ComplianceReport, ph reportPhraseFn) []pdfdoc.
 		{Label: ph("metric_deviating"), Value: strconv.Itoa(s.Deviating)},
 		{Label: ph("metric_needs_review"), Value: strconv.Itoa(s.NeedsReview)},
 		{Label: ph("metric_audit_review"), Value: strconv.Itoa(s.AuditReview)},
+		{Label: ph("metric_insufficient_data"), Value: strconv.Itoa(s.InsufficientData)},
 	}
 }
 
@@ -178,8 +188,8 @@ func complianceReportCoverFacts(rep *ComplianceReport, ph reportPhraseFn) []pdfd
 	facts := []pdfdoc.KV{
 		{Key: ph("group_version"), Value: m.GroupVersion},
 		{Key: ph("group_source"), Value: source},
-		{Key: ph("as_of"), Value: reportTime(m.AsOf)},
-		{Key: ph("generated_at"), Value: reportTime(m.GeneratedAt)},
+		{Key: ph("as_of"), Value: reportTime(m.AsOf, m.Timezone)},
+		{Key: ph("generated_at"), Value: reportTime(m.GeneratedAt, m.Timezone)},
 		{Key: ph("generated_by"), Value: m.GeneratedBy},
 		{Key: ph("job_ref"), Value: m.JobRef},
 	}
@@ -302,7 +312,7 @@ func RenderComplianceReportPDF(w io.Writer, rep *ComplianceReport) error {
 		Subject: rep.Meta.GroupName,
 		Footer: pdfdoc.Footer{
 			Left:   rep.Meta.JobRef,
-			Center: ph("generated_at") + " " + reportTime(rep.Meta.GeneratedAt),
+			Center: ph("generated_at") + " " + reportTime(rep.Meta.GeneratedAt, rep.Meta.Timezone),
 			Page:   ph("page_of"),
 			Note:   ph("footer_integrity"),
 		},
@@ -389,9 +399,10 @@ func reportOneLine(rows []ComplianceReportRow, pick func(ComplianceReportRow) st
 // 待稽核判讀只附目前值——條文沒有定值，也就沒有要求值可列。
 func renderComplianceExceptions(doc *pdfdoc.Doc, rep *ComplianceReport, ph reportPhraseFn) {
 	doc.SectionTitle(ph("exceptions"))
+	tz := rep.Meta.Timezone
 	keys := reportOneLine(rep.Rows, func(r ComplianceReportRow) string { return r.Key })
-	updated := reportOneLine(rep.Rows, func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt) })
-	confirmed := reportOneLine(rep.Rows, func(r ComplianceReportRow) string { return reportTimePtr(r.ConfirmedAt) })
+	updated := reportOneLine(rep.Rows, func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt, tz) })
+	confirmed := reportOneLine(rep.Rows, func(r ComplianceReportRow) string { return reportTimePtr(r.ConfirmedAt, tz) })
 
 	head := []reportColumn{
 		{key: "col_clause_no", weight: 0.8}, {key: "col_clause_title", weight: 2.4},
@@ -415,10 +426,10 @@ func renderComplianceExceptions(doc *pdfdoc.Doc, rep *ComplianceReport, ph repor
 		"col_expected":          func(r ComplianceReportRow) string { return expectedText(r, ph) },
 		"col_reason_text":       func(r ComplianceReportRow) string { return reasonText(r, ph) },
 		"col_confirmed_by":      confirmedByCell(ph),
-		"col_confirmed_at":      func(r ComplianceReportRow) string { return reportTimePtr(r.ConfirmedAt) },
+		"col_confirmed_at":      func(r ComplianceReportRow) string { return reportTimePtr(r.ConfirmedAt, tz) },
 		"col_confirmation_note": func(r ComplianceReportRow) string { return r.ConfirmationNote },
 		"col_updated_by":        func(r ComplianceReportRow) string { return r.UpdatedBy },
-		"col_updated_at":        func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt) },
+		"col_updated_at":        func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt, tz) },
 	}
 	for _, result := range []string{ComplianceResultDeviating, ComplianceResultNeedsReview, ComplianceResultAuditReview} {
 		doc.Paragraph(ph("section_" + result))
@@ -436,6 +447,10 @@ func renderComplianceExceptions(doc *pdfdoc.Doc, rep *ComplianceReport, ph repor
 		}
 		doc.Table(pdfdoc.Table{Columns: reportColumns(doc, ph, layout), Rows: rows, Zebra: true,
 			EmptyText: ph("none"), Wrap: true})
+		// 每日審閱簽核段緊接在偏離之後（本組沒有這類條文時不印）
+		if result == ComplianceResultDeviating {
+			renderComplianceSignoff(doc, rep, ph)
+		}
 	}
 }
 
@@ -469,6 +484,7 @@ func renderComplianceSelfAttested(doc *pdfdoc.Doc, rep *ComplianceReport, ph rep
 // 0 的意義），比較方式與單位併入其中；原始值與其餘欄位在 CSV。
 func renderComplianceAppendix(doc *pdfdoc.Doc, rep *ComplianceReport, ph reportPhraseFn) {
 	doc.SectionTitle(ph("appendix_a"))
+	tz := rep.Meta.Timezone
 	doc.Paragraph(ph("appendix_a_lead"))
 	cols := reportColumns(doc, ph, []reportColumn{
 		{key: "col_clause_no", weight: 0.7}, {key: "col_clause_title", weight: 2.2},
@@ -477,14 +493,14 @@ func renderComplianceAppendix(doc *pdfdoc.Doc, rep *ComplianceReport, ph reportP
 		{key: "col_result", weight: 1.4}, {key: "col_current", weight: 1.5}, {key: "col_expected", weight: 1.5},
 		{key: "col_reason_text", weight: 2.2}, {key: "col_updated_by", weight: 1.1},
 		{key: "col_updated_at", weight: 2.2, oneLine: reportOneLine(rep.Rows,
-			func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt) })},
+			func(r ComplianceReportRow) string { return reportTimePtr(r.UpdatedAt, tz) })},
 	})
 	rows := make([][]string, 0, len(rep.Rows)+len(rep.SelfAttested)+len(rep.Builtin))
 	for _, r := range rep.Rows {
 		rows = append(rows, []string{
 			r.ClauseNo, r.ClauseTitle, ph("kind_" + r.Kind), r.Key, rowResultText(r.Kind, r.Result, ph),
 			currentText(r, ph), expectedText(r, ph), reasonText(r, ph),
-			r.UpdatedBy, reportTimePtr(r.UpdatedAt),
+			r.UpdatedBy, reportTimePtr(r.UpdatedAt, tz),
 		})
 	}
 	clauseRows := func(list []ComplianceReportClause, kind string) {

@@ -69,6 +69,13 @@ func mustBe(key, value string) policyControlSeed {
 	return policyControlSeed{Key: key, Comparator: model.PolicyControlComparatorEquals, ExpectedValue: value}
 }
 
+// signedOffDaily 每日審閱簽核以運作紀錄判定：開關要開著，且近 30 天每天都有簽核。
+// 只有內建組用（自建組的寫入端拒收這種比較方式）。
+func signedOffDaily() policyControlSeed {
+	return policyControlSeed{Key: PolicyDailyReviewEnabled,
+		Comparator: model.PolicyControlComparatorSignoffRecord, ExpectedValue: "true"}
+}
+
 // asReference 把一筆要求標成參考值：條文只給建議或原則，這個值沒有明文出處。
 //
 // 判定結果是待機構人工確認，不是符合或偏離——把建議印成硬要求，會讓一個
@@ -163,6 +170,15 @@ func normalizeSeedControl(seed policyGroupSeed, clause policyClauseSeed,
 		PolicyKey: c.Key, Comparator: c.Comparator,
 		ExpectedValue: c.ExpectedValue, ReferenceOnly: c.ReferenceOnly,
 	}
+	if c.Comparator == model.PolicyControlComparatorSignoffRecord {
+		if err := assertSignoffRecordSeed(c); err != nil {
+			return seedControl{}, fmt.Errorf("內建組 %s 的條文 %s: %w", seed.Code, clause.ClauseNo, err)
+		}
+		return seedControl{
+			ClauseNo: clause.ClauseNo, PolicyKey: c.Key,
+			Comparator: c.Comparator, ExpectedValue: c.ExpectedValue,
+		}, nil
+	}
 	if err := assertComparatorFitsType(def, c.Comparator); err != nil {
 		return seedControl{}, fmt.Errorf("內建組 %s 的條文 %s: %w", seed.Code, clause.ClauseNo, err)
 	}
@@ -189,6 +205,16 @@ func normalizeSeedControl(seed policyGroupSeed, clause policyClauseSeed,
 		ClauseNo: clause.ClauseNo, PolicyKey: c.Key,
 		Comparator: c.Comparator, ExpectedValue: value, ReferenceOnly: c.ReferenceOnly,
 	}, nil
+}
+
+// assertSignoffRecordSeed 運作紀錄判定只對「每日審閱簽核」開關有意義，要求值固定為開啟、
+// 不得是參考值：掛到別的鍵上，判定會拿每日簽核的紀錄去評一個無關的設定。
+func assertSignoffRecordSeed(c policyControlSeed) error {
+	if c.Key != PolicyDailyReviewEnabled || c.ExpectedValue != "true" || c.ReferenceOnly {
+		return fmt.Errorf("比較方式 %s 只能用在設定鍵 %s、要求值 true（收到 %s=%q）",
+			model.PolicyControlComparatorSignoffRecord, PolicyDailyReviewEnabled, c.Key, c.ExpectedValue)
+	}
+	return nil
 }
 
 // comparatorForDef 依設定鍵的型別與比較方向決定比較方式。

@@ -468,6 +468,26 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/daily-reviews/days/:date",
+      "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Day-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/pending",
+      "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Pending-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/pending/count",
+      "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).PendingCount-fm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/stats",
+      "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Stats-fm"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/daily-reviews/status",
       "handler": "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
     },
@@ -3320,8 +3340,68 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func6",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).List-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/days/:date",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Day-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/pending",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Pending-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/pending/count",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func3",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).PendingCount-fm"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/daily-reviews/stats",
+      "chain_stable": [
+        "github.com/gin-gonic/gin.LoggerWithConfig.func1",
+        "github.com/gin-gonic/gin.CustomRecoveryWithWriter.func1",
+        "main.(*sealGate).Handle-fm",
+        "main.(*Metrics).HTTPMiddleware",
+        "github.com/gin-contrib/cors.New.func1",
+        "main.AgentRouteAllowlist",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func5",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Stats-fm"
       ]
     },
     {
@@ -3344,7 +3424,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.RequirePermission.func2",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func1",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Status-fm"
       ]
     },
@@ -5626,7 +5706,7 @@
         "github.com/gin-contrib/cors.New.func1",
         "main.AgentRouteAllowlist",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.AuthMiddleware.func1",
-        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).RegisterRoutes.RequirePermission.func4",
+        "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).registerOn.RequirePermission.func7",
         "github.com/custodexa/backend/internal/api.(*DailyReviewHandler).Sign-fm"
       ]
     },

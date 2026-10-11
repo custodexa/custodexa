@@ -228,3 +228,55 @@ describe('PolicyKeyDrawer — 抽屜其餘四段', () => {
     expect(mountDrawer().findComponent({ name: 'ElCollapse' }).exists()).toBe(false)
   })
 })
+
+// 擋：每日審閱條文改看實際簽核後，抽屜仍寫「要求設為開啟」而讓管理者以為開著就好；
+// 開著卻因未簽偏離時說不出原因、也沒有補簽入口。
+describe('PolicyKeyDrawer — 每日審閱條文（運作紀錄判定）', () => {
+  const DAILY = { key: 'daily_review_enabled', type: 'bool', label: '每日審閱簽核', value: 'true' }
+  const signoffVerdict = (over = {}) => ({
+    key: 'daily_review_enabled',
+    group_code: 'pci_dss_4_0_1',
+    clause_no: '10.4.1',
+    comparator: 'signoff_record',
+    current: 'true',
+    expected: 'true',
+    result: 'compliant',
+    reason: 'meets_expectation',
+    ...over,
+  })
+
+  it('抽屜要求句含近 30 天每天簽核', () => {
+    const wrapper = mountDrawer({ policy: DAILY, verdicts: [signoffVerdict()] })
+    const line = wrapper.find('[data-test="requirement-pci_dss_4_0_1"]')
+    expect(line.text()).toContain('須開啟，且近 30 天每天都有簽核')
+    expect(line.text()).toContain('符合')
+  })
+
+  it('開著但未簽而偏離：說出未簽天數與最早日，並給補簽入口', () => {
+    const wrapper = mountDrawer({
+      policy: DAILY,
+      verdicts: [signoffVerdict({ result: 'deviating', reason: 'signoff_unsigned_days',
+        signoff: { unsigned: 4, earliest_unsigned: '2026-10-06' } })],
+    })
+    const line = wrapper.find('[data-test="requirement-pci_dss_4_0_1"]')
+    expect(line.text()).toContain('近 30 天每天都有簽核')
+    expect(line.text()).toContain('目前有 4 天未簽（最早 2026-10-06）')
+    expect(line.text()).toContain('未達要求')
+    const link = wrapper.findComponent(RouterLinkStub)
+    expect(wrapper.find('[data-test="requirement-go-sign-pci_dss_4_0_1"]').exists()).toBe(true)
+    expect(link.props('to')).toEqual({ path: '/audit-logs', query: { tab: 'reviews', date: '2026-10-06' } })
+    expect(wrapper.find('[data-test="requirement-result-pci_dss_4_0_1"]').classes()).not.toContain('ot-tag-neutral')
+  })
+
+  it('資料不足依理由說兩種話', () => {
+    const short = mountDrawer({ policy: DAILY, verdicts: [signoffVerdict({
+      result: 'insufficient_data', reason: 'signoff_insufficient_data' })] })
+    expect(short.find('[data-test="requirement-pci_dss_4_0_1"]').text()).toContain('開啟未滿 7 天')
+    expect(short.find('[data-test="requirement-result-pci_dss_4_0_1"]').classes()).toContain('ot-tag-neutral')
+    const down = mountDrawer({ policy: DAILY, verdicts: [signoffVerdict({
+      result: 'insufficient_data', reason: 'signoff_source_unavailable' })] })
+    const text = down.find('[data-test="requirement-pci_dss_4_0_1"]').text()
+    expect(text).toContain('目前無法取得每日簽核紀錄')
+    expect(text).not.toContain('7 天')
+  })
+})

@@ -115,6 +115,9 @@ var tableOwner = map[string]string{
 	// policy
 	"security_policies":     "policy",
 	"transmission_consents": "policy",
+	// 政策變更歷史：與 security_policies 同一交易內由 policy 模組寫入；
+	// audit 模組只經 policy 服務的唯讀方法取歷史推每日簽核的行事曆，不直接查表
+	"security_policy_history": "policy",
 	// 政策組四表：組、條文、條文對設定鍵的要求、機構備註與人工確認。
 	// 業務語義（哪些設定要對照哪些條文、要求怎麼比、內建列不可經管理介面改寫）
 	// 全部由 policy 模組定義與維護，與 security_policies 是同一組語義的兩半。

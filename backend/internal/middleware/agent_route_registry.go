@@ -218,6 +218,14 @@ func AgentRouteDecision(method, path string) (allowed, registered bool) {
 		return false, true
 	case "GET /api/v1/daily-reviews":
 		return false, true
+	case "GET /api/v1/daily-reviews/days/:date":
+		return false, true
+	case "GET /api/v1/daily-reviews/pending":
+		return false, true
+	case "GET /api/v1/daily-reviews/pending/count":
+		return false, true
+	case "GET /api/v1/daily-reviews/stats":
+		return false, true
 	case "GET /api/v1/daily-reviews/status":
 		return false, true
 	case "GET /api/v1/db-console":

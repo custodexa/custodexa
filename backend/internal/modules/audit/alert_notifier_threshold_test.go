@@ -107,7 +107,7 @@ func TestNotifyThresholdSparesEventsAndTestSend(t *testing.T) {
 
 	n := newTestNotifier()
 	n.setChannels([]model.NotificationChannel{ch})
-	n.NotifyEvent(notifycat.EventDailyReviewOverdue, map[string]string{"date": "2026-09-29"})
+	n.NotifyEvent(notifycat.EventDailyReviewOverdue, OverdueParams([]string{"2026-09-28", "2026-09-29"}, 1, "UTC"))
 
 	var event notifyEventPayload
 	if err := json.Unmarshal(awaitBody(t, received), &event); err != nil {

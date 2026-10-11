@@ -506,6 +506,12 @@ func assertExpectedValueFitsComparator(def *PolicyDef, control model.PolicyClaus
 // 整數型只有 min／max，開關與枚舉只有 equals。文字型鍵不能作為設定要求的對象
 // ——它承載的是自由文字（如登入告示），沒有任何一種比較方式對它是有意義的。
 func assertComparatorFitsType(def *PolicyDef, comparator string) error {
+	// 運作紀錄判定只供內建組（種子另有專屬檢查）：自建組選了它也拿不到
+	// 每日簽核紀錄的語義，只會產生一個無意義的判定
+	if comparator == model.PolicyControlComparatorSignoffRecord {
+		return groupErr(ErrCodePolicyGroupComparator,
+			"比較方式 %s 只供內建政策組使用，自建組不得選用", comparator)
+	}
 	// 未定值適用於任何可比較型別的鍵：它表達的是「條文涉及這個鍵但沒有給值」，
 	// 與鍵的型別無關
 	if comparator == model.PolicyControlComparatorReview {

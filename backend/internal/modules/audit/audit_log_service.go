@@ -59,6 +59,10 @@ type AuditLogFilter struct {
 	PolicyKey *string
 	StartTime *time.Time
 	EndTime   *time.Time
+	// EndBefore 排他的時間尾端（created_at < EndBefore）。與含尾端的 EndTime 並存時
+	// 兩者都套用。每日簽核的所屬日是半開區間 [起, 訖)，連到操作日誌查看全部明細時
+	// 用它，恰在下一日起點的事件才不會被列進來
+	EndBefore *time.Time
 	Page      int
 	PageSize  int
 	// SortBy 排序欄位，取值限 auditSortableColumns，默認 "created_at"；
@@ -645,6 +649,9 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 	}
 	if filter.EndTime != nil {
 		query = query.Where("created_at <= ?", *filter.EndTime)
+	}
+	if filter.EndBefore != nil {
+		query = query.Where("created_at < ?", *filter.EndBefore)
 	}
 
 	// 計算總數

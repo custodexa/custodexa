@@ -69,10 +69,11 @@ type notifyAlertBody struct {
 // Degraded=true 代表 notifycat 目錄／參數契約異常，內容降級但仍投遞——
 // 合規告警永不因目錄問題靜默消失
 type notifyEventPayload struct {
-	Event    string            `json:"event"`
-	Params   map[string]string `json:"params"`
-	Degraded bool              `json:"degraded,omitempty"`
-	SentAt   string            `json:"sent_at"`
+	Event string `json:"event"`
+	// Params 日期清單參數展開成 JSON 陣列（notifycat.WireParams），其餘為字串
+	Params   map[string]any `json:"params"`
+	Degraded bool           `json:"degraded,omitempty"`
+	SentAt   string         `json:"sent_at"`
 }
 
 // 指令告警的 webhook event 識別字（與 notifycat.Event 不同軸：
@@ -446,7 +447,7 @@ func (n *AlertNotifier) NotifyEvent(event notifycat.Event, params map[string]str
 			} else {
 				body, marshalErr = json.Marshal(notifyEventPayload{
 					Event:    string(event),
-					Params:   clean,
+					Params:   notifycat.WireParams(event, clean),
 					Degraded: degraded,
 					SentAt:   time.Now().Format(time.RFC3339),
 				})

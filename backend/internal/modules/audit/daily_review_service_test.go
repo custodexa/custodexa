@@ -2,30 +2,44 @@ package audit
 
 import (
 	"errors"
-	"github.com/custodexa/backend/internal/modules/policy"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/modules/policy"
+	"github.com/custodexa/backend/internal/reviewcal"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// setupDailyReviewDB command_alerts 帶 timestamptz tag，sqlite 用原生 SQL 建
-// datetime 等價表（Snapshot 只 COUNT 不 scan）；其餘走 AutoMigrate
+// setupDailyReviewDB 每日簽核的 sqlite 測試環境。command_alerts 生產走原生 SQL
+// （timestamptz），glebarez 驅動對 timestamptz 欄 scan 回 time.Time 失敗，故手建
+// datetime 等價表；其餘走 AutoMigrate。時刻一律以 UTC 寫入（sqlite 以字串比較時間）
 func setupDailyReviewDB(t *testing.T) (*DailyReviewService, *gorm.DB, *fakeAuditLogger) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
 		t.Fatalf("sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.AuditLog{}, &model.SecurityPolicy{}, &model.DailyReviewLog{}); err != nil {
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&model.AuditLog{}, &model.SecurityPolicy{}, &model.SecurityPolicyHistory{},
+		&model.DailyReviewLog{}, &model.AuditRetentionWatermark{}, &model.User{}, &model.Asset{}, &model.Session{}, &model.UserRole{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if err := db.Exec(
-		"CREATE TABLE command_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, triggered_at DATETIME NOT NULL, reviewed_at DATETIME)").Error; err != nil {
+	if err := db.Exec(`CREATE TABLE command_alerts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id INTEGER, rule_name TEXT NOT NULL DEFAULT 'r',
+		session_id INTEGER NOT NULL DEFAULT 0, user_id INTEGER NOT NULL DEFAULT 3, asset_id INTEGER,
+		command TEXT NOT NULL DEFAULT '', severity TEXT NOT NULL DEFAULT 'high', triggered_at DATETIME NOT NULL,
+		reviewed_by INTEGER, reviewed_at DATETIME,
+		disposition TEXT NOT NULL DEFAULT 'pending', note TEXT NOT NULL DEFAULT '',
+		blocked BOOLEAN NOT NULL DEFAULT 0,
+		kind TEXT NOT NULL DEFAULT 'rule', reason_code TEXT NOT NULL DEFAULT ''
+	)`).Error; err != nil {
 		t.Fatalf("建表: %v", err)
 	}
 	audit := &fakeAuditLogger{}
@@ -33,11 +47,63 @@ func setupDailyReviewDB(t *testing.T) (*DailyReviewService, *gorm.DB, *fakeAudit
 	return svc, db, audit
 }
 
+// fixedClock 把服務時鐘固定在 at，回傳改時刻的函式
+func fixedClock(svc *DailyReviewService, at time.Time) func(time.Time) {
+	now := at
+	svc.SetClock(func() time.Time { return now })
+	return func(next time.Time) { now = next }
+}
+
+func mustLoc(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
+
+// at 業務時區的當地時刻
+func at(t *testing.T, tz string, date string, hh, mm, ss int) time.Time {
+	t.Helper()
+	d, ok := reviewcal.ParseDate(date)
+	if !ok {
+		t.Fatalf("日期 %q", date)
+	}
+	return time.Date(d.Year(), d.Month(), d.Day(), hh, mm, ss, 0, mustLoc(t, tz))
+}
+
+// historyRow 直接寫一列政策變更歷史（以真實歷史表＋行事曆建 fixture）
+func historyRow(t *testing.T, db *gorm.DB, key, oldV, newV string, changedAt time.Time, source string) {
+	t.Helper()
+	if err := db.Create(&model.SecurityPolicyHistory{PolicyKey: key, OldValue: oldV, NewValue: newV,
+		ChangedAt: changedAt.UTC(), ChangedBy: "admin", Source: source}).Error; err != nil {
+		t.Fatalf("歷史列: %v", err)
+	}
+}
+
+// setPolicyRow 政策現值列（與歷史末值一致）
+func setPolicyRow(t *testing.T, db *gorm.DB, key, value string) {
+	t.Helper()
+	if err := db.Save(&model.SecurityPolicy{Key: key, Value: value, UpdatedBy: "admin", UpdatedAt: time.Now()}).Error; err != nil {
+		t.Fatalf("政策列: %v", err)
+	}
+}
+
+// enableFrom 業務時區 tz（升級初值），自 since 起啟用
+func enableFrom(t *testing.T, db *gorm.DB, tz string, since time.Time) {
+	t.Helper()
+	historyRow(t, db, policy.PolicyDailyReviewTimezone, "", tz, since.Add(-time.Hour), model.PolicyHistorySourceMigrationUpgrade)
+	historyRow(t, db, policy.PolicyDailyReviewEnabled, "false", "true", since, model.PolicyHistorySourcePolicyUpdate)
+	setPolicyRow(t, db, policy.PolicyDailyReviewTimezone, tz)
+	setPolicyRow(t, db, policy.PolicyDailyReviewEnabled, "true")
+}
+
 func seedAuditLog(t *testing.T, db *gorm.DB, action model.AuditAction, resource model.AuditResource, status model.AuditStatus, at time.Time) {
 	t.Helper()
 	if err := db.Exec(
 		"INSERT INTO audit_logs (created_at, action, resource, status, user_id, username) VALUES (?, ?, ?, ?, 1, 'u')",
-		at, action, resource, status).Error; err != nil {
+		at.UTC(), action, resource, status).Error; err != nil {
 		t.Fatalf("seed audit_log: %v", err)
 	}
 }
@@ -48,17 +114,47 @@ func seedAnonRejection(t *testing.T, db *gorm.DB, reason string, at time.Time) {
 	t.Helper()
 	if err := db.Exec(
 		"INSERT INTO audit_logs (created_at, action, resource, status, user_id, username, details) VALUES (?, ?, ?, ?, 0, '', ?)",
-		at, model.ActionLogin, model.ResourceAuth, model.StatusFailure,
+		at.UTC(), model.ActionLogin, model.ResourceAuth, model.StatusFailure,
 		`{"event":"auth_rejected","reason":"`+reason+`"}`).Error; err != nil {
 		t.Fatalf("seed anon rejection: %v", err)
 	}
 }
 
+func seedAlertAt(t *testing.T, db *gorm.DB, triggered time.Time, reviewed *time.Time, disposition string) uint {
+	t.Helper()
+	var reviewedAt any
+	if reviewed != nil {
+		reviewedAt = reviewed.UTC()
+	}
+	res := db.Exec("INSERT INTO command_alerts (triggered_at, reviewed_at, disposition) VALUES (?, ?, ?)", triggered.UTC(), reviewedAt, disposition)
+	if res.Error != nil {
+		t.Fatalf("seed alert: %v", res.Error)
+	}
+	var id uint
+	db.Raw("SELECT max(id) FROM command_alerts").Scan(&id)
+	return id
+}
+
+// utcDay 今天在 UTC 的起訖（沿用原有快照測試的「今日」語義）
+func utcDay(now time.Time) (string, time.Time, time.Time) {
+	u := now.UTC()
+	start := time.Date(u.Year(), u.Month(), u.Day(), 0, 0, 0, 0, time.UTC)
+	return start.Format(reviewcal.DateFormat), start, start.AddDate(0, 0, 1)
+}
+
+func val(p *int64) int64 {
+	if p == nil {
+		return -1
+	}
+	return *p
+}
+
 // TestDailyReviewSnapshot 三計數的白名單與時間邊界
 func TestDailyReviewSnapshot(t *testing.T) {
 	svc, db, _ := setupDailyReviewDB(t)
-	now := time.Now()
-	yesterday := now.AddDate(0, 0, -1)
+	date, start, end := utcDay(time.Now())
+	now := start.Add(12 * time.Hour)
+	yesterday := start.Add(-time.Hour)
 
 	// 今日：2 登入失敗、1 登入成功（不計）、1 刪除（高危）、1 政策變更（高危）、1 一般讀取（不計）
 	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, now)
@@ -70,15 +166,18 @@ func TestDailyReviewSnapshot(t *testing.T) {
 	// 昨日的登入失敗不計入今日
 	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, yesterday)
 	// 告警：今日 1 未審閱、1 已審閱（不計）
-	db.Exec("INSERT INTO command_alerts (triggered_at) VALUES (?)", now)
-	db.Exec("INSERT INTO command_alerts (triggered_at, reviewed_at) VALUES (?, ?)", now, now)
+	seedAlertAt(t, db, now, nil, model.AlertDispositionPending)
+	seedAlertAt(t, db, now, &now, model.AlertDispositionBenign)
 
-	snap, err := svc.Snapshot(now)
+	snap, err := svc.Snapshot(date, start, end)
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	if snap.LoginFailures != 2 || snap.UnreviewedAlerts != 1 || snap.HighRiskOps != 2 {
+	if val(snap.LoginFailures) != 2 || val(snap.UnreviewedAlerts) != 1 || val(snap.HighRiskOps) != 2 {
 		t.Errorf("snapshot = %+v, want 登入失敗 2/未審閱 1/高危 2", snap)
+	}
+	if val(snap.AlertsTotal) != 2 || val(snap.AlertsBenign) != 1 || val(snap.AlertsEscalated) != 0 {
+		t.Errorf("告警分布 total=%d benign=%d escalated=%d, want 2/1/0", val(snap.AlertsTotal), val(snap.AlertsBenign), val(snap.AlertsEscalated))
 	}
 }
 
@@ -92,7 +191,8 @@ func TestDailyReviewSnapshot(t *testing.T) {
 // 若判準放寬成「所有 denied」，覆核數字會被日常的權限拒絕淹沒而失去意義
 func TestDailyReviewLoginFailuresCoverBothStatuses(t *testing.T) {
 	svc, db, _ := setupDailyReviewDB(t)
-	now := time.Now()
+	date, start, end := utcDay(time.Now())
+	now := start.Add(12 * time.Hour)
 
 	// 認證類：憑證不成立記 failure
 	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, now)
@@ -112,12 +212,12 @@ func TestDailyReviewLoginFailuresCoverBothStatuses(t *testing.T) {
 	// 登入成功亦不得計入
 	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusSuccess, now)
 
-	snap, err := svc.Snapshot(now)
+	snap, err := svc.Snapshot(date, start, end)
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	if snap.LoginFailures != 4 {
-		t.Errorf("登入失敗數 = %d, want 4（failure 1 筆＋認證類 denied 3 筆）", snap.LoginFailures)
+	if val(snap.LoginFailures) != 4 {
+		t.Errorf("登入失敗數 = %d, want 4（failure 1 筆＋認證類 denied 3 筆）", val(snap.LoginFailures))
 	}
 }
 
@@ -132,7 +232,8 @@ func TestDailyReviewLoginFailuresCoverBothStatuses(t *testing.T) {
 // AUTH_TOKEN_INVALID），分流只存在於審計 details——否則就開出了憑證存在性探測面。
 func TestDailyReviewExcludesRoutineTokenExpiry(t *testing.T) {
 	svc, db, _ := setupDailyReviewDB(t)
-	now := time.Now()
+	date, start, end := utcDay(time.Now())
+	now := start.Add(12 * time.Hour)
 
 	// 例行到期 ×3：不計入
 	seedAnonRejection(t, db, model.AuditReasonTokenExpired, now)
@@ -146,59 +247,43 @@ func TestDailyReviewExcludesRoutineTokenExpiry(t *testing.T) {
 	// 既有的登入失敗列會被靜默排除，數字反而變得比修正前更少
 	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, now)
 
-	snap, err := svc.Snapshot(now)
+	snap, err := svc.Snapshot(date, start, end)
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	if snap.LoginFailures != 3 {
+	if val(snap.LoginFailures) != 3 {
 		t.Errorf("登入失敗數 = %d, want 3（無憑證 1＋簽章無效 1＋handler 自寫 1；例行到期 3 筆不計）",
-			snap.LoginFailures)
+			val(snap.LoginFailures))
 	}
 }
 
-// TestDailyReviewSignOncePerDay 簽核留痕含快照；同日重複簽核被拒並回既有簽核者
+// TestDailyReviewSignOncePerDay 簽核留痕含快照；同一所屬日重複簽核被拒並回既有簽核者
 func TestDailyReviewSignOncePerDay(t *testing.T) {
 	svc, db, audit := setupDailyReviewDB(t)
-	now := time.Now()
-	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, now)
+	const tz = "Asia/Taipei"
+	enableFrom(t, db, tz, at(t, tz, "2026-10-01", 0, 0, 0))
+	fixedClock(svc, at(t, tz, "2026-10-11", 9, 0, 0))
+	seedAuditLog(t, db, model.ActionLogin, model.ResourceAuth, model.StatusFailure, at(t, tz, "2026-10-10", 12, 0, 0))
 
-	row, err := svc.Sign(now, 5, "auditor-a", "已檢視")
+	row, err := svc.Sign(SignRequest{ReviewDate: "2026-10-10", Note: "已檢視", ReviewerID: 5, ReviewerName: "auditor-a"})
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	if !strings.Contains(row.SnapshotJSON, `"login_failures":1`) {
-		t.Errorf("快照未固化: %s", row.SnapshotJSON)
+	if !strings.Contains(row.SnapshotJSON, `"login_failures":1`) || row.ReviewDate != "2026-10-10" {
+		t.Errorf("快照未固化或所屬日錯: %s %s", row.ReviewDate, row.SnapshotJSON)
 	}
 	if len(audit.entries) != 1 || audit.entries[0].Resource != model.ResourceDailyReview {
 		t.Errorf("簽核未入審計: %+v", audit.entries)
 	}
 
-	_, err = svc.Sign(now, 6, "auditor-b", "")
-	if !errors.Is(err, ErrAlreadySigned) || !strings.Contains(err.Error(), "auditor-a") {
-		t.Errorf("重複簽核應回 ErrAlreadySigned 含既有簽核者, got %v", err)
+	_, err = svc.Sign(SignRequest{ReviewDate: "2026-10-10", ReviewerID: 6, ReviewerName: "auditor-b"})
+	var signed *AlreadySignedError
+	if !errors.As(err, &signed) || signed.Signer != "auditor-a" || signed.Date != "2026-10-10" || !signed.SignedAt.Equal(row.SignedAt) {
+		t.Errorf("重複簽核應回 AlreadySignedError 含既有所屬日、簽核者與簽核時刻, got %v", err)
 	}
-}
-
-// TestDailyReviewOverdue 逾期提醒：關閉不查、昨日已簽不發、未簽發
-func TestDailyReviewOverdue(t *testing.T) {
-	svc, _, _ := setupDailyReviewDB(t)
-	now := time.Now()
-
-	if svc.CheckOverdue(now) {
-		t.Error("功能關閉時不應發提醒")
-	}
-
-	if _, err := svc.policy.Update(policy.PolicyDailyReviewEnabled, "true", "test"); err != nil {
-		t.Fatalf("enable: %v", err)
-	}
-	if !svc.CheckOverdue(now) {
-		t.Error("啟用且昨日未簽應發提醒")
-	}
-
-	if _, err := svc.Sign(now.AddDate(0, 0, -1), 5, "auditor-a", ""); err != nil {
-		t.Fatalf("sign yesterday: %v", err)
-	}
-	if svc.CheckOverdue(now) {
-		t.Error("昨日已簽不應發提醒")
+	var n int64
+	db.Model(&model.DailyReviewLog{}).Count(&n)
+	if n != 1 {
+		t.Errorf("簽核列 = %d, want 1", n)
 	}
 }

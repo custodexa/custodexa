@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"log"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -56,6 +57,9 @@ type Verdict struct {
 	// 而另一個答得出來的地方是管理端的設定列表——稽核角色讀不到那一支。
 	// 判定不帶，稽核視角就只知道偏離、不知道誰改的
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	// Signoff 以運作紀錄判定（signoff_record）時的近 30 天紀錄。開關關閉或取不到
+	// 紀錄時缺席——畫面依理由碼分支，不以任何預設值推算簽核率或累計天數
+	Signoff *SignoffRecord `json:"signoff,omitempty"`
 }
 
 // PolicyKeyChange 單一設定鍵最後一次變更的操作者與時刻（無政策列時兩者皆空）。
@@ -80,6 +84,9 @@ type GroupSummary struct {
 	// AuditReview 條文涉及但未定值、待稽核判讀的鍵數。與待人工確認一樣另計，
 	// 不併入符合或偏離
 	AuditReview int `json:"audit_review"`
+	// InsufficientData 以運作紀錄判定、但紀錄期間不足或取不到紀錄的鍵數。
+	// 與待人工確認一樣另計，不併入符合或偏離
+	InsufficientData int `json:"insufficient_data"`
 	// Unmapped 不在本組對照範圍的鍵數。**不得併入符合數**——沒有人對照過的
 	// 設定與「有人對照且達到要求」是兩件事
 	Unmapped int `json:"unmapped"`
@@ -124,6 +131,16 @@ func BuildSnapshot(defs []PolicyDef, values map[string]string,
 	groups []model.PolicyGroup, clauses []model.PolicyClause,
 	controls []model.PolicyClauseControl,
 	annotations []model.PolicyClauseAnnotation) ComplianceSnapshot {
+	return BuildSnapshotWithSignoff(defs, values, changes, groups, clauses, controls, annotations, nil)
+}
+
+// BuildSnapshotWithSignoff 同 BuildSnapshot，另帶每日簽核的運作紀錄（以 signoff_record
+// 判定的要求讀它）。signoff 為 nil 表示取不到紀錄：那些要求判為資料不足，不退回只看開關。
+func BuildSnapshotWithSignoff(defs []PolicyDef, values map[string]string,
+	changes map[string]PolicyKeyChange,
+	groups []model.PolicyGroup, clauses []model.PolicyClause,
+	controls []model.PolicyClauseControl,
+	annotations []model.PolicyClauseAnnotation, signoff *SignoffRecord) ComplianceSnapshot {
 
 	snap := ComplianceSnapshot{BuiltAt: time.Now().UTC(), KeyCount: len(defs)}
 	snap.Groups = make([]GroupRef, 0, len(groups))
@@ -156,7 +173,7 @@ func BuildSnapshot(defs []PolicyDef, values map[string]string,
 			}
 			matched = true
 			verdict := buildVerdict(def, value, control,
-				annotationBy[clauseIndexKey(g.Code, control.ClauseNo)])
+				annotationBy[clauseIndexKey(g.Code, control.ClauseNo)], signoff)
 			stampKeyMeta(&verdict, def)
 			stampLastChange(&verdict, change)
 			snap.Verdicts = append(snap.Verdicts, verdict)
@@ -200,7 +217,7 @@ func stampLastChange(verdict *Verdict, change PolicyKeyChange) {
 
 // buildVerdict 單一要求的判定。
 func buildVerdict(def *PolicyDef, value string, control model.PolicyClauseControl,
-	annotation *model.PolicyClauseAnnotation) Verdict {
+	annotation *model.PolicyClauseAnnotation, signoff *SignoffRecord) Verdict {
 
 	verdict := Verdict{
 		Key: def.Key, GroupCode: control.GroupCode, ClauseNo: control.ClauseNo,
@@ -213,6 +230,10 @@ func buildVerdict(def *PolicyDef, value string, control model.PolicyClauseContro
 		verdict.Reason = ComplianceReasonExpectationUnspecified
 		verdict.Expected = ""
 		return verdict
+	}
+	// 運作紀錄判定：開關之外還要看近 30 天是否每天都有簽核
+	if control.Comparator == model.PolicyControlComparatorSignoffRecord {
+		return buildSignoffVerdict(verdict, value, signoff)
 	}
 	// 參考值不判符合或偏離：那個數字沒有條文出處，由機構自己決定要不要採用。
 	// 把它判成偏離會讓一個沒有違反任何規範的設定被記成缺失
@@ -293,6 +314,8 @@ func (s ComplianceSnapshot) GroupSummary(groupCode string) GroupSummary {
 			summary.NeedsReview++
 		case ComplianceResultAuditReview:
 			summary.AuditReview++
+		case ComplianceResultInsufficientData:
+			summary.InsufficientData++
 		}
 	}
 	summary.Unmapped = s.KeyCount - mapped
@@ -395,6 +418,26 @@ func keySet(keys []string) map[string]bool {
 type ComplianceService struct {
 	policies *SecurityPolicyService
 	groups   *PolicyGroupRepository
+	// signoff 每日簽核運作紀錄的來源（組裝根以 SetSignoffSource 注入）。
+	// **未注入時以運作紀錄判定的條文判為資料不足**——寧可說不知道，
+	// 也不退回只看開關而說符合
+	signoff SignoffRecordSource
+}
+
+// SetSignoffSource 注入每日簽核運作紀錄的來源（實作在 audit 模組，policy 不 import audit）。
+func (s *ComplianceService) SetSignoffSource(src SignoffRecordSource) { s.signoff = src }
+
+// loadSignoff 取運作紀錄；控制清單用不到時不取，取不到時回 nil（判定據此判資料不足）。
+func (s *ComplianceService) loadSignoff(controls []model.PolicyClauseControl, withDays bool) *SignoffRecord {
+	if s.signoff == nil || !usesSignoffRecord(controls) {
+		return nil
+	}
+	rec, err := s.signoff.SignoffRecord(withDays)
+	if err != nil {
+		log.Printf("[Compliance] 取每日簽核運作紀錄失敗，10.4.1 類條文判為資料不足: %v", err)
+		return nil
+	}
+	return rec
 }
 
 // NewComplianceService 建立合規判定服務。
@@ -480,7 +523,8 @@ func (s *ComplianceService) snapshotWith(values map[string]string,
 	if err != nil {
 		return ComplianceSnapshot{}, err
 	}
-	return BuildSnapshot(policyDefs, values, changes, groups, clauses, controls, annotations), nil
+	return BuildSnapshotWithSignoff(policyDefs, values, changes, groups, clauses, controls, annotations,
+		s.loadSignoff(controls, false)), nil
 }
 
 // applyTempControls 把一次性要求併進條文與控制清單，回一份新的（不就地改動輸入）。

@@ -43,6 +43,9 @@ type ComplianceReportMeta struct {
 	GroupLocale  string
 	// AsOf 資料時點＝判定快照的建構時點
 	AsOf time.Time
+	// Timezone 業務時區（IANA 名）：PDF 上所有時刻以它呈現並標明。空白時沿用
+	// daily_review_timezone 的現值，再退回運作紀錄的時區
+	Timezone string
 	// GeneratedAt 產出時刻（打包當下）；GeneratedBy 發起者名
 	GeneratedAt time.Time
 	GeneratedBy string
@@ -92,12 +95,37 @@ type ComplianceReport struct {
 	Rows         []ComplianceReportRow
 	SelfAttested []ComplianceReportClause
 	Builtin      []ComplianceReportClause
+	// Signoff 每日審閱簽核段（本組有以運作紀錄判定的條文時才有；否則 nil，
+	// PDF 不印該段、ZIP 不含 daily_reviews.csv）
+	Signoff *ComplianceReportSignoff
+}
+
+// ComplianceReportSignoff 每日審閱簽核段：判定結果與同一份運作紀錄。
+//
+// **判定與段落出自同一份紀錄**：判定讀的近 30 天數字、PDF 段落印的數字與
+// daily_reviews.csv 的逐日列由同一次讀取備齊，三者才對得起帳。
+type ComplianceReportSignoff struct {
+	ClauseNo    string
+	ClauseTitle string
+	Key         string
+	Result      string
+	Reason      string
+	// Record 運作紀錄（含逐日清單）；取不到紀錄時為 nil
+	Record *SignoffRecord
 }
 
 // BuildComplianceReport 由判定快照與該組條文建構資料集（純函式）。
 func BuildComplianceReport(snap ComplianceSnapshot, group model.PolicyGroup,
 	clauses []model.PolicyClause, annotations []model.PolicyClauseAnnotation,
 	meta ComplianceReportMeta) *ComplianceReport {
+	return BuildComplianceReportWithSignoff(snap, group, clauses, annotations, meta, nil)
+}
+
+// BuildComplianceReportWithSignoff 同 BuildComplianceReport，另帶判定所用的那一份運作紀錄
+// （含逐日清單）。快照必須由同一份紀錄建構，段落與判定才不會各說各話。
+func BuildComplianceReportWithSignoff(snap ComplianceSnapshot, group model.PolicyGroup,
+	clauses []model.PolicyClause, annotations []model.PolicyClauseAnnotation,
+	meta ComplianceReportMeta, signoff *SignoffRecord) *ComplianceReport {
 
 	meta.GroupCode = group.Code
 	meta.GroupName = group.Name
@@ -105,6 +133,9 @@ func BuildComplianceReport(snap ComplianceSnapshot, group model.PolicyGroup,
 	meta.GroupSource = group.Source
 	meta.GroupLocale = group.Locale
 	meta.AsOf = snap.BuiltAt
+	if meta.Timezone == "" && signoff != nil {
+		meta.Timezone = signoff.Timezone
+	}
 
 	notes := map[string]model.PolicyClauseAnnotation{}
 	for _, a := range annotations {
@@ -156,9 +187,28 @@ func BuildComplianceReport(snap ComplianceSnapshot, group model.PolicyGroup,
 			rep.Summary.NeedsReview++
 		case ComplianceResultAuditReview:
 			rep.Summary.AuditReview++
+		case ComplianceResultInsufficientData:
+			rep.Summary.InsufficientData++
 		}
 	}
+	rep.Signoff = signoffSectionOf(rep.Rows, signoff)
 	return rep
+}
+
+// signoffSectionOf 本組以運作紀錄判定的那一條（目前至多一條）；沒有則 nil。
+func signoffSectionOf(rows []ComplianceReportRow, signoff *SignoffRecord) *ComplianceReportSignoff {
+	for _, r := range rows {
+		if r.Comparator != model.PolicyControlComparatorSignoffRecord {
+			continue
+		}
+		sec := &ComplianceReportSignoff{ClauseNo: r.ClauseNo, ClauseTitle: r.ClauseTitle,
+			Key: r.Key, Result: r.Result, Reason: r.Reason}
+		// 紀錄一律掛上（daily_reviews.csv 照列近 30 天的逐日清單）；開關關閉時
+		// PDF 段落只說未開啟、不印簽核率，由呈現層依理由碼決定
+		sec.Record = signoff
+		return sec
+	}
+	return nil
 }
 
 func reportRowFrom(c model.PolicyClause, v Verdict, ann model.PolicyClauseAnnotation) ComplianceReportRow {
@@ -204,9 +254,14 @@ func (s *ComplianceService) BuildReport(groupCode string, meta ComplianceReportM
 		return nil, err
 	}
 	values, changes := policyStateFromViews(views)
-	snap := BuildSnapshot(policyDefs, values, changes, []model.PolicyGroup{*group},
-		clauses, controls, annotations)
-	return BuildComplianceReport(snap, *group, clauses, annotations, meta), nil
+	// 運作紀錄只讀一次（連同逐日清單）：判定、PDF 段落與 daily_reviews.csv 共用它
+	signoff := s.loadSignoff(controls, true)
+	if meta.Timezone == "" {
+		meta.Timezone = values[PolicyDailyReviewTimezone]
+	}
+	snap := BuildSnapshotWithSignoff(policyDefs, values, changes, []model.PolicyGroup{*group},
+		clauses, controls, annotations, signoff)
+	return BuildComplianceReportWithSignoff(snap, *group, clauses, annotations, meta, signoff), nil
 }
 
 // ---- 工作單的參數快照 ----

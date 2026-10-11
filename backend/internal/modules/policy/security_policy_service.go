@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/custodexa/backend/internal/model"
+	"github.com/custodexa/backend/internal/reviewcal"
 	"gorm.io/gorm"
 )
 
@@ -97,6 +98,8 @@ const (
 	// 仍顯示每日在跑，故本鍵設 Min（見 policyDefs 的下界理由）
 	PolicyRetentionMaxPerRun  = "retention_max_per_run"
 	PolicyDailyReviewEnabled  = "daily_review_enabled"
+	// 每日簽核的業務時區（IANA 名稱）：決定切日、準時期限與逾期提醒的送出時間
+	PolicyDailyReviewTimezone = "daily_review_timezone"
 	PolicyFailureAlertEnabled = "failure_alert_enabled"
 	// 錄影 fail-close：簽發點前置錄影可寫性
 	// 檢查失敗時拒發非 admin 連線 token
@@ -197,6 +200,9 @@ const (
 	// 寫入路徑會統一換行、去首尾空白後才落庫，故驗證入口回傳的是終值而非原值。
 	// 長度以 Unicode code point 計，上限由 PolicyDef.MaxLength 逐鍵指定
 	PolicyTypeText = "text"
+	// PolicyTypeTimezone IANA 時區名稱，以 time.LoadLocation 驗證；`Local` 與空字串拒絕
+	// （兩者都會讓切日退回執行環境的本地時區）。時區資料隨二進位提供
+	PolicyTypeTimezone = "timezone"
 )
 
 // 比較方向（int 型）：min=值須 >= PCI 建議、max=值須 <= PCI 建議
@@ -609,6 +615,12 @@ var policyDefs = []PolicyDef{
 		// 每日審閱簽核（10.4.1）：出廠關（日常模式不加簽核義務），一鍵套用即開
 		Key: PolicyDailyReviewEnabled, Type: PolicyTypeBool, Default: "false",
 		Label: "每日審閱簽核",
+	},
+	{
+		// 每日簽核的業務時區：出廠值 UTC，首次啟動以偵測到的伺服器時區播種；
+		// 變更自下一個日期起生效（行事曆由變更歷史推得，見 historyKeys）
+		Key: PolicyDailyReviewTimezone, Type: PolicyTypeTimezone, Default: reviewcal.DefaultTimezone,
+		Label: "每日簽核業務時區",
 	},
 	{
 		// 稽核失效告警通知（10.7.2）：失效事件記錄恆開，此鍵僅控制通知發送
@@ -1220,6 +1232,20 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 
 	var changes []PolicyChange
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// 含保留歷史的鍵時，先取交易級鎖再讀舊值：並行的兩個寫入若讀到同一個舊值，
+		// 歷史只會記下其中一次變更，重播的末值就與現值相反
+		tracked := batchHasHistoryKey(updates)
+		if tracked {
+			if hook := policyHistoryHooks.beforeLock; hook != nil {
+				hook(updatedBy)
+			}
+			if err := lockPolicyHistory(tx); err != nil {
+				return err
+			}
+			if hook := policyHistoryHooks.afterLock; hook != nil {
+				hook(updatedBy)
+			}
+		}
 		now := time.Now()
 		for key, value := range updates {
 			// 交易內讀舊值（審計 old→new 的真值，不讀快取）
@@ -1240,6 +1266,21 @@ func (s *SecurityPolicyService) updateBatch(updates map[string]string, updatedBy
 			}
 			if oldValue != value {
 				changes = append(changes, PolicyChange{Key: key, OldValue: oldValue, NewValue: value})
+				if historyKeys[key] {
+					if err := tx.Create(&model.SecurityPolicyHistory{
+						PolicyKey: key, OldValue: oldValue, NewValue: value,
+						ChangedAt: now, ChangedBy: updatedBy, Source: historySourceFor(updatedBy),
+					}).Error; err != nil {
+						return fmt.Errorf("寫入政策 %s 的變更歷史失敗: %w", key, err)
+					}
+				}
+			}
+		}
+		if tracked {
+			if hook := policyHistoryHooks.afterWrite; hook != nil {
+				if err := hook(updatedBy); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -1402,6 +1443,10 @@ func validateScalarPolicyValue(def *PolicyDef, value string) error {
 	case PolicyTypeBool:
 		if value != "true" && value != "false" {
 			return &PolicyInvalidValueError{Key: def.Key, Reason: "須為 true/false"}
+		}
+	case PolicyTypeTimezone:
+		if _, ok := reviewcal.LoadTimezone(value); !ok {
+			return &PolicyInvalidValueError{Key: def.Key, Reason: "須為可載入的 IANA 時區名稱"}
 		}
 	case PolicyTypeEnum:
 		for _, allowed := range def.EnumOrder {

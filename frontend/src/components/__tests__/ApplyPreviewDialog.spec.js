@@ -243,3 +243,42 @@ describe('ApplyPreviewDialog — 底部與確認', () => {
     expect(wrapper.emitted('update:modelValue')).toContainEqual([false])
   })
 })
+
+// 擋：開關已開而因未簽偏離時，預覽把該鍵列成待變更，或什麼都不說——
+// 管理者按下套用後偏離仍在，看不出原因在未簽的日子。
+describe('ApplyPreviewDialog — 套用解決不了的未簽', () => {
+  const RouterLinkStub = { props: ['to'], template: '<a class="router-link-stub"><slot /></a>' }
+  const mountWithNotes = (notes) =>
+    mount(ApplyPreviewDialog, {
+      global: {
+        plugins: [ElementPlus],
+        stubs: { 'el-dialog': dialogStub, RouterLink: RouterLinkStub, 'router-link': RouterLinkStub },
+      },
+      props: {
+        modelValue: true,
+        preview: { ...PREVIEW, changes: [], conflicts: [], notes },
+        policies: [{ key: 'daily_review_enabled', type: 'bool', label: '每日審閱簽核' }],
+        pageTitle: '稽核',
+        groupNames: { pci_dss_4_0_1: 'PCI DSS 4.0.1' },
+        verdictsByKey: { daily_review_enabled: [
+          { key: 'daily_review_enabled', group_code: 'pci_dss_4_0_1', result: 'deviating' }] },
+      },
+    })
+
+  it('開啟但未簽時顯示需補簽、套用無法解決，並給入口', () => {
+    const wrapper = mountWithNotes([{ key: 'daily_review_enabled', group: 'pci_dss_4_0_1',
+      clause_no: '10.4.1', reason: 'signoff_unsigned_days', unsigned: 4, earliest_unsigned: '2026-10-06' }])
+    const note = wrapper.find('[data-test="preview-signoff-note-daily_review_enabled"]')
+    expect(note.text()).toContain('PCI DSS 4.0.1 10.4.1')
+    expect(note.text()).toContain('4 天未簽（最早 2026-10-06）')
+    expect(note.text()).toContain('套用設定無法解決')
+    expect(wrapper.findComponent(RouterLinkStub).props('to')).toEqual({
+      path: '/audit-logs', query: { tab: 'reviews', date: '2026-10-06' } })
+    // 該鍵不在變更表上，也不算已符合
+    expect(wrapper.find('[data-test="preview-compliant"]').text()).toContain('0')
+  })
+
+  it('沒有說明時不長出那一行', () => {
+    expect(mountWithNotes([]).find('.preview-signoff-note').exists()).toBe(false)
+  })
+})

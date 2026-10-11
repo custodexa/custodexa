@@ -88,6 +88,13 @@ func (h *AuditLogHandler) List(c *gin.Context) {
 		}
 	}
 
+	// end_before：排他尾端（created_at < end_before），解析失敗時與其他時間參數一樣忽略
+	if endBefore := c.Query("end_before"); endBefore != "" {
+		if t, err := time.Parse(time.RFC3339Nano, endBefore); err == nil {
+			filter.EndBefore = &t
+		}
+	}
+
 	// 分頁參數
 	if page := c.Query("page"); page != "" {
 		if p, err := strconv.Atoi(page); err == nil {

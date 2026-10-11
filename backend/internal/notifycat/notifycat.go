@@ -27,7 +27,14 @@ const (
 	KindInt ParamKind = "int"
 	// KindOpaque 自由字串：不翻譯、不驗語義，只過 SanitizeOpaque 去格式限長。
 	KindOpaque ParamKind = "opaque"
+	// KindDateList YYYY-MM-DD 日期清單。參數值是字串（目錄的 params 一律字串對字串），
+	// 內部以逗號串接傳遞，至多 MaxDateList 個；webhook 通道輸出時展開成 JSON 陣列
+	// （WireParams），Slack 通道渲染成逐行清單。非日期值即拒。
+	KindDateList ParamKind = "date_list"
 )
+
+// MaxDateList 日期清單參數的元素上限（一個月的量，Slack 訊息仍可讀）
+const MaxDateList = 31
 
 // ParamSpec 單一參數的宣告。Required=false 者多為 variant 專屬參數。
 type ParamSpec struct {
@@ -39,6 +46,9 @@ type ParamSpec struct {
 	// （見 lexicon.go）。宣告 Lexicon 的 enum 參數，其 Enum 集合必須與
 	// 詞庫鍵集相等（TestLexiconCompleteness 守衛）。
 	Lexicon Lexicon
+	// Total 僅 KindDateList：另一個 int 參數的名字，其值是清單的真實總數。
+	// 總數多於清單元素時，Slack 渲染在清單後加「另有 N 天」
+	Total string
 }
 
 // EventSpec 單一事件的參數契約。
@@ -247,8 +257,17 @@ var registry = map[Event]EventSpec{
 		},
 	},
 
+	// 每日簽核逾期：列出全部未簽日。date 保留為最早未簽日——只讀 date 的既有
+	// 收端看到的仍是一個應處理的日期
 	EventDailyReviewOverdue: {
-		Params: []ParamSpec{{Name: "date", Kind: KindOpaque, Required: true}},
+		Params: []ParamSpec{
+			{Name: "date", Kind: KindOpaque, Required: true},
+			{Name: "pending_dates", Kind: KindDateList, Required: true, Total: "pending_count"},
+			{Name: "pending_count", Kind: KindInt, Required: true},
+			{Name: "overdue_count", Kind: KindInt, Required: true},
+			{Name: "earliest_pending_date", Kind: KindOpaque, Required: true},
+			{Name: "timezone", Kind: KindOpaque, Required: true},
+		},
 	},
 
 	EventTest: {

@@ -261,7 +261,8 @@ const isBundle = computed(() => packType.value === 'evidence_bundle')
 // signature 只在確認已啟用簽章時才列——問不到就不講，寧可少一條也不誆
 const proveCodes = computed(() => {
   if (isBundle.value) {
-    const codes = ['bundle_contents', 'bundle_scope', 'bundle_logged']
+    // 每日簽核紀錄緊接在內容之後：它不隨類別勾選，放在類別清單裡會被讀成可取消
+    const codes = ['bundle_contents', 'bundle_daily_reviews', 'bundle_scope', 'bundle_logged']
     if (signing.value === 'on') codes.push('bundle_signature')
     return codes
   }

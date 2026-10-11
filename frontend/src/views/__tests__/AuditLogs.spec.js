@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { reactive } from 'vue'
 import ElementPlus from 'element-plus'
 import AuditLogs from '../AuditLogs.vue'
 
@@ -23,14 +24,22 @@ vi.stubGlobal('MutationObserver', MutationObserverStub)
 vi.setConfig({ testTimeout: 20_000 })
 
 // 由某個設定的記錄連結進頁時，網址上的篩選要被讀走。逐測改寫 query 即可。
-const routeState = { query: {} }
+// reactive：頁面監聽 route.query，同頁改網址（側欄徽章、抽屜連結）也要套用
+const routeState = reactive({ query: {} })
+const routerPushMock = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => routeState,
+  useRouter: () => ({ push: routerPushMock }),
 }))
 
 const getAuditLogsMock = vi.fn()
 const exportAuditEvidenceMock = vi.fn()
 const getDailyReviewsMock = vi.fn()
+const getDailyReviewStatusMock = vi.fn()
+const getDailyReviewPendingMock = vi.fn()
+const getDailyReviewPendingCountMock = vi.fn()
+const getDailyReviewDayMock = vi.fn()
+const getDailyReviewStatsMock = vi.fn()
 const getAuditFailuresMock = vi.fn()
 const verifyAuditIntegrityMock = vi.fn()
 
@@ -44,6 +53,12 @@ vi.mock('@/api/auditExport', () => ({
 
 vi.mock('@/api/dailyReviews', () => ({
   getDailyReviews: (...args) => getDailyReviewsMock(...args),
+  getDailyReviewStatus: (...args) => getDailyReviewStatusMock(...args),
+  getDailyReviewPending: (...args) => getDailyReviewPendingMock(...args),
+  getDailyReviewPendingCount: (...args) => getDailyReviewPendingCountMock(...args),
+  getDailyReviewDay: (...args) => getDailyReviewDayMock(...args),
+  getDailyReviewStats: (...args) => getDailyReviewStatsMock(...args),
+  signDailyReview: vi.fn(),
 }))
 
 vi.mock('@/api/auditFailures', () => ({
@@ -100,6 +115,11 @@ describe('AuditLogs', () => {
     routeState.query = {}
     getAuditLogsMock.mockResolvedValue({ data: [], total: 0 })
     getDailyReviewsMock.mockResolvedValue({ data: { items: [], total: 0 } })
+    getDailyReviewStatusMock.mockResolvedValue({ data: { enabled: true, pending_count: 0, overdue_count: 0 } })
+    getDailyReviewPendingMock.mockResolvedValue({ data: { items: [], total: 0 } })
+    getDailyReviewPendingCountMock.mockResolvedValue({ data: { count: 0, overdue_count: 0 } })
+    getDailyReviewStatsMock.mockResolvedValue({ data: null })
+    getDailyReviewDayMock.mockResolvedValue({ data: { date: '2026-10-07', status: 'pending', unreviewed_alerts: [], login_failures: { total: 0, items: [] }, high_risk_ops: { total: 0, items: [] } } })
     getAuditFailuresMock.mockResolvedValue({ data: { items: [], total: 0 } })
   })
 
@@ -158,48 +178,32 @@ describe('AuditLogs', () => {
     expect(getAuditFailuresMock).not.toHaveBeenCalled()
   })
 
-  it('fetches and renders daily review history with parsed snapshot counts', async () => {
+  // 每日簽核分頁的內容是工作區元件（清單、統計與抽屜的細節在元件自己的 spec）。
+  // 頁面這一層要保證：切到分頁才掛載並取數，切回來會重取
+  it('切到每日簽核分頁才掛載工作區並取數，再切回來會重取', async () => {
     setUserRoles(['auditor'])
-    getDailyReviewsMock.mockResolvedValue({
-      data: { items: sampleReviews, total: 1 },
-    })
+    getDailyReviewsMock.mockResolvedValue({ data: { items: sampleReviews, total: 1 } })
 
     const wrapper = mountAuditLogs()
     await flushPromises()
+    expect(wrapper.find('[data-test="dr-workspace"]').exists()).toBe(false)
 
-    // C8：切換即 refetch 走 tab-change 事件（watch 首載模式已移除）
     wrapper.vm.activeTab = 'reviews'
     wrapper.vm.handleTabChange('reviews')
     await flushPromises()
 
+    expect(wrapper.find('[data-test="dr-workspace"]').exists()).toBe(true)
     expect(getDailyReviewsMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
-    const text = wrapper.text()
-    expect(text).toContain('2026-07-12')
-    expect(text).toContain('auditor1')
-    expect(text).toContain('登入失敗 2')
-    expect(text).toContain('未審閱告警 1')
-    expect(text).toContain('高危操作 3')
-    expect(text).toContain('無異常')
-  })
+    expect(getDailyReviewPendingMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('auditor1')
 
-  it('shows dash when snapshot_json is unparsable', async () => {
-    setUserRoles(['auditor'])
-    getDailyReviewsMock.mockResolvedValue({
-      data: {
-        items: [{ ...sampleReviews[0], snapshot_json: '{broken' }],
-        total: 1,
-      },
-    })
-
-    const wrapper = mountAuditLogs()
+    wrapper.vm.activeTab = 'logs'
+    wrapper.vm.handleTabChange('logs')
     await flushPromises()
-
     wrapper.vm.activeTab = 'reviews'
     wrapper.vm.handleTabChange('reviews')
     await flushPromises()
-
-    expect(wrapper.text()).not.toContain('登入失敗')
-    expect(wrapper.vm.snapshotCounts({ snapshot_json: '{broken' })).toEqual([])
+    expect(getDailyReviewPendingMock).toHaveBeenCalledTimes(2)
   })
 
   // cause_code 為權威表述，散文 cause 降為 fallback
@@ -393,9 +397,72 @@ describe('AuditLogs', () => {
 
     expect(wrapper.vm.activeTab).toBe('reviews')
     expect(wrapper.find('.el-tabs__item.is-active').text()).toBe('每日簽核')
+    // 分頁內容是每日簽核工作區
+    expect(wrapper.find('[data-test="dr-workspace"]').exists()).toBe(true)
     expect(getDailyReviewsMock).toHaveBeenCalledWith({ page: 1, page_size: 20 })
     expect(getAuditLogsMock).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('auditor1')
+  })
+
+  // 防：側欄徽章與抽屜內的「在操作日誌查看全部」都是同頁改 query；
+  // 只在掛載時讀一次網址的話，這些入口等於失效
+  it('同頁改 query 切換分頁並開啟指定日抽屜', async () => {
+    setUserRoles(['auditor'])
+    routeState.query = { tab: 'logs' }
+
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    expect(wrapper.vm.activeTab).toBe('logs')
+
+    routeState.query = { tab: 'reviews', date: '2026-10-07' }
+    await flushPromises()
+
+    expect(wrapper.vm.activeTab).toBe('reviews')
+    expect(wrapper.find('.el-tabs__item.is-active').text()).toContain('每日簽核')
+    expect(getDailyReviewDayMock).toHaveBeenCalledWith('2026-10-07')
+
+    // 格式錯的日期不開抽屜
+    getDailyReviewDayMock.mockClear()
+    routeState.query = { tab: 'reviews', date: '2026-1-7' }
+    await flushPromises()
+    expect(getDailyReviewDayMock).not.toHaveBeenCalled()
+  })
+
+  it('同頁帶入排他尾端並清除舊篩選', async () => {
+    setUserRoles(['auditor'])
+    routeState.query = { tab: 'logs', start_time: '2026-10-01T00:00:00+08:00', end_time: '2026-10-01T12:00:00+08:00' }
+
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+    expect(getAuditLogsMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      start_time: '2026-10-01T00:00:00+08:00',
+      end_time: '2026-10-01T12:00:00+08:00',
+    }))
+    expect(wrapper.find('[data-test="end-before-tag"]').exists()).toBe(false)
+
+    getAuditLogsMock.mockClear()
+    routeState.query = {
+      tab: 'logs',
+      start_time: '2026-10-10T00:00:00+08:00',
+      end_before: '2026-10-11T00:00:00+08:00',
+    }
+    await flushPromises()
+
+    const params = getAuditLogsMock.mock.calls.at(-1)[0]
+    expect(params.start_time).toBe('2026-10-10T00:00:00+08:00')
+    expect(params.end_before).toBe('2026-10-11T00:00:00+08:00')
+    expect(params).not.toHaveProperty('end_time')
+    expect(wrapper.find('[data-test="end-before-tag"]').text()).toBe('不含結束時刻')
+
+    // 手動改時間：回到含尾端的一般篩選，標示消失
+    getAuditLogsMock.mockClear()
+    wrapper.vm.timeRange = ['2026-10-10T00:00:00+08:00', '2026-10-10T12:00:00+08:00']
+    wrapper.vm.onTimeRangeChange()
+    await flushPromises()
+    const manual = getAuditLogsMock.mock.calls.at(-1)[0]
+    expect(manual.end_time).toBe('2026-10-10T12:00:00+08:00')
+    expect(manual).not.toHaveProperty('end_before')
+    expect(wrapper.find('[data-test="end-before-tag"]').exists()).toBe(false)
   })
 
   // 三步追證的最後一步：由設定名的記錄連結落地，這一頁要直接只看那個設定的變更。

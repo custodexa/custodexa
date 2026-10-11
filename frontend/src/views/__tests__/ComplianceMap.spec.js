@@ -289,6 +289,68 @@ describe('ComplianceMap 合規對照頁（稽核視角、唯讀）', () => {
   })
 
   // 40 是條文數、3 是設定鍵數，混在一排時第一眼分不出來，稽核會把兩種單位相加
+  // 擋：開著但天天漏簽仍顯示符合；關閉時仍顯示簽核率；資料不足格因為是 0 而消失
+  it('10.4.1 偏離時顯示未簽天數與補簽入口、關閉時不顯示簽核率', async () => {
+    setUser(['auditor'])
+    const clause = {
+      group_code: 'pci_dss_4_0_1', clause_no: '10.4.1', title: '每日審閱簽核', summary: '',
+      kind: 'setting', removed_in_version: '',
+      controls: [{ id: 9, group_code: 'pci_dss_4_0_1', clause_no: '10.4.1',
+        policy_key: 'daily_review_enabled', comparator: 'signoff_record', expected_value: 'true',
+        reference_only: false }],
+    }
+    const signoffVerdict = (over) => ({
+      key: 'daily_review_enabled', group_code: 'pci_dss_4_0_1', clause_no: '10.4.1',
+      comparator: 'signoff_record', expected: 'true', ...over,
+    })
+    const respond = (verdict) => {
+      const res = snapshotResponse()
+      res.clauses = [...CLAUSES, clause]
+      res.data.verdicts = [...VERDICTS, verdict]
+      return res
+    }
+    getComplianceSnapshotMock.mockResolvedValueOnce(respond(signoffVerdict({
+      current: 'true', result: 'deviating', reason: 'signoff_unsigned_days',
+      signoff: { from: '2026-09-11', to: '2026-10-10', timezone: 'Asia/Taipei', required: 29,
+        on_time: 22, late: 3, unsigned: 4, sign_rate_percent: 86, inferred_days: 0,
+        enabled_days: 40, earliest_unsigned: '2026-10-06' },
+    })))
+    const wrapper = mountPage()
+    await flushPromises()
+    expect(wrapper.find('[data-test="signoff-unsigned"]').text()).toContain('4 天')
+    expect(wrapper.find('[data-test="signoff-rate"]').text()).toContain('86%')
+    expect(wrapper.find('[data-test="signoff-go-sign"]').exists()).toBe(true)
+    // 摘要的資料不足格即使為 0 也在
+    expect(wrapper.find('[data-test="summary-insufficientData"]').text()).toContain('0')
+    expect(wrapper.find('[data-test="summary-insufficientData"]').text()).toContain('資料不足')
+
+    getComplianceSnapshotMock.mockResolvedValueOnce(respond(signoffVerdict({
+      current: 'false', result: 'deviating', reason: 'daily_review_disabled',
+    })))
+    await wrapper.find('[data-test="compliance-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="signoff-facts-disabled"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="signoff-rate"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="signoff-go-sign"]').exists()).toBe(false)
+    // 測試環境把 el-tag 的 Transition 換成替身，透傳的 class 落在替身上（瀏覽器裡落在標籤本體）
+    const neutralIn = (sel) => wrapper.find(`${sel} .ot-tag-neutral`)
+    const keyRow = '[data-test="key-row-daily_review_enabled"]'
+    expect(neutralIn(keyRow).exists()).toBe(false)
+
+    // 資料不足用中性灰框標籤：品牌青與「符合」的綠並排時分不出來
+    getComplianceSnapshotMock.mockResolvedValueOnce(respond(signoffVerdict({
+      current: 'true', result: 'insufficient_data', reason: 'signoff_insufficient_data',
+      signoff: { from: '2026-10-08', to: '2026-10-10', timezone: 'Asia/Taipei', required: 3,
+        on_time: 2, late: 0, unsigned: 1, sign_rate_percent: 67, inferred_days: 0,
+        enabled_days: 3, enabled_since: '2026-10-07T16:00:00Z', earliest_unsigned: '2026-10-10' },
+    })))
+    await wrapper.find('[data-test="compliance-refresh"]').trigger('click')
+    await flushPromises()
+    expect(neutralIn(keyRow).text()).toBe('資料不足')
+    const clauseTags = wrapper.findAll('.clause-head .ot-tag-neutral').map((n) => n.text())
+    expect(clauseTags).toContain('資料不足')
+  })
+
   it('摘要分成條文與設定兩組，每格帶單位', async () => {
     setUser(['auditor'])
     const wrapper = mountPage()
