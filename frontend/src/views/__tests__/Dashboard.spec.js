@@ -176,6 +176,33 @@ describe('Dashboard', () => {
     expect(wrapper.text()).toContain('5')
   })
 
+  // 擋：非規則類告警在首頁印出 rule_name 機器碼；指令為空時留下尾端冒號
+  it('首頁告警行：非規則類顯示種類文案，規則類指令為空時不帶冒號', async () => {
+    setUserRoles(['admin'])
+    searchAlertsMock.mockResolvedValue({
+      data: [
+        { id: 1, kind: 'audit_degraded', rule_name: 'audit_degraded_span', command: '', severity: 'medium', username: 'u1', triggered_at: '2026-10-07T01:00:00Z' },
+        { id: 2, kind: 'new_source_ip', rule_name: 'new_source_ip', command: '', severity: 'low', username: 'u2', triggered_at: '2026-10-07T01:00:00Z' },
+        { id: 3, kind: 'rule', rule_name: '危險刪除', command: 'rm -rf /', severity: 'high', username: 'u3', triggered_at: '2026-10-07T01:00:00Z' },
+        { id: 4, kind: 'rule', rule_name: '空指令規則', command: '', severity: 'high', username: 'u4', triggered_at: '2026-10-07T01:00:00Z' },
+      ],
+      total: 4,
+    })
+
+    const wrapper = mountDashboard()
+    await flushPromises()
+
+    const lines = wrapper.findAll('.activity-main').map((n) => n.text())
+    expect(lines).toContain('指令稽核降級')
+    expect(lines).toContain('帳號新來源位址')
+    expect(lines).toContain('危險刪除：rm -rf /')
+    expect(lines).toContain('空指令規則')
+    const text = wrapper.text()
+    expect(text).not.toContain('audit_degraded_span')
+    expect(text).not.toContain('new_source_ip')
+    for (const line of lines) expect(line.endsWith('：')).toBe(false)
+  })
+
   it('falls back to 0 today alerts when alerts API fails', async () => {
     setUserRoles(['admin'])
     getAssetListMock.mockResolvedValue({ total: 0, data: [] })

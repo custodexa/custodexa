@@ -37,8 +37,25 @@ du_is() { printf '%s\n' "$2" >"$DB/du.$(printf '%s' "$1" | tr / -)"; }
 # case_host <master key mode> [recordings bytes]: a fresh deployment with the sizes of the reviewed
 # text (database 17.4 GB, audit files 12 MB, recordings 212 GB, 211 GB free, a file of 17.4 GB),
 # the encryption image, a passphrase file, and the step times of the reviewed progress screen.
+# The first layout of each mode and size is kept and copied back to the same paths afterwards
+# (the fakes name these paths), so every screen still starts from a fresh deployment.
 case_host() {
+  local t=$BATS_TEST_TMPDIR/tpl/$1-${2:-default} d
   rm -rf "$BATS_TEST_TMPDIR/opt" "$BATS_TEST_TMPDIR/db" "$BATS_TEST_TMPDIR/host" "$BATS_TEST_TMPDIR/replay"
+  rm -f "$PASSFILE"
+  if [ -d "$t" ]; then
+    for d in opt db host replay; do cp -a "$t/$d" "$BATS_TEST_TMPDIR/$d"; done
+    cp -a "$t/cx-pass" "$PASSFILE"
+    : >"$FAKE_DOCKER_LOG"
+    hash -r
+    return 0
+  fi
+  case_host_build "$@"
+  mkdir -p "$t"
+  for d in opt db host replay; do cp -a "$BATS_TEST_TMPDIR/$d" "$t/$d"; done
+  cp -a "$PASSFILE" "$t/cx-pass"
+}
+case_host_build() {
   backup_host "$1"
   backup_strict
   fake sleep ':'

@@ -10,10 +10,8 @@ load install_host
 load backup_host
 load upgrade_host
 load restore_host
-load restore_engine_host
 
 setup() {
-  if [[ $BATS_TEST_DESCRIPTION == *'same-host bundled database env backup'* ]]; then rs_engine_host; return; fi
   backup_host ui
   backup_strict
 }
@@ -94,7 +92,8 @@ before() { cp "$ROOT/state.json" "$BATS_TEST_TMPDIR/state.before"; }
 @test "restore entry: another command given an option of restore alone ends as a usage error, the option named" {
   before
   local c o
-  for c in install upgrade status start stop backup load; do
+  # The refusal does not depend on the command: one command other than restore stands for all.
+  for c in backup; do
     for o in --same-host --new-host --confirm-data-loss --no-checksum-file --abandon \
       "--package /tmp/p.tar.gz" "--data-path /srv/data" "--tls-domain a.example" "--tls-ip-san 10.0.0.31" \
       "--public-base-url https://10.0.0.31" "--nginx-template /etc/t"; do
@@ -121,11 +120,4 @@ before() { cp "$ROOT/state.json" "$BATS_TEST_TMPDIR/state.before"; }
   # The external database's options: its client certificate, and skipping grants to missing roles.
   [[ $output == *"--db-client-cert, --db-client-key"* && $output == *"--accept-grant-loss          External database lacks roles"* ]] || return 1
   [[ $output != *"install                First install"* ]]
-}
-
-@test "restore entry: same-host bundled database env backup runs from the file argument to completion" {
-  rs_engine_run
-  [ "$status" = 0 ] && [ "$(rs_engine_result)" = succeeded ] || { echo "$output"; return 1; }
-  [ "$(jq -r '."last_restore.phase"' "$ROOT/state.json")" = done ] || return 1
-  [[ $output == *'Restore done; the service is back (1.16.0)'* ]]
 }

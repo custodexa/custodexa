@@ -59,6 +59,19 @@ func setupOIDCEnv(t *testing.T) (*OIDCLoginService, *OIDCProviderService, *gorm.
 		ON user_external_identities(issuer, client_id, subject) WHERE deleted_at IS NULL`).Error; err != nil {
 		t.Fatalf("identity domain unique index: %v", err)
 	}
+	// 帳號名與 email 的唯一索引：production 是 partial（排除軟刪），AutoMigrate 依
+	// model 標記建出的是全表唯一。不換掉的話，刪除後以同名重建帳號必然撞索引，
+	// 測到的是夾具而不是產品行為
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_users_username`,
+		`CREATE UNIQUE INDEX idx_users_username ON users (username) WHERE deleted_at IS NULL`,
+		`DROP INDEX IF EXISTS idx_users_email`,
+		`CREATE UNIQUE INDEX idx_users_email ON users (email) WHERE email IS NOT NULL AND deleted_at IS NULL`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatalf("users partial index: %v", err)
+		}
+	}
 	if err := db.Create(&model.Role{Name: model.RoleUser, Description: "一般使用者"}).Error; err != nil {
 		t.Fatalf("seed role: %v", err)
 	}

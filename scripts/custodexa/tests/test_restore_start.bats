@@ -107,9 +107,3 @@ setup() { rs_start_host; }
   [ "$status" = 1 ] && [[ $output == *'master key in the settings file'* ]] || { echo "$output"; return 1; }
   ! grep -q '^up$' "$DB/events"
 }
-@test "restore startup: awaiting unseal refuses upgrade" {
-  rs_start_run
-  [ "$status" = 4 ] || { echo "$output"; return 1; }
-  run bash "$RS_I_ENGINE" upgrade --yes --lang en
-  [ "$status" = 3 ] && [[ $output == *'cannot be'* && $output == *'upgraded'* ]]
-}

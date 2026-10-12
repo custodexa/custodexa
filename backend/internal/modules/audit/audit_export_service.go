@@ -498,7 +498,9 @@ func (s *AuditExportService) writeAuditLogs(zw *zip.Writer, filter *ExportFilter
 			return err
 		}
 		total = res.Total
-		logs = append(logs, res.Data...)
+		for _, row := range res.Data {
+			logs = append(logs, row.AuditLog) // 證據包維持原始列形狀，不帶原因欄
+		}
 		// 達匯出上限：截斷並誠實標明
 		if len(logs) >= maxExportAuditLogs {
 			logs = logs[:maxExportAuditLogs]

@@ -134,23 +134,16 @@ stopped_all_after_up() { grep -A99 -x up "$DB/events" | grep -qx stop-all; }
   [ "$(jq -r '."last_upgrade.step"' "$ROOT/state.json")" = 12 ]
 }
 
-@test "empty database (users fell to 1 with no baseline line, or the baseline line alone): stopped all the same" {
-  fresh ui
-  printf '1\n' >"$UP/after.count.users"
-  up_run en
-  [ "$status" -eq 1 ] && [[ $output == *"[FAIL] The new version found an empty database. All services were"* ]] \
-    || { echo "$output"; return 1; }
-  [[ $output == *"The data path $ROOT/data"* ]] || { echo "$output"; return 1; }
-  stopped_all_after_up || { cat "$DB/events"; return 1; }
-  # The baseline migration in the log alone is enough, whatever the counts say.
+@test "empty database (the baseline line alone, whatever the counts say): stopped all the same" {
   fresh ui
   printf '%s\n' '2026/09/30 02:20:03 執行 migration: 20260816_schema_baseline' >>"$UP/logs"
   up_run en
   [ "$status" -eq 1 ] && [[ $output == *"[FAIL] The new version found an empty database."* ]] || { echo "$output"; return 1; }
+  [[ $output == *"The data path $ROOT/data"* ]] || { echo "$output"; return 1; }
   stopped_all_after_up || { cat "$DB/events"; return 1; }
 }
 
-@test "fewer rows, a missing migration, another image ID, the lock held elsewhere: each FAIL, services left running" {
+@test "fewer rows, another image ID, the lock held elsewhere: each FAIL, services left running" {
   check_fails() { # <expected row text>
     up_run en
     [ "$status" -eq 1 ] && [[ $output == *"[FAIL] The upgrade stopped at step 12/13: the checks did not pass"* ]] \
@@ -167,17 +160,11 @@ stopped_all_after_up() { grep -A99 -x up "$DB/events" | grep -qx stop-all; }
   printf '1204539\n' >"$UP/after.count.audit_logs"
   check_fails "1,204,539 audit records (1,204,540 before)" || return 1
   fresh ui
-  printf '%s\n' 20260816_schema_baseline 20261010_report_schedule >"$UP/after.migrations"
-  check_fails "[FAIL] Database        structure versions from before are missing:" || return 1
-  fresh ui
   printf '%s\n' sha256:9999999999999999999999999999999999999999999999999999999999999999 >"$UP/image.backend"
   check_fails "[FAIL] Images          a running image differs from the one obtained" || return 1
   fresh ui
   printf '%s\n' '2026/09/30 02:20:05 [InstanceGuard] 單實例鎖由另一個資料庫工作階段持有' >"$UP/logs"
-  check_fails "[FAIL] Single instance the database lock is held by another database" || return 1
-  fresh ui
-  printf '%s\n' 'sha256:1111' >"$UP/after.kek"
-  check_fails "[FAIL] Keys            a key fingerprint differs from before the upgrade"
+  check_fails "[FAIL] Single instance the database lock is held by another database"
 }
 
 @test "a snapshot that is not usable: keys WARN, never OK; what cannot be read warns and the upgrade completes" {

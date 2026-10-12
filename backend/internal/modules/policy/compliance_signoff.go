@@ -101,6 +101,8 @@ type SignoffDay struct {
 	AlertsAfterSign *int64
 	// ReviewID 簽核紀錄編號（未簽為 0）
 	ReviewID uint
+	// HighRiskCriteria HighRiskOps 所依據的高危判準版本（已簽列取快照、舊快照為 1；未簽列為現行版本）
+	HighRiskCriteria int
 }
 
 // SignoffRecordSource 運作紀錄的來源（消費者側窄介面；實作在 audit 模組）。

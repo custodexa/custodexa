@@ -186,7 +186,7 @@ import { useBatchSelection } from '@/composables/useBatchReview'
 import BatchSelectionBar from '@/components/batch-review/BatchSelectionBar.vue'
 import BatchCheckbox from '@/components/batch-review/BatchCheckbox.vue'
 import AlertBatchReviewDialog from '@/components/batch-review/AlertBatchReviewDialog.vue'
-import { isAgentBreakerAlert, isDegradedAlert, isNewSourceIPAlert } from '@/constants/command-degrade'
+import { alertRuleText } from '@/constants/command-degrade'
 import { timeInZone } from './dailyReviewFormat'
 
 const props = defineProps({
@@ -215,14 +215,8 @@ const SEVERITIES = ['high', 'medium', 'low']
 const severityLabel = (severity) =>
   SEVERITIES.includes(severity) ? t(`enum.alertLevel.${severity}`) : severity
 
-// 非規則類告警的 rule_name 是機器碼，沿用告警頁的散文
-const ruleText = (row) => {
-  if (isDegradedAlert(row)) return t('alerts.kindAuditDegraded')
-  if (isNewSourceIPAlert(row)) return t('alerts.kindNewSourceIP')
-  if (isAgentBreakerAlert(row)) return t('alerts.kindAgentBreaker')
-  if (row.kind === 'sensitive_reveal') return t('alerts.kindSensitiveReveal')
-  return row.rule_name || row.command || ''
-}
+// 非規則類告警的 rule_name 是機器碼，沿用告警頁的散文（與首頁共用）
+const ruleText = alertRuleText
 const labelFor = (row) => `${ruleText(row)} · ${timeInZone(row.triggered_at, props.timezone)}`
 
 // 一批送完、結果列出現時就重取該日明細（不等使用者按「完成」），

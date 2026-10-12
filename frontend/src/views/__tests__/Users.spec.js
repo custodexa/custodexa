@@ -1122,3 +1122,51 @@ describe('Users：允許來源網段', () => {
     expect(checkSourcePolicyMock.mock.calls[0][0].allowed_cidrs).toEqual(['10.0.0.0/8'])
   })
 })
+
+describe('Users 刪除／停用 MFA 確認框依帳號類型講後果', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getUserListMock.mockResolvedValue(sampleUsers)
+    getRoleListMock.mockResolvedValue({ data: [] })
+    getCurrentUserMock.mockResolvedValue({ id: 1, username: 'admin' })
+  })
+
+  const confirmText = async (handler, row) => {
+    const { ElMessageBox } = await import('element-plus')
+    // 取消：只驗確認框內容，不走到刪除／停用 API
+    const confirmSpy = vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.vm[handler](row)
+    await flushPromises()
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    const [message] = confirmSpy.mock.calls[0]
+    confirmSpy.mockRestore()
+    return mount({ render: () => message }).text()
+  }
+
+  it('已綁外部身分的帳號：刪除框講一併解除綁定，並引導改用停用 MFA', async () => {
+    const text = await confirmText('handleDelete', {
+      id: 9,
+      username: 'dave',
+      provisioning_origin: 'local',
+      external_credential: false,
+      auth_provider_names: ['Azure AD'],
+    })
+    expect(text).toContain('一併解除綁定')
+    expect(text).toContain('停用 MFA')
+    expect(text).toContain('Azure AD')
+  })
+
+  it('經身分提供者建立的帳號：停用 MFA 框不說「只需密碼」', async () => {
+    const text = await confirmText('handleAdminDisableMFA', {
+      id: 10,
+      username: 'erin',
+      provisioning_origin: 'oidc',
+      external_credential: true,
+      auth_provider_names: ['Azure AD'],
+    })
+    expect(text).toContain('經身分提供者登入')
+    expect(text).not.toContain('只需密碼')
+  })
+})

@@ -100,3 +100,23 @@ export const isDegradedRow = (row) => row?.degraded === true
 export const isQualifiedRow = (row) => row?.degraded !== true && Boolean(row?.degrade_reason)
 
 export const isAgentBreakerAlert = (row) => row?.kind === 'agent_breaker_tripped'
+
+// 非規則類告警（不掛規則、`rule_name` 存機器碼）的種類文案；規則類回空字串
+const alertKindText = (row) => {
+  if (isDegradedAlert(row)) return t('alerts.kindAuditDegraded')
+  if (isNewSourceIPAlert(row)) return t('alerts.kindNewSourceIP')
+  if (isAgentBreakerAlert(row)) return t('alerts.kindAgentBreaker')
+  if (row?.kind === 'sensitive_reveal') return t('alerts.kindSensitiveReveal')
+  return ''
+}
+
+/** 告警的規則欄：非規則類顯示種類文案，不露出 `rule_name` 機器碼 */
+export const alertRuleText = (row) => alertKindText(row) || row?.rule_name || row?.command || ''
+
+/** 首頁告警行：非規則類顯示種類；規則類「規則名：指令」，指令為空時不帶冒號 */
+export const alertLineText = (row) => {
+  const kind = alertKindText(row)
+  if (kind) return kind
+  if (row?.rule_name && row?.command) return t('dashboard.alertLine', { rule: row.rule_name, command: row.command })
+  return row?.rule_name || row?.command || ''
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -330,4 +331,42 @@ func manifestListsFile(m *ExportManifest, name string) bool {
 		}
 	}
 	return false
+}
+
+// TestEvidenceBundleDailyReviewsCriteriaColumn 擋：判準調整前後的高危數混在同一份清單裡
+// 無從分辨；新欄插在中間打亂下游依欄位位置讀取的既有欄位
+func TestEvidenceBundleDailyReviewsCriteriaColumn(t *testing.T) {
+	t.Run("兩種口徑在同一份清單可分辨", func(t *testing.T) {
+		svc, db, _ := dailyReviewBundleEnv(t)
+		seedSpecScenario(t, db) // 已簽列的快照是升級前的形狀（沒有判準版本）
+		from, to := bundleWindow(t)
+		_, files := exportReport(t, svc, bundleFilter(&ExportFilter{StartTime: &from, EndTime: &to}))
+		raw := files[policy.DailyReviewsCSVName]
+		rows, err := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(raw, []byte("\xEF\xBB\xBF")))).ReadAll()
+		if err != nil {
+			t.Fatal(err)
+		}
+		before := []string{
+			"review_date", "timezone", "timezone_inferred", "enabled_basis",
+			"window_start", "window_end", "due_at", "status", "counts_toward_stats",
+			"signed_at", "signer", "late_days", "delay_reason", "note", "coverage",
+			"audit_log_source", "command_alert_source",
+			"login_failures", "alerts_total", "alerts_benign", "alerts_escalated",
+			"high_risk_ops", "alerts_after_sign", "review_ref",
+		}
+		header := rows[0]
+		if len(header) != len(before)+1 || strings.Join(header[:len(before)], ",") != strings.Join(before, ",") {
+			t.Fatalf("表頭前 %d 欄與改動前不同，或沒有在尾端追加一欄: %v", len(before), header)
+		}
+		if header[len(before)] != "high_risk_criteria" {
+			t.Fatalf("尾端欄 = %q, want high_risk_criteria", header[len(before)])
+		}
+		col, byDate, _ := dailyReviewCSV(t, files)
+		if got := byDate["2026-10-01"][col["high_risk_criteria"]]; got != "1" {
+			t.Errorf("舊快照的已簽日判準版本 = %q, want 1", got)
+		}
+		if got := byDate["2026-10-07"][col["high_risk_criteria"]]; got != strconv.Itoa(HighRiskCriteriaVersion) {
+			t.Errorf("未簽日判準版本 = %q, want %d", got, HighRiskCriteriaVersion)
+		}
+	})
 }

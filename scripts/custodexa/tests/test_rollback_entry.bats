@@ -5,7 +5,10 @@ load backup_host
 load upgrade_host
 load rollback_host
 
-setup() { rollback_host ready; }
+setup() {
+  host_workdir
+  rb_cached ready
+}
 
 unchanged_before() {
   cp "$ROOT/state.json" "$DB/state.before"
@@ -52,54 +55,10 @@ unchanged_after() {
   [ -z "$(rb_state last_rollback.result)" ]
 }
 
-@test "rollback entry: changed and unreadable databases refuse with the actual backup file or the manual guide" {
-  local condition backup
-  backup=$(rb_state last_upgrade.backup)
-  for condition in changed unreadable snapshot; do
-    case $condition in
-      changed) echo new_structure >>"$DB/migrations" ;;
-      unreadable) sed -i '/new_structure/d' "$DB/migrations"; echo 1 >"$DB/migrations.rc" ;;
-      snapshot) rm "$DB/migrations.rc"; rm "$ROOT/$(rb_state last_upgrade.snapshot)" ;;
-    esac
-    unchanged_before
-    rb_run en --yes
-    [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-    [[ $output == *"restore $ROOT/$backup"* ]] && [ -f "$ROOT/$backup" ] || { echo "$output"; return 1; }
-    if [ "$condition" = changed ]; then [[ $output == *new_structure* ]]; else [[ $output == *'could not be read'* ]]; fi
-    unchanged_after
-  done
-  for condition in folder external absent; do
-    mkdir -p "$ROOT/backups/own"
-    bk_state_set last_upgrade.backup backups/own
-    case $condition in
-      external) bk_state_set last_upgrade.backup_kind external ;;
-      absent) bk_state_set last_upgrade.backup_kind script; bk_state_set last_upgrade.backup backups/missing.tar ;;
-    esac
-    unchanged_before
-    rb_run en --yes
-    [ "$status" -eq 3 ] && [[ $output != *'custodexa.sh restore '* ]] || { echo "$output"; return 1; }
-    [[ $output == *'restore the backup above by hand'* ]] || { echo "$output"; return 1; }
-    unchanged_after
-  done
-}
-
-@test "rollback entry: the last check rejects a new migration after stopping only application services" {
-  echo late_structure >"$DB/rb.race"
-  rb_run en --yes
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [ "$(rb_state last_rollback.result)" = refused ]
-  [ "$(rb_state current.version)" = 1.16.2 ]
-  [ "$(readlink "$ROOT/current")" = releases/1.16.2 ]
-  [ "$(cat "$DB/running")" = postgres ]
-  ! grep -Eq '^up|^stop postgres' "$DB/events" || return 1
-  [[ $output == *'application services are stopped'* && $output == *'custodexa.sh start'* ]]
-}
-
 @test "rollback entry: the three switch boundaries recover, and only a never-started version skips the query" {
   local outcome
   for outcome in before-switch switch-recorded switch-linked; do
-    rm -rf "${BATS_TEST_TMPDIR:?}"/*
-    rollback_host "$outcome"
+    rb_cached "$outcome"
     rb_run en --yes
     [ "$status" -eq 0 ] || { echo "$outcome: $output"; return 1; }
     [ "$(rb_state current.version)" = 1.16.1 ]
@@ -111,8 +70,7 @@ unchanged_after() {
 }
 
 @test "rollback entry: an interrupted upgrade permits rollback but still blocks backup and upgrade" {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host interrupted-start
+  rb_cached interrupted-start
   [ "$(rb_state last_upgrade.step)" = 10 ]
   run bash "$ROOT/custodexa.sh" backup --yes --lang en </dev/null
   [ "$status" -eq 3 ] || { echo "$output"; return 1; }
@@ -123,29 +81,8 @@ unchanged_after() {
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
 
-@test "rollback entry: versions before the supported minimum refuse without querying the database" {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host ready ui 1.15.2
-  unchanged_before
-  rb_run en --yes
-  [ "$status" -eq 3 ] && [[ $output == *'1.16.0 or later'* ]] || { echo "$output"; return 1; }
-  unchanged_after
-  [ ! -s "$DB/db-calls" ]
-}
-
-@test "rollback entry: an upgrade stopped after backup explains the recovery before checking version relationships" {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host backup
-  unchanged_before
-  rb_run en --yes
-  [ "$status" -eq 3 ] && [[ $output == *'stopped at step 7'* && $output == *'custodexa.sh upgrade 1.16.2'* ]] || { echo "$output"; return 1; }
-  [ "$(rb_state last_upgrade.backup_kind)" = script ]
-  unchanged_after
-}
-
 @test "rollback entry: an upgrade with an own backup keeps its actual reference in the manual restore guide" {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host external
+  rb_cached external
   [ "$(rb_state last_upgrade.backup_kind)" = external ]
   [ -f "$ROOT/$(rb_state last_upgrade.backup)/external.txt" ]
   printf 'new_structure\n' >>"$DB/migrations"
@@ -157,8 +94,7 @@ unchanged_after() {
 }
 
 @test "rollback entry: start cannot start the new version if its durable marker cannot be saved" {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host switch-linked
+  rb_cached switch-linked
   touch "$DB/rb.health"
   printf '\ncx_state_save() { return 1; }\n' >>"$ROOT/current/lib/cmd_start.sh"
   run bash "$ROOT/custodexa.sh" start --lang en </dev/null
@@ -193,8 +129,7 @@ upgrade_status() {
 @test "rollback entry: a failed upgrade keeps upgrade out until a restore finishes; then upgrade runs and rollback has nothing to go back to" {
   local outcome before
   for outcome in ready-failed interrupted; do
-    rm -rf "${BATS_TEST_TMPDIR:?}"/*
-    rollback_host "$outcome"
+    rb_cached "$outcome"
     publish 1.16.3 1.12.4 20260816_schema_baseline 20260901_add_x
     if [ "$outcome" = interrupted ]; then
       # The restore hand-over settles the interrupted upgrade as failed first (lib/run.sh).

@@ -536,7 +536,8 @@ func (h *OIDCHandler) redirectToLogin(c *gin.Context, slug string) {
 	c.Redirect(http.StatusFound, h.frontend+"/login#sso_error="+url.QueryEscape(slug))
 }
 
-// oidcErrorSlug 失敗成因對外收斂為兩類（不洩漏 IdP 內部狀態）
+// oidcErrorSlug 失敗成因對外收斂為可行動的幾類（不洩漏 IdP 內部狀態）。
+// 帳號已刪除與已停用兩類只在身分提供者認證成功之後才可能出現
 func oidcErrorSlug(err error) string {
 	switch {
 	case errors.Is(err, identity.ErrOIDCAdmissionDenied):
@@ -545,6 +546,10 @@ func oidcErrorSlug(err error) string {
 		return "oidc_username_conflict"
 	case errors.Is(err, identity.ErrOIDCProviderUnavailable):
 		return "oidc_provider_unavailable"
+	case errors.Is(err, identity.ErrOIDCAccountRemoved):
+		return "oidc_account_removed"
+	case errors.Is(err, identity.ErrUserInactive):
+		return "oidc_user_inactive"
 	default:
 		return "oidc_flow_invalid"
 	}

@@ -268,6 +268,24 @@ describe('Login SSO 區塊', () => {
     expect(wrapper2.text()).toContain('帳號名稱衝突，需由管理員處理')
   })
 
+  it.each([
+    ['oidc_account_removed', '您在本系統的帳號已被管理者刪除', '請聯絡管理者重新建立帳號並綁定您的外部身分'],
+    ['oidc_user_inactive', '您的帳號已停用', '請聯絡管理者重新啟用帳號'],
+  ])('sso_error=%s 顯示專屬標題與提示，且不給重新發起（重試不會改變結果）', async (slug, title, hint) => {
+    setHash(`#sso_error=${slug}`)
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.find('.sso-alert').exists()).toBe(true)
+    expect(wrapper.text()).toContain(title)
+    expect(wrapper.text()).toContain(hint)
+    // 不得被降級為通用的「流程失效」文案
+    expect(wrapper.text()).not.toContain('登入流程已失效')
+    expect(wrapper.find('.sso-restart-btn').exists()).toBe(false)
+    expect(window.location.hash).toBe('')
+    expect(exchangeSSOTicketMock).not.toHaveBeenCalled()
+  })
+
   it('未知 sso_error slug 降級為流程失效文案（前後端版本錯位不炸）', async () => {
     setHash('#sso_error=some_future_slug')
     const wrapper = mountLogin()

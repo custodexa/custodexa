@@ -323,18 +323,12 @@ STATUS
   [ ! -s "$CX_CALLS" ]
 }
 
-@test "menu install passes auto, source and Enter defaults" {
+@test "menu install passes source when chosen (auto and Enter: the not-installed menu above)" {
   fake_commands
-  for answer in 1 2 ''; do
-    : >"$CX_CALLS"
-    menu_run en $'1\n'"$answer"$'\n0'
-    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    if [ "$answer" = 2 ]; then
-      grep -qxF 'install --images-from source' "$CX_CALLS"
-    else
-      grep -qxF 'install --images-from auto' "$CX_CALLS"
-    fi
-  done
+  : >"$CX_CALLS"
+  menu_run en $'1\n2\n0'
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qxF 'install --images-from source' "$CX_CALLS"
 }
 
 # Threat: the restore item runs restore on a file other than the one chosen, as a relative path
@@ -543,24 +537,41 @@ EXTERNAL_KEYS="up_will_2_ref up_will_2_own pb_summary_ext pb_ext_tool pb_ext_con
   up_ext_ni_3_notls up_ext_ni_4 up_ext_ni_flags"
 
 @test "messages: each backup and restore key renders every argument it is given, x1 y2 ..., in each language" {
-  local l k n i out want samples=xyzwvuts
-  local -a args=()
+  local l k
+  local -a ks=()
+  for k in $BACKUP_KEYS $EXTERNAL_KEYS $(sed -nE "s/^MSG_((rs_|menu_restore|menu_rs_|menu_ask_restore)[A-Za-z0-9_]*)=.*/\1/p" "$SRC/lang/en.sh"); do
+    ks+=("$k")
+  done
+  # One process per language: the libraries load once, then every key renders in it.
   for l in $LANGS; do
-    for k in $BACKUP_KEYS $EXTERNAL_KEYS $(sed -nE "s/^MSG_((rs_|menu_restore|menu_rs_|menu_ask_restore)[A-Za-z0-9_]*)=.*/\1/p" "$SRC/lang/en.sh"); do
-      grep -q "^MSG_$k=" "$SRC/lang/$l.sh" || { echo "$l: no $k"; return 1; }
-      # The placeholders: every %s, not counting a literal %%.
-      n=$(bash -c '. "$1"; v=MSG_$2; t=${!v//%%/}; t=${t//[^%]/}; printf "%s" "${#t}"' _ "$SRC/lang/$l.sh" "$k")
-      args=()
-      # A different sample value per argument: x1, y2, z3, w4, ...
-      for ((i = 0; i < n; i++)); do args+=("${samples:i:1}$((i + 1))"); done
-      out=$(CX_LANG_FLAG=$l bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; shift; cx_msg "$@"' _ "$SRC" "$k" "${args[@]+"${args[@]}"}")
-      [ -n "$out" ] && [ "$out" != "$k" ] || { echo "$l $k: rendered as [$out]"; return 1; }
-      for want in "${args[@]+"${args[@]}"}"; do
-        [[ $out == *"$want"* ]] || { echo "$l $k: $want missing in: $out"; return 1; }
-      done
-      # A placeholder the count missed would print as is (a %% in the text prints as % on purpose).
-      grep -q '%%' <<<"$(bash -c '. "$1"; v=MSG_$2; printf "%s" "${!v}"' _ "$SRC/lang/$l.sh" "$k")" \
-        || [[ $out != *"%s"* ]] || { echo "$l $k: a placeholder left: $out"; return 1; }
+    local -A def=()
+    for k in $(sed -nE 's/^MSG_([A-Za-z0-9_]+)=.*/\1/p' "$SRC/lang/$l.sh"); do def[$k]=1; done
+    for k in "${ks[@]}"; do
+      [ -n "${def[$k]:-}" ] || { echo "$l: no $k"; return 1; }
     done
+    CX_LANG_FLAG=$l bash -c '
+      src=$1 l=$2 samples=xyzwvuts
+      shift 2
+      . "$src/lib/common.sh"
+      cx_load_libs "$src"
+      for k in "$@"; do
+        # The text as the language file defines it (each key is defined there, checked above).
+        v=MSG_$k
+        raw=${!v}
+        # The placeholders: every %s, not counting a literal %%.
+        t=${raw//%%/}
+        t=${t//[^%]/}
+        n=${#t}
+        args=()
+        # A different sample value per argument: x1, y2, z3, w4, ...
+        for ((i = 0; i < n; i++)); do args+=("${samples:i:1}$((i + 1))"); done
+        out=$(cx_msg "$k" "${args[@]+"${args[@]}"}")
+        [ -n "$out" ] && [ "$out" != "$k" ] || { echo "$l $k: rendered as [$out]"; exit 1; }
+        for want in "${args[@]+"${args[@]}"}"; do
+          [[ $out == *"$want"* ]] || { echo "$l $k: $want missing in: $out"; exit 1; }
+        done
+        # A placeholder the count missed would print as is (a %% in the text prints as % on purpose).
+        [[ $raw == *%%* ]] || [[ $out != *"%s"* ]] || { echo "$l $k: a placeholder left: $out"; exit 1; }
+      done' _ "$SRC" "$l" "${ks[@]}" || return 1
   done
 }

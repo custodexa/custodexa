@@ -212,8 +212,23 @@
             value-key="value"
             style="width: 100%"
             maxlength="500"
+            :placeholder="matchPlaceholder"
             @select="selectExternalGroup"
           />
+          <!-- 填群組值時才用得到的比對說明：放在欄位下，不放頁首 -->
+          <div
+            class="field-hint"
+            data-test="mapping-match-hint"
+          >
+            {{ matchHint }}
+          </div>
+          <div
+            v-if="isEntraSource"
+            class="field-hint"
+            data-test="mapping-entra-hint"
+          >
+            {{ $t('identitySources.mapping.entraMatchHint') }}
+          </div>
         </el-form-item>
         <el-form-item :label="$t('identityGroupMappings.fields.note')">
           <el-input
@@ -258,6 +273,13 @@
               :value="group.id"
             />
           </el-select>
+          <div
+            v-if="tab === 'roles'"
+            class="field-hint"
+            data-test="mapping-admin-note"
+          >
+            {{ $t('identitySources.mapping.adminNote') }}
+          </div>
         </el-form-item>
         <div
           v-if="tab === 'userGroups' && draft.user_group_id"
@@ -335,11 +357,17 @@ import { getRoleList } from '@/api/user'
 import { getUserGroups } from '@/api/userGroups'
 import { errorCode, getIdentitySources, getRoleMappings, createRoleMapping, updateRoleMapping, deleteRoleMapping, getUserGroupMappings, getUserGroupMappingUsage, createUserGroupMapping, updateUserGroupMapping, deleteUserGroupMapping, getExternalGroups, updateExternalGroupNote } from '@/api/identitySources'
 import { confirmWarnings } from '@/utils/mappingRiskGate'
+import { isEntraIssuer } from '@/utils/entraIssuer'
 
 const route = useRoute()
 const sourceType = computed(() => String(route.params.type || ''))
 const sourceId = computed(() => String(route.params.id || ''))
 const sourceTypeLabel = computed(() => t(`identitySources.typeLabel.${sourceType.value}`))
+// 目錄依辨識名稱解析後比對，提供者逐字比對；Entra 另交代群組物件識別碼的取得位置
+const isDirectorySource = computed(() => sourceType.value === 'ldap')
+const isEntraSource = computed(() => sourceType.value === 'oidc' && isEntraIssuer(source.value?.address))
+const matchPlaceholder = computed(() => isDirectorySource.value ? t('identitySources.mapping.matchDnPlaceholder') : t('identitySources.mapping.matchClaimValuePlaceholder'))
+const matchHint = computed(() => isDirectorySource.value ? t('identitySources.mapping.matchDnHint') : t('identitySources.mapping.matchClaimValueHint'))
 const source = ref(null)
 const roles = ref([])
 const userGroups = ref([])
@@ -547,5 +575,5 @@ onMounted(loadAll)
 .group-value-collapsed { max-height: 3em; overflow: hidden; overflow-wrap: anywhere; }
 .mapping-tabs :deep(.el-tabs__active-bar) { transition: none; }
 .usage-box { margin: var(--ot-space-sm) 0; color: var(--ot-text-secondary); }
-.field-hint { color: var(--ot-text-secondary); font-size: var(--ot-font-size-xs); }
+.field-hint { color: var(--ot-text-secondary); font-size: var(--ot-font-size-xs); line-height: 1.6; margin-top: var(--ot-space-xs); }
 </style>

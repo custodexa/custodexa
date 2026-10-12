@@ -111,15 +111,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE custodexa_app IN SCHEMA public GRANT SELECT ON
   [[ $output == *'  [1] Create these roles first'*'  [2] Skip the grants to these roles and go on'* ]] || { echo "$output"; return 1; }
 }
 
-@test "restore external grants: a grant statement that cannot be told apart refuses even with --accept-grant-loss; nothing changed" {
-  printf '%s\n' '"report reader", auditor_ro' >"$DB/grants.restore"
-  same --accept-grant-loss
-  [ "$status" -eq 3 ] && no_stop || { echo "$output"; return 1; }
-  [ "$output" != "${output%%'[FAIL] Some grant statements cannot be told apart from the ones for the'$'\n''       missing roles, so the script cannot skip just those.'$'\n''       Create the roles on the server first, then restore.'$'\n''Nothing has been changed.'*}" ] || { echo "$output"; return 1; }
-  grep -q 'grant statement 1 cannot be read for certain' "$ROOT"/logs/restore-*.log || return 1
-  ! grep -q 'skipped=' "$ROOT"/logs/restore-*.log
-}
-
 @test "restore external grants: --accept-grant-loss belongs to a restore from a file" {
   run bash "$ROOT/custodexa.sh" restore --resume --accept-grant-loss --lang en </dev/null
   [ "$status" -eq 2 ] && [[ $output == *"--accept-grant-loss cannot be used with --resume"* ]] || { echo "$status $output"; return 1; }
@@ -154,13 +145,21 @@ ALTER DEFAULT PRIVILEGES FOR ROLE custodexa_app IN SCHEMA public GRANT SELECT ON
   grep -q 'external database grants to missing roles skipped=1' "$ROOT"/logs/restore-*.log
 }
 
+# A grant statement that cannot be told apart refuses even with --accept-grant-loss; nothing changed.
 @test "restore external grants: the refusals read the same in zh-TW and ja" {
   local l expected errs=0 kind
   for kind in refused unsure; do
-    [ "$kind" = refused ] || printf '%s\n' '"report reader", auditor_ro' >"$DB/grants.restore"
+    if [ "$kind" = unsure ]; then
+      printf '%s\n' '"report reader", auditor_ro' >"$DB/grants.restore"
+      rm -f "$ROOT"/logs/restore-*.log
+    fi
     for l in en zh-TW ja; do
       if [ "$kind" = refused ]; then LANG_RUN=$l same; else LANG_RUN=$l same --accept-grant-loss; fi
-      [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+      [ "$status" -eq 3 ] && no_stop || { echo "$output"; return 1; }
+      if [ "$kind$l" = unsureen ]; then
+        grep -q 'grant statement 1 cannot be read for certain' "$ROOT"/logs/restore-*.log || return 1
+        ! grep -q 'skipped=' "$ROOT"/logs/restore-*.log || return 1
+      fi
       output=$(sed -n '/^\[FAIL\]/,$p' <<<"$output")
       expected=$TESTS_DIR/snapshots/restore-ext-roles-$kind.$l.txt
       if [ ! -f "$expected" ]; then

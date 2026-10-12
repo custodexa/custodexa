@@ -2,6 +2,7 @@ package audit
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,4 +163,62 @@ func TestDailyReviewSourcePurgedNotZero(t *testing.T) {
 			t.Errorf("目前可查 %d source=%s, want 0／purged", detail.LoginFailures.Total, detail.LoginFailures.SourceStatus)
 		}
 	})
+}
+
+// TestDailyReviewDetailCarriesReason 擋：沒有路徑的系統紀錄在抽屜原因欄空白；details 鑑識原文外流到簽核回應
+func TestDailyReviewDetailCarriesReason(t *testing.T) {
+	svc, db, _ := setupDailyReviewDB(t)
+	const tz = "UTC"
+	enableFrom(t, db, tz, at(t, tz, "2026-10-01", 0, 0, 0))
+	fixedClock(svc, at(t, tz, "2026-10-11", 9, 0, 0))
+
+	uid := uint(41)
+	rows := []model.AuditLog{
+		{CreatedAt: at(t, tz, "2026-10-10", 3, 0, 0), UserID: uid, Username: "idle", Action: model.ActionUpdate,
+			Resource: model.ResourceUser, ResourceID: &uid, Status: model.StatusSuccess, ClientIP: "system",
+			ErrorMsg: "auto_disabled_inactive_account", Details: InactiveDisableDetails(90)},
+		{CreatedAt: at(t, tz, "2026-10-10", 4, 0, 0), UserID: 1, Username: "admin", Action: model.ActionDelete,
+			Resource: model.ResourceAsset, Status: model.StatusSuccess, Method: "DELETE",
+			Path: "/api/v1/assets/7", Details: `{"secret_marker":"must-not-leak"}`},
+	}
+	for i := range rows {
+		if err := db.Create(&rows[i]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	detail, err := svc.Day("2026-10-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.HighRiskOps.Items) != 2 {
+		t.Fatalf("高危明細 %d 列, want 2", len(detail.HighRiskOps.Items))
+	}
+	raw, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		HighRiskOps struct {
+			Items []map[string]any `json:"items"`
+		} `json:"high_risk_ops"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	idle, del := doc.HighRiskOps.Items[0], doc.HighRiskOps.Items[1]
+	if idle["reason_code"] != "auto_disabled_inactive_account" {
+		t.Errorf("閒置停用列 reason_code = %v", idle["reason_code"])
+	}
+	if p, _ := idle["reason_params"].(map[string]any); p["days"] != "90" {
+		t.Errorf("閒置停用列 reason_params = %v", idle["reason_params"])
+	}
+	if _, ok := del["reason_code"]; ok {
+		t.Errorf("帶路徑的刪除列不應有 reason_code：%v", del["reason_code"])
+	}
+	if del["path"] != "/api/v1/assets/7" {
+		t.Errorf("帶路徑的刪除列 path = %v", del["path"])
+	}
+	if strings.Contains(string(raw), `"details"`) || strings.Contains(string(raw), "must-not-leak") {
+		t.Errorf("單日明細回應含 details：%s", raw)
+	}
 }

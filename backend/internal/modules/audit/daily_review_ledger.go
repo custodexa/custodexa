@@ -188,5 +188,6 @@ func fillCounts(row *policy.SignoffDay, snap *DailyReviewSnapshot) {
 	row.AuditLogSource = snap.LoginFailuresSource
 	row.CommandAlertSource = snap.AlertsSource
 	row.LoginFailures, row.HighRiskOps = snap.LoginFailures, snap.HighRiskOps
+	row.HighRiskCriteria = snap.HighRiskCriteria
 	row.AlertsTotal, row.AlertsBenign, row.AlertsEscalated = snap.AlertsTotal, snap.AlertsBenign, snap.AlertsEscalated
 }

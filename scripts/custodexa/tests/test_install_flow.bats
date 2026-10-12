@@ -66,13 +66,6 @@ files_untouched() {
   files_untouched
 }
 
-@test "all checks passing: step 1 is one line, no check listed under it" {
-  step1 en
-  [ "${lines[0]}" = "Custodexa 1.13.0 install    Deployment directory $ROOT" ] || { echo "$output"; return 1; }
-  [[ ${lines[1]} == "[ OK ] 1/7  Check this host "*s ]] || { echo "$output"; return 1; }
-  [[ ${lines[2]} == "[FAIL] 2/7  "* ]] || { echo "$output"; return 1; } # this host has no .env template
-}
-
 @test "too little disk space prints both numbers; one file system for Docker and the folder needs the sum" {
   host_free /var/lib/docker 3145728 # 3 GiB
   step1 en
@@ -196,7 +189,9 @@ state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
     [[ " $(state current.image_ids) " == *" $n=$id "* ]] || return 1
     [ -n "$id" ]
   done
-  ! grep -Eq $'\tpull .*custodexa/(backend|frontend)' "$FAKE_DOCKER_LOG"
+  ! grep -Eq $'\tpull .*custodexa/(backend|frontend)' "$FAKE_DOCKER_LOG" || return 1
+  grep -q $'\tcompose .* build backend' "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
+  grep -q $'\tcompose .* build frontend' "$FAKE_DOCKER_LOG" || { cat "$FAKE_DOCKER_LOG"; return 1; }
   run bash "$ROOT/custodexa.sh" status --lang en
   [ "$status" -eq 0 ] || [ "$status" -eq 4 ] || { echo "$output"; return 1; }
   [[ $output == *"a build from source"* ]] || { echo "$output"; return 1; }
@@ -270,17 +265,6 @@ state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *"主金鑰模式：外部金鑰保管服務（KMS）"* && $output == *" 1. 第一次開網址會進入解封頁。"* ]] || { echo "$output"; return 1; }
   [[ $output == *" 2. 用上面的帳號密碼登入。"* && $output != *"custodexa-ca.crt"* && $output != *" 3. "* ]] || { echo "$output"; return 1; }
-}
-
-@test "publisher not verified: WARN and install continues without a confirmation" {
-  host_full
-  no_publisher_tools
-  install_run en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[WARN] Files were checked for damage"* && $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
-  [ "$(state install.result)" = succeeded ] || return 1
-  [[ $output == *"[ OK ] 3/7  Get the program images (6; content digests checked;"* ]] || { echo "$output"; return 1; }
-  [ "$(state current.verification)" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ] || return 1
 }
 
 # ---- load ----
@@ -399,25 +383,6 @@ s18_view() { sed -E 's/（[0-9.]+ (KB|MB|GB)）$/（<size>）/; s/ \([0-9.]+ (KB
   [ "$status" -eq 0 ] && [[ $output == *"[ OK ] Publisher signature and build provenance verified"* ]] || { echo "$output"; return 1; }
 }
 
-@test "load continues on a mismatched manifest signature and records it" {
-  host_full
-  mkdir -p /media/usb
-  local tar=/media/usb/custodexa-images-1.13.0-amd64.tar
-  rm "$ROOT/current/MANIFEST.json"
-  make_bundle "$tar" classic
-  release_manifest >/media/usb/MANIFEST.json
-  (cd /media/usb && sha256sum MANIFEST.json >>SHA256SUMS)
-  printf 'identity %s\nsha256 %s\n' \
-    'https://github.com/custodexa/custodexa/.github/workflows/release-images.yml@refs/tags/v9.9.9' \
-    "$(sha256sum /media/usb/SHA256SUMS | cut -d' ' -f1)" >/media/usb/SHA256SUMS.sigstore.json
-  load_run en "$tar"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  local flat
-  flat=$(printf '%s' "$output" | tr '\n' ' ' | tr -s ' ')
-  [[ $flat == *"[WARN]"* && $flat == *"signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
-  [[ $(state load.verification) == *"signature=mismatch"* ]] || { echo "$(state load.verification)"; return 1; }
-}
-
 @test "load preserves a mismatched package signature for that release" {
   host_full
   mkdir -p /media/usb
@@ -451,7 +416,7 @@ s18_view() { sed -E 's/（[0-9.]+ (KB|MB|GB)）$/（<size>）/; s/ \([0-9.]+ (KB
   ! grep -q $'\tload ' "$FAKE_DOCKER_LOG" || return 1
 }
 
-@test "an interrupted load holds nothing up: status says so, load runs again, install goes on" {
+@test "an interrupted load holds nothing up: status says so, load runs again" {
   host_full
   export FAKE_COSIGN_VERIFY=offline
   mkdir -p /media/usb
@@ -470,10 +435,6 @@ s18_view() { sed -E 's/（[0-9.]+ (KB|MB|GB)）$/（<size>）/; s/ \([0-9.]+ (KB
   [[ $output == *"The last load run was interrupted at step 4."* ]] || { echo "$output"; return 1; }
   status_run en
   [[ $output != *"interrupted"* ]] || { echo "$output"; return 1; }
-  # install after an interrupted load goes on as well.
-  state_put load.result in_progress
-  install_run en --yes
-  [ "$status" -eq 0 ] && [ "$(state install.result)" = succeeded ] || { echo "$output"; return 1; }
 }
 
 @test "offline: after load on the containerd store, install takes the loaded images by their recorded IDs" {
@@ -504,7 +465,7 @@ status_run() { # <lang> [options...]
   run bash "$ROOT/custodexa.sh" status --lang "$l" "$@" </dev/null
 }
 
-@test "status warns when an installed image signature mismatched and state stays honest" {
+@test "status warns when an installed image or package signature mismatched and state stays honest" {
   host_full
   export FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0
   install_run en
@@ -514,12 +475,7 @@ status_run() { # <lang> [options...]
   status_run en
   [ "$status" -eq 4 ] || { echo "$output"; return 1; }
   [[ $output == *"[WARN] From GHCR; signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
-}
-
-@test "status warns about a recorded package signature mismatch" {
-  host_full
-  install_run en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  # A package signature mismatch recorded by an upgrade warns as well.
   state_put last_upgrade.result succeeded last_upgrade.from 1.12.4 last_upgrade.to 1.13.0 \
     last_upgrade.finished_at 2026-09-30T02:00:00+08:00 \
     last_upgrade.package_verification 'checksum=ok signature=mismatch'

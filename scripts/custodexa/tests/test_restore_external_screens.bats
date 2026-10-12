@@ -9,6 +9,7 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_ext_flow_host
+load rollback_host
 
 # The source as the reviewed screens show it: DB_USER custodexa, a CA trusted by the system, and a
 # database of 17.4 GB.
@@ -23,10 +24,16 @@ source_setup() {
     bk_env_set KEK_PROVIDER ui
   }
 }
-setup() {
+screens_host() {
   RS_X_BEFORE=source_setup rs_ext_flow_host
   NEWDATA=$BATS_TEST_TMPDIR/newdata
   printf '%s\n' 'public|214' >"$DB/objects"
+}
+setup() {
+  host_workdir
+  local key=screens
+  [[ $BATS_TEST_DESCRIPTION != *'waiting for unseal'* ]] || key=screens-unseal
+  host_cache "$key" screens_host
 }
 new_host() { rs_new_host; }
 new_run() { run bash "$ROOT/custodexa.sh" restore "$RS_X_FILE" --new-host --data-path "$NEWDATA" --lang "${LANG_RUN:-en}" "$@" </dev/null; }
@@ -53,29 +60,21 @@ snapshot() {
 
 @test "restore external screens: a new host's preview shows the database section as reviewed" {
   new_host
-  local l errs=0 part
+  local l errs=0 part en_output
   for l in en zh-TW ja; do
     : >"$DB/events"
     LANG_RUN=$l new_run
     # Without --yes there is no confirmation without a terminal: nothing is changed.
     [ "$status" -eq 3 ] && no_stop || { echo "$status $output"; return 1; }
+    [ "$l" != en ] || en_output=$output
     # From the database's label to the end of the space warning.
     part=$(shown | awk '/^  (Database|資料庫|データベース) /{p=1} p&&w&&!/^         /{exit} p{print} p&&/^  \[WARN\] /{w=1}')
     snapshot preview-db "$l" "$part" || errs=1
   done
   [ "$errs" = 0 ]
   # The deployment is described as external; nothing of a bundled database's.
-  LANG_RUN=en new_run
+  output=$en_output
   [[ $output == *'  Deployment     external database; '* && $output != *'bundled database'* ]] || { echo "$output"; return 1; }
-}
-
-@test "restore external screens: an empty database needs neither emptying, export nor the space warning" {
-  new_host
-  rm -f "$DB/objects"
-  new_run --yes
-  [ "$status" -eq 0 ] || { echo "$status $output"; return 1; }
-  [[ $output == *'                 The target database is empty; nothing needs emptying'$'\n''  Safety backup  not needed: this host has no data yet'$'\n'* ]] || { echo "$output"; return 1; }
-  [[ $output != *'GB free; the script cannot'* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external screens: a new host's non-empty database needs --confirm-data-loss with --yes" {
@@ -98,20 +97,6 @@ snapshot() {
   no_stop && [ "$(digest_now)" = before ] || { cat "$DB/events"; return 1; }
 }
 
-@test "restore external screens: the same host's preview keeps no database folder, and its steps read as reviewed" {
-  printf '%s\n' '172.18.0.5 custodexa-backend' >"$DB/activity"
-  : >"$DB/activity.after-stop"
-  same_run
-  [ "$status" -eq 0 ] || { echo "$status $output"; return 1; }
-  [[ $output != *'postgres.before-restore'* && $output == *'  Kept           the current audit and certificate folders are'* ]] || { echo "$output"; return 1; }
-  # This host's own backend, listed and not refused before the stop.
-  [[ $output == *'it; 1 other connections now (from 172.18.0.5, application'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'[ OK ]  2/10  Stop the services (the external database is not affected)'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'[ OK ]  5/10  Make sure no other connection is open'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'[ OK ]  6/10  Empty and import the database (one transaction)'* ]] || { echo "$output"; return 1; }
-  [[ $output != *'database keeps running'* && $output != *'Import the database '* ]] || { echo "$output"; return 1; }
-}
-
 @test "restore external screens: a failed import says the transaction was rolled back, or that its result is not known" {
   echo 3 >"$DB/import.rc"
   LANG_RUN=zh-TW same_run
@@ -119,15 +104,6 @@ snapshot() {
   [[ $output == *'[FAIL]  6/10  清空並匯入資料庫（同一個交易）'*$'\n''       psql 回報錯誤（完整訊息在紀錄檔）。'$'\n'* ]] || { echo "$output"; return 1; }
   [[ $output == *$'\n''  這次的清空與匯入已整筆撤回，外接資料庫保持原狀。'$'\n'* ]] || { echo "$output"; return 1; }
   [[ $output == *'restore --resume'*'restore --revert'* ]] || { echo "$output"; return 1; }
-}
-
-@test "restore external screens: an import whose result is not known claims nothing about the database" {
-  # Killed during the transaction.
-  echo 137 >"$DB/import.rc"
-  same_run
-  [ "$status" -eq 1 ] || { echo "$status $output"; return 1; }
-  [[ $output == *$'\n''  Whether the import was committed cannot be told. Carrying on checks'$'\n'* ]] || { echo "$output"; return 1; }
-  [[ $output != *'rolled back as a whole'* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external screens: a new host's failure with a safety export names it and the way back is --revert" {
@@ -140,6 +116,23 @@ snapshot() {
   [[ $output != *'restore --abandon'* && $output != *'no safety backup'* ]] || { echo "$output"; return 1; }
   # Not committed: nothing says the database holds the backup.
   [[ $output != *'The import was committed'* ]] || { echo "$output"; return 1; }
+  # Once the transaction was sent, --abandon of a non-empty database is refused for --revert.
+  [ "$(st db_covering)" = 1 ] && [ "$(st safety)" = db-dump ] || { jq . "$ROOT/state.json"; return 1; }
+  : >"$DB/events"
+  run bash "$ROOT/custodexa.sh" restore --abandon --yes --lang en </dev/null
+  [ "$status" -eq 3 ] || { echo "$status $output"; return 1; }
+  [ "$(shown)" = "[FAIL] Emptying and importing the external database has started, so the
+       restore cannot simply be given up. Put the safety export back
+       (this host then goes back to not installed as well):
+    sudo /opt/custodexa/custodexa.sh restore --revert
+Nothing has been changed." ] || { shown; return 1; }
+  ! grep -Eq '^(stop|psql import)$' "$DB/events" && [ -z "$(st exit)" ] || { cat "$DB/events"; return 1; }
+  [ -f "$(st safety_file)" ] || return 1
+  # The menu offers the export's way back, not giving up.
+  run bash -c 'printf "0\n" | script -qec "$1" /dev/null' _ "bash '$ROOT/custodexa.sh' --no-color --lang en"
+  output=${output//$'\r'/}
+  [[ $output == *'] Put the safety export back into the external database and give up'$'\n''      on this restore'$'\n'* ]] || { echo "$output"; return 1; }
+  [[ $output != *'Give up on this restore and return to not installed'* ]] || { echo "$output"; return 1; }
 }
 
 # The same rolled-back import in Chinese: the reviewed sentence, not the one of a committed import.
@@ -170,23 +163,6 @@ snapshot() {
   [[ $output == *'restore --resume'*'restore --revert'* ]] || { echo "$output"; return 1; }
 }
 
-@test "restore external screens: once the transaction was sent, --abandon of a non-empty database is refused for --revert" {
-  new_host
-  echo 3 >"$DB/import.rc"
-  new_run --yes --confirm-data-loss
-  [ "$(st db_covering)" = 1 ] && [ "$(st safety)" = db-dump ] || { jq . "$ROOT/state.json"; return 1; }
-  : >"$DB/events"
-  run bash "$ROOT/custodexa.sh" restore --abandon --yes --lang en </dev/null
-  [ "$status" -eq 3 ] || { echo "$status $output"; return 1; }
-  [ "$(shown)" = "[FAIL] Emptying and importing the external database has started, so the
-       restore cannot simply be given up. Put the safety export back
-       (this host then goes back to not installed as well):
-    sudo /opt/custodexa/custodexa.sh restore --revert
-Nothing has been changed." ] || { shown; return 1; }
-  ! grep -Eq '^(stop|psql import)$' "$DB/events" && [ -z "$(st exit)" ] || { cat "$DB/events"; return 1; }
-  [ -f "$(st safety_file)" ] || return 1
-}
-
 # unsent_failure: the maker of the SQL ends badly after a valid start, so the transaction never
 # opens; a new host whose database held data.
 unsent_failure() {
@@ -204,23 +180,7 @@ unsent_failure() {
   [ "$steps" != "$output" ] || { echo "$output"; return 1; }
   [[ $steps != *'rolled back'* && $steps != *'The import was committed'* ]] || { echo "$output"; return 1; }
   [[ $output == *'restore --resume'*$'\n''  Or put the safety export back into the external database and give up'$'\n''  on this restore:'$'\n''    sudo '*'restore --revert'* ]] || { echo "$output"; return 1; }
-}
-
-@test "restore external screens: a failure before the transaction was sent claims no rollback (zh-TW)" {
-  LANG_RUN=zh-TW unsent_failure || return 1
-  [[ $output == *$'\n''  外接資料庫沒有被改動；安全匯出在 restore/'*'/safety-db.dump'$'\n'* ]] || { echo "$output"; return 1; }
-  # From the steps on (the preview describes a failed transaction before anything starts).
-  local steps=${output#*' 1/9  '}
-  [ "$steps" != "$output" ] || { echo "$output"; return 1; }
-  [[ $steps != *'撤回'* && $steps != *'匯入已提交'* ]] || { echo "$output"; return 1; }
-}
-
-@test "restore external screens: --abandon before the transaction leaves the database untouched and the export kept" {
-  new_host
-  # The transaction never opens: the maker of the SQL ends badly after a valid start.
-  printf '%s\n' '120 1' >"$DB/pg_restore.cut"
-  new_run --yes --confirm-data-loss
-  [ "$status" -eq 1 ] && [ -z "$(st db_covering)" ] && [ "$(st safety)" = db-dump ] || { echo "$status $output"; jq . "$ROOT/state.json"; return 1; }
+  # --abandon before the transaction leaves the database untouched and the export kept.
   local file
   file=$(st safety_file)
   : >"$DB/events"
@@ -231,6 +191,15 @@ unsent_failure() {
   ! grep -Eq '^psql (import|digest)$' "$DB/events" || { cat "$DB/events"; return 1; }
   [ "$(head -n1 "$DB/events")" = stop ] || { cat "$DB/events"; return 1; }
   [ -f "$file" ] && [ "$(digest_now)" = before ] || return 1
+}
+
+@test "restore external screens: a failure before the transaction was sent claims no rollback (zh-TW)" {
+  LANG_RUN=zh-TW unsent_failure || return 1
+  [[ $output == *$'\n''  外接資料庫沒有被改動；安全匯出在 restore/'*'/safety-db.dump'$'\n'* ]] || { echo "$output"; return 1; }
+  # From the steps on (the preview describes a failed transaction before anything starts).
+  local steps=${output#*' 1/9  '}
+  [ "$steps" != "$output" ] || { echo "$output"; return 1; }
+  [[ $steps != *'撤回'* && $steps != *'匯入已提交'* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external screens: giving up after an empty database was imported leaves the data and says so" {
@@ -273,21 +242,24 @@ unsent_failure() {
     LANG_RUN=$l same_run
     [ "$status" -eq 1 ] || { echo "$status $output"; return 1; }
     snapshot held "$l" "$(shown | sed -n '/^\[FAIL\]  2\/10 /,$p')" || errs=1
+    if [ "$l" = en ]; then
+      # One stop screen only: the general failure screen does not follow it.
+      [[ $output != *'The restore stopped at step 2;'* ]] || { echo "$output"; return 1; }
+      # Nothing overwritten: no safety export, no import, the target unchanged, nothing renamed.
+      ! grep -qx 'pg_dump' "$DB/events" && ! grep -qx 'psql import' "$DB/events" || { cat "$DB/events"; return 1; }
+      [ "$(digest_now)" = before ] && [ "$(cat "$DB/ctr/backend")" = stopped ] || return 1
+      ! compgen -G "$ROOT/data/*.before-restore-*" >/dev/null || return 1
+    fi
     run bash "$ROOT/custodexa.sh" restore --revert --yes --lang en </dev/null
     [ "$status" -eq 0 ] || { echo "$status $output"; return 1; }
+    if [ "$l" = en ]; then
+      # --revert starts the services again and leaves the target as it was.
+      [ "$(cat "$DB/ctr/backend")" = running ] && [ "$(digest_now)" = before ] || { echo "$output"; return 1; }
+      [ "$(jq -r '."last_restore.result"' "$ROOT/state.json")" = reverted ] || { jq . "$ROOT/state.json"; return 1; }
+    fi
     printf '%s\n' '172.18.0.5 custodexa-backend' >"$DB/activity"
   done
   [ "$errs" = 0 ]
-}
-
-@test "restore external screens: the menu offers the export's way back, not giving up" {
-  new_host
-  echo 3 >"$DB/import.rc"
-  new_run --yes --confirm-data-loss
-  run bash -c 'printf "0\n" | script -qec "$1" /dev/null' _ "bash '$ROOT/custodexa.sh' --no-color --lang en"
-  output=${output//$'\r'/}
-  [[ $output == *'] Put the safety export back into the external database and give up'$'\n''      on this restore'$'\n'* ]] || { echo "$output"; return 1; }
-  [[ $output != *'Give up on this restore and return to not installed'* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external screens: the grants left out are counted at the end, and their list stays" {

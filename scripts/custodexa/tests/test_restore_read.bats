@@ -54,12 +54,9 @@ tampered() {
   tampered member-dup "extra, missing or repeated"
 }
 
+# A directory member fails the same member-type condition as a link.
 @test "restore read: member-link refuses before stopping or changing the deployment" {
   tampered member-link "directory, a link"
-}
-
-@test "restore read: member-dir refuses before stopping or changing the deployment" {
-  tampered member-dir "directory, a link"
 }
 
 @test "restore read: member-path refuses before stopping or changing the deployment" {

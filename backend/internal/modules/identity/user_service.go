@@ -645,20 +645,35 @@ func (s *UserService) Update(id uint, req *UpdateUserRequest) (*model.User, map[
 	return &user, diff, nil
 }
 
+// DeletedUserSummary 刪除帳號的結果摘要（供刪除審計列帶出被刪帳號）
+type DeletedUserSummary struct {
+	// Username 取自被刪除的那一筆帳號記錄，不是刪除後另查的值
+	Username string
+	// ExternalIdentitiesRevoked 與軟刪除同交易作廢的外部身分綁定數
+	ExternalIdentitiesRevoked int64
+}
+
 // Delete 刪除使用者（軟刪除）
 func (s *UserService) Delete(id uint) error {
+	_, err := s.DeleteWithSummary(id)
+	return err
+}
+
+// DeleteWithSummary 刪除使用者（軟刪除），回傳被刪帳號名與作廢的外部身分綁定數
+func (s *UserService) DeleteWithSummary(id uint) (DeletedUserSummary, error) {
+	var summary DeletedUserSummary
 	// 檢查使用者是否存在
 	var user model.User
 	if err := s.db.Preload("Roles").First(&user, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrUserNotFound
+			return summary, ErrUserNotFound
 		}
 		log.Printf("[UserService] Delete: Query user error: %v", err)
-		return fmt.Errorf("查詢使用者失敗: %w", err)
+		return summary, fmt.Errorf("查詢使用者失敗: %w", err)
 	}
 
 	if err := rejectOwnedAgents(s.db, id); err != nil {
-		return err
+		return summary, err
 	}
 	// 檢查是否為管理員
 	isAdmin := false
@@ -680,11 +695,11 @@ func (s *UserService) Delete(id uint) error {
 
 		if err != nil {
 			log.Printf("[UserService] Delete: Count admins error: %v", err)
-			return fmt.Errorf("檢查管理員數量失敗: %w", err)
+			return summary, fmt.Errorf("檢查管理員數量失敗: %w", err)
 		}
 
 		if adminCount == 0 {
-			return ErrLastAdmin
+			return summary, ErrLastAdmin
 		}
 	}
 
@@ -730,6 +745,14 @@ func (s *UserService) Delete(id uint) error {
 			if err := tx.Exec("DELETE FROM user_group_members WHERE user_id = ?", id).Error; err != nil {
 				return fmt.Errorf("清除使用者群組成員關係失敗: %w", err)
 			}
+			// 外部身分綁定一併作廢（軟刪）：留著會成為指向已刪帳號的有效綁定，
+			// 此人再登入、管理者重綁、provider 刪除都會撞到它。
+			// 身分域唯一索引排除已作廢列，作廢後同一外部身分可再綁到新帳號
+			revoked := tx.Where("user_id = ?", id).Delete(&model.UserExternalIdentity{})
+			if revoked.Error != nil {
+				return fmt.Errorf("作廢外部身分綁定失敗: %w", revoked.Error)
+			}
+			summary.ExternalIdentitiesRevoked = revoked.RowsAffected
 			if err := tx.Delete(&user).Error; err != nil {
 				return fmt.Errorf("刪除使用者失敗: %w", err)
 			}
@@ -737,15 +760,16 @@ func (s *UserService) Delete(id uint) error {
 		})
 	}); err != nil {
 		log.Printf("[UserService] Delete: Delete user error: %v", err)
-		return err
+		return DeletedUserSummary{}, err
 	}
+	summary.Username = user.Username
 
 	// 鎖外收線三管道（同停用路徑；世代閘只能拒絕「下一次出示憑證」的請求，
 	// 已建立的長連線與訂閱建立後不再出示憑證，對世代完全免疫）
 	s.revokeUserAccess(id, "account_deleted")
 
 	log.Printf("[UserService] Delete: User deleted successfully, ID: %d", id)
-	return nil
+	return summary, nil
 }
 
 // AddRole 冪等追加單一角色（一站式代配用）：

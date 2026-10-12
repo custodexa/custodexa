@@ -123,6 +123,56 @@ describe('AuditLogs', () => {
     getAuditFailuresMock.mockResolvedValue({ data: { items: [], total: 0 } })
   })
 
+  // 擋：沒有變更明細的系統紀錄（保留清除等）只剩一個空的「變更詳情」標題
+  it('沒有 changes 的紀錄列原因與格式化的詳細資訊，不列變更詳情', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+
+    wrapper.vm.showDetails({
+      id: 11,
+      status: 'success',
+      action: 'delete',
+      resource: 'retention',
+      created_at: '2026-10-07T01:00:00Z',
+      details: '{"target":"audit_logs","deleted":42,"days":180}',
+      reason_code: 'retention_purge',
+      reason_params: { target: 'audit_logs', deleted: '42', days: '180' },
+    })
+    await flushPromises()
+
+    const labels = wrapper.findAll('.el-descriptions__label').map((n) => n.text())
+    expect(labels).toContain('原因')
+    expect(labels).toContain('詳細資訊')
+    expect(labels).not.toContain('變更詳情')
+    expect(wrapper.find('[data-test="log-reason"]').text()).toBe('保留期限清除：操作日誌超過 180 天的資料，刪除 42 筆')
+    expect(wrapper.find('[data-test="log-details-raw"]').text()).toBe('{\n  "target": "audit_logs",\n  "deleted": 42,\n  "days": 180\n}')
+  })
+
+  it('有 changes 的紀錄照舊列變更詳情，不列原因與詳細資訊', async () => {
+    setUserRoles(['auditor'])
+    const wrapper = mountAuditLogs()
+    await flushPromises()
+
+    wrapper.vm.showDetails({
+      id: 12,
+      status: 'success',
+      action: 'update',
+      resource: 'asset',
+      created_at: '2026-10-07T01:00:00Z',
+      path: '/api/v1/assets/3',
+      details: JSON.stringify({ changes: [{ field: 'name', old: 'web-1', new: 'web-2' }] }),
+    })
+    await flushPromises()
+
+    const labels = wrapper.findAll('.el-descriptions__label').map((n) => n.text())
+    expect(labels).toContain('變更詳情')
+    expect(labels).not.toContain('原因')
+    expect(labels).not.toContain('詳細資訊')
+    expect(wrapper.find('.change-item').text()).toContain('web-1')
+    expect(wrapper.find('.change-item').text()).toContain('web-2')
+  })
+
   // 首用路徑實走發現：成功的操作也可能帶訊息，掛在「錯誤訊息」底下並塗紅，
   // 會讓一筆成功的紀錄在稽核眼裡讀成失敗
   it('成功的紀錄把訊息放在附註，失敗的仍是錯誤訊息', async () => {

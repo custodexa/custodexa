@@ -1399,7 +1399,7 @@ restoring the pre-upgrade backup (§4.2).
 it is for development databases only.** Three things go with it, and they are not equivalent:
 
 - **The mapping rules an administrator entered have no second source.** They are typed in one at a
-  time on the identity source pages, and nothing else in the system holds a copy. **Export them
+  time on the External group mappings page, and nothing else in the system holds a copy. **Export them
   before any rollback** and keep the export with the backup set:
 
   ```bash

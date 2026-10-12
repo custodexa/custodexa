@@ -2,6 +2,63 @@
 
 All notable changes to Custodexa will be documented in this file.
 
+## 1.17.2 — reasons for high-risk operations and sign-in after account deletion (2026-10-12)
+
+No schema change. A 1.14.x, 1.15.x, 1.16.x or 1.17.x package deployment upgrades with
+`custodexa.sh upgrade 1.17.2`. From 1.17.0 or 1.17.1 no migration runs; from an earlier
+release the upgrade also runs the 1.17.0 migration.
+
+### What changes for deployers
+
+- The daily high-risk operation count in daily review can be lower, because the criteria
+  leave out routine system entries: retention purges, role and user group mappings
+  recalculated when someone signs in through OIDC or LDAP without any role being added or
+  removed, and the second record that some operations write next to their request record.
+  These records stay in the Operation Logs.
+- Counts stored in earlier sign-offs keep their values, and sign-off records are not changed.
+  When a day signed before the upgrade is compared with the current counts, the comparison
+  says that high-risk operations were counted under different criteria and does not mark the
+  difference.
+- `daily_reviews.csv` in evidence packages and compliance reports adds a `high_risk_criteria`
+  column at the end, giving the criteria behind `high_risk_ops`: 1 for days signed before
+  this release, 2 for the rest. Existing columns keep their positions.
+- To keep a person from signing in through OIDC, disable the account. A deleted account is
+  created again at the person's next sign-in when the provider creates accounts
+  automatically.
+- API additions:
+  - Event items in `GET /api/v1/daily-reviews/days/:date` and rows in `GET /api/v1/audit-logs`
+    and `GET /api/v1/audit-logs/:id` add `reason_code` and `reason_params` when the server can
+    classify the record.
+  - The daily review `counts` object adds `high_risk_criteria`.
+  - The OIDC callback can redirect with `sso_error` set to `oidc_account_removed` or
+    `oidc_user_inactive`.
+- The web UI entry page is served with `Cache-Control: no-cache`, so browsers load the new
+  web UI after an upgrade without a forced reload.
+
+### Fixes
+
+- The daily review drawer and the Operation Logs detail show a reason for each record, such
+  as what a retention purge cleared or the number of inactive days that led to an account
+  being disabled. Some of these records used to show an empty operation cell.
+- Alert lines on the dashboard and in the drawer show the alert type for alerts that are not
+  tied to a rule, instead of an internal code.
+- A person whose OIDC account was deleted can sign in again. The new account keeps the
+  username and gets its roles from the group mappings. When the provider admits only linked
+  identities, the sign-in page says the account was deleted and asks the person to contact an
+  administrator, who can create the account and link the identity again. Accounts deleted
+  before this release recover the same way at the next sign-in, with no database changes.
+- A disabled account signing in through OIDC is told that the account is disabled, and the
+  denial is recorded in the audit log.
+- The confirmation dialogs for deleting a user and disabling MFA describe the result for the
+  account type, including that deleting an account unlinks its external identities.
+- The audit record of a user deletion includes the deleted account's username.
+- Deleting an OIDC provider no longer counts identities linked to deleted accounts, and the
+  identity count in the provider list leaves them out too.
+- The group mapping section on the OIDC and LDAP detail pages shows the group setting, the
+  number of mapping rules and a link to the External group mappings page, where the rules are
+  edited.
+- Scripts, stylesheets and images are served with the same security headers as the pages.
+
 ## 1.17.1 — daily review badge polling cleanup (2026-10-11)
 
 No schema change. No migration runs. A 1.14.x, 1.15.x, 1.16.x or 1.17.0 package deployment

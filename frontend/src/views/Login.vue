@@ -81,6 +81,9 @@
         show-icon
         @close="clearSSOError"
       >
+        <template #icon>
+          <CircleAlert class="sso-alert-icon" />
+        </template>
         <div class="sso-alert-body">
           <span v-if="ssoErrorHint">{{ ssoErrorHint }}</span>
           <el-button
@@ -349,7 +352,7 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, ChevronDown } from 'lucide-vue-next'
+import { User, Lock, ChevronDown, CircleAlert } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { BRAND } from '@/brand'
 import { SUPPORTED_LOCALES, LOCALE_LABELS, setLanguage } from '@/i18n'
@@ -388,6 +391,9 @@ const SSO_ERROR_SLUGS = new Set([
   'oidc_provider_unavailable',
   'oidc_provider_error',
   'oidc_flow_invalid',
+  // 帳號已被刪除（僅預綁模式）／帳號已停用：都需管理者處理，重試不會改變結果
+  'oidc_account_removed',
+  'oidc_user_inactive',
 ])
 
 const { t, te, locale } = useI18n()
@@ -1017,9 +1023,22 @@ onMounted(() => {
 
 .sso-alert {
   margin-bottom: var(--ot-space-md);
+  border: 1px solid color-mix(in srgb, var(--ot-danger) 35%, transparent);
+}
+
+.sso-alert :deep(.el-alert__title) {
+  font-weight: 600;
+  /* 長標題不得壓到右上角的關閉鈕 */
+  padding-right: var(--ot-space-md);
+}
+
+.sso-alert-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .sso-alert-body {
+  color: var(--ot-text-secondary);
   display: flex;
   flex-direction: column;
   align-items: flex-start;

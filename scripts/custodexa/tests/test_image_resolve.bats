@@ -271,25 +271,6 @@ trust() { # <lang> [--yes]
     cx_trust_screen </dev/null || exit 3' _ "$SRC" "$BATS_TEST_TMPDIR/trust.out"
 }
 
-@test "no cosign warns without a confirmation and records unverified trust" {
-  store classic
-  tools none
-  trust en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[WARN] Publisher signature"* && $output != *"[SKIP] Publisher signature"* ]] || { echo "$output"; return 1; }
-  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ]
-}
-
-@test "wrong image signer warns and records mismatch without stopping" {
-  store classic
-  tools cosign gh
-  export FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0
-  trust en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[WARN] Publisher signature"* && $output == *"signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
-  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=mismatch provenance=ok" ]
-}
-
 @test "publisher not verified: WARN screen with full digests and no confirmation" {
   store classic
   tools none
@@ -302,8 +283,11 @@ trust() { # <lang> [--yes]
   [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ]
   [ "$(sed -n 2p "$BATS_TEST_TMPDIR/trust.out")" = "content digests checked;" ]
   grep -q ' VERIFY checksum OK | image_sig WARN reason=no-cosign | provenance WARN reason=no-gh$' "$ROOT"/logs/install-*.log
+  # Without --yes: the same warning, never a [SKIP], and the same unverified trust recorded.
   trust en
   [ "$status" -eq 0 ] && [[ $output == *"[WARN] Publisher signature"* ]] || { echo "$output"; return 1; }
+  [[ $output != *"[SKIP] Publisher signature"* ]] || { echo "$output"; return 1; }
+  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=skip-no-cosign provenance=skip-no-gh" ]
 }
 
 @test "publisher checks that run: verified skips the screen, unavailable or mismatched warns" {
@@ -329,6 +313,7 @@ trust() { # <lang> [--yes]
   # A signature by anyone else, or provenance that does not verify, remains unverified.
   FAKE_COSIGN_SIGNER=https://github.com/someone/fork/.github/workflows/release-images.yml@refs/tags/v1.13.0 trust en --yes
   [ "$status" -eq 0 ] && [[ $output == *"[WARN] Publisher signature   signature mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
+  [ "$(sed -n 1p "$BATS_TEST_TMPDIR/trust.out")" = "checksum=ok signature=mismatch provenance=ok" ] || { cat "$BATS_TEST_TMPDIR/trust.out"; return 1; }
   FAKE_GH=bad trust en --yes
   [ "$status" -eq 0 ] && [[ $output == *"[WARN] Build provenance      build provenance mismatch, publisher unverified"* ]] || { echo "$output"; return 1; }
   # Images built here have nothing to verify; the screen says why.

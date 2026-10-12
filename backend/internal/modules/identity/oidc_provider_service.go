@@ -706,8 +706,8 @@ func (s *OIDCProviderService) Delete(id uint) error {
 		return err
 	}
 	var linked int64
-	if err := s.db.Model(&model.UserExternalIdentity{}).
-		Where("provider_id = ?", id).Count(&linked).Error; err != nil {
+	if err := liveProviderIdentities(s.db).
+		Where("user_external_identities.provider_id = ?", id).Count(&linked).Error; err != nil {
 		return err
 	}
 	if linked > 0 {
@@ -760,6 +760,15 @@ func (s *OIDCProviderService) List() ([]OIDCProviderDTO, error) {
 	return out, nil
 }
 
+// liveProviderIdentities provider 綁定數的共同口徑：只計有效綁定，且所屬帳號未刪除。
+//
+// 刪除閘與清單上的身分數必須同一口徑，否則管理者會看到「有 N 個身分」卻刪得掉，
+// 或「0 個身分」卻刪不掉。所屬帳號已刪除的綁定不再代表任何可登入的人
+func liveProviderIdentities(db *gorm.DB) *gorm.DB {
+	return db.Model(&model.UserExternalIdentity{}).
+		Joins("JOIN users ON users.id = user_external_identities.user_id AND users.deleted_at IS NULL")
+}
+
 // identityCounts 各 provider 的已綁定外部身分數。
 // 查詢失敗回空 map 而非中斷——數字是輔助資訊，不值得讓整份設定讀不出來
 func (s *OIDCProviderService) identityCounts() map[uint]int64 {
@@ -767,9 +776,9 @@ func (s *OIDCProviderService) identityCounts() map[uint]int64 {
 		ProviderID uint
 		N          int64
 	}
-	if err := s.db.Model(&model.UserExternalIdentity{}).
-		Select("provider_id, COUNT(*) AS n").
-		Group("provider_id").
+	if err := liveProviderIdentities(s.db).
+		Select("user_external_identities.provider_id AS provider_id, COUNT(*) AS n").
+		Group("user_external_identities.provider_id").
 		Scan(&rows).Error; err != nil {
 		log.Printf("[OIDC] 統計外部身分數失敗: %v", err)
 		return map[uint]int64{}

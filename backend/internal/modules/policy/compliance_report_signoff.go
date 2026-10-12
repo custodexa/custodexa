@@ -22,7 +22,7 @@ const DailyReviewsCSVName = "daily_reviews.csv"
 // signoffExcerptOnTimeMax PDF 逐日表節錄中準時列的上限（未簽、補簽與未到期全列）
 const signoffExcerptOnTimeMax = 5
 
-// dailyReviewsCSVHeader 欄序即契約（每次回新切片）。
+// dailyReviewsCSVHeader 欄序即契約（每次回新切片）。新欄只在尾端追加，既有欄位位置不動。
 func dailyReviewsCSVHeader() []string {
 	return []string{
 		"review_date", "timezone", "timezone_inferred", "enabled_basis",
@@ -31,6 +31,7 @@ func dailyReviewsCSVHeader() []string {
 		"audit_log_source", "command_alert_source",
 		"login_failures", "alerts_total", "alerts_benign", "alerts_escalated",
 		"high_risk_ops", "alerts_after_sign", "review_ref",
+		"high_risk_criteria",
 	}
 }
 
@@ -40,6 +41,14 @@ func countCell(n *int64) string {
 		return ""
 	}
 	return strconv.FormatInt(*n, 10)
+}
+
+// criteriaCell 高危判準版本：高危數為空（來源已清除）時仍填版本；未填者視為第一版
+func criteriaCell(v int) string {
+	if v <= 0 {
+		v = 1
+	}
+	return strconv.Itoa(v)
 }
 
 func signoffTimeCell(t time.Time) string {
@@ -69,6 +78,7 @@ func DailyReviewsCSVRow(d SignoffDay) []string {
 		d.AuditLogSource, d.CommandAlertSource,
 		countCell(d.LoginFailures), countCell(d.AlertsTotal), countCell(d.AlertsBenign),
 		countCell(d.AlertsEscalated), countCell(d.HighRiskOps), countCell(d.AlertsAfterSign), ref,
+		criteriaCell(d.HighRiskCriteria),
 	}
 }
 

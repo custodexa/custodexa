@@ -29,6 +29,23 @@ first_backup() {
   : >"$DB/events"
 }
 
+# keep_first: first_backup once, its deployment and fake database kept; back_to_first: both as they
+# were right after it (a fresh first backup for each case, without making it again).
+keep_first() {
+  first_backup || return 1
+  rm -rf "$BATS_TEST_TMPDIR/first"
+  mkdir -p "$BATS_TEST_TMPDIR/first"
+  cp -a "$ROOT" "$BATS_TEST_TMPDIR/first/root"
+  cp -a "$DB" "$BATS_TEST_TMPDIR/first/db"
+  cp -a "$FAKE_DOCKER_LOG" "$BATS_TEST_TMPDIR/first/docker-calls"
+}
+back_to_first() {
+  rm -rf "$ROOT" "$DB"
+  cp -a "$BATS_TEST_TMPDIR/first/root" "$ROOT"
+  cp -a "$BATS_TEST_TMPDIR/first/db" "$DB"
+  cp -a "$BATS_TEST_TMPDIR/first/docker-calls" "$FAKE_DOCKER_LOG"
+}
+
 # made <yes|no>: the second backup file and its checksum file are in backups/, or neither is.
 made() {
   if [ "$1" = yes ]; then
@@ -69,9 +86,9 @@ EOF
 
 @test "commit: a failure building the file, hashing it, or putting either file in place leaves no file and the record as it was" {
   local sw
+  keep_first || return 1
   for sw in tar.pack.rc sha256.rc ln.sidecar.rc ln.file.rc; do
-    rm -rf "$ROOT/backups" "$ROOT/state.json.prev" "$DB"/*.rc
-    first_backup || return 1
+    back_to_first
     printf '2\n' >"$DB/$sw"
     backup_run en --yes
     before_commit || { echo "[$sw]"; return 1; }
@@ -116,9 +133,9 @@ EOF
 @test "commit: a member twice, a link among the members or a cut file fails the read-back: no file, the record as it was" {
   mkdir -p "$DB/dup"
   printf 'format=1\nnot the snapshot\n' >"$DB/dup/snapshot.txt"
+  keep_first || return 1
   for sw in tar.pack.dup tar.pack.link tar.pack.cut; do
-    rm -rf "$ROOT/backups" "$DB/tar.pack.dup" "$DB/tar.pack.link" "$DB/tar.pack.cut"
-    first_backup || return 1
+    back_to_first
     : >"$DB/$sw"
     backup_run en --yes
     before_commit || { echo "[$sw]"; return 1; }
@@ -182,25 +199,13 @@ interrupted_screen() {
   [ -d "$ROOT/backups/.partial-20260930-101502" ] && [ -f "$ROOT/$FIRST" ]
 }
 
-@test "interrupted after the commit while the backend was not ready: status and start are given; when ready they are not" {
+# The lines of a backend not ready come after what was committed or recorded, the same for both;
+# when ready, the two screens above show none of them.
+@test "interrupted after the commit while the backend was not ready: status and start are given" {
   printf '1\n' >"$DB/health.rc"
-  for at in committed recorded; do
-    rm -rf "$ROOT/backups" "$DB"/paused.* "$DB"/go.*
-    bk_state_fresh
-    signal_at "$at" || return 1
-    [ "$RC" -eq 1 ] || { echo "$RC: $output"; return 1; }
-    diff <(interrupted_part) <(interrupted_screen "$at" timeout) \
-      || { echo "[$at]"; return 1; }
-  done
-  rm -f "$DB/health.rc"
-  for at in committed recorded; do
-    rm -rf "$ROOT/backups" "$DB"/paused.* "$DB"/go.*
-    bk_state_fresh
-    signal_at "$at" || return 1
-    [ "$RC" -eq 1 ] && [[ $output == *"The backup was interrupted while finishing"* ]] || { echo "$output"; return 1; }
-    [[ $output != *"was not ready"* && $output != *"custodexa.sh status"* && $output != *"custodexa.sh start"* ]] \
-      || { echo "[$at ready] $output"; return 1; }
-  done
+  signal_at committed || return 1
+  [ "$RC" -eq 1 ] || { echo "$RC: $output"; return 1; }
+  diff <(interrupted_part) <(interrupted_screen committed timeout)
 }
 
 # ---------- one pointer per record ----------

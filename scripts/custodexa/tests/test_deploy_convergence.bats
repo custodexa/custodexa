@@ -41,19 +41,6 @@ setup() {
   [ ! -e "$ROOT/.custodexa.lock" ]
 }
 
-@test "source mode builds own images directly and keeps upstream resolution" {
-  run env CX_IMAGES_FROM=source bash -c '
-    . "$1/lib/common.sh"; CX_LANG_FLAG=en; cx_load_libs "$1"; CX_ROOT=/opt/custodexa
-    cx_manifest_load "$CX_ROOT/current/MANIFEST.json" || exit 1
-    cx_images_resolve ""' _ "$SRC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"Built from source"* ]] || { echo "$output"; return 1; }
-  ! grep -q $'\tpull .*custodexa/backend' "$FAKE_DOCKER_LOG"
-  ! grep -q $'\tpull .*custodexa/frontend' "$FAKE_DOCKER_LOG"
-  grep -q $'\tcompose .* build backend' "$FAKE_DOCKER_LOG"
-  grep -q $'\tcompose .* build frontend' "$FAKE_DOCKER_LOG"
-}
-
 @test "source checksum mismatch stops before build or upstream pull" {
   printf 'tampered\n' >>"$ROOT/current/source/backend/main.go"
   run env CX_IMAGES_FROM=source bash -c '
@@ -79,7 +66,7 @@ setup() {
   ! grep -q $'\tpull ' "$FAKE_DOCKER_LOG"
 }
 
-@test "upgrade source mode checks and builds the target release source" {
+@test "upgrade source mode checks and builds the target release source, the current release left unchanged" {
   local target=$ROOT/releases/1.13.2 wrapper=$BATS_TEST_TMPDIR/context-bin
   mkdir -p "$target"
   cp -R "$ROOT/current/." "$target/"
@@ -91,6 +78,9 @@ setup() {
   printf '#!/bin/bash\nif [ "$1" = compose ] && [[ " $* " == *" build "* ]]; then printf "%%s\\n" "$CUSTODEXA_BUILD_SOURCE" >>"$BUILD_CONTEXT_LOG"; fi\nexec %q "$@"\n' \
     "$TESTS_DIR/fakes/docker" >"$wrapper/docker"
   chmod +x "$wrapper/docker"
+  # Nothing of the current release is written before the upgrade is confirmed.
+  printf 'CUSTODEXA_IMAGE_BACKEND=ghcr.io/custodexa/backend:1.13.0\n' >"$ROOT/current/images.env"
+  (cd "$ROOT/current" && find . -type f -print0 | sort -z | xargs -0 sha256sum) >"$BATS_TEST_TMPDIR/current-before"
   run env PATH="$wrapper:$PATH" BUILD_CONTEXT_LOG="$BATS_TEST_TMPDIR/build-contexts" CX_IMAGES_FROM=source CX_TARGET="$target" bash -c '
     . "$1/lib/common.sh"; CX_LANG_FLAG=en; cx_load_libs "$1"; CX_ROOT=/opt/custodexa; CX_DIR=$CX_TARGET
     cx_manifest_load "$CX_DIR/MANIFEST.json" || exit 1
@@ -100,22 +90,7 @@ setup() {
   grep -q -- "-f $target/compose.yml build frontend" "$FAKE_DOCKER_LOG"
   grep -q '^CUSTODEXA_IMAGE_BACKEND=custodexa-local/backend:1.13.2$' "$target/images.env"
   [ "$(wc -l <"$BATS_TEST_TMPDIR/build-contexts")" -eq 2 ]
-  ! grep -vxF "$target/source" "$BATS_TEST_TMPDIR/build-contexts"
-}
-
-@test "upgrade image resolution leaves every current release file unchanged before confirmation" {
-  local target=$ROOT/releases/1.13.2
-  mkdir -p "$target"
-  cp -R "$ROOT/current/." "$target/"
-  jq '.version = "1.13.2"' "$target/MANIFEST.json" >"$target/MANIFEST.new"
-  mv "$target/MANIFEST.new" "$target/MANIFEST.json"
-  printf 'CUSTODEXA_IMAGE_BACKEND=ghcr.io/custodexa/backend:1.13.0\n' >"$ROOT/current/images.env"
-  (cd "$ROOT/current" && find . -type f -print0 | sort -z | xargs -0 sha256sum) >"$BATS_TEST_TMPDIR/current-before"
-  run env CX_IMAGES_FROM=source CX_TARGET="$target" bash -c '
-    . "$1/lib/common.sh"; CX_LANG_FLAG=en; cx_load_libs "$1"; CX_ROOT=/opt/custodexa; CX_DIR=$CX_TARGET
-    cx_manifest_load "$CX_DIR/MANIFEST.json" || exit 1
-    cx_images_resolve ""' _ "$SRC"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  ! grep -vxF "$target/source" "$BATS_TEST_TMPDIR/build-contexts" || return 1
   (cd "$ROOT/current" && find . -type f -print0 | sort -z | xargs -0 sha256sum) >"$BATS_TEST_TMPDIR/current-after"
   diff "$BATS_TEST_TMPDIR/current-before" "$BATS_TEST_TMPDIR/current-after"
 }
@@ -205,11 +180,10 @@ setup() {
   cp "$ROOT/custodexa.sh" "$old/custodexa.sh"
   cp -R "$ROOT/current/lib" "$ROOT/current/lang" "$old/"
   (cd "$old" && find . -printf '%y %m %p\n' | sort && find . -type f -print0 | sort -z | xargs -0 -r sha256sum) >"$BATS_TEST_TMPDIR/before"
-  for cmd in install status upgrade backup load; do
-    run env CUSTODEXA_HOME="$old" "$ROOT/custodexa.sh" "$cmd" --lang en
-    [ "$status" -eq 3 ] || { echo "$cmd: $status $output"; return 1; }
-    [[ $output == *"older git clone deployment"* ]] || { echo "$output"; return 1; }
-  done
+  # The refusal comes before any command is dispatched: install here, status in the languages below.
+  run env CUSTODEXA_HOME="$old" "$ROOT/custodexa.sh" install --lang en
+  [ "$status" -eq 3 ] || { echo "install: $status $output"; return 1; }
+  [[ $output == *"older git clone deployment"* ]] || { echo "$output"; return 1; }
   for lang in zh-TW ja; do
     run env CUSTODEXA_HOME="$old" "$ROOT/custodexa.sh" status --lang "$lang"
     [ "$status" -eq 3 ] && [[ $output == '[FAIL]'* ]] || { echo "$output"; return 1; }
@@ -238,11 +212,10 @@ setup() {
   cp "$SRC/custodexa.sh" "$entry"
   cp -R "$SRC/lib" "$SRC/lang" "$old/scripts/custodexa/"
   (cd "$old" && find . -printf '%y %m %p\n' | sort && find . -type f -print0 | sort -z | xargs -0 -r sha256sum) >"$BATS_TEST_TMPDIR/direct-before"
-  for cmd in install status upgrade backup load; do
-    run "$entry" "$cmd" --lang en --no-color
-    [ "$status" -eq 3 ] || { echo "$cmd: $status $output"; return 1; }
-    [[ $output == *"older git clone deployment"* ]] || { echo "$cmd: $output"; return 1; }
-  done
+  # Refused right after the arguments are read, whatever the command.
+  run "$entry" install --lang en --no-color
+  [ "$status" -eq 3 ] || { echo "install: $status $output"; return 1; }
+  [[ $output == *"older git clone deployment"* ]] || { echo "install: $output"; return 1; }
   run script -qec "bash $entry --lang en --no-color" /dev/null <<<0
   [ "$status" -eq 3 ] && [[ $output == *"older git clone deployment"* ]] || { echo "menu: $status $output"; return 1; }
   (cd "$old" && find . -printf '%y %m %p\n' | sort && find . -type f -print0 | sort -z | xargs -0 -r sha256sum) >"$BATS_TEST_TMPDIR/direct-after"

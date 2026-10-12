@@ -62,6 +62,11 @@ func (m *MockUserService) Delete(id uint) error {
 	return args.Error(0)
 }
 
+// DeleteWithSummary 沿用既有的 "Delete" 期望（摘要為零值），既有刪除案例不必改寫
+func (m *MockUserService) DeleteWithSummary(id uint) (identity.DeletedUserSummary, error) {
+	return identity.DeletedUserSummary{}, m.Delete(id)
+}
+
 func (m *MockUserService) AssignRoles(userID uint, roleNames []string) (*identity.RoleAssignResult, error) {
 	args := m.Called(userID, roleNames)
 	if r := args.Get(0); r != nil {

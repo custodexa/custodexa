@@ -193,7 +193,7 @@
             class="activity-item activity-item-stacked"
           >
             <div class="activity-lines">
-              <span class="activity-main">{{ $t('dashboard.alertLine', { rule: a.rule_name, command: a.command }) }}</span>
+              <span class="activity-main">{{ alertLineText(a) }}</span>
               <span class="activity-sub">
                 {{ a.username || $t('dashboard.userFallback', { id: a.user_id }) }}
                 <template v-if="a.asset_name"> → {{ a.asset_name }}</template>
@@ -375,6 +375,7 @@ import { getAssetList } from '@/api/assets'
 import { getSessionStatistics, getActiveSessions, getRecordingStats } from '@/api/sessions'
 import { getMyConnections } from '@/api/myConnections'
 import { searchAlerts } from '@/api/alerts'
+import { alertLineText } from '@/constants/command-degrade'
 import { getDailyReviewStatus } from '@/api/dailyReviews'
 import DailyReviewCard from '@/components/daily-review/DailyReviewCard.vue'
 import {

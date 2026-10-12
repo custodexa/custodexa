@@ -221,18 +221,9 @@
         :title="$t('identitySources.section.groupMapping')"
         :hint="$t('identitySources.mapping.sectionHint')"
       >
-        <router-link
-          v-if="directoryId"
-          :to="`/identity-sources/ldap/${directoryId}/group-mappings`"
-        >
-          <el-button type="primary">
-            {{ $t('identityGroupMappings.openPage') }}
-          </el-button>
-        </router-link>
-        <GroupMappingSection
+        <GroupMappingEntry
           type="ldap"
           :source-id="directoryId"
-          :attr-set="Boolean(form.attr_group)"
         >
           <template #attr>
             <el-form-item
@@ -249,7 +240,7 @@
               </div>
             </el-form-item>
           </template>
-        </GroupMappingSection>
+        </GroupMappingEntry>
       </SourceSection>
 
       <!-- 目錄型別不顯示准入段（無內容）；進階段收低頻且不可逆的操作 -->
@@ -346,7 +337,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import SourceDetailLayout from './components/SourceDetailLayout.vue'
 import SourceSection from './components/SourceSection.vue'
-import GroupMappingSection from './components/GroupMappingSection.vue'
+import GroupMappingEntry from './components/GroupMappingEntry.vue'
 import PreflightPanel from './components/PreflightPanel.vue'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'

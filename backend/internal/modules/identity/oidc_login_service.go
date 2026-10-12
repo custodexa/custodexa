@@ -130,6 +130,8 @@ func OIDCAuditEventsOf(err error) []OIDCAuditEvent {
 // ticket 時被拒（失敗事件），只帶回最後一個會使 JIT 建帳號無痕
 type oidcAuditTrail struct {
 	events []OIDCAuditEvent
+	// replacesUserID 本次供應所取代的原帳號（0＝無），由 provisioned 帶入帳號建立意向
+	replacesUserID uint
 }
 
 func (t *oidcAuditTrail) add(ev OIDCAuditEvent) { t.events = append(t.events, ev) }
@@ -191,14 +193,18 @@ func (t *oidcAuditTrail) usernameConflict(p *model.OIDCProvider, subject, userna
 // 覆核中消失。原實作只在**衝突時**留痕，成功建帳號反而無痕
 func (t *oidcAuditTrail) provisioned(p *model.OIDCProvider, subject string, user *model.User) {
 	uid := user.ID
+	details := map[string]any{
+		"event": "oidc_user_provisioned", "provider_id": p.ID,
+		"provider_name": p.Name, "auth_method": crypto.AuthMethodOIDC,
+		"subject_fingerprint": sha256Hex(subject)[:16],
+	}
+	if t.replacesUserID > 0 {
+		details["replaces_user_id"] = t.replacesUserID
+	}
 	t.add(OIDCAuditEvent{
 		Action: model.ActionCreate, Resource: model.ResourceUser, ResourceID: &uid,
 		Status: model.StatusSuccess, UserID: user.ID, Username: user.Username,
-		Details: map[string]any{
-			"event": "oidc_user_provisioned", "provider_id": p.ID,
-			"provider_name": p.Name, "auth_method": crypto.AuthMethodOIDC,
-			"subject_fingerprint": sha256Hex(subject)[:16],
-		},
+		Details: details,
 	})
 }
 
@@ -218,6 +224,11 @@ type OIDCLoginService struct {
 	// 變動卻沒有紀錄，是這個功能最不能出的錯。未設群組宣告名的 provider
 	// 根本走不到寫入面（完全短路），故未接線不影響任何既有部署
 	mappingAudit port.TxSink
+	// orphanRevokeHook 測試用同步點：於「已判定為懸空綁定（帳號查無）、尚未作廢」
+	// 的位置呼叫（oidc_orphan_identity.go）。並發登入的競態只在兩個請求都越過
+	// 懸空判定後才成立，靠 goroutine 搶跑會在「剛好沒撞上」時假綠。
+	// 掛在實例上而非包級變數：生產路徑恆為 nil，只有同包測試會設定
+	orphanRevokeHook func()
 }
 
 // SetRoleMappingAuditSink 接上角色映射事件的交易內審計落地面。
@@ -485,6 +496,9 @@ func (s *OIDCLoginService) callback(ctx context.Context, state, code string,
 
 	ticket, err := s.issueTicket(user, p, flow.BindingHash, flow.RedirectNext)
 	if err != nil {
+		if errors.Is(err, ErrUserInactive) {
+			trail.userInactive(p, user)
+		}
 		return nil, err
 	}
 	return &CallbackResult{Ticket: ticket, RedirectNext: flow.RedirectNext}, nil
@@ -592,6 +606,21 @@ func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *Ver
 		return nil, err
 	}
 
+	// 找到綁定先讀帳號：帳號已刪除的綁定於此作廢，本次登入視為無對應外部身分，
+	// 交回下方的准入判定（見 oidc_orphan_identity.go）
+	var user *model.User
+	var orphanUserID uint
+	if found {
+		u, orphan, err := s.loadBoundUser(p, &identity, trail)
+		if err != nil {
+			return nil, err
+		}
+		if orphan {
+			found, orphanUserID = false, identity.UserID
+		}
+		user = u
+	}
+
 	// **准入判定於每次認證求值**，不只首次供應——規則收緊或使用者 claim
 	// 變更後，既有身分再次登入須依現行規則判定。身分已存在不使判定被略過。
 	if p.AdmissionMode == model.AdmissionJITWithRules {
@@ -601,17 +630,12 @@ func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *Ver
 		}
 	} else if !found {
 		// prebound_only：判定條件即「身分是否已綁定」
-		trail.admissionDenied(p, claims.Subject, "not_prebound")
-		return nil, ErrOIDCAdmissionDenied
+		return nil, s.denyPrebound(p, claims.Subject, orphanUserID, trail)
 	}
 
 	if found {
-		var user model.User
-		if err := s.db.Preload("Roles").First(&user, identity.UserID).Error; err != nil {
-			return nil, err
-		}
 		s.touchIdentity(&identity, p.ID, claims)
-		return &user, nil
+		return user, nil
 	}
 
 	// **自動供應前重驗規則集合規性**（spec L161-163）：issuer kind 不持久化、
@@ -628,6 +652,7 @@ func (s *OIDCLoginService) resolveOrProvision(p *model.OIDCProvider, claims *Ver
 			p.ID, admissionIssueCode(err))
 		return nil, ErrOIDCAdmissionDenied
 	}
+	trail.replacesUserID = s.replacedUserID(p, claims.Subject, orphanUserID)
 	return s.provisionFromClaims(p, claims, trail)
 }
 

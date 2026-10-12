@@ -568,22 +568,39 @@ oidc_purge_identity() {
   psql_q "DELETE FROM user_external_identities WHERE claim_email='$email'" > /dev/null
 }
 
-# 映射規則的建立與清除。**以 SQL 直寫**：規則的管理端點屬管理面批次，
-# 本場景要驗的是登入路徑，不等它。管理端點就緒後這兩支應改走 API。
+# 映射規則的建立與清除，走管理 API（與管理介面同一條路徑：外部群組列、規則列、
+# 映射事實的連動都由服務層處理，腳本不必知道表結構）。
+# risk_acknowledged：映射到高權限角色時服務層要求確認，本場景的 admin 映射即屬此類。
 oidc_seed_mapping_rule() {
-  psql_q "INSERT INTO group_role_mappings
-            (created_at, updated_at, oidc_provider_id, match_value, role_id, enabled, created_by)
-          SELECT now(), now(), $1, '$2', r.id, true,
-                 (SELECT id FROM users WHERE username='admin' AND deleted_at IS NULL LIMIT 1)
-          FROM roles r WHERE r.name='$OIDC_MAPPED_ROLE_E2E'" > /dev/null
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    "$BASE_URL/api/v1/identity-sources/oidc/$1/role-mappings" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "{\"match_value\":\"$2\",\"role\":\"$OIDC_MAPPED_ROLE_E2E\",\"enabled\":true,\"risk_acknowledged\":true}")
+  if [ "$code" != "201" ]; then
+    bad "建立映射規則（$2 → ${OIDC_MAPPED_ROLE_E2E}）回 HTTP ${code}"
+    return 1
+  fi
 }
 
+# 只清本場景所用 provider 的規則：同一套環境上其他身分提供者的映射規則不是本場景
+# 建的，清掉會改變那些提供者的登入結果。呼叫時 OIDC_PROVIDER_ID 已解析完成。
 oidc_purge_mapping_rules() {
-  psql_q "DO \$\$ BEGIN
-    IF to_regclass('public.group_role_mappings') IS NOT NULL THEN
-      DELETE FROM group_role_mappings WHERE oidc_provider_id IS NOT NULL;
-    END IF;
-  END \$\$;" > /dev/null
+  local rid code
+  for rid in $(curl -s "$BASE_URL/api/v1/identity-sources/oidc/${OIDC_PROVIDER_ID:-0}/role-mappings" \
+                 -H "Authorization: Bearer $TOKEN" \
+               | python3 -c "
+import json,sys
+try:
+    rows=json.load(sys.stdin).get('data') or []
+except Exception:
+    rows=[]
+print(' '.join(str(r['id']) for r in rows))"); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+      "$BASE_URL/api/v1/identity-sources/oidc/$OIDC_PROVIDER_ID/role-mappings/$rid" \
+      -H "Authorization: Bearer $TOKEN")
+    [ "$code" = "204" ] || bad "清除映射規則 ${rid} 回 HTTP ${code}"
+  done
 }
 
 # 受測帳號現行是否具映射到的角色（t/f）
@@ -592,13 +609,16 @@ oidc_has_mapped_role() {
             SELECT 1 FROM user_roles ur
             JOIN roles r ON r.id = ur.role_id
             JOIN user_external_identities uei ON uei.user_id = ur.user_id
-            WHERE uei.claim_email='$DEX_OK_LOGIN' AND r.name='$OIDC_MAPPED_ROLE_E2E')"
+            JOIN users u ON u.id = ur.user_id
+            WHERE uei.claim_email='$DEX_OK_LOGIN' AND r.name='$OIDC_MAPPED_ROLE_E2E'
+              AND uei.deleted_at IS NULL AND u.deleted_at IS NULL)"
 }
 
 oidc_credential_epoch() {
   psql_q "SELECT u.credential_epoch FROM users u
           JOIN user_external_identities uei ON uei.user_id = u.id
-          WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1"
+          WHERE uei.claim_email='$DEX_OK_LOGIN' AND uei.deleted_at IS NULL
+            AND u.deleted_at IS NULL LIMIT 1"
 }
 
 # 角色斷言接點：本次登入命中角色；該人不再屬於受映射群組後重登撤角並推進世代。
@@ -621,7 +641,8 @@ oidc_assert_mapped_roles() {
   # 判準取快照本身：它與映射事實在同一個交易裡寫入，是「這次登入看到了什麼」的直接紀錄
   snapshot=$(psql_q "SELECT u.group_snapshot_groups FROM users u
                      JOIN user_external_identities uei ON uei.user_id = u.id
-                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1")
+                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND uei.deleted_at IS NULL
+                       AND u.deleted_at IS NULL LIMIT 1")
   if [ -z "$snapshot" ] || [ "$snapshot" = "[]" ]; then
     echo "  (跳過 OIDC 角色映射斷言：$DEX_OK_LOGIN 本次登入未觀測到任何群組（快照＝${snapshot:-<查無>}）；"
     echo "   請確認 dex 的靜態帳號帶有群組、且該來源已填群組宣告名後重跑)"
@@ -637,7 +658,8 @@ oidc_assert_mapped_roles() {
   fi
   channel=$(psql_q "SELECT urm.channel FROM user_role_mappings urm
                     JOIN user_external_identities uei ON uei.user_id = urm.user_id
-                    WHERE uei.claim_email='$DEX_OK_LOGIN' LIMIT 1")
+                    WHERE uei.claim_email='$DEX_OK_LOGIN' AND uei.deleted_at IS NULL
+                    LIMIT 1")
   case "$channel" in
     provider:*) ok "映射事實帶提供者途徑的通道（${channel}）" ;;
     *) bad "映射事實的通道不是提供者途徑：${channel:-<查無>}" ;;
@@ -645,7 +667,8 @@ oidc_assert_mapped_roles() {
   # 群組觀測快照：診斷「我在群組裡卻沒拿到角色」的唯一線索，存的是原始值
   snapshot=$(psql_q "SELECT u.group_snapshot_groups FROM users u
                      JOIN user_external_identities uei ON uei.user_id = u.id
-                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND u.deleted_at IS NULL LIMIT 1")
+                     WHERE uei.claim_email='$DEX_OK_LOGIN' AND uei.deleted_at IS NULL
+                       AND u.deleted_at IS NULL LIMIT 1")
   case "$snapshot" in
     *"$OIDC_MAPPED_GROUP_E2E"*) ok "群組觀測快照存下本次觀測到的原始值（${snapshot}）" ;;
     *) bad "群組觀測快照未含觀測到的群組值：${snapshot:-<查無>}" ;;
@@ -671,6 +694,312 @@ oidc_assert_mapped_roles() {
   else
     bad "角色縮減未推進憑證世代（${epoch_after_grant} → ${epoch_after_shrink:-<查無>}）"
   fi
+}
+
+# ---- 情境 D 用的小工具 ----
+
+# 目前綁定 <subject> 的有效帳號編號（綁定與帳號都未刪除）；查無輸出空字串
+oidc_bound_user_id() {
+  psql_q "SELECT u.id FROM user_external_identities uei JOIN users u ON u.id = uei.user_id
+          WHERE uei.provider_id=$OIDC_PROVIDER_ID AND uei.subject='$1'
+            AND uei.deleted_at IS NULL AND u.deleted_at IS NULL
+          ORDER BY u.id DESC LIMIT 1"
+}
+
+# <user_id> <角色名> → t/f
+oidc_user_has_role() {
+  psql_q "SELECT EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+          WHERE ur.user_id=$1 AND r.name='$2')"
+}
+
+# 管理 API 刪除帳號，輸出 HTTP 狀態碼
+oidc_api_delete_user() {
+  curl -s -o /dev/null -w '%{http_code}' -X DELETE "$BASE_URL/api/v1/users/$1" \
+    -H "Authorization: Bearer $TOKEN"
+}
+
+# oidc_wait_audit <起點 id> <event> [額外 LIKE 條件] → 輸出本輪第一筆該事件列的 details（JSON 字串）。
+# 登入流程的審計經非同步佇列落庫，callback 回應時未必已寫入，故輪詢至多 15 秒。
+# 先以文字比對篩 event 再交給 python 解析：details 欄不保證每列都是 JSON。
+oidc_wait_audit() {
+  local since="$1" event="$2" extra="${3:-%}" n=0 row
+  while [ "$n" -lt 15 ]; do
+    row=$(psql_q "SELECT details FROM audit_logs
+                  WHERE id > $since AND details LIKE '%\"event\":\"$event\"%'
+                    AND details LIKE '$extra'
+                  ORDER BY id LIMIT 1")
+    if [ -n "$row" ]; then echo "$row"; return 0; fi
+    n=$((n+1)); sleep 1
+  done
+  return 1
+}
+
+# 切換 provider 准入模式，輸出 HTTP 狀態碼。更新端點要求帶 name（其餘欄位缺省即沿用既有值；
+# 不帶 client_secret，故不構成密鑰輪替）
+oidc_set_admission_mode() {
+  local name
+  name=$(psql_q "SELECT name FROM oidc_providers WHERE id=$OIDC_PROVIDER_ID")
+  curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE_URL/api/v1/oidc-providers/$OIDC_PROVIDER_ID" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "{\"name\":\"$name\",\"admission_mode\":\"$1\"}"
+}
+
+# json_get <JSON> <鍵> → 該鍵的值（數字與字串一律印成字串；缺鍵印空）
+json_get() {
+  python3 -c "
+import json,sys
+v=json.loads(sys.argv[1]).get(sys.argv[2])
+print('' if v is None else v)" "$1" "$2" 2>/dev/null
+}
+
+# oidc_login_ok <描述>：走一次 SSO 並斷言 callback 簽出交棒憑證、exchange 換得正式會話。
+# 回傳非零＝未成功登入（已記 FAIL）。
+oidc_login_ok() {
+  local label="$1" ex token
+  if ! oidc_sso_flow "$DEX_OK_LOGIN" "$DEX_OK_PASS"; then
+    bad "${label}：SSO 流程未走到 callback：$OIDC_ERR"; return 1
+  fi
+  case "$OIDC_FRAGMENT" in
+    sso_ticket=*) ;;
+    *) bad "${label}：callback 未簽出交棒憑證（${OIDC_FRAGMENT}）"; return 1 ;;
+  esac
+  ex=$(curl -s -X POST "$BASE_URL/api/v1/auth/oidc/exchange" -H "Content-Type: application/json" \
+    -d "{\"ticket\":\"${OIDC_FRAGMENT#sso_ticket=}\",\"browser_secret\":\"$OIDC_SECRET\"}")
+  token=$(echo "$ex" | python3 -c "
+import json,sys; print(json.load(sys.stdin).get('login',{}).get('token',''))" 2>/dev/null)
+  if [ -z "$token" ]; then
+    bad "${label}：exchange 未回正式會話: $(echo "$ex" | head -c 200)"; return 1
+  fi
+  ok "${label}：callback 簽出交棒憑證且 exchange 換得正式會話"
+}
+
+# ---- 情境 D：經外部身分建立的帳號被刪除後，同一人再登入 ----
+#
+# 三個子情境，結果依 provider 的准入模式而定：
+#   Da 依規則自動供應：重建帳號（新編號、同帳號名），依群組映射重新取得角色；
+#      帳號建立的審計標示所取代的原帳號編號
+#   Db 帳號已刪、綁定仍有效（刪除帳號不處理綁定的舊版留下的資料形態，以 SQL 只軟刪
+#      users 模擬）：登入時作廢該綁定並重建，審計留作廢事件
+#   Dc 僅預先綁定：拒絕並回 oidc_account_removed；管理者重建同名帳號並綁定（201）後可再登入
+#
+# 映射目標刻意用 admin 而非情境 A 的角色：要能與預設的一般角色區分「角色有沒有恢復」。
+# 以 local 覆寫全域值，共用 helper（oidc_seed_mapping_rule）在本函式內即取到 admin。
+oidc_rebind_scenarios() {
+  local OIDC_MAPPED_ROLE_E2E=admin
+  local aud0 subject prior old_id old_name new_id base_id code row
+
+  echo "  -- 情境 D：帳號刪除後再登入 --"
+  aud0=$(psql_q "SELECT coalesce(max(id),0) FROM audit_logs")
+  oidc_purge_mapping_rules
+  oidc_seed_mapping_rule "$OIDC_PROVIDER_ID" "$OIDC_MAPPED_GROUP_E2E"
+
+  # 起點：此人沒有有效帳號。前面情境留下的帳號經管理 API 刪除（刪除即一併作廢綁定），
+  # 否則 Da 的首登會是「既有身分回訪」，測不到建帳號
+  subject=$(psql_q "SELECT subject FROM user_external_identities
+                    WHERE provider_id=$OIDC_PROVIDER_ID AND claim_email='$DEX_OK_LOGIN'
+                    ORDER BY id DESC LIMIT 1")
+  if [ -n "$subject" ]; then
+    prior=$(oidc_bound_user_id "$subject")
+    if [ -n "$prior" ]; then
+      code=$(oidc_api_delete_user "$prior")
+      [ "$code" = "200" ] || { bad "D 前置：刪除既有帳號 ${prior} 回 HTTP ${code}"; return 0; }
+    fi
+  fi
+
+  # ---- Da 自動供應：刪除後再登入即重建，角色由群組映射恢復 ----
+  oidc_login_ok "Da 首登" || return 0
+  subject=$(psql_q "SELECT subject FROM user_external_identities
+                    WHERE provider_id=$OIDC_PROVIDER_ID AND claim_email='$DEX_OK_LOGIN'
+                      AND deleted_at IS NULL
+                    ORDER BY id DESC LIMIT 1")
+  old_id=$(oidc_bound_user_id "$subject")
+  if [ -z "$old_id" ]; then
+    bad "Da 首登後查無有效的帳號綁定（subject=${subject:-<查無>}）"; return 0
+  fi
+  old_name=$(psql_q "SELECT username FROM users WHERE id=$old_id")
+  if [ "$(oidc_user_has_role "$old_id" admin)" = "t" ]; then
+    ok "Da 首登建帳號並經群組映射取得 admin（user_id=${old_id}，${old_name}）"
+  else
+    bad "Da 首登建帳號但未取得 admin（user_id=${old_id}）"
+  fi
+  code=$(oidc_api_delete_user "$old_id")
+  if [ "$code" = "200" ]; then
+    ok "Da 管理 API 刪除帳號（DELETE /users/${old_id} → 200）"
+  else
+    bad "Da 刪除帳號回 HTTP ${code}"; return 0
+  fi
+  row=$(psql_q "SELECT count(*) FROM user_external_identities
+                WHERE user_id=$old_id AND deleted_at IS NULL")
+  if [ "$row" = "0" ]; then ok "Da 刪除帳號同時作廢其外部身分綁定"
+  else bad "Da 刪除帳號後仍有 ${row} 筆有效綁定"; fi
+  oidc_login_ok "Da 刪除後再登入" || return 0
+  new_id=$(oidc_bound_user_id "$subject")
+  if [ -n "$new_id" ] && [ "$new_id" != "$old_id" ] \
+     && [ "$(psql_q "SELECT username FROM users WHERE id=$new_id")" = "$old_name" ]; then
+    ok "Da 重建帳號：新編號 ${new_id}（原 ${old_id}）、帳號名同為 ${old_name}"
+  else
+    bad "Da 重建帳號不符預期（原 ${old_id}／${old_name}，現綁定帳號 ${new_id:-<查無>}）"
+  fi
+  if [ -n "$new_id" ] && [ "$(oidc_user_has_role "$new_id" admin)" = "t" ]; then
+    ok "Da 重建帳號經群組映射恢復 admin"
+  else
+    bad "Da 重建帳號未恢復 admin"
+  fi
+  # 首登那筆建立事件不帶 replaces_user_id，故加比對條件取重建那一筆
+  row=$(oidc_wait_audit "$aud0" oidc_user_provisioned "%\"replaces_user_id\":%$old_id%")
+  if [ "$(json_get "$row" replaces_user_id)" = "$old_id" ]; then
+    ok "Da 帳號建立審計帶 replaces_user_id=${old_id}"
+    echo "    審計節錄: $row"
+  else
+    bad "Da 帳號建立審計未帶 replaces_user_id=${old_id}（${row:-<查無>}）"
+  fi
+
+  # ---- Db 帳號已刪、綁定仍有效：登入時作廢並重建 ----
+  base_id="$new_id"
+  if [ -z "$base_id" ]; then
+    bad "Db 前置：Da 未留下有效帳號，跳過"; return 0
+  fi
+  aud0=$(psql_q "SELECT coalesce(max(id),0) FROM audit_logs")
+  # 照舊版刪除交易的內容重現：映射事實與群組成員一併清掉、帳號軟刪，只有外部身分綁定
+  # 不動。只軟刪 users 而留下映射事實，會造出舊版也不會產生的資料（映射規則日後刪不掉）
+  psql_q "BEGIN;
+          DELETE FROM user_role_mapping_rule_supports WHERE user_id=$base_id;
+          DELETE FROM user_group_mapping_rule_supports WHERE user_id=$base_id;
+          DELETE FROM user_role_mappings WHERE user_id=$base_id;
+          DELETE FROM user_group_members WHERE user_id=$base_id;
+          UPDATE users SET deleted_at=now() WHERE id=$base_id;
+          COMMIT;" > /dev/null
+  row=$(psql_q "SELECT count(*) FROM user_external_identities
+                WHERE user_id=$base_id AND deleted_at IS NULL")
+  if [ "$row" != "1" ]; then
+    bad "Db 前置：只軟刪帳號後應留 1 筆有效綁定，實為 ${row}"; return 0
+  fi
+  oidc_login_ok "Db 懸空綁定下再登入" || return 0
+  new_id=$(oidc_bound_user_id "$subject")
+  if [ -n "$new_id" ] && [ "$new_id" != "$base_id" ] \
+     && [ "$(psql_q "SELECT username FROM users WHERE id=$new_id")" = "$old_name" ]; then
+    ok "Db 自動恢復：新帳號 ${new_id}（原 ${base_id}）、帳號名 ${old_name}"
+  else
+    bad "Db 未自動恢復（原 ${base_id}，現綁定帳號 ${new_id:-<查無>}）"
+  fi
+  row=$(psql_q "SELECT count(*) FROM user_external_identities
+                WHERE user_id=$base_id AND deleted_at IS NULL")
+  if [ "$row" = "0" ]; then ok "Db 原帳號的懸空綁定已作廢"
+  else bad "Db 原帳號仍有 ${row} 筆有效綁定"; fi
+  if row=$(oidc_wait_audit "$aud0" oidc_identity_orphan_revoked); then
+    if [ "$(json_get "$row" previous_user_id)" = "$base_id" ] \
+       && [ "$(json_get "$row" issuer)" = "$DEX_ISSUER" ] \
+       && [ "$(json_get "$row" subject)" = "$subject" ]; then
+      ok "Db 作廢事件入審計（previous_user_id=${base_id}，issuer、subject 相符）"
+    else
+      bad "Db 作廢事件欄位不符: $row"
+    fi
+    echo "    審計節錄: $(psql_q "SELECT action || ' ' || resource || ' resource_id=' || coalesce(resource_id::text,'') || ' ' || status
+                                 FROM audit_logs WHERE id > $aud0
+                                   AND details LIKE '%\"event\":\"oidc_identity_orphan_revoked\"%'
+                                 ORDER BY id LIMIT 1") $row"
+  else
+    bad "Db 15 秒內未見 oidc_identity_orphan_revoked 審計列"
+  fi
+  if row=$(oidc_wait_audit "$aud0" oidc_user_provisioned) \
+     && [ "$(json_get "$row" replaces_user_id)" = "$base_id" ]; then
+    ok "Db 帳號建立審計帶 replaces_user_id=${base_id}"
+    echo "    審計節錄: $row"
+  else
+    bad "Db 帳號建立審計未帶 replaces_user_id=${base_id}（${row:-<查無>}）"
+  fi
+
+  # ---- Dc 僅預先綁定 ----
+  local mode_orig
+  mode_orig=$(psql_q "SELECT admission_mode FROM oidc_providers WHERE id=$OIDC_PROVIDER_ID")
+  oidc_rebind_prebound "$subject" "$old_name" "$new_id"
+  # 准入模式一律改回原值（子情境中途失敗也要還原，否則下一輪的自動供應情境全數失準）
+  code=$(oidc_set_admission_mode "$mode_orig")
+  if [ "$code" = "200" ] \
+     && [ "$(psql_q "SELECT admission_mode FROM oidc_providers WHERE id=$OIDC_PROVIDER_ID")" = "$mode_orig" ]; then
+    ok "Dc 准入模式已改回 ${mode_orig}"
+  else
+    bad "Dc 准入模式還原失敗（HTTP ${code}）"
+  fi
+}
+
+# oidc_rebind_prebound <subject> <帳號名> <目前綁定此人的帳號編號>
+oidc_rebind_prebound() {
+  local subject="$1" name="$2" current="$3"
+  local code aud0 local_id row pw
+
+  # 起點：此人沒有有效帳號（Db 重建的帳號先刪），再切成僅預先綁定
+  if [ -n "$current" ]; then
+    code=$(oidc_api_delete_user "$current")
+    [ "$code" = "200" ] || { bad "Dc 前置：刪除帳號 ${current} 回 HTTP ${code}"; return 0; }
+  fi
+  code=$(oidc_set_admission_mode prebound_only)
+  if [ "$code" = "200" ]; then
+    ok "Dc provider 切為 prebound_only"
+  else
+    bad "Dc provider 切為 prebound_only 回 HTTP ${code}"; return 0
+  fi
+
+  # oidc_create_and_bind：管理者建本地帳號並綁定此人的外部身分；成功時設定 local_id
+  oidc_create_and_bind() {
+    local label="$1" body
+    pw="E2e-Rebind-$(python3 -c 'import secrets; print(secrets.token_hex(8))')#"
+    body=$(curl -s -X POST "$BASE_URL/api/v1/users" -H "Authorization: Bearer $TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"username\":\"$name\",\"password\":\"$pw\",\"email\":\"$DEX_OK_LOGIN\",\"roles\":[\"user\"]}")
+    local_id=$(echo "$body" | python3 -c "import json,sys; print(json.load(sys.stdin).get('data',{}).get('id',''))" 2>/dev/null)
+    if [ -z "$local_id" ]; then
+      bad "${label}：建立帳號 ${name} 失敗: $(echo "$body" | head -c 200)"; return 1
+    fi
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/users/$local_id/external-identities" \
+      -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+      -d "{\"provider_id\":$OIDC_PROVIDER_ID,\"subject\":\"$subject\"}")
+    if [ "$code" = "201" ]; then
+      ok "${label}：建立帳號 ${name}（user_id=${local_id}）並綁定外部身分 → 201"
+    else
+      bad "${label}：綁定外部身分回 HTTP ${code}（期望 201）"; return 1
+    fi
+  }
+
+  oidc_create_and_bind "Dc 管理者預先綁定" || return 0
+  oidc_login_ok "Dc 預先綁定後登入" || return 0
+  code=$(oidc_api_delete_user "$local_id")
+  if [ "$code" = "200" ]; then ok "Dc 管理 API 刪除帳號 ${local_id}"
+  else bad "Dc 刪除帳號回 HTTP ${code}"; return 0; fi
+
+  aud0=$(psql_q "SELECT coalesce(max(id),0) FROM audit_logs")
+  # 兩次嘗試都應得到同一個專屬結果，而不是第二次起退化成「不符准入條件」
+  local attempt
+  for attempt in 1 2; do
+    if ! oidc_sso_flow "$DEX_OK_LOGIN" "$DEX_OK_PASS"; then
+      bad "Dc 刪除後第 ${attempt} 次登入未走到 callback：$OIDC_ERR"; return 0
+    fi
+    if [ "$OIDC_FRAGMENT" = "sso_error=oidc_account_removed" ]; then
+      ok "Dc 刪除後第 ${attempt} 次登入被拒（${OIDC_FRAGMENT}）"
+    else
+      bad "Dc 刪除後第 ${attempt} 次登入結果非預期: $OIDC_FRAGMENT"
+    fi
+  done
+  row=$(oidc_bound_user_id "$subject")
+  if [ -z "$row" ]; then ok "Dc 被拒時未自動建立帳號"
+  else bad "Dc 被拒卻出現有效帳號 ${row}"; fi
+  if row=$(oidc_wait_audit "$aud0" oidc_account_removed); then
+    ok "Dc 拒絕事件入審計（oidc_account_removed）"
+    echo "    審計節錄: $row"
+  else
+    bad "Dc 15 秒內未見 oidc_account_removed 審計列"
+  fi
+
+  oidc_create_and_bind "Dc 管理者重建同名帳號" || return 0
+  oidc_login_ok "Dc 重新綁定後登入" || return 0
+  row=$(oidc_bound_user_id "$subject")
+  if [ "$row" = "$local_id" ]; then ok "Dc 登入命中重建的帳號（user_id=${local_id}）"
+  else bad "Dc 登入後綁定帳號為 ${row:-<查無>}，期望 ${local_id}"; fi
+
+  # 收尾刪掉這個管理者建立的帳號：它的供應來源是本地，群組映射不作用在它身上。
+  # 留著的話，下一輪情境 A 會以它登入，角色映射斷言因觀測不到群組而整段跳過
+  code=$(oidc_api_delete_user "$local_id")
+  [ "$code" = "200" ] || bad "Dc 收尾刪除帳號 ${local_id} 回 HTTP ${code}"
 }
 
 oidc_scenarios() {
@@ -855,6 +1184,8 @@ print(c.get('user_id'), c.get('username'), c.get('auth_method'), c.get('provider
     [ "${leftover:-1}" = "0" ] && ok "本地 admin 未被外部身分接管" \
       || bad "同名衝突卻建立了外部身分（$leftover 筆）"
   fi
+
+  oidc_rebind_scenarios
 
   # 映射規則不留到下一輪：殘留的規則會讓下一次的「取得角色」在功能壞掉時仍為真。
   # 成功 SSO 的帳號本身是刻意保留的（沿既有做法），只清規則

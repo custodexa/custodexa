@@ -13,7 +13,8 @@ class MutationObserverStub {
 }
 vi.stubGlobal('MutationObserver', MutationObserverStub)
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: { type: 'oidc', id: '7' } }) }))
+const routeState = vi.hoisted(() => ({ params: { type: 'oidc', id: '7' } }))
+vi.mock('vue-router', () => ({ useRoute: () => routeState }))
 const api = vi.hoisted(() => ({ createGroup: vi.fn(), updateGroup: vi.fn(), updateRole: vi.fn(), updateNote: vi.fn(), getSources: vi.fn(), getExternalGroups: vi.fn() }))
 const confirmWarningsMock = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('@/utils/mappingRiskGate', () => ({ confirmWarnings: (...a) => confirmWarningsMock(...a) }))
@@ -41,6 +42,7 @@ const open = async () => {
 describe('ExternalGroupMappings fix2 interactions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeState.params = { type: 'oidc', id: '7' }
     confirmWarningsMock.mockResolvedValue(true)
     api.getSources.mockResolvedValue({ data: [{ id: 7, type: 'oidc', name: 'demo', enabled: false, group_attribute_configured: false }] })
     api.createGroup.mockResolvedValue({ data: { id: 11 } })
@@ -237,5 +239,65 @@ describe('ExternalGroupMappings fix2 interactions', () => {
     expect(api.updateGroup.mock.calls[1][3].risk_acknowledged).toBe(false)
     expect(api.updateGroup.mock.calls[2][3].risk_acknowledged).toBe(true)
     confirm.mockRestore()
+  })
+})
+
+// 舊詳情頁內嵌清單的說明搬到這裡的對話框：比對方式、Entra 物件識別碼位置、
+// 管理員與審核者角色。詳情頁不再有規則編輯處，這些提示若沒跟過來就等於遺失
+describe('ExternalGroupMappings 新增／編輯對話框的群組值與角色說明', () => {
+  const ENTRA_ISSUER = 'https://login.microsoftonline.com/00000000-1111-2222-3333-444444444444/v2.0'
+  const t = (key) => i18n.global.t(key)
+  // el-dialog 依環境可能 teleport 到 body，也可能留在元件內；兩處都找
+  let current = null
+  const inDialog = (selector) => current.element.querySelector(selector) || document.body.querySelector(selector)
+  const dialogText = () => current.element.textContent + document.body.textContent
+  const matchInput = () => inDialog('.el-autocomplete input')
+
+  const openDialog = async ({ type, address, tab = 'roles' }) => {
+    routeState.params = { type, id: '7' }
+    api.getSources.mockResolvedValue({ data: [{ id: 7, type, name: 'src', enabled: true, group_attribute_configured: true, address }] })
+    const wrapper = await open()
+    current = wrapper
+    wrapper.vm.tab = tab
+    wrapper.vm.openCreate()
+    await flushPromises()
+    return wrapper
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    api.getExternalGroups.mockResolvedValue({ data: [] })
+  })
+
+  it('目錄來源：見 DN 比對說明與 placeholder，不見 Entra 提示', async () => {
+    await openDialog({ type: 'ldap', address: 'ldap://ldap.example.test:389' })
+    expect(inDialog('[data-test="mapping-match-hint"]').textContent.trim()).toBe(t('identitySources.mapping.matchDnHint'))
+    expect(matchInput().getAttribute('placeholder')).toBe(t('identitySources.mapping.matchDnPlaceholder'))
+    expect(inDialog('[data-test="mapping-entra-hint"]')).toBeNull()
+    expect(dialogText()).not.toContain(t('identitySources.mapping.entraMatchHint'))
+  })
+
+  it('Entra issuer 的提供者：見宣告值比對說明與 Entra 物件識別碼提示', async () => {
+    await openDialog({ type: 'oidc', address: ENTRA_ISSUER })
+    expect(inDialog('[data-test="mapping-match-hint"]').textContent.trim()).toBe(t('identitySources.mapping.matchClaimValueHint'))
+    expect(matchInput().getAttribute('placeholder')).toBe(t('identitySources.mapping.matchClaimValuePlaceholder'))
+    expect(inDialog('[data-test="mapping-entra-hint"]').textContent.trim()).toBe(t('identitySources.mapping.entraMatchHint'))
+  })
+
+  it('非 Entra 的提供者：見宣告值比對說明，不見 Entra 提示', async () => {
+    await openDialog({ type: 'oidc', address: 'https://idp.example.com' })
+    expect(inDialog('[data-test="mapping-match-hint"]').textContent.trim()).toBe(t('identitySources.mapping.matchClaimValueHint'))
+    expect(inDialog('[data-test="mapping-entra-hint"]')).toBeNull()
+  })
+
+  it('角色分頁見管理員與審核者角色說明，使用者群組分頁不見', async () => {
+    const wrapper = await openDialog({ type: 'oidc', address: 'https://idp.example.com' })
+    expect(inDialog('[data-test="mapping-admin-note"]').textContent.trim()).toBe(t('identitySources.mapping.adminNote'))
+    wrapper.vm.dialogOpen = false
+    wrapper.vm.tab = 'userGroups'
+    wrapper.vm.openCreate()
+    await flushPromises()
+    expect(inDialog('[data-test="mapping-admin-note"]')).toBeNull()
+    expect(dialogText()).not.toContain(t('identitySources.mapping.adminNote'))
   })
 })

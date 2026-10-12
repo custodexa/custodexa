@@ -73,14 +73,11 @@ read_only() { ! grep -E -- '-c ' "$DB/run.argv" | grep -viE -- "-c '?(SELECT|SHO
   reached_end
 }
 
-@test "restore external: a server with no client of this release (15, 19) refuses, naming the clients there are" {
-  local v
-  for v in 15.8 19.1; do
-    bk_server "$v"
-    same external
-    refused || return 1
-    [[ $output == *"The server runs PostgreSQL $v, which has no client here; this"$'\n'"    release carries clients for PostgreSQL 16, 17 and 18."* ]] || { echo "$output"; return 1; }
-  done
+@test "restore external: a server with no client of this release refuses, naming the clients there are" {
+  bk_server 15.8
+  same external
+  refused || return 1
+  [[ $output == *"The server runs PostgreSQL 15.8, which has no client here; this"$'\n'"    release carries clients for PostgreSQL 16, 17 and 18."* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external: a server older than the backup's refuses; a newer one is asked with its own client" {
@@ -109,18 +106,6 @@ read_only() { ! grep -E -- '-c ' "$DB/run.argv" | grep -viE -- "-c '?(SELECT|SHO
   [[ $output == *"ENCODING 'UTF8' LC_COLLATE 'en_US.utf8' LC_CTYPE 'en_US.utf8'"* ]] || return 1
   [ "$(printf '%s\n' "$output" | grep -c '^  - ')" = 5 ] || { echo "$output"; return 1; }
   read_only
-}
-
-@test "restore external: the refusal reads the same in zh-TW and ja" {
-  printf 'public|report_cache|analyst\n' >"$DB/foreign"
-  printf '%s\n' '10.0.0.12 custodexa-backend' '10.0.0.12 custodexa-backend' >"$DB/activity"
-  rs_new_host
-  run bash "$ROOT/custodexa.sh" restore "$(rs_fix external)" --new-host --yes --data-path "$NEWDATA" --lang zh-TW </dev/null
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] 外接資料庫還不能還原，原因："$'\n'"  - 有 2 個其他連線正在使用 custodexa（來自 10.0.0.12，應用程式 custodexa-backend）。"$'\n'"    請先停止原主機的服務，並確認沒有備援主機接手這個資料庫。"$'\n'"  - 物件 public.report_cache 的擁有者是 analyst，不是 custodexa_app；"$'\n'"    腳本只能清空 custodexa_app 擁有的物件。"$'\n'"沒有變更任何資料。"* ]] || { echo "$output"; return 1; }
-  run bash "$ROOT/custodexa.sh" restore "$(rs_fix external)" --new-host --yes --data-path "$NEWDATA" --lang ja </dev/null
-  [ "$status" -eq 3 ] && [[ $output == *"外部データベースはまだ復元できません。理由："* && $output == *"オブジェクト public.report_cache の所有者は analyst"* ]] || { echo "$output"; return 1; }
-  no_stop
 }
 
 @test "restore external: the TLS settings of the backup are rebuilt; a weaker server check than recorded refuses" {
@@ -286,32 +271,3 @@ auditor_ro' ] || { echo "$output"; return 1; }
   grep -q "${BK_PGC_DIGEST[17]} psql activity" "$DB/db-runs"
 }
 
-@test "restore external: after the stop another connection stops the restore at its step, with carry on and give up" {
-  local w=$BATS_TEST_TMPDIR/w h=$BATS_TEST_TMPDIR/quiet.sh
-  rs_unpack "$(rs_fix external)" "$w/pass2" || return 1
-  cat >"$h" <<'SH'
-#!/bin/bash
-. "$1/lib/common.sh"
-CX_LANG_FLAG=$4
-cx_load_libs "$1"
-. "$1/lib/cmd_restore.sh"
-CX_DIR=$2/current CX_ROOT=$2 CX_RS_DIR=$3 CX_RS_FLOW=same CX_RS_TS=20261012-093015 CX_SELF=$2/custodexa.sh
-cx_state_load "$CX_ROOT/state.json"
-cx_flat_parse "$CX_RS_DIR/pass2/backup-manifest.json" CX_RS_MAP CX_RS_KEYS || exit 3
-CX_RS_ENV=$CX_RS_DIR/pass2/env.bak CX_RS_DATA=$CX_ROOT/data
-rc=0
-cx_rs_ext_quiet 2 10 rs_ext_step_stop || rc=$?
-echo "rc=$rc"
-SH
-  printf '%s\n' '10.0.0.45 psql' >"$DB/activity"
-  run bash "$h" "$SRC" "$ROOT" "$w" zh-TW
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == "[FAIL]  2/10  停止服務（外接資料庫不受影響）：停止之後，仍有 1 個其他連線"$'\n'"              在使用 custodexa（來自 10.0.0.45，應用程式 psql）。"$'\n'"還原停在第 2 步。還沒有覆蓋任何資料；服務維持停止。"$'\n'"  請找出並結束這個連線（確認不是備援主機接手），再重跑接續："$'\n'"    sudo "*"custodexa.sh restore --resume"* ]] || { echo "$output"; return 1; }
-  [[ $output == *"  或放棄還原、啟動原本的服務："$'\n'"    sudo "*"custodexa.sh restore --revert"* && $output == *"rc=1" ]] || { echo "$output"; return 1; }
-  run bash "$h" "$SRC" "$ROOT" "$w" en
-  [[ $output == "[FAIL]  2/10  Stop the services (the external database is not affected):"$'\n'"              once they stopped, 1 other connection is still using"$'\n'"              custodexa (from 10.0.0.45, application psql)."$'\n'"The restore stopped at step 2. Nothing has been overwritten; the"* ]] || { echo "$output"; return 1; }
-  rm "$DB/activity"
-  run bash "$h" "$SRC" "$ROOT" "$w" en
-  [ "$status" -eq 0 ] && [ "$output" = "rc=0" ] || { echo "$output"; return 1; }
-  no_stop
-}

@@ -246,19 +246,9 @@
         :title="$t('identitySources.section.groupMapping')"
         :hint="$t('identitySources.mapping.sectionHint')"
       >
-        <router-link
-          v-if="providerId"
-          :to="`/identity-sources/oidc/${providerId}/group-mappings`"
-        >
-          <el-button type="primary">
-            {{ $t('identityGroupMappings.openPage') }}
-          </el-button>
-        </router-link>
-        <GroupMappingSection
+        <GroupMappingEntry
           type="oidc"
           :source-id="providerId"
-          :attr-set="Boolean(form.groups_claim)"
-          :entra="isEntra"
         >
           <template #attr>
             <el-form-item
@@ -295,7 +285,7 @@
               </div>
             </el-form-item>
           </template>
-        </GroupMappingSection>
+        </GroupMappingEntry>
       </SourceSection>
 
       <SourceSection
@@ -484,7 +474,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import SourceDetailLayout from './components/SourceDetailLayout.vue'
 import SourceSection from './components/SourceSection.vue'
-import GroupMappingSection from './components/GroupMappingSection.vue'
+import GroupMappingEntry from './components/GroupMappingEntry.vue'
 import PreflightPanel from './components/PreflightPanel.vue'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/utils/format'

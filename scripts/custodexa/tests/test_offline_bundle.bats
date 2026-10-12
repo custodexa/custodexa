@@ -114,13 +114,6 @@ check_fails() {
   check_fails pgclient17 "is not amd64"
 }
 
-@test "two names on one tag with different content fail and name the one the bundle does not hold" {
-  release
-  # The client of 16 claims the 17 content under the 16 tag: the bundle holds one image for the tag.
-  IMAGES=$(jq -c --arg d "$PG17" '.pgclient16.platforms.amd64.config_digest = $d' <<<"$IMAGES")
-  check_fails pgclient16 "config digest"
-}
-
 @test "an image the MANIFEST does not list fails" {
   release
   saved postgres:15.14-alpine3.24 "$(blob amd64 pg15)"

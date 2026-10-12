@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/custodexa/backend/internal/model"
@@ -44,13 +45,40 @@ func loginFailureScope(db *gorm.DB, start, end time.Time) *gorm.DB {
 // 但它把稽核證據整包帶出系統，屬於「稽核證據匯出」，以完整路徑收錄
 const highRiskSyncExportPath = "/api/v1/audit-export"
 
-// highRiskScope 高危操作（白名單）：任何資源的刪除；安全政策、syslog 設定、稽核證據
+// HighRiskCriteriaVersion 高危判準的版本。判準內容改變時遞增，並補上比對畫面的
+// 口徑說明；簽核快照記下當時的版本，未記錄者視為第一版。
+//
+// 第 2 版：排除保留期限清除、外部登入時沒有角色增減的映射重算，以及同一件事的
+// 無路徑第二列（見 daily_review_mirror.go）。
+const HighRiskCriteriaVersion = 2
+
+// 外部登入時系統重算映射所寫的機器碼（寫入端在 identity 模組，放在錯誤訊息欄）。
+// 四個碼之中，只有「角色映射已套用」可能帶有實際的角色增減，另外判斷
+const (
+	reasonRoleMappingApplied       = "role_mapping_applied"
+	reasonUserGroupMappingApplied  = "user_group_mapping_applied"
+	reasonRoleMappingSourceAttrSet = "role_mapping_source_attr_unset"
+	reasonRoleMappingGroupsUnknown = "role_mapping_groups_unknown"
+)
+
+// routineRecomputeCodes 不論內容一律不計入高危的重算碼
+var routineRecomputeCodes = []string{
+	reasonUserGroupMappingApplied, reasonRoleMappingSourceAttrSet, reasonRoleMappingGroupsUnknown,
+}
+
+// highRiskBaseScope 高危操作（白名單）：任何資源的刪除；安全政策、syslog 設定、稽核證據
 // 匯出三類資源的寫入類動作（建立、更新、刪除），加上同步匯出；使用者帳號的建立與更新。
 //
 // **判準是 action 而非 HTTP 方法**：三類資源的讀取（政策清單、條文定義、syslog 設定、
 // 匯出清單、公鑰、產物下載）與預覽都不改狀態，例行瀏覽不得灌大這個數字。
-// 已固化的簽核快照不重算，口徑只影響此後的即時計數、明細與新簽核
-func highRiskScope(db *gorm.DB, start, end time.Time) *gorm.DB {
+//
+// 例行系統記帳在此以既有欄位排除（升級前後的列同一口徑）：
+//   - 保留期限清除（resource=retention，成功與失敗皆同）。全庫只有清除排程寫這個資源，
+//     請求層的資源推導不會產出它。
+//   - 外部登入時的映射重算：沒有請求路徑、錯誤訊息欄是重算碼的 update/user。
+//     「角色映射已套用」另由 routineRecomputeIDs 逐筆判斷角色是否真的增減。
+//     管理員刪除映射規則或來源所引發的撤權用的是另外的碼，照計。
+func highRiskBaseScope(db *gorm.DB, start, end time.Time) *gorm.DB {
 	// 設定與證據類資源：只有寫入類動作算高危
 	configResources := []model.AuditResource{
 		model.ResourceSecurityPolicy, model.ResourceSyslogSetting, model.ResourceAuditExport,
@@ -70,7 +98,68 @@ func highRiskScope(db *gorm.DB, start, end time.Time) *gorm.DB {
 			configResources, writeActions, previewPaths,
 			model.ResourceAuditExport, model.ActionRead, highRiskSyncExportPath,
 			model.ResourceUser,
-			[]model.AuditAction{model.ActionCreate, model.ActionUpdate})
+			[]model.AuditAction{model.ActionCreate, model.ActionUpdate}).
+		Where("resource <> ?", model.ResourceRetention).
+		Where("NOT (action = ? AND resource = ? AND COALESCE(path, '') = '' AND COALESCE(error_msg, '') IN ?)",
+			model.ActionUpdate, model.ResourceUser, routineRecomputeCodes)
+}
+
+// highRiskScope 高危操作的計數與明細範圍：白名單減去例行系統記帳，再減去逐筆判定的
+// 兩類列——沒有角色增減的映射重算，以及配對得到帶路徑紀錄的鏡像列。
+//
+// 計數、明細、簽核快照（同一交易內）與證據包逐日清單都經這裡，四處同一份結果。
+// 已固化的簽核快照不重算，口徑只影響此後的即時計數、明細與新簽核
+func highRiskScope(db *gorm.DB, start, end time.Time) (*gorm.DB, error) {
+	excluded, err := routineRecomputeIDs(db, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("判定映射重算列: %w", err)
+	}
+	mirrors, err := mirrorExclusions(db, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("配對鏡像列: %w", err)
+	}
+	excluded = append(excluded, mirrors...)
+	scope := highRiskBaseScope(db, start, end)
+	if len(excluded) > mirrorExclusionCap {
+		// 參數上限與查詢成本的保險：寧可多算，也不讓計數失敗
+		log.Printf("[DailyReview] %s 起的單日排除 %d 筆超過上限 %d，本次不排除逐筆判定的列",
+			start.UTC().Format(time.RFC3339), len(excluded), mirrorExclusionCap)
+		return scope, nil
+	}
+	if len(excluded) > 0 {
+		scope = scope.Where("id NOT IN ?", excluded)
+	}
+	return scope, nil
+}
+
+// routineRecomputeIDs 外部登入時「角色映射已套用」但角色沒有實際增減的列（只有映射
+// 依據變動）。細節欄解析不了時照計：寧可多算，不讓角色變動從清單消失
+func routineRecomputeIDs(db *gorm.DB, start, end time.Time) ([]uint, error) {
+	var rows []struct {
+		ID      uint
+		Details string
+	}
+	if err := db.Model(&model.AuditLog{}).
+		Where("created_at >= ? AND created_at < ?", start.UTC(), end.UTC()).
+		Where("action = ? AND resource = ? AND COALESCE(path, '') = '' AND error_msg = ?",
+			model.ActionUpdate, model.ResourceUser, reasonRoleMappingApplied).
+		Select("id, COALESCE(details, '') AS details").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	var out []uint
+	for _, r := range rows {
+		var d struct {
+			Added   []string `json:"roles_added"`
+			Removed []string `json:"roles_removed"`
+		}
+		if err := json.Unmarshal([]byte(r.Details), &d); err != nil {
+			continue
+		}
+		if len(d.Added) == 0 && len(d.Removed) == 0 {
+			out = append(out, r.ID)
+		}
+	}
+	return out, nil
 }
 
 // alertScope 觸發時刻落在該日起訖內的告警
@@ -118,6 +207,9 @@ type DailyReviewSnapshot struct {
 	// HighRiskOps 高危操作數（來源：操作日誌）
 	HighRiskOps       *int64 `json:"high_risk_ops"`
 	HighRiskOpsSource string `json:"high_risk_ops_source"`
+	// HighRiskCriteria 高危操作數所依據的判準版本（見 HighRiskCriteriaVersion）；
+	// 升級前的快照沒有這個鍵，解析後補為 1
+	HighRiskCriteria int `json:"high_risk_criteria"`
 	// UnreviewedAlerts 未審閱告警數；AlertsTotal／Benign／Escalated 為該日告警總數與處置分布
 	UnreviewedAlerts *int64 `json:"unreviewed_alerts"`
 	AlertsTotal      *int64 `json:"alerts_total"`
@@ -151,13 +243,20 @@ func countOrNull(q *gorm.DB, status string) (*int64, error) {
 func computeSnapshot(db *gorm.DB, date string, start, end time.Time, watermarks map[model.RetentionClass]model.AuditRetentionWatermark) (*DailyReviewSnapshot, error) {
 	logStatus := sourceStatus(watermarks, model.RetentionClassAuditLog, start, end)
 	alertStatus := sourceStatus(watermarks, model.RetentionClassCommandAlert, start, end)
-	snap := &DailyReviewSnapshot{Date: date, LoginFailuresSource: logStatus, HighRiskOpsSource: logStatus, AlertsSource: alertStatus}
+	snap := &DailyReviewSnapshot{Date: date, LoginFailuresSource: logStatus, HighRiskOpsSource: logStatus, AlertsSource: alertStatus,
+		HighRiskCriteria: HighRiskCriteriaVersion}
 	var err error
 	if snap.LoginFailures, err = countOrNull(loginFailureScope(db, start, end), logStatus); err != nil {
 		return nil, fmt.Errorf("統計登入失敗數: %w", err)
 	}
-	if snap.HighRiskOps, err = countOrNull(highRiskScope(db, start, end), logStatus); err != nil {
-		return nil, fmt.Errorf("統計高危操作數: %w", err)
+	if logStatus != model.DailyReviewSourcePurged {
+		scope, err := highRiskScope(db, start, end)
+		if err != nil {
+			return nil, err
+		}
+		if snap.HighRiskOps, err = countOrNull(scope, logStatus); err != nil {
+			return nil, fmt.Errorf("統計高危操作數: %w", err)
+		}
 	}
 	if snap.UnreviewedAlerts, err = countOrNull(alertScope(db, start, end).Where("reviewed_at IS NULL"), alertStatus); err != nil {
 		return nil, fmt.Errorf("統計未審閱告警數: %w", err)
@@ -209,6 +308,11 @@ type DailyReviewEventItem struct {
 	ClientIP  string              `json:"client_ip"`
 	Path      string              `json:"path"`
 	ErrorMsg  string              `json:"error_msg"`
+	// Details 只供後端分類原因，不出站
+	Details string `gorm:"column:details" json:"-"`
+	// ReasonCode／ReasonParams 原因碼與參數（ClassifyAuditReason）；碼為空時畫面照舊顯示 error_msg 或 path
+	ReasonCode   string            `gorm:"-" json:"reason_code,omitempty"`
+	ReasonParams map[string]string `gorm:"-" json:"reason_params,omitempty"`
 }
 
 // DailyReviewEventList 一類事件的明細：最早的 20 筆與目前可查的總數。
@@ -229,9 +333,16 @@ func eventList(scope *gorm.DB, status string) (DailyReviewEventList, error) {
 	}
 	out.Total = total
 	if err := scope.Session(&gorm.Session{}).
-		Select("id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg").
+		Select("id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg, COALESCE(details, '') AS details").
 		Order("created_at ASC, id ASC").Limit(DailyReviewDetailLimit).Scan(&out.Items).Error; err != nil {
 		return out, err
+	}
+	for i := range out.Items {
+		it := &out.Items[i]
+		it.ReasonCode, it.ReasonParams = ClassifyAuditReason(AuditReasonInput{
+			Action: string(it.Action), Resource: string(it.Resource), Status: string(it.Status),
+			ErrorMsg: it.ErrorMsg, Details: it.Details, Path: it.Path,
+		})
 	}
 	return out, nil
 }
@@ -253,7 +364,14 @@ func parseSnapshot(raw string) (map[string]any, error) {
 	return out, nil
 }
 
-// jsonUnmarshalSnapshot 把簽核列的快照解回結構（舊制快照的整數計數同樣解得出）
+// jsonUnmarshalSnapshot 把簽核列的快照解回結構（舊制快照的整數計數同樣解得出）。
+// 沒有記錄判準版本的舊快照視為第一版
 func jsonUnmarshalSnapshot(raw string, v *DailyReviewSnapshot) error {
-	return json.Unmarshal([]byte(raw), v)
+	if err := json.Unmarshal([]byte(raw), v); err != nil {
+		return err
+	}
+	if v.HighRiskCriteria == 0 {
+		v.HighRiskCriteria = 1
+	}
+	return nil
 }

@@ -433,3 +433,50 @@ SHALL NOT 使用「container hardened」或「最小權限 runtime」等未逐�
 
 - **WHEN** 任一份產品 nginx 設定缺少 `server_tokens off;`，或其值被改為 `off` 以外
 - **THEN** 守衛測試 MUST 失敗並指出是哪一份設定
+
+### Requirement: 前端入口頁不被快取、帶雜湊資源長快取
+
+前端容器的站台設定 SHALL 讓瀏覽器在每次載入時向伺服器確認入口頁是否更新：`index.html` 本身，以及單一頁面應用的路由回退（任何不對應實體檔案、改回應入口頁的路徑）的成功回應，SHALL 帶 `Cache-Control: no-cache`。建置產物中檔名帶內容雜湊的資源（`/assets/` 之下）SHALL 帶一年長快取並標為不可變（`public, max-age=31536000, immutable`）。檔名不帶內容雜湊的靜態檔（建置時原樣複製到站台根目錄者，例如第三方腳本與品牌圖檔）SHALL NOT 標為不可變，SHALL 帶 `Cache-Control: no-cache`，以伺服器的驗證標頭換取 304 回應。往後端轉發的 API 與 WebSocket 路徑 SHALL NOT 由這份站台設定附加 `Cache-Control`，快取語義由後端回應決定。
+
+快取標頭 SHALL 只加在成功與重新導向類的回應上；錯誤回應（例如雜湊資源不存在時）SHALL NOT 帶長快取，避免瀏覽器把一次錯誤記住一年。
+
+#### Scenario: 升級後入口頁立即生效
+
+- **WHEN** 部署方升級映像後，使用者在既有分頁重新整理或直接輸入任一前端路由的網址
+- **THEN** 回應帶 `Cache-Control: no-cache`，瀏覽器向伺服器確認並取得新版入口頁，新入口頁引用的是新版的雜湊資源
+
+#### Scenario: 雜湊資源長快取
+
+- **WHEN** 瀏覽器請求 `/assets/` 之下一個存在的建置產物
+- **THEN** 回應帶 `Cache-Control: public, max-age=31536000, immutable`
+
+#### Scenario: 不帶雜湊的檔案不標為不可變
+
+- **WHEN** 瀏覽器請求站台根目錄下一個檔名不帶內容雜湊的靜態檔
+- **THEN** 回應帶 `Cache-Control: no-cache`，不含 `immutable`
+
+#### Scenario: API 回應不被站台設定加上快取標頭
+
+- **WHEN** 瀏覽器經前端容器請求 `/api/` 之下的端點
+- **THEN** 回應的 `Cache-Control` 只來自後端，前端站台設定不另外附加
+
+### Requirement: 產品 nginx 設定的安全標頭不得在 location 層級遺失
+
+隨產品出貨的 nginx 設定——前端容器的站台設定與內建 TLS 代理的範本——在 server 層級宣告的回應安全標頭 SHALL 套用到該 server 的全部回應，包括靜態腳本、樣式與圖檔。nginx 的 `add_header` 只在當層沒有任何 `add_header` 時才繼承上一層的宣告；故兩份設定的 `location` 區塊內 SHALL NOT 出現 `add_header`，需要依路徑變化的標頭值 SHALL 以 http 層級的 `map` 產生變數、在 server 層級以單一 `add_header` 輸出。前端容器站台設定 SHALL 對全部回應輸出 `X-Content-Type-Options: nosniff` 與 `X-Frame-Options: SAMEORIGIN`。
+
+日常測試 SHALL 含一道讀取兩份設定的守衛：任一 `location` 區塊內出現 `add_header` 即失敗並指出設定檔與 location；前端站台設定的 server 層級缺少上述兩個安全標頭、或缺少入口頁 `no-cache` 與雜湊資源長快取的對應規則，亦失敗。守衛 SHALL 附正負例，證明註解掉的指令不算數、巢狀區塊內的 `add_header` 會被抓到。部署方自行加在前方的代理層不在本要求範圍內。
+
+#### Scenario: 腳本回應帶安全標頭
+
+- **WHEN** 瀏覽器經前端容器請求 `/assets/` 之下的 JavaScript 檔
+- **THEN** 回應同時帶 `X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN` 與長快取標頭
+
+#### Scenario: 守衛擋下 location 內的 add_header
+
+- **WHEN** 任一份產品 nginx 設定在某個 `location` 區塊內加入 `add_header`
+- **THEN** 守衛測試 MUST 失敗，訊息指出是哪一份設定與哪一個 location
+
+#### Scenario: 守衛擋下快取規則退化
+
+- **WHEN** 前端站台設定的入口頁 `no-cache` 規則或 `/assets/` 長快取規則被移除，或不帶雜湊的根目錄檔被改回不可變長快取
+- **THEN** 守衛測試 MUST 失敗並指出缺少或錯誤的規則

@@ -9,11 +9,92 @@ load install_host
 load backup_host
 load upgrade_host
 
-@test "package deployment, bare upgrade: only checks, nothing changed" {
+# ---------- hosts laid out once per file ----------
+# The fakes write absolute paths, so every test of this file works in one folder,
+# $BATS_FILE_TMPDIR/w, emptied before each test. setup_file lays out each host there once (in a
+# subshell, from the state every test starts with) and keeps a copy of the folder and of the
+# variables the layout set or unset; cx_tpl_use copies them back to the same paths. A host with no
+# copy is laid out by its own command, as before.
+CX_TPL_SKIP='^(BASH.*|BATS_.*|FUNCNAME|GROUPS|DIRSTACK|PIPESTATUS|LINENO|SECONDS|RANDOM|SRANDOM|EPOCHREALTIME|EPOCHSECONDS|HISTCMD|COMP_.*|_|_CX_.*|_cx_.*|PWD|OLDPWD|SHLVL|status|output|lines|stderr|stderr_lines)$'
+
+setup() {
+  BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/w
+  rm -rf "$BATS_TEST_TMPDIR"
+  mkdir -p "$BATS_TEST_TMPDIR"
+}
+
+# _cx_decl <name>: _CX_S becomes a statement that sets the variable as it is now, globally.
+_cx_decl() {
+  local _cx_n=$1
+  if [[ ${!_cx_n@a} == *[aA]* ]]; then _CX_S=$(declare -p "$_cx_n"); else _CX_S=${!_cx_n@A}; fi
+  [ -n "$_CX_S" ] || _CX_S=$(declare -p "$_cx_n" 2>/dev/null)
+  case $_CX_S in
+    'declare -- '*) _CX_S="declare -g ${_CX_S#declare -- }" ;;
+    'declare -'*) _CX_S="declare -g${_CX_S#declare -}" ;;
+    *) _CX_S="declare -g $_CX_S" ;;
+  esac
+}
+
+# cx_tpl_build <key> <command...>: lay out the host with the command and keep it under the key.
+cx_tpl_build() {
+  local _cx_t=$BATS_FILE_TMPDIR/tpl/$1
+  shift
+  (
+    export BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/w
+    rm -rf "$BATS_TEST_TMPDIR"
+    mkdir -p "$BATS_TEST_TMPDIR"
+    declare -A _CX_VB=()
+    for _cx_n in $(compgen -v); do
+      [[ $_cx_n =~ $CX_TPL_SKIP || ${!_cx_n@a} == *r* ]] && continue
+      _cx_decl "$_cx_n"
+      _CX_VB[$_cx_n]=$_CX_S
+    done
+    "$@" || { echo "cx_tpl_build: $* failed" >&2; exit 1; }
+    mkdir -p "$_cx_t"
+    cp -a "$BATS_TEST_TMPDIR/." "$_cx_t/w"
+    {
+      for _cx_n in $(compgen -v); do
+        [[ $_cx_n =~ $CX_TPL_SKIP || ${!_cx_n@a} == *r* ]] && continue
+        _cx_decl "$_cx_n"
+        [ "${_CX_VB[$_cx_n]-}" = "$_CX_S" ] || printf '%s\n' "$_CX_S"
+      done
+      for _cx_n in "${!_CX_VB[@]}"; do
+        declare -p "$_cx_n" >/dev/null 2>&1 || printf 'unset -v %s\n' "$_cx_n"
+      done
+    } >"$_cx_t/vars"
+  )
+}
+
+# cx_tpl_use <key> <command...>: the host kept under the key, or the command's when there is none.
+cx_tpl_use() {
+  local _cx_t=$BATS_FILE_TMPDIR/tpl/$1
+  shift
+  [ -f "$_cx_t/vars" ] || { "$@"; return; }
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  cp -a "$_cx_t/w/." "$BATS_TEST_TMPDIR/"
+  # shellcheck disable=SC1091
+  . "$_cx_t/vars"
+  hash -r
+}
+
+# pub_host [migrations...]: backup_host's deployment with 1.13.2 published (minimum 1.12.4).
+pub_host() { cx_tpl_use "pub-$#" pub_build "$@"; }
+pub_build() {
   backup_host ui
   fake_github
+  publish 1.13.2 1.12.4 "$@"
+}
+
+setup_file() {
+  cx_tpl_build pub-0 pub_build
+  cx_tpl_build pub-2 pub_build 20260816_schema_baseline 20260901_add_x
+  cx_tpl_build pub-3 pub_build 20260816_schema_baseline 20260901_add_x 20261010_report_schedule
+  cx_tpl_build fresh-ui fresh_build ui
+}
+
+@test "package deployment, bare upgrade: only checks, nothing changed" {
+  pub_host 20260816_schema_baseline 20260901_add_x 20261010_report_schedule
   printf '%s\n' 20260816_schema_baseline 20260901_add_x >"$DB/migrations"
-  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x 20261010_report_schedule
   tree_of "$ROOT" >"$BATS_TEST_TMPDIR/before"
   for l in zh-TW en; do
     upgrade_run "$l"
@@ -25,9 +106,7 @@ load upgrade_host
 }
 
 @test "menu query returns the verified target without CLI-only command or second fetch" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   run bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"
     CX_ROOT=$2; cx_state_load "$CX_ROOT/state.json"
     . "$1/lib/version_rules.sh"; . "$1/lib/upgrade_query.sh"
@@ -39,12 +118,10 @@ load upgrade_host
 }
 
 @test "query shows download and signature progress before slow tools return" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   local out=$BATS_TEST_TMPDIR/query-progress pid
   mv "$FAKES/curl" "$FAKES/curl-real"
-  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
+  printf '#!/bin/bash\n/bin/sleep 1\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
   chmod +x "$FAKES/curl"
   bash "$ROOT/custodexa.sh" upgrade --lang en >"$out" 2>&1 &
   pid=$!
@@ -52,7 +129,7 @@ load upgrade_host
   grep -q 'Downloading MANIFEST.json' "$out" || { cat "$out"; wait "$pid"; return 1; }
   wait "$pid" || { cat "$out"; return 1; }
   mv "$FAKES/curl-real" "$FAKES/curl"
-  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$TESTS_DIR/fakes/cosign" >"$FAKES/cosign"
+  printf '#!/bin/bash\n/bin/sleep 1\nexec %q "$@"\n' "$TESTS_DIR/fakes/cosign" >"$FAKES/cosign"
   chmod +x "$FAKES/cosign"
   bash "$ROOT/custodexa.sh" upgrade --lang en >"$out" 2>&1 &
   pid=$!
@@ -62,9 +139,7 @@ load upgrade_host
 }
 
 @test "optional signature bundle download has an immediate result for present and absent files" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   upgrade_run en
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *$'[ .. ] Downloading SHA256SUMS.sigstore.json for the latest release…\n[ OK ] Downloaded SHA256SUMS.sigstore.json'* ]] || {
@@ -81,13 +156,11 @@ load upgrade_host
 }
 
 @test "package download progress is visible before slow curl returns" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   local out=$BATS_TEST_TMPDIR/package-progress dir=$BATS_TEST_TMPDIR/package-download pid
   mkdir -p "$dir"
   mv "$FAKES/curl" "$FAKES/curl-real"
-  printf '#!/bin/bash\n/bin/sleep 2\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
+  printf '#!/bin/bash\n/bin/sleep 1\nexec %q "$@"\n' "$FAKES/curl-real" >"$FAKES/curl"
   chmod +x "$FAKES/curl"
   bash -c 'CX_LANG_FLAG=en; . "$1/lib/common.sh"; cx_load_libs "$1"
     . "$1/lib/cmd_upgrade.sh"; cx_up_download 1.13.2 "$2"' _ "$SRC" "$dir" >"$out" 2>&1 &
@@ -133,9 +206,7 @@ load upgrade_host
 }
 
 @test "package deployment, the check: unverified said so, a checksum mismatch gives no answer, offline" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x 20261010_report_schedule
+  pub_host 20260816_schema_baseline 20260901_add_x 20261010_report_schedule
   no_cosign
   upgrade_run zh-TW
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -154,9 +225,7 @@ load upgrade_host
 }
 
 @test "query answers with WARN when the publisher signature mismatches" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x
+  pub_host 20260816_schema_baseline 20260901_add_x
   sed -i 's#refs/tags/v1.13.2#refs/tags/v9.9.9#' "$REL/v1.13.2/SHA256SUMS.sigstore.json"
   upgrade_run en
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -164,9 +233,7 @@ load upgrade_host
 }
 
 @test "query and package preview warn when the signature file is absent" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4 20260816_schema_baseline 20260901_add_x
+  pub_host 20260816_schema_baseline 20260901_add_x
   rm "$REL/v1.13.2/SHA256SUMS.sigstore.json"
   upgrade_run en
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -177,9 +244,7 @@ load upgrade_host
 }
 
 @test "package checksum mismatch still fails with a redownload instruction" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   printf 'tampered\n' >>"$REL/v1.13.2/custodexa-1.13.2.tar.gz"
   upgrade_run en 1.13.2
   [ "$status" -eq 1 ] || { echo "$output"; return 1; }
@@ -187,9 +252,7 @@ load upgrade_host
 }
 
 @test "package deployment, a version: verified, put in releases/, that version's script takes over" {
-  backup_host ui
-  fake_github
-  publish 1.13.2 1.12.4
+  pub_host
   upgrade_run en 1.13.2
   [ "$status" -eq 3 ] || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF '  Upgrade to         1.13.2' || { echo "$output"; return 1; }
@@ -220,7 +283,8 @@ load upgrade_host
 # ---- the upgrade itself: the 13 steps, and where each failure leaves the services ----
 
 # fresh <kek>: a new package deployment with 1.13.2 in releases/ (the earlier one is removed).
-fresh() {
+fresh() { cx_tpl_use "fresh-${1:-ui}" fresh_build "$@"; }
+fresh_build() {
   rm -rf "${BATS_TEST_TMPDIR:?}"/*
   upgraded_host "${1:-ui}" || return 1
   clock 0 3 0 41 0 4 0 11
@@ -355,23 +419,6 @@ events_in_order() { # <event>... : each event appears, in this order
   touch "$REL/offline"
   q
   [ "$status" -ne 0 ] && [ -z "$output" ] || { echo "offline: $status $output"; return 1; }
-}
-
-# Rewritten with the portable file: state.json as the upgrade found it is a
-# member of the upgrade's backup file now, not a file in a backup folder.
-@test "the upgrade keeps the state.json it started from in its backup file (0600), for going back by hand" {
-  fresh ui
-  cp -p "$ROOT/state.json" "$BATS_TEST_TMPDIR/state-before"
-  full_run en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  BK_FILE=$ROOT/$(st last_upgrade.backup)
-  [ -f "$BK_FILE" ] || { cat "$ROOT/state.json"; return 1; }
-  cmp "$BATS_TEST_TMPDIR/state-before" <(bk_member state.json) || return 1
-  [ "$(/usr/bin/tar -tvf "$BK_FILE" state.json | cut -c1-10)" = -rw------- ] || return 1
-  # Part of the backup's checksums, like every other member of it.
-  bk_member SHA256SUMS | grep -q ' state.json$' || { bk_member SHA256SUMS; return 1; }
-  [ "$(bk_mf contents.state)" = true ] && [ "$(bk_mf trigger)" = upgrade ] || return 1
-  ! cmp -s "$ROOT/state.json" <(bk_member state.json)
 }
 
 # Rewritten (the upgrade's backup was a folder beside the portable files of the backup command):

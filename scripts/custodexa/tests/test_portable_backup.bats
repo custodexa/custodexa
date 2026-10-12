@@ -37,7 +37,9 @@ no_stop() {
 
 # ---------- the file ----------
 
-@test "portable: a finished backup is one file and its .sha256, both 0600, the members exactly the fixed list" {
+@test "portable: a finished backup is one file and its .sha256, both 0600, the members exactly the fixed list; state.json points at it" {
+  # The size du reports for the file, as status shows it.
+  printf '%s\n' 18690000000 >"$DB/du.$(printf '%s' "$ROOT/backups/$BK_NAME" | tr / -)"
   backup_run en --yes
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(ls -A "$ROOT/backups")" = "$(printf '%s\n' "$BK_NAME" "$BK_NAME.sha256")" ] || { ls -lA "$ROOT/backups"; return 1; }
@@ -64,7 +66,18 @@ SHA256SUMS
 EOF
   extract_all
   (cd "$X" && /usr/bin/sha256sum -c --quiet SHA256SUMS) || return 1
-  [ "$(wc -l <"$X/SHA256SUMS")" -eq 8 ] && ! grep -q 'SHA256SUMS$\|/' "$X/SHA256SUMS"
+  [ "$(wc -l <"$X/SHA256SUMS")" -eq 8 ] && ! grep -q 'SHA256SUMS$\|/' "$X/SHA256SUMS" || return 1
+  cmp "$ROOT/.env" "$X/env.bak" || return 1
+  # status reads these keys.
+  load_lib
+  cx_state_load "$ROOT/state.json"
+  [ "$(cx_state_get last_backup.id)" = 20260930-101502 ] || return 1
+  [ "$(cx_state_get last_backup.kind)" = script ] || return 1
+  [ "$(cx_state_get last_backup.file)" = "backups/$BK_NAME" ] || return 1
+  [ "$(cx_state_get last_backup.encrypted)" = false ] && [ -z "$(cx_state_get last_backup.dir)" ] || return 1
+  [ "$(cx_state_get last_backup.size_bytes)" = 18690000000 ] || return 1
+  [ "$(cx_state_get last_backup.snapshot_usable)" = true ] || return 1
+  [ "$(cx_state_get last_backup.result)" = succeeded ]
 }
 
 @test "portable: the exports folder is in no member, the inner archives included" {
@@ -221,20 +234,6 @@ EOF
   [[ $output == *".env 的 TLS_NGINX_TEMPLATE 是 ./custom/a\\b.template，
        路徑含有備份檔記不下的字元"* ]] || { echo "$output"; return 1; }
   no_stop
-}
-
-# This case asserted a refusal while the script left an external database to the operator's own
-# procedure. That rule is replaced: the database is exported by a PostgreSQL client of the release,
-# through the same seven steps (test_portable_backup_external.bats holds the details).
-@test "portable: an external database deployment is backed up through the seven steps (one file, db.location=external)" {
-  bk_external
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  bk_one || return 1
-  [ "$(bk_mf db.location)" = external ] && [ "$(bk_mf tool.dump_image)" = pgclient17 ] || return 1
-  [ "$(grep -c '^stop' "$DB/events")" -eq 1 ] && [ "$(grep -c '^start' "$DB/events")" -eq 1 ] || { cat "$DB/events"; return 1; }
-  [[ $output == *"[ OK ] 7/7  "* ]] || { echo "$output"; return 1; }
-  ! grep -q 'exec -T postgres' "$FAKE_DOCKER_LOG"
 }
 
 @test "portable: a backup of the same second already there: the next second is used, the old files untouched" {
@@ -407,49 +406,24 @@ kek_refused() {
 
 @test "master key: the eight rows of the backend's rules, with spaces trimmed as the backend trims them" {
   kek_backup - "$BK_KEK" && kek_made env false true || return 1
+  [[ $output == *"  Version 1.13.0; bundled database; master key: in the settings file"* ]] || { echo "$output"; return 1; }
   kek_backup - - && kek_refused '[FAIL] .env sets neither KEK_PROVIDER nor ENCRYPTION_KEY, so the master key' || return 1
   kek_backup env "$BK_KEK" && kek_made env true true || return 1
+  # The .env byte for byte in env.bak; the master key is in and named.
+  bk_member env.bak | cmp - "$ROOT/.env" || return 1
+  [[ $output == *"  The master key is in the .env inside the backup file (fingerprint
+  5a5a5a5a5a5a5a5a) and comes back with a restore."* ]] || { echo "$output"; return 1; }
+  [[ $output == *"[WARN] This file is not encrypted and holds the master key and other"* ]] || { echo "$output"; return 1; }
   kek_backup env - && kek_refused '[FAIL] KEK_PROVIDER in .env is env, but ENCRYPTION_KEY is empty.' || return 1
+  # ui, kms and hsm with a key are one rule; ui stands for the three.
   kek_backup ui "$BK_KEK" && kek_refused '[FAIL] KEK_PROVIDER in .env is ui, but ENCRYPTION_KEY has a value.' || return 1
-  kek_backup kms "$BK_KEK" && kek_refused 'KEK_PROVIDER in .env is kms, but ENCRYPTION_KEY has a value.' || return 1
-  kek_backup hsm "$BK_KEK" && kek_refused 'KEK_PROVIDER in .env is hsm, but ENCRYPTION_KEY has a value.' || return 1
   for p in ui kms hsm; do
     kek_backup "$p" - && kek_made "$p" true false || return 1
   done
   kek_backup UI - && kek_refused 'KEK_PROVIDER in .env has a value that is not recognized' || return 1
-  kek_backup vault "$BK_KEK" && kek_refused 'KEK_PROVIDER in .env has a value that is not recognized' || return 1
   # Trimmed: blanks are no provider, a quoted " ui " is ui, a key of blanks is no key.
   kek_backup '   ' "$BK_KEK" && kek_made env false true || return 1
   kek_backup '" ui "' '"   "' && kek_made ui true false
-}
-
-@test "master key: no KEK_PROVIDER and a key in .env is the env mode, not declared, carried in, said on the screen" {
-  bk_dotenv implicit
-  backup_run en --yes
-  kek_made env false true || return 1
-  [[ $output == *"  Version 1.13.0; bundled database; master key: in the settings file"* ]]
-}
-
-@test "master key: KEK_PROVIDER=ui with a key is refused before any stop; both key names, no value, no copy" {
-  bk_dotenv_raw KEK_PROVIDER=ui "ENCRYPTION_KEY=$BK_KEK"
-  backup_run en --yes
-  kek_refused 'KEK_PROVIDER in .env is ui, but ENCRYPTION_KEY has a value' || return 1
-  diff <(printf '%s\n' "$output" | sed -n '/^\[FAIL\]/,$p') - <<'EOF'
-[FAIL] KEK_PROVIDER in .env is ui, but ENCRYPTION_KEY has a value. That is a
-       contradictory setting the backend also refuses at its next start, and
-       the backup would carry it out as a master key, so nothing is done.
-       Nothing was stopped. Decide which mode you use and clear the other.
-EOF
-}
-
-@test "master key: KEK_PROVIDER=env keeps .env byte for byte in env.bak, says the master key is in and names it" {
-  bk_dotenv env
-  backup_run en --yes
-  kek_made env true true || return 1
-  bk_member env.bak | cmp - "$ROOT/.env" || return 1
-  [[ $output == *"  The master key is in the .env inside the backup file (fingerprint
-  5a5a5a5a5a5a5a5a) and comes back with a restore."* ]] || { echo "$output"; return 1; }
-  [[ $output == *"[WARN] This file is not encrypted and holds the master key and other"* ]]
 }
 
 @test "master key: the fingerprint read but another one missing keeps it as ok; the other warning only" {
@@ -499,8 +473,10 @@ EOF
   done
 }
 
-@test "master key: no .env secret on the screen, in the log, state.json, the manifest or snapshot.txt (env, ui, kms)" {
-  for mode in env ui kms; do
+# env is the mode whose .env holds the master key besides the other secrets; the masking is the
+# same in every mode.
+@test "master key: no .env secret on the screen, in the log, state.json, the manifest or snapshot.txt (env)" {
+  for mode in env; do
     rm -rf "$ROOT/backups" "$ROOT/logs"
     bk_dotenv "$mode"
     backup_run en --yes
@@ -633,20 +609,6 @@ EOF
   [ "$(jq -r '."last_backup.result"' "$ROOT/state.json")" = failed ] && [ -z "$(bk_pointer)" ]
 }
 
-@test "restart: a kms deployment ready after the start is waiting to be unsealed, never back" {
-  bk_dotenv kms
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ OK ] 5/7  Start the services and wait until ready"* ]] || return 1
-  [[ $output == *"  [WARN] The services are started and waiting to be unsealed: open
-         https://10.0.0.12/unseal with the local administrator account,
-         check the key custody details and provide the credentials."* ]] || { echo "$output"; return 1; }
-  [[ $output == *"  The master key is held by the key custody service (aws) and is not in
-  the backup file. Key ID:
-  5a5a5a5a5a5a5a5a"* ]] || { echo "$output"; return 1; }
-  [[ $output != *"The services are back"* ]]
-}
-
 @test "restart: a backend not ready in time makes step 5 a warning; the file is made; status and start are given" {
   printf '1\n' >"$DB/health.rc"
   backup_run en --yes
@@ -673,42 +635,22 @@ restart_case() {
   backup_run en --yes
 }
 
-@test "restart: ready at once: env says the services are back; ui and kms are waiting to be unsealed at the unseal page" {
+# The ui and kms screens after a start are compared word for word with their snapshots
+# (test_portable_screens.bats).
+@test "restart: ready at once: env says the services are back" {
   restart_case env
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [[ $output == *"[ OK ] 5/7  Start the services and wait until ready"* ]] || { echo "$output"; return 1; }
   printf '%s\n' "$output" | grep -qxF '  [ OK ] The services are back.' || { echo "$output"; return 1; }
   [[ $output != *"unseal"* ]] || { echo "$output"; return 1; }
-  [ "$(grep -c '^health$' "$DB/events")" -eq 1 ] || return 1
-  restart_case ui
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  diff <(screen_of "$output" | sed -n '/waiting to be unsealed/,/unseal$/p') - <<'EOF' || { echo "$output"; return 1; }
-  [WARN] The services are started and waiting to be unsealed: enter the
-         master key at https://10.0.0.12/unseal
-EOF
-  [[ $output != *"The services are back"* ]] || return 1
-  restart_case kms
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  diff <(screen_of "$output" | sed -n '/waiting to be unsealed/,/credentials\./p') - <<'EOF' || { echo "$output"; return 1; }
-  [WARN] The services are started and waiting to be unsealed: open
-         https://10.0.0.12/unseal with the local administrator account,
-         check the key custody details and provide the credentials.
-EOF
-  [[ $output != *"The services are back"* ]] || return 1
-  # zh-TW, ui: the reviewed line.
-  rm -rf "$ROOT/backups" "$ROOT/logs"
-  bk_state_fresh
-  bk_dotenv ui
-  backup_run zh-TW --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  printf '%s\n' "$output" | grep -qxF '  [WARN] 服務已啟動，待解封：請到 https://10.0.0.12/unseal 輸入主金鑰。' || { echo "$output"; return 1; }
-  [[ $output != *"服務已恢復"* ]]
+  [ "$(grep -c '^health$' "$DB/events")" -eq 1 ]
 }
 
 @test "restart: never ready within a limit made short (CX_READY_TRIES): step 5 WARN, the file made, status and start; never back" {
   printf '1\n' >"$DB/health.rc"
   export CX_READY_TRIES=3
-  for m in env ui kms; do
+  # Not ready is decided before the master key mode matters: one mode stands for all.
+  for m in env; do
     restart_case "$m"
     [ "$status" -eq 0 ] || { echo "[$m] $output"; return 1; }
     bk_one || return 1

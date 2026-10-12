@@ -8,8 +8,10 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_engine_host
-setup() {
-  rs_engine_host
+setup_file() { rs_host_once flow flow_host; }
+setup() { rs_host_restore flow; }
+flow_host() {
+  rs_engine_host || return 1
   # tls-init keeps the restored certificate authority and writes only the missing server leaf;
   # its container runs the release's openssl image (the other services run the postgres one).
   /usr/bin/mv "$FAKE_DOCKER_REPLAY/hook" "$FAKE_DOCKER_REPLAY/flow-base"

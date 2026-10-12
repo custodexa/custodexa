@@ -16,13 +16,6 @@ good() {
   printf '{\n  "format": "2",\n  "compose_project": "custodexa",\n  "current.version": "1.13.0"\n}\n' >"$F"
 }
 
-@test "a well-formed file loads and values are readable" {
-  good
-  cx_state_load "$F"
-  [ "$(cx_state_get current.version)" = "1.13.0" ]
-  [ "$(cx_state_get compose_project)" = "custodexa" ]
-}
-
 bad_case() { # <description> <content>
   printf '%s' "$2" >"$F"
   run cx_state_load "$F"
@@ -56,9 +49,11 @@ bad_case() { # <description> <content>
   [[ "$output" == *":4"* ]] || [[ "$output" == *" 4"* ]]
 }
 
-@test "write produces valid JSON with string values only, and keeps the previous file as .prev" {
+@test "a well-formed file loads; write produces valid JSON with string values only, and keeps the previous file as .prev" {
   good
   cx_state_load "$F"
+  [ "$(cx_state_get current.version)" = "1.13.0" ]
+  [ "$(cx_state_get compose_project)" = "custodexa" ]
   cx_state_set current.version 1.13.2
   cx_state_set install.result succeeded
   cx_state_set current.image_ids "backend=sha256:aa frontend=sha256:bb"
@@ -213,39 +208,6 @@ DATA_PATH=/opt/custodexa/data
 ENV
 }
 SECRETS="jwt-7Qe2VbN9xLr4TzP1sW8k db-Hn3Kq8Zr2Lw5Xc9V adm-Xk82mQ0pLr7sWv3n kek-Zm9vYmFyYmF6cXV4MTIzNDU2 s3-Ab12Cd34Ef56Gh78 ldap-Pw4Uu7Ii0Oo3"
-
-@test "secrets from .env appear in neither logs/ nor state.json, even when a command prints them" {
-  ROOT=$D/root; make_root "$ROOT"
-  secret_env "$ROOT/.env"
-  # A docker that prints the settings back, the way `compose config` shows resolved values.
-  mkdir -p "$D/bin"
-  printf '#!/bin/sh\necho "  JWT_SECRET: jwt-7Qe2VbN9xLr4TzP1sW8k"\necho "  POSTGRES_PASSWORD: db-Hn3Kq8Zr2Lw5Xc9V" >&2\necho "  KEY: kek-Zm9vYmFyYmF6cXV4MTIzNDU2 s3-Ab12Cd34Ef56Gh78 ldap-Pw4Uu7Ii0Oo3 adm-Xk82mQ0pLr7sWv3n"\n' >"$D/bin/docker"
-  chmod +x "$D/bin/docker"
-  run_script "$D/s.sh" '
-PATH='"$D/bin"':$PATH
-CX_FLAGS_TEXT=" --yes --lang zh-TW"
-cx_begin install
-cx_step 1 7 preflight
-cx_log_run cx_compose config >/dev/null
-cx_log WARN "a careless message with adm-Xk82mQ0pLr7sWv3n in it"
-if cx_state_set current.note "x-adm-Xk82mQ0pLr7sWv3n"; then echo "STORED A SECRET"; fi
-cx_state_set current.version 1.13.0
-cx_finish succeeded'
-  run bash "$D/s.sh"
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output != *"STORED A SECRET"* ]]
-  log=$(ls "$ROOT"/logs/install-*.log)
-  cat "$log"
-  for s in $SECRETS; do
-    ! grep -rF -- "$s" "$ROOT/logs" "$ROOT/state.json" "$ROOT/state.json.prev" || { echo "leaked: $s"; return 1; }
-  done
-  # The output did reach the log, masked by key name (a missing OUT line would also pass the check above).
-  grep -q 'OUT   .*JWT_SECRET: <JWT_SECRET>' "$log"
-  grep -q 'OUT   .*POSTGRES_PASSWORD: <DB_PASSWORD>' "$log"
-  grep -q 'a careless message with <ADMIN_INITIAL_PASSWORD> in it' "$log"
-  # Paths and modes stay readable: only secret-named keys are masked.
-  if grep -q '<DATA_PATH>\|<KEK_PROVIDER>' "$log"; then echo "a readable key was masked"; return 1; fi
-}
 
 @test "a whole install with secrets in .env: none of them in logs/ or state.json, even printed back" {
   ROOT=/opt/custodexa

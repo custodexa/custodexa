@@ -73,10 +73,10 @@ type AuditLogFilter struct {
 
 // AuditLogListResult 審計日誌列表結果
 type AuditLogListResult struct {
-	Data  []*model.AuditLog `json:"data"`
-	Total int64             `json:"total"`
-	Page  int               `json:"page"`
-	Size  int               `json:"page_size"`
+	Data  []AuditLogView `json:"data"`
+	Total int64          `json:"total"`
+	Page  int            `json:"page"`
+	Size  int            `json:"page_size"`
 }
 
 // AuditLogService 審計日誌服務
@@ -669,8 +669,12 @@ func (s *AuditLogService) List(filter *AuditLogFilter) (*AuditLogListResult, err
 		return nil, fmt.Errorf("查詢稽核日誌失敗: %w", err)
 	}
 
+	views := make([]AuditLogView, len(logs))
+	for i, l := range logs {
+		views[i] = NewAuditLogView(l)
+	}
 	return &AuditLogListResult{
-		Data:  logs,
+		Data:  views,
 		Total: total,
 		Page:  filter.Page,
 		Size:  filter.PageSize,

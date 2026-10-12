@@ -1,5 +1,60 @@
 # A whole-stage fake host: the parser, reader, safety producer, journal, import, runtime check
 # and recovery are real. Only Docker/host responses and explicit interruption points are faked.
+
+# Building a host once per test file. The fakes, state.json and the deployment record absolute
+# paths, so the host is laid out in a fixed folder and put back at that same folder for each test.
+#   rs_host_once <name> <command...>   in setup_file: runs the command as a test's setup would, with
+#                                      $BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/<name>, in a subshell (the
+#                                      file's other tests see none of it); keeps a copy of the folder
+#                                      and every shell variable the command set, changed or unset.
+#   rs_host_restore <name>             in a test: the folder exactly as the command left it, and those
+#                                      variables set again. Nothing depends on the order of the tests.
+rs_host_once() {
+  local _rs_ho_dir=$BATS_FILE_TMPDIR/$1
+  shift
+  (
+    BATS_TEST_TMPDIR=$_rs_ho_dir
+    mkdir -p "$_rs_ho_dir"
+    declare -A _rs_ho_before=() _rs_ho_after=()
+    local _rs_ho_n _rs_ho_d
+    for _rs_ho_n in $(compgen -v); do rs_host_var "$_rs_ho_n"; _rs_ho_before[$_rs_ho_n]=$_rs_ho_d; done
+    "$@" || exit 1
+    {
+      for _rs_ho_n in $(compgen -v); do
+        _rs_ho_after[$_rs_ho_n]=1
+        case $_rs_ho_n in
+          _rs_ho_* | BATS_* | BASH* | COMP* | FUNCNAME | PIPESTATUS | GROUPS | DIRSTACK | RANDOM | SRANDOM | \
+            SECONDS | LINENO | EPOCH* | HISTCMD | PWD | OLDPWD | _ | output | status | lines | stderr | stderr_lines) continue ;;
+        esac
+        [[ ${!_rs_ho_n@a} != *[rn]* ]] || continue
+        rs_host_var "$_rs_ho_n"
+        [ "${_rs_ho_before[$_rs_ho_n]-}" != "$_rs_ho_d" ] || continue
+        printf '%s\n' "$_rs_ho_d"
+      done
+      for _rs_ho_n in "${!_rs_ho_before[@]}"; do
+        [ -n "${_rs_ho_after[$_rs_ho_n]-}" ] || printf 'unset %s\n' "$_rs_ho_n"
+      done
+    } >"$_rs_ho_dir.vars"
+  ) || return 1
+  cp -a "$_rs_ho_dir" "$_rs_ho_dir.template"
+}
+# rs_host_var <name>: _rs_ho_d becomes the global declaration that sets that variable again.
+rs_host_var() {
+  if [[ ${!1@a} == *[aA]* ]]; then _rs_ho_d=$(declare -p "$1"); else _rs_ho_d=${!1@A}; fi
+  case $_rs_ho_d in
+    'declare -'*) _rs_ho_d="declare -g${_rs_ho_d#declare -}" ;;
+    *) _rs_ho_d="declare -g $_rs_ho_d" ;;
+  esac
+}
+rs_host_restore() {
+  local dir=$BATS_FILE_TMPDIR/$1
+  rm -rf "$dir"
+  cp -a "$dir.template" "$dir"
+  # shellcheck disable=SC1090 # written by rs_host_once
+  . "$dir.vars"
+  hash -r
+}
+
 rs_engine_host() {
   rs_host env
   backup_strict
@@ -76,9 +131,11 @@ HOOK
   }
   export RS_E_FILE
   RS_E_FILE=$(find "$ROOT/backups" -name '*.tar')
-  mkdir "$BATS_TEST_TMPDIR/source"
-  cp "$RS_E_FILE" "$RS_E_FILE.sha256" "$BATS_TEST_TMPDIR/source/"
-  RS_E_FILE=$BATS_TEST_TMPDIR/source/${RS_E_FILE##*/}
+  # RS_E_SOURCE: the folder the restore input is given from (outside the deployment).
+  RS_E_SOURCE=$BATS_TEST_TMPDIR/source
+  mkdir "$RS_E_SOURCE"
+  cp "$RS_E_FILE" "$RS_E_FILE.sha256" "$RS_E_SOURCE/"
+  RS_E_FILE=$RS_E_SOURCE/${RS_E_FILE##*/}
   rm -f "$ROOT"/backups/*
   cat >>"$ROOT/current/lib/cmd_restore.sh" <<'HARNESS'
 # Inject once at a real phase boundary, recording the actual containers at the interruption.

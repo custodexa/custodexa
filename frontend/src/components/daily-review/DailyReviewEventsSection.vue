@@ -44,12 +44,33 @@
           </td>
           <td>{{ item.username || '-' }}</td>
           <td>{{ item.client_ip || '' }}</td>
-          <td class="dr-events__msg">
-            {{ item.error_msg || item.path }}
+          <td
+            class="dr-events__msg"
+            data-test="dr-events-reason"
+          >
+            {{ reasonLines(item).main }}
+            <span
+              v-if="reasonLines(item).sub.length"
+              class="dr-events__msg-sub"
+              data-test="dr-events-reason-sub"
+            >
+              <span
+                v-for="part in reasonLines(item).sub"
+                :key="part"
+              >{{ part }}</span>
+            </span>
           </td>
         </tr>
       </tbody>
     </table>
+    <!-- 高危判準排除的例行記帳與重複紀錄：講清楚不計入的是哪些、去哪裡查 -->
+    <p
+      v-if="kind === 'high_risk_ops'"
+      class="dr-events__excluded"
+      data-test="dr-events-excluded"
+    >
+      {{ $t('dailyReview.drawer.events.highRiskExcluded') }}
+    </p>
     <a
       v-if="showViewAll"
       class="dr-events__all"
@@ -73,6 +94,7 @@
 import { computed, ref } from 'vue'
 import { t } from '@/i18n'
 import { countText, timeInZone } from './dailyReviewFormat'
+import { reasonLines } from './auditReason'
 
 const props = defineProps({
   kind: { type: String, required: true }, // login_failures | high_risk_ops
@@ -173,6 +195,22 @@ const href = computed(() => {
 
 .dr-events__msg {
   word-break: break-word;
+}
+
+.dr-events__msg-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--ot-space-md);
+  margin-top: 2px;
+  font-size: var(--ot-font-size-xs);
+  color: var(--ot-text-secondary);
+}
+
+.dr-events__excluded {
+  margin: var(--ot-space-sm) 0 0;
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.6;
+  color: var(--ot-text-secondary);
 }
 
 .dr-events__all {

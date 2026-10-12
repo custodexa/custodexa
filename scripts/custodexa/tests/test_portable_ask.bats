@@ -65,10 +65,16 @@ members_of() {
   /usr/bin/tar -tf "$f"
 }
 
-@test "ask matrix: terminal, --yes, --with-recordings, --passphrase-file: the questions, the file and the exit code (16 runs)" {
-  local tty yes rec pf opts want_rq want_eq want_rc got_rq got_eq label f
+# The two options take separate paths, so each way of running is tried with the combinations its
+# code tells apart: on a terminal without --yes all four; on a terminal with --yes one; without a
+# terminal with --yes both options and neither; without either one, the passphrase file checked
+# before the run stops at the confirmation.
+@test "ask matrix: terminal, --yes, --with-recordings, --passphrase-file: the questions, the file and the exit code" {
+  local tty yes rec pf opts want_rq want_eq want_rc got_rq got_eq label f plain
   for tty in 0 1; do for yes in 0 1; do for rec in 0 1; do for pf in 0 1; do
+    case $tty$yes$rec$pf in 1000 | 1001 | 1010 | 1011 | 1100 | 0111 | 0100 | 0011) ;; *) continue ;; esac
     fresh
+    rm -f "$DB/run.argv"
     label="terminal=$tty --yes=$yes --with-recordings=$rec --passphrase-file=$pf"
     opts=""
     [ "$yes" = 0 ] || opts+=" --yes"
@@ -99,6 +105,8 @@ members_of() {
     if [ "$want_rc" = 3 ]; then
       no_stop || { echo "$label"; return 1; }
       [[ $RUN_OUT == *"there is no terminal to ask on"* ]] || { echo "$label: $RUN_OUT"; return 1; }
+      [ ! -e "$ROOT/backups" ] && [ "$(jq -r '."last_backup.result"' "$ROOT/state.json")" = cancelled ] \
+        || { echo "$label"; cat "$ROOT/state.json"; return 1; }
       continue
     fi
     f=$(compgen -G "$ROOT/backups/custodexa-backup-*.tar*" | grep -v '\.sha256$') || { echo "$label: no file"; return 1; }
@@ -116,41 +124,40 @@ members_of() {
     else
       if grep -qx recordings.tar.gz "$BATS_TEST_TMPDIR/members"; then echo "$label: recordings put in"; return 1; fi
     fi
+    case $tty$yes$rec$pf in
+      0111)
+        # The recordings themselves are in recordings.tar.gz.
+        plain=$f
+        [[ $f != *.enc ]] || plain=$BATS_TEST_TMPDIR/plain.tar
+        /usr/bin/tar -xOf "$plain" recordings.tar.gz | /usr/bin/tar -tzf - | grep -qx 'recordings/2026/a.cast' \
+          || { echo "$label: no a.cast"; return 1; }
+        BK_FILE=$plain
+        [ "$(bk_mf contents.recordings)" = true ] || { echo "$label"; return 1; }
+        ;;
+      0100)
+        # Without the options, --yes leaves both out and says how to put them in.
+        [[ $RUN_OUT == *"  Recordings: not included (add --with-recordings to include them)
+  Encryption: none (add --passphrase-file <file> to encrypt)"* ]] || { echo "$label: $RUN_OUT"; return 1; }
+        ;;
+      1100)
+        # --yes on a terminal asks nothing, does not encrypt and says how to.
+        [[ $RUN_OUT != *"[ ?? ]"* && $RUN_OUT != *"Passphrase"* ]] || { echo "$label: $RUN_OUT"; return 1; }
+        [[ $RUN_OUT == *"  Encryption: none (add --passphrase-file <file> to encrypt)"* ]] || { echo "$label: $RUN_OUT"; return 1; }
+        [[ $RUN_OUT == *"Start the backup? [y/N] y"* ]] || { echo "$label: $RUN_OUT"; return 1; }
+        BK_FILE=$f
+        [ "$(bk_mf encryption.enabled)" = false ] && [ ! -e "$DB/run.argv" ] || { echo "$label"; return 1; }
+        ;;
+    esac
   done; done; done; done
 }
 
-@test "recordings: Enter on the terminal leaves them out, the manifest says so, the screen warns with the folder" {
-  on_terminal "" ""
-  [ "$RUN_RC" = 0 ] || { echo "$RUN_OUT"; return 1; }
-  bk_one || return 1
-  if bk_member recordings.tar.gz >/dev/null 2>&1; then echo "recordings put in"; return 1; fi
-  [ "$(bk_mf contents.recordings)" = false ] && [ "$(bk_mf encryption.enabled)" = false ] || return 1
-  [[ $RUN_OUT == *"  Recordings: not included
-  Encryption: none
-"* ]] || { echo "$RUN_OUT"; return 1; }
-  [[ $RUN_OUT == *"  [WARN] The recordings are not in the backup file. They are in
-         /opt/custodexa/data/recordings/; keep them some other way, or"* ]] || { echo "$RUN_OUT"; return 1; }
-  # The answer 2 puts them in.
-  fresh
+# Enter leaving them out is in the matrix above and the reviewed screens (test_portable_screens.bats).
+@test "recordings: the answer 2 on the terminal puts them in, the manifest says so, no warning" {
   on_terminal 2 ""
   [ "$RUN_RC" = 0 ] || { echo "$RUN_OUT"; return 1; }
   bk_one && bk_member recordings.tar.gz >/dev/null && [ "$(bk_mf contents.recordings)" = true ] || return 1
   [[ $RUN_OUT == *"  Recordings: included"* && $RUN_OUT == *"[ OK ] 3/7  Recordings and audit files"* ]] || { echo "$RUN_OUT"; return 1; }
   [[ $RUN_OUT != *"The recordings are not in the backup file"* ]] || { echo "$RUN_OUT"; return 1; }
-}
-
-@test "recordings: --yes --with-recordings asks nothing and puts recordings.tar.gz in" {
-  backup_run en --yes --with-recordings
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output != *"[ ?? ]"* && $output == *"  Recordings: included"* ]] || { echo "$output"; return 1; }
-  bk_one || return 1
-  bk_member recordings.tar.gz | /usr/bin/tar -tzf - | grep -qx 'recordings/2026/a.cast' || return 1
-  [ "$(bk_mf contents.recordings)" = true ]
-  # Without the option, --yes leaves them out and says how to put them in.
-  fresh
-  backup_run en --yes
-  [ "$status" -eq 0 ] && [[ $output == *"  Recordings: not included (add --with-recordings to include them)
-  Encryption: none (add --passphrase-file <file> to encrypt)"* ]] || { echo "$output"; return 1; }
 }
 
 @test "ask: an answer other than 1, 2 or Enter is asked again" {

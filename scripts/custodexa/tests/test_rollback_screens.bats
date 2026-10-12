@@ -5,10 +5,8 @@ load backup_host
 load upgrade_host
 load rollback_host
 
-fresh() {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host "${1:-ready}" "${2:-ui}" "${3:-1.16.1}"
-}
+setup() { host_workdir; }
+fresh() { rb_cached "${1:-ready}" "${2:-ui}" "${3:-1.16.1}"; }
 normalized() {
   printf '%s\n' "$output" | sed -E "s#$ROOT#/opt/custodexa#g; s/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9:]+/2026-11-05T09:30:12+0800/g; s/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}/2026-11-05 09:30/g"
 }
@@ -71,16 +69,24 @@ restore_ready() {
       cp "$ROOT/state.json" "$DB/before"
       local link=$(readlink "$ROOT/current")
       : >"$DB/events"
+      : >"$DB/db-calls"
       rb_run "$RB_LANG" --yes
       [ "$status" -eq 3 ] || { echo "$name: $output"; return 1; }
       cmp "$ROOT/state.json" "$DB/before" || return 1
       [ "$(readlink "$ROOT/current")" = "$link" ] || return 1
       ! grep -Eq '^(stop|up|start)' "$DB/events" || return 1
+      # A version before the supported minimum is refused without querying the database.
+      [ "$name" != old ] || [ ! -s "$DB/db-calls" ] || { cat "$DB/db-calls"; return 1; }
       screen "refused-$name" || errs=1
     done
     fresh backup
+    [ "$(rb_state last_upgrade.backup_kind)" = script ] || return 1
+    cp "$ROOT/state.json" "$DB/before"
     rb_run "$RB_LANG" --yes
     [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+    cmp "$ROOT/state.json" "$DB/before" || return 1
+    [ "$(readlink "$ROOT/current")" = releases/1.16.1 ] || return 1
+    ! grep -Eq '^(stop|up|start)' "$DB/events" || return 1
     screen refused-before-switch || errs=1
   done
   [ "$errs" = 0 ]
@@ -144,6 +150,13 @@ restore_ready() {
           esac ;;
       esac
       [ "$status" -eq 1 ] || { echo "$name: $output"; return 1; }
+      if [ "$name" = refused ]; then
+        # The last check stopped only the application services and changed nothing else.
+        [ "$(rb_state last_rollback.result)" = refused ] && [ "$(rb_state current.version)" = 1.16.2 ] || return 1
+        [ "$(readlink "$ROOT/current")" = releases/1.16.2 ] && [ "$(cat "$DB/running")" = postgres ] || return 1
+        ! grep -Eq '^up|^stop postgres' "$DB/events" || { cat "$DB/events"; return 1; }
+        [[ $output == *'custodexa.sh start'* ]] || { echo "$output"; return 1; }
+      fi
       screen "$name" || errs=1
       status_screen
       screen "status-$name" || errs=1
@@ -196,10 +209,9 @@ restore_ready() {
   for RB_LANG in en zh-TW ja; do
     for name in ready ready-failed checks interrupted; do
       for baseline in yes no; do
-        rm -rf "${BATS_TEST_TMPDIR:?}"/*
         RB_BASELINE=""
         [ "$baseline" != yes ] || RB_BASELINE=$TESTS_DIR/rollback_legacy_screens.bash
-        rollback_host "$name" ui 1.15.2 1.16.0
+        rb_cached "$name" ui 1.15.2 1.16.0
         output=$RB_UP_OUTPUT
         if [ "$name" = interrupted ]; then
           # Use the original upgrade script, whose displayed recovery is being compared.

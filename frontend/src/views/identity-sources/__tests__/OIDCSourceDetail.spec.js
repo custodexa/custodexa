@@ -23,6 +23,7 @@ vi.mock('vue-router', () => ({
 }))
 
 const getDetailMock = vi.fn()
+const getIdentitySourcesMock = vi.fn()
 vi.mock('@/api/identitySources', () => ({
   getOIDCProviderDetail: (...a) => getDetailMock(...a),
   previewOIDCDiscovery: vi.fn(() => new Promise(() => {})),
@@ -30,10 +31,7 @@ vi.mock('@/api/identitySources', () => ({
   getSourceStatus: vi.fn(() => Promise.resolve({})),
   errorCode: () => '',
   CODE_LDAP_DIRECTORY_NOT_FOUND: 'LDAP_DIRECTORY_NOT_FOUND',
-  getSourceMappings: vi.fn(() => Promise.resolve({ data: [] })),
-  createSourceMapping: vi.fn(),
-  updateSourceMapping: vi.fn(),
-  deleteSourceMapping: vi.fn(),
+  getIdentitySources: (...a) => getIdentitySourcesMock(...a),
 }))
 
 vi.mock('@/api/oidc', () => ({
@@ -58,7 +56,6 @@ const ENTRA_FIELD_KEYS = [
   'identitySources.oidc.entra.tid',
   'identitySources.oidc.entra.emailDomain',
   'identitySources.oidc.entra.emailVerified',
-  'identitySources.mapping.entraMatchHint',
   'identitySources.preflight.oidc.entraRedirect',
   'identitySources.preflight.oidc.entraGroupsClaim',
 ]
@@ -96,6 +93,7 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     route.params = {}
+    getIdentitySourcesMock.mockResolvedValue({ data: [] })
   })
 
   it('Entra issuer 時各欄顯示在 Entra 的取得位置', async () => {
@@ -191,5 +189,36 @@ describe('OIDCSourceDetail：Entra 來源的設定引導', () => {
     await flushPromises()
 
     expect(groupsClaimInput(wrapper).attributes('placeholder')).toBeUndefined()
+  })
+
+  it('群組映射區段只有宣告名欄、規則數摘要與入口按鈕，沒有規則清單與新增操作', async () => {
+    route.params = { id: '5' }
+    getDetailMock.mockResolvedValue(detailView(ENTRA_ISSUER, { groups_claim: 'groups' }))
+    getIdentitySourcesMock.mockResolvedValue({
+      data: [{ type: 'oidc', id: 5, role_mapping_rule_count: 1, user_group_mapping_rule_count: 4 }],
+    })
+    const wrapper = mountPage()
+    await flushPromises()
+
+    const sections = wrapper.findAll('section.source-section')
+      .filter((s) => s.find('[data-test="groups-claim-input"]').exists())
+    expect(sections.length).toBe(1)
+    const section = sections[0]
+
+    expect(section.findAll('[data-test="groups-claim-input"]').length).toBe(1)
+    const summaries = section.findAll('[data-test="mapping-summary"]')
+    expect(summaries.length).toBe(1)
+    expect(summaries[0].text()).toBe(
+      i18n.global.t('identitySources.mapping.summary', { roles: 1, userGroups: 4 })
+    )
+    const buttons = section.findAll('button.el-button')
+    expect(buttons.length).toBe(1)
+    expect(buttons[0].text()).toBe(t('identitySources.mapping.manage'))
+
+    // 舊內嵌清單的痕跡：角色篩選、表格、行內新增
+    expect(wrapper.find('[data-test="mapping-role-filter"]').exists()).toBe(false)
+    expect(section.find('.el-table').exists()).toBe(false)
+    expect(section.text()).not.toContain('新增規則')
+    expect(section.text()).not.toContain('Add rule')
   })
 })

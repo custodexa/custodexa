@@ -27,7 +27,14 @@
           v-for="row in rows"
           :key="row.key"
         >
-          <td>{{ row.label }}</td>
+          <td>
+            {{ row.label }}
+            <span
+              v-if="row.criteriaChanged"
+              class="dr-compare__tag"
+              data-test="dr-compare-criteria-tag"
+            >{{ $t('dailyReview.drawer.compare.criteriaTag') }}</span>
+          </td>
           <td>{{ row.atSign }}</td>
           <td
             :class="{ 'dr-compare__diff': row.changed }"
@@ -41,6 +48,19 @@
     <p class="dr-compare__hint">
       {{ $t('dailyReview.drawer.compare.hint') }}
     </p>
+    <!-- 判準版本不同：兩欄依不同口徑計算，差異不是紀錄被改動 -->
+    <div
+      v-if="criteriaChanged"
+      class="dr-compare__criteria"
+      data-test="dr-compare-criteria"
+    >
+      <Info
+        class="dr-compare__criteria-icon"
+        :size="16"
+        aria-hidden="true"
+      />
+      <span>{{ $t('dailyReview.drawer.compare.criteriaChanged') }}</span>
+    </div>
 
     <div
       v-if="alertsAfterSign > 0"
@@ -79,6 +99,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { Info } from 'lucide-vue-next'
 import { t } from '@/i18n'
 import { countText } from './dailyReviewFormat'
 
@@ -96,6 +117,12 @@ const alertsAfterSign = computed(() => Number(props.detail.alerts_after_sign) ||
 // 舊制列的 alerts_after_sign 恆為 null：只說此刻仍未審閱幾筆，不推論出現在簽核之後
 const legacyUnreviewed = computed(() =>
   props.legacy && props.detail.alerts_after_sign == null ? (props.detail.unreviewed_alerts?.length || 0) : 0,
+)
+
+// 簽核快照沒有版本鍵＝判準版本 1；單日明細的 counts 帶現行版本
+const criteriaVersion = (value) => Number(value) || 1
+const criteriaChanged = computed(() =>
+  criteriaVersion(props.signedSnapshot?.high_risk_criteria) !== criteriaVersion(props.detail.counts?.high_risk_criteria),
 )
 
 const nowCount = (list) => countText(list?.source_status === 'purged' ? null : list?.total, list?.source_status)
@@ -125,7 +152,14 @@ const rows = computed(() => {
       now: alertsNow,
       changed: alertsAtSignCount !== alertsNow,
     },
-    { key: 'high', label: t('common.highRiskOps'), atSign: highAtSign, now: highNow, changed: highAtSign !== highNow },
+    {
+      key: 'high',
+      label: t('common.highRiskOps'),
+      atSign: highAtSign,
+      now: highNow,
+      changed: !criteriaChanged.value && highAtSign !== highNow,
+      criteriaChanged: criteriaChanged.value,
+    },
   ]
 })
 </script>
@@ -165,6 +199,36 @@ const rows = computed(() => {
   font-weight: normal;
   color: var(--ot-text-secondary);
   background-color: var(--ot-bg-elevated);
+}
+
+.dr-compare__tag {
+  display: inline-block;
+  margin-left: var(--ot-space-xs);
+  padding: 0 6px;
+  font-size: var(--ot-font-size-xs);
+  line-height: 18px;
+  color: var(--ot-text-secondary);
+  border: 1px solid var(--ot-border);
+  border-radius: var(--ot-radius-sm);
+}
+
+.dr-compare__criteria {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ot-space-sm);
+  margin-top: var(--ot-space-sm);
+  padding: var(--ot-space-sm) var(--ot-space-md);
+  font-size: var(--ot-font-size-xs);
+  line-height: 1.6;
+  color: var(--ot-text-primary);
+  background-color: var(--ot-primary-dim);
+  border-radius: var(--ot-radius-md);
+}
+
+.dr-compare__criteria-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--ot-primary);
 }
 
 .dr-compare__diff {

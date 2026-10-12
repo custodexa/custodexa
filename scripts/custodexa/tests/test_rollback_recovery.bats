@@ -5,77 +5,76 @@ load backup_host
 load upgrade_host
 load rollback_host
 
-fresh() {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host "${1:-ready}"
-}
+setup() { host_workdir; }
+fresh() { rb_cached "${1:-ready}"; }
+# The distinct points an interruption can leave behind: stopping a step before it starts leaves the
+# same record as stopping after the step before it (the recovery reads the record, not the step
+# number), so these four stand for every point before and after each step.
+RB_POINTS=('cx_rb_stop_apps before' 'cx_rb_stop_apps after' 'cx_rb_switch after' 'cx_rb_start after')
 settled() {
   [ "$(rb_state current.version)" = "$1" ] && [ "$(readlink "$ROOT/current")" = "releases/$1" ] || return 1
   [ "$(readlink "$ROOT/custodexa.sh")" = current/custodexa.sh ] || return 1
   [ "$(rb_state last_rollback.result)" = "$2" ] || return 1
 }
 
-@test "rollback recovery: before and after every step, resume preserves identity and finishes the old version" {
-  local fn when identity
-  for fn in cx_rb_stop_apps cx_rb_switch cx_rb_start cx_rb_check; do
-    for when in before after; do
-      fresh
-      rb_interrupt "$fn" "$when"
-      rb_run en --yes
-      [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
-      [ "$(rb_state last_rollback.result)" = in_progress ]
-      identity=$(rb_identity)
-      rb_run en --resume
-      [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
-      settled 1.16.1 succeeded
-      [ "$(rb_state previous.version)" = 1.16.2 ]
-      [ "$identity" = "$(rb_identity)" ]
-      [ "$(rb_state last_rollback.log)" != "$(rb_state last_rollback.attempt_log)" ]
-      grep -q ' RESUME logs/rollback-' "$ROOT/$(rb_state last_rollback.log)"
-    done
+@test "rollback recovery: at each point between the steps, resume preserves identity and finishes the old version" {
+  local fn when identity point
+  for point in "${RB_POINTS[@]}"; do
+    read -r fn when <<<"$point"
+    fresh
+    rb_interrupt "$fn" "$when"
+    rb_run en --yes
+    [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
+    [ "$(rb_state last_rollback.result)" = in_progress ]
+    identity=$(rb_identity)
+    rb_run en --resume
+    [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
+    settled 1.16.1 succeeded
+    [ "$(rb_state previous.version)" = 1.16.2 ]
+    [ "$identity" = "$(rb_identity)" ]
+    [ "$(rb_state last_rollback.log)" != "$(rb_state last_rollback.attempt_log)" ]
+    grep -q ' RESUME logs/rollback-' "$ROOT/$(rb_state last_rollback.log)"
   done
 }
 
-@test "rollback recovery: before and after every step, revert returns to the upgraded version" {
-  local fn when identity
-  for fn in cx_rb_stop_apps cx_rb_switch cx_rb_start cx_rb_check; do
-    for when in before after; do
-      fresh
-      rb_interrupt "$fn" "$when"
-      rb_run en --yes
-      [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
-      identity=$(rb_identity)
-      rb_run en --revert --yes
-      [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
-      settled 1.16.2 reverted
-      [ "$(rb_state last_rollback.direction)" = revert ]
-      [ "$(rb_state last_upgrade.result)" = succeeded ]
-      [ "$identity" = "$(rb_identity)" ]
-    done
+@test "rollback recovery: at each point between the steps, revert returns to the upgraded version" {
+  local fn when identity point
+  for point in "${RB_POINTS[@]}"; do
+    read -r fn when <<<"$point"
+    fresh
+    rb_interrupt "$fn" "$when"
+    rb_run en --yes
+    [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
+    identity=$(rb_identity)
+    rb_run en --revert --yes
+    [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
+    settled 1.16.2 reverted
+    [ "$(rb_state last_rollback.direction)" = revert ]
+    [ "$(rb_state last_upgrade.result)" = succeeded ]
+    [ "$identity" = "$(rb_identity)" ]
   done
 }
 
-@test "rollback recovery: resume after every interrupted revert keeps the recorded direction and endpoints" {
-  local fn when identity
-  for fn in cx_rb_stop_apps cx_rb_switch cx_rb_start cx_rb_check; do
-    for when in before after; do
-      fresh
-      touch "$DB/rb.health"
-      rb_run en --yes
-      [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-      rm "$DB/rb.health"
-      identity=$(rb_identity)
-      rb_interrupt "$fn" "$when"
-      rb_run en --revert --yes
-      [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
-      [[ $output == *'rollback --resume'* && $output != *'rollback --revert'* ]]
-      [ "$(rb_state last_rollback.direction)" = revert ]
-      [ "$(rb_state last_rollback.target)" = 1.16.2 ]
-      rb_run en --resume
-      [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
-      settled 1.16.2 reverted
-      [ "$identity" = "$(rb_identity)" ]
-    done
+@test "rollback recovery: resume after an interrupted revert at each point keeps the recorded direction and endpoints" {
+  local fn when identity point
+  for point in "${RB_POINTS[@]}"; do
+    read -r fn when <<<"$point"
+    fresh
+    touch "$DB/rb.health"
+    rb_run en --yes
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    rm "$DB/rb.health"
+    identity=$(rb_identity)
+    rb_interrupt "$fn" "$when"
+    rb_run en --revert --yes
+    [ "$status" -eq 1 ] || { echo "$fn $when: $output"; return 1; }
+    [[ $output == *'rollback --resume'* && $output != *'rollback --revert'* ]]
+    [ "$(rb_state last_rollback.direction)" = revert ]
+    [ "$(rb_state last_rollback.target)" = 1.16.2 ]
+    rb_run en --resume
+    [ "$status" -eq 0 ] || { echo "$fn $when: $output"; return 1; }
+    settled 1.16.2 reverted
+    [ "$identity" = "$(rb_identity)" ]
   done
 }
 

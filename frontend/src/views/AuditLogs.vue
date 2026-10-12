@@ -548,14 +548,15 @@
           <pre class="json-content">{{ formatJSON(selectedLog.request_body) }}</pre>
         </el-descriptions-item>
 
+        <!-- 沒有變更明細時不留空區塊，改列原因與原始 details -->
         <el-descriptions-item
-          v-if="selectedLog.details"
+          v-if="detailBlocks.changes.length"
           :label="$t('auditLogs.changeDetails')"
           :span="2"
         >
           <div class="changes-content">
             <div
-              v-for="(change, index) in parseChanges(selectedLog.details)"
+              v-for="(change, index) in detailBlocks.changes"
               :key="index"
               class="change-item"
             >
@@ -565,6 +566,23 @@
               <span class="new-value">{{ formatValue(change.new) }}</span>
             </div>
           </div>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="detailBlocks.showReason"
+          :label="$t('auditLogs.reason')"
+          :span="2"
+        >
+          <span data-test="log-reason">{{ reasonText(selectedLog) }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="detailBlocks.raw"
+          :label="$t('auditLogs.detailsRaw')"
+          :span="2"
+        >
+          <pre
+            class="json-content"
+            data-test="log-details-raw"
+          >{{ detailBlocks.raw }}</pre>
         </el-descriptions-item>
 
         <!-- 成功的操作也可能帶訊息（例如做了什麼替代處置）。把它掛在「錯誤訊息」
@@ -700,7 +718,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Download, RefreshCw } from 'lucide-vue-next'
@@ -713,6 +731,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import DailyReviewWorkspace from '@/components/daily-review/DailyReviewWorkspace.vue'
 import { useDailyReviewBadge } from '@/composables/useDailyReviewBadge'
 import { formatDateTime } from '@/utils/format'
+import { logDetailBlocks, reasonText } from '@/components/daily-review/auditReason'
 import {
   AUDIT_ACTIONS,
   AUDIT_RESOURCES,
@@ -744,6 +763,7 @@ const logs = ref([])
 const loading = ref(false)
 const detailsVisible = ref(false)
 const selectedLog = ref(null)
+const detailBlocks = computed(() => logDetailBlocks(selectedLog.value))
 const timeRange = ref([])
 
 const filters = ref({
@@ -901,17 +921,6 @@ const formatJSON = (jsonString) => {
     return JSON.stringify(obj, null, 2)
   } catch {
     return jsonString
-  }
-}
-
-// 解析變更詳情
-const parseChanges = (detailsString) => {
-  if (!detailsString) return []
-  try {
-    const details = typeof detailsString === 'string' ? JSON.parse(detailsString) : detailsString
-    return details.changes || []
-  } catch {
-    return []
   }
 }
 

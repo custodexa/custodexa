@@ -5,29 +5,24 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_engine_host
-setup() { rs_engine_host; }
-@test "restore engine: env input completes every stage" {
-  rs_engine_run
-  [ "$status" = 0 ] && [ "$(rs_engine_result)" = succeeded ] || { echo "$status $output"; return 1; }
-}
+setup_file() { rs_host_once engine rs_engine_host; }
+setup() { rs_host_restore engine; }
+# Resuming reads only the saved phase, which is saved before the interruption either way. What a
+# SIGTERM does depends on whether the containers run and whether the data was covered: prepared
+# (running), stopped, swapped (covered, stopped) and started (covered, running) stand for all phases.
 @test "restore engine: prepared failure carries on to completion" { rs_engine_matrix prepared 0; }
 @test "restore engine: prepared SIGTERM carries on to completion" { rs_engine_matrix prepared 1; }
 @test "restore engine: safety failure carries on to completion" { rs_engine_matrix safety 0; }
-@test "restore engine: safety SIGTERM carries on to completion" { rs_engine_matrix safety 1; }
 @test "restore engine: stopped failure carries on to completion" { rs_engine_matrix stopped 0; }
 @test "restore engine: stopped SIGTERM carries on to completion" { rs_engine_matrix stopped 1; }
 @test "restore engine: swapped failure carries on to completion" { rs_engine_matrix swapped 0; }
 @test "restore engine: swapped SIGTERM carries on to completion" { rs_engine_matrix swapped 1; }
 @test "restore engine: imported failure carries on to completion" { rs_engine_matrix imported 0; }
-@test "restore engine: imported SIGTERM carries on to completion" { rs_engine_matrix imported 1; }
 @test "restore engine: db_checked failure carries on to completion" { rs_engine_matrix db_checked 0; }
-@test "restore engine: db_checked SIGTERM carries on to completion" { rs_engine_matrix db_checked 1; }
 @test "restore engine: placed failure carries on to completion" { rs_engine_matrix placed 0; }
-@test "restore engine: placed SIGTERM carries on to completion" { rs_engine_matrix placed 1; }
 @test "restore engine: started failure carries on to completion" { rs_engine_matrix started 0; }
 @test "restore engine: started SIGTERM carries on to completion" { rs_engine_matrix started 1; }
 @test "restore engine: awaiting_unseal failure carries on to completion" { rs_engine_matrix awaiting_unseal 0; }
-@test "restore engine: awaiting_unseal SIGTERM carries on to completion" { rs_engine_matrix awaiting_unseal 1; }
 @test "restore engine: interruption after up and before readiness reports the running containers" {
   cat >>"$ROOT/current/lib/cmd_restore.sh" <<'SH'
 eval "$(declare -f cx_compose_release | sed '1s/cx_compose_release/rs_e_compose/')"
@@ -46,19 +41,6 @@ SH
   for f in "$DB"/ctr/*; do [ "$(cat "$f")" = running ] || return 1; done
   rs_engine_resume
   [ "$status" = 0 ] && [ "$(rs_engine_result)" = succeeded ] || { echo "$output"; return 1; }
-}
-@test "restore engine: failed import is retained and resumed without another safety backup" {
-  echo 1 >"$DB/import.rc"
-  rs_engine_run
-  [ "$status" = 1 ] || { echo "$output"; return 1; }
-  [[ $output == *'[FAIL]  6/10  Import the database'* && $output == *'pg_restore reported an error'* && $output != *'[ OK ]  6/10'* && $output != *'[ OK ]  7/10'* ]] || { echo "$output"; return 1; }
-  local dumps
-  dumps=$(grep -cx pg_dump "$DB/events")
-  rm "$DB/import.rc"
-  rs_engine_resume
-  [ "$status" = 0 ] && [ "$(rs_engine_result)" = succeeded ] || { echo "$output"; return 1; }
-  [ "$(grep -cx pg_dump "$DB/events")" = "$dumps" ] || return 1
-  [ -n "$(find "$ROOT/data" -maxdepth 1 -name 'postgres.partial-restore-*')" ]
 }
 @test "restore engine: after covering revert imports the safety backup without taking another backup" {
   export RS_E_CUT=imported

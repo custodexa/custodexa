@@ -1273,7 +1273,8 @@ import EmptyState from '@/components/EmptyState.vue'
 import { formatDateTime } from '@/utils/format'
 import { confirmDestructive } from '@/utils/confirm'
 import { apiErrorSummary } from '@/api/redact'
-import { t } from '@/i18n'
+import { t, currentLocale } from '@/i18n'
+import { renderDeleteConfirm, renderDisableMFAConfirm } from './users/accountActionCopy'
 import { roleLabel, roleTagType } from '@/constants/roles'
 import { hasRole, useRoles } from '@/composables/useRoles'
 import {
@@ -2238,7 +2239,7 @@ const handleUnlock = async (row) => {
 const handleAdminDisableMFA = async (row) => {
   try {
     await confirmDestructive(
-      t('users.disableMFAConfirm', { name: row.username }),
+      renderDisableMFAConfirm(row, t),
       t('users.disableMFATitle'),
       {
         confirmButtonText: t('common.confirm'),
@@ -2262,7 +2263,7 @@ const handleAdminDisableMFA = async (row) => {
 const handleDelete = async (row) => {
   try {
     await confirmDestructive(
-      t('users.deleteConfirm', { name: row.username }),
+      renderDeleteConfirm(row, t, currentLocale()),
       t('common.deleteConfirmTitle'),
       {
         confirmButtonText: t('common.deleteConfirmButton'),

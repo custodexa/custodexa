@@ -201,6 +201,9 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 	// 真正的裁決在 DB。約束失敗後重查以區分「撞既有身分」與其他寫入錯誤
 	createErr := s.db.Create(&identity).Error
 	if createErr != nil {
+		createErr = s.retryBindOverOrphan(&identity, actor, createErr)
+	}
+	if createErr != nil {
 		var existing model.UserExternalIdentity
 		if err := s.db.Where("issuer = ? AND client_id = ? AND subject = ?",
 			provider.Issuer, provider.ClientID, subject).First(&existing).Error; err == nil {
@@ -227,6 +230,61 @@ func (s *UserService) BindExternalIdentity(userID, providerID uint, subject stri
 		CreatedAt: identity.CreatedAt,
 	}
 	return &dto, nil
+}
+
+// retryBindOverOrphan 綁定撞到同一身分域三元組的既有綁定時，若該綁定所屬帳號已刪除，
+// 作廢它並重試一次建立；其餘情形回傳原錯誤，由呼叫端照舊判為衝突。
+//
+// 這類綁定是帳號刪除未一併作廢綁定時留下的，指向的帳號已不存在，以衝突拒絕會讓
+// 管理者無從為此人重新綁定。重試仍失敗（例如並發的另一個綁定搶先）照舊回衝突
+func (s *UserService) retryBindOverOrphan(identity *model.UserExternalIdentity,
+	actor IdentityAdminActor, createErr error) error {
+	var existing model.UserExternalIdentity
+	if err := s.db.Where("issuer = ? AND client_id = ? AND subject = ?",
+		identity.Issuer, identity.ClientID, identity.Subject).First(&existing).Error; err != nil {
+		return createErr
+	}
+	orphan, revoked, err := s.revokeOrphanBinding(&existing)
+	if err != nil {
+		log.Printf("[ExternalIdentity] 檢查既有綁定所屬帳號失敗 (identityID=%d): %v", existing.ID, err)
+		return createErr
+	}
+	if !orphan {
+		return createErr
+	}
+	if revoked {
+		s.writeIdentityAudit(actor, existing.UserID, model.ActionDelete, model.StatusSuccess, map[string]any{
+			"event": "external_identity_orphan_revoked", "provider_id": identity.ProviderID,
+			"issuer": existing.Issuer, "subject": existing.Subject,
+			"previous_user_id": existing.UserID, "identity_id": existing.ID,
+		})
+	}
+	identity.ID = 0
+	return s.db.Create(identity).Error
+}
+
+// revokeOrphanBinding 於原帳號的使用者鎖內（與刪除帳號同一把）重讀帳號狀態，
+// 帳號已刪除（或查無）即作廢該綁定。orphan＝綁定所屬帳號已不存在；
+// revoked＝本次真正作廢到該列（並發的另一方已作廢時為 false，審計只由一方寫出）
+func (s *UserService) revokeOrphanBinding(existing *model.UserExternalIdentity) (orphan, revoked bool, err error) {
+	err = WithUserCredentialLock(s.db, existing.UserID, func(tx *gorm.DB) error {
+		var owner model.User
+		lookupErr := tx.Unscoped().Select("id", "deleted_at").First(&owner, existing.UserID).Error
+		if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return lookupErr
+		}
+		if lookupErr == nil && !owner.DeletedAt.Valid {
+			return nil
+		}
+		orphan = true
+		res := tx.Where("id = ?", existing.ID).Delete(&model.UserExternalIdentity{})
+		if res.Error != nil {
+			return res.Error
+		}
+		revoked = res.RowsAffected == 1
+		return nil
+	})
+	return orphan, revoked, err
 }
 
 // UnbindExternalIdentity (b) 解除外部身分綁定。

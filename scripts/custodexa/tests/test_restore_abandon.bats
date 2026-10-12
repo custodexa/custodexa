@@ -5,8 +5,10 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_engine_host
-setup() {
-  rs_engine_host
+setup_file() { rs_host_once abandon abandon_host; }
+setup() { rs_host_restore abandon; }
+abandon_host() {
+  rs_engine_host || return 1
   # A valid producer input, with a template and ui mode, for both file placement and exit.
   bk_env_set KEK_PROVIDER ui
   bk_env_set ENCRYPTION_KEY ''
@@ -14,8 +16,8 @@ setup() {
   bk_env_set TLS_NGINX_TEMPLATE "$ROOT/nginx.template"
   bash "$ROOT/custodexa.sh" backup --yes --lang en >"$BATS_TEST_TMPDIR/producer-ui.log" 2>&1 || { cat "$BATS_TEST_TMPDIR/producer-ui.log"; return 1; }
   RS_E_FILE=$(find "$ROOT/backups" -name '*.tar')
-  cp "$RS_E_FILE" "$RS_E_FILE.sha256" "$BATS_TEST_TMPDIR/source/"
-  RS_E_FILE=$BATS_TEST_TMPDIR/source/${RS_E_FILE##*/}
+  cp "$RS_E_FILE" "$RS_E_FILE.sha256" "$RS_E_SOURCE/"
+  RS_E_FILE=$RS_E_SOURCE/${RS_E_FILE##*/}
   rm -f "$ROOT"/backups/*
   cp -a "$ROOT/current/." "$ROOT/releases/1.16.2"
   printf '1.16.2\n' >"$ROOT/releases/1.16.2/VERSION"
@@ -24,7 +26,8 @@ setup() {
   rs_new_host
   rm -rf "$ROOT/data/postgres" "$ROOT/data/audit" "$ROOT/tls"
   printf 'existing template\n' >"$ROOT/nginx.template"
-  cp "$ROOT/.env" "$BATS_TEST_TMPDIR/failed-env"
+  RS_A_ENV=$BATS_TEST_TMPDIR/failed-env
+  cp "$ROOT/.env" "$RS_A_ENV"
   ENGINE=$ROOT/releases/1.16.2/custodexa.sh
   : >"$DB/events"
   : >"$FAKE_DOCKER_LOG"
@@ -53,7 +56,7 @@ settled() {
   [ "$(readlink "$ROOT/current")" = releases/1.16.2 ] || return 1
   [ -n "$(find "$ROOT/data" -maxdepth 1 -name 'postgres.abandoned-*')" ] || return 1
   [ -n "$(find "$ROOT" -maxdepth 1 -name '.env.abandoned-*')" ] || return 1
-  cmp "$BATS_TEST_TMPDIR/failed-env" "$ROOT/.env" || return 1
+  cmp "$RS_A_ENV" "$ROOT/.env" || return 1
   [ "$(cat "$ROOT/nginx.template")" = 'existing template' ] || return 1
   [ "$rec" = "$(recordings)" ] || return 1
   [ "$(head -n 1 "$DB/events")" = stop ]
@@ -75,15 +78,8 @@ settled() {
   ! grep 'ARGS.*compose -p' "$FAKE_DOCKER_LOG" | grep -vF -- "-f $ROOT/releases/1.16.0/compose.yml" || return 1
   [[ $output == *"$ENGINE restore --resume"* ]]
 }
-@test "restore new host: abandon after started stops before every rename and restores the prior template" {
-  export RS_E_CUT=started
-  new_run
-  [ "$status" = 1 ] || { echo "$output"; return 1; }
-  unset RS_E_CUT
-  rec=$(recordings); : >"$DB/events"
-  abandon
-  settled
-}
+# Abandoning reads neither the phase nor the outcome of the key check, and the services run in
+# each case: this one stands for an abandon after the start or after a mismatched key as well.
 @test "restore new host: abandon while awaiting unseal stops before every rename and leaves recordings" {
   new_run
   [ "$status" = 4 ] || { echo "$output"; return 1; }
@@ -91,16 +87,6 @@ settled() {
   local kept
   kept=$(find "$ROOT" -maxdepth 1 -name 'nginx.template.before-restore-*')
   [ "$(cat "$kept")" = 'existing template' ] && [ "$(cat "$ROOT/nginx.template")" = 'backup template' ] || return 1
-  rec=$(recordings); : >"$DB/events"
-  abandon
-  settled
-}
-@test "restore new host: abandon after a mismatched key is stopped before renaming" {
-  new_run
-  [ "$status" = 4 ] || return 1
-  echo unsealed >"$DB/seal"; echo 1111111111111111 >"$DB/kek"
-  run bash "$ENGINE" restore --resume --lang en
-  [ "$status" = 1 ] && [[ $output == *'master key does not match'* ]] || { echo "$output"; return 1; }
   rec=$(recordings); : >"$DB/events"
   abandon
   settled

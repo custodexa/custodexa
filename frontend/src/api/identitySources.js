@@ -57,9 +57,6 @@ export function errorCode(error) {
 /** 目錄尚未設定：狀態彙總在此情形回 404 加此碼（不是端點缺席） */
 export const CODE_LDAP_DIRECTORY_NOT_FOUND = 'NOTFOUND_LDAP_DIRECTORY'
 
-const mappingBase = (type, id) =>
-  `/identity-sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}/mappings`
-
 const sourceBase = (type, id) =>
   `/identity-sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}`
 const mappingPath = (type, id, target) => `${sourceBase(type, id)}/${target}`
@@ -86,62 +83,6 @@ export function getIdentitySources() {
   return request({
     url: '/identity-sources',
     method: 'get',
-    skipErrorToast: true,
-  })
-}
-
-/**
- * 某來源的映射規則清單
- * @param {string} type 'oidc' 或 'ldap'
- * @param {number|string} id 來源識別（目錄為其單例 id）
- * @returns {Promise} { data: Rule[] }
- */
-export function getSourceMappings(type, id) {
-  return request({ url: mappingBase(type, id), method: 'get', skipErrorToast: true })
-}
-
-/**
- * 建立映射規則。
- *
- * 未帶 `risk_acknowledged` 而命中風險情形時後端回 422＋警告碼清單，
- * 呼叫端顯示警告、確認後以 `risk_acknowledged: true` 重送。
- * @param {string} type
- * @param {number|string} id
- * @param {Object} data RuleInput
- * @returns {Promise}
- */
-export function createSourceMapping(type, id, data) {
-  return request({ url: mappingBase(type, id), method: 'post', data, skipErrorToast: true })
-}
-
-/**
- * 更新映射規則（語義同 create）
- * @param {string} type
- * @param {number|string} id
- * @param {number|string} ruleId
- * @param {Object} data RuleInput
- * @returns {Promise}
- */
-export function updateSourceMapping(type, id, ruleId, data) {
-  return request({
-    url: `${mappingBase(type, id)}/${encodeURIComponent(ruleId)}`,
-    method: 'put',
-    data,
-    skipErrorToast: true,
-  })
-}
-
-/**
- * 刪除映射規則
- * @param {string} type
- * @param {number|string} id
- * @param {number|string} ruleId
- * @returns {Promise}
- */
-export function deleteSourceMapping(type, id, ruleId) {
-  return request({
-    url: `${mappingBase(type, id)}/${encodeURIComponent(ruleId)}`,
-    method: 'delete',
     skipErrorToast: true,
   })
 }

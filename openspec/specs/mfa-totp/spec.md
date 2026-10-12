@@ -5,6 +5,7 @@
 TOTP 雙因素認證的綁定、驗證與恢復流程，涵蓋自願啟用與依安全政策強制註冊（PCI 8.4.2）的閘門，以及防止已消耗驗證碼被重放的 time-step 防護（PCI 8.5.1）。
 
 ## Requirements
+
 ### Requirement: TOTP enrollment
 An authenticated user SHALL be able to generate a TOTP secret (otpauth URL + base32 secret) and enable MFA by proving possession with a valid code. The secret MUST be stored encrypted; enabling MUST be rejected for an invalid code. Both enrollment surfaces (the profile self-service panel and the forced-enrollment login step) SHALL render the otpauth URL as a scannable QR code (locally generated in the browser — the secret SHALL NOT be sent to any third-party or additional endpoint for rendering), with the base32 secret retained as the manual-entry fallback; if QR rendering is unavailable the manual path SHALL remain fully functional.
 
@@ -42,13 +43,23 @@ For users with MFA enabled, password authentication SHALL NOT issue a session JW
 ### Requirement: MFA disable paths
 The account owner SHALL be able to disable own MFA by re-authenticating with password; an admin SHALL be able to disable MFA for a locked-out user. Both events MUST be audit-logged.
 
+The admin confirmation SHALL describe the effect according to how the target account signs in, and SHALL NOT claim that a password alone suffices for an account that has no usable local password: a local account without external identities signs in with its password only; a local account that also has external identities no longer needs this system's verification code on either path; an account that signs in only through an external identity provider no longer needs this system's verification code after the provider's own sign-in, which is unaffected; a directory account signs in with its directory password only. When the MFA enforcement policy applies to the account, the confirmation SHALL state that the user will be asked to enroll an authenticator again at next sign-in.
+
 #### Scenario: Self disable
 - **WHEN** an MFA-enabled user requests disable with the correct password
 - **THEN** MFA is disabled and audit-logged
 
 #### Scenario: Admin rescue
 - **WHEN** an admin disables MFA for another user
-- **THEN** that user can log in with password only and the action is audit-logged with the admin identity
+- **THEN** that user can sign in without this system's verification code through the sign-in paths the account already has, and the action is audit-logged with the admin identity
+
+#### Scenario: Admin rescue for an external-identity account
+- **WHEN** an admin opens the disable-MFA confirmation for an account that signs in only through an external identity provider
+- **THEN** the confirmation states that the user will no longer need this system's verification code after signing in at the provider, and does not state that a password alone is enough
+
+#### Scenario: Re-enrollment under an enforcement policy
+- **WHEN** an admin disables MFA for a user whose role falls under the MFA enforcement policy, and the user signs in again
+- **THEN** the user is required to enroll an authenticator before obtaining a full session
 
 ### Requirement: MFA 強制註冊
 安全政策 `mfa_required` SHALL 為三態：未啟用/僅管理員/所有用戶（出廠預設未啟用——易用取向；PCI 8.4.2 建議值為所有用戶，隨一鍵套用開啟）。對受強制範圍內的使用者，未註冊 TOTP 者通過密碼驗證後 SHALL NOT 取得正式會話，改回 `mfa_enrollment_required` 與 enrollment scoped token；該 token SHALL 僅可存取 TOTP 綁定端點（setup/confirm）。完成綁定前 SHALL NOT 可存取任何一般 API。LDAP 影子用戶 SHALL 同樣適用。政策未啟用時 SHALL 維持既有 opt-in 行為。強制註冊流程 SHALL 僅適用於尚未註冊 TOTP 的使用者：setup 與 confirm 端點在動作前 SHALL 重新查核 `totp_enabled`，已註冊者一律拒絕——防洩漏的 enrollment token（TTL 內）被重放以重置並改綁已註冊帳號的第二因子。綁定確認的驗證碼失敗 SHALL 計入與登入共用的帳號鎖定計數。
@@ -91,4 +102,3 @@ The account owner SHALL be able to disable own MFA by re-authenticating with pas
 #### Scenario: 下一 step 新碼正常
 - **WHEN** time-step 前進後使用者提交新產生的碼（step > 已消耗索引）
 - **THEN** 驗證正常通過
-

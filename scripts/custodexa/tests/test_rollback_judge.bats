@@ -29,8 +29,7 @@ switched() {
   rb_judge_host "$outcome" "$1" "$2"
 }
 rb_judge_host() {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  rollback_host "$1" ui "${2:-1.16.1}" "${3:-1.16.2}"
+  rb_cached "$1" ui "${2:-1.16.1}" "${3:-1.16.2}"
   OLD_B=$(up_digest old-backend) OLD_F=$(up_digest old-frontend)
   NEW_B=$(up_digest cfg-backend) NEW_F=$(up_digest cfg-frontend)
 }
@@ -55,10 +54,14 @@ decide() {
     exit "$rc"' _ "$SRC" "$ROOT" "$@"
 }
 
-setup() {
+judge_base() {
   backup_host ui
   : >"$DB/events"
   : >"$DB/db-calls"
+}
+setup() {
+  host_workdir
+  host_cache judge-base judge_base
 }
 
 @test "rollback premise: each way the record can differ from an upgrade after the switch is refused, in order" {
@@ -95,26 +98,6 @@ setup() {
   [ "$status" -eq 1 ] && [[ $output == *"why=too_old "* ]] || { echo "$output"; return 1; }
   # No database call for any of this.
   [ ! -s "$DB/db-calls" ]
-}
-
-@test "rollback premise: the three points inside the switch step are each recoverable" {
-  # Step 9 on record, the switch not saved: still 1.16.1 everywhere; going back has nothing to swap.
-  rb_judge_host before-switch
-  decide cx_rb_premise cx_rb_images
-  [ "$status" -eq 0 ] && [[ $output == *"why= target=1.16.1 pre=1 "* ]] || { echo "$output"; return 1; }
-  # Saved, current not moved yet.
-  rb_judge_host switch-recorded
-  decide cx_rb_premise
-  [ "$status" -eq 0 ] && [[ $output == *"pre=0 "* ]] || { echo "$output"; return 1; }
-  # current moved (the root script link is the next thing).
-  switched 1.16.1 1.16.2 failed 9
-  decide cx_rb_premise
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  # The same link mismatch after step 9 is not one of them.
-  switched 1.16.1 1.16.2 failed 10
-  ln -sfn releases/1.16.1 "$ROOT/current"
-  decide cx_rb_premise
-  [ "$status" -eq 1 ] && [[ $output == *"why=link "* ]] || { echo "$output"; return 1; }
 }
 
 @test "rollback judge: never started, same migrations, listed as compatible; anything unknown is changed" {

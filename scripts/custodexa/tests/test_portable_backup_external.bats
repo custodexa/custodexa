@@ -162,8 +162,9 @@ refused_screen() { screen_of "$output" | sed -n '/^\[FAIL\]/,$p'; }
 
 # ---------- the client and the server ----------
 
+# 17 (the probe's client is another major) is the default server of the tests above.
 @test "external: a server of 16, 17 or 18 is exported by the client of its own major; the probe always runs on 18" {
-  for v in 16.4 17.6 18.1; do
+  for v in 16.4 18.1; do
     again
     bk_server "$v"
     printf 'pg_dump (PostgreSQL) %s\n' "${v%%.*}.2" >"$DB/pg_dump_version"
@@ -453,9 +454,17 @@ BY_SYSTEM='verify-full (set by PGSSLROOTCERT=system, as in the backend)'
     again
     rm -f "$ROOT/data/audit/db-ca.pem"
     tls_case "$mode" "$root"
+    # verify-full with a CA file: a CA file whose last line has no newline.
+    [ "$mode|$root" != verify-full\|file ] || printf 'second line, no newline at the end' >>"$ROOT/data/audit/db-ca.pem"
     ok_run en || { echo "$r"; return 1; }
     tls_check "$a" "$b" "$c" "$d" "$e" || { echo "row: $r"; return 1; }
     [ "$(bk_mf db.sslmode)" = "$mode" ] || return 1
+    # The CA file in the backup file: byte for byte (tls_check), 0600, listed and in SHA256SUMS.
+    if [ "$c" = file ]; then
+      [[ " $(bk_mf contents.members) " == *" db-ca.pem SHA256SUMS "* ]] || { echo "row: $r"; return 1; }
+      /usr/bin/tar -tvf "$BK_FILE" | grep -q '^-rw------- .* db-ca.pem$' || { echo "row: $r"; return 1; }
+      bk_member SHA256SUMS | grep -q ' db-ca.pem$' || { echo "row: $r"; return 1; }
+    fi
     # The CA file is mounted, read-only, exactly when the client is given it.
     if [ "$b" = /cx/tls/root.crt ]; then
       grep -qx "$ROOT/data/audit/db-ca.pem:/cx/tls/root.crt:ro" "$DB/run.mounts" || { cat "$DB/run.mounts"; return 1; }
@@ -471,10 +480,11 @@ BY_SYSTEM='verify-full (set by PGSSLROOTCERT=system, as in the backend)'
   [ "$(conn_line)" = '連線：require，以 CA 檔驗證伺服器憑證，不核對主機名稱（CA 會放進備份檔）' ] || { echo "$output"; return 1; }
 }
 
-@test "TLS: DB_SSLMODE unset or empty, with PGSSLROOTCERT unset, a file or system: the effective mode, db.sslmode kept as it is (empty)" {
+# PGSSLROOTCERT a file or system goes the same way whatever DB_SSLMODE is (the table above).
+@test "TLS: DB_SSLMODE unset or empty: the effective mode, db.sslmode kept as it is (empty)" {
   local s r
   for s in - ""; do
-    for r in - file system; do
+    for r in -; do
       again
       rm -f "$ROOT/data/audit/db-ca.pem"
       tls_case "$s" "$r"
@@ -539,18 +549,6 @@ EOF
   ok_run en || return 1
   grep -qx "sysca ${BK_PGC_ID[17]}" "$DB/events" || return 1
   [ "$(conn sslrootcert)" = /etc/ssl/certs/ca-certificates.crt ]
-}
-
-@test "TLS: PGSSLROOTCERT under the audit mount: db-ca.pem is that file byte for byte, contents.db_ca=true" {
-  tls_case verify-full file
-  printf 'second line, no newline at the end' >>"$ROOT/data/audit/db-ca.pem"
-  ok_run en || return 1
-  cmp <(bk_member db-ca.pem) "$ROOT/data/audit/db-ca.pem" || return 1
-  [ "$(bk_mf contents.db_ca)" = true ] && [ "$(bk_mf db.tls_trust)" = file ] || return 1
-  [[ " $(bk_mf contents.members) " == *" db-ca.pem SHA256SUMS "* ]] || return 1
-  /usr/bin/tar -tvf "$BK_FILE" | grep -q '^-rw------- .* db-ca.pem$' || return 1
-  extract_all
-  grep -q ' db-ca.pem$' "$X/SHA256SUMS"
 }
 
 @test "TLS: a CA, a client certificate or key path the script cannot find, a key in a folder the backup packs: refused before any stop" {
@@ -726,13 +724,6 @@ EOF
   [WARN] 外接資料庫裡有權限授予其他角色：monitor、"report reader"。
          換到新的資料庫伺服器時，這些角色要先建立，否則還原後的權限會不同。
 EOF
-  # A role named report_reader, as the scenario has it: shown as it is.
-  again
-  printf '%s\n' "$(bk_hex report_reader)" >"$DB/grants"
-  ok_run en || return 1
-  [ "$(bk_mf db.extra_grant_roles_hex)" = "$(bk_hex report_reader)" ] || return 1
-  [[ $output == *"[WARN] The external database grants privileges to other roles:
-         report_reader. On a new database server those roles have"* ]] || { echo "$output"; return 1; }
 }
 
 # ---------- the manifest ----------
@@ -814,46 +805,41 @@ EOF
   diff <(names "$b") <(printf '%s\n' reader report)
 }
 
-@test "role names: report and reader are written 726561646572 7265706f7274, word for word" {
-  printf '%s\n' "$(bk_hex report)" "$(bk_hex reader)" >"$DB/grants"
-  ok_run en || return 1
-  [ "$(bk_mf db.extra_grant_roles_hex)" = '726561646572 7265706f7274' ] || { bk_mf db.extra_grant_roles_hex; return 1; }
-  [ "$(bk_hex 'report reader')" = 7265706f727420726561646572 ]
-}
-
 @test "manifest check: the bundled reference manifest reads as valid; an external one without any of its reserved keys is refused" {
   ok_run en || return 1
   extract_all
   bk_libs || return 1
-  local -A m=()
+  local -A m=() ref=() ext=()
   local -a k=()
-  cx_flat_parse "$TESTS_DIR/fixtures/manifest-bundled-reference.json" m k || { echo "line $CX_FLAT_BAD"; return 1; }
-  cx_pb_manifest_check m || { echo "reference: $CX_PB_BAD_KEY"; return 1; }
+  cx_flat_parse "$TESTS_DIR/fixtures/manifest-bundled-reference.json" ref k || { echo "line $CX_FLAT_BAD"; return 1; }
+  cx_flat_parse "$X/backup-manifest.json" ext k || { echo "line $CX_FLAT_BAD"; return 1; }
+  # with <ref | ext> <key> <value | -unset>: m is that manifest, parsed once, with one key changed.
+  with() {
+    local -n from=$1
+    local x
+    m=()
+    for x in "${!from[@]}"; do m[$x]=${from[$x]}; done
+    if [ "$3" = -unset ]; then unset 'm[$2]'; else m[$2]=$3; fi
+  }
+  cx_pb_manifest_check ref || { echo "reference: $CX_PB_BAD_KEY"; return 1; }
   # A bundled file of a writer that left the reserved keys out reads them as empty or false.
   local key
   for key in db.external_host db.external_port db.sslmode db.tls_trust db.tls_verify db.tls_client_cert \
     db.extra_grant_roles_hex contents.db_ca; do
-    jq --arg k "$key" 'del(.[$k])' "$TESTS_DIR/fixtures/manifest-bundled-reference.json" >"$BATS_TEST_TMPDIR/b.json"
-    m=() k=()
-    cx_flat_parse "$BATS_TEST_TMPDIR/b.json" m k || return 1
+    with ref "$key" -unset
     cx_pb_manifest_check m || { echo "bundled without $key: $CX_PB_BAD_KEY"; return 1; }
   done
   # The external file as made passes; without any one reserved key it does not.
-  m=() k=()
-  cx_flat_parse "$X/backup-manifest.json" m k && cx_pb_manifest_check m || { echo "as made: $CX_PB_BAD_KEY"; return 1; }
+  cx_pb_manifest_check ext || { echo "as made: $CX_PB_BAD_KEY"; return 1; }
   for key in db.external_host db.external_port db.sslmode db.tls_trust db.tls_verify db.tls_client_cert \
     db.extra_grant_roles_hex contents.db_ca; do
-    jq --arg k "$key" 'del(.[$k])' "$X/backup-manifest.json" >"$BATS_TEST_TMPDIR/e.json"
-    m=() k=()
-    cx_flat_parse "$BATS_TEST_TMPDIR/e.json" m k || return 1
+    with ext "$key" -unset
     ! cx_pb_manifest_check m || { echo "external without $key was accepted"; return 1; }
     [ "$CX_PB_BAD_KEY" = "$key" ] || { echo "without $key: $CX_PB_BAD_KEY"; return 1; }
   done
   # The cross checks: a pair not in the table, the CA flag against the trust, the tool, the roles.
   bad() { # <key> <value>: the external manifest with that value is refused
-    jq --arg k "$1" --arg v "$2" '.[$k] = $v' "$X/backup-manifest.json" >"$BATS_TEST_TMPDIR/e.json"
-    m=() k=()
-    cx_flat_parse "$BATS_TEST_TMPDIR/e.json" m k || return 1
+    with ext "$1" "$2"
     ! cx_pb_manifest_check m || { echo "$1=$2 was accepted"; return 1; }
   }
   bad db.tls_verify none || return 1

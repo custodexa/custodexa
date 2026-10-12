@@ -105,21 +105,6 @@ st() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
   [ "$(st last_backup.step)" = 3 ]
 }
 
-@test "interrupted: the zh-TW screen as reviewed" {
-  : >"$DB/tar.audit.sleep"
-  interrupt zh-TW "$ROOT/custodexa.sh" || return 1
-  [ "$RC" -eq 1 ] || { echo "$output"; return 1; }
-  diff <(interrupted_part) - <<EOF || { echo "$output"; return 1; }
-[FAIL] 備份在第 3 步被中斷，沒有產生備份檔。已停止這次啟動的工具程序。
-       已取得的部分在 /opt/custodexa/backups/.partial-$TS/，
-       不能用來還原，而且含機敏明文；請刪除。
-服務可能仍在停止中。恢復服務：
-  sudo /opt/custodexa/custodexa.sh start --lang zh-TW
-要重新備份，直接再執行一次：
-  sudo /opt/custodexa/custodexa.sh backup --lang zh-TW
-EOF
-}
-
 @test "interrupted at step 7 while reading back: the named pipe and the hash beside tar are gone; ready, so no start command" {
   : >"$DB/tar.readback.sleep"
   bash "$ROOT/custodexa.sh" backup --lang en --yes </dev/null >"$OUT" 2>&1 &

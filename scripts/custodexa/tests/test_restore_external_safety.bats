@@ -9,11 +9,16 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_ext_flow_host
-setup() {
+load rollback_host
+safety_host() {
   rs_ext_flow_host
   rs_new_host
   NEWDATA=$BATS_TEST_TMPDIR/newdata
   printf '%s\n' 'public|12' >"$DB/objects"
+}
+setup() {
+  host_workdir
+  host_cache safety safety_host
 }
 new_run() { run bash "$ROOT/custodexa.sh" restore "$RS_X_FILE" --new-host --yes --confirm-data-loss --data-path "$NEWDATA" --lang en "$@" </dev/null; }
 st() { jq -r --arg k "last_restore.$1" '.[$k] // ""' "$ROOT/state.json"; }
@@ -54,6 +59,9 @@ sha_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
   # Finished, and the completion screen names no export.
   [ "$(st result)" = succeeded ] && [[ $output == *'section 6 of "Backup and Restore"'* ]] || { echo "$output"; return 1; }
   [[ $output != *'Export       '* && $output != *'safety-db.dump'* ]] || { echo "$output"; return 1; }
+  # The preview: neither emptying, an export nor the space warning.
+  [[ $output == *'                 The target database is empty; nothing needs emptying'$'\n''  Safety backup  not needed: this host has no data yet'$'\n'* ]] || { echo "$output"; return 1; }
+  [[ $output != *'GB free; the script cannot'* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external safety: an export that cannot be read back in full stops before anything is emptied" {

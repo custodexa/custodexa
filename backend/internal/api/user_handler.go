@@ -21,7 +21,8 @@ type UserServiceInterface interface {
 	GetByID(id uint) (*model.User, error)
 	Create(req *identity.CreateUserRequest) (*model.User, error)
 	Update(id uint, req *identity.UpdateUserRequest) (*model.User, map[string]string, error)
-	Delete(id uint) error
+	// DeleteWithSummary 刪除帳號並回傳被刪帳號名與作廢的外部身分綁定數（刪除審計用）
+	DeleteWithSummary(id uint) (identity.DeletedUserSummary, error)
 	AssignRoles(userID uint, roleNames []string) (*identity.RoleAssignResult, error)
 	AddRole(userID uint, roleName string) error
 	// RoleSetsOf 讀取端：管理者指派集與映射集分開回
@@ -270,7 +271,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	}
 
 	// 調用服務
-	err = h.userService.Delete(uint(id))
+	summary, err := h.userService.DeleteWithSummary(uint(id))
 	if err != nil {
 		if respondPrincipalError(c, err) {
 			return
@@ -296,6 +297,13 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	// 刪除審計列帶出被刪帳號：列上的 username 是操作者，被刪的是誰只看得到
+	// 路由上的編號，而帳號刪除後該編號已查不到名稱
+	c.Set("audit_details", map[string]string{
+		"event":                       "user_deleted",
+		"target_username":             summary.Username,
+		"external_identities_revoked": strconv.FormatInt(summary.ExternalIdentitiesRevoked, 10),
+	})
 	// message 欄已移除（成功回應不攜帶 UI 文案，前端自有 $t 文案）
 	c.JSON(http.StatusOK, gin.H{})
 }

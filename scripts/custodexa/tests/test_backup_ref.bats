@@ -51,99 +51,6 @@ ln custodexa-backup-1.13.0-20260930-101502.tar
 EOF
 }
 
-@test "backup: the file holds the named members, verified by SHA256SUMS; state.json points at it" {
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  local f=$ROOT/backups/$BK_FILE_NAME d=$BATS_TEST_TMPDIR/x
-  mkdir -p "$d"
-  /usr/bin/tar -xf "$f" -C "$d" || return 1
-  for m in backup-manifest.json release-MANIFEST.json tool-MANIFEST.json snapshot.txt db.dump \
-    audit.tar.gz env.bak tls.tar.gz SHA256SUMS; do
-    [ -s "$d/$m" ] || { echo "missing $m"; return 1; }
-  done
-  (cd "$d" && /usr/bin/sha256sum -c --quiet SHA256SUMS) || return 1
-  [ "$(wc -l <"$d/SHA256SUMS")" -eq 8 ] || return 1
-  # audit is in; recordings are left out unless asked for; exports (decrypted evidence plaintext)
-  # never.
-  /usr/bin/tar -tzf "$d/audit.tar.gz" >"$BATS_TEST_TMPDIR/list"
-  grep -q '^audit/fallback.log$' "$BATS_TEST_TMPDIR/list" || return 1
-  [ ! -e "$d/recordings.tar.gz" ] || return 1
-  if grep -q exports "$BATS_TEST_TMPDIR/list"; then echo "exports was backed up"; return 1; fi
-  cmp "$ROOT/.env" "$d/env.bak" || return 1
-  # status reads these keys.
-  load_lib
-  cx_state_load "$ROOT/state.json"
-  [ "$(cx_state_get last_backup.id)" = 20260930-101502 ] || return 1
-  [ "$(cx_state_get last_backup.kind)" = script ] || return 1
-  [ "$(cx_state_get last_backup.file)" = "backups/$BK_FILE_NAME" ] || return 1
-  [ "$(cx_state_get last_backup.encrypted)" = false ] && [ -z "$(cx_state_get last_backup.dir)" ] || return 1
-  [ "$(cx_state_get last_backup.size_bytes)" = 18690000000 ] || return 1
-  [ "$(cx_state_get last_backup.snapshot_usable)" = true ] || return 1
-  [ "$(cx_state_get last_backup.result)" = succeeded ]
-}
-
-@test "backup: backups/ is 0700; the file, its checksum file and the .env copy in it are 0600" {
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [ "$(stat -c %a "$ROOT/backups")" = 700 ] || return 1
-  [ "$(stat -c %a "$ROOT/backups/$BK_FILE_NAME")" = 600 ] || return 1
-  [ "$(stat -c %a "$ROOT/backups/$BK_FILE_NAME.sha256")" = 600 ] || return 1
-  /usr/bin/tar -tvf "$ROOT/backups/$BK_FILE_NAME" env.bak | grep -q '^-rw------- '
-}
-
-@test "backup: no .env secret on the screen, in the log, in state.json, in the manifest or in snapshot.txt" {
-  bk_dotenv env
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  local d=$BATS_TEST_TMPDIR/x
-  mkdir -p "$d"
-  /usr/bin/tar -xf "$ROOT/backups/$BK_FILE_NAME" -C "$d" snapshot.txt backup-manifest.json || return 1
-  for v in "$BK_JWT" "$BK_KEK" "$BK_DBPW"; do
-    [[ $output != *"$v"* ]] || { echo "secret on screen"; return 1; }
-    if grep -rqF -- "$v" "$ROOT/logs" "$ROOT/state.json" "$d/snapshot.txt" "$d/backup-manifest.json"; then
-      echo "secret written: ${v:0:4}..."
-      return 1
-    fi
-  done
-}
-
-@test "backup: not enough space stops before any service is stopped" {
-  host_free / 1048576 # 1 GB
-  backup_run en --yes
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  diff <(screen_of "$output" | sed -n '/^\[FAIL\]/,$p') - <<'EOF' || { echo "$output"; return 1; }
-[FAIL] Not enough space for the backup: 35.8 GB needed (including room to
-       build the file and 1 GB spare), /opt/custodexa/backups has 1.0 GB
-       free. Nothing was stopped.
-  You can move older backup files elsewhere and delete them here, or (if
-  you chose to include the recordings) run it again without them.
-  The backup files now: ls -l /opt/custodexa/backups/
-EOF
-  if grep -q '^stop' "$DB/events"; then echo "services were stopped"; return 1; fi
-  if grep -q ' stop ' "$FAKE_DOCKER_LOG"; then echo "a stop call was made"; return 1; fi
-  [ ! -e "$ROOT/backups" ] || return 1
-  load_lib
-  cx_state_load "$ROOT/state.json"
-  [ "$(cx_state_get last_backup.result)" = failed ] || return 1
-  [ -z "$(cx_state_get last_backup.id)" ]
-}
-
-@test "backup: a failed step keeps what it took, makes no file, says how to start the services, records no backup" {
-  printf '1\n' >"$DB/pg_dump.rc"
-  backup_run en --yes
-  [ "$status" -eq 1 ] || { echo "$output"; return 1; }
-  [ -d "$ROOT/backups/.partial-20260930-101502" ] || return 1
-  [ ! -e "$ROOT/backups/$BK_FILE_NAME" ] || return 1
-  [[ $output == *"[FAIL] 2/7  Database"* ]] || { echo "$output"; return 1; }
-  [[ $output == *"[FAIL] The backup did not finish and no backup file was made."* ]] || return 1
-  [[ $output == *$'\n'"  sudo $ROOT/custodexa.sh start --lang en"* ]] || return 1
-  if grep -q '^start' "$DB/events"; then echo "started despite the failure"; return 1; fi
-  load_lib
-  cx_state_load "$ROOT/state.json"
-  [ "$(cx_state_get last_backup.result)" = failed ] || return 1
-  [ -z "$(cx_state_get last_backup.id)" ]
-}
-
 @test "backup: a backup that cannot be read is failed and makes no file" {
   printf '1\n' >"$DB/pg_restore.rc"
   backup_run en --yes
@@ -152,16 +59,6 @@ EOF
   [ -d "$ROOT/backups/.partial-20260930-101502" ] || return 1
   [ ! -e "$ROOT/backups/.partial-20260930-101502/SHA256SUMS" ] || return 1
   [ ! -e "$ROOT/backups/$BK_FILE_NAME" ] && [ ! -e "$ROOT/backups/$BK_FILE_NAME.sha256" ]
-}
-
-@test "backup: without a terminal and without --yes nothing is stopped (exit 3)" {
-  backup_run en
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  if grep -q '^stop' "$DB/events"; then echo "services were stopped"; return 1; fi
-  [ ! -e "$ROOT/backups" ] || return 1
-  load_lib
-  cx_state_load "$ROOT/state.json"
-  [ "$(cx_state_get last_backup.result)" = cancelled ]
 }
 
 # This case asserted that the script never backs up an external database. It now does, with a
@@ -173,34 +70,6 @@ EOF
   [ "$status" -eq 3 ] || { echo "$output"; return 1; }
   [[ $output == *"[FAIL] This host does not have the export tool images for the external"* ]] || { echo "$output"; return 1; }
   [ ! -s "$DB/events" ] && [ ! -e "$ROOT/backups" ]
-}
-
-@test "backup: KEK_PROVIDER=env says the .env copy holds the master key and gives no seal warning" {
-  bk_dotenv env
-  backup_run en --yes
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  screen_of "$output" | sed -n '/Backup done/,$p' >"$BATS_TEST_TMPDIR/done"
-  diff "$BATS_TEST_TMPDIR/done" - <<'EOF'
-[ OK ] Backup done (17.4 GB)
-  /opt/custodexa/backups/custodexa-backup-1.13.0-20260930-101502.tar
-  Checksum file custodexa-backup-1.13.0-20260930-101502.tar.sha256 (same folder)
-  Contains: database, audit files, settings file .env (includes the
-  master key), certificates tls/
-  Version 1.13.0; bundled database; master key: in the settings file
-  The master key is in the .env inside the backup file (fingerprint
-  5a5a5a5a5a5a5a5a) and comes back with a restore.
-  [WARN] The recordings are not in the backup file. They are in
-         /opt/custodexa/data/recordings/; keep them some other way, or
-         back up again and choose to include them.
-  [WARN] This file is not encrypted and holds the master key and other
-         sensitive data (database password, sign-in token secret,
-         certificate private keys). Whoever has it can decrypt every stored
-         credential. Store it elsewhere with limited access; a backup can
-         also be encrypted with a passphrase.
-  [ OK ] The services are back.
-  Log file /opt/custodexa/logs/backup-20260930-101502.log
-EOF
-  [[ $output != *"sealed"* ]]
 }
 
 # up_take: the backup steps of upgrade step 7 on this deployment, at library level (the services
@@ -234,12 +103,16 @@ up_take() {
   [ -f "$BK_FILE" ] && (cd "$ROOT/backups" && /usr/bin/sha256sum -c --quiet "$CX_PB_NAME.sha256") || return 1
   [ "$(bk_mf trigger)" = upgrade ] && [ "$(bk_mf contents.state)" = true ] && [ "$(bk_mf contents.recordings)" = true ] \
     && [ "$(bk_mf encryption.enabled)" = false ] || return 1
-  cmp "$ROOT/state.json" <(bk_member state.json)
+  cmp "$ROOT/state.json" <(bk_member state.json) || return 1
+  # tls/ of the deployment is packed and checked.
+  /usr/bin/tar -tf "$BK_FILE" | grep -qx tls.tar.gz && [ "$(bk_mf contents.tls)" = true ] || return 1
+  grep -qx 'tar -tzf tls.tar.gz' "$DB/events" || { cat "$DB/events"; return 1; }
 }
 
-@test "backup within an upgrade: tls/ is packed when the deployment has one; without one (own ingress) the file is complete without it" {
+# With tls/ is the test above.
+@test "backup within an upgrade: without tls/ (own ingress) the file is complete without it" {
   local has
-  for has in 1 0; do
+  for has in 0; do
     rm -rf "$ROOT/backups"
     [ "$has" = 1 ] || rm -rf "$ROOT/tls"
     : >"$DB/events"
@@ -273,13 +146,17 @@ own_setup() {
 # with_answers <lang> <answer>...: the terminal as the operator saw it: each answer typed after its
 # question (the tests have no terminal to echo the input).
 with_answers() {
-  local out=$output l=$1 p a
+  local out=$output l=$1 p a i=0
   shift
-  local -a qs=(br_choose br_ask_ref br_ask_time br_ask_restore br_ask_yes)
+  local -a ps=()
+  # The questions in turn (the choice first), as cx_msg prints them in that language.
+  mapfile -d '' ps < <(CX_LANG_FLAG=$l bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"
+    for k in br_choose br_ask_ref br_ask_time br_ask_restore br_ask_yes; do m=$(cx_msg "$k"); printf "%s\0" "$m"; done' _ "$SRC")
+  [ "${#ps[@]}" -eq 5 ] || return 1
   for a in "$@"; do
-    p=$(CX_LANG_FLAG=$l bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; cx_msg "$2"' _ "$SRC" "${qs[0]}")
-    qs=("${qs[@]:1}")
-    [ "$p" = "$(CX_LANG_FLAG=$l bash -c '. "$1/lib/common.sh"; cx_load_libs "$1"; cx_msg br_choose' _ "$SRC")" ] || p=${p//$'\n'/$'\n'  }
+    p=${ps[i]}
+    i=$((i + 1))
+    [ "$p" = "${ps[0]}" ] || p=${p//$'\n'/$'\n'  }
     out=${out/"$p"/"$p$a"$'\n'}
   done
   printf '%s\n' "${out%$'\n'}" | sed "s#$ROOT#/opt/custodexa#g"
@@ -353,6 +230,8 @@ Choose [1/2]:
 
   The snapshot must include
 EOF
+  # No word for certificates anywhere on the screen.
+  [[ $output != *ertificate* ]] || { echo "en, no tls/: $output"; return 1; }
   own_interactive zh-TW $'2\nsnap\n2026-09-30 02:18\n/doc\nyes'
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   diff <(own_head) - <<'EOF' || return 1
@@ -372,6 +251,7 @@ EOF
 
   快照必須包含
 EOF
+  [[ $output != *憑證* ]] || { echo "zh-TW, no tls/: $output"; return 1; }
   own_interactive ja $'2\nsnap\n2026-09-30 02:18\n/doc\nyes'
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   diff <(own_head) - <<'EOF' || return 1
@@ -393,13 +273,8 @@ EOF
 
   スナップショットに含めるもの
 EOF
-  # No word for certificates anywhere on these screens.
+  [[ $output != *証明書* ]] || { echo "ja, no tls/: $output"; return 1; }
   local l word
-  for l in zh-TW en ja; do
-    case $l in zh-TW) word=憑證 ;; en) word=ertificate ;; ja) word=証明書 ;; esac
-    own_interactive "$l" $'2\nsnap\n2026-09-30 02:18\n/doc\nyes'
-    [[ $output != *"$word"* ]] || { echo "$l, no tls/: $output"; return 1; }
-  done
   # With tls/ (a link counts too) every language names them in the choice and in the paragraph.
   ln -s /nonexistent "$ROOT/tls"
   for l in zh-TW en ja; do

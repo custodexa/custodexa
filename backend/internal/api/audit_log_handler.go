@@ -137,7 +137,7 @@ func (h *AuditLogHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, auditLog)
+	c.JSON(http.StatusOK, audit.NewAuditLogView(auditLog))
 }
 
 // GetByResourceID 查詢特定資源的審計歷史

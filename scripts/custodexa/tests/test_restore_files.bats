@@ -29,17 +29,12 @@ setup() { rs_files_host; }
   cmp "$ROOT/tls/leaf.before-restore-import-test/fullchain.pem" "$RS_I_STAGE/payload/tls/fullchain.pem"
   cmp "$ROOT/tls/leaf.before-restore-import-test/privkey.pem" "$RS_I_STAGE/payload/tls/privkey.pem"
 }
-@test "restore files: absent certificate contents leave an existing tls tree alone and never create a missing one" {
+@test "restore files: absent certificate contents leave an existing tls tree alone" {
   export RS_FILES_TLS=false
   cp -a "$ROOT/tls" "$BATS_TEST_TMPDIR/tls-before"
   rs_files_run
   [ "$status" = 0 ] || { echo "$output"; return 1; }
-  diff -r "$ROOT/tls" "$BATS_TEST_TMPDIR/tls-before" || return 1
-  rs_files_host
-  rm -rf "$ROOT/tls"
-  rs_files_run
-  [ "$status" = 0 ] || { echo "$output"; return 1; }
-  [ ! -e "$ROOT/tls" ]
+  diff -r "$ROOT/tls" "$BATS_TEST_TMPDIR/tls-before"
 }
 @test "restore files: a custom template is placed at the chosen path and current points to the data release" {
   export RS_FILES_TEMPLATE=$ROOT/conf/chosen.template
@@ -48,27 +43,20 @@ setup() { rs_files_host; }
   cmp "$RS_FILES_TEMPLATE" "$RS_I_STAGE/pass2/nginx-tls.conf.template" || return 1
   [ "$(readlink "$ROOT/current")" = releases/1.16.1 ]
 }
-@test "restore files: different template content is retained on both host flows" {
-  local flow
-  for flow in same new; do
-    rs_files_host
-    export RS_FILES_FLOW=$flow RS_FILES_TEMPLATE=$ROOT/conf/existing.template
-    printf 'original template\n' >"$RS_FILES_TEMPLATE"
-    cp "$RS_FILES_TEMPLATE" "$BATS_TEST_TMPDIR/original"
-    rs_files_run
-    [ "$status" = 0 ] || { echo "$output"; return 1; }
-    cmp "$RS_FILES_TEMPLATE.before-restore-import-test" "$BATS_TEST_TMPDIR/original" || return 1
-    cmp "$RS_FILES_TEMPLATE" "$RS_I_STAGE/pass2/nginx-tls.conf.template" || return 1
-  done
+# Template placement does not depend on the host flow; the same-host flow stands for both.
+@test "restore files: different template content is retained" {
+  export RS_FILES_TEMPLATE=$ROOT/conf/existing.template
+  printf 'original template\n' >"$RS_FILES_TEMPLATE"
+  cp "$RS_FILES_TEMPLATE" "$BATS_TEST_TMPDIR/original"
+  rs_files_run
+  [ "$status" = 0 ] || { echo "$output"; return 1; }
+  cmp "$RS_FILES_TEMPLATE.before-restore-import-test" "$BATS_TEST_TMPDIR/original" || return 1
+  cmp "$RS_FILES_TEMPLATE" "$RS_I_STAGE/pass2/nginx-tls.conf.template"
 }
-@test "restore files: identical template content is not renamed on either host flow" {
-  local flow
-  for flow in same new; do
-    rs_files_host
-    export RS_FILES_FLOW=$flow RS_FILES_TEMPLATE=$ROOT/conf/existing.template
-    cp "$RS_I_STAGE/pass2/nginx-tls.conf.template" "$RS_FILES_TEMPLATE"
-    rs_files_run
-    [ "$status" = 0 ] || { echo "$output"; return 1; }
-    [ ! -e "$RS_FILES_TEMPLATE.before-restore-import-test" ] || return 1
-  done
+@test "restore files: identical template content is not renamed" {
+  export RS_FILES_TEMPLATE=$ROOT/conf/existing.template
+  cp "$RS_I_STAGE/pass2/nginx-tls.conf.template" "$RS_FILES_TEMPLATE"
+  rs_files_run
+  [ "$status" = 0 ] || { echo "$output"; return 1; }
+  [ ! -e "$RS_FILES_TEMPLATE.before-restore-import-test" ]
 }

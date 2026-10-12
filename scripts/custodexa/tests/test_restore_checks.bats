@@ -39,6 +39,8 @@ reached_end() { [ "$status" -eq 3 ] && [[ $output == *'restore-preflight-accepte
   [ "$errs" = 0 ]
 }
 
+# The plain fixture (ui mode, a unique fingerprint, the required secrets) reaching the end here is
+# also the passing case of the fingerprint, master key mode and required secret checks below.
 @test "restore checks: data at the minimum and an equal engine pass; a newer data version refuses" {
   restore_file plain
   reached_end || return 1
@@ -53,8 +55,6 @@ reached_end() { [ "$status" -eq 3 ] && [[ $output == *'restore-preflight-accepte
 
 @test "restore checks: a unique fingerprint passes; missing and non-unique fingerprints refuse" {
   local n
-  restore_file plain
-  reached_end || return 1
   for n in missing not-unique; do
     rs_derive plain "$n" 'sed -i "s/^fp.kek=.*/fp.kek=/" snapshot.txt
       rs_mf_set kek.fingerprint ""; rs_mf_set kek.fingerprint_status '"$n" || return 1
@@ -65,8 +65,8 @@ reached_end() { [ "$status" -eq 3 ] && [[ $output == *'restore-preflight-accepte
 }
 
 @test "restore checks: ui and kms pass; hsm refuses before stopping" {
-  local n
-  for n in plain kms; do restore_file "$n"; reached_end || return 1; done
+  restore_file kms
+  reached_end || return 1
   rs_derive plain hsm 'rs_mf_set kek.provider hsm' || return 1
   restore_file hsm
   [ "$status" -eq 3 ] && [[ $output == *'no working'*'HSM implementation'* ]] || { echo "$output"; return 1; }
@@ -109,8 +109,6 @@ reached_end() { [ "$status" -eq 3 ] && [[ $output == *'restore-preflight-accepte
 
 @test "restore checks: required secrets come from the file; missing or template values refuse without generating keys" {
   local n
-  restore_file plain
-  reached_end || return 1
   for n in absent template; do
     rs_derive plain "db-$n" 'sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD='"$([ "$n" = template ] && echo changeme)"'/" env.bak' || return 1
     restore_file "db-$n"

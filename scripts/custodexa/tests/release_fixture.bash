@@ -22,21 +22,61 @@ declare -gA CFG=()
 
 # fixture_release: configs and layers under $FIX, the registry contents in $SIM/registry (GHCR and
 # the Docker Hub mirror of the own images, the upstream registries), and the release manifest.
+# What it lays out depends only on NAMES, REF, TAG and IDX, so it is built once per test file
+# (under $BATS_FILE_TMPDIR, keyed by those arrays) and copied in for each test. A release whose
+# source folder is already there is built in place, as its manifest digest depends on that folder.
 fixture_release() {
   FIX=$BATS_TEST_TMPDIR/fix
+  local key cache tmp n c
+  if [ -z "${BATS_FILE_TMPDIR:-}" ] || [ -e "$ROOT/current/source" ]; then
+    fixture_release_build
+    return
+  fi
+  key=$(declare -p NAMES REF TAG IDX | sha256sum | cut -c1-16)
+  cache=$BATS_FILE_TMPDIR/release-fixture-$key
+  if [ ! -d "$cache" ]; then
+    fixture_release_build || return 1
+    tmp=$cache.tmp.$$
+    rm -rf "$tmp"
+    mkdir -p "$tmp"
+    cp -a "$FIX" "$tmp/fix"
+    cp -a "$ROOT/current/source" "$tmp/source"
+    cp "$ROOT/current/MANIFEST.json" "$tmp/MANIFEST.json"
+    printf '%s' "$FIX_REGISTRY" >"$tmp/registry"
+    for n in $NAMES; do printf '%s %s\n' "$n" "${CFG[$n]}"; done >"$tmp/cfg"
+    mv "$tmp" "$cache"
+    return
+  fi
+  # The test shell has cx_tree_sha256 after a fixture, built or copied.
+  declare -F cx_tree_sha256 >/dev/null || . "$SRC/lib/verify.sh"
+  rm -rf "$FIX"
+  cp -a "$cache/fix" "$FIX"
+  mkdir -p "$ROOT/current" "$SIM"
+  cp -a "$cache/source" "$ROOT/current/source"
+  while read -r n c; do CFG[$n]=$c; done <"$cache/cfg"
+  cat "$cache/registry" >>"$SIM/registry"
+  cp "$cache/MANIFEST.json" "$ROOT/current/MANIFEST.json"
+}
+
+fixture_release_build() {
   mkdir -p "$FIX/blobs" "$ROOT/current/source/backend" "$SIM"
   echo 'package main' >"$ROOT/current/source/backend/main.go"
-  local n c
+  local n c line
+  # The registry lines as appended to $SIM/registry, kept for the per-file copy.
+  FIX_REGISTRY=
   for n in $NAMES; do
     printf 'layer of %s\n' "$n" >"$FIX/layer-$n"
     c=$(printf '{"architecture":"amd64","os":"linux","rootfs":{"type":"layers","diff_ids":["sha256:%s"]}}' \
       "$(sha256sum "$FIX/layer-$n" | cut -d' ' -f1)")
     printf '%s' "$c" >"$FIX/config-$n"
     CFG[$n]=sha256:$(sha256sum "$FIX/config-$n" | cut -d' ' -f1)
-    printf '%s@%s %s\n' "${REF[$n]}" "${IDX[$n]}" "${CFG[$n]}" >>"$SIM/registry"
+    printf -v line '%s@%s %s\n' "${REF[$n]}" "${IDX[$n]}" "${CFG[$n]}"
+    FIX_REGISTRY+=$line
   done
-  printf '%s@%s %s\n' docker.io/custodexa/backend "${IDX[backend]}" "${CFG[backend]}" \
-    docker.io/custodexa/frontend "${IDX[frontend]}" "${CFG[frontend]}" >>"$SIM/registry"
+  printf -v line '%s@%s %s\n' docker.io/custodexa/backend "${IDX[backend]}" "${CFG[backend]}" \
+    docker.io/custodexa/frontend "${IDX[frontend]}" "${CFG[frontend]}"
+  FIX_REGISTRY+=$line
+  printf '%s' "$FIX_REGISTRY" >>"$SIM/registry"
   release_manifest >"$ROOT/current/MANIFEST.json"
 }
 

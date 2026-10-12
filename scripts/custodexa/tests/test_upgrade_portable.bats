@@ -13,6 +13,85 @@ load backup_host
 load upgrade_host
 load pty_host
 
+# ---------- hosts laid out once per file ----------
+# The fakes write absolute paths, so every test of this file works in one folder,
+# $BATS_FILE_TMPDIR/w, emptied before each test. setup_file lays out each host there once (in a
+# subshell, from the state every test starts with) and keeps a copy of the folder and of the
+# variables the layout set or unset; cx_tpl_use copies them back to the same paths. A host with no
+# copy is laid out by its own command, as before.
+CX_TPL_SKIP='^(BASH.*|BATS_.*|FUNCNAME|GROUPS|DIRSTACK|PIPESTATUS|LINENO|SECONDS|RANDOM|SRANDOM|EPOCHREALTIME|EPOCHSECONDS|HISTCMD|COMP_.*|_|_CX_.*|_cx_.*|PWD|OLDPWD|SHLVL|status|output|lines|stderr|stderr_lines)$'
+
+setup() {
+  BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/w
+  rm -rf "$BATS_TEST_TMPDIR"
+  mkdir -p "$BATS_TEST_TMPDIR"
+}
+
+# _cx_decl <name>: _CX_S becomes a statement that sets the variable as it is now, globally.
+_cx_decl() {
+  local _cx_n=$1
+  if [[ ${!_cx_n@a} == *[aA]* ]]; then _CX_S=$(declare -p "$_cx_n"); else _CX_S=${!_cx_n@A}; fi
+  [ -n "$_CX_S" ] || _CX_S=$(declare -p "$_cx_n" 2>/dev/null)
+  case $_CX_S in
+    'declare -- '*) _CX_S="declare -g ${_CX_S#declare -- }" ;;
+    'declare -'*) _CX_S="declare -g${_CX_S#declare -}" ;;
+    *) _CX_S="declare -g $_CX_S" ;;
+  esac
+}
+
+# cx_tpl_build <key> <command...>: lay out the host with the command and keep it under the key.
+cx_tpl_build() {
+  local _cx_t=$BATS_FILE_TMPDIR/tpl/$1
+  shift
+  (
+    export BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/w
+    rm -rf "$BATS_TEST_TMPDIR"
+    mkdir -p "$BATS_TEST_TMPDIR"
+    declare -A _CX_VB=()
+    for _cx_n in $(compgen -v); do
+      [[ $_cx_n =~ $CX_TPL_SKIP || ${!_cx_n@a} == *r* ]] && continue
+      _cx_decl "$_cx_n"
+      _CX_VB[$_cx_n]=$_CX_S
+    done
+    "$@" || { echo "cx_tpl_build: $* failed" >&2; exit 1; }
+    mkdir -p "$_cx_t"
+    cp -a "$BATS_TEST_TMPDIR/." "$_cx_t/w"
+    {
+      for _cx_n in $(compgen -v); do
+        [[ $_cx_n =~ $CX_TPL_SKIP || ${!_cx_n@a} == *r* ]] && continue
+        _cx_decl "$_cx_n"
+        [ "${_CX_VB[$_cx_n]-}" = "$_CX_S" ] || printf '%s\n' "$_CX_S"
+      done
+      for _cx_n in "${!_CX_VB[@]}"; do
+        declare -p "$_cx_n" >/dev/null 2>&1 || printf 'unset -v %s\n' "$_cx_n"
+      done
+    } >"$_cx_t/vars"
+  )
+}
+
+# cx_tpl_use <key> <command...>: the host kept under the key, or the command's when there is none.
+cx_tpl_use() {
+  local _cx_t=$BATS_FILE_TMPDIR/tpl/$1
+  shift
+  [ -f "$_cx_t/vars" ] || { "$@"; return; }
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  cp -a "$_cx_t/w/." "$BATS_TEST_TMPDIR/"
+  # shellcheck disable=SC1091
+  . "$_cx_t/vars"
+  hash -r
+}
+
+# fresh_ext as tests/upgrade_host.bash lays it out; fresh_ext below takes the copy kept of it.
+eval "$(declare -f fresh_ext | sed '1s/^fresh_ext /fresh_ext_build /')"
+fresh_ext() { cx_tpl_use "ext-${1:-online}-${2:-17.6}" fresh_ext_build "$@"; }
+
+setup_file() {
+  cx_tpl_build fresh-ui fresh_build ui
+  cx_tpl_build ext-online-17.6 fresh_ext_build online 17.6
+  cx_tpl_build ext-offline-17.6 fresh_ext_build offline 17.6
+  cx_tpl_build ext-online-15.8 fresh_ext_build online 15.8
+}
+
 LOG_TS=20260930-101502
 UP_FILE=backups/custodexa-backup-1.13.0-20260930-101502.tar
 
@@ -39,7 +118,8 @@ no_stop() {
 }
 
 # fresh: the bundled deployment of upgraded_host, the clock at the start, no event yet.
-fresh() {
+fresh() { cx_tpl_use "fresh-${1:-ui}" fresh_build "$@"; }
+fresh_build() {
   rm -rf "${BATS_TEST_TMPDIR:?}"/*
   upgraded_host "${1:-ui}" || return 1
   clock 0 3 0 41 0 4 0 11
@@ -82,11 +162,16 @@ snapshot_beside_log() {
   [ "$(bk_mf trigger)" = upgrade ] && [ "$(bk_mf encryption.enabled)" = false ] || return 1
   [ "$(bk_mf contents.recordings)" = true ] && [ "$(bk_mf contents.state)" = true ] || return 1
   bk_member recordings.tar.gz | /usr/bin/tar -tzf - | grep -q 'a.cast$' || return 1
-  # state.json as the upgrade found it, byte for byte.
+  # state.json as the upgrade found it, byte for byte, 0600 in the file and in its checksums, for
+  # going back by hand (state.json itself has moved on).
   cmp "$BATS_TEST_TMPDIR/state-before" <(bk_member state.json) || return 1
+  [ "$(/usr/bin/tar -tvf "$BK_FILE" state.json | cut -c1-10)" = -rw------- ] || return 1
+  bk_member SHA256SUMS | grep -q ' state.json$' || { bk_member SHA256SUMS; return 1; }
+  ! cmp -s "$ROOT/state.json" <(bk_member state.json) || return 1
   # The snapshot the checks compared with is beside the log, the same as the one in the file.
   snapshot_beside_log || return 1
   cmp "$ROOT/logs/upgrade-$LOG_TS.before.txt" <(bk_member snapshot.txt) || return 1
+  [[ $output == *"[ OK ] Keys            all four key fingerprints are unchanged"* ]] || { echo "$output"; return 1; }
   [[ $output == *"[ OK ] Same data       42 users and 18,305 connection records, as"* ]] || { echo "$output"; return 1; }
   # The services stay stopped while the file is made: no start between the stop and the new version.
   sed -n "$(at '^stop backend'),$(at '^up$')p" "$DB/events" | { ! grep -q '^start'; } || { cat "$DB/events"; return 1; }
@@ -94,13 +179,8 @@ snapshot_beside_log() {
   ! compgen -G "$ROOT/backups/.partial-*" >/dev/null
 }
 
-@test "upgrade backup: the checks after the start read the snapshot beside the log: the same data, an emptied database, a missing migration, another KEK" {
-  fresh ui
-  full_run en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  [[ $output == *"[ OK ] Keys            all four key fingerprints are unchanged"* ]] || { echo "$output"; return 1; }
-  [[ $output == *"[ OK ] Same data       42 users and 18,305 connection records, as"* ]] || { echo "$output"; return 1; }
-  snapshot_beside_log || return 1
+# The same data (OK) is the test above.
+@test "upgrade backup: the checks after the start read the snapshot beside the log: an emptied database, a missing migration, another KEK" {
   # Users down from 42 to 1 and no baseline line in the log: an empty database, everything stopped.
   fresh ui
   printf '1\n' >"$UP/after.count.users"
@@ -167,9 +247,10 @@ esac'
 
 # The commit point of step 7: the file is put in place whole and recorded before the switch, or the
 # upgrade stops there with the old version's start command.
-@test "upgrade backup: packing or reading the file back fails: no backup file, nothing recorded, never switched" {
+# A failure building the file takes the same path here; the backup tests fail each step of it.
+@test "upgrade backup: reading the file back fails: no backup file, nothing recorded, never switched" {
   local sw
-  for sw in tar.pack.rc tar.readback.rc; do
+  for sw in tar.readback.rc; do
     fresh ui
     printf '1\n' >"$DB/$sw"
     full_run en
@@ -197,6 +278,24 @@ esac'
         [ "$(at '^pull pgclient')" -gt 0 ] || { cat "$DB/events"; return 1; }
         ! grep -q '^load$' "$DB/events" || return 1
         [ "$(last_at '^pull pgclient')" -lt "$(at '^psql ')" ] || { cat "$DB/events"; return 1; }
+        # Choice [1] exports the external database with the pinned client of its major into a
+        # portable file.
+        BK_FILE=$ROOT/$(st last_upgrade.backup)
+        [ "$(st last_upgrade.backup)" = "$UP_FILE" ] && [ -f "$BK_FILE" ] || { cat "$ROOT/state.json"; return 1; }
+        [ "$(bk_mf trigger)" = upgrade ] && [ "$(bk_mf db.location)" = external ] || return 1
+        [ "$(bk_mf tool.dump_image)" = pgclient17 ] && [ "$(bk_mf tool.dump_manifest)" = tool ] || return 1
+        [ "$(bk_mf tool.dump_image_digest)" = "$(jq -r .images.pgclient17.index_digest "$ROOT/releases/1.13.2/MANIFEST.json")" ] || return 1
+        [ "$(bk_mf db.server_major)" = 17 ] && [ "$(bk_mf db.external_host)" = db.example.internal ] || return 1
+        # The export ran in the client of the server's major, checked at the start; none in a service.
+        grep -q " $(pgc_id 17) pg_dump$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
+        ! grep -q " $(pgc_id 16) pg_dump$\| $(pgc_id 18) pg_dump$" "$DB/db-runs" || return 1
+        ! grep -q 'exec -T postgres' "$FAKE_DOCKER_LOG" || return 1
+        # Step 6 with no connection left: OK, asked through the client.
+        pty_screen "$out" | grep -qF '[ OK ]  6/13' || { pty_screen "$out"; return 1; }
+        grep -q " $(pgc_id 17) psql connections$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
+        # The client images are recorded as the tools of the new version.
+        [[ " $(st current.tool_image_ids) " == *" pgclient17=$(pgc_id 17) "* ]] || { cat "$ROOT/state.json"; return 1; }
+        [ "$(st current.version)" = 1.13.2 ] || return 1
         ;;
       offline)
         [ "$(at '^load$')" -gt 0 ] || { cat "$DB/events"; return 1; }
@@ -213,24 +312,6 @@ esac'
     grep -q " $(pgc_id 18) psql server_version_num$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
     [ "$(st last_upgrade.result)" = succeeded ] || { pty_screen "$out"; return 1; }
   done
-}
-
-@test "upgrade backup (external): choice [1] exports the external database with the pinned client of its major into a portable file" {
-  fresh_ext online 17.6
-  pty_up "$BATS_TEST_TMPDIR/screen" -- "[y/N] " y "Choose [1/2]: " 1 || { pty_screen "$BATS_TEST_TMPDIR/screen"; return 1; }
-  BK_FILE=$ROOT/$(st last_upgrade.backup)
-  [ "$(st last_upgrade.backup)" = "$UP_FILE" ] && [ -f "$BK_FILE" ] || { cat "$ROOT/state.json"; return 1; }
-  [ "$(bk_mf trigger)" = upgrade ] && [ "$(bk_mf db.location)" = external ] || return 1
-  [ "$(bk_mf tool.dump_image)" = pgclient17 ] && [ "$(bk_mf tool.dump_manifest)" = tool ] || return 1
-  [ "$(bk_mf tool.dump_image_digest)" = "$(jq -r .images.pgclient17.index_digest "$ROOT/releases/1.13.2/MANIFEST.json")" ] || return 1
-  [ "$(bk_mf db.server_major)" = 17 ] && [ "$(bk_mf db.external_host)" = db.example.internal ] || return 1
-  # The export ran in the client of the server's major, checked at the start; none in a service.
-  grep -q " $(pgc_id 17) pg_dump$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
-  ! grep -q " $(pgc_id 16) pg_dump$\| $(pgc_id 18) pg_dump$" "$DB/db-runs" || return 1
-  ! grep -q 'exec -T postgres' "$FAKE_DOCKER_LOG" || return 1
-  # The client images are recorded as the tools of the new version.
-  [[ " $(st current.tool_image_ids) " == *" pgclient17=$(pgc_id 17) "* ]] || { cat "$ROOT/state.json"; return 1; }
-  [ "$(st current.version)" = 1.13.2 ]
 }
 
 @test "upgrade (external, client available): step 7 offers [1] and [2]; [2] lists a full backup of the external database" {
@@ -335,13 +416,18 @@ log_path_of() { printf '%s\n' "$1" | sed -n 's/^  Log file \(.*\.log\)$/\1/p'; }
   local t
   for t in '2026-09-30 02:17' '2026-09-30 02:15'; do
     fresh_ext online 15.8
-    full_run en
-    [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+    # The refusal and its four steps (once: the second time stands on the same refusal).
+    if [ "$t" = '2026-09-30 02:17' ]; then
+      full_run en
+      [ "$status" -eq 3 ] || { echo "$output"; return 1; }
+    fi
     # 1 and 2: the operator drained and stopped the services, and status shows them stopped.
     printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
     echo stopped >"$DB/svc"
     # 3: the own backup started at $t. 4: the command of step 4, with the three options.
-    printf '%s\n' "$output" | grep -qxF "       sudo $ROOT/custodexa.sh upgrade 1.13.2 --yes \\" || { echo "$output"; return 1; }
+    if [ "$t" = '2026-09-30 02:17' ]; then
+      printf '%s\n' "$output" | grep -qxF "       sudo $ROOT/custodexa.sh upgrade 1.13.2 --yes \\" || { echo "$output"; return 1; }
+    fi
     : >"$DB/events"
     : >"$DB/db-runs"
     clock 0 3 0 41 0 4 0 11
@@ -382,24 +468,15 @@ log_path_of() { printf '%s\n' "$1" | sed -n 's/^  Log file \(.*\.log\)$/\1/p'; }
 
 # ---------- the backup's path on the closing and failure screens ----------
 
-@test "upgrade backup: the closing screen and a failure after the switch name the backup file; last_upgrade.backup and last_backup.file point at it" {
-  local l
-  for l in zh-TW en; do
-    fresh ui
-    full_run "$l"
-    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-    diff <(from_line "$(sed -n 1p "$TESTS_DIR/snapshots/s11.$l.txt")") "$TESTS_DIR/snapshots/s11.$l.txt" || { echo "$output"; return 1; }
-    [ "$(st last_upgrade.backup)" = "$UP_FILE" ] && [ "$(st last_backup.file)" = "$UP_FILE" ] && [ -f "$ROOT/$UP_FILE" ] \
-      || { cat "$ROOT/state.json"; return 1; }
-  done
-  # Steps 9 to 12 each fail after the backup: the same file on record and on the screen.
+# The closing screen, and the failures at steps 10 and 11, are compared word for word in
+# test_upgrade_entry.bats.
+@test "upgrade backup: a failure after the switch names the backup file; last_upgrade.backup and last_backup.file point at it" {
+  # Steps 9 and 12 fail after the backup: the same file on record and on the screen.
   local sw
-  for sw in switch start ready check; do
+  for sw in switch check; do
     fresh ui
     case $sw in
       switch) hook_before 'case " $* " in *" run "*" --entrypoint /bin/sh "*) exit 1 ;; esac' ;;
-      start) touch "$UP/up.rc" ;;
-      ready) touch "$UP/health.rc" ;;
       check) printf '%s\n' 20260816_schema_baseline 20261010_report_schedule >"$UP/after.migrations" ;;
     esac
     full_run en
@@ -407,9 +484,6 @@ log_path_of() { printf '%s\n' "$1" | sed -n 's/^  Log file \(.*\.log\)$/\1/p'; }
     [ "$(st last_upgrade.backup)" = "$UP_FILE" ] && [ "$(st last_backup.file)" = "$UP_FILE" ] && [ -f "$ROOT/$UP_FILE" ] \
       || { echo "$sw"; cat "$ROOT/state.json"; return 1; }
     [[ $output == *"$ROOT/$UP_FILE"* ]] || { echo "$sw: $output"; return 1; }
-    if [ "$sw" = ready ]; then
-      diff <(from_line '[FAIL] The upgrade stopped at step 11/13') "$TESTS_DIR/snapshots/s12c.en.txt" || { echo "$output"; return 1; }
-    fi
   done
 }
 
@@ -467,16 +541,10 @@ tpl_env() { printf 'TLS_NGINX_TEMPLATE=%s\n' "$1" >>"$ROOT/.env"; }
   BK_FILE=$ROOT/$(st last_upgrade.backup)
   cmp "$ROOT/custom/proxy.conf.template" <(bk_member nginx-tls.conf.template) || return 1
   [ "$(bk_mf contents.nginx_template)" = true ] && [ "$(bk_mf source.tls_nginx_template)" = ./custom/proxy.conf.template ] || return 1
-  # Not set: no member, false and empty.
-  fresh ui
-  full_run en
-  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  BK_FILE=$ROOT/$(st last_upgrade.backup)
-  ! /usr/bin/tar -tf "$BK_FILE" | grep -qx nginx-tls.conf.template || return 1
-  [ "$(bk_mf contents.nginx_template)" = false ] && [ "$(bk_mf source.tls_nginx_template)" = "" ] || return 1
+  # Not set (no member, false and empty) is the same code as the backup command's, tested there.
   # Missing, and a path the manifest cannot hold: refused before the preview with the exit code of
   # the other refusals there (3), nothing stopped; with --backup-ref no file is made and the
-  # template is not checked.
+  # template is not checked (the same gate for both, run once).
   local c
   for c in missing backslash; do
     fresh ui
@@ -497,6 +565,7 @@ tpl_env() { printf 'TLS_NGINX_TEMPLATE=%s\n' "$1" >>"$ROOT/.env"; }
     [[ $output != *"Custodexa upgrade preview"* ]] || return 1
     no_stop || return 1
     ! grep -q ' stop ' "$FAKE_DOCKER_LOG" || return 1
+    [ "$c" = missing ] || continue
     printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
     clock 0 3 0 41 0 4 0 11
     TZ=UTC full_run en --backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc
@@ -535,11 +604,7 @@ tpl_env() { printf 'TLS_NGINX_TEMPLATE=%s\n' "$1" >>"$ROOT/.env"; }
   ! grep -q 'exec -T postgres' "$FAKE_DOCKER_LOG" || return 1
   [ "$(st last_upgrade.step)" = 6 ] && ! grep -qx up "$DB/events" || return 1
   printf '%s\n' "$output" | grep -qxF '      start backend guacd frontend' || { echo "$output"; return 1; }
-  # No connection left: OK, through the client too.
-  fresh_ext online 17.6
-  full_run en
-  [ "$status" -eq 0 ] && [[ $output == *"[ OK ]  6/13"* ]] || { echo "$output"; return 1; }
-  grep -q " $(pgc_id 17) psql connections$" "$DB/db-runs" || { cat "$DB/db-runs"; return 1; }
+  # No connection left (OK, through the client too): the first upgrade on an external database above.
 }
 
 @test "upgrade step 6 (external, no client: own backup): WARN and go on, never exec postgres" {

@@ -10,11 +10,16 @@ load backup_host
 load upgrade_host
 load restore_host
 load restore_ext_flow_host
-setup() {
+load rollback_host
+flow_host() {
   rs_ext_flow_host
   # This host's backend is connected until the restore stops it.
   printf '%s\n' '172.18.0.5 custodexa-backend' >"$DB/activity"
   : >"$DB/activity.after-stop"
+}
+setup() {
+  host_workdir
+  host_cache flow flow_host
 }
 digest_now() { cat "$DB/ext.digest" 2>/dev/null || echo before; }
 # clients_kept: the deployment still records the three clients it has (a later backup, upgrade or
@@ -39,29 +44,14 @@ clients_kept() {
   ! grep -q 'exec -T postgres' "$FAKE_DOCKER_LOG" || { grep 'exec -T postgres' "$FAKE_DOCKER_LOG"; return 1; }
   [[ $output == *'Restore done'* ]] || { echo "$output"; return 1; }
   clients_kept
-}
-
-@test "restore external flow: same host, a connection left after the stop holds it at step 2 and --revert starts the services" {
-  printf '%s\n' '10.0.0.45 psql' >"$DB/activity.after-stop"
-  rs_ext_flow_run
-  [ "$status" = 1 ] || { echo "$status $output"; return 1; }
-  [[ $output == *' 2/10  Stop the services (the external database is not affected):'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'1 other connection'*'10.0.0.45'*'psql'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'The restore stopped at step 2. Nothing has been overwritten'* ]] || { echo "$output"; return 1; }
-  [[ $output == *'restore --resume'*'restore --revert'* ]] || { echo "$output"; return 1; }
-  # One stop screen only: the general failure screen does not follow it.
-  [[ $output != *'The restore stopped at step 2;'* ]] || { echo "$output"; return 1; }
-  # Nothing overwritten: no safety export, no import, the target unchanged, nothing renamed.
-  ! grep -qx 'pg_dump' "$DB/events" || return 1
-  ! grep -qx 'psql import' "$DB/events" || return 1
-  [ "$(digest_now)" = before ] || return 1
-  ! compgen -G "$ROOT/data/*.before-restore-*" >/dev/null || return 1
-  [ "$(cat "$DB/ctr/backend")" = stopped ] || return 1
-  run bash "$ROOT/custodexa.sh" restore --revert --yes --lang en </dev/null
-  [ "$status" = 0 ] || { echo "$status $output"; return 1; }
-  [ "$(cat "$DB/ctr/backend")" = running ] || { echo "$output"; return 1; }
-  [ "$(digest_now)" = before ] || return 1
-  [ "$(rs_ext_flow_result)" = reverted ] || { jq . "$ROOT/state.json"; return 1; }
+  # The preview keeps no database folder; this host's own backend is listed, not refused; the
+  # steps of an external database.
+  [[ $output != *'postgres.before-restore'* && $output == *'  Kept           the current audit and certificate folders are'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'it; 1 other connections now (from 172.18.0.5, application'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'[ OK ]  2/10  Stop the services (the external database is not affected)'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'[ OK ]  5/10  Make sure no other connection is open'* ]] || { echo "$output"; return 1; }
+  [[ $output == *'[ OK ]  6/10  Empty and import the database (one transaction)'* ]] || { echo "$output"; return 1; }
+  [[ $output != *'database keeps running'* && $output != *'Import the database '* ]] || { echo "$output"; return 1; }
 }
 
 @test "restore external flow: same host, after a rolled-back import --revert puts the safety backup back through the external client" {
@@ -109,13 +99,14 @@ ingress_too() {
   touch "$ROOT/current/compose.external-ingress.yml"
   bk_env_set COMPOSE_FILE current/compose.yml:current/compose.external-ingress.yml:current/compose.external-database.yml
 }
-@test "restore external flow: behind an external ingress too, the restore keeps openssl and the three clients on record" {
-  # This form's host instead of the one setup laid out.
+ingress_host() {
   rm -rf "$BATS_TEST_TMPDIR/source"
   RS_X_OSSL=sha256:7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e
-  RS_X_BEFORE=ingress_too rs_ext_flow_host
-  printf '%s\n' '172.18.0.5 custodexa-backend' >"$DB/activity"
-  : >"$DB/activity.after-stop"
+  RS_X_BEFORE=ingress_too flow_host
+}
+@test "restore external flow: behind an external ingress too, the restore keeps openssl and the three clients on record" {
+  # This form's host instead of the one setup laid out.
+  host_cache flow-ingress ingress_host
   # The host has openssl under the bundle's ID only, not under the release's index digest.
   grep -vxF "$BK_OPENSSL_ID" "$DB/images" >"$BATS_TEST_TMPDIR/images" || true
   cp "$BATS_TEST_TMPDIR/images" "$DB/images"

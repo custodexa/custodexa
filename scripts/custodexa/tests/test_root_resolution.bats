@@ -12,12 +12,6 @@ setup() {
   unset CUSTODEXA_HOME
 }
 
-@test "root link custodexa.sh -> current/custodexa.sh resolves to the root" {
-  run cx_resolve_root "$ROOT/custodexa.sh"
-  [ "$status" -eq 0 ]
-  [ "$output" = "$ROOT" ]
-}
-
 @test "three levels of symlinks resolve to the real root" {
   mkdir -p "$T/a" "$T/b" "$T/usr/local/bin"
   ln -s "$ROOT/custodexa.sh" "$T/a/cx1"
@@ -72,13 +66,8 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "root path with a space is rejected" {
-  run cx_check_root_path "/opt/my custodexa"
-  [ "$status" -ne 0 ]
-}
-
-@test "root path with quotes, backslash, dollar or non-ASCII is rejected" {
-  for p in "/opt/it's" '/opt/a"b' '/opt/a\b' '/opt/$HOME' '/opt/部署' '/opt/a
+@test "root path with a space, quotes, backslash, dollar or non-ASCII is rejected" {
+  for p in "/opt/my custodexa" "/opt/it's" '/opt/a"b' '/opt/a\b' '/opt/$HOME' '/opt/部署' '/opt/a
 b' 'relative/path'; do
     run cx_check_root_path "$p"
     [ "$status" -ne 0 ] || { echo "accepted: $p"; return 1; }

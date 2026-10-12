@@ -15,7 +15,9 @@ rs_journal_host() {
   printf '\n# restored settings\n' >>"$RS_J_STAGE/env.merged"
   printf 'restored template\n' >"$RS_J_STAGE/pass2/nginx-tls.conf.template"
   printf 'original template\n' >"$ROOT/nginx.conf"
-  printf 'source archive\n' >"$BATS_TEST_TMPDIR/restore-input.tar"
+  # RS_J_HOST: the folder of this host's own files (the original deployment, the restore input).
+  RS_J_HOST=$BATS_TEST_TMPDIR
+  printf 'source archive\n' >"$RS_J_HOST/restore-input.tar"
   export RS_J_SAFETY
   RS_J_SAFETY=$(find "$RS_FIX" -maxdepth 1 -name '*.tar')
   cat >>"$ROOT/current/lib/cmd_restore.sh" <<'HARNESS'
@@ -92,23 +94,23 @@ HARNESS
   cp -a "$ROOT/releases/1.16.0" "$ROOT/releases/1.16.1"
   printf '1.16.1\n' >"$ROOT/releases/1.16.1/VERSION"
   touch "$ROOT/releases/1.16.0/compose.yml" "$ROOT/releases/1.16.1/compose.yml"
-  cp -a "$ROOT" "$BATS_TEST_TMPDIR/journal-original"
+  cp -a "$ROOT" "$RS_J_HOST/journal-original"
   export RS_J_ENGINE=$ROOT/releases/1.16.1/custodexa.sh
 }
 rs_journal_reset() {
   rm -rf "$ROOT"
-  cp -a "$BATS_TEST_TMPDIR/journal-original" "$ROOT"
+  cp -a "$RS_J_HOST/journal-original" "$ROOT"
   : >"$DB/events"
   rm -f "$DB/cut-hit"
   local f
   for f in "$DB"/ctr/*; do printf 'stopped\n' >"$f"; done
 }
 rs_journal_start() {
-  run env RS_J_CUT="$1" bash "$RS_J_ENGINE" restore "$BATS_TEST_TMPDIR/restore-input.tar" --same-host --yes --lang en
+  run env RS_J_CUT="$1" bash "$RS_J_ENGINE" restore "$RS_J_HOST/restore-input.tar" --same-host --yes --lang en
   [ "$status" = 137 ] && [ "$(cat "$DB/cut-hit")" = "$1" ] || { echo "cut=$1 status=$status $output"; return 1; }
 }
 rs_journal_resumed() {
-  local name before=$BATS_TEST_TMPDIR/journal-original
+  local name before=$RS_J_HOST/journal-original
   for name in postgres audit; do
     [ "$(find "$ROOT/data" -maxdepth 1 -name "$name.before-restore-*" | wc -l)" = 1 ] || return 1
     diff -r "$before/data/$name" "$ROOT/data/$name.before-restore-journal-test" || return 1
@@ -125,9 +127,14 @@ rs_journal_resumed() {
   [ "$(readlink "$ROOT/current")" = releases/1.16.1 ] || return 1
   [ "$(jq -r '."current.version"' "$ROOT/state.json")" = 1.16.1 ]
 }
+# rs_journal_matrix <op>: an interruption at each boundary of the op, then each exit. Of the eight
+# boundaries only four leave a different persisted state: nothing is written between the intent and
+# the action (before-action is after-intent), nor between the action and its done record
+# (before-done is after-action), and the state saved after the done record is the same as before
+# it (before-state and after-state are after-done; for state ops they fall inside the action).
 rs_journal_matrix() {
   local op=$1 point exit_action covering
-  for point in before-intent after-intent before-action after-action before-done after-done before-state after-state; do
+  for point in before-intent after-intent after-action after-done; do
     for exit_action in resume revert; do
       rs_journal_reset
       rs_journal_start "$point:$op" || return 1

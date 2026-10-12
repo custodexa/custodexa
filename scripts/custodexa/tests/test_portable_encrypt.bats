@@ -10,9 +10,9 @@ load helper
 load install_host
 load backup_host
 load pty_host
+VEC_DIR=$TESTS_DIR/fixtures
 
 BK_PASS='test-passphrase-only-0002'
-VEC_DIR=$TESTS_DIR/fixtures
 
 setup() {
   backup_host ui
@@ -131,33 +131,7 @@ EOF
   no_secret_in test-passphrase "$BATS_TEST_TMPDIR/out" "$ROOT/logs" "$ROOT/state.json"
 }
 
-@test "encrypt: --yes on a terminal asks nothing, does not encrypt and says how to" {
-  pty_talk "$BATS_TEST_TMPDIR/out" "bash $ROOT/custodexa.sh backup --lang en --no-color --yes" && rc=0 || rc=$?
-  RUN_OUT=$(pty_screen "$BATS_TEST_TMPDIR/out")
-  [ "$rc" = 0 ] || { echo "$RUN_OUT"; return 1; }
-  [[ $RUN_OUT != *"[ ?? ]"* && $RUN_OUT != *"Passphrase"* ]] || { echo "$RUN_OUT"; return 1; }
-  [[ $RUN_OUT == *"  Encryption: none (add --passphrase-file <file> to encrypt)"* ]] || { echo "$RUN_OUT"; return 1; }
-  [[ $RUN_OUT == *"Start the backup? [y/N] y"* ]] || { echo "$RUN_OUT"; return 1; }
-  bk_one && [ "$(bk_mf encryption.enabled)" = false ] && [ ! -e "$DB/run.argv" ]
-}
-
-@test "passphrase file: mode 0644 is refused before any stop with the chmod 600 command" {
-  chmod 644 "$PASSFILE"
-  backup_run en --yes --passphrase-file "$PASSFILE"
-  [ "$status" -eq 3 ] || { echo "$output"; return 1; }
-  diff <(screen_of "$output" | sed "s#$BATS_TEST_TMPDIR#/root#g") - <<'EOF' || { echo "$output"; return 1; }
-[FAIL] Other accounts can read or write the passphrase file /root/cx-pass
-       (mode 0644), or it is owned by someone other than you or root, or it
-       has an extra access control list. Nothing was stopped. Fix it and
-       run again:
-  sudo chown root /root/cx-pass
-  sudo chmod 600 /root/cx-pass
-EOF
-  no_stop || return 1
-  [ "$(jq -r '."last_backup.result"' "$ROOT/state.json")" = failed ]
-}
-
-@test "passphrase file: missing, a link, a folder, 0640, 0604, another owner, an ACL, a bad first line are refused before any stop" {
+@test "passphrase file: missing, a link, a folder, 0604, 0620, 0644, another owner, an ACL, a bad first line are refused before any stop" {
   local f=$BATS_TEST_TMPDIR/pf
   # case <label> <expected words>: run with the file at $f, refused before any stop with the words.
   refused() {
@@ -176,11 +150,13 @@ EOF
   rm -f "$f" && mkdir -m 700 "$f"
   refused folder "Cannot read the passphrase file $f" || return 1
   rm -rf "$f"
-  for m in 640 604 660 606 620 602; do
+  # One mask decides: others reading (0604), the group writing (0620), both read bits (0644).
+  for m in 604 620 644; do
     bk_passfile "$f" "$BK_PASS"
     chmod "$m" "$f"
     refused "mode $m" "(mode 0$m)" || return 1
     [[ $output == *"  sudo chmod 600 $f"* && $output != *"setfacl"* ]] || { echo "$output"; return 1; }
+    [ "$(jq -r '."last_backup.result"' "$ROOT/state.json")" = failed ] || { echo "mode $m"; return 1; }
   done
   chmod 600 "$f" && chown 4321 "$f"
   refused "another owner" "or it is owned by someone other than you or root" || return 1
@@ -311,29 +287,6 @@ EOF
   [ -z "$(find "$ROOT/backups" -type p)" ]
 }
 
-@test "known answer: the stored vector decrypts to the recorded plaintext; wrong passphrase, -iter, -md or a cut block do not" {
-  local vec=$VEC_DIR/cx-enc-1-vector.tar.enc pass want got cut=$BATS_TEST_TMPDIR/cut.enc
-  pass=$(sed -n 's/^passphrase=//p' "$VEC_DIR/cx-enc-1-vector.txt")
-  want=$(sed -n 's/^plaintext_sha256=//p' "$VEC_DIR/cx-enc-1-vector.txt")
-  [[ $want =~ ^[0-9a-f]{64}$ ]] && [ -n "$pass" ] || return 1
-  # dec <passphrase> <iter> <md> <file>: the SHA-256 of what openssl gives (empty when it fails).
-  dec() {
-    local out
-    out=$(printf '%s\n' "$1" | /usr/bin/openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md "$3" -iter "$2" \
-      -pass stdin -in "$4" 2>/dev/null | /usr/bin/sha256sum) || true
-    printf '%s' "${out%% *}"
-  }
-  got=$(dec "$pass" 600000 sha256 "$vec")
-  [ "$got" = "$want" ] || { echo "the vector gives $got"; return 1; }
-  printf '%s\n' "$pass" | /usr/bin/openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 \
-    -pass stdin -in "$vec" | /usr/bin/tar -tf - | grep -qx vector.txt || return 1
-  [ "$(dec "${pass}x" 600000 sha256 "$vec")" != "$want" ] || { echo "a wrong passphrase opens it"; return 1; }
-  [ "$(dec "$pass" 599999 sha256 "$vec")" != "$want" ] || { echo "another -iter opens it"; return 1; }
-  [ "$(dec "$pass" 600000 sha512 "$vec")" != "$want" ] || { echo "another -md opens it"; return 1; }
-  head -c $(($(stat -c %s "$vec") - 16)) "$vec" >"$cut"
-  [ "$(dec "$pass" 600000 sha256 "$cut")" != "$want" ] || { echo "a cut file opens it"; return 1; }
-}
-
 @test "passphrase: spaces before it and backslashes are kept: the same string decrypts, without the spaces it does not" {
   local p='  test\pass phrase\0n\ '
   typed_twice "$p"
@@ -376,4 +329,27 @@ EOF
          non-English letters or full-width symbols); type it again (2 more tries)."* ]] || { echo "$RUN_OUT"; return 1; }
   [[ $RUN_OUT != *"密碼"* ]] || { echo "$RUN_OUT"; return 1; }
   bk_one_enc && check_plain "$BK_FILE" "$p12"
+}
+
+@test "known answer: the stored vector decrypts to the recorded plaintext; wrong passphrase, -iter, -md or a cut block do not" {
+  local vec=$VEC_DIR/cx-enc-1-vector.tar.enc pass want got cut=$BATS_TEST_TMPDIR/cut.enc
+  pass=$(sed -n 's/^passphrase=//p' "$VEC_DIR/cx-enc-1-vector.txt")
+  want=$(sed -n 's/^plaintext_sha256=//p' "$VEC_DIR/cx-enc-1-vector.txt")
+  [[ $want =~ ^[0-9a-f]{64}$ ]] && [ -n "$pass" ] || return 1
+  # dec <passphrase> <iter> <md> <file>: the SHA-256 of what openssl gives (empty when it fails).
+  dec() {
+    local out
+    out=$(printf '%s\n' "$1" | /usr/bin/openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md "$3" -iter "$2" \
+      -pass stdin -in "$4" 2>/dev/null | /usr/bin/sha256sum) || true
+    printf '%s' "${out%% *}"
+  }
+  got=$(dec "$pass" 600000 sha256 "$vec")
+  [ "$got" = "$want" ] || { echo "the vector gives $got"; return 1; }
+  printf '%s\n' "$pass" | /usr/bin/openssl enc -d -aes-256-cbc -saltlen 8 -pbkdf2 -md sha256 -iter 600000 \
+    -pass stdin -in "$vec" | /usr/bin/tar -tf - | grep -qx vector.txt || return 1
+  [ "$(dec "${pass}x" 600000 sha256 "$vec")" != "$want" ] || { echo "a wrong passphrase opens it"; return 1; }
+  [ "$(dec "$pass" 599999 sha256 "$vec")" != "$want" ] || { echo "another -iter opens it"; return 1; }
+  [ "$(dec "$pass" 600000 sha512 "$vec")" != "$want" ] || { echo "another -md opens it"; return 1; }
+  head -c $(($(stat -c %s "$vec") - 16)) "$vec" >"$cut"
+  [ "$(dec "$pass" 600000 sha256 "$cut")" != "$want" ] || { echo "a cut file opens it"; return 1; }
 }

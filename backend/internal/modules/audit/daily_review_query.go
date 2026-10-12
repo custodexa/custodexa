@@ -265,7 +265,11 @@ func (s *DailyReviewService) Day(date string) (*DailyReviewDayDetail, error) {
 	if out.LoginFailures, err = eventList(loginFailureScope(s.db, start, end), logStatus); err != nil {
 		return nil, fmt.Errorf("查詢登入失敗明細: %w", err)
 	}
-	if out.HighRiskOps, err = eventList(highRiskScope(s.db, start, end), logStatus); err != nil {
+	highRisk, err := highRiskScope(s.db, start, end)
+	if err != nil {
+		return nil, err
+	}
+	if out.HighRiskOps, err = eventList(highRisk, logStatus); err != nil {
 		return nil, fmt.Errorf("查詢高危操作明細: %w", err)
 	}
 	if signed != nil && signed.Coverage == model.DailyReviewCoverageFullDay {

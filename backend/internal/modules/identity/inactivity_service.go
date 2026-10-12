@@ -86,5 +86,6 @@ func (s *InactivityService) auditDisable(u *model.User, days int) {
 		ClientIP:   "system",
 		StatusCode: 200,
 		ErrorMsg:   "auto_disabled_inactive_account",
+		Details:    audit.InactiveDisableDetails(days),
 	})
 }

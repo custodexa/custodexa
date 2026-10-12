@@ -25,7 +25,9 @@ func TestUserServiceDeleteCascade(t *testing.T) {
 		&model.Asset{}, &model.ApproverScope{}, &model.AuditLog{},
 		&model.RefreshToken{}, &model.UserRole{}, &model.UserRoleMapping{},
 		&model.UserRoleMappingRuleSupport{}, &model.GroupUserGroupMapping{},
-		&model.UserGroupMappingRuleSupport{}); err != nil {
+		&model.UserGroupMappingRuleSupport{},
+		// 刪除帳號同交易作廢外部身分綁定，缺表即整筆回滾
+		&model.UserExternalIdentity{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	svc := NewUserService(db, authz.NewAssetAuthorizationService(db))

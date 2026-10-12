@@ -15,14 +15,19 @@ load helper
 load install_host
 load backup_host
 load upgrade_host
+load rollback_host
 
 st() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
 
-fresh() {
-  rm -rf "${BATS_TEST_TMPDIR:?}"/*
-  upgraded_host "${1:-ui}" || return 1
+setup() { host_workdir; }
+records_host() {
+  upgraded_host "$1" || return 1
   clock 0 3 0 41 0 4 0 11
   : >"$DB/events"
+}
+fresh() {
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  host_cache "records ${1:-ui}" records_host "${1:-ui}"
 }
 
 # switch_fails: step 9 fails (preparing the recordings folder), after current moved.

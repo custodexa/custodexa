@@ -1,6 +1,7 @@
 # Custodexa - API 規格文件
 
-> 最後更新：2026-10-11（PCI DSS 10.4.1 改以每日簽核的運作紀錄判定：判定結果加 `insufficient_data`、摘要加同名格、四個理由碼、判定上的 `signoff` 運作紀錄；套用預覽加 `notes`；證據包加 `daily_reviews.csv` 與清單檔 `daily_reviews` 段；合規報告 ZIP 對含此條文的組加 `daily_reviews.csv`；高危操作白名單只計寫入類動作、安全政策預覽改記為讀取；升級前的簽核 `alerts_after_sign` 為 `null`。路由未變）
+> 最後更新：2026-10-12（每日審閱單日明細的 Event 與操作日誌列表／單筆加 `reason_code`、`reason_params`；計數物件與 `daily_reviews.csv` 尾端加 `high_risk_criteria`；OIDC callback 失敗 slug 加 `oidc_account_removed`、`oidc_user_inactive`；刪除使用者作廢其外部身分綁定，審計列帶被刪帳號名稱與作廢數。路由未變）
+> 前次更新：2026-10-11（PCI DSS 10.4.1 改以每日簽核的運作紀錄判定：判定結果加 `insufficient_data`、摘要加同名格、四個理由碼、判定上的 `signoff` 運作紀錄；套用預覽加 `notes`；證據包加 `daily_reviews.csv` 與清單檔 `daily_reviews` 段；合規報告 ZIP 對含此條文的組加 `daily_reviews.csv`；高危操作白名單只計寫入類動作、安全政策預覽改記為讀取；升級前的簽核 `alerts_after_sign` 為 `null`。路由未變）
 > 前次更新：2026-10-11（每日審閱簽核改版：依業務時區切日、可補簽指定所屬日、新增待簽清單／單日明細／期間統計端點與 11 個錯誤碼；`GET /audit-logs` 加 `end_before`；`daily_review_overdue` 通知改列出全部未簽日）
 > 前次更新：2026-10-06（`POST /seal/authorize` 在已解封時一律回 409 `SEAL_ALREADY_UNSEALED`；`POST /auth/login` 的帳號含控制字元時回 401 而非 500）
 > 前次更新：2026-10-06（`GET /seal/status` 在已解封時多回現行 KEK 識別 `kek_id`）
@@ -1168,7 +1169,9 @@ POST /api/v1/auth/oidc/exchange
    失敗一律導回 `${PUBLIC_BASE_URL}/login#sso_error=<slug>`，slug 值域為
    `oidc_provider_error`（IdP 端回報錯誤）／`oidc_flow_invalid`（state/code 缺漏、流程狀態
    無效或過期、驗證失敗——**成因刻意收斂，不洩漏 IdP 內部狀態**）／`oidc_admission_denied`／
-   `oidc_username_conflict`／`oidc_provider_unavailable`。前端據 slug 顯示可行動訊息。
+   `oidc_username_conflict`／`oidc_provider_unavailable`／`oidc_account_removed`（僅允許已綁定身分登入的
+   provider，此人原有的帳號已被刪除，須由管理者重新建立帳號並綁定）／`oidc_user_inactive`（對應的帳號已停用）。
+   前端據 slug 顯示可行動訊息。
 
 3. **exchange**：SPA 讀出 fragment 後立即 `history.replaceState` 抹除，再兌換正式登入回應。
 
@@ -3202,7 +3205,7 @@ CAS 或摘要不符時回 409（`CONFLICT_OFFSITE_SETTINGS_STALE_CONFIRMATION`�
 | POST | `/users` | 創建 → 201 `{data: User}` |
 | GET | `/users/:id` | 詳情 → `{data: User}` |
 | PUT | `/users/:id` | 更新基本資訊（不含密碼/角色） |
-| DELETE | `/users/:id` | 軟刪除；不能刪除最後一個管理員（400） |
+| DELETE | `/users/:id` | 軟刪除，同一交易內作廢該帳號的外部身分綁定；不能刪除最後一個管理員（400）。審計列帶被刪帳號名稱與作廢的外部身分數（`details` 的 `target_username`、`external_identities_revoked`），`username` 仍是操作者 |
 | PUT | `/users/:id/roles` | body: `{"manual_roles": ["admin", "auditor"]}`（**替換管理者指派集**，不是有效角色集；見下段） |
 | POST | `/users/:id/roles/:role` | 冪等追加單一角色（不觸碰其他角色，重複追加 no-op）→ `{}`；未知角色 400。一站式代配（審核範圍表單）用此端點避免整包替換的 lost-update。**副作用**：目標角色若目前只由外部群組映射賦予，本端點會把它釘成管理者指派（見下段） |
 | POST | `/users/:id/roles/pin` | body: `{"role": "auditor"}` → `{"role_sets": {…}}`；把一個由外部群組映射賦予的角色**釘住**（改記為管理者一併指派），使它不再隨群組異動消失。該角色不是映射賦予時回 400 `VALIDATION_ROLE_NOT_MAPPED` |
@@ -4014,7 +4017,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 
 **PendingDay**：`{date, timezone, timezone_inferred, window_start, window_end, due_at, signable_at, signable, overdue, late_days, enabled_basis, counts}`。`timezone_inferred=true` 表示該日的切日時區是升級時以當時設定推得的。`counts` 見下方計數物件。
 
-**計數物件**（`counts`，與簽核快照同形）：`{date, login_failures, login_failures_source, high_risk_ops, high_risk_ops_source, unreviewed_alerts, alerts_total, alerts_benign, alerts_escalated, alerts_source}`。`*_source` 為 `complete`／`partial`／`purged`：依保留期清除的水位判定，`purged` 時該項計數為 `null`（不以 0 冒充），`partial` 時計數是下限。
+**計數物件**（`counts`，與簽核快照同形）：`{date, login_failures, login_failures_source, high_risk_ops, high_risk_ops_source, high_risk_criteria, unreviewed_alerts, alerts_total, alerts_benign, alerts_escalated, alerts_source}`。`*_source` 為 `complete`／`partial`／`purged`：依保留期清除的水位判定，`purged` 時該項計數為 `null`（不以 0 冒充），`partial` 時計數是下限。`high_risk_criteria` 是 `high_risk_ops` 所依據的高危判準版本（整數）：即時計數與新簽核為現行版本 `2`；簽核快照沒有此鍵者（1.17.2 之前簽核）讀出為 `1`。版本 `2` 不計入保留期限清除、外部登入時沒有角色增減的映射重算，以及同一件事除帶請求路徑那一列以外的重複紀錄；這些紀錄仍在操作日誌。已簽日的快照不重算，與即時計數版本不同時兩者依不同判準計算。
 
 **`GET /daily-reviews/days/:date`**：
 
@@ -4035,7 +4038,7 @@ MSG 為 JSON 含 PCI 10.2.2 六要素；有界緩衝（4096）滿即丟並計數
 ```
 
 - `status`：`pending`（待簽）、`settling`（已結束、寬限內）、`signed`、`out_of_scope`（不在範圍或改時區時被跳過的日期；功能關閉時，所有尚未簽核的日子都回此值，已簽日仍回 `signed`）、`not_ended`（今天或明天）。
-- `unreviewed_alerts` 全部列出；`login_failures`／`high_risk_ops` 各列前 20 筆，`total` 是此刻查得到的筆數（來源已清除時為 0，並以 `source_status=purged` 標示）。Event 為 `{id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg}`。明細與計數使用同一組查詢條件。
+- `unreviewed_alerts` 全部列出；`login_failures`／`high_risk_ops` 各列前 20 筆，`total` 是此刻查得到的筆數（來源已清除時為 0，並以 `source_status=purged` 標示）。Event 為 `{id, created_at, user_id, username, action, resource, status, client_ip, path, error_msg, reason_code, reason_params}`。明細與計數使用同一組查詢條件。`reason_code`（字串）與 `reason_params`（字串對字串的物件）是伺服器對該列的原因分類，供前端組出原因句；無法分類、而列本身已帶請求路徑或錯誤訊息時沒有碼，兩鍵皆不出現（前端照舊顯示 `error_msg` 或 `path`），有碼但無參數時只出現 `reason_code`。原因碼值域為封閉集合，前端以 `dailyReview.reason.<code>` 對應三語文案。分類所用的紀錄細節不隨本回應出站。
 - 已簽日：時區、起訖與 `enabled_basis` 取簽核時固化的值；`review` 為簽核紀錄，`signed_snapshot` 為簽核時固化的計數，`alerts_after_sign` 為簽核後才出現、觸發時刻屬於該日的未審閱告警數，只對 `coverage=full_day` 的簽核計算（簽核當時該日未審閱告警必須為 0，此刻仍未審閱者必然是事後寫入）。`coverage=until_signed` 的升級前簽核不檢查告警處置，無法區分簽核前後，`alerts_after_sign` 一律為 `null`；此刻仍未審閱的告警照常列在 `unreviewed_alerts`。
 
 **`GET /daily-reviews/stats`**：`period=30d`（預設）或 `90d`；或以 `from`／`to`（業務時區日期，含頭尾，最長 366 天，`to` 不得晚於今天）自訂。不合法回 400 `VALIDATION_DAILY_REVIEW_PERIOD_INVALID`。近 N 天以昨天為 `to`；今天尚未結束，不計入。
@@ -4478,7 +4481,10 @@ GET /api/v1/audit-logs
 **回應** (200): `{"data": [AuditLog], "total": N, "page": 1, "page_size": 20}`
 
 **AuditLog 欄位**: `id, action, resource, resource_id, status, user_id, username, method, path,
-client_ip, status_code, duration_ms, request_body, error_msg, details, request_id, created_at`
+client_ip, status_code, duration_ms, request_body, error_msg, details, request_id, created_at`，
+另加 `reason_code`、`reason_params`（列表與單筆詳情皆有；語意與省略規則同每日審閱單日明細的 Event，
+見〈每日審閱簽核〉）。這兩欄是回應時計算的分類，不是審計列本身的欄位，不進完整性驗證碼，證據包的
+`audit_logs.json` 也不含；資源歷史（`/audit-logs/resource/...`）的 `logs` 不帶這兩欄。
 
 ### 詳情 / 資源歷史
 
@@ -4644,7 +4650,9 @@ GET /api/v1/audit-export
   `window_end`、`due_at`、`status`（`on_time`／`late`／`unsigned`／`not_due`）、`counts_toward_stats`（已到期才為
   `true`；昨日即使已簽也為 `false`）、`signed_at`、`signer`、`late_days`、`delay_reason`、`note`、`coverage`、
   `audit_log_source`／`command_alert_source`（`complete`／`partial`／`purged`）、`login_failures`、`alerts_total`、
-  `alerts_benign`、`alerts_escalated`、`high_risk_ops`、`alerts_after_sign`、`review_ref`（`daily_review:<id>`）。
+  `alerts_benign`、`alerts_escalated`、`high_risk_ops`、`alerts_after_sign`、`review_ref`（`daily_review:<id>`）、
+  `high_risk_criteria`（`high_risk_ops` 所依據的高危判準版本：已簽列取簽核快照，1.17.2 之前的簽核為 `1`；未簽列為現行版本 `2`；
+  高危數因來源清除而留空時仍填版本）。欄序即契約，新欄只在尾端追加，既有欄位位置不變。
   已簽列的計數取簽核時固化的值，未簽列為匯出當下的即時計數；**來源已清除的計數留空，不是 0**。
   `coverage=until_signed`（升級前的簽核）列另有兩處留空，與資料是否清除無關：`alerts_total`／`alerts_benign`／
   `alerts_escalated` 留空，因為升級前的簽核只記下未審閱告警數，沒有記錄告警總數與處置分布；`alerts_after_sign` 留空，

@@ -3,14 +3,64 @@
 # rollback_host [upgrade outcome] [mode] [old version]: ready, backup, before-switch,
 # switch-recorded, switch-linked, start, ready-failed, checks, interrupted.
 rb_state() { jq -r --arg k "$1" '.[$k] // ""' "$ROOT/state.json"; }
+
+# A host built once per test file. The deployment, the fakes and the records hold absolute paths,
+# so a file whose setup calls host_workdir has every test work in one fixed folder; host_cache then
+# copies a host built earlier in the file back to that same path and sets the variables its builder
+# set. In a file that does not call host_workdir, host_cache simply runs the builder.
+host_workdir() {
+  export BATS_TEST_TMPDIR=$BATS_FILE_TMPDIR/work
+  rm -rf "$BATS_TEST_TMPDIR"
+  mkdir -p "$BATS_TEST_TMPDIR"
+}
+# host_cache <key> <builder> [arguments...]: the key names everything the builder depends on.
+host_cache() {
+  local hc_key=$1 hc_dir hc_n
+  shift
+  if [ "$BATS_TEST_TMPDIR" != "$BATS_FILE_TMPDIR/work" ]; then "$@"; return; fi
+  hc_dir=$BATS_FILE_TMPDIR/cache/$(printf '%s' "$hc_key" | sha256sum | cut -c1-16)
+  if [ -f "$hc_dir/vars" ]; then
+    rm -rf "$BATS_TEST_TMPDIR"
+    cp -a "$hc_dir/files" "$BATS_TEST_TMPDIR"
+    # shellcheck disable=SC1091
+    . "$hc_dir/vars"
+    return 0
+  fi
+  "$@" || return
+  rm -rf "$hc_dir"
+  mkdir -p "$hc_dir"
+  cp -a "$BATS_TEST_TMPDIR" "$hc_dir/files"
+  # The variables in upper case, set again as globals; those of bats and the shell, and the
+  # inputs a test chooses per run, are left as they are.
+  for hc_n in $(compgen -v); do
+    [[ $hc_n =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+    case $hc_n in
+      BATS_*|BASH*|HOST_CACHE_*|EPOCH*|RANDOM|SRANDOM|SECONDS|LINENO|HISTCMD|PIPESTATUS|FUNCNAME|GROUPS|DIRSTACK|PPID|UID|EUID|SHELLOPTS|SHLVL|PWD|OLDPWD|RB_LANG|RB_BASELINE|RS_X_BEFORE|LANG_RUN) continue ;;
+    esac
+    declare -p "$hc_n"
+  done 2>/dev/null | sed -E '/^declare -[a-zA-Z]*r[a-zA-Z]* /d; s/^declare -- /declare -g /; s/^declare -([a-zA-Z]+) /declare -\1g /' >"$hc_dir/vars"
+}
+
 rollback_host() {
-  local outcome=${1:-ready} mode=${2:-ui} old=${3:-1.16.1} n ids=""
+  local outcome=${1:-ready} mode=${2:-ui} old=${3:-1.16.1}
   RB_NEW=${4:-1.16.2}
   local -a own=()
   if [ "$outcome" = external ]; then
     outcome=ready
     own=(--backup-ref vm-snap-0217 --backup-time '2026-09-30 02:17' --backup-restore /doc)
   fi
+  # The deployment of the version before with the new release fetched: the same for every outcome.
+  host_cache "rb-fetched $mode $old $RB_NEW" rb_fetched "$mode" "$old" || return 1
+  if [ -n "${RB_BASELINE:-}" ]; then
+    cat "$RB_BASELINE" >>"$ROOT/releases/$RB_NEW/lib/upgrade_steps.sh"
+  fi
+  if [ ${#own[@]} -gt 0 ]; then
+    printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
+  fi
+  rb_upgraded "$outcome" "${own[@]}"
+}
+rb_fetched() {
+  local mode=$1 old=$2 n ids=""
   backup_host "$mode"
   mv "$ROOT/releases/1.13.0" "$ROOT/releases/$old"
   ln -sfn "releases/$old" "$ROOT/current"
@@ -36,12 +86,12 @@ rollback_host() {
   upgrade_stack "$RB_NEW"
   bash "$ROOT/custodexa.sh" upgrade $RB_NEW --lang en </dev/null >"$DB/fetch.out" 2>&1 || true
   [ -d "$ROOT/releases/$RB_NEW" ] || { cat "$DB/fetch.out"; return 1; }
-  if [ -n "${RB_BASELINE:-}" ]; then
-    cat "$RB_BASELINE" >>"$ROOT/releases/$RB_NEW/lib/upgrade_steps.sh"
-  fi
-  if [ ${#own[@]} -gt 0 ]; then
-    printf 'false 2026-09-30T02:16:13.123456789Z\n' >"$UP/running"
-  fi
+}
+# rb_upgraded <outcome> [own backup options...]: the upgrade to RB_NEW, ending as the outcome says.
+rb_upgraded() {
+  local outcome=$1
+  shift
+  local -a own=("$@")
   case $outcome in
     ready) ;;
     backup) rb_up_wrap cx_up_at 'if [ "$1" = 8 ]; then cx_up_fail_exit; fi' ;;
@@ -141,4 +191,11 @@ HOOK
 rb_identity() {
   jq -S 'with_entries(select(.key == "last_rollback.from" or .key == "last_rollback.to" or
     .key == "last_rollback.started_at" or .key == "last_rollback.log"))' "$ROOT/state.json"
+}
+
+# rb_cached [outcome] [mode] [old version] [new version]: rollback_host in an emptied folder, built
+# once per test file for each outcome, versions, language and baseline.
+rb_cached() {
+  rm -rf "${BATS_TEST_TMPDIR:?}"/*
+  host_cache "rb $* lang=${RB_LANG:-en} baseline=${RB_BASELINE:-}" rollback_host "$@"
 }

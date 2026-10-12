@@ -48,7 +48,11 @@ func TestDailyReviewHighRiskExcludesReadsAndPreviews(t *testing.T) {
 	if val(snap.HighRiskOps) != wantPaths {
 		t.Errorf("高危操作 = %d, want %d（讀取與預覽不計、寫入與同步匯出要計）", val(snap.HighRiskOps), wantPaths)
 	}
-	list, err := eventList(highRiskScope(db, start, end), model.DailyReviewSourceComplete)
+	scope, err := highRiskScope(db, start, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := eventList(scope, model.DailyReviewSourceComplete)
 	if err != nil {
 		t.Fatal(err)
 	}

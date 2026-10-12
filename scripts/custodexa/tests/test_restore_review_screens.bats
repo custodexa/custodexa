@@ -7,6 +7,8 @@ load upgrade_host
 load restore_host
 load restore_engine_host
 
+# The engine host for the two complete runs below, built once; the screen tests do not use it.
+setup_file() { rs_host_once engine rs_engine_host; }
 setup() {
   ROOT=$BATS_TEST_TMPDIR/opt/custodexa
   mkdir -p "$ROOT"
@@ -84,7 +86,7 @@ review_snapshot() {
 # a missing progress line cannot be attributed to a replaced stage in that fixture.
 full_progress() {
   local flow=$1 total=10 i errors=0
-  rs_engine_host || return 1
+  rs_host_restore engine || return 1
   if [ "$flow" = new ]; then
     total=8
     rs_new_host
@@ -92,6 +94,11 @@ full_progress() {
     run bash "$ROOT/custodexa.sh" restore "$RS_E_FILE" --new-host --yes --lang en </dev/null
   else rs_engine_run; fi
   [ "$status" = 0 ] && [ "$(rs_engine_result)" = succeeded ] || { echo "$output"; return 1; }
+  if [ "$flow" = same ]; then
+    # The same-host bundled database env backup, from the file argument to completion.
+    [ "$(jq -r '."last_restore.phase"' "$ROOT/state.json")" = done ] &&
+      [[ $output == *'Restore done; the service is back (1.16.0)'* ]] || { echo "$output"; return 1; }
+  fi
   for ((i=1; i<=total; i++)); do
     if ! grep -Eq "^\[( OK |WARN)\] +$i/$total  " <<<"$output"; then
       echo "Completed $flow-host restore is missing progress step $i/$total"
